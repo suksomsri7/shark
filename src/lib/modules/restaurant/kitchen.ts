@@ -300,6 +300,10 @@ export async function kitchenMoveInTx(tx: Tx, s: Scope, m: KitchenMoveInput): Pr
 async function lockRoundInTx(tx: Tx, tenantId: string, orderId: string): Promise<void> {
   await tx.$queryRaw`SELECT id FROM "RestaurantOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR NO KEY UPDATE`; // fix2 G4: ไม่บล็อก KEY SHARE ของ FK
 }
+/** P2.6U มติ 15 (R3 H1): ล็อกแถวรอบให้ผู้เรียกฝั่ง POS ถือก่อนอ่านสถานะต้นทาง (kdsRecall) — ลำดับ รอบ → รายการ → PosOrder เดิม · ล็อกซ้ำในธุรกรรมเดียวกัน = ไม่รอ */
+export async function kitchenLockRoundInTx(tx: Tx, s: Scope, orderId: string): Promise<void> {
+  await lockRoundInTx(tx, s.tenantId, orderId);
+}
 
 /** สถานะรอบหลังเลื่อนรายการ: ทุกรายการ SERVED/CANCELLED (มีอย่างน้อย 1 SERVED) = COMPLETED · ดึงกลับจาก COMPLETED = CONFIRMED · ยกเลิกหมด = CANCELLED */
 async function settleRoundStatus(tx: Tx, s: Scope, orderId: string, reopened: boolean): Promise<RestOrderStatus | null> {

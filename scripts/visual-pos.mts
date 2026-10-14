@@ -203,10 +203,12 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   tables: { owner: 200, cashier: 200 },
   // POS P2.8U ▸ หน้าออเดอร์: แคชเชียร์ QC มี pos.sale.create (อ่านออเดอร์ได้) ⇒ หน้า 200 · ไม่มี pos.order.accept/reject ⇒ กระดานอ่านอย่างเดียว (ปุ่มปิด + tooltip) ◂
   orders: { owner: 200, cashier: 200 },
+  // POS P2.6U ▸ จอครัว: แคชเชียร์ QC มี pos.sale.create (อ่านบอร์ดได้ — NEED.read) ⇒ หน้า 200 · ไม่มี restaurant.kds.* ⇒ ปุ่มปิด + tooltip ◂
+  kds: { owner: 200, cashier: 200 },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
-const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" || p === "orders" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂ · POS P2.8U ▸ + orders ◂
+const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" || p === "orders" || p === "kds" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂ · POS P2.8U ▸ + orders ◂
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
@@ -214,7 +216,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey; // POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey; // POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -464,6 +466,38 @@ const P28U_OWNER_ONLY: ReadonlySet<string> = new Set(["orders-empty"]);
 const P28U_PHONE = { code: "QCPHONE", name: "โทรสั่ง (ภาพ QC)" } as const;
 /** orders-empty: สาขาที่สอง (อารีย์) ของเจ้าของ */
 const P28U_EMPTY_UNIT = (T.units as Record<string, { id: string }>).ari?.id ?? unitId;
+// ── POS P2.6U ▸ จอครัว (มติ 12 · wo p2.6u · --page kds|register|products|orders|settings --states · 3 ขนาด · th + LOCALE=en · owner + cashier) — fixture ของตัวเอง ◂
+//   แคชเชียร์ QC = STAFF ที่มีแค่ pos.sale.create (seed ไม่ให้ restaurant.kds.advance) ⇒ จอครัวอ่านอย่างเดียว (ปุ่มเดิน/ดึงกลับ/เร่ง/พักครัวปิด + tooltip)
+type P26uKdsKey = "kds-empty-unit" | "kds-empty-station" | "kds-mixed" | "kds-expo" | "kds-paused-banner" | "kds-86-sheet" | "kds-served-recall" | "kds-refusal-toast";
+type P26uOtherKey = "register-tile-86" | "orders-kitchen-meter" | "products-drawer-station" | "settings-device-kitchen-slip";
+const P26U_KDS_PLAN: { key: P26uKdsKey; devices: readonly Device[]; note: string }[] = [
+  { key: "kds-empty-unit", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของเท่านั้น: สาขาอารีย์ (ไม่มีสถานีครัว) → \"ยังไม่มีสถานีครัว\" + ลิงก์ตั้งสถานี (แคชเชียร์เข้าได้สาขาเดียว)" },
+  { key: "kds-empty-station", devices: ["desktop", "ipad", "mobile"], note: "แท็บสถานี \"ขนม <ตัวอักษรรอบ>\" (ไม่มีสินค้าผูก) → \"ยังไม่มีตั๋วในสถานีนี้\"" },
+  { key: "kds-mixed", devices: ["desktop", "ipad", "mobile"], note: "ครัวร้อน: ใหม่ (โทรสั่ง) · กำลังทำ (เร่ง + เลยเป้า · ใกล้เป้า · โต๊ะ เสร็จ 1/2) · พร้อม (โทรสั่ง · หน้าขาย ถ้าขายได้) · แถบเสิร์ฟแล้ว · ค้างทำ/ของหมด (86 ครัวซองต์)" },
+  { key: "kds-expo", devices: ["desktop", "ipad", "mobile"], note: "รวมเสิร์ฟ (Expo): ตั๋วพร้อมทุกสถานีรวมตามรอบ + ชิปสถานี + ปุ่มเสิร์ฟแล้วต่อกลุ่ม" },
+  { key: "kds-paused-banner", devices: ["desktop", "ipad", "mobile"], note: "พักครัว (menu.setKitchenPause · คืนค่าหลังงานสุดท้าย/finally) → สวิตช์เปิด + ป้าย \"ครัวหยุดรับออเดอร์ · ออนไลน์และ QR ถูกพักไว้\"" },
+  { key: "kds-86-sheet", devices: ["desktop", "ipad", "mobile"], note: "แจ้งของหมด → แผ่นขวา 420 (390 = \"ค้าง N · หมด M ›\"): รายการหมด (ครัวซองต์ · ครัวแจ้ง HH:MM) · ค้นหาเมนู · หมายเหตุ" },
+  { key: "kds-served-recall", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของ: แตะแถบเสิร์ฟแล้ววันนี้ → ดึงใบล่าสุดกลับ + toast (เสิร์ฟคืนก่อนทุกภาพ) · แคชเชียร์: แถบปิด (ไม่มี restaurant.kds.recall)" },
+  { key: "kds-refusal-toast", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของเท่านั้น: ออเดอร์แชทเสิร์ฟแล้วแล้วถูกยกเลิก → แถบเสิร์ฟแล้วของเครื่องดื่ม → ดึงกลับ → toast แดง TICKET_VOIDED (ไม่เขียนอะไร)" },
+];
+const P26U_OTHER_PLAN: { key: P26uOtherKey; page: PosPage; devices: readonly Device[]; note: string }[] = [
+  { key: "register-tile-86", page: "register", devices: ["desktop", "ipad", "mobile"], note: "19ฉ: ครัวซองต์ถูกครัวแจ้ง 86 → ไทล์ \"หมด · ครัวแจ้ง HH:MM\" (pos-reg-tile-86)" },
+  { key: "orders-kitchen-meter", page: "orders", devices: ["desktop", "ipad", "mobile"], note: "09: การ์ดออเดอร์โทรสั่งที่รับแล้ว → มาตร \"ครัวกำลังทำ d/t\" (pos-ord-kitchen-meter) + ตัวตั้งเพดานครัวค้างในราง (เจ้าของ)" },
+  { key: "products-drawer-station", page: "products", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของเท่านั้น: 06 ลิ้นชักอเมริกาโน่เย็น → แท็บทั่วไป → ส่วนครัว (สถานี = ครัวร้อน · 86 ของสาขา)" },
+  { key: "settings-device-kitchen-slip", page: "settings", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของเท่านั้น: 17B เครื่อง QC 1 → ใบครัว \"พิมพ์หลังขายที่เครื่องนี้\" → ช่องติ๊กสถานี + LAN (เร็ว ๆ นี้ P3.11)" },
+];
+const P26U_WO = /^p2\.?6u/i.test(WO);
+const p26uOn = STATES_ON && tenantKey === "coffee";
+const P26U_KDS_KEYS: ReadonlySet<string> = new Set(P26U_KDS_PLAN.map((s) => s.key));
+const P26U_OTHER_KEYS: ReadonlySet<string> = new Set(P26U_OTHER_PLAN.map((s) => s.key));
+const isP26uState = (k: StateKey | null | undefined): k is P26uKdsKey | P26uOtherKey => !!k && (P26U_KDS_KEYS.has(k) || P26U_OTHER_KEYS.has(k));
+const P26U_OWNER_ONLY: ReadonlySet<string> = new Set(["kds-empty-unit", "kds-refusal-toast", "products-drawer-station", "settings-device-kitchen-slip"]);
+/** สถานะที่ต้องมี fixture ครัว (ทุกสถานะ P2.6U ยกเว้น kds-empty-unit) — สร้างก่อนงานแรก · ลบหลังงานสุดท้าย */
+const P26U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P26U_KDS_KEYS, ...P26U_OTHER_KEYS].filter((k) => k !== "kds-empty-unit"));
+/** kds-empty-unit: สาขาที่สอง (อารีย์ · ไม่มีสถานีครัว) */
+const P26U_EMPTY_UNIT = (T.units as Record<string, { id: string }>).ari?.id ?? unitId;
+const P26U_LETTER = "ABCDEFGHJKLMNPQRSTUVWXYZ"[(process.pid + 7) % 24]!;
+const p26uPlanFor = (page: PosPage) => P26U_OTHER_PLAN.filter((st) => st.page === page && (userKey === "owner" || !P26U_OWNER_ONLY.has(st.key)));
 const productsPath = (k: P22uProductsKey) => `/app/sys/${SYS}/pos/products${P22U_PRODUCTS_PLAN.find((p) => p.key === k)?.rules ? "/price-rules" : ""}?unit=${encodeURIComponent(unitId)}`;
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
@@ -536,11 +570,25 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           (st.key === "rpub-issue-sent" ? [RPUB_VIEWPORT] : [...POS_VIEWPORTS]).map((v): Job => ({ page: p, v, state: st.key, expect: st.expect, path: `/r/${st.bill === "none" ? RPUB_MISSING_TOKEN : `<token:${st.bill}>`}${LOCALE_EN ? "?lang=en" : ""}`, file: `${OUT}/${p}-${st.key.replace(/^rpub-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
         )
       : []
+    // POS P2.6U ▸ มติ 12: wo p2.6u หน้าตั้งค่า = ฟอร์มใบครัวของเครื่อง (17B) อย่างเดียว ◂
+    : p26uOn && P26U_WO && p === "settings"
+    ? p26uPlanFor(p).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: `/app/sys/${SYS}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`, file: `${OUT}/${p}-${st.key.replace(/^settings-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
     : settingsStatesOn && p === "settings"
     ? SETTINGS_STATE_PLAN.filter((st) => !(userKey === "owner" ? CASHIER_ONLY_SETTINGS : OWNER_ONLY_SETTINGS).has(st.key)).flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: settingsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^settings-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    // POS P2.6U ▸ มติ 12: wo p2.6u หน้าสินค้า = ส่วนครัวของลิ้นชัก อย่างเดียว ◂
+    : p26uOn && P26U_WO && p === "products"
+    ? p26uPlanFor(p).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: `/app/sys/${SYS}/pos/products?unit=${encodeURIComponent(unitId)}`, file: `${OUT}/${p}-${st.key.replace(/^products-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
     : productsStatesOn && p === "products"
     ? [
@@ -587,6 +635,19 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, ...(st.key === "register-table-mode" ? { path: P24U_REG_TABLE_PLACEHOLDER } : {}), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
+    // POS P2.6U ▸ มติ 12: จอครัว (--states · ทุก wo) · wo p2.6u หน้าขาย/ออเดอร์ = ไทล์ 86 / มาตรครัว อย่างเดียว ◂
+    : p26uOn && p === "kds"
+    ? P26U_KDS_PLAN.filter((st) => userKey === "owner" || !P26U_OWNER_ONLY.has(st.key)).flatMap((st): Job[] =>
+        (LOCALE_EN ? [...POS_VIEWPORTS] : viewports) // fix2 G3b: จอครัว en ถ่าย 3 ขนาด (รวม 390)
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: `/app/sys/${SYS}/pos/kds?unit=${encodeURIComponent(st.key === "kds-empty-unit" ? P26U_EMPTY_UNIT : unitId)}&station=<p26u>`, file: `${OUT}/${p}-${st.key.replace(/^kds-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : p26uOn && P26U_WO && (p === "orders" || p === "register")
+    ? p26uPlanFor(p).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
     // POS P2.8U ▸ มติ 7: หน้าออเดอร์ (--states) · หน้าขายของ wo p2.8u = ป้ายนับบนแท็บเท่านั้น ◂
     : p28uOn && p === "orders"
     ? P28U_ORDERS_PLAN.filter((st) => userKey === "owner" || !P28U_OWNER_ONLY.has(st.key)).flatMap((st): Job[] =>
@@ -618,7 +679,7 @@ if (onlyStates) {
   if (unknown.length) die(`--state ไม่รู้จัก/ไม่อยู่ในแผนของหน้า-ผู้ใช้นี้: ${unknown.join(", ")} — ใช้ได้: ${[...known].join(" · ")}`);
 }
 const jobs: Job[] = onlyStates ? jobsPlanned.filter((j) => j.state && onlyStates.includes(String(j.state))) : jobsPlanned;
-const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state) && !P28U_REG_KEYS.has(j.state)); // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ · POS P2.8U ▸ ป้ายแท็บก็ไม่ใช้ ◂
+const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state) && !P28U_REG_KEYS.has(j.state) && !isP26uState(j.state)); // POS P2.6U ▸ ไทล์ 86 ไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ · POS P2.8U ▸ ป้ายแท็บก็ไม่ใช้ ◂
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
 
@@ -646,9 +707,13 @@ if (LIST) {
   for (const st of P28U_ORDERS_PLAN) row(st.key, st.devices, st.note);
   console.log("register P2.8U (wo p2.8u --page register --states):"); // POS P2.8U
   for (const st of P28U_REG_PLAN) row(st.key, st.devices, st.note);
+  console.log("kds P2.6U (--page kds --states):"); // POS P2.6U
+  for (const st of P26U_KDS_PLAN) row(st.key, st.devices, `${P26U_OWNER_ONLY.has(st.key) ? "[เจ้าของ] " : ""}${st.note}`);
+  console.log("register/orders/products/settings P2.6U (wo p2.6u --page <page> --states):"); // POS P2.6U
+  for (const st of P26U_OTHER_PLAN) row(st.key, st.devices, `${st.page} · ${P26U_OWNER_ONLY.has(st.key) ? "[เจ้าของ] " : ""}${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -992,6 +1057,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P23U.log.length) console.error(p23uCleanupLine());
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.3U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.6U: คืนพักครัว/86/สถานีสินค้า · ลบรอบ/ออเดอร์/โต๊ะ/สถานีของรอบ (เหมือน finally)
+      try {
+        await cleanupP26u();
+        if (P26U.log.length) console.error(p26uCleanupLine());
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.6U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.8U: ลบออเดอร์ของรอบ + คืนค่าปิดรับแชท (เหมือน finally)
       try {
@@ -1532,6 +1604,7 @@ async function cleanupP115(): Promise<void> {
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isP26uState(state)) return runP26uState(page, state, device); // POS P2.6U
   if (isP24uState(state)) return runP24uState(page, state, device); // POS P2.4U
   if (isP28uState(state)) return runP28uState(page, state, device); // POS P2.8U
   if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
@@ -4266,6 +4339,442 @@ async function runP24uState(page: Any, state: P24uTablesKey | P24uRegKey, device
   }
 }
 
+// ═══════════════════ POS P2.6U ▸ fixture จอครัว + ขั้นตอนของสถานะ (มติ 12) ═══════════════════
+//   สร้างผ่านฟังก์ชันของโมดูลเท่านั้น: สถานี = restaurant/menu createStation (ชื่อ + ตัวอักษรของรอบ — รอบ th/en/เจ้าของ/แคชเชียร์ที่รันพร้อมกันไม่ชนชื่อ) ·
+//   เส้นทางครัว = catalog.updateProduct({stationId}) (อเมริกาโน่/ครัวซองต์ → ครัวร้อน · ลาเต้ → เครื่องดื่ม · ค่าก่อนหน้าคืนตอนเก็บกวาด) ·
+//   ตั๋ว = pos/order ingestOrder (ช่องทางโทรสั่ง DIRECT · startStatus ACCEPTED · ไม่จ่าย) + acceptOrder ของแชท (ไม่จ่าย) + โต๊ะ (pos/table registerOpenTable +
+//   held-cart + registerSendTableRound · ไม่เช็คบิล) + บิลหน้าขาย 1 ใบ (เงินสด · ⚠️ บิลเก็บไว้แบบบิลภาพอื่น — ขายไม่ได้ = ข้าม ไม่ทำให้ภาพตก) ·
+//   เดินตั๋ว = pos/kds kdsStart/kdsLineDone/kdsTicketDone/kdsServed/kdsRush ในนามเจ้าของ · 86 = catalog.setAvailability(KDS) · พักครัว = menu.setKitchenPause
+//   เวลา "เลยเป้า/ใกล้เป้า" = เลื่อน RestaurantOrder.createdAt (sentAt) ย้อนหลังก่อนทุกภาพ (แบบการจัดฉากของ qc-pos-p2.6) — เป้า 10 นาที (prepMinutes ของออเดอร์)
+//   เก็บกวาด = ลบออเดอร์/รอบ/รายการ/โต๊ะของรอบนี้ตามไอดี · คืน 86/พักครัว/สถานีของสินค้า · ลบสถานีของรอบ — หลังงานสุดท้ายที่ใช้ · finally · สัญญาณ
+const P26U = {
+  done: false,
+  error: null as string | null,
+  stamp: `${process.pid}-${Date.now().toString(36)}`,
+  seq: 0,
+  startedAt: new Date(),
+  stations: { hot: "", drink: "", dessert: "" },
+  stationsCreated: [] as string[],
+  productStation: {} as Record<string, string | null>,
+  orders: [] as string[],
+  roundOf: {} as Record<string, string>,
+  zones: [] as string[],
+  tableSession: "",
+  sale: "",
+  shiftId: "",
+  saleVoided: false,
+  marked: [] as string[],
+  pausedBefore: undefined as { paused: boolean; note: string | null } | undefined,
+  pausedOn: false,
+  voidedReady: false,
+  log: [] as string[],
+  ok: true,
+};
+const P26U_STATION_NAMES = { hot: `ครัวร้อน ${P26U_LETTER}`, drink: `เครื่องดื่ม ${P26U_LETTER}`, dessert: `ขนม ${P26U_LETTER}` } as const;
+const p26uKey = () => `posqc-vis-p26u-${P26U.stamp}-${++P26U.seq}`;
+/** fix1 V4: เครื่องของบิลหน้าขายใน fixture (กะของตัวเอง — สาขา QC บังคับกะ) */
+const P26U_DEVICE_ID = `posqc-vis-p26u-${process.pid}`;
+async function p26uCtx() {
+  return { ctx: { tenantId: T.tenantId, systemId: SYS, unitId }, actor: await memberActorOf("owner") };
+}
+/** เส้นทางของจอครัวต่อสถานะ (สถานีรู้หลังสร้าง fixture) */
+function p26uPath(job: Job): string {
+  const st = job.state as P26uKdsKey | P26uOtherKey;
+  if (!P26U_KDS_KEYS.has(st)) return job.path ?? pathOf(job.page);
+  const u = st === "kds-empty-unit" ? P26U_EMPTY_UNIT : unitId;
+  const station = st === "kds-empty-unit" ? "" : st === "kds-expo" ? "expo" : st === "kds-empty-station" ? P26U.stations.dessert : st === "kds-refusal-toast" ? P26U.stations.drink : P26U.stations.hot;
+  return `/app/sys/${SYS}/pos/kds?unit=${encodeURIComponent(u)}${station ? `&station=${encodeURIComponent(station)}` : ""}`;
+}
+async function p26uKds(fn: "kdsStart" | "kdsTicketDone" | "kdsServed" | "kdsLineDone" | "kdsRush", input: Record<string, unknown>): Promise<void> {
+  const kds = await import("@/lib/modules/pos/kds");
+  const { ctx, actor } = await p26uCtx();
+  const r = await (kds[fn] as (c: unknown, a: unknown, i: unknown) => Promise<{ ok: boolean; code?: string }>)(ctx, actor, input);
+  if (!r.ok) throw new Error(`${fn}: ${r.code}`);
+}
+/** รอบครัวของออเดอร์ (posOrderId) — รอบถูกสร้างในธุรกรรมรับ */
+async function p26uRound(orderId: string): Promise<string> {
+  const r = await prisma.restaurantOrder.findFirst({ where: { tenantId: T.tenantId, unitId, posOrderId: orderId }, select: { id: true } });
+  if (!r) throw new Error(`ออเดอร์ ${orderId} ไม่มีรอบครัว (สถานีไม่ผูก?)`);
+  return r.id;
+}
+async function p26uOrder(tag: string, channelId: string, lines: { productId: string; qty: number; note?: string }[], opts: { accepted: boolean; name: string }): Promise<string> {
+  const ord = await import("@/lib/modules/pos/order");
+  const { ctx, actor } = await p26uCtx();
+  const r = await ord.ingestOrder(ctx, actor, {
+    idempotencyKey: p26uKey(),
+    channelId,
+    lines,
+    customer: { name: opts.name },
+    fulfilment: "PICKUP",
+    paymentState: "UNPAID",
+    ...(opts.accepted ? { startStatus: "ACCEPTED", prepMinutes: 10 } : {}),
+  });
+  if (!r.ok) throw new Error(`ingestOrder ${tag}: ${r.code} ${(r as Any).message ?? ""}`.slice(0, 200));
+  P26U.orders.push(r.orderId);
+  // แชท: รับเองเมื่อยังเป็น NEW (ช่องทางที่เปิดรับอัตโนมัติไว้ = รับแล้วตอนเข้า)
+  if (!opts.accepted && (await prisma.posOrder.findUnique({ where: { id: r.orderId }, select: { status: true } }))?.status === "NEW") {
+    const a = await ord.acceptOrder(ctx, actor, { id: r.orderId, prepMinutes: 10 });
+    if (!a.ok) throw new Error(`acceptOrder ${tag}: ${a.code}`);
+  }
+  P26U.roundOf[tag] = await p26uRound(r.orderId);
+  return r.orderId;
+}
+/** เลยเป้า (11 นาที) / ใกล้เป้า (8 นาที 30 วิ) ของเป้า 10 นาที — เรียกก่อนทุกภาพ (ตัวจับเวลาเดินจาก sentAt) */
+async function p26uRetime(): Promise<void> {
+  const at = (ms: number) => new Date(Date.now() - ms);
+  if (P26U.roundOf.late) await prisma.restaurantOrder.updateMany({ where: { tenantId: T.tenantId, id: P26U.roundOf.late }, data: { createdAt: at(11 * 60_000) } });
+  if (P26U.roundOf.warn) await prisma.restaurantOrder.updateMany({ where: { tenantId: T.tenantId, id: P26U.roundOf.warn }, data: { createdAt: at(8 * 60_000 + 30_000) } });
+  if (P26U.roundOf.fresh) await prisma.restaurantOrder.updateMany({ where: { tenantId: T.tenantId, id: P26U.roundOf.fresh }, data: { createdAt: at(40_000) } });
+}
+async function ensureP26uFixture(): Promise<void> {
+  if (P26U.done || P26U.error) return;
+  try {
+    if (!QC_IDS.amer || !QC_IDS.latte || !QC_IDS.crois) throw new Error("ไม่พบอเมริกาโน่เย็น/ลาเต้ร้อน/ครัวซองต์เนยสดของร้าน QC (seed-pos-qc)");
+    const menu = await import("@/lib/modules/restaurant/menu");
+    const catalog = await import("@/lib/modules/pos/catalog");
+    const { listChannels, saveChannel } = await import("@/lib/modules/pos/channel");
+    const { ctx, actor } = await p26uCtx();
+    // ซากรอบที่ถูก kill (สถานีชื่อ "<ฐาน> <อักษร>" ของรอบนี้ที่ยังอยู่ = ลบ ถ้าไม่มีรายการอ้างถึง)
+    const names = Object.values(P26U_STATION_NAMES);
+    const stale = await prisma.kdsStation.findMany({ where: { tenantId: T.tenantId, unitId, name: { in: names } }, select: { id: true } });
+    if (stale.length) {
+      const del = await prisma.kdsStation.deleteMany({ where: { id: { in: stale.map((x) => x.id) }, orderItems: { none: {} }, menuItems: { none: {} } } });
+      if (del.count) P26U.log.push(`ซากสถานี ${del.count}`);
+    }
+    for (const [k, name] of Object.entries(P26U_STATION_NAMES) as [keyof typeof P26U_STATION_NAMES, string][]) {
+      const r = await menu.createStation(T.tenantId, unitId, name);
+      if (!r.ok) throw new Error(`createStation ${name}: ${r.reason}`);
+      const row = await prisma.kdsStation.findFirst({ where: { tenantId: T.tenantId, unitId, name, archivedAt: null }, select: { id: true } });
+      if (!row) throw new Error(`ไม่พบสถานี ${name} หลังสร้าง`);
+      P26U.stations[k] = row.id;
+      P26U.stationsCreated.push(row.id);
+    }
+    // เส้นทางครัวของสินค้า (คืนค่าเดิมตอนเก็บกวาด)
+    const cctx = { tenantId: T.tenantId, systemId: SYS, actorUserId: actor.userId };
+    for (const [pid, st] of [[QC_IDS.amer, P26U.stations.hot], [QC_IDS.crois, P26U.stations.hot], [QC_IDS.latte, P26U.stations.drink]] as [string, string][]) {
+      const before = await prisma.posProduct.findFirst({ where: { id: pid, tenantId: T.tenantId }, select: { stationId: true } });
+      P26U.productStation[pid] = before?.stationId ?? null;
+      await catalog.updateProduct(cctx, pid, { stationId: st });
+    }
+    // ช่องทาง: โทรสั่ง (DIRECT · adapter NONE แบบ P2.8U) + แชท
+    const l = await listChannels(ctx, actor, { includeArchived: true });
+    if (!l.ok) throw new Error(`listChannels: ${l.code}`);
+    const chat = l.items.find((c) => c.code === "CHAT" && !c.archived && c.active);
+    if (!chat) throw new Error("ช่องทางแชท (CHAT) ของสาขา QC ไม่พร้อม");
+    let phone = l.items.find((c) => c.code === P28U_PHONE.code);
+    if (phone?.archived) throw new Error(`ช่องทาง ${P28U_PHONE.code} ถูกเก็บแล้ว (ผู้คุมงานตัดสิน)`);
+    if (!phone) {
+      const r = await saveChannel(ctx, actor, { code: P28U_PHONE.code, name: P28U_PHONE.name, payout: "DIRECT" });
+      if (!r.ok) throw new Error(`สร้างช่องทาง ${P28U_PHONE.code}: ${r.code}`);
+      phone = r.channel;
+    } else if (!phone.active || phone.payout !== "DIRECT" || phone.adapter !== "NONE") {
+      const r = await saveChannel(ctx, actor, { id: phone.id, name: P28U_PHONE.name, active: true, payout: "DIRECT", adapter: "NONE" });
+      if (!r.ok) throw new Error(`แก้ช่องทาง ${P28U_PHONE.code}: ${r.code}`);
+    }
+    const A = QC_IDS.amer;
+    const C = QC_IDS.crois;
+    const LT = QC_IDS.latte;
+    // ใหม่: อเมริกาโน่ (ครัวร้อน) + ลาเต้ (เครื่องดื่ม → พร้อม = expo)
+    await p26uOrder("fresh", phone.id, [{ productId: A, qty: 1, note: "หวานน้อย" }, { productId: LT, qty: 1 }], { accepted: true, name: "คุณเอก (ภาพ QC)" });
+    await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.fresh, stationId: P26U.stations.drink });
+    // กำลังทำ: เร่ง + เลยเป้า · ใกล้เป้า
+    await p26uOrder("late", phone.id, [{ productId: C, qty: 2, note: "อุ่นร้อน" }, { productId: A, qty: 1 }], { accepted: true, name: "คุณนิด (ภาพ QC)" });
+    await p26uKds("kdsStart", { orderId: P26U.roundOf.late, stationId: P26U.stations.hot });
+    await p26uKds("kdsRush", { orderId: P26U.roundOf.late, rush: true });
+    await p26uOrder("warn", phone.id, [{ productId: A, qty: 2 }], { accepted: true, name: "คุณมาลี (ภาพ QC)" });
+    await p26uKds("kdsStart", { orderId: P26U.roundOf.warn, stationId: P26U.stations.hot });
+    // โต๊ะ: รอบ 2 บรรทัด → เริ่ม + เสร็จ 1 บรรทัด (เสร็จ 1/2)
+    {
+      const tbl = await import("@/lib/modules/restaurant/table");
+      const pt = await import("@/lib/modules/pos/table");
+      const hc = await import("@/lib/modules/pos/held-cart");
+      const z = await tbl.createZone(T.tenantId, unitId, `ในร้าน · QC P2.6U ${P26U_LETTER}`);
+      if (!z.ok) throw new Error(`createZone: ${JSON.stringify(z).slice(0, 120)}`);
+      P26U.zones.push(z.id);
+      const t = await tbl.createTable(T.tenantId, unitId, { zoneId: z.id, name: `${P26U_LETTER}2`, seats: 4 });
+      if (!t.ok) throw new Error(`createTable: ${JSON.stringify(t).slice(0, 120)}`);
+      const op = await pt.registerOpenTable(ctx, actor, { tableId: t.id, guestCount: 2 });
+      if (!op.ok) throw new Error(`registerOpenTable: ${op.code}`);
+      P26U.tableSession = op.sessionId;
+      const h = await hc.holdRegisterCart(ctx, actor, { cart: { lines: [{ productId: A, qty: 1, note: "ไม่ใส่น้ำแข็ง" }, { productId: C, qty: 1 }] }, tableSessionId: op.sessionId, newDraft: true });
+      if (!h.ok) throw new Error(`holdRegisterCart: ${h.code}`);
+      const s = await pt.registerSendTableRound(ctx, actor, { tableSessionId: op.sessionId, heldCartId: h.heldCart.id });
+      if (!s.ok) throw new Error(`registerSendTableRound: ${s.code}`);
+      const round = await prisma.restaurantOrder.findFirst({ where: { tenantId: T.tenantId, sessionId: op.sessionId }, select: { id: true } });
+      if (!round) throw new Error("รอบโต๊ะไม่มีในฐาน");
+      P26U.roundOf.table = round.id;
+      await p26uKds("kdsStart", { orderId: round.id, stationId: P26U.stations.hot });
+      if (s.itemIds[0]) await p26uKds("kdsLineDone", { itemId: s.itemIds[0] });
+    }
+    // พร้อม: โทรสั่ง 1 ใบ
+    await p26uOrder("ready", phone.id, [{ productId: C, qty: 1 }], { accepted: true, name: "คุณบอย (ภาพ QC)" });
+    await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.ready, stationId: P26U.stations.hot });
+    // เสิร์ฟแล้ว (แถบ "เสิร์ฟแล้ววันนี้" ของครัวร้อน): แชทรับแล้ว → พร้อม → เสิร์ฟ
+    await p26uOrder("served", chat.id, [{ productId: A, qty: 1 }], { accepted: false, name: "คุณแพร (ภาพ QC)" });
+    await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.served, stationId: P26U.stations.hot });
+    await p26uKds("kdsServed", { orderId: P26U.roundOf.served, stationId: P26U.stations.hot });
+    // บิลหน้าขาย 1 ใบ (ซื้อกลับ · คิว N) ในกะของเครื่อง fixture (fix1 V4 · ยกเลิกบิล + ปิดกะตอนเก็บกวาด = มติ fix1-5) — ขายไม่ได้ = ข้ามพร้อมบันทึก
+    try {
+      const { quoteRegisterCart, submitRegisterSale } = await import("@/lib/modules/pos/register");
+      const { openShift } = await import("@/lib/modules/pos/shift");
+      const dctx = { ...ctx, deviceId: P26U_DEVICE_ID };
+      const op = await openShift(dctx, actor, { deviceId: P26U_DEVICE_ID, deviceLabel: "เครื่องภาพครัว QC", floatSatang: 100000 });
+      if (!op.ok) throw new Error(`openShift ${op.code}`);
+      P26U.shiftId = op.shift.id;
+      const cart = { lines: [{ productId: C, qty: 1 }] };
+      const q = await quoteRegisterCart(dctx, actor, cart as never);
+      if (!q.ok) throw new Error(`quote ${q.code}`);
+      const r = await submitRegisterSale(dctx, actor, { ...cart, idempotencyKey: p26uKey(), expectedGrandTotalSatang: q.grandTotalSatang, payMethods: [{ type: "CASH", amountSatang: q.grandTotalSatang }], cashReceivedSatang: q.grandTotalSatang } as never);
+      if (!r.ok) throw new Error(`submit ${r.code}`);
+      P26U.sale = r.saleId;
+      for (let i = 0; i < 20 && !P26U.roundOf.sale; i++) {
+        const rr = await prisma.restaurantOrder.findFirst({ where: { tenantId: T.tenantId, posSaleId: r.saleId }, select: { id: true } });
+        if (rr) P26U.roundOf.sale = rr.id;
+        else await sleep(250);
+      }
+      if (P26U.roundOf.sale) await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.sale, stationId: P26U.stations.hot });
+      P26U.log.push(`บิลหน้าขาย ${r.saleId} (ยกเลิกตอนเก็บกวาด)`);
+    } catch (e) {
+      P26U.log.push(`ข้ามบิลหน้าขาย: ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`);
+    }
+    // ของหมด (86): ครัวซองต์ ครัวแจ้ง (หลังขาย — สินค้าที่หมดขายไม่ได้)
+    const r86 = await catalog.setAvailability(ctx, actor, { productId: C, unitId, available: false, source: "KDS", note: "ภาพ QC" });
+    if (!r86.ok) throw new Error(`setAvailability 86: ${r86.code}`);
+    P26U.marked.push(C);
+    await p26uRetime();
+    P26U.done = true;
+    P26U.log.push(`สร้าง: สถานี 3 (${P26U_LETTER}) · ออเดอร์ ${P26U.orders.length} · โต๊ะ 1 · 86 ครัวซองต์`);
+  } catch (e) {
+    P26U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** kds-served-recall: ใบล่าสุดของแถบต้องเป็น SERVED ก่อนทุกภาพ (ภาพก่อนหน้าดึงกลับไปแล้ว) */
+async function p26uServeAgain(): Promise<void> {
+  const st = P26U.stations.hot;
+  const items = await prisma.restaurantOrderItem.findMany({ where: { tenantId: T.tenantId, orderId: P26U.roundOf.served, stationId: st }, select: { kdsStatus: true } });
+  if (items.every((i) => i.kdsStatus === "SERVED" || i.kdsStatus === "CANCELLED")) return;
+  await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.served, stationId: st });
+  await p26uKds("kdsServed", { orderId: P26U.roundOf.served, stationId: st });
+}
+/** kds-refusal-toast: แชทเสิร์ฟแล้วที่เครื่องดื่ม แล้วยกเลิกออเดอร์ (ใบล่าสุดของแถบเครื่องดื่ม = ดึงกลับไม่ได้) — ครั้งเดียวต่อรอบ */
+async function p26uVoidedServed(): Promise<void> {
+  if (P26U.voidedReady) return;
+  const ord = await import("@/lib/modules/pos/order");
+  const { ctx, actor } = await p26uCtx();
+  const l = await (await import("@/lib/modules/pos/channel")).listChannels(ctx, actor, { includeArchived: false });
+  const chat = l.ok ? l.items.find((c) => c.code === "CHAT") : null;
+  if (!chat) throw new StepError("ไม่มีช่องทางแชทของสาขา QC");
+  const id = await p26uOrder("voided", chat.id, [{ productId: QC_IDS.latte, qty: 1 }], { accepted: false, name: "คุณเจ (ภาพ QC)" });
+  await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.voided, stationId: P26U.stations.drink });
+  await p26uKds("kdsServed", { orderId: P26U.roundOf.voided, stationId: P26U.stations.drink });
+  const c = await ord.cancelOrder(ctx, actor, { id, reason: "ลูกค้ายกเลิก (ภาพ QC)" });
+  if (!c.ok) throw new StepError(`cancelOrder: ${c.code}`);
+  P26U.voidedReady = true;
+}
+async function p26uPause(on: boolean): Promise<void> {
+  const menu = await import("@/lib/modules/restaurant/menu");
+  if (on) {
+    if (P26U.pausedOn) return;
+    const before = await prisma.restaurantSetting.findUnique({ where: { unitId }, select: { kitchenPaused: true, kitchenPausedNote: true } });
+    P26U.pausedBefore = { paused: before?.kitchenPaused ?? false, note: before?.kitchenPausedNote ?? null };
+    await menu.setKitchenPause(T.tenantId, unitId, true, "ภาพ QC");
+    P26U.pausedOn = true;
+    return;
+  }
+  if (!P26U.pausedOn) return;
+  await menu.setKitchenPause(T.tenantId, unitId, P26U.pausedBefore?.paused ?? false, P26U.pausedBefore?.note ?? undefined);
+  P26U.pausedOn = false;
+  P26U.log.push("คืนค่าพักครัว");
+}
+async function cleanupP26u(): Promise<void> {
+  // fix2 G1: บิล/กะของ fixture ที่ยังค้าง (ยกเลิก/ปิดล้มรอบก่อน) ก็ต้องเข้ามาเก็บอีกรอบ — ยกเลิก/ปิดซ้ำได้ (คีย์ยกเลิกคงที่ · ปิดกะที่ไม่ OPEN = ok)
+  if (!P26U.stationsCreated.length && !P26U.orders.length && !P26U.zones.length && !P26U.marked.length && !P26U.pausedOn && !P26U.shiftId && !(P26U.sale && !P26U.saleVoided)) return;
+  const step = async (name: string, fn: () => Promise<string | void>) => {
+    try {
+      const r = await fn();
+      if (r) P26U.log.push(r);
+    } catch (e) {
+      P26U.ok = false;
+      P26U.log.push(`${name} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  const tenantId = T.tenantId;
+  await step("คืนค่าพักครัว", () => p26uPause(false));
+  await step("คืน 86", async () => {
+    if (!P26U.marked.length) return;
+    const catalog = await import("@/lib/modules/pos/catalog");
+    const { ctx, actor } = await p26uCtx();
+    for (const pid of P26U.marked) {
+      const r = await catalog.setAvailability(ctx, actor, { productId: pid, unitId, available: true, source: "KDS" });
+      if (!r.ok) throw new Error(`setAvailability(true) ${pid}: ${r.code}`);
+    }
+    const ev = (await prisma.outboxEvent.deleteMany({ where: { tenantId, type: "pos.product.availability", createdAt: { gte: P26U.startedAt }, OR: P26U.marked.map((pid) => ({ payload: { path: ["productId"], equals: pid } })) } })).count;
+    P26U.marked = [];
+    return `คืน 86 · outbox 86 ${ev}`;
+  });
+  await step("คืนสถานีของสินค้า", async () => {
+    const ids = Object.keys(P26U.productStation);
+    if (!ids.length) return;
+    const catalog = await import("@/lib/modules/pos/catalog");
+    const actor = await memberActorOf("owner");
+    for (const pid of ids) await catalog.updateProduct({ tenantId, systemId: SYS, actorUserId: actor.userId }, pid, { stationId: P26U.productStation[pid] ?? null });
+    P26U.productStation = {};
+    return `คืนสถานีสินค้า ${ids.length}`;
+  });
+  // fix1 F5 (มติ fix1-5): ยกเลิกบิลหน้าขายของ fixture (ตัวรับคิวยกเลิกตั๋ว · คืนสต็อก) แล้วปิดกะของเครื่อง fixture
+  await step("ยกเลิกบิลหน้าขาย", async () => {
+    if (!P26U.sale || P26U.saleVoided) return;
+    const { voidSaleByActor } = await import("@/lib/modules/pos/bills");
+    const actor = await memberActorOf("owner");
+    const v = await voidSaleByActor({ tenantId, systemId: SYS, unitId, deviceId: P26U_DEVICE_ID }, actor, { unitId, saleId: P26U.sale, reason: "ยกเลิกบิลภาพครัว (ภาพ QC)", idempotencyKey: `posqc-vis-p26u-void-${P26U.stamp}` });
+    if (!v.ok) throw new Error(`voidSaleByActor ${P26U.sale}: ${v.code}`);
+    P26U.saleVoided = true;
+    return `ยกเลิกบิล ${P26U.sale}`;
+  });
+  await step("ปิดกะ fixture", async () => {
+    if (!P26U.shiftId) return;
+    const c = await closeShiftAsOwner(P26U.shiftId, `p26u-close-${P26U.stamp}`);
+    if (!c.ok) throw new Error(c.detail);
+    P26U.shiftId = "";
+    return c.detail;
+  });
+  await step("ลบรอบ/ออเดอร์", async () => {
+    const rounds = (await prisma.restaurantOrder.findMany({ where: { tenantId, OR: [{ posOrderId: { in: P26U.orders } }, ...(P26U.sale ? [{ posSaleId: P26U.sale }] : [])] }, select: { id: true } })).map((r) => r.id);
+    const items = rounds.length ? (await prisma.restaurantOrderItem.findMany({ where: { tenantId, orderId: { in: rounds } }, select: { id: true } })).map((i) => i.id) : [];
+    if (items.length) {
+      await prisma.restaurantOrderItemOption.deleteMany({ where: { orderItemId: { in: items } } });
+      await prisma.restaurantOrderItem.deleteMany({ where: { id: { in: items } } });
+    }
+    if (rounds.length) await prisma.restaurantOrder.deleteMany({ where: { id: { in: rounds } } });
+    const kill = P26U.orders;
+    let od = 0;
+    if (kill.length) {
+      await prisma.posOrderEvent.deleteMany({ where: { tenantId, orderId: { in: kill } } });
+      await prisma.posOrderLine.deleteMany({ where: { tenantId, orderId: { in: kill } } });
+      await prisma.outboxEvent.deleteMany({ where: { tenantId, type: { startsWith: "pos.order." }, OR: kill.map((id) => ({ idempotencyKey: { endsWith: `#${id}` } })) } });
+      await prisma.auditLog.deleteMany({ where: { tenantId, targetType: "PosOrder", targetId: { in: kill } } });
+      od = (await prisma.posOrder.deleteMany({ where: { tenantId, id: { in: kill }, saleId: null } })).count;
+    }
+    P26U.orders = [];
+    P26U.roundOf = {};
+    return `ลบ: รอบ ${rounds.length} · รายการ ${items.length} · ออเดอร์ ${od}${P26U.sale ? ` · บิลหน้าขาย ${P26U.sale} ${P26U.saleVoided ? "ยกเลิกแล้ว" : "ค้าง"}` : ""}`;
+  });
+  await step("ลบโต๊ะ", async () => {
+    if (!P26U.zones.length) return;
+    const r = await deleteP24uRows(P26U.zones);
+    P26U.zones = [];
+    return `โต๊ะ: ${r}`;
+  });
+  await step("ลบสถานี", async () => {
+    if (!P26U.stationsCreated.length) return;
+    const d = await prisma.kdsStation.deleteMany({ where: { tenantId, id: { in: P26U.stationsCreated }, orderItems: { none: {} }, menuItems: { none: {} } } });
+    const left = P26U.stationsCreated.length - d.count;
+    P26U.stationsCreated = [];
+    if (left) throw new Error(`สถานีของรอบยังมีรายการอ้างถึง ${left} (ไม่ลบ)`);
+    return `ลบสถานี ${d.count}`;
+  });
+  P26U.done = false;
+  P26U.voidedReady = false;
+}
+const p26uCleanupLine = () => `${P26U.ok ? "🧹" : "⚠️"} P2.6U: ${P26U.log.join(" · ")}`;
+async function runP26uState(page: Any, state: P26uKdsKey | P26uOtherKey, device: Device): Promise<void> {
+  if (state !== "kds-empty-unit" && P26U.error) throw new StepError(`fixture P2.6U: ${P26U.error}`);
+  if (state === "register-tile-86") {
+    await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+    await visibleEl(page, tid("pos-reg-tile-86"), 0, 15_000).catch(() => {
+      throw new StepError("ไทล์ครัวซองต์ไม่ขึ้น \"หมด · ครัวแจ้ง HH:MM\" (pos-reg-tile-86)");
+    });
+    return;
+  }
+  if (state === "orders-kitchen-meter") {
+    await visibleEl(page, tid("pos-ord-root"), 0, 15_000);
+    if (device === "mobile") await clickEl(page, tid("pos-ord-coltab-preparing")).catch(() => undefined);
+    await visibleEl(page, tid("pos-ord-kitchen-meter"), 0, 20_000).catch(() => {
+      throw new StepError("มาตรครัวบนการ์ดออเดอร์ไม่ขึ้น (pos-ord-kitchen-meter)");
+    });
+    return;
+  }
+  if (state === "products-drawer-station") {
+    await clickEl(page, tid(`${device === "mobile" ? "pos-prod-copen" : "pos-prod-open"}-${QC_IDS.amer}`));
+    await visibleEl(page, tid("pos-prod-drawer"), 0, 10_000);
+    await clickEl(page, tid("pos-prod-tab-general"));
+    await visibleEl(page, tid("pos-prod-station"), 0, 10_000).catch(() => {
+      throw new StepError("ส่วนครัวในลิ้นชักไม่มีตัวเลือกสถานี (pos-prod-station)");
+    });
+    return;
+  }
+  if (state === "settings-device-kitchen-slip") {
+    if (SETTINGS.error || !SETTINGS.seeded) throw new StepError(`ไม่มีเครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error ?? "ยังไม่ได้สร้าง"}`);
+    await visibleEl(page, tid("pos-settings-devices"), 0, 15_000);
+    await clickEl(page, tid(`pos-device-card-${SETTINGS.devices[0]!.id}`));
+    await clickEl(page, tid("pos-device-kitchen-after"));
+    await visibleEl(page, tid(`pos-device-kitchen-station-${P26U.stations.hot}`), 0, 10_000).catch(() => {
+      throw new StepError("ช่องติ๊กสถานีของใบครัวไม่ขึ้น (pos-device-kitchen-station-<ครัวร้อน>)");
+    });
+    const h = await visibleEl(page, tid("pos-device-kitchen"));
+    await h.evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+    return;
+  }
+  await visibleEl(page, tid("pos-kds"), 0, 15_000);
+  if (state === "kds-empty-unit") {
+    await visibleEl(page, tid("pos-kds-empty-unit"), 0, 15_000).catch(() => {
+      throw new StepError("สาขาอารีย์มีสถานีครัว (ไม่ใช่สถานะ \"ยังไม่มีสถานีครัว\")");
+    });
+    return;
+  }
+  if (state === "kds-empty-station") {
+    await visibleEl(page, tid("pos-kds-empty-station"), 0, 15_000);
+    return;
+  }
+  if (state === "kds-expo") {
+    await visibleEl(page, tid("pos-kds-expo"), 0, 15_000);
+    await visibleEl(page, tidPrefix("pos-kds-expo-"), 0, 10_000).catch(() => {
+      throw new StepError("Expo ไม่มีกลุ่มตั๋วพร้อมเสิร์ฟ");
+    });
+    return;
+  }
+  // บอร์ดของสถานี (ครัวร้อน / เครื่องดื่ม) · fix1 V3: 390 = ทีละคอลัมน์ (ค่าเริ่ม "ใหม่") ⇒ แถบเสิร์ฟแล้วอยู่ใต้ช่อง "พร้อม"
+  await visibleEl(page, tid("pos-kds-board"), 0, 15_000);
+  if (device === "mobile" && (state === "kds-served-recall" || state === "kds-refusal-toast")) await clickEl(page, tid("pos-kds-seg-ready"));
+  if (state !== "kds-refusal-toast") await visibleEl(page, tidPrefix("pos-kds-ticket-"), 0, 15_000);
+  if (state === "kds-mixed") {
+    if (device !== "mobile") {
+      await visibleEl(page, '[data-testid^="pos-kds-ticket-"][data-late="1"]', 0, 10_000).catch(() => {
+        throw new StepError("ไม่มีตั๋วเลยเป้า (data-late)");
+      });
+      await visibleEl(page, tidPrefix("pos-kds-rush-chip-"), 0, 5_000);
+    }
+    return;
+  }
+  if (state === "kds-paused-banner") {
+    await visibleEl(page, tid("pos-kds-paused-banner"), 0, 10_000);
+    return;
+  }
+  if (state === "kds-86-sheet") {
+    await clickEl(page, tid(device === "mobile" ? "pos-kds-86-mobile" : "pos-kds-86"));
+    await visibleEl(page, tid("pos-kds-86-sheet"), 0, 10_000);
+    await visibleEl(page, tid(`pos-kds-86-out-${QC_IDS.crois}`), 0, 10_000).catch(() => {
+      throw new StepError("แผ่น 86 ไม่มีครัวซองต์ในรายการที่หมด");
+    });
+    return;
+  }
+  if (state === "kds-served-recall") {
+    const h = await visibleEl(page, tid("pos-kds-recall"), 0, 10_000);
+    if (userKey === "cashier") {
+      if (!(await h.evaluate((el: HTMLButtonElement) => el.disabled))) throw new StepError("แคชเชียร์กดดึงใบกลับได้ (ควรปิด — ไม่มี restaurant.kds.recall)");
+      return;
+    }
+    await clickEl(page, tid("pos-kds-recall"));
+    await visibleEl(page, tid("pos-kds-toast"), 0, 10_000);
+    return;
+  }
+  // kds-refusal-toast (เจ้าของ)
+  await clickEl(page, tid("pos-kds-recall"));
+  await visibleEl(page, '[data-testid="pos-kds-toast"][data-tone="danger"]', 0, 10_000).catch(() => {
+    throw new StepError("ไม่มี toast ปฏิเสธ (TICKET_VOIDED)");
+  });
+}
+
 // ═══════════════════ POS P2.8U ▸ fixture ออเดอร์ทุกช่องทาง + ขั้นตอนของสถานะ (มติ 7) ═══════════════════
 //   สร้างผ่านฟังก์ชันของโมดูลเท่านั้น (pos/order: ingestOrder · acceptOrder · markPreparing · markReady · handOver · rejectOrder · setChannelOrderSettings
 //   ในนามเจ้าของร้าน · pos/channel saveChannel สำหรับช่องทางโทรสั่ง) — ลบดิบได้เฉพาะตอนเก็บกวาด (แบบข้อสอบ)
@@ -5071,12 +5580,27 @@ try {
         }
         if (job.state === "orders-new-late" && P28U.done) await p28uLateOrder().then((o) => (P28U.refs.newLate = o.ref)).catch((e: unknown) => (P28U.error = `ออเดอร์ใกล้หมดเวลารับ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`));
         if (job.state === "orders-paused-banner" && P28U.done) await p28uPause(true).catch((e: unknown) => console.error(`  ⚠️ ปิดรับแชทไม่สำเร็จ: ${e instanceof Error ? e.message : e}`));
+        // POS P2.6U ▸ fixture ครัวก่อนงานแรกที่ใช้ · เวลาเลยเป้า/ใกล้เป้าก่อนทุกภาพ · พักครัวก่อน kds-paused-banner · เสิร์ฟคืนก่อน kds-served-recall ·
+        //   ออเดอร์เสิร์ฟแล้ว-ยกเลิกก่อน kds-refusal-toast (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (job.state && P26U_FIXTURE_STATES.has(job.state)) {
+          if (!P26U.done && !P26U.error) {
+            await ensureP26uFixture();
+            console.log(P26U.error ? `  ⚠️ fixture P2.6U: ${P26U.error}` : `  fixture P2.6U: ${P26U.log.join(" · ")}`);
+          }
+          if (P26U.done) {
+            const prep = async (what: string, fn: () => Promise<void>) => fn().catch((e: unknown) => (P26U.error = `${what}: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`));
+            await prep("เลื่อนเวลา", p26uRetime);
+            if (job.state === "kds-paused-banner") await prep("พักครัว", () => p26uPause(true));
+            if (job.state === "kds-served-recall" && userKey === "owner") await prep("เสิร์ฟคืน", p26uServeAgain);
+            if (job.state === "kds-refusal-toast") await prep("ออเดอร์เสิร์ฟแล้ว-ยกเลิก", p26uVoidedServed);
+          }
+        }
         // POS P2.4U ▸ fixture โต๊ะก่อนงานแรกที่ใช้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && !P24U.done && !P24U.error) {
           await ensureP24uFixture();
           console.log(P24U.error ? `  ⚠️ fixture P2.4U: ${P24U.error}` : `  fixture P2.4U: ${P24U.log.join(" · ")}`);
         }
-        const resp = await page.goto(`${BASE}${job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+        const resp = await page.goto(`${BASE}${isP26uState(job.state) ? p26uPath(job) /* POS P2.6U */ : job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
         let stepError: string | null = null;
@@ -5126,6 +5650,8 @@ try {
         }
         if (job.state === "register-empty-catalogue" && job === jobs.filter((j) => j.state === "register-empty-catalogue").at(-1)) await cleanupEmptyCatalogue(); // POS P1.18U
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P24U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP24u(); // POS P2.4U
+        if (job.state === "kds-paused-banner" && job === jobs.filter((j) => j.state === "kds-paused-banner").at(-1)) await p26uPause(false).catch(() => undefined); // POS P2.6U
+        if (job.state && P26U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P26U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP26u(); // POS P2.6U
         if (job.state === "orders-paused-banner" && job === jobs.filter((j) => j.state === "orders-paused-banner").at(-1)) await p28uPause(false).catch(() => undefined); // POS P2.8U
         if (job.state && P28U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P28U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP28u(); // POS P2.8U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
@@ -5200,6 +5726,9 @@ try {
   await cleanupP28u(); // POS P2.8U (ออเดอร์ของรอบที่ยังค้าง · คืนค่าปิดรับแชท)
   if (P28U.log.length) console.error(p28uCleanupLine());
   if (!P28U.ok) failures++;
+  await cleanupP26u(); // POS P2.6U (พักครัว · 86 · สถานีสินค้า · รอบ/ออเดอร์/โต๊ะ/สถานีของรอบที่ยังค้าง)
+  if (P26U.log.length) console.error(p26uCleanupLine());
+  if (!P26U.ok) failures++;
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
   if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
   if (P21U.cleanup && !P21U.cleanup.ok) failures++;

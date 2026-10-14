@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listStations, ensureDefaultStations } from "@/lib/modules/restaurant/menu";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { KdsLegacyBanner } from "@/components/pos/kds/KdsLegacyBanner"; // POS P2.6U ▸ มติ 1: แถบ "เปิดจอครัวใหม่" (ลิงก์อย่างเดียว) ◂
 
 export default async function KdsIndexPage({
   params,
@@ -15,6 +16,7 @@ export default async function KdsIndexPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
+      <KdsLegacyBanner tenantId={auth.active.tenantId} unitId={unit.id} /> {/* POS P2.6U ▸ มติ 1 ◂ */}
       <PageHeader title="จอครัว (KDS)" back={{ href: `/app/u/${unitSlug}/restaurant`, label: "ร้านอาหาร · หน้างาน" }} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {stations.map((s) => (

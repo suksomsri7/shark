@@ -14636,6 +14636,768 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-back",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]",
+        "note": "‹ กลับภาพรวม POS (มติ 2)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-unit",
+      "kind": "menu",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-unit-option-*",
+        "note": "ชิปสาขา — หลายสาขา = เมนูเลือกสาขา (ลิงก์ ?unit=)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-unit-option-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/kds",
+        "note": "เลือกสาขา → จอครัวของสาขานั้น"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-board",
+        "note": "แท็บสถานี pos-kds-tab-<stationId> (ตัวนับ openCount) + pos-kds-tab-expo (รวมเสิร์ฟ) → kdsBoardAction ของสถานี/expo · ?station="
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-station-select",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-board",
+        "note": "390: ตัวเลือกสถานี/expo แทนแท็บ"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-seg-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-col-*",
+        "note": "390: แถบสลับคอลัมน์ ใหม่/กำลังทำ/พร้อม (pos-kds-seg-new|cooking|ready)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-pause",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-paused-banner",
+        "note": "หยุดรับออเดอร์ครัว = kitchenPauseAction เดิมของร้านอาหาร (restaurant.kitchen.pause · ไม่มีสิทธิ์ = ปิด + tooltip) → ป้ายพักครัว"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-print",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-toast",
+        "note": "พิมพ์ใบครัว: ใบที่เลือก ไม่งั้นทุกใบในคอลัมน์ใหม่ (kitchenSlipPayloadAction → ทางพิมพ์ P1.10)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-ticket-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-menu-*",
+        "note": "ตั๋ว pos-kds-ticket-<orderId> — กดค้าง/คลิกขวา = เมนูของใบ"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-start-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-ticket-*",
+        "note": "แตะใบใหม่ = เริ่มทำ (kdsStartAction · restaurant.kds.advance · แคชเชียร์ = ปิด + tooltip)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-line-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-ticket-*",
+        "note": "แตะบรรทัดของใบกำลังทำ = เสร็จบรรทัดนั้น (kdsLineDoneAction) · เสร็จแล้ว = ขีดฆ่า"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-done",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-ticket-*",
+        "note": "เสร็จทั้งใบ (kdsTicketDoneAction) · เลยเป้า = ปุ่มทึบ"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-served",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-ticket-*",
+        "note": "เสิร์ฟแล้ว (kdsServedAction) · expo = ทุกสถานีของรอบทีละสถานี หยุดที่คำปฏิเสธแรก"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-more-*",
+      "kind": "menu",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-menu-*",
+        "note": "⋯ ของใบ → เมนู เร่ง · พิมพ์ใบนี้ · เลือกใบนี้"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-rush",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-rush-chip-*",
+        "note": "เร่ง/ยกเลิกเร่ง (kdsRushAction · restaurant.order.rush)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-print-this",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-toast",
+        "note": "พิมพ์ใบนี้ (ใบที่เริ่มแล้ว/เคยพิมพ์ = พิมพ์ซ้ำ)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-select",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-print",
+        "note": "เลือกใบนี้ให้ปุ่มพิมพ์ใบครัว (กรอบสีเน้น)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-recall",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-toast",
+        "note": "แถบเสิร์ฟแล้ววันนี้ → ดึงใบล่าสุดกลับ (kdsRecallAction · restaurant.kds.recall · อื่น = ปิด)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-setup-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/restaurant/setup",
+        "note": "สาขายังไม่มีสถานีครัว → หน้าตั้งค่าร้านอาหาร"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-kds-86-sheet",
+        "note": "แจ้งของหมด → แผ่นขวา 420"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-mobile",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-kds-86-sheet",
+        "note": "390: ค้าง N · หมด M › → แผ่นเดียวกัน"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-backdrop",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-86-sheet",
+        "note": "แตะนอกแผ่น = ปิด"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-sheet",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-86-sheet",
+        "note": "แผ่นแจ้งของหมด (ค้นหาเมนูของสาขา · หมด/คืนขาย · รายการที่หมด · หมายเหตุ)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-86-sheet",
+        "note": "ปิดแผ่น"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-86-item-*",
+        "note": "ค้นหาเมนู (กรองฝั่ง client)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-note",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-86-sheet",
+        "note": "หมายเหตุของการแจ้ง (≤ 200)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-toggle-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-toast",
+        "note": "หมด/คืนขาย ของเมนู (setAvailabilityAction source KDS)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-86-release-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-kds-toast",
+        "note": "คืนขายจากรายการที่หมดอยู่"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-more",
+      "kind": "menu",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-more-kds",
+        "note": "⋯ ท้ายแถบโหมด → เมนู (จอครัว)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-more-kds",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/kds",
+        "note": "จอครัว (มติ 1)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-kds-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/kds",
+        "note": "หน้าเครื่อง → เปิดจอครัว (มติ 1)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "tab=devices&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-kitchen-off",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-note",
+        "note": "ใบครัว: ไม่พิมพ์ (printerConfig.kitchenSlip off · updateDeviceAction)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "tab=devices&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-kitchen-after",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-note",
+        "note": "ใบครัว: พิมพ์หลังขายที่เครื่องนี้ (after-sale)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "tab=devices&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-kitchen-station-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-note",
+        "note": "สถานีที่พิมพ์ (kitchenStationIds · ติ๊กครบ = [] ทุกสถานี)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "tab=devices&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-kitchen-max-minus",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-kitchen-max",
+        "note": "ลดเพดานครัวค้าง (kdsSetAutoAcceptMaxAction · 1 → ปิด)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-kitchen-max-plus",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-kitchen-max",
+        "note": "เพิ่มเพดานครัวค้าง (ปิด → 8 · ≤ 99)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-kitchen-max-off",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-kitchen-max",
+        "note": "ปิดการพักรับอัตโนมัติตามคิวครัว (null)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-station",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "สถานีครัวของสินค้าที่ไม่ใช่เมนู (setProductStationAction → catalog.updateProduct · pos.product.manage)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-86-toggle",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "แจ้งหมด/คืนขาย ที่สาขาที่เลือก (setAvailabilityAction source MANUAL)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-tab-expo",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-expo",
+        "note": "รวมเสิร์ฟ (Expo) = ตั๋ว READY ทุกสถานีรวมตามรอบ"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/u/[unitSlug]/restaurant/kds",
+      "testid": "pos-kds-legacy-open",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/kds",
+        "note": "จอครัวเดิม → แถบ \"เปิดจอครัวใหม่\" (เฉพาะสาขาที่ POS เปิดหน้าขายใหม่)"
+      },
+      "wo": "P2.6U",
+      "oracle": "qc-pos-p2.6",
+      "system": "POS",
+      "query": ""
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -21,6 +21,10 @@ import type { PrinterPairing, PrintResult } from "@/components/pos/print/types";
 import { listDevicesAction, registerDeviceAction, revokeDeviceAction, updateDeviceAction } from "@/lib/modules/pos/device-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { POS_DEVICE_NAME_MAX, POS_REG_NO_MAX, type PosDeviceListItem, type PosPrinterConfig } from "@/lib/modules/pos/device-shared";
+// POS P2.6U ▸ มติ 9e (ภาพ 17B): ใบครัวของเครื่อง (kitchenSlipSettings · ตัวเขียน = updateDeviceAction เดิม) + สถานีจาก kdsStationsAction (fix1 F3) · ลิงก์จอครัว (มติ 1) ◂
+import Link from "next/link";
+import { kitchenSlipSettings } from "@/lib/modules/pos/device-shared";
+import { kdsStationsAction } from "@/lib/modules/pos/kds-actions"; // fix1 F3: ตัวอ่านสถานีเฉย ๆ (ไม่ heal/ไม่คิดบอร์ด)
 import { Chip, InlineNote, SwitchKnob, TabHead } from "./settings-ui";
 
 type Props = { systemId: string; unitId: string; shopName: string };
@@ -45,6 +49,14 @@ function bkkHm(iso: string): string {
 }
 const shortCode = (code: string) => (code.length > 10 ? `…${code.slice(-6)}` : code);
 
+/** POS P2.6U ▸ fix1 V6: วงกลมของแถวเลือก (radio) ◂ */
+function RadioDot({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={`grid size-5 shrink-0 place-items-center rounded-full border-2 ${on ? "border-[color:var(--color-ink)]" : "border-[color:var(--color-line)]"}`}>
+      {on ? <span className="size-2.5 rounded-full bg-[color:var(--color-ink)]" /> : null}
+    </span>
+  );
+}
 /** กล่องกลางจอ (390 = แผ่นล่าง) · Esc ปิด */
 function DialogBox({ testid, labelledBy, onClose, children }: { testid: string; labelledBy: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -91,6 +103,17 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
   const [pairing, setPairing] = useState<PrinterPairing | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
   const [printRes, setPrintRes] = useState<PrintResult | null>(null);
+  // POS P2.6U ▸ มติ 9e: สถานีครัวของสาขา (สำหรับช่องติ๊กใบครัว) — อ่านไม่ได้/ไม่มีครัว = [] ◂
+  const [kStations, setKStations] = useState<{ id: string; name: string; nameEn: string | null }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void kdsStationsAction({ systemId, unitId })
+      .then((r) => live && setKStations(r && r.ok === true ? r.stations : []))
+      .catch(() => live && setKStations([]));
+    return () => {
+      live = false;
+    };
+  }, [systemId, unitId]);
 
   const load = useCallback(
     async (keepSel?: string | null) => {
@@ -329,6 +352,10 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
   return (
     <div data-testid="pos-settings-devices" className="flex min-w-0 flex-col gap-6 md:gap-8">
       <TabHead title={td("tabTitle")} desc={td("subtitle")}>
+        {/* POS P2.6U ▸ มติ 1: ทางเข้าจอครัวจากหน้าเครื่อง ◂ */}
+        <Link data-testid="pos-device-kds-link" href={`/app/sys/${systemId}/pos/kds?unit=${encodeURIComponent(unitId)}`} className="btn btn-ghost h-11 gap-2 rounded-[11px] px-4 text-[14px] font-semibold">
+          {td("kitchen.openKds")}
+        </Link>
         <button
           data-testid="pos-device-register"
           type="button"
@@ -518,6 +545,62 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                     )}
                   </div>
 
+                  {/* POS P2.6U ▸ มติ 9e (17B): ใบครัว — ไม่พิมพ์ / พิมพ์หลังขายที่เครื่องนี้ / LAN (เร็ว ๆ นี้ P3.11) + สถานีที่พิมพ์ ◂ */}
+                  {(() => {
+                    const ks = kitchenSlipSettings(sel.printerConfig);
+                    return (
+                      <div data-testid="pos-device-kitchen" className="flex flex-col gap-2 border-t pt-5">
+                        <span className="text-[13px] font-bold text-[color:var(--color-ink-soft)]">{td("kitchen.title")}</span>
+                        {/* fix1 V6: แถวเลือกแบบเรียงลง (ป้ายยาวไม่หัก · ชิปเร็ว ๆ นี้อยู่ในบรรทัด) แทน segmented 3 ช่อง */}
+                        <div role="radiogroup" aria-label={td("kitchen.title")} className="flex flex-col divide-y rounded-[13px] border">
+                          <button data-testid="pos-device-kitchen-off" type="button" role="radio" aria-checked={ks.mode === "off"} disabled={busy} className="flex min-h-12 items-center gap-3 px-4 text-left text-[15px] disabled:opacity-60" onClick={() => cfg("kitchenSlip", "off")}>
+                            <RadioDot on={ks.mode === "off"} />
+                            <span className={`min-w-0 flex-1 ${ks.mode === "off" ? "font-bold" : ""}`}>{td("kitchen.off")}</span>
+                          </button>
+                          <button data-testid="pos-device-kitchen-after" type="button" role="radio" aria-checked={ks.mode === "after-sale"} disabled={busy} className="flex min-h-12 items-center gap-3 px-4 text-left text-[15px] disabled:opacity-60" onClick={() => cfg("kitchenSlip", "after-sale")}>
+                            <RadioDot on={ks.mode === "after-sale"} />
+                            <span className={`min-w-0 flex-1 ${ks.mode === "after-sale" ? "font-bold" : ""}`}>{td("kitchen.afterSale")}</span>
+                          </button>
+                          <span data-testid="pos-device-kitchen-lan" role="radio" aria-checked={false} aria-disabled="true" title={td("kitchen.lanSoon")} className="flex min-h-12 items-center gap-3 px-4 text-[15px] text-[color:var(--color-muted)]">
+                            <RadioDot on={false} />
+                            <span className="min-w-0 flex-1">{td("kitchen.lan")}</span>
+                            <span className="shrink-0 whitespace-nowrap rounded-[6px] border px-1.5 text-[11px] leading-[18px]">{td("kitchen.planned")}</span>
+                          </span>
+                        </div>
+                        {ks.mode === "after-sale" && (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[12.5px] text-[color:var(--color-muted)]">{td("kitchen.stations")}</span>
+                            {kStations === null ? null : kStations.length === 0 ? (
+                              <span className="text-[13px] text-[color:var(--color-muted)]">{td("kitchen.noStations")}</span>
+                            ) : (
+                              kStations.map((st) => {
+                                const on = ks.stationIds.length === 0 || ks.stationIds.includes(st.id);
+                                return (
+                                  <label key={st.id} className="flex min-h-11 items-center gap-3 text-[14px]">
+                                    <input
+                                      data-testid={`pos-device-kitchen-station-${st.id}`}
+                                      type="checkbox"
+                                      className="size-5"
+                                      checked={on}
+                                      disabled={busy}
+                                      onChange={() => {
+                                        const all = kStations.map((x) => x.id);
+                                        const cur = ks.stationIds.length ? ks.stationIds : all;
+                                        const next = on ? cur.filter((x) => x !== st.id) : [...cur, st.id];
+                                        cfg("kitchenStationIds", next.length === all.length ? [] : next);
+                                      }}
+                                    />
+                                    <span className="min-w-0 flex-1 truncate">{locale === "en" && st.nameEn ? st.nameEn : st.name}</span>
+                                  </label>
+                                );
+                              })
+                            )}
+                            <small className="text-[12px] text-[color:var(--color-muted)]">{td("kitchen.stationsHint")}</small>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <PrintStatus result={printRes} onRetry={() => void testPrint()} onBrowser={() => void testPrint(true)} />
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
                     <button data-testid="pos-device-test-print" type="button" className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px]" disabled={busy} onClick={() => void testPrint()}>

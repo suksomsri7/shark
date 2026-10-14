@@ -197,6 +197,7 @@ export async function setMenuItemStock(
 
 /** reset สต็อกรายวัน 1 เมนู (คำสั่งเดิม — ตัวนับสด ไม่ mirror) */
 export async function resetMenuItemDailyStock(tx: Tx, s: UnitScope, it: { id: string; dailyStockQty: number | null }): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "MenuItem" WHERE id = ${it.id} AND "tenantId" = ${s.tenantId} FOR UPDATE`; // POS P2.6U ▸ มติ 16 (R3 H2): ล็อกก่อนอ่าน mark — แข่งกับครัวแจ้ง 86 ไม่ได้ค่าเก่า ◂
   const was = await menuStateOf(tx, s, it.id); // POS P2.6 ▸ มติ 6 ◂
   const keep86 = await heldBy86Mark(tx, s, was?.posProductId ?? null); // POS P2.6 ▸ fix1 H5: 86 ของครัว/ผู้จัดการรอด รีเซ็ตรายวัน ◂
   const now = await tx.menuItem.update({ where: { id: it.id, tenantId: s.tenantId, unitId: s.unitId }, data: { stockQty: it.dailyStockQty, isOutOfStock: keep86 } });
@@ -349,6 +350,7 @@ export async function restoreMenuStock(tx: Tx, itemId: string, qty: number): Pro
  * ไม่ปล่อย event (สถานะขายได้ไม่พลิกเมื่อ mark ยังอยู่) · ทางร้อนเดิม (cancelOrderItem) ไม่ใช้ตัวนี้ (S2.42 ตรึง) ◂
  */
 export async function restoreMenuStockKeep86InTx(tx: Tx, s: UnitScope, itemId: string, qty: number): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "MenuItem" WHERE id = ${itemId} AND "tenantId" = ${s.tenantId} FOR UPDATE`; // POS P2.6U ▸ มติ 16 (R3 H2): ล็อกก่อนอ่าน mark (ลำดับ ROI → MenuItem เดิม) ◂
   const it = await tx.menuItem.findFirst({ where: { id: itemId, tenantId: s.tenantId }, select: { posProductId: true } });
   const keep = await heldBy86Mark(tx, s, it?.posProductId ?? null);
   await tx.menuItem.update({ where: { id: itemId }, data: { stockQty: { increment: qty }, isOutOfStock: keep } });

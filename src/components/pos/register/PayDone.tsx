@@ -24,6 +24,10 @@ import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
 import { PrintStatus } from "@/components/pos/print/PrintStatus";
 import { printReceipt, printerPaired } from "@/components/pos/print/printReceipt";
 import type { PrintResult } from "@/components/pos/print/types";
+import { kdsQueueNoAction, kitchenSlipPayloadAction } from "@/lib/modules/pos/kds-actions"; // POS P2.6U ▸ มติ 10: "คิว N" · fix1 F2: ใบครัวหลังขาย ◂
+import { kitchenSlipSettings } from "@/lib/modules/pos/device-shared"; // POS P2.6U ▸ fix1 F2 ◂
+import type { KitchenSlip } from "@/lib/modules/pos/kds-shared"; // POS P2.6U ▸ fix1 F2 ◂
+import { printKitchenSlips } from "@/components/pos/kds/kds-print"; // POS P2.6U ▸ fix1 F2 ◂
 import { RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
 
@@ -50,8 +54,12 @@ type Props = {
    *   ตัวเลขเป็นค่าที่คาด (quote.pointsToEarn) — แต้มจริงเขียนหลังคิว pos.sale.paid ระบาย (ไม่ poll) ◂
    */
   member?: { pointsBurned: number; pointsExpected: number; pointsBalanceAfterBurn: number };
+  /** POS P2.6U ▸ มติ 10: สาขาของบิล — ส่งมา = ถามเลขคิวครัวของบิล (≤ 3 ครั้ง × 1 วิ) แล้วแสดง "คิว N" (ไม่มีรอบ = ไม่แสดง) ◂ */
+  unitId?: string;
 };
 
+/** POS P2.6U ▸ fix1 F2: บิลที่สั่งพิมพ์ใบครัวหลังขายไปแล้ว (ระดับโมดูล — ครั้งเดียวต่อบิล) ◂ */
+const kitchenPrinted = new Set<string>();
 /** บิลที่สั่งพิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
 const autoPrinted = new Set<string>();
 /**
@@ -61,8 +69,48 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId }: Props) {
   const t = useTranslations("pos.register");
+  // POS P2.6U ▸ มติ 10: รอบครัวสร้างหลัง commit ⇒ ถาม ≤ 3 ครั้ง ห่าง 1 วิ · ได้เลข = หยุด · ไม่ได้ = ไม่แสดงอะไร ◂
+  const [queueNo, setQueueNo] = useState<number | null>(null);
+  const [kitchenErr, setKitchenErr] = useState<string | null>(null); // POS P2.6U ▸ fix1 F2 ◂
+  /** POS P2.6U ▸ fix1 F2 (17B "พิมพ์หลังขายที่เครื่องนี้"): ใบครัวของรอบนี้ ครั้งเดียวต่อบิล · เฉพาะสถานีที่เลือก · พังไม่บล็อกจอ (ข้อความบรรทัดเดียว) ◂ */
+  const printKitchen = async (orderId: string) => {
+    const ks = kitchenSlipSettings(printer.config);
+    if (ks.mode !== "after-sale" || !unitId || kitchenPrinted.has(saleId)) return;
+    kitchenPrinted.add(saleId);
+    const slips: KitchenSlip[] = [];
+    for (const stationId of ks.stationIds.length ? ks.stationIds : [undefined]) {
+      const r = await kitchenSlipPayloadAction({ systemId, unitId, orderId, ...(stationId ? { stationId } : {}), locale }).catch(() => null);
+      if (r && r.ok === true) slips.push(...r.slips);
+    }
+    if (!slips.length) return;
+    const res = await printKitchenSlips(slips, printer.config, locale);
+    if (!res.ok) setKitchenErr(t("done.kitchenPrintFailed", { reason: tp(`errors.${res.code}`) }));
+  };
+  useEffect(() => {
+    if (!unitId || !saleId) return;
+    let live = true;
+    void (async () => {
+      for (let i = 0; i < 3 && live; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 1000));
+        const r = await kdsQueueNoAction({ systemId, unitId, saleId }).catch(() => null);
+        if (!live) return;
+        if (r && r.ok === true && r.queueNo !== null) {
+          setQueueNo(r.queueNo);
+          if (r.orderId) void printKitchen(r.orderId).catch(() => undefined); // POS P2.6U ▸ fix1 F2 ◂
+          return;
+        }
+        if (r && r.ok !== true) return;
+      }
+      // POS P2.6U ▸ fix2 N1: ถาม 3 ครั้งไม่ได้รอบ ขณะเครื่องนี้ตั้งพิมพ์ใบครัวหลังขาย = บอกว่าใบครัวไม่ออก (ไม่บล็อกจอ · ร้านที่ไม่ใช้ใบครัวไม่เห็น) ◂
+      if (live && kitchenSlipSettings(printer.config).mode === "after-sale") setKitchenErr(t("done.kitchenNoTicket"));
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- POS P2.6U ▸ fix1 F2: printKitchen อ่านค่าตั้งเครื่องตอนได้รอบ (ครั้งเดียวต่อบิล) ◂
+  }, [systemId, unitId, saleId]);
   const tm = useTranslations("pos.member");
   const tp = useTranslations("pos.print");
   const trc = useTranslations("pos.receipt");
@@ -189,6 +237,14 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
               {receiptNo ?? "-"}
             </span>
           </div>
+          {queueNo !== null && ( // POS P2.6U ▸ มติ 10 ◂
+            <div className={cell}>
+              <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.kitchenLabel")}</span>
+              <span data-testid="pos-reg-done-queue" className="text-[15px] font-bold tabular-nums">
+                {t("done.queue", { n: queueNo })}
+              </span>
+            </div>
+          )}
           {paidBy && (
             <div className={cell}>
               <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.paidBy")}</span>
@@ -204,6 +260,11 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             </div>
           )}
         </div>
+        {kitchenErr && ( // POS P2.6U ▸ fix1 F2: ใบครัวหลังขายพิมพ์ไม่สำเร็จ (ไม่บล็อกจอ) ◂
+          <p data-testid="pos-reg-done-kitchen-error" role="status" className="w-full text-left text-[13px] text-[color:var(--color-danger)]">
+            {kitchenErr}
+          </p>
+        )}
         {loadErr && (
           <p data-testid="pos-print-load-error" role="alert" className="w-full rounded-[13px] border-[1.5px] border-[color:var(--color-danger)] px-4 py-2 text-left text-[13.5px]">
             {loadErr}

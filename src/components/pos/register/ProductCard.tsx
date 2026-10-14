@@ -13,6 +13,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { displayName, moneyText, REGISTER_LOW_STOCK, type RegisterProduct } from "@/lib/modules/pos/register-shared";
+import { bkkClock } from "@/components/pos/tables/table-ui"; // POS P2.6U ▸ มติ 9a ◂
 
 /** P1.2 U R2: กรอบการ์ดที่แตะ (พิกัด viewport) — ป๊อปโอเวอร์ตัวเลือกยึดกับกรอบนี้ */
 export type PickAnchor = { left: number; top: number; right: number; bottom: number };
@@ -33,6 +34,9 @@ export function ProductCard({
   const locale = useLocale();
   const name = displayName(product, locale);
   const out = product.soldOut;
+  // POS P2.6U ▸ มติ 9a (19ฉ): ปิดขายเพราะครัว/ร้านแจ้ง 86 (mark KDS/MANUAL) = "หมด · ครัวแจ้ง HH:MM" · อื่น ๆ (ตัวนับ/คลังหมด) = "หมด" เดิม ◂
+  const mark = out && product.soldOutReason === "UNAVAILABLE" && product.soldOutMark && (product.soldOutMark.source === "KDS" || product.soldOutMark.source === "MANUAL") ? product.soldOutMark : null;
+  const outText = mark ? t("product.soldOutKitchen", { time: bkkClock(mark.at) }) : t("product.soldOut");
   const low = product.stockLeft !== null && product.stockLeft > 0 && product.stockLeft <= REGISTER_LOW_STOCK;
   const side =
     product.variantCount > 0
@@ -49,7 +53,7 @@ export function ProductCard({
   const notSold = product.notSold === true;
   const rule = product.priceSource === "RULE" && product.priceRule ? product.priceRule : null;
   const listStruck = rule && typeof product.listPriceSatang === "number" && product.listPriceSatang !== product.priceSatang ? moneyText(product.listPriceSatang) : null;
-  const label = [name, rule ? tp("rule.label", { name: rule.name }) : null, notSold ? t("product.notSoldStore") : (price ?? t("product.noPrice")), out ? t("product.soldOut") : null].filter(Boolean).join(" · ");
+  const label = [name, rule ? tp("rule.label", { name: rule.name }) : null, notSold ? t("product.notSoldStore") : (price ?? t("product.noPrice")), out ? outText : null].filter(Boolean).join(" · ");
   const inCart = inCartQty > 0;
   return (
     <button
@@ -81,7 +85,7 @@ export function ProductCard({
       </span>
       <span className="line-clamp-2 break-words text-[16px] font-semibold leading-[1.35] [overflow-wrap:anywhere] md:text-[15px] xl:text-[16px]">
         {name}
-        {out && <span className="font-semibold text-[color:var(--color-danger)]">{` · ${t("product.soldOut")}`}</span>}
+        {out && <span data-testid={mark ? "pos-reg-tile-86" : undefined} className="font-semibold text-[color:var(--color-danger)]">{` · ${outText}`}</span>}
       </span>
       {rule && (
         <span
