@@ -275,6 +275,9 @@ export type KitchenMoveInput = {
  * CANCELLED ไม่ขยับ (ไม่อยู่ใน from) · หลังเลื่อน: ทุกรายการ SERVED/CANCELLED ⇒ รอบ COMPLETED (กติกา maybeCompleteOrder เดิม) · ดึงกลับ ⇒ CONFIRMED
  */
 export async function kitchenMoveInTx(tx: Tx, s: Scope, m: KitchenMoveInput): Promise<{ changed: number; roundStatus: RestOrderStatus | null }> {
+  // fix1 H3/F2 (รีวิว R1 · ล่า H3 · มติ addendum): ล็อกแถวรอบก่อน (ลำดับ รอบ → รายการ → PosOrder) ⇒ การเลื่อนพร้อมกันหลายสถานีของรอบเดียวเรียงกัน ·
+  //   ทุกการอ่านหลังจากนี้เห็นสถานีอื่นที่ commit แล้ว (READY ของออนไลน์ไม่ค้าง PREPARING · เสิร์ฟครบพร้อมกันได้ COMPLETED)
+  await lockRoundInTx(tx, s.tenantId, m.orderId);
   const data: Prisma.RestaurantOrderItemUpdateManyMutationInput =
     m.recall
       ? { kdsStatus: m.to, readyAt: null, servedAt: null }
@@ -291,6 +294,11 @@ export async function kitchenMoveInTx(tx: Tx, s: Scope, m: KitchenMoveInput): Pr
   });
   const roundStatus = await settleRoundStatus(tx, s, m.orderId, !!m.recall && r.count > 0);
   return { changed: r.count, roundStatus };
+}
+
+/** fix1 H3: ล็อกแถวรอบ (RestaurantOrder FOR UPDATE) — ผู้เขียนรายการครัวทุกตัวของไฟล์นี้ถือก่อนแตะรายการ */
+async function lockRoundInTx(tx: Tx, tenantId: string, orderId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "RestaurantOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR UPDATE`;
 }
 
 /** สถานะรอบหลังเลื่อนรายการ: ทุกรายการ SERVED/CANCELLED (มีอย่างน้อย 1 SERVED) = COMPLETED · ดึงกลับจาก COMPLETED = CONFIRMED · ยกเลิกหมด = CANCELLED */
@@ -325,6 +333,7 @@ export async function kitchenCancelInTx(
   if (!link) return { orderId: null, unitId: null, cancelled: [] };
   const ord = await tx.restaurantOrder.findFirst({ where: { tenantId: s.tenantId, ...link }, select: { id: true, unitId: true } });
   if (!ord) return { orderId: null, unitId: null, cancelled: [] };
+  await lockRoundInTx(tx, s.tenantId, ord.id); // fix1 H3: รอบ → รายการ (ลำดับเดียวกับ kitchenMoveInTx)
   const rows = await tx.$queryRaw<{ id: string; menuItemId: string | null; qty: number; kdsStatus: string }[]>`
     SELECT id, "menuItemId", qty, "kdsStatus"::text AS "kdsStatus" FROM "RestaurantOrderItem"
     WHERE "orderId" = ${ord.id} AND "tenantId" = ${s.tenantId} AND "kdsStatus"::text IN ('NEW', 'COOKING', 'READY')
