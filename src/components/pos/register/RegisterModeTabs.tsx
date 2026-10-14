@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
 import { useOrdersBadge } from "@/components/pos/orders/use-orders-badge"; // POS P2.8U ▸ มติ 1 ◂
+import { RegisterMoreEntry } from "./RegisterMoreMenu"; // POS P2.6U ▸ มติ 1: เมนู ⋯ → จอครัว ◂
 
 type TabKey = "sale" | "tables" | "online-orders" | "bills" | "shift" | "products" | "reports" | "settings";
 type Tab = { key: TabKey; msg: string; icon: RegisterIconName; href: string | null };
@@ -111,6 +112,8 @@ export function RegisterModeTabs({
           </Link>
         );
       })}
+      {/* POS P2.6U ▸ มติ 1 (Q12): เมนู ⋯ ท้ายแถบ — "จอครัว" (ไม่ใช่แท็บ · ไม่มีคีย์ POS_NAV_KEYS) ◂ */}
+      <RegisterMoreEntry systemId={systemId} unitId={unitId} />
     </nav>
   );
 }

@@ -63,7 +63,8 @@
       "noPrice": "No price set",
       "variants": "{count} variants",
       "byWeight": "per kg",
-      "notSoldStore": "Not sold in store"
+      "notSoldStore": "Not sold in store",
+      "soldOutKitchen": "Sold out · kitchen {time}"
     },
     "cart": {
       "title": "Cart",
@@ -278,7 +279,9 @@
       "receiptNo": "Receipt no.",
       "paidBy": "Paid by",
       "auto": "(auto in {sec} s)",
-      "nextShort": "Next sale"
+      "nextShort": "Next sale",
+      "kitchenLabel": "Kitchen",
+      "queue": "Queue {n}"
     },
     "roles": {
       "owner": "Owner",
@@ -608,6 +611,10 @@
     },
     "emptyCatalogue": {
       "cashierBody": "Ask a manager or the shop owner to add products on the Products page, then come back here to sell"
+    },
+    "more": {
+      "label": "More",
+      "kds": "Kitchen display"
     }
   },
   "shift": {
@@ -1300,6 +1307,18 @@
       "deviceLimit": "All devices allowed by your plan are registered — revoke an unused one first",
       "deviceNotFound": "This device was not found in this branch",
       "internal": "Something went wrong — try again"
+    },
+    "kitchen": {
+      "openKds": "Open kitchen display",
+      "title": "Kitchen tickets",
+      "off": "Don't print",
+      "afterSale": "Print after each sale on this device",
+      "lan": "Kitchen printer (LAN)",
+      "planned": "Soon",
+      "lanSoon": "Print on the kitchen network printer · coming soon (P3.11)",
+      "stations": "Stations to print",
+      "stationsHint": "All ticked = print every station",
+      "noStations": "This branch has no kitchen stations yet"
     }
   },
   "receipt": {
@@ -2798,6 +2817,24 @@
         "base": "Price (regular)",
         "status": "Status"
       }
+    },
+    "kitchen": {
+      "title": "Kitchen",
+      "station": "Kitchen station",
+      "noStation": "Not sent to the kitchen",
+      "otherStation": "A station of another branch",
+      "menuStationHint": "Restaurant menu items set their station on the restaurant menu page",
+      "pickUnit": "Pick a branch at the top first",
+      "noManage": "Needs permission to manage products",
+      "soldOut": "Sold out (86) at this branch",
+      "chip86": "Sold out · 86",
+      "onSale": "On sale",
+      "markOut": "Mark sold out (86)",
+      "release": "Back on sale",
+      "noMark": "Needs permission to sell or manage products",
+      "stationSaved": "Kitchen station saved",
+      "markedOut": "Marked sold out · the register and online channels see it now",
+      "released": "Back on sale"
     }
   },
   "recipe": {
@@ -3167,7 +3204,11 @@
       "prepMixed": "Mixed",
       "appliesTo": "Applies to: {target}",
       "pauseHint": "While paused, web shop and chat orders are refused · keyed-in orders are still accepted",
-      "noTarget": "No channel here takes prep time/pause from this screen (web shop · chat · API-linked channels only)"
+      "noTarget": "No channel here takes prep time/pause from this screen (web shop · chat · API-linked channels only)",
+      "autoPauseOff": "Auto-accept ignores the kitchen backlog",
+      "autoPauseLess": "Lower the kitchen backlog limit",
+      "autoPauseMore": "Raise the kitchen backlog limit",
+      "autoPauseTurnOff": "Turn off"
     },
     "card": {
       "items": "{count} items · <b>{amount}</b>",
@@ -3179,7 +3220,9 @@
       "chatPayNote": "Ordered in chat · awaiting payment {amount}",
       "kitchenProgress": "Kitchen {done}/{total}",
       "kitchenMeter": "Kitchen progress",
-      "rider": "Rider · arrival time"
+      "rider": "Rider · arrival time",
+      "kitchenHeld": "Kitchen hold",
+      "kitchenHeldHint": "The kitchen is paused or over its backlog limit — not auto-accepted; accept it yourself when ready"
     },
     "actions": {
       "accept": "Accept order",
@@ -3262,7 +3305,10 @@
       "historyLabel": "Orders at this shop",
       "isMember": "Member",
       "timeline": "Activity",
-      "webPaidNote": "Paid web shop order — refund or cancel it on the web shop"
+      "webPaidNote": "Paid web shop order — refund or cancel it on the web shop",
+      "onAcceptKitchenLive": "Send kitchen tickets to each item's station",
+      "kitchenSection": "Kitchen tickets",
+      "kitchenSent": "Sent to the kitchen: {total} items · {done} done"
     },
     "manual": {
       "title": "Key in order",
@@ -3429,7 +3475,11 @@
         "kds": "Kitchen",
         "manual": "Store",
         "stock": "Counter ran out"
-      }
+      },
+      "none": "Nothing is sold out",
+      "empty": "No menu items found for this branch",
+      "released": "Back on sale · {name}",
+      "markedOut": "Marked sold out · {name}"
     },
     "autoAcceptMax": "Pause auto-accept when the kitchen has more than {n} open tickets",
     "autoAcceptOff": "Do not pause auto-accept by kitchen backlog",
@@ -3447,6 +3497,46 @@
       "channelPaused": "The kitchen is paused",
       "internal": "The kitchen display is temporarily unavailable — please try again",
       "unknown": "Something went wrong — please try again"
+    },
+    "page": {
+      "refusal": "This account cannot view the kitchen display of this branch — ask the shop owner for access"
+    },
+    "back": "Back to POS overview",
+    "unit": "Branch",
+    "shift": "Shift #{no} · {device}",
+    "shiftNoDevice": "Shift #{no}",
+    "perm": {
+      "advance": "Needs permission to advance kitchen tickets",
+      "recall": "Needs permission to recall tickets",
+      "rush": "Needs permission to rush orders",
+      "pause": "Needs permission to pause kitchen orders",
+      "availability": "Needs permission to mark items sold out"
+    },
+    "menu": {
+      "more": "Ticket options",
+      "printThis": "Print this ticket",
+      "select": "Select for printing",
+      "unselect": "Clear selection"
+    },
+    "lineDoneAria": "Mark {name} done",
+    "cancelledLine": "Cancelled",
+    "recalled": "Ticket #{no} recalled",
+    "printNone": "No new tickets to print",
+    "printed": "Sent {n} kitchen tickets to the printer",
+    "pausedOn": "Kitchen orders paused",
+    "pausedOff": "Kitchen orders resumed",
+    "servedNone": "Nothing served yet today",
+    "expoEmpty": "No tickets ready to serve",
+    "stationsLabel": "Kitchen stations",
+    "avgLabel": "Avg",
+    "avgMinutes": "{avg} min",
+    "avgTarget": "· target {target}",
+    "midnightNote": "Tickets sent before midnight that are not served yet are not shown here after 00:00 — check the restaurant's previous kitchen screen",
+    "loading": "Loading…",
+    "close": "Close",
+    "legacyBanner": {
+      "text": "A new kitchen display is available — tickets from the register, tables, QR and online orders in one place, including paid items (this screen cannot advance them)",
+      "open": "Open the new kitchen display"
     }
   },
   "nav": {

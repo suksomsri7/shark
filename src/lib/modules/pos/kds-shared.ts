@@ -158,7 +158,8 @@ export type KdsBoard = {
   ok: true;
   stations: KdsStationTab[];
   tickets: KdsTicket[];
-  servedToday: { count: number; last: { no: number; label: string; source: KdsSource; at: string } | null };
+  /** P2.6U ▸ มติ 7: last + orderId/stationId (ตั๋วที่จะดึงกลับจากแถบ "เสิร์ฟแล้ววันนี้" — kdsRecall ต้องใช้ · เพิ่มอย่างเดียว) ◂ */
+  servedToday: { count: number; last: { no: number; label: string; source: KdsSource; at: string; orderId?: string; stationId?: string } | null };
   pending: { name: string; qty: number }[];
   avgMinutes: number;
   targetMinutes: number;
