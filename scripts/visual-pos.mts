@@ -142,7 +142,8 @@
 //   fixture (ensureP29uFixture · พังไม่โยน): เปิดบัตรกำนัลของร้าน QC (setSettings · คืนค่าเดิมตอนเก็บกวาด) · ขายบัตร 4 ใบผ่าน giftcard.sell (เงินสด · บิลขายบัตรคงอยู่)
 //   แล้วตั้ง PIN เป็นค่าคงที่ของ fixture ด้วยสูตรแฮชของโมดูล (sha256 "<เลข>:<PIN>" — giftcard/service.ts sell) · ค่า PIN ไม่พิมพ์ลง log/ชื่อไฟล์ ·
 //   เครดิตร้านของสมาชิก QC ผ่าน member.issueStoreCredit (คีย์ต่อวัน — เติมครั้งเดียวต่อวัน) · ทิป: เปิด tip + บัญชีหนี้สินของสมุดที่เชื่อม (updatePosPaymentSettings ·
-//   คืนค่าเดิมหลังภาพทิปสุดท้าย) · GIFT_CARD_CHANGED = ตัดยอดบัตรผ่าน giftcard.use ระหว่างค้นกับยืนยัน · เก็บกวาด: ระงับบัตรของรอบ (giftcard.suspend) ·
+//   คืนค่าเดิมหลังภาพทิปสุดท้าย) · GIFT_CARD_CHANGED = ตัดยอดบัตรผ่าน giftcard.use ระหว่างค้นกับยืนยัน · เก็บกวาด: ระงับบัตรของรอบ (giftcard.suspend) ยกเว้น
+//   บัตรของบิล sale-done-giftcard (คง ACTIVE ยอด ฿175 ให้ refund-to-card · fix1 V3 — รอบหน้าบิลเลือกบิลบัตรล่าสุดที่บัตรยัง ACTIVE) ·
 //   คืนค่าตั้งบัตร/ทิป · บิลขายคงอยู่ (แบบ sale-done) ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
@@ -874,7 +875,7 @@ if (DRY) {
         `  P2.9U: fixture (สาขา ${unitKey}) — บัตรกำนัลของร้าน QC เปิด (คืนค่าเดิมตอนเก็บกวาด) · บัตร 4 ใบผ่าน giftcard.sell (เงินสด ฿500/฿500/฿100/฿500 · คีย์ posqc-vis-p29u-<pid>-<k> · ` +
           `บิลขายบัตรคงอยู่) + PIN ค่าคงที่ของ fixture (สูตรแฮชของโมดูล · ไม่พิมพ์ค่า) · เครดิตร้าน ฿200 ของสมาชิก QC (member.issueStoreCredit · คีย์ต่อวัน) · ` +
           `ทิป (เปิด + บัญชีหนี้สินของสมุดที่เชื่อม · คืนค่าหลังภาพทิปสุดท้าย) · changed = ตัดยอดบัตรผ่าน giftcard.use · ⚠️ sale-done-giftcard = บิล PAID 1 ใบ · ` +
-          `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ระงับบัตรของรอบ (giftcard.suspend)`,
+          `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ระงับบัตรของรอบ (giftcard.suspend) ยกเว้นบัตรของบิล sale-done-giftcard (คง ACTIVE ฿175 · refund-to-card ใช้ต่อ)`,
       );
     }
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
@@ -5138,8 +5139,13 @@ async function cleanupP29u(): Promise<void> {
     const gc = await import("@/lib/modules/giftcard");
     const owner = (await ownerActor()) as Any;
     let n = 0;
-    for (const c of Object.values(P29U.cards)) {
+    for (const [k, c] of Object.entries(P29U.cards)) {
       if (!c) continue;
+      // POS P2.9U ▸ fix1 V3: บัตรของบิล sale-done-giftcard คง ACTIVE (refund-to-card ของรอบหน้าบิลต้องเห็นชิปคืนเข้าบัตรที่ใช้ได้) ◂
+      if (k === "main" && P29U.saleId) {
+        P29U.log.push(`คงบัตร GC-••••${c.number.slice(-4)} ACTIVE (บิล sale-done-giftcard)`);
+        continue;
+      }
       await gc
         .suspend(p29uGctx(), owner, { number: c.number, reason: "QC P2.9U visual (fixture ของรอบ)" })
         .then(() => n++)
@@ -5254,14 +5260,20 @@ async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device:
     if (!saleId) {
       // ไม่มีบิลของรอบนี้ (ถ่ายเฉพาะ refund-to-card) ⇒ บิลบัตรล่าสุดของวันนี้ในสาขา (ยังไม่คืน)
       const start = new Date(Date.parse(`${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00+07:00`));
-      const s = await prisma.posSale.findFirst({
+      // POS P2.9U ▸ fix1 V3: บิลบัตรล่าสุดของวันนี้ที่บัตรยัง ACTIVE (บัตรของ sale-done-giftcard ไม่ถูกระงับตอนเก็บกวาด) ◂
+      const cands = await prisma.posSale.findMany({
         where: { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE", status: "PAID", refundedSatang: 0, createdAt: { gte: start }, payments: { some: { type: "GIFT_CARD" } } },
         orderBy: { createdAt: "desc" },
+        take: 20,
         select: { id: true, payments: { where: { type: "GIFT_CARD" }, select: { giftCardId: true } } },
       });
+      const active = new Set(
+        (await prisma.giftCard.findMany({ where: { tenantId: T.tenantId, status: "ACTIVE", id: { in: cands.flatMap((x) => x.payments.map((y) => y.giftCardId ?? "")).filter(Boolean) } }, select: { id: true } })).map((x) => x.id),
+      );
+      const s = cands.find((x) => x.payments.some((y) => !!y.giftCardId && active.has(y.giftCardId))) ?? null;
       if (!s) throw new StepError("ไม่มีบิลจ่ายด้วยบัตรของวันนี้ — ถ่าย sale-done-giftcard ก่อน");
       saleId = s.id;
-      cardId = s.payments[0]?.giftCardId ?? "";
+      cardId = s.payments.find((y) => !!y.giftCardId && active.has(y.giftCardId))?.giftCardId ?? "";
     }
     const rn = (await prisma.posSale.findFirst({ where: { id: saleId, tenantId: T.tenantId }, select: { receiptNo: true } }))?.receiptNo;
     await visibleEl(page, tid("pos-bills-list"), 0, 15_000).catch(() => {
@@ -5287,6 +5299,8 @@ async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device:
     await visibleEl(page, tid(`pos-bills-refund-method-card-${cardId}`), 0, 15_000).catch(() => {
       throw new StepError("ไม่ขึ้นชิปคืนเข้าบัตร (refundTenderOptionsAction)");
     });
+    const chipOff = await page.$eval(tid(`pos-bills-refund-method-card-${cardId}`), (e: Element) => (e as HTMLButtonElement).disabled).catch(() => true);
+    if (chipOff) throw new StepError("ชิปคืนเข้าบัตรถูกปิด (บัตรใช้ไม่ได้) — บัตรของบิลต้อง ACTIVE");
     await clickEl(page, tid(`pos-bills-refund-method-card-${cardId}`));
     await sleep(300);
     return; // 🔴 ไม่กดยืนยันคืนเงิน
@@ -5349,7 +5363,11 @@ async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device:
       await visibleEl(page, tid("pos-reg-paydlg-giftcard-changed"), 0, 20_000).catch(() => {
         throw new StepError("ยอดบัตรเปลี่ยนแล้วยืนยัน ไม่ขึ้นแบนเนอร์ \"ยอดบัตรเปลี่ยน\"");
       });
-      await sleep(800); // ค้นบัตรใหม่ (ตัดจำนวนลง)
+      // POS P2.9U ▸ fix1 V1: ค้นใหม่แล้วแผงบัตรของแถวเปิดเอง พร้อมช่อง PIN ◂
+      await visibleEl(page, tid("pos-reg-paydlg-giftcard-pin"), 0, 15_000).catch(() => {
+        throw new StepError("หลังยอดบัตรเปลี่ยน แผงใส่ PIN ของแถวไม่เปิดเอง");
+      });
+      await sleep(400);
       return;
     }
     case "paydlg-tip":
