@@ -77,8 +77,9 @@ export function shortName(name: string | null | undefined): string {
 }
 /** fix1 V1: อักษรย่อของผู้ใช้ — ข้ามสระหน้า (เ แ โ ใ ไ) ไม่ให้เหลือ "เ" ตัวเดียวที่ดูเหมือน "ι" */
 export function userInitial(name: string): string {
-  const s = name.trim().replace(/^[\u0E40-\u0E44]+/, "");
-  return (s.charAt(0) || name.trim().charAt(0) || "?").toUpperCase();
+  // fix2 G3a: ตัวแรกที่เป็นตัวอักษร (\p{L}) และไม่ใช่สระหน้า — ตัวเลข/เครื่องหมาย/อีโมจิไม่เป็นอักษรย่อ
+  const ch = [...name.trim()].find((c) => /\p{L}/u.test(c) && !/[\u0E40-\u0E44]/.test(c));
+  return (ch ?? "?").toUpperCase();
 }
 
 /** ชั่วโมงเวลาไทยของ ms (ตั๋วข้ามเที่ยงคืน — มติ 11) */
