@@ -102,7 +102,7 @@ typecheck (5632 MB, pos gate lock) · `pnpm fitness` ±env · `scripts/fitness-p
 - `sale-done-giftcard` (02b: card balance after, method lines) · bills/refund 12: `refund-to-card` (method chips incl. "คืนเข้าบัตร GC-••••1234 (สูงสุด ฿325)" and "เครดิตร้าน") · receipt preview with card/credit/tip lines · settings payments panel: tip ledger picker LIABILITY-only.
 - UI rules: tokens only, ≥44px, `pos.register.pay.*` th/en, masked numbers only, PIN never echoed or logged, testids `pos-reg-paydlg-method-giftcard|storecredit|deposit|roomcharge` kept (P1.12U ids).
 
-## 10. Controller rulings (account B, 14 Oct 16:2xZ) — binding
+## 10. Controller rulings (account B, 14 Oct 16:1xZ) — binding
 1. **CD1 → recommendation**: gift card = multi-purpose voucher ⇒ output VAT at **redemption**; the tender row posts Dr 2110 for the card's share, the sale posts revenue + VAT on the full bill; `use({tender:true})` posts nothing itself; receipt shows the card as a payment line, not a discount. **CD1b yes** (card sold before `accountingLink` was on still Dr 2110 at tender) + owner line. O24 is updated to "model chosen by the controller before go-live — accounting owner to confirm; reversible while no prod bill has used a card" (also a blocker line in `POS-OWNER-PENDING.md`).
 2. **CD2**: "ว่อชเชอร์/บัตรของขวัญ" tile = gift-card tender; promotional `Voucher` stays the P1.12 discount; **no** `VOUCHER` enum value.
 3. **CD3**: PIN required for GIFT tender (existing `verifyPin` + lockout; scan fills the number only); STORE_CREDIT: no PIN, the bill's member must own it.
