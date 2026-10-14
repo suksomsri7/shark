@@ -915,6 +915,9 @@ export function refusalMessageKey(code: string): string {
 // POS HF-PP ▸ fix 1: ด่านผู้จัดการของ "พร้อมเพย์/บัตรรับแล้ว" ที่ไม่มีใบขอรับเงิน (register.ts submitRegisterSale) — ข้อความเซิร์ฟเวอร์ชุดเดียว
 //   (= payment-intent.ts confirmPaymentIntentManual) · จอแปลงคำปฏิเสธนี้เป็นคีย์ของมันเอง (ไม่แสดง message ของเซิร์ฟเวอร์) ◂
 export const REGISTER_MANUAL_MANAGER_MESSAGE = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
+// POS HF-PP2 ▸ (มติ §9 ข้อ 2) วิธีจ่ายที่ "รับเงินแล้ว" ได้โดยไม่มีใบขอรับเงิน = ต้องผ่านด่าน manualConfirmRequiresManager — ชุดเดียวของสองประตู
+//   (register.ts submitRegisterSale · order.ts payOrder) · เจ้าของร้านค้านเรื่องบัตร = ถอด "CARD" ออกที่นี่ที่เดียว (POS-OWNER-PENDING · HF-PP2) ◂
+export const REGISTER_MANUAL_METHODS: ReadonlySet<string> = new Set(["PROMPTPAY", "CARD"]);
 /** คีย์ใต้ `pos.register` ของคำปฏิเสธ submit: PERMISSION_DENIED ของด่านผู้จัดการ = refusal.manualConfirmManager · อื่น ๆ = refusalMessageKey(code) */
 export function submitRefusalMessageKey(r: { code: string; message?: string | null }): string {
   return r.code === "PERMISSION_DENIED" && r.message === REGISTER_MANUAL_MANAGER_MESSAGE ? "refusal.manualConfirmManager" : refusalMessageKey(r.code);
