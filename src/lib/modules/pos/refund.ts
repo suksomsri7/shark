@@ -566,7 +566,9 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   const paySum = x.payMethods.reduce((t, p) => t + p.amountSatang, 0);
   if (paySum !== grand) return refuse("PAYMENT_MISMATCH", `ยอดเงินที่คืน ${paySum} ไม่เท่ากับยอดคืน ${grand} (สตางค์)`);
   // POS P2.9 ▸ R6 R7: แถวคืนเข้าบัตร/เครดิตร้าน (ตรวจทั้งโหมดวางแผนและโหมดจริง · ไม่เขียน) ◂
-  const tenderPlan = await planRefundTenders(tx, s, sale, x, prior.docs, s.canRefund || !!opts.auditActorId);
+  // POS P2.9 ▸ fix2 H1 (มติ 6): ผู้อนุมัติ = ผู้มีสิทธิ์คืน หรือ PIN ผู้จัดการ/สายอนุมัติ (commit มี auditActorId = ผู้จัดการ/ผู้ตัดสิน) ·
+  //   โหมดวางแผน (ก่อนตรวจ PIN / ก่อนยื่นคำขออนุมัติ) ไม่ตัดสินสิทธิ์ — ตัดสินตอน commit ◂
+  const tenderPlan = await planRefundTenders(tx, s, sale, x, prior.docs, s.canRefund || !!opts.auditActorId || opts.mode === "plan");
   if (isRefusal(tenderPlan)) return tenderPlan;
   // POS P1.15 ▸ โหมดวางแผน: ตรวจครบแล้วคืนยอด (ไม่เขียนอะไร · กะไม่บังคับ — คำขออนุมัติคืนนอกกะ มติ 13) ◂
   if (opts.mode === "plan") return { kind: "plan", grandSatang: grand };
