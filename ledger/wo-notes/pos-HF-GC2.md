@@ -8,7 +8,7 @@ Prisma client: base adds no schema (diff `prisma/` 31cb1bd8..0f978264 empty) ⇒
 - [x] 2 FU-1 `expireDue` (308becac)
 - [x] 3 F3 `reload` (9153edbf)
 - [x] 4 owner lines + these notes
-- [ ] 5 merge `origin/session/pos` → gates
+- [x] 5 merge `origin/session/pos` 1f2fa86e (ledger only) → 76188470 → gates (table below)
 
 ## Hunks (file:line at 9153edbf; all marked `// POS HF-GC2 ▸ … ◂`)
 - `src/lib/modules/giftcard/service.ts:1052–1086` **FU-1 expireDue** — per-card tx now starts with `SELECT "balanceSatang","accountingDocId","status" FROM "GiftCard" WHERE id = $1 FOR UPDATE` (`$queryRaw`, :1057–1058); not ACTIVE ⇒ `null` (not counted, same as the old `count === 0`); the existing `updateMany({id, status ACTIVE} → EXPIRED, 0)` stays (:1061–1065); `leftover` = locked `balanceSatang` (:1066); the tx returns `{ txnId, leftover, accountingDocId }`; EXPIRE txn `satang` and `postGiftCardExpire({ satang })` use the locked `leftover` (:1084); the JV gate uses the locked `accountingDocId` (:1086). Key `giftcard-expire-<id>`, ACTIVE predicate, `{ expired }` return shape unchanged. The stale pre-read `card` is still used only for `tenantId`/`systemId`/`saleId` (immutable). Owner-decided `catch {}` untouched.
@@ -26,7 +26,19 @@ Prisma client: base adds no schema (diff `prisma/` 31cb1bd8..0f978264 empty) ⇒
 Post-fix (pre-merge, 9153edbf): 22/22 forced · HT2.8 `EXPIRE 7000 · JV Dr 7000 Cr 7000 · 10000` · HT2.9 `GiftCardStateError: บัตรใบนี้ถูกระงับอยู่ … · SUSPENDED 10000 · RELOAD 0 · บิล 0`.
 
 ## Gates
-(filled after the merge)
+All logs headed `tree=/root/projects/shark-pos-b head=76188470 dirty=0` (scratch `hfgc2/gates/*.out`, 14 Oct 14:02–14:14Z); head 76188470 = code 9153edbf + upstream 1f2fa86e (ledger only; non-ledger diff 9153edbf..76188470 empty).
+| gate | tree= head= | result |
+|---|---|---|
+| typecheck (pos-gate.lock · 5632/6500M) | shark-pos-b 76188470 | rc 0 |
+| fitness no-env / env (qc4) | shark-pos-b 76188470 | 50/50 · 50/50 |
+| fitness-pos | shark-pos-b 76188470 | 8/8 |
+| qc-hf-tx forced / unforced | shark-pos-b 76188470 | 22/22 · 22/22 (residue 0) |
+| qc-pos-p1.6 | shark-pos-b 76188470 | 48/48 |
+| qc-pos-account | shark-pos-b 76188470 | 16/16 |
+| qc-pos-p1.3 | shark-pos-b 76188470 | 128/128 |
+| qc-pos-p1.1 | shark-pos-b 76188470 | 180/180 |
+| qc-pos-p2.8 | shark-pos-b 76188470 | 61/61 · PAR 4/4 |
+| qc-member-m2.6 / m2.7 / m2.8 | — | skipped (known QC4 setup failures, prompt rule) |
 
 ## Follow-ups (not in this card)
 - `expireDue` per-card `catch {}` still silent: a failing `postGiftCardExpire` (e.g. period closed) leaves the card EXPIRED + EXPIRE txn with no JV and no retry (card is no longer ACTIVE) — owner line, owner decides.
