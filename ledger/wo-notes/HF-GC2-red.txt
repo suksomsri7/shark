@@ -1,0 +1,46 @@
+# HF-GC2 red-before — qc-hf-tx on base code 071402d8 (session/pos 0f978264) + oracle HT2.8/HT2.9 (run before commit 5100d19f, same file content)
+tree=/root/projects/shark-pos-b head=0f978264 dirty=1 code=base-0f978264+oracle 2026-10-14T13:55:56Z
+── qc-hf-tx · [static] ──
+  ✅ [HT6.1] [static] createSale/regCreateSale ที่ส่ง client: prisma/PrismaClient หรือ callerTx(…) เท่านั้น — ครบ 7 จุด: giftcard/service.ts:503 createSale(…, callerTx(tx)) · giftcard/service.ts:779 createSale(…, callerTx(tx)) · pos/order.ts:440 createSale(…, callerTx(tx)) · pos/register.ts:2400 createSale(…, client) · pos/register.ts:2447 regCreateSale(…, callerTx(tx)) · pos/register.ts:2532 regCreateSale(…, callerTx(tx)) · pos/register.ts:2796 regCreateSale(…, db)
+  ✅ [HT6.2] [static] ไม่มี Proxy ซ่อน $transaction นอก core/caller-tx.ts (regCallerTx/flatTx หาย) — ไม่มี (มีแค่ core/caller-tx.ts)
+  ✅ [HT6.3] [static] core/caller-tx.ts บริสุทธิ์ (ไม่มี import) + export callerTx · service.ts export afterSaleCommitted · facade ส่งออก — บริสุทธิ์ · export ครบ
+  ✅ [HT6.4] [static] ทะเบียนผู้เรียก createSale (qc-pos-p1.6 U4) ไม่เปลี่ยน — 19 จุด/16 ไฟล์ ตรงทะเบียน
+  ✅ [HT7] [static] helper `"$transaction" in` นอกขอบเขต ถูกจดใน POS-OWNER-PENDING.md (HF-TX · HT7) ครบ/ตรงจำนวน — ตรง 7 ไฟล์ 9 จุด
+[env] qc-hf-tx · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:2302110) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── HT2 บัตรกำนัล sell + reload ──
+  ✅ [HT2.1] บัตรกำนัล sell: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว — xmin {"PosSale":["5556768"],"PosSaleLine":["5556768"],"PosPayment":["5556768"],"GiftCard":["5556768"],"GiftCardTxn":["5556768"]} · giftCardId ตั้งแล้ว
+  ✅ [HT2.2] บัตรกำนัล sell: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit) — pos.sale.paid 1 แถว · DONE/0
+  ✅ [HT2.3] บัตรกำนัล reload: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว — xmin {"PosSale":["5556773"],"PosSaleLine":["5556773"],"PosPayment":["5556773"],"GiftCard":["5556773"],"GiftCardTxn":["5556773"]} · giftCardId ตั้งแล้ว
+  ✅ [HT2.4] บัตรกำนัล reload: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit) — pos.sale.paid 1 แถว · DONE/0
+  ✅ [HT2.5] บัตรกำนัล sell พร้อมกัน 2 คำขอคีย์เดียว ⇒ GiftCard 1 · PosSale 1 · SELL 1 · ผลที่เล่นซ้ำ pin null — สำเร็จ 2/2 · GiftCard +1 · PosSale 1 · SELL 1 · บัตร/บิลเดียวกัน ใช่ · pin null/set · ธงบิล ตรง
+── HT4 positive control ──
+  ✅ [HT4] positive control: หน้าขายเงินสด xmin เดียว + OUT 1 — xmin 5556782 · OUT -1 · onHand 100→99 · อ่าน cash:found
+── HT1 ทางใบขอรับเงิน (P1.7) ──
+  ✅ [HT1.1] ทางใบขอรับเงิน: PosSale/PosSaleLine/PosPayment/PosPaymentIntent xmin เดียว — xmin {"PosSale":["5556788"],"PosSaleLine":["5556788"],"PosPayment":["5556788"],"PosPaymentIntent":["5556788"]} · intent CONSUMED
+  ✅ [HT1.2] ทางใบขอรับเงิน: OUT 1 แถว (−1) · onHand −1 — OUT -1 · onHand 99→98
+  ✅ [HT1.3] ทางใบขอรับเงิน: pos.sale.paid 1 แถว — pos.sale.paid 1 แถว · DONE/0
+  ✅ [HT1.4] ทางใบขอรับเงิน: ไม่มีการอ่านบิลก่อน commit (ไม่มี found:false) · มีอ่านหลัง commit — อ่าน intent:found
+── HT3 สัญญา callerTx ──
+  ✅ [HT3.1] callerTx + ผู้เรียก rollback ⇒ บิล 0 แถว · OUT 0 — ผู้เรียก throw "HFTX_ROLLBACK" · บิล 0 แถว · OUT 0 · อ่าน ไม่มี
+  ✅ [HT3.2] callerTx + commit + afterSaleCommitted ⇒ xmin = xid ผู้เรียก · ไม่มีการอ่านในธุรกรรม · OUT 1 — xmin 5556796 vs ผู้เรียก 5556796 · อ่านในธุรกรรม ไม่มี · OUT ก่อน/หลัง afterSaleCommitted 0/1 · onHand 98→97
+── HT5 negative control (tx ดิบ) ──
+  ✅ [HT5] negative control: tx ดิบ ⇒ ตัวตรวจเห็น xmin แยก + found:false ก่อน commit — ตัวตรวจเห็น: xmin บรรทัด 5556800 vs ผู้เรียก 5556799 (แยก) · อ่านในธุรกรรม ht5-in-tx:found:false
+── HT2.6/HT2.7 บัตรกำนัล (HF-GC) ──
+  ✅ [HT2.6] บัตรกำนัล reload พร้อมกัน 5 คำขอ ⇒ balanceAfter ไม่ซ้ำ = initial + k·satang · max = ยอดบัตร · ผลที่คืน = แถวของตัวเอง — สำเร็จ 5/5 · RELOAD 5 แถว · balanceAfter 110000,120000,130000,140000,150000 (คาด 110000,120000,130000,140000,150000) · ยอดบัตร 150000 · ผลที่คืนตรงแถว ใช่
+  ✅ [HT2.7] บัตรกำนัล ตาข่ายหนี้สิน 2110: ขายซ้ำ/consumer คืน accountingDocId · JV GiftCard#<id> = 1 เสมอ · ขายตอนสวิตช์ปิด = 0 ตลอดไป — ขาย: doc ตั้ง · JV 1 · (a) ขายซ้ำ: คืน ตั้ง · แถว ตั้ง · JV 1 · (b) consumer ต่อกัน/พร้อมกัน: doc ตั้ง/ตั้ง · JV 1 · (b2) ไม่มี JV → consumer: JV 0→1 · doc ตั้ง · (c) สวิตช์ปิดตอนขาย: JV 0 · doc null · (c2) สวิตช์ปิดตอนขาย → เปิด → ขายซ้ำ: JV 0 · doc null
+── HT2.8/HT2.9 บัตรกำนัล (HF-GC2 · ธุรกรรมที่สามถือล็อก) ──
+  ❌ [HT2.8] บัตรกำนัล expireDue ∥ ใช้บัตร (A ถือล็อก) ⇒ EXPIRE + JV 4900 = ยอดคงเหลือจริงใต้ล็อก (7000) · USE + EXPIRE = ยอดขาย — A กั้น เห็น (1123ms) · expireDue expired 1 · doc ตั้ง · บัตร EXPIRED ยอด 0 · EXPIRE 1 แถว 10000 (คาด 7000) · JV 1 Dr 10000 Cr 10000 · USE 3000 + EXPIRE 10000 = 13000 (คาด 10000)
+  ❌ [HT2.9] บัตรกำนัล reload ∥ ระงับ (A ถือล็อก) ⇒ GiftCardStateError · ยัง SUSPENDED ยอดเดิม · RELOAD 0 · บิล 0 · ปลดระงับแล้วเติมซ้ำคีย์เดิม 1 ครั้ง — A กั้น เห็น (1602ms) · reload สำเร็จ balanceAfter 13000 · บัตร ACTIVE ยอด 13000 (คาด SUSPENDED 10000) · RELOAD 1 · บิล 1 · ปลดระงับ+เติมซ้ำ: ผลเดิม · RELOAD 1 · บิล 1 · บัตร ACTIVE ยอด 13000 (คาด ACTIVE 13000)
+
+===== qc-hf-tx ===== ผ่าน 20/22 (QC_FORCE) · ล้างร้านชั่วคราว: แถวค้าง 0 · ร้าน 0 · ผู้ใช้ 0
+JSON_SUMMARY {"suite":"qc-hf-tx","total":22,"passed":20,"failed":["HT2.8","HT2.9"],"skipped":false,"forced":true,"missing":[],"residue":0}
+rc=1
