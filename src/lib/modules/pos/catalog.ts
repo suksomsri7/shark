@@ -1477,12 +1477,15 @@ async function adoptVariantRow(ctx: CatalogCtx, actor: MembershipCtx | null, tx:
     if (target.sim(a.price) !== a.price)
       throw invalid(a.price === 0 ? "ราคา 0 ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม" : "ราคานี้ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม");
   }
+  // POS P2.6U ▸ มติ 17 (R3 H3) + fix2 N2: ประทับ stationSetAt เมื่อ "สถานีจริง" (ของตัวเอง ?? ของแม่) เปลี่ยน — กติกาเดียวกับ updateProduct({stationId}) /
+  //   syncMenuRow · แม่ใหม่ที่ส่งเข้าสถานีเดิม = ไม่ประทับ (บิลที่ตั๋วหลุดยัง heal ได้) ◂
+  const parentStation = async (id: string | null) => (id ? ((await tx.posProduct.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { stationId: true } }))?.stationId ?? null) : null);
+  const routeChanged = (row.stationId ?? (await parentStation(row.parentId))) !== (row.stationId ?? (await parentStation(a.parentId)));
   const data: Prisma.PosProductUncheckedUpdateManyInput = {
     parentId: a.parentId, name: a.name, nameEn: a.nameEn, basePriceSatang: a.price, barcode: a.barcode, categoryId,
     soldByWeight: a.soldByWeight, scalePlu: a.scalePlu, unitId,
     ...(a.trackStock !== undefined ? { trackStock: a.trackStock } : {}),
-    // POS P2.6U ▸ มติ 17 (R3 H3): แถวไม่มีสถานีเองแต่ได้แม่ใหม่ = เส้นทางครัวเปลี่ยนตอนนี้ ⇒ stationSetAt (heal ไม่สร้างตั๋วย้อนหลังให้บิลก่อนผูก) ◂
-    ...(row.stationId === null && row.parentId !== a.parentId ? { stationSetAt: new Date() } : {}),
+    ...(routeChanged ? { stationSetAt: new Date() } : {}),
   };
   await tx.posProduct.updateMany({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data });
   if (a.price !== null && target) {
