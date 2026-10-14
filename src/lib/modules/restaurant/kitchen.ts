@@ -328,14 +328,14 @@ export async function kitchenRushInTx(tx: Tx, s: Scope, i: { orderId: string; ru
 export async function kitchenCancelInTx(
   tx: Tx,
   s: { tenantId: string; posSaleId?: string | null; posOrderId?: string | null; reason: string; byUserId?: string | null; now: Date },
-): Promise<{ orderId: string | null; unitId: string | null; cancelled: { itemId: string; menuItemId: string | null; qty: number; wasNew: boolean }[] }> {
+): Promise<{ orderId: string | null; unitId: string | null; cancelled: { itemId: string; menuItemId: string | null; qty: number; wasNew: boolean; stockTaken: number | null }[] }> {
   const link = s.posOrderId ? { posOrderId: s.posOrderId } : s.posSaleId ? { posSaleId: s.posSaleId } : null;
   if (!link) return { orderId: null, unitId: null, cancelled: [] };
   const ord = await tx.restaurantOrder.findFirst({ where: { tenantId: s.tenantId, ...link }, select: { id: true, unitId: true } });
   if (!ord) return { orderId: null, unitId: null, cancelled: [] };
   await lockRoundInTx(tx, s.tenantId, ord.id); // fix1 H3: รอบ → รายการ (ลำดับเดียวกับ kitchenMoveInTx)
-  const rows = await tx.$queryRaw<{ id: string; menuItemId: string | null; qty: number; kdsStatus: string }[]>`
-    SELECT id, "menuItemId", qty, "kdsStatus"::text AS "kdsStatus" FROM "RestaurantOrderItem"
+  const rows = await tx.$queryRaw<{ id: string; menuItemId: string | null; qty: number; kdsStatus: string; stockTaken: number | null }[]>`
+    SELECT id, "menuItemId", qty, "kdsStatus"::text AS "kdsStatus", "stockTaken" FROM "RestaurantOrderItem"
     WHERE "orderId" = ${ord.id} AND "tenantId" = ${s.tenantId} AND "kdsStatus"::text IN ('NEW', 'COOKING', 'READY')
     ORDER BY id FOR UPDATE`;
   if (rows.length) {
@@ -345,5 +345,26 @@ export async function kitchenCancelInTx(
     });
     await settleRoundStatus(tx, { tenantId: s.tenantId, unitId: ord.unitId }, ord.id, false);
   }
-  return { orderId: ord.id, unitId: ord.unitId, cancelled: rows.map((r) => ({ itemId: r.id, menuItemId: r.menuItemId, qty: r.qty, wasNew: r.kdsStatus === "NEW" })) };
+  return { orderId: ord.id, unitId: ord.unitId, cancelled: rows.map((r) => ({ itemId: r.id, menuItemId: r.menuItemId, qty: r.qty, wasNew: r.kdsStatus === "NEW", stockTaken: r.stockTaken })) };
+}
+
+/**
+ * fix1 H1 (มติ addendum): บันทึกจำนวนที่ตัวนับเมนูถูกหักจริงลงรายการของรอบ (ตัวนับหักแบบไม่ติดลบ — อาจได้น้อยกว่า qty) ·
+ * แบ่งให้รายการของเมนูเดียวกันตามลำดับสร้าง (รายการละไม่เกิน qty) · ผู้เรียกทำในธุรกรรมเดียวกับการหัก
+ */
+export async function kitchenSetStockTakenInTx(tx: Tx, s: Scope, i: { orderId: string; taken: { menuItemId: string; taken: number }[] }): Promise<void> {
+  if (!i.taken.length) return;
+  const items = await tx.restaurantOrderItem.findMany({
+    where: { tenantId: s.tenantId, unitId: s.unitId, orderId: i.orderId, menuItemId: { in: i.taken.map((t) => t.menuItemId) } },
+    select: { id: true, menuItemId: true, qty: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  for (const t of i.taken) {
+    let left = t.taken;
+    for (const it of items.filter((x) => x.menuItemId === t.menuItemId)) {
+      const mine = Math.min(left, it.qty);
+      left -= mine;
+      await tx.restaurantOrderItem.updateMany({ where: { id: it.id, tenantId: s.tenantId, unitId: s.unitId }, data: { stockTaken: mine } });
+    }
+  }
 }

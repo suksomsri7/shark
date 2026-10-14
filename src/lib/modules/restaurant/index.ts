@@ -52,6 +52,7 @@ export {
   kitchenMoveInTx,
   kitchenRushInTx,
   kitchenCancelInTx,
+  kitchenSetStockTakenInTx, // fix1 H1
   kitchenSetAutoAcceptMaxInTx,
   kitchenStationsForPos,
   kitchenSettingForPos,

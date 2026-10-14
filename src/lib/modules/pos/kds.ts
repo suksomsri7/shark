@@ -259,7 +259,10 @@ export async function ticketForSale(tenantId: string, unitId: string, saleId: st
             stationHint: l.productId ? (hints.get(l.productId) ?? null) : null,
           })),
         });
-        if (r.created && r.menuLines.length) await consumeMenuStockFloorInTx(tx, { tenantId, unitId }, r.menuLines);
+        if (r.created && r.orderId && r.menuLines.length) {
+          const taken = await consumeMenuStockFloorInTx(tx, { tenantId, unitId }, r.menuLines);
+          await R.kitchenSetStockTakenInTx(tx, { tenantId, unitId }, { orderId: r.orderId, taken }); // fix1 H1
+        }
         return r;
       });
     let r: Awaited<ReturnType<typeof run>>;
@@ -335,7 +338,10 @@ export async function roundForOrderInTx(tx: Tx, o: PosOrder, ch: { name: string 
     note: o.note,
     lines: lines.map((l) => ({ productId: l.productId, name: l.name, qty: l.qty, options: optionsOf(l.options), note: l.note, stationHint: l.productId ? (hints.get(l.productId) ?? null) : null })),
   });
-  if (r.created && r.menuLines.length) await consumeMenuStockFloorInTx(tx, { tenantId: o.tenantId, unitId: o.unitId }, r.menuLines);
+  if (r.created && r.orderId && r.menuLines.length) {
+    const taken = await consumeMenuStockFloorInTx(tx, { tenantId: o.tenantId, unitId: o.unitId }, r.menuLines);
+    await R.kitchenSetStockTakenInTx(tx, { tenantId: o.tenantId, unitId: o.unitId }, { orderId: r.orderId, taken }); // fix1 H1
+  }
   return { orderId: r.orderId, created: r.created };
 }
 
@@ -618,7 +624,8 @@ async function cancelKitchenOf(tenantId: string, link: { posSaleId?: string; pos
   const R = await restaurant();
   await prisma.$transaction(async (tx) => {
     const r = await R.kitchenCancelInTx(tx, { tenantId, ...link, reason, now: new Date() });
-    const back = r.cancelled.filter((c) => c.wasNew && c.menuItemId).map((c) => ({ menuItemId: c.menuItemId as string, qty: c.qty }));
+    // fix1 H1: คืนเท่าที่หักจริง (stockTaken · null = รอบก่อนคอลัมน์ = 0) · เฉพาะรายการที่ยัง NEW (R12)
+    const back = r.cancelled.filter((c) => c.wasNew && c.menuItemId && (c.stockTaken ?? 0) > 0).map((c) => ({ menuItemId: c.menuItemId as string, qty: c.stockTaken as number }));
     if (r.unitId && back.length) await restoreMenuStockFloorInTx(tx, { tenantId, unitId: r.unitId }, back);
   });
 }

@@ -194,7 +194,8 @@ export async function setMenuItemStock(
 /** reset สต็อกรายวัน 1 เมนู (คำสั่งเดิม — ตัวนับสด ไม่ mirror) */
 export async function resetMenuItemDailyStock(tx: Tx, s: UnitScope, it: { id: string; dailyStockQty: number | null }): Promise<void> {
   const was = await menuStateOf(tx, s, it.id); // POS P2.6 ▸ มติ 6 ◂
-  const now = await tx.menuItem.update({ where: { id: it.id, tenantId: s.tenantId, unitId: s.unitId }, data: { stockQty: it.dailyStockQty, isOutOfStock: false } });
+  const keep86 = await heldBy86Mark(tx, s, was?.posProductId ?? null); // POS P2.6 ▸ fix1 H5: 86 ของครัว/ผู้จัดการรอด รีเซ็ตรายวัน ◂
+  const now = await tx.menuItem.update({ where: { id: it.id, tenantId: s.tenantId, unitId: s.unitId }, data: { stockQty: it.dailyStockQty, isOutOfStock: keep86 } });
   await emitMenuFlip(tx, s, was, now, "MANUAL"); // POS P2.6 ▸ รีเซ็ตรายวันปลดของหมด = event MANUAL (มติ 6) ◂
 }
 
@@ -221,12 +222,14 @@ async function emitMenuFlip(tx: Tx, s: UnitScope, was: MenuState | null, now: { 
  * ตั๋วครัวของหน้าขาย/ออนไลน์ (R3 R4): หักตัวนับเมนูแบบไม่ติดลบ (ไม่ปฏิเสธบิลที่จ่ายแล้ว) · ถึง 0 = 86 อัตโนมัติ + event STOCK ·
  * ล็อกแถวเมนู FOR UPDATE (เรียง id) · เมนูไม่นับสต็อก (stockQty null) = ไม่แตะ
  */
-export async function consumeMenuStockFloorInTx(tx: Tx, s: UnitScope, lines: { menuItemId: string; qty: number }[]): Promise<void> {
+export async function consumeMenuStockFloorInTx(tx: Tx, s: UnitScope, lines: { menuItemId: string; qty: number }[]): Promise<{ menuItemId: string; taken: number }[]> {
+  const out: { menuItemId: string; taken: number }[] = [];
   for (const l of [...lines].sort((a, b) => (a.menuItemId < b.menuItemId ? -1 : 1))) {
     await tx.$queryRaw`SELECT id FROM "MenuItem" WHERE id = ${l.menuItemId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} FOR UPDATE`;
     const was = await menuStateOf(tx, s, l.menuItemId);
     if (!was || was.stockQty === null || l.qty <= 0) continue;
     const left = Math.max(was.stockQty - l.qty, 0);
+    out.push({ menuItemId: l.menuItemId, taken: Math.max(was.stockQty, 0) - left }); // fix1 H1: จำนวนที่หักได้จริง (ผู้เรียกเก็บลง RestaurantOrderItem.stockTaken)
     const now = await tx.menuItem.update({
       where: { id: l.menuItemId, tenantId: s.tenantId, unitId: s.unitId },
       data: { stockQty: left, ...(left <= 0 ? { isOutOfStock: true } : {}) },
@@ -234,6 +237,13 @@ export async function consumeMenuStockFloorInTx(tx: Tx, s: UnitScope, lines: { m
     });
     await emitMenuFlip(tx, s, was, now, "STOCK");
   }
+  return out;
+}
+
+/** fix1 H5 (มติ addendum 3b): 86 ที่ครัว/ผู้จัดการแจ้ง (mark KDS/MANUAL) ของเมนูที่สาขานี้ยังอยู่ไหม — คืนตัวนับ/รีเซ็ตรายวันต้องไม่ปลด (ปลดได้ทาง setAvailability(true) เท่านั้น) */
+async function heldBy86Mark(tx: Tx, s: UnitScope, posProductId: string | null): Promise<boolean> {
+  if (!posProductId) return false;
+  return !!(await tx.posAvailabilityMark.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, productId: posProductId, source: { in: ["KDS", "MANUAL"] } }, select: { id: true } }));
 }
 
 /**
@@ -247,7 +257,8 @@ export async function restoreMenuStockFloorInTx(tx: Tx, s: UnitScope, lines: { m
     if (!was || was.stockQty === null || l.qty <= 0) continue;
     const now = await tx.menuItem.update({
       where: { id: l.menuItemId, tenantId: s.tenantId, unitId: s.unitId },
-      data: { stockQty: was.stockQty + l.qty, ...(was.stockQty <= 0 ? { isOutOfStock: false } : {}) },
+      // fix1 H1: qty = stockTaken ของรายการ (เท่าที่หักจริง) · H5: mark KDS/MANUAL ยังอยู่ = คง 86
+      data: { stockQty: was.stockQty + l.qty, ...(was.stockQty <= 0 && !(await heldBy86Mark(tx, s, was.posProductId)) ? { isOutOfStock: false } : {}) },
       select: { isOutOfStock: true, stockQty: true, posProductId: true },
     });
     await emitMenuFlip(tx, s, was, now, "STOCK");
