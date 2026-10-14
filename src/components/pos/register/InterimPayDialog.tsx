@@ -637,7 +637,9 @@ export function PayDialog(p: Props) {
                           : m.type === "PROMPTPAY"
                             ? p.promptpayId
                               ? t("pay.promptpayHint")
-                              : t("pay.noPromptPay")
+                              : !p.intent && p.manualManagerOnly // POS P2.8U ▸ fix 2 G1: ช่องปิดเพราะด่านผู้จัดการ (ไม่ใช่ร้านไม่ได้ตั้ง PromptPay) ◂
+                                ? t("pay.intent.managerOnly")
+                                : t("pay.noPromptPay")
                             : m.type === "TRANSFER"
                               ? t("pay.transferHint")
                               : p.intent
