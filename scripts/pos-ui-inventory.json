@@ -15592,6 +15592,75 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-tip-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-tip-save",
+        "state": "changes",
+        "note": "P2.9U มติ 6: รับทิปที่หน้าขาย · เปิดได้เมื่อ POS เชื่อมสมุดบัญชี · บันทึกด้วยปุ่มของการ์ด"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=payments&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-tip-ledger",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-tip-save",
+        "state": "changes",
+        "note": "P2.9U มติ 6: บัญชีพักทิป = เฉพาะ LIABILITY ของสมุดที่เชื่อม (posTipLedgersAction กรองที่จอ) · บัญชีอื่นเลือกไม่ได้"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=payments&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-tip-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:updatePosPaymentSettingsAction",
+        "db": "AppSystem(POS).settings.pos.tip",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-settings-tip-ledger-error"
+          }
+        ],
+        "note": "P2.9U มติ 6: patch.tip {enabled, ledgerAccountId} · TIP_ACCOUNT_REQUIRED/VALIDATION = ข้อความที่ช่องบัญชี · ไม่ใช่เจ้าของ = การ์ดอ่านอย่างเดียว"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=payments&unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -6,6 +6,7 @@
 //   การ์ด "การยืนยันเอง": สวิตช์ manualConfirmRequiresManager
 // 🔴 ค่าเริ่ม/สิทธิ์มาจากหน้าเพจ (parsePosIntentSettings · pos.device.manage) · บันทึก = updatePosIntentSettingsAction (ส่งเฉพาะคีย์ที่แก้)
 // 🔴 คำปฏิเสธแสดงผ่านคีย์ pos.settings.* (ไม่แสดงข้อความไทยของเซิร์ฟเวอร์) · ผู้อ่านอย่างเดียว = ช่องปิด + "เฉพาะผู้จัดการแก้ได้"
+// POS P2.9U ▸ มติ 6: การ์ด "ทิป" (TipSettingsCard · ตัวเก็บ payment-settings.ts tip {enabled, ledgerAccountId} · บัญชีพักทิป = หนี้สินเท่านั้น · บันทึกของการ์ดเอง) ◂
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -13,6 +14,7 @@ import { useTranslations } from "next-intl";
 import { updatePosIntentSettingsAction } from "@/lib/modules/pos/payment-intent-actions";
 import { POS_QR_EXPIRY_MAX, POS_QR_EXPIRY_MIN, type PosIntentSettings, type PosIntentSettingsPatch } from "@/lib/modules/pos/payment-intent-shared";
 import { CardHead, Chip, InlineNote, SettingsCard, SwitchKnob, TabHead } from "./settings-ui";
+import { TipSettingsCard } from "./TipSettingsCard"; // POS P2.9U ▸ มติ 6 ◂
 
 type Props = {
   systemId: string;
@@ -212,6 +214,8 @@ export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, pr
               </button>,
             )}
           </SettingsCard>
+          {/* POS P2.9U ▸ มติ 6: ทิป + บัญชีพักทิป (LIABILITY) ◂ */}
+          <TipSettingsCard systemId={systemId} />
         </div>
       </div>
     </div>
