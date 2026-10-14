@@ -44,6 +44,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "pos.order.ready", label: "เมื่อออเดอร์ออนไลน์พร้อมส่ง (POS)" },
   { value: "pos.order.completed", label: "เมื่อส่งมอบออเดอร์ออนไลน์แล้ว (POS)" },
   { value: "pos.order.cancelled", label: "เมื่อยกเลิกออเดอร์ออนไลน์ (POS)" },
+  // POS P2.6 ▸ ของหมด (86) / กลับมาขาย ต่อสาขา (consumer = กระจายไป adapter ทุกช่องทางของสาขา) ◂
+  { value: "pos.product.availability", label: "เมื่อสินค้าหมด/กลับมาขาย (86 · POS)" },
   { value: "inventory.lot.expiring", label: "เมื่อสินค้าใกล้หมดอายุ" },
   // ── บอร์ดงาน (K1.4 → ครบ 8 ตัวใน K2.9 · พิมพ์เขียว 13-kanban-v2 §7.2) ─────
   // 🔴 ประกาศที่ `KANBAN_AUTOMATION_EVENTS` ข้างบนที่เดียว แล้ว spread เข้ามาที่นี่

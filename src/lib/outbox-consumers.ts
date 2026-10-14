@@ -188,6 +188,29 @@ const posSaleVoided: OutboxHandler = async (evt) => {
 // POS P2.8 ▸ ออเดอร์ทุกช่องทาง — โหลดตอนใช้ (pos/order → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์) · ตัวรับทุกตัว idempotent ◂
 const posOrderOnSaleVoided: OutboxHandler = async (evt) => (await import("@/lib/modules/pos")).orders.onSaleVoided(evt.tenantId, evt.payload);
 const posOrderOnShopOrderPaid: OutboxHandler = async (evt) => (await import("@/lib/modules/pos")).orders.onShopOrderPaid(evt.tenantId, evt.payload);
+// POS P2.6 ▸ จอครัว (โหลดตอนใช้ · ทุกตัว idempotent): void บิลหน้าขาย ⇒ ยกเลิกรายการครัวที่ยังไม่เสิร์ฟ (+ คืนตัวนับเมนูเฉพาะ NEW) ·
+//   ยกเลิก/ปฏิเสธออเดอร์ ⇒ ยกเลิกรายการครัวของรอบออเดอร์ · 86 ⇒ ORDER_ADAPTERS[adapter].setAvailability ทุกช่องทางของสาขา (CD 10 18 · R10 R11 R12)
+const kdsOnSaleVoided: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/kds")).onSaleVoidedKitchen(evt.tenantId, evt.payload);
+const kdsOnOrderClosed: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/kds")).onOrderClosedKitchen(evt.tenantId, evt.payload);
+const kdsOnAvailability: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/kds")).onAvailabilityEvent(evt.tenantId, evt.payload);
+/** งานหลักสองอย่างของ event เดียว (ไม่ใช่ของแถม): วิ่งทั้งคู่เสมอ · ล้มตัวใด = event retry (ทั้งคู่ idempotent) */
+const bothMain =
+  (a: OutboxHandler, b: OutboxHandler): OutboxHandler =>
+  async (evt) => {
+    let err: unknown = null;
+    try {
+      await a(evt);
+    } catch (e) {
+      err = e;
+    }
+    try {
+      await b(evt);
+    } catch (e) {
+      if (err === null) err = e;
+    }
+    if (err !== null) throw err;
+  };
+// ◂ POS P2.6
 /** ออเดอร์เว็บร้านถูกปฏิเสธที่จอ 09 → ยกเลิก ShopOrder (รอชำระ) ผ่านประตูของเว็บร้านเอง · ซ้ำ/ชำระแล้ว = cancelOrder คืน false (ไม่ทำอะไร) */
 const posOrderRejected: OutboxHandler = async (evt) => {
   const p = (evt.payload ?? {}) as { shopOrderId?: unknown; unitId?: unknown };
@@ -701,6 +724,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // POS P2.8 ▸ + บิลของออเดอร์ถูกยกเลิก (ลิ้นชักบิล/อนุมัติ/คืนเงินเว็บร้าน) → ออเดอร์ REFUNDED + CANCELLED ถ้ายังไม่ส่งมอบ (idempotent · มติ 13) — ต่อท้ายสุด ◂
   // POS P2.4 ▸ บิลโต๊ะ (CD5): งานหลักคู่บัญชี = ปลดรายการของบิลที่ถูก void + เปิดโต๊ะกลับ (pos/table.tableSaleVoided → facade ร้านอาหาร ·
   //   บิลที่ไม่ใช่ POS+sourceId ไม่แตะ) · ทั้งสองวิ่งเสมอ · ล้มขั้นใด = event retry (ทั้งคู่ idempotent) ◂
+  // POS P2.6 ▸ R12: + รอบครัวของบิลหน้าขาย (posSaleId) — รายการที่ยังไม่เสิร์ฟ = CANCELLED · คืนตัวนับเมนูเฉพาะ NEW · งานหลักขั้นที่สาม (retry ได้ · idempotent) ◂
   "pos.sale.voided": withAutomation(
     compose(compose(compose(compose(compose(async (evt) => {
       let failed = false;
@@ -713,6 +737,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
       }
       try {
         await (await import("@/lib/modules/pos/table")).tableSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      try {
+        await kdsOnSaleVoided(evt); // POS P2.6 ▸ R12 ◂
       } catch (e) {
         if (!failed) err = e;
         failed = true;
@@ -756,10 +786,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09) — กฎอัตโนมัติ/เว็บฮุคเท่านั้น · rejected ของออเดอร์เว็บร้าน = ยกเลิก ShopOrder ที่นี่ (composition root · มติ 13 — POS ไม่ import shop) ◂
   "pos.order.received": withAutomation(async () => {}),
   "pos.order.accepted": withAutomation(async () => {}),
-  "pos.order.rejected": withAutomation(posOrderRejected),
+  "pos.order.rejected": withAutomation(bothMain(posOrderRejected, kdsOnOrderClosed)), // POS P2.6 ▸ + ยกเลิกรายการครัวของรอบออเดอร์ (CD 18) ◂
   "pos.order.ready": withAutomation(async () => {}),
   "pos.order.completed": withAutomation(async () => {}),
-  "pos.order.cancelled": withAutomation(posOrderRejected), // POS P2.8 ▸ fix รอบ 3 (H2): ร้านยกเลิกออเดอร์เว็บที่ยังไม่จ่าย ⇒ ยกเลิก ShopOrder (รอชำระเท่านั้น · idempotent) ◂
+  "pos.order.cancelled": withAutomation(bothMain(posOrderRejected, kdsOnOrderClosed)), // POS P2.8 ▸ fix รอบ 3 (H2): ร้านยกเลิกออเดอร์เว็บที่ยังไม่จ่าย ⇒ ยกเลิก ShopOrder (รอชำระเท่านั้น · idempotent) ◂ · POS P2.6 ▸ + ยกเลิกรายการครัว "ออเดอร์ถูกยกเลิก" (CD 18) ◂
+  // POS P2.6 ▸ 86 / คืนขายต่อสาขา → adapter ทุกช่องทาง active (adapter ≠ NONE) ของสาขา (no-op ใน P2 · P3 ส่งจริง) · ไม่เขียนแถว ⇒ เล่นซ้ำไม่มีผลเพิ่ม ◂
+  "pos.product.availability": withAutomation(kdsOnAvailability),
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)

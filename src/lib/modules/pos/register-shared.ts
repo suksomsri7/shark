@@ -247,6 +247,8 @@ export type RegisterProduct = {
   soldOut: boolean;
   /** UNAVAILABLE = ปิดขายที่สาขา (กดขายไม่ได้ · ชนะหมดสต็อก) · NO_STOCK = นับสต็อกและหมด (ยังขายได้ · ติดลบตามนโยบายปริยาย) */
   soldOutReason: RegisterSoldOutReason | null;
+  /** POS P2.6 ▸ CD 8: 86 ที่แจ้งผ่านจอครัว/ผู้จัดการ (ไทล์ "หมด · ครัวแจ้ง HH:MM") — มีเฉพาะแถว UNAVAILABLE ที่มี mark · at = ISO ◂ */
+  soldOutMark?: { source: "KDS" | "STOCK" | "MANUAL"; at: string } | null;
   /** คงเหลือเมื่อนับสต็อก · null = ไม่นับ */
   stockLeft: number | null;
   trackStock: boolean;

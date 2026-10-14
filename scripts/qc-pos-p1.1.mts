@@ -2980,11 +2980,15 @@ try {
         const p0 = await prodById(L.mF);
         const avail = async () => (await listAll(C, ctxRsOwner, RMAIN, { q: `${TAG} s2-mF` })).items.find((r) => idOf(r) === L.mF)?.availability?.[RMAIN];
         const a0 = await avail();
+        // ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.6 S · CD 3): setItemStock/resetDailyStock ปล่อย event pos.product.availability (MANUAL) เมื่อพลิก (P2.6 มติ 6) — จำเวลาไว้ลบแถวของตัวเอง
+        const s243At = new Date();
         const t86 = sqlTapOk ? await traceSql(() => attempt(() => menu.setItemStock(rsT, RMAIN, M.mF.id, { isOutOfStock: true, stockQty: 3 }))) : null;
         const a86 = await avail(); const p86 = await prodById(L.mF);
         const tUn = sqlTapOk ? await traceSql(() => attempt(() => menu.setItemStock(rsT, RMAIN, M.mF.id, { isOutOfStock: false }))) : null;
         const aUn = await avail();
         const tRs = sqlTapOk ? await traceSql(() => attempt(() => menu.resetDailyStock(rsT, RMAIN))) : null;
+        // ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.6 S · CD 3): ลบ outbox pos.product.availability ที่การเรียกข้างบนของข้อนี้สร้าง (ร้าน rsT · หลัง s243At) — R.1 นับแถวก่อน = หลัง
+        await P.outboxEvent.deleteMany({ where: { tenantId: rsT, type: "pos.product.availability", createdAt: { gte: s243At } } }).catch(() => null);
         const p1 = await prodById(L.mF);
         const posW = [t86, tUn, tRs].reduce((s, t) => s + (t ? writesTo(t.sql, "PosProduct") : 0), 0);
         const s243 = { tap: sqlTapOk, calls: !!t86?.r.ok && !!tUn?.r.ok && !!tRs?.r.ok, noPosWrites: posW === 0, rowUnchanged: hashOf(p0) === hashOf(p86) && hashOf(p0) === hashOf(p1), before: a0 === true, outWhen86: a86 === false, backWhenUn: aUn === true };
