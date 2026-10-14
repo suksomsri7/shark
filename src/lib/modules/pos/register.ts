@@ -417,7 +417,7 @@ import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
-import { afterSaleCommitted, pendingStockParts, posDayStart } from "./service";
+import { afterSaleCommitted, pendingStockParts, posDayStart, preverifySaleGiftPins } from "./service"; // POS P2.5 ▸ fix2 มติ 4: + preverifySaleGiftPins ◂
 import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (ซ่อน $transaction) ◂
 // POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes } from "./recipe";
@@ -2809,6 +2809,13 @@ async function regSubmitTable(
   const t = req.cart.table!;
   const rest = await regRestaurant();
   const failedCuts = (req.tableStockCutFails ?? []).filter((f) => !!f.productId);
+  // POS P2.5 ▸ fix2 มติ 4 (hunter Low): PIN บัตรของขวัญตรวจก่อนเปิดธุรกรรม (เหมือนทางปกติที่ createSale เป็นเจ้าของ tx) — คลื่น PIN ผิดไม่ถือ connection ของธุรกรรม ◂
+  try {
+    await preverifySaleGiftPins(saleInput);
+  } catch (e) {
+    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    throw e;
+  }
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const saleId = await db.$transaction(
@@ -2894,6 +2901,13 @@ async function regSubmitSplitPart(
   const rest = await regRestaurant();
   const split = await regSplitMod();
   const failedCuts = (req.tableStockCutFails ?? []).filter((f) => !!f.productId);
+  // POS P2.5 ▸ fix2 มติ 4 (hunter Low): PIN บัตรของขวัญตรวจก่อนเปิดธุรกรรม (เหมือนทางปกติที่ createSale เป็นเจ้าของ tx) — คลื่น PIN ผิดไม่ถือ connection ของธุรกรรม ◂
+  try {
+    await preverifySaleGiftPins(saleInput);
+  } catch (e) {
+    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    throw e;
+  }
   // คีย์เดียวกันที่ commit แล้ว: บิลเดิม = บิลที่ใบนี้ถืออยู่ตอนนี้เท่านั้น (เทียบ payload ตามปกติ)
   const replay = async (row: RegSaleRow) => {
     req.splitReplaySaleId = (await split.splitPartForPay(db, { tenantId: s.tenantId, unitId: s.unitId, partId: sp.partId }))?.part.saleId ?? null;
