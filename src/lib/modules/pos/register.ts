@@ -2864,7 +2864,11 @@ async function regSubmitSplitPart(
           if (existed) return existed.id;
           const scope = { tenantId: s.tenantId, unitId: s.unitId, sessionId: t.sessionId };
           const claimed = await rest.claimTableItemsInTx(tx, { ...scope, itemIds: t.itemIds });
-          if (claimed.length !== t.itemIds.length) throw new RegIntentRefusal(regRefuse("TABLE_ITEMS_CHANGED"));
+          if (claimed.length !== t.itemIds.length) {
+            // POS P2.5 ▸ fix1 มติ 3 (F2): ยึดรายการไม่ครบเพราะอีกเครื่องจ่ายใบเดียวกัน (รายการหน่วยเต็มของใบถูกผูกบิลแล้ว) = TABLE_SPLIT_PART_PAID ◂
+            const now = await tx.posTableSplitPart.findFirst({ where: { id: sp.partId, tenantId: s.tenantId }, select: { status: true } });
+            throw new RegIntentRefusal(regRefuse(now?.status === "PAID" ? "TABLE_SPLIT_PART_PAID" : "TABLE_ITEMS_CHANGED"));
+          }
           const part = await split.lockSplitPartInTx(tx, { tenantId: s.tenantId, partId: sp.partId });
           if (!part || part.splitId !== sp.splitId) throw new RegIntentRefusal(regRefuse("TABLE_SPLIT_NOT_FOUND"));
           if (part.status === "PAID") throw new RegIntentRefusal(regRefuse("TABLE_SPLIT_PART_PAID"));
