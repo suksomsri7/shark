@@ -358,16 +358,45 @@ class RefundAbort extends Error {
     super(refusal.code);
   }
 }
-type RefundTenderPlan = { gift: { index: number; giftCardId: string; satang: number }[]; credit: { index: number; systemId: string; customerId: string; satang: number } | null };
+type RefundTenderPlan = {
+  gift: { index: number; giftCardId: string; satang: number }[];
+  credit: { index: number; systemId: string; customerId: string; satang: number } | null;
+  /** POS P2.9 ▸ fix1 H1: ส่วนของบัตรที่ใช้ไม่ได้ซึ่งคืนเป็นเงิน (บิล walk-in · ผู้จัดการ + เหตุผล · ลง audit) ◂ */
+  cardShareToCash: number;
+};
+/** POS P2.9 ▸ fix1 H1 (มติ 2): แถวชำระ "เงินจริง" — คืนเป็นเงินได้ไม่เกินส่วนนี้ของบิล (− ทิป − ที่คืนเป็นเงินไปแล้ว) ◂ */
+const CASH_LIKE: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
 const CARD_REFUND_MSG = "คืนเข้าบัตรไม่ได้ — เลือกเงินสดหรือเครดิตร้าน";
 /**
  * วางแผนแถวคืนชนิดบัตร (ในtx หลังล็อกบิลเดิม · ไม่เขียน): GIFT_CARD = กลับเข้าบัตรของบิลนี้เท่านั้น เพดานต่อใบ = ส่วนที่บัตรจ่าย − ที่คืนเข้าใบนั้นไปแล้ว ·
  * บัตรระงับ/หมดอายุ = REFUND_METHOD_INVALID · STORE_CREDIT = บิลของสมาชิกเท่านั้น (ออก/เติมเครดิตในระบบสมาชิกของสมาชิก) · แถวเดียว
  */
-async function planRefundTenders(tx: Tx, s: Scope, sale: { id: string; memberId: string | null }, x: CleanInput, priorDocs: { payments: PosPayment[] }[]): Promise<RefundTenderPlan | RefundRefusal> {
-  const plan: RefundTenderPlan = { gift: [], credit: null };
+async function planRefundTenders(tx: Tx, s: Scope, sale: { id: string; memberId: string | null; tipSatang: number }, x: CleanInput, priorDocs: { payments: PosPayment[] }[], managerOk: boolean): Promise<RefundTenderPlan | RefundRefusal> {
+  const plan: RefundTenderPlan = { gift: [], credit: null, cardShareToCash: 0 };
   const giftRows = x.payMethods.map((p, index) => ({ p, index })).filter((r) => r.p.type === "GIFT_CARD");
   const creditRows = x.payMethods.map((p, index) => ({ p, index })).filter((r) => r.p.type === "STORE_CREDIT");
+  // POS P2.9 ▸ fix1 H1 (มติ 2): เพดานคืนเป็นเงิน = ส่วนที่ลูกค้าจ่ายเป็นเงิน − ทิป − ที่คืนเป็นเงินไปแล้ว · บิลที่ไม่มีแถวบัตร/เครดิต = ไม่มี query เพิ่ม ◂
+  const askCash = x.payMethods.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
+  const salePays = askCash > 0 ? await tx.posPayment.findMany({ where: { saleId: sale.id, tenantId: s.tenantId }, select: { type: true, amountSatang: true, giftCardId: true } }) : [];
+  if (salePays.some((p) => p.type === "GIFT_CARD" || p.type === "STORE_CREDIT")) {
+    const cashPaid = salePays.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0) - Math.max(0, sale.tipSatang);
+    const cashBack = priorDocs.flatMap((d) => d.payments).filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
+    const excess = askCash - Math.max(0, cashPaid - cashBack);
+    if (excess > 0) {
+      // ส่วนของบัตรของขวัญที่ "คืนเข้าบัตรไม่ได้" (ระงับ/หมดอายุ) ที่ยังไม่ถูกคืน — เท่านั้นที่ไปเป็นเงินได้ และเฉพาะบิล walk-in (สมาชิก ⇒ เครดิตร้าน)
+      const member = await import("@/lib/modules/member");
+      const paidBy = new Map<string, number>();
+      for (const p of salePays) if (p.type === "GIFT_CARD" && p.giftCardId) paidBy.set(p.giftCardId, (paidBy.get(p.giftCardId) ?? 0) + p.amountSatang);
+      for (const d of priorDocs) for (const p of d.payments) if (p.type === "GIFT_CARD" && p.giftCardId && paidBy.has(p.giftCardId)) paidBy.set(p.giftCardId, paidBy.get(p.giftCardId)! - p.amountSatang);
+      let stuck = 0;
+      for (const [cardId, left] of paidBy) if (left > 0 && !(await member.giftCardRefundable(s.tenantId, cardId, tx))) stuck += left;
+      if (sale.memberId || stuck < excess || !managerOk) {
+        return refuse("REFUND_METHOD_INVALID", sale.memberId && stuck >= excess ? "บัตรใช้ไม่ได้ — คืนส่วนที่จ่ายด้วยบัตรเป็นเครดิตร้านของสมาชิก" : "คืนเป็นเงินได้ไม่เกินส่วนที่ลูกค้าจ่ายเป็นเงิน — ส่วนที่จ่ายด้วยบัตร/เครดิตร้านต้องคืนเข้าบัตร/เครดิตร้าน");
+      }
+      if (!x.reason) return refuse("REASON_REQUIRED", "คืนส่วนของบัตรที่ใช้ไม่ได้เป็นเงินสด ต้องระบุเหตุผล");
+      plan.cardShareToCash = excess;
+    }
+  }
   if (!giftRows.length && !creditRows.length) return plan;
   const member = await import("@/lib/modules/member");
   if (giftRows.length) {
@@ -531,7 +560,7 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   const paySum = x.payMethods.reduce((t, p) => t + p.amountSatang, 0);
   if (paySum !== grand) return refuse("PAYMENT_MISMATCH", `ยอดเงินที่คืน ${paySum} ไม่เท่ากับยอดคืน ${grand} (สตางค์)`);
   // POS P2.9 ▸ R6 R7: แถวคืนเข้าบัตร/เครดิตร้าน (ตรวจทั้งโหมดวางแผนและโหมดจริง · ไม่เขียน) ◂
-  const tenderPlan = await planRefundTenders(tx, s, sale, x, prior.docs);
+  const tenderPlan = await planRefundTenders(tx, s, sale, x, prior.docs, s.canRefund || !!opts.auditActorId);
   if (isRefusal(tenderPlan)) return tenderPlan;
   // POS P1.15 ▸ โหมดวางแผน: ตรวจครบแล้วคืนยอด (ไม่เขียนอะไร · กะไม่บังคับ — คำขออนุมัติคืนนอกกะ มติ 13) ◂
   if (opts.mode === "plan") return { kind: "plan", grandSatang: grand };
@@ -685,6 +714,7 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
         full,
         reasonCode: x.reasonCode,
         payMethods: x.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+        ...(tenderPlan.cardShareToCash > 0 ? { cardShareToCash: tenderPlan.cardShareToCash, reason: x.reason } : {}), // POS P2.9 ▸ fix1 H1 ◂
         ...(opts.auditExtra ?? {}),
       } as Prisma.InputJsonValue,
     },
