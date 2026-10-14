@@ -98,7 +98,7 @@ typecheck (5632 MB, pos gate lock) · `pnpm fitness` ±env · `fitness-pos` · `
 
 ## 10. Controller rulings (account B) — to be filled
 
-## 10. Controller rulings (account B, 14 Oct 17:4xZ) — binding
+## 10. Controller rulings (account B, 14 Oct 17:3xZ) — binding
 1. **CD1**: split kinds = by item · equal (N ways) · by seat, exactly as mockup 15B/15C and DESIGN `:217`; "by amount" is dropped.
 2. **CD2**: the split is a stored plan in new POS-owned tables (plan · parts · part-items), additive migration `20261210100000_pos_p25_split`, `IF NOT EXISTS`, lock_timeout 3s; no change to `RestaurantOrderItem` columns (P2.4/P2.6 pins).
 3. **CD3**: shared shares are price-only lines; exactly one part carries the item's stock cut (the lowest bill number that includes it); restaurant item rows are never split.
