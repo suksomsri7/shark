@@ -41,7 +41,7 @@ function paidAtText(iso: string, locale: PosReceiptLocale): string {
 }
 
 const vatRate = (bp: number) => (bp % 100 === 0 ? String(bp / 100) : (bp / 100).toFixed(2));
-const PAY_KEYS = new Set(["CASH", "TRANSFER", "PROMPTPAY", "DEPOSIT", "ROOM_CHARGE", "CARD"]);
+const PAY_KEYS = new Set(["CASH", "TRANSFER", "PROMPTPAY", "DEPOSIT", "ROOM_CHARGE", "CARD", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R10 ◂
 
 function CheckIcon() {
   return (

@@ -31,6 +31,7 @@ import { receiptKindOf } from "./receipt-shared";
 import { ensureReceiptToken } from "./receipt-token";
 import { saleChannelResolver } from "./channel"; // POS P2.1 ▸ R11 ◂
 import type { RegisterActor } from "./register-shared";
+import { paymentCards } from "./tender-cards"; // POS P2.9 ▸ R10 ◂
 
 // ── POS P1.12 ▸ R9 R15: สำเนาสมาชิก/สิทธิ์บนบิล (อ่านอย่างปลอดภัยจาก Json · ผิดรูป = ไม่มี) — ใบเสร็จ · หน้าบิล · ใบเสร็จออนไลน์ใช้ชุดเดียว ◂
 export type SaleMemberSnapshot = { name: string | null; memberCode: string | null; phoneMasked: string | null; tierKey: string | null; tierName: string | null };
@@ -198,6 +199,7 @@ export async function receiptForSale(tenantId: string, systemId: string, saleId:
 
 async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: ReceiptSaleRow, copy: boolean): Promise<ReceiptBuild | null> {
   const status: ReceiptSaleStatus | null = sale.status === "PAID" || sale.status === "VOIDED" || sale.status === "REFUNDED" ? sale.status : null;
+  const cards = await paymentCards(tenantId, sale.payments); // POS P2.9 ▸ R10 บัตรของแถวชำระ (ไม่มีแถวบัตร = ไม่มี query) ◂
   if (!status) return null;
 
   // ── ระบบ POS · สาขา · ค่าตั้งใบเสร็จ · สมุดบัญชีที่ผูก ──
@@ -342,6 +344,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       ...(p.tenderedSatang !== null ? { tenderedSatang: p.tenderedSatang } : {}),
       ...(p.changeSatang !== null ? { changeSatang: p.changeSatang } : {}),
       ...(nonEmpty(p.reference) ? { reference: nonEmpty(p.reference)! } : {}),
+      ...(p.giftCardTxnId && cards.has(p.giftCardTxnId) ? { card: cards.get(p.giftCardTxnId)! } : {}), // POS P2.9 ▸ R10 ◂
     })),
     // showPoints ปิด = ไม่พิมพ์ส่วนสมาชิก/แต้ม
     ...(customer && rs.showPoints

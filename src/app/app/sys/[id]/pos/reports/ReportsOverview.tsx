@@ -82,7 +82,7 @@ const initialOf = (name: string) => Array.from(name.trim()).find((ch) => !/[เ�
 /** P1.17U R4 §2.6 — ป้าย "ส่วนลดสูงผิดปกติ" = ส่วนลด > 15% ของยอดสุทธิ (ข้อสังเกตบนจอ · ไม่ใช่กฎของระบบ) */
 const HIGH_DISCOUNT_BP = 1500;
 /** ป้ายวิธีชำระที่มีคีย์ pos.shift.method.* (อื่น ๆ ใช้ป้ายจากเซิร์ฟเวอร์) — ชุดเดียวกับ ReportsClient */
-const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"]);
+const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R1 ◂
 /** R5 — กราฟรายวันแสดง 14 วันล่าสุดจบที่วัน `to` เสมอ (ช่วงจริงมาจากเซิร์ฟเวอร์: overview.chartRange) */
 const CHART_DAYS = 14;
 /** R6 — หน่วงก่อนยิงเมื่อเปลี่ยนช่วง/สาขา (พิมพ์วันที่ทีละตัวไม่ยิงทุกครั้ง) */

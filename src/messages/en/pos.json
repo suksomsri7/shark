@@ -215,6 +215,8 @@
       "transfer": "Bank transfer",
       "card": "Credit/debit card",
       "platform": "Platform",
+      "giftCard": "Gift card",
+      "storeCredit": "Store credit",
       "promptpayHint": "Scan QR",
       "transferHint": "Enter a reference",
       "cardHint": "EDC terminal",
@@ -362,6 +364,11 @@
       "pointsCapped": "Points exceed the per-bill limit — adjusted to the allowed amount",
       "benefitsExceedTotal": "Total discounts exceed the bill — reduce the discount or benefits first",
       "memberRightsChanged": "Member benefits just changed — check the total and pay again (nothing was charged)",
+      "giftCardNotFound": "No gift card with this number — check the number on the card",
+      "giftCardPin": "Wrong card PIN — ask the customer to try again (5 wrong tries lock the card for a while)",
+      "giftCardLocked": "This card is locked after too many wrong PINs — wait 15 minutes or take another payment method",
+      "giftCardChanged": "The card balance or status changed (used, suspended or expired) — look the card up again and pay again; nothing was charged",
+      "storeCreditNotOwner": "Store credit can only be used by the member who owns it — attach the right member to the bill first",
       "channelInvalid": "This sales channel can't be used (not found, inactive or from another branch) — pick another channel",
       "channelPayMismatch": "Payment doesn't match the sales channel — platform orders are paid in full by \"Platform\"; other channels can't use \"Platform\"",
       "channelNotFound": "This sales channel was not found in this branch",
@@ -662,7 +669,9 @@
       "TRANSFER": "Transfer",
       "DEPOSIT": "Deposit",
       "ROOM_CHARGE": "Room charge",
-      "PLATFORM": "Platform · awaiting payout"
+      "PLATFORM": "Platform · awaiting payout",
+      "GIFT_CARD": "Gift card",
+      "STORE_CREDIT": "Store credit"
     },
     "recount": {
       "title": "Recount (shift closed by system)",
@@ -1001,7 +1010,9 @@
         "CARD": "Card",
         "DEPOSIT": "Deposit",
         "ROOM_CHARGE": "Room charge",
-        "PLATFORM": "Platform"
+        "PLATFORM": "Platform",
+        "GIFT_CARD": "Gift card",
+        "STORE_CREDIT": "Store credit"
       },
       "tools": {
         "csvFile": "close-day-{date}.csv",
@@ -1347,6 +1358,8 @@
         "ROOM_CHARGE": "Room charge",
         "CARD": "Card",
         "PLATFORM": "Paid via platform",
+        "GIFT_CARD": "Gift card",
+        "STORE_CREDIT": "Store credit",
         "OTHER": "Other"
       },
       "footer": "Sent by SHARK · no other personal data on this page",
