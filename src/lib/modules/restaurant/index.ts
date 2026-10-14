@@ -72,3 +72,16 @@ export {
   type KitchenStationRow,
 } from "./kitchen";
 // ◂ POS P2.6
+
+// POS P2.5 ▸ แยกบิล · ย้ายโต๊ะ · รวมโต๊ะ (R4 R6 R7 R8 · มติ 7 8 · มติ §11 ข้อ 2 5): ล็อก session ของใบที่จ่าย · ปลดรายการตาม id (ตัวรับ void ของใบ) ·
+//   ย้าย/รวมด้วยล็อก session + ล็อกโต๊ะ (ไม่ล็อกแถวรายการ) · ประตูเดิม moveSession/mergeSession ไม่ถูกแตะ (หมุด L3) · ผู้เรียก = pos/table.ts · pos/table-split.ts · pos/register.ts
+export {
+  lockTableSessionInTx,
+  tableItemNamesForPos,
+  tableItemsByIdsForPos,
+  unlinkTableItemsInTx,
+  moveTableSessionInTx,
+  mergeTableSessionsInTx,
+  type PosMergeSession,
+} from "./pos-tables";
+// ◂ POS P2.5

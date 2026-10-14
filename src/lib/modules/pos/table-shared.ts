@@ -95,7 +95,12 @@ export type TableCard = {
   dirtySince: string | null;
   /** การจองที่กันโต๊ะนี้อยู่ตอนนี้ (BOOKED · อยู่ในช่วงกัน) */
   reservation: TableReservationBrief | null;
+  /** POS P2.5 ▸ R10: แผนแยกบิลที่เปิดอยู่ (การ์ด "แยกบิล 2/4" · null = ไม่มี) ◂ */
+  split?: TableSplitBrief | null;
 };
+/** POS P2.5 ▸ R10 (เพิ่มล้วน): สรุปแผนแยกบิล OPEN ของ session — การ์ดผัง (paid/parts) · แผงโต๊ะ (+ แบบ · ยอดใบที่ยังไม่จ่าย) ◂ */
+export type TableSplitBrief = { paidParts: number; partCount: number };
+export type TableSplitSummary = { splitId: string; mode: "ITEM" | "EQUAL" | "SEAT"; paidParts: number; partCount: number; remainingSatang: number };
 export type TableZone = { id: string; name: string; sortOrder: number; tableCount: number };
 /** ตัวเลขแถบบนของผัง (R2 · CONTROLLER-DECISION 2) — ใช้แสดง "โต๊ะยังไม่ปิด N · ฿" ในหน้า X/Z/ปิดวันได้ด้วย (Q10 · แสดงอย่างเดียว) */
 export type TableFloorSummary = { used: number; total: number; guests: number; avgMinutes: number; unpaidSatang: number };
@@ -132,5 +137,7 @@ export type RegisterTableDetailResult =
       unpaidSatang: number;
       unpaidItemIds: string[];
       itemsHash: string;
+      /** POS P2.5 ▸ R10: แผนแยกบิลที่เปิดอยู่ (null = ไม่มี) ◂ */
+      split?: TableSplitSummary | null;
     }
   | RegisterRefusal;

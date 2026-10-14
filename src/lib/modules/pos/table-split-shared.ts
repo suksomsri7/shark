@@ -205,3 +205,51 @@ export function tableSplitSaleAmounts(p: { discountSatang: number; serviceCharge
     ? { billDiscountSatang: p.discountSatang - p.serviceChargeSatang, serviceChargeSatang: 0 }
     : { billDiscountSatang: p.discountSatang, serviceChargeSatang: p.serviceChargeSatang };
 }
+
+// ═══════════ ชนิดของจอ (P2.5U · 15B/15C) — ผลของ registerSplitTable / registerSplitDetail ═══════════
+export type SplitPlanLineView = { itemId: string; /** ส่วนแบ่ง = "<รายการ> (u/N)" */ name: string; qty: number | null; shareNum: number | null; shareDen: number | null; amountSatang: number; stockOwner: boolean };
+export type SplitPlanPartView = {
+  id: string;
+  no: number;
+  label: string | null;
+  memberId: string | null;
+  baseSatang: number;
+  discountSatang: number;
+  serviceChargeSatang: number;
+  totalSatang: number;
+  vatSatang: number;
+  status: "OPEN" | "PAID";
+  saleId: string | null;
+  lines: SplitPlanLineView[];
+};
+export type SplitPlanView = {
+  splitId: string;
+  version: number;
+  mode: TableSplitMode;
+  status: "OPEN" | "DONE" | "CANCELLED";
+  partCount: number;
+  itemsHash: string;
+  billDiscount: TableSplitDiscount | null;
+  serviceChargeBp: number;
+  baseSatang: number;
+  discountSatang: number;
+  serviceChargeSatang: number;
+  totalSatang: number;
+  parts: SplitPlanPartView[];
+};
+/** ใบของแผนที่ส่งเข้า registerSplitTable (memberId null = ไม่มีสมาชิก · ไม่ส่ง = ปริยาย: สมาชิกของโต๊ะอยู่ใบ 1) */
+export type SplitPartInput = { no: number; label?: string | null; memberId?: string | null };
+export type RegisterSplitTableInput = {
+  tableSessionId: string;
+  mode: TableSplitMode;
+  partCount: number;
+  /** = itemsHash ของ quote ทั้งโต๊ะ (สร้างใหม่) · แทนแผน (splitId + expectedVersion) ใช้ชุดรายการของแผนเดิม */
+  expectedItemsHash: string;
+  allocations?: TableSplitAllocation[] | null;
+  billDiscount?: TableSplitDiscount | null;
+  parts?: SplitPartInput[] | null;
+  splitId?: string | null;
+  expectedVersion?: number | null;
+  managerPin?: string | null;
+  managerUserId?: string | null;
+};
