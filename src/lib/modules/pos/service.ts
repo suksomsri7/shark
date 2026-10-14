@@ -170,7 +170,13 @@ export type PosSaleErrorCode =
   | "HAS_REFUNDS"
   // POS P2.1 ▸ ช่องทางขายใช้ไม่ได้ (ไม่พบ/สาขาอื่น/เก็บแล้ว/ปิด) · วิธีชำระไม่ตรงช่องทาง (R5) ◂
   | "CHANNEL_INVALID"
-  | "CHANNEL_PAY_MISMATCH";
+  | "CHANNEL_PAY_MISMATCH"
+  // POS P2.9 ▸ R11: บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ — ไม่พบ (รวมร้านอื่น · X2) · PIN ผิด · ล็อก PIN · ยอด/สถานะเปลี่ยน · ไม่ใช่เจ้าของเครดิต ◂
+  | "GIFT_CARD_NOT_FOUND"
+  | "GIFT_CARD_PIN"
+  | "GIFT_CARD_LOCKED"
+  | "GIFT_CARD_CHANGED"
+  | "STORE_CREDIT_NOT_OWNER";
 export class PosSaleError extends Error {
   readonly code: PosSaleErrorCode;
   constructor(code: PosSaleErrorCode, message: string) {
@@ -238,6 +244,77 @@ function validateSaleInput(input: CreateSaleInput): void {
     if (!isNonNegInt(p.cashTenderedSatang)) throw bad("เงินที่รับมาต้องเป็นจำนวนเต็มสตางค์");
     // R3: รับน้อยกว่าส่วนเงินสด = ยอดไม่ครบ (PAYMENT_MISMATCH ตามมติ — ไม่มีรหัส TENDER_TOO_LOW)
     if (p.cashTenderedSatang < p.amountSatang) throw new PosSaleError("PAYMENT_MISMATCH", `เงินที่รับ ${p.cashTenderedSatang} น้อยกว่าส่วนเงินสด ${p.amountSatang}`);
+  }
+  validateTenderRows(input);
+}
+
+// ═══════ POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ (R3 R7 R9 · มติ 1 3 4 5 7) ◂ ═══════
+/** แถวชำระที่ "จ่ายจากเงินจริง" — ทิปจ่ายได้จากแถวเหล่านี้เท่านั้น (มติ 7: ทิปไม่จ่ายจากบัตร/เครดิต/มัดจำ/ลงห้อง/แพลตฟอร์ม) */
+const TIP_FUNDING_TYPES: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
+/** เพดานแถวบัตรของขวัญต่อบิล (มติ 4) */
+export const MAX_GIFT_CARD_ROWS = 3;
+/**
+ * ตรวจโครงแถวชนิดใหม่ (ก่อนแตะตัวนับ) — ตรวจเฉพาะเมื่อมีแถว GIFT_CARD/STORE_CREDIT หรือทิป > 0 (ผู้เรียกเดิมไม่ถูกตรวจเพิ่ม):
+ *   GIFT_CARD = ยังไม่รับผ่าน createSale (รอ CONTROLLER-DECISION: payMethods[].giftCard — สัญญา F15.2) · STORE_CREDIT ได้แถวเดียว ·
+ *   ห้ามบนบิลขาย/เติมบัตร (sourceModule MEMBER) และห้ามคู่ทางส่วนลดเดิม memberChoices.giftCard · ทิป ≤ Σ แถวเงินจริง
+ */
+function validateTenderRows(input: CreateSaleInput): void {
+  const bad = (m: string) => new PosSaleError("VALIDATION", m);
+  const gift = input.payMethods.filter((p) => p.type === "GIFT_CARD");
+  const credit = input.payMethods.filter((p) => p.type === "STORE_CREDIT");
+  if (gift.length) throw bad("ยังไม่เปิดรับบัตรของขวัญเป็นวิธีชำระ — รอการยืนยันสัญญาข้อมูลของบิล (P2.9)");
+  if (credit.length > 1) throw bad("เครดิตร้านใส่ได้รายการเดียว");
+  if (gift.length + credit.length > 0) {
+    if (input.sourceModule === "MEMBER") throw bad("บิลขาย/เติมบัตรกำนัลจ่ายด้วยบัตรของขวัญหรือเครดิตร้านไม่ได้");
+    if (input.memberChoices?.giftCard) throw bad("ใช้บัตรกำนัลเป็นส่วนลดพร้อมกับจ่ายด้วยบัตร/เครดิตร้านในบิลเดียวกันไม่ได้");
+    for (const p of [...gift, ...credit]) if (!(isNonNegInt(p.amountSatang) && p.amountSatang >= 1)) throw bad("ยอดที่จ่ายด้วยบัตร/เครดิตต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
+  }
+  const tip = input.tipSatang ?? 0;
+  if (tip > 0) {
+    const funding = input.payMethods.filter((p) => TIP_FUNDING_TYPES.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
+    if (tip > funding) throw bad("ทิปต้องจ่ายด้วยเงินสด พร้อมเพย์ โอน หรือบัตรธนาคาร — จ่ายจากบัตรของขวัญ/เครดิตร้านไม่ได้");
+  }
+}
+
+type SaleTender = { index: number; giftCardId: string; satang: number };
+type MemberTenderFacade = Pick<typeof import("@/lib/modules/member"), "tenderErrorCode">;
+/** ข้อผิดพลาดที่มีรหัสของบัตร → PosSaleError (ไม่มีบิล) · อื่น = โยนต่อ */
+async function tenderStep<T>(member: MemberTenderFacade, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const code = member.tenderErrorCode(e);
+    if (code) throw new PosSaleError(code, (e as Error).message);
+    throw e;
+  }
+}
+/**
+ * R3 R7 — เตรียมแถวบัตร (ก่อนตัวนับใบเสร็จ): เครดิตร้าน = ของสมาชิกของบิลในระบบสมาชิกของบิล (walk-in/คนอื่น = STORE_CREDIT_NOT_OWNER) ·
+ * แล้วล็อกแถวบัตรทุกใบ (เรียง id) ⇒ ลำดับล็อก บัตร → ตัวนับ เหมือนกันทุกบิล · ไม่มีแถวบัตร = ไม่มี query
+ */
+async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSystemId: string | null): Promise<SaleTender[]> {
+  const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT");
+  if (!rows.length) return [];
+  const member = await import("@/lib/modules/member");
+  const db = tx as Prisma.TransactionClient;
+  const out: SaleTender[] = [];
+  for (const { p, index } of rows) {
+    if (!input.memberId || !memberSystemId) throw new PosSaleError("STORE_CREDIT_NOT_OWNER", "เครดิตร้านใช้ได้เฉพาะบิลของสมาชิกเจ้าของเครดิต — เลือกสมาชิกก่อน");
+    const r = await tenderStep(member, () => member.prepareStoreCreditTender(input.tenantId, { systemId: memberSystemId, customerId: input.memberId!, satang: p.amountSatang }, db));
+    out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
+  }
+  await member.lockTenderCards(db, out.map((t) => t.giftCardId));
+  return out;
+}
+/** R3 R7 — ตัดยอดของแถวบัตรใน tx ของบิล (หลังเขียนแถวชำระ) แล้วผูก PosPayment.giftCardId/giftCardTxnId */
+async function useSaleTenders(tx: Client, input: CreateSaleInput, saleId: string, tenders: SaleTender[], paymentIds: string[]): Promise<void> {
+  if (!tenders.length) return;
+  const member = await import("@/lib/modules/member");
+  const db = tx as Prisma.TransactionClient;
+  for (const t of tenders) {
+    const paymentId = paymentIds[t.index]!;
+    const used = await tenderStep(member, () => member.useGiftCardTender(input.tenantId, { giftCardId: t.giftCardId, satang: t.satang, saleId, paymentId, byUserId: input.soldByUserId ?? null }, db));
+    await db.posPayment.update({ where: { id: paymentId }, data: { giftCardId: t.giftCardId, giftCardTxnId: used.txnId } });
   }
 }
 
@@ -558,6 +635,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     if (!memberSystemId && paidSum !== beforeMember) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${beforeMember}`);
     }
+    // POS P2.9 ▸ R3 R7: แถวบัตร/เครดิตร้าน — ตรวจ + ล็อกแถวบัตร ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีบิล) ◂
+    const tenders = await prepareSaleTenders(tx, input, memberSystemId);
 
     // POS P1.2 R2 F1: ส่วนประกอบชุดต้องอยู่ในคลังของสาขาที่ขายทุกชิ้น (ผู้เรียกอื่นนอกหน้าขายก็เช่นกัน) — สาขาไม่มีคลัง/ชิ้นนอกคลัง = VALIDATION ไม่มีบิล
     const compIds = [...new Set(lines.flatMap((l) => (l.components ?? []).map((c) => c.invItemId)))];
@@ -727,11 +806,14 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       });
     }
 
+    // POS P2.9 ▸ บิลที่มีแถวบัตร: id แถวชำระตั้งเองเรียงตามลำดับ (USE อ้าง PosPayment.id) · บิลอื่น = id ปริยายแบบเดิม ◂
+    const payIds = tenders.length ? orderedLineIds(input.payMethods.length) : input.payMethods.map(() => undefined);
     await tx.posPayment.createMany({
-      data: input.payMethods.map((p) => {
+      data: input.payMethods.map((p, i) => {
         // R3 (มติ §8 ข้อ 2): เงินรับ/ทอนอยู่บนแถว CASH ของตัวเอง · แถวอื่น/ไม่ส่ง = null
         const tendered = p.type === "CASH" && isNonNegInt(p.cashTenderedSatang) ? p.cashTenderedSatang : null;
         return {
+          ...(payIds[i] ? { id: payIds[i] } : {}),
           tenantId: input.tenantId,
           unitId: input.unitId,
           saleId: sale.id,
@@ -744,6 +826,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         };
       }),
     });
+    await useSaleTenders(tx, input, sale.id, tenders, payIds as string[]); // POS P2.9 ▸ R3 R7 ตัดยอดบัตร/เครดิตใน tx ของบิล ◂
 
     // R8 BLOCK: ตัดสต็อกในtx เดียวกับบิล (ล็อกถือไว้แล้ว) — คีย์ต่อบรรทัดเดียวกับการตัดหลัง commit ⇒ ตัวหลัง commit เจอคีย์เดิม
     //   ไม่ตัดซ้ำ แต่ยังโพสต์ต้นทุน (GL) + sync สินค้าบัญชีให้ (inventory.consume เส้นเดิม)
@@ -1313,7 +1396,7 @@ export type PosDaySummary = {
   otherSalesSatang: number; // รายการที่พนักงานพิมพ์เอง (ไม่ผูกทั้งสองอย่าง)
 };
 
-export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "DEPOSIT", "ROOM_CHARGE", "PLATFORM"]; // POS P2.1 ▸ PLATFORM ท้ายสุด ◂
+export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT", "ROOM_CHARGE", "PLATFORM"]; // POS P2.1 ▸ PLATFORM ท้ายสุด ◂ · POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านต่อจากบัตร ◂
 export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   CASH: "เงินสด",
   PROMPTPAY: "พร้อมเพย์",
@@ -1322,6 +1405,8 @@ export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   DEPOSIT: "มัดจำ",
   ROOM_CHARGE: "ลงบิลห้องพัก",
   PLATFORM: "แพลตฟอร์ม", // POS P2.1 ▸ แพลตฟอร์มเก็บเงินแทน (รอแพลตฟอร์มโอน) ◂
+  GIFT_CARD: "บัตรของขวัญ", // POS P2.9 ◂
+  STORE_CREDIT: "เครดิตร้าน", // POS P2.9 ◂
 };
 
 // business date (BKK) → ช่วง UTC [start, end) ของวันนั้น · POS P1.18 (มติ Q9): วัน D = [D 00:00 + cutoff, D+1 00:00 + cutoff) เวลาไทย ◂

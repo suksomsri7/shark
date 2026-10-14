@@ -19,6 +19,7 @@ import { posMembership } from "./access";
 import { registerCatalog, registerScan, quoteRegisterCart, quoteRegisterCartOverride, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
 import { registerFulfilReward, registerMemberBenefits, registerMemberLookup, registerQuickMember } from "./register-member"; // POS P1.12 ◂
+import { registerGiftCardLookup, registerPayTenders, type RegisterGiftCardLookupResult, type RegisterPayTendersResult } from "./tender"; // POS P2.9 ◂
 import { posDayStart, retryPendingStockCuts } from "./service"; // POS P2.3 ▸ §9 Q8 ตัดสต็อกค้าง · fix round 1 F2: ขอบเขตวันนี้ = ตัวนับ ◂
 import type {
   DiscardHeldCartResult,
@@ -339,5 +340,32 @@ export async function retryPendingStockCutsAction(args: { systemId: string; unit
   } catch (e) {
     const u = unexpected("retryPendingStockCutsAction", e);
     return { ok: false, code: "UNKNOWN", message: u.message };
+  }
+}
+
+// ═══════ POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านที่จอชำระ (สัญญาให้ P2.9U · มติ 13) ◂ ═══════
+/** R2 — ค้นบัตรของขวัญ (ไม่ใช้ PIN · ไม่เขียน · เลขปิดบัง) */
+export async function registerGiftCardLookupAction(args: Target & { number: string }): Promise<RegisterGiftCardLookupResult> {
+  const auth = await session("registerGiftCardLookupAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerGiftCardLookup(s.ctx, s.actor, { number: typeof args?.number === "string" ? args.number : "" });
+  } catch (e) {
+    return unexpected("registerGiftCardLookupAction", e);
+  }
+}
+
+/** มติ 6 8 — ช่องแถว 2 ของจอชำระ (บัตรของขวัญ · เครดิตร้าน · มัดจำ · ลงบิลห้อง) */
+export async function registerPayTendersAction(args: Target): Promise<RegisterPayTendersResult> {
+  const auth = await session("registerPayTendersAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerPayTenders(s.ctx, s.actor);
+  } catch (e) {
+    return unexpected("registerPayTendersAction", e);
   }
 }

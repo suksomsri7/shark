@@ -597,6 +597,12 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   TABLE_ITEMS_CHANGED: "รายการของโต๊ะเปลี่ยนระหว่างเช็คบิล (มีรอบใหม่ หรืออีกเครื่องจ่ายไปแล้ว) — ตรวจยอดใหม่ ยังไม่ได้เก็บเงิน",
   TABLE_HAS_UNPAID: "โต๊ะนี้ยังมีรายการค้างจ่าย — เช็คบิลก่อนปิดโต๊ะ",
   VERSION_CHANGED: "รอบร่างของโต๊ะนี้เพิ่งถูกแก้ ส่งครัว หรือทิ้งจากอีกเครื่อง — โหลดรอบร่างล่าสุดแล้วลองใหม่", // POS P2.4 ▸ fix 2 F1 ◂
+  // POS P2.9 ▸ R11 ◂
+  GIFT_CARD_NOT_FOUND: "ไม่พบบัตรของขวัญหมายเลขนี้ — ตรวจหมายเลขบนบัตรอีกครั้ง",
+  GIFT_CARD_PIN: "PIN ของบัตรไม่ถูกต้อง — ยังไม่ได้เก็บเงิน",
+  GIFT_CARD_LOCKED: "บัตรใบนี้ถูกระงับชั่วคราวเพราะใส่ PIN ผิดหลายครั้ง — รับเงินด้วยวิธีอื่น",
+  GIFT_CARD_CHANGED: "ยอดหรือสถานะของบัตรเปลี่ยน — ค้นบัตรใหม่แล้วชำระอีกครั้ง ยังไม่ได้เก็บเงิน",
+  STORE_CREDIT_NOT_OWNER: "เครดิตร้านใช้ได้เฉพาะสมาชิกเจ้าของเครดิต — เลือกสมาชิกของบิลก่อน",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1935,11 +1941,13 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   const payMethods: RegParsedSubmit["payMethods"] = [];
   for (const p of pmRaw as unknown[]) {
     if (!regIsRecord(p) || !regOnlyKeys(p, REG_PAY_KEYS)) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
-    if (!(REGISTER_PAY_TYPES as readonly unknown[]).includes(p.type)) return regRefuse("VALIDATION", "หน้าขายนี้รับเงินสด พร้อมเพย์ โอน บัตร และแพลตฟอร์ม (เฉพาะออเดอร์แพลตฟอร์ม) เท่านั้น");
+    if (!(REGISTER_PAY_TYPES as readonly unknown[]).includes(p.type)) return regRefuse("VALIDATION", "หน้าขายนี้รับเงินสด พร้อมเพย์ โอน บัตร เครดิตร้าน และแพลตฟอร์ม (เฉพาะออเดอร์แพลตฟอร์ม) เท่านั้น");
     // B1.1: แต่ละรายการต้อง ≥ 1 สตางค์ (รายการยอด 0 = VALIDATION — บิลยอด 0 ส่งรายการว่าง)
     if (!regIsMoney(p.amountSatang) || p.amountSatang < 1) return regRefuse("VALIDATION", "จำนวนเงินของแต่ละวิธีต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
     // เงินสดได้รายการเดียว (เงินที่รับ/ทอนผูกกับแถวเงินสดแถวเดียว · มติ §8 ข้อ 2)
     if (p.type === "CASH" && payMethods.some((x) => x.type === "CASH")) return regRefuse("VALIDATION", "เงินสดใส่ได้รายการเดียว");
+    // POS P2.9 ▸ R7: เครดิตร้านได้รายการเดียว ไม่มีเลขอ้างอิง (สมาชิกของบิล = เจ้าของเครดิต — ตรวจตอนส่ง) ◂
+    if (p.type === "STORE_CREDIT" && (payMethods.some((x) => x.type === "STORE_CREDIT") || (p.reference !== undefined && p.reference !== null))) return regRefuse("VALIDATION", "เครดิตร้านใส่ได้รายการเดียว และไม่มีเลขอ้างอิง");
     let reference: string | null = null;
     if (p.reference !== undefined && p.reference !== null) {
       // POS P1.7 ▸ พร้อมเพย์รับเลขอ้างอิงได้เฉพาะ id ใบขอรับเงิน (pi_…) · อื่น ๆ = VALIDATION เหมือน P1.6 ◂
@@ -2248,6 +2256,11 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // P1.6: ค่าตั้งการชำระเงิน (ค่าบริการ · ทิป) — ทิปส่งมาตอนระบบไม่เปิดรับทิป = VALIDATION (ไม่มีบิล)
     const paySettings = await regPaySettings(db, s);
     if (req.tipSatang > 0 && !paySettings.tip.enabled) return regRefuse("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
+    // POS P2.9 ▸ R7 R9 (มติ 3 7): เครดิตร้าน = บิลต้องมีสมาชิก (เจ้าของตรวจที่ createSale) · ทิปจ่ายจากเงินจริงเท่านั้น (ไม่ใช่บัตร/เครดิต) — ก่อนเขียนอะไร ◂
+    if (req.payMethods.some((x) => x.type === "STORE_CREDIT") && !req.cart.memberId) return regRefuse("STORE_CREDIT_NOT_OWNER");
+    if (req.tipSatang > req.payMethods.filter((x) => x.type === "CASH" || x.type === "PROMPTPAY" || x.type === "TRANSFER" || x.type === "CARD").reduce((t, x) => t + x.amountSatang, 0)) {
+      return regRefuse("VALIDATION", "ทิปต้องจ่ายด้วยเงินสด พร้อมเพย์ โอน หรือบัตรธนาคาร");
+    }
     // POS P2.4 ▸ R7 (CONTROLLER-DECISION 3): บิลโต๊ะ — โต๊ะยัง OPEN · มีรายการค้างจ่าย · ชุดรายการปัจจุบัน = ที่ quote ให้มา (ก่อนคิดราคา ⇒
     //   รอบใหม่ระหว่าง quote กับ submit = TABLE_ITEMS_CHANGED ไม่ใช่ PRICE_CHANGED · ไม่เขียนอะไร) ◂
     if (tableSess) {

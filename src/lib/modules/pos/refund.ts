@@ -114,7 +114,8 @@ function bkkPeriod(): string {
 type CleanInput = {
   saleId: string;
   lines: { lineId: string; qty: number; restock: boolean | null }[];
-  payMethods: { type: RefundPayType; amountSatang: number; reference: string | null }[];
+  // POS P2.9 ▸ giftCardId = บัตรที่จะคืนเข้า (แถว GIFT_CARD · บิลมีบัตรใบเดียว = ไม่ต้องส่ง) ◂
+  payMethods: { type: RefundPayType; amountSatang: number; reference: string | null; giftCardId: string | null }[];
   reasonCode: RefundReasonCode;
   reason: string | null;
   deviceId: string | undefined;
@@ -157,7 +158,9 @@ function cleanInput(raw: unknown, ctx: RegisterCtx): CleanInput | RefundRefusal 
     if (typeof p.type !== "string" || !(REFUND_PAY_TYPES as readonly string[]).includes(p.type)) return refuse("VALIDATION", "ไม่รู้จักวิธีคืนเงินนี้");
     if (typeof p.amountSatang !== "number" || !Number.isInteger(p.amountSatang) || p.amountSatang < 1) return refuse("VALIDATION", "ยอดคืนต้องเป็นจำนวนเต็มสตางค์มากกว่า 0");
     if (p.reference !== undefined && p.reference !== null && (typeof p.reference !== "string" || p.reference.length > MAX_REFERENCE)) return refuse("VALIDATION", `เลขอ้างอิงยาวเกิน ${MAX_REFERENCE} ตัวอักษร`);
-    payMethods.push({ type: p.type as RefundPayType, amountSatang: p.amountSatang, reference: typeof p.reference === "string" && p.reference.trim() ? p.reference.trim() : null });
+    // POS P2.9 ▸ R6: giftCardId ส่งได้เฉพาะแถว GIFT_CARD ◂
+    if (p.giftCardId !== undefined && p.giftCardId !== null && (p.type !== "GIFT_CARD" || !isId(p.giftCardId))) return refuse("VALIDATION", "ระบุบัตรได้เฉพาะการคืนเข้าบัตรของขวัญ");
+    payMethods.push({ type: p.type as RefundPayType, amountSatang: p.amountSatang, reference: typeof p.reference === "string" && p.reference.trim() ? p.reference.trim() : null, giftCardId: typeof p.giftCardId === "string" ? p.giftCardId : null });
   }
   const dev = raw.deviceId !== undefined ? raw.deviceId : ctx.deviceId;
   if (dev !== undefined && dev !== null && !isShiftDeviceId(dev)) return refuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
@@ -196,6 +199,9 @@ function docView(r: DocRow): RefundDoc {
       .map((p) => ({ type: p.type, amountSatang: p.amountSatang, reference: p.reference })),
   };
 }
+
+/** POS P2.9 ▸ ฐาน id แถวคืนที่ตั้งเอง (เรียงตามลำดับแถว · ไม่ชนข้ามใบ) ◂ */
+const refundPayIdBase = (refundId: string) => `rp${refundId}`;
 
 /** payload ของคีย์ซ้ำเท่ากันไหม (P1.6 R6 shape) — บิลเดิม · สาขา/ระบบ · ถุงบรรทัด (บรรทัด|จำนวน|รับคืน) · ถุงวิธีจ่าย (ชนิด|ยอด) */
 function samePayload(dup: DocRow, s: Scope, x: CleanInput): boolean {
@@ -338,9 +344,80 @@ async function runRefundTx(db: Db, s: Scope, x: CleanInput, preShiftId: string |
       if (res.kind === "result" && res.result.ok && !res.result.duplicated) scheduleDrain();
       return res;
     } catch (e) {
+      if (e instanceof RefundAbort) return { kind: "result", result: e.refusal }; // POS P2.9 ▸ บัตรเปลี่ยนสถานะระหว่างคืน = ธุรกรรมย้อนทั้งก้อน ◂
       if (attempt < 2 && isUniqueViolation(e)) continue;
       throw e;
     }
+  }
+}
+
+// ═══════════ POS P2.9 ▸ คืนเข้าบัตรของขวัญ (R6) / เครดิตร้าน (R7) — มติ 5 10 ◂ ═══════════
+/** โยนในtx ของใบคืนเพื่อย้อนทั้งก้อน แล้วคืนเป็นคำปฏิเสธ (runRefundTx) */
+class RefundAbort extends Error {
+  constructor(readonly refusal: RefundRefusal) {
+    super(refusal.code);
+  }
+}
+type RefundTenderPlan = { gift: { index: number; giftCardId: string; satang: number }[]; credit: { index: number; systemId: string; customerId: string; satang: number } | null };
+const CARD_REFUND_MSG = "คืนเข้าบัตรไม่ได้ — เลือกเงินสดหรือเครดิตร้าน";
+/**
+ * วางแผนแถวคืนชนิดบัตร (ในtx หลังล็อกบิลเดิม · ไม่เขียน): GIFT_CARD = กลับเข้าบัตรของบิลนี้เท่านั้น เพดานต่อใบ = ส่วนที่บัตรจ่าย − ที่คืนเข้าใบนั้นไปแล้ว ·
+ * บัตรระงับ/หมดอายุ = REFUND_METHOD_INVALID · STORE_CREDIT = บิลของสมาชิกเท่านั้น (ออก/เติมเครดิตในระบบสมาชิกของสมาชิก) · แถวเดียว
+ */
+async function planRefundTenders(tx: Tx, s: Scope, sale: { id: string; memberId: string | null }, x: CleanInput, priorDocs: { payments: PosPayment[] }[]): Promise<RefundTenderPlan | RefundRefusal> {
+  const plan: RefundTenderPlan = { gift: [], credit: null };
+  const giftRows = x.payMethods.map((p, index) => ({ p, index })).filter((r) => r.p.type === "GIFT_CARD");
+  const creditRows = x.payMethods.map((p, index) => ({ p, index })).filter((r) => r.p.type === "STORE_CREDIT");
+  if (!giftRows.length && !creditRows.length) return plan;
+  const member = await import("@/lib/modules/member");
+  if (giftRows.length) {
+    const paid = new Map<string, number>();
+    for (const p of await tx.posPayment.findMany({ where: { saleId: sale.id, tenantId: s.tenantId, type: "GIFT_CARD" }, select: { giftCardId: true, amountSatang: true } })) {
+      if (p.giftCardId) paid.set(p.giftCardId, (paid.get(p.giftCardId) ?? 0) + p.amountSatang);
+    }
+    const back = new Map<string, number>();
+    for (const d of priorDocs) for (const p of d.payments) if (p.type === "GIFT_CARD" && p.giftCardId) back.set(p.giftCardId, (back.get(p.giftCardId) ?? 0) + p.amountSatang);
+    const ask = new Map<string, number>();
+    for (const { p, index } of giftRows) {
+      const cardId = p.giftCardId ?? (paid.size === 1 ? [...paid.keys()][0]! : null);
+      if (!cardId) return refuse(paid.size ? "VALIDATION" : "REFUND_METHOD_INVALID", paid.size ? "บิลนี้จ่ายด้วยบัตรหลายใบ — เลือกบัตรที่จะคืนเข้า" : "บิลนี้ไม่ได้จ่ายด้วยบัตรของขวัญ — คืนเข้าบัตรไม่ได้");
+      if (!paid.has(cardId)) return refuse("REFUND_METHOD_INVALID", "คืนเข้าได้เฉพาะบัตรที่ใช้จ่ายบิลนี้");
+      ask.set(cardId, (ask.get(cardId) ?? 0) + p.amountSatang);
+      plan.gift.push({ index, giftCardId: cardId, satang: p.amountSatang });
+    }
+    for (const [cardId, want] of ask) {
+      if (want > (paid.get(cardId) ?? 0) - (back.get(cardId) ?? 0)) return refuse("REFUND_METHOD_INVALID", `คืนเข้าบัตรได้ไม่เกินส่วนที่บัตรจ่าย (เหลือ ${(((paid.get(cardId) ?? 0) - (back.get(cardId) ?? 0)) / 100).toLocaleString("th-TH")} บาท)`);
+      if (!(await member.giftCardRefundable(s.tenantId, cardId, tx))) return refuse("REFUND_METHOD_INVALID", CARD_REFUND_MSG);
+    }
+  }
+  if (creditRows.length) {
+    if (creditRows.length > 1) return refuse("VALIDATION", "คืนเป็นเครดิตร้านได้รายการเดียว");
+    const c = sale.memberId ? await tx.customer.findFirst({ where: { id: sale.memberId, tenantId: s.tenantId }, select: { memberSystemId: true, status: true } }) : null;
+    if (!c || c.status === "MERGED" || !c.memberSystemId) return refuse("REFUND_METHOD_INVALID", "คืนเป็นเครดิตร้านได้เฉพาะบิลของสมาชิก — เลือกเงินสดหรือวิธีอื่น");
+    plan.credit = { index: creditRows[0]!.index, systemId: c.memberSystemId, customerId: sale.memberId!, satang: creditRows[0]!.p.amountSatang };
+  }
+  return plan;
+}
+/** เขียนแถวคืนชนิดบัตร (ในtx ของใบคืน · หลังสร้างแถวคืน): คืนเข้าบัตร คีย์ `pos-refund-<refundId>-<cardId>` · เครดิตร้าน คีย์ `pos-credit-<refundId>` */
+async function applyRefundTenders(tx: Tx, s: Scope, refundId: string, plan: RefundTenderPlan, payIds: string[]): Promise<void> {
+  if (!plan.gift.length && !plan.credit) return;
+  const member = await import("@/lib/modules/member");
+  const abort = (e: unknown): never => {
+    if (member.tenderErrorCode(e)) throw new RefundAbort(refuse("REFUND_METHOD_INVALID", CARD_REFUND_MSG));
+    throw e;
+  };
+  const sums = new Map<string, number>();
+  for (const g of plan.gift) sums.set(g.giftCardId, (sums.get(g.giftCardId) ?? 0) + g.satang);
+  const txnOf = new Map<string, string>();
+  for (const [giftCardId, satang] of sums) {
+    const r = await member.refundToGiftCard(s.tenantId, { giftCardId, satang, idempotencyKey: `pos-refund-${refundId}-${giftCardId}`, refundSaleId: refundId, byUserId: s.actor.userId }, tx).catch(abort);
+    txnOf.set(giftCardId, r.txnId);
+  }
+  for (const g of plan.gift) await tx.posPayment.update({ where: { id: payIds[g.index]! }, data: { giftCardId: g.giftCardId, giftCardTxnId: txnOf.get(g.giftCardId) ?? null } });
+  if (plan.credit) {
+    const c = plan.credit;
+    const r = await member.issueStoreCredit(s.tenantId, { systemId: c.systemId, customerId: c.customerId, satang: c.satang, idempotencyKey: `pos-credit-${refundId}`, refundSaleId: refundId, byUserId: s.actor.userId }, tx).catch(abort);
+    await tx.posPayment.update({ where: { id: payIds[c.index]! }, data: { giftCardId: r.giftCardId, giftCardTxnId: r.txnId } });
   }
 }
 
@@ -453,6 +530,9 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   if (x.payMethods.length === 0 && grand !== 0) return refuse("VALIDATION", "ระบุวิธีคืนเงิน");
   const paySum = x.payMethods.reduce((t, p) => t + p.amountSatang, 0);
   if (paySum !== grand) return refuse("PAYMENT_MISMATCH", `ยอดเงินที่คืน ${paySum} ไม่เท่ากับยอดคืน ${grand} (สตางค์)`);
+  // POS P2.9 ▸ R6 R7: แถวคืนเข้าบัตร/เครดิตร้าน (ตรวจทั้งโหมดวางแผนและโหมดจริง · ไม่เขียน) ◂
+  const tenderPlan = await planRefundTenders(tx, s, sale, x, prior.docs);
+  if (isRefusal(tenderPlan)) return tenderPlan;
   // POS P1.15 ▸ โหมดวางแผน: ตรวจครบแล้วคืนยอด (ไม่เขียนอะไร · กะไม่บังคับ — คำขออนุมัติคืนนอกกะ มติ 13) ◂
   if (opts.mode === "plan") return { kind: "plan", grandSatang: grand };
 
@@ -550,9 +630,13 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
     };
   });
   await tx.posSaleLine.createMany({ data: lineRows });
+  // POS P2.9 ▸ ใบคืนที่มีแถวบัตร: id แถวตั้งเอง (ผูก giftCardId/giftCardTxnId หลังคืนเข้าบัตร) · ใบอื่น = id ปริยายแบบเดิม ◂
+  const tenderRows = tenderPlan.gift.length + (tenderPlan.credit ? 1 : 0);
+  const payIds = x.payMethods.map((_, i) => (tenderRows ? `${refundPayIdBase(refund.id)}${String(i).padStart(2, "0")}` : undefined));
   await tx.posPayment.createMany({
-    data: x.payMethods.map((p) => ({ tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, type: p.type as PosPayType, amountSatang: p.amountSatang, reference: p.reference })),
+    data: x.payMethods.map((p, i) => ({ ...(payIds[i] ? { id: payIds[i] } : {}), tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, type: p.type as PosPayType, amountSatang: p.amountSatang, reference: p.reference })),
   });
+  await applyRefundTenders(tx, s, refund.id, tenderPlan, payIds as string[]); // POS P2.9 ▸ R6 R7 ◂
   const updated = await tx.posSale.update({
     where: { id: sale.id },
     data: { refundedSatang: { increment: grand }, ...(full ? { status: "REFUNDED" as const } : {}) },

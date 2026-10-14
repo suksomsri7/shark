@@ -11,14 +11,19 @@ import { prisma } from "./db";
 import { saleChannelName } from "./channel"; // POS P2.1 ◂
 import { allocateBillDiscount } from "./refund-math";
 import { snapshotBuyer } from "./tax-invoice-shared";
+import { parsePosPaymentSettings } from "./payment-settings"; // POS P2.9 ▸ R9 บัญชีพักทิป ◂
 
 // PosPayType → ช่องทางเงินฝั่งบัญชี (passthrough — WO-0040a เลิกยุบ DEPOSIT/ROOM_CHARGE)
 //   CASH → เงินสด (1000) · PROMPTPAY/TRANSFER → ธนาคาร (1010)
 //   DEPOSIT → ลูกค้าใช้เงินมัดจำที่วางไว้ → Dr 2110 เงินมัดจำรับ (ลดหนี้สิน)
 //   ROOM_CHARGE → ลงบิลห้องยังไม่จ่าย → Dr 1100 ลูกหนี้
 //   POS P2.1: PLATFORM → แพลตฟอร์มเก็บเงินแทน → Dr ลูกหนี้แพลตฟอร์ม (ห้ามตกไป TRANSFER = ธนาคาร)
-function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" {
+//   POS P2.9: GIFT_CARD/STORE_CREDIT → เงินรับล่วงหน้า (STORED_VALUE → Dr/Cr 2110 · มติ 1 · CD1b · มติ 9) — ห้ามตกไป TRANSFER
+function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" {
   switch (type) {
+    case "GIFT_CARD": // POS P2.9 ▸ ◂
+    case "STORE_CREDIT":
+      return "STORED_VALUE";
     case "PLATFORM":
       return "PLATFORM";
     case "CASH":
@@ -112,7 +117,10 @@ export async function bridgePosSalePaid(
     serviceCharge > 0 && src0.length > 0
       ? [...src0, { name: "ค่าบริการ", qty: 1, unitPriceSatang: serviceCharge, discountSatang: 0, lineTotalSatang: serviceCharge, itemId: null }]
       : src0;
-  const pays = withoutTip(payments, Math.max(0, sale.tipSatang ?? 0));
+  // POS P2.9 ▸ R9 (มติ 7): ทิปลงบัญชีพักทิป — ขา Dr = เงินที่รับเต็ม · Cr บัญชีพักทิปของค่าตั้ง POS · ไม่มีบัญชีในค่าตั้ง = ทางเดิม (ตัดทิปออก) + เตือน ops ◂
+  const tipSatang = Math.max(0, sale.tipSatang ?? 0);
+  const tipLedgerId = tipSatang > 0 ? await tipLedgerOf(sale) : null;
+  const pays = tipLedgerId ? payments : withoutTip(payments, tipSatang);
   const buyer = snapshotBuyer(sale.taxInvoice);
   // ส่วนลดท้ายบิล = Σ บรรทัด − ยอดสุทธิ (เก็บที่หัวบิลใน PosSale.discountSatang รวมคูปองแล้ว)
   const lineSum = src.reduce((n, l) => n + l.qty * l.unitPriceSatang - l.discountSatang, 0);
@@ -146,6 +154,7 @@ export async function bridgePosSalePaid(
     // clamp: ส่วนลดท้ายบิลอาจทำให้ยอดบริการ (ก่อนลด) มากกว่ายอดสุทธิ — กันไม่ให้เกินทั้งบิล
     serviceGrossSatang: Math.min(serviceGrossSatang, gross),
     payMethods: pays.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
+    ...(tipLedgerId ? { tip: { satang: tipSatang, ledgerId: tipLedgerId } } : {}), // POS P2.9 ▸ R9 ◂
     lines,
     customer: detail?.customer ?? undefined,
     receiptNo: sale.receiptNo ?? null,
@@ -169,6 +178,14 @@ export async function bridgePosSalePaid(
   //   ล้ม = โยน ⇒ คิวลองใหม่ (PAID ข้ามด้วยคีย์ของตัวเอง) · ไม่ผูกสมุด = จบเงียบ (snapshot อยู่บนบิล) ◂
   await postSaleCommission(sale, channelName);
   return res;
+}
+
+/** POS P2.9 ▸ R9: บัญชีพักทิปของค่าตั้ง POS (ณ ตอนลงบัญชี) — ไม่มี = null (ทางเดิม: ตัดทิปออกจากขา Dr + เตือน ops) ◂ */
+async function tipLedgerOf(sale: SaleForBridge): Promise<string | null> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: sale.systemId, tenantId: sale.tenantId }, select: { settings: true } });
+  const ledgerId = parsePosPaymentSettings(sys?.settings).tip.ledgerAccountId;
+  if (!ledgerId) await logOps("WARN", "pos.tip", `บิล POS ${sale.id}: มีทิปแต่จุดขายไม่มีบัญชีพักทิป — ลงบัญชีแบบตัดทิปออก (ทิปไม่เข้าหนี้สิน)`, { tenantId: sale.tenantId }).catch(() => undefined);
+  return ledgerId;
 }
 
 // POS P2.1 ▸ fix round 1 (รีวิว F1 F4) — ขั้นค่าคอมฯ ของบิล (ตัวเดียว · ใช้ทั้งคิวปิดบิล ตัวซ่อมของบิลที่คืนแล้ว และตัวรับคืนเงิน) ◂

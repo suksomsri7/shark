@@ -45,7 +45,7 @@ const MSG: Record<PosPaymentSettingsCode, string> = {
   NOT_FOUND: "ไม่พบจุดขายนี้",
   PERMISSION_DENIED: "เฉพาะเจ้าของร้านเท่านั้นที่ตั้งค่าการชำระเงินได้",
   VALIDATION: "ค่าที่ตั้งไม่ถูกต้อง",
-  TIP_ACCOUNT_REQUIRED: "เปิดรับทิปไม่ได้ — เลือกบัญชีพักทิปในสมุดบัญชีที่เชื่อมกับจุดขายนี้ก่อน",
+  TIP_ACCOUNT_REQUIRED: "เปิดรับทิปไม่ได้ — เลือกบัญชีพักทิป (หมวดหนี้สิน) ในสมุดบัญชีที่เชื่อมกับจุดขายนี้ก่อน",
   TIP_NOT_AVAILABLE: "ระบบยังไม่เปิดให้รับทิป — รอการลงบัญชีทิปเข้าบัญชีพักทิป (งานถัดไป P1.6b)",
   UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
 };
@@ -53,7 +53,8 @@ const MSG: Record<PosPaymentSettingsCode, string> = {
  * P1.6 R2 F5 (มติผู้คุมงาน): ทิปยังลงบัญชีพักทิปไม่ได้ (JV ตัดทิปออก แต่ยังไม่บันทึก Dr เงินสด/Cr หนี้สินทิป) ⇒ ห้ามเปิดทิปจนกว่า
  * ใบ P1.6b จะลงบัญชีทิปได้จริง · ท่อทิปอื่นทั้งหมดยังอยู่ (ค่าตั้ง · หน้าขาย · createSale · สะพาน) — P1.6b เปลี่ยนค่านี้เป็น true
  */
-const TIP_POSTING_READY = false;
+// POS P2.9 ▸ R9 (มติ 7): สะพานบัญชีลง Cr บัญชีพักทิป (หนี้สิน) แล้ว ⇒ เปิดทิปได้จริง ◂
+const TIP_POSTING_READY = true;
 const refuse = (code: PosPaymentSettingsCode, message?: string): PosPaymentSettingsRefusal => ({ ok: false, code, message: message ?? MSG[code] });
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -104,7 +105,8 @@ async function tipLedgerOk(db: Db, tenantId: string, posSystemId: string, ledger
     select: { systemId: true },
   });
   if (!link) return false;
-  const ledger = await db.accountLedger.findFirst({ where: { id: ledgerId, tenantId, systemId: link.systemId, archivedAt: null }, select: { id: true } });
+  // POS P2.9 ▸ R9 (มติ 7): ต้องเป็นบัญชีหนี้สิน (LIABILITY) — ค่าใช้จ่าย/รายได้ = TIP_ACCOUNT_REQUIRED ◂
+  const ledger = await db.accountLedger.findFirst({ where: { id: ledgerId, tenantId, systemId: link.systemId, archivedAt: null, type: "LIABILITY" }, select: { id: true } });
   return !!ledger;
 }
 
