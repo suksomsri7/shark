@@ -570,8 +570,8 @@ export function PayDialog(p: Props) {
    * มติ 4: ค้นแถวบัตรทุกใบใหม่ (GIFT_CARD_LOCKED / GIFT_CARD_CHANGED / โหลดกลับ) — ใช้ไม่ได้/ล็อก = ถอดแถว · ยอดใหม่ = ตัดจำนวนลงเหลือยอดบัตร ·
    * คืนจำนวนแถวที่ถอด (คำปฏิเสธไม่บอกว่าใบไหน — ใบเดียว = ใบนั้นเลย)
    */
-  const relookupRows = async (mode: "locked" | "changed" | "restore", only: PayRow[]): Promise<void> => {
-    if (!p.tenders) return;
+  const relookupRows = async (mode: "locked" | "changed" | "restore", only: PayRow[]): Promise<PayRow[]> => {
+    if (!p.tenders) return [];
     const t = p.tenders;
     const res = await Promise.all(
       only.map(async (r) => ({ r, out: r.card ? await registerGiftCardLookupAction({ systemId: t.systemId, unitId: t.unitId, number: r.card.number }).catch(() => null) : null })),
@@ -596,6 +596,12 @@ export function PayDialog(p: Props) {
       }),
     );
     if (drop.size) setGcRowsNote(mode === "locked" ? "pay.gc.lockedRemoved" : "pay.gc.unusableRemoved");
+    // POS P2.9U ▸ fix1 V1: แถวที่ยังอยู่ (ยอด/เลขปิดบังล่าสุด) — ผู้เรียกเปิดแผงใส่ PIN ของแถวแรกได้ทันที ◂
+    return only.flatMap((r): PayRow[] => {
+      if (drop.has(r.id) || !r.card) return [];
+      const c = upd.get(r.id);
+      return [c ? { ...r, amountSatang: Math.min(r.amountSatang, c.balanceSatang), card: { ...r.card, masked: c.numberMasked, balanceSatang: c.balanceSatang } } : r];
+    }).filter((r) => r.amountSatang > 0);
   };
   // มติ 4: คำปฏิเสธของบัตรจาก submit (refusalMessageKey) → แถว/แบนเนอร์ · คำขอเดิมไม่มีบิล (คีย์เดิม)
   const lastErr = useRef<PayError | null>(null);
@@ -619,7 +625,10 @@ export function PayDialog(p: Props) {
       setGcBanner(true);
       setRows((s) => s.map((r) => (r.type === "GIFT_CARD" && r.card ? { ...r, card: { ...r.card, note: "pinAgain" } } : r)));
       setGc(GC_EMPTY);
-      void relookupRows("changed", gcRows);
+      // POS P2.9U ▸ fix1 V1: ค้นใหม่แล้วเปิดแผงบัตรของแถวแรกที่ยังอยู่ พร้อมแป้น PIN (ไม่ต้องแตะ "ใส่ PIN") ◂
+      void relookupRows("changed", gcRows).then((kept) => {
+        if (kept[0]) reenterPin(kept[0]);
+      });
     } else if (e.code === "STORE_CREDIT_NOT_OWNER") {
       setRows((s) => s.filter((r) => r.type !== "STORE_CREDIT"));
       if (method === "STORE_CREDIT") {
