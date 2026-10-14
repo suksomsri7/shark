@@ -783,6 +783,9 @@ async function runDb() {
       if (ar?.ok !== false) p.push(`archiveLedger → ${short(ar, 80)}`);
       const ur = await call(coaMod, "updateLedger", cctx, ledgerTip, { type: "EXPENSE" });
       if (ur?.ok !== false) p.push(`updateLedger type → ${short(ur, 80)}`);
+      // ORACLE-ADD ผู้คุม 14 ต.ค. (fix 2 · H5 ค้าง): ปิดใช้งาน (setLedgerActive false) ก็ต้องถูกปฏิเสธ ◂
+      const sa = await call(coaMod, "setLedgerActive", cctx, ledgerTip, false);
+      if (sa?.ok !== false) p.push(`setLedgerActive(false) → ${short(sa, 80)}`);
       const lg = await P.accountLedger.findUnique({ where: { id: ledgerTip } });
       if (lg?.archivedAt || lg?.type !== "LIABILITY") p.push("บัญชีพักทิปถูกเปลี่ยน");
       // จำลองบัญชีที่ถูกเก็บก่อนมีด่าน (แถวตรง · คืนค่าทันทีหลังตรวจ)
