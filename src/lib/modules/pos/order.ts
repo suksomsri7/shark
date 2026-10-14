@@ -32,6 +32,7 @@ import { expandRecipe } from "./recipe-shared";
 import { loadPriceBook, priceOf } from "./price";
 import type { PriceSource } from "./price-shared";
 import { ORDER_ADAPTERS } from "./order-adapters";
+import { autoAcceptBlockedInTx, kitchenPausedForUnit, roundForOrderInTx } from "./kds"; // POS P2.6 ▸ รอบครัวในธุรกรรมรับ · พักครัว/คิวค้าง (R4 R13 · CD3) ◂
 import { REGISTER_MAX_PAY_METHODS, REGISTER_PAY_TYPES, REGISTER_REFERENCE_MAX, type RegisterActor, type RegisterCtx } from "./register-shared";
 import {
   ORDER_PREP_DEFAULT_MIN,
@@ -224,6 +225,8 @@ const isManual = (adapter: string) => adapter === "MANUAL";
 /** พักรับ (pausedUntil > ตอนนี้) ปฏิเสธเฉพาะช่องทางที่ลูกค้า/ระบบส่งเข้ามาเอง — WEB · CHAT · API (R3: MANUAL ได้ · ช่องทางกำหนดเองที่พนักงานคีย์ได้) */
 const pauseRefuses = (adapter: string) => adapter === "WEB" || adapter === "CHAT" || adapter === "API";
 const isPaused = (ch: { pausedUntil: Date | null }, now: Date) => !!ch.pausedUntil && ch.pausedUntil.getTime() > now.getTime();
+// POS P2.6 ▸ R13: ข้อความของเหตุผลที่สอง (ครัวหยุดรับทั้งสาขา) ◂
+const KITCHEN_PAUSED_MESSAGE = "ครัวหยุดรับออเดอร์ชั่วคราว — ออนไลน์และ QR ถูกพักไว้";
 
 async function channelOfUnit(db: Db, s: { tenantId: string; systemId: string; unitId: string }, by: { channelId: string | null; channelCode: string | null }): Promise<SalesChannel | null> {
   if (by.channelId) return db.salesChannel.findFirst({ where: { id: by.channelId, tenantId: s.tenantId, unitId: s.unitId, archivedAt: null } });
@@ -379,6 +382,29 @@ async function touch(tx: Tx, o: PosOrder, patch: Prisma.PosOrderUpdateManyMutati
   return tx.posOrder.findUniqueOrThrow({ where: { id: o.id } });
 }
 
+// ═══════════ POS P2.6 ▸ ครัวขับสถานะออเดอร์ออนไลน์ (R11 · CD7 · มติ 13) ═══════════
+/**
+ * เรียกจาก pos/kds.ts ในธุรกรรมเดียวกับการเลื่อนตั๋วของรอบที่ผูกออเดอร์: ล็อกออเดอร์ FOR UPDATE · ตั๋วแรกออกจาก NEW ⇒ ACCEPTED → PREPARING ·
+ * ทุกรายการ READY/SERVED ⇒ PREPARING → READY (ACCEPTED ผ่าน PREPARING ก่อน — ไม่มีทางลัด) · ผู้กระทำ = ระบบ (actor null · payload source KDS) ·
+ * PosOrderEvent 1 แถวต่อการเปลี่ยน · outbox pos.order.ready ครั้งเดียว (คีย์ต่อออเดอร์) · ดึงกลับไม่ถอยสถานะ · ออเดอร์ปิดแล้ว/สถานะอื่น = ไม่ทำอะไร ◂
+ */
+export async function kitchenProgressInTx(tx: Tx, i: { tenantId: string; posOrderId: string; started: boolean; allReady: boolean }): Promise<{ changed: boolean; status: OrderStatus | null }> {
+  await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${i.posOrderId} AND "tenantId" = ${i.tenantId} FOR UPDATE`;
+  let o = await tx.posOrder.findFirst({ where: { id: i.posOrderId, tenantId: i.tenantId } });
+  if (!o) return { changed: false, status: null };
+  let changed = false;
+  if (o.status === "ACCEPTED" && (i.started || i.allReady)) {
+    o = await transition(tx, o, "PREPARING", {}, { actorUserId: null, payload: { source: "KDS" } });
+    changed = true;
+  }
+  if (o.status === "PREPARING" && i.allReady) {
+    o = await transition(tx, o, "READY", { readyAt: new Date() }, { actorUserId: null, payload: { source: "KDS" } });
+    changed = true;
+  }
+  return { changed, status: o.status as OrderStatus };
+}
+// ◂ POS P2.6
+
 // ═══════════ บิล (R6 · มติ 2 10 · CD7) ═══════════
 /**
  * บรรทัดบิลจากสำเนาของออเดอร์ (ราคาไม่คิดใหม่ · CD3) + ของปัจจุบันของแคตตาล็อก: itemId = สินค้าที่นับสต็อกจริง (C2 · effectiveTrackStock) ·
@@ -480,6 +506,8 @@ async function acceptInTx(
   who: { actorUserId: string | null; shiftId: string | null; prepMinutes: number; auto: boolean },
 ): Promise<{ order: PosOrder; saleId: string | null; saleLines: CreateSaleInput["lines"] | null }> {
   let after = await transition(tx, o, "ACCEPTED", { acceptedAt: new Date(), acceptedByUserId: who.actorUserId, prepMinutes: who.prepMinutes }, { actorUserId: who.actorUserId, payload: who.auto ? { auto: true } : undefined });
+  // POS P2.6 ▸ R4 CD3: ทุกทางเข้า ACCEPTED (รับ · รับอัตโนมัติ · รับเข้าเป็น ACCEPTED) สร้างรอบครัวในธุรกรรมเดียวกัน (xmin เดียว · ไม่ขึ้นกับการจ่าย · รับซ้ำ = รอบเดิม) ◂
+  await roundForOrderInTx(tx, after, ch);
   if (ch.payout !== "PLATFORM") return { order: after, saleId: null, saleLines: null };
   const lines = await tx.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
   const saleLines = await saleLinesOf(tx, o, lines);
@@ -598,7 +626,8 @@ async function ingestInsideTx(tx: Tx, plan: IngestPlan): Promise<IngestDone | Or
   await addEvent(tx, order, { type: "received", from: null, to: "NEW", actorUserId: plan.createdByUserId, payload: input.payload === null || input.payload === undefined ? undefined : input.payload, at: now });
   await emitOrderEvent(tx, order, "pos.order.received", start);
   // รับทันที: สถานะเริ่ม ACCEPTED (พนักงาน) หรือรับอัตโนมัติของช่องทาง (ไม่ใช่ MANUAL · มติ 11 · ผู้รับ = null)
-  const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter);
+  // POS P2.6 ▸ R13 มติ 10: ครัวหยุดรับ หรือมีสถานีที่ตั๋วค้าง ≥ autoAcceptMaxOpen ⇒ ไม่รับอัตโนมัติ (ออเดอร์อยู่ NEW รอคนรับ) ◂
+  const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && !(await autoAcceptBlockedInTx(tx, s));
   if (start !== "ACCEPTED" && !auto) return { orderId: order.id, duplicated: false, saleId: null, saleLines: null, accepted: "none" };
   const prep = input.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
   const who = auto ? { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true } : { actorUserId: plan.acceptor.actorUserId, shiftId: plan.acceptor.deviceShiftId, prepMinutes: prep, auto: false };
@@ -655,6 +684,8 @@ export async function ingestOrder(ctx: RegisterCtx, actor: RegisterActor, input:
     const pre = await existingOrder(prisma, plan0);
     if (pre) return isRefusal(pre) ? pre : { ok: true, orderId: pre.orderId, duplicated: true, saleId: pre.saleId };
     if (isPaused(ch, new Date()) && pauseRefuses(ch.adapter)) return refuse("CHANNEL_PAUSED", `ช่องทาง ${ch.name} ปิดรับออเดอร์ชั่วคราว`);
+    // POS P2.6 ▸ R13 มติ 10: ครัวของสาขาหยุดรับ ⇒ ช่องทางที่ไม่ใช่ MANUAL ถูกพักด้วย (เหตุผลที่สอง · รหัสเดียวกัน) · หน้าขาย/โต๊ะไม่ถูกพัก ◂
+    if (pauseRefuses(ch.adapter) && (await kitchenPausedForUnit(prisma, s.tenantId, s.unitId))) return refuse("CHANNEL_PAUSED", KITCHEN_PAUSED_MESSAGE);
     const linkBad = await assertCustomerLinks(prisma, s.tenantId, inp);
     if (linkBad) return linkBad;
     // ราคา (ตัวคิดราคาของหน้าขาย บนช่องทางนี้ — สินค้ามองเห็นได้ · 86 · ตัวแปร · ตัวเลือก · ราคาช่องทาง/โปร · ไม่ขาย)
@@ -742,6 +773,7 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
   const ch = await channelOfUnit(tx, s, inp);
   if (!ch) return refuse("CHANNEL_INVALID");
   if (isPaused(ch, new Date()) && pauseRefuses(ch.adapter)) return refuse("CHANNEL_PAUSED", `ช่องทาง ${ch.name} ปิดรับออเดอร์ชั่วคราว`);
+  if (pauseRefuses(ch.adapter) && (await kitchenPausedForUnit(tx, s.tenantId, s.unitId))) return refuse("CHANNEL_PAUSED", KITCHEN_PAUSED_MESSAGE); // POS P2.6 ▸ R13 มติ 10 ◂
   if (ch.payout === "PLATFORM" && inp.startStatus === "ACCEPTED") return refuse("VALIDATION", "ออเดอร์แพลตฟอร์มผ่านประตูระบบต้องเริ่มเป็นออเดอร์ใหม่ (รับที่จอออเดอร์)");
   // สินค้าของบรรทัด (POS นี้) + 86 ที่สาขา (ตัวอ่านเดียวกับหน้าขาย)
   const pids = [...new Set(inp.lines.flatMap((l) => (l.kind === "custom" ? [] : [l.productId])))];
