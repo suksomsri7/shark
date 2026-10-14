@@ -371,16 +371,13 @@ export async function kitchenBacklog(tenantId: string, unitId: string): Promise<
 
 /** หลังเลื่อนตั๋วของรอบออนไลน์ (ในธุรกรรมเดียวกัน · CD7): ออกจาก NEW ครั้งแรก ⇒ PREPARING · ครบทุกรายการ READY/SERVED ⇒ READY (ไม่ถอยหลัง) */
 async function onlineProgressInTx(tx: Tx, R: RestFacade, s: { tenantId: string; unitId: string }, orderId: string, posOrderId: string): Promise<void> {
-  const ord = await import("./order");
-  // fix1 F2: ล็อกออเดอร์ก่อน แล้วจึงอ่านรายการของรอบ (คำสั่งใหม่หลังได้ล็อก = เห็นสถานีอื่นที่ commit ไปแล้ว) ⇒ READY พร้อมกันสองสถานีไม่ค้าง PREPARING
-  await ord.lockOrderForKitchenInTx(tx, { tenantId: s.tenantId, posOrderId });
   const round = await R.kitchenRoundForPos(tx, { tenantId: s.tenantId, unitId: s.unitId, orderId });
   if (!round) return;
   const lv = live(round.items);
   if (!lv.length) return;
   const started = lv.some((i) => i.kdsStatus !== "NEW");
   const allReady = lv.every((i) => isDone(i.kdsStatus));
-  await ord.kitchenProgressInTx(tx, { tenantId: s.tenantId, posOrderId, started, allReady });
+  await (await import("./order")).kitchenProgressInTx(tx, { tenantId: s.tenantId, posOrderId, started, allReady });
 }
 
 // ═══════════ ปุ่มครัว (R6 · CD4 · CD 16) ═══════════

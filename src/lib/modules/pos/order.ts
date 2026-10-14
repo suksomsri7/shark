@@ -388,12 +388,6 @@ async function touch(tx: Tx, o: PosOrder, patch: Prisma.PosOrderUpdateManyMutati
  * ทุกรายการ READY/SERVED ⇒ PREPARING → READY (ACCEPTED ผ่าน PREPARING ก่อน — ไม่มีทางลัด) · ผู้กระทำ = ระบบ (actor null · payload source KDS) ·
  * PosOrderEvent 1 แถวต่อการเปลี่ยน · outbox pos.order.ready ครั้งเดียว (คีย์ต่อออเดอร์) · ดึงกลับไม่ถอยสถานะ · ออเดอร์ปิดแล้ว/สถานะอื่น = ไม่ทำอะไร ◂
  */
-/** POS P2.6 ▸ fix1 F2 (รีวิว R1 · มติ fix1-2): ล็อกออเดอร์ FOR UPDATE "ก่อน" จอครัวอ่านสถานะรายการของรอบ — สองสถานีกด READY พร้อมกันแล้วไม่ค้าง PREPARING
- *  (ผู้ที่ได้ล็อกทีหลังอ่านรายการหลังผู้แรก commit) · ลำดับล็อก รายการครัว → PosOrder เหมือนทางอื่นทุกทาง ◂ */
-export async function lockOrderForKitchenInTx(tx: Tx, i: { tenantId: string; posOrderId: string }): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${i.posOrderId} AND "tenantId" = ${i.tenantId} FOR UPDATE`;
-}
-
 export async function kitchenProgressInTx(tx: Tx, i: { tenantId: string; posOrderId: string; started: boolean; allReady: boolean }): Promise<{ changed: boolean; status: OrderStatus | null }> {
   await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${i.posOrderId} AND "tenantId" = ${i.tenantId} FOR UPDATE`;
   let o = await tx.posOrder.findFirst({ where: { id: i.posOrderId, tenantId: i.tenantId } });

@@ -141,7 +141,6 @@ import {
   webSaleBoundInTx as orderWebSaleBoundInTx,
   webClaimRevertInTx as orderWebClaimRevertInTx,
   kitchenProgressInTx as orderKitchenProgressInTx, // POS P2.6 ▸ R11 ◂
-  lockOrderForKitchenInTx as orderLockForKitchenInTx, // POS P2.6 ▸ fix1 F2 ◂
 } from "./order";
 export const orders = {
   /** R3 — พนักงานคีย์ออเดอร์ (MANUAL/CHAT/ช่องทางกำหนดเอง) · X1 idempotency */
@@ -176,8 +175,6 @@ export const orders = {
   webClaimRevertInTx: orderWebClaimRevertInTx,
   /** POS P2.6 ▸ R11 CD7 — ครัวขับ ACCEPTED→PREPARING→READY ในธุรกรรมของจอครัว (pos/kds.ts เรียก · ไม่ถอยสถานะ) ◂ */
   kitchenProgressInTx: orderKitchenProgressInTx,
-  /** POS P2.6 ▸ fix1 F2 — ล็อกออเดอร์ก่อนจอครัวอ่านรายการของรอบ ◂ */
-  lockForKitchenInTx: orderLockForKitchenInTx,
 } as const;
 export type * from "./order-shared";
 export { ORDER_ADAPTERS } from "./order-adapters";
