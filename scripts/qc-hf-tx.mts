@@ -27,6 +27,14 @@
 //       giftcard.sold ×2 ต่อกัน + ×2 พร้อมกัน ⇒ คืน accountingDocId + JV ยัง 1 · (b2) ขายตอนตัดการเชื่อมบัญชี (ช่วงพังก่อนลงบัญชี — ยังไม่มี JV)
 //       แล้วเชื่อมกลับ + เล่น consumer ⇒ JV 1 + accountingDocId ตั้ง · (c) ขายตอนสวิตช์ปิด → เปิดสวิตช์ + เล่น consumer ⇒ JV 0 · accountingDocId null
 //       (แดงก่อนแก้: (a) คืน null / ไม่มีตาข่ายใน consumer) · (c2) fix 1 (รีวิว F1): สวิตช์ปิดตอนขาย → เปิด → ขายซ้ำคีย์เดิม ⇒ JV 0 · accountingDocId null
+//   POS HF-GC2 ▸ (ledger/pos-briefs/pos-brief-HF-GC2.md Scope 3) — ธุรกรรมที่สาม (A) ล็อกแถวบัตร FOR UPDATE แล้วถือไว้จนเห็นอีกฝั่งถูกล็อกนี้กั้น
+//       (pg_blocking_pids) ≥ 1 วิ ⇒ การแข่งเกิดทุกรอบ ไม่พึ่งจังหวะ ◂
+//   HT2.8 หมดอายุ vs ใช้บัตร: บัตร ACTIVE ยอด 10000 · ผูกบัญชี (มี accountingDocId) · expiresAt ย้อนไป 2001 → expireDue(2001-01-02) (ตัดเฉพาะบัตรนี้ —
+//       มีบัตรร้านอื่นถึงกำหนดเดียวกัน = ไม่รัน แดง) ถูก A กั้น · A ตัด 3000 (+ แถว USE) แล้ว commit ⇒ EXPIRED ยอด 0 · EXPIRE 1 แถว satang 7000 ·
+//       JV อ้างอิง GiftCardTxn#<expire> 1 ใบ Dr = Cr = 7000 · USE + EXPIRE = 10000 (แดงก่อนแก้: EXPIRE 10000 + JV 10000 จากยอดที่อ่านก่อนธุรกรรม)
+//   HT2.9 เติมเงิน vs ระงับ: บัตร ACTIVE · reload(3000) ผ่านด่านก่อนธุรกรรมแล้วถูก A กั้น · A ระงับบัตรแล้ว commit ⇒ reload โยน GiftCardStateError ·
+//       บัตรยัง SUSPENDED ยอดเดิม · RELOAD 0 · PosSale คีย์นี้ 0 (บิล rollback ไปด้วย) · ปลดระงับแล้วเติมซ้ำคีย์เดิม = สำเร็จครั้งเดียว
+//       (แดงก่อนแก้: บัตรกลับเป็น ACTIVE +3000 + แถว RELOAD — การระงับหายเงียบ)
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -51,6 +59,9 @@ const CHECKS: [string, string][] = [
   // POS HF-GC ▸ +2 (18 → 20) ◂
   ["HT2.6", "บัตรกำนัล reload พร้อมกัน 5 คำขอ ⇒ balanceAfter ไม่ซ้ำ = initial + k·satang · max = ยอดบัตร · ผลที่คืน = แถวของตัวเอง"],
   ["HT2.7", "บัตรกำนัล ตาข่ายหนี้สิน 2110: ขายซ้ำ/consumer คืน accountingDocId · JV GiftCard#<id> = 1 เสมอ · ขายตอนสวิตช์ปิด = 0 ตลอดไป"],
+  // POS HF-GC2 ▸ +2 (20 → 22) ◂
+  ["HT2.8", "บัตรกำนัล expireDue ∥ ใช้บัตร (A ถือล็อก) ⇒ EXPIRE + JV 4900 = ยอดคงเหลือจริงใต้ล็อก (7000) · USE + EXPIRE = ยอดขาย"],
+  ["HT2.9", "บัตรกำนัล reload ∥ ระงับ (A ถือล็อก) ⇒ GiftCardStateError · ยัง SUSPENDED ยอดเดิม · RELOAD 0 · บิล 0 · ปลดระงับแล้วเติมซ้ำคีย์เดิม 1 ครั้ง"],
   ["HT3.1", "callerTx + ผู้เรียก rollback ⇒ บิล 0 แถว · OUT 0"],
   ["HT3.2", "callerTx + commit + afterSaleCommitted ⇒ xmin = xid ผู้เรียก · ไม่มีการอ่านในธุรกรรม · OUT 1"],
   ["HT4", "positive control: หน้าขายเงินสด xmin เดียว + OUT 1"],
@@ -597,6 +608,102 @@ try {
     }
   } catch (e) {
     console.log(`💥 HF-GC block: ${(e as Error)?.stack?.split("\n").slice(0, 4).join(" | ")}`);
+  }
+
+  // POS HF-GC2 ▸ HT2.8 + HT2.9 — ใช้ร้าน/ผูกบัญชีชุดเดียวกับ HF-GC (สวิตช์เปิด + link POS→บัญชี) · ก้อนของตัวเอง: ล้ม = แดงสองข้อนี้ ◂
+  console.log("── HT2.8/HT2.9 บัตรกำนัล (HF-GC2 · ธุรกรรมที่สามถือล็อก) ──");
+  try {
+    const gctx = { tenantId: T, systemId: MEM, posSystemId: POS, actorUserId: user.id };
+    const link = await P.accountSystemLink.findFirst({ where: { tenantId: T, linkedKind: "POS", linkedId: POS, enabled: true }, select: { id: true } });
+    const st = await G.getSettings(gctx);
+    if (!link || !st.accountingLink) throw new Error(`fixture ผูกบัญชี (ก้อน HF-GC) ไม่พร้อม: link ${link ? "มี" : "ไม่มี"} · สวิตช์ ${st.accountingLink}`);
+    type Settled = { ok: true; v: Any } | { ok: false; e: Any };
+    // A: ล็อกแถวบัตร → เริ่มอีกฝั่ง (start) → รอจนเห็น backend ที่ถูก pid ของ A กั้น และถือครบ minMs → act ในธุรกรรมเดียวกัน → commit
+    const holdLock = async (cardId: string, minMs: number, start: () => Promise<Any>, act: (tx: Any) => Promise<void>) => {
+      let blocked = false;
+      let heldMs = 0;
+      const box: { p: Promise<Settled> | null } = { p: null }; // กล่อง — TS ไม่ narrow ค่าที่ตั้งใน callback
+      await P.$transaction(async (tx: Any) => {
+        await tx.$queryRawUnsafe(`SELECT id FROM "GiftCard" WHERE id = $1 FOR UPDATE`, cardId);
+        const pid = Number(((await tx.$queryRawUnsafe(`SELECT pg_backend_pid()::int AS p`)) as Any[])[0].p);
+        box.p = start().then((v) => ({ ok: true as const, v }), (e) => ({ ok: false as const, e }));
+        const t0 = Date.now();
+        while (Date.now() - t0 < 15_000) {
+          const n = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))`, pid)) as Any[])[0].n);
+          if (n > 0) blocked = true;
+          if (blocked && Date.now() - t0 >= minMs) break;
+          await sleep(150);
+        }
+        heldMs = Date.now() - t0;
+        await act(tx);
+      }, { timeout: 45_000, maxWait: 15_000 });
+      return { blocked, heldMs, res: (await box.p) as Settled };
+    };
+    const errOf = (r: Settled) => (r.ok ? "" : `${r.e?.name ?? "Error"}: ${String(r.e?.message ?? r.e).slice(0, 70)}`);
+
+    // ── HT2.8 expireDue ∥ ใช้บัตร ──
+    try {
+      phase = "gc-expire-race";
+      const CUTOFF = new Date("2001-01-02T05:00:00.000Z");
+      const foreign = await P.giftCard.count({ where: { status: "ACTIVE", expiresAt: { not: null, lte: CUTOFF }, NOT: { tenantId: T } } });
+      if (foreign) {
+        chk("HT2.8", false, `ไม่รัน: มีบัตรร้านอื่น ${foreign} ใบถึงกำหนด ≤ ${CUTOFF.toISOString()} (expireDue จะตัดบัตรร้านอื่น)`);
+      } else {
+        const s = await G.sell(gctx, owner, { satang: 10_000, payMethods: [{ type: "CASH", amountSatang: 10_000 }], unitId: U, recipient: { print: true }, idempotencyKey: `hfgc2-${RAND}-ex` });
+        const id = s.giftCardId as string;
+        await P.giftCard.update({ where: { id }, data: { expiresAt: new Date("2001-01-01T05:00:00.000Z") } });
+        const h = await holdLock(id, 1_000, () => G.expireDue(CUTOFF), async (tx) => {
+          await tx.giftCard.update({ where: { id }, data: { balanceSatang: { decrement: 3_000 } } });
+          await tx.giftCardTxn.create({ data: { tenantId: T, giftCardId: id, type: "USE", satang: 3_000, balanceAfter: 7_000, refType: "PosSale", refId: null, idempotencyKey: `giftcard-use-hfgc2-${RAND}-u` } });
+        });
+        const c = (await P.giftCard.findUnique({ where: { id }, select: { status: true, balanceSatang: true } })) as Any;
+        const txns = (await P.giftCardTxn.findMany({ where: { tenantId: T, giftCardId: id, type: { in: ["USE", "EXPIRE"] } }, select: { id: true, type: true, satang: true } })) as Any[];
+        const exp = txns.filter((t) => t.type === "EXPIRE");
+        const sumUse = txns.filter((t) => t.type === "USE").reduce((a, t) => a + Number(t.satang), 0);
+        const sumExp = exp.reduce((a, t) => a + Number(t.satang), 0);
+        const jv = exp.length === 1 ? ((await P.accountJournalEntry.findMany({ where: { tenantId: T, refType: "GiftCardTxn", refId: exp[0].id }, select: { id: true, lines: { select: { debit: true, credit: true } } } })) as Any[]) : [];
+        const dr = jv.flatMap((e) => e.lines).reduce((a: number, l: Any) => a + Number(l.debit), 0);
+        const cr = jv.flatMap((e) => e.lines).reduce((a: number, l: Any) => a + Number(l.credit), 0);
+        const expired = h.res.ok ? h.res.v?.expired : undefined;
+        chk("HT2.8", h.blocked && h.res.ok && expired === 1 && !!s.accountingDocId && c?.status === "EXPIRED" && c?.balanceSatang === 0 && exp.length === 1 && sumExp === 7_000 && jv.length === 1 && dr === 7_000 && cr === 7_000 && sumUse + sumExp === 10_000,
+          `A กั้น ${h.blocked ? "เห็น" : "ไม่เห็น"} (${h.heldMs}ms) · expireDue ${h.res.ok ? `expired ${expired}` : errOf(h.res)} · doc ${s.accountingDocId ? "ตั้ง" : "null"} · บัตร ${c?.status} ยอด ${c?.balanceSatang} · EXPIRE ${exp.length} แถว ${exp.map((t) => t.satang).join(",") || "-"} (คาด 7000) · JV ${jv.length} Dr ${dr} Cr ${cr} · USE ${sumUse} + EXPIRE ${sumExp} = ${sumUse + sumExp} (คาด 10000)`);
+      }
+    } catch (e) {
+      chk("HT2.8", false, `💥 ${(e as Error)?.stack?.split("\n").slice(0, 3).join(" | ")}`);
+    }
+
+    // ── HT2.9 reload ∥ ระงับ ──
+    try {
+      phase = "gc-reload-suspend";
+      const s = await G.sell(gctx, owner, { satang: 10_000, payMethods: [{ type: "CASH", amountSatang: 10_000 }], unitId: U, recipient: { print: true }, idempotencyKey: `hfgc2-${RAND}-rs` });
+      const id = s.giftCardId as string;
+      const num = ((await P.giftCard.findUnique({ where: { id }, select: { number: true } })) as Any).number as string;
+      const idem = `hfgc2-${RAND}-rl`;
+      const key = `giftcard-reload-${idem}`;
+      const rl = () => G.reload(gctx, owner, { number: num, satang: 3_000, payMethods: [{ type: "CASH", amountSatang: 3_000 }], unitId: U, idempotencyKey: idem });
+      const h = await holdLock(id, 1_500, rl, async (tx) => {
+        await tx.giftCard.update({ where: { id }, data: { status: "SUSPENDED" } });
+      });
+      const c = (await P.giftCard.findUnique({ where: { id }, select: { status: true, balanceSatang: true } })) as Any;
+      const nRel = await P.giftCardTxn.count({ where: { tenantId: T, giftCardId: id, type: "RELOAD" } });
+      const nSale = await P.posSale.count({ where: { tenantId: T, idempotencyKey: key } });
+      const rejected = !h.res.ok && h.res.e?.name === "GiftCardStateError";
+      // ปลดระงับ → เติมซ้ำคีย์เดิม 2 รอบ ⇒ สำเร็จ 1 ครั้ง (รอบสองคืนผลเดิม)
+      await G.unsuspend(gctx, owner, { number: num });
+      const r1 = await rl();
+      const r2 = await rl();
+      const c2 = (await P.giftCard.findUnique({ where: { id }, select: { status: true, balanceSatang: true } })) as Any;
+      const nRel2 = await P.giftCardTxn.count({ where: { tenantId: T, giftCardId: id, type: "RELOAD" } });
+      const nSale2 = await P.posSale.count({ where: { tenantId: T, idempotencyKey: key } });
+      const replayOk = r1.txnId === r2.txnId && r1.saleId === r2.saleId && nRel2 === 1 && nSale2 === 1 && c2?.status === "ACTIVE" && c2?.balanceSatang === 13_000 && r1.balanceAfter === 13_000;
+      chk("HT2.9", h.blocked && rejected && c?.status === "SUSPENDED" && c?.balanceSatang === 10_000 && nRel === 0 && nSale === 0 && replayOk,
+        `A กั้น ${h.blocked ? "เห็น" : "ไม่เห็น"} (${h.heldMs}ms) · reload ${h.res.ok ? `สำเร็จ balanceAfter ${h.res.v?.balanceAfter}` : errOf(h.res)} · บัตร ${c?.status} ยอด ${c?.balanceSatang} (คาด SUSPENDED 10000) · RELOAD ${nRel} · บิล ${nSale} · ` +
+          `ปลดระงับ+เติมซ้ำ: ${r1.txnId === r2.txnId ? "ผลเดิม" : "ต่างกัน"} · RELOAD ${nRel2} · บิล ${nSale2} · บัตร ${c2?.status} ยอด ${c2?.balanceSatang} (คาด ACTIVE 13000)`);
+    } catch (e) {
+      chk("HT2.9", false, `💥 ${(e as Error)?.stack?.split("\n").slice(0, 3).join(" | ")}`);
+    }
+  } catch (e) {
+    console.log(`💥 HF-GC2 block: ${(e as Error)?.stack?.split("\n").slice(0, 4).join(" | ")}`);
   }
 } catch (e) {
   console.log(`💥 ${SUITE}: ${(e as Error)?.stack?.split("\n").slice(0, 4).join(" | ")}`);
