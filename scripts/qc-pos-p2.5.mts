@@ -67,6 +67,8 @@ const CHECKS: readonly Def[] = [
   D("P4", "X1", "[R5 มติ 6] expectedVersion เก่า → VERSION_CHANGED · แทนแผน → version+1 · หลังจ่ายใบแรก แทน/ยกเลิก → TABLE_SPLIT_LOCKED · registerCancelSplit แผนที่ยังไม่จ่าย → CANCELLED (cancelledAt) · แล้วจ่ายทั้งโต๊ะได้ตามเดิม · สร้างซ้ำขณะมีแผน OPEN → TABLE_SPLIT_EXISTS + {splitId, version}"),
   D("P5", "X3", "[R1 R5 CD10 CD11] ขอบเขต/เพดาน: partCount 1 / 21 · ใบว่าง · ยังไม่ระบุ/เกินจำนวน · รายการโต๊ะอื่น → VALIDATION · expectedItemsHash เก่า → TABLE_ITEMS_CHANGED · session ร้าน T2 / ctx สาขา B → TABLE_NOT_FOUND · ใบมั่ว → TABLE_SPLIT_NOT_FOUND · NOPERM/WAITER (pos.sale.read) สร้าง → PERMISSION_DENIED · WAITER อ่าน registerSplitDetail ok · ไม่มีแถวแผน"),
   D("P6", "-", "[R5 R10 R4 §4] รอบระหว่างแผน + ครัว: แยกบิลขณะตั๋ว COOKING → kdsStatus ไม่เปลี่ยน · ส่งรอบใหม่หลังแยก → อยู่นอกแผน (outsideItemIds) · จ่ายครบทุกใบ → DONE แต่ session OPEN · quote ทั้งโต๊ะ = เฉพาะรายการใหม่ · kdsTicketDone หลังจ่ายใบ ok · บิลของใบไม่สร้าง RestaurantOrder (heal ก็ไม่สร้าง) · ยกเลิกรายการในแผนผ่านประตูเดิม → จ่ายใบ TABLE_ITEMS_CHANGED ไม่เขียน"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 2 · pos-P2.5-review.md N2)
+  D("P7", "X5", "[มติ fix1 ข้อ 2] หน้าเดิม /restaurant: checkoutAction + confirmPromptpayPaymentAction เรียก legacyCheckoutSplitGuard · cancelOrderItemAction เรียก legacyCancelItemSplitGuard ก่อนประตูเดิม · ใบ 1 จ่ายแล้ว → ตัวกันเช็คบิล ok:false · ตัวกันยกเลิกรายการในแผน ok:false · โต๊ะไม่มีแผน ok:true · ไม่มีบิล · แผน/รายการไม่เปลี่ยน"),
   // ── S สต็อก/บัญชี ──
   D("S1", "X4", "[R3 §4 มติ 3] ตัดสต็อกครั้งเดียว: 15B ข้าว (PRODUCT) OUT −3 บนบิลใบ 1 / −1 บนบิลใบ 2 (Σ −4) · EQUAL 4: ข้าว −4 และวุ้นเส้น (สูตรของยำ) −1 บนบิลใบ 1 เท่านั้น · ใบ 2–4 ไม่มี OUT · onHand ตรง"),
   D("S2", "X5", "[§4] ตัวนับเมนู (MenuItem.stockQty ของบราวนี่) ไม่ขยับจากการจ่ายใบใด ๆ (หักไปแล้วตอนส่งรอบ)"),
@@ -76,6 +78,8 @@ const CHECKS: readonly Def[] = [
   D("X2", "X1", "[R6 §4] จ่ายใบ 2 ใหม่ (คีย์ใหม่) → บิลใหม่ · DONE · ทุกรายการผูก · ข้าวตัดอีก 1 ครั้ง · Σ ใบ PAID = 136400 · EQUAL: void ใบที่ถือสต็อก (ใบ 1) → ข้าว +4 วุ้นเส้น +1 ครั้งเดียว (ระบายซ้ำไม่เพิ่ม) · จ่ายใหม่ → ตัดครั้งเดียว"),
   D("X3", "X5", "[R6 P2.4 R8] คืนเงินบางบรรทัดของบิลใบ → แผน/ใบ/รายการ/session ไม่เปลี่ยน"),
   D("X4", "-", "[R6 CD7] จ่ายครบ → เปิดโต๊ะเดิมให้ลูกค้าใหม่ → void บิลใบ 1 → ใบ 1 OPEN · session เดิมยัง CLOSED · quote/จ่ายใบ 1 → TABLE_SESSION_CLOSED ไม่มีบิล"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 1 · pos-P2.5-review.md F1/N1)
+  D("X5", "X1", "[มติ fix1 ข้อ 1] แผนเก่า DONE + แผนใหม่ OPEN บน session เดียว → void บิลใบของแผนเก่า → ตัวรับ void จบ (event DONE ไม่ FAILED) · ใบ OPEN saleId null · แผนเก่ายัง DONE · แผนใหม่ไม่เปลี่ยน · รายการของใบหลุด (ค้างจ่าย)"),
   // ── C แข่งกัน (ธุรกรรมที่สามถือล็อก) ──
   D("C1", "X1", "[R5 CD6] สองเครื่องสร้างแผนบน session เดียวพร้อมกัน (ถือแถวรายการแรกไว้ · ทั้งคู่รอ) → แผน OPEN 1 · อีกคน TABLE_SPLIT_EXISTS + splitId ของผู้ชนะ"),
   D("C2", "X1", "[R4] สองเครื่อง คนละคีย์ จ่ายใบเดียวกัน (ถือรายการไว้ · ทั้งคู่รอ) → บิล 1 + TABLE_SPLIT_PART_PAID · Δ PosSale/PosPayment/เลขใบเสร็จ +1 · OutboxEvent ที่ไม่ใช่ของบิลผู้ชนะ 0"),
@@ -87,6 +91,8 @@ const CHECKS: readonly Def[] = [
   D("T1", "-", "[R7 CD8 มติ 8] registerMoveTable (WAITER) ขณะรอบ NEW + รอบร่าง + แผน OPEN → tableId เปลี่ยน · โต๊ะเดิม dirtySince (ต้องเก็บ) · โต๊ะใหม่สะอาด · ผัง: เดิม NEEDS_CLEARING ใหม่ DINING · kdsBoard label = ชื่อโต๊ะใหม่ · รายการยัง NEW · รอบร่าง/แผนตาม session · ย้ายไปโต๊ะเดิม → {ok, changed:false}"),
   D("T2", "X2", "[R7 CD10] ย้ายไปโต๊ะที่มีลูกค้า → TABLE_BUSY · INACTIVE → TABLE_INACTIVE · โต๊ะร้าน T2 / id มั่ว / ctx สาขา B → TABLE_NOT_FOUND · session ปิดแล้ว → TABLE_SESSION_CLOSED · CASHIER/NOPERM → PERMISSION_DENIED · ไม่เขียน · โต๊ะที่จองไว้ → ok + reservationOverridden (การจองยัง BOOKED)"),
   D("T3", "X1", "[R8 CD8] registerMergeTables (WAITER) A←B,C → ออเดอร์/คำขอย้าย · guestCount Σ · สมาชิกของต้นทาง · ต้นทาง MERGED + mergedIntoId + dirtySince · รอบร่างเดียวย้ายตาม · เล่นซ้ำ → changed:false · รอบร่างสองที่ → TABLE_HAS_DRAFT · ต้นทางมีแผน OPEN → TABLE_SPLIT_OPEN · 6 ต้นทาง / ปลายทางซ้ำ → VALIDATION · CASHIER → PERMISSION_DENIED · ต้นทางร้าน T2 → TABLE_NOT_FOUND · ไม่เขียน"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 6 · pos-P2.5-review.md N4)
+  D("T4", "-", "[มติ fix1 ข้อ 6] แผน DONE บนโต๊ะ B (มีรอบร่าง) → รวม B เข้า A → แผนย้ายไป session A · void บิลใบ 1 → ใบ OPEN บน session A · quote/จ่ายใบ 1 ได้ · แผน DONE · แผน OPEN บน session ที่ปิดแล้ว (โต๊ะ A5 หลัง X4) ไม่กันการยกเลิกรายการ"),
   // ── B ใบรายการ ──
   D("B1", "X5", "[R9 มติ 9] registerTablePreBill ทั้งโต๊ะ → kind PRE_BILL · notReceipt · ยอด = quote (subtotal/serviceCharge/vat/total/itemsHash) · ไม่มีคีย์เลขเอกสาร/เลขภาษี · เลขใบเสร็จ +0 · session/โต๊ะไม่เปลี่ยน (ไม่ขอเช็คบิล) · AuditLog pos.table.preBill 1 แถวต่อครั้ง (2 ครั้ง = 2) · ไม่มี outbox/JV"),
   D("B2", "X2", "[R9 CD9 CD10] ใบรายการของใบ (tableSplitPartId) = ยอดของใบ + part {no, of} · copy:true → copy · WAITER (pos.sale.read) ok · NOPERM → PERMISSION_DENIED · session ร้าน T2 / ctx สาขา B → TABLE_NOT_FOUND · session CLOSED → TABLE_SESSION_CLOSED · ใบมั่ว → TABLE_SPLIT_NOT_FOUND"),
@@ -2058,6 +2064,32 @@ async function runDb() {
     if (c1.sale !== c0.sale) p.push(`บิล ${c0.sale}→${c1.sale}`);
     chk("X4", p.length === 0, "void ใบหลังโต๊ะมีลูกค้าใหม่ → ใบเปิดแต่จ่ายไม่ได้ (session ปิด)", FX(P8(p) || "ครบ"));
   });
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 1 · pos-P2.5-review.md F1/N1)
+  await step("X5", async () => {
+    const p: string[] = [];
+    const s = await seat("X5", { guestCount: 2, lines: [ml("kaprao", 1), ml("chayen", 1)] });
+    const pl1 = splitOf(await mkSplit(s.sid, { mode: "EQUAL", partCount: 2 }));
+    const h = await hold(s.sid, [ml("latte", 1)]); // รอบร่าง = จ่ายครบแล้ว session ยัง OPEN
+    const a = await payPart(pl1, 1);
+    const b = await payPart(pl1, 2);
+    const sent = await tbl("registerSendTableRound", ctxA(DEV1), A("OWNER"), { tableSessionId: s.sid, heldCartId: String(h?.heldCart?.id ?? "") });
+    const pl2 = splitOf(await mkSplit(s.sid, { mode: "EQUAL", partCount: 2 }));
+    if (!a.saleId || !b.saleId || sent?.ok !== true || !pl2 || (await planRow(String(pl1?.splitId ?? "")))?.status !== "DONE") throw new Error(`(fixture) ใบ ${codeOf(a.r)}/${codeOf(b.r)} · ส่งรอบ ${codeOf(sent)} · แผนใหม่ ${pl2 ? "ok" : "ไม่มี"}`);
+    const v = await voidSale(a.saleId);
+    if (v?.ok !== true) p.push(`void บิลใบ 1 ของแผนเก่า → ${codeOf(v)}`);
+    const evs = ((await P.outboxEvent.findMany({ where: { tenantId: T, type: "pos.sale.voided" } }).catch(() => [])) as Any[]).filter((e) => isRecord(e.payload) && e.payload.saleId === a.saleId);
+    if (evs.length !== 1 || evs[0].status !== "DONE") p.push(`event voided ${short(evs.map((e) => e.status))} (คาด DONE)`);
+    const parts = await partRows(String(pl1?.splitId ?? ""));
+    if (parts[0]?.status !== "OPEN" || parts[0]?.saleId !== null || parts[1]?.status !== "PAID") p.push(`ใบแผนเก่า ${short(parts.map((x) => [x.no, x.status, x.saleId ? "sale" : null]))} (คาด ใบ 1 OPEN · ใบ 2 PAID)`);
+    const r1 = await planRow(String(pl1?.splitId ?? ""));
+    const r2 = await planRow(String(pl2?.splitId ?? ""));
+    if (r1?.status !== "DONE" || r2?.status !== "OPEN" || r2?.version !== pl2?.version) p.push(`แผนเก่า ${r1?.status} (คาด DONE) · แผนใหม่ ${r2?.status} v${r2?.version}`);
+    const its = await itemsOf(s.sid);
+    const old = [s.it.kaprao, s.it.chayen].map((id) => its.find((x) => x.id === id));
+    if (old.some((x) => !x || x.saleId !== null || x.settledAt !== null)) p.push(`รายการของใบ 1 ยังผูกบิล ${short(old.map((x) => (x?.saleId ? "sale" : null)))}`);
+    if ((await sessRow(s.sid))?.status !== "OPEN") p.push(`session ${(await sessRow(s.sid))?.status} (คาด OPEN)`);
+    chk("X5", p.length === 0, "void ใบของแผน DONE ขณะมีแผนใหม่ OPEN → ตัวรับจบ · ใบ OPEN · แผนเก่า DONE · รายการหลุด", FX(P8(p) || "ครบ"));
+  });
 
   // ════════ P6 รอบระหว่างแผน + ครัว ════════
   await step("P6", async () => {
@@ -2096,6 +2128,42 @@ async function runDb() {
     const c1 = await counts();
     if (lc?.ok !== true || !refused(x.r, "TABLE_ITEMS_CHANGED") || c1.sale !== c0.sale || c1.seq !== c0.seq) p.push(`ยกเลิกผ่านประตูเดิม ${short(lc, 40)} → จ่ายใบ ${codeOf(x.r)} · บิล ${c0.sale}→${c1.sale} (คาด TABLE_ITEMS_CHANGED ไม่มีบิล)`);
     chk("P6", NS(["registerSplitTable", "registerSplitDetail"]) === "" && p.length === 0, "ครัวไม่ถูกแตะ · รอบใหม่อยู่นอกแผน · DONE ไม่ปิดโต๊ะ · ไม่มีรอบครัวจากบิลใบ", FX(NS(["registerSplitTable", "registerSplitDetail"]) + (P8(p) || "ครบ")));
+  });
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 2 · pos-P2.5-review.md N2)
+  await step("P7", async () => {
+    const p: string[] = [];
+    const act = stripComments(rd("src/lib/actions/restaurant.ts"));
+    const body = (n: string) => {
+      const m = new RegExp(`export\\s+async\\s+function\\s+${n}\\b`).exec(act);
+      if (!m) return "";
+      const rest = act.slice(m.index + m[0].length);
+      const nx = rest.search(/\nexport\s/);
+      return nx < 0 ? rest : rest.slice(0, nx);
+    };
+    for (const [fn, guard, door] of [["checkoutAction", "legacyCheckoutSplitGuard", "order.checkout("], ["confirmPromptpayPaymentAction", "legacyCheckoutSplitGuard", "order.checkout("], ["cancelOrderItemAction", "legacyCancelItemSplitGuard", "order.cancelOrderItem("]] as const) {
+      const b = body(fn);
+      const gi = b.search(new RegExp(`\\b${guard}\\s*\\(`));
+      const di = b.indexOf(door);
+      if (!b || gi < 0 || di < 0 || gi > di) p.push(`${fn}: ${guard} ${gi < 0 ? "ไม่ถูกเรียก" : "อยู่หลังประตูเดิม"}`);
+    }
+    const s = await seat("P7", { guestCount: 2, lines: [ml("kaprao", 1), ml("chayen", 1)] });
+    const free = await seat("P7b", { guestCount: 2, lines: [ml("kaprao", 1)] });
+    const pl = splitOf(await mkSplit(s.sid, { mode: "EQUAL", partCount: 2 }));
+    const a = await payPart(pl, 1);
+    if (!a.saleId) throw new Error(`(fixture) จ่ายใบ 1 ${codeOf(a.r)}`);
+    const c0 = await counts();
+    const s0 = await snap(s.sid, String(pl?.splitId ?? ""));
+    const g1 = await sp("legacyCheckoutSplitGuard", { tenantId: T, unitId: U.A, sessionId: s.sid });
+    const g2 = await sp("legacyCancelItemSplitGuard", { tenantId: T, unitId: U.A, itemId: s.it.kaprao ?? "none" });
+    const g3 = await sp("legacyCheckoutSplitGuard", { tenantId: T, unitId: U.A, sessionId: free.sid });
+    const g4 = await sp("legacyCancelItemSplitGuard", { tenantId: T, unitId: U.A, itemId: free.it.kaprao ?? "none" });
+    if (g1?.ok !== false || typeof g1?.reason !== "string" || !g1.reason) p.push(`ตัวกันเช็คบิล (มีแผน) → ${short(g1, 80)} (คาด ok:false + reason)`);
+    if (g2?.ok !== false || typeof g2?.reason !== "string" || !g2.reason) p.push(`ตัวกันยกเลิกรายการในแผน → ${short(g2, 80)} (คาด ok:false + reason)`);
+    if (g3?.ok !== true || g4?.ok !== true) p.push(`โต๊ะไม่มีแผน → เช็คบิล ${short(g3, 40)} · ยกเลิก ${short(g4, 40)} (คาด ok:true)`);
+    const c1 = await counts();
+    if (c1.sale !== c0.sale || c1.seq !== c0.seq) p.push(`บิล ${c0.sale}→${c1.sale}`);
+    if ((await snap(s.sid, String(pl?.splitId ?? ""))) !== s0) p.push("แผน/รายการ/session เปลี่ยน");
+    chk("P7", p.length === 0, "หน้าเดิมกันเช็คบิล/ยกเลิกรายการขณะแผนเปิด · ไม่มีบิล", FX(P8(p) || "ครบ"));
   });
 
   // ════════ C แข่งกัน (ธุรกรรมที่สามถือล็อก) ════════
@@ -2359,6 +2427,33 @@ async function runDb() {
     const st = await Promise.all([a, b, c, d, e, g, hh].map(async (x) => (await sessRow(x.sid))?.status));
     if (st.some((x) => x !== "OPEN")) p.push(`หลังปฏิเสธ สถานะ ${st.join(",")} (คาด OPEN ทั้งหมด)`);
     chk("T3", NS(["registerMergeTables"]) === "" && p.length === 0, "รวม: ออเดอร์/คำขอ/แขก/สมาชิก/ร่าง · MERGED + ต้องเก็บ · เล่นซ้ำ · ปฏิเสธ 7 แบบไม่เขียน", FX(NS(["registerMergeTables"]) + (P8(p) || "ครบ")));
+  });
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 6 · pos-P2.5-review.md N4)
+  await step("T4", async () => {
+    const p: string[] = [];
+    const into = await seat("T4a", { guestCount: 2, lines: [ml("chayen", 1)] });
+    const from = await seat("T4b", { guestCount: 2, lines: [ml("kaprao", 1), ml("latte", 1)] });
+    const pl = splitOf(await mkSplit(from.sid, { mode: "EQUAL", partCount: 2 }));
+    await hold(from.sid, [ml("chayen", 1)]); // รอบร่าง = แผน DONE แล้วโต๊ะ B ยัง OPEN (รวมได้)
+    const a = await payPart(pl, 1);
+    const b = await payPart(pl, 2);
+    if (!a.saleId || !b.saleId || (await planRow(String(pl?.splitId ?? "")))?.status !== "DONE" || (await sessRow(from.sid))?.status !== "OPEN") throw new Error(`(fixture) ใบ ${codeOf(a.r)}/${codeOf(b.r)} · session B ${(await sessRow(from.sid))?.status}`);
+    const mg = await tbl("registerMergeTables", ctxA(), A("OWNER"), { intoSessionId: into.sid, fromSessionIds: [from.sid] });
+    if (mg?.ok !== true) p.push(`รวม B เข้า A → ${codeOf(mg)}`);
+    if ((await planRow(String(pl?.splitId ?? "")))?.sessionId !== into.sid) p.push("แผน DONE ไม่ย้ายไป session ปลายทาง");
+    const v = await voidSale(a.saleId);
+    if (v?.ok !== true) p.push(`void บิลใบ 1 → ${codeOf(v)}`);
+    const pr = (await partRows(String(pl?.splitId ?? "")))[0];
+    if (pr?.status !== "OPEN" || pr?.saleId !== null) p.push(`ใบ 1 ${short([pr?.status, pr?.saleId], 40)} (คาด OPEN · null)`);
+    const re = await payPart(pl, 1);
+    if (!re.saleId || (await planRow(String(pl?.splitId ?? "")))?.status !== "DONE") p.push(`จ่ายใบ 1 ใหม่บนโต๊ะ A → quote ${codeOf(re.q)} · จ่าย ${codeOf(re.r)} ${short(re.r?.message ?? "", 40)} · แผน ${(await planRow(String(pl?.splitId ?? "")))?.status}`);
+    // แผน OPEN บน session ที่ปิดแล้ว (โต๊ะ A5 หลัง X4) ไม่กันการยกเลิกรายการที่ค้างจ่าย
+    const s15 = await planRow(String(PLAN15?.splitId ?? ""));
+    if (s15?.status === "OPEN" && (await sessRow(S15.sid))?.status === "CLOSED") {
+      const ci = await tbl("registerCancelTableItem", ctxA(), A("OWNER"), { itemId: S15.it.kaprao ?? "none", reason: "ลูกค้าเปลี่ยนใจ" });
+      if (ci?.ok !== true) p.push(`ยกเลิกรายการของแผน OPEN บน session ที่ปิดแล้ว → ${codeOf(ci)} (คาด ok)`);
+    } else p.push(`(fixture) แผน A5 ${s15?.status} · session ${(await sessRow(S15.sid))?.status} (คาด OPEN · CLOSED จาก X4)`);
+    chk("T4", p.length === 0, "รวมโต๊ะย้ายแผน DONE · void ใบหลังรวมจ่ายต่อได้ · แผนบน session ปิดไม่กันการยกเลิก", FX(P8(p) || "ครบ"));
   });
 }
 
