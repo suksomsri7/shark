@@ -18,3 +18,6 @@ FU-1 expireDue stale `leftover` `:1030`: use ∥ cron overstates the EXPIRE txn 
 1. **F1 → fix round 1 before merge**: replay paths decide from the `giftcard.sold#<id>` outbox payload flag (never the live switch); HT2.7 sub-case (c2) added red-before (`HF-GC-red2.txt`).
 2. F2, F3, FU-2, FU-4 → owner lines (giftcard owner). **FU-1 (`expireDue` stale `leftover` — EXPIRE/JV 4900 overstated when a use races the expiry cron) → next hotfix card HF-GC2** together with F3 (reload status guard) — brief to be written after HF-GC merges.
 3. Builder CONTROLLER-DECISION (read-only `giftCardSaleEntryId` in `account/gl.ts` + index) approved; reviewer confirmed read-only.
+
+## R2 (account B, 14 Oct 13:3xZ) — head 31cb1bd8 / code ceb281c1 — **MERGEABLE** (full report `pos-HF-GC-review-R2.md`)
+F1 closed: `soldWithAccountingLink` reads `payload.accountingLink === true` from the `giftcard.sold#<cardId>` outbox row on both replay paths; no path decides from the live switch; oracle diff = HT2.7 c2 only (count 20), red2 19/20; owner lines accurate; gates match (head=ceb281c1 dirty=0). G1–G3 Info only (pre-HF-GC crashed posts rely on the FU-4 sweep; outbox rows must not be pruned; raw logs not opened).
