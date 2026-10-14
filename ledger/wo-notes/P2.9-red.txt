@@ -60,3 +60,17 @@ result: 24/48 · new checks: APIN red (no gift-card bill can exist: register/cre
 ✅ P2.9-O1 
 ✅ P2.9-O2 
 JSON_SUMMARY {"suite":"qc-pos-p2.9","total":48,"passed":24,"failed":["P2.9-G2","P2.9-G3","P2.9-G4","P2.9-G5","P2.9-G6","P2.9-G7","P2.9-A1","P2.9-A3","P2.9-A4","P2.9-APIN","P2.9-C1","P2.9-C2","P2.9-C3"
+
+# Block 3 — fix round 1 ORACLE-ADD/EDIT (ST5 T6 S5 G9 G10 RC1 MG1 MG2 C5 · V4/V6/V7 pro-rata) red-before on head before the fixes
+tree=/root/projects/shark-pos-b head=2e850b08 dirty=0 (code 0e9e3144 · fix-1 oracle only)
+===== qc-pos-p2.9 ===== ผ่าน 49/57 (QC_FORCE)
+❌ P2.9-ST5 — expected สต็อก → ตัวนับ → บัตร | actual prepareSaleTenders ยังล็อกบัตร · createSaleOnce ไม่เรียก lockTenderCards
+❌ P2.9-T6 — expected เก็บ/เปลี่ยนชนิดถูกปฏิเสธ · บิลทิป VALIDATION · FAILED 0 | actual archiveLedger → {"ok":true,"reason":"มีการเคลื่อนไหวแล้ว — ปิดใช้งาน (ซ่อน) ไว้"} · updateLedger type 
+❌ P2.9-S5 — expected SC ไม่ใช่บัตรกำนัล · ไม่มีบิล · list/KPI GIFT เท่านั้น | actual reload SC → OK  · มีบิลเติมเงิน · suspend SC → OK · เครดิต 100000→101000/SUSPENDED · list UNKNOWN มีเลข SC · KPI outst
+❌ P2.9-G9 — expected ตัวนับ 5 · LOCKED · 0 บิล | actual ตัวนับ 1 · GIFT_CARD_PIN,P2028 · บิล 0 · ยอด 30000
+❌ P2.9-G10 — expected ซ้ำไม่มี PIN = บิลเดิม · ตัดครั้งเดียว · คีย์ใหม่ VALIDATION | actual ครั้งแรก OK · ซ้ำไม่มี PIN VALIDATION บิลต่าง
+❌ P2.9-RC1 — expected a REFUND_METHOD_INVALID · b CASH ปฏิเสธ/STORE_CREDIT ok · c REASON_REQUIRED → ok + audit | actual a: บัตร 100% คืนเงินสด → OK · b: สมาชิก บัตรระงับ คืนเงินสด → OK · b: เครดิตร้าน → SALE_
+❌ P2.9-MG2 — expected ผู้เก็บ +300 · ใบที่ถูกรวม 0 | actual ผู้เก็บ 10000 (คาด 40000) · ใบที่ถูกรวม 30000 · REFUND บนใบผู้เก็บ 0
+❌ P2.9-C5 — expected EXPIRED 0 · REFUND 40 + EXPIRE 40 · JV 1 · 2110 สุทธิ 0 | actual บัตร EXPIRED/4000 · REFUND [4000] · EXPIRE [6000] · JV ของ EXPIRE หลัง void 0 · 2110 สุทธิ -4000 {"1000":10000,"2110":-4000,"4900":-6000}
+green-before among the adds: MG1 (fold already sums and orphans the merged card — pinned by MG2) · V4/V6/V7 edited values are allowed by base code (no cap) — ruling 2 pins the split
+JSON_SUMMARY {"suite":"qc-pos-p2.9","total":57,"passed":49,"failed":["P2.9-ST5","P2.9-T6","P2.9-S5","P2.9-G9","P2.9-G10","P2.9-RC1","P2.9-MG2","P2.9-C5"],"skipped":false,"forced":true,"missing":[],"gu
