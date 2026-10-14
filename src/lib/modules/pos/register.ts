@@ -2473,7 +2473,10 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     if (req.cart.tableSplitPartId) {
       splitPart = await (await regSplitMod()).splitPartForPay(db, { tenantId: s0.tenantId, unitId: s0.unitId, partId: req.cart.tableSplitPartId });
       if (!splitPart) return regRefuse("TABLE_SPLIT_NOT_FOUND");
-      if (req.cart.memberId && req.cart.memberId !== splitPart.part.memberId) return regRefuse("VALIDATION", "สมาชิกของบิลย่อยกำหนดในแผนแยกบิล — แก้แผนแทน");
+      if (req.cart.memberId && req.cart.memberId !== splitPart.part.memberId) {
+        // POS P2.5 ▸ fix1 มติ 7 (F4): เครดิตร้านของสมาชิกอื่นบนใบ = ไม่ใช่เจ้าของเครดิต (รหัสเดียวกับ P2.9) · อื่น = VALIDATION ◂
+        return req.payMethods.some((x) => x.type === "STORE_CREDIT") ? regRefuse("STORE_CREDIT_NOT_OWNER") : regRefuse("VALIDATION", "สมาชิกของบิลย่อยกำหนดในแผนแยกบิล — แก้แผนแทน");
+      }
       const ts = await regTableSession(db, s0, splitPart.plan.sessionId);
       if (isRegRefusal(ts)) return ts;
       const amt = tableSplitSaleAmounts(splitPart.part);
@@ -2535,6 +2538,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       if (isRegRefusal(sc)) return sc;
       if (sc.split!.version !== req.expectedSplitVersion) return regRefuse("VERSION_CHANGED");
       req.cart = { ...req.cart, lines: sc.lines, table: sc.table, split: sc.split, billDiscount: sc.billDiscount, memberId: sc.memberId, channelId: sc.channelId };
+      // POS P2.5 ▸ fix1 มติ 7 (F4): ด่านเครดิตร้านของ P2.9 หลัง regSplitCart — สมาชิกของบิล = สมาชิกของใบ (ไม่ใช่ของ session · client ไม่ต้องส่งก็ได้) ◂
+      if (req.payMethods.some((x) => x.type === "STORE_CREDIT") && !req.cart.memberId) return regRefuse("STORE_CREDIT_NOT_OWNER");
     }
     // ②
     const caps = await regDiscountCaps(db, s);
