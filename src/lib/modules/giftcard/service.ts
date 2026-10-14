@@ -1394,11 +1394,14 @@ export async function refundTenderUse(tenantId: string, input: { txnId: string }
     return { refunded: false, txnId: done.id, balanceAfter: done.balanceAfter };
   }
   // POS P2.9 ▸ fix1 H3 (มติ 4): เครดิตร้านที่ถูกรวมไปแล้ว (ไม่มีเจ้าของ) ⇒ คืนเข้าใบของผู้เก็บตามรายการ ADJUST MERGE ◂
-  const target = await mergeTargetOf(prisma, src.giftCardId);
   let res: { refunded: boolean; txnId?: string; balanceAfter?: number };
   try {
     res = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ANY(${[...new Set([src.giftCardId, target])].sort()}::text[]) ORDER BY id FOR UPDATE`;
+      // POS P2.9 ▸ fix2 H3 (มติ 3): ล็อกใบเดิมก่อน แล้วค่อยหาปลายทาง (เห็นการรวมสมาชิกที่ commit ก่อนเราได้ล็อก) แล้วล็อกใบผู้เก็บ ·
+      //   ไม่ตายกับการรวม: การรวมล็อกสองใบพร้อมกัน — ถ้ามันยังไม่ commit เราไม่เห็น MERGE (คืนเข้าใบเดิม แล้วการรวมย้ายยอดให้) · ถ้า commit แล้วก็ปล่อยล็อกแล้ว ◂
+      await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${src.giftCardId} FOR UPDATE`;
+      const target = await mergeTargetOf(tx, src.giftCardId);
+      if (target !== src.giftCardId) await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${target} FOR UPDATE`;
       const again = await tx.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } } });
       if (again) return { refunded: false, txnId: again.id, balanceAfter: again.balanceAfter };
       const upd = await tx.giftCard.update({ where: { id: target }, data: { balanceSatang: { increment: src.satang } }, select: { balanceSatang: true, status: true } });
@@ -1470,6 +1473,7 @@ export async function refundToCard(
   if (done) return { txnId: done.id, balanceAfter: done.balanceAfter };
   if (!Number.isInteger(input.satang) || input.satang <= 0) throw tenderErr("GIFT_CARD_CHANGED");
   const now = new Date();
+  await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${input.giftCardId} FOR UPDATE`; // POS P2.9 ▸ fix2 H3: ล็อกก่อนหาปลายทาง ◂
   const cardId = await mergeTargetOf(tx, input.giftCardId); // POS P2.9 ▸ fix1 H3 ◂
   input = { ...input, giftCardId: cardId };
   const upd = await tx.giftCard.updateMany({
