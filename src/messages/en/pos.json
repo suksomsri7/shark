@@ -1661,7 +1661,9 @@
         "credit": "Store credit",
         "creditSub": "Coming next (member wallet)",
         "platform": "Platform",
-        "platformSub": "The platform refunds the customer"
+        "platformSub": "The platform refunds the customer",
+        "storeCredit": "Store credit",
+        "storeCreditSub": "To the member wallet"
       },
       "reference": "Reference (optional)",
       "summary": "Refund {amount}",
@@ -1672,7 +1674,18 @@
       "auditNote": "The person and the reason are recorded in the audit log",
       "cancel": "Cancel",
       "confirm": "Confirm refund {amount}",
-      "changed": "The amount changed — please check again"
+      "changed": "The amount changed — please check again",
+      "tender": {
+        "max": "Up to {amount}",
+        "maxParen": "(up to {amount})",
+        "toCard": "Back to card {card}",
+        "cardUnusable": "Card unusable — cannot refund to it",
+        "cardDone": "Card share already refunded",
+        "split": "Split refund: {rows}",
+        "cardToCash": "Unusable card share {amount} goes back as cash — a reason is required (manager or approval)",
+        "uncovered": "This method cannot cover {amount} — pick another method or fewer items",
+        "methodInvalid": "This refund method is not allowed for this bill — the gift card / store credit share must go back to the card or store credit"
+      }
     },
     "errors": {
       "noPermission": "This account is not allowed to do this — ask the owner or a manager",

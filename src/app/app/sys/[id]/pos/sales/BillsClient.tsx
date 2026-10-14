@@ -10,6 +10,9 @@
 // POS P1.13U ▸ แถวใบกำกับในลิ้นชัก (ภาพ 12 · มติ 4): ABB "ขอใบเต็มรูป" (ออกทีหลัง) · คำขอของลูกค้า ออก/ปฏิเสธ · ออกแล้ว = เลข + ผู้ซื้อ —
 //   ปุ่มเฉพาะผู้มีสิทธิ์ pos.taxinvoice.issue ที่สาขา (หน้าเพจส่ง canIssueTaxInvoice) · กล่องเดียวกับหน้าขาย (TaxInvoiceDialog โหมด issue) ◂
 // POS P1.11U ▸ แถวส่งใบเสร็จในลิ้นชัก: ส่ง LINE (บิลสมาชิก) · ส่งอีเมล (แผ่นช่องเดียว) · คัดลอกลิงก์ใบเสร็จ (receiptLinkAction · ไม่เขียน audit) ◂
+// POS P2.9U ▸ หน้าต่างคืนเงิน (มติ 8 · hunt H1): ชิปเดิม + "คืนเข้าบัตร GC-••••1234 (สูงสุด ฿x)" ต่อบัตรของบิล (ปิดพร้อมเหตุผลเมื่อบัตรใช้ไม่ได้) +
+//   "เครดิตร้าน · เข้ากระเป๋าสมาชิก" (บิลสมาชิก) · เงินสด/พร้อมเพย์ "สูงสุด ฿y" = เพดานเงินจริงเมื่อบิลมีแถวบัตร · ยอดเกินเพดานของชิป = แบ่งแถวตาม
+//   allocateRefund (บัตร → เครดิตร้าน → เงินสด → ส่วนบัตรใช้ไม่ได้เป็นเงิน = walk-in + เหตุผล) · ตัวเลือกจาก refundTenderOptionsAction (อ่านอย่างเดียว) ◂
 // POS P2.1U ▸ ช่องทางขาย (มติ 3–4 · ภาพ 12/09): คอลัมน์ "ช่องทาง" = ชื่อช่องทางขาย (แพลตฟอร์ม = กรอบดำหนา · ระบบอื่นที่เป็นหน้าร้านปริยาย = ป้ายระบบเดิม) ·
 //   ลูกค้า = เลขออเดอร์แพลตฟอร์มเมื่อไม่มีสมาชิก · วิธีชำระ "แพลตฟอร์ม" · ตัวกรอง "ทุกช่องทาง" (salesChannelId) ข้างตัวกรองระบบต้นทางเดิม ·
 //   การ์ดบิลบรรทัดรอง "หน้าร้าน N · ออนไลน์ M" (ออนไลน์ = ทุกช่องทางที่ไม่ใช่ STORE · นับจากตัวกรอง salesChannelId ของเซิร์ฟเวอร์) ·
@@ -33,6 +36,8 @@ import { printErrorKey } from "@/components/pos/print/types";
 import { refundSaleAction, saleForRefundAction } from "@/lib/modules/pos/refund-actions";
 import { refundLineAmount, refundServiceCharge } from "@/lib/modules/pos/refund-math";
 import { REFUND_ERROR_KEYS, REFUND_REASON_CODES, REFUND_REASON_MAX, type RefundPayType, type RefundReasonCode, type SaleForRefund } from "@/lib/modules/pos/refund-shared";
+import { refundTenderOptionsAction } from "@/lib/modules/pos/refund-tender-actions"; // POS P2.9U ▸ มติ 8 ◂
+import { allocateRefund, type RefundPick, type RefundTenderOptions } from "@/lib/modules/pos/refund-tenders-shared"; // POS P2.9U ▸ มติ 8 ◂
 import { currentShiftAction } from "@/lib/modules/pos/shift-actions";
 import { TaxInvoiceDialog, type TaxInvoiceSubmitResult } from "@/components/pos/register/TaxInvoiceDialog";
 import { issueFromTaxInvoiceRequestAction, issueFullTaxInvoiceAction, rejectTaxInvoiceRequestAction } from "@/lib/modules/pos/tax-invoice-actions";
@@ -696,7 +701,10 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const [rfRestock, setRfRestock] = useState<Record<string, boolean>>({});
   const [rfReason, setRfReason] = useState<RefundReasonCode>("DAMAGED");
   const [rfReasonText, setRfReasonText] = useState("");
-  const [rfMethod, setRfMethod] = useState<"CASH" | "ORIGINAL" | "CARD" | "PLATFORM">("CASH"); // POS P2.1U ▸ F4: + PLATFORM ◂
+  const [rfMethod, setRfMethod] = useState<"CASH" | "ORIGINAL" | "CARD" | "PLATFORM" | "GIFT_CARD" | "STORE_CREDIT">("CASH"); // POS P2.1U ▸ F4: + PLATFORM ◂ · POS P2.9U ▸ + GIFT_CARD (rfCardId) · STORE_CREDIT ◂
+  // POS P2.9U ▸ มติ 8: ตัวเลือกคืนเข้าบัตร/เครดิตร้านของบิลนี้ (null = ยังไม่มา/อ่านไม่ได้ ⇒ ชิปเดิมเท่านั้น) · บัตรที่เลือก ◂
+  const [rfOpts, setRfOpts] = useState<RefundTenderOptions | null>(null);
+  const [rfCardId, setRfCardId] = useState<string | null>(null);
   const [rfRef, setRfRef] = useState("");
   const [rfKey, setRfKey] = useState("");
   const [rfErr, setRfErr] = useState<string | null>(null);
@@ -733,12 +741,18 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     setRfReason("DAMAGED");
     setRfReasonText("");
     setRfMethod("CASH");
+    setRfOpts(null); // POS P2.9U ◂
+    setRfCardId(null);
     setRfKey(newKey("refund"));
     setRfShiftNo(null);
     setRefundOpen(true);
     deviceRef.current = getPosDeviceId();
     const [r] = await Promise.all([
       loadRefund(bill.id),
+      // POS P2.9U ▸ มติ 8: เพดานต่อบัตร/เงินจริงของบิล (อ่านไม่ได้ = ชิปเดิม — เซิร์ฟเวอร์ยังตัดสินตอนคืน) ◂
+      refundTenderOptionsAction({ systemId, unitId, saleId: bill.id })
+        .then((o) => setRfOpts(o.ok ? o : null))
+        .catch(() => setRfOpts(null)),
       deviceRef.current
         ? currentShiftAction({ systemId, unitId, deviceId: deviceRef.current })
             .then((s) => setRfShiftNo(s.ok && s.shift ? s.shift.shiftNo : null))
@@ -788,14 +802,35 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     setRfRetry(false);
   };
   const payTypeOf = (): RefundPayType => (rfMethod === "PLATFORM" ? "PLATFORM" : rfMethod === "CASH" ? "CASH" : rfMethod === "CARD" ? "CARD" : originalPay?.type === "TRANSFER" ? "TRANSFER" : "PROMPTPAY");
+  // POS P2.9U ▸ มติ 8: ชิปที่เลือก → แถวคืน (allocateRefund · เพดานจาก refundTenderOptionsAction) ◂
+  const rfPick: RefundPick =
+    rfMethod === "PLATFORM"
+      ? { kind: "PLATFORM" }
+      : rfMethod === "STORE_CREDIT"
+        ? { kind: "STORE_CREDIT" }
+        : rfMethod === "GIFT_CARD" && rfCardId
+          ? { kind: "GIFT_CARD", giftCardId: rfCardId }
+          : { kind: "CASHLIKE", type: payTypeOf() as "CASH" | "PROMPTPAY" | "TRANSFER" | "CARD" };
+  const rfAlloc = allocateRefund(draft.total, rfPick, rfOpts);
+  const rfTender = !!rfOpts && (rfOpts.cards.length > 0 || rfOpts.cashLikeCapSatang !== null);
+  /** ส่วนของบัตรที่ใช้ไม่ได้คืนเป็นเงิน (walk-in) ⇒ ต้องมีเหตุผลเป็นข้อความ (refund.ts REASON_REQUIRED) */
+  const rfNeedReason = rfAlloc.cardShareToCash > 0;
+  const rfCardText = (id: string | undefined) => rfOpts?.cards.find((c) => c.giftCardId === id)?.numberMasked ?? "";
+  const rfRowText = (r: { type: string; amountSatang: number; giftCardId?: string }) =>
+    `${r.type === "GIFT_CARD" ? t("refund.tender.toCard", { card: rfCardText(r.giftCardId) }) : r.type === "STORE_CREDIT" ? t("refund.m.storeCredit") : methodLabel(r.type, ts, t)} ${money(r.amountSatang)}`;
   const submitRefund = async () => {
     if (!rf || rfBusy || draft.lines.length === 0) return;
     if (!requireToken()) {
       setRefundOpen(false);
       return;
     }
-    if (rfReason === "OTHER" && !rfReasonText.trim()) {
+    if ((rfReason === "OTHER" || rfNeedReason) && !rfReasonText.trim()) {
       setRfErr(tr("reasonRequired"));
+      return;
+    }
+    // POS P2.9U ▸ มติ 8: ยอดเกินเพดานของทุกวิธีที่คืนได้ = ไม่ส่ง ◂
+    if (rfAlloc.uncovered > 0) {
+      setRfErr(t("refund.tender.uncovered", { amount: money(rfAlloc.uncovered) }));
       return;
     }
     setRfBusy(true);
@@ -811,7 +846,13 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       const refundIn = {
         saleId: rf.sale.id,
         lines: draft.lines.map((l) => ({ lineId: l.lineId, qty: l.qty, restock: l.restock })),
-        payMethods: draft.total > 0 ? [{ type, amountSatang: draft.total, reference }] : [],
+        // POS P2.9U ▸ มติ 8: แถวตาม allocateRefund (บิลไม่มีแถวบัตร = แถวเดียวของชิปเดิม) · GIFT_CARD ส่ง giftCardId เสมอ · STORE_CREDIT แถวเดียว ◂
+        payMethods: rfAlloc.rows.map((x) => ({
+          type: x.type,
+          amountSatang: x.amountSatang,
+          reference: x.type === type && x.type !== "CASH" ? reference : null,
+          ...(x.type === "GIFT_CARD" && x.giftCardId ? { giftCardId: x.giftCardId } : {}),
+        })),
         reasonCode: rfReason,
         reason: rfReasonText.trim() || null,
         ...(dev ? { deviceId: dev } : {}),
@@ -843,6 +884,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         setRfRetry(true);
       } else if (r.code === "STAFF_TOKEN_INVALID") tokenDead(); // F8
       else if (r.code === "NO_PERMISSION" && pinShop) setMgrPin({ kind: "refund", refund: refundIn }); // F8
+      else if (r.code === "REFUND_METHOD_INVALID" && rfTender) setRfErr(t("refund.tender.methodInvalid")); // POS P2.9U ▸ มติ 8 ◂
       else setRfErr(refundErrKey(r.code) !== "unknown" ? tr(refundErrKey(r.code)) : posErr(r.code));
     } catch {
       setRfErr(tr("unknown"));
@@ -1891,7 +1933,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       ))}
                     </select>
                   </label>
-                  {rfReason === "OTHER" ? (
+                  {rfReason === "OTHER" || rfNeedReason ? ( // POS P2.9U ▸ มติ 8: ส่วนบัตรใช้ไม่ได้คืนเป็นเงิน = เหตุผลบังคับ ◂
                     <input
                       type="text"
                       data-testid="pos-bills-refund-reason-text"
@@ -1929,6 +1971,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                     >
                       {t("refund.m.cash")}
                       <small className="text-[11px] font-normal text-[color:var(--color-muted)]">{rfShiftNo !== null ? t("refund.m.cashSub", { no: rfShiftNo }) : t("refund.m.cashNoShift")}</small>
+                      {/* POS P2.9U ▸ มติ 8: บิลที่มีแถวบัตร ⇒ เงินจริงคืนได้ไม่เกินเพดาน ◂ */}
+                      {rfOpts?.cashLikeCapSatang != null ? <small data-testid="pos-bills-refund-cash-cap" className="text-[11px] font-normal text-[color:var(--color-muted)]">{t("refund.tender.max", { amount: money(rfOpts.cashLikeCapSatang) })}</small> : null}
                     </button>
                     {originalPay ? (
                       <button
@@ -1942,7 +1986,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                         className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl border px-2 text-center text-[13px] font-semibold leading-tight ${rfMethod === "ORIGINAL" ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""}`}
                       >
                         {originalPay.type === "TRANSFER" ? t("refund.m.transfer") : t("refund.m.promptpay")}
-                        <small className="text-[11px] font-normal text-[color:var(--color-muted)]">{t("refund.m.originalSub")}</small>
+                        <small className="text-[11px] font-normal text-[color:var(--color-muted)]">
+                          {rfOpts?.cashLikeCapSatang != null ? t("refund.tender.max", { amount: money(rfOpts.cashLikeCapSatang) }) : t("refund.m.originalSub")}
+                        </small>
                       </button>
                     ) : null}
                     {cardPay ? (
@@ -1957,27 +2003,77 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                         className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl border px-2 text-center text-[13px] font-semibold leading-tight ${rfMethod === "CARD" ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""}`}
                       >
                         {t("refund.m.card")}
-                        <small className="text-[11px] font-normal text-[color:var(--color-muted)]">{t("refund.m.cardSub")}</small>
+                        <small className="text-[11px] font-normal text-[color:var(--color-muted)]">
+                          {rfOpts?.cashLikeCapSatang != null ? t("refund.tender.max", { amount: money(rfOpts.cashLikeCapSatang) }) : t("refund.m.cardSub")}
+                        </small>
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      data-testid="pos-bills-refund-method-credit"
-                      disabled
-                      aria-disabled="true"
-                      className="flex min-h-[52px] cursor-not-allowed flex-col items-center justify-center rounded-xl border px-2 text-center text-[13px] font-semibold leading-tight text-[color:var(--color-muted)] opacity-60"
-                    >
-                      {t("refund.m.credit")}
-                      <small className="text-[11px] font-normal">{t("refund.m.creditSub")}</small>
-                    </button>
+                    {/* POS P2.9U ▸ มติ 8: ชิปต่อบัตรของขวัญของบิล (สูงสุด = ส่วนที่บัตรจ่าย − ที่คืนแล้ว · ใช้ไม่ได้ = ปิดพร้อมเหตุผล) ◂ */}
+                    {(rfOpts?.cards ?? []).map((c) => {
+                      const off = !c.refundable || c.capSatang <= 0;
+                      const on = rfMethod === "GIFT_CARD" && rfCardId === c.giftCardId;
+                      return (
+                        <button
+                          key={c.giftCardId}
+                          type="button"
+                          data-testid={`pos-bills-refund-method-card-${c.giftCardId}`}
+                          aria-pressed={on}
+                          disabled={off}
+                          onClick={() => {
+                            setRfMethod("GIFT_CARD");
+                            setRfCardId(c.giftCardId);
+                            setRfCashErr(null);
+                          }}
+                          className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl border px-2 text-center text-[13px] font-semibold leading-tight disabled:cursor-not-allowed disabled:text-[color:var(--color-muted)] disabled:opacity-60 ${on ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""}`}
+                        >
+                          {t("refund.tender.toCard", { card: c.numberMasked })}
+                          <small className="text-[11px] font-normal text-[color:var(--color-muted)]">
+                            {!c.refundable ? t("refund.tender.cardUnusable") : c.capSatang <= 0 ? t("refund.tender.cardDone") : t("refund.tender.maxParen", { amount: money(c.capSatang) })}
+                          </small>
+                        </button>
+                      );
+                    })}
+                    {/* POS P2.9U ▸ มติ 8: เครดิตร้าน (บิลสมาชิกเท่านั้น · แถวเดียว) — แทนชิป "เครดิตร้าน" ที่ปิดไว้ของ P1.16 ◂ */}
+                    {rf.member ? (
+                      <button
+                        type="button"
+                        data-testid="pos-bills-refund-method-storecredit"
+                        aria-pressed={rfMethod === "STORE_CREDIT"}
+                        onClick={() => {
+                          setRfMethod("STORE_CREDIT");
+                          setRfCardId(null);
+                          setRfCashErr(null);
+                        }}
+                        className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl border px-2 text-center text-[13px] font-semibold leading-tight ${rfMethod === "STORE_CREDIT" ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""}`}
+                      >
+                        {t("refund.m.storeCredit")}
+                        <small className="text-[11px] font-normal text-[color:var(--color-muted)]">{t("refund.m.storeCreditSub")}</small>
+                      </button>
+                    ) : null}
                   </div>
                   )}
+                  {/* POS P2.9U ▸ มติ 8: ยอดแบ่งหลายวิธี (ชิปที่เลือกถึงเพดาน) · ส่วนบัตรใช้ไม่ได้เป็นเงิน = ต้องมีเหตุผล ◂ */}
+                  {rfTender && rfAlloc.rows.length > 1 ? (
+                    <span data-testid="pos-bills-refund-split" className="text-[12px] text-[color:var(--color-ink-soft)]">
+                      {t("refund.tender.split", { rows: rfAlloc.rows.map(rfRowText).join(" \u00b7 ") })}
+                    </span>
+                  ) : null}
+                  {rfNeedReason ? (
+                    <span data-testid="pos-bills-refund-card-cash" className="text-[12px] font-semibold text-[color:var(--color-danger)]">
+                      {t("refund.tender.cardToCash", { amount: money(rfAlloc.cardShareToCash) })}
+                    </span>
+                  ) : null}
+                  {rfAlloc.uncovered > 0 ? (
+                    <span data-testid="pos-bills-refund-uncovered" className="text-[12px] font-semibold text-[color:var(--color-danger)]">
+                      {t("refund.tender.uncovered", { amount: money(rfAlloc.uncovered) })}
+                    </span>
+                  ) : null}
                   {rfCashErr && rfMethod === "CASH" ? (
                     <span className="text-[12px] text-[color:var(--color-danger)]" data-testid="pos-bills-refund-cash-error">
                       {rfCashErr}
                     </span>
                   ) : null}
-                  {rfMethod !== "CASH" ? (
+                  {rfMethod !== "CASH" && rfMethod !== "GIFT_CARD" && rfMethod !== "STORE_CREDIT" ? (
                     <input
                       type="text"
                       data-testid="pos-bills-refund-reference"

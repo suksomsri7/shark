@@ -5301,25 +5301,6 @@
     },
     {
       "page": "/app/sys/[id]/pos/sales",
-      "testid": "pos-bills-refund-method-credit",
-      "kind": "toggle",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "ui",
-        "note": "เครดิตร้าน — ปิดไว้ \"รอบถัดไป (กระเป๋าสมาชิก)\" (มติ CD3 · ไม่ใช่วิธีคืนของ P1.8)"
-      },
-      "wo": "P1.16",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/sales",
       "testid": "pos-bills-refund-reference",
       "kind": "input",
       "roles": [
@@ -15564,6 +15545,48 @@
         "target": "pos-reg-paydlg-giftcard-changed",
         "state": "disappears",
         "note": "ปิดแบนเนอร์ \"ยอดบัตรเปลี่ยน — ตรวจสอบใหม่\""
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-card-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-summary",
+        "state": "changes",
+        "note": "P2.9U มติ 8: คืนเข้าบัตร GC-••••1234 (สูงสุด ฿x = ส่วนที่บัตรจ่าย − ที่คืนแล้ว · refundTenderOptionsAction) · บัตรใช้ไม่ได้ = ปิด + เหตุผล · ยอดเกินเพดาน = แบ่งแถว (allocateRefund) · ส่ง GIFT_CARD + giftCardId"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-storecredit",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-summary",
+        "state": "changes",
+        "note": "P2.9U มติ 8: เครดิตร้าน · เข้ากระเป๋าสมาชิก (บิลสมาชิกเท่านั้น · แถว STORE_CREDIT เดียว) — แทนชิป เครดิตร้าน ที่ปิดไว้ของ P1.16"
       },
       "wo": "P2.9U",
       "oracle": "",
