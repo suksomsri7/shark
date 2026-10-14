@@ -1481,6 +1481,8 @@ async function adoptVariantRow(ctx: CatalogCtx, actor: MembershipCtx | null, tx:
     parentId: a.parentId, name: a.name, nameEn: a.nameEn, basePriceSatang: a.price, barcode: a.barcode, categoryId,
     soldByWeight: a.soldByWeight, scalePlu: a.scalePlu, unitId,
     ...(a.trackStock !== undefined ? { trackStock: a.trackStock } : {}),
+    // POS P2.6U ▸ มติ 17 (R3 H3): แถวไม่มีสถานีเองแต่ได้แม่ใหม่ = เส้นทางครัวเปลี่ยนตอนนี้ ⇒ stationSetAt (heal ไม่สร้างตั๋วย้อนหลังให้บิลก่อนผูก) ◂
+    ...(row.stationId === null && row.parentId !== a.parentId ? { stationSetAt: new Date() } : {}),
   };
   await tx.posProduct.updateMany({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data });
   if (a.price !== null && target) {

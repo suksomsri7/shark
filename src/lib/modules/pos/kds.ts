@@ -62,7 +62,7 @@ const MSG: Record<KdsRefusalCode, string> = {
   TICKET_NOT_FOUND: "ไม่พบตั๋วครัวนี้ในสาขานี้",
   TICKET_TOO_OLD: "ตั๋วนี้เป็นของวันก่อน — ดึงกลับมาแก้ไม่ได้",
   KDS_STATION_NOT_FOUND: "ไม่พบสถานีครัวนี้ในสาขานี้",
-  TICKET_VOIDED: "บิลนี้ถูกยกเลิกแล้ว — ดึงกลับมาทำไม่ได้",
+  TICKET_VOIDED: "บิลนี้ถูกยกเลิก/คืนเงินแล้ว — ดึงกลับมาทำไม่ได้", // P2.6U มติ 18 (R3 H4): คืนเงินเต็มก็ใช้รหัสนี้
   VALIDATION: "ข้อมูลที่ส่งมาไม่ถูกต้อง — ยังไม่ได้บันทึกอะไร",
   PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ทำรายการนี้ที่จอครัว — ขอสิทธิ์จากเจ้าของร้าน",
   PRODUCT_NOT_FOUND: "ไม่พบสินค้านี้ในสาขานี้",
@@ -287,7 +287,8 @@ export async function ticketForSale(tenantId: string, unitId: string, saleId: st
  * heal (R3 · มติ 3): บิล POS ของสาขาที่ PAID ภายใน 12 ชม. · ไม่มี sourceId · มีบรรทัดที่เข้าครัวได้ · ยังไม่มีรอบ — ≤ 20 บิลต่อครั้ง (ใหม่ก่อน) ·
  * VOIDED/คืนเงินเต็ม = ไม่เคยสร้าง · เรียกจาก kdsBoard ทุกครั้ง
  * fix1 H4 + fix2 G1/N2 (มติ fix2-1): บรรทัดนับเฉพาะเมื่อการผูกครัว "มีอยู่ก่อนขาย" — เมนู: MenuItem.createdAt (stationId บังคับ = ผูกตั้งแต่เกิด) ·
- *   ไม่ใช่เมนู: coalesce(stationSetAt, createdAt) ของแถว (หรือของแม่เมื่อใช้สถานีแม่) · สถานี: KdsStation.createdAt — ทั้งหมด ≤ เวลาขาย
+ *   ไม่ใช่เมนู: coalesce(stationSetAt, createdAt) ของแถว (หรือของแม่เมื่อใช้สถานีแม่ — และของแถวเองด้วย: ผูกเป็นตัวแปรหลังขายประทับ stationSetAt · P2.6U มติ 17) ·
+ *   สถานี: KdsStation.createdAt — ทั้งหมด ≤ เวลาขาย
  *   (ไม่ใช้ updatedAt — ขายซ้ำ/แก้ราคาไม่ทำให้ heal ตาบอด) · ข้อจำกัด: ย้าย/เลิกเก็บสถานีหลังขายยังให้ตั๋วผีได้ภายใน 12 ชม. (owner line)
  */
 export async function healMissingTickets(tenantId: string, unitId: string): Promise<HealResult> {
@@ -309,7 +310,7 @@ export async function healMissingTickets(tenantId: string, unitId: string): Prom
                        AND k."createdAt" <= s."createdAt"
                      WHERE p.id = l."productId" AND p."tenantId" = ${tenantId} AND p.kind::text <> 'MENU'
                        AND CASE WHEN p."stationId" IS NOT NULL THEN coalesce(p."stationSetAt", p."createdAt") <= s."createdAt"
-                                ELSE coalesce(pp."stationSetAt", pp."createdAt") <= s."createdAt" END)))
+                                ELSE coalesce(pp."stationSetAt", pp."createdAt") <= s."createdAt" AND coalesce(p."stationSetAt", p."createdAt") <= s."createdAt" END)))
     ORDER BY s."createdAt" DESC, s.id
     LIMIT ${KDS_HEAL_MAX}`;
   let healed = 0;
@@ -422,8 +423,12 @@ async function moveTicket(name: string, ctx: RegisterCtx, actor: RegisterActor, 
     let changed: number;
     try {
       changed = await prisma.$transaction(async (tx) => {
-      // fix2 N4 (มติ fix2-4): ดึงกลับตั๋วของบิลที่ void / ออเดอร์ที่ยกเลิก-ปฏิเสธ ไม่ได้ (ครัวไม่ทำของที่ไม่มีคนจ่าย) — บิล: FOR SHARE (แข่งกับ void) · ออเดอร์: อ่านธรรมดา · ไม่เขียนอะไร
-      if (spec.recall && (await roundVoidedInTx(tx, s.tenantId, t.round, t.items))) throw new KdsAbort(refuse("TICKET_VOIDED"));
+      // fix2 N4 (มติ fix2-4): ดึงกลับตั๋วของบิลที่ void/คืนเงิน / ออเดอร์ที่ยกเลิก-ปฏิเสธ ไม่ได้ (ครัวไม่ทำของที่ไม่มีคนจ่าย) — บิล: FOR SHARE (แข่งกับ void) · ออเดอร์: อ่านธรรมดา · ไม่เขียนอะไร
+      // P2.6U มติ 15 (R3 H1): ล็อกรอบก่อนอ่านสถานะ — ตัวรับ pos.order.cancelled/pos.sale.voided ต้องรอหลังเรา (ไม่มีช่องอ่านแล้วค่อยล็อก) · สอง recall รอบเดียวกันเรียงคิวที่นี่
+      if (spec.recall) {
+        await R.kitchenLockRoundInTx(tx, s, t.round.id);
+        if (await roundVoidedInTx(tx, s.tenantId, t.round)) throw new KdsAbort(refuse("TICKET_VOIDED"));
+      }
       const r = await R.kitchenMoveInTx(tx, s, { orderId: t.round.id, ...(byItem ? { itemId } : { stationId: stationId as string }), from: spec.from, to: spec.to, recall: spec.recall, now });
       if (r.changed && t.round.posOrderId) await onlineProgressInTx(tx, R, s, t.round.id, t.round.posOrderId);
       return r.changed;
@@ -442,15 +447,14 @@ class KdsAbort extends Error {
     super(refusal.code);
   }
 }
-/** fix2 N4: รอบนี้เป็นของบิลที่ void / ออเดอร์ที่ยกเลิกหรือปฏิเสธแล้วไหม (รายการถูกตัวรับคิวยกเลิก หรือสถานะของต้นทาง) */
-async function roundVoidedInTx(tx: Tx, tenantId: string, round: RoundRow, items: ItemRow[]): Promise<boolean> {
-  void items;
+/** fix2 N4: รอบนี้เป็นของบิลที่ไม่ PAID แล้ว (void / คืนเงินเต็ม) / ออเดอร์ที่ยกเลิกหรือปฏิเสธแล้วไหม (สถานะของต้นทาง · ผู้เรียกถือล็อกรอบแล้ว — มติ P2.6U-15) */
+async function roundVoidedInTx(tx: Tx, tenantId: string, round: RoundRow): Promise<boolean> {
   if (round.posSaleId) {
     const st = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosSale" WHERE id = ${round.posSaleId} AND "tenantId" = ${tenantId} FOR SHARE`;
     if (st[0] && st[0].status !== "PAID") return true;
   }
   if (round.posOrderId) {
-    // อ่านธรรมดา (สถานะปลายทาง) — ห้าม FOR SHARE: ขั้นถัดไปของ recall ล็อก PosOrder FOR UPDATE (สอง recall พร้อมกัน = 40P01)
+    // อ่านธรรมดา (สถานะปลายทาง) ใต้ล็อกรอบ — ห้าม FOR SHARE: ขั้นถัดไปของ recall ล็อก PosOrder FOR UPDATE · ล็อกรอบเรียงคิว recall ไว้แล้ว
     const st = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosOrder" WHERE id = ${round.posOrderId} AND "tenantId" = ${tenantId}`;
     if (st[0] && (st[0].status === "CANCELLED" || st[0].status === "REJECTED")) return true;
   }

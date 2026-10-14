@@ -3439,7 +3439,7 @@
       "ticketNotFound": "This kitchen ticket was not found at this branch — it may have been cancelled or moved",
       "ticketTooOld": "This ticket is from an earlier day — it cannot be recalled",
       "kdsStationNotFound": "This kitchen station was not found at this branch",
-      "ticketVoided": "This bill was cancelled — the ticket cannot be recalled",
+      "ticketVoided": "This bill was cancelled or refunded — the ticket cannot be recalled",
       "validation": "Invalid data — please try again",
       "permissionDenied": "This account is not allowed to do this on the kitchen display",
       "productNotFound": "This product was not found at this branch",
