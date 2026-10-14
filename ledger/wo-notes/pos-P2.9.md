@@ -353,3 +353,31 @@ All logs headed `tree=/root/projects/shark-pos-b head=2612ee53 dirty=0` (scratch
 | qc-pos-p1.7 | shark-pos-b 2612ee53 | 33/33 |
 | qc-hf-pos-page-authz | shark-pos-b 2612ee53 | 81/81 |
 | qc-pos-p2.8 | shark-pos-b 2612ee53 | 59/61 — ST6 + L2 wip-only (merge-base sha accepted ⇒ green once merged) |
+
+## Fix round 2 (R2 MERGEABLE-AFTER-FIXES G1 + hunter re-check residuals · controller rulings 1–7, 14 Oct)
+Oracle first: `af7f2b12` (ORACLE-ADD G11 · RC2 · C5b · RC1 sub-case d STAFF + manager PIN, dated `ผู้คุม 14 ต.ค. (fix 2)`) · 57 → **60** · `c435f3a0` T6 also checks `setLedgerActive(false)` (count unchanged). Red-before block 4 (`09235405`, head af7f2b12, fix-1 code): **57/60** — red RC1(d) C5b RC2; G11 green-before (its black-box bounds already hold with the fix-1 atomic counter; the reserve-first change removes extra hash compares/timing which the check cannot see). The T6 extension was added after block 4 (red on 4c056473 by construction: `setLedgerActive` had no guard).
+
+| finding | ruling | commit | change |
+|---|---|---|---|
+| G1/N1 Medium past-date ACTIVE card on void | 1 | 00463a47 | `refundTenderUse`: REFUND-then-EXPIRE only when the locked row is `status EXPIRED`; a past-date ACTIVE card keeps B + X for the next `expireDue` (HF-GC2 locked read ⇒ one EXPIRE, one JV). C5b. |
+| H2/N3 PIN hash compared before the lock | 2 | d230f2c5 + 08ef0359 | `verifyPin` reserves a slot first: one `UPDATE … WHERE unlocked AND count < 5 (or expired lock ⇒ new window) RETURNING`; the 5th slot sets the lock in the same statement; 0 rows ⇒ LOCKED with no hash compare; a match resets only if no other request locked the card (`count = mySlot` or unlocked). Follow-through 08ef0359: `createSale`'s PIN pre-check runs in a short tx that takes the idempotency-key advisory lock and **always commits** the slot (the failure is rethrown after commit; one connection per request); the sale tx then re-checks state with `recheckGiftTender` (no second compare, no second connection) — without it, same-key double submits each consumed a slot and C2 returned GIFT_CARD_LOCKED / P2028. G11 + C2 + G4 + G9. |
+| H3 residual target resolved before the lock | 3 | 4c056473 | `refundTenderUse`/`refundToCard`: lock the old card → resolve `mergeTargetOf` on the tx → lock the keeper. Deviation from "advisory if keeper sorts first": not needed — the fold locks both cards in one statement; if it has not committed we do not see the MERGE txn (restore lands on the old card and the fold moves it), if it has committed it no longer holds the locks ⇒ no cycle. |
+| H5 residual `setLedgerActive(false)` | 4 | 95eb06dd | same `usedAsPosTipLedger` guard (1 marked line). T6. |
+| N2 merged member credit refund | 5 | 07030df9 | `planRefundTenders` follows `Customer.mergedIntoId` (≤ 5) to the keeper for STORE_CREDIT. RC2. |
+| H1 note manager PIN cash-out | 6 | e2403aad | `managerOk = canRefund OR auditActorId (manager PIN / approval decider) OR plan mode` (plan defers; commit decides) ⇒ STAFF + manager PIN works; audit actor = approver + `cardShareToCash` + reason. RC1(d). |
+Upstream `origin/session/pos` merged (ledger only) → **1d6d3abb**.
+
+### Gates — fix round 2
+All logs headed `tree=/root/projects/shark-pos-b head=1d6d3abb dirty=0` (scratch `p29/gates-fix2/*.out`, 14 Oct 19:39–20:1xZ).
+| gate | tree= head= | result |
+|---|---|---|
+| typecheck (pos-gate.lock · 5632/6500M) | shark-pos-b 1d6d3abb | rc 0 |
+| fitness no-env / env (qc4) | shark-pos-b 1d6d3abb | 50/50 · 50/50 |
+| fitness-pos | shark-pos-b 1d6d3abb | 8/8 |
+| qc-pos-p2.9 forced ×2 / unforced | shark-pos-b 1d6d3abb | **60/60 · 60/60 · 60/60** (residue 0) |
+| qc-hf-tx | shark-pos-b 1d6d3abb | 22/22 |
+| qc-pos-p1.6 / p1.8 / p1.12 | shark-pos-b 1d6d3abb | 48/48 · 49/49 · 72/72 |
+| qc-pos-p1.3 / p1.1 | shark-pos-b 1d6d3abb | 128/128 · 180/180 |
+| qc-pos-account / qc-account-cpa | shark-pos-b 1d6d3abb | 16/16 · 107/107 |
+| qc-pos-p1.7 / qc-hf-pos-page-authz | shark-pos-b 1d6d3abb | 33/33 · 81/81 |
+| qc-pos-p2.8 | shark-pos-b 1d6d3abb | 59/61 — ST6 + L2 wip-only (merge-base accepted) |
