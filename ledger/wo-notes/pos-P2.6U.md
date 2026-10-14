@@ -75,3 +75,28 @@ Cashier = QC STAFF with `pos.sale.create` only (seed has no `restaurant.kds.adva
 | `qc-pos-p1.1` (merge-point static G4) · `qc-pos-products` | 180/180 · 24/24 |
 | `qc-restaurant` / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
 | `visual-pos.mts p2.6u --states --dry` (CI=1) | rc 0 — kds/register/products/orders/settings × owner/cashier + LOCALE=en + full-wo + `--state` filter + `--list` (`runs/dry-*.log`) |
+
+## Fix round 1 (review R1 F1–F6 + controller V1–V10) — 14 Oct, account B
+Binding: `pos-P2.6U-review.md` "Controller rulings — fix round 1" 1–7 + "Controller V findings".
+| finding | commit | change |
+|---|---|---|
+| ORACLE-ADD A15 (dated, `ผู้คุม`) | 3a32f55d | `qc-pos-p2.6` → 66 (page-authz covers pure guards only, not actions ⇒ A15 in p2.6) · red-before `P2.6U-red1.txt` = 65/66, A15 only |
+| F1 + V5 | 5004db52 | `kds.kdsKitchenProducts` (NEED availability: MENU rows with an active-station MenuItem + non-MENU rows routed to an active station (own or parent) sold at the unit · available = `availabilityFor` · mark) + `kdsKitchenProductsAction`; the 86 sheet uses it (cook-only users get the list) · default list = routed items, 86'd first, filter on typing · "no results" only for a query · deviation (e) closed |
+| F2 | e33d48a1 | option (b) wired (~35 lines): `roundOfSale` (kds.ts) → `kdsQueueNoAction` returns `orderId`; PayDone prints kitchen slips once per sale (module Set) when `kitchenSlipSettings(cfg).mode === "after-sale"`, one payload per selected station (none = all) → `printKitchenSlips` (device config); failure = status line `pos-reg-done-kitchen-error` · deviation (g)/follow-up closed |
+| F3 | 19c62465 | `kds.kdsStations` + `kdsStationsAction` (NEED read \| pos.product.manage · no heal, no board) used by 17B and the 06 drawer |
+| F4 | bed85776 | "รอครัว" only when the card's channel has `autoAccept && adapter ≠ MANUAL` |
+| F6 + V8 | 7e4c8a0d | 09 meter = text then bar · stepper value as text "ปิด" / "N ใบ" (`pos-ord-kitchen-max-value`) · authz marker "ผู้คุม" · ⋯ menu removes its resize listener |
+| V1 V2 V6 V7 V9 | addc79cd | avatar initial skips leading Thai vowels (the lone "ι" was "เ" of "เจ้าของ…") · inline (390) top bar fixed 56 px (it had `flex-1` inside the column ⇒ ~300 px band) · 17B ใบครัว = stacked radio rows, PLANNED chip inline · staff names on cards = first word ≤ 12 chars · "#n · source" one string |
+| V3 V4 F5 | a14dcb61 | harness: 390 taps the "พร้อม" segment before recall/refusal (the strip lives under พร้อมเสิร์ฟ) and waits on the board · fixture bill sold in its own shift (`posqc-vis-p26u-<pid>`, QC unit requires a shift) ⇒ takeaway ticket in kds-mixed · cleanup voids that bill and closes the shift (ruling fix1-5: 1 line) |
+| V10 | — | accepted (⋯ is 44 px, separate from the footer text) |
+Server files in the fix1 diff: `kds.ts` / `kds-actions.ts` / `kds-shared.ts` readers only (no write path changed) — other DB suites from the final gates stay valid.
+
+### Fix round 1 gates — head fb115dd0 (code = fix1) · dirty 0 · logs `scratchpad/p26u/runs/fx1-*.log`
+| gate | result |
+|---|---|
+| typecheck | exit 0 |
+| fitness no-env / env · fitness-pos | 50/50 · 50/50 · 8/8 |
+| `qc-pos-p2.6` forced ×2 / unforced | **66/66 ×3** |
+| `qc-hf-pos-page-authz` · `qc-pos-p1.18` (ST7 0) · `qc-pos-p1.10` | 81/81 · 81/81 · 40/40 |
+| `visual-pos p2.6u --states --dry` | rc 0 — every page × owner/cashier + LOCALE=en; all 390 states plannable (`fx1-dry-*.log`) |
+States that change visually: kds-mixed (takeaway ticket, header strings, names, top bar) · kds-86-sheet (routed list) · kds-served-recall / kds-refusal-toast at 390 (READY segment) · every kds state at 390 (top bar height) and 1440 (avatar initial) · orders-kitchen-meter (text→bar · stepper value) · settings-device-kitchen-slip (radio rows) · products-drawer-station (no visual change; reader swap) · register-tile-86 unchanged.
