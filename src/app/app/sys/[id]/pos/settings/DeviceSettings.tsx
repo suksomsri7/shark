@@ -21,11 +21,10 @@ import type { PrinterPairing, PrintResult } from "@/components/pos/print/types";
 import { listDevicesAction, registerDeviceAction, revokeDeviceAction, updateDeviceAction } from "@/lib/modules/pos/device-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { POS_DEVICE_NAME_MAX, POS_REG_NO_MAX, type PosDeviceListItem, type PosPrinterConfig } from "@/lib/modules/pos/device-shared";
-// POS P2.6U ▸ มติ 9e (ภาพ 17B): ใบครัวของเครื่อง (kitchenSlipSettings · ตัวเขียน = updateDeviceAction เดิม) + สถานีจาก kdsBoardAction(expo) · ลิงก์จอครัว (มติ 1) ◂
+// POS P2.6U ▸ มติ 9e (ภาพ 17B): ใบครัวของเครื่อง (kitchenSlipSettings · ตัวเขียน = updateDeviceAction เดิม) + สถานีจาก kdsStationsAction (fix1 F3) · ลิงก์จอครัว (มติ 1) ◂
 import Link from "next/link";
 import { kitchenSlipSettings } from "@/lib/modules/pos/device-shared";
-import { kdsBoardAction } from "@/lib/modules/pos/kds-actions";
-import { KDS_EXPO, type KdsStationTab } from "@/lib/modules/pos/kds-shared";
+import { kdsStationsAction } from "@/lib/modules/pos/kds-actions"; // fix1 F3: ตัวอ่านสถานีเฉย ๆ (ไม่ heal/ไม่คิดบอร์ด)
 import { Chip, InlineNote, SwitchKnob, TabHead } from "./settings-ui";
 
 type Props = { systemId: string; unitId: string; shopName: string };
@@ -97,10 +96,10 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
   const [pairOpen, setPairOpen] = useState(false);
   const [printRes, setPrintRes] = useState<PrintResult | null>(null);
   // POS P2.6U ▸ มติ 9e: สถานีครัวของสาขา (สำหรับช่องติ๊กใบครัว) — อ่านไม่ได้/ไม่มีครัว = [] ◂
-  const [kStations, setKStations] = useState<KdsStationTab[] | null>(null);
+  const [kStations, setKStations] = useState<{ id: string; name: string; nameEn: string | null }[] | null>(null);
   useEffect(() => {
     let live = true;
-    void kdsBoardAction({ systemId, unitId, stationId: KDS_EXPO })
+    void kdsStationsAction({ systemId, unitId })
       .then((r) => live && setKStations(r && r.ok === true ? r.stations : []))
       .catch(() => live && setKStations([]));
     return () => {

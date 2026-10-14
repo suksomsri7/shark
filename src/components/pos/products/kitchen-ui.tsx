@@ -1,15 +1,17 @@
 "use client";
 
 // kitchen-ui.tsx — ส่วน "ครัว" ในลิ้นชักสินค้าจอ 06 (POS P2.6U · มติ 9b · Q4 Q5)
-//   สถานีครัว (สินค้าที่ไม่ใช่เมนูเท่านั้น · เมนูตั้งที่หน้าเมนูร้านอาหาร): ตัวเลือกสถานีของสาขา (kdsBoardAction expo → stations) → setProductStationAction
+//   สถานีครัว (สินค้าที่ไม่ใช่เมนูเท่านั้น · เมนูตั้งที่หน้าเมนูร้านอาหาร): ตัวเลือกสถานีของสาขา (kdsStationsAction · fix1 F3) → setProductStationAction
 //     (catalog.updateProduct({stationId}) · pos.product.manage) · "ไม่ส่งเข้าครัว" = null
 //   ของหมด (86) ของสาขาที่เลือก: ชิป "หมด · 86 แล้ว" + ปุ่ม แจ้งหมด / คืนขาย → setAvailabilityAction({source:"MANUAL"}) · ไม่เลือกสาขา = บอกให้เลือกก่อน
 //   🔴 ไม่มีข้อความไทยในไฟล์ (ST7) · ไม่มีเงิน · คำปฏิเสธ = pos.kds.errors.* (kdsRefusalMessageKey)
 
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { kdsBoardAction, setAvailabilityAction, setProductStationAction } from "@/lib/modules/pos/kds-actions";
-import { KDS_EXPO, kdsRefusalMessageKey, type KdsStationTab } from "@/lib/modules/pos/kds-shared";
+import { kdsStationsAction, setAvailabilityAction, setProductStationAction } from "@/lib/modules/pos/kds-actions";
+import { kdsRefusalMessageKey } from "@/lib/modules/pos/kds-shared";
+
+type StationRow = { id: string; name: string; nameEn: string | null };
 
 export type KitchenPatch = { stationId?: string | null; available?: { unitId: string; value: boolean } };
 
@@ -33,7 +35,7 @@ export function ProductKitchenSection({
   const tk = useTranslations("pos.kds");
   const locale = useLocale();
   const stUnit = unit ?? product.unitId;
-  const [stations, setStations] = useState<KdsStationTab[] | null>(null);
+  const [stations, setStations] = useState<StationRow[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isMenu = product.kind === "MENU";
@@ -43,7 +45,7 @@ export function ProductKitchenSection({
       return;
     }
     let live = true;
-    void kdsBoardAction({ systemId, unitId: stUnit, stationId: KDS_EXPO })
+    void kdsStationsAction({ systemId, unitId: stUnit })
       .then((r) => live && setStations(r && r.ok === true ? r.stations : []))
       .catch(() => live && setStations([]));
     return () => {
@@ -80,7 +82,7 @@ export function ProductKitchenSection({
     }
   };
   const out = unit !== null && product.available[unit] === false;
-  const stName = (s: KdsStationTab) => (locale === "en" && s.nameEn ? s.nameEn : s.name);
+  const stName = (s: StationRow) => (locale === "en" && s.nameEn ? s.nameEn : s.name);
 
   return (
     <section data-testid="pos-prod-kitchen" className="flex flex-col gap-3 border-t pt-4 text-[13px]">
