@@ -596,7 +596,9 @@ export async function use(ctx: GiftCardCtx, input: UseInput, tx?: Tx): Promise<U
     if (upd.count === 0) {
       throw new GiftCardStateError("ยอดในบัตรถูกใช้ไปก่อนหน้านี้แล้ว — ตรวจยอดคงเหลือแล้วทำรายการใหม่");
     }
-    const after = card.balanceSatang - satang;
+    // POS HF-GC ▸ H1: ยอดหลังตัด = อ่านจากแถวที่ธุรกรรมนี้ล็อกอยู่ (หลัง updateMany) — ไม่ใช่ยอดที่อ่านก่อนธุรกรรม
+    //   (สองเครื่องตัดพร้อมกัน: ยอดในคอลัมน์ถูกเพราะ decrement แต่ balanceAfter บนรายการ/ที่คืนไปซ้ำกัน) ◂
+    const after = (await db.giftCard.findUniqueOrThrow({ where: { id: card.id }, select: { balanceSatang: true } })).balanceSatang;
     if (after === 0) await db.giftCard.update({ where: { id: card.id }, data: { status: "DEPLETED" } });
 
     const txn = await db.giftCardTxn.create({
@@ -722,11 +724,14 @@ export async function reload(
           const sale = await pos.createSale(saleInput, callerTx(tx));
           // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
           await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
-          const after = card.balanceSatang + satang;
-          await tx.giftCard.update({
+          // POS HF-GC ▸ H1: balanceAfter = ผลของ increment ในธุรกรรมนี้ (แถวถูกล็อกแล้ว) — เดิม `card.balanceSatang + satang`
+          //   จากการอ่านก่อนธุรกรรม ⇒ เติมพร้อมกันได้ balanceAfter ซ้ำกันทุกแถว (คอลัมน์ยอดถูก แต่ร่องรอยผิด) ◂
+          const upd = await tx.giftCard.update({
             where: { id: card.id },
             data: { balanceSatang: { increment: satang }, status: "ACTIVE" },
+            select: { balanceSatang: true },
           });
+          const after = upd.balanceSatang;
           const txn = await tx.giftCardTxn.create({
             data: {
               tenantId: ctx.tenantId,
@@ -799,14 +804,14 @@ export async function transfer(
   await assertMember(ctx, to, "ผู้รับโอนที่เลือก");
 
   await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({ where: { id: card.id }, data: { ownerCustomerId: to } });
+    const upd = await tx.giftCard.update({ where: { id: card.id }, data: { ownerCustomerId: to }, select: { balanceSatang: true } }); // POS HF-GC ▸ H1: ยอดจากแถวที่ล็อก ◂
     await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,
         giftCardId: card.id,
         type: "TRANSFER",
         satang: 0,
-        balanceAfter: card.balanceSatang,
+        balanceAfter: upd.balanceSatang,
         refType: "Customer",
         refId: to,
         byUserId: ctx.actorUserId ?? actor.userId ?? null,
@@ -828,14 +833,14 @@ export async function suspend(
   const card = await loadByNumber(ctx, input.number);
   if (card.status === "SUSPENDED") return { ok: true };
   await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({ where: { id: card.id }, data: { status: "SUSPENDED" } });
+    const upd = await tx.giftCard.update({ where: { id: card.id }, data: { status: "SUSPENDED" }, select: { balanceSatang: true } }); // POS HF-GC ▸ H1: ยอดจากแถวที่ล็อก ◂
     await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,
         giftCardId: card.id,
         type: "ADJUST",
         satang: 0,
-        balanceAfter: card.balanceSatang,
+        balanceAfter: upd.balanceSatang,
         refType: "SUSPEND",
         refId: input.reason ? String(input.reason).slice(0, 200) : null,
         byUserId: ctx.actorUserId ?? actor.userId ?? null,
@@ -857,14 +862,14 @@ export async function unsuspend(
   // ปลดระงับแล้วกลับไปสถานะที่ "ควรจะเป็น" ตามยอดคงเหลือ (ยอด 0 = ใช้หมด ไม่ใช่พร้อมใช้)
   const status: GiftCardStatus = card.balanceSatang > 0 ? "ACTIVE" : "DEPLETED";
   await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({ where: { id: card.id }, data: { status } });
+    const upd = await tx.giftCard.update({ where: { id: card.id }, data: { status }, select: { balanceSatang: true } }); // POS HF-GC ▸ H1: ยอดจากแถวที่ล็อก ◂
     await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,
         giftCardId: card.id,
         type: "ADJUST",
         satang: 0,
-        balanceAfter: card.balanceSatang,
+        balanceAfter: upd.balanceSatang,
         refType: "UNSUSPEND",
         byUserId: ctx.actorUserId ?? actor.userId ?? null,
         idempotencyKey: `giftcard-unsuspend-${card.id}-${Date.now()}`,
@@ -895,16 +900,17 @@ export async function refundUse(
   if (done) return { refunded: false, txnId: done.id, balanceAfter: done.balanceAfter };
 
   const card = src.giftCard;
-  const after = card.balanceSatang + src.satang;
   const res = await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({
+    // POS HF-GC ▸ H1: ยอด/สถานะหลังคืน = แถวที่ธุรกรรมนี้ล็อก (ผลของ increment) — เดิมอ่านก่อนธุรกรรม ⇒ คืนพร้อมการใช้/คืนอีกใบ
+    //   ได้ balanceAfter ผิด และบัตรที่เพิ่งถูกใช้จนหมดระหว่างนั้นค้าง DEPLETED ทั้งที่มียอด ◂
+    const upd = await tx.giftCard.update({
       where: { id: card.id },
-      // บัตรที่ใช้จนหมด (DEPLETED) กลับมาใช้ได้เมื่อคืนยอด · บัตรที่ถูกระงับ/หมดอายุ คงสถานะเดิม
-      data: {
-        balanceSatang: { increment: src.satang },
-        ...(card.status === "DEPLETED" ? { status: "ACTIVE" as GiftCardStatus } : {}),
-      },
+      data: { balanceSatang: { increment: src.satang } },
+      select: { balanceSatang: true, status: true },
     });
+    const after = upd.balanceSatang;
+    // บัตรที่ใช้จนหมด (DEPLETED) กลับมาใช้ได้เมื่อคืนยอด · บัตรที่ถูกระงับ/หมดอายุ คงสถานะเดิม
+    if (upd.status === "DEPLETED") await tx.giftCard.update({ where: { id: card.id }, data: { status: "ACTIVE" } });
     const txn = await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,
