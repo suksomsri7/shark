@@ -5,7 +5,7 @@ export const REFUND_REASON_CODES = ["DAMAGED", "WRONG_ITEM", "CHANGED_MIND", "OT
 export type RefundReasonCode = (typeof REFUND_REASON_CODES)[number];
 /** วิธีคืนเงินที่รับ (มติ R5 · R10): มัดจำ/ลงบิลห้อง = REFUND_METHOD_INVALID · บัตร/พร้อมเพย์ = อ้างอิงมือจนกว่า P1.7 ·
  *  POS P2.1 ▸ R9: PLATFORM = แพลตฟอร์มคืนลูกค้า — ใช้ได้เฉพาะบิลที่จ่าย PLATFORM (และบิลนั้นต้องคืนด้วย PLATFORM เท่านั้น) ◂ */
-export const REFUND_PAY_TYPES = ["CASH", "TRANSFER", "PROMPTPAY", "CARD", "PLATFORM"] as const;
+export const REFUND_PAY_TYPES = ["CASH", "TRANSFER", "PROMPTPAY", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT"] as const; // POS P2.9 ▸ R6 คืนเข้าบัตรเดิม · R7 เครดิตร้าน (บิลสมาชิก) ◂
 export type RefundPayType = (typeof REFUND_PAY_TYPES)[number];
 export const REFUND_REASON_MAX = 200;
 /** คำนำหน้าเลขใบคืนปริยาย (O2 · settings.pos.receipt.refundPrefix) */
@@ -15,7 +15,8 @@ export type RefundSaleInput = {
   saleId: string;
   /** lineId = PosSaleLine.id ของบิลเดิม · qty = จำนวนหน่วยที่คืน (จำนวนเต็ม ≥ 1 · บรรทัดชั่งคืนทั้งบรรทัด = 1) · restock true = รับของคืนเข้าคลัง */
   lines: { lineId: string; qty: number; restock?: boolean | null }[];
-  payMethods: { type: RefundPayType; amountSatang: number; reference?: string | null }[];
+  /** POS P2.9 ▸ giftCardId = บัตรที่จะคืนเข้า (แถว GIFT_CARD เท่านั้น · บิลที่จ่ายบัตรใบเดียว = ไม่ต้องส่ง) ◂ */
+  payMethods: { type: RefundPayType; amountSatang: number; reference?: string | null; giftCardId?: string | null }[];
   reasonCode: RefundReasonCode;
   /** ≤ 200 ตัว · บังคับเมื่อ reasonCode = OTHER */
   reason?: string | null;

@@ -9,7 +9,7 @@
 export type ReceiptDocType = "SALE" | "REFUND";
 // POS P1.13 ▸ R7: TAX_INVOICE_FULL = บิลที่ออกใบกำกับภาษีเต็มรูปแล้ว (สลิปเป็นใบเสร็จ + "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่ …" · ไม่ใช่หัวใบกำกับอย่างย่อ) ◂
 export type ReceiptKind = "TAX_INVOICE_ABB" | "TAX_INVOICE_FULL" | "RECEIPT";
-export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD" | "PLATFORM"; // POS P2.1 ▸ PLATFORM ◂
+export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD" | "PLATFORM" | "GIFT_CARD" | "STORE_CREDIT"; // POS P2.1 ▸ PLATFORM ◂ · POS P2.9 ▸ บัตรของขวัญ/เครดิตร้าน ◂
 /** สถานะบิล (PosSale.status · แก้รอบ 1 F2) — VOIDED = ประทับ "ยกเลิก / VOID" · REFUNDED พิมพ์ปกติ (ใบลดหนี้แยก · P1.16) */
 export type ReceiptSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
 
@@ -56,6 +56,8 @@ export type ReceiptLabels = {
   eReceipt: string;
   /** POS P2.1 ▸ R11: "ช่องทาง <ชื่อ> · <เลขออเดอร์>" ◂ */
   channel: string;
+  /** POS P2.9 ▸ R10: ยอดคงเหลือในบัตรหลังรายการ ◂ */
+  cardBalance: string;
   pay: Record<ReceiptPayType, string>;
 };
 
@@ -70,7 +72,9 @@ export type ReceiptLine = {
   note?: string;
   weightGrams?: number;
 };
-export type ReceiptPayment = { type: ReceiptPayType | string; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string };
+/** POS P2.9 ▸ R10: card = แถวบัตรของขวัญ/เครดิตร้าน (เลขปิดบัง · ยอดหลังรายการ) — ไม่มี = แถวเดิม ◂ */
+export type ReceiptPaymentCard = { kind: "GIFT" | "STORE_CREDIT"; numberMasked: string; balanceAfterSatang: number };
+export type ReceiptPayment = { type: ReceiptPayType | string; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string; card?: ReceiptPaymentCard };
 
 export type ReceiptPayload = {
   docType: ReceiptDocType;
@@ -158,7 +162,8 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     fullTaxInvoiceIssued: "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่",
     eReceipt: "สแกนรับใบเสร็จอิเล็กทรอนิกส์",
     channel: "ช่องทาง",
-    pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร", PLATFORM: "ชำระผ่านแพลตฟอร์ม" },
+    cardBalance: "คงเหลือ",
+    pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร", PLATFORM: "ชำระผ่านแพลตฟอร์ม", GIFT_CARD: "บัตรของขวัญ", STORE_CREDIT: "เครดิตร้าน" },
   },
   en: {
     receipt: "RECEIPT",
@@ -201,7 +206,8 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     fullTaxInvoiceIssued: "Full tax invoice issued, no.",
     eReceipt: "Scan for e-receipt",
     channel: "Channel",
-    pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card", PLATFORM: "Paid via platform" },
+    cardBalance: "Balance",
+    pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card", PLATFORM: "Paid via platform", GIFT_CARD: "Gift card", STORE_CREDIT: "Store credit" },
   },
 };
 
@@ -385,7 +391,8 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
   // payments
   const pm: string[] = [];
   for (const x of p.payments) {
-    pm.push(row(payLabel(L, x.type), formatSatang(x.amountSatang)));
+    pm.push(row(x.card ? `${payLabel(L, x.type)} ${x.card.numberMasked}` : payLabel(L, x.type), formatSatang(x.amountSatang)));
+    if (x.card) pm.push(row(L.cardBalance, formatSatang(x.card.balanceAfterSatang), "opt s")); // POS P2.9 ▸ R10 ◂
     if (x.tenderedSatang !== undefined && x.tenderedSatang !== null) pm.push(row(L.tendered, formatSatang(x.tenderedSatang), "opt"));
     if (x.changeSatang !== undefined && x.changeSatang !== null) pm.push(row(L.change, formatSatang(x.changeSatang), "opt"));
     if (x.reference) pm.push(row(L.reference, x.reference, "opt s"));
@@ -572,7 +579,8 @@ function layout(p: ReceiptPayload, L: ReceiptLabels, cols: number, locale: Local
   rule();
   // payments
   for (const x of p.payments) {
-    add(pair(payLabel(L, x.type), formatSatang(x.amountSatang), cols));
+    add(pair(x.card ? `${payLabel(L, x.type)} ${x.card.numberMasked}` : payLabel(L, x.type), formatSatang(x.amountSatang), cols));
+    if (x.card) add(pair(ind + L.cardBalance, formatSatang(x.card.balanceAfterSatang), cols)); // POS P2.9 ▸ R10 ◂
     if (x.tenderedSatang !== undefined && x.tenderedSatang !== null) add(pair(ind + L.tendered, formatSatang(x.tenderedSatang), cols));
     if (x.changeSatang !== undefined && x.changeSatang !== null) add(pair(ind + L.change, formatSatang(x.changeSatang), cols));
     if (x.reference) add(pair(ind + L.reference, x.reference, cols));

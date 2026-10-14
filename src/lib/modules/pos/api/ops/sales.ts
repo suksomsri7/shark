@@ -24,6 +24,7 @@ const MAX_LINES = 200;
 const MAX_QTY = 10_000;
 
 /** วิธีจ่ายที่ผู้เรียกภายนอกใช้ได้ (เท่ากับ tool เดิม) — DEPOSIT / ROOM_CHARGE เป็นทางภายในของโมดูลอื่น (มี refSaleId) */
+// POS P2.9 ▸ CD-P29-1 (b): GIFT_CARD/STORE_CREDIT ไม่อยู่ในชุดนี้โดยตั้งใจ (API ไม่มีขั้น PIN · schema .strict() ปฏิเสธ giftCard) — บัตรผ่าน API = ใบถัดไป ◂
 const EXTERNAL_PAY_TYPES = ["CASH", "TRANSFER", "PROMPTPAY"] as const;
 
 const satang = z.number().int().min(0).max(POS_INT_MAX);

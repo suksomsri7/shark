@@ -46,7 +46,7 @@ const newKey = () => `shift-${(crypto.randomUUID?.() ?? `${Date.now()}${Math.ran
 
 /** R2 F7: ชื่อวิธีชำระภาษาคน (pos.shift.method.*) · ชนิดที่ยังไม่มีป้าย = แสดงรหัสเดิม */
 // POS P2.1U ▸ มติ 5: PLATFORM = แถวไม่ใช่เงินสด "แพลตฟอร์ม · รอแพลตฟอร์มโอน" (pos.shift.method.PLATFORM · ลำดับจากเซิร์ฟเวอร์ต่อท้ายแถวไม่ใช่เงินสด) ◂
-const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "PLATFORM"]);
+const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "PLATFORM", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R1 ◂
 const METHOD_ICON: Record<string, RegisterIconName> = { CASH: "cash", CARD: "card", PROMPTPAY: "qr", TRANSFER: "bank", DEPOSIT: "wallet", ROOM_CHARGE: "doc", PLATFORM: "truck" };
 const SOURCE_KEYS = new Set(["POS", "BOOKING", "HOTEL", "RESTAURANT", "TICKET"]);
 const emptyDen = (): Record<string, string> => Object.fromEntries(NOTE_DENOMS.map((d) => [String(d), ""]));

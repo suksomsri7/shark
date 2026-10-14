@@ -16,6 +16,8 @@ enum PosPayType {
   ROOM_CHARGE
   CARD // P1.6: บัตร (EDC/อ้างอิงมือ · ไม่มีเกตเวย์ — P1.7)
   PLATFORM // P2.1: แพลตฟอร์มเก็บเงินแทน (LINE MAN/Grab …) — ลงลูกหนี้ 1100 รอแพลตฟอร์มโอน
+  GIFT_CARD // P2.9: บัตรของขวัญ (GiftCard kind GIFT · PIN) — Dr 2110 · VAT ตอนใช้ (มติ 1)
+  STORE_CREDIT // P2.9: เครดิตร้านของสมาชิก (GiftCard kind STORE_CREDIT · ไม่มี PIN · เจ้าของบิล = เจ้าของเครดิต) — Dr 2110
 }
 
 // ── P2.1 — ช่องทางขาย (SalesChannel) ต่อสาขา ──
@@ -200,6 +202,9 @@ model PosPayment {
   tenderedSatang Int?
   changeSatang   Int?
   reference      String?
+  // P2.9 — แถว GIFT_CARD/STORE_CREDIT: บัตรที่ตัด/คืน + รายการบัตร (USE ของบิลขาย · REFUND ของใบคืน) · id หลวม ไม่มี FK
+  giftCardId    String?
+  giftCardTxnId String?
 
   @@index([saleId])
 }

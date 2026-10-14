@@ -1,0 +1,195 @@
+diff --git a/scripts/pos-sale-contract.json b/scripts/pos-sale-contract.json
+index 4c3edfdb..29f82c58 100644
+--- a/scripts/pos-sale-contract.json
++++ b/scripts/pos-sale-contract.json
+@@ -240,6 +240,18 @@
+       "lines[].listPriceSatang": {
+         "optional": true,
+         "type": "number"
++      },
++      "payMethods[].giftCard": {
++        "optional": true,
++        "type": "object"
++      },
++      "payMethods[].giftCard.number": {
++        "optional": false,
++        "type": "string"
++      },
++      "payMethods[].giftCard.pin": {
++        "optional": false,
++        "type": "string"
+       }
+     },
+     "MemberSaleChoices": {
+@@ -302,6 +314,7 @@
+       "src/lib/modules/hotel/service.ts",
+       "src/lib/modules/member/subscription.ts",
+       "src/lib/modules/pos/api/ops/sales.ts",
++      "src/lib/modules/pos/order.ts",
+       "src/lib/modules/pos/register.ts",
+       "src/lib/modules/rental/service.ts",
+       "src/lib/modules/restaurant/order.ts",
+diff --git a/src/components/pos/register/PayDone.tsx b/src/components/pos/register/PayDone.tsx
+index b7771c23..8b9d6d56 100644
+--- a/src/components/pos/register/PayDone.tsx
++++ b/src/components/pos/register/PayDone.tsx
+@@ -28,7 +28,7 @@ import { RegisterDialog, SheetGrab } from "./RegisterDialog";
+ import { RegisterIcon } from "./RegisterIcon";
+ 
+ const AUTO_SECONDS = 5;
+-const PAY_LABEL: Record<RegisterPayType, string> = { CASH: "pay.cash", PROMPTPAY: "pay.promptpay", TRANSFER: "pay.transfer", CARD: "pay.card", PLATFORM: "pay.platform", STORE_CREDIT: "pay.storeCredit" }; // POS P2.1 ▸ PLATFORM ◂ · POS P2.9 ▸ STORE_CREDIT ◂
++const PAY_LABEL: Record<RegisterPayType, string> = { CASH: "pay.cash", PROMPTPAY: "pay.promptpay", TRANSFER: "pay.transfer", CARD: "pay.card", PLATFORM: "pay.platform", GIFT_CARD: "pay.giftCard", STORE_CREDIT: "pay.storeCredit" }; // POS P2.1 ▸ PLATFORM ◂ · POS P2.9 ▸ STORE_CREDIT ◂
+ 
+ type Props = {
+   receiptNo: string | null;
+diff --git a/src/lib/modules/pos/register-shared.ts b/src/lib/modules/pos/register-shared.ts
+index 395070a9..4243a597 100644
+--- a/src/lib/modules/pos/register-shared.ts
++++ b/src/lib/modules/pos/register-shared.ts
+@@ -19,8 +19,8 @@ export const REGISTER_LOW_STOCK = 5;
+ export const REGISTER_PAGE_SIZE = 100;
+ export const REGISTER_PAGE_MAX = 500;
+ /** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
+-// POS P2.9 ▸ R1 R7: + STORE_CREDIT (เครดิตร้านของสมาชิกในบิล · ไม่มี PIN · แถวเดียว) — GIFT_CARD ตามมาเมื่อสัญญา createSale ได้ payMethods[].giftCard (CONTROLLER-DECISION) ◂
+-export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "STORE_CREDIT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
++// POS P2.9 ▸ R1: + GIFT_CARD (giftCard {number, pin} · ≤ 3 ใบ) + STORE_CREDIT (เครดิตร้านของสมาชิกในบิล · ไม่มี PIN · แถวเดียว) ◂
++export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
+ /** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
+ export const REGISTER_MAX_PAY_METHODS = 10;
+ /** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */
+@@ -413,7 +413,8 @@ export type RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; staffToken?
+ 
+ export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
+ /** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
+-export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string };
++/** POS P2.9 ▸ giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น (เลขที่สแกน/พิมพ์ + PIN ของลูกค้า · ห้ามเก็บ/บันทึก PIN ที่จอ) ◂ */
++export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string; giftCard?: { number: string; pin: string } };
+ export type RegisterSubmitInput = RegisterQuoteInput & {
+   /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
+   idempotencyKey: string;
+diff --git a/src/lib/modules/pos/register.ts b/src/lib/modules/pos/register.ts
+index 424c1d86..44d12e8f 100644
+--- a/src/lib/modules/pos/register.ts
++++ b/src/lib/modules/pos/register.ts
+@@ -411,7 +411,7 @@ export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, in
+ //    ส่วนลดเกินเพดาน/เกินยอด = ปฏิเสธ · บิลจริงเดินผ่าน createSale เดิม (ตัดสต็อก · บัญชี · แต้ม · outbox เหมือนวันนี้ทุกประการ)
+ import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
+ import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
+-import { createSale, PosSaleError, saleWalletCart, type CreateSaleInput, type SaleWalletCart } from "./service";
++import { createSale, MAX_GIFT_CARD_ROWS, PosSaleError, saleWalletCart, type CreateSaleInput, type SaleWalletCart } from "./service";
+ // POS P1.12 ▸ คูปองที่หน้าขาย (R6 · ตรวจบนฐานเดียวกับ createSale) · VAT ของยอดหลังสิทธิ์สมาชิก (สูตรเดียวกับ createSale) ◂
+ import * as couponSvc from "@/lib/modules/coupon/service";
+ import { splitIncludedVat } from "@/lib/money/vat";
+@@ -1126,7 +1126,8 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
+   "channelRef", // POS P2.1 ▸ R10 ◂
+   "expectedTableItemsHash", // POS P2.4 ▸ R7 แฮชชุดรายการจาก quote ของโต๊ะ ◂
+ ]);
+-const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference"]);
++const REG_GIFT_KEYS: ReadonlySet<string> = new Set(["number", "pin"]); // POS P2.9 ◂
++const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference", "giftCard"]); // POS P2.9 ▸ giftCard {number, pin} เฉพาะ GIFT_CARD ◂
+ const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
+ /** P1.2 R1: คีย์ของรายการตัวเลือก — priceDeltaSatang/name รับได้แต่ "ไม่ใช้" (ราคาจาก client ไม่ถูกเชื่อ · มติ R2) · คีย์อื่น = VALIDATION */
+ const REG_OPTION_KEYS: ReadonlySet<string> = new Set(["choiceId", "priceDeltaSatang", "name"]);
+@@ -1880,7 +1881,7 @@ type RegParsedSubmit = {
+   cart: RegParsedCart;
+   /** คีย์ที่เก็บจริง = REG_KEY_PREFIX + คีย์ของ client (R4 K1) */
+   idempotencyKey: string;
+-  payMethods: { type: RegisterPayType; amountSatang: number; reference: string | null }[];
++  payMethods: { type: RegisterPayType; amountSatang: number; reference: string | null; giftCard?: { number: string; pin: string } }[]; // POS P2.9 ▸ giftCard เฉพาะ GIFT_CARD ◂
+   cashReceivedSatang: number | null;
+   expected: number;
+   /** P1.6 ทิป (0 = ไม่มี) · หมายเหตุบิล (null = ไม่มี) */
+@@ -1948,6 +1949,16 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
+     if (p.type === "CASH" && payMethods.some((x) => x.type === "CASH")) return regRefuse("VALIDATION", "เงินสดใส่ได้รายการเดียว");
+     // POS P2.9 ▸ R7: เครดิตร้านได้รายการเดียว ไม่มีเลขอ้างอิง (สมาชิกของบิล = เจ้าของเครดิต — ตรวจตอนส่ง) ◂
+     if (p.type === "STORE_CREDIT" && (payMethods.some((x) => x.type === "STORE_CREDIT") || (p.reference !== undefined && p.reference !== null))) return regRefuse("VALIDATION", "เครดิตร้านใส่ได้รายการเดียว และไม่มีเลขอ้างอิง");
++    // POS P2.9 ▸ R1 R3 (มติ 3 4): บัตรของขวัญ = giftCard {number, pin} ตรงตัว · ไม่มีเลขอ้างอิง · ≤ 3 ใบ ไม่ซ้ำ · giftCard บนแถวอื่น = VALIDATION ◂
++    let giftCard: { number: string; pin: string } | undefined;
++    if (p.giftCard !== undefined || p.type === "GIFT_CARD") {
++      const g = p.giftCard;
++      if (p.type !== "GIFT_CARD" || !regIsRecord(g) || !regOnlyKeys(g, REG_GIFT_KEYS) || typeof g.number !== "string" || typeof g.pin !== "string") return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
++      const number = g.number.trim().toUpperCase();
++      if (!number || number.length > 40 || !regCleanText(number) || !/^[0-9]{4,12}$/.test(g.pin) || (p.reference !== undefined && p.reference !== null)) return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
++      if (payMethods.filter((x) => x.type === "GIFT_CARD").length >= MAX_GIFT_CARD_ROWS || payMethods.some((x) => x.giftCard?.number === number)) return regRefuse("VALIDATION", "ใช้บัตรของขวัญได้ไม่เกิน 3 ใบต่อบิล และใบเดียวกันได้รายการเดียว");
++      giftCard = { number, pin: g.pin };
++    }
+     let reference: string | null = null;
+     if (p.reference !== undefined && p.reference !== null) {
+       // POS P1.7 ▸ พร้อมเพย์รับเลขอ้างอิงได้เฉพาะ id ใบขอรับเงิน (pi_…) · อื่น ๆ = VALIDATION เหมือน P1.6 ◂
+@@ -1957,7 +1968,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
+       if (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX || !regCleanText(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
+       reference = p.reference.trim() || null;
+     }
+-    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang, reference });
++    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang, reference, ...(giftCard ? { giftCard } : {}) });
+   }
+   let cashReceivedSatang: number | null = null;
+   if (raw.cashReceivedSatang !== undefined && raw.cashReceivedSatang !== null) {
+@@ -2355,6 +2366,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
+         type: x.type,
+         amountSatang: x.amountSatang,
+         ...(x.reference ? { reference: x.reference } : {}),
++        ...(x.giftCard ? { giftCard: { number: x.giftCard.number, pin: x.giftCard.pin } } : {}), // POS P2.9 ▸ R3 ◂
+         ...(x.type === "CASH" && req.cashReceivedSatang !== null ? { cashTenderedSatang: req.cashReceivedSatang } : {}),
+       })),
+       ...(q.serviceChargeSatang > 0 ? { serviceChargeSatang: q.serviceChargeSatang } : {}),
+diff --git a/src/lib/modules/pos/service.ts b/src/lib/modules/pos/service.ts
+index 9406947c..4e692591 100644
+--- a/src/lib/modules/pos/service.ts
++++ b/src/lib/modules/pos/service.ts
+@@ -107,7 +107,8 @@ export type CreateSaleInput = {
+   couponCode?: string;
+   // POS P1.6 (เพิ่มล้วน · ไม่ส่ง = พฤติกรรมเดิม):
+   //   cashTenderedSatang = เงินที่รับจริงของแถว CASH (≥ ยอดแถว · ทอน = รับ − ยอดแถว เก็บบนแถวนั้น) · reference = เลขอ้างอิงบัตร/EDC
+-  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string; cashTenderedSatang?: number; reference?: string }[];
++  // POS P2.9 (R3 · มติ 3 4 · เพิ่มล้วน): giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น {number, pin} (ตัดยอดใน tx ของบิล · ≤ 3 ใบไม่ซ้ำ)
++  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string; cashTenderedSatang?: number; reference?: string; giftCard?: { number: string; pin: string } }[];
+   /** หมายเหตุบิล (≤500 ตัว) */
+   note?: string;
+   /** ค่าบริการ (สตางค์ · รวมอยู่ใน grandTotal และฐาน VAT) — ผู้เรียกคิดเอง · ไม่ส่ง = 0 (ผู้เรียกเดิมที่มีบรรทัดค่าบริการของตัวเองไม่โดนคิดซ้ำ) */
+@@ -255,14 +256,23 @@ const TIP_FUNDING_TYPES: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TR
+ export const MAX_GIFT_CARD_ROWS = 3;
+ /**
+  * ตรวจโครงแถวชนิดใหม่ (ก่อนแตะตัวนับ) — ตรวจเฉพาะเมื่อมีแถว GIFT_CARD/STORE_CREDIT หรือทิป > 0 (ผู้เรียกเดิมไม่ถูกตรวจเพิ่ม):
+- *   GIFT_CARD = ยังไม่รับผ่าน createSale (รอ CONTROLLER-DECISION: payMethods[].giftCard — สัญญา F15.2) · STORE_CREDIT ได้แถวเดียว ·
++ *   GIFT_CARD ≤ 3 ใบไม่ซ้ำ ต้องมี giftCard {number, pin} (ห้ามบนแถวอื่น) · STORE_CREDIT ได้แถวเดียว ·
+  *   ห้ามบนบิลขาย/เติมบัตร (sourceModule MEMBER) และห้ามคู่ทางส่วนลดเดิม memberChoices.giftCard · ทิป ≤ Σ แถวเงินจริง
+  */
+ function validateTenderRows(input: CreateSaleInput): void {
+   const bad = (m: string) => new PosSaleError("VALIDATION", m);
+   const gift = input.payMethods.filter((p) => p.type === "GIFT_CARD");
+   const credit = input.payMethods.filter((p) => p.type === "STORE_CREDIT");
+-  if (gift.length) throw bad("ยังไม่เปิดรับบัตรของขวัญเป็นวิธีชำระ — รอการยืนยันสัญญาข้อมูลของบิล (P2.9)");
++  if (input.payMethods.some((p) => p.type !== "GIFT_CARD" && p.giftCard !== undefined && p.giftCard !== null)) throw bad("ข้อมูลบัตรใส่ได้เฉพาะรายการบัตรของขวัญ");
++  if (gift.length > MAX_GIFT_CARD_ROWS) throw bad(`ใช้บัตรของขวัญได้ไม่เกิน ${MAX_GIFT_CARD_ROWS} ใบต่อบิล`);
++  const seen = new Set<string>();
++  for (const p of gift) {
++    const g = p.giftCard;
++    if (!g || typeof g.number !== "string" || typeof g.pin !== "string" || !g.number.trim() || g.number.trim().length > 40 || !g.pin || g.pin.length > 12) throw bad("ข้อมูลบัตรของขวัญไม่ครบ (หมายเลข + PIN)");
++    const n = g.number.trim().toUpperCase();
++    if (seen.has(n)) throw bad("บัตรของขวัญใบเดียวกันใส่ได้รายการเดียว");
++    seen.add(n);
++  }
+   if (credit.length > 1) throw bad("เครดิตร้านใส่ได้รายการเดียว");
+   if (gift.length + credit.length > 0) {
+     if (input.sourceModule === "MEMBER") throw bad("บิลขาย/เติมบัตรกำนัลจ่ายด้วยบัตรของขวัญหรือเครดิตร้านไม่ได้");
+@@ -293,12 +303,18 @@ async function tenderStep<T>(member: MemberTenderFacade, fn: () => Promise<T>):
+  * แล้วล็อกแถวบัตรทุกใบ (เรียง id) ⇒ ลำดับล็อก บัตร → ตัวนับ เหมือนกันทุกบิล · ไม่มีแถวบัตร = ไม่มี query
+  */
+ async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSystemId: string | null): Promise<SaleTender[]> {
+-  const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT");
++  const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT" || x.p.type === "GIFT_CARD");
+   if (!rows.length) return [];
+   const member = await import("@/lib/modules/member");
+   const db = tx as Prisma.TransactionClient;
+   const out: SaleTender[] = [];
+   for (const { p, index } of rows) {
++    if (p.type === "GIFT_CARD") {
++      // มติ 3: PIN ทุกครั้ง (ผิด = ตัวนับนอก tx คงอยู่ · บิลไม่เกิด) · บัตรทั้งร้าน (CD11)
++      const r = await tenderStep(member, () => member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }, db));
++      out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
++      continue;
++    }
+     if (!input.memberId || !memberSystemId) throw new PosSaleError("STORE_CREDIT_NOT_OWNER", "เครดิตร้านใช้ได้เฉพาะบิลของสมาชิกเจ้าของเครดิต — เลือกสมาชิกก่อน");
+     const r = await tenderStep(member, () => member.prepareStoreCreditTender(input.tenantId, { systemId: memberSystemId, customerId: input.memberId!, satang: p.amountSatang }, db));
+     out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });

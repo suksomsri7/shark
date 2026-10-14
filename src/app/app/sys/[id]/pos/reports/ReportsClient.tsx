@@ -54,7 +54,7 @@ const spanDays = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - 
 /** รหัสปฏิเสธ → คีย์ใต้ pos.report (INTERNAL/อื่น ๆ = unknown) */
 const REFUSAL_KEY: Record<string, string> = { VALIDATION: "errors.validation", NOT_FOUND: "errors.notFound", PERMISSION_DENIED: "errors.permissionDenied" };
 const refusalKey = (code: string) => (Object.prototype.hasOwnProperty.call(REFUSAL_KEY, code) ? REFUSAL_KEY[code]! : "errors.unknown");
-const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"]);
+const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R1 ◂
 /** เวลาไทยสั้น ๆ (วัน/เดือน ชม:นาที) */
 const bkkTime = (iso: string | null, locale: string) =>
   iso ? new Intl.DateTimeFormat(locale.startsWith("en") ? "en-GB" : "th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "—";
