@@ -282,7 +282,8 @@
       "nextShort": "ขายต่อ",
       "kitchenLabel": "ครัว",
       "queue": "คิว {n}",
-      "kitchenPrintFailed": "พิมพ์ใบครัวไม่สำเร็จ — {reason} (พิมพ์ซ้ำได้ที่จอครัว)"
+      "kitchenPrintFailed": "พิมพ์ใบครัวไม่สำเร็จ — {reason} (พิมพ์ซ้ำได้ที่จอครัว)",
+      "kitchenNoTicket": "ใบครัวไม่ออก — พิมพ์จากจอครัว"
     },
     "roles": {
       "owner": "เจ้าของ",

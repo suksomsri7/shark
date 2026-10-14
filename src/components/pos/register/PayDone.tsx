@@ -86,7 +86,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
     }
     if (!slips.length) return;
     const res = await printKitchenSlips(slips, printer.config, locale);
-    if (!res.ok) setKitchenErr(tp(`errors.${res.code}`));
+    if (!res.ok) setKitchenErr(t("done.kitchenPrintFailed", { reason: tp(`errors.${res.code}`) }));
   };
   useEffect(() => {
     if (!unitId || !saleId) return;
@@ -103,6 +103,8 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
         }
         if (r && r.ok !== true) return;
       }
+      // POS P2.6U ▸ fix2 N1: ถาม 3 ครั้งไม่ได้รอบ ขณะเครื่องนี้ตั้งพิมพ์ใบครัวหลังขาย = บอกว่าใบครัวไม่ออก (ไม่บล็อกจอ · ร้านที่ไม่ใช้ใบครัวไม่เห็น) ◂
+      if (live && kitchenSlipSettings(printer.config).mode === "after-sale") setKitchenErr(t("done.kitchenNoTicket"));
     })();
     return () => {
       live = false;
@@ -260,7 +262,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
         </div>
         {kitchenErr && ( // POS P2.6U ▸ fix1 F2: ใบครัวหลังขายพิมพ์ไม่สำเร็จ (ไม่บล็อกจอ) ◂
           <p data-testid="pos-reg-done-kitchen-error" role="status" className="w-full text-left text-[13px] text-[color:var(--color-danger)]">
-            {t("done.kitchenPrintFailed", { reason: kitchenErr })}
+            {kitchenErr}
           </p>
         )}
         {loadErr && (

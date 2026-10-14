@@ -282,7 +282,8 @@
       "nextShort": "Next sale",
       "kitchenLabel": "Kitchen",
       "queue": "Queue {n}",
-      "kitchenPrintFailed": "Kitchen ticket did not print — {reason} (reprint from the kitchen display)"
+      "kitchenPrintFailed": "Kitchen ticket did not print — {reason} (reprint from the kitchen display)",
+      "kitchenNoTicket": "No kitchen ticket printed — print it from the kitchen display"
     },
     "roles": {
       "owner": "Owner",
