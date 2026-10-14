@@ -210,7 +210,8 @@ async function loadByNumber(ctx: GiftCardCtx, number: unknown): Promise<GiftCard
   const n = String(number ?? "").trim().toUpperCase();
   if (!n) throw new GiftCardInputError("ยังไม่ได้ใส่หมายเลขบัตร — พิมพ์หมายเลขบนหน้าบัตรแล้วลองใหม่");
   const card = await prisma.giftCard.findFirst({ where: { tenantId: ctx.tenantId, number: n } });
-  if (!card) throw new GiftCardNotFoundError();
+  // POS P2.9 ▸ fix1 F4 (มติ 7): เครดิตร้าน (SC-…) ไม่ใช่บัตรกำนัล — เติมเงิน/ระงับ/โอน/ใช้แบบเดิม = ไม่พบ ◂
+  if (!card || card.kind === "STORE_CREDIT") throw new GiftCardNotFoundError();
   return card;
 }
 
@@ -1145,6 +1146,7 @@ export async function list(
   const where: Prisma.GiftCardWhereInput = {
     tenantId: ctx.tenantId,
     systemId: ctx.systemId,
+    kind: "GIFT", // POS P2.9 ▸ fix1 F4: หน้ารายการบัตรกำนัลไม่แสดงเครดิตร้าน ◂
     ...(input.status ? { status: input.status } : {}),
     ...(q ? { number: { contains: q.toUpperCase().replace(/^GC-/, ""), mode: "insensitive" as const } } : {}),
   };
@@ -1167,16 +1169,16 @@ export async function list(
   const monthStart = thaiMonthStart();
   const [sold, used, outstanding] = await Promise.all([
     prisma.giftCardTxn.aggregate({
-      where: { tenantId: ctx.tenantId, type: "SELL", createdAt: { gte: monthStart }, giftCard: { systemId: ctx.systemId } },
+      where: { tenantId: ctx.tenantId, type: "SELL", createdAt: { gte: monthStart }, giftCard: { systemId: ctx.systemId, kind: "GIFT" } },
       _sum: { satang: true },
       _count: { _all: true },
     }),
     prisma.giftCardTxn.aggregate({
-      where: { tenantId: ctx.tenantId, type: "USE", createdAt: { gte: monthStart }, giftCard: { systemId: ctx.systemId } },
+      where: { tenantId: ctx.tenantId, type: "USE", createdAt: { gte: monthStart }, giftCard: { systemId: ctx.systemId, kind: "GIFT" } },
       _sum: { satang: true },
     }),
     prisma.giftCard.aggregate({
-      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE", kind: "GIFT" }, // POS P2.9 ▸ fix1 F4 ◂
       _sum: { balanceSatang: true },
     }),
   ]);
@@ -1209,6 +1211,8 @@ export async function list(
 /** บัตรในมือของสมาชิกคนหนึ่ง — **ไม่มีหมายเลขเต็ม/PIN** (กระเป๋าสิทธิ์ · LIFF · แผงสิทธิ์หน้าขาย) */
 export type CustomerGiftCardDto = {
   id: string;
+  /** POS P2.9 ▸ fix1 F4: GIFT = บัตรกำนัล · STORE_CREDIT = เครดิตร้าน (ชิปเครดิตของจอชำระ P2.9U อ่านจากตัวนี้) ◂ */
+  kind: GiftCardKind;
   numberMasked: string;
   balanceSatang: number;
   expiresAt: Date | null;
@@ -1229,7 +1233,8 @@ export async function listForCustomer(ctx: GiftCardCtx, customerId: string): Pro
   return cards
     .map((c) => ({
       id: c.id,
-      numberMasked: maskNumber(c.number),
+      kind: c.kind, // POS P2.9 ▸ fix1 F4 ◂
+      numberMasked: c.kind === "STORE_CREDIT" ? maskTenderNumber(c.number, c.kind) : maskNumber(c.number),
       balanceSatang: c.balanceSatang,
       expiresAt: c.expiresAt,
       status: c.status,
