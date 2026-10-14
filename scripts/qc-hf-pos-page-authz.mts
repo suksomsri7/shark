@@ -108,6 +108,19 @@ console.log("── [static] หน้า/แอ็กชันใช้ผล�
         tbl.indexOf(gate) < firstRead && Number.isFinite(firstRead) && !tbl.includes("assertCan("), "ครบ", "ไม่ครบ");
   }
 
+  // ORACLE-ADD P2.8U (มติ 1): หน้าออเดอร์ /pos/orders — ไม่มีสาขา POS ที่เข้าได้ = notFound · posOrdersView ไม่ผ่าน (ไม่มี pos.sale.read / pos.sale.create
+  //   ที่สาขา หรือขอสาขาอื่น) = การ์ดปฏิเสธ pos-orders-refusal ก่อนอ่านอะไรของสาขา (registerTableMode / จอออเดอร์ที่ดึง listOrdersAction) · ไม่มี assertCan
+  {
+    const ord = norm("src/app/app/sys/[id]/pos/orders/page.tsx");
+    const gate = "const view = posOrdersView(m, linked, unitParam); if (!view.ok || !view.active) { return (";
+    const firstRead = Math.min(...["registerTableMode(ctx", "<OrdersScreen"].map((n) => (ord.includes(n) ? ord.indexOf(n) : Infinity)));
+    chk("OR-1", "[static] หน้าออเดอร์: ไม่มีสาขาที่เข้าได้ = notFound · posOrdersView ไม่ผ่าน = การ์ดปฏิเสธก่อนอ่านข้อมูลสาขา (ไม่มี assertCan)",
+      has(ord,
+        "const linked = await posUnits(tenantId, id); if (!linked.some((u) => canAccessUnit(m, u.id))) notFound();",
+        gate, 'data-testid="pos-orders-refusal"') &&
+        ord.indexOf(gate) < firstRead && Number.isFinite(firstRead) && !ord.includes("assertCan("), "ครบ", "ไม่ครบ");
+  }
+
   const ov = norm("src/app/app/sys/[id]/page.tsx");
   const posContent = ov.slice(ov.indexOf("async function PosContent"));
   chk("O-1", "[static] หน้าภาพรวม: posScope จาก posSalesScope · ไม่มีสิทธิ์ = ไม่ render PosContent",
@@ -142,6 +155,7 @@ type Access = {
   posSaleWhere?: (tenantId: string, systemId: string, s: Scope) => SaleWhere;
   posCanSetTenantPrice: (m: M | null, unitIds: string[]) => boolean;
   posRegisterView: <T extends { id: string }>(m: M | null, linked: T[], unitParam?: string) => RegView<T>;
+  posOrdersView?: <T extends { id: string }>(m: M | null, linked: T[], unitParam?: string) => RegView<T>; // ORACLE-ADD P2.8U
 };
 let access: Access | null = null;
 try {
@@ -353,6 +367,26 @@ try {
   chk("T-5", "STAFF สาขา A ไม่มีสิทธิ์ POS → การ์ดปฏิเสธ (ไม่ใช่ 404 · O13)", tablesPage(P.noPermA) === "card", "card", tablesPage(P.noPermA));
   const outsider: M = { role: "STAFF", unitAccess: ["unit-of-nobody"], permissions: { "pos.sale.create": true } };
   chk("T-6", "เข้าสาขาใดของ POS นี้ไม่ได้เลย → 404", tablesPage(outsider) === "404", "404", tablesPage(outsider));
+
+  // ── 6) หน้าออเดอร์ /pos/orders (ORACLE-ADD P2.8U มติ 1) — ด่านอ่านของ S (pos.sale.read หรือ pos.sale.create ที่สาขา): 404 เมื่อเข้าสาขาใด ๆ ของ POS ไม่ได้ ·
+  //    การ์ดปฏิเสธเมื่อเข้าได้แต่อ่านไม่ได้ · สิทธิ์รับ/ปฏิเสธไม่ใช่ด่านของหน้า (ปุ่มปิดในจอ) ──
+  console.log("\n── /pos/orders ──");
+  const ordersPage = (m: M, param?: string): string => {
+    if (!linked.some((u) => canAccessUnit(m as never, u.id))) return "404";
+    if (!access?.posOrdersView) return "no-guard";
+    const v = access.posOrdersView(m, linked, param);
+    return v.ok && v.active ? `page@${v.active.id === uA.id ? "A" : "B"}` : "card";
+  };
+  const readerA: M = { role: "STAFF", unitAccess: [uA.id], permissions: { "pos.sale.read": true } };
+  const acceptOnlyA: M = { role: "STAFF", unitAccess: [uA.id], permissions: { "pos.order.accept": true } };
+  chk("OR-2", "OWNER → หน้าออเดอร์สาขา A (control)", ordersPage(P.owner) === "page@A", "page@A", ordersPage(P.owner));
+  chk("OR-3", "แคชเชียร์ A (pos.sale.create) → หน้าออเดอร์สาขา A (อ่านอย่างเดียว · ไม่มี pos.order.accept)", ordersPage(P.cashierA) === "page@A", "page@A", ordersPage(P.cashierA));
+  chk("OR-4", "STAFF A มีแค่ pos.sale.read → หน้าออเดอร์สาขา A", ordersPage(readerA) === "page@A", "page@A", ordersPage(readerA));
+  chk("OR-5", "แคชเชียร์ A ขอ ?unit=B → การ์ดปฏิเสธ (ไม่อ่านออเดอร์ของ B)", ordersPage(P.cashierA, uB.id) === "card", "card", ordersPage(P.cashierA, uB.id));
+  chk("OR-6", "STAFF สาขา A ไม่มีสิทธิ์ POS → การ์ดปฏิเสธ (ไม่ใช่ 404 · O13)", ordersPage(P.noPermA) === "card", "card", ordersPage(P.noPermA));
+  chk("OR-7", "STAFF A มีแค่ pos.order.accept (ไม่มีสิทธิ์อ่าน) → การ์ดปฏิเสธ", ordersPage(acceptOnlyA) === "card", "card", ordersPage(acceptOnlyA));
+  chk("OR-8", "ผู้จัดการทุกสาขา ?unit=B → หน้าออเดอร์สาขา B", ordersPage(P.mgrAll, uB.id) === "page@B", "page@B", ordersPage(P.mgrAll, uB.id));
+  chk("OR-9", "เข้าสาขาใดของ POS นี้ไม่ได้เลย → 404", ordersPage(outsider) === "404", "404", ordersPage(outsider));
 } catch (e) {
   chk("CRASH", "harness ทำงานจนจบ", false, "จบปกติ", e instanceof Error ? e.message.slice(0, 160) : String(e));
 } finally {

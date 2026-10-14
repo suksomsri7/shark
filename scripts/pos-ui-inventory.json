@@ -249,7 +249,7 @@
         "anyOf": [
           "/app/sys/[id]"
         ],
-        "note": "บิลวันนี้→/pos/sales · กะ→/pos/close · สินค้า→/pos/products · รายงาน→/pos/reports (HF-P1CLOSE O1) · ตั้งค่า→/pos/settings · โต๊ะ = ลิงก์ /pos/tables เมื่อสาขามีโหมดโต๊ะ (P2.4U มติ 1 · ไม่มี = เร็ว ๆ นี้) · ออเดอร์ออนไลน์ = เร็ว ๆ นี้ จนถึง P2.8 · หน้าขาย = แท็บปัจจุบัน"
+        "note": "บิลวันนี้→/pos/sales · กะ→/pos/close · สินค้า→/pos/products · รายงาน→/pos/reports (HF-P1CLOSE O1) · ตั้งค่า→/pos/settings · โต๊ะ = ลิงก์ /pos/tables เมื่อสาขามีโหมดโต๊ะ (P2.4U มติ 1 · ไม่มี = เร็ว ๆ นี้) · ออเดอร์ออนไลน์ = ลิงก์ /pos/orders + ป้ายนับออเดอร์ใหม่ pos-reg-tab-orders-badge (P2.8U มติ 1 · ดึงทุก 10 วิ) · หน้าขาย = แท็บปัจจุบัน"
       },
       "wo": "P1.3",
       "oracle": "qc-pos-p1.3",
@@ -13427,6 +13427,1215 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&table=[sessionId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-ch-all",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-col-*",
+        "note": "ราง: ทุกช่องทาง N (counts ของเซิร์ฟเวอร์) — ล้างตัวกรองช่องทาง"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-ch-*",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-col-*",
+        "note": "ราง: แถวช่องทาง pos-ord-ch-<รหัส> + ตัวนับ counts.byChannel · ชิปปิดรับถึง hh:mm — กรองการ์ดตามช่องทาง (หน้าร้าน/QR ซ่อน · หน้าร้าน QR = เร็ว ๆ นี้)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-ch-select",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-col-*",
+        "note": "จอ < 1024: ตัวเลือกช่องทางแทนราง"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-auto-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "สวิตช์รับอัตโนมัติต่อช่องทางที่ adapter ไม่ใช่ MANUAL → setChannelOrderSettingsAction({autoAccept}) · ต้องมี pos.order.accept"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-prep-default",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "เวลาเตรียมมาตรฐาน 10/15/20/30/45/60 → prepMinutes ของช่องทางที่เลือกในราง (ทุกช่องทาง = ทุกแถว)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-pause",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-ord-pause-sheet",
+        "note": "ปิดรับชั่วคราว → แผ่นเลือกเวลา"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-pause-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-paused-*",
+        "note": "15/30/60 นาที / จนกว่าจะเปิดเอง (now+24ชม.) → pausedUntil · แบนเนอร์ปิดรับบนกระดาน"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-reopen-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "แบนเนอร์ \"ปิดรับถึง hh:mm\" → เปิดรับ = pausedUntil null"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-sound",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-sound",
+        "note": "เสียงเตือนออเดอร์ใหม่ เปิด/ปิด (localStorage ต่อเครื่อง · ปริยายปิด) — เปิด = เสียง + \"(N)\" หน้าชื่อแท็บเมื่อมีออเดอร์ใหม่ระหว่างรอบดึง"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-manual",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-ord-manual-sheet",
+        "note": "+ คีย์ออเดอร์ (pos.sale.create) — แผ่นขวา 420 · derived (ภาพ 09 ไม่มี)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-col-*",
+        "note": "โหลดรายการไม่สำเร็จ → ลองอีกครั้ง"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-coltab-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-col-*",
+        "note": "มือถือ: แถบสลับคอลัมน์ ใหม่/กำลังเตรียม/พร้อม/เสร็จวันนี้ (ทีละคอลัมน์)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-card-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-panel",
+        "note": "การ์ดออเดอร์ pos-ord-card-<ref> → เลือก (ขอบ accent) + แผงรายละเอียด (≥1280 คอลัมน์ขวา · iPad แผ่นขวา · มือถือเต็มจอ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-card-accept-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "การ์ดใหม่: รับออเดอร์ (เวลาเตรียมของช่องทาง) — แคชเชียร์ไม่มี pos.order.accept = ปุ่มปิด + tooltip"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-card-reject-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-ord-reject-sheet",
+        "note": "การ์ดใหม่: ปฏิเสธ → แผ่นเหตุผล (ไม่มีสำหรับออเดอร์เว็บร้านที่ชำระแล้ว)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-card-handover-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "การ์ดพร้อม: ส่งมอบแล้ว (บิลถูกยกเลิก = orders.errors.saleVoided + เปิดแผงเสนอยกเลิกออเดอร์)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-done-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-panel",
+        "note": "แถวคอลัมน์เสร็จวันนี้ (เลข · ช่องทาง · เวลา · ฿) → แผงรายละเอียด"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-panel-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-panel",
+        "note": "ปิดแผง (iPad/มือถือ · Esc ได้)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-panel-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-panel",
+        "note": "โหลดรายละเอียดไม่สำเร็จ → ลองอีกครั้ง"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-accept",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "แผง: รับออเดอร์ · เตรียม N นาที (acceptOrderAction + prepMinutes) — แพลตฟอร์ม = เปิดบิลทันที"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-prep-edit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-ord-prep-sheet",
+        "note": "แผงออเดอร์ใหม่: แก้เวลา → ตัวปรับ ±5 นาที (ใช้ตอนกดรับ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-prep-change",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-ord-prep-sheet",
+        "note": "แผงรับแล้ว/กำลังเตรียม: แก้เวลา → setPrepMinutesAction"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-reject",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-ord-reject-sheet",
+        "note": "แผง: ปฏิเสธ (ของหมด) → แผ่นเหตุผล (ซ่อนสำหรับเว็บร้านที่ชำระแล้ว)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-start",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "รับแล้ว → เริ่มเตรียม (markPreparingAction)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-ready",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "กำลังเตรียม → พร้อมแล้ว (markReadyAction)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-handover",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "พร้อม → ส่งมอบแล้ว (handOverAction · บิลถูกยกเลิก = ข้อความ saleVoided + ปุ่มยกเลิกออเดอร์เด่น)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-pay",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-paydlg",
+        "note": "ช่องทางร้านเก็บเงินเองที่ยังไม่จ่าย: รับเงิน ฿x → จอชำระเดิม ผูก payOrderAction (คีย์ใหม่ต่อการเปิด · เงินสดไม่มีกะ = SHIFT_REQUIRED)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-ord-cancel-sheet",
+        "note": "รับแล้ว..พร้อม: ยกเลิกออเดอร์ → แผ่นเหตุผล (มีบิล = ยกเลิกบิลด้วย · รออนุมัติ = toast) · ซ่อนสำหรับเว็บร้านที่ชำระแล้ว"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-bill",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "ดูบิล → หน้าบิลวันนี้ ?bill=<saleId> = เปิดลิ้นชักบิลนั้น (12)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-reject-reason-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-reject-sheet",
+        "note": "เหตุผลปฏิเสธ ORDER_REJECT_REASONS (ของหมด · ใกล้ปิดร้าน · ออเดอร์เยอะเกิน · อื่น ๆ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-reject-note",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-reject-sheet",
+        "note": "หมายเหตุการปฏิเสธ (≤ REGISTER_NOTE_MAX)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-reject-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "ยืนยันปฏิเสธ → rejectOrderAction (เว็บร้าน = ยกเลิก ShopOrder ผ่าน consumer)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-cancel-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-cancel-sheet",
+        "note": "เหตุผลยกเลิก (บังคับ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-cancel-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "ยืนยันยกเลิก → cancelOrderAction (คีย์ต่อการเปิดแผ่น · PENDING_APPROVAL = toast รอผู้จัดการอนุมัติ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-prep-less",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-prep-value",
+        "note": "−5 นาที (≥ 1)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-prep-more",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-prep-value",
+        "note": "+5 นาที (≤ 180)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-prep-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-accept",
+        "note": "ใช้เวลานี้: ออเดอร์ใหม่ = ปุ่มรับแสดงเวลาใหม่ · รับแล้ว = setPrepMinutesAction"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ปิดแผ่นคีย์ออเดอร์ (คีย์ใหม่เมื่อเปิดครั้งถัดไป)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-channel",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ช่องทาง: MANUAL / CHAT / กำหนดเอง (ไม่มีหน้าร้าน/QR/เว็บร้าน) · ราคาตามช่องทางที่เลือก"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-ref",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "เลขออเดอร์แพลตฟอร์ม (บังคับเมื่อช่องทางกำหนดเอง · ≤ 40)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ชื่อลูกค้า (บังคับ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-phone",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "เบอร์ลูกค้า (ไม่บังคับ · แสดงแบบปิดบนการ์ด)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-ful-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "วิธีรับ: รับที่ร้าน / ส่ง (+ ที่อยู่)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-address",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ที่อยู่ส่ง (บังคับเมื่อส่ง)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-conv",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "แชท: รหัสห้องแชท (ไม่บังคับ · ตรวจในร้านที่เซิร์ฟเวอร์)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-party",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "แชท: รหัสผู้ติดต่อ party (ไม่บังคับ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-member-q",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "แชท: ค้นสมาชิก (Enter = ค้น)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-member-search",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ค้นสมาชิก → registerMemberLookupAction"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-member-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ผลค้นสมาชิก pos-ord-man-member-<id> → ผูกสมาชิกกับออเดอร์"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-member-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "เอาสมาชิกออก"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ค้นสินค้าในแคตตาล็อกของหน้าขาย"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-product-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-man-lines",
+        "note": "เพิ่มสินค้า (มีตัวเลือก/ตัวแปร = OptionsDialog เดิมของหน้าขาย)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-line-less-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-man-lines",
+        "note": "จำนวน −1"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-line-more-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-man-lines",
+        "note": "จำนวน +1"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-line-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-man-lines",
+        "note": "ลบบรรทัด"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-custom",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "รายการกำหนดเอง (pos.sale.priceOverride เท่านั้น)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-custom-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ชื่อรายการกำหนดเอง"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-custom-price",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "ราคารายการกำหนดเอง (บาท)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-custom-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-man-lines",
+        "note": "เพิ่มรายการกำหนดเอง"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-platform-total",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-ord-man-mismatch",
+        "note": "ยอดตามแพลตฟอร์ม ≠ ยอดรายการ (quote ของช่องทาง) = คำเตือน orders.manual.totalMismatch (ไม่ใช่คำปฏิเสธ)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-start-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "สถานะเริ่ม (MANUAL): รับแล้ว (ปริยาย) / ออเดอร์ใหม่"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-pay-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "การชำระ (ช่องทางร้านเก็บเอง): รอชำระ / จ่ายตอนรับ"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-note",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-manual-sheet",
+        "note": "หมายเหตุลูกค้า"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-man-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-ord-toast",
+        "note": "บันทึกออเดอร์ → ingestOrderAction (idempotencyKey ต่อการเปิดแผ่น · PRODUCT_UNAVAILABLE/CHANNEL_NOT_SOLD + lineIndex = ไฮไลต์บรรทัด · IDEMPOTENCY_CONFLICT = แจ้ง)"
+      },
+      "wo": "P2.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
