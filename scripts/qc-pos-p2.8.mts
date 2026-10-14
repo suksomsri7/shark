@@ -28,7 +28,7 @@
 //    --list = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต ST1–ST6 + L2 L3 + บริสุทธิ์ ST7 (ไม่โหลด prisma · exit 1 ถ้าแดง)
 //    ฐาน = QC4 เท่านั้น (host ep-frosty-lab ก่อนเขียนแถวแรก) · ร้านชั่วคราว `posqc-p28-<rand>` + `-t2` (ร้านอื่น) + `-t3` (ไม่มี POS) + ผู้ใช้
 //    `posqc-p28-<rand>-*@qc.invalid` (ลบทั้งหมดใน finally · แถวค้าง = 0) · ไม่มีเครือข่าย (fetch = ตัวกั้น 503) · ทุกข้อห่อ try/catch
-//    fixture ผ่านฟังก์ชันของโมดูล · Prisma ตรงเฉพาะ Tenant/BusinessUnit/User/Membership/AccountSystemLink + PaymentProfile ชั่วคราว (P10 · HF-PP2) + ย้อนเวลา receivedAt/acceptedAt ของแถวทดสอบ (R3) +
+//    fixture ผ่านฟังก์ชันของโมดูล · Prisma ตรงเฉพาะ Tenant/BusinessUnit/User/Membership/AccountSystemLink + PaymentProfile ชั่วคราว + paidAt ของใบขอรับเงินหนึ่งใบ (P10 · HF-PP2) + ย้อนเวลา receivedAt/acceptedAt ของแถวทดสอบ (R3) +
 //    ลบแถวราคา WEB ของสินค้าทดสอบหนึ่งแถว (W7 จำลองข้อมูลก่อน P2.8) · SQL ดิบ = xmin / information_schema / ลายนิ้วมือ + ลบร้านชั่วคราวเท่านั้น
 //    โมดูล/ฟังก์ชัน/โมเดลที่ยังไม่มีเข้าถึงแบบไดนามิก (`import(… as string)` + ตรวจว่ามี) — next build ตรวจชนิด scripts/*.mts
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,7 +86,7 @@ const CHECKS: readonly Def[] = [
   D("S6", "X4", "[R6 มติ 10] payOrder CASH 12000 รับ 20000 (เครื่อง 2) → บิล POS sourceId ออเดอร์ · CHAT DIRECT · shiftId กะเครื่อง 2 · ทอน 8000 · ออเดอร์ PAID + saleId · X ของกะเครื่อง 2 billCount +1 salesTotal +12000 · handOver → HANDED"),
   D("S7", "X1", "[R6] payOrder คีย์เดิม → บิลเดิม · คีย์ใหม่หลังจ่ายแล้ว → ไม่มีบิลที่สอง (บิลของออเดอร์ = 1)"),
   // ORACLE-ADD (HF-PP2 · บรีฟ pos-brief-HF-PP2.md §2 · มติผู้คุม §9 1–2 · 14 ต.ค.) — ด่านผู้จัดการของ payOrder (ทางหลังบ้านของ HF-PP)
-  D("P10", "X3", "[HF-PP2 · P2.8U R1 F1] manualConfirmRequiresManager เปิด + payOrder โดย STAFF2 (pos.sale.create + pos.order.accept · ไม่มี pos.shift.manage) บนออเดอร์ CHAT (DIRECT) ACCEPTED: PROMPTPAY ไม่มี reference / CARD เลข EDC / เงินสด+PROMPTPAY / PROMPTPAY อ้าง pi_ ที่ไม่มีจริง / pi_ PAID คนละยอด → PERMISSION_DENIED ข้อความ REGISTER_MANUAL_MANAGER_MESSAGE · PosSale/PosPayment +0 · ออเดอร์ยัง ACCEPTED UNPAID version เดิม · PosOrderEvent ไม่เพิ่ม · เจ้าของร้าน PROMPTPAY → PAID · STAFF2 CASH → PAID · STAFF2 PROMPTPAY อ้าง pi_ PAID ยอดตรง → PAID · ปิดค่าตั้ง → STAFF2 PROMPTPAY PAID (ตัวควบคุมบวก)"),
+  D("P10", "X3", "[HF-PP2 · P2.8U R1 F1] manualConfirmRequiresManager เปิด + payOrder โดย STAFF2 (pos.sale.create + pos.order.accept · ไม่มี pos.shift.manage) บนออเดอร์ CHAT (DIRECT) ACCEPTED: PROMPTPAY ไม่มี reference / CARD เลข EDC / เงินสด+PROMPTPAY / PROMPTPAY อ้าง pi_ ที่ไม่มีจริง / pi_ PAID คนละยอด → PERMISSION_DENIED ข้อความ REGISTER_MANUAL_MANAGER_MESSAGE · PosSale/PosPayment +0 · ออเดอร์ยัง ACCEPTED UNPAID version เดิม · PosOrderEvent ไม่เพิ่ม · เจ้าของร้าน PROMPTPAY → PAID · STAFF2 CASH → PAID · STAFF2 PROMPTPAY อ้าง pi_ PAID ยอดตรง → PAID · ปิดค่าตั้ง → STAFF2 PROMPTPAY PAID (ตัวควบคุมบวก) · fix1 F1: ออเดอร์ที่สอง อ้าง pi_ เดิม (อยู่บนบิลแล้ว) / pi_ PAID เกิน 24 ชม. → PERMISSION_DENIED ไม่มีแถว/event ยัง ACCEPTED UNPAID"),
   D("S8", "X5", "[CD5 มติ 11] นโยบาย BLOCK + ไข่เค็มเหลือ 1 สั่ง 2: accept → STOCK_INSUFFICIENT ออเดอร์ยัง NEW version เดิม ไม่มีบิล/event · ingest startStatus ACCEPTED → STOCK_INSUFFICIENT ไม่มีแถวออเดอร์"),
   // ── V ยกเลิก ──
   D("V1", "X1", "[R6 มติ 13] ยกเลิกบิลจากลิ้นชักบิล (voidSaleByActor) ของออเดอร์ READY → ระบายคิว → CANCELLED + REFUNDED · outbox cancelled 1 · เล่น consumers[pos.sale.voided] ซ้ำ 2 รอบ + drain → ไม่เปลี่ยน"),
@@ -1849,7 +1849,7 @@ async function runDb() {
   });
   // ════════ P10 (ORACLE-ADD · HF-PP2) ด่านผู้จัดการของ payOrder — พร้อมเพย์/บัตรที่ยืนยันเงินเข้าเอง (ไม่อ้างใบขอรับเงินที่จ่ายแล้ว) ════════
   //   fixture: ค่าตั้งผ่าน updatePosIntentSettings (เจ้าของร้าน) · ใบขอรับเงินผ่าน createPaymentIntent + confirmPaymentIntentManual (เจ้าของร้าน) ·
-  //   Prisma ตรง = PaymentProfile ชั่วคราวของร้าน T (เลขพร้อมเพย์ของ QR นิ่ง · แบบ qc-pos-p1.7) ลบท้ายข้อ · คืนค่าตั้งใน finally
+  //   Prisma ตรง = PaymentProfile ชั่วคราวของร้าน T (เลขพร้อมเพย์ของ QR นิ่ง · แบบ qc-pos-p1.7) ลบท้ายข้อ + ย้อน paidAt ของใบหนึ่ง (fix1) · คืนค่าตั้งใน finally
   await step("P10", async () => {
     const p: string[] = [];
     const MGR_MSG = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
@@ -1892,8 +1892,13 @@ async function runDb() {
       const o2 = await mkAcc("P10 o2");
       const o3 = await mkAcc("P10 o3");
       const o4 = await mkAcc("P10 o4");
+      const o5 = await mkAcc("P10 o5"); // fix1 F1: ออเดอร์ที่สองที่อ้าง pi_ ซ้ำ
+      const o6 = await mkAcc("P10 o6"); // fix1 F1: ออเดอร์ที่อ้าง pi_ เกินหน้าต่าง 24 ชม. (แยกออเดอร์ — สองกรณีไม่บังกันตอนแดง)
       const piOk = await mkPaidPi("ยอดตรง", 12000);
       const piSmall = await mkPaidPi("ยอดน้อย", 5000);
+      const piOld = await mkPaidPi("เกิน 24 ชม.", 12000);
+      // fix1 F1: ย้อน paidAt ของใบนี้ไป 25 ชม. (เกิน PAYMENT_INTENT_CONSUME_WINDOW_MS ของหน้าขาย) — Prisma ตรงบนแถวของร้านชั่วคราว
+      if (piOld) await P.posPaymentIntent.update({ where: { id: piOld }, data: { paidAt: new Date(Date.now() - 25 * 60 * MIN) } });
       await setMgr(true);
       switched = true;
       // ── ปฏิเสธ: ไม่มีอะไรถูกเขียน ──
@@ -1921,6 +1926,18 @@ async function runDb() {
       await paidOk("เจ้าของร้าน PROMPTPAY", o1, await pay(o1, "OWNER", [{ type: "PROMPTPAY", amountSatang: 12000 }]));
       await paidOk("STAFF2 CASH", o2, await pay(o2, "STAFF2", [{ type: "CASH", amountSatang: 12000 }], 12000));
       await paidOk("STAFF2 PROMPTPAY อ้าง pi_ PAID ยอดตรง", o3, await pay(o3, "STAFF2", [{ type: "PROMPTPAY", amountSatang: 12000, reference: piOk || "pi_missingfixture" }]));
+      // ── fix1 F1: pi_ ไม่ใช่ใบผ่านหลายครั้ง — ใบที่อยู่บนบิลแล้ว (o3) / ใบที่จ่ายเกิน 24 ชม. → ปฏิเสธบนออเดอร์ที่สอง ไม่มีอะไรถูกเขียน ──
+      for (const [lbl, oid, ref] of [["o5 อ้าง pi_ เดิมของ o3 (อยู่บนบิลแล้ว)", o5, piOk], ["o6 อ้าง pi_ PAID เกิน 24 ชม.", o6, piOld]] as const) {
+        const n5 = await saleCount();
+        const q5 = await payCount();
+        const v5 = (await row(oid))?.version;
+        const e5 = (await evsOf(oid)).length;
+        const r = await pay(oid, "STAFF2", [{ type: "PROMPTPAY", amountSatang: 12000, reference: ref || "pi_missingfixture" }]);
+        if (!denied(r)) p.push(`STAFF2 ${lbl} → ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
+        const or = await row(oid);
+        if (or?.status !== "ACCEPTED" || or?.paymentState !== "UNPAID" || or?.saleId || or?.version !== v5) p.push(`${lbl.slice(0, 2)} หลังปฏิเสธ ${ordStr(or)} (version ก่อน ${v5})`);
+        if ((await saleCount()) !== n5 || (await payCount()) !== q5 || (await evsOf(oid)).length !== e5) p.push(`${lbl.slice(0, 2)} แถวเพิ่ม PosSale ${n5}→${await saleCount()} PosPayment ${q5}→${await payCount()} event ${e5}→${(await evsOf(oid)).length}`);
+      }
       await setMgr(false);
       switched = false;
       await paidOk("ปิดค่าตั้ง STAFF2 PROMPTPAY", o4, await pay(o4, "STAFF2", [{ type: "PROMPTPAY", amountSatang: 12000 }]));
@@ -1930,7 +1947,7 @@ async function runDb() {
       if (switched) await call(paySetMod, "updatePosIntentSettings", { tenantId: T, systemId: S.POS }, A("OWNER"), { manualConfirmRequiresManager: false });
       if (!fx && !had) await P.paymentProfile.deleteMany({ where: { tenantId: T } }).catch(() => null);
     }
-    chk("P10", good(p), "STAFF2 PROMPTPAY/CARD/แบ่งจ่าย/pi_ ปลอม/pi_ ยอดไม่ตรง → PERMISSION_DENIED ×5 ไม่มีแถว/event · เจ้าของ PAID · CASH PAID · pi_ PAID ยอดตรง PAID · ปิดค่าตั้ง PAID", why(p));
+    chk("P10", good(p), "STAFF2 PROMPTPAY/CARD/แบ่งจ่าย/pi_ ปลอม/pi_ ยอดไม่ตรง → PERMISSION_DENIED ×5 ไม่มีแถว/event · เจ้าของ PAID · CASH PAID · pi_ PAID ยอดตรง PAID · ปิดค่าตั้ง PAID · pi_ ซ้ำ/เกิน 24 ชม. บนออเดอร์ที่สอง → PERMISSION_DENIED ไม่มีแถว", why(p));
   });
   await step("S8", async () => {
     const p: string[] = [];
