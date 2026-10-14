@@ -1684,7 +1684,8 @@
         "split": "Split refund: {rows}",
         "cardToCash": "Unusable card share {amount} goes back as cash — a reason is required (manager or approval)",
         "uncovered": "This method cannot cover {amount} — pick another method or fewer items",
-        "methodInvalid": "This refund method is not allowed for this bill — the gift card / store credit share must go back to the card or store credit"
+        "methodInvalid": "This refund method is not allowed for this bill — the gift card / store credit share must go back to the card or store credit",
+        "reasonRequired": "Type the refund reason here before confirming — this refund needs a reason"
       }
     },
     "errors": {

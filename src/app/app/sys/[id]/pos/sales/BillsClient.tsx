@@ -705,6 +705,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   // POS P2.9U ▸ มติ 8: ตัวเลือกคืนเข้าบัตร/เครดิตร้านของบิลนี้ (null = ยังไม่มา/อ่านไม่ได้ ⇒ ชิปเดิมเท่านั้น) · บัตรที่เลือก ◂
   const [rfOpts, setRfOpts] = useState<RefundTenderOptions | null>(null);
   const [rfCardId, setRfCardId] = useState<string | null>(null);
+  // POS P2.9U ▸ fix1 L3: REASON_REQUIRED = ข้อความของตัวเองที่ช่องเหตุผล (ช่องพิมพ์เหตุผลเปิดให้ทันที) ◂
+  const [rfReasonErr, setRfReasonErr] = useState(false);
   const [rfRef, setRfRef] = useState("");
   const [rfKey, setRfKey] = useState("");
   const [rfErr, setRfErr] = useState<string | null>(null);
@@ -742,6 +744,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     setRfReasonText("");
     setRfMethod("CASH");
     setRfOpts(null); // POS P2.9U ◂
+    setRfReasonErr(false);
     setRfCardId(null);
     setRfKey(newKey("refund"));
     setRfShiftNo(null);
@@ -824,8 +827,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       setRefundOpen(false);
       return;
     }
-    if ((rfReason === "OTHER" || rfNeedReason) && !rfReasonText.trim()) {
-      setRfErr(tr("reasonRequired"));
+    if ((rfReason === "OTHER" || rfNeedReason || rfReasonErr) && !rfReasonText.trim()) {
+      setRfReasonErr(true); // POS P2.9U ▸ fix1 L3 ◂
       return;
     }
     // POS P2.9U ▸ มติ 8: ยอดเกินเพดานของทุกวิธีที่คืนได้ = ไม่ส่ง ◂
@@ -885,6 +888,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       } else if (r.code === "STAFF_TOKEN_INVALID") tokenDead(); // F8
       else if (r.code === "NO_PERMISSION" && pinShop) setMgrPin({ kind: "refund", refund: refundIn }); // F8
       else if (r.code === "REFUND_METHOD_INVALID" && rfTender) setRfErr(t("refund.tender.methodInvalid")); // POS P2.9U ▸ มติ 8 ◂
+      else if (r.code === "REASON_REQUIRED") setRfReasonErr(true); // POS P2.9U ▸ fix1 L3: ข้อความที่ช่องเหตุผล ◂
       else setRfErr(refundErrKey(r.code) !== "unknown" ? tr(refundErrKey(r.code)) : posErr(r.code));
     } catch {
       setRfErr(tr("unknown"));
@@ -1933,17 +1937,27 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       ))}
                     </select>
                   </label>
-                  {rfReason === "OTHER" || rfNeedReason ? ( // POS P2.9U ▸ มติ 8: ส่วนบัตรใช้ไม่ได้คืนเป็นเงิน = เหตุผลบังคับ ◂
+                  {rfReason === "OTHER" || rfNeedReason || rfReasonErr ? ( // POS P2.9U ▸ มติ 8 + fix1 L3: เหตุผลบังคับ ◂
                     <input
                       type="text"
                       data-testid="pos-bills-refund-reason-text"
                       className="input h-11"
                       maxLength={REFUND_REASON_MAX}
                       value={rfReasonText}
-                      onChange={(e) => setRfReasonText(e.target.value)}
+                      onChange={(e) => {
+                        setRfReasonText(e.target.value);
+                        if (e.target.value.trim()) setRfReasonErr(false);
+                      }}
                       placeholder={t("refund.otherText")}
                       aria-label={t("refund.otherText")}
+                      aria-invalid={rfReasonErr || undefined}
                     />
+                  ) : null}
+                  {rfReasonErr ? (
+                    // POS P2.9U ▸ fix1 L3 ◂
+                    <span data-testid="pos-bills-refund-reason-error" role="alert" className="text-[12px] font-semibold text-[color:var(--color-danger)]">
+                      {t("refund.tender.reasonRequired")}
+                    </span>
                   ) : null}
                 </div>
                 {/* คืนเงินด้วย */}
