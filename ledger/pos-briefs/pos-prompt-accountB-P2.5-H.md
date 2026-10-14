@@ -1,0 +1,13 @@
+# Prompt — P2.5 S money/stock hunter (read-only, adversarial; resume of the P2.6 hunter). Controller (account B, 14 Oct 21:0xZ). Head `wip/pos-p2.5` **6ed2d5ce** (code 86392e7d), tree `/root/projects/shark-pos-c` (`git -C … show/diff`; base code 4449123f). Read-only; scratch `scratchpad/p25-h/`. English, ≤ 45 lines. Parallel to the reviewer — **hunt only for money, stock and table/kitchen-state defects**.
+
+Read: `pos-brief-P2.5.md` §10/§11, `…show 6ed2d5ce:ledger/wo-notes/pos-P2.5-oracle.md` (names table), `…:ledger/wo-notes/pos-P2.5.md`, `scripts/qc-pos-p2.5.mts` (what is asserted — find what is not), `pos/table-split.ts`, `table-split-shared.ts`, `pos/table.ts`, `pos/register.ts` (split cart / `regSubmitSplitPart` / fixed service charge), `restaurant/pos-tables.ts`, `outbox-consumers.ts` (voided/refunded), `pos/refund.ts`, `pos/kds.ts` (rounds on move/merge), `catalog-legacy.ts` (stock restore).
+
+Hunt list (for each: input → wrong money/stock/state, severity, smallest fix, the missing check):
+1. Σ parts ≠ table: discount + service + VAT rounding across 2–20 parts; an item qty > 1 shared across parts; price change or item cancel between plan creation and part pay; member benefits applied on a part then the plan is replaced; a part paid with a tip; a part paid partly by gift card (P2.9 — after upstream merge) — refund path.
+2. Stock: the carrying part is voided while another sharing part is paid (stock restored though the item is still partly paid?); the non-carrying part voided; both voided; cancel item after one part paid; `stockTaken` (P2.6) vs split shares; counters on a merged table's rounds.
+3. Lost/duplicate payment: two cashiers pay the same part (replay with a different key); part paid, then the plan replaced/deleted (allowed? the paid part's items must stay PAID); whole-table pay racing a plan creation; move/merge racing a part pay; part pay racing a legacy QR order item add to the same session.
+4. Table/kitchen state: move/merge while rounds are COOKING — do tickets, counters and the KDS table label follow; vacated table "needs clearing" vs a new session claim on it; merge of a session that has an open plan; held drafts on the moved session.
+5. Pre-bill: prints another table's lines after a move; prints a stale plan; audit row per print on replay.
+6. Authorization: part pay by STAFF without the table keys; pre-bill by a user without `pos.sale.create`; plan edit from another unit.
+
+Report: verdict (`CLEAN` | `FINDINGS`), N1..Nn (severity, file:line, input → wrong money/stock/state, smallest fix, missing check). Write `scratchpad/p25-h/REPORT.md` and return it verbatim.
