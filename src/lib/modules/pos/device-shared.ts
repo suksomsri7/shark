@@ -27,7 +27,14 @@ export type PosPrinterConfig = {
   drawerKick: boolean;
   thaiText: PosPrinterThaiText;
   copies: 1 | 2;
+  /** POS P2.6 ▸ R14 มติ 8: ใบครัวจากเครื่องนี้ (ไม่มีคีย์ = "off") · สถานีที่พิมพ์ ([] / ไม่มีคีย์ = ทุกสถานี) — คีย์มีเฉพาะเมื่อตั้งไว้ (CD 6) ◂ */
+  kitchenSlip?: PosKitchenSlipMode;
+  kitchenStationIds?: string[];
 };
+/** POS P2.6 ▸ ใบครัว: ไม่พิมพ์ · พิมพ์หลังขายที่เครื่องนี้ (LAN = P3.11) ◂ */
+export type PosKitchenSlipMode = "off" | "after-sale";
+export const POS_KITCHEN_SLIP_MODES: readonly PosKitchenSlipMode[] = ["off", "after-sale"];
+export const POS_KITCHEN_STATION_IDS_MAX = 50;
 export const POS_PRINTER_DEFAULTS: Readonly<PosPrinterConfig> = Object.freeze({
   paper: "80",
   mode: "browser",
@@ -81,7 +88,22 @@ export function parsePrinterConfig(json: unknown): ParsePrinterConfigResult {
     if (v.copies !== 1 && v.copies !== 2) return bad("copies", "copies: จำนวนสำเนาต้องเป็น 1 หรือ 2");
     out.copies = v.copies;
   }
+  // POS P2.6 ▸ R14 CD 6: คีย์ใบครัวเพิ่มเฉพาะเมื่อส่งมา (ไม่ส่ง = 6 คีย์เดิมพอดี · qc-pos-p1.10 PC1/G4 คงเดิม) ◂
+  if (v.kitchenSlip !== undefined) {
+    if (typeof v.kitchenSlip !== "string" || !(POS_KITCHEN_SLIP_MODES as readonly string[]).includes(v.kitchenSlip)) return bad("kitchenSlip", "kitchenSlip: ต้องเป็น off หรือ after-sale");
+    out.kitchenSlip = v.kitchenSlip as PosKitchenSlipMode;
+  }
+  if (v.kitchenStationIds !== undefined) {
+    const ids = v.kitchenStationIds;
+    if (!Array.isArray(ids) || ids.length > POS_KITCHEN_STATION_IDS_MAX || !ids.every((x) => typeof x === "string" && x.length > 0 && x.length <= 200)) return bad("kitchenStationIds", "kitchenStationIds: ต้องเป็นรายการรหัสสถานี (ข้อความ)");
+    out.kitchenStationIds = [...new Set(ids as string[])];
+  }
   return { ok: true, config: out };
+}
+
+/** POS P2.6 ▸ ค่าใบครัวที่ใช้จริง (ไม่มีคีย์ = ไม่พิมพ์ · ทุกสถานี) ◂ */
+export function kitchenSlipSettings(cfg: Pick<PosPrinterConfig, "kitchenSlip" | "kitchenStationIds">): { mode: PosKitchenSlipMode; stationIds: string[] } {
+  return { mode: cfg.kitchenSlip ?? "off", stationIds: cfg.kitchenStationIds ?? [] };
 }
 
 // ═══════════ ทะเบียนเครื่อง (R2) — รูปผลลัพธ์ ═══════════
