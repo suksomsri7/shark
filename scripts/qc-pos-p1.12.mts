@@ -55,7 +55,8 @@ const CHECKS: readonly Def[] = [
   D("ST1", "S", "[§3 CD9] schema PosSale.memberSnapshot Json? + memberBenefits Json? · migration ที่แตะสองคอลัมน์นี้มีแต่ ALTER TABLE \"PosSale\" ADD COLUMN \"memberSnapshot\"/\"memberBenefits\" JSONB (nullable · ไม่มีคำสั่งอื่น)"),
   D("ST2", "S", "[hard rule · R17 · มติ Q2] pos/** ไม่ import voucher/point/stamp/giftcard (static+dynamic · ยกเว้นเดิม public-receipt.ts→point) · ไม่ import member/<ไฟล์ใน> · register-member.ts มีจริง · ผู้กระทำแทนมีคีย์ member.* ตรง 3 ตัว (customer.read · customer.create · loyalty.fulfil) · ไม่เรียกฟังก์ชันผู้ดูแลของสมาชิก"),
   D("ST3", "S", "[hard rule · §7] ทุกไฟล์ \"use server\" ใน modules/pos export async function ล้วน · register-actions.ts มี registerMemberLookupAction registerQuickMemberAction registerMemberBenefitsAction registerFulfilRewardAction (แต่ละตัวเรียกฟังก์ชันบริการของตัวเอง + catch)"),
-  D("ST4", "S", "[CD3 · มติ Q1] ไม่มี GIFT_CARD/VOUCHER/STORE_CREDIT ใน enum PosPayType · REGISTER_PAY_TYPES ไม่มี GIFT_CARD · ไม่มี migration ALTER TYPE \"PosPayType\" … GIFT_CARD"),
+  // ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.9 มติ 1 2 · CD3 ของ P1.12 หมดอายุ): บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระแล้ว (P2.9) — ST4 เหลือ "ไม่มี VOUCHER" (มติ 2: ว่อชเชอร์โปรโมชันยังเป็นส่วนลด) ◂
+  D("ST4", "S", "[CD3 · มติ Q1 → P2.9 มติ 2] ไม่มี VOUCHER ใน enum PosPayType · REGISTER_PAY_TYPES ไม่มี VOUCHER · ไม่มี migration ALTER TYPE \"PosPayType\" … VOUCHER"),
   D("ST5", "S", "[R6 R7 R9 R16 Q8] รหัสปฏิเสธใหม่ 12 ตัว (มติ 1: ไม่มี VOUCHER_LIMIT)อยู่ใน RegisterRefusalCode + REFUSAL_KEY → errors.<camel> + ข้อความ th/en (th ไทย) · MEMBER_RIGHTS_UNSUPPORTED คงไว้แต่ register.ts ไม่คืนแล้ว · REG_QUOTE_KEYS มี couponCode/memberChoices · ตัวช่วย saleWalletCart export และถูกเรียกทั้งใน createSale และฝั่ง quote · CreateSaleInput.memberSnapshot? · createSale เขียน memberBenefits · submit ส่ง memberSystemId · member.erased: ตัวรับ CRM มาก่อนส่วน POS"),
   // ── B ตัวแกะ/ตรวจรูป ──
   D("B1", "-", "[R6] quote รับ couponCode (สตริง) และ memberChoices {voucherId, points} ตรงตัว · couponCode ไม่ใช่สตริง / memberChoices คีย์แปลก / voucherIds (รูปเดิม) / ไม่ใช่ออบเจกต์ → VALIDATION"),
@@ -356,14 +357,15 @@ async function runStatic(): Promise<void> {
     const p: string[] = [];
     const en = prismaBlock(schemaSrc, "enum", "PosPayType");
     if (!en) p.push("ไม่พบ enum PosPayType");
-    for (const v of ["GIFT_CARD", "VOUCHER", "STORE_CREDIT"]) if (new RegExp(`^\\s*${v}\\b`, "m").test(en)) p.push(`PosPayType มี ${v}`);
+    // ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.9 มติ 1 2): GIFT_CARD/STORE_CREDIT เป็นวิธีชำระได้แล้ว — ตรวจเฉพาะ VOUCHER ◂
+    for (const v of ["VOUCHER"]) if (new RegExp(`^\\s*${v}\\b`, "m").test(en)) p.push(`PosPayType มี ${v}`);
     const sh = srcOf(F.shared);
     const pt = /REGISTER_PAY_TYPES\s*=\s*\[([^\]]*)\]/.exec(sh)?.[1] ?? "";
     if (!pt) p.push("ไม่พบ REGISTER_PAY_TYPES");
-    if (/GIFT_CARD/.test(pt)) p.push("REGISTER_PAY_TYPES มี GIFT_CARD");
-    const mig = walk("prisma/migrations", [], /\.sql$/).filter((f) => /ALTER\s+TYPE\s+"PosPayType"[^;]*GIFT_CARD/i.test(rd(f)));
-    if (mig.length) p.push(`migration เพิ่ม GIFT_CARD ใน PosPayType: ${mig.map((f) => f.split("/").slice(-2, -1)[0]).join(",")}`);
-    chk("ST4", p.length === 0, "ไม่มี GIFT_CARD tender (CD3)", joinP(p));
+    if (/VOUCHER/.test(pt)) p.push("REGISTER_PAY_TYPES มี VOUCHER");
+    const mig = walk("prisma/migrations", [], /\.sql$/).filter((f) => /ALTER\s+TYPE\s+"PosPayType"[^;]*VOUCHER/i.test(rd(f)));
+    if (mig.length) p.push(`migration เพิ่ม VOUCHER ใน PosPayType: ${mig.map((f) => f.split("/").slice(-2, -1)[0]).join(",")}`);
+    chk("ST4", p.length === 0, "ไม่มี VOUCHER เป็นวิธีชำระ (P2.9 มติ 2)", joinP(p));
   }
   // ST5 การเดินสาย
   {
