@@ -90,7 +90,7 @@ const CHECKS: readonly Def[] = [
   D("V9", "X1", "[R6] คืนบรรทัดเดียวกันเข้าบัตรสองคำขอพร้อมกัน → ok 1 · อีกคำขอ REFUND_EXCEEDS · บัตร +100 ครั้งเดียว"),
   // ── R ตัวอ่าน / ช่องจอชำระ ──
   D("R1", "-", "[R10] receiptPayload + billDetail: แถว GIFT_CARD มี card {kind GIFT, numberMasked GC-••••<4 ท้าย>, balanceAfterSatang 17,500} · แถว STORE_CREDIT มี card kind STORE_CREDIT · X ของกะมีแถว STORE_CREDIT"),
-  D("R2", "-", "[มติ 6 8 13] registerPayTenders: สาขา A {giftCard.enabled, storeCredit.enabled, deposit {visible, enabled false}, roomCharge {visible (มีโรงแรม), enabled false}} · สาขา B roomCharge.visible false · storeCredit.enabled false (ไม่มีระบบสมาชิก)"),
+  D("R2", "-", "[มติ 6 8 13] registerPayTenders: สาขา A (SHOP) {giftCard.enabled, storeCredit.enabled, deposit {visible, enabled false}, roomCharge.visible false} · สาขา B storeCredit.enabled false (ไม่มีระบบสมาชิก) · สาขาโรงแรม (UnitType HOTEL) roomCharge {visible, enabled false}"),
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[§7 F15.2] scripts/pos-sale-contract.json เทียบฐาน 57dc226b = เพิ่มอย่างเดียว (ของเดิมทุกคีย์เท่าเดิม · ของใหม่มีแค่ payMethods[].giftCard*) · ทะเบียนผู้เรียกในไฟล์ไม่ลด"),
   D("L2", "PAR", "[§7 HF-TX] ผู้เรียก createSale( ใน src ต่อไฟล์ = ฐาน 57dc226b (มติ 6: ไม่มีจุดใหม่)"),
@@ -544,16 +544,15 @@ async function runDb() {
     const t2 = await P.tenant.create({ data: { name: `QC P2.9 ร้านอื่น ${RAND}`, slug: T2_SLUG } });
     T2 = t2.id;
     for (const k of ["A", "B"]) U[k] = (await P.businessUnit.create({ data: { tenantId: T, type: "SHOP", name: `${TAG} สาขา${k}`, slug: `${T_SLUG}-${k.toLowerCase()}` } })).id;
+    U.H = (await P.businessUnit.create({ data: { tenantId: T, type: "HOTEL", name: `${TAG} โรงแรม`, slug: `${T_SLUG}-h` } })).id; // มติ 8: สาขาโรงแรม (UnitType HOTEL)
     S.POS = (await sysSvc.createSystem(T, "POS", "POS P2.9 (ผูกบัญชี VAT)")).id;
     S.ACC = (await sysSvc.createSystem(T, "ACCOUNT", "บัญชี QC P2.9")).id;
     S.MEM = (await sysSvc.createSystem(T, "MEMBER", "สมาชิก QC P2.9")).id;
-    S.HOTEL = (await sysSvc.createSystem(T, "HOTEL", "โรงแรม QC P2.9")).id;
     await accSvc.saveSettings(T, S.ACC, { orgName: "ร้านบัตรคิวซี จำกัด", taxId: "0105561177639", vatRegistered: true });
     await glMod.ensureAccounting({ tenantId: T, systemId: S.ACC });
     await P.accountSystemLink.create({ data: { tenantId: T, systemId: S.ACC, linkedKind: "POS", linkedId: S.POS } });
-    for (const k of ["A", "B"]) await sysSvc.linkUnit(T, S.POS, U[k]);
+    for (const k of ["A", "B", "H"]) await sysSvc.linkUnit(T, S.POS, U[k]);
     await sysSvc.linkUnit(T, S.MEM, U.A);
-    await sysSvc.linkUnit(T, S.HOTEL, U.A);
     ledgerTip = (await P.accountLedger.create({ data: { tenantId: T, systemId: S.ACC, code: "2190", name: `${TAG} ทิปรอจ่ายพนักงาน`, type: "LIABILITY" } })).id;
     ledgerExp = (await P.accountLedger.create({ data: { tenantId: T, systemId: S.ACC, code: "5990", name: `${TAG} ค่าใช้จ่ายทิป (ผิดชนิด)`, type: "EXPENSE" } })).id;
   } catch (e) {
@@ -1319,11 +1318,14 @@ async function runDb() {
     const p: string[] = [];
     const a = await call(tenderMod, "registerPayTenders", ctxOf("A"), owner);
     const b = await call(tenderMod, "registerPayTenders", ctxOf("B"), owner);
+    const h = await call(tenderMod, "registerPayTenders", ctxOf("H"), owner);
     const ta = a?.tenders ?? a;
     const tb = b?.tenders ?? b;
-    if (a?.ok !== true || ta?.giftCard?.enabled !== true || ta?.storeCredit?.enabled !== true || ta?.deposit?.visible !== true || ta?.deposit?.enabled !== false || ta?.roomCharge?.visible !== true || ta?.roomCharge?.enabled !== false) p.push(`A ${codeOf(a)} ${short(ta, 200)}`);
-    if (b?.ok !== true || tb?.roomCharge?.visible !== false || tb?.storeCredit?.enabled !== false) p.push(`B ${codeOf(b)} ${short(tb, 200)}`);
-    chk("R2", p.length === 0, "A: บัตร/เครดิตเปิด · มัดจำ/ห้องแสดงแต่ปิด · B: ห้องซ่อน เครดิตปิด", FXB(joinP(p)));
+    const th = h?.tenders ?? h;
+    if (a?.ok !== true || ta?.giftCard?.enabled !== true || ta?.storeCredit?.enabled !== true || ta?.deposit?.visible !== true || ta?.deposit?.enabled !== false || ta?.roomCharge?.visible !== false) p.push(`A ${codeOf(a)} ${short(ta, 200)}`);
+    if (b?.ok !== true || tb?.roomCharge?.visible !== false || tb?.storeCredit?.enabled !== false || tb?.giftCard?.enabled !== true) p.push(`B ${codeOf(b)} ${short(tb, 200)}`);
+    if (h?.ok !== true || th?.roomCharge?.visible !== true || th?.roomCharge?.enabled !== false) p.push(`โรงแรม ${codeOf(h)} ${short(th, 200)}`);
+    chk("R2", p.length === 0, "A: บัตร/เครดิตเปิด · มัดจำแสดงแต่ปิด · ห้องซ่อน · B: เครดิตปิด · โรงแรม: ห้องแสดงแต่ปิด", FXB(joinP(p)));
   }
 
   // ════════ L3 ทางเดิม ════════
