@@ -45,3 +45,23 @@ Red-before (base code ca5a07b4, QC_FORCE): **60/61, only P10 red** — STAFF2 PR
 ## Follow-ups
 1. payOrder does not consume `pi_` intents it accepts as exemption (could double-use one PAID intent across a register sale and an order) — card for P2.7/P2.8 owner if `pi_` on order pay is ever wired in the UI.
 2. Owner decisions carried: CARD under the setting (flip at `REGISTER_MANUAL_METHODS`), TRANSFER not covered (HF-PP fix 1 line).
+
+## Fix round 1 (review F1)
+Ruling: keep the strict `pi_` rule; tighten — exemption must be single-use and inside the register's 24 h `paidAt` window.
+- Commits: 4fadbbae oracle + red2 · 448c632c code · (this commit) notes.
+- Code `src/lib/modules/pos/order.ts` (inside the existing `// POS HF-PP2 ▸ … ◂` block, now `:1107-1119`; all-`pi_` branch only): `:37` import adds `PAYMENT_INTENT_CONSUME_WINDOW_MS` from `payment-intent-shared` (same source `payment-intent.ts:27` uses for `lockSaleIntents` `:542`) · `:1113` `allPi` (every manual row a distinct `pi_`) · `:1114` `used = allPi && posPayment.count({tenantId, reference in piIds}) > 0` (intent already backing a sale ⇒ not exempt) · `:1115` intent `findMany` adds `paidAt >= now − 24 h` and runs only when `allPi && !used`. Reads stay lazy: CASH/TRANSFER-only or `pos.shift.manage` ⇒ 0 reads; a manual row without `pi_` ⇒ settings read only. Comment line `:1108` updated. Nothing else changed.
+- Oracle P10 (no new D-row, still 61): fixture adds orders o5 o6 + a third PAID intent with `paidAt` moved back 25 h (Prisma direct on the temp tenant, header updated); setting on, STAFF2: o5 PROMPTPAY with o3's `pi_` (already on o3's sale) / o6 PROMPTPAY with the >24 h `pi_` ⇒ each PERMISSION_DENIED + exact message, PosSale/PosPayment/PosOrderEvent +0, order ACCEPTED/UNPAID/version unchanged. Separate orders so neither case masks the other when red.
+- Red2 (code 640e130b, QC_FORCE) `ledger/wo-notes/HF-PP2-red2.txt`: 59/61 — P10 red on both new cases (o5 → OK PosSale 12→13; o6 → OK PosSale 13→14) + ST6 PAR (expected).
+
+| gate (head 448c632c, dirty 0, logs `scratchpad/hfpp2/gates-fix1/*.out` headed `tree=/root/projects/shark-pos-p11 head=448c632c dirty=0`) | result |
+|---|---|
+| typecheck | rc 0 |
+| fitness no-env / env | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| qc-pos-p2.8 forced / unforced | 60/61 · 60/61 — P10 ✅ · only ST6 PAR red (`register.ts` alias hunk vs merge-base; green once merged) · residue 0 |
+| qc-pos-p1.7 | 33/33 |
+| qc-hf-tx | 18/18 |
+| qc-pos-p1.3 | 128/128 |
+
+`origin/session/pos` moved to e93b0337 (ledger-only: review + prompts) — not merged this round (no code delta).
+Follow-up 1 above is now covered for payOrder (reuse refused); register-side consumption is unchanged.
