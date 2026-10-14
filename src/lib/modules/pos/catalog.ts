@@ -1025,6 +1025,8 @@ export async function setAvailability(ctx: AvailCtx, actor: AvailActor, input: u
       let before: boolean;
       let after: boolean;
       if (row.kind === "MENU") {
+        // fix1 H6: ล็อกแถวเมนูก่อนอ่าน (ลำดับ PosProduct → MenuItem) ⇒ ตั๋วครัวหักชิ้นสุดท้ายพร้อมกันไม่ทำให้พลิกซ้ำสองเหตุการณ์
+        await tx.$queryRaw`SELECT id FROM "MenuItem" WHERE "tenantId" = ${ctx.tenantId} AND "unitId" = ${ctx.unitId} AND "posProductId" = ${row.id} AND "archivedAt" IS NULL ORDER BY id FOR UPDATE`;
         const mi = await tx.menuItem.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, posProductId: row.id, archivedAt: null }, select: { id: true, isOutOfStock: true, stockQty: true, dailyStockQty: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
         if (!mi) throw new AvailAbort(availRefuse("PRODUCT_NOT_FOUND"));
         before = menuAvailableNow(mi);
