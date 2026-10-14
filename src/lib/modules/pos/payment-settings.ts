@@ -98,7 +98,8 @@ export async function posPaymentSettings(ctx: { tenantId: string; systemId: stri
 }
 
 /** บัญชีพักทิปต้องเป็นของสมุดบัญชีที่ผูก (เปิดการเชื่อมอยู่) กับ POS นี้ (มติ §8 ข้อ 6) */
-async function tipLedgerOk(db: Db, tenantId: string, posSystemId: string, ledgerId: string | null): Promise<boolean> {
+// POS P2.9 ▸ fix1 H5: export — createSale ตรวจซ้ำตอนรับทิป ◂
+export async function tipLedgerOk(db: Db, tenantId: string, posSystemId: string, ledgerId: string | null): Promise<boolean> {
   if (!ledgerId) return false;
   const link = await db.accountSystemLink.findFirst({
     where: { tenantId, linkedKind: "POS", linkedId: posSystemId, archivedAt: null, enabled: true },

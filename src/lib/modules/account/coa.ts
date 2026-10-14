@@ -281,6 +281,7 @@ export async function updateLedger(
     select: { id: true, isSystem: true },
   });
   if (!l) return { ok: false, reason: "ไม่พบบัญชี" };
+  if (input.type !== undefined && input.type !== "LIABILITY" && (await usedAsPosTipLedger(ctx, id))) return { ok: false, reason: POS_TIP_LEDGER_MSG }; // POS P2.9 ▸ fix1 H5 ◂
   // บัญชี system: แก้ชื่อได้ แต่ห้ามเปลี่ยน type/กระแสเงินสด (งบพึ่งพา code เดิม)
   await prisma.accountLedger.update({
     where: { id },
@@ -295,6 +296,12 @@ export async function updateLedger(
   return { ok: true };
 }
 
+// POS P2.9 ▸ fix1 H5 (มติ 6 · ข้อยกเว้นที่อนุมัติ): บัญชีที่ค่าตั้ง POS ใช้เป็นบัญชีพักทิป ห้ามเก็บ/เปลี่ยนชนิด (อ่านค่าตั้งอย่างเดียว) ◂
+const POS_TIP_LEDGER_MSG = "บัญชีนี้เป็นบัญชีพักทิปของจุดขาย — เปลี่ยนบัญชีพักทิปในตั้งค่าการชำระเงินของ POS ก่อน";
+async function usedAsPosTipLedger(ctx: CoaCtx, id: string): Promise<boolean> {
+  return (await prisma.appSystem.count({ where: { tenantId: ctx.tenantId, type: "POS", settings: { path: ["pos", "tip", "ledgerAccountId"], equals: id } } })) > 0;
+}
+
 export async function archiveLedger(
   ctx: CoaCtx,
   id: string,
@@ -305,6 +312,7 @@ export async function archiveLedger(
   });
   if (!l) return { ok: false, reason: "ไม่พบบัญชี" };
   if (l.isSystem) return { ok: false, reason: "บัญชีระบบ ลบ/ปิดใช้งานไม่ได้" };
+  if (await usedAsPosTipLedger(ctx, id)) return { ok: false, reason: POS_TIP_LEDGER_MSG }; // POS P2.9 ▸ fix1 H5 ◂
   const used = await prisma.accountJournalLine.count({
     where: { systemId: ctx.systemId, accountId: id },
   });

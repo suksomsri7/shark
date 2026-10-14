@@ -10,7 +10,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับสะพานบัญชี (R1) ◂
 import { splitIncludedVat } from "@/lib/money/vat";
-import { parsePosPaymentSettings } from "./payment-settings";
+import { parsePosPaymentSettings, tipLedgerOk } from "./payment-settings";
 // POS P1.9 ▸ ค่าตั้งกะ (otherSources) — ตัวอ่านเดียวกับ shift.ts ◂
 import { parseShiftSettings } from "./shift";
 import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวัน ◂
@@ -616,6 +616,10 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     if ((input.tipSatang ?? 0) > 0) {
       const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
       if (!parsePosPaymentSettings(sys?.settings).tip.enabled) throw new PosSaleError("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
+      // POS P2.9 ▸ fix1 H5 (มติ 6): บัญชีพักทิปต้องยังใช้ได้ตอนรับทิป (ถูกเก็บ/เปลี่ยนชนิดภายหลัง = ไม่รับบิล — ไม่ปล่อย JV ขายค้างในคิว) ◂
+      if (!(await tipLedgerOk(tx, input.tenantId, input.systemId, parsePosPaymentSettings(sys?.settings).tip.ledgerAccountId))) {
+        throw new PosSaleError("VALIDATION", "บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ถูกเก็บหรือไม่ใช่หนี้สิน) — แก้ที่ตั้งค่าการชำระเงินก่อนรับทิป");
+      }
     }
     // POS P1.9 ▸ กะ (S5/S6) — หลังค้นคีย์ซ้ำ · ก่อนล็อกสินค้า/ตัวนับใบเสร็จ ◂
     const shiftId = await bindSaleShift(tx, input);
