@@ -33,6 +33,8 @@ import { loadPriceBook, priceOf } from "./price";
 import type { PriceSource } from "./price-shared";
 import { ORDER_ADAPTERS } from "./order-adapters";
 import { REGISTER_MAX_PAY_METHODS, REGISTER_PAY_TYPES, REGISTER_REFERENCE_MAX, type RegisterActor, type RegisterCtx } from "./register-shared";
+import { REGISTER_MANUAL_MANAGER_MESSAGE, REGISTER_MANUAL_METHODS } from "./register-shared"; // POS HF-PP2 ▸ ด่านผู้จัดการชุดเดียวกับหน้าขาย ◂
+import { isPaymentIntentId, parsePosIntentSettings, PAYMENT_INTENT_CONSUME_WINDOW_MS } from "./payment-intent-shared"; // POS HF-PP2 ▸ ตัวอ่านค่าตั้งเดียวกับ HF-PP ◂
 import {
   ORDER_PREP_DEFAULT_MIN,
   ORDER_PREP_MAX,
@@ -1102,6 +1104,19 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     if (cashReceived !== null && cashReceived < cashRows[0]!.amountSatang) return refuse("PAYMENT_MISMATCH", "เงินที่รับมาน้อยกว่ายอดเงินสด");
     const shift = await deviceShift(prisma, s, s.deviceId);
     if ((cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
+    // POS HF-PP2 ▸ (P2.8U R1 F1 · บรีฟ §9 ข้อ 1–2): ด่านเดียวกับ submitRegisterSale (HF-PP) — ร้านตั้ง manualConfirmRequiresManager ⇒ พร้อมเพย์/บัตรที่ไม่อ้าง
+    //   ใบขอรับเงินที่จ่ายแล้ว (pi_ ของสาขานี้ · PAID ใน 24 ชม. · ยอดตรงแถว · ไม่ซ้ำ · ยังไม่อยู่บนบิลใด — payOrder ไม่ตัดใบ จึงตรวจของจริง ไม่ใช่แค่รูปแบบ · fix1 F1) ต้องมี pos.shift.manage ·
+    //   หลังตรวจแบบอ่านอย่างเดียวทั้งหมด ก่อนเขียนอะไร · ไม่มีวิธีจ่ายแบบนี้ / ผู้กระทำมีสิทธิ์ = ไม่แตะ DB เพิ่ม ◂
+    const manual = pays.filter((p) => REGISTER_MANUAL_METHODS.has(p.type));
+    if (manual.length > 0 && !can(s.actor, "pos.shift.manage", s.unitId)) {
+      const piIds = manual.flatMap((p) => (isPaymentIntentId(p.reference) ? [p.reference] : []));
+      const allPi = piIds.length === manual.length && new Set(piIds).size === piIds.length;
+      const used = allPi && (await prisma.posPayment.count({ where: { tenantId: s.tenantId, reference: { in: piIds } } })) > 0;
+      const pis = allPi && !used ? await prisma.posPaymentIntent.findMany({ where: { id: { in: piIds }, tenantId: s.tenantId, unitId: s.unitId, status: "PAID", paidAt: { gte: new Date(Date.now() - PAYMENT_INTENT_CONSUME_WINDOW_MS) } }, select: { id: true, amountSatang: true } }) : [];
+      const allPaid = manual.every((p) => pis.some((x) => x.id === p.reference && x.amountSatang === p.amountSatang));
+      const sys = allPaid ? null : await prisma.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
+      if (sys && parsePosIntentSettings(sys.settings).manualConfirmRequiresManager) return refuse("PERMISSION_DENIED", REGISTER_MANUAL_MANAGER_MESSAGE);
+    }
     const r = await mutate(s, o.id, async (tx) => {
       const paid = await touch(tx, o, { paymentState: "PAID" }, { type: "paid", actorUserId: s.actor.userId, payload: { idempotencyKey: key } });
       const lines = await tx.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });

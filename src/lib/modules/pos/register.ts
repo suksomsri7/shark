@@ -467,6 +467,7 @@ import {
   REGISTER_PAGE_SIZE,
   REGISTER_PAY_TYPES,
   REGISTER_MANUAL_MANAGER_MESSAGE, // POS HF-PP ▸ fix 1 ◂
+  REGISTER_MANUAL_METHODS, // POS HF-PP2 ▸ ◂
   POS_DISCOUNT_CAPS_DEFAULT,
   posDiscountCaps,
   type PosDiscountCaps,
@@ -681,7 +682,7 @@ async function regScope(db: RegDb, ctx: unknown, actorRaw: unknown, perms: reado
 const REG_SELL_PERMS: readonly string[] = ["pos.sale.create"];
 // POS HF-PP ▸ (มติ 3) วิธีจ่ายที่ "รับเงินแล้ว" ได้โดยไม่มีใบขอรับเงิน = ต้องผ่านด่าน manualConfirmRequiresManager ที่ submit ·
 //   เจ้าของร้านค้านเรื่องบัตร = ถอด "CARD" ออกจากชุดนี้ที่เดียว (POS-OWNER-PENDING · P1.7) · ข้อความ = payment-intent.ts confirmPaymentIntentManual ◂
-const REG_MANUAL_METHODS: ReadonlySet<string> = new Set(["PROMPTPAY", "CARD"]);
+const REG_MANUAL_METHODS = REGISTER_MANUAL_METHODS; // POS HF-PP2 ▸ ชุดเดียวกับ payOrder (register-shared · มติ §9 ข้อ 2) ◂
 const REG_MANUAL_MANAGER_MESSAGE = REGISTER_MANUAL_MANAGER_MESSAGE; // POS HF-PP ▸ fix 1: ข้อความชุดเดียวกับที่จอใช้แปลงเป็นคีย์ (register-shared) ◂
 
 // ── กติกามองเห็นสินค้า (ชุดเดียวกับ catalog.listForUnit) ──
