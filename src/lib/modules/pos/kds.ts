@@ -62,6 +62,7 @@ const MSG: Record<KdsRefusalCode, string> = {
   TICKET_NOT_FOUND: "ไม่พบตั๋วครัวนี้ในสาขานี้",
   TICKET_TOO_OLD: "ตั๋วนี้เป็นของวันก่อน — ดึงกลับมาแก้ไม่ได้",
   KDS_STATION_NOT_FOUND: "ไม่พบสถานีครัวนี้ในสาขานี้",
+  TICKET_VOIDED: "บิลนี้ถูกยกเลิกแล้ว — ดึงกลับมาทำไม่ได้",
   VALIDATION: "ข้อมูลที่ส่งมาไม่ถูกต้อง — ยังไม่ได้บันทึกอะไร",
   PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ทำรายการนี้ที่จอครัว — ขอสิทธิ์จากเจ้าของร้าน",
   PRODUCT_NOT_FOUND: "ไม่พบสินค้านี้ในสาขานี้",
@@ -418,13 +419,42 @@ async function moveTicket(name: string, ctx: RegisterCtx, actor: RegisterActor, 
     if (isRefusal(t)) return t;
     if (spec.recall && t.round.bizDate !== bizToday()) return refuse("TICKET_TOO_OLD");
     const now = new Date();
-    const changed = await prisma.$transaction(async (tx) => {
+    let changed: number;
+    try {
+      changed = await prisma.$transaction(async (tx) => {
+      // fix2 N4 (มติ fix2-4): ดึงกลับตั๋วของบิลที่ void / ออเดอร์ที่ยกเลิก-ปฏิเสธ ไม่ได้ (ครัวไม่ทำของที่ไม่มีคนจ่าย) — บิล: FOR SHARE (แข่งกับ void) · ออเดอร์: อ่านธรรมดา · ไม่เขียนอะไร
+      if (spec.recall && (await roundVoidedInTx(tx, s.tenantId, t.round, t.items))) throw new KdsAbort(refuse("TICKET_VOIDED"));
       const r = await R.kitchenMoveInTx(tx, s, { orderId: t.round.id, ...(byItem ? { itemId } : { stationId: stationId as string }), from: spec.from, to: spec.to, recall: spec.recall, now });
       if (r.changed && t.round.posOrderId) await onlineProgressInTx(tx, R, s, t.round.id, t.round.posOrderId);
       return r.changed;
-    });
+      });
+    } catch (e) {
+      if (e instanceof KdsAbort) return e.refusal;
+      throw e;
+    }
     return { ok: true, changed };
   });
+}
+
+/** fix2 N4: ยกเลิกธุรกรรมพร้อมคำปฏิเสธ (rollback · ไม่มีแถวใดถูกเขียน) */
+class KdsAbort extends Error {
+  constructor(readonly refusal: KdsRefusal) {
+    super(refusal.code);
+  }
+}
+/** fix2 N4: รอบนี้เป็นของบิลที่ void / ออเดอร์ที่ยกเลิกหรือปฏิเสธแล้วไหม (รายการถูกตัวรับคิวยกเลิก หรือสถานะของต้นทาง) */
+async function roundVoidedInTx(tx: Tx, tenantId: string, round: RoundRow, items: ItemRow[]): Promise<boolean> {
+  void items;
+  if (round.posSaleId) {
+    const st = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosSale" WHERE id = ${round.posSaleId} AND "tenantId" = ${tenantId} FOR SHARE`;
+    if (st[0] && st[0].status !== "PAID") return true;
+  }
+  if (round.posOrderId) {
+    // อ่านธรรมดา (สถานะปลายทาง) — ห้าม FOR SHARE: ขั้นถัดไปของ recall ล็อก PosOrder FOR UPDATE (สอง recall พร้อมกัน = 40P01)
+    const st = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosOrder" WHERE id = ${round.posOrderId} AND "tenantId" = ${tenantId}`;
+    if (st[0] && (st[0].status === "CANCELLED" || st[0].status === "REJECTED")) return true;
+  }
+  return false;
 }
 
 /** เริ่มทำ (NEW → COOKING ของตั๋ว) · ซ้ำ = changed 0 */

@@ -36,12 +36,13 @@ export const KDS_AUTO_ACCEPT_MAX = 99;
 
 // ═══════════ รหัสปฏิเสธ (R16) ═══════════
 /** รหัสใหม่ของ P2.6 */
-export const KDS_NEW_CODES = ["TICKET_NOT_FOUND", "TICKET_TOO_OLD", "KDS_STATION_NOT_FOUND"] as const;
+export const KDS_NEW_CODES = ["TICKET_NOT_FOUND", "TICKET_TOO_OLD", "KDS_STATION_NOT_FOUND", "TICKET_VOIDED"] as const; // fix2 N4: + TICKET_VOIDED
 /** ทุกรหัสที่ฟังก์ชัน KDS / 86 คืนได้ (ใหม่ + ใช้ซ้ำ) */
 export const KDS_REFUSAL_CODES = [
   "TICKET_NOT_FOUND",
   "TICKET_TOO_OLD",
   "KDS_STATION_NOT_FOUND",
+  "TICKET_VOIDED", // fix2 N4: ดึงกลับตั๋วของบิล/ออเดอร์ที่ถูกยกเลิก
   "VALIDATION",
   "PERMISSION_DENIED",
   "PRODUCT_NOT_FOUND",
