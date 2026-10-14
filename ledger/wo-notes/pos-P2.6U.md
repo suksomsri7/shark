@@ -100,3 +100,13 @@ Server files in the fix1 diff: `kds.ts` / `kds-actions.ts` / `kds-shared.ts` rea
 | `qc-hf-pos-page-authz` · `qc-pos-p1.18` (ST7 0) · `qc-pos-p1.10` | 81/81 · 81/81 · 40/40 |
 | `visual-pos p2.6u --states --dry` | rc 0 — every page × owner/cashier + LOCALE=en; all 390 states plannable (`fx1-dry-*.log`) |
 States that change visually: kds-mixed (takeaway ticket, header strings, names, top bar) · kds-86-sheet (routed list) · kds-served-recall / kds-refusal-toast at 390 (READY segment) · every kds state at 390 (top bar height) and 1440 (avatar initial) · orders-kitchen-meter (text→bar · stepper value) · settings-device-kitchen-slip (radio rows) · products-drawer-station (no visual change; reader swap) · register-tile-86 unchanged.
+
+## Fix round 2 (R2 Low/Nit G1–G3 + hunter N1/N2) — 14 Oct, account B
+| item | commit | change |
+|---|---|---|
+| G1 · G3b | 7fcc03c5 | `cleanupP26u` guard also covers an open fixture shift / unvoided bill (void key fixed per run · closing a non-OPEN shift = ok ⇒ retry-safe) · kds en plan = 3 sizes incl. 390 · dry logs carry the tree/head header (`runs/fx2-dry-*.log`) |
+| G3a | 3fb98e22 | avatar initial = first `\p{L}` letter that is not a Thai leading vowel |
+| K12c ORACLE-ADD (dated, ผู้คุม) | da5f7115 | `qc-pos-p2.6` → 67 · red-before `P2.6U-red2.txt` = **67/67 — K12c green on the fix1 code**: the N2 path is unreachable (adoptVariantRow refuses a row that already has a parent; no other parentId writer) |
+| N2 | 1b84aa2a | adoptVariantRow stamps `stationSetAt` only when the effective station (own ?? parent) changes — defensive, same rule as updateProduct/syncMenuRow; K12b stays green |
+| N1 (= G2) | 8db5cda5 | PayDone: no kitchen round after 3 polls while the device prints kitchen slips after sale ⇒ status line "ใบครัวไม่ออก — พิมพ์จากจอครัว" (never blocks). Gated on after-sale mode so shops without a kitchen don't see it on every sale |
+Gates — head f74ca51d (code = 8db5cda5) · dirty 0 · `runs/fx2-*.log`: typecheck 0 · fitness 50/50 ±env · fitness-pos 8/8 · p2.6 **67/67 ×3** · p1.18 81 · p1.1 180 (catalog.ts touched) · products 24 · visual dry th+en rc 0 for every page/user (en kds 8/24 and 6/18 at 390).
