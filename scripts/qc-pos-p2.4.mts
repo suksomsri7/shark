@@ -372,7 +372,8 @@ const RES_FIELDS: [string, RegExp][] = [
 const RES_COLS = ["id", "tenantId", "unitId", "tableId", "name", "phone", "partySize", "at", "holdFromMinutes", "status", "createdAt", "updatedAt"];
 /** ฟิลด์ ณ 6dbcafe0 (ห้ามเปลี่ยน · TableSession เพิ่มได้เฉพาะลิสต์ความสัมพันธ์ PosHeldCart[]/RestaurantReservation[]) */
 const TS_FIELDS = ["id", "tenantId", "unitId", "tableId", "table", "status", "guestCount", "memberId", "openedByUserId", "mergedIntoId", "mergedInto", "mergedFrom", "openedAt", "closedAt", "createdAt", "updatedAt", "orders", "serviceRequests"];
-const ROI_FIELDS = ["id", "tenantId", "unitId", "orderId", "order", "menuItemId", "menuItem", "stationId", "station", "nameSnapshot", "unitPrice", "optionsTotal", "qty", "lineTotal", "note", "kdsStatus", "isRush", "cookingAt", "readyAt", "servedAt", "cancelledAt", "cancelReason", "cancelledByUserId", "saleId", "settledAt", "productId", "createdAt", "updatedAt", "options"];
+// ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.6 S fix1 · รีวิว H1 · มติ addendum): RestaurantOrderItem + stockTaken Int? (จำนวนที่หักตัวนับเมนูจริง) — เพิ่มคีย์นี้คีย์เดียว
+const ROI_FIELDS = ["id", "tenantId", "unitId", "orderId", "order", "menuItemId", "menuItem", "stationId", "station", "nameSnapshot", "unitPrice", "optionsTotal", "qty", "lineTotal", "note", "kdsStatus", "isRush", "cookingAt", "readyAt", "servedAt", "cancelledAt", "cancelReason", "cancelledByUserId", "saleId", "settledAt", "productId", "createdAt", "updatedAt", "options", "stockTaken"];
 const TABLE_DTO_KEYS = ["id", "name", "zoneId", "seats", "state", "sessionId", "guestCount", "openedAt", "unpaidSatang", "unsentCount", "readyCount", "member", "openedByStaff", "flags", "dirtySince", "reservation"];
 const SUMMARY_KEYS = ["used", "total", "guests", "avgMinutes", "unpaidSatang"];
 /** ทะเบียนผู้เรียก createSale ณ 6dbcafe0 (= qc-pos-p1.6 U4 · วัดด้วยสูตรเดียวกัน) */

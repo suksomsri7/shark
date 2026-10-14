@@ -70,7 +70,12 @@ const CHECKS: readonly Def[] = [
   D("K9", "X1", "[R3 มติ 3] ลบรอบของบิล (จัดฉาก) → อ่านบอร์ดครั้งถัดไปสร้างคืน 1 รอบ · บิลที่ VOIDED ก่อน heal → ไม่สร้างคืน"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6 S fix1 · รีวิว R1 F1 F2 · มติ fix1 ข้อ 1 2): ลำดับล็อก MenuItem → ตัวนับรายวัน · ครัวขับ READY พร้อมกันสองสถานี
   D("K10", "X1", "[F1 มติ fix1-1] ลำดับล็อก: ถือแถวตัวนับรายวันไว้ (ธุรกรรมที่สาม) → ticketForSale (เมนูนับสต็อก) เข้าคิวก่อน → createOrder เดิมเมนูเดียวกันเข้าคิวหลัง → ปล่อย ⇒ ทั้งคู่ commit (ไม่มี 40P01 deadlock) · ตัวนับ = ก่อน − 2 · ×5 รอบ"),
-  D("K11", "X1", "[F2 มติ fix1-2] ออเดอร์ออนไลน์สองสถานี (PREPARING): ถือ PosOrder FOR UPDATE ไว้ (ธุรกรรมที่สาม) → kdsTicketDone สองสถานีพร้อมกัน → ปล่อย ⇒ PosOrder READY · outbox pos.order.ready 1 แถว · PosOrderEvent READY 1 แถว · ×5 รอบ"),
+  D("K11", "X1", "[F2 H3 มติ fix1-2] ออเดอร์ออนไลน์สองสถานี (PREPARING): ถือ PosOrder FOR UPDATE ไว้ (ธุรกรรมที่สาม) → kdsTicketDone สองสถานีพร้อมกัน → ปล่อย ⇒ PosOrder READY · outbox pos.order.ready 1 แถว · PosOrderEvent READY 1 แถว · แล้ว kdsServed สองสถานีพร้อมกัน (ถือ PosOrder) ⇒ รอบ COMPLETED · ×5 รอบ"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6 S fix1 · ล่า H1 H4 H5 H6 · มติ addendum)
+  D("K12", "X5", "[H4] heal ไม่สร้างตั๋วย้อนหลัง: ขายสินค้าที่ยังไม่เข้าครัว (เมล็ดกาแฟ) แล้วจึงตั้ง stationId → อ่านบอร์ด ⇒ บิลนั้น 0 รอบ · ตัวนับรายวันไม่ขยับ"),
+  D("V3", "X4", "[H1] ตัวนับเมนูคืนเท่าที่หักจริง: stock 1 ขาย ×3 → 0 · void ขณะ NEW → 1 (ไม่ใช่ 3) · สองตั๋ว 2+2 บน stock 4 แล้วรอบแรกถูกสร้างใหม่ตอนตัวนับ 0 (หัก 0) → void บิลนั้น ⇒ ตัวนับคง 0"),
+  D("A10", "X4", "[H5] ตัวนับ 0 + ครัวแจ้ง 86 (KDS) → void ตั๋ว NEW ⇒ ตัวนับคืนแต่ยังหมด (availabilityFor false · isOutOfStock true) · mark ยังอยู่ · resetDailyStock ก็ไม่ปลด"),
+  D("A11", "X1", "[H6] แข่ง: ถือแถวเมนู → ticketForSale (หักชิ้นสุดท้าย) เข้าคิวก่อน → setAvailability(false) เข้าคิวหลัง → ปล่อย ⇒ event pos.product.availability 1 แถวเท่านั้น"),
   // ── B ปุ่มครัว ──
   D("B1", "X1", "[R6] kdsStart (COOK) ตั๋วครัวร้อน → รายการ NEW → COOKING (cookingAt) · ตั๋วเครื่องดื่มไม่ขยับ · ซ้ำ → ok changed 0"),
   D("B2", "-", "[R5 R6 R7] kdsLineDone 1 บรรทัด → READY · บอร์ด: ตั๋ว COOKING doneCount 1 lineCount 2 (เสร็จ 1/2) · lines[].done"),
@@ -391,7 +396,8 @@ const MARK_FIELDS: [string, RegExp][] = [
 const MARK_COLS = ["id", "tenantId", "systemId", "unitId", "productId", "source", "note", "markedAt", "markedByUserId"];
 const AVAIL_SOURCES = ["KDS", "STOCK", "MANUAL"];
 /** === qc-pos-p2.4 ROI_FIELDS (ตรงตัว · มติ 1 15) */
-const ROI_FIELDS = ["id", "tenantId", "unitId", "orderId", "order", "menuItemId", "menuItem", "stationId", "station", "nameSnapshot", "unitPrice", "optionsTotal", "qty", "lineTotal", "note", "kdsStatus", "isRush", "cookingAt", "readyAt", "servedAt", "cancelledAt", "cancelReason", "cancelledByUserId", "saleId", "settledAt", "productId", "createdAt", "updatedAt", "options"];
+// ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.6 S fix1 · รีวิว H1 · มติ addendum): RestaurantOrderItem + stockTaken Int? (จำนวนที่หักตัวนับเมนูจริง) — เพิ่มคีย์นี้คีย์เดียว
+const ROI_FIELDS = ["id", "tenantId", "unitId", "orderId", "order", "menuItemId", "menuItem", "stationId", "station", "nameSnapshot", "unitPrice", "optionsTotal", "qty", "lineTotal", "note", "kdsStatus", "isRush", "cookingAt", "readyAt", "servedAt", "cancelledAt", "cancelReason", "cancelledByUserId", "saleId", "settledAt", "productId", "createdAt", "updatedAt", "options", "stockTaken"];
 /** === qc-pos-p2.4 SIGS_BASE (ตาราง L3 ตรงตัว · มติ 15) */
 const SIGS_BASE: Record<string, Record<string, string>> = {
   table: { listZones: "c8e66837ad1f", createZone: "657bb8ee1f6f", archiveZone: "1336f49c9347", createTable: "7c7335ab1a16", updateTable: "b3b16d37834a", archiveTable: "47d96578b58e", rotateQr: "d5e7b11b54d8", floorPlan: "5d6efa1d21d5", openSession: "ab58a6782f51", getSession: "38a38ad81b0a", openSessionOfTable: "6e6fbb24512b", openSessionsList: "99cca1fa8063", linkMember: "c579f79820a7", closeSession: "05a2d36cbde3", moveSession: "ca73dc7db579", mergeSession: "e2678ceaf8ad", "type TableCard": "dd90e6b09769" },
@@ -2381,9 +2387,121 @@ async function runDb() {
       const ready = (await obx("pos.order.ready")).filter((e) => e.payload?.orderId === oid).length;
       const evs = (await poEvents(oid)).filter((e) => e.toStatus === "READY").length;
       if (st !== "READY" || ready !== 1 || evs !== 1) p.push(`รอบ ${i + 1}: ออเดอร์ ${st} · ready event ${ready} · PosOrderEvent READY ${evs} (คาด READY 1 1)`);
+      // แบบเสิร์ฟ (H3): สองสถานี SERVED พร้อมกัน ⇒ รอบ COMPLETED
+      const h2 = await holdRow(`SELECT id FROM "PosOrder" WHERE id = $1 FOR UPDATE`, [oid]);
+      const sa = K("kdsServed", ctxA(), A("COOK"), tk(rid, ST.hot));
+      const sb = K("kdsServed", ctxA(), A("COOK"), tk(rid, ST.drink));
+      await sleep(800);
+      await h2.release();
+      const ss = await Promise.all([sa, sb]);
+      if (ss.some((x) => x?.ok !== true)) p.push(`รอบ ${i + 1}: kdsServed ${ss.map(codeOf).join("/")}`);
+      if ((await roundRow(rid))?.status !== "COMPLETED") p.push(`รอบ ${i + 1}: เสิร์ฟครบสองสถานีพร้อมกัน → รอบ ${(await roundRow(rid))?.status} (คาด COMPLETED)`);
       if (p.length) break;
     }
     chk("K11", p.length === 0, "สองสถานี READY พร้อมกัน → PosOrder READY · ready 1 · event 1 · ×5", FX(P8(p) || "ครบ 5 รอบ"));
+  });
+
+  /** เมนูนับสต็อกใหม่ของข้อนั้น (สถานีขนม) → PP[key] */
+  const countedMenu = async (key: string, name: string, stockQty: number, extra: Any = {}): Promise<string> => {
+    const catId = ((await P.menuCategory.findFirst({ where: { tenantId: T, unitId: U.A } })) as Any)?.id;
+    const c = await menu.createItem(T, U.A, { categoryId: catId, stationId: ST.dessert, name: `${name} ${RAND}`, basePrice: 2000, stockQty, ...extra }, uid("OWNER"));
+    const miId = String(c?.id ?? "");
+    PP[key] = String((await P.menuItem.findUnique({ where: { id: miId }, select: { posProductId: true } }))?.posProductId ?? "");
+    MI[key] = miId;
+    if (!miId || !PP[key]) throw new Error(`สร้างเมนู ${key} ไม่ได้ ${short(c, 80)}`);
+    return miId;
+  };
+  const voidSale = async (saleId: string) => {
+    const vd = await call(billsMod, "voidSaleByActor", ctxA(DEV1), A("OWNER"), { unitId: U.A, saleId, idempotencyKey: newKey("void"), reason: "ลูกค้ายกเลิก" });
+    await drain();
+    return vd;
+  };
+  await step("K12", async () => {
+    const p: string[] = [];
+    const s = await sell([ln("beans", 1)]);
+    if (!s.saleId) throw new Error(`ขายเมล็ดกาแฟไม่ได้ ${SALE_FAIL(s)}`);
+    await sleep(1200);
+    const cnt0 = short(await P.restaurantDailyCounter.findMany({ where: { tenantId: T }, select: { unitId: true, bizDate: true, seq: true } }), 2000);
+    const up = await call(catalog, "updateProduct", cc("OWNER"), PP.beans, { stationId: ST.dessert });
+    if (up?.ok === false) p.push(`updateProduct({stationId}) → ${codeOf(up)}`);
+    try {
+      const b = await board(ST.dessert);
+      if (b?.ok !== true) p.push(`kdsBoard → ${codeOf(b)}`);
+      if ((await roundsOfSale(s.saleId)).length) p.push("heal สร้างตั๋วย้อนหลังให้บิลที่ขายก่อนตั้งสถานี");
+      const cnt1 = short(await P.restaurantDailyCounter.findMany({ where: { tenantId: T }, select: { unitId: true, bizDate: true, seq: true } }), 2000);
+      if (cnt1 !== cnt0) p.push("ตัวนับรายวันขยับ");
+    } finally {
+      await call(catalog, "updateProduct", cc("OWNER"), PP.beans, { stationId: null });
+    }
+    chk("K12", p.length === 0, "บิลก่อนตั้งสถานี ไม่ถูก heal · ตัวนับไม่ขยับ", FX(P8(p) || "ครบ"));
+  });
+  await step("V3", async () => {
+    const p: string[] = [];
+    const v1 = await countedMenu("v3a", "ทับทิมกรอบ", 1);
+    const s1 = await sell([ln("v3a", 3)]);
+    if (!(await waitRounds(s1.saleId)).length) p.push(`ไม่มีรอบ ${SALE_FAIL(s1)}`);
+    const m1 = await P.menuItem.findUnique({ where: { id: v1 } });
+    if (m1?.stockQty !== 0) p.push(`หลังขาย ×3 บน stock 1 → ${m1?.stockQty} (คาด 0)`);
+    await voidSale(s1.saleId);
+    const m2 = await P.menuItem.findUnique({ where: { id: v1 } });
+    if (m2?.stockQty !== 1) p.push(`void ขณะ NEW → stock ${m2?.stockQty} (คาด 1 = เท่าที่หักจริง)`);
+    // สองตั๋ว: stock 4 · A ×2 · B ×2 → 0 · ลบรอบ A (จัดฉาก) → สร้างใหม่ตอนตัวนับ 0 (หัก 0) → void A ⇒ ยัง 0
+    const v2 = await countedMenu("v3b", "ซ่าหริ่ม", 4);
+    const a = await sell([ln("v3b", 2)]);
+    const b = await sell([ln("v3b", 2)]);
+    const ra = (await waitRounds(a.saleId))[0];
+    if (!ra || !(await waitRounds(b.saleId)).length) p.push(`สองตั๋วตั้งต้นไม่ครบ ${SALE_FAIL(a)}${SALE_FAIL(b)}`);
+    else {
+      await delRound(ra.id);
+      const t = await K("ticketForSale", T, U.A, a.saleId);
+      if (t?.created !== true) p.push(`สร้างรอบ A ใหม่ → ${short(t, 60)}`);
+      if ((await P.menuItem.findUnique({ where: { id: v2 } }))?.stockQty !== 0) p.push("ก่อน void ตัวนับไม่ใช่ 0");
+      await voidSale(a.saleId);
+      const m3 = await P.menuItem.findUnique({ where: { id: v2 } });
+      if (m3?.stockQty !== 0) p.push(`void ตั๋วที่หัก 0 → stock ${m3?.stockQty} (คาด 0)`);
+    }
+    chk("V3", p.length === 0, "คืนตัวนับเท่าที่หักจริง (ไม่มีของผี)", FX(NCOL() + (P8(p) || "ครบ")));
+  });
+  await step("A10", async () => {
+    const p: string[] = [];
+    const mi = await countedMenu("a10", "ข้าวเหนียวมะม่วง", 2, { dailyStockQty: 2 });
+    const s = await sell([ln("a10", 2)]);
+    if (!(await waitRounds(s.saleId)).length) p.push(`ไม่มีรอบ ${SALE_FAIL(s)}`);
+    const r86 = await setAvail("COOK", PP.a10, false, "KDS");
+    if (r86?.ok !== true || !(await markOf(PP.a10))) p.push(`ครัวแจ้ง 86 → ${codeOf(r86)}`);
+    await voidSale(s.saleId);
+    const m = await P.menuItem.findUnique({ where: { id: mi } });
+    const av = await call(catalog, "availabilityFor", T, U.A, [PP.a10]);
+    const get = (k: string) => (av instanceof Map ? av.get(k) : isRecord(av) ? (isRecord(av.availability) ? av.availability[k] : av[k]) : undefined);
+    if (m?.stockQty !== 2 || m?.isOutOfStock !== true || get(PP.a10) !== false) p.push(`หลัง void: stock ${m?.stockQty} isOutOfStock ${m?.isOutOfStock} availabilityFor ${short(get(PP.a10))} (คาด 2 · true · false)`);
+    if (!(await markOf(PP.a10))) p.push("mark หาย");
+    await menu.resetDailyStock(T, U.A);
+    const m2 = await P.menuItem.findUnique({ where: { id: mi } });
+    if (m2?.isOutOfStock !== true) p.push(`resetDailyStock ปลด 86 ของครัว (isOutOfStock ${m2?.isOutOfStock})`);
+    await setAvail("COOK", PP.a10, true, "KDS");
+    chk("A10", p.length === 0, "86 ของครัวอยู่รอด void/รีเซ็ต · mark คงอยู่", FX(NA() + (P8(p) || "ครบ")));
+  });
+  await step("A11", async () => {
+    const p: string[] = [];
+    const mi = await countedMenu("a11", "บัวลอยไข่หวาน", 2);
+    const s = await sell([ln("a11", 1)]);
+    const r0 = (await waitRounds(s.saleId))[0];
+    if (!r0) throw new Error(`ไม่มีรอบตั้งต้น ${SALE_FAIL(s)}`);
+    await delRound(r0.id);
+    if ((await P.menuItem.findUnique({ where: { id: mi } }))?.stockQty !== 1) p.push("ตั้งต้นตัวนับไม่ใช่ 1");
+    const e0 = (await availEvents(PP.a11)).length;
+    const h = await holdRow(`SELECT id FROM "MenuItem" WHERE id = $1 FOR UPDATE`, [mi]);
+    const pt = K("ticketForSale", T, U.A, s.saleId);
+    await sleep(600);
+    const pa = setAvail("COOK", PP.a11, false, "KDS");
+    await sleep(600);
+    await h.release();
+    const [t, a] = (await Promise.all([pt, pa])) as Any[];
+    if (t?.created !== true || a?.ok !== true) p.push(`ticketForSale ${short(t?.created)} · setAvailability ${codeOf(a)}`);
+    const n = (await availEvents(PP.a11)).length - e0;
+    if (n !== 1) p.push(`event pos.product.availability ${n} แถว (คาด 1 — พลิกครั้งเดียว)`);
+    await setAvail("COOK", PP.a11, true, "KDS");
+    chk("A11", p.length === 0, "แข่ง 86 กับตั๋วชิ้นสุดท้าย → event 1", FX(NA() + (P8(p) || "ครบ")));
   });
 
   // ════════ P1 ใบครัว ════════
