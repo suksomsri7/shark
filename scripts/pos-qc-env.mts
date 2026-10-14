@@ -176,6 +176,10 @@ export const POS_MODELS = {
   posOrderEvent: { model: "PosOrderEvent", file: "pos_order.prisma", role: "บันทึกการเปลี่ยนสถานะออเดอร์ (P2.8 · 1 แถวต่อการเปลี่ยน · actor null = อัตโนมัติ)" },
   // POS P2.6 ▸ 86 → ทุกช่องทาง (migration 20261208100000_pos_p26_kds) — ผู้เขียน pos/catalog.ts (setAvailability) + catalog-legacy.ts ◂
   posAvailabilityMark: { model: "PosAvailabilityMark", file: "pos.prisma", role: "86/ของหมดต่อสินค้าต่อสาขา (P2.6 · ใคร/เมื่อไร/จากไหน KDS STOCK MANUAL · ความจริงยังอยู่ที่ MenuItem/unavailableUnitIds)" },
+  // POS P2.5 ▸ แยกบิลของโต๊ะ (migration 20261210100000_pos_p25_split) — ผู้เขียน pos/table-split.ts (แผน) + register.ts (จ่ายใบ) + table.ts (ตัวรับ void) ◂
+  posTableSplit: { model: "PosTableSplit", file: "pos.prisma", role: "แผนแยกบิลของ session (P2.5 · ITEM/EQUAL/SEAT · OPEN→DONE/CANCELLED · OPEN 1 แถวต่อ session · version)" },
+  posTableSplitPart: { model: "PosTableSplitPart", file: "pos.prisma", role: "ใบของแผน (P2.5 · no 1..N · ฐาน/ส่วนลด/ค่าบริการ/สุทธิ · OPEN/PAID + saleId · สมาชิกของใบ)" },
+  posTableSplitLine: { model: "PosTableSplitLine", file: "pos.prisma", role: "ส่วนของรายการในใบ (P2.5 · หน่วยเต็ม qty หรือส่วนแบ่ง shareNum/shareDen · stockOwner)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 

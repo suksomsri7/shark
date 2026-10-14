@@ -1352,6 +1352,9 @@ async function dispatch(
     let payMethod: "CASH" | "TRANSFER" | "PROMPTPAY" = "CASH";
     if (p.payMethod === "TRANSFER") payMethod = "TRANSFER";
     else if (p.payMethod === "PROMPTPAY") payMethod = "PROMPTPAY";
+    // POS P2.5 ▸ fix2 มติ 1 (F1 = hunter N2): โต๊ะที่แยกบิลอยู่ใน POS (แผน OPEN) ปิดบิลทั้งโต๊ะไม่ได้ — ตัวกันเดียวกับหน้าเดิม (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) ◂
+    const splitGuard = await (await import("@/lib/modules/pos/table-split")).legacyCheckoutSplitGuard({ tenantId, unitId: unit.id, sessionId: session.id });
+    if (!splitGuard.ok) throw new Error(splitGuard.reason);
     const res = await restaurantSvc.checkout({ tenantId, unitId: unit.id, sessionId: session.id, payMethod });
     if (!res.ok) throw new Error(res.reason);
     const baht = (res.totalSatang / 100).toLocaleString("th-TH");

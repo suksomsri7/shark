@@ -481,3 +481,183 @@ export async function tableItemExistsForPos(db: Db, s: Scope & { itemId: string 
 export async function tableCountForPos(db: Db, s: Scope): Promise<number> {
   return db.restaurantTable.count({ where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null } });
 }
+
+// ═══════════ POS P2.5 ▸ แยกบิล · ย้ายโต๊ะ · รวมโต๊ะ (R4 R6 R7 R8 · มติ 7 8 · มติ §11 ข้อ 2 5) ═══════════
+// ลำดับล็อก: จ่ายใบ = รายการ (FOR UPDATE) → ใบ (POS) → session (FOR UPDATE · lockTableSessionInTx) ·
+//   ย้าย/รวม = session (FOR UPDATE · เรียง id) → ล็อกโต๊ะ (advisory คีย์เดียวกับ openSession · เรียง id) — ไม่ล็อกแถวรายการเลย (มติ §11 ข้อ 2) ·
+//   ตัวรับ void = session → ล็อกโต๊ะ → รายการ (ลำดับเดียวกับ unlinkTableSaleInTx · fix 4 H1) ⇒ ไม่มีวงล็อกระหว่างย้าย/รวม/void/จ่าย
+// รอบครัว (RestaurantOrder) ผูก session ไม่ผูกโต๊ะ ⇒ ย้ายแล้วบอร์ดครัวอ่านชื่อโต๊ะใหม่จาก session.table (kitchen.ts) ทันที (มติ §11 ข้อ 5)
+
+/** ล็อกแถว session (FOR UPDATE) แล้วคืนสถานะ — ไม่พบ/สาขาอื่น = null */
+export async function lockTableSessionInTx(tx: Prisma.TransactionClient, s: Scope & { sessionId: string }): Promise<{ id: string; status: string; tableId: string } | null> {
+  const rows = await tx.$queryRaw<{ id: string; status: string; tableId: string }[]>`
+    SELECT id, status::text AS status, "tableId" FROM "TableSession" WHERE id = ${s.sessionId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} FOR UPDATE`;
+  return rows[0] ?? null;
+}
+
+/**
+ * รายการตาม id (สาขานี้ · รูปเดียวกับ tableUnpaidItemsForPos) + สถานะ (saleId · ยกเลิกแล้ว) — quote/ใบรายการของใบแยกบิลแสดงยอดตามแผนได้แม้รายการถูกยกเลิก/
+ * จ่ายนอกแผนไปแล้ว (submit ตรวจซ้ำด้วยรายการค้างจ่ายจริง = TABLE_ITEMS_CHANGED) · ลำดับ createdAt, id
+ */
+export async function tableItemsByIdsForPos(db: Db, s: Scope & { itemIds: string[] }): Promise<(PosTableBillItem & { sessionId: string | null; saleId: string | null; cancelled: boolean })[]> {
+  if (!s.itemIds.length) return [];
+  const rows = await db.restaurantOrderItem.findMany({
+    where: { id: { in: s.itemIds }, tenantId: s.tenantId, unitId: s.unitId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      productId: true,
+      menuItemId: true,
+      nameSnapshot: true,
+      qty: true,
+      unitPrice: true,
+      optionsTotal: true,
+      lineTotal: true,
+      saleId: true,
+      kdsStatus: true,
+      order: { select: { sessionId: true } },
+      menuItem: { select: { posProductId: true } },
+      options: { orderBy: { id: "asc" }, select: { choiceId: true, groupSnapshot: true, choiceSnapshot: true, priceDelta: true } },
+    },
+  });
+  const choiceIds = [...new Set(rows.flatMap((r) => r.options.map((o) => o.choiceId)).filter((x): x is string => !!x))];
+  const groupOf = new Map(
+    choiceIds.length ? (await db.menuOptionChoice.findMany({ where: { tenantId: s.tenantId, id: { in: choiceIds } }, select: { id: true, groupId: true } })).map((c) => [c.id, c.groupId]) : [],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    productId: r.productId ?? r.menuItem?.posProductId ?? null,
+    menuItemId: r.menuItemId,
+    name: r.nameSnapshot,
+    qty: r.qty,
+    unitPrice: r.unitPrice,
+    optionsTotal: r.optionsTotal,
+    lineTotal: r.lineTotal,
+    options: r.options.map((o) => ({ choiceId: o.choiceId, groupId: o.choiceId ? (groupOf.get(o.choiceId) ?? null) : null, groupName: o.groupSnapshot, choiceName: o.choiceSnapshot, priceDelta: o.priceDelta })),
+    sessionId: r.order.sessionId,
+    saleId: r.saleId,
+    cancelled: r.kdsStatus === "CANCELLED",
+  }));
+}
+
+/** ชื่อ (สำเนาตอนส่งรอบ) ของรายการตาม id (สาขานี้) — แสดงบรรทัดของแผนแยกบิลแม้รายการจ่ายแล้ว */
+export async function tableItemNamesForPos(db: Db, s: Scope & { itemIds: string[] }): Promise<Map<string, string>> {
+  if (!s.itemIds.length) return new Map();
+  const rows = await db.restaurantOrderItem.findMany({ where: { id: { in: s.itemIds }, tenantId: s.tenantId, unitId: s.unitId }, select: { id: true, nameSnapshot: true } });
+  return new Map(rows.map((r) => [r.id, r.nameSnapshot]));
+}
+
+/**
+ * ตัวรับ void ของใบแยกบิล (R6 · มติ 7): ปลดรายการตาม id ที่ผูกบิลอยู่ (บิลใดก็ได้ — รายการผูกกับบิลของใบที่จ่ายครบ ไม่ใช่ใบที่ถูก void เสมอ) ·
+ * ล็อก session เจ้าของรายการ (FOR UPDATE เรียง id) → ล็อกโต๊ะ → รายการ (ลำดับเดียวกับ unlinkTableSaleInTx) · ปลดได้ ≥ 1 ⇒ session CLOSED ที่โต๊ะไม่มี
+ * session OPEN อื่น = เปิดกลับ + ล้าง dirtySince (กติกา P2.4) · เล่นซ้ำ = 0 แถว
+ */
+export async function unlinkTableItemsInTx(tx: Prisma.TransactionClient, s: Scope & { itemIds: string[] }): Promise<{ itemsReset: number; sessionReopened: boolean }> {
+  if (!s.itemIds.length) return { itemsReset: 0, sessionReopened: false };
+  const ownersOf = async () =>
+    [...new Set((await tx.restaurantOrderItem.findMany({ where: { id: { in: s.itemIds }, tenantId: s.tenantId, unitId: s.unitId, saleId: { not: null } }, select: { order: { select: { sessionId: true } } } }))
+      .map((r) => r.order.sessionId)
+      .filter((x): x is string => !!x))].sort();
+  let owners = await ownersOf();
+  if (!owners.length) return { itemsReset: 0, sessionReopened: false };
+  let locked: { id: string; status: string; tableId: string }[] = [];
+  for (let round = 0; round < 3; round++) {
+    locked = await tx.$queryRaw<{ id: string; status: string; tableId: string }[]>`
+      SELECT id, status::text AS status, "tableId" FROM "TableSession"
+      WHERE id = ANY(${owners}::text[]) AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId}
+      ORDER BY id FOR UPDATE`;
+    const again = await ownersOf();
+    if (again.join(",") === owners.join(",")) break;
+    owners = again;
+    if (!owners.length) return { itemsReset: 0, sessionReopened: false };
+  }
+  for (const tableId of [...new Set(locked.map((x) => x.tableId))].sort()) {
+    await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`restaurant-table:${tableId}`}::text))) l`;
+  }
+  const upd = await tx.restaurantOrderItem.updateMany({ where: { id: { in: s.itemIds }, tenantId: s.tenantId, unitId: s.unitId, saleId: { not: null } }, data: { saleId: null, settledAt: null } });
+  if (upd.count === 0) return { itemsReset: 0, sessionReopened: false };
+  let reopened = false;
+  for (const sess of locked) {
+    if (sess.status !== "CLOSED") continue;
+    const conflicting = await tx.tableSession.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, tableId: sess.tableId, status: "OPEN", id: { not: sess.id } }, select: { id: true } });
+    if (conflicting) continue;
+    await tx.tableSession.update({ where: { id: sess.id }, data: { status: "OPEN", closedAt: null } });
+    await tx.restaurantTable.updateMany({ where: { id: sess.tableId, tenantId: s.tenantId, unitId: s.unitId }, data: { dirtySince: null } });
+    reopened = true;
+  }
+  return { itemsReset: upd.count, sessionReopened: reopened };
+}
+
+const advisoryTables = async (tx: Prisma.TransactionClient, tableIds: string[]) => {
+  for (const id of [...new Set(tableIds)].sort()) await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`restaurant-table:${id}`}::text))) l`;
+};
+
+/**
+ * ย้าย session ไปโต๊ะว่าง (R7 · มติ 8): session FOR UPDATE (OPEN) → ล็อกโต๊ะต้นทาง+ปลายทาง (advisory เรียง id) → โต๊ะปลายทางของสาขานี้ (ไม่เก็บถาวร ·
+ * ACTIVE) ไม่มี session OPEN → tableId = ปลายทาง · ต้นทาง dirtySince = now (ต้องเก็บ) · ปลายทาง dirtySince = null · โต๊ะเดิม = changed:false ·
+ * รอบครัว/คำขอ/รอบร่าง/แผนแยกบิลผูก session ⇒ ตามไปเอง · ปฏิเสธเป็นค่า (ไม่ throw · ไม่เขียน): NOT_FOUND · NOT_OPEN · NO_TABLE · TABLE_INACTIVE · TABLE_BUSY
+ */
+export async function moveTableSessionInTx(
+  tx: Prisma.TransactionClient,
+  s: Scope & { sessionId: string; toTableId: string },
+): Promise<{ ok: true; changed: boolean; fromTableId: string; toTableId: string } | { ok: false; code: "NOT_FOUND" | "NOT_OPEN" | "NO_TABLE" | "TABLE_INACTIVE" | "TABLE_BUSY" }> {
+  const sess = await lockTableSessionInTx(tx, s);
+  if (!sess) return { ok: false, code: "NOT_FOUND" };
+  if (sess.status !== "OPEN") return { ok: false, code: "NOT_OPEN" };
+  const to = await tx.restaurantTable.findFirst({ where: { id: s.toTableId, tenantId: s.tenantId, unitId: s.unitId, archivedAt: null }, select: { id: true } });
+  if (!to) return { ok: false, code: "NO_TABLE" };
+  if (sess.tableId === to.id) return { ok: true, changed: false, fromTableId: sess.tableId, toTableId: to.id };
+  await advisoryTables(tx, [sess.tableId, to.id]);
+  const target = await tx.restaurantTable.findFirst({ where: { id: to.id, tenantId: s.tenantId, unitId: s.unitId, archivedAt: null }, select: { status: true } });
+  if (!target) return { ok: false, code: "NO_TABLE" };
+  if (target.status !== "ACTIVE") return { ok: false, code: "TABLE_INACTIVE" };
+  const busy = await tx.tableSession.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, tableId: to.id, status: "OPEN" }, select: { id: true } });
+  if (busy) return { ok: false, code: "TABLE_BUSY" };
+  const now = new Date();
+  await tx.tableSession.update({ where: { id: sess.id }, data: { tableId: to.id } });
+  await tx.restaurantTable.updateMany({ where: { id: sess.tableId, tenantId: s.tenantId, unitId: s.unitId }, data: { dirtySince: now } });
+  await tx.restaurantTable.updateMany({ where: { id: to.id, tenantId: s.tenantId, unitId: s.unitId }, data: { dirtySince: null } });
+  return { ok: true, changed: true, fromTableId: sess.tableId, toTableId: to.id };
+}
+
+export type PosMergeSession = { id: string; status: string; tableId: string; guestCount: number | null; memberId: string | null; mergedIntoId: string | null };
+/**
+ * รวม session เข้าโต๊ะปลายทาง (R8 · มติ 8): session ทุกตัว FOR UPDATE (เรียง id) → ล็อกโต๊ะทุกตัว (advisory เรียง id) → ต้นทางทุกตัว MERGED เข้าปลายทางนี้แล้ว =
+ * changed:false (เล่นซ้ำ) · ทุกตัว OPEN · guard ของผู้เรียก (POS: แผนแยกบิล/รอบร่าง — คืนรหัส = ไม่เขียนอะไร) → ออเดอร์ + คำขอย้ายเข้าปลายทาง ·
+ * guestCount = Σ (null = 0 · ทั้งหมด null = null) · สมาชิก = ของปลายทาง ?? ต้นทางตัวแรก (ตามลำดับที่ส่ง) ที่มี · ต้นทาง MERGED + mergedIntoId + closedAt ·
+ * โต๊ะต้นทาง dirtySince = now · ปฏิเสธเป็นค่า: NOT_FOUND (ไม่พบ/สาขาอื่น) · NOT_OPEN
+ */
+export async function mergeTableSessionsInTx<G extends string>(
+  tx: Prisma.TransactionClient,
+  s: Scope & { intoSessionId: string; fromSessionIds: string[]; guard?: (sessions: PosMergeSession[]) => Promise<G | null> },
+): Promise<{ ok: true; changed: boolean; fromTableIds: string[] } | { ok: false; code: "NOT_FOUND" | "NOT_OPEN" | G }> {
+  const ids = [...new Set([s.intoSessionId, ...s.fromSessionIds])].sort();
+  const rows = await tx.$queryRaw<PosMergeSession[]>`
+    SELECT id, status::text AS status, "tableId", "guestCount", "memberId", "mergedIntoId" FROM "TableSession"
+    WHERE id = ANY(${ids}::text[]) AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId}
+    ORDER BY id FOR UPDATE`;
+  if (rows.length !== ids.length) return { ok: false, code: "NOT_FOUND" };
+  const by = new Map(rows.map((r) => [r.id, r]));
+  const into = by.get(s.intoSessionId)!;
+  const froms = s.fromSessionIds.map((id) => by.get(id)!);
+  if (froms.every((f) => f.status === "MERGED" && f.mergedIntoId === into.id)) return { ok: true, changed: false, fromTableIds: [] };
+  if (into.status !== "OPEN" || froms.some((f) => f.status !== "OPEN")) return { ok: false, code: "NOT_OPEN" };
+  await advisoryTables(tx, rows.map((r) => r.tableId));
+  if (s.guard) {
+    const g = await s.guard(rows);
+    if (g) return { ok: false, code: g };
+  }
+  const fromIds = froms.map((f) => f.id);
+  const now = new Date();
+  await tx.restaurantOrder.updateMany({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: { in: fromIds } }, data: { sessionId: into.id } });
+  await tx.restaurantServiceRequest.updateMany({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: { in: fromIds } }, data: { sessionId: into.id } });
+  const counts = [into, ...froms].map((x) => x.guestCount);
+  const guestCount = counts.every((x) => x === null) ? null : counts.reduce<number>((t, x) => t + (x ?? 0), 0);
+  const memberId = into.memberId ?? froms.find((f) => !!f.memberId)?.memberId ?? null;
+  await tx.tableSession.update({ where: { id: into.id }, data: { guestCount, memberId } });
+  await tx.tableSession.updateMany({ where: { id: { in: fromIds }, tenantId: s.tenantId, unitId: s.unitId, status: "OPEN" }, data: { status: "MERGED", mergedIntoId: into.id, closedAt: now } });
+  const fromTableIds = [...new Set(froms.map((f) => f.tableId))].filter((t) => t !== into.tableId);
+  if (fromTableIds.length) await tx.restaurantTable.updateMany({ where: { id: { in: fromTableIds }, tenantId: s.tenantId, unitId: s.unitId }, data: { dirtySince: now } });
+  return { ok: true, changed: true, fromTableIds };
+}
+// ◂ POS P2.5

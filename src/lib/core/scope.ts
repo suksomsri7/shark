@@ -344,6 +344,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosRecipeChoiceLine: tenant, // POS P2.3 ▸ ส่วนต่างสูตรต่อตัวเลือก (ลูกของ PosProduct · ผู้เขียนเดียว = pos/catalog.ts) ◂
   // POS P1.5 — บิลที่พัก (ผู้เขียนเดียว = pos/held-cart.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId)
   PosHeldCart: sys(),
+  // POS P2.5 ▸ แผนแยกบิลของโต๊ะ (ผู้เขียน = pos/table-split.ts · register.ts จ่ายใบ · table.ts ตัวรับ void) — ใบ/บรรทัดไม่มี systemId/unitId ⇒ tenant (มติ 11.3) ◂
+  PosTableSplit: sys(),
+  PosTableSplitPart: tenant,
+  PosTableSplitLine: tenant,
   // Booking
   BookingService: unit,
   BookingStaff: unit,

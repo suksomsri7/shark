@@ -208,6 +208,15 @@ export type RegisterRefusalCode =
   | "CHANNEL_NOT_SOLD"
   | "PRICE_RULE_NOT_FOUND"
   | "PRICE_RULE_LIMIT"
+  // POS P2.5 ▸ แยกบิล/ย้าย/รวมโต๊ะ (R11): มีแผนแยกบิลเปิดอยู่ (จ่ายทั้งโต๊ะ/ยกเลิกรายการ/รวมโต๊ะไม่ได้) · มีแผนอยู่แล้ว (พก splitId/version) ·
+  //   แผนแช่แข็งหลังจ่ายใบแรก · ใบนี้จ่ายแล้ว · ไม่พบแผน/ใบ · โต๊ะปลายทางมีลูกค้า · มีรอบร่างค้างหลายโต๊ะ (รวมโต๊ะ) ◂
+  | "TABLE_SPLIT_OPEN"
+  | "TABLE_SPLIT_EXISTS"
+  | "TABLE_SPLIT_LOCKED"
+  | "TABLE_SPLIT_PART_PAID"
+  | "TABLE_SPLIT_NOT_FOUND"
+  | "TABLE_BUSY"
+  | "TABLE_HAS_DRAFT"
   // POS P2.4 ▸ โหมดโต๊ะ (R12) — โต๊ะ/session/การจอง/คำขอของสาขาอื่นหรือไม่มีจริง · โต๊ะปิดใช้งาน · session ปิดแล้ว · ไม่มีรายการให้เช็คบิล ·
   //   รายการของโต๊ะเปลี่ยนระหว่างเช็คบิล · ปิดโต๊ะที่ยังมีรายการค้างจ่าย ◂
   | "TABLE_NOT_FOUND"
@@ -326,7 +335,14 @@ export type RegisterQuoteInput = {
    * ห้ามส่ง channelId (ช่องทางมาจากโต๊ะ) · ผล quote มี `table` · ไม่ใช่ของบิลพัก (บิลพักของโต๊ะใช้ holdRegisterCart({cart, tableSessionId})) ◂
    */
   tableSessionId?: string;
+  /**
+   * POS P2.5 ▸ R4: ใบหนึ่งของแผนแยกบิล (PosTableSplitPart.id) — lines ต้องเป็น [] · ห้ามคู่ tableSessionId/billDiscount/channelId (ส่วนลดอยู่บนแผน ·
+   * ช่องทางมาจากโต๊ะ) · สมาชิก = ของใบ (memberId ที่ส่งต้องตรง) · คูปอง/สิทธิ์ได้เฉพาะใบที่มีสมาชิก · ผล quote มี `table` + `split` ◂
+   */
+  tableSplitPartId?: string;
 };
+/** POS P2.5 ▸ ใบของแผนใน quote: submit ส่ง version กลับเป็น expectedSplitVersion (แผนถูกแก้ = VERSION_CHANGED) ◂ */
+export type RegisterQuoteSplit = { splitId: string; partId: string; partNo: number; partCount: number; version: number };
 /** POS P2.4 ▸ บิลของโต๊ะใน quote: itemIds = รายการที่จะถูกคิดเงิน (ลำดับ createdAt, id) · itemsHash = tableItemsHash(itemIds) — submit ส่งกลับเป็น expectedTableItemsHash ◂ */
 export type RegisterQuoteTable = { sessionId: string; tableName: string; itemIds: string[]; itemsHash: string };
 
@@ -388,6 +404,8 @@ export type RegisterQuoteTotals = {
   channel?: RegisterQuoteChannel;
   /** POS P2.4 ▸ R6: มีเฉพาะ quote ของบิลโต๊ะ (tableSessionId) ◂ */
   table?: RegisterQuoteTable;
+  /** POS P2.5 ▸ R4: มีเฉพาะ quote ของใบแยกบิล (tableSplitPartId) — table.itemIds = รายการที่ใบนี้ถือ ◂ */
+  split?: RegisterQuoteSplit;
 };
 /** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
 export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };
@@ -431,6 +449,8 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   channelRef?: string;
   /** POS P2.4 ▸ R7: บังคับเมื่อมี tableSessionId — `table.itemsHash` จาก quote ล่าสุด (ชุดรายการเปลี่ยน = TABLE_ITEMS_CHANGED ไม่มีบิล) ◂ */
   expectedTableItemsHash?: string;
+  /** POS P2.5 ▸ R4: บังคับเมื่อมี tableSplitPartId — `split.version` จาก quote ล่าสุด (แผนถูกแก้ = VERSION_CHANGED ไม่มีบิล) ◂ */
+  expectedSplitVersion?: number;
   /** POS P1.15 R3: โทเคนผู้ขายจาก verifyStaffPin (ผูกเครื่อง · 12 ชม.) — ผู้ขาย/เพดานส่วนลด = คนในโทเคน · ผิด/หมดอายุ = STAFF_TOKEN_INVALID */
   staffToken?: string;
   /** POS P1.15 R4/R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — อนุญาตส่วนลดเกินสิทธิ์ทันที (audit pos.discount.override) */
@@ -912,6 +932,14 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   TABLE_ITEMS_CHANGED: "errors.tableItemsChanged",
   TABLE_HAS_UNPAID: "errors.tableHasUnpaid",
   VERSION_CHANGED: "errors.versionChanged", // POS P2.4 ▸ fix 2 F1 ◂
+  // POS P2.5 ▸ แยกบิล/ย้าย/รวมโต๊ะ (R11) ◂
+  TABLE_SPLIT_OPEN: "errors.tableSplitOpen",
+  TABLE_SPLIT_EXISTS: "errors.tableSplitExists",
+  TABLE_SPLIT_LOCKED: "errors.tableSplitLocked",
+  TABLE_SPLIT_PART_PAID: "errors.tableSplitPartPaid",
+  TABLE_SPLIT_NOT_FOUND: "errors.tableSplitNotFound",
+  TABLE_BUSY: "errors.tableBusy",
+  TABLE_HAS_DRAFT: "errors.tableHasDraft",
   // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (R11) — รหัสอยู่ใน OrderRefusalCode (order-shared.ts) · คีย์ข้อความชุดเดียวกับหน้าขาย ◂
   ORDER_NOT_FOUND: "errors.orderNotFound",
   ORDER_STATE_INVALID: "errors.orderStateInvalid",
