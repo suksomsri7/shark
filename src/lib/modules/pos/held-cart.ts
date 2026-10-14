@@ -387,6 +387,26 @@ export async function discardTableDraftsInTx(
   return n;
 }
 
+/** POS P2.5 ▸ R8: session ที่มีรอบร่าง HELD (รวมโต๊ะ: รอบร่างได้ที่เดียว — สองที่ = TABLE_HAS_DRAFT) ◂ */
+export async function heldTableDraftSessions(client: Db | Prisma.TransactionClient, s: { tenantId: string; systemId: string; unitId: string; sessionIds: string[] }): Promise<Set<string>> {
+  if (!s.sessionIds.length) return new Set();
+  const rows = await client.posHeldCart.findMany({
+    where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "HELD", tableSessionId: { in: s.sessionIds } },
+    select: { tableSessionId: true },
+  });
+  return new Set(rows.flatMap((r) => (r.tableSessionId ? [r.tableSessionId] : [])));
+}
+
+/** POS P2.5 ▸ R8: รวมโต๊ะ — รอบร่าง HELD ของ session ต้นทาง (ได้ที่เดียว · ผู้เรียกตรวจแล้ว) ย้ายไปผูก session ปลายทาง (ธุรกรรมเดียวกับการรวม · version + 1) ◂ */
+export async function repointTableDraftsInTx(tx: Prisma.TransactionClient, s: { tenantId: string; systemId: string; unitId: string; fromSessionIds: string[]; toSessionId: string }): Promise<number> {
+  if (!s.fromSessionIds.length) return 0;
+  const u = await tx.posHeldCart.updateMany({
+    where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "HELD", tableSessionId: { in: s.fromSessionIds } },
+    data: { tableSessionId: s.toSessionId, version: { increment: 1 } },
+  });
+  return u.count;
+}
+
 /** POS P2.4 ▸ R2: จำนวนบรรทัดของรอบร่าง HELD ต่อ session (การ์ด "ยังไม่ส่งครัว N รายการ") ◂ */
 export async function tableDraftLineCounts(client: Db, s: { tenantId: string; systemId: string; unitId: string; sessionIds: string[] }): Promise<Map<string, number>> {
   if (!s.sessionIds.length) return new Map();
