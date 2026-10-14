@@ -118,3 +118,6 @@ Oracle first: **daf78a06** = ORACLE-ADD ผู้คุม 14 ต.ค. X5 (rulin
 | qc-restaurant / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
 | qc-pos-p2.8 | 60/61 — ST6 PAR (wip-only, ruling 11.11) |
 Remaining for ruling 8 (after the P2.9 merge + item 7): full list incl. qc-pos-p2.9 62 · p1.1 · p1.6 · p1.8 · p1.10 · p1.18 · authz.
+
+### CD-P25-N3 ruled (option 2) — head ffaa1b40 · dirty 0 · logs `scratchpad/p25/gates-fix1/*m8*.log`
+de691dd1 = ORACLE-ADD ผู้คุม 14 ต.ค. **M8** (static: `regVat` returns only INCLUDED|NONE, no EXCLUDED in `regVat`/`regFixedServiceCharge` · invariant: EQUAL-2 plan in INCLUDED and in NONE (book `vatRegistered:false`, restored in `finally`) ⇒ part total shown = part quote grand, NONE VAT 0) ⇒ **44 checks**. ffaa1b40 = `regFixedServiceCharge` INCLUDED|NONE only (EXCLUDED branch removed). Gates: typecheck exit 0 · fitness-pos 8/8 · **qc-pos-p2.5 44/44 forced ×2 + unforced** · residue 0 · leaks 0. Ruling 5 row above = done (not a CD any more).
