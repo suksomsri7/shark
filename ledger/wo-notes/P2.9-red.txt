@@ -1,0 +1,54 @@
+# P2.9 S red-before — qc-pos-p2.9 forced (QC_FORCE=1) on unchanged base
+tree=/root/projects/shark-pos-b head=b1b95525 dirty=0 code=671e6fd2 (base 57dc226b + oracle only)
+result: 6/45 green (L1 L2 L3 A2 = PAR by design · Z1 Z2 = residue/seed leak) · 39 red
+
+❌ P2.9-ST1 — expected migration + schema ตาม §3 (ไม่มีมัดจำ) | actual ไม่มีไฟล์ migration · schema PosPayType ไม่มี GIFT_CARD · schema PosPayType ไม่มี STORE_CREDIT · PosPayment.giftCardId ไม่ใช่ String? · PosPayment.giftCardTxnId ไม่ใ�
+❌ P2.9-ST2 — expected POS → บัตรผ่าน member facade · tender.ts + member exports + ขั้น void | actual tender.ts ไม่มี registerGiftCardLookup · tender.ts ไม่มี registerPayTenders · tender.ts ไม่มี tenderSaleVoided · member facade ไม่มี useGiftCardTender · m
+❌ P2.9-ST3 — expected GIFT_CARD/STORE_CREDIT → 2110 ทั้งขายและคืน | actual channelOf ไม่มี case GIFT_CARD · channelOf ไม่มี case STORE_CREDIT · GIFT_CARD → ? (ต้องเป็นช่องทางเงินรับล่วงหน้า) · applyExternalSale �
+❌ P2.9-ST4 — expected รหัสใหม่ 5 ตัว · คีย์ · ข้อความ th/en | actual RegisterRefusalCode ขาด GIFT_CARD_NOT_FOUND,GIFT_CARD_PIN,GIFT_CARD_LOCKED,GIFT_CARD_CHANGED,STORE_CREDIT_NOT_OWNER · REFUSAL_KEY ขาด GIFT_CARD_NOT_FOUND,GIFT_CARD_PIN,GIFT_CARD_LOCKED,GIFT_CARD_CHA
+✅ P2.9-L1 
+✅ P2.9-L2 
+❌ P2.9-T1 — expected TIP_ACCOUNT_REQUIRED · ทิปปิด | actual TIP_NOT_AVAILABLE → {"enabled":false,"ledgerAccountId":null}
+❌ P2.9-T2 — expected ok · enabled · ledger 2190 | actual TIP_NOT_AVAILABLE ระบบยังไม่เปิดให้รับทิป — รอการลงบัญชีทิปเข้าบัญชีพักทิป (งา → {"enabled":false,"ledgerAccountId":null}
+❌ P2.9-T3 — expected Dr 1000 7000 · Cr 4000 6075 · Cr 2200 425 · Cr 2190 500 | actual createSale → VALIDATION จุดขายนี้ยังไม่เปิดรับทิป
+❌ P2.9-T5 — expected X expected 7000 · void สุทธิ 0 รวม 2190 | actual X OK expected 0 (คาด 7000) · บิลทิปที่สอง → VALIDATION
+❌ P2.9-T4 — expected ใบคืน 6500 tip 0 · CN ไม่แตะ 2190 | actual ไม่มีบิลทิป (T3)
+❌ P2.9-S1 — expected 1 ใบ 600 · Cr 2110 600 · ซ้ำไม่เพิ่ม | actual คืน STORE_CREDIT → VALIDATION ไม่รู้จักวิธีคืนเงินนี้
+❌ P2.9-S2 — expected ใบเดิม 1000 · walk-in REFUND_METHOD_INVALID | actual คืนครั้งที่สอง → VALIDATION ไม่รู้จักวิธีคืนเงินนี้ · เครดิต 0 ใบ [] · walk-in คืน STORE_CREDIT → VALIDATION
+❌ P2.9-S3 — expected X ok 700 · Dr 2110 · Y/walk-in NOT_OWNER | actual X STORE_CREDIT → VALIDATION หน้าขายนี้รับเงินสด พร้อมเพย์ โอน บัตร และแพลตฟอร์ม (เฉพาะออเดอร์แพลตฟอร์ม) เท่�
+❌ P2.9-S4 — expected เครดิตกลับ 1000 · REFUND 1 | actual ไม่มีบิล S3
+❌ P2.9-G1 — expected masked · ไม่เขียน · ไม่พบ = ข้อความเดียว · สิทธิ์ | actual A → MISSING:registerGiftCardLookup {"ok":false,"code":"MISSING:registerGiftCardLookup","message":"ยังไม่มีโมดูล/ฟังก์ชัน — ฟังก
+❌ P2.9-G2 — expected PAID · บัตร 175 · USE PosPayment | actual createSale → THROW 
+❌ P2.9-G3 — expected USE 2 · B 0 DEPLETED · C 100 | actual createSale → THROW 
+❌ P2.9-G4 — expected PIN → LOCKED | actual PIN ผิด → THROW · ตัวนับ 0 (คาด 1) · ครั้งที่ 5 → THROW · PIN ถูกระหว่างล็อก → THROW
+❌ P2.9-G5 — expected GIFT_CARD_CHANGED · ไม่เขียน | actual เกินยอด → THROW · แถวเปลี่ยน
+❌ P2.9-G6 — expected VALIDATION · CHANGED ×2 · NOT_FOUND ×2 | actual ใบเดียวสองแถว → THROW (คาด VALIDATION) · ระงับ → THROW (คาด GIFT_CARD_CHANGED) · หมดอายุ → THROW (คาด GIFT_CARD_CHANGED) · ร้านอื่น → THROW (คาด GIFT_CA
+❌ P2.9-G7 — expected VALIDATION ×5 · ไม่มีบิล | actual บิลขายบัตร → THROW · คู่ memberChoices.giftCard → THROW · 4 แถว → THROW · ไม่มี giftCard → THROW · giftCard บนเงินสด → OK
+❌ P2.9-G8 — expected VALIDATION เมื่อทิป > ส่วนเงินสด/ธนาคาร | actual เครดิต+ทิปจากเงินสด (ควรผ่าน) → VALIDATION จุดขายนี้ยังไม่เปิดรับทิป
+❌ P2.9-A1 — expected Dr 1000 300 · Dr 2110 325 · Cr 4000+2200 ของ 625 · ไม่มี GIFTCARD_USED | actual ไม่มีบิล G2
+✅ P2.9-A2 
+❌ P2.9-A3 — expected Dr 2110 200 แม้ขายตอนปิดสวิตช์ | actual createSale → THROW 
+❌ P2.9-A4 — expected ABB 625 | actual ไม่มีบิล G2
+❌ P2.9-C1 — expected 1 PAID · 1 GIFT_CARD_CHANGED · 0 · USE 1 | actual ยังไม่มีของ P2.9
+❌ P2.9-C2 — expected 1 บิล · USE 1 | actual ok 0 THROW,THROW,THROW · saleId 0 · บิล 0 · USE 0
+❌ P2.9-C3 — expected balanceAfter 120 | actual ยังไม่มีของ P2.9
+❌ P2.9-C4 — expected USE + EXPIRE = 100 · EXPIRE = ยอดหลังใช้ | actual ยังไม่มีของ P2.9
+❌ P2.9-V1 — expected REFUND 1 · ACTIVE 200 · JV สุทธิ 0 · เล่นซ้ำไม่เพิ่ม | actual createSale → THROW 
+❌ P2.9-V2 — expected walk-in void → บัตรกลับ 150 | actual createSale → THROW 
+❌ P2.9-V3 — expected giftCardRefunded 0 · ยอดเท่าเดิม | actual ไม่มีบิล V1
+❌ P2.9-V4 — expected REFUND 100 · CN Cr 2110 100 + Cr 1000 125 | actual บิล V → THROW 
+❌ P2.9-V5 — expected REFUND_METHOD_INVALID · ไม่เขียน | actual ไม่มีบิล V
+❌ P2.9-V6 — expected REFUNDED · คืนเข้าบัตร 325 · ซ้ำไม่เพิ่ม | actual ไม่มีบิล V
+❌ P2.9-V7 — expected ยอด = ปัจจุบัน + 225 | actual ไม่มีบิล V
+❌ P2.9-V8 — expected REFUND_METHOD_INVALID ×2 · ไม่เขียน | actual บิล Z → THROW · บิล Y → THROW
+❌ P2.9-V9 — expected 1 ok · REFUND_EXCEEDS · +100 ครั้งเดียว | actual บิล → THROW
+❌ P2.9-R1 — expected card บนแถวชำระ · X มี STORE_CREDIT | actual ไม่มีบิล G2 · ไม่มีบิล S3 · X byMethod []
+❌ P2.9-R2 — expected A: บัตร/เครดิตเปิด · มัดจำแสดงแต่ปิด · ห้องซ่อน · B: เครดิตปิด · โรงแรม: ห้องแสดงแต่ปิด | actual A MISSING:registerPayTenders {"ok":false,"code":"MISSING:registerPayTend
+✅ P2.9-L3 
+✅ P2.9-Z1 
+  ✅ [P2.9-Z2] ร้าน QC ของ seed ไม่มีแถวของรอบนี้ (บิล/บัตร/txn/outbox/audit ที่มีรหัสรอบ) — นับก่อน/หลังพิมพ์เป็นข้อมูล
+
+  ลบร้านชั่วคราว cmv8c6uaw0000t3kz131qbh78: 329 ตาราง · แถวค้าง 0 {} · Tenant 0
+  ลบร้านชั่วคราว cmv8c6ub70001t3kzx3h9ylda: 329 ตาราง · แถวค้าง 0 {} · Tenant 0
+JSON_SUMMARY {"suite":"qc-pos-p2.9","total":45,"passed":6,"failed":["P2.9-ST1","P2.9-ST2","P2.9-ST3","P2.9-ST4","P2.9-T1","P2.9-T2","P2.9-T3","P2.9-T5","P2.9-T4","P2.9-S1","P2.9-S2","P2.9-S3","P2.9-S4","P2.9-G1","P2.9-G2","P2.9-G3","P2.9-G4","P2.9-G5","P2.9-G6","P2.9-G7","P2.9-G8","P2.9-A1","P2.9-A3","P2.9-A4","P2.9-C1","P2.9-C2","P2.9-C3","P2.9-C4","P2.9-V1","P2.9-V2","P2.9-V3","P2.9-V4","P2.9-V5","P2.9-V6","P2.9-V7","P2.9-V8","P2.9-V9","P2.9-R1","P2.9-R2"],"skipped":false,"forced":true,"missing":["src/lib/modules/pos/tender.ts ยังไม่มี","ยังไม่มี export regist
+rc=1
