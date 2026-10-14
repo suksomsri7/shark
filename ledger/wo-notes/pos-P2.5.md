@@ -90,4 +90,31 @@ Not run yet: **qc-pos-p2.9** (P2.9 S not merged into `session/pos`).
 - F5 EQUAL rounding with service off books ±1–2 satang as service/discount (deviation 3) — a "rounding" line would be a new card.
 
 ## Status
-⏳ **Waiting for the P2.9 S merge SHA** (upstream `session/pos` a477c9e5 still has P2.9 in fix round 2). On arrival: `git merge origin/session/pos` (expected conflict only in `ledger/POS-OWNER-PENDING.md` — keep both; REG_MESSAGE/REFUSAL_KEY/union/pos.json additions are in separate regions and auto-merge per `git merge-tree`) → rerun typecheck · fitness ±env · fitness-pos · qc-pos-p2.5 ×3 · qc-pos-p2.9 · qc-hf-tx · p2.4 · p2.6 · p2.8 · p1.x set · qc-restaurant-*.
+⏳ (superseded by fix round 1 below) **Waiting for the P2.9 S merge SHA** (upstream `session/pos` a477c9e5 still has P2.9 in fix round 2). On arrival: `git merge origin/session/pos` (expected conflict only in `ledger/POS-OWNER-PENDING.md` — keep both; REG_MESSAGE/REFUSAL_KEY/union/pos.json additions are in separate regions and auto-merge per `git merge-tree`) → rerun typecheck · fitness ±env · fitness-pos · qc-pos-p2.5 ×3 · qc-pos-p2.9 · qc-hf-tx · p2.4 · p2.6 · p2.8 · p1.x set · qc-restaurant-*.
+
+## Fix round 1 (review R1 MERGEABLE-AFTER-FIXES + hunter N1–N4 · controller rulings 1–8, 14 Oct 21:1xZ) — account B
+Oracle first: **daf78a06** = ORACLE-ADD ผู้คุม 14 ต.ค. X5 (ruling 1) · P7 (ruling 2) · T4 (ruling 6) ⇒ 43 checks. Red-before (forced, code 86392e7d) **40/43** — exactly X5 P7 T4 red, residue 0 → `P2.5-red.txt` block 2.
+
+| ruling | finding | commit | change |
+|---|---|---|---|
+| 1 | F1/N1 Med | ad50df2c | `releaseSplitPartInTx` locks the plan's session, re-opens DONE→OPEN only when that session has no other OPEN plan (else plan stays DONE, part OPEN, items unlinked); returns `{released, planReopened}`. `tableSaleVoided` split hunk: conflict (P2002 / deadlock / write conflict) ⇒ retry once without re-open ⇒ still conflicting ⇒ audit `pos.table.split.voidConflict` + return 0 (event DONE, never loops). |
+| 2 | N2 Med | ad50df2c · a07610c3 | `legacyCheckoutSplitGuard` / `legacyCancelItemSplitGuard` (`table-split.ts`, `{ok:false, reason}` like the legacy doors); `src/lib/actions/restaurant.ts` `checkoutAction` (returns the refusal) · `confirmPromptpayPaymentAction` + `cancelOrderItemAction` (redirect `?err=`) call them before `order.checkout` / `order.cancelOrderItem`. Module bodies untouched. Owner line (incl. `ai/proposals.ts` checkout path without guard → P2.14). |
+| 3 | F2 Low | 42a41ab5 | `regSubmitSplitPart`: claim shortfall ⇒ read part status (no lock) ⇒ PAID = `TABLE_SPLIT_PART_PAID`, else `TABLE_ITEMS_CHANGED` (C2 already pins PART_PAID — unchanged). |
+| 4 | F3 Low | 665ec9be | owner-line wording only ("up to the number of items, ≤ ฿2 on 200 items · totals exact · VAT on t_i"); rotation → P2.11. |
+| 5 | N3 Low | — | **CONTROLLER-DECISION CD-P25-N3** (below) — not implemented, M8 not added. |
+| 6 | N4 Low | ad50df2c | `registerMergeTables` repoints DONE plans of the from-sessions to the target (`repointSplitPlansInTx`, same tx); `itemInOpenSplit` ignores OPEN plans whose session is not OPEN. |
+| 7 | F4 | — | at the P2.9 upstream merge (pending SHA). |
+
+**CD-P25-N3 — EXCLUDED VAT is unreachable in the register, so ruling 5 / M8 cannot be built as worded.** `regVat` (`register.ts` P1.3, unchanged) returns only `INCLUDED` (book VAT-registered) or `NONE`; `createSale` books VAT with `splitIncludedVat` (included) for every sale; `RegisterQuoteTotals.vatMode` is typed `"INCLUDED" | "NONE"`. The hunter's "part sale adds VAT on top (reg.ts:1667-1668)" is the dead `EXCLUDED` branch of my `regFixedServiceCharge` (kept only because `priceCart`'s result type allows it). No fixture can make a part charge 535.00 for a 1,000.00 plan; shown = charged today (M1/M5/P1 pin it for INCLUDED, M5 pure for VAT 0). Proposal: (a) drop ruling 5 + M8, or (b) M8 as a PAR/static pin "register VAT mode ∈ {INCLUDED, NONE}" + "plan part total = part quote grand (no member)" on the existing fixture, and simplify `regFixedServiceCharge` to INCLUDED/NONE. Waiting for the controller; p2.5 stays at **43** checks.
+
+### Fix round 1 gates — head **665ec9be** (code = ad50df2c + a07610c3 + 42a41ab5) · dirty 0 · logs `scratchpad/p25/gates-fix1/*.log`
+| gate | result |
+|---|---|
+| typecheck (iso · pos-gate.lock · 5632 MB) | exit 0 |
+| fitness no-env / env · fitness-pos | 50/50 · 50/50 · 8/8 |
+| qc-pos-p2.5 forced #1 / #2 / unforced | **43/43 · 43/43 · 43/43** · PAR 3/3 · residue 0 · leaks 0 |
+| qc-pos-p2.5 --no-db | 7/7 |
+| qc-pos-p2.4 · qc-pos-p2.6 · qc-hf-tx · qc-pos-p1.3 | 50/50 · 67/67 · 22/22 · 128/128 |
+| qc-restaurant / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
+| qc-pos-p2.8 | 60/61 — ST6 PAR (wip-only, ruling 11.11) |
+Remaining for ruling 8 (after the P2.9 merge + item 7): full list incl. qc-pos-p2.9 62 · p1.1 · p1.6 · p1.8 · p1.10 · p1.18 · authz.
