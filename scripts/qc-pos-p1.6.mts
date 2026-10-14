@@ -937,7 +937,8 @@ async function runDb() {
   // ORACLE-EDIT (controller 4 Oct · P1.6 §9 F5): tip cannot be enabled until P1.6b books the tip to its liability ledger.
   // While TIP_BOOKED=false: K4's valid-ledger case expects TIP_NOT_AVAILABLE (tip stays off); K5 expects tip sales refused (no bill).
   // P1.6b flips TIP_BOOKED to true, which restores the original K4/K5 expectations unchanged.
-  const TIP_BOOKED = false;
+  // ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.9 มติ 7 · CD7): ทิปลงบัญชีพักทิป (หนี้สิน) แล้ว ⇒ พลิก TIP_BOOKED = true ตามที่ออกแบบไว้ (K4/K5 กลับเป็นความคาดหวังเดิม) ◂
+  const TIP_BOOKED = true;
   // บัญชีพักทิป (หนี้สิน) ในสมุด sandbox: ของสมุด V (ผูก posV) = ถูก · ของสมุด N (ผูก posN) = สมุดอื่น — ลบด้วย systemId ตอนคืนสภาพ
   let ledgerV = "", ledgerN = "", fxK4 = "";
   try {
