@@ -11,12 +11,14 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { setAvailability, updateProduct, CatalogError } from "./catalog"; // POS P2.6U ▸ + updateProduct (มติ 9b · สถานีของสินค้าที่ไม่ใช่เมนู) ◂
-import { kdsBoard, kdsLineDone, kdsRecall, kdsRush, kdsServed, kdsSetAutoAcceptMax, kdsStart, kdsTicketDone, kitchenProgress, kitchenSlipPayload, kitchenStateForUnit, queueNoForSale } from "./kds"; // POS P2.6U ▸ + kitchenStateForUnit · queueNoForSale ◂
+import { kdsBoard, kdsLineDone, kdsRecall, kdsRush, kdsServed, kdsSetAutoAcceptMax, kdsStart, kdsTicketDone, kitchenProgress, kitchenSlipPayload, kitchenStateForUnit, kdsKitchenProducts, kdsStations, roundOfSale } from "./kds"; // POS P2.6U ▸ + kitchenStateForUnit · roundOfSale · kdsKitchenProducts · kdsStations ◂
 import type {
   KdsActionResult,
   KdsAutoAcceptResult,
   KdsBoardResult,
+  KdsKitchenProductsResult,
   KdsRefusal,
+  KdsStationsResult,
   KdsRushResult,
   KitchenProgressResult,
   KitchenSlipResult,
@@ -41,6 +43,7 @@ const NEED = {
   availability: [["pos", "pos.sale.create"], ["restaurant", "restaurant.kds.advance"], ["pos", "pos.product.manage"]],
   manage: [["pos", "pos.product.manage"]], // POS P2.6U ▸ มติ 9b: สถานีครัวของสินค้า (catalog.updateProduct ตรวจซ้ำ) ◂
   sale: [["pos", "pos.sale.create"], ["pos", "pos.sale.read"]], // POS P2.6U ▸ มติ 10: คิวของบิล (PayDone) ◂
+  stations: [["restaurant", "restaurant.kds.advance"], ["pos", "pos.sale.read"], ["pos", "pos.sale.create"], ["pos", "pos.product.manage"]], // POS P2.6U ▸ fix1 F3: อ่านบอร์ด | จัดการสินค้า ◂
 } as const;
 
 /** session → ขอบเขต + ผู้ใช้ · เข้าสาขาไม่ได้ / ไม่มีคีย์ของงาน = PERMISSION_DENIED (kds.ts/catalog.ts ตรวจซ้ำกับ DB) */
@@ -252,15 +255,40 @@ export async function kdsKitchenStateAction(args: Target): Promise<{ ok: true; p
   }
 }
 
-/** มติ 10 (PayDone "คิว N"): เลขคิวของรอบครัวของบิลนี้ (null = ไม่มีรอบ) — queueNoForSale ของ kds.ts (อ่านอย่างเดียว) */
-export async function kdsQueueNoAction(args: Target & { saleId: string }): Promise<{ ok: true; queueNo: number | null } | KdsRefusal> {
+/** มติ 10 (PayDone "คิว N") + fix1 F2: เลขคิว + id รอบครัวของบิลนี้ (null = ไม่มีรอบ) — roundOfSale ของ kds.ts (อ่านอย่างเดียว) */
+export async function kdsQueueNoAction(args: Target & { saleId: string }): Promise<{ ok: true; queueNo: number | null; orderId: string | null } | KdsRefusal> {
   try {
     const s = await sessionScope(args, "sale");
     if ("ok" in s) return s;
     if (typeof args?.saleId !== "string" || !args.saleId) return { ok: false, code: "VALIDATION", message: "ข้อมูลไม่ถูกต้อง" };
-    return { ok: true, queueNo: await queueNoForSale(s.ctx.tenantId, s.ctx.unitId, args.saleId) };
+    const r = await roundOfSale(s.ctx.tenantId, s.ctx.unitId, args.saleId);
+    return { ok: true, queueNo: r?.no ?? null, orderId: r?.orderId ?? null };
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("kdsQueueNoAction", e);
+  }
+}
+
+/** fix1 F1 (มติ fix1-1): สินค้าที่เข้าครัวของสาขาสำหรับแผ่น 86 — kds.kdsKitchenProducts (อ่านอย่างเดียว · สิทธิ์เดียวกับผู้เขียน 86) */
+export async function kdsKitchenProductsAction(args: Target): Promise<KdsKitchenProductsResult> {
+  try {
+    const s = await sessionScope(args, "availability");
+    if ("ok" in s) return s;
+    return await kdsKitchenProducts(s.ctx, s.actor);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("kdsKitchenProductsAction", e);
+  }
+}
+
+/** fix1 F3 (มติ fix1-3): สถานีที่ใช้งานของสาขา (17B · ลิ้นชัก 06) — kds.kdsStations (ไม่ heal · ไม่คิดบอร์ด) */
+export async function kdsStationsAction(args: Target): Promise<KdsStationsResult> {
+  try {
+    const s = await sessionScope(args, "stations");
+    if ("ok" in s) return s;
+    return await kdsStations(s.ctx, s.actor);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("kdsStationsAction", e);
   }
 }

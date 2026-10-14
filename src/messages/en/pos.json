@@ -3465,7 +3465,7 @@
     "markSoldOut": "Mark sold out",
     "eightySix": {
       "title": "Mark sold out (86)",
-      "search": "Search this branch's menu",
+      "search": "Search this branch's kitchen items",
       "markOut": "Sold out",
       "release": "Back on sale",
       "note": "Note (optional)",
@@ -3477,9 +3477,10 @@
         "stock": "Counter ran out"
       },
       "none": "Nothing is sold out",
-      "empty": "No menu items found for this branch",
+      "empty": "No kitchen items match the search",
       "released": "Back on sale · {name}",
-      "markedOut": "Marked sold out · {name}"
+      "markedOut": "Marked sold out · {name}",
+      "noRouted": "No items are routed to the kitchen at this branch yet"
     },
     "autoAcceptMax": "Pause auto-accept when the kitchen has more than {n} open tickets",
     "autoAcceptOff": "Do not pause auto-accept by kitchen backlog",

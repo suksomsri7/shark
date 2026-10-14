@@ -47,6 +47,9 @@ import {
   type KitchenSlip,
   type KitchenSlipResult,
   type TicketForSaleResult,
+  type KdsKitchenProduct, // P2.6U ▸ fix1 F1 ◂
+  type KdsKitchenProductsResult, // P2.6U ▸ fix1 F1 ◂
+  type KdsStationsResult, // P2.6U ▸ fix1 F3 ◂
 } from "./kds-shared";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 
@@ -87,7 +90,7 @@ async function guard<T>(name: string, body: () => Promise<T>): Promise<T | KdsRe
   }
 }
 
-type Need = "read" | "advance" | "recall" | "rush" | "pause";
+type Need = "read" | "advance" | "recall" | "rush" | "pause" | "availability" | "stations"; // P2.6U ▸ fix1 F1/F3: + availability · stations ◂
 /** สิทธิ์ต่องาน (R15 · ไม่มีคีย์ใหม่): อ่าน = restaurant.kds.advance หรือ pos.sale.read|create · เดิน = advance · ดึงกลับ = recall · เร่ง = rush · พัก/เพดาน = pause */
 const NEED: Record<Need, readonly (readonly [string, string])[]> = {
   read: [["restaurant", "restaurant.kds.advance"], ["pos", "pos.sale.read"], ["pos", "pos.sale.create"]],
@@ -95,6 +98,9 @@ const NEED: Record<Need, readonly (readonly [string, string])[]> = {
   recall: [["restaurant", "restaurant.kds.recall"]],
   rush: [["restaurant", "restaurant.order.rush"]],
   pause: [["restaurant", "restaurant.kitchen.pause"]],
+  // P2.6U ▸ fix1 F1: แผ่น 86 = สิทธิ์เดียวกับผู้เขียน 86 (มติ 7 · catalog.setAvailability) · F3: รายชื่อสถานี = อ่านบอร์ด | จัดการสินค้า ◂
+  availability: [["pos", "pos.sale.create"], ["restaurant", "restaurant.kds.advance"], ["pos", "pos.product.manage"]],
+  stations: [["restaurant", "restaurant.kds.advance"], ["pos", "pos.sale.read"], ["pos", "pos.sale.create"], ["pos", "pos.product.manage"]],
 };
 type S = { tenantId: string; systemId: string; unitId: string; actor: RegisterActor };
 /** ด่านเดียวกับหน้าขาย (ร้าน · ระบบ POS · สาขาผูกระบบ · เข้าสาขาได้) + คีย์ของงานที่สาขานี้ (โมดูลของคีย์ตรงตัว) · ไม่ผ่าน = PERMISSION_DENIED */
@@ -388,9 +394,13 @@ export async function kitchenBacklog(tenantId: string, unitId: string): Promise<
 
 // POS P2.6U ▸ มติ 10: ตัวอ่านเลขคิวของบิลหน้าขาย (PayDone "คิว N") — อ่านอย่างเดียว · รอบของบิล (posSaleId) ที่สาขานี้ · ไม่มีรอบ = null ◂
 export async function queueNoForSale(tenantId: string, unitId: string, saleId: string): Promise<number | null> {
+  return (await roundOfSale(tenantId, unitId, saleId))?.no ?? null;
+}
+/** P2.6U ▸ fix1 F2: รอบครัวของบิล (id + เลขคิว) — PayDone พิมพ์ใบครัวหลังขาย (17B after-sale) · อ่านอย่างเดียว ◂ */
+export async function roundOfSale(tenantId: string, unitId: string, saleId: string): Promise<{ orderId: string; no: number } | null> {
   if (!isId(tenantId) || !isId(unitId) || !isId(saleId)) return null;
-  const r = await prisma.restaurantOrder.findFirst({ where: { tenantId, unitId, posSaleId: saleId }, select: { dailyNo: true } });
-  return r?.dailyNo ?? null;
+  const r = await prisma.restaurantOrder.findFirst({ where: { tenantId, unitId, posSaleId: saleId }, select: { id: true, dailyNo: true } });
+  return r ? { orderId: r.id, no: r.dailyNo } : null;
 }
 /** POS P2.6U ▸ มติ 9c/11: สถานะครัวของสาขาสำหรับจอ 09 (พักครัว · เพดานรับอัตโนมัติ · ตั๋วค้างต่อสถานี) — อ่านอย่างเดียว · ผู้เรียกตรวจสิทธิ์ ◂ */
 export async function kitchenStateForUnit(tenantId: string, unitId: string): Promise<{ paused: boolean; maxOpen: number | null; backlog: KitchenBacklogRow[] }> {
@@ -398,6 +408,67 @@ export async function kitchenStateForUnit(tenantId: string, unitId: string): Pro
   const R = await restaurant();
   const [setting, backlog] = await Promise.all([R.kitchenSettingForPos(prisma, { tenantId, unitId }), kitchenBacklog(tenantId, unitId)]);
   return { paused: setting.kitchenPaused, maxOpen: setting.autoAcceptMaxOpen, backlog };
+}
+/**
+ * POS P2.6U ▸ fix1 F1 (มติ fix1-1): สินค้าที่เข้าครัวของสาขา (แผ่น "แจ้งของหมด" ของจอครัว) — อ่านอย่างเดียว ·
+ *   เมนูของสาขาที่ MenuItem ผูกสถานีที่ใช้งาน + สินค้าที่ไม่ใช่เมนูที่ PosProduct.stationId (หรือของแม่) เป็นสถานีที่ใช้งานของสาขา และขายที่สาขานี้ (unitId null/สาขานี้) ·
+ *   available = catalog.availabilityFor (ความจริงเดียวกับหน้าขาย/ช่องทาง) · mark = PosAvailabilityMark ของสาขา · ≤ 500 แถว · สาขาไม่มีสถานี = [] ◂
+ */
+export async function kdsKitchenProducts(ctx: RegisterCtx, actor: RegisterActor, input?: unknown): Promise<KdsKitchenProductsResult> {
+  return guard("kdsKitchenProducts", async (): Promise<KdsKitchenProductsResult> => {
+    const s = await kscope(ctx, actor, "availability");
+    if (isRefusal(s)) return s;
+    if (input !== undefined && input !== null && !isRecord(input)) return refuse("VALIDATION");
+    const R = await restaurant();
+    const stations = await R.kitchenStationsForPos(prisma, s);
+    if (!stations.length) return { ok: true, items: [] };
+    const sids = stations.map((x) => x.id);
+    const menus = await prisma.menuItem.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null, stationId: { in: sids }, posProductId: { not: null } }, select: { posProductId: true, stationId: true } });
+    const menuStation = new Map(menus.map((m) => [m.posProductId as string, m.stationId]));
+    const rows = await prisma.posProduct.findMany({
+      where: {
+        tenantId: s.tenantId,
+        systemId: s.systemId,
+        archivedAt: null,
+        OR: [
+          { kind: "MENU", id: { in: [...menuStation.keys()] } },
+          { kind: { not: "MENU" }, OR: [{ unitId: null }, { unitId: s.unitId }], AND: [{ OR: [{ stationId: { in: sids } }, { stationId: null, parent: { stationId: { in: sids } } }] }] },
+        ],
+      },
+      select: { id: true, name: true, nameEn: true, kind: true, stationId: true, parent: { select: { stationId: true } } },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 500,
+    });
+    const ids = rows.map((r) => r.id);
+    const [avail, marks] = await Promise.all([
+      (await import("./catalog")).availabilityFor(s.tenantId, s.unitId, ids),
+      ids.length ? prisma.posAvailabilityMark.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, productId: { in: ids } }, select: { productId: true, source: true, markedAt: true } }) : Promise.resolve([]),
+    ]);
+    const markOf = new Map(marks.map((m) => [m.productId, m]));
+    const items: KdsKitchenProduct[] = rows.map((r) => {
+      const m = markOf.get(r.id);
+      return {
+        productId: r.id,
+        name: r.name,
+        nameEn: r.nameEn,
+        stationId: (r.kind === "MENU" ? menuStation.get(r.id) : (r.stationId ?? r.parent?.stationId)) ?? "",
+        available: avail[r.id] === true,
+        mark: m ? { source: m.source, at: m.markedAt.toISOString() } : null,
+      };
+    });
+    return { ok: true, items };
+  });
+}
+
+/** POS P2.6U ▸ fix1 F3 (มติ fix1-3): สถานีที่ใช้งานของสาขา (17B · ลิ้นชัก 06) — อ่านอย่างเดียว ไม่ heal ไม่คิดบอร์ด ◂ */
+export async function kdsStations(ctx: RegisterCtx, actor: RegisterActor): Promise<KdsStationsResult> {
+  return guard("kdsStations", async (): Promise<KdsStationsResult> => {
+    const s = await kscope(ctx, actor, "stations");
+    if (isRefusal(s)) return s;
+    const R = await restaurant();
+    const st = await R.kitchenStationsForPos(prisma, s);
+    return { ok: true, stations: st.map((x) => ({ id: x.id, name: x.name, nameEn: x.nameEn })) };
+  });
 }
 // ◂ POS P2.6U
 

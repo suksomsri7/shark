@@ -3,15 +3,14 @@
 // KdsEightySix.tsx — แถบล่างของจอครัว + แผ่น "แจ้งของหมด (86)" (POS P2.6U · ภาพ 04 · มติ 8 · Q5)
 //   แถบล่าง (≥768): "ค้างทำวันนี้:" 4 ชื่อแรกของ board.pending + "…" · เส้นคั่น · แดง "ของหมด (86):" ชื่อจาก board.eightySix + จาง "— แจ้งหน้าขายและช่องทางออนไลน์แล้ว" ·
 //     ปุ่มโปร่ง "แจ้งของหมด" → แผ่นขวา 420px · มือถือ (<768) = ปุ่มเดียว "ค้าง N · หมด M ›" เปิดแผ่นเดียวกัน (มีรายการค้างทำในแผ่น)
-//   แผ่น: ค้นหาเมนูของสาขานี้ (registerCatalogAction — แถวเมนู MENU ของสาขา · กรองฝั่ง client) · สลับ หมด/คืนขาย → setAvailabilityAction({source:"KDS"}) ·
+//   แผ่น: ค้นหาสินค้าที่เข้าครัวของสาขานี้ (kdsKitchenProductsAction — เมนู + สินค้าที่ผูกสถานี · fix1 F1 · กรองฝั่ง client) · สลับ หมด/คืนขาย → setAvailabilityAction({source:"KDS"}) ·
 //     รายการที่หมดอยู่ตอนนี้ (เวลา · ที่มา) · ช่องหมายเหตุ · คำปฏิเสธผ่านข้อความ pos.kds.errors.*
 //   🔴 ไม่มีข้อความไทยในไฟล์ (ST7) · ไม่มีเงิน
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { registerCatalogAction } from "@/lib/modules/pos/register-actions";
-import { REGISTER_PAGE_MAX, type RegisterProduct } from "@/lib/modules/pos/register-shared";
-import type { KdsBoard, KdsEightySix as Mark } from "@/lib/modules/pos/kds-shared";
+import { kdsKitchenProductsAction } from "@/lib/modules/pos/kds-actions";
+import type { KdsBoard, KdsEightySix as Mark, KdsKitchenProduct } from "@/lib/modules/pos/kds-shared";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { bkkClock } from "./kds-ui";
 
@@ -81,30 +80,26 @@ export function KdsEightySixPanel({
   const t = useTranslations("pos.kds");
   const [q, setQ] = useState("");
   const [note, setNote] = useState("");
-  const [items, setItems] = useState<RegisterProduct[] | null>(null);
+  const [items, setItems] = useState<KdsKitchenProduct[] | null>(null);
+  // fix1 F1: รายการครัวของสาขา (สิทธิ์เดียวกับผู้เขียน 86 — พ่อครัวที่มีแค่ restaurant.kds.advance ก็ได้รายการ) · โหลดใหม่เมื่อรายการ 86 ของบอร์ดเปลี่ยน
+  const markKey = (board?.eightySix ?? []).map((x) => x.productId).join(",");
   useEffect(() => {
     let live = true;
-    (async () => {
-      const all: RegisterProduct[] = [];
-      let cursor: string | undefined;
-      for (let i = 0; i < 4; i++) {
-        const r = await registerCatalogAction({ systemId, unitId, limit: REGISTER_PAGE_MAX, ...(cursor ? { cursor } : {}) }).catch(() => null);
-        if (!r || r.ok !== true) break;
-        all.push(...r.products.filter((p) => p.kind === "MENU"));
-        if (!r.nextCursor) break;
-        cursor = r.nextCursor;
-      }
-      if (live) setItems(all);
-    })();
+    void kdsKitchenProductsAction({ systemId, unitId })
+      .then((r) => live && setItems(r && r.ok === true ? r.items : []))
+      .catch(() => live && setItems([]));
     return () => {
       live = false;
     };
-  }, [systemId, unitId]);
+  }, [systemId, unitId, markKey]);
   const outIds = useMemo(() => new Set((board?.eightySix ?? []).map((x) => x.productId)), [board]);
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return (items ?? []).filter((p) => !s || p.name.toLowerCase().includes(s) || (p.nameEn ?? "").toLowerCase().includes(s)).slice(0, 60);
-  }, [items, q]);
+    // V5: ค่าเริ่ม = ทุกสินค้าที่เข้าครัวของสาขา (ที่หมดอยู่ก่อน แล้วตามชื่อ) · พิมพ์ = กรอง
+    const list = (items ?? []).filter((p) => !s || p.name.toLowerCase().includes(s) || (p.nameEn ?? "").toLowerCase().includes(s));
+    const isOut = (p: KdsKitchenProduct) => (outIds.has(p.productId) || !p.available ? 0 : 1);
+    return [...list].sort((a, b) => isOut(a) - isOut(b) || a.name.localeCompare(b.name, "th")).slice(0, 80);
+  }, [items, q, outIds]);
   const pending = board?.pending ?? [];
   const cleanNote = note.trim() ? note.trim().slice(0, 200) : null;
   return (
@@ -174,24 +169,24 @@ export function KdsEightySixPanel({
             {items === null ? (
               <p className="text-[13px] text-[color:var(--color-muted)]">{t("loading")}</p>
             ) : shown.length === 0 ? (
-              <p className="text-[13px] text-[color:var(--color-muted)]">{t("eightySix.empty")}</p>
+              <p data-testid="pos-kds-86-empty" className="text-[13px] text-[color:var(--color-muted)]">{q.trim() ? t("eightySix.empty") : t("eightySix.noRouted")}</p>
             ) : (
               <ul className="flex flex-col divide-y rounded-[12px] border">
                 {shown.map((p) => {
-                  const out = outIds.has(p.id) || (p.soldOut && p.soldOutReason === "UNAVAILABLE");
+                  const out = outIds.has(p.productId) || !p.available;
                   return (
-                    <li key={p.id} className="flex items-center gap-3 px-3 py-2" data-testid={`pos-kds-86-item-${p.id}`}>
+                    <li key={p.productId} className="flex items-center gap-3 px-3 py-2" data-testid={`pos-kds-86-item-${p.productId}`}>
                       <span className="min-w-0 flex-1 truncate text-[14px]">{p.name}</span>
                       <button
                         type="button"
-                        data-testid={`pos-kds-86-toggle-${p.id}`}
+                        data-testid={`pos-kds-86-toggle-${p.productId}`}
                         aria-pressed={out}
                         className={`inline-flex h-11 shrink-0 items-center rounded-[10px] px-3 text-[13px] font-bold disabled:opacity-50 ${
                           out ? "border" : "bg-[color:var(--color-danger)] text-[color:var(--color-surface)]"
                         }`}
-                        disabled={!canMark || busyId === p.id}
+                        disabled={!canMark || busyId === p.productId}
                         title={!canMark ? t("perm.availability") : undefined}
-                        onClick={() => onFlip(p.id, p.name, out, cleanNote)}
+                        onClick={() => onFlip(p.productId, p.name, out, cleanNote)}
                       >
                         {out ? t("eightySix.release") : t("eightySix.markOut")}
                       </button>

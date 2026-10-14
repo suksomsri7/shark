@@ -154,6 +154,10 @@ export type KdsTicket = {
 };
 export type KdsStationTab = { id: string; name: string; nameEn: string | null; openCount: number };
 export type KdsEightySix = { productId: string; name: string; at: string; source: "KDS" | "STOCK" | "MANUAL" };
+/** P2.6U ▸ fix1 F1: สินค้าที่เข้าครัวของสาขา (แผ่น 86) — เมนูของสาขา + สินค้าที่ผูกสถานี (ของตัวเอง/ของแม่) · available = availabilityFor · ไม่มีเงิน ◂ */
+export type KdsKitchenProduct = { productId: string; name: string; nameEn: string | null; stationId: string; available: boolean; mark: { source: "KDS" | "STOCK" | "MANUAL"; at: string } | null };
+export type KdsKitchenProductsResult = { ok: true; items: KdsKitchenProduct[] } | KdsRefusal;
+export type KdsStationsResult = { ok: true; stations: { id: string; name: string; nameEn: string | null }[] } | KdsRefusal;
 export type KdsBoard = {
   ok: true;
   stations: KdsStationTab[];
