@@ -1038,15 +1038,22 @@ export async function expireDue(now: Date = new Date()): Promise<{ expired: numb
     try {
       const settings = await getSettings({ tenantId: card.tenantId, systemId: card.systemId });
       const posSystemId = await posSystemIdOf(null, card);
-      const leftover = card.balanceSatang;
 
-      const txnId = await prisma.$transaction(async (tx) => {
+      // POS HF-GC2 ▸ FU-1: ยอดที่หมดอายุ + accountingDocId = อ่านจากแถวที่ธุรกรรมนี้ล็อกไว้ (FOR UPDATE) ก่อนเขียน — ไม่ใช่แถวจาก findMany ก่อนธุรกรรม
+      //   (เดิม: การใช้บัตรที่ commit ระหว่าง findMany กับ updateMany ⇒ EXPIRE + JV 4900 เกินเท่ายอดที่ใช้ · 2110 ของบัตรติดลบ)
+      //   ไม่ใช้ `UPDATE … RETURNING` คำสั่งเดียว: RETURNING ให้ค่า "หลัง" SET (= 0) · `RETURNING OLD` ต้อง PostgreSQL 18 ◂
+      const res = await prisma.$transaction(async (tx) => {
+        const locked = await tx.$queryRaw<{ balanceSatang: number; accountingDocId: string | null; status: GiftCardStatus }[]>`
+          SELECT "balanceSatang", "accountingDocId", "status" FROM "GiftCard" WHERE id = ${card.id} FOR UPDATE`;
+        const row = locked[0];
+        if (!row || row.status !== "ACTIVE") return null; // มีคนกวาด/ระงับ/ใช้หมดไปก่อนแล้ว
         const upd = await tx.giftCard.updateMany({
           where: { id: card.id, status: "ACTIVE" },
           data: { status: "EXPIRED", balanceSatang: 0 },
         });
         if (upd.count === 0) return null; // มีคนกวาดไปก่อนแล้ว
-        if (leftover <= 0) return "";
+        const leftover = Number(row.balanceSatang);
+        if (leftover <= 0) return { txnId: "", leftover, accountingDocId: row.accountingDocId };
         const txn = await tx.giftCardTxn.create({
           data: {
             tenantId: card.tenantId,
@@ -1059,12 +1066,13 @@ export async function expireDue(now: Date = new Date()): Promise<{ expired: numb
             idempotencyKey: `giftcard-expire-${card.id}`,
           },
         });
-        return txn.id;
+        return { txnId: txn.id, leftover, accountingDocId: row.accountingDocId };
       });
-      if (txnId === null) continue;
+      if (res === null) continue;
       expired += 1;
+      const { txnId, leftover } = res; // POS HF-GC2 ▸ ค่าจากแถวที่ล็อก ◂
 
-      if (txnId && leftover > 0 && settings.accountingLink && card.accountingDocId && posSystemId) {
+      if (txnId && leftover > 0 && settings.accountingLink && res.accountingDocId && posSystemId) { // POS HF-GC2 ▸ ประตู JV ใช้ accountingDocId ใต้ล็อก ◂
         await account.postGiftCardExpire({
           tenantId: card.tenantId,
           sourceSystemId: posSystemId,
