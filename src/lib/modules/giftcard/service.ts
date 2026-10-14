@@ -1395,25 +1395,67 @@ export async function refundTenderUse(tenantId: string, input: { txnId: string }
   const src = await prisma.giftCardTxn.findFirst({ where: { id: String(input.txnId ?? ""), tenantId } });
   if (!src || src.type !== "USE" || src.refType !== "PosPayment") return { refunded: false };
   const key = `giftcard-refund-${src.id}`;
+  const expireKey = `giftcard-refund-expire-${src.id}`; // POS P2.9 ▸ fix1 H4 ◂
   const done = await prisma.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } } });
-  if (done) return { refunded: false, txnId: done.id, balanceAfter: done.balanceAfter };
+  if (done) {
+    await postRestoreExpire(tenantId, expireKey); // ลองลง JV ของ EXPIRE ที่ค้าง (idempotent) ◂
+    return { refunded: false, txnId: done.id, balanceAfter: done.balanceAfter };
+  }
+  // POS P2.9 ▸ fix1 H3 (มติ 4): เครดิตร้านที่ถูกรวมไปแล้ว (ไม่มีเจ้าของ) ⇒ คืนเข้าใบของผู้เก็บตามรายการ ADJUST MERGE ◂
+  const target = await mergeTargetOf(prisma, src.giftCardId);
+  let res: { refunded: boolean; txnId?: string; balanceAfter?: number };
   try {
-    return await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${src.giftCardId} FOR UPDATE`;
+    res = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ANY(${[...new Set([src.giftCardId, target])].sort()}::text[]) ORDER BY id FOR UPDATE`;
       const again = await tx.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } } });
       if (again) return { refunded: false, txnId: again.id, balanceAfter: again.balanceAfter };
-      const upd = await tx.giftCard.update({ where: { id: src.giftCardId }, data: { balanceSatang: { increment: src.satang } }, select: { balanceSatang: true, status: true } });
-      if (upd.status === "DEPLETED") await tx.giftCard.update({ where: { id: src.giftCardId }, data: { status: "ACTIVE" } });
+      const upd = await tx.giftCard.update({ where: { id: target }, data: { balanceSatang: { increment: src.satang } }, select: { balanceSatang: true, status: true, expiresAt: true } });
+      if (upd.status === "DEPLETED") await tx.giftCard.update({ where: { id: target }, data: { status: "ACTIVE" } });
       const txn = await tx.giftCardTxn.create({
-        data: { tenantId, giftCardId: src.giftCardId, type: "REFUND", satang: src.satang, balanceAfter: upd.balanceSatang, refType: "GiftCardTxn", refId: src.id, idempotencyKey: key },
+        data: { tenantId, giftCardId: target, type: "REFUND", satang: src.satang, balanceAfter: upd.balanceSatang, refType: "GiftCardTxn", refId: src.id, idempotencyKey: key },
       });
+      // POS P2.9 ▸ fix1 H4 (มติ 5): บัตรหมดอายุแล้ว (สถานะ/วันที่) ⇒ REFUND แล้ว EXPIRE ยอดเดียวกันทันที (ไม่ค้างหนี้สิน 2110 ในบัตรที่ใช้ไม่ได้) ◂
+      const expired = upd.status === "EXPIRED" || (!!upd.expiresAt && upd.expiresAt.getTime() <= Date.now());
+      if (expired) {
+        const after = (await tx.giftCard.update({ where: { id: target }, data: { balanceSatang: { decrement: src.satang }, status: "EXPIRED" }, select: { balanceSatang: true } })).balanceSatang;
+        await tx.giftCardTxn.create({ data: { tenantId, giftCardId: target, type: "EXPIRE", satang: src.satang, balanceAfter: after, refType: "GiftCardTxn", refId: txn.id, idempotencyKey: expireKey } });
+        return { refunded: true, txnId: txn.id, balanceAfter: after };
+      }
       return { refunded: true, txnId: txn.id, balanceAfter: upd.balanceSatang };
     });
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;
     const d = await prisma.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } } });
-    return { refunded: false, txnId: d?.id, balanceAfter: d?.balanceAfter };
+    res = { refunded: false, txnId: d?.id, balanceAfter: d?.balanceAfter };
   }
+  await postRestoreExpire(tenantId, expireKey);
+  return res;
+}
+
+/**
+ * POS P2.9 ▸ fix1 H3: ปลายทางของการคืนเข้าเครดิตร้าน — ใบ STORE_CREDIT ที่ไม่มีเจ้าของเพราะถูกรวมสมาชิก ⇒ ตามรายการ ADJUST refType MERGE
+ * (refId = ใบของผู้เก็บ) ต่อกันได้ ≤ 5 ชั้น · ใบอื่น = ตัวเอง ◂
+ */
+async function mergeTargetOf(db: Db, giftCardId: string): Promise<string> {
+  let id = giftCardId;
+  for (let hop = 0; hop < 5; hop++) {
+    const c = await db.giftCard.findUnique({ where: { id }, select: { kind: true, ownerCustomerId: true } });
+    if (!c || c.kind !== "STORE_CREDIT" || c.ownerCustomerId) return id;
+    const m = await db.giftCardTxn.findFirst({ where: { giftCardId: id, type: "ADJUST", refType: "MERGE", refId: { not: null } }, orderBy: { createdAt: "desc" }, select: { refId: true } });
+    if (!m?.refId || m.refId === id) return id;
+    id = m.refId;
+  }
+  return id;
+}
+
+/** POS P2.9 ▸ fix1 H4: ลง JV หมดอายุ (Dr 2110 / Cr 4900) ของ EXPIRE ที่เกิดจากการคืนเข้าบัตรที่หมดอายุ — กติกาเดียวกับ expireDue · idempotent ◂ */
+async function postRestoreExpire(tenantId: string, expireKey: string): Promise<void> {
+  const ex = await prisma.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: expireKey } }, include: { giftCard: true } });
+  if (!ex || ex.satang <= 0 || !ex.giftCard.accountingDocId) return;
+  const settings = await getSettings({ tenantId, systemId: ex.giftCard.systemId });
+  const posSystemId = await posSystemIdOf(null, ex.giftCard);
+  if (!settings.accountingLink || !posSystemId) return;
+  await account.postGiftCardExpire({ tenantId, sourceSystemId: posSystemId, refId: ex.id, occurredAt: ex.createdAt, satang: ex.satang });
 }
 
 /** R6 — บัตรรับเงินคืนได้ไหม (อ่านอย่างเดียว · ใช้ตอนวางแผนคืน): ACTIVE/DEPLETED และยังไม่หมดอายุ */
@@ -1435,6 +1477,8 @@ export async function refundToCard(
   if (done) return { txnId: done.id, balanceAfter: done.balanceAfter };
   if (!Number.isInteger(input.satang) || input.satang <= 0) throw tenderErr("GIFT_CARD_CHANGED");
   const now = new Date();
+  const cardId = await mergeTargetOf(tx, input.giftCardId); // POS P2.9 ▸ fix1 H3 ◂
+  input = { ...input, giftCardId: cardId };
   const upd = await tx.giftCard.updateMany({
     where: { id: input.giftCardId, tenantId, status: { in: ["ACTIVE", "DEPLETED"] }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
     data: { balanceSatang: { increment: input.satang }, status: "ACTIVE" },
@@ -1472,6 +1516,9 @@ export async function issueStoreCredit(
     cardId = rows[0]?.id ?? null;
   }
   if (!cardId) throw tenderErr("GIFT_CARD_CHANGED", "ออกเครดิตร้านไม่สำเร็จ — ลองอีกครั้ง");
+  // POS P2.9 ▸ fix1 H3 (มติ 4): อ่านสถานะสมาชิกซ้ำใต้ล็อกบัตร — ถูกรวมไปแล้ว (MERGED) ⇒ ไม่ออกเครดิตให้คนที่ไม่มีอยู่แล้ว (ธุรกรรมย้อนทั้งก้อน) ◂
+  const owner = await tx.customer.findFirst({ where: { id: input.customerId, tenantId }, select: { status: true } });
+  if (!owner || owner.status === "MERGED") throw tenderErr("STORE_CREDIT_NOT_OWNER", "สมาชิกนี้ถูกรวมกับสมาชิกอื่นแล้ว — คืนเป็นเครดิตของสมาชิกที่เก็บไว้หรือวิธีอื่น");
   const upd = await tx.giftCard.update({ where: { id: cardId }, data: { balanceSatang: { increment: input.satang } }, select: { balanceSatang: true, status: true } });
   if (upd.status === "DEPLETED") await tx.giftCard.update({ where: { id: cardId }, data: { status: "ACTIVE" } });
   const txn = await tx.giftCardTxn.create({
