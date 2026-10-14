@@ -188,6 +188,9 @@ export async function setMenuItemStock(
   const was = await menuStateOf(tx, s, id); // POS P2.6 ▸ มติ 6: สถานะก่อนเขียน (ตรวจการพลิก) ◂
   const item = await tx.menuItem.update({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, data });
   for (const row of rows) if (row.kind === "MENU") await applySync(tx, who, row, { dailyStockQty: item.dailyStockQty });
+  // POS P2.6 ▸ fix2 G2 (มติ fix2-3): ผู้จัดการปลด 86 ที่หน้าเมนูเดิม = ลบ mark ของครัว/ผู้จัดการ (KDS/MANUAL) ของ (สาขา, สินค้า) — การปลดของผู้จัดการชนะ ◂
+  if (data.isOutOfStock === false && item.posProductId)
+    await tx.posAvailabilityMark.deleteMany({ where: { tenantId: s.tenantId, unitId: s.unitId, productId: item.posProductId, source: { in: ["KDS", "MANUAL"] } } });
   await emitMenuFlip(tx, s, was, item, "MANUAL"); // POS P2.6 ▸ 86/ตัวนับพลิก = event MANUAL 1 แถว (ไม่พลิก = ไม่มี) ◂
   return item;
 }
@@ -339,6 +342,16 @@ export async function markMenuItemOutOfStock(tx: Tx, itemId: string): Promise<vo
 /** คืนสต็อกเมื่อยกเลิกรายการที่ยังไม่เริ่มทำ — คำสั่งเดิม order.ts:280 */
 export async function restoreMenuStock(tx: Tx, itemId: string, qty: number): Promise<void> {
   await tx.menuItem.update({ where: { id: itemId }, data: { stockQty: { increment: qty }, isOutOfStock: false } });
+}
+
+/**
+ * POS P2.6 ▸ fix2 N1 (มติ fix2-2): restoreMenuStock (คำสั่งเดิม) + คง 86 ที่ครัว/ผู้จัดการแจ้ง (mark KDS/MANUAL) — โหมดโต๊ะของ POS ยกเลิกรายการ NEW ·
+ * ไม่ปล่อย event (สถานะขายได้ไม่พลิกเมื่อ mark ยังอยู่) · ทางร้อนเดิม (cancelOrderItem) ไม่ใช้ตัวนี้ (S2.42 ตรึง) ◂
+ */
+export async function restoreMenuStockKeep86InTx(tx: Tx, s: UnitScope, itemId: string, qty: number): Promise<void> {
+  const it = await tx.menuItem.findFirst({ where: { id: itemId, tenantId: s.tenantId }, select: { posProductId: true } });
+  const keep = await heldBy86Mark(tx, s, it?.posProductId ?? null);
+  await tx.menuItem.update({ where: { id: itemId }, data: { stockQty: { increment: qty }, isOutOfStock: keep } });
 }
 
 // ═══════════════════ เว็บร้าน (shop/service.ts) ═══════════════════

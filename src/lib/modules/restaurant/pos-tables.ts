@@ -7,7 +7,7 @@
 
 import { Prisma, type PrismaClient } from "@prisma/client";
 // POS P2.4 ▸ fix 2 F4c: คืนสต็อกเมนูตอนยกเลิกรายการ = ตัวเขียนเดียวกับ cancelOrderItem เดิม (catalog-legacy · F15.1) ◂
-import { restoreMenuStock } from "@/lib/modules/pos/catalog-legacy";
+import { restoreMenuStockKeep86InTx } from "@/lib/modules/pos/catalog-legacy"; // POS P2.6 ▸ fix2 N1: คืนสต็อก + คง 86 ของครัว ◂
 import "./scope";
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -380,7 +380,7 @@ export async function cancelTableItemInTx(
   if (it.kdsStatus === "SERVED") return { ok: false, code: "REFUSED", reason: "เสิร์ฟแล้ว ยกเลิกไม่ได้" };
   if (it.menuItemId && it.kdsStatus === "NEW") {
     const mi = await tx.menuItem.findFirst({ where: { id: it.menuItemId, tenantId: s.tenantId }, select: { stockQty: true } });
-    if (mi?.stockQty != null) await restoreMenuStock(tx, it.menuItemId, it.qty);
+    if (mi?.stockQty != null) await restoreMenuStockKeep86InTx(tx, { tenantId: s.tenantId, unitId: s.unitId }, it.menuItemId, it.qty); // POS P2.6 ▸ fix2 N1 ◂
   }
   const u = await tx.restaurantOrderItem.updateMany({
     where: { id: it.id, tenantId: s.tenantId, unitId: s.unitId, saleId: null, kdsStatus: it.kdsStatus },
