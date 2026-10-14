@@ -139,3 +139,27 @@ de691dd1 = ORACLE-ADD ผู้คุม 14 ต.ค. **M8** (static: `regVat` re
 | qc-pos-p1.3 · p1.1 · p1.6 · p1.8 | 128/128 · 180/180 · 48/48 · 49/49 |
 | qc-hf-tx · p1.10 · p1.18 · hf-pos-page-authz | 22/22 · 40/40 · 81/81 · 81/81 |
 | qc-pos-p2.8 | 60/61 — ST6 PAR only (wip-only, ruling 11.11) |
+
+## Fix round 2 (R2 MERGEABLE-AFTER-FIXES + hunter re-check · controller rulings 1–7 · L2 re-pin 63bb1fdc confirmed) — 14 Oct, account B
+Oracle first: **bcc95929** = ORACLE-ADD ผู้คุม 14 ต.ค. P8 (ruling 1) · T5 (ruling 2) · X5b (ruling 3, static) · **C7** (ruling 4 — the ruling said "C6", but C6 already exists (merge ⇄ pay), so the new check is C7; no other id changed) ⇒ **49 checks**. Red-before (forced, code 0e29ffb5) **46/49** — P8 (the AI path closed the split table: "ปิดบิลโต๊ะ P8 184.8 บาท", bills 20→21 = the double charge) · T5 (guard missing) · X5b red; **C7 green before** (no P2028 on QC4 with 10 requests — the in-tx PIN path did not starve the pool here; the fix is still applied per ruling 4) → `P2.5-red.txt` block 4.
+
+| ruling | finding | commit | change |
+|---|---|---|---|
+| 1 | F1 (= N2 partial) | e3e86a83 | `src/lib/ai/proposals.ts` `restaurant_close_bill` (marked hunk ≈:1355): `legacyCheckoutSplitGuard` (lazy import of `pos/table-split`) before `restaurantSvc.checkout`; refusal ⇒ `throw new Error(reason)` (proposal FAILED, no sale). P8 calls the exported `runKind` (→ `dispatch`, the same path `executeProposal` uses). |
+| 2 | F2 | 56c2120b | `legacyMergeSplitGuard` (`table-split.ts`) · `mergeSessionAction` (`actions/restaurant.ts`) redirects `?err=` when either session has an OPEN plan, before `table.mergeSession` (body pinned). DONE plans merge as before. |
+| 3 | F3 | 1a964205 | `tableSaleVoided` split hunk: the `once(false)` retry `catch(e2)` rethrows when `isTxConflict(e2)` (outbox retries; reopen=false cannot re-hit the unique) — audit `pos.table.split.voidConflict` + return 0 only on the remaining P2002 path. X5 unchanged. |
+| 4 | hunter Low | c4194261 | `service.ts` marked export `preverifySaleGiftPins` (= `preverifyGiftPins`, the ≈:597 pre-tx check of the owns-tx path — no change to createSale or the giftcard module) · `register.ts` `regSubmitTable` + `regSubmitSplitPart` call it before `db.$transaction` (PosSaleError ⇒ refusal code). |
+| 5 | hunter residual | a5ff7cd1 | owner line (legacy/AI guards run outside the legacy tx) · follow-up F6 below. No code. |
+
+Follow-up **F6 (P2.11)**: move the split guards into the legacy checkout/merge/cancel transactions (needs an R11 pin change) or retire the legacy page + AI close-bill path at P2.14 — closes the guard-before-tx window.
+
+### Fix round 2 gates — head **a5ff7cd1** · dirty 0 · one systemd-run unit · `scratchpad/p25/gates-fix2/SUMMARY.txt` + per-suite logs
+| gate | result |
+|---|---|
+| typecheck (pos-gate.lock) | exit 0 |
+| fitness no-env / env · fitness-pos | 50/50 · 50/50 · 8/8 |
+| qc-pos-p2.5 forced #1 / #2 / unforced | **49/49 · 49/49 · 49/49** · residue 0 |
+| qc-pos-p2.9 · p2.4 · p2.6 | 62/62 · 50/50 · 67/67 |
+| qc-restaurant / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
+| qc-pos-p1.3 · p1.8 · hf-tx · p1.18 · hf-pos-page-authz | 128/128 · 49/49 · 22/22 · 81/81 · 81/81 |
+| qc-pos-p2.8 | 60/61 — ST6 PAR only (wip-only) |
