@@ -343,7 +343,8 @@ const F = {
   ownerPending: "ledger/POS-OWNER-PENDING.md",
 };
 /** sha256 ของ scripts/pos-sale-contract.json — ORACLE-EDIT ผู้คุม 10 ต.ค.: re-pin ที่ 0c20c473 (merge P2.2 S เพิ่มคีย์บรรทัด priceSource/priceRuleId/listPriceSatang · CD4: P2.4 ห้ามเปลี่ยนอีก) · เดิม 6dbcafe0 = eaced8dc… */
-const CONTRACT_SHA_BASE = "7a418de17b44bf7c54e9ee99a3cb740ae596fb6fb240978901e8a07b011697cd";
+// ORACLE-EDIT ผู้คุม 14 ต.ค. (CD-P29-1: payMethods[].giftCard + pos/order.ts caller recorded) — เดิม 7a418de17b44bf7c54e9ee99a3cb740ae596fb6fb240978901e8a07b011697cd ◂
+const CONTRACT_SHA_BASE = "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad";
 const MIGRATION_NAME = "20261206100000_pos_p24_tables";
 const NEW_CODES = ["TABLE_NOT_FOUND", "TABLE_INACTIVE", "TABLE_SESSION_CLOSED", "TABLE_EMPTY", "TABLE_ITEMS_CHANGED", "TABLE_HAS_UNPAID"] as const;
 const camelKey = (code: string) => "errors." + code.toLowerCase().replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
