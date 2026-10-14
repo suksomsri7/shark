@@ -633,6 +633,7 @@ export async function setLedgerActive(
   }
 
   if (led.archivedAt) return { ok: true, active: false };
+  if (await usedAsPosTipLedger(ctx, id)) return { ok: false, reason: POS_TIP_LEDGER_MSG }; // POS P2.9 ▸ fix2 H5 ◂
   const [journalLines, docLines, mappings, finance] = await Promise.all([
     prisma.accountJournalLine.count({ where: { systemId: ctx.systemId, accountId: id } }),
     prisma.accountDocumentLine.count({ where: { systemId: ctx.systemId, accountId: id } }),
