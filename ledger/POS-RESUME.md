@@ -1592,3 +1592,9 @@
 - มติ fix 1 (1–7) ใน `wo-notes/pos-HF-FU-review.md` (ee30848b): F1–F4 fix · F5 รับ (follow-up) · ORACLE-ADD HN4 (sweep ขนานเคารพเพดาน) + OD3 (draft รอด void เปิด session) test-first โดย builder (dated marker) · gates 7 ชุด + merge origin ก่อน qc-hf-fu รอบสุดท้าย
 - spawn **builder HF-FU fix 1** (Opus ทรี c) prompt `pos-prompt-accountB-HF-FU-fix.md` → แล้ว hunter เงิน (brief 4 ข้อของ R1 + F2 overshoot)
 - เลน: 1 = HF-FU fix 1 ทรี c · ทรี b = gates91 P2.9bU (ผู้คุม)
+
+### 15 ต.ค. 13:05Z — gates91 เขียว → push → gates92
+- gates91 @616db657 (`/root/pos-runs/gates91-c-20261015T123029Z`): 19 ชุด DB เขียวหมด ยกเว้น p2.11 33/34 (ST4 lane pin "register-shared.ts" เทียบ origin ก่อน push — คาดไว้) · p2.8 61/61 · p1.1 180 · p1.3 128 · fitness-noenv/qc4/pos 0 · typecheck 0
+- **push `session/pos` a1d8af43 → 57a8b19a** (P2.9bU merge 616db657 + ledger) · ทรี b detached 57a8b19a → **gates92** (p2.8 + p2.11 รันซ้ำหลัง push) `/root/pos-runs/gates92-b-20261015T130350Z`
+- HF-FU fix 1 (ทรี c): commit แล้ว 979d5ac0 ORACLE-ADD HN4+OD3 · 7334aff2 red-before · a30741aa F1 · ede1131c F2 · e5d03a0d F3 · 0e870195 F4 · กำลังรันด่าน
+- ถัดไป: gates92 เขียว 34/34 → **36/55 (65%)** + TG + memory · HF-FU fix 1 รายงาน → hunter เงิน → merge origin → merge → ด่าน merge เต็ม → ภาพ §9 ทรี d → push → 37/55
