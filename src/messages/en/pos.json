@@ -943,7 +943,10 @@
       "margin": "Gross margin",
       "shifts": "Shifts and over/short",
       "tax": "Output VAT",
-      "channels": "Sales channels"
+      "channels": "Sales channels",
+      "branches": "Branch comparison",
+      "hourly": "Hourly sales",
+      "anomalies": "Staff anomalies"
     },
     "card": {
       "today": "Today's sales",
@@ -1160,6 +1163,37 @@
         "gross": "Gross profit",
         "share": "%"
       }
+    },
+    "hourly": {
+      "title": "Hourly sales",
+      "forecast": "Forecast (4-week average)",
+      "now": "This hour",
+      "tooLong": "The hourly report covers at most 31 days"
+    },
+    "branches": {
+      "title": "Branch comparison",
+      "total": "All branches"
+    },
+    "anomaly": {
+      "title": "Staff anomalies",
+      "empty": "No anomalies in this range",
+      "denied": "This account cannot view the staff anomaly report yet. Ask the shop owner for access.",
+      "rules": {
+        "A1": "Frequent voids",
+        "A2": "Frequent refunds",
+        "A3": "High discount (staff)",
+        "A4": "High discount (bill)",
+        "A5": "Frequent overrides",
+        "A6": "Custom prices",
+        "A7": "Repeated reprints",
+        "A8": "Cash over/short",
+        "A9": "Repeated cash shortage",
+        "A10": "Rejected/cancelled orders"
+      }
+    },
+    "print": {
+      "button": "Print / PDF",
+      "generatedAt": "Generated {time}"
     }
   },
   "stock": {
@@ -2101,6 +2135,10 @@
         },
         "oversellPolicy": "Choose allow or block",
         "promptpayId": "Invalid PromptPay number — use a 10-digit mobile or a 13-digit ID"
+      },
+      "anomaly": {
+        "title": "Reports: anomaly thresholds",
+        "enabled": "Detect anomalies"
       }
     },
     "history": {
@@ -3957,5 +3995,10 @@
     "close": "Close day",
     "reports": "Reports",
     "settings": "Settings"
+  },
+  "sales": {
+    "branch": {
+      "chipLabel": "Branch {name}"
+    }
   }
 }
