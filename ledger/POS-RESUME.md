@@ -1761,3 +1761,8 @@
 - 20:50Z hunter P2.13 (@be0f92cb) = **FINDINGS**: H1 = F2 (void บิล API หลังกะปิด) · H2 = F3 (pos-operate ข้าม manager-confirm) · H3 Low CASH order pay นอกกะเมื่อ requiredOtherSources ปิด · Probed OK 7 ข้อ (idempotency/service key · Σpay ตรง · caps · dedupe · access/issuer · CD-B2 ไม่ขยาย · buckets) → มติ fix 1 (1–8 ใน review file): F1 · F2/H1 · **F3/H2 = ทาง (b)** (API ไม่นับ pos.shift.manage ในด่าน manager-confirm · คง bundle) · F4 · F5 doc · F6 · H3 · CD-B1 OR4 · ORACLE-ADD SA9/SA10/AU9/RP5/OR7 (54 ข้อ) → spawn **builder fix 1** ทรี b prompt `pos-prompt-accountB-P2.13-fix.md`
 - เลน: 1 = P2.13 fix 1 ทรี b · ทรี c ว่าง (รอ merge P2.12U หลัง vis85) · ทรี d = chain83
 - 20:5xZ เลน 2 = **P2.7 brief drafter** (QR สั่ง/สั่งล่วงหน้าจ่ายก่อน · lane C · ⏮ P1.7 P2.4 · ~30 · ใบสุดท้ายก่อน P2.14) prompt `pos-prompt-accountB-P2.7-B.md` → `pos-brief-P2.7.md` DRAFT · เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 brief (read-only) · ทรี c ว่าง · ทรี d = chain83
+
+### 15 ต.ค. 21:00Z — P2.12U merged 861815e0 (ยังไม่ push) → gates99
+- vis85 @0c1177ca failures 0 · 390 ไม่ล้น · print 0 error · PDF probe ผ่าน → **merge 0c1177ca เข้า session/pos = 861815e0** (no-ff) · ทรี c detached 861815e0 + prisma generate → **gates99-c** (p2.12 ×2 unforced · p1.17 p2.11 p1.18 p1.16 p2.1 p1.12 p1.3 p1.1 authz p2.8 p2.10 hf-tx hf-fu + fitness ±env/pos + typecheck)
+- ถัดไป: gates99 เขียว (lane pins p2.11 ST4 / hf-fu ST1 / p2.10 ST2 / p2.8 ST6 / p2.12 ST1 อาจแดงจน push) → push → รันซ้ำ → **40/55 (73%)** + TG · P2.13 fix 1 ทรี b ทำอยู่ · P2.7 brief ทำอยู่
+- เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 brief · ทรี c = gates99 · ทรี d ว่าง @0c1177ca
