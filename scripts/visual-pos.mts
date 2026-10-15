@@ -7807,7 +7807,12 @@ try {
         const http5xx: string[] = [];
         page.on("pageerror", (e: Error) => consoleErrors.push(e.message.slice(0, 160)));
         page.on("console", (m: Any) => {
-          if (m.type() === "error") consoleErrors.push(String(m.text()).slice(0, 160));
+          // POS P2.12U ▸ fix1 F7: "Failed to load resource" ต่อท้าย URL ที่ล้ม (m.location().url) — บรรทัดสถานะบอกได้เลยว่าไฟล์ไหน ◂
+          if (m.type() === "error") {
+            const txt = String(m.text());
+            const at = /Failed to load resource/.test(txt) ? String(m.location?.()?.url ?? "").replace(BASE, "") : "";
+            consoleErrors.push(at ? `${txt.slice(0, 120)} @ ${at.slice(0, 200)}` : txt.slice(0, 160));
+          }
         });
         page.on("response", (r: Any) => {
           try {
@@ -8006,7 +8011,7 @@ try {
         if (!ok) failures++;
         shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
         console.log(
-          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}` : ""} → ${file}${pdfNote /* POS P2.12U ▸ pdf probe ◂ */}`,
+          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}${httpErrors.length ? ` · 4xx ${httpErrors.length}: ${httpErrors[0]}` /* POS P2.12U ▸ fix1 F7 ◂ */ : ""}` : ""} → ${file}${pdfNote /* POS P2.12U ▸ pdf probe ◂ */}`,
         );
         await page.close();
       }

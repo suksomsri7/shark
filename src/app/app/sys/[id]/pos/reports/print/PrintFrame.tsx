@@ -12,6 +12,20 @@ type Props = { html: string; wide: boolean; autoPrint: boolean; toolbar: ReactNo
 /** ความสูงเริ่มของ A4 ที่ 96 dpi (ก่อนวัดเนื้อจริง) */
 const A4_PX = { portrait: 1123, landscape: 794 };
 
+// POS P2.12U ▸ fix1 F7: url() ในกฎ @font-face ของ Next เป็นทางสัมพัทธ์ของไฟล์ CSS (../media/*.woff2) — เอกสาร srcdoc ใช้ฐานของหน้าแม่
+//   (/app/sys/…/pos/reports/print) ⇒ ฟอนต์ 404 · แปลงเป็น URL เต็มด้วย href ของสไตล์ชีต (สไตล์ในหน้า = baseURI ของหน้าแม่) ◂
+const URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+function absoluteUrls(css: string, base: string): string {
+  return css.replace(URL_RE, (m, _q: string, u: string) => {
+    if (/^(data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i.test(u)) return m;
+    try {
+      return `url("${new URL(u, base).href}")`;
+    } catch {
+      return m;
+    }
+  });
+}
+
 /** ใส่กฎ @font-face ของหน้าแม่ + ตระกูลฟอนต์ของ body ลงเอกสารใน iframe (ครั้งเดียว) — ฟอนต์ไทยของแอปถูกโหลดผ่าน next/font ในหน้าแม่เท่านั้น */
 function adoptFonts(doc: Document) {
   if (doc.documentElement.hasAttribute("data-fonts")) return;
@@ -24,7 +38,8 @@ function adoptFonts(doc: Document) {
     } catch {
       continue; // สไตล์ข้ามโดเมนอ่านกฎไม่ได้ — ข้าม
     }
-    for (const r of Array.from(rules)) if (r instanceof CSSFontFaceRule) faces.push(r.cssText);
+    const base = sheet.href ?? document.baseURI; // POS P2.12U ▸ fix1 F7 ◂
+    for (const r of Array.from(rules)) if (r instanceof CSSFontFaceRule) faces.push(absoluteUrls(r.cssText, base));
   }
   const family = getComputedStyle(document.body).fontFamily;
   const style = doc.createElement("style");
