@@ -83,6 +83,8 @@ import {
   postGiftCardExpire as postGiftCardExpireGl,
   giftCardSaleEntryId as giftCardSaleEntryIdGl, // POS HF-GC ◂
   liabilityLedgerOf, // POS P2.9 ▸ R9 บัญชีพักทิป ◂
+  postExternalDepositReceipt, // POS P2.9b ▸ R3 ◂
+  postExternalDepositRefund, // POS P2.9b ▸ R8 ◂
   reverseFor,
   type GlCtx,
 } from "./gl";
@@ -142,6 +144,14 @@ export async function applyExternalSale(input: {
   /** POS P1.13 (R2 · CD1 · CD4 · เพิ่มล้วน): ผู้ซื้อขอใบกำกับภาษีเต็มรูปตอนชำระ — สมุดจด VAT ⇒ ชั้นเอกสารเป็น TAX_INVOICE (แทน ABB)
    *  ผู้ติดต่อ = ผู้ซื้อ (จับด้วยเลขผู้เสียภาษี+สาขาก่อน · ไม่ผูก partyId ของสมาชิก — มติ 1) · GL เหมือนบิลไม่มีผู้ซื้อทุกสตางค์ · ไม่ส่ง = เดิมทุกไบต์ */
   buyer?: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+  /**
+   * POS P2.9b ▸ R5 มติ 1 15 (เพิ่มล้วน · ไม่ส่ง = JV/เอกสารเดิมทุกไบต์) — บิลที่ใช้มัดจำของ POS (แถว DEPOSIT ที่อ้างใบรับมัดจำ):
+   *   depositVatSatang = Σ VAT ของมัดจำที่ใช้ (VAT ออกไปแล้วตอนรับมัดจำ) ⇒ Dr 2110 = ยอดมัดจำ − depositVat · Cr 2200 = VAT(ยอด) − depositVat (ไม่มี VAT ซ้ำ) ·
+   *   depositGrossSatang = ยอดมัดจำที่หัก (รวม VAT) → เอกสาร depositDeducted + VAT สุทธิ (รูปเดียวกับใบแจ้งหนี้หักมัดจำ gl.ts INVOICE)
+   *   owner line: เจ้าของบัญชียืนยัน VAT ตอนรับมัดจำ (O24 family) ก่อนเปิดใช้จริง ◂
+   */
+  depositVatSatang?: number;
+  depositGrossSatang?: number;
 }): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
@@ -151,7 +161,11 @@ export async function applyExternalSale(input: {
 
   const gross = input.grossSatang;
   // POS P1.6 ▸ สูตรเดียวกับ PosSale.vatSatang (src/lib/money/vat.ts) ◂
-  const { baseSatang: base, vatSatang: vat } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  const { baseSatang: base, vatSatang: vatFull } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  // POS P2.9b ▸ R5: VAT ของมัดจำที่ใช้ (สมุดไม่จด VAT = 0 · ไม่เกิน VAT ของบิล/ยอดมัดจำ) — ไม่ส่ง = 0 ⇒ ทุกบรรทัดเดิม ◂
+  const depositRows = input.payMethods.filter((p) => p.channel === "DEPOSIT").reduce((n, p) => n + p.amountSatang, 0);
+  const depositVat = vatRegistered && Number.isInteger(input.depositVatSatang) && input.depositVatSatang! > 0 ? Math.min(input.depositVatSatang!, vatFull, depositRows) : 0;
+  const vat = vatFull - depositVat;
 
   // ── WO 4.2: ตรวจบรรทัดก่อนแตะอะไรทั้งสิ้น — ไม่ตรงยอด = ไม่โพสต์ ไม่สร้างเอกสาร (บิลเพี้ยนห้ามเข้าบัญชี) ──
   const lines = input.lines;
@@ -203,11 +217,17 @@ export async function applyExternalSale(input: {
   const hasPlatform = input.payMethods.some((p) => p.channel === "PLATFORM");
   if (hasPlatform) await ensureAccounting(ctx); // R7: คีย์ลูกหนี้แพลตฟอร์มต้องจับคู่ได้ก่อนโพสต์ (ห้ามตก 9999)
   const platformContactId = hasPlatform ? await platformContact(ctx, input.channelName) : null;
-  const drLines = input.payMethods.map((p) => ({
-    key: channelToKey(p.channel),
-    amountSatang: p.amountSatang,
-    ...(p.channel === "PLATFORM" && platformContactId ? { contactId: platformContactId } : {}),
-  }));
+  // POS P2.9b ▸ R5: ขา Dr 2110 ของแถวมัดจำลดด้วย depositVat (ส่วนที่เป็น VAT จ่ายไปแล้วตอนรับมัดจำ) · depositVat 0 = บรรทัดเดิม ◂
+  let depVatLeft = depositVat;
+  const drLines = input.payMethods.map((p) => {
+    const cut = p.channel === "DEPOSIT" ? Math.min(depVatLeft, p.amountSatang) : 0;
+    depVatLeft -= cut;
+    return {
+      key: channelToKey(p.channel),
+      amountSatang: p.amountSatang - cut,
+      ...(p.channel === "PLATFORM" && platformContactId ? { contactId: platformContactId } : {}),
+    };
+  }).filter((l) => l.amountSatang > 0 || depositVat === 0);
 
   // ถอด VAT จากฝั่งบริการด้วยอัตราส่วนเดียวกับทั้งบิล แล้ว clamp ไม่ให้เกินฐานรวม
   const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
@@ -272,6 +292,8 @@ export async function applyExternalSale(input: {
     note: input.receiptNo ? `ขายหน้าร้าน POS · ใบเสร็จ ${input.receiptNo}` : "ขายหน้าร้าน POS",
     lines: docLines,
     ...(full ? { fullTaxInvoice: true, buyer: input.buyer } : {}), // POS P1.13 ▸ R2 · fix F4 สำเนาผู้ซื้อตามที่กรอก ◂
+    // POS P2.9b ▸ มติ 15: หักมัดจำ (gross) + VAT สุทธิ ◂
+    ...(input.depositGrossSatang && input.depositGrossSatang > 0 ? { depositDeductedSatang: input.depositGrossSatang, depositVatSatang: depositVat } : {}),
   });
   if (!doc.ok) return { posted, reason: doc.reason };
   // WO 4.3 (§8.2): บิล POS ที่ขาย "รายการจัดชุด" → ตัดสต็อกส่วนประกอบ
@@ -280,6 +302,128 @@ export async function applyExternalSale(input: {
   if (doc.created) await consumeBundleComponentsForDoc(ctx, doc.docId);
   return { posted, docId: doc.docId, ...(full ? { fullTaxInvoice: true } : {}) };
 }
+
+// ─────────────────────────────────────────────────────────────
+// POS P2.9b ▸ มัดจำของ POS — ใบรับเงินมัดจำ (VAT ตอนรับเงิน) + คืนเงินมัดจำคงเหลือ (มติ 1 3 5 · R3 R8) ◂
+// 🔴 owner line (POS-OWNER-PENDING P2.9b): เจ้าของบัญชียืนยันโมเดล VAT ตอนรับมัดจำ (O24 family) + บัญชีเดียว 2110 (CD9) ก่อนเปิดใช้จริง ·
+//    ย้อนได้ตราบที่ยังไม่มีมัดจำจริงใน prod · ไม่ผูกสมุด = {posted:false, reason:"unlinked"} ไม่ throw (มัดจำยังใช้ได้) · GL ล้ม = โยน ⇒ คิวลองใหม่
+// POS ไม่รู้เลขบัญชี — ส่งยอด/VAT/ช่องทาง (CASH | TRANSFER | PROMPTPAY → 1000/1010)
+const depositChannelKey = (ch: string): "CASH" | "BANK" => (ch === "CASH" ? "CASH" : "BANK");
+/**
+ * R3 — ใบรับเงินมัดจำของ POS (PosSale sourceModule POS_DEPOSIT): JV คีย์ PosSale#<ใบรับ>#PAID = Dr เงิน / Cr 2110 ฐาน / Cr 2200 VAT (ไม่มีรายได้) ·
+ * เอกสาร DEPOSIT_RECEIPT (ชื่อ "ใบรับเงินมัดจำ" · + "/ใบกำกับภาษีอย่างย่อ" เมื่อสมุดจด VAT + เปิดใบกำกับอย่างย่อจาก POS — มติ 3) ไม่โพสต์ GL ซ้ำ
+ */
+export async function applyExternalDepositReceipt(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id ของใบรับมัดจำ
+  occurredAt: Date;
+  grossSatang: number;
+  /** VAT ของมัดจำ (PosDeposit.vatSatang = PosSale.vatSatang ของใบรับ) — สมุดไม่จด VAT = 0 */
+  vatSatang: number;
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY"; amountSatang: number }[];
+  receiptNo?: string | null;
+  lineName?: string;
+  customer?: { memberId?: string | null; partyId?: string | null; name?: string | null; phone?: string | null };
+}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
+  const gross = input.grossSatang;
+  if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดมัดจำต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
+  const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
+  if (paySum !== gross) return { posted: false, reason: `ยอดรับมัดจำแยกตามวิธี (${paySum}) ไม่เท่ากับยอดมัดจำ (${gross}) — ไม่บันทึกบัญชี` };
+  const vat = vatRegistered && Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
+  const res = await postExternalDepositReceipt(ctx, {
+    refId: input.refId,
+    date: input.occurredAt,
+    baseSatang: gross - vat,
+    vatSatang: vat,
+    drLines: input.payMethods.map((p) => ({ key: depositChannelKey(p.channel), amountSatang: p.amountSatang })),
+  });
+  const posted = "entryId" in res;
+  const title = vatRegistered && posAbbreviatedInvoice && vat > 0 ? "ใบรับเงินมัดจำ/ใบกำกับภาษีอย่างย่อ" : "ใบรับเงินมัดจำ";
+  const contactId = await resolveExternalSaleContact(ctx, input.customer);
+  const doc = await upsertExternalSaleDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    docNo: input.receiptNo ?? null,
+    occurredAt: input.occurredAt,
+    contactId,
+    vatMode: vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered,
+    vatRateBp,
+    grandTotalSatang: gross,
+    note: input.receiptNo ? `${title} POS · ใบรับ ${input.receiptNo}` : `${title} POS`,
+    lines: [{ description: input.lineName || "มัดจำ", qty: 1, unitPrice: gross, discount: 0, vatRateBp: null, productId: null }],
+    depositReceipt: true,
+    vatSatang: vat,
+  });
+  if (!doc.ok) return { posted, reason: doc.reason };
+  return { posted, docId: doc.docId };
+}
+
+/**
+ * R8 — คืนเงินมัดจำคงเหลือ (ใบคืน REFUND ของใบรับมัดจำ): JV คีย์ PosSale#<ใบคืน>#REFUNDED = Dr 2110 ฐาน + Dr 2200 VAT / Cr เงินตามวิธีคืน ·
+ * ใบลดหนี้ (CREDIT_NOTE) อ้างเอกสาร DEPOSIT_RECEIPT ของใบรับ · ไม่แตะรายได้
+ */
+export async function applyExternalDepositRefund(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  refId: string; // PosSale.id ของใบคืน (docType REFUND)
+  receiptRefId: string; // PosSale.id ของใบรับมัดจำ
+  occurredAt: Date;
+  grossSatang: number;
+  /** VAT ของส่วนที่คืน (PosDepositTxn REFUND.vatSatang) */
+  vatSatang: number;
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY"; amountSatang: number }[];
+  docNo?: string | null;
+  reason?: string | null;
+}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  const { vatRegistered, vatRateBp } = await vatConfigOf(link.systemId);
+  const gross = input.grossSatang;
+  if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดคืนมัดจำต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
+  const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
+  if (paySum !== gross) return { posted: false, reason: `ยอดคืนมัดจำแยกตามวิธี (${paySum}) ไม่เท่ากับยอดคืน (${gross}) — ไม่บันทึกบัญชี` };
+  const vat = vatRegistered && Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
+  const res = await postExternalDepositRefund(ctx, {
+    refId: input.refId,
+    date: input.occurredAt,
+    baseSatang: gross - vat,
+    vatSatang: vat,
+    crLines: input.payMethods.map((p) => ({ key: depositChannelKey(p.channel), amountSatang: p.amountSatang })),
+  });
+  const posted = "entryId" in res;
+  const src = await findDocByRef(link.systemId, "DEPOSIT_RECEIPT", "PosSale", input.receiptRefId);
+  const reason = (input.reason ?? "").trim() || "คืนเงินมัดจำ";
+  const doc = await upsertExternalCreditNoteDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    sourceDocId: src?.id ?? null,
+    docNo: input.docNo ?? null,
+    occurredAt: input.occurredAt,
+    contactId: null, // ใบรับมัดจำ walk-in ไม่มีผู้ติดต่อ · สมาชิก = เอกสารต้นทางถือผู้ติดต่อ (findDocByRef อ่าน id อย่างเดียว)
+    vatMode: vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered,
+    vatRateBp,
+    grandTotalSatang: gross,
+    vatSatang: vat,
+    reason,
+    note: input.docNo ? `คืนเงินมัดจำ POS · ใบคืน ${input.docNo}` : "คืนเงินมัดจำ POS",
+    lines: [{ description: "คืนเงินมัดจำ", qty: 1, unitPrice: gross, discount: 0, vatRateBp: null, productId: null }],
+  });
+  if (!doc.ok) return { posted, reason: doc.reason };
+  return { posted, docId: doc.docId };
+}
+// ◂ POS P2.9b
 
 /**
  * POS P1.13 (มติ 1 · CD4) — ผู้ติดต่อของผู้ซื้อใบกำกับเต็มรูป: เลขผู้เสียภาษี + สาขาชนะชื่อ (ใช้ผู้ติดต่อเดิมของร้านที่เลขตรง)
