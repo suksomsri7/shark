@@ -56,9 +56,9 @@ const CHECKS: readonly Def[] = [
   D("B2", "P", "[R6 CD5 §9] VAT ค่าคอมฯ = halfUp(commission × vatBp / 10000): 7950×7% = 556.5 → 557 · 125×7% = 8.75 → 9 · vatBp 0 → 0 · ไม่มีค่าคอมฯ → VAT 0"),
   D("B3", "P", "[R6 R9 CD10] channelRefundShare: บางส่วน = halfUp(sale.commission × refundGross / sale.grand) · ใบที่ครบ (full) = ส่วนที่เหลือ · 200 กรณีสุ่ม (seed ตายตัว) แบ่ง 3 ใบ Σ ส่วนแบ่ง = ค่าคอมฯ ของบิลเป๊ะ (ทั้งค่าคอมฯ และ VAT) · ไม่ติดลบ · ตัวอย่างบรีฟ 12345/14321/15334 ของ 12600 → 3704/4296/4600"),
   D("B4", "P", "[R3] parseChannelInput: คีย์ตรง {id code name active payout commissionBp commissionFixedSatang commissionVatBp sortOrder adapter} · ตัดช่องว่างชื่อ · คีย์แปลก/รหัสผิด regex (lineman · L · 1ABC · 25 ตัว)/bp −1 10001 1.5 \"3000\"/fixed 1000001/vat 10001/payout X/adapter X/ชื่อว่าง/null/อาร์เรย์/สตริง → {ok:false, code VALIDATION} ไม่ throw · ขอบ 0/10000/1000000/AB/24 ตัว ผ่าน"),
-  D("B5", "P", "[R4 R11 CD2 CD9 R13] defaultChannelCode: ECOM → WEB · POS RESTAURANT HOTEL BOOKING TICKET CLINIC SCHOOL RENTAL MEMBER AI null \"\" XYZ → STORE · CHANNEL_BUILTIN_CODES = STORE QR_TABLE WEB CHAT · CHANNEL_EXTERNAL_PRESETS = LINEMAN GRAB FOODPANDA SHOPEE LAZADA TIKTOK · CHANNEL_LIMIT_PER_UNIT 30 · CHANNEL_REF_MAX 40 · refusalMessageKey(CHANNEL_*) = errors.<camel>"),
+  D("B5", "P", "[R4 R11 CD2 CD9 R13] defaultChannelCode: ECOM → WEB · POS RESTAURANT HOTEL BOOKING TICKET CLINIC SCHOOL RENTAL MEMBER AI null \"\" XYZ → STORE · CHANNEL_BUILTIN_CODES = STORE QR_TABLE WEB CHAT QR_ORDER · CHANNEL_EXTERNAL_PRESETS = LINEMAN GRAB FOODPANDA SHOPEE LAZADA TIKTOK · CHANNEL_LIMIT_PER_UNIT 30 · CHANNEL_REF_MAX 40 · refusalMessageKey(CHANNEL_*) = errors.<camel>"), // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7): builtins 4 → 5 (+ QR_ORDER "สั่งออนไลน์ (QR)" · มติ 2) · adapter + QR
   // ── C ช่องทาง ──
-  D("C1", "X1", "[R2 R3] listChannels ครั้งแรกบนสาขาใหม่ → SalesChannel ของสาขา 0 → 4 แถว BUILTIN (STORE หน้าร้าน · QR_TABLE QR โต๊ะ · WEB เว็บร้าน SHARK Shop · CHAT แชท) · STORE DIRECT ค่าคอมฯ 0 · ครั้งที่สอง 0 แถวใหม่ id เดิม · รูป item คีย์ตรง 12 ตัว"),
+  D("C1", "X1", "[R2 R3] listChannels ครั้งแรกบนสาขาใหม่ → SalesChannel ของสาขา 0 → 5 แถว BUILTIN (STORE หน้าร้าน · QR_TABLE QR โต๊ะ · WEB เว็บร้าน SHARK Shop · CHAT แชท · QR_ORDER สั่งออนไลน์ (QR)) · STORE DIRECT ค่าคอมฯ 0 · ครั้งที่สอง 0 แถวใหม่ id เดิม · รูป item คีย์ตรง 12 ตัว"), // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7): builtins 4 → 5 (+ QR_ORDER "สั่งออนไลน์ (QR)" · มติ 2) · adapter + QR
   D("C2", "X1", "[R2 X6] สองบิลแรกพร้อมกันบนสาขาใหม่ (ไม่ส่ง channelId) → ทั้งคู่สำเร็จ · builtins ของสาขา = 4 พอดี (ไม่มี P2002) · ทั้งสองบิล channelCode STORE + channelId = STORE ของสาขา"),
   D("C3", "-", "[R1 R3] saveChannel: LINEMAN (preset ⇒ kind EXTERNAL payout PLATFORM adapter MANUAL) · GRAB (25% + ฿2 · vat 700) · CUSTOM_AGENT (kind CUSTOM · DIRECT 10%) · รหัสซ้ำ → CHANNEL_CODE_TAKEN · รหัสเดียวกันคนละสาขาได้ · ลำดับที่ 31 ของสาขา → CHANNEL_LIMIT (แถว = 30) · ข้อมูลผิด → VALIDATION"),
   D("C4", "-", "[R2 R3] STORE: แก้ค่าคอมฯ / payout / ปิด active / archive → CHANNEL_BUILTIN_LOCKED แถวไม่เปลี่ยน · builtin อื่นแก้ค่าคอมฯ ได้ แต่เปลี่ยน code → LOCKED · archive CUSTOM → ok archivedAt · listChannels ไม่แสดงที่ archive (includeArchived แสดงพร้อม archived:true)"),
@@ -274,7 +274,7 @@ const ACTIONS: [string, string][] = [["listChannelsAction", "listChannels"], ["s
 const PERM_MANAGE = "pos.channel.manage";
 const PERM_LABEL = "ตั้งค่าช่องทางขายและค่าคอมมิชชันแพลตฟอร์ม";
 const AUDIT = { created: "pos.channel.created", updated: "pos.channel.updated", archived: "pos.channel.archived" } as const;
-const BUILTINS: Record<string, string> = { STORE: "หน้าร้าน", QR_TABLE: "QR โต๊ะ", WEB: "เว็บร้าน SHARK Shop", CHAT: "แชท" };
+const BUILTINS: Record<string, string> = { STORE: "หน้าร้าน", QR_TABLE: "QR โต๊ะ", WEB: "เว็บร้าน SHARK Shop", CHAT: "แชท", QR_ORDER: "สั่งออนไลน์ (QR)" }; // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7): builtins 4 → 5 (+ QR_ORDER "สั่งออนไลน์ (QR)" · มติ 2) · adapter + QR
 const PRESETS = ["LINEMAN", "GRAB", "FOODPANDA", "SHOPEE", "LAZADA", "TIKTOK"];
 const CH_CODES = ["CHANNEL_INVALID", "CHANNEL_PAY_MISMATCH", "CHANNEL_NOT_FOUND", "CHANNEL_CODE_TAKEN", "CHANNEL_BUILTIN_LOCKED", "CHANNEL_LIMIT"];
 const ITEM_KEYS = ["id", "code", "kind", "name", "adapter", "active", "payout", "commissionBp", "commissionFixedSatang", "commissionVatBp", "sortOrder", "archived"];
@@ -336,7 +336,7 @@ async function runStatic(): Promise<void> {
         if (fieldLine(sc, f) && typ(f) !== t) p.push(`SalesChannel.${f} ชนิด ${typ(f)} (คาด ${t})`);
       if (fieldLine(sc, "autoAccept") && !/@default\(false\)/.test(fieldLine(sc, "autoAccept"))) p.push("autoAccept ไม่ใช่ @default(false)");
     }
-    for (const [e, vals] of [["SalesChannelKind", ["BUILTIN", "EXTERNAL", "CUSTOM"]], ["SalesChannelAdapter", ["NONE", "MANUAL", "WEB", "CHAT", "API"]], ["SalesChannelPayout", ["PLATFORM", "DIRECT"]]] as const) {
+    for (const [e, vals] of [["SalesChannelKind", ["BUILTIN", "EXTERNAL", "CUSTOM"]], ["SalesChannelAdapter", ["NONE", "MANUAL", "WEB", "CHAT", "API", "QR"]], ["SalesChannelPayout", ["PLATFORM", "DIRECT"]]] as const) { // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7): builtins 4 → 5 (+ QR_ORDER "สั่งออนไลน์ (QR)" · มติ 2) · adapter + QR
       const b = prismaBlock(schemaSrc, "enum", e);
       if (!b) p.push(`ไม่มี enum ${e}`);
       else if (short(enumValues(b).sort()) !== short([...vals].sort())) p.push(`enum ${e} = ${enumValues(b).join(",")}`);
@@ -1090,8 +1090,8 @@ async function runDb() {
       const st = builtinsA.find((i: Any) => i.code === "STORE");
       if (!st || st.payout !== "DIRECT" || st.commissionBp !== 0 || st.commissionFixedSatang !== 0 || st.commissionVatBp !== 0 || st.active !== true || st.archived !== false) p.push(`STORE ${short(st, 160)}`);
     }
-    if (mid !== 4) p.push(`หลังครั้งแรก ${mid} แถว (คาด 4)`);
-    if (after !== 4) p.push(`หลังครั้งที่สอง ${after} แถว (คาด 4 — ไม่สร้างเพิ่ม)`);
+    if (mid !== 5) p.push(`หลังครั้งแรก ${mid} แถว (คาด 5)`); // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7): builtins 4 → 5 (+ QR_ORDER "สั่งออนไลน์ (QR)" · มติ 2) · adapter + QR
+    if (after !== 5) p.push(`หลังครั้งที่สอง ${after} แถว (คาด 5 — ไม่สร้างเพิ่ม)`); // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7): builtins 4 → 5 (+ QR_ORDER "สั่งออนไลน์ (QR)" · มติ 2) · adapter + QR
     if (r2?.ok === true && r1?.ok === true && short((r2.items ?? []).map((i: Any) => i.id).sort()) !== short(builtinsA.map((i: Any) => i.id).sort())) p.push("ครั้งที่สอง id ไม่ตรงครั้งแรก");
     chk("C1", NCOL() === "" && p.length === 0, "0 → 4 builtins · ครั้งที่สอง 0 แถวใหม่", FX(NCOL() + (p.slice(0, 8).join(" · ") || "ครบ")));
   }
@@ -1269,7 +1269,7 @@ async function runDb() {
     const after = await scCount("F");
     if (before !== 0) p.push(`ก่อน ${before}`);
     for (const [lbl, s] of [["บิล 1", a], ["บิล 2", b]] as const) if (!s?.id) p.push(`${lbl} → ${codeOf(s?.res)} ${short(s?.res?.message ?? "", 60)}`);
-    if (after !== 4) p.push(`builtins สาขา F = ${after} (คาด 4)`);
+    if (after !== 5) p.push(`builtins สาขา F = ${after} (คาด 5)`); // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7): builtins 4 → 5 (+ QR_ORDER "สั่งออนไลน์ (QR)" · มติ 2) · adapter + QR
     const rows = await scRows("F");
     const storeF = String(rows.find((r: Any) => r.code === "STORE")?.id ?? "");
     for (const [lbl, s] of [["บิล 1", a], ["บิล 2", b]] as const) {
