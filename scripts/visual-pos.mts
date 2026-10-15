@@ -5687,12 +5687,14 @@ async function p29uCashExactConfirm(page: Any): Promise<void> {
 // fixture (ensureP211uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
 //   • หน้า products: ลาเต้ += แถว (STORE, สีลม) = ราคาฐาน − ฿5 (ช่อง "ราคา สีลม" ตัวหนา + ชิป "สาขา") · ช่องทาง ZZVIS ที่สีลม (saveChannel) →
 //     แถว (ZZVIS, ทุกสาขา) ของลาเต้ → archiveChannel ⇒ แถวเลิกใช้ 1 แถว (หมายเหตุ pos-prod-deadNote) — แบบ dead-row ของ qc-pos-p2.11 ·
-//     แถวเดิมของลาเต้จำไว้ · เก็บกวาด: เปิดช่องทางคืน (ธง archivedAt · เขียนตรง) → setChannelPrices(แถวเดิม) ลบแถวของรอบ → ลบแถวช่องทาง ZZVIS ของรอบ
+//     แถวเดิมของลาเต้จำไว้ (fix1 มติ 5: ก่อนจำ กวาดซากรอบที่ถูก kill — แถว (STORE, สีลม) = ฐาน − ฿5 · ค่าใบเสร็จสีลม = 00001) · เก็บกวาด: เปิดช่องทางคืน (ธง archivedAt · เขียนตรง) → setChannelPrices(แถวเดิม) ลบแถวของรอบ → ลบแถวช่องทาง ZZVIS ของรอบ
 //   • หน้า reports: บิล PAID วันนี้ที่สีลม 3 ใบ (createSale คีย์ต่อวัน posqc-vis-p211u-<n>-<วันที่> · หน้าร้าน ×2 PROMPTPAY + LINE MAN ×1 PLATFORM) — ไม่ลบ (แบบ sale-done)
 //   • หน้า settings: สมุด ABB ชั่วคราว (ensureAbbBook · คืนใน cleanRpub) + ค่าของสาขาสีลม (สาขาที่ 00001 · ที่อยู่ · โทร) ผ่าน updatePosReceiptUnitSettings · คืนค่าเดิมหลังงานสุดท้าย
 //   • หน้า stock: seed QC ผูกสีลม + อารีย์กับคลังเดียวกันอยู่แล้ว (posUnitInventoryMap shared) — ไม่มี = ผูกอารีย์กับคลังของสีลม (linkUnit) แล้วลบลิงก์ของรอบตอนเก็บกวาด
 //   • ผู้ใช้ manager: ensureManagerUser (User + Membership MANAGER unitAccess [สีลม] · id ตายตัว · สร้างครั้งแรก/ใช้ซ้ำ · ไม่ลบ)
 const P211U_CH = "ZZVIS";
+/** ค่าใบเสร็จของสาขาสีลมใน fixture (fix1 มติ 5: ใช้จับซากของรอบที่ถูก kill ด้วย) */
+const P211U_RECEIPT = { taxBranchNo: "00001", address: "99/1 ถนนสีลม แขวงสุริยวงศ์ เขตบางรัก กรุงเทพฯ 10500", phone: "02-000-0001" } as const;
 const P211U = {
   done: false,
   error: null as string | null,
@@ -5741,6 +5743,15 @@ async function ensureP211uFixture(): Promise<void> {
         await prisma.salesChannel.deleteMany({ where: { id: old.id, tenantId: T.tenantId } });
         P211U.log.push("กวาดซาก ZZVIS ของรอบก่อน");
       }
+      // fix1 มติ 5 (R1 F5): ซากรอบที่ถูก SIGKILL — แถว (STORE, สีลม) ของลาเต้ = ราคาฐาน − ฿5 (ค่าของ fixture) ⇒ ลบก่อนจำ "ก่อน" (ไม่ให้ซากไหลเข้า seed)
+      {
+        const cur = await prisma.posProductChannelPrice.findMany({ where: { tenantId: T.tenantId, systemId: SYS, productId: QC_IDS.latte }, select: { channelCode: true, unitId: true, priceSatang: true, notSold: true } });
+        const isLeft = (r: (typeof cur)[number]) => r.channelCode === "STORE" && r.unitId === unitId && !r.notSold && r.priceSatang === latte.basePriceSatang! - 500;
+        if (cur.some(isLeft)) {
+          await setChannelPrices(cctx, { productId: QC_IDS.latte, rows: cur.filter((r) => !isLeft(r)) });
+          P211U.log.push("กวาดซากแถว (STORE, สีลม) = ฐาน − ฿5 ของรอบก่อน");
+        }
+      }
       const before = await prisma.posProductChannelPrice.findMany({ where: { tenantId: T.tenantId, systemId: SYS, productId: QC_IDS.latte }, select: { channelCode: true, unitId: true, priceSatang: true, notSold: true } });
       P211U.rowsBefore = before;
       const ch = await saveChannel(rctx, owner, { code: P211U_CH, name: "ช่องทางเลิกใช้ (ภาพ QC P2.11U)", payout: "DIRECT" });
@@ -5788,7 +5799,16 @@ async function ensureP211uFixture(): Promise<void> {
       const { receiptUnitOverride } = await import("@/lib/modules/pos/receipt-settings-shared");
       const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
       P211U.receiptBefore = receiptUnitOverride(sys?.settings ?? null, unitId);
-      const r = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { unitId, patch: { taxBranchNo: "00001", address: "99/1 ถนนสีลม แขวงสุริยวงศ์ เขตบางรัก กรุงเทพฯ 10500", phone: "02-000-0001" } });
+      // fix1 มติ 5 (R1 F5): ซากรอบที่ถูก SIGKILL — ค่าสาขาสีลม = "00001" ของ fixture ⇒ ล้าง (ที่อยู่/โทรที่ตรงค่า fixture ด้วย) ก่อนจำ "ก่อน"
+      if (P211U.receiptBefore.taxBranchNo === P211U_RECEIPT.taxBranchNo) {
+        const rb = P211U.receiptBefore;
+        const sweep = { taxBranchNo: null, address: rb.address === P211U_RECEIPT.address ? null : rb.address, phone: rb.phone === P211U_RECEIPT.phone ? null : rb.phone };
+        const sw = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { unitId, patch: sweep });
+        if (!sw.ok) throw new StepError(`กวาดซากค่าใบเสร็จของสาขา: ${sw.code} ${sw.field ?? ""}`);
+        P211U.receiptBefore = sweep;
+        P211U.log.push("กวาดซากค่าใบเสร็จสาขาสีลม (00001) ของรอบก่อน");
+      }
+      const r = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { unitId, patch: { ...P211U_RECEIPT } });
       if (!r.ok) throw new StepError(`ตั้งค่าใบเสร็จของสาขา: ${r.code} ${r.field ?? ""}`);
       P211U.log.push("ใบเสร็จสาขาสีลม: สาขาที่ 00001 + ที่อยู่/โทร (คืนค่าเดิมตอนเก็บกวาด)");
     }
