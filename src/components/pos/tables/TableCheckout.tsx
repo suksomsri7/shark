@@ -36,9 +36,10 @@ import { CouponDialog } from "@/components/pos/register/CouponDialog";
 import { DiscountOverSheet as DiscountOverBox } from "@/components/pos/register/DiscountOverSheet";
 import { normalizeCouponCode } from "@/lib/modules/pos/register-member-shared";
 import { newCheckoutKey } from "./table-ui";
+import type { SplitPayPart } from "./table-split-ui"; // POS P2.5U ▸ มติ 7 ◂
 
 export type TableToast = { key: string; ns: "tables" | "register"; values?: Record<string, string | number> };
-type Pending = { v: 1; userId: string; idempotencyKey: string; sessionId: string; tableName: string; sale: RegisterSubmitInput; phase: "sending" | "unknown" };
+type Pending = { v: 1; userId: string; idempotencyKey: string; sessionId: string; tableName: string; sale: RegisterSubmitInput; phase: "sending" | "unknown"; split?: SplitPayPart }; // POS P2.5U ▸ + split (ใบแยกบิล) ◂
 
 /** คีย์ storage ของคำขอเช็คบิลโต๊ะที่ยังไม่รู้ผล — ระบบ + สาขา + ผู้ใช้ */
 export const tablePendingKey = (systemId: string, unitId: string, userId: string) => `pos-tbl-pending:${systemId}:${unitId}:${userId}`;
@@ -88,6 +89,12 @@ type Props = {
   onFinished: (kind: "paid" | "closed" | "aborted") => void;
   /** fix 1 F4: โหมดพร้อมเพย์ที่แจ้งจากโต๊ะ — แตะวิธีจ่ายอื่น ⇒ ผู้เรียกปิดกล่องนี้แล้วเปิดเช็คบิลปกติ (มีใบขอรับเงิน) */
   onSwitchToNormal?: () => void;
+  /**
+   * POS P2.5U ▸ มติ 7: จ่าย "ใบ" ของแผนแยกบิล — cart {lines: [], tableSplitPartId, memberId (บังคับเมื่อใบมีสมาชิก), couponCode?} · submit + expectedSplitVersion
+   * = quote.split.version (ไม่มี expectedTableItemsHash) · ไม่มีส่วนลดท้ายบิล (อยู่บนแผน) · คูปองเฉพาะใบที่มีสมาชิก · ชิปหัวจอ "บิล n จาก N · โต๊ะ X" ·
+   * TABLE_SPLIT_PART_PAID / VERSION_CHANGED / TABLE_SPLIT_NOT_FOUND / TABLE_ITEMS_CHANGED = toast แล้วกลับแผงแยกบิล (onFinished("closed")) ◂
+   */
+  split?: SplitPayPart | null;
 };
 
 type Sub = { kind: "discount" } | { kind: "coupon" } | { kind: "over" } | null;
@@ -120,7 +127,7 @@ export function TableCheckout(p: Props) {
       const { managerPin: _pin, managerUserId: _mgr, ...stored } = sale;
       void _pin;
       void _mgr;
-      const rec: Pending = { v: 1, userId: p.userId, idempotencyKey: sale.idempotencyKey, sessionId: p.sessionId, tableName: p.tableName, sale: stored, phase: ph };
+      const rec: Pending = { v: 1, userId: p.userId, idempotencyKey: sale.idempotencyKey, sessionId: p.sessionId, tableName: p.tableName, sale: stored, phase: ph, ...(p.split ? { split: p.split } : {}) }; // POS P2.5U ◂
       window.sessionStorage.setItem(storeKey, JSON.stringify(rec));
     } catch {
       /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
@@ -134,10 +141,16 @@ export function TableCheckout(p: Props) {
     }
   };
 
+  const sp = p.split ?? null; // POS P2.5U ▸ ใบแยกบิล (null = ทั้งโต๊ะ เดิม) ◂
   const cartInput = useCallback(
-    (bd: PriceDiscount | undefined, cc: string | undefined): RegisterQuoteInput => ({ lines: [], tableSessionId: p.sessionId, ...(bd ? { billDiscount: bd } : {}), ...(cc ? { couponCode: cc } : {}) }),
-    [p.sessionId],
+    (bd: PriceDiscount | undefined, cc: string | undefined): RegisterQuoteInput =>
+      sp
+        ? { lines: [], tableSplitPartId: sp.partId, ...(sp.memberId ? { memberId: sp.memberId } : {}), ...(cc && sp.memberId ? { couponCode: cc } : {}) } // POS P2.5U ▸ มติ 7 ◂
+        : { lines: [], tableSessionId: p.sessionId, ...(bd ? { billDiscount: bd } : {}), ...(cc ? { couponCode: cc } : {}) },
+    [p.sessionId, sp],
   );
+  // POS P2.5U ▸ มติ 1/7: แผนแยกบิล — รหัสที่ต้องกลับไปแผงแยกบิล (โหลดแผนใหม่) · ทั้งโต๊ะถูกปฏิเสธเพราะแผนเปิดอยู่ = ปิดกล่อง ◂
+  const SPLIT_BACK: ReadonlySet<string> = new Set(["TABLE_SPLIT_OPEN", "TABLE_SPLIT_PART_PAID", "TABLE_SPLIT_NOT_FOUND", ...(sp ? ["VERSION_CHANGED", "TABLE_ITEMS_CHANGED"] : [])]);
 
   /** quote ของโต๊ะ (ทุกครั้งที่ส่วนลด/คูปอง/PIN เปลี่ยน · หลัง TABLE_ITEMS_CHANGED / PRICE_CHANGED) */
   const requote = useCallback(async () => {
@@ -172,7 +185,7 @@ export function TableCheckout(p: Props) {
         return;
       }
       setQuote(null);
-      if (r.code === "TABLE_EMPTY" || r.code === "TABLE_SESSION_CLOSED" || r.code === "TABLE_NOT_FOUND") {
+      if (r.code === "TABLE_EMPTY" || r.code === "TABLE_SESSION_CLOSED" || r.code === "TABLE_NOT_FOUND" || SPLIT_BACK.has(r.code)) {
         p.onToast({ key: refusalMessageKey(r.code), ns: "register" });
         p.onFinished("closed");
         return;
@@ -240,12 +253,12 @@ export function TableCheckout(p: Props) {
       pendingRef.current = null;
       clearPending();
       setPhase("form");
-      if (r.code === "TABLE_ITEMS_CHANGED") {
+      if (r.code === "TABLE_ITEMS_CHANGED" && !sp) {
         p.onToast({ key: "checkout.itemsChanged", ns: "tables" });
         void requote();
         return;
       }
-      if (r.code === "TABLE_EMPTY" || r.code === "TABLE_SESSION_CLOSED" || r.code === "TABLE_NOT_FOUND") {
+      if (r.code === "TABLE_EMPTY" || r.code === "TABLE_SESSION_CLOSED" || r.code === "TABLE_NOT_FOUND" || SPLIT_BACK.has(r.code)) {
         p.onToast({ key: refusalMessageKey(r.code), ns: "register" });
         p.onFinished("closed");
         return;
@@ -270,6 +283,7 @@ export function TableCheckout(p: Props) {
   const confirm = (c: PayChoice) => {
     const q = quote;
     if (!q || !q.table || sendingRef.current || phase !== "form") return;
+    if (sp && !q.split) return; // POS P2.5U ▸ quote ของใบต้องมี split (version) ◂
     const due = q.grandTotalSatang;
     const tip = p.tipEnabled ? c.tipSatang : 0;
     const sum = c.payMethods.reduce((s, m) => s + m.amountSatang, 0);
@@ -283,7 +297,7 @@ export function TableCheckout(p: Props) {
       ...(cash ? { cashReceivedSatang: c.cashReceivedSatang } : {}),
       ...(tip > 0 ? { tipSatang: tip } : {}),
       expectedGrandTotalSatang: due,
-      expectedTableItemsHash: q.table.itemsHash,
+      ...(sp && q.split ? { expectedSplitVersion: q.split.version } : { expectedTableItemsHash: q.table.itemsHash }), // POS P2.5U ▸ มติ 7 ◂
       ...(p.staffToken ? { staffToken: p.staffToken } : {}),
       ...(pin ? { managerPin: pin.managerPin, managerUserId: pin.managerUserId } : {}),
     };
@@ -319,7 +333,7 @@ export function TableCheckout(p: Props) {
           changeSatang={done.result.changeSatang}
           payMethods={done.payMethods}
           onNext={() => {
-            p.onToast({ key: "checkout.done", ns: "tables", values: { table: p.tableName } });
+            p.onToast(sp ? { key: "split.partPaid", ns: "tables", values: { no: sp.partNo } } : { key: "checkout.done", ns: "tables", values: { table: p.tableName } }); // POS P2.5U ◂
             p.onFinished("paid");
           }}
           systemId={p.systemId}
@@ -339,6 +353,8 @@ export function TableCheckout(p: Props) {
   const quoteError: PayError | null = quoteErr ? { code: quoteErr, key: refusalMessageKey(quoteErr) } : null;
   const extras = (
     <div data-testid="pos-tbl-checkout-extras" className="flex flex-wrap items-center gap-2">
+      {/* POS P2.5U ▸ มติ 7: ใบแยกบิลไม่มีส่วนลดท้ายบิล (อยู่บนแผน) · คูปองเฉพาะใบที่มีสมาชิก ◂ */}
+      {!sp && (
       <button
         data-testid="pos-tbl-checkout-discount"
         type="button"
@@ -348,6 +364,8 @@ export function TableCheckout(p: Props) {
       >
         {billDiscount && quote ? t("checkout.discountSet", { amount: moneyText(quote.billDiscountSatang) }) : tr("actions.billDiscount")}
       </button>
+      )}
+      {(!sp || !!sp.memberId) && (
       <button
         data-testid="pos-tbl-checkout-coupon"
         type="button"
@@ -360,6 +378,7 @@ export function TableCheckout(p: Props) {
       >
         {couponCode ? t("checkout.couponSet", { code: couponCode }) : t("checkout.coupon")}
       </button>
+      )}
       {p.promptpayPreset && (
         <p data-testid="pos-tbl-checkout-preset" className="w-full text-[12.5px] text-[color:var(--color-ink-soft)]">
           {t("checkout.presetLocked")}
@@ -404,6 +423,7 @@ export function TableCheckout(p: Props) {
           memberSection={extras}
           intent={p.payIntent && !p.promptpayPreset ? { ...p.payIntent, systemId: p.systemId, unitId: p.unitId, cartKey: idemKey, discountOverCap: over } : null}
           taxInvoice={null}
+          splitChip={sp ? t("split.payChip", { no: quote?.split?.partNo ?? sp.partNo, of: quote?.split?.partCount ?? sp.partCount, table: p.tableName }) : null} // POS P2.5U ▸ มติ 7 ◂
           {...(p.promptpayPreset ? { initialMethod: "PROMPTPAY" as const, lockedMethod: { managerOnly: presetManagerOnly, onSwitch: () => p.onSwitchToNormal?.() } } : {})}
         />
       </div>

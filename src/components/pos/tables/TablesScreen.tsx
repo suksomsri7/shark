@@ -6,6 +6,8 @@
 //   ข้อมูล: registerTablesAction + registerTableRequestsAction ทุก 20 วิ ขณะเห็นจอ (ล้างตัวจับเวลาเมื่อออก) · กลับมาที่แท็บ = ดึงทันที
 //     แผง = registerTableDetailAction (โหลดใหม่ทุกรอบดึง) · ยอด = quoteRegisterCartAction({cart:{lines:[], tableSessionId}}) ใหม่เมื่อ itemsHash เปลี่ยน
 //   เช็คบิล = TableCheckout (จอชำระเดิม) · จองโต๊ะ = ReservationsDialog · ผูกสมาชิก = แผงสมาชิกของหน้าขาย (MemberPanel)
+//   POS P2.5U: แยกบิล = TableSplitDialog (15B/15C) → จ่ายทีละใบด้วย TableCheckout (split) แล้วกลับแผง · ย้าย/รวมโต๊ะ = แผ่นเลือก + ลากบนผัง (เมาส์เท่านั้น) ·
+//     ใบรายการ = TablePreBillDialog · ปุ่ม/ลากปิดเมื่อไม่มีคีย์ restaurant.session.move|merge (tableKeys จากหน้า)
 // 🔴 ไม่มีการคิดเงินในจอ — ยอดทุกตัวมาจากเซิร์ฟเวอร์ · ข้อความเวลา/นาทีวาดหลัง mount เท่านั้น (HF-418) · ข้อความผิดพลาดมาจาก refusalMessageKey / pos.tables.*
 // 🔴 ไฟล์ "use client": import โมดูล POS ได้แค่ *-shared · *-actions · device-id · staff-session (G9)
 
@@ -46,6 +48,14 @@ import { CancelItemDialog, CloseTableDialog, OpenTableDialog } from "./TableDial
 import { ReservationsDialog } from "./ReservationsDialog";
 import { readTablePending, TableCheckout, type TableToast } from "./TableCheckout";
 import { bkkClock, clockNow, newCheckoutKey, type FloorClock } from "./table-ui";
+// POS P2.5U ▸ แยกบิล · ย้าย/รวมโต๊ะ · ใบรายการ ◂
+import { registerMergeTablesAction, registerMoveTableAction, registerSplitDetailAction } from "@/lib/modules/pos/table-split-actions";
+import { TableSplitDialog } from "./TableSplitDialog";
+import { TablePreBillDialog } from "./TablePreBillDialog";
+import { TablePickDialog } from "./TablePickDialog";
+import { TableMergeConfirm, TableMergeChooser, TableMoveConfirm } from "./TableMoveMerge";
+import type { SplitPayPart } from "./table-split-ui";
+// ◂
 
 type Floor = Extract<RegisterTablesResult, { ok: true }>;
 type Detail = Extract<RegisterTableDetailResult, { ok: true }>;
@@ -71,6 +81,8 @@ export type TablesScreenProps = {
   promptpayId: string | null;
   tipEnabled: boolean;
   payIntent: { beamCard: boolean; manualRequiresManager: boolean; canManageShift: boolean; promptpayLink: string };
+  /** POS P2.5U ▸ มติ 1/8: คีย์ restaurant.session.move|merge ของผู้ใช้ที่สาขานี้ (ไม่ส่ง = ไม่มี) ◂ */
+  tableKeys?: { move: boolean; merge: boolean };
 };
 
 type Layer =
@@ -79,7 +91,14 @@ type Layer =
   | { kind: "close" }
   | { kind: "member" }
   | { kind: "reservations" }
-  | { kind: "checkout"; sessionId: string; tableName: string; preset: boolean; restore: Pending | null };
+  | { kind: "checkout"; sessionId: string; tableName: string; preset: boolean; restore: Pending | null; split?: SplitPayPart | null }
+  // POS P2.5U ▸ แยกบิล (focus = ใบที่เลือกตอนเปิด) · ใบรายการทั้งโต๊ะ · ย้าย (แผ่น/ยืนยัน) · รวม (แผ่น/ยืนยัน) ◂
+  | { kind: "split"; sessionId: string; tableName: string; focus: number | null }
+  | { kind: "prebill"; sessionId: string }
+  | { kind: "move" }
+  | { kind: "moveConfirm"; from: TableCard; to: TableCard }
+  | { kind: "merge"; into: TableCard; preselect: string[] }
+  | { kind: "mergeConfirm"; into: TableCard; froms: TableCard[] };
 
 const POLL_MS = 20_000;
 const TICK_MS = 30_000;
@@ -126,10 +145,16 @@ export function TablesScreen(p: TablesScreenProps) {
   // ═══════ ข้อความลอย ═══════
   const [toast, setToast] = useState<TableToast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = useCallback((m: TableToast) => {
+  // POS P2.5U ▸ มติ 8: toast ที่มีปุ่ม (TABLE_BUSY → "ใช้รวมโต๊ะแทน") — ค้างนานขึ้น · แตะได้ ◂
+  const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null);
+  const showToast = useCallback((m: TableToast, action?: { label: string; run: () => void }) => {
     setToast(m);
+    setToastAction(action ?? null);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 4000);
+    toastTimer.current = setTimeout(() => {
+      setToast(null);
+      setToastAction(null);
+    }, action ? 8000 : 4000);
   }, []);
   const msgText = (m: TableToast) => (m.ns === "tables" ? t(m.key, m.values) : tr(m.key, m.values));
   const errKey = (code: string): TableToast => ({ key: refusalMessageKey(code), ns: "register" });
@@ -273,7 +298,8 @@ export function TablesScreen(p: TablesScreenProps) {
   const [quote, setQuote] = useState<{ hash: string; q: RegisterQuote } | null>(null);
   const [quoteErr, setQuoteErr] = useState<string | null>(null);
   const quoteSeq = useRef(0);
-  const itemsHash = shownDetail && shownDetail.unpaidItemIds.length ? shownDetail.itemsHash : null;
+  // POS P2.5U ▸ มติ 1: แผนแยกบิลเปิดอยู่ = ไม่ quote ทั้งโต๊ะ (S ปฏิเสธ TABLE_SPLIT_OPEN) — แผงแสดง "ชำระทีละใบ · เหลือ ฿y" แทน ◂
+  const itemsHash = shownDetail && shownDetail.unpaidItemIds.length && !shownDetail.split ? shownDetail.itemsHash : null;
   /** สมาชิกของโต๊ะ (ผูก/ถอดแล้วยอดเปลี่ยนได้ — ส่วนลดระดับ) = ตัวกระตุ้น quote อีกตัว */
   const tableMemberKey = shownDetail?.session.member?.id ?? "";
   const requoteTable = useCallback(async () => {
@@ -303,6 +329,26 @@ export function TablesScreen(p: TablesScreenProps) {
     void requoteTable();
   }, [requoteTable]);
   const shownQuote = quote && itemsHash && quote.hash === itemsHash ? quote.q : null;
+  // POS P2.5U ▸ fix1 V2: แผนแยกบิลเปิดอยู่ = ยอดของแผงมาจาก SplitPlanView (registerSplitDetailAction · ค่าที่ S เก็บตอนบันทึกแผน) — โหลดใหม่เมื่อสรุปแผนเปลี่ยน ◂
+  const splitSum = shownDetail?.split ?? null;
+  const splitKey = splitSum && selSession ? `${selSession}:${splitSum.splitId}:${splitSum.partCount}:${splitSum.paidParts}:${splitSum.remainingSatang}` : "";
+  const [planTotals, setPlanTotals] = useState<{ key: string; v: { baseSatang: number; discountSatang: number; serviceChargeSatang: number; serviceChargeBp: number; totalSatang: number } } | null>(null);
+  useEffect(() => {
+    if (!splitKey || !selSession) return;
+    let live = true;
+    void registerSplitDetailAction({ systemId: p.systemId, unitId: p.unitId, tableSessionId: selSession })
+      .then((r) => {
+        if (!live || !r.ok || !r.split || r.split.status !== "OPEN") return;
+        const x = r.split;
+        setPlanTotals({ key: splitKey, v: { baseSatang: x.baseSatang, discountSatang: x.discountSatang, serviceChargeSatang: x.serviceChargeSatang, serviceChargeBp: x.serviceChargeBp, totalSatang: x.totalSatang } });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- splitKey รวม session + สรุปแผน
+  }, [splitKey]);
+  const shownPlan = planTotals && planTotals.key === splitKey ? planTotals.v : null;
 
   // ═══════ ดึงซ้ำทุก 20 วิ ขณะเห็นจอ ═══════
   const pollRef = useRef({ refreshFloor, loadDetail, selSession });
@@ -370,7 +416,7 @@ export function TablesScreen(p: TablesScreenProps) {
     if (pend) {
       const c = floor.tables.find((x) => x.sessionId === pend.sessionId);
       if (c) setSelectedId(c.id);
-      setLayer({ kind: "checkout", sessionId: pend.sessionId, tableName: pend.tableName, preset: false, restore: pend });
+      setLayer({ kind: "checkout", sessionId: pend.sessionId, tableName: pend.tableName, preset: false, restore: pend, split: pend.split ?? null }); // POS P2.5U ▸ + ใบแยกบิล ◂
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวเมื่อมีผังแรก
   }, [floor]);
@@ -418,7 +464,7 @@ export function TablesScreen(p: TablesScreenProps) {
       if (e.key !== "Escape" || e.isComposing) return;
       const s = escRef.current;
       if (s.layer) {
-        if (s.layer.kind === "checkout" || s.busy) return;
+        if (s.layer.kind === "checkout" || s.layer.kind === "split" || s.busy) return; // POS P2.5U ▸ แผงแยกบิลจัดการ Esc เอง (กล่องย่อยก่อน) ◂
         e.preventDefault();
         closeLayer();
       } else if (s.selectedId && !s.xl) {
@@ -496,6 +542,12 @@ export function TablesScreen(p: TablesScreenProps) {
     setLayerErr(null);
     try {
       const r = await registerCancelTableItemAction({ ...target(), itemId: item.id, reason });
+      if (!r.ok && r.code === "TABLE_SPLIT_OPEN") {
+        // POS P2.5U ▸ มติ 1: รายการอยู่ในแผนแยกบิลที่เปิดอยู่ = toast (ยกเลิกแผนก่อน) ◂
+        closeLayer();
+        showToast(errKey(r.code));
+        return;
+      }
       if (!r.ok) {
         // มติ 3: ถูกปฏิเสธตามกติกาเดิมของร้านอาหาร (VALIDATION) = เหตุผลภาษาไทยของเซิร์ฟเวอร์ · อื่น ๆ = คีย์
         setLayerErr(r.code === "VALIDATION" && r.message ? r.message : tr(refusalMessageKey(r.code)));
@@ -579,6 +631,95 @@ export function TablesScreen(p: TablesScreenProps) {
     setStaff(null);
     showToast({ key: "errors.staffTokenInvalid", ns: "register" });
   };
+
+  // ═══════ POS P2.5U ▸ แยกบิล · ย้าย/รวมโต๊ะ · ใบรายการ (มติ 1 5 7 8 9) ═══════
+  const canMove = !!p.tableKeys?.move;
+  const canMerge = !!p.tableKeys?.merge;
+  const openSplit = (c: TableCard, focus: number | null = null) => {
+    if (!c.sessionId) return;
+    openLayer({ kind: "split", sessionId: c.sessionId, tableName: c.name, focus });
+  };
+  /** จ่ายใบจบ/ถูกปฏิเสธ: โหลดแผงใหม่ — แผนยังเปิด = กลับแผงแยกบิล (ใบถัดไปที่ยังไม่จ่าย) · โต๊ะปิดแล้ว = toast "ชำระครบทุกใบ · โต๊ะ X ปิดแล้ว" (S ปิดโต๊ะเมื่อใบสุดท้าย — register.ts regSubmitSplitPart → closeWhenPaid) */
+  const afterSplitPay = async (sessionId: string, tableName: string, part: SplitPayPart, kind: "paid" | "closed" | "aborted") => {
+    await refreshFloor();
+    void refreshStatus();
+    let d: Detail | null = null;
+    try {
+      const r = await registerTableDetailAction({ systemId: p.systemId, unitId: p.unitId, tableSessionId: sessionId });
+      d = r.ok ? r : null;
+    } catch {
+      d = null;
+    }
+    if (d && selSession === sessionId) setDetail({ sessionId, data: d });
+    if (d && d.session.status === "OPEN" && d.split) {
+      setLayer({ kind: "split", sessionId, tableName, focus: kind === "paid" ? part.partNo + 1 : part.partNo });
+      return;
+    }
+    closeLayer();
+    if (kind === "paid") showToast(d && d.session.status !== "OPEN" ? { key: "split.allPaidClosed", ns: "tables", values: { table: tableName } } : { key: "split.allPaid", ns: "tables" });
+  };
+  const moveTo = async (from: TableCard, to: TableCard) => {
+    if (busy || !from.sessionId) return;
+    setBusy(true);
+    setLayerErr(null);
+    try {
+      const r = await registerMoveTableAction({ ...target(), tableSessionId: from.sessionId, toTableId: to.id });
+      if (!r.ok) {
+        closeLayer();
+        if (r.code === "TABLE_BUSY") {
+          // มติ 8: โต๊ะปลายทางมีลูกค้า → toast + ปุ่ม "ใช้รวมโต๊ะแทน" (แผ่นรวมที่เลือกโต๊ะนั้นไว้)
+          showToast(errKey(r.code), canMerge ? { label: t("move.useMerge"), run: () => openLayer({ kind: "merge", into: from, preselect: [to.id] }) } : undefined);
+        } else showToast(errKey(r.code));
+        await refreshFloor();
+        return;
+      }
+      closeLayer();
+      showToast({ key: "move.kitchenNote", ns: "tables" });
+      selectSessionAfter.current = from.sessionId; // แผงตามโต๊ะใหม่เมื่อผังรอบถัดไปมาถึง
+      await refreshFloor();
+    } catch {
+      closeLayer();
+      showToast(errKey("UNKNOWN"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const mergeInto = async (into: TableCard, froms: TableCard[]) => {
+    if (busy || !into.sessionId || !froms.length) return;
+    setBusy(true);
+    setLayerErr(null);
+    try {
+      const r = await registerMergeTablesAction({ ...target(), intoSessionId: into.sessionId, fromSessionIds: froms.flatMap((c) => (c.sessionId ? [c.sessionId] : [])) });
+      closeLayer();
+      if (!r.ok) {
+        showToast(errKey(r.code)); // TABLE_HAS_DRAFT · TABLE_SPLIT_OPEN · PERMISSION_DENIED …
+        await refreshFloor();
+        return;
+      }
+      showToast({ key: "merge.done", ns: "tables" });
+      setSelectedId(into.id);
+      await reloadAll();
+    } catch {
+      closeLayer();
+      showToast(errKey("UNKNOWN"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** แผ่นย้าย: โต๊ะที่จองไว้ = ถามก่อน · อื่น ๆ = ย้ายทันที */
+  const pickMoveTarget = (to: TableCard) => {
+    if (!selCard) return;
+    if (to.reservation) openLayer({ kind: "moveConfirm", from: selCard, to });
+    else void moveTo(selCard, to);
+  };
+  /** ลากบนผัง (เมาส์เท่านั้น): วางบนโต๊ะว่าง = ยืนยันย้าย · วางบนโต๊ะที่มีลูกค้า = ยืนยันรวม (เข้าโต๊ะที่วาง) */
+  const dropCard = (from: TableCard, to: TableCard) => {
+    if (busy || from.id === to.id || !from.sessionId || to.state === "INACTIVE") return;
+    if (to.sessionId) {
+      if (canMerge) openLayer({ kind: "mergeConfirm", into: to, froms: [from] });
+    } else if (canMove) openLayer({ kind: "moveConfirm", from, to });
+  };
+  // ◂
 
   // ── เช็คบิลได้ไหม (เหตุผลแสดงใต้ปุ่ม) ──
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
@@ -669,6 +810,17 @@ export function TablesScreen(p: TablesScreenProps) {
       onUnlinkMember={() => void linkMember(null)}
       onViewBooking={() => openLayer({ kind: "reservations" })}
       onClose={xl ? undefined : closePanel}
+      // POS P2.5U ▸ มติ 1: ย้าย/รวม (คีย์) · แยกบิล (pos.sale.create) · ใบรายการ ◂
+      split={{
+        canMove,
+        canMerge,
+        canSplit: p.limits.canSell,
+        onMove: () => openLayer({ kind: "move" }),
+        onMerge: () => openLayer({ kind: "merge", into: selCard, preselect: [] }),
+        onSplit: () => openSplit(selCard),
+        onPreBill: () => selCard.sessionId && openLayer({ kind: "prebill", sessionId: selCard.sessionId }),
+        plan: shownPlan, // fix1 V2 ◂
+      }}
     />
   ) : null;
   const panel = panelOf(false);
@@ -759,9 +911,18 @@ export function TablesScreen(p: TablesScreenProps) {
             userId={p.userId}
             sessionId={layer.sessionId}
             tableName={layer.tableName}
-            memberChip={memberInfo && shownDetail?.session.id === layer.sessionId ? tm("pay.chip", { name: memberInfo.name, tier: memberInfo.tier ?? tm("chip.general") }) : null}
-            memberAttached={!!memberInfo}
-            initialQuote={shownDetail?.session.id === layer.sessionId ? shownQuote : null}
+            memberChip={
+              layer.split // POS P2.5U ▸ ใบแยกบิล = สมาชิกของใบ (ไม่ใช่ของโต๊ะ) ◂
+                ? layer.split.memberId
+                  ? (layer.split.memberName ?? (memberInfo && memberInfo.id === layer.split.memberId ? memberInfo.name : null))
+                  : null
+                : memberInfo && shownDetail?.session.id === layer.sessionId
+                  ? tm("pay.chip", { name: memberInfo.name, tier: memberInfo.tier ?? tm("chip.general") })
+                  : null
+            }
+            memberAttached={layer.split ? !!layer.split.memberId : !!memberInfo}
+            initialQuote={!layer.split && shownDetail?.session.id === layer.sessionId ? shownQuote : null}
+            split={layer.split ?? null}
             promptpayPreset={layer.preset}
             promptpayId={p.promptpayId}
             tipEnabled={p.tipEnabled}
@@ -776,7 +937,12 @@ export function TablesScreen(p: TablesScreenProps) {
             restore={layer.restore}
             onToast={showToast}
             onStaffTokenDead={staffTokenDead}
-            onFinished={() => {
+            onFinished={(kind) => {
+              // POS P2.5U ▸ มติ 7: ใบแยกบิล = กลับแผงแยกบิล (ใบถัดไป) หรือ toast ครบทุกใบ ◂
+              if (layer.split) {
+                void afterSplitPay(layer.sessionId, layer.tableName, layer.split, kind);
+                return;
+              }
               closeLayer();
               void reloadAll();
               void refreshStatus();
@@ -785,6 +951,68 @@ export function TablesScreen(p: TablesScreenProps) {
             onSwitchToNormal={() => setLayer({ kind: "checkout", sessionId: layer.sessionId, tableName: layer.tableName, preset: false, restore: null })}
           />
         );
+      // ═══════ POS P2.5U ▸ แยกบิล · ใบรายการ · ย้าย · รวม ═══════
+      case "split":
+        return shownDetail && shownDetail.session.id === layer.sessionId ? (
+          <TableSplitDialog
+            key={`${layer.sessionId}:${layer.focus ?? 0}`}
+            systemId={p.systemId}
+            unitId={p.unitId}
+            deviceId={deviceId}
+            sessionId={layer.sessionId}
+            tableName={layer.tableName}
+            detail={shownDetail}
+            quote={shownQuote}
+            serviceChargeBp={floor?.serviceCharge.posBp ?? 0}
+            canSell={p.limits.canSell}
+            payBlock={checkoutBlock}
+            focusPart={layer.focus}
+            printer={printer}
+            locale={locale.startsWith("en") ? "en" : "th"}
+            onPay={(part) => setLayer({ kind: "checkout", sessionId: layer.sessionId, tableName: layer.tableName, preset: false, restore: null, split: part })}
+            onToast={showToast}
+            onChanged={() => void reloadAll()}
+            onClose={closeLayer}
+          />
+        ) : (
+          <div data-testid="pos-tbl-split-loading" className="fixed inset-0 z-50 grid place-items-center bg-[color:var(--color-ink)]/30">
+            <span className="rounded-[14px] bg-[color:var(--color-surface)] px-5 py-3 text-[14px]">{t("split.loading")}</span>
+          </div>
+        );
+      case "prebill":
+        return <TablePreBillDialog systemId={p.systemId} unitId={p.unitId} deviceId={deviceId} target={{ tableSessionId: layer.sessionId }} printer={printer} locale={locale.startsWith("en") ? "en" : "th"} onToast={showToast} onClose={closeLayer} />;
+      case "move":
+        return selCard ? (
+          <TablePickDialog
+            systemId={p.systemId}
+            unitId={p.unitId}
+            busy={busy}
+            sheetId="pos-tbl-move-sheet"
+            title={t("move.title")}
+            hint={t("move.pickTable")}
+            empty={t("move.empty")}
+            filter={(c) => !c.sessionId && c.id !== selCard.id}
+            onPick={pickMoveTarget}
+            onClose={closeLayer}
+          />
+        ) : null;
+      case "moveConfirm":
+        return (
+          <TableMoveConfirm
+            from={layer.from}
+            to={layer.to}
+            reservedAt={layer.to.reservation && now !== null ? bkkClock(layer.to.reservation.at) : null}
+            busy={busy}
+            error={layerErr}
+            onConfirm={() => void moveTo(layer.from, layer.to)}
+            onClose={closeLayer}
+          />
+        );
+      case "merge":
+        return <TableMergeChooser into={layer.into} tables={floor?.tables ?? []} preselect={layer.preselect} busy={busy} error={layerErr} onConfirm={(froms) => void mergeInto(layer.into, froms)} onClose={closeLayer} />;
+      case "mergeConfirm":
+        return <TableMergeConfirm into={layer.into} froms={layer.froms} busy={busy} error={layerErr} onConfirm={() => void mergeInto(layer.into, layer.froms)} onClose={closeLayer} />;
+      // ◂
     }
   })();
 
@@ -823,6 +1051,7 @@ export function TablesScreen(p: TablesScreenProps) {
       onCleared={(c) => void clearTable(c)}
       onReservations={() => openLayer({ kind: "reservations" })}
       alerts={xl ? undefined : alertsNode(true)}
+      drag={canMove || canMerge ? { canMove, canMerge, onDrop: dropCard } : null} // POS P2.5U ▸ มติ 8: ลากย้าย/รวม (มีคีย์เท่านั้น) ◂
     />
   );
 
@@ -882,11 +1111,27 @@ export function TablesScreen(p: TablesScreenProps) {
       {toast && (
         <div
           data-testid="pos-tbl-toast"
-          className="pointer-events-none fixed inset-x-4 bottom-[max(24px,env(safe-area-inset-bottom))] z-[80] mx-auto flex max-w-[520px] items-center gap-3 rounded-[16px] bg-[color:var(--color-ink)] px-[18px] py-[14px] text-[14px] leading-[1.5] text-[color:var(--color-surface)] shadow-xl"
+          className={`${toastAction ? "pointer-events-auto" : "pointer-events-none"} fixed inset-x-4 bottom-[max(24px,env(safe-area-inset-bottom))] z-[80] mx-auto flex max-w-[520px] items-center gap-3 rounded-[16px] bg-[color:var(--color-ink)] px-[18px] py-[14px] text-[14px] leading-[1.5] text-[color:var(--color-surface)] shadow-xl`}
           role="status"
           aria-live="polite"
         >
           <span className="min-w-0 flex-1">{msgText(toast)}</span>
+          {/* POS P2.5U ▸ มติ 8: ปุ่มของ toast (TABLE_BUSY → ใช้รวมโต๊ะแทน) ◂ */}
+          {toastAction && (
+            <button
+              data-testid="pos-tbl-toast-action"
+              type="button"
+              className="h-11 shrink-0 rounded-[12px] border border-[color:var(--color-surface)] px-3 text-[13.5px] font-bold"
+              onClick={() => {
+                const run = toastAction.run;
+                setToast(null);
+                setToastAction(null);
+                run();
+              }}
+            >
+              {toastAction.label}
+            </button>
+          )}
         </div>
       )}
     </div>

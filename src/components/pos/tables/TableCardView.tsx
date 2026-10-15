@@ -22,6 +22,8 @@ type Props = {
   onCleared: () => void;
   onViewBooking: () => void;
   busy: boolean;
+  /** POS P2.5U ▸ มติ 8: ลากย้าย/รวม (TableFloor ตัดสินว่าวางได้ไหม) · null = ปิด ◂ */
+  drag?: { source: boolean; over: boolean; onStart: () => void; onEnd: () => void; onOver: () => boolean; onLeave: () => void; onDrop: () => void } | null;
 };
 
 const FRAME: Record<TableCard["state"], string> = {
@@ -41,7 +43,7 @@ const LABEL_TONE: Record<TableCard["state"], string> = {
   INACTIVE: "text-[color:var(--color-muted)] font-normal",
 };
 
-export function TableCardView({ card: c, selected, now, onPick, onOpen, onCleared, onViewBooking, busy }: Props) {
+export function TableCardView({ card: c, selected, now, onPick, onOpen, onCleared, onViewBooking, busy, drag }: Props) {
   const t = useTranslations("pos.tables");
   const seated = !!c.sessionId;
   const mins = now !== null && c.openedAt ? minutesSince(c.openedAt, now) : null;
@@ -133,15 +135,52 @@ export function TableCardView({ card: c, selected, now, onPick, onOpen, onCleare
         type="button"
         aria-pressed={selected}
         className={`flex h-full min-h-[136px] w-full flex-col rounded-[16px] px-3.5 pb-3 pt-3 text-left transition-colors xl:min-h-[150px] ${FRAME[c.state]} ${
-          selected ? "outline outline-[2.5px] outline-offset-[-1px] outline-[color:var(--color-accent)]" : ""
-        }`}
+          selected || drag?.over ? "outline outline-[2.5px] outline-offset-[-1px] outline-[color:var(--color-accent)]" : ""
+        } ${drag?.source ? "cursor-grab active:cursor-grabbing" : ""}`}
         onClick={onPick}
+        // POS P2.5U ▸ มติ 8: HTML5 drag (เมาส์เท่านั้น — นิ้วไม่ยิง dragstart) ◂
+        draggable={drag?.source ? true : undefined}
+        onDragStart={
+          drag?.source
+            ? (e) => {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", c.id);
+                drag.onStart();
+              }
+            : undefined
+        }
+        onDragEnd={drag ? () => drag.onEnd() : undefined}
+        onDragOver={
+          drag
+            ? (e) => {
+                if (drag.onOver()) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }
+              }
+            : undefined
+        }
+        onDragLeave={drag ? () => drag.onLeave() : undefined}
+        onDrop={
+          drag
+            ? (e) => {
+                e.preventDefault();
+                drag.onDrop();
+              }
+            : undefined
+        }
       >
         <span className="flex items-baseline justify-between gap-2">
           <span className="truncate text-[17px] font-bold text-[color:var(--color-ink)]">{c.name}</span>
           <span className={`shrink-0 whitespace-nowrap text-[12.5px] ${LABEL_TONE[c.state]}`}>{t(`state.${c.state}`)}</span>
         </span>
         <span className="mt-2 flex min-h-[36px] flex-col text-[12.5px] leading-[1.45] text-[color:var(--color-ink-soft)]">{sub}</span>
+        {/* POS P2.5U ▸ มติ 1: ชิป "แยกบิล 2/4" จาก split ของการ์ดผัง (registerTables) ◂ */}
+        {c.split && (
+          <span data-testid={`pos-tbl-card-split-${c.name}`} className="mt-1 inline-flex h-6 w-fit items-center rounded-[7px] border border-[color:var(--color-accent)] px-2 text-[12px] font-bold text-[color:var(--color-accent)]">
+            {t("split.floorBadge", { paid: c.split.paidParts, count: c.split.partCount })}
+          </span>
+        )}
         <span className="mt-auto flex items-baseline justify-between gap-2 pt-2">
           <span className="text-[12.5px] text-[color:var(--color-muted)]">{seated ? minsText : c.state === "NEEDS_CLEARING" ? t("card.seats", { n: c.seats }) : ""}</span>
           {seated && (
