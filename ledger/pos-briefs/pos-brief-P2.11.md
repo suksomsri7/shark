@@ -207,3 +207,14 @@ Other P2.11-tagged lines: **P2.11U** P2.2U branch-row editor cell `pos-P2.2U.md:
 8. **Q7 → yes in U** (branch-limited managers get 06 in branch mode; S enforces via PR4/PR5) + owner line (reverses HF-POS-PAGES decision 1 — owner confirms).
 9. **Sequencing/boundaries (Q8/Q9)**: tree **c** in parallel with P2.9b (tree b); P2.11 S may touch `catalog*.ts`, `reports.ts`, `report-overview.ts`, `receipt*.ts` (smallest marked hunk), settings readers/writers, messages, the new suite; **never** `service.ts`, `register*.ts`, `tender*.ts`, `refund*.ts`, `account-bridge.ts`, `outbox-consumers.ts`, `account/**` (lane A); builder merges `origin/session/pos` before final gates. HF-FU not first.
 10. **Gates** = §7 regression set (+ `qc-pos-p2.9` 62 and `qc-pos-p2.5` 49 at the merge point) · hunter at merge (money lane: price save paths incl. permission bypass, channel report sums vs bills, receipt identity) · controller visuals none for S (U card).
+
+### Rulings on the oracle's CONTROLLER-DECISION items (account B, 15 Oct 03:1xZ · oracle `wip/pos-p2.11-oracle` 5576c15b · 31 checks · red-before 7/31) — binding
+11. **Audit after a branch-scoped save** = the whole stored set (kept out-of-reach rows included) — accepted (truthful audit; before/after symmetric).
+12. **Editable rows omitted from a save are deleted** (full replace stays; the client's `keep` resends them) — accepted; only out-of-reach rows are preserved.
+13. **Report fixtures move `createdAt`/`paidAt` by raw SQL** on the suite's own bills only — accepted as a fixture exception to ruling 7.
+14. **RN4 second POS without a book** — accepted; the per-branch receipt writer works for any POS system (book-less included).
+15. **Writer refusals** as encoded: unknown/archived/unlinked/other-shop unit ⇒ VALIDATION on `unitId`; `taxBranchNo` = OWNER or all-branch only (an A+B manager cannot) — accepted (= ruling 4).
+16. **`copyUnitPrices` / `unitPriceMatrix` / `reportChannels` semantics** (incl. `sharePct`) as encoded in the names table — accepted; the builder implements the oracle's definitions.
+17. **FU2 cleanup lives in `catalog.ts`** (`qc-pos-p2.3` ST3 single writer) — accepted.
+18. **`qc-pos-p2.2` ST1 edit approved** (FU1): own `test(qc-pos-p2.2)` commit, dated marker `// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.11 FU1 …)`, listed in the notes; p2.2 must stay 42/42.
+19. Drift accepted: the second private branch→inventory copy in `recipe-actions.ts:150–158` is removed too (SK1 "exported once"); SK2 sets the base price with `setPrice`.
