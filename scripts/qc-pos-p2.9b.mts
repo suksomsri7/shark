@@ -104,6 +104,8 @@ const CHECKS: readonly Def[] = [
   D("P10", "X2", "[fix2 มติ 1 · R2 F1] ค้นด้วยสมาชิก A + ชื่อที่ตรงมัดจำของสมาชิก B ด้วย → แถวของ B ไม่มียอด · มัดจำของ A และของสมาชิกที่ถูกรวมเข้า A มียอด"),
   D("A9", "X4", "[fix2 มติ 2 · hunter N1] มัดจำ ฿1,070 (VAT 70) ตอนจด VAT → เลิกจด → ใช้ ฿1,050 แล้ว ฿20 → 2110 สุทธิ 0 · Σ VAT ที่ปล่อย 70 · แบบคืนเงิน ฿20 ที่เหลือแทน → 2110 สุทธิ 0 · Σ 70"),
   D("P11", "X2", "[fix2 มติ 3 · hunter N2] มัดจำ walk-in ที่มีเบอร์: ค้น / รายละเอียดบิล / ใบเสร็จ ไม่มี 4 หลักท้าย (เบอร์ปิดหมดเว้น 3 ตัวแรก · ไม่มี phoneLast4) · ผิด 5 ครั้ง → DEPOSIT_LOCKED · ครั้งที่ 6 ถูกก็ยังถูกปฏิเสธจนพ้นเวลาล็อก · ยอดไม่ขยับ"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 3 · มติรอบแก้ 2 · R3 F2 / hunter F1) ◂
+  D("P12", "X2", "[fix3 มติ 2 · มติ 19 แก้] ค้นด้วยเลข 4 หลัก (= 4 หลักท้ายของเบอร์) → ไม่พบมัดจำจากเบอร์ · ตัวนับผิด/ล็อกไม่ขยับ · หน้าขายส่ง 4 หลักถูก → ผ่านครั้งแรก"),
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[§7 มติ 2] scripts/pos-sale-contract.json sha256 = 72afb258… (CD2-A ไม่เปลี่ยนสัญญา)"),
   D("L2", "PAR", "[§7 มติ 11 HF-TX] ผู้เรียก createSale( ใน src ต่อไฟล์ = ฐาน e7b05787 (ใบรับผ่าน regCreateSale)"),
@@ -1930,6 +1932,12 @@ async function runDb() {
           const ap = await dtxOf("A9u", "APPLY");
           const n = await allNet([DP.A9u.receiptSaleId, b1.saleId, b2.saleId]);
           if (sum(ap.map((t) => Number(t.vatSatang))) !== 7_000 || n["2110"]) p.push(`ใช้ครบ: Σ APPLY VAT ${sum(ap.map((t) => Number(t.vatSatang)))} (คาด 7000) · 2110 สุทธิ ${n["2110"] ?? 0} ${short(n)}`);
+          // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.9b fix 3 มติ 1 · R3 F1): บิลสุดท้ายที่ทุกบรรทัดบัญชีเป็น 0 ต้องไม่ทำให้คิวค้าง — pos.sale.paid ของบิลในชุดนี้ DONE ทุกตัว + มีเอกสารขายของบิลสุดท้าย ◂
+          const evs = await events("pos.sale.paid", (x) => [DP.A9u.receiptSaleId, b1.saleId, b2.saleId].includes(x.saleId));
+          const notDone = evs.filter((e) => e.status !== "DONE").map((e) => `${String(e.payload?.saleId ?? "").slice(-4)}:${e.status}/${e.attempts ?? "?"}`);
+          if (evs.length !== 3 || notDone.length) p.push(`pos.sale.paid ${evs.length} ตัว · ไม่ DONE ${notDone.join(",") || "-"}`);
+          const doc2 = await P.accountDocument.findFirst({ where: { tenantId: T, refType: "PosSale", refId: b2.saleId } }).catch(() => null);
+          if (!doc2) p.push("ไม่มีเอกสารขายของบิลสุดท้าย (฿20)");
         }
       }
       if (DP.A9r) {
@@ -1990,6 +1998,27 @@ async function runDb() {
       if (String(db[0]?.phoneMasked ?? "").replace(/\D/g, "").endsWith(last4)) p.push("PosDeposit.phoneMasked มี 4 หลักท้าย");
     }
     chk("P11", p.length === 0, "ไม่มี 4 หลักท้ายในตัวอ่าน · ผิด 5 = DEPOSIT_LOCKED · ถูกระหว่างล็อก = ปฏิเสธ", FXB(joinP(p)));
+  }
+
+  {
+    // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 3 มติ 2): P12 — 4 หลักท้ายเป็นความลับยืนยันตอนใช้เท่านั้น (ค้นด้วยเลข 4 หลักไม่พบ · ไม่แตะตัวนับ) ◂
+    const p: string[] = [];
+    await take("P12", "A", 4_000, walkIn("ไม่ค้นด้วยเบอร์"));
+    if (!DP.P12 || !DP.P12.phone) p.push("ไม่มีมัดจำ P12");
+    else {
+      const last4 = DP.P12.phone.slice(-4);
+      const ctr = async () => ((await q(`SELECT "phoneFailedCount" AS n, "phoneLockedUntil" AS l FROM "PosDeposit" WHERE id = $1`, DP.P12!.id))[0] ?? null) as Any;
+      const c0 = await ctr();
+      const r = await call(depMod, "registerDepositLookup", ctxOf("A"), owner, { query: last4 });
+      const rows: Any[] = Array.isArray(r?.deposits) ? r.deposits : [];
+      if (!(r?.ok === true || refused(r, "VALIDATION")) || rows.some((x) => x?.id === DP.P12!.id)) p.push(`ค้น "${last4}" → ${codeOf(r)} · พบมัดจำ P12 ${rows.some((x) => x?.id === DP.P12!.id)}`);
+      const c1 = await ctr();
+      if (!c0 || Number(c1?.n) !== Number(c0.n) || Number(c1?.n) !== 0 || c1?.l) p.push(`ตัวนับ ${c0?.n}→${c1?.n} ล็อก ${c1?.l ?? "-"}`);
+      const cart = { lines: [{ name: `ของ P12 ${RAND}`, qty: 1, unitPriceSatang: 4_000 }] };
+      const a = await regSubmit(cart, key("p12"), [{ type: "DEPOSIT", amountSatang: 4_000, depositId: DP.P12.id, phoneLast4: last4 }]);
+      if (a?.ok !== true) p.push(`หน้าขาย 4 หลักถูก (ครั้งแรก) → ${codeOf(a)} ${short(a?.message ?? "", 60)}`);
+    }
+    chk("P12", p.length === 0, "ค้นด้วยเลข 4 หลักไม่พบจากเบอร์ · ตัวนับไม่ขยับ · 4 หลักถูกผ่านครั้งแรก", FXB(joinP(p)));
   }
 
   // ════════ L4 บิลไม่มีมัดจำ ════════
