@@ -9,7 +9,7 @@ import type { ApiActor } from "@/lib/api/actor";
 import { acceptOrder, cancelOrder, getOrder, handOver, ingestOrder, listOrders, markPreparing, markReady, payOrder, rejectOrder } from "../../order";
 import { ORDER_FULFILMENTS, ORDER_INPUT_PAYMENT_STATES, ORDER_REJECT_REASONS, ORDER_START_STATUSES, ORDER_STATUSES } from "../../order-shared";
 import { posRegisterActorOf } from "../actor";
-import { posData } from "../http-errors";
+import { posData, posResult } from "../http-errors";
 import { definePosOp, POS_SCOPES, type ApiOp } from "../op";
 import { posOrderUnit, requirePosUnit } from "../units";
 import { posOpServiceKey } from "./sales";
@@ -265,7 +265,8 @@ const ordersPay = definePosOp({
   auditTarget: orderTarget,
   async handler({ actor, params, input, idempotencyKey, requestId }) {
     const unitId = await posOrderUnit(actor, params.id ?? "", input.unitId);
-    return posData(
+    // POS P2.13 ▸ fix1 (OR4): ซองเดียวทุกครั้ง {saleId, duplicated} — posData ของผลฟิลด์เดียว = สตริง saleId ตอนจ่ายครั้งแรก แต่เป็นวัตถุตอนเล่นซ้ำ ◂
+    const r = posResult(
       await payOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), {
         id: params.id ?? "",
         idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId),
@@ -273,6 +274,7 @@ const ordersPay = definePosOp({
         ...(input.cashReceivedSatang !== undefined ? { cashReceivedSatang: input.cashReceivedSatang } : {}),
       }),
     );
+    return { saleId: r.saleId, duplicated: r.duplicated === true };
   },
 });
 

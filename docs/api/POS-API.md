@@ -61,7 +61,7 @@ Conventions that apply to every operation:
 - **`GET /sales`** answers the bills of the day in `data` and `page` next to it, plus `date`, `counts` and `summary` at the top level.
 - **`GET /products`** answers the products in `data`, `page` and `nextCursor` at the top level.
 - **CSV.** 11 report operations render CSV when asked with `Accept: text/csv`.
-- **Writes** answer the record they made or changed: `POST /sales` -> `{ saleId, receiptNo, grandTotalSatang, changeSatang, duplicated }`, `POST /sales/{id}/refund` -> `{ refund, sale }`, `POST /orders` -> `{ orderId, duplicated, saleId }`.
+- **Writes** answer the record they made or changed: `POST /sales` -> `{ saleId, receiptNo, grandTotalSatang, changeSatang, duplicated }`, `POST /sales/{id}/refund` -> `{ refund, sale }`, `POST /orders` -> `{ orderId, duplicated, saleId }`, `POST /orders/{id}/pay` -> `{ saleId, duplicated }`.
 
 ## Error codes
 
