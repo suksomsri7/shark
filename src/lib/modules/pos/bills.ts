@@ -38,6 +38,7 @@ import {
   type BillStatusFilter,
   type BillsPageData,
   type BillsPageDataResult,
+  type BillsSummary, // POS P2.12 ▸ CH3 ◂
   type BillsRefusal,
   type BillsRefusalCode,
   type BillVoidBlockedReason,
@@ -162,7 +163,7 @@ const emptyPage = (x: CleanQuery): BillsPageData => ({
   ok: true,
   date: x.date,
   counts: { all: 0, paid: 0, voided: 0, refunded: 0, offShiftCash: 0 },
-  summary: { netSatang: 0, billCount: 0, storeCount: 0, onlineCount: 0, avgSatang: 0, yesterdayAvgSatang: 0 },
+  summary: { netSatang: 0, billCount: 0, storeCount: 0, onlineCount: 0, avgSatang: 0, yesterdayAvgSatang: 0, channelCounts: {} }, // POS P2.12 ▸ CH3 ◂
   items: [],
   total: 0,
   page: x.page,
@@ -231,7 +232,7 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
     };
     const today = liveStats(rows);
     const yesterday = liveStats(yRows);
-    const summary = { netSatang: today.net, billCount: today.count, storeCount: today.store, onlineCount: today.online, avgSatang: today.avg, yesterdayAvgSatang: yesterday.avg };
+    const summary: BillsSummary = { netSatang: today.net, billCount: today.count, storeCount: today.store, onlineCount: today.online, avgSatang: today.avg, yesterdayAvgSatang: yesterday.avg, channelCounts: {} };
 
     // ลูกค้า (สมาชิก) ของบิลวันนี้ — ใช้ทั้งค้นหาและแสดงผล
     const memberIds = [...new Set(rows.map((r) => r.memberId).filter((m): m is string => !!m))];
@@ -261,6 +262,8 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
       x.status === "ALL" ? true : x.status === "OFF_SHIFT_CASH" ? offShift(r) : r.status === x.status;
     // POS P2.1 ▸ R11: ช่องทางขายของทุกแถว (บิลเดิม = ช่องทางปริยายของสาขา) — ใช้ทั้งตัวกรอง salesChannelId และแสดงผล ◂
     const chOf = await saleChannelResolver(prisma, tenantId, rows);
+    // POS P2.12 ▸ CH3: บิล PAID+REFUNDED ต่อรหัสช่องทาง (ชุดเดียวกับ summary.billCount) ◂
+    for (const r of rows) if (r.status === "PAID" || r.status === "REFUNDED") summary.channelCounts[chOf(r).code] = (summary.channelCounts[chOf(r).code] ?? 0) + 1;
     const filtered = rows
       .filter((r) => matchesStatus(r) && (!x.channel || r.sourceModule === x.channel) && (!x.salesChannelId || chOf(r).id === x.salesChannelId) && (!x.staffUserId || r.soldByUserId === x.staffUserId) && matchesQ(r))
       .sort((p, n) => timeOf(n).getTime() - timeOf(p).getTime() || (n.id < p.id ? -1 : n.id > p.id ? 1 : 0));
@@ -373,7 +376,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       }),
       prisma.posSale.findMany({
         where: { tenantId, docType: "REFUND", refSaleId: sale.id },
-        select: { id: true, receiptNo: true, grandTotalSatang: true, createdAt: true, paidAt: true, reasonCode: true, note: true, soldByUserId: true },
+        select: { id: true, receiptNo: true, grandTotalSatang: true, createdAt: true, paidAt: true, reasonCode: true, note: true, soldByUserId: true, channelCommissionSatang: true, channelCommissionVatSatang: true }, // POS P2.12 ▸ CH2 ◂
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       }),
       prisma.auditLog.findMany({
@@ -470,6 +473,13 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       payout: sale.channelPayout ?? "DIRECT",
       ...(seeCommission ? { commissionSatang: sale.channelCommissionSatang, commissionVatSatang: sale.channelCommissionVatSatang } : {}),
     };
+    // POS P2.12 ▸ CH2 (P2.1U F5): ช่องทางหลังหักใบคืนเงินที่เก็บ (ส่วนค่าคอมฯ ของใบคืน = คอลัมน์สำเนาของใบ · ไม่คิดใหม่) — สิทธิ์เดียวกับ commission* ◂
+    if (seeCommission && billChannel) {
+      const refundSatang = refundDocs.reduce((t, d) => t + d.grandTotalSatang, 0);
+      const commissionNetSatang = sale.channelCommissionSatang - refundDocs.reduce((t, d) => t + d.channelCommissionSatang, 0);
+      const commissionVatNetSatang = sale.channelCommissionVatSatang - refundDocs.reduce((t, d) => t + d.channelCommissionVatSatang, 0);
+      Object.assign(billChannel, { refundSatang, commissionNetSatang, commissionVatNetSatang, netSatang: sale.grandTotalSatang - refundSatang - commissionNetSatang - commissionVatNetSatang });
+    }
 
     const bill: BillDetail = {
       id: sale.id,

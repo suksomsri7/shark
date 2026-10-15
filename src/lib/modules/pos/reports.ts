@@ -464,7 +464,8 @@ const voidedOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "SALE" 
 /** POS P1.8 — ใบคืนเงินในช่วง */
 const refundsOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "REFUND");
 /** POS P2.9b ▸ fix1 มติ 4: ตัดใบรับมัดจำ + ใบคืนเงินมัดจำ (sourceModule POS_DEPOSIT) ออกจากรายงานยอดขาย ◂ */
-const notDeposit = (sales: SaleRow[]) => sales.filter((x) => x.sourceModule !== "POS_DEPOSIT");
+// POS P2.12 ▸ CH1: ใช้กับแถวที่เลือกคอลัมน์มาเอง (รายงานช่องทาง) ได้ด้วย — ชนิดทั่วไป ◂
+const notDeposit = <T extends { sourceModule?: string | null }>(sales: T[]): T[] => sales.filter((x) => x.sourceModule !== "POS_DEPOSIT");
 const envelope = <K extends ReportKind, R, T>(kind: K, s: Scope, r: Range, rows: R[], totals: T): { ok: true; report: Report<K, R, T> } => ({
   ok: true,
   report: { kind, from: r.from, to: r.to, unitId: s.unitId, generatedAt: new Date().toISOString(), rows, totals },
@@ -982,6 +983,27 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
   });
 }
 
+// POS P2.12 ▸ ตัวรวมช่องทาง (บริสุทธิ์) — reportChannels + ค่าคอมฯ ต่อสาขาของ reportBranches ใช้ตัวเดียวกัน ·
+//   docs = บิลขายที่ไม่ VOIDED + ใบคืนเงิน (ตัดมัดจำแล้ว) · ใบคืนหักยอด/ค่าคอมฯ ส่วนของใบ · name/net/share เติมทีหลัง ◂
+type ChannelDoc = { docType: string; channelCode: string | null; sourceModule: string | null; grandTotalSatang: number; channelCommissionSatang: number; channelCommissionVatSatang: number };
+function channelRowsOf(docs: readonly ChannelDoc[]): ChannelRow[] {
+  const by = new Map<string, ChannelRow>();
+  for (const d of docs) {
+    const code = d.channelCode ?? defaultChannelCode(d.sourceModule);
+    const row = by.get(code) ?? { channelCode: code, name: "", billCount: 0, grossSatang: 0, refundSatang: 0, commissionSatang: 0, commissionVatSatang: 0, netSatang: 0, sharePct: 0 };
+    const refund = d.docType === "REFUND";
+    if (refund) row.refundSatang += d.grandTotalSatang;
+    else {
+      row.billCount += 1;
+      row.grossSatang += d.grandTotalSatang;
+    }
+    row.commissionSatang += (refund ? -1 : 1) * d.channelCommissionSatang;
+    row.commissionVatSatang += (refund ? -1 : 1) * d.channelCommissionVatSatang;
+    by.set(code, row);
+  }
+  return [...by.values()];
+}
+
 // ═══════════ POS P2.11 ▸ 8. รายงานช่องทาง (§5 · ภาพ 08 "ช่องทางการขาย % ของยอด · หักค่าคอมมิชชันแล้ว") ◂ ═══════════
 /**
  * อ่านอย่างเดียว · ขอบเขต/สิทธิ์/ช่วง/ตัดวัน = prepare เดียวกับรายงานอื่น (REPORT_PERMISSION · ไม่ส่งสาขา = ทุกสาขาที่มีสิทธิ์)
@@ -995,25 +1017,14 @@ export async function reportChannels(ctx: ReportCtx, actor: RegisterActor, input
     const p = await prepare(db, ctx, actor, input);
     if (isRefusal(p)) return p;
     const { s, r } = p;
-    const docs = await db.posSale.findMany({
-      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: r.start, lt: r.end }, status: { in: ["PAID", "REFUNDED"] } },
-      select: { unitId: true, docType: true, channelCode: true, sourceModule: true, grandTotalSatang: true, channelCommissionSatang: true, channelCommissionVatSatang: true },
-    });
-    const by = new Map<string, ChannelRow>();
-    for (const d of docs) {
-      const code = d.channelCode ?? defaultChannelCode(d.sourceModule);
-      const row = by.get(code) ?? { channelCode: code, name: "", billCount: 0, grossSatang: 0, refundSatang: 0, commissionSatang: 0, commissionVatSatang: 0, netSatang: 0, sharePct: 0 };
-      const refund = d.docType === "REFUND";
-      if (refund) row.refundSatang += d.grandTotalSatang;
-      else {
-        row.billCount += 1;
-        row.grossSatang += d.grandTotalSatang;
-      }
-      row.commissionSatang += (refund ? -1 : 1) * d.channelCommissionSatang;
-      row.commissionVatSatang += (refund ? -1 : 1) * d.channelCommissionVatSatang;
-      by.set(code, row);
-    }
-    const rows = [...by.values()];
+    // POS P2.12 ▸ CH1 (⚠️2 มติ 1): ใบรับ/ใบคืนเงินมัดจำไม่ใช่ยอดขาย — ตัดออกแบบรายงานรายวัน/พนักงาน (บิลที่ใช้มัดจำนับครั้งเดียว) ◂
+    const docs = notDeposit(
+      await db.posSale.findMany({
+        where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: r.start, lt: r.end }, status: { in: ["PAID", "REFUNDED"] } },
+        select: { unitId: true, docType: true, channelCode: true, sourceModule: true, grandTotalSatang: true, channelCommissionSatang: true, channelCommissionVatSatang: true },
+      }),
+    );
+    const rows = channelRowsOf(docs); // POS P2.12 ▸ ตัวรวมเดียวกับรายงานสาขา ◂
     if (rows.length) {
       const chs = await db.salesChannel.findMany({
         where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, code: { in: rows.map((x) => x.channelCode) } },
