@@ -1734,7 +1734,7 @@
 - เลน: 1 = P2.13 builder ทรี b · ทรี c = gates97 (ผู้คุม) · ทรี d ว่าง
 - 19:00Z gates97 @d0561566 (`/root/pos-runs/gates97-c-20261015T184224Z`): p2.12 33/33 ×2 · 14 ชุดเขียว (p2.10 12/13 = ST2 lane pin "qc-pos-p2.12.mts ถูกแก้" เทียบ merge-base origin ก่อน push) · fitness ±env/pos · typecheck 0 → **push session/pos 3e4b1bb1 → 1c29ca9e** (code d0561566) → gates98-c (p2.10 + p2.8 ซ้ำ) `/root/pos-runs/gates98-c-20261015T190039Z` · แจ้ง P2.13 builder แล้ว
 
-### 15 ต.ค. 19:1xZ — P2.12 S ปิด → **39/55 (71%)** → P2.12U builder
+### 15 ต.ค. 19:03Z — P2.12 S ปิด → **39/55 (71%)** → P2.12U builder
 - gates98 @1c29ca9e (`/root/pos-runs/gates98-c-20261015T190039Z`): p2.10 13/13 · p2.8 61/61 → **P2.12 S ✅ 39/55** · TG ส่งแล้ว · ไม่มี migration
 - spawn **builder P2.12U** (Opus ทรี c `wip/pos-p2.12u` จาก origin/session/pos 1c29ca9e) prompt `pos-prompt-accountB-P2.12U.md` (มติ 1–10: print page + ปุ่ม PDF · hourly chart · แท็บสาขา/รายชั่วโมง/ผิดปกติ · staff flag จาก server · การ์ดเกณฑ์ · บิล "ทุกสาขา" + ชิป · drawer refund-aware · visual wo p2.12u 11 state)
 - เลน: 1 = P2.13 builder ทรี b · 2 = P2.12U builder ทรี c · ทรี d ว่าง @e7f661a7 · ถัดไป: P2.13 รายงาน → R1 + hunter → fix → merge → gates + agent skill test (CONTROLLER-RUN) → 40/55 · P2.12U → R1 + ภาพ (ทรี d) → merge → 41/55 · P2.14 ปิดเฟส
