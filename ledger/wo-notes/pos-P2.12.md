@@ -66,3 +66,12 @@ No existing pin turned red ⇒ no CONTROLLER-DECISION needed.
 
 ## Not done here (by scope)
 U card (08/12 screens, print page, tabs, threshold card, chip, refund-aware drawer UI, `qc-hf-pos-page-authz` print row = ORACLE-EDIT in U) · real PDF probe (CONTROLLER-RUN) · hunter at merge (channel/branch sums vs bills, anomaly scope filter, deposit exclusion).
+
+## Fix round 1 (controller rulings 15 Oct 17:57Z · R1 F1–F3 + hunter H1–H4 + ORACLE-ADD)
+
+### Follow-ups (ruling 6 · not fixed in S)
+- **H5 (bills day vs cut-off)** — `billsPageData` groups by the Bangkok calendar day of `paidAt ?? createdAt` (`bills.ts:97`), reports use `createdAt` + the cut-off; deposit receipts count as STORE on the bills page (CD-9). Under a cut-off ≠ 0, `summary.channelCounts` never equals the channels report for the same date. U footnotes it on screen 12; making the bills day cut-off-aware = follow-up (HF-FU2 / owner). Missing check: CH3 with a cut-off ≠ 0.
+- **R1 F4 (A5 ignores table-split overrides)** — `reportAnomalies` reads audits with `targetType:"PosSale"` only; `pos.discount.override` written by `table-split.ts:438–443` has `targetType:"PosTableSplit"`, so manager-PIN split-plan discounts never count toward A5. Follow-up (HF-FU2 / owner): add `PosTableSplit` targets resolved to a unit with one chunked read.
+- **R1 F5 (en print labels)** — en print of `anomalies` keeps Thai rule labels (`ANOMALY_RULE_LABEL_TH`), the Thai threshold joiner "หรือ" and (fix1 H4) the Thai sign words "ขาด/เกิน" in the A8 cell, because rows = th CSV (decision 7). U-card decision.
+- **Overview print summary** (brief §4 "overview prints as one A4") — not a `ReportKind` ⇒ U / CONTROLLER-DECISION.
+- **Row-cap notice on screen** — CSV + print carry the notice since fix1 H2; the screen's own "showing N of M" stays with U (`totals.rowCount` vs `rows.length`).
