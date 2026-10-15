@@ -1726,3 +1726,15 @@
 - builder fix 1: `wip/pos-p2.12` **b5beeae0** push แล้ว · ORACLE-ADD AN13/AN14/PD4 + AN12 unitNames (99aee674 · red-before 29/33) · r1 5ee2ba92 (unitNames · `REPORT_TOTAL_ROW_KINDS` · F3 skip) · r2 c671d11f (A3/A4 = line + bill − coupon − member · base ก่อนส่วนลดรายการ) · r3 492c8ab8 (แบ่งเพดานต่อกฎ + notice "แสดง N จาก M แถว") · r4 b5b48254 (unitLabel ชื่อสาขาใน scope) · r5 3f91c695 (A8 "ขาด −x/เกิน +x" · `totals.a8SignedSatang`) · gates 33/33 ×3 · p1.17 40 · p2.11 34 · p1.18 81 · p1.16 28 · p1.1 180 · p1.3 128 · typecheck 0 · fitness ±env/pos · origin 3e4b1bb1 merged แล้ว · 3 ข้อให้ R2 ดู (total row ทุก kind · limit < จำนวนกฎ · a8SignedSatang)
 - spawn **R2** (Opus read-only ทรี c) prompt `pos-prompt-accountB-P2.12-R2.md` → MERGEABLE → merge (msg `scratchpad/ctl/p212-merge-msg.txt`) → ทรี c detached → gates97-c → push → **39/55** → spawn P2.13 builder (ทรี b) + P2.12U builder (ทรี c)
 - เลน: 1 = P2.12 R2 (read-only ทรี c) · ทรี b ว่าง · ทรี d ว่าง
+
+### 15 ต.ค. 18:42Z — P2.12 S merged d0561566 (ยังไม่ push) → gates97 · P2.13 builder เริ่ม
+- R2 fix 1 @b5beeae0 = **MERGEABLE** (G1/G2 Low follow-up) → **merge b5beeae0 เข้า session/pos = d0561566** (no-ff · ไม่ชน) · ทรี c detached d0561566 + prisma generate → **gates97-c** (`/root/pos-runs/gates97-c-*`: p2.12 ×2 unforced · p1.17 p2.11 p1.18 p1.16 p2.1 p2.9b p1.8 closeday p1.1 p1.3 authz p2.8 p2.10 hf-tx + fitness ±env/pos + typecheck)
+- spawn **builder P2.13** (Opus ทรี b `wip/pos-p2.13` จาก d0561566 local + merge oracle 580ecbbb) prompt `pos-prompt-accountB-P2.13.md`
+- ถัดไป: gates97 เขียว (p2.11 ST4 lane pin อาจแดงจน push) → push → p2.8/p2.11 ซ้ำ → **39/55 (71%)** + TG + memory · ไม่มี migration · แล้ว spawn **P2.12U builder** ทรี c (prompt `pos-prompt-accountB-P2.12U.md` base = merge)
+- เลน: 1 = P2.13 builder ทรี b · ทรี c = gates97 (ผู้คุม) · ทรี d ว่าง
+- 19:00Z gates97 @d0561566 (`/root/pos-runs/gates97-c-20261015T184224Z`): p2.12 33/33 ×2 · 14 ชุดเขียว (p2.10 12/13 = ST2 lane pin "qc-pos-p2.12.mts ถูกแก้" เทียบ merge-base origin ก่อน push) · fitness ±env/pos · typecheck 0 → **push session/pos 3e4b1bb1 → 1c29ca9e** (code d0561566) → gates98-c (p2.10 + p2.8 ซ้ำ) `/root/pos-runs/gates98-c-20261015T190039Z` · แจ้ง P2.13 builder แล้ว
+
+### 15 ต.ค. 19:03Z — P2.12 S ปิด → **39/55 (71%)** → P2.12U builder
+- gates98 @1c29ca9e (`/root/pos-runs/gates98-c-20261015T190039Z`): p2.10 13/13 · p2.8 61/61 → **P2.12 S ✅ 39/55** · TG ส่งแล้ว · ไม่มี migration
+- spawn **builder P2.12U** (Opus ทรี c `wip/pos-p2.12u` จาก origin/session/pos 1c29ca9e) prompt `pos-prompt-accountB-P2.12U.md` (มติ 1–10: print page + ปุ่ม PDF · hourly chart · แท็บสาขา/รายชั่วโมง/ผิดปกติ · staff flag จาก server · การ์ดเกณฑ์ · บิล "ทุกสาขา" + ชิป · drawer refund-aware · visual wo p2.12u 11 state)
+- เลน: 1 = P2.13 builder ทรี b · 2 = P2.12U builder ทรี c · ทรี d ว่าง @e7f661a7 · ถัดไป: P2.13 รายงาน → R1 + hunter → fix → merge → gates + agent skill test (CONTROLLER-RUN) → 40/55 · P2.12U → R1 + ภาพ (ทรี d) → merge → 41/55 · P2.14 ปิดเฟส
