@@ -2174,7 +2174,41 @@
       },
       "anomaly": {
         "title": "Reports: anomaly thresholds",
-        "enabled": "Detect anomalies"
+        "enabled": "Detect anomalies",
+        "enabledHint": "Off = the anomaly report is empty and the staff card shows no \"Unusually high discount\" flag",
+        "namesNote": "Staff names in the anomaly report are shown only to people with the \"View staff anomaly report\" right (owners and managers by default) · the system only points things out, it does not decide anyone did wrong",
+        "or": "or",
+        "field": {
+          "count": "count",
+          "satang": "baht",
+          "bp": "percent"
+        },
+        "countUnit": {
+          "A1": "times",
+          "A2": "times",
+          "A5": "times",
+          "A6": "lines",
+          "A7": "times",
+          "A9": "shifts",
+          "A10": "orders"
+        },
+        "hint": {
+          "A1": "Voids per person per day — reaching this many, or this total",
+          "A2": "Refunds per person per day — reaching this many, or this total",
+          "A3": "Discount a staff member gave over the range above this % of their net sales (also drives the staff card flag)",
+          "A4": "A single bill whose staff discount reaches this % of the pre-discount total (coupons and member benefits excluded)",
+          "A5": "Manager PIN overrides per approver per day reaching this many",
+          "A6": "Custom-price lines per person per day reaching this many",
+          "A7": "Receipt reprints of the same bill reaching this many",
+          "A8": "A shift that is short or over (recounts included) by at least this amount",
+          "A9": "The same shift opener short in this many shifts within the range",
+          "A10": "Rejected or cancelled orders per branch per day reaching this many"
+        },
+        "err": {
+          "count": "Enter a whole number 1–1,000",
+          "satang": "Enter an amount 0.01–1,000,000 baht",
+          "bp": "Enter 0.01–100 %"
+        }
       }
     },
     "history": {

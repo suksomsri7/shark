@@ -18175,6 +18175,67 @@
       "oracle": "",
       "system": "POS",
       "query": "kind=anomalies"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-anomaly-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-anomaly",
+        "note": "การ์ด \"รายงาน: จุดสังเกตผิดปกติ\" (เฉพาะผู้แก้ค่าทั่วไปได้): เปิดการตรวจ (anomaly.enabled) · ปิด = แถวกฎจาง (มติ 6)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-anomaly-*-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-settings-general-field-error",
+        "note": "เกณฑ์ต่อกฎ <A1…A10>-<count|satang|bp> (ครั้ง/จำนวน · บาท → สตางค์ · % → bp) ช่วง POS_ANOMALY_LIMITS · ผิดช่วง/ปฏิเสธ field anomaly.rules.A#.<ช่อง> = ข้อความใต้แถวของกฎ (มติ 6)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-anomaly",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosGeneralSettingsAction",
+        "note": "การ์ดจุดสังเกตผิดปกติ: patch {anomaly:{enabled?, rules:{A#:{ช่องที่เปลี่ยน}}}} · ไม่มีอะไรเปลี่ยน = \"บันทึกแล้ว\" ไม่เรียกเซิร์ฟเวอร์ (มติ 6)",
+        "db": "AppSystem(POS).settings.pos.reports.anomaly"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
