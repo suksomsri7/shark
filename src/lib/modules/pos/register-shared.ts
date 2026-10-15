@@ -238,7 +238,9 @@ export type RegisterRefusalCode =
   | "DEPOSIT_NOT_FOUND"
   | "DEPOSIT_NOT_OWNER"
   | "DEPOSIT_EXCEEDS"
-  | "DEPOSIT_CLOSED";
+  | "DEPOSIT_CLOSED"
+  // POS P2.9b ▸ fix2 มติ 3: 4 หลักท้ายของเบอร์ผิดครบ 5 ครั้ง — ระงับ 15 นาที ◂
+  | "DEPOSIT_LOCKED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -984,6 +986,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   DEPOSIT_NOT_OWNER: "errors.depositNotOwner",
   DEPOSIT_EXCEEDS: "errors.depositExceeds",
   DEPOSIT_CLOSED: "errors.depositClosed",
+  DEPOSIT_LOCKED: "errors.depositLocked", // POS P2.9b ▸ fix2 มติ 3 ◂
   // POS P2.1 ▸ ช่องทางขาย (R13) ◂
   CHANNEL_INVALID: "errors.channelInvalid",
   CHANNEL_PAY_MISMATCH: "errors.channelPayMismatch",

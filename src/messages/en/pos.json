@@ -421,6 +421,7 @@
       "depositNotOwner": "This deposit belongs to another member — it can only be used on that member’s bill",
       "depositExceeds": "The amount is more than the deposit balance (it may have just been used on another device) — look up the deposit again and retry; no money was taken",
       "depositClosed": "This deposit has been fully used or refunded",
+      "depositLocked": "Too many wrong phone digits — this deposit is locked for 15 minutes, then try again",
       "channelInvalid": "This sales channel can't be used (not found, inactive or from another branch) — pick another channel",
       "channelPayMismatch": "Payment doesn't match the sales channel — platform orders are paid in full by \"Platform\"; other channels can't use \"Platform\"",
       "channelNotFound": "This sales channel was not found in this branch",

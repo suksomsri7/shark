@@ -618,6 +618,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   DEPOSIT_NOT_OWNER: "มัดจำใบนี้เป็นของสมาชิกคนอื่น — ใช้ได้เฉพาะบิลของสมาชิกเจ้าของมัดจำ",
   DEPOSIT_EXCEEDS: "ยอดที่ใช้เกินมัดจำคงเหลือ (อาจเพิ่งถูกใช้จากอีกเครื่อง) — ค้นมัดจำใหม่แล้วชำระอีกครั้ง ยังไม่ได้เก็บเงิน",
   DEPOSIT_CLOSED: "มัดจำใบนี้ใช้หมดหรือคืนเงินไปแล้ว",
+  DEPOSIT_LOCKED: "ใส่ 4 หลักท้ายของเบอร์ผิดหลายครั้ง — มัดจำใบนี้ถูกระงับชั่วคราว 15 นาที", // POS P2.9b ▸ fix2 มติ 3 ◂
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -2519,7 +2520,12 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
         const d = byId.get(x.depositId);
         if (!d) return regRefuse("DEPOSIT_NOT_FOUND");
         // POS P2.9b ▸ fix1 มติ 6 (hunt D5): มัดจำ walk-in ที่บันทึกเบอร์ไว้ = ผู้ถือต้องบอก 4 หลักท้าย (ไม่ส่ง/ผิด = DEPOSIT_NOT_OWNER) · ไม่มีเบอร์ = ผู้ถือใบรับ ◂
-        if (!d.customerId && d.phoneLast4 && x.phoneLast4 !== d.phoneLast4) return regRefuse("DEPOSIT_NOT_OWNER");
+        // POS P2.9b ▸ fix2 มติ 3 (hunter N2): เทียบผ่านตัวนับต่อมัดจำ (ผิด 5 ครั้ง = DEPOSIT_LOCKED 15 นาที · ถูกระหว่างล็อก = ยังล็อก) ◂
+        if (!d.customerId && d.phoneLast4) {
+          const ph = await (await import("./deposit-links")).checkDepositPhone(s0.tenantId, d, x.phoneLast4, db);
+          if (ph === "LOCKED") return regRefuse("DEPOSIT_LOCKED");
+          if (ph !== "OK") return regRefuse("DEPOSIT_NOT_OWNER");
+        }
         x.refSaleId = d.receiptSaleId;
       }
     }

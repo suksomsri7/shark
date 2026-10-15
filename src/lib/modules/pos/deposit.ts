@@ -25,6 +25,7 @@ import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payme
 import { isShiftDeviceId, resolveRegisterShift } from "./shift";
 import { posDeviceRevoked } from "./device";
 import { maskPhone } from "./order-shared";
+import { checkDepositPhone, maskDepositPhone } from "./deposit-links"; // POS P2.9b ▸ fix2 มติ 3 ◂
 import { verifyManagerPin } from "./staff-pin";
 import { newReceiptToken } from "./receipt-token";
 
@@ -136,7 +137,8 @@ function viewOf(d: DepositRow): DepositView {
     status: String(d.status),
     customerId: d.customerId,
     customerName: d.customerName,
-    phoneMasked: d.phoneMasked,
+    // POS P2.9b ▸ fix2 มติ 3: มัดจำ walk-in ที่บันทึกเบอร์ = ปิดหมดเว้น 3 ตัวแรก (ไม่มี 4 หลักท้าย · phoneLast4 ไม่ส่งออก) ◂
+    phoneMasked: !d.customerId && d.phoneLast4 ? maskDepositPhone(d.phoneMasked) : d.phoneMasked,
     note: d.note,
     expiresAt: d.expiresAt ? d.expiresAt.toISOString() : null,
     createdAt: d.createdAt.toISOString(),
@@ -192,7 +194,7 @@ export async function registerTakeDeposit(ctx: RegisterCtx, actor: RegisterActor
     if (input.phone !== undefined && input.phone !== null && input.phone !== "") {
       const digits = typeof input.phone === "string" ? input.phone.replace(/[\s-]/g, "") : "";
       if (!/^0\d{8,9}$/.test(digits)) return refuse("PHONE_INVALID");
-      phoneMasked = maskPhone(digits);
+      phoneMasked = `${digits.slice(0, 3)}-xxx-xxxx`; // POS P2.9b ▸ fix2 มติ 3: ไม่เก็บ 4 หลักท้ายในเบอร์ปิด ◂
       phoneLast4 = digits.slice(-4);
     }
     // มติ 14: ค่าตั้งปิด = รับใหม่ไม่ได้ (มัดจำที่รับแล้วยังใช้/คืนได้)
@@ -350,6 +352,9 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: LOOKUP_MAX,
     });
+    // POS P2.9b ▸ fix2 มติ 3: ตรงเลขใบรับ + ส่ง 4 หลัก = นับแบบตัวนับ PIN (ผิด 5 = ล็อก) · ล็อก/ผิด = ไม่เห็นยอด ◂
+    const phoneOk = new Set<string>();
+    for (const d of rows) if (q && d.receiptNo === q && !d.customerId && d.phoneLast4 && last4 && (await checkDepositPhone(sc.ctx.tenantId, d, last4, db)) === "OK") phoneOk.add(d.id);
     return {
       ok: true as const,
       deposits: rows.map((d) => {
@@ -357,7 +362,7 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
         // ยอดเห็นได้เมื่อ: ตรงเลขใบรับ (มัดจำสมาชิก/ไม่มีเบอร์ หรือ walk-in ที่ 4 หลักท้ายถูก) หรือมัดจำของสมาชิกในบิล (memberId) · ค้นด้วยชื่อ/เบอร์ = ไม่มียอด
         const needsPhoneLast4 = !d.customerId && !!d.phoneLast4;
         // POS P2.9b ▸ fix2 มติ 1 (R2 F1): ค้นด้วยสมาชิก = เห็นยอดเฉพาะมัดจำของสมาชิกนั้น/ที่ถูกรวมเข้า (ไม่ใช่มัดจำของสมาชิกอื่นที่ชื่อตรงคำค้น) ◂
-        const holder = (q && d.receiptNo === q && (!needsPhoneLast4 || last4 === d.phoneLast4)) || (!!d.customerId && family.includes(d.customerId));
+        const holder = (q && d.receiptNo === q && (!needsPhoneLast4 || phoneOk.has(d.id))) || (!!d.customerId && family.includes(d.customerId));
         return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: holder ? v.remainingSatang : null, status: v.status, expiresAt: v.expiresAt, amountSatang: holder ? v.amountSatang : null, memberLinked: !!d.customerId, needsPhoneLast4 };
       }),
     };

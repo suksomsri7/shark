@@ -989,6 +989,8 @@ model PosDeposit {
   customerName    String? // ชื่อลูกค้าทั่วไป (สำเนา)
   phoneMasked     String? // เบอร์ปิดบัง (ไม่เก็บเบอร์เต็ม)
   phoneLast4      String? // 4 หลักท้ายของเบอร์ (ค้นหา · มติ 19)
+  phoneFailedCount Int             @default(0) // POS P2.9b fix2 มติ 3: 4 หลักท้ายผิดติดกัน (ครบ 5 = ล็อก 15 นาที)
+  phoneLockedUntil DateTime? // POS P2.9b fix2 มติ 3
   amountSatang    Int
   vatSatang       Int              @default(0) // VAT ณ วันรับเงิน (มติ 1)
   usedSatang      Int              @default(0)
