@@ -984,6 +984,9 @@ export async function releaseHeldOrders(tenantId: string, unitId: string, opts: 
       try {
         r = await runTx(
           async (tx) => {
+            // POS HF-FU ▸ a fix1 (R1 F2): ตัวกวาดของสาขาเดียวกันเรียงคิวกันก่อนตรวจเพดาน (ทางอ่าน listOrders/kdsBoard ทุกจอ) — ผู้ถัดไปเห็นรอบครัวของผู้ก่อน
+            //   ⇒ ตั๋วค้างไม่เกิน autoAcceptMaxOpen จากตัวกวาด · ล็อกแรกของธุรกรรม (ก่อนแถว PosOrder) · ingest ยังไม่ถือล็อกนี้ (ติดตามต่อ) ◂
+            await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posorder-release:${tenantId}:${unitId}`}))) l`;
             if (await autoAcceptBlockedInTx(tx, { tenantId, unitId })) return "blocked" as const;
             const fresh = await tx.posOrder.findFirst({ where: { id: o.id, tenantId, unitId } });
             if (!fresh || fresh.status !== "NEW") return "skip" as const;
