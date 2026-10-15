@@ -726,7 +726,9 @@ function CustomerDisplayBlock({ systemId, unitId, deviceId }: { systemId: string
       return;
     }
     setSt(r.display);
-    if (r.display.paired || !r.display.pendingCodeExpiresAt) setCode((c) => (r.display.paired && c ? null : c));
+    // POS P2.10 ▸ fix1 F3 (มติ fix1 ข้อ 3): ล้างรหัสเมื่อเซิร์ฟเวอร์ไม่มีรหัสรอแล้วเท่านั้น (แลกแล้ว/ยกเลิก) — จอที่จับคู่อยู่ขอรหัสใหม่ได้ (เปลี่ยนแท็บเล็ต) ·
+    //    รหัสที่หมดเวลาแล้วยังถือไว้เพื่อแสดง "รหัสหมดอายุ"
+    if (!r.display.pendingCodeExpiresAt) setCode((c) => (c && Date.parse(c.expiresAt) <= Date.now() ? c : null)); // ◂
   }, [systemId, unitId, deviceId, t]);
 
   useEffect(() => {
@@ -811,7 +813,7 @@ function CustomerDisplayBlock({ systemId, unitId, deviceId }: { systemId: string
       </div>
       <p className="text-[13px] text-[color:var(--color-muted)]">{t("settings.hint", { url: link })}</p>
 
-      {code && left !== null && left > 0 && !st?.paired && (
+      {code && left !== null && left > 0 && ( // POS P2.10 ▸ fix1 F3: แสดงรหัสแม้จับคู่อยู่ (ขอรหัสใหม่ = ทางเปลี่ยนแท็บเล็ต) ◂
         <div data-testid="pos-settings-display-code" className="flex flex-wrap items-center gap-4 rounded-[13px] border bg-[color:var(--color-surface-2)] p-4">
           <DisplayQrImg value={`${link}?c=${code.code}`} alt={t("settings.codeLabel")} />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -826,7 +828,7 @@ function CustomerDisplayBlock({ systemId, unitId, deviceId }: { systemId: string
           </div>
         </div>
       )}
-      {code && left === 0 && !st?.paired && <InlineNote tone="error">{t("settings.codeExpired")}</InlineNote>}
+      {code && left === 0 && <InlineNote tone="error">{t("settings.codeExpired")}</InlineNote>}{/* POS P2.10 ▸ fix1 F3: จับคู่อยู่ก็แจ้งรหัสใหม่หมดอายุ ◂ */}
       {!code && st?.pairLocked && <InlineNote tone="error">{t("settings.statusLocked")}</InlineNote>}
 
       <div className="flex flex-wrap gap-2">
