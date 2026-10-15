@@ -101,7 +101,7 @@ type Col<R> = { key: string; header: string; num?: boolean; cell: (r: R) => Reac
 
 function Table<R>({ cols, rows, rowKey, total, minWidth, testId }: { cols: Col<R>[]; rows: R[]; rowKey: (r: R, i: number) => string; total?: React.ReactNode[]; minWidth: number; testId: string }) {
   return (
-    <div className="w-full min-w-0 overflow-x-auto" data-testid={testId}>
+    <div className="relative w-full min-w-0 overflow-x-auto" data-testid={testId /* POS P2.12U ▸ fix1 F6: relative = กล่องอ้างอิงของลูก absolute (sr-only) ให้ถูกตัดในกรอบเลื่อน ไม่ดันความกว้างหน้า ◂ */}>
       <table className="w-full border-collapse text-sm" style={{ minWidth }}>
         <thead>
           <tr>
@@ -204,7 +204,7 @@ function AnomalyBody({ rep, t, systemId }: { rep: Report<"anomalies", AnomalyRow
   const TH = "whitespace-nowrap border-b px-3 pb-2 text-left text-xs font-medium text-[color:var(--color-muted)]";
   const TD = "border-b border-[color:var(--color-line)] px-3 py-2 align-top";
   return (
-    <div className="flex flex-col gap-5" data-testid="pos-reports-anomalies">
+    <div className="flex min-w-0 flex-col gap-5" data-testid="pos-reports-anomalies">
       {groups.map((g) => (
         <section key={g.rule} className="flex min-w-0 flex-col gap-2" data-testid={`pos-reports-anomaly-group-${g.rule}`}>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -215,7 +215,8 @@ function AnomalyBody({ rep, t, systemId }: { rep: Report<"anomalies", AnomalyRow
             <span className="text-xs text-[color:var(--color-muted)] tabular-nums">{t("anomaly.groupCount", { n: tt.byRule?.[g.rule] ?? g.rows.length })}</span>
             <span className="text-xs text-[color:var(--color-muted)] tabular-nums">{t("anomaly.threshold", { text: thresholdText(g.rule, g.rows[0]!.threshold) })}</span>
           </div>
-          <div className="w-full min-w-0 overflow-x-auto">
+          {/* POS P2.12U ▸ fix1 F6 (390): ต้นเหตุล้น = <span sr-only> (absolute) ในหัวคอลัมน์สุดท้ายอ้างกล่องนอกกรอบเลื่อน ⇒ ไม่ถูกตัด ดัน html กว้าง 583 px · relative บนกรอบเลื่อน = ถูกตัด/เลื่อนในตาราง ◂ */}
+          <div className="relative w-full min-w-0 overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-sm">
               <thead>
                 <tr>
@@ -774,7 +775,8 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
       {!overview ? <p className="-mt-2 text-xs text-[color:var(--color-muted)]">{t("rangeHint")}</p> : null}
 
       {/* แท็บชนิดรายงาน: ภาพรวม + 7 ชนิด — มือถือเลื่อนแนวนอนในแถบเอง */}
-      <div role="tablist" aria-label={t("kindsLabel")} className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-1" data-testid="pos-report-kinds">
+      {/* POS P2.12U ▸ fix1 F6: แถบชนิดรายงาน (11 ชนิด) = กรอบเลื่อนแนวนอนของตัวเอง (relative · ซ่อนแถบเลื่อน · ปุ่ม ≥ 44 px) ◂ */}
+      <div role="tablist" aria-label={t("kindsLabel")} className="relative -mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-testid="pos-report-kinds">
         {KINDS.map((k) => {
           const on = view.kind === k;
           return (
