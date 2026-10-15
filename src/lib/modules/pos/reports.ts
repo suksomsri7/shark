@@ -17,6 +17,7 @@ import { lineConsumption, PAY_TYPE_LABEL_TH, PAY_TYPE_ORDER } from "./service";
 import { computeReport, type ShiftReport } from "./shift";
 import type { RegisterActor } from "./register-shared";
 import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวันตามค่าตั้งของระบบ POS ◂
+import { channelFallbackName, defaultChannelCode } from "./channel-shared"; // POS P2.11 ▸ รายงานช่องทาง (รหัสของบิลเดิม · ชื่อสำรอง) ◂
 
 type Db = PrismaClient;
 
@@ -39,7 +40,7 @@ const BKK_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
 const shiftOffsetMs = (cutoffMin: number): number => BKK_OFFSET_MS - cutoffMin * 60_000;
 
-export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax"] as const;
+export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels"] as const; // POS P2.11 ▸ + channels ◂
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 // ═══════════ ชนิดข้อมูล ═══════════
@@ -191,6 +192,21 @@ export type TaxRow = {
   refundReceiptNos?: string[];
 };
 export type TaxTotals = { billCount: number; grossSatang: number; vatSatang: number; baseSatang: number; vatableGrossSatang: number; nonVatGrossSatang: number; voidCount: number; refundCount?: number; refundGrossSatang?: number; refundVatSatang?: number };
+// POS P2.11 ▸ รายงานช่องทาง (brief P2.11 §5 · มติ 5 16): แถวต่อรหัสช่องทาง (รวมข้ามสาขาด้วยรหัส · บิลเดิมไม่มีรหัส = STORE/WEB ตาม sourceModule) ·
+//   billCount = บิลขายที่ไม่ VOIDED (PAID + REFUNDED) · ใบคืนเงินหักยอด + ค่าคอมฯ ส่วนของใบในวันที่คืน ·
+//   net = gross − refund − commission − commissionVat · sharePct = ปัด 1 ตำแหน่งของ 100 × net / Σ net (Σ ≤ 0 = 0) ◂
+export type ChannelRow = {
+  channelCode: string;
+  name: string;
+  billCount: number;
+  grossSatang: number;
+  refundSatang: number;
+  commissionSatang: number;
+  commissionVatSatang: number;
+  netSatang: number;
+  sharePct: number;
+};
+export type ChannelTotals = Omit<ChannelRow, "channelCode" | "name" | "sharePct">;
 
 export type DashboardCard = {
   businessDate: string;
@@ -214,6 +230,7 @@ export type PaymentsReportResult = ReportResult<"payments", PaymentRow, PaymentT
 export type MarginReportResult = ReportResult<"margin", MarginRow, MarginTotals>;
 export type ShiftsReportResult = ReportResult<"shifts", ShiftRow, ShiftTotals>;
 export type TaxReportResult = ReportResult<"tax", TaxRow, TaxTotals>;
+export type ChannelsReportResult = ReportResult<"channels", ChannelRow, ChannelTotals>; // POS P2.11 ◂
 export type AnyReportResult =
   | DailyReportResult
   | ProductsReportResult
@@ -221,7 +238,8 @@ export type AnyReportResult =
   | PaymentsReportResult
   | MarginReportResult
   | ShiftsReportResult
-  | TaxReportResult;
+  | TaxReportResult
+  | ChannelsReportResult; // POS P2.11 ◂
 
 // ═══════════ คำปฏิเสธ ═══════════
 const MSG: Record<ReportRefusalCode, string> = {
@@ -958,6 +976,68 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
   });
 }
 
+// ═══════════ POS P2.11 ▸ 8. รายงานช่องทาง (§5 · ภาพ 08 "ช่องทางการขาย % ของยอด · หักค่าคอมมิชชันแล้ว") ◂ ═══════════
+/**
+ * อ่านอย่างเดียว · ขอบเขต/สิทธิ์/ช่วง/ตัดวัน = prepare เดียวกับรายงานอื่น (REPORT_PERMISSION · ไม่ส่งสาขา = ทุกสาขาที่มีสิทธิ์)
+ * แหล่ง = คอลัมน์สำเนาของบิล (PosSale.channelCode · channelCommission*) — ไม่คิดค่าคอมฯ ใหม่ · ชื่อ = ช่องทางรหัสนั้นของสาขาที่เลือก
+ * (ทุกสาขา = สาขาแรกในขอบเขตที่มีรหัสนี้ · ช่องทางที่ใช้งานอยู่ก่อนที่เก็บถาวร) · ไม่มีแถวช่องทาง = ชื่อสำรอง (builtin ไทย · อื่น = รหัส)
+ * เรียง net มาก → น้อย แล้วรหัส
+ */
+export async function reportChannels(ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db): Promise<ChannelsReportResult> {
+  return guard("reportChannels", async () => {
+    const db = client ?? prisma;
+    const p = await prepare(db, ctx, actor, input);
+    if (isRefusal(p)) return p;
+    const { s, r } = p;
+    const docs = await db.posSale.findMany({
+      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: r.start, lt: r.end }, status: { in: ["PAID", "REFUNDED"] } },
+      select: { unitId: true, docType: true, channelCode: true, sourceModule: true, grandTotalSatang: true, channelCommissionSatang: true, channelCommissionVatSatang: true },
+    });
+    const by = new Map<string, ChannelRow>();
+    for (const d of docs) {
+      const code = d.channelCode ?? defaultChannelCode(d.sourceModule);
+      const row = by.get(code) ?? { channelCode: code, name: "", billCount: 0, grossSatang: 0, refundSatang: 0, commissionSatang: 0, commissionVatSatang: 0, netSatang: 0, sharePct: 0 };
+      const refund = d.docType === "REFUND";
+      if (refund) row.refundSatang += d.grandTotalSatang;
+      else {
+        row.billCount += 1;
+        row.grossSatang += d.grandTotalSatang;
+      }
+      row.commissionSatang += (refund ? -1 : 1) * d.channelCommissionSatang;
+      row.commissionVatSatang += (refund ? -1 : 1) * d.channelCommissionVatSatang;
+      by.set(code, row);
+    }
+    const rows = [...by.values()];
+    if (rows.length) {
+      const chs = await db.salesChannel.findMany({
+        where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, code: { in: rows.map((x) => x.channelCode) } },
+        select: { unitId: true, code: true, name: true, archivedAt: true },
+      });
+      const rank = (c: (typeof chs)[number]) => (c.unitId === s.unitId ? 0 : 2) + (c.archivedAt ? 1 : 0);
+      const unitOrder = new Map(s.unitIds.map((u, i) => [u, i]));
+      for (const x of rows) {
+        const best = chs
+          .filter((c) => c.code === x.channelCode && !!c.name.trim())
+          .sort((a, b) => rank(a) - rank(b) || (unitOrder.get(a.unitId) ?? 0) - (unitOrder.get(b.unitId) ?? 0))[0];
+        x.name = best?.name ?? channelFallbackName(x.channelCode);
+      }
+    }
+    for (const x of rows) x.netSatang = x.grossSatang - x.refundSatang - x.commissionSatang - x.commissionVatSatang;
+    const totalNet = sum(rows, (x) => x.netSatang);
+    for (const x of rows) x.sharePct = totalNet > 0 ? Math.round((1000 * x.netSatang) / totalNet) / 10 : 0;
+    rows.sort((a, b) => b.netSatang - a.netSatang || a.channelCode.localeCompare(b.channelCode));
+    const totals: ChannelTotals = {
+      billCount: sum(rows, (x) => x.billCount),
+      grossSatang: sum(rows, (x) => x.grossSatang),
+      refundSatang: sum(rows, (x) => x.refundSatang),
+      commissionSatang: sum(rows, (x) => x.commissionSatang),
+      commissionVatSatang: sum(rows, (x) => x.commissionVatSatang),
+      netSatang: totalNet,
+    };
+    return envelope("channels", s, r, rows, totals);
+  });
+}
+
 // ═══════════ CSV (R11) ═══════════
 const CSV_BOM = "﻿";
 const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
@@ -989,6 +1069,7 @@ export const CSV_HEADERS: Record<ReportKind, string[]> = {
   margin: ["รหัส", "ชื่อ", "จำนวน", "ยอดขาย", "ต้นทุน", "ต้นทุนประมาณการ", "กำไรขั้นต้น", "อัตรากำไร (%)"],
   shifts: ["กะที่", "Z ที่", "สาขา", "เครื่อง", "สถานะ", "เปิดโดย", "เวลาเปิด", "เวลาปิด", "จำนวนบิล", "ยอดขาย", "เงินที่ควรมี", "เงินที่นับได้", "ขาด/เกิน"],
   tax: ["วันที่", "สาขา", "เลขที่เริ่ม", "เลขที่สุดท้าย", "จำนวนบิล", "ยอดรวม VAT", "ฐานภาษี", "VAT", "ยอดไม่มี VAT", "บิลยกเลิก", "เลขที่ยกเลิก"],
+  channels: ["รหัสช่องทาง", "ช่องทาง", "จำนวนบิล", "ยอดขาย", "ยอดคืนเงิน", "ค่าคอมมิชชัน", "VAT ค่าคอมมิชชัน", "ยอดสุทธิหลังหักค่าคอมฯ", "สัดส่วน (%)"], // POS P2.11 ◂
 };
 type Cells = (string | number)[];
 const dailyCells = (first: string, x: DailyTotals): Cells => [
@@ -1082,6 +1163,11 @@ function csvBodyRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
         [TOTAL_LABEL, "", "", "", t.billCount, baht(t.grossSatang), baht(t.baseSatang), baht(t.vatSatang), baht(t.nonVatGrossSatang), t.voidCount, ""],
       ];
     }
+    // POS P2.11 ▸ ช่องทาง: แถวต่อรหัส (ไม่มีแถว "รวม" — จำนวนบรรทัด = หัว + แถวรายงาน · totals อยู่ในรายงาน) ◂
+    case "channels": {
+      const x = rep as Report<"channels", ChannelRow, ChannelTotals>;
+      return x.rows.map((r) => [r.channelCode, r.name, r.billCount, baht(r.grossSatang), baht(r.refundSatang), baht(r.commissionSatang), baht(r.commissionVatSatang), baht(r.netSatang), r.sharePct.toFixed(1)]);
+    }
   }
 }
 
@@ -1093,6 +1179,7 @@ const REPORT_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input
   margin: reportMargin,
   shifts: reportShifts,
   tax: reportTax,
+  channels: reportChannels, // POS P2.11 ◂
 };
 export const isReportKind = (v: unknown): v is ReportKind => typeof v === "string" && (REPORT_KINDS as readonly string[]).includes(v);
 

@@ -20,6 +20,7 @@ import {
   reportShifts,
   reportStaff,
   reportTax,
+  reportChannels, // POS P2.11 ▸ รายงานช่องทาง ◂
   type AnyReportResult,
   type DashboardCardResult,
   type ReportCsvResult,
@@ -39,7 +40,7 @@ type Session = Awaited<ReturnType<typeof requireTenant>>;
 type Target = { systemId: string; unitId?: string };
 
 /** ชนิด → ฟังก์ชันรายงาน (R14) */
-const KIND_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input: ReportInput) => Promise<AnyReportResult>> = { daily: reportDailySales, products: reportProducts, staff: reportStaff, payments: reportPayments, margin: reportMargin, shifts: reportShifts, tax: reportTax };
+const KIND_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input: ReportInput) => Promise<AnyReportResult>> = { daily: reportDailySales, products: reportProducts, staff: reportStaff, payments: reportPayments, margin: reportMargin, shifts: reportShifts, tax: reportTax, channels: reportChannels }; // POS P2.11 ▸ + channels ◂
 
 function unexpected(where: string, e: unknown): Internal {
   console.error(`[pos/report-actions] ${where}`, e);

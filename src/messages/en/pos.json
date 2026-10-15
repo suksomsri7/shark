@@ -885,7 +885,8 @@
       "payments": "Payment methods",
       "margin": "Gross margin",
       "shifts": "Shifts and over/short",
-      "tax": "Output VAT"
+      "tax": "Output VAT",
+      "channels": "Sales channels"
     },
     "card": {
       "today": "Today's sales",
