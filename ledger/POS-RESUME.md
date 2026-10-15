@@ -1657,3 +1657,9 @@
 - ทรี c ว่าง @84ffb48b · ทรี d ว่าง @84ffb48b (build79) · เลน 1 = P2.10 builder ทรี b (`wip/pos-p2.10` · แจ้งแล้วว่า origin ขยับ)
 - ถัดไป: P2.10 builder รายงาน → R1 (read-only ทรี b) + ภาพ (ทรี d build @builder head → vis82 `p2.10` display 1280×800/1024×768 + settings th/en) → fix rounds → merge → gates §8 → QC5 migrate deploy (`pos_p210_customer_display`) → push → 38/55 · เลน 2 ว่าง → ร่าง brief ใบถัดไป **P2.12** (รายงานช่องทาง/สาขา/ผิดปกติ + PDF · lane B · ⏮ P2.1 P2.11) ได้ระหว่างรอ
 - 14:58Z เลน 2 = **P2.12 brief drafter** (Opus read-only ทรีผู้คุม @e6546359) prompt `pos-prompt-accountB-P2.12-B.md` (543f1013) → `pos-brief-P2.12.md` DRAFT → ผู้คุม §10 → oracle writer (ทรี c ว่าง) · เลน: 1 = P2.10 builder ทรี b · 2 = P2.12 brief
+
+### 15 ต.ค. 15:1xZ — P2.12 brief → §10 มติ 1–10 → oracle writer ทรี c
+- brief drafter: `pos-brief-P2.12.md` (125 บรรทัด) — 08 ส่วนใหญ่มีแล้ว (เทียบสาขา/roll-up/ช่องทาง+CSV) · ขาด hourly + PDF · **พบบั๊ก CH1: `reportChannels` นับใบรับมัดจำซ้ำ (ไม่มี notDeposit) ⇒ STORE/% ผิด** · PDF ไม่มี renderer ในรีโป → เสนอ print page ตามบัญชี · anomaly A1–A10 reader-only + thresholds settings · bucket 24 รายการ triage · oracle 30 ข้อ
+- ผู้คุม **§10 มติ 1–10**: S/U ตาม §1 · CH1 fix (Med) · PDF = browser print page + pure `report-print-shared.ts` (ไม่เพิ่ม dependency · PDF จริง = CONTROLLER-RUN probe) · A1–A10 defaults ตาม §3 per system + owner line ยืนยันค่า · key ใหม่ `pos.report.anomaly` + owner line · BR/HR/BL ตามเสนอ · โอน/สต็อกต่อ location = การ์ด P2.12T แยก (owner line แก้) · oracle 30 ข้อ (AN ทีละกฎ) · hunter เบาที่ merge · P2.13 map readers ขึ้น API
+- spawn **oracle writer P2.12** (Opus ทรี c `wip/pos-p2.12-oracle` จาก e6546359) prompt `pos-prompt-accountB-P2.12-O.md`
+- เลน: 1 = P2.10 builder ทรี b · 2 = P2.12 oracle ทรี c · ทรี d ว่าง @84ffb48b
