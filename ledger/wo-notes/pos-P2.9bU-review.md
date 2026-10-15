@@ -106,3 +106,8 @@ G1 (prefer member rows in step 0) · F2 root fix (`depositId` on refusals plus a
 
 ## Controller rulings — fix round 2 (15 Oct ~12:1xZ)
 R2 = MERGEABLE. G1 (Low, allowed by ruling 1) is still a cashier dead-end on a money tender, and the fix is a few lines ⇒ **fix round 2 = G1 + G3 nit only** (sent to the fix-1 builder): step (0) drops member-linked rows first with `errors.depositNotOwner`, "drop all" only when no member row remains; notes write the fixture phone masked. Gates: typecheck · p1.18 · --dry. R2 reviewer re-verifies the diff (R3-lite). G2 = F2 follow-up (root fix `depositId` on refusals + S reader, HF-FU2 bucket).
+
+## Fix round 2 delivered + R2 re-verify (head 692a02d7 · 15 Oct ~12:3xZ)
+Builder: 9c20f704 G1 (step 0 drops member rows first, remaining rows = new watched set; drop-all only when no member row left) · d87addd3 G3 (masked phone in notes) · gates fix2 @d87addd3 dirty 0: typecheck 0 · p1.18 81 ST7 0 · --dry owner rc 0.
+R2 re-verify = **MERGEABLE**: A+M keeps A in every ordering, ≤ 1 extra attempt, sig reset correct, single 7-line marked hunk, keys unchanged. Info H1 (refusal has no depositId ⇒ wrong-row drop possible when the member's own deposit is valid and the walk-in digits are wrong twice — root fix follow-up) · H2 (merge gate runs the full set — gates91).
+**Controller decision: merge 692a02d7 into `session/pos` after vis80 (fix-1 re-shoot) is judged; gates91 (19 suites) on tree b; owner lines (2) + H1 appended to POS-OWNER-PENDING at merge.**
