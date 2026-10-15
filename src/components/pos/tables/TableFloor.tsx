@@ -6,6 +6,7 @@
 //   แถบโน้ตโซนแบบนิ่ง (ทางเข้า · เคาน์เตอร์ · ครัว) → คำอธิบายสถานะพร้อมจำนวน
 //   🔴 ตัวเลขเงิน/คน/นาทีเฉลี่ยมาจาก summary ของ registerTablesAction เท่านั้น
 
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import type { RegisterTablesResult, TableCard } from "@/lib/modules/pos/table-shared";
@@ -28,6 +29,11 @@ type Props = {
   onReservations: () => void;
   /** แถบแจ้งเตือนจากโต๊ะ (จอที่ไม่มีคอลัมน์ขวา วางไว้เหนือกริด) */
   alerts?: React.ReactNode;
+  /**
+   * POS P2.5U ▸ มติ 8: ลากโต๊ะที่มีลูกค้าเพื่อย้าย/รวม — เมาส์/แทร็กแพดเท่านั้น (pointer: fine · ไม่มีลากด้วยนิ้ว) · null = ปิด (ไม่มีคีย์) ·
+   * วางบนโต๊ะว่าง = ย้าย (canMove) · วางบนโต๊ะที่มีลูกค้า = รวม (canMerge) — ผู้เรียกเปิดกล่องยืนยัน ◂
+   */
+  drag?: { canMove: boolean; canMerge: boolean; onDrop: (from: TableCard, to: TableCard) => void } | null;
 };
 
 const SWATCH: Record<string, string> = {
@@ -38,8 +44,25 @@ const SWATCH: Record<string, string> = {
   RESERVED: "border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)]",
 };
 
-export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick, onOpen, onCleared, onReservations, alerts }: Props) {
+export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick, onOpen, onCleared, onReservations, alerts, drag }: Props) {
   const t = useTranslations("pos.tables");
+  // POS P2.5U ▸ มติ 8: ลากได้เฉพาะตัวชี้ละเอียด (เดสก์ท็อป) — รู้หลัง mount ◂
+  const [fine, setFine] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia("(pointer: fine)");
+    const on = () => setFine(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  const dragOn = !!drag && fine && !busy;
+  const dragging = useRef<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const dropOk = (to: TableCard): boolean => {
+    const from = floor.tables.find((x) => x.id === dragging.current);
+    if (!drag || !from || from.id === to.id || to.state === "INACTIVE") return false;
+    return to.sessionId ? drag.canMerge : drag.canMove;
+  };
   const zones = floor.zones.filter((z) => z.tableCount > 0 || floor.zones.length === 1);
   const multi = zones.length > 1;
   const shown = zone === "all" || !multi ? floor.tables : floor.tables.filter((c) => c.zoneId === zone);
@@ -104,7 +127,10 @@ export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick,
         <span>{t("summary.guests", { n: s.guests })}</span>
         <span>{t("summary.avgMinutes", { n: s.avgMinutes })}</span>
         <span>{t("summary.unpaid", { amount: moneyText(s.unpaidSatang) })}</span>
-        <span className="ml-auto text-[12.5px] text-[color:var(--color-muted)]">{t("tapToOpen")}</span>
+        <span className="ml-auto text-[12.5px] text-[color:var(--color-muted)]">
+          {t("tapToOpen")}
+          {dragOn ? ` · ${t("dragHint")}` : ""}
+        </span>
       </div>
 
       {alerts}
@@ -121,6 +147,35 @@ export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick,
             onOpen={() => onOpen(c)}
             onCleared={() => onCleared(c)}
             onViewBooking={onReservations}
+            // POS P2.5U ▸ มติ 8: ต้นทาง = โต๊ะที่มีลูกค้า · ปลายทาง = ว่าง (ย้าย) / มีลูกค้า (รวม) ◂
+            drag={
+              dragOn
+                ? {
+                    source: !!c.sessionId,
+                    over: over === c.id,
+                    onStart: () => {
+                      dragging.current = c.id;
+                    },
+                    onEnd: () => {
+                      dragging.current = null;
+                      setOver(null);
+                    },
+                    onOver: () => {
+                      if (!dropOk(c)) return false;
+                      if (over !== c.id) setOver(c.id);
+                      return true;
+                    },
+                    onLeave: () => setOver((x) => (x === c.id ? null : x)),
+                    onDrop: () => {
+                      const from = floor.tables.find((x) => x.id === dragging.current);
+                      const ok = dropOk(c);
+                      dragging.current = null;
+                      setOver(null);
+                      if (from && ok) drag!.onDrop(from, c);
+                    },
+                  }
+                : null
+            }
           />
         ))}
       </div>
