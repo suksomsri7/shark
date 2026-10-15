@@ -963,13 +963,12 @@ export async function resolveRegisterShift(
 export async function resolveApiRefundShift(
   db: Db,
   s: { tenantId: string; systemId: string; unitId: string },
-  saleId: string,
+  saleShiftId: string | null,
 ): Promise<{ shiftId: string | null; required: boolean }> {
   const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
   const st = parseShiftSettings(sys?.settings);
-  const sale = await db.posSale.findFirst({ where: { id: saleId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, select: { shiftId: true } });
-  if (sale?.shiftId) {
-    const own = await db.posShift.findFirst({ where: { id: sale.shiftId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true } });
+  if (saleShiftId) {
+    const own = await db.posShift.findFirst({ where: { id: saleShiftId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true } });
     if (own) return { shiftId: own.id, required: st.requiredOtherSources };
   }
   if (!st.requiredOtherSources) return { shiftId: null, required: false };

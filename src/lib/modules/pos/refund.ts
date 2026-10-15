@@ -280,7 +280,8 @@ export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: 
     // POS P2.13 ▸ CD5: คำขอจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId · ไม่มีเครื่อง) = กะของบิลเดิมถ้ายังเปิด ไม่งั้นกติกา "ทางอื่น" ◂
     const rawApiKey: unknown = isRecord(ctx) ? (ctx as { apiKeyId?: unknown }).apiKeyId : undefined;
     const apiKeyId = isId(rawApiKey) ? rawApiKey : null;
-    const apiShift = apiKeyId ? await resolveApiRefundShift(db, s, x.saleId) : null;
+    const saleShift = apiKeyId ? await db.posSale.findFirst({ where: { id: x.saleId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, select: { shiftId: true } }) : null;
+    const apiShift = apiKeyId ? await resolveApiRefundShift(db, s, saleShift?.shiftId ?? null) : null;
     const sh = apiShift ? null : await resolveRegisterShift(db, s, x.deviceId);
     const preShiftId = apiShift ? apiShift.shiftId : sh?.ok ? sh.shiftId : null;
     const commit = (opts: RefundTxOpts) => runRefundTx(db, s, x, preShiftId, apiShift ? apiShift.required : shiftSettings.requiredRegister, opts);
