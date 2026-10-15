@@ -146,12 +146,13 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
 
   const save = async () => {
     if (!editing || busy) return;
-    // POS P2.11U ▸ (fix1 มติ 8 ครอบ) แถวทั้งชุดจากร่างทุกกลุ่ม · คีย์ error "<กลุ่ม>|<ช่องทาง>" ◂
+    // POS P2.11U ▸ (fix1 มติ 8 · fix2 มติ 3 ครอบ) แถวทั้งชุดจากร่างทุกกลุ่ม · คีย์ error "<กลุ่ม>|<ช่องทาง>" · ล้างกรอบแดงรอบกลุ่ม
     const { rows, errors } = rowsFromGroups(p, draft, parseMoneyInput);
     const errs: Record<string, string> = {};
     for (const [k, e] of Object.entries(errors)) errs[k] = tp(e === "max" ? "errors.priceMax" : "errors.priceFormat");
     setRowErr(errs);
     setGroupsErr(false);
+    // ◂
     if (Object.keys(errs).length) {
       setSaveErr(tp("errors.validation"));
       return;

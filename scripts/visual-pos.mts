@@ -174,7 +174,7 @@ type UserKey = (typeof USERS)[number];
 const userKey = (flag("--user") ?? "owner") as UserKey;
 const tenantKey = (flag("--tenant") ?? "coffee") as "coffee" | "resto";
 const onlyPage = flag("--page");
-// POS P2.11U ▸ มติ 11: wo p2.11u = สถานะหลายสาขาของหน้า products/reports/settings/stock เท่านั้น (fix1 มติ 4: ชิปบิลถูกถอด — ไม่มี sales) (ไม่ส่ง --page = 5 หน้านี้) ◂
+// POS P2.11U ▸ มติ 11: wo p2.11u = สถานะหลายสาขาของหน้า products/reports/settings/stock เท่านั้น (fix1 มติ 4: ชิปบิลถูกถอด — ไม่มี sales) (ไม่ส่ง --page = 4 หน้านี้) ◂
 const P211U_WO = /^p2\.?11u/i.test(WO ?? "");
 const P211U_PAGES = ["products", "reports", "settings", "stock"] as const satisfies readonly PosPage[];
 
