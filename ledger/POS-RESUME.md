@@ -1610,3 +1610,10 @@
 - spawn **hunter เงิน** prompt `pos-prompt-accountB-HF-FU-H.md` + **R2** ตรวจซ้ำ fix 1 `pos-prompt-accountB-HF-FU-R2.md` (a8919dfc) · ทั้งคู่ Opus read-only ทรี c @aff51c68
 - เตรียมไว้: `scratchpad/ctl/gates93-b.template.sh` (ด่าน merge §8 ทรี b · 21 ชุด + fitness ±env/pos + typecheck) · `chain79.template.sh` (build79 ทรี d @merge → vis81 §9: tables ×4 th+en · products-branch-filter th · orders-detail-platform th+en)
 - ถัดไป: hunter CLEAN/SIGNED-OFF + R2 MERGEABLE → merge aff51c68 เข้า session/pos (no-ff) → gates93 ทรี b ‖ chain79 ทรี d → ผู้คุมดูภาพ → push → **37/55** + TG
+
+### 15 ต.ค. 13:45Z — HF-FU R2 MERGEABLE · hunter FINDINGS → fix round 2
+- R2 (ตรวจซ้ำ fix 1 @aff51c68) = **MERGEABLE** · G1 info (sweep ถือ advisory lock แบบ blocking ⇒ หน้าจอโพลหลายจอค้างรอ · P2.14 `pg_try_advisory_xact_lock`) · G2 info (F1 เหลือช่อง microseconds) · merge 120b0e16 สะอาด · บันทึก verbatim ใน `wo-notes/pos-HF-FU-review.md` (23387e97)
+- hunter เงิน = **FINDINGS 2 Low**: **H1** sweep ตัดสินสร้าง sale จากแถวช่องทางที่อ่านนอก tx (เจ้าของสลับ payout PLATFORM→DIRECT ระหว่าง held ⇒ รับออเดอร์ไม่มี sale · รายได้แพลตฟอร์มไม่ถูกบันทึก) · **H2** refund บิล zero-entry หลัง relink สมุด A→B ⇒ marker B เปิด gate ค่าคอมฯ ⇒ P2002 ทุก retry · event FAILED · COMMISSION_REFUNDED ไม่โพสต์ (มีก่อน HF-FU · z3 ไม่ปิด) · ที่เหลือ Probed OK 7 ข้อ (fuzz allocator 192k แผน Σ ตรง · CAS/idempotency 1 sale)
+- มติ fix 2 (1–5 ใน review file 19edd7b6): H1 fix (re-read ช่องทางใน tx + refuse payout↔paymentState ไม่ตรงใน `acceptInTx`) · H2 fix time-box (idempotency key tenant-wide ⇒ skipped · owner line "คืนบิลหลัง relink ไม่กลับค่าคอมฯ อัตโนมัติ" · ตรวจ double-consume ใน ZE3 → CONTROLLER-DECISION ถ้าเกิด) · ORACLE-ADD HN5 + ZE3 (29 ข้อ) · follow-up lines G1/G2/REFUNDED hand-over · gates 12 ชุด
+- spawn **builder HF-FU fix 2** (Opus ทรี c) prompt `pos-prompt-accountB-HF-FU-fix2.md`
+- เลน: 1 = HF-FU fix 2 ทรี c · ทรี b/d ว่าง · ถัดไป: fix 2 รายงาน → (ไม่ต้อง hunter ซ้ำถ้าแก้ในกรอบมติ 1–2) → merge → gates93 ‖ chain79 → ภาพ → push → 37/55
