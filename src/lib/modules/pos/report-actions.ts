@@ -183,7 +183,7 @@ export async function posReportPrintAction(
     const res = await KIND_FN[a.kind](s.ctx, s.actor, { from: a.from as string, to: a.to as string, limit: PRINT_ROW_LIMIT });
     if (!res.ok) return res;
     const locale = a.locale === "en" ? "en" : "th";
-    const names = await reportPrintNames(s.ctx);
+    const names = await reportPrintNames(s.ctx, undefined, { actor: s.actor, kind: a.kind }); // POS P2.12 ▸ fix1 H3: ขอบเขตจำกัด ⇒ ชื่อสาขาในขอบเขต ◂
     const model = buildReportPrint(res.report, {
       locale,
       generatedAt: new Date().toISOString(),

@@ -1803,13 +1803,24 @@ export async function reportCsv(ctx: ReportCtx, actor: RegisterActor, input: { k
 }
 
 // POS P2.12 ▸ PD: ชื่อร้าน + ชื่อสาขาสำหรับหัวแบบพิมพ์ (อ่านอย่างเดียว · เรียกหลังรายงานผ่านด่านขอบเขตแล้ว) ◂
-export async function reportPrintNames(ctx: ReportCtx, client?: Db): Promise<{ shopName: string; unitName: string | null }> {
+// POS P2.12 ▸ fix1 H3 (มติ 4): ไม่ส่ง unitId + ขอบเขตของผู้ใช้ไม่ใช่ทุกสาขาของร้าน ⇒ unitName = ชื่อสาขาในขอบเขต (เรียง id แบบ scopeOf · คั่น ", ") ·
+//   ขอบเขต = กติกาเดียวกับ scopeOf (OWNER / "*" = ทุกสาขา · อื่น = unitAccess) ∩ pos.report.view (+ pos.report.anomaly สำหรับ anomalies) · ครบทุกสาขา = null ("ทุกสาขา") ◂
+export async function reportPrintNames(ctx: ReportCtx, client?: Db, scope?: { actor: RegisterActor; kind: ReportKind }): Promise<{ shopName: string; unitName: string | null }> {
   const db = client ?? prisma;
-  const [t, u] = await Promise.all([
+  const [t, u, all] = await Promise.all([
     db.tenant.findFirst({ where: { id: ctx.tenantId }, select: { name: true } }),
     ctx.unitId ? db.businessUnit.findFirst({ where: { id: ctx.unitId, tenantId: ctx.tenantId }, select: { name: true } }) : null,
+    !ctx.unitId && scope ? db.businessUnit.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, name: true }, orderBy: { id: "asc" } }) : null,
   ]);
-  return { shopName: t?.name ?? "", unitName: u?.name ?? null };
+  let scoped: string | null = null;
+  const a = scope ? actorOf(scope.actor) : null;
+  if (all && a) {
+    const everyUnit = a.role === "OWNER" || a.unitAccess.includes("*");
+    const perms = scope!.kind === "anomalies" ? [REPORT_PERMISSION, ANOMALY_PERMISSION] : [REPORT_PERMISSION];
+    const mine = all.filter((x) => (everyUnit || a.unitAccess.includes(x.id)) && perms.every((p) => evaluate(a, { module: "pos", action: p, unitId: x.id })));
+    if (mine.length > 0 && mine.length < all.length) scoped = mine.map((x) => x.name).join(", ");
+  }
+  return { shopName: t?.name ?? "", unitName: u?.name ?? scoped };
 }
 
 // ═══════════ การ์ดภาพรวม (R16) ═══════════
