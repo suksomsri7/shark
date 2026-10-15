@@ -64,3 +64,50 @@ Logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/hffub/
 | fitness no-env · env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 |
 
 Step runs (forced unless noted): s1 p2.5 49/49 (unforced) · s3 p2.3 46/46 · s4 p2.8 61/61 · s5 qc-hf-fu 17/25 (mid) · s5 p2.6 67/67 · s5 hf-tx 22/22 · s6 p2.4 50/50 · s7 p2.9b 53/53 · pos-account 16/16 · cpa 107/107.
+
+## Fix round 1 (R1 F1–F5 · controller rulings 1–7 · 15 Oct 2026)
+Base f5e1c8a4 → commits 979d5ac0 (test) · 7334aff2 (red-before) · a30741aa F1 · ede1131c F2 · e5d03a0d F3 · 0e870195 F4 · 120b0e16 merge `origin/session/pos` (P2.9bU 616db657 + ledger; no conflicts — `messages/{th,en}/pos.json` + `POS-OWNER-PENDING.md` auto-merged append-only, 0 removed lines) · this notes commit.
+
+**Oracle (ruling 6)** — `scripts/qc-hf-fu.mts`, 2 registry rows + 2 blocks, all under `// ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1)`; suite = 25 + 2 = **27**; no existing check touched.
+- **HN4** (after HN3): ceiling 1 set *before* ingest, 3 orders held via kitchen pause (o1 on a new PLATFORM channel CUSTOM_H4, o2 o3 on GRAB). A third tx holds o1's `PosOrder` row: S1 = `releaseHeldOrders` passes the ceiling check (0 tickets) and waits on o1. Then o1's channel autoAccept goes off, so later sweepers' candidate lists start at o2 (this models stale/different first candidates). S2–S6 = release ×3 + `listOrders` ×2. Release the hold ⇒ expect 1 ACCEPTED · 1 sale · 1 round · `kitchenBacklog` max open ≤ 1. Leftover NEW orders are rejected in `finally`.
+- **OD3** (after OD1/OD2): table with a sent round + a HELD draft. The table is paid in full, and because a draft exists the session stays OPEN. `table.closeSession` then sets it CLOSED, leaving an orphan draft. A third tx holds the draft row FOR UPDATE; `registerTables` sweeps, reads CLOSED outside the tx, then waits. In `during`: `voidSaleByActor` + drain, so the void consumer re-opens the session (asserted OPEN). Release ⇒ draft stays HELD, same version, 0 discard audits. Deterministic, so no static replacement was needed.
+- **Red-before** (`HF-FU-red.txt` §fix1, log `runs/fix1/red-2.log`, test commit on f5e1c8a4 code, unforced): 25/27.
+  - HN4 = `ACCEPTED,ACCEPTED,NEW · 2 sales · 2 rounds · backlog 2` (F2 overshoot).
+  - OD3 = `DISCARDED v2 · +1 discard audit` (F1).
+  - red-1 was a fixture miss: setting the ceiling sweeps immediately. Fixed in the same test commit (amended before any push).
+
+**Code (one commit each, explicit paths, marked `fix1` hunks)**
+- **F1** `pos/held-cart.ts` `sweepOrphanTableDrafts` (marker `b fix1`). The discard tx now:
+  1. locks the draft row (`FOR UPDATE`, HELD + same session);
+  2. re-reads the session with `rest.tableSessionForPos(tx, …)`; OPEN or unreadable ⇒ skip;
+  3. then runs the CAS + audit as before. The hint logic is unchanged.
+
+  The session row is not locked: the close-table path locks session → drafts, so locking it here would invert that order.
+- **F2** `pos/order.ts` `releaseHeldOrders`, sweep tx (marker `a fix1`): the first statement is `pg_advisory_xact_lock(hashtext('posorder-release:<tenant>:<unit>'))`, before `autoAcceptBlockedInTx`. Lock order: advisory → PosOrder CAS → kds-round → sale.
+- **F3** same function (marker `a fix1`):
+  - a non-`OrderAbort` candidate error ⇒ WARN + `continue` (no rethrow);
+  - the `sale_refused` marker tx runs in its own try/WARN;
+  - after commit, `afterSaleCommit` · adapter `accept` · swept audit each run in their own try/WARN, and `scheduleDrain` is in a try/WARN.
+- **F4** `pos/order.ts` `step()` handOver (marker `h1 fix1`): the mutate tx throws `OrderAbort(HANDOVER_SALE_VOIDED)`, a module-level frozen sentinel, so the tx still rolls back. Because of the rollback this is a throw, not a returned value. The caller compares identity and builds `stateInvalid(…, "orders.errors.saleVoided")` only after rollback, so there is no second pool connection inside the tx.
+- **F5** (ruling 5) accepted as is — no code.
+
+**Follow-ups (not owner lines)**
+- F5: a book with the POS document layer off never gets a sale document. Its zero-entry bills therefore stay `posSalePosted=false`, and each refund re-runs the idempotent `bridgePosSalePaid`. No money effect; R5 F2 stays open for that setup only.
+- F2 scope: ingest's own auto-accept check (`order.ts` held/auto path) does not take `posorder-release`, so ingest ‖ sweep or ingest ‖ ingest can still overshoot the ceiling by one. Out of scope per ruling 2 → P2.14.
+- F1 residual: a void that commits between the in-tx session re-read and the discard commit (microseconds; the session is not locked, see F1) can still discard. Closing it fully needs a session-first lock order in the sweep → P2.14 if wanted.
+- Hunter (money lane): R1's 4-line brief + F2 overshoot re-probe (HN4 shape with ingest in the mix).
+
+**Gates (ruling 7)** — logs `scratchpad/hffub/runs/fix1/` (line 1 = `tree= head= dirty=`); `g-*` at 0e870195 dirty 0 via `scratchpad/hffub/gates-fix1.sh`; `m-*` at 120b0e16 (post-merge) dirty 0.
+
+| gate | result |
+|---|---|
+| qc-hf-fu ×2 **unforced** @0e870195 | **27/27 · 27/27** (PAR 5/5 · residue 0 · leaks 0) `g-hffu-1/2.log` |
+| qc-pos-p2.6 | 67/67 |
+| qc-pos-p2.4 | 50/50 |
+| qc-pos-p2.8 | 61/61 |
+| qc-hf-tx | 22/22 |
+| qc-pos-p1.1 | 180/180 |
+| qc-pos-p1.3 | 128/128 |
+| typecheck | rc 0 @0e870195 `g-typecheck.log` · rc 0 @120b0e16 `m-typecheck.log` (2 runs) |
+| fitness no-env · env (qc4) | 50/50 · 50/50 |
+| qc-hf-fu post-merge **unforced** @120b0e16 | **27/27** (PAR 5/5 · residue 0) `m-hffu.log` |
