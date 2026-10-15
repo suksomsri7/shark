@@ -75,3 +75,6 @@ exit=1
 exit=1
 ## expected red-before: every check that needs the new code (route/registry/bundles/AI hunk/docs/skill) · green = Z1 Z2 K10 (+ RP2 SKIP-with-reason: P2.12 kinds absent) · ST5 pins sub-part (contract sha + no prisma diff) green inside the red ST5 (red only for ops/sales.ts createSale 1→0 + missing AI hunk)
 
+## §base-d0561566 (builder · 15 Oct 2026 · P2.12 S merged ⇒ RP2 real)
+forced QC4 qc-pos-p2.13: 2/49 (Z1 Z2 · RP2 now red instead of SKIP) — scratch runs/base-p213-forced.log
+forced QC4 qc-pos-api-skill: 1/10 (K10) — scratch runs/base-skill-forced.log

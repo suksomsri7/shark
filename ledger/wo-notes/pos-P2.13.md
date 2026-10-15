@@ -5,7 +5,7 @@ Contract: `ledger/pos-briefs/pos-brief-P2.13.md` §10 rulings 1–11 (CD1–CD10
 Logs: `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p213/runs/` (line 1 of each = `tree= head= dirty=`).
 
 ## Status
-(see "Gates" at the end — updated after the final run)
+Built and gated. `qc-pos-p2.13` **48/49** (forced ×2 + unforced + post-merge) — the only red is **OR4 = CONTROLLER-DECISION CD-B1** (oracle step order contradicts order.ts). `qc-pos-api-skill` 10/10. Typecheck 0 (2 runs). Fitness ±env 53/53 · fitness-pos 8/8.
 
 ## Red-before at this base (d0561566)
 - `qc-pos-p2.13` forced = **2/49** (Z1 Z2; RP2 is now real because P2.12 S merged → red) — `runs/base-p213-forced.log`
@@ -50,10 +50,44 @@ Logs: `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p213/
 - `qc-pos-p0.2.mts` (CD1): S1.5 (coverage of the 4 P0.2 ops) · S1.6 (VALID from/to, 4 P0.2 ops) · S2.3 (exact `pos-*` bundles) · S3.3 (P0.2 ops have rows) · S4.4 `[GET,POST]` · S4.5 `sales.list` · S4.6 route exists · S5.7 from/to · S6.0/S6.4 positive control = "not 404 and not ok" · S7.1–S7.6 re-based on `reportDailySales` (PAR with the reader, 404 on a ghost system). S3.5 needed no edit.
 
 ## CONTROLLER-DECISION
-(filled at the end)
+- **CD-B1 · `qc-pos-p2.13` OR4 (oracle defect)** — the oracle sells a DIRECT order as accept → preparing → ready → **complete → pay**. `order.ts step("HANDED")` refuses hand-over of an UNPAID / PAY_ON_PICKUP order (`ORDER_UNPAID` → 409 `state_conflict`, existing P2.8 rule), and `payOrder` refuses a HANDED order. Actual: `complete 409:state_conflict · pay 200` (pay works through the API since the CD5 extension). Rec: ORACLE-EDIT OR4 to accept → preparing → ready → **pay → complete**, illegal step = preparing on the HANDED order (both already behave). Not edited (outside the pre-approved batch).
+- **CD-B2 · route reorder** `src/app/api/v1/ai/tools/[name]/route.ts` (not in the hunk list): ruling 7 + oracle ST5 (`sales_summary` with `["kanban.card.read"]` = false) made the scope gate answer module keys before the HF-APIV1 general-key gate ⇒ `qc-hf-apiv1-scope` HF-12.6.x lost `key_not_general` (and HF-12.1–12.3 lost legacy keys). Fixed by (a) legacy `[]` keys keep the old behaviour in the skills.ts hunk, (b) moving the general-key gate first (same answers for every module tool). Now hf-apiv1 143/143. Confirm the reorder.
+- **CD-B3 · CD5 extended**: API refunds (refund.ts) as ruled, and also `orders.pay` (order.ts hunk: REST pay = createSale's other-sources rule instead of the device shift — without it every API cash order payment is `SHIFT_REQUIRED`). Confirm.
+- **CD-B4 · API bills refundable**: refund.ts treats `sourceModule "API"` as POS-owned (else a bill sold through the API can never be refunded — agent acceptance task "refund one line"). Still not voidable from the bills drawer UI (`bills.ts voidSaleByActor` refuses non-POS; REST `sales.void` works) and API bills do not create KDS tickets (`kds.ts` NOT_REGISTER_SALE) — owner line added; rec: follow-up card if wanted.
+- **CD7 class (by design, not decisions)**: lane pins comparing `register*.ts`/`refund.ts`/`order.ts`/scripts against the merge-base are red on the wip branch, green on the merge tip: `qc-pos-p2.10` ST2 · `qc-hf-fu` ST1 · `qc-pos-p2.11` ST4 · plus the same class `qc-pos-p2.8` ST6 and `qc-pos-p2.12` ST1.
+- Environment note: `qc-kanban-k1.15` S3.2/S3.4 need the gitignored kanban skill folder in the tree — copied from `/root/.claude/skills/shark-kanban-api` (local only) → 30/30.
 
 ## Visual `--state` list for the controller (wo `p2.13`, owner + `--user manager`, th + LOCALE=en, 3 sizes)
 `settings-shark-api-keys-empty` · `settings-shark-api-keys-create` · `settings-shark-api-keys-raw` · `settings-shark-api-keys-list` · `settings-shark-api-keys-revoke` · `developers-pos` (public page smoke, no session). Run th/en and owner/manager one at a time (the empty state needs zero keys on the QC POS system).
 
-## Gates
-(filled at the end)
+## Gates (head after merge 84437d7e unless noted · logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p213/runs/`)
+| Gate | Result | Log |
+|---|---|---|
+| qc-pos-p2.13 forced #1 / #2 | 48/49 (OR4 = CD-B1) | g2-p213-f1.log · g2-p213-f2.log (head 5580a77f) |
+| qc-pos-p2.13 unforced | 48/49 (OR4) | g2-p213-u.log (5580a77f) · g4-p213-postmerge.log (84437d7e) |
+| qc-pos-api-skill forced | 10/10 | g2-skill.log · dev3-skill.log |
+| qc-pos-p0.2 (edited) | 56/56 | g2-p02.log |
+| qc-hf-apiv1-scope | 143/143 | g2-hf-apiv1.log (first run 133/143 → CD-B2 fix) |
+| qc-account-api-core | 64/64 | g1-qc-account-api-core.log |
+| qc-kanban-k1.15 | 30/30 | g2-kanban.log |
+| qc-ai-skills | 23/23 | g1-qc-ai-skills.log |
+| qc-pos-p1.3 | 128/128 | g1-qc-pos-p1.3.log |
+| qc-pos-p1.8 | 49/49 | g3-p18.log (after the shift.ts fix) |
+| qc-pos-p2.8 | 60/61 (ST6 = CD7 class) | g1-qc-pos-p2.8.log |
+| qc-pos-p1.17 | 40/40 | g1-qc-pos-p1.17.log |
+| qc-pos-p2.11 | 33/34 (ST4 = CD7) | g1-qc-pos-p2.11.log |
+| qc-pos-p2.12 | 32/33 (ST1 = CD7 class) | g1-qc-pos-p2.12.log |
+| qc-pos-p1.6 | 48/48 | g1-qc-pos-p1.6.log |
+| qc-hf-tx | 22/22 | g1-qc-hf-tx.log |
+| qc-hf-fu | 28/29 (ST1 = CD7) | g1-qc-hf-fu.log |
+| qc-pos-p2.6 | 67/67 | g1-qc-pos-p2.6.log |
+| qc-pos-p1.1 | 180/180 | g1-qc-pos-p1.1.log |
+| qc-pos-p2.1 (edited) | 55/55 | g1-qc-pos-p2.1.log |
+| qc-pos-p2.9 / p2.9b | 62/62 · 53/53 | g1-qc-pos-p2.9.log · g1-qc-pos-p2.9b.log |
+| qc-pos-p1.9 | 53/53 | g3-p19.log (first run 52/53 → S.R2.1 fixed) |
+| qc-pos-p2.10 | 12/13 (ST2 = CD7) | g1-qc-pos-p2.10.log |
+| qc-hf-pos-page-authz | 81/81 | g1-qc-hf-pos-page-authz.log |
+| gen-pos-api-docs --check | exit 0 | — |
+| typecheck | #1 3 errors (fixed) · #2 exit 0, 0 errors | typecheck1.log · typecheck2.log |
+| fitness (env / no env) · fitness-pos | 53/53 · 53/53 · 8/8 | fitness-env.log · fitness-noenv.log · fitness-pos.log |
+| visual-pos p2.13 --states --dry (th/en × owner/manager) | exit 0 (18/6/18/6 shots) | visual-dry-*.log |
