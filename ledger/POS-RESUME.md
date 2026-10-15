@@ -1562,3 +1562,9 @@
 - spawn **R1 reviewer** (Opus, read-only ทรี b) prompt `pos-prompt-accountB-P2.9bU-R.md` (7552361f)
 - **chain77** ทรี d: build77 @d4b7dbb8 → vis79 QC5 (owner register 7 states / sales 2 / settings 1 · cashier register 4 · th + en) `/root/pos-runs/build77-d-*` → `vis79-qc5-*` · ภาพ `/root/projects/shark-pos-d/.qc-shots/pos/p2.9bu/` · ผู้คุมดูเองเทียบ `design-pos/02-payment.png` (02+02b) · `12-bills-refund.png` · `19-states.png` · `17-settings-3.png`
 - เลน: 1 = HF-FU builder ทรี c (กำลังทำ) · 2 = R1 P2.9bU (read-only) · ทรี b ว่างรอ fix round
+
+### 15 ต.ค. ~11:55Z — P2.9bU R1 → fix round 1
+- R1 (Opus read-only) = **MERGEABLE-AFTER-FIXES**: F1 Med (NOT_OWNER โทษแถว last-4 แทนแถว member-linked ⇒ วนผิดแถว) · F2 Low (หลัง reload ทุกแถวถาม last-4) · F3 Low (sheet รับมัดจำปิดไม่ได้หลัง intent PAID แล้ว S ปฏิเสธถาวร) · F4 Low (iframe ไม่มี sandbox) · F5 Low (note refund-deposit ไม่ตรง — ใช้ fixture ใหม่) · F6 info (เบอร์ fixture โชว์ในภาพ) · F7 info (switch ให้ non-owner เห็น · ป้าย chip คืนเงินจาก P1.8) · R1–R11 verified OK (secret hygiene ครบ · bills ใช้ channel filter เดิม · tip rule จริง)
+- มติ fix round 1 (1–8) ใน `wo-notes/pos-P2.9bU-review.md` (2e59b5a2): F1 fix by origin tag · F2 follow-up + note key · F3 fix ปิดได้ + แสดงอ้างอิง intent · F4 fix · F5 แก้ note · F6 รับ (เบอร์ปลอมชัด) · F7 ป้าย chip ใหม่ · re-shoot notowner/deposit-receive/refund-deposit
+- spawn **builder fix 1** (Opus ทรี b) prompt `pos-prompt-accountB-P2.9bU-fix.md` · chain77 (build77 → vis79) ยังรันอยู่บน d4b7dbb8 — ภาพชุดนี้ใช้ดูได้ยกเว้น 3 state ที่จะ re-shoot
+- เลน: 1 = HF-FU builder ทรี c · 2 = P2.9bU fix 1 ทรี b
