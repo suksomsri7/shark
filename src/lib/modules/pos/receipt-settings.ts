@@ -6,13 +6,18 @@
 // 🔴 ค่าตั้งใบเสร็จใช้ทุกสาขาของ POS นี้ ⇒ ต้องมี pos.device.manage ที่ "ทุกสาขา" ที่ผูก POS นี้ (แก้รอบ 1 F9 · แบบ posCanSetTenantPrice) ·
 //    OWNER / unitAccess "*" ผ่าน · POS ยังไม่ผูกสาขา = เฉพาะ OWNER / "*" · อ่านไม่เปลี่ยน
 // 🔴 ปฏิเสธ = ค่าเดิมไม่เปลี่ยนแม้แต่ฟิลด์เดียว (ตรวจทั้งก้อนก่อนเขียน · ล็อกแถวระบบ FOR UPDATE)
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client"; // POS P2.11 ▸ Prisma.sql สำหรับ jsonb_set ต่อสาขา ◂
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { prisma } from "./db";
 import { writeAudit } from "@/lib/core/audit"; // POS P1.18 ▸ R6 ◂
 import { maskAuditPhones, settingsAuditDiff } from "./settings-shared"; // POS P1.18 ▸ R6 · F5 ◂
 import {
   mergeReceiptSettings,
+  mergeReceiptUnitPatch, // POS P2.11 ▸ ตัวตนบนใบเสร็จต่อสาขา ◂
+  receiptUnitOverride, // POS P2.11 ◂
+  storedReceiptUnit, // POS P2.11 ◂
+  type PosReceiptUnitResult, // POS P2.11 ◂
+  type PosReceiptUnitPatch, // POS P2.11 ◂
   parseReceiptSettings,
   POS_RECEIPT_DEFAULTS,
   type PosReceiptSettings,
@@ -99,7 +104,9 @@ export async function updatePosReceiptSettings(ctx: Ctx, actor: PosReceiptSettin
       const parsed = parseReceiptSettings(mergeReceiptSettings(cur, patch));
       if (!parsed.ok) return refuse("VALIDATION", parsed.message, parsed.field);
       // เขียนเฉพาะ settings.pos.receipt ในคำสั่งเดียว (jsonb_set แบบ member/reviews.ts) — คีย์อื่นของ settings/pos ที่ใบอื่นเป็นเจ้าของไม่ถูกทับ
-      const json = JSON.stringify(parsed.settings);
+      // POS P2.11 ▸ ค่าต่อสาขา (receipt.byUnit) เป็นของ updatePosReceiptUnitSettings — ตัวเขียนระดับระบบคงไว้ตามเดิม (ไม่ทับ) ◂
+      const byUnit = rawReceiptByUnit(sys.settings);
+      const json = JSON.stringify(byUnit ? { ...parsed.settings, byUnit } : parsed.settings);
       await tx.$executeRaw`
         UPDATE "AppSystem"
         SET "settings" = jsonb_set(
@@ -125,3 +132,78 @@ export async function updatePosReceiptSettings(ctx: Ctx, actor: PosReceiptSettin
     return refuse("UNKNOWN");
   }
 }
+
+// ═══════════ POS P2.11 ▸ ตัวตนบนใบเสร็จต่อสาขา (brief P2.11 §4 · มติ 4 14 15) ═══════════
+
+/** ก้อน byUnit ดิบที่เก็บอยู่ (ออบเจกต์เท่านั้น) — ตัวเขียนระดับระบบส่งต่อทั้งก้อน */
+function rawReceiptByUnit(settings: unknown): Record<string, unknown> | null {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const rc = pos && isRecord(pos.receipt) ? pos.receipt : null;
+  return rc && isRecord(rc.byUnit) ? rc.byUnit : null;
+}
+
+/**
+ * แก้ "สาขาที่ / ที่อยู่ / โทร" บนใบเสร็จของสาขาเดียว (`settings.pos.receipt.byUnit.<unitId>`) — ใช้กับระบบ POS ใดก็ได้ใน ctx (มีหรือไม่มีสมุดบัญชี · มติ 14)
+ *   • input `{unitId, patch: {taxBranchNo?, address?, phone?}}` · null/ว่าง = ล้างช่อง · คีย์แปลก/ค่าผิด = VALIDATION + field
+ *   • สาขาต้องเป็นของร้านนี้ ผูก POS ใน ctx และไม่เก็บถาวร — ไม่ใช่ (มั่ว/ร้านอื่น/เลิกผูก/เก็บถาวร) = VALIDATION field "unitId" (มติ 15)
+ *   • สิทธิ์: pos.device.manage ที่สาขานั้น · ตั้ง/ล้าง taxBranchNo (ตัวตนภาษี) = OWNER หรือ unitAccess "*" เท่านั้น — ไม่ผ่าน = PERMISSION_DENIED
+ *   • jsonb_set เฉพาะคีย์ของสาขานั้นใต้ล็อกแถวระบบ FOR UPDATE (คีย์อื่น/สาขาอื่น/หัวใบไม่ถูกทับ) · ค่าเดิม = ไม่เขียน ไม่ลง audit
+ *   • audit `pos.settings.updated` (targetId = POS · มี unitId · เบอร์ปิดบัง) หลัง commit
+ */
+export async function updatePosReceiptUnitSettings(ctx: Ctx, actor: PosReceiptSettingsActor, input: { unitId: string; patch: PosReceiptUnitPatch }): Promise<PosReceiptUnitResult> {
+  try {
+    if (!ctxOk(ctx)) return refuse("NOT_FOUND");
+    const m = membership(actor);
+    if (!m) return refuse("PERMISSION_DENIED");
+    if (!isRecord(input)) return refuse("VALIDATION");
+    const unitId = input.unitId;
+    if (typeof unitId !== "string" || !unitId || unitId.length > 200 || /[\u0000-\u001F]/.test(unitId)) return refuse("VALIDATION", "เลือกสาขาให้ถูกต้อง", "unitId");
+    const pre = mergeReceiptUnitPatch({ taxBranchNo: null, address: null, phone: null }, input.patch);
+    if (!pre.ok) return refuse("VALIDATION", pre.message, pre.field);
+    const sys0 = await loadPos(prisma, ctx);
+    if (!sys0) return refuse("NOT_FOUND");
+    // สาขาของร้านนี้ ผูก POS นี้ ไม่เก็บถาวร (AppSystemUnit unique tenant+unit+type ⇒ สาขาร้านอื่น/POS อื่น = ไม่พบ)
+    const link = await prisma.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId, type: "POS" } }, select: { systemId: true } });
+    const unit = link && link.systemId === ctx.systemId ? await prisma.businessUnit.findFirst({ where: { id: unitId, tenantId: ctx.tenantId, status: { not: "ARCHIVED" } }, select: { id: true } }) : null;
+    if (!unit) return refuse("VALIDATION", "สาขานี้ไม่ได้ผูกกับจุดขายนี้ หรือถูกเก็บถาวรแล้ว", "unitId");
+    if (!evaluate(m, { module: "pos", action: "pos.device.manage", unitId })) return refuse("PERMISSION_DENIED");
+    const patch = input.patch as Record<string, unknown>;
+    if ("taxBranchNo" in patch && !(m.role === "OWNER" || m.unitAccess.includes("*"))) return refuse("PERMISSION_DENIED", "สาขาที่บนใบกำกับภาษีแก้ได้เฉพาะเจ้าของร้านหรือผู้ดูแลทุกสาขา");
+    let audit: { before: Record<string, unknown>; after: Record<string, unknown> } | null = null;
+    const res = await prisma.$transaction(async (tx): Promise<PosReceiptUnitResult> => {
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
+      if (locked.length === 0) return refuse("NOT_FOUND");
+      const sys = await loadPos(tx, ctx);
+      if (!sys) return refuse("NOT_FOUND");
+      const cur = receiptUnitOverride(sys.settings, unitId);
+      const merged = mergeReceiptUnitPatch(cur, patch);
+      if (!merged.ok) return refuse("VALIDATION", merged.message, merged.field);
+      const next = merged.next;
+      if (next.taxBranchNo === cur.taxBranchNo && next.address === cur.address && next.phone === cur.phone) return { ok: true, unitId, override: cur };
+      const stored = storedReceiptUnit(next);
+      const base = Prisma.sql`CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END`;
+      const pos = Prisma.sql`(CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END)`;
+      const rc = Prisma.sql`(CASE WHEN jsonb_typeof("settings"->'pos'->'receipt') = 'object' THEN "settings"->'pos'->'receipt' ELSE '{}'::jsonb END)`;
+      const by = Prisma.sql`(CASE WHEN jsonb_typeof("settings"->'pos'->'receipt'->'byUnit') = 'object' THEN "settings"->'pos'->'receipt'->'byUnit' ELSE '{}'::jsonb END)`;
+      const nextBy = stored ? Prisma.sql`${by} || jsonb_build_object(${unitId}::text, ${JSON.stringify(stored)}::jsonb)` : Prisma.sql`${by} - ${unitId}::text`;
+      // คำสั่งเดียว: แทนเฉพาะ pos.receipt.byUnit.<unitId> — คีย์อื่นของ receipt / pos / settings คงเดิม
+      await tx.$executeRaw`
+        UPDATE "AppSystem"
+        SET "settings" = jsonb_set(${base}, '{pos}', ${pos} || jsonb_build_object('receipt', ${rc} || jsonb_build_object('byUnit', ${nextBy})), true),
+            "updatedAt" = now()
+        WHERE "id" = ${sys.id} AND "tenantId" = ${ctx.tenantId} AND type = 'POS'`;
+      audit = { before: { receipt: { byUnit: { [unitId]: storedReceiptUnit(cur) } } }, after: { receipt: { byUnit: { [unitId]: stored } } } };
+      return { ok: true, unitId, override: next };
+    });
+    if (res.ok && audit) {
+      const { maskPhone } = await import("@/lib/modules/member");
+      const a = audit as { before: Record<string, unknown>; after: Record<string, unknown> };
+      await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: { unitId, ...maskAuditPhones(a.before, maskPhone) }, after: { unitId, ...maskAuditPhones(a.after, maskPhone) } });
+    }
+    return res;
+  } catch (e) {
+    console.error("[pos/receipt-settings] update unit", e);
+    return refuse("UNKNOWN");
+  }
+}
+// ◂

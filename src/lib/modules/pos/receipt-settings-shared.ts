@@ -128,3 +128,70 @@ export function mergeReceiptSettings(cur: PosReceiptSettings, patch: PosReceiptS
   for (const k of ["footer", "showPoints", "showCashier", "qrEReceipt", "issueBoardId"] as const) if (patch[k] !== undefined) next[k] = patch[k];
   return next;
 }
+
+// ═══════════ POS P2.11 ▸ ตัวตนบนใบเสร็จต่อสาขา (brief P2.11 §4 · มติ 4 14 15) ═══════════
+// ที่เก็บ: `AppSystem(POS).settings.pos.receipt.byUnit.<unitId> = {taxBranchNo?, address?, phone?}` (JSON · ไม่มี migration)
+// ลำดับบนใบเสร็จ (receipt.ts): สาขาที่ = ค่าของสาขา → branchCode ของสมุด → "00000" (เฉพาะใบกำกับ ABB/เต็มรูป — RECEIPT ไม่พิมพ์สาขา) ·
+//   ที่อยู่/โทร = ค่าของสาขา → หัวใบของระบบ → สมุด · รูปแบบเลขใบเสร็จไม่เปลี่ยน (O2)
+
+/** สาขาตามกรมสรรพากร = ตัวเลข 5 หลัก (00000 = สำนักงานใหญ่) */
+export const TAX_BRANCH_NO_RE = /^\d{5}$/;
+export const RECEIPT_UNIT_KEYS = ["taxBranchNo", "address", "phone"] as const;
+export type PosReceiptUnitOverride = { taxBranchNo: string | null; address: string | null; phone: string | null };
+export type PosReceiptUnitPatch = { taxBranchNo?: string | null; address?: string | null; phone?: string | null };
+export type PosReceiptUnitResult = { ok: true; unitId: string; override: PosReceiptUnitOverride } | PosReceiptSettingsRefusal;
+export const RECEIPT_UNIT_NONE: Readonly<PosReceiptUnitOverride> = Object.freeze({ taxBranchNo: null, address: null, phone: null });
+
+/**
+ * ค่าของสาขาจาก `settings` ทั้งก้อนของ AppSystem(POS) — อ่านอย่างปลอดภัย (ไม่มี/พัง = null ทีละช่อง · ใบเสร็จต้องพิมพ์ได้เสมอ)
+ * taxBranchNo ต้องเป็นตัวเลข 5 หลัก · address ≤ RECEIPT_ADDRESS_MAX · phone ≤ RECEIPT_PHONE_MAX
+ */
+export function receiptUnitOverride(settings: unknown, unitId: string): PosReceiptUnitOverride {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const rc = pos && isRecord(pos.receipt) ? pos.receipt : null;
+  const by = rc && isRecord(rc.byUnit) ? rc.byUnit : null;
+  const u = by && typeof unitId === "string" && Object.prototype.hasOwnProperty.call(by, unitId) && isRecord(by[unitId]) ? (by[unitId] as Record<string, unknown>) : null;
+  if (!u) return { ...RECEIPT_UNIT_NONE };
+  const tb = typeof u.taxBranchNo === "string" && TAX_BRANCH_NO_RE.test(u.taxBranchNo) ? u.taxBranchNo : null;
+  const ad = optText(u.address, RECEIPT_ADDRESS_MAX, true);
+  const ph = optText(u.phone, RECEIPT_PHONE_MAX);
+  return { taxBranchNo: tb, address: typeof ad === "string" ? ad : null, phone: typeof ph === "string" ? ph : null };
+}
+
+/**
+ * patch ของสาขา (คีย์ตรงตัว taxBranchNo · address · phone) ทับค่าปัจจุบัน — null/ว่าง = ล้างช่องนั้น (กลับไปใช้หัวใบของระบบ/สมุด) ·
+ * ค่าผิด/คีย์แปลก = VALIDATION + field
+ */
+export function mergeReceiptUnitPatch(cur: PosReceiptUnitOverride, patch: unknown): { ok: true; next: PosReceiptUnitOverride } | PosFieldRefusal {
+  if (!isRecord(patch)) return { ok: false, code: "VALIDATION", message: "ค่าของสาขาต้องเป็นออบเจกต์", field: "patch" };
+  const keys = Object.keys(patch);
+  const odd = keys.find((k) => !(RECEIPT_UNIT_KEYS as readonly string[]).includes(k));
+  if (odd) return bad("patch", `ตั้งต่อสาขาได้เฉพาะ สาขาที่ / ที่อยู่ / โทร — ไม่รู้จัก ${odd.slice(0, 40)}`);
+  if (!keys.length) return bad("patch", "ไม่มีค่าที่จะเปลี่ยน");
+  const next: PosReceiptUnitOverride = { ...cur };
+  if ("taxBranchNo" in patch) {
+    const v = patch.taxBranchNo;
+    if (v === null || v === "") next.taxBranchNo = null;
+    else if (typeof v !== "string" || !TAX_BRANCH_NO_RE.test(v)) return bad("taxBranchNo", "สาขาที่ต้องเป็นตัวเลข 5 หลัก (สำนักงานใหญ่ = 00000)");
+    else next.taxBranchNo = v;
+  }
+  if ("address" in patch) {
+    const v = optText(patch.address, RECEIPT_ADDRESS_MAX, true);
+    if (v === false) return bad("address", `ที่อยู่ของสาขายาวได้ไม่เกิน ${RECEIPT_ADDRESS_MAX} ตัวอักษร`);
+    next.address = v ?? null;
+  }
+  if ("phone" in patch) {
+    const v = optText(patch.phone, RECEIPT_PHONE_MAX);
+    if (v === false) return bad("phone", `เบอร์โทรของสาขายาวได้ไม่เกิน ${RECEIPT_PHONE_MAX} ตัวอักษร`);
+    next.phone = v ?? null;
+  }
+  return { ok: true, next };
+}
+
+/** ค่าที่จะเก็บ (เฉพาะช่องที่ตั้ง) · ไม่มีช่องใดเลย = null (ลบคีย์ของสาขา) */
+export function storedReceiptUnit(o: PosReceiptUnitOverride): Partial<PosReceiptUnitOverride> | null {
+  const out: Partial<PosReceiptUnitOverride> = {};
+  for (const k of RECEIPT_UNIT_KEYS) if (o[k] !== null) out[k] = o[k];
+  return Object.keys(out).length ? out : null;
+}
+// ◂
