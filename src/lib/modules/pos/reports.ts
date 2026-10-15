@@ -1275,6 +1275,34 @@ export const ANOMALY_RULE_LABEL_TH: Readonly<Record<PosAnomalyRule, string>> = {
 const ANOMALY_AUDIT_ACTIONS = ["pos.sale.void", "pos.discount.override", "pos.approval.pin_override", "pos.receipt.reprint"];
 const ANOMALY_DENIED = "บัญชีนี้ยังไม่มีสิทธิ์ดูรายงานจุดผิดปกติของพนักงาน — ขอสิทธิ์จากเจ้าของร้าน";
 
+/**
+ * POS P2.12 ▸ fix1 H2 (มติ 3): ตัดแถวต่อกฎ — แถวเรียงตามกฎแล้ว · แบ่งที่นั่งแบบวนทีละกฎตามลำดับกฎ (A1 → A10) จนครบ limit ⇒
+ *   ในรอบแบ่งเท่า กฎละไม่เกิน ⌈limit / จำนวนกฎที่มีแถว⌉ · ที่นั่งของกฎที่มีแถวน้อยกว่าส่วนแบ่งถูกเติมให้กฎถัดไปตามลำดับกฎ ·
+ *   limit ≥ จำนวนกฎที่มีแถว ⇒ ไม่มีกฎหาย · ผลลัพธ์ ≤ limit แถว และคงลำดับเดิม (แถวต้น ๆ ของแต่ละกฎ) · ไม่เกิน limit = คืนเดิม ◂
+ */
+function capPerRule(rows: AnomalyRow[], limit: number): AnomalyRow[] {
+  if (rows.length <= limit) return rows;
+  const groups: AnomalyRow[][] = [];
+  for (const x of rows) {
+    const g = groups[groups.length - 1];
+    if (g && g[0]!.rule === x.rule) g.push(x);
+    else groups.push([x]);
+  }
+  const take = groups.map(() => 0);
+  let left = limit;
+  for (let moved = true; left > 0 && moved; ) {
+    moved = false;
+    for (let i = 0; i < groups.length && left > 0; i++) {
+      if ((take[i] ?? 0) < groups[i]!.length) {
+        take[i] = (take[i] ?? 0) + 1;
+        left -= 1;
+        moved = true;
+      }
+    }
+  }
+  return groups.flatMap((g, i) => g.slice(0, take[i]));
+}
+
 /** POS P2.12 ▸ fix1 H1: ส่วนลดสมาชิกของบิล = Σ discountSatang ของ memberBenefits.lines (ไม่รวม COUPON — คูปองอยู่ใน CouponRedemption) · รูปไม่ถูก = 0 ◂ */
 function memberBenefitDiscount(v: unknown): number {
   if (!isRecord(v) || !Array.isArray(v.lines)) return 0;
@@ -1525,7 +1553,7 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
           cmpStr(p1.refId ?? "", p2.refId ?? ""),
       );
     for (const x of rows) byRule[x.rule] += 1;
-    const shown = rows.slice(0, r.limit);
+    const shown = capPerRule(rows, r.limit); // POS P2.12 ▸ fix1 H2: ตัดต่อกฎ (เดิม slice ทั้งก้อน ⇒ กฎท้าย ๆ หายเงียบ) ◂
     // POS P2.12 ▸ fix1 F1: ชื่อสาขาจากขอบเขต (s.unitName) เฉพาะหน่วยที่อยู่ในแถวที่คืน ◂
     const unitNames: Record<string, string> = {};
     for (const x of shown) unitNames[x.unitId] ??= s.unitName.get(x.unitId) ?? "";
@@ -1596,8 +1624,24 @@ const dailyCells = (first: string, x: DailyTotals): Cells => [
   baht(x.avgBillSatang),
 ];
 
-/** แถวข้อมูล + แถว "รวม" ของรายงานแต่ละชนิด */
+/**
+ * POS P2.12 ▸ fix1 H2: บรรทัดแจ้งเมื่อรายงานถูกตัดแถว (จุดผิดปกติ: totals.rowCount > rows.length) — "แสดง N จาก M แถว" / "Showing N of M rows" ·
+ *   CSV = บรรทัดท้ายช่องเดียว · แบบพิมพ์ = model.notice (ไม่อยู่ในตาราง) · ไม่ถูกตัด = null ◂
+ */
+export function reportRowsNotice(report: AnyReport, locale: "th" | "en" = "th"): string | null {
+  if (report.kind !== "anomalies") return null;
+  const total = (report.totals as AnomalyTotals).rowCount;
+  const shown = report.rows.length;
+  if (!(typeof total === "number" && total > shown)) return null;
+  return locale === "en" ? `Showing ${shown} of ${total} rows` : `แสดง ${shown} จาก ${total} แถว`;
+}
+/** แถว CSV ทั้งหมดใต้หัวตาราง = แถวตาราง + บรรทัดแจ้ง (ถ้าถูกตัด) — POS P2.12 ▸ fix1 H2 ◂ */
 function csvBodyRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
+  const notice = reportRowsNotice(res.report);
+  return notice ? [...csvTableRows(res), [notice]] : csvTableRows(res);
+}
+/** แถวข้อมูล + แถว "รวม" ของรายงานแต่ละชนิด */
+function csvTableRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
   const rep = res.report;
   switch (rep.kind) {
     case "daily": {
@@ -1726,6 +1770,10 @@ function csvBodyRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
 /** POS P2.12 ▸ PD: แถว CSV (ข้อมูล + "รวม") ของรายงานที่สำเร็จ เป็นข้อความทีละช่อง — แบบพิมพ์ใช้ชุดเดียวกับ CSV (report-print-shared.ts) ◂ */
 export function reportCsvRows(report: AnyReport): string[][] {
   return csvBodyRows({ ok: true, report } as Exclude<AnyReportResult, ReportRefusal>).map((row) => row.map((c) => String(c)));
+}
+/** POS P2.12 ▸ fix1 H2: แถวตาราง (ข้อมูล + "รวม") ไม่รวมบรรทัดแจ้ง — แบบพิมพ์ใช้ตัวนี้ + reportRowsNotice ◂ */
+export function reportTableRows(report: AnyReport): string[][] {
+  return csvTableRows({ ok: true, report } as Exclude<AnyReportResult, ReportRefusal>).map((row) => row.map((c) => String(c)));
 }
 
 const REPORT_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db) => Promise<AnyReportResult>> = {

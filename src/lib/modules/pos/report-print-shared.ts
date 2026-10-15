@@ -4,7 +4,7 @@
 //    ⇒ อินพุตเดียวกัน = HTML เดียวกันทุกไบต์ (ข้อสอบเทียบ sha256)
 // 🔴 ตัวเลข/ข้อความของตาราง = แถว CSV ของรายงาน (reportCsvRows) ช่องต่อช่อง · หัวตารางไทย = CSV_HEADERS (ค่าคงที่อยู่ใน reports.ts — CD-2 อนุญาต import ค่า)
 // 🔴 ทุกข้อความผ่าน esc() (& < > " ') · ไม่มี <script> (หน้า print เรียก window.print() เองฝั่ง client)
-import { CSV_HEADERS, REPORT_TOTAL_ROW_KINDS, reportCsvRows, type AnyReport, type ReportKind } from "./reports"; // POS P2.12 ▸ fix1 F2 + REPORT_TOTAL_ROW_KINDS ◂
+import { CSV_HEADERS, REPORT_TOTAL_ROW_KINDS, reportRowsNotice, reportTableRows, type AnyReport, type ReportKind } from "./reports"; // POS P2.12 ▸ fix1 F2 H2 ◂
 
 export type ReportPrintLocale = "th" | "en";
 export type ReportPrintOptions = {
@@ -30,6 +30,8 @@ export type ReportPrintModel = {
   rows: string[][];
   /** POS P2.12 ▸ fix1 F2: แถวสุดท้ายของ rows คือแถว "รวม" (ตัดสินจากชนิดรายงาน — ไม่เทียบข้อความในช่อง) ◂ */
   totalRow: boolean;
+  /** POS P2.12 ▸ fix1 H2: บรรทัดแจ้งเมื่อถูกตัดแถว ("แสดง N จาก M แถว" / "Showing N of M rows") · ไม่ถูกตัด = null ◂ */
+  notice: string | null;
 };
 
 const TITLE: Record<ReportPrintLocale, Record<ReportKind, string>> = {
@@ -84,7 +86,7 @@ export function buildReportPrint(report: AnyReport, opts: ReportPrintOptions): R
   const kind = report.kind;
   const th = CSV_HEADERS[kind];
   const en = EN_HEADERS[kind];
-  const rows = reportCsvRows(report);
+  const rows = reportTableRows(report); // POS P2.12 ▸ fix1 H2: แถวตาราง = แถว CSV ไม่รวมบรรทัดแจ้ง (บรรทัดแจ้ง → notice) ◂
   const totalRow = REPORT_TOTAL_ROW_KINDS.has(kind) && rows.length > 0; // POS P2.12 ▸ fix1 F2 ◂
   return {
     kind,
@@ -99,6 +101,7 @@ export function buildReportPrint(report: AnyReport, opts: ReportPrintOptions): R
     // en: แถวรวมขึ้น "Total" · ช่องอื่นคงเดิม (ชื่อสินค้า/สาขา/ป้ายกฎเป็นข้อมูลของร้าน) — POS P2.12 ▸ fix1 F2: เฉพาะแถวสุดท้ายเมื่อ totalRow (สาขาชื่อ "รวม" ไม่ถูกเปลี่ยน) ◂
     rows: locale === "en" && totalRow ? rows.map((r, i) => (i === rows.length - 1 ? [LABEL.en.total, ...r.slice(1)] : r)) : rows,
     totalRow,
+    notice: reportRowsNotice(report, locale), // POS P2.12 ▸ fix1 H2 ◂
   };
 }
 
@@ -158,6 +161,7 @@ export function renderReportPrintHtml(model: ReportPrintModel): string {
     "tr.total td { font-weight: 700; border-top: 2px solid #111; }",
     "td.empty { text-align: center; color: #666; padding: 12px; }",
     "footer { margin-top: 6px; color: #666; font-size: 8pt; }",
+    ".notice { margin-top: 6px; font-weight: 600; }", // POS P2.12 ▸ fix1 H2 ◂
   ].join("\n");
   return [
     "<!doctype html>",
@@ -175,6 +179,7 @@ export function renderReportPrintHtml(model: ReportPrintModel): string {
     `<div class="meta">${esc(L.range)} ${esc(range)} · ${esc(L.unit)} ${esc(model.unitLabel)} · ${esc(L.generatedAt)} ${esc(bkkStamp(model.generatedAt))}</div>`,
     "</header>",
     `<table>\n<thead><tr>${head}</tr></thead>\n<tbody>\n${body}\n</tbody>\n</table>`,
+    ...(model.notice ? [`<p class="notice">${esc(model.notice)}</p>`] : []), // POS P2.12 ▸ fix1 H2 ◂
     `<footer>${esc(`${model.rows.length} ${L.rows}`)}</footer>`,
     "</body>",
     "</html>",
