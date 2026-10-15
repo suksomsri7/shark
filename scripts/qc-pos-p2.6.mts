@@ -109,7 +109,8 @@ const CHECKS: readonly Def[] = [
   D("O1", "-", "[P2.8][R11 CD7] ตั๋วแรกของรอบออนไลน์ออกจาก NEW → PosOrder ACCEPTED → PREPARING (PosOrderEvent 1 แถว actor null) · start อีกสถานี → ไม่มี event เพิ่ม"),
   D("O2", "X1", "[P2.8][R11] READY บางสถานี → ยัง PREPARING · ครบทุกสถานี → READY + outbox pos.order.ready 1 แถว · recall → ออเดอร์ยัง READY"),
   D("O3", "X1", "[P2.8][R11] ยกเลิกออเดอร์ CHAT ที่รับแล้ว → ระบายคิว → รายการ NEW/COOKING/READY ของรอบ = CANCELLED (cancelReason \"ออเดอร์ถูกยกเลิก\") · ระบาย/เล่นซ้ำ ×2 → ไม่เปลี่ยน"),
-  D("O4", "-", "[P2.8][R11 R13 มติ 10] kitchenProgress {orderId done total} = DB · autoAcceptMaxOpen 1 + CHAT autoAccept → ออเดอร์ค้าง NEW (ครัวค้าง) · ล้างเพดาน → ACCEPTED · พักครัว → CHAT ingest CHANNEL_PAUSED · LINEMAN (MANUAL) ยังได้"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU a · มติ 11): + ล้างเพดานแล้วออเดอร์ที่ค้าง (i1) ถูกรับ ◂
+  D("O4", "-", "[P2.8][R11 R13 มติ 10] kitchenProgress {orderId done total} = DB · autoAcceptMaxOpen 1 + CHAT autoAccept → ออเดอร์ค้าง NEW (ครัวค้าง) · ล้างเพดาน → ACCEPTED · พักครัว → CHAT ingest CHANNEL_PAUSED · LINEMAN (MANUAL) ยังได้ · ล้างเพดาน → ออเดอร์ที่ค้างถูกตัวกวาดรับ (ACCEPTED · ผู้รับ null · HF-FU)"),
   // ── A 86 ──
   D("A1", "-", "[R9 CD6] COOK setAvailability({ผัดไทย MENU · KDS · false}) → MenuItem.isOutOfStock · PosAvailabilityMark (source KDS · markedBy COOK) · AuditLog pos.product.availability · outbox 1 แถว {productId unitId systemId available:false source KDS at} · board.eightySix มีผัดไทย"),
   D("A2", "X1", "[R9] เรียกซ้ำ → ok ไม่มี event เพิ่ม · คืนขาย → event available:true · mark หาย · isOutOfStock false · คืนซ้ำ → ไม่มี event"),
@@ -2067,6 +2068,9 @@ async function runDb() {
     const i1 = await chat("bk1");
     if ((await poRow(String(i1?.orderId ?? "")))?.status !== "NEW") p.push(`ครัวค้าง ≥ 1 + autoAccept → ${(await poRow(String(i1?.orderId ?? "")))?.status ?? codeOf(i1)} (คาด NEW)`);
     await K("kdsSetAutoAcceptMax", ctxA(), A("OWNER"), { maxOpen: null });
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU a · มติ 1 + 11): ล้างเพดาน ⇒ ตัวกวาดรับออเดอร์ที่ค้างจากเพดาน (held) หลัง commit — i1 = ACCEPTED ผู้รับ null ◂
+    const i1a = await poRow(String(i1?.orderId ?? ""));
+    if (i1a?.status !== "ACCEPTED" || i1a?.acceptedByUserId !== null) p.push(`ล้างเพดาน → ออเดอร์ที่ค้าง ${i1a?.status ?? codeOf(i1)} ผู้รับ ${short(i1a?.acceptedByUserId ?? null)} (คาด ACCEPTED · null · HF-FU มติ 1)`);
     const i2 = await chat("bk2");
     if ((await poRow(String(i2?.orderId ?? "")))?.status !== "ACCEPTED") p.push(`ไม่มีเพดาน → ${(await poRow(String(i2?.orderId ?? "")))?.status ?? codeOf(i2)} (คาด ACCEPTED)`);
     await menu.setKitchenPause(T, U.A, true, "qc");
