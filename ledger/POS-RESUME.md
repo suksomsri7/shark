@@ -1603,3 +1603,10 @@
 - gates92 @57a8b19a (`/root/pos-runs/gates92-b-20261015T130350Z`): p2.8 61/61 · p2.11 34/34 (ST4 เขียวหลัง push) → **P2.9bU ✅ 36/55** · TG ส่งแล้ว · memory อัปเดต
 - ทรี b ว่าง @57a8b19a · ทรี d ว่าง @36e0be7c · เลน 1 = HF-FU fix 1 ทรี c (รอ fitness env)
 - ถัดไป: HF-FU fix 1 รายงาน → hunter เงิน (brief 4 ข้อของ R1 + F2 overshoot re-probe) → SIGNED-OFF → merge origin/session/pos 57a8b19a เข้า wip/pos-hf-fu → merge → ด่าน merge เต็ม (brief §8 + p1.1/p1.3/fitness ±env/typecheck) ทรี b → ภาพ §9 ทรี d → push → 37/55 + TG
+
+### 15 ต.ค. 13:25Z — HF-FU fix 1 เสร็จ → hunter เงิน + R2 (2 เลน read-only ทรี c)
+- builder fix 1: `wip/pos-hf-fu` **aff51c68** push แล้ว · ORACLE-ADD HN4+OD3 (979d5ac0) red-before 25/27 ที่ f5e1c8a4 (`HF-FU-red.txt` §fix1) · F1 a30741aa · F2 ede1131c · F3 e5d03a0d · F4 0e870195 · F5 follow-up · merge origin/session/pos 57a8b19a (P2.9bU) = 120b0e16 ไม่ชน · gates: qc-hf-fu 27/27 ×2 unforced (+หลัง merge 27/27) · p2.6 67 · p2.4 50 · p2.8 61 · hf-tx 22 · p1.1 180 · p1.3 128 · typecheck 0 ×2 · fitness ±env 50/50
+- follow-ups ในโน้ต: ingest ไม่ถือ sweep lock (ทะลุเพดานได้ · P2.14) · F1 เหลือช่อง microseconds (ต้องล็อก session ก่อน · P2.14)
+- spawn **hunter เงิน** prompt `pos-prompt-accountB-HF-FU-H.md` + **R2** ตรวจซ้ำ fix 1 `pos-prompt-accountB-HF-FU-R2.md` (a8919dfc) · ทั้งคู่ Opus read-only ทรี c @aff51c68
+- เตรียมไว้: `scratchpad/ctl/gates93-b.template.sh` (ด่าน merge §8 ทรี b · 21 ชุด + fitness ±env/pos + typecheck) · `chain79.template.sh` (build79 ทรี d @merge → vis81 §9: tables ×4 th+en · products-branch-filter th · orders-detail-platform th+en)
+- ถัดไป: hunter CLEAN/SIGNED-OFF + R2 MERGEABLE → merge aff51c68 เข้า session/pos (no-ff) → gates93 ทรี b ‖ chain79 ทรี d → ผู้คุมดูภาพ → push → **37/55** + TG
