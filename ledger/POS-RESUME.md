@@ -1810,3 +1810,4 @@
 ### 15 ต.ค. 23:36Z — P2.7 S built 71f5cd10 (37/38) → CD-B1–B4 → fix 1 (oracle-edits) ‖ R1 + hunter
 - builder: `wip/pos-p2.7` **71f5cd10** · 37/38 (PY11 ปลอม) · ORACLE-EDIT p2.1/p2.8 ทำแล้ว · migration `20261216100000_pos_p27_qr_orders` (QC4) · regression เขียว · **CD-B1–B4** = ORACLE-EDIT ที่อนุมัติ (PY11 intentId null · p2.6 A6 + QR · p2.8 ST1 นับเฉพาะ CREATE TABLE · p1.7 C9 allow lock_timeout) · p2.13 ST4 แดงเพราะทรี d ไม่มีสกิล → คัดลอกแล้ว · lane pins + p2.11 ST1/p2.13 ST5 ต้องเขียวที่ merge tip — ดู `pos-P2.7-review.md`
 - เลน: 1 = P2.7 builder fix 1 ทรี d · R1 + hunter P2.7 (read-only ทรี d @71f5cd10) · agent skill test P2.13 (ทรี c เซิร์ฟ 3228) · ทรี b ว่าง @a67693a8
+- 23:36Z spawn **R1 P2.7** + **hunter เงิน P2.7** (Opus read-only ทรี d @71f5cd10) prompts `-P2.7-R.md` / `-P2.7-H.md` · builder ทำ fix 1 (ORACLE-EDIT ×4 + p2.13 ซ้ำ) ขนานกัน
