@@ -92,3 +92,40 @@ Head under test 3eac2361 for the last row; all other rows a37af00e/d19044d9 (cod
 | visual-pos p2.10 --states --dry (CI=1) | rc 0 th (27 shots) · rc 0 en (14) · regression dry: all / p2.9bu / --list / p1.3 cashier rc 0 | visual-dry-th.log · visual-dry-en.log |
 | red-before at base | forced 1/12 (Z1) | red-base-84ffb48b.log |
 
+
+## Fix round 1 (R1 F1–F7 + controller F8 · rulings 1–10 of pos-P2.10-review.md)
+Base 7ac9efbe. Commits in order: 8bc606a2 test CT3 · b9519541 red §fix1 · e2c91684 F1 · 54217c15 F2 · 47461b49 F3 · a03770f5 F4 · 38cdeb15 F6 · 409a63eb F7 · 0fc52068 F8 · be57073d test CT3 false-positive fix. Every hunk sits inside `// POS P2.10 ▸ fix1 … ◂`. No pinned file touched, no migration, no messages change.
+
+| Ruling | Files / hunks |
+|---|---|
+| 8 ORACLE-ADD CT3 | `scripts/qc-pos-p2.10.mts`: registry row + CT3 block after CT2 (marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.10 fix 1)`). Covers (a) firstName = real memberCode (cart + done) ⇒ `""` and the code nowhere in the view, with a positive control for a real name; (b) totals.member kind rows with showPoints=false: POINTS ⇒ generic label without digits, VOUCHER with no label or a code-shaped label ⇒ "คูปอง" and no code in the view. Positive controls: TIER label kept, named VOUCHER kept, POINTS label back with showPoints=true. Suite 12 → 13. be57073d fixed my own false positive: the amount 12_400 contains the substring "1240". The amount is now 6_200 and the digit scan only looks at the labels. |
+| 1 F1 | `use-display-publish.ts`: keepalive skips `done` as well as idle. `send(force)` also skips `done`, which covers the paired:false recheck and visibility resends. A done view goes out once, when the view changes, and ages out on the server after 20 s. |
+| 2 F2 | `display-shared.ts`: `DISPLAY_MEMBER_CODE_RES` + `displayLooksLikeMemberCode` match the real format from `member/service.ts` randCode (6 chars, or 8 after collisions, from ACDEFGHJKLMNPQRSTUVWXY3-9) plus letter-prefixed numeric imports such as M000123. `parseState` blanks a first name that matches. `use-display-publish.ts` `memberFirstName`: name empty or equal to memberCode ⇒ `""`. `DisplayScreen.tsx` greeting: empty name ⇒ `screen.welcome`; the thanks line already handled an empty name. Side effect: a real all-caps 6-letter name drawn from that alphabet (e.g. "CHARLY") is also blanked. Accepted. |
+| 3 F3 | `DeviceSettings.tsx`: the code panel shows whenever `code && left > 0`, including when paired. Refresh clears `code` only when `!pendingCodeExpiresAt`; an already-expired code is kept so the expiry note can show, and that note now shows on paired devices too. |
+| 4 F4 | `display-shared.ts`: `DisplayMemberKind` · `DISPLAY_MEMBER_GENERIC_LABEL` th/en (ส่วนลดสมาชิก/คูปอง/บัตรกำนัล) · `DISPLAY_VOUCHER_CODE_RE` · `displayMemberLabel`. `parseTotals` accepts `kind`, and `label` may be missing when `kind` is set. `display.ts` `buildView` renders the labels at read time, so a showPoints change applies at once. View rows stay `{label, satang}`; rows without `kind` keep their label, so CT1 is unchanged. Hook `memberRow`: sends `kind`; a VOUCHER label only when the wallet voucher has a real name; GIFTCARD label empty. **Deviation (extends ruling 4 under ruling 3):** GIFTCARD always shows "บัตรกำนัล", because the wallet label carries the masked card number. |
+| 5 F5 | **Accepted as designed, not implemented.** A wholly wrong code cannot be tied to a row, so `pairFailCount` is never incremented in prod. Protection = 10/min/IP + 10-min TTL + 32⁸ code space. `pairLocked` remains the oracle's lock semantic (PA2 sets it directly). |
+| 6 F6 | `display.ts` `readCustomerDisplay`: the UPDATE runs only when the loaded `lastPolledAt` is null or ≥ 30 s old. The WHERE guard stays for overlapping polls. |
+| 7 F7 | `d/page.tsx`: with a cookie, an SSR read that returns anything other than `DISPLAY_NOT_PAIRED` (or throws) ⇒ `pairedOffline`. `DisplayScreen.tsx` then starts paired with the offline badge and polls immediately. Only `DISPLAY_NOT_PAIRED`, from SSR or a poll, shows the pair form. |
+| F8 (controller) | **Cause:** `BROWSER.newPage()` for the register tab turns the display tab `document.visibilityState` to "hidden", and DisplayScreen pauses polling while hidden (by design), so the display kept its idle view. Reproduced headless with the same chromium and args (`/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p210/runs/fix1/vischk.mjs`): display tab visible → hidden after newPage. The register/publish side is not implicated: pairing, read and header were fine in vis82, and the server path is covered by DS/CT/PY. **Fix (harness):** `visual-pos.mts` display-live calls `page.bringToFront()` before the 20 s wait; visibilitychange then triggers an immediate read. **Diagnostics on failure:** `p210LiveDiag` prints the register tab (visibility · `window.__posDisplayPublish` = last seq/phase/ok/paired/written/code · cart lines), the display tab (visibility · data-phase · `window.__posDisplayRead` = last ok/changed/seq/ver/phase · lines), the DB row (stateSeq · stateAt · phase · lines · lastPolledAt) and a direct `readCustomerDisplay`. The hook and screen globals carry status only, no view content. Needs the real UI: controller re-shoot of `display-live` on tree d. |
+
+### Follow-ups (ruling 9 · builder notes, not owner lines)
+- Publish accepts a client-claimed `deviceCode` within the unit, so a cashier can drive another counter's display. QR and receipt stay server-derived. Bind publish to the register's heartbeat device later (P2.14).
+- `display` in `POS_PAGES` adds 2 pair-form shots to other WOs' no-`--page` runs (accepted).
+
+### CT3 red-before
+At 7ac9efbe code (head 8bc606a2 = test commit only), unforced: 12/13, CT3 red. firstName "HVKTXJ" (a real memberCode); the view contained the code; `kind` rows refused as DISPLAY_STATE_INVALID. Recorded in `P2.10-red.txt` §fix1 · log `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p210/runs/fix1/red-ct3.log`.
+
+### Gates (logs under `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p210/runs/fix1/`)
+| Gate | Result | Log |
+|---|---|---|
+| qc-pos-p2.10 forced ×2 + unforced (head be57073d) | 13/13 · 13/13 · 13/13 (Z1 residue 0 · buckets 0 · fpDrift []) | g2-p210-forced-1/-2.log · g2-p210-unforced.log |
+| qc-pos-p2.10 at 0fc52068 (before be57073d) | 12/13, CT3 red only on the oracle false positive above | g-p210-*.log |
+| qc-pos-p1.18 · p1.3 · p1.10 · p1.12 | 81/81 · 128/128 · 40/40 · 72/72 | g-p118 · g-p13 · g-p110 · g-p112 |
+| typecheck (full, 1 run, head 0fc52068) | 0 errors | typecheck.log |
+| single-file tsc of the changed files incl. qc-pos-p2.10 (head be57073d) | rc 0 | tsc-files.log |
+| fitness no-env / env (qc4) | 50/50 · 50/50 | fitness-noenv.log · fitness-env.log |
+| visual-pos p2.10 --states --dry (CI=1) th / en | rc 0 (30 shots) / rc 0 (30) | visual-dry-th.log · visual-dry-en.log |
+| fetch origin/session/pos | 6f5b5fa5 = already merged (no move) | — |
+
+### `--state`s for the controller to re-shoot (tree d, after this push)
+`display-live` (F8), `display-done` (F1/F2), `display-member-stamps` and `settings-display-code`. **There is no paired variant of `settings-display-code`.** The state enables a device that is not yet paired, so F3 (code panel on a paired device) can only be checked by hand: `settings-display-online` → "ขอรหัสใหม่". F7 (SSR read failure ⇒ offline + polling) has no state either.
