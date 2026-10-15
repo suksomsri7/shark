@@ -63,7 +63,7 @@ const CHECKS: readonly Def[] = [
   D("PO6", "X5", "[§3 มติ 11 R4 PDPA] ขีดจำกัด + ข้อมูลส่วนตัว: IP เดียว 11 ครั้ง/นาที → ครั้งที่ 11 RATE_LIMITED (0 แถว) · ไม่มีเบอร์ / เบอร์ผิดรูป / ชื่อ 101 ตัว / 31 บรรทัด / qty 51 / โน้ต 201 → VALIDATION · คำปฏิเสธสาธารณะ = {ok:false, code, messageKey qr.errors.* ที่มีทั้ง th/en, message?, lineIndex?, retryAfterSec?} เท่านั้น · ผลอ่านสาธารณะ (linkDoor tableDoor orderStatus tableBill) ไม่มีเบอร์เต็ม/ชื่อพนักงาน/รหัสสมาชิก · เบอร์ที่เก็บ = รูปปกติ 0XXXXXXXXX"),
   // ── PY จ่ายก่อน ──
   D("PY1", "X4", "[S1 S2 มติ 3 4 8] placePreorder (STATIC) → PosOrder QR_ORDER adapter QR NEW PENDING_PAYMENT PICKUP · publicToken 12 ตัว · payBy = receivedAt + qrExpiryMinutes (20) · 1 intent PROMPTPAY_STATIC PENDING ยอด = total · expiresAt = payBy · orderId · deviceId/createdByUserId null · คีย์ posorder-pay-<id> · paymentIntentId · 0 บิล/รอบครัว/สต็อก · counts.byColumn.new ไม่เพิ่ม · orderStatus = QR ของใบเดียวกัน (payload/ยอด/หมดเวลา) · pos.order.received 1 (paymentState PENDING_PAYMENT)"),
-  D("PY2", "X1", "[S6] คีย์เดิม ×2 → ออเดอร์เดิม + intent เดิม (duplicated true · ไม่มีแถวเพิ่ม) · 10 คำขอพร้อมกันคีย์ใหม่ (IP ต่างกัน) → ออเดอร์ 1 · intent 1 · ผล ok ทั้งหมดชี้ใบเดียวกัน"),
+  D("PY2", "X1", "[S6] คีย์เดิม ×2 → ออเดอร์เดิม + intent เดิม (duplicated true · ไม่มีแถวเพิ่ม) · 10 คำขอพร้อมกันคีย์ใหม่ (IP ต่างกัน) → ออเดอร์ 1 · intent 1 · ผล ok ทั้งหมดชี้ใบเดียวกัน · (fix 2 hunter H5) 10 พร้อมกันคีย์เดียวกันบน Beam → createCharge 1 ครั้ง"), // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2)
   D("PY3", "X5", "[S1 มติ 8] acceptOrder ออเดอร์ PENDING_PAYMENT (OWNER) → ORDER_UNPAID · version เดิม · ไม่มีบิล/รอบครัว/event ใหม่ · payOrder → ORDER_STATE_INVALID"),
   D("PY4", "X1", "[S3 มติ 3 13] Beam (ร้านเปิด + deps.beam): intent PROMPTPAY_BEAM · createCharge 1 ครั้ง {total, pos-<pi>, promptpay} · webhook SUCCEEDED → ระบาย ×2 → PREPAID + paidAt · event paid 1 · version +1 · counts.new +1 · webhook ซ้ำ + consumers[pos.payment.intent_paid] ซ้ำ ×2 → ไม่เปลี่ยน · ยังไม่มีบิล (autoAccept ปิด)"),
   D("PY5", "X4", "[S3 S4 มติ 5] autoAccept เปิด + Beam จ่าย → ACCEPTED (acceptedBy null) + บิล POS sourceId ออเดอร์ คีย์ posorder-<id> · PosPayment PROMPTPAY = total ref pi_ · channel QR_ORDER ref = code · shift null · intent CONSUMED saleId · PAID · รอบครัว 1 · น้ำ (นับสต็อก) −1 ครั้งเดียว · GL ของบิล = รูปเดียวกับบิลหน้าขาย PROMPTPAY pi_ ยอดเดียวกัน"),
@@ -73,6 +73,12 @@ const CHECKS: readonly Def[] = [
   D("PY9", "X4", "[S5 มติ 5] เงินเข้าหลังหมดเวลา (Beam): ออเดอร์ CANCELLED (หมดเวลา) + webhook → ไม่ฟื้น (CANCELLED version เดิม · ไม่มีบิล) · ops ERROR pos.order.late_payment 1 แถว (เล่นซ้ำ ×2 ยัง 1) · intent PAID lateWebhook ไม่ถูกใช้ · หน้าขายใช้ pi_ นี้จ่ายบิลได้ (PROMPTPAY ref pi_ → CONSUMED)"),
   D("PY10", "X5", "[S4 S5 มติ 5] PREPAID ถูกปฏิเสธ → REJECTED · intent ยัง PAID ไม่ถูกใช้ · ops ERROR pos.payment.refund_needed 1 · ไม่มีบิล · BLOCK ไข่เค็ม (เหลือ 1 สั่ง 2) PREPAID → accept STOCK_INSUFFICIENT · ยัง NEW/PREPAID version เดิม 0 บิล 0 event · payOrder ออเดอร์ QR → ORDER_STATE_INVALID"),
   D("PY11", "X2", "[มติ 10 CD5] ใบขอรับเงินของออเดอร์ (deviceId null) ไม่โผล่ในจอลูกค้า P2.10 ของ DEV1 (publish paying ที่อ้าง intent ของออเดอร์ → view.pay.qr ไม่ใช่ใบนั้น) · xReport กะ DEV1 ไม่เปลี่ยนจากการสร้าง/จ่าย intent ของออเดอร์ (ก่อนรับ)"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) R1 F2: ใบของออเดอร์ผูกกับออเดอร์ (lockSaleIntents forOrderId)
+  D("PY12", "X2", "[R1 F2 · hunter H1] ใบของออเดอร์ที่ยังเปิดอยู่ (PENDING_PAYMENT · PREPAID) → บิลหน้าขาย / มัดจำ อ้าง pi_ นี้ (ยอดเท่ากัน) ถูกปฏิเสธ INTENT_* · 0 บิล · intent ยัง PAID · ออเดอร์ยัง PREPAID · หลังออเดอร์ถูกปฏิเสธ (ปิดแล้ว) หน้าขายใช้ pi_ ได้ (CONSUMED · เงินเข้าหลังปิด 24 ชม.)"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) hunter H3: ช่องทางปิดกันเฉพาะคำสั่งใหม่
+  D("PY13", "X5", "[hunter H3 · มติ 11] PREPAID แล้วร้านปิดช่องทาง QR_ORDER (active false) → acceptOrder ได้ · บิลช่องทาง QR_ORDER · intent CONSUMED · สั่งใหม่ → QR_CLOSED (0 แถว) · เปิดคืน"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) hunter H4: เงินเข้าหลังหมดเวลาโดยไม่มีใครอ่านสถานะก่อน
+  D("PY9b", "X4", "[hunter H4 · S5] Beam: ย้อน payBy/expiresAt โดยไม่อ่านสถานะ/ไม่กวาด → webhook → ระบาย → ออเดอร์ CANCELLED (event expired 1) ไม่ใช่ PREPAID · ops ERROR pos.order.late_payment 1 · intent PAID lateWebhook ไม่ถูกใช้ · ไม่มีบิล"),
   // ── TB QR โต๊ะ ──
   D("TB1", "X5", "[มติ §10 ข้อบกพร่อง 1] เปิดหน้าโต๊ะ + โพล 10 ครั้ง (โต๊ะว่าง A1 · โต๊ะเปิดอยู่ A2) → TableSession 0 แถวใหม่ · xmin ของ session เดิมไม่เปลี่ยน · ไม่มีถังอัตรา/outbox/audit · ตัวควบคุมบวก: ประตูเดิม resolveTableSession บนโต๊ะว่างสร้าง session (+1)"),
   D("TB2", "X4", "[§1 a] รอบแรกของแขก (โต๊ะว่าง A3) → session ใหม่ openedByUserId null + รอบ placedByUserId null + รายการ productId ราคา QR_TABLE 7500 · ไม่มีบิล · ผล {roundId sessionId}"),
@@ -81,6 +87,8 @@ const CHECKS: readonly Def[] = [
   D("TB5", "-", "[§1 a] โต๊ะที่ถูกรวม: รวม A6 เข้า A5 → รอบจาก QR ของ A6 ลง session ของ A5 · A6 ไม่มี session ใหม่"),
   D("TB6", "X4", "[มติ 6 · §10 ข้อบกพร่อง 2] บิลแขก = บิลโต๊ะของหน้าขาย: tableBill(A3).totalSatang = quoteRegisterCart({tableSessionId}).grandTotalSatang (QR_TABLE + ค่าบริการ POS ปัดครึ่งขึ้น) ≠ billPreview เดิม (ปัดลง · ตัวควบคุม) · PromptPay payload = promptpayPayload(ยอดนั้น) · แจ้งชำระ → คำขอ PAY_PROMPTPAY 1 · แผนแยกบิลเปิดอยู่ → payHidden true + ไม่มี payload"),
   D("TB7", "X1", "[S7 P2.6 ช่องว่าง] ตัวนับเมนู 1 → รอบแขก 1 ชิ้น → ตัวนับ 0 + isOutOfStock · pos.product.availability {available:false source STOCK} 1 แถวพอดี · เล่น consumer ซ้ำ ×2 → ไม่เพิ่ม · รอบถัดไป PRODUCT_UNAVAILABLE"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) R1 F1: กันส่งรอบซ้ำแบบ single-flight
+  D("TB8", "X1", "[R1 F1 · hunter H2 · CD-O7] ส่งรอบเดียวกัน 3 คำขอพร้อมกัน guestToken + ตะกร้าเดียวกัน (โต๊ะว่าง A1) → ผล ok ทุกคำขอ roundId เดียวกัน · รอบ 1 · session 1"),
   // ── KD ครัว ──
   D("KD1", "-", "[S8 P2.6] รอบ QR ของแขกอยู่บนบอร์ดสถานีทันทีที่ส่ง · source QR"),
   D("KD2", "X5", "[S8] ออเดอร์สั่งล่วงหน้า: รอบครัว 0 ตอน PENDING_PAYMENT และ PREPAID · หลังรับ = 1 (source ONLINE)"),
@@ -1088,6 +1096,7 @@ const devMod = await tryImport("@/lib/modules/pos/device");
 const kdsMod = await tryImport("@/lib/modules/pos/kds");
 const dispMod = await tryImport("@/lib/modules/pos/display");
 const paySetMod = await tryImport("@/lib/modules/pos/payment-settings");
+const depMod = await tryImport("@/lib/modules/pos/deposit"); // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) PY12 มัดจำ
 const setGenMod = await tryImport("@/lib/modules/pos/settings-general");
 const invSvc = await tryImport("@/lib/modules/inventory/service");
 const sysSvc = await tryImport("@/lib/modules/system/service");
@@ -1462,6 +1471,8 @@ async function runDb() {
   const round = async (qrToken: string, lines: Any[], o: { expectedSessionId?: string | null; ip?: string } = {}) =>
     Q("placeTableRound", qrToken, { lines, ...(o.expectedSessionId !== undefined ? { expectedSessionId: o.expectedSessionId } : {}) }, { ip: o.ip ?? freshIp() });
   const sessionsOf = async (tableId: string): Promise<Any[]> => (tableId ? ((await P.tableSession.findMany({ where: { tenantId: T, tableId }, orderBy: { openedAt: "asc" } }).catch(() => [])) as Any[]) : []);
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) TB8: รอบทั้งหมดของโต๊ะ (ทุก session)
+  const roundsOfTable = async (name: string): Promise<Any[]> => (TB[name] ? ((await P.restaurantOrder.findMany({ where: { tenantId: T, session: { tableId: TB[name] } } }).catch(() => [])) as Any[]) : []);
   const roundsOfSession = async (sessionId: string): Promise<Any[]> => (sessionId ? ((await P.restaurantOrder.findMany({ where: { tenantId: T, sessionId }, include: { items: { include: { options: true } } } }).catch(() => [])) as Any[]) : []);
   const xmin = async (table: string, id: string): Promise<string> => {
     const r = (await P.$queryRawUnsafe(`SELECT xmin::text AS x FROM "${table}" WHERE id = $1`, id).catch(() => [])) as Any[];
@@ -1857,6 +1868,18 @@ async function runDb() {
     if (bad.length) p.push(`ปฏิเสธที่ไม่ใช่ RATE_LIMITED ${bad.length}: ${codeOf(bad[0]!.r)}`);
     const d = diffCounts(c1, await counts(), { order: 1, intent: 1, event: 1 });
     if (d.length) p.push(`10 พร้อมกัน: ${d.join(", ")}`);
+    // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) hunter H5: 10 พร้อมกันคีย์เดียวกันบน Beam = charge เดียว
+    await setPay({ beam: { enabled: true } });
+    const bk = newKey("parb");
+    const b0 = beamCalls.length;
+    const c2 = await counts();
+    const rb = await Promise.all(Array.from({ length: 10 }, () => preorder([pl("padthai", 1)], { key: bk, deps: { beam: fakeBeam("ok") } })));
+    await setPay({ beam: { enabled: false } });
+    const tb = new Set(rb.filter((x) => x.r?.ok === true).map((x) => x.tok));
+    if (tb.size !== 1) p.push(`Beam 10 พร้อมกัน → โทเคน ${tb.size} · ${[...new Set(rb.map((x) => codeOf(x.r)))].join(",")}`);
+    if (beamCalls.length - b0 !== 1) p.push(`Beam createCharge ${beamCalls.length - b0} ครั้ง (คาด 1)`);
+    const d2 = diffCounts(c2, await counts(), { order: 1, intent: 1, event: 1 });
+    if (d2.length) p.push(`Beam 10 พร้อมกัน: ${d2.join(", ")}`);
     chk("PY2", !fx && !NQ() && p.length === 0, "คีย์เดิม = ใบเดิม · 10 พร้อมกัน = 1 ออเดอร์ 1 intent", why(p, NQ()));
   });
 
@@ -2172,6 +2195,93 @@ async function runDb() {
     chk("PY11", !fx && !NQ() && p.length === 0, "ใบของออเดอร์ไม่อยู่บนจอ/กะของเครื่องใด", why(p, NQ()));
   });
 
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) R1 F2 — ใบของออเดอร์ที่ยังเปิดอยู่ใช้จ่ายบิลอื่นไม่ได้
+  await step("PY12", async () => {
+    const p: string[] = [];
+    const sales = async () => Number(await P.posSale.count({ where: { tenantId: T } }).catch(() => -1));
+    await call(paySetMod, "updatePosPaymentSettings", { tenantId: T, systemId: S.POS }, A("OWNER"), { deposit: { enabled: true } });
+    const dep = (intentId: string, amt: number) =>
+      call(depMod, "registerTakeDeposit", ctxU("A", DEV1), A("OWNER"), { amountSatang: amt, payMethods: [{ type: "PROMPTPAY", amountSatang: amt, reference: intentId }], customerName: "คุณมัดจำคิวซี", phone: "0899999999", idempotencyKey: newKey("dep") });
+    // PENDING_PAYMENT
+    const y = await preorder([pl("padthai", 1)]);
+    if (!y.row || !y.intent) p.push(`(PENDING) ${PREFAIL(y) || "ไม่มี intent"}`);
+    else {
+      const s0 = await sales();
+      const a = await sellWithIntent([rl("padthai", 1)], y.intent.id, CH.QR_ORDER_A);
+      if (a.saleId || !/^INTENT_/.test(String(a.r?.code ?? ""))) p.push(`PENDING: หน้าขาย → ${codeOf(a.r)} (คาด INTENT_*)`);
+      if ((await sales()) !== s0) p.push("PENDING: มีบิลเพิ่ม");
+    }
+    // PREPAID
+    const x = await prepaidStatic([pl("padthai", 1)]);
+    if (x.ok) p.push(x.ok);
+    else {
+      const s0 = await sales();
+      const a = await sellWithIntent([rl("padthai", 1)], x.intent.id, CH.QR_ORDER_A);
+      if (a.saleId || !/^INTENT_/.test(String(a.r?.code ?? ""))) p.push(`PREPAID: หน้าขาย → ${codeOf(a.r)} ${a.saleId ? "มีบิล" : ""} (คาด INTENT_* · 0 บิล)`);
+      const dp = await dep(x.intent.id, x.intent.amountSatang);
+      if (dp?.ok === true || !/^INTENT_/.test(String(dp?.code ?? ""))) p.push(`PREPAID: มัดจำ → ${codeOf(dp)} ${short(dp?.message ?? "", 50)} (คาด INTENT_*)`);
+      if ((await sales()) !== s0) p.push(`มีบิลเพิ่ม ${s0}→${await sales()}`);
+      if ((await intentRow(x.intent.id))?.status !== "PAID") p.push(`intent ${(await intentRow(x.intent.id))?.status} (คาด PAID)`);
+      if ((await orderRow(x.row.id))?.paymentState !== "PREPAID") p.push(`ออเดอร์ ${(await orderRow(x.row.id))?.paymentState} (คาด PREPAID)`);
+      const rj = await O("rejectOrder", ctxU("A", DEV1), A("OWNER"), { id: x.row.id, reasonCode: "TOO_BUSY" });
+      if (rj?.ok !== true) p.push(`(fixture) ปฏิเสธ → ${codeOf(rj)}`);
+      const b = await sellWithIntent([rl("padthai", 1)], x.intent.id, CH.QR_ORDER_A);
+      if (!b.saleId) p.push(`หลังปิดออเดอร์ หน้าขายใช้ pi_ → ${codeOf(b.r)} ${short(b.r?.message ?? "", 60)}`);
+      else if ((await intentRow(x.intent.id))?.status !== "CONSUMED") p.push("ใช้แล้ว intent ไม่ CONSUMED");
+    }
+    await call(paySetMod, "updatePosPaymentSettings", { tenantId: T, systemId: S.POS }, A("OWNER"), { deposit: { enabled: false } });
+    chk("PY12", !fx && !NQ() && p.length === 0, "ใบของออเดอร์ที่เปิดอยู่ = หน้าขาย/มัดจำปฏิเสธ · ปิดแล้ว = ใช้ได้", why(p, NQ()));
+  });
+
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) hunter H3 — ช่องทาง QR_ORDER ปิดหลังลูกค้าจ่าย: รับได้ · คำสั่งใหม่ปิด
+  await step("PY13", async () => {
+    const p: string[] = [];
+    const qo = CH.QR_ORDER_A ?? "none";
+    const x = await prepaidStatic([pl("padthai", 1)]);
+    if (x.ok) p.push(x.ok);
+    else {
+      const off = await call(chMod, "saveChannel", ctxU("A"), A("OWNER"), { id: qo, name: "สั่งออนไลน์ (QR)", active: false });
+      if (off?.ok === false) p.push(`(fixture) ปิดช่องทาง → ${codeOf(off)}`);
+      const c0 = await counts();
+      const n = await preorder([pl("padthai", 1)]);
+      if (!refused(n.r, "QR_CLOSED")) p.push(`สั่งใหม่ตอนปิด → ${codeOf(n.r)} (คาด QR_CLOSED)`);
+      const d = diffCounts(c0, await counts());
+      if (d.length) p.push(`ปิดแล้วเขียน: ${d.join(", ")}`);
+      const a = await O("acceptOrder", ctxU("A", DEV1), A("OWNER"), { id: x.row.id });
+      if (a?.ok !== true) p.push(`accept PREPAID ตอนช่องทางปิด → ${codeOf(a)} ${short(a?.message ?? "", 60)}`);
+      const s = (await salesOf(x.row.id))[0];
+      if (!s || s.channelId !== qo) p.push(`บิล ${s ? `ช่องทาง ${s.channelId === qo ? "QR_ORDER" : s.channelId}` : "ไม่มี"}`);
+      if ((await intentRow(x.intent.id))?.status !== "CONSUMED") p.push(`intent ${(await intentRow(x.intent.id))?.status}`);
+      await call(chMod, "saveChannel", ctxU("A"), A("OWNER"), { id: qo, name: "สั่งออนไลน์ (QR)", active: true });
+    }
+    chk("PY13", !fx && !NQ() && p.length === 0, "ช่องทางปิด = กันคำสั่งใหม่ · PREPAID ยังรับได้", why(p, NQ()));
+  });
+
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) hunter H4 — เงินเข้าหลังหมดเวลา โดยไม่มีการอ่าน/กวาดก่อน
+  await step("PY9b", async () => {
+    const p: string[] = [];
+    await setPay({ beam: { enabled: true } });
+    const x = await preorder([pl("padthai", 1)], { deps: { beam: fakeBeam("ok") } });
+    await setPay({ beam: { enabled: false } });
+    if (!x.row || !x.intent) p.push(PREFAIL(x) || "ไม่มี intent");
+    else {
+      await pastDue(x);
+      const ops0 = (await opsHits("pos.order.late_payment", x.intent.id)).length;
+      const w = await hook(x.intent);
+      if (w?.ok !== true) p.push(`webhook → ${codeOf(w)}`);
+      await drain();
+      const o = await orderRow(x.row.id);
+      if (o?.status !== "CANCELLED" || o?.paymentState === "PREPAID") p.push(`ออเดอร์ ${short([o?.status, o?.paymentState], 40)} (คาด CANCELLED ไม่ใช่ PREPAID)`);
+      if ((await evsOf(x.row.id, "expired")).length !== 1) p.push(`event expired ${(await evsOf(x.row.id, "expired")).length}`);
+      const ops1 = (await opsHits("pos.order.late_payment", x.intent.id)).length;
+      if (ops1 - ops0 !== 1) p.push(`ops late_payment ${ops0}→${ops1} (คาด +1)`);
+      const it = await intentRow(x.intent.id);
+      if (it?.status !== "PAID" || it?.lateWebhook !== true || it?.saleId) p.push(`intent ${short([it?.status, it?.lateWebhook, it?.saleId], 50)}`);
+      if ((await salesOf(x.row.id)).length) p.push("มีบิล");
+    }
+    chk("PY9b", !fx && !NQ() && p.length === 0, "เงินเข้าหลังหมดเวลา (ไม่มีการอ่านก่อน) = CANCELLED + late_payment", why(p, NQ()));
+  });
+
   // ════════ PO6 ขีดจำกัด + ข้อมูลส่วนตัว (ใช้ออเดอร์ของ PY1) ════════
   await step("PO6", async () => {
     const p: string[] = [];
@@ -2395,6 +2505,21 @@ async function runDb() {
     const r2 = await round(QR.A10 ?? "", [pl("croissant", 1)], { expectedSessionId: r?.sessionId ?? null });
     if (!refused(r2, "PRODUCT_UNAVAILABLE")) p.push(`รอบถัดไป → ${codeOf(r2)} (คาด PRODUCT_UNAVAILABLE)`);
     chk("TB7", !fx && !NQ() && p.length === 0, "ตัวนับหมดจากรอบ QR = availability STOCK 1 แถว · ซ้ำไม่เพิ่ม", why(p, NQ()));
+  });
+
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) R1 F1 — single-flight ของรอบแขก
+  await step("TB8", async () => {
+    const p: string[] = [];
+    const g = `qc27${RAND}guest01`;
+    const r0 = (await roundsOfTable("A1")).length;
+    const input = { lines: [pl("chayen", 1)], guestToken: g };
+    const rs = await Promise.all([0, 1, 2].map(() => Q("placeTableRound", QR.A1 ?? "", input, { ip: freshIp() })));
+    const ids = new Set(rs.map((r) => (r?.ok === true ? String(r.roundId) : `ERR:${codeOf(r)}`)));
+    if (ids.size !== 1 || rs.some((r) => r?.ok !== true)) p.push(`3 คำขอพร้อมกัน → ${[...ids].join(",")} (คาด ok ทั้งหมด roundId เดียว)`);
+    const r1 = (await roundsOfTable("A1")).length;
+    if (r1 - r0 !== 1) p.push(`รอบใหม่ ${r1 - r0} (คาด 1)`);
+    if ((await sessionsOf(TB.A1 ?? "")).length !== 1) p.push(`session ของ A1 ${(await sessionsOf(TB.A1 ?? "")).length} (คาด 1)`);
+    chk("TB8", !fx && !NQ() && p.length === 0, "ส่งซ้ำพร้อมกัน guestToken เดียวกัน = รอบเดียว", why(p, NQ()));
   });
 
   // ════════ KD ครัว ════════
