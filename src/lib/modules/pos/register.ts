@@ -1149,7 +1149,7 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   "expectedTableItemsHash", // POS P2.4 ▸ R7 แฮชชุดรายการจาก quote ของโต๊ะ ◂
 ]);
 const REG_GIFT_KEYS: ReadonlySet<string> = new Set(["number", "pin"]); // POS P2.9 ◂
-const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference", "giftCard", "depositId"]); // POS P2.9 ▸ giftCard {number, pin} เฉพาะ GIFT_CARD ◂ · POS P2.9b ▸ depositId เฉพาะ DEPOSIT ◂
+const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference", "giftCard", "depositId", "phoneLast4"]); // POS P2.9b fix1 มติ 6 ▸ + phoneLast4 ◂ · POS P2.9 ▸ giftCard {number, pin} เฉพาะ GIFT_CARD ◂ · POS P2.9b ▸ depositId เฉพาะ DEPOSIT ◂
 const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
 /** P1.2 R1: คีย์ของรายการตัวเลือก — priceDeltaSatang/name รับได้แต่ "ไม่ใช้" (ราคาจาก client ไม่ถูกเชื่อ · มติ R2) · คีย์อื่น = VALIDATION */
 const REG_OPTION_KEYS: ReadonlySet<string> = new Set(["choiceId", "priceDeltaSatang", "name"]);
@@ -2093,7 +2093,7 @@ type RegParsedSubmit = {
   /** คีย์ที่เก็บจริง = REG_KEY_PREFIX + คีย์ของ client (R4 K1) */
   idempotencyKey: string;
   // POS P2.9 ▸ giftCard เฉพาะ GIFT_CARD ◂ · POS P2.9b ▸ depositId เฉพาะ DEPOSIT · refSaleId = ใบรับมัดจำ (เซิร์ฟเวอร์แก้จาก depositId หลังขอบเขต) ◂
-  payMethods: { type: RegisterPayType; amountSatang: number; reference: string | null; giftCard?: { number: string; pin: string }; depositId?: string; refSaleId?: string }[];
+  payMethods: { type: RegisterPayType; amountSatang: number; reference: string | null; giftCard?: { number: string; pin: string }; depositId?: string; refSaleId?: string; phoneLast4?: string }[]; // POS P2.9b fix1 มติ 6 ▸ phoneLast4 ◂
   cashReceivedSatang: number | null;
   expected: number;
   /** P1.6 ทิป (0 = ไม่มี) · หมายเหตุบิล (null = ไม่มี) */
@@ -2184,6 +2184,12 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
       if (payMethods.filter((x) => x.type === "DEPOSIT").length >= MAX_DEPOSIT_ROWS || payMethods.some((x) => x.depositId === p.depositId)) return regRefuse("VALIDATION", "ใช้มัดจำได้ไม่เกิน 3 ใบต่อบิล และใบเดียวกันได้รายการเดียว");
       depositId = p.depositId;
     }
+    // POS P2.9b ▸ fix1 มติ 6 (hunt D5): 4 หลักท้ายของเบอร์ผู้ฝากมัดจำ walk-in — เฉพาะแถว DEPOSIT · ตัวเลข 4 หลักเท่านั้น ◂
+    let phoneLast4: string | undefined;
+    if (p.phoneLast4 !== undefined && p.phoneLast4 !== null) {
+      if (p.type !== "DEPOSIT" || typeof p.phoneLast4 !== "string" || !/^\d{4}$/.test(p.phoneLast4)) return regRefuse("VALIDATION", "4 หลักท้ายของเบอร์ไม่ถูกต้อง");
+      phoneLast4 = p.phoneLast4;
+    }
     let reference: string | null = null;
     if (p.reference !== undefined && p.reference !== null) {
       // POS P1.7 ▸ พร้อมเพย์รับเลขอ้างอิงได้เฉพาะ id ใบขอรับเงิน (pi_…) · อื่น ๆ = VALIDATION เหมือน P1.6 ◂
@@ -2193,7 +2199,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
       if (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX || !regCleanText(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
       reference = p.reference.trim() || null;
     }
-    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang, reference, ...(giftCard ? { giftCard } : {}), ...(depositId ? { depositId } : {}) });
+    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang, reference, ...(giftCard ? { giftCard } : {}), ...(depositId ? { depositId } : {}), ...(phoneLast4 ? { phoneLast4 } : {}) });
   }
   let cashReceivedSatang: number | null = null;
   if (raw.cashReceivedSatang !== undefined && raw.cashReceivedSatang !== null) {
@@ -2506,13 +2512,15 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     //   ก่อนค้นคีย์ซ้ำ (คำขอซ้ำเทียบใบรับด้วย · N4) · สถานะ/เจ้าของ/คงเหลือตัดสินใน tx ของบิล (createSale ล็อกแถวมัดจำ) ◂
     if (req.payMethods.some((x) => x.depositId)) {
       const ids = req.payMethods.flatMap((x) => (x.depositId ? [x.depositId] : []));
-      const deps = await db.posDeposit.findMany({ where: { tenantId: s0.tenantId, unitId: s0.unitId, id: { in: ids } }, select: { id: true, receiptSaleId: true } });
-      const byId = new Map(deps.map((d) => [d.id, d.receiptSaleId]));
+      const deps = await db.posDeposit.findMany({ where: { tenantId: s0.tenantId, unitId: s0.unitId, id: { in: ids } }, select: { id: true, receiptSaleId: true, customerId: true, phoneLast4: true } });
+      const byId = new Map(deps.map((d) => [d.id, d]));
       for (const x of req.payMethods) {
         if (!x.depositId) continue;
-        const ref = byId.get(x.depositId);
-        if (!ref) return regRefuse("DEPOSIT_NOT_FOUND");
-        x.refSaleId = ref;
+        const d = byId.get(x.depositId);
+        if (!d) return regRefuse("DEPOSIT_NOT_FOUND");
+        // POS P2.9b ▸ fix1 มติ 6 (hunt D5): มัดจำ walk-in ที่บันทึกเบอร์ไว้ = ผู้ถือต้องบอก 4 หลักท้าย (ไม่ส่ง/ผิด = DEPOSIT_NOT_OWNER) · ไม่มีเบอร์ = ผู้ถือใบรับ ◂
+        if (!d.customerId && d.phoneLast4 && x.phoneLast4 !== d.phoneLast4) return regRefuse("DEPOSIT_NOT_OWNER");
+        x.refSaleId = d.receiptSaleId;
       }
     }
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)

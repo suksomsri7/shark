@@ -323,7 +323,9 @@ async function sameTake(db: Db, d: DepositRow, s: RegisterCtx, amount: number, c
 }
 
 // ═══════════════════════ R9 ค้นมัดจำ (จอชำระ) ═══════════════════════
-export type RegisterDepositLookupResult = { ok: true; deposits: (Pick<DepositView, "id" | "receiptNo" | "customerName" | "phoneMasked" | "remainingSatang" | "status" | "expiresAt" | "amountSatang"> & { memberLinked: boolean })[] } | RegisterRefusal;
+// POS P2.9b ▸ fix1 มติ 6 (hunt D5): remainingSatang/amountSatang = null เมื่อยังไม่ยืนยันผู้ถือ (ค้นด้วยชื่อ/เบอร์ · มัดจำ walk-in ที่มีเบอร์แต่ไม่ส่ง/ส่ง 4 หลักผิด) ◂
+export type RegisterDepositLookupRow = Pick<DepositView, "id" | "receiptNo" | "customerName" | "phoneMasked" | "status" | "expiresAt"> & { remainingSatang: number | null; amountSatang: number | null; memberLinked: boolean; needsPhoneLast4: boolean };
+export type RegisterDepositLookupResult = { ok: true; deposits: RegisterDepositLookupRow[] } | RegisterRefusal;
 const LOOKUP_MAX = 20;
 /**
  * R9 (มติ 19) — ค้นมัดจำของสาขานี้: เลขใบรับ (ตรงตัว) · ชื่อ (ขึ้นต้น ไม่สนตัวพิมพ์) · 4 หลักท้ายของเบอร์ · สิทธิ์ pos.sale.create ·
@@ -337,7 +339,8 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
     const q = isRecord(input) && typeof input.query === "string" ? input.query.trim() : "";
     // POS P2.9b ▸ fix1 มติ 5 (hunt D4): ค้นมัดจำของสมาชิกในบิล — รวมมัดจำของสมาชิกที่ถูกรวมเข้าคนนี้ (mergedIntoId ≤ 5 ชั้น) ◂
     const memberId = isRecord(input) && isId(input.memberId) ? input.memberId : null;
-    if ((!q && !memberId) || q.length > 60) return refuse("VALIDATION", "พิมพ์เลขใบรับมัดจำ ชื่อ หรือ 4 หลักท้ายของเบอร์");
+    if ((!q && !memberId) || q.length > 60 || (q && [...q].length < 3)) return refuse("VALIDATION", "พิมพ์เลขใบรับมัดจำ ชื่อ (อย่างน้อย 3 ตัวอักษร) หรือ 4 หลักท้ายของเบอร์");
+    const last4 = isRecord(input) && typeof input.phoneLast4 === "string" && /^\d{4}$/.test(input.phoneLast4) ? input.phoneLast4 : null;
     const or: Prisma.PosDepositWhereInput[] = q ? [{ receiptNo: q }, { customerName: { startsWith: q, mode: "insensitive" } }] : [];
     if (/^\d{4}$/.test(q)) or.push({ phoneLast4: q });
     if (memberId) or.push({ customerId: { in: await mergedFamily(db, sc.ctx.tenantId, memberId) } });
@@ -350,7 +353,10 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
       ok: true as const,
       deposits: rows.map((d) => {
         const v = viewOf(d);
-        return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: v.remainingSatang, status: v.status, expiresAt: v.expiresAt, amountSatang: v.amountSatang, memberLinked: !!d.customerId };
+        // ยอดเห็นได้เมื่อ: ตรงเลขใบรับ (มัดจำสมาชิก/ไม่มีเบอร์ หรือ walk-in ที่ 4 หลักท้ายถูก) หรือมัดจำของสมาชิกในบิล (memberId) · ค้นด้วยชื่อ/เบอร์ = ไม่มียอด
+        const needsPhoneLast4 = !d.customerId && !!d.phoneLast4;
+        const holder = (q && d.receiptNo === q && (!needsPhoneLast4 || last4 === d.phoneLast4)) || (!!memberId && !!d.customerId);
+        return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: holder ? v.remainingSatang : null, status: v.status, expiresAt: v.expiresAt, amountSatang: holder ? v.amountSatang : null, memberLinked: !!d.customerId, needsPhoneLast4 };
       }),
     };
   });

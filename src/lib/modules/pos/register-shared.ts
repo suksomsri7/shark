@@ -439,7 +439,8 @@ export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
 /** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
 /** POS P2.9 ▸ giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น (เลขที่สแกน/พิมพ์ + PIN ของลูกค้า · ห้ามเก็บ/บันทึก PIN ที่จอ) ◂ */
 /** POS P2.9b ▸ depositId = มัดจำของแถว DEPOSIT เท่านั้น (PosDeposit.id จาก registerDepositLookup · เซิร์ฟเวอร์แก้เป็นใบรับเอง) ◂ */
-export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string; giftCard?: { number: string; pin: string }; depositId?: string };
+// POS P2.9b fix1 มติ 6 ▸ phoneLast4 = 4 หลักท้ายของเบอร์ผู้ฝาก (มัดจำ walk-in ที่บันทึกเบอร์ไว้ — บังคับ) ◂
+export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string; giftCard?: { number: string; pin: string }; depositId?: string; phoneLast4?: string };
 export type RegisterSubmitInput = RegisterQuoteInput & {
   /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
   idempotencyKey: string;
