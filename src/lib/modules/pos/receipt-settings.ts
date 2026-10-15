@@ -17,6 +17,7 @@ import {
   receiptUnitOverride, // POS P2.11 ◂
   storedReceiptUnit, // POS P2.11 ◂
   type PosReceiptUnitResult, // POS P2.11 ◂
+  type PosReceiptUnitPatch, // POS P2.11 ◂
   parseReceiptSettings,
   POS_RECEIPT_DEFAULTS,
   type PosReceiptSettings,
