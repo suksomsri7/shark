@@ -1702,7 +1702,7 @@
 - ถัดไป: P2.12 S รายงาน → R1 + hunter เบา (CH/BR sums · anomaly scope) → fix → merge → gates (§6 regression) → push → 39/55 → P2.12U (brief §1 U + §7 visual) → P2.13 API → P2.14 ปิดเฟส · เลน 2 ระหว่างรอ: ร่าง **P2.13 brief** (REST `/api/v1/pos` + สกิล + คู่มือ · lane S · ⏮ P1.18 · ~45 op) — ไม่ชน P2.12 S
 - 17:30Z เลน 2 = **P2.13 brief drafter** (Opus read-only ทรีผู้คุม @f37d605b) prompt `pos-prompt-accountB-P2.13-B.md` (8836bc82) → `pos-brief-P2.13.md` DRAFT → ผู้คุม §10 → oracle writer (ทรี b) · เลน: 1 = P2.12 S builder ทรี c · 2 = P2.13 brief
 
-### 15 ต.ค. 17:4xZ — P2.12 S built → R1
+### 15 ต.ค. 17:39Z — P2.12 S built → R1
 - builder P2.12 S: `wip/pos-p2.12` **42e3ce17** push แล้ว (base e6546359 + oracle 38692ecb + CH 1d27c482 · BR/HR/AN 78bd760a · PD 2c8f5918 · BL 9707b616 · msgs/owner lines fe2ac845 · merge session/pos 3e4b1bb1 caa4139c ชนเฉพาะ messages + OWNER-PENDING รวมทั้งสองฝั่ง) · gates p2.12 30/30 ×3 · p1.17 40 · p2.11 34/34 · p1.18 81 · p1.16 28 · p2.1 55 · p2.9b 53 · p1.8 49 · closeday 22 · p1.1 180 · p1.3 128 · authz 81 · p2.8 61 · typecheck 0 ×2 · fitness ±env/pos · decisions 1–6 ในโน้ต (ข้อ 4 anomaly CSV/print โชว์ unit id → ผู้คุมอยากได้ `totals.unitNames` ในรอบ fix) · U-card contract ในโน้ต
 - spawn **R1 P2.12 S** (Opus read-only ทรี c) prompt `pos-prompt-accountB-P2.12-R.md` → แล้ว hunter เบา (CH/BR sums vs bills · anomaly scope · deposit exclusion) → fix → merge → gates §6 → push → 39/55
 - เลน: 1 = P2.13 brief drafter · 2 = P2.12 R1 (read-only ทรี c)
