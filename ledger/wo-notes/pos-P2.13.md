@@ -91,3 +91,38 @@ Built and gated. `qc-pos-p2.13` **48/49** (forced ×2 + unforced + post-merge) �
 | typecheck | #1 3 errors (fixed) · #2 exit 0, 0 errors | typecheck1.log · typecheck2.log |
 | fitness (env / no env) · fitness-pos | 53/53 · 53/53 · 8/8 | fitness-env.log · fitness-noenv.log · fitness-pos.log |
 | visual-pos p2.13 --states --dry (th/en × owner/manager) | exit 0 (18/6/18/6 shots) | visual-dry-*.log |
+
+## Fix round 1 (builder · 15 Oct 2026 · rulings `pos-P2.13-review.md` §"Controller rulings — fix round 1" 1–8)
+Base be0f92cb → merged tip **5bbd1722** (= fix commits + merge of `origin/session/pos` 9a21e36c, P2.12U; no schema change ⇒ no `prisma generate`). Logs: `…/scratchpad/p213/runs/fix1/` (line 1 = `tree= head= dirty=`).
+
+### Oracle (test-first)
+- `0e69cecc` ORACLE-EDIT OR4 (CD-B1, marker `// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13)`): accept → preparing → ready → **pay → complete** · illegal step = preparing on the HANDED order.
+- `cb87affd` ORACLE-ADD (marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1)`): AU9 · SA9 · SA10 · OR7 · RP5 ⇒ 54 checks. Fixtures inside the checks: POS_VOID policy ≥ ฿1,000 (SA9) · 2nd device + shift S opened/closed (SA10) · `manualConfirmRequiresManager` on/off around AU9 (+ positive control CASH 200) · DIRECT channel `CUSTOM_WALKB` on branch B with no shift (OR7, positive control TRANSFER 200).
+- Red-before (`c6e1c7be`, `P2.13-red.txt` §fix1 · `runs/fix1/red-p213-u.log`): unforced 48/54 — AU9 SA9 SA10 OR7 RP5 red as expected; OR4's step order passes after the edit but OR4 stayed red on a **second oracle-vs-code mismatch**: `orders.pay` answered `data` = the saleId string on a first pay (CD9 single-field rule) and `{saleId, duplicated}` on a replay ⇒ fixed in code (`9c22b9aa`, below), no further oracle edit.
+
+### Per ruling (files · marked hunks `// POS P2.13 ▸ fix1 … ◂`)
+1. **F1** `d0006a64` — `pos/api/ops/sales.ts` `sales.void` → `voidSaleByActor` (service key `posOpServiceKey`, refusals via `posResult` → map; `foreignSaleError` + status pre-check + `voidErrorToApi` kept; raw `voidSale` import gone). `bills.ts:635` predicate `POS || API` **and** `bills.ts:456` `billDetail.isPos` `POS || API` (**deviation**: second hunk needed so the drawer actually offers void/refund for API bills — otherwise the corrected owner line is false). Owner line (F8) appended. Op summary + docs.
+2. **F2/H1** `b5f0d02b` — `service.ts` S11 one line `sourceModule === "POS" || === "API"`, FOR SHARE kept; contract sha 72afb258 unchanged; fitness-pos F15.2 green (info: voidSale caller −1 `ops/sales.ts`, snapshot not regenerated).
+3. **F3/H2 option (b)** `347d5536` — `register.ts` HF-PP gate `(!!s.apiKeyId || !evaluate(… pos.shift.manage …))` · `order.ts` HF-PP2 gate `(apiPay || !can(…))` ⇒ PERMISSION_DENIED 403 `forbidden`, 0 bills. `pos-operate` bundle keeps `pos.shift.manage` (AU6/SH1 unchanged, no ORACLE-EDIT needed); bundle summary (`scopes.ts` P2.13 block), contract text §5, docs, SKILL, owner line.
+4. **F4** `fcc2e0e1` — `reports.ts` `reportStaff`: seller ids not found as users → tenant `ApiKey` (one `findMany` per chunk) → `"API: <name>"`; op summary + docs. **F5** `386cfc35` — contract text §5 + SKILL (custom-only cart in a service-charge shop = 422; add a catalog line). **F6** `d591cfb4` — `http-errors.ts` `hintOf` APPROVAL_REQUIRED/PENDING_APPROVAL → hint with `requestId`; APPROVAL_REQUIRED no longer `nothingWritten` (stored, same key replays it); contract text §7, docs ("deciding approval requests" not in the API), SKILL line. **F7/F8 + follow-ups** `b944434c` — owner-pending lines → HF-FU2 (F7 catalog audit actorType · tax-invoice service key · order state after REST void · revoke scope · replay-after-TTL quote caveat · + 2 builder lines, below).
+5. **H3** `f77d9aab` — `order.ts` `payOrder`: REST + CASH rows ⇒ bind the single OPEN shift of the branch (passed as `shiftId`, createSale re-checks under FOR SHARE); 0 or 2+ open shifts ⇒ SHIFT_REQUIRED before any write; non-cash = other-sources rule as before. **`submitRegisterSale` (POST /sales) does NOT already refuse**: CASH without `shiftId` while `requiredOtherSources` is off lands out of shift (createSale other-sources rule, same as every non-register source) — not changed (prompt scoped H3 to payOrder); follow-up line (6). Contract text §14 + `orders.pay` summary.
+- Extra `9c22b9aa` — `ops/orders.ts` `orders.pay` always answers `{ saleId, duplicated }` (marked hunk; docs "Shapes of a reply"). Follow-up line (7): other single-field write replies may flip shape on `duplicated` — audit all ops.
+- Docs/skill: `gen-pos-api-docs.mts` regenerated in each commit that changed a summary (pre-commit F13.14) · `.claude/skills/shark-pos-api/SKILL.md` (gitignored) updated + `references/*` copied byte-identical to `/root/.claude/skills/shark-pos-api/`.
+
+### CONTROLLER-DECISION
+- **CD-F1a** — REST `sales.void` of an **AI**-sourced bill (`sourceModule "AI"`, `ai/proposals.ts`) is now refused SALE_NOT_VOIDABLE (409) because the ruled predicate is `["POS","API"]`; before fix1 the raw `voidSale` voided it (the drawer never could). Rec: keep (AI bills void in the app) or add `"AI"` to both bills.ts predicates.
+
+### Gates (merged tip 5bbd1722 unless noted)
+| Gate | Result | Log |
+|---|---|---|
+| qc-pos-p2.13 forced #1 / #2 / unforced | 54/54 · 54/54 · 54/54 | m-p213-f1 · m-p213-f2 · m-p213-u (pre-merge b944434c: g-p213-f1/f2/u 54/54 ×3) |
+| qc-pos-api-skill forced | 10/10 | m-skill |
+| qc-pos-p1.9 · p1.8 · p1.3 | 53/53 · 49/49 · 128/128 | m-p19 · m-p18 · m-p13 |
+| qc-pos-p2.8 | 60/61 (ST6 = CD7 lane pin, register/service sha vs base) | m-p28 |
+| qc-pos-p1.17 · hf-apiv1-scope · p0.2 | 40/40 · 143/143 · 56/56 | m-p117 · m-hf-apiv1 · m-p02 |
+| extra: qc-pos-p2.12 · p1.16 · hf-pos-page-authz | 32/33 (ST1 = CD7 lane pin, now incl. service.ts) · 28/28 · 82/82 | m-p212 · m-p116 · m-authz |
+| extra (pre-merge b944434c): qc-pos-p1.15 · p1.7 | 39/39 · 33/33 | g-p115 · g-p17 |
+| gen-pos-api-docs --check | exit 0 | m-gen-check |
+| typecheck | 0 errors (pre-merge #1 + merged #2) | typecheck1 · typecheck2 |
+| fitness no env / env · fitness-pos | 53/53 · 53/53 · exit 0 | m-fitness-noenv · m-fitness-env · m-fitness-pos |
+| visual-pos p2.13 --states --dry th/en × owner/manager · p2.12u --dry | exit 0 ×5 | m-visual-dry-* |
