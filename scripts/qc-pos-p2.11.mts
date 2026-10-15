@@ -58,6 +58,10 @@ const CHECKS: readonly Def[] = [
   D("PR7", "X2", "[§1 X2] copyUnitPrices สิทธิ์/ขอบเขต: ผู้จัดการ A (ไม่มี B) / พนักงาน → PERMISSION_DENIED · ผู้จัดการ A+B → ok · ปลายทาง C เก็บถาวร / D เลิกผูก → VALIDATION field toUnitId · A→A → VALIDATION · สาขาร้าน T2 (ปลายทาง/ต้นทาง) + สินค้าร้าน T2 → NOT_FOUND · คำปฏิเสธไม่เขียนอะไร"),
   D("PR8", "PAR", "[§1] unitPriceMatrix = priceOf(loadPriceBook) ทุกช่อง (สินค้า × สาขา × ช่องทาง: ราคา · ที่มา · PRICE_NOT_SET/CHANNEL_NOT_SOLD) · สาขาปริยาย = A B E (ไม่รวม C เก็บถาวร · D เลิกผูก) · ช่องทางปริยายมี STORE LINEMAN ไม่มี ZZQC · ผู้จัดการ A เห็นแค่ A · ขอ B → NOT_FOUND · สินค้าร้าน T2 → NOT_FOUND · อ่านอย่างเดียว"),
   D("PR9", "-", "[l-price · P2.2U-R2 N2] คำปฏิเสธมี field + reason คงที่ (จอไม่ต้องจับข้อความ): bulk productIds 501 → VALIDATION BULK_TOO_MANY field productIds · หมวดที่มีสินค้า 501 → BULK_TOO_MANY field categoryId · แถวตายของ PR2 → PRICE_ROW_DEAD field rows"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.11 fix รอบ 1 · มติ 1–3 ใน pos-P2.11-review.md) ▸ PR10 (R1 F3) · PR11 (hunt L1) · PR12 (hunt L2) ◂
+  D("PR10", "X3", "[fix1 มติ 1 · R1 F3] copyUnitPrices ไม่ส่ง productIds ข้ามสินค้าสาขาเดียวที่ผู้กระทำมองไม่เห็น (แถวเดิมที่ต้นทาง) → ok นับ skipped ไม่ NOT_FOUND · แถวของสินค้านั้นเท่าเดิม · รันซ้ำ changed false · skipped เท่ากับของเจ้าของ (ที่ข้ามด้วยกติกาสินค้าของสาขาอื่น)"),
+  D("PR11", "X5", "[fix1 มติ 2 · hunt L1] setChannelPrices purgeDead:true (ขอบเขตทั้งสินค้าเท่านั้น): เจ้าของล้างแถวตาย (ช่องทางเก็บถาวร · สาขาเก็บถาวร/เลิกผูก) แถวที่ใช้ได้ id/ค่าเดิม · audit via purgeDead · ผู้จัดการ A → PERMISSION_DENIED ไม่เขียนอะไร · ไม่ส่งธง = แถวตายคงไว้ (PR1/PR3) · purgeDead ไม่ใช่ boolean → VALIDATION"),
+  D("PR12", "X3", "[fix1 มติ 3 · hunt L2] บันทึกที่ไม่เปลี่ยนอะไร: ผลไม่ขึ้นกับลำดับแถว — ผู้จัดการ A ส่ง (LINEMAN, B) ค่าเดิม ก่อน/หลังแถว A ค่าเดิม → ok changed false ทั้งสองลำดับ ไม่มี audit · พนักงานทั้งสองลำดับ → PERMISSION_DENIED · ผู้จัดการ A ส่งเฉพาะแถว B ค่าเดิม → PERMISSION_DENIED"),
   // ── RN ใบเสร็จ ──
   D("RN1", "-", "[§4 มติ 4] สาขา A ตั้ง taxBranchNo 00001 → ใบกำกับอย่างย่อของบิล A: payload shop.branchNo 00001 · HTML th \"สาขาที่ 00001\" · en \"Branch 00001\" · ESC/POS raster \"สาขาที่ 00001\" · สาขา B (ไม่ตั้ง) = สมุด 00000 → \"สำนักงานใหญ่\" ไม่มี 00001"),
   D("RN2", "-", "[§4] ที่อยู่/โทรต่อสาขา: A = ค่าสาขา · B = หัวระบบ (ที่อยู่) → สมุด (โทร) · ล้างที่อยู่ A (null) → หัวระบบ · receiptUnitOverride(settings, unit) ตรงค่าที่เก็บ / ค่าว่างหรือพัง = null ทั้งสามช่อง · posReceiptSettings ยังอ่านหัวระบบได้ · ตัวเขียนระดับระบบ (updatePosReceiptSettings) ไม่ทับ byUnit"),
@@ -1123,6 +1127,96 @@ async function runDb() {
     if (!(codeIs(b2, "VALIDATION") && b2.reason === "BULK_TOO_MANY" && b2.field === "categoryId")) p.push(`หมวด 501 → ${refusalTxt(b2)} (คาด VALIDATION/BULK_TOO_MANY@categoryId)`);
     if (deadSeen.length !== 4 || !deadSeen.every(deadOk)) p.push(`แถวตายของ PR2: ${deadSeen.map(refusalTxt).join(" · ") || "ไม่มี"}`);
     chk("PR9", !fx && p.length === 0, "BULK_TOO_MANY@productIds · BULK_TOO_MANY@categoryId · PRICE_ROW_DEAD@rows", FX(NOTE() + (P8(p) || "ครบ")));
+  }
+
+  // ════════ ORACLE-ADD ผู้คุม 15 ต.ค. (P2.11 fix รอบ 1 · มติ 1–3 ใน pos-P2.11-review.md) ▸ PR10–PR12 ◂ ════════
+  // PR11 purgeDead (hunt L1)
+  {
+    const p: string[] = [];
+    const setP = (userId: string, productId: string, rows: Any, purgeDead: unknown) => (fx ? Promise.resolve({ ok: false, code: "FIXTURE" }) : call(catalogMod, "setChannelPrices", cctxOf(userId), { productId, rows, purgeDead }));
+    const b2 = await cpRows(PR.P2 ?? "");
+    const live2 = (r: CpRow) => r.unitId === U.A && r.channelCode === null;
+    if (sigOf(b2) !== S_("*|A|7100", "*|C|6500", "LINEMAN|C|9900", "*|D|6600")) p.push(`fixture P2 = ${sigOf(b2)}`);
+    const n0 = await cpAudits("P2");
+    // ไม่ส่งธง = แถวตายคงไว้
+    const k = await setCP(ownerId, PR.P2 ?? "", [row(null, U.A, 7100)]);
+    if (!okish(k) || (await cpFp("P2")) !== fpOf(b2)) p.push(`ไม่ส่งธง → ${refusalTxt(k)} แถว ${await cpSig("P2")}`);
+    const bad = await setP(ownerId, PR.P2 ?? "", [row(null, U.A, 7100)], "yes");
+    if (!codeIs(bad, "VALIDATION")) p.push(`purgeDead "yes" → ${refusalTxt(bad)} (คาด VALIDATION)`);
+    const a0 = await aud0();
+    const m = await setP(mgrAId, PR.P2 ?? "", [row(null, U.A, 7100)], true);
+    if (!codeIs(m, "PERMISSION_DENIED")) p.push(`ผู้จัดการ A purge → ${refusalTxt(m)} (คาด PERMISSION_DENIED)`);
+    if ((await cpFp("P2")) !== fpOf(b2) || (await aud0()) !== a0) p.push("ผู้จัดการ A purge เขียน/ลง audit");
+    const o = await setP(ownerId, PR.P2 ?? "", [row(null, U.A, 7100)], true);
+    if (!okish(o) || o?.changed !== true) p.push(`เจ้าของ purge P2 → ${refusalTxt(o)} changed=${o?.changed}`);
+    const a2 = await cpRows(PR.P2 ?? "");
+    if (sigOf(a2) !== "*|A|7100" || pick(a2, live2) !== pick(b2, live2)) p.push(`P2 หลัง purge ${sigOf(a2)} (คาด *|A|7100 id เดิม)`);
+    const au = await auditsOf(AUDIT_CP, PR.P2 ?? "-");
+    const lastA = au[au.length - 1];
+    if (au.length !== n0 + 1 || lastA?.after?.via !== "purgeDead" || lastA?.actorId !== ownerId) p.push(`audit P2 ${au.length - n0} via ${short(lastA?.after?.via, 20)}`);
+    const b1 = await cpRows(PR.P1 ?? "");
+    const lm = (r: CpRow) => r.channelCode === "LINEMAN";
+    const o1 = await setP(ownerId, PR.P1 ?? "", [row("LINEMAN", null, 9100)], true);
+    const a1 = await cpRows(PR.P1 ?? "");
+    if (!okish(o1) || sigOf(a1) !== "LINEMAN|*|9100" || pick(a1, lm) !== pick(b1, lm)) p.push(`P1 purge → ${refusalTxt(o1)} ${sigOf(a1)} (คาด ZZQC หาย · LINEMAN เดิม)`);
+    const again = await setP(ownerId, PR.P1 ?? "", [row("LINEMAN", null, 9100)], true);
+    if (!okish(again) || again?.changed !== false) p.push(`purge ซ้ำ → ${refusalTxt(again)} changed=${again?.changed}`);
+    chk("PR11", !fx && p.length === 0, "purgeDead: เจ้าของล้างแถวตาย · แถวใช้ได้เดิม · audit purgeDead · ผู้จัดการ DENIED ไม่เขียน · ไม่ส่งธง = คงไว้", FX(NOTE() + (P8(p) || "ครบ")));
+  }
+  // PR12 บันทึกที่ไม่เปลี่ยน ไม่ขึ้นกับลำดับ (hunt L2)
+  {
+    const p: string[] = [];
+    const cur = await cpRows(PR.P3 ?? "");
+    const val = (code: string | null, unit: string) => cur.find((x) => x.channelCode === code && x.unitId === unit);
+    const la = val("LINEMAN", U.A ?? "");
+    const lb = val("LINEMAN", U.B ?? "");
+    const na = val(null, U.A ?? "");
+    if (!la || !lb || !na) p.push(`fixture P3 ${sigOf(cur)}`);
+    const rA = row("LINEMAN", U.A, la?.priceSatang ?? 0);
+    const rB = row("LINEMAN", U.B, lb?.priceSatang ?? 0);
+    const rN = row(null, U.A, na?.priceSatang ?? 0);
+    const fp0 = await cpFp("P3");
+    const a0 = await aud0();
+    for (const [lbl, who, rows, want] of [
+      ["ผู้จัดการ A · B ก่อน", mgrAId, [rB, rA, rN], "OK"],
+      ["ผู้จัดการ A · B หลัง", mgrAId, [rA, rN, rB], "OK"],
+      ["พนักงาน · B ก่อน", cashAId, [rB, rA, rN], "PERMISSION_DENIED"],
+      ["พนักงาน · B หลัง", cashAId, [rA, rN, rB], "PERMISSION_DENIED"],
+      ["ผู้จัดการ A · เฉพาะ B", mgrAId, [rB], "PERMISSION_DENIED"],
+    ] as const) {
+      const r = await setCP(who, PR.P3 ?? "", rows);
+      const got = okish(r) ? (r.changed === false ? "OK" : `OK changed=${r.changed}`) : String(r?.code);
+      if (got !== want) p.push(`${lbl} → ${got} ${short(r?.message ?? "", 30)} (คาด ${want})`);
+    }
+    if ((await cpFp("P3")) !== fp0 || (await aud0()) !== a0) p.push("แถว/audit เปลี่ยน");
+    chk("PR12", !fx && p.length === 0, "ไม่เปลี่ยนอะไร: ok ทั้งสองลำดับ (ผู้จัดการ A) · พนักงาน DENIED ทั้งสองลำดับ · เฉพาะแถว B = DENIED · ไม่เขียน", FX(NOTE() + (P8(p) || "ครบ")));
+  }
+  // PR10 (หลัง PR11/PR12 — คัดลอกทั้งสาขา A→B เปลี่ยนแถว B ของสินค้าอื่น) copy ไม่ส่ง productIds ข้ามสินค้าที่มองไม่เห็น (R1 F3)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      await mkProd("H1", { basePriceSatang: 3000 });
+      if (PR.H1) {
+        const r0 = await setCP(ownerId, PR.H1, [row(null, U.A, 2900)]);
+        if (!okish(r0)) p.push(`fixture H1 แถว (ทุกช่องทาง, A) → ${refusalTxt(r0)}`);
+        const mv = await step("H1 → สินค้าของสาขา E", () => catalogMod.updateProduct(cctxSys, PR.H1, { unitId: U.E }));
+        if (!mv) p.push("fixture H1 ย้ายไปสาขา E ไม่ได้");
+      } else p.push("fixture H1 ไม่มี");
+    }
+    const h0 = await cpFp("H1");
+    const r1 = await copy(mgrABId, { fromUnitId: U.A, toUnitId: U.B, overwrite: false });
+    if (!okish(r1)) p.push(`ผู้จัดการ A+B ไม่ส่ง productIds → ${refusalTxt(r1)} ${short(r1?.message ?? "", 40)} (คาด ok + skipped)`);
+    else {
+      if (!(r1.skipped >= 1)) p.push(`skipped ${r1.skipped} (คาด ≥ 1)`);
+      if (Array.isArray(r1.productIds) && r1.productIds.includes(PR.H1)) p.push("H1 ถูกเขียน");
+    }
+    if ((await cpFp("H1")) !== h0 || !h0) p.push(`แถว H1 เปลี่ยน ${await cpSig("H1")}`);
+    const r2 = await copy(mgrABId, { fromUnitId: U.A, toUnitId: U.B, overwrite: false });
+    const r3 = await copy(ownerId, { fromUnitId: U.A, toUnitId: U.B, overwrite: false });
+    if (!okish(r2) || r2.changed !== false) p.push(`รันซ้ำผู้จัดการ → ${refusalTxt(r2)} changed=${r2?.changed}`);
+    if (!okish(r3) || r3.changed !== false) p.push(`เจ้าของ → ${refusalTxt(r3)} changed=${r3?.changed}`);
+    if (okish(r2) && okish(r3) && r2.skipped !== r3.skipped) p.push(`skipped ผู้จัดการ ${r2.skipped} ≠ เจ้าของ ${r3.skipped}`);
+    chk("PR10", !fx && p.length === 0, "ไม่ส่ง productIds: ข้าม+นับสินค้าที่มองไม่เห็น · ไม่ NOT_FOUND · ไม่เขียน H1 · รันซ้ำไม่เปลี่ยน", FX(NOTE() + (P8(p) || "ครบ")));
   }
 
   // ─── ขายผ่านหน้าขาย (quote → submit) · คืนเงิน ───
