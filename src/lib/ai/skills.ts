@@ -352,8 +352,9 @@ export function toolAllowedForApiKey(
     // CRM C1.10 ▸ AUDIT H1: คีย์ที่ไม่มี `crm.*` ใช้ tool ของ CRM ไม่ได้เลย (รวม crm_create_lead รุ่นเดิม) ◂
     ((opts.crmLegacyLead === true && toolName === "crm_create_lead") || crmApi.crmToolAllowedForScopes(toolName, scopes)) &&
     // POS P2.13 ▸ มติ 7 (ปิด HF-APIV1 #2 ฝั่ง POS): tool เดิม 4 ตัวของสกิล `sales` ต้องมี scope ของ POS (ตารางเดียวกับ op ในทะเบียน POS) ·
-    //   sales_summary/sales_by_day ⇐ pos.sale.read|create · pos_create_sale ⇐ pos.sale.create · void_sale ⇐ pos.sale.void · tool อื่นไม่เปลี่ยน ◂
-    (POS_TOOL_SCOPES[toolName] === undefined || POS_TOOL_SCOPES[toolName]!.some((sc) => scopes.includes(sc)))
+    //   sales_summary/sales_by_day ⇐ pos.sale.read|create · pos_create_sale ⇐ pos.sale.create · void_sale ⇐ pos.sale.void · tool อื่นไม่เปลี่ยน ·
+    //   คีย์กลางรุ่นเดิม (scope []) = พฤติกรรมเดิม (HF-APIV1: ด่านคีย์กลางของ route ตัดสินต่อ) ◂
+    (POS_TOOL_SCOPES[toolName] === undefined || scopes.length === 0 || POS_TOOL_SCOPES[toolName]!.some((sc) => scopes.includes(sc)))
   );
 }
 

@@ -1266,7 +1266,7 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     if (cashReceived !== null && cashReceived < cashRows[0]!.amountSatang) return refuse("PAYMENT_MISMATCH", "เงินที่รับมาน้อยกว่ายอดเงินสด");
     // POS P2.13 ▸ CD5 (ขยายถึง orders.pay): คำขอจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId · ไม่มีเครื่อง) = ไม่ส่ง shiftId ⇒ createSale ผูกกะตามกติกา
     //   "ทางอื่น" (requiredOtherSources) แทนกะของเครื่อง · หน้าจอ (ไม่มี apiKeyId) = เดิมทุกไบต์ ◂
-    const apiPay = isRecord(ctx) && typeof (ctx as { apiKeyId?: unknown }).apiKeyId === "string" && !!(ctx as { apiKeyId: string }).apiKeyId;
+    const apiPay = isRecord(ctx) && typeof (ctx as { apiKeyId?: unknown }).apiKeyId === "string" && !!(ctx as { apiKeyId?: unknown }).apiKeyId;
     const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: undefined, required: false } : await deviceShift(prisma, s, s.deviceId);
     if (!apiPay && (cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
     // POS HF-PP2 ▸ (P2.8U R1 F1 · บรีฟ §9 ข้อ 1–2): ด่านเดียวกับ submitRegisterSale (HF-PP) — ร้านตั้ง manualConfirmRequiresManager ⇒ พร้อมเพย์/บัตรที่ไม่อ้าง

@@ -278,7 +278,8 @@ export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: 
     // กะของเครื่อง (S5 ของ P1.9) — หาก่อนเปิด tx (อาจบังคับปิดกะค้างเกินเวลา) แล้วล็อกซ้ำในtx
     const shiftSettings = parseShiftSettings(s.settings);
     // POS P2.13 ▸ CD5: คำขอจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId · ไม่มีเครื่อง) = กะของบิลเดิมถ้ายังเปิด ไม่งั้นกติกา "ทางอื่น" ◂
-    const apiKeyId = isRecord(ctx) && isId((ctx as { apiKeyId?: unknown }).apiKeyId) ? (ctx as { apiKeyId: string }).apiKeyId : null;
+    const rawApiKey: unknown = isRecord(ctx) ? (ctx as { apiKeyId?: unknown }).apiKeyId : undefined;
+    const apiKeyId = isId(rawApiKey) ? rawApiKey : null;
     const apiShift = apiKeyId ? await resolveApiRefundShift(db, s, x.saleId) : null;
     const sh = apiShift ? null : await resolveRegisterShift(db, s, x.deviceId);
     const preShiftId = apiShift ? apiShift.shiftId : sh?.ok ? sh.shiftId : null;
