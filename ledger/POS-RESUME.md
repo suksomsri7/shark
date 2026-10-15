@@ -1629,3 +1629,9 @@
 - spawn **oracle writer P2.10** (Opus ทรี b `wip/pos-p2.10-oracle` จาก 57a8b19a) prompt `pos-prompt-accountB-P2.10-O.md`
 - ⚠️ ทรี b ถูกใช้โดย oracle writer ⇒ **gates93 (HF-FU merge gate) ย้ายไปรันบนทรี c** หลัง fix 2 เสร็จ (แก้ template: cd ทรี c + head check)
 - เลน: 1 = HF-FU fix 2 ทรี c · 2 = P2.10 oracle ทรี b
+
+### 15 ต.ค. 13:55Z — HF-FU fix 2 เสร็จ → R3 สั้น → merge
+- builder fix 2: `wip/pos-hf-fu` **6194adf7** push แล้ว · ORACLE-ADD HN5+ZE3 (05fea805 · red-before 27/29) · H1 cf1abb84 (`order.ts` re-read ช่องทางใน tx + `CHANNEL_PAY_MISMATCH` ใน acceptInTx) · H2 01bbc1a9 (`gl.ts`/`index.ts` `postedInOtherBook` ⇒ skipped other-book · รวม deposit receipt · owner line) · gates 29/29 ×2 + 10 ชุด + typecheck + fitness ±env เขียว · origin ยัง 57a8b19a
+- ผู้คุมรับ 3 ข้อตัดสินของ builder (deposit-receipt skip · หยุดก่อนสร้างเอกสารใน other-book · ZE3 ใช้ DIRECT) · double-consume ไม่เกิด · เปิด follow-up: refund zero-entry หลัง relink ยังเขียน marker+เอกสารในสมุดใหม่ (ไม่มีเงิน)
+- spawn **R3** (Opus read-only ทรี c @6194adf7) prompt `pos-prompt-accountB-HF-FU-R3.md` → MERGEABLE → merge no-ff เข้า session/pos (ทรีผู้คุม) → ทรี c detached @merge → **gates93-c** (`scratchpad/ctl/gates93-c.template.sh`) ‖ **chain79** ทรี d → ภาพ §9 → push → 37/55 + TG
+- เลน: 1 = HF-FU R3 (read-only ทรี c) · 2 = P2.10 oracle ทรี b
