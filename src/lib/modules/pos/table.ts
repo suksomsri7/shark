@@ -31,6 +31,12 @@ import {
   type TableZone,
 } from "./table-shared";
 import type { RegisterActor, RegisterCtx, RegisterRefusal, RegisterRefusalCode } from "./register-shared";
+import { itemInOpenSplit, openSplitSessions, releaseSplitPartInTx, repointSplitPlansInTx, splitPartOfSale, splitSummariesOf } from "./table-split"; // POS P2.5 ▸ แผนแยกบิล (R5 R6 R8 R10) ◂
+import { heldTableDraftSessions, repointTableDraftsInTx } from "./held-cart"; // POS P2.5 ▸ รวมโต๊ะ: รอบร่างตาม session ปลายทาง (R8) ◂
+import { registerTableBillPreview } from "./register"; // POS P2.5 ▸ ใบรายการ = ยอดของ quote โต๊ะ/ใบ (R9) ◂
+import { receiptSettingsOf } from "./receipt-settings";
+import { writeAudit } from "@/lib/core/audit";
+import type { PreBillPayload } from "./pre-bill-render";
 
 type Db = PrismaClient;
 type RestFacade = typeof import("@/lib/modules/restaurant");
@@ -103,10 +109,11 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
     const sessOf = new Map<string, (typeof fl.sessions)[number]>();
     for (const x of fl.sessions) if (!sessOf.has(x.tableId)) sessOf.set(x.tableId, x);
     const shown = [...sessOf.values()];
-    const [drafts, members, pay] = await Promise.all([
+    const [drafts, members, pay, splits] = await Promise.all([
       tableDraftLineCounts(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, sessionIds: shown.map((x) => x.id) }),
       registerMemberBriefs({ tenantId: s.tenantId, unitId: s.unitId, actor: s.actor }, shown.flatMap((x) => (x.memberId ? [x.memberId] : []))),
       posPaymentSettings({ tenantId: s.tenantId, systemId: s.systemId }, db),
+      splitSummariesOf(db, { tenantId: s.tenantId, sessionIds: shown.map((x) => x.id) }), // POS P2.5 ▸ R10 การ์ด "แยกบิล 2/4" ◂
     ]);
     const posBp = pay.ok && pay.serviceCharge.enabled ? pay.serviceCharge.rateBp : 0;
     const nowMs = now.getTime();
@@ -132,6 +139,7 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
         flags,
         dirtySince: iso(t.dirtySince),
         reservation: res ? { id: res.id, name: res.name, partySize: res.partySize, at: res.at.toISOString(), holdFromMinutes: res.holdFromMinutes, phone: res.phone } : null,
+        split: x && splits.get(x.id) ? { paidParts: splits.get(x.id)!.paidParts, partCount: splits.get(x.id)!.partCount } : null, // POS P2.5 ▸ R10 ◂
       };
     });
     const used = tables.filter((c) => c.sessionId);
@@ -178,11 +186,12 @@ export async function registerTableDetail(ctx: RegisterCtx, actor: RegisterActor
     const rest = await restaurant();
     const sess = await rest.tableSessionForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: input.tableSessionId });
     if (!sess) return refuse("TABLE_NOT_FOUND");
-    const [detail, unpaid, draft, members] = await Promise.all([
+    const [detail, unpaid, draft, members, splits] = await Promise.all([
       rest.tableDetailForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: sess.id }),
       rest.tableUnpaidItemsForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: sess.id }),
       tableDraftOf(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: sess.id }),
       registerMemberBriefs({ tenantId: s.tenantId, unitId: s.unitId, actor: s.actor }, sess.memberId ? [sess.memberId] : []),
+      splitSummariesOf(db, { tenantId: s.tenantId, sessionIds: [sess.id] }), // POS P2.5 ▸ R10 ◂
     ]);
     const unpaidIds = unpaid.map((i) => i.id);
     return {
@@ -221,6 +230,7 @@ export async function registerTableDetail(ctx: RegisterCtx, actor: RegisterActor
       unpaidSatang: unpaid.reduce((t, i) => t + i.lineTotal, 0),
       unpaidItemIds: unpaidIds,
       itemsHash: tableItemsHash(unpaidIds),
+      split: splits.get(sess.id) ?? null, // POS P2.5 ▸ R10 แผนแยกบิลที่เปิดอยู่ (null = ไม่มี) ◂
     };
   });
 }
@@ -470,7 +480,21 @@ export async function registerCancelTableItem(ctx: RegisterCtx, actor: RegisterA
     const rest = await restaurant();
     const itemId = input.itemId;
     // POS P2.4 ▸ fix 2 F4c: ล็อกรายการ + saleId IS NULL ในธุรกรรมเดียว (เรียงคิวกับการยึดรายการตอนจ่าย) — จ่ายไปแล้ว = TABLE_ITEMS_CHANGED ◂
-    const r = await db.$transaction((tx) => rest.cancelTableItemInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, itemId, reason, byUserId: s.actor.userId }), { maxWait: 10_000, timeout: 20_000 });
+    // POS P2.5 ▸ R5 มติ 6: รายการในแผนแยกบิลที่เปิดอยู่ = TABLE_SPLIT_OPEN — ตรวจหลังล็อกแถวรายการในธุรกรรมเดียว (ย้อนทั้งก้อน รวมคืนสต็อกเมนู) ◂
+    let r: Awaited<ReturnType<RestFacade["cancelTableItemInTx"]>>;
+    try {
+      r = await db.$transaction(
+        async (tx) => {
+          const c = await rest.cancelTableItemInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, itemId, reason, byUserId: s.actor.userId });
+          if (c.ok && (await itemInOpenSplit(tx, { tenantId: s.tenantId, itemId }))) throw new TableTxRefusal(refuse("TABLE_SPLIT_OPEN"));
+          return c;
+        },
+        { maxWait: 10_000, timeout: 20_000 },
+      );
+    } catch (e) {
+      if (e instanceof TableTxRefusal && e.refusal !== "RETRY") return e.refusal;
+      throw e;
+    }
     if (!r.ok) return r.code === "NOT_FOUND" ? refuse("TABLE_NOT_FOUND") : r.code === "PAID" ? refuse("TABLE_ITEMS_CHANGED") : refuse("VALIDATION", r.reason);
     return { ok: true as const };
   });
@@ -610,7 +634,228 @@ export async function tableSaleVoided(evt: { tenantId: string; payload: unknown 
   const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: evt.tenantId }, select: { unitId: true, sourceModule: true, sourceId: true, status: true } });
   if (!sale || sale.sourceModule !== "POS" || !sale.sourceId || sale.status !== "VOIDED") return 0;
   const rest = await restaurant();
+  // POS P2.5 ▸ R6 มติ 7: บิลของใบแยกบิล — ปลดทุกรายการที่ใบนี้ถือ (unlinkTableItemsInTx · ลำดับล็อก session → โต๊ะ → รายการ เดียวกับ unlinkTableSaleInTx) +
+  //   ใบ OPEN (saleId/paidAt = null) + แผน DONE → OPEN เมื่อ session ไม่มีแผน OPEN อื่น (fix1 มติ 1) · ธุรกรรมเดียว · เล่นซ้ำ/ระบายซ้ำ = 0 แถว ·
+  //   ไม่วนลองไม่จบ: ชนกัน (unique/deadlock/write conflict) ⇒ ลองอีกครั้งแบบไม่เปิดแผน ⇒ ยังชน = audit pos.table.split.voidConflict แล้วจบ (event DONE) ◂
+  const part = await splitPartOfSale(prisma, { tenantId: evt.tenantId, saleId });
+  if (part) {
+    const NOOP = "pos-p25-split-void-noop";
+    const once = (reopen: boolean) =>
+      prisma.$transaction(async (tx) => {
+        const u = await rest.unlinkTableItemsInTx(tx, { tenantId: evt.tenantId, unitId: sale.unitId, itemIds: part.itemIds });
+        const r = await releaseSplitPartInTx(tx, { tenantId: evt.tenantId, partId: part.partId, splitId: part.splitId, saleId, reopen });
+        if (!r.released) throw new Error(NOOP);
+        return u.itemsReset + 1;
+      });
+    const conflict = (e: unknown) => isTxConflict(e) || (e as { code?: unknown } | null)?.code === "P2002";
+    try {
+      return await once(true);
+    } catch (e) {
+      if (e instanceof Error && e.message === NOOP) return 0;
+      if (!conflict(e)) throw e;
+      try {
+        return await once(false);
+      } catch (e2) {
+        if (e2 instanceof Error && e2.message === NOOP) return 0;
+        // POS P2.5 ▸ fix2 มติ 3 (F3): ยังชนแบบ deadlock/write conflict = โยนต่อให้คิวลองใหม่ (reopen=false ไม่มีทางชน unique ซ้ำ ⇒ ไม่วน) · audit + จบเฉพาะทางที่ไม่ใช่ชนกัน ◂
+        if (isTxConflict(e2)) throw e2;
+        if (!conflict(e2)) throw e2;
+        await writeAudit({ tenantId: evt.tenantId, action: "pos.table.split.voidConflict", targetType: "PosTableSplitPart", targetId: part.partId, after: { saleId, splitId: part.splitId, error: String((e2 as Error)?.message ?? e2).slice(0, 200) } });
+        return 0;
+      }
+    }
+  }
   const sessionId = sale.sourceId;
   const r = await prisma.$transaction((tx) => rest.unlinkTableSaleInTx(tx, { tenantId: evt.tenantId, unitId: sale.unitId, sessionId, saleId }));
   return r.itemsReset;
 }
+
+// ═══════════════════ POS P2.5 ▸ ย้ายโต๊ะ · รวมโต๊ะ (R7 R8 · มติ 8 10 · มติ §11 ข้อ 2 5) ═══════════════════
+
+const MOVE_CODE: Record<string, RegisterRefusalCode> = { NOT_FOUND: "TABLE_NOT_FOUND", NO_TABLE: "TABLE_NOT_FOUND", NOT_OPEN: "TABLE_SESSION_CLOSED", TABLE_INACTIVE: "TABLE_INACTIVE", TABLE_BUSY: "TABLE_BUSY" };
+
+/**
+ * ย้ายโต๊ะ (pos.sale.create|read + restaurant.session.move): session ทั้งก้อนไปโต๊ะว่าง — ล็อก session → ล็อกโต๊ะทั้งสอง (facade moveTableSessionInTx ·
+ * ไม่ล็อกแถวรายการ) · โต๊ะเดิม "ต้องเก็บ" · โต๊ะใหม่สะอาด · รอบครัว/รอบร่าง/แผนแยกบิล/คำขอตาม session · บอร์ดครัวอ่านชื่อโต๊ะใหม่เอง (ใบครัวที่พิมพ์แล้วไม่พิมพ์ซ้ำ) ·
+ * โต๊ะปลายทางมีการจองกันอยู่ = ย้ายได้ + reservationOverridden (การจองยัง BOOKED) · โต๊ะเดิม = {changed:false} ·
+ * ปฏิเสธ (ไม่เขียน): TABLE_NOT_FOUND (session/โต๊ะของสาขาอื่น/ร้านอื่น/ไม่มีจริง) · TABLE_SESSION_CLOSED · TABLE_INACTIVE · TABLE_BUSY ("ใช้รวมโต๊ะแทน")
+ */
+export async function registerMoveTable(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  input: { tableSessionId: string; toTableId: string },
+  client?: Db,
+): Promise<{ ok: true; changed: boolean; reservationOverridden?: true } | RegisterRefusal> {
+  return guard("registerMoveTable", async () => {
+    const db: Db = client ?? prisma;
+    const s = await scope(db, ctx, actor, "restaurant.session.move");
+    if (isRefusal(s)) return s;
+    if (!isRecord(input) || !isId(input.tableSessionId) || !isId(input.toTableId)) return refuse("VALIDATION");
+    const rest = await restaurant();
+    const sessionId = input.tableSessionId;
+    const toTableId = input.toTableId;
+    const once = () =>
+      db.$transaction(
+        async (tx) => {
+          const m = await rest.moveTableSessionInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId, toTableId });
+          if (!m.ok || !m.changed) return { ...m, overridden: false };
+          const now = new Date();
+          const rs = await rest.bookedReservationsOfTable(tx, { tenantId: s.tenantId, unitId: s.unitId, tableId: m.toTableId, now, lateMinutes: RESERVATION_LATE_MINUTES, maxHoldMinutes: RESERVATION_HOLD_MAX_MINUTES });
+          return { ...m, overridden: rs.some((x) => reservationHolds(x.at.getTime(), x.holdFromMinutes, now.getTime())) };
+        },
+        { maxWait: 10_000, timeout: 20_000 },
+      );
+    let r: Awaited<ReturnType<typeof once>>;
+    try {
+      r = await once();
+    } catch (e) {
+      if (!isTxConflict(e)) throw e;
+      try {
+        r = await once();
+      } catch (e2) {
+        if (isTxConflict(e2)) return refuse("BUSY");
+        throw e2;
+      }
+    }
+    if (!r.ok) return refuse(MOVE_CODE[r.code] ?? "TABLE_NOT_FOUND");
+    if (r.changed) {
+      await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.table.move", targetType: "TableSession", targetId: sessionId, after: { sessionId, fromTableId: r.fromTableId, toTableId: r.toTableId, reservationOverridden: r.overridden } });
+    }
+    return { ok: true as const, changed: r.changed, ...(r.overridden ? { reservationOverridden: true as const } : {}) };
+  });
+}
+
+const MERGE_MAX_FROMS = 5;
+/**
+ * รวมโต๊ะ (pos.sale.create|read + restaurant.session.merge): from 1–5 session (ไม่ซ้ำ · ไม่ใช่ปลายทาง) เข้า intoSessionId — ล็อก session ทุกตัว (เรียง id) →
+ * ล็อกโต๊ะทุกตัว (facade mergeTableSessionsInTx · ไม่ล็อกแถวรายการ) → ตัวกันของ POS: แผนแยกบิล OPEN ที่ใดก็ตาม = TABLE_SPLIT_OPEN · รอบร่าง HELD
+ * ปลายทาง+ต้นทาง หรือต้นทาง ≥ 2 ที่ = TABLE_HAS_DRAFT (ส่งครัว/ทิ้งก่อน) → ออเดอร์+คำขอย้าย · guestCount รวม · สมาชิก = ปลายทาง ?? ต้นทางแรกที่มี ·
+ * ต้นทาง MERGED + โต๊ะต้นทาง "ต้องเก็บ" · รอบร่างเดียวของต้นทางผูกปลายทาง (ธุรกรรมเดียว) · เล่นซ้ำ = {changed:false} · บิลบางส่วนเดิมของต้นทางยัง void ได้
+ */
+export async function registerMergeTables(ctx: RegisterCtx, actor: RegisterActor, input: { intoSessionId: string; fromSessionIds: string[] }, client?: Db): Promise<{ ok: true; changed: boolean } | RegisterRefusal> {
+  return guard("registerMergeTables", async () => {
+    const db: Db = client ?? prisma;
+    const s = await scope(db, ctx, actor, "restaurant.session.merge");
+    if (isRefusal(s)) return s;
+    if (!isRecord(input) || !isId(input.intoSessionId) || !Array.isArray(input.fromSessionIds)) return refuse("VALIDATION");
+    const into = input.intoSessionId;
+    const froms = input.fromSessionIds as unknown[];
+    if (froms.length < 1 || froms.length > MERGE_MAX_FROMS || !froms.every(isId) || new Set(froms).size !== froms.length || froms.includes(into)) {
+      return refuse("VALIDATION", `เลือกโต๊ะที่จะรวม 1–${MERGE_MAX_FROMS} โต๊ะ (ไม่ซ้ำ และไม่ใช่โต๊ะปลายทาง)`);
+    }
+    const fromIds = froms as string[];
+    const rest = await restaurant();
+    const key = { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId };
+    const once = () =>
+      db.$transaction(
+        async (tx) => {
+          const m = await rest.mergeTableSessionsInTx<"TABLE_SPLIT_OPEN" | "TABLE_HAS_DRAFT">(tx, {
+            tenantId: s.tenantId,
+            unitId: s.unitId,
+            intoSessionId: into,
+            fromSessionIds: fromIds,
+            guard: async (rows) => {
+              const ids = rows.map((r) => r.id);
+              if ((await openSplitSessions(tx, { tenantId: s.tenantId, sessionIds: ids })).size) return "TABLE_SPLIT_OPEN";
+              const drafts = await heldTableDraftSessions(tx, { ...key, sessionIds: ids });
+              const fromDrafts = fromIds.filter((id) => drafts.has(id)).length;
+              return (drafts.has(into) && fromDrafts >= 1) || fromDrafts >= 2 ? "TABLE_HAS_DRAFT" : null;
+            },
+          });
+          if (m.ok && m.changed) {
+            await repointTableDraftsInTx(tx, { ...key, fromSessionIds: fromIds, toSessionId: into });
+            await repointSplitPlansInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, fromSessionIds: fromIds, toSessionId: into }); // POS P2.5 ▸ fix1 มติ 6 (N4) ◂
+          }
+          return m;
+        },
+        { maxWait: 10_000, timeout: 20_000 },
+      );
+    let r: Awaited<ReturnType<typeof once>>;
+    try {
+      r = await once();
+    } catch (e) {
+      if (!isTxConflict(e)) throw e;
+      try {
+        r = await once();
+      } catch (e2) {
+        if (isTxConflict(e2)) return refuse("BUSY");
+        throw e2;
+      }
+    }
+    if (!r.ok) return refuse(r.code === "NOT_FOUND" ? "TABLE_NOT_FOUND" : r.code === "NOT_OPEN" ? "TABLE_SESSION_CLOSED" : r.code);
+    if (r.changed) await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.table.merge", targetType: "TableSession", targetId: into, after: { intoSessionId: into, fromSessionIds: fromIds, fromTableIds: r.fromTableIds } });
+    return { ok: true as const, changed: r.changed };
+  });
+}
+
+// ═══════════════════ POS P2.5 ▸ ใบรายการ (pre-bill · R9 · มติ 9 · CD9 · มติ §11 ข้อ 4) ═══════════════════
+
+/**
+ * ใบรายการของโต๊ะ (tableSessionId) หรือของใบแยกบิล (tableSplitPartId) — pos.sale.create หรือ pos.sale.read (มติ 10) · ยอด = quote ของโต๊ะ/ใบ ทุกสตางค์
+ * (ทางคิดเงินเดียวกัน registerTableBillPreview) · ไม่มีเลขเอกสาร/เลขภาษี/เลขใบเสร็จ · ไม่เปลี่ยนสถานะ (ไม่ขอเช็คบิล · ไม่ลงบัญชี · ไม่ปล่อย outbox) ·
+ * audit pos.table.preBill 1 แถวต่อครั้ง (ร่องรอยกันโกง "ใบรายการพิมพ์ยอด X") · พิมพ์ที่เครื่อง (pre-bill-render.ts · เครื่องพิมพ์ใบเสร็จของเครื่อง)
+ */
+export async function registerTablePreBill(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  input: ({ tableSessionId: string } | { tableSplitPartId: string }) & { locale?: "th" | "en" | null; copy?: boolean | null },
+  client?: Db,
+): Promise<{ ok: true; payload: PreBillPayload } | RegisterRefusal> {
+  return guard("registerTablePreBill", async () => {
+    const db: Db = client ?? prisma;
+    const s = await scope(db, ctx, actor, null);
+    if (isRefusal(s)) return s;
+    if (!isRecord(input)) return refuse("VALIDATION");
+    const raw = input as Record<string, unknown>;
+    const sid = isId(raw.tableSessionId) ? raw.tableSessionId : null;
+    const pid = isId(raw.tableSplitPartId) ? raw.tableSplitPartId : null;
+    if ((sid === null) === (pid === null)) return refuse("VALIDATION");
+    if (raw.locale !== undefined && raw.locale !== null && raw.locale !== "th" && raw.locale !== "en") return refuse("VALIDATION");
+    if (raw.copy !== undefined && raw.copy !== null && typeof raw.copy !== "boolean") return refuse("VALIDATION");
+    const pv = await registerTableBillPreview(s.ctx, s.actor, sid ? { tableSessionId: sid } : { tableSplitPartId: pid }, VIEW_PERMS, db);
+    if (isRefusal(pv)) return pv;
+    const rest = await restaurant();
+    const [sess, posSys, unit, tenant, staff, members] = await Promise.all([
+      rest.tableSessionForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: pv.sessionId }),
+      db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS" }, select: { settings: true } }),
+      db.businessUnit.findFirst({ where: { id: s.unitId, tenantId: s.tenantId }, select: { name: true } }),
+      db.tenant.findUnique({ where: { id: s.tenantId }, select: { name: true } }),
+      db.user.findUnique({ where: { id: s.actor.userId }, select: { name: true } }),
+      registerMemberBriefs({ tenantId: s.tenantId, unitId: s.unitId, actor: s.actor }, pv.memberId ? [pv.memberId] : []),
+    ]);
+    if (!sess) return refuse("TABLE_NOT_FOUND");
+    const header = posSys ? receiptSettingsOf(posSys.settings).header.name : null;
+    const q = pv.quote;
+    const payload: PreBillPayload = {
+      kind: "PRE_BILL",
+      shop: { name: (header && header.trim()) || (tenant?.name ?? "").trim() || (unit?.name ?? "-"), branch: unit?.name ?? "" },
+      tableName: pv.tableName,
+      guestCount: sess.guestCount,
+      openedAt: sess.openedAt.toISOString(),
+      printedAt: new Date().toISOString(),
+      staffName: staff?.name ?? null,
+      part: pv.part ? { no: pv.part.no, of: pv.part.of } : null,
+      member: pv.memberId ? { name: members.get(pv.memberId)?.name ?? "" } : null,
+      lines: pv.lines.map((l) => ({ qty: l.qty, name: l.name, options: [...l.options], amountSatang: l.amountSatang })),
+      subtotalSatang: q.subtotalSatang,
+      discountSatang: q.subtotalSatang - q.netSatang,
+      serviceCharge: { rateBp: pv.serviceChargeBp, satang: q.serviceChargeSatang },
+      vatIncludedSatang: q.vatSatang,
+      totalSatang: q.grandTotalSatang,
+      itemsHash: pv.itemsHash,
+      notReceipt: true,
+      copy: raw.copy === true,
+      locale: raw.locale === "en" ? "en" : "th",
+    };
+    await writeAudit({
+      tenantId: s.tenantId,
+      actorId: s.actor.userId,
+      action: "pos.table.preBill",
+      targetType: "TableSession",
+      targetId: pv.sessionId,
+      after: { sessionId: pv.sessionId, ...(pv.part ? { partId: pv.part.id } : {}), totalSatang: q.grandTotalSatang, itemsHash: pv.itemsHash, copy: payload.copy },
+    });
+    return { ok: true as const, payload };
+  });
+}
+// ◂ POS P2.5

@@ -357,6 +357,14 @@ async function preverifyGiftPins(input: CreateSaleInput): Promise<boolean> {
   return true;
 }
 
+/**
+ * POS P2.5 ▸ fix2 มติ 4 (hunter Low): ขยายด่าน PIN ก่อนเปิด tx (createSale ≈:597 ทำเฉพาะเมื่อเป็นเจ้าของ tx) ให้ผู้เรียกที่ส่ง callerTx(tx)
+ *   (register.ts regSubmitTable / regSubmitSplitPart) เรียกเองก่อน `$transaction` — ตัวเดียวกันทุกไบต์ (ตัวนับ PIN ผิด commit เสมอ · ใน tx ยังตรวจซ้ำ PIN ถูก = ไม่เขียน) ◂
+ */
+export function preverifySaleGiftPins(input: CreateSaleInput): Promise<boolean> {
+  return preverifyGiftPins(input);
+}
+
 /** R3 R7 — ตัดยอดของแถวบัตรใน tx ของบิล (หลังเขียนแถวชำระ) แล้วผูก PosPayment.giftCardId/giftCardTxnId */
 async function useSaleTenders(tx: Client, input: CreateSaleInput, saleId: string, tenders: SaleTender[], paymentIds: string[]): Promise<void> {
   if (!tenders.length) return;

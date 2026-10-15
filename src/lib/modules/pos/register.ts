@@ -417,7 +417,7 @@ import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
-import { afterSaleCommitted, pendingStockParts, posDayStart } from "./service";
+import { afterSaleCommitted, pendingStockParts, posDayStart, preverifySaleGiftPins } from "./service"; // POS P2.5 ▸ fix2 มติ 4: + preverifySaleGiftPins ◂
 import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (ซ่อน $transaction) ◂
 // POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes } from "./recipe";
@@ -430,6 +430,7 @@ import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./sh
 import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน + heartbeat ◂
 import { ensureUnitChannels, resolveSaleChannel } from "./channel"; // POS P2.1 ▸ R10 ช่องทางของตะกร้า ◂ · POS P2.4 ▸ ช่องทางของบิลโต๊ะ (Q4) ◂
 import { tableItemsHash } from "./table-shared"; // POS P2.4 ▸ แฮชชุดรายการของบิลโต๊ะ (CONTROLLER-DECISION 3) ◂
+import { tableSplitSaleAmounts, tableSplitShareName } from "./table-split-shared"; // POS P2.5 ▸ บรรทัดส่วนแบ่ง + ยอดของใบตอนลงบิล ◂
 import { CHANNEL_REF_MAX } from "./channel-shared"; // POS P2.1 ◂
 // POS P2.2 ▸ ราคาตามช่องทาง/สาขา/ช่วงเวลา (R5 R6) — ชุดราคาโหลดครั้งเดียวต่อคำขอ · ตัวแก้บริสุทธิ์ price-shared.ts ◂
 import { channelNotSold, loadPriceBook, priceBookValidUntil, priceOf, type PriceBook } from "./price";
@@ -589,6 +590,14 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   CHANNEL_NOT_SOLD: "สินค้านี้ไม่ขายในช่องทางนี้ — เอาออกจากบิล หรือเปลี่ยนช่องทาง",
   PRICE_RULE_NOT_FOUND: "ไม่พบโปรราคานี้",
   PRICE_RULE_LIMIT: "ระบบนี้มีโปรราคาครบ 100 รายการแล้ว — เก็บถาวรโปรที่ไม่ใช้ก่อน",
+  // POS P2.5 ▸ แยกบิล/ย้าย/รวมโต๊ะ (R11) ◂
+  TABLE_SPLIT_OPEN: "โต๊ะนี้แยกบิลอยู่ — ชำระทีละใบ หรือยกเลิกการแยกบิลก่อน",
+  TABLE_SPLIT_EXISTS: "โต๊ะนี้มีแผนแยกบิลอยู่แล้ว (อาจเพิ่งสร้างจากอีกเครื่อง) — โหลดแผนล่าสุดแล้วแก้ไขแทน",
+  TABLE_SPLIT_LOCKED: "แผนแยกบิลนี้มีใบที่ชำระแล้ว — แก้หรือยกเลิกไม่ได้ (ยกเลิกบิลของใบนั้นก่อน)",
+  TABLE_SPLIT_PART_PAID: "ใบนี้ชำระไปแล้ว (อาจจากอีกเครื่อง) — ยังไม่ได้เก็บเงินซ้ำ",
+  TABLE_SPLIT_NOT_FOUND: "ไม่พบแผนแยกบิล/ใบนี้ในสาขานี้ (อาจถูกยกเลิกหรือแก้ไปแล้ว)",
+  TABLE_BUSY: "โต๊ะปลายทางมีลูกค้าอยู่ — ใช้ 'รวมโต๊ะ' แทน",
+  TABLE_HAS_DRAFT: "มีรอบร่างที่ยังไม่ส่งครัวมากกว่าหนึ่งโต๊ะ — ส่งครัวหรือทิ้งรอบร่างก่อนรวมโต๊ะ",
   // POS P2.4 ▸ โหมดโต๊ะ (R12) ◂
   TABLE_NOT_FOUND: "ไม่พบโต๊ะนี้ในสาขานี้",
   TABLE_INACTIVE: "โต๊ะนี้ปิดใช้งานอยู่ — เปิดใช้งานก่อน หรือเลือกโต๊ะอื่น",
@@ -1096,7 +1105,11 @@ type RegParsedLine =
     }
   | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null }
   // POS P2.4 ▸ R6: บรรทัดของบิลโต๊ะ = รายการที่ส่งครัวแล้ว (เซิร์ฟเวอร์สร้างจาก session · ราคาสำเนาตอนส่งรอบ ไม่คิดใหม่ · CD3) ◂
-  | { kind: "table"; tableItemId: string; productId: string | null; name: string; qty: number; unitPriceSatang: number; options: RegPickedOption[]; choiceIds: string[]; discount: null; note?: null };
+  | { kind: "table"; tableItemId: string; productId: string | null; name: string; qty: number; unitPriceSatang: number; options: RegPickedOption[]; choiceIds: string[]; discount: null; note?: null; share?: RegShare | null };
+/** POS P2.5 ▸ R3 มติ 3: บรรทัดส่วนแบ่งของใบแยกบิล — units = หน่วยของรายการที่หารกัน · owner = ใบนี้ตัดสต็อกของหน่วยเหล่านั้น (ใบเลขต่ำสุด) ◂ */
+type RegShare = { units: number; owner: boolean };
+/** POS P2.5 ▸ R4: ใบของแผนที่กำลังคิด/จ่าย — ค่าบริการของใบ = ของแผน (ไม่คิดจาก bp ใหม่) · ส่วนลดอยู่บนแผน (เพดานตรวจตอนบันทึกแผน) ◂ */
+type RegSplitBill = { splitId: string; partId: string; partNo: number; partCount: number; version: number; sessionId: string; serviceChargeSatang: number; status: string; memberId: string | null; serviceChargeBp: number };
 /** POS P1.12: couponCode = โค้ดที่ลูกค้ายื่น (ตัดช่องว่าง · null = ไม่มี) · memberChoices = สิทธิ์ที่เลือกบนจอชำระ (null = ไม่เลือก · ไม่ถูกเก็บในบิลพัก) */
 type RegMemberChoices = { voucherId: string | null; points: number };
 type RegParsedCart = {
@@ -1109,18 +1122,21 @@ type RegParsedCart = {
   /** POS P2.4 ▸ R6: บิลของโต๊ะ (TableSession.id) — lines ต้องเป็น [] · table = ชุดรายการที่เซิร์ฟเวอร์สร้าง (หลัง regTableLines) ◂ */
   tableSessionId?: string | null;
   table?: RegTableBill | null;
+  /** POS P2.5 ▸ R4: ใบของแผนแยกบิล (PosTableSplitPart.id) — lines ต้องเป็น [] · split = ใบที่เซิร์ฟเวอร์โหลดแล้ว (หลัง regSplitCart) ◂ */
+  tableSplitPartId?: string | null;
+  split?: RegSplitBill | null;
 };
 /** POS P2.4 ▸ บิลโต๊ะที่สร้างแล้ว: session · ชื่อโต๊ะ · id รายการที่ยังไม่จ่าย (ลำดับ createdAt, id) · แฮชชุดรายการ ◂ */
 type RegTableBill = { sessionId: string; tableName: string; itemIds: string[]; itemsHash: string };
 
 // POS P1.12 ▸ R3 R6: couponCode + memberChoices (ยก Q12) — บิลพักเก็บ couponCode แต่ทิ้ง memberChoices (registerCanonicalCart · มติ 12) ◂
-const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId", "couponCode", "memberChoices", "channelId", "tableSessionId"]); // POS P2.1 ▸ + channelId ◂ · POS P2.4 ▸ + tableSessionId (R6) ◂
+const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId", "couponCode", "memberChoices", "channelId", "tableSessionId", "tableSplitPartId"]); // POS P2.1 ▸ + channelId ◂ · POS P2.4 ▸ + tableSessionId (R6) ◂ · POS P2.5 ▸ + tableSplitPartId (R4) ◂
 /** POS P1.12: คีย์ของ memberChoices (ตรงตัว · giftCard/voucherIds/อื่น = VALIDATION · มติ Q1 CD3) */
 const REG_CHOICE_KEYS: ReadonlySet<string> = new Set(["voucherId", "points"]);
 /** POS P1.12: เพดานแต้มที่รับในคำขอ (กันเลขล้น — เกินยอดคงเหลือจริง = POINTS_INSUFFICIENT) */
 const REG_POINTS_MAX = 100_000_000;
 const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
-  ...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note",
+  ...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note", "expectedSplitVersion", // POS P2.5 ▸ R4 ◂
   "staffToken", "managerPin", "managerUserId", "heldCartId", // POS P1.15 ▸ R3 R4 R6 ◂
   "taxInvoice", "rememberBuyer", // POS P1.13 ▸ R2 R6 ◂
   "channelRef", // POS P2.1 ▸ R10 ◂
@@ -1212,6 +1228,16 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
     if (channelId !== null) return regRefuse("VALIDATION", "ช่องทางขายของบิลโต๊ะมาจากโต๊ะ — ไม่ต้องส่งช่องทาง");
     tableSessionId = raw.tableSessionId;
   }
+  // POS P2.5 ▸ R4: ใบของแผนแยกบิล — รายการ/ส่วนลด/ช่องทางมาจากแผน+โต๊ะ (lines ต้องว่าง · ห้ามคู่ tableSessionId/billDiscount/channelId) ◂
+  let tableSplitPartId: string | null = null;
+  if (raw.tableSplitPartId !== undefined && raw.tableSplitPartId !== null) {
+    if (!regIsId(raw.tableSplitPartId)) return regRefuse("VALIDATION", "รหัสบิลย่อยไม่ถูกต้อง");
+    if (raw.lines.length > 0) return regRefuse("VALIDATION", "บิลย่อยคิดจากรายการในแผนแยกบิลเท่านั้น — ไม่ต้องส่งรายการมา");
+    if (tableSessionId !== null) return regRefuse("VALIDATION", "ส่งได้อย่างใดอย่างหนึ่ง: ทั้งโต๊ะ หรือบิลย่อย");
+    if (billDiscount !== null) return regRefuse("VALIDATION", "ส่วนลดของบิลย่อยอยู่บนแผนแยกบิล — แก้แผนแทน");
+    if (channelId !== null) return regRefuse("VALIDATION", "ช่องทางขายของบิลย่อยมาจากโต๊ะ — ไม่ต้องส่งช่องทาง");
+    tableSplitPartId = raw.tableSplitPartId;
+  }
   const lines: RegParsedLine[] = [];
   for (let i = 0; i < raw.lines.length; i++) {
     const l: unknown = raw.lines[i];
@@ -1274,7 +1300,7 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
       lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount, note });
     }
   }
-  return { lines, billDiscount, memberId, couponCode, memberChoices, channelId, tableSessionId };
+  return { lines, billDiscount, memberId, couponCode, memberChoices, channelId, tableSessionId, tableSplitPartId };
 }
 
 /**
@@ -1455,6 +1481,18 @@ async function regPrice(
           else stockCutFail = "RECIPE"; // บิลโดยไม่มีส่วนประกอบ
         }
       }
+      // POS P2.5 ▸ R3 มติ 3: บรรทัดส่วนแบ่งของใบ — ไม่มี itemId · ใบเจ้าของสต็อก (ใบเลขต่ำสุด) ถือ components = สินค้านับสต็อก × หน่วย + สูตร × หน่วย
+      //   (บรรทัด qty 1 ⇒ ตัดครั้งเดียวทั้ง u หน่วย) · ใบอื่นไม่ตัดเลย ⇒ InvItem/BOM ถูกตัดครั้งเดียวต่อรายการ ◂
+      if (l.share) {
+        const comp = new Map<string, number>();
+        if (l.share.owner) {
+          if (itemId) comp.set(itemId, l.share.units);
+          for (const c of components) comp.set(c.invItemId, (comp.get(c.invItemId) ?? 0) + c.qty * l.share.units);
+        } else stockCutFail = undefined;
+        components = [...comp.entries()].map(([invItemId, qty]) => ({ invItemId, qty }));
+        itemId = null;
+        serviceId = null;
+      }
       meta.push({ name: l.name, qty: l.qty, productId: l.productId, itemId, serviceId, note: null, options: l.options, components, weightGrams: null, priceSource: null, priceRule: null, listPriceSatang: null, ...(stockCutFail ? { stockCutFail } : {}) });
       continue;
     }
@@ -1545,8 +1583,10 @@ async function regPrice(
   // POS P2.1 ▸ CD8: ค่าบริการเฉพาะ STORE/QR_TABLE (ออเดอร์แพลตฟอร์มราคาตามแพลตฟอร์ม · ยอดต้องเท่าที่แพลตฟอร์มเก็บ) ◂
   const serviceChargeOn = channel === null || channel.code === "STORE" || channel.code === "QR_TABLE";
   const serviceChargeBp = settings.serviceCharge.enabled && serviceChargeOn ? settings.serviceCharge.rateBp : 0;
-  const maxDiscountBp = maxBp !== undefined ? maxBp : regMaxDiscountBp(s.actor, await regDiscountCaps(db, s));
-  const r0 = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp });
+  // POS P2.5 ▸ R4 CD5: ใบแยกบิล — ส่วนลดอยู่บนแผน (เพดานตรวจตอนบันทึกแผนแล้ว ⇒ ไม่จำกัดที่นี่) · ค่าบริการ = ของใบในแผน (คิดครั้งเดียวทั้งโต๊ะ · มติ 4) ◂
+  const maxDiscountBp = cart.split ? null : maxBp !== undefined ? maxBp : regMaxDiscountBp(s.actor, await regDiscountCaps(db, s));
+  const pc = (i: Parameters<typeof priceCart>[0]) => (cart.split ? regFixedServiceCharge(priceCart({ ...i, serviceChargeBp: 0 }), cart.split.serviceChargeSatang) : priceCart(i));
+  const r0 = pc({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp });
   if (!r0.ok) return regRefuse(r0.code, r0.code === "DISCOUNT_EXCEEDS_LIMIT" || r0.code === "TOO_MANY_LINES" ? undefined : r0.message, r0.lineIndex);
   // POS P1.12 ▸ R6 คูปอง: ตรวจบนฐานเดียวกับ createSale (ยอดหลังส่วนลดบรรทัด + ท้ายบิล) ด้วยระบบคูปองของสาขา — ใช้ไม่ได้ = รายงานใน
   //   memberConflicts (quote ไม่ปฏิเสธ · submit = COUPON_INVALID) แล้วคิดยอดแบบไม่มีคูปอง · ส่วนลดคูปองอยู่นอกเพดานของแคชเชียร์ (เหมือนเดิม) ◂
@@ -1561,7 +1601,7 @@ async function regPrice(
       const v = await couponSvc.validate({ code: cart.couponCode, tenantId: s.tenantId, systemId: couponSystemId, memberId: cart.memberId, amountSatang: base, unitId: s.unitId });
       if (!v.ok) conflicts.push({ kind: "COUPON", code: "COUPON_INVALID", message: `คูปองใช้ไม่ได้: ${couponSvc.couponReasonText(v.reason)}` });
       else {
-        const r1 = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp, couponDiscountSatang: v.discountSatang });
+        const r1 = pc({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp, couponDiscountSatang: v.discountSatang });
         if (!r1.ok) return regRefuse(r1.code, r1.code === "DISCOUNT_EXCEEDS_LIMIT" || r1.code === "TOO_MANY_LINES" ? undefined : r1.message, r1.lineIndex);
         r = r1;
         coupon = { systemId: couponSystemId, code: cart.couponCode, discountSatang: r1.couponDiscountSatang };
@@ -1626,6 +1666,17 @@ async function regPrice(
   return { quote, resolved, coupon, member, conflicts, channel };
 }
 
+/**
+ * POS P2.5 ▸ R4: ยอดของใบแยกบิลด้วยค่าบริการคงที่ของแผน (แทนการคิดจาก bp) — ฐาน VAT = สุทธิ + ค่าบริการ · VAT รวมในยอดระดับบิลของใบ (สูตรเดียวกับ priceCart) ·
+ * หน้าขายมีแค่ INCLUDED | NONE (regVat · fix1 มติ 5 / CD-P25-N3) ⇒ ยอดบิล = ฐาน VAT เสมอ ◂
+ */
+function regFixedServiceCharge(r: ReturnType<typeof priceCart>, serviceChargeSatang: number): ReturnType<typeof priceCart> {
+  if (!r.ok) return r;
+  const vatBase = r.netSatang + serviceChargeSatang;
+  const vatSatang = r.vatMode === "INCLUDED" && r.vatRateBp > 0 ? roundHalfUp(vatBase * r.vatRateBp, 10_000 + r.vatRateBp) : 0;
+  return { ...r, serviceChargeSatang, vatSatang, grandTotalSatang: vatBase };
+}
+
 /** P1.6: ค่าตั้งการชำระเงินของระบบ POS นี้ (อ่านไม่ได้ = ปิดทั้งคู่ — ยอดเท่าวันนี้ ไม่เดาค่าบริการ) */
 async function regPaySettings(db: RegDb, s: RegScope): Promise<PosPaymentSettings> {
   const r = await posPaymentSettings({ tenantId: s.tenantId, systemId: s.systemId }, db);
@@ -1661,6 +1712,8 @@ async function regTableSession(db: RegDb, s: RegScope, sessionId: string): Promi
 /** รายการค้างจ่ายของโต๊ะ → บรรทัดบิล (R6): ไม่ OPEN = TABLE_SESSION_CLOSED · ไม่มีรายการ = TABLE_EMPTY · เกินเพดานบรรทัด = TOO_MANY_LINES (แยกบิล = P2.5) */
 async function regTableLines(db: RegDb, s: RegScope, sess: RegTableSession): Promise<{ lines: RegParsedLine[]; table: RegTableBill } | RegisterRefusal> {
   if (sess.status !== "OPEN") return regRefuse("TABLE_SESSION_CLOSED");
+  // POS P2.5 ▸ R5 มติ 6: แผนแยกบิลเปิดอยู่ = จ่าย/คิดยอดทั้งโต๊ะไม่ได้ (ชำระทีละใบ หรือยกเลิกแผนก่อน) — submit ตรวจซ้ำในธุรกรรมหลังยึดรายการ ◂
+  if (await (await regSplitMod()).openSplitOfSession(db, { tenantId: s.tenantId, sessionId: sess.id })) return regRefuse("TABLE_SPLIT_OPEN");
   const items = await (await regRestaurant()).tableUnpaidItemsForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: sess.id });
   if (!items.length) return regRefuse("TABLE_EMPTY");
   if (items.length > REGISTER_MAX_LINES) return regRefuse("TOO_MANY_LINES");
@@ -1692,8 +1745,139 @@ async function regTableCart(db: RegDb, s: RegScope, cart: RegParsedCart): Promis
   if (isRegRefusal(tl)) return tl;
   return { ...cart, lines: tl.lines, table: tl.table, memberId: cart.memberId ?? sess.memberId, channelId: await registerTableChannelId(db, s, sess.openedByUserId === null) };
 }
-const regTableOut = (c: RegParsedCart) => (c.table ? { table: { sessionId: c.table.sessionId, tableName: c.table.tableName, itemIds: [...c.table.itemIds], itemsHash: c.table.itemsHash } } : {});
+const regTableOut = (c: RegParsedCart) => ({
+  ...(c.table ? { table: { sessionId: c.table.sessionId, tableName: c.table.tableName, itemIds: [...c.table.itemIds], itemsHash: c.table.itemsHash } } : {}),
+  ...(c.split ? { split: { splitId: c.split.splitId, partId: c.split.partId, partNo: c.split.partNo, partCount: c.split.partCount, version: c.split.version } } : {}), // POS P2.5 ▸ R4 ◂
+});
 // ◂ POS P2.4
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// POS P2.5 ▸ ใบของแผนแยกบิล (R3 R4 · มติ 3 5 7 · ตารางชื่อของข้อสอบแถว 15–17) — quote/submit ของหน้าขายรับ tableSplitPartId (lines ต้องเป็น []):
+//   บรรทัด = ส่วนของใบในแผน (หน่วยเต็ม = บรรทัดบิลโต๊ะ qty k · ส่วนแบ่ง = "<รายการ> (u/N)" qty 1 ราคา = ส่วนแบ่ง ไม่มี itemId · ใบเลขต่ำสุดถือสต็อก) ·
+//   ส่วนลดท้ายบิล = d_i ของแผน · ค่าบริการ = s_i ของแผน · สมาชิก/คูปอง/สิทธิ์ = เฉพาะใบที่มีสมาชิก (คณิตหน้าขายปกติบน t_i) · ช่องทาง = ของโต๊ะ ·
+//   submit = ยึดรายการของใบ → ล็อกใบ → session → แผน → createSale (จุดเรียกเดิม regCreateSale · callerTx) → ใบ PAID → ผูกรายการที่ครบทุกใบ → ปิดโต๊ะ (ธุรกรรมเดียว)
+//   แผน/ใบเป็นของ POS (table-split.ts · import แบบ lazy กันวงโหลด) · ข้อมูลโต๊ะผ่าน facade ร้านอาหาร ◂
+type SplitMod = typeof import("./table-split");
+const regSplitMod = (): Promise<SplitMod> => import("./table-split");
+
+/** ใบของแผน → ตะกร้า (quote/submit/ใบรายการ): ไม่พบ/แผนยกเลิก = TABLE_SPLIT_NOT_FOUND · โต๊ะไม่ OPEN = TABLE_SESSION_CLOSED · ใบจ่ายแล้ว = TABLE_SPLIT_PART_PAID ·
+ *  memberId ที่ส่ง ≠ ของใบ = VALIDATION · คูปอง/สิทธิ์บนใบที่ไม่มีสมาชิก = VALIDATION ·
+ *  strict (submit): รายการของใบถูกยกเลิก/จ่ายนอกแผน = TABLE_ITEMS_CHANGED (ไม่เขียนอะไร) · ไม่ strict (quote/ใบรายการ): ยอดตามแผนเสมอ (แบบ quote ทั้งโต๊ะที่ไม่ปฏิเสธ
+ *  เพราะรายการเปลี่ยน — submit เป็นด่านจริง) */
+async function regSplitCart(db: RegDb, s: RegScope, cart: RegParsedCart, strict = false): Promise<RegParsedCart | RegisterRefusal> {
+  const sp = await (await regSplitMod()).splitPartForPay(db, { tenantId: s.tenantId, unitId: s.unitId, partId: cart.tableSplitPartId! });
+  if (!sp) return regRefuse("TABLE_SPLIT_NOT_FOUND");
+  const sess = await regTableSession(db, s, sp.plan.sessionId);
+  if (isRegRefusal(sess)) return sess;
+  if (sess.status !== "OPEN") return regRefuse("TABLE_SESSION_CLOSED");
+  if (sp.part.status === "PAID") return regRefuse("TABLE_SPLIT_PART_PAID");
+  if (cart.memberId && cart.memberId !== sp.part.memberId) return regRefuse("VALIDATION", "สมาชิกของบิลย่อยกำหนดในแผนแยกบิล — แก้แผนแทน");
+  if (!sp.part.memberId && (cart.couponCode || cart.memberChoices)) return regRefuse("VALIDATION", "คูปองและสิทธิ์สมาชิกใช้ได้เฉพาะบิลที่มีสมาชิก");
+  const rest = await regRestaurant();
+  const items = strict
+    ? await rest.tableUnpaidItemsForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: sess.id })
+    : (await rest.tableItemsByIdsForPos(db, { tenantId: s.tenantId, unitId: s.unitId, itemIds: sp.itemIds })).filter((i) => i.sessionId === sess.id);
+  const byId = new Map(items.map((i) => [i.id, i]));
+  if (sp.itemIds.some((id) => !byId.has(id))) return regRefuse("TABLE_ITEMS_CHANGED");
+  const order = new Map(items.map((i, k) => [i.id, k]));
+  const planLines = [...sp.lines].sort((a, b) => order.get(a.itemId)! - order.get(b.itemId)! || (a.qty === null ? 1 : 0) - (b.qty === null ? 1 : 0));
+  const lines: RegParsedLine[] = [];
+  for (const pl of planLines) {
+    const it = byId.get(pl.itemId)!;
+    const kept = it.options.filter((o) => !!o.choiceId && !!o.groupId);
+    const lost = it.options.filter((o) => !o.choiceId || !o.groupId).map((o) => o.choiceName);
+    const name = lost.length ? `${it.name} (${lost.join(", ")})` : it.name;
+    const base = {
+      kind: "table" as const,
+      tableItemId: it.id,
+      productId: it.productId,
+      options: kept.map((o) => ({ choiceId: o.choiceId!, groupId: o.groupId!, groupName: o.groupName, name: o.choiceName, priceDeltaSatang: o.priceDelta })),
+      choiceIds: it.options.flatMap((o) => (o.choiceId ? [o.choiceId] : [])),
+      discount: null,
+    };
+    if (pl.qty !== null) {
+      // หน่วยเต็มของใบ: ยอดในแผน = k × ราคาต่อหน่วยสำเนา (รายการเดียวกันยอดต้องเท่ากันเสมอ — ไม่เท่า = รายการถูกแก้ระหว่างทาง)
+      if (pl.amountSatang !== pl.qty * (it.unitPrice + it.optionsTotal)) return regRefuse("TABLE_ITEMS_CHANGED");
+      lines.push({ ...base, name, qty: pl.qty, unitPriceSatang: it.unitPrice + it.optionsTotal });
+    } else {
+      lines.push({ ...base, name: tableSplitShareName(name, pl.shareNum ?? 0, pl.shareDen ?? 0), qty: 1, unitPriceSatang: pl.amountSatang, share: { units: pl.shareNum ?? 0, owner: pl.stockOwner } });
+    }
+  }
+  if (lines.length > REGISTER_MAX_LINES) return regRefuse("TOO_MANY_LINES");
+  const amt = tableSplitSaleAmounts(sp.part);
+  const itemIds = [...sp.itemIds];
+  return {
+    ...cart,
+    lines,
+    billDiscount: amt.billDiscountSatang > 0 ? { type: "AMOUNT", value: amt.billDiscountSatang } : null,
+    memberId: sp.part.memberId,
+    channelId: await registerTableChannelId(db, s, sess.openedByUserId === null),
+    table: { sessionId: sess.id, tableName: sess.tableName, itemIds, itemsHash: tableItemsHash(itemIds) },
+    split: {
+      splitId: sp.plan.id,
+      partId: sp.part.id,
+      partNo: sp.part.no,
+      partCount: sp.plan.partCount,
+      version: sp.plan.version,
+      sessionId: sess.id,
+      serviceChargeSatang: amt.serviceChargeSatang,
+      status: sp.part.status,
+      memberId: sp.part.memberId,
+      serviceChargeBp: sp.plan.serviceChargeBp,
+    },
+  };
+}
+
+/** POS P2.5 ▸ R9: ยอดของใบรายการ (pre-bill) — ทางคิดเงินเดียวกับ quote ของโต๊ะ/ใบ (ยอดตรงกันทุกสตางค์) · ไม่เขียนอะไร · บรรทัดพร้อมชื่อ (จอ/เครื่องพิมพ์) ◂ */
+export type RegisterTableBillPreview = {
+  ok: true;
+  quote: RegisterQuoteTotals;
+  lines: { qty: number; name: string; options: string[]; amountSatang: number }[];
+  sessionId: string;
+  tableName: string;
+  itemsHash: string;
+  serviceChargeBp: number;
+  memberId: string | null;
+  part: { id: string; no: number; of: number } | null;
+};
+export async function registerTableBillPreview(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  input: { tableSessionId?: string | null; tableSplitPartId?: string | null },
+  perms: readonly string[],
+  client?: RegDb,
+): Promise<RegisterTableBillPreview | RegisterRefusal> {
+  return regGuard("registerTableBillPreview", async (): Promise<RegisterTableBillPreview | RegisterRefusal> => {
+    const db: RegDb = client ?? prisma;
+    const s = await regScope(db, ctx, actor, perms.length ? perms : REG_SELL_PERMS);
+    if (isRegRefusal(s)) return s;
+    const sid = regIsRecord(input) && regIsId(input.tableSessionId) ? input.tableSessionId : null;
+    const pid = regIsRecord(input) && regIsId(input.tableSplitPartId) ? input.tableSplitPartId : null;
+    if ((sid === null) === (pid === null)) return regRefuse("VALIDATION");
+    let cart: RegParsedCart | RegisterRefusal = { lines: [], billDiscount: null, memberId: null, tableSessionId: sid, tableSplitPartId: pid };
+    cart = sid ? await regTableCart(db, s, cart) : await regSplitCart(db, s, cart);
+    if (isRegRefusal(cart)) return cart;
+    const p = await regPrice(db, s, cart);
+    if (isRegRefusal(p)) return p;
+    const t = cart.table!;
+    // อัตราค่าบริการที่พิมพ์: ใบ = ของแผน · ทั้งโต๊ะ = ค่าตั้งหน้าขาย (เฉพาะช่องทาง STORE/QR_TABLE · กติกาเดียวกับ regPrice)
+    const scOn = !p.channel || p.channel.code === "STORE" || p.channel.code === "QR_TABLE";
+    const pay = cart.split || !scOn ? null : await regPaySettings(db, s);
+    const bp = cart.split ? cart.split.serviceChargeBp : pay?.serviceCharge.enabled ? pay.serviceCharge.rateBp : 0;
+    return {
+      ok: true as const,
+      quote: p.quote,
+      lines: p.resolved.map((l, i) => ({ qty: l.qty, name: l.name, options: l.options.map((o) => o.name), amountSatang: p.quote.lines[i]?.lineTotalSatang ?? l.qty * l.unitPriceSatang - l.discountSatang })),
+      sessionId: t.sessionId,
+      tableName: t.tableName,
+      itemsHash: t.itemsHash,
+      serviceChargeBp: bp,
+      memberId: cart.memberId,
+      part: cart.split ? { id: cart.split.partId, no: cart.split.partNo, of: cart.split.partCount } : null,
+    };
+  });
+}
+// ◂ POS P2.5
 
 /** ยอดบนจอจากราคาฝั่งเซิร์ฟเวอร์ (ไม่บันทึกอะไร) — ปฏิเสธไม่มียอดติดมา */
 export async function quoteRegisterCart(ctx: RegisterCtx, actor: RegisterActor, input: RegisterQuoteInput, client?: RegDb): Promise<RegisterQuoteResult> {
@@ -1708,6 +1892,12 @@ export async function quoteRegisterCart(ctx: RegisterCtx, actor: RegisterActor, 
       const tc = await regTableCart(db, s, cart);
       if (isRegRefusal(tc)) return tc;
       cart = tc;
+    }
+    // POS P2.5 ▸ R4: ใบของแผนแยกบิล ◂
+    if (cart.tableSplitPartId) {
+      const sc = await regSplitCart(db, s, cart);
+      if (isRegRefusal(sc)) return sc;
+      cart = sc;
     }
     const p = await regPrice(db, s, cart);
     if (isRegRefusal(p)) return p;
@@ -1726,7 +1916,7 @@ export async function quoteRegisterCartWithCap(ctx: RegisterCtx, actor: Register
     if (isRegRefusal(s)) return s;
     const cart = regParseCart(input, REG_QUOTE_KEYS);
     if (isRegRefusal(cart)) return cart;
-    if (cart.tableSessionId) return regRefuse("VALIDATION"); // POS P2.4 ▸ ภายใน (บิลพักรออนุมัติ) — บิลโต๊ะไม่ผ่านทางนี้ ◂
+    if (cart.tableSessionId || cart.tableSplitPartId) return regRefuse("VALIDATION"); // POS P2.4 ▸ ภายใน (บิลพักรออนุมัติ) — บิลโต๊ะไม่ผ่านทางนี้ ◂ · POS P2.5 ▸ ใบแยกบิลก็ไม่ผ่าน ◂
     const p = await regPrice(db, s, cart, undefined, maxDiscountBp);
     if (isRegRefusal(p)) return p;
     return { ok: true, ...p.quote };
@@ -1779,6 +1969,13 @@ export async function quoteRegisterCartOverride(ctx: RegisterCtx, actor: Registe
       if (isRegRefusal(tc)) return tc;
       cart = tc;
     }
+    // POS P2.5 ▸ ใบแยกบิล: บิลพักที่อนุมัติใช้ไม่ได้ (ส่วนลดอยู่บนแผน · ไม่เกินเพดานที่นี่) ◂
+    if (cart.tableSplitPartId) {
+      if (auth.heldCartId !== null) return regRefuse("VALIDATION");
+      const sc = await regSplitCart(db, s, cart);
+      if (isRegRefusal(sc)) return sc;
+      cart = sc;
+    }
     // quote ปกติ (ตัวเดียวกับ quoteRegisterCart) — ไม่เกินเพดานของผู้ขาย = ไม่แตะ PIN/บิลพักเลย
     const p = await regPrice(db, s, cart);
     if (!isRegRefusal(p)) return { ok: true, ...p.quote, ...regTableOut(cart) };
@@ -1820,6 +2017,7 @@ export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | Regist
   if (isRegRefusal(c)) return c;
   // POS P2.4 ▸ tableSessionId อยู่นอกตะกร้า (holdRegisterCart({cart, tableSessionId})) — ในตะกร้า = VALIDATION ไม่เงียบทิ้ง ◂
   if (c.tableSessionId) return regRefuse("VALIDATION", "ระบุโต๊ะนอกตะกร้า (tableSessionId) — ไม่ใช่ในตะกร้า");
+  if (c.tableSplitPartId) return regRefuse("VALIDATION"); // POS P2.5 ▸ บิลย่อยของแผนแยกบิลพักไม่ได้ ◂
   const lines: RegisterQuoteLineInput[] = c.lines.map((l) => {
     const discount = l.discount ? { discount: { ...l.discount } } : {};
     if (l.kind === "custom") return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...discount };
@@ -1861,7 +2059,13 @@ export async function registerBenefitsCart(ctx: RegisterCtx, actor: RegisterActo
     if (isRegRefusal(tc)) return tc;
     cart = tc;
   }
-  const p = await regPrice(db, s, { lines: cart.lines, billDiscount: cart.billDiscount, memberId: null }, undefined, null, { display: true });
+  // POS P2.5 ▸ แผงสิทธิ์ของบิลย่อย = บรรทัดของใบ (อ่านอย่างเดียว · ค่าบริการของแผน) ◂
+  if (cart.tableSplitPartId) {
+    const sc = await regSplitCart(db, s, cart);
+    if (isRegRefusal(sc)) return sc;
+    cart = sc;
+  }
+  const p = await regPrice(db, s, { lines: cart.lines, billDiscount: cart.billDiscount, memberId: null, split: cart.split ?? null }, undefined, null, { display: true });
   if (isRegRefusal(p)) return p;
   return { ok: true, cart: saleWalletCart(p.resolved, s.unitId, null) };
 }
@@ -1906,6 +2110,9 @@ type RegParsedSubmit = {
   tableReplayHash?: string | null;
   /** POS P2.4 ▸ fix 2 F6: บรรทัดบิลโต๊ะที่ตัดสต็อกไม่ได้ (จาก regPrice) — log หลังบิลเกิด ◂ */
   tableStockCutFails?: { productId: string | null; code: "NOT_VISIBLE" | "RECIPE" }[];
+  /** POS P2.5 ▸ R4: เวอร์ชันของแผนจาก quote ของใบ (บังคับเมื่อมี tableSplitPartId) · บิลเดิมของคีย์เป็นบิลของใบนี้ไหม (เทียบคำขอซ้ำ) ◂ */
+  expectedSplitVersion: number | null;
+  splitReplaySaleId?: string | null;
 };
 
 /** POS P1.15: สตริงเสริม — ไม่ส่ง/null = null · สตริง 1…max ตัวที่สะอาด = ค่า · อื่น = undefined (ผู้เรียกปฏิเสธ) */
@@ -1931,7 +2138,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   if (!regIsRecord(raw)) return regRefuse("VALIDATION");
   const cart = regParseCart(raw, REG_SUBMIT_KEYS);
   if (isRegRefusal(cart)) return cart;
-  if (cart.lines.length === 0 && !cart.tableSessionId) return regRefuse("VALIDATION", "ยังไม่มีสินค้าในตะกร้า"); // POS P2.4 ▸ บิลโต๊ะ lines = [] ◂
+  if (cart.lines.length === 0 && !cart.tableSessionId && !cart.tableSplitPartId) return regRefuse("VALIDATION", "ยังไม่มีสินค้าในตะกร้า"); // POS P2.4 ▸ บิลโต๊ะ lines = [] ◂ · POS P2.5 ▸ บิลย่อยเช่นกัน ◂
   if (!regIsIdemKey(raw.idempotencyKey)) return regRefuse("VALIDATION", "ข้อมูลบิลไม่ครบ — ลองใหม่อีกครั้ง");
   if (!regIsMoney(raw.expectedGrandTotalSatang)) return regRefuse("VALIDATION", "ยอดที่ต้องชำระไม่ถูกต้อง — ตรวจยอดใหม่อีกครั้ง");
   const pmRaw: unknown = raw.payMethods;
@@ -2021,6 +2228,15 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   }
   if (cart.tableSessionId && expectedTableItemsHash === null) return regRefuse("VALIDATION", "ข้อมูลรายการของโต๊ะไม่ครบ — ตรวจยอดใหม่อีกครั้ง");
   if (cart.tableSessionId && heldCartId !== null) return regRefuse("VALIDATION", "บิลของโต๊ะใช้บิลพักที่อนุมัติไม่ได้ — ใช้ PIN ผู้จัดการ");
+  // POS P2.5 ▸ R4: เวอร์ชันของแผน (บังคับคู่ tableSplitPartId · ไม่มีบิลย่อย = ห้ามส่ง) · บิลย่อยไม่ใช้บิลพักที่อนุมัติ ◂
+  let expectedSplitVersion: number | null = null;
+  if (raw.expectedSplitVersion !== undefined && raw.expectedSplitVersion !== null) {
+    const v = raw.expectedSplitVersion;
+    if (!cart.tableSplitPartId || typeof v !== "number" || !Number.isInteger(v) || v < 1) return regRefuse("VALIDATION", "ข้อมูลแผนแยกบิลไม่ถูกต้อง — ตรวจยอดใหม่อีกครั้ง");
+    expectedSplitVersion = v;
+  }
+  if (cart.tableSplitPartId && expectedSplitVersion === null) return regRefuse("VALIDATION", "ข้อมูลแผนแยกบิลไม่ครบ — ตรวจยอดใหม่อีกครั้ง");
+  if (cart.tableSplitPartId && heldCartId !== null) return regRefuse("VALIDATION", "บิลย่อยใช้บิลพักที่อนุมัติไม่ได้");
   const rawCart: Record<string, unknown> = { lines: raw.lines };
   if (raw.billDiscount !== undefined && raw.billDiscount !== null) rawCart.billDiscount = raw.billDiscount;
   if (raw.memberId !== undefined && raw.memberId !== null) rawCart.memberId = raw.memberId;
@@ -2043,6 +2259,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     rememberBuyer,
     channelRef, // POS P2.1 ◂
     expectedTableItemsHash, // POS P2.4 ◂
+    expectedSplitVersion, // POS P2.5 ◂
   };
 }
 
@@ -2185,6 +2402,8 @@ function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow):
   if ((sale.voucherUseIds[0] ?? null) !== (req.cart.memberChoices?.voucherId ?? null)) return false;
   // POS P2.4 ▸ R7: บิลโต๊ะ = คำขอเดียวกันเมื่อเป็นบิลของ session เดียวกัน และชุดรายการที่ผูกบิลเดิม = ชุดที่ quote ให้มา (แฮช) ◂
   if (req.cart.tableSessionId) return sale.sourceId === req.cart.tableSessionId && !!req.tableReplayHash && req.tableReplayHash === req.expectedTableItemsHash;
+  // POS P2.5 ▸ R4: บิลย่อย = คำขอเดียวกันเมื่อบิลเดิมของคีย์คือบิลที่ใบนี้ถืออยู่ (void แล้ว/จ่ายใหม่ด้วยคีย์อื่น = ต่าง) ◂
+  if (req.cart.tableSplitPartId) return !!req.splitReplaySaleId && req.splitReplaySaleId === sale.id && !!sale.sourceId;
   return regLinesEqual(req.cart.lines, sale.lines, req.wb ?? null);
 }
 
@@ -2248,6 +2467,24 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       req.cart.memberId = req.cart.memberId ?? ts.memberId;
       req.cart.channelId = await registerTableChannelId(db, s0, ts.openedByUserId === null);
     }
+    // POS P2.5 ▸ R4: บิลย่อย — ใบของสาขานี้ก่อนค้นคีย์ (ไม่พบ/แผนยกเลิก = TABLE_SPLIT_NOT_FOUND) · สมาชิก/ส่วนลด/ช่องทางของบิล = ของใบ+โต๊ะ
+    //   (คำขอซ้ำเทียบด้วยค่าชุดเดียวกับบิลจริง · บิลเดิมของคีย์ต้องเป็นบิลที่ใบนี้ถืออยู่) ◂
+    let splitPart: Awaited<ReturnType<SplitMod["splitPartForPay"]>> = null;
+    if (req.cart.tableSplitPartId) {
+      splitPart = await (await regSplitMod()).splitPartForPay(db, { tenantId: s0.tenantId, unitId: s0.unitId, partId: req.cart.tableSplitPartId });
+      if (!splitPart) return regRefuse("TABLE_SPLIT_NOT_FOUND");
+      if (req.cart.memberId && req.cart.memberId !== splitPart.part.memberId) {
+        // POS P2.5 ▸ fix1 มติ 7 (F4): เครดิตร้านของสมาชิกอื่นบนใบ = ไม่ใช่เจ้าของเครดิต (รหัสเดียวกับ P2.9) · อื่น = VALIDATION ◂
+        return req.payMethods.some((x) => x.type === "STORE_CREDIT") ? regRefuse("STORE_CREDIT_NOT_OWNER") : regRefuse("VALIDATION", "สมาชิกของบิลย่อยกำหนดในแผนแยกบิล — แก้แผนแทน");
+      }
+      const ts = await regTableSession(db, s0, splitPart.plan.sessionId);
+      if (isRegRefusal(ts)) return ts;
+      const amt = tableSplitSaleAmounts(splitPart.part);
+      req.cart.memberId = splitPart.part.memberId;
+      req.cart.billDiscount = amt.billDiscountSatang > 0 ? { type: "AMOUNT", value: amt.billDiscountSatang } : null;
+      req.cart.channelId = await registerTableChannelId(db, s0, ts.openedByUserId === null);
+      req.splitReplaySaleId = splitPart.part.saleId;
+    }
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s0.tenantId, req.idempotencyKey);
     if (prior) return tableSess ? regTableDuplicate(db, s0, req, prior, true) : regDuplicate(s0, req, prior, true);
@@ -2294,6 +2531,15 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       if (tl.table.itemsHash !== req.expectedTableItemsHash) return regRefuse("TABLE_ITEMS_CHANGED");
       req.cart.lines = tl.lines;
       req.cart.table = tl.table;
+    }
+    // POS P2.5 ▸ R4: บิลย่อย — โต๊ะ OPEN · ใบยังไม่จ่าย · รายการของใบยังค้างจ่ายครบ · เวอร์ชันของแผน = ที่ quote ให้มา (ก่อนคิดราคา ⇒ ไม่เขียนอะไร) ◂
+    if (splitPart) {
+      const sc = await regSplitCart(db, s, req.cart, true);
+      if (isRegRefusal(sc)) return sc;
+      if (sc.split!.version !== req.expectedSplitVersion) return regRefuse("VERSION_CHANGED");
+      req.cart = { ...req.cart, lines: sc.lines, table: sc.table, split: sc.split, billDiscount: sc.billDiscount, memberId: sc.memberId, channelId: sc.channelId };
+      // POS P2.5 ▸ fix1 มติ 7 (F4): ด่านเครดิตร้านของ P2.9 หลัง regSplitCart — สมาชิกของบิล = สมาชิกของใบ (ไม่ใช่ของ session · client ไม่ต้องส่งก็ได้) ◂
+      if (req.payMethods.some((x) => x.type === "STORE_CREDIT") && !req.cart.memberId) return regRefuse("STORE_CREDIT_NOT_OWNER");
     }
     // ②
     const caps = await regDiscountCaps(db, s);
@@ -2397,7 +2643,9 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     );
     let res: RegisterSubmitResult;
     try {
-      res = req.cart.table
+      res = req.cart.split
+        ? await regSubmitSplitPart(db, s, { ...req, tableStockCutFails: p.resolved.flatMap((l) => (l.stockCutFail ? [{ productId: l.productId, code: l.stockCutFail }] : [])) }, saleInput, intentRefs, startedAt) // POS P2.5 ▸ ยึดรายการของใบ + บิล + ใบ PAID + ปิดโต๊ะ ธุรกรรมเดียว ◂
+        : req.cart.table
         ? await regSubmitTable(db, s, { ...req, tableStockCutFails: p.resolved.flatMap((l) => (l.stockCutFail ? [{ productId: l.productId, code: l.stockCutFail }] : [])) }, saleInput, intentRefs, startedAt) // POS P2.4 ▸ ยึดรายการ + บิล + ปิดโต๊ะ ธุรกรรมเดียว ◂
         : intentRefs.length
           ? await regSubmitWithIntents(db, s, req, saleInput, intentRefs, startedAt)
@@ -2561,6 +2809,13 @@ async function regSubmitTable(
   const t = req.cart.table!;
   const rest = await regRestaurant();
   const failedCuts = (req.tableStockCutFails ?? []).filter((f) => !!f.productId);
+  // POS P2.5 ▸ fix2 มติ 4 (hunter Low): PIN บัตรของขวัญตรวจก่อนเปิดธุรกรรม (เหมือนทางปกติที่ createSale เป็นเจ้าของ tx) — คลื่น PIN ผิดไม่ถือ connection ของธุรกรรม ◂
+  try {
+    await preverifySaleGiftPins(saleInput);
+  } catch (e) {
+    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    throw e;
+  }
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const saleId = await db.$transaction(
@@ -2574,6 +2829,8 @@ async function regSubmitTable(
           const scope = { tenantId: s.tenantId, unitId: s.unitId, sessionId: t.sessionId };
           const claimed = await rest.claimTableItemsInTx(tx, { ...scope, itemIds: t.itemIds });
           if (claimed.length !== t.itemIds.length) throw new RegIntentRefusal(regRefuse("TABLE_ITEMS_CHANGED"));
+          // POS P2.5 ▸ R5 มติ 6: แผนแยกบิลที่ commit ระหว่างรอล็อกรายการ (สร้างแผนยึดรายการชุดเดียวกันก่อน) ⇒ จ่ายทั้งโต๊ะไม่ได้ — ย้อนทั้งก้อน ◂
+          if (await (await regSplitMod()).openSplitOfSession(tx, { tenantId: s.tenantId, sessionId: t.sessionId })) throw new RegIntentRefusal(regRefuse("TABLE_SPLIT_OPEN"));
           // POS P2.4 ▸ HF-TX: switched — proxy เฉพาะที่ของ P2.4 ถูกลบ ใช้ callerTx กลาง (core/caller-tx) · บิล + ยึดรายการ + ปิดโต๊ะ = xid เดียว (CONTROLLER-DECISION 9) ◂
           const r = await regCreateSale(saleInput, callerTx(tx));
           if (locked) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
@@ -2625,6 +2882,114 @@ async function regSubmitTable(
 }
 
 /**
+ * POS P2.5 ▸ R4 (ตารางชื่อแถว 15–17 · มติ 7) — ส่งบิลของใบแยกบิล: ธุรกรรมเดียว = (ล็อกใบขอรับเงิน ถ้ามี) → ล็อกคีย์บิล → ยึดรายการของใบ FOR UPDATE
+ *   (ได้ไม่ครบ = TABLE_ITEMS_CHANGED) → ล็อกใบ (PAID แล้ว = TABLE_SPLIT_PART_PAID) → session FOR UPDATE (ไม่ OPEN = TABLE_SESSION_CLOSED) → แผน FOR UPDATE
+ *   (ยกเลิก = TABLE_SPLIT_NOT_FOUND · เวอร์ชันไม่ตรง = VERSION_CHANGED) → regCreateSale(…, callerTx(tx)) (จุดเรียกเดิม · sourceId = session) →
+ *   (ใช้ใบขอรับเงิน) → ใบ PAID + saleId → รายการที่ทุกใบที่ถือมันจ่ายแล้ว ผูกกับบิลนี้ → ไม่มีรายการค้าง + ไม่มีรอบร่าง HELD ⇒ session CLOSED + dirtySince ·
+ *   ทุกใบ PAID ⇒ แผน DONE · หลัง commit: afterSaleCommitted · ไม่สร้างตั๋วครัวจากบิลของใบ (มติ P2.6 ข้อ 3 ขยายถึงบิลย่อย) ◂
+ */
+async function regSubmitSplitPart(
+  db: RegDb,
+  s: RegScope,
+  req: RegParsedSubmit,
+  saleInput: CreateSaleInput,
+  refs: SaleIntentRef[],
+  startedAt: number,
+): Promise<RegisterSubmitResult> {
+  const t = req.cart.table!;
+  const sp = req.cart.split!;
+  const rest = await regRestaurant();
+  const split = await regSplitMod();
+  const failedCuts = (req.tableStockCutFails ?? []).filter((f) => !!f.productId);
+  // POS P2.5 ▸ fix2 มติ 4 (hunter Low): PIN บัตรของขวัญตรวจก่อนเปิดธุรกรรม (เหมือนทางปกติที่ createSale เป็นเจ้าของ tx) — คลื่น PIN ผิดไม่ถือ connection ของธุรกรรม ◂
+  try {
+    await preverifySaleGiftPins(saleInput);
+  } catch (e) {
+    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    throw e;
+  }
+  // คีย์เดียวกันที่ commit แล้ว: บิลเดิม = บิลที่ใบนี้ถืออยู่ตอนนี้เท่านั้น (เทียบ payload ตามปกติ)
+  const replay = async (row: RegSaleRow) => {
+    req.splitReplaySaleId = (await split.splitPartForPay(db, { tenantId: s.tenantId, unitId: s.unitId, partId: sp.partId }))?.part.saleId ?? null;
+    return regDuplicate(s, req, row, true);
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const saleId = await db.$transaction(
+        async (tx) => {
+          const locked = refs.length ? await lockSaleIntents(tx, s, refs) : null;
+          if (locked && !locked.ok) throw new RegIntentRefusal(regRefuse(locked.code));
+          await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${saleInput.tenantId}::text || ':' || ${saleInput.idempotencyKey}::text))) l`;
+          const existed = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: saleInput.tenantId, idempotencyKey: saleInput.idempotencyKey } }, select: { id: true } });
+          if (existed) return existed.id;
+          const scope = { tenantId: s.tenantId, unitId: s.unitId, sessionId: t.sessionId };
+          const claimed = await rest.claimTableItemsInTx(tx, { ...scope, itemIds: t.itemIds });
+          if (claimed.length !== t.itemIds.length) {
+            // POS P2.5 ▸ fix1 มติ 3 (F2): ยึดรายการไม่ครบเพราะอีกเครื่องจ่ายใบเดียวกัน (รายการหน่วยเต็มของใบถูกผูกบิลแล้ว) = TABLE_SPLIT_PART_PAID ◂
+            const now = await tx.posTableSplitPart.findFirst({ where: { id: sp.partId, tenantId: s.tenantId }, select: { status: true } });
+            throw new RegIntentRefusal(regRefuse(now?.status === "PAID" ? "TABLE_SPLIT_PART_PAID" : "TABLE_ITEMS_CHANGED"));
+          }
+          const part = await split.lockSplitPartInTx(tx, { tenantId: s.tenantId, partId: sp.partId });
+          if (!part || part.splitId !== sp.splitId) throw new RegIntentRefusal(regRefuse("TABLE_SPLIT_NOT_FOUND"));
+          if (part.status === "PAID") throw new RegIntentRefusal(regRefuse("TABLE_SPLIT_PART_PAID"));
+          const sess = await rest.lockTableSessionInTx(tx, scope);
+          if (!sess) throw new RegIntentRefusal(regRefuse("TABLE_NOT_FOUND"));
+          if (sess.status !== "OPEN") throw new RegIntentRefusal(regRefuse("TABLE_SESSION_CLOSED"));
+          const bad = await split.checkSplitPlanInTx(tx, { tenantId: s.tenantId, splitId: sp.splitId, expectedVersion: sp.version });
+          if (bad) throw new RegIntentRefusal(regRefuse(bad));
+          const r = await regCreateSale(saleInput, callerTx(tx)); // HF-TX ▸ บิล + ใบ + รายการ + ปิดโต๊ะ = xid เดียว ◂
+          if (locked) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
+          const m = await split.markSplitPartPaidInTx(tx, { tenantId: s.tenantId, splitId: sp.splitId, partId: sp.partId, saleId: r.saleId, itemIds: t.itemIds });
+          const drafts = await tx.posHeldCart.count({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: t.sessionId, status: "HELD" } });
+          if (m.completingItemIds.length) {
+            const st = await rest.settleTableItemsInTx(tx, { ...scope, itemIds: m.completingItemIds, saleId: r.saleId, closeWhenPaid: drafts === 0 });
+            if (st.settled !== m.completingItemIds.length) throw new RegIntentRefusal(regRefuse("TABLE_ITEMS_CHANGED"));
+          }
+          return r.saleId;
+        },
+        { timeout: 20_000, maxWait: 10_000 },
+      );
+      await afterSaleCommitted(saleInput, saleId); // HF-TX ▸ งานหลัง commit ชุดเดียว (ตัดสต็อก + scheduleDrain) ◂
+      const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+      if (!row || row.id !== saleId) return regRefuse("INTERNAL");
+      if (row.createdAt.getTime() >= startedAt) {
+        for (const f of failedCuts) console.error("[pos] STOCK_CUT_FAILED", { saleId, productId: f.productId, code: f.code });
+      }
+      req.splitReplaySaleId = (await split.splitPartForPay(db, { tenantId: s.tenantId, unitId: s.unitId, partId: sp.partId }))?.part.saleId ?? null;
+      return regDuplicate(s, req, row, row.createdAt.getTime() < startedAt);
+    } catch (e) {
+      if (e instanceof RegIntentRefusal) {
+        if (e.refusal.code === "INTENT_CONSUMED") {
+          const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+          if (row) return replay(row);
+        }
+        return e.refusal;
+      }
+      const code = (e as { code?: unknown } | null)?.code;
+      if (code === "P2002") {
+        const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+        if (row) return replay(row);
+        continue;
+      }
+      if (code === "P2034" || code === "P2028") continue;
+      if (e instanceof PosSaleError) {
+        if (e.code === "IDEMPOTENCY_CONFLICT") {
+          const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+          return row ? replay(row) : regRefuse("IDEMPOTENCY_CONFLICT");
+        }
+        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+      }
+      if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
+      if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
+      const race = regRightsRace(e);
+      if (race) return race;
+      throw e;
+    }
+  }
+  return regRefuse("BUSY");
+}
+
+/**
  * POS P2.4 ▸ R5 — ราคาของรอบร่างตอนส่งครัว (ตัวแก้ราคาของหน้าขาย · ช่องทางของโต๊ะ · ราคาแช่แข็งตั้งแต่นี้ CD3):
  *   ตัวตรวจตะกร้า + regPrice ชุดเดียวกับ quote (สินค้าขายได้ที่สาขา · เปิดขาย · ตัวเลือก · ราคาเอง = pos.sale.priceOverride · สูตรที่วัตถุดิบไม่อยู่สาขา = PRODUCT_NOT_FOUND
  *   มติผู้คุม 14) · คืนบรรทัดพร้อมส่ง createOrderInTx: unitPrice = ราคาไม่รวมตัวเลือก · optionsTotal = Σ ส่วนต่าง · สำเนาตัวเลือก · หมายเหตุ ◂
@@ -2651,7 +3016,7 @@ export async function registerPriceTableRound(
     if (isRegRefusal(s)) return s;
     const cart = regParseCart(input?.cart, REG_QUOTE_KEYS);
     if (isRegRefusal(cart)) return cart;
-    if (cart.tableSessionId || cart.billDiscount || cart.memberId || cart.couponCode || cart.memberChoices || cart.channelId || !cart.lines.length) return regRefuse("VALIDATION");
+    if (cart.tableSessionId || cart.tableSplitPartId || cart.billDiscount || cart.memberId || cart.couponCode || cart.memberChoices || cart.channelId || !cart.lines.length) return regRefuse("VALIDATION"); // POS P2.5 ▸ + tableSplitPartId ◂
     const bad = cart.lines.findIndex((l) => l.discount !== null || (l.kind === "product" && (l.weighedBarcode !== null || l.weightGrams !== null)));
     if (bad >= 0) return regRefuse("VALIDATION", undefined, bad);
     const p = await regPrice(db, s, { ...cart, channelId: input.channelId }, undefined, null);
