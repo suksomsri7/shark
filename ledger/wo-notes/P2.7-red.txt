@@ -53,3 +53,49 @@ cmd: bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/
 
 ===== qc-pos-p2.7 ===== ผ่าน 3/38 (QC_FORCE) · ข้าม 1
 JSON_SUMMARY {"suite":"qc-pos-p2.7","total":38,"passed":3,"failed":["P2.7-ST1","P2.7-ST2","P2.7-ST3","P2.7-ST4","P2.7-TK1","P2.7-TK2","P2.7-TK3","P2.7-TK4","P2.7-TK5","P2.7-PO1","P2.7-PO2","P2.7-PO3","P2.7-PO4","P2.7-PO5","P2.7-PY1","P2.7-PY2","P2.7-PY3","P2.7-PY4","P2.7-PY5","P2.7-PY6","P2.7-PY7","P2.7-PY8","P2.7-PY9","P2.7-PY10","P2.7-PY11","P2.7-PO6","P2.7-TB1","P2.7-TB2","P2.7-TB3","P2.7-TB4","P2.7-TB5","P2.7-TB6","P2.7-TB7","P2.7-KD1","P2.7-KD2"],"skipped":false,"skippedChecks":["P2.7-OR1: P2.13 ยังไม่อยู่บน tip (ไม่มี src/app/api/v1/pos/[...path]/route.ts + pos/api/ops/orders.ts) — มติ 14"],"forced":true,"crashed":null,"missing":["src/lib/modules/pos/qr-order.ts ยังไม่มี","src/lib/modules/pos/qr-order-shared.ts ยังไม่มี","src/app/(store)/q/t/[qrToken]/page.tsx ยังไม่มี","src/app/(store)/q/[linkToken]/page.tsx ยังไม่มี","src/app/(store)/q/o/[orderToken]/page.tsx ยังไม่มี","src/app/(store)/q/actions.ts ยังไม่มี","ยังไม่มี export tableDoor (pos/qr-order.ts)","ยังไม่มี export tablePoll (pos/qr-order.ts)","ยังไม่มี export quoteTableCart (pos/qr-order.ts)","ยังไม่มี export placeTableRound (pos/qr-order.ts)","ยังไม่มี export tableServiceRequest (pos/qr-order.ts)","ยังไม่มี export tableBill (pos/qr-order.ts)","ยังไม่มี export tableNotifyPaid (pos/qr-order.ts)","ยังไม่มี export linkDoor (pos/qr-order.ts)","ยังไม่มี export quotePreorderCart (pos/qr-order.ts)","ยังไม่มี export placePreorder (pos/qr-order.ts)","ยังไม่มี export orderStatus (pos/qr-order.ts)","ยังไม่มี export claimPaid (pos/qr-order.ts)","ยังไม่มี export legacyTableQrRedirect (pos/qr-order.ts)","ยังไม่มี export ingestPreorderInTx (pos/order.ts)","ยังไม่มี export onIntentPaid (pos/order.ts)","ยังไม่มี export expirePreorders (pos/order.ts)","ยังไม่มี export getOrderLink (pos/order.ts)","ยังไม่มี export createOrderLink (pos/order.ts)","ยังไม่มี export rotateOrderLink (pos/order.ts)","ยังไม่มี export revokeOrderLink (pos/order.ts)","ยังไม่มี export createIntentForOrderInTx (pos/payment-intent.ts)","ยังไม่มี export guestRoundInTx (restaurant/index.ts)","ยังไม่มี export guestTableViewForPos (restaurant/index.ts)","ยังไม่มี export rotateTableQrForPos (restaurant/index.ts)","CHANNEL_BUILTIN_CODES ยังไม่มี QR_ORDER","Prisma client ยังไม่มี delegate posOrderLink","ฐาน QC4: PosOrder ยังไม่มีคอลัมน์ payBy","ฐาน QC4: PosOrder ยังไม่มีคอลัมน์ paidAt","ฐาน QC4: PosOrder ยังไม่มีคอลัมน์ paymentIntentId","ฐาน QC4: PosOrder ยังไม่มีคอลัมน์ publicToken","ฐาน QC4: PosOrder ยังไม่มีคอลัมน์ customerClaimAt","ฐาน QC4: PosPaymentIntent ยังไม่มีคอลัมน์ orderId","ฐาน QC4 ยังไม่มีตาราง PosOrderLink","ฐาน QC4: enum ยังไม่มีค่า PENDING_PAYMENT","ฐาน QC4: enum ยังไม่มีค่า PREPAID","ฐาน QC4: enum ยังไม่มีค่า QR"],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}
+
+## §base-f95348ac — S builder red-before (forced QC4 at wip/pos-p2.7 952aeb73 = f95348ac P2.13 merge + oracle 500b4041) · 2026-10-15T22:20:32Z
+result: 2/38 (Z1 Z2) · 36 red by reason (ST1–ST4 TK1–TK5 PO1–PO6 PY1–PY11 TB1–TB7 KD1–KD2 + OR1 now REAL — P2.13 on the tip, red because pos/qr-order.ts placePreorder missing) · 0 crashed / 0 harness throw · residue 0 · guardHits 0 · accepted bases 62a319cc · f95348ac · 9a21e36c (origin/session/pos)
+```
+tree=/root/projects/shark-pos-d head=952aeb73ab dirty=0
+cmd: bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p2.7.mts · start 2026-10-15T22:12:04Z
+  ❌ [P2.7-ST1] [R1 มติ 8 10 12] schema + migration เพิ่มอย่างเดียว: enum PosOrderPaymentState + PENDING_PAYMENT PREPAID ·
+  ❌ [P2.7-ST2] [R2 R4 มติ 2 13 hard rules] ไฟล์/ชื่อ/ผู้เขียนเดียว: qr-order-shared บริสุทธิ�
+  ❌ [P2.7-ST3] [มติ 1 5 9 CD7] ของเดิม: register.ts ต่างจากฐานเฉพาะการย้าย regResolveOptions (
+  ❌ [P2.7-ST4] [§3 มติ 1 11 15 hard rules · ST7] หน้า (store)/q/t/[qrToken] · (store)/q/[linkToken] · (store)/q/o/[orderToken]: force-d — 
+  ❌ [P2.7-TK1] [§3 มติ 11] โทเคนโต๊ะ: tableDoor(qrToken A1) = สาขา A (ชื่อสาขา/โต๊ะ · เมนู�
+  ❌ [P2.7-TK2] [§3 มติ 11] เปลี่ยน QR: registerRotateTableQr โดย STAFF (ไม่มี restaurant.table.rotateQr) → PERMISSION_D
+  ❌ [P2.7-TK3] [§3 มติ 11] ลิงก์สั่งล่วงหน้า: createOrderLink/rotateOrderLink/revokeOrderLink โดย STAFF (ไม
+  ❌ [P2.7-TK4] [§3 มติ 11] ไม่มีช่องรู้ว่ามีอยู่: โทเคนมั่วรูปถูก / ผิด�
+  ❌ [P2.7-TK5] [มติ 1 CD7] legacyTableQrRedirect(tenant, unit, qrToken): สาขาที่มี POS ผูก → "/q/t/<qrToken>" · ร้าน�
+  ❌ [P2.7-PO1] [§3 R3 P2.2] เมนูสาธารณะ: linkDoor สาขา A = สินค้าที่ขายในช่องทาง QR_O
+  ❌ [P2.7-PO2] [§2 S7 มติ 16 P2.8] 86/ไม่ขาย: placePreorder ส้มตำ (86) → PRODUCT_UNAVAILABLE lineIndex 1 · ชาเย็น 
+  ❌ [P2.7-PO3] [R3 CD4] ตัวเลือก: ต้มยำ (กลุ่มบังคับ) ไม่เลือก → OPTIONS_REQUIRED · choiceI
+  ❌ [P2.7-PO4] [R3 CD4 มติ 9] quote สาธารณะ = เครื่องคิดราคาหน้าขาย: quotePreorderCart(link) ย
+  ❌ [P2.7-PO5] [§3 มติ 11] ประตูปิด → QR_CLOSED: QR_ORDER ปิดใช้ (active false) · พักรับ (pausedUntil) · �
+  ❌ [P2.7-PY1] [S1 S2 มติ 3 4 8] placePreorder (STATIC) → PosOrder QR_ORDER adapter QR NEW PENDING_PAYMENT PICKUP · publicToken 12 ตัว  — exp
+  ❌ [P2.7-PY2] [S6] คีย์เดิม ×2 → ออเดอร์เดิม + intent เดิม (duplicated true · ไม่มีแถวเ�
+  ❌ [P2.7-PY3] [S1 มติ 8] acceptOrder ออเดอร์ PENDING_PAYMENT (OWNER) → ORDER_UNPAID · version เดิม · ไม่มีบิล
+  ❌ [P2.7-PY4] [S3 มติ 3 13] Beam (ร้านเปิด + deps.beam): intent PROMPTPAY_BEAM · createCharge 1 ครั้ง {total, pos-<pi>, prom
+  ❌ [P2.7-PY5] [S3 S4 มติ 5] autoAccept เปิด + Beam จ่าย → ACCEPTED (acceptedBy null) + บิล POS sourceId ออเดอร์ �
+  ❌ [P2.7-PY6] [S4 มติ 5 P2.8 มติ 10] PREPAID (autoAccept ปิด) → acceptOrder โดย STAFF ที่เครื่อง DEV1 → บ�
+  ❌ [P2.7-PY7] [S3 มติ 3] QR นิ่ง: claimPaid → event customer_paid_claim + customerClaimAt (ไม่มีผลเงิน · ยัง PEN
+  ❌ [P2.7-PY8] [S2] หมดเวลา: ย้อน payBy/expiresAt → orderStatus (ขี้เกียจ) → CANCELLED event expired (reason PAYMENT
+  ❌ [P2.7-PY9] [S5 มติ 5] เงินเข้าหลังหมดเวลา (Beam): ออเดอร์ CANCELLED (หมดเวลา) + we
+  ❌ [P2.7-PY10] [S4 S5 มติ 5] PREPAID ถูกปฏิเสธ → REJECTED · intent ยัง PAID ไม่ถูกใช้ · ops ERROR pos.pay
+  ❌ [P2.7-PY11] [มติ 10 CD5] ใบขอรับเงินของออเดอร์ (deviceId null) ไม่โผล่ในจอลูก�
+  ❌ [P2.7-PO6] [§3 มติ 11 R4 PDPA] ขีดจำกัด + ข้อมูลส่วนตัว: IP เดียว 11 ครั้ง/นาท�
+  ❌ [P2.7-TB1] [มติ §10 ข้อบกพร่อง 1] เปิดหน้าโต๊ะ + โพล 10 ครั้ง (โต๊ะว่าง
+  ❌ [P2.7-TB2] [§1 a] รอบแรกของแขก (โต๊ะว่าง A3) → session ใหม่ openedByUserId null + รอบ placedByUse
+  ❌ [P2.7-TB3] [§1 a] รอบที่สอง (expectedSessionId = ของรอบแรก) → session เดิม · รอบ 2 · TableSession �
+  ❌ [P2.7-TB4] [§1 a P2.4 R2] ปิดโต๊ะระหว่างโหลดกับส่ง: session A4 (พนักงานเปิด · ไ�
+  ❌ [P2.7-TB5] [§1 a] โต๊ะที่ถูกรวม: รวม A6 เข้า A5 → รอบจาก QR ของ A6 ลง session ของ A
+  ❌ [P2.7-TB6] [มติ 6 · §10 ข้อบกพร่อง 2] บิลแขก = บิลโต๊ะของหน้าขาย: tableBill(A3).
+  ❌ [P2.7-TB7] [S7 P2.6 ช่องว่าง] ตัวนับเมนู 1 → รอบแขก 1 ชิ้น → ตัวนับ 0 + isOutOfSto
+  ❌ [P2.7-KD1] [S8 P2.6] รอบ QR ของแขกอยู่บนบอร์ดสถานีทันทีที่ส่ง · source QR — exp
+  ❌ [P2.7-KD2] [S8] ออเดอร์สั่งล่วงหน้า: รอบครัว 0 ตอน PENDING_PAYMENT และ PREPAID · หล�
+  ❌ [P2.7-OR1] [มติ 14] (เมื่อ P2.13 อยู่บน tip) REST POST /orders/{id}/accept บนออเดอร์ PENDING_PAYMENT → 409
+  ✅ [P2.7-Z1] QC4 คืนสภาพ: ร้านชั่วคราว T T2 T3 เหลือ 0 แถวทุกตารางที่มี tenan
+  ✅ [P2.7-Z2] รอยของรอบนี้นอกร้านชั่วคราว = 0 (PosOrder/PosSale คีย์ · InvItem sku · AuditLog/
+===== qc-pos-p2.7 ===== ผ่าน 2/38 (QC_FORCE)
+```
