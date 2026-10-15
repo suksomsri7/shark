@@ -1785,3 +1785,8 @@
 - เลน: 1 = P2.13 R2 (read-only ทรี b) · 2 = P2.7 oracle ทรี d · ทรี c ว่าง @861815e0
 - ถัดไป: R2 MERGEABLE → merge e29c5f51 (no-ff, msg จาก template) → ทรี c detached + prisma generate → gates101-c → push → lane pins ซ้ำ → build ทรี c/d + vis86 → ออกคีย์ QC5 → agent skill test → **41/55 (75%)** + TG
 - 21:52Z R2 P2.13 (@e29c5f51) = **MERGEABLE-AFTER-FIXES docs only** (G1 SKILL line CASH นอกกะ · G2 ขยาย line 6 · G3 line requestedById=keyId) → ส่ง builder แก้เอกสาร (commit เดียว + skill copy) → รอ head ใหม่ → merge
+
+### 15 ต.ค. 21:55Z — P2.13 merged f95348ac (ยังไม่ push) → gates101
+- builder docs fix a67693a8 (G1 SKILL · G2/G3 lines) → **merge → session/pos f95348ac** (no-ff) · ทรี c detached + generate + คัดลอก `.claude/skills/{shark-pos-api,shark-kanban-api,shark-account-api}` จาก /root/.claude/skills (⚠️ `.claude/` gitignored — สกิลไม่อยู่ใน git · ทุกทรีที่รัน api-skill/kanban ต้องมีสำเนา) → **gates101-c** (`gates101-c-20261015T215429Z`)
+- ถัดไป: gates101 เขียว (lane pins p2.8 ST6 / p2.12 ST1 / p2.10 ST2 / hf-fu ST1 / p2.11 ST4 อาจแดงจน push) → push → ซ้ำ → chain84 ทรี c (build + vis86 p2.13 5+1 state owner/manager th/en) → ออกคีย์ QC5 pos-operate → agent skill test (prompt `-P2.13-A.md`) → **41/55 (75%)** + TG
+- เลน: 1 = P2.7 oracle ทรี d · ทรี b ว่าง @a67693a8 · ทรี c = gates101 (ผู้คุม)
