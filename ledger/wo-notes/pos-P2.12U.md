@@ -75,3 +75,31 @@ Logs under `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/
 | fitness no-env · env (qc4) · fitness-pos (F15.3 inventory 942 rows) | 50/50 · 50/50 · 8/8 (both heads) | `g1-fitness-*.log` · `g2-fitness-*.log` |
 | visual-pos p2.12u --states --dry (iso, CI=1 on --dry only) th/en × owner/cashier | rc 0 ×4 (shots 29 / 9 / 11 / 3) both heads | `g1-dry-*.log` · `g2-dry-*.log` |
 No existing pin turned red ⇒ no CONTROLLER-DECISION. No build, no server, no QC5 run (images = CONTROLLER-RUN with the --state list above).
+
+## Fix round 1 (R1 rulings 1–6 + controller vis84 F6/F7 · 15 Oct · base 6b422dfe)
+Commits (explicit paths, hunks marked `// POS P2.12U ▸ fix1 … ◂`):
+- **772f7f13 F1 (ruling 1, harness)** — `visual-pos.mts --pdf`: reads the print iframe after `document.fonts.ready` (`frame.evaluate("<!doctype html>" + outerHTML)`), `setContent` in a fresh page with `<base href="<origin>/">` (networkidle0 + fonts.ready), then `page.pdf({format:"A4", printBackground:true, preferCSSPageSize:true})`; same file names `<state>-<user>-<locale>.pdf`; status line says `PDF (เอกสาร iframe)`. The parent page is no longer printed.
+- **8f7667bc F3 (ruling 2)** — `BillsClient.tsx`: `pos-bills-channel-filter` not rendered in all-branches mode (no dedupe; the unit switch is a full navigation, so no stale `salesChannelId` survives); inventory note updated.
+- **c25d6cbb F4 (ruling 3)** — `ReportsClient.tsx`: when the hourly tab is disabled, visible small text `pos.report.hourly.tooLong` under the tablist (`pos-reports-hourly-off`, `--color-muted`, same style as `rangeHint`) + `aria-describedby` on the tab (title kept).
+- **85639c6a F2 (ruling 4)** — A3 hint softened: th "(ใช้เกณฑ์เดียวกับป้ายในการ์ดพนักงานโดยประมาณ)", en "(the staff card flag uses the same % as an approximate guide)"; the staff-flag comment in `ReportsOverview.tsx` now states the base difference. No S change.
+- **1b7051ab F6 (controller, vis84 390 overflow)** — root cause: the `sr-only` span (position absolute) in the last anomaly header cell had its containing block outside the `overflow-x-auto` box, so it was not clipped and pushed `html` to 583 px; the harness then named the rightmost element (the anomalies tab, which itself sits inside the scrolling strip). Fix: `relative` on the anomaly table scroller and on the shared `Table` scroller (branches/hourly/all kinds), `min-w-0` on the anomalies body, and the kind strip = its own scroller (`relative`, scrollbar hidden via the repo's `[scrollbar-width:none] [&::-webkit-scrollbar]:hidden`, buttons stay 44 px). Proof without a server: headless Chromium on a static copy of the structure at 390 → scrollWidth 505 without `relative`, 390 with it (`runs/fix1/srtest.cjs`).
+- **55141a92 F7 (controller, vis84 16× 404 on the print page)** — root cause: `PrintFrame.adoptFonts` copied Next's `@font-face` rules whose `src: url(../media/*.woff2)` is relative to the CSS chunk (`/_next/static/chunks/*.css`, 17 faces in the build); inside `srcdoc` they resolved against the page URL (`/app/sys/…/pos/reports/print`) → 404. Fix: every `url()` is made absolute with the stylesheet's `href` (inline sheets: `document.baseURI`); `data:`/absolute URLs untouched. The server HTML has no other relative resources (no `href=`/`src=`/`url(` in `report-print-shared.ts`). Harness: a "Failed to load resource" console line now ends with `@ <url>`, and a failing status line adds the first 4xx response (`· 4xx N: HTTP 404 <path>`).
+- **F5 (ruling 5, note only)** — QC-only residue: if a p2.12u run dies by SIGKILL/OOM (SIGINT/TERM/HUP and `finally` restore), thresholds stay at the fixture values A1 2 · A2 1 · A3 0.1 % · A4 20 % enabled until the next **owner** p2.12u run, which recognises the fingerprint and restores **defaults** — a non-default original (or `enabled:false`) on the QC shop is lost. Fixture bills are permanent by design.
+
+Follow-ups added:
+- HF-FU2/P2.14 (S): expose a per-staff-row A3 flag (or the staff-controllable discount) so the overview staff card uses A3's base, not Σ `PosSale.discountSatang`.
+- Ctrl+P / browser-menu print on the parent print page still prints the app shell — route-response variant (`text/html` + in-document `print()`) = owner/controller decision.
+- Per-code sales-channel filter for all-branches bills (S: filter by channel code across units).
+
+Gates (logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p212u/runs/fix1/`, line 1 = tree/head/dirty; all at **55141a92**, dirty 0; `summary.txt`):
+
+| gate | result | log |
+|---|---|---|
+| typecheck — changed-files tsc (non-incremental) OOM at 5632 MB ⇒ 1 incremental `pnpm typecheck` (pos lock) | exit 0 | `tsc-changed.log` (abort) · `typecheck.log` |
+| qc-pos-p1.18 (ST7 = 0 Thai literals) | 81/81 | `qc-pos-p1.18.log` |
+| qc-pos-p1.16 | 28/28 | `qc-pos-p1.16.log` |
+| qc-hf-pos-page-authz | 82/82 | `qc-hf-pos-page-authz.log` |
+| fitness no-env · env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 | `fitness-*.log` |
+| visual-pos p2.12u --states --dry th/en × owner/cashier (CI=1 on --dry only) | rc 0 ×4 (29 / 9 / 11 / 3 shots) | `dry-*.log` |
+An earlier gate run at 85639c6a was stopped before its first result to take F6/F7 (`summary-aborted-85639c6a.txt`). `origin/session/pos` = 3ece536c, unchanged (no merge needed).
+Controller re-run: vis85 `--pdf` on `reports-print-overview,reports-print-channels` (expect 0 console errors; PDF from the iframe document) + `reports-anomalies` at 390 (expect no overflow) + `bills-all-branches` (no channel filter in all mode) + reports at a > 31-day range (hourly-off text).
