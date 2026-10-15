@@ -597,7 +597,7 @@ const P29BU_PLAN: { key: P29buKey; page: PosPage; devices: readonly Device[]; us
   { key: "deposit-receive", page: "register", devices: P29BU_D3, users: ["owner", "cashier"], note: "เมนู ⋯ (md+) / ปุ่มบนแถบมือถือ → \"รับมัดจำ\" → ยอด ฿500 · ชื่อ · เบอร์ · หมายเหตุ · เงินสด รับ ฿1,000 (ทอน ฿500) — ไม่กดรับมัดจำ" },
   { key: "sale-done-deposit", page: "register", devices: ["desktop"], users: ["owner", "cashier"], note: "⚠️ มัดจำ walk-in ฿1,000 ใหม่ 1 ใบ + บิลขายจริง 1 ใบต่อผู้ใช้: ตะกร้า 02 ฿625 จ่ายด้วยมัดจำทั้งยอด → 02b \"มัดจำ #… ฿625 · คงเหลือ ฿375\"" },
   { key: "bills-deposit-filter", page: "sales", devices: P29BU_D3, users: ["owner"], note: "บิลวันนี้ → ชิป \"มัดจำ\" ⇒ เฉพาะใบรับเงินมัดจำ (ป้าย \"มัดจำ\" · \"ใบรับเงินมัดจำ\")" },
-  { key: "refund-deposit", page: "sales", devices: P29BU_D3, users: ["owner"], note: "ใบรับของ sale-done-deposit (หรือมัดจำ fixture) → ลิ้นชัก → \"คืนมัดจำ (คงเหลือ ฿y)\" → 4 หลักท้าย + ดูยอด → เงินสด + เหตุผล — ไม่ยืนยัน" },
+  { key: "refund-deposit", page: "sales", devices: P29BU_D3, users: ["owner"], note: "มัดจำ fixture ฿1,000 ใบใหม่ (รัน --page sales แยก = ใบใหม่เสมอ · ใบของ sale-done-deposit ใช้ได้เฉพาะรันเดียวกันกับ register — P2.9bU fix1 มติ 5) → ลิ้นชัก → \"คืนมัดจำ (คงเหลือ ฿y)\" → 4 หลักท้าย + ดูยอด → เงินสด + เหตุผล — ไม่ยืนยัน" },
   { key: "settings-deposit-toggle", page: "settings", devices: P29BU_D3, users: ["owner"], note: "แท็บวิธีรับเงิน → การ์ด \"มัดจำ\": สวิตช์ \"รับเงินมัดจำ\" (เปิดโดย fixture) + บรรทัดช่วย — ไม่กด" },
 ];
 const p29buOn = STATES_ON && tenantKey === "coffee";
@@ -1029,7 +1029,7 @@ if (DRY) {
       console.log(
         `  P2.9bU: fixture (สาขา ${unitKey} · เครื่อง ${DEVICE_ID} ที่เจ้าของเปิดกะให้) — เปิดค่าตั้งรับมัดจำ (updatePosPaymentSettings · คืนค่าเดิมตอนเก็บกวาด) · ` +
           `มัดจำผ่าน registerTakeDeposit (โอน · walk-in ชื่อ + เบอร์ค่าคงที่ของ fixture ไม่พิมพ์ค่า · คีย์ posqc-vis-p29bu-<pid>-<k>): pick/split ฿1,070 (ใช้ซ้ำทุกภาพ) · ` +
-          `exceeds/locked ฿500 ใบใหม่ต่อภาพ · notowner = มัดจำของสมาชิก QC ฿500 · sale-done ฿1,000 ใบใหม่ (+ บิล PAID 1 ใบ) · refund-deposit ใช้ใบของ sale-done (ไม่มี = มัดจำ fixture ฿1,000) · ` +
+          `exceeds/locked ฿500 ใบใหม่ต่อภาพ · notowner = มัดจำของสมาชิก QC ฿500 · sale-done ฿1,000 ใบใหม่ (+ บิล PAID 1 ใบ) · refund-deposit = มัดจำ fixture ฿1,000 ใบใหม่ (รัน --page sales แยก · ใบของ sale-done เฉพาะรันเดียวกัน) · ` +
           `exceeds = บิล ฿1 PAID ผ่าน submitRegisterSale (มัดจำ ฿1) · locked = checkDepositPhone ผิด 5 ครั้ง · ` +
           `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: registerRefundDeposit (โอน · ยอดคงเหลือทั้งหมด) ทุกใบของรอบที่ยัง OPEN · บิลคงอยู่ (แบบ sale-done)`,
       );
@@ -6186,7 +6186,7 @@ async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device:
 //   🔴 เบอร์ walk-in ของ fixture = ค่าคงที่ในโค้ดนี้เท่านั้น (4 หลักท้ายพิมพ์ลงช่อง password ของจอ) · ห้ามพิมพ์ลง log/summary/ชื่อไฟล์
 //   มัดจำทุกใบผ่าน pos/deposit.ts registerTakeDeposit (เครื่อง DEVICE_ID ที่เจ้าของเปิดกะให้ · โอน — ไม่แตะเงินสดในลิ้นชัก) ·
 //   locked = deposit-links.checkDepositPhone ผิด 5 ครั้ง · exceeds = submitRegisterSale บิล ฿1 จ่ายด้วยมัดจำ ฿1 · เก็บกวาด = registerRefundDeposit (โอน) ทุกใบที่ยังเหลือ
-const P29BU_PHONE = "0819990427";
+const P29BU_PHONE = "0800000427"; // P2.9bU fix1 มติ 6: เบอร์ปลอมเห็นชัด (08x-000-xxxx) — ภาพ deposit-receive แสดงเบอร์ที่พิมพ์ (ไม่ปิดบัง · .qc-shots/ อยู่ใน .gitignore) · 4 หลักท้ายเดิม
 const P29BU_WRONG4 = "1111";
 const P29BU_LAST4 = P29BU_PHONE.slice(-4);
 type P29buDep = { id: string; receiptNo: string; receiptSaleId: string };
@@ -6202,7 +6202,7 @@ const P29BU = {
   deps: [] as P29buDep[],
   pick: null as P29buDep | null,
   own: null as P29buDep | null,
-  /** มัดจำของ sale-done-deposit (refund-deposit ใช้ต่อ) */
+  /** มัดจำของ sale-done-deposit (refund-deposit ใช้ต่อเฉพาะรันเดียวกัน — รัน --page sales แยก = null ⇒ fixture ฿1,000 ใบใหม่ · P2.9bU fix1 มติ 5) */
   sale: null as P29buDep | null,
 };
 const p29buCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: DEVICE_ID });
