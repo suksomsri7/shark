@@ -1099,7 +1099,7 @@
       "title": "Sales channels",
       "pctOfTotal": "% of sales",
       "footnote": "Platform sales are net of commission in gross profit",
-      "empty": "No sales yet today",
+      "empty": "No sales in this period",
       "amountTip": "{name} · {amount}",
       "cols": {
         "channel": "Channel",
@@ -3023,7 +3023,9 @@
         "notSold": "Not sold",
         "legend": "Bold = price set · muted = regular price · — = no price yet",
         "capped": "Showing {shown} of {total} products (at most {max} at a time)"
-      }
+      },
+      "incomplete": "Products of branch {unit} are not fully loaded",
+      "conflict": "This product's prices were changed elsewhere — reload"
     }
   },
   "recipe": {

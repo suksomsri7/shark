@@ -21,6 +21,7 @@ import { REGISTER_LOW_STOCK, moneyText } from "@/lib/modules/pos/register-shared
 import { hasRecipe, marginPctText, recipeLive } from "@/components/pos/products/recipe-ui";
 import { ChannelChip, PriceIcon, channelShort, type PT } from "@/components/pos/products/price-ui";
 import type { ProductsData, ProductsPriceRow, ProductsRecipeLine, ProductsRow } from "./products-data";
+import { channelRowsHash } from "@/lib/modules/pos/price-shared"; // POS HF-FU ▸ f3 ◂
 import { channelsIn, chipChannels, differsByChannel, platformPriceOf } from "./products-scope";
 import { ProductPanel } from "./ProductPanel";
 import { BulkMarkupDialog } from "./BulkMarkupDialog";
@@ -109,7 +110,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
 
   // POS P2.11U ▸ มติ 3: purged = ล้างแถวที่เลิกใช้แล้ว (เซิร์ฟเวอร์ลบทุกแถวเลิกใช้ของสินค้า ⇒ นับ 0) ◂
   const onSaved = (productId: string, rows: ProductsPriceRow[], purged = false) => {
-    setProducts((ps) => ps.map((p) => (p.id === productId ? { ...p, rows, ...(purged ? { deadRows: 0 } : {}) } : p)));
+    setProducts((ps) => ps.map((p) => (p.id === productId ? { ...p, rows, rowsHash: channelRowsHash(rows), ...(purged ? { deadRows: 0 } : {}) } : p))); // POS HF-FU ▸ f3: ผลบันทึก = ชุดเต็มที่เก็บ ⇒ ลายนิ้วมือใหม่ ◂
     setToast(purged ? t("branch.dead.done") : tp("saved"));
   };
   const openProduct = (id: string, at: string | null = null) => {

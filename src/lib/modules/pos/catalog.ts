@@ -33,6 +33,7 @@ import { prisma } from "./db";
 // POS P2.2 ▸ ราคาตามช่องทาง/สาขา (ตัวแก้บริสุทธิ์ + รหัสช่องทาง) ◂
 import { CHANNEL_BUILTIN_CODES, CHANNEL_CODE_RE, isChannelBuiltinCode } from "./channel-shared";
 import { BULK_MARKUP_BP_MAX, BULK_MARKUP_PRODUCTS_MAX, CHANNEL_PRICE_ROWS_MAX, channelMarkupPrice, type ChannelPriceInputRow, type ChannelPriceView } from "./price-shared";
+import { channelRowsHash } from "./price-shared"; // POS HF-FU ▸ f3 ◂
 import type { PriceRefusalReason } from "./price-shared"; // POS P2.11 ▸ รหัสย่อยของคำปฏิเสธราคา ◂
 import type { RecipeRefusalReason } from "./recipe-shared"; // POS HF-FU ▸ l1: รหัสย่อยของคำปฏิเสธสูตร ◂
 // POS P2.3 ▸ สูตร/BOM: ตัวโหลดสูตรที่ใช้จริง (อ่านอย่างเดียว) + จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
@@ -2321,7 +2322,7 @@ export async function createCategory(
 
 // ═══════════════════ POS P2.2 ▸ ราคาตามช่องทาง / สาขา (R1 R2 · CD6 CD7 · มติ 1 5 6 11) — ผู้เขียนเดียวของ PosProductChannelPrice ◂ ═══════════════════
 
-const CP_TOP_KEYS: ReadonlySet<string> = new Set(["productId", "rows", "purgeDead"]); // POS P2.11 ▸ fix1 มติ 2 + purgeDead ◂
+const CP_TOP_KEYS: ReadonlySet<string> = new Set(["productId", "rows", "purgeDead", "expectedRowsHash"]); // POS P2.11 ▸ fix1 มติ 2 + purgeDead ◂ · POS HF-FU ▸ f3 + expectedRowsHash ◂
 const CP_ROW_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "priceSatang", "notSold"]);
 const BULK_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "markupBp", "roundTo", "productIds", "categoryId"]);
 type CpRow = { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean };
@@ -2411,7 +2412,7 @@ const scopeInv = (product: { unitId: string | null; invItemId: string | null }, 
  */
 export async function setChannelPrices(
   ctx: CatalogCtx,
-  input: { productId: string; rows: ChannelPriceInputRow[]; purgeDead?: boolean },
+  input: { productId: string; rows: ChannelPriceInputRow[]; purgeDead?: boolean; expectedRowsHash?: string },
   client: CatalogClient = prisma,
 ): Promise<{ productId: string; rows: CpRow[]; changed: boolean }> {
   return boundary(async () => {
@@ -2420,6 +2421,9 @@ export async function setChannelPrices(
     // POS P2.11 ▸ fix1 มติ 2 (hunt L1): purgeDead = ล้างแถวตายของสินค้านี้ (ขอบเขตทั้งสินค้าเท่านั้น) · ไม่ส่ง/false = พฤติกรรมเดิม ◂
     if (top.purgeDead !== undefined && top.purgeDead !== null && typeof top.purgeDead !== "boolean") throw invalidAt("ค่า \"ล้างแถวที่เลิกใช้\" ไม่ถูกต้อง", "purgeDead");
     const purgeDead = top.purgeDead === true;
+    // POS HF-FU ▸ f3 (มติ 10): เงื่อนไขก่อนเขียน — ลายนิ้วมือของชุดที่เก็บตอนโหลด · ไม่ส่ง = พฤติกรรมเดิม ◂
+    if (top.expectedRowsHash !== undefined && top.expectedRowsHash !== null && (typeof top.expectedRowsHash !== "string" || !top.expectedRowsHash || top.expectedRowsHash.length > 100)) throw invalidAt("ลายนิ้วมือของแถวราคาไม่ถูกต้อง", "expectedRowsHash");
+    const expectedRowsHash = typeof top.expectedRowsHash === "string" ? top.expectedRowsHash : null;
     if (!Array.isArray(top.rows)) throw invalidAt("แถวราคาต้องเป็นรายการ", "rows");
     if (top.rows.length > CHANNEL_PRICE_ROWS_MAX) throw invalidAt(`ตั้งราคาตามช่องทางได้ไม่เกิน ${CHANNEL_PRICE_ROWS_MAX} แถวต่อสินค้า`, "rows");
     const want = top.rows.map(cleanCpRow);
@@ -2439,6 +2443,8 @@ export async function setChannelPrices(
         where: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: product.id },
         select: { id: true, channelCode: true, unitId: true, priceSatang: true, notSold: true },
       });
+      // POS HF-FU ▸ f3: ชุดที่เก็บเปลี่ยนจากที่จอโหลด (อีกจอบันทึกก่อน) ⇒ CONFLICT ไม่เขียนอะไร (ใต้ล็อกสินค้า) ◂
+      if (expectedRowsHash !== null && channelRowsHash(beforeRows) !== expectedRowsHash) throw conflict("ราคาของสินค้านี้ถูกแก้จากที่อื่น — โหลดใหม่");
       const beforeBy = new Map(beforeRows.map((r) => [cpKey(r), r]));
       const wantBy = new Map(want.map((r) => [cpKey(r), r]));
       // POS P2.11 ▸ แถวที่ตาย (ช่องทาง/สาขาใช้ไม่ได้แล้ว) — ดูทั้งแถวเดิมและแถวที่ส่งมา ◂

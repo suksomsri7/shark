@@ -115,7 +115,7 @@ export function branchCellOf(p: Pick<ProductsRow, "rows" | "basePriceSatang">, u
 
 /** กลุ่มของลิ้นชัก: unit null = "ทุกสาขา" · codes = ช่องทางของกลุ่ม (ลำดับแสดง) · editable = ผู้ใช้แก้กลุ่มนี้ได้ ·
  *  unstocked = สาขาที่คลังไม่มีสินค้านี้ (fix1 มติ 1 — ไม่มีช่องแก้ · แถวของสาขานี้ส่งกลับไม่เปลี่ยน) */
-export type PriceGroup = { unit: string | null; codes: string[]; editable: boolean; unstocked?: boolean };
+export type PriceGroup = { unit: string | null; codes: string[]; editable: boolean; unstocked?: boolean; incomplete?: boolean }; // POS HF-FU ▸ f2: + incomplete ◂
 /** คีย์กลุ่มในร่าง ("*" = ทุกสาขา) */
 export const groupKey = (unit: string | null): string => unit ?? "*";
 /** ร่างทั้งลิ้นชัก: กลุ่ม → ช่องทาง → ช่อง */

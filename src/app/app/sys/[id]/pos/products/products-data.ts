@@ -12,6 +12,7 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import { listPriceRules } from "@/lib/modules/pos/price-rule";
 import { CHANNEL_BUILTIN_CODES, CHANNEL_BUILTIN_NAMES, type ChannelKind, type ChannelPayout } from "@/lib/modules/pos/channel-shared";
 import type { PriceRuleItem } from "@/lib/modules/pos/price-shared";
+import { channelRowsHash } from "@/lib/modules/pos/price-shared"; // POS HF-FU ▸ f3 ◂
 import type { RegisterActor } from "@/lib/modules/pos/register-shared";
 
 /** ช่องทางที่จอ 06 ใช้ (รวมตามรหัสข้ามสาขา — ชื่อ/payout ของสาขาแรกตามลำดับแสดง) */
@@ -57,6 +58,8 @@ export type ProductsRow = {
   stationId?: string | null;
   /** POS P2.11U ▸ มติ 3: แถวราคาที่เก็บอยู่ของช่องทางที่เลิกใช้ (ไม่มีช่องทางรหัสนี้ที่ยังไม่เก็บถาวร · builtin ไม่นับ) หรือของสาขาที่เก็บถาวร/เลิกผูก POS — นับทั้งชุดของสินค้า (รวมสาขาที่ผู้ใช้มองไม่เห็น) ◂ */
   deadRows?: number;
+  /** POS HF-FU ▸ f3: ลายนิ้วมือของแถวราคาที่เก็บทั้งชุดของสินค้า (channelRowsHash · รวมแถวที่ผู้ใช้มองไม่เห็น) — ลิ้นชักส่งกลับเป็น expectedRowsHash ◂ */
+  rowsHash: string;
 };
 export type ProductsData = {
   units: { id: string; name: string }[];
@@ -66,6 +69,8 @@ export type ProductsData = {
   rules: PriceRuleItem[];
   /** โหลดไม่ครบ (เกินเพดานต่อสาขา) */
   truncated: boolean;
+  /** POS HF-FU ▸ f2: สาขาที่รายการโหลดไม่ครบ (เกินเพดาน หรือ CatalogError) — ลิ้นชักไม่บอก "ไม่มีในคลัง" ของสาขาเหล่านี้ ◂ */
+  incompleteUnitIds: string[];
   // POS P2.3U ▸ วัตถุดิบที่สูตรในหน้านี้อ้างถึง (key = invItemId) · คลังสินค้าของแต่ละสาขา (null = สาขาไม่ผูกคลัง) ◂
   ingredients: Record<string, ProductsIngredient>;
   unitInventory: Record<string, string | null>;
@@ -74,7 +79,7 @@ export type ProductsData = {
 const PER_UNIT_MAX = 2_000;
 const PAGE = 500;
 
-async function unitProducts(tenantId: string, systemId: string, userId: string, unitId: string): Promise<{ items: PosProductView[]; truncated: boolean }> {
+async function unitProducts(tenantId: string, systemId: string, userId: string, unitId: string): Promise<{ items: PosProductView[]; truncated: boolean; incomplete: boolean }> {
   const out: PosProductView[] = [];
   let cursor: string | null = null;
   try {
@@ -85,10 +90,10 @@ async function unitProducts(tenantId: string, systemId: string, userId: string, 
     } while (cursor && out.length < PER_UNIT_MAX);
   } catch (e) {
     // สาขาที่ผู้ใช้เข้าไม่ได้/ไม่ผูกแล้ว = ข้ามสาขานั้น (หน้าไม่ล้ม)
-    if (e instanceof CatalogError) return { items: out, truncated: false };
+    if (e instanceof CatalogError) return { items: out, truncated: false, incomplete: true }; // POS HF-FU ▸ f2 ◂
     throw e;
   }
-  return { items: out, truncated: !!cursor };
+  return { items: out, truncated: !!cursor, incomplete: !!cursor };
 }
 
 /** ข้อมูลทั้งจอ — สาขาที่ส่งมา = สาขาที่ผู้ใช้เห็น (ผู้เรียกกรองแล้ว) */
@@ -132,6 +137,7 @@ export async function loadProductsData(
           recipeGroups: p.optionGroups.map((g) => ({ id: g.id, name: g.name, nameEn: g.nameEn, choices: g.choices.map((c) => ({ id: c.id, name: c.name, nameEn: c.nameEn })) })),
           recipeVariants: [],
           recipeCost: null,
+          rowsHash: channelRowsHash([]), // POS HF-FU ▸ f3: เติมจากชุดที่เก็บด้านล่าง ◂
         };
         if (p.parentId === null) byId.set(p.id, row);
         else {
@@ -201,6 +207,13 @@ export async function loadProductsData(
     const m = new Map(st.map((x) => [x.id, x.stationId]));
     for (const p of products) p.stationId = m.get(p.id) ?? null;
   }
+  // POS HF-FU ▸ f3 (CD 7): ลายนิ้วมือ = ชุดที่เก็บทั้งหมดของสินค้า (คำสั่งเดียว · ไม่ใช่เฉพาะแถวที่มองเห็น) ◂
+  if (products.length) {
+    const stored = await prisma.posProductChannelPrice.findMany({ where: { tenantId, systemId, productId: { in: products.map((p) => p.id) } }, select: { productId: true, channelCode: true, unitId: true, priceSatang: true, notSold: true } });
+    const by = new Map<string, typeof stored>();
+    for (const r of stored) by.set(r.productId, [...(by.get(r.productId) ?? []), r]);
+    for (const p of products) p.rowsHash = channelRowsHash(by.get(p.id) ?? []);
+  }
   if (opts.liveUnitIds && products.length) await countDeadRows(scope, products, opts.liveUnitIds, rowKeys); // POS P2.11U ▸ มติ 3 · fix1 มติ 1 (F1: เติมแถวที่เก็บอยู่ครบชุด) ◂
   const recipeData = await loadRecipeData(scope, actor, units, products, variantRows); // POS P2.3U
   return {
@@ -210,6 +223,7 @@ export async function loadProductsData(
     products,
     rules,
     truncated: per.some((r) => r.truncated),
+    incompleteUnitIds: units.filter((_, i) => per[i]!.incomplete).map((u) => u.id), // POS HF-FU ▸ f2 ◂
     ...recipeData, // POS P2.3U
   };
 }
