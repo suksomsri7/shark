@@ -68,3 +68,41 @@ Compared with `design-pos/02-payment.png` (02 + 02b), `12-bills-refund.png`, `17
 Rulings 1–10 done (commits c63bb676 · 815bac5a · 4ca02b70 · c3edbae2 · 0aa39bef · notes 36e0be7c); no server change; gates at 0aa39bef dirty 0: typecheck 0 · fitness 50/50 ±env · p2.9b unforced 53 · p1.18 81 (ST7 0) · p1.3 128 · authz 81 · --dry owner 28 / cashier 10. Ruling 10: already scrolls (`InterimPayDialog.tsx:1237` body `overflow-y-auto`; numpad `hidden md:grid`). Ruling 3 precedent: `TERMINAL_SUBMIT` :245 / close :414 / `pay.intent.refundYourself` :2058 — server has no reconciliation for PAID intents without a sale.
 **Owner lines to add to `POS-OWNER-PENDING.md` at merge (controller)**: (1) deposit refusals carry no `depositId` — UI blames rows by origin (fix 1 ruling 1); root fix = additive `depositId` on NOT_OWNER/LOCKED/NOT_FOUND + S reader by depositId (HF-FU2 bucket). (2) a PromptPay intent PAID for a deposit whose take is then refused (setting off / permission) stays PAID with no deposit — staff reconcile from the `pi_` reference shown; no server reconciliation yet (same as the register).
 → R2 (verification) + chain78 re-shoot `paydlg-deposit-pick` · `paydlg-deposit-notowner` · `deposit-receive` · `refund-deposit` th+en @36e0be7c.
+
+## R2 (verbatim · head 36e0be7c vs d4b7dbb8)
+# P2.9bU R2: fix round 1 on wip/pos-p2.9bu 36e0be7c (vs d4b7dbb8). Read-only, nothing run.
+**Verdict: MERGEABLE.** F1–F7 and V1–V2 are closed as the rulings say. G1 is Low and allowed by ruling 1, so it can be a follow-up. G2 and G3 are info only.
+
+## Findings
+- **G1 Low** `InterimPayDialog.tsx:752`. The "same set twice" step drops every deposit row, including a walk-in row the cashier re-entered correctly, even when a member row is the real cause. Input: walk-in A (has a phone) plus member B (another member's, from an exact receipt-no lookup). Unknown result → retry (stripped) → NOT_OWNER → A gets "again" (:754). The cashier enters A's correct digits. NOT_OWNER again (from B) → sig matches → A and B both removed with the generic `depositNotOwnerAgain`. The same happens after any forRow re-entry. It stops after 2 tries and has no money impact, and ruling 1 allows it. Smallest fix: in step (0), when `own.length`, drop only `own` with `errors.depositNotOwner` first, and drop all only when no member row is left.
+- **G2 Info** `th/en pos.json:334`. "ใส่ 4 หลักท้าย (ถ้ามี) อีกครั้ง" / "(if any)" reads as optional, but `depLast4Missing` (:357, gating confirm at :401) still blocks a rebuilt member or no-phone row until 4 digits are typed. Wording only, per ruling 2. The real fix stays with the F2 follow-up (`depositId` on the refusal plus an S reader).
+- **G3 Info** `ledger/wo-notes/pos-P2.9bU.md:97` spells out the fixture number `0800000427`. It is obviously fake, so there is no impact, but the visual-pos comment (:6186) says it should not appear in any summary. Nit: write `080-000-xxxx`. The run logs are clean (grep `0427|081999` in `runs/fix1-final/*` finds nothing).
+
+## Verified OK
+- **R1 (F1)**: tags are correct on every path.
+  - Panel add, `:945`: `memberLinked = sel.memberLinked && !needsPhoneLast4` (S makes these exclusive, `deposit.ts:364/367`). `l4Checked = needsPhoneLast4`. This is sound because `depCanUse` needs `depBal` (:904), and that is set only by a depVerify hit; any edit hides the balance again (:891).
+  - forRow re-entry, `:928`: `l4Checked:false`. Reload rebuild, `:809`: `memberLinked:false, l4Checked:false`.
+  - Blame order, `:752-756`: (0) set seen before → drop all + `depositNotOwnerAgain`. (1) stripped retry → all last-4 rows "again"; otherwise unchecked last-4 rows "wrong". (2) member rows dropped + `depositNotOwner`. (3) last-4 rows "wrong". (4) drop all.
+  - Case A checked + B member, in-page: suspects are empty, so B is dropped and A is kept. A alone with wrong forRow digits → "wrong"; a second refusal → removed. No path loops.
+  - The sig is the sorted numeric `PayRow.id` list (:731), not object identity, so a re-render cannot defeat it. It is reset in `clearPins` (:512) and on any drop (:742).
+  - Only (0) and (4) remove a verified walk-in row (see G1).
+- **R2**: only `depositLast4Again` changed, th and en. Nothing else on the replay path changed (`:774-792` untouched).
+- **R3**: `paidRef` is set only for VALIDATION with the setting confirmed off via tenders (`DepositReceiveDialog.tsx:173-176`) and for PERMISSION_DENIED (:178).
+  - The ref is the request's own `pi_` id (:158), which is not a secret. The `pos-reg-deprcv-paid-ref` line is at :513.
+  - `canClose` (:242) uses `!paidRef`. `close` cancels only PENDING intents (:246), so a PAID intent is neither cancelled nor refunded.
+  - Precedent checked: `TERMINAL_SUBMIT` :245 and `tryClose`/`terminalRefusal` :414 are real and equivalent. `pay.intent.refundYourself` is at :2060, not :2058 as cited (comment nit only).
+- **R4**: the iframe has `sandbox="allow-same-origin"` only (:285).
+- **R5–6**: the `--state` note and the dry-run text are rewritten, fixture behaviour is unchanged, and `P29BU_PHONE="0800000427"` appears only in `visual-pos.mts:6189` (plus G3). `.gitignore:46` has `.qc-shots/`.
+- **R7**: `bills.deposit.refundMCash/MPromptpay/MTransfer` exist in th and en with the ruled text, mapped to CASH/PROMPTPAY/TRANSFER (`DepositRefund.tsx:21-25`, namespace `pos.bills`). There is no `pi_`.
+- **R9**: the lookup row uses `pay.gc.balance` (:1881). Its text is generic, "Balance {amount}" / "คงเหลือ {amount}", and is shared with store credit (:2006). Split rows keep `gc.rowLeft` "Balance after" (:1373).
+- **R10**: `:1237 overflow-y-auto` (closes at :2118) contains the panel, `deposit-use` (:1986) and the numpad `hidden … md:grid` (:2074). The confirm footer (:2235) is outside it.
+- **Sweep**:
+  - The diff touches only 3 client files, 2 message files, visual-pos, the inventory and the ledger. No server file. Hunks are marked `POS P2.9bU ▸ fix1`.
+  - th and en have the same key set (3289 = 3289, symmetric difference empty).
+  - `0aa39bef..36e0be7c` = `ledger/wo-notes/pos-P2.9bU.md` only. Every gate log is headed `head=0aa39bef dirty=0`: p1.18 81/81 with ST7 ✅, p2.9b unforced 53/53, rc 0.
+
+## Follow-ups
+G1 (prefer member rows in step 0) · F2 root fix (`depositId` on refusals plus an S reader) · F7 switch visibility for both cards · CONTROLLER re-shoots: notowner, deposit-receive, refund-deposit, pick 390 + en.
+
+## Controller rulings — fix round 2 (15 Oct ~12:1xZ)
+R2 = MERGEABLE. G1 (Low, allowed by ruling 1) is still a cashier dead-end on a money tender, and the fix is a few lines ⇒ **fix round 2 = G1 + G3 nit only** (sent to the fix-1 builder): step (0) drops member-linked rows first with `errors.depositNotOwner`, "drop all" only when no member row remains; notes write the fixture phone masked. Gates: typecheck · p1.18 · --dry. R2 reviewer re-verifies the diff (R3-lite). G2 = F2 follow-up (root fix `depositId` on refusals + S reader, HF-FU2 bucket).
