@@ -3674,7 +3674,10 @@
     "errors": {
       "webPaid": "This web shop order is already paid — refund or cancel it on the web shop",
       "hasRefunds": "This bill already has a refund — the order cannot be cancelled",
-      "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead"
+      "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead",
+      "memberNotFound": "This member was not found in this shop",
+      "partyNotFound": "This contact was not found in this shop",
+      "conversationNotFound": "This chat conversation was not found in this shop"
     },
     "page": {
       "refusal": "This account cannot view online orders at this branch yet — ask the owner for bill or sale access",
@@ -3709,7 +3712,8 @@
       "paid_reverted": "Payment reverted (web shop)",
       "sale_bound": "Bill linked",
       "prep_changed": "Prep time changed",
-      "refunded": "Bill voided/refunded"
+      "refunded": "Bill voided/refunded",
+      "held": "Held by the kitchen (auto-accept waiting)"
     },
     "toast": {
       "accepted": "Accepted {ref}",

@@ -625,6 +625,12 @@ export async function kdsBoard(ctx: RegisterCtx, actor: RegisterActor, input: { 
     } catch (e) {
       console.error("[pos/kds] heal ล้ม (บอร์ดยังอ่านได้)", e);
     }
+    // POS HF-FU ▸ a (มติ 1): กวาดออเดอร์ที่ครัวพักไว้ก่อนอ่าน (แบบ heal) — ล้ม = WARN บอร์ดยังอ่านได้ ◂
+    try {
+      await (await import("./order")).releaseHeldOrders(s.tenantId, s.unitId, { limit: 20 });
+    } catch (e) {
+      console.warn("[pos/kds] releaseHeldOrders ล้ม (บอร์ดยังอ่านได้)", e);
+    }
     const R = await restaurant();
     const [stations, setting] = await Promise.all([R.kitchenStationsForPos(prisma, s), R.kitchenSettingForPos(prisma, s)]);
     const now = new Date();
@@ -744,6 +750,12 @@ export async function kdsSetAutoAcceptMax(ctx: RegisterCtx, actor: RegisterActor
     const R = await restaurant();
     await prisma.$transaction((tx) => R.kitchenSetAutoAcceptMaxInTx(tx, s, maxOpen));
     await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.kds.autoAcceptMax", targetType: "BusinessUnit", targetId: s.unitId, after: { unitId: s.unitId, maxOpen } });
+    // POS HF-FU ▸ a (มติ 1): เพดานเปลี่ยนแล้ว (หลัง commit) ⇒ กวาดออเดอร์ที่ค้างจากเพดาน · ล้ม = WARN (ค่าตั้งบันทึกแล้ว) ◂
+    try {
+      await (await import("./order")).releaseHeldOrders(s.tenantId, s.unitId, { limit: 20 });
+    } catch (e) {
+      console.warn("[pos/kds] releaseHeldOrders ล้ม (ค่าตั้งบันทึกแล้ว)", e);
+    }
     return { ok: true, maxOpen };
   });
 }

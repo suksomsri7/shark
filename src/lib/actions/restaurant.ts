@@ -65,6 +65,7 @@ export async function kitchenPauseAction(unitSlug: string, formData: FormData) {
   const paused = formData.get("paused") === "true";
   const note = String(formData.get("note") ?? "") || undefined;
   await menu.setKitchenPause(tenantId, unitId, paused, note);
+  if (!paused) await (await import("@/lib/modules/pos/order")).releaseHeldOrders(tenantId, unitId, { limit: 20 }); // POS HF-FU ▸ a (มติ 1): เลิกพักครัว ⇒ กวาดออเดอร์ที่ครัวพักไว้ (ไม่ throw) ◂
   revalidatePath(base(unitSlug));
   revalidatePath(`${base(unitSlug)}/setup`);
 }

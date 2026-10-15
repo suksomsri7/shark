@@ -629,7 +629,10 @@ async function ingestInsideTx(tx: Tx, plan: IngestPlan): Promise<IngestDone | Or
   await emitOrderEvent(tx, order, "pos.order.received", start);
   // รับทันที: สถานะเริ่ม ACCEPTED (พนักงาน) หรือรับอัตโนมัติของช่องทาง (ไม่ใช่ MANUAL · มติ 11 · ผู้รับ = null)
   // POS P2.6 ▸ R13 มติ 10: ครัวหยุดรับ หรือมีสถานีที่ตั๋วค้าง ≥ autoAcceptMaxOpen ⇒ ไม่รับอัตโนมัติ (ออเดอร์อยู่ NEW รอคนรับ) ◂
-  const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && !(await autoAcceptBlockedInTx(tx, s));
+  // POS HF-FU ▸ a: รับอัตโนมัติไม่ได้ "เพราะครัว" (พัก/คิวค้าง) ⇒ บันทึก held (NEW→NEW · reason paused|backlog) ให้ตัวกวาด releaseHeldOrders รับต่อเมื่อครัวว่าง ◂
+  const held = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && (await autoAcceptBlockedInTx(tx, s));
+  if (held) await addEvent(tx, order, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: (await kitchenPausedForUnit(tx, s.tenantId, s.unitId)) ? "paused" : "backlog" } });
+  const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && !held;
   if (start !== "ACCEPTED" && !auto) return { orderId: order.id, duplicated: false, saleId: null, saleLines: null, accepted: "none" };
   const prep = input.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
   const who = auto ? { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true } : { actorUserId: plan.acceptor.actorUserId, shiftId: plan.acceptor.deviceShiftId, prepMinutes: prep, auto: false };
@@ -945,6 +948,77 @@ export async function acceptOrder(ctx: RegisterCtx, actor: RegisterActor, input:
     scheduleDrain();
     return cardOk(s, r.order, { saleId: r.saleId });
   });
+}
+
+// ═══════════ POS HF-FU ▸ a: ตัวกวาดออเดอร์ที่ครัวพักไว้ (held) — รับอัตโนมัติเมื่อครัวว่าง (มติ 1) ◂ ═══════════
+const RELEASE_LIMIT_MAX = 20;
+/**
+ * ออเดอร์ NEW ของสาขาที่มีบันทึก held (ไม่ใช่ sale_refused) · รับเข้าตั้งแต่ต้นวันไทย (posDayStart · ของวันก่อนคงไว้ให้พนักงาน) · ช่องทางยัง
+ * active + autoAccept + ไม่ใช่ MANUAL + ไม่พักรับ · เก่าสุดก่อน (receivedAt, id) · ทีละธุรกรรม: ตรวจ autoAcceptBlockedInTx ซ้ำ — ติดเมื่อไรหยุดทั้งรอบ ·
+ * ไม่ติด = acceptInTx(auto) (CAS ของ PosOrder = ผู้ชนะคนเดียวเมื่อแข่งกับพนักงาน/ตัวกวาดอีกตัว · แพ้ = ข้าม) · บิลถูกปฏิเสธ = ข้าม + held {reason:"sale_refused"}
+ * ครั้งเดียว (ไม่ลองซ้ำ — พนักงานรับเอง) · หลัง commit เหมือนรับเข้า (ตัดสต็อก · adapter accept · audit pos.order.accept {auto, swept} ผู้กระทำระบบ · ระบายคิว) ·
+ * ไม่ throw ให้ผู้เรียก (ทางอ่านเรียกก่อนอ่าน — ล้ม = WARN แล้วอ่านต่อ)
+ */
+export async function releaseHeldOrders(tenantId: string, unitId: string, opts: { limit?: number } = {}): Promise<{ accepted: string[] }> {
+  const accepted: string[] = [];
+  try {
+    if (!isId(tenantId) || !isId(unitId)) return { accepted };
+    const limit = Math.max(1, Math.min(RELEASE_LIMIT_MAX, Math.floor(opts?.limit ?? RELEASE_LIMIT_MAX)));
+    const now = new Date();
+    const rows = await prisma.posOrder.findMany({ where: { tenantId, unitId, status: "NEW", receivedAt: { gte: posDayStart(now) } }, orderBy: [{ receivedAt: "asc" }, { id: "asc" }], take: 500 });
+    if (!rows.length) return { accepted };
+    const evs = await prisma.posOrderEvent.findMany({ where: { tenantId, orderId: { in: rows.map((o) => o.id) }, type: "held" }, select: { orderId: true, payload: true } });
+    const heldIds = new Set(evs.map((e) => e.orderId));
+    const refusedIds = new Set(evs.filter((e) => isRecord(e.payload) && e.payload.reason === "sale_refused").map((e) => e.orderId));
+    const cand = rows.filter((o) => heldIds.has(o.id) && !refusedIds.has(o.id) && !isManual(o.adapter));
+    if (!cand.length) return { accepted };
+    const chs = new Map((await prisma.salesChannel.findMany({ where: { tenantId, unitId, id: { in: [...new Set(cand.map((o) => o.channelId))] }, archivedAt: null } })).map((c) => [c.id, c]));
+    const live = cand.filter((o) => {
+      const c = chs.get(o.channelId);
+      return !!c && c.active && c.autoAccept && !isManual(c.adapter) && !isPaused(c, now);
+    });
+    for (const o of live.slice(0, limit)) {
+      const ch = chs.get(o.channelId)!;
+      const prep = o.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
+      let r: Awaited<ReturnType<typeof acceptInTx>> | "blocked" | "skip";
+      try {
+        r = await runTx(
+          async (tx) => {
+            if (await autoAcceptBlockedInTx(tx, { tenantId, unitId })) return "blocked" as const;
+            const fresh = await tx.posOrder.findFirst({ where: { id: o.id, tenantId, unitId } });
+            if (!fresh || fresh.status !== "NEW") return "skip" as const;
+            return acceptInTx(tx, fresh, ch, { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true });
+          },
+          { retryUnique: true },
+        );
+      } catch (e) {
+        if (e instanceof OrderRaced) continue; // พนักงาน/ตัวกวาดอีกตัวรับไปก่อน
+        if (e instanceof OrderAbort) {
+          // บิลถูกปฏิเสธ (เช่น STOCK_INSUFFICIENT) — คงเป็น NEW · บันทึก sale_refused ครั้งเดียว (ล็อกแถวออเดอร์ · ตรวจซ้ำในธุรกรรม)
+          await runTx(async (tx) => {
+            const locked = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosOrder" WHERE id = ${o.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+            if (locked[0]?.status !== "NEW") return;
+            const had = await tx.posOrderEvent.findMany({ where: { tenantId, orderId: o.id, type: "held" }, select: { payload: true } });
+            if (had.some((x) => isRecord(x.payload) && x.payload.reason === "sale_refused")) return;
+            await addEvent(tx, o, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: "sale_refused" } });
+          });
+          console.warn(`[pos/order] releaseHeldOrders: ออเดอร์ ${o.id} บิลถูกปฏิเสธ (${e.refusal.code}) — คงเป็นออเดอร์ใหม่ให้พนักงานรับเอง`);
+          continue;
+        }
+        throw e;
+      }
+      if (r === "blocked") break;
+      if (r === "skip") continue;
+      accepted.push(o.id);
+      await afterSaleCommit(tenantId, unitId, r.saleId, r.saleLines);
+      await ORDER_ADAPTERS[r.order.adapter]?.accept?.({ orderId: o.id, externalRef: o.externalRef, prepMinutes: prep });
+      await writeAudit({ tenantId, actorId: null, actorType: "SYSTEM", action: "pos.order.accept", targetType: "PosOrder", targetId: o.id, after: { orderId: o.id, auto: true, swept: true, saleId: r.saleId } });
+    }
+  } catch (e) {
+    console.warn("[pos/order] releaseHeldOrders ล้ม (ไม่กระทบผู้เรียก)", e);
+  }
+  if (accepted.length) scheduleDrain();
+  return { accepted };
 }
 
 /** ปฏิเสธ (pos.order.reject): NEW เท่านั้น → REJECTED + เหตุผล (OUT_OF_STOCK CLOSING TOO_BUSY OTHER) · เว็บร้าน = ตัวรับคิวยกเลิก ShopOrder (มติ 13) */
@@ -1322,6 +1396,7 @@ export async function listOrders(ctx: RegisterCtx, actor: RegisterActor, input: 
       since = typeof inp.since === "string" ? new Date(inp.since) : null;
       if (!since || !Number.isFinite(since.getTime())) return refuse("VALIDATION", "เวลาเริ่มไม่ถูกต้อง");
     }
+    await releaseHeldOrders(s.tenantId, s.unitId, { limit: RELEASE_LIMIT_MAX }); // POS HF-FU ▸ a: กวาดก่อนอ่าน (ไม่ throw · ล้ม = WARN) ◂
     const now = new Date();
     // POS P2.8 fix รอบ 2 (รีวิว F5): since ย้อนได้ไม่เกิน 7 วัน (เก่ากว่า = ตัดที่ 7 วัน · ผลบอก since ที่ใช้จริง) · อ่านใหม่สุดก่อน 2000 แถวแล้วกลับลำดับ ⇒ วันยุ่งไม่ทิ้งออเดอร์ล่าสุด
     const floor = new Date(now.getTime() - ORDER_LIST_SINCE_MAX_MS);

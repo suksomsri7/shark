@@ -21,7 +21,7 @@ import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, type OrdersChanne
 
 export type PanelPerms = { accept: boolean; reject: boolean; create: boolean; voidSale: boolean };
 
-const EVENT_TYPES = new Set(["received", "accepted", "preparing", "ready", "completed", "rejected", "cancelled", "paid", "paid_reverted", "sale_bound", "prep_changed", "refunded"]);
+const EVENT_TYPES = new Set(["received", "accepted", "preparing", "ready", "completed", "rejected", "cancelled", "paid", "paid_reverted", "sale_bound", "prep_changed", "refunded", "held"]); // POS HF-FU ▸ a: + held (ครัวพักไว้) ◂
 
 export function OrderPanel(p: {
   detail: OrderDetail | null;
