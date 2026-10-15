@@ -1635,3 +1635,8 @@
 - ผู้คุมรับ 3 ข้อตัดสินของ builder (deposit-receipt skip · หยุดก่อนสร้างเอกสารใน other-book · ZE3 ใช้ DIRECT) · double-consume ไม่เกิด · เปิด follow-up: refund zero-entry หลัง relink ยังเขียน marker+เอกสารในสมุดใหม่ (ไม่มีเงิน)
 - spawn **R3** (Opus read-only ทรี c @6194adf7) prompt `pos-prompt-accountB-HF-FU-R3.md` → MERGEABLE → merge no-ff เข้า session/pos (ทรีผู้คุม) → ทรี c detached @merge → **gates93-c** (`scratchpad/ctl/gates93-c.template.sh`) ‖ **chain79** ทรี d → ภาพ §9 → push → 37/55 + TG
 - เลน: 1 = HF-FU R3 (read-only ทรี c) · 2 = P2.10 oracle ทรี b
+
+### 15 ต.ค. 14:1xZ — P2.10 oracle เสร็จ
+- oracle writer: `wip/pos-p2.10-oracle` **e9eeb83f** push แล้ว · `qc-pos-p2.10.mts` 12 ข้อ (ST1 ST2 PA1–3 DS1–2 CT1–2 PY1–2 Z1) · forced 1/12 เขียว (Z1) ที่ฐาน · `P2.10-red.txt` · ST2 pin เทียบ merge-base กับ origin/session/pos (รองรับ HF-FU merge) · typecheck ผ่าน · CONTROLLER-DECISION 1–7 → ผู้คุมตัดสินใน brief §10 ข้อ 13 (รับทั้งหมด · ข้อ 5 = ตัดสตริง >80 ด้วย "…" ไม่ refuse · ข้อ 2 = read เทียบ derived version)
+- ถัดไป: HF-FU R3 → merge → gates93-c ‖ chain79 → push → 37/55 → **builder P2.10** ทรี b (ฐาน = session/pos หลัง HF-FU + merge oracle branch) prompt `pos-prompt-accountB-P2.10.md` (ยังไม่เขียน)
+- เลน: 1 = HF-FU R3 (read-only ทรี c) · ทรี b ว่าง @e9eeb83f
