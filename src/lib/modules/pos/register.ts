@@ -2557,9 +2557,10 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // POS HF-PP ▸ (P2.4U R2 F8 · brief §9): ร้านตั้ง manualConfirmRequiresManager ⇒ พร้อมเพย์/บัตรที่ไม่อ้างใบขอรับเงิน (pi_) = ยืนยันเงินเข้าเอง →
     //   ต้องมี pos.shift.manage ที่สาขานี้ (ผู้กระทำ = คนในโทเคนเมื่อส่งโทเคน) · ด่านเดียวเหนือทางแยก regSubmitTable/regSubmitWithIntents/regCreate ·
     //   ก่อนเขียนอะไร · อ่านค่าตั้งเฉพาะเมื่อมีวิธีจ่ายแบบนี้และผู้กระทำไม่มีสิทธิ์ (เงินสด/โอน/อ้าง pi_ ไม่แตะ DB เพิ่ม) ◂
+    // POS P2.13 ▸ fix1 F3/H2 (option b): ผู้ขายผ่าน REST (apiKeyId) ไม่ผ่านด่านผู้จัดการเสมอ — scope pos.shift.manage ของคีย์ (อ่านกะ) ไม่ใช่การยืนยันเงินเข้า ◂
     if (
       req.payMethods.some((x) => REG_MANUAL_METHODS.has(x.type) && !isPaymentIntentId(x.reference)) &&
-      !evaluate(s.actor, { module: "pos", action: "pos.shift.manage", unitId: s.unitId })
+      (!!s.apiKeyId || !evaluate(s.actor, { module: "pos", action: "pos.shift.manage", unitId: s.unitId }))
     ) {
       const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
       if (parsePosIntentSettings(sys?.settings).manualConfirmRequiresManager) return regRefuse("PERMISSION_DENIED", REG_MANUAL_MANAGER_MESSAGE);

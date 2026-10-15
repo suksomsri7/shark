@@ -1273,7 +1273,8 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     //   ใบขอรับเงินที่จ่ายแล้ว (pi_ ของสาขานี้ · PAID ใน 24 ชม. · ยอดตรงแถว · ไม่ซ้ำ · ยังไม่อยู่บนบิลใด — payOrder ไม่ตัดใบ จึงตรวจของจริง ไม่ใช่แค่รูปแบบ · fix1 F1) ต้องมี pos.shift.manage ·
     //   หลังตรวจแบบอ่านอย่างเดียวทั้งหมด ก่อนเขียนอะไร · ไม่มีวิธีจ่ายแบบนี้ / ผู้กระทำมีสิทธิ์ = ไม่แตะ DB เพิ่ม ◂
     const manual = pays.filter((p) => REGISTER_MANUAL_METHODS.has(p.type));
-    if (manual.length > 0 && !can(s.actor, "pos.shift.manage", s.unitId)) {
+    // POS P2.13 ▸ fix1 F3/H2 (option b): REST (apiPay) ไม่ผ่านด่านผู้จัดการเสมอ — ต้องอ้าง pi_ ที่จ่ายแล้ว หรือร้านไม่ได้ตั้งให้ผู้จัดการยืนยัน ◂
+    if (manual.length > 0 && (apiPay || !can(s.actor, "pos.shift.manage", s.unitId))) {
       const piIds = manual.flatMap((p) => (isPaymentIntentId(p.reference) ? [p.reference] : []));
       const allPi = piIds.length === manual.length && new Set(piIds).size === piIds.length;
       const used = allPi && (await prisma.posPayment.count({ where: { tenantId: s.tenantId, reference: { in: piIds } } })) > 0;

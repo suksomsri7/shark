@@ -410,7 +410,7 @@ export const API_SCOPE_BUNDLES: readonly ApiScopeBundle[] = [
     id: "pos-operate",
     label: "ขายหน้าร้าน — งานหน้าเคาน์เตอร์",
     summary:
-      "Everything in pos-read plus the counter work: sell at catalog prices, accept and progress online orders, mark items sold out, and read shifts (X/Z) and registered devices. No voids, refunds, custom prices or catalog changes.",
+      "Everything in pos-read plus the counter work: sell at catalog prices, accept and progress online orders, mark items sold out, and read shifts (X/Z) and registered devices. No voids, refunds, custom prices or catalog changes. Reading shifts is not a manager approval: when the shop wants a manager to confirm PromptPay and card payments, API keys take CASH, TRANSFER and PLATFORM only.",
     scopes: POS_OPERATE_SCOPES,
   },
   {
