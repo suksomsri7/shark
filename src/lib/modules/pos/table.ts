@@ -95,12 +95,6 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
     const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor, null);
     if (isRefusal(s)) return s;
-    // POS HF-FU ▸ b (มติ 2): ทิ้งรอบร่างของ session ที่ไม่ OPEN แล้ว (หน้าเดิมปิด/รวมโต๊ะ) ก่อนอ่านผัง — ล้ม = WARN ผังยังอ่านได้ ◂
-    try {
-      await sweepOrphanTableDrafts(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, limit: 50 });
-    } catch (e) {
-      console.warn("[pos/table] sweepOrphanTableDrafts ล้ม (ผังยังอ่านได้)", e);
-    }
     const now = new Date();
     const rest = await restaurant();
     const fl = await rest.tableFloorForPos(db, {
@@ -111,6 +105,13 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
       maxHoldMinutes: RESERVATION_HOLD_MAX_MINUTES,
       ...bkkDay(now),
     });
+    // POS HF-FU ▸ b (มติ 2): ทิ้งรอบร่างของ session ที่ไม่ OPEN แล้ว (หน้าเดิมปิด/รวมโต๊ะ) — ร่างกำพร้าไม่อยู่บนผังอยู่แล้ว (การ์ดนับเฉพาะ session OPEN) ·
+    //   session OPEN ของผังส่งเป็นคำใบ้ (ไม่อ่านซ้ำ) · ล้ม = WARN ผังยังอ่านได้ ◂
+    try {
+      await sweepOrphanTableDrafts(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, limit: 50, openSessionIds: fl.sessions.map((x) => x.id) });
+    } catch (e) {
+      console.warn("[pos/table] sweepOrphanTableDrafts ล้ม (ผังยังอ่านได้)", e);
+    }
     // session OPEN ต่อโต๊ะ (เก่าสุดก่อน — ล็อกเปิดโต๊ะกันซ้ำแล้ว · ข้อมูลเก่าที่ซ้ำแสดงตัวแรก)
     const sessOf = new Map<string, (typeof fl.sessions)[number]>();
     for (const x of fl.sessions) if (!sessOf.has(x.tableId)) sessOf.set(x.tableId, x);

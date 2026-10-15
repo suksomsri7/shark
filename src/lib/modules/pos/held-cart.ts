@@ -390,14 +390,16 @@ export async function discardTableDraftsInTx(
 // POS HF-FU ▸ b (มติ 2): รอบร่างกำพร้า — หน้าเดิมปิด/เช็คบิล/รวมโต๊ะ (table.closeSession · checkout · mergeSession แช่แข็ง) ไม่ทิ้งรอบร่างของ session
 //   ⇒ ตอนอ่านผัง (registerTables) รอบร่าง HELD ที่ session ไม่ OPEN แล้ว (CLOSED · CANCELLED · MERGED — อ่านผ่าน facade tableSessionForPos) = DISCARDED +
 //   audit pos.heldCart.discard แถวเดียวต่อร่าง (ผู้กระทำระบบ · รูปแถวเดียวกับปิดโต๊ะของ POS · via session_not_open) · ไม่มีช่วงอายุ · session หาไม่เจอ = ไม่แตะ ◂
-export async function sweepOrphanTableDrafts(db: Db, s: { tenantId: string; systemId: string; unitId: string; limit?: number }): Promise<number> {
+export async function sweepOrphanTableDrafts(db: Db, s: { tenantId: string; systemId: string; unitId: string; limit?: number; openSessionIds?: string[] }): Promise<number> {
   const where = { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "HELD" as const, tableSessionId: { not: null } };
   const limit = Math.max(1, Math.min(50, s.limit ?? 50));
   const rows = await db.posHeldCart.findMany({ where, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 500, select: { id: true, tableSessionId: true, label: true, heldByUserId: true, lineCount: true, approxTotalSatang: true } });
   if (!rows.length) return 0;
   const rest = await import("@/lib/modules/restaurant");
-  const sids = [...new Set(rows.map((r) => r.tableSessionId!))];
-  const status = new Map<string, string | null>();
+  // session ที่ผู้เรียกรู้ว่า OPEN อยู่แล้ว (ผังของสาขา) ไม่ต้องอ่านซ้ำ — อ่าน facade เฉพาะ session ที่เหลือ (ปกติ = กำพร้าเท่านั้น)
+  const known = new Set(s.openSessionIds ?? []);
+  const sids = [...new Set(rows.map((r) => r.tableSessionId!))].filter((x) => !known.has(x));
+  const status = new Map<string, string | null>([...known].map((x) => [x, "OPEN"]));
   for (const sid of sids) status.set(sid, (await rest.tableSessionForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: sid }))?.status ?? null);
   let n = 0;
   for (const r of rows) {
