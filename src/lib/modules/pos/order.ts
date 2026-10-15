@@ -467,7 +467,7 @@ function orderCreateSale(tx: Tx, input: CreateSaleInput) {
 }
 
 /** ฐานของบิลออเดอร์: sourceModule POS · sourceId = ออเดอร์ · คีย์ posorder-<id> · ช่องทาง + เลขอ้างอิง · ไม่มีค่าบริการ/ทิป/ส่วนลด (P2.1 CD8) */
-function saleBase(o: PosOrder, lines: CreateSaleInput["lines"], payMethods: CreateSaleInput["payMethods"], who: { soldByUserId: string | null; shiftId: string | null }): CreateSaleInput {
+function saleBase(o: PosOrder, lines: CreateSaleInput["lines"], payMethods: CreateSaleInput["payMethods"], who: { soldByUserId: string | null; shiftId: string | null | undefined /* POS P2.13 ▸ undefined = กติกา "ทางอื่น" (REST) ◂ */ }): CreateSaleInput {
   return {
     tenantId: o.tenantId,
     unitId: o.unitId,
@@ -1264,8 +1264,11 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     const sum = pays.reduce((t, p) => t + p.amountSatang, 0);
     if (sum !== o.totalSatang) return refuse("PAYMENT_MISMATCH", `ยอดชำระ ${sum} ไม่เท่ายอดออเดอร์ ${o.totalSatang}`);
     if (cashReceived !== null && cashReceived < cashRows[0]!.amountSatang) return refuse("PAYMENT_MISMATCH", "เงินที่รับมาน้อยกว่ายอดเงินสด");
-    const shift = await deviceShift(prisma, s, s.deviceId);
-    if ((cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
+    // POS P2.13 ▸ CD5 (ขยายถึง orders.pay): คำขอจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId · ไม่มีเครื่อง) = ไม่ส่ง shiftId ⇒ createSale ผูกกะตามกติกา
+    //   "ทางอื่น" (requiredOtherSources) แทนกะของเครื่อง · หน้าจอ (ไม่มี apiKeyId) = เดิมทุกไบต์ ◂
+    const apiPay = isRecord(ctx) && typeof (ctx as { apiKeyId?: unknown }).apiKeyId === "string" && !!(ctx as { apiKeyId: string }).apiKeyId;
+    const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: undefined, required: false } : await deviceShift(prisma, s, s.deviceId);
+    if (!apiPay && (cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
     // POS HF-PP2 ▸ (P2.8U R1 F1 · บรีฟ §9 ข้อ 1–2): ด่านเดียวกับ submitRegisterSale (HF-PP) — ร้านตั้ง manualConfirmRequiresManager ⇒ พร้อมเพย์/บัตรที่ไม่อ้าง
     //   ใบขอรับเงินที่จ่ายแล้ว (pi_ ของสาขานี้ · PAID ใน 24 ชม. · ยอดตรงแถว · ไม่ซ้ำ · ยังไม่อยู่บนบิลใด — payOrder ไม่ตัดใบ จึงตรวจของจริง ไม่ใช่แค่รูปแบบ · fix1 F1) ต้องมี pos.shift.manage ·
     //   หลังตรวจแบบอ่านอย่างเดียวทั้งหมด ก่อนเขียนอะไร · ไม่มีวิธีจ่ายแบบนี้ / ผู้กระทำมีสิทธิ์ = ไม่แตะ DB เพิ่ม ◂

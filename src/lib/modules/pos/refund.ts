@@ -17,7 +17,7 @@ import * as coupon from "@/lib/modules/coupon/service";
 import { posSaleAccountingRef } from "@/lib/modules/account";
 import { splitIncludedVat } from "@/lib/money/vat";
 import { posVatRateBp } from "./service";
-import { isShiftDeviceId, parseShiftSettings, resolveRegisterShift } from "./shift";
+import { isShiftDeviceId, parseShiftSettings, resolveApiRefundShift, resolveRegisterShift } from "./shift"; // POS P2.13 ▸ + resolveApiRefundShift (CD5) ◂
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import { lineNets, refundLineAmount, refundServiceCharge } from "./refund-math";
 import { channelRefundShare } from "./channel-shared"; // POS P2.1 ▸ R9 ส่วนแบ่งค่าคอมฯ ของใบคืน ◂
@@ -240,7 +240,9 @@ async function priorRefunds(db: Db | Tx, sale: { id: string; tenantId: string; u
 }
 
 /** บิลของระบบอื่น (โรงแรม/ตั๋ว/จอง/ร้านค้าออนไลน์ …) คืนที่ระบบนั้นเอง (คืนเงินของโมดูล + voidSale) — POS คืนเฉพาะบิลของ POS (F1) */
-const notPosOwned = (sale: Pick<PosSale, "docType" | "sourceModule" | "giftCardId">) => sale.docType !== "SALE" || sale.sourceModule !== "POS" || !!sale.giftCardId;
+// POS P2.13 ▸ บิลที่ขายผ่าน REST ของ POS เอง (sourceModule "API" · sourceId = keyId) = บิลของ POS — คืนได้ทางเดียวกับบิลหน้าขาย ◂
+const POS_REFUND_SOURCES: readonly string[] = ["POS", "API"];
+const notPosOwned = (sale: Pick<PosSale, "docType" | "sourceModule" | "giftCardId">) => sale.docType !== "SALE" || !POS_REFUND_SOURCES.includes(sale.sourceModule) || !!sale.giftCardId;
 
 /** เหตุที่บิลคืนไม่ได้ (null = คืนได้) — ใบคืน/ยกเลิก/คืนครบ/บิลขายบัตรกำนัล/บิลของระบบอื่น */
 function notRefundable(sale: Pick<PosSale, "docType" | "status" | "giftCardId" | "sourceModule">): RefundRefusalCode | null {
@@ -275,9 +277,12 @@ export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: 
     if (isRefusal(x)) return x;
     // กะของเครื่อง (S5 ของ P1.9) — หาก่อนเปิด tx (อาจบังคับปิดกะค้างเกินเวลา) แล้วล็อกซ้ำในtx
     const shiftSettings = parseShiftSettings(s.settings);
-    const sh = await resolveRegisterShift(db, s, x.deviceId);
-    const preShiftId = sh.ok ? sh.shiftId : null;
-    const commit = (opts: RefundTxOpts) => runRefundTx(db, s, x, preShiftId, shiftSettings.requiredRegister, opts);
+    // POS P2.13 ▸ CD5: คำขอจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId · ไม่มีเครื่อง) = กะของบิลเดิมถ้ายังเปิด ไม่งั้นกติกา "ทางอื่น" ◂
+    const apiKeyId = isRecord(ctx) && isId((ctx as { apiKeyId?: unknown }).apiKeyId) ? (ctx as { apiKeyId: string }).apiKeyId : null;
+    const apiShift = apiKeyId ? await resolveApiRefundShift(db, s, x.saleId) : null;
+    const sh = apiShift ? null : await resolveRegisterShift(db, s, x.deviceId);
+    const preShiftId = apiShift ? apiShift.shiftId : sh?.ok ? sh.shiftId : null;
+    const commit = (opts: RefundTxOpts) => runRefundTx(db, s, x, preShiftId, apiShift ? apiShift.required : shiftSettings.requiredRegister, opts);
 
     // POS P1.15 ▸ R5 + CD4: PIN ผู้จัดการ = คืนทันที (แม้มีกติกา) · ยกเลิกคำขอคืนเงินที่รอของบิลนี้ · audit pin_override ◂
     if (hasPin) {
@@ -756,7 +761,7 @@ export async function saleForRefund(ctx: RegisterCtx, actor: RegisterActor, inpu
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
     // F1 ▸ บิลของระบบอื่นไม่เปิดจอคืนเงินของ POS เลย (คืนที่ระบบต้นทาง) ◂
-    if (sale.sourceModule !== "POS") return refuse("SALE_NOT_REFUNDABLE");
+    if (!POS_REFUND_SOURCES.includes(sale.sourceModule)) return refuse("SALE_NOT_REFUNDABLE"); // POS P2.13 ▸ + บิล REST ของ POS ◂
     const prior = await priorRefunds(db, sale);
     const nets = lineNets(
       sale.lines.map((l) => l.lineTotalSatang),

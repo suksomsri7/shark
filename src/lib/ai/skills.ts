@@ -322,6 +322,14 @@ export function skillsForTenant(openedSystemTypes: string[]): Skill[] {
   return SKILLS.filter((s) => !s.systems || s.systems.some((t) => opened.has(t)));
 }
 
+// POS P2.13 ▸ มติ 7: scope ที่ tool เดิมของ POS ต้องการเมื่อผู้เรียกคือคีย์ API (ไม่มีตัวไหน = เรียกไม่ได้) ◂
+const POS_TOOL_SCOPES: Record<string, readonly string[]> = {
+  sales_summary: ["pos.sale.read", "pos.sale.create"],
+  sales_by_day: ["pos.sale.read", "pos.sale.create"],
+  pos_create_sale: ["pos.sale.create"],
+  void_sale: ["pos.sale.void"],
+};
+
 /**
  * tool ตัวนี้ "คีย์ API ใบนี้" เรียกได้ไหม (WO E2)
  *
@@ -342,7 +350,10 @@ export function toolAllowedForApiKey(
     kanbanToolAllowedForScopes(toolName, scopes) &&
     memberToolAllowedForScopes(toolName, scopes) &&
     // CRM C1.10 ▸ AUDIT H1: คีย์ที่ไม่มี `crm.*` ใช้ tool ของ CRM ไม่ได้เลย (รวม crm_create_lead รุ่นเดิม) ◂
-    ((opts.crmLegacyLead === true && toolName === "crm_create_lead") || crmApi.crmToolAllowedForScopes(toolName, scopes))
+    ((opts.crmLegacyLead === true && toolName === "crm_create_lead") || crmApi.crmToolAllowedForScopes(toolName, scopes)) &&
+    // POS P2.13 ▸ มติ 7 (ปิด HF-APIV1 #2 ฝั่ง POS): tool เดิม 4 ตัวของสกิล `sales` ต้องมี scope ของ POS (ตารางเดียวกับ op ในทะเบียน POS) ·
+    //   sales_summary/sales_by_day ⇐ pos.sale.read|create · pos_create_sale ⇐ pos.sale.create · void_sale ⇐ pos.sale.void · tool อื่นไม่เปลี่ยน ◂
+    (POS_TOOL_SCOPES[toolName] === undefined || POS_TOOL_SCOPES[toolName]!.some((sc) => scopes.includes(sc)))
   );
 }
 

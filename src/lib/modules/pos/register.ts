@@ -670,7 +670,16 @@ async function regGuard<T>(name: string, body: () => Promise<T>): Promise<T | Re
 }
 
 // ── ขอบเขตของคำขอ: ร้าน + ระบบ POS + สาขา + ผู้ขาย (404 ไม่ใช่ 403 · มติ R8) ──
-type RegScope = { tenantId: string; systemId: string; unitId: string; unitName: string; unitInv: string | null; actor: RegisterActor };
+type RegScope = { tenantId: string; systemId: string; unitId: string; unitName: string; unitInv: string | null; actor: RegisterActor; /** POS P2.13 ▸ ผู้ขายผ่าน REST (keyId) ◂ */ apiKeyId?: string | null };
+
+// POS P2.13 ▸ มติ 3 6 (CD5): ผู้ขายผ่าน REST /api/v1/pos — `apiKeyId` อยู่ใน ctx ที่เซิร์ฟเวอร์ประกอบเอง (pos/api/ops · ไม่มาจาก body ของคำขอ:
+//   ตัวแกะคำขอรับเฉพาะคีย์ใน REG_SUBMIT_KEYS) ⇒ บิล sourceModule "API" + sourceId = keyId · คำขอซ้ำเทียบที่มา API ·
+//   กะ = กติกา "ทางอื่น" ของ createSale (bindSaleShift · requiredOtherSources) แทนกะของเครื่อง · `apiShiftId` = กะที่ผู้เรียกระบุ (ต้อง OPEN ในสาขาเดียวกัน) ◂
+export type RegisterApiCtx = RegisterCtx & { apiKeyId?: string; apiShiftId?: string };
+const regApiKeyOf = (ctx: unknown): string | null => (regIsRecord(ctx) && regIsId(ctx.apiKeyId) ? ctx.apiKeyId : null);
+const regApiShiftOf = (ctx: unknown): string | undefined => (regIsRecord(ctx) && regIsId(ctx.apiShiftId) ? ctx.apiShiftId : undefined);
+const regSaleSource = (s: RegScope): string => (s.apiKeyId ? "API" : "POS");
+// ◂ POS P2.13
 
 function regActorOf(a: unknown): RegisterActor | null {
   if (!regIsRecord(a) || !regIsId(a.userId)) return null;
@@ -699,7 +708,7 @@ async function regScope(db: RegDb, ctx: unknown, actorRaw: unknown, perms: reado
   if (!canAccessUnit(actor, unitId)) return regRefuse("NOT_FOUND");
   // POS P2.4 ▸ perms = สิทธิ์ใดสิทธิ์หนึ่งที่ต้องมี (ปริยาย pos.sale.create เหมือนเดิม · ผังโต๊ะ = pos.sale.create หรือ pos.sale.read · CONTROLLER-DECISION 7) ◂
   if (!perms.some((action) => evaluate(actor, { module: "pos", action, unitId }))) return regRefuse("PERMISSION_DENIED");
-  return { tenantId, systemId, unitId, unitName: unit.name, unitInv: inv?.systemId ?? null, actor };
+  return { tenantId, systemId, unitId, unitName: unit.name, unitInv: inv?.systemId ?? null, actor, apiKeyId: regApiKeyOf(ctx) /* POS P2.13 ◂ */ };
 }
 const REG_SELL_PERMS: readonly string[] = ["pos.sale.create"];
 // POS HF-PP ▸ (มติ 3) วิธีจ่ายที่ "รับเงินแล้ว" ได้โดยไม่มีใบขอรับเงิน = ต้องผ่านด่าน manualConfirmRequiresManager ที่ submit ·
@@ -2405,7 +2414,8 @@ function regLinesEqual(req: RegParsedLine[], stored: RegSaleRow["lines"], wb: We
  * (cashReceivedSatang ไม่ได้บันทึก ⇒ ไม่อยู่ในการเทียบ · เงินทอนของคำตอบซ้ำคิดจากคำขอ — D12)
  */
 function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow): boolean {
-  if (sale.unitId !== s.unitId || sale.systemId !== s.systemId || sale.sourceModule !== "POS") return false;
+  if (sale.unitId !== s.unitId || sale.systemId !== s.systemId || sale.sourceModule !== regSaleSource(s)) return false; // POS P2.13 ▸ ที่มา API = คำขอของคีย์เดียวกัน ◂
+  if (s.apiKeyId && sale.sourceId !== s.apiKeyId) return false; // POS P2.13 ◂
   if ((sale.memberId ?? null) !== req.cart.memberId) return false;
   if (sale.grandTotalSatang !== req.expected) return false;
   // P1.6: ทิป + หมายเหตุบิลเป็นส่วนหนึ่งของคำขอ
@@ -2448,7 +2458,7 @@ function regDuplicate(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, dupli
   if (sale.status !== "PAID" || channelDiffers || !regSameSubmission(s, req, sale)) {
     // R4 K2: รายละเอียดบิล (saleId · receiptNo · สถานะ) เฉพาะบิล POS ของระบบ+สาขาเดียวกับคำขอ (ผู้ขายผ่าน regScope ของสาขานี้แล้ว = มองเห็นได้)
     //   อย่างอื่น (สาขาอื่น · โมดูลอื่นที่ถือคีย์ reg2:… ผ่านหน้าขายเดิม) = CONFLICT เปล่า ไม่มีฟิลด์บิลเลย
-    if (sale.sourceModule !== "POS" || sale.unitId !== s.unitId || sale.systemId !== s.systemId) return regRefuse("IDEMPOTENCY_CONFLICT");
+    if (sale.sourceModule !== regSaleSource(s) || sale.unitId !== s.unitId || sale.systemId !== s.systemId) return regRefuse("IDEMPOTENCY_CONFLICT"); // POS P2.13 ▸ regSaleSource ◂
     return { ok: false, code: "IDEMPOTENCY_CONFLICT", message: REG_MESSAGE.IDEMPOTENCY_CONFLICT, saleId: sale.id, receiptNo: sale.receiptNo, saleStatus: sale.status };
   }
   return { ok: true, saleId: sale.id, receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang, changeSatang: regChange(req), duplicated };
@@ -2557,7 +2567,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // POS P1.10 ▸ R2: เครื่องที่ถูกเพิกถอนของสาขานี้ขายไม่ได้ (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ก่อนเพิกถอน = บิลเดิม) · ไม่ลงทะเบียน = ขายได้ (Q3) ◂
     if (deviceId && (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId))) return regRefuse("DEVICE_REVOKED");
     // POS P1.9 ▸ S6: กะของเครื่อง (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ในกะที่ปิดแล้ว = บิลเดิม) · บังคับมีกะแต่ไม่มี = SHIFT_REQUIRED ไม่มีบิล ◂
-    const shift = await resolveRegisterShift(db, s, deviceId);
+    // POS P2.13 ▸ CD5 มติ 6: ผู้ขายผ่าน REST ไม่มีเครื่อง ⇒ ไม่ส่ง shiftId (createSale ผูกกะตามกติกา "ทางอื่น") หรือส่งกะที่ระบุ (createSale ตรวจ OPEN/สาขาเดียวกัน) ◂
+    const shift: Awaited<ReturnType<typeof resolveRegisterShift>> | { ok: true; shiftId: string | undefined } = s.apiKeyId ? { ok: true, shiftId: regApiShiftOf(ctx) } : await resolveRegisterShift(db, s, deviceId);
     if (!shift.ok) return regRefuse("SHIFT_REQUIRED");
     // P1.6: ค่าตั้งการชำระเงิน (ค่าบริการ · ทิป) — ทิปส่งมาตอนระบบไม่เปิดรับทิป = VALIDATION (ไม่มีบิล)
     const paySettings = await regPaySettings(db, s);
@@ -2639,8 +2650,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
           }
         : {}),
       ...(p.coupon ? { couponSystemId: p.coupon.systemId, couponCode: p.coupon.code } : {}),
-      sourceModule: "POS",
-      ...(req.cart.table ? { sourceId: req.cart.table.sessionId } : {}), // POS P2.4 ▸ CD4: บิลโต๊ะ = บิลหน้าขายปกติ · sourceId = TableSession.id ◂
+      sourceModule: regSaleSource(s), // POS P2.13 ▸ REST = "API" ◂
+      ...(req.cart.table ? { sourceId: req.cart.table.sessionId } : s.apiKeyId ? { sourceId: s.apiKeyId } : {}), // POS P2.4 ▸ CD4: บิลโต๊ะ = บิลหน้าขายปกติ · sourceId = TableSession.id ◂ · POS P2.13 ▸ REST = keyId ◂
       idempotencyKey: req.idempotencyKey,
       ...(req.cart.channelId ? { channelId: req.cart.channelId } : {}), // POS P2.1 ▸ R10 (ไม่ส่ง = createSale เลือก STORE เอง) ◂
       ...(req.channelRef ? { channelRef: req.channelRef } : {}),
@@ -2677,7 +2688,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       ...(q.serviceChargeSatang > 0 ? { serviceChargeSatang: q.serviceChargeSatang } : {}),
       ...(req.tipSatang > 0 ? { tipSatang: req.tipSatang } : {}),
       ...(req.note ? { note: req.note } : {}),
-      shiftId: shift.shiftId,
+      ...(shift.shiftId === undefined ? {} : { shiftId: shift.shiftId }), // POS P2.13 ▸ undefined = กติกา "ทางอื่น" ของ createSale ◂
       soldByUserId: actor.userId, // POS P1.17 ▸ R6 · ผู้ขาย = ผู้ใช้ของ session ◂ · POS P1.15 ▸ R3 = คนในโทเคนเมื่อส่งโทเคน (actor ถูกแทนด้านบน) ◂
       // POS P1.13 ▸ R1 R2: สำเนาผู้ซื้อเขียนใน tx ของบิล (createSale) · requestedAt = เวลาที่ขอ ◂
       ...(req.taxInvoice ? { taxInvoice: { ...req.taxInvoice, requestedAt: new Date().toISOString() } } : {}),

@@ -58,7 +58,15 @@ export type CatalogCtx = {
    * มีผลเมื่อ actorUserId คือตัวบ่งชี้ระบบเท่านั้น
    */
   onBehalfOfUserId?: string;
+  /**
+   * POS P2.13 ▸ มติ 4: สิทธิ์ของ "คีย์ API" (REST /api/v1/pos) — Membership ที่ pos/api/actor.ts สร้างจาก scope ของคีย์ (STAFF เสมอ) ·
+   * มีผลเฉพาะเมื่อ actorUserId ขึ้นต้นด้วย CATALOG_API_ACTOR_PREFIX (หน้าจอส่งได้แค่ userId ของคนจริง ⇒ ไม่มีทางยกสิทธิ์ตัวเอง) ·
+   * ผู้เขียนยังเป็น catalog.ts ที่เดียว (F15.1) · ไม่ใช่ตัวบ่งชี้ระบบ (F15.5) ◂
+   */
+  actorMembership?: MembershipCtx;
 };
+// POS P2.13 ▸ มติ 4: คำนำหน้า actorUserId ของคีย์ API (`apikey:<keyId>`) — ลง audit ของแคตตาล็อกตามนี้ ◂
+export const CATALOG_API_ACTOR_PREFIX = "apikey:";
 /** client ของผู้เรียก — PrismaClient (เปิดธุรกรรมให้เอง) หรือ tx ที่ผู้เรียกเปิดไว้แล้ว */
 export type CatalogClient = PrismaClient | Prisma.TransactionClient;
 
@@ -259,6 +267,12 @@ async function actorOf(ctx: CatalogCtx, db: CatalogClient): Promise<MembershipCt
   const a: unknown = ctx.actorUserId;
   if (a === CATALOG_SYSTEM_ACTOR) return null;
   if (typeof a !== "string" || !a) throw denied();
+  // POS P2.13 ▸ มติ 4: คีย์ API = Membership สังเคราะห์จาก scope (STAFF เท่านั้น · ต้องมาคู่คำนำหน้า apikey:) — ไม่หา Membership ของผู้ออกคีย์ ◂
+  if (a.startsWith(CATALOG_API_ACTOR_PREFIX)) {
+    const k = ctx.actorMembership;
+    if (!isMembershipCtx(k) || k.role !== "STAFF" || a.length <= CATALOG_API_ACTOR_PREFIX.length) throw denied();
+    return { role: "STAFF", unitAccess: [...k.unitAccess], permissions: { ...k.permissions } };
+  }
   const m = await db.membership.findUnique({
     where: { userId_tenantId: { userId: a, tenantId: ctx.tenantId } },
     select: { role: true, unitAccess: true, permissions: true, acceptedAt: true },

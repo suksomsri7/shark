@@ -957,6 +957,27 @@ export async function resolveRegisterShift(
   return st.requiredRegister ? refuse("SHIFT_REQUIRED") : { ok: true, shiftId: null };
 }
 
+// POS P2.13 ▸ CD5: กะของใบคืนเงินที่มาทาง REST (/api/v1/pos · ไม่มีเครื่อง) — กะของบิลเดิมเมื่อยัง OPEN · ไม่งั้นกติกา "ทางอื่น" แบบเดียวกับบิล
+//   (createSale.bindSaleShift: ปิด requiredOtherSources = นอกกะ · เปิด = กะเปิดกะเดียวของสาขา · ไม่มีกะเปิด = ต้องมีกะ (คืนเงินสด) · 2+ = นอกกะ ไม่เดา) ·
+//   refundInTx ล็อก FOR SHARE + ตรวจ OPEN ซ้ำในธุรกรรมเสมอ ◂
+export async function resolveApiRefundShift(
+  db: Db,
+  s: { tenantId: string; systemId: string; unitId: string },
+  saleId: string,
+): Promise<{ shiftId: string | null; required: boolean }> {
+  const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
+  const st = parseShiftSettings(sys?.settings);
+  const sale = await db.posSale.findFirst({ where: { id: saleId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, select: { shiftId: true } });
+  if (sale?.shiftId) {
+    const own = await db.posShift.findFirst({ where: { id: sale.shiftId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true } });
+    if (own) return { shiftId: own.id, required: st.requiredOtherSources };
+  }
+  if (!st.requiredOtherSources) return { shiftId: null, required: false };
+  const open = await db.posShift.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 });
+  return { shiftId: open.length === 1 ? open[0]!.id : null, required: open.length === 0 };
+}
+// ◂ POS P2.13
+
 /** แถบสถานะหน้าขาย (S15) — อ่านอย่างเดียว (ไม่บังคับปิด) · กะค้างเกินเวลา = แสดงเป็นไม่มีกะ */
 export async function registerShiftStatus(
   db: Db,
