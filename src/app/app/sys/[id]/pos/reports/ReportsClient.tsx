@@ -803,6 +803,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
               aria-disabled={off || undefined}
               disabled={off}
               title={off ? t("hourly.tooLong") : undefined}
+              aria-describedby={off ? "pos-reports-hourly-off" : undefined /* POS P2.12U ▸ fix1 F4 ◂ */}
               data-testid={`pos-reports-tab-${k}`}
               className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-full border px-4 text-sm disabled:opacity-50 ${on ? "border-[color:var(--color-ink)] bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : "text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"}`}
               onClick={() => set({ kind: k })}
@@ -812,6 +813,12 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
           );
         })}
       </div>
+      {/* POS P2.12U ▸ fix1 F4 (มติ 3): แท็บรายชั่วโมงปิด = ข้อความเล็กที่มองเห็นใต้แถบแท็บ (title อย่างเดียวไม่ขึ้นบนจอสัมผัส iPad/390) ◂ */}
+      {newKinds.includes("hourly") && hourlyTooLong && view.kind !== "hourly" ? (
+        <p id="pos-reports-hourly-off" className="-mt-2 text-xs text-[color:var(--color-muted)]" data-testid="pos-reports-hourly-off">
+          {t("hourly.tooLong")}
+        </p>
+      ) : null}
 
       {csvErrorCode && (
         <div role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-csv-error">
