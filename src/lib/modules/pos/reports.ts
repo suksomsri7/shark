@@ -249,7 +249,8 @@ export type AnomalyRow = {
   count: number;
 };
 // POS P2.12 ▸ fix1 F1: unitNames = ชื่อสาขาของหน่วยที่อยู่ในแถวที่คืน (CSV/แบบพิมพ์แสดงชื่อแทนรหัส · คีย์แถวไม่เปลี่ยน) ◂
-export type AnomalyTotals = { rowCount: number; byRule: Record<PosAnomalyRule, number>; unitNames: Record<string, string> };
+// POS P2.12 ▸ fix1 H4: a8SignedSatang = ค่าแบบมีเครื่องหมายของฝั่งที่ชนะของแถว A8 (คีย์ = PosShift id = refId · ติดลบ = ขาด · บวก = เกิน) — value ในแถวคงเป็นค่าสัมบูรณ์ ◂
+export type AnomalyTotals = { rowCount: number; byRule: Record<PosAnomalyRule, number>; unitNames: Record<string, string>; a8SignedSatang: Record<string, number> };
 
 export type DashboardCard = {
   businessDate: string;
@@ -1340,7 +1341,7 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
     const r = p.r;
     const T = posAnomalyThresholds(s.settings);
     const byRule = Object.fromEntries(POS_ANOMALY_RULES.map((x) => [x, 0])) as Record<PosAnomalyRule, number>;
-    if (!T.enabled) return envelope("anomalies", s, r, [] as AnomalyRow[], { rowCount: 0, byRule, unitNames: {} }); // POS P2.12 ▸ fix1 F1 ◂
+    if (!T.enabled) return envelope("anomalies", s, r, [] as AnomalyRow[], { rowCount: 0, byRule, unitNames: {}, a8SignedSatang: {} }); // POS P2.12 ▸ fix1 F1 H4 ◂
     const day = (t: Date) => bkkBusinessDate(t, s.cutoffMin);
     const inScope = new Set(s.unitIds);
 
@@ -1522,9 +1523,15 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
 
     // A8 เงินขาด/เกินต่อกะ — max(|ขาด/เกินของ Z|, |ผลต่างการนับย้อนหลัง|) · A9 ผู้เปิดกะเดิมเงินขาด (overShort < 0) ≥ N กะ ต่อสาขา
     const g9 = new Map<string, Acc>();
+    const a8Signed = new Map<string, number>(); // POS P2.12 ▸ fix1 H4 ◂
     for (const sh of shifts) {
       const v = Math.max(Math.abs(sh.overShortSatang ?? 0), Math.abs(recount.get(sh.id) ?? 0));
-      if (v >= T.rules.A8.satang) emit("A8", "PosShift", { unitId: sh.unitId, businessDate: day(sh.openedAt), userId: sh.openedByUserId, count: 1, value: v }, sh.id, v, 1);
+      if (v >= T.rules.A8.satang) {
+        emit("A8", "PosShift", { unitId: sh.unitId, businessDate: day(sh.openedAt), userId: sh.openedByUserId, count: 1, value: v }, sh.id, v, 1);
+        // POS P2.12 ▸ fix1 H4: ฝั่งที่ชนะ max (เท่ากัน = ขาด/เกินของ Z) — เก็บค่ามีเครื่องหมายไว้ให้ CSV/แบบพิมพ์ ◂
+        const os = sh.overShortSatang ?? 0;
+        a8Signed.set(sh.id, Math.abs(os) >= Math.abs(recount.get(sh.id) ?? 0) ? os : (recount.get(sh.id) ?? 0));
+      }
       if ((sh.overShortSatang ?? 0) < 0) {
         const g = acc(g9, sh.unitId, null, sh.openedByUserId);
         g.count += 1;
@@ -1557,7 +1564,10 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
     // POS P2.12 ▸ fix1 F1: ชื่อสาขาจากขอบเขต (s.unitName) เฉพาะหน่วยที่อยู่ในแถวที่คืน ◂
     const unitNames: Record<string, string> = {};
     for (const x of shown) unitNames[x.unitId] ??= s.unitName.get(x.unitId) ?? "";
-    return envelope("anomalies", s, r, shown, { rowCount: rows.length, byRule, unitNames });
+    // POS P2.12 ▸ fix1 H4: เครื่องหมายเฉพาะแถว A8 ที่คืน ◂
+    const a8SignedSatang: Record<string, number> = {};
+    for (const x of shown) if (x.rule === "A8" && x.refId && a8Signed.has(x.refId)) a8SignedSatang[x.refId] = a8Signed.get(x.refId)!;
+    return envelope("anomalies", s, r, shown, { rowCount: rows.length, byRule, unitNames, a8SignedSatang });
   });
 }
 
@@ -1604,6 +1614,9 @@ export const REPORT_TOTAL_ROW_KINDS: ReadonlySet<ReportKind> = new Set<ReportKin
 const ANOMALY_MONEY_RULES: ReadonlySet<string> = new Set(["A1", "A2", "A8", "A9"]);
 const ANOMALY_BP_RULES: ReadonlySet<string> = new Set(["A3", "A4"]);
 const anomalyValueText = (rule: string, v: number): string => (ANOMALY_MONEY_RULES.has(rule) ? baht(v) : ANOMALY_BP_RULES.has(rule) ? pct(v) : String(v));
+/** POS P2.12 ▸ fix1 H4: ช่องค่าของ A8 = "ขาด −150.00" / "เกิน +150.00" จากฝั่งที่ชนะ (ไม่มีค่ามีเครื่องหมาย = บาทเดิม) ◂ */
+const a8ValueText = (signed: number | undefined, v: number): string =>
+  signed === undefined || signed === 0 ? baht(v) : signed < 0 ? `ขาด \u2212${baht(-signed)}` : `เกิน +${baht(signed)}`;
 const anomalyThresholdText = (rule: string, t: Record<string, number>): string =>
   Object.entries(t)
     .map(([f, v]) => (f === "satang" ? `≥ ${baht(v)}` : f === "bp" ? `${rule === "A3" ? ">" : "≥"} ${pct(v)}%` : `≥ ${v}`))
@@ -1760,7 +1773,7 @@ function csvTableRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
         r.userName ?? "",
         r.refType,
         r.refId ?? "",
-        anomalyValueText(r.rule, r.value),
+        r.rule === "A8" ? a8ValueText(r.refId ? x.totals.a8SignedSatang?.[r.refId] : undefined, r.value) : anomalyValueText(r.rule, r.value), // POS P2.12 ▸ fix1 H4 ◂
         anomalyThresholdText(r.rule, r.threshold),
         r.count,
       ]);
