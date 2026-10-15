@@ -1745,3 +1745,5 @@
 - เลน: 1 = P2.13 builder ทรี b · 2 = P2.12U builder (--pdf) ทรี c → R1
 - 20:03Z P2.12U head **6b422dfe** (--pdf probe) → spawn **R1 P2.12U** (Opus read-only ทรี c · เพิ่มโจทย์ iframe print ตัดตาราง) + **chain82** ทรี d (build82 @6b422dfe → vis84 owner 11 + cashier 3 th/en + `--pdf` → pdftotext/pdfinfo ใน `pdf-probe.txt`)
 - เลน: 1 = P2.13 builder ทรี b · 2 = P2.12U R1 (read-only ทรี c) · ทรี d = chain82
+- 20:12Z R1 P2.12U (@6b422dfe) = **MERGEABLE-AFTER-FIXES**: F1 Med probe `page.pdf` บน parent (ผู้ใช้จริง print จากหน้าต่าง iframe = ถูก · probe ผิดเส้นทาง → แก้ harness) · F2 Med follow-up S (staff flag ใช้ฐานส่วนลดต่างจาก A3) · F3 Low channel filter ซ้ำในโหมดทุกสาขา → ซ่อน · F4 Low ข้อความแท็บ hourly ปิดไม่เห็นบน touch · F5 residue QC ถ้า SIGKILL (note) · ที่เหลือ verified OK → มติ fix 1 (1–6 ใน `wo-notes/pos-P2.12U-review.md`) → spawn **builder fix 1** ทรี c prompt `pos-prompt-accountB-P2.12U-fix.md` · chain82 vis84 @6b422dfe ยังรัน (ภาพใช้ได้ · PDF probe รอบนี้ไม่ใช้ → vis85 หลัง fix)
+- เลน: 1 = P2.13 builder ทรี b · 2 = P2.12U fix 1 ทรี c · ทรี d = chain82
