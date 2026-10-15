@@ -44,9 +44,13 @@ const CHECKS: readonly Def[] = [
   D("HN1", "-", "[a มติ 1] พักครัว + ช่องทาง adapter NONE รับอัตโนมัติ → ingest = NEW + event held 1 แถว (NEW→NEW · payload.reason paused) · kitchenPauseAction เรียก releaseHeldOrders หลัง setKitchenPause (รอยต่อ POS HF-FU) · เลิกพัก + releaseHeldOrders(T, A) → ACCEPTED (acceptedByUserId null · event accepted ผู้กระทำ null · รอบครัว 1 · บิล PLATFORM 1 · audit pos.order.accept {auto:true, swept:true} ผู้กระทำ SYSTEM) · ผลคืน accepted มี id · ออเดอร์ที่รับเข้าก่อนต้นวันไทย (receivedAt) ยัง NEW · กวาดซ้ำ = ไม่มีอะไรเปลี่ยน"),
   D("HN2", "X1", "[a มติ 1] เพดาน 1 + ตั๋วค้าง → ออเดอร์ R (GRAB ของไม่พอ) + CHAT c1 c2 c3 = NEW + held {reason:backlog} · kdsTicketDone ตั๋วค้าง → listOrders (กวาดตอนอ่าน) → R ถูกปฏิเสธบิล (STOCK_INSUFFICIENT) คง NEW + held {reason:sale_refused} 1 แถว ไม่มีบิล · c1 ACCEPTED · c2 c3 NEW (หยุดที่ตัวแรกที่ติดเพดาน) · done c1 → kdsBoard (กวาดตอนอ่าน) → c2 · done c2 → listOrders → c3 · FIFO ตาม receivedAt · R ไม่ถูกลองซ้ำ (sale_refused ยัง 1)"),
   D("HN3", "X1", "[a มติ 1] กวาด ‖ พนักงาน acceptOrder ออเดอร์เดียวกัน (ธุรกรรมที่สามถือแถว PosOrder · ทั้งคู่รอ) → ACCEPTED 1 · บิล PLATFORM 1 · รอบครัว 1 · ตัวควบคุมที่ไม่ถูกกวาด: ช่องทางปิดรับอัตโนมัติภายหลัง · MANUAL ที่เริ่ม NEW · NEW ที่ไม่มี held · ช่องทางพักรับ (pausedUntil) · ออเดอร์ held ของสาขา B · ของร้าน T2"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): HN4 (R1 F2)
+  D("HN4", "X1", "[a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที่สามถือแถว o1 ให้ตัวแรกผ่านด่านเพดานแล้วรอ · ช่องทาง o1 ปิดรับอัตโนมัติระหว่างนั้น) → ACCEPTED 1 · ตั๋วค้าง ≤ เพดาน · บิล 1 · รอบครัว 1"),
   // ── OD รอบร่างกำพร้า (b) ──
   D("OD1", "X1", "[b มติ 2] รอบร่าง HELD ของ session ที่หน้าเดิมปิด (table.closeSession) และของ session ที่หน้าเดิมรวมเข้าโต๊ะอื่น (MERGED) → registerTables (อ่านผัง) → DISCARDED ทั้งคู่ + audit pos.heldCart.discard 1 แถว/ร่าง (actorType SYSTEM · after {status DISCARDED, via session_not_open, tableSessionId}) · อ่านซ้ำไม่เพิ่ม audit · registerTables เรียก sweepOrphanTableDrafts"),
   D("OD2", "PAR", "[b มติ 2] ไม่แตะ: ร่างของ session ที่ยัง OPEN · บิลพักในลิ้นชัก (tableSessionId null) · ร่างของ session ที่ปิดแล้วของสาขา B (อ่านผังสาขา A) — ยัง HELD ทุกแถว version เดิม"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): OD3 (R1 F1)
+  D("OD3", "X1", "[b fix1 มติ 1] ร่าง HELD ของ session CLOSED (จ่ายครบ + หน้าเดิมปิด) · ธุรกรรมที่สามถือแถวร่าง → registerTables (ตัวกวาดอ่าน CLOSED แล้วรอ) → void บิลโต๊ะ + ระบายคิวเปิด session กลับ OPEN → ปล่อย ⇒ ร่างยัง HELD (version เดิม · ไม่มี audit ทิ้ง)"),
   // ── EQ เศษส่วนแบ่ง (c) ──
   D("EQ1", "P", "[c มติ 3] allocateTableSplit บริสุทธิ์: 30 รายการราคาคี่ EQUAL 3 ค่าบริการ 0 → ฐานต่อใบห่าง ≤ 1 · |ค่าบริการของใบ| ≤ 1 · Σ สุทธิ = ยอดโต๊ะ · SEAT กลางโต๊ะล้วน 30 รายการ → ฐานห่าง ≤ 1 · ผลตรงตัวอ้างอิงหมุนเศษ (rot) ทุกบรรทัด · เจ้าของสต็อก = ใบ 1"),
   D("EQ2", "X4", "[c มติ 3] 500 แผนสุ่ม (EQUAL/SEAT มีกลางโต๊ะ · seed คงที่) ตรงตัวอ้างอิงหมุนเศษ · ยอดส่วนแบ่งต่อใบห่าง ≤ 1 · Σ สุทธิตรง · เรียกซ้ำผลเดิม · แผนจริงบน DB (EQUAL 3 ราคาคี่ · ลำดับรายการตามบิลโต๊ะ createdAt,id) = ผลบริสุทธิ์ทุกบรรทัด · ฐานห่าง ≤ 1"),
@@ -1271,6 +1275,75 @@ async function runDb() {
     chk("HN3", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "กวาด ‖ รับ = ผู้ชนะคนเดียว (บิล 1 รอบ 1) · ตัวควบคุม 6 แบบไม่ถูกกวาด", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
   });
 
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): HN4 = เพดานกับตัวกวาดหลายตัวพร้อมกัน (R1 F2 · มติ fix1 ข้อ 2 · 6) —
+  //   ลำดับบังคับด้วยธุรกรรมที่สามถือแถว PosOrder ของ o1: S1 ผ่านด่านเพดาน (0 ตั๋ว) แล้วรอแถว o1 · ระหว่างนั้นช่องทางของ o1 ปิดรับอัตโนมัติ
+  //   (= รายการผู้สมัครของตัวกวาดตัวหลังไม่มี o1 · แบบจำลองรายการเก่า/ตัวแรกต่างกัน) · S2–S6 (releaseHeldOrders ×3 + listOrders ×2) เริ่ม ·
+  //   ไม่มีล็อกต่อสาขา = S2 ผ่านด่านเพดาน (S1 ยังไม่ commit) แล้วรับ o2 ⇒ ACCEPTED 2 ที่เพดาน 1 (แดงก่อนแก้) · มีล็อก = S2–S6 รอ S1 แล้วติดเพดาน ◂
+  await step("HN4", async () => {
+    const p: string[] = [];
+    if (fx) throw new Error(`fixture ${fx}`);
+    await clearKitchen();
+    const ids: string[] = [];
+    let ch1 = "";
+    try {
+      const sv = must("ช่องทาง H4", await call(chMod, "saveChannel", ctxA(), A("OWNER"), { code: "CUSTOM_H4", name: `เพดาน H4 ${RAND}`, payout: "PLATFORM", commissionBp: 2000, adapter: "NONE" }));
+      ch1 = String(sv.channel?.id ?? "");
+      must("H4 autoAccept", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: ch1, autoAccept: true }));
+      must("เพดาน 1", await K("kdsSetAutoAcceptMax", ctxA(), A("OWNER"), { maxOpen: 1 })); // ก่อนรับเข้า (ตั้งเพดาน = กวาดทันที)
+      await menu.setKitchenPause(T, U.A, true, "qc hffu HN4");
+      try {
+        ids.push(await mkOrder("hn4o1", ch1, [ln("padthai", 1)]));
+        ids.push(await mkOrder("hn4o2", CH.GB!, [ln("padthai", 1)], { externalRef: `GB4a-${RAND}` }));
+        ids.push(await mkOrder("hn4o3", CH.GB!, [ln("padthai", 1)], { externalRef: `GB4b-${RAND}` }));
+      } finally {
+        await menu.setKitchenPause(T, U.A, false); // เลิกพักตรง (ไม่ผ่าน kitchenPauseAction = ไม่กวาด)
+      }
+      for (const id of ids) {
+        const o = await orow(id);
+        if (o?.status !== "NEW" || (await heldEvs(id)).length !== 1) throw new Error(`(fixture) ${id.slice(-6)} ${ostr(o)} held ${(await heldEvs(id)).length}`);
+      }
+      const [o1] = ids;
+      const sweeps: Promise<Any>[] = [];
+      const hl = await holdLock(LOCK_ORDER, [o1], [() => release()], async () => {
+        must("H4 ปิดรับอัตโนมัติ", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: ch1, autoAccept: false }));
+        for (let i = 0; i < 5; i++) sweeps.push((i < 3 ? release() : O("listOrders", ctxA(), A("OWNER"), {})).catch((e: unknown) => ({ ok: false, code: errCode(e), threw: true })));
+        // รอจน S2–S6 จบ (ไม่มีล็อกต่อสาขา) หรือรอคิวล็อกครบ 5 (มีล็อก) — แล้วปล่อยแถว o1
+        const t0 = Date.now();
+        let settled = 0;
+        void Promise.allSettled(sweeps).then(() => (settled = 1));
+        while (!settled && Date.now() - t0 < 10_000) {
+          const w = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`)) as Any[])[0].n);
+          if (w >= 6) break;
+          await sleep(150);
+        }
+        await sleep(600);
+      });
+      const rs = await Promise.all(sweeps);
+      const sw1 = hl.res[0];
+      if (hl.blocked < 1) p.push("S1 ไม่รอแถว PosOrder ของ o1 (จัดฉากไม่ถึง)");
+      if (sw1?.ok === false || rs.some((r) => r?.ok === false)) p.push(`ตัวกวาด → ${[sw1, ...rs].map(codeOf).join(",")}`);
+      const st = await Promise.all(ids.map(orow));
+      const accN = st.filter((o) => o?.status === "ACCEPTED").length;
+      let sales = 0;
+      let rounds = 0;
+      for (const id of ids) {
+        const ss = await salesOf(id);
+        for (const s of ss) MY_SALES.push(String(s.id));
+        sales += ss.length;
+        rounds += (await roundsOf(id)).length;
+      }
+      const bl = (await call(kdsMod, "kitchenBacklog", T, U.A)) as Any;
+      const maxOpen = Array.isArray(bl) ? Math.max(0, ...bl.map((b: Any) => Number(b?.open ?? 0))) : -1;
+      if (accN !== 1 || sales !== 1 || rounds !== 1) p.push(`6 ตัวกวาดพร้อมกันที่เพดาน 1: [o1 o2 o3] = ${st.map((o) => o?.status).join(",")} · ACCEPTED ${accN} · บิล ${sales} · รอบครัว ${rounds} (คาด 1 · 1 · 1)`);
+      if (maxOpen < 0 || maxOpen > 1) p.push(`ตั๋วค้างสูงสุดต่อสถานี ${maxOpen} (คาด ≤ เพดาน 1)`);
+      if (st[0]?.status !== "ACCEPTED") p.push(`o1 (S1 ผ่านด่านก่อน) → ${ostr(st[0])} (คาด ACCEPTED)`);
+    } finally {
+      await K("kdsSetAutoAcceptMax", ctxA(), A("OWNER"), { maxOpen: null });
+      for (const id of ids) if ((await orow(id))?.status === "NEW") await O("rejectOrder", ctxA(DEV1), A("OWNER"), { id, reasonCode: "OTHER" });
+    }
+    chk("HN4", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "6 ตัวกวาดพร้อมกันที่เพดาน 1 = รับ 1 · บิล 1 · รอบ 1 · ตั๋วค้าง ≤ เพดาน", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
+  });
+
   // ════════ VO CN HU LK2 (ออเดอร์ LINEMAN · บิล PLATFORM) ════════
   console.log("\n── VO CN HU LK2 ──");
   await step("VO1", async () => {
@@ -1533,6 +1606,48 @@ async function runDb() {
     chk("OD1", !crashed && NF(heldMod, "sweepOrphanTableDrafts") === "" && p1.length === 0, "ร่างของ session ปิด/MERGED → DISCARDED + audit SYSTEM session_not_open ครั้งเดียว", FX(crashed || NF(heldMod, "sweepOrphanTableDrafts") + (P8(p1) || "ครบ")));
     chk("OD2", !crashed && p2.length === 0, "ร่าง OPEN · ลิ้นชัก · สาขาอื่น ไม่ถูกแตะ", FX(crashed || P8(p2) || "ครบ"));
   }
+
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): OD3 = ตัวกวาดร่างกำพร้า ‖ void ที่เปิด session กลับ (R1 F1 · มติ fix1 ข้อ 1 · 6) —
+  //   session มีรอบร่าง HELD · จ่ายรายการโต๊ะครบ (มีร่าง ⇒ session ยัง OPEN) · หน้าเดิมปิดโต๊ะ ⇒ CLOSED (ร่างยัง HELD = กำพร้า) ·
+  //   ธุรกรรมที่สามถือแถว PosHeldCart ของร่าง → registerTables (ตัวกวาดอ่าน session = CLOSED นอกธุรกรรมแล้วรอแถวร่าง) →
+  //   ระหว่างรอ void บิลโต๊ะ + ระบายคิว (ตัวรับ void เปิด session กลับ OPEN) → ปล่อย ⇒ ร่างต้องยัง HELD (version เดิม · ไม่มี audit ทิ้ง) ◂
+  await step("OD3", async () => {
+    const p: string[] = [];
+    if (fx) throw new Error(`fixture ${fx}`);
+    const sv = await seat("OD3r", [ln("water", 1)]);
+    const d = heldId(await hold(sv.sid, [ln("padthai", 1)]));
+    const q = await wq(sv.sid);
+    const g = q?.ok === true ? Number(q.grandTotalSatang) : 0;
+    const pay = await call(register, "submitRegisterSale", ctxA(DEV1), A("OWNER"), {
+      lines: [], tableSessionId: sv.sid, expectedTableItemsHash: q?.table?.itemsHash ?? "none",
+      idempotencyKey: newKey("od3"), expectedGrandTotalSatang: g, payMethods: [{ type: "CASH", amountSatang: g }], cashReceivedSatang: g,
+    });
+    const saleId = pay?.ok === true ? String(pay.saleId) : "";
+    if (saleId) MY_SALES.push(saleId);
+    const cl = await rtable.closeSession(T, U.A, sv.sid);
+    await drain();
+    const s0 = await sessRow(sv.sid);
+    const r0 = await heldRow(d);
+    if (!d || !saleId || cl?.ok !== true || s0?.status !== "CLOSED" || r0?.status !== "HELD") throw new Error(`(fixture) ร่าง ${d ? "✓" : "✗"} · จ่าย ${codeOf(pay)} ${short(pay?.message ?? "", 60)} · ปิด ${short(cl)} · session ${s0?.status} · ร่าง ${r0?.status}`);
+    const a0 = (await discards()).filter((x) => x.targetId === d).length;
+    let vd: Any = null;
+    let mid = "";
+    const LOCK_DRAFT = `SELECT id FROM "PosHeldCart" WHERE id = $1 FOR UPDATE`;
+    const hl = await holdLock(LOCK_DRAFT, [d], [() => tbl("registerTables", ctxA(), A("OWNER"))], async () => {
+      vd = await voidSale(saleId);
+      await drain();
+      mid = String((await sessRow(sv.sid))?.status ?? "none");
+    });
+    const f = hl.res[0];
+    const r1 = await heldRow(d);
+    const a1 = (await discards()).filter((x) => x.targetId === d).length;
+    if (hl.blocked < 1) p.push("ตัวกวาดไม่รอแถวร่าง (จัดฉากไม่ถึง)");
+    if (vd?.ok !== true || mid !== "OPEN") p.push(`(ฉาก) void ${codeOf(vd)} ${short(vd?.message ?? "", 60)} · session ระหว่างรอ ${mid} (คาด ok · OPEN)`);
+    if (f?.ok !== true) p.push(`registerTables → ${codeOf(f)}`);
+    if (r1?.status !== "HELD" || r1?.version !== r0?.version || a1 !== a0) p.push(`ร่างของ session ที่ถูกเปิดกลับ → ${r1?.status} v${r1?.version} (คาด HELD v${r0?.version}) · audit ทิ้ง +${a1 - a0} (คาด 0)`);
+    if ((await sessRow(sv.sid))?.status !== "OPEN") p.push(`session หลังจบ ${(await sessRow(sv.sid))?.status} (คาด OPEN)`);
+    chk("OD3", NF(heldMod, "sweepOrphanTableDrafts") === "" && p.length === 0, "ตัวกวาด ‖ void เปิด session กลับ = ร่างยัง HELD", FX(NF(heldMod, "sweepOrphanTableDrafts") + (P8(p) || "ครบ")));
+  });
 
   await step("DM1", async () => {
     const p: string[] = [];
