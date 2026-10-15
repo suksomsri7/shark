@@ -1149,7 +1149,7 @@ async function runDb() {
       const VCODE = `QCV${RAND.toUpperCase()}7`;
       const ML = [
         { kind: "TIER", label: "ส่วนลดสมาชิก Gold", satang: 4_000 },
-        { kind: "POINTS", label: "ใช้ 1,240 แต้ม", satang: 12_400 },
+        { kind: "POINTS", label: "ใช้ 1,240 แต้ม", satang: 6_200 }, // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.10 fix 1) แก้: ยอด 12_400 มีสตริง "1240" (ผลบวกปลอม)
         { kind: "VOUCHER", label: VCODE, satang: 5_000 }, // hook เดิม: ชื่อ voucher ไม่มี → wallet ใช้ res.code
         { kind: "VOUCHER", satang: 3_000 }, // hook ใหม่: ไม่มีชื่อ = ไม่ส่งป้าย
         { kind: "VOUCHER", label: "ส่วนลดวันเกิด", satang: 2_000 }, // มีชื่อ = แสดงชื่อ (คุมผลบวก)
@@ -1170,7 +1170,7 @@ async function runDb() {
         if (ml.map((m) => m.satang).join() !== ML.map((m) => m.satang).join()) p.push(`ยอด totals.member ${short(ml.map((m) => m.satang), 60)}`);
       }
       if (deepHas(vb, VCODE)) p.push("view มีโค้ด voucher");
-      if (deepHas(vb, "1,240") || deepHas(vb, "1240")) p.push("showPoints=false → view มีจำนวนแต้มที่ใช้");
+      if (deepHas(vb, "1,240") || ml.some((m) => /1,?240/.test(m.label))) p.push("showPoints=false → view มีจำนวนแต้มที่ใช้");
       // คุมผลบวก: showPoints=true → ป้ายแต้มเดิม · VOUCHER ไม่มีชื่อยังเป็น "คูปอง"
       await settings("A", owner, { deviceId: DID.D1, showPoints: true });
       const vp = viewOf(await read(TOK));
