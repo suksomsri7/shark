@@ -3856,10 +3856,5 @@
     "close": "ปิดวัน",
     "reports": "รายงาน",
     "settings": "ตั้งค่า"
-  },
-  "sales": {
-    "branch": {
-      "chipLabel": "บิลของสาขา {unit}"
-    }
   }
 }

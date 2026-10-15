@@ -140,10 +140,6 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const trg = useTranslations("pos.register");
   const tch = useTranslations("pos.channel") as T; // POS P2.1U ◂
   const tpr = useTranslations("pos.price") as T; // POS P2.2U ▸ หมายเหตุราคาต่อบรรทัด (R11 · มติ 6) ◂
-  // POS P2.11U ▸ มติ 10: เห็นมากกว่า 1 สาขา = ชิปชื่อสาขาข้างเลขใบเสร็จ (เลขรันซ้ำข้ามสาขา) — รายการบิลอ่านทีละสาขา (billsPageDataAction ส่ง unitId)
-  //   ⇒ สาขาของทุกแถว = สาขาที่ขอ (ไม่ต้องเพิ่มช่องใน DTO) ◂
-  const tsb = useTranslations("pos.sales.branch") as T;
-  const unitChipName = units.length > 1 ? (units.find((u) => u.id === unitId)?.name ?? "") : "";
   const locale = useLocale();
   // POS P1.18U ▸ มติ 9 (บิล drawer en): ชื่อผู้ทำ "ระบบ" (ไม่มีผู้ใช้) + ไทม์ไลน์ แปลตามภาษาจอ (kind + params จากเซิร์ฟเวอร์ · ไม่มี kind = text เดิม) ◂
   const who = (n: string) => (n === BILLS_SYSTEM_NAME ? t("drawer.system") : n);
@@ -1217,14 +1213,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                           onClick={() => openBill(r.id)}
                           className={`relative cursor-pointer border-b last:border-0 hover:bg-[color:var(--color-surface-2)] ${voided ? "text-[color:var(--color-muted)]" : ""} ${active ? "bg-[color:var(--color-surface-2)]" : ""}`}
                         >
-                          <td className={`whitespace-nowrap px-3 py-3 font-bold tabular-nums ${active ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}>
-                            <span className={voided ? "line-through" : ""}>{r.receiptNo ?? "—"}</span>
-                            {unitChipName ? (
-                              <span data-testid={`pos-sales-unitChip-${r.id}`} title={tsb("chipLabel", { unit: unitChipName })} className="ml-1.5 inline-flex h-[20px] max-w-[110px] items-center truncate rounded-[6px] border px-1.5 align-middle text-[11px] font-normal text-[color:var(--color-ink-soft)]">
-                                {unitChipName}
-                              </span>
-                            ) : null}
-                          </td>
+                          <td className={`whitespace-nowrap px-3 py-3 font-bold tabular-nums ${active ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""} ${voided ? "line-through" : ""}`}>{r.receiptNo ?? "—"}</td>
                           <td className="whitespace-nowrap px-2 py-3 tabular-nums">{bkkHm(r.time, locale)}</td>
                           <td data-testid={`pos-bill-channel-${r.id}`} className="max-w-[140px] px-2 py-3">
                             <BillChannelPill row={r} t={t} ts={ts} tc={tch} />
@@ -1268,11 +1257,6 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       <button type="button" data-testid="pos-bills-card" data-bill-id={r.id} onClick={() => openBill(r.id)} className={`flex min-h-[64px] w-full flex-col gap-1 px-4 py-3 pr-14 text-left ${voided ? "text-[color:var(--color-muted)]" : ""}`}>
                         <span className="flex w-full items-center gap-2">
                           <b className={`tabular-nums ${voided ? "line-through" : ""}`}>{r.receiptNo ?? "—"}</b>
-                          {unitChipName ? (
-                            <span data-testid={`pos-sales-unitChip-${r.id}-m`} title={tsb("chipLabel", { unit: unitChipName })} className="inline-flex h-[20px] max-w-[90px] items-center truncate rounded-[6px] border px-1.5 text-[11px] text-[color:var(--color-ink-soft)]">
-                              {unitChipName}
-                            </span>
-                          ) : null}
                           <span className="text-[12px] tabular-nums text-[color:var(--color-muted)]">{bkkHm(r.time, locale)}</span>
                           <span className="flex-1" />
                           <span className="font-semibold tabular-nums">{money(r.grandTotalSatang)}</span>

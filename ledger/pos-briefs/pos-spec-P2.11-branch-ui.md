@@ -1,4 +1,4 @@
-# POS spec — P2.11U multi-branch UI (06 · 08 · 16 · 17A · 12)
+# POS spec — P2.11U multi-branch UI (06 · 08 · 16 · 17A)
 
 Builder U · account B · 15 Oct 2026 · branch `wip/pos-p2.11u` · contract = `ledger/wo-notes/pos-P2.11.md` §"P2.11U contract" + prompt `pos-prompt-accountB-P2.11U.md` rulings 1–13.
 No server behaviour change: every write goes through the P2.11 S exports; the only new server code is the thin `"use server"` wrapper `updatePosReceiptUnitSettingsAction` (17A) and two read-only page reads (06 dead-row count, 16 inventory map).
@@ -33,11 +33,11 @@ Branch mode (MANAGER or STAFF with `pos.product.setPrice` at ≥ 1 unit but not 
 ## 16 สต็อก (`/pos/stock`)
 - `pos-stock-sharedNote` under the header: "คลังร่วมกับสาขา <names> — สต็อกเป็นก้อนเดียวกัน" when the selected unit sits in a `posUnitInventoryMap` group with `shared: true` (map read once on the page; names = live POS units). Per-location stock inside a shared inventory = P2.12.
 
-## 12 บิลวันนี้ (`/pos/sales`)
-- Actors who see > 1 unit: chip `pos-sales-unitChip-<saleId>` (390 card `pos-sales-unitChip-<saleId>-m`) with the unit name beside `receiptNo`. The list is read per unit (`billsPageDataAction` takes `unitId`), so the chip = the requested unit; no DTO change.
+## 12 บิลวันนี้ (`/pos/sales`) — unchanged
+- Fix 1 ruling 4 (R1 F4): the unit chip beside `receiptNo` (`pos-sales-unitChip-<saleId>` / `-m`, key `pos.sales.branch.chipLabel`, state `bills-all-branches`) is **removed** — 12 is read per unit and the toolbar branch select already names the branch. `BillsClient.tsx` is back to its base content. The chip returns with the all-branch bills list (P2.12).
 
 ## Visual states (`scripts/visual-pos.mts p2.11u --states`, owner + manager, 1440×900 · 1024×768 · 390×844, th + en)
-`products-branch-filter` · `products-branch-copy` (owner) · `products-branch-compare` · `products-dead-row-note` · `products-manager-branch` (manager) · `reports-channels` · `settings-receipt-branch` (owner) · `stock-shared-inventory` · `bills-all-branches` (owner).
+`products-branch-filter` · `products-branch-copy` (owner) · `products-branch-compare` · `products-dead-row-note` · `products-manager-branch` (manager) · `reports-channels` · `settings-receipt-branch` (owner) · `stock-shared-inventory` (`bills-all-branches` removed in fix 1 ruling 4).
 
 ## Messages (th + en, same keys)
-`pos.products.branch.*` (colPrice, chipOwn, chipInherited, notSold, cellTip, readOnly, managerHint, inherit, unstocked, dead.*, copy.*, compare.*) · `pos.report.channels.*` · `pos.settings.receipt.byUnit.*` · `pos.stock.sharedInventory.note` · `pos.sales.branch.chipLabel` · `pos.report.overview.comingSoon` (no longer lists channels).
+`pos.products.branch.*` (colPrice, chipOwn, chipInherited, notSold, cellTip, readOnly, managerHint, inherit, unstocked, dead.*, copy.*, compare.*) · `pos.report.channels.*` · `pos.settings.receipt.byUnit.*` · `pos.stock.sharedInventory.note` · `pos.report.overview.comingSoon` (no longer lists channels).

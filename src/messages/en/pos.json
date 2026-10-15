@@ -3856,10 +3856,5 @@
     "close": "Close day",
     "reports": "Reports",
     "settings": "Settings"
-  },
-  "sales": {
-    "branch": {
-      "chipLabel": "Bill of branch {unit}"
-    }
   }
 }
