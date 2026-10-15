@@ -1195,7 +1195,15 @@ async function runDb() {
     if (s1?.saleId && (await shiftDev(s1.saleId)) !== DV.D1) p.push("ฟิกซ์เจอร์ บิล s1 ไม่อยู่ในกะของ D1");
     if (s3?.saleId && (await shiftDev(s3.saleId)) !== DV.D3) p.push("ฟิกซ์เจอร์ บิล s3 ไม่อยู่ในกะของ D3");
     const tokOf = async (id: string) => String((await P.posSale.findUnique({ where: { id }, select: { publicToken: true } }).catch(() => null))?.publicToken ?? "");
-    if (sOld?.saleId) await P.$executeRawUnsafe(`UPDATE "PosSale" SET "createdAt" = $3, "paidAt" = CASE WHEN "paidAt" IS NULL THEN NULL ELSE $3 END WHERE id = $1 AND "tenantId" = $2`, sOld.saleId, T, new Date(Date.now() - 16 * 60_000)).catch((e: Error) => notes.push(`เลื่อนบิลเก่า: ${e.message.slice(0, 60)}`));
+    if (sOld?.saleId) {
+      const old = new Date(Date.now() - 16 * 60_000);
+      const row = await P.posSale.findUnique({ where: { id: sOld.saleId }, select: { paidAt: true } }).catch(() => null);
+      const n = await P.posSale.updateMany({ where: { id: sOld.saleId, tenantId: T }, data: { createdAt: old, ...(row?.paidAt ? { paidAt: old } : {}) } }).catch((e: Error) => {
+        notes.push(`เลื่อนบิลเก่า: ${e.message.replace(/\s+/g, " ").slice(0, 100)}`);
+        return null;
+      });
+      if (n?.count !== 1) p.push("ฟิกซ์เจอร์ เลื่อนบิลเก่า 16 นาทีไม่ได้");
+    }
     if (!TOK) p.push("ไม่มี token หลัก (PA3)");
     else {
       const doneOf = async (saleId: string, extra: Any = {}) => {
