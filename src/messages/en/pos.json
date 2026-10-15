@@ -1078,7 +1078,7 @@
       "staff": "Staff",
       "seeAll": "See all",
       "highDiscount": "Unusually high discount",
-      "highDiscountHint": "On-screen hint: discount above 15% of net sales",
+      "highDiscountHint": "Shop threshold: discount above {pct} of net sales (Settings › General › Anomaly thresholds)",
       "cols": {
         "branch": "Branch",
         "sales": "Sales",
@@ -1207,7 +1207,23 @@
         "A8": "Cash over/short",
         "A9": "Repeated cash shortage",
         "A10": "Rejected/cancelled orders"
-      }
+      },
+      "cols": {
+        "unit": "Branch",
+        "date": "Date",
+        "staff": "Staff",
+        "value": "Value",
+        "count": "Count",
+        "ref": "Reference"
+      },
+      "short": "short",
+      "over": "over",
+      "or": "or",
+      "threshold": "Threshold {text}",
+      "groupCount": "{n} findings",
+      "wholeRange": "Whole range",
+      "unnamed": "No name",
+      "viewBill": "View bill"
     },
     "print": {
       "button": "Print / PDF",

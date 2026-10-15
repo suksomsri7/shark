@@ -18155,6 +18155,26 @@
       "wo": "P2.12U",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-anomaly-bill-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "note": "แท็บจุดผิดปกติ: แถวที่อ้างบิล (refType PosSale · A4 A7) \"ดูบิล\" → หน้าบิล ?unit=<สาขาของแถว>&bill=<saleId> เปิดลิ้นชักบิลนั้น (billDetailAction ตรวจสาขา/สิทธิ์) · n = ลำดับแถวในรายงาน (มติ 4)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=anomalies"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -63,6 +63,8 @@ type Props = {
   onSeeAll: (kind: ReportKind) => void;
   /** POS P2.12U ▸ มติ 2: เวลาตัดวันของระบบ (นาที) — ไม่ลงชั่วโมงเต็ม = หมายเหตุ "ชั่วโมงแรกรวมเศษนาที" ใต้กราฟรายชั่วโมง ◂ */
   cutoffMinutes: number;
+  /** POS P2.12U ▸ มติ 5: ป้าย "ส่วนลดสูงผิดปกติ" = กฎ A3 ของเซิร์ฟเวอร์ (bp จาก posAnomalyThresholds ที่หน้าอ่านฝั่งเซิร์ฟเวอร์) · null = ปิดการตรวจ (ไม่มีป้าย) ◂ */
+  discountFlagBp: number | null;
 };
 
 // ═══════════ ตัวช่วยวันที่ (ใช้ร่วมกับ ReportsClient) ═══════════
@@ -96,8 +98,7 @@ const shareBp = (part: number, whole: number): number | null => (whole > 0 ? Mat
 const arrow = (d: number) => (d > 0 ? "▲" : d < 0 ? "▼" : "");
 /** ตัวอักษรย่อของชื่อ — ข้ามสระหน้า (เ แ โ ใ ไ) แบบภาพ 08 (แพร → พ) */
 const initialOf = (name: string) => Array.from(name.trim()).find((ch) => !/[เแโใไ\s]/.test(ch)) ?? "?";
-/** P1.17U R4 §2.6 — ป้าย "ส่วนลดสูงผิดปกติ" = ส่วนลด > 15% ของยอดสุทธิ (ข้อสังเกตบนจอ · ไม่ใช่กฎของระบบ) */
-const HIGH_DISCOUNT_BP = 1500;
+// POS P2.12U ▸ มติ 5: ค่าคงที่ฝั่งจอ HIGH_DISCOUNT_BP (15%) ถูกลบ — เกณฑ์มาจากกฎ A3 ของระบบ (prop discountFlagBp) ◂
 /** ป้ายวิธีชำระที่มีคีย์ pos.shift.method.* (อื่น ๆ ใช้ป้ายจากเซิร์ฟเวอร์) — ชุดเดียวกับ ReportsClient */
 const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R1 ◂
 /** R5 — กราฟรายวันแสดง 14 วันล่าสุดจบที่วัน `to` เสมอ (ช่วงจริงมาจากเซิร์ฟเวอร์: overview.chartRange) */
@@ -335,7 +336,7 @@ function slotOf<R>(ov: ReportOverview | null, sec: OverviewSection, busy: Readon
 }
 const partSlot = <R,>(p: OverviewPart<R>): Slot<R> => (p.ok ? { s: "ok", v: p.data } : { s: "err", code: p.code });
 
-export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll, cutoffMinutes }: Props) {
+export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll, cutoffMinutes, discountFlagBp }: Props) {
   const [ov, setOv] = useState<ReportOverview | null>(null);
   const tch = useTranslations("pos.channel"); // POS P2.11U ▸ ชื่อช่องทาง builtin ตามภาษาจอ ◂
   const [whole, setWhole] = useState<string | null>(null); // คำปฏิเสธทั้งก้อน (ช่วงผิด/สิทธิ์ระดับร้าน/ขัดข้อง)
@@ -795,7 +796,8 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
             <tbody>
               {staff.v.rows.slice(0, 5).map((r, i, all) => {
                 const name = r.userId === null ? t("unknownSeller") : (r.name ?? r.userId);
-                const high = r.netSalesSatang > 0 && r.discountSatang * 10_000 > r.netSalesSatang * HIGH_DISCOUNT_BP;
+                // POS P2.12U ▸ มติ 5: เทียบแบบกฎ A3 (ส่วนลด × 10000 > ยอดสุทธิ × bp · ยอดสุทธิ > 0) ด้วย bp ของระบบ ◂
+                const high = discountFlagBp !== null && r.userId !== null && r.netSalesSatang > 0 && r.discountSatang * 10_000 > r.netSalesSatang * discountFlagBp;
                 const none = r.billCount === 0;
                 const td = i === all.length - 1 ? "px-4 py-4" : TD;
                 return (
@@ -814,7 +816,7 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
                     <td className={`${td} ${NUM}`}>{count(r.voidCount)}</td>
                     <td className={td}>
                       {high ? (
-                        <span className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-[color:var(--color-danger)] px-2.5 text-[13px] font-bold text-[color:var(--color-danger)]" title={t("overview.highDiscountHint")} data-testid="pos-report-ov-high-discount">
+                        <span className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-[color:var(--color-danger)] px-2.5 text-[13px] font-bold text-[color:var(--color-danger)]" title={t("overview.highDiscountHint", { pct: pctBp(discountFlagBp ?? 0) })} data-testid="pos-report-ov-high-discount">
                           {t("overview.highDiscount")}
                         </span>
                       ) : null}
