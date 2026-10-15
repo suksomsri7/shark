@@ -97,7 +97,8 @@ const CHECKS: readonly Def[] = [
   D("C5", "X1", "[R7 มติ 8] ย้าย ⇄ เปิดโต๊ะปลายทาง (ถือล็อกโต๊ะปลายทาง) → session OPEN บนโต๊ะปลายทาง 1 แถว (ย้ายผ่าน+เปิดได้ session เดิม หรือ เปิดใหม่+ย้าย TABLE_BUSY) · ย้าย ⇄ จ่ายของ session เดียวกัน (ถือแถว session) → ok ทั้งคู่ · session CLOSED บนโต๊ะใหม่ · โต๊ะเดิมต้องเก็บ"),
   D("C6", "X1", "[R8 มติ 8] รวมโต๊ะ ⇄ จ่ายของโต๊ะต้นทาง (ถือรายการไว้) → จ่ายแล้วรวม (ออเดอร์ที่จ่ายย้ายตาม) หรือ รวมแล้วจ่าย TABLE_ITEMS_CHANGED · รายการหนึ่งไม่มีสองบิล · บิลบางส่วนเดิมของโต๊ะต้นทาง void แล้วรายการกลับมาค้างจ่ายบนโต๊ะปลายทาง"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 2 ruling 4 · hunter Low · id C7 because C6 exists)
-  D("C7", "X1", "[มติ fix2 ข้อ 4] จ่ายใบด้วยบัตรของขวัญ PIN ผิด 10 คำขอพร้อมกัน (คนละคีย์) บนบัตรใบเดียว → ทุกคำตอบ GIFT_CARD_PIN/GIFT_CARD_LOCKED (ไม่มี P2028/หมดเวลา) · ตัวนับ 5 · บัตรถูกล็อก · ใบยัง OPEN · ไม่มีบิล · ตัวควบคุม: บัตรใหม่ PIN ถูก → จ่ายใบได้ครั้งเดียว"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU i · มติ 5): + probe NOWAIT (ธุรกรรมที่สามถือแถวบัตร · ระหว่างคำขอ PIN ผิดรอบัตร แถวรายการ/ใบต้องไม่ถูกล็อก) — fail-before 1a964205 = 55P03 ◂
+  D("C7", "X1", "[มติ fix2 ข้อ 4 · HF-FU มติ 5] จ่ายใบด้วยบัตรของขวัญ PIN ผิด 10 คำขอพร้อมกัน (คนละคีย์) บนบัตรใบเดียว → ทุกคำตอบ GIFT_CARD_PIN/GIFT_CARD_LOCKED (ไม่มี P2028/หมดเวลา) · ตัวนับ 5 · บัตรถูกล็อก · ใบยัง OPEN · ไม่มีบิล · ตัวควบคุม: บัตรใหม่ PIN ถูก → จ่ายใบได้ครั้งเดียว · probe: ธุรกรรมที่สามถือแถวบัตร FOR UPDATE → คำขอ PIN ผิด 1 รายการรอ → SELECT … FOR UPDATE NOWAIT บนรายการของใบ + แถวใบสำเร็จ (ไม่มี 55P03) · ปล่อยแล้วได้ GIFT_CARD_PIN"),
   // ── T ย้าย/รวม ──
   D("T1", "-", "[R7 CD8 มติ 8] registerMoveTable (WAITER) ขณะรอบ NEW + รอบร่าง + แผน OPEN → tableId เปลี่ยน · โต๊ะเดิม dirtySince (ต้องเก็บ) · โต๊ะใหม่สะอาด · ผัง: เดิม NEEDS_CLEARING ใหม่ DINING · kdsBoard label = ชื่อโต๊ะใหม่ · รายการยัง NEW · รอบร่าง/แผนตาม session · ย้ายไปโต๊ะเดิม → {ok, changed:false}"),
   D("T2", "X2", "[R7 CD10] ย้ายไปโต๊ะที่มีลูกค้า → TABLE_BUSY · INACTIVE → TABLE_INACTIVE · โต๊ะร้าน T2 / id มั่ว / ctx สาขา B → TABLE_NOT_FOUND · session ปิดแล้ว → TABLE_SESSION_CLOSED · CASHIER/NOPERM → PERMISSION_DENIED · ไม่เขียน · โต๊ะที่จองไว้ → ok + reservationOverridden (การจองยัง BOOKED)"),
@@ -2387,6 +2388,7 @@ async function runDb() {
     };
     const bad = await sell("bad");
     const good = await sell("good");
+    const probe = await sell("probe"); // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU i): บัตรของ probe NOWAIT ◂
     await drain();
     const s = await seat("C7", { guestCount: 2, lines: [ml("kaprao", 1), ml("chayen", 1)] });
     const pl = splitOf(await mkSplit(s.sid, { mode: "EQUAL", partCount: 2 }));
@@ -2412,7 +2414,60 @@ async function runDb() {
     const ok2 = await sub(newKey("c7ok"), good, good.pin);
     const g2 = await P.giftCard.findUnique({ where: { id: good.id } }).catch(() => null);
     if (ok1?.ok !== true || !refused(ok2, "TABLE_SPLIT_PART_PAID") || g2?.balanceSatang !== 50_000 - grand) p.push(`(ตัวควบคุม) PIN ถูก → ${codeOf(ok1)} ${short(ok1?.message ?? "", 40)} · ซ้ำ ${codeOf(ok2)} · ยอดบัตร ${g2?.balanceSatang}`);
-    chk("C7", p.length === 0, "PIN ผิดพร้อมกันบนใบ = PIN/LOCKED ล้วน · ตัวนับ 5 · ไม่มีบิล · PIN ถูกจ่ายได้ครั้งเดียว", FX(P8(p) || "ครบ"));
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU i · มติ 5): probe NOWAIT บนใบ 2 (ใบ 1 จ่ายแล้วโดยตัวควบคุม) — ธุรกรรมที่สามถือแถวบัตร probe FOR UPDATE · ยิงคำขอ PIN ผิด 1 รายการ ·
+    //   รอจนถูกกั้น (pg_blocking_pids) · tx4 SELECT … FOR UPDATE NOWAIT บนรายการของใบ + แถวใบ ⇒ ต้องสำเร็จ (ตรวจ PIN ก่อนล็อกใบ/รายการ · c4194261) ·
+    //   ปล่อยแล้วคำขอได้ GIFT_CARD_PIN · fail-before บน 1a964205 = 55P03 ทั้งสอง (ledger/wo-notes/HF-FU-red.txt §C7) ◂
+    {
+      const part2 = partOf(pl, 2);
+      const pid2 = String(part2?.id ?? "");
+      const items2 = [...new Set(((part2?.lines ?? []) as Any[]).map((l) => String(l.itemId)))];
+      const q2 = await pq(pid2);
+      const grand2 = q2?.ok === true ? Number(q2.grandTotalSatang) : 0;
+      const wrong = probe.pin === "000001" ? "000002" : "000001";
+      const pgCode = (e: unknown): string => {
+        const o = e as { code?: unknown; meta?: { code?: unknown }; message?: unknown } | null;
+        return String(o?.meta?.code ?? "") || (/\b(55P03)\b/.exec(String(o?.message ?? ""))?.[1] ?? `ERR:${String(o?.code ?? "")}:${String(o?.message ?? e).slice(0, 80)}`);
+      };
+      const nowait = async (sql: string, args: unknown[]): Promise<string> => {
+        try {
+          await P.$transaction(async (t4: Any) => {
+            await t4.$queryRawUnsafe(sql, ...args);
+          }, { timeout: 10_000, maxWait: 10_000 });
+          return "OK";
+        } catch (e) {
+          return pgCode(e);
+        }
+      };
+      const box: { p: Promise<Any> | null } = { p: null };
+      const res: Record<string, string> = {};
+      let blocked = 0;
+      if (!pid2 || !items2.length || !grand2) p.push(`(fixture) probe ใบ 2 ${codeOf(q2)} · รายการ ${items2.length}`);
+      else {
+        await P.$transaction(
+          async (tx: Any) => {
+            await tx.$queryRawUnsafe(`SELECT id FROM "GiftCard" WHERE id = $1 FOR UPDATE`, probe.id);
+            const bpid = Number(((await tx.$queryRawUnsafe(`SELECT pg_backend_pid()::int AS p`)) as Any[])[0].p);
+            box.p = call(register, "submitRegisterSale", ctxA(DEV2), A("OWNER"), { lines: [], tableSplitPartId: pid2, expectedSplitVersion: Number(pl.version), idempotencyKey: newKey("c7probe"), expectedGrandTotalSatang: grand2, payMethods: [{ type: "GIFT_CARD", amountSatang: grand2, giftCard: { number: probe.number, pin: wrong } }] });
+            const t1 = Date.now();
+            while (Date.now() - t1 < 12_000) {
+              const n = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))`, bpid)) as Any[])[0].n);
+              if (n > blocked) blocked = n;
+              if (n > 0) break;
+              await sleep(150);
+            }
+            await sleep(700);
+            res.items = await nowait(`SELECT id FROM "RestaurantOrderItem" WHERE id = ANY($1::text[]) FOR UPDATE NOWAIT`, [items2]);
+            res.part = await nowait(`SELECT id FROM "PosTableSplitPart" WHERE id = $1 FOR UPDATE NOWAIT`, [pid2]);
+          },
+          { timeout: 60_000, maxWait: 15_000 },
+        );
+        const sub = await box.p;
+        if (blocked < 1) p.push("probe: คำขอ PIN ผิดไม่ถูกแถวบัตรกั้น (จัดฉากไม่ถึง)");
+        if (res.items !== "OK" || res.part !== "OK") p.push(`probe NOWAIT ระหว่างรอบัตร: รายการ ${res.items} · ใบ ${res.part} (คาด OK ทั้งคู่ — 55P03 = ล็อกใบ/รายการก่อนตรวจ PIN)`);
+        if (!refused(sub, "GIFT_CARD_PIN") || (await partRows(String(pl.splitId)))[1]?.status !== "OPEN") p.push(`probe: หลังปล่อย ${codeOf(sub)} · ใบ 2 ${(await partRows(String(pl.splitId)))[1]?.status} (คาด GIFT_CARD_PIN · OPEN)`);
+      }
+    }
+    chk("C7", p.length === 0, "PIN ผิดพร้อมกันบนใบ = PIN/LOCKED ล้วน · ตัวนับ 5 · ไม่มีบิล · PIN ถูกจ่ายได้ครั้งเดียว · probe NOWAIT ไม่ติดล็อก", FX(P8(p) || "ครบ"));
   });
 
   // ════════ T ย้าย/รวม ════════
