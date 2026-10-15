@@ -1675,3 +1675,8 @@
 - spawn **builder P2.10 fix 1** (Opus ทรี b) prompt `pos-prompt-accountB-P2.10-fix.md` · chain80 vis82 @7ac9efbe ยังถ่ายอยู่ (ดูภาพรอบแรกเทียบแบบ 11A ระหว่างรอ)
 - เลน: 1 = P2.12 oracle ทรี c · 2 = P2.10 fix 1 ทรี b · ทรี d = chain80
 - 15:48Z vis82 @7ac9efbe (`/root/pos-runs/vis82-qc5-20261015T154146Z`): 13 state seeded th+en **ตรงแบบ 11A** (ผู้คุมดู) · **display-live ล้ม** ทั้ง th/en (จอจับคู่+โพลได้ แต่หน้าขายจริงไม่ส่งบรรทัดใน 20 วิ · ไม่มี error) → **F8** ส่งให้ builder fix 1 (หาสาเหตุ + ใส่ diagnostics ใน harness) · หลัง fix: ผู้คุมถ่าย display-live/done/member-stamps/settings-code ซ้ำบนทรี d
+
+### 15 ต.ค. 16:0xZ — P2.12 oracle เสร็จ → builder S ทรี c
+- oracle writer: `wip/pos-p2.12-oracle` **d6cb9006** push แล้ว · 30 ข้อ (ST1–3 CH1–3 BR1–3 HR1–2 AN1–12 PD1–3 BL1–2 Z1–2) · forced 3/30 เขียวที่ฐาน (ST1 Z1 Z2) · **CH1 ยืนยันบั๊ก: STORE 5 บิล/฿1,200 แทน 4/฿700 (ใบรับมัดจำนับซ้ำ)** · typecheck 0 · owner line P2.12T เพิ่มแล้ว · CD 1–10 → ผู้คุมรับทั้งหมด (brief §10 ข้อ 11: keys `pos.report.*` เอกพจน์ · print page = U · S ให้ `posReportPrintAction` · anomaly row + userName · rule defs ตามตาราง · thresholds clamp · branches เฉพาะสาขาที่มีบิล/กะ · bills `"*"` key set เดิม)
+- spawn **builder P2.12 S** (Opus ทรี c `wip/pos-p2.12` จาก origin/session/pos e6546359 + merge oracle) prompt `pos-prompt-accountB-P2.12.md`
+- เลน: 1 = P2.10 fix 1 ทรี b (รวม F8 display-live) · 2 = P2.12 S builder ทรี c · ทรี d ว่าง @7ac9efbe (build80 พร้อม serve ซ้ำ)
