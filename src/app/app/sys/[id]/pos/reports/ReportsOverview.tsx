@@ -799,6 +799,7 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
               {staff.v.rows.slice(0, 5).map((r, i, all) => {
                 const name = r.userId === null ? t("unknownSeller") : (r.name ?? r.userId);
                 // POS P2.12U ▸ มติ 5: เทียบแบบกฎ A3 (ส่วนลด × 10000 > ยอดสุทธิ × bp · ยอดสุทธิ > 0) ด้วย bp ของระบบ ◂
+                // POS P2.12U ▸ fix1 F2 (มติ 4): เกณฑ์ bp เดียวกับ A3 แต่ฐานส่วนลดต่างกัน — แถวพนักงาน = Σ PosSale.discountSatang (บิล + คูปอง + สมาชิก · ไม่รวมส่วนลดรายบรรทัด) · A3 = ส่วนลดที่พนักงานคุมได้ (บรรทัด + บิล − คูปอง − สมาชิก) ⇒ ป้ายนี้ = ค่าประมาณ · ธงต่อพนักงานจาก A3 จริง = งานต่อฝั่ง S (HF-FU2/P2.14) ◂
                 const high = discountFlagBp !== null && r.userId !== null && r.netSalesSatang > 0 && r.discountSatang * 10_000 > r.netSalesSatang * discountFlagBp;
                 const none = r.billCount === 0;
                 const td = i === all.length - 1 ? "px-4 py-4" : TD;

@@ -2198,7 +2198,7 @@
         "hint": {
           "A1": "Voids per person per day — reaching this many, or this total",
           "A2": "Refunds per person per day — reaching this many, or this total",
-          "A3": "Discount a staff member gave over the range above this % of their net sales (also drives the staff card flag)",
+          "A3": "Discount a staff member gave over the range above this % of their net sales (the staff card flag uses the same % as an approximate guide)",
           "A4": "A single bill whose staff discount reaches this % of the pre-discount total (coupons and member benefits excluded)",
           "A5": "Manager PIN overrides per approver per day reaching this many",
           "A6": "Custom-price lines per person per day reaching this many",
