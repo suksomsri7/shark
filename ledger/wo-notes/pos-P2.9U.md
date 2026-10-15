@@ -57,6 +57,8 @@ Inventory rows = interactive ids only (F15.3 kinds); display-only ids listed in 
 - S owner (optional): refusal `lineIndex` / attempts-left on `GIFT_CARD_PIN` would let the UI mark the exact row (deviation 2).
 - Gift card / store credit at table checkout and online orders = later card (deviation 5).
 - QC member store credit accumulates by ฿200/day of visual runs (no module debit) — controller line if it matters.
+- (fix 1 · owner line a) S owner, P2.11: one shared pure `refundTenderCaps` used by `refund.ts planRefundTenders` and `refund-tenders.ts` (the UI reader recomputes the same caps today).
+- (fix 1 · owner line b) member owner: `registerMemberBenefits.giftCards` lacks `kind` and `status` — a SUSPENDED store-credit card still enables the tile until the server answers at submit.
 
 ## Gates (final)
 All logs headed `tree=/root/projects/shark-pos-b head=0fb244fd dirty=0` (14 Oct 23:01–23:16Z) in `scratchpad/p29u/runs/final/*.log` (runner `scratchpad/p29u/gates.sh`, sequential); head 0fb244fd = code f1148fa2 + spec c5e98962 + upstream d341ed7f (ledger only). The notes commit after it is ledger-only. Mid-way typecheck at 80871fb9: rc 0 (`runs/typecheck-mid.log`).
@@ -77,3 +79,31 @@ All logs headed `tree=/root/projects/shark-pos-b head=0fb244fd dirty=0` (14 Oct 
 | fitness-pos | fitness-pos.log | 8/8 (F15.3 814 rows · F15.4 3009 keys) |
 | visual-pos p2.9u --states --dry (CI=1) register/sales/settings × owner/cashier | visual-dry-*.log | rc 0 ×6 (22 / 3 / 3 shots per user · LOCALE=en register 8) |
 Not run (not in this card's gate list): qc-pos-p1.1 (CONTROLLER-RUN at merge per LANE-RULES), money set, real screenshots (QC5 = controller).
+
+## Fix round 1 (R1 MERGEABLE + controller screenshots vis72 · rulings L1 L3 I7 V1–V4 + owner lines, 15 Oct)
+| finding | commit | change |
+|---|---|---|
+| L1 raw prisma in a "use server" file | 8e7efb8d | new read-only reader `src/lib/modules/pos/tip-ledger.ts posTipLedgers` (same link query as `tipLedgerOk`); `tip-ledger-actions.ts` only checks session/permission and calls it |
+| L3 REASON_REQUIRED mapping | d158d0fd | `BillsClient.tsx`: `REASON_REQUIRED` (server) and the client pre-check ⇒ `pos-bills-refund-reason-error` "พิมพ์เหตุผลการคืนเงินที่ช่องนี้ก่อนยืนยัน…" at the reason field (`bills.refund.tender.reasonRequired` th/en), reason text input opened |
+| I7 unmarked hunk | e3550fed | `RegisterScreen.tsx` PayDone `duplicated=` line inside `// POS P2.9U ▸ … ◂` |
+| V1 CHANGED → manual "ใส่ PIN" | 48f64a64 | `relookupRows` returns the kept rows; after `GIFT_CARD_CHANGED` the panel of the first kept row opens with the PIN target (focus on fine pointers) |
+| V2 02 overflow at 1440×900 | 23aad710 | dialog height ≤ 840px (1440×900 = 840 ≈ mockup 830; 1024×768 unchanged 736) · left column md gap 14 / xl 18, pb 14 · amount header `pos-reg-paydlg-due-head` sticky md+ (40px / xl 52px) · tiles 60 / xl 70 (gap 10/12) · remaining row py 8 · `PayBenefits.tsx` points card py 10 gap 8, section gap 10 (md+ only; 390 keeps the sheet scroll) |
+| V3 refund-to-card chip disabled | f380b93f | harness: the `sale-done-giftcard` card is not suspended in cleanup (stays ACTIVE, ฿175); refund-to-card fallback = newest gift-card bill of today whose card is ACTIVE; step fails if the chip is disabled; changed state waits for the auto-opened PIN panel |
+| V4 "คงเหลือ" truncated at 390 | ee047ec7 | card/credit rows < md: balance text `order-last basis-full` second line under the row (remove button `ml-auto`) |
+| owner lines (a)(b) | 4eb3de1d | `ledger/POS-OWNER-PENDING.md` §P2.9U + follow-ups above |
+Each visual run now leaves: 4 card-sale bills (cards suspended) **except the sale-done-giftcard card kept ACTIVE with ฿175** (one per user run that includes sale-done-giftcard) · 1 PAID card+cash bill per user · the CHANGED card's legacy USE · QC member store credit ฿200 once per day · settings restored.
+Not verified in a browser (no server in the builder lane): V2 fit at 1440/1024 and V4 at 390 — controller re-shoot: register `paydlg-storecredit,paydlg-tip,paydlg-giftcard-split,paydlg-giftcard-changed` · sales `refund-to-card` (after the register run).
+
+### Gates — fix round 1
+All logs headed `tree=/root/projects/shark-pos-b head=4eb3de1d dirty=0` in `scratchpad/p29u/runs/fix1/*.log` (code head f380b93f + ledger owner lines; upstream unchanged). Diff touches `src/lib/modules/pos/` only in `tip-ledger*.ts` ⇒ p2.9/p2.8 not re-run (per ruling).
+| gate | result |
+|---|---|
+| typecheck | rc 0 |
+| qc-pos-p1.18 (ST7 0) | 81/81 |
+| qc-pos-p1.8 | 49/49 |
+| qc-pos-p1.6 | 48/48 |
+| qc-pos-p1.12 | 72/72 |
+| qc-hf-pos-page-authz | 81/81 |
+| fitness no-env / env | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| visual-pos p2.9u --states --dry × 6 | rc 0 ×6 |
