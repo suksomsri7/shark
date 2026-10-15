@@ -1544,3 +1544,9 @@
 - prompt `pos-prompt-accountB-HF-FU-O.md` commit a944c539 → **spawn oracle writer (Opus) ทรี c** `wip/pos-hf-fu-oracle` @ c3c52ef1 (object ใน store ร่วม · ไม่ต้องรอ push)
 - gates86 ทรี b @c3c52ef1: 17/32 เสร็จ · เขียวหมดยกเว้น `qc-pos-p2.11` 32/34 (ST1/ST4 = lane pin เทียบ origin/session/pos ที่ยังไม่ push → เขียวเองหลัง push + รันซ้ำ) · ตามแผน: เขียว → push → p2.8+p2.11 ซ้ำ → QC5 migrate deploy ×2 → 35/55 + TG → เติม `__BASE__` prompt P2.9bU → spawn builder ทรี b
 - เลน: 1 = HF-FU oracle (ทรี c) · 2 = P2.9bU builder (ทรี b หลัง push) · โควตา session 21% (ถึง 12:40Z) · weekly 57%
+
+### 15 ต.ค. 10:06Z — **35/55 (64%)** P2.9b S closed · P2.9bU builder เปิด
+- gates86 @c3c52ef1 เขียว 32 ชุด (p2.8 ST6 / p2.11 ST1+ST4 แดงเพราะเทียบ origin ก่อน push) → **push session/pos 1ecc4c71..a1d8af43** → gates90 ทรี b (p2.8 61/61 · p2.11 34/34) → QC5 `migrate deploy` ×2 สำเร็จ (pos_p29b_deposits · pos_p29b_deposit_phone_lock) → TG msg 4662
+- prompt P2.9bU base = a1d8af43 (d9984f10) → **spawn builder (Opus) ทรี b** `wip/pos-p2.9bu` จาก origin/session/pos
+- เลน: 1 = HF-FU oracle writer ทรี c (เริ่ม ~10:00Z) · 2 = P2.9bU builder ทรี b (เริ่ม 10:06Z) · ทรี d ว่าง @942a334e (รอภาพ merge)
+- ถัดไป: oracle HF-FU รายงาน → ผู้คุมตัดสิน CONTROLLER-DECISION → prompt builder HF-FU S (ทรี c) · P2.9bU รายงาน → R1 → ภาพ p2.9bu บนทรี d
