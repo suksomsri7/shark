@@ -240,7 +240,7 @@ const ordersPay = definePosOp({
   path: "/orders/{id}/pay",
   kind: "write",
   action: POS_SCOPES.saleCreate,
-  summary: "Take payment for an order of a DIRECT channel: opens the bill (stock, journal, receipt) and marks the order PAID. Payments must add up to the order total.",
+  summary: "Take payment for an order of a DIRECT channel: opens the bill (stock, journal, receipt) and marks the order PAID. Payments must add up to the order total. Cash needs exactly one open shift at the branch (409 state_conflict otherwise).",
   label: "รับชำระออเดอร์",
   test: "orders.pay",
   input: z

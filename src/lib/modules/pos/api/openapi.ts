@@ -43,7 +43,7 @@ const INFO_DESCRIPTION = [
   `11. Rate limits are per key and per class: ${API_RATE_LIMITS.read.limit} reads, ${API_RATE_LIMITS.write.limit} writes and ${API_RATE_LIMITS.report.limit} reports per minute (namespace pos, separate from other SHARK modules). A 429 response carries \`Retry-After\`; successful responses carry \`X-RateLimit-Limit\` and \`X-RateLimit-Remaining\`.`,
   "12. Reports render CSV with `Accept: text/csv`: `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment`, the same file as the export button of the reports screen.",
   `13. Outgoing webhooks. The shop can subscribe an endpoint to these POS events: ${posWebhookEvents().map((e) => `\`${e}\``).join(", ")}. Each delivery is \`POST\` with \`X-Shark-Event\`, a body of \`{ id, type, payload, sentAt }\` and header \`X-Shark-Signature\` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once, so handlers must be idempotent (\`id\` stays the same on every retry).`,
-  "14. Bills sold through the API are bills of the POS: they carry `sourceModule: \"API\"` and the key id as seller, follow the shop's shift rule for sales from other sources, and appear in every report.",
+  "14. Bills sold through the API are bills of the POS: they carry `sourceModule: \"API\"` and the key id as seller, follow the shop's shift rule for sales from other sources (or the OPEN shift given as `shiftId`), and appear in every report. Cash taken for an order (`POST /orders/{id}/pay`) always lands in a shift: the branch must have exactly one open shift, otherwise 409 `state_conflict` and nothing is written.",
 ].join("\n");
 
 /** ส่วนหัวเอกสารของ API ระบบขายหน้าร้าน */

@@ -45,7 +45,7 @@ Conventions that apply to every operation:
 11. Rate limits are per key and per class: 300 reads, 60 writes and 30 reports per minute (namespace pos, separate from other SHARK modules). A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 12. Reports render CSV with `Accept: text/csv`: `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment`, the same file as the export button of the reports screen.
 13. Outgoing webhooks. The shop can subscribe an endpoint to these POS events: `pos.sale.paid`, `pos.sale.voided`, `pos.shift.opened`, `pos.shift.closed`, `pos.stockCount.confirmed`, `pos.sale.refunded`, `pos.payment.intent_paid`, `pos.sale.taxInvoiceIssued`, `pos.order.received`, `pos.order.accepted`, `pos.order.rejected`, `pos.order.ready`, `pos.order.completed`, `pos.order.cancelled`, `pos.product.availability`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ id, type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once, so handlers must be idempotent (`id` stays the same on every retry).
-14. Bills sold through the API are bills of the POS: they carry `sourceModule: "API"` and the key id as seller, follow the shop's shift rule for sales from other sources, and appear in every report.
+14. Bills sold through the API are bills of the POS: they carry `sourceModule: "API"` and the key id as seller, follow the shop's shift rule for sales from other sources (or the OPEN shift given as `shiftId`), and appear in every report. Cash taken for an order (`POST /orders/{id}/pay`) always lands in a shift: the branch must have exactly one open shift, otherwise 409 `state_conflict` and nothing is written.
 
 ### Selling, step by step
 
@@ -899,7 +899,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/pos/orders/123/complete" \
 
 #### `orders.pay`
 
-**POST /orders/{id}/pay** - Take payment for an order of a DIRECT channel: opens the bill (stock, journal, receipt) and marks the order PAID. Payments must add up to the order total. · scope: `pos.sale.create` · write
+**POST /orders/{id}/pay** - Take payment for an order of a DIRECT channel: opens the bill (stock, journal, receipt) and marks the order PAID. Payments must add up to the order total. Cash needs exactly one open shift at the branch (409 state_conflict otherwise). · scope: `pos.sale.create` · write
 
 Path parameters: `id` (required).
 

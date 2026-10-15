@@ -1267,7 +1267,15 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     // POS P2.13 ▸ CD5 (ขยายถึง orders.pay): คำขอจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId · ไม่มีเครื่อง) = ไม่ส่ง shiftId ⇒ createSale ผูกกะตามกติกา
     //   "ทางอื่น" (requiredOtherSources) แทนกะของเครื่อง · หน้าจอ (ไม่มี apiKeyId) = เดิมทุกไบต์ ◂
     const apiPay = isRecord(ctx) && typeof (ctx as { apiKeyId?: unknown }).apiKeyId === "string" && !!(ctx as { apiKeyId?: unknown }).apiKeyId;
-    const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: undefined, required: false } : await deviceShift(prisma, s, s.deviceId);
+    // POS P2.13 ▸ fix1 H3: เงินสดผ่าน REST ลงกะเสมอ (ไม่บันทึกเงินสดนอกกะ แม้ requiredOtherSources ปิด) — ผูกกะเปิดกะเดียวของสาขา ·
+    //   ไม่มีกะเปิด / เปิดหลายกะ (ไม่เดา) = SHIFT_REQUIRED ก่อนเขียน · ไม่มีเงินสด = กติกา "ทางอื่น" ของ createSale เหมือนเดิม ◂
+    let apiCashShift: string | undefined;
+    if (apiPay && cashRows.length > 0) {
+      const open = await prisma.posShift.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 });
+      if (open.length !== 1) return refuse("SHIFT_REQUIRED", open.length ? "สาขานี้เปิดกะอยู่หลายกะ — ระบุกะทาง API ไม่ได้ รับเงินสดของออเดอร์นี้ที่เครื่องหน้าร้าน" : "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนรับเงินสด");
+      apiCashShift = open[0]!.id;
+    }
+    const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: apiCashShift, required: false } : await deviceShift(prisma, s, s.deviceId);
     if (!apiPay && (cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
     // POS HF-PP2 ▸ (P2.8U R1 F1 · บรีฟ §9 ข้อ 1–2): ด่านเดียวกับ submitRegisterSale (HF-PP) — ร้านตั้ง manualConfirmRequiresManager ⇒ พร้อมเพย์/บัตรที่ไม่อ้าง
     //   ใบขอรับเงินที่จ่ายแล้ว (pi_ ของสาขานี้ · PAID ใน 24 ชม. · ยอดตรงแถว · ไม่ซ้ำ · ยังไม่อยู่บนบิลใด — payOrder ไม่ตัดใบ จึงตรวจของจริง ไม่ใช่แค่รูปแบบ · fix1 F1) ต้องมี pos.shift.manage ·
