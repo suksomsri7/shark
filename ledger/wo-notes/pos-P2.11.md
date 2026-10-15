@@ -97,7 +97,7 @@ Code head for all gates = **f7353edb** (gate run at a21486a9 = f7353edb + ledger
 | finding | commit | change |
 |---|---|---|
 | CD-1 re-pins | 409dc9ae · bd96e593 · c21b6018 | `qc-pos-p2.1` S8 / `qc-pos-p2.2` S3: accept the 3 `payMethods[].giftCard*` fields only when the contract file sha = 72afb258…; `qc-pos-p2.3` ST4 `CONTRACT_SHA_B694` → 72afb258… (old 7a418de17b44… kept in the marker) — S8/S3 had no file sha, so the re-pin is the file-sha gate on the extra-field list; nothing else changed |
-X PR10 PR11 PR12, dated marker `ORACLE-ADD ผู้คุม 15 ต.ค. (P2.11 fix รอบ 1 · มติ 1–3 …)` |
+| ORACLE-ADD | 4b925e37 · c578a275 (second: drop PR12's B-only case — omitting in-reach A rows deletes them = a real change) | PR10 PR11 PR12, dated marker `ORACLE-ADD ผู้คุม 15 ต.ค. (P2.11 fix รอบ 1 · มติ 1–3 …)` |
 | red-before block 2 | 20762bc8 | forced at code f7353edb: **31/34**, red = PR10 (NOT_FOUND) · PR11 (`purgeDead` unknown key ⇒ VALIDATION) · PR12 (MANAGER{A} B-row-first ⇒ PERMISSION_DENIED) — all by reason, no fixture note |
 | R1 F3 (ruling 1) | 99821954 | `copyUnitPrices` without `productIds`: products the actor cannot see (single-unit, unit out of reach) are left out of the copy and their source rows counted in `skipped`; with explicit `productIds` still NOT_FOUND |
 | hunt L1 (ruling 2) | 9afe7d83 | `setChannelPrices({…, purgeDead: true})` (+ action passthrough): product-wide scope = setPrice + access at every live POS unit (none live ⇒ OWNER/`*`), checked before any write else PERMISSION_DENIED; deletes every dead row of the product (sent or not); non-boolean ⇒ VALIDATION `field purgeDead`; audit after has `via:"purgeDead", purged:[…]`; default unchanged |
