@@ -35,3 +35,6 @@ Rows = `allocateRefund` (pure, `refund-tenders-shared.ts`): chosen chip up to it
 
 ## 5. Visual states (`visual-pos.mts p2.9u --states --page register|sales|settings`)
 register: `paydlg-giftcard-entry` · `paydlg-giftcard-split` · `paydlg-giftcard-pin-error` · `paydlg-giftcard-insufficient` · `paydlg-giftcard-changed` · `paydlg-storecredit` · `paydlg-tip` · `sale-done-giftcard` (1440, one PAID bill per user) · sales: `refund-to-card` · settings: `settings-tip-ledger`.
+
+## Addendum P2.9bU (15 Oct 2026) — deposit tile is live
+The row-2 tile `pos-reg-paydlg-method-deposit` is no longer "เร็ว ๆ นี้" on the register: enabled iff `tenders.deposit.enabled`, else "ยังไม่เปิดใช้"; the deposit pick panel, receive dialog, 02b deposit lines, bills chip/refund sheet and the settings toggle are specified in `pos-spec-P2.9b-deposit-ui.md`. `stripPayPins` now also drops `phoneLast4` (DEPOSIT rows); `REGISTER_CASH_LIKE_PAY` (tip funding) is unchanged — deposits never fund a tip.
