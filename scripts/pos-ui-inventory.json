@@ -1811,7 +1811,7 @@
         "type": "ui",
         "target": "pos-reg-paydlg-tip",
         "state": "appears",
-        "note": "ปิดอยู่ (TIP_NOT_AVAILABLE) จนกว่า P1.6b ลงบัญชีทิปได้ — แสดงเหตุผลข้างปุ่ม"
+        "note": "P2.9U: แสดงเมื่อร้านเปิดทิป (payment settings tip.enabled) · เปิดได้เมื่อมีแถว/รอบเงินจริง (CASH/PROMPTPAY/TRANSFER/CARD) · ทิป ≤ Σ เงินจริง"
       },
       "wo": "P1.6U",
       "oracle": "",
@@ -1831,7 +1831,7 @@
         "type": "ui",
         "target": "pos-reg-paydlg-due",
         "state": "changes",
-        "note": "ยอดทิป (นอกยอดบิล · Σ วิธีจ่าย = ยอดบิล + ทิป) · แก้ได้เฉพาะตอนยังไม่มีแถวแยกจ่าย"
+        "note": "P2.9U: ยอดทิป (นอกยอดบิล) · แตะช่อง = แป้นตัวเลขกรอกทิป · \"รวมทิป ฿x\" ใต้รายการ (pos-reg-paydlg-tip-total)"
       },
       "wo": "P1.6U",
       "oracle": "",
@@ -5293,25 +5293,6 @@
       "expect": {
         "type": "ui",
         "note": "คืนเข้าบัตรเดิม (แสดงเมื่อบิลจ่ายบัตร)"
-      },
-      "wo": "P1.16",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/sales",
-      "testid": "pos-bills-refund-method-credit",
-      "kind": "toggle",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "ui",
-        "note": "เครดิตร้าน — ปิดไว้ \"รอบถัดไป (กระเป๋าสมาชิก)\" (มติ CD3 · ไม่ใช่วิธีคืนของ P1.8)"
       },
       "wo": "P1.16",
       "oracle": "",
@@ -8828,8 +8809,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-member-giftcards",
-        "note": "ว่อชเชอร์/บัตรของขวัญ — ปิดเสมอ เร็ว ๆ นี้ (CD3 · P2.9) · บัตรของขวัญของสมาชิกแสดงอ่านอย่างเดียวใต้แถว"
+        "target": "pos-reg-paydlg-giftcard-panel",
+        "note": "P2.9U: registerPayTendersAction.giftCard.enabled ⇒ แผงบัตรของขวัญ · ปิด = \"ยังไม่เปิดใช้\" · โต๊ะ/ออเดอร์ (ไม่ส่ง tenders) = เร็ว ๆ นี้ แบบเดิม"
       },
       "wo": "P1.12U",
       "oracle": "qc-pos-p1.12",
@@ -8848,7 +8829,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-paydlg",
-        "note": "มัดจำที่ชำระไว้ — ปิดเสมอ เร็ว ๆ นี้ (P2.9)"
+        "note": "มัดจำที่ชำระไว้ — ปิดเสมอ เร็ว ๆ นี้ (P2.9b · มติ CD6)"
       },
       "wo": "P1.12U",
       "oracle": "qc-pos-p1.12",
@@ -8867,7 +8848,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-paydlg",
-        "note": "ลงบิลห้องพัก (โรงแรม) — ปิดเสมอ เร็ว ๆ นี้ (P2.9)"
+        "note": "P2.9U: แสดงเฉพาะสาขาโรงแรม (tenders.roomCharge.visible) · ปิด เร็ว ๆ นี้ (CD8)"
       },
       "wo": "P1.12U",
       "oracle": "qc-pos-p1.12",
@@ -8885,8 +8866,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-paydlg",
-        "note": "เครดิตร้าน (ลูกค้าประจำ) — ปิดเสมอ เร็ว ๆ นี้ (P2.9)"
+        "target": "pos-reg-paydlg-storecredit-info",
+        "note": "P2.9U: สมาชิกในบิล + เครดิตร้าน > 0 (benefits.giftCards SC-••••) ⇒ แถวเครดิตร้าน (ไม่มี PIN · แถวเดียว) · ปิด = \"ไม่มีสมาชิก\"/\"ไม่มีเครดิต\""
       },
       "wo": "P1.12U",
       "oracle": "qc-pos-p1.12",
@@ -15398,6 +15379,288 @@
       "oracle": "qc-pos-p2.6",
       "system": "POS",
       "query": ""
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-number",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-giftcard-result",
+        "state": "changes",
+        "note": "เลขบัตรของขวัญ (พิมพ์/สแกน · ≤ 40) · Enter = ค้นบัตร · ไม่ใช่ช่อง PIN"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-scan",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-scan-sheet",
+        "note": "กล้อง (ScanCameraDialog) → เลขบัตรเท่านั้น → ค้นทันที (มติ 2a)"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-lookup",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-giftcard-result",
+        "state": "appears",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-paydlg-giftcard-notfound"
+          }
+        ],
+        "note": "registerGiftCardLookupAction (อ่านอย่างเดียว · ไม่มี PIN) → GC-••••1234 · คงเหลือ · หมดอายุ · ใช้ไม่ได้ = เหตุผล · ไม่พบ = \"ไม่พบบัตร\""
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-amount",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-giftcard-amount",
+        "state": "changes",
+        "note": "จำนวนที่ใช้จากบัตร = min(คงเหลือ, ยอดบัตร) · แตะ = แป้นตัวเลขกรอกจำนวน (ตัดที่ยอดบัตร)"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-pin",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-giftcard-use",
+        "state": "changes",
+        "note": "PIN 4–12 หลัก · type=password · ไม่ควบคุม (ไม่เป็น attribute) · แป้นตัวเลขโหมดปิดบัง · ไม่ลง storage/log"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-use",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-giftcard-row-*",
+        "state": "appears",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-paydlg-giftcard-error"
+          }
+        ],
+        "note": "ใช้บัตรนี้ (PIN ≥ 4) ⇒ แถว \"บัตรของขวัญ GC-••••1234 ฿x ✓ · คงเหลือ ฿y\" · ใบซ้ำ = \"ใช้บัตรนี้ในบิลแล้ว\" · ใบที่ 4 = \"ใช้ได้สูงสุด 3 ใบ\""
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-row-pin-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-giftcard-pin",
+        "state": "appears",
+        "note": "แถวบัตรที่ต้องใส่ PIN ใหม่ (GIFT_CARD_PIN · GIFT_CARD_CHANGED · คำขอไม่มี PIN ถูกปฏิเสธ) → แผงของแถวนั้น"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-giftcard-changed-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-giftcard-changed",
+        "state": "disappears",
+        "note": "ปิดแบนเนอร์ \"ยอดบัตรเปลี่ยน — ตรวจสอบใหม่\""
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-card-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-summary",
+        "state": "changes",
+        "note": "P2.9U มติ 8: คืนเข้าบัตร GC-••••1234 (สูงสุด ฿x = ส่วนที่บัตรจ่าย − ที่คืนแล้ว · refundTenderOptionsAction) · บัตรใช้ไม่ได้ = ปิด + เหตุผล · ยอดเกินเพดาน = แบ่งแถว (allocateRefund) · ส่ง GIFT_CARD + giftCardId"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-storecredit",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-summary",
+        "state": "changes",
+        "note": "P2.9U มติ 8: เครดิตร้าน · เข้ากระเป๋าสมาชิก (บิลสมาชิกเท่านั้น · แถว STORE_CREDIT เดียว) — แทนชิป เครดิตร้าน ที่ปิดไว้ของ P1.16"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-tip-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-tip-save",
+        "state": "changes",
+        "note": "P2.9U มติ 6: รับทิปที่หน้าขาย · เปิดได้เมื่อ POS เชื่อมสมุดบัญชี · บันทึกด้วยปุ่มของการ์ด"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=payments&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-tip-ledger",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-tip-save",
+        "state": "changes",
+        "note": "P2.9U มติ 6: บัญชีพักทิป = เฉพาะ LIABILITY ของสมุดที่เชื่อม (posTipLedgersAction กรองที่จอ) · บัญชีอื่นเลือกไม่ได้"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=payments&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-tip-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:updatePosPaymentSettingsAction",
+        "db": "AppSystem(POS).settings.pos.tip",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-settings-tip-ledger-error"
+          }
+        ],
+        "note": "P2.9U มติ 6: patch.tip {enabled, ledgerAccountId} · TIP_ACCOUNT_REQUIRED/VALIDATION = ข้อความที่ช่องบัญชี · ไม่ใช่เจ้าของ = การ์ดอ่านอย่างเดียว"
+      },
+      "wo": "P2.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=payments&unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
