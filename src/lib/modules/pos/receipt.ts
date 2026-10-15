@@ -28,7 +28,7 @@ import { receiptSettingsOf } from "./receipt-settings";
 import { receiptUnitOverride } from "./receipt-settings-shared"; // POS P2.11 ▸ สาขาที่/ที่อยู่/โทร ต่อสาขา (§4) ◂
 import { posReceiptLocale } from "./settings-shared"; // POS P1.18 ▸ R12 ภาษาใบเสร็จที่พิมพ์ ◂
 // POS P1.16 ▸ R2: กติกาชนิดใบเสร็จตัวเดียวกับหน้าบิลวันนี้ (billDetail.receiptKind) ◂
-import { receiptKindOf } from "./receipt-shared";
+import { receiptKindOf, receiptShopHeaderOf } from "./receipt-shared"; // POS P2.10 ▸ + หัวร้าน ◂
 import { ensureReceiptToken } from "./receipt-token";
 import { saleChannelResolver } from "./channel"; // POS P2.1 ▸ R11 ◂
 import type { RegisterActor } from "./register-shared";
@@ -276,8 +276,8 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   const refSale = refSaleId ? await db.posSale.findFirst({ where: { id: refSaleId, tenantId, systemId }, select: { receiptNo: true } }) : null;
   const refReceiptNo = nonEmpty(refSale?.receiptNo);
 
-  const shopName = nonEmpty(rs.header.name) ?? nonEmpty(book?.orgName) ?? nonEmpty(tenant?.name) ?? nonEmpty(unit?.name) ?? "-";
-  const logoUrl = rs.header.logoUrl ?? nonEmpty(book?.logoUrl);
+  // POS P2.10 ▸ สายหัวร้านย้ายเป็นตัวช่วยบริสุทธิ์ receiptShopHeaderOf (จอลูกค้าใช้ตัวเดียวกัน) — ผลเท่าเดิมทุกกรณี ◂
+  const { shopName, logoUrl } = receiptShopHeaderOf({ headerName: rs.header.name, headerLogoUrl: rs.header.logoUrl, bookOrgName: book?.orgName, bookLogoUrl: book?.logoUrl, tenantName: tenant?.name, unitName: unit?.name });
   const memberName = snap
     ? (nonEmpty(snap.name ?? undefined) ?? "-")
     : customer
@@ -380,4 +380,22 @@ export async function eReceiptUrl(db: Db, tenantId: string, sale: { id: string; 
   const token = sale.publicToken ?? (await ensureReceiptToken(tenantId, sale.id, db));
   if (!token) return null;
   return `${(await publicOrigin()).replace(/\/+$/, "")}/r/${token}`;
+}
+
+/**
+ * POS P2.10 ▸ หัวร้านของใบเสร็จสำหรับจอลูกค้า (ชื่อร้าน · โลโก้ · ชื่อสาขา) — อ่านอย่างเดียว · สายเดียวกับ buildReceipt (receiptShopHeaderOf) ·
+ *   ผู้เรียกตัดสินสิทธิ์/ขอบเขตแล้ว (จอลูกค้า: token ของจอ = สิทธิ์ของสาขานั้น) · ระบบ POS ไม่พบ = null ◂
+ */
+export async function receiptShopHeader(db: Db, tenantId: string, systemId: string, unitId: string): Promise<{ shopName: string; logoUrl: string | null; branchName: string; settings: unknown } | null> {
+  const [posSys, unit, tenant, bookId] = await Promise.all([
+    db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { settings: true } }),
+    db.businessUnit.findFirst({ where: { id: unitId, tenantId }, select: { name: true } }),
+    db.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+    account.posAccountSystemId(tenantId, systemId),
+  ]);
+  if (!posSys) return null;
+  const rs = receiptSettingsOf(posSys.settings);
+  const book = bookId ? await db.accountSettings.findFirst({ where: { systemId: bookId, tenantId }, select: { orgName: true, logoUrl: true } }) : null;
+  const h = receiptShopHeaderOf({ headerName: rs.header.name, headerLogoUrl: rs.header.logoUrl, bookOrgName: book?.orgName, bookLogoUrl: book?.logoUrl, tenantName: tenant?.name, unitName: unit?.name });
+  return { shopName: h.shopName, logoUrl: h.logoUrl ?? null, branchName: unit?.name ?? "", settings: posSys.settings };
 }

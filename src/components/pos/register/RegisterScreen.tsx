@@ -141,6 +141,7 @@ import { DiscountOverSheet as DiscountOverBox } from "./DiscountOverSheet";
 import { useIdleLock } from "./use-idle-lock";
 // POS P1.10 U ▸ heartbeat ของเครื่องนี้ → ชื่อเครื่อง + printerConfig (พิมพ์ใบเสร็จ · ชิปแถบล่าง) · เครื่องถูกเพิกถอน = แถบแดงค้าง + ล็อกปุ่มชำระ ◂
 import { heartbeatAction } from "@/lib/modules/pos/device-actions";
+import { useDisplayPublish } from "@/components/pos/display/use-display-publish"; // POS P2.10 ▸ จอลูกค้า (มติ 5 · hook เดียว) ◂
 import { POS_PRINTER_DEFAULTS, parsePrinterConfig, type PosDeviceView } from "@/lib/modules/pos/device-shared";
 import { printerPaired } from "@/components/pos/print/printReceipt";
 // POS P2.4U ▸ หน้าขายผูกโต๊ะ ?table= (มติ 4) + ชิปชนิดบิล "ทานที่ร้าน" (มติ 6) ◂
@@ -1264,6 +1265,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
       ...(lineDetail(l, ql) ? { detail: lineDetail(l, ql) } : {}),
     };
   });
+  // POS P2.10 ▸ จอลูกค้า (มติ 5): ภาพบิลของเครื่องนี้ → จอที่จับคู่ · อ่านอย่างเดียวจากตะกร้า/quote/สมาชิก/ชั้น · ช่องจ่ายมาทาง onDisplayPay
+  const displayOnPay = useDisplayPublish({
+    systemId,
+    unitId,
+    deviceCode: deviceId,
+    lines: lineModels,
+    quote: quoteFresh ?? null,
+    couponCode: cart.couponCode ?? null,
+    member: memberEnabled && cart.memberId && memberInfo && memberInfo.id === cart.memberId ? memberInfo : null,
+    benefits: memberReady ? benefits : null,
+    layers,
+  });
+  // ◂
   const inCart = useMemo(() => {
     const m = new Map<string, number>();
     for (const l of cart.lines) if (l.kind === "product") m.set(l.productId, (m.get(l.productId) ?? 0) + l.qty);
@@ -2589,6 +2603,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             tenders={tableOn ? null : { systemId, unitId }}
             member={{ attached: !!cart.memberId, storeCredit: memberReady ? storeCreditOf(benefits?.giftCards) : null }}
             memberId={cart.memberId ?? null} // POS P2.9bU ▸ มติ 2a: มัดจำของสมาชิกในบิล ◂
+            onDisplayPay={displayOnPay} // POS P2.10 ▸ จอลูกค้า: ยอด/วิธี/ใบขอรับเงินของรอบนี้ ◂
             onScanGiftCard={() => {
               if (!layersRef.current.some((x) => x.kind === "camera")) push({ kind: "camera", forGiftCard: true });
             }}

@@ -50,7 +50,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   MEMBER: [["memberLookup", true, null], ["memberSpend", true, null], ["memberSignup", true, null]],
   POINT: [["pointRate", true, null], ["pointRedeem", true, null], ["pointVoidReverse", true, null]],
   COUPON: [["couponCode", true, null], ["voucherPayment", false, "P2.9"], ["couponUnitLimit", true, null]],
-  REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", false, "P2.10"]],
+  REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", true, null]], // POS P2.10 ▸ จอลูกค้าแสดง "ใกล้ได้รางวัล" บนแถบสแตมป์ (เหลือ ≤ 2 ดวง) ◂
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", false, "P2.1"], ["promptpayReconcile", false, "P3.10"]],
   // POS P2.3U ▸ มติ 8: ตัดตามสูตร BOM ใช้งานจริงแล้ว (P2.3 S ตัด + P2.3U จอ 06 ตั้งสูตร/สวิตช์) ◂
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],

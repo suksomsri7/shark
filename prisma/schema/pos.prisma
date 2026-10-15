@@ -1028,3 +1028,39 @@ model PosDepositTxn {
   @@index([saleId])
 }
 // ◂ POS P2.9b
+
+// POS P2.10 ▸ จอลูกค้า (จอที่ 2 · มติ 1–9 ของบรีฟ · ledger/pos-briefs/pos-brief-P2.10.md) — ผู้เขียนเดียว = pos/display.ts
+//   1 แถว ACTIVE ต่อเครื่องขาย (partial unique "PosCustomerDisplay_active_device_key" ON ("deviceId") WHERE status = 'ACTIVE' เขียนมือใน migration) ·
+//   รหัสจับคู่ที่รออยู่ไม่ซ้ำ (partial unique ON ("pairCodeHash") WHERE NOT NULL) · id หลวม ไม่มี FK (deviceId = PosDevice.id)
+//   เก็บแต่ sha256 ของ token/รหัส (ตัวจริงไม่ลง DB) · ภาพบิลล่าสุด = state (≤ 16 KB) + stateSeq โมโนโทนิก (UPDATE … WHERE stateSeq < $seq)
+enum PosCustomerDisplayStatus {
+  ACTIVE
+  REVOKED
+}
+
+model PosCustomerDisplay {
+  id                String                   @id @default(cuid())
+  tenantId          String
+  systemId          String // AppSystem.id (type POS)
+  unitId            String // BusinessUnit.id
+  deviceId          String // PosDevice.id (เครื่องขายที่จอนี้จับคู่)
+  status            PosCustomerDisplayStatus @default(ACTIVE)
+  tokenHash         String?                  @unique // sha256 hex ของ token 32 ไบต์ (คุกกี้ pos_display) · null = ยังไม่จับคู่
+  pairCodeHash      String? // sha256 hex ของรหัส 8 ตัว Crockford ที่รอแลก · null = ไม่มีรหัสรอ
+  pairCodeExpiresAt DateTime? // รหัสหมดอายุ (10 นาที)
+  pairFailCount     Int                      @default(0) // ครบ 5 = ล็อกจนกว่าจะเปิดรหัสใหม่
+  showPoints        Boolean                  @default(true)
+  idleText          String? // ข้อความหน้าพัก ≤ 80 ตัว
+  locale            String? // "th" | "en" | null (= ภาษาใบเสร็จของ POS)
+  state             Json? // DisplayState ล่าสุดจากหน้าขาย (ทำความสะอาดแล้ว)
+  stateSeq          Int                      @default(0)
+  stateAt           DateTime?
+  lastPolledAt      DateTime? // จออ่านล่าสุด (เขียนไม่ถี่กว่า 30 วินาที) · ออนไลน์ = ภายใน 120 วินาที
+  createdByUserId   String
+  revokedAt         DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([tenantId, unitId, status])
+}
+// ◂ POS P2.10

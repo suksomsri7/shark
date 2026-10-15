@@ -17867,6 +17867,216 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=payments&unit=[unitId]"
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-pair",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pairDisplayAction",
+        "note": "จอลูกค้า (สาธารณะ ไม่ต้องล็อกอิน · แท็บเล็ตหันหาลูกค้า) — ฟอร์มรหัสจับคู่ 8 ตัว (?c= เติมให้จาก QR ของหน้าตั้งค่าเครื่อง) → แลกเป็นคุกกี้ pos_display (httpOnly) แล้วเปิดจอ"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "c=[pairCode]"
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-pair-code",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "รหัสจับคู่ (ตัวใหญ่อัตโนมัติ · I/L → 1 · O → 0 · ปุ่มจับคู่เปิดเมื่อครบ 8 ตัว Crockford)"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-pair-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pairDisplayAction",
+        "note": "สำเร็จ = จอหน้าพัก/บิลปัจจุบัน · ผิด/หมดอายุ/ล็อก = \"รหัสจับคู่ไม่ถูกต้องหรือหมดอายุ\" (pos-display-pair-error) · ลองบ่อย = RATE_LIMITED"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-fullscreen",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เต็มจอ (requestFullscreen · ซ่อนเมื่อเต็มจออยู่แล้ว/เบราว์เซอร์ไม่มี)"
+      },
+      "wo": "P2.10",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-enable",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "enableCustomerDisplayAction",
+        "note": "บล็อก \"จอลูกค้า\" ของเครื่องที่เลือก (ACTIVE) — \"เปิดจอลูกค้า\" / \"ขอรหัสใหม่\" → รหัส 8 ตัว + QR ของ <origin>/d?c=<รหัส> + เวลาเหลือ 10 นาที (pos-settings-display-code) · token เดิมยังใช้ได้จนรหัสใหม่ถูกแลก (P2.10 มติ 13.7)"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-revoke",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-display-revoke-dialog",
+        "note": "ยกเลิกการจับคู่ (มีเมื่อเปิดจอแล้ว) → กล่องยืนยัน"
+      },
+      "wo": "P2.10",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-revoke-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-display",
+        "note": "ปิดกล่อง (Esc ก็ได้)"
+      },
+      "wo": "P2.10",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-revoke-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "revokeCustomerDisplayAction",
+        "note": "จอ REVOKED · จอที่จับคู่อยู่กลับหน้าใส่รหัสในการโพลถัดไป (DISPLAY_NOT_PAIRED) · สถานะ = ยังไม่ได้จับคู่"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-show-points",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateCustomerDisplaySettingsAction",
+        "note": "สวิตช์ \"แสดงแต้มสมาชิก\" (ค่าเริ่มเปิด) — ปิด = จอไม่แสดงแต้มสะสม/แต้มที่ได้ (มติ 3 · 13.3)"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-idle-text",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateCustomerDisplaySettingsAction",
+        "note": "ข้อความหน้าพัก ≤ 80 ตัว (ว่าง = \"ยินดีต้อนรับ\") · บันทึกตอนออกจากช่อง/Enter"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-locale",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateCustomerDisplaySettingsAction",
+        "note": "ภาษาบนจอ: ตามใบเสร็จ (null) / ไทย / English"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
