@@ -1674,3 +1674,4 @@
 - มติ fix 1 (1–10 ใน `wo-notes/pos-P2.10-review.md` df27a9e3): F1–F4/F6/F7 fix · F5 accepted · ORACLE-ADD CT3 (13 ข้อ) · follow-ups 2 · gates + `--dry` → R2 + ผู้คุมถ่ายซ้ำ display-done/member-stamps/settings-code
 - spawn **builder P2.10 fix 1** (Opus ทรี b) prompt `pos-prompt-accountB-P2.10-fix.md` · chain80 vis82 @7ac9efbe ยังถ่ายอยู่ (ดูภาพรอบแรกเทียบแบบ 11A ระหว่างรอ)
 - เลน: 1 = P2.12 oracle ทรี c · 2 = P2.10 fix 1 ทรี b · ทรี d = chain80
+- 15:5xZ vis82 @7ac9efbe (`/root/pos-runs/vis82-qc5-20261015T154146Z`): 13 state seeded th+en **ตรงแบบ 11A** (ผู้คุมดู) · **display-live ล้ม** ทั้ง th/en (จอจับคู่+โพลได้ แต่หน้าขายจริงไม่ส่งบรรทัดใน 20 วิ · ไม่มี error) → **F8** ส่งให้ builder fix 1 (หาสาเหตุ + ใส่ diagnostics ใน harness) · หลัง fix: ผู้คุมถ่าย display-live/done/member-stamps/settings-code ซ้ำบนทรี d
