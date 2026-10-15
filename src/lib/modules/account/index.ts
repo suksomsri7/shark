@@ -161,11 +161,13 @@ export async function applyExternalSale(input: {
 
   const gross = input.grossSatang;
   // POS P1.6 ▸ สูตรเดียวกับ PosSale.vatSatang (src/lib/money/vat.ts) ◂
-  const { baseSatang: base, vatSatang: vatFull } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  const { baseSatang: baseFull, vatSatang: vatFull } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
   // POS P2.9b ▸ R5: VAT ของมัดจำที่ใช้ (สมุดไม่จด VAT = 0 · ไม่เกิน VAT ของบิล/ยอดมัดจำ) — ไม่ส่ง = 0 ⇒ ทุกบรรทัดเดิม ◂
   const depositRows = input.payMethods.filter((p) => p.channel === "DEPOSIT").reduce((n, p) => n + p.amountSatang, 0);
-  const depositVat = vatRegistered && Number.isInteger(input.depositVatSatang) && input.depositVatSatang! > 0 ? Math.min(input.depositVatSatang!, vatFull, depositRows) : 0;
-  const vat = vatFull - depositVat;
+  const depositVat = vatRegistered && Number.isInteger(input.depositVatSatang) && input.depositVatSatang! > 0 ? Math.min(input.depositVatSatang!, depositRows) : 0;
+  // POS P2.9b ▸ fix1 มติ 1 (R1 F2): VAT มัดจำที่ปล่อยเกิน VAT ของบิล (เศษสตางค์ที่ออกกับแถวสุดท้าย) = ส่วนที่ "รวม VAT ไปแล้ว" ⇒ ลดฐานรายได้ของบิล (ไม่ตัดทิ้ง) ⇒ 2110 สุทธิ 0 ◂
+  const vat = Math.max(0, vatFull - depositVat);
+  const base = baseFull - Math.max(0, depositVat - vatFull);
 
   // ── WO 4.2: ตรวจบรรทัดก่อนแตะอะไรทั้งสิ้น — ไม่ตรงยอด = ไม่โพสต์ ไม่สร้างเอกสาร (บิลเพี้ยนห้ามเข้าบัญชี) ──
   const lines = input.lines;

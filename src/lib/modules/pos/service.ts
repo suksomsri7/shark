@@ -433,7 +433,10 @@ async function prepareSaleDeposits(tx: Client, input: CreateSaleInput): Promise<
  * R4 มติ 11 — ล็อกแถวมัดจำ (FOR UPDATE เรียง id · หลังตัวนับใบเสร็จและบัตร ⇒ สต็อก → ตัวนับ → บัตร → มัดจำ ทุกบิล) แล้วตรวจซ้ำ ·
  * ส่วน VAT ของแต่ละแถว = ใช้ครบคงเหลือ ? VAT ที่เหลือ : ปัดครึ่งขึ้น(vat·x/amount) (มติ 1 — ใบสุดท้ายรับเศษ ⇒ Σ = VAT ตอนรับเงินพอดี)
  */
-async function lockSaleDeposits(tx: Client, input: CreateSaleInput, rows: { index: number; refSaleId: string; satang: number }[]): Promise<SaleDeposit[]> {
+// POS P2.9b ▸ fix1 มติ 1 (R1 F2): แต่ละแถวปล่อย VAT ไม่เกิน VAT ของยอดแถวนั้น (splitIncludedVat(x) ตามอัตราของบิล) — invariant:
+//   Σ VAT ที่ปล่อย ≤ VAT ของมัดจำเสมอ · เศษสตางค์ที่ยังไม่ปล่อยค้างอยู่กับมัดจำ แล้วออกไปกับแถวสุดท้าย (ใช้ครบคงเหลือ = VAT ที่เหลือทั้งหมด) หรือกับการคืนเงินคงเหลือ
+//   ⇒ เมื่อมัดจำปิด (ใช้หมด/คืน) Σ VAT ที่ปล่อย = VAT ตอนรับพอดี และ 2110 ของมัดจำสุทธิ 0 (ส่วนที่แถวสุดท้ายปล่อยเกิน VAT ของบิล = ลดฐานรายได้ของบิล ที่ facade) ◂
+async function lockSaleDeposits(tx: Client, input: CreateSaleInput, rows: { index: number; refSaleId: string; satang: number }[], vatRateBp = 0): Promise<SaleDeposit[]> {
   if (!rows.length) return [];
   const locked = await tx.$queryRaw<DepositRow[]>`
     SELECT id, "tenantId", "unitId", "customerId", "amountSatang", "vatSatang", "usedSatang", "refundedSatang", status::text AS status, "receiptSaleId"
@@ -446,7 +449,7 @@ async function lockSaleDeposits(tx: Client, input: CreateSaleInput, rows: { inde
     checkDeposit(input, d, r.satang);
     const remaining = d!.amountSatang - d!.usedSatang - d!.refundedSatang;
     const left = Math.max(0, d!.vatSatang - (vatLeft.get(d!.id) ?? 0));
-    const vat = r.satang === remaining ? left : Math.min(left, mulDivHalfUp(d!.vatSatang, r.satang, d!.amountSatang));
+    const vat = r.satang === remaining ? left : Math.min(left, mulDivHalfUp(d!.vatSatang, r.satang, d!.amountSatang), splitIncludedVat(r.satang, vatRateBp).vatSatang); // POS P2.9b ▸ fix1 มติ 1 ◂
     return { index: r.index, depositId: d!.id, satang: r.satang, vatSatang: vat };
   });
 }
@@ -853,7 +856,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     // POS P2.9 ▸ fix1 F1 (มติ 1): ล็อกแถวบัตร (เรียง id) **หลัง** ตัวนับใบเสร็จ — ลำดับเดียวกับเติมเงิน/ส่วนลดบัตรเดิม (สต็อก → ตัวนับ → บัตร) ◂
     if (tenders.length) await (await import("@/lib/modules/member")).lockTenderCards(tx as Prisma.TransactionClient, tenders.map((t) => t.giftCardId));
     // POS P2.9b ▸ R4 มติ 11: ล็อกแถวมัดจำ **หลัง** บัตร (สต็อก → ตัวนับ → บัตร → มัดจำ) + ส่วน VAT ของแต่ละแถว (มติ 1) ◂
-    const deposits = await lockSaleDeposits(tx, input, depositRows);
+    const deposits = await lockSaleDeposits(tx, input, depositRows, vatRateBp); // POS P2.9b ▸ fix1 มติ 1: อัตราของบิล (เพดาน VAT ต่อแถว) ◂
     const depositVat = deposits.reduce((t, d) => t + d.vatSatang, 0);
     // R5: VAT ของบิล = VAT(ยอด) − Σ VAT ของมัดจำที่ใช้ (เฉพาะบิลที่มีแถวอ้างใบรับ · บิลอื่นเหมือนเดิมทุกไบต์)
     const billVat = (gross: number) => (deposits.length ? Math.max(0, splitIncludedVat(gross, vatRateBp).vatSatang - depositVat) : splitIncludedVat(gross, vatRateBp).vatSatang);
