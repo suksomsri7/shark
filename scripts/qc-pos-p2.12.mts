@@ -64,10 +64,15 @@ const CHECKS: readonly Def[] = [
   D("AN10", "-", "[§3 A10] ออเดอร์ REJECTED|CANCELLED ต่อสาขา/วัน (receivedAt) ≥ 3: A = ปฏิเสธ 2 + ยกเลิก 1 → แถว count 3 · B = ปฏิเสธ 1 + ยกเลิก 1 → ไม่มี"),
   D("AN11", "X5", "[§3 มติ 3] settings.pos.reports.anomaly: posAnomalyThresholds ค่าปริยาย + ตัดช่วง (นอกช่วง = ขอบ · ไม่ใช่จำนวนเต็ม = ค่าปริยาย · คีย์แปลกไม่สน) · updatePosGeneralSettings {anomaly} รวมทับบางส่วน + audit pos.settings.updated · ค่าเดิม = ไม่ลง audit · ผิดช่วง/คีย์แปลก → VALIDATION field ไม่เขียนอะไร · ผู้จัดการ A → PERMISSION_DENIED · dayCutoffMinutes กับ anomaly ไม่ทับกัน · A3 1400 → O ที่ B ขึ้นแถว · 1600 → K หาย · enabled false → rows []"),
   D("AN12", "X3", "[§3 มติ 4 PDPA] พนักงานมี pos.report.view ไม่มี pos.report.anomaly → PERMISSION_DENIED ทั้งตัวอ่าน · CSV · print action · มี anomaly ไม่มี view → PERMISSION_DENIED · พนักงาน A มีทั้งสอง → แถว A เท่านั้น · ผู้จัดการ A → แถว A เท่านั้น · ร้าน T2 NOT_FOUND · แถวมีแค่คีย์ในสัญญา (ไม่มี email/phone) · userName = ชื่อแสดงผล · เรียง กฎ→สาขา→วัน→ผู้ใช้→ref · totals.rowCount/byRule"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ AN13 (hunter H1) · AN14 (hunter H2) ◂
+  D("AN13", "X4", "[fix1 H1] A3/A4 วัดส่วนลดที่พนักงานคุมได้ (Σ ส่วนลดบรรทัด + ท้ายบิล − คูปอง − สมาชิก) · ฐาน A4 = ยอดก่อนส่วนลดบรรทัด: วัน DA สาขา B บิล L1 (2 บรรทัด · บรรทัดแรกลด 100%) → แถว A4 value 5000 · บิล Q1 (คูปอง ฿60 อย่างเดียว) → ไม่มีแถว A4 · A3 ของ O ที่ B นับส่วนลดบรรทัด (value 7143 · 2 บิล)"),
+  D("AN14", "X4", "[fix1 H2] ตัดแถวต่อกฎ: ช่วง DA–วันนี้ แถว A4 > limit (= จำนวนกฎที่มีแถว) → ทุกกฎยังอยู่ (A8 ไม่หาย) · แต่ละกฎ ≤ ⌈limit/กฎ⌉ · ≤ limit แถว · ลำดับเดิม · totals = ไม่ตัด · แถว CSV ท้าย = \"แสดง N จาก M แถว\" · แบบพิมพ์ notice เดียวกัน (ไม่อยู่ในแถว) · ไม่ตัด = ไม่มีบรรทัดแจ้ง"),
   // ── PD แบบพิมพ์ ──
   D("PD1", "PAR", "[§4 มติ 2] buildReportPrint ทุกชนิดใน REPORT_KINDS (11): kind/from/to/locale/generatedAt/shopName/unitLabel ตามอินพุต · headers = CSV_HEADERS[kind] · rows = แถว CSV ของ reportCsv ช่วงเดียวกันทีละช่อง · title th มีอักษรไทย · en: title ไม่มีอักษรไทย ≠ th · จำนวนหัว/แถวเท่า th"),
   D("PD2", "P", "[§4 มติ 2 ⚠️7] renderReportPrintHtml: สร้างสองครั้ง sha256 เท่ากัน · เปลี่ยน report.generatedAt (envelope) → sha เดิม · เปลี่ยน opts.generatedAt → sha เปลี่ยน · ชื่อร้าน <b>&\"' ถูก escape (ไม่มี <b> ดิบ) · มี @page + A4 · ไม่มี <script · มีหัวตาราง + \"รวม\""),
   D("PD3", "X3", "[§4 มติ 2 4 · OV2] posReportPrintAction ผ่าน session ปลอม: พนักงานไม่มีสิทธิ์รายงาน → PERMISSION_DENIED · พนักงานมี view: daily ok (html มีหัวตาราง ไม่มี <script) · anomalies PERMISSION_DENIED · เจ้าของ anomalies ok · kind แปลก → VALIDATION"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ PD4 (hunter H3 H4) ◂
+  D("PD4", "X3", "[fix1 H3 H4] posReportPrintAction ผู้จัดการ A ไม่ส่ง unitId (anomalies + daily) → หัวแบบพิมพ์ สาขา = ชื่อสาขา A (ไม่ใช่ \"ทุกสาขา\") · เจ้าของ = ทุกสาขา (ตัวควบคุม) · ช่องค่า A8 ใน CSV/แบบพิมพ์มีเครื่องหมาย: sh1 \"ขาด −100.00\" · sh4 (นับย้อนหลังเกิน) \"เกิน +100.00\""),
   // ── BL บิลทุกสาขา ──
   D("BL1", "X2", "[§1 มติ 6] billsPageData unitId \"*\" (เจ้าของ วัน D0): แถวทุกสาขาที่อ่านได้ (A B C เก็บถาวร) เรียงเวลาใหม่→เก่า · ทุกแถวมี unitId + unitName ถูกต้อง · counts/summary/total = Σ หน้าเดี่ยวของแต่ละสาขา"),
   D("BL2", "PAR", "[§1 มติ 6] ผู้จัดการ A / พนักงาน A ส่ง \"*\" → แถว A เท่านั้น · ไม่มีสิทธิ์อ่าน → NO_PERMISSION · หน้าเดี่ยว A: คีย์แถว = ชุดเดิม (ไม่มี unitId/unitName) · counts/summary เดิม + ลำดับตรงตัวอ้างอิง · ผู้จัดการ A ขอสาขา B = หน้าว่าง"),
@@ -574,6 +579,7 @@ const genMod = await tryImport("@/lib/modules/pos/settings-general");
 const setShared = await tryImport("@/lib/modules/pos/settings-shared");
 const printMod = existsSync(join(ROOT, F.print)) ? await tryImport("@/lib/modules/pos/report-print-shared") : null;
 const auditMod = await tryImport("@/lib/core/audit");
+const couponSvc = await tryImport("@/lib/modules/coupon/service"); // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ AN13 ◂
 const sysSvc = await tryImport("@/lib/modules/system/service");
 const accSvc = await tryImport("@/lib/modules/account/service");
 const glMod = await tryImport("@/lib/modules/account/gl");
@@ -807,9 +813,9 @@ async function runDb() {
   const newKey = (pfx = "k") => `${KEY_PREFIX}-${pfx}-${++keyN}`;
   type Sold = { saleId: string; grand: number };
   const NONE: Sold = { saleId: "", grand: 0 };
-  const sell = async (label: string, k: string, actor: Any, lines: Any[], o: { channel?: Any; billDiscount?: Any; pays?: (g: number) => Any[] } = {}): Promise<Sold> => {
+  const sell = async (label: string, k: string, actor: Any, lines: Any[], o: { channel?: Any; billDiscount?: Any; pays?: (g: number) => Any[]; couponCode?: string } = {}): Promise<Sold> => {
     if (fx) return NONE;
-    const cart = { lines, ...(o.channel?.id ? { channelId: o.channel.id } : {}), ...(o.billDiscount ? { billDiscount: o.billDiscount } : {}) };
+    const cart = { lines, ...(o.channel?.id ? { channelId: o.channel.id } : {}), ...(o.billDiscount ? { billDiscount: o.billDiscount } : {}), ...(o.couponCode ? { couponCode: o.couponCode } : {}) }; // ORACLE-ADD fix 1: + couponCode ◂
     const q = await call(register, "quoteRegisterCart", ctxOf(k), actor, cart);
     const g = q?.ok === true ? Number(q.grandTotalSatang) : NaN;
     if (!Number.isFinite(g)) {
@@ -1007,6 +1013,24 @@ async function runDb() {
       if (done?.ok !== true) notes.push(`${how === "rej" ? "rejectOrder" : "cancelOrder"} ${k}${i}: ${codeOf(done)} ${short(done?.message ?? "", 60)}`);
       ORD.push({ k, id, want: how === "rej" ? "REJECTED" : "CANCELLED" });
     }
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ AN13/AN14 — บิลของเจ้าของที่สาขา B (กะเจ้าของยังเปิด) แล้วเลื่อนไปวัน DA = วันนี้−7 / DB = วันนี้−6 (นอกทุกช่วงของข้อเดิม: D0 · DH−59…DH+1 · วันนี้)
+  //   ระบบคูปองผูกสาขา B (คูปอง FIXED ฿60) · L1 = P ลด 100% + P เต็มราคา · Q1 = P + คูปองอย่างเดียว · X1–X10 = P ลดท้ายบิล ฿50 (A4 × 10 ที่ DB) ◂
+  const DA = addDays(TD, -7);
+  const DB = addDays(TD, -6);
+  const CPN_CODE = `QC212${RAND}`.toUpperCase();
+  if (!fx)
+    await step("ระบบคูปอง AN13", async () => {
+      S.CPN = (await sysSvc.createSystem(T, "COUPON", "คูปอง QC P2.12")).id;
+      await sysSvc.linkUnit(T, S.CPN, U.B);
+      const cp = await couponSvc.createCoupon({ tenantId: T, systemId: S.CPN, code: CPN_CODE, name: `ลด 60 บาท ${RAND}`, type: "FIXED", valueSatang: 6000 });
+      if (!cp?.ok) throw new Error(`คูปอง ${short(cp, 60)}`);
+    });
+  const L1 = await sell("L1", "B", owner, [{ ...pl("P"), discount: { type: "PERCENT", value: 10_000 } }, pl("P")]);
+  const Q1 = await sell("Q1", "B", owner, [pl("P")], { couponCode: CPN_CODE });
+  const XS: Sold[] = [];
+  for (let i = 0; i < 10; i++) XS.push(await sell(`X${i + 1}`, "B", owner, [pl("P")], { billDiscount: { type: "AMOUNT", value: 5000 } }));
+  moves.push([L1.saleId, bkk(DA, "12:00")], [Q1.saleId, bkk(DA, "12:05")], ...XS.map((x, i): [string, Date] => [x.saleId, bkk(DB, `12:${String(i).padStart(2, "0")}`)]));
+  await moveAll();
   // A8/A9 — กะทดสอบที่เครื่อง S1 (M ขาด ฿100 · M ขาด ฿99.99 · K ขาด ฿50) · S2 (O · ระบบปิด + นับย้อนหลังเกิน ฿100)
   const SH: Record<string, string> = {};
   const runShift = async (label: string, dev: string, actor: Any, float: number, counted: number): Promise<void> => {
@@ -1520,8 +1544,78 @@ async function runDb() {
       const by: Record<string, number> = {};
       for (const r of RULES) by[r] = anRows.filter((x) => x?.rule === r).length;
       if (t.rowCount !== anRows.length || canon(t.byRule) !== canon(by)) p.push(`totals ${short(t, 120)} (คาด rowCount ${anRows.length} byRule ${J(by)})`);
+      // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ R1 F1: totals.unitNames = ชื่อสาขาของทุกหน่วยที่อยู่ในแถว (CSV/แบบพิมพ์ใช้แทนรหัส) ◂
+      const wantNames = Object.fromEntries([...new Set(anRows.map((x) => String(x?.unitId)))].map((u) => [u, `${TAG} สาขา${uk(u)}`]));
+      if (canon(t.unitNames) !== canon(wantNames)) p.push(`totals.unitNames ${short(t.unitNames, 100)} (คาด ${short(wantNames, 100)})`);
     }
     chk("AN12", !fx && p.length === 0, "สองคีย์ · ขอบเขตสาขา · คีย์แถวตามสัญญา · ลำดับ · totals", FX(NOTE() + (P8(p) || "ครบ")));
+  }
+
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ AN13 (H1) ส่วนลดที่พนักงานคุมได้ ◂
+  {
+    const p: string[] = [];
+    const rL = L1.saleId ? raw(L1.saleId) : undefined;
+    const rQ = Q1.saleId ? raw(Q1.saleId) : undefined;
+    const fxv = (x: Raw | undefined) => (x ? [x.subtotalSatang, x.discountSatang, x.grandTotalSatang, bizDate(x.createdAt)] : "ไม่มี");
+    if (!rL || rL.subtotalSatang !== 10_000 || rL.discountSatang !== 0 || rL.grandTotalSatang !== 10_000 || bizDate(rL.createdAt) !== DA) p.push(`fixture L1 ${short(fxv(rL), 60)}`);
+    if (!rQ || rQ.subtotalSatang !== 10_000 || rQ.discountSatang !== 6000 || rQ.grandTotalSatang !== 4000 || bizDate(rQ.createdAt) !== DA) p.push(`fixture Q1 ${short(fxv(rQ), 60)}`);
+    const ld = L1.saleId ? ((await P.posSaleLine.aggregate({ where: { tenantId: T, saleId: L1.saleId }, _sum: { discountSatang: true } }).catch(() => null)) as Any) : null;
+    if (ld?._sum?.discountSatang !== 10_000) p.push(`fixture L1 ส่วนลดบรรทัด ${ld?._sum?.discountSatang}`);
+    const cr = Q1.saleId ? ((await P.couponRedemption.findMany({ where: { tenantId: T, status: { not: "RELEASED" }, OR: [{ saleId: Q1.saleId }, { refType: "PosSale", refId: Q1.saleId }] }, select: { discountSatang: true } }).catch(() => [])) as Any[]) : [];
+    if (sum(cr.map((x) => Number(x.discountSatang))) !== 6000) p.push(`fixture Q1 คูปอง ${short(cr, 40)}`);
+    const r = await rep("reportAnomalies", undefined, owner, DA, DA);
+    if (r?.ok !== true) p.push(`reportAnomalies DA → ${codeOf(r)} ${short(r?.message ?? "", 50)}`);
+    const rows: Any[] = r?.report?.rows ?? [];
+    const a4 = rows.filter((x) => x?.rule === "A4");
+    const l4 = a4.find((x) => x?.refId === L1.saleId);
+    if (!l4 || l4.unitId !== U.B || l4.businessDate !== DA || l4.userId !== O || l4.refType !== "PosSale" || l4.value !== 5000 || l4.count !== 1) p.push(`A4 บิลลดบรรทัด 100% → ${short(l4 ?? "ไม่มีแถว", 90)} (คาด B/O/DA value 5000)`);
+    if (a4.some((x) => x?.refId === Q1.saleId)) p.push("A4 บิลคูปองอย่างเดียว (Q1) ขึ้นแถว");
+    if (a4.length !== 1) p.push(`A4 ${a4.length} แถว (คาด 1)`);
+    const a3 = rows.filter((x) => x?.rule === "A3");
+    const o3 = a3.find((x) => x?.unitId === U.B && x?.userId === O);
+    // ตัวอ้างอิงอิสระ: ส่วนลดพนักงาน = 10000 (บรรทัด L1) + 0 (Q1 คูปองไม่นับ) · net แบบรายงานพนักงาน = 10000 + 4000
+    const want3 = Math.round((10_000 * 10_000) / 14_000);
+    if (!o3 || o3.value !== want3 || o3.count !== 2 || a3.length !== 1) p.push(`A3 O ที่ B → ${short(o3 ? { value: o3.value, count: o3.count } : "ไม่มีแถว", 60)} (คาด value ${want3} count 2) · A3 ${a3.length} แถว`);
+    const other = rows.filter((x) => x?.rule !== "A3" && x?.rule !== "A4");
+    if (other.length) p.push(`แถวกฎอื่นในวัน DA ${other.map((x) => x?.rule).join(",")}`);
+    chk("AN13", !fx && p.length === 0, "A4 = L1 (ลดบรรทัด 100% · 5000) · Q1 คูปองอย่างเดียวไม่มี · A3 O/B 7143 × 2 บิล", FX(NOTE() + (P8(p) || "ครบ")));
+  }
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ AN14 (H2) ตัดแถวต่อกฎ + บรรทัดแจ้ง ◂
+  {
+    const p: string[] = [];
+    const full = await rep("reportAnomalies", undefined, owner, DA, TD, { limit: 1000 });
+    const fr: Any[] = full?.ok === true ? (full.report?.rows ?? []) : [];
+    const ruleSet = RULES.filter((x) => fr.some((r) => r?.rule === x));
+    const L = ruleSet.length;
+    const a4n = fr.filter((r) => r?.rule === "A4").length;
+    if (full?.ok !== true || L < 2 || !ruleSet.includes("A8") || a4n <= L) p.push(`fixture: ${codeOf(full)} กฎ ${ruleSet.join(",")} · A4 ${a4n} แถว (ต้อง > ${L}) · ${fr.length} แถว`);
+    const lim = await rep("reportAnomalies", undefined, owner, DA, TD, { limit: Math.max(L, 1) });
+    const lr: Any[] = lim?.ok === true ? (lim.report?.rows ?? []) : [];
+    if (lim?.ok !== true) p.push(`limit ${L} → ${codeOf(lim)}`);
+    if (lr.length > L) p.push(`${lr.length} แถว > limit ${L}`);
+    const q = Math.ceil(L / Math.max(ruleSet.length, 1));
+    for (const x of ruleSet) {
+      const n = lr.filter((r) => r?.rule === x).length;
+      if (n < 1 || n > q) p.push(`${x} ${n} แถว (คาด 1–${q})`);
+    }
+    if (!lr.some((r) => r?.rule === "A8")) p.push("A8 หายจากรายงานที่ตัดแถว");
+    const keyOf = (r: Any) => anKey(String(r?.rule), String(r?.unitId), r?.businessDate ?? null, r?.userId ?? null, r?.refId ?? null);
+    const idx = lr.map((r) => fr.findIndex((f) => keyOf(f) === keyOf(r)));
+    if (idx.some((i, j) => i < 0 || (j > 0 && i <= idx[j - 1]!))) p.push(`แถวที่ตัดไม่ใช่ลำดับย่อยของรายงานเต็ม (${idx.join(",")})`);
+    const lt = lim?.report?.totals ?? {};
+    if (lt.rowCount !== fr.length || canon(lt.byRule) !== canon(full?.report?.totals?.byRule)) p.push(`totals ที่ตัด ${short({ rowCount: lt.rowCount, byRule: lt.byRule }, 100)} ≠ เต็ม ${fr.length}`);
+    const notice = `แสดง ${lr.length} จาก ${fr.length} แถว`;
+    const cr = callSync(repMod, "reportCsvRows", lim?.report);
+    if (!Array.isArray(cr) || cr.length !== lr.length + 1 || J(cr[cr.length - 1]) !== J([notice])) p.push(`แถว CSV ท้าย ${short(Array.isArray(cr) ? cr[cr.length - 1] : cr, 60)} (คาด ["${notice}"])`);
+    const cf = callSync(repMod, "reportCsvRows", full?.report);
+    if (!Array.isArray(cf) || cf.length !== fr.length) p.push(`รายงานไม่ตัดมี ${Array.isArray(cf) ? cf.length : codeOf(cf)} แถว CSV (คาด ${fr.length} ไม่มีบรรทัดแจ้ง)`);
+    const m = lim?.ok === true ? callSync(printMod, "buildReportPrint", lim.report, { locale: "th", generatedAt: "2026-10-01T05:06:07.000Z", shopName: "QC", unitLabel: "ทุกสาขา" }) : null;
+    if (!isRecord(m) || m.notice !== notice || !Array.isArray(m.rows) || m.rows.length !== lr.length) p.push(`แบบพิมพ์ notice ${short(m?.notice, 40)} แถว ${Array.isArray(m?.rows) ? m.rows.length : "?"}`);
+    else {
+      const html = callSync(printMod, "renderReportPrintHtml", m);
+      if (typeof html !== "string" || !html.includes(notice)) p.push("HTML แบบพิมพ์ไม่มีบรรทัดแจ้ง");
+    }
+    chk("AN14", !fx && p.length === 0, "ทุกกฎยังอยู่ (A8) · ≤ limit · ต่อกฎ ≤ ⌈limit/กฎ⌉ · บรรทัดแจ้ง CSV + แบบพิมพ์", FX(NOTE() + (P8(p) || `ครบ (limit ${L} · ${lr.length}/${fr.length})`)));
   }
 
   // ════════ AN11 ค่าตั้งเกณฑ์ ════════
@@ -1783,6 +1877,27 @@ async function runDb() {
     const bk = await printAct(owner, { kind: "nope", from: D0, to: D0 });
     if (!codeIs(bk, "VALIDATION")) p.push(`kind แปลก → ${codeOf(bk)}`);
     chk("PD3", !fx && p.length === 0, "action ตัดสินสิทธิ์จาก session · anomalies สองคีย์ · kind แปลก VALIDATION", FX(NOTE() + (P8(p) || "ครบ")));
+  }
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ PD4 (H3 หัวสาขาของผู้มีขอบเขต · H4 เครื่องหมาย A8) ◂
+  {
+    const p: string[] = [];
+    const nameA = `${TAG} สาขาA`;
+    const metaOf = (html: unknown) => /<div class="meta">([\s\S]*?)<\/div>/.exec(typeof html === "string" ? html : "")?.[1] ?? "";
+    for (const [kind, from, to] of [["anomalies", TD, TD], ["daily", D0, D0]] as const) {
+      const r = await printAct(mgrA, { kind, from, to, locale: "th" });
+      const mt = metaOf(r?.html);
+      if (r?.ok !== true || !mt.includes(`สาขา ${nameA}`) || mt.includes("ทุกสาขา")) p.push(`ผู้จัดการ A ${kind} → ${codeOf(r)} หัว "${short(mt, 90)}" (คาด สาขา ${nameA})`);
+    }
+    const ow = await printAct(owner, { kind: "daily", from: D0, to: D0, locale: "th" });
+    if (ow?.ok !== true || !metaOf(ow.html).includes("สาขา ทุกสาขา")) p.push(`เจ้าของ daily → ${codeOf(ow)} หัว "${short(metaOf(ow?.html), 60)}" (คาด ทุกสาขา)`);
+    const csv = await call(repMod, "reportCsv", rctx(), owner, { kind: "anomalies", from: TD, to: TD });
+    const lines = csv?.ok === true ? parseCsv(String(csv.body ?? "")).filter((r) => r.join("") !== "") : [];
+    const cell = (refId: string | undefined) => lines.find((l) => l[0] === "A8" && !!refId && l[6] === refId)?.[7];
+    if (cell(SH.sh1) !== "ขาด −100.00") p.push(`CSV A8 sh1 "${cell(SH.sh1)}" (คาด "ขาด −100.00")`);
+    if (cell(SH.sh4) !== "เกิน +100.00") p.push(`CSV A8 sh4 "${cell(SH.sh4)}" (คาด "เกิน +100.00")`);
+    const pa = await printAct(owner, { kind: "anomalies", from: TD, to: TD, locale: "th" });
+    if (pa?.ok !== true || !String(pa.html).includes("ขาด −100.00") || !String(pa.html).includes("เกิน +100.00")) p.push(`แบบพิมพ์ anomalies ไม่มีเครื่องหมาย A8 (${codeOf(pa)})`);
+    chk("PD4", !fx && p.length === 0, "หัวสาขา = ขอบเขตของผู้จัดการ A · เจ้าของ ทุกสาขา · A8 ขาด −/เกิน +", FX(NOTE() + (P8(p) || "ครบ")));
   }
   await drain();
   if (notes.length) console.log(`  ℹ️  fixture ${notes.length} รายการ: ${notes.slice(0, 6).join(" | ")}`);
