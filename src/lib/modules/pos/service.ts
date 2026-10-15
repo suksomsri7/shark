@@ -409,12 +409,24 @@ const depositMsg = {
   DEPOSIT_CLOSED: "มัดจำใบนี้ใช้หมดหรือคืนเงินไปแล้ว",
 } as const;
 /** ตรวจแถวมัดจำหนึ่งแถวกับแถว PosDeposit (ลำดับรหัส: ไม่พบ → ปิดแล้ว → ไม่ใช่เจ้าของ → เกินคงเหลือ) */
-function checkDeposit(input: CreateSaleInput, d: DepositRow | undefined, satang: number): void {
+async function checkDeposit(tx: Client, input: CreateSaleInput, d: DepositRow | undefined, satang: number): Promise<void> {
   if (!d || d.tenantId !== input.tenantId || d.unitId !== input.unitId) throw new PosSaleError("DEPOSIT_NOT_FOUND", depositMsg.DEPOSIT_NOT_FOUND);
   if (d.status !== "OPEN") throw new PosSaleError("DEPOSIT_CLOSED", depositMsg.DEPOSIT_CLOSED);
   // มติ 4 + มติ 20: มัดจำของสมาชิกใช้ได้เฉพาะบิลของสมาชิกคนนั้น (บิล walk-in ก็ไม่ได้) · มัดจำ walk-in = ผู้ถือใบรับ (บิลใดของสาขานี้ก็ได้)
-  if (d.customerId && d.customerId !== (input.memberId ?? null)) throw new PosSaleError("DEPOSIT_NOT_OWNER", depositMsg.DEPOSIT_NOT_OWNER);
+  // POS P2.9b ▸ fix1 มติ 5 (hunt D4): เจ้าของถูกรวมเข้าสมาชิกอื่น ⇒ ตาม mergedIntoId (≤ 5 ชั้น · แบบเครดิตร้าน P2.9 N2) ไปยังผู้เก็บ ◂
+  if (d.customerId && !(await depositOwnerIs(tx, input.tenantId, d.customerId, input.memberId ?? null))) throw new PosSaleError("DEPOSIT_NOT_OWNER", depositMsg.DEPOSIT_NOT_OWNER);
   if (d.amountSatang - d.usedSatang - d.refundedSatang < satang) throw new PosSaleError("DEPOSIT_EXCEEDS", depositMsg.DEPOSIT_EXCEEDS);
+}
+/** POS P2.9b ▸ fix1 มติ 5: เจ้าของมัดจำ (หรือผู้เก็บหลังรวมสมาชิก ≤ 5 ชั้น) = สมาชิกของบิลไหม · บิลไม่มีสมาชิก = ไม่ใช่ ◂ */
+export async function depositOwnerIs(tx: Client, tenantId: string, ownerId: string, memberId: string | null): Promise<boolean> {
+  if (!memberId) return false;
+  let cur: string | null = ownerId;
+  for (let hop = 0; hop <= 5 && cur; hop++) {
+    if (cur === memberId) return true;
+    const c: { status: string; mergedIntoId: string | null } | null = await tx.customer.findFirst({ where: { id: cur, tenantId }, select: { status: true, mergedIntoId: true } });
+    cur = c && c.status === "MERGED" ? c.mergedIntoId : null;
+  }
+  return false;
 }
 /** ปัดครึ่งขึ้นของ a·b/c (จำนวนเต็มบวก · BigInt กันล้น) */
 const mulDivHalfUp = (a: number, b: number, c: number): number => (c > 0 ? Number((BigInt(2) * BigInt(a) * BigInt(b) + BigInt(c)) / (BigInt(2) * BigInt(c))) : 0);
@@ -426,7 +438,7 @@ async function prepareSaleDeposits(tx: Client, input: CreateSaleInput): Promise<
   if (!rows.length) return [];
   const found = await tx.posDeposit.findMany({ where: { tenantId: input.tenantId, receiptSaleId: { in: rows.map((r) => r.p.refSaleId!) } } });
   const byReceipt = new Map(found.map((d) => [d.receiptSaleId, d as DepositRow]));
-  for (const r of rows) checkDeposit(input, byReceipt.get(r.p.refSaleId!), r.p.amountSatang);
+  for (const r of rows) await checkDeposit(tx, input, byReceipt.get(r.p.refSaleId!), r.p.amountSatang);
   return rows.map((r) => ({ index: r.index, refSaleId: r.p.refSaleId!, satang: r.p.amountSatang }));
 }
 /**
@@ -444,14 +456,16 @@ async function lockSaleDeposits(tx: Client, input: CreateSaleInput, rows: { inde
     ORDER BY id FOR UPDATE`;
   const byReceipt = new Map(locked.map((d) => [d.receiptSaleId, d]));
   const vatLeft = await depositVatLeft(tx, locked.map((d) => d.id));
-  return rows.map((r) => {
+  const out: SaleDeposit[] = [];
+  for (const r of rows) {
     const d = byReceipt.get(r.refSaleId);
-    checkDeposit(input, d, r.satang);
+    await checkDeposit(tx, input, d, r.satang);
     const remaining = d!.amountSatang - d!.usedSatang - d!.refundedSatang;
     const left = Math.max(0, d!.vatSatang - (vatLeft.get(d!.id) ?? 0));
     const vat = r.satang === remaining ? left : Math.min(left, mulDivHalfUp(d!.vatSatang, r.satang, d!.amountSatang), splitIncludedVat(r.satang, vatRateBp).vatSatang); // POS P2.9b ▸ fix1 มติ 1 ◂
-    return { index: r.index, depositId: d!.id, satang: r.satang, vatSatang: vat };
-  });
+    out.push({ index: r.index, depositId: d!.id, satang: r.satang, vatSatang: vat });
+  }
+  return out;
 }
 /** VAT ที่ออกไปแล้วของมัดจำ (Σ APPLY − Σ RESTORE + Σ REFUND) — ผู้เรียกถือล็อกแถวมัดจำ */
 export async function depositVatLeft(tx: Client, depositIds: string[]): Promise<Map<string, number>> {

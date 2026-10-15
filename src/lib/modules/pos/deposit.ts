@@ -329,15 +329,18 @@ const LOOKUP_MAX = 20;
  * R9 (มติ 19) — ค้นมัดจำของสาขานี้: เลขใบรับ (ตรงตัว) · ชื่อ (ขึ้นต้น ไม่สนตัวพิมพ์) · 4 หลักท้ายของเบอร์ · สิทธิ์ pos.sale.create ·
  * อ่านอย่างเดียว (ไม่เขียนแถวใด) · สาขาอื่น/ร้านอื่น = ไม่พบ (ผลว่าง) · เบอร์ปิดบังเท่านั้น
  */
-export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterActor, input: { query: string }, client?: Db): Promise<RegisterDepositLookupResult> {
+export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterActor, input: { query?: string; phoneLast4?: string; memberId?: string }, client?: Db): Promise<RegisterDepositLookupResult> {
   return guard("registerDepositLookup", async (): Promise<RegisterDepositLookupResult> => {
     const db = client ?? prisma;
     const sc = await registerScopeCheck(ctx, actor, db);
     if (sc.ok === false) return sc;
     const q = isRecord(input) && typeof input.query === "string" ? input.query.trim() : "";
-    if (!q || q.length > 60) return refuse("VALIDATION", "พิมพ์เลขใบรับมัดจำ ชื่อ หรือ 4 หลักท้ายของเบอร์");
-    const or: Prisma.PosDepositWhereInput[] = [{ receiptNo: q }, { customerName: { startsWith: q, mode: "insensitive" } }];
+    // POS P2.9b ▸ fix1 มติ 5 (hunt D4): ค้นมัดจำของสมาชิกในบิล — รวมมัดจำของสมาชิกที่ถูกรวมเข้าคนนี้ (mergedIntoId ≤ 5 ชั้น) ◂
+    const memberId = isRecord(input) && isId(input.memberId) ? input.memberId : null;
+    if ((!q && !memberId) || q.length > 60) return refuse("VALIDATION", "พิมพ์เลขใบรับมัดจำ ชื่อ หรือ 4 หลักท้ายของเบอร์");
+    const or: Prisma.PosDepositWhereInput[] = q ? [{ receiptNo: q }, { customerName: { startsWith: q, mode: "insensitive" } }] : [];
     if (/^\d{4}$/.test(q)) or.push({ phoneLast4: q });
+    if (memberId) or.push({ customerId: { in: await mergedFamily(db, sc.ctx.tenantId, memberId) } });
     const rows = await db.posDeposit.findMany({
       where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, OR: or },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -351,6 +354,18 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
       }),
     };
   });
+}
+
+/** POS P2.9b ▸ fix1 มติ 5: สมาชิกคนนี้ + ทุกคนที่ถูกรวมเข้ามา (ตาม mergedIntoId ย้อน ≤ 5 ชั้น) */
+async function mergedFamily(db: Db, tenantId: string, memberId: string): Promise<string[]> {
+  const all = new Set<string>([memberId]);
+  let frontier = [memberId];
+  for (let hop = 0; hop < 5 && frontier.length; hop++) {
+    const rows = await db.customer.findMany({ where: { tenantId, mergedIntoId: { in: frontier } }, select: { id: true } });
+    frontier = rows.map((r) => r.id).filter((id) => !all.has(id));
+    for (const id of frontier) all.add(id);
+  }
+  return [...all];
 }
 
 // ═══════════════════════ R8 คืนเงินมัดจำคงเหลือ ═══════════════════════
