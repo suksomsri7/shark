@@ -324,7 +324,7 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
   const docs = await db.posSale.findMany({
     // R2 F1: createdAt >= openedAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ (ไม่สแกนทั้งสาขา)
     where: { tenantId: r.tenantId, unitId: r.unitId, createdAt: { gte: new Date(r.openedAt.getTime() - SALE_CLOCK_SLACK_MS) }, shiftId: r.id },
-    select: { id: true, status: true, grandTotalSatang: true, tipSatang: true, docType: true },
+    select: { id: true, status: true, grandTotalSatang: true, tipSatang: true, docType: true, sourceModule: true }, // POS P2.9b ▸ fix1 มติ 4 ◂
     orderBy: { id: "asc" },
   });
   // POS P1.8 ▸ R8: บิลขาย (docType SALE) = ยอดขายของกะ (คืนครบทีหลัง REFUNDED ยังเป็นการขายของกะนี้) ·
@@ -381,8 +381,9 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
     openedByUserId: r.openedByUserId,
     openedAt: r.openedAt.toISOString(),
     floatSatang: r.floatSatang,
-    billCount: live.length,
-    salesTotalSatang: live.reduce((t, x) => t + x.grandTotalSatang, 0),
+    // POS P2.9b ▸ fix1 มติ 4 (hunt D3): ใบรับมัดจำ (POS_DEPOSIT) ไม่ใช่ยอดขาย/บิลของกะ (แบบปิดวัน) — แถวชำระ/เงินสดยังนับ (เงินจริงเข้าลิ้นชัก) ◂
+    billCount: live.filter((x) => x.sourceModule !== "POS_DEPOSIT").length,
+    salesTotalSatang: live.filter((x) => x.sourceModule !== "POS_DEPOSIT").reduce((t, x) => t + x.grandTotalSatang, 0),
     voidCount: voided.length,
     voidTotalSatang: voided.reduce((t, x) => t + x.grandTotalSatang, 0),
     byMethod: types.map((t) => ({
