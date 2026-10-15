@@ -54,7 +54,8 @@ const CHECKS: readonly Def[] = [
   D("ST3", "S", "[R7 R8 R9 §7 มติ 8 9] ขอบเขต: restaurant/index.ts รอยต่อ POS P2.5 ▸ export moveTableSessionInTx mergeTableSessionsInTx unlinkTableItemsInTx · pos/table-split.ts + pos/table.ts export ฟังก์ชันใหม่ครบ 6 · table-split-shared.ts + pre-bill-render.ts บริสุทธิ์ (ไม่ถึง prisma/เซิร์ฟเวอร์ · ไม่มีนาฬิกา/สุ่ม · pre-bill-render import แค่ *-shared/receipt-render) · ไฟล์ pos ไม่เขียน Restaurant*/TableSession ตรง · ไฟล์ \"use server\" เรียกครบ 6 + catch · tableSaleVoided มีรอยต่อ POS P2.5 · ไฟล์ใหม่ไม่ปล่อย outbox · table-split.ts ไม่มี ticketForSale · 'use client' ไม่ import table-split/table · จอใหม่ (ถ้ามี) ไม่มีอักษรไทยในโค้ด · POS-OWNER-PENDING มีบรรทัด P2.5"),
   // ── M เงินแยกบิล ──
   D("M1", "X4", "[R1 R2 R5 15B มติ 4] registerSplitTable ITEM บนโต๊ะ A5 (ข้าว 3+1 · ลาเต้ 1+1 · ที่เหลือตามภาพ) → ใบ 1 ฐาน 67500 ค่าบริการ 6750 สุทธิ 74250 · ใบ 2 56500/5650/62150 · Σ 136400 = quote ทั้งโต๊ะ · แผนที่เก็บ (แถว PosTableSplit/Part/Line) = ผลของ allocateTableSplit ตรงตัว · version 1 · itemsHash = quote"),
-  D("M2", "X4", "[R2 มติ 4 CD4] EQUAL 3 บน 136400 → สุทธิ 45467 / 45467 / 45466 (เศษ 2 → ใบ 1–2) · ฐาน 41334/41334/41332 (ส่วนแบ่งต่อรายการ เศษไปใบต่ำ) · Σ ตรง · แทนด้วย EQUAL 4 (splitId+expectedVersion) → 4 × 34100 · version 2 · ส่วนแบ่ง 1 ชิ้นชื่อลงท้าย (1/4)"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU c · มติ 3): เศษสตางค์ของส่วนแบ่งต่อรายการหมุนเวียน (rot) แทนไปใบต่ำเสมอ — เดิม "ฐาน 41334/41334/41332 (ส่วนแบ่งต่อรายการ เศษไปใบต่ำ)" ◂
+  D("M2", "X4", "[R2 มติ 4 CD4 · HF-FU มติ 3] EQUAL 3 บน 136400 → สุทธิ 45467 / 45467 / 45466 (เศษ 2 → ใบ 1–2) · ฐาน 41334/41333/41333 (ส่วนแบ่งต่อรายการ เศษหมุนเวียนตามลำดับรายการ) · Σ ตรง · แทนด้วย EQUAL 4 (splitId+expectedVersion) → 4 × 34100 · version 2 · ส่วนแบ่ง 1 ชิ้นชื่อลงท้าย (1/4)"),
   D("M3", "X4", "[R1 R2 15C] SEAT 4 ที่นั่ง + ยำวุ้นเส้นกลางโต๊ะ → 33825 / 45815 / 24255 / 32505 · ยำ 3750 × 4 · ใบ 1 ถือสต็อกของยำ (stockOwner) · Σ 136400 · ลืมระบุที่นั่ง 1 รายการ → VALIDATION ไม่มีแผน"),
   D("M4", "X3", "[R2 R5 CD5 มติ 5] ส่วนลดท้ายบิล 10% บนแผน ITEM 15B → ส่วนลด 6750/5650 · ค่าบริการ 6075/5085 · สุทธิ 66825/55935 · Σ 122760 = quote ทั้งโต๊ะที่ส่วนลดเดียวกัน · CASHIER แทนแผนด้วย 20% → DISCOUNT_EXCEEDS_LIMIT (แผนเดิมคงอยู่) · MANAGER 20% → ok"),
   D("M5", "X4", "[R2(6) COMMON-1] VAT ของแต่ละใบ = splitIncludedVat(สุทธิใบ) ที่ระดับบิลของใบ (บิลจริงของ 15B ทั้งสองใบ) · |Σ VAT ใบ − VAT ทั้งโต๊ะ| ≤ ⌊(N+1)/2⌋ · ข้อบริสุทธิ์ vatRateBp 0 → VAT 0 ทุกใบ"),
@@ -264,6 +265,9 @@ function refAlloc(i: RIn): ROut {
     for (const it of i.items) if ((got.get(it.id) ?? 0) !== it.qty) return { ok: false, code: "VALIDATION" };
   }
   const lines: RLine[][] = Array.from({ length: N }, () => []);
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU c · มติ 3): เศษของส่วนแบ่งหมุนเวียนข้ามรายการกลางโต๊ะ (EQUAL และ SEAT กติกาเดียว) — ใบ p ได้ +1 เมื่อ ((p−1−rot) mod N) < r
+  //   แล้ว rot = (rot + r) mod N ตามลำดับรายการที่ส่งมา · เจ้าของสต็อกยังเป็นใบ 1 · ยอดสุทธิ EQUAL ยังเป็น q+1 ให้ใบ 1..r — เดิม `q + (p <= r ? 1 : 0)` ◂
+  let rot = 0;
   for (const it of i.items) {
     for (const [p, k] of [...(whole.get(it.id) ?? new Map<number, number>()).entries()].sort((a, b) => a[0] - b[0]))
       lines[p - 1]!.push({ itemId: it.id, qty: k, shareNum: null, shareDen: null, amountSatang: k * it.unitSatang, stockOwner: true });
@@ -272,7 +276,8 @@ function refAlloc(i: RIn): ROut {
       const g = u * it.unitSatang;
       const q = Math.floor(g / N);
       const r = g - q * N;
-      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + (p <= r ? 1 : 0), stockOwner: p === 1 });
+      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + ((((p - 1 - rot) % N) + N) % N < r ? 1 : 0), stockOwner: p === 1 });
+      rot = (rot + r) % N;
     }
   }
   if (lines.some((l) => !l.length)) return { ok: false, code: "VALIDATION" };
