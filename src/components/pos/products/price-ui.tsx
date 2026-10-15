@@ -5,6 +5,7 @@
 
 import { PRICE_MAX_SATANG } from "@/lib/modules/pos/pricing-shared";
 import { applyPriceRule, channelMarkupBpOf, priceRuleState, type PriceRuleItem, type PriceRuleLike, type PriceSource } from "@/lib/modules/pos/price-shared";
+import { BULK_MARKUP_PRODUCTS_MAX, PRICE_REFUSAL_REASONS } from "@/lib/modules/pos/price-shared"; // POS P2.11U ▸ มติ 2 4 ◂
 import { moneyText, refusalMessageKey } from "@/lib/modules/pos/register-shared";
 
 export type PT = (key: string, values?: Record<string, string | number>) => string;
@@ -147,6 +148,17 @@ export function priceRefusalText(r: { code: string; message?: string }, fieldSho
     return message ? tp("errors.serverValidation", { message }) : tp("errors.unknown");
   }
   return priceErrorText(r.code, tp, treg);
+}
+
+/**
+ * POS P2.11U ▸ มติ 2 4 (สัญญา P2.11U): คำปฏิเสธที่มี reason (PRICE_ROW_DEAD · BULK_TOO_MANY) ⇒ คีย์ pos.price.errors.<camelCase(reason)> ก่อนรหัส ·
+ * ไม่มี reason ที่รู้จัก = null (ผู้เรียกใช้ priceRefusalText ตามรหัสต่อ) ◂
+ */
+export function priceReasonText(r: { reason?: string }, tp: PT): string | null {
+  const reason = r.reason;
+  if (!reason || !(PRICE_REFUSAL_REASONS as readonly string[]).includes(reason)) return null;
+  const key = reason.toLowerCase().replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+  return tp(`errors.${key}`, { max: BULK_MARKUP_PRODUCTS_MAX });
 }
 
 // ═══════════ ไอคอน (เส้น · currentColor) ═══════════

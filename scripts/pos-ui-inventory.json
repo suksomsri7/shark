@@ -10627,25 +10627,6 @@
     },
     {
       "page": "/app/sys/[id]/pos/products",
-      "testid": "pos-prod-branch",
-      "kind": "filter",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "ui",
-        "target": "pos-prod-table",
-        "note": "\"สาขา: …\" — ขอบเขตแถว (ช่องทาง, สาขา) ที่ตารางและลิ้นชักอ่าน · ว่าง = ทุกสาขา · ?unit= (history.replaceState)"
-      },
-      "wo": "P2.2U",
-      "oracle": "",
-      "system": "POS"
-    },
-    {
-      "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-filter-diff",
       "kind": "filter",
       "roles": [
@@ -16497,6 +16478,400 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=payments&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-unitFilter",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "\"สาขา: …\" (เดิม pos-prod-branch) — ขอบเขตตาราง/คอลัมน์ \"ราคา <สาขา>\" · ?unit= (history.replaceState) · ทุกสาขา = ค่าเริ่มของเจ้าของ/ผู้ดูแลทุกสาขา · โหมดสาขา (ผู้จัดการ) = เฉพาะสาขาของตัวเอง ไม่มี \"ทุกสาขา\" (มติ 1 6)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-cell-*-unit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-prod-drawer-group-*",
+        "note": "ช่อง \"ราคา <สาขา>\" ต่อสินค้า (ตัวหนา + ชิป \"สาขา\" = แถวของสาขาเอง · จาง + \"ราคากลาง\" = สืบทอด · ไม่ขาย) → ลิ้นชักแท็บราคาตามช่องทาง เลื่อนถึงกลุ่มสาขานั้น (มติ 1)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-prod-copy-dialog",
+        "note": "\"คัดลอกราคาจากสาขา\" — แสดงเมื่อตั้งราคาได้และเข้าได้ ≥ 2 สาขา (มติ 4)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-compare-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-prod-compare",
+        "note": "\"เทียบราคาสาขา\" → แผ่น \"ขายที่ N สาขา\" (unitPriceMatrixAction 1 ครั้งต่อการเปิด · มติ 5)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-drawer-cell-*-*",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-prod-drawer-err-*",
+        "note": "ช่องราคาของ (ช่องทาง, สาขา) ในกลุ่มสาขาของลิ้นชัก — ว่าง = สืบทอด (placeholder = ค่าที่สืบทอด) · พิมพ์ = แถวของสาขา · ผิดรูป = pos-prod-drawer-err-<unitId>-<code> (มติ 2)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-drawer-notsold-*-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ไม่ขาย\" ของ (ช่องทาง, สาขา) — แถว notSold ของสาขา (มติ 2)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-drawer-clear-*-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ใช้ราคาที่สืบทอด\" — ลบแถว (ช่องทาง, สาขา) เมื่อบันทึก (มติ 2)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-purgeDead",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-purgeDead-confirm",
+        "note": "\"ล้างแถวที่เลิกใช้\" ใต้หมายเหตุ pos-prod-deadNote — เฉพาะผู้มีขอบเขตทั้งสินค้า (posCanSetTenantPrice หรือตั้งราคาได้ครบทุกสาขา) → ยืนยัน (มติ 3)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-purgeDead-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "\"ยืนยันล้าง\" → setChannelPricesAction({…, rows: ชุดปัจจุบัน, purgeDead: true}) → toast \"ล้างแถวที่เลิกใช้แล้ว\" (มติ 3)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-purgeDead-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิกการล้างแถวที่เลิกใช้ (มติ 3)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-from",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-prod-copy-from-error",
+        "note": "\"จากสาขา\" — สาขาที่เข้าได้ · ปฏิเสธ field fromUnitId (+ PRICE_ROW_DEAD = \"สาขานี้เลิกใช้แล้ว\") แสดงใต้ช่อง (มติ 4)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-to",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-prod-copy-to-error",
+        "note": "\"ไปสาขา\" — ค่าเริ่ม = สาขาที่กรองอยู่ · ต้นทาง = ปลายทาง = แดง · ปฏิเสธ field toUnitId แสดงใต้ช่อง (มติ 4)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-overwrite",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"เขียนทับราคาที่มีอยู่\" (overwrite · ค่าเริ่มปิด) (มติ 4)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-onlyFiltered",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-copy-summary",
+        "note": "\"เฉพาะสินค้าที่กรองอยู่\" — เปิด = ส่ง productIds ของรายการที่เห็น · ปิด = ทั้งแคตตาล็อก · สรุป pos-prod-copy-summary (มติ 4)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-run",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "\"คัดลอก\" → copyUnitPricesAction → toast \"คัดลอกแล้ว {written} · ข้าม {skipped}\" + อ่านหน้าใหม่ · PERMISSION_DENIED = toast (มติ 4)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดกล่องคัดลอก (ไม่ส่งอะไร)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copy-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปุ่ม × ของกล่องคัดลอก"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-compare-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปุ่ม × ของแผ่นเทียบราคาสาขา"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-compare-unit-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-compare",
+        "note": "ชิปเลือกสาขาในแผ่นเทียบ (≥ 1 สาขา) — เปลี่ยน = เรียก unitPriceMatrixAction ใหม่ 1 ครั้ง (มติ 5)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-compare-code-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-compare",
+        "note": "ชิปเลือกช่องทางในแผ่นเทียบ — กรองคอลัมน์ฝั่งจอ (ไม่เรียกซ้ำ) (มติ 5)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

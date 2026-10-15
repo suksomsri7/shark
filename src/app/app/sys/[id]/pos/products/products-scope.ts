@@ -97,3 +97,75 @@ export function rowsFromDraft(
   }
   return { rows: [...keep, ...add], errors };
 }
+
+// ═══════════ POS P2.11U ▸ หลายสาขา (มติ 1–3) ═══════════
+// ช่องคอลัมน์ "ราคา <สาขา>" ของตาราง + ลิ้นชักแบบกลุ่ม "ทุกสาขา" / ต่อสาขา (แถว (ช่องทาง, สาขา) เดียวกับ setChannelPrices) — บริสุทธิ์ · ไม่มีข้อความไทย
+
+/** ราคาหน้าร้าน (STORE) ที่สาขานี้ — own = แถวที่ชนะเป็นของสาขานี้เอง ((STORE, u) หรือ (ทุกช่องทาง, u)) · ไม่ใช่ = ราคากลาง/ราคาปกติ */
+export type BranchCell = { kind: "price"; priceSatang: number; own: boolean } | { kind: "notSold"; own: boolean } | { kind: "none" };
+export function branchCellOf(p: Pick<ProductsRow, "rows" | "basePriceSatang">, unit: string): BranchCell {
+  const r = scopedRow(p.rows, "STORE", unit);
+  if (r) {
+    const own = same(r.unitId, unit);
+    if (r.notSold || r.priceSatang === null) return { kind: "notSold", own };
+    return { kind: "price", priceSatang: r.priceSatang, own };
+  }
+  return p.basePriceSatang === null ? { kind: "none" } : { kind: "price", priceSatang: p.basePriceSatang, own: false };
+}
+
+/** กลุ่มของลิ้นชัก: unit null = "ทุกสาขา" · codes = ช่องทางของกลุ่ม (ลำดับแสดง) · editable = ผู้ใช้แก้กลุ่มนี้ได้ */
+export type PriceGroup = { unit: string | null; codes: string[]; editable: boolean };
+/** คีย์กลุ่มในร่าง ("*" = ทุกสาขา) */
+export const groupKey = (unit: string | null): string => unit ?? "*";
+/** ร่างทั้งลิ้นชัก: กลุ่ม → ช่องทาง → ช่อง */
+export type GroupDraft = Record<string, Record<string, DraftCell>>;
+
+/** ร่างตั้งต้นของทุกกลุ่มที่แก้ได้ (แถวของตัวเองในกลุ่ม · ไม่มี = ว่าง ⇒ สืบทอด) */
+export function draftGroups(p: ProductsRow, groups: readonly PriceGroup[], toInput: (s: number | null) => string): GroupDraft {
+  const d: GroupDraft = {};
+  for (const g of groups) {
+    if (!g.editable) continue;
+    const cells: Record<string, DraftCell> = {};
+    for (const code of g.codes) {
+      const r = p.rows.find((x) => same(x.channelCode, code) && same(x.unitId, g.unit));
+      cells[code] = r ? { text: r.notSold ? "" : toInput(r.priceSatang), notSold: r.notSold } : { text: "", notSold: false };
+    }
+    d[groupKey(g.unit)] = cells;
+  }
+  return d;
+}
+
+/** ราคาที่สืบทอดของช่อง (code, unit) — ไม่นับแถวของช่องนั้นเอง (ใช้เป็น placeholder ของช่องที่ว่าง) */
+export const inheritedOf = (p: Pick<ProductsRow, "rows" | "basePriceSatang">, code: string, unit: string | null): Effective =>
+  effectiveOf({ basePriceSatang: p.basePriceSatang, rows: p.rows.filter((r) => !(r.channelCode === code && same(r.unitId, unit))) }, code, unit);
+
+/**
+ * ร่างทุกกลุ่ม → แถวทั้งชุด (setChannelPrices แทนทั้งชุด): แถวเดิมทั้งหมด (รวมแถวที่มองไม่เห็น/ของช่องทาง-สาขาที่เลิกใช้ — เซิร์ฟเวอร์รับแถวเดิมที่ไม่เปลี่ยน) ·
+ * ยกเว้นแถว (ช่องทางในร่าง, สาขาของกลุ่ม) → แทนด้วยร่างที่มีค่า · ช่องว่าง = ลบแถวนั้น (กลับไปสืบทอด)
+ * errors คีย์ `<กลุ่ม>|<ช่องทาง>` เมื่อข้อความเงินผิด
+ */
+export function rowsFromGroups(
+  p: ProductsRow,
+  draft: GroupDraft,
+  parse: (v: string) => number | null | "bad" | "max",
+): { rows: ProductsPriceRow[]; errors: Record<string, "bad" | "max"> } {
+  const errors: Record<string, "bad" | "max"> = {};
+  const edited = new Set<string>();
+  for (const [gk, cells] of Object.entries(draft)) for (const code of Object.keys(cells)) edited.add(`${gk}|${code}`);
+  const keep = p.rows.filter((r) => !(r.channelCode !== null && edited.has(`${groupKey(r.unitId)}|${r.channelCode}`)));
+  const add: ProductsPriceRow[] = [];
+  for (const [gk, cells] of Object.entries(draft)) {
+    const unit = gk === "*" ? null : gk;
+    for (const [code, cell] of Object.entries(cells)) {
+      if (cell.notSold) {
+        add.push({ channelCode: code, unitId: unit, priceSatang: null, notSold: true });
+        continue;
+      }
+      const v = parse(cell.text);
+      if (v === "bad" || v === "max") errors[`${gk}|${code}`] = v;
+      else if (v !== null) add.push({ channelCode: code, unitId: unit, priceSatang: v, notSold: false });
+    }
+  }
+  return { rows: [...keep, ...add], errors };
+}
+// ◂

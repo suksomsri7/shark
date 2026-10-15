@@ -7,17 +7,25 @@
 //   บันทึก = setChannelPricesAction แทนทั้งชุด (มติ 9) · ปฏิเสธ = แถบแดงผ่านคีย์ · กล่องโปรราคาที่ครอบสินค้านี้ (กำลังใช้/รอเริ่ม) + ลิงก์ไปจอโปร
 //   ท้าย: "บันทึก" (แท็บราคาเท่านั้น) · "ทำสำเนา" / "เก็บถาวร" = ภาพเท่านั้น (ปิด · เร็ว ๆ นี้ · Q1)
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · ปุ่ม ≥ 44px · testid ตัวอักษรตรงบนแท็ก
+// POS P2.11U ▸ หลายสาขา (มติ 2 3 6): ราคาตามช่องทาง = กลุ่ม "ทุกสาขา" (แถว (ช่องทาง, ทุกสาขา) · testid เดิม) แล้วกลุ่มต่อสาขาที่เข้าได้
+//   (pos-prod-drawer-group-<unitId> · ช่องละช่องทาง: ว่าง = สืบทอด (แสดงค่าที่สืบทอดจาง) · พิมพ์ = แถว (ช่องทาง, สาขา) ของตัวเอง · ล้าง = ลบแถว) ·
+//   บันทึก = setChannelPricesAction ทั้งชุดเหมือนเดิม (แถวที่มองไม่เห็น/เลิกใช้ส่งกลับไม่เปลี่ยน — เซิร์ฟเวอร์เก็บไว้) ·
+//   คำปฏิเสธ: reason ก่อน (priceRowDead · bulkTooMany) แล้วรหัส · PERMISSION_DENIED = toast (ลิ้นชักไม่ปิด) · field = กรอบแดงรอบกลุ่ม ·
+//   หมายเหตุแถวเลิกใช้ N แถว + "ล้างแถวที่เลิกใช้" (purgeDead · ขอบเขตทั้งสินค้าเท่านั้น · ยืนยันก่อน) · โหมดสาขา = กลุ่ม "ทุกสาขา" อ่านอย่างเดียว ◂
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { setChannelPricesAction } from "@/lib/modules/pos/catalog-price-actions";
 import { CHANNEL_PRICE_ROWS_MAX } from "@/lib/modules/pos/price-shared";
+import { priceReasonText } from "@/components/pos/products/price-ui"; // POS P2.11U ▸ มติ 2 ◂
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { channelDisplayName } from "@/components/pos/settings/channel-text";
-import { PriceIcon, SoonTag, markupText, parseMoneyInput, priceErrorText, priceRefusalText, ruleAdjustText, rulePriceOn, ruleStateOf, ruleTouches, ruleWindowText, satangToInput, type PT } from "@/components/pos/products/price-ui";
+import { PriceIcon, SoonTag, markupText, parseMoneyInput, priceRefusalText, ruleAdjustText, rulePriceOn, ruleStateOf, ruleTouches, ruleWindowText, satangToInput, type PT } from "@/components/pos/products/price-ui";
 import type { ProductsChannel, ProductsData, ProductsPriceRow, ProductsRow } from "./products-data";
-import { channelsIn, draftOf, effectiveOf, rowsFromDraft, type DraftCell } from "./products-scope";
+import { channelsIn, effectiveOf, type DraftCell } from "./products-scope";
+// POS P2.11U ▸ มติ 2: กลุ่มทุกสาขา/ต่อสาขา ◂
+import { draftGroups, groupKey, inheritedOf, rowsFromGroups, type GroupDraft, type PriceGroup } from "./products-scope";
 // POS P2.3U ▸ มติ 1: แท็บ "สูตรและวัตถุดิบ" ใช้งานจริง (RecipeSection) ◂
 import { RecipeSection, type RecipePatch } from "./RecipeSection";
 // POS P2.6U ▸ มติ 9b: ส่วน "ครัว" ในแท็บทั่วไป (สถานีครัว · 86 ของสาขา) ◂
@@ -34,7 +42,12 @@ type Props = {
   unit: string | null;
   canEdit: boolean;
   onClose: () => void;
-  onSaved: (productId: string, rows: ProductsPriceRow[]) => void;
+  onSaved: (productId: string, rows: ProductsPriceRow[], purged?: boolean) => void;
+  // POS P2.11U ▸ มติ 1 2 3 6: กลุ่มสาขาที่เปิดมา (แตะช่อง "ราคา <สาขา>") · โหมดสาขา · ล้างแถวเลิกใช้ได้ · toast ของหน้า (PERMISSION_DENIED) ◂
+  focusUnit?: string | null;
+  branchMode?: boolean;
+  canPurge?: boolean;
+  onToast?: (text: string) => void;
   // POS P2.3U ▸ มติ 1/2: แก้สูตรได้ (pos.product.manage) · ผลบันทึกสูตร/สวิตช์ → ตาราง ◂
   canEditRecipe?: boolean;
   onRecipeSaved?: (productId: string, patch: RecipePatch, toast: string) => void;
@@ -44,7 +57,7 @@ type Props = {
   onKitchenSaved?: (productId: string, patch: KitchenPatch, toast: string) => void;
 };
 
-export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClose, onSaved, canEditRecipe = false, onRecipeSaved, canManage = false, canMark86 = false, onKitchenSaved }: Props) {
+export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClose, onSaved, canEditRecipe = false, onRecipeSaved, canManage = false, canMark86 = false, onKitchenSaved, focusUnit = null, branchMode = false, canPurge = false, onToast }: Props) {
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tr = useTranslations("pos.price.rule") as PT;
@@ -53,43 +66,78 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
   const locale = useLocale();
   const [tab, setTab] = useState<PanelTab>("prices");
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<Record<string, DraftCell>>({});
+  const [draft, setDraft] = useState<GroupDraft>({}); // POS P2.11U ▸ ร่างต่อกลุ่ม ◂
   const [rowErr, setRowErr] = useState<Record<string, string>>({});
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // POS P2.11U ▸ มติ 2 3: field ของคำปฏิเสธ = กรอบแดงรอบกลุ่ม · ยืนยันล้างแถวเลิกใช้ ◂
+  const [groupsErr, setGroupsErr] = useState(false);
+  const [purgeAsk, setPurgeAsk] = useState(false);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
 
   const chans = useMemo(() => channelsIn(data.channels, unit), [data.channels, unit]);
   const category = data.categories.find((c) => c.id === p.categoryId);
   const catName = category ? (locale.startsWith("en") && category.nameEn ? category.nameEn : category.name) : t("drawer.noCategory");
   const unitName = (id: string) => data.units.find((u) => u.id === id)?.name ?? "";
-  const scopeName = unit ? unitName(unit) : tp("allBranches");
   const soldUnits = Object.entries(p.available).filter(([, v]) => v).length;
   const name = locale.startsWith("en") && p.nameEn ? p.nameEn : p.name;
   const weighed = p.soldByWeight;
-  const branchLocked = p.unitId !== null && unit !== null && unit !== p.unitId;
-  const editable = canEdit && !weighed && !branchLocked && chans.length > 0;
+  // POS P2.11U ▸ มติ 2 6: กลุ่ม "ทุกสาขา" (ทุกช่องทาง) + กลุ่มต่อสาขาที่เข้าได้ (ช่องทางที่เปิดที่สาขานั้น · STORE เสมอ) · สินค้าของสาขาเดียว = กลุ่มของสาขานั้นเท่านั้น ◂
+  const withStore = (codes: string[]) => (codes.includes("STORE") ? codes : ["STORE", ...codes]);
+  const groups: PriceGroup[] = useMemo(() => {
+    const allCodes = channelsIn(data.channels, null).map((c) => c.code);
+    const out: PriceGroup[] = [{ unit: null, codes: allCodes.length ? withStore(allCodes) : [], editable: canEdit && !weighed && !branchMode && allCodes.length > 0 }];
+    for (const u of data.units) {
+      if (p.unitId !== null && p.unitId !== u.id) continue;
+      const codes = withStore(channelsIn(data.channels, u.id).map((c) => c.code));
+      out.push({ unit: u.id, codes, editable: canEdit && !weighed });
+    }
+    return out;
+  }, [data.channels, data.units, p.unitId, canEdit, weighed, branchMode]);
+  const editable = groups.some((g) => g.editable);
+  const deadRows = p.deadRows ?? 0;
+  useEffect(() => {
+    if (!focusUnit) return;
+    const el = bodyRef.current?.querySelector(`[data-testid="pos-prod-drawer-group-${focusUnit}"]`);
+    if (el && "scrollIntoView" in el) (el as HTMLElement).scrollIntoView({ block: "start" });
+  }, [focusUnit]);
   const now = useMemo(() => new Date(), []);
   const rules = data.rules.filter((r) => !r.archived && ruleTouches(r, p)).map((r) => ({ r, state: ruleStateOf(r, now) })).filter((x) => x.state === "ACTIVE" || x.state === "UPCOMING");
 
   const startEdit = () => {
-    setDraft(draftOf(p, chans, unit, satangToInput));
+    setDraft(draftGroups(p, groups, satangToInput));
     setRowErr({});
     setSaveErr(null);
+    setGroupsErr(false);
+    setPurgeAsk(false);
     setEditing(true);
   };
   const cancelEdit = () => {
     setEditing(false);
     setRowErr({});
     setSaveErr(null);
+    setGroupsErr(false);
   };
-  const setCell = (code: string, patch: Partial<DraftCell>) => setDraft((d) => ({ ...d, [code]: { ...(d[code] ?? { text: "", notSold: false }), ...patch } }));
+  // POS P2.11U ▸ ร่างต่อกลุ่ม (คีย์ "*" = ทุกสาขา) ◂
+  const setCell = (gk: string, code: string, patch: Partial<DraftCell>) =>
+    setDraft((d) => ({ ...d, [gk]: { ...(d[gk] ?? {}), [code]: { ...(d[gk]?.[code] ?? { text: "", notSold: false }), ...patch } } }));
+
+  /** POS P2.11U ▸ มติ 2: คำปฏิเสธ — reason ก่อน แล้วรหัส · PERMISSION_DENIED = toast ลิ้นชักไม่ปิด · field = กรอบแดงรอบกลุ่ม (แถวทั้งชุด) ◂ */
+  const refused = (r: { code: string; message?: string; field?: string; reason?: string }) => {
+    // VALIDATION ของแถวทั้งชุด (field "rows") ไม่ชี้ช่องเดียว ⇒ ข้อความของบริการ (P2.2U fix รอบ 1 F4) + กรอบแดงรอบกลุ่ม
+    const text = priceReasonText(r, tp) ?? priceRefusalText(r, false, tp, treg);
+    if (r.code === "PERMISSION_DENIED" && onToast) onToast(text);
+    else setSaveErr(text);
+    if (r.field) setGroupsErr(true);
+  };
 
   const save = async () => {
     if (!editing || busy) return;
-    const { rows, errors } = rowsFromDraft(p, draft, unit, parseMoneyInput);
+    const { rows, errors } = rowsFromGroups(p, draft, parseMoneyInput);
     const errs: Record<string, string> = {};
-    for (const [code, e] of Object.entries(errors)) errs[code] = tp(e === "max" ? "errors.priceMax" : "errors.priceFormat");
+    for (const [k, e] of Object.entries(errors)) errs[k] = tp(e === "max" ? "errors.priceMax" : "errors.priceFormat");
     setRowErr(errs);
+    setGroupsErr(false);
     if (Object.keys(errs).length) {
       setSaveErr(tp("errors.validation"));
       return;
@@ -105,12 +153,25 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
       if (r.ok) {
         onSaved(p.id, r.rows);
         setEditing(false);
-      } else {
-        // P2.2U fix รอบ 1 F4: VALIDATION ที่ไม่ชี้แถวบนจอ = ข้อความของบริการ (ไม่ใช่ "ตรวจช่องสีแดง" ที่ไม่มีช่องแดง)
-        const fieldShown = !!(r.field && draft[r.field]);
-        setSaveErr(priceRefusalText(r, fieldShown, tp, treg));
-        if (fieldShown) setRowErr((x) => ({ ...x, [r.field!]: priceErrorText(r.code, tp, treg) }));
-      }
+      } else refused(r);
+    } catch {
+      setSaveErr(tp("errors.unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // POS P2.11U ▸ มติ 3: ล้างแถวที่เลิกใช้ = ส่งแถวชุดปัจจุบัน + purgeDead (เซิร์ฟเวอร์ลบเฉพาะแถวเลิกใช้ของสินค้านี้ · ตรวจขอบเขตทั้งสินค้าก่อนเขียน) ◂
+  const purge = async () => {
+    if (busy) return;
+    setBusy(true);
+    setSaveErr(null);
+    try {
+      const r = await setChannelPricesAction({ systemId, productId: p.id, rows: p.rows, purgeDead: true });
+      if (r.ok) {
+        setPurgeAsk(false);
+        onSaved(p.id, r.rows, true);
+      } else refused(r);
     } catch {
       setSaveErr(tp("errors.unknown"));
     } finally {
@@ -119,6 +180,11 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
   };
 
   const chName = (c: ProductsChannel) => channelDisplayName(c.code, c.name, tch);
+  // POS P2.11U ▸ ชื่อช่องทางจากรหัส (STORE ที่สาขายังไม่มีแถว = ชื่อตั้งต้น) ◂
+  const codeName = (code: string) => {
+    const c = data.channels.find((x) => x.code === code);
+    return c ? chName(c) : channelDisplayName(code, code, tch);
+  };
 
   return (
     <aside
@@ -162,7 +228,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
         })}
       </div>
       {/* เนื้อ */}
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-[18px] py-3">
+      <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-[18px] py-3">
         {tab === "general" ? (
           <dl data-testid="pos-prod-general" className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-[13px]">
             <dt className="text-[color:var(--color-muted)]">{t("drawer.general.name")}</dt>
@@ -199,88 +265,152 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
                 </button>
               ) : null}
             </h3>
-            <p className="mb-2 text-[11.5px] text-[color:var(--color-muted)]">{tp("drawer.scope", { scope: scopeName })}</p>
+            {/* POS P2.11U ▸ มติ 2 3 6: กลุ่ม "ทุกสาขา" + กลุ่มต่อสาขา · หมายเหตุแถวเลิกใช้ ◂ */}
             {weighed ? (
               <p data-testid="pos-prod-price-weighed" className="rounded-lg border border-dashed px-3 py-2 text-[12px] text-[color:var(--color-muted)]">
                 {tp("drawer.weighed")}
               </p>
-            ) : branchLocked ? (
-              <p className="rounded-lg border border-dashed px-3 py-2 text-[12px] text-[color:var(--color-muted)]">{tp("drawer.branchOnly", { unit: unitName(p.unitId!) })}</p>
-            ) : chans.length === 0 ? (
+            ) : chans.length === 0 && groups.every((g) => g.codes.length === 0) ? (
               <p className="rounded-lg border border-dashed px-3 py-2 text-[12px] text-[color:var(--color-muted)]">{tp("drawer.noChannels")}</p>
-            ) : !editing ? (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {chans.map((c) => {
-                  const e = effectiveOf(p, c.code, unit);
-                  const mk = e.kind === "price" ? markupText(e.priceSatang, p.basePriceSatang, tp) : null;
-                  return (
-                    <div key={c.code} data-testid={`pos-prod-cell-${c.code}`} className="flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px]">
-                      <span className="min-w-0 flex-1 truncate">{chName(c)}</span>
-                      {e.kind === "notSold" ? (
-                        <small className="text-[11px] text-[color:var(--color-muted)]">{tp("notSoldDash")}</small>
-                      ) : e.kind === "none" ? (
-                        <small className="text-[11px] text-[color:var(--color-muted)]">{t("noPrice")}</small>
-                      ) : (
-                        <>
-                          {mk ? <small className="text-[11px] text-[color:var(--color-muted)]">{mk}</small> : null}
-                          <b className={`tabular-nums ${e.source === "BASE" ? "font-medium text-[color:var(--color-muted)]" : ""}`}>{moneyText(e.priceSatang)}</b>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
             ) : (
-              <div className="flex flex-col gap-2">
-                {chans.map((c) => {
-                  const cell = draft[c.code] ?? { text: "", notSold: false };
-                  const inherited = effectiveOf({ basePriceSatang: p.basePriceSatang, rows: p.rows.filter((r) => !(r.channelCode === c.code && (r.unitId ?? null) === unit)) }, c.code, unit);
-                  const err = rowErr[c.code];
+              <div data-testid="pos-prod-drawer-groups" className={`flex flex-col gap-4 rounded-xl ${groupsErr ? "border border-[color:var(--color-danger)] p-2" : ""}`}>
+                {groups.map((g) => {
+                  if (!g.codes.length) return null;
+                  const gk = groupKey(g.unit);
+                  const all = g.unit === null;
+                  const editingGroup = editing && g.editable;
                   return (
-                    <div key={c.code} className={`flex flex-col gap-1 rounded-lg border px-2.5 py-1.5 ${err ? "border-[color:var(--color-danger)]" : ""}`}>
-                      <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
-                        <span className="min-w-[96px] flex-1 truncate font-semibold">{chName(c)}</span>
-                        <input
-                          data-testid={`pos-prod-price-${c.code}`}
-                          aria-label={tp("drawer.priceFor", { channel: chName(c) })}
-                          inputMode="decimal"
-                          className="input h-11 w-28 text-right tabular-nums disabled:opacity-50"
-                          value={cell.text}
-                          disabled={cell.notSold || busy}
-                          placeholder={inherited.kind === "price" ? satangToInput(inherited.priceSatang) : ""}
-                          onChange={(ev) => setCell(c.code, { text: ev.target.value })}
-                        />
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={cell.notSold}
-                          data-testid={`pos-prod-notsold-${c.code}`}
-                          disabled={busy}
-                          className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] ${cell.notSold ? "border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-muted)]"}`}
-                          onClick={() => setCell(c.code, { notSold: !cell.notSold })}
-                        >
-                          {tp("notSold")}
-                        </button>
-                        <button
-                          type="button"
-                          data-testid={`pos-prod-usebase-${c.code}`}
-                          disabled={busy || (!cell.notSold && !cell.text)}
-                          className="inline-flex min-h-11 items-center px-1 text-[11.5px] text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)] disabled:opacity-60"
-                          onClick={() => setCell(c.code, { text: "", notSold: false })}
-                        >
-                          {tp("useBase")}
-                        </button>
+                    <GroupBox key={gk} unit={g.unit}>
+                      <div className="flex items-center gap-2 text-[12px] font-bold">
+                        <span className="min-w-0 flex-1 truncate">{all ? tp("allBranches") : unitName(g.unit!)}</span>
+                        {!g.editable && canEdit && !weighed ? <small className="font-normal text-[color:var(--color-muted)]">{t("branch.readOnly")}</small> : null}
                       </div>
-                      {err ? (
-                        <p data-testid={`pos-prod-price-err-${c.code}`} className="text-[11.5px] text-[color:var(--color-danger)]">
-                          {err}
-                        </p>
-                      ) : null}
-                    </div>
+                      {all && branchMode ? <p data-testid="pos-prod-drawer-managerHint" className="text-[11.5px] text-[color:var(--color-muted)]">{t("branch.managerHint")}</p> : null}
+                      {!editingGroup ? (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {g.codes.map((code) => {
+                            const e = effectiveOf(p, code, g.unit);
+                            const own = e.kind !== "none" && e.own;
+                            const mk = e.kind === "price" ? markupText(e.priceSatang, p.basePriceSatang, tp) : null;
+                            return (
+                              <ViewCell key={code} unit={g.unit} code={code}>
+                                <span className="min-w-0 flex-1 truncate">{codeName(code)}</span>
+                                {e.kind === "notSold" ? (
+                                  <small className={`text-[11px] ${own ? "font-bold" : "text-[color:var(--color-muted)]"}`}>{tp("notSoldDash")}</small>
+                                ) : e.kind === "none" ? (
+                                  <small className="text-[11px] text-[color:var(--color-muted)]">{t("noPrice")}</small>
+                                ) : (
+                                  <>
+                                    {mk ? <small className="text-[11px] text-[color:var(--color-muted)]">{mk}</small> : null}
+                                    <b className={`tabular-nums ${own ? "" : "font-medium text-[color:var(--color-muted)]"}`}>{moneyText(e.priceSatang)}</b>
+                                  </>
+                                )}
+                              </ViewCell>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {g.codes.map((code) => {
+                            const cell = draft[gk]?.[code] ?? { text: "", notSold: false };
+                            const inherited = inheritedOf(p, code, g.unit);
+                            const err = rowErr[`${gk}|${code}`];
+                            return (
+                              <div key={code} className={`flex flex-col gap-1 rounded-lg border px-2.5 py-1.5 ${err ? "border-[color:var(--color-danger)]" : ""}`}>
+                                <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+                                  <span className="min-w-[96px] flex-1 truncate font-semibold">{codeName(code)}</span>
+                                  {(() => {
+                                    const inp = {
+                                      "aria-label": tp("drawer.priceFor", { channel: all ? codeName(code) : `${codeName(code)} · ${unitName(g.unit!)}` }),
+                                      inputMode: "decimal" as const,
+                                      className: "input h-11 w-28 text-right tabular-nums disabled:opacity-50",
+                                      value: cell.text,
+                                      disabled: cell.notSold || busy,
+                                      placeholder: inherited.kind === "price" ? satangToInput(inherited.priceSatang) : "",
+                                      onChange: (ev: React.ChangeEvent<HTMLInputElement>) => setCell(gk, code, { text: ev.target.value }),
+                                    };
+                                    return all ? <input data-testid={`pos-prod-price-${code}`} {...inp} /> : <input data-testid={`pos-prod-drawer-cell-${g.unit}-${code}`} {...inp} />;
+                                  })()}
+                                  {(() => {
+                                    const btn = {
+                                      type: "button" as const,
+                                      role: "switch",
+                                      "aria-checked": cell.notSold,
+                                      disabled: busy,
+                                      className: `inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2 text-[11.5px] ${cell.notSold ? "border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-muted)]"}`,
+                                      onClick: () => setCell(gk, code, { notSold: !cell.notSold }),
+                                    };
+                                    return all ? (
+                                      <button data-testid={`pos-prod-notsold-${code}`} {...btn}>
+                                        {tp("notSold")}
+                                      </button>
+                                    ) : (
+                                      <button data-testid={`pos-prod-drawer-notsold-${g.unit}-${code}`} {...btn}>
+                                        {tp("notSold")}
+                                      </button>
+                                    );
+                                  })()}
+                                  {(() => {
+                                    const btn = {
+                                      type: "button" as const,
+                                      disabled: busy || (!cell.notSold && !cell.text),
+                                      className: "inline-flex min-h-11 items-center px-1 text-[11.5px] text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)] disabled:opacity-60",
+                                      onClick: () => setCell(gk, code, { text: "", notSold: false }),
+                                    };
+                                    return all ? (
+                                      <button data-testid={`pos-prod-usebase-${code}`} {...btn}>
+                                        {tp("useBase")}
+                                      </button>
+                                    ) : (
+                                      <button data-testid={`pos-prod-drawer-clear-${g.unit}-${code}`} {...btn}>
+                                        {t("branch.inherit")}
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                                {err ? (
+                                  all ? (
+                                    <p data-testid={`pos-prod-price-err-${code}`} className="text-[11.5px] text-[color:var(--color-danger)]">
+                                      {err}
+                                    </p>
+                                  ) : (
+                                    <p data-testid={`pos-prod-drawer-err-${g.unit}-${code}`} className="text-[11.5px] text-[color:var(--color-danger)]">
+                                      {err}
+                                    </p>
+                                  )
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </GroupBox>
                   );
                 })}
               </div>
             )}
+            {deadRows > 0 ? (
+              <div data-testid="pos-prod-deadNote" className="mt-3 flex flex-col gap-2 rounded-lg border border-dashed px-3 py-2 text-[12px] text-[color:var(--color-muted)]">
+                <span>{t("branch.dead.note", { count: deadRows })}</span>
+                {canPurge && canEdit && !editing ? (
+                  purgeAsk ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 flex-1 text-[color:var(--color-ink-soft)]">{t("branch.dead.confirm", { count: deadRows })}</span>
+                      <button type="button" data-testid="pos-prod-purgeDead-confirm" disabled={busy} className="btn btn-primary h-11 rounded-[11px] px-4 text-[12.5px] disabled:opacity-50" onClick={() => void purge()}>
+                        {t("branch.dead.confirmYes")}
+                      </button>
+                      <button type="button" data-testid="pos-prod-purgeDead-cancel" disabled={busy} className="btn btn-ghost h-11 rounded-[11px] px-4 text-[12.5px]" onClick={() => setPurgeAsk(false)}>
+                        {tp("cancel")}
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" data-testid="pos-prod-purgeDead" className="inline-flex min-h-11 items-center self-start text-[12px] font-bold text-[color:var(--color-accent)]" onClick={() => setPurgeAsk(true)}>
+                      {t("branch.dead.purge")}
+                    </button>
+                  )
+                ) : null}
+              </div>
+            ) : null}
             {saveErr ? (
               <p data-testid="pos-prod-price-error" role="alert" className="mt-2 rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-[12px] text-[color:var(--color-danger)]">
                 {saveErr}
@@ -334,5 +464,31 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
         </button>
       </div>
     </aside>
+  );
+}
+
+// ═══════════ POS P2.11U ▸ กล่องกลุ่ม/ช่องดูของลิ้นชัก (testid ตัวอักษรตรงบนแท็ก — กลุ่ม "ทุกสาขา" คง testid เดิมของ P2.2U) ◂ ═══════════
+function GroupBox({ unit, children }: { unit: string | null; children: React.ReactNode }) {
+  const cls = "flex scroll-mt-2 flex-col gap-2";
+  return unit === null ? (
+    <div data-testid="pos-prod-drawer-group-all" className={cls}>
+      {children}
+    </div>
+  ) : (
+    <div data-testid={`pos-prod-drawer-group-${unit}`} className={cls}>
+      {children}
+    </div>
+  );
+}
+function ViewCell({ unit, code, children }: { unit: string | null; code: string; children: React.ReactNode }) {
+  const cls = "flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px]";
+  return unit === null ? (
+    <div data-testid={`pos-prod-cell-${code}`} className={cls}>
+      {children}
+    </div>
+  ) : (
+    <div data-testid={`pos-prod-drawer-cell-${unit}-${code}`} className={cls}>
+      {children}
+    </div>
   );
 }

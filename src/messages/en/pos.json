@@ -1086,6 +1086,21 @@
         "preparing": "Preparing file…",
         "downloadCsv": "Download CSV"
       }
+    },
+    "channels": {
+      "title": "Sales channels",
+      "pctOfTotal": "% of sales",
+      "footnote": "Platform sales are net of commission in gross profit",
+      "empty": "No sales yet today",
+      "amountTip": "{name} · {amount}",
+      "cols": {
+        "channel": "Channel",
+        "bills": "Bills",
+        "net": "Net sales",
+        "commission": "Commission",
+        "gross": "Gross profit",
+        "share": "%"
+      }
     }
   },
   "stock": {
@@ -1276,6 +1291,9 @@
       "noSalePrice": "no sale price yet",
       "salePrice": "Sale price (baht)",
       "save": "Save"
+    },
+    "sharedInventory": {
+      "note": "Stock shared with {names} — one pool of stock"
     }
   },
   "refund": {
@@ -1837,6 +1855,26 @@
         "address": "Address can be at most 200 characters",
         "logoUrl": "The logo link must start with https://",
         "footer": "Footer text can be at most 200 characters"
+      },
+      "byUnit": {
+        "title": "Branch details on receipts",
+        "desc": "Branch number, address and phone per branch — empty = use the shop default (receipt header/accounting book)",
+        "unit": "Branch",
+        "branchNo": "Branch no.",
+        "branchNoHint": "5 digits · head office = 00000",
+        "address": "Address",
+        "phone": "Phone",
+        "inherit": "Use shop default",
+        "save": "Save branch details",
+        "saved": "Branch details saved",
+        "previewFor": "Preview for {name}",
+        "fieldErrors": {
+          "taxBranchNo": "Branch no. must be 5 digits (head office = 00000)",
+          "address": "Branch address can be at most 200 characters",
+          "phone": "Branch phone can be at most 30 characters",
+          "unitId": "This branch is not linked to this POS or has been archived",
+          "patch": "Nothing to change"
+        }
       }
     },
     "payments": {
@@ -2929,6 +2967,54 @@
       "stationSaved": "Kitchen station saved",
       "markedOut": "Marked sold out · the register and online channels see it now",
       "released": "Back on sale"
+    },
+    "branch": {
+      "colPrice": "Price · {name}",
+      "chipOwn": "Branch",
+      "chipInherited": "Shop price",
+      "notSold": "Not sold",
+      "cellTip": "Tap to view/edit this branch's prices",
+      "readOnly": "Read only",
+      "managerHint": "Shop-wide prices can be changed only by the owner or an all-branch admin",
+      "inherit": "Use inherited price",
+      "dead": {
+        "note": "{count} price rows of retired channels/branches are kept unchanged",
+        "purge": "Clear retired rows",
+        "confirm": "Permanently clear {count} retired rows? Prices of live channels/branches stay as they are",
+        "confirmYes": "Clear rows",
+        "done": "Retired rows cleared"
+      },
+      "copy": {
+        "open": "Copy prices from branch",
+        "title": "Copy prices from branch",
+        "hint": "Copies the source branch's price rows to the target branch (retired channels and weighed products are not copied)",
+        "from": "From branch",
+        "to": "To branch",
+        "overwrite": "Overwrite existing prices",
+        "overwriteHint": "Off = skip prices the target branch already has",
+        "onlyFiltered": "Only filtered products",
+        "onlyFilteredHint": "Off = every product priced at the source branch",
+        "summary": "Prices of {count} products will be copied",
+        "summaryAll": "Prices of all products will be copied",
+        "run": "Copy",
+        "running": "Copying…",
+        "done": "Copied {written} · skipped {skipped}",
+        "unitDead": "This branch is no longer in use",
+        "same": "Pick a target branch different from the source"
+      },
+      "compare": {
+        "open": "Compare branch prices",
+        "title": "Sold at {count} branches",
+        "close": "Close",
+        "loading": "Loading…",
+        "empty": "No products in the filtered list",
+        "product": "Product",
+        "units": "Branches",
+        "channels": "Channels",
+        "notSold": "Not sold",
+        "legend": "Bold = price set · muted = regular price · — = no price yet",
+        "capped": "Showing {shown} of {total} products (at most {max} at a time)"
+      }
     }
   },
   "recipe": {
@@ -3769,5 +3855,10 @@
     "close": "Close day",
     "reports": "Reports",
     "settings": "Settings"
+  },
+  "sales": {
+    "branch": {
+      "chipLabel": "Bill of branch {unit}"
+    }
   }
 }

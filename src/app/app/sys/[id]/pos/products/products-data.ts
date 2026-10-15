@@ -55,6 +55,8 @@ export type ProductsRow = {
   recipeCost: ProductsRecipeCost | null;
   /** POS P2.6U ▸ มติ 9b: สถานีครัวของแถวที่ไม่ใช่เมนู (PosProduct.stationId · null = ไม่ส่งเข้าครัว) ◂ */
   stationId?: string | null;
+  /** POS P2.11U ▸ มติ 3: แถวราคาที่เก็บอยู่ของช่องทางที่เลิกใช้ (ไม่มีช่องทางรหัสนี้ที่ยังไม่เก็บถาวร · builtin ไม่นับ) หรือของสาขาที่เก็บถาวร/เลิกผูก POS — นับทั้งชุดของสินค้า (รวมสาขาที่ผู้ใช้มองไม่เห็น) ◂ */
+  deadRows?: number;
 };
 export type ProductsData = {
   units: { id: string; name: string }[];
@@ -94,7 +96,7 @@ export async function loadProductsData(
   scope: { tenantId: string; systemId: string },
   actor: RegisterActor,
   units: { id: string; name: string }[],
-  opts: { rules?: boolean } = {},
+  opts: { rules?: boolean; liveUnitIds?: string[] } = {}, // POS P2.11U ▸ liveUnitIds = สาขาที่ผูก POS นี้และไม่เก็บถาวรทั้งหมด (นับแถวเลิกใช้ · มติ 3) ◂
 ): Promise<ProductsData> {
   const { tenantId, systemId } = scope;
   const per = await Promise.all(units.map((u) => unitProducts(tenantId, systemId, actor.userId, u.id)));
@@ -199,6 +201,7 @@ export async function loadProductsData(
     const m = new Map(st.map((x) => [x.id, x.stationId]));
     for (const p of products) p.stationId = m.get(p.id) ?? null;
   }
+  if (opts.liveUnitIds && products.length) await countDeadRows(scope, products, opts.liveUnitIds); // POS P2.11U ▸ มติ 3 ◂
   const recipeData = await loadRecipeData(scope, actor, units, products, variantRows); // POS P2.3U
   return {
     units,
@@ -210,6 +213,32 @@ export async function loadProductsData(
     ...recipeData, // POS P2.3U
   };
 }
+
+// ═══════════════════ POS P2.11U ▸ แถวราคาที่เลิกใช้ (มติ 3) ═══════════════════
+/**
+ * นับแถวราคาที่ "เลิกใช้" ต่อสินค้า (อ่านอย่างเดียว · คำสั่งละครั้ง): กติกาเดียวกับ setChannelPrices —
+ *   รหัสช่องทางที่ไม่ใช่ builtin และไม่มี SalesChannel รหัสนั้นที่ยังไม่เก็บถาวรในระบบ POS นี้ · หรือสาขาที่ไม่อยู่ในสาขาที่ผูก POS และไม่เก็บถาวร
+ *   (แถวของสาขาที่ยังใช้อยู่แต่ผู้ใช้เข้าไม่ได้ ไม่นับ — นั่นคือ "นอกขอบเขต" ไม่ใช่ "เลิกใช้")
+ */
+async function countDeadRows(scope: { tenantId: string; systemId: string }, products: ProductsRow[], liveUnitIds: string[]): Promise<void> {
+  const { tenantId, systemId } = scope;
+  const ids = products.map((p) => p.id);
+  const stored = await prisma.posProductChannelPrice.findMany({ where: { tenantId, systemId, productId: { in: ids } }, select: { productId: true, channelCode: true, unitId: true } });
+  if (!stored.length) return;
+  const custom = [...new Set(stored.flatMap((r) => (r.channelCode && !(CHANNEL_BUILTIN_CODES as readonly string[]).includes(r.channelCode) ? [r.channelCode] : [])))];
+  const liveCustom = custom.length
+    ? new Set((await prisma.salesChannel.findMany({ where: { tenantId, systemId, code: { in: custom }, archivedAt: null }, select: { code: true } })).map((c) => c.code))
+    : new Set<string>();
+  const liveUnits = new Set(liveUnitIds);
+  const dead = new Map<string, number>();
+  for (const r of stored) {
+    const codeDead = r.channelCode !== null && !(CHANNEL_BUILTIN_CODES as readonly string[]).includes(r.channelCode) && !liveCustom.has(r.channelCode);
+    const unitDead = r.unitId !== null && !liveUnits.has(r.unitId);
+    if (codeDead || unitDead) dead.set(r.productId, (dead.get(r.productId) ?? 0) + 1);
+  }
+  for (const p of products) p.deadRows = dead.get(p.id) ?? 0;
+}
+// ◂
 
 // ═══════════════════ POS P2.3U ▸ สูตร/วัตถุดิบของจอ 06 (มติ 1/3/4) ═══════════════════
 const RECIPE_COST_BATCH = 200; // เพดานของ recipeCost ต่อครั้ง
