@@ -348,7 +348,7 @@ export function TableSplitDialog(p: Props) {
         key={it.id}
         data-testid={`pos-tbl-split-row-${it.id}`}
         data-unassigned={missing ? "true" : undefined}
-        className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2.5 last:border-b-0 ${missing ? "bg-[color:var(--color-danger-soft,var(--color-surface-2))] shadow-[inset_3px_0_0_var(--color-danger)]" : ""} ${picked ? "outline outline-2 outline-offset-[-2px] outline-[color:var(--color-accent)]" : ""}`}
+        className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2.5 last:border-b-0 ${missing ? "bg-[color:var(--color-surface-2)] shadow-[inset_3px_0_0_var(--color-danger)]" : ""} ${picked ? "outline outline-2 outline-offset-[-2px] outline-[color:var(--color-accent)]" : ""}`}
       >
         {draft.mode === "SEAT" ? (
           <button
