@@ -5,6 +5,8 @@
 //   ประวัติ = รายการรอบตรวจนับของสาขา + การเคลื่อนไหวที่ทำในหน้านี้ (ยังไม่มีตัวอ่านประวัติคลังทั้งระบบ — ลิงก์ "ดูทั้งหมด" ไประบบคลัง)
 // 🔴 ไม่ส่ง ?tab= : มือถือ (< md) = ตรวจนับ · md+ = รับของเข้า (ภาพ 16 เปิดที่รับของ) — ตัดสินหลัง mount ด้วย matchMedia
 // 🔴 แท็บเปลี่ยนด้วย history.replaceState (ไม่โหลดหน้าใหม่) · เปลี่ยนสาขา = โหลดหน้าใหม่ (ตัวอ่านตั้งต้นอยู่ฝั่งเซิร์ฟเวอร์)
+// POS P2.11U ▸ มติ 9 (ภาพ 16 "คลัง: สาขา…"): สาขาที่เลือกอยู่ในกลุ่มคลังร่วม (posUnitInventoryMap.groups[].shared) = หมายเหตุจางใต้ตัวเลือก
+//   "คลังร่วมกับสาขา <ชื่อสาขาอื่น> — สต็อกเป็นก้อนเดียวกัน" (pos-stock-sharedNote) · สต็อกต่อตำแหน่งในคลังร่วม = P2.12 ◂
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -25,6 +27,8 @@ type Props = {
   initialTab: StockTab | null;
   me: { id: string; name: string | null };
   weighed: WeighedBarcodeSettings;
+  /** POS P2.11U ▸ มติ 9: กลุ่มสาขาต่อคลัง (จาก posUnitInventoryMap ฝั่งเซิร์ฟเวอร์) + ชื่อสาขา · null = ไม่แสดงหมายเหตุ ◂ */
+  inventoryShare?: { groups: { unitIds: string[]; shared: boolean }[]; names: Record<string, string> } | null;
 };
 const TABS: { key: StockTab; icon: StockIconName }[] = [
   { key: "count", icon: "count" },
@@ -34,7 +38,7 @@ const TABS: { key: StockTab; icon: StockIconName }[] = [
   { key: "history", icon: "history" },
 ];
 
-export function StockClient({ systemId, units, unitId, meta, initialTab, me, weighed }: Props) {
+export function StockClient({ systemId, units, unitId, meta, initialTab, me, weighed, inventoryShare = null }: Props) {
   const t = useTranslations("pos.stock") as T;
   const router = useRouter();
   const target = { systemId, unitId };
@@ -70,6 +74,9 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
   const invHref = `/app/sys/${meta.inventorySystemId}`;
   const locName = (id: string) => meta.locations.find((l) => l.id === id)?.name ?? t("defaultLocation");
   const shared = { target, meta, locationId, locName, onMove: addMove };
+  // POS P2.11U ▸ มติ 9: สาขาอื่นที่ใช้คลังเดียวกับสาขาที่เลือก ◂
+  const sharedGroup = inventoryShare?.groups.find((g) => g.shared && g.unitIds.includes(unitId)) ?? null;
+  const sharedNames = sharedGroup ? sharedGroup.unitIds.filter((u) => u !== unitId).map((u) => inventoryShare?.names[u] ?? "").filter(Boolean) : [];
 
   const count = (
     <StockCount
@@ -148,6 +155,12 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
             </a>
           </div>
         </div>
+        {/* POS P2.11U ▸ มติ 9 ◂ */}
+        {sharedNames.length ? (
+          <p data-testid="pos-stock-sharedNote" className="-mt-2 text-[13px] text-[color:var(--color-muted)] md:text-right">
+            {t("sharedInventory.note", { names: sharedNames.join(", ") })}
+          </p>
+        ) : null}
         {/* ── แถบย่อย ── */}
         <div role="tablist" aria-label={t("title")} className="-mx-1 flex gap-1 overflow-x-auto border-b px-1">
           {TABS.map(({ key, icon }) => {
