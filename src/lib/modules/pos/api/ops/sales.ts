@@ -13,9 +13,9 @@ import { z } from "zod";
 import { actorRefId, type ApiActor } from "@/lib/api/actor";
 import { ApiError, paged } from "@/lib/api/respond";
 import { canAccessUnit } from "@/lib/core/rbac";
-import { billsPageData, billDetail } from "../../bills";
+import { billsPageData, billDetail, voidSaleByActor } from "../../bills";
 import { BILL_PAGE_SIZES, BILL_STATUS_FILTERS } from "../../bills-shared";
-import { bkkToday, PosSaleError, voidSale } from "../../index";
+import { bkkToday, PosSaleError } from "../../index";
 import { receiptPayload } from "../../receipt";
 import { refundSale, saleForRefund } from "../../refund";
 import { quoteRegisterCart, submitRegisterSale, type RegisterApiCtx } from "../../register";
@@ -418,12 +418,13 @@ const salesVoid = definePosOp({
   path: "/sales/{id}/void",
   kind: "danger",
   action: POS_SCOPES.saleVoid,
-  summary: "Void a paid POS bill (register or API). Reverses accounting, coupons, member rights and stock. Cannot be undone; a bill with refunds must be refunded instead.",
+  summary:
+    "Void a paid POS bill (register or API). Reverses accounting, coupons, member rights and stock. Cannot be undone; a bill with refunds must be refunded instead, and a bill of a closed shift cannot be voided. When the shop's approval rule for voids applies, nothing is voided: 409 state_conflict with the approval request id in hint, and the request waits for a manager in the app.",
   label: "ยกเลิกบิลขาย",
   test: "POS-P0.2-OP.4",
   input: voidInput,
   auditTarget: saleTarget,
-  async handler({ actor, params, input }) {
+  async handler({ actor, params, input, idempotencyKey, requestId }) {
     const saleId = params.id ?? "";
     // ด่าน id: บิลต้องเป็นของร้าน + ระบบ POS ของ actor · ผู้กระทำใช้สาขาของบิลได้ (ตัวกรองของคีย์ / สิทธิ์สาขาของคน)
     const sale = await posSaleHead(actor, saleId);
@@ -435,11 +436,20 @@ const salesVoid = definePosOp({
     if (sale.status !== "PAID") {
       throw new ApiError(409, "state_conflict", `บิลนี้ยกเลิกไม่ได้ (สถานะปัจจุบัน: ${sale.status})`, "Only paid bills can be voided.");
     }
+    // POS P2.13 ▸ fix1 F1: ทางเดียวกับลิ้นชักบิล (voidSaleByActor) — กติกาอนุมัติ POS_VOID ของร้าน (APPROVAL_REQUIRED/PENDING_APPROVAL = 409 · requestId ใน hint) ·
+    //   กะของบิลปิดแล้ว = SHIFT_CLOSED · audit ในtx · คีย์บริการผูกคีย์ API (เล่นซ้ำ = ผลเดิม) — ไม่เรียก voidSale ตรงอีก ◂
+    let r: Awaited<ReturnType<typeof voidSaleByActor>>;
     try {
-      await voidSale(actor.tenantId, sale.unitId, sale.id, { actorUserId: actorRefId(actor), reason: input.reason });
+      r = await voidSaleByActor({ tenantId: actor.tenantId, systemId: actor.systemId, unitId: sale.unitId }, posRegisterActorOf(actor), {
+        unitId: sale.unitId,
+        saleId: sale.id,
+        reason: input.reason,
+        idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId),
+      });
     } catch (e) {
       throw toPosApiError(voidErrorToApi(e));
     }
+    posResult(r);
     return { saleId: sale.id, status: "VOIDED" as const };
   },
 });

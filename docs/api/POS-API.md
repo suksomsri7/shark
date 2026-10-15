@@ -1029,7 +1029,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/pos/sales/123/refund" \
 
 #### `sales.void`
 
-**POST /sales/{id}/void** - Void a paid POS bill (register or API). Reverses accounting, coupons, member rights and stock. Cannot be undone; a bill with refunds must be refunded instead. · scope: `pos.sale.void` · danger
+**POST /sales/{id}/void** - Void a paid POS bill (register or API). Reverses accounting, coupons, member rights and stock. Cannot be undone; a bill with refunds must be refunded instead, and a bill of a closed shift cannot be voided. When the shop's approval rule for voids applies, nothing is voided: 409 state_conflict with the approval request id in hint, and the request waits for a manager in the app. · scope: `pos.sale.void` · danger
 
 Path parameters: `id` (required).
 
