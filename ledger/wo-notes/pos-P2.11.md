@@ -93,6 +93,22 @@ Code head for all gates = **f7353edb** (gate run at a21486a9 = f7353edb + ledger
 ### CD-1 (CONTROLLER-DECISION · not edited) — contract-snapshot pins red before P2.11
 `qc-pos-p2.2` S3, `qc-pos-p2.1` S8 and `qc-pos-p2.3` ST4 all compare `scripts/pos-sale-contract.json` with an older base; the file changed in **0e9e3144** (P2.9 S, `payMethods[].giftCard{,.number,.pin}`, CD-P29-1 approved 14 Oct). P2.11 does not touch the file (`git diff 5576c15b HEAD -- scripts/pos-sale-contract.json` = empty) and p2.2 S3 is red with the base suite on the base tree too (`--no-db` 11/12 at 33322595). The prompt's "p2.2 42 / p2.1 55" therefore cannot be reached without an ORACLE-EDIT of these three pins (add the 3 giftCard fields / new sha) — that is P2.9's follow-up, outside the approved P2.11 edit (ruling 7/18), so left for the controller.
 
+## Fix round 1 (rulings in `pos-P2.11-review.md` "Controller rulings — fix round 1")
+| finding | commit | change |
+|---|---|---|
+| CD-1 re-pins | 409dc9ae · bd96e593 · c21b6018 | `qc-pos-p2.1` S8 / `qc-pos-p2.2` S3: accept the 3 `payMethods[].giftCard*` fields only when the contract file sha = 72afb258…; `qc-pos-p2.3` ST4 `CONTRACT_SHA_B694` → 72afb258… (old 7a418de17b44… kept in the marker) — S8/S3 had no file sha, so the re-pin is the file-sha gate on the extra-field list; nothing else changed |
+X PR10 PR11 PR12, dated marker `ORACLE-ADD ผู้คุม 15 ต.ค. (P2.11 fix รอบ 1 · มติ 1–3 …)` |
+| red-before block 2 | 20762bc8 | forced at code f7353edb: **31/34**, red = PR10 (NOT_FOUND) · PR11 (`purgeDead` unknown key ⇒ VALIDATION) · PR12 (MANAGER{A} B-row-first ⇒ PERMISSION_DENIED) — all by reason, no fixture note |
+| R1 F3 (ruling 1) | 99821954 | `copyUnitPrices` without `productIds`: products the actor cannot see (single-unit, unit out of reach) are left out of the copy and their source rows counted in `skipped`; with explicit `productIds` still NOT_FOUND |
+| hunt L1 (ruling 2) | 9afe7d83 | `setChannelPrices({…, purgeDead: true})` (+ action passthrough): product-wide scope = setPrice + access at every live POS unit (none live ⇒ OWNER/`*`), checked before any write else PERMISSION_DENIED; deletes every dead row of the product (sent or not); non-boolean ⇒ VALIDATION `field purgeDead`; audit after has `via:"purgeDead", purged:[…]`; default unchanged |
+| hunt L2 (ruling 3) | 6be822ae | no-change path: ok when the actor has product scope **or** any live branch row of the input is in reach (order-independent) |
+| hunt L3 (ruling 4) | ledger | owner line + P2.11U contract line below; no code |
+| R1 F2 | ledger | owner line (matrix readable without a POS key, ruling 16) |
+
+P2.11U contract addition: the 06 save should send a precondition of the set it loaded (hash of rows or max `updatedAt`) so a concurrent save is refused instead of silently replaced (hunt L3 · P2.11U or P2.12 — needs a server param then); `purgeDead` = the "ล้างแถวที่เลิกใช้" action of `products-dead-row-note` (show only when the actor has product-wide scope).
+
+ORACLE-EDIT / ORACLE-ADD list: f3d1a097 `qc-pos-p2.2` ST1 filter (ruling 18) · 409dc9ae `qc-pos-p2.1` S8 · bd96e593 `qc-pos-p2.2` S3 · c21b6018 `qc-pos-p2.3` ST4 (CD-1) · 4b925e37 + c578a275 `qc-pos-p2.11` PR10–PR12 (fix 1).
+
 ## Hunter focus (money lane, ruling 10)
 `setChannelPrices` out-of-reach classification (dead vs permission, all checks before first write, kept rows not re-written) · `copyUnitPrices` permission at target + from access · `unitPriceMatrix` = `priceOf` (no write) · `reportChannels` sums vs bills (refund commission share sign) · receipt identity order (`receipt.ts:301–303`) · `updatePosReceiptSettings` keeping `byUnit`.
 
