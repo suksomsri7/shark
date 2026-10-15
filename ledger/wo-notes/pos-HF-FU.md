@@ -1,4 +1,4 @@
-# POS HF-FU — builder notes (server hygiene follow-up bucket)
+# POS HF-FU — builder notes (server hygiene follow-up bucket) · DONE — 21 items in, f3 included
 
 Builder · VPS (account B) · 15 Oct 2026 · tree `/root/projects/shark-pos-c` · branch `wip/pos-hf-fu` from `wip/pos-hf-fu-oracle` **9e2b1d27** (= `session/pos` c3c52ef1 + oracle `scripts/qc-hf-fu.mts` + 5 ORACLE-EDITs).
 Contract: `ledger/pos-briefs/pos-brief-HF-FU.md` §10 rulings 1–14 · names table rows 1–23 of `ledger/wo-notes/pos-HF-FU-oracle.md`. No `scripts/qc-*.mts` edited by the builder. No migration, `prisma/` untouched.
@@ -35,3 +35,32 @@ Contract: `ledger/pos-briefs/pos-brief-HF-FU.md` §10 rulings 1–14 · names ta
 ## Follow-ups
 - Hunter at merge (money lane, brief §8): sweeper double-accept/double-sale + lock order with KDS; EQUAL rotation Σ/VAT; j retry semantics; z1/z3 gate.
 - Visual (§9, controller): `--page tables --states --state split-locked,split-seat,split-equal,prebill-preview` · `--page products --states --state products-branch-filter` · `--page orders --states --state orders-detail-platform`.
+
+## Gates (brief §8) — head f0387417 (code = afef29e7; `git diff --name-only afef29e7 f0387417` = ledger only) · dirty 0
+Logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/hffub/runs/` (every log line 1 = `tree= head= dirty=`); final set `g-*.log` via `scratchpad/hffub/gates.sh`; step logs `s<N>-*.log`. `origin/session/pos` moved by ledger-only commits (a1d8af43) → merged (f0387417, no conflict); P2.9bU not merged upstream yet.
+
+| gate | result |
+|---|---|
+| qc-hf-fu ×2 **unforced** | **25/25 · 25/25** (PAR 5/5 · residue 0 · leaks 0 · fpDrift none) `g-hffu-1/2.log` |
+| qc-pos-p2.5 | 49/49 (M2 M6 T5 C7 green with the ORACLE-EDITs) |
+| qc-pos-p2.6 | 67/67 (O4 edit green) |
+| qc-pos-p2.9b | 53/53 (A10 edit green) |
+| qc-pos-p2.4 | 50/50 |
+| qc-pos-p2.8 | 61/61 (ST6 lane pin green here) |
+| qc-pos-p2.9 | 62/62 |
+| qc-hf-tx | 22/22 |
+| qc-pos-p1.1 | 180/180 |
+| qc-pos-p1.3 | 128/128 |
+| qc-pos-p1.8 | 49/49 |
+| qc-pos-p2.3 | 46/46 |
+| qc-pos-p2.11 | 33/34 — ST4 lane pin red (lane-A files touched: outbox-consumers.ts, account/gl.ts, account/index.ts = items j/z1/z3 by brief) · ST1 green |
+| qc-pos-p2.2 | 42/42 |
+| qc-pos-p1.18 (U) | 81/81 (ST7 0) |
+| qc-hf-pos-page-authz | 81/81 |
+| qc-pos-account | 16/16 |
+| qc-account-cpa | 107/107 |
+| restaurant ×4: qc-restaurant · qc-restaurant-money · qc-restaurant-pay · qc-restaurant-void | 6/6 · 6/6 · 19/19 · 11/11 |
+| typecheck (1 run, pos lock 5632 MB) | rc 0 at afef29e7 `typecheck-1.log` (= final code; 2nd run not needed) |
+| fitness no-env · env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 |
+
+Step runs (forced unless noted): s1 p2.5 49/49 (unforced) · s3 p2.3 46/46 · s4 p2.8 61/61 · s5 qc-hf-fu 17/25 (mid) · s5 p2.6 67/67 · s5 hf-tx 22/22 · s6 p2.4 50/50 · s7 p2.9b 53/53 · pos-account 16/16 · cpa 107/107.
