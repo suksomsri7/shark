@@ -105,7 +105,8 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 6 · pos-P2.5-review.md N4)
   D("T4", "-", "[มติ fix1 ข้อ 6] แผน DONE บนโต๊ะ B (มีรอบร่าง) → รวม B เข้า A → แผนย้ายไป session A · void บิลใบ 1 → ใบ OPEN บน session A · quote/จ่ายใบ 1 ได้ · แผน DONE · แผน OPEN บน session ที่ปิดแล้ว (โต๊ะ A5 หลัง X4) ไม่กันการยกเลิกรายการ"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 2 ruling 2 · F2)
-  D("T5", "X5", "[มติ fix2 ข้อ 2] หน้าเดิม mergeSessionAction เรียก legacyMergeSplitGuard ก่อน table.mergeSession · แผน OPEN ฝั่งต้นทาง / ฝั่งปลายทาง → ปฏิเสธ ออเดอร์ไม่ย้าย แผนไม่เปลี่ยน · ตัวควบคุม: มีแต่แผน DONE → รวมด้วยประตูเดิมได้"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU d · มติ 4 refuse): แผน DONE ฝั่งต้นทาง = ปฏิเสธด้วย · ตัวควบคุมเปลี่ยนเป็น "ไม่มีแผน → รวมได้" — เดิม "ตัวควบคุม: มีแต่แผน DONE → รวมด้วยประตูเดิมได้" ◂
+  D("T5", "X5", "[มติ fix2 ข้อ 2 · HF-FU มติ 4] หน้าเดิม mergeSessionAction เรียก legacyMergeSplitGuard ก่อน table.mergeSession · แผน OPEN ฝั่งต้นทาง / ฝั่งปลายทาง → ปฏิเสธ ออเดอร์ไม่ย้าย แผนไม่เปลี่ยน · แผน DONE ฝั่งต้นทาง → ปฏิเสธ (ออเดอร์ไม่ย้าย แผนยัง DONE บน session ต้นทาง) · ตัวควบคุม: ไม่มีแผน → รวมด้วยประตูเดิมได้"),
   // ── B ใบรายการ ──
   D("B1", "X5", "[R9 มติ 9] registerTablePreBill ทั้งโต๊ะ → kind PRE_BILL · notReceipt · ยอด = quote (subtotal/serviceCharge/vat/total/itemsHash) · ไม่มีคีย์เลขเอกสาร/เลขภาษี · เลขใบเสร็จ +0 · session/โต๊ะไม่เปลี่ยน (ไม่ขอเช็คบิล) · AuditLog pos.table.preBill 1 แถวต่อครั้ง (2 ครั้ง = 2) · ไม่มี outbox/JV"),
   D("B2", "X2", "[R9 CD9 CD10] ใบรายการของใบ (tableSplitPartId) = ยอดของใบ + part {no, of} · copy:true → copy · WAITER (pos.sale.read) ok · NOPERM → PERMISSION_DENIED · session ร้าน T2 / ctx สาขา B → TABLE_NOT_FOUND · session CLOSED → TABLE_SESSION_CLOSED · ใบมั่ว → TABLE_SPLIT_NOT_FOUND"),
@@ -2585,7 +2586,8 @@ async function runDb() {
       if (ord?.sessionId !== from.sid || (await sessRow(from.sid))?.status !== "OPEN") p.push(`ฝั่ง${side}: ออเดอร์ย้าย/ต้นทางไม่ OPEN`);
       if ((await snap(side === "from" ? from.sid : into.sid, String(pl?.splitId ?? ""))) !== s0) p.push(`ฝั่ง${side}: แผน/รายการเปลี่ยน`);
     }
-    // ตัวควบคุม: มีแต่แผน DONE (ต้นทางมีรอบร่าง ⇒ ยัง OPEN) → รวมด้วยประตูเดิมได้
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU d · มติ 4): แผน DONE ฝั่งต้นทาง (ต้นทางมีรอบร่าง ⇒ ยัง OPEN) → ปฏิเสธ · ออเดอร์ไม่ย้าย · แผนยัง DONE บน session ต้นทาง
+    //   (เดิม = ตัวควบคุม "มีแต่แผน DONE → รวมได้") · ตัวควบคุมใหม่: ไม่มีแผน → รวมด้วยประตูเดิมได้ ◂
     const into = await seat("T5ci", { guestCount: 2, lines: [ml("kaprao", 1)] });
     const from = await seat("T5cf", { guestCount: 2, lines: [ml("chayen", 1)] });
     const pl = splitOf(await mkSplit(from.sid, { mode: "EQUAL", partCount: 2 }));
@@ -2594,8 +2596,15 @@ async function runDb() {
     const b = await payPart(pl, 2);
     if (!a.saleId || !b.saleId || (await planRow(String(pl?.splitId ?? "")))?.status !== "DONE") p.push(`(fixture) แผน DONE ${codeOf(a.r)}/${codeOf(b.r)}`);
     const x = await legacy(into, from);
-    if (x.g?.ok !== true || JSON.stringify(x.m) !== JSON.stringify({ ok: true }) || (await sessRow(from.sid))?.status !== "MERGED") p.push(`(ตัวควบคุม) แผน DONE → ตัวกัน ${short(x.g, 40)} · รวม ${short(x.m, 40)}`);
-    chk("T5", p.length === 0, "หน้าเดิมรวมโต๊ะที่มีแผน OPEN ไม่ได้ (ต้นทาง/ปลายทาง) · แผน DONE รวมได้", FX(P8(p) || "ครบ"));
+    const ordD = await P.restaurantOrder.findUnique({ where: { id: from.orderId } }).catch(() => null);
+    const plD = await planRow(String(pl?.splitId ?? ""));
+    if (x.g?.ok !== false || typeof x.g?.reason !== "string" || x.m) p.push(`แผน DONE ฝั่งต้นทาง → ตัวกัน ${short(x.g, 60)} · รวม ${short(x.m, 40)} (คาด ปฏิเสธ · HF-FU มติ 4)`);
+    if (ordD?.sessionId !== from.sid || (await sessRow(from.sid))?.status !== "OPEN" || plD?.status !== "DONE" || plD?.sessionId !== from.sid) p.push(`แผน DONE ฝั่งต้นทาง: ออเดอร์ ${ordD?.sessionId === from.sid ? "อยู่เดิม" : "ย้าย"} · ต้นทาง ${(await sessRow(from.sid))?.status} · แผน ${plD?.status} ${plD?.sessionId === from.sid ? "session เดิม" : "ย้าย"}`);
+    const into2 = await seat("T5ni", { guestCount: 2, lines: [ml("kaprao", 1)] });
+    const from2 = await seat("T5nf", { guestCount: 2, lines: [ml("chayen", 1)] });
+    const y = await legacy(into2, from2);
+    if (y.g?.ok !== true || JSON.stringify(y.m) !== JSON.stringify({ ok: true }) || (await sessRow(from2.sid))?.status !== "MERGED") p.push(`(ตัวควบคุม) ไม่มีแผน → ตัวกัน ${short(y.g, 40)} · รวม ${short(y.m, 40)}`);
+    chk("T5", p.length === 0, "หน้าเดิมรวมโต๊ะที่มีแผน OPEN ไม่ได้ (ต้นทาง/ปลายทาง) · แผน DONE ฝั่งต้นทางไม่ได้ · ไม่มีแผนรวมได้", FX(P8(p) || "ครบ"));
   });
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 5 · CD-P25-N3 option 2: no VAT-EXCLUDED mode in the register)
   await step("M8", async () => {
