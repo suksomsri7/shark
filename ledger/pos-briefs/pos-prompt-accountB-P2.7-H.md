@@ -1,0 +1,13 @@
+# Prompt — P2.7 S money hunter (independent, read-only, adversarial). Controller (account B, __DATE__). Head `wip/pos-p2.7` **__HEAD__**, tree `/root/projects/shark-pos-d` (checked out; do not checkout/fetch/edit). Read-only: no edits/commits/build/servers/`.env*`/`cd`. You may run `scripts/qc-pos-p2.7.mts` and ad-hoc read-only probes on **QC4** via `bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx <your scratch .mts placed under scripts/ as scripts/hunt-p27-*.mts — delete it before you finish>`; never QC5, never reseed, never `pnpm neon:gc`. English, ≤ 50 lines.
+
+Read: `pos-brief-P2.7.md` §2 S1–S8 + §10, `pos-P2.7-oracle.md`, builder notes `pos-P2.7.md`, then the code: `pos/qr-order.ts`, `pos/qr-order-shared.ts`, `order.ts` P2.7 blocks, `payment-intent.ts` `createIntentForOrderInTx` + `markPaidCore`, `outbox-consumers.ts` intent_paid consumer, restaurant `guestRoundInTx`, `(store)/q/**/actions.ts`.
+
+Hunt (try to break money or state; each finding = concrete inputs → wrong satang/rows):
+1. Pay-first idempotency: same key ×2, 10 parallel submits with different IPs, key reuse across links/units/tenants, replay after the intent expired, replay after the order was accepted.
+2. Double money: Beam webhook ×2 + manual confirm + lateWebhook combos; webhook for a `pi_` of another tenant/order; consumer replay after the sale exists; accept racing with expiry (PREPAID + payBy passed); accept racing accept.
+3. Amount drift: order total vs intent amount vs sale total when a channel price changes between submit and accept, when a product is archived, when options change, when the shop's rounding/service-charge settings change; pre-order must have no service charge; table guest bill vs register bill with discounts/splits/merges.
+4. Stock/KDS: BLOCK stock at accept ⇒ nothing written; 86 flips exactly one availability event; pre-order KDS round only at accept; table round KDS at submit; counter exhaustion with parallel rounds.
+5. Doors: token swap between doors, revoked link reuse, other-tenant token, status read of another order, submit to a closed/paused channel racing a pause, rate limit bypass via token rotation, oversized carts, Thai phone normalisation edge cases.
+6. Legacy: legacy page still creating ghost sessions on any path; redirect loop; restaurant byte parity.
+
+Report: `FINDINGS` or `NO-FINDINGS`; H1..Hn (severity, file:line, exact inputs → wrong satang/rows, smallest fix, oracle check to add), "Probed OK" list with how. Write `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p27-h/REPORT.md` and return it verbatim as your final message.
