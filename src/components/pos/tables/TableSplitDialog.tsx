@@ -757,9 +757,10 @@ export function TableSplitDialog(p: Props) {
               )}
               {p.payBlock && <div className="text-[color:var(--color-danger)]">{p.payBlock}</div>}
             </div>
-            <div className="flex items-center gap-2">
+            {/* fix1 V4: < md = ลิงก์ยกเลิกแถวของตัวเอง แล้วปุ่มเต็มความกว้างทีละแถว (แถบล่างติดจอ) · md+ = แถวเดียว */}
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
               {plan && !locked && p.canSell && (
-                <button data-testid="pos-tbl-split-cancel" type="button" disabled={busy} className="h-12 shrink-0 rounded-[14px] px-3 text-[13.5px] font-bold text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]" onClick={() => setSub({ kind: "cancel" })}>
+                <button data-testid="pos-tbl-split-cancel" type="button" disabled={busy} className="h-11 shrink-0 self-start whitespace-nowrap rounded-[14px] px-3 text-[13.5px] font-bold text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)] md:h-12 md:self-auto" onClick={() => setSub({ kind: "cancel" })}>
                   {t("split.cancel")}
                 </button>
               )}
@@ -768,7 +769,7 @@ export function TableSplitDialog(p: Props) {
                   data-testid="pos-tbl-split-save"
                   type="button"
                   disabled={busy || !editable || (clean && !!plan) || unassigned.length > 0 || empties.length > 0 || !items.length}
-                  className="btn btn-ghost h-12 flex-1 rounded-[14px] px-5 text-[15px] font-bold md:flex-none"
+                  className="btn btn-ghost h-12 w-full whitespace-nowrap rounded-[14px] px-5 text-[15px] font-bold md:w-auto"
                   onClick={() => void saveOnly()}
                 >
                   {t("split.payOneByOne")}
@@ -778,7 +779,7 @@ export function TableSplitDialog(p: Props) {
                 data-testid={`pos-tbl-split-payPart-${selPart ?? 0}`}
                 type="button"
                 disabled={busy || !selPart || selPaid || !!p.payBlock || !p.canSell || (!clean && (locked || unassigned.length > 0 || empties.length > 0)) || !items.length}
-                className="btn btn-primary h-12 flex-[2] whitespace-nowrap rounded-[14px] px-5 text-[15px] font-bold md:flex-none"
+                className="btn btn-primary h-12 w-full whitespace-nowrap rounded-[14px] px-5 text-[15px] font-bold md:w-auto"
                 onClick={() => selPart && void payPart(selPart)}
               >
                 {selPart ? t("split.payBill", { no: selPart, amount: selTotal !== null ? moneyText(selTotal) : "" }).trim() : t("split.payOneByOne")}
