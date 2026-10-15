@@ -5806,8 +5806,9 @@ async function ensureP211uFixture(): Promise<void> {
       const rb = receiptUnitOverride(sys?.settings ?? null, unitId);
       P211U.receiptBefore = rb;
       // fix1 มติ 5 (R1 F5): ซากรอบที่ถูก SIGKILL — ค่าสาขาสีลม = "00001" ของ fixture ⇒ ล้าง (ที่อยู่/โทรที่ตรงค่า fixture ด้วย) ก่อนจำ "ก่อน"
-      if (rb.taxBranchNo === P211U_RECEIPT.taxBranchNo) {
-        const sweep = { taxBranchNo: null, address: rb.address === P211U_RECEIPT.address ? null : rb.address, phone: rb.phone === P211U_RECEIPT.phone ? null : rb.phone };
+      // fix2 มติ 1 (R2 G1): ซาก = ครบทั้ง 3 ช่องตรง P211U_RECEIPT (fixture เขียนครั้งเดียว 3 ช่อง) ⇒ ล้างเป็น null ทั้งหมด · ไม่ครบ = ค่าจริงของเจ้าของ ไม่แตะ
+      if (rb.taxBranchNo === P211U_RECEIPT.taxBranchNo && rb.address === P211U_RECEIPT.address && rb.phone === P211U_RECEIPT.phone) {
+        const sweep = { taxBranchNo: null, address: null, phone: null };
         const sw = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { unitId, patch: sweep });
         if (!sw.ok) throw new StepError(`กวาดซากค่าใบเสร็จของสาขา: ${sw.code} ${sw.field ?? ""}`);
         P211U.receiptBefore = sweep;
