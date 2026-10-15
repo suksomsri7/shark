@@ -17,10 +17,11 @@ import { BillIcon, money, type T } from "./bills-ui";
 
 type Info = { id: string; status: string; remainingSatang: number | null; needsPhoneLast4: boolean };
 type RefundMethod = "CASH" | "PROMPTPAY" | "TRANSFER";
+// POS P2.9bU ▸ fix1 มติ 7 (R1 F7): ป้ายกลางของมัดจำ (ไม่อ้าง "PromptPay เดิม"/"บัญชีที่โอนมา" ของการคืนบิลขาย P1.8) ◂
 const METHODS: { m: RefundMethod; label: string }[] = [
-  { m: "CASH", label: "refund.m.cash" },
-  { m: "PROMPTPAY", label: "refund.m.promptpay" },
-  { m: "TRANSFER", label: "refund.m.transfer" },
+  { m: "CASH", label: "deposit.refundMCash" },
+  { m: "PROMPTPAY", label: "deposit.refundMPromptpay" },
+  { m: "TRANSFER", label: "deposit.refundMTransfer" },
 ];
 const REASON_MAX = 200;
 const LAST4 = 4;

@@ -81,6 +81,9 @@ export function DepositReceiveDialog(p: {
   // ── ส่ง ──
   const [phase, setPhase] = useState<"form" | "sending" | "unknown" | "done">("form");
   const [errKey, setErrKey] = useState<string | null>(null);
+  /** POS P2.9bU ▸ fix1 มติ 3 (R1 F3): ใบพร้อมเพย์ PAID แล้วแต่ S ปฏิเสธแน่นอน (ปิดรับมัดจำ / PERMISSION_DENIED) = อ้างอิง pi_ ของใบนั้น ⇒ ปิดแผ่นได้ ·
+   *   ใบคงสถานะ PAID (ไม่ยกเลิก — เงินเข้าแล้ว) แบบเดียวกับจอชำระ (InterimPayDialog TERMINAL_SUBMIT :245 · close :414 · pay.intent.refundYourself :2058) ◂ */
+  const [paidRef, setPaidRef] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const sentRef = useRef<TakeInput | null>(null);
   const busy = phase === "sending";
@@ -150,6 +153,9 @@ export function DepositReceiveDialog(p: {
     sentRef.current = input;
     setPhase("sending");
     setErrKey(null);
+    setPaidRef(null); // POS P2.9bU ▸ fix1 มติ 3 ◂
+    // POS P2.9bU ▸ fix1 มติ 3: อ้างอิงของใบ PAID ที่ส่งไปกับคำขอนี้ (มีเฉพาะพร้อมเพย์ที่เงินเข้าแล้ว) ◂
+    const sentPaidRef = input.payMethods[0]?.type === "PROMPTPAY" && input.payMethods[0].reference?.startsWith("pi_") ? input.payMethods[0].reference : null;
     try {
       const deviceId = getPosDeviceId();
       const r = await registerTakeDepositAction({ systemId: p.systemId, unitId: p.unitId, ...(deviceId ? { deviceId } : {}), input });
@@ -164,9 +170,12 @@ export function DepositReceiveDialog(p: {
       if (r.code === "VALIDATION") {
         // มติ 5: ค่าตั้งถูกปิดระหว่างเปิดแผ่น = "ร้านยังไม่เปิดรับมัดจำ" · อื่น = ข้อมูลไม่ครบ
         const tn = await registerPayTendersAction({ systemId: p.systemId, unitId: p.unitId }).catch(() => null);
-        setErrKey(tn && tn.ok && !tn.tenders.deposit.enabled ? "pay.depositRcvDisabled" : "pay.depositRcvInvalid");
+        const off = !!tn && tn.ok && !tn.tenders.deposit.enabled;
+        setErrKey(off ? "pay.depositRcvDisabled" : "pay.depositRcvInvalid");
+        if (off) setPaidRef(sentPaidRef); // POS P2.9bU ▸ fix1 มติ 3: ปิดรับมัดจำ = ปฏิเสธแน่นอน ◂
         return;
       }
+      if (r.code === "PERMISSION_DENIED") setPaidRef(sentPaidRef); // POS P2.9bU ▸ fix1 มติ 3: ไม่มีสิทธิ์ = ปฏิเสธแน่นอน ◂
       setErrKey(submitRefusalMessageKey(r)); // PERMISSION_DENIED ของการยืนยันเอง = refusal.manualConfirmManager · อื่น = errors.*
     } catch {
       setPhase("unknown");
@@ -229,7 +238,8 @@ export function DepositReceiveDialog(p: {
     }`;
   const fieldCls = (on: boolean) =>
     `flex h-14 items-center justify-between gap-3 rounded-[10px] border bg-[color:var(--color-surface)] px-[14px] text-[13px] text-[color:var(--color-muted)] ${on ? "border-[color:var(--color-ink)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""}`;
-  const canClose = phase !== "sending" && phase !== "unknown" && !(method === "PROMPTPAY" && pi.intent?.status === "PAID" && phase !== "done");
+  // POS P2.9bU ▸ fix1 มติ 3: ใบ PAID + ปฏิเสธแน่นอน (paidRef) = ปิดได้ ◂
+  const canClose = phase !== "sending" && phase !== "unknown" && !(method === "PROMPTPAY" && pi.intent?.status === "PAID" && phase !== "done" && !paidRef);
   const close = () => {
     if (!canClose) return;
     if (phase === "done") return p.onDone();
@@ -272,7 +282,7 @@ export function DepositReceiveDialog(p: {
               </p>
             )}
             {previewHtml ? (
-              <iframe data-testid="pos-reg-deprcv-preview" title={t("pay.depositRcvPreview")} srcDoc={previewHtml} className="h-[360px] w-[320px] max-w-full rounded-[10px] border bg-white" />
+              <iframe data-testid="pos-reg-deprcv-preview" title={t("pay.depositRcvPreview")} sandbox="allow-same-origin" srcDoc={previewHtml} className="h-[360px] w-[320px] max-w-full rounded-[10px] border bg-white" />
             ) : (
               <p className="text-[13px] text-[color:var(--color-muted)]">{tc("loading")}</p>
             )}
@@ -498,6 +508,12 @@ export function DepositReceiveDialog(p: {
                 {errKey && (
                   <p data-testid="pos-reg-deprcv-error" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
                     {t(errKey)}
+                  </p>
+                )}
+                {/* POS P2.9bU ▸ fix1 มติ 3: เงินเข้าแล้วแต่ไม่ได้บันทึกมัดจำ — อ้างอิงใบขอรับเงินให้ร้านกระทบยอด/คืนเงินเอง ◂ */}
+                {paidRef && phase === "form" && (
+                  <p data-testid="pos-reg-deprcv-paid-ref" className="mt-1 text-[13px] font-semibold text-[color:var(--color-danger)]" role="alert">
+                    {t("pay.depositRcvPaidRef", { ref: paidRef })}
                   </p>
                 )}
                 {phase === "unknown" && (
