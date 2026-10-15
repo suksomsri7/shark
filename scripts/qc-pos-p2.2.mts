@@ -306,6 +306,25 @@ const NEW_CONTRACT_FIELDS = ["lines[].listPriceSatang", "lines[].priceRuleId", "
 /** SQL → ตัวเล็ก ไม่มีวงเล็บ ช่องว่างเดียว (เทียบเงื่อนไข CHECK/INDEX แบบไม่สนรูปแบบการเขียน) */
 const normSql = (s: string) => s.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
 
+// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.11 FU1 · งานตามหลัง k · มติผู้คุม P2.11 ข้อ 7 + 18): ตัวกรองไฟล์ migration ของ ST1 —
+//   นับ migration ที่ "สร้าง/แก้/ลบ" วัตถุของ P2.2 ทุกแบบ (ตาราง · index · enum · CHECK/constraint · คอลัมน์ PosSaleLine 3 ตัว)
+//   รวมไฟล์ที่มีแค่ index / enum / DROP (ตัวกรองเดิมพลาด — รีวิว P2.8) · ตารางอื่นที่ใช้ชนิด/ชื่อคอลัมน์เดียวกัน (P2.8 PosOrderLine) ไม่นับ
+//   🔴 ตั้งอยู่เดี่ยว (ไม่อ้างตัวแปรนอก · ไม่มี { } ในสตริง/regex นอกจาก ${…}) — qc-pos-p2.11 FU1 แปลแล้วเรียกฟังก์ชันนี้ตรง
+function p22MigrationTouched(sql: string): boolean {
+  const s = sql.replace(/--.*$/gm, "");
+  const T = '"(PosProductChannelPrice|PosPriceRule)"';
+  const E = '"(PosPriceSource|PosPriceRuleKind|PosPriceRuleAdjust)"';
+  const C = '"(priceSource|priceRuleId|listPriceSatang)"';
+  const res = [
+    new RegExp(`(CREATE|ALTER|DROP)\\s+TABLE\\s+(IF\\s+(NOT\\s+)?EXISTS\\s+)?${T}`, "i"),
+    new RegExp(`CREATE\\s+(UNIQUE\\s+)?INDEX\\b[^;]*?\\bON\\s+(ONLY\\s+)?${T}`, "i"),
+    new RegExp(`(DROP|ALTER)\\s+INDEX\\s+(CONCURRENTLY\\s+)?(IF\\s+EXISTS\\s+)?"(PosProductChannelPrice|PosPriceRule)_`, "i"),
+    new RegExp(`(CREATE|ALTER|DROP)\\s+TYPE\\s+(IF\\s+EXISTS\\s+)?${E}`, "i"),
+    new RegExp(`ALTER\\s+TABLE\\s+(IF\\s+EXISTS\\s+)?(ONLY\\s+)?"PosSaleLine"[^;]*${C}`, "i"),
+  ];
+  return res.some((re) => re.test(s));
+}
+
 async function runStatic(): Promise<void> {
   console.log("\n── ST ข้อสถิต (ไม่แตะ DB) ──");
   const schemaRaw = walk("prisma/schema", [], /\.prisma$/).map((f) => rd(f)).join("\n");
@@ -352,10 +371,8 @@ async function runStatic(): Promise<void> {
     // migration
     // ORACLE-EDIT (P2.8 fix รอบ 1 · มติผู้คุม 4): นับเฉพาะ migration ที่ "สร้าง/แก้" ตารางของ P2.2 (PosProductChannelPrice · PosPriceRule · PosSaleLine)
     //   และมีชื่อของ P2.2 — ตารางอื่นที่ใช้คอลัมน์ชื่อเดียวกัน/enum PosPriceSource (P2.8 PosOrderLine) ไม่ใช่การแตะ P2.2
-    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => {
-      const sql = rd(f).replace(/--.*$/gm, "");
-      return /"PosProductChannelPrice"|"PosPriceRule"|"listPriceSatang"|"PosPriceSource"/.test(sql) && /(CREATE\s+TABLE(\s+IF\s+NOT\s+EXISTS)?|ALTER\s+TABLE)\s+"(PosProductChannelPrice|PosPriceRule|PosSaleLine)"/i.test(sql);
-    });
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.11 FU1 · งานตามหลัง k · มติ 18): ตัวกรองเดิมพลาด migration ที่มีแค่ index/enum/DROP ⇒ ใช้ p22MigrationTouched (ท้ายส่วนนี้)
+    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => p22MigrationTouched(rd(f)));
     if (files.length !== 1) p.push(`migration ที่แตะ PosProductChannelPrice/PosPriceRule/listPriceSatang = ${files.length} ไฟล์ (คาด 1)`);
     for (const f of files) {
       const name = f.split("/").slice(-2, -1)[0] ?? "";
