@@ -1707,7 +1707,7 @@
 - spawn **R1 P2.12 S** (Opus read-only ทรี c) prompt `pos-prompt-accountB-P2.12-R.md` → แล้ว hunter เบา (CH/BR sums vs bills · anomaly scope · deposit exclusion) → fix → merge → gates §6 → push → 39/55
 - เลน: 1 = P2.13 brief drafter · 2 = P2.12 R1 (read-only ทรี c)
 
-### 15 ต.ค. 17:5xZ — P2.13 brief → §10 มติ 1–10 → oracle writer ทรี b
+### 15 ต.ค. 17:48Z — P2.13 brief → §10 มติ 1–10 → oracle writer ทรี b
 - brief drafter: `pos-brief-P2.13.md` (135 บรรทัด) — ไม่มีอะไร mount `POS_OPS` วันนี้ · core REST stack (dispatch/require/idempotency/respond) ใช้ร่วมได้ · op IN 45 / IN-B 16 / P3 9 / NEVER 9 · scopes = permission keys + bundle pos-read/operate/admin · unit = `unitId` field + pseudo-scope `pos.filter.unit:` · actor สังเคราะห์ userId=keyId · `POST /sales` → `submitRegisterSale` (ต้อง ORACLE-EDIT CALL_SITES 10 ที่ + p0.2) · catalog actorMembership hunk · docs/skill จาก generator · oracle 49 + skill ≈ 10 + CONTROLLER-RUN agent 5 งาน
 - ผู้คุม **§10 มติ 1–10**: IN 48 (รับ anomalies/tax-invoice/shifts-current) · submitRegisterSale + ORACLE-EDIT batch pre-approved · unitId field + filter scope · bundles/actor/keyId · catalog hunk · tenders 5 แบบ (gift/credit/deposit/voucher = owner line) · shift other-sources · AI gate hunk ใน skills.ts · webhooks P3 · CSV ผ่าน Accept · oracle 49 + skill 10 · builder หลัง P2.12 S merge
 - spawn **oracle writer P2.13** (Opus ทรี b `wip/pos-p2.13-oracle` จาก f37d605b) prompt `pos-prompt-accountB-P2.13-O.md`

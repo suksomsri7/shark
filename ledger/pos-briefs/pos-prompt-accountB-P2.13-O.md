@@ -1,4 +1,4 @@
-# Prompt — P2.13 oracle writer (fail-before). Controller (account B, 15 Oct 17:5xZ): base = `origin/session/pos` **f37d605b** (code = P2.10 merged 9e72513f). Tree **/root/projects/shark-pos-b** (own node_modules; `pnpm exec prisma generate` once after checkout). Lane = oracle writer (P2.12 S review runs on tree c — never touch trees c/d, `reports.ts`, `bills.ts`, `register*.ts`, `service.ts`, `catalog.ts`, `ai/**`, `api-keys/**`; you only write tests + ledger).
+# Prompt — P2.13 oracle writer (fail-before). Controller (account B, 15 Oct 17:48Z): base = `origin/session/pos` **f37d605b** (code = P2.10 merged 9e72513f). Tree **/root/projects/shark-pos-b** (own node_modules; `pnpm exec prisma generate` once after checkout). Lane = oracle writer (P2.12 S review runs on tree c — never touch trees c/d, `reports.ts`, `bills.ts`, `register*.ts`, `service.ts`, `catalog.ts`, `ai/**`, `api-keys/**`; you only write tests + ledger).
 
 ---
 
