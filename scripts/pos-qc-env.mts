@@ -292,7 +292,7 @@ export const PQC_RESTO_MENU = {
 } as const;
 
 /** หน้าที่มีอยู่จริงของ POS วันนี้ (src/app/app/sys/[id]/pos/*) — visual-pos ถ่ายชุดนี้ */
-export const POS_PAGES = ["register", "sales", "products", "close", "reports", "stock", "shifts", "settings", "receipt-public", "tables", "orders", "kds"] as const; // POS P2.6U ▸ + kds (มติ 1 · /pos/kds · จอครัว) ◂ · // POS P2.8U ▸ + orders (มติ 1 · /pos/orders) ◂ · // POS P2.4U ▸ + tables (มติ 1 · /pos/tables) ◂ · // POS P1.17 U ▸ + reports ◂ · POS P1.14 U ▸ + stock ◂ · POS P1.9 U ▸ + shifts ◂ · POS P1.10 U ▸ + settings ◂ · POS P1.11U ▸ + receipt-public (หน้าสาธารณะ /r/<token> · ไม่อยู่ใต้ /pos) ◂
+export const POS_PAGES = ["register", "sales", "products", "close", "reports", "stock", "shifts", "settings", "receipt-public", "tables", "orders", "kds", "display"] as const; // POS P2.10 ▸ + display (จอลูกค้า /d · หน้าสาธารณะ · ขนาดจอของตัวเอง POS_DISPLAY_VIEWPORTS) ◂ · // POS P2.6U ▸ + kds (มติ 1 · /pos/kds · จอครัว) ◂ · // POS P2.8U ▸ + orders (มติ 1 · /pos/orders) ◂ · // POS P2.4U ▸ + tables (มติ 1 · /pos/tables) ◂ · // POS P1.17 U ▸ + reports ◂ · POS P1.14 U ▸ + stock ◂ · POS P1.9 U ▸ + shifts ◂ · POS P1.10 U ▸ + settings ◂ · POS P1.11U ▸ + receipt-public (หน้าสาธารณะ /r/<token> · ไม่อยู่ใต้ /pos) ◂
 export type PosPage = (typeof POS_PAGES)[number];
 
 /** 3 ขนาดจอ (POS-MASTER-PLAN §1) */
@@ -300,6 +300,11 @@ export const POS_VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false },
   { name: "ipad", w: 1024, h: 768, mobile: false }, // iPad แนวนอน — แตะได้ (hasTouch) แต่เลย์เอาต์เดสก์ท็อป
   { name: "mobile", w: 390, h: 844, mobile: true },
+] as const;
+/** POS P2.10 ▸ จอลูกค้า (แท็บเล็ตแนวนอนหันหาลูกค้า · ภาพ 11 แผง A = 1280×800) — หน้า display เท่านั้น ◂ */
+export const POS_DISPLAY_VIEWPORTS = [
+  { name: "display", w: 1280, h: 800, mobile: false },
+  { name: "ipad-land", w: 1024, h: 768, mobile: false },
 ] as const;
 
 export type PosQcTenantKey = "coffee" | "resto";
