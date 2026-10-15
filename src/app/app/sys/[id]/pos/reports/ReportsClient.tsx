@@ -9,7 +9,8 @@
 // POS P2.11U ▸ มติ 7: ชนิด "channels" (ช่องทางการขาย) = ตาราง ช่องทาง · บิล · ยอดสุทธิ (ยอดขาย − คืน) · ค่าคอมมิชชัน (+ VAT ค่าคอมฯ) · กำไรขั้นต้น (net ของเซิร์ฟเวอร์) · % +
 //   แถวรวม · CSV ปุ่มเดิม (posReportCsvAction kind channels) · ตัวเลือกสาขาเดิม (P1.17) ใช้เหมือนชนิดอื่น ◂
 // POS P2.12U ▸ แท็บใหม่ต่อท้าย (testid pos-reports-tab-<kind>): "รายชั่วโมง" (มติ 2 · ตาราง 24 ชั่วโมง + แถวรวม + CSV · ช่วงเกิน HOURLY_MAX_DAYS = แท็บปิด +
-//   ข้อความ "เลือกช่วงไม่เกิน 31 วัน" ไม่เรียกเซิร์ฟเวอร์) — ตัวเลขทั้งหมดจาก DTO ◂
+//   ข้อความ "เลือกช่วงไม่เกิน 31 วัน" ไม่เรียกเซิร์ฟเวอร์) · "เปรียบเทียบสาขา" (มติ 3 · เห็น ≥ 2 สาขา · ตาราง 13 คอลัมน์ + แถวรวมจาก totals
+//   (ตัวหนาเพราะเป็นแถวรวม ไม่ใช่เพราะข้อความ) + CSV · กำไรอยู่การ์ดภาพรวม) — ตัวเลขทั้งหมดจาก DTO ◂
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -23,6 +24,8 @@ import type {
   AnyReportResult,
   ChannelRow, // POS P2.11U ◂
   ChannelTotals, // POS P2.11U ◂
+  BranchRow, // POS P2.12U ◂
+  BranchTotals, // POS P2.12U ◂
   HourlyRow, // POS P2.12U ◂
   HourlyTotals, // POS P2.12U ◂
   DailyRow,
@@ -419,6 +422,39 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes }: { rep: Loaded; t: T; 
         </div>
       );
     }
+    // POS P2.12U ▸ มติ 3: เปรียบเทียบสาขา — แถวต่อสาขาที่มีเอกสาร/กะที่นับเงินในช่วง (ชื่อจาก DTO) + แถวรวมของทั้งขอบเขต (totals) ◂
+    case "branches": {
+      const x = rep as Report<"branches", BranchRow, BranchTotals>;
+      if (x.rows.length === 0) return empty;
+      const bc = (k: string) => t(`branches.cols.${k}`);
+      const os = (v: number) => <span className={v < 0 ? "text-[color:var(--color-danger)]" : undefined}>{M(v)}</span>;
+      const cols: Col<BranchRow>[] = [
+        { key: "unit", header: c("unit"), cell: (r) => r.name || r.unitId },
+        { key: "bills", header: c("bills"), num: true, cell: (r) => r.billCount },
+        { key: "net", header: c("netSales"), num: true, cell: (r) => <b>{M(r.netSalesSatang)}</b> },
+        { key: "avg", header: c("avgBill"), num: true, cell: (r) => M(r.avgBillSatang) },
+        { key: "refunds", header: bc("refunds"), num: true, cell: (r) => r.refundCount },
+        { key: "refundTotal", header: bc("refundTotal"), num: true, cell: (r) => M(r.refundTotalSatang) },
+        { key: "voids", header: c("voids"), num: true, cell: (r) => r.voidCount },
+        { key: "voidTotal", header: c("voidTotal"), num: true, cell: (r) => M(r.voidTotalSatang) },
+        { key: "cash", header: bc("cash"), num: true, cell: (r) => M(r.cashSatang) },
+        { key: "platform", header: bc("platform"), num: true, cell: (r) => M(r.platformSatang) },
+        { key: "commission", header: bc("commission"), num: true, cell: (r) => M(r.commissionSatang) },
+        { key: "commissionVat", header: bc("commissionVat"), num: true, cell: (r) => M(r.commissionVatSatang) },
+        { key: "overShort", header: c("overShort"), num: true, cell: (r) => os(r.overShortSatang) },
+      ];
+      const tt = x.totals;
+      return (
+        <Table
+          testId="pos-report-table"
+          cols={cols}
+          rows={x.rows}
+          rowKey={(r) => r.unitId}
+          minWidth={1240}
+          total={[t("branches.total"), tt.billCount, M(tt.netSalesSatang), M(tt.avgBillSatang), tt.refundCount, M(tt.refundTotalSatang), tt.voidCount, M(tt.voidTotalSatang), M(tt.cashSatang), M(tt.platformSatang), M(tt.commissionSatang), M(tt.commissionVatSatang), os(tt.overShortSatang)]}
+        />
+      );
+    }
     // POS P2.12U ▸ มติ 2: รายชั่วโมง = 24 แถวของวันธุรกิจ (ป้ายจาก DTO) + แถวรวม · หมายเหตุคาดการณ์/ชั่วโมงพับ ◂
     case "hourly": {
       const x = rep as Report<"hourly", HourlyRow, HourlyTotals>;
@@ -572,7 +608,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
   const shownError = rangeError ? t(rangeError) : errorCode ? t(refusalKey(errorCode)) : null;
   const overview = view.kind === "overview";
   // POS P2.12U ▸ แท็บใหม่ที่ผู้ใช้นี้เห็น ◂
-  const newKinds: NewKind[] = ["hourly"];
+  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly"];
   const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
   const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
   const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[8.75rem]";

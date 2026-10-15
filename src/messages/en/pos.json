@@ -1182,7 +1182,15 @@
     },
     "branches": {
       "title": "Branch comparison",
-      "total": "All branches"
+      "total": "All branches",
+      "cols": {
+        "refunds": "Refunds",
+        "refundTotal": "Refund total",
+        "cash": "Cash",
+        "platform": "Platform",
+        "commission": "Commission",
+        "commissionVat": "Commission VAT"
+      }
     },
     "anomaly": {
       "title": "Staff anomalies",

@@ -1182,7 +1182,15 @@
     },
     "branches": {
       "title": "เปรียบเทียบสาขา",
-      "total": "รวมทุกสาขา"
+      "total": "รวมทุกสาขา",
+      "cols": {
+        "refunds": "ใบคืนเงิน",
+        "refundTotal": "ยอดคืนเงิน",
+        "cash": "เงินสด",
+        "platform": "แพลตฟอร์ม",
+        "commission": "ค่าคอมมิชชัน",
+        "commissionVat": "VAT ค่าคอมฯ"
+      }
     },
     "anomaly": {
       "title": "จุดผิดปกติของพนักงาน",
