@@ -81,5 +81,5 @@ R2 = MERGEABLE-AFTER-FIXES; both items are small ⇒ one short round, then merge
 5. **ORACLE-ADD amendment be57073d** noted as such in the notes (controller accepted).
 6. Gates after fix 2: `qc-pos-p2.10` 13/13 unforced · `qc-pos-p1.18` 81 · `qc-pos-p1.12` 72 · typecheck (changed-files tsc OK) · fitness ±env · `--dry` th + en (en verified per ruling 1). Push → R2 re-verifies the G2 hunk + the en log → merge (images: vis83 re-shoot judged by the controller).
 
-## Controller image review — vis83 @e7f661a7 (QC5 · 15 Oct 16:40Z)
+## Controller image review — vis83 @e7f661a7 (QC5 · 15 Oct 16:35Z)
 - failures 0 th + en (`/root/pos-runs/vis83-qc5-20261015T163203Z`). **display-live now passes**: the real register tab (device "เครื่องขาย QC 469025") → display shows "2× อเมริกาโน่เย็น ฿130 · 1× ลาเต้ร้อน ฿60 · รวม ฿190 · ยอดสุทธิ ฿190" — F8 confirmed as the hidden-tab harness cause. done en "Thank you, สมชาย · Change ฿200 · You earned 62 points · Scan for your online receipt · Receipt 202610-0534"; member-stamps unchanged; settings-online shows "ขอรหัสใหม่" + "ยกเลิกการจับคู่" (confirm modal) on a paired device (F3 path present). → images **pass**; merge after fix 2 (G1/G2) is verified.
