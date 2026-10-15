@@ -2650,9 +2650,13 @@ export async function copyUnitPrices(
         ids = src.map((r) => r.productId);
       }
       // ล็อกแถวสินค้าทั้งชุด (เรียง id) ก่อนอ่านแถวราคาเดิม — ลำดับเดียวกับ setChannelPrices/bulkChannelMarkup
-      const locked = (await lockProductRows(tx, ctx.tenantId, ids)).filter((p) => p.systemId === ctx.systemId);
-      if (locked.length !== ids.length) throw notFound();
-      if (actor && locked.some((p) => p.unitId && !canAccessUnit(actor, p.unitId))) throw notFound();
+      const all = (await lockProductRows(tx, ctx.tenantId, ids)).filter((p) => p.systemId === ctx.systemId);
+      if (all.length !== ids.length) throw notFound();
+      // POS P2.11 ▸ fix1 มติ 1 (R1 F3): ส่ง productIds มาเอง = สินค้าที่มองไม่เห็นคือ NOT_FOUND ตามเดิม · ไม่ส่ง (ทั้งสาขา) = ข้ามสินค้าสาขาเดียวที่มองไม่เห็น
+      //   แล้วนับแถวต้นทางของมันเข้า skipped (แบบเดียวกับสินค้าของสาขาอื่น) — ไม่ล้มทั้งคำขอ ◂
+      const hidden = all.filter((p) => !!actor && !!p.unitId && !canAccessUnit(actor, p.unitId));
+      if (o.productIds !== undefined && o.productIds !== null && hidden.length) throw notFound();
+      const locked = all.filter((p) => !hidden.includes(p));
       const parentIds = [...new Set(locked.flatMap((p) => (p.parentId ? [p.parentId] : [])))];
       const weighedParents = parentIds.length
         ? new Set((await tx.posProduct.findMany({ where: { tenantId: ctx.tenantId, id: { in: parentIds }, soldByWeight: true }, select: { id: true } })).map((r) => r.id))
@@ -2668,6 +2672,7 @@ export async function copyUnitPrices(
       let written = 0;
       let skipped = 0;
       const wrote: string[] = [];
+      if (hidden.length) skipped += (await tx.posProductChannelPrice.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: from, productId: { in: hidden.map((p) => p.id) } } })); // POS P2.11 ▸ fix1 มติ 1 ◂
       for (const p of locked) {
         const mine = rows.filter((r) => r.productId === p.id);
         const src = mine.filter((r) => r.unitId === from);
