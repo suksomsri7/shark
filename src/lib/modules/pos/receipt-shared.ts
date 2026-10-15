@@ -15,3 +15,21 @@ export function receiptKindOf(input: ReceiptKindInput): "TAX_INVOICE_ABB" | "REC
   const taxId = typeof input.taxId === "string" ? input.taxId.trim() : "";
   return input.vatRegistered === true && input.posAbbreviatedInvoice === true && taxId.length > 0 && input.vatSatang > 0 ? "TAX_INVOICE_ABB" : "RECEIPT";
 }
+
+// POS P2.10 ▸ หัวร้านของใบเสร็จ (สายเดียวกับ buildReceipt · ใช้ร่วมกับจอลูกค้า — ห้ามก๊อปสายนี้ไปที่อื่น) ◂
+export type ReceiptShopHeaderInput = {
+  headerName: string | null | undefined;
+  headerLogoUrl: string | null | undefined;
+  bookOrgName: string | null | undefined;
+  bookLogoUrl: string | null | undefined;
+  tenantName: string | null | undefined;
+  unitName: string | null | undefined;
+};
+const nonBlank = (v: string | null | undefined): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+/** ชื่อร้าน = ค่าตั้งหัวใบ → ชื่อองค์กรของสมุด → ชื่อร้าน (tenant) → ชื่อสาขา → "-" · โลโก้ = ค่าตั้งหัวใบ → โลโก้ของสมุด → ไม่มี */
+export function receiptShopHeaderOf(i: ReceiptShopHeaderInput): { shopName: string; logoUrl: string | undefined } {
+  return {
+    shopName: nonBlank(i.headerName) ?? nonBlank(i.bookOrgName) ?? nonBlank(i.tenantName) ?? nonBlank(i.unitName) ?? "-",
+    logoUrl: i.headerLogoUrl ?? nonBlank(i.bookLogoUrl),
+  };
+}
