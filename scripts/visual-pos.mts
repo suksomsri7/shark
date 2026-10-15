@@ -145,6 +145,10 @@
 //   คืนค่าเดิมหลังภาพทิปสุดท้าย) · GIFT_CARD_CHANGED = ตัดยอดบัตรผ่าน giftcard.use ระหว่างค้นกับยืนยัน · เก็บกวาด: ระงับบัตรของรอบ (giftcard.suspend) ยกเว้น
 //   บัตรของบิล sale-done-giftcard (คง ACTIVE ยอด ฿175 ให้ refund-to-card · fix1 V3 — รอบหน้าบิลเลือกบิลบัตรล่าสุดที่บัตรยัง ACTIVE) ·
 //   คืนค่าตั้งบัตร/ทิป · บิลขายคงอยู่ (แบบ sale-done) ◂
+// POS P2.11U ▸ หลายสาขา (มติ 11 · wo p2.11u · --states · ไม่ส่ง --page = products/reports/settings/stock/sales · 3 ขนาด · th + LOCALE=en · owner + manager):
+//   products-branch-filter · products-branch-copy (เจ้าของ · ไม่กดคัดลอก) · products-branch-compare · products-dead-row-note · products-manager-branch (ผู้จัดการ) ·
+//   reports-channels · settings-receipt-branch (เจ้าของ) · stock-shared-inventory · bills-all-branches (เจ้าของ) — ตารางใน P211U_PLAN · fixture/เก็บกวาดใน ensureP211uFixture/cleanupP211u ·
+//   --user manager = ผู้จัดการ{สาขาสีลม} ของภาพ (User + Membership MANAGER สร้าง/ใช้ซ้ำก่อน mint session · ทางเข้าเดียวกับ owner/cashier) — ใช้ได้เฉพาะ wo p2.11u ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -165,11 +169,14 @@ const DRY = argv.includes("--dry");
 // POS HF-P1CLOSE ▸ --list ไม่ต้องมี <wo> (ใช้ชื่อ "list" ผ่านด่านตรวจชื่อเดิม) ◂
 const LIST = argv.includes("--list");
 const WO = argv[0] && !argv[0].startsWith("--") ? argv[0] : LIST ? "list" : null;
-const USERS = ["owner", "cashier"] as const;
+const USERS = ["owner", "cashier", "manager"] as const; // POS P2.11U ▸ มติ 11: + manager (ผู้จัดการสาขาสีลมของภาพ · ใช้ได้เฉพาะ wo p2.11u ร้าน coffee) ◂
 type UserKey = (typeof USERS)[number];
 const userKey = (flag("--user") ?? "owner") as UserKey;
 const tenantKey = (flag("--tenant") ?? "coffee") as "coffee" | "resto";
 const onlyPage = flag("--page");
+// POS P2.11U ▸ มติ 11: wo p2.11u = สถานะหลายสาขาของหน้า products/reports/settings/stock/sales เท่านั้น (ไม่ส่ง --page = 5 หน้านี้) ◂
+const P211U_WO = /^p2\.?11u/i.test(WO ?? "");
+const P211U_PAGES = ["products", "reports", "settings", "stock", "sales"] as const satisfies readonly PosPage[];
 
 function die(msg: string): never {
   console.error(`❌ ${msg}`);
@@ -182,39 +189,42 @@ if (!/^[A-Za-z0-9._-]+$/.test(WO) || WO.includes("..")) die(`<wo> "${WO}" ไม
 if (!(USERS as readonly string[]).includes(userKey)) die(`--user ${userKey} ไม่รู้จัก — ใช้ได้: ${USERS.join(" · ")}`);
 if (tenantKey !== "coffee" && tenantKey !== "resto") die(`--tenant ${tenantKey} ไม่รู้จัก — ใช้ได้: coffee · resto`);
 if (onlyPage && !(POS_PAGES as readonly string[]).includes(onlyPage)) die(`--page ${onlyPage} ไม่รู้จัก — ใช้ได้: ${POS_PAGES.join(" · ")}`);
+if (userKey === "manager" && (!P211U_WO || tenantKey !== "coffee")) die("--user manager ใช้ได้เฉพาะ wo p2.11u ร้าน coffee (ผู้จัดการสาขาของภาพหลายสาขา · POS P2.11U มติ 11)"); // POS P2.11U ◂
 
 const T = PQC[tenantKey];
-const U = T.users[userKey];
+// POS P2.11U ▸ มติ 11: ผู้จัดการสาขาสีลมของภาพ — ไม่อยู่ใน seed · ensureManagerUser สร้าง/ใช้ซ้ำ (User + Membership MANAGER unitAccess [สีลม]) ก่อน mint session ◂
+const MANAGER_VIS = { userId: "posqc-coffee-user-manager-vis", membershipId: "posqc-coffee-mb-manager-vis", email: "pos-qc-coffee-manager-vis@shark.local", name: "ผู้จัดการสีลม (ภาพ QC P2.11U)", role: "MANAGER", units: ["silom"] } as const;
+const U = userKey === "manager" ? MANAGER_VIS : T.users[userKey];
 // สาขาที่ผู้ใช้เข้าได้ (แคชเชียร์ = สาขาเดียว) — ใส่ ?unit= ให้หน้าขายเปิดสาขาที่ถูก
 const unitKey = U.units[0] === "*" ? Object.keys(T.units)[0]! : U.units[0]!;
 const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : [...POS_PAGES];
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P211U_WO ? [...P211U_PAGES] : [...POS_PAGES]; // POS P2.11U ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
  */
 const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
-  register: { owner: 200, cashier: "record" },
-  sales: { owner: 200, cashier: "record" },
-  products: { owner: 200, cashier: "record" },
-  close: { owner: 200, cashier: "record" },
+  register: { owner: 200, cashier: "record", manager: "record" },
+  sales: { owner: 200, cashier: "record", manager: 200 },
+  products: { owner: 200, cashier: "record", manager: 200 },
+  close: { owner: 200, cashier: "record", manager: "record" },
   // POS P1.17 U ▸ แคชเชียร์ QC ไม่มี pos.report.view ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-report-refusal) · ไม่ 404/500 ◂
-  reports: { owner: 200, cashier: 200 },
+  reports: { owner: 200, cashier: 200, manager: 200 },
   // POS P1.14 U ▸ แคชเชียร์ QC ไม่มี pos.stock.count / สิทธิ์คลัง ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-stock-refusal) ◂
-  stock: { owner: 200, cashier: 200 },
+  stock: { owner: 200, cashier: 200, manager: 200 },
   // POS P1.9 U ▸ แคชเชียร์ QC ไม่มี pos.shift.operate/manage ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-shift-refusal) ◂
-  shifts: { owner: 200, cashier: 200 },
+  shifts: { owner: 200, cashier: 200, manager: "record" },
   // POS P1.11U ▸ หน้าสาธารณะ (ไม่อ่าน session) ⇒ 200 ทุกบทบาท · rpub-not-found = 404 (ต่อสถานะ ดู RPUB_STATE_PLAN) ◂
-  "receipt-public": { owner: 200, cashier: 200 },
+  "receipt-public": { owner: 200, cashier: 200, manager: "record" },
   // POS P1.10 U ▸ แคชเชียร์ QC มี pos.sale.create ⇒ แท็บใบเสร็จอ่านอย่างเดียว · แท็บเครื่อง = การ์ดปฏิเสธ (หน้า 200) ◂
-  settings: { owner: 200, cashier: 200 },
+  settings: { owner: 200, cashier: 200, manager: 200 },
   // POS P2.4U ▸ หน้าโต๊ะ: แคชเชียร์ QC มี pos.sale.create ⇒ หน้า 200 (เปิดโต๊ะ/ส่งครัวถูกปฏิเสธที่เซิร์ฟเวอร์ — ไม่มีคีย์ restaurant.*) ◂
-  tables: { owner: 200, cashier: 200 },
+  tables: { owner: 200, cashier: 200, manager: "record" },
   // POS P2.8U ▸ หน้าออเดอร์: แคชเชียร์ QC มี pos.sale.create (อ่านออเดอร์ได้) ⇒ หน้า 200 · ไม่มี pos.order.accept/reject ⇒ กระดานอ่านอย่างเดียว (ปุ่มปิด + tooltip) ◂
-  orders: { owner: 200, cashier: 200 },
+  orders: { owner: 200, cashier: 200, manager: "record" },
   // POS P2.6U ▸ จอครัว: แคชเชียร์ QC มี pos.sale.create (อ่านบอร์ดได้ — NEED.read) ⇒ หน้า 200 · ไม่มี restaurant.kds.* ⇒ ปุ่มปิด + tooltip ◂
-  kds: { owner: 200, cashier: 200 },
+  kds: { owner: 200, cashier: 200, manager: "record" },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
@@ -226,7 +236,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P25uTablesKey | P25uRegKey; // POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P25uTablesKey | P25uRegKey | P211uKey; // POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -417,7 +427,7 @@ const isP23uProducts = (k: StateKey): k is P23uProductsKey => P23U_PRODUCTS_KEYS
 const P23U_REG_STATE: P23uRegKey = "register-pending-cuts";
 /** สถานะที่ต้องมี fixture สูตรของ P2.3U (สร้างก่อนงานแรกของช่วง · เก็บหลังงานสุดท้ายของช่วงติดกัน — หน้าอื่นไม่เห็นสินค้าชั่วคราว) */
 const P23U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P23U_PRODUCTS_KEYS, P23U_REG_STATE]);
-const productsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "products" || /^p2\.?2u/i.test(WO) || /^p2\.?3u/i.test(WO)); // POS P2.3U ▸ + wo p2.3u ◂
+const productsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "products" || /^p2\.?2u/i.test(WO) || /^p2\.?3u/i.test(WO)); // POS P2.3U ▸ + wo p2.3u ◂
 // ── POS P2.4U ▸ โหมดโต๊ะ (มติ 11 · wo p2.4u · --page tables|register --states · 3 ขนาด · th + LOCALE=en · owner + cashier) — fixture ของตัวเอง (โซน/โต๊ะ/รอบชั่วคราว) ◂
 type P24uTablesKey = "tables-empty" | "tables-floor" | "tables-panel-rounds" | "tables-draft-unsent" | "tables-checkout-dialog" | "tables-reservations-sheet" | "tables-alerts";
 type P24uRegKey = "register-table-mode" | "register-billtype-menu";
@@ -556,6 +566,33 @@ const P29U_WO = /^p2\.?9u/i.test(WO);
 const p29uOn = STATES_ON && tenantKey === "coffee";
 const P29U_KEYS: ReadonlySet<string> = new Set([...P29U_REG_PLAN.map((s) => s.key), ...P29U_OTHER_PLAN.map((s) => s.key)]);
 const isP29uState = (k: StateKey | null | undefined): k is P29uRegKey | P29uOtherKey => !!k && P29U_KEYS.has(k);
+// ── POS P2.11U ▸ หลายสาขา (มติ 11 · wo p2.11u · --page products|reports|settings|stock|sales --states · 3 ขนาด · th + LOCALE=en · owner + manager) ◂
+type P211uKey = "products-branch-filter" | "products-branch-copy" | "products-branch-compare" | "products-dead-row-note" | "products-manager-branch" | "reports-channels" | "settings-receipt-branch" | "stock-shared-inventory" | "bills-all-branches";
+const P211U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P211U_PLAN: { key: P211uKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "products-branch-filter", page: "products", devices: P211U_D3, users: ["owner", "manager"], note: "06 ?unit=สีลม: ตัวกรอง \"สาขา: สีลม\" + คอลัมน์ \"ราคา สีลม\" — ลาเต้ = แถว (STORE, สีลม) ของ fixture (ตัวหนา + ชิป \"สาขา\") · อื่น = ราคากลาง (จาง)" },
+  { key: "products-branch-copy", page: "products", devices: P211U_D3, users: ["owner"], note: "\"คัดลอกราคาจากสาขา\" → กล่อง (จาก อารีย์ → ไป สีลม · เปิด \"เขียนทับ\") — ไม่กดคัดลอก (ผู้จัดการ 1 สาขา = ไม่มีปุ่ม)" },
+  { key: "products-branch-compare", page: "products", devices: P211U_D3, users: ["owner", "manager"], note: "\"เทียบราคาสาขา\" → แผ่น \"ขายที่ N สาขา\" (สินค้า × สาขา × ช่องทาง · 390 เลื่อนแนวนอน)" },
+  { key: "products-dead-row-note", page: "products", devices: P211U_D3, users: ["owner", "manager"], note: "ลิ้นชักลาเต้: หมายเหตุ \"ราคาของช่องทาง/สาขาที่เลิกใช้แล้ว N แถว\" (fixture: ช่องทาง ZZVIS เก็บถาวรหลังตั้งราคา) · เจ้าของ = + ปุ่ม \"ล้างแถวที่เลิกใช้\" (ไม่กด)" },
+  { key: "products-manager-branch", page: "products", devices: P211U_D3, users: ["manager"], note: "ผู้จัดการ{สีลม}: โหมดสาขา (ไม่มี \"ทุกสาขา\") · ลิ้นชักลาเต้ = กลุ่ม \"ทุกสาขา\" อ่านอย่างเดียว + คำอธิบาย · กลุ่มสีลมแก้ได้" },
+  { key: "reports-channels", page: "reports", devices: P211U_D3, users: ["owner", "manager"], note: "08 ภาพรวมวันนี้ สาขาสีลม: การ์ด \"ช่องทางการขาย · % ของยอด\" ระหว่างสินค้าขายดีกับวิธีชำระ (fixture: บิล PAID 3 ใบวันนี้ หน้าร้าน ×2 + LINE MAN ×1 · คีย์ต่อวัน · ไม่ลบ)" },
+  { key: "settings-receipt-branch", page: "settings", devices: P211U_D3, users: ["owner"], note: "17A แท็บใบเสร็จ: \"ข้อมูลสาขาบนใบเสร็จ\" สาขาสีลม = สาขาที่ 00001 + ที่อยู่/โทรของสาขา (fixture · คืนค่าเดิมหลังงานสุดท้าย) · ตัวอย่างขวา \"สาขา 00001\" (สมุด ABB ชั่วคราว · คืนใน cleanRpub)" },
+  { key: "stock-shared-inventory", page: "stock", devices: P211U_D3, users: ["owner", "manager"], note: "16 คลัง: สาขาสีลม → หมายเหตุ \"คลังร่วมกับสาขา สาขาอารีย์ — สต็อกเป็นก้อนเดียวกัน\" (seed QC: สีลม + อารีย์ใช้คลังเดียวกัน · ไม่มี = fixture ผูกแล้วคืน)" },
+  { key: "bills-all-branches", page: "sales", devices: P211U_D3, users: ["owner"], note: "12 บิลวันนี้ (เจ้าของเห็น 2 สาขา): ชิป \"สาขาสีลม\" ข้างเลขใบเสร็จทุกแถว (บิลของ reports-channels)" },
+];
+const p211uOn = STATES_ON && tenantKey === "coffee" && P211U_WO;
+const P211U_KEYS: ReadonlySet<string> = new Set(P211U_PLAN.map((s) => s.key));
+const isP211uState = (k: StateKey | null | undefined): k is P211uKey => !!k && P211U_KEYS.has(k);
+const p211uPath = (k: P211uKey): string =>
+  k === "reports-channels"
+    ? `/app/sys/${SYS}/pos/reports?kind=overview&unit=${encodeURIComponent(unitId)}`
+    : k === "settings-receipt-branch"
+    ? `/app/sys/${SYS}/pos/settings?tab=receipt&unit=${encodeURIComponent(unitId)}`
+    : k === "stock-shared-inventory"
+    ? `/app/sys/${SYS}/pos/stock?unit=${encodeURIComponent(unitId)}`
+    : k === "bills-all-branches"
+    ? `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}`
+    : `/app/sys/${SYS}/pos/products?unit=${encodeURIComponent(unitId)}`;
 const p29uPath = (k: P29uRegKey | P29uOtherKey): string =>
   k === "refund-to-card" ? `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}` : k === "settings-tip-ledger" ? `/app/sys/${SYS}/pos/settings?tab=payments&unit=${encodeURIComponent(unitId)}` : pathOf("register");
 const productsPath = (k: P22uProductsKey) => `/app/sys/${SYS}/pos/products${P22U_PRODUCTS_PLAN.find((p) => p.key === k)?.rules ? "/price-rules" : ""}?unit=${encodeURIComponent(unitId)}`;
@@ -604,13 +641,13 @@ const EMPTY_DEVICE_ID = `${EMPTY_PREFIX}${process.pid}`;
 const EMPTY_PATH_PLACEHOLDER = `/app/sys/<empty-pos>/pos/register?unit=${EMPTY_UNIT.id}`;
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
-const stockStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "stock" || /^p1\.14/i.test(WO));
+const stockStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "stock" || /^p1\.14/i.test(WO));
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
-const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
+const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
-const billsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "sales" || /^p1\.16/i.test(WO));
+const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
   isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
@@ -621,10 +658,17 @@ const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encod
 // POS P1.11U ▸ หน้าใบเสร็จออนไลน์: ร้าน coffee เท่านั้น (ร้านอื่น = ข้ามหน้า) · LOCALE=en ⇒ ?lang=en · path จริงรู้หลังสร้างบิล (rpubPath) ◂
 // POS HF-P1CLOSE ▸ มติ O8: 3 ขนาดทั้ง th/en (เดิม 390 เท่านั้น) · rpub-issue-sent คง 390 (RPUB_VIEWPORT · เขียนแถวแจ้งปัญหาจริง) ◂
 const RPUB_VIEWPORT = POS_VIEWPORTS.find((v) => v.name === "mobile")!;
-const rpubOn = tenantKey === "coffee" && pages.includes("receipt-public");
+const rpubOn = tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && pages.includes("receipt-public");
 const rpubPlan = RPUB_STATE_PLAN.filter((st) => STATES_ON || st.key === "rpub-paid");
 const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
-  p === "receipt-public"
+  // POS P2.11U ▸ มติ 11: wo p2.11u + --states = สถานะหลายสาขาของหน้านี้ตามผู้ใช้ (หน้าอื่น = ไม่มีงาน) ◂
+  p211uOn
+    ? P211U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p211uPath(st.key), file: `${OUT}/${p}-${st.key.startsWith(`${p}-`) ? st.key.slice(p.length + 1) : st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : p === "receipt-public"
     ? rpubOn
       ? rpubPlan.flatMap((st): Job[] =>
           (st.key === "rpub-issue-sent" ? [RPUB_VIEWPORT] : [...POS_VIEWPORTS]).map((v): Job => ({ page: p, v, state: st.key, expect: st.expect, path: `/r/${st.bill === "none" ? RPUB_MISSING_TOKEN : `<token:${st.bill}>`}${LOCALE_EN ? "?lang=en" : ""}`, file: `${OUT}/${p}-${st.key.replace(/^rpub-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
@@ -790,9 +834,11 @@ if (LIST) {
   for (const st of P29U_OTHER_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("tables/register P2.5U (wo p2.5u --page tables|register --states):"); // POS P2.5U
   for (const st of [...P25U_TABLES_PLAN, ...P25U_REG_PLAN]) row(st.key, st.devices, st.note);
+  console.log("products/reports/settings/stock/sales P2.11U (wo p2.11u --states · owner + manager):"); // POS P2.11U
+  for (const st of P211U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -924,6 +970,15 @@ if (DRY) {
           `บิลขายบัตรคงอยู่) + PIN ค่าคงที่ของ fixture (สูตรแฮชของโมดูล · ไม่พิมพ์ค่า) · เครดิตร้าน ฿200 ของสมาชิก QC (member.issueStoreCredit · คีย์ต่อวัน) · ` +
           `ทิป (เปิด + บัญชีหนี้สินของสมุดที่เชื่อม · คืนค่าหลังภาพทิปสุดท้าย) · changed = ตัดยอดบัตรผ่าน giftcard.use · ⚠️ sale-done-giftcard = บิล PAID 1 ใบ · ` +
           `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ระงับบัตรของรอบ (giftcard.suspend) ยกเว้นบัตรของบิล sale-done-giftcard (คง ACTIVE ฿175 · refund-to-card ใช้ต่อ)`,
+      );
+    }
+    // POS P2.11U ▸ มติ 11 ◂
+    if (jobs.some((j) => isP211uState(j.state))) {
+      console.log(`สถานะหลายสาขา P2.11U (${userKey}${userKey === "manager" ? ` · ผู้จัดการ{สาขาสีลม} ${MANAGER_VIS.email} — สร้าง/ใช้ซ้ำ User + Membership MANAGER ก่อน mint session` : ""}):`);
+      for (const st of P211U_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(27)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P2.11U: fixture (สาขา ${unitKey}) — ลาเต้ (STORE, สาขา) + แถวเลิกใช้ของช่องทาง ZZVIS (saveChannel → ตั้งราคา → archiveChannel · คืนแถวเดิม + ลบช่องทางของรอบหลังงานสุดท้าย/finally/สัญญาณ) · ` +
+          `บิล PAID วันนี้ 3 ใบ (คีย์ต่อวัน · ไม่ลบ) · ใบเสร็จสาขา 00001 + สมุด ABB ชั่วคราว (คืนค่า) · คลังร่วม = seed QC (ไม่มี = ผูกแล้วลบลิงก์)`,
       );
     }
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
@@ -1180,6 +1235,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P29U.log.length) console.error(`${P29U.ok ? "🧹" : "⚠️"} P2.9U: ${P29U.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.9U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.11U: แถวราคาลาเต้ · ช่องทาง ZZVIS · ค่าใบเสร็จของสาขา · ลิงก์คลังของรอบ (เหมือน finally)
+      try {
+        await cleanupP211u();
+        if (P211U.log.length) console.error(`${P211U.ok ? "🧹" : "⚠️"} P2.11U: ${P211U.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.11U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.4U: ลบ fixture โต๊ะของรอบนี้ (เหมือน finally)
       try {
@@ -1565,7 +1627,7 @@ async function seedVoidRequest(): Promise<string> {
 }
 /** ปลดล็อกแถว PIN ของผู้ใช้รอบนี้ (หลัง lock-pin-locked) */
 async function unlockRunPin(): Promise<void> {
-  await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users[userKey].userId }, data: { failedCount: 0, lockedUntil: null } });
+  await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: U.userId }, data: { failedCount: 0, lockedUntil: null } });
 }
 async function clickPinDigits(page: Any, pin: string): Promise<void> {
   for (const d of pin) await clickEl(page, tid(`pos-lock-key-${d}`));
@@ -1607,7 +1669,7 @@ async function runP115State(page: Any, state: StateKey, device: Device): Promise
     return;
   }
   if (state === "lock-pin-locked") {
-    await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users[userKey].userId }, data: { failedCount: 5, lockedUntil: new Date(Date.now() + 15 * 60_000) } });
+    await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: U.userId }, data: { failedCount: 5, lockedUntil: new Date(Date.now() + 15 * 60_000) } });
     await lockFromRegister(page, device);
     await clickPinDigits(page, P115.pins[userKey]!);
     await visibleEl(page, tid("pos-lock-manager-unlock"), 0, 10_000);
@@ -1720,6 +1782,7 @@ async function cleanupP115(): Promise<void> {
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isP211uState(state)) return runP211uState(page, state, device); // POS P2.11U
   if (isP29uState(state)) return runP29uState(page, state, device); // POS P2.9U
   if (isP26uState(state)) return runP26uState(page, state, device); // POS P2.6U
   if (isP25uState(state)) return runP25uState(page, state, device); // POS P2.5U
@@ -5621,6 +5684,244 @@ async function p29uCashExactConfirm(page: Any): Promise<void> {
   });
   await clickEl(page, tid("pos-reg-paydlg-confirm"));
 }
+// ═══════════════════ POS P2.11U ▸ หลายสาขา: fixture + ขั้นตอนของสถานะ (มติ 11) ◂ ═══════════════════
+// fixture (ensureP211uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
+//   • หน้า products: ลาเต้ += แถว (STORE, สีลม) = ราคาฐาน − ฿5 (ช่อง "ราคา สีลม" ตัวหนา + ชิป "สาขา") · ช่องทาง ZZVIS ที่สีลม (saveChannel) →
+//     แถว (ZZVIS, ทุกสาขา) ของลาเต้ → archiveChannel ⇒ แถวเลิกใช้ 1 แถว (หมายเหตุ pos-prod-deadNote) — แบบ dead-row ของ qc-pos-p2.11 ·
+//     แถวเดิมของลาเต้จำไว้ · เก็บกวาด: เปิดช่องทางคืน (ธง archivedAt · เขียนตรง) → setChannelPrices(แถวเดิม) ลบแถวของรอบ → ลบแถวช่องทาง ZZVIS ของรอบ
+//   • หน้า reports/sales: บิล PAID วันนี้ที่สีลม 3 ใบ (createSale คีย์ต่อวัน posqc-vis-p211u-<n>-<วันที่> · หน้าร้าน ×2 PROMPTPAY + LINE MAN ×1 PLATFORM) — ไม่ลบ (แบบ sale-done)
+//   • หน้า settings: สมุด ABB ชั่วคราว (ensureAbbBook · คืนใน cleanRpub) + ค่าของสาขาสีลม (สาขาที่ 00001 · ที่อยู่ · โทร) ผ่าน updatePosReceiptUnitSettings · คืนค่าเดิมหลังงานสุดท้าย
+//   • หน้า stock: seed QC ผูกสีลม + อารีย์กับคลังเดียวกันอยู่แล้ว (posUnitInventoryMap shared) — ไม่มี = ผูกอารีย์กับคลังของสีลม (linkUnit) แล้วลบลิงก์ของรอบตอนเก็บกวาด
+//   • ผู้ใช้ manager: ensureManagerUser (User + Membership MANAGER unitAccess [สีลม] · id ตายตัว · สร้างครั้งแรก/ใช้ซ้ำ · ไม่ลบ)
+const P211U_CH = "ZZVIS";
+const P211U = {
+  done: false,
+  error: null as string | null,
+  ok: true,
+  log: [] as string[],
+  cleaned: false,
+  latteName: "",
+  rowsBefore: null as null | { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean }[],
+  channelId: "",
+  receiptBefore: null as null | { taxBranchNo: string | null; address: string | null; phone: string | null },
+  invLinkCreated: "",
+  bills: [] as string[],
+};
+/** ผู้จัดการสาขาสีลมของภาพ (ไม่อยู่ใน seed-pos-qc) — สร้างครั้งแรก · ใช้ซ้ำรอบถัดไป · บทบาท/สาขาถูกตั้งกลับทุกรอบ */
+async function ensureManagerUser(): Promise<void> {
+  const silom = (T.units as Record<string, { id: string }>).silom?.id;
+  if (!silom) throw new Fatal("ร้าน QC ไม่มีสาขาสีลม (ผู้จัดการของภาพ P2.11U)");
+  await prisma.user.upsert({ where: { id: MANAGER_VIS.userId }, update: {}, create: { id: MANAGER_VIS.userId, email: MANAGER_VIS.email, name: MANAGER_VIS.name } });
+  await prisma.membership.upsert({
+    where: { userId_tenantId: { userId: MANAGER_VIS.userId, tenantId: T.tenantId } },
+    update: { role: "MANAGER", unitAccess: [silom], permissions: {}, acceptedAt: new Date() },
+    create: { id: MANAGER_VIS.membershipId, userId: MANAGER_VIS.userId, tenantId: T.tenantId, role: "MANAGER", unitAccess: [silom], permissions: {}, acceptedAt: new Date() },
+  });
+}
+async function ensureP211uFixture(): Promise<void> {
+  if (P211U.done || P211U.error) return;
+  try {
+    const owner = await ownerActor();
+    const want = (k: P211uKey) => jobs.some((j) => j.state === k);
+    const needProducts = jobs.some((j) => j.page === "products" && isP211uState(j.state));
+    if (needProducts) {
+      if (!QC_IDS.latte) throw new StepError("ไม่มีลาเต้ของร้าน QC");
+      const { setChannelPrices } = await import("@/lib/modules/pos/catalog");
+      const { saveChannel, archiveChannel, listChannels } = await import("@/lib/modules/pos/channel");
+      const cctx = { tenantId: T.tenantId, systemId: SYS, actorUserId: owner.userId };
+      const rctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+      const latte = await prisma.posProduct.findFirst({ where: { tenantId: T.tenantId, id: QC_IDS.latte }, select: { name: true, basePriceSatang: true } });
+      if (!latte?.basePriceSatang) throw new StepError("ลาเต้ของร้าน QC ไม่มีราคาฐาน");
+      P211U.latteName = latte.name;
+      // ซากรอบที่ถูก kill: ช่องทาง ZZVIS ของสาขาสีลมยังอยู่ ⇒ เปิดคืน → ตัดแถว ZZVIS ของลาเต้ → ลบช่องทาง
+      const old = await prisma.salesChannel.findFirst({ where: { tenantId: T.tenantId, systemId: SYS, unitId, code: P211U_CH }, select: { id: true } });
+      if (old) {
+        await prisma.salesChannel.update({ where: { id: old.id }, data: { archivedAt: null } });
+        const cur = await prisma.posProductChannelPrice.findMany({ where: { tenantId: T.tenantId, systemId: SYS, productId: QC_IDS.latte }, select: { channelCode: true, unitId: true, priceSatang: true, notSold: true } });
+        await setChannelPrices(cctx, { productId: QC_IDS.latte, rows: cur.filter((r) => r.channelCode !== P211U_CH) });
+        await prisma.salesChannel.deleteMany({ where: { id: old.id, tenantId: T.tenantId } });
+        P211U.log.push("กวาดซาก ZZVIS ของรอบก่อน");
+      }
+      const before = await prisma.posProductChannelPrice.findMany({ where: { tenantId: T.tenantId, systemId: SYS, productId: QC_IDS.latte }, select: { channelCode: true, unitId: true, priceSatang: true, notSold: true } });
+      P211U.rowsBefore = before;
+      const ch = await saveChannel(rctx, owner, { code: P211U_CH, name: "ช่องทางเลิกใช้ (ภาพ QC P2.11U)", payout: "DIRECT" });
+      if (!ch.ok) throw new StepError(`สร้างช่องทาง ${P211U_CH}: ${ch.code}`);
+      P211U.channelId = ch.channel.id;
+      const keep = before.filter((r) => !(r.channelCode === "STORE" && r.unitId === unitId));
+      const set = await setChannelPrices(cctx, {
+        productId: QC_IDS.latte,
+        rows: [...keep, { channelCode: "STORE", unitId, priceSatang: latte.basePriceSatang - 500, notSold: false }, { channelCode: P211U_CH, unitId: null, priceSatang: latte.basePriceSatang + 1000, notSold: false }],
+      });
+      if (!set) throw new StepError("setChannelPrices ไม่คืนผล");
+      const ar = await archiveChannel(rctx, owner, { id: ch.channel.id });
+      if (!ar.ok) throw new StepError(`เก็บช่องทาง ${P211U_CH}: ${ar.code}`);
+      const l = await listChannels(rctx, owner, { includeArchived: true });
+      if (l.ok && !l.items.some((c) => c.code === P211U_CH && c.archived)) throw new StepError(`ช่องทาง ${P211U_CH} ไม่ถูกเก็บถาวร`);
+      P211U.log.push(`ลาเต้: (STORE, สีลม) ฿${(latte.basePriceSatang - 500) / 100} + แถวเลิกใช้ (${P211U_CH}, ทุกสาขา) · แถวเดิม ${before.length} แถวจำไว้`);
+    }
+    if (want("reports-channels") || want("bills-all-branches")) {
+      await ensureChannelFixture();
+      if (P21U.error || !P21U.ids.LINEMAN) throw new StepError(`fixture ช่องทาง: ${P21U.error ?? "ไม่มี LINEMAN"}`);
+      const { createSale } = await import("@/lib/modules/pos/service");
+      const base = { tenantId: T.tenantId, unitId, systemId: SYS, sourceModule: "POS", shiftId: null, soldByUserId: owner.userId };
+      const day = bkkToday();
+      const specs = [
+        { n: 1, lines: [{ name: `ลาเต้เย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 7500 }], pay: "PROMPTPAY", channelId: null as string | null },
+        { n: 2, lines: [{ name: `อเมริกาโน่ ${BILL_TAG}`, qty: 1, unitPriceSatang: 6000 }, { name: `ครัวซองต์ ${BILL_TAG}`, qty: 1, unitPriceSatang: 8500 }], pay: "PROMPTPAY", channelId: null },
+        { n: 3, lines: [{ name: `ผัดไทยกุ้ง ${BILL_TAG}`, qty: 1, unitPriceSatang: 12000 }, { name: `ชาไทยเย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 6000 }], pay: "PLATFORM", channelId: P21U.ids.LINEMAN },
+      ];
+      for (const sp of specs) {
+        const total = sp.lines.reduce((a, l) => a + l.qty * l.unitPriceSatang, 0);
+        const r = await createSale({
+          ...base,
+          idempotencyKey: `${FIX.prefix}p211u-${sp.n}-${day}`,
+          ...(sp.channelId ? { channelId: sp.channelId, channelRef: "LM-21101" } : {}),
+          lines: sp.lines,
+          payMethods: [{ type: sp.pay, amountSatang: total }],
+        } as never);
+        P211U.bills.push(r.saleId);
+      }
+      P211U.log.push(`บิลวันนี้ ${P211U.bills.length} ใบ (คีย์ต่อวัน · ไม่ลบ)`);
+    }
+    if (want("settings-receipt-branch")) {
+      await ensureAbbBook();
+      const { updatePosReceiptUnitSettings } = await import("@/lib/modules/pos/receipt-settings");
+      const { receiptUnitOverride } = await import("@/lib/modules/pos/receipt-settings-shared");
+      const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
+      P211U.receiptBefore = receiptUnitOverride(sys?.settings ?? null, unitId);
+      const r = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { unitId, patch: { taxBranchNo: "00001", address: "99/1 ถนนสีลม แขวงสุริยวงศ์ เขตบางรัก กรุงเทพฯ 10500", phone: "02-000-0001" } });
+      if (!r.ok) throw new StepError(`ตั้งค่าใบเสร็จของสาขา: ${r.code} ${r.field ?? ""}`);
+      P211U.log.push("ใบเสร็จสาขาสีลม: สาขาที่ 00001 + ที่อยู่/โทร (คืนค่าเดิมตอนเก็บกวาด)");
+    }
+    if (want("stock-shared-inventory")) {
+      const { posUnitInventoryMap } = await import("@/lib/modules/pos/catalog");
+      const map = await posUnitInventoryMap(T.tenantId, SYS);
+      if (!map.groups.some((g) => g.shared && g.unitIds.includes(unitId))) {
+        const mine = map.units.find((u) => u.unitId === unitId)?.inventorySystemId;
+        const other = map.units.find((u) => u.unitId !== unitId && !map.groups.some((g) => g.unitIds.includes(u.unitId) && g.shared));
+        if (!mine || !other) throw new StepError("ร้าน QC ไม่มีสาขาที่สองหรือสีลมไม่ผูกคลัง — สร้างคลังร่วมไม่ได้");
+        if (other.inventorySystemId) throw new StepError("สาขาที่สองผูกคลังอื่นอยู่ — ไม่ย้ายลิงก์ของ seed (ผู้คุมงานตัดสิน)");
+        const sysSvc = await import("@/lib/modules/system/service");
+        await sysSvc.linkUnit(T.tenantId, mine, other.unitId);
+        P211U.invLinkCreated = other.unitId;
+        P211U.log.push("ผูกสาขาที่สองกับคลังของสีลม (ลบลิงก์ตอนเก็บกวาด)");
+      } else P211U.log.push("คลังร่วม: seed QC สีลม + อารีย์ใช้คลังเดียวกันอยู่แล้ว (ไม่เขียน)");
+    }
+    P211U.done = true;
+  } catch (e) {
+    P211U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** หลังงาน P2.11U สุดท้าย / finally / สัญญาณ — เรียกซ้ำได้ · ไม่โยน */
+async function cleanupP211u(): Promise<void> {
+  if (P211U.cleaned) return;
+  P211U.cleaned = true;
+  const step = async (what: string, fn: () => Promise<string | null>) => {
+    try {
+      const t = await fn();
+      if (t) P211U.log.push(t);
+    } catch (e) {
+      P211U.ok = false;
+      P211U.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  await step("คืนแถวราคาลาเต้", async () => {
+    if (!P211U.rowsBefore && !P211U.channelId) return null;
+    const owner = await ownerActor();
+    const { setChannelPrices } = await import("@/lib/modules/pos/catalog");
+    if (P211U.channelId) await prisma.salesChannel.update({ where: { id: P211U.channelId }, data: { archivedAt: null } });
+    if (P211U.rowsBefore) await setChannelPrices({ tenantId: T.tenantId, systemId: SYS, actorUserId: owner.userId }, { productId: QC_IDS.latte, rows: P211U.rowsBefore });
+    if (P211U.channelId) await prisma.salesChannel.deleteMany({ where: { id: P211U.channelId, tenantId: T.tenantId } });
+    return `คืนแถวราคาลาเต้ ${P211U.rowsBefore?.length ?? 0} แถว · ลบช่องทาง ${P211U_CH} ของรอบ`;
+  });
+  await step("คืนค่าใบเสร็จของสาขา", async () => {
+    if (!P211U.receiptBefore) return null;
+    const { updatePosReceiptUnitSettings } = await import("@/lib/modules/pos/receipt-settings");
+    const r = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, await ownerActor(), { unitId, patch: { ...P211U.receiptBefore } });
+    if (!r.ok) throw new StepError(`${r.code} ${r.field ?? ""}`);
+    return "คืนค่าใบเสร็จของสาขาสีลม";
+  });
+  await step("ลบลิงก์คลังของรอบ", async () => {
+    if (!P211U.invLinkCreated) return null;
+    await prisma.appSystemUnit.deleteMany({ where: { tenantId: T.tenantId, unitId: P211U.invLinkCreated, type: "INVENTORY" } });
+    return "ลบลิงก์คลังของรอบ";
+  });
+}
+async function p211uOpenLatte(page: Any, device: Device): Promise<void> {
+  if (P211U.latteName) await typeInto(page, tid("pos-prod-search"), P211U.latteName);
+  await clickEl(page, tid(device === "mobile" ? `pos-prod-copen-${QC_IDS.latte}` : `pos-prod-open-${QC_IDS.latte}`));
+  await visibleEl(page, tid("pos-prod-drawer"), 0, 10_000);
+}
+async function runP211uState(page: Any, state: P211uKey, device: Device): Promise<void> {
+  if (P211U.error) throw new StepError(`fixture P2.11U: ${P211U.error}`);
+  if (state === "reports-channels") {
+    const card = await visibleEl(page, tid("pos-rep-channels"), 0, 20_000);
+    await page.waitForFunction(() => !!document.querySelector('[data-testid^="pos-rep-channels-row-"]') || !!document.querySelector('[data-testid="pos-rep-channels-empty"]'), { timeout: 20_000 }).catch(() => {
+      throw new StepError("การ์ดช่องทางการขายไม่มีแถว (pos-rep-channels-row-*)");
+    });
+    if (!(await page.$('[data-testid^="pos-rep-channels-row-"]'))) throw new StepError("การ์ดช่องทางการขายว่าง — บิล fixture วันนี้ไม่ขึ้น");
+    await card.evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+    return;
+  }
+  if (state === "settings-receipt-branch") {
+    const card = await visibleEl(page, tid("pos-set-receipt-branch"), 0, 20_000);
+    const v = (await page.$eval(tid("pos-set-receipt-branchNo"), (e: Element) => (e as HTMLInputElement).value)) as string;
+    if (v !== "00001") throw new StepError(`ช่องสาขาที่ = "${v}" (คาด 00001 ของ fixture)`);
+    await card.evaluate((el: Element) => el.scrollIntoView({ block: "start" }));
+    return;
+  }
+  if (state === "stock-shared-inventory") {
+    await visibleEl(page, tid("pos-stock-sharedNote"), 0, 20_000).catch(() => {
+      throw new StepError("ไม่มีหมายเหตุคลังร่วม (pos-stock-sharedNote)");
+    });
+    return;
+  }
+  if (state === "bills-all-branches") {
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-testid^="pos-sales-unitChip-"]')).some((e) => e.getClientRects().length > 0), { timeout: 20_000 }).catch(() => {
+      throw new StepError("ไม่มีชิปสาขาข้างเลขใบเสร็จ (pos-sales-unitChip-*)");
+    });
+    return;
+  }
+  // ── หน้า 06 ──
+  await visibleEl(page, tid("pos-prod-unitFilter"), 0, 20_000);
+  const filter = (await page.$eval(tid("pos-prod-unitFilter"), (e: Element) => ({ value: (e as HTMLSelectElement).value, hasAll: Array.from((e as HTMLSelectElement).options).some((o) => o.value === "") }))) as { value: string; hasAll: boolean };
+  if (filter.value !== unitId) throw new StepError(`ตัวกรองสาขา = "${filter.value}" (คาด ${unitId})`);
+  if (state === "products-branch-filter") {
+    if (device === "mobile") await visibleEl(page, tid(`pos-prod-cbranch-${QC_IDS.latte}`), 0, 10_000);
+    else await visibleEl(page, tid(`pos-prod-cell-${QC_IDS.latte}-unit`), 0, 10_000);
+    return;
+  }
+  if (state === "products-branch-copy") {
+    await clickEl(page, tid("pos-prod-copy-open"));
+    await visibleEl(page, tid("pos-prod-copy-dialog"), 0, 10_000);
+    await clickEl(page, tid("pos-prod-copy-overwrite"));
+    return; // 🔴 ไม่กดคัดลอก
+  }
+  if (state === "products-branch-compare") {
+    await clickEl(page, tid("pos-prod-compare-open"));
+    await visibleEl(page, tid("pos-prod-compare"), 0, 10_000);
+    await page.waitForFunction(() => !!document.querySelector('[data-testid^="pos-prod-compare-cell-"]'), { timeout: 20_000 }).catch(() => {
+      throw new StepError("ตารางเทียบราคาสาขาไม่ขึ้น (pos-prod-compare-cell-*)");
+    });
+    return;
+  }
+  if (state === "products-dead-row-note") {
+    await p211uOpenLatte(page, device);
+    const note = await visibleEl(page, tid("pos-prod-deadNote"), 0, 10_000);
+    await note.evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+    if (userKey === "owner") await visibleEl(page, tid("pos-prod-purgeDead"), 0, 5_000);
+    else if (await page.$(tid("pos-prod-purgeDead"))) throw new StepError("ผู้จัดการสาขาเห็นปุ่มล้างแถวที่เลิกใช้ (ต้องไม่มี — มติ 3)");
+    return;
+  }
+  if (state === "products-manager-branch") {
+    if (filter.hasAll) throw new StepError("โหมดสาขายังมีตัวเลือก \"ทุกสาขา\"");
+    await p211uOpenLatte(page, device);
+    await visibleEl(page, tid("pos-prod-drawer-managerHint"), 0, 10_000);
+    await visibleEl(page, tid(`pos-prod-drawer-group-${unitId}`), 0, 10_000);
+    return;
+  }
+}
+// ◂
 async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device: Device): Promise<void> {
   if (P29U.error) throw new StepError(`fixture P2.9U: ${P29U.error}`);
   if (state === "settings-tip-ledger") {
@@ -6229,6 +6530,7 @@ mkdirSync(OUT, { recursive: true });
 
 try {
   // ── mint session (ผู้ใช้ QC id ตายตัวจาก PQC · ต้อง seed-pos-qc ก่อน) ──
+  if (userKey === "manager") await ensureManagerUser(); // POS P2.11U ▸ มติ 11: ผู้จัดการสาขาสีลมของภาพ (สร้าง/ใช้ซ้ำ) ◂
   const user = await prisma.user.findUnique({ where: { id: U.userId }, select: { id: true, email: true } });
   if (!user || user.email !== U.email) throw new Fatal(`ไม่พบผู้ใช้ ${U.email} (${U.userId}) ในฐานนี้ — รัน seed-pos-qc บนฐานเดียวกับเซิร์ฟเวอร์ก่อน`);
   const token = "pos" + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -6426,6 +6728,11 @@ try {
           await ensureP29uFixture();
           console.log(P29U.error ? `  ⚠️ fixture P2.9U: ${P29U.error}` : `  fixture P2.9U: ${P29U.log.join(" · ")}`);
         }
+        // POS P2.11U ▸ fixture หลายสาขาก่อนงานแรกของใบนี้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP211uState(job.state) && !P211U.done && !P211U.error) {
+          await ensureP211uFixture();
+          console.log(P211U.error ? `  ⚠️ fixture P2.11U: ${P211U.error}` : `  fixture P2.11U: ${P211U.log.join(" · ")}`);
+        }
         // POS P2.4U ▸ fixture โต๊ะก่อนงานแรกที่ใช้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && !P24U.done && !P24U.error) {
           await ensureP24uFixture();
@@ -6488,6 +6795,7 @@ try {
         if (job.state && P28U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P28U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP28u(); // POS P2.8U
         if (job.state === "paydlg-tip" && job === jobs.filter((j) => j.state === "paydlg-tip").at(-1)) await p29uTipRestore(); // POS P2.9U
         if (job.state && isP29uState(job.state) && job === jobs.filter((j) => j.state && isP29uState(j.state)).at(-1)) await cleanupP29u(); // POS P2.9U
+        if (isP211uState(job.state) && job === jobs.filter((j) => isP211uState(j.state)).at(-1)) await cleanupP211u(); // POS P2.11U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
           await finishPaidIntentSale(page).catch((e: unknown) => {
@@ -6567,6 +6875,9 @@ try {
   if (P26U.log.length) console.error(p26uCleanupLine());
   if (!P26U.ok) failures++;
   await cleanupP29u(); // POS P2.9U (ระงับบัตรของรอบ · คืนค่าตั้งบัตร/ทิป)
+  await cleanupP211u(); // POS P2.11U (แถวราคาลาเต้ · ช่องทาง ZZVIS · ค่าใบเสร็จของสาขา · ลิงก์คลังของรอบ)
+  if (P211U.log.length) console.error(`${P211U.ok ? "🧹" : "⚠️"} P2.11U: ${P211U.log.join(" · ")}`);
+  if (!P211U.ok) failures++;
   if (P29U.log.length) console.error(`${P29U.ok ? "🧹" : "⚠️"} P2.9U: ${P29U.log.join(" · ")}`);
   if (!P29U.ok) failures++;
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
