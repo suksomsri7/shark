@@ -111,3 +111,14 @@ Commits: c63bb676 (rulings 1–2) · 815bac5a (3, 4, 7) · 4ca02b70 (5–6) · c
 | qc-pos-p1.3 | 128/128 | runs/fix1-final/qc-pos-p1.3.out |
 | qc-hf-pos-page-authz | 81/81 (no new page) | runs/fix1-final/qc-hf-pos-page-authz.out |
 | visual-pos p2.9bu --states --dry (CI=1) owner / cashier | rc 0 (28 / 10 shots · fixture phone not printed) | runs/fix1-final/visual-dry-owner.out · visual-dry-cashier.out |
+
+## Fix round 2 (R2 G1 Low + G3 nit · base 36e0be7c · nothing else)
+- **G1** (9c20f704 · `InterimPayDialog.tsx` DEPOSIT_NOT_OWNER step (0), hunk `POS P2.9bU ▸ fix2 G1`): same deposit-row set refused twice **and member-linked rows still present** ⇒ drop only the member rows + `errors.depositNotOwner`, then arm the signature with the remaining rows; drop all + `errors.depositNotOwnerAgain` only when no member row is left. Walk-in row A (digits re-entered correctly) + member row M: #1 blames A · #2 (same set) drops M, keeps A · #3 refused again on {A} ⇒ drop all. No loop: at most one extra attempt after the member drop.
+- **G3** (d87addd3): the Fix round 1 ruling 6 line now writes the fixture phone as `080-000-xxxx` (full number only in `visual-pos.mts` fixture code).
+- Gates (one systemd-run unit `ISO_MEM=7000M bash scripts/iso.sh bash scratchpad/p29bu/run-gates-fix2.sh …` · logs `scratchpad/p29bu/runs/fix2/*.out`, each headed `tree=/root/projects/shark-pos-b head=d87addd3 dirty=0`):
+
+| gate | result | log |
+|---|---|---|
+| typecheck (pos-gate.lock · heap 5632) | rc 0 | runs/fix2/typecheck.out |
+| qc-pos-p1.18 | 81/81 · **ST7 = 0** | runs/fix2/qc-pos-p1.18.out |
+| visual-pos p2.9bu --states --dry (CI=1) owner | rc 0 (28 shots) | runs/fix2/visual-dry-owner.out |
