@@ -47,6 +47,7 @@ import {
   submitRefusalMessageKey, // POS HF-PP ▸ fix 1 ◂
   stripPayPins, // POS P2.9U ▸ มติ 3 ◂
   hasPinlessGiftCard, // POS P2.9U ▸ มติ 3 ◂
+  hasLast4lessDeposit, // POS P2.9bU ▸ มติ 3 ◂
   storeCreditOf, // POS P2.9U ▸ มติ 1/5 ◂
   submitInputToCart, // POS P2.9U ▸ มติ 3 ◂
   REGISTER_MAX_LINES,
@@ -105,6 +106,8 @@ import { MobileCartSheet as CartSheetFrame } from "./MobileCartSheet";
 import { OpenPriceDialog } from "./OpenPriceDialog";
 // POS P2.3U ▸ มติ 5: ชิปหัวจอ "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง" ◂
 import { retryPendingStockCutsAction } from "@/lib/modules/pos/register-actions";
+import { registerPayTendersAction } from "@/lib/modules/pos/register-actions"; // POS P2.9bU ▸ มติ 5: เมนู "รับมัดจำ" ตามค่าตั้ง ◂
+import { DepositReceiveDialog } from "./DepositReceiveDialog"; // POS P2.9bU ▸ มติ 5 ◂
 import { PendingCutsChip } from "./PendingCutsChip";
 import { OptionsDialog, type OptionsPick } from "./OptionsDialog";
 import { ProductGrid } from "./ProductGrid";
@@ -219,7 +222,9 @@ type Layer =
   | { kind: "approval"; requestId: string; heldCartId?: string }
   // POS P2.4U ▸ มติ 6: ถามก่อนตัดของที่รอบร่างโต๊ะเก็บไม่ได้ · แผ่นเลือกโต๊ะ ◂
   | { kind: "billStrip" }
-  | { kind: "tablePick" };
+  | { kind: "tablePick" }
+  // POS P2.9bU ▸ มติ 5: แผ่นรับมัดจำ (rcvKey = คีย์กันซ้ำของการเปิดแผ่นครั้งนี้ — ออกที่ openDepositReceive) ◂
+  | { kind: "depositReceive"; rcvKey: string };
 /**
  * POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานของบิลนี้: pin = PIN ผู้จัดการที่เครื่อง (ส่งพร้อม submit · heldCartId = บิลส่วนลดที่พักรอ) ·
  * approved = เรียกคืนบิลพักที่อนุมัติแล้ว (quote ด้วยเพดานที่อนุมัติ · ใช้ได้เฉพาะตะกร้าเดิมทุกไบต์ — inputJson) ◂
@@ -347,6 +352,20 @@ export function RegisterScreen(props: RegisterScreenProps) {
   layersRef.current = layers;
   const push = (l: Layer) => setLayers((s) => [...s, l]);
   const pop = () => setLayers((s) => s.slice(0, -1));
+  // ── POS P2.9bU ▸ มติ 5: "รับมัดจำ" เห็นเมื่อค่าตั้งเปิด (registerPayTendersAction · ตรวจ pos.sale.create ซ้ำ — sessionScope) — หน้าโต๊ะไม่มี ◂
+  const [depositOn, setDepositOn] = useState(false);
+  useEffect(() => {
+    if (tableOn) return;
+    let live = true;
+    registerPayTendersAction({ systemId, unitId })
+      .then((r) => {
+        if (live) setDepositOn(r.ok && r.tenders.deposit.enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [systemId, unitId, tableOn]);
   const [toast, setToast] = useState<ToastMsg | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((m: ToastMsg) => {
@@ -712,6 +731,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       void _pin;
       void _mgr;
       // POS P2.9U ▸ มติ 3 (H6): PIN บัตรของขวัญห้ามลง storage — แถว GIFT_CARD เก็บ number อย่างเดียว (โหลดกลับ = บิลเดิม หรือขอ PIN ใหม่) ◂
+      // POS P2.9bU ▸ มติ 3: phoneLast4 ของแถว DEPOSIT ห้ามลง storage เช่นกัน — stripPayPins ตัดทิ้ง (โหลดกลับ = บิลเดิม หรือ DEPOSIT_NOT_OWNER ⇒ ใส่ 4 หลักอีกครั้ง) ◂
       const stored = { ...kept, payMethods: stripPayPins(kept.payMethods) };
       window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: stored.idempotencyKey, sale: stored, phase }));
     } catch {
@@ -726,6 +746,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
     }
   };
   const frozen = payPhase === "sending" || payPhase === "unknown" || payPhase === "conflict";
+  // POS P2.9bU ▸ มติ 5: เปิดแผ่นรับมัดจำ (คีย์กันซ้ำใหม่ต่อการเปิดแผ่น · ไม่ใช่คีย์บิล) — ค่าตั้งปิด/หน้าโต๊ะ = ไม่มีทางเข้า ◂
+  const openDepositReceive =
+    depositOn && !tableOn
+      ? () => {
+          if (frozen || layersRef.current.length > 0) return;
+          push({ kind: "depositReceive", rcvKey: newKey() });
+        }
+      : null;
   /** ค่าล่าสุดที่วาดแล้ว — งาน async (ผลสแกน) อ่านจาก ref ไม่ใช่ค่าที่ติดมากับ closure ตอนกด Enter (B2.2 S1) */
   const frozenRef = useRef(frozen);
   frozenRef.current = frozen;
@@ -1759,12 +1787,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setPayPhase("form");
       // POS P2.9U ▸ มติ 3 (H6): คำขอที่ไม่มี PIN (ลองซ้ำ/โหลดกลับ) ได้ VALIDATION = คีย์นี้ยังไม่มีบิล ⇒ จอชำระขอ PIN อีกครั้ง (ไม่ใช่การ์ดผิดพลาด) ·
       //   โหลดกลับ (ตะกร้าว่าง) = สร้างตะกร้าคืนจากคำขอที่เก็บ แล้วกล่องสร้างแถวคืนเมื่อ quote มา · คีย์เดิม ◂
-      if (r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) {
+      // POS P2.9bU ▸ มติ 3: คำขอที่โหลดกลับ (ถูกตัด 4 หลักท้าย) ได้ DEPOSIT_NOT_OWNER = ยังไม่มีบิล ⇒ สร้างตะกร้า/แถวคืน แล้วจอชำระเปิดแผงมัดจำของแถวนั้น
+      //   "กรุณาใส่ 4 หลักท้ายอีกครั้ง" (ทางเดียวกับ PIN) · ลองซ้ำในหน้าเดิม = การ์ดผิดพลาดตามปกติ (กล่องยังมีแถว — จัดการที่แถว) ◂
+      if ((r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) || (r.code === "DEPOSIT_NOT_OWNER" && !!opts?.restore && hasLast4lessDeposit(sale.payMethods))) {
         if (cartRef.current.lines.length === 0) changeCart(submitInputToCart(sale, newKey));
         setPinAgain((a) => ({ seq: (a?.seq ?? 0) + 1, payMethods: sale.payMethods, tipSatang: sale.tipSatang ?? 0, ...(sale.cashReceivedSatang !== undefined ? { cashReceivedSatang: sale.cashReceivedSatang } : {}) }));
         return;
       }
       if (r.code === "STORE_CREDIT_NOT_OWNER") showToast({ key: "errors.storeCreditNotOwner" }); // POS P2.9U ▸ มติ 4: แถวเครดิตร้านถูกถอดในกล่อง + ข้อความลอย ◂
+      // POS P2.9bU ▸ มติ 4: บิลที่มีแถวมัดจำได้ VALIDATION = ข้อความลอยทั่วไป (กล่องอยู่ขั้นกรอก แถวคงไว้ · คีย์เดิม) ◂
+      if (r.code === "VALIDATION" && sale.payMethods.some((m) => m.type === "DEPOSIT")) {
+        showToast({ key: "pay.depositValidation" });
+        return;
+      }
       // POS P1.12U มติ 6: แต้มเกินเพดาน = แก้เป็น allowedPoints แล้ว quote ใหม่ (กล่องเปิดอยู่ ไม่มีการ์ดผิดพลาด) ·
       //   สิทธิ์เปลี่ยนระหว่างบันทึก = แบนเนอร์ + quote ใหม่ + ขอสิทธิ์ใหม่ (ที่เลือกคงไว้ถ้ายังใช้ได้ — quote ตัดสิน)
       // fix รอบ 1 F8: แก้อัตโนมัติเฉพาะเมื่อตะกร้าบนจอยังเป็นของสมาชิกคนเดียวกับคำขอ (ทางโหลดคำขอค้างกลับ = ตะกร้าว่าง ⇒ การ์ดผิดพลาดปกติ)
@@ -2553,6 +2588,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             // POS P2.9U ▸ มติ 1–3: ช่องแถว 2 จริง · สมาชิก + เครดิตร้าน · สแกนเลขบัตร · ขอ PIN ใหม่ ◂
             tenders={tableOn ? null : { systemId, unitId }}
             member={{ attached: !!cart.memberId, storeCredit: memberReady ? storeCreditOf(benefits?.giftCards) : null }}
+            memberId={cart.memberId ?? null} // POS P2.9bU ▸ มติ 2a: มัดจำของสมาชิกในบิล ◂
             onScanGiftCard={() => {
               if (!layersRef.current.some((x) => x.kind === "camera")) push({ kind: "camera", forGiftCard: true });
             }}
@@ -2766,6 +2802,26 @@ export function RegisterScreen(props: RegisterScreenProps) {
         return <BillStripDialog key={k} strip={cartStripOf(cart)} onContinue={() => setLayers((s) => [...s.filter((x) => x.kind !== "billStrip"), { kind: "tablePick" }])} onClose={pop} />;
       case "tablePick":
         return <TablePickDialog key={k} systemId={systemId} unitId={unitId} busy={moving} onPick={(c) => void moveCartToTable(c)} onClose={pop} />;
+      // POS P2.9bU ▸ มติ 5: แผ่นรับมัดจำ (สมาชิกในบิล = ชิป · ใบขอรับเงินพร้อมเพย์แบบจอชำระ) ◂
+      case "depositReceive":
+        return (
+          <DepositReceiveDialog
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            rcvKey={l.rcvKey}
+            member={cart.memberId ? { id: cart.memberId, name: memberInfo && memberInfo.id === cart.memberId ? memberInfo.name : "\u2026" } : null}
+            promptpayId={props.promptpayId}
+            intent={props.payIntent ? { ...props.payIntent, systemId, unitId, cartKey: l.rcvKey, discountOverCap: false } : null}
+            printer={printer}
+            locale={locale.startsWith("en") ? "en" : "th"}
+            onClose={pop}
+            onDone={() => {
+              pop();
+              void refreshStatus();
+            }}
+          />
+        );
       case "note":
         return (
           <BillNoteDialog
@@ -2810,10 +2866,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
           shift={status?.shift ?? null}
           onCamera={openCamera}
           onLock={staff || noPinMode ? lockNow : undefined}
+          onDepositReceive={openDepositReceive} // POS P2.9bU ▸ มติ 5: ปุ่มมือถือ ◂
         />
         {/* POS P2.4U ▸ มติ 1: แท็บ "โต๊ะ" เป็นลิงก์เมื่อสาขามีโหมดโต๊ะ ◂ */}
         {/* POS P2.8U ▸ มติ 1: unitId = ลิงก์แท็บออเดอร์ของสาขานี้ + ป้ายนับออเดอร์ใหม่ (ดึงทุก 10 วิ ขณะแถบ mount) ◂ */}
-        <ModeTabsNav systemId={systemId} tablesHref={tableModeNow?.visible || tableOn ? tablesHref : null} unitId={unitId} />
+        <ModeTabsNav systemId={systemId} tablesHref={tableModeNow?.visible || tableOn ? tablesHref : null} unitId={unitId} onDepositReceive={openDepositReceive} />
         {!online && (
           <div data-testid="pos-reg-offline-banner" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-ink)] px-5 py-[13px] text-[14px] leading-[1.5] text-[color:var(--color-surface)]" role="status">
             <RegisterIcon name="warn" size={18} />

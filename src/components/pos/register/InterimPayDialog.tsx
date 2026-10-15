@@ -33,6 +33,12 @@
 //   มัดจำ "เร็ว ๆ นี้" (P2.9b) · ลงบิลห้องพัก = เฉพาะสาขาโรงแรม "เร็ว ๆ นี้" · ทิป = แสดงเมื่อเปิดทิป · จ่ายได้จากแถวเงินจริงเท่านั้น ·
 //   🔴 PIN อยู่ใน pinsRef/ช่อง password แบบไม่ควบคุม (ไม่ sync เป็น attribute) ของกล่องนี้เท่านั้น — ไม่ลง storage/URL/console/data-* ·
 //      ล้างเมื่อปิดกล่อง/ถอดแถว/GIFT_CARD_CHANGED · คำปฏิเสธบัตร (GIFT_CARD_PIN/LOCKED/CHANGED · STORE_CREDIT_NOT_OWNER) แสดงที่แถว/แบนเนอร์ ◂
+// POS P2.9bU ▸ ช่อง "มัดจำที่ชำระไว้" (มติผู้คุม P2.9bU 1–4 · สัญญา S ledger/wo-notes/pos-P2.9b.md §P2.9bU):
+//   เปิดเมื่อ registerPayTendersAction().tenders.deposit.enabled (อ่านครั้งเดียวต่อการเปิดกล่องพร้อมช่องอื่น) · ปิด = "ยังไม่เปิดใช้" ·
+//   แผงขวา = ค้นมัดจำ (เลขใบเสร็จ / ชื่อ ≥ 3 ตัว · ไม่มีคำใบ้เบอร์) + มัดจำของสมาชิกในบิล (memberId) · แถวไม่มียอด = ค้นซ้ำด้วยเลขใบเสร็จ (+ 4 หลักท้ายเมื่อ needsPhoneLast4) ·
+//   จำนวน = min(คงเหลือ, ยอดมัดจำ) แก้ด้วยแป้น · "ใช้มัดจำนี้" ⇒ แถว "มัดจำ #… ฿x ✓ · คงเหลือ ฿y" (คงเหลือ = ยอดค้นล่าสุด − จำนวน · แสดงอย่างเดียว) · ≤ 3 ใบไม่ซ้ำ ·
+//   🔴 4 หลักท้ายอยู่ใน last4Ref/ช่อง password แบบไม่ควบคุมของกล่องนี้เท่านั้น (แบบ PIN บัตร) — ไม่ลง storage/URL/console/data-* · ล้างเมื่อปิดกล่อง/ถอดแถว ·
+//   คำปฏิเสธ DEPOSIT_* แสดงที่แถว/แบนเนอร์ (ไม่ใช่การ์ดผิดพลาด) · ทิปไม่จ่ายจากมัดจำ (REGISTER_CASH_LIKE_PAY ไม่มี DEPOSIT) ◂
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -55,8 +61,13 @@ import {
   giftCardKindOf,
   giftCardNumberKey,
   refusalMessageKey,
+  // POS P2.9bU ▸ มัดจำ ◂
+  DEPOSIT_INLINE_CODES,
+  DEPOSIT_QUERY_MIN,
+  REGISTER_MAX_DEPOSITS,
 } from "@/lib/modules/pos/register-shared";
 import { registerGiftCardLookupAction, registerPayTendersAction } from "@/lib/modules/pos/register-actions"; // POS P2.9U ▸ มติ 1–2 ◂
+import { registerDepositLookupAction } from "@/lib/modules/pos/deposit-actions"; // POS P2.9bU ▸ มติ 2 ◂
 import { hundredthsText, parseHundredths } from "./LineEditor";
 import { RegisterDialog } from "./RegisterDialog";
 import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
@@ -148,6 +159,8 @@ type Props = {
   pinAgain?: { seq: number; payMethods: RegisterPayMethod[]; tipSatang: number; cashReceivedSatang?: number } | null;
   /** POS P2.5U ▸ มติ 7: ชิปหัวจอ "บิล n จาก N · โต๊ะ A5" ของการจ่ายใบแยกบิล (quote.split) — ไม่ส่ง = ไม่มีชิป ◂ */
   splitChip?: string | null;
+  /** POS P2.9bU ▸ มติ 2a: สมาชิกในบิล (Customer.id) — แผงมัดจำแสดงมัดจำของสมาชิกนี้ก่อน (registerDepositLookup {memberId}) · ไม่ส่ง = ค้นอย่างเดียว ◂ */
+  memberId?: string | null;
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
@@ -164,6 +177,11 @@ type PayRow = {
    * (balanceSatang null = ยังไม่รู้ — แถวที่สร้างคืนหลัง reload ก่อนค้นใหม่) · note = ข้อความใต้แถว · PIN อยู่ใน pinsRef เท่านั้น ◂
    */
   card?: { number: string; masked: string; balanceSatang: number | null; note?: "pinWrong" | "pinAgain" | null };
+  /**
+   * POS P2.9bU ▸ แถวมัดจำ: id = PosDeposit.id (ส่งเป็น depositId) · receiptNo = เลขใบรับ (null = แถวที่สร้างคืนหลัง reload) ·
+   * remainingSatang = ยอดค้นล่าสุด (null = ไม่รู้) · needsLast4 = ต้องส่ง 4 หลักท้าย (อยู่ใน last4Ref เท่านั้น) · note = ข้อความใต้แถว ◂
+   */
+  dep?: { id: string; receiptNo: string | null; remainingSatang: number | null; needsLast4: boolean; memberLinked: boolean; l4Checked: boolean; note?: "wrong" | "again" | null };
 };
 /** POS P2.9U ▸ ผลค้นบัตร (DTO ของ registerGiftCardLookupAction) ◂ */
 type GcCard = { numberMasked: string; balanceSatang: number; status: string; expiresAt: string | null; usable: boolean; reason: "SUSPENDED" | "EXPIRED" | "DEPLETED" | "PIN_LOCKED" | null };
@@ -172,6 +190,25 @@ type GcLook = null | { state: "loading" } | { state: "found"; card: GcCard } | {
 type GcPanel = { number: string; look: GcLook; amount: string | null; pinLen: number; target: "amount" | "pin"; forRow: number | null; err: string | null };
 const GC_EMPTY: GcPanel = { number: "", look: null, amount: null, pinLen: 0, target: "amount", forRow: null, err: null };
 type Tenders = Extract<Awaited<ReturnType<typeof registerPayTendersAction>>, { ok: true }>["tenders"];
+// ── POS P2.9bU ▸ แผงมัดจำ (มติ 2) ──
+/** แถวผลค้นมัดจำ (DTO ของ registerDepositLookupAction — ไม่มีเบอร์เต็ม/4 หลักท้าย) */
+type DepDto = Extract<Awaited<ReturnType<typeof registerDepositLookupAction>>, { ok: true }>["deposits"][number];
+type DepLook = null | { state: "loading" } | { state: "found"; rows: DepDto[]; byMember: boolean } | { state: "empty" } | { state: "error"; key: string };
+/**
+ * แผงมัดจำ (คอลัมน์ขวา) — sel = มัดจำที่เลือก (remainingSatang null = ยังไม่เห็นยอด) · verify = กำลังค้นซ้ำ/ผลของ 4 หลักท้าย ·
+ * forRow = ใส่ 4 หลักท้ายใหม่ให้แถวที่มีอยู่ · target = แป้นตัวเลขกรอกอะไร · last4Len = ความยาวที่กรอก (ค่าอยู่ใน ref เท่านั้น)
+ */
+type DepPanel = { query: string; look: DepLook; sel: DepDto | null; verify: "idle" | "loading" | "wrong"; amount: string | null; last4Len: number; target: "amount" | "last4"; forRow: number | null; err: string | null };
+const DP_EMPTY: DepPanel = { query: "", look: null, sel: null, verify: "idle", amount: null, last4Len: 0, target: "amount", forRow: null, err: null };
+const DEP_LAST4 = 4;
+/** คำปฏิเสธของมัดจำ → ข้อความใต้รายการแยกจ่าย (มติ 4) */
+const DEP_NOTE_KEY: Record<string, string> = {
+  DEPOSIT_NOT_FOUND: "errors.depositNotFound",
+  DEPOSIT_CLOSED: "errors.depositClosed",
+  DEPOSIT_NOT_OWNER: "errors.depositNotOwner",
+  DEPOSIT_LOCKED: "errors.depositLocked",
+};
+// ◂
 /** POS P2.9U ▸ คำปฏิเสธของบัตรที่แสดงที่แถว/แบนเนอร์แทนการ์ดข้อผิดพลาด (มติ 4) ◂ */
 const GC_INLINE_CODES: ReadonlySet<string> = new Set(["GIFT_CARD_PIN", "GIFT_CARD_LOCKED", "GIFT_CARD_CHANGED", "STORE_CREDIT_NOT_OWNER"]);
 const GC_REASON_KEY: Record<NonNullable<GcCard["reason"]>, string> = {
@@ -209,10 +246,11 @@ const TERMINAL_SUBMIT: ReadonlySet<string> = new Set(["DEVICE_REVOKED", "SHIFT_C
 /** POS P2.1U ▸ มติ 6: ช่องแพลตฟอร์ม (แสดงเฉพาะบิลช่องทาง payout PLATFORM) ◂ */
 const PLATFORM_METHOD: { type: RegisterPayType; label: string; icon: RegisterIconName } = { type: "PLATFORM", label: "pay.platform", icon: "truck" };
 // POS P2.9U ▸ + GIFT_CARD (pay.giftCard · tag) · STORE_CREDIT (pay.storeCredit · pig) ◂
+// POS P2.9bU ▸ + DEPOSIT (pay.deposit · cheque) ◂
 const methodLabelKey = (type: RegisterPayType) =>
-  type === "PLATFORM" ? PLATFORM_METHOD.label : type === "GIFT_CARD" ? "pay.giftCard" : type === "STORE_CREDIT" ? "pay.storeCredit" : (METHODS.find((m) => m.type === type)?.label ?? "pay.cash");
+  type === "PLATFORM" ? PLATFORM_METHOD.label : type === "GIFT_CARD" ? "pay.giftCard" : type === "STORE_CREDIT" ? "pay.storeCredit" : type === "DEPOSIT" ? "pay.deposit" : (METHODS.find((m) => m.type === type)?.label ?? "pay.cash");
 const methodIcon = (type: RegisterPayType): RegisterIconName =>
-  type === "PLATFORM" ? PLATFORM_METHOD.icon : type === "GIFT_CARD" ? "tag" : type === "STORE_CREDIT" ? "pig" : (METHODS.find((m) => m.type === type)?.icon ?? "cash");
+  type === "PLATFORM" ? PLATFORM_METHOD.icon : type === "GIFT_CARD" ? "tag" : type === "STORE_CREDIT" ? "pig" : type === "DEPOSIT" ? "cheque" : (METHODS.find((m) => m.type === type)?.icon ?? "cash");
 const ratePct = (bp: number) => String(Number((bp / 100).toFixed(2)));
 const isFinePointer = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
 
@@ -265,11 +303,24 @@ export function PayDialog(p: Props) {
   // ── POS P2.9U ▸ บัตรของขวัญ / เครดิตร้าน / ทิป (มติ 1–7) ──
   /** PIN ของแถวบัตร (rowId → PIN) — หน่วยความจำของกล่องนี้เท่านั้น · ไม่ serialise ที่ใด */
   const pinsRef = useRef(new Map<number, string>());
+  /** POS P2.9bU ▸ มติ 3: 4 หลักท้ายของแถวมัดจำ (rowId → 4 หลัก) — หน่วยความจำของกล่องนี้เท่านั้น · ไม่ serialise ที่ใด ◂ */
+  const last4Ref = useRef(new Map<number, string>());
   /** PIN ที่กำลังกรอกในแผง (ช่อง password แบบไม่ควบคุม + ค่าใน ref — ไม่ไปเป็น attribute ของ DOM) */
   const gcPinRef = useRef("");
   const gcPinInput = useRef<HTMLInputElement>(null);
   const gcNumberInput = useRef<HTMLInputElement>(null);
   const [gc, setGc] = useState<GcPanel>(GC_EMPTY);
+  // POS P2.9bU ▸ แผงมัดจำ — 4 หลักที่กำลังกรอก = ref + ช่อง password แบบไม่ควบคุม (ไม่เป็น attribute ของ DOM) ◂
+  const depLast4Ref = useRef("");
+  const depLast4Input = useRef<HTMLInputElement>(null);
+  const depSearchInput = useRef<HTMLInputElement>(null);
+  const [dp, setDp] = useState<DepPanel>(DP_EMPTY);
+  const [depBanner, setDepBanner] = useState(false);
+  const [depNote, setDepNote] = useState<string | null>(null);
+  /** POS P2.9bU ▸ มติ 3: คำขอล่าสุดเป็นการ "ลองซ้ำ" (ชุดที่ถูกตัด 4 หลักท้าย) — DEPOSIT_NOT_OWNER ⇒ "ใส่อีกครั้ง" ไม่ใช่ "ไม่ถูกต้อง" ◂ */
+  const sentStripped = useRef(false);
+  /** POS P2.9bU ▸ fix1 มติ 1: ชุดแถวมัดจำ (row id) ที่เหลือหลัง DEPOSIT_NOT_OWNER ครั้งก่อน — ซ้ำชุดเดิมหลังใส่ใหม่ = ถอดทั้งหมด (ไม่วนแถวเดิม) ◂ */
+  const notOwnerSet = useRef<string | null>(null);
   const [gcBanner, setGcBanner] = useState(false);
   const [gcRowsNote, setGcRowsNote] = useState<string | null>(null);
   const [tenders, setTenders] = useState<Tenders | null>(null);
@@ -280,13 +331,17 @@ export function PayDialog(p: Props) {
   const gcRows = rows.filter((r) => r.type === "GIFT_CARD");
   const scRow = rows.find((r) => r.type === "STORE_CREDIT") ?? null;
   const gcMode = method === "GIFT_CARD";
+  // POS P2.9bU ▸ มัดจำ: แผงขวาแทนช่องจำนวน (แบบบัตรของขวัญ) — panelMode = รอบนี้เพิ่มแถวด้วยปุ่มของแผงเท่านั้น ◂
+  const depMode = method === "DEPOSIT";
+  const depRows = rows.filter((r) => r.type === "DEPOSIT");
+  const panelMode = gcMode || depMode;
   /** ค่าปริยายของรอบ: เครดิตร้าน = min(คงเหลือ, ยอดเครดิต) · อื่น = คงเหลือพอดี */
   const autoEntry = method === "STORE_CREDIT" ? Math.min(Math.max(remaining, 0), scBal) : Math.max(remaining, 0);
   const entryText = entry ?? hundredthsText(autoEntry);
   const entrySatang = entry === null ? autoEntry : parseHundredths(entry);
   // แผงบัตรของขวัญ: รอบนี้ไม่มีแถวสุดท้ายแบบปกติ (เพิ่มแถวด้วย "ใช้บัตรนี้") · คงเหลือ 0 = ยืนยันได้
   const scOver = method === "STORE_CREDIT" && entrySatang !== null && entrySatang > scBal;
-  const plan = gcMode
+  const plan = panelMode // POS P2.9bU ▸ + มัดจำ ◂
     ? remaining <= 0
       ? { amount: 0, change: 0, state: remaining === 0 ? ("complete" as const) : ("over" as const) }
       : { amount: 0, change: 0, state: "gift" as const }
@@ -298,6 +353,8 @@ export function PayDialog(p: Props) {
   const ready = !busy && p.itemCount > 0 && !p.quotePending && !p.quoteError && tipOk && !ppMissing;
   /** แถวบัตรที่ยังไม่มี PIN (ใส่ใหม่หลังปฏิเสธ/โหลดกลับ) ⇒ ยืนยันไม่ได้ */
   const gcPinMissing = gcRows.some((r) => (pinsRef.current.get(r.id) ?? "").length < GIFT_CARD_PIN_MIN);
+  /** POS P2.9bU ▸ มติ 3: แถวมัดจำที่ต้องมี 4 หลักท้ายแต่ยังไม่มี (ใส่ใหม่หลังปฏิเสธ/โหลดกลับ) ⇒ ยืนยันไม่ได้ ◂ */
+  const depLast4Missing = depRows.some((r) => !!r.dep?.needsLast4 && (last4Ref.current.get(r.id) ?? "").length !== DEP_LAST4);
   // มติ 6: ทิปจ่ายจากแถวเงินจริงเท่านั้น (CASH/PROMPTPAY/TRANSFER/CARD) · รอบสุดท้ายที่เป็นเงินจริงนับด้วย
   const cashLikeRows = rows.filter((r) => REGISTER_CASH_LIKE_PAY.has(r.type)).reduce((t, r) => t + r.amountSatang, 0);
   const cashLikeNow = REGISTER_CASH_LIKE_PAY.has(method) && remaining > 0 ? remaining : 0;
@@ -341,7 +398,7 @@ export function PayDialog(p: Props) {
   //   pos.shift.manage ⇒ ยืนยัน/แยกจ่าย/F4 ไม่ได้ (ก่อนรูดบัตรลูกค้า) · คำใบ้ชุดเดียวกับปุ่มยืนยันเองของ QR (pay.intent.managerOnly) ◂
   const edcManagerOnly = method === "CARD" && !intentMode && ((!!p.intent?.manualRequiresManager && !p.intent?.canManageShift) || (!p.intent && !!p.manualManagerOnly)); // POS P2.8U ▸ fix 1 F1: + manualManagerOnly ◂
   const canConfirm =
-    ready && !presetBlocked && !edcManagerOnly && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid) && !gcPinMissing && tipFundOk; // POS P2.9U ▸ PIN ครบ · ทิปจากเงินจริง ◂
+    ready && !presetBlocked && !edcManagerOnly && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid) && !gcPinMissing && !depLast4Missing && tipFundOk; // POS P2.9U ▸ PIN ครบ · ทิปจากเงินจริง ◂ · POS P2.9bU ▸ 4 หลักท้ายครบ ◂
   const canSplit = ready && !presetBlocked && !edcManagerOnly && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
   /** F3b: เงินเข้าเกินยอดบิล (ยอดบิลลดลงหลังมีแถวที่เงินเข้าแล้ว) — ยืนยันไม่ได้ · ต้องคืนเงินเอง */
   const overPaid = remaining < 0 && rows.some((r) => r.via !== undefined);
@@ -410,6 +467,23 @@ export function PayDialog(p: Props) {
     setEntry(m === "CASH" ? "" : null);
     setReference("");
     setPadTip(false); // POS P2.9U ◂
+    // POS P2.9bU ▸ มติ 2: ช่องมัดจำ = แผงค้นมัดจำ (+ มัดจำของสมาชิกในบิล) · ออกจากช่อง = ล้าง 4 หลักที่กรอกค้าง + แผง ◂
+    if (m === "DEPOSIT") {
+      if (gc.look || gc.pinLen) {
+        setGcPin("");
+        setGc(GC_EMPTY);
+      }
+      if (dp.forRow === null && !dp.sel && !dp.look) {
+        setDp(DP_EMPTY);
+        if (p.memberId) void depMemberList();
+      }
+      if (isFinePointer()) setTimeout(() => depSearchInput.current?.focus(), 0);
+      return;
+    }
+    if (dp.sel || dp.last4Len || dp.forRow !== null) {
+      setDepLast4("");
+      setDp((d) => ({ ...DP_EMPTY, query: d.query, look: d.look }));
+    }
     // POS P2.9U ▸ มติ 2: ช่องบัตรของขวัญ = แผงค้นบัตร (โฟกัสช่องเลขบัตร) · ออกจากช่อง = ล้าง PIN ที่กรอกค้าง ◂
     if (m === "GIFT_CARD") {
       if (gc.forRow === null && !gc.look) setGc(GC_EMPTY);
@@ -432,6 +506,10 @@ export function PayDialog(p: Props) {
   function clearPins() {
     pinsRef.current.clear();
     setGcPin("");
+    // POS P2.9bU ▸ มติ 3: ปิดกล่อง = ล้าง 4 หลักท้ายทุกแถว + ที่กรอกค้าง ◂
+    last4Ref.current.clear();
+    setDepLast4("");
+    notOwnerSet.current = null; // POS P2.9bU ▸ fix1 มติ 1 ◂
   }
   /** PIN ที่กำลังกรอกในแผง — ref + ช่อง password แบบไม่ควบคุม (ตั้ง .value ตรง ๆ ไม่ผ่าน React ⇒ ไม่เป็น attribute) */
   function setGcPin(v: string) {
@@ -441,15 +519,19 @@ export function PayDialog(p: Props) {
   }
   useEffect(() => {
     const pins = pinsRef.current;
+    const l4 = last4Ref.current; // POS P2.9bU ◂
     return () => {
       pins.clear();
       gcPinRef.current = "";
+      l4.clear(); // POS P2.9bU ▸ มติ 3: ถอดกล่อง (จอสำเร็จ/ปิด) = ล้าง 4 หลักท้าย ◂
+      depLast4Ref.current = "";
     };
   }, []);
   // แถวที่หายไป (ถอดเอง · ยอดบิลเปลี่ยน · ช่องทางเปลี่ยน) ⇒ PIN ของแถวนั้นหายด้วย
   useEffect(() => {
     const live = new Set(rows.map((r) => r.id));
     for (const id of [...pinsRef.current.keys()]) if (!live.has(id)) pinsRef.current.delete(id);
+    for (const id of [...last4Ref.current.keys()]) if (!live.has(id)) last4Ref.current.delete(id); // POS P2.9bU ◂
   }, [rows]);
   // มติ 1: ช่องแถว 2 ของจอนี้ — อ่านครั้งเดียวต่อการเปิดกล่อง
   useEffect(() => {
@@ -637,6 +719,60 @@ export function PayDialog(p: Props) {
         setMethod("CASH");
         setEntry("");
       }
+    } else if (e.code === "DEPOSIT_NOT_FOUND" || e.code === "DEPOSIT_CLOSED") {
+      // POS P2.9bU ▸ มติ 4: ถอดแถวมัดจำที่ใช้ไม่ได้แล้ว + ข้อความใต้รายการ ◂
+      void depDropClosed(e.code);
+    } else if (e.code === "DEPOSIT_NOT_OWNER") {
+      // POS P2.9bU ▸ fix1 มติ 1 (R1 F1): คำปฏิเสธไม่บอกแถว ⇒ โทษตามที่มาของแถว (ไม่มีจำนวนครั้งที่เหลือ — คำปฏิเสธไม่มี):
+      //   (0) ชุดแถวเดิมโดนซ้ำหลังใส่ 4 หลักใหม่ ⇒ ถอดแถวมัดจำที่เหลือทั้งหมด + ข้อความกลาง (ไม่วนแถวเดิม)
+      //   (1) ชุดที่ลองซ้ำไม่มี 4 หลัก (sentStripped) / 4 หลักที่ใส่ใหม่ทางแถว (forRow — แผงไม่ได้ตรวจ) ⇒ ล้าง 4 หลักของแถวนั้น + "อีกครั้ง"/"ไม่ถูกต้อง"
+      //   (2) แถวที่แผงตรวจแล้ว: มัดจำสมาชิก (memberLinked — จากรายการสมาชิกในบิล / เลขใบเสร็จตรงที่เห็นยอดโดยไม่ใช้ 4 หลัก · S service.ts:417) ⇒ ถอด + errors.depositNotOwner
+      //   (3) ไม่มีแถวสมาชิก ⇒ แถว 4 หลัก "ไม่ถูกต้อง" · ไม่มีอะไรให้โทษ ⇒ ถอดทุกแถวมัดจำ ◂
+      const sig = (list: PayRow[]) => list.map((r) => r.id).sort((a, b) => a - b).join(",");
+      const all = depRows;
+      const l4Rows = all.filter((r) => r.dep?.needsLast4);
+      const suspects = sentStripped.current ? l4Rows : l4Rows.filter((r) => !r.dep?.l4Checked);
+      const own = all.filter((r) => r.dep?.memberLinked);
+      const dropRows = (ids: Set<number>, key: string) => {
+        for (const id of ids) last4Ref.current.delete(id);
+        setRows((s) => s.filter((r) => !ids.has(r.id)));
+        setDepLast4("");
+        setDp(DP_EMPTY);
+        setDepNote(key);
+        notOwnerSet.current = null; // ชุดเปลี่ยนแล้ว — ครั้งถัดไปโทษแถว 4 หลักก่อน
+      };
+      const blameL4 = (list: PayRow[], note: "wrong" | "again") => {
+        const ids = new Set(list.map((r) => r.id));
+        for (const id of ids) last4Ref.current.delete(id);
+        setRows((s) => s.map((r) => (r.type === "DEPOSIT" && r.dep && ids.has(r.id) ? { ...r, dep: { ...r.dep, note, l4Checked: false } } : r)));
+        setDepNote(null);
+        notOwnerSet.current = sig(all);
+        reenterLast4(list[0]!);
+      };
+      // POS P2.9bU ▸ fix2 G1: ชุดเดิมซ้ำ + ยังมีแถวสมาชิก ⇒ ถอดเฉพาะแถวสมาชิก (errors.depositNotOwner) · ตั้งชุดเป็นแถวที่เหลือ ⇒ ซ้ำอีกครั้ง = ถอดทั้งหมด
+      //   (แถว walk-in ที่ใส่ 4 หลักถูกแล้วรอดคำปฏิเสธที่มาจากแถวสมาชิก · ไม่วน — ลองเพิ่มได้อีกครั้งเดียว) ◂
+      if (all.length && notOwnerSet.current === sig(all) && own.length) {
+        const ids = new Set(own.map((r) => r.id));
+        dropRows(ids, DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
+        const left = all.filter((r) => !ids.has(r.id));
+        notOwnerSet.current = left.length ? sig(left) : null;
+      } else if (all.length && notOwnerSet.current === sig(all)) dropRows(new Set(all.map((r) => r.id)), "errors.depositNotOwnerAgain");
+      else if (suspects.length) blameL4(suspects, sentStripped.current ? "again" : "wrong");
+      else if (own.length) dropRows(new Set(own.map((r) => r.id)), DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
+      else if (l4Rows.length) blameL4(l4Rows, "wrong");
+      else dropRows(new Set(all.map((r) => r.id)), DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
+    } else if (e.code === "DEPOSIT_LOCKED") {
+      // POS P2.9bU ▸ มติ 4: ล็อก 15 นาที ⇒ ถอดแถวที่ต้องใช้ 4 หลัก (คำปฏิเสธไม่บอกใบ) + ข้อความ ◂
+      const drop = new Set(depRows.filter((r) => r.dep?.needsLast4).map((r) => r.id));
+      for (const id of drop) last4Ref.current.delete(id);
+      setRows((s) => s.filter((r) => !drop.has(r.id)));
+      setDepLast4("");
+      setDp(DP_EMPTY);
+      setDepNote(DEP_NOTE_KEY.DEPOSIT_LOCKED!);
+    } else if (e.code === "DEPOSIT_EXCEEDS") {
+      // POS P2.9bU ▸ มติ 4: ยอดมัดจำเปลี่ยน ⇒ ค้นทุกแถวมัดจำใหม่อัตโนมัติ · ตัดจำนวนลงเหลือยอดใหม่ · แบนเนอร์ ◂
+      setDepBanner(true);
+      void depRelookup(depRows);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือคำปฏิเสธใหม่
   }, [p.error]);
@@ -646,11 +782,18 @@ export function PayDialog(p: Props) {
   useEffect(() => {
     const a = p.pinAgain;
     if (!a || a.seq === lastPinAgain.current) return;
-    if (gcRows.length) {
+    if (gcRows.length || depRows.length) { // POS P2.9bU ▸ + แถวมัดจำ (4 หลักท้ายอีกครั้ง) ◂
       lastPinAgain.current = a.seq;
       for (const r of gcRows) pinsRef.current.delete(r.id);
-      setRows((s) => s.map((r) => (r.type === "GIFT_CARD" && r.card ? { ...r, card: { ...r.card, note: "pinAgain" } } : r)));
-      reenterPin(gcRows[0]!);
+      for (const r of depRows) if (r.dep?.needsLast4) last4Ref.current.delete(r.id);
+      setRows((s) =>
+        s.map((r) =>
+          r.type === "GIFT_CARD" && r.card ? { ...r, card: { ...r.card, note: "pinAgain" } } : r.type === "DEPOSIT" && r.dep?.needsLast4 ? { ...r, dep: { ...r.dep, note: "again" } } : r,
+        ),
+      );
+      const d0 = depRows.find((r) => r.dep?.needsLast4);
+      if (gcRows[0]) reenterPin(gcRows[0]);
+      else if (d0) reenterLast4(d0);
       return;
     }
     if (p.quotePending || p.quoteError) return;
@@ -669,6 +812,8 @@ export function PayDialog(p: Props) {
       ...(m === cashPart ? { tenderedSatang: Math.max(a.cashReceivedSatang ?? m.amountSatang, m.amountSatang) } : {}),
       ...(m.type === "GIFT_CARD" && m.giftCard ? { card: { number: m.giftCard.number, masked: maskLocal(m.giftCard.number), balanceSatang: null, note: "pinAgain" as const } } : {}),
       ...(m.type === "STORE_CREDIT" && sc ? { card: { number: "", masked: sc.numberMasked, balanceSatang: sc.balanceSatang } } : {}),
+      // POS P2.9bU ▸ มติ 3: แถวมัดจำที่สร้างคืน = ไม่รู้เลขใบรับ/ยอด (คำขอที่เก็บมีแค่ depositId) · ต้องใส่ 4 หลักท้ายอีกครั้ง ◂
+      ...(m.type === "DEPOSIT" && m.depositId ? { dep: { id: m.depositId, receiptNo: null, remainingSatang: null, needsLast4: true, memberLinked: false, l4Checked: false, note: "again" as const } } : {}),
     }));
     setRows(rebuilt);
     if (a.tipSatang > 0) {
@@ -680,8 +825,195 @@ export function PayDialog(p: Props) {
       void relookupRows("restore", rebuilt.filter((r) => r.type === "GIFT_CARD"));
       reenterPin(firstGc);
     }
+    const firstDep = rebuilt.find((r) => r.type === "DEPOSIT"); // POS P2.9bU ◂
+    if (!firstGc && firstDep) reenterLast4(firstDep);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือคำขอใส่ PIN ใหม่ (+ quote ของตะกร้าที่สร้างคืน)
   }, [p.pinAgain, p.quotePending, p.quoteError, p.dueSatang]);
+  // ◂
+
+  // ═══════ POS P2.9bU ▸ มัดจำ (มติผู้คุม P2.9bU 2–4) ═══════
+  /** 4 หลักที่กำลังกรอกในแผง — ref + ช่อง password แบบไม่ควบคุม (ตั้ง .value ตรง ๆ ⇒ ไม่เป็น attribute) */
+  function setDepLast4(v: string) {
+    depLast4Ref.current = v;
+    if (depLast4Input.current && depLast4Input.current.value !== v) depLast4Input.current.value = v;
+    setDp((d) => (d.last4Len === v.length ? d : { ...d, last4Len: v.length }));
+  }
+  const depSeq = useRef(0);
+  const depArgs = () => ({ systemId: p.tenders?.systemId ?? "", unitId: p.tenders?.unitId ?? "" });
+  /** มติ 2a: มัดจำของสมาชิกในบิล (มียอด — รวมสมาชิกที่ถูกรวมเข้า) · ไม่มี = ไม่แสดงรายการ */
+  async function depMemberList() {
+    if (!p.tenders || !p.memberId || busy) return;
+    const seq = ++depSeq.current;
+    setDp((d) => ({ ...d, look: { state: "loading" } }));
+    const r = await registerDepositLookupAction({ ...depArgs(), memberId: p.memberId }).catch(() => null);
+    if (seq !== depSeq.current) return;
+    const look: DepLook = !r ? { state: "error", key: "errors.unknown" } : r.ok ? (r.deposits.length ? { state: "found", rows: r.deposits, byMember: true } : null) : { state: "error", key: refusalMessageKey(r.code) };
+    setDp((d) => ({ ...d, look }));
+  }
+  /** มติ 2a: ค้นด้วยเลขใบเสร็จ (ตรงตัว) / ชื่อ (ขึ้นต้น) ≥ 3 ตัว — ไม่ค้นด้วยเบอร์ (fix3 ของ S) · ผลเก่าที่กลับช้ากว่าการค้นใหม่ = ทิ้ง */
+  const depSearch = async () => {
+    const q = dp.query.trim();
+    if (!p.tenders || busy) return;
+    if ([...q].length < DEPOSIT_QUERY_MIN) return setDp((d) => ({ ...d, err: "pay.depositQueryShort" }));
+    const seq = ++depSeq.current;
+    setDepLast4("");
+    setDp((d) => ({ ...d, look: { state: "loading" }, sel: null, verify: "idle", amount: null, target: "amount", forRow: null, err: null }));
+    const r = await registerDepositLookupAction({ ...depArgs(), query: q }).catch(() => null);
+    if (seq !== depSeq.current) return;
+    const look: DepLook = !r ? { state: "error", key: "errors.unknown" } : r.ok ? (r.deposits.length ? { state: "found", rows: r.deposits, byMember: false } : { state: "empty" }) : { state: "error", key: refusalMessageKey(r.code) };
+    setDp((d) => ({ ...d, look }));
+    if (look.state === "found" && look.rows.length === 1 && look.rows[0]!.receiptNo === q) depPick(look.rows[0]!); // ตรงเลขใบเสร็จใบเดียว = เลือกให้เลย
+  };
+  /** มติ 2b: แตะแถว — มียอด = เลือก · ไม่มียอด = ค้นซ้ำด้วยเลขใบเสร็จ (มัดจำ walk-in ที่มีเบอร์ = แสดงช่อง 4 หลักท้ายก่อน) */
+  function depPick(row: DepDto) {
+    if (busy || row.status !== "OPEN") return;
+    setDepLast4("");
+    setDp((d) => ({ ...d, sel: row, verify: "idle", amount: null, target: row.remainingSatang === null && row.needsPhoneLast4 ? "last4" : "amount", forRow: null, err: null }));
+    if (row.remainingSatang !== null) return;
+    if (row.needsPhoneLast4) {
+      if (isFinePointer()) setTimeout(() => depLast4Input.current?.focus(), 0);
+      return;
+    }
+    void depVerify(row, null);
+  }
+  /** ค้นซ้ำด้วยเลขใบเสร็จ (+ 4 หลักท้าย — เซิร์ฟเวอร์นับครั้งผิด/ล็อก) ⇒ ยอดของมัดจำที่เลือก · ไม่เห็นยอด = "4 หลักท้ายไม่ถูกต้อง" (ผิดกับล็อกตอบเหมือนกัน) */
+  async function depVerify(row: DepDto, last4: string | null) {
+    if (!p.tenders || !row.receiptNo) return;
+    const seq = ++depSeq.current;
+    setDp((d) => ({ ...d, verify: "loading" }));
+    const r = await registerDepositLookupAction({ ...depArgs(), query: row.receiptNo, ...(last4 ? { phoneLast4: last4 } : {}) }).catch(() => null);
+    if (seq !== depSeq.current) return;
+    const hit = r && r.ok ? (r.deposits.find((x) => x.id === row.id) ?? null) : null;
+    if (hit && hit.remainingSatang !== null) {
+      setDp((d) => ({ ...d, sel: hit, verify: "idle", target: "amount", look: d.look?.state === "found" ? { ...d.look, rows: d.look.rows.map((x) => (x.id === hit.id ? hit : x)) } : d.look }));
+      return;
+    }
+    if (last4) setDepLast4("");
+    setDp((d) => ({ ...d, verify: last4 ? "wrong" : "idle", target: last4 ? "last4" : d.target, err: last4 ? null : r && !r.ok ? refusalMessageKey(r.code) : "errors.unknown" }));
+  }
+  /** 4 หลักท้าย (ช่อง/แป้น) — แก้หลังเห็นยอดแล้ว = ซ่อนยอด (ต้องยืนยันใหม่) · ครบ 4 = ค้นซ้ำทันที (ค่าที่ส่งตอนใช้ = ค่าที่ผ่านการค้นเสมอ) */
+  const depLast4Typed = (v: string) => {
+    setDepLast4(v);
+    if (dp.forRow !== null || !dp.sel?.needsPhoneLast4) return;
+    const base: DepDto = dp.sel.remainingSatang !== null ? { ...dp.sel, remainingSatang: null, amountSatang: null } : dp.sel;
+    if (base !== dp.sel) setDp((d) => ({ ...d, sel: base, amount: null, verify: "idle" }));
+    if (v.length === DEP_LAST4) void depVerify(base, v);
+  };
+  const depBal = dp.sel?.remainingSatang ?? null;
+  const depRowFor = dp.forRow !== null ? (rows.find((r) => r.id === dp.forRow) ?? null) : null;
+  /** มติ 2c: จำนวน = min(คงเหลือ, ยอดมัดจำ) · แก้ด้วยแป้น · เกินยอดมัดจำ = ตัดเหลือยอดมัดจำ · แถวที่ใส่ 4 หลักใหม่ = ยอดของแถวนั้น */
+  const depMax = depBal !== null ? Math.min(Math.max(remaining, 0), depBal) : 0;
+  const depTyped = dp.amount === null ? null : parseHundredths(dp.amount);
+  const depAmount = depRowFor ? depRowFor.amountSatang : depTyped === null ? (dp.amount === null ? depMax : 0) : Math.min(depTyped, depBal ?? 0);
+  const depAmountOver = !depRowFor && depTyped !== null && depTyped > Math.max(remaining, 0);
+  const depShort = !depRowFor && depBal !== null && depBal < Math.max(remaining, 0);
+  const depCanUse =
+    !busy && (depRowFor ? dp.last4Len === DEP_LAST4 : !!dp.sel && depBal !== null && depAmount > 0 && !depAmountOver && (!dp.sel.needsPhoneLast4 || dp.last4Len === DEP_LAST4));
+  const depPress = (k: (typeof KEYS)[number]) => {
+    if (depRowFor || dp.target === "last4") {
+      if (!depRowFor && !dp.sel?.needsPhoneLast4) return;
+      const cur = depLast4Ref.current;
+      depLast4Typed(k.digits === null ? cur.slice(0, -1) : (cur + k.digits).slice(0, DEP_LAST4));
+      return;
+    }
+    if (depBal === null) return;
+    const text = dp.amount ?? hundredthsText(depMax);
+    if (k.digits === null) return setDp((d) => ({ ...d, amount: text.slice(0, -1) }));
+    const base = dp.amount === null || text.includes(".") ? "" : text;
+    const next = (base + k.digits).replace(/^0+(?=\d)/, "");
+    if (next.length > MAX_DIGITS) return;
+    const v = parseHundredths(next);
+    setDp((d) => ({ ...d, amount: v !== null && v > depBal ? hundredthsText(depBal) : next }));
+  };
+  /** มติ 2d: "ใช้มัดจำนี้" ⇒ แถว (หรือใส่ 4 หลักใหม่ให้แถวเดิม) · ≤ 3 ใบ ใบละครั้ง (CD4) */
+  const depUse = () => {
+    if (!depCanUse) return;
+    const l4 = depLast4Ref.current;
+    if (depRowFor) {
+      last4Ref.current.set(depRowFor.id, l4);
+      // POS P2.9bU ▸ fix1 มติ 1: 4 หลักที่ใส่ใหม่ทางแถว = แผงไม่ได้ค้นตรวจ (l4Checked false) ◂
+      setRows((s) => s.map((r) => (r.id === depRowFor.id && r.dep ? { ...r, dep: { ...r.dep, note: null, l4Checked: false } } : r)));
+      setDepLast4("");
+      const nextRow = depRows.find((r) => r.id !== depRowFor.id && !!r.dep?.needsLast4 && (last4Ref.current.get(r.id) ?? "").length !== DEP_LAST4);
+      setDp(DP_EMPTY);
+      if (nextRow) reenterLast4(nextRow);
+      else setDepNote(null);
+      return;
+    }
+    const sel = dp.sel;
+    if (!sel) return;
+    if (depRows.some((r) => r.dep?.id === sel.id)) return setDp((d) => ({ ...d, err: "pay.depositDup" }));
+    if (depRows.length >= REGISTER_MAX_DEPOSITS) return setDp((d) => ({ ...d, err: "pay.depositMax" }));
+    if (rowsFull) return setDp((d) => ({ ...d, err: "errors.splitInvalid" }));
+    const id = ++rowSeq.current;
+    if (sel.needsPhoneLast4) last4Ref.current.set(id, l4);
+    // POS P2.9bU ▸ fix1 มติ 1: ที่มาของแถว — memberLinked = มัดจำสมาชิก (S memberLinked) ที่แผงเห็นยอดโดยไม่ใช้ 4 หลัก (รายการสมาชิกในบิล / เลขใบเสร็จตรง) ·
+    //   l4Checked = 4 หลักผ่านการค้นของแผงแล้ว (depVerify — ยอดเห็นได้เฉพาะเมื่อถูก) ◂
+    setRows((s) => [...s, { id, type: "DEPOSIT", amountSatang: depAmount, dep: { id: sel.id, receiptNo: sel.receiptNo, remainingSatang: depBal, needsLast4: sel.needsPhoneLast4, memberLinked: sel.memberLinked && !sel.needsPhoneLast4, l4Checked: sel.needsPhoneLast4, note: null } }]);
+    setDepLast4("");
+    setDp((d) => ({ ...DP_EMPTY, query: d.query, look: d.look }));
+    setDepNote(null);
+    setDepBanner(false);
+    // ยังเหลือ ⇒ รอบถัดไปเงินสด (ยังไม่มีแถวเงินสด) / โอน · ครบแล้ว = อยู่แผงเดิม (ยืนยันได้)
+    if (remaining - depAmount > 0) {
+      const next: RegisterPayType = cashRow ? "TRANSFER" : "CASH";
+      setMethod(next);
+      setEntry(next === "CASH" ? "" : null);
+      setReference("");
+    }
+  };
+  /** แถวมัดจำที่ต้องใส่ 4 หลักใหม่ ⇒ เปิดแผงของแถวนั้น */
+  function reenterLast4(r: PayRow) {
+    if (busy || !r.dep) return;
+    setMethod("DEPOSIT");
+    setDepLast4("");
+    setDp({ ...DP_EMPTY, forRow: r.id, target: "last4" });
+    if (isFinePointer()) setTimeout(() => depLast4Input.current?.focus(), 0);
+  }
+  /** มติ 4: DEPOSIT_NOT_FOUND / DEPOSIT_CLOSED — ค้นแถวมัดจำด้วยเลขใบรับ (อ่านอย่างเดียว · เห็นสถานะ) ⇒ ถอดใบที่ไม่พบ/ไม่ OPEN · ระบุไม่ได้ = ถอดทุกแถวมัดจำ */
+  async function depDropClosed(code: string) {
+    const list = depRows;
+    const res = await Promise.all(
+      list.map(async (r) => {
+        const d = r.dep!;
+        const out = d.receiptNo && p.tenders ? await registerDepositLookupAction({ ...depArgs(), query: d.receiptNo }).catch(() => null) : null;
+        const hit = out && out.ok ? out.deposits.find((x) => x.id === d.id) : undefined;
+        return { id: r.id, bad: !!out && out.ok && (!hit || hit.status !== "OPEN") };
+      }),
+    );
+    const bad = res.filter((x) => x.bad).map((x) => x.id);
+    const drop = new Set(bad.length ? bad : list.map((r) => r.id));
+    for (const id of drop) last4Ref.current.delete(id);
+    setRows((s) => s.filter((r) => !drop.has(r.id)));
+    setDepNote(DEP_NOTE_KEY[code] ?? "errors.unknown");
+  }
+  /** มติ 4: DEPOSIT_EXCEEDS — ค้นทุกแถวมัดจำใหม่ (สมาชิก = {memberId} · walk-in = เลขใบรับ + 4 หลักที่ผ่านแล้ว) · ตัดจำนวนลงเหลือยอดใหม่ · หมด/ปิด = ถอด */
+  async function depRelookup(only: PayRow[]) {
+    if (!p.tenders) return;
+    const res = await Promise.all(
+      only.map(async (r) => {
+        const d = r.dep!;
+        const l4 = last4Ref.current.get(r.id);
+        const out =
+          d.memberLinked && p.memberId
+            ? await registerDepositLookupAction({ ...depArgs(), memberId: p.memberId }).catch(() => null)
+            : d.receiptNo
+              ? await registerDepositLookupAction({ ...depArgs(), query: d.receiptNo, ...(l4 ? { phoneLast4: l4 } : {}) }).catch(() => null)
+              : null;
+        return { id: r.id, known: !!out && out.ok, hit: out && out.ok ? (out.deposits.find((x) => x.id === d.id) ?? null) : null };
+      }),
+    );
+    setRows((s) =>
+      s.flatMap((r): PayRow[] => {
+        const x = res.find((y) => y.id === r.id);
+        if (!x || !r.dep) return [r];
+        if (x.known && (!x.hit || x.hit.status !== "OPEN")) return [];
+        if (!x.hit || x.hit.remainingSatang === null) return [r];
+        const amount = Math.min(r.amountSatang, x.hit.remainingSatang);
+        return amount > 0 ? [{ ...r, amountSatang: amount, dep: { ...r.dep, remainingSatang: x.hit.remainingSatang } }] : [];
+      }),
+    );
+  }
   // ◂
 
   // ── แป้นตัวเลข: ต่อท้ายหลักบาท · ค่าที่มีทศนิยม (จาก "พอดี") หรือค่าอัตโนมัติ = เริ่มใหม่ · ⌫ ลบทีละตัว ──
@@ -696,6 +1028,7 @@ export function PayDialog(p: Props) {
       return;
     }
     if (gcMode) return gcPress(k);
+    if (depMode) return depPress(k); // POS P2.9bU ▸ แผงมัดจำ: จำนวน / 4 หลักท้ายปิดบัง ◂
     if (k.digits === null) {
       setEntry(entryText.slice(0, -1));
       return;
@@ -708,11 +1041,11 @@ export function PayDialog(p: Props) {
     setEntry(v !== null && v > scBal ? hundredthsText(scBal) : next);
   };
   const quick = (v: number) => {
-    if (busy || piLocked || platformLock || gcMode) return;
+    if (busy || piLocked || platformLock || panelMode) return; // POS P2.9bU ▸ panelMode ◂
     setEntry(hundredthsText(method === "STORE_CREDIT" ? Math.min(v, scBal) : v));
   };
   const exact = () => {
-    if (busy || piLocked || platformLock || gcMode) return;
+    if (busy || piLocked || platformLock || panelMode) return; // POS P2.9bU ▸ panelMode ◂
     setEntry(method === "CASH" ? hundredthsText(Math.max(remaining, 0)) : null);
   };
 
@@ -745,6 +1078,12 @@ export function PayDialog(p: Props) {
       setGcPin("");
       setGc(GC_EMPTY);
     }
+    // POS P2.9bU ▸ มติ 3: ถอดแถวมัดจำ = ล้าง 4 หลักของแถวนั้น ◂
+    last4Ref.current.delete(id);
+    if (dp.forRow === id) {
+      setDepLast4("");
+      setDp(DP_EMPTY);
+    }
     setRows((s) => s.filter((r) => r.id !== id));
     setEntry(method === "CASH" ? "" : null);
   };
@@ -752,6 +1091,7 @@ export function PayDialog(p: Props) {
   // ── ยืนยัน: แถวที่แยกไว้ + รอบสุดท้าย (ถ้ายังมีคงเหลือ) → payMethods · เงินรับของแถวเงินสด → cashReceivedSatang ──
   const confirm = () => {
     if (!canConfirm) return;
+    sentStripped.current = false; // POS P2.9bU ◂
     if (zero) return p.onConfirm({ payMethods: [], tipSatang: 0 });
     const final: PayRow[] =
       remaining > 0
@@ -770,6 +1110,8 @@ export function PayDialog(p: Props) {
     if (all.length > REGISTER_MAX_PAY_METHODS || all.reduce((s, r) => s + r.amountSatang, 0) !== due || all.some((r) => r.amountSatang <= 0)) return;
     // POS P2.9U ▸ มติ 2: แถว GIFT_CARD = {number, pin} จากหน่วยความจำของกล่อง (PIN ไม่ครบ = ไม่ส่ง) ◂
     if (all.some((r) => r.type === "GIFT_CARD" && (!r.card || (pinsRef.current.get(r.id) ?? "").length < GIFT_CARD_PIN_MIN))) return;
+    // POS P2.9bU ▸ มติ 2–3: แถว DEPOSIT = {depositId, phoneLast4?} จากหน่วยความจำของกล่อง (ต้องใช้แต่ไม่ครบ = ไม่ส่ง) ◂
+    if (all.some((r) => r.type === "DEPOSIT" && (!r.dep || (r.dep.needsLast4 && (last4Ref.current.get(r.id) ?? "").length !== DEP_LAST4)))) return;
     const cash = all.find((r) => r.type === "CASH");
     p.onConfirm({
       payMethods: all.map((r) => ({
@@ -777,6 +1119,7 @@ export function PayDialog(p: Props) {
         amountSatang: r.amountSatang,
         ...(r.reference ? { reference: r.reference } : {}),
         ...(r.type === "GIFT_CARD" && r.card ? { giftCard: { number: r.card.number, pin: pinsRef.current.get(r.id) ?? "" } } : {}),
+        ...(r.type === "DEPOSIT" && r.dep ? { depositId: r.dep.id, ...(last4Ref.current.get(r.id) ? { phoneLast4: last4Ref.current.get(r.id)! } : {}) } : {}), // POS P2.9bU ◂
       })),
       ...(cash ? { cashReceivedSatang: cash.tenderedSatang ?? cash.amountSatang } : {}),
       tipSatang: tip,
@@ -928,7 +1271,18 @@ export function PayDialog(p: Props) {
                 </div>
               )}
 
-              {err && !GC_INLINE_CODES.has(err.code) && ( // POS P2.9U ▸ คำปฏิเสธของบัตรแสดงที่แถว/แบนเนอร์ (มติ 4) ◂
+              {/* POS P2.9bU ▸ มติ 4: DEPOSIT_EXCEEDS = แบนเนอร์ + ค้นแถวมัดจำใหม่ (จำนวนตัดลง) ◂ */}
+              {depBanner && (
+                <div data-testid="pos-reg-paydlg-deposit-changed" className="flex items-start gap-2.5 rounded-[14px] border-[1.5px] border-[color:var(--color-danger)] px-4 py-3 text-[14.5px] font-bold text-[color:var(--color-danger)]" role="alert">
+                  <RegisterIcon name="warn" size={18} className="mt-0.5" />
+                  <span className="min-w-0 flex-1">{t("pay.depositChangedBanner")}</span>
+                  <button data-testid="pos-reg-paydlg-deposit-changed-close" className="-my-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)]" type="button" aria-label={t("cart.close")} onClick={() => setDepBanner(false)}>
+                    <RegisterIcon name="x" size={14} />
+                  </button>
+                </div>
+              )}
+
+              {err && !GC_INLINE_CODES.has(err.code) && !DEPOSIT_INLINE_CODES.has(err.code) && ( // POS P2.9U ▸ คำปฏิเสธของบัตรแสดงที่แถว/แบนเนอร์ (มติ 4) ◂ · POS P2.9bU ▸ + มัดจำ ◂
                 <div data-testid="pos-reg-paydlg-error" data-code={err.code} className="flex flex-col gap-3 rounded-[18px] border-[1.5px] border-[color:var(--color-danger)] p-5" role="alert">
                   <div className="flex items-start gap-2.5 text-[17px] font-bold text-[color:var(--color-danger)]">
                     <RegisterIcon name="warn" size={18} className="mt-0.5" />
@@ -965,7 +1319,16 @@ export function PayDialog(p: Props) {
                     <RegisterIcon name="warn" size={18} className="mt-0.5" />
                     <span>{t("errors.unknownResult")}</span>
                   </div>
-                  <button data-testid="pos-reg-paydlg-retry" className="btn btn-primary h-14 rounded-[16px] text-[16px] font-bold" type="button" autoFocus onClick={p.onRetry}>
+                  <button
+                    data-testid="pos-reg-paydlg-retry"
+                    className="btn btn-primary h-14 rounded-[16px] text-[16px] font-bold"
+                    type="button"
+                    autoFocus
+                    onClick={() => {
+                      sentStripped.current = true; // POS P2.9bU ▸ มติ 3: ชุดที่ลองซ้ำไม่มี 4 หลักท้าย/PIN ◂
+                      p.onRetry();
+                    }}
+                  >
                     {t("pay.retry")}
                   </button>
                 </div>
@@ -980,7 +1343,8 @@ export function PayDialog(p: Props) {
                     {rows.map((r) => {
                       // POS P2.9U ▸ แถวบัตร: "บัตรของขวัญ GC-••••1234 ฿325 ✓ · คงเหลือ ฿175" (คงเหลือ = ยอดค้นล่าสุด − จำนวน · แสดงอย่างเดียว) ◂
                       const gcN = r.type === "GIFT_CARD" ? gcRows.findIndex((x) => x.id === r.id) + 1 : 0;
-                      const left = r.card && r.card.balanceSatang !== null ? r.card.balanceSatang - r.amountSatang : null;
+                      const depN = r.type === "DEPOSIT" ? depRows.findIndex((x) => x.id === r.id) + 1 : 0; // POS P2.9bU ◂
+                      const left = r.card && r.card.balanceSatang !== null ? r.card.balanceSatang - r.amountSatang : r.dep && r.dep.remainingSatang !== null ? r.dep.remainingSatang - r.amountSatang : null;
                       return (
                       <div key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-0 border-b px-[14px] py-1 text-[13px] md:gap-x-[19px]" role="listitem">
                         <RegisterIcon name={methodIcon(r.type)} size={14} />
@@ -994,6 +1358,12 @@ export function PayDialog(p: Props) {
                             {t(methodLabelKey(r.type))}
                             {r.card ? ` ${r.card.masked}` : ""}
                           </b>
+                        ) : r.type === "DEPOSIT" ? (
+                          // POS P2.9bU ▸ มติ 2d: "มัดจำ #<เลขใบรับ> ฿x ✓ · คงเหลือ ฿y" (คงเหลือ = ยอดค้นล่าสุด − จำนวน · แสดงอย่างเดียว) ◂
+                          <b data-testid={`pos-reg-paydlg-deposit-split-${depN}`} className="shrink-0">
+                            {t(methodLabelKey(r.type))}
+                            {r.dep?.receiptNo ? ` #${r.dep.receiptNo}` : ""}
+                          </b>
                         ) : (
                           <b className="shrink-0">{t(methodLabelKey(r.type))}</b>
                         )}
@@ -1002,10 +1372,10 @@ export function PayDialog(p: Props) {
                         {/* POS P2.9U ▸ fix1 V4: แถวบัตร < md = "คงเหลือ ฿x" ขึ้นบรรทัดที่ 2 ใต้แถว (ไม่ตัดเหลือ "ค…") ◂ */}
                         <span
                           className={`min-w-0 flex-1 truncate text-[color:var(--color-muted)] ${
-                            r.card ? "max-md:order-last max-md:basis-full max-md:whitespace-normal max-md:pb-1 max-md:pl-[27px]" : ""
+                            r.card || r.dep ? "max-md:order-last max-md:basis-full max-md:whitespace-normal max-md:pb-1 max-md:pl-[27px]" : ""
                           }`}
                         >
-                          {r.card
+                          {r.card || r.dep // POS P2.9bU ▸ + แถวมัดจำ ◂
                             ? left !== null
                               ? t("pay.gc.rowLeft", { amount: moneyText(Math.max(left, 0)) })
                               : ""
@@ -1028,6 +1398,23 @@ export function PayDialog(p: Props) {
                         >
                           <RegisterIcon name="x" size={14} />
                         </button>
+                        {/* POS P2.9bU ▸ มติ 3–4: แถวมัดจำต้องใส่ 4 หลักท้ายใหม่ (ผิด / ลองซ้ำหลังโหลดกลับ) ◂ */}
+                        {r.type === "DEPOSIT" && r.dep?.note && (
+                          <span className="flex basis-full items-center gap-3 pb-1 pl-[27px] max-md:order-last md:pl-[33px]">
+                            <span data-testid={`pos-reg-paydlg-deposit-row-note-${depN}`} className="min-w-0 flex-1 text-[12.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
+                              {t(r.dep.note === "wrong" ? "pay.depositLast4Wrong" : "pay.depositLast4Again")}
+                            </span>
+                            <button
+                              data-testid={`pos-reg-paydlg-deposit-row-last4-${depN}`}
+                              className="h-11 shrink-0 rounded-[10px] border px-3 text-[12.5px] font-bold disabled:opacity-50"
+                              type="button"
+                              disabled={busy}
+                              onClick={() => reenterLast4(r)}
+                            >
+                              {t("pay.depositEnterLast4")}
+                            </button>
+                          </span>
+                        )}
                         {r.type === "GIFT_CARD" && r.card?.note && (
                           <span className="flex basis-full items-center gap-3 pb-1 pl-[27px] max-md:order-last md:pl-[33px]">
                             <span data-testid={`pos-reg-paydlg-giftcard-row-note-${gcN}`} className="min-w-0 flex-1 text-[12.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
@@ -1068,6 +1455,12 @@ export function PayDialog(p: Props) {
                   {gcRowsNote && (
                     <p data-testid="pos-reg-paydlg-giftcard-note" className="mt-1.5 text-[12.5px] font-semibold text-[color:var(--color-danger)]" role="status">
                       {t(gcRowsNote)}
+                    </p>
+                  )}
+                  {/* POS P2.9bU ▸ มติ 4: แถวมัดจำถูกถอด (ไม่พบ · ใช้หมด/คืนแล้ว · ของสมาชิกอื่น · ถูกล็อก 15 นาที) ◂ */}
+                  {depNote && (
+                    <p data-testid="pos-reg-paydlg-deposit-note" className="mt-1.5 text-[12.5px] font-semibold text-[color:var(--color-danger)]" role="status">
+                      {t(depNote)}
                     </p>
                   )}
                 </div>
@@ -1145,10 +1538,26 @@ export function PayDialog(p: Props) {
                           </button>
                         );
                       })()}
-                      <button data-testid="pos-reg-paydlg-method-deposit" className={`${tile(false)} text-[color:var(--color-muted)] opacity-80`} type="button" disabled aria-disabled="true" title={tm("pay.comingSoon")}>
-                        <span>{tm("pay.tiles.deposit")}</span>
-                        <small className="text-[12px] font-normal">{tm("pay.comingSoon")}</small>
-                      </button>
+                      {(() => {
+                        // POS P2.9bU ▸ มติ 1: เปิดเมื่อ tenders.deposit.enabled (ค่าตั้ง pos.deposit.enabled) · ปิด = "ยังไม่เปิดใช้" (reason DISABLED) · visible false = ไม่แสดง ◂
+                        const dv = tenders?.deposit;
+                        if (dv && !dv.visible) return null;
+                        const depOn = !!dv?.enabled && !busy && !platformOn && !p.lockedMethod;
+                        const depSub = !tenders ? null : !dv?.enabled ? t("pay.depositTileOff") : depRows.length ? t("pay.depositTileUsed", { count: depRows.length }) : t("pay.depositTileHint");
+                        return (
+                          <button
+                            data-testid="pos-reg-paydlg-method-deposit"
+                            className={tile(depMode && depOn)}
+                            type="button"
+                            aria-pressed={depMode}
+                            disabled={!depOn}
+                            onClick={() => pickMethod("DEPOSIT")}
+                          >
+                            <span>{tm("pay.tiles.deposit")}</span>
+                            {depSub && <small className="text-[12.5px] font-normal text-[color:var(--color-muted)]">{depSub}</small>}
+                          </button>
+                        );
+                      })()}
                       {tenders?.roomCharge.visible && (
                         <button data-testid="pos-reg-paydlg-method-roomcharge" className={`${tile(false)} text-[color:var(--color-muted)] opacity-80`} type="button" disabled aria-disabled="true" title={tm("pay.comingSoon")}>
                           <span>{tm("pay.tiles.roomcharge")}</span>
@@ -1408,6 +1817,196 @@ export function PayDialog(p: Props) {
                   </div>
                 )}
 
+                {/* ═══ POS P2.9bU ▸ มติ 2: แผงมัดจำ (แทนช่องจำนวน · แป้นตัวเลข = จำนวน/4 หลักท้ายปิดบัง) ═══ */}
+                {depMode && (
+                  <div data-testid="pos-reg-paydlg-deposit-panel" className="flex flex-col gap-3">
+                    {depRowFor ? (
+                      <div className="flex flex-col gap-1 rounded-[10px] border bg-[color:var(--color-surface)] px-[14px] py-2.5 text-[13.5px]">
+                        <span className="font-bold tabular-nums">
+                          {[`${t("pay.deposit")}${depRowFor.dep?.receiptNo ? ` #${depRowFor.dep.receiptNo}` : ""}`, moneyText(depRowFor.amountSatang)].join(" \u00b7 ")}
+                        </span>
+                        <span className="text-[12.5px] text-[color:var(--color-muted)]">{t("pay.depositLast4ForRow")}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <label className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-[10px] border bg-[color:var(--color-surface)] px-3 text-[13px] text-[color:var(--color-muted)]">
+                          <span className="sr-only">{t("pay.depositSearch")}</span>
+                          <RegisterIcon name="search" size={14} />
+                          <input
+                            data-testid="pos-reg-paydlg-deposit-search"
+                            ref={depSearchInput}
+                            className="h-full min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-[color:var(--color-ink)] outline-none"
+                            placeholder={t("pay.depositSearchPlaceholder")}
+                            autoComplete="off"
+                            maxLength={60}
+                            value={dp.query}
+                            disabled={busy}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setDp((d) => ({ ...d, query: v, err: null }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault(); // Enter ที่ช่องค้น = ค้นมัดจำ (ไม่ส่งฟอร์มของกล่อง)
+                                void depSearch();
+                              }
+                            }}
+                          />
+                        </label>
+                        <button
+                          data-testid="pos-reg-paydlg-deposit-lookup"
+                          className="btn btn-ghost h-12 shrink-0 rounded-[10px] px-4 text-[14px] font-bold disabled:opacity-50"
+                          type="button"
+                          disabled={busy || !dp.query.trim() || dp.look?.state === "loading"}
+                          onClick={() => void depSearch()}
+                        >
+                          {dp.look?.state === "loading" ? tc("loading") : t("pay.depositLookup")}
+                        </button>
+                      </div>
+                    )}
+                    {!depRowFor && dp.look?.state === "empty" && (
+                      <div data-testid="pos-reg-paydlg-deposit-notfound" className="flex items-start gap-2 rounded-[12px] border-[1.5px] border-[color:var(--color-danger)] px-3 py-2.5 text-[13.5px] font-bold text-[color:var(--color-danger)]" role="alert">
+                        <RegisterIcon name="warn" size={16} className="mt-0.5" />
+                        <span>{t("pay.depositNotFound")}</span>
+                      </div>
+                    )}
+                    {!depRowFor && dp.look?.state === "error" && (
+                      <p className="text-[13px] text-[color:var(--color-danger)]" role="alert">
+                        {t(dp.look.key)}
+                      </p>
+                    )}
+                    {!depRowFor && dp.look?.state === "found" && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[12px] text-[color:var(--color-muted)]">{t(dp.look.byMember ? "pay.depositMemberList" : "pay.depositResults")}</span>
+                        <div className="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto" role="list">
+                          {dp.look.rows.map((d, i) => {
+                            const on = dp.sel?.id === d.id;
+                            const open = d.status === "OPEN";
+                            const right = !open
+                              ? t(d.status === "REFUNDED" ? "pay.depositRefunded" : "pay.depositUsedUp")
+                              : d.remainingSatang !== null
+                                ? t("pay.gc.balance", { amount: moneyText(d.remainingSatang) }) // POS P2.9bU ▸ fix1 มติ 9: ยอดปัจจุบันของมัดจำ ("Balance ฿x" · th เดิม "คงเหลือ") — "Balance after" เฉพาะแถวแยกจ่าย ◂
+                                : t("pay.depositNeedReceipt");
+                            return (
+                              <button
+                                key={d.id}
+                                data-testid={`pos-reg-paydlg-deposit-row-${i + 1}`}
+                                className={`flex min-h-[48px] items-center gap-3 rounded-[10px] border bg-[color:var(--color-surface)] px-3 py-1.5 text-left text-[13px] disabled:cursor-not-allowed disabled:text-[color:var(--color-muted)] ${
+                                  on ? "border-[color:var(--color-ink)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""
+                                }`}
+                                type="button"
+                                role="listitem"
+                                aria-pressed={on}
+                                disabled={busy || !open}
+                                onClick={() => depPick(d)}
+                              >
+                                <span className="min-w-0 flex-1 truncate">
+                                  <b className="tabular-nums">{d.receiptNo ? `#${d.receiptNo}` : "-"}</b>
+                                  {[d.customerName, d.phoneMasked].filter(Boolean).map((x) => ` \u00b7 ${x}`).join("")}
+                                </span>
+                                <span className={`shrink-0 tabular-nums ${d.remainingSatang !== null && open ? "font-bold" : "text-[12px] text-[color:var(--color-muted)]"}`}>{right}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {(dp.sel?.needsPhoneLast4 || depRowFor) && (
+                      <>
+                        <label
+                          className={`flex h-14 items-center justify-between gap-3 rounded-[10px] border bg-[color:var(--color-surface)] px-[14px] text-[13px] text-[color:var(--color-muted)] ${
+                            dp.target === "last4" || depRowFor ? "border-[color:var(--color-ink)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""
+                          }`}
+                        >
+                          <span className="min-w-0 truncate">{t("pay.depositLast4")}</span>
+                          <input
+                            data-testid="pos-reg-paydlg-deposit-last4"
+                            ref={depLast4Input}
+                            className="h-full w-28 min-w-0 bg-transparent text-right text-[22px] font-bold tracking-[0.3em] text-[color:var(--color-ink)] outline-none"
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            maxLength={DEP_LAST4}
+                            defaultValue=""
+                            disabled={busy || dp.verify === "loading"}
+                            aria-describedby="pos-dep-last4-hint"
+                            onFocus={() => {
+                              setPadTip(false);
+                              setDp((d) => (d.target === "last4" ? d : { ...d, target: "last4" }));
+                            }}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\D/g, "").slice(0, DEP_LAST4);
+                              if (v !== e.target.value) e.target.value = v;
+                              depLast4Typed(v);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                depUse();
+                              }
+                            }}
+                          />
+                        </label>
+                        <p id="pos-dep-last4-hint" className="-mt-1 text-[12px] text-[color:var(--color-muted)]">
+                          {dp.verify === "loading" ? tc("loading") : t("pay.depositLast4Hint")}
+                        </p>
+                        {dp.verify === "wrong" && (
+                          <p data-testid="pos-reg-paydlg-deposit-last4-wrong" className="-mt-1 text-[12.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
+                            {t("pay.depositLast4Wrong")}
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {!depRowFor && dp.sel && depBal !== null && (
+                      <>
+                        <button
+                          data-testid="pos-reg-paydlg-deposit-amount"
+                          className={`flex h-14 items-center justify-between gap-3 rounded-[10px] border bg-[color:var(--color-surface)] px-[14px] text-left text-[13px] text-[color:var(--color-muted)] ${
+                            dp.target === "amount" ? "border-[color:var(--color-ink)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""
+                          }`}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setPadTip(false);
+                            setDp((d) => ({ ...d, target: "amount" }));
+                          }}
+                        >
+                          <span className="min-w-0 truncate">{t("pay.depositAmount")}</span>
+                          <span className="text-[22px] font-bold tabular-nums text-[color:var(--color-ink)]">{dp.amount === null ? hundredthsText(depAmount) : dp.amount || "0"}</span>
+                        </button>
+                        {depShort && (
+                          <p data-testid="pos-reg-paydlg-deposit-short" className="-mt-1 text-[12.5px] text-[color:var(--color-ink-soft)]">
+                            {t("pay.depositShort", { amount: moneyText(depBal) })}
+                          </p>
+                        )}
+                        {depAmountOver && (
+                          <p className="-mt-1 text-[13px] text-[color:var(--color-danger)]" role="alert">
+                            {t("pay.overRemaining", { method: t("pay.deposit"), amount: moneyText(Math.max(remaining, 0)) })}
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {(depRowFor || dp.sel) && (
+                      <button
+                        data-testid="pos-reg-paydlg-deposit-use"
+                        className="btn btn-primary h-12 rounded-[13px] text-[15px] font-bold disabled:cursor-not-allowed disabled:border disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-muted)]"
+                        type="button"
+                        disabled={!depCanUse}
+                        onClick={depUse}
+                      >
+                        {depRowFor ? t("pay.depositUseLast4") : depBal !== null ? t("pay.depositUse", { amount: moneyText(depAmount) }) : t("pay.depositUseNoAmount")}
+                      </button>
+                    )}
+                    {dp.err && (
+                      <p data-testid="pos-reg-paydlg-deposit-error" className="text-[13px] font-semibold text-[color:var(--color-danger)]" role="alert">
+                        {t(dp.err)}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* POS P2.9U ▸ มติ 5: เครดิตร้าน — เลขปิดบัง + ยอดเครดิต (จำนวนตัดที่ยอดเครดิต) ◂ */}
                 {method === "STORE_CREDIT" && sc && (
                   <div data-testid="pos-reg-paydlg-storecredit-info" className="rounded-[10px] border bg-[color:var(--color-surface)] px-[14px] py-2.5 text-[13.5px] font-bold tabular-nums">
@@ -1415,7 +2014,7 @@ export function PayDialog(p: Props) {
                   </div>
                 )}
 
-                {!gcMode && (
+                {!panelMode && ( // POS P2.9bU ▸ panelMode (บัตรของขวัญ · มัดจำ) ◂
                 <label className="flex h-14 items-center justify-between gap-3 rounded-[10px] border bg-[color:var(--color-surface)] px-[14px] text-[13px] text-[color:var(--color-muted)]">
                   <span className="min-w-0 truncate">{method === "CASH" ? t("pay.amountCash") : t("pay.amountFor", { method: methodName })}</span>
                   <input
@@ -1496,7 +2095,7 @@ export function PayDialog(p: Props) {
                     </button>
                   ))}
                 </div>
-                {!gcMode && (
+                {!panelMode && ( // POS P2.9bU ▸ panelMode ◂
                 <div className="grid grid-cols-4 gap-2.5 xl:gap-4">
                   {QUICK.map((v) => (
                     <button

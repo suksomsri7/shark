@@ -716,3 +716,8 @@ Full spec: `pos-spec-P2.9-tender-ui.md`. In short (register page only — table/
 - Gift-card panel replaces the amount/quick rows (numpad = amount or masked PIN): number/scan/lookup · masked result · amount ≤ min(remaining, balance) · PIN · "ใช้บัตรนี้" ⇒ row (≤ 3 distinct cards).
 - Tips: footer only when the shop enabled tips; tip only from cash-like rows; "รวมทิป" row under the split list.
 - Inventory rows (wo `P2.9U`): `pos-reg-paydlg-giftcard-number|-scan|-lookup|-amount|-pin|-use|-row-pin-*|-changed-close`; display-only ids: `-giftcard-panel|-result|-unusable|-notfound|-insufficient|-error|-note|-row-*|-row-note-*|-changed`, `pos-reg-paydlg-storecredit-row|-info`, `pos-reg-paydlg-tip-total|-tip-cashonly|-tip-over|-over-due`, 02b `pos-reg-done-pay-lines`.
+
+## Addendum P2.9bU — §pay: deposits (builder U, 15 Oct 2026)
+- Pay dialog row 2: "มัดจำที่ชำระไว้" (`pos-reg-paydlg-method-deposit`) live when the POS deposit setting is on; pick panel, split rows `pos-reg-paydlg-deposit-split-<n>`, DEPOSIT_* refusals inline — `pos-spec-P2.9b-deposit-ui.md` §1.
+- Submit: `cartToSubmitInput` passes `{type:"DEPOSIT", amountSatang, depositId, phoneLast4?}`; `stripPayPins` drops `phoneLast4` (pending store / retry / 02b) — reload replay refused `DEPOSIT_NOT_OWNER` ⇒ "ใส่ 4 หลักท้ายอีกครั้ง".
+- Mode tabs "⋯" menu: + "รับมัดจำ" (`pos-reg-menu-deposit-receive`); mobile header: `pos-reg-mobile-deposit-receive` ⇒ `DepositReceiveDialog` (`pos-reg-deprcv`) — §2 of the P2.9b spec. 02b: "มัดจำ #… ฿x · คงเหลือ ฿y" lines.

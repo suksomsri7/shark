@@ -1544,3 +1544,51 @@
 - prompt `pos-prompt-accountB-HF-FU-O.md` commit a944c539 → **spawn oracle writer (Opus) ทรี c** `wip/pos-hf-fu-oracle` @ c3c52ef1 (object ใน store ร่วม · ไม่ต้องรอ push)
 - gates86 ทรี b @c3c52ef1: 17/32 เสร็จ · เขียวหมดยกเว้น `qc-pos-p2.11` 32/34 (ST1/ST4 = lane pin เทียบ origin/session/pos ที่ยังไม่ push → เขียวเองหลัง push + รันซ้ำ) · ตามแผน: เขียว → push → p2.8+p2.11 ซ้ำ → QC5 migrate deploy ×2 → 35/55 + TG → เติม `__BASE__` prompt P2.9bU → spawn builder ทรี b
 - เลน: 1 = HF-FU oracle (ทรี c) · 2 = P2.9bU builder (ทรี b หลัง push) · โควตา session 21% (ถึง 12:40Z) · weekly 57%
+
+### 15 ต.ค. 10:06Z — **35/55 (64%)** P2.9b S closed · P2.9bU builder เปิด
+- gates86 @c3c52ef1 เขียว 32 ชุด (p2.8 ST6 / p2.11 ST1+ST4 แดงเพราะเทียบ origin ก่อน push) → **push session/pos 1ecc4c71..a1d8af43** → gates90 ทรี b (p2.8 61/61 · p2.11 34/34) → QC5 `migrate deploy` ×2 สำเร็จ (pos_p29b_deposits · pos_p29b_deposit_phone_lock) → TG msg 4662
+- prompt P2.9bU base = a1d8af43 (d9984f10) → **spawn builder (Opus) ทรี b** `wip/pos-p2.9bu` จาก origin/session/pos
+- เลน: 1 = HF-FU oracle writer ทรี c (เริ่ม ~10:00Z) · 2 = P2.9bU builder ทรี b (เริ่ม 10:06Z) · ทรี d ว่าง @942a334e (รอภาพ merge)
+- ถัดไป: oracle HF-FU รายงาน → ผู้คุมตัดสิน CONTROLLER-DECISION → prompt builder HF-FU S (ทรี c) · P2.9bU รายงาน → R1 → ภาพ p2.9bu บนทรี d
+
+### 15 ต.ค. ~11:15Z — HF-FU oracle เสร็จ → builder S เปิด (ทรี c)
+- oracle writer: `wip/pos-hf-fu-oracle` **9e2b1d27** (push แล้ว) · `scripts/qc-hf-fu.mts` 25 ข้อ · forced @c3c52ef1 = 5/25 เขียว (PAR ST1 OD2 CN2 Z1 Z2) 20 แดง · residue 0 · ORACLE-EDIT 5 commit (p2.5 refAlloc/M2 · T5 · C7 NOWAIT · p2.9b A10 · p2.6 O4) → ชุดที่แก้ @base p2.5 46/49 · p2.9b 52/53 · p2.6 66/67 · C7 fail-before 1a964205 = 55P03 ✓ · typecheck 0
+- ผู้คุม: CONTROLLER-DECISION 1–10 รับทั้งหมด = **มติ 14** ใน brief §10 (GRAB แทน CHAT/LINEMAN · rowsHash คลุม stored rows ทั้งหมด · audit SYSTEM · lock order CAS→FOR SHARE · ไม่ต้อง messageKey legacy merge) commit 90d24030
+- prompt `pos-prompt-accountB-HF-FU-B.md` → **spawn builder (Opus) ทรี c** `wip/pos-hf-fu` จาก 9e2b1d27 · ลำดับ 10 ขั้น (c+d → n/s/l2/F3/h → l1 → j → a → b → z → p → f → gates)
+- เลน: 1 = P2.9bU builder ทรี b (ขั้น 8 เสร็จ · typecheck 0 · p2.9b 53/53 · รอชุดที่เหลือ) · 2 = HF-FU builder ทรี c · prompt R1 P2.9bU พร้อม `pos-prompt-accountB-P2.9bU-R.md` (เติม __HEAD__/__CODE__/__TIME__) · ภาพ p2.9bu = chain77 บนทรี d (แม่แบบ chain76 · states 10 ตัว owner+cashier th/en)
+
+### 15 ต.ค. ~11:35Z — P2.9bU built → R1 + ภาพ
+- builder P2.9bU: `wip/pos-p2.9bu` **d4b7dbb8** (code 081d2546) push แล้ว · ด่านเขียวหมด (typecheck 0 · p2.9b unforced 53 · p2.9 62 · p1.3 128 · p1.8 49 · p1.12 72 · p1.18 81 ST7 0 · p1.10 40 · p1.16 28 · p1.6 48 · authz 81 · p2.8 61 ST6 เขียว · fitness ±env/pos · --dry owner 28/cashier 10) · deviations 5 (1 คืนมัดจำ walk-in ต้องใส่ last-4 ก่อนเห็นยอด · 2 notowner shot = เคส member อื่น · 3 refusal ไม่บอก depositId ⇒ ลบทุกแถว · 4 bills ใช้ server source filter ที่มีอยู่ · 5 มือถือปุ่ม header) · follow-up: approval queue ไม่ wired, refusal ไม่มี depositId
+- spawn **R1 reviewer** (Opus, read-only ทรี b) prompt `pos-prompt-accountB-P2.9bU-R.md` (7552361f)
+- **chain77** ทรี d: build77 @d4b7dbb8 → vis79 QC5 (owner register 7 states / sales 2 / settings 1 · cashier register 4 · th + en) `/root/pos-runs/build77-d-*` → `vis79-qc5-*` · ภาพ `/root/projects/shark-pos-d/.qc-shots/pos/p2.9bu/` · ผู้คุมดูเองเทียบ `design-pos/02-payment.png` (02+02b) · `12-bills-refund.png` · `19-states.png` · `17-settings-3.png`
+- เลน: 1 = HF-FU builder ทรี c (กำลังทำ) · 2 = R1 P2.9bU (read-only) · ทรี b ว่างรอ fix round
+
+### 15 ต.ค. ~11:55Z — P2.9bU R1 → fix round 1
+- R1 (Opus read-only) = **MERGEABLE-AFTER-FIXES**: F1 Med (NOT_OWNER โทษแถว last-4 แทนแถว member-linked ⇒ วนผิดแถว) · F2 Low (หลัง reload ทุกแถวถาม last-4) · F3 Low (sheet รับมัดจำปิดไม่ได้หลัง intent PAID แล้ว S ปฏิเสธถาวร) · F4 Low (iframe ไม่มี sandbox) · F5 Low (note refund-deposit ไม่ตรง — ใช้ fixture ใหม่) · F6 info (เบอร์ fixture โชว์ในภาพ) · F7 info (switch ให้ non-owner เห็น · ป้าย chip คืนเงินจาก P1.8) · R1–R11 verified OK (secret hygiene ครบ · bills ใช้ channel filter เดิม · tip rule จริง)
+- มติ fix round 1 (1–8) ใน `wo-notes/pos-P2.9bU-review.md` (2e59b5a2): F1 fix by origin tag · F2 follow-up + note key · F3 fix ปิดได้ + แสดงอ้างอิง intent · F4 fix · F5 แก้ note · F6 รับ (เบอร์ปลอมชัด) · F7 ป้าย chip ใหม่ · re-shoot notowner/deposit-receive/refund-deposit
+- spawn **builder fix 1** (Opus ทรี b) prompt `pos-prompt-accountB-P2.9bU-fix.md` · chain77 (build77 → vis79) ยังรันอยู่บน d4b7dbb8 — ภาพชุดนี้ใช้ดูได้ยกเว้น 3 state ที่จะ re-shoot
+- เลน: 1 = HF-FU builder ทรี c · 2 = P2.9bU fix 1 ทรี b
+
+### 15 ต.ค. ~12:00Z — P2.9bU fix 1 เสร็จ → R2 + re-shoot
+- ภาพ vis79 @d4b7dbb8 ผู้คุมดูเอง: 10 state ตรงแบบ (02 tile/panel · split · exceeds · notowner/locked · receive · 02b · bills chip/tag · refund sheet · settings) · V1 en "Balance after" บนแถวค้น · V2 390 ปุ่ม "ใช้มัดจำนี้" ใต้ fold → มติ 9–10 ส่งเข้า fix 1
+- fix 1 = **36e0be7c** (มติ 1–10 ครบ · ด่านเขียว @0aa39bef) · owner lines 2 ข้อ (depositId ใน refusal · PAID intent ไม่มี deposit) จดไว้ใน review file → ใส่ POS-OWNER-PENDING ตอน merge
+- spawn **R2** (Opus read-only) prompt `pos-prompt-accountB-P2.9bU-R2.md` (98b57f7e) · **chain78** ทรี d build78 @36e0be7c → vis80 (pick/notowner/receive/refund th+en)
+- ถัดไป: R2 MERGEABLE + vis80 ดีแล้ว → merge P2.9bU เข้า session/pos (ทรี b) → gates91 (merge set เต็ม + p1.1 + p1.3 + fitness ±env + typecheck) → push → 36/55 + TG · HF-FU builder ทรี c ยังทำอยู่
+
+### 15 ต.ค. ~12:25Z — HF-FU built → R1
+- builder HF-FU: `wip/pos-hf-fu` **f5e1c8a4** (code f0387417 = afef29e7 + merge ledger-only origin) push แล้ว · 21 รายการครบ (รวม f3) · `qc-hf-fu` 25/25 ×2 unforced · merge set เขียว (p2.5 49 · p2.6 67 · p2.9b 53 · p2.4 50 · p2.8 61 ST6 เขียว · p2.9 62 · hf-tx 22 · p1.1 180 · p1.3 128 · p1.8 49 · p2.3 46 · p2.11 33/34 ST4 lane pin · p2.2 42 · p1.18 81 · authz 81 · account 16 · cpa 107 · restaurant ×4 · typecheck 0 · fitness ±env) · CONTROLLER-DECISION ไม่มี · extras 3 (purge ส่ง hash · b sweep ใช้ floor OPEN เป็น hint · setRecipeChoiceLines reasons)
+- spawn **R1 HF-FU** (Opus read-only ทรี c) prompt `pos-prompt-accountB-HF-FU-R.md` (d962f9ea) → แล้ว hunter เงิน (sweeper double-accept/lock · rotation Σ/VAT · j retry · z1/z3 gate) → merge
+- P2.9bU: R2 MERGEABLE → fix 2 เล็ก (G1+G3) กำลังทำ · chain78 vis80 กำลังถ่าย
+- เลน: 1 = P2.9bU fix 2 ทรี b · 2 = HF-FU R1 ทรี c (read-only)
+
+### 15 ต.ค. 12:30Z — P2.9bU merged (ยังไม่ push) → gates91
+- vis80 @36e0be7c (re-shoot 4 state th+en · failures 0) ผู้คุมดู: chip คืนมัดจำป้ายใหม่ · en "Balance ฿1,070" · เบอร์ fixture 0800000427 · 390 notowner โน้ตอ่านได้ → ผ่าน
+- fix 2 (692a02d7 · G1+G3) R2 ยืนยัน MERGEABLE → **merge 692a02d7 เข้า session/pos = 616db657** + owner lines 2 ข้อ (868c7fe3) · ทรี b detached 616db657 + prisma generate → **gates91** (19 ชุด: p2.9b p2.9 p1.3 p1.8 p1.12 p1.18 p1.10 p1.10u-print p1.16 p1.6 authz p2.8 p2.11 p1.1 p1.17 closeday p2.5 hf-tx account + fitness ±env + fitness-pos + typecheck) `/root/pos-runs/gates91-b-*`
+- ถัดไป: gates91 เขียว (p2.8 ST6 / p2.11 ST1+ST4 แดงจนกว่า push → รันซ้ำ) → push → **36/55** + TG · HF-FU R1 กำลังตรวจ (ทรี c) → hunter เงิน → merge HF-FU (ต้อง merge origin/session/pos ที่มี P2.9bU ก่อนด่านสุดท้าย — ไฟล์ร่วม: messages/*, POS-OWNER-PENDING.md append-only)
+- เลน: 1 = HF-FU R1 (read-only ทรี c) · ทรี b = gates91 (ผู้คุม) · ทรี d ว่าง @36e0be7c
+
+### 15 ต.ค. ~12:45Z — HF-FU R1 → fix round 1
+- R1 HF-FU (Opus read-only) = **MERGEABLE** · F1 Low (orphan sweep อ่านสถานะ session นอก tx ⇒ void ที่เปิด session ใหม่ระหว่างนั้นทำ draft ถูกทิ้ง) · F2 Low (sweep ขนานจาก listOrders/kdsBoard ทะลุเพดาน autoAcceptMaxOpen) · F3 Low (error ที่ไม่ใช่ OrderAbort หลุดออกนอก loop · after-commit throw เสีย audit) · F4 info (stateInvalid อ่าน cardsOf ผ่าน prisma global ใน tx) · F5 info (book ปิดเอกสาร ⇒ posSalePosted false ตลอด) · ที่เหลือ verified OK (CAS ก่อน sale · lock order · marker per book · rotation preview==server · j ใต้ key line)
+- มติ fix 1 (1–7) ใน `wo-notes/pos-HF-FU-review.md` (ee30848b): F1–F4 fix · F5 รับ (follow-up) · ORACLE-ADD HN4 (sweep ขนานเคารพเพดาน) + OD3 (draft รอด void เปิด session) test-first โดย builder (dated marker) · gates 7 ชุด + merge origin ก่อน qc-hf-fu รอบสุดท้าย
+- spawn **builder HF-FU fix 1** (Opus ทรี c) prompt `pos-prompt-accountB-HF-FU-fix.md` → แล้ว hunter เงิน (brief 4 ข้อของ R1 + F2 overshoot)
+- เลน: 1 = HF-FU fix 1 ทรี c · ทรี b = gates91 P2.9bU (ผู้คุม)

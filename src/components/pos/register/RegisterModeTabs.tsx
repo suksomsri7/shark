@@ -25,12 +25,14 @@ export function RegisterModeTabs({
   tablesHref = null,
   unitId,
   ordersBadge, // POS P2.8U ▸ undefined = แถบดึงเอง · number/null = จอออเดอร์ส่งให้ ◂
+  onDepositReceive = null, // POS P2.9bU ▸ มติ 5: เมนู ⋯ "รับมัดจำ" (null = ไม่มีรายการ) ◂
 }: {
   systemId: string;
   active?: "sale" | "tables" | "online-orders"; // POS P2.8U ▸ + online-orders ◂
   tablesHref?: string | null;
   unitId?: string;
   ordersBadge?: number | null;
+  onDepositReceive?: (() => void) | null;
 }) {
   const t = useTranslations("pos.register");
   const base = `/app/sys/${systemId}`;
@@ -113,7 +115,7 @@ export function RegisterModeTabs({
         );
       })}
       {/* POS P2.6U ▸ มติ 1 (Q12): เมนู ⋯ ท้ายแถบ — "จอครัว" (ไม่ใช่แท็บ · ไม่มีคีย์ POS_NAV_KEYS) ◂ */}
-      <RegisterMoreEntry systemId={systemId} unitId={unitId} />
+      <RegisterMoreEntry systemId={systemId} unitId={unitId} onDepositReceive={onDepositReceive} />
     </nav>
   );
 }
