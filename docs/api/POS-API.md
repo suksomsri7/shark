@@ -637,7 +637,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/pos/reports/shifts" \
 
 #### `reports.staff`
 
-**GET /reports/staff** - Sales per seller over a range: bills, net sales after refunds, discounts, tips, voids. Bills sold through the API are listed under the API key id. CSV with Accept: text/csv. · scope: `pos.report.view` · read · `Accept: text/csv` supported · report rate (30/min)
+**GET /reports/staff** - Sales per seller over a range: bills, net sales after refunds, discounts, tips, voids. Bills sold through the API are listed under the API key id, named 'API: <key name>'. CSV with Accept: text/csv. · scope: `pos.report.view` · read · `Accept: text/csv` supported · report rate (30/min)
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |

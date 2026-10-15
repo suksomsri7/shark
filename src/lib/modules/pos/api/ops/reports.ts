@@ -132,7 +132,7 @@ const reportsStaff = definePosOp({
   kind: "read",
   rate: "report",
   action: POS_SCOPES.reportView,
-  summary: "Sales per seller over a range: bills, net sales after refunds, discounts, tips, voids. Bills sold through the API are listed under the API key id. CSV with Accept: text/csv.",
+  summary: "Sales per seller over a range: bills, net sales after refunds, discounts, tips, voids. Bills sold through the API are listed under the API key id, named 'API: <key name>'. CSV with Accept: text/csv.",
   label: "รายงานยอดขายพนักงาน",
   test: "reports.staff",
   input: reportInput,

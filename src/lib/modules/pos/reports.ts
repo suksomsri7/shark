@@ -734,6 +734,10 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
       }
     }
     const names = await userNames(db, [...m.values()].map((x) => x.userId).filter((x): x is string => !!x));
+    // POS P2.13 ▸ fix1 F4: ผู้ขายที่เป็นคีย์ API (soldByUserId = keyId · มติ 3) = "API: <ชื่อคีย์>" — เฉพาะ id ที่ไม่ใช่ผู้ใช้ · คำสั่งเดียวต่อก้อน (ร้านนี้เท่านั้น) ◂
+    for (const part of chunks([...m.values()].map((x) => x.userId).filter((x): x is string => !!x && !names.has(x)))) {
+      for (const k of await db.apiKey.findMany({ where: { tenantId: s.tenantId, id: { in: part } }, select: { id: true, name: true } })) names.set(k.id, `API: ${k.name}`);
+    }
     const rows = [...m.values()]
       .map((x) => ({ ...x, name: x.userId ? (names.get(x.userId) ?? null) : null, avgBillSatang: avg(x.netSalesSatang, x.billCount) }))
       .sort((a, b) => b.netSalesSatang - a.netSalesSatang || (a.userId === null ? 1 : b.userId === null ? -1 : cmpStr(a.userId, b.userId)));
