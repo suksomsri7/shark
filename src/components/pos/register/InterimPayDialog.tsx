@@ -181,7 +181,7 @@ type PayRow = {
    * POS P2.9bU ▸ แถวมัดจำ: id = PosDeposit.id (ส่งเป็น depositId) · receiptNo = เลขใบรับ (null = แถวที่สร้างคืนหลัง reload) ·
    * remainingSatang = ยอดค้นล่าสุด (null = ไม่รู้) · needsLast4 = ต้องส่ง 4 หลักท้าย (อยู่ใน last4Ref เท่านั้น) · note = ข้อความใต้แถว ◂
    */
-  dep?: { id: string; receiptNo: string | null; remainingSatang: number | null; needsLast4: boolean; memberLinked: boolean; note?: "wrong" | "again" | null };
+  dep?: { id: string; receiptNo: string | null; remainingSatang: number | null; needsLast4: boolean; memberLinked: boolean; l4Checked: boolean; note?: "wrong" | "again" | null };
 };
 /** POS P2.9U ▸ ผลค้นบัตร (DTO ของ registerGiftCardLookupAction) ◂ */
 type GcCard = { numberMasked: string; balanceSatang: number; status: string; expiresAt: string | null; usable: boolean; reason: "SUSPENDED" | "EXPIRED" | "DEPLETED" | "PIN_LOCKED" | null };
@@ -319,6 +319,8 @@ export function PayDialog(p: Props) {
   const [depNote, setDepNote] = useState<string | null>(null);
   /** POS P2.9bU ▸ มติ 3: คำขอล่าสุดเป็นการ "ลองซ้ำ" (ชุดที่ถูกตัด 4 หลักท้าย) — DEPOSIT_NOT_OWNER ⇒ "ใส่อีกครั้ง" ไม่ใช่ "ไม่ถูกต้อง" ◂ */
   const sentStripped = useRef(false);
+  /** POS P2.9bU ▸ fix1 มติ 1: ชุดแถวมัดจำ (row id) ที่เหลือหลัง DEPOSIT_NOT_OWNER ครั้งก่อน — ซ้ำชุดเดิมหลังใส่ใหม่ = ถอดทั้งหมด (ไม่วนแถวเดิม) ◂ */
+  const notOwnerSet = useRef<string | null>(null);
   const [gcBanner, setGcBanner] = useState(false);
   const [gcRowsNote, setGcRowsNote] = useState<string | null>(null);
   const [tenders, setTenders] = useState<Tenders | null>(null);
@@ -507,6 +509,7 @@ export function PayDialog(p: Props) {
     // POS P2.9bU ▸ มติ 3: ปิดกล่อง = ล้าง 4 หลักท้ายทุกแถว + ที่กรอกค้าง ◂
     last4Ref.current.clear();
     setDepLast4("");
+    notOwnerSet.current = null; // POS P2.9bU ▸ fix1 มติ 1 ◂
   }
   /** PIN ที่กำลังกรอกในแผง — ref + ช่อง password แบบไม่ควบคุม (ตั้ง .value ตรง ๆ ไม่ผ่าน React ⇒ ไม่เป็น attribute) */
   function setGcPin(v: string) {
@@ -720,21 +723,37 @@ export function PayDialog(p: Props) {
       // POS P2.9bU ▸ มติ 4: ถอดแถวมัดจำที่ใช้ไม่ได้แล้ว + ข้อความใต้รายการ ◂
       void depDropClosed(e.code);
     } else if (e.code === "DEPOSIT_NOT_OWNER") {
-      // POS P2.9bU ▸ มติ 4: 4 หลักท้ายผิด ⇒ แถวคงไว้ · ล้าง 4 หลัก · "4 หลักท้ายไม่ถูกต้อง" + แผงใส่ใหม่ (ไม่บอกจำนวนครั้งที่เหลือ — คำปฏิเสธไม่มี) ·
-      //   ไม่มีแถวที่ต้องใช้ 4 หลัก = มัดจำของสมาชิกอื่น ⇒ ถอดแถวมัดจำสมาชิก ◂
-      const l4Rows = depRows.filter((r) => r.dep?.needsLast4);
-      if (l4Rows.length) {
-        for (const r of l4Rows) last4Ref.current.delete(r.id);
-        const note = sentStripped.current ? ("again" as const) : ("wrong" as const);
-        setRows((s) => s.map((r) => (r.type === "DEPOSIT" && r.dep?.needsLast4 ? { ...r, dep: { ...r.dep, note } } : r)));
+      // POS P2.9bU ▸ fix1 มติ 1 (R1 F1): คำปฏิเสธไม่บอกแถว ⇒ โทษตามที่มาของแถว (ไม่มีจำนวนครั้งที่เหลือ — คำปฏิเสธไม่มี):
+      //   (0) ชุดแถวเดิมโดนซ้ำหลังใส่ 4 หลักใหม่ ⇒ ถอดแถวมัดจำที่เหลือทั้งหมด + ข้อความกลาง (ไม่วนแถวเดิม)
+      //   (1) ชุดที่ลองซ้ำไม่มี 4 หลัก (sentStripped) / 4 หลักที่ใส่ใหม่ทางแถว (forRow — แผงไม่ได้ตรวจ) ⇒ ล้าง 4 หลักของแถวนั้น + "อีกครั้ง"/"ไม่ถูกต้อง"
+      //   (2) แถวที่แผงตรวจแล้ว: มัดจำสมาชิก (memberLinked — จากรายการสมาชิกในบิล / เลขใบเสร็จตรงที่เห็นยอดโดยไม่ใช้ 4 หลัก · S service.ts:417) ⇒ ถอด + errors.depositNotOwner
+      //   (3) ไม่มีแถวสมาชิก ⇒ แถว 4 หลัก "ไม่ถูกต้อง" · ไม่มีอะไรให้โทษ ⇒ ถอดทุกแถวมัดจำ ◂
+      const sig = (list: PayRow[]) => list.map((r) => r.id).sort((a, b) => a - b).join(",");
+      const all = depRows;
+      const l4Rows = all.filter((r) => r.dep?.needsLast4);
+      const suspects = sentStripped.current ? l4Rows : l4Rows.filter((r) => !r.dep?.l4Checked);
+      const own = all.filter((r) => r.dep?.memberLinked);
+      const dropRows = (ids: Set<number>, key: string) => {
+        for (const id of ids) last4Ref.current.delete(id);
+        setRows((s) => s.filter((r) => !ids.has(r.id)));
+        setDepLast4("");
+        setDp(DP_EMPTY);
+        setDepNote(key);
+        notOwnerSet.current = null; // ชุดเปลี่ยนแล้ว — ครั้งถัดไปโทษแถว 4 หลักก่อน
+      };
+      const blameL4 = (list: PayRow[], note: "wrong" | "again") => {
+        const ids = new Set(list.map((r) => r.id));
+        for (const id of ids) last4Ref.current.delete(id);
+        setRows((s) => s.map((r) => (r.type === "DEPOSIT" && r.dep && ids.has(r.id) ? { ...r, dep: { ...r.dep, note, l4Checked: false } } : r)));
         setDepNote(null);
-        reenterLast4(l4Rows[0]!);
-      } else {
-        const own = depRows.filter((r) => r.dep?.memberLinked).map((r) => r.id);
-        const drop = new Set(own.length ? own : depRows.map((r) => r.id));
-        setRows((s) => s.filter((r) => !drop.has(r.id)));
-        setDepNote(DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
-      }
+        notOwnerSet.current = sig(all);
+        reenterLast4(list[0]!);
+      };
+      if (all.length && notOwnerSet.current === sig(all)) dropRows(new Set(all.map((r) => r.id)), "errors.depositNotOwnerAgain");
+      else if (suspects.length) blameL4(suspects, sentStripped.current ? "again" : "wrong");
+      else if (own.length) dropRows(new Set(own.map((r) => r.id)), DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
+      else if (l4Rows.length) blameL4(l4Rows, "wrong");
+      else dropRows(new Set(all.map((r) => r.id)), DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
     } else if (e.code === "DEPOSIT_LOCKED") {
       // POS P2.9bU ▸ มติ 4: ล็อก 15 นาที ⇒ ถอดแถวที่ต้องใช้ 4 หลัก (คำปฏิเสธไม่บอกใบ) + ข้อความ ◂
       const drop = new Set(depRows.filter((r) => r.dep?.needsLast4).map((r) => r.id));
@@ -787,7 +806,7 @@ export function PayDialog(p: Props) {
       ...(m.type === "GIFT_CARD" && m.giftCard ? { card: { number: m.giftCard.number, masked: maskLocal(m.giftCard.number), balanceSatang: null, note: "pinAgain" as const } } : {}),
       ...(m.type === "STORE_CREDIT" && sc ? { card: { number: "", masked: sc.numberMasked, balanceSatang: sc.balanceSatang } } : {}),
       // POS P2.9bU ▸ มติ 3: แถวมัดจำที่สร้างคืน = ไม่รู้เลขใบรับ/ยอด (คำขอที่เก็บมีแค่ depositId) · ต้องใส่ 4 หลักท้ายอีกครั้ง ◂
-      ...(m.type === "DEPOSIT" && m.depositId ? { dep: { id: m.depositId, receiptNo: null, remainingSatang: null, needsLast4: true, memberLinked: false, note: "again" as const } } : {}),
+      ...(m.type === "DEPOSIT" && m.depositId ? { dep: { id: m.depositId, receiptNo: null, remainingSatang: null, needsLast4: true, memberLinked: false, l4Checked: false, note: "again" as const } } : {}),
     }));
     setRows(rebuilt);
     if (a.tipSatang > 0) {
@@ -905,7 +924,8 @@ export function PayDialog(p: Props) {
     const l4 = depLast4Ref.current;
     if (depRowFor) {
       last4Ref.current.set(depRowFor.id, l4);
-      setRows((s) => s.map((r) => (r.id === depRowFor.id && r.dep ? { ...r, dep: { ...r.dep, note: null } } : r)));
+      // POS P2.9bU ▸ fix1 มติ 1: 4 หลักที่ใส่ใหม่ทางแถว = แผงไม่ได้ค้นตรวจ (l4Checked false) ◂
+      setRows((s) => s.map((r) => (r.id === depRowFor.id && r.dep ? { ...r, dep: { ...r.dep, note: null, l4Checked: false } } : r)));
       setDepLast4("");
       const nextRow = depRows.find((r) => r.id !== depRowFor.id && !!r.dep?.needsLast4 && (last4Ref.current.get(r.id) ?? "").length !== DEP_LAST4);
       setDp(DP_EMPTY);
@@ -920,7 +940,9 @@ export function PayDialog(p: Props) {
     if (rowsFull) return setDp((d) => ({ ...d, err: "errors.splitInvalid" }));
     const id = ++rowSeq.current;
     if (sel.needsPhoneLast4) last4Ref.current.set(id, l4);
-    setRows((s) => [...s, { id, type: "DEPOSIT", amountSatang: depAmount, dep: { id: sel.id, receiptNo: sel.receiptNo, remainingSatang: depBal, needsLast4: sel.needsPhoneLast4, memberLinked: sel.memberLinked, note: null } }]);
+    // POS P2.9bU ▸ fix1 มติ 1: ที่มาของแถว — memberLinked = มัดจำสมาชิก (S memberLinked) ที่แผงเห็นยอดโดยไม่ใช้ 4 หลัก (รายการสมาชิกในบิล / เลขใบเสร็จตรง) ·
+    //   l4Checked = 4 หลักผ่านการค้นของแผงแล้ว (depVerify — ยอดเห็นได้เฉพาะเมื่อถูก) ◂
+    setRows((s) => [...s, { id, type: "DEPOSIT", amountSatang: depAmount, dep: { id: sel.id, receiptNo: sel.receiptNo, remainingSatang: depBal, needsLast4: sel.needsPhoneLast4, memberLinked: sel.memberLinked && !sel.needsPhoneLast4, l4Checked: sel.needsPhoneLast4, note: null } }]);
     setDepLast4("");
     setDp((d) => ({ ...DP_EMPTY, query: d.query, look: d.look }));
     setDepNote(null);
