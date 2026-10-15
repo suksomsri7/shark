@@ -160,3 +160,111 @@ A9 clean (`service.ts:465-468`: unreleased VAT ≤ remaining deposit; 107000/700
 3. **R4 F1 / hunter N4 (audit + document)** — `zeroEntry` audit written once per (action, refId) (skip when one exists, or write it only when the document is newly created); on the zero-entry path a document upsert failure **rethrows** so the event retries (idempotent upsert) instead of ending DONE without a document — "never throw" of ruling 1 applies to the empty journal only. No oracle (failure injection); reviewer verifies by reading.
 4. **R4 F3 / hunter N3 (info)** — fix the comment at `account/index.ts:~247` ("otherwise byte-identical" is not exact: ฿0 bills now complete with an audit row and no JV) and add one line to the notes + owner line (฿0 bills: previously DEAD event, now DONE — improvement) · **R4 F4** — fix the stale docstring at `deposit.ts:~334` (lookup with receipt no + last 4 writes the counter).
 5. Gates after fix 4 (clean head, dirty 0; one unit like out6 → out7): typecheck · fitness ±env · fitness-pos · `qc-pos-p2.9b` **53** (51 + A10 + X10) forced ×2 + unforced, residue 0 · `qc-pos-p2.9` 62 · `qc-hf-tx` 22 · `qc-pos-account` 16 · `qc-account-cpa` 107 · `qc-pos-p1.17` 40 · `qc-hf-pos-page-authz` 81 · `qc-pos-p1.8` 49 · `qc-pos-p1.12` 72 (refund paths) · `qc-pos-p2.11` (32/34 pins) · `qc-pos-p2.8` (60/61 ST6). Notes §"Fix round 4", push. Then R5 (hunks) + hunter sign-off → merge gates on tree b → merge → 34/55.
+
+## Fix round 4 delivered (account B, 15 Oct 09:2xZ) — head 9700c5e1 (code 0e15d4e3) — marker `gl.recordExternalSaleZeroEntry` (AuditLog row + advisory xact lock) · commission gate PAID JV or marker · `applyExternalRefund` depositPaid explicit VAT · document failure rethrow · comments/owner lines · red-before block 5 51/53 · gates out7: typecheck 0 · fitness ±env · p2.9b 53/53 ×3 · p2.9 62 · hf-tx 22 · account 16 · cpa 107 · p1.17 40 · authz 81 · p1.8 49 · p1.12 72 · pins p2.11 32/34 p2.8 60/61
+
+## R5 (account B, 15 Oct 09:29Z) — **MERGEABLE** — verbatim
+
+# P2.9b R5: review of the fix-round-4 hunks (head 9700c5e1 · code 0e15d4e3 · diff da045e04..0e15d4e3)
+**Verdict: MERGEABLE**. Rulings 1–4 are implemented as ruled. I found no blocking issue, only three Info notes. Read-only review; no gates re-run (the gate table in the notes is out7, dirty 0).
+
+**Findings**
+- F1 (Info): the marker is written before the document (index.ts:267, then :295/:316). If the document fails for good (for example a deterministic totals mismatch in the upsert at service.ts, which retries until DEAD), the marker still exists. The refund consumer's step 1a (`bridgePosSaleCommission`, refund-consumer.ts, outside the 1a try) can then post COMMISSION on a bill that has no document. This is visible (the event is DEAD) and the money is still correct, because the commission is owed either way. The ruling accepts it. No change is needed.
+- F2 (Info): `posSalePosted` still checks only the PAID JV (index.ts:755–758). So on a zero-entry bill, every `pos.sale.refunded` re-runs `bridgePosSalePaid` in step 1a. This is idempotent: the marker exists-check skips the write, the document upsert returns the existing doc (`created:false`), so no bundle stock is consumed again, and commission is "already". It is only extra queries per refund. Optional later: make `posSalePosted` count the marker.
+- F3 (Info): A10 asserts that COMMISSION and the reversal each post once, but it never counts marker rows. Ruling 3 is verified by reading only, as ruled. A one-line `auditLog.count(action zeroEntry, targetId b2) === 1` after the replay at qc:2104 would pin it cheaply. Optional.
+
+**Ruling 1: verified OK**
+- Marker: one `AuditLog` row with `action="account.external.zeroEntry"`, `targetType="PosSale"`, `targetId=<bill id>` per tenant (gl.ts:1793–1806).
+  - There is no unique constraint, and no migration (AuditLog has only `[tenantId,createdAt]` and `[action]` indexes).
+  - One row per bill is enforced by `pg_advisory_xact_lock(hashtext("acc-zero-entry:<tenant>:<bill>"))` plus a `findFirst` inside the same `prisma.$transaction` (gl.ts:1802–1804). Under READ COMMITTED, a waiting retry's `findFirst` takes a fresh snapshot after the lock is granted, so it sees the first row. Two concurrent retries therefore write one row.
+  - A hash collision only adds serialization.
+  - The write is not swallowed: it is a direct `create`, not `writeAudit`. A failure throws, so `pos.sale.paid` retries.
+  - It is its own transaction, committed before `postSaleCommission` runs in the bridge, which happens after `applyExternalSale` returns.
+- Commission gate (index.ts:723): `!PAID && !marker` returns `no-paid`, so the gate still refuses when neither exists. The marker query only runs when PAID is missing, so normal bills get no extra query. The reverse side (index.ts:724) is unchanged and is satisfied because COMMISSION now exists. Void goes through `reverseFor`, which reverses every POSTED JV of `PosSale/<bill>`, COMMISSION included. `postSaleCommission` still skips VOIDED bills.
+- A10 (qc:2090–2114):
+  - zero-entry fixture with no PAID JV: :2096
+  - COMMISSION once, Dr 6500 200 / Cr 2100 200: :2099–2100
+  - replay of `pos.sale.paid` still gives 1: :2103–2104
+  - COMMISSION_REFUNDED once, Dr 2100 / Cr 6500 200: :2107–2108
+  - replay of the refund, then 2 JVs with 6500/2100 net 0: :2111–2114
+
+**Ruling 2: verified OK**
+- `keepVat = vatRegistered || (depositPaid && vatSatang > 0)` (index.ts:606). `cnVat = vatRegistered || explicitVat !== null` (:608).
+  - VAT-registered book: `keepVat` and `cnVat` are true, which is exactly the old `explicitVat`, `vatMode` and `vatRegistered` behaviour.
+  - Not registered, without a deposit or with refund VAT 0: `explicitVat` is null and `cnVat` is false, which is the old path.
+- CN: `vatMode: cnVat ? INCLUDE : NONE` and `vatRegistered: cnVat` (:650–651), with `vatSatang` = refund VAT. `upsertExternalCreditNoteDocument` uses `vatRegistered` only for totals, then applies the explicit VAT.
+- Plumbing:
+  - bridge param 7 `depositPaid`: account-bridge.ts:341, :360
+  - consumer passes `sale.payments.some(DEPOSIT && refSaleId)`: refund-consumer.ts:114
+- Mixed and partial cases are bounded. After de-registration the POS rate is 0, so the bill's own `vatSatang` is 0 (the fixture's 5000/2000 deposit-VAT release shows this). The POS refund basis is then `sale.vatSatang + Σ APPLY VAT` = deposit VAT only (refund.ts:592–597), which is exactly what sits in 2200. So pro-rata refunds sum to that amount and cannot over-debit 2200.
+- X10 (qc:2117–2130):
+  - refund VAT 2000: :2123
+  - JV Dr 2200 2000 / Cr 1010 2000 (income untouched): :2125
+  - receipt + bills + refund = 1010 105000 / 4000 −100000 / 2200 −5000, with 2110 absent (net 0) under `sameNet`: :2127
+  - CN `vatAmount` 2000: :2130
+
+**Ruling 3: verified OK**
+- `if (!doc.ok && zeroEntry) throw` (index.ts:316) applies to the zero-entry path only.
+- The non-zero path still returns `{posted, reason}` (:317). `zeroMark` is `{}` on that path, so every non-zero return is byte-identical (:276, :317, :322).
+- The empty-journal skip still does not throw (:253).
+- No double audit: `writeAudit` and its import are removed, and the marker exists-check makes retries and step 1a write nothing.
+- The document upsert is idempotent by ref (`findDocByRef` first), so a retry after a partial failure is safe.
+
+**Ruling 4: verified OK**
+- index.ts:248–251 now states that ฿0 bills hit the condition (DONE, marker, no JV, no document, because the bridge sends lines only when gross > 0, account-bridge.ts `lines` guard). That is accurate against gl.ts:222 (the "ไม่มีบรรทัดบัญชี" throw that happened before).
+- deposit.ts:334–335: the docstring now matches `checkDepositPhone`, which writes the counter.
+- `POS-OWNER-PENDING.md` has the 2 owner lines: ฿0 bills including the fixed-commission effect, and the rulings 1–2 accounting treatment.
+
+**Hygiene: OK**
+- Files touched: `account/gl.ts` (+19, marker helpers; this is in the account module, so the facade does not touch raw prisma), `account/index.ts`, `pos/account-bridge.ts` (+3), `pos/refund-consumer.ts` (+1), `pos/deposit.ts` (docstring only), `scripts/qc-pos-p2.9b.mts`, and ledger files.
+- No `register.ts`, `service.ts`, `giftcard`, `member`, `prisma` or messages hunk. No migration, no new table or column.
+- th/en key counts are equal: pos 3139/3139, common 16/16.
+
+## Hunter sign-off on fix 4 (account B, 15 Oct 09:29Z) — **SIGNED-OFF** — verbatim
+
+# P2.9b hunter sign-off, fix 4: `wip/pos-p2.9b` 9700c5e1 (code 0e15d4e3). Code read and arithmetic only, no probes.
+**Verdict: SIGNED-OFF.** N1 and N2 are closed. The notes below are Info only and none blocks the merge.
+
+## N1 / A10: closed
+- **Sale path:** zero-entry bill ⇒ marker (`index.ts:267`), then document (:316), then `postSaleCommission` (`account-bridge.ts:190`). The gate (`index.ts:723`) accepts PAID or the marker. It still returns `no-paid` when neither exists.
+- **Commission:** DIRECT 10% of 2000 = 200 ⇒ Dr 6500 200 / Cr 2100 200, folded because the book is de-registered.
+- **No double post:**
+  - Replaying the event: COMMISSION is keyed per bill (:720 "already").
+  - Refund step 1a re-runs `bridgePosSalePaid` because `posSalePosted` is false for ever. The marker exists so no new row, the document gives `created:false`, and commission says "already".
+  - Step 1c finds COMMISSION ⇒ one COMMISSION_REFUNDED, Dr 2100 200 / Cr 6500 200, net 0.
+- A10 asserts all of this (`qc-pos-p2.9b.mts:2097-2115`).
+
+## N2 / X10: closed
+- **X10 arithmetic:**
+  - Receipt: Dr 1010 107000 / Cr 2110 100000 / Cr 2200 7000.
+  - b1: Dr 2110 100000 / Cr 4000 100000.
+  - b2: no JV.
+  - Refund: VAT 2000 (`refund.ts:594-597`, basis 0 + 2000, full) ⇒ `keepVat` (`index.ts:606`) ⇒ Dr 2200 2000 / Cr 1010 2000.
+  - Net: 1010 105000, 4000 −100000, 2200 −5000, 2110 0. That equals the remainder-refund path. The CN is INCLUDE with VAT 2000 (:608).
+- **Mixed case** (฿500 bill = ฿200 deposit with VAT 1308 + ฿300 cash, after de-registration):
+  - Bill JV: base 48692, Dr 2110 18692 + cash 30000.
+  - Refund of ฿100: share = round(1308 × 10000 / 50000) = 262 ⇒ Dr 4000 9738 + Dr 2200 262.
+  - Final refund: left = 1046 ⇒ ΣVAT 1308, Σincome 48692. Every account ends at 0.
+  - Caps hold: vat ≤ grand, ≤ left, and `explicitVat` ≤ gross.
+- **Unchanged paths:**
+  - VAT-registered books: `keepVat` is already true, and `cnVat` = `vatRegistered` ⇒ byte-identical.
+  - De-registered books with no deposit, or with refund VAT 0: the old path.
+
+## Marker risks
+- **Marker without a document:** yes, by ordering. The marker commits in its own transaction before the document.
+  - On a transient failure, the event stays PENDING (`outbox.ts:294`) and refund step 0 waits. The retry heals it: the marker is skipped, the upsert dedupes, and the bundle stock cut runs only on `created`.
+  - The document's only deterministic `ok:false` (total mismatch) can't occur after the line check at :192. After 5 tries the event is FAILED. Then a refund's 1a and `bridgePosSaleCommission` can post commission with no sale document. That is economically right, because the bill has no GL.
+- **Void before commission:** `postSaleCommission` re-reads the bill and skips VOIDED (`account-bridge.ts:270`). The PAID JV path behaves the same way, so the marker adds no new exposure. The read-then-void race is pre-existing.
+- **Retry storms:** bounded by 5 attempts. Each attempt takes the advisory lock, checks existence and writes no row. The exists-under-xact-lock read is correct at READ COMMITTED.
+- **Zero-entry decision stability:** base + vat = gross − depositVat, whatever the registration. So the marker can't flip to a PAID JV if the book re-registers between retries.
+
+## Info
+- **H1 (Info)** `gl.ts:1795`: the marker lookup is tenant + refId only, not book-scoped. If a POS is relinked to another book, an old marker opens the commission gate in the new book. Very narrow; owner line, or add `systemId` to `after` and the filter.
+- **H2 (Info)** policy split after de-registration:
+  - A deposit-paid bill sold while VAT-registered now reverses its whole refund VAT through 2200, including the bill's own VAT, so 2200 ends at 0.
+  - A cash-only bill in the same timing still books Dr income gross, leaving 2200 stranded.
+  - The deposit-paid behaviour is the better one. The accountant should see both in the ruling-2 owner line, along with "CN with VAT from a de-registered book".
+- **H3 (Info)** ruling 3 idempotency was verified by reading only. A10 counts COMMISSION and the reversal under replay, but not `account.external.zeroEntry` rows; a count == 1 check would pin it.
+- **H4 (Info)** every ฿0 bill now adds one AuditLog row plus a small lock transaction. This is fine at bill volume. `gl.ts` writes `auditLog` directly rather than through `core/audit` (intentional: it throws). Fitness is green.
+
+## Controller decision (account B, 15 Oct 09:29Z): merge. Info items → follow-ups in the HF-FU card: R5 F2 `posSalePosted` counts the marker · R5 F3 / hunter H3 ORACLE-ADD marker count == 1 · hunter H1 marker lookup book-scoped (systemId) · H2 owner line extended (cash-only bill after de-registration still strands 2200).
