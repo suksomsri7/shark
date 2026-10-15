@@ -28,6 +28,7 @@ import {
 } from "./service";
 // CRM v2 · C0.3-A: ชนิด+คณิตศาสตร์บรรทัดเอกสาร (ไฟล์ `totals.ts` บริสุทธิ์ ไม่แตะ prisma) + ตัวจัดรูปเงิน
 import { lineAmount, type LineInput } from "./totals";
+import { writeAudit } from "@/lib/core/audit"; // POS P2.9b ▸ fix3 มติ 1: audit zeroEntry ◂
 import { baht, familyCreditByInvoice } from "./service";
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
@@ -243,16 +244,31 @@ export async function applyExternalSale(input: {
     if (!ledger) throw new Error("บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ไม่ใช่หนี้สินของสมุดที่ผูก หรือถูกเก็บแล้ว) — แก้ที่ตั้งค่าการชำระเงินของ POS");
     tipCr = [{ accountId: ledger.id, amountSatang: input.tip.satang, note: "ทิปรอจ่ายพนักงาน" }];
   }
-  const res = await postExternalSale(ctx, {
-    refId: input.refId,
-    date: input.occurredAt,
-    baseSatang: base,
-    vatSatang: vat,
-    serviceBaseSatang: svcBase,
-    drLines,
-    ...(tipCr ? { crExtra: tipCr } : {}), // POS P2.9 ◂
-  });
+  // POS P2.9b ▸ fix3 มติ 1 (R3 F1): ทุกบรรทัดบัญชีสุทธิ 0 (เช่น บิลสุดท้ายที่มัดจำปล่อย VAT ครอบทั้งยอดหลังสมุดเลิกจด VAT) — ไม่มี JV ให้ลง ·
+  //   ข้าม JV (ไม่โยน ⇒ คิว pos.sale.paid จบ DONE) · ชั้นเอกสารยังเขียนตามปกติ + audit zeroEntry · ไม่ใช่กรณีนี้ = ทางเดิมทุกไบต์ ◂
+  const zeroEntry = base === 0 && vat === 0 && !tipCr && drLines.every((l) => l.amountSatang === 0);
+  const res = zeroEntry
+    ? ({ skipped: true } as const)
+    : await postExternalSale(ctx, {
+        refId: input.refId,
+        date: input.occurredAt,
+        baseSatang: base,
+        vatSatang: vat,
+        serviceBaseSatang: svcBase,
+        drLines,
+        ...(tipCr ? { crExtra: tipCr } : {}), // POS P2.9 ◂
+      });
   const posted = "entryId" in res;
+  if (zeroEntry) {
+    await writeAudit({
+      tenantId: input.tenantId,
+      actorType: "SYSTEM",
+      action: "account.external.zeroEntry",
+      targetType: "PosSale",
+      targetId: input.refId,
+      after: { zeroEntry: true, refId: input.refId, grossSatang: gross, depositVatSatang: depositVat, vatFullSatang: vatFull },
+    });
+  }
 
   // ── WO 4.2: ชั้นเอกสาร (ไม่มี lines = ข้ามทั้งบล็อก → เส้นทางเดิมทุกประการ) ──
   //    WO 8.1: เจ้าของปิด "ใบกำกับอย่างย่อจาก POS" ในหน้าตั้งค่า (§9.2) = ไม่สร้างชั้นเอกสารนี้
