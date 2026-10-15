@@ -2065,6 +2065,9 @@ export async function setProductOptionGroups(
         await tx.posProductOptionGroup.deleteMany({ where: { tenantId: ctx.tenantId, productId: before.id } });
         if (want.length) await tx.posProductOptionGroup.createMany({ data: want.map((w) => ({ tenantId: ctx.tenantId, productId: before.id, ...w })) });
         await audit(tx, ctx, "pos.product.optionGroups", "PosProduct", before.id, { optionGroups: key(have) }, { optionGroups: key(want) });
+        // POS P2.11 ▸ FU2 m(i): กลุ่มที่ถอดออก = ส่วนต่างสูตรของตัวเลือกกลุ่มนั้นบนสินค้านี้หายด้วย (ผูกกลับ = เริ่มว่าง ไม่ฟื้น) ◂
+        const dropped = have.map((h) => h.groupId).filter((g) => !groupIds.includes(g));
+        if (dropped.length) await dropRecipeChoiceLinesOfGroupsInTx(tx, ctx, dropped, [before.id]);
       }
       if (menu) {
         const mHave = await tx.menuItemOptionGroup.findMany({ where: { tenantId: ctx.tenantId, itemId: menu.id }, select: { groupId: true, sortOrder: true } });
@@ -2208,6 +2211,39 @@ export async function setRecipeChoiceLines(
       return { id: before.id, recipeChoiceLines: want };
     });
   });
+}
+
+/**
+ * POS P2.11 ▸ FU2 m(i) (มติ 17 · qc-pos-p2.3 ST3 ผู้เขียนเดียว): ลบ PosRecipeChoiceLine ของตัวเลือกในกลุ่ม `groupIds` (รวมตัวเลือกที่เก็บถาวรแล้ว) ◂
+ *   productIds ไม่ส่ง = ทุกสินค้าของร้าน (เก็บกลุ่ม · ประตูเดิม catalog-legacy.archiveMenuOptionGroup เรียกด้วย tx ของตัวเอง) · ส่ง = เฉพาะสินค้านั้น (ถอดกลุ่ม)
+ *   audit "pos.product.recipeChoices" ต่อสินค้าที่มีแถวถูกลบ (before/after = ชุดเรียงแล้ว · via groupRemoved) · ไม่มีแถว = ไม่เขียน ไม่ audit
+ */
+export async function dropRecipeChoiceLinesOfGroupsInTx(
+  tx: Prisma.TransactionClient,
+  ctx: Pick<CatalogCtx, "tenantId" | "systemId" | "actorUserId" | "onBehalfOfUserId">,
+  groupIds: string[],
+  productIds?: string[],
+): Promise<number> {
+  if (!groupIds.length) return 0;
+  const choices = await tx.menuOptionChoice.findMany({ where: { tenantId: ctx.tenantId, groupId: { in: groupIds } }, select: { id: true } });
+  if (!choices.length) return 0;
+  const choiceIds = choices.map((c) => c.id);
+  const lines = await tx.posRecipeChoiceLine.findMany({
+    where: { tenantId: ctx.tenantId, choiceId: { in: choiceIds }, ...(productIds ? { productId: { in: productIds } } : {}) },
+    select: { productId: true },
+    distinct: ["productId"],
+  });
+  if (!lines.length) return 0;
+  const key = (xs: { choiceId: string; invItemId: string; qtyDelta: number }[]) => xs.map((x) => `${x.choiceId}:${x.invItemId}:${x.qtyDelta}`).sort().join(",");
+  const gone = new Set(choiceIds);
+  let n = 0;
+  for (const pid of lines.map((l) => l.productId).sort()) {
+    const have = await tx.posRecipeChoiceLine.findMany({ where: { tenantId: ctx.tenantId, productId: pid }, select: { choiceId: true, invItemId: true, qtyDelta: true } });
+    const del = await tx.posRecipeChoiceLine.deleteMany({ where: { tenantId: ctx.tenantId, productId: pid, choiceId: { in: choiceIds } } });
+    n += del.count;
+    await audit(tx, ctx as CatalogCtx, "pos.product.recipeChoices", "PosProduct", pid, { recipeChoices: key(have) }, { recipeChoices: key(have.filter((h) => !gone.has(h.choiceId))), via: "groupRemoved", groupIds });
+  }
+  return n;
 }
 
 /**
