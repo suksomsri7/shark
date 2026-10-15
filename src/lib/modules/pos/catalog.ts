@@ -2474,7 +2474,11 @@ export async function setChannelPrices(
       const afterRows = cpSort([...want.filter((r) => !purgedKeys.has(cpKey(r))), ...kept.map(cpPlain)]);
       if (!changedRows.length && !removed.length && !purged.length) {
         // ไม่มีอะไรเปลี่ยน: ยังต้องมีสิทธิ์ราคาของสินค้านี้ (ผู้ไม่มีสิทธิ์ไม่ได้ "สำเร็จ")
-        await requirePriceRowScope(ctx, actor, product, want.find((r) => r.unitId !== null && !isDead(r))?.unitId ?? null, tx, cache);
+        // POS P2.11 ▸ fix1 มติ 3 (hunt L2): ดูทั้งชุดที่ส่งมา ไม่ขึ้นกับลำดับ — ผ่านเมื่อมีขอบเขตทั้งสินค้า หรือมีแถวสาขาที่ใช้งานได้แถวใดแถวหนึ่งในเอื้อม ◂
+        const unitRows = want.filter((r) => r.unitId !== null && !isDead(r));
+        let reach = await inReach({ channelCode: null, unitId: null });
+        for (const r of unitRows) if (!reach) reach = await inReach(r);
+        if (!reach) throw denied();
         return { productId: product.id, rows: afterRows, changed: false };
       }
       const userId = auditUserOf(ctx);
