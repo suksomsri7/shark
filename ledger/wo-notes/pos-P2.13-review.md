@@ -22,3 +22,54 @@ Verified OK: route/dispatch thin; core `lib/api` untouched; auth/actor (bundles 
 6. **F6 = fix**: `APPROVAL_REQUIRED` from refund keeps `requestId` in the hint (not `nothingWritten`); SKILL line "a refund over the shop rule waits for approval in the app; do not retry with a new key".
 7. **F7 = follow-up line** (catalog audit actorType for key writes → HF-FU2). Other follow-ups (tax-invoice service key · order state after REST void · revoke scope · out-of-shift CASH order pay) = follow-up lines.
 8. ORACLE-ADD (test-first, marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1)`): **SA9** = shop rule POS_VOID over ฿1,000 ⇒ REST void of a ฿50,000 bill ⇒ 409 APPROVAL_REQUIRED + approval request row, bill stays PAID (red-before F1); **SA10** = API CASH sale bound to shift S, S closed ⇒ REST void ⇒ 409 SHIFT_CLOSED (red-before F2); **AU9** = `pos-operate` key on `GET /shifts` ⇒ 403 `scope_missing` (red-before F3); **RP5** = staff report row for a key seller shows "API: <keyName>" (red-before F4). Suite 49 + 4 = 53 (+ CD-B1 OR4 edit).
+
+## Money hunter (Opus read-only · tree b @be0f92cb · 15 Oct 20:50Z) — verbatim
+# P2.13 money hunter — head be0f92cb (base d0561566) · read-only
+**Verdict: FINDINGS** (1 Medium, 1 Medium-owner, 1 Low). None of them creates a second sale or lets a key reach beyond its system or unit filter.
+
+## Findings
+**H1 · Medium · `service.ts:1414` (voidSale, used by `ops/sales.ts:439` and the bills screen).** The P1.9 S11 rule "a bill in a closed shift cannot be voided" only runs when `sourceModule === "POS"`. API bills (`"API"`, from `register.ts` regSaleSource) do get a `shiftId`: either the caller sends `shiftId`, or `requiredOtherSources` binds the bill to the single open shift.
+- Request: `POST /sales` CASH with `shiftId=S`, then close S (Z counted), then `POST /sales/{id}/void {confirm:true}`.
+- Result: 200 VOIDED. JV, stock and points are reversed into a drawer that is already closed, and the expected cash in Z/X changes after the count. Cash can leave without any trace in the drawer.
+- Smallest fix: make the guard `sale.shiftId && (sale.sourceModule === "POS" || sale.sourceModule === "API")`. Optional extra: pre-check in sales.void so the API returns 409 `state_conflict` (voidErrorToApi already maps SHIFT_CLOSED).
+- Missing check: the oracle has no "SA6b". It should open a shift, sell via the API with shiftId, close the shift, void, and expect 409 with the bill still PAID. SA6 only voids a bill in an open shift or out of shift.
+
+**H2 · Medium (owner/controller) · `register.ts:2560-2565` and `order.ts:1276`, via bundle `scopes.ts` POS_OPERATE_SCOPES.** pos-operate holds `pos.shift.manage`. It only needs it to read /shifts and X/Z, but the same permission is what the HF-PP / HF-PP2 manager gate checks.
+- Request: a shop has `manualConfirmRequiresManager=true`. A pos-operate key sends `POST /sales` or `/orders/{id}/pay` with `{type:"PROMPTPAY"|"CARD", amountSatang:N}` and no `pi_` reference.
+- Result: the bill is PAID with money that nobody verified. The owner's switch is skipped silently. The bundle text says "No voids, refunds, custom prices", so the owner has no warning.
+- Smallest fix (pick one, controller): (a) the shift read ops use `pos.sale.read`/`pos.report.view` and `pos.shift.manage` leaves pos-operate; or (b) for API callers (`s.apiKeyId`) the manual gate ignores `pos.shift.manage`, so the setting always demands a `pi_` reference.
+- Missing check: set manualConfirmRequiresManager, then POST /sales PROMPTPAY without pi_ using a pos-operate key; expect 403 and 0 bills.
+
+**H3 · Low (confirm CD-B3 intent) · `order.ts:1269-1271`.** For API callers, payOrder drops its own invariant "any CASH needs a shift" (the screen refuses SHIFT_REQUIRED whatever the settings). With `requiredOtherSources=false`, an API CASH payment on any order (including a MANUAL order keyed on a tablet) is recorded out of shift. The cash is in no Z; it shows only in the bills page `offShiftCash` count. The predicate is safe because `ctx.apiKeyId` is built on the server only (`order-actions.ts:74`, `register-actions.ts:75`, `refund-actions.ts:54` never set it). Smallest fix if not intended: `apiPay && cashRows.length>0` lets bindSaleShift decide, but refuses with SHIFT_REQUIRED when it would return null. Missing check: OR-pay with CASH, otherSources off and register on, should give 409.
+
+## Probed OK
+1. **Double/lost sale:** service key = `api_`+sha256(keyId\nIdem)[0..63] (`keys.ts:19`, `sales.ts:160`).
+   - After the TTL, `regLoadSale` before pricing returns the same bill. With a changed price or body, `regSameSubmission` fails and gives 409 IDEMPOTENCY_CONFLICT with no new bill (the oracle covers this at qc:1243-1246).
+   - A refund or sale with the same service key gives a conflict both ways (service `dup.docType==="REFUND"`, refund `samePayload`).
+   - The core claim keeps concurrent requests to one; returned BUSY/409 refusals are nothingWritten, so the claim is released.
+   - Caveat: when `expectedGrandTotalSatang` is absent, the quote runs before dedupe. A replay after the TTL can then give a quote error (86/archived) instead of the bill. No money effect.
+   - Register parity: same `regPrice`, discount caps (STAFF), coupons and channel price. Custom lines need priceOverride (`register.ts:1426`, `order.ts:692`). Ingest refuses priced catalog lines.
+2. **Tender:** Σpay must equal total+tip exactly, so overpaying by any non-cash method is refused. Change only comes from cashReceived ≥ the CASH part. PLATFORM is accepted only on a payout-PLATFORM channel (`register.ts:2617`). orders.pay has no PLATFORM. A channel of another unit gives CHANNEL_INVALID. qty is 1..10000 integer, price ≥ 0, the Int overflow is guarded. Tip is not reachable (strict schema).
+3. **Refund/void:**
+   - Caps: FOR UPDATE plus priorRefunds give REFUND_EXCEEDS on a second key.
+   - The unit filter applies through posSaleUnit. HAS_REFUNDS blocks voiding a refunded bill.
+   - CD-B4 only adds `"API"` to POS_REFUND_SOURCES. Only API bills become refundable (the screen can refund them too); no other source widens. The only writer of "API" is register regSaleSource.
+4. **Orders:** externalRef dedupe is per (tenant, channel); on another channel or unit, the key hit gives a conflict. Cancel of a paid bill needs `pos.sale.void`. Reject works only on NEW orders (no bill), so there is no bypass.
+5. **Access:**
+   - Key-to-system mismatch gives 403. Scope is checked before the claim.
+   - Filtered key: `unitAccess` = filter. Reports and `/sales?unitId=*` scope to the filter (receiptReadScope, reports scopeOf). An explicit foreign unitId gives 404.
+   - Anomalies need `pos.report.anomaly` at op level.
+   - Issuer: bundles are `pos-*` only, every scope must be held by the issuer, filtered units must be linked and accessible, and non-all-unit issuers are forced to filter.
+   - CD-B2: the general gate now runs first, so scoped keys can never reach POS AI tools and `[]` keys behave as before. There is no widening. Note: the POS_TOOL_SCOPES pins in `skills.ts` therefore never fire.
+6. **Catalog:** the `apikey:` prefix plus STAFF actorMembership is used only by `posCatalogCtxOf`. All-branch products need an all-branch actor, so filtered keys are denied. Prices are ≥ 0 in the schema.
+7. **Buckets/replay:** `pos:api:<kind>:<keyId>` is separate from other modules. A 429 happens before the claim, or is released when it comes from the facade. A stale `Idempotent-Replayed` body after a void is the core design and is acceptable.
+
+## Controller rulings — fix round 1 (15 Oct 20:50Z · binding) = R1 F1–F8 + hunter H1–H3 + CD-B1 + ORACLE-ADD
+1. **F1 = fix (High)** as ruled above (`voidSaleByActor`, predicate `["POS","API"]`, owner line corrected).
+2. **F2 = H1 = fix (High)**: `service.ts:1414` guard `sale.shiftId && (sourceModule === "POS" || === "API")`; API pre-check optional (`voidErrorToApi` maps SHIFT_CLOSED).
+3. **F3 = H2 = fix, option (b) — supersedes ruling 3 above**: keep `pos.shift.manage` in `pos-operate` (shift reads stay); in the HF-PP/HF-PP2 manual-confirm gate (`register.ts:2560-2565`, `order.ts:1276`) API callers (`ctx.apiKeyId`) never satisfy the manager check ⇒ with `manualConfirmRequiresManager=true` an API PROMPTPAY/CARD tender without a `pi_` reference is refused (403/409 per the existing refusal code), 0 bills; docs + SKILL line ("เมื่อร้านเปิด 'ยืนยันจ่ายมือต้องให้ผู้จัดการ' API รับได้เฉพาะ CASH/TRANSFER/PLATFORM จนกว่าจะมีเส้นทาง payment intent (P3)"); owner line.
+4. **F4 = fix** (staff-report label hunk) · **F5 = document** · **F6 = fix** (requestId hint + SKILL line) · **F7/F8 + hunter follow-ups = lines** (tax-invoice service key · order state after REST void · revoke scope · replay-after-TTL quote caveat).
+5. **H3 = fix**: `payOrder` for API callers with CASH rows and `requiredOtherSources=false` ⇒ when `bindSaleShift` would return null, refuse SHIFT_REQUIRED (never record out-of-shift cash); API CASH sales (`submitRegisterSale`) — same rule, say whether it already holds.
+6. **CD-B1 = ORACLE-EDIT OR4** (pay → complete), dated marker, own `test(qc-pos-p2.13)` commit.
+7. **ORACLE-ADD (test-first, marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1)`)**: **SA9** POS_VOID rule over ฿1,000 ⇒ REST void ฿50,000 ⇒ 409 + approval request, bill PAID (F1) · **SA10** API CASH sale with `shiftId` S, close S ⇒ REST void ⇒ 409 SHIFT_CLOSED, bill PAID (F2/H1) · **AU9** `manualConfirmRequiresManager=true` + `pos-operate` key ⇒ `POST /sales` PROMPTPAY without `pi_` ⇒ refused, 0 bills (F3/H2) · **RP5** staff report row for a key seller = "API: <keyName>" (F4) · **OR7** API CASH `orders.pay` with `requiredOtherSources=false` and no open shift ⇒ 409 SHIFT_REQUIRED, order unpaid (H3). Suite 49 + 5 = 54. Red-before at be0f92cb recorded in `P2.13-red.txt` §fix1.
+8. **Gates after fix 1**: `qc-pos-p2.13` 54/54 forced ×2 + unforced · `qc-pos-api-skill` 10/10 · `qc-pos-p1.9` (void/S11) · `qc-pos-p1.8` 49 · `qc-pos-p1.3` 128 · `qc-pos-p2.8` 61 · `qc-pos-p1.17` 40 · `qc-hf-apiv1-scope` 143 · `qc-pos-p0.2` 56 · `gen --check` 0 · typecheck 0 · fitness ±env · fitness-pos · `--dry` th + en. Then fetch `origin/session/pos` (P2.12U may merge first — messages/inventory/OWNER-PENDING append-only), merge, re-run `qc-pos-p2.13` once, push → R2 (hunks) → merge → gates + images + agent test → 40/55.
