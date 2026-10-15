@@ -37,3 +37,126 @@ D1 CLOSED (`refund.ts:590-597`: 70; 70 + 70 = 140; 65 + 42 + 33 = 140) · D2 unl
 4. **D3 leftover** — shift X/Z exclude POS_DEPOSIT refund documents from refunds as close-day does (cash rows unchanged) · ORACLE-EDIT **R6** extended (dated).
 5. **R2 F2** → owner line + P2.9bU contract line (phone required at take) — no code beyond ruling 3.
 6. Then merge `origin/session/pos` (P2.11 S lands on `receipt.ts` :28/:215/:301-303 + `reports.ts` + `catalog.ts` — keep both sides; the controller pushes P2.11 shortly: if it is not on origin when you reach this step, merge what is there and note it) → gates = the fix-1 set with `qc-pos-p2.9b` **50** (47 + P10 A9 P11) forced ×2 + unforced, plus `qc-pos-p2.11` 34 and `qc-pos-p1.17` 40 after the upstream merge. Then R3 (hunks) + hunter sign-off → merge gates on tree b → merge → 34/55 (or 33).
+
+## Fix round 2 delivered (account B, 15 Oct 06:3xZ) — head 8445a4c5 (code 7d38de9a; gate head f51a942b = + upstream 491ff89e of ed200e6c/744e4f35)
+Commits: d5ed3a9e oracle (ORACLE-ADD P10 A9 P11 + R6 extended; red-before block 3 **46/50**, residue 0) · 410ded79 ruling 1 (P10 holder) · 86cc9163 + 7d38de9a ruling 2 (A9; 7d38de9a also keeps the VAT recorded at receipt on the deposit-refund posting after VAT de-registration — otherwise 2110 stayed 2,000 satang off) · 19c097e1 ruling 3 (P11 mask + per-deposit wrong-last-4 counter + `DEPOSIT_LOCKED` 15 min · **new migration `20261211110000_pos_p29b_deposit_phone_lock`** applied on QC4; QC5 pending) · 34fb3ebf ruling 4 (R6 extended) · owner/contract lines (phone required at take; DEPOSIT_LOCKED in the P2.9bU contract). Upstream merge 491ff89e: receipt.ts/reports.ts/messages auto-merged both sides, conflict only in POS-OWNER-PENDING (both kept).
+Gates at f51a942b (dirty 0): typecheck 0 · fitness 50/50 ±env · fitness-pos 8/8 · **p2.9b 50/50 ×3** · p2.9 62 · hf-tx 22 · p1.6 48 · p1.8 49 · p1.12 72 · p1.3 128 · p1.1 180 · account 16 · cpa 107 · p2.5 49 · p2.4 50 · p2.6 67 · p1.17 40 · booking-deposit 18 · hotel-public 15 · rental-public 16 · authz 81 · **p2.8 60/61** (ST6 wip-only) · **p2.11 32/34** (ST1/ST4).
+**Controller ruling on the builder's CONTROLLER-DECISION (p2.11 ST1/ST4)**: rejected as a re-pin — `qc-pos-p2.11.mts:258–268` takes the base from `git merge-base HEAD origin/session/pos` (fallback f164d9d6), the same mechanism as p2.8 ST6; both suites are red on any wip branch carrying a migration or lane-A files and go green after the push. Merge gates86 therefore expect p2.11 32/34 + p2.8 60/61 at the merge tip, and both are re-run after the push (gates87 pattern).
+→ R3 (aa61b06d) + hunter sign-off (a2b1c213) sent in parallel.
+
+## Hunter sign-off pass on fix 2 (account B, 15 Oct 06:4xZ · a2b1c213 · code read, no probe · full `scratchpad/p29bh/signoff.md`) — **one Low–Medium finding**, rest clean
+A9 clean (`service.ts:465-468`: unreleased VAT ≤ remaining deposit; 107000/7000 worked through big-then-small, small-then-big, exact, use-then-refund in both VAT states — 2110 nets 0, output VAT once at receipt, refund VAT kept after de-registration via `account/index.ts:398-399`) · P11 counter clean (`deposit-links.ts:48-71` single `UPDATE … RETURNING`, 5th wrong ⇒ 15-min lock, restart after expiry, reset on correct; masks `deposit.ts:197/:141`, no phone on receipt/audit) · P10 clean (`service.ts:419-430`, `register.ts:2524-2528` before table/split/replay; `payOrder`/API refuse deposits) · R6 clean (`shift.ts:402-404`; GL cash = drawer, revenue = X/Z net).
+**F1 (Low–Med)** `deposit.ts:347`: a 4-digit lookup query also searches by phone last 4 without touching the counter ⇒ a cashier can enumerate 0000–9999 (read-only) until the target receipt appears, then pass the last-4 check first try — ruling 3's lock never engages.
+
+## R3 (account B, 15 Oct 06:4xZ) — head 8445a4c5 / code 7d38de9a — **MERGEABLE-AFTER-FIXES** (reviewer aa61b06d; full `scratchpad/p29br/R3.md`) — rulings 1, 4, 5, 6 applied; 2 applied but exposes F1; 3 in place but F2 defeats it; merge 491ff89e carries both P2.11 and P2.9b hunks, th/en 3139/3139
+**F1 Med** `account/index.ts` `applyExternalSale`: in the A9 path after VAT de-registration the last ฿20 use is fully covered by the deposit and the 2000-satang VAT release zeroes the sale base ⇒ every journal line is 0, lines filtered out, `commitEntry` throws "ไม่มีบัญชี lines" ⇒ that bill's `pos.sale.paid` event retries and ends DEAD (A9 stays green because 2110 nets 0 and the test never checks the event outcome). **F2 Med** = hunter F1 (`deposit.ts:347` last-4 lookup without counter).
+
+## Controller rulings — fix round 3 (account B, 15 Oct 06:4xZ) — oracle first (dated ORACLE-EDIT/ADD, red-before block 4 in `P2.9b-red.txt`)
+1. **R3 F1** — `applyExternalSale` (and any sibling external-document poster that can hit the same case): when every journal line nets to 0 the document is still written and audited (payload `zeroEntry: true`) and the journal entry is skipped — never throw; the outbox event completes. ORACLE-EDIT **A9**: after draining, assert no `pos.sale.paid` event of the fixture bills is FAILED/DEAD and the sale document of the last bill exists. Owner line (`POS-OWNER-PENDING.md`): VAT de-registration between deposit receipt and use makes the released VAT absorb the whole value of a small last bill (revenue 0 on that bill, VAT stays as booked at receipt) — accountant to confirm the treatment.
+2. **R3 F2 / hunter F1** — drop the phone-last-4 search clause from the deposit lookup (`deposit.ts:347`): lookup = receipt no / holder name prefix (member deposits by member as today); the phone last 4 is a verification secret only (`checkDepositPhone`, counter + `DEPOSIT_LOCKED`). Brief §10 **ruling 19 amended** by the controller (controller tree): "lookup by receipt no / name prefix; last 4 = verification only". ORACLE-EDIT the existing lookup check that expects a last-4 match (by reason, dated marker) and ORACLE-ADD **P12**: a 4-digit query returns no deposit matched by phone and leaves `wrongAttempts`/lock untouched; a correct last 4 at apply still passes first try for the right holder. P2.9bU contract line updated (lookup field placeholder "เลขใบเสร็จ / ชื่อ", phone asked only at apply).
+3. Gates after fix 3 (clean head, dirty 0): typecheck · fitness ±env · fitness-pos · `qc-pos-p2.9b` **51** (50 + P12) forced ×2 + unforced, residue 0 · `qc-pos-p2.9` 62 · `qc-hf-tx` 22 · `qc-pos-account` 16 · `qc-account-cpa` 107 · `qc-pos-p1.17` 40 · `qc-hf-pos-page-authz` 81 · `qc-pos-p2.11` (expect 32/34, ST1/ST4) · `qc-pos-p2.8` (expect 60/61, ST6). Report ≤ 10 lines (head SHA first). Then R4 on the two hunks + hunter re-check → merge.
+
+## Fix round 3 delivered (account B, 15 Oct 08:2xZ) — head da045e04 (code eef6e031; gates at 6b019acb dirty 0)
+92da6d7c oracle (A9 edit + P12; red-before block 4 49/51) · 950fc192 ruling 1 · eef6e031 ruling 2 · 6b019acb contract line. Gates: typecheck 0 · fitness 50/50 ±env · fitness-pos 8/8 · **p2.9b 51/51 ×3** · p2.9 62 · hf-tx 22 · account 16 · cpa 107 · p1.17 40 · authz 81 · p2.11 32/34 (pins) · p2.8 60/61 (ST6). Full table in `pos-P2.9b.md` §Fix round 3.
+
+## R4 (account B, 15 Oct 08:23Z · head da045e04 / code eef6e031) — verbatim
+
+# P2.9b R4 — head da045e04 / code eef6e031 vs 8445a4c5 — **MERGEABLE**
+(R4 reviewer, read-only, account B, 15 Oct. Note: the R3 and fix-3 rulings sections are in the controller tree `/root/projects/shark-pos/ledger/wo-notes/pos-P2.9b-review.md` §R3/§"Controller rulings — fix round 3". Tree b's copy stops at fix round 2.)
+
+**F1 Low** `pos/refund-consumer.ts:77-83` (+ retries of `pos.sale.paid`). A zero-entry bill never gets `PosSale#<id>#PAID`, so `posSalePosted === false` stays true for good. Each refund event for that bill re-runs `bridgePosSalePaid`. The document upsert is idempotent, but the run writes another `account.external.zeroEntry` audit row (`account/index.ts:262-271`). That audit is also written before the document layer and commission, so an event retry duplicates it. No money moves. Smallest fix: write the audit only when the document is newly created, or skip it if one already exists for (action, refId). Not blocking.
+**F2 Low** `account/index.ts:715`. On a zero-entry bill that also carries a channel commission (DIRECT payout, last bill fully covered by the deposit after VAT de-registration), `applyExternalChannelCommission` returns `no-paid` without saying anything. The commission expense/AP is then never posted. Smallest fix: let the zero-entry marker count as "PAID present" for COMMISSION, or add it to the owner line. It is an edge case: it needs the A9 conditions plus a channel commission.
+**F3 Info** `account/index.ts:248-249`: the comment says "any other bill = old path every byte", which is not exact. A gross-0 PAID bill with no deposit (100% discount) also meets `zeroEntry`. Before, `commitEntry` threw ("ไม่มีบรรทัดบัญชี") and the event went DEAD. Now the event is DONE with an audit row and no document (the bridge sends `lines` only when gross > 0). This follows the ruling ("never throw") but no oracle covers it. Note it in the builder notes.
+**F4 Info** `pos/deposit.ts:334`: the docstring "อ่านอย่างเดียว (ไม่เขียนแถวใด)" is stale since fix 2. Receipt no + `phoneLast4` calls `checkDepositPhone` (`:357`), which writes the counter. This is by design (fix-2 ruling 3, P2.9bU contract "both counted"). A query with no `phoneLast4` never touches it.
+
+**Verified OK — ruling 1**
+- The skip test is exact per line: `base===0 && vat===0 && !tipCr && drLines.every(l => l.amountSatang===0)` (`index.ts:249`), checked on drLines after the `:234` filter. Every zero line is dropped when depositVat > 0, so the set is empty and `every` is true. svcBase ≤ base, so it is 0 too. `postExternalSale`'s Cr side is exactly goodsBase/svcBase/vat/crExtra(tip) (`gl.ts:1752-1756`), so every Cr is 0 as well. base ≥ 0 holds algebraically.
+- No throw: `{skipped:true}` gives `posted=false`. The document layer is unchanged (`:273+`). The audit payload has `zeroEntry:true` (`:269`). `writeAudit` swallows its own errors.
+- Sibling posters cannot reach an empty `commitEntry` in A9:
+  - `applyExternalDepositReceipt` `:353-355` and `applyExternalDepositRefund` `:410-412` both guard gross > 0 and Σpay = gross, so Dr/Cr money = gross > 0.
+  - `applyExternalRefund` `:592-594`: same guard (CN poster).
+  - `applyExternalChannelCommission` `:713-715`: `zero` / `no-paid` return before posting.
+- A9 ORACLE-EDIT (`qc-pos-p2.9b.mts:1935-1940`, after `drain()` `:1930`): all 3 `pos.sale.paid` events (receipt, b1, b2) must be `DONE`. This is stricter than "not FAILED/DEAD", because red-before was PENDING/1. The ฿20 bill's `accountDocument` must exist. `.catch→null` fails closed. Red-before block 4 = 49/51 (A9 + P12).
+- Owner line: `ledger/POS-OWNER-PENDING.md:210`.
+
+**Verified OK — ruling 2**
+- The `deposit.ts:346-349` OR clause is now receipt no (exact) / `customerName` startsWith (insensitive) / `customerId in mergedFamily` only. The `phoneLast4` push is removed (`:347`).
+- `viewOf` (`:127-146`) never serialises `phoneLast4`. A walk-in `phoneMasked` shows only the first 3 digits.
+- The counter is touched only on receipt no + last 4.
+- P12 (`:2004-2021`): a 4-digit query returns OK/VALIDATION without the P12 deposit, the counter stays 0 with no lock, and the correct last 4 at apply passes first try.
+- No older check expected a phone match, so no ORACLE-EDIT was needed. Checked P7 `:1295-1320`, P9 `:1854-1870`, P10 `:1892`, P11 `:1978`: all query by receipt/name/member. `:1308` and P9 s4/s5 use receipt + last 4 as verification and are still valid.
+- Brief ruling 19 amended text (controller tree `pos-brief-P2.9b.md:108`) matches the code.
+- Contract line is present (`pos-P2.9b.md` §P2.9bU "fix 3").
+
+**Verified OK — hygiene**
+- 8445a4c5..da045e04 touches only `scripts/qc-pos-p2.9b.mts`, `P2.9b-red.txt`, `POS-OWNER-PENDING.md`, `pos-P2.9b.md`, `account/index.ts`, `pos/deposit.ts`. Each commit matches its stat (92da6d7c test-only, 950fc192, eef6e031, 6b019acb ledger-only).
+- No hunk in `register.ts`, `account/service.ts`, `giftcard/**`, `member/**`, `prisma/`, or `src/messages`.
+- th/en leaf keys 3155/3155, unchanged.
+
+## Hunter re-check on fix 3 (account B, 15 Oct 08:23Z) — verbatim
+
+# P2.9b hunter re-check, fix 3: `wip/pos-p2.9b` da045e04 (code eef6e031). Code read and arithmetic only, no probes.
+**Verdict: FINDINGS (2 Low, 2 Info)**
+- R3 F1 / A9: closed.
+- Hunter F1 (last-4 lookup): closed.
+- None of the findings blocks the merge on its own. N1 and N2 are owner-line or follow-up material.
+
+## A9 path (฿1,070 deposit, VAT 70, then de-registered)
+- **Use 1,050:** releases 5000 satang of VAT. Bill 1 JV: Dr 2110 100000 / Cr income 100000.
+- **Last ฿20 bill:**
+  - `account/index.ts`: baseFull 2000, vatFull 0, depositVat 2000 ⇒ vat 0, base 0.
+  - The DEPOSIT Dr line is 0 and filtered out ⇒ `drLines = []`. So the test at :249 is true, and it is exact: the JV balances (Σdr = base + vat), so base = vat = 0 ⇔ every Dr line is 0.
+  - Result: no JV, audit `zeroEntry` (:263), document upserted (:298), the event's `bridgePosSalePaid` result is not checked ⇒ **DONE**.
+- **Totals:** 2110: Cr 100000 − Dr 100000 = **0**. Σ released VAT = 5000 + 2000 = **7000 (฿70)**. 2200 keeps 7000, booked once at receipt.
+- **Void of the zero-entry bill:** `reverseFor` finds no entries ⇒ `[]`, no throw. The document is voided, and RESTORE puts back 2000 / VAT 2000.
+- **X/Z, close-day, reports:** these read `PosSale` only, so the bill is counted once (฿20, DEPOSIT tender). The GL change doesn't affect them.
+- **Code that assumes a PAID sale has a JV:**
+  - No `journalEntryId` on `PosSale` or on documents. E-tax, reconcile and `linkActivity` don't key on the sale JV.
+  - The only readers are `posSalePosted` (refund-consumer :60/:77, `ensureDepositReceiptsPosted`) and the commission gate (N1).
+- **Refund of the zero-entry bill:**
+  - `refund.ts:594`: basis = 0 + 2000, full refund ⇒ refund VAT 2000.
+  - Step 1a: `posSalePosted` is false for ever, so `bridgePosSalePaid` runs again on every refund event. That is idempotent: zero entry again, the document already exists (`created:false`, no second bundle cut).
+  - `postExternalRefund` doesn't need the sale JV: it books its own JV under the refund id. No "reverse of nothing" throw.
+  - **Re-registered:** `explicitVat` 2000 ⇒ Dr 2200 2000 / Cr cash 2000. Consistent.
+  - **De-registered:** see N2.
+
+## Hunter F1 / R3 F2 (last 4)
+- `deposit.ts:345-349`: the lookup's OR list is receipt no exact / name prefix / member family only. There is no phone clause.
+- Other places that could match a deposit by phone:
+  - `git grep phoneLast4` finds it only in the deposit, deposit-links and register checks.
+  - No `PosSale` phone column. The receipt sale has `memberId` null.
+  - Bill and receipt search never join `PosDeposit`.
+  - Only free text a cashier types into `note` could carry a phone.
+- **Counter:** reserved before it compares, in one `UPDATE … RETURNING` (`deposit-links.ts:56-64`).
+  - The 5th wrong try sets now() + 15 min. After expiry the count restarts at 1.
+  - A correct value resets the count only when the row is not locked (or the count equals its own slot).
+- The brief says "at apply only". That is not quite true: there are two doors, apply (`register.ts:2524`) and lookup with `receiptNo` + `phoneLast4` (`deposit.ts:357`). Both go through the same counter, so neither bypasses it.
+- **Lock hint:** a LOCKED row in the lookup looks the same as WRONG or no last 4 (balance null, `needsPhoneLast4` true, same status). Apply returns a distinct DEPOSIT_LOCKED. That tells an attacker to wait, but not the digits.
+- Worst case at 5 tries per 15 min ≈ 500 h for 10⁴ values. A deliberate 15-min lockout of a customer's deposit is inherent to the design.
+
+## Findings
+- **N1 Low** `account/index.ts:715` together with `account-bridge.ts:190`: a zero-entry bill never gets a `PAID` JV, so its channel commission returns `no-paid` silently.
+  - Scenario: A9 de-registered last slice on a DIRECT/PLATFORM channel with commission ⇒ commission expense and AP/AR never booked. A refund then returns `no-commission`, consistently.
+  - It is narrow: it needs de-registration, a small last slice and a commission channel.
+  - Fix: let the commission gate accept "PAID posted **or** zero entry recorded", or refuse DEPOSIT on commission bills. Otherwise add it to the owner line.
+- **N2 Low** `account/index.ts:602`: refunding the ฿20 zero-entry bill after de-registration ignores `refund.vatSatang` (2000) because `explicitVat` requires `vatRegistered`. It books Dr income 2000 / Cr cash 2000 instead of Dr 2200 2000.
+  - Result: income 98000 and 2200 at 7000. The remainder-refund path (7d38de9a) gives income 100000 and 2200 at 5000.
+  - Two paths for the same economics differ by 2000 between revenue and output VAT. The POS refund also prints VAT ฿20 while the credit note shows 0.
+  - This predates fix 3 (A9 path) and isn't a regression.
+  - Fix: honour the explicit VAT on refunds of deposit-paid bills, the same way the deposit-refund posting does. Or extend the ruling-1 owner line to "refund after de-registration".
+- **N3 Info** fix 3 also changes ฿0 bills. A ฿0 bill (`register.ts:2154`, empty payMethods) now meets `zeroEntry` too: it completes with an audit row, where before `commitEntry` threw and the event went DEAD. That is an improvement, but the comment "otherwise byte-identical" (:247) is not exact.
+- **N4 Info** idempotency:
+  - `writeAudit` runs outside any transaction before the document. Event retries and every refund-consumer step 1a add duplicate `account.external.zeroEntry` rows. That is cosmetic.
+  - A transient document failure ⇒ the event is still DONE, with no document and no JV (no money is lost). The document heals only if the bill is later refunded.
+  - The lookup doc comment "อ่านอย่างเดียว (ไม่เขียนแถวใด)" (`deposit.ts:334`) is stale: lookup with receipt no + last 4 writes the counter.
+- No new lock or ordering risk:
+  - The zero-entry branch takes no lock and runs before the document's own transaction.
+  - The document upsert dedupes by ref (`findDocByRef` + the in-tx `again`).
+  - The 3 fix-3 commits touch only `account/index.ts`, `deposit.ts` and the QC script.
+
+## Controller rulings — fix round 4 (account B, 15 Oct) — oracle first (dated ORACLE-ADD, red-before block 5 in `P2.9b-red.txt`) — all Low, but money-ledger correctness with small fixes: round before merge (quality rule 10 Oct)
+1. **R4 F2 / hunter N1** — the channel-commission gate (`account/index.ts:~715` + `account-bridge.ts:~190`) treats a sale as paid when its PAID JV exists **or** the sale's account document exists with the `zeroEntry` outcome (choose the smallest reliable signal — e.g. `applyExternalSale` returns `{skipped:true, zeroEntry:true}` and the bridge records it on the document payload); commission expense/AP posts once; refund-side commission reversal stays consistent · ORACLE-ADD **A10**: A9 scenario on a commission channel (PLATFORM or DIRECT with commission) ⇒ commission JV posted exactly once, event DONE; refund of that bill reverses the commission consistently (no `no-commission` silent return).
+2. **Hunter N2** — `applyExternalRefund` (`account/index.ts:~602`): honour the explicit `refund.vatSatang` for refunds of deposit-paid bills after VAT de-registration, the way the deposit-refund posting does (7d38de9a): Dr 2200 / Cr cash for the VAT part, income untouched for it · ORACLE-ADD **X10**: refund of the ฿20 zero-entry bill after de-registration ⇒ Dr 2200 2000 / Cr cash 2000; income stays 100000 and 2200 ends 5000 — identical to the remainder-refund path; the CN shows VAT ฿20 like the POS refund.
+3. **R4 F1 / hunter N4 (audit + document)** — `zeroEntry` audit written once per (action, refId) (skip when one exists, or write it only when the document is newly created); on the zero-entry path a document upsert failure **rethrows** so the event retries (idempotent upsert) instead of ending DONE without a document — "never throw" of ruling 1 applies to the empty journal only. No oracle (failure injection); reviewer verifies by reading.
+4. **R4 F3 / hunter N3 (info)** — fix the comment at `account/index.ts:~247` ("otherwise byte-identical" is not exact: ฿0 bills now complete with an audit row and no JV) and add one line to the notes + owner line (฿0 bills: previously DEAD event, now DONE — improvement) · **R4 F4** — fix the stale docstring at `deposit.ts:~334` (lookup with receipt no + last 4 writes the counter).
+5. Gates after fix 4 (clean head, dirty 0; one unit like out6 → out7): typecheck · fitness ±env · fitness-pos · `qc-pos-p2.9b` **53** (51 + A10 + X10) forced ×2 + unforced, residue 0 · `qc-pos-p2.9` 62 · `qc-hf-tx` 22 · `qc-pos-account` 16 · `qc-account-cpa` 107 · `qc-pos-p1.17` 40 · `qc-hf-pos-page-authz` 81 · `qc-pos-p1.8` 49 · `qc-pos-p1.12` 72 (refund paths) · `qc-pos-p2.11` (32/34 pins) · `qc-pos-p2.8` (60/61 ST6). Notes §"Fix round 4", push. Then R5 (hunks) + hunter sign-off → merge gates on tree b → merge → 34/55.
