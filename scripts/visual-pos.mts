@@ -973,7 +973,7 @@ if (DRY) {
     }
     // POS P2.11U ▸ มติ 11 ◂
     if (jobs.some((j) => isP211uState(j.state))) {
-      console.log(`สถานะหลายสาขา P2.11U (${userKey}${userKey === "manager" ? ` · ผู้จัดการ{สาขาสีลม} ${MANAGER_VIS.email} — สร้าง/ใช้ซ้ำ User + Membership MANAGER ก่อน mint session` : ""}):`);
+      console.log(`สถานะหลายสาขา P2.11U (${userKey}${userKey === "manager" ? ` · ผู้จัดการ{สาขาสีลม} ${MANAGER_VIS.email} — สร้าง/ใช้ซ้ำ User + สร้าง Membership MANAGER ก่อน mint session · ลบ Membership ตอนเก็บกวาด (fix1 มติ 6)` : ""}):`);
       for (const st of P211U_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(27)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       console.log(
         `  P2.11U: fixture (สาขา ${unitKey}) — ลาเต้ (STORE, สาขา) + แถวเลิกใช้ของช่องทาง ZZVIS (saveChannel → ตั้งราคา → archiveChannel · คืนแถวเดิม + ลบช่องทางของรอบหลังงานสุดท้าย/finally/สัญญาณ) · ` +
@@ -5691,7 +5691,8 @@ async function p29uCashExactConfirm(page: Any): Promise<void> {
 //   • หน้า reports: บิล PAID วันนี้ที่สีลม 3 ใบ (createSale คีย์ต่อวัน posqc-vis-p211u-<n>-<วันที่> · หน้าร้าน ×2 PROMPTPAY + LINE MAN ×1 PLATFORM) — ไม่ลบ (แบบ sale-done)
 //   • หน้า settings: สมุด ABB ชั่วคราว (ensureAbbBook · คืนใน cleanRpub) + ค่าของสาขาสีลม (สาขาที่ 00001 · ที่อยู่ · โทร) ผ่าน updatePosReceiptUnitSettings · คืนค่าเดิมหลังงานสุดท้าย
 //   • หน้า stock: seed QC ผูกสีลม + อารีย์กับคลังเดียวกันอยู่แล้ว (posUnitInventoryMap shared) — ไม่มี = ผูกอารีย์กับคลังของสีลม (linkUnit) แล้วลบลิงก์ของรอบตอนเก็บกวาด
-//   • ผู้ใช้ manager: ensureManagerUser (User + Membership MANAGER unitAccess [สีลม] · id ตายตัว · สร้างครั้งแรก/ใช้ซ้ำ · ไม่ลบ)
+//   • ผู้ใช้ manager: ensureManagerUser (User + Membership MANAGER unitAccess [สีลม] · id ตายตัว · User สร้างครั้งแรก/ใช้ซ้ำ ·
+//     fix1 มติ 6: Membership ลบใน cleanupP211u ทุกรอบ แล้วสร้างใหม่รอบถัดไป)
 const P211U_CH = "ZZVIS";
 /** ค่าใบเสร็จของสาขาสีลมใน fixture (fix1 มติ 5: ใช้จับซากของรอบที่ถูก kill ด้วย) */
 const P211U_RECEIPT = { taxBranchNo: "00001", address: "99/1 ถนนสีลม แขวงสุริยวงศ์ เขตบางรัก กรุงเทพฯ 10500", phone: "02-000-0001" } as const;
@@ -5707,8 +5708,10 @@ const P211U = {
   receiptBefore: null as null | { taxBranchNo: string | null; address: string | null; phone: string | null },
   invLinkCreated: "",
   bills: [] as string[],
+  managerMembership: false, // fix1 มติ 6: รอบนี้สร้าง/ตั้ง Membership MANAGER ของภาพ ⇒ ลบตอนเก็บกวาด
 };
-/** ผู้จัดการสาขาสีลมของภาพ (ไม่อยู่ใน seed-pos-qc) — สร้างครั้งแรก · ใช้ซ้ำรอบถัดไป · บทบาท/สาขาถูกตั้งกลับทุกรอบ */
+/** ผู้จัดการสาขาสีลมของภาพ (ไม่อยู่ใน seed-pos-qc) — User สร้างครั้งแรก/ใช้ซ้ำ · Membership MANAGER สร้างทุกรอบ แล้วลบใน cleanupP211u
+ *  (fix1 มติ 6 · R1 F6: ไม่ค้างในร้าน QC ⇒ ภาพพนักงาน P1.18U บน QC5 ไม่มีแถวเกิน) */
 async function ensureManagerUser(): Promise<void> {
   const silom = (T.units as Record<string, { id: string }>).silom?.id;
   if (!silom) throw new Fatal("ร้าน QC ไม่มีสาขาสีลม (ผู้จัดการของภาพ P2.11U)");
@@ -5718,6 +5721,7 @@ async function ensureManagerUser(): Promise<void> {
     update: { role: "MANAGER", unitAccess: [silom], permissions: {}, acceptedAt: new Date() },
     create: { id: MANAGER_VIS.membershipId, userId: MANAGER_VIS.userId, tenantId: T.tenantId, role: "MANAGER", unitAccess: [silom], permissions: {}, acceptedAt: new Date() },
   });
+  P211U.managerMembership = true;
 }
 async function ensureP211uFixture(): Promise<void> {
   if (P211U.done || P211U.error) return;
@@ -5859,6 +5863,12 @@ async function cleanupP211u(): Promise<void> {
     const r = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, await ownerActor(), { unitId, patch: { ...P211U.receiptBefore } });
     if (!r.ok) throw new StepError(`${r.code} ${r.field ?? ""}`);
     return "คืนค่าใบเสร็จของสาขาสีลม";
+  });
+  // fix1 มติ 6 (R1 F6): Membership MANAGER ของภาพ — ลบ (User คงไว้ · รอบหน้าสร้างใหม่ใน ensureManagerUser) · session ของรอบลบใน finally ตามเดิม
+  await step("ลบ Membership ผู้จัดการของภาพ", async () => {
+    if (!P211U.managerMembership) return null;
+    const d = await prisma.membership.deleteMany({ where: { userId: MANAGER_VIS.userId, tenantId: T.tenantId } });
+    return `ลบ Membership MANAGER ของภาพ ${d.count} แถว (ผู้ใช้คงไว้)`;
   });
   await step("ลบลิงก์คลังของรอบ", async () => {
     if (!P211U.invLinkCreated) return null;
