@@ -485,7 +485,8 @@ async function runStatic(): Promise<void> {
       const hits = walk(`src/lib/modules/${d}`).filter((f) => /\bchannelId\b|\bchannelRef\b/.test(srcOf(f)) && /createSale/.test(srcOf(f)));
       if (hits.length) p.push(`${d} แตะ channelId ในไฟล์ที่เรียก createSale (${hits.map((h) => h.split("/").pop()).join(",")} · CD2 ห้าม)`);
     }
-    if (!/const\s+EXTERNAL_PAY_TYPES\s*=\s*\[\s*"CASH"\s*,\s*"TRANSFER"\s*,\s*"PROMPTPAY"\s*\]\s*as\s+const/.test(srcOf(F.restOps))) p.push("REST EXTERNAL_PAY_TYPES เปลี่ยน (Q8: คงเดิมถึง P2.13)");
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD2 มติ 5: วิธีจ่าย REST v1 = CASH TRANSFER PROMPTPAY CARD PLATFORM (ห้ามเกินชุดนี้)
+    if (!/const\s+EXTERNAL_PAY_TYPES\s*=\s*\[\s*"CASH"\s*,\s*"TRANSFER"\s*,\s*"PROMPTPAY"\s*,\s*"CARD"\s*,\s*"PLATFORM"\s*\]\s*as\s+const/.test(srcOf(F.restOps))) p.push("REST EXTERNAL_PAY_TYPES เปลี่ยน (P2.13 มติ 5: CASH TRANSFER PROMPTPAY CARD PLATFORM เท่านั้น)");
     chk("ST3", p.length === 0, "pos→account ผ่าน facade · facade/gl ครบ · PLATFORM ไม่ตก TRANSFER · builtins race-free · CD2 · REST เดิม", P8(p) || `ครบ (${posFiles.length} ไฟล์ pos)`);
   }
   // ST4 "use server"
