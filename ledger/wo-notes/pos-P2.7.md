@@ -91,3 +91,14 @@ Logs under `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/
 | typecheck (heap 8192) | exit 0 (1 run) | typecheck-1.log |
 | visual-pos p2.7 --states --dry | U card (skipped) | — |
 
+
+## Fix round 1 (controller rulings on CD-B1–B4 · `pos-P2.7-review.md` · test-only, marker `// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7 fix 1)`)
+Commits on top of 71f5cd10 (no history rewrite): cde24d23 `test(qc-pos-p2.7)` PY11 asserts the display's `intentId === null` (payload inequality dropped · X-report half kept) · 37e2b190 `test(qc-pos-p2.6)` A6 spy list + "QR" · 799587e5 `test(qc-pos-p2.8)` ST1 counts only migrations with `CREATE TABLE IF NOT EXISTS "PosOrder(Line|Event)?"` · 72cd28e0 `test(qc-pos-p1.7)` C9 allows `SET lock_timeout`. No code change.
+Re-runs at 72cd28e0 (unforced, QC4, logs `runs/f1-<suite>.log`):
+| suite | result | note |
+|---|---|---|
+| qc-pos-p2.7 | **38/38** | residue 0 |
+| qc-pos-p2.6 | **67/67** (PAR 5/5) | |
+| qc-pos-p2.8 | **60/61** | ST6 = lane pin vs origin merge-base (register.ts CD4 hunk · channel.ts QR_ORDER→QR) |
+| qc-pos-p1.7 | **33/33** | |
+| qc-pos-p2.13 | **53/54** | ST4 green with the copied skill dir; ST5 = lane pin vs merge-base ("prisma/ changed · outbox-consumers.ts edited" — the R1 migration + the ruled intent_paid consumer hunk), already listed above — not 54/54 |
