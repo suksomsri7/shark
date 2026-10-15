@@ -78,3 +78,14 @@ exit=1
 ## §base-d0561566 (builder · 15 Oct 2026 · P2.12 S merged ⇒ RP2 real)
 forced QC4 qc-pos-p2.13: 2/49 (Z1 Z2 · RP2 now red instead of SKIP) — scratch runs/base-p213-forced.log
 forced QC4 qc-pos-api-skill: 1/10 (K10) — scratch runs/base-skill-forced.log
+
+## §fix1 (builder · 15 Oct 2026 · code = be0f92cb + test commits 0e69cecc ORACLE-EDIT OR4 · cb87affd ORACLE-ADD SA9 SA10 AU9 RP5 OR7)
+unforced QC4 qc-pos-p2.13 (54 checks): 48/54 — scratch runs/fix1/red-p213-u.log
+❌ P2.13-AU9  พร้อมเพย์ไม่อ้าง pi_ → 200 · บัตร → 200 · บิล +2 (pos-operate holds pos.shift.manage ⇒ manager gate passed · F3/H2)
+❌ P2.13-SA9  void → 200 · คำขออนุมัติ POS_VOID 0 ใบ · บิล VOIDED (REST void skips the POS_VOID rule · F1)
+❌ P2.13-SA10 void → 200 · บิล VOIDED (API bill in a closed shift voided · F2/H1)
+❌ P2.13-OR7  จ่ายเงินสด → 200 · ออเดอร์ PAID บิล=true · บิล +1 (cash recorded out of shift · H3)
+❌ P2.13-RP5  แถวคีย์ name=null (F4)
+❌ P2.13-OR4  after the edit the order of steps passes (accept/preparing/ready/pay/complete/illegal step all as expected) — still red on `pay.body.data.saleId`:
+   orders.pay answers data = the saleId string (CD9 single-field rule) on a first pay but {saleId, duplicated} on a replay ⇒ builder fixes the op to always answer {saleId, duplicated} (code, not oracle)
+expected red-before = AU9 SA9 SA10 OR7 RP5 (all red) · OR4 green after its edit (red only on the reply-shape defect above)
