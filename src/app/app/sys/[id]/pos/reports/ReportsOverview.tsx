@@ -9,6 +9,11 @@
 // 🔴 แต่ละส่วนถูกปฏิเสธแยกกัน — การ์ดที่ถูกปฏิเสธแสดงข้อความในการ์ดเอง หน้าไม่ว่าง
 // POS P2.11U ▸ มติ 7: ส่วน "channels" (reportChannels) = การ์ด "ช่องทางการขาย · % ของยอด" ระหว่าง "สินค้าขายดี" กับ "วิธีชำระ" (1440 = แถว 3 คอลัมน์ · 390 = เรียงลง) ·
 //   แถวต่อช่องทาง (ชื่อจาก DTO) = แท่ง (sharePct ของยอดสุทธิหลังหักค่าคอมฯ) + % + ยอด (hover · 390 แสดงในแถว) · หมายเหตุ "ยอดแพลตฟอร์มหักค่าคอมมิชชันแล้วในกำไรขั้นต้น" ◂
+// POS P2.12U ▸ มติ 2: ช่วงวันเดียว = การ์ดกราฟเป็น "ยอดขายรายชั่วโมง" (ส่วน hourly · 24 ชั่วโมงของวันธุรกิจ · ป้ายจาก DTO) — แท่งเทา = ยอดจริง ·
+//   แท่งดำ = ช่วงขายดี (ชั่วโมงยอดสูงสุด) · แท่งสีเน้น + ป้าย = ชั่วโมงนี้ (เฉพาะเมื่อ to = วันนี้ · ชั่วโมงไทยอ่านหลัง mount — HF-418) ·
+//   กล่องเส้นประ = คาดการณ์เฉลี่ย 4 สัปดาห์ (forecastSatang ของเซิร์ฟเวอร์) · หมายเหตุใต้กราฟ: คาดการณ์ ÷ 4 คงที่ (ร้านใหม่ต่ำกว่าจริง) + ชั่วโมงแรกรวมเศษนาที
+//   (เฉพาะเวลาตัดวันไม่ลงชั่วโมงเต็ม · มติ decision 3) · หลายวัน = กราฟรายวันเดิม · ขอเฉพาะส่วนที่แสดง (`only` เสมอ — ไม่ขอ hourly เมื่อหลายวัน /
+//   ไม่ขอ chart เมื่อวันเดียว / ไม่ขอ branches เมื่อเห็นสาขาเดียว · decision 6) ◂
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl"; // POS P2.11U ▸ ชื่อช่องทาง builtin ตามภาษาจอ (pos.channel) ◂
@@ -19,6 +24,8 @@ import type { OverviewBranches, OverviewPart, OverviewSection, ReportOverview } 
 import type {
   ChannelRow, // POS P2.11U ◂
   ChannelTotals, // POS P2.11U ◂
+  HourlyRow, // POS P2.12U ◂
+  HourlyTotals, // POS P2.12U ◂
   DailyRow,
   DailyTotals,
   MarginRow,
@@ -38,6 +45,7 @@ type MarginRep = Report<"margin", MarginRow, MarginTotals>;
 type PaymentsRep = Report<"payments", PaymentRow, PaymentTotals>;
 type StaffRep = Report<"staff", StaffRow, StaffTotals>;
 type ChannelsRep = Report<"channels", ChannelRow, ChannelTotals>; // POS P2.11U ◂
+type HourlyRep = Report<"hourly", HourlyRow, HourlyTotals>; // POS P2.12U ◂
 
 type Props = {
   systemId: string;
@@ -53,6 +61,10 @@ type Props = {
   refusalText: (code: string) => string;
   onGenerated: (iso: string | null) => void;
   onSeeAll: (kind: ReportKind) => void;
+  /** POS P2.12U ▸ มติ 2: เวลาตัดวันของระบบ (นาที) — ไม่ลงชั่วโมงเต็ม = หมายเหตุ "ชั่วโมงแรกรวมเศษนาที" ใต้กราฟรายชั่วโมง ◂ */
+  cutoffMinutes: number;
+  /** POS P2.12U ▸ มติ 5: ป้าย "ส่วนลดสูงผิดปกติ" = กฎ A3 ของเซิร์ฟเวอร์ (bp จาก posAnomalyThresholds ที่หน้าอ่านฝั่งเซิร์ฟเวอร์) · null = ปิดการตรวจ (ไม่มีป้าย) ◂ */
+  discountFlagBp: number | null;
 };
 
 // ═══════════ ตัวช่วยวันที่ (ใช้ร่วมกับ ReportsClient) ═══════════
@@ -86,8 +98,7 @@ const shareBp = (part: number, whole: number): number | null => (whole > 0 ? Mat
 const arrow = (d: number) => (d > 0 ? "▲" : d < 0 ? "▼" : "");
 /** ตัวอักษรย่อของชื่อ — ข้ามสระหน้า (เ แ โ ใ ไ) แบบภาพ 08 (แพร → พ) */
 const initialOf = (name: string) => Array.from(name.trim()).find((ch) => !/[เแโใไ\s]/.test(ch)) ?? "?";
-/** P1.17U R4 §2.6 — ป้าย "ส่วนลดสูงผิดปกติ" = ส่วนลด > 15% ของยอดสุทธิ (ข้อสังเกตบนจอ · ไม่ใช่กฎของระบบ) */
-const HIGH_DISCOUNT_BP = 1500;
+// POS P2.12U ▸ มติ 5: ค่าคงที่ฝั่งจอ HIGH_DISCOUNT_BP (15%) ถูกลบ — เกณฑ์มาจากกฎ A3 ของระบบ (prop discountFlagBp) ◂
 /** ป้ายวิธีชำระที่มีคีย์ pos.shift.method.* (อื่น ๆ ใช้ป้ายจากเซิร์ฟเวอร์) — ชุดเดียวกับ ReportsClient */
 const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R1 ◂
 /** R5 — กราฟรายวันแสดง 14 วันล่าสุดจบที่วัน `to` เสมอ (ช่วงจริงมาจากเซิร์ฟเวอร์: overview.chartRange) */
@@ -246,8 +257,77 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
   );
 }
 
+// ═══════════ POS P2.12U ▸ มติ 2: กราฟรายชั่วโมง (ภาพ 08: แท่งเทา · ช่วงขายดีดำ · ชั่วโมงนี้สีเน้น · คาดการณ์กล่องเส้นประ) ◂ ═══════════
+/** เส้นประของกล่องคาดการณ์ (ภาพ 08 --line2) — ผสมจาก token */
+const FC_LINE = "border-[color:color-mix(in_srgb,var(--color-ink)_30%,var(--color-surface))]";
+export function HourlyBars({ rows, t, nowLabel }: { rows: HourlyRow[]; t: T; nowLabel: string | null }) {
+  const n = rows.length;
+  const top = niceCeilSatang(Math.max(0, ...rows.map((r) => Math.max(r.netSalesSatang, r.forecastSatang))));
+  const nowIdx = nowLabel === null ? -1 : rows.findIndex((r) => r.label === nowLabel);
+  const peak = Math.max(0, ...rows.map((r) => r.netSalesSatang));
+  const peakIdx = peak > 0 ? rows.findIndex((r) => r.netSalesSatang === peak) : -1;
+  const pctOf = (v: number) => (top > 0 ? Math.max(0, (v / top) * 100) : 0);
+  // ป้ายแกน X: จอ ≥ sm = ทุกชั่วโมง · จอแคบ = ทุก 3 ชั่วโมง + ชั่วโมงนี้
+  const key = (i: number) => i % 3 === 0 || i === nowIdx;
+  // ป้ายตัวเลขยื่นเข้าหากลางกราฟเสมอ (ครึ่งซ้ายชิดซ้ายของแท่ง · ครึ่งขวาชิดขวา) — ไม่ล้นขอบการ์ดที่ 390
+  const valuePos = (i: number) => (i < n / 2 ? "left-0" : "right-0");
+  return (
+    <div className="flex min-w-0 gap-3 sm:gap-5" role="img" aria-label={t("hourly.title")} data-testid="pos-reports-hourly-chart">
+      <div className={`mt-6 flex h-[170px] w-14 shrink-0 flex-col justify-between text-right text-[11px] tabular-nums ${MUTED}`} aria-hidden="true">
+        <span className="-translate-y-1/2">{formatBaht(top)}</span>
+        <span className="-translate-y-1/2">{formatBaht(Math.round(top / 2))}</span>
+        <span className="-translate-y-1/2">{formatBaht(0)}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="relative pt-6">
+          <div className="pointer-events-none absolute inset-x-0 top-6 flex h-[170px] flex-col justify-between" aria-hidden="true">
+            <i className="block border-t border-dashed border-[color:var(--color-line)]" />
+            <i className="block border-t border-dashed border-[color:var(--color-line)]" />
+            <i className="block border-t border-[color:var(--color-line)]" />
+          </div>
+          <div className="relative flex h-[170px] items-end gap-px sm:gap-1">
+            {rows.map((r, i) => {
+              const h = r.netSalesSatang > 0 ? Math.max(2, pctOf(r.netSalesSatang)) : 0;
+              const f = pctOf(r.forecastSatang);
+              const now = i === nowIdx;
+              const tone = now ? "bg-[color:var(--color-accent)]" : i === peakIdx ? "bg-[color:var(--color-ink)]" : BAR_GREY;
+              const showValue = r.netSalesSatang > 0 && (i === peakIdx || now);
+              return (
+                <div
+                  key={r.hour}
+                  className="relative flex h-full min-w-0 flex-1 items-end"
+                  title={`${r.label}:00 · ${formatBaht(r.netSalesSatang, { decimals: true })} · ${t("hourly.forecast")} ${formatBaht(r.forecastSatang, { decimals: true })}`}
+                  data-testid={now ? "pos-reports-hourly-now" : undefined}
+                >
+                  {f > 0 ? <i data-forecast="" className={`absolute inset-x-0 bottom-0 block rounded-t-[3px] border-[1.5px] border-b-0 border-dashed ${FC_LINE} bg-[color:var(--color-surface)]`} style={{ height: `${f}%` }} aria-hidden="true" /> : null}
+                  {showValue ? (
+                    <span className={`absolute ${valuePos(i)} z-10 whitespace-nowrap text-[11px] font-bold tabular-nums ${now ? "text-[color:var(--color-accent)]" : ""}`} style={{ bottom: `calc(${Math.max(h, f)}% + 4px)` }}>
+                      {baht(r.netSalesSatang)}
+                      {now ? <span className="hidden sm:inline">{` · ${t("hourly.inProgress")}`}</span> : null}
+                    </span>
+                  ) : null}
+                  <div className={`relative w-full rounded-t-[3px] ${tone}`} style={{ height: `${h}%` }} />
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 flex gap-px sm:gap-1" aria-hidden="true">
+            {rows.map((r, i) => (
+              <span key={r.hour} className={`min-w-0 flex-1 text-center text-[11px] tabular-nums ${i === nowIdx ? "font-bold text-[color:var(--color-accent)]" : MUTED}`}>
+                <span className={key(i) ? undefined : "hidden sm:inline"}>{r.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+/** ชั่วโมงนาฬิกาไทยตอนนี้ (2 หลัก) — อ่านหลัง mount เท่านั้น (HF-418) */
+const bkkHourNow = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", hour12: false }).format(new Date()).padStart(2, "0").slice(-2);
+
 // ═══════════ จอภาพรวม ═══════════
-const ALL_SECTIONS: readonly OverviewSection[] = ["daily", "prev", "margin", "payments", "staff", "chart", "branches", "channels"]; // POS P2.11U ▸ มติ 7: + channels ◂
+const ALL_SECTIONS: readonly OverviewSection[] = ["daily", "prev", "margin", "payments", "staff", "chart", "branches", "channels", "hourly"]; // POS P2.11U ▸ มติ 7: + channels ◂ · POS P2.12U ▸ มติ 2: + hourly ◂
 /** ส่วนของภาพรวม → ช่อง (ส่วนที่กำลังโหลดใหม่ = loading) */
 function slotOf<R>(ov: ReportOverview | null, sec: OverviewSection, busy: ReadonlySet<OverviewSection>, whole: string | null): Slot<R> {
   if (busy.has(sec)) return { s: "loading" };
@@ -258,7 +338,7 @@ function slotOf<R>(ov: ReportOverview | null, sec: OverviewSection, busy: Readon
 }
 const partSlot = <R,>(p: OverviewPart<R>): Slot<R> => (p.ok ? { s: "ok", v: p.data } : { s: "err", code: p.code });
 
-export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll }: Props) {
+export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll, cutoffMinutes, discountFlagBp }: Props) {
   const [ov, setOv] = useState<ReportOverview | null>(null);
   const tch = useTranslations("pos.channel"); // POS P2.11U ▸ ชื่อช่องทาง builtin ตามภาษาจอ ◂
   const [whole, setWhole] = useState<string | null>(null); // คำปฏิเสธทั้งก้อน (ช่วงผิด/สิทธิ์ระดับร้าน/ขัดข้อง)
@@ -269,15 +349,17 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
   const viewRef = useRef(viewKey);
   viewRef.current = viewKey;
 
+  const singleDay = from === to; // POS P2.12U ▸ มติ 2 ◂
   const fetchOverview = useCallback(
     (only?: OverviewSection[]) => {
       // เห็นสาขาเดียว = ไม่ขอส่วนสาขาเลย (การ์ดไม่แสดงอยู่แล้ว)
-      const secs = only ?? (unitCount < 2 ? ALL_SECTIONS.filter((x) => x !== "branches") : undefined);
-      return posReportOverviewAction({ systemId, from, to, ...(unitId ? { unitId } : {}), ...(secs ? { only: secs } : {}) }).catch(
+      // POS P2.12U ▸ มติ 2 (decision 6): ส่ง only เสมอ — วันเดียว = hourly แทน chart · หลายวัน = chart ไม่ขอ hourly (ไม่คำนวณ 28 วันย้อนหลังทิ้ง) ◂
+      const secs = only ?? ALL_SECTIONS.filter((x) => (x !== "branches" || unitCount >= 2) && (x !== "hourly" || singleDay) && (x !== "chart" || !singleDay));
+      return posReportOverviewAction({ systemId, from, to, ...(unitId ? { unitId } : {}), only: secs }).catch(
         () => ({ ok: false, code: "INTERNAL", message: "" }) as const,
       );
     },
-    [systemId, unitCount, from, to, unitId],
+    [systemId, unitCount, from, to, unitId, singleDay],
   );
 
   // โหลดทั้งก้อน: ครั้งแรกทันที · เปลี่ยนช่วง/สาขา = หน่วง 300 ms (ยกเลิกถ้าเปลี่ยนอีกก่อนครบ)
@@ -359,6 +441,19 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
   const chart = slotOf<DailyRep>(ov, "chart", busy, whole);
   const branches = slotOf<OverviewBranches>(ov, "branches", busy, whole);
   const channels = slotOf<ChannelsRep>(ov, "channels", busy, whole); // POS P2.11U ◂
+  const hourly = slotOf<HourlyRep>(ov, "hourly", busy, whole); // POS P2.12U ◂
+  // POS P2.12U ▸ มติ 2: "ชั่วโมงนี้" เฉพาะเมื่อ to = วันนี้ — ชั่วโมงไทยอ่านหลัง mount (เซิร์ฟเวอร์กับ client ไม่ต่างกันตอน hydrate) · เดินทุกนาที ◂
+  const [nowLabel, setNowLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!(singleDay && to === today)) {
+      setNowLabel(null);
+      return;
+    }
+    const tick = () => setNowLabel(bkkHourNow());
+    tick();
+    const h = setInterval(tick, 60_000);
+    return () => clearInterval(h);
+  }, [singleDay, to, today]);
   const isTodayOnly = from === to && to === today;
   const vs = isTodayOnly ? t("overview.vsYesterday") : t("overview.vsPrev");
 
@@ -415,7 +510,43 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
           return hit ?? { businessDate: d, billCount: 0, grossSatang: 0, discountSatang: 0, serviceChargeSatang: 0, netSalesSatang: 0, vatSatang: 0, netExVatSatang: 0, tipSatang: 0, voidCount: 0, voidTotalSatang: 0, refundCount: 0, refundTotalSatang: 0, avgBillSatang: 0 };
         })
       : null;
-  const chartCard = (
+  // POS P2.12U ▸ มติ 2: วันเดียว = การ์ดรายชั่วโมง (testid การ์ดเดิม pos-report-ov-chart · กราฟ pos-reports-hourly-chart) ◂
+  const legendItem = (sw: React.ReactNode, label: string) => (
+    <span className="inline-flex items-center gap-1.5">
+      {sw}
+      {label}
+    </span>
+  );
+  const hourlyCard = (
+    <section className={`${CARD} xl:flex-[1.5]`} aria-busy={hourly.s === "loading"} data-testid="pos-report-ov-chart">
+      <CardHead
+        icon={ICON.chart}
+        title={t("hourly.title")}
+        right={
+          <span className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-[color:var(--color-ink-soft)]">
+            {legendItem(<i className={`inline-block h-[9px] w-[9px] rounded-[2px] ${BAR_GREY}`} />, t("overview.legendActual"))}
+            {legendItem(<i className="inline-block h-[9px] w-[9px] rounded-[2px] bg-[color:var(--color-ink)]" />, t("hourly.peak"))}
+            {nowLabel !== null ? legendItem(<i className="inline-block h-[9px] w-[9px] rounded-[2px] bg-[color:var(--color-accent)]" />, t("hourly.now")) : null}
+            {legendItem(<i className={`inline-block h-[9px] w-[9px] rounded-[2px] border-[1.5px] border-dashed ${FC_LINE}`} />, t("hourly.forecast"))}
+          </span>
+        }
+      />
+      {hourly.s === "loading" ? (
+        <Loading t={t} />
+      ) : hourly.s === "err" ? (
+        <Refused id="hourly" text={refusalText(hourly.code)} t={t} onRetry={() => retry(["hourly"])} />
+      ) : hourly.v.rows.every((r) => r.netSalesSatang === 0 && r.forecastSatang === 0) ? (
+        <Empty t={t} />
+      ) : (
+        <HourlyBars rows={hourly.v.rows} t={t} nowLabel={nowLabel} />
+      )}
+      <div className={`mt-3 flex flex-col gap-1 text-[13px] ${MUTED}`} data-testid="pos-reports-hourly-footnote">
+        <p>{t("hourly.forecastNote")}</p>
+        {cutoffMinutes % 60 !== 0 ? <p>{t("hourly.foldNote")}</p> : null}
+      </div>
+    </section>
+  );
+  const chartCard = singleDay ? hourlyCard : (
     <section className={`${CARD} xl:flex-[1.5]`} aria-busy={chart.s === "loading"} data-testid="pos-report-ov-chart">
       <CardHead
         icon={ICON.chart}
@@ -667,7 +798,9 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
             <tbody>
               {staff.v.rows.slice(0, 5).map((r, i, all) => {
                 const name = r.userId === null ? t("unknownSeller") : (r.name ?? r.userId);
-                const high = r.netSalesSatang > 0 && r.discountSatang * 10_000 > r.netSalesSatang * HIGH_DISCOUNT_BP;
+                // POS P2.12U ▸ มติ 5: เทียบแบบกฎ A3 (ส่วนลด × 10000 > ยอดสุทธิ × bp · ยอดสุทธิ > 0) ด้วย bp ของระบบ ◂
+                // POS P2.12U ▸ fix1 F2 (มติ 4): เกณฑ์ bp เดียวกับ A3 แต่ฐานส่วนลดต่างกัน — แถวพนักงาน = Σ PosSale.discountSatang (บิล + คูปอง + สมาชิก · ไม่รวมส่วนลดรายบรรทัด) · A3 = ส่วนลดที่พนักงานคุมได้ (บรรทัด + บิล − คูปอง − สมาชิก) ⇒ ป้ายนี้ = ค่าประมาณ · ธงต่อพนักงานจาก A3 จริง = งานต่อฝั่ง S (HF-FU2/P2.14) ◂
+                const high = discountFlagBp !== null && r.userId !== null && r.netSalesSatang > 0 && r.discountSatang * 10_000 > r.netSalesSatang * discountFlagBp;
                 const none = r.billCount === 0;
                 const td = i === all.length - 1 ? "px-4 py-4" : TD;
                 return (
@@ -686,7 +819,7 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
                     <td className={`${td} ${NUM}`}>{count(r.voidCount)}</td>
                     <td className={td}>
                       {high ? (
-                        <span className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-[color:var(--color-danger)] px-2.5 text-[13px] font-bold text-[color:var(--color-danger)]" title={t("overview.highDiscountHint")} data-testid="pos-report-ov-high-discount">
+                        <span className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-[color:var(--color-danger)] px-2.5 text-[13px] font-bold text-[color:var(--color-danger)]" title={t("overview.highDiscountHint", { pct: pctBp(discountFlagBp ?? 0) })} data-testid="pos-report-ov-high-discount">
                           {t("overview.highDiscount")}
                         </span>
                       ) : null}

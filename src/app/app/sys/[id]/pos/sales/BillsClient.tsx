@@ -17,12 +17,17 @@
 //   ลูกค้า = เลขออเดอร์แพลตฟอร์มเมื่อไม่มีสมาชิก · วิธีชำระ "แพลตฟอร์ม" · ตัวกรอง "ทุกช่องทาง" (salesChannelId) ข้างตัวกรองระบบต้นทางเดิม ·
 //   การ์ดบิลบรรทัดรอง "หน้าร้าน N · ออนไลน์ M" (ออนไลน์ = ทุกช่องทางที่ไม่ใช่ STORE · นับจากตัวกรอง salesChannelId ของเซิร์ฟเวอร์) ·
 //   ลิ้นชัก = บล็อกค่าคอมฯ ใต้ยอด (ตัวเลขเฉพาะเมื่อเซิร์ฟเวอร์ส่ง commission* — pos.report.view) · ไม่มีบนใบเสร็จ ◂
+// POS P2.12U ▸ มติ 7 (ภาพ 12): ตัวเลือกสาขา + "ทุกสาขา" (BILLS_ALL_UNITS · เฉพาะผู้อ่านบิลได้ > 1 สาขา) → รายการรวมทุกสาขา แถวมีชิปชื่อสาขา
+//   (pos-sales-unitChip-<saleId> · unitName ของ DTO) · ลิ้นชัก/ยกเลิก/คืน/พิมพ์ใช้สาขาของบิลที่เปิด (rowUnit) · ใต้การ์ดสรุป = ชิปจำนวนบิลต่อช่องทาง
+//   (summary.channelCounts · pos-sales-channelCount-<code>) · โหมดทุกสาขา "หน้าร้าน N · ออนไลน์ M" มาจาก channelCounts (บวก/ลบเพื่อแสดงเท่านั้น) ·
+//   บล็อกช่องทางในลิ้นชักมีบรรทัดหลังคืนเงิน (refundSatang · commission*NetSatang · netSatang — มีเฉพาะผู้มี pos.report.view) ·
+//   หมายเหตุใต้ตัวเลือกวัน: วันของบิล = วันปฏิทิน (ไม่ใช้เวลาตัดวันของรายงาน · hunter H5) ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { billDetailAction, billsPageDataAction, voidSaleAction } from "@/lib/modules/pos/bills-actions";
-import { BILLS_ERROR_KEYS, BILLS_SYSTEM_NAME, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetail, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
+import { BILLS_ALL_UNITS, BILLS_ERROR_KEYS, BILLS_SYSTEM_NAME, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetail, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared"; // POS P2.12U ▸ + BILLS_ALL_UNITS ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { heartbeatAction } from "@/lib/modules/pos/device-actions"; // POS P1.15U F8: เครื่องลงทะเบียนไหม
 import { receiptLinkAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
@@ -53,7 +58,8 @@ import { BillChannelPill, BillIcon, StatusChip, SummaryCard, bkkHm, billChannelT
 // POS P2.1U ▸ ช่องทางขาย: รายการช่องทางของสาขา (หาอัตราค่าคอมฯ ของบล็อกในลิ้นชัก) + เครื่องคิดค่าคอมฯ ฝั่ง client (บริสุทธิ์) ◂
 import { listChannelsAction } from "@/lib/modules/pos/channel-actions";
 import { channelCommission, channelNet, type ChannelItem } from "@/lib/modules/pos/channel-shared";
-import { channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text";
+import { CHANNEL_PRESET_BRAND, channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text"; // POS P2.12U ▸ + CHANNEL_PRESET_BRAND ◂
+import { isChannelBuiltinCode } from "@/lib/modules/pos/channel-shared"; // POS P2.12U ◂
 import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
 import { DepositRefund } from "./DepositRefund"; // POS P2.9bU ▸ มติ 7: คืนมัดจำคงเหลือ (ลิ้นชักใบรับเงินมัดจำ) ◂
 /** POS P2.9bU ▸ มติ 7: sourceModule ของใบรับเงินมัดจำ + ใบคืนมัดจำ (deposit.ts POS_DEPOSIT_SOURCE) ◂ */
@@ -72,6 +78,9 @@ type Props = {
   canIssueTaxInvoice?: boolean;
   /** POS P2.8U ▸ ?bill=<saleId> (ปุ่ม "ดูบิล" ของจอออเดอร์) — เปิดลิ้นชักบิลนั้นตอนโหลดหน้า · null = ไม่เปิด ◂ */
   initialBillId?: string | null;
+  /** POS P2.12U ▸ มติ 7: โหมดทุกสาขา (unitId = BILLS_ALL_UNITS) — สาขาที่ออกใบกำกับได้ (แทน canIssueTaxInvoice ของสาขาเดียว) · สาขาของบิลใน ?bill= ◂ */
+  taxInvoiceUnits?: string[];
+  initialBillUnitId?: string | null;
 };
 /** P1.13U: เหตุผลที่ปฏิเสธคำขอใบกำกับ (มติ 4 — แผ่นเหตุผล ≤200 · เซิร์ฟเวอร์รับ ≤500) */
 const TAX_REJECT_MAX = 200;
@@ -133,7 +142,13 @@ function BillDialog({ labelledBy, testid, wide, onClose, children }: { labelledB
   );
 }
 
-export function BillsClient({ systemId, units, unitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice = false, initialBillId = null }: Props) {
+export function BillsClient({ systemId, units, unitId: listUnitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice: canIssueOne = false, initialBillId = null, taxInvoiceUnits = [], initialBillUnitId = null }: Props) {
+  // POS P2.12U ▸ มติ 7: listUnitId = สาขาของรายการ (หรือ "*") · unitId = สาขาของงานในลิ้นชัก (โหมดทุกสาขา = สาขาของบิลที่เปิด) ◂
+  const allMode = listUnitId === BILLS_ALL_UNITS;
+  const [rowUnit, setRowUnit] = useState<string | null>(allMode ? initialBillUnitId : null);
+  const unitId = allMode ? (rowUnit ?? units[0]?.id ?? "") : listUnitId;
+  const canIssueTaxInvoice = allMode ? taxInvoiceUnits.includes(unitId) : canIssueOne;
+  const tsb = useTranslations("pos.sales.branch") as T; // POS P2.12U ▸ ชิปสาขา ◂
   const t = useTranslations("pos.bills") as T;
   const ts = useTranslations("pos.shift") as T;
   const te = useTranslations("pos.bills.errors") as T;
@@ -204,7 +219,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     setLoading(true);
     billsPageDataAction({
       systemId,
-      unitId,
+      unitId: listUnitId, // POS P2.12U ▸ "*" = ทุกสาขา ◂
       date,
       status,
       ...(q ? { q } : {}),
@@ -226,16 +241,16 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     return () => {
       alive = false;
     };
-  }, [systemId, unitId, date, status, q, channel, salesChannelId, staffUserId, page, reloadTick]);
+  }, [systemId, listUnitId, date, status, q, channel, salesChannelId, staffUserId, page, reloadTick]);
 
   // แก้รอบ 1 F1: บิลที่ผู้ใช้ต้องการล่าสุด — ผลของคำขอเก่า (แตะ A ช้า แล้วแตะ B) ห้ามทับลิ้นชักของ B
   const wantedRef = useRef<string | null>(null);
   const loadDetail = useCallback(
-    async (saleId: string) => {
+    async (saleId: string, forUnit?: string) => {
       setDrawerErr(null);
       let res: BillDetailResult;
       try {
-        res = await billDetailAction({ systemId, unitId, saleId });
+        res = await billDetailAction({ systemId, unitId: forUnit ?? unitId, saleId }); // POS P2.12U ▸ โหมดทุกสาขา = สาขาของแถวที่แตะ ◂
       } catch {
         res = { ok: false, code: "UNKNOWN", message: "" };
       }
@@ -244,25 +259,26 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     [systemId, unitId],
   );
   const openBill = useCallback(
-    (saleId: string) => {
+    (saleId: string, forUnit?: string) => {
       wantedRef.current = saleId;
+      if (allMode && forUnit) setRowUnit(forUnit); // POS P2.12U ▸ มติ 7 ◂
       if (detail?.ok && detail.bill.id === saleId) {
         setSelectedId(saleId); // บิลนี้แสดงอยู่แล้ว — ไม่โหลดซ้ำ
         return;
       }
       setSelectedId(saleId);
       setDetail(null);
-      void loadDetail(saleId);
+      void loadDetail(saleId, allMode ? forUnit : undefined);
     },
-    [loadDetail, detail],
+    [loadDetail, detail, allMode],
   );
   // POS P2.8U ▸ ?bill= เปิดลิ้นชักครั้งเดียวตอนโหลดหน้า (ลิ้นชักไม่ต้องอยู่ในหน้าแรกของรายการ · billDetailAction ตรวจสาขา/สิทธิ์) ◂
   const openedInitial = useRef(false);
   useEffect(() => {
     if (openedInitial.current || !initialBillId) return;
     openedInitial.current = true;
-    openBill(initialBillId);
-  }, [initialBillId, openBill]);
+    openBill(initialBillId, initialBillUnitId ?? undefined);
+  }, [initialBillId, initialBillUnitId, openBill]);
   const closeDrawer = useCallback(() => {
     wantedRef.current = null;
     setSelectedId(null);
@@ -294,17 +310,23 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   //   N = บิลช่องทาง STORE (ตัวกรอง salesChannelId ทั้งวัน − ที่ยกเลิก) · M = บิลทั้งหมด − N · คิดใหม่เมื่อวัน/สาขา/ตัวเลขของวันเปลี่ยน
   //   สาขาที่ยังไม่มีแถวช่องทาง (บิลเดิมทั้งหมด) = ตัวเลขเดิมของเซิร์ฟเวอร์ (sourceModule)
   const storeChannelId = ok?.salesChannels.find((c) => c.code === "STORE")?.id ?? null;
-  const dayKey = ok ? `${unitId}|${ok.date}|${ok.counts.all}|${ok.counts.voided}|${ok.summary.billCount}|${storeChannelId ?? ""}|${ok.salesChannels.length}` : null;
+  const dayKey = ok ? `${listUnitId}|${ok.date}|${ok.counts.all}|${ok.counts.voided}|${ok.summary.billCount}|${storeChannelId ?? ""}|${ok.salesChannels.length}` : null;
   const [chSum, setChSum] = useState<{ key: string; store: number; online: number } | null>(null);
   useEffect(() => {
     if (!ok || !dayKey) return;
     const live = ok.summary.billCount;
+    // POS P2.12U ▸ มติ 7: ทุกสาขา (ช่องทาง STORE คนละ id ต่อสาขา) = นับจาก summary.channelCounts ของเซิร์ฟเวอร์ (ประชากรเดียวกับ billCount) ◂
+    if (allMode) {
+      const store = ok.summary.channelCounts?.STORE ?? 0;
+      setChSum({ key: dayKey, store, online: Math.max(0, live - store) });
+      return;
+    }
     if (!storeChannelId) {
       setChSum(ok.salesChannels.length > 0 ? { key: dayKey, store: 0, online: live } : { key: dayKey, store: ok.summary.storeCount, online: ok.summary.onlineCount });
       return;
     }
     let alive = true;
-    const base = { systemId, unitId, date: ok.date, salesChannelId: storeChannelId, page: 1, pageSize: 10 as const };
+    const base = { systemId, unitId: listUnitId, date: ok.date, salesChannelId: storeChannelId, page: 1, pageSize: 10 as const };
     Promise.all([billsPageDataAction({ ...base, status: "ALL" }), billsPageDataAction({ ...base, status: "VOIDED" })])
       .then(([a, v]) => {
         if (!alive || !a.ok || !v.ok) return;
@@ -318,6 +340,12 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     // eslint-disable-next-line react-hooks/exhaustive-deps -- คิดใหม่ตาม dayKey เท่านั้น (ตัวกรอง/หน้าไม่เกี่ยว)
   }, [dayKey]);
   const channelSum = chSum && chSum.key === dayKey ? chSum : null;
+  /** POS P2.12U ▸ มติ 7: ชื่อช่องทางของชิปจำนวนบิล — ช่องทางของวันนี้ (ชื่อของร้าน) · builtin = คำแปล · แพลตฟอร์มสำเร็จรูป = ชื่อแบรนด์ · อื่น = รหัส ◂ */
+  const channelNameOf = (code: string): string => {
+    const sc = ok?.salesChannels.find((c) => c.code === code);
+    if (sc) return channelDisplayName(code, sc.name, tch);
+    return isChannelBuiltinCode(code) ? tch(`builtin.${code}`) : (CHANNEL_PRESET_BRAND[code]?.name ?? code);
+  };
 
   // ── POS P2.1U ▸ มติ 4: อัตราค่าคอมฯ ของบล็อกในลิ้นชัก — บิลเก็บแค่ยอดค่าคอมฯ (สำเนาตอนขาย) ไม่เก็บอัตรา ⇒
   //   อ่านอัตราปัจจุบันของช่องทาง แล้วแสดงเฉพาะเมื่อคิดซ้ำได้ยอดตรงกับบิลทุกสตางค์ (เปลี่ยนอัตราหลังขาย = ไม่แสดงอัตรา ไม่เดา) ──
@@ -984,7 +1012,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     ) : null;
   const onMenu = (e: React.MouseEvent, r: BillRow) => {
     e.stopPropagation();
-    if (selectedId !== r.id) openBill(r.id);
+    if (selectedId !== r.id) openBill(r.id, r.unitId);
     setMenuFor((cur) => (cur === r.id ? null : r.id));
   };
 
@@ -1063,11 +1091,15 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
               data-testid="pos-bills-unit"
               aria-label={t("unit")}
               className="input h-11 w-auto"
-              value={unitId}
+              value={listUnitId}
               onChange={(e) => {
                 window.location.href = `?unit=${encodeURIComponent(e.target.value)}`;
               }}
             >
+              {/* POS P2.12U ▸ มติ 7: ทุกสาขา (BILLS_ALL_UNITS) ◂ */}
+              <option data-testid="pos-sales-unit-all" value={BILLS_ALL_UNITS}>
+                {t("unitAll")}
+              </option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
@@ -1076,14 +1108,17 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
             </select>
           ) : null}
           {/* POS P2.1U ▸ มติ 3: "ทุกช่องทาง" = ช่องทางขาย (salesChannelId) · ตัวกรองเดิม (ระบบต้นทาง = sourceModule) คงไว้ ป้ายว่าง "ทุกระบบ" ◂ */}
-          <select data-testid="pos-bills-channel-filter" aria-label={t("allChannels")} className="input h-11 w-auto max-w-[220px]" value={salesChannelId} onChange={(e) => setFilter(() => setSalesChannelId(e.target.value))}>
-            <option value="">{t("allChannels")}</option>
-            {(ok?.salesChannels ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {channelDisplayName(c.code, c.name, tch)}
-              </option>
-            ))}
-          </select>
+          {/* POS P2.12U ▸ fix1 F3 (มติ 2): ทุกสาขา = ซ่อนตัวกรองช่องทาง — salesChannels เป็นรหัสต่อสาขา (ชื่อซ้ำกันทุกสาขา · เลือกแล้วกรองเหลือสาขาเดียวเงียบ ๆ) · ชิป channelCounts แยกตามรหัสให้แล้ว · ตัวกรองต่อรหัส = งานต่อฝั่ง S ◂ */}
+          {!allMode ? (
+            <select data-testid="pos-bills-channel-filter" aria-label={t("allChannels")} className="input h-11 w-auto max-w-[220px]" value={salesChannelId} onChange={(e) => setFilter(() => setSalesChannelId(e.target.value))}>
+              <option value="">{t("allChannels")}</option>
+              {(ok?.salesChannels ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {channelDisplayName(c.code, c.name, tch)}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <select data-testid="pos-bills-channel" aria-label={t("channel.allSources")} className="input h-11 w-auto" value={channel} onChange={(e) => setFilter(() => setChannel(e.target.value))}>
             <option value="">{t("channel.allSources")}</option>
             {(ok?.channels ?? []).map((c) => (
@@ -1106,6 +1141,10 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
             {t("export")}
           </button>
         </div>
+        {/* POS P2.12U ▸ มติ 7 (hunter H5): วันของบิล = วันปฏิทิน ไม่ใช้เวลาตัดวันของรายงาน ◂ */}
+        <p className="-mt-3 text-[12px] text-[color:var(--color-muted)]" data-testid="pos-bills-day-note">
+          {t("dayNote")}
+        </p>
 
         {/* ชิปสถานะ (ตัวเลขของทั้งวัน ไม่ขึ้นกับตัวกรอง) */}
         <div className="flex flex-wrap gap-2" role="tablist" aria-label={t("statusFilter")}>
@@ -1161,6 +1200,19 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
           />
           <SummaryCard testid="pos-bills-sum-avg" label={t("sum.avg")} value={ok ? money(ok.summary.avgSatang) : "–"} sub={ok ? t("sum.avgSub", { y: money(ok.summary.yesterdayAvgSatang) }) : ""} />
         </div>
+        {/* POS P2.12U ▸ มติ 7: จำนวนบิลต่อช่องทาง (summary.channelCounts · PAID + REFUNDED · ชื่อจากรายการช่องทางของวัน / builtin / แบรนด์ / รหัส) ◂ */}
+        {ok && Object.keys(ok.summary.channelCounts ?? {}).length > 0 ? (
+          <div className="-mt-2 flex flex-wrap items-center gap-1.5" data-testid="pos-sales-channelCounts" aria-label={t("channelCounts")}>
+            {Object.entries(ok.summary.channelCounts)
+              .sort((p, n) => (p[0] === "STORE" ? -1 : n[0] === "STORE" ? 1 : n[1] - p[1] || p[0].localeCompare(n[0])))
+              .map(([code, n]) => (
+                <span key={code} data-testid={`pos-sales-channelCount-${code}`} className="inline-flex h-7 items-center gap-1.5 rounded-full border bg-[color:var(--color-surface)] px-2.5 text-[12px] text-[color:var(--color-ink-soft)]">
+                  {channelNameOf(code)}
+                  <b className="tabular-nums text-[color:var(--color-ink)]">{n}</b>
+                </span>
+              ))}
+          </div>
+        ) : null}
 
         {/* ตาราง */}
         <div className="card min-w-0 overflow-hidden !p-0">
@@ -1228,10 +1280,18 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                           data-testid="pos-bills-row"
                           data-bill-id={r.id}
                           aria-selected={active}
-                          onClick={() => openBill(r.id)}
+                          onClick={() => openBill(r.id, r.unitId)}
                           className={`relative cursor-pointer border-b last:border-0 hover:bg-[color:var(--color-surface-2)] ${voided ? "text-[color:var(--color-muted)]" : ""} ${active ? "bg-[color:var(--color-surface-2)]" : ""}`}
                         >
-                          <td className={`whitespace-nowrap px-3 py-3 font-bold tabular-nums ${active ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""} ${voided ? "line-through" : ""}`}>{r.receiptNo ?? "—"}</td>
+                          <td className={`whitespace-nowrap px-3 py-3 font-bold tabular-nums ${active ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}>
+                            <span className={voided ? "line-through" : ""}>{r.receiptNo ?? "—"}</span>
+                            {/* POS P2.12U ▸ มติ 7: ชิปชื่อสาขา (เฉพาะโหมดทุกสาขา — DTO มี unitName) ◂ */}
+                            {allMode && r.unitName ? (
+                              <span data-testid={`pos-sales-unitChip-${r.id}`} title={tsb("chipLabel", { name: r.unitName })} className="ml-1.5 inline-flex h-[20px] max-w-[110px] items-center truncate rounded-[6px] border px-1.5 align-middle text-[11px] font-normal text-[color:var(--color-ink-soft)]">
+                                {r.unitName}
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="whitespace-nowrap px-2 py-3 tabular-nums">{bkkHm(r.time, locale)}</td>
                           <td data-testid={`pos-bill-channel-${r.id}`} className="max-w-[140px] px-2 py-3">
                             <BillChannelPill row={r} t={t} ts={ts} tc={tch} />
@@ -1272,9 +1332,14 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                   const voided = chip === "VOIDED";
                   return (
                     <li key={r.id} className={`relative border-b last:border-0 ${r.id === selectedId ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}>
-                      <button type="button" data-testid="pos-bills-card" data-bill-id={r.id} onClick={() => openBill(r.id)} className={`flex min-h-[64px] w-full flex-col gap-1 px-4 py-3 pr-14 text-left ${voided ? "text-[color:var(--color-muted)]" : ""}`}>
+                      <button type="button" data-testid="pos-bills-card" data-bill-id={r.id} onClick={() => openBill(r.id, r.unitId)} className={`flex min-h-[64px] w-full flex-col gap-1 px-4 py-3 pr-14 text-left ${voided ? "text-[color:var(--color-muted)]" : ""}`}>
                         <span className="flex w-full items-center gap-2">
                           <b className={`tabular-nums ${voided ? "line-through" : ""}`}>{r.receiptNo ?? "—"}</b>
+                          {allMode && r.unitName ? (
+                            <span data-testid={`pos-sales-unitChip-${r.id}-m`} title={tsb("chipLabel", { name: r.unitName })} className="inline-flex h-[20px] max-w-[90px] items-center truncate rounded-[6px] border px-1.5 text-[11px] text-[color:var(--color-ink-soft)]">
+                              {r.unitName}
+                            </span>
+                          ) : null}
                           <span className="text-[12px] tabular-nums text-[color:var(--color-muted)]">{bkkHm(r.time, locale)}</span>
                           <span className="flex-1" />
                           <span className="font-semibold tabular-nums">{money(r.grandTotalSatang)}</span>
@@ -1477,6 +1542,29 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                               <span>{tch("commissionBlock.net")}</span>
                               <span>{money(channelNet(bill.totals.grandTotal, c, v))}</span>
                             </div>
+                            {/* POS P2.12U ▸ มติ 7 (CH2): บิลที่มีใบคืนเงิน — ตัวเลขหลังหักใบคืนจากเซิร์ฟเวอร์ (refund* · commission*Net · net) เท่านั้น ◂ */}
+                            {(bill.channel.refundSatang ?? 0) > 0 && bill.channel.netSatang !== undefined ? (
+                              <div data-testid="pos-bills-drawer-channel-refund" className="mt-2 flex flex-col gap-0.5 border-t border-dashed pt-2">
+                                <div className="flex justify-between gap-3 py-0.5">
+                                  <span>{tch("commissionBlock.refunded")}</span>
+                                  <span className="text-[color:var(--color-danger)]">−{money(bill.channel.refundSatang ?? 0)}</span>
+                                </div>
+                                <div className="flex justify-between gap-3 py-0.5">
+                                  <span>{tch("commissionBlock.commissionNet")}</span>
+                                  <span className="text-[color:var(--color-danger)]">−{money(bill.channel.commissionNetSatang ?? 0)}</span>
+                                </div>
+                                {(bill.channel.commissionVatNetSatang ?? 0) > 0 ? (
+                                  <div className="flex justify-between gap-3 py-0.5">
+                                    <span>{tch("commissionBlock.vatNet")}</span>
+                                    <span className="text-[color:var(--color-danger)]">−{money(bill.channel.commissionVatNetSatang ?? 0)}</span>
+                                  </div>
+                                ) : null}
+                                <div className="flex justify-between gap-3 pt-1 font-bold">
+                                  <span>{tch("commissionBlock.netAfterRefund")}</span>
+                                  <span>{money(bill.channel.netSatang)}</span>
+                                </div>
+                              </div>
+                            ) : null}
                             <p className="mt-2 rounded-[10px] border border-dashed px-3 py-2 text-[12px] leading-[1.5] text-[color:var(--color-muted)]">
                               {bill.channel.payout === "PLATFORM" ? tch("commissionBlock.note") : tch("commissionBlock.noteDirect")}
                             </p>

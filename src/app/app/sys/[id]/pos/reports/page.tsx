@@ -7,7 +7,8 @@ import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
-import { isReportKind, REPORT_MAX_DAYS, REPORT_PERMISSION } from "@/lib/modules/pos/reports";
+import { ANOMALY_PERMISSION, HOURLY_MAX_DAYS, isReportKind, REPORT_MAX_DAYS, REPORT_PERMISSION } from "@/lib/modules/pos/reports"; // POS P2.12U ▸ + HOURLY_MAX_DAYS ANOMALY_PERMISSION ◂
+import { posAnomalyThresholds, posDayCutoffMinutes } from "@/lib/modules/pos/settings-shared"; // POS P2.12U ▸ มติ 2 4 5 ◂
 import { posBusinessToday } from "@/lib/modules/pos/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -41,6 +42,10 @@ export default async function PosReportsPage({
   if (units.length === 0) notFound();
   // สาขาที่ดูรายงานได้ (pos.report.view) — เลือกได้เฉพาะชุดนี้ · ว่าง = การ์ดปฏิเสธ
   const allowed = units.filter((u) => evaluate(m, { module: "pos", action: REPORT_PERMISSION, unitId: u.id }));
+  // POS P2.12U ▸ มติ 4: แท็บจุดผิดปกติ = มี pos.report.anomaly ที่สาขาใดสาขาหนึ่งในชุดที่ดูรายงานได้ (ตัวอ่านตรวจซ้ำต่อสาขา) ·
+  //   มติ 5: เกณฑ์ป้ายส่วนลดสูงของการ์ดพนักงาน = กฎ A3 ของระบบ (ปิดการตรวจ = ไม่มีป้าย) ◂
+  const canAnomaly = allowed.some((u) => evaluate(m, { module: "pos", action: ANOMALY_PERMISSION, unitId: u.id }));
+  const anomaly = posAnomalyThresholds(sys.settings);
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.report");
 
@@ -71,6 +76,10 @@ export default async function PosReportsPage({
           initial={{ kind, from, to, unitId }}
           today={today}
           maxDays={REPORT_MAX_DAYS}
+          hourlyMaxDays={HOURLY_MAX_DAYS} // POS P2.12U ▸ มติ 2 ◂
+          cutoffMinutes={posDayCutoffMinutes(sys.settings)}
+          canAnomaly={canAnomaly}
+          discountFlagBp={anomaly.enabled ? anomaly.rules.A3.bp : null}
         />
       )}
     </div>
