@@ -54,6 +54,7 @@ Pins: `register*.ts` `service.ts` `tender*.ts` `payment-intent.ts` `held-cart.ts
 3. Extra refusal code `VALIDATION` (+ `INTERNAL`) with th/en messages (R8 lists 7; ST2 checks those 7).
 4. Cookie `Secure` is set as ruled even on `http://127.0.0.1` (Chrome accepts Secure cookies from loopback); the visual harness sets the cookie itself for seeded states (`page.setCookie` with `secure` = https only) and the live/pair states exercise the real action. (ruling 2)
 5. `receiptShopHeader` (async, reads the book via `account`) lives in `receipt.ts`, not display.ts — display.ts imports `./receipt` (allowed: ST1 forbids only direct member/account imports). (§3 header chain · §7)
+6. **Status-only globals (fix 1 F8 · R2 G3 · accepted by controller ruling fix2-3):** `window.__posDisplayRead` (`DisplayScreen.tsx`: ok/changed/seq/ver/phase/refusal code) and `window.__posDisplayPublish` (`use-display-publish.ts`: seq/phase/ok/paired/written/refusal code) stay in product code, ungated. They carry no view content, token or pair code and do not change behaviour; they exist for the visual harness's failure diagnostics. "No product code changed for F8" in Fix round 1 is therefore not literally true.
 
 ## CONTROLLER-DECISION
 - None for pins: every existing `qc-pos-*`/`qc-hf-*` gate below is green; the only edited oracle line is the pre-approved `qc-pos-p1.18.mts:312`.
@@ -129,3 +130,28 @@ At 7ac9efbe code (head 8bc606a2 = test commit only), unforced: 12/13, CT3 red. f
 
 ### `--state`s for the controller to re-shoot (tree d, after this push)
 `display-live` (F8), `display-done` (F1/F2), `display-member-stamps` and `settings-display-code`. **There is no paired variant of `settings-display-code`.** The state enables a device that is not yet paired, so F3 (code panel on a paired device) can only be checked by hand: `settings-display-online` → "ขอรหัสใหม่". F7 (SSR read failure ⇒ offline + polling) has no state either.
+
+## Fix round 2 (R2 G1–G5 · controller rulings fix2 1–6 of pos-P2.10-review.md)
+Base e7f661a7. Code commit: 9abca590 (G2). No pinned file, no qc-* file, no migration, no messages change.
+
+| Ruling | Result |
+|---|---|
+| 1 G1 (gate evidence) | The fix1 en dry run had really run in th: `fx1-gates.sh` set `LOCALE=en` before `scripts/iso.sh`, and iso drops env. Re-run with the variable inside iso: `bash scripts/iso.sh env LOCALE=en CI=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-pos.mts p2.10 --states --dry --user owner`. JSON_SUMMARY now says `"locale":"en"`, 14 shots at 1 viewport (the LOCALE=en convention), and every planned file ends in `-en.png` (e.g. `display-cart-owner-1280x800-en.png`). The new gates script `fx2-gates.sh` passes LOCALE/CI inside iso and adds `summary-locale=` and `en-files=` to log line 1. No product change. |
+| 2 G2 | `DeviceSettings.tsx` `CustomerDisplayBlock`: request-counter ref `mutSeq`. enable/revoke bump it before the call and again when the call settles (`.finally`). `refresh` records the value at its start and drops its whole result (status and error) if the value has changed. A refresh that started before the latest enable/revoke, or while one was in flight, can no longer clear a fresh code or overwrite the status. All hunks are inside `// POS P2.10 ▸ fix2 … ◂`. Client-side only, so no oracle covers it; R2 needs to re-read this hunk. |
+| 3 G3 | Accepted as is. Recorded as deviation 6 (status-only globals `__posDisplayRead` / `__posDisplayPublish`). |
+| 4 G4 / G5 | Follow-ups below. |
+| 5 be57073d | **ORACLE-ADD amendment** (the controller accepted it in R2). It is a test-only change to CT3 that removes the substring false positive: the amount 12400 contained "1240". The amount is now 6_200 and the digit scan covers labels only. The POINTS digit check, `/1,?240/` in any label and "1,240" anywhere in the view all stay. |
+
+### Follow-ups (fix 2 · builder notes, not owner lines)
+- G4: when the SSR read returns `DISPLAY_NOT_PAIRED`, `/d` shows the pair form but the stale `display` cookie stays, because an RSC cannot set cookies and only `readDisplayAction` clears it. This is harmless because the next pairing overwrites the cookie. Clear it via a route handler/action later if wanted.
+- G5: `totals.member` rows without `kind` keep their raw label (for CT1 compatibility), so the server's generic-label guard relies on the hook always sending `kind`, which it does. A stale bundle from before a deploy fails on server-action IDs anyway. Later option: make `kind` required once CT1 sends it.
+
+### Gates (head 9abca590 · logs under `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p210/runs/fix2/` · line 1 = tree/head/dirty; dirty=1 on the later logs = this notes file only)
+| Gate | Result | Log |
+|---|---|---|
+| qc-pos-p2.10 unforced | 13/13 | g-p210-unforced.log |
+| qc-pos-p1.18 · p1.12 | 81/81 · 72/72 | g-p118.log · g-p112.log |
+| changed-files tsc (pos lock; display-shared/display/hook/DisplayScreen/d page/DeviceSettings/visual-pos/qc-pos-p2.10) | 0 errors, rc 0 | tsc-files.log |
+| fitness no-env / env (qc4) | 50/50 · 50/50 | fitness-noenv.log · fitness-env.log |
+| visual-pos p2.10 --states --dry --user owner, th / en (LOCALE inside iso) | rc 0 · locale th · 30 shots / rc 0 · **locale en** · 14 shots · all `-en.png` | visual-dry-th.log · visual-dry-en.log |
+| fetch origin/session/pos | 6f5b5fa5, already in HEAD (no move, no merge) | — |
