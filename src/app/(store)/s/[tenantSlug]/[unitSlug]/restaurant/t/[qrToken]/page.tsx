@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { resolveUnit, resolveTableSession } from "@/lib/modules/restaurant/storefront";
 import { orderingMenu, getSetting } from "@/lib/modules/restaurant/menu";
@@ -6,6 +6,9 @@ import { kitchenOpenNow } from "@/lib/modules/restaurant/scope";
 import { RestaurantQr } from "@/components/restaurant-qr";
 import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+// POS P2.7 ▸ มติ 1 CD7: สาขาที่ผูก POS ใช้ประตู POS /q/t/<qrToken> (ไม่เปิด session ผีตอนเปิดหน้า)
+import { legacyTableQrRedirect } from "@/lib/modules/pos/qr-order";
+// ◂
 
 // QR โต๊ะ — เมนู + สั่ง (public, ไม่ต้อง login)
 export default async function StoreQrPage({
@@ -17,6 +20,10 @@ export default async function StoreQrPage({
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) notFound();
   const { tenant, unit } = resolved;
+  // POS P2.7 ▸ มติ 1 CD7: redirect ก่อน resolveTableSession (ประตูเดิมสร้าง session ตอนเปิดหน้า) — ไม่ผูก POS = หน้าเดิมทุกไบต์
+  const qrDoor = await legacyTableQrRedirect(tenant.id, unit.id, qrToken);
+  if (qrDoor) redirect(qrDoor);
+  // ◂
 
   const sess = await resolveTableSession(tenant.id, unit.id, qrToken);
   const [menu, setting] = await Promise.all([
