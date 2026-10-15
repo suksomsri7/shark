@@ -245,6 +245,22 @@ export async function consumeMenuStockFloorInTx(tx: Tx, s: UnitScope, lines: { m
   return out;
 }
 
+// POS P2.7 ▸ S7 (ช่องว่าง P2.6 · owner line :131): รอบของแขก QR หักตัวนับเมนูผ่านทางร้อนเดิม (consumeMenuStock + markMenuItemOutOfStock · ไม่ปล่อย event)
+//   ⇒ หลังเขียนรอบในธุรกรรมเดียวกัน ผู้เรียก (pos/qr-order.ts) ส่งเมนูของรอบมา: เมนูนับสต็อกที่ตัวนับหมด (≤ 0) + ของหมดแล้ว = รอบนี้ทำให้พลิก
+//   (รอบผ่านได้ต่อเมื่อเมนูยังขายได้ก่อนเขียน — 86 อยู่ก่อนถูกปฏิเสธที่ resolveLines) ⇒ event STOCK 1 แถวต่อเมนูที่พลิก (ล็อกแถวเมนู FOR UPDATE · เรียง id) ◂
+export async function emitGuestRoundStockFlipsInTx(tx: Tx, s: UnitScope, menuItemIds: string[]): Promise<number> {
+  let n = 0;
+  for (const id of [...new Set(menuItemIds)].sort()) {
+    await tx.$queryRaw`SELECT id FROM "MenuItem" WHERE id = ${id} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} FOR UPDATE`;
+    const now = await menuStateOf(tx, s, id);
+    if (!now || now.stockQty === null || now.stockQty > 0 || !now.isOutOfStock) continue;
+    await emitMenuFlip(tx, s, { isOutOfStock: false, stockQty: 1, posProductId: now.posProductId }, now, "STOCK");
+    n++;
+  }
+  return n;
+}
+// ◂ POS P2.7
+
 /** fix1 H5 (มติ addendum 3b): 86 ที่ครัว/ผู้จัดการแจ้ง (mark KDS/MANUAL) ของเมนูที่สาขานี้ยังอยู่ไหม — คืนตัวนับ/รีเซ็ตรายวันต้องไม่ปลด (ปลดได้ทาง setAvailability(true) เท่านั้น) */
 async function heldBy86Mark(tx: Tx, s: UnitScope, posProductId: string | null): Promise<boolean> {
   if (!posProductId) return false;

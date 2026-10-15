@@ -85,3 +85,20 @@ export {
   type PosMergeSession,
 } from "./pos-tables";
 // ◂ POS P2.5
+
+// POS P2.7 ▸ QR โต๊ะผ่านประตู POS (/q/t/<qrToken> · มติ 1 6 13 · CD7): มุมมองโต๊ะของแขก (อ่านอย่างเดียว — ไม่เปิด session ผีตอนเปิดหน้า/โพล) ·
+//   ส่งรอบของแขกในธุรกรรมของ POS (ล็อก session + ตรวจ OPEN + merge chain · placedByUserId null) · เปลี่ยน QR ของโต๊ะ · ครัวเปิดไหม · คำขอจากโต๊ะ ·
+//   ผู้เรียก = pos/qr-order.ts + pos/table.ts (lazy import) · ไม่มี createSale · ไม่ปล่อย outbox · ประตูเดิม storefront.ts ไม่ถูกแตะ
+export {
+  guestRoundInTx,
+  guestTableViewForPos,
+  rotateTableQrForPos,
+  guestKitchenForPos,
+  guestServiceRequestForPos,
+  GuestRoundLineError,
+  type GuestRoundInput,
+  type GuestRoundResult,
+  type GuestTableView,
+  type GuestRoundView,
+} from "./pos-qr";
+// ◂ POS P2.7

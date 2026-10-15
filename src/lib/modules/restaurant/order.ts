@@ -342,6 +342,25 @@ export class OrderInTxError extends Error {
 const PRICE_CAP = 100_000_000_00; // ฿100 ล้าน/หน่วย — กันค่าผิดรูป (ผู้เรียกคิดราคาผ่านตัวตรวจของหน้าขายแล้ว)
 
 export async function createOrderInTx(tx: Prisma.TransactionClient, input: OrderInTxInput): Promise<{ ok: true; id: string; dailyNo: number; itemIds: string[] }> {
+  return roundInTx(tx, input, { placedByUserId: input.placedByUserId, guestToken: null }); // POS P2.7 ▸ ตัวเขียนเดียวกับรอบของแขก QR (createGuestOrderInTx) ◂
+}
+
+// POS P2.7 ▸ รอบของแขกจาก QR โต๊ะผ่านประตู POS (/q/t/<qrToken> · guestRoundInTx ของ pos-qr.ts): กติกาเดียวกับ createOrderInTx ทุกข้อ
+//   (เมนู 86 · ตัวเลือกของเมนู · ตัวนับเมนู · สถานี · ราคาที่ POS คิดตอนส่ง) — ต่างแค่ผู้สั่ง = แขก (placedByUserId null · guestToken ของเครื่อง) ◂
+export async function createGuestOrderInTx(
+  tx: Prisma.TransactionClient,
+  input: Omit<OrderInTxInput, "placedByUserId">,
+  guestToken: string | null,
+): Promise<{ ok: true; id: string; dailyNo: number; itemIds: string[] }> {
+  return roundInTx(tx, input, { placedByUserId: null, guestToken });
+}
+// ◂ POS P2.7
+
+async function roundInTx(
+  tx: Prisma.TransactionClient,
+  input: Omit<OrderInTxInput, "placedByUserId">,
+  who: { placedByUserId: string | null; guestToken: string | null }, // POS P2.7 ▸ ผู้สั่ง: พนักงาน (createOrderInTx) หรือแขก (createGuestOrderInTx) ◂
+): Promise<{ ok: true; id: string; dailyNo: number; itemIds: string[] }> {
   const { tenantId, unitId } = input;
   if (!input.lines.length) throw new OrderInTxError({ code: "EMPTY", reason: "ยังไม่มีรายการ" }, null);
   for (let i = 0; i < input.lines.length; i++) {
@@ -418,9 +437,9 @@ export async function createOrderInTx(tx: Prisma.TransactionClient, input: Order
       bizDate: bizDateBkk(),
       guestName: null,
       guestPhone: null,
-      guestToken: null,
+      guestToken: who.guestToken, // POS P2.7 ◂
       note: null,
-      placedByUserId: input.placedByUserId,
+      placedByUserId: who.placedByUserId, // POS P2.7 ◂
       pickupAt: null,
       lines,
     });
