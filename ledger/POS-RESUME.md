@@ -1762,7 +1762,7 @@
 - เลน: 1 = P2.13 fix 1 ทรี b · ทรี c ว่าง (รอ merge P2.12U หลัง vis85) · ทรี d = chain83
 - 20:5xZ เลน 2 = **P2.7 brief drafter** (QR สั่ง/สั่งล่วงหน้าจ่ายก่อน · lane C · ⏮ P1.7 P2.4 · ~30 · ใบสุดท้ายก่อน P2.14) prompt `pos-prompt-accountB-P2.7-B.md` → `pos-brief-P2.7.md` DRAFT · เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 brief (read-only) · ทรี c ว่าง · ทรี d = chain83
 
-### 15 ต.ค. 21:00Z — P2.12U merged 861815e0 (ยังไม่ push) → gates99
+### 15 ต.ค. 20:55Z — P2.12U merged 861815e0 (ยังไม่ push) → gates99
 - vis85 @0c1177ca failures 0 · 390 ไม่ล้น · print 0 error · PDF probe ผ่าน → **merge 0c1177ca เข้า session/pos = 861815e0** (no-ff) · ทรี c detached 861815e0 + prisma generate → **gates99-c** (p2.12 ×2 unforced · p1.17 p2.11 p1.18 p1.16 p2.1 p1.12 p1.3 p1.1 authz p2.8 p2.10 hf-tx hf-fu + fitness ±env/pos + typecheck)
 - ถัดไป: gates99 เขียว (lane pins p2.11 ST4 / hf-fu ST1 / p2.10 ST2 / p2.8 ST6 / p2.12 ST1 อาจแดงจน push) → push → รันซ้ำ → **40/55 (73%)** + TG · P2.13 fix 1 ทรี b ทำอยู่ · P2.7 brief ทำอยู่
 - เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 brief · ทรี c = gates99 · ทรี d ว่าง @0c1177ca
