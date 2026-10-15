@@ -106,6 +106,9 @@ const CHECKS: readonly Def[] = [
   D("P11", "X2", "[fix2 มติ 3 · hunter N2] มัดจำ walk-in ที่มีเบอร์: ค้น / รายละเอียดบิล / ใบเสร็จ ไม่มี 4 หลักท้าย (เบอร์ปิดหมดเว้น 3 ตัวแรก · ไม่มี phoneLast4) · ผิด 5 ครั้ง → DEPOSIT_LOCKED · ครั้งที่ 6 ถูกก็ยังถูกปฏิเสธจนพ้นเวลาล็อก · ยอดไม่ขยับ"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 3 · มติรอบแก้ 2 · R3 F2 / hunter F1) ◂
   D("P12", "X2", "[fix3 มติ 2 · มติ 19 แก้] ค้นด้วยเลข 4 หลัก (= 4 หลักท้ายของเบอร์) → ไม่พบมัดจำจากเบอร์ · ตัวนับผิด/ล็อกไม่ขยับ · หน้าขายส่ง 4 หลักถูก → ผ่านครั้งแรก"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 4 · มติรอบแก้ 1 2 · R4 F2 / hunter N1 N2) ◂
+  D("A10", "X4", "[fix4 มติ 1 · R4 F2 / hunter N1] ฉาก A9 บนช่องทาง DIRECT ค่าคอมฯ 10% (สมุดเลิกจด VAT · บิลสุดท้าย ฿20 ไม่มี JV ขาย) → COMMISSION ของบิล ฿20 ลงครั้งเดียว Dr 6500 200 / Cr 2100 200 · pos.sale.paid DONE · เล่นซ้ำไม่เพิ่ม · คืนบิลนั้นครบ → COMMISSION_REFUNDED ครั้งเดียว Dr 2100 200 / Cr 6500 200 (ไม่เงียบ no-commission) · 6500/2100 ของบิลสุทธิ 0"),
+  D("X10", "X4", "[fix4 มติ 2 · hunter N2] คืนบิล ฿20 (zero entry) หลังเลิกจด VAT → ใบคืน VAT 2000 · JV ใบคืน Dr 2200 2000 / Cr 1010 2000 (รายได้ไม่ถูกแตะ) · รวมใบรับ+บิล+ใบคืน: รายได้ 100000 · 2200 เหลือ 5000 · 2110 สุทธิ 0 (= ทางคืนเงินมัดจำที่เหลือ) · ใบลดหนี้ VAT ฿20"),
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[§7 มติ 2] scripts/pos-sale-contract.json sha256 = 72afb258… (CD2-A ไม่เปลี่ยนสัญญา)"),
   D("L2", "PAR", "[§7 มติ 11 HF-TX] ผู้เรียก createSale( ใน src ต่อไฟล์ = ฐาน e7b05787 (ใบรับผ่าน regCreateSale)"),
@@ -2019,6 +2022,117 @@ async function runDb() {
       if (a?.ok !== true) p.push(`หน้าขาย 4 หลักถูก (ครั้งแรก) → ${codeOf(a)} ${short(a?.message ?? "", 60)}`);
     }
     chk("P12", p.length === 0, "ค้นด้วยเลข 4 หลักไม่พบจากเบอร์ · ตัวนับไม่ขยับ · 4 หลักถูกผ่านครั้งแรก", FXB(joinP(p)));
+  }
+
+  {
+    // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 4 มติ 1 2 · R4 F2 / hunter N1 N2): A10 — บิลสุดท้ายที่ไม่มี JV ขาย (zero entry) บนช่องทางที่มีค่าคอมฯ ⇒ ค่าคอมฯ ลงครั้งเดียว + คืนแล้วกลับค่าคอมฯ ·
+    //   X10 — คืนบิล ฿20 (zero entry) หลังเลิกจด VAT ⇒ Dr 2200 2000 / Cr เงิน 2000 · รายได้ 100000 · 2200 เหลือ 5000 (= ทางคืนเงินมัดจำที่เหลือ) · ใบลดหนี้ VAT ฿20 ◂
+    const pa: string[] = [];
+    const px: string[] = [];
+    const jvKey = async (k: string): Promise<Any[]> =>
+      (await P.accountJournalEntry.findMany({ where: { tenantId: T, idempotencyKey: k }, include: { lines: { include: { account: { select: { code: true } } } } } }).catch(() => [])) as Any[];
+    const notDone = (evs: Any[]) => evs.filter((e) => e.status !== "DONE").map((e) => `${e.status}/${e.attempts ?? "?"}`);
+    /** สาขาใหม่ + POS + สมุดจด VAT · มัดจำ ฿1,070 (VAT 70) โอน → ลงใบรับ → สมุดเลิกจด VAT → ใช้ ฿1,050 แล้ว ฿20 (บิลสุดท้าย = ทุกบรรทัดบัญชี 0) */
+    const deregLast = async (k: string, p: string[], channel: boolean) => {
+      const unit = (await P.businessUnit.create({ data: { tenantId: T, type: "SHOP", name: `${TAG} สาขา${k}`, slug: `${T_SLUG}-${k.toLowerCase()}` } })).id;
+      const pos = (await sysSvc.createSystem(T, "POS", `POS P2.9b ${k}`)).id;
+      await sysSvc.linkUnit(T, pos, unit);
+      await call(paySet, "updatePosPaymentSettings", { tenantId: T, systemId: pos }, owner, { deposit: { enabled: true } });
+      const acc = (await sysSvc.createSystem(T, "ACCOUNT", `บัญชี QC P2.9b ${k}`)).id;
+      await accSvc.saveSettings(T, acc, { orgName: `ร้านมัดจำคิวซี ${k}`, taxId: "0105561177639", vatRegistered: true });
+      await glMod.ensureAccounting({ tenantId: T, systemId: acc });
+      await P.accountSystemLink.create({ data: { tenantId: T, systemId: acc, linkedKind: "POS", linkedId: pos } });
+      const ctxK: Any = { tenantId: T, systemId: pos, unitId: unit };
+      let channelId = "";
+      if (channel) {
+        const ch = await call(chMod, "saveChannel", ctxK, owner, { code: "CUSTOM_AGENT", name: `ตัวแทน ${k} ${RAND}`, payout: "DIRECT", commissionBp: 1000 });
+        if (ch?.ok !== true) p.push(`ช่องทาง ${k}: ${codeOf(ch)} ${short(ch?.message ?? "", 60)}`);
+        else channelId = String(ch.channel?.id ?? "");
+      }
+      const l = `${k}dep`;
+      const r = await takeRaw("", owner, { amountSatang: 107_000, payMethods: [xfer(107_000)], idempotencyKey: key(`dep-${l}`), ...walkIn(l) }, ctxK);
+      const id = depIdOf(r);
+      const row = id ? await depRow(id) : null;
+      if (!row) {
+        p.push(`มัดจำ ${k}: ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
+        return null;
+      }
+      DP[l] = { id, receiptSaleId: String(row.receiptSaleId), receiptNo: String(row.receiptNo ?? "") };
+      await drain();
+      await accSvc.saveSettings(T, acc, { orgName: `ร้านมัดจำคิวซี ${k}`, taxId: "0105561177639", vatRegistered: false });
+      const extra: Any = { unitId: unit, systemId: pos, ...(channelId ? { channelId } : {}) };
+      const b1 = await cs(saleIn(key(`${k}b1`), [[`ของ ${k} ก`, 105_000]], [depPay(105_000, l)], extra));
+      const b2 = ok(b1) ? await cs(saleIn(key(`${k}b2`), [[`ของ ${k} ข`, 2_000]], [depPay(2_000, l)], extra)) : null;
+      if (!ok(b1) || !ok(b2)) {
+        p.push(`ใช้ 1,050 + 20 → ${codeOf(b1)} / ${codeOf(b2)} ${short(b1?.message ?? b2?.message ?? "", 60)}`);
+        return null;
+      }
+      await drain();
+      /** คืนบิล ฿20 ครบ (โอน) → ใบคืน */
+      const refundB2 = async (): Promise<Any> => {
+        const f = await call(refundMod, "refundSale", ctxK, owner, { saleId: b2.saleId, lines: [{ lineId: await lineId(b2.saleId, `ของ ${k} ข`), qty: 1 }], payMethods: [xfer(2_000)], reasonCode: "CHANGED_MIND", idempotencyKey: key(`${k}rf`) });
+        await drain();
+        const docs = await refundDocs(b2.saleId);
+        if (f?.ok !== true || docs.length !== 1) {
+          p.push(`คืน ฿20 → ${codeOf(f)} ${short(f?.message ?? "", 60)} · ใบคืน ${docs.length}`);
+          return null;
+        }
+        const ev = await events("pos.sale.refunded", (x) => x.refundSaleId === docs[0].id);
+        if (ev.length !== 1 || notDone(ev).length) p.push(`pos.sale.refunded ${ev.length} ตัว · ไม่ DONE ${notDone(ev).join(",") || "-"}`);
+        return docs[0];
+      };
+      return { receipt: String(row.receiptSaleId), b1: String(b1.saleId), b2: String(b2.saleId), refundB2 };
+    };
+    if (fx) {
+      pa.push("fixture");
+      px.push("fixture");
+    } else {
+      // ── A10 ──
+      const z = await step("สาขา J", () => deregLast("J", pa, true));
+      if (!z && !pa.length) pa.push("ฟิกซ์เจอร์สาขา J ล้ม (ดูหมายเหตุ)");
+      if (z) {
+        const evs = await events("pos.sale.paid", (x) => [z.b1, z.b2].includes(x.saleId));
+        if (evs.length !== 2 || notDone(evs).length) pa.push(`pos.sale.paid ${evs.length} ตัว · ไม่ DONE ${notDone(evs).join(",") || "-"}`);
+        if ((await jvKey(`PosSale#${z.b2}#PAID`)).length !== 0) pa.push("บิล ฿20 มี JV ขาย (ฉากต้องเป็น zero entry)");
+        const c1 = await jvKey(`PosSale#${z.b1}#COMMISSION`);
+        if (c1.length !== 1 || !sameNet(netByCode(c1), { "6500": 10_500, "2100": -10_500 })) pa.push(`COMMISSION บิล ฿1,050 ${c1.length} รายการ ${short(netByCode(c1))} (คาด Dr 6500 10500 / Cr 2100)`);
+        const com = () => jvKey(`PosSale#${z.b2}#COMMISSION`);
+        const c2 = await com();
+        if (c2.length !== 1 || !sameNet(netByCode(c2), { "6500": 200, "2100": -200 })) pa.push(`COMMISSION บิล ฿20 ${c2.length} รายการ ${short(netByCode(c2))} (คาด 1 · Dr 6500 200 / Cr 2100 200)`);
+        pa.push(...(await replay("pos.sale.paid", (x) => x.saleId === z.b2)));
+        await drain();
+        if ((await com()).length !== 1) pa.push(`เล่น pos.sale.paid ซ้ำ → COMMISSION ${(await com()).length} (คาด 1)`);
+        const rd = await z.refundB2();
+        if (rd) {
+          const rvKey = `PosSale#${rd.id}#COMMISSION_REFUNDED`;
+          const rv = await jvKey(rvKey);
+          if (rv.length !== 1 || !sameNet(netByCode(rv), { "2100": 200, "6500": -200 })) pa.push(`COMMISSION_REFUNDED ${rv.length} รายการ ${short(netByCode(rv))} (คาด 1 · Dr 2100 200 / Cr 6500 200)`);
+          pa.push(...(await replay("pos.sale.refunded", (x) => x.refundSaleId === rd.id)));
+          await drain();
+          const after = [...(await com()), ...(await jvKey(rvKey))];
+          const n = netByCode(after);
+          if (after.length !== 2 || n["6500"] || n["2100"]) pa.push(`หลังเล่นซ้ำ ${after.length} รายการ · 6500/2100 สุทธิ ${short(n)} (คาด 2 · 0)`);
+        }
+      }
+      // ── X10 ──
+      const y = await step("สาขา K", () => deregLast("K", px, false));
+      if (!y && !px.length) px.push("ฟิกซ์เจอร์สาขา K ล้ม (ดูหมายเหตุ)");
+      if (y) {
+        const rd = await y.refundB2();
+        if (rd) {
+          if (Number(rd.vatSatang) !== 2_000) px.push(`VAT ใบคืน ${rd.vatSatang} (คาด 2000)`);
+          const jr = netByCode(await jvOf("PosSale", [rd.id]));
+          if (!sameNet(jr, { "2200": 2_000, "1010": -2_000 })) px.push(`JV ใบคืน ${short(jr)} (คาด Dr 2200 2000 / Cr 1010 2000)`);
+          const n = await allNet([y.receipt, y.b1, y.b2, rd.id]);
+          const want = { "1010": 105_000, "4000": -100_000, "2200": -5_000 };
+          if (!sameNet(n, want)) px.push(`รวมใบรับ+บิล+ใบคืน ${short(n)} (คาด ${short(want)})`);
+          const cn = await P.accountDocument.findFirst({ where: { tenantId: T, docType: "CREDIT_NOTE", refType: "PosSale", refId: rd.id } }).catch(() => null);
+          if (!cn || Number(cn.vatAmount) !== 2_000) px.push(`ใบลดหนี้ VAT ${cn ? cn.vatAmount : "ไม่มีใบ"} (คาด 2000)`);
+        }
+      }
+    }
+    chk("A10", pa.length === 0, "COMMISSION ฿20 ครั้งเดียว 200 · คืน → COMMISSION_REFUNDED ครั้งเดียว · สุทธิ 0", FXB(joinP(pa)));
+    chk("X10", px.length === 0, "ใบคืน VAT 2000 · Dr 2200 / Cr 1010 2000 · รายได้ 100000 · 2200 5000 · ใบลดหนี้ VAT 2000", FXB(joinP(px)));
   }
 
   // ════════ L4 บิลไม่มีมัดจำ ════════
