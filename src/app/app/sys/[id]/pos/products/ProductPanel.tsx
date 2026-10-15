@@ -90,6 +90,11 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
     for (const u of data.units) {
       if (p.unitId !== null && p.unitId !== u.id) continue;
       const codes = withStore(channelsIn(data.channels, u.id).map((c) => c.code));
+      // POS P2.11U ▸ fix1 มติ 1: สาขาที่ไม่มีสินค้านี้ในคลัง (ไม่อยู่ในรายการของสาขา) = ไม่มีช่องแก้ · บรรทัดจางแทน · แถวของสาขานี้อยู่ใน payload ไม่เปลี่ยน ◂
+      if (p.available[u.id] === undefined) {
+        out.push({ unit: u.id, codes, editable: false, unstocked: true });
+        continue;
+      }
       out.push({ unit: u.id, codes, editable: canEdit && !weighed });
     }
     return out;
@@ -276,6 +281,13 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
               <div data-testid="pos-prod-drawer-groups" className={`flex flex-col gap-4 rounded-xl ${groupsErr ? "border border-[color:var(--color-danger)] p-2" : ""}`}>
                 {groups.map((g) => {
                   if (!g.codes.length) return null;
+                  // POS P2.11U ▸ fix1 มติ 1: บรรทัดจาง "ไม่มีสินค้านี้ในคลังของสาขา <สาขา>" แทนกลุ่ม ◂
+                  if (g.unstocked && g.unit !== null)
+                    return (
+                      <p key={groupKey(g.unit)} data-testid={`pos-prod-drawer-unstocked-${g.unit}`} className="text-[12px] text-[color:var(--color-muted)]">
+                        {t("branch.unstocked", { unit: unitName(g.unit) })}
+                      </p>
+                    );
                   const gk = groupKey(g.unit);
                   const all = g.unit === null;
                   const editingGroup = editing && g.editable;

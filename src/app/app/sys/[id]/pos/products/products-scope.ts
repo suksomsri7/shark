@@ -113,8 +113,9 @@ export function branchCellOf(p: Pick<ProductsRow, "rows" | "basePriceSatang">, u
   return p.basePriceSatang === null ? { kind: "none" } : { kind: "price", priceSatang: p.basePriceSatang, own: false };
 }
 
-/** กลุ่มของลิ้นชัก: unit null = "ทุกสาขา" · codes = ช่องทางของกลุ่ม (ลำดับแสดง) · editable = ผู้ใช้แก้กลุ่มนี้ได้ */
-export type PriceGroup = { unit: string | null; codes: string[]; editable: boolean };
+/** กลุ่มของลิ้นชัก: unit null = "ทุกสาขา" · codes = ช่องทางของกลุ่ม (ลำดับแสดง) · editable = ผู้ใช้แก้กลุ่มนี้ได้ ·
+ *  unstocked = สาขาที่คลังไม่มีสินค้านี้ (fix1 มติ 1 — ไม่มีช่องแก้ · แถวของสาขานี้ส่งกลับไม่เปลี่ยน) */
+export type PriceGroup = { unit: string | null; codes: string[]; editable: boolean; unstocked?: boolean };
 /** คีย์กลุ่มในร่าง ("*" = ทุกสาขา) */
 export const groupKey = (unit: string | null): string => unit ?? "*";
 /** ร่างทั้งลิ้นชัก: กลุ่ม → ช่องทาง → ช่อง */
@@ -140,6 +141,8 @@ export const inheritedOf = (p: Pick<ProductsRow, "rows" | "basePriceSatang">, co
   effectiveOf({ basePriceSatang: p.basePriceSatang, rows: p.rows.filter((r) => !(r.channelCode === code && same(r.unitId, unit))) }, code, unit);
 
 /**
+ * 🔴 กติกาคงที่ (POS P2.11U fix1 มติ 1 · R1 F1): จอไม่เคยละแถวที่เก็บอยู่ — p.rows = ทุกแถวที่เก็บของสินค้า (products-data เติมแถวที่ listForUnit ไม่คืน) และ
+ *   ทุกแถวที่ไม่อยู่ในร่างถูกส่งกลับค่าเดิม · เซิร์ฟเวอร์ลบเฉพาะแถวที่จอตั้งใจเอาออก (ช่องที่ล้างในกลุ่มที่แก้ได้) — ไม่มีการลบเงียบ
  * ร่างทุกกลุ่ม → แถวทั้งชุด (setChannelPrices แทนทั้งชุด): แถวเดิมทั้งหมด (รวมแถวที่มองไม่เห็น/ของช่องทาง-สาขาที่เลิกใช้ — เซิร์ฟเวอร์รับแถวเดิมที่ไม่เปลี่ยน) ·
  * ยกเว้นแถว (ช่องทางในร่าง, สาขาของกลุ่ม) → แทนด้วยร่างที่มีค่า · ช่องว่าง = ลบแถวนั้น (กลับไปสืบทอด)
  * errors คีย์ `<กลุ่ม>|<ช่องทาง>` เมื่อข้อความเงินผิด

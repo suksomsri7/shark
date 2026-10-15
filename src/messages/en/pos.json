@@ -2977,6 +2977,7 @@
       "readOnly": "Read only",
       "managerHint": "Shop-wide prices can be changed only by the owner or an all-branch admin",
       "inherit": "Use inherited price",
+      "unstocked": "This product is not stocked at branch {unit}",
       "dead": {
         "note": "{count} price rows of retired channels/branches are kept unchanged",
         "purge": "Clear retired rows",

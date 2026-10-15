@@ -201,7 +201,7 @@ export async function loadProductsData(
     const m = new Map(st.map((x) => [x.id, x.stationId]));
     for (const p of products) p.stationId = m.get(p.id) ?? null;
   }
-  if (opts.liveUnitIds && products.length) await countDeadRows(scope, products, opts.liveUnitIds); // POS P2.11U ▸ มติ 3 ◂
+  if (opts.liveUnitIds && products.length) await countDeadRows(scope, products, opts.liveUnitIds, rowKeys); // POS P2.11U ▸ มติ 3 · fix1 มติ 1 (F1: เติมแถวที่เก็บอยู่ครบชุด) ◂
   const recipeData = await loadRecipeData(scope, actor, units, products, variantRows); // POS P2.3U
   return {
     units,
@@ -219,12 +219,28 @@ export async function loadProductsData(
  * นับแถวราคาที่ "เลิกใช้" ต่อสินค้า (อ่านอย่างเดียว · คำสั่งละครั้ง): กติกาเดียวกับ setChannelPrices —
  *   รหัสช่องทางที่ไม่ใช่ builtin และไม่มี SalesChannel รหัสนั้นที่ยังไม่เก็บถาวรในระบบ POS นี้ · หรือสาขาที่ไม่อยู่ในสาขาที่ผูก POS และไม่เก็บถาวร
  *   (แถวของสาขาที่ยังใช้อยู่แต่ผู้ใช้เข้าไม่ได้ ไม่นับ — นั่นคือ "นอกขอบเขต" ไม่ใช่ "เลิกใช้")
+ * POS P2.11U ▸ fix1 มติ 1 (R1 F1 · ห้ามทิ้งแถว): คำสั่งอ่านเดียวกันนี้เติม "ทุกแถวที่เก็บอยู่" ของสินค้าลง p.rows (คู่ (ช่องทาง, สาขา) ที่ listForUnit ไม่คืน —
+ *   เช่น สาขาที่คลังไม่มีสินค้านี้ · สาขาที่เลิกผูก/เก็บถาวร · สาขาที่ผู้ใช้มองไม่เห็น) ⇒ จอส่งชุดเต็มกลับไม่เปลี่ยนเสมอ
+ *   (เซิร์ฟเวอร์ตรวจสิทธิ์เฉพาะแถวที่เปลี่ยน · แถวที่ส่งกลับค่าเดิม = รับ ไม่เขียน) — เซิร์ฟเวอร์ลบเฉพาะแถวที่จอตั้งใจเอาออก ◂
  */
-async function countDeadRows(scope: { tenantId: string; systemId: string }, products: ProductsRow[], liveUnitIds: string[]): Promise<void> {
+async function countDeadRows(scope: { tenantId: string; systemId: string }, products: ProductsRow[], liveUnitIds: string[], rowKeys: Map<string, Set<string>>): Promise<void> {
   const { tenantId, systemId } = scope;
   const ids = products.map((p) => p.id);
-  const stored = await prisma.posProductChannelPrice.findMany({ where: { tenantId, systemId, productId: { in: ids } }, select: { productId: true, channelCode: true, unitId: true } });
+  const stored = await prisma.posProductChannelPrice.findMany({ where: { tenantId, systemId, productId: { in: ids } }, select: { productId: true, channelCode: true, unitId: true, priceSatang: true, notSold: true } });
+  for (const p of products) p.deadRows = 0;
   if (!stored.length) return;
+  // POS P2.11U ▸ fix1 มติ 1: เติมแถวที่ยังไม่อยู่ใน p.rows (คีย์เดียวกับ loadProductsData) — ค่าตามที่เก็บ ไม่แปลง ◂
+  const byId = new Map(products.map((p) => [p.id, p]));
+  for (const r of stored) {
+    const p = byId.get(r.productId);
+    if (!p) continue;
+    const k = `${r.channelCode ?? ""}|${r.unitId ?? ""}`;
+    let seen = rowKeys.get(p.id);
+    if (!seen) rowKeys.set(p.id, (seen = new Set(p.rows.map((x) => `${x.channelCode ?? ""}|${x.unitId ?? ""}`))));
+    if (seen.has(k)) continue;
+    seen.add(k);
+    p.rows.push({ channelCode: r.channelCode, unitId: r.unitId, priceSatang: r.priceSatang, notSold: r.notSold });
+  }
   const custom = [...new Set(stored.flatMap((r) => (r.channelCode && !(CHANNEL_BUILTIN_CODES as readonly string[]).includes(r.channelCode) ? [r.channelCode] : [])))];
   const liveCustom = custom.length
     ? new Set((await prisma.salesChannel.findMany({ where: { tenantId, systemId, code: { in: custom }, archivedAt: null }, select: { code: true } })).map((c) => c.code))
