@@ -96,7 +96,8 @@ const CHECKS: readonly Def[] = [
   D("OR1", "O", "[§1 #25–27] POST /orders เข้าช่องทาง MANUAL (LINEMAN) เลขออเดอร์เดิมสองครั้ง (คนละ Idempotency-Key) → ออเดอร์เดียว ครั้งที่สอง duplicated:true · GET /orders + /orders/{id} = listOrders/getOrder (PAR)"),
   D("OR2", "O", "[§1 #28] accept ออเดอร์ PLATFORM (NEW) → 200 · บิลเดียว · JV COMMISSION ของบิล ≥ 1"),
   D("OR3", "O", "[§1 #29] reject reasonCode TOO_BUSY → 200 REJECTED · reasonCode มั่ว → 422 validation"),
-  D("OR4", "O", "[§1 #30–32 #34] ออเดอร์ DIRECT: accept → preparing → ready → complete → pay CASH → 200 บิล + ออเดอร์ PAID · ขั้นผิด (preparing บนออเดอร์ที่ส่งมอบแล้ว) → 409 state_conflict"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD-B1: ลำดับเดิม complete → pay ขัดกฎ P2.8 (ส่งมอบออเดอร์ที่ยังไม่จ่าย = ORDER_UNPAID · ออเดอร์ HANDED รับเงินไม่ได้) ⇒ pay ก่อน complete
+  D("OR4", "O", "[§1 #30–32 #34] ออเดอร์ DIRECT: accept → preparing → ready → pay CASH → complete → 200 บิล + ออเดอร์ PAID · ขั้นผิด (preparing บนออเดอร์ที่ส่งมอบแล้ว) → 409 state_conflict"),
   D("OR5", "O", "[§1 #23–24] pause ช่องทาง adapter API → POST /orders → 409 state_conflict (CHANNEL_PAUSED) · resume → POST /orders → 200"),
   D("OR6", "O", "[§1 #33] cancel ออเดอร์ที่มีบิล: คีย์มี pos.order.reject แต่ไม่มี pos.sale.void → 403 forbidden · บิลไม่ถูกยกเลิก · pos-admin → 200 · บิล VOIDED"),
   // ── PR สินค้า ──
@@ -1478,14 +1479,17 @@ async function runDb() {
     const a = await api("POST", `/orders`, raw("admin"), { body: ordBody(CH.WALK ?? "none", { startStatus: "NEW" }) });
     const id = String(a.body?.data?.orderId ?? "none");
     if (a.status !== 200) p.push(`create ${st(a)}`);
-    for (const s of ["accept", "preparing", "ready", "complete"]) {
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD-B1: accept → preparing → ready → pay → complete (ส่งมอบได้เมื่อจ่ายแล้ว · กฎ P2.8 ORDER_UNPAID) · ขั้นผิด = preparing บนออเดอร์ HANDED
+    for (const s of ["accept", "preparing", "ready"]) {
       const r = await api("POST", `/orders/${id}/${s}`, raw("admin"), { body: { unitId: U.A } });
       if (r.status !== 200) p.push(`${s} ${st(r)}`);
     }
-    const bad = await api("POST", `/orders/${id}/preparing`, raw("admin"), { body: { unitId: U.A } });
-    if (!(bad.status === 409 && ecode(bad) === "state_conflict")) p.push(`preparing หลังส่งมอบ → ${st(bad)}`);
     const pay = await api("POST", `/orders/${id}/pay`, raw("admin"), { body: { unitId: U.A, payMethods: [{ type: "CASH", amountSatang: 1000 }], cashReceivedSatang: 1000 } });
     if (pay.status !== 200 || !pay.body?.data?.saleId) p.push(`pay ${st(pay)}`);
+    const done = await api("POST", `/orders/${id}/complete`, raw("admin"), { body: { unitId: U.A } });
+    if (done.status !== 200) p.push(`complete ${st(done)}`);
+    const bad = await api("POST", `/orders/${id}/preparing`, raw("admin"), { body: { unitId: U.A } });
+    if (!(bad.status === 409 && ecode(bad) === "state_conflict")) p.push(`preparing หลังส่งมอบ → ${st(bad)}`);
     const o = await P.posOrder.findFirst({ where: { id, tenantId: T } }).catch(() => null);
     if (o?.paymentState !== "PAID" || !o?.saleId) p.push(`ออเดอร์ ${o?.status}/${o?.paymentState}`);
     chk("OR4", p.length === 0, "200 ×6 · 409 · PAID", FXB(joinP(p)));
