@@ -83,3 +83,7 @@ R2 = MERGEABLE-AFTER-FIXES; both items are small ⇒ one short round, then merge
 
 ## Controller image review — vis83 @e7f661a7 (QC5 · 15 Oct 16:35Z)
 - failures 0 th + en (`/root/pos-runs/vis83-qc5-20261015T163203Z`). **display-live now passes**: the real register tab (device "เครื่องขาย QC 469025") → display shows "2× อเมริกาโน่เย็น ฿130 · 1× ลาเต้ร้อน ฿60 · รวม ฿190 · ยอดสุทธิ ฿190" — F8 confirmed as the hidden-tab harness cause. done en "Thank you, สมชาย · Change ฿200 · You earned 62 points · Scan for your online receipt · Receipt 202610-0534"; member-stamps unchanged; settings-online shows "ขอรหัสใหม่" + "ยกเลิกการจับคู่" (confirm modal) on a paired device (F3 path present). → images **pass**; merge after fix 2 (G1/G2) is verified.
+
+## R2 re-verify fix round 2 (@6b2cefbb · 15 Oct 16:38Z) — verbatim summary
+**Verdict: MERGEABLE.** G2 fixed (9abca590 `DeviceSettings.tsx`: `refresh` notes the counter at start `:726`, discards when moved `:728`; `enable`/`revoke` bump before the call `:769/:779` and in `.finally` `:770/:780`; no path clears an unexpired new code; no stale panel — poll effect re-runs at 5 s `:750`; all hunks inside `▸ fix2 … ◂`; info: `save` does not bump, never touches `code`). G1 fixed (`fx2-gates.sh:34` LOCALE inside iso; en log `"locale":"en"`, 14 `-en.png`; th 30 shots). Notes complete (deviation 6, follow-ups G4/G5, be57073d amendment). Other fix-2 gates as reported.
+**Controller:** merge.
