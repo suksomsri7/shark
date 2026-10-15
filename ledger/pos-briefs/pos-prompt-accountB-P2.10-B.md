@@ -1,4 +1,4 @@
-# Prompt — P2.10 brief drafter (read-only survey). Controller (account B, 15 Oct 13:5xZ): base for the survey = `session/pos` **57a8b19a** (code = P2.9bU merged 616db657; P2.11 S/U, P2.9b S/U, P2.5/P2.6/P2.8 S/U all merged). In flight on tree c: HF-FU fix round 2 (`wip/pos-hf-fu` — server hygiene: `order.ts` sweeper, `held-cart.ts`, `account/gl.ts`, `account/index.ts`; it merges before P2.10 starts — do not plan around its hunks). Output = `ledger/pos-briefs/pos-brief-P2.10.md` DRAFT (controller adds §10 rulings).
+# Prompt — P2.10 brief drafter (read-only survey). Controller (account B, 15 Oct 13:3xZ): base for the survey = `session/pos` **57a8b19a** (code = P2.9bU merged 616db657; P2.11 S/U, P2.9b S/U, P2.5/P2.6/P2.8 S/U all merged). In flight on tree c: HF-FU fix round 2 (`wip/pos-hf-fu` — server hygiene: `order.ts` sweeper, `held-cart.ts`, `account/gl.ts`, `account/index.ts`; it merges before P2.10 starts — do not plan around its hunks). Output = `ledger/pos-briefs/pos-brief-P2.10.md` DRAFT (controller adds §10 rulings).
 
 ---
 

@@ -1,4 +1,4 @@
-# Prompt — P2.10 oracle writer (fail-before). Controller (account B, 15 Oct 14:0xZ): base = `origin/session/pos` **57a8b19a** (code = P2.9bU merged 616db657; HF-FU merging on tree c in parallel — ledger/order/account files, no overlap with you). Tree **/root/projects/shark-pos-b** (own node_modules; `pnpm exec prisma generate` once after checkout). Lane = oracle writer (do not touch trees c/d, `giftcard/**`, `member/**`, `account/**`, `order.ts`, `held-cart.ts`).
+# Prompt — P2.10 oracle writer (fail-before). Controller (account B, 15 Oct 13:4xZ): base = `origin/session/pos` **57a8b19a** (code = P2.9bU merged 616db657; HF-FU merging on tree c in parallel — ledger/order/account files, no overlap with you). Tree **/root/projects/shark-pos-b** (own node_modules; `pnpm exec prisma generate` once after checkout). Lane = oracle writer (do not touch trees c/d, `giftcard/**`, `member/**`, `account/**`, `order.ts`, `held-cart.ts`).
 
 ---
 

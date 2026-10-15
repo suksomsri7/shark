@@ -93,7 +93,7 @@ typecheck (pos gate lock) · fitness ±env · `fitness-pos` (F15.3 inventory) ·
 - Settings (1440/1024/390, owner): `settings-display-unpaired` · `settings-display-code` (code + QR + countdown) · `settings-display-online` (switches, revoke confirm).
 - UI rules: tokens only, ≥ 44 px, `pos.display.*` th/en, no Thai literals in TSX, testids `pos-display-*`, HF-418 (no `new Date()`/locale strings in SSR output).
 
-## 10. Controller rulings (account B · 15 Oct 2026 14:0xZ · binding)
+## 10. Controller rulings (account B · 15 Oct 2026 13:4xZ · binding)
 **Scope**: one card S+U per plan ("visual + ~10"), R1–R8 + §3 DTO as proposed. Base for the oracle writer = `session/pos` **57a8b19a** (tree b); the builder starts after HF-FU merges (base = that merge commit) — no overlap (§7). Prompt-vs-code 1–4 accepted (P1.6 → P1.10 devices; `/r` = P1.11U).
 1. **Transport = (a)** server snapshot on the display row + short poll: 1 s while `cart/paying`, 3 s `idle`, 1 s for 20 s after `done`, pause when hidden; `changed:false` fast path; **no** rate-limit-db write per poll; `lastPolledAt` throttled 30 s. BroadcastChannel/SSE/Ably out.
 2. **Auth = pair code + httpOnly cookie** (`pos_display`, Path=/d, Secure, SameSite=Lax, 400 d), 8-char Crockford code TTL 10 min, `pairFailCount` ≤ 5 then locked until a new code; plaintext token never stored (sha256). No `/d/<token>` capability URL. Pair/revoke audit only (no outbox).
