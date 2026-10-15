@@ -1,6 +1,6 @@
 # P2.13 — review file (controller tree)
 
-## Builder delivery (tree b · 15 Oct 20:3xZ) + controller rulings on CD-B1–B4
+## Builder delivery (tree b · 15 Oct 20:28Z) + controller rulings on CD-B1–B4
 - Head `wip/pos-p2.13` **be0f92cb** (base d0561566 + oracle 580ecbbb + merge ledger 3ece536c). 48 ops · bundles · key issuance + settings card · docs generator + skill (copied to `/root/.claude/skills/shark-pos-api`) · ORACLE-EDIT batch applied as `test(...)` commits (9 caller counts · p2.1:488 · p0.2 pins incl. S7.1–7.6 re-based). Gates: `qc-pos-p2.13` 48/49 ×3 (OR4) · skill 10/10 · typecheck 0 · fitness 53/53 ±env · fitness-pos 8/8 · `gen --check` 0 · hf-apiv1 143 · p1.3 128 · p1.1 180 · hf-tx 22 · p1.8 49 · p0.2 56 · rest green · lane pins red by design (p2.10 ST2 · hf-fu ST1 · p2.11 ST4 · p2.8 ST6 · p2.12 ST1).
 - **CD-B1 (OR4 oracle order complete-before-pay) = ORACLE-EDIT approved**: OR4 → pay then complete (dated marker, own `test(qc-pos-p2.13)` commit) in the fix round; suite must reach 49/49.
 - **CD-B2 (`ai/tools/[name]/route.ts`: general-key check before scope check) = provisionally accepted**; R1 verifies it never widens access (a scoped key still cannot call a tool outside its scopes; a legacy `[]` key keeps exactly its old behaviour; hf-apiv1 143/143 is the pin).
