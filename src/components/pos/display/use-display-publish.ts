@@ -22,7 +22,7 @@ import {
   type DisplayPayIn,
   type DisplayState,
 } from "@/lib/modules/pos/display-shared";
-import type { RegisterMemberBenefits, RegisterMemberItem, RegisterQuoteTotals, RegisterSubmitOk } from "@/lib/modules/pos/register-shared";
+import type { RegisterMemberBenefits, RegisterMemberItem, RegisterMemberLine, RegisterQuoteTotals, RegisterSubmitOk } from "@/lib/modules/pos/register-shared"; // POS P2.10 ▸ fix1 F4: + RegisterMemberLine ◂
 import type { CartLineModel } from "@/components/pos/register/CartLine";
 
 export type DisplayPublishInput = {
@@ -49,6 +49,19 @@ function memberFirstName(m: RegisterMemberItem): string {
 }
 // ◂
 
+// POS P2.10 ▸ fix1 F4 (มติ fix1 ข้อ 4): ส่ง kind ให้เซิร์ฟเวอร์เลือกป้าย (POINTS + showPoints=false / VOUCHER ไม่มีชื่อ / GIFTCARD = ป้ายกลาง) ·
+//    VOUCHER ส่งป้ายเฉพาะชื่อจริงของใบในกระเป๋า (wallet ใช้โค้ด voucher เมื่อไม่มีชื่อ · ไม่มีชื่อ = ป้ายว่าง) · GIFTCARD ป้ายว่าง (ป้ายเดิมมีเลขบัตร)
+function memberRow(m: RegisterMemberLine, benefits: RegisterMemberBenefits | null): { kind: RegisterMemberLine["kind"]; label: string; satang: number } {
+  if (m.kind === "GIFTCARD") return { kind: m.kind, label: "", satang: m.discountSatang };
+  if (m.kind === "VOUCHER") {
+    const v = m.ref ? benefits?.vouchers.find((x) => x.id === m.ref) : undefined;
+    const name = v?.name?.trim() ?? "";
+    return { kind: m.kind, label: name && name !== v?.code ? name : "", satang: m.discountSatang };
+  }
+  return { kind: m.kind, label: m.label, satang: m.discountSatang };
+}
+// ◂
+
 /** ภาพบนจอจากสถานะหน้าขาย · null = ยังไม่ควรส่ง (ตะกร้ามีของแต่ quote ยังไม่สด) */
 export function buildDisplayState(i: DisplayPublishInput, pay: DisplayPayIn | null): DisplayState | null {
   const done = i.layers.find((l) => l.kind === "done")?.result ?? null;
@@ -69,7 +82,7 @@ export function buildDisplayState(i: DisplayPublishInput, pay: DisplayPayIn | nu
         lineDiscountSatang: q.lineDiscountSatang,
         billDiscountSatang: q.billDiscountSatang,
         coupon: i.couponCode && q.couponDiscountSatang > 0 ? { code: i.couponCode, satang: q.couponDiscountSatang } : null,
-        member: (q.memberLines ?? []).filter((m) => m.discountSatang > 0).slice(0, 10).map((m) => ({ label: m.label, satang: m.discountSatang })),
+        member: (q.memberLines ?? []).filter((m) => m.discountSatang > 0).slice(0, 10).map((m) => memberRow(m, i.benefits)), // POS P2.10 ▸ fix1 F4 ◂
         serviceChargeSatang: q.serviceChargeSatang,
         grandTotalSatang: q.grandTotalSatang,
       }

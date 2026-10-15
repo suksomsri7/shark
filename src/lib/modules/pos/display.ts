@@ -32,6 +32,7 @@ import {
   MAX_DISPLAY_STATE_BYTES,
   displayEffectivePhase,
   displayJsonBytes,
+  displayMemberLabel, // POS P2.10 ▸ fix1 F4 ◂
   displayStampView,
   displayStateSchema,
   nextPollMs,
@@ -413,7 +414,8 @@ async function buildView(db: Db, r: ReadRow, st: DisplayState | null, phase: Dis
   }
   view.lines = (st.lines ?? []).map((l) => ({ qty: l.qty, name: l.name, detail: l.detail ?? null, grossSatang: l.grossSatang, discountSatang: l.discountSatang ?? 0, discountLabel: l.discountLabel ?? null }));
   view.moreCount = st.moreCount ?? 0;
-  view.totals = st.totals ?? null;
+  // POS P2.10 ▸ fix1 F4 (มติ fix1 ข้อ 4): ป้ายส่วนลดสมาชิกผ่านเซิร์ฟเวอร์ (showPoints · VOUCHER ไม่มีชื่อ · GIFTCARD) · view ไม่มี kind
+  view.totals = st.totals ? { ...st.totals, ...(st.totals.member ? { member: st.totals.member.map((m) => ({ label: displayMemberLabel(m, r.showPoints, locale), satang: m.satang })) } : {}) } : null; // ◂
   view.stamp = st.stamp && st.member ? displayStampView(st.stamp) : null;
   if (phase === "paying" && st.pay) {
     const { intentId: _i, ...pay } = st.pay;

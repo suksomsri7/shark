@@ -49,10 +49,29 @@ export type DisplayTotals = {
   lineDiscountSatang: number;
   billDiscountSatang: number;
   coupon?: { code: string; satang: number } | null;
-  member?: { label: string; satang: number }[];
+  member?: { kind?: DisplayMemberKind; label: string; satang: number }[]; // POS P2.10 ▸ fix1 F4: kind (ภาพที่ส่ง) · view = label + satang ◂
   serviceChargeSatang: number;
   grandTotalSatang: number;
 };
+// POS P2.10 ▸ fix1 F4 (มติ fix1 ข้อ 4): ชนิดแถวส่วนลดสมาชิก (= RegisterMemberLine.kind) · ป้ายกลางที่เซิร์ฟเวอร์ใช้แทนป้ายจากหน้าขาย —
+//    POINTS เมื่อ showPoints=false ("ใช้ 1,240 แต้ม" บอกจำนวนแต้ม) · VOUCHER ที่ไม่มีชื่อ (wallet ใช้โค้ด voucher แทนชื่อ) ·
+//    GIFTCARD เสมอ (ป้ายมีเลขบัตรปิดบัง · มติ 3 ห้ามเลขบัตร) — ไม่เคยแสดงโค้ด voucher / เลขบัตร
+export type DisplayMemberKind = "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD";
+export const DISPLAY_MEMBER_KINDS: readonly DisplayMemberKind[] = ["TIER", "VOUCHER", "POINTS", "GIFTCARD"];
+export const DISPLAY_MEMBER_GENERIC_LABEL: Record<DisplayLocale, { member: string; voucher: string; giftCard: string }> = {
+  th: { member: "ส่วนลดสมาชิก", voucher: "คูปอง", giftCard: "บัตรกำนัล" },
+  en: { member: "Member discount", voucher: "Voucher", giftCard: "Gift card" },
+};
+/** ป้ายที่หน้าตาเป็นโค้ด (ตัวใหญ่/ตัวเลข/ขีด ไม่มีช่องว่าง ≥ 4 ตัว) — VOUCHER ที่ป้ายเป็นโค้ด = ไม่มีชื่อ */
+export const DISPLAY_VOUCHER_CODE_RE = /^[A-Z0-9][A-Z0-9_-]{3,}$/;
+export function displayMemberLabel(m: { kind?: DisplayMemberKind; label: string }, showPoints: boolean, locale: DisplayLocale): string {
+  const g = DISPLAY_MEMBER_GENERIC_LABEL[locale];
+  if (m.kind === "GIFTCARD") return g.giftCard;
+  if (m.kind === "POINTS" && !showPoints) return g.member;
+  if (m.kind === "VOUCHER" && (!m.label || DISPLAY_VOUCHER_CODE_RE.test(m.label))) return g.voucher;
+  return m.label || g.member;
+}
+// ◂
 export type DisplayStampIn = { name: string; stamps: number; slots: number; toAdd: number };
 export type DisplayPayIn = {
   method: DisplayPayMethod;
@@ -244,10 +263,15 @@ function parseTotals(v: unknown, path: string): DisplayTotals {
   }
   if (has(o, "member")) {
     if (!Array.isArray(o.member) || o.member.length > MAX_DISPLAY_MEMBER_LINES) throw new Bad(`${path}.member`);
+    // POS P2.10 ▸ fix1 F4: kind (ไม่บังคับ) · ป้ายไม่บังคับเมื่อมี kind (VOUCHER ไม่มีชื่อ = ไม่ส่งป้าย)
     t.member = o.member.map((m, i) => {
-      const r = obj(m, `${path}.member[${i}]`, ["label", "satang"]);
-      return { label: text(r.label, `${path}.member[${i}].label`), satang: satang(r.satang, `${path}.member[${i}].satang`) };
-    });
+      const r = obj(m, `${path}.member[${i}]`, ["kind", "label", "satang"]);
+      const p = `${path}.member[${i}]`;
+      if (has(r, "kind") && (typeof r.kind !== "string" || !DISPLAY_MEMBER_KINDS.includes(r.kind as DisplayMemberKind))) throw new Bad(`${p}.kind`);
+      const row: { kind?: DisplayMemberKind; label: string; satang: number } = { label: has(r, "kind") && !has(r, "label") ? "" : text(r.label, `${p}.label`), satang: satang(r.satang, `${p}.satang`) };
+      if (has(r, "kind")) row.kind = r.kind as DisplayMemberKind;
+      return row;
+    }); // ◂
   }
   return t;
 }
