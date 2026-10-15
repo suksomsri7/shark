@@ -1617,3 +1617,8 @@
 - มติ fix 2 (1–5 ใน review file 19edd7b6): H1 fix (re-read ช่องทางใน tx + refuse payout↔paymentState ไม่ตรงใน `acceptInTx`) · H2 fix time-box (idempotency key tenant-wide ⇒ skipped · owner line "คืนบิลหลัง relink ไม่กลับค่าคอมฯ อัตโนมัติ" · ตรวจ double-consume ใน ZE3 → CONTROLLER-DECISION ถ้าเกิด) · ORACLE-ADD HN5 + ZE3 (29 ข้อ) · follow-up lines G1/G2/REFUNDED hand-over · gates 12 ชุด
 - spawn **builder HF-FU fix 2** (Opus ทรี c) prompt `pos-prompt-accountB-HF-FU-fix2.md`
 - เลน: 1 = HF-FU fix 2 ทรี c · ทรี b/d ว่าง · ถัดไป: fix 2 รายงาน → (ไม่ต้อง hunter ซ้ำถ้าแก้ในกรอบมติ 1–2) → merge → gates93 ‖ chain79 → ภาพ → push → 37/55
+
+### 15 ต.ค. 13:55Z — เลน 2 = P2.10 brief drafter
+- ใบถัดไปตามแผน = **P2.10 จอลูกค้า (จอที่ 2)** lane A · ⏮ P1.6 · visual + ~10 · mockup 11A (`design-pos/11-customer-display.png` panel A: header ร้าน/สาขา/เคาน์เตอร์ · ทักทายสมาชิก tier/แต้ม · รายการ+ตัวเลือก+ส่วนลด · รวม/คูปอง · สแตมป์ 7/10 · ยอดสุทธิ/ชำระแล้ว/คงเหลือ + QR PromptPay) · panel B/C (ใบเสร็จ 80 มม./ออนไลน์) ทำแล้ว P1.10
+- prompt `pos-prompt-accountB-P2.10-B.md` (5fb02545) → spawn **brief drafter** (Opus read-only ทรีผู้คุม @57a8b19a) → output `pos-brief-P2.10.md` DRAFT → ผู้คุม §10 → oracle writer (ทรี b) → builder หลัง HF-FU merge
+- เลน: 1 = HF-FU fix 2 ทรี c · 2 = P2.10 brief drafter (read-only)
