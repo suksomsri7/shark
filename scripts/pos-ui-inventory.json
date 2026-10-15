@@ -8828,8 +8828,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-paydlg",
-        "note": "มัดจำที่ชำระไว้ — ปิดเสมอ เร็ว ๆ นี้ (P2.9b · มติ CD6)"
+        "target": "pos-reg-paydlg-deposit-panel",
+        "note": "P2.9bU มติ 1: เปิดเมื่อ registerPayTendersAction().deposit.enabled ⇒ แผงมัดจำ · ปิด = \"ยังไม่เปิดใช้\" · โต๊ะ/ออเดอร์ (ไม่ส่ง tenders) = เร็ว ๆ นี้ แบบเดิม"
       },
       "wo": "P1.12U",
       "oracle": "qc-pos-p1.12",
@@ -17037,6 +17037,832 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-changed-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-changed",
+        "state": "disappears",
+        "note": "ปิดแบนเนอร์ \"ยอดมัดจำเปลี่ยน — ตรวจสอบใหม่\" (DEPOSIT_EXCEEDS · แถวมัดจำถูกค้นใหม่แล้ว)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-row-last4-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-last4",
+        "state": "appears",
+        "note": "แถวมัดจำที่ 4 หลักท้ายผิด/ต้องใส่อีกครั้ง (DEPOSIT_NOT_OWNER · ลองซ้ำหลังโหลดกลับ) → แผงใส่ 4 หลักของแถวนั้น"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-lookup",
+        "state": "changes",
+        "note": "เลขใบเสร็จ / ชื่อ (≥ 3 ตัว · ไม่มีคำใบ้เบอร์) · Enter = ค้นมัดจำ"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-lookup",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-row-*",
+        "state": "appears",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-paydlg-deposit-notfound"
+          },
+          {
+            "type": "inline-error",
+            "target": "pos-reg-paydlg-deposit-error"
+          }
+        ],
+        "note": "registerDepositLookupAction({query}) — แถวค้นด้วยชื่อไม่มียอด (\"ใส่เลขใบเสร็จเพื่อดูยอด\") · ตรงเลขใบเสร็จใบเดียว = เลือกให้"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-row-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-use",
+        "state": "appears",
+        "note": "\"#<เลขใบรับ> · ชื่อ · เบอร์ปิดบัง\" + คงเหลือ · ไม่มียอด = ค้นซ้ำด้วยเลขใบรับ (+ ช่อง 4 หลักท้ายเมื่อ needsPhoneLast4) · ใช้หมด/คืนแล้ว = ปิด"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-last4",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-amount",
+        "state": "appears",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-paydlg-deposit-last4-wrong"
+          }
+        ],
+        "note": "4 หลักท้ายของเบอร์ (password ไม่ควบคุม · ไม่เป็น attribute) · ครบ 4 = ค้นซ้ำ (เซิร์ฟเวอร์นับครั้งผิด/ล็อก 15 นาที) → เห็นยอด"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-amount",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-amount",
+        "state": "changes",
+        "note": "จำนวนที่ใช้จากมัดจำ = min(คงเหลือ, ยอดมัดจำ) · แป้นตัวเลขแก้ได้ · เกินยอดมัดจำ = ตัดเหลือยอดมัดจำ"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-deposit-use",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-deposit-split-*",
+        "state": "appears",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-paydlg-deposit-error"
+          }
+        ],
+        "note": "\"ใช้มัดจำนี้ ฿x\" ⇒ แถว \"มัดจำ #… ฿x ✓ · คงเหลือ ฿y\" · ใบเดิมซ้ำ = \"ใช้มัดจำใบนี้ในบิลแล้ว\" · เกิน 3 ใบ = \"ใช้ได้สูงสุด 3 ใบ\" · แถวที่ใส่ 4 หลักใหม่ = \"ใช้ 4 หลักนี้\""
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-menu-deposit-receive",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-deprcv",
+        "note": "เมนู ⋯ \"รับมัดจำ\" — เฉพาะเมื่อค่าตั้งรับมัดจำเปิด (registerPayTendersAction · สิทธิ์ขาย) · หน้าโต๊ะไม่มี"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-mobile-deposit-receive",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-deprcv",
+        "note": "มือถือ (< 768 ไม่มีแถบโหมด/เมนู ⋯): ปุ่มรับมัดจำบนแถบบน — เงื่อนไขเดียวกับเมนู"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv",
+        "state": "disappears",
+        "note": "ปิดแผ่นรับมัดจำ (ระหว่างส่ง/ผลไม่แน่ใจ/พร้อมเพย์เงินเข้าแล้ว = ไม่มีปุ่ม) · จอสำเร็จ = เสร็จ"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerTakeDepositAction",
+        "resultTarget": "pos-reg-deprcv-done",
+        "db": "PosSale POS_DEPOSIT + PosDeposit OPEN + PosDepositTxn RECEIVE",
+        "note": "Enter = รับมัดจำ (ส่งทีละครั้ง · ผลไม่แน่ใจ = ลองซ้ำคีย์เดิม)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-amount",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-submit",
+        "state": "changes",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-deprcv-form"
+          }
+        ],
+        "note": "ยอดมัดจำ > 0 (บาท ทศนิยม ≤ 2 · แป้นตัวเลข md+)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-name",
+        "state": "changes",
+        "note": "ชื่อลูกค้า (ลูกค้าทั่วไป · ไม่บังคับ · ≤ 100) — มีสมาชิกในบิล = ชิปสมาชิกแทน"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-phone",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-phone",
+        "state": "changes",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-deprcv-phone"
+          }
+        ],
+        "note": "เบอร์ (บังคับสำหรับลูกค้าทั่วไป · 9–10 หลักขึ้นต้น 0) — เก็บแบบปิดบัง + 4 หลักท้ายเป็นความลับยืนยันตอนใช้"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-note",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-note",
+        "state": "changes",
+        "note": "หมายเหตุ (ไม่บังคับ · ≤ 200) → บรรทัด \"มัดจำ — <หมายเหตุ>\" ของใบรับ"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-method-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-change",
+        "state": "changes",
+        "note": "cash / promptpay (ใบขอรับเงิน pi_ แบบจอชำระ · ไม่มีใบ = QR นิ่ง + ยืนยันเองตาม HF-PP) / card (EDC + เลขอ้างอิง · ยืนยันเองตาม HF-PP)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-cash",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-change",
+        "state": "changes",
+        "note": "เงินที่รับมา (ว่าง = พอดี) · ส่งเป็น cashReceivedSatang เสมอ (R1 F5) · เงินทอน = รับ − ยอด"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-reference",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-reference",
+        "state": "changes",
+        "note": "เลขอ้างอิง EDC (ไม่บังคับ · ≤ 60) · ผู้ใช้ไม่มี pos.shift.manage + ร้านตั้งให้ผู้จัดการยืนยัน = รับบัตรไม่ได้"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-key-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv-amount",
+        "state": "changes",
+        "note": "แป้นตัวเลข (md+) ของช่องที่เลือก — ยอดมัดจำ / เงินที่รับมา"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerTakeDepositAction",
+        "resultTarget": "pos-reg-deprcv-done",
+        "db": "PosDeposit (คีย์เดิม = มัดจำเดิม)",
+        "note": "ผลไม่แน่ใจ (UNKNOWN/INTERNAL/BUSY/เครือข่าย) = ลองซ้ำด้วยคีย์ + คำขอเดิม"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv",
+        "state": "disappears",
+        "note": "ย้อนกลับ (md+) — ยกเลิกใบขอรับเงินที่ยังไม่จ่าย"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerTakeDepositAction",
+        "resultTarget": "pos-reg-deprcv-done",
+        "db": "PosSale POS_DEPOSIT + PosDeposit OPEN + PosDepositTxn RECEIVE",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-deprcv-error"
+          }
+        ],
+        "note": "รับมัดจำ ฿x → \"ใบรับเงินมัดจำ #… ฿x\" + ตัวอย่างใบเสร็จ · VALIDATION (ค่าตั้งปิด) = \"ร้านยังไม่เปิดรับมัดจำ\" · PAYMENT_MISMATCH · PERMISSION_DENIED (ยืนยันเองต้องผู้จัดการ)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-print",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-print-sent",
+        "state": "appears",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-deprcv-print-error"
+          }
+        ],
+        "note": "พิมพ์ใบรับเงินมัดจำ (ใบแรก = payload ต้นฉบับ · ถัดไป = reprintReceiptAction สำเนา + audit) แบบจอสำเร็จของการขาย"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deprcv-finish",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-deprcv",
+        "state": "disappears",
+        "note": "เสร็จ — กลับหน้าขาย (โหลดสถานะกะใหม่)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-filter-deposit",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-list",
+        "state": "changes",
+        "note": "ชิป \"มัดจำ\" = ตัวกรองระบบต้นทาง POS_DEPOSIT ของเซิร์ฟเวอร์ (billsPageData.channel) · แตะซ้ำ = ล้าง"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-refund-deposit-sheet",
+        "note": "ลิ้นชักใบรับเงินมัดจำ (POS_DEPOSIT · PAID · คงเหลือ > 0): \"คืนมัดจำ (คงเหลือ ฿y)\" — แคชเชียร์ = ทาง PIN ผู้จัดการตอนยืนยัน"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-sheet",
+        "state": "disappears",
+        "note": "ปิดแผ่นคืนมัดจำ"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-pin-back",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-reason",
+        "state": "appears",
+        "note": "ออกจากแป้น PIN ผู้จัดการ กลับฟอร์มคืนมัดจำ"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-last4",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-check",
+        "state": "changes",
+        "note": "มัดจำที่บันทึกเบอร์: 4 หลักท้าย (password ไม่ควบคุม) ก่อนเห็นยอด — เซิร์ฟเวอร์นับครั้งผิด"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-check",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-amount",
+        "state": "changes",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-bills-refund-deposit-last4"
+          }
+        ],
+        "note": "ดูยอด = registerDepositLookupAction({query: เลขใบรับ, phoneLast4})"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-amount",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-amount",
+        "state": "changes",
+        "note": "ยอดคืน = คงเหลือทั้งหมด (CD5 · อ่านอย่างเดียว)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-method-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-submit",
+        "state": "changes",
+        "note": "cash / promptpay (โอนเอง) / transfer — เงินจริงเท่านั้น ไม่มี pi_"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-submit",
+        "state": "changes",
+        "note": "เหตุผล (บังคับ · ≤ 200) — ว่าง = ยืนยันไม่ได้ (เซิร์ฟเวอร์ REASON_REQUIRED)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerRefundDepositAction",
+        "resultTarget": "pos-bills-toast",
+        "db": "PosSale REFUND (CN) + PosDeposit REFUNDED",
+        "note": "ผลไม่แน่ใจ = ลองซ้ำคีย์ + คำขอเดิม"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund-deposit-sheet",
+        "state": "disappears",
+        "note": "ยกเลิก (ไม่คืนเงิน)"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-deposit-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerRefundDepositAction",
+        "resultTarget": "pos-bills-toast",
+        "db": "PosSale REFUND (CN) + PosDepositTxn REFUND + PosDeposit REFUNDED",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-bills-refund-deposit-error"
+          },
+          {
+            "type": "modal",
+            "target": "pos-bills-refund-deposit-pin-note"
+          }
+        ],
+        "note": "ยืนยันคืนมัดจำ ฿y → toast \"คืนมัดจำ #CN… ฿y\" + โหลดใหม่ · PERMISSION_DENIED = แป้น PIN ผู้จัดการ · REASON_REQUIRED / VALIDATION / DEPOSIT_CLOSED / DEPOSIT_NOT_FOUND = ข้อความในแผ่น"
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-deposit-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:updatePosPaymentSettingsAction",
+        "resultTarget": "pos-settings-deposit-saved",
+        "db": "AppSystem.settings.pos.deposit.enabled",
+        "note": "รับเงินมัดจำ (เจ้าของร้าน · บันทึกทันที) — \"มัดจำที่รับไว้แล้วยังใช้และคืนได้แม้ปิด\""
+      },
+      "wo": "P2.9bU",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=payments&unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
