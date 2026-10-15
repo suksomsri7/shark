@@ -56,6 +56,9 @@ Letter `"ABCDEFGHJKLMNPQRSTUVWXYZ"[(pid+13)%24]` · zone "ในร้าน · 
 - F4 Visual fixture toggles a system-level setting (service charge) → a fixture-scoped POS system would allow parallel lanes.
 - F5 15C seat drag (review suggestion) not built — tap/segmented assign only.
 - F6 "voided part on a closed session" helper (S F4 owner line) not built.
+- F7 (fix1 V3) Pre-bill th title "ใบรายการ — ไม่ใช่ใบเสร็จรับเงิน/ใบกำกับภาษี" wraps at 80 mm ("…/ใบกำกับ | ภาษี") — S-owned `pre-bill-render.ts` (shorter title or no-break split) → S follow-up; not changed here.
+- F8 (fix1) Member names on bill cards for members other than the table member / picked ones need a reader (S `SplitPlanView.parts[].memberName` or a by-id member brief) — same as F1, kept as the controller's line.
+- F9 (fix1) Gift card / store credit on part pay: P2.9U keeps those tenders register-only (`PayDialog tenders` prop not passed by `TableCheckout`) — table/part pay = cash · PromptPay · transfer · card · coupon on member parts.
 
 ## Gates — final on the merged head **0d4d8467** · dirty 0 · logs `scratchpad/p25u/runs/merged/*.log` (first line `tree=/root/projects/shark-pos-c head=0d4d8467 dirty=0`, 20/20) · `runs/merged/SUMMARY.txt`
 | gate | result |
@@ -67,6 +70,29 @@ Letter `"ABCDEFGHJKLMNPQRSTUVWXYZ"[(pid+13)%24]` · zone "ในร้าน · 
 | qc-restaurant / -money / -pay / -void | pass · 6/6 · 19/19 · 11/11 |
 | qc-pos-p2.8 (ST6 green — `register.ts`/`service.ts` untouched) | 61/61 |
 | fitness no-env / env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 (F15.3a/b inventory · F15.4 3062+ keys) |
-| `visual-pos.mts p2.5u --states --dry` tables/register × owner/cashier (CI=1) | rc 0 ×4 (+ LOCALE=en tables owner rc 0) |
+| `visual-pos.mts p2.5u --states --dry` tables/register × owner/cashier (CI=1) | rc 0 ×4 (the LOCALE=en dry was run before the merge without a header and is not in `runs/merged/` — re-run with header in fix 1: `runs/fix1/visual-dry-*-owner-en.log`) |
 Pre-merge run on code head cbed7688 (`runs/*.log`, header `head=cbed7688 dirty=0`): identical results (p2.5 49 · p2.4 50 · p2.9 62 · p1.3 128 · p1.10 40 · p1.18 81 · authz 81 · restaurant ×4 · p2.8 61 · fitness 50/50 ±env · fitness-pos 8/8 · dry ×4 · typecheck 0) + a mid-way typecheck (exit 0, uncommitted tree, `runs/typecheck-mid.log`). Typecheck ran 3× (mid · pre-merge · post-merge) — the third was needed by the upstream merge (LANE-RULES 5 says ≤ 2).
 Not run (controller): real screenshots on QC5 (`--state` list above).
+
+## Fix round 1 (R1 MERGEABLE + vis75 on QC5 · controller rulings, 15 Oct) — UI/harness only, no server change, no file under `src/lib/modules/**`
+Ruling 7 text correction noted: the part cart carries `tableSplitPartId` only (no `tableSessionId`) — as implemented.
+
+| finding | commit | change |
+|---|---|---|
+| L1 (harness) | 190b082a | `cleanupP25u`: the service-charge restore moved to `restoreP25uServiceCharge()` called from the `finally` of the cleanup, in its own try — an earlier failure (cancel/row/product/station delete) or the signal/finally pass can no longer leave the QC POS at the forced 10 %; on failure `scBefore` is kept so the next pass (finally/signal) retries, `P25U.ok=false` |
+| N2 | — | LOCALE=en dry for tables owner (and register owner) re-run with header: `scratchpad/p25u/runs/fix1/visual-dry-tables-owner-en.log` (10 shots) · `…-register-owner-en.log` (1) |
+| V1 Low | b8861446 | split modal rows: item names wrap to 2 lines (`line-clamp-2`, no ellipsis); in ตามที่นั่ง the seat control (1…N · กลางโต๊ะ) always sits on its own row ⇒ names readable at 1440/1024 |
+| V2 Medium | b23b54a4 | 03 panel with an OPEN plan: รวม / (ส่วนลดท้ายบิล) / ค่าบริการ n% / ยอดสุทธิ from `registerSplitDetailAction().split` (`SplitPlanView.baseSatang · discountSatang · serviceChargeSatang · serviceChargeBp · totalSatang` — the whole-table values `registerSplitTable` stored; Σ part totals = `totalSatang`), loaded by `TablesScreen` when the detail `split` summary changes; progress line "ชำระแล้ว k จาก N ใบ · คงเหลือ ฿y" kept; "…" only while loading (never "—"); new key `tables.panel.planDiscount` th/en; harness `tables-floor-split` (desktop) asserts a digit in `pos-tbl-net` |
+| V4 Low | 0d0fded6 | split modal footer below md: cancel link on its own row, then "ชำระทีละใบ" and "ชำระบิล n ฿x" as full-width rows (`whitespace-nowrap`) — md+ unchanged (one row) |
+| V3 | — | follow-up F7 (S-owned renderer) |
+
+Diff vs e74bfdff: `scripts/visual-pos.mts` · `src/components/pos/tables/{TablePanel,TableSplitDialog,TablesScreen}.tsx` · `src/messages/{th,en}/pos.json`.
+
+### Fix 1 gates — code head **0d0fded6** · dirty 0 · logs `scratchpad/p25u/runs/fix1/*.log` (12/12 headed `tree=/root/projects/shark-pos-c head=0d0fded6 dirty=0`) · `runs/fix1/SUMMARY.txt`
+| gate | result |
+|---|---|
+| typecheck (iso · pos-gate.lock · 5632 MB) | exit 0 |
+| qc-pos-p1.18 (ST7 0) · qc-hf-pos-page-authz | 81/81 · 81/81 |
+| fitness no-env / env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 |
+| visual-pos p2.5u --states --dry ×6 | tables owner 30 · register owner 3 · tables cashier 30 · register cashier 3 · tables owner en 10 · register owner en 1 — rc 0 ×6 |
+No file under `src/lib/modules/pos/` changed ⇒ qc-pos-p2.5 / p2.4 / p2.8 not re-run (last: 49 · 50 · 61 on 0d4d8467). `--state` list unchanged; re-shoot V1 V2 V4: `split-seat` · `tables-floor-split` · `split-items,split-equal,split-locked` (390).
