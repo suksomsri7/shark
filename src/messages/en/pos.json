@@ -891,7 +891,8 @@
       "payments": "Payment methods",
       "margin": "Gross margin",
       "shifts": "Shifts and over/short",
-      "tax": "Output VAT"
+      "tax": "Output VAT",
+      "channels": "Sales channels"
     },
     "card": {
       "today": "Today's sales",
@@ -2829,7 +2830,9 @@
       "conflict": "Changed at the same time — reload and try again",
       "unknown": "Something went wrong — try again",
       "tooManyRows": "More than {max} channel price rows for one product",
-      "serverValidation": "Could not save — {message}"
+      "serverValidation": "Could not save — {message}",
+      "priceRowDead": "This channel or branch is archived or no longer linked — its price row cannot be changed or added; the existing row is kept",
+      "bulkTooMany": "Up to {max} products at a time — split into smaller batches"
     }
   },
   "products": {

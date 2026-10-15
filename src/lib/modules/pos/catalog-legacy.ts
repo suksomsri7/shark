@@ -318,6 +318,8 @@ export async function archiveMenuOptionGroup(tx: Tx, s: UnitScope, id: string): 
   await tx.menuOptionGroup.update({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, data: { archivedAt: new Date() } });
   await tx.menuItemOptionGroup.deleteMany({ where: { groupId: id, tenantId: s.tenantId, unitId: s.unitId } });
   await tx.posProductOptionGroup.deleteMany({ where: { tenantId: s.tenantId, groupId: id } });
+  // POS P2.11 ▸ FU2 m(i): ส่วนต่างสูตรของตัวเลือกกลุ่มนี้ทุกสินค้า — เขียนผ่าน catalog.ts (ผู้เขียนเดียว · มติ 17) ◂
+  await C.dropRecipeChoiceLinesOfGroupsInTx(tx, { tenantId: s.tenantId, systemId: "", actorUserId: CATALOG_SYSTEM_ACTOR }, [id]);
 }
 
 /** 86 ตัวเลือก (คำสั่งเดิม — สถานะสด แคตตาล็อกอ่านจาก MenuOptionChoice ตรง) */

@@ -25,6 +25,7 @@ import { posSaleWhere, type PosUnitScope } from "./access";
 import { prisma } from "./db";
 import { RECEIPT_LABELS, type ReceiptDocType, type ReceiptKind, type ReceiptPayload, type ReceiptSaleStatus } from "./receipt-render";
 import { receiptSettingsOf } from "./receipt-settings";
+import { receiptUnitOverride } from "./receipt-settings-shared"; // POS P2.11 ▸ สาขาที่/ที่อยู่/โทร ต่อสาขา (§4) ◂
 import { posReceiptLocale } from "./settings-shared"; // POS P1.18 ▸ R12 ภาษาใบเสร็จที่พิมพ์ ◂
 // POS P1.16 ▸ R2: กติกาชนิดใบเสร็จตัวเดียวกับหน้าบิลวันนี้ (billDetail.receiptKind) ◂
 import { receiptKindOf } from "./receipt-shared";
@@ -213,6 +214,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   ]);
   if (!posSys) return null;
   const rs = receiptSettingsOf(posSys.settings);
+  const uo = receiptUnitOverride(posSys.settings, sale.unitId); // POS P2.11 ▸ ค่าของสาขาก่อน → หัวใบระบบ → สมุด ◂
   const book = bookId
     ? await db.accountSettings.findFirst({
         where: { systemId: bookId, tenantId },
@@ -298,9 +300,9 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
     shop: {
       name: shopName,
       branchName: unit?.name ?? "",
-      address: nonEmpty(rs.header.address) ?? nonEmpty(book?.address) ?? "",
-      phone: nonEmpty(rs.header.phone) ?? nonEmpty(book?.phone) ?? "",
-      ...(kind === "TAX_INVOICE_ABB" || kind === "TAX_INVOICE_FULL" ? { taxId, branchNo: nonEmpty(book?.branchCode) ?? "00000" } : {}),
+      address: uo.address ?? nonEmpty(rs.header.address) ?? nonEmpty(book?.address) ?? "", // POS P2.11 ▸ ค่าของสาขาก่อน ◂
+      phone: uo.phone ?? nonEmpty(rs.header.phone) ?? nonEmpty(book?.phone) ?? "", // POS P2.11 ◂
+      ...(kind === "TAX_INVOICE_ABB" || kind === "TAX_INVOICE_FULL" ? { taxId, branchNo: uo.taxBranchNo ?? nonEmpty(book?.branchCode) ?? "00000" } : {}), // POS P2.11 ▸ สาขาที่ = ค่าของสาขา → สมุด → 00000 ◂
       ...(logoUrl ? { logoUrl } : {}),
     },
     device: {

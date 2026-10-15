@@ -14,6 +14,9 @@ import {
   reportMargin,
   reportPayments,
   reportStaff,
+  reportChannels, // POS P2.11 ▸ ส่วน "channels" ◂
+  type ChannelRow, // POS P2.11 ◂
+  type ChannelTotals, // POS P2.11 ◂
   type DailyRow,
   type DailyTotals,
   type MarginRow,
@@ -31,7 +34,7 @@ import type { RegisterActor } from "./register-shared";
 type Db = PrismaClient;
 
 /** ส่วนของภาพรวม (ใช้กับ `only` เพื่อโหลดใหม่เฉพาะส่วน · ปุ่มลองใหม่ในการ์ด) */
-export const OVERVIEW_SECTIONS = ["daily", "prev", "margin", "payments", "staff", "chart", "branches"] as const;
+export const OVERVIEW_SECTIONS = ["daily", "prev", "margin", "payments", "staff", "chart", "branches", "channels"] as const; // POS P2.11 ▸ + channels (ภาพ 08 ช่องทางการขาย) ◂
 export type OverviewSection = (typeof OVERVIEW_SECTIONS)[number];
 /** กราฟรายวัน = 14 วันล่าสุดจบที่ `to` เสมอ (คำตัดสิน R5) */
 export const OVERVIEW_CHART_DAYS = 14;
@@ -65,6 +68,8 @@ export type ReportOverview = {
   staff?: OverviewPart<Report<"staff", StaffRow, StaffTotals>>;
   chart?: OverviewPart<Report<"daily", DailyRow, DailyTotals>>;
   branches?: OverviewPart<OverviewBranches>;
+  /** POS P2.11 ▸ ช่องทางการขาย % ของยอด หลังหักค่าคอมฯ = reportChannels ของขอบเขตที่เลือก (ปฏิเสธต่อส่วน) ◂ */
+  channels?: OverviewPart<Report<"channels", ChannelRow, ChannelTotals>>;
 };
 export type ReportOverviewResult = { ok: true; overview: ReportOverview } | ReportRefusal;
 export type ReportOverviewInput = { from: string; to: string; only?: OverviewSection[] };
@@ -159,6 +164,7 @@ export async function reportOverview(ctx: ReportCtx, actor: RegisterActor, input
   if (want.has("margin")) job("margin", part("margin", getMargin()));
   if (want.has("payments")) job("payments", part("payments", reportPayments(scoped, actor, range, db)));
   if (want.has("staff")) job("staff", part("staff", reportStaff(scoped, actor, range, db)));
+  if (want.has("channels")) job("channels", part("channels", reportChannels(scoped, actor, range, db))); // POS P2.11 ◂
   if (want.has("chart")) job("chart", part("chart", chartRange.from === from ? getDaily() : reportDailySales(scoped, actor, chartRange, db)));
   if (want.has("branches")) {
     job(
