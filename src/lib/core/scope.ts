@@ -60,6 +60,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosStockCountLine: tenant,
   // POS P1.8 — เลขใบคืนเงิน (CN) ต่อสาขา/ชนิด/เดือน (ผู้เขียนเดียว = pos/refund.ts) · วางหัวทะเบียนด้วยเหตุผลเดียวกับ PosShift
   PosDocCounter: unit,
+  // POS P2.9b ▸ มัดจำเป็นวิธีชำระ (ผู้เขียน = pos/deposit.ts + service.createSale) — รายการไม่มี systemId/unitId ⇒ tenant · วางหัวทะเบียนด้วยเหตุผลเดียวกับ PosShift ◂
+  PosDeposit: sys(),
+  PosDepositTxn: tenant,
   PosStockCountEntry: tenant,
   // POS P1.10 — ทะเบียนเครื่องขาย (ผู้เขียนเดียว = pos/device.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
   PosDevice: sys(),
@@ -348,9 +351,6 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosTableSplit: sys(),
   PosTableSplitPart: tenant,
   PosTableSplitLine: tenant,
-  // POS P2.9b ▸ มัดจำเป็นวิธีชำระ (ผู้เขียน = pos/deposit.ts + createSale) — แถวรายการไม่มี systemId/unitId ⇒ tenant ◂
-  PosDeposit: sys(),
-  PosDepositTxn: tenant,
   // Booking
   BookingService: unit,
   BookingStaff: unit,
