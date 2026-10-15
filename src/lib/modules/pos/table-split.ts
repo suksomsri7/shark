@@ -577,6 +577,7 @@ export async function splitPartOfSale(client: Db | Tx, s: { tenantId: string; sa
 // เนื้อของประตูเดิม (restaurant/order.ts checkout/cancelOrderItem) ถูกหมุด — กันที่ชั้น action (src/lib/actions/restaurant.ts) ก่อนเรียกประตูเดิม ·
 // รูปผลแบบประตูเดิม {ok:false, reason} (ข้อความไทย) · ไม่มีแผน OPEN = {ok:true}
 const LEGACY_SPLIT_OPEN = "โต๊ะนี้แยกบิลอยู่ในหน้าขาย (POS) — ชำระทีละใบที่หน้าขาย หรือยกเลิกการแยกบิลก่อน";
+const LEGACY_SPLIT_DONE = "โต๊ะนี้ชำระแบบแยกบิลในหน้าขาย (POS) แล้ว — รวมโต๊ะที่หน้าขาย (POS)"; // POS HF-FU ▸ d ◂
 
 /** เช็คบิล/ยืนยันพร้อมเพย์ของหน้าเดิม: session นี้มีแผนแยกบิล OPEN = ปฏิเสธ (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) */
 export async function legacyCheckoutSplitGuard(s: { tenantId: string; unitId: string; sessionId: string }, client?: Db): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -601,9 +602,12 @@ export async function repointSplitPlansInTx(tx: Tx, s: { tenantId: string; unitI
   return u.count;
 }
 
-/** fix2 มติ 2 (F2): รวมโต๊ะของหน้าเดิม (mergeSession แช่แข็ง) — แผนแยกบิล OPEN ฝั่งต้นทางหรือปลายทาง = ปฏิเสธ (แผนไม่ตาม/ใบจ่ายไม่ได้) · แผน DONE รวมได้ */
+/** fix2 มติ 2 (F2): รวมโต๊ะของหน้าเดิม (mergeSession แช่แข็ง) — แผนแยกบิล OPEN ฝั่งต้นทางหรือปลายทาง = ปฏิเสธ (แผนไม่ตาม/ใบจ่ายไม่ได้) · HF-FU d: แผน DONE ฝั่งต้นทางก็ปฏิเสธ */
 export async function legacyMergeSplitGuard(s: { tenantId: string; unitId: string; intoSessionId: string; fromSessionId: string }, client?: Db): Promise<{ ok: true } | { ok: false; reason: string }> {
   const db: Db = client ?? prisma;
   const open = await db.posTableSplit.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: { in: [s.intoSessionId, s.fromSessionId] }, status: "OPEN" }, select: { id: true } });
-  return open ? { ok: false, reason: LEGACY_SPLIT_OPEN } : { ok: true };
+  if (open) return { ok: false, reason: LEGACY_SPLIT_OPEN };
+  // POS HF-FU ▸ d (มติ 4 refuse): แผน DONE ของ session ต้นทาง — หน้าเดิมย้ายแผนไม่ได้ (mergeSession แช่แข็ง) ⇒ void ใบภายหลังจะเปิดแผนบน session ที่ MERGED แล้ว ⇒ ปฏิเสธ ◂
+  const done = await db.posTableSplit.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: s.fromSessionId, status: "DONE" }, select: { id: true } });
+  return done ? { ok: false, reason: LEGACY_SPLIT_DONE } : { ok: true };
 }

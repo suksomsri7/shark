@@ -140,6 +140,10 @@ export function allocateTableSplit(input: TableSplitInput): TableSplitResult {
 
   // ── บรรทัดของแต่ละใบ (ลำดับรายการตามที่ส่งมา · หน่วยเต็มก่อนส่วนแบ่ง) ──
   const lines: TableSplitLine[][] = Array.from({ length: N }, () => []);
+  // POS HF-FU ▸ c (มติ 3): เศษสตางค์ของส่วนแบ่งต่อรายการหมุนเวียน (rot) ข้ามรายการกลางโต๊ะตามลำดับที่ส่งมา — EQUAL และ SEAT กติกาเดียว ·
+  //   ใบ p ได้ +1 เมื่อ ((p−1−rot) mod N) < r แล้ว rot = (rot + r) mod N · เจ้าของสต็อกยังเป็นใบ 1 · ยอดสุทธิ EQUAL ยังเป็น q+1 ให้ใบ 1..r
+  //   (เดิม p <= r ⇒ เศษทุกรายการไปใบต่ำ = ค่าบริการเทียมของใบสูงติดลบสะสม) ◂
+  let rot = 0;
   for (const it of items) {
     for (const [p, k] of [...(whole.get(it.id) ?? new Map<number, number>()).entries()].sort((x, y) => x[0] - y[0])) {
       lines[p - 1]!.push({ itemId: it.id, qty: k, shareNum: null, shareDen: null, amountSatang: k * it.unitSatang, stockOwner: true });
@@ -149,7 +153,8 @@ export function allocateTableSplit(input: TableSplitInput): TableSplitResult {
       const g = u * it.unitSatang;
       const q = Math.floor(g / N);
       const r = g - q * N;
-      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + (p <= r ? 1 : 0), stockOwner: p === 1 });
+      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + ((((p - 1 - rot) % N) + N) % N < r ? 1 : 0), stockOwner: p === 1 });
+      rot = (rot + r) % N; // POS HF-FU ▸ c ◂
     }
   }
   if (lines.some((l) => !l.length)) return no("VALIDATION", "มีบิลที่ยังไม่มีรายการ — ลดจำนวนบิลหรือเลือกรายการให้ครบ");
