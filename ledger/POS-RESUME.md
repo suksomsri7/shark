@@ -1772,3 +1772,9 @@
 - spawn **oracle writer P2.7** (Opus ทรี d `wip/pos-p2.7-oracle` จาก 62a319cc local) → `scripts/qc-pos-p2.7.mts` + `wo-notes/pos-P2.7-oracle.md` + `P2.7-red.txt`
 - เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 oracle ทรี d · ทรี c = gates99 (13/≈27 ชุด 21:10Z · p2.10 ST2 lane pin แดงตามคาด)
 - ⚠️ ภาพ P2.13 ตอน merge ต้องรอทรี d ว่าง (oracle writer) หรือใช้ทรี c หลัง gates100
+
+### 15 ต.ค. 21:21Z — P2.12U ปิด → **40/55 (73%)**
+- gates99 @861815e0 (`/root/pos-runs/gates99-c-20261015T205526Z`): p2.12 33/33 ×2 · p1.17 40 · p2.11 34 · p1.18 81 · p1.16 28 · p2.1 55 · p1.12 72 · p1.3 128 · p1.1 180 · authz 82 · p2.8 61 · hf-tx 22 · fitness ±env/pos · typecheck 0 · แดง 2 = lane pins (p2.10 ST2 authz ถูกแก้ · hf-fu ST1 visual-pos/BillsClient เทียบ merge-base 3ece536c) → **push session/pos dfcf967e** → gates100 @861815e0 (`gates100-c-20261015T211705Z`): p2.10 13/13 · hf-fu 29/29 → **P2.12U ✅ 40/55** · TG ส่งแล้ว · memory อัปเดต · ไม่มี migration
+- แจ้ง P2.13 fix builder ให้ merge origin/session/pos dfcf967e ก่อนด่านสุดท้าย
+- เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 oracle ทรี d · ทรี c ว่าง @861815e0 (ใช้ merge gates P2.13 + ภาพได้ถ้าทรี d ไม่ว่าง — ทรี c ไม่มี build cache QC5; ถ้าต้องถ่ายภาพบนทรี c ให้ build ด้วย build-d-inner-8g.sh แบบเดียวกัน)
+- ถัดไป: P2.13 fix 1 รายงาน → R2 ตรวจ hunks → merge → gates (ทรี c) → ภาพ + agent skill test → **41/55**
