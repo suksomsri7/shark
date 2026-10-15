@@ -115,6 +115,7 @@ export function useDisplayPublish(i: DisplayPublishInput): (v: DisplayPayIn | nu
     const now = Date.now();
     if (r.paired === "no" && now < r.recheckAt) return;
     if (!force && cur.key === r.sentKey) return;
+    if (force && cur.state.phase === "done") return; // POS P2.10 ▸ fix1 F1: การส่งซ้ำ (keepalive/ถามใหม่หลัง paired:false/กลับมาที่แท็บ) ไม่ส่ง done — done ส่งครั้งเดียวตอนภาพเปลี่ยน ◂
     r.busy = true;
     r.lastAt = now;
     r.seq = displaySeqNow(now, r.seq);
@@ -163,7 +164,9 @@ export function useDisplayPublish(i: DisplayPublishInput): (v: DisplayPayIn | nu
         if (Date.now() >= r.recheckAt) void send(true);
         return;
       }
-      if (st && st.phase !== "idle" && Date.now() - r.lastAt >= DISPLAY_PUBLISH_KEEPALIVE_MS) void send(true);
+      // POS P2.10 ▸ fix1 F1 (มติ fix1 ข้อ 1): ไม่ส่ง done ซ้ำ — ภาพ "ขอบคุณ + QR ใบเสร็จ" ส่งครั้งเดียวแล้วหมดอายุที่เซิร์ฟเวอร์ (20 วิ)
+      //    ลูกค้าคนถัดไปจึงไม่เห็น QR ใบเสร็จของคนก่อน แม้หน้าขายยังเปิดจอจบบิลค้างไว้
+      if (st && st.phase !== "idle" && st.phase !== "done" && Date.now() - r.lastAt >= DISPLAY_PUBLISH_KEEPALIVE_MS) void send(true); // ◂
     }, 15_000);
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
