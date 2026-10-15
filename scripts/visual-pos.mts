@@ -7167,9 +7167,18 @@ async function runP210State(page: Any, k: P210Key, _device: Device): Promise<voi
         for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(reg, tid(`pos-reg-product-${id}`));
         await expectLines(reg, 2);
         await waitPayReady(reg);
-        await page.waitForFunction(() => document.querySelectorAll('[data-testid="pos-display-line"]').length >= 2, { timeout: 20_000 }).catch(() => {
-          throw new StepError("จอไม่เห็นบรรทัดจากหน้าขายจริงภายใน 20 วิ (hook ไม่ส่ง/จอไม่โพล)");
-        });
+        // POS P2.10 ▸ fix1 F8: แท็บหน้าขายที่เปิดใหม่ทำให้แท็บจอเป็น hidden (headless ใหม่ = เหมือนเบราว์เซอร์จริง) → จอหยุดโพลตามแบบ
+        //    (ซ่อน = หยุด) — ภาพจริงคือแท็บเล็ตอีกเครื่องที่เปิดจออยู่ตลอด ⇒ ดึงแท็บจอขึ้นหน้าก่อนรอ (visibilitychange → อ่านทันที)
+        await page.bringToFront();
+        const seen = await page
+          .waitForFunction(() => document.querySelectorAll('[data-testid="pos-display-line"]').length >= 2, { timeout: 20_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (!seen) {
+          const diag = await p210LiveDiag(page, reg);
+          console.log(`  ⚠️  display-live วินิจฉัย: ${diag}`);
+          throw new StepError(`จอไม่เห็นบรรทัดจากหน้าขายจริงภายใน 20 วิ · ${diag}`.slice(0, 900));
+        } // ◂
       } finally {
         await reg.close().catch(() => undefined);
       }
@@ -7177,6 +7186,46 @@ async function runP210State(page: Any, k: P210Key, _device: Device): Promise<voi
     }
   }
 }
+
+// POS P2.10 ▸ fix1 F8: วินิจฉัย display-live เมื่อจอไม่เห็นบรรทัด — หน้าขาย (ผลส่งล่าสุด · รหัสเครื่อง) · จอ (การมองเห็น · phase · ผลอ่านล่าสุด) ·
+//    แถวจอใน DB (stateSeq · stateAt · phase · จำนวนบรรทัด) · readCustomerDisplay ตรงของโมดูล (seq · ver · phase · บรรทัด)
+async function p210LiveDiag(page: Any, reg: Any): Promise<string> {
+  const part = async (label: string, fn: () => Promise<unknown>): Promise<string> => {
+    try {
+      return `${label} ${JSON.stringify(await fn())}`;
+    } catch (e) {
+      return `${label} ✗ ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`;
+    }
+  };
+  const out = [
+    await part("หน้าขาย", () =>
+      reg.evaluate(() => {
+        const w = window as unknown as { __posDisplayPublish?: unknown };
+        return { vis: document.visibilityState, publish: w.__posDisplayPublish ?? null, lines: document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]').length };
+      }),
+    ),
+    await part("จอ", () =>
+      page.evaluate(() => {
+        const w = window as unknown as { __posDisplayRead?: unknown };
+        const el = document.querySelector('[data-testid="pos-display"]');
+        return { vis: document.visibilityState, phase: el?.getAttribute("data-phase") ?? null, read: w.__posDisplayRead ?? null, lines: document.querySelectorAll('[data-testid="pos-display-line"]').length };
+      }),
+    ),
+    await part("แถวจอ", async () => {
+      const row = await prisma.posCustomerDisplay.findFirst({ where: { tenantId: T.tenantId, deviceId: P115.deviceRowId, status: "ACTIVE" }, select: { stateSeq: true, stateAt: true, state: true, lastPolledAt: true } });
+      if (!row) return null;
+      const st = (row.state ?? {}) as { phase?: string; lines?: unknown[] };
+      return { seq: row.stateSeq, stateAt: row.stateAt?.toISOString() ?? null, phase: st.phase ?? null, lines: Array.isArray(st.lines) ? st.lines.length : 0, lastPolledAt: row.lastPolledAt?.toISOString() ?? null };
+    }),
+    await part("read", async () => {
+      const { readCustomerDisplay } = await import("@/lib/modules/pos/display");
+      const r = await readCustomerDisplay({ token: P210.liveToken });
+      return r.ok ? { seq: r.seq, ver: r.ver, phase: r.changed ? r.view.phase : null, lines: r.changed ? r.view.lines.length : null } : { code: r.code };
+    }),
+  ];
+  return out.join(" · ");
+}
+// ◂
 
 async function cleanupP210(): Promise<void> {
   if (P210.cleaned || (!P210.deviceRowId && !P210.liveToken)) return;

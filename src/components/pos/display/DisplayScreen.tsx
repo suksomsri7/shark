@@ -355,6 +355,10 @@ export function DisplayScreen({ initial, pairedOffline = false, prefillCode, fal
       let next = DISPLAY_POLL_IDLE_MS;
       try {
         const r = await readAction(verRef.current ? { sinceVer: verRef.current } : {});
+        // POS P2.10 ▸ fix1 F8: ผลการอ่านล่าสุด (วินิจฉัย — ไม่มีเนื้อหาภาพ) · window.__posDisplayRead
+        (window as unknown as { __posDisplayRead?: unknown }).__posDisplayRead = r.ok
+          ? { at: Date.now(), ok: true, changed: r.changed, seq: r.seq, ver: r.ver, phase: r.changed ? r.view.phase : null, nextPollMs: r.nextPollMs }
+          : { at: Date.now(), ok: false, code: r.code }; // ◂
         if (!alive) return;
         if (r.ok) {
           setOffline(false);
