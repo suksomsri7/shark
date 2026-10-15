@@ -1787,6 +1787,25 @@ export async function externalSalePosted(ctx: GlCtx, refId: string): Promise<boo
   return alreadyPosted(ctx, `PosSale#${refId}#PAID`, prisma);
 }
 
+// POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): เครื่องหมาย "บิล POS นี้ไม่มี JV ขายเพราะทุกบรรทัดบัญชีเป็น 0" (zero entry · fix3 มติ 1) ◂
+//   = แถว AuditLog action account.external.zeroEntry ต่อบิล (targetType PosSale · targetId = refId) — แถวเดียวต่อบิล (ล็อก advisory ต่อ refId + หาก่อนเขียน) ·
+//   เขียนไม่สำเร็จ = โยน (ไม่กลืนแบบ writeAudit) ⇒ คิว pos.sale.paid ลองใหม่ — ประตูค่าคอมฯ ใช้แถวนี้แทน JV PAID ได้ จึงต้องมีจริงเสมอเมื่อคิวจบ
+const ZERO_ENTRY_ACTION = "account.external.zeroEntry";
+/** บิล POS นี้ถูกบันทึกเป็น zero entry แล้วหรือยัง (อ่านอย่างเดียว) */
+export async function externalSaleZeroEntryRecorded(ctx: GlCtx, refId: string, db: Db = prisma): Promise<boolean> {
+  const row = await db.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId }, select: { id: true } });
+  return !!row;
+}
+/** บันทึก zero entry ของบิล POS ครั้งเดียวต่อบิล — มีแล้ว = ไม่เขียนซ้ำ (คิวลองใหม่/ตัวรับคืนเงินเรียกซ้ำได้) · ล้ม = โยน */
+export async function recordExternalSaleZeroEntry(ctx: GlCtx, refId: string, after: Record<string, unknown>): Promise<void> {
+  await prisma.$transaction(async (db) => {
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`acc-zero-entry:${ctx.tenantId}:${refId}`}))`;
+    if (await externalSaleZeroEntryRecorded(ctx, refId, db)) return;
+    await db.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "SYSTEM", action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: after as Prisma.InputJsonValue } });
+  });
+}
+// ◂ POS P2.9b fix4
+
 // POS P1.8 ▸ คืนเงินหน้าร้าน (ใบคืน REFUND ของ POS) — กลับรายการตามสัดส่วน "เฉพาะส่วนที่คืน" ◂
 //   Dr รายได้ขายสินค้า/ค่าบริการ (ฐาน) · Dr ภาษีขาย (VAT) · Cr เงินสด/ธนาคาร ตามวิธีคืน — ไม่แตะลูกหนี้ 1100
 //   idempotent ต่อ (PosSale, refId = id ใบคืน, REFUNDED) · JV ของบิลเดิม **ไม่ถูกกลับรายการ** (ใบลดหนี้หักล้างแทน · CD6)

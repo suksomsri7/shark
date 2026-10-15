@@ -28,7 +28,6 @@ import {
 } from "./service";
 // CRM v2 · C0.3-A: ชนิด+คณิตศาสตร์บรรทัดเอกสาร (ไฟล์ `totals.ts` บริสุทธิ์ ไม่แตะ prisma) + ตัวจัดรูปเงิน
 import { lineAmount, type LineInput } from "./totals";
-import { writeAudit } from "@/lib/core/audit"; // POS P2.9b ▸ fix3 มติ 1: audit zeroEntry ◂
 import { baht, familyCreditByInvoice } from "./service";
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
@@ -86,6 +85,8 @@ import {
   liabilityLedgerOf, // POS P2.9 ▸ R9 บัญชีพักทิป ◂
   postExternalDepositReceipt, // POS P2.9b ▸ R3 ◂
   postExternalDepositRefund, // POS P2.9b ▸ R8 ◂
+  recordExternalSaleZeroEntry, // POS P2.9b ▸ fix4 มติ 1: เครื่องหมาย zero entry (แถวเดียวต่อบิล · ล้ม = โยน) ◂
+  externalSaleZeroEntryRecorded, // POS P2.9b ▸ fix4 มติ 1: ประตูค่าคอมฯ ◂
   reverseFor,
   type GlCtx,
 } from "./gl";
@@ -153,7 +154,7 @@ export async function applyExternalSale(input: {
    */
   depositVatSatang?: number;
   depositGrossSatang?: number;
-}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean }> {
+}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean; zeroEntry?: true }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
 
@@ -259,16 +260,10 @@ export async function applyExternalSale(input: {
         ...(tipCr ? { crExtra: tipCr } : {}), // POS P2.9 ◂
       });
   const posted = "entryId" in res;
-  if (zeroEntry) {
-    await writeAudit({
-      tenantId: input.tenantId,
-      actorType: "SYSTEM",
-      action: "account.external.zeroEntry",
-      targetType: "PosSale",
-      targetId: input.refId,
-      after: { zeroEntry: true, refId: input.refId, grossSatang: gross, depositVatSatang: depositVat, vatFullSatang: vatFull },
-    });
-  }
+  // POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): zero entry = เครื่องหมายแถวเดียวต่อบิล (gl.recordExternalSaleZeroEntry · ล้ม = โยน ⇒ คิวลองใหม่) —
+  //   ประตูค่าคอมฯ (applyExternalChannelCommission) นับเครื่องหมายนี้แทน JV PAID ⇒ ค่าคอมฯ ของบิลนี้ลงได้ ◂
+  if (zeroEntry) await recordExternalSaleZeroEntry(ctx, input.refId, { zeroEntry: true, refId: input.refId, grossSatang: gross, depositVatSatang: depositVat, vatFullSatang: vatFull });
+  const zeroMark = zeroEntry ? ({ zeroEntry: true } as const) : {};
 
   // ── WO 4.2: ชั้นเอกสาร (ไม่มี lines = ข้ามทั้งบล็อก → เส้นทางเดิมทุกประการ) ──
   //    WO 8.1: เจ้าของปิด "ใบกำกับอย่างย่อจาก POS" ในหน้าตั้งค่า (§9.2) = ไม่สร้างชั้นเอกสารนี้
@@ -276,7 +271,7 @@ export async function applyExternalSale(input: {
   // follow-up 3 (ป้องกัน): ใบเต็มรูปเฉพาะเมื่อสมุด "ออกใบกำกับได้" ณ ตอนลงบัญชี (จด VAT · เปิดใบอย่างย่อจาก POS · มีเลขผู้เสียภาษี · บิลมี VAT)
   //   ไม่ครบ = ถอยไปเส้น ABB/ใบเสร็จเดิม (ไม่ล้างสำเนาผู้ซื้อ · ฝั่ง POS เตือน ops) — หน้าขายปฏิเสธ NOT_ELIGIBLE ตั้งแต่ตอนชำระแล้ว
   const full = !!input.buyer && vatRegistered && posAbbreviatedInvoice && vat > 0 && (await bookTaxIdOf(link.systemId)) !== "";
-  if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted };
+  if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted, ...zeroMark };
 
   const contactId = full ? await resolveBuyerContact(ctx, input.buyer!) : await resolveExternalSaleContact(ctx, input.customer);
   const map = await resolveProductIdsForExternalSale(ctx.systemId, {
@@ -314,12 +309,12 @@ export async function applyExternalSale(input: {
     // POS P2.9b ▸ มติ 15: หักมัดจำ (gross) + VAT สุทธิ ◂
     ...(input.depositGrossSatang && input.depositGrossSatang > 0 ? { depositDeductedSatang: input.depositGrossSatang, depositVatSatang: depositVat } : {}),
   });
-  if (!doc.ok) return { posted, reason: doc.reason };
+  if (!doc.ok) return { posted, reason: doc.reason, ...zeroMark };
   // WO 4.3 (§8.2): บิล POS ที่ขาย "รายการจัดชุด" → ตัดสต็อกส่วนประกอบ
   //   ตัดเฉพาะตอนเอกสารถูก "สร้างใหม่" (created) — ยิงซ้ำด้วย refId เดิม upsert คืนใบเดิม ⇒ ไม่ตัดซ้ำ
   //   (ตัวที่ผูกคลังยังมีคีย์ idempotent ต่อบรรทัดซ้อนอีกชั้น)
   if (doc.created) await consumeBundleComponentsForDoc(ctx, doc.docId);
-  return { posted, docId: doc.docId, ...(full ? { fullTaxInvoice: true } : {}) };
+  return { posted, docId: doc.docId, ...(full ? { fullTaxInvoice: true } : {}), ...zeroMark };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -712,7 +707,9 @@ export async function applyExternalChannelCommission(input: {
   //   คีย์ของตัวเองมีแล้ว = จบก่อนแตะผัง/ผู้ติดต่อ (ผลเดิม "already")
   const saleId = input.reverse ? (input.saleRefId ?? null) : input.refId;
   if (await posSaleEntryPosted(ctx, input.refId, input.reverse ? "COMMISSION_REFUNDED" : "COMMISSION")) return { posted: false, reason: "already" };
-  if (!input.reverse && !(await posSaleEntryPosted(ctx, input.refId, "PAID"))) return { posted: false, reason: "no-paid" };
+  // POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): บิล zero entry (ทุกบรรทัดบัญชี 0 · ไม่มี JV PAID ตลอดไป) นับว่า "ลงขายแล้ว" ด้วยเครื่องหมายของบิล ⇒ ค่าคอมฯ ลงครั้งเดียว ·
+  //   ฝั่งคืนเงินกลับค่าคอมฯ ได้ตามปกติ (มี COMMISSION ของบิลแล้ว) ◂
+  if (!input.reverse && !(await posSaleEntryPosted(ctx, input.refId, "PAID")) && !(await externalSaleZeroEntryRecorded(ctx, input.refId))) return { posted: false, reason: "no-paid" };
   if (input.reverse && saleId && !(await posSaleEntryPosted(ctx, saleId, "COMMISSION"))) return { posted: false, reason: "no-commission" };
   await ensureAccounting(ctx); // R7: ผัง/การจับคู่คีย์ครบก่อนโพสต์ — ห้ามตก 9999 SUSPENSE
   const { vatRegistered } = await vatConfigOf(link.systemId);
