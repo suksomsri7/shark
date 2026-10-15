@@ -1790,3 +1790,4 @@
 - builder docs fix a67693a8 (G1 SKILL · G2/G3 lines) → **merge → session/pos f95348ac** (no-ff) · ทรี c detached + generate + คัดลอก `.claude/skills/{shark-pos-api,shark-kanban-api,shark-account-api}` จาก /root/.claude/skills (⚠️ `.claude/` gitignored — สกิลไม่อยู่ใน git · ทุกทรีที่รัน api-skill/kanban ต้องมีสำเนา) → **gates101-c** (`gates101-c-20261015T215429Z`)
 - ถัดไป: gates101 เขียว (lane pins p2.8 ST6 / p2.12 ST1 / p2.10 ST2 / hf-fu ST1 / p2.11 ST4 อาจแดงจน push) → push → ซ้ำ → chain84 ทรี c (build + vis86 p2.13 5+1 state owner/manager th/en) → ออกคีย์ QC5 pos-operate → agent skill test (prompt `-P2.13-A.md`) → **41/55 (75%)** + TG
 - เลน: 1 = P2.7 oracle ทรี d · ทรี b ว่าง @a67693a8 · ทรี c = gates101 (ผู้คุม)
+- P2.14: ตัดสินว่าจะเลิก ignore `.claude/skills/` หรือย้ายสกิลไป path ที่ track (ตอนนี้สกิล API อยู่แค่ /root/.claude/skills + ทรีที่สร้าง)
