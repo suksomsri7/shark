@@ -40,6 +40,8 @@ export function BranchCompare({ systemId, units, channels, products, nameOf, onC
   const seq = useRef(0);
   const list = useMemo(() => products.slice(0, BULK_MARKUP_PRODUCTS_MAX), [products]);
   const ids = useMemo(() => list.map((p) => p.id), [list]);
+  // fix1 มติ 2 (R1 F2): คำขอผูกกับ "ชุดรหัสสินค้า" เป็นข้อความ — ผู้เรียกส่งอาร์เรย์ใหม่ทุกครั้งที่ render (toast/refresh) ไม่ยิงซ้ำ
+  const idKey = ids.join(",");
   const unitKey = unitSel.join(",");
 
   useEffect(() => {
@@ -52,14 +54,14 @@ export function BranchCompare({ systemId, units, channels, products, nameOf, onC
 
   // คำขอเดียวต่อการเปิด/เปลี่ยนชุดสาขา — ผลของคำขอเก่าทิ้งด้วยลำดับ
   useEffect(() => {
-    if (!ids.length || !unitSel.length) {
+    if (!idKey || !unitKey) {
       setM(null);
       return;
     }
     const my = ++seq.current;
     setLoading(true);
     setErr(null);
-    unitPriceMatrixAction({ systemId, productIds: ids, unitIds: unitKey.split(",") })
+    unitPriceMatrixAction({ systemId, productIds: idKey.split(","), unitIds: unitKey.split(",") })
       .then((r) => {
         if (my !== seq.current) return;
         if (r.ok) setM(r);
@@ -76,7 +78,7 @@ export function BranchCompare({ systemId, units, channels, products, nameOf, onC
       });
     // tp/treg คงที่ต่อภาษา — ไม่ใส่ใน deps (กันยิงซ้ำ)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systemId, ids, unitKey]);
+  }, [systemId, idKey, unitKey]);
 
   const cellOf = useMemo(() => {
     const map = new Map<string, Matrix["cells"][number]>();
