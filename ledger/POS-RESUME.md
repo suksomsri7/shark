@@ -1712,3 +1712,5 @@
 - ผู้คุม **§10 มติ 1–10**: IN 48 (รับ anomalies/tax-invoice/shifts-current) · submitRegisterSale + ORACLE-EDIT batch pre-approved · unitId field + filter scope · bundles/actor/keyId · catalog hunk · tenders 5 แบบ (gift/credit/deposit/voucher = owner line) · shift other-sources · AI gate hunk ใน skills.ts · webhooks P3 · CSV ผ่าน Accept · oracle 49 + skill 10 · builder หลัง P2.12 S merge
 - spawn **oracle writer P2.13** (Opus ทรี b `wip/pos-p2.13-oracle` จาก f37d605b) prompt `pos-prompt-accountB-P2.13-O.md`
 - เลน: 1 = P2.12 R1 (read-only ทรี c) · 2 = P2.13 oracle ทรี b · ทรี d ว่าง
+- 17:49Z R1 P2.12 S (@42e3ce17) = **MERGEABLE-AFTER-FIXES**: F1 anomaly CSV/print โชว์ unit id → `totals.unitNames` · F2 แถวรวมใน print จับจากข้อความ "รวม" → flag `totalRow` · F3 settings writer audit ซ้ำเมื่อค่าเท่าเดิม · F4 A5 ไม่นับ override ของ PosTableSplit (follow-up) · F5 en print label ไทย (U) · PAR/deposit/access verified · มติใน `wo-notes/pos-P2.12-review.md` (b819551d) → spawn **hunter เบา** (ทรี c read-only @42e3ce17) ก่อน → fix round เดียว (F1–F3 + hunter)
+- เลน: 1 = P2.13 oracle ทรี b · 2 = P2.12 hunter (read-only ทรี c)

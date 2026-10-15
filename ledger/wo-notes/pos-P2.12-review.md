@@ -1,6 +1,6 @@
 # P2.12 S — review file (controller tree)
 
-## R1 (Opus read-only · tree c @42e3ce17 · 15 Oct 17:58Z) — verbatim
+## R1 (Opus read-only · tree c @42e3ce17 · 15 Oct 17:49Z) — verbatim
 # P2.12 S — reviewer R1 · head 42e3ce17 (tree c) · read-only
 
 **Verdict: MERGEABLE-AFTER-FIXES.** Nothing breaks money or access: deposits are excluded, both permission keys are enforced, and PAR holds (traced against daily/payments/channels/shifts). The fix round = F1 (asked for by the controller) + F2/F3 (small). F4/F5 = follow-ups.
@@ -51,7 +51,7 @@ Code read: `git show` of 1d27c482 · 78bd760a · 2c8f5918 · 9707b616 · fe2ac84
 ## Follow-ups
 F4 · F5 · overview print summary (brief §4: "overview prints as one A4") is not a `ReportKind` ⇒ U/CD · print row-cap notice (`totals.rowCount` > rows) ⇒ U.
 
-## Controller rulings after R1 (15 Oct 17:58Z · binding) — hunter first, then one fix round
+## Controller rulings after R1 (15 Oct 17:49Z · binding) — hunter first, then one fix round
 R1 = MERGEABLE-AFTER-FIXES. Money/access verified; fixes are small. Order: money hunter (light) runs now on 42e3ce17; the fix round then covers R1 F1–F3 + any hunter item.
 1. **F1 = fix** (decision 4): `AnomalyTotals.unitNames: Record<unitId,string>` built in the envelope from `s.unitName` for units in rows; CSV/print cell = `unitNames[r.unitId] ?? r.unitId`; header "สาขา" / "Branch". Row contract unchanged; AN12/PD checks stay green (they compare via `CSV_HEADERS`/`reportCsvRows`).
 2. **F2 = fix**: `ReportPrintModel.totalRow: boolean` decided by the kind (branches/hourly last row), never by cell text "รวม".
