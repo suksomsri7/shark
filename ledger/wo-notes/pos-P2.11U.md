@@ -141,3 +141,38 @@ Ruling 9 re-shoot before merge: `products-branch-filter,products-dead-row-note,p
 - F7: compare bold = non-BASE `source` (cannot tell own from inherited `(code, *)` rows) — accepted; a source split needs the matrix DTO (P2.12 or owner line).
 - Ruling 3 consequence: an all-units STAFF/MANAGER without `posCanSetTenantPrice` now never sees purge (branch mode) — joins the existing "single-branch manager cannot purge" follow-up.
 - Still open from the first round: hunt L3 (no precondition on the 06 full-set save), R1 F2 owner line.
+
+## Fix round 2 (account B, 15 Oct) — head = this notes commit on top of code head c43719a1
+R2 = MERGEABLE-AFTER-FIXES; R2 report + controller rulings fix round 2 (1–5) copied into `ledger/wo-notes/pos-P2.11U-review.md` (710de30f). Harness and comments only — no product behaviour change, no rebuild.
+
+| finding | ruling | commit | change |
+|---|---|---|---|
+| G1 receipt sweep too wide | 1 | 7f4e0d95 | `visual-pos.mts` `ensureP211uFixture`: the silom override counts as residue only when taxBranchNo **and** address **and** phone all equal `P211U_RECEIPT`; the sweep sets all three to null. Any other override stays untouched and is recorded as "before". |
+| G2 other-branch rows in the RSC payload | 2 | — | accepted as built (ruling 1). Follow-up: in P2.12, skip rows of live units outside `units` if the owner restricts the matrix. |
+| G3 marker / comment nits | 3 | 31a9a692 | `ProductPanel.tsx` save body: the `errs[k]` / `setGroupsErr(false)` lines are now inside the `▸ … ◂` block. Harness comment "5 หน้านี้" → "4 หน้านี้". Comments only. |
+| stale MANAGER membership after a SIGKILLed manager run | 4 | c43719a1 | done this round (5 code lines): any non-manager coffee run deletes the visual manager's Membership (same fixed ids) before minting its session, but only when that user has no unexpired session. That guard protects a manager run going on in parallel; a killed run's session expires after 1 h. Residual window: an owner run that starts between a manager run's `ensureManagerUser` and its session mint (milliseconds). |
+
+`git diff --stat 001c7aac..c43719a1 -- src scripts` (no product behaviour change — the `src` hunk is comment lines only):
+```
+ scripts/visual-pos.mts                             | 12 +++++++++---
+ src/app/app/sys/[id]/pos/products/ProductPanel.tsx |  3 ++-
+ 2 files changed, 11 insertions(+), 4 deletions(-)
+```
+
+### Gates (ruling 5) — head c43719a1, dirty 0
+Logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p211u-fix1/runs/fix2/` (typecheck, `--dry`) and `runs/gates-fix2u/` (one iso unit, rc 0); every log headed `tree= head= dirty=`.
+
+| gate | result |
+|---|---|
+| typecheck | rc 0 |
+| fitness no-env | 50/50 |
+| fitness-pos | 8/8 |
+| qc-pos-p1.18 (phase U) | 81/81 (ST7 = 0) |
+| visual-pos `p2.11u --states --dry` (th) | rc 0 — owner 21 shots · manager 18 shots |
+
+No other DB suite was re-run (ruling 5: no product code change). The `--state` list from fix round 1 is unchanged; the vis78 shots at 942a334e stay valid.
+
+### Follow-ups (fix 2)
+- G2 (P2.12): skip rows of live units outside `units` if the matrix is restricted.
+- R2: the "unstocked" line also shows when a branch's list is truncated (the 2000 cap in `unitProducts`) or a later page fails.
+- Carry-over: hunt L3 · R1 F2 owner line · P2.12 bills chip · F7.
