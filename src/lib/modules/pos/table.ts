@@ -12,7 +12,7 @@ import { prisma } from "./db"; // จุดเดียวของ prisma ด�
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { evaluate } from "@/lib/core/rbac";
 import { registerPriceTableRound, registerRefuse, registerScopeFor, registerTableChannelId } from "./register";
-import { claimTableDraftInTx, discardTableDraftsInTx, tableDraftLineCounts, tableDraftOf } from "./held-cart";
+import { claimTableDraftInTx, discardTableDraftsInTx, sweepOrphanTableDrafts, tableDraftLineCounts, tableDraftOf } from "./held-cart"; // POS HF-FU ▸ b: + รอบร่างกำพร้า ◂
 import { registerMemberBriefs, registerMemberGate } from "./register-member";
 import { posPaymentSettings } from "./payment-settings"; // ค่าบริการของหน้าขาย (มติ Q3: แหล่งเดียวของบิลโต๊ะ) ◂
 import {
@@ -95,6 +95,12 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
     const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor, null);
     if (isRefusal(s)) return s;
+    // POS HF-FU ▸ b (มติ 2): ทิ้งรอบร่างของ session ที่ไม่ OPEN แล้ว (หน้าเดิมปิด/รวมโต๊ะ) ก่อนอ่านผัง — ล้ม = WARN ผังยังอ่านได้ ◂
+    try {
+      await sweepOrphanTableDrafts(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, limit: 50 });
+    } catch (e) {
+      console.warn("[pos/table] sweepOrphanTableDrafts ล้ม (ผังยังอ่านได้)", e);
+    }
     const now = new Date();
     const rest = await restaurant();
     const fl = await rest.tableFloorForPos(db, {
