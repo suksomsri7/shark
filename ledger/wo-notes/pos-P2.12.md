@@ -1,4 +1,4 @@
-# POS P2.12 S — builder notes (channels fix · branches · hourly · anomalies + thresholds · print model · all-branch bills)
+# POS P2.12 S — builder notes (DONE · gates green) (channels fix · branches · hourly · anomalies + thresholds · print model · all-branch bills)
 
 Builder · account B · 15 Oct 2026 · tree `/root/projects/shark-pos-c` (lane B) · branch `wip/pos-p2.12` = `origin/session/pos` 6f5b5fa5 (= e6546359 + ledger) + merge of `wip/pos-p2.12-oracle` d6cb9006.
 Contract: `ledger/pos-briefs/pos-brief-P2.12.md` §10 rulings 1–11 + `ledger/wo-notes/pos-P2.12-oracle.md` (names table, per-rule table, CD-1..10). Oracle not edited.
@@ -49,7 +49,20 @@ All hunks marked `// POS P2.12 ▸ … ◂`. No hunk in lane-A files, `prisma/`,
 - **Messages** (th Thai / en ASCII): `pos.report.kinds.{branches,hourly,anomalies}` · `pos.report.hourly.{title,forecast,now,tooLong}` · `pos.report.branches.{title,total}` · `pos.report.anomaly.{title,empty,denied,rules.A1…A10}` · `pos.report.print.{button,generatedAt}` (`{time}`) · `pos.settings.general.anomaly.{title,enabled}` · `pos.sales.branch.chipLabel` (`{name}`).
 
 ## Gates (logs under `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p212/runs/`, line 1 = tree/head/dirty)
-GATES_TABLE
+Pre-merge head 09d22f83 (code = fe2ac845) unless noted · post-merge head caa4139c = + `origin/session/pos` 3e4b1bb1 (P2.10 customer display; conflicts only in `messages/{th,en}/pos.json` (3-way key merge, both sides kept, 0 leaf conflicts) and `POS-OWNER-PENDING.md` (both appends kept); `prisma generate` after the merge).
+
+| gate | result | log |
+|---|---|---|
+| qc-pos-p2.12 forced ×2 (fe2ac845) | 30/30 · 30/30 | `g1-qc-pos-p2.12-forced.log` · `…-forced-r2.log` |
+| qc-pos-p2.12 unforced | 30/30 (also run1 30/30) | `g1-qc-pos-p2.12.log` · `p212-run1.log` |
+| qc-pos-p1.17 | 40/40 (ST1 ST5 ST6 CSV2 OV green) | `g1-qc-pos-p1.17.log` |
+| qc-pos-p2.11 | 34/34 (ST1/ST3/ST4/RP green) | `g1-qc-pos-p2.11.log` |
+| qc-pos-p1.18 · p1.16 · p2.1 · p2.9b · p1.8 | 81 · 28 · 55 · 53 · 49 (all green) | `g1-qc-pos-<suite>.log` |
+| qc-pos-closeday · p1.1 · p1.3 · qc-hf-pos-page-authz · p2.8 | 22 · 180 · 128 · 81 · 61 (all green) | `g1-…` |
+| typecheck (pos lock 5632 MB) | exit 0 (fe2ac845) · exit 0 (caa4139c) | `typecheck-1.log` · `typecheck-2.log` |
+| fitness no-env · env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 (both heads) | `fitness-*.log` · `fitness2-*.log` |
+| **post-merge** qc-pos-p2.12 · qc-pos-p2.11 | **30/30 · 34/34** | `g2-qc-pos-p2.12.log` · `g2-qc-pos-p2.11.log` |
+No existing pin turned red ⇒ no CONTROLLER-DECISION needed.
 
 ## Not done here (by scope)
 U card (08/12 screens, print page, tabs, threshold card, chip, refund-aware drawer UI, `qc-hf-pos-page-authz` print row = ORACLE-EDIT in U) · real PDF probe (CONTROLLER-RUN) · hunter at merge (channel/branch sums vs bills, anomaly scope filter, deposit exclusion).
