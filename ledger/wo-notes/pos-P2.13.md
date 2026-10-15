@@ -126,3 +126,23 @@ Base be0f92cb → merged tip **5bbd1722** (= fix commits + merge of `origin/sess
 | typecheck | 0 errors (pre-merge #1 + merged #2) | typecheck1 · typecheck2 |
 | fitness no env / env · fitness-pos | 53/53 · 53/53 · exit 0 | m-fitness-noenv · m-fitness-env · m-fitness-pos |
 | visual-pos p2.13 --states --dry th/en × owner/manager · p2.12u --dry | exit 0 ×5 | m-visual-dry-* |
+
+## Skill fix-up (builder · 15 Oct 2026 · `wip/pos-p2.13-skill` on 42cc377e · ruling = end of `pos-P2.13-review.md` · transcript `pos-P2.13-agent.md`)
+Skill dir `.claude/skills/shark-pos-api/` is gitignored ⇒ delivered as the canonical copy `/root/.claude/skills/shark-pos-api/` (`diff -r` identical to tree b). SKILL = `SKILL.md`, REC = `references/recipes.md`.
+### Oracle
+- 19460144 `test(qc-pos-api-skill)` ORACLE-ADD (marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix)`): brief's K7/K8 registered as **K7b** (no `$VAR`/`$(uuidgen)` inside `'…'` — shell scanner) and **K8b** (POST /orders recipe on CUSTOM `$CHANNEL_CODE` with `startStatus NEW` → replay 2xx, DB order NEW on kind CUSTOM → accept recipe with ORDER_ID = that order → 2xx, DB ACCEPTED) because K7/K8 ids were taken · additive fixture var `$CHANNEL_CODE` (CUSTOM channel `PHONE`, adapter NONE, payout DIRECT) · 10 + 2 = 12.
+- Red-before at 42cc377e: 10/12 (K7b K8b red) — `P2.13-red.txt` §skillfix (9bb74ebc). Extra controls (scratch): every recipe run through real bash with a stub `curl` → all 12 bodies valid JSON with values filled in; the old recipes give 4 BAD (quote, sell, refund, 86) = exactly K7b's red list.
+### Gap → change
+1. order create: SKILL:133-160 (`## Orders`: body fields, channel kinds that take orders, MANUAL-adapter ⇒ ACCEPTED vs CUSTOM/other ⇒ NEW, auto-accept exception, `acceptBy` = received + 2 min = display target, no auto reject (order.ts:583/641, order-shared.ts:28), reject `reasonCode` list) · REC:151 new recipe `POST /orders` + REC:173 accept recipe text.
+2. quoting: REC:20 rule (double-quoted bodies, `\"`), every body rewritten; `export` example REC:16.
+3. open shift: SKILL:121 `## Shifts` (`/shifts/current` needs `deviceId` from `GET /devices`; `GET /shifts` has **no** status filter — keep `status: OPEN` rows) + SKILL:71 list sizes (`GET /shifts` = newest 50, `limit` ≤ 200, shift.ts:855; `GET /orders` = since day start, ≤ 7 days) · REC:55 new recipe · conventions #10 in `pos/api/openapi.ts:42` (⇒ POS-API.md Conventions).
+5. line ids: SKILL:171 (only `/refundable`, needs `pos.sale.refund` = pos-admin) · REC:119 new recipe (Error branch 403 scope_missing).
+7. reports `unitId`: SKILL:79 (omitted = all permitted branches ⇒ `unitId: null`, reports.ts:43) · REC:216 (daily CSV recipe now sends `unitId`).
+8. `duplicated`: SKILL:55 (POS dedupe — externalRef / key after the 24 h window — vs replay header `Idempotent-Replayed: true` with the first body) · REC sell recipe · gen-pos-api-docs.mts:373.
+9. `reasonCode`: SKILL:175 + REC refund recipe (DAMAGED, WRONG_ITEM, CHANGED_MIND, OTHER = refund-shared.ts REFUND_REASON_CODES; order reject = ORDER_REJECT_REASONS).
+10. wording: `pos/api/openapi.ts:61-80` post-processes the core doc — X-Shark-System, 403, 404 descriptions say "POS system" (core `src/lib/api/openapi.ts` untouched: shared with accounting) · 0 "accounting book" left in `/api/v1/pos/openapi.json` (48/48 ops patched) · `/developers/pos` does not echo these strings ⇒ unchanged.
+- also: receipt link = `data.footer.qrEReceiptUrl` (null when the shop turned the e-receipt QR off) SKILL:117 · REC:114.
+- gaps 4/6 (P2.14 lines, not changed): noted as "known naming gaps" SKILL:84 · REC:101 · gen-pos-api-docs.mts:374.
+- 1c87f392 `docs(pos-api)`: generator + openapi text + regenerated `docs/api/POS-API.md` + skill `endpoints.md` (unchanged bytes). No response shape/status/code, no prisma/, no package.json.
+### Gates (head after 1c87f392 · logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p213s/runs/`)
+qc-pos-api-skill 12/12 unforced ×2 (skill-u1/u2) · qc-pos-p2.13 54/54 unforced · qc-kanban-k1.15 30/30 · gen-pos-api-docs --check 0 · fitness 53/53 no-env + QC4 env · fitness-pos 8/8 · typecheck 0 (heap 8192).
