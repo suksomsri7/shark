@@ -3223,7 +3223,8 @@
       "closeTitle": "Close table {name}?",
       "closeBody": "Only tables with nothing unpaid can close · an unsent draft round is discarded",
       "unlinkMember": "Unlink member",
-      "guestsNone": "-"
+      "guestsNone": "-",
+      "planDiscount": "Bill discount (split plan)"
     },
     "actions": {
       "orderMore": "Order more",

@@ -3223,7 +3223,8 @@
       "closeTitle": "ปิดโต๊ะ {name}?",
       "closeBody": "ปิดได้เมื่อไม่มีรายการค้างจ่าย · รอบร่างที่ยังไม่ส่งครัวจะถูกทิ้ง",
       "unlinkMember": "ถอดสมาชิก",
-      "guestsNone": "-"
+      "guestsNone": "-",
+      "planDiscount": "ส่วนลดท้ายบิล (แผนแยกบิล)"
     },
     "actions": {
       "orderMore": "สั่งเพิ่ม",

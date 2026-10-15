@@ -4701,6 +4701,12 @@ async function runP25uState(page: Any, state: P25uTablesKey | P25uRegKey, device
       if (device === "desktop") {
         await clickEl(page, card(4));
         await visibleEl(page, '[data-testid="pos-tbl-checkout-open"][data-split="open"]', 0, 15_000);
+        // fix1 V2: แผงของโต๊ะที่แยกบิลยังมี รวม/ค่าบริการ/ยอดสุทธิ (ยอดของแผน) — ไม่ใช่ "—"
+        await page
+          .waitForFunction(() => Array.from(document.querySelectorAll('[data-testid="pos-tbl-net"]')).some((e) => e.getClientRects().length > 0 && /\d/.test(e.textContent ?? "")), { timeout: 15_000 })
+          .catch(() => {
+            throw new StepError("ยอดสุทธิของโต๊ะที่แยกบิลไม่มา (ยอดของแผน registerSplitDetailAction)");
+          });
       }
       return;
     }

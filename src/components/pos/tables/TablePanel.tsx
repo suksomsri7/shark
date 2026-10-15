@@ -55,6 +55,11 @@ type Props = {
     onMerge: () => void;
     onSplit: () => void;
     onPreBill: () => void;
+    /**
+     * fix1 V2: ยอดของแผนแยกบิลที่เปิดอยู่ (แผงยังแสดง รวม / ค่าบริการ / ยอดสุทธิ เสมอ — ภาพ 03) = SplitPlanView ของ registerSplitDetailAction
+     * (baseSatang · discountSatang · serviceChargeSatang · totalSatang ที่ registerSplitTable เก็บ = ยอดทั้งโต๊ะ · Σ ใบ = totalSatang) · null = ยังโหลดไม่เสร็จ
+     */
+    plan?: { baseSatang: number; discountSatang: number; serviceChargeSatang: number; serviceChargeBp: number; totalSatang: number } | null;
   };
 };
 
@@ -255,6 +260,8 @@ export function TablePanel(p: Props) {
   const q = p.quote;
   const scRate = p.serviceCharge?.posBp ?? 0;
   const hasUnpaid = !!d && d.unpaidItemIds.length > 0; // POS P2.5U ▸ แยกบิล/ใบรายการต้องมีรายการค้างจ่าย (หรือแผนที่เปิดอยู่) ◂
+  // POS P2.5U ▸ fix1 V2: แผนเปิดอยู่ = ยอดของแผน (เซิร์ฟเวอร์) แทน quote ทั้งโต๊ะที่ S ปฏิเสธ ◂
+  const plan = d?.split ? (p.split?.plan ?? null) : null;
 
   const itemRow = (it: TableRoundItem) => {
     const cancellable = !it.paid && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED";
@@ -371,6 +378,32 @@ export function TablePanel(p: Props) {
       )}
 
       <div data-testid="pos-tbl-totals" className="mt-auto border-t px-4 py-3 text-[14px]">
+        {d?.split ? (
+          // POS P2.5U ▸ fix1 V2: แผนแยกบิลเปิดอยู่ — รวม / (ส่วนลด) / ค่าบริการ / ยอดสุทธิ จาก SplitPlanView ของ registerSplitDetailAction ◂
+          <>
+            <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
+              <span>{t("panel.subtotal")}</span>
+              <span data-testid="pos-tbl-plan-subtotal" className="tabular-nums">{plan ? moneyText(plan.baseSatang) : "…"}</span>
+            </div>
+            {plan && plan.discountSatang > 0 && (
+              <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
+                <span>{t("panel.planDiscount")}</span>
+                <span className="tabular-nums text-[color:var(--color-danger)]">{moneyText(-plan.discountSatang)}</span>
+              </div>
+            )}
+            {(!plan || plan.serviceChargeSatang !== 0) && (
+              <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
+                <span>{t("panel.serviceCharge", { rate: pct(plan ? plan.serviceChargeBp : scRate) })}</span>
+                <span className="tabular-nums">{plan ? moneyText(plan.serviceChargeSatang) : "…"}</span>
+              </div>
+            )}
+            <div className="flex items-baseline justify-between pt-1 text-[20px] font-bold text-[color:var(--color-ink)]">
+              <span>{t("panel.net")}</span>
+              <span data-testid="pos-tbl-net" className="tabular-nums">{plan ? moneyText(plan.totalSatang) : "…"}</span>
+            </div>
+          </>
+        ) : (
+          <>
         <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
           <span>{t("panel.subtotal")}</span>
           <span className="tabular-nums">{q ? moneyText(q.subtotalSatang) : "—"}</span>
@@ -391,6 +424,8 @@ export function TablePanel(p: Props) {
           <span>{t("panel.net")}</span>
           <span data-testid="pos-tbl-net" className="tabular-nums">{q ? moneyText(q.grandTotalSatang) : "—"}</span>
         </div>
+          </>
+        )}
         {p.serviceCharge?.differs && (
           <p data-testid="pos-tbl-sc-differs" className="mt-1 text-[12px] text-[color:var(--color-muted)]">
             {t("panel.serviceChargeDiffers", { pos: pct(p.serviceCharge.posBp), restaurant: pct(p.serviceCharge.restaurantBp) })}

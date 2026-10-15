@@ -49,7 +49,7 @@ import { ReservationsDialog } from "./ReservationsDialog";
 import { readTablePending, TableCheckout, type TableToast } from "./TableCheckout";
 import { bkkClock, clockNow, newCheckoutKey, type FloorClock } from "./table-ui";
 // POS P2.5U ▸ แยกบิล · ย้าย/รวมโต๊ะ · ใบรายการ ◂
-import { registerMergeTablesAction, registerMoveTableAction } from "@/lib/modules/pos/table-split-actions";
+import { registerMergeTablesAction, registerMoveTableAction, registerSplitDetailAction } from "@/lib/modules/pos/table-split-actions";
 import { TableSplitDialog } from "./TableSplitDialog";
 import { TablePreBillDialog } from "./TablePreBillDialog";
 import { TablePickDialog } from "./TablePickDialog";
@@ -329,6 +329,26 @@ export function TablesScreen(p: TablesScreenProps) {
     void requoteTable();
   }, [requoteTable]);
   const shownQuote = quote && itemsHash && quote.hash === itemsHash ? quote.q : null;
+  // POS P2.5U ▸ fix1 V2: แผนแยกบิลเปิดอยู่ = ยอดของแผงมาจาก SplitPlanView (registerSplitDetailAction · ค่าที่ S เก็บตอนบันทึกแผน) — โหลดใหม่เมื่อสรุปแผนเปลี่ยน ◂
+  const splitSum = shownDetail?.split ?? null;
+  const splitKey = splitSum && selSession ? `${selSession}:${splitSum.splitId}:${splitSum.partCount}:${splitSum.paidParts}:${splitSum.remainingSatang}` : "";
+  const [planTotals, setPlanTotals] = useState<{ key: string; v: { baseSatang: number; discountSatang: number; serviceChargeSatang: number; serviceChargeBp: number; totalSatang: number } } | null>(null);
+  useEffect(() => {
+    if (!splitKey || !selSession) return;
+    let live = true;
+    void registerSplitDetailAction({ systemId: p.systemId, unitId: p.unitId, tableSessionId: selSession })
+      .then((r) => {
+        if (!live || !r.ok || !r.split || r.split.status !== "OPEN") return;
+        const x = r.split;
+        setPlanTotals({ key: splitKey, v: { baseSatang: x.baseSatang, discountSatang: x.discountSatang, serviceChargeSatang: x.serviceChargeSatang, serviceChargeBp: x.serviceChargeBp, totalSatang: x.totalSatang } });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- splitKey รวม session + สรุปแผน
+  }, [splitKey]);
+  const shownPlan = planTotals && planTotals.key === splitKey ? planTotals.v : null;
 
   // ═══════ ดึงซ้ำทุก 20 วิ ขณะเห็นจอ ═══════
   const pollRef = useRef({ refreshFloor, loadDetail, selSession });
@@ -799,6 +819,7 @@ export function TablesScreen(p: TablesScreenProps) {
         onMerge: () => openLayer({ kind: "merge", into: selCard, preselect: [] }),
         onSplit: () => openSplit(selCard),
         onPreBill: () => selCard.sessionId && openLayer({ kind: "prebill", sessionId: selCard.sessionId }),
+        plan: shownPlan, // fix1 V2 ◂
       }}
     />
   ) : null;
