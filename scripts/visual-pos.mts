@@ -5750,7 +5750,8 @@ async function ensureP211uFixture(): Promise<void> {
       // fix1 มติ 5 (R1 F5): ซากรอบที่ถูก SIGKILL — แถว (STORE, สีลม) ของลาเต้ = ราคาฐาน − ฿5 (ค่าของ fixture) ⇒ ลบก่อนจำ "ก่อน" (ไม่ให้ซากไหลเข้า seed)
       {
         const cur = await prisma.posProductChannelPrice.findMany({ where: { tenantId: T.tenantId, systemId: SYS, productId: QC_IDS.latte }, select: { channelCode: true, unitId: true, priceSatang: true, notSold: true } });
-        const isLeft = (r: (typeof cur)[number]) => r.channelCode === "STORE" && r.unitId === unitId && !r.notSold && r.priceSatang === latte.basePriceSatang! - 500;
+        const leftPrice = latte.basePriceSatang - 500;
+        const isLeft = (r: (typeof cur)[number]) => r.channelCode === "STORE" && r.unitId === unitId && !r.notSold && r.priceSatang === leftPrice;
         if (cur.some(isLeft)) {
           await setChannelPrices(cctx, { productId: QC_IDS.latte, rows: cur.filter((r) => !isLeft(r)) });
           P211U.log.push("กวาดซากแถว (STORE, สีลม) = ฐาน − ฿5 ของรอบก่อน");
@@ -5802,10 +5803,10 @@ async function ensureP211uFixture(): Promise<void> {
       const { updatePosReceiptUnitSettings } = await import("@/lib/modules/pos/receipt-settings");
       const { receiptUnitOverride } = await import("@/lib/modules/pos/receipt-settings-shared");
       const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
-      P211U.receiptBefore = receiptUnitOverride(sys?.settings ?? null, unitId);
+      const rb = receiptUnitOverride(sys?.settings ?? null, unitId);
+      P211U.receiptBefore = rb;
       // fix1 มติ 5 (R1 F5): ซากรอบที่ถูก SIGKILL — ค่าสาขาสีลม = "00001" ของ fixture ⇒ ล้าง (ที่อยู่/โทรที่ตรงค่า fixture ด้วย) ก่อนจำ "ก่อน"
-      if (P211U.receiptBefore.taxBranchNo === P211U_RECEIPT.taxBranchNo) {
-        const rb = P211U.receiptBefore;
+      if (rb.taxBranchNo === P211U_RECEIPT.taxBranchNo) {
         const sweep = { taxBranchNo: null, address: rb.address === P211U_RECEIPT.address ? null : rb.address, phone: rb.phone === P211U_RECEIPT.phone ? null : rb.phone };
         const sw = await updatePosReceiptUnitSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { unitId, patch: sweep });
         if (!sw.ok) throw new StepError(`กวาดซากค่าใบเสร็จของสาขา: ${sw.code} ${sw.field ?? ""}`);
