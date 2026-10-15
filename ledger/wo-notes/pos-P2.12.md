@@ -69,6 +69,51 @@ U card (08/12 screens, print page, tabs, threshold card, chip, refund-aware draw
 
 ## Fix round 1 (controller rulings 15 Oct 17:57Z · R1 F1–F3 + hunter H1–H4 + ORACLE-ADD)
 
+Builder · account B · tree c · branch `wip/pos-p2.12` 42e3ce17 → fix commits below. `origin/session/pos` = 3e4b1bb1 (already merged at caa4139c) — fetched before and after the gates, not moved ⇒ no merge, no re-run. All code hunks marked `// POS P2.12 ▸ fix1 … ◂`; no hunk in lane-A files, `prisma/`, `package.json`, messages, or any other `qc-*.mts`.
+
+### Commits
+| step | commit | files |
+|---|---|---|
+| ruling 7 ORACLE-ADD (test first) | 99aee674 | `scripts/qc-pos-p2.12.mts` (AN13 · AN14 · PD4 · AN12 +1 assert · fixture: COUPON system on B + 12 owner bills at B moved to TD−7/TD−6 · `sell()` + `couponCode`) — marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1)` · 30 → 33 |
+| red-before | a64570b8 | `ledger/wo-notes/P2.12-red.txt` §fix1 |
+| ruling 1 (R1 F1 F2 F3) | 5ee2ba92 | `reports.ts` · `report-print-shared.ts` · `settings-general.ts` |
+| ruling 2 (H1) | c671d11f | `reports.ts` |
+| ruling 3 (H2) | 492c8ab8 | `reports.ts` · `report-print-shared.ts` |
+| ruling 4 (H3) | b5b48254 | `reports.ts` · `report-actions.ts` |
+| ruling 5 (H4) | 3f91c695 | `reports.ts` |
+| ruling 6 follow-ups | 3762f893 | this file |
+
+### Red-before (ruling 7)
+Unforced on QC4 at 99aee674 (code = 42e3ce17): **29/33** — red = AN12 (`totals.unitNames` undefined) · AN13 (no A4 row for the 100 % line-discount bill, A4 row for the coupon-only bill, A3 O/B value 4286 ≠ 7143) · AN14 (limit 10 ⇒ A1 3 · A2 2 · A3 3 · A4 2 rows, A5–A10 gone, no notice) · PD4 (MANAGER{A} header "สาขา ทุกสาขา", A8 cells "100.00"). The 29 existing checks stayed green; residue 0. Log `runs/fix1/red-fix1.log`.
+
+### Per ruling (files / hunks)
+- **1 · F1** `reports.ts`: `AnomalyTotals.unitNames` (envelope: `s.unitName` of the units in the returned rows; `{}` when disabled) · CSV cell 3 = `unitNames[unitId] ?? unitId` · header "รหัสสาขา" → **"สาขา"** · `report-print-shared.ts` EN header "Branch ID" → **"Branch"**. Row keys unchanged.
+- **1 · F2** `reports.ts` exports `REPORT_TOTAL_ROW_KINDS` (daily products staff payments margin shifts tax branches hourly — every kind whose CSV always ends with the "รวม" row; channels/anomalies have none) · print model `totalRow: boolean` = kind ∈ set ∧ rows ≠ [] · en "Total" relabel and the bold `tr.total` apply to the last row only when `totalRow` — no cell-text compare left (`TOTAL_TH` removed). Applied to all total-row kinds, not only branches/hourly, so daily etc. keep their bold total.
+- **1 · F3** `settings-general.ts` `updatePosGeneralSettings`: after the raw-JSON `changed` test, compute `after` first and return without `mergePosKeys` + without audit when `canon(generalAuditView(before,c)) === canon(generalAuditView(after,c))` (e.g. writing a default, `{A1:{}}`). Applies to every general key (same rule: no visible change ⇒ no write).
+- **2 · H1** `reportAnomalies`: the A6 `groupBy` becomes `by [saleId, priceSource]` over `CUSTOM ∪ discountSatang > 0` lines with `_count` + `_sum.discountSatang` (CUSTOM count unchanged; Σ line discount per bill). Non-staff part of `PosSale.discountSatang` (= bill + coupon + member, `service.ts` createSale) read only for paid bills with `discountSatang > 0`, per chunk: **`CouponRedemption.discountSatang`** (status ≠ RELEASED, `saleId` or `refType "PosSale"/refId`, deduped by id) + **Σ `PosSale.memberBenefits.lines[].discountSatang`** (kind ≠ COUPON; new `posSale` read carries tenant/system/unitId IN/createdAt range/id IN). Staff discount = Σ line discount + max(0, discountSatang − coupon − member). **A3** numerator = staff discount (base unchanged = staff-style net, AN3 numbers unchanged). **A4** = staff discount × 10000 ≥ (subtotal + Σ line discount) × bp, value = round(staff × 10000 / base). Rule labels / threshold text unchanged.
+- **3 · H2** `capPerRule(rows, limit)`: rows (already sorted rule-first) grouped per rule; seats handed out round-robin in rule order until `limit` ⇒ ≤ ⌈limit/R⌉ per rule in the even pass, seats a short rule cannot use go to the next rules in rule order; result ≤ limit, original order kept; limit ≥ R ⇒ no rule disappears; unchanged when rows ≤ limit. `reportRowsNotice(report, locale)` (anomalies, `rowCount > rows.length`) = "แสดง N จาก M แถว" / "Showing N of M rows"; CSV body = `csvTableRows` + one single-cell notice line; `reportTableRows` (new export) = table rows without the notice; print model rows = `reportTableRows`, `notice` field, HTML `<p class="notice">` after the table.
+- **4 · H3** `reportPrintNames(ctx, client?, scope?: {actor, kind})`: no `unitId` ⇒ tenant units (id asc) filtered like `scopeOf` (OWNER/"*" = all, else `unitAccess`) ∩ `pos.report.view` (+ `pos.report.anomaly` for anomalies); 0 < scoped < all ⇒ names joined ", ", else null ("ทุกสาขา"/"All branches"). `posReportPrintAction` passes `{actor, kind}`. +1 `businessUnit.findMany` on the print path only.
+- **5 · H4** A8 keeps the signed winner per shift (|Z over/short| ≥ |recount variance| ⇒ Z side, else recount); `AnomalyTotals.a8SignedSatang: Record<PosShift id, signed satang>` for returned A8 rows; CSV/print A8 value cell = `ขาด −150.00` (U+2212) / `เกิน +150.00`; row `value` stays absolute.
+
+### U-card contract deltas
+- `AnomalyTotals` = `{rowCount, byRule, unitNames: Record<unitId, name>, a8SignedSatang: Record<shiftId, signedSatang>}` — screen shows `unitNames[row.unitId]` and can colour A8 by the sign; rows unchanged (AN12 key set).
+- `ReportPrintModel` += `totalRow: boolean` (bold/relabel the last row only when true) · `notice: string | null` (render under the table; rows never contain it).
+- CSV of a truncated anomalies report ends with one single-cell line "แสดง N จาก M แถว"; `reportCsvRows` includes it, `reportTableRows` does not; `reportRowsNotice(report, "en")` for an en screen.
+- Anomalies CSV/print header col 3 = "สาขา" / "Branch" (name, not id). A8 value cell = "ขาด −x" / "เกิน +x" (th words also in the en print — F5).
+- Row cap: `limit` is per-rule fair (screen default 200, CSV/print 1000) — "first N rows" no longer means "first rules".
+- Print header for a scoped actor without `unitId` = their unit names joined ", " (MANAGER{A} ⇒ A's name).
+
+### Gates (logs `runs/fix1/`, line 1 = tree/head/dirty · code head 3f91c695)
+| gate | result | log |
+|---|---|---|
+| qc-pos-p2.12 forced ×2 | 33/33 · 33/33 | `gA-qc-pos-p2.12-forced.log` · `…-forced-r2.log` |
+| qc-pos-p2.12 unforced | 33/33 (also try1 33/33) | `gA-qc-pos-p2.12.log` · `try1.log` |
+| qc-pos-p1.17 · p2.11 · p1.18 · p1.16 | 40 · 34 · 81 · 28 (all green) | `gA-qc-pos-<suite>.log` |
+| qc-pos-p1.1 · p1.3 | 180 · 128 (all green) | `gA-…` |
+| typecheck (pos lock 5632 MB) | exit 0 | `typecheck-1.log` |
+| fitness no-env · env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 | `fitness-1-{noenv,env,pos}.log` |
+No existing pin turned red ⇒ no CONTROLLER-DECISION.
+
 ### Follow-ups (ruling 6 · not fixed in S)
 - **H5 (bills day vs cut-off)** — `billsPageData` groups by the Bangkok calendar day of `paidAt ?? createdAt` (`bills.ts:97`), reports use `createdAt` + the cut-off; deposit receipts count as STORE on the bills page (CD-9). Under a cut-off ≠ 0, `summary.channelCounts` never equals the channels report for the same date. U footnotes it on screen 12; making the bills day cut-off-aware = follow-up (HF-FU2 / owner). Missing check: CH3 with a cut-off ≠ 0.
 - **R1 F4 (A5 ignores table-split overrides)** — `reportAnomalies` reads audits with `targetType:"PosSale"` only; `pos.discount.override` written by `table-split.ts:438–443` has `targetType:"PosTableSplit"`, so manager-PIN split-plan discounts never count toward A5. Follow-up (HF-FU2 / owner): add `PosTableSplit` targets resolved to a unit with one chunked read.
