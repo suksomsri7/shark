@@ -13,6 +13,7 @@
 //   คำปฏิเสธ: reason ก่อน (priceRowDead · bulkTooMany) แล้วรหัส · PERMISSION_DENIED = toast (ลิ้นชักไม่ปิด) · field = กรอบแดงรอบกลุ่ม ·
 //   หมายเหตุแถวเลิกใช้ N แถว + "ล้างแถวที่เลิกใช้" (purgeDead · ขอบเขตทั้งสินค้าเท่านั้น · ยืนยันก่อน) · โหมดสาขา = กลุ่ม "ทุกสาขา" อ่านอย่างเดียว ◂
 
+// POS P2.11U ▸ imports หลายสาขา (fix1 มติ 8 ครอบ): + useEffect/useRef (เลื่อนไปกลุ่มสาขา) · + priceReasonText · − priceErrorText/draftOf/rowsFromDraft · + กลุ่มของ products-scope
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -26,6 +27,7 @@ import type { ProductsChannel, ProductsData, ProductsPriceRow, ProductsRow } fro
 import { channelsIn, effectiveOf, type DraftCell } from "./products-scope";
 // POS P2.11U ▸ มติ 2: กลุ่มทุกสาขา/ต่อสาขา ◂
 import { draftGroups, groupKey, inheritedOf, rowsFromGroups, type GroupDraft, type PriceGroup } from "./products-scope";
+// ◂
 // POS P2.3U ▸ มติ 1: แท็บ "สูตรและวัตถุดิบ" ใช้งานจริง (RecipeSection) ◂
 import { RecipeSection, type RecipePatch } from "./RecipeSection";
 // POS P2.6U ▸ มติ 9b: ส่วน "ครัว" ในแท็บทั่วไป (สถานีครัว · 86 ของสาขา) ◂
@@ -42,12 +44,14 @@ type Props = {
   unit: string | null;
   canEdit: boolean;
   onClose: () => void;
+  // POS P2.11U ▸ (fix1 มติ 8 ครอบ) onSaved + purged (มติ 3 ล้างแถวเลิกใช้) · props หลายสาขา
   onSaved: (productId: string, rows: ProductsPriceRow[], purged?: boolean) => void;
   // POS P2.11U ▸ มติ 1 2 3 6: กลุ่มสาขาที่เปิดมา (แตะช่อง "ราคา <สาขา>") · โหมดสาขา · ล้างแถวเลิกใช้ได้ · toast ของหน้า (PERMISSION_DENIED) ◂
   focusUnit?: string | null;
   branchMode?: boolean;
   canPurge?: boolean;
   onToast?: (text: string) => void;
+  // ◂
   // POS P2.3U ▸ มติ 1/2: แก้สูตรได้ (pos.product.manage) · ผลบันทึกสูตร/สวิตช์ → ตาราง ◂
   canEditRecipe?: boolean;
   onRecipeSaved?: (productId: string, patch: RecipePatch, toast: string) => void;
@@ -57,7 +61,9 @@ type Props = {
   onKitchenSaved?: (productId: string, patch: KitchenPatch, toast: string) => void;
 };
 
+// POS P2.11U ▸ (fix1 มติ 8 ครอบ) + focusUnit · branchMode · canPurge · onToast
 export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClose, onSaved, canEditRecipe = false, onRecipeSaved, canManage = false, canMark86 = false, onKitchenSaved, focusUnit = null, branchMode = false, canPurge = false, onToast }: Props) {
+  // ◂
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tr = useTranslations("pos.price.rule") as PT;
@@ -109,6 +115,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
   const now = useMemo(() => new Date(), []);
   const rules = data.rules.filter((r) => !r.archived && ruleTouches(r, p)).map((r) => ({ r, state: ruleStateOf(r, now) })).filter((x) => x.state === "ACTIVE" || x.state === "UPCOMING");
 
+  // POS P2.11U ▸ (fix1 มติ 8 ครอบ) ร่างต่อกลุ่ม (draftGroups) · ล้างกรอบแดง/ยืนยันล้างแถว
   const startEdit = () => {
     setDraft(draftGroups(p, groups, satangToInput));
     setRowErr({});
@@ -123,6 +130,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
     setSaveErr(null);
     setGroupsErr(false);
   };
+  // ◂
   // POS P2.11U ▸ ร่างต่อกลุ่ม (คีย์ "*" = ทุกสาขา) ◂
   const setCell = (gk: string, code: string, patch: Partial<DraftCell>) =>
     setDraft((d) => ({ ...d, [gk]: { ...(d[gk] ?? {}), [code]: { ...(d[gk]?.[code] ?? { text: "", notSold: false }), ...patch } } }));
@@ -138,6 +146,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
 
   const save = async () => {
     if (!editing || busy) return;
+    // POS P2.11U ▸ (fix1 มติ 8 ครอบ) แถวทั้งชุดจากร่างทุกกลุ่ม · คีย์ error "<กลุ่ม>|<ช่องทาง>" ◂
     const { rows, errors } = rowsFromGroups(p, draft, parseMoneyInput);
     const errs: Record<string, string> = {};
     for (const [k, e] of Object.entries(errors)) errs[k] = tp(e === "max" ? "errors.priceMax" : "errors.priceFormat");
@@ -158,7 +167,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
       if (r.ok) {
         onSaved(p.id, r.rows);
         setEditing(false);
-      } else refused(r);
+      } else refused(r); // POS P2.11U ▸ มติ 2: คำปฏิเสธผ่าน refused (reason ก่อน · toast · กรอบแดง) ◂
     } catch {
       setSaveErr(tp("errors.unknown"));
     } finally {
@@ -233,6 +242,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
         })}
       </div>
       {/* เนื้อ */}
+      {/* POS P2.11U ▸ มติ 1: ref = เลื่อนไปกลุ่มสาขาที่แตะมา ◂ */}
       <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-[18px] py-3">
         {tab === "general" ? (
           <dl data-testid="pos-prod-general" className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-[13px]">
@@ -270,7 +280,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
                 </button>
               ) : null}
             </h3>
-            {/* POS P2.11U ▸ มติ 2 3 6: กลุ่ม "ทุกสาขา" + กลุ่มต่อสาขา · หมายเหตุแถวเลิกใช้ ◂ */}
+            {/* POS P2.11U ▸ มติ 2 3 6 (fix1 มติ 8 ครอบทั้งก้อน): แทนบรรทัดขอบเขต/ตารางช่องทางเดิมด้วยกลุ่ม "ทุกสาขา" + กลุ่มต่อสาขา · หมายเหตุแถวเลิกใช้ */}
             {weighed ? (
               <p data-testid="pos-prod-price-weighed" className="rounded-lg border border-dashed px-3 py-2 text-[12px] text-[color:var(--color-muted)]">
                 {tp("drawer.weighed")}
@@ -423,6 +433,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
                 ) : null}
               </div>
             ) : null}
+            {/* ◂ */}
             {saveErr ? (
               <p data-testid="pos-prod-price-error" role="alert" className="mt-2 rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-[12px] text-[color:var(--color-danger)]">
                 {saveErr}

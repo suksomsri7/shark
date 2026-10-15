@@ -34,7 +34,9 @@ import type { KitchenPatch } from "@/components/pos/products/kitchen-ui"; // POS
 
 type Props = { systemId: string; data: ProductsData; canEdit: boolean; initialUnit: string | null; canEditRecipe?: boolean; canMark86?: boolean; mode?: "all" | "branch"; canPurge?: boolean }; // POS P2.6U ▸ + canMark86 ◂ · POS P2.11U ▸ + mode · canPurge (มติ 3 6) ◂
 
+// POS P2.11U ▸ (fix1 มติ 8 ครอบ) + mode · canPurge
 export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRecipe = false, canMark86 = false, mode = "all", canPurge = false }: Props) {
+  // ◂
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tchip = useTranslations("pos.products.chip") as PT;
@@ -395,7 +397,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
                     <input type="checkbox" data-testid={`pos-prod-select-${p.id}`} aria-label={t("col.select")} className="size-5" checked={selected.has(p.id)} onChange={() => toggleSel(p.id)} />
                   </td>
                   <td className="px-2 py-2">
-                    <button type="button" data-testid={`pos-prod-open-${p.id}`} className="flex min-h-11 items-center gap-3 text-left" onClick={() => openProduct(p.id)}>
+                    <button type="button" data-testid={`pos-prod-open-${p.id}`} className="flex min-h-11 items-center gap-3 text-left" onClick={() => openProduct(p.id) /* POS P2.11U ▸ มติ 1: เปิดผ่าน openProduct (ล้างกลุ่มที่เลื่อนไป) ◂ */}>
                       <span className="grid size-[34px] shrink-0 place-items-center rounded-[7px] border bg-[color:var(--color-surface-2)] text-[color:var(--color-muted)]">
                         <PriceIcon name="box" size={15} />
                       </span>
@@ -430,7 +432,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
           {shown.map((p) => (
             <div key={p.id} className="card flex items-start gap-3 !p-3">
               <input type="checkbox" data-testid={`pos-prod-cselect-${p.id}`} aria-label={t("col.select")} className="mt-3 size-5" checked={selected.has(p.id)} onChange={() => toggleSel(p.id)} />
-              <button type="button" data-testid={`pos-prod-copen-${p.id}`} className="flex min-h-11 min-w-0 flex-1 flex-col gap-1 text-left" onClick={() => openProduct(p.id, unit)}>
+              <button type="button" data-testid={`pos-prod-copen-${p.id}`} className="flex min-h-11 min-w-0 flex-1 flex-col gap-1 text-left" onClick={() => openProduct(p.id, unit) /* POS P2.11U ▸ มติ 1 (390): แตะการ์ด = เปิดที่กลุ่มสาขาที่กรอง ◂ */}>
                 <span className="flex w-full items-start gap-2">
                   <span className="min-w-0 flex-1">
                     <b className="block font-semibold leading-tight">{nameOf(p)}</b>
@@ -465,16 +467,16 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
 
       {open ? (
         <ProductPanel
-          key={`${open.id}|${unit ?? ""}|${focusUnit ?? ""}`}
+          key={`${open.id}|${unit ?? ""}|${focusUnit ?? ""}` /* POS P2.11U ▸ มติ 1: + focusUnit (แตะช่องสาขาอื่น = ลิ้นชักใหม่ที่กลุ่มนั้น) ◂ */}
           systemId={systemId}
           product={open}
           data={data}
           unit={unit}
           canEdit={canEdit}
-          focusUnit={focusUnit} // POS P2.11U ▸ มติ 1 2 3 6 ◂
+          focusUnit={focusUnit} // POS P2.11U ▸ มติ 1 2 3 6 (fix1 มติ 8 ครอบ 4 บรรทัด): focusUnit · branchMode · canPurge · onToast
           branchMode={branchMode}
           canPurge={canPurge}
-          onToast={setToast}
+          onToast={setToast} // ◂
           onClose={() => setOpenId(null)}
           onSaved={onSaved}
           canEditRecipe={canEditRecipe}
