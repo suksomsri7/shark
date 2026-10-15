@@ -142,7 +142,7 @@ export async function ensureUnitChannels(db: Db, scope: { tenantId: string; syst
       code,
       kind: "BUILTIN" as const,
       name: CHANNEL_BUILTIN_NAMES[code],
-      adapter: code === "WEB" ? ("WEB" as const) : code === "CHAT" ? ("CHAT" as const) : ("NONE" as const),
+      adapter: code === "WEB" ? ("WEB" as const) : code === "CHAT" ? ("CHAT" as const) : code === "QR_ORDER" ? ("QR" as const) /* POS P2.7 ▸ QR_ORDER → QR (มติ 2 · CD-O5) ◂ */ : ("NONE" as const),
       active: true,
       sortOrder: i,
       payout: "DIRECT" as const,

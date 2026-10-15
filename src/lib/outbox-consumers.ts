@@ -801,7 +801,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "pos.receipt.issue_reported": withAutomation(async (evt) => void (await (await import("@/lib/pos-receipt-bridges")).onReceiptIssueReported(evt))),
   "pos.receipt.taxInvoiceRequested": withAutomation(async () => {}),
   // POS P1.7 ▸ เงินเข้าใบขอรับเงิน (webhook/ยืนยันเอง) — กฎอัตโนมัติเท่านั้น (จอลูกค้า P2 ต่อบน event เดิม) · ไม่มี event ตอน CONSUMED ◂
-  "pos.payment.intent_paid": withAutomation(async () => {}),
+  // POS P2.7 ▸ S3 มติ 13: ใบของออเดอร์จ่ายก่อน (orderId) → PREPAID (+ รับอัตโนมัติ) / เงินเข้าหลังปิด = ops late_payment · ใบของหน้าขาย = ไม่มีอะไร · idempotent ◂
+  "pos.payment.intent_paid": withAutomation(async (evt) => void (await (await import("@/lib/modules/pos")).orders.onIntentPaid(String((evt.payload as { intentId?: unknown } | null)?.intentId ?? "")))), // POS P2.7 ▸ onIntentPaid ◂
   // POS P1.13 ▸ ออกใบกำกับภาษีเต็มรูปให้บิล (ตอนชำระ · ออกทีหลัง · จากคำขอ) — กฎอัตโนมัติเท่านั้น (ส่งอีเมลเอกสาร = งานต่อบน event เดิม) ◂
   "pos.sale.taxInvoiceIssued": withAutomation(async () => {}),
   // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09) — กฎอัตโนมัติ/เว็บฮุคเท่านั้น · rejected ของออเดอร์เว็บร้าน = ยกเลิก ShopOrder ที่นี่ (composition root · มติ 13 — POS ไม่ import shop) ◂

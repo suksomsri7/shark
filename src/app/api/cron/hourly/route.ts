@@ -9,6 +9,7 @@ import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
 import { forceCloseStaleShifts } from "@/lib/modules/pos/shift";
 import { expirePaymentIntents } from "@/lib/modules/pos/payment-intent"; // POS P1.7 ▸ R5 ◂
+import { expirePreorders } from "@/lib/modules/pos/order"; // POS P2.7 ▸ S2 ◂
 import { drainAll } from "@/lib/outbox-consumers";
 
 // GET /api/cron/hourly — งานประจำของผู้ช่วย AI (Vercel Cron เรียกทุกต้นชั่วโมง)
@@ -101,6 +102,15 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
+  // POS P2.7 ▸ S2: ออเดอร์สั่งล่วงหน้าที่เลยเวลาจ่าย → ยกเลิก + ใบ EXPIRED (หน้าสถานะ/จอ 09 ปิดแบบขี้เกียจอยู่แล้ว · ตัวนี้เก็บกวาด) — best-effort ◂
+  let posPreordersExpired = -1;
+  try {
+    posPreordersExpired = (await expirePreorders()).expired;
+  } catch (e) {
+    await logOps("WARN", "cron", "expirePreorders (ออเดอร์สั่งล่วงหน้าเลยเวลาจ่าย) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;
@@ -125,6 +135,7 @@ export async function GET(req: Request) {
     memberReportsSent,
     posShiftsForced,
     posIntentsExpired,
+    posPreordersExpired, // POS P2.7 ◂
     outboxDrained,
     at: new Date().toISOString(),
   });

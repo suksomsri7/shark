@@ -36,6 +36,11 @@ import { autoAcceptBlockedInTx, kitchenPausedForUnit, roundForOrderInTx } from "
 import { REGISTER_MAX_PAY_METHODS, REGISTER_PAY_TYPES, REGISTER_REFERENCE_MAX, type RegisterActor, type RegisterCtx } from "./register-shared";
 import { REGISTER_MANUAL_MANAGER_MESSAGE, REGISTER_MANUAL_METHODS } from "./register-shared"; // POS HF-PP2 ▸ ด่านผู้จัดการชุดเดียวกับหน้าขาย ◂
 import { isPaymentIntentId, parsePosIntentSettings, PAYMENT_INTENT_CONSUME_WINDOW_MS } from "./payment-intent-shared"; // POS HF-PP2 ▸ ตัวอ่านค่าตั้งเดียวกับ HF-PP ◂
+// POS P2.7 ▸ จ่ายก่อน (QR_ORDER): ใบขอรับเงินของออเดอร์ (ผู้เขียนเดียว payment-intent.ts) · โทเคนหน้าสถานะ 12 ตัว (ตัวสร้างของใบเสร็จออนไลน์) · ops ◂
+import { cancelOrderIntentInTx, consumeSaleIntents, createIntentForOrderInTx, expireOrderIntentInTx, lockSaleIntents, type PreparedOrderIntent } from "./payment-intent";
+import { newReceiptToken } from "./receipt-token";
+import { logOps } from "@/lib/core/ops";
+import { randomBytes } from "node:crypto";
 import {
   ORDER_PREP_DEFAULT_MIN,
   ORDER_PREP_MAX,
@@ -332,6 +337,7 @@ async function emitOrderEvent(tx: Tx, o: PosOrder, type: string, status: OrderSt
       externalRef: o.externalRef,
       shopOrderId: o.shopOrderId,
       saleId: o.saleId,
+      paymentState: o.paymentState, // POS P2.7 ▸ R5: payload + paymentState (PENDING_PAYMENT ตอนรับเข้าของออเดอร์จ่ายก่อน) ◂
     },
   });
 }
@@ -509,12 +515,37 @@ async function acceptInTx(
   ch: SalesChannel,
   who: { actorUserId: string | null; shiftId: string | null; prepMinutes: number; auto: boolean },
 ): Promise<{ order: PosOrder; saleId: string | null; saleLines: CreateSaleInput["lines"] | null }> {
+  // POS P2.7 ▸ มติ 8: ออเดอร์จ่ายก่อนที่ยังไม่มีเงินเข้า = รับไม่ได้ (ORDER_UNPAID · ไม่เขียนอะไร) · PREPAID = บิลใช้ใบขอรับเงินในธุรกรรมนี้ (ด้านล่าง) ◂
+  if (o.paymentState === "PENDING_PAYMENT") throw new OrderAbort(refuse("ORDER_UNPAID", PREORDER_UNPAID_MESSAGE));
   // POS HF-FU ▸ a fix2 (hunter H1): เงินของการรับตัดสินจากคู่ payout ของช่องทาง ↔ paymentState ของออเดอร์ — ไม่ตรง (เจ้าของเปลี่ยน payout หลังรับเข้า) =
   //   ปฏิเสธก่อนแตะอะไร (ไม่มีบิล ไม่มีรอบ · ตัวกวาด = held sale_refused · พนักงาน = CHANNEL_PAY_MISMATCH) ◂
   if ((ch.payout === "PLATFORM") !== (o.paymentState === "PLATFORM_PAID")) throw new OrderAbort(refuse("CHANNEL_PAY_MISMATCH", ORDER_PAYOUT_STATE_MISMATCH));
   let after = await transition(tx, o, "ACCEPTED", { acceptedAt: new Date(), acceptedByUserId: who.actorUserId, prepMinutes: who.prepMinutes }, { actorUserId: who.actorUserId, payload: who.auto ? { auto: true } : undefined });
   // POS P2.6 ▸ R4 CD3: ทุกทางเข้า ACCEPTED (รับ · รับอัตโนมัติ · รับเข้าเป็น ACCEPTED) สร้างรอบครัวในธุรกรรมเดียวกัน (xmin เดียว · ไม่ขึ้นกับการจ่าย · รับซ้ำ = รอบเดิม) ◂
   await roundForOrderInTx(tx, after, ch);
+  // POS P2.7 ▸ S4 มติ 5 (CD3): PREPAID — ในธุรกรรมรับ: lockSaleIntents → orderCreateSale (จุดเดิม) PROMPTPAY ref pi_ เต็มยอด → consumeSaleIntents → PAID ·
+  //   กะ = กะของเครื่องที่รับ (รับอัตโนมัติ = null · ไม่ใช่เงินสด · P2.8 มติ 10) · ใบใช้ไม่ได้/บิลถูกปฏิเสธ (BLOCK · PRICE_NOT_SET …) = OrderAbort ⇒ rollback ทั้งก้อน (ยัง NEW/PREPAID) ◂
+  if (o.paymentState === "PREPAID") {
+    if (!o.paymentIntentId) throw new OrderAbort(refuse("ORDER_STATE_INVALID"));
+    const lk = await lockSaleIntents(tx, { tenantId: o.tenantId, unitId: o.unitId }, [{ intentId: o.paymentIntentId, payType: "PROMPTPAY", amountSatang: o.totalSatang }]);
+    if (!lk.ok) throw new OrderAbort(refuse(lk.code as OrderRefusalCode));
+    const plines = await tx.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
+    const psaleLines = await saleLinesOf(tx, o, plines);
+    let psaleId: string;
+    try {
+      const r = await orderCreateSale(tx, saleBase(after, psaleLines, [{ type: "PROMPTPAY", amountSatang: o.totalSatang, reference: o.paymentIntentId }], { soldByUserId: who.actorUserId, shiftId: who.shiftId }));
+      psaleId = r.saleId;
+    } catch (e) {
+      const rf = saleRefusal(e);
+      if (rf) throw new OrderAbort(rf);
+      throw e;
+    }
+    await consumeSaleIntents(tx, { tenantId: o.tenantId, unitId: o.unitId }, psaleId, lk.notes);
+    await tx.posOrder.updateMany({ where: { id: o.id, tenantId: o.tenantId }, data: { saleId: psaleId, paymentState: "PAID" } });
+    after = await tx.posOrder.findUniqueOrThrow({ where: { id: o.id } });
+    return { order: after, saleId: psaleId, saleLines: psaleLines };
+  }
+  // ◂ POS P2.7
   if (ch.payout !== "PLATFORM") return { order: after, saleId: null, saleLines: null };
   const lines = await tx.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
   const saleLines = await saleLinesOf(tx, o, lines);
@@ -944,7 +975,7 @@ export async function acceptOrder(ctx: RegisterCtx, actor: RegisterActor, input:
     const ch = await prisma.salesChannel.findFirst({ where: { id: o.channelId, tenantId: s.tenantId } });
     if (!ch) return refuse("CHANNEL_INVALID");
     const prep = (inp.prepMinutes as number | undefined) ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
-    const shift = ch.payout === "PLATFORM" ? (await deviceShift(prisma, s, s.deviceId)).shiftId : null;
+    const shift = ch.payout === "PLATFORM" || o.paymentState === "PREPAID" /* POS P2.7 ▸ PREPAID = บิลตอนรับ ลงกะของเครื่อง (PY6) ◂ */ ? (await deviceShift(prisma, s, s.deviceId)).shiftId : null;
     const r = await mutate(s, o.id, (tx) => acceptInTx(tx, o, ch, { actorUserId: s.actor.userId, shiftId: shift, prepMinutes: prep, auto: false }));
     if (isRefusal(r)) return r;
     await afterSaleCommit(s.tenantId, s.unitId, r.saleId, r.saleLines);
@@ -1076,8 +1107,14 @@ export async function rejectOrder(ctx: RegisterCtx, actor: RegisterActor, input:
     if (isPaidWeb(o)) return webPaidRefusal(s, o);
     if (o.status !== "NEW") return stateInvalid(s, o, "ปฏิเสธได้เฉพาะออเดอร์ใหม่ — ออเดอร์ที่รับแล้วใช้ยกเลิกออเดอร์");
     const reason = `${inp.reasonCode as string}${note ? `: ${note}` : ""}`;
-    const r = await mutate(s, o.id, (tx) => transition(tx, o, "REJECTED", { rejectReason: reason, closedAt: new Date() }, { actorUserId: s.actor.userId, payload: { reasonCode: inp.reasonCode, note } }));
+    const r = await mutate(s, o.id, async (tx) => {
+      const after = await transition(tx, o, "REJECTED", { rejectReason: reason, closedAt: new Date() }, { actorUserId: s.actor.userId, payload: { reasonCode: inp.reasonCode, note } });
+      // POS P2.7 ▸ ยังไม่จ่าย = ปิดใบขอรับเงินในธุรกรรมเดียวกัน (เงินเข้าทีหลัง = INTENT_CANCELLED + ops refund_needed เดิม) ◂
+      if (o.paymentState === "PENDING_PAYMENT" && o.paymentIntentId) await cancelOrderIntentInTx(tx, o.paymentIntentId);
+      return after;
+    });
     if (isRefusal(r)) return r;
+    if (o.paymentState === "PREPAID") await prepaidRefundNeeded(o, "REJECTED"); // POS P2.7 ▸ S5 มติ 5: เงินเข้าแล้วแต่ร้านปฏิเสธ = ops ERROR refund_needed ◂
     await ORDER_ADAPTERS[r.adapter]?.reject?.({ orderId: o.id, externalRef: o.externalRef, reasonCode: inp.reasonCode as string });
     await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.order.reject", targetType: "PosOrder", targetId: o.id, after: { orderId: o.id, reasonCode: inp.reasonCode, note } });
     scheduleDrain();
@@ -1414,8 +1451,9 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
       address: o.address,
       note: o.note,
       receivedAt: o.receivedAt.toISOString(),
-      acceptBy: new Date(o.receivedAt.getTime() + ORDER_ACCEPT_WINDOW_SEC * 1000).toISOString(),
-      acceptRemainingSec: o.status === "NEW" ? acceptRemainingSec(o.receivedAt.getTime(), t) : null,
+      // POS P2.7 ▸ S1: PREPAID นับเวลารับจาก paidAt · PENDING_PAYMENT ไม่มีนาฬิการับ ◂
+      acceptBy: new Date((o.paymentState === "PREPAID" && o.paidAt ? o.paidAt : o.receivedAt).getTime() + ORDER_ACCEPT_WINDOW_SEC * 1000).toISOString(),
+      acceptRemainingSec: o.status === "NEW" && o.paymentState !== "PENDING_PAYMENT" ? acceptRemainingSec((o.paymentState === "PREPAID" && o.paidAt ? o.paidAt : o.receivedAt).getTime(), t) : null,
       acceptedAt: iso(o.acceptedAt),
       prepMinutes: o.prepMinutes,
       prepDueAt: iso(prepDue),
@@ -1428,6 +1466,7 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
       receiptNo: o.saleId ? (receipt.get(o.saleId) ?? null) : null,
       shopOrderId: o.shopOrderId,
       version: o.version,
+      prepay: o.payBy || o.paymentIntentId ? { payBy: iso(o.payBy), paidAt: iso(o.paidAt), claimedAt: iso(o.customerClaimAt), intentId: o.paymentIntentId } : null, // POS P2.7 ◂
     };
   });
 }
@@ -1453,6 +1492,7 @@ export async function listOrders(ctx: RegisterCtx, actor: RegisterActor, input: 
       if (!since || !Number.isFinite(since.getTime())) return refuse("VALIDATION", "เวลาเริ่มไม่ถูกต้อง");
     }
     await releaseHeldOrders(s.tenantId, s.unitId, { limit: RELEASE_LIMIT_MAX }); // POS HF-FU ▸ a: กวาดก่อนอ่าน (ไม่ throw · ล้ม = WARN) ◂
+    await expireDuePreorders({ tenantId: s.tenantId, unitId: s.unitId }); // POS P2.7 ▸ S2: ออเดอร์จ่ายก่อนที่เลยเวลาจ่าย → ยกเลิก (ขี้เกียจ · ไม่ throw) ◂
     const now = new Date();
     // POS P2.8 fix รอบ 2 (รีวิว F5): since ย้อนได้ไม่เกิน 7 วัน (เก่ากว่า = ตัดที่ 7 วัน · ผลบอก since ที่ใช้จริง) · อ่านใหม่สุดก่อน 2000 แถวแล้วกลับลำดับ ⇒ วันยุ่งไม่ทิ้งออเดอร์ล่าสุด
     const floor = new Date(now.getTime() - ORDER_LIST_SINCE_MAX_MS);
@@ -1467,7 +1507,7 @@ export async function listOrders(ctx: RegisterCtx, actor: RegisterActor, input: 
     const byColumn: Record<OrderColumn, number> = { new: 0, preparing: 0, ready: 0, done: 0 };
     const byChannel: Record<string, number> = {};
     for (const o of rows) {
-      const c = orderColumnOf(o.status);
+      const c = o.paymentState === "PENDING_PAYMENT" ? null : orderColumnOf(o.status); // POS P2.7 ▸ S1: รอเงินเข้าไม่นับในคอลัมน์ "ใหม่" (PREPAID นับ) ◂
       if (c) byColumn[c]++;
       byChannel[o.channelId] = (byChannel[o.channelId] ?? 0) + 1;
     }
@@ -1606,3 +1646,389 @@ export async function webLineSources(tenantId: string, shopOrderId: string): Pro
   const ls = await prisma.posOrderLine.findMany({ where: { tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
   return ls.filter((l) => l.productId).map((l) => ({ productId: l.productId!, unitPriceSatang: l.unitPriceSatang, priceSource: l.priceSource as PriceSource | null, priceRuleId: l.priceRuleId, listPriceSatang: l.listPriceSatang }));
 }
+
+// ═══════════════════ POS P2.7 ▸ สั่งล่วงหน้าจ่ายก่อน (QR_ORDER · S1–S6 · มติ 3 4 5 8 11 13 · CD-O9) ═══════════════════
+//   ผู้เขียนเดียวของ PosOrder*/PosOrderLink ยังเป็นไฟล์นี้ (qr-order.ts ประสานงานเท่านั้น) · ใบขอรับเงิน = payment-intent.ts (ตัวช่วยในธุรกรรม)
+//   วงจรเงิน: รับเข้า PENDING_PAYMENT + ใบ PENDING (expiresAt = payBy) → เงินเข้า (webhook Beam / ยืนยันเอง) → outbox intent_paid → onIntentPaid → PREPAID
+//   (+ รับอัตโนมัติถ้าช่องทางตั้ง) → รับ = บิลใช้ใบในธุรกรรมรับ (acceptInTx) · เลยเวลาจ่าย = CANCELLED (event expired · PAYMENT_EXPIRED) + ใบ EXPIRED ·
+//   เงินเข้าหลังยกเลิก = ไม่ฟื้น + ops ERROR pos.order.late_payment ครั้งเดียว · ปฏิเสธ PREPAID = ops ERROR pos.payment.refund_needed (คืนเงินนอกระบบ)
+const PREORDER_UNPAID_MESSAGE = "ออเดอร์นี้ลูกค้ายังไม่ได้จ่ายเงิน (รอเงินเข้า) — รับได้หลังเงินเข้า";
+const PREORDER_KEY_PREFIX = "qr:";
+const OPS_LATE_PAYMENT = "pos.order.late_payment";
+const OPS_REFUND_NEEDED = "pos.payment.refund_needed";
+const PREORDER_EXPIRE_BATCH = 200;
+const bahtText = (satang: number) => (satang / 100).toFixed(2);
+
+/** บรรทัดที่ประตูสาธารณะคิดราคาแล้ว (ราคาช่องทาง QR_ORDER ณ ตอนสั่ง + ตัวเลือก · แช่แข็งลงบรรทัด · CD3) */
+export type PreorderLine = {
+  productId: string;
+  name: string;
+  qty: number;
+  /** รวมส่วนต่างตัวเลือกแล้ว */
+  unitPriceSatang: number;
+  listPriceSatang: number | null;
+  priceSource: PriceSource;
+  priceRuleId: string | null;
+  options: OrderLineOption[];
+  note: string | null;
+};
+export type PreorderIngestInput = {
+  channelId: string;
+  lines: PreorderLine[];
+  customer: { name: string; phone: string };
+  /** คีย์จากหน้า (หนึ่งต่อตะกร้า) — เก็บเป็น "qr:<คีย์>" แยกจากคีย์ของพนักงาน */
+  idempotencyKey: string;
+  note: string | null;
+  prepared: PreparedOrderIntent;
+};
+export type PreorderIngestResult = { ok: true; orderId: string; publicToken: string; duplicated: boolean } | OrderRefusal;
+
+/** ออเดอร์เดิมของคีย์นี้ (หน้าเดิมส่งซ้ำ) — ช่องทาง/สาขา/บรรทัดเดียวกัน = ผลเดิม · ต่าง = IDEMPOTENCY_CONFLICT · ไม่มี = null */
+async function existingPreorder(db: Db, s: { tenantId: string; unitId: string }, channelId: string, key: string, lines: { productId: string; qty: number; options: OrderLineOption[] }[]): Promise<PreorderIngestResult | null> {
+  const hit = await db.posOrder.findFirst({ where: { tenantId: s.tenantId, idempotencyKey: PREORDER_KEY_PREFIX + key } });
+  if (!hit) return null;
+  if (hit.channelId !== channelId || hit.unitId !== s.unitId || !hit.publicToken) return refuse("IDEMPOTENCY_CONFLICT");
+  const stored = await db.posOrderLine.findMany({ where: { tenantId: s.tenantId, orderId: hit.id } });
+  const want = orderLinesFingerprint(lines.map((l) => ({ productId: l.productId, name: null, qty: l.qty, unitPriceSatang: null, choiceIds: l.options.map((o) => o.choiceId) })));
+  if (storedFingerprint(stored, false, new Set()) !== want) return refuse("IDEMPOTENCY_CONFLICT");
+  return { ok: true, orderId: hit.id, publicToken: hit.publicToken, duplicated: true };
+}
+
+/** ตรวจคีย์ซ้ำก่อนเตรียมใบ (นอกธุรกรรม · ไม่ล็อก — ตรวจซ้ำในธุรกรรม) — หน้าเดิมส่งซ้ำไม่สร้าง charge ของ Beam ใบที่สอง */
+export async function findPreorderByKey(s: { tenantId: string; unitId: string }, channelId: string, idempotencyKey: string, lines: { productId: string; qty: number; options: OrderLineOption[] }[]): Promise<PreorderIngestResult | null> {
+  return existingPreorder(prisma, s, channelId, idempotencyKey, lines);
+}
+
+/**
+ * S1 S2 S6 — รับออเดอร์สั่งล่วงหน้าในธุรกรรมของผู้เรียก (ประตูสาธารณะ · ไม่มีผู้กระทำ): ล็อกคีย์ → คำขอซ้ำ = ออเดอร์เดิม (duplicated) → ล็อกตัวนับรหัสของสาขา →
+ * PosOrder NEW + PENDING_PAYMENT + PICKUP (payBy = receivedAt + qrExpiryMinutes · publicToken 12 ตัว · paymentIntentId) + บรรทัด + บันทึก received +
+ * outbox pos.order.received (paymentState PENDING_PAYMENT) + ใบขอรับเงิน (createIntentForOrderInTx · expiresAt = payBy) · ไม่รับอัตโนมัติ · ไม่มีบิล/รอบครัว/สต็อก
+ */
+export async function ingestPreorderInTx(tx: Tx, scope: { tenantId: string; systemId: string; unitId: string }, input: PreorderIngestInput): Promise<PreorderIngestResult> {
+  const s = scope;
+  if (!isId(s.tenantId) || !isId(s.systemId) || !isId(s.unitId) || !isRecord(input) || !isId(input.channelId) || !Array.isArray(input.lines) || !input.lines.length) return refuse("VALIDATION");
+  const key = PREORDER_KEY_PREFIX + input.idempotencyKey;
+  if (!ORDER_KEY_RE.test(key)) return refuse("VALIDATION");
+  await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`${s.tenantId}:posorder-key:${key}`}))) l`;
+  const dup = await existingPreorder(tx, s, input.channelId, input.idempotencyKey, input.lines);
+  if (dup) return dup;
+  const ch = await tx.salesChannel.findFirst({ where: { id: input.channelId, tenantId: s.tenantId, unitId: s.unitId, archivedAt: null } });
+  if (!ch) return refuse("CHANNEL_INVALID");
+  await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`${s.tenantId}:posorder-code:${s.unitId}`}))) l`;
+  const now = new Date();
+  const seq = (await tx.posOrder.count({ where: { tenantId: s.tenantId, unitId: s.unitId, receivedAt: { gte: posDayStart(now) } } })) + 1;
+  const payBy = new Date(now.getTime() + input.prepared.qrExpiryMinutes * 60_000);
+  const total = input.lines.reduce((t, l) => t + l.unitPriceSatang * l.qty, 0);
+  const order = await tx.posOrder.create({
+    data: {
+      tenantId: s.tenantId,
+      systemId: s.systemId,
+      unitId: s.unitId,
+      channelId: ch.id,
+      channelCode: ch.code,
+      adapter: ch.adapter,
+      code: orderCode(seq),
+      idempotencyKey: key,
+      status: "NEW",
+      paymentState: "PENDING_PAYMENT",
+      fulfilment: "PICKUP",
+      customerName: input.customer.name,
+      customerPhone: input.customer.phone,
+      note: input.note,
+      totalSatang: total,
+      receivedAt: now,
+      createdByUserId: null,
+      version: 1,
+      payBy,
+      paymentIntentId: input.prepared.id,
+      publicToken: newReceiptToken(),
+    },
+  });
+  await tx.posOrderLine.createMany({
+    data: input.lines.map((l, i) => ({
+      tenantId: s.tenantId,
+      systemId: s.systemId,
+      orderId: order.id,
+      productId: l.productId,
+      name: l.name,
+      qty: l.qty,
+      unitPriceSatang: l.unitPriceSatang,
+      listPriceSatang: l.listPriceSatang,
+      priceSource: l.priceSource,
+      priceRuleId: l.priceRuleId,
+      options: l.options as unknown as Prisma.InputJsonValue,
+      note: l.note,
+      lineTotalSatang: l.unitPriceSatang * l.qty,
+      sortOrder: i,
+    })),
+  });
+  await addEvent(tx, order, { type: "received", from: null, to: "NEW", actorUserId: null, payload: { source: "QR", paymentState: "PENDING_PAYMENT" }, at: now });
+  await emitOrderEvent(tx, order, "pos.order.received", "NEW");
+  await createIntentForOrderInTx(tx, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, orderId: order.id, amountSatang: total, expiresAt: payBy, prepared: input.prepared });
+  return { ok: true, orderId: order.id, publicToken: order.publicToken!, duplicated: false };
+}
+
+/** หลัง commit ของการรับเข้า (ผู้เรียกประตูสาธารณะ) — audit ผู้กระทำระบบ + ระบายคิว · ซ้ำ = ไม่ทำอะไร */
+export async function preorderIngested(tenantId: string, r: PreorderIngestResult): Promise<void> {
+  if (!r.ok || r.duplicated) return;
+  await writeAudit({ tenantId, actorId: null, actorType: "SYSTEM", action: "pos.order.received", targetType: "PosOrder", targetId: r.orderId, after: { orderId: r.orderId, channelCode: "QR_ORDER", adapter: "QR", paymentState: "PENDING_PAYMENT" } });
+  scheduleDrain();
+}
+
+/** S5: ปฏิเสธ/ยกเลิกออเดอร์ที่เงินเข้าแล้ว (PREPAID · ยังไม่มีบิล) — ใบยัง PAID ไม่ถูกใช้ (หน้าขายใช้ได้ 24 ชม. หรือคืนเงินนอกระบบ) · ops ERROR ครั้งเดียวต่อการปิด */
+async function prepaidRefundNeeded(o: PosOrder, how: "REJECTED" | "CANCELLED"): Promise<void> {
+  await logOps("ERROR", "pos.payment", `${OPS_REFUND_NEEDED} — ออเดอร์จ่ายก่อนถูก${how === "REJECTED" ? "ปฏิเสธ" : "ยกเลิก"}หลังเงินเข้า ต้องคืนเงินลูกค้า`, {
+    tenantId: o.tenantId,
+    detail: `intent ${o.paymentIntentId ?? "-"} · ออเดอร์ ${o.code} (${o.id}) · ยอด ${bahtText(o.totalSatang)} · ${how}`,
+  });
+}
+
+/** ปิดออเดอร์ที่เลยเวลาจ่าย 1 ใบ (ในธุรกรรม · ล็อกแถว): ใบเงินเข้าแล้ว = ไม่ปิด (ตัวรับ intent_paid ตัดสิน) · อื่น = ใบ EXPIRED + CANCELLED (event expired) */
+async function expireOneInTx(tx: Tx, orderId: string, now: Date): Promise<boolean> {
+  await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} FOR UPDATE`;
+  const o = await tx.posOrder.findUnique({ where: { id: orderId } });
+  if (!o || o.status !== "NEW" || o.paymentState !== "PENDING_PAYMENT" || !o.payBy || o.payBy.getTime() > now.getTime()) return false;
+  if (o.paymentIntentId) {
+    const st = await expireOrderIntentInTx(tx, o.paymentIntentId);
+    if (st === "PAID" || st === "CONSUMED") return false;
+  }
+  const n = await tx.posOrder.updateMany({ where: { id: o.id, tenantId: o.tenantId, status: "NEW", version: o.version }, data: { status: "CANCELLED", closedAt: now, rejectReason: "PAYMENT_EXPIRED", version: { increment: 1 } } });
+  if (n.count !== 1) return false;
+  await addEvent(tx, o, { type: "expired", from: "NEW", to: "CANCELLED", actorUserId: null, payload: { reason: "PAYMENT_EXPIRED", payBy: o.payBy.toISOString() }, at: now });
+  await emitOrderEvent(tx, await tx.posOrder.findUniqueOrThrow({ where: { id: o.id } }), "pos.order.cancelled", "CANCELLED");
+  return true;
+}
+
+/** S2 — ตัวกวาดรายชั่วโมง (และผู้อ่านจอ 09 ต่อสาขา): ออเดอร์ PENDING_PAYMENT ที่ payBy ผ่านไปแล้ว → CANCELLED + ใบ EXPIRED · ทีละธุรกรรม · เล่นซ้ำ = 0 */
+export async function expirePreorders(tenantId?: string, now: Date = new Date()): Promise<{ expired: number }> {
+  return expireDuePreorders(typeof tenantId === "string" && tenantId ? { tenantId } : {}, now);
+}
+async function expireDuePreorders(where: { tenantId?: string; unitId?: string }, now: Date = new Date()): Promise<{ expired: number }> {
+  let expired = 0;
+  try {
+    const due = await prisma.posOrder.findMany({
+      where: { ...where, status: "NEW", paymentState: "PENDING_PAYMENT", payBy: { lt: now } },
+      orderBy: [{ payBy: "asc" }, { id: "asc" }],
+      select: { id: true },
+      take: PREORDER_EXPIRE_BATCH,
+    });
+    for (const d of due) {
+      try {
+        if (await runTx((tx) => expireOneInTx(tx, d.id, now))) expired++;
+      } catch (e) {
+        console.warn(`[pos/order] expirePreorders: ออเดอร์ ${d.id} ปิดไม่สำเร็จ — รอบถัดไปลองใหม่`, e);
+      }
+    }
+  } catch (e) {
+    console.warn("[pos/order] expirePreorders ล้ม (ไม่กระทบผู้เรียก)", e);
+  }
+  if (expired) scheduleDrain();
+  return { expired };
+}
+
+/** S2 ขี้เกียจ (หน้าสถานะของลูกค้า): ออเดอร์นี้เลยเวลาจ่ายและยังรอเงิน = ปิดตอนนี้ (เขียนครั้งเดียวต่อการหมดเวลา) · ไม่เลย = ไม่เขียน */
+export async function expirePreorderIfDue(tenantId: string, orderId: string, now: Date = new Date()): Promise<boolean> {
+  if (!isId(tenantId) || !isId(orderId)) return false;
+  const o = await prisma.posOrder.findFirst({ where: { id: orderId, tenantId }, select: { status: true, paymentState: true, payBy: true } });
+  if (!o || o.status !== "NEW" || o.paymentState !== "PENDING_PAYMENT" || !o.payBy || o.payBy.getTime() > now.getTime()) return false;
+  const done = await runTx((tx) => expireOneInTx(tx, orderId, now));
+  if (done) scheduleDrain();
+  return done;
+}
+
+/**
+ * S3 — ลูกค้ากด "โอนแล้ว" (QR นิ่ง): บันทึก customer_paid_claim + customerClaimAt เท่านั้น (ไม่มีผลเงิน · จอ 09 ขึ้นชิป "ลูกค้าแจ้งโอนแล้ว · ตรวจยอด") ·
+ * กดซ้ำภายใน 2 นาที = ไม่บันทึกซ้ำ · ปิดแล้ว/เลยเวลา = EXPIRED · เงินเข้าแล้ว = ok ไม่บันทึก
+ */
+export async function claimPreorderPaid(tenantId: string, orderId: string, now: Date = new Date()): Promise<{ ok: true; recorded: boolean } | { ok: false; reason: "EXPIRED" | "NOT_FOUND" }> {
+  if (!isId(tenantId) || !isId(orderId)) return { ok: false, reason: "NOT_FOUND" };
+  try {
+    return await runTx(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const o = await tx.posOrder.findFirst({ where: { id: orderId, tenantId } });
+      if (!o) return { ok: false as const, reason: "NOT_FOUND" as const };
+      if (o.status === "CANCELLED" || o.status === "REJECTED" || (o.paymentState === "PENDING_PAYMENT" && o.payBy && o.payBy.getTime() <= now.getTime())) return { ok: false as const, reason: "EXPIRED" as const };
+      if (o.paymentState !== "PENDING_PAYMENT") return { ok: true as const, recorded: false };
+      if (o.customerClaimAt && now.getTime() - o.customerClaimAt.getTime() < 2 * 60_000) return { ok: true as const, recorded: false };
+      await touch(tx, o, { customerClaimAt: now }, { type: "customer_paid_claim", actorUserId: null, payload: { source: "QR" } });
+      return { ok: true as const, recorded: true };
+    });
+  } catch (e) {
+    if (e instanceof OrderRaced) return { ok: true, recorded: false };
+    throw e;
+  }
+}
+
+/**
+ * S3 S5 — ตัวรับ outbox pos.payment.intent_paid (composition root · idempotent): ใบของออเดอร์ (orderId) เท่านั้น ·
+ * ออเดอร์ NEW + PENDING_PAYMENT ⇒ PREPAID + paidAt + บันทึก paid (version +1) แล้วรับอัตโนมัติถ้าช่องทางตั้ง (ครัวพัก/คิวค้าง = held · บิลถูกปฏิเสธ = held sale_refused) ·
+ * ออเดอร์ปิดแล้ว (หมดเวลา/ปฏิเสธ/ยกเลิก) + ใบ PAID ไม่ถูกใช้ ⇒ ไม่ฟื้น · ops ERROR pos.order.late_payment ครั้งเดียว (บันทึก late_payment บนออเดอร์ · ไม่เพิ่มเวอร์ชัน) ·
+ * เล่นซ้ำ = ไม่มีผลเพิ่ม (ล็อกแถวออเดอร์ · ตัดสินจากสถานะจริง)
+ */
+export async function onIntentPaid(intentId: string): Promise<void> {
+  if (!isPaymentIntentId(intentId)) return;
+  const it = await prisma.posPaymentIntent.findUnique({ where: { id: intentId }, select: { id: true, tenantId: true, orderId: true, status: true, paidAt: true, confirmedVia: true, amountSatang: true } });
+  if (!it?.orderId || (it.status !== "PAID" && it.status !== "CONSUMED")) return;
+  const orderId = it.orderId;
+  type Out = { kind: "none" } | { kind: "prepaid"; order: PosOrder } | { kind: "late"; order: PosOrder };
+  let out: Out;
+  try {
+    out = await runTx(async (tx): Promise<Out> => {
+      await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} AND "tenantId" = ${it.tenantId} FOR UPDATE`;
+      const o = await tx.posOrder.findFirst({ where: { id: orderId, tenantId: it.tenantId } });
+      if (!o || o.paymentIntentId !== intentId) return { kind: "none" };
+      if (o.status === "NEW" && o.paymentState === "PENDING_PAYMENT") {
+        const after = await touch(tx, o, { paymentState: "PREPAID", paidAt: it.paidAt ?? new Date() }, { type: "paid", actorUserId: null, payload: { intentId, via: it.confirmedVia ?? null } });
+        return { kind: "prepaid", order: after };
+      }
+      if ((o.status === "CANCELLED" || o.status === "REJECTED") && it.status === "PAID" && o.paymentState === "PENDING_PAYMENT") {
+        const had = await tx.posOrderEvent.findFirst({ where: { tenantId: o.tenantId, orderId: o.id, type: "late_payment" }, select: { id: true } });
+        if (had) return { kind: "none" };
+        await addEvent(tx, o, { type: "late_payment", from: o.status, to: o.status, actorUserId: null, payload: { intentId, amountSatang: it.amountSatang } });
+        return { kind: "late", order: o };
+      }
+      return { kind: "none" };
+    });
+  } catch (e) {
+    if (e instanceof OrderRaced) return onIntentPaid(intentId);
+    throw e;
+  }
+  if (out.kind === "late") {
+    await logOps("ERROR", "pos.order", `${OPS_LATE_PAYMENT} — เงินเข้าหลังออเดอร์ถูกปิด (${out.order.status === "CANCELLED" ? "หมดเวลาจ่าย/ยกเลิก" : "ปฏิเสธ"}) ไม่ฟื้นออเดอร์ · ใช้เงินนี้ที่หน้าขายได้ใน 24 ชม. หรือคืนเงินลูกค้า`, {
+      tenantId: out.order.tenantId,
+      detail: `intent ${intentId} · ออเดอร์ ${out.order.code} (${out.order.id}) · ยอด ${bahtText(it.amountSatang)}`,
+    });
+    return;
+  }
+  if (out.kind !== "prepaid") return;
+  scheduleDrain();
+  await autoAcceptPrepaid(out.order);
+}
+
+/** รับอัตโนมัติของออเดอร์ที่เพิ่ง PREPAID (ช่องทาง active + autoAccept + ไม่พักรับ) — ล้ม = คงเป็น NEW/PREPAID ให้พนักงานรับ (ไม่ throw) */
+async function autoAcceptPrepaid(o: PosOrder): Promise<void> {
+  try {
+    const ch = await prisma.salesChannel.findFirst({ where: { id: o.channelId, tenantId: o.tenantId, unitId: o.unitId, archivedAt: null } });
+    if (!ch || !sweepLive(ch, new Date())) return;
+    const s = { tenantId: o.tenantId, unitId: o.unitId };
+    const prep = o.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
+    let r: Awaited<ReturnType<typeof acceptInTx>> | "held" | "skip";
+    try {
+      r = await runTx(
+        async (tx) => {
+          await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posorder-release:${s.tenantId}:${s.unitId}`}))) l`;
+          const fresh = await tx.posOrder.findFirst({ where: { id: o.id, tenantId: o.tenantId } });
+          if (!fresh || fresh.status !== "NEW" || fresh.paymentState !== "PREPAID") return "skip" as const;
+          if (await autoAcceptBlockedInTx(tx, s)) {
+            await addEvent(tx, fresh, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: (await kitchenPausedForUnit(tx, s.tenantId, s.unitId)) ? "paused" : "backlog" } });
+            return "held" as const;
+          }
+          return acceptInTx(tx, fresh, ch, { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true });
+        },
+        { retryUnique: true },
+      );
+    } catch (e) {
+      if (e instanceof OrderRaced) return;
+      if (e instanceof OrderAbort) {
+        await runTx((tx) => addEvent(tx, o, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: "sale_refused" } })).catch(() => {});
+        console.warn(`[pos/order] autoAcceptPrepaid: ออเดอร์ ${o.id} บิลถูกปฏิเสธ (${e.refusal.code}) — คงเป็นออเดอร์ใหม่ (จ่ายแล้ว) ให้พนักงานรับเอง`);
+        return;
+      }
+      throw e;
+    }
+    if (r === "skip" || r === "held") return;
+    await afterSaleCommit(o.tenantId, o.unitId, r.saleId, r.saleLines);
+    await ORDER_ADAPTERS[r.order.adapter]?.accept?.({ orderId: o.id, externalRef: o.externalRef, prepMinutes: prep });
+    await writeAudit({ tenantId: o.tenantId, actorId: null, actorType: "SYSTEM", action: "pos.order.accept", targetType: "PosOrder", targetId: o.id, after: { orderId: o.id, auto: true, prepaid: true, saleId: r.saleId } });
+    scheduleDrain();
+  } catch (e) {
+    console.warn(`[pos/order] autoAcceptPrepaid: ออเดอร์ ${o.id} รับอัตโนมัติไม่สำเร็จ — คงไว้ให้พนักงานรับ`, e);
+  }
+}
+
+// ── ลิงก์สั่งล่วงหน้า (PosOrderLink · /q/<token> · มติ 11 · CD-O9) — สิทธิ์ pos.channel.manage · ACTIVE ได้ 1 ต่อสาขา (partial unique + ล็อกต่อสาขา) ──
+const LINK_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const LINK_TOKEN_LEN = 16;
+function newLinkToken(): string {
+  const b = randomBytes(LINK_TOKEN_LEN);
+  let out = "";
+  for (let i = 0; i < LINK_TOKEN_LEN; i++) out += LINK_CROCKFORD[b[i]! & 31];
+  return out;
+}
+export type OrderLinkView = { id: string; token: string; status: "ACTIVE" | "REVOKED"; unitId: string; rotatedAt: string | null; createdAt: string };
+export type OrderLinkResult = { ok: true; link: OrderLinkView | null } | OrderRefusal;
+const linkView = (r: { id: string; token: string; status: string; unitId: string; rotatedAt: Date | null; createdAt: Date }): OrderLinkView => ({
+  id: r.id,
+  token: r.token,
+  status: r.status === "ACTIVE" ? "ACTIVE" : "REVOKED",
+  unitId: r.unitId,
+  rotatedAt: iso(r.rotatedAt),
+  createdAt: r.createdAt.toISOString(),
+});
+async function linkScope(ctx: RegisterCtx, actor: RegisterActor, input: unknown): Promise<Scope | OrderRefusal> {
+  const s = await scopeOf(prisma, ctx, actor, "read");
+  if (isRefusal(s)) return s;
+  if (!can(s.actor, "pos.channel.manage", s.unitId)) return refuse("PERMISSION_DENIED", "ลิงก์สั่งออนไลน์ต้องมีสิทธิ์จัดการช่องทางขาย — ให้เจ้าของร้าน/ผู้จัดการทำรายการนี้");
+  if (input !== undefined && input !== null && (!isRecord(input) || Object.keys(input).length > 0)) return refuse("VALIDATION");
+  return s;
+}
+const lockLinks = (tx: Tx, s: { tenantId: string; unitId: string }) => tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posorder-link:${s.tenantId}:${s.unitId}`}))) l`;
+const activeLink = (db: Db, s: { tenantId: string; systemId: string; unitId: string }) =>
+  db.posOrderLink.findFirst({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "ACTIVE" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+
+/** ลิงก์ที่ใช้อยู่ของสาขา (null = ยังไม่มี) */
+export async function getOrderLink(ctx: RegisterCtx, actor: RegisterActor, input: unknown = {}): Promise<OrderLinkResult> {
+  return guard("getOrderLink", async (): Promise<OrderLinkResult> => {
+    const s = await linkScope(ctx, actor, input);
+    if (isRefusal(s)) return s;
+    const r = await activeLink(prisma, s);
+    return { ok: true, link: r ? linkView(r) : null };
+  });
+}
+/** สร้างลิงก์ (มีอยู่แล้ว = ลิงก์เดิม · idempotent) */
+export async function createOrderLink(ctx: RegisterCtx, actor: RegisterActor, input: unknown = {}): Promise<OrderLinkResult> {
+  return guard("createOrderLink", async (): Promise<OrderLinkResult> => {
+    const s = await linkScope(ctx, actor, input);
+    if (isRefusal(s)) return s;
+    const out = await runTx(async (tx) => {
+      await lockLinks(tx, s);
+      const ex = await activeLink(tx, s);
+      if (ex) return { row: ex, created: false };
+      return { row: await tx.posOrderLink.create({ data: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, token: newLinkToken(), status: "ACTIVE", createdByUserId: s.actor.userId } }), created: true };
+    }, { retryUnique: true });
+    if (out.created) await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.order.link_create", targetType: "PosOrderLink", targetId: out.row.id, after: { unitId: s.unitId } });
+    return { ok: true, link: linkView(out.row) };
+  });
+}
+/** เปลี่ยนลิงก์: ลิงก์เดิม REVOKED (+ rotatedAt) · ลิงก์ใหม่ ACTIVE — QR/ลิงก์เก่าที่แจกไปใช้ไม่ได้ทันที (TOKEN_INVALID) */
+export async function rotateOrderLink(ctx: RegisterCtx, actor: RegisterActor, input: unknown = {}): Promise<OrderLinkResult> {
+  return guard("rotateOrderLink", async (): Promise<OrderLinkResult> => {
+    const s = await linkScope(ctx, actor, input);
+    if (isRefusal(s)) return s;
+    const row = await runTx(async (tx) => {
+      await lockLinks(tx, s);
+      const now = new Date();
+      await tx.posOrderLink.updateMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "ACTIVE" }, data: { status: "REVOKED", rotatedAt: now } });
+      return tx.posOrderLink.create({ data: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, token: newLinkToken(), status: "ACTIVE", createdByUserId: s.actor.userId } });
+    }, { retryUnique: true });
+    await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.order.link_rotate", targetType: "PosOrderLink", targetId: row.id, after: { unitId: s.unitId } });
+    return { ok: true, link: linkView(row) };
+  });
+}
+/** ปิดลิงก์ (ไม่มีลิงก์ใช้อยู่ = ok link null) — สั่งออนไลน์ของสาขานี้ปิดจนกว่าจะสร้างใหม่ */
+export async function revokeOrderLink(ctx: RegisterCtx, actor: RegisterActor, input: unknown = {}): Promise<OrderLinkResult> {
+  return guard("revokeOrderLink", async (): Promise<OrderLinkResult> => {
+    const s = await linkScope(ctx, actor, input);
+    if (isRefusal(s)) return s;
+    const row = await runTx(async (tx) => {
+      await lockLinks(tx, s);
+      const ex = await activeLink(tx, s);
+      if (!ex) return null;
+      await tx.posOrderLink.updateMany({ where: { id: ex.id, tenantId: s.tenantId, status: "ACTIVE" }, data: { status: "REVOKED", rotatedAt: new Date() } });
+      return tx.posOrderLink.findUniqueOrThrow({ where: { id: ex.id } });
+    });
+    if (row) await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.order.link_revoke", targetType: "PosOrderLink", targetId: row.id, after: { unitId: s.unitId } });
+    return { ok: true, link: row ? linkView(row) : null };
+  });
+}
+// ◂ POS P2.7

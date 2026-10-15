@@ -102,7 +102,7 @@ export type PaymentIntentView = {
   paidAt: string | null;
   confirmedVia: PaymentIntentVia | null;
   lateWebhook: boolean;
-  deviceId: string;
+  deviceId: string | null; // POS P2.7 ▸ CD5: null = ใบของออเดอร์สาธารณะ (ไม่มีเครื่อง) ◂
   createdAt: string;
 };
 

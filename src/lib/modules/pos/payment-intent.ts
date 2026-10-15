@@ -555,3 +555,107 @@ export async function consumeSaleIntents(tx: Tx, s: { tenantId: string; unitId: 
     if (p.count !== 1) throw new Error(`INTERNAL: แถวชำระเงินที่อ้าง ${id} = ${p.count}`);
   }
 }
+
+// ═══════════════════ POS P2.7 ▸ ใบขอรับเงินของออเดอร์สั่งล่วงหน้า (QR_ORDER · จ่ายก่อน · มติ 3 4 10 · CD5) ═══════════════════
+//   ไม่มีผู้กระทำ/เครื่อง (ลูกค้าสั่งเองผ่าน /q/<token>) ⇒ deviceId/createdByUserId = null (ไม่โผล่บนจอลูกค้า P2.10 ของเครื่องใด · ไม่อยู่ในกะ — PY11) ·
+//   ชนิดตามค่าตั้งของร้าน: Beam (ร้านเปิด + กุญแจ) → PROMPTPAY_BEAM · ไม่งั้น/Beam ล้ม → PROMPTPAY_STATIC (EMV ล็อกยอด · ยืนยันเองบนจอ 09) ·
+//   Beam (network) "นอกธุรกรรม" ใน prepareOrderIntent → แถวในธุรกรรมของออเดอร์ (createIntentForOrderInTx) · คีย์ posorder-pay-<orderId> · expiresAt = payBy ·
+//   หมดเวลา/ยกเลิกของออเดอร์ = ตัวช่วยในธุรกรรมของออเดอร์ (ล็อกแถว FOR UPDATE เหมือน markPaidCore) — เงินเข้าแล้ว (PAID) ไม่ถูกแตะ
+export type PreparedOrderIntent = { id: string; kind: "PROMPTPAY_STATIC" | "PROMPTPAY_BEAM"; qrPayload: string; beamChargeId: string | null; qrExpiryMinutes: number };
+
+/** ค่าตั้งการรับเงินของ POS สำหรับประตูสาธารณะ (อ่านอย่างเดียว) — Beam ใช้ได้ไหม · อายุ QR · มีพร้อมเพย์ของสาขาไหม (ไม่มีทั้งคู่ = ประตูสั่งล่วงหน้าปิด) */
+export async function orderPaymentReadiness(s: { tenantId: string; systemId: string; unitId: string }, deps?: PaymentIntentDeps): Promise<{ ready: boolean; beam: boolean; qrExpiryMinutes: number }> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS", active: true }, select: { settings: true } });
+  if (!sys) return { ready: false, beam: false, qrExpiryMinutes: 15 };
+  const st = parsePosIntentSettings(sys.settings);
+  const beam = st.beam.enabled && safeEnabled(deps?.beam ?? defaultBeam);
+  const ppId = await orderPromptpayId(s, sys.settings);
+  return { ready: beam || !!ppId, beam, qrExpiryMinutes: st.qrExpiryMinutes };
+}
+async function orderPromptpayId(s: { tenantId: string; unitId: string }, settings: unknown): Promise<string | null> {
+  const unitPp = promptpayIdForUnit(settings, s.unitId);
+  if (unitPp && isValidPromptPayId(unitPp)) return unitPp;
+  const profile = await prisma.paymentProfile.findUnique({ where: { tenantId: s.tenantId }, select: { promptpayId: true } });
+  const id = (profile?.promptpayId ?? "").trim();
+  return id && isValidPromptPayId(id) ? id : null;
+}
+
+/**
+ * เตรียมใบของออเดอร์ "นอกธุรกรรม" (Beam = network): id ใหม่ · Beam charge {ยอด, pos-<pi>, promptpay} เมื่อร้านเปิด Beam · Beam ล้ม/ไม่มี QR = QR นิ่ง + ops WARN ·
+ * ไม่มีพร้อมเพย์ที่ใช้ได้ (และไม่ใช่ Beam) = PROMPTPAY_NOT_CONFIGURED · ยังไม่เขียนแถว (charge ที่ไม่มีใครใช้ = ไม่มีเงินเข้า)
+ */
+export async function prepareOrderIntent(
+  s: { tenantId: string; systemId: string; unitId: string },
+  amountSatang: number,
+  deps?: PaymentIntentDeps,
+): Promise<{ ok: true; prepared: PreparedOrderIntent } | PaymentIntentRefusal> {
+  return guard("prepareOrderIntent", async (): Promise<{ ok: true; prepared: PreparedOrderIntent } | PaymentIntentRefusal> => {
+    if (!isAmount(amountSatang)) return refuse("VALIDATION", "ยอดต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
+    const sys = await prisma.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS", active: true }, select: { settings: true } });
+    if (!sys) return refuse("NOT_FOUND");
+    const st = parsePosIntentSettings(sys.settings);
+    const beam = deps?.beam ?? defaultBeam;
+    const id = newIntentId();
+    const referenceId = POS_BEAM_REF_PREFIX + id;
+    if (st.beam.enabled && safeEnabled(beam)) {
+      const ch = await charge(beam, { amountSatang, referenceId, method: "promptpay" });
+      if (!("error" in ch) && typeof ch.qrPayload === "string" && ch.qrPayload) {
+        return { ok: true, prepared: { id, kind: "PROMPTPAY_BEAM", qrPayload: ch.qrPayload, beamChargeId: ch.chargeId, qrExpiryMinutes: st.qrExpiryMinutes } };
+      }
+      await logOps("WARN", OPS_SOURCE, `${OPS_BEAM_FALLBACK} — Beam สร้าง QR ของออเดอร์สั่งล่วงหน้าไม่สำเร็จ ใช้ QR พร้อมเพย์นิ่งแทน`, { tenantId: s.tenantId, detail: `ref ${referenceId} · ${"error" in ch ? ch.error : "no_qr"}` });
+    }
+    const ppId = await orderPromptpayId(s, sys.settings);
+    if (!ppId) return refuse("PROMPTPAY_NOT_CONFIGURED");
+    return { ok: true, prepared: { id, kind: "PROMPTPAY_STATIC", qrPayload: promptpayPayload({ id: ppId, amountSatang }), beamChargeId: null, qrExpiryMinutes: st.qrExpiryMinutes } };
+  });
+}
+
+/**
+ * แถวใบของออเดอร์ในธุรกรรมของออเดอร์ (order.ts ingestPreorderInTx) — คีย์ posorder-pay-<orderId> (ซ้ำ = แถวเดิม) · orderId · ไม่มีเครื่อง/ผู้สร้าง (CD5) ·
+ * expiresAt = payBy ของออเดอร์ (มติ 4) · สถานะ PENDING
+ */
+export async function createIntentForOrderInTx(
+  tx: Tx,
+  input: { tenantId: string; systemId: string; unitId: string; orderId: string; amountSatang: number; expiresAt: Date; prepared: PreparedOrderIntent },
+): Promise<PosPaymentIntent> {
+  const idempotencyKey = `posorder-pay-${input.orderId}`;
+  const ex = await tx.posPaymentIntent.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey } } });
+  if (ex) return ex;
+  return tx.posPaymentIntent.create({
+    data: {
+      id: input.prepared.id,
+      tenantId: input.tenantId,
+      unitId: input.unitId,
+      systemId: input.systemId,
+      kind: input.prepared.kind,
+      amountSatang: input.amountSatang,
+      status: "PENDING",
+      qrPayload: input.prepared.qrPayload,
+      beamChargeId: input.prepared.beamChargeId,
+      deviceId: null,
+      createdByUserId: null,
+      orderId: input.orderId,
+      expiresAt: input.expiresAt,
+      idempotencyKey,
+    },
+  });
+}
+
+/** ใบของออเดอร์ที่หมดเวลาจ่าย (ในธุรกรรมของออเดอร์ · ล็อก FOR UPDATE): PENDING → EXPIRED · คืนสถานะหลังตัดสิน (PAID/CONSUMED = เงินเข้าแล้ว — ผู้เรียกไม่ปิดออเดอร์) */
+export async function expireOrderIntentInTx(tx: Tx, intentId: string): Promise<string | null> {
+  const got = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM "PosPaymentIntent" WHERE id = ${intentId} FOR UPDATE`;
+  if (!got.length) return null;
+  if (got[0]!.status !== "PENDING") return got[0]!.status;
+  await tx.posPaymentIntent.updateMany({ where: { id: intentId, status: "PENDING" }, data: { status: "EXPIRED" } });
+  return "EXPIRED";
+}
+
+/** ร้านปฏิเสธ/ยกเลิกออเดอร์ที่ยังไม่จ่าย (ในธุรกรรมของออเดอร์ · ล็อก FOR UPDATE): PENDING → CANCELLED (เงินเข้าทีหลัง = INTENT_CANCELLED + ops refund_needed เดิม) · คืนสถานะหลังตัดสิน */
+export async function cancelOrderIntentInTx(tx: Tx, intentId: string): Promise<string | null> {
+  const got = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM "PosPaymentIntent" WHERE id = ${intentId} FOR UPDATE`;
+  if (!got.length) return null;
+  if (got[0]!.status !== "PENDING") return got[0]!.status;
+  await tx.posPaymentIntent.updateMany({ where: { id: intentId, status: "PENDING" }, data: { status: "CANCELLED" } });
+  return "CANCELLED";
+}
+// ◂ POS P2.7

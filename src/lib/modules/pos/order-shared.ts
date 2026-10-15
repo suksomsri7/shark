@@ -21,6 +21,12 @@ export const ORDER_INPUT_PAYMENT_STATES = ["UNPAID", "PAY_ON_PICKUP"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderPaymentState = (typeof ORDER_PAYMENT_STATES)[number];
+// POS P2.7 ▸ สั่งล่วงหน้าจ่ายก่อน (QR_ORDER · มติ 8): ค่าเพิ่มของ enum ใน schema — ไม่อยู่ใน ORDER_PAYMENT_STATES (รายการเดิม · ข้อสอบ P2.8 ST7) และไม่อยู่ใน
+//   ORDER_INPUT_PAYMENT_STATES (พนักงาน/REST สร้างไม่ได้) · PENDING_PAYMENT = รอเงินเข้า (ไม่มีบิล/รอบครัว · ไม่นับในคอลัมน์ใหม่) · PREPAID = เงินเข้าแล้ว รอร้านรับ ◂
+export const ORDER_PREPAY_STATES = ["PENDING_PAYMENT", "PREPAID"] as const;
+export type OrderPrepayState = (typeof ORDER_PREPAY_STATES)[number];
+export type OrderPaymentStateAny = OrderPaymentState | OrderPrepayState;
+// ◂ POS P2.7
 export type OrderFulfilment = (typeof ORDER_FULFILMENTS)[number];
 export type OrderRejectReason = (typeof ORDER_REJECT_REASONS)[number];
 
@@ -152,7 +158,7 @@ export type OrderCard = {
   code: string;
   externalRef: string | null;
   status: OrderStatus;
-  paymentState: OrderPaymentState;
+  paymentState: OrderPaymentStateAny; // POS P2.7 ▸ + PENDING_PAYMENT / PREPAID ◂
   itemCount: number;
   qtyCount: number;
   totalSatang: number;
@@ -179,6 +185,8 @@ export type OrderCard = {
   receiptNo: string | null;
   shopOrderId: string | null;
   version: number;
+  /** POS P2.7 ▸ ออเดอร์จ่ายก่อน (QR_ORDER): หมดเวลาจ่าย · เงินเข้า · ลูกค้ากด "โอนแล้ว" · ใบขอรับเงิน (ยืนยันเอง/ตรวจยอดบนจอ 09) — อื่น = null ◂ */
+  prepay: { payBy: string | null; paidAt: string | null; claimedAt: string | null; intentId: string | null } | null;
 };
 export type OrderLineView = {
   id: string;
