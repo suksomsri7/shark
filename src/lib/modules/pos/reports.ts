@@ -1275,6 +1275,14 @@ export const ANOMALY_RULE_LABEL_TH: Readonly<Record<PosAnomalyRule, string>> = {
 const ANOMALY_AUDIT_ACTIONS = ["pos.sale.void", "pos.discount.override", "pos.approval.pin_override", "pos.receipt.reprint"];
 const ANOMALY_DENIED = "บัญชีนี้ยังไม่มีสิทธิ์ดูรายงานจุดผิดปกติของพนักงาน — ขอสิทธิ์จากเจ้าของร้าน";
 
+/** POS P2.12 ▸ fix1 H1: ส่วนลดสมาชิกของบิล = Σ discountSatang ของ memberBenefits.lines (ไม่รวม COUPON — คูปองอยู่ใน CouponRedemption) · รูปไม่ถูก = 0 ◂ */
+function memberBenefitDiscount(v: unknown): number {
+  if (!isRecord(v) || !Array.isArray(v.lines)) return 0;
+  let t = 0;
+  for (const l of v.lines as unknown[]) if (isRecord(l) && l.kind !== "COUPON" && Number.isInteger(l.discountSatang) && (l.discountSatang as number) > 0) t += l.discountSatang as number;
+  return t;
+}
+
 /** ชื่อแสดงผลเท่านั้น (PDPA มติ 4: ไม่ถอยไปใช้อีเมล) · ไม่มีชื่อ = null */
 async function displayNames(db: Db, ids: string[]): Promise<Map<string, string | null>> {
   const out = new Map<string, string | null>();
@@ -1288,7 +1296,7 @@ async function displayNames(db: Db, ids: string[]): Promise<Map<string, string |
  * จุดผิดปกติตามกติกา (ไม่ใช่ AI · P3.9) — สิทธิ์ = pos.report.view (prepare) "และ" pos.report.anomaly ต่อสาขา · ไม่เหลือสาขา = PERMISSION_DENIED
  * แหล่ง (อ่านอย่างเดียว · ทุกคิวรีมี tenantId + ช่วงเวลา/รายการ id · audit ไม่มีสาขา ⇒ เชื่อมผ่าน PosSale ของ targetId ในขอบเขต):
  *   A1 audit pos.sale.void (ผู้ยกเลิก + ผู้ขอผ่าน PIN นับคนละ 1) · A2 ใบคืน (ผู้คืน = soldByUserId ของใบคืน) · A3 ตัวเลขแบบรายงานพนักงาน ต่อสาขา+ผู้ขาย ทั้งช่วง ·
- *   A4 บิลเดียว discount/subtotal · A5 pos.discount.override ∪ pos.approval.pin_override ต่อผู้อนุมัติ (บิล+ชนิดเดียวกัน = 1 ครั้ง) · A6 บรรทัด CUSTOM ·
+ *   A4 บิลเดียว ส่วนลดพนักงาน/ยอดก่อนส่วนลดบรรทัด (POS P2.12 ▸ fix1 H1: A3/A4 = ส่วนลดบรรทัด + ท้ายบิล − คูปอง − สมาชิก ◂) · A5 pos.discount.override ∪ pos.approval.pin_override ต่อผู้อนุมัติ (บิล+ชนิดเดียวกัน = 1 ครั้ง) · A6 บรรทัด CUSTOM ·
  *   A7 pos.receipt.reprint ต่อบิล · A8 กะ (max |ขาด/เกิน|, |ผลต่างนับย้อนหลัง|) · A9 ผู้เปิดกะเงินขาดซ้ำ · A10 ออเดอร์ REJECTED|CANCELLED ต่อสาขา/วัน (receivedAt)
  * วันธุรกิจตามเวลาตัดวันของระบบ · มัดจำไม่นับ · บิลยกเลิกนับเฉพาะ A1 · เรียง กฎ → สาขา → วัน → ผู้ใช้ → ref · enabled false = ok แถวว่าง
  */
@@ -1324,11 +1332,46 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
       const rows = await db.posSale.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { lt: r.end }, id: { in: ids } }, select: { id: true, unitId: true, grandTotalSatang: true } });
       for (const x of rows) target.set(x.id, { unitId: x.unitId, grandTotalSatang: x.grandTotalSatang });
     }
+    // POS P2.12 ▸ fix1 H1 (มติ 2): groupBy เดิมของ A6 ขยายเป็น (บิล, priceSource) + _sum ส่วนลดบรรทัด — บรรทัด CUSTOM ทุกบรรทัด ∪ บรรทัดที่มีส่วนลด ◂
     const custom = new Map<string, number>();
+    const lineDisc = new Map<string, number>();
     for (const ids of chunks(paid.map((x) => x.id))) {
-      const g = await db.posSaleLine.groupBy({ by: ["saleId"], where: { tenantId: s.tenantId, saleId: { in: ids }, priceSource: "CUSTOM" }, _count: { _all: true } });
-      for (const x of g) custom.set(x.saleId, x._count._all);
+      const g = await db.posSaleLine.groupBy({
+        by: ["saleId", "priceSource"],
+        where: { tenantId: s.tenantId, saleId: { in: ids }, OR: [{ priceSource: "CUSTOM" }, { discountSatang: { gt: 0 } }] },
+        _count: { _all: true },
+        _sum: { discountSatang: true },
+      });
+      for (const x of g) {
+        if (x.priceSource === "CUSTOM") custom.set(x.saleId, (custom.get(x.saleId) ?? 0) + x._count._all);
+        lineDisc.set(x.saleId, (lineDisc.get(x.saleId) ?? 0) + (x._sum.discountSatang ?? 0));
+      }
     }
+    // POS P2.12 ▸ fix1 H1: ส่วนลดท้ายบิลที่ไม่ใช่ของพนักงาน — PosSale.discountSatang = ท้ายบิล + คูปอง + สมาชิก (service.ts createSale) ·
+    //   คูปอง = CouponRedemption.discountSatang (ไม่ RELEASED · saleId หรือ refType/refId) · สมาชิก = Σ PosSale.memberBenefits.lines[].discountSatang (ไม่รวม COUPON) ·
+    //   อ่านเฉพาะบิลขายที่มีส่วนลดท้ายบิล (จำนวนคิวรีคงที่ต่อก้อน) ◂
+    const notStaff = new Map<string, number>();
+    const seenRedemption = new Set<string>();
+    for (const ids of chunks(paid.filter((x) => x.discountSatang > 0).map((x) => x.id))) {
+      const inChunk = new Set(ids);
+      const reds = await db.couponRedemption.findMany({
+        where: { tenantId: s.tenantId, status: { not: "RELEASED" }, OR: [{ saleId: { in: ids } }, { refType: "PosSale", refId: { in: ids } }] },
+        select: { id: true, saleId: true, refId: true, discountSatang: true },
+      });
+      for (const c of reds) {
+        const sid = c.saleId && inChunk.has(c.saleId) ? c.saleId : c.refId;
+        if (!sid || seenRedemption.has(c.id)) continue;
+        seenRedemption.add(c.id);
+        notStaff.set(sid, (notStaff.get(sid) ?? 0) + c.discountSatang);
+      }
+      const mem = await db.posSale.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: r.start, lt: r.end }, id: { in: ids } }, select: { id: true, memberBenefits: true } });
+      for (const x of mem) {
+        const m = memberBenefitDiscount(x.memberBenefits);
+        if (m > 0) notStaff.set(x.id, (notStaff.get(x.id) ?? 0) + m);
+      }
+    }
+    /** ส่วนลดที่พนักงานคุมได้ = Σ ส่วนลดบรรทัด + (ส่วนลดท้ายบิล − คูปอง − สมาชิก) */
+    const staffDiscOf = (x: SaleRow) => (lineDisc.get(x.id) ?? 0) + Math.max(0, x.discountSatang - (notStaff.get(x.id) ?? 0));
     const shifts = await db.posShift.findMany({
       where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, openedAt: { gte: r.start, lt: r.end }, status: { not: "OPEN" } },
       select: { id: true, unitId: true, openedByUserId: true, openedAt: true, overShortSatang: true },
@@ -1393,7 +1436,7 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
     for (const x of paid) {
       const g = acc3(x.unitId, seller.ofSale(x));
       g.count += 1;
-      g.disc += x.discountSatang;
+      g.disc += staffDiscOf(x); // POS P2.12 ▸ fix1 H1 ◂
       g.value += x.grandTotalSatang;
     }
     for (const x of refunds) acc3(x.unitId, seller.ofRefund(x)).value -= x.grandTotalSatang;
@@ -1402,10 +1445,13 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
       emit("A3", "USER", g, null, Math.round((g.disc * 10_000) / g.value), g.count);
     }
 
-    // A4 ส่วนลดสูงบิลเดียว — discount × 10000 ≥ subtotal × bp (เทียบจำนวนเต็ม ไม่ปัด)
+    // A4 ส่วนลดสูงบิลเดียว — ส่วนลดพนักงาน × 10000 ≥ ยอดก่อนส่วนลดบรรทัด × bp (เทียบจำนวนเต็ม ไม่ปัด)
+    // POS P2.12 ▸ fix1 H1: ฐาน = Σ ยอดเต็มของบรรทัด (subtotal หลังส่วนลดบรรทัด + ส่วนลดบรรทัด) · คูปอง/สมาชิกล้วนไม่ขึ้นแถว · บิลลดบรรทัด 100% ขึ้นแถว ◂
     for (const x of paid) {
-      if (x.subtotalSatang <= 0 || !(x.discountSatang * 10_000 >= x.subtotalSatang * T.rules.A4.bp)) continue;
-      emit("A4", "PosSale", { unitId: x.unitId, businessDate: day(x.createdAt), userId: seller.ofSale(x), count: 1, value: 0 }, x.id, Math.round((x.discountSatang * 10_000) / x.subtotalSatang), 1);
+      const disc = staffDiscOf(x);
+      const base = x.subtotalSatang + (lineDisc.get(x.id) ?? 0);
+      if (base <= 0 || !(disc * 10_000 >= base * T.rules.A4.bp)) continue;
+      emit("A4", "PosSale", { unitId: x.unitId, businessDate: day(x.createdAt), userId: seller.ofSale(x), count: 1, value: 0 }, x.id, Math.round((disc * 10_000) / base), 1);
     }
 
     // A5 ใช้สิทธิ์เกินเพดาน — ต่อผู้อนุมัติ/สาขา/วัน · ครั้ง = (บิล, ชนิด) ไม่ซ้ำ (ส่วนลดผ่าน PIN เขียนสองแถว = 1 ครั้ง)
