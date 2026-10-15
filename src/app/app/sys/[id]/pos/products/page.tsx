@@ -85,7 +85,8 @@ export default async function PosProductsPage({
   // POS P2.2U ▸ ข้อมูลจอ 06: ทุกสาขาที่ผูก POS นี้ (ถึงตรงนี้ = ตั้งราคาได้ทุกสาขาแล้ว — การ์ดปฏิเสธของ HF-P1CLOSE คืนก่อน) ◂
   // POS P2.11U ▸ มติ 6: โหมดสาขา = เฉพาะสาขาที่ตั้งราคาได้ · มติ 3: ล้างแถวที่เลิกใช้ = ขอบเขตทั้งสินค้า (posCanSetTenantPrice หรือตั้งราคาได้ครบทุกสาขาที่ผูก POS — กติกาเดียวกับ purgeDead) ◂
   const units = (branchMode ? branchUnits : liveUnits).map((u) => ({ id: u.id, name: u.name }));
-  const canPurge = canPrice || (liveUnits.length > 0 && liveUnits.every((u) => evaluate(m, { module: "pos", action: "pos.product.setPrice", unitId: u.id })));
+  // POS P2.11U ▸ fix1 มติ 3 (R1 F3): โหมดสาขาไม่มีปุ่มล้าง (มติ 6) แม้ตั้งราคาได้ครบทุกสาขาที่ผูก POS ◂
+  const canPurge = !branchMode && (canPrice || (liveUnits.length > 0 && liveUnits.every((u) => evaluate(m, { module: "pos", action: "pos.product.setPrice", unitId: u.id }))));
   const tProducts = await getTranslations("pos.products");
   const productsData = await loadProductsData({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, units, { liveUnitIds: liveUnits.map((u) => u.id) });
   const canEditPrices = evaluate(m, { module: "pos", action: "pos.product.setPrice" });
