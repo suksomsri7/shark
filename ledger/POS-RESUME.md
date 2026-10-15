@@ -1568,3 +1568,9 @@
 - มติ fix round 1 (1–8) ใน `wo-notes/pos-P2.9bU-review.md` (2e59b5a2): F1 fix by origin tag · F2 follow-up + note key · F3 fix ปิดได้ + แสดงอ้างอิง intent · F4 fix · F5 แก้ note · F6 รับ (เบอร์ปลอมชัด) · F7 ป้าย chip ใหม่ · re-shoot notowner/deposit-receive/refund-deposit
 - spawn **builder fix 1** (Opus ทรี b) prompt `pos-prompt-accountB-P2.9bU-fix.md` · chain77 (build77 → vis79) ยังรันอยู่บน d4b7dbb8 — ภาพชุดนี้ใช้ดูได้ยกเว้น 3 state ที่จะ re-shoot
 - เลน: 1 = HF-FU builder ทรี c · 2 = P2.9bU fix 1 ทรี b
+
+### 15 ต.ค. ~12:00Z — P2.9bU fix 1 เสร็จ → R2 + re-shoot
+- ภาพ vis79 @d4b7dbb8 ผู้คุมดูเอง: 10 state ตรงแบบ (02 tile/panel · split · exceeds · notowner/locked · receive · 02b · bills chip/tag · refund sheet · settings) · V1 en "Balance after" บนแถวค้น · V2 390 ปุ่ม "ใช้มัดจำนี้" ใต้ fold → มติ 9–10 ส่งเข้า fix 1
+- fix 1 = **36e0be7c** (มติ 1–10 ครบ · ด่านเขียว @0aa39bef) · owner lines 2 ข้อ (depositId ใน refusal · PAID intent ไม่มี deposit) จดไว้ใน review file → ใส่ POS-OWNER-PENDING ตอน merge
+- spawn **R2** (Opus read-only) prompt `pos-prompt-accountB-P2.9bU-R2.md` (98b57f7e) · **chain78** ทรี d build78 @36e0be7c → vis80 (pick/notowner/receive/refund th+en)
+- ถัดไป: R2 MERGEABLE + vis80 ดีแล้ว → merge P2.9bU เข้า session/pos (ทรี b) → gates91 (merge set เต็ม + p1.1 + p1.3 + fitness ±env + typecheck) → push → 36/55 + TG · HF-FU builder ทรี c ยังทำอยู่
