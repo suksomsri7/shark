@@ -1598,3 +1598,8 @@
 - **push `session/pos` a1d8af43 → 57a8b19a** (P2.9bU merge 616db657 + ledger) · ทรี b detached 57a8b19a → **gates92** (p2.8 + p2.11 รันซ้ำหลัง push) `/root/pos-runs/gates92-b-20261015T130350Z`
 - HF-FU fix 1 (ทรี c): commit แล้ว 979d5ac0 ORACLE-ADD HN4+OD3 · 7334aff2 red-before · a30741aa F1 · ede1131c F2 · e5d03a0d F3 · 0e870195 F4 · กำลังรันด่าน
 - ถัดไป: gates92 เขียว 34/34 → **36/55 (65%)** + TG + memory · HF-FU fix 1 รายงาน → hunter เงิน → merge origin → merge → ด่าน merge เต็ม → ภาพ §9 ทรี d → push → 37/55
+
+### 15 ต.ค. 13:15Z — P2.9bU ปิด → **36/55 (65%)**
+- gates92 @57a8b19a (`/root/pos-runs/gates92-b-20261015T130350Z`): p2.8 61/61 · p2.11 34/34 (ST4 เขียวหลัง push) → **P2.9bU ✅ 36/55** · TG ส่งแล้ว · memory อัปเดต
+- ทรี b ว่าง @57a8b19a · ทรี d ว่าง @36e0be7c · เลน 1 = HF-FU fix 1 ทรี c (รอ fitness env)
+- ถัดไป: HF-FU fix 1 รายงาน → hunter เงิน (brief 4 ข้อของ R1 + F2 overshoot re-probe) → SIGNED-OFF → merge origin/session/pos 57a8b19a เข้า wip/pos-hf-fu → merge → ด่าน merge เต็ม (brief §8 + p1.1/p1.3/fitness ±env/typecheck) ทรี b → ภาพ §9 ทรี d → push → 37/55 + TG
