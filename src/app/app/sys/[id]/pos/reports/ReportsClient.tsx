@@ -53,6 +53,7 @@ const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "p
 const I_CAL = ["M6 5h12a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 18 21H6a2.5 2.5 0 0 1-2.5-2.5v-11A2.5 2.5 0 0 1 6 5Z", "M3.5 10h17M8 3v4M16 3v4"] as const;
 const I_SHOP = ["M4 9V4h16v5", "M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z", "M9.5 13h5"] as const;
 const I_OUT = ["M12 20V7", "m6.5 12.5 5.5-5.5 5.5 5.5", "M4 3h16"] as const;
+const I_FILE = ["M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z", "M14 3v5h5"] as const; // POS P2.12U ▸ ไอคอนเอกสาร (ภาพ 08 ปุ่ม PDF) ◂
 const DAY_MS = 86_400_000;
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const spanDays = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1;
@@ -533,6 +534,10 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
   const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
   const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
   const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[8.75rem]";
+  // POS P2.12U ▸ มติ 1: PDF = หน้าพิมพ์ pos/reports/print ในแท็บใหม่ ด้วยตัวกรองเดียวกับจอ (ภาพรวม = เอกสารสรุปหลายส่วน) · ช่วงผิด = ปุ่มปิด ◂
+  const pdfHref = rangeError
+    ? null
+    : `/app/sys/${systemId}/pos/reports/print?${new URLSearchParams({ kind: view.kind, from: view.from, to: view.to, ...(view.unitId ? { unit: view.unitId } : {}), locale: locale.startsWith("en") ? "en" : "th" }).toString()}`;
   const infoText = prev ? `${ovGeneratedAt ? `${t("overview.upToDate", { time: bkkHm(ovGeneratedAt, locale) })} · ` : ""}${t("overview.compare", { range: rangeLabel(prev.from, prev.to, locale) })}` : "";
 
   return (
@@ -545,6 +550,18 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
           <Icon d={I_OUT} className="h-[18px] w-[18px]" />
           {csvBusy ? t("downloading") : t("overview.exportCsv")}
         </button>
+        {/* POS P2.12U ▸ มติ 1: ปุ่ม PDF ข้าง CSV ทุกแท็บ (ภาพ 08 "ส่งออก CSV | PDF") ◂ */}
+        <a
+          data-testid="pos-reports-pdf"
+          href={pdfHref ?? undefined}
+          target="_blank"
+          rel="noopener"
+          aria-disabled={!pdfHref}
+          className={`btn btn-ghost order-2 inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap text-sm xl:order-3 ${pdfHref ? "" : "pointer-events-none opacity-50"}`}
+        >
+          <Icon d={I_FILE} className="h-[18px] w-[18px]" />
+          {t("print.button")}
+        </a>
         <div className="order-3 flex w-full min-w-0 flex-wrap items-center gap-3 sm:gap-4 xl:order-2 xl:ml-2 xl:w-auto xl:flex-1 xl:flex-nowrap">
           <div className="flex min-h-[48px] w-full min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3 sm:w-auto xl:shrink-0" role="group" aria-label={t("overview.dateRange")}>
             <Icon d={I_CAL} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />

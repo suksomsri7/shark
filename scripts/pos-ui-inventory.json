@@ -18077,6 +18077,65 @@
       "oracle": "qc-pos-p2.10",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-pdf",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/reports/print",
+        "note": "ปุ่ม PDF ข้าง CSV ทุกแท็บ + ภาพรวม → หน้าพิมพ์ในแท็บใหม่ ?kind=&from=&to=&unit=&locale= (ตัวกรองเดียวกับจอ · ภาพรวม = เอกสารสรุปหลายส่วน) · ช่วงผิด/รายชั่วโมงเกิน 31 วัน = ปิด (มติ 1)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports/print",
+      "testid": "pos-report-print-back",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/reports",
+        "note": "\"กลับไปหน้ารายงาน\" ด้วยตัวกรองเดิม (kind/from/to/unit) · มีทั้งหน้าปกติและการ์ดปฏิเสธ (มติ 1)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=daily&from=[date]&to=[date]&noprint=1"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports/print",
+      "testid": "pos-report-print-again",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-print-frame",
+        "note": "\"พิมพ์ / PDF\" → print() ของ iframe เอกสาร A4 (หลังฟอนต์พร้อม) · หน้าเปิดสั่งพิมพ์เองครั้งเดียว ยกเว้น ?noprint=1 (มติ 1)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=daily&from=[date]&to=[date]&noprint=1"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

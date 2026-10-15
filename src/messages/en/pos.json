@@ -1193,7 +1193,9 @@
     },
     "print": {
       "button": "Print / PDF",
-      "generatedAt": "Generated {time}"
+      "generatedAt": "Generated {time}",
+      "back": "‹ Back to reports",
+      "overviewTitle": "Sales overview summary"
     }
   },
   "stock": {

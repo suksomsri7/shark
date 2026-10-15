@@ -1193,7 +1193,9 @@
     },
     "print": {
       "button": "พิมพ์ / PDF",
-      "generatedAt": "พิมพ์เมื่อ {time}"
+      "generatedAt": "พิมพ์เมื่อ {time}",
+      "back": "‹ กลับไปหน้ารายงาน",
+      "overviewTitle": "สรุปภาพรวมการขาย"
     }
   },
   "stock": {
