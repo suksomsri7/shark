@@ -1641,7 +1641,7 @@
 - ถัดไป: HF-FU R3 → merge → gates93-c ‖ chain79 → push → 37/55 → **builder P2.10** ทรี b (ฐาน = session/pos หลัง HF-FU + merge oracle branch) prompt `pos-prompt-accountB-P2.10.md` (ยังไม่เขียน)
 - เลน: 1 = HF-FU R3 (read-only ทรี c) · ทรี b ว่าง @e9eeb83f
 
-### 15 ต.ค. 14:3xZ — HF-FU merged 84ffb48b (ยังไม่ push) → gates93-c ‖ chain79 · P2.10 builder เริ่ม
+### 15 ต.ค. 14:24Z — HF-FU merged 84ffb48b (ยังไม่ push) → gates93-c ‖ chain79 · P2.10 builder เริ่ม
 - R3 fix 2 = **MERGEABLE** (K1 info WARN text ใน account-bridge บน other-book · K2 info ZE3 stock assertion ไม่มีทางแดง + ไม่ถึง branch postExternalSale → HF-FU2) → **merge 6194adf7 เข้า session/pos = 84ffb48b** (no-ff · ไม่ชน)
 - ทรี c detached 84ffb48b + prisma generate → **gates93-c** (`/root/pos-runs/gates93-c-*` · hf-fu ×2 unforced + 21 ชุด + fitness ±env/pos + typecheck) · ทรี d → **chain79** (build79 @84ffb48b → vis81 QC5 §9: tables split-locked/seat/equal/prebill th+en · products-branch-filter th · orders-detail-platform th+en)
 - **builder P2.10** (Opus ทรี b `wip/pos-p2.10` จาก 84ffb48b local + merge oracle e9eeb83f) prompt `pos-prompt-accountB-P2.10.md` (P210_BASE=84ffb48b จน origin ขยับ)
