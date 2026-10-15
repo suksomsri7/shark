@@ -1787,8 +1787,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setPayPhase("form");
       // POS P2.9U ▸ มติ 3 (H6): คำขอที่ไม่มี PIN (ลองซ้ำ/โหลดกลับ) ได้ VALIDATION = คีย์นี้ยังไม่มีบิล ⇒ จอชำระขอ PIN อีกครั้ง (ไม่ใช่การ์ดผิดพลาด) ·
       //   โหลดกลับ (ตะกร้าว่าง) = สร้างตะกร้าคืนจากคำขอที่เก็บ แล้วกล่องสร้างแถวคืนเมื่อ quote มา · คีย์เดิม ◂
-      // POS P2.9bU ▸ มติ 3: คำขอที่ถูกตัด 4 หลักท้าย (ลองซ้ำ/โหลดกลับ) ได้ DEPOSIT_NOT_OWNER = ยังไม่มีบิล ⇒ จอชำระเปิดแผงมัดจำของแถวนั้น "กรุณาใส่ 4 หลักท้ายอีกครั้ง" (ทางเดียวกับ PIN) ◂
-      if ((r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) || (r.code === "DEPOSIT_NOT_OWNER" && hasLast4lessDeposit(sale.payMethods))) {
+      // POS P2.9bU ▸ มติ 3: คำขอที่โหลดกลับ (ถูกตัด 4 หลักท้าย) ได้ DEPOSIT_NOT_OWNER = ยังไม่มีบิล ⇒ สร้างตะกร้า/แถวคืน แล้วจอชำระเปิดแผงมัดจำของแถวนั้น
+      //   "กรุณาใส่ 4 หลักท้ายอีกครั้ง" (ทางเดียวกับ PIN) · ลองซ้ำในหน้าเดิม = การ์ดผิดพลาดตามปกติ (กล่องยังมีแถว — จัดการที่แถว) ◂
+      if ((r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) || (r.code === "DEPOSIT_NOT_OWNER" && !!opts?.restore && hasLast4lessDeposit(sale.payMethods))) {
         if (cartRef.current.lines.length === 0) changeCart(submitInputToCart(sale, newKey));
         setPinAgain((a) => ({ seq: (a?.seq ?? 0) + 1, payMethods: sale.payMethods, tipSatang: sale.tipSatang ?? 0, ...(sale.cashReceivedSatang !== undefined ? { cashReceivedSatang: sale.cashReceivedSatang } : {}) }));
         return;

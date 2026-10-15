@@ -1284,7 +1284,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                             <BillChannelPill row={r} t={t} ts={ts} tc={tch} />
                           </span>
                           <span className="min-w-0 truncate text-[color:var(--color-muted)]">
-                            {r.customer ? r.customer.name : (r.channelRef ?? t("walkIn"))} · {payText(r, t, ts)}
+                            {r.customer ? r.customer.name : r.sourceModule === DEPOSIT_SOURCE ? t("deposit.receiptTitle") : (r.channelRef ?? t("walkIn"))} · {payText(r, t, ts)}
                           </span>
                           <span className="flex-1" />
                           <StatusChip chip={chip} t={t} />

@@ -317,6 +317,8 @@ export function PayDialog(p: Props) {
   const [dp, setDp] = useState<DepPanel>(DP_EMPTY);
   const [depBanner, setDepBanner] = useState(false);
   const [depNote, setDepNote] = useState<string | null>(null);
+  /** POS P2.9bU ▸ มติ 3: คำขอล่าสุดเป็นการ "ลองซ้ำ" (ชุดที่ถูกตัด 4 หลักท้าย) — DEPOSIT_NOT_OWNER ⇒ "ใส่อีกครั้ง" ไม่ใช่ "ไม่ถูกต้อง" ◂ */
+  const sentStripped = useRef(false);
   const [gcBanner, setGcBanner] = useState(false);
   const [gcRowsNote, setGcRowsNote] = useState<string | null>(null);
   const [tenders, setTenders] = useState<Tenders | null>(null);
@@ -723,7 +725,8 @@ export function PayDialog(p: Props) {
       const l4Rows = depRows.filter((r) => r.dep?.needsLast4);
       if (l4Rows.length) {
         for (const r of l4Rows) last4Ref.current.delete(r.id);
-        setRows((s) => s.map((r) => (r.type === "DEPOSIT" && r.dep?.needsLast4 ? { ...r, dep: { ...r.dep, note: "wrong" } } : r)));
+        const note = sentStripped.current ? ("again" as const) : ("wrong" as const);
+        setRows((s) => s.map((r) => (r.type === "DEPOSIT" && r.dep?.needsLast4 ? { ...r, dep: { ...r.dep, note } } : r)));
         setDepNote(null);
         reenterLast4(l4Rows[0]!);
       } else {
@@ -862,10 +865,13 @@ export function PayDialog(p: Props) {
     if (last4) setDepLast4("");
     setDp((d) => ({ ...d, verify: last4 ? "wrong" : "idle", target: last4 ? "last4" : d.target, err: last4 ? null : r && !r.ok ? refusalMessageKey(r.code) : "errors.unknown" }));
   }
-  /** 4 หลักท้าย (ช่อง/แป้น) — ครบ 4 ของมัดจำที่ยังไม่เห็นยอด = ค้นซ้ำทันที */
+  /** 4 หลักท้าย (ช่อง/แป้น) — แก้หลังเห็นยอดแล้ว = ซ่อนยอด (ต้องยืนยันใหม่) · ครบ 4 = ค้นซ้ำทันที (ค่าที่ส่งตอนใช้ = ค่าที่ผ่านการค้นเสมอ) */
   const depLast4Typed = (v: string) => {
     setDepLast4(v);
-    if (v.length === DEP_LAST4 && dp.forRow === null && dp.sel && dp.sel.remainingSatang === null) void depVerify(dp.sel, v);
+    if (dp.forRow !== null || !dp.sel?.needsPhoneLast4) return;
+    const base: DepDto = dp.sel.remainingSatang !== null ? { ...dp.sel, remainingSatang: null, amountSatang: null } : dp.sel;
+    if (base !== dp.sel) setDp((d) => ({ ...d, sel: base, amount: null, verify: "idle" }));
+    if (v.length === DEP_LAST4) void depVerify(base, v);
   };
   const depBal = dp.sel?.remainingSatang ?? null;
   const depRowFor = dp.forRow !== null ? (rows.find((r) => r.id === dp.forRow) ?? null) : null;
@@ -1056,6 +1062,7 @@ export function PayDialog(p: Props) {
   // ── ยืนยัน: แถวที่แยกไว้ + รอบสุดท้าย (ถ้ายังมีคงเหลือ) → payMethods · เงินรับของแถวเงินสด → cashReceivedSatang ──
   const confirm = () => {
     if (!canConfirm) return;
+    sentStripped.current = false; // POS P2.9bU ◂
     if (zero) return p.onConfirm({ payMethods: [], tipSatang: 0 });
     const final: PayRow[] =
       remaining > 0
@@ -1283,7 +1290,16 @@ export function PayDialog(p: Props) {
                     <RegisterIcon name="warn" size={18} className="mt-0.5" />
                     <span>{t("errors.unknownResult")}</span>
                   </div>
-                  <button data-testid="pos-reg-paydlg-retry" className="btn btn-primary h-14 rounded-[16px] text-[16px] font-bold" type="button" autoFocus onClick={p.onRetry}>
+                  <button
+                    data-testid="pos-reg-paydlg-retry"
+                    className="btn btn-primary h-14 rounded-[16px] text-[16px] font-bold"
+                    type="button"
+                    autoFocus
+                    onClick={() => {
+                      sentStripped.current = true; // POS P2.9bU ▸ มติ 3: ชุดที่ลองซ้ำไม่มี 4 หลักท้าย/PIN ◂
+                      p.onRetry();
+                    }}
+                  >
                     {t("pay.retry")}
                   </button>
                 </div>
