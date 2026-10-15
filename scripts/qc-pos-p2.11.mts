@@ -61,7 +61,7 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.11 fix รอบ 1 · มติ 1–3 ใน pos-P2.11-review.md) ▸ PR10 (R1 F3) · PR11 (hunt L1) · PR12 (hunt L2) ◂
   D("PR10", "X3", "[fix1 มติ 1 · R1 F3] copyUnitPrices ไม่ส่ง productIds ข้ามสินค้าสาขาเดียวที่ผู้กระทำมองไม่เห็น (แถวเดิมที่ต้นทาง) → ok นับ skipped ไม่ NOT_FOUND · แถวของสินค้านั้นเท่าเดิม · รันซ้ำ changed false · skipped เท่ากับของเจ้าของ (ที่ข้ามด้วยกติกาสินค้าของสาขาอื่น)"),
   D("PR11", "X5", "[fix1 มติ 2 · hunt L1] setChannelPrices purgeDead:true (ขอบเขตทั้งสินค้าเท่านั้น): เจ้าของล้างแถวตาย (ช่องทางเก็บถาวร · สาขาเก็บถาวร/เลิกผูก) แถวที่ใช้ได้ id/ค่าเดิม · audit via purgeDead · ผู้จัดการ A → PERMISSION_DENIED ไม่เขียนอะไร · ไม่ส่งธง = แถวตายคงไว้ (PR1/PR3) · purgeDead ไม่ใช่ boolean → VALIDATION"),
-  D("PR12", "X3", "[fix1 มติ 3 · hunt L2] บันทึกที่ไม่เปลี่ยนอะไร: ผลไม่ขึ้นกับลำดับแถว — ผู้จัดการ A ส่ง (LINEMAN, B) ค่าเดิม ก่อน/หลังแถว A ค่าเดิม → ok changed false ทั้งสองลำดับ ไม่มี audit · พนักงานทั้งสองลำดับ → PERMISSION_DENIED · ผู้จัดการ A ส่งเฉพาะแถว B ค่าเดิม → PERMISSION_DENIED"),
+  D("PR12", "X3", "[fix1 มติ 3 · hunt L2] บันทึกที่ไม่เปลี่ยนอะไร: ผลไม่ขึ้นกับลำดับแถว — ผู้จัดการ A ส่ง (LINEMAN, B) ค่าเดิม ก่อน/หลังแถว A ค่าเดิม → ok changed false ทั้งสองลำดับ ไม่มี audit · พนักงานทั้งสองลำดับ → PERMISSION_DENIED (ส่งเฉพาะแถว B = ลบแถว A ที่อยู่ในเอื้อม ⇒ ไม่ใช่กรณีไม่เปลี่ยน · ไม่ตรวจ)"),
   // ── RN ใบเสร็จ ──
   D("RN1", "-", "[§4 มติ 4] สาขา A ตั้ง taxBranchNo 00001 → ใบกำกับอย่างย่อของบิล A: payload shop.branchNo 00001 · HTML th \"สาขาที่ 00001\" · en \"Branch 00001\" · ESC/POS raster \"สาขาที่ 00001\" · สาขา B (ไม่ตั้ง) = สมุด 00000 → \"สำนักงานใหญ่\" ไม่มี 00001"),
   D("RN2", "-", "[§4] ที่อยู่/โทรต่อสาขา: A = ค่าสาขา · B = หัวระบบ (ที่อยู่) → สมุด (โทร) · ล้างที่อยู่ A (null) → หัวระบบ · receiptUnitOverride(settings, unit) ตรงค่าที่เก็บ / ค่าว่างหรือพัง = null ทั้งสามช่อง · posReceiptSettings ยังอ่านหัวระบบได้ · ตัวเขียนระดับระบบ (updatePosReceiptSettings) ไม่ทับ byUnit"),
@@ -1182,14 +1182,13 @@ async function runDb() {
       ["ผู้จัดการ A · B หลัง", mgrAId, [rA, rN, rB], "OK"],
       ["พนักงาน · B ก่อน", cashAId, [rB, rA, rN], "PERMISSION_DENIED"],
       ["พนักงาน · B หลัง", cashAId, [rA, rN, rB], "PERMISSION_DENIED"],
-      ["ผู้จัดการ A · เฉพาะ B", mgrAId, [rB], "PERMISSION_DENIED"],
     ] as const) {
       const r = await setCP(who, PR.P3 ?? "", rows);
       const got = okish(r) ? (r.changed === false ? "OK" : `OK changed=${r.changed}`) : String(r?.code);
       if (got !== want) p.push(`${lbl} → ${got} ${short(r?.message ?? "", 30)} (คาด ${want})`);
     }
     if ((await cpFp("P3")) !== fp0 || (await aud0()) !== a0) p.push("แถว/audit เปลี่ยน");
-    chk("PR12", !fx && p.length === 0, "ไม่เปลี่ยนอะไร: ok ทั้งสองลำดับ (ผู้จัดการ A) · พนักงาน DENIED ทั้งสองลำดับ · เฉพาะแถว B = DENIED · ไม่เขียน", FX(NOTE() + (P8(p) || "ครบ")));
+    chk("PR12", !fx && p.length === 0, "ไม่เปลี่ยนอะไร: ok ทั้งสองลำดับ (ผู้จัดการ A) · พนักงาน DENIED ทั้งสองลำดับ · ไม่เขียน", FX(NOTE() + (P8(p) || "ครบ")));
   }
   // PR10 (หลัง PR11/PR12 — คัดลอกทั้งสาขา A→B เปลี่ยนแถว B ของสินค้าอื่น) copy ไม่ส่ง productIds ข้ามสินค้าที่มองไม่เห็น (R1 F3)
   {
