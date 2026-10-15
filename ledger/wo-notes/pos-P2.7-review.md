@@ -15,3 +15,6 @@ CONTROLLER-DECISION CD-O1–O10 ruled in brief §10 ruling 17 (binding).
 - **p2.13 ST4** red on tree d = gitignored skill dir missing → controller copied `.claude/skills/{shark-pos-api,shark-kanban-api,shark-account-api}` into tree d; builder re-runs p2.13 (expect 54/54).
 - **Lane pins** (red vs origin merge-base only): p2.8 ST6 · p2.10 ST2 · hf-fu ST1 · p2.11 ST4 · p2.12 ST1 + **p2.11 ST1, p2.13 ST5** (schema change + consumer hunk) — provisionally lane pins; **must be green on the merge tip** or they become CONTROLLER-DECISION at merge gates.
 → fix round 1 = the four ORACLE-EDITs + p2.13 re-run (message sent to the builder) ‖ R1 (prompt `-P2.7-R.md`) + money hunter (`-P2.7-H.md`) on 71f5cd10 in parallel (read-only).
+
+## Fix round 1 (test-only · 23:45Z) — `wip/pos-p2.7` **3c29ceac** (= 71f5cd10 + cde24d23 PY11 · 37e2b190 p2.6 A6 · 799587e5 p2.8 ST1 · 72cd28e0 p1.7 C9 + notes; no code change)
+Unforced QC4 @72cd28e0: p2.7 **38/38** · p2.6 67/67 · p1.7 33/33 · p2.8 60/61 (ST6 lane pin) · p2.13 53/54 (ST4 green with the skill dirs; **ST5** red = prisma/ + `outbox-consumers.ts` vs merge-base — same class as ST6; **provisional lane pin, must be green on the merge tip**). Builder holds for the R1/hunter code-fix message.
