@@ -399,8 +399,9 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
     cashInSatang: cashIn,
     cashOutSatang: cashOut,
     cashRefundsSatang: refunds,
-    refundCount: refundDocs.length,
-    refundSatang: refundDocs.reduce((t, x) => t + x.grandTotalSatang, 0),
+    // POS P2.9b ▸ fix2 มติ 4 (D3): ใบคืนเงินมัดจำ (POS_DEPOSIT) ไม่ใช่การคืนของยอดขายกะ (แบบปิดวัน) — เงินสดที่คืนยังหักจากลิ้นชัก (cashRefundsSatang) ◂
+    refundCount: refundDocs.filter((x) => x.sourceModule !== "POS_DEPOSIT").length,
+    refundSatang: refundDocs.filter((x) => x.sourceModule !== "POS_DEPOSIT").reduce((t, x) => t + x.grandTotalSatang, 0),
     // S7: float + รับ − ทอน + เข้า − ออก − คืน (= float + ขายเงินสด + เข้า − ออก − คืน)
     expectedCashSatang: r.floatSatang + tendered - change + cashIn - cashOut - refunds,
   };
