@@ -29,9 +29,12 @@ export default async function CustomerDisplayPage({ searchParams }: { searchPara
   const fallbackLocale: DisplayLocale = lang === "en" || (lang !== "th" && jar.get("lang")?.value === "en") ? "en" : "th";
   const token = jar.get(DISPLAY_COOKIE)?.value;
   let initial: DisplayInitial | null = null;
+  let pairedOffline = false; // POS P2.10 ▸ fix1 F7 ◂
   if (token) {
     const r = await readCustomerDisplay({ token }).catch(() => null);
     if (r && r.ok && r.changed) initial = { ver: r.ver, view: r.view, nextPollMs: r.nextPollMs };
+    // POS P2.10 ▸ fix1 F7 (มติ fix1 ข้อ 7): อ่านล้ม (INTERNAL/โยน) ทั้งที่มีคุกกี้ = จับคู่อยู่แต่ออฟไลน์ → เริ่มโพล · DISPLAY_NOT_PAIRED เท่านั้นที่กลับฟอร์ม
+    else if (!(r && !r.ok && r.code === "DISPLAY_NOT_PAIRED")) pairedOffline = true; // ◂
   }
   return (
     <>
@@ -44,6 +47,7 @@ export default async function CustomerDisplayPage({ searchParams }: { searchPara
       </div>
       <DisplayScreen
         initial={initial}
+        pairedOffline={pairedOffline} // POS P2.10 ▸ fix1 F7 ◂
         prefillCode={normalizePairCode(c ?? "") ?? ""}
         fallbackLocale={fallbackLocale}
         messages={{ th: thPos.display, en: enPos.display }}

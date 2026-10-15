@@ -28,6 +28,8 @@ export type DisplayInitial = { ver: string; view: DisplayView; nextPollMs: numbe
 type T = (key: string, values?: Record<string, string | number>) => string;
 type Props = {
   initial: DisplayInitial | null;
+  /** POS P2.10 ▸ fix1 F7: มีคุกกี้แต่ SSR อ่านไม่ได้ (ไม่ใช่ DISPLAY_NOT_PAIRED) = จับคู่อยู่ + ออฟไลน์ → เริ่มโพล ◂ */
+  pairedOffline?: boolean;
   prefillCode: string;
   fallbackLocale: DisplayLocale;
   /** pos.display ของสองภาษา (หน้า /d ส่งมา — คอมโพเนนต์ไม่โหลดไฟล์ข้อความเอง) */
@@ -332,10 +334,11 @@ function PairPanel({ t, prefill, submitCode }: { t: T; prefill: string; submitCo
 }
 
 // ═══════════ จอ ═══════════
-export function DisplayScreen({ initial, prefillCode, fallbackLocale, messages, pairAction, readAction }: Props) {
+export function DisplayScreen({ initial, pairedOffline = false, prefillCode, fallbackLocale, messages, pairAction, readAction }: Props) { // POS P2.10 ▸ fix1 F7: + pairedOffline ◂
   const [view, setView] = useState<DisplayView | null>(initial?.view ?? null);
-  const [paired, setPaired] = useState(!!initial);
-  const [offline, setOffline] = useState(false);
+  // POS P2.10 ▸ fix1 F7: SSR อ่านล้มทั้งที่มีคุกกี้ = จับคู่อยู่ + ออฟไลน์ (โพลเริ่มทันที · DISPLAY_NOT_PAIRED จากโพลค่อยกลับฟอร์ม)
+  const [paired, setPaired] = useState(!!initial || pairedOffline);
+  const [offline, setOffline] = useState(!initial && pairedOffline); // ◂
   const [fs, setFs] = useState(true); // ปุ่มเต็มจอโผล่หลัง mount (SSR ไม่รู้สถานะเต็มจอ)
   const verRef = useRef<string | undefined>(initial?.ver);
   const firstDelay = useRef(initial?.nextPollMs ?? 0);
