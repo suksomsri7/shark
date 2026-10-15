@@ -40,6 +40,7 @@ export function StatusChip({ chip, t }: { chip: BillChip; t: T }) {
 const SOURCE_KEYS = new Set(["BOOKING", "HOTEL", "RESTAURANT", "TICKET"]);
 export function channelLabel(src: string, t: T, ts: T): string {
   if (src === "POS") return t("channelPos");
+  if (src === "POS_DEPOSIT") return t("deposit.tag"); // POS P2.9bU ▸ มติ 7: ป้าย "มัดจำ" ของใบรับ/ใบคืนมัดจำ ◂
   return SOURCE_KEYS.has(src) ? ts(`source.${src}`) : src;
 }
 export function ChannelChip({ src, t, ts }: { src: string; t: T; ts: T }) {

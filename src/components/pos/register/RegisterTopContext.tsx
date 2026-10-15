@@ -41,6 +41,8 @@ type Props = {
   noCamera?: boolean;
   /** POS P1.15U ▸ ปุ่มล็อกจอ (ชิปผู้ขาย = คนในโทเคน) · ไม่ส่ง = ไม่มีปุ่ม ◂ */
   onLock?: () => void;
+  /** POS P2.9bU ▸ มติ 5: ปุ่ม "รับมัดจำ" บนแถบมือถือ · null/ไม่ส่ง = ไม่มีปุ่ม ◂ */
+  onDepositReceive?: (() => void) | null;
 };
 
 const ROLE_KEY: Record<RegisterRole, string> = { OWNER: "roles.owner", MANAGER: "roles.manager", STAFF: "roles.cashier" };
@@ -169,6 +171,18 @@ export function RegisterTopContext(p: Props) {
           onClick={p.onLock}
         >
           <RegisterIcon name="lock" size={14} />
+        </button>
+      )}
+      {p.onDepositReceive && ( // POS P2.9bU ▸ มติ 5: "รับมัดจำ" บนมือถือ (แถบโหมด/เมนู ⋯ ไม่มีที่ < 768) ◂
+        <button
+          data-testid="pos-reg-mobile-deposit-receive"
+          className="grid size-11 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]"
+          type="button"
+          aria-label={t("more.depositReceive")}
+          title={t("more.depositReceive")}
+          onClick={p.onDepositReceive}
+        >
+          <RegisterIcon name="cheque" size={14} />
         </button>
       )}
       {p.inApp && (

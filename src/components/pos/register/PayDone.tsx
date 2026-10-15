@@ -15,6 +15,7 @@
 // POS P2.9U ▸ มติ 7 (02b): บิลที่มีแถวบัตรของขวัญ/เครดิตร้าน ⇒ ช่อง "ชำระด้วย" เป็นรายบรรทัดจาก payload ใบเสร็จ (payments[].card: เลขปิดบัง ·
 //   ยอดหลังรายการ) "บัตรของขวัญ GC-••••1234 ฿325 · คงเหลือ ฿175" · "เครดิตร้าน SC-•••• ฿x" + "ทิป ฿x" เมื่อ > 0 ·
 //   อ่าน receiptPayloadAction ครั้งเดียว (บิลสด ≤ 30 นาที = ต้นฉบับ ไม่เขียน audit · บิลซ้ำ duplicated = ไม่อ่าน) · ตัวเรนเดอร์ใบเสร็จไม่แก้ ◂
+// POS P2.9bU ▸ มติ 6 (02b บิลที่ใช้มัดจำ): บรรทัด "มัดจำ #<เลขใบรับ> ฿x · คงเหลือ ฿y" จาก payload ใบเสร็จ payments[].deposit (receiptNo · remainingAfterSatang) ◂
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
@@ -78,7 +79,7 @@ const printedOriginal = new Set<string>();
 export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId, tipSatang = 0, duplicated = false }: Props) {
   const t = useTranslations("pos.register");
   // ── POS P2.9U ▸ มติ 7: แถวบัตรของบิล (เลขปิดบัง · ยอดหลังรายการ) จาก payload ใบเสร็จ — ครั้งเดียวต่อบิล ◂
-  const hasCards = payMethods.some((m) => m.type === "GIFT_CARD" || m.type === "STORE_CREDIT");
+  const hasCards = payMethods.some((m) => m.type === "GIFT_CARD" || m.type === "STORE_CREDIT" || m.type === "DEPOSIT"); // POS P2.9bU ▸ + มัดจำ ◂
   const [cardPays, setCardPays] = useState<ReceiptPayment[] | null>(null);
   useEffect(() => {
     if (!hasCards || duplicated || !saleId) return;
@@ -221,9 +222,12 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
           ...((cardPays ?? payMethods) as (ReceiptPayment | RegisterPayMethod)[]).map((m) => {
             const label = Object.prototype.hasOwnProperty.call(PAY_LABEL, m.type) ? t(PAY_LABEL[m.type as RegisterPayType]) : String(m.type);
             const c = "card" in m ? m.card : undefined;
+            const dep = "deposit" in m ? m.deposit : undefined; // POS P2.9bU ▸ มติ 6 ◂
             return c
               ? [`${label} ${c.numberMasked} ${moneyText(m.amountSatang)}`, ...(c.kind === "GIFT" ? [t("pay.gc.rowLeft", { amount: moneyText(c.balanceAfterSatang) })] : [])].join(" \u00b7 ")
-              : `${label} ${moneyText(m.amountSatang)}`;
+              : dep
+                ? [`${label} #${dep.receiptNo} ${moneyText(m.amountSatang)}`, t("pay.gc.rowLeft", { amount: moneyText(dep.remainingAfterSatang) })].join(" \u00b7 ")
+                : `${label} ${moneyText(m.amountSatang)}`;
           }),
           ...(tipSatang > 0 ? [`${t("done.tip")} ${moneyText(tipSatang)}`] : []),
         ]

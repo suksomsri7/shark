@@ -15,6 +15,7 @@ import { updatePosIntentSettingsAction } from "@/lib/modules/pos/payment-intent-
 import { POS_QR_EXPIRY_MAX, POS_QR_EXPIRY_MIN, type PosIntentSettings, type PosIntentSettingsPatch } from "@/lib/modules/pos/payment-intent-shared";
 import { CardHead, Chip, InlineNote, SettingsCard, SwitchKnob, TabHead } from "./settings-ui";
 import { TipSettingsCard } from "./TipSettingsCard"; // POS P2.9U ▸ มติ 6 ◂
+import { DepositSettingsCard } from "./DepositSettingsCard"; // POS P2.9bU ▸ มติ 8 ◂
 
 type Props = {
   systemId: string;
@@ -216,6 +217,8 @@ export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, pr
           </SettingsCard>
           {/* POS P2.9U ▸ มติ 6: ทิป + บัญชีพักทิป (LIABILITY) ◂ */}
           <TipSettingsCard systemId={systemId} />
+          {/* POS P2.9bU ▸ มติ 8: รับเงินมัดจำ (เจ้าของร้าน · บันทึกทันที) ◂ */}
+          <DepositSettingsCard systemId={systemId} />
         </div>
       </div>
     </div>

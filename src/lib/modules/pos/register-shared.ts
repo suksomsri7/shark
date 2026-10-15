@@ -810,6 +810,8 @@ export function cartToSubmitInput(
       amountSatang: p.amountSatang,
       ...(p.reference ? { reference: p.reference } : {}),
       ...(p.type === "GIFT_CARD" && p.giftCard ? { giftCard: (p.giftCard.pin ? { number: p.giftCard.number, pin: p.giftCard.pin } : { number: p.giftCard.number }) as NonNullable<RegisterPayMethod["giftCard"]> } : {}),
+      // POS P2.9bU ▸ มติ 2–3: แถว DEPOSIT พก depositId (+ phoneLast4 เมื่อมี — มัดจำ walk-in ที่บันทึกเบอร์) · แถวอื่นไม่มีสองคีย์นี้ (เซิร์ฟเวอร์ปฏิเสธคีย์แปลก) ◂
+      ...(p.type === "DEPOSIT" && p.depositId ? { depositId: p.depositId, ...(p.phoneLast4 ? { phoneLast4: p.phoneLast4 } : {}) } : {}),
     })),
     ...(hasCash && pay.cashReceivedSatang !== undefined ? { cashReceivedSatang: pay.cashReceivedSatang } : {}),
     ...(pay.tipSatang ? { tipSatang: pay.tipSatang } : {}),
@@ -833,10 +835,26 @@ export const giftCardNumberKey = (n: string): string => n.replace(/\s+/g, "").to
  * เซิร์ฟเวอร์รับแถวไม่มี PIN เฉพาะคีย์ที่มีบิลแล้ว (คืนบิลเดิม) — คีย์ที่ยังไม่มีบิล = VALIDATION ⇒ จอขอ PIN ใหม่
  */
 export function stripPayPins(payMethods: readonly RegisterPayMethod[]): RegisterPayMethod[] {
-  return payMethods.map((m) => (m.giftCard ? { ...m, giftCard: { number: m.giftCard.number } as NonNullable<RegisterPayMethod["giftCard"]> } : { ...m }));
+  // POS P2.9bU ▸ มติ 3: 4 หลักท้ายของเบอร์ผู้ฝาก (แถว DEPOSIT) ตัดทิ้งเหมือน PIN — สำเนาที่เก็บ/ลองซ้ำ/จอสำเร็จไม่มีค่านี้ ◂
+  return payMethods.map((m) => {
+    const { phoneLast4: _l4, ...rest } = m;
+    void _l4;
+    return rest.giftCard ? { ...rest, giftCard: { number: rest.giftCard.number } as NonNullable<RegisterPayMethod["giftCard"]> } : { ...rest };
+  });
 }
 /** คำขอมีแถวบัตรของขวัญที่ไม่มี PIN (คำขอที่ถูกตัด PIN แล้ว) */
 export const hasPinlessGiftCard = (payMethods: readonly RegisterPayMethod[]): boolean => payMethods.some((m) => m.type === "GIFT_CARD" && !!m.giftCard && !m.giftCard.pin);
+// POS P2.9bU ▸ มติ 2–3: มัดจำที่จอชำระ (ตัวช่วยบริสุทธิ์ · ไม่มี 4 หลักท้ายออกนอกหน่วยความจำของจอ) ◂
+/** มัดจำต่อบิลได้ไม่เกิน (CD4 · ตรงกับ MAX_DEPOSIT_ROWS ของ service.ts) */
+export const REGISTER_MAX_DEPOSITS = 3;
+/** คำค้นมัดจำ (เลขใบเสร็จ / ชื่อ) ต้องยาว ≥ 3 ตัวอักษร (registerDepositLookup) */
+export const DEPOSIT_QUERY_MIN = 3;
+/** คำขอมีแถวมัดจำที่ไม่มี 4 หลักท้าย (คำขอที่ถูกตัดแล้ว — ลองซ้ำ/โหลดกลับ) */
+export const hasLast4lessDeposit = (payMethods: readonly RegisterPayMethod[]): boolean => payMethods.some((m) => m.type === "DEPOSIT" && !!m.depositId && !m.phoneLast4);
+/** รหัสปฏิเสธของมัดจำที่จอชำระแสดงที่แถว/แบนเนอร์ (ไม่ใช่การ์ดผิดพลาด · มติ 4) */
+export const DEPOSIT_INLINE_CODES: ReadonlySet<string> = new Set(["DEPOSIT_NOT_FOUND", "DEPOSIT_CLOSED", "DEPOSIT_NOT_OWNER", "DEPOSIT_LOCKED", "DEPOSIT_EXCEEDS"]);
+/** ช่องเบอร์ของใบรับมัดจำ: 9–10 หลัก ขึ้นต้น 0 (ตรงกับตัวตรวจของ registerTakeDeposit) — ช่องว่าง/ขีดตัดก่อนตรวจ */
+export const depositPhoneOk = (raw: string): boolean => /^0\d{8,9}$/.test(raw.replace(/[\s-]/g, ""));
 /**
  * F4 (fix1 · สัญญา P2.9U): ชนิดของบัตรในกระเป๋าสมาชิก — ใช้ `kind` เมื่อเซิร์ฟเวอร์ส่งมา · ไม่มี = อ่านจากคำนำหน้าเลขปิดบังของโมดูลบัตร
  * (`SC-••••` = STORE_CREDIT · อื่น = GIFT — giftcard/service.ts maskTenderNumber) — wallet ของสมาชิกยังไม่ส่ง kind ถึงหน้าขาย (โน้ต P2.9U deviation 1)

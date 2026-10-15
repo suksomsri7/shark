@@ -135,6 +135,11 @@
 //   receipt-public: rpub-* ถ่าย 3 ขนาด (th + LOCALE=en) ยกเว้น rpub-issue-sent = 390 เท่านั้น (เขียนแถวแจ้งปัญหาจริง · เพดาน 3 แถว/บิล/วัน)
 //   `--list` = พิมพ์รายการหน้า + id สถานะทั้งหมด (ไม่ต่อ DB · ไม่ต้องมี <wo>) ◂
 //
+// POS P2.9bU ▸ มัดจำ (มติผู้คุม P2.9bU ข้อ 9 · wo p2.9bu · --page register|sales|settings --states (ไม่ส่ง --page = 3 หน้านี้) · 3 ขนาด · th + LOCALE=en ·
+//   owner ทุกสถานะ · cashier = paydlg-deposit-pick · paydlg-deposit-split · deposit-receive · sale-done-deposit): register = pick/split/exceeds/notowner/locked/receive/sale-done ·
+//   sales = bills-deposit-filter · refund-deposit (ไม่ยืนยัน) · settings = settings-deposit-toggle (ไม่กด) · fixture ผ่าน pos/deposit.ts (registerTakeDeposit · walk-in + เบอร์
+//   ค่าคงที่ของ fixture — ไม่พิมพ์ลง log/ชื่อไฟล์) · locked = checkDepositPhone ผิด 5 ครั้งผ่านโมดูล · exceeds = ใช้มัดจำ ฿1 ผ่าน submitRegisterSale ระหว่างเลือกกับยืนยัน ·
+//   เก็บกวาด (หลังงานสุดท้าย/finally/สัญญาณ): คืนเงินมัดจำของรอบที่ยังเหลือผ่าน registerRefundDeposit (โอน) · คืนค่าตั้งรับมัดจำเดิม · บิลคงอยู่ (แบบ sale-done) ◂
 // POS P2.9U ▸ จอชำระบัตรของขวัญ/เครดิตร้าน/ทิป · 02b · คืนเข้าบัตร (12) · บัญชีพักทิป (มติผู้คุม P2.9U ข้อ 10 · wo p2.9u · --page register|sales|settings --states ·
 //   3 ขนาด · th + LOCALE=en · owner + cashier): register = paydlg-giftcard-entry · paydlg-giftcard-split (เงินสด ฿300 + บัตร ฿325 บนตะกร้า 02) ·
 //   paydlg-giftcard-pin-error · paydlg-giftcard-insufficient · paydlg-giftcard-changed · paydlg-storecredit · paydlg-tip · sale-done-giftcard (1440 · ⚠️ บิล PAID จริง
@@ -201,7 +206,9 @@ const userOf = (k: UserKey) => (k === "manager" ? MANAGER_VIS : T.users[k]);
 const unitKey = U.units[0] === "*" ? Object.keys(T.units)[0]! : U.units[0]!;
 const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P211U_WO ? [...P211U_PAGES] : [...POS_PAGES]; // POS P2.11U ◂
+// POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
+const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P211U_WO ? [...P211U_PAGES] : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -238,7 +245,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P25uTablesKey | P25uRegKey | P211uKey; // POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey; // POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -568,6 +575,34 @@ const P29U_WO = /^p2\.?9u/i.test(WO);
 const p29uOn = STATES_ON && tenantKey === "coffee";
 const P29U_KEYS: ReadonlySet<string> = new Set([...P29U_REG_PLAN.map((s) => s.key), ...P29U_OTHER_PLAN.map((s) => s.key)]);
 const isP29uState = (k: StateKey | null | undefined): k is P29uRegKey | P29uOtherKey => !!k && P29U_KEYS.has(k);
+// ── POS P2.9bU ▸ มัดจำ (มติผู้คุม P2.9bU ข้อ 9 · wo p2.9bu · --page register|sales|settings --states · 3 ขนาด · th + LOCALE=en · owner + cashier) ◂
+type P29buKey =
+  | "paydlg-deposit-pick"
+  | "paydlg-deposit-split"
+  | "paydlg-deposit-exceeds"
+  | "paydlg-deposit-notowner"
+  | "paydlg-deposit-locked"
+  | "deposit-receive"
+  | "sale-done-deposit"
+  | "bills-deposit-filter"
+  | "refund-deposit"
+  | "settings-deposit-toggle";
+const P29BU_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P29BU_PLAN: { key: P29buKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "paydlg-deposit-pick", page: "register", devices: P29BU_D3, users: ["owner", "cashier"], note: "ตะกร้า 02 → ชำระ → ช่องมัดจำ → ค้นเลขใบเสร็จของมัดจำ fixture (walk-in ฿1,070 + เบอร์) → 4 หลักท้าย (จุด) → ยอดคงเหลือ + จำนวน ฿625 + \"ใช้มัดจำนี้\" — ไม่กดใช้" },
+  { key: "paydlg-deposit-split", page: "register", devices: P29BU_D3, users: ["owner", "cashier"], note: "แยกจ่ายเงินสด ฿300 → มัดจำ ฿325 (ค่าปริยาย) → ใช้มัดจำนี้ ⇒ แถว \"มัดจำ #… ฿325 ✓ · คงเหลือ ฿745\" — ไม่ยืนยัน" },
+  { key: "paydlg-deposit-exceeds", page: "register", devices: P29BU_D3, users: ["owner"], note: "มัดจำ ฿500 (ใบใหม่ต่อภาพ) ใช้ทั้งใบ + เงินสดพอดี → ⚠️ ใช้มัดจำ ฿1 ผ่าน submitRegisterSale (บิล ฿1 PAID) → ยืนยัน ⇒ DEPOSIT_EXCEEDS: แบนเนอร์ \"ยอดมัดจำเปลี่ยน\" + ค้นใหม่ (จำนวนตัดเหลือ ฿499) · ไม่มีบิล" },
+  { key: "paydlg-deposit-notowner", page: "register", devices: P29BU_D3, users: ["owner"], note: "มัดจำของสมาชิก QC ฿500 บนบิลไม่มีสมาชิก → ค้นเลขใบเสร็จ (เห็นยอด) → ใช้ + เงินสดพอดี → ยืนยัน ⇒ DEPOSIT_NOT_OWNER: ถอดแถว + \"มัดจำใบนี้เป็นของสมาชิกคนอื่น…\" · ไม่มีบิล" },
+  { key: "paydlg-deposit-locked", page: "register", devices: P29BU_D3, users: ["owner"], note: "มัดจำ walk-in ฿500 (ใบใหม่ต่อภาพ) → 4 หลักถูก → ใช้ + เงินสดพอดี → ⚠️ checkDepositPhone ผิด 5 ครั้งผ่านโมดูล → ยืนยัน ⇒ DEPOSIT_LOCKED: ถอดแถว + \"…ถูกระงับชั่วคราว 15 นาที\" · ไม่มีบิล" },
+  { key: "deposit-receive", page: "register", devices: P29BU_D3, users: ["owner", "cashier"], note: "เมนู ⋯ (md+) / ปุ่มบนแถบมือถือ → \"รับมัดจำ\" → ยอด ฿500 · ชื่อ · เบอร์ · หมายเหตุ · เงินสด รับ ฿1,000 (ทอน ฿500) — ไม่กดรับมัดจำ" },
+  { key: "sale-done-deposit", page: "register", devices: ["desktop"], users: ["owner", "cashier"], note: "⚠️ มัดจำ walk-in ฿1,000 ใหม่ 1 ใบ + บิลขายจริง 1 ใบต่อผู้ใช้: ตะกร้า 02 ฿625 จ่ายด้วยมัดจำทั้งยอด → 02b \"มัดจำ #… ฿625 · คงเหลือ ฿375\"" },
+  { key: "bills-deposit-filter", page: "sales", devices: P29BU_D3, users: ["owner"], note: "บิลวันนี้ → ชิป \"มัดจำ\" ⇒ เฉพาะใบรับเงินมัดจำ (ป้าย \"มัดจำ\" · \"ใบรับเงินมัดจำ\")" },
+  { key: "refund-deposit", page: "sales", devices: P29BU_D3, users: ["owner"], note: "มัดจำ fixture ฿1,000 ใบใหม่ (รัน --page sales แยก = ใบใหม่เสมอ · ใบของ sale-done-deposit ใช้ได้เฉพาะรันเดียวกันกับ register — P2.9bU fix1 มติ 5) → ลิ้นชัก → \"คืนมัดจำ (คงเหลือ ฿y)\" → 4 หลักท้าย + ดูยอด → เงินสด + เหตุผล — ไม่ยืนยัน" },
+  { key: "settings-deposit-toggle", page: "settings", devices: P29BU_D3, users: ["owner"], note: "แท็บวิธีรับเงิน → การ์ด \"มัดจำ\": สวิตช์ \"รับเงินมัดจำ\" (เปิดโดย fixture) + บรรทัดช่วย — ไม่กด" },
+];
+const p29buOn = STATES_ON && tenantKey === "coffee";
+const P29BU_KEYS: ReadonlySet<string> = new Set(P29BU_PLAN.map((s) => s.key));
+const isP29buState = (k: StateKey | null | undefined): k is P29buKey => !!k && P29BU_KEYS.has(k);
 // ── POS P2.11U ▸ หลายสาขา (มติ 11 · wo p2.11u · --page products|reports|settings|stock --states · 3 ขนาด · th + LOCALE=en · owner + manager) ◂
 type P211uKey = "products-branch-filter" | "products-branch-copy" | "products-branch-compare" | "products-dead-row-note" | "products-manager-branch" | "reports-channels" | "settings-receipt-branch" | "stock-shared-inventory"; // fix1 มติ 4: bills-all-branches ถอดพร้อมชิป
 const P211U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
@@ -594,6 +629,13 @@ const p211uPath = (k: P211uKey): string =>
     : `/app/sys/${SYS}/pos/products?unit=${encodeURIComponent(unitId)}`;
 const p29uPath = (k: P29uRegKey | P29uOtherKey): string =>
   k === "refund-to-card" ? `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}` : k === "settings-tip-ledger" ? `/app/sys/${SYS}/pos/settings?tab=payments&unit=${encodeURIComponent(unitId)}` : pathOf("register");
+// POS P2.9bU ◂
+const p29buPath = (k: P29buKey): string =>
+  k === "bills-deposit-filter" || k === "refund-deposit"
+    ? `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}`
+    : k === "settings-deposit-toggle"
+      ? `/app/sys/${SYS}/pos/settings?tab=payments&unit=${encodeURIComponent(unitId)}`
+      : pathOf("register");
 const productsPath = (k: P22uProductsKey) => `/app/sys/${SYS}/pos/products${P22U_PRODUCTS_PLAN.find((p) => p.key === k)?.rules ? "/price-rules" : ""}?unit=${encodeURIComponent(unitId)}`;
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
@@ -673,6 +715,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           (st.key === "rpub-issue-sent" ? [RPUB_VIEWPORT] : [...POS_VIEWPORTS]).map((v): Job => ({ page: p, v, state: st.key, expect: st.expect, path: `/r/${st.bill === "none" ? RPUB_MISSING_TOKEN : `<token:${st.bill}>`}${LOCALE_EN ? "?lang=en" : ""}`, file: `${OUT}/${p}-${st.key.replace(/^rpub-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
         )
       : []
+    // POS P2.9bU ▸ มติ 9: wo p2.9bu หน้าขาย/บิล/ตั้งค่า = สถานะมัดจำอย่างเดียว (ตามผู้ใช้) ◂
+    : p29buOn && P29BU_WO && (p === "register" || p === "sales" || p === "settings")
+    ? P29BU_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p29buPath(st.key), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
     // POS P2.9U ▸ มติ 10: wo p2.9u หน้าขาย/บิล/ตั้งค่า = สถานะของใบนี้อย่างเดียว ◂
     : p29uOn && P29U_WO && (p === "register" || p === "sales" || p === "settings")
     ? (p === "register" ? P29U_REG_PLAN : P29U_OTHER_PLAN.filter((st) => st.page === p)).flatMap((st): Job[] =>
@@ -831,13 +880,15 @@ if (LIST) {
   console.log("register/sales/settings P2.9U (wo p2.9u --page <page> --states):"); // POS P2.9U
   for (const st of P29U_REG_PLAN) row(st.key, st.devices, `register · ${st.note}`);
   for (const st of P29U_OTHER_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
+  console.log("register/sales/settings P2.9bU (wo p2.9bu --page <page> --states):"); // POS P2.9bU
+  for (const st of P29BU_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("tables/register P2.5U (wo p2.5u --page tables|register --states):"); // POS P2.5U
   for (const st of [...P25U_TABLES_PLAN, ...P25U_REG_PLAN]) row(st.key, st.devices, st.note);
   console.log("products/reports/settings/stock P2.11U (wo p2.11u --states · owner + manager):"); // POS P2.11U
   for (const st of P211U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -969,6 +1020,18 @@ if (DRY) {
           `บิลขายบัตรคงอยู่) + PIN ค่าคงที่ของ fixture (สูตรแฮชของโมดูล · ไม่พิมพ์ค่า) · เครดิตร้าน ฿200 ของสมาชิก QC (member.issueStoreCredit · คีย์ต่อวัน) · ` +
           `ทิป (เปิด + บัญชีหนี้สินของสมุดที่เชื่อม · คืนค่าหลังภาพทิปสุดท้าย) · changed = ตัดยอดบัตรผ่าน giftcard.use · ⚠️ sale-done-giftcard = บิล PAID 1 ใบ · ` +
           `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ระงับบัตรของรอบ (giftcard.suspend) ยกเว้นบัตรของบิล sale-done-giftcard (คง ACTIVE ฿175 · refund-to-card ใช้ต่อ)`,
+      );
+    }
+    // POS P2.9bU ▸ มติ 9 ◂
+    if (jobs.some((j) => isP29buState(j.state))) {
+      console.log(`สถานะมัดจำ P2.9bU (${userKey}${userKey === "cashier" ? " · แคชเชียร์ = pick/split/receive/sale-done เท่านั้น (มติ 9)" : ""}):`);
+      for (const st of P29BU_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(25)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P2.9bU: fixture (สาขา ${unitKey} · เครื่อง ${DEVICE_ID} ที่เจ้าของเปิดกะให้) — เปิดค่าตั้งรับมัดจำ (updatePosPaymentSettings · คืนค่าเดิมตอนเก็บกวาด) · ` +
+          `มัดจำผ่าน registerTakeDeposit (โอน · walk-in ชื่อ + เบอร์ค่าคงที่ของ fixture ไม่พิมพ์ค่า · คีย์ posqc-vis-p29bu-<pid>-<k>): pick/split ฿1,070 (ใช้ซ้ำทุกภาพ) · ` +
+          `exceeds/locked ฿500 ใบใหม่ต่อภาพ · notowner = มัดจำของสมาชิก QC ฿500 · sale-done ฿1,000 ใบใหม่ (+ บิล PAID 1 ใบ) · refund-deposit = มัดจำ fixture ฿1,000 ใบใหม่ (รัน --page sales แยก · ใบของ sale-done เฉพาะรันเดียวกัน) · ` +
+          `exceeds = บิล ฿1 PAID ผ่าน submitRegisterSale (มัดจำ ฿1) · locked = checkDepositPhone ผิด 5 ครั้ง · ` +
+          `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: registerRefundDeposit (โอน · ยอดคงเหลือทั้งหมด) ทุกใบของรอบที่ยัง OPEN · บิลคงอยู่ (แบบ sale-done)`,
       );
     }
     // POS P2.11U ▸ มติ 11 ◂
@@ -1227,6 +1290,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P28U.log.length) console.error(p28uCleanupLine());
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.8U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.9bU: คืนเงินมัดจำของรอบที่ยังเหลือ · คืนค่าตั้งรับมัดจำ (เหมือน finally)
+      try {
+        await cleanupP29bu();
+        if (P29BU.log.length) console.error(`${P29BU.ok ? "🧹" : "⚠️"} P2.9bU: ${P29BU.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.9bU ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.9U: ระงับบัตรของรอบ · คืนค่าตั้งบัตร/ทิป (เหมือน finally)
       try {
@@ -1783,6 +1853,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
   if (isP211uState(state)) return runP211uState(page, state, device); // POS P2.11U
   if (isP29uState(state)) return runP29uState(page, state, device); // POS P2.9U
+  if (isP29buState(state)) return runP29buState(page, state, device); // POS P2.9bU
   if (isP26uState(state)) return runP26uState(page, state, device); // POS P2.6U
   if (isP25uState(state)) return runP25uState(page, state, device); // POS P2.5U
   if (isP24uState(state)) return runP24uState(page, state, device); // POS P2.4U
@@ -6111,6 +6182,323 @@ async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device:
     }
   }
 }
+// ═══════════════════ POS P2.9bU ▸ มัดจำ: fixture + ขั้นตอนของสถานะ (มติผู้คุม P2.9bU ข้อ 9) ═══════════════════
+//   🔴 เบอร์ walk-in ของ fixture = ค่าคงที่ในโค้ดนี้เท่านั้น (4 หลักท้ายพิมพ์ลงช่อง password ของจอ) · ห้ามพิมพ์ลง log/summary/ชื่อไฟล์
+//   มัดจำทุกใบผ่าน pos/deposit.ts registerTakeDeposit (เครื่อง DEVICE_ID ที่เจ้าของเปิดกะให้ · โอน — ไม่แตะเงินสดในลิ้นชัก) ·
+//   locked = deposit-links.checkDepositPhone ผิด 5 ครั้ง · exceeds = submitRegisterSale บิล ฿1 จ่ายด้วยมัดจำ ฿1 · เก็บกวาด = registerRefundDeposit (โอน) ทุกใบที่ยังเหลือ
+const P29BU_PHONE = "0800000427"; // P2.9bU fix1 มติ 6: เบอร์ปลอมเห็นชัด (08x-000-xxxx) — ภาพ deposit-receive แสดงเบอร์ที่พิมพ์ (ไม่ปิดบัง · .qc-shots/ อยู่ใน .gitignore) · 4 หลักท้ายเดิม
+const P29BU_WRONG4 = "1111";
+const P29BU_LAST4 = P29BU_PHONE.slice(-4);
+type P29buDep = { id: string; receiptNo: string; receiptSaleId: string };
+const P29BU = {
+  done: false,
+  error: null as string | null,
+  ok: true,
+  log: [] as string[],
+  cleaned: false,
+  n: 0,
+  settingBefore: null as null | boolean,
+  /** มัดจำทุกใบของรอบ (เก็บกวาดคืนเงินที่ยังเหลือ) */
+  deps: [] as P29buDep[],
+  pick: null as P29buDep | null,
+  own: null as P29buDep | null,
+  /** มัดจำของ sale-done-deposit (refund-deposit ใช้ต่อเฉพาะรันเดียวกัน — รัน --page sales แยก = null ⇒ fixture ฿1,000 ใบใหม่ · P2.9bU fix1 มติ 5) */
+  sale: null as P29buDep | null,
+};
+const p29buCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: DEVICE_ID });
+/** รับมัดจำผ่านโมดูล (โอน · walk-in + เบอร์ของ fixture หรือสมาชิก QC) — ล้ม = StepError พร้อมรหัส */
+async function p29buTake(tag: string, satang: number, opts: { member?: string; name?: string } = {}): Promise<P29buDep> {
+  const dep = await import("@/lib/modules/pos/deposit");
+  const k = `posqc-vis-p29bu-${process.pid}-${tag}-${++P29BU.n}`;
+  const r = (await dep.registerTakeDeposit(p29buCtx() as Any, (await ownerActor()) as Any, {
+    amountSatang: satang,
+    payMethods: [{ type: "TRANSFER", amountSatang: satang }],
+    ...(opts.member ? { memberId: opts.member } : { customerName: opts.name ?? "คุณอรทัย (QC)", phone: P29BU_PHONE }),
+    note: `QC P2.9bU ${tag}`,
+    idempotencyKey: k,
+  })) as Any;
+  if (!r?.ok) throw new StepError(`รับมัดจำ fixture ${tag} ไม่ได้: ${r?.code ?? "?"}`);
+  const d: P29buDep = { id: r.deposit.id, receiptNo: String(r.receiptNo ?? r.deposit.receiptNo ?? ""), receiptSaleId: r.deposit.receiptSaleId };
+  P29BU.deps.push(d);
+  return d;
+}
+/** fixture ก่อนงานแรกของใบนี้ — พังไม่โยน (P29BU.error · สถานะตกพร้อมเหตุผล) */
+async function ensureP29buFixture(): Promise<void> {
+  if (P29BU.done || P29BU.error) return;
+  try {
+    const ps = await import("@/lib/modules/pos/payment-settings");
+    const cur = await ps.posPaymentSettings({ tenantId: T.tenantId, systemId: SYS });
+    if (!cur.ok) throw new StepError(`อ่านค่าตั้งการชำระเงินไม่ได้: ${cur.code}`);
+    if (!cur.deposit.enabled) {
+      const r = await ps.updatePosPaymentSettings({ tenantId: T.tenantId, systemId: SYS }, (await ownerActor()) as Any, { deposit: { enabled: true } });
+      if (!r.ok) throw new StepError(`เปิดรับมัดจำไม่ได้: ${r.code}`);
+      P29BU.settingBefore = false;
+      P29BU.log.push("เปิดค่าตั้งรับมัดจำ (คืนค่าตอนเก็บกวาด)");
+    } else P29BU.log.push("ค่าตั้งรับมัดจำเปิดอยู่แล้ว");
+    const regStates = jobs.filter((j) => isP29buState(j.state) && j.page === "register");
+    if (regStates.some((j) => j.state === "paydlg-deposit-pick" || j.state === "paydlg-deposit-split")) {
+      P29BU.pick = await p29buTake("pick", 107_000);
+      P29BU.log.push(`มัดจำ pick/split #${P29BU.pick.receiptNo} ฿1,070`);
+    }
+    if (regStates.some((j) => j.state && ["paydlg-deposit-pick", "paydlg-deposit-split", "paydlg-deposit-exceeds", "paydlg-deposit-notowner", "paydlg-deposit-locked", "sale-done-deposit"].includes(j.state))) await prepMemberFixture(); // คูปอง WELCOME50 ของตะกร้า 02 + สมาชิก QC
+    if (regStates.some((j) => j.state === "paydlg-deposit-notowner")) {
+      if (MEMBERX.error || !MEMBERX.id) throw new StepError(`สมาชิก QC: ${MEMBERX.error ?? "ไม่มี"}`);
+      P29BU.own = await p29buTake("own", 50_000, { member: MEMBERX.id });
+      P29BU.log.push(`มัดจำของสมาชิก QC #${P29BU.own.receiptNo} ฿500`);
+    }
+    P29BU.done = true;
+  } catch (e) {
+    P29BU.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** เก็บกวาด (หลังงานสุดท้าย · finally · สัญญาณ — เรียกซ้ำได้): คืนเงินมัดจำของรอบที่ยังเหลือ (โอน · ทั้งยอด) · คืนค่าตั้ง · บิลคงอยู่ */
+async function cleanupP29bu(): Promise<void> {
+  if (P29BU.cleaned || (!P29BU.deps.length && P29BU.settingBefore === null)) return;
+  P29BU.cleaned = true;
+  try {
+    const dep = await import("@/lib/modules/pos/deposit");
+    const owner = (await ownerActor()) as Any;
+    let n = 0;
+    for (const d of P29BU.deps) {
+      const row = await prisma.posDeposit.findFirst({ where: { id: d.id, tenantId: T.tenantId }, select: { status: true, amountSatang: true, usedSatang: true, refundedSatang: true } });
+      const left = row ? row.amountSatang - row.usedSatang - row.refundedSatang : 0;
+      if (!row || row.status !== "OPEN" || left <= 0) continue;
+      const r = (await dep.registerRefundDeposit({ tenantId: T.tenantId, systemId: SYS, unitId } as Any, owner, {
+        depositId: d.id,
+        payMethods: [{ type: "TRANSFER", amountSatang: left }],
+        reason: "QC P2.9bU visual (เก็บกวาด fixture ของรอบ)",
+        idempotencyKey: `posqc-vis-p29bu-${process.pid}-ref-${d.id.slice(-12)}`,
+      })) as Any;
+      if (r?.ok) n++;
+      else {
+        P29BU.ok = false;
+        P29BU.log.push(`⚠️ คืนมัดจำ #${d.receiptNo} ไม่ได้: ${r?.code ?? "?"}`);
+      }
+    }
+    P29BU.log.push(`คืนเงินมัดจำของรอบ ${n} ใบ (โอน · ใบรับ/ใบคืน/บิลคงอยู่)`);
+  } catch (e) {
+    P29BU.ok = false;
+    P29BU.log.push(`⚠️ คืนเงินมัดจำไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+  if (P29BU.settingBefore === false) {
+    try {
+      const ps = await import("@/lib/modules/pos/payment-settings");
+      const r = await ps.updatePosPaymentSettings({ tenantId: T.tenantId, systemId: SYS }, (await ownerActor()) as Any, { deposit: { enabled: false } });
+      P29BU.log.push(r.ok ? "คืนค่าตั้งรับมัดจำ (ปิด)" : `⚠️ คืนค่าตั้งรับมัดจำไม่ได้: ${r.code}`);
+      if (!r.ok) P29BU.ok = false;
+    } catch (e) {
+      P29BU.ok = false;
+      P29BU.log.push(`⚠️ คืนค่าตั้งรับมัดจำไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+    P29BU.settingBefore = null;
+  }
+}
+/** ช่องมัดจำ → ค้นเลขใบเสร็จ → (4 หลักท้าย) → เห็นยอด (มติ 2a–b) */
+async function p29buPick(page: Any, d: P29buDep, opts: { last4?: string | null } = {}): Promise<void> {
+  await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-method-deposit"]') as HTMLButtonElement | null)?.disabled, { timeout: 15_000 }).catch(() => {
+    throw new StepError("ช่องมัดจำยังปิด (registerPayTendersAction.deposit.enabled — ค่าตั้งรับมัดจำของ POS QC เปิดหรือยัง?)");
+  });
+  await clickEl(page, tid("pos-reg-paydlg-method-deposit"));
+  await typeInto(page, tid("pos-reg-paydlg-deposit-search"), d.receiptNo);
+  await clickEl(page, tid("pos-reg-paydlg-deposit-lookup"));
+  await visibleEl(page, tid("pos-reg-paydlg-deposit-row-1"), 0, 15_000).catch(() => {
+    throw new StepError("ค้นเลขใบเสร็จแล้วไม่ขึ้นแถวมัดจำ (pos-reg-paydlg-deposit-row-1)");
+  });
+  const needs = await visibleEl(page, tid("pos-reg-paydlg-deposit-last4"), 0, 2_500).then(() => true).catch(() => false);
+  if (needs && opts.last4 !== null) {
+    const h = await visibleEl(page, tid("pos-reg-paydlg-deposit-last4"));
+    await h.click();
+    await h.type(opts.last4 ?? P29BU_LAST4);
+  }
+  await visibleEl(page, tid("pos-reg-paydlg-deposit-amount"), 0, 15_000).catch(() => {
+    throw new StepError("ไม่เห็นยอดของมัดจำ (4 หลักท้ายไม่ผ่าน / ถูกล็อก?)");
+  });
+  await sleep(250);
+}
+async function p29buUse(page: Any): Promise<void> {
+  await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-deposit-use"]') as HTMLButtonElement | null)?.disabled, { timeout: 5_000 }).catch(() => {
+    throw new StepError("ปุ่ม \"ใช้มัดจำนี้\" ยังปิด");
+  });
+  await clickEl(page, tid("pos-reg-paydlg-deposit-use"));
+  await visibleEl(page, tid("pos-reg-paydlg-deposit-split-1"), 0, 5_000).catch(() => {
+    throw new StepError("ใช้มัดจำแล้วไม่ขึ้นแถว (pos-reg-paydlg-deposit-split-1)");
+  });
+}
+/** รอบสุดท้ายเงินสดพอดี → (ก่อนยืนยัน: hook) → ยืนยัน */
+async function p29buCashExactConfirm(page: Any, before?: () => Promise<void>): Promise<void> {
+  await clickEl(page, tid("pos-reg-paydlg-method-cash"));
+  await clickEl(page, tid("pos-reg-paydlg-quick-exact"));
+  await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-confirm"]') as HTMLButtonElement | null)?.disabled, { timeout: 8_000 }).catch(() => {
+    throw new StepError("ปุ่มยืนยันรับเงินยังปิด (ยอดครบ?)");
+  });
+  if (before) await before();
+  await clickEl(page, tid("pos-reg-paydlg-confirm"));
+}
+async function runP29buState(page: Any, state: P29buKey, device: Device): Promise<void> {
+  if (P29BU.error) throw new StepError(`fixture P2.9bU: ${P29BU.error}`);
+  if (state === "settings-deposit-toggle") {
+    await visibleEl(page, tid("pos-settings-deposit-card"), 0, 15_000);
+    const sw = await visibleEl(page, tid("pos-settings-deposit-enabled"), 0, 15_000).catch(() => {
+      throw new StepError("ไม่เห็นสวิตช์รับเงินมัดจำ (pos-settings-deposit-enabled)");
+    });
+    if ((await sw.evaluate((e: Element) => e.getAttribute("aria-checked"))) !== "true") throw new StepError("สวิตช์รับเงินมัดจำไม่เปิด (fixture เปิดค่าตั้งแล้ว)");
+    await sw.evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+    await sleep(300);
+    return; // 🔴 ไม่กด (บันทึกทันที)
+  }
+  if (state === "bills-deposit-filter" || state === "refund-deposit") {
+    await visibleEl(page, tid("pos-bills-list"), 0, 15_000).catch(() => {
+      throw new StepError("หน้าบิลวันนี้ไม่ขึ้น (pos-bills-list)");
+    });
+    if (state === "bills-deposit-filter") {
+      await clickEl(page, tid("pos-bills-filter-deposit"));
+      await page.waitForNetworkIdle({ idleTime: 600, timeout: 15_000 }).catch(() => undefined); // รายการใหม่ของตัวกรอง (ไม่ใช่แถวเดิมก่อนกด)
+      await page
+        .waitForFunction(
+          () =>
+            document.querySelector('[data-testid="pos-bills-filter-deposit"]')?.getAttribute("aria-pressed") === "true" &&
+            Array.from(document.querySelectorAll("[data-bill-id]")).some((e) => e.getClientRects().length > 0),
+          { timeout: 15_000 },
+        )
+        .catch(() => {
+          throw new StepError("ชิปมัดจำแล้วไม่ขึ้นใบรับเงินมัดจำของวันนี้");
+        });
+      await sleep(400);
+      return;
+    }
+    const d = P29BU.sale ?? (await p29buTake("refund", 100_000));
+    const sel = `[data-bill-id="${d.receiptSaleId}"]`;
+    const onPage1 = await visibleEl(page, sel, 0, 6_000).then(() => true).catch(() => false);
+    if (!onPage1) {
+      await typeInto(page, tid("pos-bills-search"), d.receiptNo);
+      await visibleEl(page, sel, 0, 15_000);
+    }
+    await clickEl(page, sel);
+    await visibleEl(page, tid("pos-bills-drawer-deposit-title"), 0, 15_000);
+    await clickEl(page, tid("pos-bills-refund-deposit")).catch(() => {
+      throw new StepError("ไม่เห็นปุ่ม \"คืนมัดจำ\" ในลิ้นชักใบรับ");
+    });
+    await visibleEl(page, tid("pos-bills-refund-deposit-sheet"), 0, 10_000);
+    const needs = await visibleEl(page, tid("pos-bills-refund-deposit-last4"), 0, 2_000).then(() => true).catch(() => false);
+    if (needs) {
+      const h = await visibleEl(page, tid("pos-bills-refund-deposit-last4"));
+      await h.click();
+      await h.type(P29BU_LAST4);
+      await clickEl(page, tid("pos-bills-refund-deposit-check"));
+      await page
+        .waitForFunction(() => ((document.querySelector('[data-testid="pos-bills-refund-deposit-amount"]') as HTMLInputElement | null)?.value ?? "-") !== "-", { timeout: 10_000 })
+        .catch(() => {
+          throw new StepError("ใส่ 4 หลักท้ายแล้วไม่เห็นยอดคงเหลือ");
+        });
+    }
+    await clickEl(page, tid("pos-bills-refund-deposit-method-cash"));
+    await typeInto(page, tid("pos-bills-refund-deposit-reason"), "ลูกค้ายกเลิกการจอง");
+    await sleep(300);
+    return; // 🔴 ไม่กดยืนยันคืนมัดจำ
+  }
+  await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root)");
+  });
+  await ensureShift(page);
+  if (state === "deposit-receive") {
+    const entry = device === "mobile" ? tid("pos-reg-mobile-deposit-receive") : tid("pos-reg-more");
+    await visibleEl(page, entry, 0, 15_000).catch(() => {
+      throw new StepError("ไม่เห็นทางเข้า \"รับมัดจำ\" (ค่าตั้งรับมัดจำ / registerPayTendersAction)");
+    });
+    await clickEl(page, entry);
+    if (device !== "mobile") {
+      await visibleEl(page, tid("pos-reg-menu-deposit-receive"), 0, 10_000).catch(() => {
+        throw new StepError("เมนู ⋯ ไม่มี \"รับมัดจำ\"");
+      });
+      await clickEl(page, tid("pos-reg-menu-deposit-receive"));
+    }
+    await visibleEl(page, tid("pos-reg-deprcv"), 0, 10_000);
+    await typeInto(page, tid("pos-reg-deprcv-amount"), "500");
+    await typeInto(page, tid("pos-reg-deprcv-name"), "คุณอรทัย");
+    await typeInto(page, tid("pos-reg-deprcv-phone"), P29BU_PHONE);
+    await typeInto(page, tid("pos-reg-deprcv-note"), "จองโต๊ะ 19:00");
+    await clickEl(page, tid("pos-reg-deprcv-method-cash"));
+    await typeInto(page, tid("pos-reg-deprcv-cash"), "1000");
+    await sleep(300);
+    return; // 🔴 ไม่กดรับมัดจำ
+  }
+  await p29uCart(page, device);
+  await p29uOpenPay(page, device);
+  switch (state) {
+    case "paydlg-deposit-pick":
+      await p29buPick(page, P29BU.pick!);
+      return; // 🔴 ไม่กดใช้
+    case "paydlg-deposit-split":
+      await p29uCashSplit(page, 300);
+      await p29buPick(page, P29BU.pick!);
+      await p29buUse(page);
+      return; // 🔴 ไม่ยืนยัน
+    case "paydlg-deposit-exceeds": {
+      const d = await p29buTake("exc", 50_000);
+      await p29buPick(page, d);
+      await p29buUse(page);
+      await p29buCashExactConfirm(page, async () => {
+        // ⚠️ ใช้มัดจำ ฿1 ผ่านโมดูล (บิล ฿1 PAID · คงอยู่) ⇒ คงเหลือ < แถวของจอ ⇒ DEPOSIT_EXCEEDS ตอนยืนยัน
+        const reg = await import("@/lib/modules/pos/register");
+        const owner = (await ownerActor()) as Any;
+        const cart = { lines: [{ name: "QC P2.9bU exceeds", qty: 1, unitPriceSatang: 100 }] };
+        const q = (await reg.quoteRegisterCart(p29buCtx() as Any, owner, cart as Any)) as Any;
+        if (!q?.ok) throw new StepError(`quote บิล ฿1 ไม่ได้: ${q?.code ?? "?"}`);
+        const r = (await reg.submitRegisterSale(p29buCtx() as Any, owner, {
+          ...cart,
+          idempotencyKey: `posqc-vis-p29bu-${process.pid}-exc1-${P29BU.n}`,
+          expectedGrandTotalSatang: q.grandTotalSatang,
+          payMethods: [{ type: "DEPOSIT", amountSatang: q.grandTotalSatang, depositId: d.id, phoneLast4: P29BU_LAST4 }],
+        } as Any)) as Any;
+        if (!r?.ok) throw new StepError(`ใช้มัดจำ ฿1 ผ่านโมดูลไม่ได้: ${r?.code ?? "?"}`);
+      });
+      await visibleEl(page, tid("pos-reg-paydlg-deposit-changed"), 0, 20_000).catch(() => {
+        throw new StepError("ยืนยันแล้วไม่ขึ้นแบนเนอร์ \"ยอดมัดจำเปลี่ยน\" (DEPOSIT_EXCEEDS)");
+      });
+      await sleep(1_000); // ค้นแถวมัดจำใหม่ (จำนวนตัดลง)
+      return;
+    }
+    case "paydlg-deposit-notowner":
+      await p29buPick(page, P29BU.own!, { last4: null });
+      await p29buUse(page);
+      await p29buCashExactConfirm(page);
+      await visibleEl(page, tid("pos-reg-paydlg-deposit-note"), 0, 20_000).catch(() => {
+        throw new StepError("ยืนยันแล้วไม่ขึ้นข้อความ DEPOSIT_NOT_OWNER ใต้รายการ");
+      });
+      return;
+    case "paydlg-deposit-locked": {
+      const d = await p29buTake("lock", 50_000);
+      await p29buPick(page, d);
+      await p29buUse(page);
+      await p29buCashExactConfirm(page, async () => {
+        // ⚠️ 4 หลักผิด 5 ครั้งผ่านโมดูล (ตัวนับของมัดจำใบนี้) ⇒ ล็อก 15 นาที ⇒ DEPOSIT_LOCKED ตอนยืนยัน
+        const links = await import("@/lib/modules/pos/deposit-links");
+        const row = await prisma.posDeposit.findFirst({ where: { id: d.id, tenantId: T.tenantId }, select: { id: true, phoneLast4: true } });
+        if (!row) throw new StepError("ไม่พบมัดจำ locked");
+        for (let i = 0; i < links.DEPOSIT_PHONE_MAX_FAIL; i++) await links.checkDepositPhone(T.tenantId, row, P29BU_WRONG4);
+      });
+      await visibleEl(page, tid("pos-reg-paydlg-deposit-note"), 0, 20_000).catch(() => {
+        throw new StepError("ยืนยันแล้วไม่ขึ้นข้อความ DEPOSIT_LOCKED ใต้รายการ");
+      });
+      return;
+    }
+    case "sale-done-deposit": {
+      const d = (P29BU.sale = await p29buTake("sale", 100_000));
+      await p29buPick(page, d);
+      await p29buUse(page);
+      await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-confirm"]') as HTMLButtonElement | null)?.disabled, { timeout: 8_000 }).catch(() => {
+        throw new StepError("มัดจำทั้งยอดแล้วปุ่มยืนยันยังปิด");
+      });
+      await clickEl(page, tid("pos-reg-paydlg-confirm"));
+      await visibleEl(page, tid("pos-reg-done"), 0, 20_000).catch(() => {
+        throw new StepError("ยืนยันแล้วไม่ขึ้นจอสำเร็จ (pos-reg-done)");
+      });
+      await visibleEl(page, tid("pos-reg-done-pay-lines"), 0, 10_000);
+      await sleep(1_200); // payload ใบเสร็จ (เลขใบรับ · คงเหลือ)
+      return;
+    }
+  }
+}
 async function runP28uState(page: Any, state: P28uOrdersKey | P28uRegKey, device: Device): Promise<void> {
   if (state === "register-tab-badge") {
     await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
@@ -6613,7 +7001,7 @@ try {
     await ensureQcPromptPay(); // POS P1.7U
     console.log(`  PromptPay ของร้าน QC: ${INTENTS.ppNote}`);
   }
-  if (settingsStatesOn && pages.includes("settings") && !P29U_WO) { // POS P2.9U ▸ wo p2.9u ไม่ใช้เครื่อง/กะของ 17B ◂
+  if (settingsStatesOn && pages.includes("settings") && !P29U_WO && !P29BU_WO) { // POS P2.9U ▸ wo p2.9u ไม่ใช้เครื่อง/กะของ 17B ◂ · POS P2.9bU ◂
     await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
     console.log(SETTINGS.error ? `  ⚠️ เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error}` : `  เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.devices.map((d) => d.id).join(" · ")} · กะ ${SETTINGS.shiftId || "-"}`);
   }
@@ -6638,7 +7026,7 @@ try {
     await seedTaxInvBillsOnce();
     console.log(TAXINV.billsError ? `  ⚠️ บิลภาพใบกำกับ: ${TAXINV.billsError}` : `  บิลภาพใบกำกับ: คำขอ ${TAXINV.reqSale || "-"} (${TAXINV.requestId || "-"}) · ออกแล้ว ${TAXINV.issSale || "-"} → TX ${TAXINV.docNo ?? "?"} docId ${TAXINV.docId || "-"}${TAXINV.reused.length ? ` (ใช้ชุดวันนี้ซ้ำ: ${TAXINV.reused.join(" · ")})` : ""}`);
   }
-  if (billsStatesOn && pages.includes("sales") && !P29U_WO) { // POS P2.9U ▸ wo p2.9u ใช้บิลของ sale-done-giftcard ◂
+  if (billsStatesOn && pages.includes("sales") && !P29U_WO && !P29BU_WO) { // POS P2.9U ▸ wo p2.9u ใช้บิลของ sale-done-giftcard ◂ · POS P2.9bU ▸ ใช้มัดจำของรอบ ◂
     await seedBillsOnce(); // POS P1.16 U — พังไม่โยน (ทุกสถานะ bills-* ตกพร้อมเหตุผล)
     console.log(BILLS.error ? `  ⚠️ บิลชุดภาพ: ${BILLS.error}` : `  บิลชุดภาพ: ${BILLS.reused ? "ใช้ชุดของวันนี้ซ้ำ" : `สร้าง ${Object.keys(BILLS.ids).length} ใบ`} · เป้าหมาย ${BILLS.target}`);
   }
@@ -6659,7 +7047,7 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE_DIRS[0]}`],
   }));
   try {
-    if (STATES_ON && jobs.some((j) => j.state && (j.page === "register" || j.page === "tables"))) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 }); // POS P2.4U ▸ + tables ◂
+    if (STATES_ON && jobs.some((j) => j.state && (j.page === "register" || j.page === "tables" || isP29buState(j.state)))) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 }); // POS P2.4U ▸ + tables ◂ · POS P2.9bU ▸ มัดจำ fixture ต้องมีกะของเครื่อง ◂
     for (const job of jobs) {
       {
         const p = job.page;
@@ -6753,6 +7141,11 @@ try {
           await ensureP25uFixture();
           console.log(P25U.error ? `  ⚠️ fixture P2.5U: ${P25U.error}` : `  fixture P2.5U: ${P25U.log.join(" · ")}`);
         }
+        // POS P2.9bU ▸ fixture มัดจำก่อนงานแรกของใบนี้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP29buState(job.state) && !P29BU.done && !P29BU.error) {
+          await ensureP29buFixture();
+          console.log(P29BU.error ? `  ⚠️ fixture P2.9bU: ${P29BU.error}` : `  fixture P2.9bU: ${P29BU.log.join(" · ")}`);
+        }
         // POS P2.9U ▸ fixture บัตร/เครดิต/ทิปก่อนงานแรกของใบนี้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (job.state && isP29uState(job.state) && !P29U.done && !P29U.error) {
           await ensureP29uFixture();
@@ -6825,6 +7218,7 @@ try {
         if (job.state && P28U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P28U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP28u(); // POS P2.8U
         if (job.state === "paydlg-tip" && job === jobs.filter((j) => j.state === "paydlg-tip").at(-1)) await p29uTipRestore(); // POS P2.9U
         if (job.state && isP29uState(job.state) && job === jobs.filter((j) => j.state && isP29uState(j.state)).at(-1)) await cleanupP29u(); // POS P2.9U
+        if (isP29buState(job.state) && job === jobs.filter((j) => isP29buState(j.state)).at(-1)) await cleanupP29bu(); // POS P2.9bU
         if (isP211uState(job.state) && job === jobs.filter((j) => isP211uState(j.state)).at(-1)) await cleanupP211u(); // POS P2.11U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
@@ -6905,6 +7299,9 @@ try {
   if (P26U.log.length) console.error(p26uCleanupLine());
   if (!P26U.ok) failures++;
   await cleanupP29u(); // POS P2.9U (ระงับบัตรของรอบ · คืนค่าตั้งบัตร/ทิป)
+  await cleanupP29bu(); // POS P2.9bU (คืนเงินมัดจำของรอบที่ยังเหลือ · คืนค่าตั้งรับมัดจำ)
+  if (P29BU.log.length) console.error(`${P29BU.ok ? "🧹" : "⚠️"} P2.9bU: ${P29BU.log.join(" · ")}`);
+  if (!P29BU.ok) failures++;
   await cleanupP211u(); // POS P2.11U (แถวราคาลาเต้ · ช่องทาง ZZVIS · ค่าใบเสร็จของสาขา · ลิงก์คลังของรอบ)
   if (P211U.log.length) console.error(`${P211U.ok ? "🧹" : "⚠️"} P2.11U: ${P211U.log.join(" · ")}`);
   if (!P211U.ok) failures++;
