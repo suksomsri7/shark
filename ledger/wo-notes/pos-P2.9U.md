@@ -107,3 +107,26 @@ All logs headed `tree=/root/projects/shark-pos-b head=4eb3de1d dirty=0` in `scra
 | fitness no-env / env | 50/50 · 50/50 |
 | fitness-pos | 8/8 |
 | visual-pos p2.9u --states --dry × 6 | rc 0 ×6 |
+
+## Merge of P2.5 S (origin/session/pos 363bff1e · code 96cc5f4f) · 15 Oct
+`git merge origin/session/pos` → **526413a5** · conflict only in `ledger/POS-OWNER-PENDING.md` (both kept: P2.5 fix2 line, then the P2.9U section) · `register-shared.ts` and `src/messages/{th,en}/pos.json` auto-merged (P2.5 split-part hunks and P2.9U hunks both present, order unchanged) · `visual-pos.mts` untouched by P2.5 · `pnpm exec prisma generate` once (P2.5 tables).
+Server-file rule vs 363bff1e: `git diff 363bff1e -- src/lib/modules/pos/register.ts src/lib/modules/pos/service.ts src/lib/modules/pos/tender.ts src/lib/modules/pos/refund.ts src/lib/modules/giftcard src/lib/modules/member` = **empty**.
+
+### Gates — merged head (one systemd-run unit via `scripts/iso.sh`, runner `scratchpad/p29u/gates-merge-inner.sh`)
+All logs headed `tree=/root/projects/shark-pos-b head=526413a5 dirty=0` (same unit id) in `scratchpad/p29u/runs/merge/*.log`.
+| gate | result |
+|---|---|
+| typecheck | rc 0 |
+| qc-pos-p2.9 (unforced) | 62/62 |
+| qc-pos-p2.5 | 49/49 |
+| qc-pos-p1.3 | 128/128 |
+| qc-pos-p1.8 | 49/49 |
+| qc-pos-p1.12 | 72/72 |
+| qc-pos-p1.16 | 28/28 |
+| qc-pos-p1.10 | 40/40 |
+| qc-pos-p1.18 (ST7 0) | 81/81 |
+| qc-hf-pos-page-authz | 81/81 |
+| qc-pos-p2.8 (ST6/L2 green) | 61/61 |
+| fitness no-env / env | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| visual-pos p2.9u --states --dry × 6 | rc 0 ×6 |
