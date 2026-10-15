@@ -4618,23 +4618,34 @@ async function cleanupP25u(): Promise<void> {
       const st = await prisma.kdsStation.deleteMany({ where: { tenantId: T.tenantId, unitId, id: { notIn: P25U.stationsBefore }, orderItems: { none: {} }, menuItems: { none: {} } } });
       if (st.count) P25U.log.push(`สถานีครัวที่รอบสร้างให้ ${st.count}`);
     }
-    if (P25U.scBefore) {
-      const pay = await import("@/lib/modules/pos/payment-settings");
-      const r = await pay.updatePosPaymentSettings({ tenantId: T.tenantId, systemId: SYS }, actor, { serviceCharge: P25U.scBefore });
-      if (!r.ok) throw new Error(`คืนค่าบริการเดิม: ${r.code}`);
-      P25U.log.push(`คืนค่าบริการ ${P25U.scBefore.enabled ? P25U.scBefore.rateBp / 100 : 0}%`);
-      P25U.scBefore = null;
-    }
     if (P25U.paidLocked) P25U.log.push(`บิลจ่ายบิล 1 ของ ${p25uName(4)} คงไว้ (แบบ sale-done)`);
   } catch (e) {
     P25U.ok = false;
     P25U.log.push(`ลบไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  } finally {
+    // fix1 L1: คืนค่าบริการเดิมใน try ของตัวเองเสมอ (ขั้นก่อนหน้าพัง/ทาง signal/finally ก็ไม่ทิ้งร้าน QC ไว้ที่ 10%) — สำเร็จแล้วล้าง scBefore (เรียกซ้ำไม่ทำซ้ำ)
+    await restoreP25uServiceCharge();
   }
   P25U.zones = [];
   P25U.tables = {};
   P25U.sessions = {};
   P25U.products = {};
   P25U.done = false;
+}
+/** fix1 L1: คืนค่าบริการของระบบ POS ร้าน QC (จำไว้ตอนสร้าง fixture) — แยก try · พัง = P25U.ok false + เก็บ scBefore ไว้ให้รอบ finally/signal ลองอีก */
+async function restoreP25uServiceCharge(): Promise<void> {
+  const before = P25U.scBefore;
+  if (!before) return;
+  try {
+    const pay = await import("@/lib/modules/pos/payment-settings");
+    const r = await pay.updatePosPaymentSettings({ tenantId: T.tenantId, systemId: SYS }, await memberActorOf("owner"), { serviceCharge: before });
+    if (!r.ok) throw new Error(r.code);
+    P25U.scBefore = null;
+    P25U.log.push(`คืนค่าบริการ ${before.enabled ? before.rateBp / 100 : 0}%`);
+  } catch (e) {
+    P25U.ok = false;
+    P25U.log.push(`คืนค่าบริการเดิมไม่สำเร็จ (${before.enabled ? before.rateBp / 100 : 0}%): ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+  }
 }
 const p25uCleanupLine = () => `${P25U.ok ? "🧹" : "⚠️"} P2.5U: ${P25U.log.join(" · ")}`;
 async function runP25uState(page: Any, state: P25uTablesKey | P25uRegKey, device: Device): Promise<void> {
