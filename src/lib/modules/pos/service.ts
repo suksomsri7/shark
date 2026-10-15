@@ -462,7 +462,10 @@ async function lockSaleDeposits(tx: Client, input: CreateSaleInput, rows: { inde
     await checkDeposit(tx, input, d, r.satang);
     const remaining = d!.amountSatang - d!.usedSatang - d!.refundedSatang;
     const left = Math.max(0, d!.vatSatang - (vatLeft.get(d!.id) ?? 0));
-    const vat = r.satang === remaining ? left : Math.min(left, mulDivHalfUp(d!.vatSatang, r.satang, d!.amountSatang), splitIncludedVat(r.satang, vatRateBp).vatSatang); // POS P2.9b ▸ fix1 มติ 1 ◂
+    // POS P2.9b ▸ fix1 มติ 1 · fix2 มติ 2 (hunter N1): ปล่อย = min(ยอดแถว, VAT ค้าง, max(เพดาน, VAT ค้าง − (คงเหลือ − ยอดแถว))) ⇒ หลังใช้ VAT ค้าง ≤ คงเหลือเสมอ
+    //   (ชิ้นสุดท้าย/การคืนคงเหลือปล่อยที่ค้างได้ครบ แม้ชิ้นเล็กหรือสมุดเลิกจด VAT) · ใช้ครบคงเหลือ = VAT ค้างทั้งหมด ◂
+    const cap = Math.min(mulDivHalfUp(d!.vatSatang, r.satang, d!.amountSatang), splitIncludedVat(r.satang, vatRateBp).vatSatang);
+    const vat = r.satang === remaining ? left : Math.min(r.satang, left, Math.max(cap, left - (remaining - r.satang)));
     out.push({ index: r.index, depositId: d!.id, satang: r.satang, vatSatang: vat });
   }
   return out;
