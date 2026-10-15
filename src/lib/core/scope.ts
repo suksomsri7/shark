@@ -63,6 +63,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // POS P2.9b ▸ มัดจำเป็นวิธีชำระ (ผู้เขียน = pos/deposit.ts + service.createSale) — รายการไม่มี systemId/unitId ⇒ tenant · วางหัวทะเบียนด้วยเหตุผลเดียวกับ PosShift ◂
   PosDeposit: sys(),
   PosDepositTxn: tenant,
+  // POS P2.10 ▸ จอลูกค้า (ผู้เขียนเดียว = pos/display.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId · อ่านไม่มี session ด้วย tokenHash) ◂
+  PosCustomerDisplay: sys(),
   PosStockCountEntry: tenant,
   // POS P1.10 — ทะเบียนเครื่องขาย (ผู้เขียนเดียว = pos/device.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
   PosDevice: sys(),
