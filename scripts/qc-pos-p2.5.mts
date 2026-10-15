@@ -54,7 +54,8 @@ const CHECKS: readonly Def[] = [
   D("ST3", "S", "[R7 R8 R9 §7 มติ 8 9] ขอบเขต: restaurant/index.ts รอยต่อ POS P2.5 ▸ export moveTableSessionInTx mergeTableSessionsInTx unlinkTableItemsInTx · pos/table-split.ts + pos/table.ts export ฟังก์ชันใหม่ครบ 6 · table-split-shared.ts + pre-bill-render.ts บริสุทธิ์ (ไม่ถึง prisma/เซิร์ฟเวอร์ · ไม่มีนาฬิกา/สุ่ม · pre-bill-render import แค่ *-shared/receipt-render) · ไฟล์ pos ไม่เขียน Restaurant*/TableSession ตรง · ไฟล์ \"use server\" เรียกครบ 6 + catch · tableSaleVoided มีรอยต่อ POS P2.5 · ไฟล์ใหม่ไม่ปล่อย outbox · table-split.ts ไม่มี ticketForSale · 'use client' ไม่ import table-split/table · จอใหม่ (ถ้ามี) ไม่มีอักษรไทยในโค้ด · POS-OWNER-PENDING มีบรรทัด P2.5"),
   // ── M เงินแยกบิล ──
   D("M1", "X4", "[R1 R2 R5 15B มติ 4] registerSplitTable ITEM บนโต๊ะ A5 (ข้าว 3+1 · ลาเต้ 1+1 · ที่เหลือตามภาพ) → ใบ 1 ฐาน 67500 ค่าบริการ 6750 สุทธิ 74250 · ใบ 2 56500/5650/62150 · Σ 136400 = quote ทั้งโต๊ะ · แผนที่เก็บ (แถว PosTableSplit/Part/Line) = ผลของ allocateTableSplit ตรงตัว · version 1 · itemsHash = quote"),
-  D("M2", "X4", "[R2 มติ 4 CD4] EQUAL 3 บน 136400 → สุทธิ 45467 / 45467 / 45466 (เศษ 2 → ใบ 1–2) · ฐาน 41334/41334/41332 (ส่วนแบ่งต่อรายการ เศษไปใบต่ำ) · Σ ตรง · แทนด้วย EQUAL 4 (splitId+expectedVersion) → 4 × 34100 · version 2 · ส่วนแบ่ง 1 ชิ้นชื่อลงท้าย (1/4)"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU c · มติ 3): เศษสตางค์ของส่วนแบ่งต่อรายการหมุนเวียน (rot) แทนไปใบต่ำเสมอ — เดิม "ฐาน 41334/41334/41332 (ส่วนแบ่งต่อรายการ เศษไปใบต่ำ)" ◂
+  D("M2", "X4", "[R2 มติ 4 CD4 · HF-FU มติ 3] EQUAL 3 บน 136400 → สุทธิ 45467 / 45467 / 45466 (เศษ 2 → ใบ 1–2) · ฐาน 41334/41333/41333 (ส่วนแบ่งต่อรายการ เศษหมุนเวียนตามลำดับรายการ) · Σ ตรง · แทนด้วย EQUAL 4 (splitId+expectedVersion) → 4 × 34100 · version 2 · ส่วนแบ่ง 1 ชิ้นชื่อลงท้าย (1/4)"),
   D("M3", "X4", "[R1 R2 15C] SEAT 4 ที่นั่ง + ยำวุ้นเส้นกลางโต๊ะ → 33825 / 45815 / 24255 / 32505 · ยำ 3750 × 4 · ใบ 1 ถือสต็อกของยำ (stockOwner) · Σ 136400 · ลืมระบุที่นั่ง 1 รายการ → VALIDATION ไม่มีแผน"),
   D("M4", "X3", "[R2 R5 CD5 มติ 5] ส่วนลดท้ายบิล 10% บนแผน ITEM 15B → ส่วนลด 6750/5650 · ค่าบริการ 6075/5085 · สุทธิ 66825/55935 · Σ 122760 = quote ทั้งโต๊ะที่ส่วนลดเดียวกัน · CASHIER แทนแผนด้วย 20% → DISCOUNT_EXCEEDS_LIMIT (แผนเดิมคงอยู่) · MANAGER 20% → ok"),
   D("M5", "X4", "[R2(6) COMMON-1] VAT ของแต่ละใบ = splitIncludedVat(สุทธิใบ) ที่ระดับบิลของใบ (บิลจริงของ 15B ทั้งสองใบ) · |Σ VAT ใบ − VAT ทั้งโต๊ะ| ≤ ⌊(N+1)/2⌋ · ข้อบริสุทธิ์ vatRateBp 0 → VAT 0 ทุกใบ"),
@@ -96,7 +97,8 @@ const CHECKS: readonly Def[] = [
   D("C5", "X1", "[R7 มติ 8] ย้าย ⇄ เปิดโต๊ะปลายทาง (ถือล็อกโต๊ะปลายทาง) → session OPEN บนโต๊ะปลายทาง 1 แถว (ย้ายผ่าน+เปิดได้ session เดิม หรือ เปิดใหม่+ย้าย TABLE_BUSY) · ย้าย ⇄ จ่ายของ session เดียวกัน (ถือแถว session) → ok ทั้งคู่ · session CLOSED บนโต๊ะใหม่ · โต๊ะเดิมต้องเก็บ"),
   D("C6", "X1", "[R8 มติ 8] รวมโต๊ะ ⇄ จ่ายของโต๊ะต้นทาง (ถือรายการไว้) → จ่ายแล้วรวม (ออเดอร์ที่จ่ายย้ายตาม) หรือ รวมแล้วจ่าย TABLE_ITEMS_CHANGED · รายการหนึ่งไม่มีสองบิล · บิลบางส่วนเดิมของโต๊ะต้นทาง void แล้วรายการกลับมาค้างจ่ายบนโต๊ะปลายทาง"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 2 ruling 4 · hunter Low · id C7 because C6 exists)
-  D("C7", "X1", "[มติ fix2 ข้อ 4] จ่ายใบด้วยบัตรของขวัญ PIN ผิด 10 คำขอพร้อมกัน (คนละคีย์) บนบัตรใบเดียว → ทุกคำตอบ GIFT_CARD_PIN/GIFT_CARD_LOCKED (ไม่มี P2028/หมดเวลา) · ตัวนับ 5 · บัตรถูกล็อก · ใบยัง OPEN · ไม่มีบิล · ตัวควบคุม: บัตรใหม่ PIN ถูก → จ่ายใบได้ครั้งเดียว"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU i · มติ 5): + probe NOWAIT (ธุรกรรมที่สามถือแถวบัตร · ระหว่างคำขอ PIN ผิดรอบัตร แถวรายการ/ใบต้องไม่ถูกล็อก) — fail-before 1a964205 = 55P03 ◂
+  D("C7", "X1", "[มติ fix2 ข้อ 4 · HF-FU มติ 5] จ่ายใบด้วยบัตรของขวัญ PIN ผิด 10 คำขอพร้อมกัน (คนละคีย์) บนบัตรใบเดียว → ทุกคำตอบ GIFT_CARD_PIN/GIFT_CARD_LOCKED (ไม่มี P2028/หมดเวลา) · ตัวนับ 5 · บัตรถูกล็อก · ใบยัง OPEN · ไม่มีบิล · ตัวควบคุม: บัตรใหม่ PIN ถูก → จ่ายใบได้ครั้งเดียว · probe: ธุรกรรมที่สามถือแถวบัตร FOR UPDATE → คำขอ PIN ผิด 1 รายการรอ → SELECT … FOR UPDATE NOWAIT บนรายการของใบ + แถวใบสำเร็จ (ไม่มี 55P03) · ปล่อยแล้วได้ GIFT_CARD_PIN"),
   // ── T ย้าย/รวม ──
   D("T1", "-", "[R7 CD8 มติ 8] registerMoveTable (WAITER) ขณะรอบ NEW + รอบร่าง + แผน OPEN → tableId เปลี่ยน · โต๊ะเดิม dirtySince (ต้องเก็บ) · โต๊ะใหม่สะอาด · ผัง: เดิม NEEDS_CLEARING ใหม่ DINING · kdsBoard label = ชื่อโต๊ะใหม่ · รายการยัง NEW · รอบร่าง/แผนตาม session · ย้ายไปโต๊ะเดิม → {ok, changed:false}"),
   D("T2", "X2", "[R7 CD10] ย้ายไปโต๊ะที่มีลูกค้า → TABLE_BUSY · INACTIVE → TABLE_INACTIVE · โต๊ะร้าน T2 / id มั่ว / ctx สาขา B → TABLE_NOT_FOUND · session ปิดแล้ว → TABLE_SESSION_CLOSED · CASHIER/NOPERM → PERMISSION_DENIED · ไม่เขียน · โต๊ะที่จองไว้ → ok + reservationOverridden (การจองยัง BOOKED)"),
@@ -104,7 +106,8 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 6 · pos-P2.5-review.md N4)
   D("T4", "-", "[มติ fix1 ข้อ 6] แผน DONE บนโต๊ะ B (มีรอบร่าง) → รวม B เข้า A → แผนย้ายไป session A · void บิลใบ 1 → ใบ OPEN บน session A · quote/จ่ายใบ 1 ได้ · แผน DONE · แผน OPEN บน session ที่ปิดแล้ว (โต๊ะ A5 หลัง X4) ไม่กันการยกเลิกรายการ"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 2 ruling 2 · F2)
-  D("T5", "X5", "[มติ fix2 ข้อ 2] หน้าเดิม mergeSessionAction เรียก legacyMergeSplitGuard ก่อน table.mergeSession · แผน OPEN ฝั่งต้นทาง / ฝั่งปลายทาง → ปฏิเสธ ออเดอร์ไม่ย้าย แผนไม่เปลี่ยน · ตัวควบคุม: มีแต่แผน DONE → รวมด้วยประตูเดิมได้"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU d · มติ 4 refuse): แผน DONE ฝั่งต้นทาง = ปฏิเสธด้วย · ตัวควบคุมเปลี่ยนเป็น "ไม่มีแผน → รวมได้" — เดิม "ตัวควบคุม: มีแต่แผน DONE → รวมด้วยประตูเดิมได้" ◂
+  D("T5", "X5", "[มติ fix2 ข้อ 2 · HF-FU มติ 4] หน้าเดิม mergeSessionAction เรียก legacyMergeSplitGuard ก่อน table.mergeSession · แผน OPEN ฝั่งต้นทาง / ฝั่งปลายทาง → ปฏิเสธ ออเดอร์ไม่ย้าย แผนไม่เปลี่ยน · แผน DONE ฝั่งต้นทาง → ปฏิเสธ (ออเดอร์ไม่ย้าย แผนยัง DONE บน session ต้นทาง) · ตัวควบคุม: ไม่มีแผน → รวมด้วยประตูเดิมได้"),
   // ── B ใบรายการ ──
   D("B1", "X5", "[R9 มติ 9] registerTablePreBill ทั้งโต๊ะ → kind PRE_BILL · notReceipt · ยอด = quote (subtotal/serviceCharge/vat/total/itemsHash) · ไม่มีคีย์เลขเอกสาร/เลขภาษี · เลขใบเสร็จ +0 · session/โต๊ะไม่เปลี่ยน (ไม่ขอเช็คบิล) · AuditLog pos.table.preBill 1 แถวต่อครั้ง (2 ครั้ง = 2) · ไม่มี outbox/JV"),
   D("B2", "X2", "[R9 CD9 CD10] ใบรายการของใบ (tableSplitPartId) = ยอดของใบ + part {no, of} · copy:true → copy · WAITER (pos.sale.read) ok · NOPERM → PERMISSION_DENIED · session ร้าน T2 / ctx สาขา B → TABLE_NOT_FOUND · session CLOSED → TABLE_SESSION_CLOSED · ใบมั่ว → TABLE_SPLIT_NOT_FOUND"),
@@ -264,6 +267,9 @@ function refAlloc(i: RIn): ROut {
     for (const it of i.items) if ((got.get(it.id) ?? 0) !== it.qty) return { ok: false, code: "VALIDATION" };
   }
   const lines: RLine[][] = Array.from({ length: N }, () => []);
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU c · มติ 3): เศษของส่วนแบ่งหมุนเวียนข้ามรายการกลางโต๊ะ (EQUAL และ SEAT กติกาเดียว) — ใบ p ได้ +1 เมื่อ ((p−1−rot) mod N) < r
+  //   แล้ว rot = (rot + r) mod N ตามลำดับรายการที่ส่งมา · เจ้าของสต็อกยังเป็นใบ 1 · ยอดสุทธิ EQUAL ยังเป็น q+1 ให้ใบ 1..r — เดิม `q + (p <= r ? 1 : 0)` ◂
+  let rot = 0;
   for (const it of i.items) {
     for (const [p, k] of [...(whole.get(it.id) ?? new Map<number, number>()).entries()].sort((a, b) => a[0] - b[0]))
       lines[p - 1]!.push({ itemId: it.id, qty: k, shareNum: null, shareDen: null, amountSatang: k * it.unitSatang, stockOwner: true });
@@ -272,7 +278,8 @@ function refAlloc(i: RIn): ROut {
       const g = u * it.unitSatang;
       const q = Math.floor(g / N);
       const r = g - q * N;
-      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + (p <= r ? 1 : 0), stockOwner: p === 1 });
+      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + ((((p - 1 - rot) % N) + N) % N < r ? 1 : 0), stockOwner: p === 1 });
+      rot = (rot + r) % N;
     }
   }
   if (lines.some((l) => !l.length)) return { ok: false, code: "VALIDATION" };
@@ -2381,6 +2388,7 @@ async function runDb() {
     };
     const bad = await sell("bad");
     const good = await sell("good");
+    const probe = await sell("probe"); // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU i): บัตรของ probe NOWAIT ◂
     await drain();
     const s = await seat("C7", { guestCount: 2, lines: [ml("kaprao", 1), ml("chayen", 1)] });
     const pl = splitOf(await mkSplit(s.sid, { mode: "EQUAL", partCount: 2 }));
@@ -2406,7 +2414,60 @@ async function runDb() {
     const ok2 = await sub(newKey("c7ok"), good, good.pin);
     const g2 = await P.giftCard.findUnique({ where: { id: good.id } }).catch(() => null);
     if (ok1?.ok !== true || !refused(ok2, "TABLE_SPLIT_PART_PAID") || g2?.balanceSatang !== 50_000 - grand) p.push(`(ตัวควบคุม) PIN ถูก → ${codeOf(ok1)} ${short(ok1?.message ?? "", 40)} · ซ้ำ ${codeOf(ok2)} · ยอดบัตร ${g2?.balanceSatang}`);
-    chk("C7", p.length === 0, "PIN ผิดพร้อมกันบนใบ = PIN/LOCKED ล้วน · ตัวนับ 5 · ไม่มีบิล · PIN ถูกจ่ายได้ครั้งเดียว", FX(P8(p) || "ครบ"));
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU i · มติ 5): probe NOWAIT บนใบ 2 (ใบ 1 จ่ายแล้วโดยตัวควบคุม) — ธุรกรรมที่สามถือแถวบัตร probe FOR UPDATE · ยิงคำขอ PIN ผิด 1 รายการ ·
+    //   รอจนถูกกั้น (pg_blocking_pids) · tx4 SELECT … FOR UPDATE NOWAIT บนรายการของใบ + แถวใบ ⇒ ต้องสำเร็จ (ตรวจ PIN ก่อนล็อกใบ/รายการ · c4194261) ·
+    //   ปล่อยแล้วคำขอได้ GIFT_CARD_PIN · fail-before บน 1a964205 = 55P03 ทั้งสอง (ledger/wo-notes/HF-FU-red.txt §C7) ◂
+    {
+      const part2 = partOf(pl, 2);
+      const pid2 = String(part2?.id ?? "");
+      const items2 = [...new Set(((part2?.lines ?? []) as Any[]).map((l) => String(l.itemId)))];
+      const q2 = await pq(pid2);
+      const grand2 = q2?.ok === true ? Number(q2.grandTotalSatang) : 0;
+      const wrong = probe.pin === "000001" ? "000002" : "000001";
+      const pgCode = (e: unknown): string => {
+        const o = e as { code?: unknown; meta?: { code?: unknown }; message?: unknown } | null;
+        return String(o?.meta?.code ?? "") || (/\b(55P03)\b/.exec(String(o?.message ?? ""))?.[1] ?? `ERR:${String(o?.code ?? "")}:${String(o?.message ?? e).slice(0, 80)}`);
+      };
+      const nowait = async (sql: string, args: unknown[]): Promise<string> => {
+        try {
+          await P.$transaction(async (t4: Any) => {
+            await t4.$queryRawUnsafe(sql, ...args);
+          }, { timeout: 10_000, maxWait: 10_000 });
+          return "OK";
+        } catch (e) {
+          return pgCode(e);
+        }
+      };
+      const box: { p: Promise<Any> | null } = { p: null };
+      const res: Record<string, string> = {};
+      let blocked = 0;
+      if (!pid2 || !items2.length || !grand2) p.push(`(fixture) probe ใบ 2 ${codeOf(q2)} · รายการ ${items2.length}`);
+      else {
+        await P.$transaction(
+          async (tx: Any) => {
+            await tx.$queryRawUnsafe(`SELECT id FROM "GiftCard" WHERE id = $1 FOR UPDATE`, probe.id);
+            const bpid = Number(((await tx.$queryRawUnsafe(`SELECT pg_backend_pid()::int AS p`)) as Any[])[0].p);
+            box.p = call(register, "submitRegisterSale", ctxA(DEV2), A("OWNER"), { lines: [], tableSplitPartId: pid2, expectedSplitVersion: Number(pl.version), idempotencyKey: newKey("c7probe"), expectedGrandTotalSatang: grand2, payMethods: [{ type: "GIFT_CARD", amountSatang: grand2, giftCard: { number: probe.number, pin: wrong } }] });
+            const t1 = Date.now();
+            while (Date.now() - t1 < 12_000) {
+              const n = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))`, bpid)) as Any[])[0].n);
+              if (n > blocked) blocked = n;
+              if (n > 0) break;
+              await sleep(150);
+            }
+            await sleep(700);
+            res.items = await nowait(`SELECT id FROM "RestaurantOrderItem" WHERE id = ANY($1::text[]) FOR UPDATE NOWAIT`, [items2]);
+            res.part = await nowait(`SELECT id FROM "PosTableSplitPart" WHERE id = $1 FOR UPDATE NOWAIT`, [pid2]);
+          },
+          { timeout: 60_000, maxWait: 15_000 },
+        );
+        const sub = await box.p;
+        if (blocked < 1) p.push("probe: คำขอ PIN ผิดไม่ถูกแถวบัตรกั้น (จัดฉากไม่ถึง)");
+        if (res.items !== "OK" || res.part !== "OK") p.push(`probe NOWAIT ระหว่างรอบัตร: รายการ ${res.items} · ใบ ${res.part} (คาด OK ทั้งคู่ — 55P03 = ล็อกใบ/รายการก่อนตรวจ PIN)`);
+        if (!refused(sub, "GIFT_CARD_PIN") || (await partRows(String(pl.splitId)))[1]?.status !== "OPEN") p.push(`probe: หลังปล่อย ${codeOf(sub)} · ใบ 2 ${(await partRows(String(pl.splitId)))[1]?.status} (คาด GIFT_CARD_PIN · OPEN)`);
+      }
+    }
+    chk("C7", p.length === 0, "PIN ผิดพร้อมกันบนใบ = PIN/LOCKED ล้วน · ตัวนับ 5 · ไม่มีบิล · PIN ถูกจ่ายได้ครั้งเดียว · probe NOWAIT ไม่ติดล็อก", FX(P8(p) || "ครบ"));
   });
 
   // ════════ T ย้าย/รวม ════════
@@ -2580,7 +2641,8 @@ async function runDb() {
       if (ord?.sessionId !== from.sid || (await sessRow(from.sid))?.status !== "OPEN") p.push(`ฝั่ง${side}: ออเดอร์ย้าย/ต้นทางไม่ OPEN`);
       if ((await snap(side === "from" ? from.sid : into.sid, String(pl?.splitId ?? ""))) !== s0) p.push(`ฝั่ง${side}: แผน/รายการเปลี่ยน`);
     }
-    // ตัวควบคุม: มีแต่แผน DONE (ต้นทางมีรอบร่าง ⇒ ยัง OPEN) → รวมด้วยประตูเดิมได้
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU d · มติ 4): แผน DONE ฝั่งต้นทาง (ต้นทางมีรอบร่าง ⇒ ยัง OPEN) → ปฏิเสธ · ออเดอร์ไม่ย้าย · แผนยัง DONE บน session ต้นทาง
+    //   (เดิม = ตัวควบคุม "มีแต่แผน DONE → รวมได้") · ตัวควบคุมใหม่: ไม่มีแผน → รวมด้วยประตูเดิมได้ ◂
     const into = await seat("T5ci", { guestCount: 2, lines: [ml("kaprao", 1)] });
     const from = await seat("T5cf", { guestCount: 2, lines: [ml("chayen", 1)] });
     const pl = splitOf(await mkSplit(from.sid, { mode: "EQUAL", partCount: 2 }));
@@ -2589,8 +2651,15 @@ async function runDb() {
     const b = await payPart(pl, 2);
     if (!a.saleId || !b.saleId || (await planRow(String(pl?.splitId ?? "")))?.status !== "DONE") p.push(`(fixture) แผน DONE ${codeOf(a.r)}/${codeOf(b.r)}`);
     const x = await legacy(into, from);
-    if (x.g?.ok !== true || JSON.stringify(x.m) !== JSON.stringify({ ok: true }) || (await sessRow(from.sid))?.status !== "MERGED") p.push(`(ตัวควบคุม) แผน DONE → ตัวกัน ${short(x.g, 40)} · รวม ${short(x.m, 40)}`);
-    chk("T5", p.length === 0, "หน้าเดิมรวมโต๊ะที่มีแผน OPEN ไม่ได้ (ต้นทาง/ปลายทาง) · แผน DONE รวมได้", FX(P8(p) || "ครบ"));
+    const ordD = await P.restaurantOrder.findUnique({ where: { id: from.orderId } }).catch(() => null);
+    const plD = await planRow(String(pl?.splitId ?? ""));
+    if (x.g?.ok !== false || typeof x.g?.reason !== "string" || x.m) p.push(`แผน DONE ฝั่งต้นทาง → ตัวกัน ${short(x.g, 60)} · รวม ${short(x.m, 40)} (คาด ปฏิเสธ · HF-FU มติ 4)`);
+    if (ordD?.sessionId !== from.sid || (await sessRow(from.sid))?.status !== "OPEN" || plD?.status !== "DONE" || plD?.sessionId !== from.sid) p.push(`แผน DONE ฝั่งต้นทาง: ออเดอร์ ${ordD?.sessionId === from.sid ? "อยู่เดิม" : "ย้าย"} · ต้นทาง ${(await sessRow(from.sid))?.status} · แผน ${plD?.status} ${plD?.sessionId === from.sid ? "session เดิม" : "ย้าย"}`);
+    const into2 = await seat("T5ni", { guestCount: 2, lines: [ml("kaprao", 1)] });
+    const from2 = await seat("T5nf", { guestCount: 2, lines: [ml("chayen", 1)] });
+    const y = await legacy(into2, from2);
+    if (y.g?.ok !== true || JSON.stringify(y.m) !== JSON.stringify({ ok: true }) || (await sessRow(from2.sid))?.status !== "MERGED") p.push(`(ตัวควบคุม) ไม่มีแผน → ตัวกัน ${short(y.g, 40)} · รวม ${short(y.m, 40)}`);
+    chk("T5", p.length === 0, "หน้าเดิมรวมโต๊ะที่มีแผน OPEN ไม่ได้ (ต้นทาง/ปลายทาง) · แผน DONE ฝั่งต้นทางไม่ได้ · ไม่มีแผนรวมได้", FX(P8(p) || "ครบ"));
   });
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 5 · CD-P25-N3 option 2: no VAT-EXCLUDED mode in the register)
   await step("M8", async () => {

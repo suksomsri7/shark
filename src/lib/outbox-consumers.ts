@@ -726,7 +726,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   บิลที่ไม่ใช่ POS+sourceId ไม่แตะ) · ทั้งสองวิ่งเสมอ · ล้มขั้นใด = event retry (ทั้งคู่ idempotent) ◂
   // POS P2.6 ▸ R12: + รอบครัวของบิลหน้าขาย (posSaleId) — รายการที่ยังไม่เสิร์ฟ = CANCELLED · คืนตัวนับเมนูเฉพาะ NEW · งานหลักขั้นที่สาม (retry ได้ · idempotent) ◂
   "pos.sale.voided": withAutomation(
-    compose(compose(compose(compose(compose(async (evt) => {
+    compose(compose(compose(compose(async (evt) => {
       let failed = false;
       let err: unknown = null;
       try {
@@ -761,8 +761,15 @@ const baseConsumers: Record<string, OutboxHandler> = {
         if (!failed) err = e;
         failed = true;
       }
+      // POS HF-FU ▸ j: ออเดอร์ของบิล (REFUNDED + CANCELLED ถ้ายังไม่ส่งมอบ) ย้ายจาก compose ตัวท้าย (ล้ม = WARN กลืน) มาเป็นงานหลัก — ล้ม = event retry · idempotent ◂
+      try {
+        await posOrderOnSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
       if (failed) throw err;
-    }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")), posOrderOnSaleVoided),
+    }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
   ),
   // POS P1.8 ▸ คืนเงิน: ใบลดหนี้ + JV ตามสัดส่วน · รับของคืนที่ต้นทุนเดิม · แต้ม/ยอดสะสม/ตรา (ตัวรับอยู่ pos/refund-consumer.ts · โหลดตอนใช้ กันวงโหลดไฟล์) ◂
   "pos.sale.refunded": withAutomation(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt)),

@@ -497,6 +497,8 @@ async function afterSaleCommit(tenantId: string, unitId: string, saleId: string 
   if (saleId && lines) await afterSaleCommitted({ tenantId, unitId, lines }, saleId);
 }
 
+// POS HF-FU ▸ a fix2 (hunter H1): ข้อความของคู่ payout ↔ paymentState ที่ไม่ตรง (รหัสเดิม CHANNEL_PAY_MISMATCH · จอใช้ errors.channelPayMismatch) ◂
+const ORDER_PAYOUT_STATE_MISMATCH = "ช่องทางของออเดอร์นี้เปลี่ยนวิธีรับเงินหลังรับเข้า (แพลตฟอร์ม ↔ ร้านเก็บเอง) — รับออเดอร์นี้ไม่ได้ ตรวจกับแพลตฟอร์ม/ลูกค้าแล้วปฏิเสธหรือสร้างใหม่";
 /**
  * รับออเดอร์ในธุรกรรมของผู้เรียก (R5 R6): NEW → ACCEPTED (acceptedAt · ผู้รับ · เวลาเตรียม) + ช่องทาง PLATFORM ⇒ บิลในธุรกรรมเดียวกัน
  * (PLATFORM แถวเดียวเต็มยอด · กะ = กะของเครื่องที่รับ ไม่มี = null — ไม่ใช่เงินสด ไม่เคย SHIFT_REQUIRED · มติ 10) · บิลถูกปฏิเสธ = OrderAbort (rollback)
@@ -507,6 +509,9 @@ async function acceptInTx(
   ch: SalesChannel,
   who: { actorUserId: string | null; shiftId: string | null; prepMinutes: number; auto: boolean },
 ): Promise<{ order: PosOrder; saleId: string | null; saleLines: CreateSaleInput["lines"] | null }> {
+  // POS HF-FU ▸ a fix2 (hunter H1): เงินของการรับตัดสินจากคู่ payout ของช่องทาง ↔ paymentState ของออเดอร์ — ไม่ตรง (เจ้าของเปลี่ยน payout หลังรับเข้า) =
+  //   ปฏิเสธก่อนแตะอะไร (ไม่มีบิล ไม่มีรอบ · ตัวกวาด = held sale_refused · พนักงาน = CHANNEL_PAY_MISMATCH) ◂
+  if ((ch.payout === "PLATFORM") !== (o.paymentState === "PLATFORM_PAID")) throw new OrderAbort(refuse("CHANNEL_PAY_MISMATCH", ORDER_PAYOUT_STATE_MISMATCH));
   let after = await transition(tx, o, "ACCEPTED", { acceptedAt: new Date(), acceptedByUserId: who.actorUserId, prepMinutes: who.prepMinutes }, { actorUserId: who.actorUserId, payload: who.auto ? { auto: true } : undefined });
   // POS P2.6 ▸ R4 CD3: ทุกทางเข้า ACCEPTED (รับ · รับอัตโนมัติ · รับเข้าเป็น ACCEPTED) สร้างรอบครัวในธุรกรรมเดียวกัน (xmin เดียว · ไม่ขึ้นกับการจ่าย · รับซ้ำ = รอบเดิม) ◂
   await roundForOrderInTx(tx, after, ch);
@@ -629,7 +634,10 @@ async function ingestInsideTx(tx: Tx, plan: IngestPlan): Promise<IngestDone | Or
   await emitOrderEvent(tx, order, "pos.order.received", start);
   // รับทันที: สถานะเริ่ม ACCEPTED (พนักงาน) หรือรับอัตโนมัติของช่องทาง (ไม่ใช่ MANUAL · มติ 11 · ผู้รับ = null)
   // POS P2.6 ▸ R13 มติ 10: ครัวหยุดรับ หรือมีสถานีที่ตั๋วค้าง ≥ autoAcceptMaxOpen ⇒ ไม่รับอัตโนมัติ (ออเดอร์อยู่ NEW รอคนรับ) ◂
-  const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && !(await autoAcceptBlockedInTx(tx, s));
+  // POS HF-FU ▸ a: รับอัตโนมัติไม่ได้ "เพราะครัว" (พัก/คิวค้าง) ⇒ บันทึก held (NEW→NEW · reason paused|backlog) ให้ตัวกวาด releaseHeldOrders รับต่อเมื่อครัวว่าง ◂
+  const held = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && (await autoAcceptBlockedInTx(tx, s));
+  if (held) await addEvent(tx, order, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: (await kitchenPausedForUnit(tx, s.tenantId, s.unitId)) ? "paused" : "backlog" } });
+  const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && !held;
   if (start !== "ACCEPTED" && !auto) return { orderId: order.id, duplicated: false, saleId: null, saleLines: null, accepted: "none" };
   const prep = input.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
   const who = auto ? { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true } : { actorUserId: plan.acceptor.actorUserId, shiftId: plan.acceptor.deviceShiftId, prepMinutes: prep, auto: false };
@@ -655,9 +663,10 @@ async function assertCustomerLinks(db: Db, tenantId: string, input: IngestInput)
     input.customer.partyId ? db.party.findFirst({ where: { id: input.customer.partyId, tenantId }, select: { id: true } }) : Promise.resolve(true),
     input.chatConversationId ? db.chatConversation.findFirst({ where: { id: input.chatConversationId, tenantId }, select: { id: true } }) : Promise.resolve(true),
   ]);
-  if (!m) return refuse("VALIDATION", "ไม่พบสมาชิกนี้ในร้าน");
-  if (!p) return refuse("VALIDATION", "ไม่พบผู้ติดต่อนี้ในร้าน");
-  if (!c) return refuse("VALIDATION", "ไม่พบห้องแชทนี้ในร้าน");
+  // POS HF-FU ▸ l2: คีย์ข้อความต่อกรณี (จอใช้ messageKey ก่อนข้อความไทยของบริการ) ◂
+  if (!m) return { ...refuse("VALIDATION", "ไม่พบสมาชิกนี้ในร้าน"), messageKey: "orders.errors.memberNotFound" };
+  if (!p) return { ...refuse("VALIDATION", "ไม่พบผู้ติดต่อนี้ในร้าน"), messageKey: "orders.errors.partyNotFound" };
+  if (!c) return { ...refuse("VALIDATION", "ไม่พบห้องแชทนี้ในร้าน"), messageKey: "orders.errors.conversationNotFound" };
   return null;
 }
 
@@ -850,7 +859,9 @@ export async function sourceCancelledInTx(tx: Tx, scope: { tenantId: string; uni
 // ═══════════ POS P2.8 fix รอบ 3 (H1) ▸ การรับเงินของเว็บร้านสะท้อนเข้าออเดอร์ในธุรกรรมของเว็บร้านเอง (ไม่พึ่งคิว) ◂ ═══════════
 export type WebClaimResult = { ok: true; orderId: string | null; changed: boolean } | { ok: false; code: "ORDER_CLOSED"; orderId: string; status: OrderStatus };
 async function webOrderForUpdate(tx: Tx, shopOrderId: string, tenantId?: string): Promise<PosOrder | null> {
-  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosOrder" WHERE "shopOrderId" = ${shopOrderId} ORDER BY id FOR UPDATE`;
+  // POS HF-FU ▸ h2: ล็อกเฉพาะแถวของร้านนี้เมื่อผู้เรียกส่งร้านมา (เดิมล็อกตาม shopOrderId ทุกร้าน) ◂
+  const t = tenantId ?? null;
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosOrder" WHERE "shopOrderId" = ${shopOrderId} AND (${t}::text IS NULL OR "tenantId" = ${t}) ORDER BY id FOR UPDATE`;
   if (!rows.length) return null;
   const o = await tx.posOrder.findFirst({ where: { id: rows[0]!.id, ...(tenantId ? { tenantId } : {}) } });
   return o;
@@ -944,6 +955,112 @@ export async function acceptOrder(ctx: RegisterCtx, actor: RegisterActor, input:
   });
 }
 
+// ═══════════ POS HF-FU ▸ a: ตัวกวาดออเดอร์ที่ครัวพักไว้ (held) — รับอัตโนมัติเมื่อครัวว่าง (มติ 1) ◂ ═══════════
+const RELEASE_LIMIT_MAX = 20;
+/** POS HF-FU ▸ a fix2 (hunter H1): ช่องทางที่ตัวกวาดรับแทนได้ — ใช้ทั้งตอนเลือกผู้สมัครและตรวจซ้ำในธุรกรรม (archivedAt อยู่ในเงื่อนไขของ query) ◂ */
+const sweepLive = (c: SalesChannel, now: Date) => c.active && c.autoAccept && !isManual(c.adapter) && !isPaused(c, now);
+/**
+ * ออเดอร์ NEW ของสาขาที่มีบันทึก held (ไม่ใช่ sale_refused) · รับเข้าตั้งแต่ต้นวันไทย (posDayStart · ของวันก่อนคงไว้ให้พนักงาน) · ช่องทางยัง
+ * active + autoAccept + ไม่ใช่ MANUAL + ไม่พักรับ · เก่าสุดก่อน (receivedAt, id) · ทีละธุรกรรม: ตรวจ autoAcceptBlockedInTx ซ้ำ — ติดเมื่อไรหยุดทั้งรอบ ·
+ * ไม่ติด = acceptInTx(auto) (CAS ของ PosOrder = ผู้ชนะคนเดียวเมื่อแข่งกับพนักงาน/ตัวกวาดอีกตัว · แพ้ = ข้าม) · บิลถูกปฏิเสธ = ข้าม + held {reason:"sale_refused"}
+ * ครั้งเดียว (ไม่ลองซ้ำ — พนักงานรับเอง) · หลัง commit เหมือนรับเข้า (ตัดสต็อก · adapter accept · audit pos.order.accept {auto, swept} ผู้กระทำระบบ · ระบายคิว) ·
+ * ไม่ throw ให้ผู้เรียก (ทางอ่านเรียกก่อนอ่าน — ล้ม = WARN แล้วอ่านต่อ)
+ */
+export async function releaseHeldOrders(tenantId: string, unitId: string, opts: { limit?: number } = {}): Promise<{ accepted: string[] }> {
+  const accepted: string[] = [];
+  try {
+    if (!isId(tenantId) || !isId(unitId)) return { accepted };
+    const limit = Math.max(1, Math.min(RELEASE_LIMIT_MAX, Math.floor(opts?.limit ?? RELEASE_LIMIT_MAX)));
+    const now = new Date();
+    const rows = await prisma.posOrder.findMany({ where: { tenantId, unitId, status: "NEW", receivedAt: { gte: posDayStart(now) } }, orderBy: [{ receivedAt: "asc" }, { id: "asc" }], take: 500 });
+    if (!rows.length) return { accepted };
+    const evs = await prisma.posOrderEvent.findMany({ where: { tenantId, orderId: { in: rows.map((o) => o.id) }, type: "held" }, select: { orderId: true, payload: true } });
+    const heldIds = new Set(evs.map((e) => e.orderId));
+    const refusedIds = new Set(evs.filter((e) => isRecord(e.payload) && e.payload.reason === "sale_refused").map((e) => e.orderId));
+    const cand = rows.filter((o) => heldIds.has(o.id) && !refusedIds.has(o.id) && !isManual(o.adapter));
+    if (!cand.length) return { accepted };
+    const chs = new Map((await prisma.salesChannel.findMany({ where: { tenantId, unitId, id: { in: [...new Set(cand.map((o) => o.channelId))] }, archivedAt: null } })).map((c) => [c.id, c]));
+    const live = cand.filter((o) => {
+      const c = chs.get(o.channelId);
+      return !!c && sweepLive(c, now); // POS HF-FU ▸ a fix2: เงื่อนไขเดียวกับที่ตรวจซ้ำในธุรกรรม ◂
+    });
+    for (const o of live.slice(0, limit)) {
+      const ch = chs.get(o.channelId)!;
+      const prep = o.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
+      let r: Awaited<ReturnType<typeof acceptInTx>> | "blocked" | "skip";
+      try {
+        r = await runTx(
+          async (tx) => {
+            // POS HF-FU ▸ a fix1 (R1 F2): ตัวกวาดของสาขาเดียวกันเรียงคิวกันก่อนตรวจเพดาน (ทางอ่าน listOrders/kdsBoard ทุกจอ) — ผู้ถัดไปเห็นรอบครัวของผู้ก่อน
+            //   ⇒ ตั๋วค้างไม่เกิน autoAcceptMaxOpen จากตัวกวาด · ล็อกแรกของธุรกรรม (ก่อนแถว PosOrder) · ingest ยังไม่ถือล็อกนี้ (ติดตามต่อ) ◂
+            await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posorder-release:${tenantId}:${unitId}`}))) l`;
+            if (await autoAcceptBlockedInTx(tx, { tenantId, unitId })) return "blocked" as const;
+            const fresh = await tx.posOrder.findFirst({ where: { id: o.id, tenantId, unitId } });
+            if (!fresh || fresh.status !== "NEW") return "skip" as const;
+            // POS HF-FU ▸ a fix2 (hunter H1): แถวช่องทางจากก่อนธุรกรรมอาจเก่า (ออเดอร์ถูกพักเป็นนาที–ชั่วโมง · เจ้าของเปลี่ยน payout/ปิดรับอัตโนมัติ/พักรับ/เก็บช่องทาง) ⇒
+            //   อ่านซ้ำด้วย tx หลังล็อกต่อสาขา + ตรวจ live ซ้ำ · ไม่ live = ข้าม (คง NEW · ไม่บันทึกอะไร — พนักงานตัดสิน) · acceptInTx ได้แถวสด (คู่ payout ↔ paymentState ตรวจที่นั่น) ◂
+            const chNow = await tx.salesChannel.findFirst({ where: { id: o.channelId, tenantId, unitId, archivedAt: null } });
+            if (!chNow || !sweepLive(chNow, new Date())) return "skip" as const;
+            return acceptInTx(tx, fresh, chNow, { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true });
+          },
+          { retryUnique: true },
+        );
+      } catch (e) {
+        if (e instanceof OrderRaced) continue; // พนักงาน/ตัวกวาดอีกตัวรับไปก่อน
+        if (e instanceof OrderAbort) {
+          // บิลถูกปฏิเสธ (เช่น STOCK_INSUFFICIENT) — คงเป็น NEW · บันทึก sale_refused ครั้งเดียว (ล็อกแถวออเดอร์ · ตรวจซ้ำในธุรกรรม)
+          try {
+            await runTx(async (tx) => {
+              const locked = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosOrder" WHERE id = ${o.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+              if (locked[0]?.status !== "NEW") return;
+              const had = await tx.posOrderEvent.findMany({ where: { tenantId, orderId: o.id, type: "held" }, select: { payload: true } });
+              if (had.some((x) => isRecord(x.payload) && x.payload.reason === "sale_refused")) return;
+              await addEvent(tx, o, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: "sale_refused" } });
+            });
+          } catch (me) {
+            console.warn(`[pos/order] releaseHeldOrders: บันทึก sale_refused ของ ${o.id} ล้ม`, me); // POS HF-FU ▸ a fix1 (R1 F3) ◂
+          }
+          console.warn(`[pos/order] releaseHeldOrders: ออเดอร์ ${o.id} บิลถูกปฏิเสธ (${e.refusal.code}) — คงเป็นออเดอร์ใหม่ให้พนักงานรับเอง`);
+          continue;
+        }
+        // POS HF-FU ▸ a fix1 (R1 F3): ข้อผิดพลาดอื่นของผู้สมัครตัวนี้ (ธุรกรรม rollback แล้ว) = WARN แล้วไปตัวถัดไป — ไม่โยนออกจากวง
+        //   (เดิมโยน ⇒ ตัวนี้ถูกลองก่อนทุกรอบอ่านและบังตัวหลังทั้งหมด) ◂
+        console.warn(`[pos/order] releaseHeldOrders: ออเดอร์ ${o.id} รับอัตโนมัติไม่สำเร็จ — ข้ามไปตัวถัดไป`, e);
+        continue;
+      }
+      if (r === "blocked") break;
+      if (r === "skip") continue;
+      accepted.push(o.id);
+      // POS HF-FU ▸ a fix1 (R1 F3): หลัง commit แต่ละขั้นห่อ try/WARN ของตัวเอง — การรับที่ commit แล้วได้ลอง audit swept เสมอ · ตัวถัดไปยังกวาดต่อ ◂
+      const saleId = r.saleId;
+      const saleLines = r.saleLines;
+      const adapter = r.order.adapter;
+      const steps: [string, () => Promise<unknown>][] = [
+        ["afterSaleCommit", () => afterSaleCommit(tenantId, unitId, saleId, saleLines)],
+        ["adapter.accept", async () => ORDER_ADAPTERS[adapter]?.accept?.({ orderId: o.id, externalRef: o.externalRef, prepMinutes: prep })],
+        ["audit", () => writeAudit({ tenantId, actorId: null, actorType: "SYSTEM", action: "pos.order.accept", targetType: "PosOrder", targetId: o.id, after: { orderId: o.id, auto: true, swept: true, saleId } })],
+      ];
+      for (const [name, run] of steps) {
+        try {
+          await run();
+        } catch (se) {
+          console.warn(`[pos/order] releaseHeldOrders: ${name} ของ ${o.id} ล้ม (รับแล้ว · ไม่ย้อน)`, se);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[pos/order] releaseHeldOrders ล้ม (ไม่กระทบผู้เรียก)", e);
+  }
+  if (accepted.length) {
+    try {
+      scheduleDrain();
+    } catch (e) {
+      console.warn("[pos/order] releaseHeldOrders: scheduleDrain ล้ม", e); // POS HF-FU ▸ a fix1 (R1 F3) ◂
+    }
+  }
+  return { accepted };
+}
+
 /** ปฏิเสธ (pos.order.reject): NEW เท่านั้น → REJECTED + เหตุผล (OUT_OF_STOCK CLOSING TOO_BUSY OTHER) · เว็บร้าน = ตัวรับคิวยกเลิก ShopOrder (มติ 13) */
 export async function rejectOrder(ctx: RegisterCtx, actor: RegisterActor, input: { id: string; reasonCode: string; note?: string }): Promise<OrderActionResult> {
   return guard("rejectOrder", async (): Promise<OrderActionResult> => {
@@ -968,6 +1085,8 @@ export async function rejectOrder(ctx: RegisterCtx, actor: RegisterActor, input:
   });
 }
 
+/** POS HF-FU ▸ h1 fix1 (R1 F4): ตัวบอก (identity) ว่าบิลถูก void ระหว่างส่งมอบ — โยนใน mutate ให้ rollback · ผู้เรียกแทนด้วย stateInvalid หลังธุรกรรม ◂ */
+const HANDOVER_SALE_VOIDED: OrderRefusal = Object.freeze(refuse("ORDER_STATE_INVALID", ORDER_SALE_VOIDED_MESSAGE));
 /** ขั้นถัดไปของวงจร (pos.order.accept): ACCEPTED → PREPARING · PREPARING → READY · READY → HANDED (DIRECT ยังไม่จ่าย = ORDER_UNPAID) */
 async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input: { id: string }, to: "PREPARING" | "READY" | "HANDED"): Promise<OrderActionResult> {
   return guard(name, async (): Promise<OrderActionResult> => {
@@ -979,14 +1098,21 @@ async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input:
     if (!o) return refuse("ORDER_NOT_FOUND");
     if (!canTransition(o.status, to)) return stateInvalid(s, o);
     if (to === "HANDED" && (o.paymentState === "UNPAID" || o.paymentState === "PAY_ON_PICKUP")) return refuse("ORDER_UNPAID", undefined, { order: (await cardsOf(prisma, s.tenantId, [o], new Date()))[0] });
-    // POS P2.8 fix รอบ 3 (H3): บิลของออเดอร์ถูกยกเลิกแล้ว (ตัวรับ pos.sale.voided ยังไม่ถึง/ล้ม) ⇒ ห้ามส่งมอบของบนบิลที่คืนเงินแล้ว
-    if (to === "HANDED" && o.saleId) {
-      const sale = await prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: s.tenantId }, select: { status: true } });
-      if (sale?.status === "VOIDED") return stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided");
-    }
     const now = new Date();
     const patch: Prisma.PosOrderUpdateManyMutationInput = to === "READY" ? { readyAt: now } : to === "HANDED" ? { handedAt: now, closedAt: now } : {};
-    const r = await mutate(s, o.id, (tx) => transition(tx, o, to, patch, { actorUserId: s.actor.userId }));
+    const r = await mutate(s, o.id, async (tx) => {
+      const after = await transition(tx, o, to, patch, { actorUserId: s.actor.userId });
+      // POS P2.8 fix รอบ 3 (H3): บิลของออเดอร์ถูกยกเลิกแล้ว (ตัวรับ pos.sale.voided ยังไม่ถึง/ล้ม) ⇒ ห้ามส่งมอบของบนบิลที่คืนเงินแล้ว
+      // POS HF-FU ▸ h1: อ่านสถานะบิลในธุรกรรมเดียวกับการส่งมอบ — ลำดับล็อก: CAS แถว PosOrder ก่อน แล้ว PosSale FOR SHARE (มีร้านกำกับ) ·
+      //   void ไม่ล็อก PosOrder ในธุรกรรมของมัน ⇒ ไม่มีวงล็อก · void ที่ commit ระหว่างรอแถว PosOrder ถูกเห็นที่นี่ (คำสั่งใหม่ = snapshot ใหม่) ◂
+      if (to === "HANDED" && o.saleId) {
+        const sale = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosSale" WHERE id = ${o.saleId} AND "tenantId" = ${s.tenantId} FOR SHARE`;
+        if (sale[0]?.status === "VOIDED") throw new OrderAbort(HANDOVER_SALE_VOIDED); // POS HF-FU ▸ h1 fix1 (R1 F4): ตัวบอกในธุรกรรม — การ์ดสร้างหลัง rollback ◂
+      }
+      return after;
+    });
+    // POS HF-FU ▸ h1 fix1 (R1 F4): คำปฏิเสธ saleVoided (การ์ดอ่านผ่าน prisma หลัก) สร้างหลังธุรกรรม rollback แล้ว — ไม่ยืม connection ที่สองระหว่างถือแถว PosOrder ◂
+    if (r === HANDOVER_SALE_VOIDED) return stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided");
     if (isRefusal(r)) return r;
     if (to === "READY") await ORDER_ADAPTERS[r.adapter]?.setReady?.({ orderId: o.id, externalRef: o.externalRef });
     if (to !== "PREPARING") scheduleDrain();
@@ -1224,6 +1350,18 @@ export async function setChannelOrderSettings(ctx: RegisterCtx, actor: RegisterA
 // ═══════════ ตัวอ่าน (R8 · มติ 16 17) ═══════════
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
+// POS HF-FU ▸ F3: ตัวอ่านค่าตั้งรับออเดอร์ 3 คอลัมน์ของช่องทางสาขา (ด่านอ่าน pos.sale.read | pos.sale.create · ช่องทางที่ยังไม่เก็บ) —
+//   แทนการอ่าน prisma ตรงใน order-ui-actions.ts (P2.8U F3) ◂
+export type OrderChannelSettingsItem = { id: string; autoAccept: boolean; prepMinutes: number | null; pausedUntil: string | null };
+export async function orderChannelSettings(ctx: RegisterCtx, actor: RegisterActor): Promise<{ ok: true; items: OrderChannelSettingsItem[] } | OrderRefusal> {
+  return guard("orderChannelSettings", async (): Promise<{ ok: true; items: OrderChannelSettingsItem[] } | OrderRefusal> => {
+    const s = await scopeOf(prisma, ctx, actor, "read");
+    if (isRefusal(s)) return s;
+    const rows = await prisma.salesChannel.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null }, select: { id: true, autoAccept: true, prepMinutes: true, pausedUntil: true }, orderBy: { id: "asc" } });
+    return { ok: true, items: rows.map((r) => ({ id: r.id, autoAccept: r.autoAccept, prepMinutes: r.prepMinutes, pausedUntil: iso(r.pausedUntil) })) };
+  });
+}
+
 /** แถว → การ์ด (query เดียวต่อชนิด: ช่องทาง · จำนวนบรรทัด · เลขใบเสร็จ) */
 async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): Promise<OrderCard[]> {
   if (!rows.length) return [];
@@ -1302,6 +1440,7 @@ export async function listOrders(ctx: RegisterCtx, actor: RegisterActor, input: 
       since = typeof inp.since === "string" ? new Date(inp.since) : null;
       if (!since || !Number.isFinite(since.getTime())) return refuse("VALIDATION", "เวลาเริ่มไม่ถูกต้อง");
     }
+    await releaseHeldOrders(s.tenantId, s.unitId, { limit: RELEASE_LIMIT_MAX }); // POS HF-FU ▸ a: กวาดก่อนอ่าน (ไม่ throw · ล้ม = WARN) ◂
     const now = new Date();
     // POS P2.8 fix รอบ 2 (รีวิว F5): since ย้อนได้ไม่เกิน 7 วัน (เก่ากว่า = ตัดที่ 7 วัน · ผลบอก since ที่ใช้จริง) · อ่านใหม่สุดก่อน 2000 แถวแล้วกลับลำดับ ⇒ วันยุ่งไม่ทิ้งออเดอร์ล่าสุด
     const floor = new Date(now.getTime() - ORDER_LIST_SINCE_MAX_MS);
@@ -1349,10 +1488,11 @@ export async function getOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     if (!o) return refuse("ORDER_NOT_FOUND");
     const now = new Date();
     const [card] = await cardsOf(prisma, s.tenantId, [o], now);
-    const [lines, ch, events] = await Promise.all([
+    const [lines, ch, events, sale] = await Promise.all([
       prisma.posOrderLine.findMany({ where: { tenantId: s.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
       prisma.salesChannel.findFirst({ where: { id: o.channelId, tenantId: s.tenantId }, select: { commissionBp: true, commissionFixedSatang: true, commissionVatBp: true, code: true } }),
       prisma.posOrderEvent.findMany({ where: { tenantId: s.tenantId, orderId: o.id }, orderBy: [{ at: "asc" }, { id: "asc" }] }),
+      o.saleId ? prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: s.tenantId }, select: { status: true } }) : Promise.resolve(null), // POS HF-FU ▸ n ◂
     ]);
     const rates = ch && ch.code !== "STORE" ? ch : { commissionBp: 0, commissionFixedSatang: 0, commissionVatBp: 0 };
     const c = channelCommission(o.totalSatang, rates);
@@ -1384,6 +1524,7 @@ export async function getOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
       memberId: o.memberId,
       partyId: o.partyId,
       chatConversationId: o.chatConversationId,
+      saleStatus: sale ? (sale.status as OrderDetail["saleStatus"]) : null, // POS HF-FU ▸ n: จอปลดปุ่มยกเลิกเมื่อบิล VOIDED (ตัวรับคิวยังไม่ถึง) ◂
       events: events.map((e) => ({ type: e.type, fromStatus: e.fromStatus, toStatus: e.toStatus, actorUserId: e.actorUserId, at: e.at.toISOString() })),
     };
     return { ok: true, order };

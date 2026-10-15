@@ -15,6 +15,7 @@
 //   Σ t = Σb − D + S = ยอดทั้งโต๊ะตรงทุกสตางค์ · VAT ของใบ = splitIncludedVat(t_i) ที่ระดับบิลของใบ (COMMON ข้อ 1)
 //   LR = ปัดลงก่อน แล้วเศษไปใบที่เศษมากสุด · เสมอกัน → ใบเลขต่ำ · น้ำหนักรวม 0 = แบ่งเท่า (เศษไปใบต่ำ)
 import { splitIncludedVat } from "@/lib/money/vat";
+import type { PosPayType } from "@prisma/client"; // POS HF-FU ▸ s (ชนิดเท่านั้น) ◂
 
 export const TABLE_SPLIT_MODES = ["ITEM", "EQUAL", "SEAT"] as const;
 export type TableSplitMode = (typeof TABLE_SPLIT_MODES)[number];
@@ -140,6 +141,10 @@ export function allocateTableSplit(input: TableSplitInput): TableSplitResult {
 
   // ── บรรทัดของแต่ละใบ (ลำดับรายการตามที่ส่งมา · หน่วยเต็มก่อนส่วนแบ่ง) ──
   const lines: TableSplitLine[][] = Array.from({ length: N }, () => []);
+  // POS HF-FU ▸ c (มติ 3): เศษสตางค์ของส่วนแบ่งต่อรายการหมุนเวียน (rot) ข้ามรายการกลางโต๊ะตามลำดับที่ส่งมา — EQUAL และ SEAT กติกาเดียว ·
+  //   ใบ p ได้ +1 เมื่อ ((p−1−rot) mod N) < r แล้ว rot = (rot + r) mod N · เจ้าของสต็อกยังเป็นใบ 1 · ยอดสุทธิ EQUAL ยังเป็น q+1 ให้ใบ 1..r
+  //   (เดิม p <= r ⇒ เศษทุกรายการไปใบต่ำ = ค่าบริการเทียมของใบสูงติดลบสะสม) ◂
+  let rot = 0;
   for (const it of items) {
     for (const [p, k] of [...(whole.get(it.id) ?? new Map<number, number>()).entries()].sort((x, y) => x[0] - y[0])) {
       lines[p - 1]!.push({ itemId: it.id, qty: k, shareNum: null, shareDen: null, amountSatang: k * it.unitSatang, stockOwner: true });
@@ -149,7 +154,8 @@ export function allocateTableSplit(input: TableSplitInput): TableSplitResult {
       const g = u * it.unitSatang;
       const q = Math.floor(g / N);
       const r = g - q * N;
-      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + (p <= r ? 1 : 0), stockOwner: p === 1 });
+      for (let p = 1; p <= N; p++) lines[p - 1]!.push({ itemId: it.id, qty: null, shareNum: u, shareDen: N, amountSatang: q + ((((p - 1 - rot) % N) + N) % N < r ? 1 : 0), stockOwner: p === 1 });
+      rot = (rot + r) % N; // POS HF-FU ▸ c ◂
     }
   }
   if (lines.some((l) => !l.length)) return no("VALIDATION", "มีบิลที่ยังไม่มีรายการ — ลดจำนวนบิลหรือเลือกรายการให้ครบ");
@@ -220,6 +226,9 @@ export type SplitPlanPartView = {
   vatSatang: number;
   status: "OPEN" | "PAID";
   saleId: string | null;
+  // POS HF-FU ▸ s: ชื่อสมาชิกของใบ (registerMemberBriefs · ไม่มี/มองไม่เห็น = null) · วิธีจ่ายของบิลใบ (ไม่ซ้ำ · ใบ OPEN = null) — จอไม่ต้องเรียกรายละเอียดบิลทีละใบ ◂
+  memberName: string | null;
+  paidMethods: PosPayType[] | null;
   lines: SplitPlanLineView[];
 };
 export type SplitPlanView = {

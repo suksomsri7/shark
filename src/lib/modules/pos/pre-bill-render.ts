@@ -135,12 +135,20 @@ export function renderPreBillHtml(payload: PreBillPayload, opts: PreBillHtmlOpti
     `.c { text-align: center } .b { font-weight: 700 } .t { font-size: 1.15em; font-weight: 700 } .opt { padding-left: 4mm }`,
     `.row { display: flex; justify-content: space-between; gap: 2mm } .row span:last-child { white-space: nowrap }`,
     `.stamp { display: inline-block; border: 2px solid #000; padding: 0 2mm; font-weight: 700; letter-spacing: 1px }`,
+    `.t span { white-space: nowrap } .t .t2 { font-size: .95em }`, // POS HF-FU ▸ p ◂
   ].join("\n");
+  // POS HF-FU ▸ p: หัว th ไม่ตัดกลางคำที่ 80 มม. — สองช่วงไม่ตัดบรรทัด "ใบรายการ —" + "ไม่ใช่ใบเสร็จรับเงิน/<wbr>ใบกำกับภาษี" (ช่วงที่สองเล็กลงเล็กน้อย ·
+  //   <wbr> หลัง "/" ให้ 58 มม. ตัดได้ตรงนั้นเท่านั้น) · <title> + ป้าย + ESC/POS เดิมทุกไบต์ ◂
+  const dash = L.title.indexOf("— ");
+  const titleHtml =
+    locale === "th" && dash > 0
+      ? `<span>${esc(L.title.slice(0, dash + 1))}</span> <span class="t2">${esc(L.title.slice(dash + 2)).replace("/", "/<wbr>")}</span>`
+      : esc(L.title);
   const row = (r: Row) => `<div class="row${r.bold ? " b" : ""}"><span>${esc(r.left)}</span><span>${esc(r.right)}</span></div>`;
   const out: string[] = [];
   out.push(`<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><title>${esc(L.title)}</title><style>${css}</style></head><body><div class="bill">`);
   out.push(
-    `<section data-section="head" class="c">${x.head.map((h, i) => `<div${i === 0 ? ' class="b"' : ""}>${esc(h)}</div>`).join("")}<div class="t">${esc(L.title)}</div>${x.part ? `<div class="b">${esc(x.part)}</div>` : ""}${payload.copy ? `<div class="stamp">${esc(L.copy)}</div>` : ""}</section>`,
+    `<section data-section="head" class="c">${x.head.map((h, i) => `<div${i === 0 ? ' class="b"' : ""}>${esc(h)}</div>`).join("")}<div class="t">${titleHtml}</div>${x.part ? `<div class="b">${esc(x.part)}</div>` : ""}${payload.copy ? `<div class="stamp">${esc(L.copy)}</div>` : ""}</section>`,
   );
   out.push(`<section data-section="meta">${x.meta.map((m) => `<div>${esc(m)}</div>`).join("")}</section>`);
   out.push(`<section data-section="lines">`);

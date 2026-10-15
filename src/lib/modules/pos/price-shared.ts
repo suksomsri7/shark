@@ -48,6 +48,28 @@ export const PRICE_REFUSAL_REASONS = ["PRICE_ROW_DEAD", "BULK_TOO_MANY"] as cons
 export type PriceRefusalReason = (typeof PRICE_REFUSAL_REASONS)[number];
 // ◂
 
+// POS HF-FU ▸ f3 (hunt L3 · มติ 10): ลายนิ้วมือของแถวราคาตามช่องทาง "ทั้งชุดที่เก็บ" ของสินค้า — ไม่ขึ้นกับลำดับแถว · บริสุทธิ์ (ไม่ใช้ crypto) ·
+//   ตัวโหลดจอ 06 ส่ง ProductsRow.rowsHash · ลิ้นชักส่งกลับเป็น expectedRowsHash · setChannelPrices เทียบใต้ล็อกสินค้า (ไม่ตรง = CONFLICT) ◂
+function cyrb53(str: string, seed: number): string {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
+}
+export function channelRowsHash(rows: readonly { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean }[]): string {
+  const canon = [...(rows ?? [])]
+    .map((r) => `${r.channelCode ?? "*"}|${r.unitId ?? "*"}|${r.notSold ? "x" : (r.priceSatang ?? "-")}`)
+    .sort()
+    .join("\n");
+  return `${(rows ?? []).length}-${cyrb53(canon, 1)}${cyrb53(canon, 2)}`;
+}
+
 const BP_FULL = 10_000;
 const BKK_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;

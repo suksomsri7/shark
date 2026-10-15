@@ -33,7 +33,9 @@ import { prisma } from "./db";
 // POS P2.2 ▸ ราคาตามช่องทาง/สาขา (ตัวแก้บริสุทธิ์ + รหัสช่องทาง) ◂
 import { CHANNEL_BUILTIN_CODES, CHANNEL_CODE_RE, isChannelBuiltinCode } from "./channel-shared";
 import { BULK_MARKUP_BP_MAX, BULK_MARKUP_PRODUCTS_MAX, CHANNEL_PRICE_ROWS_MAX, channelMarkupPrice, type ChannelPriceInputRow, type ChannelPriceView } from "./price-shared";
+import { channelRowsHash } from "./price-shared"; // POS HF-FU ▸ f3 ◂
 import type { PriceRefusalReason } from "./price-shared"; // POS P2.11 ▸ รหัสย่อยของคำปฏิเสธราคา ◂
+import type { RecipeRefusalReason } from "./recipe-shared"; // POS HF-FU ▸ l1: รหัสย่อยของคำปฏิเสธสูตร ◂
 // POS P2.3 ▸ สูตร/BOM: ตัวโหลดสูตรที่ใช้จริง (อ่านอย่างเดียว) + จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes, type RowRecipe } from "./recipe";
 import { recipePortions } from "./recipe-shared";
@@ -82,7 +84,7 @@ const notFound = () => new CatalogError("NOT_FOUND", "ไม่พบราย�
 const denied = () => new CatalogError("PERMISSION_DENIED", "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้าน");
 const invalid = (message: string) => new CatalogError("VALIDATION", message);
 // POS P2.11 ▸ l-price: VALIDATION ที่มีช่อง + รหัสย่อยคงที่ ◂
-const invalidAt = (message: string, field: string, reason?: PriceRefusalReason) => new CatalogError("VALIDATION", message, { field, ...(reason ? { reason } : {}) });
+const invalidAt = (message: string, field: string, reason?: PriceRefusalReason | RecipeRefusalReason) => new CatalogError("VALIDATION", message, { field, ...(reason ? { reason } : {}) });
 const conflict = (message: string) => new CatalogError("CONFLICT", message);
 const busy = () => new CatalogError("BUSY", "ระบบกำลังบันทึกแคตตาล็อกของร้านนี้อยู่ — ยังไม่ได้บันทึกรายการนี้ ลองอีกครั้งในอีกสักครู่");
 /** R5 F2: ข้อความเดียวของ INTERNAL ทุกฟังก์ชัน — ไม่มี path / SQL / ข้อความต้นฉบับ */
@@ -2101,16 +2103,17 @@ export async function setRecipe(
       const before = await loadProduct(ctx, actor, productId, tx, true);
       await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
       // POS P2.3 ▸ R1: เมนู (MENU) ตั้งสูตรได้แล้ว · สินค้า/บริการ/สินค้าชั่ง = VALIDATION (PRODUCT ตัด InvItem ของตัวเอง 1:1 · หมุด P1.2 B1 คงเดิม) ◂
-      if (before.kind !== "BUNDLE" && before.kind !== "MENU") throw invalid(RECIPE_KIND_MESSAGE);
-      if (before.soldByWeight) throw invalid(RECIPE_KIND_MESSAGE);
-      if (!Array.isArray(lines) || lines.length > MAX_RECIPE_LINES) throw invalid(`ส่วนประกอบต้องเป็นรายการ ไม่เกิน ${MAX_RECIPE_LINES} รายการ`);
+      // POS HF-FU ▸ l1: ทุกคำปฏิเสธ VALIDATION ของสูตรมีช่อง + รหัสย่อย (RECIPE_REFUSAL_REASONS) ◂
+      if (before.kind !== "BUNDLE" && before.kind !== "MENU") throw invalidAt(RECIPE_KIND_MESSAGE, "productId", "KIND");
+      if (before.soldByWeight) throw invalidAt(RECIPE_KIND_MESSAGE, "productId", "KIND");
+      if (!Array.isArray(lines) || lines.length > MAX_RECIPE_LINES) throw invalidAt(`ส่วนประกอบต้องเป็นรายการ ไม่เกิน ${MAX_RECIPE_LINES} รายการ`, "lines", "SHAPE");
       const want = (lines as unknown[]).map((raw) => {
-        const l = ownFields(raw, new Set(["invItemId", "qty"]), "ส่วนประกอบ", "มีช่องของส่วนประกอบที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร");
-        if (typeof l.invItemId !== "string" || !l.invItemId) throw invalid("ส่วนประกอบต้องระบุสินค้าคลัง");
-        if (typeof l.qty !== "number" || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 1_000_000) throw invalid("จำนวนของส่วนประกอบต้องเป็นจำนวนเต็มตั้งแต่ 1");
+        const l = recipeShape(() => ownFields(raw, new Set(["invItemId", "qty"]), "ส่วนประกอบ", "มีช่องของส่วนประกอบที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร"), "lines");
+        if (typeof l.invItemId !== "string" || !l.invItemId) throw invalidAt("ส่วนประกอบต้องระบุสินค้าคลัง", "lines", "SHAPE");
+        if (typeof l.qty !== "number" || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 1_000_000) throw invalidAt("จำนวนของส่วนประกอบต้องเป็นจำนวนเต็มตั้งแต่ 1", "lines", "SHAPE");
         return { invItemId: l.invItemId, qty: l.qty };
       });
-      if (new Set(want.map((w) => w.invItemId)).size !== want.length) throw invalid("ส่วนประกอบซ้ำกัน — รวมจำนวนไว้ในรายการเดียว");
+      if (new Set(want.map((w) => w.invItemId)).size !== want.length) throw invalidAt("ส่วนประกอบซ้ำกัน — รวมจำนวนไว้ในรายการเดียว", "lines", "DUPLICATE");
       for (const w of want) await assertRecipeItem(ctx, w.invItemId, tx);
       const have = await tx.recipeLine.findMany({ where: { tenantId: ctx.tenantId, productId: before.id }, select: { invItemId: true, qty: true } });
       const key = (xs: { invItemId: string; qty: number }[]) => xs.map((x) => `${x.invItemId}:${x.qty}`).sort().join(",");
@@ -2145,12 +2148,21 @@ const RECIPE_NO_LINES_MESSAGE = "เมนูนี้ยังไม่มี�
 /** เพดานส่วนต่างต่อสินค้า (กันคำขอใหญ่ผิดปกติ) · |ส่วนต่าง| ≤ 1,000,000 (เท่าเพดานจำนวนของสูตร) */
 const MAX_RECIPE_CHOICE_LINES = 100;
 const MAX_RECIPE_QTY = 1_000_000;
+/** POS HF-FU ▸ l1: VALIDATION ของรูปร่าง (ownFields) ⇒ รหัสย่อย SHAPE ◂ */
+function recipeShape<T>(f: () => T, field: string): T {
+  try {
+    return f();
+  } catch (e) {
+    if (e instanceof CatalogError && e.code === "VALIDATION" && !e.reason) throw invalidAt(e.message, field, "SHAPE");
+    throw e;
+  }
+}
 
 /** วัตถุดิบของสูตร: InvItem ในคลังที่ขายผ่าน POS นี้ (ไม่ใช่ = NOT_FOUND) · ยังใช้งาน · ไม่ใช่บริการ (= VALIDATION) */
 async function assertRecipeItem(ctx: CatalogCtx, invItemId: string, db: CatalogClient): Promise<void> {
   const inv = await loadSellableItem(ctx, invItemId, db);
-  if (inv.archivedAt) throw invalid("สินค้าคลังในสูตร/ส่วนประกอบถูกเก็บถาวรแล้ว");
-  if (inv.kind === "SERVICE") throw invalid("บริการใส่ในสูตร/ส่วนประกอบไม่ได้ (ไม่มีสต็อก)");
+  if (inv.archivedAt) throw invalidAt("สินค้าคลังในสูตร/ส่วนประกอบถูกเก็บถาวรแล้ว", "invItemId", "ITEM_ARCHIVED"); // POS HF-FU ▸ l1 ◂
+  if (inv.kind === "SERVICE") throw invalidAt("บริการใส่ในสูตร/ส่วนประกอบไม่ได้ (ไม่มีสต็อก)", "invItemId", "ITEM_SERVICE"); // POS HF-FU ▸ l1 ◂
 }
 
 /**
@@ -2175,19 +2187,20 @@ export async function setRecipeChoiceLines(
       const actor = await actorOf(ctx, tx);
       const before = await loadProduct(ctx, actor, productId, tx, true);
       await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
-      if (before.kind !== "BUNDLE" && before.kind !== "MENU") throw invalid(RECIPE_KIND_MESSAGE);
-      if (before.soldByWeight) throw invalid(RECIPE_KIND_MESSAGE);
-      if (!Array.isArray(rows) || rows.length > MAX_RECIPE_CHOICE_LINES) throw invalid(`ส่วนต่างของสูตรต้องเป็นรายการ ไม่เกิน ${MAX_RECIPE_CHOICE_LINES} รายการ`);
+      // POS HF-FU ▸ l1: ช่อง + รหัสย่อยของสูตร ◂
+      if (before.kind !== "BUNDLE" && before.kind !== "MENU") throw invalidAt(RECIPE_KIND_MESSAGE, "productId", "KIND");
+      if (before.soldByWeight) throw invalidAt(RECIPE_KIND_MESSAGE, "productId", "KIND");
+      if (!Array.isArray(rows) || rows.length > MAX_RECIPE_CHOICE_LINES) throw invalidAt(`ส่วนต่างของสูตรต้องเป็นรายการ ไม่เกิน ${MAX_RECIPE_CHOICE_LINES} รายการ`, "rows", "SHAPE");
       const want = (rows as unknown[]).map((raw) => {
-        const r = ownFields(raw, new Set(["choiceId", "invItemId", "qtyDelta"]), "ส่วนต่างของสูตร", "มีช่องของส่วนต่างสูตรที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร");
-        if (typeof r.choiceId !== "string" || !r.choiceId) throw invalid("ส่วนต่างของสูตรต้องระบุตัวเลือก");
-        if (typeof r.invItemId !== "string" || !r.invItemId) throw invalid("ส่วนต่างของสูตรต้องระบุสินค้าคลัง");
+        const r = recipeShape(() => ownFields(raw, new Set(["choiceId", "invItemId", "qtyDelta"]), "ส่วนต่างของสูตร", "มีช่องของส่วนต่างสูตรที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร"), "rows");
+        if (typeof r.choiceId !== "string" || !r.choiceId) throw invalidAt("ส่วนต่างของสูตรต้องระบุตัวเลือก", "rows", "SHAPE");
+        if (typeof r.invItemId !== "string" || !r.invItemId) throw invalidAt("ส่วนต่างของสูตรต้องระบุสินค้าคลัง", "rows", "SHAPE");
         if (typeof r.qtyDelta !== "number" || !Number.isInteger(r.qtyDelta) || r.qtyDelta === 0 || Math.abs(r.qtyDelta) > MAX_RECIPE_QTY) {
-          throw invalid(`ส่วนต่างของสูตรต้องเป็นจำนวนเต็มที่ไม่ใช่ 0 (บวกหรือลบ ไม่เกิน ${MAX_RECIPE_QTY.toLocaleString("en-US")})`);
+          throw invalidAt(`ส่วนต่างของสูตรต้องเป็นจำนวนเต็มที่ไม่ใช่ 0 (บวกหรือลบ ไม่เกิน ${MAX_RECIPE_QTY.toLocaleString("en-US")})`, "rows", "SHAPE");
         }
         return { choiceId: r.choiceId, invItemId: r.invItemId, qtyDelta: r.qtyDelta };
       });
-      if (new Set(want.map((w) => `${w.choiceId}\u0000${w.invItemId}`)).size !== want.length) throw invalid("ส่วนต่างของตัวเลือกเดียวกันกับสินค้าเดียวกันซ้ำกัน — รวมจำนวนไว้ในรายการเดียว");
+      if (new Set(want.map((w) => `${w.choiceId}\u0000${w.invItemId}`)).size !== want.length) throw invalidAt("ส่วนต่างของตัวเลือกเดียวกันกับสินค้าเดียวกันซ้ำกัน — รวมจำนวนไว้ในรายการเดียว", "rows", "DUPLICATE");
       // ตัวเลือกต้องอยู่ในกลุ่มที่ผูกกับแถวนี้ (กลุ่ม/ตัวเลือกไม่เก็บถาวร · ร้านนี้)
       const choiceIds = [...new Set(want.map((w) => w.choiceId))];
       if (choiceIds.length) {
@@ -2259,11 +2272,12 @@ export async function setBomEnabled(ctx: CatalogCtx, productId: string, on: bool
       const actor = await actorOf(ctx, tx);
       const before = await loadProduct(ctx, actor, productId, tx, true);
       await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
-      if (before.kind !== "MENU") throw invalid("สวิตช์ตัดสต็อกตามสูตรใช้ได้เฉพาะเมนู — ชุดสินค้าตัดตามส่วนประกอบเสมอ");
-      if (typeof on !== "boolean") throw invalid("ค่าตัดสต็อกตามสูตรต้องเป็น เปิด/ปิด");
+      // POS HF-FU ▸ l1: ช่อง + รหัสย่อยของสูตร ◂
+      if (before.kind !== "MENU") throw invalidAt("สวิตช์ตัดสต็อกตามสูตรใช้ได้เฉพาะเมนู — ชุดสินค้าตัดตามส่วนประกอบเสมอ", "productId", "KIND");
+      if (typeof on !== "boolean") throw invalidAt("ค่าตัดสต็อกตามสูตรต้องเป็น เปิด/ปิด", "on", "SHAPE");
       if (on && !before.bomEnabled) {
         const n = await tx.recipeLine.count({ where: { tenantId: ctx.tenantId, productId: before.id } });
-        if (n === 0) throw invalid(RECIPE_NO_LINES_MESSAGE);
+        if (n === 0) throw invalidAt(RECIPE_NO_LINES_MESSAGE, "on", "NO_LINES");
       }
       if (on !== before.bomEnabled) {
         await tx.posProduct.update({ where: { id: before.id }, data: { bomEnabled: on } });
@@ -2308,7 +2322,7 @@ export async function createCategory(
 
 // ═══════════════════ POS P2.2 ▸ ราคาตามช่องทาง / สาขา (R1 R2 · CD6 CD7 · มติ 1 5 6 11) — ผู้เขียนเดียวของ PosProductChannelPrice ◂ ═══════════════════
 
-const CP_TOP_KEYS: ReadonlySet<string> = new Set(["productId", "rows", "purgeDead"]); // POS P2.11 ▸ fix1 มติ 2 + purgeDead ◂
+const CP_TOP_KEYS: ReadonlySet<string> = new Set(["productId", "rows", "purgeDead", "expectedRowsHash"]); // POS P2.11 ▸ fix1 มติ 2 + purgeDead ◂ · POS HF-FU ▸ f3 + expectedRowsHash ◂
 const CP_ROW_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "priceSatang", "notSold"]);
 const BULK_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "markupBp", "roundTo", "productIds", "categoryId"]);
 type CpRow = { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean };
@@ -2398,7 +2412,7 @@ const scopeInv = (product: { unitId: string | null; invItemId: string | null }, 
  */
 export async function setChannelPrices(
   ctx: CatalogCtx,
-  input: { productId: string; rows: ChannelPriceInputRow[]; purgeDead?: boolean },
+  input: { productId: string; rows: ChannelPriceInputRow[]; purgeDead?: boolean; expectedRowsHash?: string },
   client: CatalogClient = prisma,
 ): Promise<{ productId: string; rows: CpRow[]; changed: boolean }> {
   return boundary(async () => {
@@ -2407,6 +2421,9 @@ export async function setChannelPrices(
     // POS P2.11 ▸ fix1 มติ 2 (hunt L1): purgeDead = ล้างแถวตายของสินค้านี้ (ขอบเขตทั้งสินค้าเท่านั้น) · ไม่ส่ง/false = พฤติกรรมเดิม ◂
     if (top.purgeDead !== undefined && top.purgeDead !== null && typeof top.purgeDead !== "boolean") throw invalidAt("ค่า \"ล้างแถวที่เลิกใช้\" ไม่ถูกต้อง", "purgeDead");
     const purgeDead = top.purgeDead === true;
+    // POS HF-FU ▸ f3 (มติ 10): เงื่อนไขก่อนเขียน — ลายนิ้วมือของชุดที่เก็บตอนโหลด · ไม่ส่ง = พฤติกรรมเดิม ◂
+    if (top.expectedRowsHash !== undefined && top.expectedRowsHash !== null && (typeof top.expectedRowsHash !== "string" || !top.expectedRowsHash || top.expectedRowsHash.length > 100)) throw invalidAt("ลายนิ้วมือของแถวราคาไม่ถูกต้อง", "expectedRowsHash");
+    const expectedRowsHash = typeof top.expectedRowsHash === "string" ? top.expectedRowsHash : null;
     if (!Array.isArray(top.rows)) throw invalidAt("แถวราคาต้องเป็นรายการ", "rows");
     if (top.rows.length > CHANNEL_PRICE_ROWS_MAX) throw invalidAt(`ตั้งราคาตามช่องทางได้ไม่เกิน ${CHANNEL_PRICE_ROWS_MAX} แถวต่อสินค้า`, "rows");
     const want = top.rows.map(cleanCpRow);
@@ -2426,6 +2443,8 @@ export async function setChannelPrices(
         where: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: product.id },
         select: { id: true, channelCode: true, unitId: true, priceSatang: true, notSold: true },
       });
+      // POS HF-FU ▸ f3: ชุดที่เก็บเปลี่ยนจากที่จอโหลด (อีกจอบันทึกก่อน) ⇒ CONFLICT ไม่เขียนอะไร (ใต้ล็อกสินค้า) ◂
+      if (expectedRowsHash !== null && channelRowsHash(beforeRows) !== expectedRowsHash) throw conflict("ราคาของสินค้านี้ถูกแก้จากที่อื่น — โหลดใหม่");
       const beforeBy = new Map(beforeRows.map((r) => [cpKey(r), r]));
       const wantBy = new Map(want.map((r) => [cpKey(r), r]));
       // POS P2.11 ▸ แถวที่ตาย (ช่องทาง/สาขาใช้ไม่ได้แล้ว) — ดูทั้งแถวเดิมและแถวที่ส่งมา ◂

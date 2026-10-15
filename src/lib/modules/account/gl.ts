@@ -277,6 +277,13 @@ async function commitEntry(ctx: GlCtx, o: CommitOpts, book: Book, db: Db): Promi
   return entry;
 }
 
+// POS HF-FU ▸ z fix2 (hunter H2): คีย์ JV เป็น unique ทั้งร้าน (@@unique([tenantId, idempotencyKey])) — คีย์ PosSale#… ที่อยู่ในสมุดอื่นของร้านแล้ว (POS ถูกย้ายไปผูกสมุดใหม่)
+//   = ข้าม {skipped, reason:"other-book"} แทนการชน P2002 ทุกรอบลองใหม่ (คิวคืนเงินจบ FAILED) · ไม่ย้าย/ไม่ลงซ้ำข้ามสมุด ◂
+async function postedInOtherBook(ctx: GlCtx, idempotencyKey: string, db: Db): Promise<boolean> {
+  const e = await db.accountJournalEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey, NOT: { systemId: ctx.systemId } }, select: { id: true } });
+  return !!e;
+}
+
 async function alreadyPosted(ctx: GlCtx, idempotencyKey: string, db: Db): Promise<boolean> {
   const e = await db.accountJournalEntry.findFirst({
     where: { systemId: ctx.systemId, idempotencyKey },
@@ -1743,10 +1750,11 @@ export async function postExternalSale(
     crExtra?: { accountId: string; amountSatang: number; note?: string }[];
   },
   tx?: Tx,
-): Promise<{ entryId: string } | { skipped: true }> {
+): Promise<{ entryId: string } | { skipped: true; reason?: "other-book" }> {
   return withTx(tx, async (db) => {
     const event = "PAID";
     if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    if (await postedInOtherBook(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true, reason: "other-book" as const }; // POS HF-FU ▸ z fix2 (H2) ◂
 
     const b = new Book(ctx, db);
     for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang, undefined, l.contactId ?? undefined);
@@ -1792,8 +1800,10 @@ export async function externalSalePosted(ctx: GlCtx, refId: string): Promise<boo
 //   เขียนไม่สำเร็จ = โยน (ไม่กลืนแบบ writeAudit) ⇒ คิว pos.sale.paid ลองใหม่ — ประตูค่าคอมฯ ใช้แถวนี้แทน JV PAID ได้ จึงต้องมีจริงเสมอเมื่อคิวจบ
 const ZERO_ENTRY_ACTION = "account.external.zeroEntry";
 /** บิล POS นี้ถูกบันทึกเป็น zero entry แล้วหรือยัง (อ่านอย่างเดียว) */
+// POS HF-FU ▸ z3 (มติ 9 strict): เครื่องหมายผูกสมุด (after.bookSystemId = สมุดที่เขียน) · อ่านเฉพาะของสมุดนี้ — ย้าย POS ไปผูกสมุดอื่นแล้วประตูค่าคอมฯ ของสมุดใหม่ไม่เปิดจาก
+//   เครื่องหมายของสมุดเดิม · เครื่องหมายเก่าที่ไม่มีช่องนี้ (QC ก่อน HF-FU เท่านั้น) ไม่นับ ◂
 export async function externalSaleZeroEntryRecorded(ctx: GlCtx, refId: string, db: Db = prisma): Promise<boolean> {
-  const row = await db.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId }, select: { id: true } });
+  const row = await db.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: { path: ["bookSystemId"], equals: ctx.systemId } }, select: { id: true } });
   return !!row;
 }
 /** บันทึก zero entry ของบิล POS ครั้งเดียวต่อบิล — มีแล้ว = ไม่เขียนซ้ำ (คิวลองใหม่/ตัวรับคืนเงินเรียกซ้ำได้) · ล้ม = โยน */
@@ -1801,7 +1811,7 @@ export async function recordExternalSaleZeroEntry(ctx: GlCtx, refId: string, aft
   await prisma.$transaction(async (db) => {
     await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`acc-zero-entry:${ctx.tenantId}:${refId}`}))`;
     if (await externalSaleZeroEntryRecorded(ctx, refId, db)) return;
-    await db.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "SYSTEM", action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: after as Prisma.InputJsonValue } });
+    await db.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "SYSTEM", action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: { ...after, bookSystemId: ctx.systemId } as Prisma.InputJsonValue } }); // POS HF-FU ▸ z3 ◂
   });
 }
 // ◂ POS P2.9b fix4
@@ -1864,10 +1874,11 @@ export async function postExternalDepositReceipt(
   ctx: GlCtx,
   o: { refId: string; date: Date; baseSatang: number; vatSatang: number; drLines: { key: "CASH" | "BANK"; amountSatang: number }[] },
   tx?: Tx,
-): Promise<{ entryId: string } | { skipped: true }> {
+): Promise<{ entryId: string } | { skipped: true; reason?: "other-book" }> {
   return withTx(tx, async (db) => {
     const event = "PAID";
     if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    if (await postedInOtherBook(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true, reason: "other-book" as const }; // POS HF-FU ▸ z fix2 (H2) ◂
     const b = new Book(ctx, db);
     for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
     if (o.baseSatang > 0) b.cr(await b.id("DEPOSIT_RECEIVED"), o.baseSatang);
@@ -1919,10 +1930,11 @@ export async function postExternalChannelCommission(
     reverse?: boolean;
   },
   tx?: Tx,
-): Promise<{ entryId: string } | { skipped: true }> {
+): Promise<{ entryId: string } | { skipped: true; reason?: "other-book" }> {
   return withTx(tx, async (db) => {
     const event = o.reverse ? "COMMISSION_REFUNDED" : "COMMISSION";
     if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    if (await postedInOtherBook(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true, reason: "other-book" as const }; // POS HF-FU ▸ z fix2 (H2) ◂
     const c = Math.max(0, Math.round(o.commissionSatang));
     const v = Math.max(0, Math.round(o.commissionVatSatang));
     const expense = o.foldVat ? c + v : c;

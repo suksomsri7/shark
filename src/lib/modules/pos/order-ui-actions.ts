@@ -11,7 +11,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { listChannels } from "./channel";
-import { prisma } from "./db";
+import { orderChannelSettings } from "./order"; // POS HF-FU ▸ F3: ตัวอ่านของโมดูลแทน prisma ตรง ◂
 import type { ChannelItem } from "./channel-shared";
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
@@ -42,16 +42,15 @@ export async function ordersChannelsAction(args: Target): Promise<{ ok: true; it
     // ด่านอ่าน + สร้างช่องทางพื้นฐานครั้งแรก = ของ P2.1 (listChannels ตรวจระบบ/สาขา/สิทธิ์ซ้ำกับ DB)
     const l = await listChannels(ctx, actor);
     if (!l.ok) return { ok: false, code: l.code, message: l.message };
-    const ids = l.items.map((c) => c.id);
-    const rows = ids.length
-      ? await prisma.salesChannel.findMany({ where: { tenantId: ctx.tenantId, unitId, id: { in: ids } }, select: { id: true, autoAccept: true, prepMinutes: true, pausedUntil: true } })
-      : [];
-    const byId = new Map(rows.map((r) => [r.id, r]));
+    // POS HF-FU ▸ F3: ค่าตั้ง 3 คอลัมน์จากตัวอ่านของ pos/order.ts (ด่านอ่านเดียวกัน) ◂
+    const st = l.items.length ? await orderChannelSettings(ctx, actor) : { ok: true as const, items: [] };
+    if (!st.ok) return { ok: false, code: st.code, message: st.message };
+    const byId = new Map(st.items.map((r) => [r.id, r]));
     return {
       ok: true,
       items: l.items.map((c) => {
         const r = byId.get(c.id);
-        return { ...c, autoAccept: r?.autoAccept ?? false, prepMinutes: r?.prepMinutes ?? null, pausedUntil: r?.pausedUntil ? r.pausedUntil.toISOString() : null };
+        return { ...c, autoAccept: r?.autoAccept ?? false, prepMinutes: r?.prepMinutes ?? null, pausedUntil: r?.pausedUntil ?? null };
       }),
     };
   } catch (e) {

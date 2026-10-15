@@ -107,7 +107,8 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 3 · มติรอบแก้ 2 · R3 F2 / hunter F1) ◂
   D("P12", "X2", "[fix3 มติ 2 · มติ 19 แก้] ค้นด้วยเลข 4 หลัก (= 4 หลักท้ายของเบอร์) → ไม่พบมัดจำจากเบอร์ · ตัวนับผิด/ล็อกไม่ขยับ · หน้าขายส่ง 4 หลักถูก → ผ่านครั้งแรก"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 4 · มติรอบแก้ 1 2 · R4 F2 / hunter N1 N2) ◂
-  D("A10", "X4", "[fix4 มติ 1 · R4 F2 / hunter N1] ฉาก A9 บนช่องทาง DIRECT ค่าคอมฯ 10% (สมุดเลิกจด VAT · บิลสุดท้าย ฿20 ไม่มี JV ขาย) → COMMISSION ของบิล ฿20 ลงครั้งเดียว Dr 6500 200 / Cr 2100 200 · pos.sale.paid DONE · เล่นซ้ำไม่เพิ่ม · คืนบิลนั้นครบ → COMMISSION_REFUNDED ครั้งเดียว Dr 2100 200 / Cr 6500 200 (ไม่เงียบ no-commission) · 6500/2100 ของบิลสุทธิ 0"),
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU z1 z2 · มติ 8): + posSalePosted(บิล ฿20) true · เครื่องหมาย zero entry แถวเดียวหลังเล่นซ้ำ ◂
+  D("A10", "X4", "[fix4 มติ 1 · R4 F2 / hunter N1 · HF-FU มติ 8] ฉาก A9 บนช่องทาง DIRECT ค่าคอมฯ 10% (สมุดเลิกจด VAT · บิลสุดท้าย ฿20 ไม่มี JV ขาย) → COMMISSION ของบิล ฿20 ลงครั้งเดียว Dr 6500 200 / Cr 2100 200 · posSalePosted(บิล ฿20) = true (เครื่องหมาย + เอกสาร) · pos.sale.paid DONE · เล่นซ้ำไม่เพิ่ม · เครื่องหมาย account.external.zeroEntry 1 แถว · คืนบิลนั้นครบ → COMMISSION_REFUNDED ครั้งเดียว Dr 2100 200 / Cr 6500 200 (ไม่เงียบ no-commission) · 6500/2100 ของบิลสุทธิ 0"),
   D("X10", "X4", "[fix4 มติ 2 · hunter N2] คืนบิล ฿20 (zero entry) หลังเลิกจด VAT → ใบคืน VAT 2000 · JV ใบคืน Dr 2200 2000 / Cr 1010 2000 (รายได้ไม่ถูกแตะ) · รวมใบรับ+บิล+ใบคืน: รายได้ 100000 · 2200 เหลือ 5000 · 2110 สุทธิ 0 (= ทางคืนเงินมัดจำที่เหลือ) · ใบลดหนี้ VAT ฿20"),
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[§7 มติ 2] scripts/pos-sale-contract.json sha256 = 72afb258… (CD2-A ไม่เปลี่ยนสัญญา)"),
@@ -2099,9 +2100,17 @@ async function runDb() {
         const com = () => jvKey(`PosSale#${z.b2}#COMMISSION`);
         const c2 = await com();
         if (c2.length !== 1 || !sameNet(netByCode(c2), { "6500": 200, "2100": -200 })) pa.push(`COMMISSION บิล ฿20 ${c2.length} รายการ ${short(netByCode(c2))} (คาด 1 · Dr 6500 200 / Cr 2100 200)`);
+        // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU z1 · มติ 8): posSalePosted = JV PAID หรือ (เครื่องหมาย zero entry และมีเอกสารขาย) ⇒ บิล ฿20 = true ◂
+        const accIdx = await tryImport("@/lib/modules/account");
+        const b2Sys = String((await P.posSale.findUnique({ where: { id: z.b2 }, select: { systemId: true } }).catch(() => null))?.systemId ?? "");
+        const posted2 = typeof accIdx?.posSalePosted === "function" ? await accIdx.posSalePosted({ tenantId: T, sourceSystemId: b2Sys, refId: z.b2 }).catch((e: unknown) => `throw ${(e as Error).message.slice(0, 60)}`) : "ไม่มี posSalePosted";
+        if (posted2 !== true) pa.push(`posSalePosted(บิล ฿20 zero entry + เอกสาร) = ${short(posted2)} (คาด true · HF-FU มติ 8)`);
         pa.push(...(await replay("pos.sale.paid", (x) => x.saleId === z.b2)));
         await drain();
         if ((await com()).length !== 1) pa.push(`เล่น pos.sale.paid ซ้ำ → COMMISSION ${(await com()).length} (คาด 1)`);
+        // ORACLE-EDIT ผู้คุม 15 ต.ค. (HF-FU z2 · มติ 8 · R5 F3 / hunter H3): เครื่องหมาย zero entry ของบิล ฿20 แถวเดียวหลังเล่นซ้ำ ◂
+        const marks2 = Number(await P.auditLog.count({ where: { tenantId: T, action: "account.external.zeroEntry", targetType: "PosSale", targetId: z.b2 } }).catch(() => -1));
+        if (marks2 !== 1) pa.push(`เครื่องหมาย account.external.zeroEntry ของบิล ฿20 = ${marks2} แถว (คาด 1)`);
         const rd = await z.refundB2();
         if (rd) {
           const rvKey = `PosSale#${rd.id}#COMMISSION_REFUNDED`;

@@ -12,7 +12,7 @@ import { prisma } from "./db"; // จุดเดียวของ prisma ด�
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { evaluate } from "@/lib/core/rbac";
 import { registerPriceTableRound, registerRefuse, registerScopeFor, registerTableChannelId } from "./register";
-import { claimTableDraftInTx, discardTableDraftsInTx, tableDraftLineCounts, tableDraftOf } from "./held-cart";
+import { claimTableDraftInTx, discardTableDraftsInTx, sweepOrphanTableDrafts, tableDraftLineCounts, tableDraftOf } from "./held-cart"; // POS HF-FU ▸ b: + รอบร่างกำพร้า ◂
 import { registerMemberBriefs, registerMemberGate } from "./register-member";
 import { posPaymentSettings } from "./payment-settings"; // ค่าบริการของหน้าขาย (มติ Q3: แหล่งเดียวของบิลโต๊ะ) ◂
 import {
@@ -105,6 +105,13 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
       maxHoldMinutes: RESERVATION_HOLD_MAX_MINUTES,
       ...bkkDay(now),
     });
+    // POS HF-FU ▸ b (มติ 2): ทิ้งรอบร่างของ session ที่ไม่ OPEN แล้ว (หน้าเดิมปิด/รวมโต๊ะ) — ร่างกำพร้าไม่อยู่บนผังอยู่แล้ว (การ์ดนับเฉพาะ session OPEN) ·
+    //   session OPEN ของผังส่งเป็นคำใบ้ (ไม่อ่านซ้ำ) · ล้ม = WARN ผังยังอ่านได้ ◂
+    try {
+      await sweepOrphanTableDrafts(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, limit: 50, openSessionIds: fl.sessions.map((x) => x.id) });
+    } catch (e) {
+      console.warn("[pos/table] sweepOrphanTableDrafts ล้ม (ผังยังอ่านได้)", e);
+    }
     // session OPEN ต่อโต๊ะ (เก่าสุดก่อน — ล็อกเปิดโต๊ะกันซ้ำแล้ว · ข้อมูลเก่าที่ซ้ำแสดงตัวแรก)
     const sessOf = new Map<string, (typeof fl.sessions)[number]>();
     for (const x of fl.sessions) if (!sessOf.has(x.tableId)) sessOf.set(x.tableId, x);

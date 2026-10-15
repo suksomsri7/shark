@@ -98,13 +98,14 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
       const codes = withStore(channelsIn(data.channels, u.id).map((c) => c.code));
       // POS P2.11U ▸ fix1 มติ 1: สาขาที่ไม่มีสินค้านี้ในคลัง (ไม่อยู่ในรายการของสาขา) = ไม่มีช่องแก้ · บรรทัดจางแทน · แถวของสาขานี้อยู่ใน payload ไม่เปลี่ยน ◂
       if (p.available[u.id] === undefined) {
-        out.push({ unit: u.id, codes, editable: false, unstocked: true });
+        // POS HF-FU ▸ f2: รายการของสาขาโหลดไม่ครบ (เกินเพดาน/ขัดข้อง) = ไม่รู้ว่าไม่มีในคลังจริงไหม ⇒ บรรทัดกลาง "ยังโหลดไม่ครบ" แทน ◂
+        out.push({ unit: u.id, codes, editable: false, unstocked: true, incomplete: data.incompleteUnitIds.includes(u.id) });
         continue;
       }
       out.push({ unit: u.id, codes, editable: canEdit && !weighed });
     }
     return out;
-  }, [data.channels, data.units, p.unitId, canEdit, weighed, branchMode]);
+  }, [data.channels, data.units, data.incompleteUnitIds, p.unitId, canEdit, weighed, branchMode]);
   const editable = groups.some((g) => g.editable);
   const deadRows = p.deadRows ?? 0;
   useEffect(() => {
@@ -138,7 +139,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
   /** POS P2.11U ▸ มติ 2: คำปฏิเสธ — reason ก่อน แล้วรหัส · PERMISSION_DENIED = toast ลิ้นชักไม่ปิด · field = กรอบแดงรอบกลุ่ม (แถวทั้งชุด) ◂ */
   const refused = (r: { code: string; message?: string; field?: string; reason?: string }) => {
     // VALIDATION ของแถวทั้งชุด (field "rows") ไม่ชี้ช่องเดียว ⇒ ข้อความของบริการ (P2.2U fix รอบ 1 F4) + กรอบแดงรอบกลุ่ม
-    const text = priceReasonText(r, tp) ?? priceRefusalText(r, false, tp, treg);
+    const text = r.code === "CONFLICT" ? t("branch.conflict") : (priceReasonText(r, tp) ?? priceRefusalText(r, false, tp, treg)); // POS HF-FU ▸ f3: อีกจอบันทึกก่อน ◂
     if (r.code === "PERMISSION_DENIED" && onToast) onToast(text);
     else setSaveErr(text);
     if (r.field) setGroupsErr(true);
@@ -164,7 +165,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
     setBusy(true);
     setSaveErr(null);
     try {
-      const r = await setChannelPricesAction({ systemId, productId: p.id, rows });
+      const r = await setChannelPricesAction({ systemId, productId: p.id, rows, expectedRowsHash: p.rowsHash }); // POS HF-FU ▸ f3 ◂
       if (r.ok) {
         onSaved(p.id, r.rows);
         setEditing(false);
@@ -182,7 +183,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
     setBusy(true);
     setSaveErr(null);
     try {
-      const r = await setChannelPricesAction({ systemId, productId: p.id, rows: p.rows, purgeDead: true });
+      const r = await setChannelPricesAction({ systemId, productId: p.id, rows: p.rows, purgeDead: true, expectedRowsHash: p.rowsHash }); // POS HF-FU ▸ f3 ◂
       if (r.ok) {
         setPurgeAsk(false);
         onSaved(p.id, r.rows, true);
@@ -295,8 +296,8 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
                   // POS P2.11U ▸ fix1 มติ 1: บรรทัดจาง "ไม่มีสินค้านี้ในคลังของสาขา <สาขา>" แทนกลุ่ม ◂
                   if (g.unstocked && g.unit !== null)
                     return (
-                      <p key={groupKey(g.unit)} data-testid={`pos-prod-drawer-unstocked-${g.unit}`} className="text-[12px] text-[color:var(--color-muted)]">
-                        {t("branch.unstocked", { unit: unitName(g.unit) })}
+                      <p key={groupKey(g.unit)} data-testid={`pos-prod-drawer-${g.incomplete ? "incomplete" : "unstocked"}-${g.unit}`} className="text-[12px] text-[color:var(--color-muted)]">
+                        {g.incomplete ? t("branch.incomplete", { unit: unitName(g.unit) }) : t("branch.unstocked", { unit: unitName(g.unit) })}
                       </p>
                     );
                   const gk = groupKey(g.unit);

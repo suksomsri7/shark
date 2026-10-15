@@ -51,11 +51,12 @@ export async function setChannelPricesAction(args: {
   productId: string;
   rows: ChannelPriceInputRow[];
   purgeDead?: boolean; // POS P2.11 ▸ fix1 มติ 2: ล้างแถวของช่องทาง/สาขาที่เลิกใช้ (ขอบเขตทั้งสินค้าเท่านั้น) ◂
+  expectedRowsHash?: string; // POS HF-FU ▸ f3: ลายนิ้วมือของชุดที่โหลด (ไม่ตรง = CONFLICT) ◂
 }): Promise<{ ok: true; productId: string; rows: Omit<ChannelPriceView, "channelId">[]; changed: boolean } | PriceActionRefusal> {
   try {
     const ctx = await sessionCtx(args);
     if ("ok" in ctx) return ctx;
-    const r = await setChannelPrices(ctx, { productId: args?.productId, rows: args?.rows, ...(args?.purgeDead !== undefined ? { purgeDead: args.purgeDead } : {}) });
+    const r = await setChannelPrices(ctx, { productId: args?.productId, rows: args?.rows, ...(args?.purgeDead !== undefined ? { purgeDead: args.purgeDead } : {}), ...(args?.expectedRowsHash !== undefined ? { expectedRowsHash: args.expectedRowsHash } : {}) }); // POS HF-FU ▸ f3 ◂
     return { ok: true, productId: r.productId, rows: r.rows.map((x) => ({ channelCode: x.channelCode, unitId: x.unitId, priceSatang: x.priceSatang, notSold: x.notSold })), changed: r.changed };
   } catch (e) {
     unstable_rethrow(e);

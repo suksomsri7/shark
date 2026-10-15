@@ -14,7 +14,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { splitIncludedVat } from "@/lib/money/vat";
 import { registerDiscountCaps, registerRefuse, registerScopeFor, registerSellerLimits, registerVatConfig } from "./register";
-import { registerMemberGate } from "./register-member";
+import { registerMemberBriefs, registerMemberGate } from "./register-member"; // POS HF-FU ▸ s: + ชื่อสมาชิกของใบ ◂
 import { posPaymentSettings } from "./payment-settings";
 import { verifyManagerPin } from "./staff-pin";
 import {
@@ -80,7 +80,7 @@ type LineRow = Prisma.PosTableSplitLineGetPayload<object>;
 const discountOf = (v: unknown): TableSplitDiscount | null =>
   isRecord(v) && (v.type === "PERCENT" || v.type === "AMOUNT") && isInt(v.value) ? { type: v.type, value: v.value } : null;
 
-async function planView(client: Db | Tx, s: { tenantId: string; systemId: string; unitId: string }, plan: PlanRow): Promise<SplitPlanView> {
+async function planView(client: Db | Tx, s: { tenantId: string; systemId: string; unitId: string; actor: RegisterActor }, plan: PlanRow): Promise<SplitPlanView> {
   const [parts, lines, vat] = await Promise.all([
     client.posTableSplitPart.findMany({ where: { tenantId: s.tenantId, splitId: plan.id }, orderBy: { no: "asc" } }),
     client.posTableSplitLine.findMany({ where: { tenantId: s.tenantId, splitId: plan.id }, orderBy: [{ id: "asc" }] }),
@@ -88,6 +88,13 @@ async function planView(client: Db | Tx, s: { tenantId: string; systemId: string
   ]);
   const rate = vat.ok && vat.mode === "INCLUDED" ? vat.rateBp : 0;
   const names = await (await restaurant()).tableItemNamesForPos(client, { tenantId: s.tenantId, unitId: s.unitId, itemIds: [...new Set(lines.map((l) => l.itemId))] });
+  // POS HF-FU ▸ s: ชื่อสมาชิก (ตัวอ่านของหน้าขาย · ร้าน/สาขานี้ · สิทธิ์ของผู้เรียก) + วิธีจ่ายของบิลใบที่จ่ายแล้ว (query เดียว · บิล PAID ของร้านนี้) ◂
+  const paidSaleIds = parts.filter((p) => p.status === "PAID" && p.saleId).map((p) => p.saleId!);
+  const [briefs, pays] = await Promise.all([
+    registerMemberBriefs(s, parts.map((p) => p.memberId).filter((x): x is string => !!x)),
+    paidSaleIds.length ? client.posPayment.findMany({ where: { tenantId: s.tenantId, saleId: { in: paidSaleIds }, sale: { status: "PAID" } }, select: { saleId: true, type: true }, distinct: ["saleId", "type"], orderBy: [{ saleId: "asc" }, { type: "asc" }] }) : Promise.resolve([]),
+  ]);
+  const methodsOf = (saleId: string | null) => (saleId ? [...new Set(pays.filter((x) => x.saleId === saleId).map((x) => x.type))] : []);
   return {
     splitId: plan.id,
     version: plan.version,
@@ -113,6 +120,8 @@ async function planView(client: Db | Tx, s: { tenantId: string; systemId: string
       vatSatang: rate > 0 ? splitIncludedVat(p.totalSatang, rate).vatSatang : 0,
       status: p.status,
       saleId: p.saleId,
+      memberName: p.memberId ? (briefs.get(p.memberId)?.name ?? null) : null, // POS HF-FU ▸ s ◂
+      paidMethods: p.status === "PAID" ? methodsOf(p.saleId) : null, // POS HF-FU ▸ s ◂
       lines: lines
         .filter((l) => l.partId === p.id)
         .map((l) => {
@@ -577,6 +586,7 @@ export async function splitPartOfSale(client: Db | Tx, s: { tenantId: string; sa
 // เนื้อของประตูเดิม (restaurant/order.ts checkout/cancelOrderItem) ถูกหมุด — กันที่ชั้น action (src/lib/actions/restaurant.ts) ก่อนเรียกประตูเดิม ·
 // รูปผลแบบประตูเดิม {ok:false, reason} (ข้อความไทย) · ไม่มีแผน OPEN = {ok:true}
 const LEGACY_SPLIT_OPEN = "โต๊ะนี้แยกบิลอยู่ในหน้าขาย (POS) — ชำระทีละใบที่หน้าขาย หรือยกเลิกการแยกบิลก่อน";
+const LEGACY_SPLIT_DONE = "โต๊ะนี้ชำระแบบแยกบิลในหน้าขาย (POS) แล้ว — รวมโต๊ะที่หน้าขาย (POS)"; // POS HF-FU ▸ d ◂
 
 /** เช็คบิล/ยืนยันพร้อมเพย์ของหน้าเดิม: session นี้มีแผนแยกบิล OPEN = ปฏิเสธ (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) */
 export async function legacyCheckoutSplitGuard(s: { tenantId: string; unitId: string; sessionId: string }, client?: Db): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -601,9 +611,12 @@ export async function repointSplitPlansInTx(tx: Tx, s: { tenantId: string; unitI
   return u.count;
 }
 
-/** fix2 มติ 2 (F2): รวมโต๊ะของหน้าเดิม (mergeSession แช่แข็ง) — แผนแยกบิล OPEN ฝั่งต้นทางหรือปลายทาง = ปฏิเสธ (แผนไม่ตาม/ใบจ่ายไม่ได้) · แผน DONE รวมได้ */
+/** fix2 มติ 2 (F2): รวมโต๊ะของหน้าเดิม (mergeSession แช่แข็ง) — แผนแยกบิล OPEN ฝั่งต้นทางหรือปลายทาง = ปฏิเสธ (แผนไม่ตาม/ใบจ่ายไม่ได้) · HF-FU d: แผน DONE ฝั่งต้นทางก็ปฏิเสธ */
 export async function legacyMergeSplitGuard(s: { tenantId: string; unitId: string; intoSessionId: string; fromSessionId: string }, client?: Db): Promise<{ ok: true } | { ok: false; reason: string }> {
   const db: Db = client ?? prisma;
   const open = await db.posTableSplit.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: { in: [s.intoSessionId, s.fromSessionId] }, status: "OPEN" }, select: { id: true } });
-  return open ? { ok: false, reason: LEGACY_SPLIT_OPEN } : { ok: true };
+  if (open) return { ok: false, reason: LEGACY_SPLIT_OPEN };
+  // POS HF-FU ▸ d (มติ 4 refuse): แผน DONE ของ session ต้นทาง — หน้าเดิมย้ายแผนไม่ได้ (mergeSession แช่แข็ง) ⇒ void ใบภายหลังจะเปิดแผนบน session ที่ MERGED แล้ว ⇒ ปฏิเสธ ◂
+  const done = await db.posTableSplit.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: s.fromSessionId, status: "DONE" }, select: { id: true } });
+  return done ? { ok: false, reason: LEGACY_SPLIT_DONE } : { ok: true };
 }

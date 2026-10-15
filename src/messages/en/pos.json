@@ -1150,7 +1150,7 @@
       "title": "Sales channels",
       "pctOfTotal": "% of sales",
       "footnote": "Platform sales are net of commission in gross profit",
-      "empty": "No sales yet today",
+      "empty": "No sales in this period",
       "amountTip": "{name} · {amount}",
       "cols": {
         "channel": "Channel",
@@ -3106,7 +3106,9 @@
         "notSold": "Not sold",
         "legend": "Bold = price set · muted = regular price · — = no price yet",
         "capped": "Showing {shown} of {total} products (at most {max} at a time)"
-      }
+      },
+      "incomplete": "Products of branch {unit} are not fully loaded",
+      "conflict": "This product's prices were changed elsewhere — reload"
     }
   },
   "recipe": {
@@ -3154,7 +3156,11 @@
       "tooManyLines": "A recipe can have at most {max} ingredients",
       "tooManyDeltas": "At most {max} option change rows",
       "loadCost": "Could not load the cost — try again",
-      "search": "Ingredient search failed — try again"
+      "search": "Ingredient search failed — try again",
+      "itemArchived": "An ingredient in the recipe is archived",
+      "itemService": "A service cannot be an ingredient (it has no stock)",
+      "noLines": "No recipe yet — add ingredients before turning on recipe deduction",
+      "shape": "The recipe data is not valid — check the quantities and ingredients and try again"
     },
     "notForKind": "This item has no recipe — only menus and bundles can have one (items sold by weight cannot)",
     "autoNote": "Selling 1 cup deducts its ingredients from stock automatically",
@@ -3753,7 +3759,10 @@
     "errors": {
       "webPaid": "This web shop order is already paid — refund or cancel it on the web shop",
       "hasRefunds": "This bill already has a refund — the order cannot be cancelled",
-      "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead"
+      "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead",
+      "memberNotFound": "This member was not found in this shop",
+      "partyNotFound": "This contact was not found in this shop",
+      "conversationNotFound": "This chat conversation was not found in this shop"
     },
     "page": {
       "refusal": "This account cannot view online orders at this branch yet — ask the owner for bill or sale access",
@@ -3788,7 +3797,8 @@
       "paid_reverted": "Payment reverted (web shop)",
       "sale_bound": "Bill linked",
       "prep_changed": "Prep time changed",
-      "refunded": "Bill voided/refunded"
+      "refunded": "Bill voided/refunded",
+      "held": "Held by the kitchen (auto-accept waiting)"
     },
     "toast": {
       "accepted": "Accepted {ref}",
