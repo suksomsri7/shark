@@ -27,6 +27,64 @@ export function posDayCutoffMinutes(settings: unknown): number {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= POS_DAY_CUTOFF_MAX ? v : 0;
 }
 
+// POS P2.12 ▸ AN เกณฑ์จุดผิดปกติ (§3 มติ 3 · CD-6): settings.pos.reports.anomaly = {enabled, rules:{A1…A10}} ต่อระบบ POS ·
+//   ตัวอ่านเดียว posAnomalyThresholds — จำนวนเต็มนอกช่วง = ตัดเข้าขอบ · ไม่ใช่จำนวนเต็ม/ไม่ใช่ตัวเลข = ค่าปริยาย · กฎ/ช่องที่ไม่รู้จัก = ไม่สน ·
+//   enabled ไม่ใช่ boolean = true · ผลมี A1…A10 ครบเสมอ · ตัวเขียน (settings-general.ts) ปฏิเสธค่านอกช่วงด้วยช่วงเดียวกันนี้ ◂
+export const POS_ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"] as const;
+export type PosAnomalyRule = (typeof POS_ANOMALY_RULES)[number];
+/** ช่องของเกณฑ์: count = ครั้ง/ใบ/บรรทัด/กะ · satang = สตางค์ · bp = 1/100 % */
+export type PosAnomalyField = "count" | "satang" | "bp";
+export type PosAnomalyRules = {
+  A1: { count: number; satang: number };
+  A2: { count: number; satang: number };
+  A3: { bp: number };
+  A4: { bp: number };
+  A5: { count: number };
+  A6: { count: number };
+  A7: { count: number };
+  A8: { satang: number };
+  A9: { count: number };
+  A10: { count: number };
+};
+export type PosAnomalyThresholds = { enabled: boolean; rules: PosAnomalyRules };
+/** ค่าปริยาย (มติ 3 · รอเจ้าของยืนยัน — POS-OWNER-PENDING) · A3 = 15% เท่าธงเดิมของการ์ดพนักงาน (HIGH_DISCOUNT_BP) */
+export const POS_ANOMALY_DEFAULTS: Readonly<PosAnomalyRules> = {
+  A1: { count: 3, satang: 100_000 },
+  A2: { count: 3, satang: 100_000 },
+  A3: { bp: 1500 },
+  A4: { bp: 5000 },
+  A5: { count: 3 },
+  A6: { count: 5 },
+  A7: { count: 2 },
+  A8: { satang: 10_000 },
+  A9: { count: 2 },
+  A10: { count: 3 },
+};
+export const POS_ANOMALY_LIMITS: Readonly<Record<PosAnomalyField, { min: number; max: number }>> = {
+  count: { min: 1, max: 1000 },
+  satang: { min: 1, max: 100_000_000 },
+  bp: { min: 1, max: 10_000 },
+};
+export function posAnomalyThresholds(settings: unknown): PosAnomalyThresholds {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const rep = pos && isRecord(pos.reports) ? pos.reports : null;
+  const raw = rep && isRecord(rep.anomaly) ? rep.anomaly : null;
+  const rawRules = raw && isRecord(raw.rules) ? raw.rules : null;
+  const rules = {} as Record<PosAnomalyRule, Record<string, number>>;
+  for (const id of POS_ANOMALY_RULES) {
+    const def = POS_ANOMALY_DEFAULTS[id] as Record<string, number>;
+    const got = rawRules && isRecord(rawRules[id]) ? rawRules[id] : null;
+    const out: Record<string, number> = {};
+    for (const f of Object.keys(def)) {
+      const v = got?.[f];
+      const lim = POS_ANOMALY_LIMITS[f as PosAnomalyField];
+      out[f] = typeof v === "number" && Number.isInteger(v) ? Math.min(lim.max, Math.max(lim.min, v)) : def[f]!;
+    }
+    rules[id] = out;
+  }
+  return { enabled: typeof raw?.enabled === "boolean" ? raw.enabled : true, rules: rules as unknown as PosAnomalyRules };
+}
+
 /** ช่วงของตัวเขียนทั่วไป (= ช่วงของตัวอ่านแต่ละตัว) */
 export const POS_GENERAL_LIMITS = {
   heldCartExpireDays: { min: 1, max: 365 },
@@ -43,6 +101,8 @@ export type PosGeneralSettings = {
   weighedBarcode: WeighedBarcodeSettings;
   receiptLocale: PosReceiptLocale;
   dayCutoffMinutes: number;
+  /** POS P2.12 ▸ เกณฑ์จุดผิดปกติ (ตัวอ่าน posAnomalyThresholds) ◂ */
+  anomaly: PosAnomalyThresholds;
 };
 /** แพตช์ของ updatePosGeneralSettings — คีย์ตรงตัว (คีย์อื่น = VALIDATION field ชื่อคีย์) · shift รวมทับบางส่วน · weighedBarcode ต้องส่งครบทั้งสองช่อง */
 export type PosGeneralSettingsPatch = {
@@ -52,6 +112,8 @@ export type PosGeneralSettingsPatch = {
   weighedBarcode?: WeighedBarcodeSettings;
   receiptLocale?: PosReceiptLocale;
   dayCutoffMinutes?: number;
+  /** POS P2.12 ▸ รวมทับบางส่วน: rules.A#.<ช่อง> ที่ส่งมาเท่านั้น (ช่วง POS_ANOMALY_LIMITS) ◂ */
+  anomaly?: { enabled?: boolean; rules?: Partial<{ [K in PosAnomalyRule]: Partial<PosAnomalyRules[K]> }> };
 };
 export type PosDiscountCapsPatch = { STAFF?: number; MANAGER?: number };
 export type PosOversellPolicy = "ALLOW_NEGATIVE" | "BLOCK";

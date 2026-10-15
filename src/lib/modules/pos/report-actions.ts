@@ -21,6 +21,10 @@ import {
   reportStaff,
   reportTax,
   reportChannels, // POS P2.11 ▸ รายงานช่องทาง ◂
+  reportBranches, // POS P2.12 ▸ ◂
+  reportHourly,
+  reportAnomalies,
+  reportPrintNames,
   type AnyReportResult,
   type DashboardCardResult,
   type ReportCsvResult,
@@ -34,13 +38,29 @@ import {
 import type { RegisterActor } from "./register-shared";
 // POS P1.17U R6 ▸ ภาพรวมในคำขอเดียว (Server Action จาก client ถูกส่งทีละตัว — ขนานฝั่งเซิร์ฟเวอร์แทน) ◂
 import { reportOverview, type OverviewSection, type ReportOverviewResult } from "./report-overview";
+// POS P2.12 ▸ PD แบบพิมพ์ A4 (หน้า pos/reports/print ของการ์ด U เรียก action นี้) ◂
+import { buildReportPrint, renderReportPrintHtml } from "./report-print-shared";
+/** แถวสูงสุดของแบบพิมพ์ (= CSV) */
+const PRINT_ROW_LIMIT = 1000;
 
 type Internal = { ok: false; code: "INTERNAL"; message: string };
 type Session = Awaited<ReturnType<typeof requireTenant>>;
 type Target = { systemId: string; unitId?: string };
 
 /** ชนิด → ฟังก์ชันรายงาน (R14) */
-const KIND_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input: ReportInput) => Promise<AnyReportResult>> = { daily: reportDailySales, products: reportProducts, staff: reportStaff, payments: reportPayments, margin: reportMargin, shifts: reportShifts, tax: reportTax, channels: reportChannels }; // POS P2.11 ▸ + channels ◂
+const KIND_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input: ReportInput) => Promise<AnyReportResult>> = {
+  daily: reportDailySales,
+  products: reportProducts,
+  staff: reportStaff,
+  payments: reportPayments,
+  margin: reportMargin,
+  shifts: reportShifts,
+  tax: reportTax,
+  channels: reportChannels, // POS P2.11 ▸ + channels ◂
+  branches: reportBranches, // POS P2.12 ▸ + branches hourly anomalies (anomalies: ตัวอ่านตรวจ pos.report.anomaly เพิ่มต่อสาขา) ◂
+  hourly: reportHourly,
+  anomalies: reportAnomalies,
+};
 
 function unexpected(where: string, e: unknown): Internal {
   console.error(`[pos/report-actions] ${where}`, e);
@@ -142,5 +162,37 @@ export async function posReportOverviewAction(args: Target & { from: string; to:
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("posReportOverviewAction", e);
+  }
+}
+
+// POS P2.12 ▸ PD (§4 มติ 2 · CD-3): แบบพิมพ์ A4 ของรายงาน 1 ชนิด → HTML ทั้งหน้า (เบราว์เซอร์ "พิมพ์เป็น PDF") ◂
+/**
+ * ด่าน = posReportAction ทุกประการ (session → pos.report.view → ตัวอ่านตรวจขอบเขต/สิทธิ์ต่อสาขา · anomalies ต้องมี pos.report.anomaly ด้วย)
+ * kind ไม่รู้จัก = VALIDATION · generatedAt = เวลาที่รับคำขอ (แบบพิมพ์เองไม่อ่านนาฬิกา) · locale "en" | อื่น = th
+ */
+export async function posReportPrintAction(
+  args: Target & { kind: ReportKind; from: string; to: string; locale?: string },
+): Promise<{ ok: true; html: string; title: string; generatedAt: string } | ReportRefusal | Internal> {
+  const auth = await session("posReportPrintAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args, REPORT_PERMISSION);
+    if ("ok" in s) return s;
+    const a = (args ?? {}) as Partial<typeof args>;
+    if (!isReportKind(a.kind)) return { ok: false, code: "VALIDATION", message: "ไม่รู้จักชนิดรายงานนี้" } satisfies ReportRefusal;
+    const res = await KIND_FN[a.kind](s.ctx, s.actor, { from: a.from as string, to: a.to as string, limit: PRINT_ROW_LIMIT });
+    if (!res.ok) return res;
+    const locale = a.locale === "en" ? "en" : "th";
+    const names = await reportPrintNames(s.ctx, undefined, { actor: s.actor, kind: a.kind }); // POS P2.12 ▸ fix1 H3: ขอบเขตจำกัด ⇒ ชื่อสาขาในขอบเขต ◂
+    const model = buildReportPrint(res.report, {
+      locale,
+      generatedAt: new Date().toISOString(),
+      shopName: names.shopName,
+      unitLabel: names.unitName ?? (locale === "en" ? "All branches" : "ทุกสาขา"),
+    });
+    return { ok: true, html: renderReportPrintHtml(model), title: model.title, generatedAt: model.generatedAt };
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("posReportPrintAction", e);
   }
 }

@@ -28,7 +28,10 @@ export const BILLS_ERROR_KEYS: Record<BillsRefusalCode, string> = {
 export type BillSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
 
 // ── billsPageData (R1) ──
+/** POS P2.12 ▸ BL (มติ 6): unitId พิเศษ = ทุกสาขาที่อ่านบิลได้ (แถวมี unitId + unitName) ◂ */
+export const BILLS_ALL_UNITS = "*";
 export type BillsPageQuery = {
+  /** สาขา หรือ BILLS_ALL_UNITS ("*") */
   unitId: string;
   /** YYYY-MM-DD ตามเวลาไทย */
   date: string;
@@ -68,9 +71,13 @@ export type BillRow = {
   salesChannel: { code: string; name: string } | null;
   /** POS P2.1 ▸ R11: เลขออเดอร์แพลตฟอร์ม (แสดงแทนลูกค้าเมื่อไม่มีสมาชิก · mockup 12) ◂ */
   channelRef: string | null;
+  /** POS P2.12 ▸ BL (มติ 6): มีเฉพาะรายการ "ทุกสาขา" (unitId "*") — สาขาของบิล · หน้าสาขาเดียวไม่มีสองคีย์นี้ ◂ */
+  unitId?: string;
+  unitName?: string;
 };
 export type BillsCounts = { all: number; paid: number; voided: number; refunded: number; offShiftCash: number };
-export type BillsSummary = { netSatang: number; billCount: number; storeCount: number; onlineCount: number; avgSatang: number; yesterdayAvgSatang: number };
+// POS P2.12 ▸ CH3 (P2.1U :55): channelCounts = จำนวนบิล PAID+REFUNDED ต่อรหัสช่องทาง (ประชากรเดียวกับ billCount · ใบรับมัดจำ = ช่องทางของมัน) แทนการอ่านซ้ำ 2 ครั้งต่อช่องทาง ◂
+export type BillsSummary = { netSatang: number, billCount: number, storeCount: number, onlineCount: number, avgSatang: number, yesterdayAvgSatang: number, channelCounts: Record<string, number> };
 export type BillsPageData = {
   ok: true;
   date: string;
@@ -147,7 +154,20 @@ export type BillDetail = {
    * POS P2.1 ▸ R11 มติ 7: ช่องทางขาย + เลขออเดอร์ + การรับเงิน · commission* เฉพาะผู้มี pos.report.view (เจ้าของ/ผู้จัดการ) —
    * คนอื่นไม่มีคีย์เหล่านี้ · บิลเดิม = ช่องทางปริยายตาม sourceModule (ค่าคอมฯ 0) ◂
    */
-  channel: { code: string; name: string; ref: string | null; payout: "PLATFORM" | "DIRECT"; commissionSatang?: number; commissionVatSatang?: number } | null;
+  channel: {
+    code: string;
+    name: string;
+    ref: string | null;
+    payout: "PLATFORM" | "DIRECT";
+    commissionSatang?: number;
+    commissionVatSatang?: number;
+    /** POS P2.12 ▸ CH2 (P2.1U F5): หลังหักใบคืนเงินที่เก็บ (เฉพาะผู้มี pos.report.view เหมือน commission*) — refund = Σ ใบคืน ·
+     *  commission*Net = ของบิล − ส่วนของใบคืน · net = ยอดบิล − refund − ค่าคอมฯ สุทธิ − VAT ค่าคอมฯ สุทธิ ◂ */
+    refundSatang?: number;
+    commissionNetSatang?: number;
+    commissionVatNetSatang?: number;
+    netSatang?: number;
+  } | null;
   receiptKind: "TAX_INVOICE_ABB" | "RECEIPT";
   /** POS P1.13 ▸ R7: ใบกำกับภาษีเต็มรูปของบิล — ISSUED (เลข + ชื่อผู้ซื้อ) · REQUESTED (ลูกค้าขอจากใบเสร็จออนไลน์ รอออก) · NONE ◂ */
   taxInvoice: {
