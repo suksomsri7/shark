@@ -1556,3 +1556,9 @@
 - ผู้คุม: CONTROLLER-DECISION 1–10 รับทั้งหมด = **มติ 14** ใน brief §10 (GRAB แทน CHAT/LINEMAN · rowsHash คลุม stored rows ทั้งหมด · audit SYSTEM · lock order CAS→FOR SHARE · ไม่ต้อง messageKey legacy merge) commit 90d24030
 - prompt `pos-prompt-accountB-HF-FU-B.md` → **spawn builder (Opus) ทรี c** `wip/pos-hf-fu` จาก 9e2b1d27 · ลำดับ 10 ขั้น (c+d → n/s/l2/F3/h → l1 → j → a → b → z → p → f → gates)
 - เลน: 1 = P2.9bU builder ทรี b (ขั้น 8 เสร็จ · typecheck 0 · p2.9b 53/53 · รอชุดที่เหลือ) · 2 = HF-FU builder ทรี c · prompt R1 P2.9bU พร้อม `pos-prompt-accountB-P2.9bU-R.md` (เติม __HEAD__/__CODE__/__TIME__) · ภาพ p2.9bu = chain77 บนทรี d (แม่แบบ chain76 · states 10 ตัว owner+cashier th/en)
+
+### 15 ต.ค. ~11:35Z — P2.9bU built → R1 + ภาพ
+- builder P2.9bU: `wip/pos-p2.9bu` **d4b7dbb8** (code 081d2546) push แล้ว · ด่านเขียวหมด (typecheck 0 · p2.9b unforced 53 · p2.9 62 · p1.3 128 · p1.8 49 · p1.12 72 · p1.18 81 ST7 0 · p1.10 40 · p1.16 28 · p1.6 48 · authz 81 · p2.8 61 ST6 เขียว · fitness ±env/pos · --dry owner 28/cashier 10) · deviations 5 (1 คืนมัดจำ walk-in ต้องใส่ last-4 ก่อนเห็นยอด · 2 notowner shot = เคส member อื่น · 3 refusal ไม่บอก depositId ⇒ ลบทุกแถว · 4 bills ใช้ server source filter ที่มีอยู่ · 5 มือถือปุ่ม header) · follow-up: approval queue ไม่ wired, refusal ไม่มี depositId
+- spawn **R1 reviewer** (Opus, read-only ทรี b) prompt `pos-prompt-accountB-P2.9bU-R.md` (7552361f)
+- **chain77** ทรี d: build77 @d4b7dbb8 → vis79 QC5 (owner register 7 states / sales 2 / settings 1 · cashier register 4 · th + en) `/root/pos-runs/build77-d-*` → `vis79-qc5-*` · ภาพ `/root/projects/shark-pos-d/.qc-shots/pos/p2.9bu/` · ผู้คุมดูเองเทียบ `design-pos/02-payment.png` (02+02b) · `12-bills-refund.png` · `19-states.png` · `17-settings-3.png`
+- เลน: 1 = HF-FU builder ทรี c (กำลังทำ) · 2 = R1 P2.9bU (read-only) · ทรี b ว่างรอ fix round
