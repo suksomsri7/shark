@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
-export function RegisterMoreEntry({ systemId, unitId }: { systemId: string; unitId?: string }) {
+// POS P2.9bU ▸ มติ 5: + "รับมัดจำ" (onDepositReceive · เฉพาะเมื่อค่าตั้งรับมัดจำเปิด — หน้าขายส่งมา) ◂
+export function RegisterMoreEntry({ systemId, unitId, onDepositReceive = null }: { systemId: string; unitId?: string; onDepositReceive?: (() => void) | null }) {
   const t = useTranslations("pos.register");
   const [at, setAt] = useState<{ top: number; right: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
@@ -60,6 +61,20 @@ export function RegisterMoreEntry({ systemId, unitId }: { systemId: string; unit
           >
             {t("more.kds")}
           </Link>
+          {onDepositReceive && (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="pos-reg-menu-deposit-receive"
+              className="flex h-11 w-full items-center rounded-[8px] px-2.5 text-left text-[14px] hover:bg-[color:var(--color-surface-2)]"
+              onClick={() => {
+                setAt(null);
+                onDepositReceive();
+              }}
+            >
+              {t("more.depositReceive")}
+            </button>
+          )}
         </div>
       )}
     </>
