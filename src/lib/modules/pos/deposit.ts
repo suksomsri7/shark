@@ -1,0 +1,567 @@
+// deposit.ts — POS P2.9b ▸ มัดจำเป็นวิธีชำระของ POS: รับมัดจำ · ค้นมัดจำ · คืนเงินมัดจำคงเหลือ · คืนสภาพเมื่อบิลที่ใช้ถูก void ◂
+// สัญญา = scripts/qc-pos-p2.9b.mts (ตารางชื่อ ledger/wo-notes/pos-P2.9b-oracle.md) · brief ledger/pos-briefs/pos-brief-P2.9b.md §2 R1–R10 · §10 มติ 1–20
+//
+// 🔴 ใบรับเงินมัดจำ = PosSale sourceModule "POS_DEPOSIT" (sourceId = PosDeposit.id · memberId null ⇒ ไม่มีแต้ม/ตรา/CRM: member-bridges.ts:67 `!sale.memberId`)
+//    ออกผ่าน `regCreateSale` (จุดเรียกเดิมของหน้าขาย · มติ 18) ⇒ ไม่มีจุดเรียก createSale ใหม่ (ทะเบียน U4/HT6.4/L2 = 19/16)
+//    HF-TX: regCreateSale(…, callerTx(tx)) + PosDeposit + RECEIVE ในธุรกรรมเดียว · afterSaleCommitted หลัง commit
+// 🔴 VAT เกิดตอนรับเงิน (มติ 1): PosDeposit.vatSatang = vatSatang ของใบรับ (สูตรเดียวกับบิล) · บัญชี = account-bridge (POS_DEPOSIT → applyExternalDepositReceipt)
+// 🔴 ใช้มัดจำ = แถว {DEPOSIT, refSaleId = ใบรับ} ใน createSale (service.ts ล็อก/ตัดในธุรกรรมของบิล) · คืนสภาพ = depositSaleVoided (งานหลักของคิว pos.sale.voided)
+// 🔴 คำปฏิเสธคืนเป็นข้อมูล {ok:false, code, message} · ข้อผิดพลาดที่ไม่คาดคิด = INTERNAL · เงินเป็นสตางค์ · ไม่มีเบอร์เต็มเก็บ/ส่งออก
+
+import { randomUUID } from "node:crypto";
+import type { PosDeposit, Prisma } from "@prisma/client";
+import { evaluate } from "@/lib/core/rbac";
+import { emitOutbox } from "@/lib/core/outbox";
+import { callerTx } from "@/lib/core/caller-tx";
+import { scheduleDrain } from "@/lib/outbox-consumers";
+import { systemForUnit } from "@/lib/modules/system/service";
+import { prisma } from "./db";
+import { regCreateSale, registerRefuse, registerScopeCheck } from "./register";
+import { REGISTER_MANUAL_METHODS, REGISTER_MANUAL_MANAGER_MESSAGE, type RegisterActor, type RegisterCtx, type RegisterRefusal, type RegisterRefusalCode } from "./register-shared";
+import { afterSaleCommitted, depositVatLeft, POS_DEPOSIT_SOURCE, PosSaleError } from "./service";
+import { parsePosPaymentSettings } from "./payment-settings";
+import { isPaymentIntentId, parsePosIntentSettings } from "./payment-intent-shared";
+import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
+import { isShiftDeviceId, resolveRegisterShift } from "./shift";
+import { posDeviceRevoked } from "./device";
+import { maskPhone } from "./order-shared";
+import { verifyManagerPin } from "./staff-pin";
+import { newReceiptToken } from "./receipt-token";
+
+type Db = typeof prisma;
+type Tx = Prisma.TransactionClient;
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isMoney = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 2_000_000_000;
+const isKey = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(v);
+const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200 && !v.includes("\u0000");
+const cleanText = (v: unknown, max: number): string | null | false => {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "string" || v.length > max || /[\u0000-\u001F\u007F]/.test(v)) return false;
+  return v.trim() || null;
+};
+
+/** วิธีรับ/คืนมัดจำ = เงินจริงเท่านั้น (บัตรของขวัญ/เครดิตร้าน/มัดจำ/แพลตฟอร์ม/ลงห้อง = VALIDATION) */
+export const DEPOSIT_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD"] as const;
+export type DepositPayType = (typeof DEPOSIT_PAY_TYPES)[number];
+export type DepositPayMethod = { type: DepositPayType; amountSatang: number; reference?: string };
+const NOTE_MAX = 200;
+const NAME_MAX = 100;
+const REF_MAX = 100;
+const REFUND_PERMISSION = "pos.sale.refund";
+/** namespace ของคีย์ใน PosDeposit/PosSale (client ส่งคีย์ [A-Za-z0-9_-] ⇒ ไม่มีวันชนคีย์ของหน้าขาย reg2: หรือโมดูลอื่น) */
+const KEY_DEPOSIT = "dep:";
+const KEY_RECEIPT = "dep-rcv:";
+const KEY_REFUND = "dep-ref:";
+
+const MSG = {
+  DISABLED: "จุดขายนี้ยังไม่เปิดรับมัดจำ — เจ้าของร้านเปิดได้ที่ ตั้งค่า → การชำระเงิน",
+  AMOUNT: "ยอดมัดจำต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1",
+  METHOD: "รับ/คืนมัดจำได้ด้วยเงินสด พร้อมเพย์ โอน หรือบัตรธนาคารเท่านั้น",
+  REFUND_ALL: "คืนมัดจำได้ทั้งยอดคงเหลือเท่านั้น — ยอดที่คืนต้องเท่ากับคงเหลือ",
+  REASON: "ระบุเหตุผลการคืนเงินมัดจำ",
+  NOT_FOUND: "ไม่พบมัดจำใบนี้ในสาขานี้ — ตรวจเลขใบรับมัดจำอีกครั้ง",
+  CLOSED: "มัดจำใบนี้ใช้หมดหรือคืนเงินไปแล้ว",
+  CONFLICT: "มีรายการของรหัสนี้อยู่แล้วแต่ยอด/วิธีชำระไม่ตรงกัน — ตรวจรายการเดิมก่อน",
+} as const;
+const refuse = (code: RegisterRefusalCode, message?: string): RegisterRefusal => registerRefuse(code, message);
+const isRefusal = (v: unknown): v is RegisterRefusal => isRecord(v) && v.ok === false;
+/** โยนในธุรกรรมเพื่อย้อนทั้งก้อน แล้วคืนเป็นคำปฏิเสธ */
+class DepositAbort extends Error {
+  constructor(readonly refusal: RegisterRefusal) {
+    super(refusal.code);
+  }
+}
+
+async function guard<T>(name: string, body: () => Promise<T>): Promise<T | RegisterRefusal> {
+  try {
+    return await body();
+  } catch (e) {
+    if (e instanceof DepositAbort) return e.refusal;
+    console.error(`[pos/deposit] ${name} INTERNAL`, e);
+    return refuse("INTERNAL");
+  }
+}
+
+/** แถววิธีรับ/คืน (เงินจริง · เงินสดได้แถวเดียว · เลขอ้างอิงเฉพาะบัตร/โอน · pi_… บนพร้อมเพย์/บัตร = ใบขอรับเงินที่ PAID แล้ว — แบบหน้าขาย) */
+function parsePays(raw: unknown): DepositPayMethod[] | RegisterRefusal {
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > 10) return refuse("VALIDATION", MSG.METHOD);
+  const out: DepositPayMethod[] = [];
+  for (const p of raw as unknown[]) {
+    if (!isRecord(p) || !Object.keys(p).every((k) => k === "type" || k === "amountSatang" || k === "reference")) return refuse("VALIDATION", MSG.METHOD);
+    if (!(DEPOSIT_PAY_TYPES as readonly unknown[]).includes(p.type)) return refuse("VALIDATION", MSG.METHOD);
+    if (!isMoney(p.amountSatang)) return refuse("VALIDATION", MSG.AMOUNT);
+    if (p.type === "CASH" && out.some((x) => x.type === "CASH")) return refuse("VALIDATION", "เงินสดใส่ได้รายการเดียว");
+    let reference: string | undefined;
+    if (p.reference !== undefined && p.reference !== null) {
+      if (typeof p.reference !== "string" || p.reference.length > REF_MAX) return refuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
+      const r = p.reference.trim();
+      if (p.type === "CASH" || (p.type === "PROMPTPAY" && !isPaymentIntentId(r)) || (p.type === "TRANSFER" && isPaymentIntentId(r))) return refuse("VALIDATION", "เลขอ้างอิงใส่ได้เฉพาะบัตรและโอน");
+      reference = r || undefined;
+    }
+    out.push({ type: p.type as DepositPayType, amountSatang: p.amountSatang, ...(reference ? { reference } : {}) });
+  }
+  return out;
+}
+const payBag = (xs: readonly { type: string; amountSatang: number }[]) => xs.map((p) => `${p.type}|${p.amountSatang}`).sort().join(",");
+
+/** มัดจำในรูปที่ส่งออก (ไม่มีเบอร์เต็ม) */
+export type DepositView = {
+  id: string;
+  receiptSaleId: string;
+  receiptNo: string | null;
+  amountSatang: number;
+  vatSatang: number;
+  usedSatang: number;
+  refundedSatang: number;
+  remainingSatang: number;
+  status: string;
+  customerId: string | null;
+  customerName: string | null;
+  phoneMasked: string | null;
+  note: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+};
+type DepositRow = PosDeposit;
+function viewOf(d: DepositRow): DepositView {
+  return {
+    id: d.id,
+    receiptSaleId: d.receiptSaleId,
+    receiptNo: d.receiptNo,
+    amountSatang: d.amountSatang,
+    vatSatang: d.vatSatang,
+    usedSatang: d.usedSatang,
+    refundedSatang: d.refundedSatang,
+    remainingSatang: d.amountSatang - d.usedSatang - d.refundedSatang,
+    status: String(d.status),
+    customerId: d.customerId,
+    customerName: d.customerName,
+    phoneMasked: d.phoneMasked,
+    note: d.note,
+    expiresAt: d.expiresAt ? d.expiresAt.toISOString() : null,
+    createdAt: d.createdAt.toISOString(),
+  };
+}
+
+// ═══════════════════════ R2 รับมัดจำ ═══════════════════════
+export type RegisterTakeDepositInput = {
+  amountSatang: number;
+  payMethods: DepositPayMethod[];
+  /** สมาชิกเจ้าของมัดจำ (Customer.id ในระบบสมาชิกของสาขา) — ไม่ส่ง = ลูกค้าทั่วไป (ผู้ถือใบรับ) */
+  memberId?: string;
+  customerName?: string;
+  /** เบอร์ (9–10 หลัก) — เก็บแบบปิดบัง + 4 หลักท้าย (มติ 19) ไม่เก็บเบอร์เต็ม */
+  phone?: string;
+  note?: string;
+  /** เงินที่รับมาของแถวเงินสด (ทอน = รับ − ส่วนเงินสด) — ไม่ส่ง = รับพอดี */
+  cashReceivedSatang?: number;
+  idempotencyKey: string;
+};
+export type RegisterTakeDepositResult = { ok: true; deposit: DepositView; receiptNo: string | null; changeSatang: number; duplicated?: boolean } | RegisterRefusal;
+
+/**
+ * R2 (มติ 14) — รับมัดจำที่หน้าขาย: สิทธิ์ pos.sale.create · ค่าตั้ง pos.deposit.enabled ปิด = VALIDATION (ไม่มีแถว) · กะตามกติกาหน้าขาย ·
+ * ธุรกรรมเดียว: ใบรับมัดจำ (regCreateSale · callerTx) + PosDeposit + RECEIVE · คีย์เดิม payload เดิม = มัดจำเดิม (duplicated) · ต่าง = IDEMPOTENCY_CONFLICT
+ */
+export async function registerTakeDeposit(ctx: RegisterCtx, actor: RegisterActor, input: RegisterTakeDepositInput, client?: Db): Promise<RegisterTakeDepositResult> {
+  return guard("registerTakeDeposit", async (): Promise<RegisterTakeDepositResult> => {
+    const db = client ?? prisma;
+    const sc = await registerScopeCheck(ctx, actor, db);
+    if (sc.ok === false) return sc;
+    const s = sc.ctx;
+    const deviceRaw = isRecord(ctx) ? ctx.deviceId : undefined;
+    if (deviceRaw !== undefined && deviceRaw !== null && !isShiftDeviceId(deviceRaw)) return refuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
+    const deviceId = typeof deviceRaw === "string" ? deviceRaw : undefined;
+    if (!isRecord(input)) return refuse("VALIDATION");
+    if (!isKey(input.idempotencyKey)) return refuse("VALIDATION", "ข้อมูลรายการไม่ครบ — ลองใหม่อีกครั้ง");
+    if (!isMoney(input.amountSatang)) return refuse("VALIDATION", MSG.AMOUNT);
+    const pays = parsePays(input.payMethods);
+    if (isRefusal(pays)) return pays;
+    if (pays.reduce((t, p) => t + p.amountSatang, 0) !== input.amountSatang) return refuse("PAYMENT_MISMATCH", "ยอดที่รับแยกตามวิธีไม่เท่ากับยอดมัดจำ");
+    const cash = pays.find((p) => p.type === "CASH")?.amountSatang ?? 0;
+    let cashReceived: number | null = null;
+    if (input.cashReceivedSatang !== undefined && input.cashReceivedSatang !== null) {
+      if (!(Number.isInteger(input.cashReceivedSatang) && input.cashReceivedSatang >= 0) || cash === 0 || input.cashReceivedSatang < cash) return refuse("PAYMENT_MISMATCH", "เงินที่รับน้อยกว่าส่วนที่จ่ายเงินสด");
+      cashReceived = input.cashReceivedSatang;
+    }
+    const note = cleanText(input.note, NOTE_MAX);
+    const name = cleanText(input.customerName, NAME_MAX);
+    if (note === false || name === false) return refuse("VALIDATION", "ชื่อหรือหมายเหตุยาวเกินไป");
+    let phoneMasked: string | null = null;
+    let phoneLast4: string | null = null;
+    if (input.phone !== undefined && input.phone !== null && input.phone !== "") {
+      const digits = typeof input.phone === "string" ? input.phone.replace(/[\s-]/g, "") : "";
+      if (!/^0\d{8,9}$/.test(digits)) return refuse("PHONE_INVALID");
+      phoneMasked = maskPhone(digits);
+      phoneLast4 = digits.slice(-4);
+    }
+    // มติ 14: ค่าตั้งปิด = รับใหม่ไม่ได้ (มัดจำที่รับแล้วยังใช้/คืนได้)
+    const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
+    if (!parsePosPaymentSettings(sys?.settings).deposit.enabled) return refuse("VALIDATION", MSG.DISABLED);
+    // สมาชิกเจ้าของมัดจำ = สมาชิกในระบบสมาชิกของสาขานี้ (ไม่พบ/คนละร้าน = MEMBER_NOT_FOUND)
+    let customerId: string | null = null;
+    let memberName: string | null = null;
+    let memberPhone: string | null = null;
+    if (input.memberId !== undefined && input.memberId !== null) {
+      if (!isId(input.memberId)) return refuse("MEMBER_NOT_FOUND");
+      const memberSystemId = await systemForUnit(s.tenantId, s.unitId, "MEMBER");
+      const c = memberSystemId ? await db.customer.findFirst({ where: { id: input.memberId, tenantId: s.tenantId, memberSystemId, status: { not: "MERGED" } }, select: { id: true, name: true, phone: true } }) : null;
+      if (!c) return refuse("MEMBER_NOT_FOUND");
+      customerId = c.id;
+      memberName = c.name;
+      memberPhone = c.phone;
+    }
+    const depKey = KEY_DEPOSIT + input.idempotencyKey;
+    // คีย์เดิมที่ commit แล้ว = คำตอบเดิม (ก่อนตรวจกะ/เครื่อง — ลองซ้ำหลังปิดกะได้มัดจำเดิม)
+    const prior = await db.posDeposit.findUnique({ where: { tenantId_idempotencyKey: { tenantId: s.tenantId, idempotencyKey: depKey } } });
+    if (prior) return sameTake(db, prior, s, input.amountSatang, customerId, pays, cashReceived);
+    if (deviceId && (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId))) return refuse("DEVICE_REVOKED");
+    // HF-PP กติกาเดียวกับหน้าขาย: พร้อมเพย์/บัตรที่ไม่อ้างใบขอรับเงิน + ร้านตั้ง manualConfirmRequiresManager ⇒ ต้องมี pos.shift.manage
+    if (pays.some((p) => REGISTER_MANUAL_METHODS.has(p.type) && !isPaymentIntentId(p.reference)) && !evaluate(sc.actor, { module: "pos", action: "pos.shift.manage", unitId: s.unitId })) {
+      if (parsePosIntentSettings(sys?.settings).manualConfirmRequiresManager) return refuse("PERMISSION_DENIED", REGISTER_MANUAL_MANAGER_MESSAGE);
+    }
+    const shift = await resolveRegisterShift(db, s, deviceId);
+    if (!shift.ok) return refuse("SHIFT_REQUIRED");
+    const intentRefs: SaleIntentRef[] = pays.flatMap((p) => ((p.type === "PROMPTPAY" || p.type === "CARD") && isPaymentIntentId(p.reference) ? [{ intentId: p.reference!, payType: p.type, amountSatang: p.amountSatang }] : []));
+    const lineName = note ? `มัดจำ — ${note}` : "มัดจำ";
+    const lines = [{ name: lineName, qty: 1, unitPriceSatang: input.amountSatang }];
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const out = await db.$transaction(
+          async (tx) => {
+            await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${s.tenantId}::text || ':' || ${depKey}::text))) l`;
+            const again = await tx.posDeposit.findUnique({ where: { tenantId_idempotencyKey: { tenantId: s.tenantId, idempotencyKey: depKey } } });
+            if (again) return { kind: "dup" as const, dup: again };
+            const locked = intentRefs.length ? await lockSaleIntents(tx, s, intentRefs) : null;
+            if (locked && !locked.ok) throw new DepositAbort(refuse(locked.code));
+            const depositId = `dep${randomUUID().replace(/-/g, "")}`;
+            // มติ 18: ใบรับเงินมัดจำผ่านจุดเรียกเดิมของหน้าขาย (callerTx · HF-TX) — sourceModule POS_DEPOSIT · memberId ไม่ส่ง (null) · แถวเดียว "มัดจำ — …"
+            const r = await regCreateSale(
+              {
+                tenantId: s.tenantId,
+                unitId: s.unitId,
+                systemId: s.systemId,
+                sourceModule: POS_DEPOSIT_SOURCE,
+                sourceId: depositId,
+                idempotencyKey: KEY_RECEIPT + input.idempotencyKey,
+                lines,
+                payMethods: pays.map((p) => ({
+                  type: p.type,
+                  amountSatang: p.amountSatang,
+                  ...(p.reference ? { reference: p.reference } : {}),
+                  ...(p.type === "CASH" && cashReceived !== null ? { cashTenderedSatang: cashReceived } : {}),
+                })),
+                ...(note ? { note } : {}),
+                shiftId: shift.shiftId,
+                soldByUserId: sc.actor.userId,
+              },
+              callerTx(tx),
+            );
+            if (locked?.ok) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
+            const sale = await tx.posSale.findUnique({ where: { id: r.saleId }, select: { vatSatang: true, receiptNo: true } });
+            const dep = await tx.posDeposit.create({
+              data: {
+                id: depositId,
+                tenantId: s.tenantId,
+                systemId: s.systemId,
+                unitId: s.unitId,
+                customerId,
+                customerName: name ?? memberName,
+                phoneMasked: phoneMasked ?? (memberPhone ? maskPhone(memberPhone) : null),
+                phoneLast4: phoneLast4 ?? (memberPhone ? memberPhone.replace(/\D/g, "").slice(-4) || null : null),
+                amountSatang: input.amountSatang,
+                vatSatang: sale?.vatSatang ?? 0,
+                receiptSaleId: r.saleId,
+                receiptNo: sale?.receiptNo ?? r.receiptNo,
+                note,
+                reference: pays.find((p) => p.reference)?.reference ?? null,
+                idempotencyKey: depKey,
+                createdByUserId: sc.actor.userId,
+              },
+            });
+            await tx.posDepositTxn.create({
+              data: { tenantId: s.tenantId, depositId, type: "RECEIVE", satang: input.amountSatang, vatSatang: dep.vatSatang, saleId: r.saleId, idempotencyKey: `dep-receive-${depositId}` },
+            });
+            await tx.auditLog.create({
+              data: {
+                tenantId: s.tenantId,
+                unitId: s.unitId,
+                actorType: "USER",
+                actorId: sc.actor.userId,
+                action: "pos.deposit.receive",
+                targetType: "PosDeposit",
+                targetId: depositId,
+                after: { receiptSaleId: r.saleId, receiptNo: dep.receiptNo, amountSatang: dep.amountSatang, vatSatang: dep.vatSatang, member: !!customerId, payMethods: pays.map((p) => ({ type: p.type, amountSatang: p.amountSatang })) },
+              },
+            });
+            return { kind: "new" as const, dep, saleId: r.saleId };
+          },
+          { timeout: 20_000, maxWait: 15_000 },
+        );
+        if (out.kind === "dup") return sameTake(db, out.dup, s, input.amountSatang, customerId, pays, cashReceived);
+        await afterSaleCommitted({ tenantId: s.tenantId, unitId: s.unitId, lines }, out.saleId); // HF-TX ▸ งานหลัง commit ชุดเดียว ◂
+        return { ok: true as const, deposit: viewOf(out.dep), receiptNo: out.dep.receiptNo, changeSatang: cashReceived !== null ? cashReceived - cash : 0 };
+      } catch (e) {
+        if (e instanceof DepositAbort) return e.refusal;
+        const code = (e as { code?: unknown } | null)?.code;
+        if (code === "P2002" || code === "P2034" || code === "P2028") continue; // ตัวนับใบเสร็จเดือนใหม่ชน/ธุรกรรมชน = rollback ทั้งก้อน ลองใหม่ (คีย์กันซ้ำ)
+        if (e instanceof PosSaleError) return refuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "VALIDATION" ? e.message : undefined);
+        throw e;
+      }
+    }
+    return refuse("BUSY");
+  });
+}
+
+/** คีย์เดิมของการรับมัดจำ: payload เดิม (สาขา/ระบบ · ยอด · สมาชิก · วิธีรับ) = มัดจำเดิม · ต่าง = IDEMPOTENCY_CONFLICT */
+async function sameTake(db: Db, d: DepositRow, s: RegisterCtx, amount: number, customerId: string | null, pays: DepositPayMethod[], cashReceived: number | null): Promise<RegisterTakeDepositResult> {
+  const rp = await db.posPayment.findMany({ where: { tenantId: s.tenantId, saleId: d.receiptSaleId }, select: { type: true, amountSatang: true } });
+  if (d.unitId !== s.unitId || d.systemId !== s.systemId || d.amountSatang !== amount || (d.customerId ?? null) !== customerId || payBag(rp) !== payBag(pays)) return refuse("IDEMPOTENCY_CONFLICT", MSG.CONFLICT);
+  const cash = pays.find((p) => p.type === "CASH")?.amountSatang ?? 0;
+  return { ok: true as const, deposit: viewOf(d), receiptNo: d.receiptNo, changeSatang: cashReceived !== null ? cashReceived - cash : 0, duplicated: true };
+}
+
+// ═══════════════════════ R9 ค้นมัดจำ (จอชำระ) ═══════════════════════
+export type RegisterDepositLookupResult = { ok: true; deposits: (Pick<DepositView, "id" | "receiptNo" | "customerName" | "phoneMasked" | "remainingSatang" | "status" | "expiresAt" | "amountSatang"> & { memberLinked: boolean })[] } | RegisterRefusal;
+const LOOKUP_MAX = 20;
+/**
+ * R9 (มติ 19) — ค้นมัดจำของสาขานี้: เลขใบรับ (ตรงตัว) · ชื่อ (ขึ้นต้น ไม่สนตัวพิมพ์) · 4 หลักท้ายของเบอร์ · สิทธิ์ pos.sale.create ·
+ * อ่านอย่างเดียว (ไม่เขียนแถวใด) · สาขาอื่น/ร้านอื่น = ไม่พบ (ผลว่าง) · เบอร์ปิดบังเท่านั้น
+ */
+export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterActor, input: { query: string }, client?: Db): Promise<RegisterDepositLookupResult> {
+  return guard("registerDepositLookup", async (): Promise<RegisterDepositLookupResult> => {
+    const db = client ?? prisma;
+    const sc = await registerScopeCheck(ctx, actor, db);
+    if (sc.ok === false) return sc;
+    const q = isRecord(input) && typeof input.query === "string" ? input.query.trim() : "";
+    if (!q || q.length > 60) return refuse("VALIDATION", "พิมพ์เลขใบรับมัดจำ ชื่อ หรือ 4 หลักท้ายของเบอร์");
+    const or: Prisma.PosDepositWhereInput[] = [{ receiptNo: q }, { customerName: { startsWith: q, mode: "insensitive" } }];
+    if (/^\d{4}$/.test(q)) or.push({ phoneLast4: q });
+    const rows = await db.posDeposit.findMany({
+      where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, OR: or },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: LOOKUP_MAX,
+    });
+    return {
+      ok: true as const,
+      deposits: rows.map((d) => {
+        const v = viewOf(d);
+        return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: v.remainingSatang, status: v.status, expiresAt: v.expiresAt, amountSatang: v.amountSatang, memberLinked: !!d.customerId };
+      }),
+    };
+  });
+}
+
+// ═══════════════════════ R8 คืนเงินมัดจำคงเหลือ ═══════════════════════
+export type RegisterRefundDepositInput = {
+  depositId: string;
+  /** วิธีคืน = เงินจริง · Σ = คงเหลือทั้งหมด (CD5 · มติ 17) */
+  payMethods: DepositPayMethod[];
+  reason: string;
+  idempotencyKey: string;
+  /** P1.8/P1.15: PIN ผู้จัดการ (คู่ managerUserId) แทนผู้ทำรายการที่ไม่มี pos.sale.refund */
+  managerPin?: string | null;
+  managerUserId?: string | null;
+};
+export type RegisterRefundDepositResult = { ok: true; refund: { id: string; receiptNo: string | null; grandTotalSatang: number; vatSatang: number }; deposit: DepositView; duplicated?: boolean } | RegisterRefusal;
+
+function refundPrefixOf(settings: unknown): string {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const r = pos && isRecord(pos.receipt) ? pos.receipt : null;
+  const p = r && typeof r.refundPrefix === "string" ? r.refundPrefix.trim() : "";
+  return /^[A-Za-z][A-Za-z0-9-]{0,9}$/.test(p) ? p : "CN";
+}
+function bkkPeriod(): string {
+  const d = new Date(Date.now() + 7 * 3600000);
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * R8 (มติ 5 17) — คืนเงินมัดจำ "ทั้งยอดคงเหลือ" ด้วยเงินจริง: pos.sale.refund หรือ PIN ผู้จัดการ · เหตุผลบังคับ (REASON_REQUIRED) ·
+ * ใบคืน (PosSale docType REFUND · refSaleId = ใบรับ · เลข CN จาก PosDocCounter) + REFUND txn (VAT ที่เหลือ) + REFUNDED ในธุรกรรมเดียว (ล็อกแถวมัดจำ) ·
+ * ใช้หมด/คืนแล้ว = DEPOSIT_CLOSED · คิว pos.sale.refunded → refund-consumer (POS_DEPOSIT) → ใบลดหนี้ + JV
+ */
+export async function registerRefundDeposit(ctx: RegisterCtx, actor: RegisterActor, input: RegisterRefundDepositInput, client?: Db): Promise<RegisterRefundDepositResult> {
+  return guard("registerRefundDeposit", async (): Promise<RegisterRefundDepositResult> => {
+    const db = client ?? prisma;
+    const sc = await registerScopeCheck(ctx, actor, db);
+    if (sc.ok === false) return sc;
+    const s = sc.ctx;
+    const deviceRaw = isRecord(ctx) ? ctx.deviceId : undefined;
+    if (deviceRaw !== undefined && deviceRaw !== null && !isShiftDeviceId(deviceRaw)) return refuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
+    const deviceId = typeof deviceRaw === "string" ? deviceRaw : undefined;
+    if (!isRecord(input)) return refuse("VALIDATION");
+    // สิทธิ์: pos.sale.refund ที่สาขา หรือ PIN ผู้จัดการ (ผู้จัดการต้องมี pos.sale.refund)
+    const hasPin = input.managerPin !== undefined && input.managerPin !== null;
+    const canRefund = evaluate(sc.actor, { module: "pos", action: REFUND_PERMISSION, unitId: s.unitId });
+    if (!canRefund && !hasPin) return refuse("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์คืนเงิน — ขอให้ผู้จัดการทำรายการหรือใส่ PIN ผู้จัดการ");
+    const reason = cleanText(input.reason, 200);
+    if (reason === false) return refuse("VALIDATION", "เหตุผลยาวได้ไม่เกิน 200 ตัวอักษร");
+    if (!reason) return refuse("REASON_REQUIRED", MSG.REASON);
+    if (!isKey(input.idempotencyKey)) return refuse("VALIDATION", "ข้อมูลรายการไม่ครบ — ลองใหม่อีกครั้ง");
+    if (!isId(input.depositId)) return refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND);
+    const pays = parsePays(input.payMethods);
+    if (isRefusal(pays)) return pays;
+    if (pays.some((p) => p.reference && isPaymentIntentId(p.reference))) return refuse("VALIDATION", MSG.METHOD);
+    let auditActorId = sc.actor.userId;
+    if (!canRefund) {
+      const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId: deviceId ?? null }, { managerPin: input.managerPin, managerUserId: input.managerUserId }, db);
+      if (v.ok === false) return v;
+      if (!evaluate(v.actor, { module: "pos", action: REFUND_PERMISSION, unitId: s.unitId })) return refuse("PERMISSION_DENIED", "PIN นี้ไม่มีสิทธิ์คืนเงิน — ใช้ PIN ของผู้จัดการ");
+      auditActorId = v.actor.userId;
+    }
+    const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
+    const shift = await resolveRegisterShift(db, s, deviceId);
+    if (!shift.ok && pays.some((p) => p.type === "CASH")) return refuse("SHIFT_REQUIRED");
+    const shiftId = shift.ok ? shift.shiftId : null;
+    const key = KEY_REFUND + input.idempotencyKey;
+    const depositId = input.depositId;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const out = await db.$transaction(
+          async (tx) => {
+            await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${s.tenantId}::text || ':' || ${key}::text))) l`;
+            const dup = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: s.tenantId, idempotencyKey: key } }, include: { payments: true } });
+            if (dup) {
+              const d0 = await tx.posDeposit.findFirst({ where: { id: depositId, tenantId: s.tenantId, unitId: s.unitId } });
+              if (!d0 || dup.docType !== "REFUND" || dup.refSaleId !== d0.receiptSaleId || payBag(dup.payments) !== payBag(pays)) throw new DepositAbort(refuse("IDEMPOTENCY_CONFLICT", MSG.CONFLICT));
+              return { kind: "dup" as const, dup, dep: d0 };
+            }
+            // ล็อกแถวมัดจำ (ใช้มัดจำ ∥ คืนเงิน = คนเดียวชนะ · CHECK used + refunded ≤ amount)
+            const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosDeposit" WHERE id = ${depositId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} ORDER BY id FOR UPDATE`;
+            if (!locked.length) throw new DepositAbort(refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND));
+            const d = await tx.posDeposit.findUniqueOrThrow({ where: { id: depositId } });
+            const remaining = d.amountSatang - d.usedSatang - d.refundedSatang;
+            if (d.status !== "OPEN" || remaining <= 0) throw new DepositAbort(refuse("DEPOSIT_CLOSED", MSG.CLOSED));
+            if (pays.reduce((t, p) => t + p.amountSatang, 0) !== remaining) throw new DepositAbort(refuse("VALIDATION", MSG.REFUND_ALL));
+            const vatOut = (await depositVatLeft(tx, [d.id])).get(d.id) ?? 0;
+            const vat = Math.min(remaining, Math.max(0, d.vatSatang - vatOut));
+            const receipt = await tx.posSale.findFirst({ where: { id: d.receiptSaleId, tenantId: s.tenantId }, include: { lines: { orderBy: { id: "asc" } } } });
+            if (!receipt) throw new DepositAbort(refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND));
+            // เลขใบคืน CN… ตัวนับของใบคืน (PosDocCounter · แบบ refund.ts) — ใบเสร็จขายไม่ขยับ
+            const period = bkkPeriod();
+            const ctr = await tx.$queryRaw<{ seq: number }[]>`
+              INSERT INTO "PosDocCounter" ("id", "tenantId", "unitId", "docType", "period", "seq")
+              VALUES (${randomUUID()}, ${s.tenantId}, ${s.unitId}, 'REFUND'::"PosSaleDocType", ${period}, 1)
+              ON CONFLICT ("unitId", "docType", "period") DO UPDATE SET "seq" = "PosDocCounter"."seq" + 1
+              RETURNING "seq"`;
+            const receiptNo = `${refundPrefixOf(sys?.settings)}${period}-${String(Number(ctr[0]!.seq)).padStart(4, "0")}`;
+            const line = receipt.lines[0];
+            const refund = await tx.posSale.create({
+              data: {
+                tenantId: s.tenantId,
+                unitId: s.unitId,
+                systemId: s.systemId,
+                memberId: null,
+                sourceModule: POS_DEPOSIT_SOURCE,
+                sourceId: null,
+                idempotencyKey: key,
+                receiptNo,
+                publicToken: newReceiptToken(),
+                status: "PAID",
+                docType: "REFUND",
+                refSaleId: receipt.id,
+                reasonCode: "OTHER",
+                subtotalSatang: remaining,
+                discountSatang: 0,
+                vatSatang: vat,
+                grandTotalSatang: remaining,
+                serviceChargeSatang: 0,
+                tipSatang: 0,
+                note: reason,
+                paidAt: new Date(),
+                shiftId,
+                soldByUserId: sc.actor.userId,
+              },
+            });
+            await tx.posSaleLine.create({
+              data: { tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, name: `คืน${line?.name ?? "มัดจำ"}`.slice(0, 200), qty: 1, unitPriceSatang: remaining, discountSatang: 0, lineTotalSatang: remaining, refLineId: line?.id ?? null, restock: false },
+            });
+            await tx.posPayment.createMany({ data: pays.map((p) => ({ tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, type: p.type, amountSatang: p.amountSatang, reference: p.reference ?? null })) });
+            await tx.posSale.update({ where: { id: receipt.id }, data: { refundedSatang: { increment: remaining } } });
+            const n = await tx.$executeRaw`
+              UPDATE "PosDeposit" SET "refundedSatang" = "refundedSatang" + ${remaining}, status = 'REFUNDED'::"PosDepositStatus", "updatedAt" = now()
+              WHERE id = ${d.id} AND status = 'OPEN' AND "amountSatang" - "usedSatang" - "refundedSatang" = ${remaining}`;
+            if (n !== 1) throw new DepositAbort(refuse("DEPOSIT_CLOSED", MSG.CLOSED));
+            await tx.posDepositTxn.create({ data: { tenantId: s.tenantId, depositId: d.id, type: "REFUND", satang: remaining, vatSatang: vat, saleId: refund.id, idempotencyKey: `dep-refund-${refund.id}` } });
+            await emitOutbox(tx, {
+              tenantId: s.tenantId,
+              type: "pos.sale.refunded",
+              idempotencyKey: `PosSale#${refund.id}#REFUNDED`,
+              payload: {
+                saleId: receipt.id,
+                refundSaleId: refund.id,
+                sourceModule: POS_DEPOSIT_SOURCE,
+                full: true,
+                depositId: d.id,
+                lines: line ? [{ refLineId: line.id, qty: 1, amountSatang: remaining, restock: false, itemId: null }] : [],
+                payMethods: pays.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+              },
+              systemId: s.systemId,
+              unitId: s.unitId,
+            });
+            await tx.auditLog.create({
+              data: {
+                tenantId: s.tenantId,
+                unitId: s.unitId,
+                actorType: "USER",
+                actorId: auditActorId,
+                action: "pos.deposit.refund",
+                targetType: "PosSale",
+                targetId: refund.id,
+                after: { depositId: d.id, receiptNo, depositReceiptNo: d.receiptNo, grandTotalSatang: remaining, vatSatang: vat, reason, payMethods: pays.map((p) => ({ type: p.type, amountSatang: p.amountSatang })), ...(auditActorId !== sc.actor.userId ? { via: "pin_override", requestedByUserId: sc.actor.userId } : {}) } as Prisma.InputJsonValue,
+              },
+            });
+            const dep = await tx.posDeposit.findUniqueOrThrow({ where: { id: d.id } });
+            return { kind: "new" as const, refund, dep };
+          },
+          { timeout: 20_000, maxWait: 15_000 },
+        );
+        if (out.kind === "dup") return { ok: true as const, refund: { id: out.dup.id, receiptNo: out.dup.receiptNo, grandTotalSatang: out.dup.grandTotalSatang, vatSatang: out.dup.vatSatang }, deposit: viewOf(out.dep), duplicated: true };
+        scheduleDrain();
+        return { ok: true as const, refund: { id: out.refund.id, receiptNo: out.refund.receiptNo, grandTotalSatang: out.refund.grandTotalSatang, vatSatang: out.refund.vatSatang }, deposit: viewOf(out.dep) };
+      } catch (e) {
+        if (e instanceof DepositAbort) return e.refusal;
+        const code = (e as { code?: unknown } | null)?.code;
+        if (code === "P2002" || code === "P2034" || code === "P2028") continue;
+        throw e;
+      }
+    }
+    return refuse("BUSY");
+  });
+}
+
+// ═══════════════════════ R6 คืนสภาพเมื่อบิลที่ใช้มัดจำถูก void ═══════════════════════
+/**
+ * R6 (X5) — งานหลักของคิว `pos.sale.voided` (หลัง tenderSaleVoided · try/fail แบบเดียวกัน): บิลขายที่ VOIDED แล้วเท่านั้น ⇒
+ * ทุก APPLY ของบิล → RESTORE คีย์ dep-restore-<applyTxnId> (ล็อกแถวมัดจำ · used −= satang · คงเหลือ > 0 = OPEN) · บิล walk-in ก็ทำ ·
+ * เล่นซ้ำ = ไม่มีผลเพิ่ม (คีย์ unique + ตรวจก่อนเขียนใต้ล็อก) · ล้ม = โยน (event ลองใหม่) · ไม่มี APPLY = query เดียวแล้วจบ ·
+ * JV ไม่ต้องทำ (กลับรายการ JV ขายทั้งใบ = 2110/2200 คืนครบแล้ว)
+ */
+export async function depositSaleVoided(evt: { tenantId: string; payload: unknown }): Promise<void> {
+  const saleId = isRecord(evt.payload) && typeof evt.payload.saleId === "string" ? evt.payload.saleId : "";
+  if (!saleId) return;
+  const applies = await prisma.posDepositTxn.findMany({ where: { tenantId: evt.tenantId, saleId, type: "APPLY" }, orderBy: { id: "asc" } });
+  if (!applies.length) return;
+  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: evt.tenantId }, select: { status: true, docType: true } });
+  if (!sale || sale.status !== "VOIDED" || sale.docType !== "SALE") return;
+  for (const a of applies) {
+    await prisma.$transaction(
+      async (tx: Tx) => {
+        const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosDeposit" WHERE id = ${a.depositId} AND "tenantId" = ${evt.tenantId} ORDER BY id FOR UPDATE`;
+        if (!locked.length) return;
+        const key = `dep-restore-${a.id}`;
+        if (await tx.posDepositTxn.findUnique({ where: { idempotencyKey: key }, select: { id: true } })) return;
+        const n = await tx.$executeRaw`
+          UPDATE "PosDeposit" SET "usedSatang" = "usedSatang" - ${a.satang},
+            status = (CASE WHEN status = 'EXPIRED' THEN 'EXPIRED' ELSE 'OPEN' END)::"PosDepositStatus", "updatedAt" = now()
+          WHERE id = ${a.depositId} AND "usedSatang" >= ${a.satang}`;
+        if (n !== 1) throw new Error(`[pos/deposit] คืนสภาพมัดจำ ${a.depositId} ไม่ได้ (ยอดใช้ไม่พอคืน) — คิวลองใหม่`);
+        await tx.posDepositTxn.create({ data: { tenantId: evt.tenantId, depositId: a.depositId, type: "RESTORE", satang: a.satang, vatSatang: a.vatSatang, saleId, paymentId: a.paymentId, refTxnId: a.id, idempotencyKey: key } });
+      },
+      { timeout: 20_000, maxWait: 15_000 },
+    );
+  }
+}

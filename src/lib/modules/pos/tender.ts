@@ -9,6 +9,7 @@
 import { evaluate } from "@/lib/core/rbac";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
+import { parsePosPaymentSettings } from "./payment-settings"; // POS P2.9b ▸ มติ 14 ◂
 import { registerRefuse, registerScopeCheck } from "./register";
 import type { RegisterActor, RegisterCtx, RegisterRefusal } from "./register-shared";
 
@@ -65,8 +66,8 @@ export type RegisterPayTenders = {
     giftCard: { enabled: boolean };
     /** เครดิตร้าน: สาขามีระบบสมาชิก (ยอดของสมาชิกในบิล = registerMemberBenefits / giftCards) */
     storeCredit: { enabled: boolean };
-    /** มัดจำ: P2.9b — แสดงแต่ปิด ("เร็ว ๆ นี้") · มติ 6 */
-    deposit: { visible: true; enabled: false; reason: "SOON" };
+    /** มัดจำ: POS P2.9b ▸ R9 มติ 14 — แสดงเสมอ · enabled = ค่าตั้ง pos.deposit.enabled ของ POS นี้ (ปิด = reason "DISABLED") ◂ */
+    deposit: { visible: true; enabled: boolean; reason?: "DISABLED" };
     /** ลงบิลห้องพัก: แสดงเฉพาะสาขาโรงแรม (UnitType HOTEL) และปิด ("เร็ว ๆ นี้") · มติ 8 */
     roomCharge: { visible: boolean; enabled: false; reason: "SOON" };
   };
@@ -80,17 +81,19 @@ export async function registerPayTenders(ctx: RegisterCtx, actor: RegisterActor,
     if (sc.ok === false) return sc;
     const { tenantId, unitId } = sc.ctx;
     const member = await import("@/lib/modules/member");
-    const [unit, memberSystemId, giftCard] = await Promise.all([
+    const [unit, memberSystemId, giftCard, sys] = await Promise.all([
       db.businessUnit.findFirst({ where: { id: unitId, tenantId }, select: { type: true } }),
       systemForUnit(tenantId, unitId, "MEMBER"),
       member.giftCardTenderEnabled(tenantId),
+      db.appSystem.findFirst({ where: { id: sc.ctx.systemId, tenantId }, select: { settings: true } }), // POS P2.9b ◂
     ]);
+    const depositOn = parsePosPaymentSettings(sys?.settings).deposit.enabled;
     return {
       ok: true as const,
       tenders: {
         giftCard: { enabled: giftCard },
         storeCredit: { enabled: !!memberSystemId },
-        deposit: { visible: true as const, enabled: false as const, reason: "SOON" as const },
+        deposit: depositOn ? { visible: true as const, enabled: true } : { visible: true as const, enabled: false, reason: "DISABLED" as const }, // POS P2.9b ▸ มติ 14 ◂
         roomCharge: { visible: unit?.type === "HOTEL", enabled: false as const, reason: "SOON" as const },
       },
     };

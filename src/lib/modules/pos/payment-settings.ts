@@ -31,6 +31,8 @@ type Db = typeof prisma | Prisma.TransactionClient;
 export type PosPaymentSettings = {
   serviceCharge: { enabled: boolean; rateBp: number };
   tip: { enabled: boolean; ledgerAccountId: string | null };
+  /** POS P2.9b ▸ มติ 14: รับมัดจำที่หน้าขาย (settings.pos.deposit.enabled · ปิดเป็นค่าปริยาย · เจ้าของร้านเปิด) — ปิดอยู่ = รับใหม่ไม่ได้ แต่มัดจำที่รับแล้วยังใช้ได้ ◂ */
+  deposit: { enabled: boolean };
 };
 export type PosPaymentSettingsCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "TIP_ACCOUNT_REQUIRED" | "TIP_NOT_AVAILABLE" | "UNKNOWN";
 export type PosPaymentSettingsRefusal = { ok: false; code: PosPaymentSettingsCode; message: string };
@@ -38,6 +40,7 @@ export type PosPaymentSettingsResult = ({ ok: true } & PosPaymentSettings) | Pos
 export type PosPaymentSettingsPatch = {
   serviceCharge?: { enabled?: boolean; rateBp?: number };
   tip?: { enabled?: boolean; ledgerAccountId?: string | null };
+  deposit?: { enabled?: boolean }; // POS P2.9b ◂
 };
 export type PosSettingsActor = { userId: string; role: string; unitAccess?: string[]; permissions?: Record<string, unknown> };
 
@@ -65,12 +68,14 @@ export function parsePosPaymentSettings(settings: unknown): PosPaymentSettings {
   const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : {};
   const sc = isRecord(pos.serviceCharge) ? pos.serviceCharge : {};
   const tip = isRecord(pos.tip) ? pos.tip : {};
+  const deposit = isRecord(pos.deposit) ? pos.deposit : {}; // POS P2.9b ◂
   const rateBp = isRate(sc.rateBp) ? sc.rateBp : 0;
   const ledgerAccountId = typeof tip.ledgerAccountId === "string" && tip.ledgerAccountId ? tip.ledgerAccountId : null;
   return {
     serviceCharge: { enabled: sc.enabled === true && rateBp > 0, rateBp },
     // R4 H5: ทิปเปิดจริงได้เฉพาะเมื่อลงบัญชีทิปได้แล้ว (ค่าเก่าที่เคยเปิดไว้ = อ่านเป็นปิด)
     tip: { enabled: tip.enabled === true && !!ledgerAccountId && TIP_POSTING_READY, ledgerAccountId },
+    deposit: { enabled: deposit.enabled === true }, // POS P2.9b ▸ มติ 14 ◂
   };
 }
 
@@ -123,6 +128,8 @@ export async function updatePosPaymentSettings(
     if (!isRecord(patch)) return refuse("VALIDATION");
     const sc = patch.serviceCharge;
     const tip = patch.tip;
+    const dep = patch.deposit; // POS P2.9b ◂
+    if (dep !== undefined && (!isRecord(dep) || (dep.enabled !== undefined && typeof dep.enabled !== "boolean"))) return refuse("VALIDATION");
     if (sc !== undefined) {
       if (!isRecord(sc)) return refuse("VALIDATION");
       if (sc.enabled !== undefined && typeof sc.enabled !== "boolean") return refuse("VALIDATION");
@@ -151,6 +158,7 @@ export async function updatePosPaymentSettings(
           enabled: tip?.enabled ?? cur.tip.enabled,
           ledgerAccountId: tip && "ledgerAccountId" in tip ? (tip.ledgerAccountId ?? null) : cur.tip.ledgerAccountId,
         },
+        deposit: { enabled: dep?.enabled ?? cur.deposit.enabled }, // POS P2.9b ◂
       };
       if (next.serviceCharge.enabled && next.serviceCharge.rateBp <= 0) return refuse("VALIDATION", "เปิดค่าบริการต้องระบุอัตรามากกว่า 0");
       if (next.tip.enabled && !(await tipLedgerOk(tx, ctx.tenantId, ctx.systemId, next.tip.ledgerAccountId))) return refuse("TIP_ACCOUNT_REQUIRED");
@@ -159,7 +167,7 @@ export async function updatePosPaymentSettings(
 
       const base = isRecord(sys.settings) ? sys.settings : {};
       const pos = isRecord(base.pos) ? base.pos : {};
-      const settings = { ...base, pos: { ...pos, serviceCharge: next.serviceCharge, tip: next.tip } } as Prisma.InputJsonValue;
+      const settings = { ...base, pos: { ...pos, serviceCharge: next.serviceCharge, tip: next.tip, deposit: next.deposit } } as Prisma.InputJsonValue; // POS P2.9b ▸ + deposit ◂
       await tx.appSystem.update({ where: { id: sys.id }, data: { settings } });
       diff = settingsAuditDiff("payment", cur, next);
       return { ok: true, ...next };
