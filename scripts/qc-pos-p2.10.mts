@@ -10,7 +10,7 @@
 //   มติ 6 เซิร์ฟเวอร์สร้าง QR/ลิงก์ใบเสร็จเอง (ใบขอรับเงิน PENDING ของเครื่องนี้ / QR นิ่งของสาขา · บิลของกะเครื่องนี้ ≤ 15 นาที + qrEReceipt) ·
 //          qr/receiptUrl ที่ client ส่ง = DISPLAY_STATE_INVALID · PAID โผล่ในการอ่านครั้งถัดไปโดยไม่ต้อง publish ใหม่
 //   มติ 9 ตาราง PosCustomerDisplay (migration *_pos_p210_customer_display) · ผู้เขียนเดียว pos/display.ts · JSON ≤ 16 KB · ≤ 20 บรรทัด + moreCount
-//   มติ 10 ข้อสอบนี้ 12 ข้อ · ORACLE-EDIT ที่อนุมัติล่วงหน้า = qc-pos-p1.18.mts:312 (rewardNearCustomerDisplay → live) เท่านั้น
+//   มติ 10 ข้อสอบนี้ 12 ข้อ (+ CT3 = 13 · ORACLE-ADD ผู้คุม 15 ต.ค. (P2.10 fix 1)) · ORACLE-EDIT ที่อนุมัติล่วงหน้า = qc-pos-p1.18.mts:312 (rewardNearCustomerDisplay → live) เท่านั้น
 //
 // ชื่อที่ข้อสอบนี้ตั้ง (ผู้สร้างต้องทำให้มีจริง — ตารางเต็มใน ledger/wo-notes/pos-P2.10-oracle.md):
 //   src/lib/modules/pos/display.ts (ไม่ใช่ "use server" · คืนคำปฏิเสธเป็นข้อมูล {ok:false, code, message} ไม่ throw):
@@ -66,6 +66,8 @@ const CHECKS: readonly Def[] = [
   // ── CT เนื้อหา ──
   D("CT1", "-", "[§3 R6 R7 มติ 4] หัวจอ = ชื่อร้านใบเสร็จ + โลโก้ + ชื่อสาขา + ชื่อเครื่อง · บรรทัด/ยอด/คูปอง WELCOME50/ส่วนลดสมาชิกตรงที่ส่ง · สแตมป์ filled = min(stamps+toAdd, slots) · near เมื่อเหลือ ≤ 2 · ไม่มีโปรแกรม → null · ค่าตั้งปริยาย showPoints true locale th · แก้ locale en + idleText → อยู่ใน view · locale fr / idleText 81 ตัว → ปฏิเสธ แถวไม่เปลี่ยน"),
   D("CT2", "X5", "[R3 มติ 3] PDPA: view ไม่มีเบอร์/เบอร์ปิดบัง/รหัสสมาชิก/นามสกุล (สแกนทั้งก้อน) · ชื่อต้นคำแรก ≤ 30 ตัว · state ที่มี member.phone/phoneMasked/memberCode/lastName · pay.giftCardNumber/depositNo → DISPLAY_STATE_INVALID · showPoints=false → ไม่มีแต้มสะสม/แต้มที่ได้ใน view แม้ส่งมา"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.10 fix 1) — CT3 (R1 F2 F4 · มติ fix1 ข้อ 2 4 8)
+  D("CT3", "X5", "[R3 มติ 3 · fix1 มติ 2 4] ชื่อในบรีฟสมาชิก = รหัสสมาชิก (สมาชิกไม่มีชื่อ) → view.member.firstName '' · รหัสสมาชิกไม่อยู่ใน view (cart + done) · ชื่อจริงยังแสดง ‖ totals.member มี kind: POINTS + showPoints=false → ป้ายกลาง ไม่มีตัวเลข/จำนวนแต้ม · VOUCHER ไม่มีชื่อ (ไม่ส่งป้าย / ป้าย = โค้ด) → 'คูปอง' ไม่มีโค้ด voucher · VOUCHER มีชื่อ/TIER คงป้าย · showPoints=true → ป้ายแต้มเดิม"),
   // ── PY ช่องจ่ายเงิน ──
   D("PY1", "X4", "[R3 มติ 6] pay.qr / pay.qrPayload จาก client → DISPLAY_STATE_INVALID · intentId ของ D1 (PENDING) → qr = qrPayload + ยอด + PENDING ของใบนั้น · ใบของเครื่องอื่น/สาขาอื่น → ไม่ใช้ (QR นิ่งของร้านยอด roundSatang) · ไม่มี intentId → QR นิ่ง · markIntentPaid → PAID ในการอ่านถัดไปโดยไม่ publish (sinceSeq เดิมก็ต้องเห็น) · ชำระแล้ว/คงเหลือ/รับ/ทอนตรงที่ส่ง · บัตรไม่มีใบ → qr null"),
   D("PY2", "X4", "[R3 มติ 6 8] done ของบิลกะ D1 → receiptUrl = <origin>/r/<publicToken> · receiptNo/ทอน/แต้มที่ได้ตรง · receiptUrl จาก client → DISPLAY_STATE_INVALID · บิลของ D3 / บิลเก่า 16 นาที / id มั่ว → null · qrEReceipt ปิด → null"),
@@ -1118,6 +1120,65 @@ async function runDb() {
       await settings("A", owner, { deviceId: DID.D1, showPoints: true });
     }
     chk("CT2", p.length === 0, "ไม่มีเบอร์/รหัสสมาชิก/นามสกุล · ชื่อต้น ≤ 30 · ฟิลด์ต้องห้าม = DISPLAY_STATE_INVALID · showPoints", FXB(joinP(p)));
+  }
+
+  // ════════ CT3 ชื่อที่เป็นรหัสสมาชิก · ป้ายส่วนลดสมาชิก ════════
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.10 fix 1) — R1 F2 F4 · มติ fix1 ข้อ 2 4 8 (ข้อสอบเพิ่ม 12 + 1 = 13)
+  {
+    const p: string[] = [];
+    if (!TOK) p.push("ไม่มี token หลัก (PA3)");
+    else if (!MEMBER.memberCode) p.push("ไม่มี memberCode ของสมาชิก X (ฟิกซ์เจอร์)");
+    else {
+      // (a) สมาชิกไม่มีชื่อ → บรีฟสมาชิกใช้รหัสสมาชิกแทนชื่อ (member/profile.ts briefsOf) → hook เดิมส่งรหัสมาเป็น firstName
+      const MC = MEMBER.memberCode;
+      await publish("D1", nextSeq(), CART({ member: { firstName: MC, tier: "Gold", points: 1_234 } }));
+      const va = viewOf(await read(TOK));
+      if (!va) p.push("ชื่อ = รหัสสมาชิก → อ่าน view ไม่ได้");
+      else {
+        if (va.member?.firstName !== "") p.push(`ชื่อ = รหัสสมาชิก → firstName "${short(va.member?.firstName, 20)}" (คาด "")`);
+        if (deepHas(va, MC)) p.push("ชื่อ = รหัสสมาชิก → view มีรหัสสมาชิก");
+      }
+      await publish("D1", nextSeq(), { phase: "done", member: { firstName: MC, tier: null }, done: { receiptNo: `R3-${RAND}`, changeSatang: 0 } });
+      const vd = viewOf(await read(TOK));
+      if (!vd || vd.member?.firstName !== "" || deepHas(vd, MC)) p.push(`done ชื่อ = รหัสสมาชิก → ${short(vd?.member, 60)} (คาด firstName "" · ไม่มีรหัส)`);
+      // คุมผลบวก: ชื่อจริงยังแสดง
+      await publish("D1", nextSeq(), CART());
+      if (viewOf(await read(TOK))?.member?.firstName !== "สมชาย") p.push("ชื่อจริง (สมชาย) หายไป (คุมผลบวก)");
+
+      // (b) ป้ายส่วนลดสมาชิก: hook ส่ง kind · POINTS + showPoints=false → ป้ายกลาง ไม่มีตัวเลข · VOUCHER ไม่มีชื่อ → "คูปอง" ไม่มีโค้ด
+      const VCODE = `QCV${RAND.toUpperCase()}7`;
+      const ML = [
+        { kind: "TIER", label: "ส่วนลดสมาชิก Gold", satang: 4_000 },
+        { kind: "POINTS", label: "ใช้ 1,240 แต้ม", satang: 12_400 },
+        { kind: "VOUCHER", label: VCODE, satang: 5_000 }, // hook เดิม: ชื่อ voucher ไม่มี → wallet ใช้ res.code
+        { kind: "VOUCHER", satang: 3_000 }, // hook ใหม่: ไม่มีชื่อ = ไม่ส่งป้าย
+        { kind: "VOUCHER", label: "ส่วนลดวันเกิด", satang: 2_000 }, // มีชื่อ = แสดงชื่อ (คุมผลบวก)
+      ];
+      const withML = () => CART({ totals: { ...TOTALS, member: ML } });
+      const off = await settings("A", owner, { deviceId: DID.D1, showPoints: false });
+      if (off?.ok !== true) p.push(`showPoints false → ${codeOf(off)}`);
+      const r0 = await publish("D1", nextSeq(), withML());
+      if (r0?.ok !== true || r0?.written !== true) p.push(`publish totals.member มี kind → ${codeOf(r0)} written ${r0?.written}`);
+      const vb = viewOf(await read(TOK));
+      const ml = ((vb?.totals?.member ?? []) as Any[]).map((m) => ({ label: String(m?.label ?? ""), satang: Number(m?.satang) }));
+      if (ml.length !== ML.length) p.push(`totals.member ${ml.length} แถว (คาด ${ML.length}) ${short(ml, 120)}`);
+      else {
+        if (ml[0]!.label !== "ส่วนลดสมาชิก Gold") p.push(`TIER → "${ml[0]!.label}"`);
+        if (!ml[1]!.label || /\d/.test(ml[1]!.label) || ml[1]!.label === "ใช้ 1,240 แต้ม") p.push(`POINTS + showPoints=false → "${ml[1]!.label}" (คาด ป้ายกลาง ไม่มีตัวเลข)`);
+        if (ml[2]!.label !== "คูปอง" || ml[3]!.label !== "คูปอง") p.push(`VOUCHER ไม่มีชื่อ → "${ml[2]!.label}" / "${ml[3]!.label}" (คาด "คูปอง")`);
+        if (ml[4]!.label !== "ส่วนลดวันเกิด") p.push(`VOUCHER มีชื่อ → "${ml[4]!.label}" (คาด ชื่อ voucher · คุมผลบวก)`);
+        if (ml.map((m) => m.satang).join() !== ML.map((m) => m.satang).join()) p.push(`ยอด totals.member ${short(ml.map((m) => m.satang), 60)}`);
+      }
+      if (deepHas(vb, VCODE)) p.push("view มีโค้ด voucher");
+      if (deepHas(vb, "1,240") || deepHas(vb, "1240")) p.push("showPoints=false → view มีจำนวนแต้มที่ใช้");
+      // คุมผลบวก: showPoints=true → ป้ายแต้มเดิม · VOUCHER ไม่มีชื่อยังเป็น "คูปอง"
+      await settings("A", owner, { deviceId: DID.D1, showPoints: true });
+      const vp = viewOf(await read(TOK));
+      const mp = ((vp?.totals?.member ?? []) as Any[]).map((m) => String(m?.label ?? ""));
+      if (mp[1] !== "ใช้ 1,240 แต้ม") p.push(`POINTS + showPoints=true → "${short(mp[1], 30)}" (คาด ป้ายเดิม)`);
+      if (mp[2] !== "คูปอง" || deepHas(vp, VCODE)) p.push(`showPoints=true VOUCHER ไม่มีชื่อ → "${short(mp[2], 30)}"`);
+    }
+    chk("CT3", p.length === 0, "ชื่อ = รหัสสมาชิก → firstName \"\" ไม่มีรหัส · POINTS (showPoints=false) ป้ายกลางไม่มีตัวเลข · VOUCHER ไม่มีชื่อ = \"คูปอง\" ไม่มีโค้ด", FXB(joinP(p)));
   }
 
   // ════════ PY1 พร้อมเพย์ ════════
