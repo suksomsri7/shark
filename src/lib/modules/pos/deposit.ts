@@ -480,7 +480,9 @@ export async function registerRefundDeposit(ctx: RegisterCtx, actor: RegisterAct
               data: { tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, name: `คืน${line?.name ?? "มัดจำ"}`.slice(0, 200), qty: 1, unitPriceSatang: remaining, discountSatang: 0, lineTotalSatang: remaining, refLineId: line?.id ?? null, restock: false },
             });
             await tx.posPayment.createMany({ data: pays.map((p) => ({ tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, type: p.type, amountSatang: p.amountSatang, reference: p.reference ?? null })) });
-            await tx.posSale.update({ where: { id: receipt.id }, data: { refundedSatang: { increment: remaining } } });
+            // ใบรับ: ยอดคืนสะสม · คืนครบทั้งใบ (ยังไม่เคยใช้) = REFUNDED แบบบิลที่คืนครบ (บิลที่ใช้ไปบางส่วนยัง PAID)
+            const rcpt = await tx.posSale.update({ where: { id: receipt.id }, data: { refundedSatang: { increment: remaining } }, select: { refundedSatang: true, grandTotalSatang: true } });
+            if (rcpt.refundedSatang >= rcpt.grandTotalSatang) await tx.posSale.update({ where: { id: receipt.id }, data: { status: "REFUNDED" } });
             const n = await tx.$executeRaw`
               UPDATE "PosDeposit" SET "refundedSatang" = "refundedSatang" + ${remaining}, status = 'REFUNDED'::"PosDepositStatus", "updatedAt" = now()
               WHERE id = ${d.id} AND status = 'OPEN' AND "amountSatang" - "usedSatang" - "refundedSatang" = ${remaining}`;
