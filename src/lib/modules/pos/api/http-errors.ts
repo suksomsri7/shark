@@ -199,6 +199,10 @@ function hintOf(code: PosRefusalCode, r: Record<string, unknown>): string | unde
   if (code === "PRICE_CHANGED" && typeof r.grandTotalSatang === "number") return `ยอดปัจจุบัน ${r.grandTotalSatang} สตางค์ (grandTotalSatang) — คิดราคาใหม่ด้วย POST /sales/quote แล้วส่ง expectedGrandTotalSatang ใหม่`;
   if (code === "IDEMPOTENCY_CONFLICT" && typeof r.saleId === "string") return `บิลเดิมของคีย์นี้: ${r.saleId}`;
   if (code === "POINTS_CAPPED" && typeof r.allowedPoints === "number") return `ใช้ได้สูงสุด ${r.allowedPoints} แต้ม`;
+  // POS P2.13 ▸ fix1 F6: คำขออนุมัติ (ยกเลิก/คืนเงินเกินกติกาของร้าน) — บอก requestId · รอผู้จัดการอนุมัติในแอป · ห้ามลองใหม่ด้วยคีย์ใหม่ ◂
+  if ((code === "APPROVAL_REQUIRED" || code === "PENDING_APPROVAL") && typeof r.requestId === "string" && r.requestId) {
+    return `คำขออนุมัติ ${r.requestId} รอผู้จัดการอนุมัติในแอป — ไม่ต้องลองใหม่ด้วย Idempotency-Key ใหม่ (approval request ${r.requestId} waits for a manager in the app)`;
+  }
   return undefined;
 }
 
@@ -218,7 +222,8 @@ export function toPosApiError(e: unknown): unknown {
   const th = isThai(raw) ? raw : (FALLBACK_TH[row.status] ?? FALLBACK_TH[422]!);
   const err = posApiError(row.status, row.code, th, row.en, hintOf(code, r), detailsOf(r, th));
   // ค่าที่ "คืน" = ปฏิเสธก่อนเขียน · ที่ "โยน" ถือว่าอาจเขียนไปแล้ว ยกเว้น BUSY (catalog: "ยังไม่ได้บันทึก")
-  const safe = returned || code === "BUSY";
+  // POS P2.13 ▸ fix1 F6: APPROVAL_REQUIRED = facade ยื่นคำขออนุมัติแล้ว (เขียนแถว) ⇒ ไม่ใช่ nothingWritten — เก็บคำตอบ (requestId) ให้คีย์เดิมตอบซ้ำ ◂
+  const safe = (returned && code !== "APPROVAL_REQUIRED") || code === "BUSY";
   return safe && (row.status === 409 || row.status === 429 || row.status === 503) ? nothingWritten(err) : err;
 }
 

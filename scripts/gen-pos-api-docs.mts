@@ -345,7 +345,7 @@ export function renderDocs(ops: ApiOp[] = POS_OPS): string {
     "",
     `A key may be limited to some branches with the pseudo-scope \`${POS_FILTER_UNIT_PREFIX}<unitId>\` (one per branch). Branches outside the list answer 404 \`not_found\`, and reports without \`unitId\` only cover the allowed branches.`,
     "",
-    "Not available through the API on purpose: staff PINs, manager approvals, opening and closing shifts, held bills, table service, deposits, gift cards and store credit as tenders, member point burning and coupons, the customer display, and device registration.",
+    "Not available through the API on purpose: staff PINs, manager PINs and deciding approval requests (a void or refund over the shop's approval rule waits for a manager in the app), opening and closing shifts, held bills, table service, deposits, gift cards and store credit as tenders, member point burning and coupons, the customer display, and device registration.",
     "",
   );
 
