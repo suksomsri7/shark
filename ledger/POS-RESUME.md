@@ -1817,3 +1817,7 @@
 - 23:45Z P2.7 fix 1 (ORACLE-EDIT ×4) = `wip/pos-p2.7` **3c29ceac** · p2.7 38/38 · p2.6 67 · p1.7 33 · p2.8 60/61 ST6 · p2.13 53/54 ST5 (lane pin ชั่วคราว ต้องเขียวที่ merge tip) · รอ R1 + hunter → fix 2 (โค้ด) หรือ merge
 - 23:50Z R1 P2.7 (@71f5cd10) = **MERGEABLE-AFTER-FIXES** F1 Med dedupe race · F2 Low-Med intent ไม่ผูกออเดอร์ (ใช้เงิน PREPAID ผ่านหน้าขายได้) · F3–F6 Low · F7 typecheck ซ้ำ · F8 C9 → มติ fix 2 ทั้งหมด + ORACLE-ADD TB8/PY12 → ส่ง builder (รอ hunter รวมรอบเดียว)
 - 23:51Z hunter P2.7 (@71f5cd10) = **FINDINGS** H1 HIGH (= F2 ยกระดับ: หน้าขายใช้เงิน PREPAID + ข้าม manager gate) · H2 = F1 · H3 MED ปิดช่องทางแล้วออเดอร์ PREPAID ค้าง · H4 LOW เงิน Beam สายขึ้นกับว่ามีคนอ่านสถานะ · H5 = F6 Beam charge กำพร้า → รวมใน fix 2 (ส่ง builder ข้อความที่ 2) · P2.14: ปิด route legacy session/order สำหรับสาขาที่ผูก POS
+
+### 16 ต.ค. 23:56Z — P2.13 skill fix-up merged 4bb550cf → gates103
+- skill fix-up `wip/pos-p2.13-skill` **4ccd0df9** (K7b/K8b · 12 recipes · openapi wording · gates เขียว) → **merge → session/pos 4bb550cf** → ทรี c detached + sync สกิล → **gates103-c** (`gates103-c-20261015T235552Z`) → เขียว → push → **41/55 (75%)** + TG + memory
+- เลน: 1 = P2.7 fix 2 ทรี d · ทรี b ว่าง @4ccd0df9 · ทรี c = gates103
