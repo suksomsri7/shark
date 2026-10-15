@@ -47,6 +47,7 @@ import {
   submitRefusalMessageKey, // POS HF-PP ▸ fix 1 ◂
   stripPayPins, // POS P2.9U ▸ มติ 3 ◂
   hasPinlessGiftCard, // POS P2.9U ▸ มติ 3 ◂
+  hasLast4lessDeposit, // POS P2.9bU ▸ มติ 3 ◂
   storeCreditOf, // POS P2.9U ▸ มติ 1/5 ◂
   submitInputToCart, // POS P2.9U ▸ มติ 3 ◂
   REGISTER_MAX_LINES,
@@ -712,6 +713,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       void _pin;
       void _mgr;
       // POS P2.9U ▸ มติ 3 (H6): PIN บัตรของขวัญห้ามลง storage — แถว GIFT_CARD เก็บ number อย่างเดียว (โหลดกลับ = บิลเดิม หรือขอ PIN ใหม่) ◂
+      // POS P2.9bU ▸ มติ 3: phoneLast4 ของแถว DEPOSIT ห้ามลง storage เช่นกัน — stripPayPins ตัดทิ้ง (โหลดกลับ = บิลเดิม หรือ DEPOSIT_NOT_OWNER ⇒ ใส่ 4 หลักอีกครั้ง) ◂
       const stored = { ...kept, payMethods: stripPayPins(kept.payMethods) };
       window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: stored.idempotencyKey, sale: stored, phase }));
     } catch {
@@ -1759,12 +1761,18 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setPayPhase("form");
       // POS P2.9U ▸ มติ 3 (H6): คำขอที่ไม่มี PIN (ลองซ้ำ/โหลดกลับ) ได้ VALIDATION = คีย์นี้ยังไม่มีบิล ⇒ จอชำระขอ PIN อีกครั้ง (ไม่ใช่การ์ดผิดพลาด) ·
       //   โหลดกลับ (ตะกร้าว่าง) = สร้างตะกร้าคืนจากคำขอที่เก็บ แล้วกล่องสร้างแถวคืนเมื่อ quote มา · คีย์เดิม ◂
-      if (r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) {
+      // POS P2.9bU ▸ มติ 3: คำขอที่ถูกตัด 4 หลักท้าย (ลองซ้ำ/โหลดกลับ) ได้ DEPOSIT_NOT_OWNER = ยังไม่มีบิล ⇒ จอชำระเปิดแผงมัดจำของแถวนั้น "กรุณาใส่ 4 หลักท้ายอีกครั้ง" (ทางเดียวกับ PIN) ◂
+      if ((r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) || (r.code === "DEPOSIT_NOT_OWNER" && hasLast4lessDeposit(sale.payMethods))) {
         if (cartRef.current.lines.length === 0) changeCart(submitInputToCart(sale, newKey));
         setPinAgain((a) => ({ seq: (a?.seq ?? 0) + 1, payMethods: sale.payMethods, tipSatang: sale.tipSatang ?? 0, ...(sale.cashReceivedSatang !== undefined ? { cashReceivedSatang: sale.cashReceivedSatang } : {}) }));
         return;
       }
       if (r.code === "STORE_CREDIT_NOT_OWNER") showToast({ key: "errors.storeCreditNotOwner" }); // POS P2.9U ▸ มติ 4: แถวเครดิตร้านถูกถอดในกล่อง + ข้อความลอย ◂
+      // POS P2.9bU ▸ มติ 4: บิลที่มีแถวมัดจำได้ VALIDATION = ข้อความลอยทั่วไป (กล่องอยู่ขั้นกรอก แถวคงไว้ · คีย์เดิม) ◂
+      if (r.code === "VALIDATION" && sale.payMethods.some((m) => m.type === "DEPOSIT")) {
+        showToast({ key: refusalMessageKey("VALIDATION") });
+        return;
+      }
       // POS P1.12U มติ 6: แต้มเกินเพดาน = แก้เป็น allowedPoints แล้ว quote ใหม่ (กล่องเปิดอยู่ ไม่มีการ์ดผิดพลาด) ·
       //   สิทธิ์เปลี่ยนระหว่างบันทึก = แบนเนอร์ + quote ใหม่ + ขอสิทธิ์ใหม่ (ที่เลือกคงไว้ถ้ายังใช้ได้ — quote ตัดสิน)
       // fix รอบ 1 F8: แก้อัตโนมัติเฉพาะเมื่อตะกร้าบนจอยังเป็นของสมาชิกคนเดียวกับคำขอ (ทางโหลดคำขอค้างกลับ = ตะกร้าว่าง ⇒ การ์ดผิดพลาดปกติ)
