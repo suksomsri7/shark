@@ -1622,3 +1622,10 @@
 - ใบถัดไปตามแผน = **P2.10 จอลูกค้า (จอที่ 2)** lane A · ⏮ P1.6 · visual + ~10 · mockup 11A (`design-pos/11-customer-display.png` panel A: header ร้าน/สาขา/เคาน์เตอร์ · ทักทายสมาชิก tier/แต้ม · รายการ+ตัวเลือก+ส่วนลด · รวม/คูปอง · สแตมป์ 7/10 · ยอดสุทธิ/ชำระแล้ว/คงเหลือ + QR PromptPay) · panel B/C (ใบเสร็จ 80 มม./ออนไลน์) ทำแล้ว P1.10
 - prompt `pos-prompt-accountB-P2.10-B.md` (5fb02545) → spawn **brief drafter** (Opus read-only ทรีผู้คุม @57a8b19a) → output `pos-brief-P2.10.md` DRAFT → ผู้คุม §10 → oracle writer (ทรี b) → builder หลัง HF-FU merge
 - เลน: 1 = HF-FU fix 2 ทรี c · 2 = P2.10 brief drafter (read-only)
+
+### 15 ต.ค. 14:05Z — P2.10 brief → §10 มติ 1–12 → oracle writer ทรี b
+- brief drafter: `pos-brief-P2.10.md` (97 บรรทัด) — วันนี้มีแค่ stub (`rewardNearCustomerDisplay` live:false · DeviceSettings ไม่มี toggle) · ตะกร้าสดอยู่ client เท่านั้น (`lineModels`) ⇒ register ต้อง publish view เอง · เสนอ (a) แถว `PosCustomerDisplay` ต่อเครื่อง + poll 1 s/3 s · pair code 8 ตัว 10 นาที → cookie httpOnly `/d` · DTO `DisplayView` · 12 ข้อสอบ · 10 state จอ + 3 state ตั้งค่า · ขอบล่าง Chrome 111 (Tailwind v4)
+- ผู้คุม **§10 มติ 1–12**: (a) + cadence · pair code+cookie · PDPA ชื่อต้น+tier เสมอ แต้มหลัง `showPoints` · เฉพาะเครื่องลงทะเบียน 1 จอ/เครื่อง · `onDisplayPay` prop · server คำนวณ QR/ลิงก์ใบเสร็จเอง (client ส่งมา = INVALID) · Chrome 111 + owner line แท็บเล็ตเก่า · QR ใบเสร็จ 20 s · migration `pos_p210_customer_display` · oracle 12 + ORACLE-EDIT p1.18:312 · visual wo `p2.10` viewport 1280×800 + 1024×768 · ไม่ต้อง hunter (ไม่มี money write)
+- spawn **oracle writer P2.10** (Opus ทรี b `wip/pos-p2.10-oracle` จาก 57a8b19a) prompt `pos-prompt-accountB-P2.10-O.md`
+- ⚠️ ทรี b ถูกใช้โดย oracle writer ⇒ **gates93 (HF-FU merge gate) ย้ายไปรันบนทรี c** หลัง fix 2 เสร็จ (แก้ template: cd ทรี c + head check)
+- เลน: 1 = HF-FU fix 2 ทรี c · 2 = P2.10 oracle ทรี b
