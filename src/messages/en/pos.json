@@ -271,7 +271,48 @@
         "refundYourself": "This bill can no longer be saved but the money has arrived — refund the customer yourself"
       },
       "platformHint": "Paid in full via the platform",
-      "platformVia": "Full amount via {name}"
+      "platformVia": "Full amount via {name}",
+      "gc": {
+        "tilesTitle": "Other methods",
+        "tileOff": "Not enabled",
+        "tileHint": "Scan or type the number",
+        "tileUsed": "✓ {count} card(s)",
+        "scNoMember": "No member",
+        "scNoCredit": "No credit",
+        "scBalance": "Balance {amount}",
+        "scOver": "Store credit covers up to {amount}",
+        "number": "Gift card number",
+        "numberPlaceholder": "Card number (scan or type)",
+        "scan": "Scan the card number with the camera",
+        "lookup": "Look up",
+        "notFound": "Card not found",
+        "balance": "Balance {amount}",
+        "expires": "Expires {date}",
+        "reasonSuspended": "Card suspended — cannot pay with it",
+        "reasonExpired": "Card expired — cannot pay with it",
+        "reasonDepleted": "No balance left on this card",
+        "reasonPinLocked": "Card temporarily locked (too many wrong PINs) — take another method",
+        "amount": "Amount from the card",
+        "short": "Card holds {amount} — take the rest with another method",
+        "pin": "Card PIN (customer enters)",
+        "pinHint": "{min}–{max} digits · hidden",
+        "use": "Use this card · {amount}",
+        "usePin": "Use this PIN",
+        "dupCard": "This card is already on the bill",
+        "maxCards": "Up to 3 cards per bill",
+        "rowLeft": "Balance after {amount}",
+        "pinWrong": "Wrong PIN",
+        "pinAgain": "Please enter the PIN again",
+        "enterPin": "Enter PIN",
+        "lockedRemoved": "Card temporarily locked — removed from the bill, take another method",
+        "unusableRemoved": "Card can no longer be used — removed from the bill",
+        "changedBanner": "Card balance changed — check again (enter the PIN again)",
+        "tipTotal": "Tip total",
+        "tipCashOnly": "Tips need a cash, transfer, PromptPay or card payment",
+        "tipOverCash": "Tip cannot exceed the cash-like part {amount}",
+        "overDue": "Over the amount due by {amount} — remove a row and take it again",
+        "pinAgainRestart": "Bill total changed — take the payment again (gift cards need the PIN again)"
+      }
     },
     "done": {
       "title": "Sale complete",
@@ -285,7 +326,8 @@
       "kitchenLabel": "Kitchen",
       "queue": "Queue {n}",
       "kitchenPrintFailed": "Kitchen ticket did not print — {reason} (reprint from the kitchen display)",
-      "kitchenNoTicket": "No kitchen ticket printed — print it from the kitchen display"
+      "kitchenNoTicket": "No kitchen ticket printed — print it from the kitchen display",
+      "tip": "Tip"
     },
     "roles": {
       "owner": "Owner",
@@ -1626,7 +1668,9 @@
         "credit": "Store credit",
         "creditSub": "Coming next (member wallet)",
         "platform": "Platform",
-        "platformSub": "The platform refunds the customer"
+        "platformSub": "The platform refunds the customer",
+        "storeCredit": "Store credit",
+        "storeCreditSub": "To the member wallet"
       },
       "reference": "Reference (optional)",
       "summary": "Refund {amount}",
@@ -1637,7 +1681,19 @@
       "auditNote": "The person and the reason are recorded in the audit log",
       "cancel": "Cancel",
       "confirm": "Confirm refund {amount}",
-      "changed": "The amount changed — please check again"
+      "changed": "The amount changed — please check again",
+      "tender": {
+        "max": "Up to {amount}",
+        "maxParen": "(up to {amount})",
+        "toCard": "Back to card {card}",
+        "cardUnusable": "Card unusable — cannot refund to it",
+        "cardDone": "Card share already refunded",
+        "split": "Split refund: {rows}",
+        "cardToCash": "Unusable card share {amount} goes back as cash — a reason is required (manager or approval)",
+        "uncovered": "This method cannot cover {amount} — pick another method or fewer items",
+        "methodInvalid": "This refund method is not allowed for this bill — the gift card / store credit share must go back to the card or store credit",
+        "reasonRequired": "Type the refund reason here before confirming — this refund needs a reason"
+      }
     },
     "errors": {
       "noPermission": "This account is not allowed to do this — ask the owner or a manager",
@@ -1801,7 +1857,20 @@
       "manualRequiresManager": "Manual payment confirmation (PromptPay and card) needs a manager",
       "manualHint": "The \"Confirm manually\" button and card payments on the EDC terminal are limited to people who manage shifts · PromptPay via Beam always needs a manager · Beam card payments cannot be confirmed manually",
       "permissionDenied": "This account cannot change payment settings — it needs device management in every branch of this point of sale",
-      "expiryInvalid": "QR lifetime must be a whole number from 5 to 60 minutes"
+      "expiryInvalid": "QR lifetime must be a whole number from 5 to 60 minutes",
+      "tipCard": "Tips",
+      "tipEnabled": "Accept tips at the register",
+      "tipHint": "Tips are not shop revenue — booked to a tips-payable (liability) account · only from cash, transfer, PromptPay or card",
+      "tipLedger": "Tips payable account (liability)",
+      "tipLedgerNone": "— Choose an account —",
+      "tipLedgerHint": "Only liability accounts of the book linked to this POS are listed",
+      "tipNoBook": "This POS is not linked to an accounting book — tips cannot be enabled",
+      "tipNoLiability": "The linked book has no liability account yet — create one in the chart of accounts",
+      "tipOwnerOnly": "Only the shop owner can set up tips",
+      "tipSave": "Save tips",
+      "tipSaved": "Tip settings saved",
+      "tipAccountRequired": "Choose a tips payable (liability) account of the linked book before enabling tips",
+      "tipInvalid": "That account cannot hold tips — choose a liability account"
     },
     "locale": {
       "label": "App language",

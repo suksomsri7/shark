@@ -707,3 +707,10 @@ Rows added to `scripts/pos-ui-inventory.json` (wo `P2.3U`, 23 interactive rows);
 - Table 06: chips `pos-prod-recipe-chip-low|out|nocost|nomargin` (filter toggles, one at a time) in `pos-prod-recipe-chips`; display `pos-prod-cost-<productId>` (฿ + "ตามสูตร" / "ยังไม่ใส่ต้นทุน") · `pos-prod-margin-<productId>`; stat cards `pos-prod-stat-low` / `-nocost` now live (sub "กำไรคำนวณไม่ได้ N"); stock column of live recipes = portions + "ตามสูตร".
 - Register 01: `pos-reg-pending-cuts` (chip, when registerStatus.pendingStockCount > 0) · `pos-reg-pending-cuts-retry` (pos.settings.manage only → retryPendingStockCutsAction → toast `recipe.retryDone`).
 - Settings 10: INVENTORY `bomDeduct` live (pos-integrations fact).
+
+## Addendum P2.9U — pay dialog §pay: real row-2 tenders · gift-card panel · store credit · tips · 02b lines (builder U, 14 Oct 2026)
+Full spec: `pos-spec-P2.9-tender-ui.md`. In short (register page only — table/order pay dialogs keep the P1.12U disabled row):
+- Row-2 tiles from `registerPayTendersAction`: gift card (enabled by the shop's gift-card setting) · store credit (attached member with credit > 0) · deposit "เร็ว ๆ นี้" · room charge only on HOTEL units.
+- Gift-card panel replaces the amount/quick rows (numpad = amount or masked PIN): number/scan/lookup · masked result · amount ≤ min(remaining, balance) · PIN · "ใช้บัตรนี้" ⇒ row (≤ 3 distinct cards).
+- Tips: footer only when the shop enabled tips; tip only from cash-like rows; "รวมทิป" row under the split list.
+- Inventory rows (wo `P2.9U`): `pos-reg-paydlg-giftcard-number|-scan|-lookup|-amount|-pin|-use|-row-pin-*|-changed-close`; display-only ids: `-giftcard-panel|-result|-unusable|-notfound|-insufficient|-error|-note|-row-*|-row-note-*|-changed`, `pos-reg-paydlg-storecredit-row|-info`, `pos-reg-paydlg-tip-total|-tip-cashonly|-tip-over|-over-due`, 02b `pos-reg-done-pay-lines`.

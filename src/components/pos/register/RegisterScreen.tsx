@@ -45,6 +45,10 @@ import {
   quoteInputToCart,
   refusalMessageKey,
   submitRefusalMessageKey, // POS HF-PP ▸ fix 1 ◂
+  stripPayPins, // POS P2.9U ▸ มติ 3 ◂
+  hasPinlessGiftCard, // POS P2.9U ▸ มติ 3 ◂
+  storeCreditOf, // POS P2.9U ▸ มติ 1/5 ◂
+  submitInputToCart, // POS P2.9U ▸ มติ 3 ◂
   REGISTER_MAX_LINES,
   REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
@@ -194,7 +198,7 @@ type Layer =
   | { kind: "clear" }
   // POS P1.12U: focusPoints = เปิดจากปุ่ม "ใช้แต้ม" ของการ์ดสมาชิก (โฟกัสช่องแต้ม)
   | { kind: "pay"; focusPoints?: boolean }
-  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; memberAttached?: boolean; taxInvoice?: boolean }
+  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; tipSatang?: number; memberAttached?: boolean; taxInvoice?: boolean } // POS P2.9U ▸ tipSatang (02b "ทิป ฿x") · payMethods ไม่มี PIN ◂
   // POS P1.13U: กล่องใบกำกับเต็มรูป (15A) · errorKey = คำปฏิเสธจาก submit (คีย์ใต้ pos) ที่ทำให้เปิดซ้ำ
   | { kind: "taxInvoice"; errorKey?: string }
   | { kind: "note" }
@@ -203,7 +207,7 @@ type Layer =
   | { kind: "weigh"; product: RegisterProduct; options: string[]; note?: string }
   | { kind: "scanChoose"; products: RegisterProduct[] }
   // POS P1.12U: forMember = เปิดจากแผงสมาชิก (รหัสที่อ่านได้ไปทางค้นสมาชิกเสมอ)
-  | { kind: "camera"; forMember?: boolean }
+  | { kind: "camera"; forMember?: boolean; forGiftCard?: boolean } // POS P2.9U ▸ forGiftCard = เลขบัตรของขวัญของจอชำระ (เลขเท่านั้น · มติ 2a) ◂
   // POS P1.12U: แผงสมาชิก 14A (ค้น · สแกนบัตร · สมัครด่วน · รางวัลรอรับเมื่อมีสมาชิกแล้ว)
   | { kind: "member" }
   // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
@@ -694,6 +698,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const sendingRef = useRef(false);
   /** ชุดคำขอที่ส่งไปแล้วแต่ยังไม่รู้ผล — ลองซ้ำต้องส่งตัวนี้ (ไม่สร้างใหม่) */
   const pendingSubmit = useRef<RegisterSubmitInput | null>(null);
+  // POS P2.9U ▸ มติ 2a: เลขบัตรจากกล้อง → จอชำระ · มติ 3: คำขอไม่มี PIN ถูกปฏิเสธ (คีย์ยังไม่มีบิล) → จอชำระขอ PIN ใหม่ ◂
+  const [gcScan, setGcScan] = useState<{ number: string; seq: number } | null>(null);
+  const [pinAgain, setPinAgain] = useState<{ seq: number; payMethods: RegisterPayMethod[]; tipSatang: number; cashReceivedSatang?: number } | null>(null);
   // R4 K5: คำขอที่ส่งแล้วแต่ยังไม่รู้ผล (คีย์ + payload + phase) อยู่รอด reload/Back ใน sessionStorage ต่อระบบ POS + สาขา
   //   ทุกการแตะ storage อยู่ใน try (private mode / ถูกบล็อก = ทำงานต่อแบบไม่จำ) · ลบเมื่อรู้ผล (ok · conflict · ปฏิเสธ) หรือ resetBill
   const pendingStoreKey = `pos-reg-pending:${systemId}:${unitId}:${userId}`;
@@ -701,9 +708,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
     try {
       // POS P1.15U ▸ fix รอบ 1 F3: PIN ผู้จัดการห้ามลง storage (อ่านได้จากเครื่อง) — สำเนาที่เก็บไม่มี managerPin/managerUserId ·
       //   โหลดกลับแล้วลองซ้ำ = บิลเดิมถ้าบันทึกแล้ว · ไม่งั้นได้ DISCOUNT_EXCEEDS_LIMIT ชัด ๆ (ไม่มีบิล) แล้วใส่ PIN ใหม่ · staffToken อยู่ใน sessionStorage อยู่แล้ว ◂
-      const { managerPin: _pin, managerUserId: _mgr, ...stored } = sale;
+      const { managerPin: _pin, managerUserId: _mgr, ...kept } = sale;
       void _pin;
       void _mgr;
+      // POS P2.9U ▸ มติ 3 (H6): PIN บัตรของขวัญห้ามลง storage — แถว GIFT_CARD เก็บ number อย่างเดียว (โหลดกลับ = บิลเดิม หรือขอ PIN ใหม่) ◂
+      const stored = { ...kept, payMethods: stripPayPins(kept.payMethods) };
       window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: stored.idempotencyKey, sale: stored, phase }));
     } catch {
       /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
@@ -1715,7 +1724,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     // POS P1.15U ▸ fix รอบ 1 F4: จอล็อกทับอยู่ = ไม่ส่ง (ยกเว้นลองซ้ำชุดคำขอที่ค้างจากก่อนโหลดหน้า — ชุดเดิมพกโทเคนของมันเอง) ◂
     if (lockedRef.current && !opts?.restore) return;
     sendingRef.current = true;
-    pendingSubmit.current = sale;
+    // POS P2.9U ▸ มติ 3: คำขอค้างในหน่วยความจำ (ลองซ้ำ) ก็ไม่เก็บ PIN — ลองซ้ำคีย์ที่บันทึกแล้ว = บิลเดิม · ยังไม่บันทึก = VALIDATION ⇒ ขอ PIN ใหม่ ◂
+    pendingSubmit.current = { ...sale, payMethods: stripPayPins(sale.payMethods) };
     savePending(sale, "sending");
     setPayPhase("sending");
     setPayError(null);
@@ -1726,7 +1736,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
-        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet" && l.kind !== "member" && l.kind !== "coupon"), { kind: "done", result: r, payMethods: sale.payMethods, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet" && l.kind !== "member" && l.kind !== "coupon"), { kind: "done", result: r, payMethods: stripPayPins(sale.payMethods), tipSatang: sale.tipSatang ?? 0, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
         void refreshStatus();
         return;
       }
@@ -1747,6 +1757,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
       pendingSubmit.current = null;
       clearPending();
       setPayPhase("form");
+      // POS P2.9U ▸ มติ 3 (H6): คำขอที่ไม่มี PIN (ลองซ้ำ/โหลดกลับ) ได้ VALIDATION = คีย์นี้ยังไม่มีบิล ⇒ จอชำระขอ PIN อีกครั้ง (ไม่ใช่การ์ดผิดพลาด) ·
+      //   โหลดกลับ (ตะกร้าว่าง) = สร้างตะกร้าคืนจากคำขอที่เก็บ แล้วกล่องสร้างแถวคืนเมื่อ quote มา · คีย์เดิม ◂
+      if (r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) {
+        if (cartRef.current.lines.length === 0) changeCart(submitInputToCart(sale, newKey));
+        setPinAgain((a) => ({ seq: (a?.seq ?? 0) + 1, payMethods: sale.payMethods, tipSatang: sale.tipSatang ?? 0, ...(sale.cashReceivedSatang !== undefined ? { cashReceivedSatang: sale.cashReceivedSatang } : {}) }));
+        return;
+      }
+      if (r.code === "STORE_CREDIT_NOT_OWNER") showToast({ key: "errors.storeCreditNotOwner" }); // POS P2.9U ▸ มติ 4: แถวเครดิตร้านถูกถอดในกล่อง + ข้อความลอย ◂
       // POS P1.12U มติ 6: แต้มเกินเพดาน = แก้เป็น allowedPoints แล้ว quote ใหม่ (กล่องเปิดอยู่ ไม่มีการ์ดผิดพลาด) ·
       //   สิทธิ์เปลี่ยนระหว่างบันทึก = แบนเนอร์ + quote ใหม่ + ขอสิทธิ์ใหม่ (ที่เลือกคงไว้ถ้ายังใช้ได้ — quote ตัดสิน)
       // fix รอบ 1 F8: แก้อัตโนมัติเฉพาะเมื่อตะกร้าบนจอยังเป็นของสมาชิกคนเดียวกับคำขอ (ทางโหลดคำขอค้างกลับ = ตะกร้าว่าง ⇒ การ์ดผิดพลาดปกติ)
@@ -2532,6 +2550,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 : null
             }
             giftCards={memberReady ? (benefits?.giftCards ?? []) : []}
+            // POS P2.9U ▸ มติ 1–3: ช่องแถว 2 จริง · สมาชิก + เครดิตร้าน · สแกนเลขบัตร · ขอ PIN ใหม่ ◂
+            tenders={tableOn ? null : { systemId, unitId }}
+            member={{ attached: !!cart.memberId, storeCredit: memberReady ? storeCreditOf(benefits?.giftCards) : null }}
+            onScanGiftCard={() => {
+              if (!layersRef.current.some((x) => x.kind === "camera")) push({ kind: "camera", forGiftCard: true });
+            }}
+            scannedGiftCard={gcScan}
+            pinAgain={pinAgain}
             memberSection={
               memberEnabled || cart.couponCode ? (
                 <PayBenefits
@@ -2648,6 +2674,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
             key={k}
             onCode={(code) => {
               pop();
+              // POS P2.9U ▸ มติ 2a: กล้องของจอชำระ = เลขบัตรของขวัญเท่านั้น (ไม่ไปทางสแกนสินค้า) ◂
+              if (l.forGiftCard) return setGcScan((g) => ({ number: code, seq: (g?.seq ?? 0) + 1 }));
               void (l.forMember ? memberScan(code) : onScannedCode(code));
             }}
             onClose={pop}
@@ -2700,6 +2728,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
             taxInvoicePending={!!l.taxInvoice}
             member={l.result.member}
             unitId={unitId} // POS P2.6U ▸ มติ 10: "คิว N" ◂
+            tipSatang={l.tipSatang ?? 0} // POS P2.9U ▸ มติ 7 ◂
+            duplicated={l.result.duplicated} // POS P2.9U ▸ มติ 7: บิลเดิมของคีย์ = 02b ไม่อ่าน payload ใบเสร็จ ◂
           />
         );
       case "options":
