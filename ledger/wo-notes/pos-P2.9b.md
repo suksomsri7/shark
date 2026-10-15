@@ -141,3 +141,20 @@ Code head **fbe92b5a** (e800b1c0 = + notes). CD-P29b-1 re-run before fix 1 (head
 | qc-pos-p2.8 | 60/61 — ST6 wip-only pin |
 | qc-booking-deposit · qc-hotel-public · qc-rental-public | 18/18 · 15/15 · 16/16 |
 | qc-hf-pos-page-authz | 81/81 |
+
+## Gates after fix round 2 + P2.11 merge (one systemd-run unit · `scratchpad/p29b/gates/out5/*.out` · all headed `tree=/root/projects/shark-pos-b head=f51a942b dirty=0`)
+Code head **7d38de9a** (+ merges 1513ed7c / 491ff89e with P2.11 S 744e4f35, + ledger). Red-before block 3 = 46/50.
+| gate | result |
+|---|---|
+| typecheck · fitness no-env / env · fitness-pos | rc 0 · 50/50 · 50/50 · 8/8 |
+| **qc-pos-p2.9b forced ×2 / unforced** | **50/50 · 50/50 · 50/50** (residue 0) |
+| qc-pos-p2.11 | **32/34** — ST1 (prisma/ ≠ P2.11 base) + ST4 (lane-A files / unmarked receipt hunks ≠ P2.11 base) are P2.11's lane-boundary pins, red by construction on any tree carrying P2.9b (like p2.8 ST6) → CONTROLLER-DECISION: re-base those pins at the P2.9b merge |
+| qc-pos-p1.17 | 40/40 |
+| qc-pos-p2.9 · qc-hf-tx | 62/62 · 22/22 |
+| qc-pos-p1.6 · p1.8 · p1.12 · p1.3 · p1.1 | 48 · 49 · 72 · 128 · 180 |
+| qc-pos-account · qc-account-cpa | 16/16 · 107/107 |
+| qc-pos-p2.5 · p2.4 · p2.6 | 49/49 · 50/50 · 67/67 |
+| qc-pos-p2.8 | 60/61 — ST6 wip-only |
+| qc-booking-deposit · qc-hotel-public · qc-rental-public | 18 · 15 · 16 |
+| qc-hf-pos-page-authz | 81/81 |
+Note: an earlier gate run at 1513ed7c (pre-P2.11) was stopped at a suite boundary (after p1.12) when P2.11 landed; its partial logs (`out4`) are superseded.
