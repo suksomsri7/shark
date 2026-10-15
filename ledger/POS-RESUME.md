@@ -1663,3 +1663,8 @@
 - ผู้คุม **§10 มติ 1–10**: S/U ตาม §1 · CH1 fix (Med) · PDF = browser print page + pure `report-print-shared.ts` (ไม่เพิ่ม dependency · PDF จริง = CONTROLLER-RUN probe) · A1–A10 defaults ตาม §3 per system + owner line ยืนยันค่า · key ใหม่ `pos.report.anomaly` + owner line · BR/HR/BL ตามเสนอ · โอน/สต็อกต่อ location = การ์ด P2.12T แยก (owner line แก้) · oracle 30 ข้อ (AN ทีละกฎ) · hunter เบาที่ merge · P2.13 map readers ขึ้น API
 - spawn **oracle writer P2.12** (Opus ทรี c `wip/pos-p2.12-oracle` จาก e6546359) prompt `pos-prompt-accountB-P2.12-O.md`
 - เลน: 1 = P2.10 builder ทรี b · 2 = P2.12 oracle ทรี c · ทรี d ว่าง @84ffb48b
+
+### 15 ต.ค. 15:2xZ — P2.10 built → R1 + chain80
+- builder P2.10: `wip/pos-p2.10` **7ac9efbe** push แล้ว (84ffb48b + merge oracle e4c8be5b + step 2–7 + ORACLE-EDIT a37af00e p1.18:312 + merge ledger 3eac2361) · migration `20261215100000_pos_p210_customer_display` apply QC4 แล้ว · gates: p2.10 12/12 forced ×2 + unforced · p1.10 40 · p1.11 38 · p1.18 81 · p1.3 128 · p1.1 180 · p1.6 48 · p1.7 33 · p1.12 72 · p2.9b 53 · authz 81 (ไม่เพิ่มแถว · `/d` = public token page) · hf-tx 22 · typecheck 0 · fitness ±env · fitness-pos 8/8 · `--dry` th 27/en 14 · diff ≈ 2.0k บรรทัด (deviation 1 — ผู้คุมคงใบเดียว) · เพิ่มเกิน names table: `sinceVer`/`ver` (มติ 13.2) · codes VALIDATION/INTERNAL · status `enabled`/`pairLocked` · `receiptShopHeader` ใน receipt.ts
+- spawn **R1 P2.10** (Opus read-only ทรี b) prompt `pos-prompt-accountB-P2.10-R.md` · **chain80** ทรี d (build80 @7ac9efbe → QC5 `migrate deploy` → vis82 14 state th+en: settings ×3 · display pair/idle/cart/member-stamps/paying-promptpay/cash/card/done/stale/unsupported/live)
+- เลน: 1 = P2.12 oracle ทรี c · 2 = P2.10 R1 ทรี b (read-only) · ทรี d = chain80 (ผู้คุม)
