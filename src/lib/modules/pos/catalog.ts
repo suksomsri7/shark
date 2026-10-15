@@ -333,7 +333,7 @@ export async function checkCatalogWrite(
     if (row.invItemId !== null) {
       // R5 F6 + AUDIT-CLASS X2: InvItem ของร้านนี้ (tenantId ในคำสั่ง) ในคลังที่ขายผ่าน POS นี้ — ทุกผู้กระทำ
       const inv = await client.invItem.findFirst({ where: { id: row.invItemId, tenantId: where.tenantId }, select: { systemId: true } });
-      if (!inv || !(await inventorySystemsOfPos(where.tenantId, where.systemId, client)).includes(inv.systemId)) return "NOT_FOUND";
+      if (!inv || !(await posInventoryIds(where.tenantId, where.systemId, client)).includes(inv.systemId)) return "NOT_FOUND";
     }
     return rowWriteVerdict(actor, where, { unitId: row.unitId, invItemId: row.invItemId }, action, client);
   });
@@ -417,21 +417,38 @@ async function loadProduct(ctx: CatalogCtx, actor: MembershipCtx | null, id: unk
   return p;
 }
 
-/** ระบบคลังที่ "ขายผ่าน" ระบบ POS นี้ = คลังที่ผูกสาขา (ไม่เก็บถาวร) เดียวกับ POS นี้ — ชุดเดียวกับที่ unitInventory ของสาขาเหล่านั้นเห็น (มติ R3 a) */
-async function inventorySystemsOfPos(tenantId: string, posSystemId: string, db: CatalogClient): Promise<string[]> {
-  const posLinks = await db.appSystemUnit.findMany({ where: { tenantId, systemId: posSystemId, type: "POS" }, select: { unitId: true } });
-  if (!posLinks.length) return [];
-  const live = await db.businessUnit.findMany({
+/**
+ * POS P2.11 ▸ SK (brief P2.11 §6 · มติ 6 19) — แผนที่ สาขา → ระบบคลัง ของระบบ POS (ตัวเดียวของโค้ด · แทนสำเนา inventorySystemsOfPos เดิม ×2) ◂
+ *   units = สาขาที่ผูก POS นี้และไม่เก็บถาวร (เรียง id) → คลังที่ผูกสาขานั้น (AppSystemUnit INVENTORY · null = ไม่มีคลัง · ไม่กรองคลังที่ปิด — มติ R3 a)
+ *   groups = ต่อคลัง: สาขาที่ใช้คลังนั้น · shared = ใช้ร่วมกันมากกว่า 1 สาขา (คลังร่วม = สต็อกร่วม · การตัดสต็อกไม่เปลี่ยน)
+ *   อ่านอย่างเดียว · ใช้ทั้งด่านเขียนแคตตาล็อก (คลังที่ "ขายผ่าน" POS นี้) และจอ 06/16 "คลังร่วมกับ…" (P2.11U)
+ */
+export type PosUnitInventoryMap = {
+  units: { unitId: string; inventorySystemId: string | null }[];
+  groups: { inventorySystemId: string; unitIds: string[]; shared: boolean }[];
+};
+export async function posUnitInventoryMap(tenantId: string, posSystemId: string, client: CatalogClient = prisma): Promise<PosUnitInventoryMap> {
+  const posLinks = await client.appSystemUnit.findMany({ where: { tenantId, systemId: posSystemId, type: "POS" }, select: { unitId: true } });
+  if (!posLinks.length) return { units: [], groups: [] };
+  const live = await client.businessUnit.findMany({
     where: { tenantId, id: { in: posLinks.map((l) => l.unitId) }, status: { not: "ARCHIVED" } },
     select: { id: true },
+    orderBy: { id: "asc" },
   });
-  if (!live.length) return [];
-  const inv = await db.appSystemUnit.findMany({
+  if (!live.length) return { units: [], groups: [] };
+  const inv = await client.appSystemUnit.findMany({
     where: { tenantId, type: "INVENTORY", unitId: { in: live.map((u) => u.id) } },
-    select: { systemId: true },
+    select: { unitId: true, systemId: true },
   });
-  return [...new Set(inv.map((l) => l.systemId))];
+  const invOf = new Map(inv.map((l) => [l.unitId, l.systemId]));
+  const units = live.map((u) => ({ unitId: u.id, inventorySystemId: invOf.get(u.id) ?? null }));
+  const by = new Map<string, string[]>();
+  for (const u of units) if (u.inventorySystemId) by.set(u.inventorySystemId, [...(by.get(u.inventorySystemId) ?? []), u.unitId]);
+  const groups = [...by.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([inventorySystemId, unitIds]) => ({ inventorySystemId, unitIds, shared: unitIds.length > 1 }));
+  return { units, groups };
 }
+/** ระบบคลังที่ "ขายผ่าน" ระบบ POS นี้ = คลังที่ผูกสาขา (ไม่เก็บถาวร) เดียวกับ POS นี้ (มติ R3 a) — จากแผนที่ตัวเดียว (POS P2.11 ▸ SK ◂) */
+const posInventoryIds = async (tenantId: string, posSystemId: string, db: CatalogClient): Promise<string[]> => (await posUnitInventoryMap(tenantId, posSystemId, db)).groups.map((g) => g.inventorySystemId);
 
 /**
  * AUDIT-CLASS X6: ล็อกระดับร้านของ "การสร้างแถวที่ผูก InvItem" (backfill · ensureForInvItem · createProduct ผูกคลัง/บาร์โค้ด)
@@ -782,7 +799,7 @@ export async function legacySourceOf(
     return m ? { type: "menu", menuItemId: m.id } : { type: "native" };
   }
   const inv = row.invItemId ? await db.invItem.findFirst({ where: { id: row.invItemId, tenantId: t }, select: INV_LITE }) : null;
-  const sellsHere = !!inv && (await inventorySystemsOfPos(t, row.systemId, db)).includes(inv.systemId);
+  const sellsHere = !!inv && (await posInventoryIds(t, row.systemId, db)).includes(inv.systemId);
   const shops = sellsHere
     ? []
     : await db.shopProduct.findMany({
@@ -1388,7 +1405,7 @@ async function assertCategory(ctx: CatalogCtx, categoryId: unknown, productUnitI
  * C10: บาร์โค้ดที่เท่ากับของ InvItem ที่แถวนี้ผูกเอง ไม่นับเป็นการชน
  */
 async function assertBarcodeFree(ctx: CatalogCtx, code: string, ownInvItemId: string | null, exceptProductId: string | null, db: CatalogClient): Promise<void> {
-  const invSystems = await inventorySystemsOfPos(ctx.tenantId, ctx.systemId, db);
+  const invSystems = await posInventoryIds(ctx.tenantId, ctx.systemId, db);
   const items = invSystems.length
     ? await db.invItem.findMany({
         where: { tenantId: ctx.tenantId, systemId: { in: invSystems }, barcode: code, ...(ownInvItemId ? { id: { not: ownInvItemId } } : {}) },
@@ -1416,7 +1433,7 @@ async function loadSellableItem(ctx: CatalogCtx, invItemId: unknown, db: Catalog
     select: { id: true, systemId: true, name: true, kind: true, priceSatang: true, costSatang: true, archivedAt: true, onHand: true, accountProductId: true, sortOrder: true },
   });
   if (!inv) throw notFound();
-  if (!(await inventorySystemsOfPos(ctx.tenantId, ctx.systemId, db)).includes(inv.systemId)) throw notFound();
+  if (!(await posInventoryIds(ctx.tenantId, ctx.systemId, db)).includes(inv.systemId)) throw notFound();
   return inv;
 }
 
