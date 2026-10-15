@@ -69,7 +69,7 @@ Temp tenants `posqc-p210-<rand>` (+ `-t2`) wiped by the oracle (Z1 residue 0, bu
 `qc-hf-pos-page-authz`: **no row added** — that suite pins the guards of `/app/sys/[id]/pos/*` pages; `/d` is a public token page like `/r/[token]` (no session, scope = cookie token).
 
 ## Gates
-Head under test 3eac2361 for the last row; all other rows a37af00e/d19044d9 (code identical — d19044d9 only adds the visual harness/spec; 3eac2361 only merges ledger). Logs under .
+Head under test 3eac2361 for the last row; all other rows a37af00e/d19044d9 (code identical — d19044d9 only adds the visual harness/spec; 3eac2361 only merges ledger). Logs under `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p210/runs/`.
 | gate | result | log |
 |---|---|---|
 | qc-pos-p2.10 forced ×2 | 12/12 · 12/12 rc 0 | g-p210-forced-1.log · g-p210-forced-2.log |
