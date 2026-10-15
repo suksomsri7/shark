@@ -587,7 +587,15 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   // ── VAT ระดับเอกสาร (COMMON 1): อัตราของ POS ตอนนี้ · บิลเดิมไม่มี VAT = ใบคืนไม่มี VAT ──
   //   F6 ▸ ใบที่ทำให้ครบทั้งบิล = VAT ที่เหลือของบิล (VAT บิล − Σ VAT ใบคืนก่อนหน้า · ไม่ติดลบ) ⇒ Σ VAT ใบคืน = VAT บิลเป๊ะ ◂
   let vat = 0;
-  if (sale.vatSatang > 0 && full) {
+  // POS P2.9b ▸ fix1 มติ 2 (hunt D1): บิลที่ใช้มัดจำ (มี APPLY) — ฐาน VAT ของใบคืน = VAT ที่เก็บบนบิล + Σ VAT ของมัดจำที่ใช้ (= VAT เต็มบิล) ·
+  //   ใบคืนกลับ VAT ตามสัดส่วนยอดคืน/ยอดบิลของฐานนี้ (ปัดครึ่งขึ้น) · ไม่เกินฐาน − ที่กลับไปแล้ว · ใบที่ทำให้ครบ = ที่เหลือทั้งหมด · บิลไม่มีมัดจำ = ทางเดิมทุกไบต์ ◂
+  const depVatAgg = await tx.posDepositTxn.aggregate({ where: { tenantId: s.tenantId, saleId: sale.id, type: "APPLY" }, _sum: { vatSatang: true }, _count: { _all: true } });
+  if (depVatAgg._count._all > 0) {
+    const basis = sale.vatSatang + (depVatAgg._sum.vatSatang ?? 0);
+    const left = Math.max(0, basis - prior.docs.reduce((t, d) => t + d.vatSatang, 0));
+    const share = sale.grandTotalSatang > 0 ? Number((BigInt(2) * BigInt(basis) * BigInt(grand) + BigInt(sale.grandTotalSatang)) / (BigInt(2) * BigInt(sale.grandTotalSatang))) : 0;
+    vat = Math.min(grand, left, full ? left : share);
+  } else if (sale.vatSatang > 0 && full) {
     vat = Math.min(grand, Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0)));
   } else if (sale.vatSatang > 0) {
     vat = splitIncludedVat(grand, await posVatRateBp(tx, s.tenantId, s.systemId)).vatSatang;
