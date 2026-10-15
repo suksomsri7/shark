@@ -461,10 +461,12 @@ export async function readCustomerDisplay(input: { token: string; sinceSeq?: num
       : null;
     const ver = `${r.stateSeq}.${phase}.${intentRow?.status ?? "-"}.${settingsKey(r)}`;
     // lastPolledAt (ออนไลน์) — UPDATE เดียวเมื่อค่าเก่ากว่า 30 วิ (โพลซ้อนกัน = เขียนครั้งเดียว)
-    await db.posCustomerDisplay.updateMany({
-      where: { id: r.id, status: "ACTIVE", OR: [{ lastPolledAt: null }, { lastPolledAt: { lt: new Date(now - DISPLAY_POLL_WRITE_MS) } }] },
-      data: { lastPolledAt: new Date(now) },
-    });
+    // POS P2.10 ▸ fix1 F6 (มติ fix1 ข้อ 6): ดูค่าที่โหลดมาแล้วก่อน — ใหม่กว่า 30 วิ = ไม่ยิง UPDATE (29 ใน 30 โพล) · WHERE เดิมกันโพลซ้อน
+    if (!r.lastPolledAt || now - r.lastPolledAt.getTime() >= DISPLAY_POLL_WRITE_MS)
+      await db.posCustomerDisplay.updateMany({
+        where: { id: r.id, status: "ACTIVE", OR: [{ lastPolledAt: null }, { lastPolledAt: { lt: new Date(now - DISPLAY_POLL_WRITE_MS) } }] },
+        data: { lastPolledAt: new Date(now) },
+      }); // ◂
     const pollMs = nextPollMs(phase);
     const sinceVer = typeof input.sinceVer === "string" ? input.sinceVer : undefined;
     const sinceSeq = typeof input.sinceSeq === "number" && Number.isSafeInteger(input.sinceSeq) ? input.sinceSeq : undefined;
