@@ -1580,3 +1580,9 @@
 - spawn **R1 HF-FU** (Opus read-only ทรี c) prompt `pos-prompt-accountB-HF-FU-R.md` (d962f9ea) → แล้ว hunter เงิน (sweeper double-accept/lock · rotation Σ/VAT · j retry · z1/z3 gate) → merge
 - P2.9bU: R2 MERGEABLE → fix 2 เล็ก (G1+G3) กำลังทำ · chain78 vis80 กำลังถ่าย
 - เลน: 1 = P2.9bU fix 2 ทรี b · 2 = HF-FU R1 ทรี c (read-only)
+
+### 15 ต.ค. 12:30Z — P2.9bU merged (ยังไม่ push) → gates91
+- vis80 @36e0be7c (re-shoot 4 state th+en · failures 0) ผู้คุมดู: chip คืนมัดจำป้ายใหม่ · en "Balance ฿1,070" · เบอร์ fixture 0800000427 · 390 notowner โน้ตอ่านได้ → ผ่าน
+- fix 2 (692a02d7 · G1+G3) R2 ยืนยัน MERGEABLE → **merge 692a02d7 เข้า session/pos = 616db657** + owner lines 2 ข้อ (868c7fe3) · ทรี b detached 616db657 + prisma generate → **gates91** (19 ชุด: p2.9b p2.9 p1.3 p1.8 p1.12 p1.18 p1.10 p1.10u-print p1.16 p1.6 authz p2.8 p2.11 p1.1 p1.17 closeday p2.5 hf-tx account + fitness ±env + fitness-pos + typecheck) `/root/pos-runs/gates91-b-*`
+- ถัดไป: gates91 เขียว (p2.8 ST6 / p2.11 ST1+ST4 แดงจนกว่า push → รันซ้ำ) → push → **36/55** + TG · HF-FU R1 กำลังตรวจ (ทรี c) → hunter เงิน → merge HF-FU (ต้อง merge origin/session/pos ที่มี P2.9bU ก่อนด่านสุดท้าย — ไฟล์ร่วม: messages/*, POS-OWNER-PENDING.md append-only)
+- เลน: 1 = HF-FU R1 (read-only ทรี c) · ทรี b = gates91 (ผู้คุม) · ทรี d ว่าง @36e0be7c
