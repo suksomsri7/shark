@@ -39,3 +39,45 @@
 ===== qc-pos-p2.11 ===== ผ่าน 7/31 (QC_FORCE)
 JSON_SUMMARY {"suite":"qc-pos-p2.11","total":31,"passed":7,"failed":["P2.11-ST2","P2.11-ST3","P2.11-FU3","P2.11-FU1","P2.11-PR1","P2.11-PR2","P2.11-PR3","P2.11-PR4","P2.11-PR6","P2.11-PR7","P2.11-PR8","P2.11-PR9","P2.11-RN1","P2.11-RN2","P2.11-RN3","P2.11-RN4","P2.11-RP1","P2.11-RP2","P2.11-RP3","P2.11-RP4","P2.11-RP5","P2.11-SK1","P2.11-SK2","P2.11-FU2"],"skipped":false,"forced":true,"missing":["ยังไม่มี export copyUnitPrices (catalog.ts)","ยังไม่มี export unitPriceMatrix (catalog.ts)","ยังไม่มี export posUnitInventoryMap ที่เดียวใน src/lib","ยังไม่มี export reportChannels (reports.ts)","ยังไม่มี export receiptUnitOverride (receipt-settings-shared.ts)","ยังไม่มี export updatePosReceiptUnitSettings (receipt-settings.ts)","OVERVIEW_SECTIONS ยังไม่มี \"channels\" (report-overview.ts)"],"guardHits":0,"residue":0,"leaks":[]}
 exit=1
+
+════════ red-before block 2 — ORACLE-ADD ผู้คุม 15 ต.ค. (P2.11 fix รอบ 1 · PR10 PR11 PR12) · forced QC4 · code head c21b6018 (= code f7353edb) · oracle c578a275 ════════
+tree=/root/projects/shark-pos-c head=c578a275 dirty=0
+  ✅ [P2.11-ST1] [§10 มติ 1 · ไม่มี migration] prisma/ (schema + migrations) ไม่ต่างจาก merge-base กับ origin/session/pos (หรือ f164d9d6) · ไม่มีไฟล์ใหม่ใต้ 
+  ✅ [P2.11-ST2] [F15.1 · มติ 6 · m(i)] PosProductChannelPrice + PosRecipeChoiceLine เขียนใน catalog.ts เท่านั้น · posUnitInventoryMap export ที่เดียวใน src/
+  ✅ [P2.11-ST3] [§4 §5 มติ 4 5 Q6] reports.ts REPORT_KINDS มี "channels" + CSV_HEADERS.channels + export reportChannels · report-overview.ts OVERVIEW_SECTIO
+  ✅ [P2.11-ST4] [§3 มติ 9] ไฟล์เลน A ไม่ถูกแตะ (= merge-base หรือ f164d9d6): pos/service.ts · register*.ts · tender*.ts · refund*.ts · account-bridge.ts · o
+  ✅ [P2.11-FU3] [l-price] CatalogError มี field + reason · catalog-price-actions.ts refusalOf ส่ง field + reason ต่อ · price-shared.ts PRICE_REFUSAL_REASONS
+  ✅ [P2.11-FU1] [k · ORACLE-EDIT qc-pos-p2.2 ST1] qc-pos-p2.2.mts มี function p22MigrationTouched(sql) ที่ตั้งอยู่เดี่ยว (ST1 ใช้กรองไฟล์) · ตรวจข้อความสังเ
+  ✅ [P2.11-PR1] [F4 ครึ่ง A · มติ 2] ช่องทาง ZZQC เก็บถาวรแล้ว: ส่งแถว ZZQC เดิมทุกไบต์ + เปลี่ยน LINEMAN ทุกสาขา → ok changed · แถว ZZQC id/updatedAt เดิม 
+  ✅ [P2.11-PR2] [F4 · มติ 2 · l-price] แถวตายที่เปลี่ยน/ใหม่ → VALIDATION reason PRICE_ROW_DEAD field "rows" ไม่เขียนอะไร (แถว+audit เท่าเดิม): ZZQC เปลี่ยน
+  ✅ [P2.11-PR3] [F4 ครึ่ง B · F6] แถวของสาขา C (เก็บถาวร) และ D (เลิกผูก) รอดการบันทึกที่ไม่ส่งมัน (id/ค่าเดิม) · คืนสภาพ C + ผูก D ใหม่ → resolvePrices ที่
+  ✅ [P2.11-PR4] [§2 มติ 2 8] ผู้จัดการสาขา A (membership จริง) บันทึก (LINEMAN, A) + (ทุกช่องทาง, A) โดยไม่ส่งแถว B/ทุกสาขา → ok · แถว B + (LINEMAN, ทุกสาขา
+  ✅ [P2.11-PR5] [§2 มติ 2] ผู้จัดการสาขา A เปลี่ยน (LINEMAN, B) / (LINEMAN, ทุกสาขา) / ใหม่ (ทุกช่องทาง, E) → PERMISSION_DENIED · พนักงาน (pos.sale.create) 
+  ✅ [P2.11-PR6] [§1 F5] copyUnitPrices A→B (productIds Q1–Q4): overwrite false ข้าม (x, B) ที่มีอยู่ · notSold คัดลอก · แถวช่องทางตายไม่คัดลอก · written 4 s
+  ✅ [P2.11-PR7] [§1 X2] copyUnitPrices สิทธิ์/ขอบเขต: ผู้จัดการ A (ไม่มี B) / พนักงาน → PERMISSION_DENIED · ผู้จัดการ A+B → ok · ปลายทาง C เก็บถาวร / D เลิก
+  ✅ [P2.11-PR8] [§1] unitPriceMatrix = priceOf(loadPriceBook) ทุกช่อง (สินค้า × สาขา × ช่องทาง: ราคา · ที่มา · PRICE_NOT_SET/CHANNEL_NOT_SOLD) · สาขาปริยาย 
+  ✅ [P2.11-PR9] [l-price · P2.2U-R2 N2] คำปฏิเสธมี field + reason คงที่ (จอไม่ต้องจับข้อความ): bulk productIds 501 → VALIDATION BULK_TOO_MANY field productI
+  ❌ [P2.11-PR11] [fix1 มติ 2 · hunt L1] setChannelPrices purgeDead:true (ขอบเขตทั้งสินค้าเท่านั้น): เจ้าของล้างแถวตาย (ช่องทางเก็บถาวร · สาขาเก็บถาวร/เลิกผูก — expected purgeDead: เจ้าของล้างแถวตาย · แถวใช้ได้เดิม · audit purgeDead · ผู้จัดการ DENIED ไม่เขียน · ไม่ส่งธง = คงไว้ | actual ผู้จัดการ A purge → VALIDATION (คาด PERMISSION_DENIED) · เจ้าของ purge P2 → VALIDATION changed=undefined · P2 หลัง purge *|A|7100,*|C|6500,*|D|6600,LINEMAN|C|9900 (คาด *|A|7100 id เดิม) · audit P2 0 via undefined · P1 purge → VALIDATION LINEMAN|*|9100,ZZQC|*|8000,ZZQC|A|8100 (คาด ZZQC หาย · LINEMAN เดิม) · purge ซ้ำ → VALIDATION changed=undefined
+  ❌ [P2.11-PR12] [fix1 มติ 3 · hunt L2] บันทึกที่ไม่เปลี่ยนอะไร: ผลไม่ขึ้นกับลำดับแถว — ผู้จัดการ A ส่ง (LINEMAN, B) ค่าเดิม ก่อน/หลังแถว A ค่าเดิม → ok chan — expected ไม่เปลี่ยนอะไร: ok ทั้งสองลำดับ (ผู้จัดการ A) · พนักงาน DENIED ทั้งสองลำดับ · ไม่เขียน | actual ผู้จัดการ A · B ก่อน → PERMISSION_DENIED บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรา (คาด OK)
+  ❌ [P2.11-PR10] [fix1 มติ 1 · R1 F3] copyUnitPrices ไม่ส่ง productIds ข้ามสินค้าสาขาเดียวที่ผู้กระทำมองไม่เห็น (แถวเดิมที่ต้นทาง) → ok นับ skipped ไม่ NOT_F — expected ไม่ส่ง productIds: ข้าม+นับสินค้าที่มองไม่เห็น · ไม่ NOT_FOUND · ไม่เขียน H1 · รันซ้ำไม่เปลี่ยน | actual ผู้จัดการ A+B ไม่ส่ง productIds → NOT_FOUND ไม่พบรายการนี้ในระบบขาย (คาด ok + skipped) · รันซ้ำผู้จัดการ → NOT_FOUND changed=undefined · เจ้าของ → VALUE changed=true
+  ✅ [P2.11-RN1] [§4 มติ 4] สาขา A ตั้ง taxBranchNo 00001 → ใบกำกับอย่างย่อของบิล A: payload shop.branchNo 00001 · HTML th "สาขาที่ 00001" · en "Branch 00001
+  ✅ [P2.11-RN2] [§4] ที่อยู่/โทรต่อสาขา: A = ค่าสาขา · B = หัวระบบ (ที่อยู่) → สมุด (โทร) · ล้างที่อยู่ A (null) → หัวระบบ · receiptUnitOverride(settings, u
+  ✅ [P2.11-RN3] [§4 มติ 4] updatePosReceiptUnitSettings: VALIDATION field taxBranchNo (1234 · 123456 · 12a45) · field unitId (C เก็บถาวร · D เลิกผูก · id มั
+  ✅ [P2.11-RN4] [§4 · qc-pos-p1.10 P5] ระบบ POS2 ไม่ผูกสมุด (ใบเสร็จ RECEIPT) · สาขา D ตั้ง taxBranchNo 00009 ได้ (ตัวเขียนใช้กับ POS ใน ctx) → บิลของ D: ไม
+  ✅ [P2.11-RN5] [§4 O2] เลขใบเสร็จต่อสาขา/เดือน คงรูปแบบ: บิลแรกของ A และ B = YYYYMM-0001 (เดือนไทยปัจจุบัน) · บิลที่สองของ A = -0002 · ใบคืน A และ B = CNYY
+  ✅ [P2.11-RP1] [§5 มติ 5 Q6] reportChannels ต่อสาขา (วัน D0): แถวต่อรหัส {channelCode name billCount grossSatang refundSatang commissionSatang commissionVa
+  ✅ [P2.11-RP2] [§5] ไม่ระบุสาขา (เจ้าของ) = Σ รายงาน A + B ต่อรหัส · ผู้จัดการ A ไม่ระบุสาขา = รายงานของ A เท่านั้น · ระบุสาขา E (ไม่มีบิล) = rows []
+  ✅ [P2.11-RP3] [§5 P2.1 CD1] รวมตามรหัสข้ามสาขา: LINEMAN ของ A และ B = 1 แถว (บิล 2 · ยอด Σ) · ชื่อ: ระบุสาขา B = ชื่อช่องทางของ B · ระบุ A = ของ A · ทุกสา
+  ✅ [P2.11-RP4] [§5 P1.18 Q9] ตัดวัน 240 นาที: บิล 02:00 น. ของ D0+1 อยู่วัน D0+1 เมื่อ cutoff 0 · ตั้ง 240 (updatePosGeneralSettings) → นับเป็น D0 · D0+1 ไ
+  ✅ [P2.11-RP5] [§5 R6] reportOverview ส่วน "channels" = reportChannels (ยกเว้น generatedAt) · daily/payments ยัง = รายงานเดิม (OV PAR) · only:[channels] มี
+  ✅ [P2.11-SK1] [§6] posUnitInventoryMap(T, POS): units = A B E (ไม่มี C เก็บถาวร · D เลิกผูก) · A,B → คลังร่วม · E → คลังของตัวเอง · groups: คลังร่วม {A,B}
+  ✅ [P2.11-SK2] [§6 Q3] รับ 10 ที่ A → ขายที่ A 1 → onHand 9 + ที่เก็บปริยายของคลังที่แผนที่ชี้ = 9 · ขายที่ B 1 → 8 (คลังร่วม = สต็อกร่วม · พฤติกรรมเดิม)
+  ✅ [P2.11-TR1] [§6 R16] posTransferStock ที่ A ไปที่เก็บของคลัง E → NOT_FOUND ไม่มีความเคลื่อนไหว · ตัวควบคุมบวก: ไปที่เก็บที่สองของคลังร่วม → ok
+  ✅ [P2.11-FU2] [m(i) · P2.3U F1] ถอดกลุ่มตัวเลือก (setProductOptionGroups) → PosRecipeChoiceLine ของตัวเลือกกลุ่มนั้นถูกลบ แถวของกลุ่มอื่นคงอยู่ · ผูกกลับ 
+  ลบร้านชั่วคราว cmv91x4kw00004skz6qqj9tik: 334 ตาราง · แถวค้าง 0 {} · Tenant 0
+  ลบร้านชั่วคราว cmv91x4la00014skzt1l7i322: 334 ตาราง · แถวค้าง 0 {} · Tenant 0
+  ✅ [P2.11-Z1] QC4 คืนสภาพ: ร้านชั่วคราวทั้งสองเหลือ 0 แถวทุกตารางที่มี tenantId (ราคา · บิล · ตัวนับ · ช่องทาง · audit · outbox · คลัง · ค่าตั้ง …) + แถว 
+  ✅ [P2.11-Z2] ไม่มีแถวของรอบนี้นอกร้านชั่วคราว (บิล/เครื่อง/สินค้า/audit/outbox/membership) · ลายนิ้วมือ PosProductChannelPrice + PosRecipeChoiceLine + Po
+===== qc-pos-p2.11 ===== ผ่าน 31/34 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-pos-p2.11","total":34,"passed":31,"failed":["P2.11-PR11","P2.11-PR12","P2.11-PR10"],"skipped":false,"forced":true,"missing":[],"guardHits":0,"residue":0,"leaks":[]}
+exit=1
