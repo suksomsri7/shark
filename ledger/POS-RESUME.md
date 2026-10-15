@@ -1550,3 +1550,9 @@
 - prompt P2.9bU base = a1d8af43 (d9984f10) → **spawn builder (Opus) ทรี b** `wip/pos-p2.9bu` จาก origin/session/pos
 - เลน: 1 = HF-FU oracle writer ทรี c (เริ่ม ~10:00Z) · 2 = P2.9bU builder ทรี b (เริ่ม 10:06Z) · ทรี d ว่าง @942a334e (รอภาพ merge)
 - ถัดไป: oracle HF-FU รายงาน → ผู้คุมตัดสิน CONTROLLER-DECISION → prompt builder HF-FU S (ทรี c) · P2.9bU รายงาน → R1 → ภาพ p2.9bu บนทรี d
+
+### 15 ต.ค. ~11:15Z — HF-FU oracle เสร็จ → builder S เปิด (ทรี c)
+- oracle writer: `wip/pos-hf-fu-oracle` **9e2b1d27** (push แล้ว) · `scripts/qc-hf-fu.mts` 25 ข้อ · forced @c3c52ef1 = 5/25 เขียว (PAR ST1 OD2 CN2 Z1 Z2) 20 แดง · residue 0 · ORACLE-EDIT 5 commit (p2.5 refAlloc/M2 · T5 · C7 NOWAIT · p2.9b A10 · p2.6 O4) → ชุดที่แก้ @base p2.5 46/49 · p2.9b 52/53 · p2.6 66/67 · C7 fail-before 1a964205 = 55P03 ✓ · typecheck 0
+- ผู้คุม: CONTROLLER-DECISION 1–10 รับทั้งหมด = **มติ 14** ใน brief §10 (GRAB แทน CHAT/LINEMAN · rowsHash คลุม stored rows ทั้งหมด · audit SYSTEM · lock order CAS→FOR SHARE · ไม่ต้อง messageKey legacy merge) commit 90d24030
+- prompt `pos-prompt-accountB-HF-FU-B.md` → **spawn builder (Opus) ทรี c** `wip/pos-hf-fu` จาก 9e2b1d27 · ลำดับ 10 ขั้น (c+d → n/s/l2/F3/h → l1 → j → a → b → z → p → f → gates)
+- เลน: 1 = P2.9bU builder ทรี b (ขั้น 8 เสร็จ · typecheck 0 · p2.9b 53/53 · รอชุดที่เหลือ) · 2 = HF-FU builder ทรี c · prompt R1 P2.9bU พร้อม `pos-prompt-accountB-P2.9bU-R.md` (เติม __HEAD__/__CODE__/__TIME__) · ภาพ p2.9bu = chain77 บนทรี d (แม่แบบ chain76 · states 10 ตัว owner+cashier th/en)
