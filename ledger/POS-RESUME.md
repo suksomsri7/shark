@@ -1687,3 +1687,4 @@
 - เลน: 1 = P2.12 S builder ทรี c · 2 = P2.10 R2 ทรี b (read-only) · ทรี d = chain81
 - 16:19Z R2 P2.10 (@e7f661a7) = **MERGEABLE-AFTER-FIXES**: G1 Low dry-run en รันเป็น th (LOCALE=en อยู่หน้า iso.sh → env หลุด · ของผู้คุม VE ใส่ใน iso = en จริง) · G2 Low race "ขอรหัสใหม่" vs status refresh ค้าง · G3 info debug globals status-only (รับ) · G4/G5 info → มติ fix 2 (1–6 ใน review file f439b243) → spawn **builder fix 2** ทรี b prompt `pos-prompt-accountB-P2.10-fix2.md` · chain81 vis83 ยังถ่าย · เตรียม `scratchpad/ctl/gates95-b.template.sh` + merge msg แล้ว
 - เลน: 1 = P2.12 S builder ทรี c · 2 = P2.10 fix 2 ทรี b · ทรี d = chain81
+- 16:40Z vis83 @e7f661a7 failures 0 th+en · **display-live ผ่านจริง** (F8 = harness) · done/member-stamps/settings ผ่าน → ภาพ P2.10 ครบ · รอ fix 2 (G1/G2) → R2 ตรวจ hunk → merge → gates95 ทรี b → push → 38/55
