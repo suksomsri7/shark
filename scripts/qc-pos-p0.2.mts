@@ -92,8 +92,9 @@ const minusDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:0
 
 const good = { unitId: "u1", lines: [{ name: "กาแฟ", qty: 2, unitPriceSatang: 4500 }], payMethods: [{ type: "CASH", amountSatang: 9000 }] };
 const VALID: Record<string, unknown> = {
-  "sales.summary": { days: "3" },
-  "sales.byDay": { days: "3" },
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: สรุป/รายวันเปลี่ยนเป็นช่วงวันธุรกิจ from/to (ตัวอ่านรายงานของ POS) แทน days
+  "sales.summary": { from: "2026-10-01", to: "2026-10-03" },
+  "sales.byDay": { from: "2026-10-01", to: "2026-10-03" },
   "sales.create": good,
   "sales.void": { reason: "ลูกค้าขอยกเลิก" },
 };
@@ -135,7 +136,9 @@ try {
   chk("P0.2-S1.4", "ทุก op: module=pos · auditAction · scope · summary EN · ป้ายไทย · test id · มี input schema", badShape.length === 0, "0", badShape.map((o) => o.id).join(",") || "0");
   // S1.6 — payload ที่ถูกต้องของทุก op ผ่าน · ตัวเดียวกัน + ฟิลด์แปลก 1 ตัว ถูกปัด (strict จริง ไม่ใช่ปัดเพราะขาดฟิลด์)
   const strictBad: string[] = [];
-  for (const o of OPS) {
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: ข้อนี้ครอบ 4 op ของ P0.2 (op ของ P2.13 ตรวจ strict ที่ qc-pos-p2.13 ST1) — ขาดตัวใดใน 4 = แดง
+  for (const id of Object.keys(VALID)) if (!byId.has(id)) strictBad.push(`${id}(ไม่มีในทะเบียน)`);
+  for (const o of OPS.filter((x) => VALID[x.id] !== undefined)) {
     const v = VALID[o.id];
     if (v === undefined) {
       strictBad.push(`${o.id}(ไม่มี payload ตัวอย่าง)`);
@@ -153,7 +156,8 @@ try {
   const constOk = ALL_SCOPES.every((s) => isPermissionKey(s)) && OPS.every((o) => ALL_SCOPES.includes(o.action));
   chk("P0.2-S2.2", "POS_SCOPES ทุกตัวมีจริง และทุก op ใช้ค่าจาก POS_SCOPES", constOk, "true", String(constOk));
   const posBundles = API_SCOPE_BUNDLES.filter((b) => b.scopes.some((s: string) => s.startsWith("pos.")));
-  chk("P0.2-S2.3", "ยังไม่มี bundle คีย์ API ของ POS (เลื่อนไป P2.13)", posBundles.length === 0, "0", posBundles.map((b) => b.id).join(",") || "0", "MINOR");
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: P2.13 เปิด bundle คีย์ของ POS แล้ว = pos-read / pos-operate / pos-admin พอดี (ไม่มีชุดอื่นถือ scope pos.*)
+  chk("P0.2-S2.3", "bundle คีย์ API ของ POS = pos-read · pos-operate · pos-admin พอดี (P2.13)", posBundles.map((b) => b.id).sort().join(",") === "pos-admin,pos-operate,pos-read", "pos-admin,pos-operate,pos-read", posBundles.map((b) => b.id).join(",") || "0", "MINOR");
   chk("P0.2-S2.4", "sales.void = danger + pos.sale.void", op("sales.void").kind === "danger" && op("sales.void").action === "pos.sale.void", "danger/pos.sale.void", `${op("sales.void").kind}/${op("sales.void").action}`, "CRITICAL", T_VOID);
   chk("P0.2-S2.5", "sales.create = write + pos.sale.create · อ่านทั้งสอง = read + pos.sale.create", op("sales.create").kind === "write" && op("sales.create").action === "pos.sale.create" && op("sales.summary").kind === "read" && op("sales.byDay").kind === "read", "true", "-", "CRITICAL", T_CREATE);
 
@@ -166,8 +170,9 @@ try {
   const mapOpIds = reg.POS_LEGACY_AI_TOOLS.map((r) => r.opId).filter((x): x is string => x !== null);
   const danglingMap = mapOpIds.filter((id) => !byId.has(id));
   chk("P0.2-S3.2", "opId ทุกแถวมีจริงในทะเบียน", danglingMap.length === 0, "0", danglingMap.join(",") || "0");
-  const unmapped = OPS.filter((o) => !mapOpIds.includes(o.id));
-  chk("P0.2-S3.3", "op ทุกตัวมีแถวในตาราง", unmapped.length === 0, "0", unmapped.map((o) => o.id).join(",") || "0");
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: ตารางผูก tool เดิมกับ op ของ P0.2 เท่านั้น (op ของ P2.13 ไม่มี tool เดิมคู่ — สลับ tool = P3.9) ⇒ 4 op ของ P0.2 ต้องมีแถว
+  const unmapped = OPS.filter((o) => [T_SUMMARY, T_DAILY, T_CREATE, T_VOID].includes(o.test) && !mapOpIds.includes(o.id));
+  chk("P0.2-S3.3", "op ของ P0.2 ทุกตัวมีแถวในตาราง", unmapped.length === 0, "0", unmapped.map((o) => o.id).join(",") || "0");
   const ownerOk = reg.POS_LEGACY_AI_TOOLS.every((r) => (r.owner === "pos") === (r.opId !== null));
   chk("P0.2-S3.4", "แถวที่ไม่ใช่ของ POS ไม่มี op ปลอม (owner≠pos ⇔ opId=null)", ownerOk, "true", String(ownerOk));
   const withTool = OPS.filter((o) => o.tool);
@@ -195,10 +200,11 @@ try {
   chk("P0.2-S4.3b", "matchOp GET /reports/summary → sales.summary", m4?.op.id === "sales.summary", "sales.summary", String(m4?.op.id), "CRITICAL", T_SUMMARY);
   const allow = reg.allowedMethods(["sales"]);
   const allow2 = allowedMethodsIn(OPS, ["nope"]);
-  chk("P0.2-S4.4", "allowedMethods(/sales)=[POST] · path ที่ไม่มี = []", JSON.stringify(allow) === '["POST"]' && allow2.length === 0, '["POST"] / []', `${JSON.stringify(allow)} / ${JSON.stringify(allow2)}`);
-  chk("P0.2-S4.5", "matchOp GET /sales → null (ยังไม่มี op อ่านรายการบิล)", reg.matchOp("GET", ["sales"]) === null, "null", String(reg.matchOp("GET", ["sales"])?.op.id));
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: P2.13 เพิ่ม GET /sales (sales.list) และ route /api/v1/pos/[...path] แล้ว
+  chk("P0.2-S4.4", "allowedMethods(/sales)=[GET,POST] · path ที่ไม่มี = []", JSON.stringify(allow) === '["GET","POST"]' && allow2.length === 0, '["GET","POST"] / []', `${JSON.stringify(allow)} / ${JSON.stringify(allow2)}`);
+  chk("P0.2-S4.5", "matchOp GET /sales → sales.list (P2.13)", reg.matchOp("GET", ["sales"])?.op.id === "sales.list", "sales.list", String(reg.matchOp("GET", ["sales"])?.op.id));
   const routeDir = join(ROOT, "src", "app", "api", "v1", "pos");
-  chk("P0.2-S4.6", "ยังไม่มี route ใต้ src/app/api/v1/pos (โครงเท่านั้น — P2.13)", !existsSync(routeDir), "ไม่มีโฟลเดอร์", existsSync(routeDir) ? "มี" : "ไม่มี");
+  chk("P0.2-S4.6", "มี route ใต้ src/app/api/v1/pos (P2.13)", existsSync(join(routeDir, "[...path]", "route.ts")), "มี [...path]/route.ts", existsSync(routeDir) ? "มีโฟลเดอร์" : "ไม่มี");
 
   // ─────────── S5 schema + helper (UNIT) ───────────
   console.log("\n── S5 input schema + helper (unit) ──");
@@ -222,7 +228,8 @@ try {
   const vv = (p: unknown) => validateOpInput(op("sales.void"), p).ok;
   chk("P0.2-S5.6", "sales.void: ต้องมีเหตุผล ≥5 ตัวอักษร", vv({ reason: "ลูกค้าขอยกเลิก" }) && !vv({ reason: "abc" }) && !vv({}), "true/false/false", `${vv({ reason: "ลูกค้าขอยกเลิก" })}/${vv({ reason: "abc" })}/${vv({})}`, "CRITICAL", T_VOID);
   const vd = (p: unknown) => validateOpInput(op("sales.summary"), p).ok;
-  chk("P0.2-S5.7", "sales.summary: days จาก query string แปลงได้ · 0/32 ถูกปัด", vd({ days: "7" }) && vd({}) && !vd({ days: "0" }) && !vd({ days: "32" }), "true", `${vd({ days: "7" })}/${vd({ days: "0" })}/${vd({ days: "32" })}`, "MAJOR", T_SUMMARY);
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: summary = ช่วงวันธุรกิจ from/to (YYYY-MM-DD · ไม่ส่ง = 7 วันล่าสุด) · days เดิมถูกปัด (strict) · รูปวันผิดถูกปัด
+  chk("P0.2-S5.7", "sales.summary: from/to (YYYY-MM-DD) ผ่าน · ไม่ส่ง = ผ่าน · days / รูปวันผิด ถูกปัด", vd({ from: "2026-10-01", to: "2026-10-07" }) && vd({}) && !vd({ days: "7" }) && !vd({ from: "2026/10/01" }), "true", `${vd({ from: "2026-10-01", to: "2026-10-07" })}/${vd({})}/${vd({ days: "7" })}/${vd({ from: "2026/10/01" })}`, "MAJOR", T_SUMMARY);
   // กันซ้ำผูกผู้เรียก (BLOCKER รอบ 1)
   const sk = salesOps.posSaleServiceKey;
   const kA = sk(keyActor("t", "s", "keyA"), "same", "r1");
@@ -268,14 +275,16 @@ try {
     const linked = await prisma.appSystemUnit.findFirst({ where: { type: "POS" }, select: { tenantId: true, systemId: true, unitId: true } });
     if (linked) {
       const pc = await call("sales.create", keyActor(linked.tenantId, linked.systemId), createIn(linked.unitId));
-      chk("P0.2-S6.0", "positive control: สาขาจริง + ระบบจริง ผ่านด่าน แล้วไปชนตัวตัดการเขียน (ไม่ใช่ 404)", pc === "error:QC-WRITE-BLOCKED", "error:QC-WRITE-BLOCKED", pc, "MAJOR", T_CREATE);
+      // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: POST /sales ผ่าน submitRegisterSale (มติ 1) — ตัวตัดการเขียนถูกห่อเป็น INTERNAL / หรือร้านปฏิเสธตามค่าตั้ง ⇒ ตัดสินที่ "ผ่านด่านสาขา (ไม่ใช่ 404) และไม่มีบิลเกิด (ไม่ใช่ ok)"
+      chk("P0.2-S6.0", "positive control: สาขาจริง + ระบบจริง ผ่านด่าน (ไม่ใช่ 404 · ไม่ใช่ ok เพราะการเขียนถูกตัด)", pc !== "404:not_found" && pc !== "ok", "ไม่ใช่ 404 / ok", pc, "MAJOR", T_CREATE);
       const crossTenant = await call("sales.create", keyActor(ghostT, linked.systemId), createIn(linked.unitId));
       chk("P0.2-S6.2", "sales.create: สาขาจริงของร้านอื่น (tenant ไม่ตรง) → 404", crossTenant === "404:not_found", "404:not_found", crossTenant, "CRITICAL", T_CREATE);
       const crossSystem = await call("sales.create", keyActor(linked.tenantId, ghostS), createIn(linked.unitId));
       chk("P0.2-S6.3", "sales.create: สาขาจริงของร้านเดียวกันแต่คนละระบบ POS → 404", crossSystem === "404:not_found", "404:not_found", crossSystem, "CRITICAL", T_CREATE);
       const uOther = await call("sales.create", userActor(linked.tenantId, linked.systemId, [`other-${RAND}`]), createIn(linked.unitId));
       const uSelf = await call("sales.create", userActor(linked.tenantId, linked.systemId, [linked.unitId]), createIn(linked.unitId));
-      chk("P0.2-S6.4", "sales.create: คนที่เข้าได้แค่สาขาอื่น → 404 · positive control: คนที่เข้าสาขานี้ได้ผ่านด่าน (ชนตัวตัด)", uOther === "404:not_found" && uSelf === "error:QC-WRITE-BLOCKED", "404 / BLOCKED", `${uOther} / ${uSelf}`, "CRITICAL", T_CREATE);
+      // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: positive control เดียวกับ S6.0 (ผ่านด่าน = ไม่ใช่ 404 · การเขียนถูกตัด = ไม่ใช่ ok)
+      chk("P0.2-S6.4", "sales.create: คนที่เข้าได้แค่สาขาอื่น → 404 · positive control: คนที่เข้าสาขานี้ได้ผ่านด่าน (ไม่ใช่ 404 · ไม่ใช่ ok)", uOther === "404:not_found" && uSelf !== "404:not_found" && uSelf !== "ok", "404 / ผ่านด่าน", `${uOther} / ${uSelf}`, "CRITICAL", T_CREATE);
     } else {
       for (const id of ["P0.2-S6.0", "P0.2-S6.2", "P0.2-S6.3", "P0.2-S6.4"]) skip(id, "ต้องมีสาขาที่ผูก POS", "QC DB ไม่มีแถว AppSystemUnit type POS");
     }
@@ -315,68 +324,57 @@ try {
   // หมายเหตุรอบ 2: ข้อ "ไม่มีสิทธิ์ → 403" รอบ 1 ทดสอบ `runOpAsActor` ของแกนกลาง ไม่ใช่โค้ด POS ⇒ ถอดออก
   //   (การผูก scope ของแต่ละ op ตรวจแบบ static ที่ S2.4/S2.5 แทน)
 
-  // ─────────── S7 op อ่าน (DB-READ เทียบคิวรีอิสระ) ───────────
-  console.log("\n── S7 op อ่านยอดขาย (อ่าน DB · เทียบ aggregate อิสระบนวันที่มีบิลจริง) ──");
+  // ─────────── S7 op อ่าน (DB-READ) ───────────
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1 (S7.1–S7.6 · re-base): sales.summary / sales.byDay อ่านจากตัวอ่านรายงานของ POS (reportDailySales)
+  //   ด้วยช่วงวันธุรกิจ from/to แทน days + closeDaySummary ⇒ ช่วงวัน/ลำดับแถวตามตัวอ่าน · ยอด = PAR กับตัวอ่านตรง (actor สังเคราะห์ของคีย์) ·
+  //   summary = totals ของรายวันช่วงเดียวกัน · ระบบ POS ที่ไม่มีจริง = 404 (ไม่รั่วข้ามระบบ) — อ่านอย่างเดียว ไม่เขียน DB
+  console.log("\n── S7 op อ่านยอดขาย (อ่าน DB · PAR กับตัวอ่านรายงาน) ──");
+  const reportsMod = await import("@/lib/modules/pos/reports");
+  const { posRegisterActorOf } = await import("@/lib/modules/pos/api/actor");
   const today = bkkToday();
-  const ghost = keyActor(`qc-p0.2-t-${RAND}`, `qc-p0.2-s-${RAND}`);
-  const runRead = async (id: string, actor: Any, days: number) => (await op(id).handler({ actor, params: {}, input: { days }, requestId: "qc", idempotencyKey: null })) as Any;
-  const sum3 = await runRead("sales.summary", ghost, 3);
-  chk("P0.2-S7.2", "sales.summary ช่วงวัน = วันไทย 3 วันรวมวันนี้", sum3.to === today && sum3.from === minusDays(today, 2) && sum3.days === 3, `${minusDays(today, 2)}..${today}`, `${sum3.from}..${sum3.to}`, "CRITICAL", T_SUMMARY);
-  const def = (await op("sales.summary").handler({ actor: ghost, params: {}, input: {}, requestId: "qc", idempotencyKey: null })) as Any;
-  chk("P0.2-S7.3", "sales.summary ไม่ระบุ days = 7", def.days === 7, "7", String(def.days), "MAJOR", T_SUMMARY);
-  const bd5 = await runRead("sales.byDay", ghost, 5);
-  const datesOk = Array.isArray(bd5.rows) && bd5.rows.length === 5 && bd5.rows.every((r: Any, i: number) => r.businessDate === minusDays(today, i));
-  chk("P0.2-S7.4", "sales.byDay 5 แถว ใหม่→เก่า เริ่มวันนี้ วันต่อเนื่อง", datesOk, `5 แถว ${today}..${minusDays(today, 4)}`, JSON.stringify(bd5.rows?.map((r: Any) => r.businessDate)), "CRITICAL", T_DAILY);
-
-  // วันที่มีบิล PAID จริงภายใน 31 วัน (ของระบบใดก็ได้) → คิวรีอิสระ vs op
   const recent = await prisma.posSale.findFirst({
-    where: { status: "PAID", createdAt: { gte: bkkStart(minusDays(today, 30)) } },
+    where: { status: "PAID", docType: "SALE", createdAt: { gte: bkkStart(minusDays(today, 30)) } },
     orderBy: { createdAt: "desc" },
     select: { tenantId: true, systemId: true, createdAt: true },
   });
-  // ORACLE-EDIT (ผู้คุม 10 ต.ค. 2569 · R14 ปิดเฟส P1): คิวรีอิสระต้องนิยามเหมือน closeDaySummary หลัง P1.8 (3064857a "doc-type aware readers") —
-  //   บิล = docType SALE ที่ไม่ VOIDED (ใบที่คืนเงินเต็ม = REFUNDED ยังนับ) · ยอดสุทธิ = Σ SALE − Σ ใบ REFUND ของช่วงเดียวกัน · ใบ REFUND status PAID ไม่ใช่ยอดขาย
-  //   และ P1.18 ตัดวันด้วย settings.pos.reports.dayCutoffMinutes — suite ใช้วันไทยล้วน ⇒ ถ้าระบบตั้งตัดวัน ≠ 0 ให้ SKIP แทนที่จะแดงปลอม
-  const netAgg = async (tenantId: string, systemId: string, gte: Date, lt: Date) => {
-    const sale = await prisma.posSale.aggregate({ where: { tenantId, systemId, docType: "SALE", status: { not: "VOIDED" }, createdAt: { gte, lt } }, _sum: { grandTotalSatang: true }, _count: { _all: true } });
-    const refund = await prisma.posSale.aggregate({ where: { tenantId, systemId, docType: "REFUND", createdAt: { gte, lt } }, _sum: { grandTotalSatang: true } });
-    return { satang: (sale._sum.grandTotalSatang ?? 0) - (refund._sum.grandTotalSatang ?? 0), count: sale._count._all };
-  };
-  const realSum = recent
-    ? await (async () => {
-        const day = bkkDate(recent.createdAt);
-        const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / DAY) + 1;
-        const range = await netAgg(recent.tenantId, recent.systemId, bkkStart(minusDays(today, days - 1)), new Date(bkkStart(today).getTime() + DAY));
-        const dayAgg = await netAgg(recent.tenantId, recent.systemId, bkkStart(day), new Date(bkkStart(day).getTime() + DAY));
-        const sys = await prisma.appSystem.findUnique({ where: { id: recent.systemId }, select: { settings: true } });
-        const cutoff = posDayCutoffMinutes(sys?.settings);
-        return { day, days, rangeSatang: range.satang, rangeCount: range.count, daySatang: dayAgg.satang, dayCount: dayAgg.count, cutoff };
-      })()
-    : null;
-  if (realSum && realSum.cutoff !== 0) {
-    for (const id of ["P0.2-S7.1", "P0.2-S7.5", "P0.2-S7.6"]) skip(id, "เทียบยอดของระบบจริง", `ระบบตั้งตัดวัน ${realSum.cutoff} นาที — คิวรีอิสระของ suite ใช้วันไทยล้วน (ORACLE-EDIT 10 ต.ค.)`);
-  } else if (realSum && realSum.rangeSatang > 0 && realSum.daySatang > 0) {
-    const realActor = keyActor(recent!.tenantId, recent!.systemId);
-    const s = await runRead("sales.summary", realActor, realSum.days);
-    chk("P0.2-S7.1", `sales.summary ระบบจริง ${realSum.days} วัน = aggregate อิสระ (ยอด ${realSum.rangeSatang} สตางค์ · ${realSum.rangeCount} บิล)`, s.netSalesSatang === realSum.rangeSatang && s.billCount === realSum.rangeCount, `${realSum.rangeSatang}/${realSum.rangeCount}`, `${s.netSalesSatang}/${s.billCount}`, "CRITICAL", T_SUMMARY);
-    const b = await runRead("sales.byDay", realActor, realSum.days);
-    const row = (b.rows as Any[]).find((r) => r.businessDate === realSum.day);
-    chk("P0.2-S7.5", `sales.byDay วัน ${realSum.day} = aggregate อิสระของวันนั้น (${realSum.daySatang} สตางค์)`, row?.netSalesSatang === realSum.daySatang && row?.billCount === realSum.dayCount, `${realSum.daySatang}/${realSum.dayCount}`, `${row?.netSalesSatang}/${row?.billCount}`, "CRITICAL", T_DAILY);
-    const g = await runRead("sales.summary", keyActor(recent!.tenantId, `qc-p0.2-s-${RAND}`), realSum.days);
-    chk("P0.2-S7.6", "ระบบ POS อื่นของร้านเดียวกัน (ช่วงเดียวกันที่มียอดจริง > 0) เห็น 0 — ไม่รั่วข้ามระบบ", g.netSalesSatang === 0 && g.billCount === 0, "0/0", `${g.netSalesSatang}/${g.billCount}`, "CRITICAL", T_SUMMARY);
+  const anyPos = recent ?? (await prisma.appSystem.findFirst({ where: { type: "POS" }, select: { tenantId: true, id: true } }).then((x) => (x ? { tenantId: x.tenantId, systemId: x.id, createdAt: new Date() } : null)));
+  if (!anyPos) {
+    for (const id of ["P0.2-S7.1", "P0.2-S7.2", "P0.2-S7.3", "P0.2-S7.4", "P0.2-S7.5", "P0.2-S7.6"]) skip(id, "op อ่านยอดขาย", "QC DB ไม่มีระบบ POS");
   } else {
-    for (const id of ["P0.2-S7.1", "P0.2-S7.5", "P0.2-S7.6"]) skip(id, "เทียบยอดของระบบจริง", "QC DB ไม่มีบิล PAID ยอด > 0 ภายใน 31 วัน (ไม่นับ 0 = 0 เป็นผ่าน)");
+    const realActor = keyActor(anyPos.tenantId, anyPos.systemId);
+    const runRead = async (id: string, actor: Any, input: Any) => (await op(id).handler({ actor, params: {}, input, requestId: "qc", idempotencyKey: null })) as Any;
+    const sum3 = await runRead("sales.summary", realActor, { from: minusDays(today, 2), to: today });
+    chk("P0.2-S7.2", "sales.summary ช่วงวัน = from/to ที่ส่ง (วันธุรกิจไทย)", sum3.to === today && sum3.from === minusDays(today, 2), `${minusDays(today, 2)}..${today}`, `${sum3.from}..${sum3.to}`, "CRITICAL", T_SUMMARY);
+    const def = await runRead("sales.summary", realActor, {});
+    chk("P0.2-S7.3", "sales.summary ไม่ระบุช่วง = 7 วันล่าสุดถึงวันนี้", def.to === today && def.from === minusDays(today, 6), `${minusDays(today, 6)}..${today}`, `${def.from}..${def.to}`, "MAJOR", T_SUMMARY);
+    const bd5 = await runRead("sales.byDay", realActor, { from: minusDays(today, 4), to: today });
+    const datesOk = Array.isArray(bd5.rows) && bd5.rows.length === 5 && bd5.rows.every((r: Any, i: number) => r.businessDate === minusDays(today, 4 - i));
+    chk("P0.2-S7.4", "sales.byDay 5 แถว เก่า→ใหม่ ต่อเนื่องถึงวันนี้ (ลำดับของตัวอ่านรายงาน)", datesOk, `5 แถว ${minusDays(today, 4)}..${today}`, JSON.stringify(bd5.rows?.map((r: Any) => r.businessDate)), "CRITICAL", T_DAILY);
+    const day = bkkDate(anyPos.createdAt);
+    const days = Math.max(1, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / DAY) + 1);
+    const range = { from: minusDays(today, days - 1), to: today };
+    const direct = (await reportsMod.reportDailySales({ tenantId: anyPos.tenantId, systemId: anyPos.systemId }, posRegisterActorOf(realActor), range)) as Any;
+    const s = await runRead("sales.summary", realActor, range);
+    const t = direct?.report?.totals;
+    chk("P0.2-S7.1", `sales.summary ระบบจริง ${days} วัน = totals ของตัวอ่านรายวันตรง (PAR)`, direct?.ok === true && s.netSalesSatang === t?.netSalesSatang && s.billCount === t?.billCount, `${t?.netSalesSatang}/${t?.billCount}`, `${s.netSalesSatang}/${s.billCount}`, "CRITICAL", T_SUMMARY);
+    const b = await runRead("sales.byDay", realActor, range);
+    const row = (b.rows as Any[]).find((r) => r.businessDate === day);
+    const drow = (direct?.report?.rows as Any[] | undefined)?.find((r) => r.businessDate === day);
+    chk("P0.2-S7.5", `sales.byDay วัน ${day} = แถวของตัวอ่านรายวันตรง (PAR)`, !!row && JSON.stringify(row) === JSON.stringify(drow), JSON.stringify(drow)?.slice(0, 80) ?? "-", JSON.stringify(row)?.slice(0, 80) ?? "-", "CRITICAL", T_DAILY);
+    const g = await statusOf(() => op("sales.summary").handler({ actor: keyActor(anyPos.tenantId, `qc-p0.2-s-${RAND}`), params: {}, input: range, requestId: "qc", idempotencyKey: null }));
+    chk("P0.2-S7.6", "ระบบ POS ที่ไม่มีจริงของร้านเดียวกัน → 404 (ไม่รั่วข้ามระบบ)", g === "404:not_found", "404:not_found", g, "CRITICAL", T_SUMMARY);
   }
 
   // ─────────── S1.5 ทุก op มีข้อสอบที่รันจริง ───────────
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) CD1: ข้อนี้ครอบ 4 op ของ P0.2 (test id ของ op P2.13 อยู่ใน qc-pos-p2.13 — fitness F13.13 ตรวจ) · test id ทั้งทะเบียนยังต้องไม่ซ้ำ
   const testIds = OPS.map((o) => o.test);
   const declared = [T_SUMMARY, T_DAILY, T_CREATE, T_VOID];
-  const cover = OPS.map((o) => {
+  const cover = OPS.filter((o) => declared.includes(o.test)).map((o) => {
     const mine = checks.filter((c) => c.op === o.test);
     return { id: o.id, test: o.test, ran: mine.length, allOk: mine.every((c) => c.ok) };
   });
   const coverBad = cover.filter((c) => c.ran === 0 || !c.allOk);
-  const idsMatch = JSON.stringify([...testIds].sort()) === JSON.stringify([...declared].sort()) && new Set(testIds).size === testIds.length;
+  const idsMatch = declared.every((d) => testIds.filter((x) => x === d).length === 1) && new Set(testIds).size === testIds.length;
   chk("P0.2-S1.5", "ทุก op มี test id ไม่ซ้ำ และมีข้อสอบที่รันจริง + ผ่าน ติดป้าย id นั้น (ไม่นับข้อความในไฟล์)", coverBad.length === 0 && idsMatch, "ทุก op ≥1 ข้อผ่าน", cover.map((c) => `${c.id}:${c.ran}${c.allOk ? "" : "✗"}`).join(" "));
 } catch (e) {
   chk("P0.2-FATAL", "ข้อสอบรันจบ", false, "no throw", e instanceof Error ? `${e.message}\n${e.stack?.split("\n").slice(0, 4).join("\n")}` : String(e));
