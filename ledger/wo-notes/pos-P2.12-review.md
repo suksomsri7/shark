@@ -58,3 +58,54 @@ R1 = MERGEABLE-AFTER-FIXES. Money/access verified; fixes are small. Order: money
 3. **F3 = fix**: settings writer skips the write + audit when the reader's view before == after (canonical compare of `generalAuditView`), or drops empty rule objects before merging.
 4. **F4 = follow-up line** (HF-FU2/owner): A5 ignores `PosTableSplit` discount overrides. **F5 = U-card decision** (en print rule labels). Decisions 2/3/6 accepted (U footnotes the folded hour; U sends `only` to skip hourly on multi-unit overview).
 5. Builder also appends the three follow-ups to the notes (overview print summary = U/CD, row-cap notice = U).
+
+## Money hunter (light · Opus read-only · tree c @42e3ce17 · 15 Oct 17:57Z) — verbatim
+# P2.12 S money hunter (light, read-only) · head 42e3ce17 · tree c
+**Verdict: FINDINGS.** 1 Med, 1 Med-, 3 Low. No leak across units or tenants and no deposit double count; the findings are in numbers the owner acts on. R1 F1–F5 are not repeated.
+
+## Findings
+- **H1 (Med) A3/A4 measure the wrong discount** · `reports.ts:1384–1407`
+  - `PosSale.discountSatang` = bill + coupon + member discount (`service.ts:894,994`). Line discounts are already inside `subtotal` (`service.ts:782–784`).
+  - Input (a): ฿200 bill, both items at a 100 % line discount → subtotal 0 → `subtotalSatang <= 0` skip → no A4. A 60 % line discount → no A4 either. A3 never sees line discounts, so comps given per item are invisible.
+  - Input (b): a member's 50 % voucher or tier discount → an A4 row naming the cashier.
+  - Fix: staff discount = Σ line `discountSatang` (add `_sum` to the existing A6 `groupBy`) + bill discount − member/coupon part, compared against the total before line discounts. Or ask the owner to rule.
+  - Missing check: AN3/AN4 only use `billDiscount` (qc :953–956). Add a line-discount bill and a member-discount bill.
+- **H2 (Med-) Row cap drops whole rules silently** · `reports.ts:1481`
+  - Rows are sorted by rule, then cut by `slice(0, r.limit)`. The CSV cuts at 1000 (`:1698`), the print at 1000 (`report-actions.ts:183`).
+  - Input: 31 days × 3 units of daily staff-meal comps (A4) gives more than 200 A1–A7 rows. The screen (default limit 200) then shows no A8/A9 cash-shortage rows; CSV and print lose them past 1000.
+  - Nothing says rows were dropped: `byRule` exists only in totals, and the print footer (`report-print-shared.ts:176`) gives just the row count.
+  - Fix: apply the limit per rule (or rank A8/A9 first), and add a notice in CSV/print when `rowCount > rows.length`.
+  - Missing check: a fixture with more than `limit` A4 rows still shows A8, or shows the notice.
+- **H3 (Low) Print header says "ทุกสาขา" for scoped actors** · `report-actions.ts:191`
+  - Input: MANAGER{A} prints with no `unitId` → the header reads "ทุกสาขา / All branches", but the numbers are A only.
+  - Fix: when `unitId` is omitted and the scope is not every unit, `unitLabel` = the scope's unit names joined (`s.unitName`).
+  - Missing check: PD3 run as MANAGER{A} asserting `unitLabel`.
+- **H4 (Low) A8 value has no sign** · `reports.ts:1451`
+  - Input: one shift ฿150 short and one ฿150 over both export as "150.00", so the owner cannot tell missing cash from surplus.
+  - Fix: keep `value` (the contract); add the sign or "ขาด/เกิน" to the CSV/print cell, taken from whichever side won the max.
+  - Missing check: AN8 asserts the CSV cell for an over shift.
+- **H5 (Low) Bills `channelCounts` never matches the channels report under a cut-off** · `bills.ts:272`
+  - The bills day is the Bangkok calendar day on `paidAt ?? createdAt` (`bills.ts:97`). Reports use `createdAt` plus the cut-off. Deposit receipts also count as STORE (CD-9).
+  - Input: cut-off 240 and a STORE bill at 02:00 on D+1 → the channels report puts it on D, the bills page on D+1.
+  - Fix: U footnote, or a follow-up to make the bills day cut-off-aware. Missing check: CH3 with a cut-off ≠ 0.
+
+## Probed OK
+1. **Channels = daily.** Gross − refunds and billCount match (PAID+REFUNDED, deposits out). A sale that uses a deposit counts once, a voided bill is out of both, and gift card vs cash makes no difference. A refund on day 2 lands on day 2 in channels, daily, branches and hourly. Cut-off 240 at 02:00 → day D in every reader.
+2. **Branches.** MANAGER{A}: the total row and `overShortSatang` are A only. Archived C is in the OWNER total and drops out without access. Sales but no closed shift → row present; only uncounted force-closed shifts → no row, so Σ rows = totals.
+3. **Hourly.** Cut-off 270: 04:29 on D+1 folds into D's "04", 04:31 is D+1's "04". A sale exactly at the cut-off is included (`gte`). The fixed ÷4 forecast is ruled (CD-8); a 2-week-old shop reads half, so U may footnote it.
+4. **Anomalies.** A1 is deduped per audit row, and a bill can be voided only once (`service.ts:1407`). A3 skips net ≤ 0, so there is no division. A6 does not count WEIGHED lines. A9 groups per unit per the rule table. A10 is unit-level (`userId` null). Thresholds: the writer refuses out-of-range values; the clamp applies only to stored JSON, so a typo is refused, not hidden.
+5. **PDPA / access.**
+   - `view` without the anomaly key → PERMISSION_DENIED on the reader, CSV and print; a forged kind → VALIDATION.
+   - MANAGER{A} asking for B → NOT_FOUND, same as a unit that does not exist.
+   - A deleted user → `userName` null, with no email fallback. Print goes through `esc()`, and the CSV has the formula guard.
+6. **Bills `"*"`.** Scope = `receiptReadScope` per unit, rescoped on every page. Archived channels keep their code. Refund docs cannot be VOIDED, so the drawer block is safe.
+
+## Controller rulings — fix round 1 (15 Oct 17:57Z · binding) = R1 F1–F3 + hunter H1–H4 + ORACLE-ADD
+1. **R1 F1 / F2 / F3 = fix** as ruled above (unitNames · `totalRow` flag by kind · no write/audit when the audit view is unchanged).
+2. **H1 = fix (Med)**: A3/A4 measure the **staff-controllable discount** = Σ line `discountSatang` (from the existing A6 `groupBy` with `_sum`) + bill discount − coupon part − member part (the parts the register stores separately — name the columns); base = gross before line discounts (Σ line gross). A member/coupon-only bill ⇒ no A4 row; a 100 % line-discount bill ⇒ A4 hit. Rule labels/threshold text unchanged.
+3. **H2 = fix (Med-)**: apply the row limit **per rule** (each rule keeps up to ⌈limit / rules-with-rows⌉, remainder filled by rule order) so no rule disappears; CSV + print show a notice line when `totals.rowCount > rows.length` ("แสดง N จาก M แถว").
+4. **H3 = fix (Low)**: `unitLabel` = joined `s.unitName` when `unitId` is omitted and the scope is not every unit of the system.
+5. **H4 = fix (Low)**: A8 CSV/print cell shows the sign/word ("ขาด −150.00" / "เกิน +150.00") from the winning side; `value` in the row contract stays absolute.
+6. **H5 = follow-up line** (bills day vs cut-off; U footnote) + R1 F4 (PosTableSplit overrides) + F5 (en print labels) in the notes' follow-ups.
+7. **ORACLE-ADD (test-first, own `test(...)` commit, marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1)`)**: `qc-pos-p2.12` **AN13** = line-discount bill (100 %) ⇒ A4 hit and A3 counts it; member/coupon-only discount bill ⇒ no A4 row (red-before = H1); **AN14** = fixture with > limit A4 rows ⇒ A8 row still present and the CSV carries the notice line (red-before = H2); **PD4** = MANAGER{A} print without `unitId` ⇒ `unitLabel` is unit A's name, and the A8 CSV cell carries the sign word (red-before = H3/H4); plus AN12 extended by one assert for `totals.unitNames` (F1). Suite = 30 + 3 = 33. Record red-before at 42e3ce17 in `P2.12-red.txt` §fix1.
+8. **Gates after fix 1**: `qc-pos-p2.12` 33/33 forced ×2 + unforced · `qc-pos-p1.17` 40 · `qc-pos-p2.11` 34 · `qc-pos-p1.18` 81 · `qc-pos-p1.16` 28 · `qc-pos-p1.1` 180 · `qc-pos-p1.3` 128 · typecheck 0 · fitness ±env. Then fetch `origin/session/pos` (f37d605b already merged; if it moved, merge) → push → R2 (hunks) → merge → merge gates (§6 regression set) → push → 39/55.
