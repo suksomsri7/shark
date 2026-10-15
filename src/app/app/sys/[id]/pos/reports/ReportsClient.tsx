@@ -6,6 +6,8 @@
 // 🔴 CSV: เนื้อไฟล์มี BOM มาจากเซิร์ฟเวอร์แล้ว — ห้ามเติมซ้ำ
 // สถานะอยู่ใน URL (?kind=&from=&to=&unit=) ผ่าน history.replaceState — ไม่โหลดหน้าใหม่
 // R4 (ภาพ 08): kind=overview (ค่าเริ่ม) = แดชบอร์ด ReportsOverview · หัวหน้า (ชื่อ · ช่วงวันที่ · สาขา · ข้อมูลถึง/เทียบกับ · ส่งออก CSV) ใช้ร่วมทุกชนิด
+// POS P2.11U ▸ มติ 7: ชนิด "channels" (ช่องทางการขาย) = ตาราง ช่องทาง · บิล · ยอดสุทธิ (ยอดขาย − คืน) · ค่าคอมมิชชัน (+ VAT ค่าคอมฯ) · กำไรขั้นต้น (net ของเซิร์ฟเวอร์) · % +
+//   แถวรวม · CSV ปุ่มเดิม (posReportCsvAction kind channels) · ตัวเลือกสาขาเดิม (P1.17) ใช้เหมือนชนิดอื่น ◂
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -14,8 +16,11 @@ import { DATE_OVERLAY_INPUT, DateOverlay, openDatePicker } from "@/components/po
 import { formatBaht } from "@/lib/ui/money";
 import { posReportAction, posReportCsvAction } from "@/lib/modules/pos/report-actions";
 import { bkkHm, Icon, prevRangeOf, rangeLabel, ReportsOverview } from "./ReportsOverview";
+import { channelDisplayName } from "@/components/pos/settings/channel-text"; // POS P2.11U ◂
 import type {
   AnyReportResult,
+  ChannelRow, // POS P2.11U ◂
+  ChannelTotals, // POS P2.11U ◂
   DailyRow,
   DailyTotals,
   MarginRow,
@@ -43,7 +48,7 @@ type T = (key: string, values?: Record<string, string | number>) => string;
 type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
 
 /** ลำดับแท็บตามสเปก: overview (R4) · daily · products · staff · payments · margin · shifts · tax */
-const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "payments", "margin", "shifts", "tax"];
+const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels"]; // POS P2.11U ▸ มติ 7: + channels ◂
 /** ไอคอนจากภาพ 08 (ปฏิทิน · ร้าน · ส่งออก) */
 const I_CAL = ["M6 5h12a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 18 21H6a2.5 2.5 0 0 1-2.5-2.5v-11A2.5 2.5 0 0 1 6 5Z", "M3.5 10h17M8 3v4M16 3v4"] as const;
 const I_SHOP = ["M4 9V4h16v5", "M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z", "M9.5 13h5"] as const;
@@ -141,6 +146,7 @@ function DailyChart({ rows, t, locale }: { rows: DailyRow[]; t: T; locale: strin
 
 // ═══════════ ตารางต่อชนิด (คอลัมน์ตามลำดับ R5–R10) ═══════════
 function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: string }) {
+  const tch = useTranslations("pos.channel"); // POS P2.11U ◂
   const c = (k: string) => t(`cols.${k}`);
   const empty = <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("empty")}</p>;
   const limited = (shown: number, total: number) =>
@@ -362,6 +368,37 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
           />
           <p className="text-xs text-[color:var(--color-muted)]" data-testid="pos-report-summary">
             {t("summary.shiftCounts", { shifts: tt.shiftCount, short: tt.shortCount, over: tt.overCount, forced: tt.forcedCount, open: tt.openCount })}
+          </p>
+        </div>
+      );
+    }
+    // POS P2.11U ▸ มติ 7 ◂
+    case "channels": {
+      const x = rep as Report<"channels", ChannelRow, ChannelTotals>;
+      if (x.rows.length === 0) return <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("channels.empty")}</p>;
+      const tcol = (k: string) => t(`channels.cols.${k}`);
+      const pct1 = (v: number) => `${v.toLocaleString("th-TH", { maximumFractionDigits: 1 })}%`;
+      const cols: Col<ChannelRow>[] = [
+        { key: "channel", header: tcol("channel"), cell: (r) => channelDisplayName(r.channelCode, r.name, tch) },
+        { key: "bills", header: tcol("bills"), num: true, cell: (r) => r.billCount },
+        { key: "net", header: tcol("net"), num: true, cell: (r) => M(r.grossSatang - r.refundSatang) },
+        { key: "commission", header: tcol("commission"), num: true, cell: (r) => M(r.commissionSatang + r.commissionVatSatang) },
+        { key: "gross", header: tcol("gross"), num: true, cell: (r) => <b>{M(r.netSatang)}</b> },
+        { key: "share", header: tcol("share"), num: true, cell: (r) => pct1(r.sharePct) },
+      ];
+      const tt = x.totals;
+      return (
+        <div className="flex flex-col gap-2">
+          <Table
+            testId="pos-report-table"
+            cols={cols}
+            rows={x.rows}
+            rowKey={(r) => r.channelCode}
+            minWidth={680}
+            total={[t("total"), tt.billCount, M(tt.grossSatang - tt.refundSatang), M(tt.commissionSatang + tt.commissionVatSatang), M(tt.netSatang), ""]}
+          />
+          <p className="text-xs text-[color:var(--color-muted)]" data-testid="pos-report-summary">
+            {t("channels.footnote")}
           </p>
         </div>
       );

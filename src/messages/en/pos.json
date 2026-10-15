@@ -1001,7 +1001,7 @@
         "margin": "Gross margin",
         "voids": "Voided bills"
       },
-      "comingSoon": "Hourly · channels · members are coming in a later release",
+      "comingSoon": "Hourly · members are coming in a later release",
       "chartTitle": "Daily sales",
       "chartRange": "Last {days} days to {date}",
       "legendActual": "Actual",
