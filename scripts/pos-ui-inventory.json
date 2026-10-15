@@ -17937,6 +17937,146 @@
       "oracle": "",
       "system": "POS",
       "query": ""
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-enable",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "enableCustomerDisplayAction",
+        "note": "บล็อก \"จอลูกค้า\" ของเครื่องที่เลือก (ACTIVE) — \"เปิดจอลูกค้า\" / \"ขอรหัสใหม่\" → รหัส 8 ตัว + QR ของ <origin>/d?c=<รหัส> + เวลาเหลือ 10 นาที (pos-settings-display-code) · token เดิมยังใช้ได้จนรหัสใหม่ถูกแลก (P2.10 มติ 13.7)"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-revoke",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-display-revoke-dialog",
+        "note": "ยกเลิกการจับคู่ (มีเมื่อเปิดจอแล้ว) → กล่องยืนยัน"
+      },
+      "wo": "P2.10",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-revoke-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-display",
+        "note": "ปิดกล่อง (Esc ก็ได้)"
+      },
+      "wo": "P2.10",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-revoke-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "revokeCustomerDisplayAction",
+        "note": "จอ REVOKED · จอที่จับคู่อยู่กลับหน้าใส่รหัสในการโพลถัดไป (DISPLAY_NOT_PAIRED) · สถานะ = ยังไม่ได้จับคู่"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-show-points",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateCustomerDisplaySettingsAction",
+        "note": "สวิตช์ \"แสดงแต้มสมาชิก\" (ค่าเริ่มเปิด) — ปิด = จอไม่แสดงแต้มสะสม/แต้มที่ได้ (มติ 3 · 13.3)"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-idle-text",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateCustomerDisplaySettingsAction",
+        "note": "ข้อความหน้าพัก ≤ 80 ตัว (ว่าง = \"ยินดีต้อนรับ\") · บันทึกตอนออกจากช่อง/Enter"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-display-locale",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateCustomerDisplaySettingsAction",
+        "note": "ภาษาบนจอ: ตามใบเสร็จ (null) / ไทย / English"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

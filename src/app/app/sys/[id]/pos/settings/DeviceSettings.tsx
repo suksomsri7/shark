@@ -7,7 +7,8 @@
 //        ภาษาไทยบนเครื่องพิมพ์ · พิมพ์อัตโนมัติ · ลิ้นชัก · สำเนาให้ร้าน · ทดสอบพิมพ์ · เพิกถอน (กล่องยืนยัน))
 // 🔴 printerConfig ส่ง "ทั้งก้อน" ทุกครั้ง (เซิร์ฟเวอร์รวมให้ก็จริง แต่จอไม่พึ่ง) · คีย์ = เฉพาะที่ parsePrinterConfig รับ (mode ไม่ใช่ transport)
 // 🔴 ข้อมูลจับคู่ฮาร์ดแวร์อยู่ใน localStorage ต่อรหัสเครื่อง (มติ CD2) — จับคู่ได้เฉพาะเครื่องของเบราว์เซอร์นี้
-// 🔴 คำปฏิเสธแสดงผ่านคีย์ pos.device.errors.* · ไม่ทำในใบนี้: ชิป/ตั้งจอลูกค้า (P1.x) · ใบครัวพิมพ์ที่ (P2) · QR ลงทะเบียนเครื่องอื่น (P1.18)
+// 🔴 คำปฏิเสธแสดงผ่านคีย์ pos.device.errors.* · ไม่ทำในใบนี้: ใบครัวพิมพ์ที่ (P2) · QR ลงทะเบียนเครื่องอื่น (P1.18)
+// POS P2.10 ▸ ตั้งจอลูกค้า = CustomerDisplayBlock ท้ายไฟล์ (คีย์ pos.display.settings.* · pos.display.errors.*) ◂
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -26,6 +27,10 @@ import Link from "next/link";
 import { kitchenSlipSettings } from "@/lib/modules/pos/device-shared";
 import { kdsStationsAction } from "@/lib/modules/pos/kds-actions"; // fix1 F3: ตัวอ่านสถานีเฉย ๆ (ไม่ heal/ไม่คิดบอร์ด)
 import { Chip, InlineNote, SwitchKnob, TabHead } from "./settings-ui";
+// POS P2.10 ▸ บล็อก "จอลูกค้า" ของเครื่องที่เลือก (สถานะ · รหัส + QR + เวลาเหลือ · เปิด/ยกเลิก · แสดงแต้ม · ข้อความหน้าพัก · ภาษา) ◂
+import QRCode from "qrcode";
+import { customerDisplayStatusAction, enableCustomerDisplayAction, revokeCustomerDisplayAction, updateCustomerDisplaySettingsAction } from "@/lib/modules/pos/display-actions";
+import { DISPLAY_IDLE_TEXT_MAX, displayErrorKey, type CustomerDisplayStatusView, type DisplayLocale } from "@/lib/modules/pos/display-shared";
 
 type Props = { systemId: string; unitId: string; shopName: string };
 type ListOk = { items: PosDeviceListItem[]; limit: number; activeCount: number };
@@ -601,6 +606,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                       </div>
                     );
                   })()}
+                  <CustomerDisplayBlock key={sel.id} systemId={systemId} unitId={unitId} deviceId={sel.id} /> {/* POS P2.10 ▸ จอลูกค้า (มติ 4 · R7) ◂ */}
                   <PrintStatus result={printRes} onRetry={() => void testPrint()} onBrowser={() => void testPrint(true)} />
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
                     <button data-testid="pos-device-test-print" type="button" className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px]" disabled={busy} onClick={() => void testPrint()}>
@@ -677,3 +683,248 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
     </div>
   );
 }
+
+// ═══════════ POS P2.10 ▸ บล็อก "จอลูกค้า" (R7 · มติ 2 4 7 13.7) ═══════════
+//   สถานะ: ยังไม่ได้จับคู่ · รอจับคู่ (รหัส 8 ตัว + QR ของ <origin>/d?c=<รหัส> + เวลาเหลือ) · ออนไลน์/ออฟไลน์ (lastPolledAt ≤ 120 วิ)
+//   เปิดจอลูกค้า/ขอรหัสใหม่ (enable — token เดิมยังใช้ได้จนรหัสใหม่ถูกแลก) · ยกเลิกการจับคู่ (กล่องยืนยัน) · สวิตช์แสดงแต้ม · ข้อความหน้าพัก · ภาษา
+//   รหัสตัวจริงอยู่ในหน่วยความจำของบล็อกนี้เท่านั้น (สถานะจากเซิร์ฟเวอร์ไม่มีรหัส) · เวลาเหลือ/ลิงก์คำนวณหลัง mount (HF-418)
+function DisplayQrImg({ value, alt }: { value: string; alt: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    QRCode.toDataURL(value, { margin: 1, width: 320, errorCorrectionLevel: "M" })
+      .then((u: string) => alive && setUrl(u))
+      .catch(() => alive && setUrl(null));
+    return () => {
+      alive = false;
+    };
+  }, [value]);
+  return (
+    <div data-testid="pos-settings-display-qr" className="grid size-[148px] shrink-0 place-items-center rounded-[12px] border bg-[color:var(--color-surface)] p-1.5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {url ? <img src={url} alt={alt} width={136} height={136} /> : null}
+    </div>
+  );
+}
+
+function CustomerDisplayBlock({ systemId, unitId, deviceId }: { systemId: string; unitId: string; deviceId: string }) {
+  const t = useTranslations("pos.display");
+  const [st, setSt] = useState<CustomerDisplayStatusView | null>(null);
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [now, setNow] = useState<number | null>(null);
+  const [origin, setOrigin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [idleDraft, setIdleDraft] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const r = await customerDisplayStatusAction({ systemId, unitId, deviceId }).catch(() => null);
+    if (!r || !r.ok) {
+      setErr(t(displayErrorKey(r?.code)));
+      return;
+    }
+    setSt(r.display);
+    if (r.display.paired || !r.display.pendingCodeExpiresAt) setCode((c) => (r.display.paired && c ? null : c));
+  }, [systemId, unitId, deviceId, t]);
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+    void refresh();
+  }, [refresh]);
+  useEffect(() => {
+    if (st) setIdleDraft(st.idleText ?? "");
+  }, [st?.idleText]); // eslint-disable-line react-hooks/exhaustive-deps
+  // นาฬิกาของเวลาเหลือ + ถามสถานะซ้ำ (รอจับคู่ 5 วิ · อื่น ๆ 30 วิ)
+  useEffect(() => {
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    const poll = setInterval(() => void refresh(), code ? 5_000 : 30_000);
+    return () => {
+      clearInterval(tick);
+      clearInterval(poll);
+    };
+  }, [refresh, code]);
+
+  const run = async (fn: () => Promise<{ ok: boolean; code?: string } | null>, ok?: string) => {
+    setBusy(true);
+    setErr(null);
+    setNote(null);
+    const r = await fn().catch(() => null);
+    setBusy(false);
+    if (!r || !r.ok) setErr(t(displayErrorKey(r?.code)));
+    else if (ok) setNote(ok);
+    return !!r?.ok;
+  };
+  const enable = () =>
+    run(async () => {
+      const r = await enableCustomerDisplayAction({ systemId, unitId, deviceId });
+      if (r.ok) {
+        setCode({ code: r.pairCode, expiresAt: r.pairCodeExpiresAt });
+        setSt(r.display);
+      }
+      return r;
+    });
+  const revoke = () =>
+    run(async () => {
+      const r = await revokeCustomerDisplayAction({ systemId, unitId, deviceId });
+      if (r.ok) {
+        setCode(null);
+        setSt(r.display);
+        setConfirmOpen(false);
+      }
+      return r;
+    });
+  const save = (patch: { showPoints?: boolean; idleText?: string | null; locale?: DisplayLocale | null }) =>
+    run(async () => {
+      const r = await updateCustomerDisplaySettingsAction({ systemId, unitId, deviceId, ...patch });
+      if (r.ok) setSt(r.display);
+      return r;
+    }, t("settings.saved"));
+
+  const left = code && now !== null ? Math.max(0, Math.floor((Date.parse(code.expiresAt) - now) / 1000)) : null;
+  const mmss = left !== null ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "";
+  const link = origin ? `${origin}/d` : "/d";
+  const statusText = !st
+    ? ""
+    : st.paired
+      ? st.online
+        ? t("settings.statusOnline")
+        : t("settings.statusOffline")
+      : st.pendingCodeExpiresAt
+        ? t("settings.statusPending")
+        : t("settings.statusUnpaired");
+  const dot = st?.paired && st.online ? "bg-[color:var(--color-tag-green)]" : st?.paired ? "bg-[color:var(--color-danger)]" : "bg-[color:var(--color-line)]";
+
+  return (
+    <div data-testid="pos-settings-display" className="flex flex-col gap-3 border-t pt-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[13px] font-bold text-[color:var(--color-ink-soft)]">{t("settings.title")}</span>
+        {st && (
+          <span data-testid="pos-settings-display-status" data-paired={st.paired ? "1" : "0"} data-online={st.online ? "1" : "0"} className="inline-flex items-center gap-1.5 text-[13px]">
+            <span aria-hidden className={`size-2 rounded-full ${dot}`} />
+            {statusText}
+          </span>
+        )}
+        {st?.paired && st.lastPolledAt && <span className="text-[12px] text-[color:var(--color-muted)]">{t("settings.lastSeen", { time: bkkHm(st.lastPolledAt) })}</span>}
+      </div>
+      <p className="text-[13px] text-[color:var(--color-muted)]">{t("settings.hint", { url: link })}</p>
+
+      {code && left !== null && left > 0 && !st?.paired && (
+        <div data-testid="pos-settings-display-code" className="flex flex-wrap items-center gap-4 rounded-[13px] border bg-[color:var(--color-surface-2)] p-4">
+          <DisplayQrImg value={`${link}?c=${code.code}`} alt={t("settings.codeLabel")} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-[12.5px] text-[color:var(--color-muted)]">{t("settings.codeLabel")}</span>
+            <b data-testid="pos-settings-display-code-text" className="font-mono text-[30px] tracking-[0.18em]">
+              {`${code.code.slice(0, 4)} ${code.code.slice(4)}`}
+            </b>
+            <span data-testid="pos-settings-display-countdown" className="text-[13px] tabular-nums text-[color:var(--color-ink-soft)]">
+              {t("settings.expiresIn", { time: mmss })}
+            </span>
+            <span className="text-[12.5px] text-[color:var(--color-muted)]">{t("settings.openLink", { url: link })}</span>
+          </div>
+        </div>
+      )}
+      {code && left === 0 && !st?.paired && <InlineNote tone="error">{t("settings.codeExpired")}</InlineNote>}
+      {!code && st?.pairLocked && <InlineNote tone="error">{t("settings.statusLocked")}</InlineNote>}
+
+      <div className="flex flex-wrap gap-2">
+        <button data-testid="pos-settings-display-enable" type="button" className="btn btn-primary h-11 rounded-[11px] px-5 font-semibold" disabled={busy} onClick={() => void enable()}>
+          {st?.enabled ? t("settings.newCode") : t("settings.enable")}
+        </button>
+        {st?.enabled && (
+          <button data-testid="pos-settings-display-revoke" type="button" className="btn btn-ghost h-11 rounded-[11px] px-5 text-[color:var(--color-danger)]" disabled={busy} onClick={() => setConfirmOpen(true)}>
+            {t("settings.revoke")}
+          </button>
+        )}
+      </div>
+
+      {st?.enabled && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px]">{t("settings.showPoints")}</span>
+              <small className="block text-[12px] text-[color:var(--color-muted)]">{t("settings.showPointsHint")}</small>
+            </span>
+            <button
+              data-testid="pos-settings-display-show-points"
+              type="button"
+              role="switch"
+              aria-checked={st.showPoints}
+              aria-label={t("settings.showPoints")}
+              disabled={busy}
+              className="grid min-h-11 min-w-11 place-items-center"
+              onClick={() => void save({ showPoints: !st.showPoints })}
+            >
+              <SwitchKnob on={st.showPoints} />
+            </button>
+          </div>
+          <label className="flex flex-col gap-2">
+            <span className="text-[13px] font-semibold text-[color:var(--color-ink-soft)]">{t("settings.idleText")}</span>
+            <input
+              data-testid="pos-settings-display-idle-text"
+              className="input h-11 rounded-[11px] px-4 text-[15px]"
+              value={idleDraft}
+              maxLength={DISPLAY_IDLE_TEXT_MAX}
+              placeholder={t("settings.idlePlaceholder")}
+              disabled={busy}
+              onChange={(e) => setIdleDraft(e.target.value)}
+              onBlur={() => {
+                const v = idleDraft.trim();
+                if (v !== (st.idleText ?? "")) void save({ idleText: v || null });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </label>
+          <label className="flex items-center gap-3">
+            <span className="min-w-0 flex-1 text-[14px]">{t("settings.language")}</span>
+            <select
+              data-testid="pos-settings-display-locale"
+              className="input h-11 w-auto rounded-[10px] px-3 text-[14px]"
+              value={st.locale ?? ""}
+              disabled={busy}
+              onChange={(e) => void save({ locale: e.target.value === "th" || e.target.value === "en" ? e.target.value : null })}
+            >
+              <option value="">{t("settings.langAuto")}</option>
+              <option value="th">{t("settings.langTh")}</option>
+              <option value="en">{t("settings.langEn")}</option>
+            </select>
+          </label>
+        </div>
+      )}
+      {err && (
+        <InlineNote tone="error" testid="pos-settings-display-error">
+          {err}
+        </InlineNote>
+      )}
+      {note && !err && <InlineNote tone="ok">{note}</InlineNote>}
+
+      {confirmOpen && (
+        <DialogBox testid="pos-settings-display-revoke-dialog" labelledBy="pos-settings-display-revoke-title" onClose={() => setConfirmOpen(false)}>
+          <h2 id="pos-settings-display-revoke-title" className="text-[18px] font-bold">
+            {t("settings.revokeTitle")}
+          </h2>
+          <p className="text-[14.5px] text-[color:var(--color-ink-soft)]">{t("settings.revokeBody")}</p>
+          <div className="flex justify-end gap-2">
+            <button data-testid="pos-settings-display-revoke-cancel" type="button" className="btn btn-ghost h-11 rounded-[11px] px-5" onClick={() => setConfirmOpen(false)}>
+              {t("settings.cancel")}
+            </button>
+            <button
+              data-testid="pos-settings-display-revoke-confirm"
+              type="button"
+              className="btn h-11 rounded-[11px] bg-[color:var(--color-danger)] px-5 font-semibold text-white"
+              disabled={busy}
+              onClick={() => void revoke()}
+            >
+              {t("settings.revokeConfirm")}
+            </button>
+          </div>
+        </DialogBox>
+      )}
+    </div>
+  );
+}
+// ◂ POS P2.10
