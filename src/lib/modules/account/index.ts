@@ -395,7 +395,8 @@ export async function applyExternalDepositRefund(input: {
   if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดคืนมัดจำต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
   const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
   if (paySum !== gross) return { posted: false, reason: `ยอดคืนมัดจำแยกตามวิธี (${paySum}) ไม่เท่ากับยอดคืน (${gross}) — ไม่บันทึกบัญชี` };
-  const vat = vatRegistered && Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
+  // POS P2.9b ▸ fix2 มติ 2 (hunter N1): VAT ของการคืน = VAT ที่มัดจำยังไม่ปล่อย (บันทึกตอนรับ) — ไม่คิดใหม่ตามค่าตั้งสมุด ณ ตอนคืน (เลิกจด VAT ภายหลัง) ⇒ 2110 สุทธิ 0 ◂
+  const vat = Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
   const res = await postExternalDepositRefund(ctx, {
     refId: input.refId,
     date: input.occurredAt,
