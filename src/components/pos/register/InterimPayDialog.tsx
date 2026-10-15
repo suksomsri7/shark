@@ -749,7 +749,14 @@ export function PayDialog(p: Props) {
         notOwnerSet.current = sig(all);
         reenterLast4(list[0]!);
       };
-      if (all.length && notOwnerSet.current === sig(all)) dropRows(new Set(all.map((r) => r.id)), "errors.depositNotOwnerAgain");
+      // POS P2.9bU ▸ fix2 G1: ชุดเดิมซ้ำ + ยังมีแถวสมาชิก ⇒ ถอดเฉพาะแถวสมาชิก (errors.depositNotOwner) · ตั้งชุดเป็นแถวที่เหลือ ⇒ ซ้ำอีกครั้ง = ถอดทั้งหมด
+      //   (แถว walk-in ที่ใส่ 4 หลักถูกแล้วรอดคำปฏิเสธที่มาจากแถวสมาชิก · ไม่วน — ลองเพิ่มได้อีกครั้งเดียว) ◂
+      if (all.length && notOwnerSet.current === sig(all) && own.length) {
+        const ids = new Set(own.map((r) => r.id));
+        dropRows(ids, DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
+        const left = all.filter((r) => !ids.has(r.id));
+        notOwnerSet.current = left.length ? sig(left) : null;
+      } else if (all.length && notOwnerSet.current === sig(all)) dropRows(new Set(all.map((r) => r.id)), "errors.depositNotOwnerAgain");
       else if (suspects.length) blameL4(suspects, sentStripped.current ? "again" : "wrong");
       else if (own.length) dropRows(new Set(own.map((r) => r.id)), DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
       else if (l4Rows.length) blameL4(l4Rows, "wrong");
