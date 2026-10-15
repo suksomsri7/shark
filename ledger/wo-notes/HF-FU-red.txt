@@ -93,3 +93,12 @@ JSON_SUMMARY {"suite":"qc-pos-p2.6","total":67,"passed":66,"failed":["P2.6-O4"],
   card pinFailedCount 1 · sales on key 0
   verdict: RED (55P03 lock_not_available — part/item rows locked while waiting on the card)
   cleanup posqc-hffu-c7-d6h7f8: residue 0
+
+## §fix1 — red-before of the ORACLE-ADD checks (HF-FU fix 1 · builder · account B · 15 Oct 2026)
+# oracle commit 979d5ac0 (test only) on code f5e1c8a4 · unforced (QC_FORCE=0) · QC4 under /tmp/shark-gate-pos.lock · log scratchpad/hffub/runs/fix1/red-2.log
+# tree=/root/projects/shark-pos-c head=979d5ac0 dirty=0 suite=qc-hf-fu args= at=2026-10-15T12:44:53Z
+# result: 25/27 · failed HN4 OD3 (the 25 original checks stay green · PAR 5/5 · residue 0 · leaks 0)
+  ❌ [HF-FU-HN4] [a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที — expected 6 ตัวกวาดพร้อมกันที่เพดาน 1 = รับ 1 · บิล 1 · รอบ 1 · ตั๋วค้าง ≤ เพดาน | actual 6 ตัวกวาดพร้อมกันที่เพดาน 1: [o1 o2 o3] = ACCEPTED,ACCEPTED,NEW · ACCEPTED 2 · บิล 2 · รอบครัว 2 (คาด 1 · 1 · 1) · ตั๋วค้างสูงสุดต่อสถานี 2 (คาด ≤ เพดาน 1)
+  ❌ [HF-FU-OD3] [b fix1 มติ 1] ร่าง HELD ของ session CLOSED (จ่ายครบ + หน้าเดิมปิด) · ธุรกรรมที่สามถือแถวร่าง → registerTables (ตัวกวาดอ — expected ตัวกวาด ‖ void เปิด session กลับ = ร่างยัง HELD | actual ร่างของ session ที่ถูกเปิดกลับ → DISCARDED v2 (คาด HELD v1) · audit ทิ้ง +1 (คาด 0)
+JSON_SUMMARY {"suite":"qc-hf-fu","total":27,"passed":25,"failed":["HF-FU-HN4","HF-FU-OD3"],"parRed":[],"skipped":false,"forced":false,"missing":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}
+# HN4 red = R1 F2 overshoot (2 ACCEPTED / 2 sales / 2 rounds / backlog 2 at ceiling 1) · OD3 red = R1 F1 (draft of the session re-opened by the void DISCARDED + 1 discard audit) · OD3 deterministic (third tx holds the draft row) ⇒ no static replacement needed
