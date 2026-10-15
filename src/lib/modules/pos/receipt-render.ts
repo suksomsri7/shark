@@ -58,6 +58,8 @@ export type ReceiptLabels = {
   channel: string;
   /** POS P2.9 ▸ R10: ยอดคงเหลือในบัตรหลังรายการ ◂ */
   cardBalance: string;
+  /** POS P2.9b ▸ R9 มติ 3: หัวใบรับเงินมัดจำ (+ " / ใบกำกับภาษีอย่างย่อ" เมื่อเป็น ABB) ◂ */
+  depositReceipt: string;
   pay: Record<ReceiptPayType, string>;
 };
 
@@ -74,7 +76,9 @@ export type ReceiptLine = {
 };
 /** POS P2.9 ▸ R10: card = แถวบัตรของขวัญ/เครดิตร้าน (เลขปิดบัง · ยอดหลังรายการ) — ไม่มี = แถวเดิม ◂ */
 export type ReceiptPaymentCard = { kind: "GIFT" | "STORE_CREDIT"; numberMasked: string; balanceAfterSatang: number };
-export type ReceiptPayment = { type: ReceiptPayType | string; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string; card?: ReceiptPaymentCard };
+/** POS P2.9b ▸ R9: deposit = แถวใช้มัดจำ (เลขใบรับ · คงเหลือหลังรายการ) — "มัดจำ #<เลขใบรับ> ฿x (คงเหลือ ฿y)" · ไม่มี = แถวเดิม ◂ */
+export type ReceiptPaymentDeposit = { receiptNo: string; remainingAfterSatang: number };
+export type ReceiptPayment = { type: ReceiptPayType | string; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string; card?: ReceiptPaymentCard; deposit?: ReceiptPaymentDeposit };
 
 export type ReceiptPayload = {
   docType: ReceiptDocType;
@@ -117,6 +121,8 @@ export type ReceiptPayload = {
   labels: { th: ReceiptLabels; en: ReceiptLabels };
   /** POS P1.18 ▸ R12 มติ Q7: ภาษาที่ "พิมพ์" = ค่าตั้งของระบบ POS (settings.pos.receiptLocale · ปริยาย th) — ภาษาจอของแคชเชียร์ไม่ตัดสิน ◂ */
   printLocale?: "th" | "en";
+  /** POS P2.9b ▸ R9 มติ 3: ใบรับเงินมัดจำ (บิล POS_DEPOSIT) — หัว "ใบรับเงินมัดจำ" (+ ABB) · ไม่มี = หัวเดิม ◂ */
+  depositReceipt?: boolean;
 };
 
 // ═══════════════════ คำบรรยาย (ชุดคีย์เดียวกันทั้งสองภาษา) ═══════════════════
@@ -163,6 +169,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     eReceipt: "สแกนรับใบเสร็จอิเล็กทรอนิกส์",
     channel: "ช่องทาง",
     cardBalance: "คงเหลือ",
+    depositReceipt: "ใบรับเงินมัดจำ", // POS P2.9b ◂
     pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร", PLATFORM: "ชำระผ่านแพลตฟอร์ม", GIFT_CARD: "บัตรของขวัญ", STORE_CREDIT: "เครดิตร้าน" },
   },
   en: {
@@ -207,6 +214,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     eReceipt: "Scan for e-receipt",
     channel: "Channel",
     cardBalance: "Balance",
+    depositReceipt: "DEPOSIT RECEIPT", // POS P2.9b ◂
     pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card", PLATFORM: "Paid via platform", GIFT_CARD: "Gift card", STORE_CREDIT: "Store credit" },
   },
 };
@@ -266,7 +274,11 @@ const qtyText = (n: number) => String(n);
 const weightText = (g: number) => `${(g / 1000).toFixed(3)} kg`;
 const vatRateText = (bp: number) => `${bp % 100 === 0 ? String(bp / 100) : (bp / 100).toFixed(2)}%`;
 const payLabel = (L: ReceiptLabels, t: string) => (L.pay as Record<string, string>)[t] ?? t;
-const titleOf = (p: ReceiptPayload, L: ReceiptLabels) => (p.docType === "REFUND" ? L.refund : p.kind === "TAX_INVOICE_ABB" ? L.taxInvoiceAbb : L.receipt);
+// POS P2.9b ▸ มติ 3: ใบรับเงินมัดจำ = "ใบรับเงินมัดจำ" (+ " / ใบกำกับภาษีอย่างย่อ" เมื่อสมุดจด VAT + ABB) ◂
+const titleOf = (p: ReceiptPayload, L: ReceiptLabels) =>
+  p.docType === "REFUND" ? L.refund : p.depositReceipt ? (p.kind === "TAX_INVOICE_ABB" ? `${L.depositReceipt} / ${L.taxInvoiceAbb}` : L.depositReceipt) : p.kind === "TAX_INVOICE_ABB" ? L.taxInvoiceAbb : L.receipt;
+/** POS P2.9b ▸ R9: ป้ายแถวชำระ (บัตร = เลขปิดบัง · มัดจำ = #เลขใบรับ) ◂ */
+const payRowLabel = (L: ReceiptLabels, x: ReceiptPayment) => (x.card ? `${payLabel(L, x.type)} ${x.card.numberMasked}` : x.deposit ? `${payLabel(L, x.type)} #${x.deposit.receiptNo}` : payLabel(L, x.type));
 const itemCount = (p: ReceiptPayload) => p.lines.reduce((t, l) => t + (l.weightGrams ? 1 : l.qty), 0);
 const branchText = (L: ReceiptLabels, branchNo: string) => (branchNo === HEAD_OFFICE_BRANCH ? L.headOffice : `${L.branchNo} ${branchNo}`);
 
@@ -391,8 +403,9 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
   // payments
   const pm: string[] = [];
   for (const x of p.payments) {
-    pm.push(row(x.card ? `${payLabel(L, x.type)} ${x.card.numberMasked}` : payLabel(L, x.type), formatSatang(x.amountSatang)));
+    pm.push(row(payRowLabel(L, x), formatSatang(x.amountSatang))); // POS P2.9b ▸ มัดจำ #เลขใบรับ ◂
     if (x.card) pm.push(row(L.cardBalance, formatSatang(x.card.balanceAfterSatang), "opt s")); // POS P2.9 ▸ R10 ◂
+    if (x.deposit) pm.push(row(L.cardBalance, formatSatang(x.deposit.remainingAfterSatang), "opt s")); // POS P2.9b ▸ R9 ◂
     if (x.tenderedSatang !== undefined && x.tenderedSatang !== null) pm.push(row(L.tendered, formatSatang(x.tenderedSatang), "opt"));
     if (x.changeSatang !== undefined && x.changeSatang !== null) pm.push(row(L.change, formatSatang(x.changeSatang), "opt"));
     if (x.reference) pm.push(row(L.reference, x.reference, "opt s"));
@@ -579,8 +592,9 @@ function layout(p: ReceiptPayload, L: ReceiptLabels, cols: number, locale: Local
   rule();
   // payments
   for (const x of p.payments) {
-    add(pair(x.card ? `${payLabel(L, x.type)} ${x.card.numberMasked}` : payLabel(L, x.type), formatSatang(x.amountSatang), cols));
+    add(pair(payRowLabel(L, x), formatSatang(x.amountSatang), cols)); // POS P2.9b ▸ มัดจำ #เลขใบรับ ◂
     if (x.card) add(pair(ind + L.cardBalance, formatSatang(x.card.balanceAfterSatang), cols)); // POS P2.9 ▸ R10 ◂
+    if (x.deposit) add(pair(ind + L.cardBalance, formatSatang(x.deposit.remainingAfterSatang), cols)); // POS P2.9b ▸ R9 ◂
     if (x.tenderedSatang !== undefined && x.tenderedSatang !== null) add(pair(ind + L.tendered, formatSatang(x.tenderedSatang), cols));
     if (x.changeSatang !== undefined && x.changeSatang !== null) add(pair(ind + L.change, formatSatang(x.changeSatang), cols));
     if (x.reference) add(pair(ind + L.reference, x.reference, cols));

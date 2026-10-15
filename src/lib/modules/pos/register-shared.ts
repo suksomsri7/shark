@@ -20,7 +20,8 @@ export const REGISTER_PAGE_SIZE = 100;
 export const REGISTER_PAGE_MAX = 500;
 /** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
 // POS P2.9 ▸ R1: + GIFT_CARD (giftCard {number, pin} · ≤ 3 ใบ) + STORE_CREDIT (เครดิตร้านของสมาชิกในบิล · ไม่มี PIN · แถวเดียว) ◂
-export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
+// POS P2.9b ▸ R4 มติ 2: + DEPOSIT (= {DEPOSIT, amountSatang, depositId} เท่านั้น · ไม่มี depositId = VALIDATION · ทิปไม่จ่ายจากมัดจำ) — payOrder ยังปฏิเสธ (order.ts) ◂
+export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
 /** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
 export const REGISTER_MAX_PAY_METHODS = 10;
 /** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */
@@ -232,7 +233,14 @@ export type RegisterRefusalCode =
   | "GIFT_CARD_PIN"
   | "GIFT_CARD_LOCKED"
   | "GIFT_CARD_CHANGED"
-  | "STORE_CREDIT_NOT_OWNER";
+  | "STORE_CREDIT_NOT_OWNER"
+  // POS P2.9b ▸ R10: มัดจำเป็นวิธีชำระ — ไม่พบ (รวมสาขา/ร้านอื่น · ข้อความเดียว) · เป็นของสมาชิกคนอื่น · เกินคงเหลือ · ใช้หมด/คืนแล้ว ◂
+  | "DEPOSIT_NOT_FOUND"
+  | "DEPOSIT_NOT_OWNER"
+  | "DEPOSIT_EXCEEDS"
+  | "DEPOSIT_CLOSED"
+  // POS P2.9b ▸ fix2 มติ 3: 4 หลักท้ายของเบอร์ผิดครบ 5 ครั้ง — ระงับ 15 นาที ◂
+  | "DEPOSIT_LOCKED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -432,7 +440,9 @@ export type RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; staffToken?
 export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
 /** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
 /** POS P2.9 ▸ giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น (เลขที่สแกน/พิมพ์ + PIN ของลูกค้า · ห้ามเก็บ/บันทึก PIN ที่จอ) ◂ */
-export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string; giftCard?: { number: string; pin: string } };
+/** POS P2.9b ▸ depositId = มัดจำของแถว DEPOSIT เท่านั้น (PosDeposit.id จาก registerDepositLookup · เซิร์ฟเวอร์แก้เป็นใบรับเอง) ◂ */
+// POS P2.9b fix1 มติ 6 ▸ phoneLast4 = 4 หลักท้ายของเบอร์ผู้ฝาก (มัดจำ walk-in ที่บันทึกเบอร์ไว้ — บังคับ) ◂
+export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string; giftCard?: { number: string; pin: string }; depositId?: string; phoneLast4?: string };
 export type RegisterSubmitInput = RegisterQuoteInput & {
   /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
   idempotencyKey: string;
@@ -971,6 +981,12 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   GIFT_CARD_LOCKED: "errors.giftCardLocked",
   GIFT_CARD_CHANGED: "errors.giftCardChanged",
   STORE_CREDIT_NOT_OWNER: "errors.storeCreditNotOwner",
+  // POS P2.9b ▸ R10 ◂
+  DEPOSIT_NOT_FOUND: "errors.depositNotFound",
+  DEPOSIT_NOT_OWNER: "errors.depositNotOwner",
+  DEPOSIT_EXCEEDS: "errors.depositExceeds",
+  DEPOSIT_CLOSED: "errors.depositClosed",
+  DEPOSIT_LOCKED: "errors.depositLocked", // POS P2.9b ▸ fix2 มติ 3 ◂
   // POS P2.1 ▸ ช่องทางขาย (R13) ◂
   CHANNEL_INVALID: "errors.channelInvalid",
   CHANNEL_PAY_MISMATCH: "errors.channelPayMismatch",

@@ -1787,6 +1787,25 @@ export async function externalSalePosted(ctx: GlCtx, refId: string): Promise<boo
   return alreadyPosted(ctx, `PosSale#${refId}#PAID`, prisma);
 }
 
+// POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): เครื่องหมาย "บิล POS นี้ไม่มี JV ขายเพราะทุกบรรทัดบัญชีเป็น 0" (zero entry · fix3 มติ 1) ◂
+//   = แถว AuditLog action account.external.zeroEntry ต่อบิล (targetType PosSale · targetId = refId) — แถวเดียวต่อบิล (ล็อก advisory ต่อ refId + หาก่อนเขียน) ·
+//   เขียนไม่สำเร็จ = โยน (ไม่กลืนแบบ writeAudit) ⇒ คิว pos.sale.paid ลองใหม่ — ประตูค่าคอมฯ ใช้แถวนี้แทน JV PAID ได้ จึงต้องมีจริงเสมอเมื่อคิวจบ
+const ZERO_ENTRY_ACTION = "account.external.zeroEntry";
+/** บิล POS นี้ถูกบันทึกเป็น zero entry แล้วหรือยัง (อ่านอย่างเดียว) */
+export async function externalSaleZeroEntryRecorded(ctx: GlCtx, refId: string, db: Db = prisma): Promise<boolean> {
+  const row = await db.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId }, select: { id: true } });
+  return !!row;
+}
+/** บันทึก zero entry ของบิล POS ครั้งเดียวต่อบิล — มีแล้ว = ไม่เขียนซ้ำ (คิวลองใหม่/ตัวรับคืนเงินเรียกซ้ำได้) · ล้ม = โยน */
+export async function recordExternalSaleZeroEntry(ctx: GlCtx, refId: string, after: Record<string, unknown>): Promise<void> {
+  await prisma.$transaction(async (db) => {
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`acc-zero-entry:${ctx.tenantId}:${refId}`}))`;
+    if (await externalSaleZeroEntryRecorded(ctx, refId, db)) return;
+    await db.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "SYSTEM", action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: after as Prisma.InputJsonValue } });
+  });
+}
+// ◂ POS P2.9b fix4
+
 // POS P1.8 ▸ คืนเงินหน้าร้าน (ใบคืน REFUND ของ POS) — กลับรายการตามสัดส่วน "เฉพาะส่วนที่คืน" ◂
 //   Dr รายได้ขายสินค้า/ค่าบริการ (ฐาน) · Dr ภาษีขาย (VAT) · Cr เงินสด/ธนาคาร ตามวิธีคืน — ไม่แตะลูกหนี้ 1100
 //   idempotent ต่อ (PosSale, refId = id ใบคืน, REFUNDED) · JV ของบิลเดิม **ไม่ถูกกลับรายการ** (ใบลดหนี้หักล้างแทน · CD6)
@@ -1834,6 +1853,50 @@ export async function postExternalRefund(
     return { entryId: entry.id };
   });
 }
+
+// ─────────────────── POS P2.9b ▸ มัดจำของ POS (รับเงิน / คืนเงินคงเหลือ) — มติ 1 3 5 · เพิ่มล้วน ◂ ───────────────────
+// 🔴 owner line (POS-OWNER-PENDING P2.9b): VAT เกิดตอนรับเงินมัดจำ (O24 family) — เจ้าของบัญชียืนยันก่อนเปิดใช้จริง · ย้อนได้ตราบที่ยังไม่มีมัดจำจริงใน prod
+/**
+ * รับมัดจำที่ POS (ใบรับเงินมัดจำ = PosSale POS_DEPOSIT): Dr เงินตามช่องทาง · Cr 2110 มัดจำรับ (ฐาน) · Cr 2200 ภาษีขาย (VAT ตอนรับเงิน) — ไม่มีรายได้
+ * คีย์ PosSale#<ใบรับ>#PAID (คีย์เดียวกับ postExternalSale ⇒ externalSalePosted/reverseFor ใช้ได้เหมือนบิล) · facade คิดฐาน/VAT + ช่องทางแล้วส่งมา
+ */
+export async function postExternalDepositReceipt(
+  ctx: GlCtx,
+  o: { refId: string; date: Date; baseSatang: number; vatSatang: number; drLines: { key: "CASH" | "BANK"; amountSatang: number }[] },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "PAID";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
+    if (o.baseSatang > 0) b.cr(await b.id("DEPOSIT_RECEIVED"), o.baseSatang);
+    if (o.vatSatang > 0) b.cr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    const entry = await commitEntry(ctx, { book: "SALES", journal: "DOC", date: o.date, refType: "PosSale", refId: o.refId, event, memo: "รับเงินมัดจำ POS" }, b, db);
+    return { entryId: entry.id };
+  });
+}
+/**
+ * คืนเงินมัดจำคงเหลือ (ใบคืน REFUND ของใบรับมัดจำ): Dr 2110 (ฐาน) · Dr 2200 (VAT ของส่วนที่คืน) · Cr เงินตามวิธีคืน
+ * คีย์ PosSale#<ใบคืน>#REFUNDED (คีย์เดียวกับ postExternalRefund) · ไม่แตะรายได้
+ */
+export async function postExternalDepositRefund(
+  ctx: GlCtx,
+  o: { refId: string; date: Date; baseSatang: number; vatSatang: number; crLines: { key: "CASH" | "BANK"; amountSatang: number }[] },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "REFUNDED";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    if (o.baseSatang > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), o.baseSatang);
+    if (o.vatSatang > 0) b.dr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    for (const l of o.crLines) b.cr(await b.id(l.key), l.amountSatang);
+    const entry = await commitEntry(ctx, { book: "SALES", journal: "DOC", date: o.date, refType: "PosSale", refId: o.refId, event, memo: "คืนเงินมัดจำ POS" }, b, db);
+    return { entryId: entry.id };
+  });
+}
+// ◂ POS P2.9b
 
 // POS P2.1 ▸ ค่าคอมฯ ช่องทางขาย (แพลตฟอร์ม/ตัวแทน) — JV แยกจาก PAID (CD5: รายได้เต็ม + ค่าใช้จ่ายแยก) ◂
 //   ปกติ (event COMMISSION · refId = บิล):  Dr ค่าใช้จ่าย (commission · สมุดไม่จด VAT = รวม VAT) + Dr ภาษีซื้อยังไม่ถึงกำหนด (VAT) / Cr ลูกหนี้แพลตฟอร์ม (PLATFORM) หรือเจ้าหนี้ (DIRECT)

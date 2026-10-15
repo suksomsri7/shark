@@ -961,3 +961,70 @@ model PosTableSplitLine {
 }
 
 // ◂ POS P2.5
+
+// POS P2.9b ▸ มัดจำเป็นวิธีชำระของ POS (migration 20261211100000_pos_p29b_deposits · มติ 1 2 4 5 · CD2-A) ◂
+//   ผู้เขียนเดียว = pos/deposit.ts (รับ · คืนเงิน · คืนสภาพเมื่อ void) + pos/service.ts createSale (ใช้มัดจำใน tx ของบิล)
+//   ใบรับมัดจำ = PosSale sourceModule "POS_DEPOSIT" (sourceId = PosDeposit.id) · แถวใช้มัดจำ = PosPayment {DEPOSIT, refSaleId = ใบรับ}
+//   คงเหลือ = amount − used − refunded (CHECK ใน SQL ≥ 0) · VAT เกิดตอนรับเงิน (vatSatang) · ไม่มี FK (id หลวม)
+enum PosDepositStatus {
+  OPEN
+  USED
+  REFUNDED
+  EXPIRED // ยังไม่ใช้ใน P2.9b (CD6 — หมดอายุ/ริบเป็นงานถัดไป)
+}
+
+enum PosDepositTxnType {
+  RECEIVE
+  APPLY
+  RESTORE
+  REFUND
+}
+
+model PosDeposit {
+  id              String           @id @default(cuid())
+  tenantId        String
+  systemId        String // AppSystem.id (type POS)
+  unitId          String // BusinessUnit.id (มติ 4: ใช้ได้เฉพาะสาขานี้)
+  customerId      String? // Customer.id ของสมาชิก (null = ลูกค้าทั่วไป · ผู้ถือใบรับ)
+  customerName    String? // ชื่อลูกค้าทั่วไป (สำเนา)
+  phoneMasked     String? // เบอร์ปิดบัง (ไม่เก็บเบอร์เต็ม)
+  phoneLast4      String? // 4 หลักท้ายของเบอร์ (ค้นหา · มติ 19)
+  phoneFailedCount Int             @default(0) // POS P2.9b fix2 มติ 3: 4 หลักท้ายผิดติดกัน (ครบ 5 = ล็อก 15 นาที)
+  phoneLockedUntil DateTime? // POS P2.9b fix2 มติ 3
+  amountSatang    Int
+  vatSatang       Int              @default(0) // VAT ณ วันรับเงิน (มติ 1)
+  usedSatang      Int              @default(0)
+  refundedSatang  Int              @default(0)
+  status          PosDepositStatus @default(OPEN)
+  receiptSaleId   String           @unique // PosSale.id ของใบรับมัดจำ (id หลวม)
+  receiptNo       String?
+  note            String?
+  reference       String?
+  expiresAt       DateTime? // ข้อมูลเท่านั้น (CD6)
+  idempotencyKey  String
+  createdByUserId String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, createdAt])
+  @@index([tenantId, customerId])
+}
+
+model PosDepositTxn {
+  id             String            @id @default(cuid())
+  tenantId       String
+  depositId      String // PosDeposit.id (id หลวม)
+  type           PosDepositTxnType
+  satang         Int
+  vatSatang      Int               @default(0)
+  saleId         String? // PosSale.id (ใบรับ · บิลที่ใช้ · ใบคืน)
+  paymentId      String? // PosPayment.id ของแถว DEPOSIT (APPLY)
+  refTxnId       String? // RESTORE → APPLY
+  idempotencyKey String            @unique // APPLY dep-apply-<saleId>-<depositId> · RESTORE dep-restore-<applyTxnId>
+  createdAt      DateTime          @default(now())
+
+  @@index([depositId])
+  @@index([saleId])
+}
+// ◂ POS P2.9b

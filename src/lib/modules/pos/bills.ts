@@ -22,6 +22,7 @@ import { POS_APPROVAL_MESSAGE, auditPinOverride, cancelOpenPosRequest, submitPos
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
 import { moneyText, type RegisterActor, type RegisterCtx } from "./register-shared";
 import { paymentCards } from "./tender-cards"; // POS P2.9 ▸ R10 ◂
+import { paymentDeposits } from "./deposit-links"; // POS P2.9b ▸ R9 ลิงก์มัดจำของแถวชำระ ◂
 import {
   BILL_PAGE_SIZES,
   BILL_Q_MAX,
@@ -353,6 +354,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
     const cards = await paymentCards(tenantId, sale.payments); // POS P2.9 ▸ R10 บัตรของแถวชำระ ◂
+    const depLinks = await paymentDeposits(tenantId, sale.payments); // POS P2.9b ▸ R9 ◂
     // POS P2.2 ▸ R11: ชื่อโปรของบรรทัด (อ่านตาม id ของร้าน/ระบบนี้ · โปรที่เก็บถาวรยังอ่านได้ · ไม่พบ = null) ◂
     const ruleIds = [...new Set(sale.lines.map((l) => l.priceRuleId).filter((x): x is string => !!x))];
     const ruleNames = new Map(
@@ -511,6 +513,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         ...(p.changeSatang !== null ? { changeSatang: p.changeSatang } : {}),
         ...(nonEmpty(p.reference) ? { reference: nonEmpty(p.reference)! } : {}),
         ...(p.giftCardTxnId && cards.has(p.giftCardTxnId) ? { card: cards.get(p.giftCardTxnId)! } : {}), // POS P2.9 ▸ R10 ◂
+        ...(depLinks.has(p.id) ? { deposit: { depositId: depLinks.get(p.id)!.depositId, receiptNo: depLinks.get(p.id)!.receiptNo, remainingAfterSatang: depLinks.get(p.id)!.remainingAfterSatang } } : {}), // POS P2.9b ▸ R9 ◂
       })),
       member:
         customer || (snap && sale.memberId)

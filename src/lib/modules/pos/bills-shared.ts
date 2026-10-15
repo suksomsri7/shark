@@ -129,7 +129,8 @@ export type BillDetail = {
     refunded: number;
   };
   // POS P2.9 ▸ R10: card = แถวบัตรของขวัญ/เครดิตร้าน (เลขปิดบัง · ยอดหลังรายการ) ◂
-  payments: { type: string; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string; card?: { kind: "GIFT" | "STORE_CREDIT"; numberMasked: string; balanceAfterSatang: number } }[];
+  // POS P2.9b ▸ R9: deposit = แถวใช้มัดจำ (มัดจำ · เลขใบรับ · คงเหลือหลังรายการ) ◂
+  payments: { type: string; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string; card?: { kind: "GIFT" | "STORE_CREDIT"; numberMasked: string; balanceAfterSatang: number }; deposit?: { depositId: string; receiptNo: string; remainingAfterSatang: number } }[];
   /**
    * POS P1.12 (R15): ชื่อ/รหัส/ระดับจากสำเนาตอนขาย (บิลเก่า = ข้อมูลสด) · benefits = สิทธิ์ที่ใช้กับบิล (ระดับ/ว่อชเชอร์/แต้ม · ไม่รวมคูปอง · บิลเก่า = [])
    */

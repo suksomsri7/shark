@@ -180,6 +180,9 @@ export const POS_MODELS = {
   posTableSplit: { model: "PosTableSplit", file: "pos.prisma", role: "แผนแยกบิลของ session (P2.5 · ITEM/EQUAL/SEAT · OPEN→DONE/CANCELLED · OPEN 1 แถวต่อ session · version)" },
   posTableSplitPart: { model: "PosTableSplitPart", file: "pos.prisma", role: "ใบของแผน (P2.5 · no 1..N · ฐาน/ส่วนลด/ค่าบริการ/สุทธิ · OPEN/PAID + saleId · สมาชิกของใบ)" },
   posTableSplitLine: { model: "PosTableSplitLine", file: "pos.prisma", role: "ส่วนของรายการในใบ (P2.5 · หน่วยเต็ม qty หรือส่วนแบ่ง shareNum/shareDen · stockOwner)" },
+  // POS P2.9b ▸ มัดจำเป็นวิธีชำระ (migration 20261211100000_pos_p29b_deposits) — ผู้เขียน pos/deposit.ts (รับ/คืน/คืนสภาพ) + service.createSale (ใช้) ◂
+  posDeposit: { model: "PosDeposit", file: "pos.prisma", role: "มัดจำ (P2.9b · OPEN/USED/REFUNDED · คงเหลือ = ยอด − ใช้ − คืน · ใบรับ = PosSale POS_DEPOSIT · VAT ตอนรับ)" },
+  posDepositTxn: { model: "PosDepositTxn", file: "pos.prisma", role: "รายการของมัดจำ (P2.9b · RECEIVE/APPLY/RESTORE/REFUND · คีย์ unique ต่อรายการ)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 

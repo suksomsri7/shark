@@ -376,6 +376,8 @@ type SaleRow = {
   /** P1.8 — SALE = บิลขาย · REFUND = ใบคืนเงิน (ยอดบวก ตีความเป็นเงินออก · refSaleId = บิลเดิม) */
   docType: string;
   refSaleId: string | null;
+  /** POS P2.9b ▸ fix1 มติ 4: POS_DEPOSIT = ใบรับ/ใบคืนเงินมัดจำ (ไม่ใช่ยอดขาย — รายงานยอดขาย/พนักงานตัดออก) ◂ */
+  sourceModule?: string | null;
 };
 
 /**
@@ -401,6 +403,7 @@ async function loadSales(db: Db, s: Scope, start: Date, end: Date): Promise<Sale
       soldByUserId: true,
       docType: true,
       refSaleId: true,
+      sourceModule: true, // POS P2.9b ▸ fix1 มติ 4 ◂
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
@@ -460,13 +463,16 @@ const paidOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "SALE" &&
 const voidedOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "SALE" && x.status === "VOIDED");
 /** POS P1.8 — ใบคืนเงินในช่วง */
 const refundsOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "REFUND");
+/** POS P2.9b ▸ fix1 มติ 4: ตัดใบรับมัดจำ + ใบคืนเงินมัดจำ (sourceModule POS_DEPOSIT) ออกจากรายงานยอดขาย ◂ */
+const notDeposit = (sales: SaleRow[]) => sales.filter((x) => x.sourceModule !== "POS_DEPOSIT");
 const envelope = <K extends ReportKind, R, T>(kind: K, s: Scope, r: Range, rows: R[], totals: T): { ok: true; report: Report<K, R, T> } => ({
   ok: true,
   report: { kind, from: r.from, to: r.to, unitId: s.unitId, generatedAt: new Date().toISOString(), rows, totals },
 });
 
 // ═══════════ 1. ยอดขายรายวัน (R5) ═══════════
-function dailyTotalsOf(sales: SaleRow[]): DailyTotals {
+function dailyTotalsOf(salesAll: SaleRow[]): DailyTotals {
+  const sales = notDeposit(salesAll); // POS P2.9b ▸ fix1 มติ 4 (hunt D3): ใบรับ/ใบคืนเงินมัดจำไม่ใช่ยอดขาย (แบบปิดวัน) ◂
   const paid = paidOf(sales);
   const voided = voidedOf(sales);
   const refunds = refundsOf(sales);
@@ -606,7 +612,7 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
     const p = await prepare(db, ctx, actor, input);
     if (isRefusal(p)) return p;
     const { s, r } = p;
-    const sales = await loadSales(db, s, r.start, r.end);
+    const sales = notDeposit(await loadSales(db, s, r.start, r.end)); // POS P2.9b ▸ fix1 มติ 4 ◂
     // P1.8 ▸ ใบคืนเงินหักจากผู้ขายของบิลเดิม (บิลเดิมอาจอยู่นอกช่วง — อ่านเพิ่มคำสั่งเดียวต่อก้อน) ◂
     const refunds = refundsOf(sales);
     type Origin = { soldByUserId: string | null; shiftId: string | null };

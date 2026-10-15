@@ -5026,8 +5026,16 @@ export async function upsertExternalSaleDocument(input: {
   fullTaxInvoice?: boolean;
   /** POS P1.13 fix F4: ผู้ซื้อตามที่กรอก → contactSnapshot ของใบเต็มรูป */
   buyer?: ExternalBuyerSnapshot;
+  // POS P2.9b ▸ มัดจำของ POS (มติ 3 15 · เพิ่มล้วน · ไม่ส่ง = เอกสารเดิมทุกไบต์) — owner line: เจ้าของบัญชียืนยัน VAT ตอนรับมัดจำ (O24 family) ◂
+  /** ใบรับมัดจำของ POS → ชนิด DEPOSIT_RECEIPT (ไม่โพสต์ GL — JV ลงที่ gl.postExternalDepositReceipt) · สถานะ PAID (ไม่เข้าตัวเลือกหักมัดจำของใบแจ้งหนี้) */
+  depositReceipt?: boolean;
+  /** VAT ของเอกสาร (รวมในราคา · สมุดจด VAT) — ส่งมา = ใช้แทนการถอดต่อบรรทัด (ใบรับมัดจำ = VAT ของมัดจำเป๊ะ) */
+  vatSatang?: number;
+  /** บิลที่ใช้มัดจำ: ยอดมัดจำที่หัก (รวม VAT · = depositDeducted ของเอกสาร) + VAT ของมัดจำส่วนนั้น ⇒ vatAmount สุทธิ · grandTotal = ยอดหลังหักมัดจำ (มติ 15) */
+  depositDeductedSatang?: number;
+  depositVatSatang?: number;
 }): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
-  const docType: AccountDocType = input.fullTaxInvoice ? "TAX_INVOICE" : EXTERNAL_SALE_DOC_TYPE;
+  const docType: AccountDocType = input.depositReceipt ? "DEPOSIT_RECEIPT" : input.fullTaxInvoice ? "TAX_INVOICE" : EXTERNAL_SALE_DOC_TYPE; // POS P2.9b ▸ DEPOSIT_RECEIPT ◂
   const existing = await findDocByRef(input.systemId, docType, EXTERNAL_SALE_REF_TYPE, input.refId);
   if (existing) return { ok: true, docId: existing.id, created: false };
 
@@ -5050,6 +5058,17 @@ export async function upsertExternalSaleDocument(input: {
       ok: false,
       reason: `ยอดรวมของบรรทัด (${totals.grandTotal}) ไม่เท่ากับยอดบิล (${input.grandTotalSatang}) — ไม่สร้างเอกสารบิลขายหน้าร้าน`,
     };
+  // POS P2.9b ▸ มติ 3 15: VAT ระดับเอกสารของใบรับมัดจำ (= VAT ตอนรับเงิน) · บิลที่ใช้มัดจำ = VAT สุทธิ + หักมัดจำ (gross รวม VAT) ◂
+  const v = input.vatSatang;
+  if (input.vatMode === "INCLUDE" && input.vatRegistered && typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= totals.grandTotal) {
+    totals.subTotal = totals.grandTotal - v;
+    totals.vatAmount = v;
+  }
+  const depositDeducted = Math.max(0, Math.min(totals.grandTotal, Math.round(input.depositDeductedSatang ?? 0)));
+  if (depositDeducted > 0) {
+    totals.vatAmount = Math.max(0, totals.vatAmount - Math.max(0, Math.round(input.depositVatSatang ?? 0)));
+    totals.grandTotal -= depositDeducted;
+  }
 
   const contact = input.contactId
     ? await prisma.accountContact.findFirst({
@@ -5072,7 +5091,7 @@ export async function upsertExternalSaleDocument(input: {
       let docNo: string | null = input.fullTaxInvoice ? await nextDocNo(tx, input.tenantId, input.systemId, "TAX_INVOICE", input.occurredAt) : (input.docNo ?? "").trim() || null;
       if (docNo && !input.fullTaxInvoice) {
         const dup = await tx.accountDocument.findFirst({
-          where: { systemId: input.systemId, docType: EXTERNAL_SALE_DOC_TYPE, docNo },
+          where: { systemId: input.systemId, docType: input.depositReceipt ? "DEPOSIT_RECEIPT" : EXTERNAL_SALE_DOC_TYPE, docNo }, // POS P2.9b ◂
           select: { id: true },
         });
         if (dup) docNo = null;
@@ -5096,6 +5115,7 @@ export async function upsertExternalSaleDocument(input: {
           vatAmount: totals.vatAmount,
           grandTotal: totals.grandTotal,
           paidTotal: totals.grandTotal,
+          ...(depositDeducted > 0 ? { depositDeducted } : {}), // POS P2.9b ▸ มติ 15 ◂
           source: "POS",
           refSystemId: input.refSystemId,
           refType: EXTERNAL_SALE_REF_TYPE,

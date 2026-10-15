@@ -754,6 +754,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
         if (!failed) err = e;
         failed = true;
       }
+      // POS P2.9b ▸ R6 (X5): คืนสภาพมัดจำที่บิลนี้ใช้ (RESTORE ต่อ APPLY · งานหลัก · หลังบัตร · walk-in ได้ · idempotent ต่อ APPLY) ◂
+      try {
+        await (await import("@/lib/modules/pos/deposit")).depositSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
       if (failed) throw err;
     }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")), posOrderOnSaleVoided),
   ),

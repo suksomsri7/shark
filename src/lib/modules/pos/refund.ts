@@ -31,6 +31,7 @@ import {
   REFUND_PREFIX_DEFAULT,
   REFUND_REASON_CODES,
   REFUND_REASON_MAX,
+  refundTenderCaps, // POS P2.9b ▸ มติ 13 ◂
   type RefundDoc,
   type RefundPayType,
   type RefundReasonCode,
@@ -378,10 +379,10 @@ async function planRefundTenders(tx: Tx, s: Scope, sale: { id: string; memberId:
   // POS P2.9 ▸ fix1 H1 (มติ 2): เพดานคืนเป็นเงิน = ส่วนที่ลูกค้าจ่ายเป็นเงิน − ทิป − ที่คืนเป็นเงินไปแล้ว · บิลที่ไม่มีแถวบัตร/เครดิต = ไม่มี query เพิ่ม ◂
   const askCash = x.payMethods.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
   const salePays = askCash > 0 ? await tx.posPayment.findMany({ where: { saleId: sale.id, tenantId: s.tenantId }, select: { type: true, amountSatang: true, giftCardId: true } }) : [];
-  if (salePays.some((p) => p.type === "GIFT_CARD" || p.type === "STORE_CREDIT")) {
-    const cashPaid = salePays.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0) - Math.max(0, sale.tipSatang);
-    const cashBack = priorDocs.flatMap((d) => d.payments).filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
-    const excess = askCash - Math.max(0, cashPaid - cashBack);
+  // POS P2.9b ▸ มติ 13 + มติ 8: เพดานจากตัวช่วยเดียวกับจอ (refund-shared.refundTenderCaps · มัดจำนับฝั่งที่จ่าย) — บิลไม่มีมัดจำ = ตัวเลขเดิม ◂
+  const caps = refundTenderCaps({ salePays, tipSatang: sale.tipSatang, priorPays: priorDocs.flatMap((d) => d.payments) });
+  if (caps.capped) {
+    const excess = askCash - caps.cashLikeCapSatang;
     if (excess > 0) {
       // ส่วนของบัตรของขวัญที่ "คืนเข้าบัตรไม่ได้" (ระงับ/หมดอายุ) ที่ยังไม่ถูกคืน — เท่านั้นที่ไปเป็นเงินได้ และเฉพาะบิล walk-in (สมาชิก ⇒ เครดิตร้าน)
       const member = await import("@/lib/modules/member");
@@ -586,7 +587,15 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   // ── VAT ระดับเอกสาร (COMMON 1): อัตราของ POS ตอนนี้ · บิลเดิมไม่มี VAT = ใบคืนไม่มี VAT ──
   //   F6 ▸ ใบที่ทำให้ครบทั้งบิล = VAT ที่เหลือของบิล (VAT บิล − Σ VAT ใบคืนก่อนหน้า · ไม่ติดลบ) ⇒ Σ VAT ใบคืน = VAT บิลเป๊ะ ◂
   let vat = 0;
-  if (sale.vatSatang > 0 && full) {
+  // POS P2.9b ▸ fix1 มติ 2 (hunt D1): บิลที่ใช้มัดจำ (มี APPLY) — ฐาน VAT ของใบคืน = VAT ที่เก็บบนบิล + Σ VAT ของมัดจำที่ใช้ (= VAT เต็มบิล) ·
+  //   ใบคืนกลับ VAT ตามสัดส่วนยอดคืน/ยอดบิลของฐานนี้ (ปัดครึ่งขึ้น) · ไม่เกินฐาน − ที่กลับไปแล้ว · ใบที่ทำให้ครบ = ที่เหลือทั้งหมด · บิลไม่มีมัดจำ = ทางเดิมทุกไบต์ ◂
+  const depVatAgg = await tx.posDepositTxn.aggregate({ where: { tenantId: s.tenantId, saleId: sale.id, type: "APPLY" }, _sum: { vatSatang: true }, _count: { _all: true } });
+  if (depVatAgg._count._all > 0) {
+    const basis = sale.vatSatang + (depVatAgg._sum.vatSatang ?? 0);
+    const left = Math.max(0, basis - prior.docs.reduce((t, d) => t + d.vatSatang, 0));
+    const share = sale.grandTotalSatang > 0 ? Number((BigInt(2) * BigInt(basis) * BigInt(grand) + BigInt(sale.grandTotalSatang)) / (BigInt(2) * BigInt(sale.grandTotalSatang))) : 0;
+    vat = Math.min(grand, left, full ? left : share);
+  } else if (sale.vatSatang > 0 && full) {
     vat = Math.min(grand, Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0)));
   } else if (sale.vatSatang > 0) {
     vat = splitIncludedVat(grand, await posVatRateBp(tx, s.tenantId, s.systemId)).vatSatang;

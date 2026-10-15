@@ -7,8 +7,7 @@ import { prisma } from "./db";
 import { saleForRefund } from "./refund";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import type { RefundTenderCard, RefundTenderOptionsResult } from "./refund-tenders-shared";
-
-const CASH_LIKE: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
+import { refundTenderCaps } from "./refund-shared"; // POS P2.9b ▸ มติ 13: เพดานตัวเดียวกับ server (refund.ts) ◂
 
 export async function refundTenderOptions(ctx: RegisterCtx, actor: RegisterActor, input: { saleId: string }): Promise<RefundTenderOptionsResult> {
   const base = await saleForRefund(ctx, actor, input);
@@ -46,7 +45,7 @@ export async function refundTenderOptions(ctx: RegisterCtx, actor: RegisterActor
     if (!refundable) stuck += capSatang;
     cards.push({ giftCardId, numberMasked: (v.txnId && info.get(v.txnId)?.numberMasked) || "GC-••••", paidSatang: v.satang, refundedSatang, capSatang, refundable: !!refundable });
   }
-  const cashPaid = sale.payments.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0) - Math.max(0, sale.tipSatang);
-  const cashBack = priorPays.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
-  return { ok: true, cards, memberBill: !!sale.memberId, cashLikeCapSatang: Math.max(0, cashPaid - cashBack), stuckCardSatang: stuck };
+  // POS P2.9b ▸ มติ 13: ตัวช่วยเดียวกับ refund.ts (มัดจำนับฝั่งที่จ่าย · มติ 8) ◂
+  const caps = refundTenderCaps({ salePays: sale.payments, tipSatang: sale.tipSatang, priorPays });
+  return { ok: true, cards, memberBill: !!sale.memberId, cashLikeCapSatang: caps.cashLikeCapSatang, stuckCardSatang: stuck };
 }
