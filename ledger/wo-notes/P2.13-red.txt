@@ -89,3 +89,9 @@ unforced QC4 qc-pos-p2.13 (54 checks): 48/54 — scratch runs/fix1/red-p213-u.lo
 ❌ P2.13-OR4  after the edit the order of steps passes (accept/preparing/ready/pay/complete/illegal step all as expected) — still red on `pay.body.data.saleId`:
    orders.pay answers data = the saleId string (CD9 single-field rule) on a first pay but {saleId, duplicated} on a replay ⇒ builder fixes the op to always answer {saleId, duplicated} (code, not oracle)
 expected red-before = AU9 SA9 SA10 OR7 RP5 (all red) · OR4 green after its edit (red only on the reply-shape defect above)
+
+## §skillfix (builder · 15 Oct 2026 · base origin/session/pos 42cc377e + test commit 19460144 ORACLE-ADD K7b K8b · skill files unchanged)
+unforced QC4 qc-pos-api-skill (12 checks): 10/12 — scratch runs/red-skill-u.log
+❌ P2.13S-K7b Quote a cart: $UNIT_ID $PRODUCT_ID inside '…' · Sell: $UNIT_ID $PRODUCT_ID · Refund (recipe 6): $LINE_ID · Mark 86: $UNIT_ID (gap 2 — shell sends the literal text)
+❌ P2.13S-K8b no POST /orders recipe (gap 1)
+expected red-before = K7b K8b (both red) · K1–K9 K10 green (the in-process harness substitutes $VAR regardless of quoting, which is why K7/K8 never caught gap 2)

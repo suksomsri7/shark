@@ -15,6 +15,11 @@
 //     PRODUCT_ID = สินค้าคลัง ราคา 4500 สตางค์ (VAT รวมในราคา · สต็อก 100) ที่สาขา UNIT_ID · SALE_ID = บิล PAID ของ PRODUCT_ID ×2 (9000 · CASH) · LINE_ID = บรรทัดนั้น
 //     ORDER_ID = ออเดอร์ NEW (PICKUP) ของ CHANNEL_ID (LINE MAN · MANUAL · PLATFORM) PRODUCT_ID ×1 · FROM..TO = 7 วันไทยล่าสุด · คีย์ = pos-admin ผูก SHARK_SYSTEM_ID
 //     หลังแต่ละสูตร harness คืนขาย PRODUCT_ID (สูตร 86 ไม่ทำให้สูตรถัดไปพัง)
+// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix): K7b K8b (มติ skill fix · ledger/wo-notes/pos-P2.13-review.md ท้ายไฟล์ · ช่องโหว่ 1 2 ของ agent test) — 10 + 2 = 12 ข้อ
+//     K7b = สูตรต้องรันได้ทันทีหลัง export ตัวแปร: ห้ามมี $VAR / $(uuidgen) อยู่ในเครื่องหมาย ' (shell ไม่แทนค่า) — ใช้ body ใน " หรือ heredoc
+//     K8b = มีสูตร POST /orders (ช่องทาง CUSTOM ด้วย $CHANNEL_CODE · startStatus NEW) + สูตร POST /orders/{id}/accept · เล่นซ้ำ: สร้าง → 2xx ออเดอร์ NEW บนช่องทาง CUSTOM ·
+//           รับด้วยสูตร accept (ORDER_ID = ออเดอร์ที่เพิ่งสร้าง) → 2xx สถานะ ACCEPTED
+//     ตัวแปรเพิ่ม: $CHANNEL_CODE = รหัสช่องทาง CUSTOM ของฟิกซ์เจอร์ (`PHONE` · adapter NONE · payout DIRECT) ที่สาขา UNIT_ID
 //
 // 🔴 กติกา: SKIP เมื่อยังไม่มี route/SKILL.md (exit 0 + เหตุผล) · QC_FORCE=1 = แดงตามเหตุผล ไม่ crash · --list ไม่แตะ DB · --no-db = K1–K7 (อ่านไฟล์ล้วน)
 //    ฐาน QC4 เท่านั้น · ร้านชั่วคราว `posqc-p213s-<rand>` ลบทั้งร้านใน finally + ถังเพดานของคีย์รอบนี้ · globalThis.fetch = ตัวกั้น
@@ -41,6 +46,9 @@ const CHECKS: readonly Def[] = [
   D("K7", "S", "[§4] recipes.md ≥ 8 ก้อน curl แกะได้ (method · URL ใต้ /api/v1/pos · ตัวแปรที่รู้จักเท่านั้น · JSON body ถูก) · ครอบ 8 งาน · write มี Idempotency-Key · danger มี confirm:true+reason · ทุกก้อนมี Error branch ที่เล่นซ้ำได้"),
   D("K8", "M", "[§4 ชั้น a] เล่นซ้ำทุกสูตรผ่าน route ในโปรเซส (แทนค่าฟิกซ์เจอร์) → 200 ทุกก้อน · สูตร CSV ได้ text/csv"),
   D("K9", "M", "[§4 ชั้น a] ทุกสูตร: กลายรูปตาม Error branch ที่เขียนไว้ → ได้สถานะ + error.code ตรงตามที่เขียน"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix)
+  D("K7b", "S", "[skill fix ช่องโหว่ 2] ทุกก้อน curl ใน recipes.md ไม่มี $VAR / $(uuidgen) อยู่ในเครื่องหมาย ' (รันได้ทันทีหลัง export ตัวแปร)"),
+  D("K8b", "M", "[skill fix ช่องโหว่ 1] มีสูตร POST /orders (CUSTOM · $CHANNEL_CODE · startStatus NEW) + POST /orders/{id}/accept · เล่นซ้ำ: สร้าง 2xx NEW บน CUSTOM → รับ 2xx ACCEPTED"),
   D("K10", "-", "QC4 คืนสภาพ: ร้านชั่วคราว 0 แถว (คีย์ · แถวกันซ้ำ · บิล · ออเดอร์) + Tenant ถูกลบ · ถังเพดานของคีย์รอบนี้ 0"),
 ];
 if (LIST) {
@@ -89,7 +97,9 @@ const OP_PATHS = [
   "POST /orders/{id}/pay", "GET /reports/summary", "GET /reports/daily", "GET /reports/products", "GET /reports/staff", "GET /reports/payments", "GET /reports/margin",
   "GET /reports/shifts", "GET /reports/tax", "GET /reports/channels", "GET /reports/branches", "GET /reports/hourly", "GET /reports/anomalies",
 ] as const;
-const VARS = ["SHARK_API_KEY", "SHARK_SYSTEM_ID", "UNIT_ID", "PRODUCT_ID", "SALE_ID", "LINE_ID", "ORDER_ID", "CHANNEL_ID", "FROM", "TO", "IDEMPOTENCY_KEY"] as const;
+const VARS = ["SHARK_API_KEY", "SHARK_SYSTEM_ID", "UNIT_ID", "PRODUCT_ID", "SALE_ID", "LINE_ID", "ORDER_ID", "CHANNEL_ID", "FROM", "TO", "IDEMPOTENCY_KEY",
+  "CHANNEL_CODE", /* ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) */
+] as const;
 const ID_VARS = ["UNIT_ID", "PRODUCT_ID", "SALE_ID", "LINE_ID", "ORDER_ID", "CHANNEL_ID"] as const;
 const ERROR_CODES = ["unauthorized", "scope_missing", "system_mismatch", "idempotency_required", "confirm_required", "not_found", "validation"] as const;
 type ErrCode = (typeof ERROR_CODES)[number];
@@ -334,8 +344,42 @@ function runStatic(): void {
     if (missT.length) p.push(`ไม่ครอบ: ${missT.join(", ")}`);
     chk("K7", p.length === 0, "≥ 8 ก้อน · 8 งาน · Error branch ทุกก้อน", joinP(p, `${RECIPES.length} ก้อน`));
   }
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) — K7b: $ ในเครื่องหมาย ' = shell ไม่แทนค่า (สูตรส่ง "$UNIT_ID" ตามตัวอักษร)
+  {
+    const p: string[] = [];
+    if (!RECIPES.length) p.push("ไม่มีสูตร");
+    for (const r of RECIPES) {
+      const bad = dollarsInSingleQuotes(r.raw);
+      if (bad.length) p.push(`${r.title}: ${bad.slice(0, 3).join(" ")} อยู่ใน '…'`);
+    }
+    chk("K7b", p.length === 0, "0 ก้อนที่มี $ ใน '…'", joinP(p, `${RECIPES.length} ก้อน`));
+  }
 }
-const STATIC_IDS = ["K1", "K2", "K3", "K4", "K5", "K6", "K7"].map((x) => `P2.13S-${x}`);
+// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) — ตัวสแกน shell แบบย่อ: คืนชื่อ $VAR / $(…) ที่อยู่ระหว่าง ' … ' (นอก " … ")
+function dollarsInSingleQuotes(cmd: string): string[] {
+  const out: string[] = [];
+  let mode: "none" | "single" | "double" = "none";
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i]!;
+    if (mode === "single") {
+      if (c === "'") mode = "none";
+      else if (c === "$" && /[A-Za-z_{(]/.test(cmd[i + 1] ?? "")) out.push(/^\$(\([^)]*\)|\{[^}]*\}|[A-Za-z_][A-Za-z0-9_]*)/.exec(cmd.slice(i))?.[0] ?? "$");
+      continue;
+    }
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (mode === "double") {
+      if (c === '"') mode = "none";
+      continue;
+    }
+    if (c === "'") mode = "single";
+    else if (c === '"') mode = "double";
+  }
+  return out;
+}
+const STATIC_IDS = ["K1", "K2", "K3", "K4", "K5", "K6", "K7", "K7b" /* ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) */].map((x) => `P2.13S-${x}`);
 if (NODB) {
   console.log(`[${SUITE}] --no-db: รัน ${STATIC_IDS.length} ข้อ (อ่านไฟล์ · ไม่โหลด prisma)`);
   try {
@@ -470,6 +514,10 @@ async function runDb(): Promise<void> {
     await call(chMod, "ensureUnitChannels", P, ctx);
     const ch = await call(chMod, "saveChannel", ctx, owner, { code: "LINEMAN", name: `LINE MAN ${RAND}`, commissionBp: 3000 });
     V.CHANNEL_ID = String(ch?.channel?.id ?? "");
+    // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) — ช่องทาง CUSTOM (รหัสไม่ใช่แพลตฟอร์มสำเร็จรูป ⇒ kind CUSTOM · adapter NONE · payout DIRECT)
+    const chc = await call(chMod, "saveChannel", ctx, owner, { code: "PHONE", name: `โทรสั่ง ${RAND}` });
+    V.CHANNEL_CODE = String(chc?.channel?.code ?? "");
+    if (!V.CHANNEL_CODE) notes.push(`ช่องทาง CUSTOM ฟิกซ์เจอร์: ${codeOf(chc)}`);
     const sale = await call(regFacade, "submitRegisterSale", ctx, owner, { lines: [{ productId: V.PRODUCT_ID, qty: 2 }], payMethods: [{ type: "CASH", amountSatang: 9000 }], cashReceivedSatang: 9000, expectedGrandTotalSatang: 9000, idempotencyKey: `qc213s${RAND}sale1` });
     V.SALE_ID = String(sale?.saleId ?? "");
     if (!V.SALE_ID) notes.push(`บิลฟิกซ์เจอร์: ${codeOf(sale)}`);
@@ -503,7 +551,7 @@ async function runDb(): Promise<void> {
   const today = String(posIdx?.bkkToday?.() ?? new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10));
   const vals: Record<string, string> = {
     SHARK_API_KEY: KEY, SHARK_SYSTEM_ID: S.POS ?? "none", UNIT_ID: U.A ?? "none", PRODUCT_ID: V.PRODUCT_ID ?? "none", SALE_ID: V.SALE_ID ?? "none", LINE_ID: V.LINE_ID ?? "none",
-    ORDER_ID: V.ORDER_ID ?? "none", CHANNEL_ID: V.CHANNEL_ID ?? "none", TO: today, FROM: new Date(Date.parse(`${today}T00:00:00Z`) - 6 * 86_400_000).toISOString().slice(0, 10),
+    ORDER_ID: V.ORDER_ID ?? "none", CHANNEL_ID: V.CHANNEL_ID ?? "none", CHANNEL_CODE: V.CHANNEL_CODE || "NONE" /* ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) */, TO: today, FROM: new Date(Date.parse(`${today}T00:00:00Z`) - 6 * 86_400_000).toISOString().slice(0, 10),
   };
   let idemN = 0;
   const freshIdem = () => `p213s-${RAND}-${++idemN}`;
@@ -558,6 +606,47 @@ async function runDb(): Promise<void> {
   chk("K8", ok8.length === 0, `${RECIPES.length}/${RECIPES.length} → 200`, FXB(joinP(ok8)));
   if (RECIPES.length < 8) bad9.push(`สูตร ${RECIPES.length} ก้อน (คาด ≥ 8)`);
   chk("K9", bad9.length === 0, "ทุก Error branch ตรง", FXB(joinP(bad9)));
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) — K8b: สูตรรับออเดอร์เข้า (CUSTOM · NEW) + สูตรรับออเดอร์ เล่นต่อกันจริง
+  {
+    const p: string[] = [];
+    const parsedAll = RECIPES.map((r) => ({ r, c: parseCurl(substitute(r.raw, vals, freshIdem).out) }));
+    const create = parsedAll.find(({ c }) => c.method === "POST" && c.path === "/orders");
+    const accept = parsedAll.find(({ c }) => c.method === "POST" && /^\/orders\/[^/]+\/accept$/.test(c.path));
+    let body: Any = null;
+    try {
+      body = JSON.parse(create?.c.body ?? "null");
+    } catch {
+      body = null;
+    }
+    if (!create) p.push("ไม่มีสูตร POST /orders");
+    else {
+      if (!/\$\{?CHANNEL_CODE\}?/.test(create.r.raw)) p.push("สูตร POST /orders ไม่ใช้ $CHANNEL_CODE (ช่องทาง CUSTOM)");
+      if (!isRecord(body) || body.startStatus !== "NEW") p.push(`สูตร POST /orders startStatus=${short(isRecord(body) ? body.startStatus : body, 20)} (คาด NEW)`);
+    }
+    if (!accept) p.push("ไม่มีสูตร POST /orders/{id}/accept");
+    if (create && accept && !p.length) {
+      const res = await replay({ ...create.c, headers: { ...create.c.headers, "idempotency-key": freshIdem() } });
+      let orderId = "";
+      try {
+        orderId = String(JSON.parse(res.text)?.data?.orderId ?? "");
+      } catch {
+        orderId = "";
+      }
+      if (res.status < 200 || res.status > 299 || !orderId) p.push(`สร้าง → ${res.status}${res.code ? `:${res.code}` : ""} ${short(res.text, 80)}`);
+      else {
+        const o0 = (await P.posOrder.findFirst({ where: { tenantId: T, id: orderId }, select: { status: true, channelId: true } }).catch(() => null)) as Any;
+        const ch0 = o0 ? ((await P.salesChannel.findFirst({ where: { tenantId: T, id: o0.channelId }, select: { kind: true, code: true } }).catch(() => null)) as Any) : null;
+        if (o0?.status !== "NEW" || ch0?.kind !== "CUSTOM") p.push(`ออเดอร์ ${o0?.status ?? "ไม่พบ"} บนช่องทาง ${ch0?.kind ?? "?"} (คาด NEW บน CUSTOM)`);
+        const acc = parseCurl(substitute(accept.r.raw, { ...vals, ORDER_ID: orderId }, freshIdem).out);
+        const ra = await replay(acc);
+        if (ra.status < 200 || ra.status > 299) p.push(`รับ → ${ra.status}${ra.code ? `:${ra.code}` : ""} ${short(ra.text, 80)}`);
+        const o1 = (await P.posOrder.findFirst({ where: { tenantId: T, id: orderId }, select: { status: true } }).catch(() => null)) as Any;
+        if (o1?.status !== "ACCEPTED") p.push(`หลังรับ สถานะ ${o1?.status ?? "ไม่พบ"} (คาด ACCEPTED)`);
+      }
+      await drain();
+    }
+    chk("K8b", p.length === 0, "สร้าง 2xx NEW/CUSTOM → รับ 2xx ACCEPTED", FXB(joinP(p)));
+  }
 }
 
 // ═════════════════════════ 4. รัน + คืนสภาพ ═════════════════════════
