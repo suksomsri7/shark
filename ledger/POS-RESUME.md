@@ -1815,3 +1815,4 @@
 - P2.14: bill-detail totals ไม่มี Satang suffix (subtotal/grandTotal/refunded) · CSV รายวันไม่มีคอลัมน์ refund (JSON มี) · developers-pos 390 ตารางล้น
 - 23:39Z spawn **P2.13 skill fix-up builder** (Opus ทรี b `wip/pos-p2.13-skill` จาก origin 42cc377e) prompt `-P2.13-skillfix.md` (ORACLE-ADD K7/K8 + สกิล/เอกสาร gap 1 2 3 5 7 8 9 10) · เลน: 1 = P2.7 fix 1 ทรี d · 2 = skill fix-up ทรี b · R1 + hunter P2.7 read-only ทรี d · ทรี c ว่าง @f95348ac (build85 พร้อมเสิร์ฟ)
 - 23:45Z P2.7 fix 1 (ORACLE-EDIT ×4) = `wip/pos-p2.7` **3c29ceac** · p2.7 38/38 · p2.6 67 · p1.7 33 · p2.8 60/61 ST6 · p2.13 53/54 ST5 (lane pin ชั่วคราว ต้องเขียวที่ merge tip) · รอ R1 + hunter → fix 2 (โค้ด) หรือ merge
+- 23:50Z R1 P2.7 (@71f5cd10) = **MERGEABLE-AFTER-FIXES** F1 Med dedupe race · F2 Low-Med intent ไม่ผูกออเดอร์ (ใช้เงิน PREPAID ผ่านหน้าขายได้) · F3–F6 Low · F7 typecheck ซ้ำ · F8 C9 → มติ fix 2 ทั้งหมด + ORACLE-ADD TB8/PY12 → ส่ง builder (รอ hunter รวมรอบเดียว)
