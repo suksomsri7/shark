@@ -1806,3 +1806,7 @@
 - 23:33Z vis88 @f95348ac (`vis88-qc5-20261015T232741Z`): settings-shark-api-keys ×5 + developers-pos · owner/manager · th/en = **ผ่าน** ยกเว้น F-IMG1 Low = developers-pos 390 th ตารางล้น (→ P2.14 parity line) · ถัดไป: start เซิร์ฟ 3228 → คีย์ QC5 → agent skill test → 41/55
 - P2.14: developers-pos (และ kanban/account) ตาราง bundle/scope ล้น 390 → ครอบ overflow-x:auto
 - 23:34Z เซิร์ฟ QC5 3228 บนทรี c (build85) · คีย์ agent test id cmva6dusy0000eukz1nrzun7n (pos-admin + filter silom · /units 200) → spawn **agent skill test** (Opus · สกิลอย่างเดียว · 5 งาน) → transcript `scratchpad/p213-agent/transcript.md` → จบแล้ว revoke คีย์ (`ctl-p213-agent-key.mts --revoke <id>`) + stop เซิร์ฟ → 41/55 + TG
+
+### 15 ต.ค. 23:36Z — P2.7 S built 71f5cd10 (37/38) → CD-B1–B4 → fix 1 (oracle-edits) ‖ R1 + hunter
+- builder: `wip/pos-p2.7` **71f5cd10** · 37/38 (PY11 ปลอม) · ORACLE-EDIT p2.1/p2.8 ทำแล้ว · migration `20261216100000_pos_p27_qr_orders` (QC4) · regression เขียว · **CD-B1–B4** = ORACLE-EDIT ที่อนุมัติ (PY11 intentId null · p2.6 A6 + QR · p2.8 ST1 นับเฉพาะ CREATE TABLE · p1.7 C9 allow lock_timeout) · p2.13 ST4 แดงเพราะทรี d ไม่มีสกิล → คัดลอกแล้ว · lane pins + p2.11 ST1/p2.13 ST5 ต้องเขียวที่ merge tip — ดู `pos-P2.7-review.md`
+- เลน: 1 = P2.7 builder fix 1 ทรี d · R1 + hunter P2.7 (read-only ทรี d @71f5cd10) · agent skill test P2.13 (ทรี c เซิร์ฟ 3228) · ทรี b ว่าง @a67693a8
