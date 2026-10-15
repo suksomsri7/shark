@@ -159,6 +159,12 @@
 //   display-paying-promptpay · display-paying-cash · display-paying-card · display-done · display-stale · display-unsupported · display-live (1280 เท่านั้น) ·
 //   หน้า settings 3 ขนาด: settings-display-unpaired · settings-display-code · settings-display-online — ตารางใน P210_PLAN · fixture/เก็บกวาดใน
 //   ensureP210Fixture/prepP210/cleanupP210 · ไม่มี --states = หน้า display ภาพเดียวต่อขนาด (ฟอร์มจับคู่) ◂
+// POS P2.13 ▸ การ์ดคีย์ API ของระบบขายหน้าร้าน (U-lite §7 · wo p2.13 · --states · ไม่ส่ง --page = settings · 3 ขนาด · th + LOCALE=en · owner + manager):
+//   แท็บ shark: settings-shark-api-keys-empty → -create (กรอกกล่อง ไม่ส่ง) → -raw (⚠️ สร้างคีย์จริงผ่าน UI 1 ใบ · ใบก่อนหน้าของรอบถูกลบก่อนภาพ) →
+//   -list (+ คีย์ fixture 2 ใบผ่าน api-keys/service: อ่านอย่างเดียว·สีลม·ใช้ล่าสุด และ ผู้ดูแล·เพิกถอนแล้ว) → -revoke (กล่องยืนยัน ไม่กดยืนยัน) ·
+//   developers-pos = หน้าสาธารณะ /developers/pos (ไม่ส่งคุกกี้ session · คาด 200 + [data-testid=developers-pos]) — ตารางใน P213_PLAN ·
+//   ชื่อคีย์ทุกใบของรอบลงท้าย "(QC <pid>)" · เก็บกวาด (หลังงานสุดท้าย/finally/สัญญาณ) = ลบคีย์ของรอบ · ซากของ pid ที่ตายแล้วกวาดก่อนงานแรก ·
+//   🔴 รัน th/en และ owner/manager ทีละรอบ (empty ต้องไม่มีคีย์ของระบบ POS ร้าน QC เลย) · --user manager ใช้ MANAGER_VIS ของ P2.11U (allUnits false = ต้องเลือกสาขา) ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -189,6 +195,8 @@ const P211U_WO = /^p2\.?11u/i.test(WO ?? "");
 const P211U_PAGES = ["products", "reports", "settings", "stock"] as const satisfies readonly PosPage[];
 // POS P2.10 ▸ มติ 11: wo p2.10 = จอลูกค้า (หน้า display /d) + บล็อกจอลูกค้าของหน้าตั้งค่า (ไม่ส่ง --page = settings + display) ◂
 const P210_WO = /^p2\.?10(?![0-9])/i.test(WO ?? "");
+// POS P2.13 ▸ wo p2.13 = การ์ดคีย์ API ในแท็บ shark + หน้าสาธารณะ /developers/pos (ไม่ส่ง --page = settings) ◂
+const P213_WO = /^p2\.?13(?![0-9])/i.test(WO ?? "");
 
 function die(msg: string): never {
   console.error(`❌ ${msg}`);
@@ -201,7 +209,7 @@ if (!/^[A-Za-z0-9._-]+$/.test(WO) || WO.includes("..")) die(`<wo> "${WO}" ไม
 if (!(USERS as readonly string[]).includes(userKey)) die(`--user ${userKey} ไม่รู้จัก — ใช้ได้: ${USERS.join(" · ")}`);
 if (tenantKey !== "coffee" && tenantKey !== "resto") die(`--tenant ${tenantKey} ไม่รู้จัก — ใช้ได้: coffee · resto`);
 if (onlyPage && !(POS_PAGES as readonly string[]).includes(onlyPage)) die(`--page ${onlyPage} ไม่รู้จัก — ใช้ได้: ${POS_PAGES.join(" · ")}`);
-if (userKey === "manager" && (!P211U_WO || tenantKey !== "coffee")) die("--user manager ใช้ได้เฉพาะ wo p2.11u ร้าน coffee (ผู้จัดการสาขาของภาพหลายสาขา · POS P2.11U มติ 11)"); // POS P2.11U ◂
+if (userKey === "manager" && ((!P211U_WO && !P213_WO) || tenantKey !== "coffee")) die("--user manager ใช้ได้เฉพาะ wo p2.11u / p2.13 ร้าน coffee (ผู้จัดการสาขาของภาพหลายสาขา · POS P2.11U มติ 11 · P2.13 การ์ดคีย์ API)"); // POS P2.11U ◂ · POS P2.13 ▸ + p2.13 ◂
 
 const T = PQC[tenantKey];
 // POS P2.11U ▸ มติ 11: ผู้จัดการสาขาสีลมของภาพ — ไม่อยู่ใน seed · ensureManagerUser สร้าง/ใช้ซ้ำ (User + Membership MANAGER unitAccess [สีลม]) ก่อน mint session ◂
@@ -215,7 +223,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -254,7 +262,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P210Key; // POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P210Key | P213Key; // POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -662,6 +670,27 @@ const isP210State = (k: StateKey | null | undefined): k is P210Key => !!k && P21
 const p210Path = (k: P210Key): string =>
   k.startsWith("settings-") ? `/app/sys/${SYS}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}` : `/d${LOCALE_EN && k === "display-pair" ? "?lang=en" : ""}`;
 // ◂
+// ── POS P2.13 ▸ การ์ดคีย์ API (U-lite §7 · wo p2.13 · --states · 3 ขนาด · th + LOCALE=en · owner + manager) ◂
+//   ลำดับสำคัญ: empty ก่อนรอบนี้สร้างคีย์ใด ๆ · create = กรอกกล่องไม่ส่ง · raw = ส่งจริง (คีย์ของรอบ 1 ใบ) · list/revoke = + คีย์ fixture 2 ใบ · developers-pos ท้ายสุด
+type P213Key = "settings-shark-api-keys-empty" | "settings-shark-api-keys-create" | "settings-shark-api-keys-raw" | "settings-shark-api-keys-list" | "settings-shark-api-keys-revoke" | "developers-pos";
+const P213_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P213_PLAN: { key: P213Key; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "settings-shark-api-keys-empty", page: "settings", devices: P213_D3, users: ["owner", "manager"], note: "แท็บ shark → การ์ด \"คีย์ API ของระบบขายหน้าร้าน\" ว่าง: คำอธิบาย + ลิงก์คู่มือ /developers/pos + ปุ่มสร้างคีย์ (ระบบ POS ร้าน QC ต้องไม่มีคีย์เลย — มี = ภาพตกพร้อมจำนวน)" },
+  { key: "settings-shark-api-keys-create", page: "settings", devices: P213_D3, users: ["owner", "manager"], note: "สร้างคีย์ → กล่อง: ชื่อ \"แอปสั่งอาหารของร้าน (QC <pid>)\" · ชุด ใช้งานหน้าร้าน · อายุ 90 วัน · เลือกสาขาสีลม (ผู้จัดการ = บังคับเลือก) — ไม่กดสร้าง" },
+  { key: "settings-shark-api-keys-raw", page: "settings", devices: P213_D3, users: ["owner", "manager"], note: "⚠️ กรอกแบบ create (เจ้าของ = ทุกสาขา) → สร้างคีย์จริงผ่าน UI → แผงคีย์ดิบครั้งเดียว + คำเตือน + คัดลอก (ไม่กด) · คีย์ของรอบจากภาพก่อนหน้าถูกลบก่อนเปิดหน้า" },
+  { key: "settings-shark-api-keys-list", page: "settings", devices: P213_D3, users: ["owner", "manager"], note: "รายการ: คีย์ของภาพ raw + fixture \"จอสรุปยอดหลังร้าน\" (อ่านอย่างเดียว · สีลม · ใช้ล่าสุด 3 ชม.ก่อน · หมดอายุ 30 วัน) + \"ระบบสั่งของเดิม\" (ผู้ดูแล · เพิกถอนแล้ว · ไม่หมดอายุ)" },
+  { key: "settings-shark-api-keys-revoke", page: "settings", devices: P213_D3, users: ["owner", "manager"], note: "แตะ \"เพิกถอน\" ของคีย์ที่ยังใช้ได้ล่าสุดของรอบ → กล่องยืนยันปุ่มแดง — ไม่กดยืนยัน" },
+  { key: "developers-pos", page: "settings", devices: P213_D3, users: ["owner", "manager"], note: "หน้าสาธารณะ /developers/pos (ไม่ส่งคุกกี้ session · LOCALE=en ส่งคุกกี้ภาษาอย่างเดียว) → HTTP 200 + [data-testid=developers-pos] · ไม่มี console error" },
+];
+const p213On = STATES_ON && tenantKey === "coffee" && P213_WO;
+const P213_KEYS: ReadonlySet<string> = new Set(P213_PLAN.map((s) => s.key));
+const isP213State = (k: StateKey | null | undefined): k is P213Key => !!k && P213_KEYS.has(k);
+const p213Path = (k: P213Key): string => (k === "developers-pos" ? "/developers/pos" : `/app/sys/${SYS}/pos/settings?tab=shark&unit=${encodeURIComponent(unitId)}`);
+/** ชื่อคีย์ของรอบ — ลงท้าย "(QC <pid>)" (เก็บกวาดหาตามนี้ · ซากของ pid ที่ตายแล้วกวาดก่อนงานแรก) · ≤ 60 ตัวอักษร */
+const p213Name = (label: string) => `${label} (QC ${process.pid})`;
+const P213_NAME_RE = /\(QC (\d+)\)$/;
+const P213_UI_LABEL = "แอปสั่งอาหารของร้าน";
+// ◂
 const p29uPath = (k: P29uRegKey | P29uOtherKey): string =>
   k === "refund-to-card" ? `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}` : k === "settings-tip-ledger" ? `/app/sys/${SYS}/pos/settings?tab=payments&unit=${encodeURIComponent(unitId)}` : pathOf("register");
 // POS P2.9bU ◂
@@ -723,7 +752,7 @@ const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
 const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P213_WO /* POS P2.13 */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
   isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
@@ -746,6 +775,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
       )
     : p === "display"
     ? (LOCALE_EN ? POS_DISPLAY_VIEWPORTS.filter((v) => v.name === "display") : [...POS_DISPLAY_VIEWPORTS]).map((v): Job => ({ page: p, v, state: null, path: pathOf(p), file: `${OUT}/${p}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })) // POS P2.10 ▸ ไม่มี --states = ฟอร์มจับคู่ ◂
+  // POS P2.13 ▸ wo p2.13 + --states = การ์ดคีย์ API ของแท็บ shark + หน้าสาธารณะ /developers/pos (3 ขนาด · en = 1440) ◂
+  : p213On && p === "settings"
+    ? P213_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p213Path(st.key), ...(st.key === "developers-pos" ? { expect: 200 } : {}), file: `${OUT}/${st.key === "developers-pos" ? st.key : `${p}-${st.key.slice(p.length + 1)}`}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
   // POS P2.11U ▸ มติ 11: wo p2.11u + --states = สถานะหลายสาขาของหน้านี้ตามผู้ใช้ (หน้าอื่น = ไม่มีงาน) ◂
   : p211uOn
     ? P211U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
@@ -932,9 +968,11 @@ if (LIST) {
   for (const st of P211U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("settings/display P2.10 (wo p2.10 --states · เจ้าของ):"); // POS P2.10
   for (const st of P210_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
+  console.log("settings P2.13 (wo p2.13 --states · owner + manager):"); // POS P2.13
+  for (const st of P213_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P210_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P210_PLAN, P213_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.13 ▸ + P213 ◂ // POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1098,6 +1136,16 @@ if (DRY) {
           `ภาพจอป้อนด้วย publishDisplayState (ตัวเลขเท่าภาพ 11A · stale = เลื่อน stateAt 121 วิ) · ⚠️ display-done = กะของเครื่อง + บิลเงินสด 1 ใบ (ไม่ลบ · ปิดกะตอนเก็บกวาด) · ` +
           `paying-promptpay = PromptPay ID ของร้าน QC (P1.7U · คืนค่า) · live = เครื่อง ${DEVICE_ID} (PIN/โทเคน P1.15U + กะของเจ้าของ) + แท็บหน้าขายจริง · ` +
           `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ยกเลิกจับคู่จอ · ปิดกะ · เพิกถอนเครื่อง · ลบถังเพดานแลกรหัสของรอบ`,
+      );
+    }
+    // POS P2.13 ▸ การ์ดคีย์ API ◂
+    if (jobs.some((j) => isP213State(j.state))) {
+      console.log(`สถานะการ์ดคีย์ API P2.13 (${userKey}${userKey === "manager" ? ` · ผู้จัดการ{สาขาสีลม} ${MANAGER_VIS.email} (allUnits false = ต้องเลือกสาขา) — สร้าง/ใช้ซ้ำ User + Membership MANAGER ก่อน mint session · ลบ Membership ตอนเก็บกวาด (แบบ P2.11U)` : ""}):`);
+      for (const st of P213_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(31)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P2.13: เขียน (ระบบ POS ${SYS} ร้าน QC · ชื่อคีย์ลงท้าย "(QC ${process.pid})") — ก่อนงานแรก: กวาดคีย์ "(QC <pid>)" ของ pid ที่ตายแล้ว · ` +
+          `raw = คีย์จริงผ่าน UI (createPosApiKeyAction · ใบก่อนหน้าของรอบลบก่อนภาพถัดไป) · list/revoke = คีย์ fixture 2 ใบ (api-keys/service createApiKey · pos-read + ตัวกรองสาขา ${unitKey} · lastUsedAt 3 ชม.ก่อน ` +
+          `· และ pos-admin → revokeApiKey) · revoke ไม่กดยืนยัน · เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ลบ ApiKey ของรอบทั้งหมด (AuditLog ของการสร้างผ่าน UI คงอยู่)`,
       );
     }
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
@@ -1375,6 +1423,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P211U.log.length) console.error(`${P211U.ok ? "🧹" : "⚠️"} P2.11U: ${P211U.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.11U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.13: ลบคีย์ API ของรอบ (เหมือน finally)
+      try {
+        await cleanupP213();
+        if (P213.log.length) console.error(`${P213.ok ? "🧹" : "⚠️"} P2.13: ${P213.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.13 ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.4U: ลบ fixture โต๊ะของรอบนี้ (เหมือน finally)
       try {
@@ -1915,6 +1970,7 @@ async function cleanupP115(): Promise<void> {
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isP213State(state)) return runP213State(page, state); // POS P2.13
   if (isP210State(state)) return runP210State(page, state, device); // POS P2.10
   if (isP211uState(state)) return runP211uState(page, state, device); // POS P2.11U
   if (isP29uState(state)) return runP29uState(page, state, device); // POS P2.9U
@@ -6083,6 +6139,149 @@ async function runP211uState(page: Any, state: P211uKey, device: Device): Promis
   }
 }
 // ◂
+// ═══════════════════ POS P2.13 ▸ การ์ดคีย์ API: fixture + ขั้นตอนของสถานะ (U-lite §7) ◂ ═══════════════════
+// fixture (prepP213 · ก่อนเปิดหน้าของแต่ละงาน · พังไม่โยน — สถานะตกพร้อมเหตุผล):
+//   • งานแรก: กวาดซาก — ApiKey ของระบบ POS ร้าน QC ที่ชื่อลงท้าย "(QC <pid>)" และ pid นั้นไม่มีชีวิตแล้ว (รอบที่ถูก kill) ⇒ ลบ
+//   • raw: ลบคีย์ UI ของรอบจากภาพก่อนหน้า (ให้มีคีย์ UI ของรอบครั้งละ 1 ใบ — รายการไม่ซ้ำ 3 แถว)
+//   • list/revoke: คีย์ fixture 2 ใบ (ครั้งเดียวต่อรอบ · api-keys/service = ทางเดียวกับ createPosApiKeyAction): "จอสรุปยอดหลังร้าน" pos-read + ตัวกรองสาขาที่ถ่าย
+//     หมดอายุ 30 วัน · lastUsedAt 3 ชม.ก่อน (เขียนตรง) · "ระบบสั่งของเดิม" pos-admin ไม่หมดอายุ → revokeApiKey
+//   เก็บกวาด (cleanupP213 · หลังงานสุดท้าย/finally/สัญญาณ · เรียกซ้ำได้ · ไม่โยน): ลบ ApiKey ของรอบ (ชื่อลงท้าย "(QC <pid นี้>)") ทั้งหมด
+// 🔴 แตะเฉพาะคีย์ชื่อของรอบ/ซากของ pid ที่ตายแล้ว — คีย์อื่นในระบบ POS ร้าน QC ไม่แตะ (มี = ภาพ empty ตกพร้อมจำนวน)
+const P213 = { swept: false, listKeys: false, error: null as string | null, ok: true, log: [] as string[], cleaned: false };
+const p213Alive = (pid: number): boolean => {
+  if (pid === process.pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as { code?: string } | null)?.code === "EPERM"; // มีชีวิตแต่เป็นของผู้ใช้อื่น = ไม่แตะ
+  }
+};
+async function prepP213(state: P213Key): Promise<void> {
+  if (state === "developers-pos" || P213.error) return;
+  try {
+    if (!P213.swept) {
+      P213.swept = true;
+      const rows = await prisma.apiKey.findMany({ where: { tenantId: T.tenantId, systemId: SYS, name: { endsWith: ")" } }, select: { id: true, name: true } });
+      const dead = rows.filter((r) => {
+        const m = P213_NAME_RE.exec(r.name);
+        return !!m && !p213Alive(Number(m[1]));
+      });
+      if (dead.length) {
+        await prisma.apiKey.deleteMany({ where: { tenantId: T.tenantId, systemId: SYS, id: { in: dead.map((r) => r.id) } } });
+        P213.log.push(`กวาดซากคีย์ของรอบที่ตายแล้ว ${dead.length} ใบ`);
+      }
+    }
+    if (state === "settings-shark-api-keys-raw") {
+      const d = await prisma.apiKey.deleteMany({ where: { tenantId: T.tenantId, systemId: SYS, name: p213Name(P213_UI_LABEL) } });
+      if (d.count) P213.log.push(`ลบคีย์ UI ของภาพก่อนหน้า ${d.count} ใบ`);
+    }
+    if ((state === "settings-shark-api-keys-list" || state === "settings-shark-api-keys-revoke") && !P213.listKeys) {
+      const { createApiKey, revokeApiKey } = await import("@/lib/api-keys/service");
+      const { expandBundles, POS_FILTER_UNIT_PREFIX } = await import("@/lib/api-keys/scopes");
+      const ctx = { tenantId: T.tenantId };
+      const by = T.users.owner.userId;
+      const a = await createApiKey(ctx, p213Name("จอสรุปยอดหลังร้าน"), { scopes: [...expandBundles(["pos-read"]), `${POS_FILTER_UNIT_PREFIX}${unitId}`], systemId: SYS, expiresAt: new Date(Date.now() + 30 * 86_400_000), createdById: by });
+      await prisma.apiKey.update({ where: { id: a.id }, data: { lastUsedAt: new Date(Date.now() - 3 * 3_600_000) } });
+      const b = await createApiKey(ctx, p213Name("ระบบสั่งของเดิม"), { scopes: expandBundles(["pos-admin"]), systemId: SYS, expiresAt: null, createdById: by });
+      if (!(await revokeApiKey(ctx, b.id))) throw new StepError("เพิกถอนคีย์ fixture ไม่สำเร็จ");
+      P213.listKeys = true;
+      P213.log.push(`คีย์ fixture 2 ใบ (อ่านอย่างเดียว·${unitKey} · ผู้ดูแล·เพิกถอนแล้ว)`);
+    }
+  } catch (e) {
+    P213.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** หลังงาน P2.13 สุดท้าย / finally / สัญญาณ — ลบคีย์ของรอบ (ชื่อลงท้าย "(QC <pid นี้>)") · เรียกซ้ำได้ · ไม่โยน */
+async function cleanupP213(): Promise<void> {
+  if (P213.cleaned || !P213.swept) return;
+  P213.cleaned = true;
+  try {
+    const d = await prisma.apiKey.deleteMany({ where: { tenantId: T.tenantId, systemId: SYS, name: { endsWith: `(QC ${process.pid})` } } });
+    P213.log.push(`ลบคีย์ API ของรอบ ${d.count} ใบ`);
+  } catch (e) {
+    P213.ok = false;
+    P213.log.push(`ลบคีย์ API ของรอบไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+  }
+}
+/** การ์ดโหลดเสร็จ (ว่าง / รายการ / ปฏิเสธ / โหลดไม่สำเร็จ) → คืนสถานะที่ขึ้น */
+async function p213Card(page: Any): Promise<"empty" | "list"> {
+  await visibleEl(page, tid("pos-settings-api"), 0, 20_000).catch(() => {
+    throw new StepError("ไม่มีการ์ดคีย์ API ในแท็บ shark (pos-settings-api)");
+  });
+  const got = (await page
+    .waitForFunction(
+      () => ["pos-settings-api-empty", "pos-settings-api-list", "pos-settings-api-refusal", "pos-settings-api-error"].find((id) => !!document.querySelector(`[data-testid="${id}"]`)) ?? false,
+      { timeout: 20_000 },
+    )
+    .then((h: Any) => h.jsonValue())
+    .catch(() => null)) as string | null;
+  if (!got) throw new StepError("การ์ดคีย์ API ค้างที่กำลังโหลด (20 วิ)");
+  if (got === "pos-settings-api-refusal") throw new StepError(`การ์ดคีย์ API ปฏิเสธ: ${await page.$eval(tid("pos-settings-api-refusal"), (e: Element) => (e.textContent ?? "").trim().slice(0, 120))}`);
+  if (got === "pos-settings-api-error") throw new StepError("การ์ดคีย์ API โหลดไม่สำเร็จ (pos-settings-api-error)");
+  const card = await visibleEl(page, tid("pos-settings-api"));
+  await card.evaluate((el: Element) => el.scrollIntoView({ block: "start" }));
+  return got === "pos-settings-api-empty" ? "empty" : "list";
+}
+/** เปิดกล่องสร้าง + กรอก (ชื่อของรอบ · ใช้งานหน้าร้าน · อายุ 90 · เลือกสาขาที่ถ่ายเมื่อ pickUnit หรือบังคับ) */
+async function p213FillCreate(page: Any, pickUnit: boolean): Promise<void> {
+  const kind = await p213Card(page);
+  await clickEl(page, tid(kind === "empty" ? "pos-settings-api-empty-create" : "pos-settings-api-create"));
+  await visibleEl(page, tid("pos-settings-api-dialog"), 0, 10_000);
+  await typeInto(page, tid("pos-settings-api-name"), p213Name(P213_UI_LABEL));
+  await clickEl(page, tid("pos-settings-api-bundle-pos-operate"));
+  await page.select(tid("pos-settings-api-ttl"), "90");
+  const hasScope = !!(await page.$(tid("pos-settings-api-scope-pick")));
+  if (hasScope && userKey === "manager") throw new StepError("ผู้จัดการ 1 สาขาเห็นตัวเลือก \"ทุกสาขา/เลือกสาขา\" (allUnits ต้องเป็น false)");
+  if (pickUnit || !hasScope) {
+    if (hasScope) await clickEl(page, tid("pos-settings-api-scope-pick"));
+    await clickEl(page, tid(`pos-settings-api-unit-${unitId}`));
+  }
+}
+async function runP213State(page: Any, state: P213Key): Promise<void> {
+  if (state === "developers-pos") {
+    await visibleEl(page, tid("developers-pos"), 0, 20_000).catch(() => {
+      throw new StepError("หน้า /developers/pos ไม่มี [data-testid=developers-pos]");
+    });
+    return;
+  }
+  if (P213.error) throw new StepError(`fixture P2.13: ${P213.error}`);
+  if (state === "settings-shark-api-keys-empty") {
+    if ((await p213Card(page)) !== "empty") {
+      const n = await prisma.apiKey.count({ where: { tenantId: T.tenantId, systemId: SYS } });
+      throw new StepError(`ระบบ POS ร้าน QC มีคีย์อยู่แล้ว ${n} ใบ — ภาพการ์ดว่างถ่ายไม่ได้ (รันทีละรอบ · คีย์ที่ไม่ใช่ของภาพ ผู้คุมงานตัดสิน)`);
+    }
+    await visibleEl(page, tid("pos-settings-api-empty-create"), 0, 5_000); // เจ้าของ/ผู้จัดการ = api.key.create
+    return;
+  }
+  if (state === "settings-shark-api-keys-create") {
+    await p213FillCreate(page, true);
+    return; // 🔴 ไม่กดสร้าง
+  }
+  if (state === "settings-shark-api-keys-raw") {
+    await p213FillCreate(page, false);
+    await clickEl(page, tid("pos-settings-api-create-submit"));
+    const got = (await page
+      .waitForFunction(() => (document.querySelector('[data-testid="pos-settings-api-raw"]') ? "raw" : document.querySelector('[data-testid="pos-settings-api-create-error"]') ? "error" : false), { timeout: 20_000 })
+      .then((h: Any) => h.jsonValue())
+      .catch(() => null)) as string | null;
+    if (got === "error") throw new StepError(`สร้างคีย์ถูกปฏิเสธ: ${await page.$eval(tid("pos-settings-api-create-error"), (e: Element) => (e.textContent ?? "").trim().slice(0, 120))}`);
+    if (got !== "raw") throw new StepError("แผงคีย์ดิบไม่ขึ้นภายใน 20 วิหลังกดสร้าง");
+    const raw = (await page.$eval(tid("pos-settings-api-raw-key"), (e: Element) => (e as HTMLInputElement).value)) as string;
+    if (!/^shark_[0-9a-f]{20,}$/.test(raw)) throw new StepError("ช่องคีย์ดิบว่าง/ผิดรูป");
+    return; // 🔴 ไม่กดคัดลอก/เสร็จแล้ว (ปิดแท็บ = ทิ้งคีย์ดิบ · แถวลบตอนเก็บกวาด)
+  }
+  // ── list / revoke ──
+  if ((await p213Card(page)) !== "list") throw new StepError("การ์ดคีย์ API ว่าง — คีย์ fixture ไม่ขึ้น");
+  const mine = await prisma.apiKey.findMany({ where: { tenantId: T.tenantId, systemId: SYS, name: { endsWith: `(QC ${process.pid})` } }, select: { id: true, revokedAt: true }, orderBy: { createdAt: "desc" } });
+  for (const k of mine) await visibleEl(page, tid(`pos-settings-api-row-${k.id}`), 0, 10_000);
+  if (state === "settings-shark-api-keys-list") return;
+  const target = mine.find((k) => !k.revokedAt);
+  if (!target) throw new StepError("ไม่มีคีย์ของรอบที่ยังใช้ได้ให้เพิกถอน");
+  await clickEl(page, tid(`pos-settings-api-row-revoke-${target.id}`));
+  await visibleEl(page, tid("pos-settings-api-revoke-confirm"), 0, 10_000);
+  // 🔴 ไม่กดยืนยัน
+}
 async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device: Device): Promise<void> {
   if (P29U.error) throw new StepError(`fixture P2.9U: ${P29U.error}`);
   if (state === "settings-tip-ledger") {
@@ -7488,7 +7687,9 @@ try {
             }
           });
         }
-        await page.setCookie(...cookies);
+        // POS P2.13 ▸ developers-pos = หน้าสาธารณะ: ไม่ส่งคุกกี้ session/ร้าน (ส่งเฉพาะ LOCALE ของรอบ en) — พิสูจน์ว่าเปิดได้โดยไม่ล็อกอิน ◂
+        const jobCookies = job.state === "developers-pos" ? cookies.filter((c: Any) => c.name === "LOCALE") : cookies;
+        if (jobCookies.length) await page.setCookie(...jobCookies);
         const consoleErrors: string[] = [];
         const httpErrors: string[] = [];
         const http5xx: string[] = [];
@@ -7574,6 +7775,12 @@ try {
           await prepP210(page, job.state);
           if (first) console.log(P210.error ? `  ⚠️ fixture P2.10: ${P210.error}` : `  fixture P2.10: ${P210.log.join(" · ")}`);
         }
+        // POS P2.13 ▸ กวาดซาก/ลบคีย์ UI ของภาพก่อนหน้า/คีย์ fixture ของรายการ ก่อนเปิดหน้า (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP213State(job.state)) {
+          const before = P213.log.length;
+          await prepP213(job.state);
+          if (P213.error || P213.log.length > before) console.log(P213.error ? `  ⚠️ fixture P2.13: ${P213.error}` : `  fixture P2.13: ${P213.log.slice(before).join(" · ")}`);
+        }
         // POS P2.4U ▸ fixture โต๊ะก่อนงานแรกที่ใช้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && !P24U.done && !P24U.error) {
           await ensureP24uFixture();
@@ -7639,6 +7846,7 @@ try {
         if (isP29buState(job.state) && job === jobs.filter((j) => isP29buState(j.state)).at(-1)) await cleanupP29bu(); // POS P2.9bU
         if (isP211uState(job.state) && job === jobs.filter((j) => isP211uState(j.state)).at(-1)) await cleanupP211u(); // POS P2.11U
         if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
+        if (isP213State(job.state) && job === jobs.filter((j) => isP213State(j.state)).at(-1)) await cleanupP213(); // POS P2.13
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
           await finishPaidIntentSale(page).catch((e: unknown) => {
@@ -7727,6 +7935,9 @@ try {
   await cleanupP211u(); // POS P2.11U (แถวราคาลาเต้ · ช่องทาง ZZVIS · ค่าใบเสร็จของสาขา · ลิงก์คลังของรอบ)
   if (P211U.log.length) console.error(`${P211U.ok ? "🧹" : "⚠️"} P2.11U: ${P211U.log.join(" · ")}`);
   if (!P211U.ok) failures++;
+  await cleanupP213(); // POS P2.13 (คีย์ API ของรอบ)
+  if (P213.log.length) console.error(`${P213.ok ? "🧹" : "⚠️"} P2.13: ${P213.log.join(" · ")}`);
+  if (!P213.ok) failures++;
   if (P29U.log.length) console.error(`${P29U.ok ? "🧹" : "⚠️"} P2.9U: ${P29U.log.join(" · ")}`);
   if (!P29U.ok) failures++;
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)

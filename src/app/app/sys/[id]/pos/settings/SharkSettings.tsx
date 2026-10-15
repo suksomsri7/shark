@@ -24,6 +24,7 @@ import { useSettingsHistory } from "@/components/pos/settings/HistoryDrawer";
 import { InlineNote, TabHead } from "./settings-ui";
 import { CARD_HEAD, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type PaySummary, type Storefront } from "./shark-ui";
 import { ChannelsPanel } from "./ChannelsPanel"; // POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) ◂
+import { ApiKeysCard } from "./ApiKeysCard"; // POS P2.13 ▸ การ์ดคีย์ API (U-lite §7) ◂
 
 type CardsOk = Extract<PosIntegrationCardsResult, { ok: true }>;
 type ReceiptData = Extract<Awaited<ReturnType<typeof receiptSettingsPageDataAction>>, { ok: true }>;
@@ -355,6 +356,8 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
         <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManageChannels} storefront={storefront} />
         <PaymentsPanel systemId={systemId} unitId={unitId} pay={pay} />
       </div>
+      {/* POS P2.13 ▸ การ์ดคีย์ API (U-lite §7) — ใต้แผงช่องทางขาย/วิธีรับเงิน · เต็มความกว้าง ◂ */}
+      <ApiKeysCard systemId={systemId} />
       {confirmOff && (
         <RegisterDialog onDismiss={() => !accBusy && setConfirmOff(false)} locked={accBusy}>
           <div data-testid="pos-settings-account-confirm" className={REG_DIALOG_PANEL} role="alertdialog" aria-modal="true" aria-label={tk("accountOffTitle")}>
