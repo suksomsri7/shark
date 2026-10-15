@@ -55,6 +55,9 @@ import { listChannelsAction } from "@/lib/modules/pos/channel-actions";
 import { channelCommission, channelNet, type ChannelItem } from "@/lib/modules/pos/channel-shared";
 import { channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text";
 import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
+import { DepositRefund } from "./DepositRefund"; // POS P2.9bU ▸ มติ 7: คืนมัดจำคงเหลือ (ลิ้นชักใบรับเงินมัดจำ) ◂
+/** POS P2.9bU ▸ มติ 7: sourceModule ของใบรับเงินมัดจำ + ใบคืนมัดจำ (deposit.ts POS_DEPOSIT_SOURCE) ◂ */
+const DEPOSIT_SOURCE = "POS_DEPOSIT";
 
 type Unit = { id: string; name: string };
 type Props = {
@@ -991,6 +994,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         <span className="truncate">{r.customer.name}</span>
         {r.customer.sub ? <small className="truncate text-[11px] text-[color:var(--color-muted)]">{r.customer.sub}</small> : null}
       </span>
+    ) : r.sourceModule === DEPOSIT_SOURCE ? (
+      // POS P2.9bU ▸ มติ 7: ใบรับเงินมัดจำ (ไม่มีสมาชิกบนใบ — memberId null ตามสัญญา S) ◂
+      <span data-testid={`pos-bills-deposit-title-${r.id}`} className="truncate font-semibold">{t("deposit.receiptTitle")}</span>
     ) : r.channelRef ? (
       // POS P2.1U ▸ มติ 3: บิลแพลตฟอร์มไม่มีสมาชิก = เลขออเดอร์ของแพลตฟอร์มในช่องชื่อ (ภาพ 12 "GF-7610") ◂
       <span className="truncate text-[color:var(--color-muted)] tabular-nums">{r.channelRef}</span>
@@ -1128,6 +1134,18 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
               </button>
             );
           })}
+          {/* POS P2.9bU ▸ มติ 7: ชิป "มัดจำ" = ตัวกรองระบบต้นทาง POS_DEPOSIT ของเซิร์ฟเวอร์ (billsPageData.channel = sourceModule · bills.ts:265) — ใช้ตัวกรองเดียวกับ pos-bills-channel ◂ */}
+          <button
+            type="button"
+            data-testid="pos-bills-filter-deposit"
+            aria-pressed={channel === DEPOSIT_SOURCE}
+            onClick={() => setFilter(() => setChannel((c) => (c === DEPOSIT_SOURCE ? "" : DEPOSIT_SOURCE)))}
+            className={`inline-flex min-h-[44px] items-center gap-2.5 rounded-lg border px-3 text-[13px] ${
+              channel === DEPOSIT_SOURCE ? "border-[color:var(--color-ink)] bg-[color:var(--color-ink)] font-bold text-[color:var(--color-surface)]" : "bg-[color:var(--color-surface)]"
+            }`}
+          >
+            {t("deposit.chip")}
+          </button>
         </div>
 
         {/* การ์ดสรุป */}
@@ -1358,6 +1376,11 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                 <div className="mt-1 text-[12px] text-[color:var(--color-muted)]">
                   {[bkkHm(bill.time, locale), who(bill.staffName), bill.deviceName, billChannelText({ sourceModule: bill.sourceModule, salesChannel: bill.channel }, t, ts, tch), bill.shiftNo !== null ? t("drawer.shiftNo", { no: bill.shiftNo }) : null].filter(Boolean).join(" · ")}
                 </div>
+                {bill.sourceModule === DEPOSIT_SOURCE ? ( // POS P2.9bU ▸ มติ 7: หัวลิ้นชัก "ใบรับเงินมัดจำ" ◂
+                  <div data-testid="pos-bills-drawer-deposit-title" className="mt-1 text-[13px] font-bold">
+                    {t("deposit.receiptTitle")}
+                  </div>
+                ) : null}
               </div>
               {/* รายการ */}
               <section className="border-b px-5 py-3 text-[13px]">
@@ -1473,6 +1496,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       {methodLabel(p.type, ts, t)}
                       {p.type === "CASH" && p.tenderedSatang !== undefined ? ` · ${t("drawer.cashLine", { tendered: money(p.tenderedSatang), change: money(p.changeSatang ?? 0) })}` : ""}
                       {p.type !== "CASH" && p.reference ? ` · ${p.reference}` : ""}
+                      {p.deposit ? ` #${p.deposit.receiptNo} · ${t("deposit.left", { amount: money(p.deposit.remainingAfterSatang) })}` : ""}
                     </span>
                     <span>{money(p.amountSatang)}</span>
                   </div>
@@ -1657,6 +1681,19 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                     </button>
                   ) : null}
                 </div>
+                {/* POS P2.9bU ▸ มติ 7: ใบรับเงินมัดจำที่ยังมีคงเหลือ ⇒ "คืนมัดจำ (คงเหลือ ฿y)" (ใบรับยกเลิก/คืนเงินแบบบิลขายไม่ได้ — เซิร์ฟเวอร์ปฏิเสธ) ◂ */}
+                {bill.sourceModule === DEPOSIT_SOURCE && bill.receiptNo && bill.status === "PAID" ? (
+                  <DepositRefund
+                    key={bill.id}
+                    systemId={systemId}
+                    unitId={unitId}
+                    receiptNo={bill.receiptNo}
+                    onRefunded={(text) => {
+                      setToast(text);
+                      refreshAll();
+                    }}
+                  />
+                ) : null}
                 {!bill.can.void ? (
                   <span className="text-center text-[11px] text-[color:var(--color-muted)]" data-testid="pos-bills-void-hint">
                     {t(`voidHint.${bill.voidBlockedReason ?? "OTHER"}`)}
