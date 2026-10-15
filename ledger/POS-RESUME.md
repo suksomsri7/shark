@@ -1721,3 +1721,8 @@
 - oracle writer: `wip/pos-p2.13-oracle` **580ecbbb** push แล้ว · `qc-pos-p2.13.mts` 49 ข้อ (ST6 AU8 RL2 ID5 SA8 OR6 PR5 RP4 SH3 Z2) + `qc-pos-api-skill.mts` 10 · forced 3/49 (Z1 Z2 · RP2 SKIP จน P2.12 merge) + 1/10 · typecheck 0 · ORACLE-EDIT batch = 9 ที่ (caller count 1→0) + p0.2 · CD1–10 → ผู้คุมตัดสินใน brief §10 ข้อ 11 (ขยาย batch p0.2 S1.5/S1.6/S3.3/S6.0/S6.4 + p2.1:488 · เก็บ voidErrorToApi/posSaleServiceKey · expectedGrandTotal optional · refund ตาม other-sources · INTERNAL 500 / Σpay 422 / PRICE_CHANGED 409 · lane pins แดงบน wip ตามแบบ)
 - prompt builder `pos-prompt-accountB-P2.13.md` (base `__BASE__` = merge P2.12 S) — spawn ทรี b หลัง P2.12 S merge
 - เลน: 1 = P2.12 fix 1 ทรี c · ทรี b ว่าง @580ecbbb (รอ builder P2.13) · ทรี d ว่าง
+
+### 15 ต.ค. 18:4xZ — P2.12 fix 1 เสร็จ → R2
+- builder fix 1: `wip/pos-p2.12` **b5beeae0** push แล้ว · ORACLE-ADD AN13/AN14/PD4 + AN12 unitNames (99aee674 · red-before 29/33) · r1 5ee2ba92 (unitNames · `REPORT_TOTAL_ROW_KINDS` · F3 skip) · r2 c671d11f (A3/A4 = line + bill − coupon − member · base ก่อนส่วนลดรายการ) · r3 492c8ab8 (แบ่งเพดานต่อกฎ + notice "แสดง N จาก M แถว") · r4 b5b48254 (unitLabel ชื่อสาขาใน scope) · r5 3f91c695 (A8 "ขาด −x/เกิน +x" · `totals.a8SignedSatang`) · gates 33/33 ×3 · p1.17 40 · p2.11 34 · p1.18 81 · p1.16 28 · p1.1 180 · p1.3 128 · typecheck 0 · fitness ±env/pos · origin 3e4b1bb1 merged แล้ว · 3 ข้อให้ R2 ดู (total row ทุก kind · limit < จำนวนกฎ · a8SignedSatang)
+- spawn **R2** (Opus read-only ทรี c) prompt `pos-prompt-accountB-P2.12-R2.md` → MERGEABLE → merge (msg `scratchpad/ctl/p212-merge-msg.txt`) → ทรี c detached → gates97-c → push → **39/55** → spawn P2.13 builder (ทรี b) + P2.12U builder (ทรี c)
+- เลน: 1 = P2.12 R2 (read-only ทรี c) · ทรี b ว่าง · ทรี d ว่าง
