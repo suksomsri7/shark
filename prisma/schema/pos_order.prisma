@@ -21,6 +21,8 @@ enum PosOrderPaymentState {
   PLATFORM_PAID
   PAID
   REFUNDED
+  PENDING_PAYMENT // POS P2.7: สั่งล่วงหน้าจ่ายก่อน — มีใบขอรับเงิน (intent PENDING) · ยังไม่มีบิล/รอบครัว/สต็อก · รับไม่ได้ (ORDER_UNPAID)
+  PREPAID // POS P2.7: เงินเข้าแล้ว (intent PAID) · ยังไม่มีบิล — รับ = บิลใช้ intent ในธุรกรรมรับ → PAID
 }
 
 enum PosOrderFulfilment {
@@ -65,10 +67,17 @@ model PosOrder {
   version            Int                  @default(1)
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
+  // POS P2.7 ▸ จ่ายก่อน (QR_ORDER): หมดเวลาจ่าย = receivedAt + qrExpiryMinutes · เงินเข้า · ลูกค้ากด "โอนแล้ว" · ใบขอรับเงิน · โทเคนหน้าสถานะ (12 ตัว) ◂
+  payBy              DateTime?
+  paidAt             DateTime?
+  customerClaimAt    DateTime?
+  paymentIntentId    String?
+  publicToken        String?              @unique
 
   @@unique([tenantId, channelId, externalRef])
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, unitId, status, receivedAt])
+  @@index([tenantId, unitId, paymentState, payBy])
 }
 
 // บรรทัดของออเดอร์ — ราคาแช่แข็ง ณ ตอนรับ (CD3) · options = สำเนาตัวเลือก [{choiceId, groupId, groupName, choiceName, priceDeltaSatang}]
@@ -102,4 +111,22 @@ model PosOrderEvent {
   actorUserId String? // null = ระบบ/อัตโนมัติ
   payload     Json?
   at          DateTime        @default(now())
+}
+
+// ═══════════════════ POS P2.7 — ลิงก์สั่งล่วงหน้า (/q/<token>) ═══════════════════
+// หนึ่งลิงก์ ACTIVE ต่อสาขา (partial unique ใน migration) · token 16 ตัว Crockford (พิมพ์/แสดงซ้ำได้ — ไม่ใช่ความลับระดับรหัสผ่าน) ·
+// เปลี่ยนลิงก์ = แถวเก่า REVOKED + rotatedAt · แถวใหม่ ACTIVE · ผู้เขียนเดียว = pos/order.ts (สิทธิ์ pos.channel.manage) · ไม่มี FK
+model PosOrderLink {
+  id              String    @id @default(cuid())
+  tenantId        String
+  systemId        String
+  unitId          String
+  token           String    @unique
+  status          String    @default("ACTIVE") // ACTIVE | REVOKED
+  createdByUserId String
+  rotatedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId, unitId, status])
 }

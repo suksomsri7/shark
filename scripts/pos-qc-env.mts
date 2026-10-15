@@ -174,6 +174,7 @@ export const POS_MODELS = {
   posOrder: { model: "PosOrder", file: "pos_order.prisma", role: "ออเดอร์ทุกช่องทาง (P2.8 · NEW→ACCEPTED→PREPARING→READY→HANDED / REJECTED / CANCELLED · X1 (channel, ref) + คีย์)" },
   posOrderLine: { model: "PosOrderLine", file: "pos_order.prisma", role: "บรรทัดออเดอร์ (P2.8 · ราคาแช่แข็งตอนรับ · options สำเนา)" },
   posOrderEvent: { model: "PosOrderEvent", file: "pos_order.prisma", role: "บันทึกการเปลี่ยนสถานะออเดอร์ (P2.8 · 1 แถวต่อการเปลี่ยน · actor null = อัตโนมัติ)" },
+  posOrderLink: { model: "PosOrderLink", file: "pos_order.prisma", role: "ลิงก์สั่งล่วงหน้า (P2.7 · /q/<token> 16 ตัว Crockford · ACTIVE 1 ต่อสาขา · rotate = เก่า REVOKED + rotatedAt)" }, // POS P2.7 ▸ ◂
   // POS P2.6 ▸ 86 → ทุกช่องทาง (migration 20261208100000_pos_p26_kds) — ผู้เขียน pos/catalog.ts (setAvailability) + catalog-legacy.ts ◂
   posAvailabilityMark: { model: "PosAvailabilityMark", file: "pos.prisma", role: "86/ของหมดต่อสินค้าต่อสาขา (P2.6 · ใคร/เมื่อไร/จากไหน KDS STOCK MANUAL · ความจริงยังอยู่ที่ MenuItem/unavailableUnitIds)" },
   // POS P2.5 ▸ แยกบิลของโต๊ะ (migration 20261210100000_pos_p25_split) — ผู้เขียน pos/table-split.ts (แผน) + register.ts (จ่ายใบ) + table.ts (ตัวรับ void) ◂
