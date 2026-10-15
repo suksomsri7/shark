@@ -359,18 +359,19 @@ export function TableSplitDialog(p: Props) {
             className="flex min-h-11 min-w-0 flex-1 items-baseline gap-1.5 text-left disabled:cursor-default"
             onClick={() => setSeatPick((x) => (x === it.id ? null : it.id))}
           >
-            <span className="truncate text-[14.5px] text-[color:var(--color-ink)]">{it.name}</span>
+            <span className="line-clamp-2 break-words text-[14.5px] leading-[1.35] text-[color:var(--color-ink)]">{it.name}</span>
             {it.qty > 1 && <span className="shrink-0 text-[13px] text-[color:var(--color-muted)]">{`×${it.qty}`}</span>}
           </button>
         ) : (
           <span className="flex min-h-11 min-w-0 flex-1 items-baseline gap-1.5">
-            <span className="truncate text-[14.5px] text-[color:var(--color-ink)]">{it.name}</span>
+            <span className="line-clamp-2 break-words text-[14.5px] leading-[1.35] text-[color:var(--color-ink)]">{it.name}</span>
             {it.qty > 1 && <span className="shrink-0 text-[13px] text-[color:var(--color-muted)]">{`×${it.qty}`}</span>}
           </span>
         )}
         <span className="shrink-0 text-[14.5px] font-bold tabular-nums">{moneyText(it.lineSatang)}</span>
         {draft.mode !== "EQUAL" && (
-          <span className="flex w-full min-w-0 items-center gap-1.5 md:w-auto">
+          // fix1 V1: ตามที่นั่ง (N ที่นั่ง + กลางโต๊ะ) = ตัวเลือกอยู่บรรทัดของตัวเองทุกขนาด ⇒ ชื่อรายการไม่ถูกบีบ (ชื่อยาวขึ้น 2 บรรทัด ไม่ตัด "…")
+          <span className={`flex w-full min-w-0 items-center gap-1.5 ${draft.mode === "SEAT" ? "" : "md:w-auto"}`}>
             {it.qty > 1 && (
               <button
                 data-testid={`pos-tbl-split-qty-${it.id}`}
@@ -395,7 +396,7 @@ export function TableSplitDialog(p: Props) {
               </button>
             )}
             {!multi && (
-              <span role="group" aria-label={it.name} className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-[12px] border p-0.5 [scrollbar-width:none] md:max-w-[300px] [&::-webkit-scrollbar]:hidden">
+              <span role="group" aria-label={it.name} className={`flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-[12px] border p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${draft.mode === "SEAT" ? "" : "md:max-w-[300px]"}`}>
                 {opts.map((n) => (
                   <button
                     key={n}
