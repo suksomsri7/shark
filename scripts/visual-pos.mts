@@ -6556,6 +6556,11 @@ mkdirSync(OUT, { recursive: true });
 try {
   // ── mint session (ผู้ใช้ QC id ตายตัวจาก PQC · ต้อง seed-pos-qc ก่อน) ──
   if (userKey === "manager") await ensureManagerUser(); // POS P2.11U ▸ มติ 11: ผู้จัดการสาขาสีลมของภาพ (สร้าง/ใช้ซ้ำ) ◂
+  // POS P2.11U ▸ fix2 มติ 4: ซาก Membership ผู้จัดการของภาพจากรอบ manager ที่ถูก SIGKILL (cleanup ไม่ได้รัน) — รอบอื่นของร้าน coffee ลบให้
+  //   เฉพาะเมื่อผู้ใช้นั้นไม่มี session ที่ยังไม่หมดอายุ (กันรอบ manager ที่กำลังรันขนาน · session ของรอบ manager อยู่ 1 ชม.) · id ตายตัวเดียวกับ ensureManagerUser
+  else if (tenantKey === "coffee" && !(await prisma.session.findFirst({ where: { userId: MANAGER_VIS.userId, expiresAt: { gt: new Date() } }, select: { id: true } })))
+    await prisma.membership.deleteMany({ where: { userId: MANAGER_VIS.userId, tenantId: T.tenantId } });
+  // ◂
   const user = await prisma.user.findUnique({ where: { id: U.userId }, select: { id: true, email: true } });
   if (!user || user.email !== U.email) throw new Fatal(`ไม่พบผู้ใช้ ${U.email} (${U.userId}) ในฐานนี้ — รัน seed-pos-qc บนฐานเดียวกับเซิร์ฟเวอร์ก่อน`);
   const token = "pos" + Math.random().toString(36).slice(2) + Date.now().toString(36);
