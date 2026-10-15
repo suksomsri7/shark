@@ -73,6 +73,7 @@ import { RegisterDialog } from "./RegisterDialog";
 import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
 import { PayIntentPanel, usePayIntent, type IntentTarget, type PayIntentSetup } from "./PayIntentPanel";
 import { HEAD_OFFICE_BRANCH_CODE, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
+import type { DisplayPayIn } from "@/lib/modules/pos/display-shared"; // POS P2.10 ▸ จอลูกค้า ◂
 
 export type PayPhase = "form" | "sending" | "unknown" | "conflict";
 export type PayError = { code: string; key: string; values?: Record<string, string | number> };
@@ -161,6 +162,7 @@ type Props = {
   splitChip?: string | null;
   /** POS P2.9bU ▸ มติ 2a: สมาชิกในบิล (Customer.id) — แผงมัดจำแสดงมัดจำของสมาชิกนี้ก่อน (registerDepositLookup {memberId}) · ไม่ส่ง = ค้นอย่างเดียว ◂ */
   memberId?: string | null;
+  onDisplayPay?: (v: DisplayPayIn | null) => void; // POS P2.10 ▸ จอลูกค้า (มติ 5): ยอด/วิธี/รอบ/ใบขอรับเงินของกล่องนี้ → หน้าขาย (ไม่ส่ง = ไม่มีจอ) ◂
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
@@ -386,6 +388,26 @@ export function PayDialog(p: Props) {
       flash("pay.intent.locked");
     },
   });
+  // POS P2.10 ▸ จอลูกค้า (มติ 5): ภาพช่องจ่ายของกล่องนี้ (อ่านอย่างเดียว · ไม่แตะ resetBill/sendingRef · ปิดกล่อง = null) — มัดจำ/บัตรของขวัญ/เงินสดทุกแถวนับเป็น "ชำระแล้ว"
+  const displayPayFn = p.onDisplayPay;
+  const displayPayKey = JSON.stringify(
+    displayPayFn
+      ? {
+          method: method === "CASH" || method === "PROMPTPAY" || method === "CARD" ? method : "OTHER",
+          dueSatang: due,
+          roundSatang: roundAmount > 0 ? roundAmount : Math.max(remaining, 0),
+          paidSatang: paid,
+          remainingSatang: remaining,
+          ...(method === "CASH" && entrySatang !== null && entrySatang > 0 ? { cashReceivedSatang: entrySatang, changeSatang: plan.change } : {}),
+          ...(intentMode && pi.intent ? { intentId: pi.intent.id } : {}),
+        }
+      : null,
+  );
+  useEffect(() => {
+    displayPayFn?.(JSON.parse(displayPayKey) as DisplayPayIn | null);
+  }, [displayPayFn, displayPayKey]);
+  useEffect(() => () => displayPayFn?.(null), [displayPayFn]);
+  // ◂
   /** ใบของรอบนี้จ่ายแล้วและยอดตรงรอบนี้ ⇒ ยืนยัน/แยกจ่ายได้ · ยอด/วิธีล็อก */
   /** แผงใบขอรับเงินแสดงอยู่ (คอลัมน์ขวาใช้ระยะกระชับ) */
   const panelOn = intentMode && !!p.intent;

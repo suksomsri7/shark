@@ -154,6 +154,11 @@
 //   products-branch-filter · products-branch-copy (เจ้าของ · ไม่กดคัดลอก) · products-branch-compare · products-dead-row-note · products-manager-branch (ผู้จัดการ) ·
 //   reports-channels · settings-receipt-branch (เจ้าของ) · stock-shared-inventory — ตารางใน P211U_PLAN · fixture/เก็บกวาดใน ensureP211uFixture/cleanupP211u ·
 //   --user manager = ผู้จัดการ{สาขาสีลม} ของภาพ (User + Membership MANAGER สร้าง/ใช้ซ้ำก่อน mint session · ทางเข้าเดียวกับ owner/cashier) — ใช้ได้เฉพาะ wo p2.11u ◂
+// POS P2.10 ▸ จอลูกค้า (มติ 11 · wo p2.10 · --states · เจ้าของร้าน · ไม่ส่ง --page = settings + display · th + LOCALE=en):
+//   หน้า display (/d · หน้าสาธารณะ) 1280×800 + 1024×768 (en = 1280): display-pair · display-idle · display-cart · display-member-stamps ·
+//   display-paying-promptpay · display-paying-cash · display-paying-card · display-done · display-stale · display-unsupported · display-live (1280 เท่านั้น) ·
+//   หน้า settings 3 ขนาด: settings-display-unpaired · settings-display-code · settings-display-online — ตารางใน P210_PLAN · fixture/เก็บกวาดใน
+//   ensureP210Fixture/prepP210/cleanupP210 · ไม่มี --states = หน้า display ภาพเดียวต่อขนาด (ฟอร์มจับคู่) ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -163,7 +168,7 @@
 //    (snap chromium ทิ้งโปรไฟล์ ~GB ต่อรอบ — เคยทำดิสก์ VPS 99%) · ลบเฉพาะของ pid นี้ ห้ามกวาด /tmp
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { PQC, POS_PAGES, POS_VIEWPORTS, type PosPage } from "./pos-qc-env.mjs";
+import { PQC, POS_PAGES, POS_VIEWPORTS, POS_DISPLAY_VIEWPORTS, type PosPage } from "./pos-qc-env.mjs"; // POS P2.10 ▸ + POS_DISPLAY_VIEWPORTS ◂
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 
@@ -182,6 +187,8 @@ const onlyPage = flag("--page");
 // POS P2.11U ▸ มติ 11: wo p2.11u = สถานะหลายสาขาของหน้า products/reports/settings/stock เท่านั้น (fix1 มติ 4: ชิปบิลถูกถอด — ไม่มี sales) (ไม่ส่ง --page = 4 หน้านี้) ◂
 const P211U_WO = /^p2\.?11u/i.test(WO ?? "");
 const P211U_PAGES = ["products", "reports", "settings", "stock"] as const satisfies readonly PosPage[];
+// POS P2.10 ▸ มติ 11: wo p2.10 = จอลูกค้า (หน้า display /d) + บล็อกจอลูกค้าของหน้าตั้งค่า (ไม่ส่ง --page = settings + display) ◂
+const P210_WO = /^p2\.?10(?![0-9])/i.test(WO ?? "");
 
 function die(msg: string): never {
   console.error(`❌ ${msg}`);
@@ -208,7 +215,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P211U_WO ? [...P211U_PAGES] : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -234,18 +241,20 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   orders: { owner: 200, cashier: 200, manager: "record" },
   // POS P2.6U ▸ จอครัว: แคชเชียร์ QC มี pos.sale.create (อ่านบอร์ดได้ — NEED.read) ⇒ หน้า 200 · ไม่มี restaurant.kds.* ⇒ ปุ่มปิด + tooltip ◂
   kds: { owner: 200, cashier: 200, manager: "record" },
+  // POS P2.10 ▸ จอลูกค้า /d: หน้าสาธารณะ (ไม่อ่าน session) ⇒ 200 ทุกบทบาท ◂
+  display: { owner: 200, cashier: 200, manager: "record" },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
-const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" || p === "orders" || p === "kds" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂ · POS P2.8U ▸ + orders ◂
+const pathOf = (p: PosPage) => p === "display" ? `/d${LOCALE_EN ? "?lang=en" : ""}` /* POS P2.10 */ : `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" || p === "orders" || p === "kds" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂ · POS P2.8U ▸ + orders ◂
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
 // ── POS P1.3 ▸ แผนสถานะของหน้าขายใหม่ ──
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
-type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey; // POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P210Key; // POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -627,6 +636,32 @@ const p211uPath = (k: P211uKey): string =>
     : k === "stock-shared-inventory"
     ? `/app/sys/${SYS}/pos/stock?unit=${encodeURIComponent(unitId)}`
     : `/app/sys/${SYS}/pos/products?unit=${encodeURIComponent(unitId)}`;
+// ── POS P2.10 ▸ จอลูกค้า (มติ 11 · wo p2.10 · --states · เจ้าของร้าน): หน้า display 1280×800 + 1024×768 (LOCALE=en = 1280 เท่านั้น) · หน้าตั้งค่า 3 ขนาด ◂
+type P210Key = "settings-display-unpaired" | "settings-display-code" | "settings-display-online" | "display-pair" | "display-idle" | "display-cart" | "display-member-stamps" | "display-paying-promptpay" | "display-paying-cash" | "display-paying-card" | "display-done" | "display-stale" | "display-unsupported" | "display-live";
+const P210_DVP: readonly Device[] = ["display", "ipad-land"];
+const P210_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P210_PLAN: { key: P210Key; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "settings-display-unpaired", page: "settings", devices: P210_D3, users: ["owner"], note: "17B เครื่อง \"เคาน์เตอร์ 1\" (fixture) → บล็อก \"จอลูกค้า\": ยังไม่ได้จับคู่ + ปุ่มเปิดจอลูกค้า" },
+  { key: "settings-display-code", page: "settings", devices: P210_D3, users: ["owner"], note: "กด \"เปิดจอลูกค้า\"/\"ขอรหัสใหม่\" → รหัส 8 ตัว + QR ของ <origin>/d?c=<รหัส> + เวลาเหลือ 10 นาที" },
+  { key: "settings-display-online", page: "settings", devices: P210_D3, users: ["owner"], note: "จับคู่ผ่านบริการ + จออ่าน 1 ครั้ง → ออนไลน์ · สวิตช์แสดงแต้ม · ข้อความหน้าพัก · ภาษา · กด \"ยกเลิกการจับคู่\" → กล่องยืนยัน (ไม่กดยืนยัน)" },
+  { key: "display-pair", page: "display", devices: P210_DVP, users: ["owner"], note: "ไม่มีคุกกี้ → ฟอร์มรหัสจับคู่ · พิมพ์ ABCD2345 → \"รหัสจับคู่ไม่ถูกต้องหรือหมดอายุ\"" },
+  { key: "display-idle", page: "display", devices: P210_DVP, users: ["owner"], note: "หน้าพัก: โลโก้ + ชื่อร้าน + สาขา · เคาน์เตอร์ 1 + \"ยินดีต้อนรับ\"" },
+  { key: "display-cart", page: "display", devices: P210_DVP, users: ["owner"], note: "4 บรรทัดเท่าภาพ 11A (ตัวเลือก · ลด ฿10 ของช่วงบ่าย · 250 g) + รวม/ส่วนลดรายการ/คูปอง WELCOME50 · ขวา ยอดสุทธิ ฿625" },
+  { key: "display-member-stamps", page: "display", devices: P210_DVP, users: ["owner"], note: "สวัสดีคุณสมชาย · Gold · 1,240 แต้ม · แถบสแตมป์ 8/10 \"ใกล้ได้รางวัล\"" },
+  { key: "display-paying-promptpay", page: "display", devices: P210_DVP, users: ["owner"], note: "ภาพ 11A: ชำระแล้ว ฿300 · คงเหลือ ฿325 + QR พร้อมเพย์นิ่งยอด ฿325 (เซิร์ฟเวอร์สร้าง) · แถบ 7/10" },
+  { key: "display-paying-cash", page: "display", devices: P210_DVP, users: ["owner"], note: "เงินสดรอบ 2: รับ ฿500 · ทอน ฿200" },
+  { key: "display-paying-card", page: "display", devices: P210_DVP, users: ["owner"], note: "บัตร (ไม่มีใบขอรับเงิน) → ไอคอนบัตร + \"แตะหรือเสียบบัตรที่เครื่องรับบัตร\"" },
+  { key: "display-done", page: "display", devices: P210_DVP, users: ["owner"], note: "⚠️ บิลเงินสด 1 ใบในกะของเครื่อง (fixture · ไม่ลบ) → ขอบคุณคุณสมชาย + เงินทอน ฿200 + ได้รับ 62 แต้ม + QR ใบเสร็จออนไลน์" },
+  { key: "display-stale", page: "display", devices: P210_DVP, users: ["owner"], note: "ภาพตะกร้าที่ stateAt เก่า 121 วิ (หน้าขายหลุด) → หน้าพัก" },
+  { key: "display-unsupported", page: "display", devices: P210_DVP, users: ["owner"], note: "แท็บเล็ตเก่า: บังคับกฎ @supports ด้วย style tag → หน้าแจ้งอัปเดตเบราว์เซอร์ (HTML ล้วน · ไทย + อังกฤษ)" },
+  { key: "display-live", page: "display", devices: ["display"], users: ["owner"], note: "จับคู่กับเครื่องของรอบ (DEVICE_ID · กะ + โทเคนผู้ขาย) → แท็บหน้าขายจริงใส่อเมริกาโน่×2 + ลาเต้ → จอเห็นบรรทัดภายใน 20 วิ (hook use-display-publish)" },
+];
+const p210On = STATES_ON && tenantKey === "coffee" && P210_WO;
+const P210_KEYS: ReadonlySet<string> = new Set(P210_PLAN.map((s) => s.key));
+const isP210State = (k: StateKey | null | undefined): k is P210Key => !!k && P210_KEYS.has(k);
+const p210Path = (k: P210Key): string =>
+  k.startsWith("settings-") ? `/app/sys/${SYS}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}` : `/d${LOCALE_EN && k === "display-pair" ? "?lang=en" : ""}`;
+// ◂
 const p29uPath = (k: P29uRegKey | P29uOtherKey): string =>
   k === "refund-to-card" ? `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}` : k === "settings-tip-ledger" ? `/app/sys/${SYS}/pos/settings?tab=payments&unit=${encodeURIComponent(unitId)}` : pathOf("register");
 // POS P2.9bU ◂
@@ -671,7 +706,7 @@ const isRpubState = (k: StateKey): k is RpubStateKey => RPUB_STATE_KEYS.has(k);
 const RPUB_MISSING_TOKEN = "ZZZZZZZZZZZZ";
 /** F3: เครื่องคงที่ (ไม่ผูก pid) — รอบซ้ำไม่สร้างเครื่อง/กะเพิ่ม · กะเปิดเฉพาะเมื่อต้องขายบิลใหม่ */
 const RPUB_DEVICE_ID = "posqc-p111u-dev";
-type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string; path?: string; expect?: number };
+type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number] | (typeof POS_DISPLAY_VIEWPORTS)[number] /* POS P2.10 */; state: StateKey | null; file: string; path?: string; expect?: number };
 // POS P1.18U ▸ fixture ของภาพ 19ก (ร้านไม่มีสินค้า) — path จริงรู้หลังหา/สร้างระบบ (emptyPath) ◂
 // POS P1.18U ▸ แก้รอบ 1 F7: id สาขา/รหัสเครื่องผูก pid (`posqc-vis-empty-<pid>`) — รอบ th/en ที่รันพร้อมกันไม่ลบแถวของกันและกัน ·
 //   ระบบ POS หาโดยลิงก์ของสาขารอบนี้ (ไม่หาด้วยชื่อ) · ซากรอบที่ถูก kill เกิน 1 ชม. ถูกกวาดตอนสร้าง ◂
@@ -702,8 +737,17 @@ const RPUB_VIEWPORT = POS_VIEWPORTS.find((v) => v.name === "mobile")!;
 const rpubOn = tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && pages.includes("receipt-public");
 const rpubPlan = RPUB_STATE_PLAN.filter((st) => STATES_ON || st.key === "rpub-paid");
 const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
+  // POS P2.10 ▸ มติ 11: wo p2.10 + --states = สถานะจอลูกค้าของหน้านี้ (display: 1280×800 + 1024×768 · LOCALE=en = 1280 · settings: 3 ขนาด · en = 1440) ◂
+  p210On && (p === "display" || p === "settings")
+    ? P210_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        (p === "display" ? POS_DISPLAY_VIEWPORTS.filter((v) => st.devices.includes(v.name) && (!LOCALE_EN || v.name === "display")) : viewports.filter((v) => st.devices.includes(v.name))).map(
+          (v): Job => ({ page: p, v, state: st.key, path: p210Path(st.key), file: `${OUT}/${p}-${st.key.startsWith(`${p}-`) ? st.key.slice(p.length + 1) : st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` }),
+        ),
+      )
+    : p === "display"
+    ? (LOCALE_EN ? POS_DISPLAY_VIEWPORTS.filter((v) => v.name === "display") : [...POS_DISPLAY_VIEWPORTS]).map((v): Job => ({ page: p, v, state: null, path: pathOf(p), file: `${OUT}/${p}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })) // POS P2.10 ▸ ไม่มี --states = ฟอร์มจับคู่ ◂
   // POS P2.11U ▸ มติ 11: wo p2.11u + --states = สถานะหลายสาขาของหน้านี้ตามผู้ใช้ (หน้าอื่น = ไม่มีงาน) ◂
-  p211uOn
+  : p211uOn
     ? P211U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
@@ -886,9 +930,11 @@ if (LIST) {
   for (const st of [...P25U_TABLES_PLAN, ...P25U_REG_PLAN]) row(st.key, st.devices, st.note);
   console.log("products/reports/settings/stock P2.11U (wo p2.11u --states · owner + manager):"); // POS P2.11U
   for (const st of P211U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
+  console.log("settings/display P2.10 (wo p2.10 --states · เจ้าของ):"); // POS P2.10
+  for (const st of P210_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P210_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1041,6 +1087,17 @@ if (DRY) {
       console.log(
         `  P2.11U: fixture (สาขา ${unitKey}) — ลาเต้ (STORE, สาขา) + แถวเลิกใช้ของช่องทาง ZZVIS (saveChannel → ตั้งราคา → archiveChannel · คืนแถวเดิม + ลบช่องทางของรอบหลังงานสุดท้าย/finally/สัญญาณ) · ` +
           `บิล PAID วันนี้ 3 ใบ (คีย์ต่อวัน · ไม่ลบ) · ใบเสร็จสาขา 00001 + สมุด ABB ชั่วคราว (คืนค่า) · คลังร่วม = seed QC (ไม่มี = ผูกแล้วลบลิงก์)`,
+      );
+    }
+    // POS P2.10 ▸ มติ 11 ◂
+    if (jobs.some((j) => isP210State(j.state))) {
+      console.log(`สถานะจอลูกค้า P2.10 (${userKey}):`);
+      for (const st of P210_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(27)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P2.10: fixture (สาขา ${unitKey}) — เครื่อง posqc-vis-p210-<pid> "เคาน์เตอร์ 1" (registerDevice · เพิกถอนตอนเก็บกวาด) · จับคู่จอผ่าน enable/pairCustomerDisplay (คุกกี้ pos_display ของแท็บ) · ` +
+          `ภาพจอป้อนด้วย publishDisplayState (ตัวเลขเท่าภาพ 11A · stale = เลื่อน stateAt 121 วิ) · ⚠️ display-done = กะของเครื่อง + บิลเงินสด 1 ใบ (ไม่ลบ · ปิดกะตอนเก็บกวาด) · ` +
+          `paying-promptpay = PromptPay ID ของร้าน QC (P1.7U · คืนค่า) · live = เครื่อง ${DEVICE_ID} (PIN/โทเคน P1.15U + กะของเจ้าของ) + แท็บหน้าขายจริง · ` +
+          `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ยกเลิกจับคู่จอ · ปิดกะ · เพิกถอนเครื่อง · ลบถังเพดานแลกรหัสของรอบ`,
       );
     }
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
@@ -1304,6 +1361,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P29U.log.length) console.error(`${P29U.ok ? "🧹" : "⚠️"} P2.9U: ${P29U.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.9U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.10: ยกเลิกจับคู่จอ · ปิดกะ + เพิกถอนเครื่องของภาพจอลูกค้า (เหมือน finally)
+      try {
+        await cleanupP210();
+        if (P210.log.length) console.error(`${P210.ok ? "🧹" : "⚠️"} P2.10: ${P210.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.10 ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.11U: แถวราคาลาเต้ · ช่องทาง ZZVIS · ค่าใบเสร็จของสาขา · ลิงก์คลังของรอบ (เหมือน finally)
       try {
@@ -1851,6 +1915,7 @@ async function cleanupP115(): Promise<void> {
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isP210State(state)) return runP210State(page, state, device); // POS P2.10
   if (isP211uState(state)) return runP211uState(page, state, device); // POS P2.11U
   if (isP29uState(state)) return runP29uState(page, state, device); // POS P2.9U
   if (isP29buState(state)) return runP29buState(page, state, device); // POS P2.9bU
@@ -6851,6 +6916,353 @@ async function runP23uPendingCuts(page: Any): Promise<void> {
 }
 // ◂
 
+// ═══════════════════ POS P2.10 ▸ จอลูกค้า (มติ 11 · wo p2.10 · --states · เจ้าของร้าน · th + LOCALE=en) ═══════════════════
+//   fixture (ensureP210Fixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
+//   • เครื่อง P210_DEV "เคาน์เตอร์ 1" (registerDevice · เจ้าของ) — หน้าตั้งค่าเลือกเครื่องนี้ (localStorage) · จอที่จับคู่กับเครื่องนี้ = ภาพจอทุกสถานะที่ป้อนด้วย publishDisplayState
+//   • display-done: กะของ P210_DEV (openShift ของบริการ) + บิลเงินสด 1 ใบ (submitRegisterSale · ไม่ลบ แบบ sale-done) ⇒ QR ใบเสร็จออนไลน์ของบิลนั้น
+//   • display-paying-promptpay: PromptPay ID ของร้าน QC (ensureQcPromptPay ของ P1.7U · คืนค่าใน cleanupIntents) ⇒ QR นิ่งยอดรอบนี้
+//   • display-live: จอจับคู่กับเครื่องของรอบ DEVICE_ID (seedP115Once + กะจาก openShiftAsOwner) แล้วหน้าขายจริงในแท็บที่สองใส่ของ → จอเห็นบรรทัด
+//   เก็บกวาด (cleanupP210 · หลังงานสุดท้าย/finally/สัญญาณ): ยกเลิกการจับคู่จอทั้งสอง · ปิดกะ P210_DEV (นับ = ยอดคาด) · เพิกถอนเครื่อง P210_DEV ·
+//   ลบถังเพดานแลกรหัสของรอบ (pos:display:pair:<P210_IP>) · บิลคงอยู่ ◂
+const P210_DEV = `posqc-vis-p210-${process.pid}`;
+const P210_IP = `posqc-vis-p210-${process.pid}`;
+const P210_COOKIE = "pos_display";
+const P210 = {
+  done: false,
+  error: null as string | null,
+  deviceRowId: "",
+  token: "",
+  liveToken: "",
+  shiftId: "",
+  sale: null as null | { saleId: string; receiptNo: string | null },
+  seq: 0,
+  log: [] as string[],
+  ok: true,
+  cleaned: false,
+};
+const p210Ctx = (deviceCode?: string) => ({ tenantId: T.tenantId, systemId: SYS, unitId, ...(deviceCode ? { deviceId: deviceCode } : {}) });
+
+async function ensureP210Fixture(): Promise<void> {
+  if (P210.done || P210.error) return;
+  try {
+    const { registerDevice } = await import("@/lib/modules/pos/device");
+    const owner = await ownerActor();
+    const rg = await registerDevice(p210Ctx(), owner, { name: "เคาน์เตอร์ 1", deviceCode: P210_DEV });
+    if (!rg.ok) throw new StepError(`ลงทะเบียนเครื่อง ${P210_DEV}: ${rg.code}`);
+    P210.deviceRowId = rg.device.id;
+    P210.log.push(`เครื่อง ${P210_DEV} (เคาน์เตอร์ 1)`);
+    if (jobs.some((j) => j.state === "display-done")) {
+      const { openShift } = await import("@/lib/modules/pos/shift");
+      const { quoteRegisterCart, submitRegisterSale } = await import("@/lib/modules/pos/register");
+      const o = await openShift(p210Ctx(P210_DEV), owner, { deviceId: P210_DEV, deviceLabel: "เคาน์เตอร์ 1", floatSatang: 0 });
+      if (!o.ok) throw new StepError(`เปิดกะ ${P210_DEV}: ${o.code}`);
+      const sh = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, deviceId: P210_DEV, status: "OPEN" }, select: { id: true } });
+      P210.shiftId = sh?.id ?? "";
+      const cart = { lines: [{ name: "บิลภาพจอลูกค้า (QC P2.10)", qty: 1, unitPriceSatang: 62_500 }] };
+      const q = await quoteRegisterCart(p210Ctx(P210_DEV), owner, cart);
+      const g = q.ok ? q.grandTotalSatang : 62_500;
+      const s = await submitRegisterSale(p210Ctx(P210_DEV), owner, { ...cart, idempotencyKey: `posqc-vis-p210-${process.pid}-done`, expectedGrandTotalSatang: g, payMethods: [{ type: "CASH", amountSatang: g }], cashReceivedSatang: g });
+      if (!s.ok) throw new StepError(`ขายบิลภาพ: ${s.code}`);
+      P210.sale = { saleId: s.saleId, receiptNo: s.receiptNo };
+      P210.log.push(`กะ ${P210.shiftId} + บิล ${s.receiptNo ?? s.saleId} (เงินสด ฿${g / 100} · ไม่ลบ)`);
+    }
+    if (jobs.some((j) => j.state === "display-paying-promptpay")) {
+      await ensureQcPromptPay();
+      P210.log.push(`PromptPay: ${INTENTS.ppNote}`);
+    }
+    P210.done = true;
+  } catch (e) {
+    P210.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+
+/** จับคู่จอกับเครื่อง (enable → pair ผ่านบริการ) — คืน token · LOCALE=en ⇒ ภาษาบนจอ = en */
+async function p210PairDevice(deviceRowId: string): Promise<string> {
+  const { enableCustomerDisplay, pairCustomerDisplay, updateCustomerDisplaySettings } = await import("@/lib/modules/pos/display");
+  const owner = await ownerActor();
+  const e = await enableCustomerDisplay(p210Ctx(), owner, { deviceId: deviceRowId });
+  if (!e.ok) throw new StepError(`เปิดจอลูกค้า: ${e.code}`);
+  const p = await pairCustomerDisplay({ code: e.pairCode }, { ip: P210_IP });
+  if (!p.ok) throw new StepError(`จับคู่จอ: ${p.code}`);
+  const s = await updateCustomerDisplaySettings(p210Ctx(), owner, { deviceId: deviceRowId, locale: LOCALE_EN ? "en" : null, showPoints: true, idleText: null });
+  if (!s.ok) throw new StepError(`ค่าตั้งจอ: ${s.code}`);
+  return p.token;
+}
+
+const P210_LINES = [
+  { qty: 2, name: "ลาเต้", detail: "M · นมโอ๊ต · หวานน้อย", grossSatang: 20_000, discountSatang: 0 },
+  { qty: 1, name: "อเมริกาโน่", detail: "L", grossSatang: 7_000, discountSatang: 0 },
+  { qty: 1, name: "ครัวซองต์อัลมอนด์", grossSatang: 9_500, discountSatang: 1_000, discountLabel: "ของช่วงบ่าย" },
+  { qty: 1, name: "เมล็ดกาแฟ 250 g", grossSatang: 32_000, discountSatang: 0 },
+];
+const P210_TOTALS = { subtotalSatang: 68_500, lineDiscountSatang: 1_000, billDiscountSatang: 0, coupon: { code: "WELCOME50", satang: 5_000 }, member: [], serviceChargeSatang: 0, grandTotalSatang: 62_500 };
+const P210_MEMBER = { firstName: "สมชาย ใจดี", tier: "Gold", points: 1_240 };
+const P210_STAMP = { name: "สะสมครบ 10 แก้ว ฟรี 1 แก้ว", stamps: 6, slots: 10, toAdd: 1 };
+/** ภาพที่ป้อนให้จอ (ตัวเลขเท่าภาพ 11 แผง A) */
+function p210StateOf(k: P210Key): Record<string, unknown> | null {
+  const cart = { lines: P210_LINES, totals: P210_TOTALS };
+  switch (k) {
+    case "display-idle":
+      return { phase: "idle" };
+    case "display-cart":
+    case "display-stale":
+      return { phase: "cart", ...cart };
+    case "display-member-stamps":
+      return { phase: "cart", member: P210_MEMBER, ...cart, stamp: { ...P210_STAMP, stamps: 7 } }; // ใกล้ได้รางวัล (8/10)
+    case "display-paying-promptpay":
+      return { phase: "paying", member: P210_MEMBER, ...cart, stamp: P210_STAMP, pay: { method: "PROMPTPAY", dueSatang: 62_500, roundSatang: 32_500, paidSatang: 30_000, remainingSatang: 32_500 } };
+    case "display-paying-cash":
+      return { phase: "paying", member: P210_MEMBER, ...cart, stamp: P210_STAMP, pay: { method: "CASH", dueSatang: 62_500, roundSatang: 30_000, paidSatang: 32_500, remainingSatang: 30_000, cashReceivedSatang: 50_000, changeSatang: 20_000 } };
+    case "display-paying-card":
+      return { phase: "paying", ...cart, pay: { method: "CARD", dueSatang: 62_500, roundSatang: 62_500, paidSatang: 0, remainingSatang: 62_500 } };
+    case "display-done":
+      return { phase: "done", member: P210_MEMBER, ...cart, stamp: P210_STAMP, done: { receiptNo: P210.sale?.receiptNo ?? null, ...(P210.sale ? { saleId: P210.sale.saleId } : {}), changeSatang: 20_000, pointsEarned: 62 } };
+    default:
+      return null;
+  }
+}
+async function p210Publish(state: Record<string, unknown>): Promise<void> {
+  const { publishDisplayState } = await import("@/lib/modules/pos/display");
+  const { displaySeqNow } = await import("@/lib/modules/pos/display-shared");
+  P210.seq = displaySeqNow(Date.now(), P210.seq);
+  const r = await publishDisplayState(p210Ctx(P210_DEV), await ownerActor(), { deviceCode: P210_DEV, seq: P210.seq, state: state as never });
+  if (!r.ok || !r.paired || !r.written) throw new StepError(`publishDisplayState: ${r.ok ? `paired ${r.paired} written ${"written" in r ? r.written : "-"}` : r.code}`);
+}
+const p210CookieTarget = () => ({ name: P210_COOKIE, url: `${BASE}/d`, path: "/d" });
+async function p210SetCookie(page: Any, token: string): Promise<void> {
+  await page.deleteCookie(p210CookieTarget()).catch(() => undefined);
+  await page.setCookie({ ...p210CookieTarget(), value: token, httpOnly: true, secure: BASE.startsWith("https:") });
+}
+
+/** ก่อนเปิดหน้า: fixture · จับคู่ · คุกกี้ของจอ · ภาพที่ป้อน — พังไม่โยน (เก็บเหตุผลให้ runP210State โยนเป็นขั้นตอนพัง) */
+const P210_PREP_ERR = new Map<Any, string>();
+async function prepP210(page: Any, k: P210Key): Promise<void> {
+  try {
+    await ensureP210Fixture();
+    if (P210.error) throw new StepError(`fixture P2.10: ${P210.error}`);
+    if (k === "settings-display-unpaired" || k === "settings-display-code") return;
+    if (k === "display-pair") {
+      await page.deleteCookie(p210CookieTarget()).catch(() => undefined);
+      return;
+    }
+    if (k === "display-live") {
+      if (!P115.deviceRowId) throw new StepError(`ไม่มีเครื่องของรอบ (${P115.error ?? "seedP115Once"})`);
+      if (!P210.liveToken) P210.liveToken = await p210PairDevice(P115.deviceRowId);
+      await p210SetCookie(page, P210.liveToken);
+      return;
+    }
+    if (!P210.token) P210.token = await p210PairDevice(P210.deviceRowId);
+    if (k === "settings-display-online") {
+      const { readCustomerDisplay } = await import("@/lib/modules/pos/display");
+      const r = await readCustomerDisplay({ token: P210.token });
+      if (!r.ok) throw new StepError(`อ่านจอ: ${r.code}`);
+      return;
+    }
+    await p210SetCookie(page, P210.token);
+    const st = k === "display-unsupported" ? p210StateOf("display-cart") : p210StateOf(k);
+    if (st) await p210Publish(st);
+    if (k === "display-stale") {
+      // หน้าขายเงียบ 121 วิ (เลื่อน stateAt ของแถวจอในร้าน QC — สคริปต์เท่านั้น · ผู้เขียนเดียวของ src/ คือ pos/display.ts)
+      await prisma.posCustomerDisplay.updateMany({ where: { tenantId: T.tenantId, deviceId: P210.deviceRowId, status: "ACTIVE" }, data: { stateAt: new Date(Date.now() - 121_000) } });
+    }
+  } catch (e) {
+    P210_PREP_ERR.set(page, e instanceof Error ? e.message.slice(0, 200) : String(e));
+  }
+}
+async function p210Phase(page: Any, phase: string, timeout = 15_000): Promise<void> {
+  await page.waitForSelector(`[data-testid="pos-display"][data-phase="${phase}"]`, { timeout }).catch(() => {
+    throw new StepError(`จอไม่อยู่ในสถานะ ${phase}`);
+  });
+}
+async function p210Img(page: Any, testid: string): Promise<void> {
+  await page.waitForFunction((id: string) => !!document.querySelector(`[data-testid="${id}"] img`), { timeout: 10_000 }, testid).catch(() => {
+    throw new StepError(`ไม่มีภาพ QR ใน ${testid}`);
+  });
+}
+
+async function runP210State(page: Any, k: P210Key, _device: Device): Promise<void> {
+  const pre = P210_PREP_ERR.get(page);
+  if (pre) throw new StepError(pre);
+  switch (k) {
+    case "settings-display-unpaired":
+    case "settings-display-code":
+    case "settings-display-online": {
+      await clickEl(page, tid(`pos-device-card-${P210.deviceRowId}`)).catch(() => undefined);
+      await visibleEl(page, tid("pos-settings-display"), 0, 15_000);
+      if (k === "settings-display-unpaired") {
+        await page.waitForSelector('[data-testid="pos-settings-display-status"][data-paired="0"]', { timeout: 10_000 }).catch(() => {
+          throw new StepError("สถานะจอไม่ใช่ \"ยังไม่ได้จับคู่\"");
+        });
+      } else if (k === "settings-display-code") {
+        await clickEl(page, tid("pos-settings-display-enable"));
+        await visibleEl(page, tid("pos-settings-display-code"), 0, 10_000);
+        await page.waitForFunction(() => !!document.querySelector('[data-testid="pos-settings-display-qr"] img'), { timeout: 10_000 }).catch(() => undefined);
+      } else {
+        await page.waitForSelector('[data-testid="pos-settings-display-status"][data-online="1"]', { timeout: 10_000 }).catch(() => {
+          throw new StepError("สถานะจอไม่ใช่ \"ออนไลน์\"");
+        });
+        await clickEl(page, tid("pos-settings-display-revoke"));
+        await visibleEl(page, tid("pos-settings-display-revoke-dialog"), 0, 10_000);
+      }
+      const h = await visibleEl(page, tid("pos-settings-display"));
+      await h.evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+      return;
+    }
+    case "display-pair":
+      await p210Phase(page, "pair");
+      await typeInto(page, tid("pos-display-pair-code"), "ABCD2345");
+      await clickEl(page, tid("pos-display-pair-submit"));
+      await visibleEl(page, tid("pos-display-pair-error"), 0, 10_000);
+      return;
+    case "display-idle":
+    case "display-stale":
+      await p210Phase(page, "idle");
+      await visibleEl(page, tid("pos-display-idle"));
+      return;
+    case "display-cart":
+      await p210Phase(page, "cart");
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid="pos-display-line"]').length === 4, { timeout: 10_000 }).catch(() => {
+        throw new StepError("จอไม่ได้ 4 บรรทัด");
+      });
+      return;
+    case "display-member-stamps":
+      await p210Phase(page, "cart");
+      await visibleEl(page, tid("pos-display-greeting"));
+      await visibleEl(page, tid("pos-display-stamp"));
+      return;
+    case "display-paying-promptpay":
+      await p210Phase(page, "paying");
+      await p210Img(page, "pos-display-pay-qr");
+      await visibleEl(page, tid("pos-display-paid"));
+      return;
+    case "display-paying-cash":
+      await p210Phase(page, "paying");
+      await visibleEl(page, tid("pos-display-cash"));
+      return;
+    case "display-paying-card":
+      await p210Phase(page, "paying");
+      await visibleEl(page, tid("pos-display-card"));
+      return;
+    case "display-done":
+      await p210Phase(page, "done");
+      await visibleEl(page, tid("pos-display-done"));
+      if (!P210.sale) throw new StepError("ไม่มีบิลภาพ (fixture)");
+      await p210Img(page, "pos-display-receipt-qr");
+      return;
+    case "display-unsupported":
+      await page.addStyleTag({ content: "#pos-display-unsupported{display:block!important}#pos-display-app{display:none!important}" });
+      await visibleEl(page, tid("pos-display-unsupported"));
+      return;
+    case "display-live": {
+      if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC (อเมริกาโน่เย็น/ลาเต้ร้อน)");
+      const reg = await BROWSER.newPage();
+      try {
+        await pinDevice(reg, DEVICE_ID);
+        const json = await staffSessionJson(userKey, DEVICE_ID).catch(() => null);
+        if (json) await injectStaff(reg, DEVICE_ID, json);
+        await reg.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+        await reg.setCookie(...USER_COOKIES);
+        await reg.goto(`${BASE}${pathOf("register")}`, { waitUntil: "networkidle2", timeout: 60_000 });
+        await ensureShift(reg);
+        for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(reg, tid(`pos-reg-product-${id}`));
+        await expectLines(reg, 2);
+        await waitPayReady(reg);
+        // POS P2.10 ▸ fix1 F8: แท็บหน้าขายที่เปิดใหม่ทำให้แท็บจอเป็น hidden (headless ใหม่ = เหมือนเบราว์เซอร์จริง) → จอหยุดโพลตามแบบ
+        //    (ซ่อน = หยุด) — ภาพจริงคือแท็บเล็ตอีกเครื่องที่เปิดจออยู่ตลอด ⇒ ดึงแท็บจอขึ้นหน้าก่อนรอ (visibilitychange → อ่านทันที)
+        await page.bringToFront();
+        const seen = await page
+          .waitForFunction(() => document.querySelectorAll('[data-testid="pos-display-line"]').length >= 2, { timeout: 20_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (!seen) {
+          const diag = await p210LiveDiag(page, reg);
+          console.log(`  ⚠️  display-live วินิจฉัย: ${diag}`);
+          throw new StepError(`จอไม่เห็นบรรทัดจากหน้าขายจริงภายใน 20 วิ · ${diag}`.slice(0, 900));
+        } // ◂
+      } finally {
+        await reg.close().catch(() => undefined);
+      }
+      return;
+    }
+  }
+}
+
+// POS P2.10 ▸ fix1 F8: วินิจฉัย display-live เมื่อจอไม่เห็นบรรทัด — หน้าขาย (ผลส่งล่าสุด · รหัสเครื่อง) · จอ (การมองเห็น · phase · ผลอ่านล่าสุด) ·
+//    แถวจอใน DB (stateSeq · stateAt · phase · จำนวนบรรทัด) · readCustomerDisplay ตรงของโมดูล (seq · ver · phase · บรรทัด)
+async function p210LiveDiag(page: Any, reg: Any): Promise<string> {
+  const part = async (label: string, fn: () => Promise<unknown>): Promise<string> => {
+    try {
+      return `${label} ${JSON.stringify(await fn())}`;
+    } catch (e) {
+      return `${label} ✗ ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`;
+    }
+  };
+  const out = [
+    await part("หน้าขาย", () =>
+      reg.evaluate(() => {
+        const w = window as unknown as { __posDisplayPublish?: unknown };
+        return { vis: document.visibilityState, publish: w.__posDisplayPublish ?? null, lines: document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]').length };
+      }),
+    ),
+    await part("จอ", () =>
+      page.evaluate(() => {
+        const w = window as unknown as { __posDisplayRead?: unknown };
+        const el = document.querySelector('[data-testid="pos-display"]');
+        return { vis: document.visibilityState, phase: el?.getAttribute("data-phase") ?? null, read: w.__posDisplayRead ?? null, lines: document.querySelectorAll('[data-testid="pos-display-line"]').length };
+      }),
+    ),
+    await part("แถวจอ", async () => {
+      const row = await prisma.posCustomerDisplay.findFirst({ where: { tenantId: T.tenantId, deviceId: P115.deviceRowId, status: "ACTIVE" }, select: { stateSeq: true, stateAt: true, state: true, lastPolledAt: true } });
+      if (!row) return null;
+      const st = (row.state ?? {}) as { phase?: string; lines?: unknown[] };
+      return { seq: row.stateSeq, stateAt: row.stateAt?.toISOString() ?? null, phase: st.phase ?? null, lines: Array.isArray(st.lines) ? st.lines.length : 0, lastPolledAt: row.lastPolledAt?.toISOString() ?? null };
+    }),
+    await part("read", async () => {
+      const { readCustomerDisplay } = await import("@/lib/modules/pos/display");
+      const r = await readCustomerDisplay({ token: P210.liveToken });
+      return r.ok ? { seq: r.seq, ver: r.ver, phase: r.changed ? r.view.phase : null, lines: r.changed ? r.view.lines.length : null } : { code: r.code };
+    }),
+  ];
+  return out.join(" · ");
+}
+// ◂
+
+async function cleanupP210(): Promise<void> {
+  if (P210.cleaned || (!P210.deviceRowId && !P210.liveToken)) return;
+  P210.cleaned = true;
+  try {
+    const { revokeCustomerDisplay } = await import("@/lib/modules/pos/display");
+    const owner = await ownerActor();
+    for (const devRow of [P210.deviceRowId, P210.liveToken ? P115.deviceRowId : ""].filter(Boolean)) {
+      const r = await revokeCustomerDisplay(p210Ctx(), owner, { deviceId: devRow });
+      P210.log.push(r.ok ? `ยกเลิกจับคู่จอของเครื่อง ${devRow}` : r.code === "NOT_FOUND" ? `เครื่อง ${devRow} ไม่มีจอค้าง` : `⚠️ ยกเลิกจับคู่จอ ${devRow}: ${r.code}`);
+      if (!r.ok && r.code !== "NOT_FOUND") P210.ok = false;
+    }
+  } catch (e) {
+    P210.ok = false;
+    P210.log.push(`⚠️ ยกเลิกจับคู่จอไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+  }
+  if (P210.shiftId) {
+    const c = await closeShiftAsOwner(P210.shiftId, "p210");
+    P210.log.push(c.detail);
+    if (!c.ok) P210.ok = false;
+  }
+  if (P210.deviceRowId) {
+    try {
+      const { revokeDevice } = await import("@/lib/modules/pos/device");
+      const r = await revokeDevice(p210Ctx(), await ownerActor(), { id: P210.deviceRowId });
+      P210.log.push(r.ok ? `เพิกถอนเครื่อง ${P210_DEV}` : `⚠️ เพิกถอนเครื่อง ${P210_DEV}: ${r.code}`);
+      if (!r.ok) P210.ok = false;
+    } catch (e) {
+      P210.ok = false;
+      P210.log.push(`⚠️ เพิกถอนเครื่องไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  }
+  const nb = await prisma.chatRateBucket.deleteMany({ where: { key: `pos:display:pair:${P210_IP}` } }).catch(() => ({ count: -1 }));
+  P210.log.push(`ถังเพดานแลกรหัสของรอบ ${nb.count}`);
+}
+// ◂ POS P2.10
+
 // ═══════════════════ POS P1.7U ▸ ใบขอรับเงินของภาพ (PromptPay ID ของร้าน QC · เก็บกวาดใบของรอบนี้) ═══════════════════
 const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid", "paydlg-promptpay-timeout"]); // POS HF-P1CLOSE ▸ + timeout ◂
 const INTENTS = {
@@ -6993,7 +7405,7 @@ try {
   }
   // POS P1.15U ▸ หน้าขายล็อกเมื่อไม่มีโทเคนผู้ขาย/เครื่องไม่ลงทะเบียน ⇒ ลงทะเบียนเครื่อง + PIN + โทเคน (+ ข้อมูลของสถานะ 13B/21B) ก่อนเปิด chromium ◂
   // HF-VIS-SHIFTS ▸ + เจ้าของที่มีสถานะหน้ากะนอกจาก shifts-noshift (shiftsSale ขายผ่านหน้าขายของ SHIFTS_DEVICE_ID ⇒ ต้องมี PIN/โทเคน) ◂
-  if (jobs.some((j) => j.page === "register" || (j.page === "tables" && !!j.state) || isPaydoneState(j.state) || (userKey === "owner" && j.page === "shifts" && !!j.state && j.state !== "shifts-noshift"))) { // POS P2.4U ▸ + tables (เช็คบิลต้องมีโทเคนผู้ขาย) ◂
+  if (jobs.some((j) => j.page === "register" || j.state === "display-live" /* POS P2.10 */ || (j.page === "tables" && !!j.state) || isPaydoneState(j.state) || (userKey === "owner" && j.page === "shifts" && !!j.state && j.state !== "shifts-noshift"))) { // POS P2.4U ▸ + tables (เช็คบิลต้องมีโทเคนผู้ขาย) ◂
     await seedP115Once();
     console.log(P115.error ? `  ⚠️ ข้อมูลภาพ P1.15U: ${P115.error}` : `  ข้อมูลภาพ P1.15U: เครื่อง ${DEVICE_ID} · PIN ${Object.keys(P115.pins).join("/")} (ไม่พิมพ์ค่า) · บิลพัก ${P115.heldId || "-"}`);
   }
@@ -7047,7 +7459,7 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE_DIRS[0]}`],
   }));
   try {
-    if (STATES_ON && jobs.some((j) => j.state && (j.page === "register" || j.page === "tables" || isP29buState(j.state)))) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 }); // POS P2.4U ▸ + tables ◂ · POS P2.9bU ▸ มัดจำ fixture ต้องมีกะของเครื่อง ◂
+    if (STATES_ON && jobs.some((j) => j.state && (j.page === "register" || j.page === "tables" || j.state === "display-live" /* POS P2.10 */ || isP29buState(j.state)))) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 }); // POS P2.4U ▸ + tables ◂ · POS P2.9bU ▸ มัดจำ fixture ต้องมีกะของเครื่อง ◂
     for (const job of jobs) {
       {
         const p = job.page;
@@ -7055,7 +7467,7 @@ try {
         const page = await browser.newPage();
         await pinDevice(
           page,
-          job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[isPaydoneState(job.state) ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
+          isP210State(job.state) ? P210_DEV /* POS P2.10 */ : job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[isPaydoneState(job.state) ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
         ); // P1.10 U: หน้าตั้งค่าใช้เครื่อง QC 1 (paydone-print = เครื่อง 2 ที่มีกะ) // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         // POS P1.15U ▸ หน้าขาย = โทเคนผู้ขายของเครื่องที่หน้านี้ใช้ (discount-over-sheet = แคชเชียร์ · เพดาน 10%) · ปลดล็อกแถว PIN ที่ lock-pin-locked ตั้งไว้ ◂
@@ -7156,6 +7568,12 @@ try {
           await ensureP211uFixture();
           console.log(P211U.error ? `  ⚠️ fixture P2.11U: ${P211U.error}` : `  fixture P2.11U: ${P211U.log.join(" · ")}`);
         }
+        // POS P2.10 ▸ fixture/จับคู่/คุกกี้ของจอ/ภาพที่ป้อน ก่อนเปิดหน้า (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP210State(job.state)) {
+          const first = !P210.done && !P210.error;
+          await prepP210(page, job.state);
+          if (first) console.log(P210.error ? `  ⚠️ fixture P2.10: ${P210.error}` : `  fixture P2.10: ${P210.log.join(" · ")}`);
+        }
         // POS P2.4U ▸ fixture โต๊ะก่อนงานแรกที่ใช้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && !P24U.done && !P24U.error) {
           await ensureP24uFixture();
@@ -7220,6 +7638,7 @@ try {
         if (job.state && isP29uState(job.state) && job === jobs.filter((j) => j.state && isP29uState(j.state)).at(-1)) await cleanupP29u(); // POS P2.9U
         if (isP29buState(job.state) && job === jobs.filter((j) => isP29buState(j.state)).at(-1)) await cleanupP29bu(); // POS P2.9bU
         if (isP211uState(job.state) && job === jobs.filter((j) => isP211uState(j.state)).at(-1)) await cleanupP211u(); // POS P2.11U
+        if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
           await finishPaidIntentSale(page).catch((e: unknown) => {
@@ -7251,6 +7670,9 @@ try {
 } catch (e) {
   fatal = e instanceof Fatal ? e.message : `ผิดพลาดกลางคัน — ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`;
 } finally {
+  await cleanupP210(); // POS P2.10 (ก่อนปิดกะ/เพิกถอนเครื่องของรอบ — ยกเลิกจับคู่จอ · ปิดกะ + เพิกถอนเครื่อง P2.10)
+  if (P210.log.length) console.error(`${P210.ok ? "🧹" : "⚠️"} P2.10: ${P210.log.join(" · ")}`);
+  if (!P210.ok) failures++;
   await closeRunShift();
   if (SHIFT.close && !SHIFT.close.ok) console.error(`⚠️ ${SHIFT.close.detail}`);
   await cleanupP115(); // POS P1.15U (หลังปิดกะ — เพิกถอนเครื่องเป็นขั้นท้าย)

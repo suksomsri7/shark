@@ -1652,7 +1652,51 @@
 - build79 @84ffb48b ผ่าน → vis81 (`/root/pos-runs/vis81-qc5-20261015T143913Z` · failures 0 ทุก run): split-seat 1440/390 ที่นั่ง 338.25/458.15/242.55/325.05 Σ=1,364 · กลางโต๊ะ ฿150 ที่นั่งละ ฿37.50 (c) · split-locked การ์ดบิล 1 "สมใจ ลูกค้าประจำ · ✓ เงินสด" (s memberName/paidMethods) · prebill-preview th 1440+390 หัวเรื่อง "ใบรายการ — ไม่ใช่ใบเสร็จรับเงิน/ใบกำกับภาษี" ไม่หักกลางคำ · en "PRE-BILL — NOT A RECEIPT" (p) · products-branch-filter / orders-detail-platform ไม่เปลี่ยน (f2 drawer line + n cancel/held ตัดสินด้วย oracle) → **ผ่าน**
 - รอ gates93-c → push → p2.8/p2.11 ซ้ำ → 37/55 + TG
 
-### 15 ต.ค. 15:0xZ — HF-FU ปิด → **37/55 (67%)**
+### 15 ต.ค. 14:56Z — HF-FU ปิด → **37/55 (67%)**
 - gates93-c @84ffb48b (`/root/pos-runs/gates93-c-20261015T142342Z`): hf-fu 29/29 ×2 unforced · 21 ชุดเขียว (p2.11 33/34 ST4 lane pin) · restaurant ×4 · fitness ±env/pos · typecheck 0 → **push session/pos 57a8b19a → e6546359** (code 84ffb48b) → gates94-c (`gates94-c-20261015T145257Z`) p2.8 61/61 · p2.11 34/34 → **HF-FU ✅ 37/55** · TG ส่งแล้ว · QC5 ไม่มี migration
 - ทรี c ว่าง @84ffb48b · ทรี d ว่าง @84ffb48b (build79) · เลน 1 = P2.10 builder ทรี b (`wip/pos-p2.10` · แจ้งแล้วว่า origin ขยับ)
 - ถัดไป: P2.10 builder รายงาน → R1 (read-only ทรี b) + ภาพ (ทรี d build @builder head → vis82 `p2.10` display 1280×800/1024×768 + settings th/en) → fix rounds → merge → gates §8 → QC5 migrate deploy (`pos_p210_customer_display`) → push → 38/55 · เลน 2 ว่าง → ร่าง brief ใบถัดไป **P2.12** (รายงานช่องทาง/สาขา/ผิดปกติ + PDF · lane B · ⏮ P2.1 P2.11) ได้ระหว่างรอ
+- 14:58Z เลน 2 = **P2.12 brief drafter** (Opus read-only ทรีผู้คุม @e6546359) prompt `pos-prompt-accountB-P2.12-B.md` (543f1013) → `pos-brief-P2.12.md` DRAFT → ผู้คุม §10 → oracle writer (ทรี c ว่าง) · เลน: 1 = P2.10 builder ทรี b · 2 = P2.12 brief
+
+### 15 ต.ค. 15:1xZ — P2.12 brief → §10 มติ 1–10 → oracle writer ทรี c
+- brief drafter: `pos-brief-P2.12.md` (125 บรรทัด) — 08 ส่วนใหญ่มีแล้ว (เทียบสาขา/roll-up/ช่องทาง+CSV) · ขาด hourly + PDF · **พบบั๊ก CH1: `reportChannels` นับใบรับมัดจำซ้ำ (ไม่มี notDeposit) ⇒ STORE/% ผิด** · PDF ไม่มี renderer ในรีโป → เสนอ print page ตามบัญชี · anomaly A1–A10 reader-only + thresholds settings · bucket 24 รายการ triage · oracle 30 ข้อ
+- ผู้คุม **§10 มติ 1–10**: S/U ตาม §1 · CH1 fix (Med) · PDF = browser print page + pure `report-print-shared.ts` (ไม่เพิ่ม dependency · PDF จริง = CONTROLLER-RUN probe) · A1–A10 defaults ตาม §3 per system + owner line ยืนยันค่า · key ใหม่ `pos.report.anomaly` + owner line · BR/HR/BL ตามเสนอ · โอน/สต็อกต่อ location = การ์ด P2.12T แยก (owner line แก้) · oracle 30 ข้อ (AN ทีละกฎ) · hunter เบาที่ merge · P2.13 map readers ขึ้น API
+- spawn **oracle writer P2.12** (Opus ทรี c `wip/pos-p2.12-oracle` จาก e6546359) prompt `pos-prompt-accountB-P2.12-O.md`
+- เลน: 1 = P2.10 builder ทรี b · 2 = P2.12 oracle ทรี c · ทรี d ว่าง @84ffb48b
+
+### 15 ต.ค. 15:2xZ — P2.10 built → R1 + chain80
+- builder P2.10: `wip/pos-p2.10` **7ac9efbe** push แล้ว (84ffb48b + merge oracle e4c8be5b + step 2–7 + ORACLE-EDIT a37af00e p1.18:312 + merge ledger 3eac2361) · migration `20261215100000_pos_p210_customer_display` apply QC4 แล้ว · gates: p2.10 12/12 forced ×2 + unforced · p1.10 40 · p1.11 38 · p1.18 81 · p1.3 128 · p1.1 180 · p1.6 48 · p1.7 33 · p1.12 72 · p2.9b 53 · authz 81 (ไม่เพิ่มแถว · `/d` = public token page) · hf-tx 22 · typecheck 0 · fitness ±env · fitness-pos 8/8 · `--dry` th 27/en 14 · diff ≈ 2.0k บรรทัด (deviation 1 — ผู้คุมคงใบเดียว) · เพิ่มเกิน names table: `sinceVer`/`ver` (มติ 13.2) · codes VALIDATION/INTERNAL · status `enabled`/`pairLocked` · `receiptShopHeader` ใน receipt.ts
+- spawn **R1 P2.10** (Opus read-only ทรี b) prompt `pos-prompt-accountB-P2.10-R.md` · **chain80** ทรี d (build80 @7ac9efbe → QC5 `migrate deploy` → vis82 14 state th+en: settings ×3 · display pair/idle/cart/member-stamps/paying-promptpay/cash/card/done/stale/unsupported/live)
+- เลน: 1 = P2.12 oracle ทรี c · 2 = P2.10 R1 ทรี b (read-only) · ทรี d = chain80 (ผู้คุม)
+
+### 15 ต.ค. 15:34Z — P2.10 R1 → fix round 1
+- R1 P2.10 (Opus read-only @7ac9efbe) = **MERGEABLE-AFTER-FIXES**: F1 Med keepalive ส่ง `done` ซ้ำทุก 60 s ⇒ จอเด้งกลับ "ขอบคุณ + QR ใบเสร็จ" ลูกค้าเก่า (ลูกค้าถัดไปสแกน `/r/` ได้) · F2 Med สมาชิกไม่มีชื่อ ⇒ โชว์ memberCode · F3 Med รหัสจับคู่ใหม่ไม่โชว์เมื่อ paired · F4 Low label POINTS/VOUCHER รั่ว · F5 Low pairFailCount ไม่มีทาง increment (รับตามแบบ) · F6 Low UPDATE lastPolledAt ทุก poll · F7 Low SSR refusal อื่น ⇒ ติดหน้าจับคู่ · ที่เหลือ verified OK (ver=seq.phase.intent.settings · cookie · PDPA strip · pins · migration) · ขนาดใบ: คงใบเดียว
+- มติ fix 1 (1–10 ใน `wo-notes/pos-P2.10-review.md` df27a9e3): F1–F4/F6/F7 fix · F5 accepted · ORACLE-ADD CT3 (13 ข้อ) · follow-ups 2 · gates + `--dry` → R2 + ผู้คุมถ่ายซ้ำ display-done/member-stamps/settings-code
+- spawn **builder P2.10 fix 1** (Opus ทรี b) prompt `pos-prompt-accountB-P2.10-fix.md` · chain80 vis82 @7ac9efbe ยังถ่ายอยู่ (ดูภาพรอบแรกเทียบแบบ 11A ระหว่างรอ)
+- เลน: 1 = P2.12 oracle ทรี c · 2 = P2.10 fix 1 ทรี b · ทรี d = chain80
+- 15:48Z vis82 @7ac9efbe (`/root/pos-runs/vis82-qc5-20261015T154146Z`): 13 state seeded th+en **ตรงแบบ 11A** (ผู้คุมดู) · **display-live ล้ม** ทั้ง th/en (จอจับคู่+โพลได้ แต่หน้าขายจริงไม่ส่งบรรทัดใน 20 วิ · ไม่มี error) → **F8** ส่งให้ builder fix 1 (หาสาเหตุ + ใส่ diagnostics ใน harness) · หลัง fix: ผู้คุมถ่าย display-live/done/member-stamps/settings-code ซ้ำบนทรี d
+
+### 15 ต.ค. 16:0xZ — P2.12 oracle เสร็จ → builder S ทรี c
+- oracle writer: `wip/pos-p2.12-oracle` **d6cb9006** push แล้ว · 30 ข้อ (ST1–3 CH1–3 BR1–3 HR1–2 AN1–12 PD1–3 BL1–2 Z1–2) · forced 3/30 เขียวที่ฐาน (ST1 Z1 Z2) · **CH1 ยืนยันบั๊ก: STORE 5 บิล/฿1,200 แทน 4/฿700 (ใบรับมัดจำนับซ้ำ)** · typecheck 0 · owner line P2.12T เพิ่มแล้ว · CD 1–10 → ผู้คุมรับทั้งหมด (brief §10 ข้อ 11: keys `pos.report.*` เอกพจน์ · print page = U · S ให้ `posReportPrintAction` · anomaly row + userName · rule defs ตามตาราง · thresholds clamp · branches เฉพาะสาขาที่มีบิล/กะ · bills `"*"` key set เดิม)
+- spawn **builder P2.12 S** (Opus ทรี c `wip/pos-p2.12` จาก origin/session/pos e6546359 + merge oracle) prompt `pos-prompt-accountB-P2.12.md`
+- เลน: 1 = P2.10 fix 1 ทรี b (รวม F8 display-live) · 2 = P2.12 S builder ทรี c · ทรี d ว่าง @7ac9efbe (build80 พร้อม serve ซ้ำ)
+
+### 15 ต.ค. 16:1xZ — P2.10 fix 1 เสร็จ → R2 + chain81
+- builder fix 1: `wip/pos-p2.10` **e7f661a7** push แล้ว · ORACLE-ADD CT3 (8bc606a2 · red-before 12/13 · แก้ false positive be57073d) · F1 done ส่งครั้งเดียว · F2 ชื่อ=memberCode ⇒ "" ทั้ง hook+server · F3 code panel โชว์แม้ paired · F4 `kind` + label generic (gift card = "บัตรกำนัล" เสมอ) · F5 accepted · F6 gate JS · F7 SSR refusal ⇒ paired+offline · **F8 สาเหตุ = harness: `newPage()` ทำแท็บจอ hidden → poll หยุดตามแบบ → แก้ `bringToFront()` + diagnostics (test only)** · gates 13/13 ×3 · p1.18/p1.3/p1.10/p1.12 · typecheck 0 · fitness ±env · `--dry` th/en
+- spawn **R2** (Opus read-only ทรี b) prompt `pos-prompt-accountB-P2.10-R2.md` · **chain81** ทรี d (build81 @e7f661a7 → vis83: settings-code/online · member-stamps · done · live th+en) → ผู้คุมดู (F3 ตรวจมือจาก settings-online "ขอรหัสใหม่")
+- เลน: 1 = P2.12 S builder ทรี c · 2 = P2.10 R2 ทรี b (read-only) · ทรี d = chain81
+- 16:19Z R2 P2.10 (@e7f661a7) = **MERGEABLE-AFTER-FIXES**: G1 Low dry-run en รันเป็น th (LOCALE=en อยู่หน้า iso.sh → env หลุด · ของผู้คุม VE ใส่ใน iso = en จริง) · G2 Low race "ขอรหัสใหม่" vs status refresh ค้าง · G3 info debug globals status-only (รับ) · G4/G5 info → มติ fix 2 (1–6 ใน review file f439b243) → spawn **builder fix 2** ทรี b prompt `pos-prompt-accountB-P2.10-fix2.md` · chain81 vis83 ยังถ่าย · เตรียม `scratchpad/ctl/gates95-b.template.sh` + merge msg แล้ว
+- เลน: 1 = P2.12 S builder ทรี c · 2 = P2.10 fix 2 ทรี b · ทรี d = chain81
+- 16:35Z vis83 @e7f661a7 failures 0 th+en · **display-live ผ่านจริง** (F8 = harness) · done/member-stamps/settings ผ่าน → ภาพ P2.10 ครบ · รอ fix 2 (G1/G2) → R2 ตรวจ hunk → merge → gates95 ทรี b → push → 38/55
+- 16:4xZ builder fix 2: `wip/pos-p2.10` **6b2cefbb** push แล้ว (G2 9abca590 `mutSeq` counter ใน DeviceSettings · G1 dry en จริง 14 ภาพ locale en · notes deviation 6/follow-ups/amendment) · gates p2.10 13/13 · p1.18 81 · p1.12 72 · tsc · fitness ±env → ส่ง R2 (agent เดิม) ตรวจ hunk G2 + log G1 → MERGEABLE → merge 6b2cefbb (no-ff · msg `scratchpad/ctl/p210-merge-msg.txt`) → ทรี b detached → gates95 (`gates95-b.template.sh`) → push → QC5 migrate ทำแล้ว (chain80) → **38/55** + TG
+
+### 15 ต.ค. 16:38Z — P2.10 merged 9e72513f (ยังไม่ push) → gates95
+- R2 ตรวจ fix 2 @6b2cefbb = **MERGEABLE** → **merge 6b2cefbb เข้า session/pos = 9e72513f** (no-ff · ไม่ชน) · ทรี b detached 9e72513f + prisma generate → **gates95-b** (`/root/pos-runs/gates95-b-*`: p2.10 ×2 unforced · p1.10 p1.11 p1.18 p1.3 p1.1 p1.6 p1.7 p1.12 p2.9b authz hf-tx p2.8 p2.11 p1.16 p1.17 + fitness ±env/pos + typecheck)
+- ถัดไป: gates95 เขียว (p2.11 ST4/p2.8 ST6 lane pin อาจแดงจน push) → push → p2.8/p2.11 ซ้ำ → **38/55 (69%)** + TG + memory · QC5 migration ทำแล้ว (chain80) · P2.12 S builder ทรี c ยังทำอยู่ → ใบถัดไปหลัง P2.12 S: P2.12U · P2.13 · P2.14
+- เลน: 1 = P2.12 S builder ทรี c · ทรี b = gates95 (ผู้คุม) · ทรี d ว่าง @e7f661a7
+- 17:21Z gates95 @9e72513f (`/root/pos-runs/gates95-b-20261015T163736Z`): p2.10 13/13 ×2 · 15 ชุดเขียว (p2.11 32/34 = ST1 migration + ST4 lane pin เทียบ origin ก่อน push) · fitness ±env/pos · typecheck 0 → **push session/pos 6f5b5fa5 → f37d605b** (code 9e72513f) → gates96-b (p2.8 + p2.11 ซ้ำ) `/root/pos-runs/gates96-b-20261015T172114Z` · แจ้ง P2.12 builder ว่า origin ขยับ (merge + prisma generate ก่อนด่านสุดท้าย)
+
+### 15 ต.ค. 17:3xZ — P2.10 ปิด → **38/55 (69%)**
+- gates96 @f37d605b (`/root/pos-runs/gates96-b-20261015T172114Z`): p2.8 61/61 · p2.11 34/34 → **P2.10 ✅ 38/55** · TG ส่งแล้ว · QC5 migration `pos_p210_customer_display` ทำแล้ว (chain80)
+- ทรี b ว่าง @9e72513f · ทรี d ว่าง @e7f661a7 · เลน 1 = P2.12 S builder ทรี c (แจ้ง origin ขยับแล้ว) · เลน 2 ว่าง
+- ถัดไป: P2.12 S รายงาน → R1 + hunter เบา (CH/BR sums · anomaly scope) → fix → merge → gates (§6 regression) → push → 39/55 → P2.12U (brief §1 U + §7 visual) → P2.13 API → P2.14 ปิดเฟส · เลน 2 ระหว่างรอ: ร่าง **P2.13 brief** (REST `/api/v1/pos` + สกิล + คู่มือ · lane S · ⏮ P1.18 · ~45 op) — ไม่ชน P2.12 S
