@@ -139,6 +139,24 @@ console.log("── [static] หน้า/แอ็กชันใช้ผล�
         kds.indexOf(gate) < firstRead && Number.isFinite(firstRead) && !kds.includes("assertCan("), "ครบ", "ไม่ครบ");
   }
 
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12U มติ 1 · CD-3 แถวประตูของหน้าพิมพ์): หน้าพิมพ์รายงาน /pos/reports/print — ประตูเดียวกับหน้า /pos/reports ·
+  //   ไม่มีสาขา POS ที่เข้าได้ = notFound · สาขาที่ดูรายงานได้ = evaluate pos.report.view ต่อสาขา · ไม่มีเลย = การ์ดปฏิเสธ pos-report-print-refusal ก่อนเรียก
+  //   posReportPrintAction (ตัวอ่านตรวจขอบเขต/สิทธิ์ซ้ำ) · ?unit= รับเฉพาะสาขาในชุดที่ดูได้ · force-dynamic + noindex · ไม่มี assertCan
+  {
+    const rp = norm("src/app/app/sys/[id]/pos/reports/print/page.tsx");
+    const units = "const units = (await posUnits(tenantId, id)).filter((u) => canAccessUnit(m, u.id)).map((u) => ({ id: u.id, name: u.name })); if (units.length === 0) notFound();";
+    const allowed = 'const allowed = units.filter((u) => evaluate(m, { module: "pos", action: REPORT_PERMISSION, unitId: u.id }));';
+    const gate = 'if (allowed.length === 0) return refusal("PERMISSION_DENIED");';
+    const firstRead = rp.indexOf("await posReportPrintAction(");
+    chk("RP-1", "[static] หน้าพิมพ์รายงาน: ไม่มีสาขาที่เข้าได้ = notFound · ไม่มี pos.report.view ที่สาขาใดเลย = การ์ดปฏิเสธก่อนเรียก posReportPrintAction · ?unit= ∈ สาขาที่ดูได้ · force-dynamic + noindex (ไม่มี assertCan)",
+      has(rp,
+        'const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } }); if (!sys) notFound();',
+        units, allowed, gate, 'data-testid="pos-report-print-refusal"',
+        "const unitId = allowed.some((u) => u.id === unitRaw) ? unitRaw! : \"\";",
+        'export const dynamic = "force-dynamic";', "robots: { index: false, follow: false }") &&
+        rp.indexOf(units) < rp.indexOf(allowed) && rp.indexOf(allowed) < rp.indexOf(gate) && firstRead > rp.indexOf(gate) && !rp.includes("assertCan("), "ครบ", "ไม่ครบ");
+  }
+
   const ov = norm("src/app/app/sys/[id]/page.tsx");
   const posContent = ov.slice(ov.indexOf("async function PosContent"));
   chk("O-1", "[static] หน้าภาพรวม: posScope จาก posSalesScope · ไม่มีสิทธิ์ = ไม่ render PosContent",
