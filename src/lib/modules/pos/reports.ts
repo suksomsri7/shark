@@ -17,6 +17,7 @@ import { lineConsumption, PAY_TYPE_LABEL_TH, PAY_TYPE_ORDER } from "./service";
 import { computeReport, type ShiftReport } from "./shift";
 import type { RegisterActor } from "./register-shared";
 import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวันตามค่าตั้งของระบบ POS ◂
+import { POS_ANOMALY_RULES, posAnomalyThresholds, type PosAnomalyRule } from "./settings-shared"; // POS P2.12 ▸ AN เกณฑ์จุดผิดปกติ (ตัวอ่านเดียว) ◂
 import { channelFallbackName, defaultChannelCode } from "./channel-shared"; // POS P2.11 ▸ รายงานช่องทาง (รหัสของบิลเดิม · ชื่อสำรอง) ◂
 
 type Db = PrismaClient;
@@ -26,6 +27,11 @@ type Db = PrismaClient;
 export const REPORT_PERMISSION = "pos.report.view";
 /** Q17.4 — การ์ดยอดวันนี้ใช้สิทธิ์เดียวกับหน้า "ยอดวันนี้"/ปิดวันเดิม (posSalesScope) */
 export const CARD_PERMISSION = "pos.sale.create";
+// POS P2.12 ▸ มติ 4 (PDPA): รายงานจุดผิดปกติระบุตัวพนักงาน ⇒ ต้องมี pos.report.view "และ" คีย์นี้ที่สาขา (เจ้าของ/ผู้จัดการได้ตามบทบาท) ◂
+export const ANOMALY_PERMISSION = "pos.report.anomaly";
+/** POS P2.12 ▸ มติ 5: รายงานรายชั่วโมงเลือกช่วงได้ไม่เกิน 31 วัน (กราฟอ่านได้เฉพาะช่วงสั้น) · คาดการณ์ = เฉลี่ย 4 สัปดาห์ก่อน วันเดียวกัน ◂ */
+export const HOURLY_MAX_DAYS = 31;
+const FORECAST_WEEKS = 4;
 // Q17.2 → POS P1.18 (มติ Q9): นาทีหลังเที่ยงคืนเวลาไทยที่เริ่มวันธุรกิจ = settings.pos.reports.dayCutoffMinutes ของระบบ POS
 //   (ตัวอ่านเดียว posDayCutoffMinutes · 0–360 · ไม่ตั้ง = 0 เที่ยงคืน) — อ่านที่ scopeOf แล้วส่งต่อทุกจุดที่ตัดวัน ◂
 /** R2 — ช่วงยาวสุดต่อคำขอ (วัน · รวมปลายทั้งสอง) */
@@ -40,7 +46,7 @@ const BKK_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
 const shiftOffsetMs = (cutoffMin: number): number => BKK_OFFSET_MS - cutoffMin * 60_000;
 
-export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels"] as const; // POS P2.11 ▸ + channels ◂
+export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels", "branches", "hourly", "anomalies"] as const; // POS P2.11 ▸ + channels ◂ · POS P2.12 ▸ + branches hourly anomalies ◂
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 // ═══════════ ชนิดข้อมูล ═══════════
@@ -207,6 +213,42 @@ export type ChannelRow = {
   sharePct: number;
 };
 export type ChannelTotals = Omit<ChannelRow, "channelCode" | "name" | "sharePct">;
+// POS P2.12 ▸ BR (มติ 5 · CD-7): แถวต่อสาขาที่มีเอกสารหรือกะที่นับเงินปิดในช่วง · ตัวเลข = รายงานรายวัน/วิธีชำระ (CASH · PLATFORM)/ช่องทาง/กะ ของสาขานั้น ◂
+export type BranchRow = {
+  unitId: string;
+  name: string;
+  billCount: number;
+  netSalesSatang: number;
+  avgBillSatang: number;
+  refundCount: number;
+  refundTotalSatang: number;
+  voidCount: number;
+  voidTotalSatang: number;
+  cashSatang: number;
+  platformSatang: number;
+  commissionSatang: number;
+  commissionVatSatang: number;
+  overShortSatang: number;
+};
+export type BranchTotals = Omit<BranchRow, "unitId" | "name">;
+// POS P2.12 ▸ HR (มติ 5 · CD-8): 24 ชั่วโมงของวันธุรกิจ (เลื่อนตามเวลาตัดวัน · หลังเที่ยงคืน = +24) · label = ชั่วโมงนาฬิกา 2 หลัก ◂
+export type HourlyRow = { hour: number; label: string; billCount: number; netSalesSatang: number; forecastSatang: number };
+export type HourlyTotals = { billCount: number; netSalesSatang: number; forecastSatang: number };
+// POS P2.12 ▸ AN (§3 · CD-4 CD-5): แถวจุดผิดปกติ — คีย์ตามสัญญาเท่านั้น (ไม่มีอีเมล/เบอร์ · userName = ชื่อแสดงผล) ◂
+export type AnomalyRefType = "USER" | "PosSale" | "PosShift" | "UNIT";
+export type AnomalyRow = {
+  rule: PosAnomalyRule;
+  unitId: string;
+  businessDate: string | null;
+  userId: string | null;
+  userName: string | null;
+  refType: AnomalyRefType;
+  refId: string | null;
+  value: number;
+  threshold: Record<string, number>;
+  count: number;
+};
+export type AnomalyTotals = { rowCount: number; byRule: Record<PosAnomalyRule, number> };
 
 export type DashboardCard = {
   businessDate: string;
@@ -231,6 +273,10 @@ export type MarginReportResult = ReportResult<"margin", MarginRow, MarginTotals>
 export type ShiftsReportResult = ReportResult<"shifts", ShiftRow, ShiftTotals>;
 export type TaxReportResult = ReportResult<"tax", TaxRow, TaxTotals>;
 export type ChannelsReportResult = ReportResult<"channels", ChannelRow, ChannelTotals>; // POS P2.11 ◂
+// POS P2.12 ▸ ◂
+export type BranchesReportResult = ReportResult<"branches", BranchRow, BranchTotals>;
+export type HourlyReportResult = ReportResult<"hourly", HourlyRow, HourlyTotals>;
+export type AnomaliesReportResult = ReportResult<"anomalies", AnomalyRow, AnomalyTotals>;
 export type AnyReportResult =
   | DailyReportResult
   | ProductsReportResult
@@ -239,7 +285,12 @@ export type AnyReportResult =
   | MarginReportResult
   | ShiftsReportResult
   | TaxReportResult
-  | ChannelsReportResult; // POS P2.11 ◂
+  | ChannelsReportResult // POS P2.11 ◂
+  | BranchesReportResult // POS P2.12 ◂
+  | HourlyReportResult
+  | AnomaliesReportResult;
+/** POS P2.12 ▸ รายงานที่สำเร็จ (ใช้กับแบบพิมพ์ report-print-shared.ts) ◂ */
+export type AnyReport = Extract<AnyReportResult, { ok: true }>["report"];
 
 // ═══════════ คำปฏิเสธ ═══════════
 const MSG: Record<ReportRefusalCode, string> = {
@@ -305,7 +356,7 @@ function actorOf(a: unknown): RegisterActor | null {
 }
 
 // ═══════════ ขอบเขต (R13) + สิทธิ์ (R12) ═══════════
-type Scope = { tenantId: string; systemId: string; unitId: string | null; unitIds: string[]; unitName: Map<string, string>; cutoffMin: number };
+type Scope = { tenantId: string; systemId: string; unitId: string | null; unitIds: string[]; unitName: Map<string, string>; cutoffMin: number; settings: unknown }; // POS P2.12 ▸ + settings (เกณฑ์จุดผิดปกติ) ◂
 
 /**
  * ระบบต้องเป็น AppSystem(POS) ของร้าน (ไม่สนว่าปิดใช้งานแล้ว — ประวัติต้องดูได้) · อื่น = NOT_FOUND
@@ -328,7 +379,7 @@ async function scopeOf(db: Db, ctxRaw: unknown, actorRaw: unknown, permission: s
     const unit = await db.businessUnit.findFirst({ where: { id: unitId, tenantId }, select: { id: true, name: true } });
     if (!unit || !canAccessUnit(actor, unitId)) return refuse("NOT_FOUND");
     if (!can(unitId)) return refuse("PERMISSION_DENIED");
-    return { tenantId, systemId, unitId, unitIds: [unit.id], unitName: new Map([[unit.id, unit.name]]), cutoffMin };
+    return { tenantId, systemId, unitId, unitIds: [unit.id], unitName: new Map([[unit.id, unit.name]]), cutoffMin, settings: sys.settings };
   }
   const everyUnit = actor.role === "OWNER" || actor.unitAccess.includes("*");
   const units = await db.businessUnit.findMany({
@@ -338,7 +389,7 @@ async function scopeOf(db: Db, ctxRaw: unknown, actorRaw: unknown, permission: s
   });
   const allowed = units.filter((u) => can(u.id));
   if (allowed.length === 0) return refuse("PERMISSION_DENIED");
-  return { tenantId, systemId, unitId: null, unitIds: allowed.map((u) => u.id), unitName: new Map(allowed.map((u) => [u.id, u.name])), cutoffMin };
+  return { tenantId, systemId, unitId: null, unitIds: allowed.map((u) => u.id), unitName: new Map(allowed.map((u) => [u.id, u.name])), cutoffMin, settings: sys.settings };
 }
 
 async function guard<T>(name: string, body: () => Promise<T | ReportRefusal>): Promise<T | ReportRefusal> {
@@ -378,6 +429,10 @@ type SaleRow = {
   refSaleId: string | null;
   /** POS P2.9b ▸ fix1 มติ 4: POS_DEPOSIT = ใบรับ/ใบคืนเงินมัดจำ (ไม่ใช่ยอดขาย — รายงานยอดขาย/พนักงานตัดออก) ◂ */
   sourceModule?: string | null;
+  /** POS P2.12 ▸ BR: คอลัมน์สำเนาช่องทางของบิล (ค่าคอมฯ ต่อสาขา · ตัวรวมเดียวกับรายงานช่องทาง) ◂ */
+  channelCode?: string | null;
+  channelCommissionSatang?: number;
+  channelCommissionVatSatang?: number;
 };
 
 /**
@@ -404,6 +459,10 @@ async function loadSales(db: Db, s: Scope, start: Date, end: Date): Promise<Sale
       docType: true,
       refSaleId: true,
       sourceModule: true, // POS P2.9b ▸ fix1 มติ 4 ◂
+      // POS P2.12 ▸ BR ◂
+      channelCode: true,
+      channelCommissionSatang: true,
+      channelCommissionVatSatang: true,
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
@@ -607,6 +666,34 @@ function sellerOf(x: SaleRow, shiftOpener: Map<string, string>): string | null {
   return x.soldByUserId ?? (x.shiftId ? (shiftOpener.get(x.shiftId) ?? null) : null);
 }
 
+/**
+ * POS P2.12 ▸ ผู้ขายของบิล/ใบคืน (กติกาเดิมของรายงานพนักงาน P1.8 · ยกมาเป็นตัวช่วยเดียว): ใบคืน = ผู้ขายของบิลเดิม (บิลเดิมนอกช่วงอ่านเพิ่มต่อก้อน) ·
+ * ไม่มี soldByUserId = ผู้เปิดกะของบิล (Q17.1) ◂
+ */
+async function sellerResolver(db: Db, s: Scope, end: Date, sales: SaleRow[]): Promise<{ ofSale: (x: SaleRow) => string | null; ofRefund: (x: SaleRow) => string | null }> {
+  const refunds = refundsOf(sales);
+  type Origin = { soldByUserId: string | null; shiftId: string | null };
+  const origin = new Map<string, Origin>(sales.filter((x) => x.docType === "SALE").map((x) => [x.id, { soldByUserId: x.soldByUserId, shiftId: x.shiftId }]));
+  const missing = [...new Set(refunds.map((x) => x.refSaleId).filter((id): id is string => !!id && !origin.has(id)))];
+  for (const ids of chunks(missing)) {
+    // บิลเดิมอยู่สาขาเดียวกับใบคืนและเกิดก่อนใบคืน ⇒ กรอง unitId + createdAt (ดัชนี tenantId, unitId, createdAt · R15)
+    const rows = await db.posSale.findMany({ where: { tenantId: s.tenantId, unitId: { in: s.unitIds }, createdAt: { lt: end }, id: { in: ids } }, select: { id: true, soldByUserId: true, shiftId: true } });
+    for (const o of rows) origin.set(o.id, { soldByUserId: o.soldByUserId, shiftId: o.shiftId });
+  }
+  const shiftIds = [...new Set([...origin.values()].filter((x) => !x.soldByUserId && x.shiftId).map((x) => x.shiftId as string))];
+  const opener = new Map<string, string>();
+  for (const part of chunks(shiftIds)) {
+    for (const sh of await db.posShift.findMany({ where: { tenantId: s.tenantId, id: { in: part } }, select: { id: true, openedByUserId: true } })) opener.set(sh.id, sh.openedByUserId);
+  }
+  return {
+    ofSale: (x) => sellerOf(x, opener),
+    ofRefund: (x) => {
+      const o = x.refSaleId ? origin.get(x.refSaleId) : undefined;
+      return o ? sellerOf({ ...x, soldByUserId: o.soldByUserId, shiftId: o.shiftId }, opener) : null;
+    },
+  };
+}
+
 export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db): Promise<StaffReportResult> {
   return guard("reportStaff", async () => {
     const db = client ?? prisma;
@@ -616,19 +703,7 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
     const sales = notDeposit(await loadSales(db, s, r.start, r.end)); // POS P2.9b ▸ fix1 มติ 4 ◂
     // P1.8 ▸ ใบคืนเงินหักจากผู้ขายของบิลเดิม (บิลเดิมอาจอยู่นอกช่วง — อ่านเพิ่มคำสั่งเดียวต่อก้อน) ◂
     const refunds = refundsOf(sales);
-    type Origin = { soldByUserId: string | null; shiftId: string | null };
-    const origin = new Map<string, Origin>(sales.filter((x) => x.docType === "SALE").map((x) => [x.id, { soldByUserId: x.soldByUserId, shiftId: x.shiftId }]));
-    const missing = [...new Set(refunds.map((x) => x.refSaleId).filter((id): id is string => !!id && !origin.has(id)))];
-    for (const ids of chunks(missing)) {
-      // บิลเดิมอยู่สาขาเดียวกับใบคืนและเกิดก่อนใบคืน ⇒ กรอง unitId + createdAt (ดัชนี tenantId, unitId, createdAt · R15)
-      const rows = await db.posSale.findMany({ where: { tenantId: s.tenantId, unitId: { in: s.unitIds }, createdAt: { lt: r.end }, id: { in: ids } }, select: { id: true, soldByUserId: true, shiftId: true } });
-      for (const o of rows) origin.set(o.id, { soldByUserId: o.soldByUserId, shiftId: o.shiftId });
-    }
-    const shiftIds = [...new Set([...origin.values()].filter((x) => !x.soldByUserId && x.shiftId).map((x) => x.shiftId as string))];
-    const opener = new Map<string, string>();
-    for (const part of chunks(shiftIds)) {
-      for (const sh of await db.posShift.findMany({ where: { tenantId: s.tenantId, id: { in: part } }, select: { id: true, openedByUserId: true } })) opener.set(sh.id, sh.openedByUserId);
-    }
+    const seller = await sellerResolver(db, s, r.end, sales); // POS P2.12 ▸ ย้ายเป็นตัวช่วยเดียว (จุดผิดปกติ A3/A4/A6 ใช้ผู้ขายแบบเดียวกัน) ◂
     const m = new Map<string, StaffRow>();
     const rowOf = (uid: string | null): StaffRow => {
       const k = uid ?? "";
@@ -637,15 +712,14 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
       return cur;
     };
     for (const x of refunds) {
-      const o = x.refSaleId ? origin.get(x.refSaleId) : undefined;
-      const row = rowOf(o ? sellerOf({ ...x, soldByUserId: o.soldByUserId, shiftId: o.shiftId }, opener) : null);
+      const row = rowOf(seller.ofRefund(x));
       row.netSalesSatang -= x.grandTotalSatang;
       row.refundCount = (row.refundCount ?? 0) + 1;
       row.refundTotalSatang = (row.refundTotalSatang ?? 0) + x.grandTotalSatang;
     }
     for (const x of sales) {
       if (x.docType !== "SALE") continue;
-      const row = rowOf(sellerOf(x, opener));
+      const row = rowOf(seller.ofSale(x));
       if (x.status !== "VOIDED") {
         row.billCount += 1;
         row.netSalesSatang += x.grandTotalSatang;
@@ -1055,6 +1129,359 @@ export async function reportChannels(ctx: ReportCtx, actor: RegisterActor, input
   });
 }
 
+// ═══════════ POS P2.12 ▸ 9. รายงานสาขา (§1 BR · มติ 5 · CD-7) ◂ ═══════════
+/** ตัวเลข 12 ช่องของชุดเอกสาร/การชำระ/กะ — ตัวรวมเดียวกับรายงานรายวัน (dailyTotalsOf) · ช่องทาง (channelRowsOf) · กะ (Σ ขาด/เกินของกะที่นับเงินปิด) */
+function branchNumbersOf(docs: SaleRow[], pay: { cash: number; platform: number }, shifts: { overShortSatang: number | null }[]): BranchTotals {
+  const d = dailyTotalsOf(docs);
+  const ch = channelRowsOf(
+    notDeposit(docs.filter((x) => x.status !== "VOIDED")).map((x) => ({
+      docType: x.docType,
+      channelCode: x.channelCode ?? null,
+      sourceModule: x.sourceModule ?? null,
+      grandTotalSatang: x.grandTotalSatang,
+      channelCommissionSatang: x.channelCommissionSatang ?? 0,
+      channelCommissionVatSatang: x.channelCommissionVatSatang ?? 0,
+    })),
+  );
+  return {
+    billCount: d.billCount,
+    netSalesSatang: d.netSalesSatang,
+    avgBillSatang: d.avgBillSatang,
+    refundCount: d.refundCount,
+    refundTotalSatang: d.refundTotalSatang,
+    voidCount: d.voidCount,
+    voidTotalSatang: d.voidTotalSatang,
+    cashSatang: pay.cash,
+    platformSatang: pay.platform,
+    commissionSatang: sum(ch, (x) => x.commissionSatang),
+    commissionVatSatang: sum(ch, (x) => x.commissionVatSatang),
+    overShortSatang: sum(shifts, (x) => x.overShortSatang ?? 0),
+  };
+}
+
+/**
+ * เปรียบเทียบสาขา — ขอบเขต/สิทธิ์/ช่วง = prepare เดียวกับรายงานอื่น (ไม่ส่งสาขา = ทุกสาขาที่มีสิทธิ์ รวม archived · R13)
+ * คิวรีคงที่: loadSales 1 ครั้ง + การชำระต่อก้อน + กะ 1 ครั้ง ทั้งขอบเขต แล้วแยกต่อสาขาในหน่วยความจำ ⇒ แถวสาขา = รายงานรายวัน/วิธีชำระ/ช่องทาง/กะ ของสาขานั้น
+ * cash/platform = ยอดรับสุทธิของวิธี CASH / PLATFORM แบบ reportPayments (รวมเงินสดใบรับมัดจำ) · ขาด/เกิน = กะ "วันเปิดกะ" ในช่วงที่นับเงินปิดแล้ว (แบบ reportShifts)
+ * แถว = สาขาที่มีเอกสาร (บิล/ใบคืน/ใบมัดจำ/บิลยกเลิก) หรือกะที่นับเงินปิด (overShort ไม่ว่าง) ในช่วง · เรียง net มาก → น้อย แล้วชื่อ · totals = ทั้งขอบเขต
+ */
+export async function reportBranches(ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db): Promise<BranchesReportResult> {
+  return guard("reportBranches", async () => {
+    const db = client ?? prisma;
+    const p = await prepare(db, ctx, actor, input);
+    if (isRefusal(p)) return p;
+    const { s, r } = p;
+    const sales = await loadSales(db, s, r.start, r.end);
+    const paidIds = new Set(paidOf(sales).map((x) => x.id));
+    const refundIds = new Set(refundsOf(sales).map((x) => x.id));
+    const unitOfDoc = new Map(sales.map((x) => [x.id, x.unitId]));
+    // วิธีชำระ: ฝั่งรับของบิลที่นับยอด − เงินคืนของใบคืน (amount สุทธิแบบ reportPayments)
+    const pay = new Map<string, { cash: number; platform: number }>();
+    const payOf = (u: string) => {
+      const v = pay.get(u) ?? { cash: 0, platform: 0 };
+      pay.set(u, v);
+      return v;
+    };
+    for (const ids of chunks([...paidIds, ...refundIds])) {
+      const rows = await db.posPayment.findMany({ where: { tenantId: s.tenantId, saleId: { in: ids }, type: { in: ["CASH", "PLATFORM"] } }, select: { saleId: true, type: true, amountSatang: true } });
+      for (const x of rows) {
+        const u = unitOfDoc.get(x.saleId);
+        if (!u) continue;
+        const sign = refundIds.has(x.saleId) ? -1 : 1;
+        const a = payOf(u);
+        if (x.type === "CASH") a.cash += sign * x.amountSatang;
+        else a.platform += sign * x.amountSatang;
+      }
+    }
+    const shifts = await db.posShift.findMany({
+      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, openedAt: { gte: r.start, lt: r.end }, status: { not: "OPEN" } },
+      select: { unitId: true, overShortSatang: true },
+    });
+    const rows: BranchRow[] = [];
+    for (const u of s.unitIds) {
+      const docs = sales.filter((x) => x.unitId === u);
+      const sh = shifts.filter((x) => x.unitId === u);
+      if (docs.length === 0 && !sh.some((x) => x.overShortSatang !== null)) continue;
+      rows.push({ unitId: u, name: s.unitName.get(u) ?? "", ...branchNumbersOf(docs, pay.get(u) ?? { cash: 0, platform: 0 }, sh) });
+    }
+    rows.sort((a, b) => b.netSalesSatang - a.netSalesSatang || cmpStr(a.name, b.name) || cmpStr(a.unitId, b.unitId));
+    const all = { cash: sum([...pay.values()], (x) => x.cash), platform: sum([...pay.values()], (x) => x.platform) };
+    return envelope("branches", s, r, rows, branchNumbersOf(sales, all, shifts));
+  });
+}
+
+// ═══════════ POS P2.12 ▸ 10. รายชั่วโมง + คาดการณ์ 4 สัปดาห์ (§1 HR · มติ 5 · CD-8) ◂ ═══════════
+/**
+ * 24 แถวเสมอ = ชั่วโมงของวันธุรกิจ (hour = ชั่วโมงนาฬิกาไทยนับจากเที่ยงคืนของวันธุรกิจ · หลังเที่ยงคืน = +24 · ตัดวัน 04:00 ⇒ 4…27)
+ * ยอด = กติการายงานรายวัน (ตัดมัดจำ · บิลยกเลิกไม่นับ · ใบคืนหักในชั่วโมงที่คืน) ⇒ Σ แถว = reportDailySales ของช่วงเดียวกัน
+ * forecast(h) = ปัดครึ่งขึ้นของ Σ_{วัน d ในช่วง} Σ_{k=1..4} ยอดชั่วโมง h ของวัน d−7k ÷ 4 (สัปดาห์ที่ไม่มีขาย = 0)
+ * โหลดเอกสาร 1 ครั้งตั้งแต่ from−28 วันถึงปลายช่วง (อ่านอย่างเดียว) · ช่วงเกิน 31 วัน = VALIDATION
+ * ตัดวันที่ไม่ลงชั่วโมงพอดี (เช่น 00:30) ⇒ เศษชั่วโมงสุดท้ายของวัน (ชั่วโมงนาฬิกาเดียวกับแถวแรก) รวมไว้ในแถวแรก (label เดียวกัน)
+ */
+export async function reportHourly(ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db): Promise<HourlyReportResult> {
+  return guard("reportHourly", async () => {
+    const db = client ?? prisma;
+    const p = await prepare(db, ctx, actor, input);
+    if (isRefusal(p)) return p;
+    const { s, r } = p;
+    const days = daysOf(r.from, r.to);
+    if (days.length > HOURLY_MAX_DAYS) return refuse("VALIDATION", `รายงานรายชั่วโมงเลือกช่วงได้ไม่เกิน ${HOURLY_MAX_DAYS} วัน`);
+    const first = Math.floor(s.cutoffMin / 60);
+    const docs = notDeposit(await loadSales(db, s, dayStart(addDays(r.from, -7 * FORECAST_WEEKS), s.cutoffMin), r.end));
+    const inRange = new Set(days);
+    const cur = new Map<number, { bills: number; net: number }>();
+    const hist = new Map<string, number>();
+    for (const x of docs) {
+      if (x.docType === "SALE" && x.status === "VOIDED") continue;
+      const d = bkkBusinessDate(x.createdAt, s.cutoffMin);
+      let h = Math.floor((x.createdAt.getTime() + BKK_OFFSET_MS - Date.parse(`${d}T00:00:00Z`)) / 3_600_000);
+      if (h > first + 23) h = first;
+      const refund = x.docType === "REFUND";
+      const amount = refund ? -x.grandTotalSatang : x.grandTotalSatang;
+      hist.set(`${d}|${h}`, (hist.get(`${d}|${h}`) ?? 0) + amount);
+      if (!inRange.has(d)) continue;
+      const c = cur.get(h) ?? { bills: 0, net: 0 };
+      if (!refund) c.bills += 1;
+      c.net += amount;
+      cur.set(h, c);
+    }
+    const rows: HourlyRow[] = Array.from({ length: 24 }, (_, i) => {
+      const hour = first + i;
+      let past = 0;
+      for (const d of days) for (let k = 1; k <= FORECAST_WEEKS; k++) past += hist.get(`${addDays(d, -7 * k)}|${hour}`) ?? 0;
+      const c = cur.get(hour) ?? { bills: 0, net: 0 };
+      // ปัดครึ่งขึ้นของ past ÷ 4 แบบจำนวนเต็ม (ติดลบได้เมื่อมีแต่ใบคืน)
+      return { hour, label: String(hour % 24).padStart(2, "0"), billCount: c.bills, netSalesSatang: c.net, forecastSatang: Math.floor((past + FORECAST_WEEKS / 2) / FORECAST_WEEKS) };
+    });
+    return envelope("hourly", s, r, rows, { billCount: sum(rows, (x) => x.billCount), netSalesSatang: sum(rows, (x) => x.netSalesSatang), forecastSatang: sum(rows, (x) => x.forecastSatang) });
+  });
+}
+
+// ═══════════ POS P2.12 ▸ 11. จุดผิดปกติของพนักงาน A1–A10 (§3 · มติ 3 4 · CD-4 CD-5) ◂ ═══════════
+/** ป้ายไทยของกฎ (CSV/แบบพิมพ์) — จอใช้ pos.report.anomaly.rules.* */
+export const ANOMALY_RULE_LABEL_TH: Readonly<Record<PosAnomalyRule, string>> = {
+  A1: "ยกเลิกบิลบ่อย",
+  A2: "คืนเงินบ่อย",
+  A3: "ส่วนลดสูง (พนักงาน)",
+  A4: "ส่วนลดสูง (บิล)",
+  A5: "ใช้สิทธิ์เกินเพดาน",
+  A6: "ราคากำหนดเอง",
+  A7: "พิมพ์สำเนาซ้ำ",
+  A8: "เงินขาด/เกิน",
+  A9: "เงินขาดซ้ำ",
+  A10: "ยกเลิก/ปฏิเสธออเดอร์",
+};
+const ANOMALY_AUDIT_ACTIONS = ["pos.sale.void", "pos.discount.override", "pos.approval.pin_override", "pos.receipt.reprint"];
+const ANOMALY_DENIED = "บัญชีนี้ยังไม่มีสิทธิ์ดูรายงานจุดผิดปกติของพนักงาน — ขอสิทธิ์จากเจ้าของร้าน";
+
+/** ชื่อแสดงผลเท่านั้น (PDPA มติ 4: ไม่ถอยไปใช้อีเมล) · ไม่มีชื่อ = null */
+async function displayNames(db: Db, ids: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  for (const part of chunks([...new Set(ids)])) {
+    for (const u of await db.user.findMany({ where: { id: { in: part } }, select: { id: true, name: true } })) out.set(u.id, u.name?.trim() ? u.name.trim() : null);
+  }
+  return out;
+}
+
+/**
+ * จุดผิดปกติตามกติกา (ไม่ใช่ AI · P3.9) — สิทธิ์ = pos.report.view (prepare) "และ" pos.report.anomaly ต่อสาขา · ไม่เหลือสาขา = PERMISSION_DENIED
+ * แหล่ง (อ่านอย่างเดียว · ทุกคิวรีมี tenantId + ช่วงเวลา/รายการ id · audit ไม่มีสาขา ⇒ เชื่อมผ่าน PosSale ของ targetId ในขอบเขต):
+ *   A1 audit pos.sale.void (ผู้ยกเลิก + ผู้ขอผ่าน PIN นับคนละ 1) · A2 ใบคืน (ผู้คืน = soldByUserId ของใบคืน) · A3 ตัวเลขแบบรายงานพนักงาน ต่อสาขา+ผู้ขาย ทั้งช่วง ·
+ *   A4 บิลเดียว discount/subtotal · A5 pos.discount.override ∪ pos.approval.pin_override ต่อผู้อนุมัติ (บิล+ชนิดเดียวกัน = 1 ครั้ง) · A6 บรรทัด CUSTOM ·
+ *   A7 pos.receipt.reprint ต่อบิล · A8 กะ (max |ขาด/เกิน|, |ผลต่างนับย้อนหลัง|) · A9 ผู้เปิดกะเงินขาดซ้ำ · A10 ออเดอร์ REJECTED|CANCELLED ต่อสาขา/วัน (receivedAt)
+ * วันธุรกิจตามเวลาตัดวันของระบบ · มัดจำไม่นับ · บิลยกเลิกนับเฉพาะ A1 · เรียง กฎ → สาขา → วัน → ผู้ใช้ → ref · enabled false = ok แถวว่าง
+ */
+export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db): Promise<AnomaliesReportResult> {
+  return guard("reportAnomalies", async () => {
+    const db = client ?? prisma;
+    const p = await prepare(db, ctx, actor, input);
+    if (isRefusal(p)) return p;
+    const a = actorOf(actor)!;
+    const unitIds = p.s.unitIds.filter((u) => evaluate(a, { module: "pos", action: ANOMALY_PERMISSION, unitId: u }));
+    if (unitIds.length === 0) return refuse("PERMISSION_DENIED", ANOMALY_DENIED);
+    const s: Scope = { ...p.s, unitIds, unitName: new Map(unitIds.map((u) => [u, p.s.unitName.get(u) ?? ""])) };
+    const r = p.r;
+    const T = posAnomalyThresholds(s.settings);
+    const byRule = Object.fromEntries(POS_ANOMALY_RULES.map((x) => [x, 0])) as Record<PosAnomalyRule, number>;
+    if (!T.enabled) return envelope("anomalies", s, r, [] as AnomalyRow[], { rowCount: 0, byRule });
+    const day = (t: Date) => bkkBusinessDate(t, s.cutoffMin);
+    const inScope = new Set(s.unitIds);
+
+    // ── แหล่งข้อมูล (จำนวนคิวรีคงที่ต่อก้อน) ──
+    const sales = notDeposit(await loadSales(db, s, r.start, r.end));
+    const paid = paidOf(sales);
+    const refunds = refundsOf(sales);
+    const seller = await sellerResolver(db, s, r.end, sales);
+    const audits = await db.auditLog.findMany({
+      where: { tenantId: s.tenantId, createdAt: { gte: r.start, lt: r.end }, targetType: "PosSale", action: { in: ANOMALY_AUDIT_ACTIONS } },
+      select: { action: true, actorId: true, targetId: true, after: true, createdAt: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    const target = new Map<string, { unitId: string; grandTotalSatang: number }>();
+    for (const ids of chunks([...new Set(audits.map((x) => x.targetId).filter(isId))])) {
+      // บิลเป้าหมายเกิดก่อน audit (< ปลายช่วง) · อยู่ในสาขาของขอบเขตเท่านั้น
+      const rows = await db.posSale.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { lt: r.end }, id: { in: ids } }, select: { id: true, unitId: true, grandTotalSatang: true } });
+      for (const x of rows) target.set(x.id, { unitId: x.unitId, grandTotalSatang: x.grandTotalSatang });
+    }
+    const custom = new Map<string, number>();
+    for (const ids of chunks(paid.map((x) => x.id))) {
+      const g = await db.posSaleLine.groupBy({ by: ["saleId"], where: { tenantId: s.tenantId, saleId: { in: ids }, priceSource: "CUSTOM" }, _count: { _all: true } });
+      for (const x of g) custom.set(x.saleId, x._count._all);
+    }
+    const shifts = await db.posShift.findMany({
+      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, openedAt: { gte: r.start, lt: r.end }, status: { not: "OPEN" } },
+      select: { id: true, unitId: true, openedByUserId: true, openedAt: true, overShortSatang: true },
+      orderBy: [{ openedAt: "asc" }, { id: "asc" }],
+    });
+    const recount = new Map<string, number>();
+    for (const ids of chunks(shifts.map((x) => x.id))) {
+      for (const x of await db.posShiftRecount.findMany({ where: { tenantId: s.tenantId, shiftId: { in: ids } }, select: { shiftId: true, varianceSatang: true } })) recount.set(x.shiftId, x.varianceSatang);
+    }
+    const orders = await db.posOrder.findMany({
+      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, receivedAt: { gte: r.start, lt: r.end }, status: { in: ["REJECTED", "CANCELLED"] } },
+      select: { unitId: true, receivedAt: true },
+    });
+
+    // ── กลุ่ม (ไม่มีชื่อ — เติมทีหลัง) ──
+    type Hit = Omit<AnomalyRow, "userName">;
+    const out: Hit[] = [];
+    type Acc = { unitId: string; businessDate: string | null; userId: string | null; count: number; value: number; keys?: Set<string> };
+    const acc = (m: Map<string, Acc>, unitId: string, businessDate: string | null, userId: string | null): Acc => {
+      const k = `${unitId}|${businessDate ?? ""}|${userId ?? ""}`;
+      const v = m.get(k) ?? { unitId, businessDate, userId, count: 0, value: 0 };
+      m.set(k, v);
+      return v;
+    };
+    const emit = (rule: PosAnomalyRule, refType: AnomalyRefType, g: Acc, refId: string | null, value: number, count: number) =>
+      out.push({ rule, unitId: g.unitId, businessDate: g.businessDate, userId: g.userId, refType, refId, value, threshold: { ...(T.rules[rule] as Record<string, number>) }, count });
+    const afterOf = (v: unknown): Record<string, unknown> => (isRecord(v) ? v : {});
+
+    // A1 ยกเลิกบิลบ่อย — ผู้ยกเลิก (actorId) + ผู้ขอผ่าน PIN (after.requestedByUserId) คนละ 1 ครั้ง · ยอด = ยอดบิล
+    const g1 = new Map<string, Acc>();
+    for (const au of audits) {
+      if (au.action !== "pos.sale.void") continue;
+      const t = au.targetId ? target.get(au.targetId) : undefined;
+      if (!t) continue;
+      const req = afterOf(au.after).requestedByUserId;
+      for (const u of new Set([au.actorId, typeof req === "string" ? req : null].filter(isId))) {
+        const g = acc(g1, t.unitId, day(au.createdAt), u);
+        g.count += 1;
+        g.value += t.grandTotalSatang;
+      }
+    }
+    for (const g of g1.values()) if (g.count >= T.rules.A1.count || g.value >= T.rules.A1.satang) emit("A1", "USER", g, null, g.value, g.count);
+
+    // A2 คืนเงินบ่อย — ผู้คืน = soldByUserId ของใบคืน (ไม่ใช่ผู้ขายเดิม)
+    const g2 = new Map<string, Acc>();
+    for (const x of refunds) {
+      if (!x.soldByUserId) continue;
+      const g = acc(g2, x.unitId, day(x.createdAt), x.soldByUserId);
+      g.count += 1;
+      g.value += x.grandTotalSatang;
+    }
+    for (const g of g2.values()) if (g.count >= T.rules.A2.count || g.value >= T.rules.A2.satang) emit("A2", "USER", g, null, g.value, g.count);
+
+    // A3 ส่วนลดสูงต่อพนักงาน — ตัวเลขแบบรายงานพนักงาน ต่อสาขา+ผู้ขาย ทั้งช่วง: Σ ส่วนลด × 10000 > net × bp (net > 0)
+    const g3 = new Map<string, Acc & { disc: number }>();
+    const acc3 = (unitId: string, userId: string | null) => {
+      const k = `${unitId}|${userId ?? ""}`;
+      const v = g3.get(k) ?? { unitId, businessDate: null, userId, count: 0, value: 0, disc: 0 };
+      g3.set(k, v);
+      return v;
+    };
+    for (const x of paid) {
+      const g = acc3(x.unitId, seller.ofSale(x));
+      g.count += 1;
+      g.disc += x.discountSatang;
+      g.value += x.grandTotalSatang;
+    }
+    for (const x of refunds) acc3(x.unitId, seller.ofRefund(x)).value -= x.grandTotalSatang;
+    for (const g of g3.values()) {
+      if (!g.userId || g.value <= 0 || !(g.disc * 10_000 > g.value * T.rules.A3.bp)) continue;
+      emit("A3", "USER", g, null, Math.round((g.disc * 10_000) / g.value), g.count);
+    }
+
+    // A4 ส่วนลดสูงบิลเดียว — discount × 10000 ≥ subtotal × bp (เทียบจำนวนเต็ม ไม่ปัด)
+    for (const x of paid) {
+      if (x.subtotalSatang <= 0 || !(x.discountSatang * 10_000 >= x.subtotalSatang * T.rules.A4.bp)) continue;
+      emit("A4", "PosSale", { unitId: x.unitId, businessDate: day(x.createdAt), userId: seller.ofSale(x), count: 1, value: 0 }, x.id, Math.round((x.discountSatang * 10_000) / x.subtotalSatang), 1);
+    }
+
+    // A5 ใช้สิทธิ์เกินเพดาน — ต่อผู้อนุมัติ/สาขา/วัน · ครั้ง = (บิล, ชนิด) ไม่ซ้ำ (ส่วนลดผ่าน PIN เขียนสองแถว = 1 ครั้ง)
+    const g5 = new Map<string, Acc>();
+    for (const au of audits) {
+      if (au.action !== "pos.discount.override" && au.action !== "pos.approval.pin_override") continue;
+      const t = au.targetId ? target.get(au.targetId) : undefined;
+      if (!t || !isId(au.actorId)) continue;
+      const act = afterOf(au.after).action;
+      const kind = au.action === "pos.discount.override" || act === "POS_DISCOUNT_OVER" ? "DISCOUNT" : String(act ?? "");
+      const g = acc(g5, t.unitId, day(au.createdAt), au.actorId);
+      (g.keys ??= new Set<string>()).add(`${au.targetId}|${kind}`);
+    }
+    for (const g of g5.values()) {
+      const n = g.keys?.size ?? 0;
+      if (n >= T.rules.A5.count) emit("A5", "USER", g, null, n, n);
+    }
+
+    // A6 ราคากำหนดเอง — บรรทัด priceSource CUSTOM ของบิลขายที่นับยอด ต่อผู้ขาย/สาขา/วัน
+    const g6 = new Map<string, Acc>();
+    for (const x of paid) {
+      const n = custom.get(x.id) ?? 0;
+      const u = seller.ofSale(x);
+      if (!n || !u) continue;
+      acc(g6, x.unitId, day(x.createdAt), u).count += n;
+    }
+    for (const g of g6.values()) if (g.count >= T.rules.A6.count) emit("A6", "USER", g, null, g.count, g.count);
+
+    // A7 พิมพ์สำเนาซ้ำ — ต่อบิล ทั้งช่วง
+    const g7 = new Map<string, { unitId: string; count: number }>();
+    for (const au of audits) {
+      if (au.action !== "pos.receipt.reprint" || !au.targetId) continue;
+      const t = target.get(au.targetId);
+      if (!t) continue;
+      const g = g7.get(au.targetId) ?? { unitId: t.unitId, count: 0 };
+      g.count += 1;
+      g7.set(au.targetId, g);
+    }
+    for (const [saleId, g] of g7) if (g.count >= T.rules.A7.count) emit("A7", "PosSale", { unitId: g.unitId, businessDate: null, userId: null, count: g.count, value: g.count }, saleId, g.count, g.count);
+
+    // A8 เงินขาด/เกินต่อกะ — max(|ขาด/เกินของ Z|, |ผลต่างการนับย้อนหลัง|) · A9 ผู้เปิดกะเดิมเงินขาด (overShort < 0) ≥ N กะ ต่อสาขา
+    const g9 = new Map<string, Acc>();
+    for (const sh of shifts) {
+      const v = Math.max(Math.abs(sh.overShortSatang ?? 0), Math.abs(recount.get(sh.id) ?? 0));
+      if (v >= T.rules.A8.satang) emit("A8", "PosShift", { unitId: sh.unitId, businessDate: day(sh.openedAt), userId: sh.openedByUserId, count: 1, value: v }, sh.id, v, 1);
+      if ((sh.overShortSatang ?? 0) < 0) {
+        const g = acc(g9, sh.unitId, null, sh.openedByUserId);
+        g.count += 1;
+        g.value += -(sh.overShortSatang ?? 0);
+      }
+    }
+    for (const g of g9.values()) if (g.count >= T.rules.A9.count) emit("A9", "USER", g, null, g.value, g.count);
+
+    // A10 ออเดอร์ปฏิเสธ/ยกเลิก ต่อสาขา/วันที่รับออเดอร์
+    const g10 = new Map<string, Acc>();
+    for (const o of orders) acc(g10, o.unitId, day(o.receivedAt), null).count += 1;
+    for (const g of g10.values()) if (g.count >= T.rules.A10.count) emit("A10", "UNIT", g, null, g.count, g.count);
+
+    // ── ชื่อ + เรียง + totals ──
+    const kept = out.filter((x) => inScope.has(x.unitId));
+    const names = await displayNames(db, kept.map((x) => x.userId).filter(isId));
+    const rank = new Map(POS_ANOMALY_RULES.map((x, i) => [x, i]));
+    const rows: AnomalyRow[] = kept
+      .map((x) => ({ rule: x.rule, unitId: x.unitId, businessDate: x.businessDate, userId: x.userId, userName: x.userId ? (names.get(x.userId) ?? null) : null, refType: x.refType, refId: x.refId, value: x.value, threshold: x.threshold, count: x.count }))
+      .sort(
+        (p1, p2) =>
+          rank.get(p1.rule)! - rank.get(p2.rule)! ||
+          cmpStr(p1.unitId, p2.unitId) ||
+          cmpStr(p1.businessDate ?? "", p2.businessDate ?? "") ||
+          cmpStr(p1.userId ?? "", p2.userId ?? "") ||
+          cmpStr(p1.refId ?? "", p2.refId ?? ""),
+      );
+    for (const x of rows) byRule[x.rule] += 1;
+    return envelope("anomalies", s, r, rows.slice(0, r.limit), { rowCount: rows.length, byRule });
+  });
+}
+
 // ═══════════ CSV (R11) ═══════════
 const CSV_BOM = "﻿";
 const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
@@ -1087,7 +1514,19 @@ export const CSV_HEADERS: Record<ReportKind, string[]> = {
   shifts: ["กะที่", "Z ที่", "สาขา", "เครื่อง", "สถานะ", "เปิดโดย", "เวลาเปิด", "เวลาปิด", "จำนวนบิล", "ยอดขาย", "เงินที่ควรมี", "เงินที่นับได้", "ขาด/เกิน"],
   tax: ["วันที่", "สาขา", "เลขที่เริ่ม", "เลขที่สุดท้าย", "จำนวนบิล", "ยอดรวม VAT", "ฐานภาษี", "VAT", "ยอดไม่มี VAT", "บิลยกเลิก", "เลขที่ยกเลิก"],
   channels: ["รหัสช่องทาง", "ช่องทาง", "จำนวนบิล", "ยอดขาย", "ยอดคืนเงิน", "ค่าคอมมิชชัน", "VAT ค่าคอมมิชชัน", "ยอดสุทธิหลังหักค่าคอมฯ", "สัดส่วน (%)"], // POS P2.11 ◂
+  // POS P2.12 ▸ BR HR AN (CD-7: สาขา/รายชั่วโมงมีแถว "รวม" · จุดผิดปกติไม่มี) ◂
+  branches: ["สาขา", "จำนวนบิล", "ยอดขายสุทธิ", "เฉลี่ยต่อบิล", "ใบคืนเงิน", "ยอดคืนเงิน", "บิลยกเลิก", "ยอดบิลยกเลิก", "เงินสด", "แพลตฟอร์ม", "ค่าคอมมิชชัน", "VAT ค่าคอมมิชชัน", "ขาด/เกิน"],
+  hourly: ["ชั่วโมง", "จำนวนบิล", "ยอดขายสุทธิ", "คาดการณ์ (เฉลี่ย 4 สัปดาห์)"],
+  anomalies: ["กฎ", "จุดสังเกต", "รหัสสาขา", "วันที่", "พนักงาน", "ชนิดอ้างอิง", "รหัสอ้างอิง", "ค่า", "เกณฑ์", "จำนวน"],
 };
+// POS P2.12 ▸ ค่าของแถวจุดผิดปกติในตาราง: เงิน (A1 A2 A8 A9) = บาท · สัดส่วน (A3 A4) = % · อื่น = จำนวน ◂
+const ANOMALY_MONEY_RULES: ReadonlySet<string> = new Set(["A1", "A2", "A8", "A9"]);
+const ANOMALY_BP_RULES: ReadonlySet<string> = new Set(["A3", "A4"]);
+const anomalyValueText = (rule: string, v: number): string => (ANOMALY_MONEY_RULES.has(rule) ? baht(v) : ANOMALY_BP_RULES.has(rule) ? pct(v) : String(v));
+const anomalyThresholdText = (rule: string, t: Record<string, number>): string =>
+  Object.entries(t)
+    .map(([f, v]) => (f === "satang" ? `≥ ${baht(v)}` : f === "bp" ? `${rule === "A3" ? ">" : "≥"} ${pct(v)}%` : `≥ ${v}`))
+    .join(" หรือ ");
 type Cells = (string | number)[];
 const dailyCells = (first: string, x: DailyTotals): Cells => [
   first,
@@ -1185,7 +1624,55 @@ function csvBodyRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
       const x = rep as Report<"channels", ChannelRow, ChannelTotals>;
       return x.rows.map((r) => [r.channelCode, r.name, r.billCount, baht(r.grossSatang), baht(r.refundSatang), baht(r.commissionSatang), baht(r.commissionVatSatang), baht(r.netSatang), r.sharePct.toFixed(1)]);
     }
+    // POS P2.12 ▸ สาขา + แถว "รวม" (ทั้งขอบเขต) ◂
+    case "branches": {
+      const x = rep as Report<"branches", BranchRow, BranchTotals>;
+      const cells = (first: string, t: BranchTotals): Cells => [
+        first,
+        t.billCount,
+        baht(t.netSalesSatang),
+        baht(t.avgBillSatang),
+        t.refundCount,
+        baht(t.refundTotalSatang),
+        t.voidCount,
+        baht(t.voidTotalSatang),
+        baht(t.cashSatang),
+        baht(t.platformSatang),
+        baht(t.commissionSatang),
+        baht(t.commissionVatSatang),
+        baht(t.overShortSatang),
+      ];
+      return [...x.rows.map((r) => cells(r.name || r.unitId, r)), cells(TOTAL_LABEL, x.totals)];
+    }
+    // POS P2.12 ▸ รายชั่วโมง 24 แถว + แถว "รวม" ◂
+    case "hourly": {
+      const x = rep as Report<"hourly", HourlyRow, HourlyTotals>;
+      return [
+        ...x.rows.map((r) => [`${r.label}:00`, r.billCount, baht(r.netSalesSatang), baht(r.forecastSatang)]),
+        [TOTAL_LABEL, x.totals.billCount, baht(x.totals.netSalesSatang), baht(x.totals.forecastSatang)],
+      ];
+    }
+    // POS P2.12 ▸ จุดผิดปกติ: แถวล้วน (ไม่มี "รวม") · ชื่อแสดงผลเท่านั้น ◂
+    case "anomalies": {
+      const x = rep as Report<"anomalies", AnomalyRow, AnomalyTotals>;
+      return x.rows.map((r) => [
+        r.rule,
+        ANOMALY_RULE_LABEL_TH[r.rule],
+        r.unitId,
+        r.businessDate ?? "",
+        r.userName ?? "",
+        r.refType,
+        r.refId ?? "",
+        anomalyValueText(r.rule, r.value),
+        anomalyThresholdText(r.rule, r.threshold),
+        r.count,
+      ]);
+    }
   }
+}
+/** POS P2.12 ▸ PD: แถว CSV (ข้อมูล + "รวม") ของรายงานที่สำเร็จ เป็นข้อความทีละช่อง — แบบพิมพ์ใช้ชุดเดียวกับ CSV (report-print-shared.ts) ◂ */
+export function reportCsvRows(report: AnyReport): string[][] {
+  return csvBodyRows({ ok: true, report } as Exclude<AnyReportResult, ReportRefusal>).map((row) => row.map((c) => String(c)));
 }
 
 const REPORT_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db) => Promise<AnyReportResult>> = {
@@ -1197,6 +1684,10 @@ const REPORT_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input
   shifts: reportShifts,
   tax: reportTax,
   channels: reportChannels, // POS P2.11 ◂
+  // POS P2.12 ◂
+  branches: reportBranches,
+  hourly: reportHourly,
+  anomalies: reportAnomalies,
 };
 export const isReportKind = (v: unknown): v is ReportKind => typeof v === "string" && (REPORT_KINDS as readonly string[]).includes(v);
 
@@ -1208,6 +1699,16 @@ export async function reportCsv(ctx: ReportCtx, actor: RegisterActor, input: { k
   if (!res.ok) return res;
   const lines = [CSV_HEADERS[kind], ...csvBodyRows(res)].map((row) => row.map(csvEsc).join(","));
   return { ok: true, filename: `pos-${kind}-${res.report.from}_${res.report.to}.csv`, contentType: CSV_CONTENT_TYPE, body: CSV_BOM + lines.join("\n") };
+}
+
+// POS P2.12 ▸ PD: ชื่อร้าน + ชื่อสาขาสำหรับหัวแบบพิมพ์ (อ่านอย่างเดียว · เรียกหลังรายงานผ่านด่านขอบเขตแล้ว) ◂
+export async function reportPrintNames(ctx: ReportCtx, client?: Db): Promise<{ shopName: string; unitName: string | null }> {
+  const db = client ?? prisma;
+  const [t, u] = await Promise.all([
+    db.tenant.findFirst({ where: { id: ctx.tenantId }, select: { name: true } }),
+    ctx.unitId ? db.businessUnit.findFirst({ where: { id: ctx.unitId, tenantId: ctx.tenantId }, select: { name: true } }) : null,
+  ]);
+  return { shopName: t?.name ?? "", unitName: u?.name ?? null };
 }
 
 // ═══════════ การ์ดภาพรวม (R16) ═══════════

@@ -19,6 +19,12 @@ import { parseShiftSettings } from "./shift";
 import { weighedBarcodeSettings } from "./scan-shared";
 import {
   maskAuditPhones,
+  POS_ANOMALY_DEFAULTS, // POS P2.12 ▸ AN ◂
+  POS_ANOMALY_LIMITS,
+  POS_ANOMALY_RULES,
+  posAnomalyThresholds,
+  type PosAnomalyField,
+  type PosAnomalyRule,
   POS_GENERAL_LIMITS,
   posDayCutoffMinutes,
   posReceiptLocale,
@@ -121,11 +127,12 @@ export function posGeneralSettingsOf(settings: unknown): PosGeneralSettings {
     weighedBarcode: weighedBarcodeSettings(settings),
     receiptLocale: posReceiptLocale(settings),
     dayCutoffMinutes: posDayCutoffMinutes(settings),
+    anomaly: posAnomalyThresholds(settings), // POS P2.12 ▸ AN ◂
   };
 }
 
 // ═══════════ R3 ตัวเขียนทั่วไป ═══════════
-const GENERAL_KEYS = new Set(["heldCartExpireDays", "autoLockMinutes", "shift", "weighedBarcode", "receiptLocale", "dayCutoffMinutes"]);
+const GENERAL_KEYS = new Set(["heldCartExpireDays", "autoLockMinutes", "shift", "weighedBarcode", "receiptLocale", "dayCutoffMinutes", "anomaly"]); // POS P2.12 ▸ + anomaly ◂
 const SHIFT_KEYS = new Set(["requiredRegister", "requiredOtherSources", "blindClose", "overShortReasonSatang", "forceCloseAfterHours"]);
 const WB_KINDS = new Set(["WEIGHT", "PRICE"]);
 type CleanGeneral = {
@@ -135,6 +142,8 @@ type CleanGeneral = {
   weighedBarcode?: { enabled: boolean; rules: { prefix: string; kind: string }[] };
   receiptLocale?: "th" | "en";
   dayCutoffMinutes?: number;
+  /** POS P2.12 ▸ แพตช์เกณฑ์ที่ตรวจแล้ว (เฉพาะช่องที่ส่ง) ◂ */
+  anomaly?: { enabled?: boolean; rules: Partial<Record<PosAnomalyRule, Partial<Record<PosAnomalyField, number>>>> };
 };
 
 /** ตรวจแพตช์ทั้งก้อน (บริสุทธิ์) — ผิดที่ใด = VALIDATION + field แบบจุด (คีย์แปลกบนสุด = ชื่อคีย์นั้น) */
@@ -195,6 +204,36 @@ function cleanGeneralPatch(patch: unknown): { ok: true; clean: CleanGeneral } | 
     if (!isInt(patch.dayCutoffMinutes, L.dayCutoffMinutes.min, L.dayCutoffMinutes.max)) return settingsRefuse("VALIDATION", "เวลาตัดวันต้องเป็นจำนวนเต็ม 0–360 นาทีหลังเที่ยงคืน", "dayCutoffMinutes");
     out.dayCutoffMinutes = patch.dayCutoffMinutes;
   }
+  // POS P2.12 ▸ AN (CD-6): {enabled?, rules?:{A#:{ช่อง}}} รวมทับบางส่วน · ช่วง = POS_ANOMALY_LIMITS (ตัวอ่านตัดเข้าขอบด้วยช่วงเดียวกัน ⇒ ไป-กลับได้ค่าเดิม) ·
+  //   field ของคำปฏิเสธ = anomaly · anomaly.enabled · anomaly.<คีย์แปลก> · anomaly.rules · anomaly.rules.<กฎแปลก> · anomaly.rules.A#[.<ช่อง>] ◂
+  if ("anomaly" in patch) {
+    const an = patch.anomaly;
+    if (!isRecord(an)) return settingsRefuse("VALIDATION", "ค่าตั้งจุดสังเกตผิดปกติไม่ถูกต้อง", "anomaly");
+    for (const k of Object.keys(an)) if (k !== "enabled" && k !== "rules") return settingsRefuse("VALIDATION", `ไม่รู้จักค่าตั้ง ${k}`, `anomaly.${k}`);
+    const c: NonNullable<CleanGeneral["anomaly"]> = { rules: {} };
+    if ("enabled" in an) {
+      if (typeof an.enabled !== "boolean") return settingsRefuse("VALIDATION", "ต้องเป็นเปิด/ปิด", "anomaly.enabled");
+      c.enabled = an.enabled;
+    }
+    if ("rules" in an) {
+      if (!isRecord(an.rules)) return settingsRefuse("VALIDATION", "เกณฑ์ไม่ถูกต้อง", "anomaly.rules");
+      for (const [id, v] of Object.entries(an.rules)) {
+        if (!(POS_ANOMALY_RULES as readonly string[]).includes(id)) return settingsRefuse("VALIDATION", `ไม่รู้จักกฎ ${id}`, `anomaly.rules.${id}`);
+        const rule = id as PosAnomalyRule;
+        if (!isRecord(v)) return settingsRefuse("VALIDATION", "เกณฑ์ของกฎไม่ถูกต้อง", `anomaly.rules.${rule}`);
+        const fields = Object.keys(POS_ANOMALY_DEFAULTS[rule]) as PosAnomalyField[];
+        const got: Partial<Record<PosAnomalyField, number>> = {};
+        for (const [f, n] of Object.entries(v)) {
+          const lim = POS_ANOMALY_LIMITS[f as PosAnomalyField];
+          if (!(fields as string[]).includes(f) || !lim) return settingsRefuse("VALIDATION", `กฎ ${rule} ไม่มีช่อง ${f}`, `anomaly.rules.${rule}.${f}`);
+          if (!isInt(n, lim.min, lim.max)) return settingsRefuse("VALIDATION", `เกณฑ์ต้องเป็นจำนวนเต็ม ${lim.min}–${lim.max}`, `anomaly.rules.${rule}.${f}`);
+          got[f as PosAnomalyField] = n;
+        }
+        c.rules[rule] = got;
+      }
+    }
+    out.anomaly = c;
+  }
   return { ok: true, clean: out };
 }
 
@@ -219,7 +258,25 @@ function nextGeneralKeys(pos: Record<string, unknown>, c: CleanGeneral): Record<
   }
   if (c.weighedBarcode !== undefined) out.weighedBarcode = { ...recOf(pos.weighedBarcode), enabled: c.weighedBarcode.enabled, rules: c.weighedBarcode.rules };
   if (c.receiptLocale !== undefined) out.receiptLocale = c.receiptLocale;
-  if (c.dayCutoffMinutes !== undefined) out.reports = { ...recOf(pos.reports), dayCutoffMinutes: c.dayCutoffMinutes };
+  // POS P2.12 ▸ settings.pos.reports ถือทั้ง dayCutoffMinutes และ anomaly — แพตช์เดียวแก้ได้ทั้งคู่โดยไม่ทับกัน ◂
+  const anomalyTouched = c.anomaly !== undefined && (c.anomaly.enabled !== undefined || Object.keys(c.anomaly.rules).length > 0);
+  if (c.dayCutoffMinutes !== undefined || anomalyTouched) {
+    const rep: Record<string, unknown> = { ...recOf(pos.reports) };
+    if (c.dayCutoffMinutes !== undefined) rep.dayCutoffMinutes = c.dayCutoffMinutes;
+    if (c.anomaly !== undefined && anomalyTouched) {
+      const raw = recOf(rep.anomaly);
+      const an: Record<string, unknown> = { ...raw };
+      if (c.anomaly.enabled !== undefined) an.enabled = c.anomaly.enabled;
+      const ids = Object.keys(c.anomaly.rules) as PosAnomalyRule[];
+      if (ids.length) {
+        const rules: Record<string, unknown> = { ...recOf(raw.rules) };
+        for (const id of ids) rules[id] = { ...recOf(rules[id]), ...c.anomaly.rules[id] };
+        an.rules = rules;
+      }
+      rep.anomaly = an;
+    }
+    out.reports = rep;
+  }
   return out;
 }
 
