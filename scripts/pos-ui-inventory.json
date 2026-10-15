@@ -12166,9 +12166,9 @@
       "expect": {
         "type": "ui",
         "target": "pos-tbl-panel",
-        "note": "การ์ดโต๊ะ pos-tbl-card-<ชื่อ> → เลือกโต๊ะ (แผงขวา · iPad แผ่นขวา · มือถือเต็มจอ)"
+        "note": "การ์ดโต๊ะ pos-tbl-card-<ชื่อ> → เลือกโต๊ะ (แผงขวา · iPad แผ่นขวา · มือถือเต็มจอ) · P2.5U มติ 8: ชิป \"แยกบิล 2/4\" · ลากด้วยเมาส์ (draggable · ไม่มีลากด้วยนิ้ว · มีคีย์ restaurant.session.move|merge) วางบนโต๊ะว่าง = ยืนยันย้าย (pos-tbl-move-confirm) · วางบนโต๊ะที่มีลูกค้า = ยืนยันรวม (pos-tbl-merge-confirm-dialog)"
       },
-      "wo": "P2.4U",
+      "wo": "P2.4U · P2.5U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -12518,25 +12518,6 @@
     },
     {
       "page": "/app/sys/[id]/pos/tables",
-      "testid": "pos-tbl-planned-*",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-tbl-panel",
-        "note": "ย้ายโต๊ะ/รวมโต๊ะ/แยกบิล/พิมพ์ใบรายการ = ปิด + เร็ว ๆ นี้ (Q7 · P2.5/P2.6)"
-      },
-      "wo": "P2.4U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/tables",
       "testid": "pos-tbl-checkout-open",
       "kind": "button",
       "roles": [
@@ -12547,9 +12528,9 @@
       "expect": {
         "type": "modal",
         "target": "pos-tbl-checkout",
-        "note": "เช็คบิล ฿x → จอชำระเดิมด้วย quote ของโต๊ะ (มติ 5) · ปิดเมื่อมีเหตุผลใต้ปุ่ม (สิทธิ์/กะ/PIN/ออฟไลน์)"
+        "note": "เช็คบิล ฿x → จอชำระเดิมด้วย quote ของโต๊ะ (มติ 5) · ปิดเมื่อมีเหตุผลใต้ปุ่ม (สิทธิ์/กะ/PIN/ออฟไลน์) · P2.5U มติ 1: แผนแยกบิลเปิดอยู่ (data-split=open) = \"ชำระทีละใบ · เหลือ ฿y\" → แผงแยกบิล pos-tbl-split-modal"
       },
-      "wo": "P2.4U",
+      "wo": "P2.4U · P2.5U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -13201,6 +13182,861 @@
       "query": "unit=[unitId]"
     },
     {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-moveTable",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-move-sheet",
+        "note": "ย้ายโต๊ะ (มติ 1/8) — คีย์ restaurant.session.move · ไม่มี = ปิด + tooltip (แคชเชียร์ QC)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-mergeTable",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-merge-sheet",
+        "note": "รวมโต๊ะ (มติ 1/8) — คีย์ restaurant.session.merge · ไม่มี = ปิด + tooltip (แคชเชียร์ QC)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-splitBill",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-split-modal",
+        "note": "แยกบิล (มติ 1/2) — pos.sale.create · ไม่มีรายการค้างจ่ายและไม่มีแผน = ปิด"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-printList",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-prebill-preview",
+        "note": "พิมพ์ใบรายการทั้งโต๊ะ (มติ 9) · แผนแยกบิลเปิดอยู่ = เปิดแผงแยกบิล (ใบรายการรายบิล)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-toast-action",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-merge-sheet",
+        "note": "toast TABLE_BUSY ของการย้าย → \"ใช้รวมโต๊ะแทน\" (แผ่นรวมเลือกโต๊ะนั้นไว้ · มติ 8)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-panel",
+        "note": "ปิดแผงแยกบิล (Esc ได้ · แตะม่านไม่ปิด)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-modal",
+        "note": "แท็บ รายรายการ (items) · หารเท่า (equal) · ตามที่นั่ง (seat) — ล็อก = ปิด (มติ 6)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-line-*-part-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-card-*",
+        "note": "แตะครั้งเดียว = ทั้งรายการไปบิล n (ตามที่นั่ง: part-0 = กลางโต๊ะ) · พรีวิวด้วย allocateTableSplit (มติ 2/4)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-qty-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-split-qty-dialog",
+        "note": "รายการจำนวน > 1: ชิป \"บิล 1 ×3 · บิล 2 ×1\" → ป๊อปโอเวอร์แบ่งจำนวน (Σ = จำนวนของรายการ)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-qty-*-less-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-qty-dialog",
+        "note": "ลดจำนวนของรายการในบิล/ที่นั่ง n"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-qty-*-more-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-qty-dialog",
+        "note": "เพิ่มจำนวนของรายการในบิล/ที่นั่ง n (ไม่เกินที่เหลือ)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-qty-done",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-modal",
+        "note": "ปิดป๊อปโอเวอร์แบ่งจำนวน"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-pick-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-seat-*",
+        "note": "ตามที่นั่ง: แตะรายการ แล้วแตะชิปที่นั่ง (มติ 4)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-seat-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-seat-rows",
+        "note": "ชิปที่นั่ง 1…N · กลางโต๊ะ (seat-shared) — วางรายการที่เลือก"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-seat-shared",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-seatrow-shared",
+        "note": "ชิปกลางโต๊ะ — รายการที่เลือกหารทุกที่นั่ง (มติ 4)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-select-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-card-*",
+        "note": "เลือกบิล (กำลังชำระ) — ปุ่มหลัก \"ชำระบิล n\" ตามบิลที่เลือก"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-removePart-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-modal",
+        "note": "ลบบิลที่ว่าง (เหลืออย่างน้อย 2)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-addPart",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-card-*",
+        "note": "+ เพิ่มบิล (≤ 20 · รายรายการ)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-stepper-less",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-modal",
+        "note": "หารเท่า/ตามที่นั่ง: − N คน (≥ 2)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-stepper-more",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-modal",
+        "note": "หารเท่า/ตามที่นั่ง: + N คน (≤ 20)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-split-member-dialog",
+        "note": "สมาชิกของบิล n (ชิป · ล็อก/จ่ายแล้ว = ปิด) → ตัวเลือกสมาชิก (registerMemberLookupAction)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-modal",
+        "note": "ปิดตัวเลือกสมาชิก"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-table",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-card-*",
+        "note": "เลือกสมาชิกของโต๊ะให้บิลนี้"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-member-dialog",
+        "note": "ฟอร์มค้นสมาชิก (Enter = ค้น)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-q",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-member-dialog",
+        "note": "เบอร์โทร/รหัสสมาชิก/ชื่อ"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-search",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-member-dialog",
+        "note": "ค้นสมาชิก (registerMemberLookupAction)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-pick-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-card-*",
+        "note": "เลือกสมาชิกจากผลค้น (ระงับ = ปิด)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-member-none",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-card-*",
+        "note": "บิลนี้ไม่มีสมาชิก"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-prebill-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-prebill-preview",
+        "note": "ใบรายการของบิล n (แผนบันทึกแล้ว · ยังไม่จ่าย) — registerTablePreBillAction({tableSplitPartId})"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-tbl-split-cancel-dialog",
+        "note": "ยกเลิกการแยกบิล (แผนที่ยังไม่มีใบจ่าย · ล็อก = ซ่อน)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-cancel-back",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-split-modal",
+        "note": "กลับ (ไม่ยกเลิก)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-cancel-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerCancelSplitAction",
+        "db": "PosTableSplit CANCELLED",
+        "note": "ยืนยันยกเลิกแผน · ปฏิเสธ = toast + โหลดแผนใหม่ (มติ 5)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerSplitTableAction",
+        "db": "PosTableSplit/Part/Line",
+        "note": "ชำระทีละใบ = บันทึกแผน (สร้าง: expectedItemsHash ของ quote ทั้งโต๊ะ · แทน: splitId + expectedVersion) แล้วค้างแผงไว้ · ยังมีรายการไม่ระบุบิล = ปิด"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-split-payPart-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-paydlg",
+        "note": "ชำระบิล n ฿x = บันทึกแผน (ถ้ามีแก้) แล้วเปิดจอชำระเดิมของใบ (tableSplitPartId · ชิป pos-reg-paydlg-splitchip · มติ 7)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-prebill-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-panel",
+        "note": "ปิดตัวอย่างใบรายการ"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-prebill-print",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerTablePreBillAction",
+        "db": "AuditLog pos.table.preBill",
+        "note": "พิมพ์ (ครั้งแรก = payload ของตัวอย่าง · ครั้งต่อไปเรียกใหม่ 1 ครั้งต่อการพิมพ์) · เครื่องพิมพ์ใบเสร็จของเครื่อง/เบราว์เซอร์"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-prebill-copy",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerTablePreBillAction",
+        "db": "AuditLog pos.table.preBill",
+        "note": "พิมพ์สำเนา (copy:true · หัว \"สำเนา\")"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-merge-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-panel",
+        "note": "ปิดแผ่นรวมโต๊ะ"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-merge-pick-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-merge-summary",
+        "note": "เลือก/เลิกเลือกโต๊ะที่มีลูกค้า (1–5) — สรุป \"รวม A2 + B1 เข้า A1 · N คน · ฿x\""
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-merge-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerMergeTablesAction",
+        "db": "TableSession MERGED",
+        "anyOf": [
+          {
+            "type": "toast",
+            "target": "pos-tbl-toast"
+          }
+        ],
+        "note": "รวมโต๊ะ · TABLE_HAS_DRAFT / TABLE_SPLIT_OPEN = toast"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-move-back",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-floor",
+        "note": "ยกเลิกการย้าย"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-move-confirm-ok",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerMoveTableAction",
+        "db": "TableSession.tableId",
+        "anyOf": [
+          {
+            "type": "toast",
+            "target": "pos-tbl-toast"
+          }
+        ],
+        "note": "ย้ายไปโต๊ะ X (จองไว้ = เตือนก่อน) · สำเร็จ = toast ใบครัวที่พิมพ์แล้วยังเป็นโต๊ะเดิม · TABLE_BUSY = toast + ใช้รวมโต๊ะแทน"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-merge-back",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tbl-floor",
+        "note": "ยกเลิกการรวม (จากการลาก)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-merge-confirm-ok",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerMergeTablesAction",
+        "db": "TableSession MERGED",
+        "note": "ยืนยันรวม (ลากโต๊ะที่มีลูกค้าไปวางบนอีกโต๊ะ)"
+      },
+      "wo": "P2.5U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-billtype-takeaway",
       "kind": "menu",
@@ -13307,9 +14143,9 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/register",
-        "note": "เลือกโต๊ะ → (เปิดโต๊ะ) + พักตะกร้าเป็นรอบร่าง (newDraft · มีร่างแล้ว = ต่อท้ายร่างล่าสุดแบบมีรุ่น) → หน้าขายผูกโต๊ะ ?table="
+        "note": "เลือกโต๊ะ → (เปิดโต๊ะ) + พักตะกร้าเป็นรอบร่าง (newDraft · มีร่างแล้ว = ต่อท้ายร่างล่าสุดแบบมีรุ่น) → หน้าขายผูกโต๊ะ ?table= · P2.5U มติ 8: หน้าโต๊ะใช้แผ่นนี้เป็นแผ่นย้ายโต๊ะ (pos-tbl-move-sheet · โต๊ะว่างเท่านั้น) → registerMoveTableAction (จองไว้ = ยืนยันก่อน)"
       },
-      "wo": "P2.4U",
+      "wo": "P2.4U · P2.5U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"

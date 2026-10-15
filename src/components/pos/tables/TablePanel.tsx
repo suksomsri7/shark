@@ -5,7 +5,7 @@
 //   รอบ (registerTableDetailAction): "ออเดอร์ #N (hh:mm) · …" + รายการ (จำนวน · ชื่อ · ตัวเลือก/หมายเหตุ · ชิปครัว · ฿) ·
 //     เสิร์ฟแล้วเกิน 3 รายการในรอบ = ยุบเหลือ 2 + แถว "เสิร์ฟแล้วอีก N รายการ" (จำนวน + ชื่อเท่านั้น — fix 1 F1: ไม่รวมเงินในจอ · ยอดรวมของรอบ = P2.5) · แตะรายการที่ยกเลิกได้ = กล่องยกเลิก (เหตุผล)
 //   รอบร่าง: "มีรายการยังไม่ส่งครัว N" + ปุ่มไปหน้าขายโหมดโต๊ะ · ยอด (รวม/ค่าบริการ/ยอดสุทธิ) จาก quote ของโต๊ะเท่านั้น ·
-//   ปุ่ม: สั่งเพิ่ม · ย้ายโต๊ะ/รวมโต๊ะ/แยกบิล/พิมพ์ใบรายการ = ปิด + "เร็ว ๆ นี้" (Q7) · หลัก "เช็คบิล ฿x"
+//   ปุ่ม: สั่งเพิ่ม · ย้ายโต๊ะ/รวมโต๊ะ/แยกบิล/พิมพ์ใบรายการ (POS P2.5U มติ 1 · เดิม PLANNED Q7) · หลัก "เช็คบิล ฿x" (แผนแยกบิลเปิด = "ชำระทีละใบ · เหลือ ฿y")
 //   บรรทัดที่ quote บอก stockCut:false = ป้าย "ไม่ได้ตัดวัตถุดิบตามสูตร" (fix-3)
 // 🔴 เงินทุกตัวมาจากเซิร์ฟเวอร์ (lineTotalSatang ของรายการ · quote ของโต๊ะ) · นาที/เวลาวาดหลัง mount เท่านั้น
 
@@ -44,6 +44,23 @@ type Props = {
   onClose?: () => void;
   /** fix 1 V1: แผงในคอลัมน์ขวา (xl) ห้ามหด — คอลัมน์เลื่อนทั้งก้อน (แผงแล้วตามด้วยแจ้งเตือน · ภาพ 03) · แผ่น iPad/มือถือ = ค่าเดิม */
   noShrink?: boolean;
+  // POS P2.5U ▸ มติ 1: ปุ่ม ย้ายโต๊ะ · รวมโต๊ะ · แยกบิล · พิมพ์ใบรายการ ใช้งานได้ (แทนปุ่ม PLANNED) —
+  //   ย้าย/รวม = คีย์ restaurant.session.move|merge (pos/table.ts registerMoveTable/registerMergeTables · ไม่มีคีย์ = ปิด + tooltip) ·
+  //   แยกบิล = pos.sale.create (table-split.ts SELL_PERMS · registerSplitTable) · ใบรายการ = pos.sale.create|read (table.ts registerTablePreBill · ผู้เห็นแผงมีอยู่แล้ว) ◂
+  split?: {
+    canMove: boolean;
+    canMerge: boolean;
+    canSplit: boolean;
+    onMove: () => void;
+    onMerge: () => void;
+    onSplit: () => void;
+    onPreBill: () => void;
+    /**
+     * fix1 V2: ยอดของแผนแยกบิลที่เปิดอยู่ (แผงยังแสดง รวม / ค่าบริการ / ยอดสุทธิ เสมอ — ภาพ 03) = SplitPlanView ของ registerSplitDetailAction
+     * (baseSatang · discountSatang · serviceChargeSatang · totalSatang ที่ registerSplitTable เก็บ = ยอดทั้งโต๊ะ · Σ ใบ = totalSatang) · null = ยังโหลดไม่เสร็จ
+     */
+    plan?: { baseSatang: number; discountSatang: number; serviceChargeSatang: number; serviceChargeBp: number; totalSatang: number } | null;
+  };
 };
 
 const KDS_TONE: Record<TableRoundItem["kdsStatus"], string> = {
@@ -63,8 +80,8 @@ const PILL: Record<TableCard["state"], string> = {
 };
 const pct = (bp: number) => String(Number((bp / 100).toFixed(2)));
 const SERVED_SHOWN = 2;
-/** ปุ่ม PLANNED (Q7 · P2.5/P2.6): ปิด + ป้าย "เร็ว ๆ นี้" ใต้ชื่อ */
-const PLANNED = "btn-sm flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[12px] px-1.5 text-[13px] text-[color:var(--color-muted)] opacity-80";
+// POS P2.5U ▸ มติ 1: ปุ่มรองของแผง (สั่งเพิ่ม · ย้าย · รวม · แยกบิล · พิมพ์ใบรายการ) — ปิด = จาง + tooltip ◂
+const SECONDARY = "btn-sm inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-[12px] px-1.5 text-[13.5px] font-bold disabled:cursor-not-allowed disabled:font-normal disabled:text-[color:var(--color-muted)] disabled:opacity-70";
 
 export function TablePanel(p: Props) {
   const t = useTranslations("pos.tables");
@@ -242,6 +259,9 @@ export function TablePanel(p: Props) {
       : "";
   const q = p.quote;
   const scRate = p.serviceCharge?.posBp ?? 0;
+  const hasUnpaid = !!d && d.unpaidItemIds.length > 0; // POS P2.5U ▸ แยกบิล/ใบรายการต้องมีรายการค้างจ่าย (หรือแผนที่เปิดอยู่) ◂
+  // POS P2.5U ▸ fix1 V2: แผนเปิดอยู่ = ยอดของแผน (เซิร์ฟเวอร์) แทน quote ทั้งโต๊ะที่ S ปฏิเสธ ◂
+  const plan = d?.split ? (p.split?.plan ?? null) : null;
 
   const itemRow = (it: TableRoundItem) => {
     const cancellable = !it.paid && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED";
@@ -358,6 +378,32 @@ export function TablePanel(p: Props) {
       )}
 
       <div data-testid="pos-tbl-totals" className="mt-auto border-t px-4 py-3 text-[14px]">
+        {d?.split ? (
+          // POS P2.5U ▸ fix1 V2: แผนแยกบิลเปิดอยู่ — รวม / (ส่วนลด) / ค่าบริการ / ยอดสุทธิ จาก SplitPlanView ของ registerSplitDetailAction ◂
+          <>
+            <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
+              <span>{t("panel.subtotal")}</span>
+              <span data-testid="pos-tbl-plan-subtotal" className="tabular-nums">{plan ? moneyText(plan.baseSatang) : "…"}</span>
+            </div>
+            {plan && plan.discountSatang > 0 && (
+              <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
+                <span>{t("panel.planDiscount")}</span>
+                <span className="tabular-nums text-[color:var(--color-danger)]">{moneyText(-plan.discountSatang)}</span>
+              </div>
+            )}
+            {(!plan || plan.serviceChargeSatang !== 0) && (
+              <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
+                <span>{t("panel.serviceCharge", { rate: pct(plan ? plan.serviceChargeBp : scRate) })}</span>
+                <span className="tabular-nums">{plan ? moneyText(plan.serviceChargeSatang) : "…"}</span>
+              </div>
+            )}
+            <div className="flex items-baseline justify-between pt-1 text-[20px] font-bold text-[color:var(--color-ink)]">
+              <span>{t("panel.net")}</span>
+              <span data-testid="pos-tbl-net" className="tabular-nums">{plan ? moneyText(plan.totalSatang) : "…"}</span>
+            </div>
+          </>
+        ) : (
+          <>
         <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
           <span>{t("panel.subtotal")}</span>
           <span className="tabular-nums">{q ? moneyText(q.subtotalSatang) : "—"}</span>
@@ -378,14 +424,22 @@ export function TablePanel(p: Props) {
           <span>{t("panel.net")}</span>
           <span data-testid="pos-tbl-net" className="tabular-nums">{q ? moneyText(q.grandTotalSatang) : "—"}</span>
         </div>
+          </>
+        )}
         {p.serviceCharge?.differs && (
           <p data-testid="pos-tbl-sc-differs" className="mt-1 text-[12px] text-[color:var(--color-muted)]">
             {t("panel.serviceChargeDiffers", { pos: pct(p.serviceCharge.posBp), restaurant: pct(p.serviceCharge.restaurantBp) })}
           </p>
         )}
-        {p.quoteError && (
+        {p.quoteError && !d?.split && (
           <p role="alert" className="mt-1 text-[12.5px] text-[color:var(--color-danger)]">
             {tr(p.quoteError)}
+          </p>
+        )}
+        {d?.split && (
+          // POS P2.5U ▸ มติ 1/3: แผนแยกบิลเปิดอยู่ — ความคืบหน้าจาก registerTableDetailAction().split (ไม่ quote ทั้งโต๊ะ = TABLE_SPLIT_OPEN) ◂
+          <p data-testid="pos-tbl-split-progress" className="mt-1 text-[12.5px] text-[color:var(--color-ink-soft)]">
+            {t("split.progress", { paid: d.split.paidParts, count: d.split.partCount, amount: moneyText(d.split.remainingSatang) })}
           </p>
         )}
       </div>
@@ -399,27 +453,69 @@ export function TablePanel(p: Props) {
         ) : (
           <span />
         )}
-        {(["moveTable", "mergeTable"] as const).map((k) => (
-          <button key={k} data-testid={`pos-tbl-planned-${k}`} type="button" disabled aria-disabled="true" title={t("actions.planned")} className={PLANNED}>
-            <span className="flex items-center gap-1">
-              <RegisterIcon name={k === "moveTable" ? "swap" : "link"} size={12} />
-              <span className="truncate">{t(`actions.${k}`)}</span>
-            </span>
-            <span className="text-[10.5px] leading-none">{t("actions.planned")}</span>
-          </button>
-        ))}
+        {/* POS P2.5U ▸ มติ 1: ย้ายโต๊ะ · รวมโต๊ะ (คีย์ restaurant.session.move|merge — ไม่มี = ปิด + tooltip) ◂ */}
+        <button
+          data-testid="pos-tbl-moveTable"
+          type="button"
+          disabled={p.busy || !p.split?.canMove}
+          title={p.split?.canMove ? undefined : t("move.noPermission")}
+          className={SECONDARY}
+          onClick={() => p.split?.onMove()}
+        >
+          <RegisterIcon name="swap" size={13} />
+          <span className="truncate">{t("actions.moveTable")}</span>
+        </button>
+        <button
+          data-testid="pos-tbl-mergeTable"
+          type="button"
+          disabled={p.busy || !p.split?.canMerge}
+          title={p.split?.canMerge ? undefined : t("merge.noPermission")}
+          className={SECONDARY}
+          onClick={() => p.split?.onMerge()}
+        >
+          <RegisterIcon name="link" size={13} />
+          <span className="truncate">{t("actions.mergeTable")}</span>
+        </button>
       </div>
       <div className="mt-2 grid grid-cols-[1fr_2fr] gap-2 px-4">
-        {(["splitBill", "printList"] as const).map((k) => (
-          <button key={k} data-testid={`pos-tbl-planned-${k}`} type="button" disabled aria-disabled="true" title={t("actions.planned")} className={PLANNED}>
-            <span className="flex items-center gap-1">
-              <RegisterIcon name={k === "splitBill" ? "doc" : "print"} size={12} />
-              <span className="truncate">{t(`actions.${k}`)}</span>
-            </span>
-            <span className="text-[10.5px] leading-none">{t("actions.planned")}</span>
-          </button>
-        ))}
+        {/* POS P2.5U ▸ มติ 1: แยกบิล (pos.sale.create) · พิมพ์ใบรายการ (ทั้งโต๊ะ · แผนเปิดอยู่ = เปิดแผงแยกบิลที่พิมพ์รายใบได้) ◂ */}
+        <button
+          data-testid="pos-tbl-splitBill"
+          type="button"
+          disabled={p.busy || !p.split?.canSplit || (!hasUnpaid && !d?.split)}
+          title={!p.split?.canSplit ? tr("errors.permissionDenied") : !hasUnpaid && !d?.split ? t("split.nothing") : undefined}
+          className={SECONDARY}
+          onClick={() => p.split?.onSplit()}
+        >
+          <RegisterIcon name="doc" size={13} />
+          <span className="truncate">{t("actions.splitBill")}</span>
+        </button>
+        <button
+          data-testid="pos-tbl-printList"
+          type="button"
+          disabled={p.busy || !p.split || (!hasUnpaid && !d?.split)}
+          title={!hasUnpaid && !d?.split ? t("split.nothing") : d?.split ? t("preBill.perBill") : undefined}
+          className={SECONDARY}
+          onClick={() => (d?.split ? p.split?.onSplit() : p.split?.onPreBill())}
+        >
+          <RegisterIcon name="print" size={13} />
+          <span className="truncate">{t("actions.printList")}</span>
+        </button>
       </div>
+      {d?.split ? (
+        // POS P2.5U ▸ มติ 1: แผนแยกบิลเปิดอยู่ — "เช็คบิล" กลายเป็น "ชำระทีละใบ · เหลือ ฿y" (registerTableDetailAction().split) → แผงแยกบิล ◂
+        <button
+          data-testid="pos-tbl-checkout-open"
+          data-split="open"
+          type="button"
+          disabled={p.busy || !p.split}
+          className="btn btn-primary mx-4 mt-3 h-14 justify-between rounded-[16px] px-5 text-[17px] font-bold disabled:border disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-muted)]"
+          onClick={() => p.split?.onSplit()}
+        >
+          <span className="truncate">{t("split.payOneByOne")}</span>
+          <span className="tabular-nums">{t("split.leftAmount", { amount: moneyText(d.split.remainingSatang) })}</span>
+        </button>
+      ) : (
       <button
         data-testid="pos-tbl-checkout-open"
         type="button"
@@ -430,6 +526,7 @@ export function TablePanel(p: Props) {
         <span>{t("actions.checkout", { amount: "" }).trim()}</span>
         <span className="tabular-nums">{q ? moneyText(q.grandTotalSatang) : "—"}</span>
       </button>
+      )}
       {p.checkoutBlock && <div className="px-4 pt-1.5 text-[12.5px] text-[color:var(--color-danger)]">{p.checkoutBlock}</div>}
       <div className="h-3 shrink-0" />
     </section>

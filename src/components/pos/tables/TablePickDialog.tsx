@@ -52,7 +52,30 @@ export function BillStripDialog({ strip, onContinue, onClose }: { strip: CartStr
   );
 }
 
-export function TablePickDialog({ systemId, unitId, busy, onPick, onClose }: { systemId: string; unitId: string; busy: boolean; onPick: (c: TableCard) => void; onClose: () => void }) {
+// POS P2.5U ▸ มติ 8: แผ่น "ย้ายโต๊ะ" ใช้แผ่นนี้ซ้ำ — title/hint/sheetId แทนค่าเดิม · filter = โต๊ะที่เลือกได้ (ว่าง/จอง/ต้องเก็บ · ไม่ใช่โต๊ะเดิม) · ไม่ส่ง = พฤติกรรมเดิม ◂
+export function TablePickDialog({
+  systemId,
+  unitId,
+  busy,
+  onPick,
+  onClose,
+  title,
+  hint,
+  sheetId,
+  filter,
+  empty,
+}: {
+  systemId: string;
+  unitId: string;
+  busy: boolean;
+  onPick: (c: TableCard) => void;
+  onClose: () => void;
+  title?: string;
+  hint?: string;
+  sheetId?: "pos-tbl-pick" | "pos-tbl-move-sheet";
+  filter?: (c: TableCard) => boolean;
+  empty?: string;
+}) {
   const t = useTranslations("pos.tables");
   const tr = useTranslations("pos.register");
   const [tables, setTables] = useState<TableCard[] | null>(null);
@@ -63,7 +86,7 @@ export function TablePickDialog({ systemId, unitId, busy, onPick, onClose }: { s
       try {
         const r = await registerTablesAction({ systemId, unitId });
         if (!live) return;
-        if (r.ok) setTables(r.tables.filter((c) => c.state !== "INACTIVE"));
+        if (r.ok) setTables(r.tables.filter((c) => c.state !== "INACTIVE" && (!filter || filter(c)))); // POS P2.5U ▸ + filter ◂
         else {
           setTables([]);
           setErr(refusalMessageKey(r.code));
@@ -78,17 +101,19 @@ export function TablePickDialog({ systemId, unitId, busy, onPick, onClose }: { s
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- POS P2.5U: filter อ่านครั้งเดียวตอนโหลดแผ่น
   }, [systemId, unitId]);
   return (
     <RegisterDialog onDismiss={onClose} locked={busy}>
-      <div data-testid="pos-tbl-pick" role="dialog" aria-modal="true" aria-label={t("billType.pickTable")} className={`${REG_DIALOG_PANEL} md:w-[560px]`}>
+      <div data-testid={sheetId ?? "pos-tbl-pick"} role="dialog" aria-modal="true" aria-label={title ?? t("billType.pickTable")} className={`${REG_DIALOG_PANEL} md:w-[560px]`}>
         <SheetGrab />
         <div className="flex items-center gap-2">
-          <h2 className="flex-1 text-[19px] font-bold">{t("billType.pickTable")}</h2>
+          <h2 className="flex-1 text-[19px] font-bold">{title ?? t("billType.pickTable")}</h2>
           <button data-testid="pos-tbl-pick-close" type="button" aria-label={t("reservation.close")} className="grid size-11 place-items-center rounded-[12px] text-[color:var(--color-ink-soft)]" onClick={onClose}>
             <RegisterIcon name="x" size={18} />
           </button>
         </div>
+        {hint && <p className="text-[13.5px] text-[color:var(--color-ink-soft)]">{hint}</p>}
         {err && (
           <p role="alert" className="text-[13px] text-[color:var(--color-danger)]">
             {tr(err)}
@@ -97,7 +122,7 @@ export function TablePickDialog({ systemId, unitId, busy, onPick, onClose }: { s
         {tables === null ? (
           <p className="py-6 text-center text-[13.5px] text-[color:var(--color-muted)]">{"…"}</p>
         ) : tables.length === 0 ? (
-          <p className="py-6 text-center text-[13.5px] text-[color:var(--color-muted)]">{t("billType.empty")}</p>
+          <p className="py-6 text-center text-[13.5px] text-[color:var(--color-muted)]">{empty ?? t("billType.empty")}</p>
         ) : (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {tables.map((c) => (

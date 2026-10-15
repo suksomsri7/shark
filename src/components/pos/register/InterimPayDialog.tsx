@@ -146,6 +146,8 @@ type Props = {
    * payMethods = แถวของคำขอนั้น (ใช้สร้างแถวคืนเมื่อกล่องนี้ไม่มีแถว — หลัง reload) ◂
    */
   pinAgain?: { seq: number; payMethods: RegisterPayMethod[]; tipSatang: number; cashReceivedSatang?: number } | null;
+  /** POS P2.5U ▸ มติ 7: ชิปหัวจอ "บิล n จาก N · โต๊ะ A5" ของการจ่ายใบแยกบิล (quote.split) — ไม่ส่ง = ไม่มีชิป ◂ */
+  splitChip?: string | null;
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
@@ -857,6 +859,12 @@ export function PayDialog(p: Props) {
           <RegisterIcon name="wallet" size={18} className="hidden md:block" />
           <h2 className="text-[19px] font-bold md:text-[17px]">{t("pay.title")}</h2>
           <span className="inline-flex h-7 items-center rounded-[8px] border px-[11px] text-[13px] text-[color:var(--color-ink-soft)]">{t("cart.itemCount", { count: p.itemCount })}</span>
+          {/* POS P2.5U ▸ มติ 7: ชิปใบแยกบิล ◂ */}
+          {p.splitChip && (
+            <span data-testid="pos-reg-paydlg-splitchip" className="inline-flex h-7 min-w-0 max-w-[240px] items-center truncate rounded-[8px] border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-[11px] text-[13px] font-bold text-[color:var(--color-accent)]">
+              {p.splitChip}
+            </span>
+          )}
           {p.memberChip && (
             <span data-testid="pos-member-pay-chip" className="inline-flex h-7 min-w-0 max-w-[260px] items-center truncate rounded-[8px] border px-[11px] text-[13px] text-[color:var(--color-ink-soft)] max-md:hidden">
               {p.memberChip}
