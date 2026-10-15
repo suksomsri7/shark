@@ -96,3 +96,48 @@ Logs `/tmp/claude-0/-root/5169ed6b-3dd4-5e42-a1eb-90ec4124521e/scratchpad/p211u/
 | qc-pos-p2.8 | 417dca34 | 61/61 (ST6 green — register.ts/service.ts untouched) |
 | visual-pos `p2.11u --states --dry` | 11537bf6 | rc 0 ×4: owner th 24 / en 8 · manager th 18 / en 6 (`dry-<user>-<th|en>.log`); cashier = 0 shots rc 0 |
 
+
+## Fix round 1 (account B, 15 Oct 08:30Z) — head = this notes commit on top of code head 001c7aac (code 001c7aac)
+Builder fix 1 (the original builder died in a host restart; tree c clean at bb783783 when picked up). R1 + binding controller rulings 1–9 = `ledger/wo-notes/pos-P2.11U-review.md` (copied from controller cff6480b in e4d5ae41). No server behaviour change (`catalog.ts` untouched; only the page's own read in `products-data.ts` grew).
+
+| finding | ruling | commit | change |
+|---|---|---|---|
+| F1 (Medium) silent row delete | 1 | a0616c64 | `products-data.ts` `countDeadRows`: the same one read of the product price rows now also selects `priceSatang, notSold` and merges every stored `(code, unit)` missing from `p.rows` (raw values) ⇒ the client always resends the full stored set. `ProductPanel.tsx`: a unit with `p.available[u] === undefined` gets no editable group, only the muted line `pos-prod-drawer-unstocked-<unitId>` "ไม่มีสินค้านี้ในคลังของสาขา <unit>" (new key `pos.products.branch.unstocked` th/en; `<p>` = not interactive, no inventory row); its rows stay in the payload (not drafted ⇒ kept by `rowsFromGroups`). Invariant comment above `rowsFromGroups` (+ `PriceGroup.unstocked`) and in the spec: "the client never omits a stored row; the server deletes only rows the client dropped on purpose". |
+| F2 compare refetch | 2 | 46c44bf7 | `BranchCompare.tsx`: effect keyed on `idKey = ids.join(",")` (+ `unitKey`), action called with `idKey.split(",")` — a parent re-render (toast clear, refresh) no longer refires `unitPriceMatrixAction`. |
+| F3 purge in branch mode | 3 | 85c4d658 | `products/page.tsx`: `canPurge = !branchMode && (canPrice ∥ setPrice at every live POS unit)` (spec updated). |
+| F4 bills chip | 4 | 86144715 | `BillsClient.tsx` restored to base ed200e6c (no P2.11U hunk left) · key `pos.sales.branch.chipLabel` removed th + en (the whole `pos.sales` object it created) · state `bills-all-branches` removed from `visual-pos.mts` (type, plan row, path, runner, fixture condition) and `sales` dropped from `P211U_PAGES` · spec §12 = "unchanged; chip returns with P2.12". **Inventory: no row to remove** — the chip was a `<span>` (not interactive by `crm-testid-scan`), so it never had a row; rows stay 28 P2.11U / 884 total (`qc-pos-inventory` 25/25). |
+| F5 killed-run residue | 5 | e36a8a83 · 001c7aac | `ensureP211uFixture`: before taking "before", (a) a latte `(STORE, silom)` row with price = base − 500 (not notSold) is removed via `setChannelPrices`; (b) a silom receipt override with `taxBranchNo = "00001"` is cleared (address/phone cleared only when equal to the fixture values — const `P211U_RECEIPT`), and the cleared value becomes "before". 001c7aac = locals instead of closure narrowing (typing only). |
+| F6 MANAGER membership leak | 6 | 351b640c | `ensureManagerUser` flags `P211U.managerMembership`; `cleanupP211u` (after the last P2.11U job / finally / signal) deletes the MANAGER{silom} Membership of `posqc-coffee-user-manager-vis` on the QC tenant (User row stays; the next `--user manager` run recreates it). ⇒ P1.18U `settings-staff` / `settings-staff-pin` shots on QC5 are unaffected after a P2.11U run (no extra staff row). Membership has no FK children (schema core.prisma). |
+| F7 compare bold | 7 | — | accepted as documented; no change. |
+| F8 markers | 8 | 665d2e99 | `ProductPanel.tsx`: block markers round the import block, `Props.onSaved`+new props, the destructure, `startEdit`/`cancelEdit`, the save body line, `ref={bodyRef}`, and the whole replaced price JSX (`{/* POS P2.11U ▸ … */}` … `{/* ◂ */}`). `ProductsClient.tsx`: destructure block, `key=` and both `openProduct` call sites (inline `▸ … ◂`), the 4 drawer props. `BillsClient.tsx`: nothing to wrap (reverted by ruling 4). |
+
+### Gates (ruling 9) — head 001c7aac, dirty 0
+Logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p211u-fix1/runs/` (every log headed `tree= head= dirty=`). Typecheck = own iso unit (prompt shape, 1 run); DB suites + fitness = ONE `iso.sh` unit (`gates-unit.sh`, `gates-fix1/`, unit rc 0); `--dry` outside iso with `env CI=1`.
+
+| gate | result |
+|---|---|
+| typecheck (1 of ≤ 2) | **rc 0** (`typecheck.log`) |
+| fitness no-env / env (qc4) | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| qc-pos-p2.11 (unforced) | **34/34** (skipped false · residue 0 · leaks 0 · guard hits 0) |
+| qc-pos-p2.2 | 42/42 |
+| qc-pos-products | 24/24 |
+| qc-pos-p1.17 | 40/40 |
+| qc-pos-p1.18 (phase U) | 81/81 (ST7 = 0) |
+| qc-hf-pos-page-authz | 81/81 |
+| qc-pos-inventory | 25/25 (no row change — see F4) |
+| qc-pos-p2.8 | 61/61 |
+| visual-pos `p2.11u --states --dry` | rc 0 ×4: owner th 21 / en 7 · manager th 18 / en 6 (was 24/8 · 18/6 — owner lost the 3 + 1 `bills-all-branches` shots) |
+
+### `--state` list for the controller (replaces the one above — `bills-all-branches` gone)
+```
+--user owner   --state products-branch-filter,products-branch-copy,products-branch-compare,products-dead-row-note,reports-channels,settings-receipt-branch,stock-shared-inventory
+--user manager --state products-branch-filter,products-branch-compare,products-dead-row-note,products-manager-branch,reports-channels,stock-shared-inventory
+```
+Ruling 9 re-shoot before merge: `products-branch-filter,products-dead-row-note,products-manager-branch,products-branch-compare` (owner th + manager th; `products-manager-branch` is manager-only) on QC5. Not built/served here (no server).
+
+### Follow-ups (fix 1)
+- F4: the 12 unit chip returns with the P2.12 all-branch bills list (`pos-sales-unitChip-*` + key to be re-added then).
+- F7: compare bold = non-BASE `source` (cannot tell own from inherited `(code, *)` rows) — accepted; a source split needs the matrix DTO (P2.12 or owner line).
+- Ruling 3 consequence: an all-units STAFF/MANAGER without `posCanSetTenantPrice` now never sees purge (branch mode) — joins the existing "single-branch manager cannot purge" follow-up.
+- Still open from the first round: hunt L3 (no precondition on the 06 full-set save), R1 F2 owner line.
