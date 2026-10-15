@@ -46,6 +46,8 @@ const CHECKS: readonly Def[] = [
   D("HN3", "X1", "[a มติ 1] กวาด ‖ พนักงาน acceptOrder ออเดอร์เดียวกัน (ธุรกรรมที่สามถือแถว PosOrder · ทั้งคู่รอ) → ACCEPTED 1 · บิล PLATFORM 1 · รอบครัว 1 · ตัวควบคุมที่ไม่ถูกกวาด: ช่องทางปิดรับอัตโนมัติภายหลัง · MANUAL ที่เริ่ม NEW · NEW ที่ไม่มี held · ช่องทางพักรับ (pausedUntil) · ออเดอร์ held ของสาขา B · ของร้าน T2"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): HN4 (R1 F2)
   D("HN4", "X1", "[a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที่สามถือแถว o1 ให้ตัวแรกผ่านด่านเพดานแล้วรอ · ช่องทาง o1 ปิดรับอัตโนมัติระหว่างนั้น) → ACCEPTED 1 · ตั๋วค้าง ≤ เพดาน · บิล 1 · รอบครัว 1"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): HN5 (hunter H1)
+  D("HN5", "X1", "[a fix2 มติ 1] ออเดอร์ PLATFORM (PLATFORM_PAID) พักที่เพดาน 1 · (ก) ช่องทาง CUSTOM เปลี่ยน payout เป็น DIRECT ก่อนกวาด → กวาด ⇒ ยัง NEW + held sale_refused 1 · บิล 0 · รอบครัว 0 · พนักงาน acceptOrder คู่ที่ไม่ตรง ⇒ CHANNEL_PAY_MISMATCH ไม่มีบิล · (ข) ช่องทางปิดรับอัตโนมัติระหว่างตัวกวาดรอล็อกต่อสาขา (ธุรกรรมที่สามถือ posorder-release) ⇒ ยัง NEW · ไม่มี held ใหม่ · บิล 0 · รอบครัว 0"),
   // ── OD รอบร่างกำพร้า (b) ──
   D("OD1", "X1", "[b มติ 2] รอบร่าง HELD ของ session ที่หน้าเดิมปิด (table.closeSession) และของ session ที่หน้าเดิมรวมเข้าโต๊ะอื่น (MERGED) → registerTables (อ่านผัง) → DISCARDED ทั้งคู่ + audit pos.heldCart.discard 1 แถว/ร่าง (actorType SYSTEM · after {status DISCARDED, via session_not_open, tableSessionId}) · อ่านซ้ำไม่เพิ่ม audit · registerTables เรียก sweepOrphanTableDrafts"),
   D("OD2", "PAR", "[b มติ 2] ไม่แตะ: ร่างของ session ที่ยัง OPEN · บิลพักในลิ้นชัก (tableSessionId null) · ร่างของ session ที่ปิดแล้วของสาขา B (อ่านผังสาขา A) — ยัง HELD ทุกแถว version เดิม"),
@@ -74,6 +76,8 @@ const CHECKS: readonly Def[] = [
   // ── ZE เครื่องหมาย zero entry (z1 z3) ──
   D("ZE1", "X2", "[z3 มติ 9] เครื่องหมายของบิล X ในสมุด A (recordExternalSaleZeroEntry เขียน after.bookSystemId) → ย้าย POS ไปผูกสมุด B → applyExternalChannelCommission = {posted:false, reason:no-paid} (ไม่มี JV ใดในสมุด B) · ผูกกลับ A → posted (หรือ already)"),
   D("ZE2", "-", "[z1 มติ 8] posSalePosted: เครื่องหมาย + เอกสารขาย = true · เครื่องหมายไม่มีเอกสาร = false · บิลที่มี JV PAID = true (ตัวควบคุม)"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): ZE3 (hunter H2)
+  D("ZE3", "X2", "[z fix2 มติ 2] บิล zero entry ที่มีค่าคอมฯ จริงในสมุด A (ฉาก A10: มัดจำตอนจด VAT → เลิกจด → บิลสุดท้าย ฿20 · ตัวแทน DIRECT 10%) → ย้าย POS ไปผูกสมุด B → คืนบิลครบ → ระบายคิว ⇒ pos.sale.refunded DONE · ไม่มี P2002 ใน log · COMMISSION ในสมุด B 0 · COMMISSION_REFUNDED ในสมุด B 0 (ปักไว้ · เรื่องเจ้าของ) · COMMISSION ในสมุด A ยัง 1 · ความเคลื่อนไหวสต็อกไม่เพิ่ม"),
   // ── FU P2.11 (f1 f2 f3) ──
   D("FU1", "-", "[f1 f2 มติ 7] report.channels.empty th \"ไม่มียอดในช่วงนี้\" en \"No sales in this period\" (ไม่มี วันนี้/today) · loadProductsData สาขาที่โหลดไม่ครบ (CatalogError — สาขาไม่ผูก POS) อยู่ใน incompleteUnitIds · สาขาปกติไม่อยู่ · ProductPanel ใช้ incompleteUnitIds/branch.incomplete"),
   D("FU2", "X1", "[f3 มติ 10] setChannelPrices + expectedRowsHash: ค่าเก่า → CatalogError CONFLICT ไม่เขียน · ตรง (= ProductsRow.rowsHash = channelRowsHash(rows)) → ok เขียน · ไม่ส่ง → ok (ของเดิม) · channelRowsHash ไม่ขึ้นกับลำดับแถว · คีย์ products.branch.conflict"),
@@ -1344,6 +1348,81 @@ async function runDb() {
     chk("HN4", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "6 ตัวกวาดพร้อมกันที่เพดาน 1 = รับ 1 · บิล 1 · รอบ 1 · ตั๋วค้าง ≤ เพดาน", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
   });
 
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): HN5 = ตัวกวาดตัดสินเงินจากแถวช่องทางเก่า (hunter H1 · มติ fix2 ข้อ 1 · 3) —
+  //   (ก) ออเดอร์ PLATFORM (PLATFORM_PAID) ถูกพักที่เพดาน 1 → เจ้าของเปลี่ยน payout ของช่องทาง CUSTOM เป็น DIRECT ก่อนกวาด → ตั๋วค้างเสร็จ → กวาด
+  //       ⇒ ยัง NEW + held sale_refused 1 · บิล 0 · รอบ 0 (ก่อนแก้ = ACCEPTED ไม่มีบิล — รายได้แพลตฟอร์มหาย) · พนักงาน acceptOrder คู่ที่ไม่ตรง = CHANNEL_PAY_MISMATCH ไม่มีบิล
+  //   (ข) ออเดอร์ PLATFORM ถูกพักที่เพดาน 1 → ตั๋วค้างเสร็จ → ธุรกรรมที่สามถือล็อกต่อสาขา posorder-release ให้ตัวกวาดอ่านผู้สมัคร (ช่องทางยังรับอัตโนมัติ) แล้วรอ ·
+  //       ระหว่างนั้นช่องทางปิดรับอัตโนมัติ → ปล่อย ⇒ ยัง NEW · ไม่มี held ใหม่ · บิล 0 · รอบ 0 (ก่อนแก้ = รับด้วยแถวช่องทางเก่า) ◂
+  await step("HN5", async () => {
+    const p: string[] = [];
+    if (fx) throw new Error(`fixture ${fx}`);
+    await clearKitchen();
+    const ids: string[] = [];
+    const LOCK_RELEASE = `SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext($1::text))) l`;
+    try {
+      const mkCh = async (code: string, label: string) => {
+        const sv = must(`ช่องทาง ${code}`, await call(chMod, "saveChannel", ctxA(), A("OWNER"), { code, name: `${label} ${RAND}`, payout: "PLATFORM", commissionBp: 2000, adapter: "NONE" }));
+        const id = String(sv.channel?.id ?? "");
+        must(`${code} autoAccept`, await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: id, autoAccept: true }));
+        return id;
+      };
+      const chP = await mkCh("CUSTOM_H5P", "เปลี่ยนวิธีรับเงิน H5");
+      const chA = await mkCh("CUSTOM_H5A", "ปิดรับอัตโนมัติ H5");
+      must("เพดาน 1", await K("kdsSetAutoAcceptMax", ctxA(), A("OWNER"), { maxOpen: 1 }));
+      const blocker = async (lbl: string) => mkOrder(lbl, CH.LM!, [ln("padthai", 1)], { externalRef: `${lbl}-${RAND}`, startStatus: "ACCEPTED" });
+      const heldAtCeiling = async (id: string, lbl: string) => {
+        const o = await orow(id);
+        const hv = await heldEvs(id);
+        if (o?.status !== "NEW" || o?.paymentState !== "PLATFORM_PAID" || hv.length !== 1 || hv[0]?.payload?.reason !== "backlog") throw new Error(`(fixture) ${lbl} ${ostr(o)} ${o?.paymentState} held ${short(hv.map((e) => e.payload), 60)} (คาด NEW · PLATFORM_PAID · held backlog 1)`);
+      };
+      // (ก) payout PLATFORM → DIRECT ก่อนกวาด
+      const b1 = await blocker("hn5b1");
+      const oP = await mkOrder("hn5p", chP, [ln("padthai", 1)]);
+      ids.push(oP);
+      await heldAtCeiling(oP, "oP");
+      must("H5P payout DIRECT", await call(chMod, "saveChannel", ctxA(), A("OWNER"), { id: chP, name: `เปลี่ยนวิธีรับเงิน H5 ${RAND}`, payout: "DIRECT" }));
+      await doneRoundsOf(b1);
+      const rP = await release();
+      const oP1 = await orow(oP);
+      const sP = await salesOf(oP);
+      for (const s of sP) MY_SALES.push(String(s.id));
+      const refusedP = (await heldEvs(oP)).filter((e) => e.payload?.reason === "sale_refused").length;
+      const roundsP = (await roundsOf(oP)).length;
+      if (rP?.ok === false) p.push(`(ก) releaseHeldOrders → ${codeOf(rP)}`);
+      if (oP1?.status !== "NEW" || refusedP !== 1 || sP.length !== 0 || roundsP !== 0 || (Array.isArray(rP?.accepted) && rP.accepted.includes(oP)))
+        p.push(`(ก) payout เปลี่ยนเป็น DIRECT ก่อนกวาด → ${ostr(oP1)} · held sale_refused ${refusedP} · บิล ${sP.length} · รอบครัว ${roundsP} · accepted ${short(rP?.accepted, 40)} (คาด NEW · 1 · 0 · 0 · ไม่มี)`);
+      const ac = await O("acceptOrder", ctxA(DEV1), A("STAFF"), { id: oP });
+      const oP2 = await orow(oP);
+      const sP2 = await salesOf(oP);
+      for (const s of sP2) MY_SALES.push(String(s.id));
+      if (!refused(ac, "CHANNEL_PAY_MISMATCH") || oP2?.status !== "NEW" || sP2.length !== 0) p.push(`(ก) พนักงานรับคู่ที่ไม่ตรง → ${codeOf(ac)} · ${ostr(oP2)} · บิล ${sP2.length} (คาด CHANNEL_PAY_MISMATCH · NEW · 0)`);
+      // (ข) autoAccept ปิดระหว่างตัวกวาดรอล็อกต่อสาขา
+      await clearKitchen();
+      const b2 = await blocker("hn5b2");
+      const oA = await mkOrder("hn5a", chA, [ln("padthai", 1)]);
+      ids.push(oA);
+      await heldAtCeiling(oA, "oA");
+      await doneRoundsOf(b2);
+      const hl = await holdLock(LOCK_RELEASE, [`posorder-release:${T}:${U.A}`], [() => release()], async () => {
+        must("H5A ปิดรับอัตโนมัติ", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: chA, autoAccept: false }));
+      });
+      const rA = hl.res[0];
+      const oA1 = await orow(oA);
+      const sA = await salesOf(oA);
+      for (const s of sA) MY_SALES.push(String(s.id));
+      const hvA = await heldEvs(oA);
+      const roundsA = (await roundsOf(oA)).length;
+      if (hl.blocked < 1) p.push("(ข) ตัวกวาดไม่รอล็อก posorder-release (จัดฉากไม่ถึง)");
+      if (rA?.ok === false) p.push(`(ข) releaseHeldOrders → ${codeOf(rA)}`);
+      if (oA1?.status !== "NEW" || hvA.length !== 1 || sA.length !== 0 || roundsA !== 0 || (Array.isArray(rA?.accepted) && rA.accepted.includes(oA)))
+        p.push(`(ข) ปิดรับอัตโนมัติระหว่างรอล็อก → ${ostr(oA1)} · held ${hvA.length} ${short(hvA.map((e) => e.payload?.reason), 40)} · บิล ${sA.length} · รอบครัว ${roundsA} · accepted ${short(rA?.accepted, 40)} (คาด NEW · held 1 (backlog) · 0 · 0 · ไม่มี)`);
+    } finally {
+      await K("kdsSetAutoAcceptMax", ctxA(), A("OWNER"), { maxOpen: null });
+      for (const id of ids) if ((await orow(id))?.status === "NEW") await O("rejectOrder", ctxA(DEV1), A("OWNER"), { id, reasonCode: "OTHER" });
+    }
+    chk("HN5", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "ช่องทางเปลี่ยนก่อนกวาด: payout ไม่ตรง = NEW + sale_refused ไม่มีบิล · ปิดรับอัตโนมัติ = NEW ไม่มี held ใหม่ · ไม่มีบิลจากคู่ที่ไม่ตรง", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
+  });
+
   // ════════ VO CN HU LK2 (ออเดอร์ LINEMAN · บิล PLATFORM) ════════
   console.log("\n── VO CN HU LK2 ──");
   await step("VO1", async () => {
@@ -1902,6 +1981,98 @@ async function runDb() {
     const pr = sid ? await posted(S.POS, sid) : "ไม่มีบิล";
     if (pr !== true) p.push(`(ตัวควบคุม) บิลที่มี JV PAID → ${short(pr)} ${codeOf(s)}`);
     chk("ZE2", p.length === 0, "posSalePosted: เครื่องหมาย+เอกสาร true · ไม่มีเอกสาร false · JV PAID true", FX(P8(p) || "ครบ"));
+  });
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): ZE3 = คืนบิล zero entry ที่มีค่าคอมฯ จริงในสมุด A หลังย้าย POS ไปผูกสมุด B (hunter H2 · มติ fix2 ข้อ 2 · 3) —
+  //   ฉากจริงเดียวที่บิลมีค่าคอมฯ แต่ไม่มี JV ขาย = ฉาก A10 ของ qc-pos-p2.9b (มัดจำ ฿1,070 ตอนจด VAT → สมุดเลิกจด → ใช้ ฿1,050 แล้ว ฿20 · ช่องทางตัวแทน DIRECT 10%) —
+  //   ช่องทาง payout PLATFORM มีแถวจ่าย PLATFORM เต็มยอดเสมอ ⇒ ไม่มีวันเป็น zero entry · POS Z3 ของตัวเอง (สาขา Z3 · สมุด A3 จด VAT แล้วเลิกจด) ·
+  //   COMMISSION ของบิล ฿20 ลงสมุด A3 → ย้าย POS Z3 ไปผูกสมุด B (จด VAT) → คืนบิล ฿20 ครบ (โอน) → ระบายคิว ⇒ pos.sale.refunded DONE · ไม่มี P2002 ใน log ·
+  //   COMMISSION ในสมุด B 0 · COMMISSION_REFUNDED ในสมุด B 0 (ปักไว้ — การกลับค่าคอมฯ ข้ามสมุด = เรื่องของเจ้าของ · POS-OWNER-PENDING) · COMMISSION ในสมุด A3 ยัง 1 ·
+  //   ความเคลื่อนไหวสต็อกของร้านไม่เพิ่ม (ฝั่งสมุด B ไม่ตัดส่วนประกอบซ้ำ) ◂
+  await step("ZE3", async () => {
+    const p: string[] = [];
+    if (fx) throw new Error(`fixture ${fx}`);
+    const svcMod = await tryImport("@/lib/modules/pos/service");
+    const depMod = await tryImport("@/lib/modules/pos/deposit");
+    const paySetMod = await tryImport("@/lib/modules/pos/payment-settings");
+    const refundMod = await tryImport("@/lib/modules/pos/refund");
+    const owner = A("OWNER");
+    const xfer = (amt: number): Any => ({ type: "TRANSFER", amountSatang: amt });
+    const jvCount = (systemId: string, key: string) => P.accountJournalEntry.count({ where: { tenantId: T, systemId, idempotencyKey: key } }).catch(() => -1) as Promise<number>;
+    const unit = (await P.businessUnit.create({ data: { tenantId: T, type: "SHOP", name: `${TAG} สาขาZ3`, slug: `${T_SLUG}-z3` } })).id;
+    const pos = (await sysSvc.createSystem(T, "POS", `POS Z3 ${RAND}`)).id;
+    await sysSvc.linkUnit(T, pos, unit);
+    must("เปิดมัดจำ", await call(paySetMod, "updatePosPaymentSettings", { tenantId: T, systemId: pos }, owner, { deposit: { enabled: true } }));
+    const accA = (await sysSvc.createSystem(T, "ACCOUNT", `บัญชี A3 ${RAND}`)).id;
+    const org = `ร้านตามเก็บคิวซี A3 ${RAND} จำกัด`;
+    await accSvc.saveSettings(T, accA, { orgName: org, taxId: "0105561177639", vatRegistered: true });
+    await glMod.ensureAccounting({ tenantId: T, systemId: accA });
+    await P.accountSystemLink.create({ data: { tenantId: T, systemId: accA, linkedKind: "POS", linkedId: pos } });
+    const ctxZ: Any = { tenantId: T, systemId: pos, unitId: unit };
+    const ch = must("ช่องทางตัวแทน Z3", await call(chMod, "saveChannel", ctxZ, owner, { code: "CUSTOM_AGENT", name: `ตัวแทน Z3 ${RAND}`, payout: "DIRECT", commissionBp: 1000 }));
+    const channelId = String(ch.channel?.id ?? "");
+    const dr = must("รับมัดจำ", await call(depMod, "registerTakeDeposit", ctxZ, owner, { amountSatang: 107_000, payMethods: [xfer(107_000)], idempotencyKey: newKey("z3dep"), customerName: `คุณมัดจำ Z3 ${RAND}`, phone: `08${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}` }));
+    const depId = String(dr?.deposit?.id ?? dr?.depositId ?? "");
+    const dep = depId ? await P.posDeposit.findUnique({ where: { id: depId } }).catch(() => null) : null;
+    if (!dep?.receiptSaleId) throw new Error(`(fixture) มัดจำ Z3 ไม่มีใบรับ ${short(dr, 80)}`);
+    MY_SALES.push(String(dep.receiptSaleId));
+    await drain();
+    await accSvc.saveSettings(T, accA, { orgName: org, taxId: "0105561177639", vatRegistered: false });
+    const sale = async (lbl: string, amt: number) => {
+      const r = await call(svcMod, "createSale", { tenantId: T, unitId: unit, systemId: pos, idempotencyKey: newKey(lbl), channelId, lines: [{ name: `ของ ${lbl} ${RAND}`, qty: 1, unitPriceSatang: amt }], payMethods: [{ type: "DEPOSIT", amountSatang: amt, refSaleId: dep.receiptSaleId }] });
+      if (!r || r.ok === false || typeof r.saleId !== "string") throw new Error(`(fixture) บิล ${lbl} ${codeOf(r)} ${short(r?.message ?? "", 80)}`);
+      MY_SALES.push(String(r.saleId));
+      return String(r.saleId);
+    };
+    await sale("z3b1", 105_000);
+    const b2 = await sale("z3b2", 2_000);
+    await drain();
+    // ฉากก่อนย้ายสมุด: บิล ฿20 ไม่มี JV ขาย · เครื่องหมายของสมุด A3 · COMMISSION ในสมุด A3 1 รายการ
+    const comKey = `PosSale#${b2}#COMMISSION`;
+    const mk = (await auditsOf(ZERO_ENTRY_ACTION, b2)).filter((x) => x?.after?.bookSystemId === accA);
+    if ((await jvCount(accA, `PosSale#${b2}#PAID`)) !== 0 || mk.length !== 1 || (await jvCount(accA, comKey)) !== 1)
+      throw new Error(`(fixture) บิล ฿20: JV PAID ${await jvCount(accA, `PosSale#${b2}#PAID`)} · เครื่องหมาย A3 ${mk.length} · COMMISSION A3 ${await jvCount(accA, comKey)} (คาด 0 · 1 · 1)`);
+    const mv0 = Number(await P.invMovement.count({ where: { tenantId: T } }).catch(() => -1));
+    const relink = (acc: string) => P.accountSystemLink.updateMany({ where: { tenantId: T, linkedKind: "POS", linkedId: pos }, data: { systemId: acc } });
+    const logs: string[] = [];
+    const orig = { error: console.error, warn: console.warn };
+    let rid = "";
+    try {
+      await relink(S.ACCB);
+      const line = await P.posSaleLine.findFirst({ where: { saleId: b2 } });
+      const f = await call(refundMod, "refundSale", ctxZ, owner, { saleId: b2, lines: [{ lineId: String(line?.id ?? "none"), qty: 1 }], payMethods: [xfer(2_000)], reasonCode: "CHANGED_MIND", idempotencyKey: newKey("z3rf") });
+      const docs = (await P.posSale.findMany({ where: { tenantId: T, docType: "REFUND", refSaleId: b2 } }).catch(() => [])) as Any[];
+      for (const d of docs) MY_SALES.push(String(d.id));
+      if (f?.ok !== true || docs.length !== 1) throw new Error(`(fixture) คืน ฿20 → ${codeOf(f)} ${short(f?.message ?? "", 80)} · ใบคืน ${docs.length}`);
+      rid = String(docs[0].id);
+      const cap = (k: "error" | "warn") => (...a: unknown[]) => {
+        logs.push(a.map((x) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x, Object.getOwnPropertyNames(x ?? {})); } catch { return String(x); } })())).join(" "));
+        orig[k](...a);
+      };
+      console.error = cap("error");
+      console.warn = cap("warn");
+      await drain();
+    } finally {
+      console.error = orig.error;
+      console.warn = orig.warn;
+      await relink(accA);
+    }
+    const ev = ((await P.outboxEvent.findMany({ where: { tenantId: T, type: "pos.sale.refunded" } }).catch(() => [])) as Any[]).filter((e) => e.payload?.refundSaleId === rid);
+    const p2002 = logs.filter((l) => /P2002|Unique constraint/i.test(l)).length + ev.filter((e) => /P2002|Unique constraint/i.test(String(e.lastError ?? ""))).length;
+    const comB = await jvCount(S.ACCB, comKey);
+    const revB = await jvCount(S.ACCB, `PosSale#${rid}#COMMISSION_REFUNDED`);
+    const comA = await jvCount(accA, comKey);
+    const mv1 = Number(await P.invMovement.count({ where: { tenantId: T } }).catch(() => -1));
+    const jvB = ((await P.accountJournalEntry.findMany({ where: { tenantId: T, systemId: S.ACCB, refId: { in: [b2, rid] } }, select: { idempotencyKey: true } }).catch(() => [])) as Any[]).map((e) => String(e.idempotencyKey));
+    const mkB = (await auditsOf(ZERO_ENTRY_ACTION, b2)).filter((x) => x?.after?.bookSystemId === S.ACCB).length;
+    const docB = Number(await P.accountDocument.count({ where: { tenantId: T, systemId: S.ACCB, refType: "PosSale", refId: { in: [b2, rid] } } }).catch(() => -1));
+    console.log(`  (ZE3 ข้อมูล) สมุด B: JV ${short(jvB, 160)} · เครื่องหมาย ${mkB} · เอกสาร ${docB} · คิวคืน ${ev.map((e) => `${e.status}/${e.attempts}`).join(",")} · log P2002 ${p2002}`);
+    if (ev.length !== 1 || ev[0]?.status !== "DONE") p.push(`pos.sale.refunded ${ev.length} ตัว · ${ev.map((e) => `${e.status}/${e.attempts}`).join(",")} ${short(ev[0]?.lastError ?? "", 80)} (คาด 1 · DONE)`);
+    if (p2002 !== 0) p.push(`P2002 ใน log ${p2002} ครั้ง (คาด 0)`);
+    if (comB !== 0) p.push(`COMMISSION ในสมุด B ${comB} (คาด 0)`);
+    if (revB !== 0) p.push(`COMMISSION_REFUNDED ในสมุด B ${revB} (คาด 0 · ปักไว้ มติ fix2 ข้อ 2)`);
+    if (comA !== 1) p.push(`COMMISSION ในสมุด A3 ${comA} (คาด 1 เดิม)`);
+    if (mv0 < 0 || mv1 !== mv0) p.push(`ความเคลื่อนไหวสต็อกของร้าน ${mv0} → ${mv1} (คาด เท่าเดิม)`);
+    chk("ZE3", p.length === 0, "คืนบิลหลังย้ายสมุด: คิว DONE · ไม่มี P2002 · ไม่มี COMMISSION/COMMISSION_REFUNDED ในสมุด B · สต็อกไม่ขยับ", FX(P8(p) || "ครบ"));
   });
 }
 
