@@ -16872,6 +16872,171 @@
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-unit",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "\"สาขา\" ของส่วน \"ข้อมูลสาขาบนใบเสร็จ\" (เจ้าของ/ผู้ดูแลทุกสาขาเท่านั้น) — เปลี่ยน = โหลดค่าของสาขานั้นลงร่าง + ตัวอย่างขวาเป็นของสาขานั้น (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-branchNo",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-set-receipt-branchNo-error",
+        "note": "\"สาขาที่\" 5 หลัก (placeholder = branchCode ของสมุด/00000) · ผิดรูป = pos-set-receipt-branchNo-error ในบรรทัด · บันทึกปิด (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-address",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-set-receipt-address-error",
+        "note": "\"ที่อยู่\" ของสาขา (≤ 200 · placeholder = หัวใบของระบบ/สมุด) · ปฏิเสธ field address ใต้ช่อง (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-phone",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-set-receipt-phone-error",
+        "note": "\"โทร\" ของสาขา (≤ 30 · placeholder = หัวใบของระบบ/สมุด) · ปฏิเสธ field phone ใต้ช่อง (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-branchNo-inherit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ใช้ค่ากลาง\" ของสาขาที่ — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-address-inherit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ใช้ค่ากลาง\" ของที่อยู่ — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-phone-inherit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ใช้ค่ากลาง\" ของโทร — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-set-receipt-unit-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-set-receipt-unit-saved",
+        "note": "\"บันทึกข้อมูลสาขา\" → updatePosReceiptUnitSettingsAction (เฉพาะช่องที่เปลี่ยน) → pos-set-receipt-unit-saved · ปฏิเสธตาม field (มติ 8)"
+      },
+      "wo": "P2.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=receipt&unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
