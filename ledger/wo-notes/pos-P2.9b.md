@@ -113,3 +113,18 @@ All logs headed `tree=/root/projects/shark-pos-b head=3ec8c707 dirty=1` (dirty =
 | qc-hf-pos-page-authz | 81/81 |
 
 Next: controller rules CD-P29b-1 (apply the oracle patch) → hunter (money lane) → P2.9bU on a free tree. QC5 deploy of the migration = controller.
+
+## Gates after fix round 1 (whole run in ONE systemd-run unit · `ISO_MEM=7000M bash scripts/iso.sh bash scratchpad/p29b/gates/run-gates3.sh …` · logs `scratchpad/p29b/gates/out3/*.out` all headed `tree=/root/projects/shark-pos-b head=e800b1c0 dirty=0` · 15 Oct 04:39Z→)
+Code head **fbe92b5a** (e800b1c0 = + notes). CD-P29b-1 re-run before fix 1 (head 180bd51a/3918a9ee): p2.9b 41/41 ×2 forced + unforced, typecheck 0.
+| gate | result |
+|---|---|
+| typecheck (pos-gate.lock · heap 5632) | rc 0 |
+| fitness no-env / env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 |
+| **qc-pos-p2.9b forced ×2 / unforced** | **47/47 · 47/47 · 47/47** (residue 0 · guardHits 0 · leaks 0) |
+| qc-pos-p2.9 · qc-hf-tx | 62/62 · 22/22 |
+| qc-pos-p1.6 · p1.8 · p1.12 · p1.3 · p1.1 | 48 · 49 · 72 · 128 · 180 (all green) |
+| qc-pos-account · qc-account-cpa | 16/16 · 107/107 |
+| qc-pos-p2.5 · p2.4 · p2.6 | 49/49 · 50/50 · 67/67 |
+| qc-pos-p2.8 | 60/61 — ST6 wip-only pin |
+| qc-booking-deposit · qc-hotel-public · qc-rental-public | 18/18 · 15/15 · 16/16 |
+| qc-hf-pos-page-authz | 81/81 |
