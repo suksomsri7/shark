@@ -333,3 +333,16 @@ export function displayJsonBytes(v: unknown): number {
     return Infinity;
   }
 }
+
+/** จำนวนเต็ม → "1,240" (ไม่พึ่ง locale ของเครื่อง — ผล SSR = ผลบนจอ) */
+export function displayGroup(n: number): string {
+  const v = Number.isFinite(n) ? Math.trunc(n) : 0;
+  return `${v < 0 ? "−" : ""}${String(Math.abs(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+}
+/** สตางค์ → "฿625" / "฿40.50" (ติดลบใช้เครื่องหมายลบยาว) — แบบเดียวกับใบเสร็จออนไลน์ */
+export function displayBaht(satang: number): string {
+  const n = Number.isFinite(satang) ? Math.trunc(satang) : 0;
+  const a = Math.abs(n);
+  const frac = a % 100;
+  return `${n < 0 ? "−" : ""}฿${displayGroup(Math.floor(a / 100))}${frac ? `.${String(frac).padStart(2, "0")}` : ""}`;
+}

@@ -17867,6 +17867,76 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=payments&unit=[unitId]"
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-pair",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pairDisplayAction",
+        "note": "จอลูกค้า (สาธารณะ ไม่ต้องล็อกอิน · แท็บเล็ตหันหาลูกค้า) — ฟอร์มรหัสจับคู่ 8 ตัว (?c= เติมให้จาก QR ของหน้าตั้งค่าเครื่อง) → แลกเป็นคุกกี้ pos_display (httpOnly) แล้วเปิดจอ"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": "c=[pairCode]"
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-pair-code",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "รหัสจับคู่ (ตัวใหญ่อัตโนมัติ · I/L → 1 · O → 0 · ปุ่มจับคู่เปิดเมื่อครบ 8 ตัว Crockford)"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-pair-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pairDisplayAction",
+        "note": "สำเร็จ = จอหน้าพัก/บิลปัจจุบัน · ผิด/หมดอายุ/ล็อก = \"รหัสจับคู่ไม่ถูกต้องหรือหมดอายุ\" (pos-display-pair-error) · ลองบ่อย = RATE_LIMITED"
+      },
+      "wo": "P2.10",
+      "oracle": "qc-pos-p2.10",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/d",
+      "testid": "pos-display-fullscreen",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เต็มจอ (requestFullscreen · ซ่อนเมื่อเต็มจออยู่แล้ว/เบราว์เซอร์ไม่มี)"
+      },
+      "wo": "P2.10",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

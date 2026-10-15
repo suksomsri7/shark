@@ -155,8 +155,9 @@ export async function enableCustomerDisplay(ctx: RegisterCtx, actor: RegisterAct
     const s = await scopeOf(db, ctx, actor, "pos.device.manage");
     if (isRefusal(s)) return s;
     if (!isRecord(input) || !onlyKeys(input, ["deviceId", "deviceCode"])) return refuse("DEVICE_NOT_REGISTERED");
-    const byId = isId(input.deviceId) ? input.deviceId : null;
-    const byCode = typeof input.deviceCode === "string" && POS_DEVICE_CODE_RE.test(input.deviceCode) ? input.deviceCode : null;
+    const raw = input as Record<string, unknown>;
+    const byId = isId(raw.deviceId) ? raw.deviceId : null;
+    const byCode = typeof raw.deviceCode === "string" && POS_DEVICE_CODE_RE.test(raw.deviceCode) ? raw.deviceCode : null;
     if (!byId === !byCode) return refuse("DEVICE_NOT_REGISTERED");
     const device = await db.posDevice.findFirst({
       where: { tenantId: s.tenantId, unitId: s.unitId, systemId: s.systemId, status: "ACTIVE", ...(byId ? { id: byId } : { deviceCode: byCode! }) },
