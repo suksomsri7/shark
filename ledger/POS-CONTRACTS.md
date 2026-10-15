@@ -111,7 +111,7 @@ POST /sync/sales  { deviceId, items:[{ offlineRef:'OFF-C1-0007', idempotencyKey,
 | `pos.sale.paid` (เดิม) | saleId · channelId · commissionSatang · shiftId · memberId | Account · Point · Member.recordSpend · HR.commission · CRM.onSale · Marketing journey · Chat receipt (opt-in) |
 | `pos.sale.voided` (เดิม) | saleId · reason · approvalRequestId? | Account reverse · Point reverse · Inventory reverse · Voucher/GiftCard/Stamp reverse |
 | **`pos.sale.refunded`** | saleId · refundSaleId · lines · refundMethod | Account CN · Point partial reverse · Inventory return · Stamp/Voucher partial |
-| `pos.sale.expired` (สเปก D1) | saleId · sourceModule | ต้นทาง (ตั๋ว/แชท/เว็บ) ปล่อย hold |
+| ~~`pos.sale.expired`~~ (สเปก D1 · **แทนที่โดย P2.7 มติ 8**) → ออเดอร์จ่ายก่อนที่เลยเวลาจ่าย = `pos.order.cancelled` + PosOrderEvent `expired` (payload reason `PAYMENT_EXPIRED`) · ใบขอรับเงิน EXPIRED · ไม่มีบิลค้างรอเงิน | orderId · channelCode · status CANCELLED · paymentState PENDING_PAYMENT | ต้นทาง (หน้าสถานะ /q/o · จอ 09) · KDS (ไม่มีรอบ) · กฎอัตโนมัติ |
 | **`pos.shift.opened` / `pos.shift.closed`** | shiftId · deviceId · overShortSatang · zNumber | Account JV ขาด/เกิน · Kanban การ์ดตรวจเงิน · Meeting/LINE สรุป |
 | **`pos.product.availability`** | productId · available · source (KDS/STOCK/MANUAL) | adapter ทุกช่องทาง (setAvailability) · Kanban ของหมด |
 | **`pos.order.received/accepted/rejected/ready/completed`** | externalOrderId · channelId | KDS · Chat สถานะ · Kanban ปฏิเสธ · Meeting ค้างนาน |
