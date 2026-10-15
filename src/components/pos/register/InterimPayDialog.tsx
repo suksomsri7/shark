@@ -1878,7 +1878,7 @@ export function PayDialog(p: Props) {
                             const right = !open
                               ? t(d.status === "REFUNDED" ? "pay.depositRefunded" : "pay.depositUsedUp")
                               : d.remainingSatang !== null
-                                ? t("pay.gc.rowLeft", { amount: moneyText(d.remainingSatang) })
+                                ? t("pay.gc.balance", { amount: moneyText(d.remainingSatang) }) // POS P2.9bU ▸ fix1 มติ 9: ยอดปัจจุบันของมัดจำ ("Balance ฿x" · th เดิม "คงเหลือ") — "Balance after" เฉพาะแถวแยกจ่าย ◂
                                 : t("pay.depositNeedReceipt");
                             return (
                               <button
