@@ -1755,3 +1755,4 @@
 - spawn **R1 P2.13** (Opus read-only ทรี b) prompt `pos-prompt-accountB-P2.13-R.md` · hunter prompt `pos-prompt-accountB-P2.13-H.md` พร้อม (spawn หลัง R1 หรือเมื่อเลนว่าง)
 - เลน: 1 = P2.12U fix 1 ทรี c (รวม F6/F7) · 2 = P2.13 R1 (read-only ทรี b) · ทรี d ว่าง @6b422dfe
 - 20:37Z P2.12U fix 1: `wip/pos-p2.12u` **0c1177ca** (F1 probe ถ่ายเอกสารใน frame · F3 ซ่อน channel filter · F4 ข้อความ tooLong · F2 hint · F6 `relative` กล่อง scroll + tab strip เลื่อนเอง · F7 @font-face `../media/*.woff2` → absolute · harness พิมพ์ URL ที่ 404) · gates typecheck 0 · p1.18 81 · p1.16 28 · authz 82 · fitness ±env/pos · `--dry` ×4 → **chain83** ทรี d (build83 @0c1177ca → vis85: anomalies · print ×2 --pdf · bills-all-branches · hourly th+en) + R1 ตรวจ hunks ซ้ำ
+- 20:45Z R1 ตรวจซ้ำ P2.12U fix 1 @0c1177ca = **MERGEABLE** → รอ vis85 (chain83) → merge → gates99-c (template พร้อม) → push → 40/55
