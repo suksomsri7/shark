@@ -71,7 +71,7 @@ Code head for all gates = **f7353edb** (gate run at a21486a9 = f7353edb + ledger
 | fitness no-env / env (qc4) | a21486a9 | 50/50 · 50/50 |
 | fitness-pos | a21486a9 | 8/8 |
 | qc-pos-p2.11 forced #1 / #2 / unforced | f3d1a097 / a21486a9 / a21486a9 | **31/31 · 31/31 · 31/31** (residue 0 · leaks 0 · guard hits 0 · unforced not skipped) |
-| qc-pos-p2.2 | a21486a9 | 41/42 — **S3 red pre-existing** (see CD-1) · ST1 green with the ORACLE-EDIT |
+| qc-pos-p2.2 | a21486a9 | 41/42 — S3 stale contract pin (CD-1 → re-pinned, 42/42 after fix 1) · ST1 green with the ORACLE-EDIT |
 | qc-pos-p2.1 | a21486a9 | 54/55 — **S8 red pre-existing** (CD-1) |
 | qc-pos-p2.3 | a21486a9 | 45/46 — **ST4 red pre-existing** (contract sha only; "use server" part green · CD-1) · FU2 behaviour: all P2.3 DB checks green |
 | qc-pos-p1.17 | a21486a9 | 40/40 (OV4 PAR) |
@@ -108,6 +108,18 @@ Code head for all gates = **f7353edb** (gate run at a21486a9 = f7353edb + ledger
 P2.11U contract addition: the 06 save should send a precondition of the set it loaded (hash of rows or max `updatedAt`) so a concurrent save is refused instead of silently replaced (hunt L3 · P2.11U or P2.12 — needs a server param then); `purgeDead` = the "ล้างแถวที่เลิกใช้" action of `products-dead-row-note` (show only when the actor has product-wide scope).
 
 ORACLE-EDIT / ORACLE-ADD list: f3d1a097 `qc-pos-p2.2` ST1 filter (ruling 18) · 409dc9ae `qc-pos-p2.1` S8 · bd96e593 `qc-pos-p2.2` S3 · c21b6018 `qc-pos-p2.3` ST4 (CD-1) · 4b925e37 + c578a275 `qc-pos-p2.11` PR10–PR12 (fix 1).
+
+### Gates after fix 1 — one systemd-run unit (`iso.sh` → `p211-gates-unit.sh`), head **34b060ea** (code **6be822ae**), dirty=0 · logs scratch `p211/gates-f1/*.log`
+| gate | result |
+|---|---|
+| typecheck | rc 0 |
+| fitness no-env / env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 |
+| qc-pos-p2.11 forced ×2 / unforced | **34/34 · 34/34 · 34/34** (residue 0 · leaks 0 · guard hits 0) |
+| qc-pos-p2.2 / p2.1 / p2.3 | **42/42 · 55/55 · 46/46** (CD-1 re-pins) |
+| qc-pos-products / p1.18 / hf-pos-page-authz | 24/24 · 81/81 · 81/81 |
+| qc-pos-p1.17 / p1.10 | 40/40 · 40/40 — receipt code unchanged since f7353edb (`git diff f7353edb HEAD -- receipt*.ts` empty) |
+| qc-pos-p2.8 | 61/61 |
+Earlier CD-1-only re-run (head c21b6018): p2.1 55/55 · p2.2 42/42 · p2.3 46/46 · typecheck 0.
 
 ## Hunter focus (money lane, ruling 10)
 `setChannelPrices` out-of-reach classification (dead vs permission, all checks before first write, kept rows not re-written) · `copyUnitPrices` permission at target + from access · `unitPriceMatrix` = `priceOf` (no write) · `reportChannels` sums vs bills (refund commission share sign) · receipt identity order (`receipt.ts:301–303`) · `updatePosReceiptSettings` keeping `byUnit`.
