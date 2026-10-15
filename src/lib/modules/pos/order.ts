@@ -1074,6 +1074,8 @@ export async function rejectOrder(ctx: RegisterCtx, actor: RegisterActor, input:
   });
 }
 
+/** POS HF-FU ▸ h1 fix1 (R1 F4): ตัวบอก (identity) ว่าบิลถูก void ระหว่างส่งมอบ — โยนใน mutate ให้ rollback · ผู้เรียกแทนด้วย stateInvalid หลังธุรกรรม ◂ */
+const HANDOVER_SALE_VOIDED: OrderRefusal = Object.freeze(refuse("ORDER_STATE_INVALID", ORDER_SALE_VOIDED_MESSAGE));
 /** ขั้นถัดไปของวงจร (pos.order.accept): ACCEPTED → PREPARING · PREPARING → READY · READY → HANDED (DIRECT ยังไม่จ่าย = ORDER_UNPAID) */
 async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input: { id: string }, to: "PREPARING" | "READY" | "HANDED"): Promise<OrderActionResult> {
   return guard(name, async (): Promise<OrderActionResult> => {
@@ -1094,10 +1096,12 @@ async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input:
       //   void ไม่ล็อก PosOrder ในธุรกรรมของมัน ⇒ ไม่มีวงล็อก · void ที่ commit ระหว่างรอแถว PosOrder ถูกเห็นที่นี่ (คำสั่งใหม่ = snapshot ใหม่) ◂
       if (to === "HANDED" && o.saleId) {
         const sale = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosSale" WHERE id = ${o.saleId} AND "tenantId" = ${s.tenantId} FOR SHARE`;
-        if (sale[0]?.status === "VOIDED") throw new OrderAbort(await stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided"));
+        if (sale[0]?.status === "VOIDED") throw new OrderAbort(HANDOVER_SALE_VOIDED); // POS HF-FU ▸ h1 fix1 (R1 F4): ตัวบอกในธุรกรรม — การ์ดสร้างหลัง rollback ◂
       }
       return after;
     });
+    // POS HF-FU ▸ h1 fix1 (R1 F4): คำปฏิเสธ saleVoided (การ์ดอ่านผ่าน prisma หลัก) สร้างหลังธุรกรรม rollback แล้ว — ไม่ยืม connection ที่สองระหว่างถือแถว PosOrder ◂
+    if (r === HANDOVER_SALE_VOIDED) return stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided");
     if (isRefusal(r)) return r;
     if (to === "READY") await ORDER_ADAPTERS[r.adapter]?.setReady?.({ orderId: o.id, externalRef: o.externalRef });
     if (to !== "PREPARING") scheduleDrain();
