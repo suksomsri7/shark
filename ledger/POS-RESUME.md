@@ -1784,3 +1784,4 @@
 - spawn **R2 P2.13** (Opus read-only ทรี b @e29c5f51) prompt `pos-prompt-accountB-P2.13-R2.md` · เตรียมไว้: gates101-c template · `p213-merge-msg.txt` · chain84 template (ภาพ p2.13 — __TREE__ = c หรือ d) · prompt agent skill test `pos-prompt-accountB-P2.13-A.md`
 - เลน: 1 = P2.13 R2 (read-only ทรี b) · 2 = P2.7 oracle ทรี d · ทรี c ว่าง @861815e0
 - ถัดไป: R2 MERGEABLE → merge e29c5f51 (no-ff, msg จาก template) → ทรี c detached + prisma generate → gates101-c → push → lane pins ซ้ำ → build ทรี c/d + vis86 → ออกคีย์ QC5 → agent skill test → **41/55 (75%)** + TG
+- 21:52Z R2 P2.13 (@e29c5f51) = **MERGEABLE-AFTER-FIXES docs only** (G1 SKILL line CASH นอกกะ · G2 ขยาย line 6 · G3 line requestedById=keyId) → ส่ง builder แก้เอกสาร (commit เดียว + skill copy) → รอ head ใหม่ → merge
