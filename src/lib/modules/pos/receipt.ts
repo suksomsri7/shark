@@ -32,6 +32,7 @@ import { ensureReceiptToken } from "./receipt-token";
 import { saleChannelResolver } from "./channel"; // POS P2.1 ▸ R11 ◂
 import type { RegisterActor } from "./register-shared";
 import { paymentCards } from "./tender-cards"; // POS P2.9 ▸ R10 ◂
+import { paymentDeposits } from "./deposit-links"; // POS P2.9b ▸ R9 ◂
 
 // ── POS P1.12 ▸ R9 R15: สำเนาสมาชิก/สิทธิ์บนบิล (อ่านอย่างปลอดภัยจาก Json · ผิดรูป = ไม่มี) — ใบเสร็จ · หน้าบิล · ใบเสร็จออนไลน์ใช้ชุดเดียว ◂
 export type SaleMemberSnapshot = { name: string | null; memberCode: string | null; phoneMasked: string | null; tierKey: string | null; tierName: string | null };
@@ -200,6 +201,7 @@ export async function receiptForSale(tenantId: string, systemId: string, saleId:
 async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: ReceiptSaleRow, copy: boolean): Promise<ReceiptBuild | null> {
   const status: ReceiptSaleStatus | null = sale.status === "PAID" || sale.status === "VOIDED" || sale.status === "REFUNDED" ? sale.status : null;
   const cards = await paymentCards(tenantId, sale.payments); // POS P2.9 ▸ R10 บัตรของแถวชำระ (ไม่มีแถวบัตร = ไม่มี query) ◂
+  const depLinks = await paymentDeposits(tenantId, sale.payments); // POS P2.9b ▸ R9 มัดจำของแถวชำระ (ไม่มีแถวอ้างใบ = ไม่มี query) ◂
   if (!status) return null;
 
   // ── ระบบ POS · สาขา · ค่าตั้งใบเสร็จ · สมุดบัญชีที่ผูก ──
@@ -333,7 +335,8 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       ...(benefitLines ? { memberBenefits: benefitLines } : {}),
       serviceChargeSatang: sale.serviceChargeSatang,
       grandTotalSatang: sale.grandTotalSatang,
-      vatBaseSatang: sale.grandTotalSatang - vatSatang,
+      // POS P2.9b ▸ R5: บิลที่ใช้มัดจำ — ฐานภาษีของบิล = ยอด − มัดจำที่หัก − VAT สุทธิ (VAT ของมัดจำออกไปแล้วที่ใบรับ) · บิลอื่นเหมือนเดิม ◂
+      vatBaseSatang: sale.grandTotalSatang - sale.payments.reduce((t, p) => t + (depLinks.has(p.id) ? p.amountSatang : 0), 0) - vatSatang,
       vatSatang,
       vatRateBp: hasVat && vat && vat.vatRegistered ? vat.vatRateBp : 0,
       tipSatang: sale.tipSatang,
@@ -345,6 +348,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       ...(p.changeSatang !== null ? { changeSatang: p.changeSatang } : {}),
       ...(nonEmpty(p.reference) ? { reference: nonEmpty(p.reference)! } : {}),
       ...(p.giftCardTxnId && cards.has(p.giftCardTxnId) ? { card: cards.get(p.giftCardTxnId)! } : {}), // POS P2.9 ▸ R10 ◂
+      ...(depLinks.has(p.id) ? { deposit: { receiptNo: depLinks.get(p.id)!.receiptNo, remainingAfterSatang: depLinks.get(p.id)!.remainingAfterSatang } } : {}), // POS P2.9b ▸ R9 ◂
     })),
     // showPoints ปิด = ไม่พิมพ์ส่วนสมาชิก/แต้ม
     ...(customer && rs.showPoints
@@ -364,6 +368,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
     labels: { th: RECEIPT_LABELS.th, en: RECEIPT_LABELS.en },
     channel, // POS P2.1 ◂
     printLocale: posReceiptLocale(posSys.settings), // POS P1.18 ▸ R12 มติ Q7 ◂
+    ...(docType === "SALE" && sale.sourceModule === "POS_DEPOSIT" ? { depositReceipt: true } : {}), // POS P2.9b ▸ มติ 3 ◂
   };
   return { payload, kind, sale, bookId: bookId ?? null };
 }
