@@ -1652,7 +1652,7 @@
 - build79 @84ffb48b ผ่าน → vis81 (`/root/pos-runs/vis81-qc5-20261015T143913Z` · failures 0 ทุก run): split-seat 1440/390 ที่นั่ง 338.25/458.15/242.55/325.05 Σ=1,364 · กลางโต๊ะ ฿150 ที่นั่งละ ฿37.50 (c) · split-locked การ์ดบิล 1 "สมใจ ลูกค้าประจำ · ✓ เงินสด" (s memberName/paidMethods) · prebill-preview th 1440+390 หัวเรื่อง "ใบรายการ — ไม่ใช่ใบเสร็จรับเงิน/ใบกำกับภาษี" ไม่หักกลางคำ · en "PRE-BILL — NOT A RECEIPT" (p) · products-branch-filter / orders-detail-platform ไม่เปลี่ยน (f2 drawer line + n cancel/held ตัดสินด้วย oracle) → **ผ่าน**
 - รอ gates93-c → push → p2.8/p2.11 ซ้ำ → 37/55 + TG
 
-### 15 ต.ค. 15:0xZ — HF-FU ปิด → **37/55 (67%)**
+### 15 ต.ค. 14:56Z — HF-FU ปิด → **37/55 (67%)**
 - gates93-c @84ffb48b (`/root/pos-runs/gates93-c-20261015T142342Z`): hf-fu 29/29 ×2 unforced · 21 ชุดเขียว (p2.11 33/34 ST4 lane pin) · restaurant ×4 · fitness ±env/pos · typecheck 0 → **push session/pos 57a8b19a → e6546359** (code 84ffb48b) → gates94-c (`gates94-c-20261015T145257Z`) p2.8 61/61 · p2.11 34/34 → **HF-FU ✅ 37/55** · TG ส่งแล้ว · QC5 ไม่มี migration
 - ทรี c ว่าง @84ffb48b · ทรี d ว่าง @84ffb48b (build79) · เลน 1 = P2.10 builder ทรี b (`wip/pos-p2.10` · แจ้งแล้วว่า origin ขยับ)
 - ถัดไป: P2.10 builder รายงาน → R1 (read-only ทรี b) + ภาพ (ทรี d build @builder head → vis82 `p2.10` display 1280×800/1024×768 + settings th/en) → fix rounds → merge → gates §8 → QC5 migrate deploy (`pos_p210_customer_display`) → push → 38/55 · เลน 2 ว่าง → ร่าง brief ใบถัดไป **P2.12** (รายงานช่องทาง/สาขา/ผิดปกติ + PDF · lane B · ⏮ P2.1 P2.11) ได้ระหว่างรอ
