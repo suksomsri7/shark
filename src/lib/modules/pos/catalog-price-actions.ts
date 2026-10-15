@@ -14,10 +14,11 @@ import { posMembership } from "./access";
 import { CatalogError, bulkChannelMarkup, setChannelPrices, type CatalogCtx, type CatalogErrorCode } from "./catalog";
 import type { ChannelPriceInputRow, ChannelPriceView } from "./price-shared";
 
-type PriceActionRefusal = { ok: false; code: CatalogErrorCode | "INTERNAL"; message: string; field?: string };
+// POS P2.11 ▸ l-price: + reason (PRICE_REFUSAL_REASONS · คีย์ pos.price.errors.<camelCase>) · field ส่งต่อจาก CatalogError ◂
+type PriceActionRefusal = { ok: false; code: CatalogErrorCode | "INTERNAL"; message: string; field?: string; reason?: string };
 
 function refusalOf(where: string, e: unknown): PriceActionRefusal {
-  if (e instanceof CatalogError) return { ok: false, code: e.code, message: e.message };
+  if (e instanceof CatalogError) return { ok: false, code: e.code, message: e.message, ...(e.field ? { field: e.field } : {}), ...(e.reason ? { reason: e.reason } : {}) };
   console.error(`[pos/catalog-price-actions] ${where}`, e);
   return { ok: false, code: "INTERNAL", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
 }
@@ -85,3 +86,4 @@ export async function bulkChannelMarkupAction(args: {
     return refusalOf("bulkChannelMarkupAction", e);
   }
 }
+

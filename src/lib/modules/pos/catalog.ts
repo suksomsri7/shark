@@ -33,6 +33,7 @@ import { prisma } from "./db";
 // POS P2.2 ▸ ราคาตามช่องทาง/สาขา (ตัวแก้บริสุทธิ์ + รหัสช่องทาง) ◂
 import { CHANNEL_BUILTIN_CODES, CHANNEL_CODE_RE, isChannelBuiltinCode } from "./channel-shared";
 import { BULK_MARKUP_BP_MAX, BULK_MARKUP_PRODUCTS_MAX, CHANNEL_PRICE_ROWS_MAX, channelMarkupPrice, type ChannelPriceInputRow, type ChannelPriceView } from "./price-shared";
+import type { PriceRefusalReason } from "./price-shared"; // POS P2.11 ▸ รหัสย่อยของคำปฏิเสธราคา ◂
 // POS P2.3 ▸ สูตร/BOM: ตัวโหลดสูตรที่ใช้จริง (อ่านอย่างเดียว) + จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes, type RowRecipe } from "./recipe";
 import { recipePortions } from "./recipe-shared";
@@ -65,16 +66,23 @@ export type CatalogErrorCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" 
 /** error ของแคตตาล็อก — ผู้เรียกตัดสินจาก `.code` เท่านั้น (ข้อความไว้แสดงผู้ใช้) */
 export class CatalogError extends Error {
   readonly code: CatalogErrorCode;
-  constructor(code: CatalogErrorCode, message: string, options?: { cause?: unknown }) {
-    super(message, options);
+  // POS P2.11 ▸ l-price: ช่องที่ผิด (`field`) + รหัสย่อยคงที่ (`reason` · PRICE_REFUSAL_REASONS) — จอเลือกคีย์ข้อความได้โดยไม่จับข้อความ ◂
+  readonly field?: string;
+  readonly reason?: string;
+  constructor(code: CatalogErrorCode, message: string, options?: { cause?: unknown; field?: string; reason?: string }) {
+    super(message, options && "cause" in options ? { cause: options.cause } : undefined);
     this.name = "CatalogError";
     this.code = code;
+    if (options?.field) this.field = options.field;
+    if (options?.reason) this.reason = options.reason;
   }
 }
 
 const notFound = () => new CatalogError("NOT_FOUND", "ไม่พบรายการนี้ในระบบขาย");
 const denied = () => new CatalogError("PERMISSION_DENIED", "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้าน");
 const invalid = (message: string) => new CatalogError("VALIDATION", message);
+// POS P2.11 ▸ l-price: VALIDATION ที่มีช่อง + รหัสย่อยคงที่ ◂
+const invalidAt = (message: string, field: string, reason?: PriceRefusalReason) => new CatalogError("VALIDATION", message, { field, ...(reason ? { reason } : {}) });
 const conflict = (message: string) => new CatalogError("CONFLICT", message);
 const busy = () => new CatalogError("BUSY", "ระบบกำลังบันทึกแคตตาล็อกของร้านนี้อยู่ — ยังไม่ได้บันทึกรายการนี้ ลองอีกครั้งในอีกสักครู่");
 /** R5 F2: ข้อความเดียวของ INTERNAL ทุกฟังก์ชัน — ไม่มี path / SQL / ข้อความต้นฉบับ */
@@ -2263,15 +2271,15 @@ function cleanCpRow(v: unknown): CpRow {
   const o = ownFields(v, CP_ROW_KEYS, "แถวราคา", "แถวราคามีช่องที่ระบบไม่รู้จัก — ยังไม่ได้บันทึกอะไร");
   const code = o.channelCode === undefined ? null : o.channelCode;
   const unit = o.unitId === undefined ? null : o.unitId;
-  if (code !== null && (typeof code !== "string" || !CHANNEL_CODE_RE.test(code))) throw invalid("ไม่รู้จักช่องทางนี้");
-  if (unit !== null && (typeof unit !== "string" || !unit || unit.length > 200)) throw invalid("ไม่รู้จักสาขานี้");
-  if (code === null && unit === null) throw invalid("แถวที่ไม่ระบุทั้งช่องทางและสาขาคือราคาปกติ — ตั้งที่ราคาขายของสินค้า");
+  if (code !== null && (typeof code !== "string" || !CHANNEL_CODE_RE.test(code))) throw invalidAt("ไม่รู้จักช่องทางนี้", "rows");
+  if (unit !== null && (typeof unit !== "string" || !unit || unit.length > 200)) throw invalidAt("ไม่รู้จักสาขานี้", "rows");
+  if (code === null && unit === null) throw invalidAt("แถวที่ไม่ระบุทั้งช่องทางและสาขาคือราคาปกติ — ตั้งที่ราคาขายของสินค้า", "rows");
   const notSold = o.notSold === undefined ? false : o.notSold;
-  if (typeof notSold !== "boolean") throw invalid("ค่า \"ไม่ขาย\" ไม่ถูกต้อง");
+  if (typeof notSold !== "boolean") throw invalidAt("ค่า \"ไม่ขาย\" ไม่ถูกต้อง", "rows");
   const price = o.priceSatang === undefined ? null : o.priceSatang;
   if (notSold) {
-    if (price !== null) throw invalid("ช่องทางที่ไม่ขายต้องไม่มีราคา");
-  } else if (!isSatang(price)) throw invalid("ราคาต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
+    if (price !== null) throw invalidAt("ช่องทางที่ไม่ขายต้องไม่มีราคา", "rows");
+  } else if (!isSatang(price)) throw invalidAt("ราคาต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ", "rows");
   return { channelCode: code as string | null, unitId: unit as string | null, priceSatang: notSold ? null : (price as number), notSold };
 }
 
@@ -2323,11 +2331,17 @@ const scopeInv = (product: { unitId: string | null; invItemId: string | null }, 
 /**
  * R2 — แทนแถวราคาตามช่องทาง/สาขาของสินค้า 1 รายการทั้งชุด ในธุรกรรมเดียว (ล็อกแถวสินค้าก่อนอ่านค่าเดิม)
  *   • อินพุต `{productId, rows:[{channelCode|null, unitId|null, priceSatang|null, notSold?}]}` คีย์ตรงตัว · ≤ CHANNEL_PRICE_ROWS_MAX แถว ·
- *     (code, unit) ซ้ำ / (null, null) / notSold+ราคา / ไม่ notSold+ไม่มีราคา / ราคานอก 0..PRICE_MAX / รหัสที่ไม่ใช่ builtin หรือช่องทางที่ยังไม่เก็บของระบบ /
- *     สาขาที่ไม่ผูก POS นี้ / สินค้าชั่ง (CD7) = VALIDATION — ไม่เขียนอะไร
- *   • สิทธิ์ pos.product.setPrice ตามขอบเขตของ "แถวที่เพิ่ม/เปลี่ยน/ลบ" (มติ 6 — ผู้จัดการสาขา A ลบแถวทุกสาขาไม่ได้) · แถวที่ไม่เปลี่ยนไม่ต้องมีสิทธิ์
+ *     (code, unit) ซ้ำ / (null, null) / notSold+ราคา / ไม่ notSold+ไม่มีราคา / ราคานอก 0..PRICE_MAX / สินค้าชั่ง (CD7) = VALIDATION — ไม่เขียนอะไร
+ *   • สิทธิ์ pos.product.setPrice ตามขอบเขตของ "แถวที่เพิ่ม/เปลี่ยน/ลบ" (มติ 6) · แถวที่ไม่เปลี่ยนไม่ต้องมีสิทธิ์
  *   • สินค้าของร้าน/ระบบอื่น หรือไม่มีจริง = NOT_FOUND (มติ 1 · แบบ 404) · ไม่เขียนกลับ AccountProduct/InvItem (บัญชีเก็บราคาปกติ)
  *   • audit `pos.product.channelPrice` {productId, rows} ก่อน → หลัง (actorId = ผู้ใช้จริง) เมื่อมีอะไรเปลี่ยน
+ * POS P2.11 ▸ F4 ขยาย "นอกเอื้อม" (brief P2.11 §2 · มติ 2 11 12):
+ *   แถวนอกเอื้อม = รหัสช่องทางที่ไม่มีช่องทางใช้งาน (เก็บถาวร/ไม่มี) · สาขาที่เก็บถาวร/เลิกผูก POS นี้ · สาขาที่ผู้กระทำไม่มี pos.product.setPrice
+ *   (แถวทุกสาขา = ขอบเขตของสินค้า แบบเดิม)
+ *   - แถวเดิมนอกเอื้อมที่ไม่ส่งมา = คงไว้ (ไม่ลบ) · ส่งมาค่าเดิม = รับ ไม่เขียน
+ *   - แถวที่เปลี่ยน/ใหม่: ตาย (ช่องทาง/สาขา) = VALIDATION reason PRICE_ROW_DEAD field "rows" · นอกสิทธิ์ = PERMISSION_DENIED — ไม่เขียนอะไร
+ *   - แถวในเอื้อมที่ไม่ส่งมา = ลบ (แทนทั้งชุดตามเดิม · มติ 12 — จอส่งแถวที่โหลดกลับมาทั้งหมดด้วย `keep`)
+ *   - audit before/after = ชุดเต็มที่เก็บจริง (รวมแถวนอกเอื้อมที่คงไว้ · มติ 11) · ผลลัพธ์ `rows` = ชุดเต็มหลังบันทึก ◂
  */
 export async function setChannelPrices(
   ctx: CatalogCtx,
@@ -2337,12 +2351,12 @@ export async function setChannelPrices(
   return boundary(async () => {
     assertCleanInputs(ctx, input);
     const top = ownFields(input, CP_TOP_KEYS, "ราคาตามช่องทาง", "ข้อมูลราคาตามช่องทางมีช่องที่ระบบไม่รู้จัก — ยังไม่ได้บันทึกอะไร");
-    if (!Array.isArray(top.rows)) throw invalid("แถวราคาต้องเป็นรายการ");
-    if (top.rows.length > CHANNEL_PRICE_ROWS_MAX) throw invalid(`ตั้งราคาตามช่องทางได้ไม่เกิน ${CHANNEL_PRICE_ROWS_MAX} แถวต่อสินค้า`);
+    if (!Array.isArray(top.rows)) throw invalidAt("แถวราคาต้องเป็นรายการ", "rows");
+    if (top.rows.length > CHANNEL_PRICE_ROWS_MAX) throw invalidAt(`ตั้งราคาตามช่องทางได้ไม่เกิน ${CHANNEL_PRICE_ROWS_MAX} แถวต่อสินค้า`, "rows");
     const want = top.rows.map(cleanCpRow);
     const seen = new Set<string>();
     for (const r of want) {
-      if (seen.has(cpKey(r))) throw invalid("มีแถวช่องทาง/สาขาซ้ำกัน");
+      if (seen.has(cpKey(r))) throw invalidAt("มีแถวช่องทาง/สาขาซ้ำกัน", "rows");
       seen.add(cpKey(r));
     }
     return inTx(client, async (tx) => {
@@ -2352,42 +2366,61 @@ export async function setChannelPrices(
       const parent = product.parentId ? await tx.posProduct.findFirst({ where: { id: product.parentId, tenantId: ctx.tenantId }, select: { soldByWeight: true } }) : null;
       // CD7: สินค้าชั่ง (รวมตัวแปรของสินค้าชั่ง) ไม่มีราคาตามช่องทาง/กติกาใน P2.2
       if (product.soldByWeight || parent?.soldByWeight) throw invalid("สินค้าขายตามน้ำหนักยังตั้งราคาตามช่องทางไม่ได้");
-      const codes = await liveChannelCodes(ctx, want.flatMap((r) => (r.channelCode ? [r.channelCode] : [])), tx);
-      if (want.some((r) => r.channelCode !== null && !codes.has(r.channelCode))) throw invalid("ไม่รู้จักช่องทางนี้");
-      if (want.some((r) => r.unitId !== null)) {
-        const units = await liveUnitsOfPos(ctx, tx);
-        if (want.some((r) => r.unitId !== null && !units.has(r.unitId))) throw invalid("ไม่รู้จักสาขานี้");
-        // สินค้าของสาขา: แถวราคาของสาขาอื่นไม่มีความหมาย
-        if (product.unitId && want.some((r) => r.unitId !== null && r.unitId !== product.unitId)) throw invalid("สินค้านี้ขายเฉพาะสาขาเดียว — ตั้งราคาของสาขาอื่นไม่ได้");
-      }
       const beforeRows = await tx.posProductChannelPrice.findMany({
         where: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: product.id },
         select: { id: true, channelCode: true, unitId: true, priceSatang: true, notSold: true },
       });
       const beforeBy = new Map(beforeRows.map((r) => [cpKey(r), r]));
       const wantBy = new Map(want.map((r) => [cpKey(r), r]));
-      const removed = beforeRows.filter((r) => !wantBy.has(cpKey(r)));
-      const touched = [...want.filter((r) => !beforeBy.has(cpKey(r)) || !cpSame(beforeBy.get(cpKey(r))!, r)), ...removed];
+      // POS P2.11 ▸ แถวที่ตาย (ช่องทาง/สาขาใช้ไม่ได้แล้ว) — ดูทั้งแถวเดิมและแถวที่ส่งมา ◂
+      const codes = await liveChannelCodes(ctx, [...beforeRows, ...want].flatMap((r) => (r.channelCode ? [r.channelCode] : [])), tx);
+      const units = [...beforeRows, ...want].some((r) => r.unitId !== null) ? await liveUnitsOfPos(ctx, tx) : new Set<string>();
+      const isDead = (r: { channelCode: string | null; unitId: string | null }) => (r.channelCode !== null && !codes.has(r.channelCode)) || (r.unitId !== null && !units.has(r.unitId));
+      const changedRows = want.filter((r) => !beforeBy.has(cpKey(r)) || !cpSame(beforeBy.get(cpKey(r))!, r));
+      if (changedRows.some(isDead)) {
+        throw invalidAt("ช่องทางหรือสาขาของแถวราคานี้ถูกเก็บถาวร เลิกผูก หรือไม่มีในระบบ — แก้หรือเพิ่มแถวนี้ไม่ได้ (แถวเดิมเก็บไว้ตามเดิม) ยังไม่ได้บันทึกอะไร", "rows", "PRICE_ROW_DEAD");
+      }
+      // สินค้าของสาขา: แถวราคาของสาขาอื่นไม่มีความหมาย (ตรวจเฉพาะแถวที่เปลี่ยน/ใหม่ — แถวเดิมที่ส่งกลับมาค่าเดิมรับไว้)
+      if (product.unitId && changedRows.some((r) => r.unitId !== null && r.unitId !== product.unitId)) throw invalidAt("สินค้านี้ขายเฉพาะสาขาเดียว — ตั้งราคาของสาขาอื่นไม่ได้", "rows");
       const cache = new Map<string, CatalogWriteVerdict>();
-      for (const r of touched) await requirePriceRowScope(ctx, actor, product, r.unitId, tx, cache);
-      if (!touched.length) {
-        // ไม่มีอะไรเปลี่ยน: ยังต้องมีสิทธิ์ราคาของสินค้านี้ (ผู้ไม่มีสิทธิ์ไม่ได้ "สำเร็จ")
-        await requirePriceRowScope(ctx, actor, product, want.find((r) => r.unitId !== null)?.unitId ?? null, tx, cache);
-        return { productId: product.id, rows: cpSort(want), changed: false };
+      const inReach = async (r: { channelCode: string | null; unitId: string | null }): Promise<boolean> => {
+        if (isDead(r)) return false;
+        try {
+          await requirePriceRowScope(ctx, actor, product, r.unitId, tx, cache);
+          return true;
+        } catch (e) {
+          if (e instanceof CatalogError && e.code === "PERMISSION_DENIED") return false;
+          throw e;
+        }
+      };
+      // แถวเดิมที่ไม่ส่งมา: ในเอื้อม = ลบ · นอกเอื้อม = คงไว้ (POS P2.11 ▸ F4 ครึ่ง A/B ◂)
+      const removed: typeof beforeRows = [];
+      const kept: typeof beforeRows = [];
+      for (const r of beforeRows) {
+        if (wantBy.has(cpKey(r))) continue;
+        if (await inReach(r)) removed.push(r);
+        else kept.push(r);
+      }
+      // แถวที่เปลี่ยน/ใหม่ต้องมีสิทธิ์ที่ขอบเขตของแถว (นอกสิทธิ์ = PERMISSION_DENIED · ไม่เขียนอะไร)
+      for (const r of changedRows) await requirePriceRowScope(ctx, actor, product, r.unitId, tx, cache);
+      const afterRows = cpSort([...want, ...kept.map(cpPlain)]);
+      if (!changedRows.length && !removed.length) {
+        // ไม่มีอะไรเปลี่ยน: ยังต้องมีสิทธิ์ราคาของสินค้านี้ (ผู้ไม่มีสิทธิ์ไม่ได้ "สำเร็จ") — ใช้สาขาของแถวที่ยังใช้งานได้แถวแรก
+        await requirePriceRowScope(ctx, actor, product, want.find((r) => r.unitId !== null && !isDead(r))?.unitId ?? null, tx, cache);
+        return { productId: product.id, rows: afterRows, changed: false };
       }
       const userId = auditUserOf(ctx);
       if (removed.length) await tx.posProductChannelPrice.deleteMany({ where: { tenantId: ctx.tenantId, id: { in: removed.map((r) => r.id) } } });
-      for (const r of want) {
+      for (const r of changedRows) {
         const prev = beforeBy.get(cpKey(r));
-        if (prev && cpSame(prev, r)) continue;
         if (prev) await tx.posProductChannelPrice.update({ where: { id: prev.id }, data: { priceSatang: r.priceSatang, notSold: r.notSold, updatedByUserId: userId } });
         else
           await tx.posProductChannelPrice.create({
             data: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: product.id, channelCode: r.channelCode, unitId: r.unitId, priceSatang: r.priceSatang, notSold: r.notSold, updatedByUserId: userId },
           });
       }
-      await audit(tx, ctx, "pos.product.channelPrice", "PosProduct", product.id, { productId: product.id, rows: cpSort(beforeRows.map(cpPlain)) }, { productId: product.id, rows: cpSort(want).map(cpPlain) });
-      return { productId: product.id, rows: cpSort(want), changed: true };
+      await audit(tx, ctx, "pos.product.channelPrice", "PosProduct", product.id, { productId: product.id, rows: cpSort(beforeRows.map(cpPlain)) }, { productId: product.id, rows: afterRows.map(cpPlain) });
+      return { productId: product.id, rows: afterRows, changed: true };
     });
   });
 }
@@ -2426,8 +2459,10 @@ export async function bulkChannelMarkup(
     if (hasIds === hasCat) throw invalid("เลือกสินค้าเป็นรายการ หรือเลือกหมวด อย่างใดอย่างหนึ่ง");
     let ids: string[] = [];
     if (hasIds) {
-      if (!Array.isArray(o.productIds) || !o.productIds.length || o.productIds.length > BULK_MARKUP_PRODUCTS_MAX || !o.productIds.every((x) => typeof x === "string" && !!x && x.length <= 200)) {
-        throw invalid(`เลือกสินค้าได้ 1–${BULK_MARKUP_PRODUCTS_MAX} รายการ`);
+      // POS P2.11 ▸ l-price: เกินเพดาน = BULK_TOO_MANY (field productIds) · รูปร่างผิด = VALIDATION field productIds ◂
+      if (Array.isArray(o.productIds) && o.productIds.length > BULK_MARKUP_PRODUCTS_MAX) throw invalidAt(`เลือกสินค้าได้ไม่เกิน ${BULK_MARKUP_PRODUCTS_MAX} รายการต่อครั้ง`, "productIds", "BULK_TOO_MANY");
+      if (!Array.isArray(o.productIds) || !o.productIds.length || !o.productIds.every((x) => typeof x === "string" && !!x && x.length <= 200)) {
+        throw invalidAt(`เลือกสินค้าได้ 1–${BULK_MARKUP_PRODUCTS_MAX} รายการ`, "productIds");
       }
       ids = [...new Set(o.productIds as string[])];
     } else if (typeof o.categoryId !== "string" || !o.categoryId) throw invalid("หมวดไม่ถูกต้อง");
@@ -2435,13 +2470,14 @@ export async function bulkChannelMarkup(
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       const codes = await liveChannelCodes(ctx, [code], tx);
-      if (!codes.has(code)) throw invalid("ไม่รู้จักช่องทางนี้");
-      if (unitId !== null && !(await liveUnitsOfPos(ctx, tx)).has(unitId)) throw invalid("ไม่รู้จักสาขานี้");
+      // POS P2.11 ▸ l-price: ช่องทาง/สาขาที่ใช้ไม่ได้แล้ว = PRICE_ROW_DEAD พร้อม field ◂
+      if (!codes.has(code)) throw invalidAt("ไม่รู้จักช่องทางนี้ หรือช่องทางถูกเก็บถาวรแล้ว", "channelCode", "PRICE_ROW_DEAD");
+      if (unitId !== null && !(await liveUnitsOfPos(ctx, tx)).has(unitId)) throw invalidAt("ไม่รู้จักสาขานี้ หรือสาขาถูกเก็บถาวร/เลิกผูกแล้ว", "unitId", "PRICE_ROW_DEAD");
       if (hasCat) {
         const cat = await tx.posCategory.findFirst({ where: { id: o.categoryId as string, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true } });
         if (!cat) throw notFound();
         const rows = await tx.posProduct.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, categoryId: cat.id, archivedAt: null }, select: { id: true }, take: BULK_MARKUP_PRODUCTS_MAX + 1 });
-        if (rows.length > BULK_MARKUP_PRODUCTS_MAX) throw invalid(`หมวดนี้มีสินค้าเกิน ${BULK_MARKUP_PRODUCTS_MAX} รายการ — เลือกเป็นรายการแทน`);
+        if (rows.length > BULK_MARKUP_PRODUCTS_MAX) throw invalidAt(`หมวดนี้มีสินค้าเกิน ${BULK_MARKUP_PRODUCTS_MAX} รายการ — เลือกเป็นรายการแทน`, "categoryId", "BULK_TOO_MANY"); // POS P2.11 ▸ l-price ◂
         ids = rows.map((r) => r.id);
       }
       // ล็อกแถวสินค้าทั้งชุด (เรียง id) ก่อนอ่านแถวราคาเดิม — ลำดับเดียวกับ setChannelPrices/setPrice

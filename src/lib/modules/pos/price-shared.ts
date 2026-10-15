@@ -41,6 +41,12 @@ export const PRICE_RULE_UNITS_MAX = 200;
 export const PRICE_RULE_ID_MAX = 40;
 /** ปัดราคาที่บวก % : 1 = สตางค์ · 100 = บาท */
 export const BULK_ROUND_TO = [1, 100] as const;
+// POS P2.11 ▸ l-price: รหัสย่อยคงที่ของคำปฏิเสธราคา (CatalogError.reason · คีย์ข้อความ pos.price.errors.<camelCase>) — จอไม่ต้องจับข้อความ
+//   PRICE_ROW_DEAD = เพิ่ม/แก้แถวของช่องทางที่เก็บถาวร หรือสาขาที่เก็บถาวร/เลิกผูก/ไม่มีในระบบ (แถวเดิมที่ไม่แก้เก็บไว้ตามเดิม · field "rows")
+//   BULK_TOO_MANY = ปรับ/คัดลอกเกิน BULK_MARKUP_PRODUCTS_MAX สินค้าต่อครั้ง (field "productIds" หรือ "categoryId")
+export const PRICE_REFUSAL_REASONS = ["PRICE_ROW_DEAD", "BULK_TOO_MANY"] as const;
+export type PriceRefusalReason = (typeof PRICE_REFUSAL_REASONS)[number];
+// ◂
 
 const BP_FULL = 10_000;
 const BKK_OFFSET_MS = 7 * 3_600_000;
