@@ -10,7 +10,7 @@
 // 🔴 คำปฏิเสธแสดงผ่านคีย์ pos.device.errors.* · ไม่ทำในใบนี้: ใบครัวพิมพ์ที่ (P2) · QR ลงทะเบียนเครื่องอื่น (P1.18)
 // POS P2.10 ▸ ตั้งจอลูกค้า = CustomerDisplayBlock ท้ายไฟล์ (คีย์ pos.display.settings.* · pos.display.errors.*) ◂
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"; // POS P2.10 ▸ fix2 G2: useRef (ตัวนับคำขอของจอลูกค้า) ◂
 import { useLocale, useTranslations } from "next-intl";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { pairingMatches, readPairing } from "@/components/pos/print/pairing";
@@ -718,9 +718,14 @@ function CustomerDisplayBlock({ systemId, unitId, deviceId }: { systemId: string
   const [note, setNote] = useState<string | null>(null);
   const [idleDraft, setIdleDraft] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // POS P2.10 ▸ fix2 G2 (มติ fix2 ข้อ 2): ตัวนับคำขอ — เปิด/ยกเลิกเพิ่มเลขทั้งตอนเริ่มและตอนเสร็จ ·
+  //    ผลถามสถานะที่เริ่มก่อนการเปิด/ยกเลิกล่าสุดถูกทิ้ง (ไม่ล้างรหัสใหม่ · ไม่ทับสถานะ) ◂
+  const mutSeq = useRef(0);
 
   const refresh = useCallback(async () => {
+    const started = mutSeq.current; // POS P2.10 ▸ fix2 G2 ◂
     const r = await customerDisplayStatusAction({ systemId, unitId, deviceId }).catch(() => null);
+    if (started !== mutSeq.current) return; // POS P2.10 ▸ fix2 G2: ผลเก่ากว่าการเปิด/ยกเลิกล่าสุด ⇒ ทิ้ง ◂
     if (!r || !r.ok) {
       setErr(t(displayErrorKey(r?.code)));
       return;
@@ -761,7 +766,8 @@ function CustomerDisplayBlock({ systemId, unitId, deviceId }: { systemId: string
   };
   const enable = () =>
     run(async () => {
-      const r = await enableCustomerDisplayAction({ systemId, unitId, deviceId });
+      mutSeq.current += 1; // POS P2.10 ▸ fix2 G2: ก่อนเรียก ◂
+      const r = await enableCustomerDisplayAction({ systemId, unitId, deviceId }).finally(() => void (mutSeq.current += 1)); // POS P2.10 ▸ fix2 G2: หลังเสร็จ ◂
       if (r.ok) {
         setCode({ code: r.pairCode, expiresAt: r.pairCodeExpiresAt });
         setSt(r.display);
@@ -770,7 +776,8 @@ function CustomerDisplayBlock({ systemId, unitId, deviceId }: { systemId: string
     });
   const revoke = () =>
     run(async () => {
-      const r = await revokeCustomerDisplayAction({ systemId, unitId, deviceId });
+      mutSeq.current += 1; // POS P2.10 ▸ fix2 G2: ก่อนเรียก ◂
+      const r = await revokeCustomerDisplayAction({ systemId, unitId, deviceId }).finally(() => void (mutSeq.current += 1)); // POS P2.10 ▸ fix2 G2: หลังเสร็จ ◂
       if (r.ok) {
         setCode(null);
         setSt(r.display);
