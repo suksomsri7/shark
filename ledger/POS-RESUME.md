@@ -1717,7 +1717,7 @@
 - 17:57Z hunter P2.12 (@42e3ce17) = **FINDINGS**: H1 Med A3/A4 วัด `PosSale.discountSatang` (รวมสมาชิก/คูปอง · ไม่เห็นส่วนลดรายการ) · H2 Med- เพดานแถวตัดกฎท้าย (A8/A9) เงียบ · H3 header "ทุกสาขา" ของ MANAGER{A} · H4 A8 ไม่มีเครื่องหมายขาด/เกิน · H5 วันบิล vs cut-off (follow-up) · Probed OK 6 ข้อ (channels=daily · branches scope · hourly fold · PDPA) → มติ fix 1 (1–8 ใน review file): F1–F3 + H1–H4 fix · ORACLE-ADD AN13/AN14/PD4 (33 ข้อ) → spawn **builder fix 1** ทรี c prompt `pos-prompt-accountB-P2.12-fix.md`
 - เลน: 1 = P2.13 oracle ทรี b · 2 = P2.12 fix 1 ทรี c
 
-### 15 ต.ค. 18:1xZ — P2.13 oracle เสร็จ (รอ P2.12 S merge ก่อน builder)
+### 15 ต.ค. 18:31Z — P2.13 oracle เสร็จ (รอ P2.12 S merge ก่อน builder)
 - oracle writer: `wip/pos-p2.13-oracle` **580ecbbb** push แล้ว · `qc-pos-p2.13.mts` 49 ข้อ (ST6 AU8 RL2 ID5 SA8 OR6 PR5 RP4 SH3 Z2) + `qc-pos-api-skill.mts` 10 · forced 3/49 (Z1 Z2 · RP2 SKIP จน P2.12 merge) + 1/10 · typecheck 0 · ORACLE-EDIT batch = 9 ที่ (caller count 1→0) + p0.2 · CD1–10 → ผู้คุมตัดสินใน brief §10 ข้อ 11 (ขยาย batch p0.2 S1.5/S1.6/S3.3/S6.0/S6.4 + p2.1:488 · เก็บ voidErrorToApi/posSaleServiceKey · expectedGrandTotal optional · refund ตาม other-sources · INTERNAL 500 / Σpay 422 / PRICE_CHANGED 409 · lane pins แดงบน wip ตามแบบ)
 - prompt builder `pos-prompt-accountB-P2.13.md` (base `__BASE__` = merge P2.12 S) — spawn ทรี b หลัง P2.12 S merge
 - เลน: 1 = P2.12 fix 1 ทรี c · ทรี b ว่าง @580ecbbb (รอ builder P2.13) · ทรี d ว่าง
