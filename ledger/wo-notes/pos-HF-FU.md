@@ -111,3 +111,52 @@ Base f5e1c8a4 → commits 979d5ac0 (test) · 7334aff2 (red-before) · a30741aa F
 | typecheck | rc 0 @0e870195 `g-typecheck.log` · rc 0 @120b0e16 `m-typecheck.log` (2 runs) |
 | fitness no-env · env (qc4) | 50/50 · 50/50 |
 | qc-hf-fu post-merge **unforced** @120b0e16 | **27/27** (PAR 5/5 · residue 0) `m-hffu.log` |
+
+## Fix round 2 (hunter H1 + H2 · controller rulings fix2 1–5 · 15 Oct 2026)
+Base aff51c68 → commits 05fea805 (test) · cf1abb84 H1 · 01bbc1a9 H2 (+ owner line) · 1c7d23e1 red-before · this notes commit. `origin/session/pos` fetched = 57a8b19a (already merged at aff51c68) ⇒ no merge this round.
+
+**Oracle (ruling 3)** — `scripts/qc-hf-fu.mts`, 2 registry rows + 2 blocks, all under `// ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2)`; suite = 27 + 2 = **29**; no existing check touched.
+- **HN5** (after HN4): two custom PLATFORM channels, ceiling 1, a LINEMAN blocker ticket holds each order at the ceiling (held backlog, PLATFORM_PAID).
+  - (ก) payout flipped to DIRECT (`saveChannel {id, name, payout}`) before the sweep → blocker done → `releaseHeldOrders` ⇒ NEW + `held sale_refused` 1 · 0 sales · 0 rounds; staff `acceptOrder` ⇒ `CHANNEL_PAY_MISMATCH`, still NEW, 0 sales.
+  - (ข) blocker done → a third tx holds `pg_advisory_xact_lock(hashtext('posorder-release:<T>:<A>'))`; the sweeper reads its candidates (channel still live) and waits; meanwhile autoAccept goes off → release ⇒ NEW · no new held row · 0 sales · 0 rounds. (A pre-sweep autoAccept flip is already filtered by the outer read, so the race is forced through the release lock — that is the stale-row window H1 names.)
+- **ZE3** (after ZE2): the only real zero-entry bill that carries a commission is P2.9b A10's scene (deposit ฿1,070 while VAT-registered → book de-registers → ฿1,050 then ฿20 · agent channel DIRECT 10 %). A PLATFORM-payout bill always has a full PLATFORM tender row, so it can never be zero entry ⇒ the fixture uses DIRECT (deviation from the ruling's "PLATFORM" wording, same money path). Own unit Z3 + POS Z3 + book A3; COMMISSION of the ฿20 bill in A3 (fixture-asserted) → relink POS Z3 to book B (`S.ACCB`, VAT-registered) → refund the ฿20 bill in full (transfer) → drain with console.error/warn captured ⇒ `pos.sale.refunded` DONE · 0 P2002 in log/lastError · COMMISSION in B 0 · COMMISSION_REFUNDED in B 0 (pinned) · COMMISSION in A3 still 1 · tenant `InvMovement` count unchanged. Prints one info line (B: JV keys · marker · documents · event status).
+- **Red-before** (`HF-FU-red.txt` §fix2, log `runs/fix2/red-2.log`, test commit on aff51c68 code, unforced): 27/29.
+  - HN5 = (ก) `ACCEPTED · no sale · 1 round` (platform revenue never booked), staff accept `ORDER_STATE_INVALID`; (ข) `ACCEPTED + PLATFORM sale` from the stale row.
+  - ZE3 = P2002 logged by the refund consumer's step 1a (book B: refund JV + credit note only, no marker). The event itself ended DONE/0 here because 1a swallows the error — on this fixture the first collision is the **deposit receipt** key `PosSale#<receipt>#PAID` (`ensureDepositReceiptsPosted` → `postExternalDepositReceipt` in B), which fires before the marker/commission the hunter traced. Confirmed by the fix run: with the receipt skip in place book B gets marker 1 + documents 2 and 0 P2002.
+  - red-1 was an HN5 fixture miss (`saveChannel` edit needs `name`); fixed in the same test commit (amended before any push).
+
+**Code**
+- **H1** `pos/order.ts` (markers `a fix2`):
+  - `sweepLive(c, now)` = active · autoAccept · not MANUAL · not paused — used by the outer candidate filter and, inside the sweep tx (after the per-unit advisory lock and the order re-read), on a channel row re-read with the tx client (`archivedAt: null`). Not live ⇒ `"skip"` (stays NEW, no marker). `acceptInTx` gets the fresh row.
+  - `acceptInTx` (sweep · manual `acceptOrder` · ingest auto-accept) first line: `(ch.payout === "PLATFORM") !== (o.paymentState === "PLATFORM_PAID")` ⇒ `OrderAbort(refuse("CHANNEL_PAY_MISMATCH", …))` before any write. Sweep ⇒ existing `held {reason:"sale_refused"}` path; staff ⇒ the existing code, UI text `errors.channelPayMismatch` (no new reason, no new key). Ingest always writes a consistent pair, so it never trips.
+  - Channel re-read is a plain read (no FOR SHARE): a channel edit committed while the sweeper waits on the PosOrder row is not seen (HN4's S1 still accepts o1, as HN4 pins); locking the channel would block `setChannelOrderSettings` behind the sweeper.
+- **H2** `account/gl.ts` + `account/index.ts` (markers `z fix2`):
+  - `postedInOtherBook(ctx, key, db)` = journal row with this key in the same tenant and another systemId; checked after `alreadyPosted` in `postExternalChannelCommission`, `postExternalSale` **and `postExternalDepositReceipt`** ⇒ `{ skipped: true, reason: "other-book" }`. The deposit receipt is an addition to the ruling's two functions: it is the same `PosSale#<id>#PAID` key family and is what ZE3's real path hits first (see red-before) — without it ZE3 stays red.
+  - `applyExternalSale` / `applyExternalDepositReceipt`: `other-book` ⇒ `{posted:false, reason:"other-book"}` **before the document layer** — the new book gets no second sale/receipt document or tax number (before the fix the P2002 threw before that layer, so the visible outcome is unchanged minus the exception). `applyExternalChannelCommission` passes the reason through (else "already").
+  - COMMISSION_REFUNDED gate unchanged (book-scoped) ⇒ no cross-book reversal; owner line appended to `ledger/POS-OWNER-PENDING.md` (ruling 2 text, + Thai gloss).
+  - **Bundle double-consume question (ruling 2) = NO.** `consumeBundleComponentsForDoc` only consumes document lines whose `productId` is a BUNDLE of that book. A POS bill's document lines resolve `productId` only via `resolveProductIdsForExternalSale(book, itemIds)` (`AccountProduct.invItemId = line.itemId`; the bridge never sends `accountProductId`), and a BUNDLE cannot carry `invItemId` (`account/product.ts:1721` refuses it) ⇒ every POS document returns `no-bundle-line` in any book; the B-side document never consumes stock. ZE3 asserts the tenant's `InvMovement` count unchanged. No CONTROLLER-DECISION.
+
+**Follow-ups (not owner lines · P2.14 unless noted)**
+- R2 G1: the read-path sweep waits on a *blocking* `pg_advisory_xact_lock` inside `runTx` ⇒ `pg_try_advisory_xact_lock` + return `"blocked"` when false.
+- R2 G2: F1 residual — the session re-read in the orphan-draft discard tx is unlocked; closing it needs a session-first lock order in the sweep.
+- Hunter info: a fully REFUNDED (not voided) bill can still be handed over (predates HF-FU; P2.14 h1 scope).
+- Hunter: ingest ‖ sweep can overshoot the ceiling by one (ingest does not take `posorder-release`) — already listed in fix round 1.
+- H2 residue (HF-FU2 with the owner line): after a relink, a zero-entry bill's refund still writes a marker + sale document in the new book (zero-entry path never calls `postExternalSale`); no money (0 JV) and no P2002, but a second document exists in the new book. A normal bill's refund after relink gets no sale document in the new book, so its credit note may be refused there (same as before the fix).
+
+**Gates (ruling 5)** — logs `scratchpad/hffub/runs/fix2/` (line 1 = `tree= head= dirty=`); `g-*` at 1c7d23e1 dirty 0 via `scratchpad/hffub/gates-fix2.sh`; step run `s1-hffu.log` at 01bbc1a9 = 29/29.
+
+| gate | result |
+|---|---|
+| qc-hf-fu ×2 **unforced** | **29/29 · 29/29** (PAR 5/5 · residue 0 · leaks 0 · fpDrift none) `g-hffu-1/2.log` |
+| qc-pos-p2.6 | 67/67 |
+| qc-pos-p2.8 | 61/61 |
+| qc-pos-p2.9b | 53/53 (A10 green with the other-book skip) |
+| qc-pos-p1.8 | 49/49 |
+| qc-pos-account | 16/16 |
+| qc-account-cpa | 107/107 |
+| qc-hf-tx | 22/22 |
+| qc-pos-p1.1 | 180/180 |
+| qc-pos-p1.3 | 128/128 |
+| typecheck (pos lock 5632 MB) | rc 0 `g-typecheck.log` |
+| fitness no-env · env (qc4) | 50/50 · 50/50 |
+| merge `origin/session/pos` | not needed — still 57a8b19a (merged at aff51c68); the final `qc-hf-fu` = the two `g-hffu` runs above |
