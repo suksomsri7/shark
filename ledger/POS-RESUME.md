@@ -1785,3 +1785,15 @@
 - เลน: 1 = P2.13 R2 (read-only ทรี b) · 2 = P2.7 oracle ทรี d · ทรี c ว่าง @861815e0
 - ถัดไป: R2 MERGEABLE → merge e29c5f51 (no-ff, msg จาก template) → ทรี c detached + prisma generate → gates101-c → push → lane pins ซ้ำ → build ทรี c/d + vis86 → ออกคีย์ QC5 → agent skill test → **41/55 (75%)** + TG
 - 21:52Z R2 P2.13 (@e29c5f51) = **MERGEABLE-AFTER-FIXES docs only** (G1 SKILL line CASH นอกกะ · G2 ขยาย line 6 · G3 line requestedById=keyId) → ส่ง builder แก้เอกสาร (commit เดียว + skill copy) → รอ head ใหม่ → merge
+
+### 15 ต.ค. 21:55Z — P2.13 merged f95348ac (ยังไม่ push) → gates101
+- builder docs fix a67693a8 (G1 SKILL · G2/G3 lines) → **merge → session/pos f95348ac** (no-ff) · ทรี c detached + generate + คัดลอก `.claude/skills/{shark-pos-api,shark-kanban-api,shark-account-api}` จาก /root/.claude/skills (⚠️ `.claude/` gitignored — สกิลไม่อยู่ใน git · ทุกทรีที่รัน api-skill/kanban ต้องมีสำเนา) → **gates101-c** (`gates101-c-20261015T215429Z`)
+- ถัดไป: gates101 เขียว (lane pins p2.8 ST6 / p2.12 ST1 / p2.10 ST2 / hf-fu ST1 / p2.11 ST4 อาจแดงจน push) → push → ซ้ำ → chain84 ทรี c (build + vis86 p2.13 5+1 state owner/manager th/en) → ออกคีย์ QC5 pos-operate → agent skill test (prompt `-P2.13-A.md`) → **41/55 (75%)** + TG
+- เลน: 1 = P2.7 oracle ทรี d · ทรี b ว่าง @a67693a8 · ทรี c = gates101 (ผู้คุม)
+- P2.14: ตัดสินว่าจะเลิก ignore `.claude/skills/` หรือย้ายสกิลไป path ที่ track (ตอนนี้สกิล API อยู่แค่ /root/.claude/skills + ทรีที่สร้าง)
+
+### 15 ต.ค. 22:10Z — P2.7 oracle ส่ง 500b4041 → มติ CD-O1–O10 → S builder ทรี d
+- oracle writer: `wip/pos-p2.7-oracle` **500b4041** (38 ข้อ · forced 3/38 ที่ฐาน = Z1 Z2 + OR1 skip · 35 แดงตามเหตุ · 0 crash · base suites p2.4 50 / restaurant-pay 19 / p2.8 61 · typecheck ต้อง heap 8192) → **มติ 17** ในบรีฟ (O1 synthetic read-only actor ไม่แตะ register.ts เพิ่ม · O2–O4 ORACLE-EDIT p2.1 :1092 :1093 :1271 :339 + p2.8 :498 · O5 lane pins · O6 60/นาที · O7 dedupe in-memory · O8–O10 รับ · typecheck heap 8192 ตั้งแต่นี้) · `wo-notes/pos-P2.7-review.md` เปิด
+- spawn **P2.7 S builder** (Opus ทรี d `wip/pos-p2.7` จาก f95348ac local + merge oracle) prompt `pos-prompt-accountB-P2.7-S.md` (574726ee) — มี migration → builder apply QC4 เอง · ผู้คุม apply QC5 ตอนถ่ายภาพ U
+- เลน: 1 = P2.7 S builder ทรี d · ทรี b ว่าง @a67693a8 · ทรี c = gates101 (18/≈30 ชุด · lane pins p2.8/p2.11/p2.12/hf-fu แดงตามคาด) → ต่อด้วย chain84 (ภาพ p2.13) บนทรี c
+- ⚠️ gates101 typecheck ใช้ heap 5632 — ถ้า exit 134 ให้รันซ้ำด้วย 8192/10500M (template gates/chain ปรับแล้วรอบหน้า)
