@@ -17530,9 +17530,13 @@
           {
             "type": "inline-error",
             "target": "pos-reg-deprcv-error"
+          },
+          {
+            "type": "inline-error",
+            "target": "pos-reg-deprcv-paid-ref"
           }
         ],
-        "note": "รับมัดจำ ฿x → \"ใบรับเงินมัดจำ #… ฿x\" + ตัวอย่างใบเสร็จ · VALIDATION (ค่าตั้งปิด) = \"ร้านยังไม่เปิดรับมัดจำ\" · PAYMENT_MISMATCH · PERMISSION_DENIED (ยืนยันเองต้องผู้จัดการ)"
+        "note": "รับมัดจำ ฿x → \"ใบรับเงินมัดจำ #… ฿x\" + ตัวอย่างใบเสร็จ · VALIDATION (ค่าตั้งปิด) = \"ร้านยังไม่เปิดรับมัดจำ\" · PAYMENT_MISMATCH · PERMISSION_DENIED (ยืนยันเองต้องผู้จัดการ) · fix1 มติ 3: ใบพร้อมเพย์ PAID + ปฏิเสธแน่นอน (ปิดรับ/PERMISSION_DENIED) = ปิดแผ่นได้ + \"ชำระแล้ว อ้างอิง pi_…\" (pos-reg-deprcv-paid-ref)"
       },
       "wo": "P2.9bU",
       "oracle": "",
