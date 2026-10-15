@@ -260,6 +260,8 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 
 // ── POS P1.3 ▸ แผนสถานะของหน้าขายใหม่ ──
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
+// POS P2.12U ▸ pdf probe ◂ --pdf = หลังภาพหน้าพิมพ์ (reports-print-overview/-channels เท่านั้น) เขียน page.pdf A4 ด้วย · ปิดเป็นค่าเริ่ม (รอบอื่นไม่เปลี่ยน)
+const PDF_PROBE = argv.includes("--pdf");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
 type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key; // POS P2.12U ▸ + P212u ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
@@ -7935,6 +7937,18 @@ try {
           .catch(() => ({ over: false, el: null }))) as { over: boolean; el: string | null };
         const file = job.file;
         await page.screenshot({ path: file, fullPage: job.state !== "lock-screen-scroll" }); // POS HF-P1CLOSE ▸ จอล็อกที่เลื่อนแล้ว = ภาพเท่าจอ (overlay fixed) ◂
+        // POS P2.12U ▸ pdf probe ◂ — เฉพาะ --pdf + สถานะหน้าพิมพ์ · ไฟล์ <state>-<user>-<locale>.pdf · ขนาดลงบรรทัดของสถานะ
+        let pdfNote = "";
+        if (PDF_PROBE && job.state && P212U_PRINT.has(job.state)) {
+          const pdfFile = `${OUT}/${job.state}-${userKey}-${LOCALE_EN ? "en" : "th"}.pdf`;
+          try {
+            const buf = (await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true })) as Uint8Array;
+            writeFileSync(pdfFile, buf);
+            pdfNote = ` · PDF ${pdfFile} ${buf.length} B`;
+          } catch (e) {
+            pdfNote = ` · PDF ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`;
+          }
+        }
         if (job.state === "register-en") await restoreThaiLocale(page); // POS P1.18U
         if (job.state && P22U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P22U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP22u(); // POS P2.2U
         // POS P2.3U ▸ บิลค้างตัดยกเลิกหลังภาพสุดท้ายของ register-pending-cuts · fixture ลบหลังงานสุดท้ายของช่วงติดกัน ◂
@@ -7977,7 +7991,7 @@ try {
         if (!ok) failures++;
         shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
         console.log(
-          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}` : ""} → ${file}`,
+          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}` : ""} → ${file}${pdfNote /* POS P2.12U ▸ pdf probe ◂ */}`,
         );
         await page.close();
       }
