@@ -497,6 +497,8 @@ async function afterSaleCommit(tenantId: string, unitId: string, saleId: string 
   if (saleId && lines) await afterSaleCommitted({ tenantId, unitId, lines }, saleId);
 }
 
+// POS HF-FU ▸ a fix2 (hunter H1): ข้อความของคู่ payout ↔ paymentState ที่ไม่ตรง (รหัสเดิม CHANNEL_PAY_MISMATCH · จอใช้ errors.channelPayMismatch) ◂
+const ORDER_PAYOUT_STATE_MISMATCH = "ช่องทางของออเดอร์นี้เปลี่ยนวิธีรับเงินหลังรับเข้า (แพลตฟอร์ม ↔ ร้านเก็บเอง) — รับออเดอร์นี้ไม่ได้ ตรวจกับแพลตฟอร์ม/ลูกค้าแล้วปฏิเสธหรือสร้างใหม่";
 /**
  * รับออเดอร์ในธุรกรรมของผู้เรียก (R5 R6): NEW → ACCEPTED (acceptedAt · ผู้รับ · เวลาเตรียม) + ช่องทาง PLATFORM ⇒ บิลในธุรกรรมเดียวกัน
  * (PLATFORM แถวเดียวเต็มยอด · กะ = กะของเครื่องที่รับ ไม่มี = null — ไม่ใช่เงินสด ไม่เคย SHIFT_REQUIRED · มติ 10) · บิลถูกปฏิเสธ = OrderAbort (rollback)
@@ -507,6 +509,9 @@ async function acceptInTx(
   ch: SalesChannel,
   who: { actorUserId: string | null; shiftId: string | null; prepMinutes: number; auto: boolean },
 ): Promise<{ order: PosOrder; saleId: string | null; saleLines: CreateSaleInput["lines"] | null }> {
+  // POS HF-FU ▸ a fix2 (hunter H1): เงินของการรับตัดสินจากคู่ payout ของช่องทาง ↔ paymentState ของออเดอร์ — ไม่ตรง (เจ้าของเปลี่ยน payout หลังรับเข้า) =
+  //   ปฏิเสธก่อนแตะอะไร (ไม่มีบิล ไม่มีรอบ · ตัวกวาด = held sale_refused · พนักงาน = CHANNEL_PAY_MISMATCH) ◂
+  if ((ch.payout === "PLATFORM") !== (o.paymentState === "PLATFORM_PAID")) throw new OrderAbort(refuse("CHANNEL_PAY_MISMATCH", ORDER_PAYOUT_STATE_MISMATCH));
   let after = await transition(tx, o, "ACCEPTED", { acceptedAt: new Date(), acceptedByUserId: who.actorUserId, prepMinutes: who.prepMinutes }, { actorUserId: who.actorUserId, payload: who.auto ? { auto: true } : undefined });
   // POS P2.6 ▸ R4 CD3: ทุกทางเข้า ACCEPTED (รับ · รับอัตโนมัติ · รับเข้าเป็น ACCEPTED) สร้างรอบครัวในธุรกรรมเดียวกัน (xmin เดียว · ไม่ขึ้นกับการจ่าย · รับซ้ำ = รอบเดิม) ◂
   await roundForOrderInTx(tx, after, ch);
@@ -952,6 +957,8 @@ export async function acceptOrder(ctx: RegisterCtx, actor: RegisterActor, input:
 
 // ═══════════ POS HF-FU ▸ a: ตัวกวาดออเดอร์ที่ครัวพักไว้ (held) — รับอัตโนมัติเมื่อครัวว่าง (มติ 1) ◂ ═══════════
 const RELEASE_LIMIT_MAX = 20;
+/** POS HF-FU ▸ a fix2 (hunter H1): ช่องทางที่ตัวกวาดรับแทนได้ — ใช้ทั้งตอนเลือกผู้สมัครและตรวจซ้ำในธุรกรรม (archivedAt อยู่ในเงื่อนไขของ query) ◂ */
+const sweepLive = (c: SalesChannel, now: Date) => c.active && c.autoAccept && !isManual(c.adapter) && !isPaused(c, now);
 /**
  * ออเดอร์ NEW ของสาขาที่มีบันทึก held (ไม่ใช่ sale_refused) · รับเข้าตั้งแต่ต้นวันไทย (posDayStart · ของวันก่อนคงไว้ให้พนักงาน) · ช่องทางยัง
  * active + autoAccept + ไม่ใช่ MANUAL + ไม่พักรับ · เก่าสุดก่อน (receivedAt, id) · ทีละธุรกรรม: ตรวจ autoAcceptBlockedInTx ซ้ำ — ติดเมื่อไรหยุดทั้งรอบ ·
@@ -975,7 +982,7 @@ export async function releaseHeldOrders(tenantId: string, unitId: string, opts: 
     const chs = new Map((await prisma.salesChannel.findMany({ where: { tenantId, unitId, id: { in: [...new Set(cand.map((o) => o.channelId))] }, archivedAt: null } })).map((c) => [c.id, c]));
     const live = cand.filter((o) => {
       const c = chs.get(o.channelId);
-      return !!c && c.active && c.autoAccept && !isManual(c.adapter) && !isPaused(c, now);
+      return !!c && sweepLive(c, now); // POS HF-FU ▸ a fix2: เงื่อนไขเดียวกับที่ตรวจซ้ำในธุรกรรม ◂
     });
     for (const o of live.slice(0, limit)) {
       const ch = chs.get(o.channelId)!;
@@ -990,7 +997,11 @@ export async function releaseHeldOrders(tenantId: string, unitId: string, opts: 
             if (await autoAcceptBlockedInTx(tx, { tenantId, unitId })) return "blocked" as const;
             const fresh = await tx.posOrder.findFirst({ where: { id: o.id, tenantId, unitId } });
             if (!fresh || fresh.status !== "NEW") return "skip" as const;
-            return acceptInTx(tx, fresh, ch, { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true });
+            // POS HF-FU ▸ a fix2 (hunter H1): แถวช่องทางจากก่อนธุรกรรมอาจเก่า (ออเดอร์ถูกพักเป็นนาที–ชั่วโมง · เจ้าของเปลี่ยน payout/ปิดรับอัตโนมัติ/พักรับ/เก็บช่องทาง) ⇒
+            //   อ่านซ้ำด้วย tx หลังล็อกต่อสาขา + ตรวจ live ซ้ำ · ไม่ live = ข้าม (คง NEW · ไม่บันทึกอะไร — พนักงานตัดสิน) · acceptInTx ได้แถวสด (คู่ payout ↔ paymentState ตรวจที่นั่น) ◂
+            const chNow = await tx.salesChannel.findFirst({ where: { id: o.channelId, tenantId, unitId, archivedAt: null } });
+            if (!chNow || !sweepLive(chNow, new Date())) return "skip" as const;
+            return acceptInTx(tx, fresh, chNow, { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true });
           },
           { retryUnique: true },
         );
