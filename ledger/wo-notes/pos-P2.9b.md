@@ -159,3 +159,25 @@ Code head **7d38de9a** (+ merges 1513ed7c / 491ff89e with P2.11 S 744e4f35, + le
 | qc-booking-deposit · qc-hotel-public · qc-rental-public | 18 · 15 · 16 |
 | qc-hf-pos-page-authz | 81/81 |
 Note: an earlier gate run at 1513ed7c (pre-P2.11) was stopped at a suite boundary (after p1.12) when P2.11 landed; its partial logs (`out4`) are superseded.
+
+## Fix round 3 delivered (account B, 15 Oct 08:1xZ) — head 6b019acb + this notes commit (code eef6e031 · gates at 6b019acb)
+Oracle first: 92da6d7c `test(qc-pos-p2.9b)` ORACLE-EDIT A9 (no FAILED/DEAD/PENDING `pos.sale.paid` of the fixture bills + the last bill's sale document) · ORACLE-ADD P12 → red-before block 4 in `P2.9b-red.txt` = **49/51** (red = A9 + P12, residue 0) → code → **51/51** (50 + P12).
+| ruling / finding | commit | change |
+|---|---|---|
+| 1 · R3 F1 (zero-entry bill threw ⇒ event never completed) | 950fc192 | `account/index.ts applyExternalSale`: base 0 + VAT 0 + no tip + every Dr line 0 ⇒ skip `postExternalSale` (no throw ⇒ `pos.sale.paid` DONE) · document layer unchanged (sale document still written) · audit `account.external.zeroEntry` payload `zeroEntry: true` · any other bill = old path · owner line `POS-OWNER-PENDING.md` (VAT de-registration absorbs a small last bill; accountant to confirm). Siblings checked: `applyExternalDepositReceipt` / `applyExternalDepositRefund` / `applyExternalRefund` (gross > 0 guard + money lines = gross ⇒ never all-zero) · `applyExternalChannelCommission` (returns `zero` before posting) — no change needed |
+| 2 · R3 F2 / hunter F1 (4-digit lookup searched phone last 4 without the counter) | eef6e031 · 6b019acb | `deposit.ts registerDepositLookup`: OR = receipt no (exact) / name prefix / member family only — `phoneLast4` never a search key; receipt no + `phoneLast4` still verifies via `checkDepositPhone` (counter + `DEPOSIT_LOCKED`) · VALIDATION text drops the last-4 hint · 6b019acb = P2.9bU contract line (ledger) |
+ORACLE-EDIT of an older lookup check: none needed — no existing check expected a 4-digit query to match by phone (P7/P9 use receipt no + last 4 = verification, still green); P12 covers the rule.
+**P2.9bU contract update**: lookup placeholder "เลขใบเสร็จ / ชื่อ" (no phone hint) · phone last 4 asked only at apply (pay row `phoneLast4`, or receipt-no re-lookup to show the balance; both counted) · a 4-digit query never returns a deposit by phone.
+
+### Gates after fix round 3 (one systemd-run unit · `ISO_MEM=7000M bash scripts/iso.sh bash scratchpad/p29b-f3/run-gates6.sh …` · logs `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p29b-f3/out6/*.out`, all 15 headed `tree=/root/projects/shark-pos-b head=6b019acb dirty=0` · 07:58–08:12Z)
+| gate | result | log |
+|---|---|---|
+| typecheck (pos-gate.lock · heap 5632) | rc 0 | out6/typecheck.out |
+| fitness no-env / env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 | out6/fitness-noenv.out · fitness-env.out · fitness-pos.out |
+| **qc-pos-p2.9b forced ×2 / unforced** | **51/51 · 51/51 · 51/51** (residue 0 · guardHits 0 · leaks 0) | out6/p29b-f1.out · p29b-f2.out · p29b-u.out |
+| qc-pos-p2.9 · qc-hf-tx | 62/62 · 22/22 | out6/qc-pos-p2.9.out · qc-hf-tx.out |
+| qc-pos-account · qc-account-cpa | 16/16 · 107/107 | out6/qc-pos-account.out · qc-account-cpa.out |
+| qc-pos-p1.17 · qc-hf-pos-page-authz | 40/40 · 81/81 | out6/qc-pos-p1.17.out · qc-hf-pos-page-authz.out |
+| qc-pos-p2.11 | 32/34 — ST1/ST4 lane pins (expected; green after push) | out6/qc-pos-p2.11.out |
+| qc-pos-p2.8 | 60/61 — ST6 wip-only (expected) | out6/qc-pos-p2.8.out |
+Next: R4 on the two hunks + hunter re-check → merge gates on tree b → merge.
