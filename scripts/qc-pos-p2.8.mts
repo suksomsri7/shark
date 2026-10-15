@@ -520,7 +520,7 @@ async function runStatic(): Promise<void> {
       if (now !== setStr(base) && now !== atMb) p.push(`${m} ฟิลด์เปลี่ยน (เกิน ${fieldNames(prismaBlock(schemaSrc, "model", m)).filter((f) => !base.includes(f)).join(",") || "-"} · ขาด ${base.filter((f) => !fieldNames(prismaBlock(schemaSrc, "model", m)).includes(f)).join(",") || "-"})`);
     }
     // migration
-    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /"PosOrder"|"PosOrderLine"|"PosOrderEvent"|"PosOrderStatus"/.test(rd(f)));
+    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /CREATE TABLE IF NOT EXISTS "PosOrder(Line|Event)?"/.test(rd(f))); // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7 fix 1) CD-B3: นับเฉพาะ migration ที่สร้างตาราง PosOrder* (ALTER เพิ่มล้วนของใบหลังไม่นับ)
     if (files.length !== 1) p.push(`migration ที่แตะ PosOrder* = ${files.length} ไฟล์ (คาด 1)`);
     for (const f of files) {
       const name = f.split("/").slice(-2, -1)[0] ?? "";
