@@ -10485,7 +10485,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-bills-list",
-        "note": "ทุกช่องทาง = ช่องทางขายของบิลวันนี้ (BillsPageData.salesChannels) → query salesChannelId · ตัวกรองระบบต้นทางเดิม pos-bills-channel คงไว้ (ป้ายว่าง \"ทุกระบบ\")"
+        "note": "ทุกช่องทาง = ช่องทางขายของบิลวันนี้ (BillsPageData.salesChannels) → query salesChannelId · ตัวกรองระบบต้นทางเดิม pos-bills-channel คงไว้ (ป้ายว่าง \"ทุกระบบ\") · P2.12U fix1 F3: ซ่อนเมื่อเลือก \"ทุกสาขา\" (รหัสช่องทางต่อสาขา)"
       },
       "wo": "P2.1U",
       "oracle": "",

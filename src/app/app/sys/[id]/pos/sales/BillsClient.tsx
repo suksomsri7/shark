@@ -1108,14 +1108,17 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
             </select>
           ) : null}
           {/* POS P2.1U ▸ มติ 3: "ทุกช่องทาง" = ช่องทางขาย (salesChannelId) · ตัวกรองเดิม (ระบบต้นทาง = sourceModule) คงไว้ ป้ายว่าง "ทุกระบบ" ◂ */}
-          <select data-testid="pos-bills-channel-filter" aria-label={t("allChannels")} className="input h-11 w-auto max-w-[220px]" value={salesChannelId} onChange={(e) => setFilter(() => setSalesChannelId(e.target.value))}>
-            <option value="">{t("allChannels")}</option>
-            {(ok?.salesChannels ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {channelDisplayName(c.code, c.name, tch)}
-              </option>
-            ))}
-          </select>
+          {/* POS P2.12U ▸ fix1 F3 (มติ 2): ทุกสาขา = ซ่อนตัวกรองช่องทาง — salesChannels เป็นรหัสต่อสาขา (ชื่อซ้ำกันทุกสาขา · เลือกแล้วกรองเหลือสาขาเดียวเงียบ ๆ) · ชิป channelCounts แยกตามรหัสให้แล้ว · ตัวกรองต่อรหัส = งานต่อฝั่ง S ◂ */}
+          {!allMode ? (
+            <select data-testid="pos-bills-channel-filter" aria-label={t("allChannels")} className="input h-11 w-auto max-w-[220px]" value={salesChannelId} onChange={(e) => setFilter(() => setSalesChannelId(e.target.value))}>
+              <option value="">{t("allChannels")}</option>
+              {(ok?.salesChannels ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {channelDisplayName(c.code, c.name, tch)}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <select data-testid="pos-bills-channel" aria-label={t("channel.allSources")} className="input h-11 w-auto" value={channel} onChange={(e) => setFilter(() => setChannel(e.target.value))}>
             <option value="">{t("channel.allSources")}</option>
             {(ok?.channels ?? []).map((c) => (
