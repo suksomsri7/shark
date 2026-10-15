@@ -41,12 +41,20 @@ export type DisplayPublishInput = {
   layers: readonly { kind: string; result?: RegisterSubmitOk }[];
 };
 
+// POS P2.10 ▸ fix1 F2 (มติ fix1 ข้อ 2): บรีฟสมาชิกใช้รหัสสมาชิกแทนชื่อเมื่อไม่มีชื่อ (member/profile.ts) → ส่งชื่อว่าง (จอทักทายแบบไม่มีชื่อ)
+function memberFirstName(m: RegisterMemberItem): string {
+  const name = m.name.trim();
+  if (!name || name === m.memberCode) return "";
+  return name.split(/\s+/)[0] ?? "";
+}
+// ◂
+
 /** ภาพบนจอจากสถานะหน้าขาย · null = ยังไม่ควรส่ง (ตะกร้ามีของแต่ quote ยังไม่สด) */
 export function buildDisplayState(i: DisplayPublishInput, pay: DisplayPayIn | null): DisplayState | null {
   const done = i.layers.find((l) => l.kind === "done")?.result ?? null;
   const payOpen = i.layers.some((l) => l.kind === "pay");
   const member = i.member
-    ? { firstName: i.member.name.trim().split(/\s+/)[0] ?? "", tier: i.member.tier?.name ?? null, points: i.member.points }
+    ? { firstName: memberFirstName(i.member), tier: i.member.tier?.name ?? null, points: i.member.points } // POS P2.10 ▸ fix1 F2 ◂
     : null;
   const q = i.quote;
   const lines: DisplayLine[] = i.lines.map((l) => {

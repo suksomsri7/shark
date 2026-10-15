@@ -149,6 +149,14 @@ export function displayFirstName(name: string): string {
   const first = name.trim().split(/\s+/)[0] ?? "";
   return displayCut(first, MAX_DISPLAY_FIRST_NAME);
 }
+// POS P2.10 ▸ fix1 F2 (มติ fix1 ข้อ 2): สมาชิกไม่มีชื่อ → บรีฟสมาชิกใช้รหัสสมาชิกแทนชื่อ (member/profile.ts briefsOf) — ห้ามขึ้นจอ
+//    รูปแบบรหัสจริง = member/service.ts randCode: 6 ตัวจาก "ACDEFGHJKLMNPQRSTUVWXY3456789" (ชนกัน 6 รอบ = 8 ตัว) ·
+//    + รหัสที่นำเข้าแบบตัวอักษรนำ + ตัวเลขล้วน (เช่น M000123) — ชื่อต้นที่หน้าตาเป็นรหัส = "" (จอทักทายแบบไม่มีชื่อ)
+export const DISPLAY_MEMBER_CODE_RES: readonly RegExp[] = [/^[ACDEFGHJKLMNPQRSTUVWXY3-9]{6}(?:[ACDEFGHJKLMNPQRSTUVWXY3-9]{2})?$/, /^[A-Z]{0,3}\d{4,}$/];
+export function displayLooksLikeMemberCode(s: string): boolean {
+  return DISPLAY_MEMBER_CODE_RES.some((re) => re.test(s));
+}
+// ◂
 /** รหัสจับคู่ที่พิมพ์/สแกน → รูปมาตรฐาน (ตัวใหญ่ · ไม่มีช่องว่าง/ขีด · I L → 1 · O → 0 ตามกติกา Crockford) · ผิดรูป = null */
 export function normalizePairCode(raw: unknown): string | null {
   if (typeof raw !== "string" || raw.length > 40) return null;
@@ -283,8 +291,10 @@ function parseState(v: unknown): DisplayState {
     if (o.member === null) st.member = null;
     else {
       const m = obj(o.member, "member", ["firstName", "tier", "points"]);
+      // POS P2.10 ▸ fix1 F2: ชื่อที่เป็นรหัสสมาชิก = ""
+      const first = displayFirstName(text(m.firstName, "member.firstName", 400));
       st.member = {
-        firstName: displayFirstName(text(m.firstName, "member.firstName", 400)),
+        firstName: displayLooksLikeMemberCode(first) ? "" : first, // ◂
         tier: m.tier === null || m.tier === undefined ? null : text(m.tier, "member.tier", 40) || null,
       };
       if (has(m, "points") && m.points !== null) st.member.points = count(m.points, "member.points", 1_000_000_000);

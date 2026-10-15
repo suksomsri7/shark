@@ -120,7 +120,7 @@ function BillPane({ view, t }: { view: DisplayView; t: T }) {
       <ShopHead view={view} compact />
       {m && (
         <div data-testid="pos-display-greeting" className="mt-6 xl:mt-[31px]">
-          <div className="text-[23px] font-bold tracking-[-0.01em] xl:text-[26px]">{t("screen.hello", { name: m.firstName })}</div>
+          <div className="text-[23px] font-bold tracking-[-0.01em] xl:text-[26px]">{m.firstName ? t("screen.hello", { name: m.firstName }) : t("screen.welcome")}</div>{/* POS P2.10 ▸ fix1 F2: ไม่มีชื่อ = ทักทายแบบไม่มีชื่อ ◂ */}
           {(m.tier || m.points !== undefined) && (
             <small className="mt-0.5 block text-[13px] text-[color:var(--color-muted)] xl:text-[14px]">
               {m.tier && m.points !== undefined ? t("screen.tierPoints", { tier: m.tier, points: displayGroup(m.points) }) : m.tier ? m.tier : t("screen.points", { points: displayGroup(m.points ?? 0) })}
