@@ -542,7 +542,9 @@ async function runStatic(): Promise<void> {
     if (h !== CONTRACT_BASE_HASH) p.push(`ของเดิมเปลี่ยน (แฮช ${h} ≠ ฐาน ${CONTRACT_BASE_HASH})`);
     const cs = isRecord(j?.types?.CreateSaleInput) ? j.types.CreateSaleInput : {};
     const extra = Object.keys(cs).filter((k) => !CONTRACT_BASE_FIELDS.includes(k)).sort();
-    if (short(extra) !== short(NEW_CONTRACT_FIELDS)) p.push(`ฟิลด์ใหม่ = ${extra.join(",") || "—"} (คาด ${NEW_CONTRACT_FIELDS.join(",")})`);
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (CD-P29-1 contract sha re-pin — P2.11 CD-1): ไฟล์สัญญา = sha ที่ผู้คุมรับแล้ว ⇒ รับ 3 ฟิลด์ payMethods[].giftCard ของ P2.9 (0e9e3144) — เดิมไม่มี sha (ไฟล์ก่อน P2.9 = 7a418de17b44bf7c54e9ee99a3cb740ae596fb6fb240978901e8a07b011697cd)
+    const P29_GIFT = createHash("sha256").update(existsSync(join(ROOT, F.contract)) ? readFileSync(join(ROOT, F.contract)) : Buffer.from("")).digest("hex") === "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad" ? ["payMethods[].giftCard", "payMethods[].giftCard.number", "payMethods[].giftCard.pin"] : [];
+    if (short(extra) !== short([...NEW_CONTRACT_FIELDS, ...P29_GIFT].sort())) p.push(`ฟิลด์ใหม่ = ${extra.join(",") || "—"} (คาด ${NEW_CONTRACT_FIELDS.join(",")})`);
     for (const k of NEW_CONTRACT_FIELDS) {
       const f = cs[k];
       if (!f) continue;
