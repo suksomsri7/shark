@@ -309,7 +309,7 @@ const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   MEMBER: [["memberLookup", true, null], ["memberSpend", true, null], ["memberSignup", true, null]],
   POINT: [["pointRate", true, null], ["pointRedeem", true, null], ["pointVoidReverse", true, null]],
   COUPON: [["couponCode", true, null], ["voucherPayment", false, "P2.9"], ["couponUnitLimit", true, null]],
-  REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", false, "P2.10"]],
+  REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", true, null]], // ORACLE-EDIT P2.10 (15 Oct 2026 · brief §10 ruling 10, pre-approved): rewardNearCustomerDisplay live — was ["rewardNearCustomerDisplay", false, "P2.10"]
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", false, "P2.1"], ["promptpayReconcile", false, "P3.10"]],
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]], // ORACLE-EDIT P2.3U (มติ 8 ผู้คุม): bomDeduct live — เดิม ["bomDeduct", false, "P2.3"]
   HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
