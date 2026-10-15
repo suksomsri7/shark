@@ -655,9 +655,10 @@ async function assertCustomerLinks(db: Db, tenantId: string, input: IngestInput)
     input.customer.partyId ? db.party.findFirst({ where: { id: input.customer.partyId, tenantId }, select: { id: true } }) : Promise.resolve(true),
     input.chatConversationId ? db.chatConversation.findFirst({ where: { id: input.chatConversationId, tenantId }, select: { id: true } }) : Promise.resolve(true),
   ]);
-  if (!m) return refuse("VALIDATION", "ไม่พบสมาชิกนี้ในร้าน");
-  if (!p) return refuse("VALIDATION", "ไม่พบผู้ติดต่อนี้ในร้าน");
-  if (!c) return refuse("VALIDATION", "ไม่พบห้องแชทนี้ในร้าน");
+  // POS HF-FU ▸ l2: คีย์ข้อความต่อกรณี (จอใช้ messageKey ก่อนข้อความไทยของบริการ) ◂
+  if (!m) return { ...refuse("VALIDATION", "ไม่พบสมาชิกนี้ในร้าน"), messageKey: "orders.errors.memberNotFound" };
+  if (!p) return { ...refuse("VALIDATION", "ไม่พบผู้ติดต่อนี้ในร้าน"), messageKey: "orders.errors.partyNotFound" };
+  if (!c) return { ...refuse("VALIDATION", "ไม่พบห้องแชทนี้ในร้าน"), messageKey: "orders.errors.conversationNotFound" };
   return null;
 }
 
@@ -850,7 +851,9 @@ export async function sourceCancelledInTx(tx: Tx, scope: { tenantId: string; uni
 // ═══════════ POS P2.8 fix รอบ 3 (H1) ▸ การรับเงินของเว็บร้านสะท้อนเข้าออเดอร์ในธุรกรรมของเว็บร้านเอง (ไม่พึ่งคิว) ◂ ═══════════
 export type WebClaimResult = { ok: true; orderId: string | null; changed: boolean } | { ok: false; code: "ORDER_CLOSED"; orderId: string; status: OrderStatus };
 async function webOrderForUpdate(tx: Tx, shopOrderId: string, tenantId?: string): Promise<PosOrder | null> {
-  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosOrder" WHERE "shopOrderId" = ${shopOrderId} ORDER BY id FOR UPDATE`;
+  // POS HF-FU ▸ h2: ล็อกเฉพาะแถวของร้านนี้เมื่อผู้เรียกส่งร้านมา (เดิมล็อกตาม shopOrderId ทุกร้าน) ◂
+  const t = tenantId ?? null;
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosOrder" WHERE "shopOrderId" = ${shopOrderId} AND (${t}::text IS NULL OR "tenantId" = ${t}) ORDER BY id FOR UPDATE`;
   if (!rows.length) return null;
   const o = await tx.posOrder.findFirst({ where: { id: rows[0]!.id, ...(tenantId ? { tenantId } : {}) } });
   return o;
@@ -979,14 +982,19 @@ async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input:
     if (!o) return refuse("ORDER_NOT_FOUND");
     if (!canTransition(o.status, to)) return stateInvalid(s, o);
     if (to === "HANDED" && (o.paymentState === "UNPAID" || o.paymentState === "PAY_ON_PICKUP")) return refuse("ORDER_UNPAID", undefined, { order: (await cardsOf(prisma, s.tenantId, [o], new Date()))[0] });
-    // POS P2.8 fix รอบ 3 (H3): บิลของออเดอร์ถูกยกเลิกแล้ว (ตัวรับ pos.sale.voided ยังไม่ถึง/ล้ม) ⇒ ห้ามส่งมอบของบนบิลที่คืนเงินแล้ว
-    if (to === "HANDED" && o.saleId) {
-      const sale = await prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: s.tenantId }, select: { status: true } });
-      if (sale?.status === "VOIDED") return stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided");
-    }
     const now = new Date();
     const patch: Prisma.PosOrderUpdateManyMutationInput = to === "READY" ? { readyAt: now } : to === "HANDED" ? { handedAt: now, closedAt: now } : {};
-    const r = await mutate(s, o.id, (tx) => transition(tx, o, to, patch, { actorUserId: s.actor.userId }));
+    const r = await mutate(s, o.id, async (tx) => {
+      const after = await transition(tx, o, to, patch, { actorUserId: s.actor.userId });
+      // POS P2.8 fix รอบ 3 (H3): บิลของออเดอร์ถูกยกเลิกแล้ว (ตัวรับ pos.sale.voided ยังไม่ถึง/ล้ม) ⇒ ห้ามส่งมอบของบนบิลที่คืนเงินแล้ว
+      // POS HF-FU ▸ h1: อ่านสถานะบิลในธุรกรรมเดียวกับการส่งมอบ — ลำดับล็อก: CAS แถว PosOrder ก่อน แล้ว PosSale FOR SHARE (มีร้านกำกับ) ·
+      //   void ไม่ล็อก PosOrder ในธุรกรรมของมัน ⇒ ไม่มีวงล็อก · void ที่ commit ระหว่างรอแถว PosOrder ถูกเห็นที่นี่ (คำสั่งใหม่ = snapshot ใหม่) ◂
+      if (to === "HANDED" && o.saleId) {
+        const sale = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosSale" WHERE id = ${o.saleId} AND "tenantId" = ${s.tenantId} FOR SHARE`;
+        if (sale[0]?.status === "VOIDED") throw new OrderAbort(await stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided"));
+      }
+      return after;
+    });
     if (isRefusal(r)) return r;
     if (to === "READY") await ORDER_ADAPTERS[r.adapter]?.setReady?.({ orderId: o.id, externalRef: o.externalRef });
     if (to !== "PREPARING") scheduleDrain();
@@ -1224,6 +1232,18 @@ export async function setChannelOrderSettings(ctx: RegisterCtx, actor: RegisterA
 // ═══════════ ตัวอ่าน (R8 · มติ 16 17) ═══════════
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
+// POS HF-FU ▸ F3: ตัวอ่านค่าตั้งรับออเดอร์ 3 คอลัมน์ของช่องทางสาขา (ด่านอ่าน pos.sale.read | pos.sale.create · ช่องทางที่ยังไม่เก็บ) —
+//   แทนการอ่าน prisma ตรงใน order-ui-actions.ts (P2.8U F3) ◂
+export type OrderChannelSettingsItem = { id: string; autoAccept: boolean; prepMinutes: number | null; pausedUntil: string | null };
+export async function orderChannelSettings(ctx: RegisterCtx, actor: RegisterActor): Promise<{ ok: true; items: OrderChannelSettingsItem[] } | OrderRefusal> {
+  return guard("orderChannelSettings", async (): Promise<{ ok: true; items: OrderChannelSettingsItem[] } | OrderRefusal> => {
+    const s = await scopeOf(prisma, ctx, actor, "read");
+    if (isRefusal(s)) return s;
+    const rows = await prisma.salesChannel.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null }, select: { id: true, autoAccept: true, prepMinutes: true, pausedUntil: true }, orderBy: { id: "asc" } });
+    return { ok: true, items: rows.map((r) => ({ id: r.id, autoAccept: r.autoAccept, prepMinutes: r.prepMinutes, pausedUntil: iso(r.pausedUntil) })) };
+  });
+}
+
 /** แถว → การ์ด (query เดียวต่อชนิด: ช่องทาง · จำนวนบรรทัด · เลขใบเสร็จ) */
 async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): Promise<OrderCard[]> {
   if (!rows.length) return [];
@@ -1349,10 +1369,11 @@ export async function getOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     if (!o) return refuse("ORDER_NOT_FOUND");
     const now = new Date();
     const [card] = await cardsOf(prisma, s.tenantId, [o], now);
-    const [lines, ch, events] = await Promise.all([
+    const [lines, ch, events, sale] = await Promise.all([
       prisma.posOrderLine.findMany({ where: { tenantId: s.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
       prisma.salesChannel.findFirst({ where: { id: o.channelId, tenantId: s.tenantId }, select: { commissionBp: true, commissionFixedSatang: true, commissionVatBp: true, code: true } }),
       prisma.posOrderEvent.findMany({ where: { tenantId: s.tenantId, orderId: o.id }, orderBy: [{ at: "asc" }, { id: "asc" }] }),
+      o.saleId ? prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: s.tenantId }, select: { status: true } }) : Promise.resolve(null), // POS HF-FU ▸ n ◂
     ]);
     const rates = ch && ch.code !== "STORE" ? ch : { commissionBp: 0, commissionFixedSatang: 0, commissionVatBp: 0 };
     const c = channelCommission(o.totalSatang, rates);
@@ -1384,6 +1405,7 @@ export async function getOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
       memberId: o.memberId,
       partyId: o.partyId,
       chatConversationId: o.chatConversationId,
+      saleStatus: sale ? (sale.status as OrderDetail["saleStatus"]) : null, // POS HF-FU ▸ n: จอปลดปุ่มยกเลิกเมื่อบิล VOIDED (ตัวรับคิวยังไม่ถึง) ◂
       events: events.map((e) => ({ type: e.type, fromStatus: e.fromStatus, toStatus: e.toStatus, actorUserId: e.actorUserId, at: e.at.toISOString() })),
     };
     return { ok: true, order };

@@ -15,6 +15,7 @@
 //   Σ t = Σb − D + S = ยอดทั้งโต๊ะตรงทุกสตางค์ · VAT ของใบ = splitIncludedVat(t_i) ที่ระดับบิลของใบ (COMMON ข้อ 1)
 //   LR = ปัดลงก่อน แล้วเศษไปใบที่เศษมากสุด · เสมอกัน → ใบเลขต่ำ · น้ำหนักรวม 0 = แบ่งเท่า (เศษไปใบต่ำ)
 import { splitIncludedVat } from "@/lib/money/vat";
+import type { PosPayType } from "@prisma/client"; // POS HF-FU ▸ s (ชนิดเท่านั้น) ◂
 
 export const TABLE_SPLIT_MODES = ["ITEM", "EQUAL", "SEAT"] as const;
 export type TableSplitMode = (typeof TABLE_SPLIT_MODES)[number];
@@ -225,6 +226,9 @@ export type SplitPlanPartView = {
   vatSatang: number;
   status: "OPEN" | "PAID";
   saleId: string | null;
+  // POS HF-FU ▸ s: ชื่อสมาชิกของใบ (registerMemberBriefs · ไม่มี/มองไม่เห็น = null) · วิธีจ่ายของบิลใบ (ไม่ซ้ำ · ใบ OPEN = null) — จอไม่ต้องเรียกรายละเอียดบิลทีละใบ ◂
+  memberName: string | null;
+  paidMethods: PosPayType[] | null;
   lines: SplitPlanLineView[];
 };
 export type SplitPlanView = {

@@ -202,6 +202,8 @@ export type OrderDetail = OrderCard & {
   memberId: string | null;
   partyId: string | null;
   chatConversationId: string | null;
+  /** POS HF-FU ▸ n: สถานะของบิลที่ผูก (saleId) · null = ไม่มีบิล — VOIDED ขณะออเดอร์ยังไม่ปิด = ตัวรับคิว void ยังไม่ถึง ⇒ ยกเลิกได้โดยไม่ต้องมีสิทธิ์ void ◂ */
+  saleStatus: "PAID" | "VOIDED" | "REFUNDED" | null;
   events: OrderEventView[];
 };
 export type OrderCounts = { byColumn: Record<OrderColumn, number>; byChannel: Record<string, number> };

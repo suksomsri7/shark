@@ -18,7 +18,6 @@ import type { RegisterTableDetailResult } from "@/lib/modules/pos/table-shared";
 import { allocateTableSplit, type SplitPlanPartView, type SplitPlanView, type TableSplitMode } from "@/lib/modules/pos/table-split-shared";
 import { registerCancelSplitAction, registerSplitDetailAction, registerSplitTableAction } from "@/lib/modules/pos/table-split-actions";
 import { registerMemberLookupAction } from "@/lib/modules/pos/register-actions";
-import { billDetailAction } from "@/lib/modules/pos/bills-actions";
 import { RegisterDialog, REG_DIALOG_PANEL, SheetGrab } from "@/components/pos/register/RegisterDialog";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
@@ -106,7 +105,6 @@ export function TableSplitDialog(p: Props) {
   const [sub, setSub] = useState<Sub>(null);
   const [seatPick, setSeatPick] = useState<string | null>(null);
   const [names, setNames] = useState<Record<string, string>>(() => (sessionMember ? { [sessionMember.id]: sessionMember.name || "" } : {}));
-  const [methods, setMethods] = useState<Record<string, string>>({});
   const loadSeq = useRef(0);
 
   const load = useCallback(
@@ -149,28 +147,13 @@ export function TableSplitDialog(p: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- โหลดครั้งแรกตอนเปิด
   }, []);
 
-  // วิธีจ่ายของใบที่จ่ายแล้ว (มติ 3) = ลิ้นชักบิล billDetailAction(saleId).payments — ทีละใบที่ยังไม่รู้
+  // POS HF-FU ▸ s: วิธีจ่ายของใบที่จ่ายแล้ว (มติ 3) = paidMethods ของแผนจากเซิร์ฟเวอร์ (เดิมเรียกรายละเอียดบิลทีละใบ) ·
+  //   ชื่อสมาชิกของใบ = memberName ของแผน (สมาชิกที่ไม่ใช่ของโต๊ะ/ไม่ได้เลือกในจอนี้ก็มีชื่อ) ◂
   useEffect(() => {
-    const paid = (plan?.parts ?? []).filter((x) => x.status === "PAID" && x.saleId && !(x.saleId in methods));
-    if (!paid.length) return;
-    let live = true;
-    void (async () => {
-      for (const x of paid) {
-        try {
-          const r = await billDetailAction({ systemId: p.systemId, unitId: p.unitId, saleId: x.saleId! });
-          if (!live) return;
-          const types = r.ok ? [...new Set(r.bill.payments.map((m) => m.type))] : [];
-          setMethods((m) => ({ ...m, [x.saleId!]: types.map((ty) => (PAY_LABEL[ty] ? tr(PAY_LABEL[ty]) : ty)).join(" + ") }));
-        } catch {
-          if (live) setMethods((m) => ({ ...m, [x.saleId!]: "" }));
-        }
-      }
-    })();
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = ใบที่จ่ายแล้วของแผน
+    const add = (plan?.parts ?? []).filter((x) => x.memberId && x.memberName).map((x) => [x.memberId!, x.memberName!] as const);
+    if (add.length) setNames((n) => ({ ...n, ...Object.fromEntries(add) }));
   }, [plan]);
+  const methodsText = (x: { paidMethods: string[] | null } | null | undefined) => (x?.paidMethods ?? []).map((ty) => (PAY_LABEL[ty] ? tr(PAY_LABEL[ty]) : ty)).join(" + ");
 
   // ═══════ รายการ · พรีวิว ═══════
   const itemIds = useMemo(() => (plan ? planItemIds(plan, p.detail.unpaidItemIds) : p.detail.unpaidItemIds), [plan, p.detail.unpaidItemIds]);
@@ -425,7 +408,7 @@ export function TableSplitDialog(p: Props) {
     const mid = plan && clean ? (sp?.memberId ?? null) : memberOfPart(draft, n, sessionMember?.id ?? null);
     const isSel = selPart === n;
     const empty = empties.includes(n);
-    const status = paid ? `✓ ${(sp?.saleId && methods[sp.saleId]) || t("split.status.paid")}` : isSel ? t("split.status.paying") : t("split.status.open");
+    const status = paid ? `✓ ${methodsText(sp) || t("split.status.paid")}` : isSel ? t("split.status.paying") : t("split.status.open");
     return (
       <div
         key={n}
