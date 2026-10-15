@@ -40,7 +40,7 @@ R1 = MERGEABLE-AFTER-FIXES. Builder decisions (iframe print path · overview = S
 5. **F5 = ledger note** (QC-only residue on SIGKILL: thresholds restored to defaults by the next owner run) — builder adds one line to the notes; no code.
 6. **Gates after fix 1**: typecheck (changed-files tsc or 1 incremental run) · `qc-pos-p1.18` 81 (ST7) · `qc-pos-p1.16` 28 · `qc-hf-pos-page-authz` 82 · fitness ±env · fitness-pos · `--states --dry` th + en (owner + cashier). Push → controller re-runs the probe (vis85 `--pdf` on the two print states) + judges vis84 images → R1 re-verify (3 hunks) → merge.
 
-## Controller image review — vis84 @6b422dfe (QC5 · 15 Oct 20:30Z)
+## Controller image review — vis84 @6b422dfe (QC5 · 15 Oct 20:23Z)
 - cashier 3/3 OK; owner th 11 states: 8 OK (hourly chart, branches tab, anomalies 1440/1024 rule groups "A1 ยกเลิกบิลบ่อย · เกณฑ์ ≥ 2 หรือ ≥ ฿1,000.00 …", empty state, staff flag, PDF button "พิมพ์ / PDF", settings anomaly card, bills all-branches chips, drawer refund block); print pages render the S sections (daily · hourly 24 rows + forecast · channels · payments · staff) with totals.
 - **F6 (added to fix 1)**: 390 `reports-anomalies` — report-kind tab strip overflows the document (`pos-reports-tab-anomalies` right=1471) and anomaly tables cut at the card edge → scroll containers.
 - **F7 (added to fix 1)**: print pages log 16 console 404s each (th + en) — resources inside the srcdoc resolving relative to `about:srcdoc` (suspected) → absolute URLs / `<base href>`; harness to print the failing URL.
