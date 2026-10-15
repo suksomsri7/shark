@@ -1903,7 +1903,10 @@
       "refundNoShift": "Open a shift on this device to refund in cash",
       "refundClosed": "This deposit is used up or already refunded",
       "refundChanged": "The deposit balance changed — check the new amount and confirm again"
-    }
+    },
+    "unitAll": "All branches",
+    "dayNote": "Bill day = calendar day (the report day cut-off is not used here)",
+    "channelCounts": "Bills per channel"
   },
   "payment": {
     "errors": {
@@ -2830,7 +2833,11 @@
       "channel": "Channel {name}",
       "commissionRate": "Platform commission {rate}",
       "vat": "VAT on commission",
-      "noteDirect": "The shop collected the payment · the commission is booked as owed to the platform"
+      "noteDirect": "The shop collected the payment · the commission is booked as owed to the platform",
+      "refunded": "Refunded",
+      "commissionNet": "Commission after refunds",
+      "vatNet": "Commission VAT after refunds",
+      "netAfterRefund": "Net received after refunds"
     },
     "label": "Channel",
     "all": "All channels",

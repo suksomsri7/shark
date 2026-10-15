@@ -18236,6 +18236,26 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-sales-unit-all",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "note": "ตัวเลือก \"ทุกสาขา\" ใน pos-bills-unit (เฉพาะผู้อ่านบิลได้ > 1 สาขา) → ?unit=* (BILLS_ALL_UNITS) · แถวมีชิปสาขา pos-sales-unitChip-<saleId> · ลิ้นชักใช้สาขาของบิล (มติ 7)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=*"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
