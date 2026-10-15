@@ -111,6 +111,7 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
         refund.payments,
         serviceGross,
         channelName,
+        sale.payments.some((x) => x.type === "DEPOSIT" && !!x.refSaleId), // POS P2.9b ▸ fix4 มติ 2 (hunter N2): บิลที่ใช้มัดจำ ◂
       );
       if (res.reason && res.reason !== "unlinked" && !res.docId) throw new Error(`[บัญชี] ใบคืน POS ${refund.id}: ไม่บันทึกใบลดหนี้ — ${res.reason}`);
     }

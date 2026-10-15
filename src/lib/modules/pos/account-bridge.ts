@@ -337,6 +337,8 @@ export async function bridgePosSaleRefunded(
   serviceGrossSatang: number,
   /** POS P2.1 ▸ ชื่อช่องทาง — แถว PLATFORM ของใบคืนลดลูกหนี้ของผู้ติดต่อนี้ (ไม่ส่ง = เดิม) ◂ */
   channelName?: string | null,
+  /** POS P2.9b ▸ fix4 มติ 2: บิลเดิมจ่ายด้วยมัดจำ (แถว DEPOSIT อ้างใบรับ) — VAT ของใบคืนใช้ตามที่ส่งแม้สมุดเลิกจด VAT (ไม่ส่ง = เดิม) ◂ */
+  depositPaid?: boolean,
 ): Promise<{ posted: boolean; reason?: string; docId?: string }> {
   const sc = Math.max(0, refund.serviceChargeSatang);
   const src: SaleLineForBridge[] = sc > 0 ? [...lines, { name: "ค่าบริการ", qty: 1, unitPriceSatang: sc, discountSatang: 0, lineTotalSatang: sc, itemId: null }] : lines;
@@ -355,5 +357,6 @@ export async function bridgePosSaleRefunded(
     ...(channelName ? { channelName } : {}), // POS P2.1 ◂
     // POS P1.16 ▸ R5b(a): VAT ของใบคืน (P1.8 F6 · Σ ใบคืน = VAT บิล) ไปที่ JV + ใบลดหนี้ ไม่ถอดใหม่จากยอด ◂
     ...(typeof refund.vatSatang === "number" ? { vatSatang: refund.vatSatang } : {}),
+    ...(depositPaid ? { depositPaid: true } : {}), // POS P2.9b ▸ fix4 มติ 2 ◂
   });
 }

@@ -577,6 +577,8 @@ export async function applyExternalRefund(input: {
   // POS P1.16 ▸ R5b(a): VAT ของใบคืน POS (PosSale.vatSatang) — ส่งมา = ใช้ตัวนี้ทั้ง JV และใบลดหนี้ (สมุดจด VAT)
   //   ⇒ คืนครบหลายใบ Σ VAT = VAT ของบิลเป๊ะ · 2200 ของบิลสุทธิ 0 · ไม่ส่ง/ผิดรูป = ถอดจากยอดแบบเดิม ◂
   vatSatang?: number;
+  /** POS P2.9b ▸ fix4 มติ 2 (เพิ่มล้วน): บิลเดิมจ่ายด้วยมัดจำ (VAT ส่วนนั้นออกไปแล้วตอนรับมัดจำ) — VAT ของใบคืนใช้ตามที่ส่งมาแม้สมุดเลิกจด VAT ภายหลัง ◂ */
+  depositPaid?: boolean;
 }): Promise<{ posted: boolean; reason?: string; docId?: string }> {
   // ไม่ผูก = จบเงียบ · ความล้มของ GL (งวดปิด/ผังไม่ครบ) โยนต่อแบบ applyExternalSale ⇒ คิวลองใหม่ ไม่ปิดเงียบ ๆ
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
@@ -594,7 +596,11 @@ export async function applyExternalRefund(input: {
     const sum = lines.reduce((n, l) => n + l.qty * l.unitPriceSatang - (l.discountSatang ?? 0), 0);
     if (sum !== gross) return { posted: false, reason: `ยอดรวมของบรรทัดใบคืน (${sum}) ไม่เท่ากับยอดคืน (${gross}) — ไม่บันทึกบัญชี` };
   }
-  const explicitVat = vatRegistered && Number.isInteger(input.vatSatang) && input.vatSatang! >= 0 && input.vatSatang! <= gross ? input.vatSatang! : null;
+  // POS P2.9b ▸ fix4 มติ 2 (hunter N2): บิลที่ใช้มัดจำ + สมุดเลิกจด VAT ภายหลัง — VAT ของใบคืน (> 0) ใช้ตามที่ส่งมา แบบ applyExternalDepositRefund (7d38de9a) ⇒
+  //   Dr 2200 / Cr เงิน ส่วน VAT · รายได้ไม่ถูกแตะส่วนนั้น · ใบลดหนี้แสดง VAT เท่าใบคืน POS · สมุดจด VAT / บิลไม่มีมัดจำ = ทางเดิมทุกไบต์ ◂
+  const keepVat = vatRegistered || (input.depositPaid === true && Number.isInteger(input.vatSatang) && input.vatSatang! > 0);
+  const explicitVat = keepVat && Number.isInteger(input.vatSatang) && input.vatSatang! >= 0 && input.vatSatang! <= gross ? input.vatSatang! : null;
+  const cnVat = vatRegistered || explicitVat !== null; // fix4 มติ 2: ใบลดหนี้แบบรวม VAT เมื่อใบคืนมี VAT ที่ต้องกลับ
   const { baseSatang: base, vatSatang: vat } =
     explicitVat !== null ? { baseSatang: gross - explicitVat, vatSatang: explicitVat } : vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
   const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
@@ -636,8 +642,8 @@ export async function applyExternalRefund(input: {
     docNo: input.docNo ?? null,
     occurredAt: input.occurredAt,
     contactId: abb?.contactId ?? null,
-    vatMode: vatRegistered ? "INCLUDE" : "NONE",
-    vatRegistered,
+    vatMode: cnVat ? "INCLUDE" : "NONE",
+    vatRegistered: cnVat,
     vatRateBp,
     grandTotalSatang: gross,
     ...(explicitVat !== null ? { vatSatang: explicitVat } : {}), // POS P1.16 ▸ CD-O8: เอกสาร = ใบคืน POS = JV ◂
