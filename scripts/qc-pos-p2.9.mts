@@ -272,7 +272,9 @@ function runStatic(): void {
     const kind = prismaBlock(schemaSrc, "enum", "GiftCardKind");
     if (!/^\s*GIFT\b/m.test(kind) || !/^\s*STORE_CREDIT\b/m.test(kind)) p.push("schema ไม่มี enum GiftCardKind {GIFT STORE_CREDIT}");
     if (!/^kind\s+GiftCardKind\s+@default\(GIFT\)/.test(fieldLine(prismaBlock(schemaSrc, "model", "GiftCard"), "kind"))) p.push("GiftCard.kind ไม่ใช่ GiftCardKind @default(GIFT)");
-    if (prismaBlock(schemaSrc, "model", "PosDeposit")) p.push("มี model PosDeposit (มติ 6 = P2.9b)");
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.9b มติ 10): model PosDeposit มีแล้วตั้งแต่ P2.9b (migration 20261211100000_pos_p29b_deposits) — ไม่ห้ามอีก ·
+    //   PosPayment.depositId ยังห้าม (CD2-A · บรรทัดบน) · migration ของ P2.9 ยังห้ามคำว่า PosDeposit (บน) ◂
+    if (prismaBlock(schemaSrc, "model", "PosDeposit") && !existsSync(join(ROOT, "prisma/migrations/20261211100000_pos_p29b_deposits/migration.sql"))) p.push("มี model PosDeposit โดยไม่มี migration ของ P2.9b (มติ 6)");
     chk("ST1", p.length === 0, "migration + schema ตาม §3 (ไม่มีมัดจำ)", joinP(p));
   }
   // ST2
