@@ -195,6 +195,8 @@ const T = PQC[tenantKey];
 // POS P2.11U ▸ มติ 11: ผู้จัดการสาขาสีลมของภาพ — ไม่อยู่ใน seed · ensureManagerUser สร้าง/ใช้ซ้ำ (User + Membership MANAGER unitAccess [สีลม]) ก่อน mint session ◂
 const MANAGER_VIS = { userId: "posqc-coffee-user-manager-vis", membershipId: "posqc-coffee-mb-manager-vis", email: "pos-qc-coffee-manager-vis@shark.local", name: "ผู้จัดการสีลม (ภาพ QC P2.11U)", role: "MANAGER", units: ["silom"] } as const;
 const U = userKey === "manager" ? MANAGER_VIS : T.users[userKey];
+/** POS P2.11U ▸ ผู้ใช้ QC ตามคีย์ (manager = ผู้จัดการของภาพ · ไม่อยู่ใน PQC) ◂ */
+const userOf = (k: UserKey) => (k === "manager" ? MANAGER_VIS : T.users[k]);
 // สาขาที่ผู้ใช้เข้าได้ (แคชเชียร์ = สาขาเดียว) — ใส่ ?unit= ให้หน้าขายเปิดสาขาที่ถูก
 const unitKey = U.units[0] === "*" ? Object.keys(T.units)[0]! : U.units[0]!;
 const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
@@ -1522,7 +1524,7 @@ const P115 = {
 const STAFF_KEY = (dev: string) => `pos-staff:${dev}`;
 const WEAK = new Set(["0000", "1234", "1111", "123456", "000000"]);
 async function memberActorOf(k: UserKey): Promise<{ userId: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown> }> {
-  const u = T.users[k];
+  const u = userOf(k); // POS P2.11U
   const mb = await prisma.membership.findUnique({ where: { id: u.membershipId }, select: { role: true, unitAccess: true, permissions: true } });
   if (!mb) throw new StepError(`ไม่พบ membership ${k} ของร้าน QC`);
   return {
@@ -1540,7 +1542,7 @@ async function staffSessionJson(k: UserKey, dev: string): Promise<string | null>
   const { issueStaffToken } = await import("@/lib/modules/pos/staff-pin");
   const a = await memberActorOf(k);
   const t = await issueStaffToken({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: dev }, { unitId, deviceId: dev, userId: a.userId });
-  const json = JSON.stringify({ userId: a.userId, name: T.users[k].name, role: a.role, staffToken: t.staffToken, expiresAt: t.expiresAt });
+  const json = JSON.stringify({ userId: a.userId, name: userOf(k).name /* POS P2.11U */, role: a.role, staffToken: t.staffToken, expiresAt: t.expiresAt });
   P115.sessions[cacheKey] = json;
   return json;
 }
