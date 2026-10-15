@@ -6051,7 +6051,7 @@ async function runP212uState(page: Any, state: P212uKey, _device: Device): Promi
   switch (state) {
     case "reports-hourly": {
       await into(tid("pos-reports-hourly-chart"), "center");
-      const dashed = (await page.$$eval(`${tid("pos-reports-hourly-chart")} i.border-dashed`, (xs: Element[]) => xs.length)) as number;
+      const dashed = (await page.$$eval(`${tid("pos-reports-hourly-chart")} i[data-forecast]`, (xs: Element[]) => xs.length)) as number;
       if (!dashed) throw new StepError("กราฟรายชั่วโมงไม่มีกล่องคาดการณ์ (เส้นประ)");
       if (!(await has(tid("pos-reports-hourly-now")))) throw new StepError("ไม่มีแท่ง \"ชั่วโมงนี้\" (pos-reports-hourly-now)");
       return;

@@ -269,7 +269,8 @@ export function HourlyBars({ rows, t, nowLabel }: { rows: HourlyRow[]; t: T; now
   const pctOf = (v: number) => (top > 0 ? Math.max(0, (v / top) * 100) : 0);
   // ป้ายแกน X: จอ ≥ sm = ทุกชั่วโมง · จอแคบ = ทุก 3 ชั่วโมง + ชั่วโมงนี้
   const key = (i: number) => i % 3 === 0 || i === nowIdx;
-  const valuePos = (i: number) => (i < 2 ? "left-0" : i > n - 3 ? "right-0" : "left-1/2 -translate-x-1/2");
+  // ป้ายตัวเลขยื่นเข้าหากลางกราฟเสมอ (ครึ่งซ้ายชิดซ้ายของแท่ง · ครึ่งขวาชิดขวา) — ไม่ล้นขอบการ์ดที่ 390
+  const valuePos = (i: number) => (i < n / 2 ? "left-0" : "right-0");
   return (
     <div className="flex min-w-0 gap-3 sm:gap-5" role="img" aria-label={t("hourly.title")} data-testid="pos-reports-hourly-chart">
       <div className={`mt-6 flex h-[170px] w-14 shrink-0 flex-col justify-between text-right text-[11px] tabular-nums ${MUTED}`} aria-hidden="true">
@@ -298,10 +299,11 @@ export function HourlyBars({ rows, t, nowLabel }: { rows: HourlyRow[]; t: T; now
                   title={`${r.label}:00 · ${formatBaht(r.netSalesSatang, { decimals: true })} · ${t("hourly.forecast")} ${formatBaht(r.forecastSatang, { decimals: true })}`}
                   data-testid={now ? "pos-reports-hourly-now" : undefined}
                 >
-                  {f > 0 ? <i className={`absolute inset-x-0 bottom-0 block rounded-t-[3px] border-[1.5px] border-b-0 border-dashed ${FC_LINE} bg-[color:var(--color-surface)]`} style={{ height: `${f}%` }} aria-hidden="true" /> : null}
+                  {f > 0 ? <i data-forecast="" className={`absolute inset-x-0 bottom-0 block rounded-t-[3px] border-[1.5px] border-b-0 border-dashed ${FC_LINE} bg-[color:var(--color-surface)]`} style={{ height: `${f}%` }} aria-hidden="true" /> : null}
                   {showValue ? (
                     <span className={`absolute ${valuePos(i)} z-10 whitespace-nowrap text-[11px] font-bold tabular-nums ${now ? "text-[color:var(--color-accent)]" : ""}`} style={{ bottom: `calc(${Math.max(h, f)}% + 4px)` }}>
-                      {now ? `${baht(r.netSalesSatang)} · ${t("hourly.inProgress")}` : baht(r.netSalesSatang)}
+                      {baht(r.netSalesSatang)}
+                      {now ? <span className="hidden sm:inline">{` · ${t("hourly.inProgress")}`}</span> : null}
                     </span>
                   ) : null}
                   <div className={`relative w-full rounded-t-[3px] ${tone}`} style={{ height: `${h}%` }} />
