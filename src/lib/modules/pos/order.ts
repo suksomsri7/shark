@@ -998,29 +998,55 @@ export async function releaseHeldOrders(tenantId: string, unitId: string, opts: 
         if (e instanceof OrderRaced) continue; // พนักงาน/ตัวกวาดอีกตัวรับไปก่อน
         if (e instanceof OrderAbort) {
           // บิลถูกปฏิเสธ (เช่น STOCK_INSUFFICIENT) — คงเป็น NEW · บันทึก sale_refused ครั้งเดียว (ล็อกแถวออเดอร์ · ตรวจซ้ำในธุรกรรม)
-          await runTx(async (tx) => {
-            const locked = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosOrder" WHERE id = ${o.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
-            if (locked[0]?.status !== "NEW") return;
-            const had = await tx.posOrderEvent.findMany({ where: { tenantId, orderId: o.id, type: "held" }, select: { payload: true } });
-            if (had.some((x) => isRecord(x.payload) && x.payload.reason === "sale_refused")) return;
-            await addEvent(tx, o, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: "sale_refused" } });
-          });
+          try {
+            await runTx(async (tx) => {
+              const locked = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosOrder" WHERE id = ${o.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+              if (locked[0]?.status !== "NEW") return;
+              const had = await tx.posOrderEvent.findMany({ where: { tenantId, orderId: o.id, type: "held" }, select: { payload: true } });
+              if (had.some((x) => isRecord(x.payload) && x.payload.reason === "sale_refused")) return;
+              await addEvent(tx, o, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: "sale_refused" } });
+            });
+          } catch (me) {
+            console.warn(`[pos/order] releaseHeldOrders: บันทึก sale_refused ของ ${o.id} ล้ม`, me); // POS HF-FU ▸ a fix1 (R1 F3) ◂
+          }
           console.warn(`[pos/order] releaseHeldOrders: ออเดอร์ ${o.id} บิลถูกปฏิเสธ (${e.refusal.code}) — คงเป็นออเดอร์ใหม่ให้พนักงานรับเอง`);
           continue;
         }
-        throw e;
+        // POS HF-FU ▸ a fix1 (R1 F3): ข้อผิดพลาดอื่นของผู้สมัครตัวนี้ (ธุรกรรม rollback แล้ว) = WARN แล้วไปตัวถัดไป — ไม่โยนออกจากวง
+        //   (เดิมโยน ⇒ ตัวนี้ถูกลองก่อนทุกรอบอ่านและบังตัวหลังทั้งหมด) ◂
+        console.warn(`[pos/order] releaseHeldOrders: ออเดอร์ ${o.id} รับอัตโนมัติไม่สำเร็จ — ข้ามไปตัวถัดไป`, e);
+        continue;
       }
       if (r === "blocked") break;
       if (r === "skip") continue;
       accepted.push(o.id);
-      await afterSaleCommit(tenantId, unitId, r.saleId, r.saleLines);
-      await ORDER_ADAPTERS[r.order.adapter]?.accept?.({ orderId: o.id, externalRef: o.externalRef, prepMinutes: prep });
-      await writeAudit({ tenantId, actorId: null, actorType: "SYSTEM", action: "pos.order.accept", targetType: "PosOrder", targetId: o.id, after: { orderId: o.id, auto: true, swept: true, saleId: r.saleId } });
+      // POS HF-FU ▸ a fix1 (R1 F3): หลัง commit แต่ละขั้นห่อ try/WARN ของตัวเอง — การรับที่ commit แล้วได้ลอง audit swept เสมอ · ตัวถัดไปยังกวาดต่อ ◂
+      const saleId = r.saleId;
+      const saleLines = r.saleLines;
+      const adapter = r.order.adapter;
+      const steps: [string, () => Promise<unknown>][] = [
+        ["afterSaleCommit", () => afterSaleCommit(tenantId, unitId, saleId, saleLines)],
+        ["adapter.accept", async () => ORDER_ADAPTERS[adapter]?.accept?.({ orderId: o.id, externalRef: o.externalRef, prepMinutes: prep })],
+        ["audit", () => writeAudit({ tenantId, actorId: null, actorType: "SYSTEM", action: "pos.order.accept", targetType: "PosOrder", targetId: o.id, after: { orderId: o.id, auto: true, swept: true, saleId } })],
+      ];
+      for (const [name, run] of steps) {
+        try {
+          await run();
+        } catch (se) {
+          console.warn(`[pos/order] releaseHeldOrders: ${name} ของ ${o.id} ล้ม (รับแล้ว · ไม่ย้อน)`, se);
+        }
+      }
     }
   } catch (e) {
     console.warn("[pos/order] releaseHeldOrders ล้ม (ไม่กระทบผู้เรียก)", e);
   }
-  if (accepted.length) scheduleDrain();
+  if (accepted.length) {
+    try {
+      scheduleDrain();
+    } catch (e) {
+      console.warn("[pos/order] releaseHeldOrders: scheduleDrain ล้ม", e); // POS HF-FU ▸ a fix1 (R1 F3) ◂
+    }
+  }
   return { accepted };
 }
 
