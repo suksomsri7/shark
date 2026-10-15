@@ -44,6 +44,7 @@ import {
   type BillVoidBlockedReason,
   type BillTimelineKind,
   BILLS_SYSTEM_NAME,
+  BILLS_ALL_UNITS, // POS P2.12 ▸ BL ◂
   type VoidSaleActionResult,
 } from "./bills-shared";
 
@@ -189,9 +190,14 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
     if (!c) return refuse("VALIDATION");
     const x = cleanQuery(q);
     if ("ok" in x) return x;
-    if (!unitReadable(a, x.unitId)) return emptyPage(x);
+    // POS P2.12 ▸ BL (มติ 6 · CD-9): unitId "*" = ทุกสาขาที่ผู้ใช้อ่านบิลได้ (ขอบเขตเดียวกับใบเสร็จ · เจ้าของ/"*" = ทุกสาขาของร้านที่มีบิลของ POS นี้ รวม archived) ·
+    //   แถวมี unitId + unitName · counts/summary/ตัวกรองคิดจากชุดเดียวกัน · หน้าสาขาเดียวคงเดิมทุกคีย์ ◂
+    const allUnits = x.unitId === BILLS_ALL_UNITS;
+    const readScope = receiptReadScope(a)!;
+    if (!allUnits && !unitReadable(a, x.unitId)) return emptyPage(x);
     const { tenantId, systemId } = c;
-    const base = { tenantId, systemId, unitId: x.unitId, docType: "SALE" as const, status: { in: LISTED } };
+    const unitWhere = !allUnits ? { unitId: x.unitId } : readScope.allUnits ? {} : { unitId: { in: readScope.unitIds } };
+    const base = { tenantId, systemId, ...unitWhere, docType: "SALE" as const, status: { in: LISTED } };
 
     const [rows, yRows] = await Promise.all([
       prisma.posSale.findMany({
@@ -294,6 +300,10 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
     const voidBy = new Map<string, string>();
     for (const au of voidAudits) if (au.targetId && au.actorId && !voidBy.has(au.targetId)) voidBy.set(au.targetId, au.actorId);
     const names = await userNames([...rows.map((r) => r.soldByUserId), ...voidBy.values()]);
+    // POS P2.12 ▸ BL: ชื่อสาขาของแถวในหน้านี้ (เฉพาะ "*") ◂
+    const unitNames = allUnits
+      ? new Map((await prisma.businessUnit.findMany({ where: { tenantId, id: { in: [...new Set(pageRows.map((r) => r.unitId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
+      : null;
 
     const items: BillRow[] = pageRows.map((r) => {
       const cu = r.memberId ? custById.get(r.memberId) : undefined;
@@ -316,6 +326,7 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
         refunds: refundDocs.filter((d) => d.refSaleId === r.id).map((d) => ({ id: d.id, receiptNo: d.receiptNo, grandTotalSatang: d.grandTotalSatang })),
         salesChannel: (({ code, name }) => ({ code, name }))(chOf(r)), // POS P2.1 ▸ R11 ◂
         channelRef: r.channelRef ?? null,
+        ...(unitNames ? { unitId: r.unitId, unitName: unitNames.get(r.unitId) ?? "" } : {}), // POS P2.12 ▸ BL ◂
       };
     });
 

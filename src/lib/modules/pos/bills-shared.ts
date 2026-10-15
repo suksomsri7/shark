@@ -28,7 +28,10 @@ export const BILLS_ERROR_KEYS: Record<BillsRefusalCode, string> = {
 export type BillSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
 
 // ── billsPageData (R1) ──
+/** POS P2.12 ▸ BL (มติ 6): unitId พิเศษ = ทุกสาขาที่อ่านบิลได้ (แถวมี unitId + unitName) ◂ */
+export const BILLS_ALL_UNITS = "*";
 export type BillsPageQuery = {
+  /** สาขา หรือ BILLS_ALL_UNITS ("*") */
   unitId: string;
   /** YYYY-MM-DD ตามเวลาไทย */
   date: string;
