@@ -1586,3 +1586,9 @@
 - fix 2 (692a02d7 · G1+G3) R2 ยืนยัน MERGEABLE → **merge 692a02d7 เข้า session/pos = 616db657** + owner lines 2 ข้อ (868c7fe3) · ทรี b detached 616db657 + prisma generate → **gates91** (19 ชุด: p2.9b p2.9 p1.3 p1.8 p1.12 p1.18 p1.10 p1.10u-print p1.16 p1.6 authz p2.8 p2.11 p1.1 p1.17 closeday p2.5 hf-tx account + fitness ±env + fitness-pos + typecheck) `/root/pos-runs/gates91-b-*`
 - ถัดไป: gates91 เขียว (p2.8 ST6 / p2.11 ST1+ST4 แดงจนกว่า push → รันซ้ำ) → push → **36/55** + TG · HF-FU R1 กำลังตรวจ (ทรี c) → hunter เงิน → merge HF-FU (ต้อง merge origin/session/pos ที่มี P2.9bU ก่อนด่านสุดท้าย — ไฟล์ร่วม: messages/*, POS-OWNER-PENDING.md append-only)
 - เลน: 1 = HF-FU R1 (read-only ทรี c) · ทรี b = gates91 (ผู้คุม) · ทรี d ว่าง @36e0be7c
+
+### 15 ต.ค. ~12:45Z — HF-FU R1 → fix round 1
+- R1 HF-FU (Opus read-only) = **MERGEABLE** · F1 Low (orphan sweep อ่านสถานะ session นอก tx ⇒ void ที่เปิด session ใหม่ระหว่างนั้นทำ draft ถูกทิ้ง) · F2 Low (sweep ขนานจาก listOrders/kdsBoard ทะลุเพดาน autoAcceptMaxOpen) · F3 Low (error ที่ไม่ใช่ OrderAbort หลุดออกนอก loop · after-commit throw เสีย audit) · F4 info (stateInvalid อ่าน cardsOf ผ่าน prisma global ใน tx) · F5 info (book ปิดเอกสาร ⇒ posSalePosted false ตลอด) · ที่เหลือ verified OK (CAS ก่อน sale · lock order · marker per book · rotation preview==server · j ใต้ key line)
+- มติ fix 1 (1–7) ใน `wo-notes/pos-HF-FU-review.md` (ee30848b): F1–F4 fix · F5 รับ (follow-up) · ORACLE-ADD HN4 (sweep ขนานเคารพเพดาน) + OD3 (draft รอด void เปิด session) test-first โดย builder (dated marker) · gates 7 ชุด + merge origin ก่อน qc-hf-fu รอบสุดท้าย
+- spawn **builder HF-FU fix 1** (Opus ทรี c) prompt `pos-prompt-accountB-HF-FU-fix.md` → แล้ว hunter เงิน (brief 4 ข้อของ R1 + F2 overshoot)
+- เลน: 1 = HF-FU fix 1 ทรี c · ทรี b = gates91 P2.9bU (ผู้คุม)
