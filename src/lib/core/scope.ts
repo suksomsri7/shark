@@ -348,6 +348,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosTableSplit: sys(),
   PosTableSplitPart: tenant,
   PosTableSplitLine: tenant,
+  // POS P2.9b ▸ มัดจำเป็นวิธีชำระ (ผู้เขียน = pos/deposit.ts + createSale) — แถวรายการไม่มี systemId/unitId ⇒ tenant ◂
+  PosDeposit: sys(),
+  PosDepositTxn: tenant,
   // Booking
   BookingService: unit,
   BookingStaff: unit,
