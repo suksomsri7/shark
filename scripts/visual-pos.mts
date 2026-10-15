@@ -7941,13 +7941,28 @@ try {
         let pdfNote = "";
         if (PDF_PROBE && job.state && P212U_PRINT.has(job.state)) {
           const pdfFile = `${OUT}/${job.state}-${userKey}-${LOCALE_EN ? "en" : "th"}.pdf`;
+          // POS P2.12U ▸ fix1 F1 (มติ 1) — พิมพ์เอกสารใน iframe ไม่ใช่หน้าแม่: อ่าน HTML ของ frame หลังฟอนต์โหลด → หน้าใหม่ setContent + <base href=origin> → page.pdf (ได้ @page + thead ซ้ำ + ไม่มีแถบแอป เหมือนผู้ใช้กด print() ของ iframe) ◂
+          let pp: Awaited<ReturnType<typeof browser.newPage>> | null = null;
           try {
-            const buf = (await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true })) as Uint8Array;
+            const fh = await page.$(tid("pos-report-print-frame"));
+            const frame = fh ? await fh.contentFrame() : null;
+            if (!frame) throw new Error("ไม่พบ iframe หน้าพิมพ์ (pos-report-print-frame)");
+            await frame.evaluate(() => document.fonts.ready.then(() => true));
+            const doc = (await frame.evaluate(() => "<!doctype html>" + document.documentElement.outerHTML)) as string;
+            const baseTag = `<base href="${BASE}/">`;
+            const withBase = /<head(\s[^>]*)?>/i.test(doc) ? doc.replace(/<head(\s[^>]*)?>/i, (m) => `${m}${baseTag}`) : doc.replace(/<html(\s[^>]*)?>/i, (m) => `${m}<head>${baseTag}</head>`);
+            pp = await browser.newPage();
+            await pp.setContent(withBase, { waitUntil: "networkidle0", timeout: 60_000 });
+            await pp.evaluate(() => document.fonts.ready.then(() => true));
+            const buf = (await pp.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true })) as Uint8Array;
             writeFileSync(pdfFile, buf);
-            pdfNote = ` · PDF ${pdfFile} ${buf.length} B`;
+            pdfNote = ` · PDF (เอกสาร iframe) ${pdfFile} ${buf.length} B`;
           } catch (e) {
             pdfNote = ` · PDF ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`;
+          } finally {
+            await pp?.close().catch(() => undefined);
           }
+          // ◂ POS P2.12U fix1 F1
         }
         if (job.state === "register-en") await restoreThaiLocale(page); // POS P1.18U
         if (job.state && P22U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P22U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP22u(); // POS P2.2U
