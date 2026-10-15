@@ -246,7 +246,9 @@ export async function applyExternalSale(input: {
     tipCr = [{ accountId: ledger.id, amountSatang: input.tip.satang, note: "ทิปรอจ่ายพนักงาน" }];
   }
   // POS P2.9b ▸ fix3 มติ 1 (R3 F1): ทุกบรรทัดบัญชีสุทธิ 0 (เช่น บิลสุดท้ายที่มัดจำปล่อย VAT ครอบทั้งยอดหลังสมุดเลิกจด VAT) — ไม่มี JV ให้ลง ·
-  //   ข้าม JV (ไม่โยน ⇒ คิว pos.sale.paid จบ DONE) · ชั้นเอกสารยังเขียนตามปกติ + audit zeroEntry · ไม่ใช่กรณีนี้ = ทางเดิมทุกไบต์ ◂
+  //   ข้าม JV (ไม่โยน ⇒ คิว pos.sale.paid จบ DONE) · ชั้นเอกสารยังเขียนตามปกติ + เครื่องหมาย zeroEntry (fix4 มติ 1 3) ·
+  //   fix4 มติ 4 (R4 F3 / hunter N3): เข้าเงื่อนไขนี้ด้วย = บิล ฿0 (ส่วนลด 100% · ไม่มีแถวจ่าย) — เดิม commitEntry โยน "ไม่มีบรรทัดบัญชี" ⇒ คิว DEAD ·
+  //   ตอนนี้จบ DONE + เครื่องหมาย ไม่มี JV ไม่มีเอกสาร (บิลส่ง lines เฉพาะยอด > 0) · บิลอื่นทั้งหมด (มีบรรทัดบัญชีไม่ใช่ 0) = ทางเดิมทุกไบต์ ◂
   const zeroEntry = base === 0 && vat === 0 && !tipCr && drLines.every((l) => l.amountSatang === 0);
   const res = zeroEntry
     ? ({ skipped: true } as const)

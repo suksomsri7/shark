@@ -331,7 +331,8 @@ export type RegisterDepositLookupResult = { ok: true; deposits: RegisterDepositL
 const LOOKUP_MAX = 20;
 /**
  * R9 (มติ 19) — ค้นมัดจำของสาขานี้: เลขใบรับ (ตรงตัว) · ชื่อ (ขึ้นต้น ไม่สนตัวพิมพ์) · (fix3: ไม่ค้นด้วย 4 หลักท้าย — ใช้ยืนยันตอนใช้เท่านั้น) · สิทธิ์ pos.sale.create ·
- * อ่านอย่างเดียว (ไม่เขียนแถวใด) · สาขาอื่น/ร้านอื่น = ไม่พบ (ผลว่าง) · เบอร์ปิดบังเท่านั้น
+ * ไม่เขียนแถว ยกเว้นเลขใบรับ + phoneLast4 (fix2 มติ 3 · fix4 มติ 4 R4 F4): ตรวจผ่าน checkDepositPhone = เขียนตัวนับผิด/ล็อก (นับเหมือนตอนใช้) ·
+ * ไม่ส่ง phoneLast4 = อ่านอย่างเดียว · สาขาอื่น/ร้านอื่น = ไม่พบ (ผลว่าง) · เบอร์ปิดบังเท่านั้น
  */
 export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterActor, input: { query?: string; phoneLast4?: string; memberId?: string }, client?: Db): Promise<RegisterDepositLookupResult> {
   return guard("registerDepositLookup", async (): Promise<RegisterDepositLookupResult> => {
