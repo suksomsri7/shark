@@ -1779,7 +1779,7 @@
 - เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 oracle ทรี d · ทรี c ว่าง @861815e0 (ใช้ merge gates P2.13 + ภาพได้ถ้าทรี d ไม่ว่าง — ทรี c ไม่มี build cache QC5; ถ้าต้องถ่ายภาพบนทรี c ให้ build ด้วย build-d-inner-8g.sh แบบเดียวกัน)
 - ถัดไป: P2.13 fix 1 รายงาน → R2 ตรวจ hunks → merge → gates (ทรี c) → ภาพ + agent skill test → **41/55**
 
-### 15 ต.ค. 21:47Z — P2.13 fix 1 ส่ง e29c5f51 → R2
+### 15 ต.ค. 21:45Z — P2.13 fix 1 ส่ง e29c5f51 → R2
 - builder fix 1: `wip/pos-p2.13` **e29c5f51** (merge origin 9a21e36c แล้ว) · 54/54 ×3 · skill 10/10 · regression เขียว · lane pins p2.8 ST6 / p2.12 ST1 แดงตามคาด · เบี่ยง 3 ข้อ (bills.ts:456 drawer · orders.pay คืน {saleId,duplicated} เสมอ · H3 submitRegisterSale CASH ไม่แก้ → HF-FU2 line) · **CD-F1a KEEP** (REST void บิล AI ยังปฏิเสธ) — บันทึกใน `pos-P2.13-review.md`
 - spawn **R2 P2.13** (Opus read-only ทรี b @e29c5f51) prompt `pos-prompt-accountB-P2.13-R2.md` · เตรียมไว้: gates101-c template · `p213-merge-msg.txt` · chain84 template (ภาพ p2.13 — __TREE__ = c หรือ d) · prompt agent skill test `pos-prompt-accountB-P2.13-A.md`
 - เลน: 1 = P2.13 R2 (read-only ทรี b) · 2 = P2.7 oracle ทรี d · ทรี c ว่าง @861815e0
