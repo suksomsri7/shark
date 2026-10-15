@@ -1,0 +1,57 @@
+# P2.9bU — review file (controller tree · account B · 15 Oct 2026)
+
+## R1 (verbatim · head d4b7dbb8 · code 081d2546)
+# P2.9bU R1 review: wip/pos-p2.9bu d4b7dbb8 (code 081d2546, base c3c52ef1). Read-only, nothing run.
+**Verdict: MERGEABLE-AFTER-FIXES.** One Medium finding (F1, wrong UI, no money impact). F2–F7 are Low or info and can go to follow-ups.
+
+## Findings
+- **F1 Medium**: `InterimPayDialog.tsx:722-736` (DEPOSIT_NOT_OWNER). If any row needs the last 4, the whole refusal is put on those rows. Input: a walk-in bill with deposit A (walk-in with phone, last 4 already checked by lookup) and deposit B (member X's, added by exact receipt no; S `deposit.ts:366` shows its balance, so it can be used). Confirm → `service.ts:417` NOT_OWNER for B. The UI shows "4 หลักท้ายไม่ถูกต้อง" on A, clears A's last 4 and keeps B. Re-entering the right digits gives NOT_OWNER again, so the cashier loops on the wrong row. Smallest fix: on the in-page path (`!sentStripped`, rows already checked by the panel), drop the `memberLinked` rows first with `errors.depositNotOwner`. Blame the last-4 rows only when there is no member-linked row, or on the stripped/forRow path. Optionally, tag rows that came from the bill-member list.
+- **F2 Low**: `InterimPayDialog.tsx:790` (dev. 5). After a reload, every rebuilt DEPOSIT row is `needsLast4:true`, including member and no-phone deposits. The cashier must type 4 digits nobody knows. S ignores them (`register.ts:2524`), so this only confuses. Follow-up: an S reader by depositId, or prompt only for the first row.
+- **F3 Low**: `DepositReceiveDialog.tsx:232`. Once the PromptPay intent is PAID, `canClose` stays false until done. If S then refuses for good (setting switched off → VALIDATION "ร้านยังไม่เปิดรับมัดจำ", or PERMISSION_DENIED), the sheet cannot be closed and the paid intent has no deposit. Only a reload gets out. Fix: allow close when the refusal is definite, and leave the intent to the register's existing paid-intent handling.
+- **F4 Low**: `DepositReceiveDialog.tsx:275`. The preview `<iframe srcDoc>` has no `sandbox="allow-same-origin"`, unlike ReceiptSettings and TablePreBill. The renderer escapes (`receipt-render.ts:313`), so this is defense in depth: add the attribute.
+- **F5 Low (visual fixture)**: `visual-pos.mts` refund-deposit uses `P29BU.sale`, which lives only in that process's memory. The notes tell the controller to run `--page sales` as a separate run, so it always falls back to a fresh ฿1,000 fixture. The claim "uses the sale-done receipt" does not hold. Also, the register run's cleanup refunds the sale deposit. Fix: run register + sales in one call, or fix the note.
+- **F6 Info**: the `deposit-receive` state types the fixture phone into a visible text input, so the screenshots show it in clear. Names and logs are clean (grep: no match in ledger or runs/*). Controller call.
+- **F7 Info**: `DepositSettingsCard.tsx:73-92` shows the switch to non-owners who hold `pos.settings.payment`. S refuses them → "เฉพาะเจ้าของร้าน…". This is the same pattern as the P2.9U TipSettingsCard, so OWNER-only is enforced on the server only. Nit: the refund chips reuse the P1.8 labels "คืนเข้า PromptPay เดิม" and "คืนเข้าบัญชีที่โอนมา", which may not match how the deposit was taken.
+
+## Verified OK
+- **R1**: tile `:1515-1531` uses `tenders.deposit` from the one-per-open tenders effect. `visible:false` ⇒ null. Off ⇒ `pay.depositTileOff` "ยังไม่เปิดใช้". testid kept.
+- **R2**: placeholder "เลขใบเสร็จ / ชื่อ" (`:1810`). There is no phone hint in the search placeholder, helper, error or en text. The phone fields are only in the receive sheet and the last-4 label.
+  - Search needs ≥ 3 chars (`DEPOSIT_QUERY_MIN`). The member list via `{memberId}` loads when the tile is chosen.
+  - A balance-less row is looked up again by `receiptNo`, with the last 4 only when `needsPhoneLast4` (`depPick/depVerify`).
+  - Amount = min(due, remaining), capped at the balance in `depPress`, over-due blocked, short hint "รับส่วนต่างด้วยวิธีอื่น". ≤ 3, each once (`:919`).
+  - The tip claim is true: `REGISTER_CASH_LIKE_PAY` `register-shared.ts:825` = CASH/PROMPTPAY/TRANSFER/CARD, used by `cashLikeRows/tipAllowed/tipFundOk` `:357-360`. `gcRows` counts GIFT_CARD only.
+  - UI money = DTO remaining − row amount, display only.
+- **R3**: `last4Ref`/`depLast4Ref` plus an uncontrolled password input. `stripPayPins` marked hunk `register-shared.ts:838-843` covers savePending (`RegisterScreen.tsx:735`), `pendingSubmit` (:1756) and the done layer (:1767). Cleared by `clearPins` (:508), unmount, removeRow and the rows effect.
+  - Grep of the diff: `phoneLast4` never reaches storage, URL, `data-*`, console, toast or testid values. The `deposit-actions.ts` `unexpected()` logs only the location and the error.
+  - c20c8f06 is correct. Restore (`opts.restore`, :1792) → pinAgain rebuild "again". In-page retry → the dialog keeps its rows and `sentStripped` (:1299) sets note "again". S checks the phone before the prior key (`register.ts:2524` vs :2533), so both paths reach a duplicate after the digits are entered again. Neither path leaks the digits.
+- **R4**: NOT_FOUND/CLOSED → `depDropClosed` (rows removed + note). LOCKED → last-4 rows removed + `errors.depositLocked` "15 นาที". EXCEEDS → `depRelookup` runs once per new error, re-caps and shows the banner, with no resubmit and so no loop. VALIDATION → toast `pay.depositValidation` (:1800). DEPOSIT_* → `REFUSAL_KEY` `register-shared.ts:1003-1007`. All 76 new keys exist in th and en with the same key set.
+- **R5**: the menu shows when tenders `deposit.enabled` is true (`RegisterScreen.tsx:360`). Selling is checked by the page gate plus wrapper `assertCan pos.sale.create` and S `regScope REG_SELL_PERMS` (`register.ts:701-703`).
+  - Walk-in phone is required (`depositPhoneOk` = S regex `deposit.ts:196`). The member path sends `memberId` without a phone.
+  - CASH always sends `cashReceivedSatang` (:145). PROMPTPAY uses the same `usePayIntent`/`PayIntentPanel` (no copy), with HF-PP `manualBlocked` + `submitRefusalMessageKey`. CARD sends the EDC ref.
+  - The title comes from S `titleOf` `receipt-render.ts:279`, unedited. Setting off ⇒ `pay.depositRcvDisabled`.
+- **R6**: `PayDone.tsx` reads `payments[].deposit.receiptNo/remainingAfterSatang` from the receipt payload. Renderer untouched.
+- **R7**: `bills.ts` is not edited. The existing `channel` filter = `sourceModule` (`bills.ts:133-135, :265`). Tag, row title and drawer title are present.
+  - Refund (DepositRefund): amount read-only = lookup remaining, chips CASH/PROMPTPAY/TRANSFER with no reference (no `pi_`), reason required.
+  - PERMISSION_DENIED → the same `ManagerPinPad` as P1.8. Refusals are mapped. The approval queue is listed as a follow-up.
+- **R8**: the wrapper passes `patch` through whole (`payment-settings-actions.ts:57-61`), so no hunk was needed. Helper text matches ruling 14 exactly.
+- **R9**: all 10 states are present; the cashier gets pick/split/receive/sale-done.
+  - Fixtures go through `registerTakeDeposit`. Locked = 5 × `checkDepositPhone` wrong.
+  - Cleanup runs at the last job, in `finally` (:7302) and on signal (:1296). It refunds the OPEN remainders by TRANSFER and restores the setting; bills stay.
+  - refund-deposit returns before submit. `--dry` rc 0 for owner (28) and cashier (10); sale-done-deposit is 1440 only (one PAID bill per user).
+- **R10**: all listed testids are in the code and `pos-ui-inventory.json`. The spec file exists. The §pay addendum is in `pos-spec-P1.3-register-ui.md`; there is no `pos-spec-register.md` file.
+- **R11**: no hunk in any forbidden file (diff `--name-only` is empty).
+  - `deposit-actions.ts` is thin (session → scope → S), `"use server"` with async exports only and type-only imports. Client imports are `*-shared`, pure modules or `*-actions` (receipt-render is already used by clients).
+  - Hunks are marked. ST7 = 0 (`runs/qc-pos-p1.18.out`). Only tokens are used, apart from `bg-white` and `bg-black/40`, which match the base. Controls are ≥ 44 px. The gate logs are headed `head=081d2546 dirty=0`; p2.9b unforced 53/53.
+
+## Follow-ups
+Refund approval queue (S dev. 4) · an additive `depositId` on NOT_OWNER/LOCKED/NOT_FOUND refusals (fixes F1/F2 at the root) · an S reader for receipt → remaining for managers (dev. 2) · `qc-pos-p1.1` merge gate and the QC5 shots are CONTROLLER-RUN.
+
+## Controller rulings — fix round 1 (15 Oct ~11:5xZ · binding)
+1. **F1 (Medium) = fix as proposed**: tag deposit rows by origin (`memberLinked` = came from the bill-member list or an exact receipt-no lookup that returned a balance without last-4). On the in-page path (`!sentStripped`, rows already checked by the panel) a `DEPOSIT_NOT_OWNER` blames the member-linked rows first (remove + `errors.depositNotOwner`); last-4 rows are blamed only when there is no member-linked row, or on the stripped / `forRow` path (clear last-4 + "4 หลักท้ายไม่ถูกต้อง"). Never loop on the same row twice: a second NOT_OWNER on the same row set after a correct re-entry ⇒ remove the remaining deposit rows with a generic note.
+2. **F2 (Low) = follow-up** (root fix = additive `depositId` on NOT_OWNER/LOCKED/NOT_FOUND refusals + S reader by depositId — add to `POS-OWNER-PENDING.md`/HF-FU2 bucket). UI only: after a reload the "again" note must say the row may not need the digits ("ใส่ 4 หลักท้าย (ถ้ามี) อีกครั้ง") — one key change, th+en.
+3. **F3 (Low) = fix**: after a PAID PromptPay intent, a definite S refusal (`VALIDATION` setting-off, `PERMISSION_DENIED`) must allow closing the sheet; show the intent reference in the error line ("ชำระแล้ว อ้างอิง …") so staff can reconcile, and cite the register's existing paid-intent-without-sale handling (if none exists, say so — the owner line then covers it).
+4. **F4 (Low) = fix**: `sandbox="allow-same-origin"` on the preview iframe (match ReceiptSettings/TablePreBill).
+5. **F5 (Low) = fix the note only**: `refund-deposit` under a separate `--page sales` run uses the fresh ฿1,000 fixture — rewrite the `--state` note accordingly (the controller already shoots it that way); fixture behaviour unchanged.
+6. **F6 (info) = accepted**: the receive sheet shows the typed phone in clear (real UI does too). Builder confirms the fixture constant is an obviously fake number (08x-000-xxxx style) and that `.qc-shots/` is git-ignored; no masking.
+7. **F7 (info)**: switch visibility stays as the P2.9U TipSettingsCard pattern (follow-up, both cards together). **Refund chip labels = fix**: deposit-neutral labels "คืนเงินสด" / "คืนผ่าน PromptPay" / "คืนโดยโอน" (new keys th+en, ST7).
+8. Re-run gates: typecheck · `qc-pos-p1.18` (ST7) · `qc-pos-p1.3` · `qc-pos-p2.9b` unforced · `qc-hf-pos-page-authz` · fitness ±env · `--dry` owner+cashier. Touched visual states to re-shoot (controller): `paydlg-deposit-notowner`, `deposit-receive`, `refund-deposit`.
