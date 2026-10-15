@@ -3,7 +3,7 @@
 // 🔴 บริสุทธิ์ (client import ได้): import เฉพาะ *-shared + price-ui — ห้ามแตะโมดูลที่ถึง prisma
 // 🔴 ไม่คิดเงินเอง: ต้นทุน/กำไรมาจาก recipeCost เท่านั้น (ไฟล์นี้แค่จัดรูปข้อความ) · ไม่มีข้อความไทยนอกคอมเมนต์ (ST7)
 
-import { RECIPE_MAX_COMPONENTS } from "@/lib/modules/pos/recipe-shared";
+import { RECIPE_MAX_COMPONENTS, RECIPE_REFUSAL_REASONS, type RecipeRefusalReason } from "@/lib/modules/pos/recipe-shared"; // POS HF-FU ▸ l1: + รหัสย่อย ◂
 import { priceErrorText, type PT } from "./price-ui";
 
 /** เพดานของตัวเขียน (catalog.ts) — ตรวจฝั่งจอก่อนส่ง (ตัวเขียนตรวจซ้ำเสมอ) */
@@ -50,8 +50,12 @@ export function parseDelta(v: string): number | null {
  *   VALIDATION = ข้อความของบริการ (ตรวจฝั่งจอแล้ว ที่เหลือคือกติกาของตัวเขียน เช่น บริการ/เก็บถาวร) · NOT_FOUND / PERMISSION_DENIED = คีย์ของสูตร ·
  *   อื่น ๆ (BUSY · CONFLICT · INTERNAL) = ข้อความของจอราคาชุดเดิม
  */
-export function recipeRefusalText(r: { code: string; message?: string }, tr: PT, tp: PT, treg: PT): string {
+// POS HF-FU ▸ l1: รหัสย่อยของตัวเขียนสูตร → คีย์ pos.recipe.errors.<camelCase> (ก่อนข้อความไทยของบริการ — en ไม่เห็นภาษาไทย) ◂
+const RECIPE_REASON_KEY: Record<RecipeRefusalReason, string> = { KIND: "errors.kind", ITEM_ARCHIVED: "errors.itemArchived", ITEM_SERVICE: "errors.itemService", DUPLICATE: "errors.duplicate", NO_LINES: "errors.noLines", SHAPE: "errors.shape" };
+export function recipeRefusalText(r: { code: string; message?: string; reason?: string }, tr: PT, tp: PT, treg: PT): string {
   if (r.code === "VALIDATION") {
+    const rk = r.reason && (RECIPE_REFUSAL_REASONS as readonly string[]).includes(r.reason) ? RECIPE_REASON_KEY[r.reason as RecipeRefusalReason] : null;
+    if (rk) return tr(rk);
     const message = (r.message ?? "").trim();
     return message ? tr("errors.serverValidation", { message }) : tp("errors.unknown");
   }

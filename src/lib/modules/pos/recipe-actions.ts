@@ -19,7 +19,7 @@ import { CatalogError, setBomEnabled, setRecipe, setRecipeChoiceLines, type Cata
 import { posUnitInventoryMap } from "./catalog"; // POS P2.11 ▸ SK แผนที่คลังตัวเดียว ◂
 import { recipeCost, type RecipeCostResult } from "./recipe";
 
-type RecipeActionRefusal = { ok: false; code: CatalogErrorCode | "INTERNAL"; message: string };
+type RecipeActionRefusal = { ok: false; code: CatalogErrorCode | "INTERNAL"; message: string; reason?: string }; // POS HF-FU ▸ l1: + รหัสย่อย ◂
 type Session = Awaited<ReturnType<typeof requireTenant>>;
 
 const INTERNAL = "เกิดข้อผิดพลาด — ลองอีกครั้ง";
@@ -27,7 +27,7 @@ const PICK_MAX = 20;
 const Q_MAX = 128;
 
 function refusalOf(where: string, e: unknown): RecipeActionRefusal {
-  if (e instanceof CatalogError) return { ok: false, code: e.code, message: e.message };
+  if (e instanceof CatalogError) return { ok: false, code: e.code, message: e.message, ...(e.reason ? { reason: e.reason } : {}) }; // POS HF-FU ▸ l1 ◂
   console.error(`[pos/recipe-actions] ${where}`, e);
   return { ok: false, code: "INTERNAL", message: INTERNAL };
 }

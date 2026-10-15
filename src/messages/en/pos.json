@@ -3071,7 +3071,11 @@
       "tooManyLines": "A recipe can have at most {max} ingredients",
       "tooManyDeltas": "At most {max} option change rows",
       "loadCost": "Could not load the cost — try again",
-      "search": "Ingredient search failed — try again"
+      "search": "Ingredient search failed — try again",
+      "itemArchived": "An ingredient in the recipe is archived",
+      "itemService": "A service cannot be an ingredient (it has no stock)",
+      "noLines": "No recipe yet — add ingredients before turning on recipe deduction",
+      "shape": "The recipe data is not valid — check the quantities and ingredients and try again"
     },
     "notForKind": "This item has no recipe — only menus and bundles can have one (items sold by weight cannot)",
     "autoNote": "Selling 1 cup deducts its ingredients from stock automatically",

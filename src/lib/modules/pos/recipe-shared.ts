@@ -4,6 +4,10 @@
 //   เรียง invItemId น้อยไปมาก (เทียบรหัสอักขระ = COLLATE "C") · จำนวนเต็มในหน่วยของสินค้าคลังเอง · ไม่มีการปัดเศษ
 //   เกิน 50 รายการหลังรวม/ทิ้ง = INVALID_LINE (คืนค่า ไม่ throw)
 
+// POS HF-FU ▸ l1: รหัสย่อยคงที่ของคำปฏิเสธ VALIDATION ของตัวเขียนสูตร (CatalogError.reason) — จอแปลเป็น pos.recipe.errors.<camelCase> ก่อนข้อความของบริการ ◂
+export const RECIPE_REFUSAL_REASONS = ["KIND", "ITEM_ARCHIVED", "ITEM_SERVICE", "DUPLICATE", "NO_LINES", "SHAPE"] as const;
+export type RecipeRefusalReason = (typeof RECIPE_REFUSAL_REASONS)[number];
+
 /** เพดานวัตถุดิบต่อ 1 บรรทัดขาย (เท่ากับเพดานส่วนประกอบของ createSale) */
 export const RECIPE_MAX_COMPONENTS = 50;
 
