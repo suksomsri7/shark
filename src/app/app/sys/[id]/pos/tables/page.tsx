@@ -91,6 +91,11 @@ export default async function PosTablesPage({
       discountCaps={caps}
       promptpayId={ppId}
       tipEnabled={parsePosPaymentSettings(sys.settings).tip.enabled}
+      // POS P2.5U ▸ มติ 1/8: คีย์ย้าย/รวมโต๊ะของผู้ใช้ที่สาขานี้ (ปุ่ม/ลากบนผัง — เซิร์ฟเวอร์ตรวจซ้ำใน registerMoveTable/registerMergeTables) ◂
+      tableKeys={{
+        move: evaluate(m, { module: "restaurant", action: "restaurant.session.move", unitId: active.id }),
+        merge: evaluate(m, { module: "restaurant", action: "restaurant.session.merge", unitId: active.id }),
+      }}
       payIntent={{
         beamCard: intentSet.beam.enabled && beamEnabled(),
         manualRequiresManager: intentSet.manualConfirmRequiresManager,
