@@ -798,7 +798,9 @@ async function runDb() {
   const regDep = (amt: number, l: string): Any => ({ type: "DEPOSIT", amountSatang: amt, depositId: DP[l]?.id || `qc-missing-${l}` });
   const regSubmit = async (cart: Any, k: string, pays: Any[]) => {
     const q0 = await call(regMod, "quoteRegisterCart", ctxOf("A"), owner, cart);
-    return call(regMod, "submitRegisterSale", ctxOf("A", DEV1), owner, { ...cart, idempotencyKey: k, expectedGrandTotalSatang: Number(q0?.grandTotalSatang ?? sum((cart.lines ?? []).map((l: Any) => l.unitPriceSatang * l.qty))), payMethods: pays });
+    // ORACLE-EDIT ผู้คุม 15 ต.ค. (CD-P29b-1 P1 cash row carries cashReceivedSatang): แถวเงินสดของหน้าขายต้องมีเงินที่รับ (R4 K4 · PAYMENT_MISMATCH = พฤติกรรมที่ปักไว้) ⇒ ส่ง cashReceivedSatang = ส่วนเงินสด ◂
+    const cashPart = sum(pays.filter((x: Any) => x.type === "CASH").map((x: Any) => Number(x.amountSatang)));
+    return call(regMod, "submitRegisterSale", ctxOf("A", DEV1), owner, { ...cart, idempotencyKey: k, expectedGrandTotalSatang: Number(q0?.grandTotalSatang ?? sum((cart.lines ?? []).map((l: Any) => l.unitPriceSatang * l.qty))), payMethods: pays, ...(cashPart > 0 ? { cashReceivedSatang: cashPart } : {}) });
   };
   const xCash = async (): Promise<number> => {
     const x = SHIFT ? await call(shiftMod, "xReport", ctxOf("A", DEV1), owner, { shiftId: SHIFT }) : null;
