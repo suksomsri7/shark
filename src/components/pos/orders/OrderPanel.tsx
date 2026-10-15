@@ -59,7 +59,7 @@ export function OrderPanel(p: {
   const noCreate = !p.perms.create ? t("perm.create") : undefined;
   // fix 1 F5: ยกเลิกออเดอร์ที่มีบิลแล้ว = ยกเลิกบิลด้วย ⇒ ต้องมี pos.sale.void ด้วย (เซิร์ฟเวอร์ตรวจซ้ำ) · บิลถูกยกเลิกไปแล้ว (saleVoided) = ไม่ต้อง
   // POS HF-FU ▸ n: บิลที่เซิร์ฟเวอร์อ่านได้ว่า VOIDED แล้ว (ตัวรับคิวยังไม่ถึง/ล้ม) = เหมือน saleVoided — ไม่ต้องมีสิทธิ์ void ◂
-  const noCancel = !p.perms.reject ? t("perm.reject") : d?.saleId && !p.saleVoided && d?.saleStatus !== "VOIDED" && !p.perms.voidSale ? t("perm.void") : undefined;
+  const noCancel = !p.perms.reject ? t("perm.reject") : d?.saleId && !(p.saleVoided || d.saleStatus === "VOIDED") && !p.perms.voidSale ? t("perm.void") : undefined;
 
   const head = (
     <header className="flex items-start gap-3 border-b px-5 pb-3 pt-4">
