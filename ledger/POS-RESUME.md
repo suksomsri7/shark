@@ -1647,3 +1647,7 @@
 - **builder P2.10** (Opus ทรี b `wip/pos-p2.10` จาก 84ffb48b local + merge oracle e9eeb83f) prompt `pos-prompt-accountB-P2.10.md` (P210_BASE=84ffb48b จน origin ขยับ)
 - ถัดไป: gates93 เขียว (p2.11 ST4 / p2.8 ST6 lane pin อาจแดงจน push) + ภาพ vis81 ผู้คุมดู → push → p2.8/p2.11 ซ้ำ → **37/55 (67%)** + TG + memory · QC5 ไม่มี migration ใน HF-FU
 - เลน: 1 = P2.10 builder ทรี b · ทรี c = gates93 · ทรี d = chain79 (ผู้คุม)
+
+### 15 ต.ค. 14:5xZ — vis81 (HF-FU §9) ผู้คุมดูผ่าน
+- build79 @84ffb48b ผ่าน → vis81 (`/root/pos-runs/vis81-qc5-20261015T143913Z` · failures 0 ทุก run): split-seat 1440/390 ที่นั่ง 338.25/458.15/242.55/325.05 Σ=1,364 · กลางโต๊ะ ฿150 ที่นั่งละ ฿37.50 (c) · split-locked การ์ดบิล 1 "สมใจ ลูกค้าประจำ · ✓ เงินสด" (s memberName/paidMethods) · prebill-preview th 1440+390 หัวเรื่อง "ใบรายการ — ไม่ใช่ใบเสร็จรับเงิน/ใบกำกับภาษี" ไม่หักกลางคำ · en "PRE-BILL — NOT A RECEIPT" (p) · products-branch-filter / orders-detail-platform ไม่เปลี่ยน (f2 drawer line + n cancel/held ตัดสินด้วย oracle) → **ผ่าน**
+- รอ gates93-c → push → p2.8/p2.11 ซ้ำ → 37/55 + TG
