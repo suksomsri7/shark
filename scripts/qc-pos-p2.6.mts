@@ -2180,7 +2180,7 @@ async function runDb() {
     const reg = adaptersMod?.ORDER_ADAPTERS;
     const calls: { adapter: string; arg: string }[] = [];
     const orig: Record<string, Any> = {};
-    for (const a of ["MANUAL", "WEB", "CHAT"]) {
+    for (const a of ["MANUAL", "WEB", "CHAT", "QR"]) { // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7 fix 1) CD-B2: + QR (ช่องทาง builtin QR_ORDER · มติ 2)
       const ad = reg?.[a];
       if (!ad || typeof ad.setAvailability !== "function") {
         p.push(`ORDER_ADAPTERS.${a}.setAvailability ไม่มี`);
