@@ -408,6 +408,12 @@ export async function sweepOrphanTableDrafts(db: Db, s: { tenantId: string; syst
     if (!st || st === "OPEN") continue;
     const { id, tableSessionId, ...before } = r;
     const done = await db.$transaction(async (tx) => {
+      // POS HF-FU ▸ b fix1 (R1 F1): ล็อกแถวร่างก่อน แล้วอ่าน session ซ้ำผ่าน facade ด้วย tx — void ที่เปิด session กลับ (unlinkTableSaleInTx)
+      //   ระหว่างการอ่านนอกธุรกรรมกับการทิ้ง ⇒ เห็น OPEN ที่นี่ ⇒ ไม่ทิ้ง · อ่านไม่ได้ = ไม่แตะ (ไม่ล็อก session — ลำดับล็อกปิดโต๊ะ = session → ร่าง) ◂
+      const lk = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosHeldCart" WHERE id = ${id} AND "tenantId" = ${s.tenantId} AND status = 'HELD' AND "tableSessionId" = ${tableSessionId} FOR UPDATE`;
+      if (!lk.length) return false;
+      const again = await rest.tableSessionForPos(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId: tableSessionId! });
+      if (!again || again.status === "OPEN") return false;
       const u = await tx.posHeldCart.updateMany({ where: { ...where, id, tableSessionId }, data: { status: "DISCARDED", version: { increment: 1 } } });
       if (u.count !== 1) return false;
       await tx.auditLog.create({
