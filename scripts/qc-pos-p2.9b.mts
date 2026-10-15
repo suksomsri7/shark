@@ -93,6 +93,13 @@ const CHECKS: readonly Def[] = [
   D("X7", "X5", "[R2 มติ 5] voidSale(ใบรับมัดจำ) โดยตรง → ปฏิเสธ · ใบยัง PAID · มัดจำ OPEN · ไม่มี pos.sale.voided ของใบรับ"),
   // มติ 13 (ภาคผนวก 15 ต.ค. 02:4xZ จาก P2.11) ▸ ตัวช่วยเพดานคืนตัวเดียวของ refund.ts + refund-tenders.ts ◂
   D("X8", "X4", "[มติ 13 R7] refundTenderCaps (pure · export จาก refund-shared.ts หรือไฟล์ pure ใหม่ · ไม่ import prisma) ถูกใช้ทั้ง refund.ts และ refund-tenders.ts · บิลบัตร + มัดจำ + เงินสด: refundTenderOptions.cashLikeCapSatang = เงินสด + มัดจำ (2,000) = ยอดที่ server รับจริง · หลังคืน 2,000 → 0 = server ปฏิเสธ · capSatang ของบัตร 1,000"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 1 · มติรอบแก้ 1–6) ▸ R1 F2 · hunt D1–D5 ◂
+  D("A7", "X4", "[fix1 มติ 1 · R1 F2] มัดจำ ฿1.00 (VAT 7 สต.) ใช้ 50 + 50 สต. → 2110 สุทธิ 0 หลังใช้ครบ · APPLY แต่ละแถว ≤ VAT ของยอดแถว (splitIncludedVat) · Σ APPLY = 7 · มัดจำเล็กใช้ 50 แล้วคืนคงเหลือ → REFUND vat = VAT ที่ยังไม่ปล่อยพอดี · 2110 สุทธิ 0"),
+  D("X9", "X4", "[fix1 มติ 2 · hunt D1] คืนเงินบิลที่ใช้มัดจำ: บิล ฿1,070 จ่ายมัดจำล้วน คืนครบ → ใบคืน VAT 70 · ใบรับ+บิล+ใบคืน สุทธิ 0 ทุกบัญชี · บิลผสม ฿2,140 คืนครบ → VAT 140 · คืนสองครั้ง Σ VAT 140 พอดี"),
+  D("A8", "X4", "[fix1 มติ 3 · hunt D2] รับมัดจำตอน POS ไม่ผูกสมุด → ผูกสมุด → ใช้ → JV ใบรับถูกลงก่อน/พร้อมบิล · 2110 สุทธิ 0 · VAT 70 ครั้งเดียว · สมุดเลิกจด VAT ระหว่างรับกับใช้ → 2110 สุทธิ 0"),
+  D("R6", "-", "[fix1 มติ 4 · hunt D3] หลังใบรับ ฿1,070 + บิล ฿2,140 ที่ใช้มัดจำนั้น (กะเดียวกัน): X ยอดขาย +2,140 · บิล +1 · เงินสดที่ควรมี +2,140 (แถวเงินสดจริง) · รายงานรายวันยอดขาย +2,140"),
+  D("P8", "X2", "[fix1 มติ 5 · hunt D4] สมาชิก M ถูกรวมเข้า K → มัดจำของ M ใช้บนบิลของ K ได้ · สมาชิกอื่น Z → DEPOSIT_NOT_OWNER"),
+  D("P9", "X2", "[fix1 มติ 6 · hunt D5] มัดจำ walk-in ที่มีเบอร์: หน้าขายต้องส่ง 4 หลักท้าย (ไม่ส่ง/ผิด → DEPOSIT_NOT_OWNER · ถูก → PAID) · ค้นด้วยชื่อ < 3 ตัว → VALIDATION · ≥ 3 ตัว → ไม่มียอดคงเหลือ · เลขใบรับ + 4 หลักถูก → มียอด · มัดจำไม่มีเบอร์ = ผู้ถือใบรับ (ใช้ได้)"),
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[§7 มติ 2] scripts/pos-sale-contract.json sha256 = 72afb258… (CD2-A ไม่เปลี่ยนสัญญา)"),
   D("L2", "PAR", "[§7 มติ 11 HF-TX] ผู้เรียก createSale( ใน src ต่อไฟล์ = ฐาน e7b05787 (ใบรับผ่าน regCreateSale)"),
@@ -763,7 +770,7 @@ async function runDb() {
       return [];
     }
   };
-  type Dep = { id: string; receiptSaleId: string; receiptNo: string };
+  type Dep = { id: string; receiptSaleId: string; receiptNo: string; phone?: string }; // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 1 มติ 6): เบอร์ของมัดจำ walk-in ◂
   const DP: Record<string, Dep> = {};
   const depRow = async (id: string): Promise<Any> =>
     id && COL.dep
@@ -782,7 +789,7 @@ async function runDb() {
     const r = fx ? null : await takeRaw(unit, owner, { amountSatang: amount, payMethods: [unit === "A" ? cash(amount) : xfer(amount)], idempotencyKey: key(`dep-${label}`), ...extra });
     const id = depIdOf(r);
     const row = id ? await depRow(id) : null;
-    if (row) DP[label] = { id, receiptSaleId: String(row.receiptSaleId ?? ""), receiptNo: String(row.receiptNo ?? "") };
+    if (row) DP[label] = { id, receiptSaleId: String(row.receiptSaleId ?? ""), receiptNo: String(row.receiptNo ?? ""), ...(typeof extra.phone === "string" && extra.phone ? { phone: extra.phone } : {}) };
     else notes.push(`มัดจำ ${label}: ${codeOf(r)} ${short(r?.message ?? "", 80)}`);
     return r;
   };
@@ -795,7 +802,8 @@ async function runDb() {
   /** แถวใช้มัดจำของ createSale (CD2-A: refSaleId = ใบรับมัดจำ) */
   const depPay = (amt: number, l: string): Any => ({ type: "DEPOSIT", amountSatang: amt, refSaleId: DP[l]?.receiptSaleId || `qc-missing-${l}` });
   /** แถวใช้มัดจำของหน้าขาย ({DEPOSIT, depositId}) */
-  const regDep = (amt: number, l: string): Any => ({ type: "DEPOSIT", amountSatang: amt, depositId: DP[l]?.id || `qc-missing-${l}` });
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.9b fix 1 มติ 6 · hunt D5): มัดจำ walk-in ที่มีเบอร์ = หน้าขายส่ง 4 หลักท้ายด้วย ◂
+  const regDep = (amt: number, l: string): Any => ({ type: "DEPOSIT", amountSatang: amt, depositId: DP[l]?.id || `qc-missing-${l}`, ...(DP[l]?.phone ? { phoneLast4: DP[l]!.phone!.slice(-4) } : {}) });
   const regSubmit = async (cart: Any, k: string, pays: Any[]) => {
     const q0 = await call(regMod, "quoteRegisterCart", ctxOf("A"), owner, cart);
     // ORACLE-EDIT ผู้คุม 15 ต.ค. (CD-P29b-1 P1 cash row carries cashReceivedSatang): แถวเงินสดของหน้าขายต้องมีเงินที่รับ (R4 K4 · PAYMENT_MISMATCH = พฤติกรรมที่ปักไว้) ⇒ ส่ง cashReceivedSatang = ส่วนเงินสด ◂
@@ -861,7 +869,7 @@ async function runDb() {
       const only = [...ids][0] ?? "";
       if (only) {
         const row = await depRow(only);
-        if (row) DP.R2 = { id: only, receiptSaleId: String(row.receiptSaleId), receiptNo: String(row.receiptNo ?? "") };
+        if (row) DP.R2 = { id: only, receiptSaleId: String(row.receiptSaleId), receiptNo: String(row.receiptNo ?? ""), phone: input.phone }; // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 1 มติ 6) ◂
       }
       const c = await takeRaw("A", owner, { ...input, amountSatang: 25_000, payMethods: [cash(25_000)] });
       if (!refused(c, "IDEMPOTENCY_CONFLICT") || (await depsByKey(k)).length !== 1) p.push(`คีย์เดิมยอดอื่น → ${codeOf(c)}`);
@@ -1289,7 +1297,11 @@ async function runDb() {
       const r2 = await depRow(DP.R2.id);
       const b = await look(`คุณอรทัย ${RAND}`);
       const rb = rows(b).find((x) => x?.id === DP.R2.id);
-      if (b?.ok !== true || !rb || rb.remainingSatang !== 20_000 || typeof rb.phoneMasked !== "string" || !rb.phoneMasked) p.push(`ชื่อ → ${codeOf(b)} ${short(rb ?? rows(b).length, 120)}`);
+      // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.9b fix 1 มติ 6 · hunt D5): ค้นด้วยชื่อ = แถวปิดบังไม่มียอดคงเหลือ · ยอดเห็นเมื่อเลขใบรับ + 4 หลักท้าย ◂
+      if (b?.ok !== true || !rb || rb.remainingSatang !== null || typeof rb.phoneMasked !== "string" || !rb.phoneMasked) p.push(`ชื่อ → ${codeOf(b)} ${short(rb ?? rows(b).length, 120)}`);
+      const b2 = DP.R2.phone ? await call(depMod, "registerDepositLookup", ctxOf("A"), owner, { query: DP.R2.receiptNo || "-", phoneLast4: DP.R2.phone.slice(-4) }) : null;
+      const rb2 = rows(b2).find((x) => x?.id === DP.R2.id);
+      if (!rb2 || rb2.remainingSatang !== 20_000) p.push(`เลขใบรับ + 4 หลัก → ${codeOf(b2)} ${short(rb2 ?? rows(b2).length, 120)}`);
       const bj = JSON.stringify(b ?? {});
       if (PHONES.some((ph) => bj.includes(ph))) p.push("ผลมีเบอร์เต็ม");
       if (!r2?.phoneMasked || PHONES.includes(String(r2.phoneMasked))) p.push(`PosDeposit.phoneMasked ${r2?.phoneMasked ? "เป็นเบอร์เต็ม" : "ว่าง"}`);
@@ -1604,6 +1616,244 @@ async function runDb() {
       if (v?.ok !== false || s?.status !== "PAID" || d?.status !== "OPEN" || ev.length) p.push(`voidSale → ${codeOf(v)} · ใบ ${s?.status} · มัดจำ ${d?.status} · event ${ev.length}`);
     }
     chk("X7", p.length === 0, "voidSale ใบรับ → ปฏิเสธ · PAID · OPEN · ไม่มี event", FXB(joinP(p)));
+  }
+
+  // ════════ ORACLE-ADD ผู้คุม 15 ต.ค. (P2.9b fix 1 · มติรอบแก้ 1–6) ▸ A7 X9 A8 R6 P8 P9 ◂ ════════
+  const allNet = async (ids: string[]) => netByCode(await jvOf("PosSale", ids));
+  {
+    // A7 — มัดจำเล็ก: ปล่อย VAT ต่อแถวไม่เกิน VAT ของยอดแถว · ที่เหลือออกกับแถวสุดท้าย/การคืน ⇒ 2110 สุทธิ 0
+    const p: string[] = [];
+    await take("A7a", "A", 100, walkIn("มัดจำเล็ก ก"));
+    await take("A7b", "A", 100, walkIn("มัดจำเล็ก ข"));
+    if (!DP.A7a || !DP.A7b) p.push("ไม่มีมัดจำ A7");
+    else {
+      const d0 = await dep("A7a");
+      const b1 = await cs(saleIn(key("a7a1"), [["ของ A7 ก1", 50]], [depPay(50, "A7a")]));
+      const b2 = ok(b1) ? await cs(saleIn(key("a7a2"), [["ของ A7 ก2", 50]], [depPay(50, "A7a")])) : null;
+      if (!ok(b1) || !ok(b2)) p.push(`ใช้ 50+50 → ${codeOf(b1)} / ${codeOf(b2)}`);
+      else {
+        await drain();
+        const ap = await dtxOf("A7a", "APPLY");
+        const cap = split(50).vatSatang;
+        const first = ap.find((t) => t.saleId === b1.saleId);
+        if (ap.length !== 2 || sum(ap.map((t) => Number(t.vatSatang))) !== Number(d0?.vatSatang) || Number(first?.vatSatang) > cap) p.push(`APPLY ${short(ap.map((t) => `${t.satang}/${t.vatSatang}`))} (VAT มัดจำ ${d0?.vatSatang} · เพดานแถวแรก ${cap})`);
+        const n = await allNet([DP.A7a.receiptSaleId, b1.saleId, b2.saleId]);
+        if (n["2110"]) p.push(`2110 สุทธิ ${n["2110"]} (คาด 0) ${short(n)}`);
+      }
+      const db0 = await dep("A7b");
+      const c1 = await cs(saleIn(key("a7b1"), [["ของ A7 ข1", 50]], [depPay(50, "A7b")]));
+      if (!ok(c1)) p.push(`ใช้ 50 → ${codeOf(c1)}`);
+      else {
+        await drain();
+        const rr = await call(depMod, "registerRefundDeposit", ctxU("A"), owner, { depositId: DP.A7b.id, payMethods: [cash(50)], reason: "คืนคงเหลือมัดจำเล็ก", idempotencyKey: key("a7rf") });
+        if (rr?.ok !== true) p.push(`คืนคงเหลือ → ${codeOf(rr)} ${short(rr?.message ?? "", 60)}`);
+        else {
+          await drain();
+          const ap = (await dtxOf("A7b", "APPLY"))[0];
+          const rt = (await dtxOf("A7b", "REFUND"))[0];
+          if (!ap || !rt || Number(ap.vatSatang) + Number(rt.vatSatang) !== Number(db0?.vatSatang)) p.push(`APPLY ${ap?.vatSatang} + REFUND ${rt?.vatSatang} ≠ VAT มัดจำ ${db0?.vatSatang}`);
+          const n = await allNet([DP.A7b.receiptSaleId, c1.saleId, String(rr.refund?.id ?? "")]);
+          if (n["2110"]) p.push(`2110 สุทธิ (ใบรับ+บิล+ใบคืน) ${n["2110"]} (คาด 0) ${short(n)}`);
+        }
+      }
+    }
+    chk("A7", p.length === 0, "2110 สุทธิ 0 · APPLY ≤ VAT ของแถว · คืนคงเหลือ = VAT ที่เหลือ", FXB(joinP(p)));
+  }
+  {
+    // X9 — คืนเงินบิลที่ใช้มัดจำ: ฐาน VAT ของใบคืน = VAT ของบิล + VAT ของมัดจำที่ใช้ (= VAT เต็มบิล)
+    const p: string[] = [];
+    await take("X9a", "A", 107_000, walkIn("คืนบิลมัดจำล้วน"));
+    await take("X9b", "A", 107_000, walkIn("คืนบิลผสม"));
+    await take("X9c", "A", 107_000, walkIn("คืนสองครั้ง"));
+    if (!DP.X9a || !DP.X9b || !DP.X9c) p.push("ไม่มีมัดจำ X9");
+    else {
+      const rdoc = async (saleId: string) => (await refundDocs(saleId)).map((d) => d.id);
+      // (ก) จ่ายมัดจำล้วน คืนครบเป็นเงินสด
+      const a = await cs(saleIn(key("x9a"), [["ของ X9 ก", 107_000]], [depPay(107_000, "X9a")]));
+      if (!ok(a)) p.push(`บิลมัดจำล้วน → ${codeOf(a)}`);
+      else {
+        await drain();
+        const f = await refund(a.saleId, [{ lineId: await lineId(a.saleId, "ของ X9 ก"), qty: 1 }], [cash(107_000)]);
+        await drain();
+        const docs = await refundDocs(a.saleId);
+        if (f?.ok !== true || docs.length !== 1 || docs[0]?.vatSatang !== 7_000) p.push(`(ก) คืน ${codeOf(f)} · VAT ใบคืน ${docs[0]?.vatSatang} (คาด 7000)`);
+        const n = await allNet([DP.X9a.receiptSaleId, a.saleId, ...(await rdoc(a.saleId))]);
+        if (Object.keys(n).length) p.push(`(ก) สุทธิ ${short(n)} (คาด 0 ทุกบัญชี)`);
+      }
+      // (ข) บิลผสม ฿2,140 คืนครบครั้งเดียว
+      const b = await cs(saleIn(key("x9b"), [["ของ X9 ข1", 100_000], ["ของ X9 ข2", 114_000]], [depPay(107_000, "X9b"), cash(107_000)]));
+      if (!ok(b)) p.push(`บิลผสม → ${codeOf(b)}`);
+      else {
+        await drain();
+        const f = await refund(b.saleId, [{ lineId: await lineId(b.saleId, "ของ X9 ข1"), qty: 1 }, { lineId: await lineId(b.saleId, "ของ X9 ข2"), qty: 1 }], [cash(214_000)]);
+        await drain();
+        const docs = await refundDocs(b.saleId);
+        if (f?.ok !== true || docs.length !== 1 || docs[0]?.vatSatang !== 14_000) p.push(`(ข) คืน ${codeOf(f)} · VAT ใบคืน ${docs[0]?.vatSatang} (คาด 14000)`);
+        const n = await allNet([DP.X9b.receiptSaleId, b.saleId, ...(await rdoc(b.saleId))]);
+        if (Object.keys(n).length) p.push(`(ข) สุทธิ ${short(n)} (คาด 0)`);
+      }
+      // (ค) คืนสองครั้ง
+      const c = await cs(saleIn(key("x9c"), [["ของ X9 ค1", 100_000], ["ของ X9 ค2", 114_000]], [depPay(107_000, "X9c"), cash(107_000)]));
+      if (!ok(c)) p.push(`บิลคืนสองครั้ง → ${codeOf(c)}`);
+      else {
+        await drain();
+        const f1 = await refund(c.saleId, [{ lineId: await lineId(c.saleId, "ของ X9 ค1"), qty: 1 }], [cash(100_000)]);
+        const f2 = await refund(c.saleId, [{ lineId: await lineId(c.saleId, "ของ X9 ค2"), qty: 1 }], [cash(114_000)]);
+        await drain();
+        const docs = await refundDocs(c.saleId);
+        const vs = sum(docs.map((d) => Number(d.vatSatang)));
+        if (f1?.ok !== true || f2?.ok !== true || docs.length !== 2 || vs !== 14_000) p.push(`(ค) คืน ${codeOf(f1)}/${codeOf(f2)} · Σ VAT ${vs} (คาด 14000) ${short(docs.map((d) => d.vatSatang))}`);
+        const n = await allNet([DP.X9c.receiptSaleId, c.saleId, ...docs.map((d) => d.id)]);
+        if (Object.keys(n).length) p.push(`(ค) สุทธิ ${short(n)} (คาด 0)`);
+      }
+    }
+    chk("X9", p.length === 0, "VAT ใบคืน 70 / 140 / Σ 140 · ใบรับ+บิล+ใบคืน สุทธิ 0", FXB(joinP(p)));
+  }
+  {
+    // A8 — JV ใบรับต้องมีก่อนหัก VAT มัดจำ · สมุดเลิกจด VAT = หักตามที่บันทึกไว้
+    const p: string[] = [];
+    if (fx) p.push("fixture");
+    else {
+      const mk = async (k: string, vatBook: boolean) => {
+        const unit = (await P.businessUnit.create({ data: { tenantId: T, type: "SHOP", name: `${TAG} สาขา${k}`, slug: `${T_SLUG}-${k.toLowerCase()}` } })).id;
+        const pos = (await sysSvc.createSystem(T, "POS", `POS P2.9b ${k}`)).id;
+        await sysSvc.linkUnit(T, pos, unit);
+        const r = await call(paySet, "updatePosPaymentSettings", { tenantId: T, systemId: pos }, owner, { deposit: { enabled: true } });
+        if (r?.ok !== true) p.push(`เปิดมัดจำ ${k}: ${codeOf(r)}`);
+        const acc = (await sysSvc.createSystem(T, "ACCOUNT", `บัญชี QC P2.9b ${k}`)).id;
+        await accSvc.saveSettings(T, acc, { orgName: `ร้านมัดจำคิวซี ${k}`, taxId: "0105561177639", vatRegistered: vatBook });
+        await glMod.ensureAccounting({ tenantId: T, systemId: acc });
+        return { unit, pos, acc };
+      };
+      const ctxK = (z: { unit: string; pos: string }): Any => ({ tenantId: T, systemId: z.pos, unitId: z.unit });
+      const takeK = async (z: { unit: string; pos: string }, label: string) => {
+        const r = await takeRaw("", owner, { amountSatang: 107_000, payMethods: [xfer(107_000)], idempotencyKey: key(`dep-${label}`), ...walkIn(label) }, ctxK(z));
+        const id = depIdOf(r);
+        const row = id ? await depRow(id) : null;
+        if (row) DP[label] = { id, receiptSaleId: String(row.receiptSaleId), receiptNo: String(row.receiptNo ?? "") };
+        else p.push(`มัดจำ ${label}: ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
+      };
+      // (ก) รับตอนไม่ผูกสมุด → ผูก → ใช้เต็มบนบิล ฿1,070
+      const g = await step("สาขา G", () => mk("G", true));
+      if (g) {
+        await takeK(g, "A8g");
+        await drain();
+        await P.accountSystemLink.create({ data: { tenantId: T, systemId: g.acc, linkedKind: "POS", linkedId: g.pos } });
+        const b = DP.A8g ? await cs(saleIn(key("a8g"), [["ของ A8 G", 107_000]], [depPay(107_000, "A8g")], { unitId: g.unit, systemId: g.pos })) : null;
+        if (!ok(b)) p.push(`(ก) บิล → ${codeOf(b)} ${short(b?.message ?? "", 60)}`);
+        else {
+          await drain();
+          const jr = await jvOf("PosSale", [DP.A8g.receiptSaleId]);
+          const jb = await jvOf("PosSale", [b.saleId]);
+          const n = netByCode([...jr, ...jb]);
+          if (jr.length !== 1 || jb.length !== 1 || n["2110"] || n["2200"] !== -7_000) p.push(`(ก) JV ใบรับ ${jr.length} บิล ${jb.length} · สุทธิ ${short(n)} (คาด 2110 0 · 2200 −7000)`);
+        }
+      }
+      // (ข) รับตอนจด VAT → เลิกจด → ใช้เต็ม
+      const h = await step("สาขา H", () => mk("H", true));
+      if (h) {
+        await P.accountSystemLink.create({ data: { tenantId: T, systemId: h.acc, linkedKind: "POS", linkedId: h.pos } });
+        await takeK(h, "A8h");
+        await drain();
+        await accSvc.saveSettings(T, h.acc, { orgName: "ร้านมัดจำคิวซี H", taxId: "0105561177639", vatRegistered: false });
+        const b = DP.A8h ? await cs(saleIn(key("a8h"), [["ของ A8 H", 107_000]], [depPay(107_000, "A8h")], { unitId: h.unit, systemId: h.pos })) : null;
+        if (!ok(b)) p.push(`(ข) บิล → ${codeOf(b)} ${short(b?.message ?? "", 60)}`);
+        else {
+          await drain();
+          const jr = await jvOf("PosSale", [DP.A8h.receiptSaleId]);
+          const jb = await jvOf("PosSale", [b.saleId]);
+          const n = netByCode([...jr, ...jb]);
+          if (jr.length !== 1 || jb.length !== 1 || !balanced([...jr, ...jb]) || n["2110"] || n["2200"] !== -7_000) p.push(`(ข) JV ใบรับ ${jr.length} บิล ${jb.length} · สุทธิ ${short(n)} (คาด 2110 0 · 2200 −7000)`);
+        }
+      }
+    }
+    chk("A8", p.length === 0, "ใบรับลงก่อน · 2110 สุทธิ 0 · VAT 70 ครั้งเดียว · เลิกจด VAT = 2110 สุทธิ 0", FXB(joinP(p)));
+  }
+  {
+    // R6 — X/Z + รายงานรายวัน ไม่นับใบรับมัดจำเป็นยอดขาย (เงินสดยังนับ)
+    const p: string[] = [];
+    if (fx || !SHIFT) p.push("ไม่มีกะ");
+    else {
+      const repMod = await tryImport("@/lib/modules/pos/reports");
+      const today = await call(svc, "posBusinessToday", { tenantId: T, systemId: S.POS });
+      const xr = async () => (await call(shiftMod, "xReport", ctxOf("A", DEV1), owner, { shiftId: SHIFT }))?.report;
+      const dr = async () => (await call(repMod, "reportDailySales", { tenantId: T, systemId: S.POS, unitId: U.A }, owner, { from: today, to: today }))?.report?.totals;
+      const x0 = await xr();
+      const d0 = await dr();
+      await take("R6", "A", 107_000, walkIn("รายงานกะ"));
+      const b = DP.R6 ? await cs(saleIn(key("r6"), [["ของ R6", 214_000]], [depPay(107_000, "R6"), cash(107_000)], { shiftId: SHIFT })) : null;
+      if (!ok(b)) p.push(`บิล → ${codeOf(b)} ${short(b?.message ?? "", 60)}`);
+      else {
+        await drain();
+        const x1 = await xr();
+        const d1 = await dr();
+        const dx = (k: string) => Number(x1?.[k]) - Number(x0?.[k]);
+        if (dx("salesTotalSatang") !== 214_000 || dx("billCount") !== 1 || dx("expectedCashSatang") !== 214_000) p.push(`X ยอดขาย +${dx("salesTotalSatang")} บิล +${dx("billCount")} เงินสด +${dx("expectedCashSatang")} (คาด 214000/1/214000)`);
+        const dd = Number(d1?.netSalesSatang) - Number(d0?.netSalesSatang);
+        const dbc = Number(d1?.billCount) - Number(d0?.billCount);
+        if (dd !== 214_000 || dbc !== 1) p.push(`รายงานรายวัน +${dd} บิล +${dbc} (คาด 214000/1)`);
+      }
+    }
+    chk("R6", p.length === 0, "X/Z + รายงานรายวัน +2,140 · เงินสด +2,140", FXB(joinP(p)));
+  }
+  {
+    // P8 — มัดจำตามสมาชิกที่ถูกรวม (mergedIntoId)
+    const p: string[] = [];
+    const mm: Record<string, string> = {};
+    if (!fx)
+      for (const k of ["M", "K", "Z"]) {
+        const r = await step(`สมาชิก ${k}`, () => memMod.createMember(ctxM, owner, { phone: `0897${rnd(6)}`, name: `${k} รวมมัดจำ ${RAND}`, source: "WALK_IN", homeUnitId: U.A }));
+        if (r?.customerId) mm[k] = String(r.customerId);
+      }
+    if (!mm.M || !mm.K || !mm.Z) p.push("ไม่มีสมาชิก P8");
+    else {
+      await take("P8", "A", 10_000, { memberId: mm.M });
+      const mg = await call(memMod, "mergeMembers", ctxM, owner, { keepId: mm.K, mergeId: mm.M, confirm: "MERGE" });
+      if (mg?.ok === false) p.push(`รวมสมาชิก → ${codeOf(mg)} ${short(mg?.message ?? "", 60)}`);
+      const kz = key("p8z");
+      const rz = DP.P8 ? await cs(saleIn(kz, [["ของ P8 Z", 10_000]], [depPay(10_000, "P8")], memberOf(mm.Z))) : null;
+      if (!refused(rz, "DEPOSIT_NOT_OWNER") || (await saleByKey(kz))) p.push(`Z → ${codeOf(rz)}`);
+      const rk = DP.P8 ? await cs(saleIn(key("p8k"), [["ของ P8 K", 10_000]], [depPay(10_000, "P8")], memberOf(mm.K))) : null;
+      if (!ok(rk)) p.push(`K (ผู้เก็บ) → ${codeOf(rk)} ${short(rk?.message ?? "", 60)}`);
+      if (ok(rk) && (await dep("P8"))?.status !== "USED") p.push("มัดจำไม่ถูกตัด");
+    }
+    chk("P8", p.length === 0, "มัดจำของ M ใช้บนบิล K · Z → NOT_OWNER", FXB(joinP(p)));
+  }
+  {
+    // P9 — มัดจำ walk-in ที่มีเบอร์ = ต้องมี 4 หลักท้าย · ค้นด้วยชื่อไม่เห็นยอด · ไม่มีเบอร์ = ผู้ถือใบรับ
+    const p: string[] = [];
+    await take("P9p", "A", 5_000, walkIn("มีเบอร์ทดสอบ"));
+    await take("P9n", "A", 5_000, { customerName: `ไม่มีเบอร์ ${RAND}` });
+    if (!DP.P9p || !DP.P9n || !DP.P9p.phone) p.push("ไม่มีมัดจำ P9");
+    else {
+      const cart = { lines: [{ name: `ของ P9 ${RAND}`, qty: 1, unitPriceSatang: 5_000 }] };
+      const base = { type: "DEPOSIT", amountSatang: 5_000, depositId: DP.P9p.id };
+      const last4 = DP.P9p.phone.slice(-4);
+      const wrong = String((Number(last4) + 1) % 10_000).padStart(4, "0");
+      const a = await regSubmit(cart, key("p9a"), [base]);
+      if (!refused(a, "DEPOSIT_NOT_OWNER")) p.push(`ไม่ส่ง 4 หลัก → ${codeOf(a)}`);
+      const b = await regSubmit(cart, key("p9b"), [{ ...base, phoneLast4: wrong }]);
+      if (!refused(b, "DEPOSIT_NOT_OWNER")) p.push(`4 หลักผิด → ${codeOf(b)}`);
+      if ((await dep("P9p"))?.usedSatang !== 0) p.push("มัดจำถูกตัดทั้งที่ปฏิเสธ");
+      const look = (input: Any) => call(depMod, "registerDepositLookup", ctxOf("A"), owner, input);
+      const rowsOf = (r: Any): Any[] => (Array.isArray(r?.deposits) ? r.deposits : []);
+      const s2 = await look({ query: "มี" });
+      if (!refused(s2, "VALIDATION")) p.push(`ค้นชื่อ 1–2 ตัว → ${codeOf(s2)}`);
+      const s3 = await look({ query: `มีเบอร์ทดสอบ ${RAND}` });
+      const r3 = rowsOf(s3).find((x) => x?.id === DP.P9p!.id);
+      if (s3?.ok !== true || !r3 || r3.remainingSatang !== null) p.push(`ค้นชื่อ → ${codeOf(s3)} ${short(r3 ?? rowsOf(s3).length, 100)} (คาด ไม่มียอด)`);
+      const s4 = await look({ query: DP.P9p.receiptNo, phoneLast4: wrong });
+      const r4 = rowsOf(s4).find((x) => x?.id === DP.P9p!.id);
+      if (r4 && r4.remainingSatang !== null) p.push("เลขใบรับ + 4 หลักผิด เห็นยอด");
+      const s5 = await look({ query: DP.P9p.receiptNo, phoneLast4: last4 });
+      const r5 = rowsOf(s5).find((x) => x?.id === DP.P9p!.id);
+      if (!r5 || r5.remainingSatang !== 5_000) p.push(`เลขใบรับ + 4 หลักถูก → ${short(r5 ?? rowsOf(s5).length, 100)}`);
+      const c = await regSubmit(cart, key("p9c"), [{ ...base, phoneLast4: last4 }]);
+      if (c?.ok !== true) p.push(`4 หลักถูก → ${codeOf(c)} ${short(c?.message ?? "", 60)}`);
+      const d = await regSubmit(cart, key("p9d"), [{ type: "DEPOSIT", amountSatang: 5_000, depositId: DP.P9n.id }]);
+      if (d?.ok !== true) p.push(`มัดจำไม่มีเบอร์ (ผู้ถือใบรับ) → ${codeOf(d)} ${short(d?.message ?? "", 60)}`);
+    }
+    chk("P9", p.length === 0, "4 หลักท้ายบังคับ · ค้นชื่อไม่เห็นยอด · ไม่มีเบอร์ = ผู้ถือใบรับ", FXB(joinP(p)));
   }
 
   // ════════ L4 บิลไม่มีมัดจำ ════════
