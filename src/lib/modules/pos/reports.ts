@@ -248,7 +248,8 @@ export type AnomalyRow = {
   threshold: Record<string, number>;
   count: number;
 };
-export type AnomalyTotals = { rowCount: number; byRule: Record<PosAnomalyRule, number> };
+// POS P2.12 ▸ fix1 F1: unitNames = ชื่อสาขาของหน่วยที่อยู่ในแถวที่คืน (CSV/แบบพิมพ์แสดงชื่อแทนรหัส · คีย์แถวไม่เปลี่ยน) ◂
+export type AnomalyTotals = { rowCount: number; byRule: Record<PosAnomalyRule, number>; unitNames: Record<string, string> };
 
 export type DashboardCard = {
   businessDate: string;
@@ -1303,7 +1304,7 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
     const r = p.r;
     const T = posAnomalyThresholds(s.settings);
     const byRule = Object.fromEntries(POS_ANOMALY_RULES.map((x) => [x, 0])) as Record<PosAnomalyRule, number>;
-    if (!T.enabled) return envelope("anomalies", s, r, [] as AnomalyRow[], { rowCount: 0, byRule });
+    if (!T.enabled) return envelope("anomalies", s, r, [] as AnomalyRow[], { rowCount: 0, byRule, unitNames: {} }); // POS P2.12 ▸ fix1 F1 ◂
     const day = (t: Date) => bkkBusinessDate(t, s.cutoffMin);
     const inScope = new Set(s.unitIds);
 
@@ -1478,7 +1479,11 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
           cmpStr(p1.refId ?? "", p2.refId ?? ""),
       );
     for (const x of rows) byRule[x.rule] += 1;
-    return envelope("anomalies", s, r, rows.slice(0, r.limit), { rowCount: rows.length, byRule });
+    const shown = rows.slice(0, r.limit);
+    // POS P2.12 ▸ fix1 F1: ชื่อสาขาจากขอบเขต (s.unitName) เฉพาะหน่วยที่อยู่ในแถวที่คืน ◂
+    const unitNames: Record<string, string> = {};
+    for (const x of shown) unitNames[x.unitId] ??= s.unitName.get(x.unitId) ?? "";
+    return envelope("anomalies", s, r, shown, { rowCount: rows.length, byRule, unitNames });
   });
 }
 
@@ -1517,8 +1522,10 @@ export const CSV_HEADERS: Record<ReportKind, string[]> = {
   // POS P2.12 ▸ BR HR AN (CD-7: สาขา/รายชั่วโมงมีแถว "รวม" · จุดผิดปกติไม่มี) ◂
   branches: ["สาขา", "จำนวนบิล", "ยอดขายสุทธิ", "เฉลี่ยต่อบิล", "ใบคืนเงิน", "ยอดคืนเงิน", "บิลยกเลิก", "ยอดบิลยกเลิก", "เงินสด", "แพลตฟอร์ม", "ค่าคอมมิชชัน", "VAT ค่าคอมมิชชัน", "ขาด/เกิน"],
   hourly: ["ชั่วโมง", "จำนวนบิล", "ยอดขายสุทธิ", "คาดการณ์ (เฉลี่ย 4 สัปดาห์)"],
-  anomalies: ["กฎ", "จุดสังเกต", "รหัสสาขา", "วันที่", "พนักงาน", "ชนิดอ้างอิง", "รหัสอ้างอิง", "ค่า", "เกณฑ์", "จำนวน"],
+  anomalies: ["กฎ", "จุดสังเกต", "สาขา", "วันที่", "พนักงาน", "ชนิดอ้างอิง", "รหัสอ้างอิง", "ค่า", "เกณฑ์", "จำนวน"], // POS P2.12 ▸ fix1 F1: ชื่อสาขา (เดิม รหัสสาขา) ◂
 };
+/** POS P2.12 ▸ fix1 F2: ชนิดที่แถวท้ายของ CSV/แบบพิมพ์เป็นแถว "รวม" เสมอ (ตัดสินจากชนิด ไม่ใช่ข้อความในช่อง) — channels/anomalies ไม่มีแถวรวม ◂ */
+export const REPORT_TOTAL_ROW_KINDS: ReadonlySet<ReportKind> = new Set<ReportKind>(["daily", "products", "staff", "payments", "margin", "shifts", "tax", "branches", "hourly"]);
 // POS P2.12 ▸ ค่าของแถวจุดผิดปกติในตาราง: เงิน (A1 A2 A8 A9) = บาท · สัดส่วน (A3 A4) = % · อื่น = จำนวน ◂
 const ANOMALY_MONEY_RULES: ReadonlySet<string> = new Set(["A1", "A2", "A8", "A9"]);
 const ANOMALY_BP_RULES: ReadonlySet<string> = new Set(["A3", "A4"]);
@@ -1658,7 +1665,7 @@ function csvBodyRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
       return x.rows.map((r) => [
         r.rule,
         ANOMALY_RULE_LABEL_TH[r.rule],
-        r.unitId,
+        x.totals.unitNames?.[r.unitId] ?? r.unitId, // POS P2.12 ▸ fix1 F1 ◂
         r.businessDate ?? "",
         r.userName ?? "",
         r.refType,

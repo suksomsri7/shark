@@ -305,9 +305,11 @@ export async function updatePosGeneralSettings(ctx: Ctx, actor: PosSettingsWrite
       const before = posGeneralSettingsOf(sys.settings);
       const changed = Object.keys(keys).some((k) => canon(pos[k]) !== canon(keys[k]));
       if (!changed) return { ok: true as const, general: before, audit: null };
-      await mergePosKeys(tx, ctx, keys);
       const afterSettings = { ...(isRecord(sys.settings) ? sys.settings : {}), pos: { ...pos, ...keys } };
       const after = posGeneralSettingsOf(afterSettings);
+      // POS P2.12 ▸ fix1 F3: ค่าตามตัวอ่านก่อน = หลัง (เช่นเขียนค่าปริยาย · กฎว่าง {}) ⇒ ไม่เขียน ไม่ลง audit ◂
+      if (canon(generalAuditView(before, c)) === canon(generalAuditView(after, c))) return { ok: true as const, general: before, audit: null };
+      await mergePosKeys(tx, ctx, keys);
       return { ok: true as const, general: after, audit: { before: generalAuditView(before, c), after: generalAuditView(after, c) } };
     });
     if (!done.ok) return done;

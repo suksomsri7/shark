@@ -4,7 +4,7 @@
 //    ⇒ อินพุตเดียวกัน = HTML เดียวกันทุกไบต์ (ข้อสอบเทียบ sha256)
 // 🔴 ตัวเลข/ข้อความของตาราง = แถว CSV ของรายงาน (reportCsvRows) ช่องต่อช่อง · หัวตารางไทย = CSV_HEADERS (ค่าคงที่อยู่ใน reports.ts — CD-2 อนุญาต import ค่า)
 // 🔴 ทุกข้อความผ่าน esc() (& < > " ') · ไม่มี <script> (หน้า print เรียก window.print() เองฝั่ง client)
-import { CSV_HEADERS, reportCsvRows, type AnyReport, type ReportKind } from "./reports";
+import { CSV_HEADERS, REPORT_TOTAL_ROW_KINDS, reportCsvRows, type AnyReport, type ReportKind } from "./reports"; // POS P2.12 ▸ fix1 F2 + REPORT_TOTAL_ROW_KINDS ◂
 
 export type ReportPrintLocale = "th" | "en";
 export type ReportPrintOptions = {
@@ -28,6 +28,8 @@ export type ReportPrintModel = {
   headers: string[];
   /** แถวข้อมูล + แถวรวม (ถ้ารายงานชนิดนั้นมี) เป็นข้อความทีละช่อง — th = แถว CSV ตรงตัว */
   rows: string[][];
+  /** POS P2.12 ▸ fix1 F2: แถวสุดท้ายของ rows คือแถว "รวม" (ตัดสินจากชนิดรายงาน — ไม่เทียบข้อความในช่อง) ◂ */
+  totalRow: boolean;
 };
 
 const TITLE: Record<ReportPrintLocale, Record<ReportKind, string>> = {
@@ -70,14 +72,12 @@ const EN_HEADERS: Record<ReportKind, string[]> = {
   channels: ["Channel code", "Channel", "Bills", "Sales", "Refunds", "Commission", "Commission VAT", "Net after commission", "Share (%)"],
   branches: ["Branch", "Bills", "Net sales", "Average bill", "Refunds", "Refund total", "Voided bills", "Voided total", "Cash", "Platform", "Commission", "Commission VAT", "Over/short"],
   hourly: ["Hour", "Bills", "Net sales", "Forecast (4-week average)"],
-  anomalies: ["Rule", "Finding", "Branch ID", "Date", "Staff", "Ref type", "Ref ID", "Value", "Threshold", "Count"],
+  anomalies: ["Rule", "Finding", "Branch", "Date", "Staff", "Ref type", "Ref ID", "Value", "Threshold", "Count"], // POS P2.12 ▸ fix1 F1 ◂
 };
 const LABEL: Record<ReportPrintLocale, { range: string; unit: string; generatedAt: string; empty: string; total: string; rows: string }> = {
   th: { range: "ช่วงวันที่", unit: "สาขา", generatedAt: "พิมพ์เมื่อ", empty: "ไม่มีข้อมูลในช่วงนี้", total: "รวม", rows: "แถว" },
   en: { range: "Date range", unit: "Branch", generatedAt: "Generated", empty: "No data in this range", total: "Total", rows: "rows" },
 };
-const TOTAL_TH = "รวม";
-
 /** แบบพิมพ์ของรายงานที่สำเร็จ (บริสุทธิ์) */
 export function buildReportPrint(report: AnyReport, opts: ReportPrintOptions): ReportPrintModel {
   const locale: ReportPrintLocale = opts.locale === "en" ? "en" : "th";
@@ -85,6 +85,7 @@ export function buildReportPrint(report: AnyReport, opts: ReportPrintOptions): R
   const th = CSV_HEADERS[kind];
   const en = EN_HEADERS[kind];
   const rows = reportCsvRows(report);
+  const totalRow = REPORT_TOTAL_ROW_KINDS.has(kind) && rows.length > 0; // POS P2.12 ▸ fix1 F2 ◂
   return {
     kind,
     from: report.from,
@@ -95,8 +96,9 @@ export function buildReportPrint(report: AnyReport, opts: ReportPrintOptions): R
     unitLabel: opts.unitLabel,
     title: TITLE[locale][kind],
     headers: locale === "en" && en.length === th.length ? [...en] : [...th],
-    // en: แถวรวมขึ้น "Total" · ช่องอื่นคงเดิม (ชื่อสินค้า/สาขา/ป้ายกฎเป็นข้อมูลของร้าน)
-    rows: locale === "en" ? rows.map((r) => (r[0] === TOTAL_TH ? [LABEL.en.total, ...r.slice(1)] : r)) : rows,
+    // en: แถวรวมขึ้น "Total" · ช่องอื่นคงเดิม (ชื่อสินค้า/สาขา/ป้ายกฎเป็นข้อมูลของร้าน) — POS P2.12 ▸ fix1 F2: เฉพาะแถวสุดท้ายเมื่อ totalRow (สาขาชื่อ "รวม" ไม่ถูกเปลี่ยน) ◂
+    rows: locale === "en" && totalRow ? rows.map((r, i) => (i === rows.length - 1 ? [LABEL.en.total, ...r.slice(1)] : r)) : rows,
+    totalRow,
   };
 }
 
@@ -133,8 +135,8 @@ export function renderReportPrintHtml(model: ReportPrintModel): string {
   const head = model.headers.map((h) => `<th scope="col">${esc(h)}</th>`).join("");
   const body = model.rows.length
     ? model.rows
-        .map((r) => {
-          const total = r[0] === TOTAL_TH || r[0] === LABEL.en.total;
+        .map((r, i) => {
+          const total = model.totalRow && i === model.rows.length - 1; // POS P2.12 ▸ fix1 F2 ◂
           return `<tr${total ? ' class="total"' : ""}>${r.map((c) => `<td${NUMERIC.test(c) ? ' class="n"' : ""}>${esc(c)}</td>`).join("")}</tr>`;
         })
         .join("\n")
