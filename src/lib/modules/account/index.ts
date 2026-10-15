@@ -262,6 +262,9 @@ export async function applyExternalSale(input: {
         ...(tipCr ? { crExtra: tipCr } : {}), // POS P2.9 ◂
       });
   const posted = "entryId" in res;
+  // POS HF-FU ▸ z fix2 (hunter H2): JV ขายของบิลนี้อยู่ในสมุดอื่นของร้านแล้ว (POS ถูกย้ายไปผูกสมุดนี้ทีหลัง) — จบก่อนชั้นเอกสาร: ไม่มีเอกสารขาย/เลขใบกำกับซ้ำในสมุดใหม่
+  //   (เดิม P2002 โยนก่อนถึงชั้นเอกสาร ⇒ ผลที่เห็นเท่าเดิม ไม่มีข้อผิดพลาด) ◂
+  if ("reason" in res && res.reason === "other-book") return { posted: false, reason: "other-book" };
   // POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): zero entry = เครื่องหมายแถวเดียวต่อบิล (gl.recordExternalSaleZeroEntry · ล้ม = โยน ⇒ คิวลองใหม่) —
   //   ประตูค่าคอมฯ (applyExternalChannelCommission) นับเครื่องหมายนี้แทน JV PAID ⇒ ค่าคอมฯ ของบิลนี้ลงได้ ◂
   if (zeroEntry) await recordExternalSaleZeroEntry(ctx, input.refId, { zeroEntry: true, refId: input.refId, grossSatang: gross, depositVatSatang: depositVat, vatFullSatang: vatFull });
@@ -363,6 +366,8 @@ export async function applyExternalDepositReceipt(input: {
     drLines: input.payMethods.map((p) => ({ key: depositChannelKey(p.channel), amountSatang: p.amountSatang })),
   });
   const posted = "entryId" in res;
+  // POS HF-FU ▸ z fix2 (hunter H2): JV ของใบรับอยู่ในสมุดอื่นของร้านแล้ว (ย้ายสมุด) — จบก่อนชั้นเอกสาร (ไม่มีใบรับซ้ำในสมุดใหม่ · เดิม P2002 โยนก่อนถึงตรงนี้) ◂
+  if ("reason" in res && res.reason === "other-book") return { posted: false, reason: "other-book" };
   const title = vatRegistered && posAbbreviatedInvoice && vat > 0 ? "ใบรับเงินมัดจำ/ใบกำกับภาษีอย่างย่อ" : "ใบรับเงินมัดจำ";
   const contactId = await resolveExternalSaleContact(ctx, input.customer);
   const doc = await upsertExternalSaleDocument({
@@ -745,7 +750,7 @@ export async function applyExternalChannelCommission(input: {
     memo,
     reverse: !!input.reverse,
   });
-  return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "already" };
+  return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "reason" in res && res.reason ? res.reason : "already" }; // POS HF-FU ▸ z fix2 (H2): other-book = คีย์อยู่ในสมุดอื่น ◂
 }
 
 /**
