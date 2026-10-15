@@ -2167,7 +2167,7 @@ async function runDb() {
       if (qc?.err || qc?.intentId !== ctl?.id) p.push(`(ตัวควบคุม) ใบของ DEV1 ไม่โผล่บนจอ ${short(qc, 80)}`);
       const qo = await qrOf(x.intent.id, x.intent.amountSatang);
       if (qo?.err) p.push(String(qo.err));
-      else if (qo?.intentId === x.intent.id || (qo?.payload && qo.payload === x.intent.qrPayload)) p.push(`ใบของออเดอร์โผล่บนจอ DEV1 (${short(qo, 80)})`);
+      else if ((qo?.intentId ?? null) !== null) p.push(`ใบของออเดอร์โผล่บนจอ DEV1 (${short(qo, 80)})`); // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7 fix 1) CD-B1: จอไม่อ้างใบใด (intentId null) — QR นิ่งของร้านยอดเดียวกันเป็นไบต์เดียวกับ QR นิ่งของใบโดยธรรมชาติ ⇒ ไม่เทียบ payload
     }
     chk("PY11", !fx && !NQ() && p.length === 0, "ใบของออเดอร์ไม่อยู่บนจอ/กะของเครื่องใด", why(p, NQ()));
   });
