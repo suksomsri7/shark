@@ -39,7 +39,7 @@ const INFO_DESCRIPTION = [
   "7. Operations marked `x-shark-kind: danger` are hard to undo (void a bill, refund, archive a product, cancel an order). They additionally require `confirm: true` (a real boolean) and a `reason` of at least 5 characters in the body; the reason is stored in the audit log. An agent must ask a human before calling them. A void or refund that falls under the shop's approval rule is not done: it answers 409 `state_conflict` with the approval request id in `hint`, and the request waits for a manager in the app. Retrying with the same key replays that answer; do not retry with a new key.",
   "8. Success is `{ data, page?, requestId }`. For reads, `data` is the POS reader's answer itself (for example `GET /sales/{id}` answers the bill). Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }` - branch on `error.code`; `message_th` is already worded for a Thai shop owner. `requestId` is also returned in the `X-Request-Id` header; quote it when reporting a problem.",
   "9. Dates: report ranges are Thai business dates `YYYY-MM-DD` (`from`, `to`, inclusive, at most 92 days; the shop's day cut-off applies). Timestamps are ISO-8601 strings in UTC.",
-  "10. Paging: `GET /sales` pages with `page` and `pageSize` (10, 20 or 50) and answers `page` next to `data`; `GET /products` pages with `pageSize` and `cursor` (send `nextCursor` back). Other lists return the whole set.",
+  "10. Paging: `GET /sales` pages with `page` and `pageSize` (10, 20 or 50) and answers `page` next to `data`; `GET /products` pages with `pageSize` and `cursor` (send `nextCursor` back). `GET /shifts` is not paged: it answers the newest 50 shifts of the branch (`limit` up to 200) and has no status filter - keep the rows with `status: OPEN` to find the open shift, or ask `GET /shifts/current` with the register's `deviceId`. `GET /orders` answers the orders since the start of the Thai business day (`since` reaches back at most 7 days). Other lists return the whole set.",
   `11. Rate limits are per key and per class: ${API_RATE_LIMITS.read.limit} reads, ${API_RATE_LIMITS.write.limit} writes and ${API_RATE_LIMITS.report.limit} reports per minute (namespace pos, separate from other SHARK modules). A 429 response carries \`Retry-After\`; successful responses carry \`X-RateLimit-Limit\` and \`X-RateLimit-Remaining\`.`,
   "12. Reports render CSV with `Accept: text/csv`: `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment`, the same file as the export button of the reports screen.",
   `13. Outgoing webhooks. The shop can subscribe an endpoint to these POS events: ${posWebhookEvents().map((e) => `\`${e}\``).join(", ")}. Each delivery is \`POST\` with \`X-Shark-Event\`, a body of \`{ id, type, payload, sentAt }\` and header \`X-Shark-Signature\` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once, so handlers must be idempotent (\`id\` stays the same on every retry).`,
@@ -56,7 +56,26 @@ export const POS_DOC_INFO: ApiDocInfo = {
   securityDescription: "API key created in the POS settings (POS > Settings > SHARK connections > API keys). Send it as `Authorization: Bearer <key>`.",
 };
 
+// POS P2.13 ▸ skill fix ช่องโหว่ 10: แกนกลาง (`@/lib/api/openapi`) เขียนคำของ "สมุดบัญชี" ไว้ใน X-Shark-System / 403 / 404 (ใช้ร่วมกับบัญชี — ไม่แตะ) ⇒
+//   ของ POS แทนข้อความสามจุดนั้นด้วยคำของระบบขายหน้าร้าน (ข้อความเท่านั้น · โครง/สถานะ/รหัสเหมือนเดิมทุกตัว) ◂
+const POS_SYSTEM_HEADER_DESCRIPTION =
+  "Id of the POS system (AppSystem of type POS) to work in. Required only when the API key is not bound to a single POS system; if the key is bound, this must match it (403 `system_mismatch` otherwise).";
+const POS_RESPONSE_DESCRIPTIONS: Record<string, string> = {
+  "403": "The key may not do this: missing scope, the key is bound to another POS system, or a POS business rule refused it (`scope_missing`, `system_mismatch`, `forbidden`).",
+  "404": "No such operation, or the branch or record does not exist in this POS system - also for a branch or record of another POS system or shop (`not_found`).",
+};
+
 /** ทะเบียน op ของ POS → เอกสาร OpenAPI 3.1 (บริสุทธิ์ · เรียกซ้ำได้ผลเท่ากันทุกไบต์) */
 export function buildOpenApi(ops: readonly ApiOp[]): OpenApiDocument {
-  return coreBuildOpenApi(ops, POS_DOC_INFO);
+  const doc = coreBuildOpenApi(ops, POS_DOC_INFO);
+  for (const item of Object.values(doc.paths)) {
+    for (const operation of Object.values(item)) {
+      for (const param of operation.parameters) if (param.in === "header" && param.name === "X-Shark-System") param.description = POS_SYSTEM_HEADER_DESCRIPTION;
+      for (const [status, description] of Object.entries(POS_RESPONSE_DESCRIPTIONS)) {
+        const res = operation.responses[status];
+        if (res) res.description = description;
+      }
+    }
+  }
+  return doc;
 }

@@ -369,6 +369,9 @@ export function renderDocs(ops: ApiOp[] = POS_OPS): string {
     "- **`GET /products`** answers the products in `data`, `page` and `nextCursor` at the top level.",
     `- **CSV.** ${ops.filter((o) => o.csv).length} report operations render CSV when asked with \`Accept: text/csv\`.`,
     "- **Writes** answer the record they made or changed: `POST /sales` -> `{ saleId, receiptNo, grandTotalSatang, changeSatang, duplicated }`, `POST /sales/{id}/refund` -> `{ refund, sale }`, `POST /orders` -> `{ orderId, duplicated, saleId }`, `POST /orders/{id}/pay` -> `{ saleId, duplicated }`.",
+    // POS P2.13 ▸ skill fix ช่องโหว่ 8 + 4/6 (บันทึกไว้ · เปลี่ยนชื่อ/คอลัมน์ = P2.14): duplicated ≠ การเล่นซ้ำ · ชื่อเงินของบิลไม่มี Satang · CSV เป็นบาท ◂
+    "- **`duplicated` is not the replay flag.** A retry with the same `Idempotency-Key` inside the 24 hour window replays the stored first answer (so `duplicated` stays `false`) with the header `Idempotent-Replayed: true`. `duplicated: true` means the POS already held the record and returned it: the same `externalRef` on the same channel for `POST /orders`, or the same key after the replay window for `POST /sales` and `POST /orders/{id}/pay`.",
+    "- **Known naming gaps.** `GET /sales/{id}` answers its money under `totals` without the `Satang` suffix (`subtotal`, `grandTotal`, `refunded`, ...); the values are integer satang all the same. CSV reports show money in baht with two decimals, like the export button, and the daily CSV has no refund columns; the JSON report carries every `*Satang` field.",
     "",
   );
 
