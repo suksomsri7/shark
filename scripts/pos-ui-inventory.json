@@ -18136,6 +18136,25 @@
       "oracle": "",
       "system": "POS",
       "query": "kind=daily&from=[date]&to=[date]&noprint=1"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-table",
+        "note": "แท็บใหม่ต่อท้าย (P2.12U): hourly (24 ชั่วโมงของวันธุรกิจ + แถวรวม · ช่วง > 31 วัน = ปิด + \"เลือกช่วงไม่เกิน 31 วัน\") · branches (เห็น ≥ 2 สาขา · ตาราง + แถวรวมตัวหนาจาก totals) · anomalies (เฉพาะผู้มี pos.report.anomaly ที่สาขาใดสาขาหนึ่ง · กลุ่มกฎ A1–A10) → ?kind= (history.replaceState) + โหลดรายงาน"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

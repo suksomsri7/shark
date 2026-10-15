@@ -1061,7 +1061,7 @@
         "margin": "Gross margin",
         "voids": "Voided bills"
       },
-      "comingSoon": "Hourly · members are coming in a later release",
+      "comingSoon": "Members are coming in a later release",
       "chartTitle": "Daily sales",
       "chartRange": "Last {days} days to {date}",
       "legendActual": "Actual",
@@ -1168,7 +1168,17 @@
       "title": "Hourly sales",
       "forecast": "Forecast (4-week average)",
       "now": "This hour",
-      "tooLong": "The hourly report covers at most 31 days"
+      "tooLong": "The hourly report covers at most 31 days",
+      "peak": "Peak hours",
+      "inProgress": "hour not over yet",
+      "forecastNote": "Forecast = 4-week average (same hour, same weekday in earlier weeks) · new shops will see it lower than reality",
+      "foldNote": "The first hour also holds the leftover minutes of the last hour (the day cut-off is not on the hour)",
+      "cols": {
+        "hour": "Hour",
+        "bills": "Bills",
+        "net": "Net sales",
+        "forecast": "Forecast (4-week average)"
+      }
     },
     "branches": {
       "title": "Branch comparison",

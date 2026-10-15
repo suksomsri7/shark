@@ -7,7 +7,8 @@ import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
-import { isReportKind, REPORT_MAX_DAYS, REPORT_PERMISSION } from "@/lib/modules/pos/reports";
+import { HOURLY_MAX_DAYS, isReportKind, REPORT_MAX_DAYS, REPORT_PERMISSION } from "@/lib/modules/pos/reports"; // POS P2.12U ▸ + HOURLY_MAX_DAYS ◂
+import { posDayCutoffMinutes } from "@/lib/modules/pos/settings-shared"; // POS P2.12U ▸ มติ 2 ◂
 import { posBusinessToday } from "@/lib/modules/pos/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -71,6 +72,8 @@ export default async function PosReportsPage({
           initial={{ kind, from, to, unitId }}
           today={today}
           maxDays={REPORT_MAX_DAYS}
+          hourlyMaxDays={HOURLY_MAX_DAYS} // POS P2.12U ▸ มติ 2 ◂
+          cutoffMinutes={posDayCutoffMinutes(sys.settings)}
         />
       )}
     </div>
