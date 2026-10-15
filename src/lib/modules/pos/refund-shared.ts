@@ -8,6 +8,26 @@ export type RefundReasonCode = (typeof REFUND_REASON_CODES)[number];
 export const REFUND_PAY_TYPES = ["CASH", "TRANSFER", "PROMPTPAY", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT"] as const; // POS P2.9 ▸ R6 คืนเข้าบัตรเดิม · R7 เครดิตร้าน (บิลสมาชิก) ◂
 export type RefundPayType = (typeof REFUND_PAY_TYPES)[number];
 export const REFUND_REASON_MAX = 200;
+
+// POS P2.9b ▸ มติ 13 + มติ 8 (CD8): เพดานคืนเป็นเงินของบิลที่มีแถวบัตรของขวัญ/เครดิตร้าน — ตัวช่วยบริสุทธิ์ตัวเดียวของ refund.ts (server · planRefundTenders) ·
+//   refund-tenders.ts (ตัวเลขบนจอ 12) ⇒ จอ = server เสมอ · มัดจำ (DEPOSIT) นับเป็น "เงินของลูกค้า" ฝั่งที่จ่าย (รับรู้รายได้ตอนใช้แล้ว) แต่ไม่ใช่วิธีคืน ·
+//   บิลที่ไม่มีแถวบัตร/มัดจำ = ตัวเลขเดิมทุกสตางค์ (PAR) ◂
+/** แถวชำระที่ "คืนเป็นเงิน" ได้ (วิธีคืน) */
+export const REFUND_CASH_LIKE: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
+/**
+ * capped = บิลมีแถวบัตรของขวัญ/เครดิตร้าน (เพดานใช้เฉพาะบิลเหล่านี้ — กติกาเดิม P2.9 fix1 H1) ·
+ * cashLikeCapSatang = (Σ แถวเงิน + Σ แถวมัดจำ) − ทิป − Σ ที่คืนเป็นเงินไปแล้ว (ไม่ติดลบ)
+ */
+export function refundTenderCaps(input: {
+  salePays: readonly { type: string; amountSatang: number }[];
+  tipSatang: number;
+  priorPays: readonly { type: string; amountSatang: number }[];
+}): { capped: boolean; cashLikeCapSatang: number } {
+  const capped = input.salePays.some((p) => p.type === "GIFT_CARD" || p.type === "STORE_CREDIT");
+  const paid = input.salePays.filter((p) => REFUND_CASH_LIKE.has(p.type) || p.type === "DEPOSIT").reduce((t, p) => t + p.amountSatang, 0) - Math.max(0, input.tipSatang);
+  const back = input.priorPays.filter((p) => REFUND_CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
+  return { capped, cashLikeCapSatang: Math.max(0, paid - back) };
+}
 /** คำนำหน้าเลขใบคืนปริยาย (O2 · settings.pos.receipt.refundPrefix) */
 export const REFUND_PREFIX_DEFAULT = "CN";
 

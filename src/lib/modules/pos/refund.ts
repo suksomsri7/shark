@@ -31,6 +31,7 @@ import {
   REFUND_PREFIX_DEFAULT,
   REFUND_REASON_CODES,
   REFUND_REASON_MAX,
+  refundTenderCaps, // POS P2.9b ▸ มติ 13 ◂
   type RefundDoc,
   type RefundPayType,
   type RefundReasonCode,
@@ -378,10 +379,10 @@ async function planRefundTenders(tx: Tx, s: Scope, sale: { id: string; memberId:
   // POS P2.9 ▸ fix1 H1 (มติ 2): เพดานคืนเป็นเงิน = ส่วนที่ลูกค้าจ่ายเป็นเงิน − ทิป − ที่คืนเป็นเงินไปแล้ว · บิลที่ไม่มีแถวบัตร/เครดิต = ไม่มี query เพิ่ม ◂
   const askCash = x.payMethods.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
   const salePays = askCash > 0 ? await tx.posPayment.findMany({ where: { saleId: sale.id, tenantId: s.tenantId }, select: { type: true, amountSatang: true, giftCardId: true } }) : [];
-  if (salePays.some((p) => p.type === "GIFT_CARD" || p.type === "STORE_CREDIT")) {
-    const cashPaid = salePays.filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0) - Math.max(0, sale.tipSatang);
-    const cashBack = priorDocs.flatMap((d) => d.payments).filter((p) => CASH_LIKE.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
-    const excess = askCash - Math.max(0, cashPaid - cashBack);
+  // POS P2.9b ▸ มติ 13 + มติ 8: เพดานจากตัวช่วยเดียวกับจอ (refund-shared.refundTenderCaps · มัดจำนับฝั่งที่จ่าย) — บิลไม่มีมัดจำ = ตัวเลขเดิม ◂
+  const caps = refundTenderCaps({ salePays, tipSatang: sale.tipSatang, priorPays: priorDocs.flatMap((d) => d.payments) });
+  if (caps.capped) {
+    const excess = askCash - caps.cashLikeCapSatang;
     if (excess > 0) {
       // ส่วนของบัตรของขวัญที่ "คืนเข้าบัตรไม่ได้" (ระงับ/หมดอายุ) ที่ยังไม่ถูกคืน — เท่านั้นที่ไปเป็นเงินได้ และเฉพาะบิล walk-in (สมาชิก ⇒ เครดิตร้าน)
       const member = await import("@/lib/modules/member");

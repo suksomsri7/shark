@@ -16,6 +16,7 @@ import { prisma } from "./db";
 import { applyExternalChannelCommission, posSalePosted } from "@/lib/modules/account";
 import { saleChannelName } from "./channel"; // POS P2.1 ◂
 import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
+import { bridgePosDepositRefunded } from "./account-bridge"; // POS P2.9b ▸ R8 คืนเงินมัดจำ → applyExternalDepositRefund ◂
 import { restockRefundDoc } from "./service";
 
 type Evt = Parameters<OutboxHandler>[0];
@@ -52,6 +53,19 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
     select: { status: true },
   });
   if (paidEvt?.status === "PENDING") throw new Error("รอคิวปิดบิลของบิลเดิม (pos.sale.paid) ก่อนบันทึกการคืนเงิน — ลองใหม่อัตโนมัติ");
+
+  // POS P2.9b ▸ R8 มติ 5: ใบคืนของใบรับมัดจำ (ต้นทาง POS_DEPOSIT) = คืนเงินมัดจำคงเหลือ — ใบลดหนี้ + JV Dr 2110 + Dr 2200 / Cr เงิน
+  //   (applyExternalDepositRefund ผ่าน account-bridge · idempotent ต่อใบคืน) · ไม่มีรายได้/สต็อก/แต้มให้กลับ · ใบรับยังไม่มี JV = ลงแทนก่อน (F8) ◂
+  if (sale.sourceModule === "POS_DEPOSIT") {
+    if (sale.docType === "SALE" && (await posSalePosted({ tenantId: evt.tenantId, sourceSystemId: sale.systemId, refId: sale.id })) === false) {
+      await bridgePosSalePaid(sale, sale.payments, 0, { lines: sale.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })), customer: null });
+    }
+    if (refund.grandTotalSatang > 0) {
+      const res = await bridgePosDepositRefunded(refund, sale.id, refund.payments);
+      if (res.reason && res.reason !== "unlinked" && !res.docId) throw new Error(`[บัญชี] คืนเงินมัดจำ POS ${refund.id}: ไม่บันทึกใบลดหนี้ — ${res.reason}`);
+    }
+    return;
+  }
 
   const errors: unknown[] = [];
   const origById = new Map(sale.lines.map((l) => [l.id, l]));
