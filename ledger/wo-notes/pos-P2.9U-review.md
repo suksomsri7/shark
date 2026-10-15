@@ -24,3 +24,4 @@ Info only: (1) `BillsClient.tsx:830-831` the "OTHER" reason check now shows the 
 
 ## Controller visual check 2 (account B, 15 Oct 00:2xZ · vis73 @f8274ab4)
 V1 ✓ (changed state: gift panel open on the row, PIN focused) · V2 ✓ (`paydlg-storecredit`/`paydlg-tip` at 1440: amount header, points card, coupon, split rows, all 7 tiles and the footer visible without scrolling) · V4 ✓ (390: "คงเหลือ ฿175" on its own line) · V3: `refund-to-card` step failed "ไม่มีบิลจ่ายด้วยบัตรของวันนี้" because the re-shoot skipped `sale-done-giftcard` (yesterday's bills have suspended cards) — not a defect; vis74 re-runs `sale-done-giftcard` → `refund-to-card` on the same build.
+vis74 (00:24Z): V3 ✓ — `refund-to-card` shows "คืนเข้าบัตร GC-••••2029 (สูงสุด ฿325)" enabled (selected) + cash "สูงสุด ฿300" (12 parity). **All V findings closed; P2.9U visual complete at f8274ab4.** Remaining = builder's upstream merge of 363bff1e → gates82 on tree b → merge → 31/55.
