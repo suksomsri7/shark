@@ -309,6 +309,9 @@ export async function applyExternalSale(input: {
     // POS P2.9b ▸ มติ 15: หักมัดจำ (gross) + VAT สุทธิ ◂
     ...(input.depositGrossSatang && input.depositGrossSatang > 0 ? { depositDeductedSatang: input.depositGrossSatang, depositVatSatang: depositVat } : {}),
   });
+  // POS P2.9b ▸ fix4 มติ 3 (R4 F1 / hunter N4): บิล zero entry ไม่มี JV — เอกสารคือร่องรอยเดียวของบิลในบัญชี ⇒ สร้างเอกสารไม่สำเร็จ = โยน (คิวลองใหม่ · upsert idempotent ต่อ refId ·
+  //   เครื่องหมาย zero entry มีแล้วไม่เขียนซ้ำ) แทนการจบ DONE โดยไม่มีเอกสาร · "ไม่โยน" ของ fix3 มติ 1 ใช้กับ JV ว่างเท่านั้น · บิลอื่น = ทางเดิม ◂
+  if (!doc.ok && zeroEntry) throw new Error(`บิล POS ${input.refId} (ไม่มีบรรทัดบัญชี): สร้างเอกสารขายไม่สำเร็จ — ${doc.reason} · ลองใหม่อัตโนมัติ`);
   if (!doc.ok) return { posted, reason: doc.reason, ...zeroMark };
   // WO 4.3 (§8.2): บิล POS ที่ขาย "รายการจัดชุด" → ตัดสต็อกส่วนประกอบ
   //   ตัดเฉพาะตอนเอกสารถูก "สร้างใหม่" (created) — ยิงซ้ำด้วย refId เดิม upsert คืนใบเดิม ⇒ ไม่ตัดซ้ำ
