@@ -73,3 +73,62 @@ R1 = MERGEABLE, but F1–F3 are real race/robustness holes in money-adjacent cod
 - Process note: one `cd` into its scratch dir to diff temp files; repo/git/DB untouched.
 
 **Controller ruling (15 Oct 13:3xZ):** R2 MERGEABLE accepted. G1 + G2 = follow-up lines for P2.14 (append to `pos-HF-FU.md` Follow-ups at merge, not owner lines). Waiting on the money hunter before merge.
+
+## Money hunter (Opus read-only · tree c @aff51c68 · 15 Oct ~13:3xZ) — verbatim
+# HF-FU money hunt (read-only) · head aff51c68 · tree shark-pos-c
+
+**Verdict: FINDINGS.** 2 Low, 0 High/Med. No path found that produces a double sale, a double stock cut or a lost tender. Both findings already existed before HF-FU. HF-FU makes H1 more likely and does not close H2.
+
+**H1 · Low · `pos/order.ts:981,993` → `:513`.** The swept accept decides money from a channel row it read before the tx.
+- `ch` comes from the outer `findMany`. Inside the locked tx it is never re-read. `acceptInTx` makes a sale only when `ch.payout === "PLATFORM"`, not from `o.paymentState`.
+- Input: an order is held (PLATFORM_PAID), then the owner edits the custom channel's payout to DIRECT. That edit is allowed for non-builtin channels (`channel.ts:231`). On unpause, the sweep accepts the order with **no sale**, and `payOrder` refuses PLATFORM_PAID. The platform revenue is never booked.
+- The reverse flip (DIRECT→PLATFORM) creates a PLATFORM bill for an UNPAID order. `payOrder` then hits IDEMPOTENCY_CONFLICT on `posorder-<id>`.
+- Separately, autoAccept-off, a channel pause or an archived channel is not re-checked in the tx either (HN4's S1 accepts o1 after its autoAccept went off). Manual `acceptOrder` has the same flaw; the held window (minutes to hours) is what makes it reachable.
+- Smallest fix: inside the sweep tx, re-read the channel after the advisory lock and re-apply the `live` predicate. In `acceptInTx`, refuse with OrderAbort when `(ch.payout === "PLATFORM") !== (o.paymentState === "PLATFORM_PAID")`. That marks the order `sale_refused` and leaves it NEW for staff.
+- Missing check: HN5 — hold a PLATFORM order, flip payout (or autoAccept off) in the tx, sweep ⇒ order still NEW + `sale_refused`, 0 sales.
+
+**H2 · Low · `account/index.ts:723` + `gl.ts:1927` + `refund-consumer.ts:77,91`.** z3 does not cover the refund flow after a relink (drift 8).
+- Input: a zero-entry PLATFORM bill with commission (marker + COMMISSION in book A), then POS is relinked to book B, then the bill is refunded.
+- Step 1a: `posSalePosted(B)` = false (JV and marker are both book-scoped), so `bridgePosSalePaid` runs in B. It writes **marker B** (now book-scoped, so it is written) and a second sale document in B.
+- That marker opens the commission gate in B. `postExternalChannelCommission` checks `alreadyPosted` only for book B, so the insert of `PosSale#X#COMMISSION` hits the tenant-wide `@@unique([tenantId,idempotencyKey])` ⇒ P2002 on every retry. The refund event ends FAILED.
+- COMMISSION_REFUNDED is never posted, because the reverse gate looks for COMMISSION in B. The commission stays overstated.
+- Before HF-FU the result was the same (the tenant-wide marker opened the gate). Not verified: `doc.created` in B may run `consumeBundleComponentsForDoc` a second time.
+- Smallest fix: in `postExternalChannelCommission` (and `postExternalSale`), treat a key that exists anywhere in the tenant as `{skipped:true}`.
+- Missing check: ZE3 — relink after a real commission, then refund ⇒ event DONE, 0 P2002, 0 COMMISSION rows in B.
+
+**Probed OK**
+1. **Sweeper and ceiling.**
+   - The advisory lock is the first statement of the same tx as the CAS, the round and the sale (READ COMMITTED, so each later statement sees the earlier holder's round). Manual `acceptOrder` does not take the lock, but the version CAS gives one winner and `posorder-<id>` makes the sale idempotent: 1 sale, 1 round, 1 stock key per line.
+   - With ceiling 2, 3 candidates and 6 sweepers: serialised, each re-checks `autoAcceptBlockedInTx`, so at most 2 accepts. The ceiling is per station.
+   - Lock key and backlog are per unit, so no cross-unit leak.
+   - Ingest does not take `posorder-release`, so ingest ‖ sweep can overshoot the ceiling by one. Kitchen only, no money (builder follow-up, P2.14).
+   - Lock order cannot deadlock: the release lock comes first and ingest never waits on it while holding a row the sweeper needs.
+2. **After commit (F3).**
+   - Stock cuts use the idempotent key `pos-consume-<sale>-<line>`, healed by `retryPendingStockCuts`. A throwing `afterSaleCommit` leaves the order ACCEPTED, so it is never swept again. The receipt counter is consumed in the rolled-back or committed tx only. The swept audit is still attempted.
+   - A voided bill's order is ACCEPTED or later, never NEW. `onSaleVoided` only moves it to CANCELLED/REFUNDED, never re-opens it. `transition` emits the close event, so kitchen tickets fall and the ceiling clears. j now retries with the main chain; all main steps are idempotent and the extras still run.
+3. **Orphan drafts.**
+   - `PosHeldCart` holds only cart JSON (no tenders, no deposit rows, no sale link). Deposits and interim payments live only in the pay-dialog state and on sales.
+   - The sweep touches only HELD drafts with `tableSessionId` on a non-OPEN session. A stale `openSessionIds` hint can only skip a draft, never discard one. F1 residual (unsent items lost, no money) is documented.
+4. **Allocator.**
+   - Fuzz of 192k EQUAL/SEAT plans (2–7 parts, ฿33.33 prices, service 0–10 %, % and fixed discounts, VAT 7 %): Σt = total, Σlines = base and `tableSplitSaleAmounts` reproduces t in every plan. EQUAL sᵢ stays within ±1 of S/N, a negative s moves into the discount (never above base), and VAT is computed on tᵢ.
+   - Preview and server use the same item order: both come from `tableUnpaidItemsForPos` (`createdAt, id`). The replace path refuses a missing item, so the client's appended "rest" is always empty when accepted.
+   - `legacyMergeSplitGuard` has one entry point (`mergeSessionAction`).
+5. **h1/h2.**
+   - The CAS and the sentinel throw are in one `runTx`. The refusal is built only after rollback; no path commits HANDED with a VOIDED sale.
+   - Every `webOrderForUpdate` caller passes the tenant (`shop/service.ts:262,288,321`). The NULL branch keeps the old behaviour for callers that pass no tenant.
+   - Info: a fully REFUNDED (not voided) bill can still be handed over. This predates HF-FU and was never in h1's scope.
+6. **z1/z3.**
+   - JV and marker are both book-scoped, so `posSalePosted` is never true from an old book.
+   - Docs-off zero-entry refund: `posSalePosted` = false ⇒ re-bridge ⇒ 0 JV, marker exists (no write), no document. COMMISSION shows "already"; then the refund's own entries run as before. HF-FU adds 0 rows.
+   - Old markers without `bookSystemId` count as unposted. That is the safe side: an idempotent re-bridge writes a scoped marker.
+7. **P2.9bU merge.**
+   - HF-FU touches neither `register-shared.ts` nor deposit code (`git diff 9e2b1d27 0e870195`). `expectedRowsHash` covers channel-price rows only. j runs after `depositSaleVoided`, and the two are independent. `paidMethods` may list DEPOSIT, which is display only.
+
+## Controller rulings — fix round 2 (15 Oct 13:4xZ · binding)
+Hunter = FINDINGS (2 Low). Quality over speed: both are in money-adjacent code this card owns (sweeper = item a; z1/z3 = account markers), both have small fixes ⇒ one more fix round before merge.
+1. **H1 (sweep decides money from a stale channel row) = fix.** Inside the sweep tx, after the advisory lock, re-read the order's channel row with the tx client and re-apply the `live` predicate (autoAccept on · not paused · not archived · payout); a candidate whose channel is no longer live ⇒ skip (leave NEW, no marker — staff decide). In `acceptInTx` (shared by sweep and manual `acceptOrder`): refuse with `OrderAbort` when `(ch.payout === "PLATFORM") !== (o.paymentState === "PLATFORM_PAID")` ⇒ sweep path marks `held {reason:"sale_refused"}`, manual path surfaces the existing refusal shape (reuse an existing reason code if one fits; else one new reason + th/en key, named in the notes). No sale is ever created from a mismatched pair.
+2. **H2 (refund after book relink ⇒ P2002 loop, event FAILED) = fix, time-boxed.** In `postExternalChannelCommission` and `postExternalSale`, before inserting, check the idempotency key **tenant-wide** (`tenantId` + key, any system) ⇒ `{skipped:true}` (reason text names "other book"). The reverse (COMMISSION_REFUNDED) gate stays book-scoped — the reversal is **not** posted into book B when COMMISSION lives in book A; this is an owner matter, not a code guess: append one line to `ledger/POS-OWNER-PENDING.md` (append-only): "refund of a PLATFORM bill after the POS was relinked to another book: the commission reversal is not posted automatically (original COMMISSION lives in the old book) — staff adjust in the old book / HF-FU2 decides cross-book reversal". Verify the hunter's open point: does `doc.created` in book B re-run `consumeBundleComponentsForDoc` (double stock consume)? Assert stock-movement count in ZE3; if it double-consumes, STOP that part and report CONTROLLER-DECISION (do not patch stock code).
+3. **ORACLE-ADD (test-first, own `test(...)` commit, marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2)`)**: `qc-hf-fu` **HN5** = hold a PLATFORM order (PLATFORM_PAID) at the ceiling, flip the custom channel's payout to DIRECT (and, as a second sub-case, autoAccept off) *before* the sweep ⇒ order still NEW, `sale_refused` marker (payout case) / no marker (autoAccept case), 0 sales, 0 rounds; red-before at aff51c68 = sale missing or wrong (record in `HF-FU-red.txt` §fix2). **ZE3** = reuse the ZE1 relink fixture: zero-entry PLATFORM bill with a real COMMISSION in book A → relink to B → refund ⇒ refund outbox event DONE, 0 P2002 in the log, 0 COMMISSION rows in B, COMMISSION_REFUNDED count in B = 0 (pinned, see ruling 2), stock movements unchanged by the B-side bridge; red-before = event FAILED / P2002. Suite = 27 + 2 = 29. HN1–HN4, OD1–OD3, ZE1–ZE2 stay green.
+4. **Follow-up lines** (append to `pos-HF-FU.md` Follow-ups, not owner lines): R2 G1 (blocking advisory lock ⇒ `pg_try_advisory_xact_lock` + "blocked" in P2.14) · R2 G2 (F1 residual, session-first lock order) · hunter info: a fully REFUNDED (not voided) bill can still be handed over (predates HF-FU; P2.14 h1 scope) · hunter: ingest ‖ sweep overshoot by one (already listed).
+5. **Gates after fix 2**: `qc-hf-fu` 29/29 ×2 unforced · `qc-pos-p2.6` 67 · `qc-pos-p2.8` 61 · `qc-pos-p2.9b` 53 · `qc-pos-p1.8` 49 · `qc-pos-account` 16 · `qc-account-cpa` 107 · `qc-hf-tx` 22 · `qc-pos-p1.1` 180 · `qc-pos-p1.3` 128 · typecheck 0 · fitness ±env. `origin/session/pos` is still 57a8b19a (already merged) — fetch and confirm; if it moved, merge before the final `qc-hf-fu`.
+→ then controller: merge into session/pos → gates93 (§8 full) ‖ chain79 images → push → 37/55. No further hunter unless fix 2 touches code outside rulings 1–2.
