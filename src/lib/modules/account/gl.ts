@@ -1792,8 +1792,10 @@ export async function externalSalePosted(ctx: GlCtx, refId: string): Promise<boo
 //   เขียนไม่สำเร็จ = โยน (ไม่กลืนแบบ writeAudit) ⇒ คิว pos.sale.paid ลองใหม่ — ประตูค่าคอมฯ ใช้แถวนี้แทน JV PAID ได้ จึงต้องมีจริงเสมอเมื่อคิวจบ
 const ZERO_ENTRY_ACTION = "account.external.zeroEntry";
 /** บิล POS นี้ถูกบันทึกเป็น zero entry แล้วหรือยัง (อ่านอย่างเดียว) */
+// POS HF-FU ▸ z3 (มติ 9 strict): เครื่องหมายผูกสมุด (after.bookSystemId = สมุดที่เขียน) · อ่านเฉพาะของสมุดนี้ — ย้าย POS ไปผูกสมุดอื่นแล้วประตูค่าคอมฯ ของสมุดใหม่ไม่เปิดจาก
+//   เครื่องหมายของสมุดเดิม · เครื่องหมายเก่าที่ไม่มีช่องนี้ (QC ก่อน HF-FU เท่านั้น) ไม่นับ ◂
 export async function externalSaleZeroEntryRecorded(ctx: GlCtx, refId: string, db: Db = prisma): Promise<boolean> {
-  const row = await db.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId }, select: { id: true } });
+  const row = await db.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: { path: ["bookSystemId"], equals: ctx.systemId } }, select: { id: true } });
   return !!row;
 }
 /** บันทึก zero entry ของบิล POS ครั้งเดียวต่อบิล — มีแล้ว = ไม่เขียนซ้ำ (คิวลองใหม่/ตัวรับคืนเงินเรียกซ้ำได้) · ล้ม = โยน */
@@ -1801,7 +1803,7 @@ export async function recordExternalSaleZeroEntry(ctx: GlCtx, refId: string, aft
   await prisma.$transaction(async (db) => {
     await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`acc-zero-entry:${ctx.tenantId}:${refId}`}))`;
     if (await externalSaleZeroEntryRecorded(ctx, refId, db)) return;
-    await db.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "SYSTEM", action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: after as Prisma.InputJsonValue } });
+    await db.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "SYSTEM", action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: { ...after, bookSystemId: ctx.systemId } as Prisma.InputJsonValue } }); // POS HF-FU ▸ z3 ◂
   });
 }
 // ◂ POS P2.9b fix4

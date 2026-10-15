@@ -755,7 +755,11 @@ export async function applyExternalChannelCommission(input: {
 export async function posSalePosted(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<boolean | null> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return null;
-  return externalSalePosted({ tenantId: input.tenantId, systemId: link.systemId }, input.refId);
+  const ctx = { tenantId: input.tenantId, systemId: link.systemId };
+  if (await externalSalePosted(ctx, input.refId)) return true;
+  // POS HF-FU ▸ z1 (มติ 8): บิล zero entry (ไม่มี JV PAID ตลอดไป) = ลงแล้ว เมื่อมีเครื่องหมายของสมุดนี้ **และ** เอกสารขายของบิล —
+  //   เครื่องหมายที่ไม่มีเอกสาร (เอกสารหายหลังลองซ้ำล้ม · R5 F1) = false ⇒ ตัวรับคืนเงินยังลงบิลเดิมซ่อมเอกสารได้ ◂
+  return (await externalSaleZeroEntryRecorded(ctx, input.refId)) && !!(await findExternalSaleDoc(link.systemId, input.refId));
 }
 
 /** POS P1.8 R9 — เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล POS — null = ไม่ผูกบัญชี/ยังไม่มีเอกสาร (อ่านอย่างเดียว · ไม่ throw) */
