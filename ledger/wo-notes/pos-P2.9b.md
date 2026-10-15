@@ -13,9 +13,17 @@ Oracle `scripts/qc-pos-p2.9b.mts` (41 checks, oracle writer) · oracle notes `le
 - [x] 9 ORACLE-EDIT `qc-pos-p2.9` ST1 `:275` (50d523c7) — R2 `:1786` not edited (stays green)
 - [x] 10 owner lines `POS-OWNER-PENDING.md` (P2.9b section + CD7 extension of the "P2.9 (มติ 6)" line) + these notes
 - [x] 11 merge `origin/session/pos` → final gates (table below)
-- 🟨 **CONTROLLER-DECISION CD-P29b-1** (oracle defect in P1) — see below; 41/41 with the proposed patch, **40/41 on the committed oracle**.
+- [x] **CD-P29b-1 APPROVED** by the controller (15 Oct) → applied as ORACLE-EDIT 180bd51a · re-run below.
 
-## CONTROLLER-DECISION CD-P29b-1 — oracle `qc-pos-p2.9b` P1 fixture sends a CASH row without `cashReceivedSatang`
+## ORACLE-EDITs (own `test(...)` commits, dated marker `// ORACLE-EDIT ผู้คุม 15 ต.ค. …`)
+1. `qc-pos-p2.9` ST1 `:275` — PosDeposit now exists (P2.9b migration); PosPayment.depositId still forbidden (50d523c7 · ruling 10).
+2. `qc-pos-p2.9b` `regSubmit` (`:801`, used by P1) — CASH row carries `cashReceivedSatang` (180bd51a · CD-P29b-1 approved).
+
+## Follow-ups
+- **Oracle maintenance**: oracle ST2 comment-stripping swallows the middle of `scope.ts` (`stripComments` treats the `` `/m/*` `` inside an M2.9 line comment as a block-comment start, so the whole middle of MODULE_SCOPES is invisible) — P2.9b entries sit at the head of MODULE_SCOPES; fix the stripper (strip line comments first) in a later oracle pass.
+- Refund-deposit approval queue (POS_REFUND) not wired — owner line in `POS-OWNER-PENDING.md` (P2.9b section).
+
+## CONTROLLER-DECISION CD-P29b-1 (✅ APPROVED 15 Oct · applied 180bd51a) — oracle `qc-pos-p2.9b` P1 fixture sends a CASH row without `cashReceivedSatang`
 **What**: P1 submits `submitRegisterSale` with `[{DEPOSIT, 107000, depositId}, {CASH, 43000}]` and no `cashReceivedSatang`. The register refuses every CASH row without the cash received **before** looking at anything else (`register.ts` submit ⑤ "R4 K4 · มติ R4.1 ข้อ 3" — `PAYMENT_MISMATCH "เงินที่รับน้อยกว่าส่วนที่จ่ายเงินสด"`, pinned by `qc-pos-p1.6`). So P1 can never pass whatever P2.9b does. The run shows `หน้าขาย → PAYMENT_MISMATCH เงินที่รับน้อยกว่าส่วนที่จ่ายเงินสด`.
 **Not done**: the prompt allows ORACLE-EDITs only for `qc-pos-p2.9` ST1/R2 ("any other red pin = CONTROLLER-DECISION, do not edit"), so the oracle file is unchanged.
 **Proposed ORACLE-EDIT** (`ledger/wo-notes/P2.9b-CD-oracle-P1-cash.patch`, `git apply --check` OK on this head): the oracle's `regSubmit` helper sends `cashReceivedSatang` = Σ of its CASH rows when there is one (only P1 has a CASH row; P4/P5/C3 register calls are deposit-only, unchanged).
