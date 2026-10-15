@@ -1574,3 +1574,9 @@
 - fix 1 = **36e0be7c** (มติ 1–10 ครบ · ด่านเขียว @0aa39bef) · owner lines 2 ข้อ (depositId ใน refusal · PAID intent ไม่มี deposit) จดไว้ใน review file → ใส่ POS-OWNER-PENDING ตอน merge
 - spawn **R2** (Opus read-only) prompt `pos-prompt-accountB-P2.9bU-R2.md` (98b57f7e) · **chain78** ทรี d build78 @36e0be7c → vis80 (pick/notowner/receive/refund th+en)
 - ถัดไป: R2 MERGEABLE + vis80 ดีแล้ว → merge P2.9bU เข้า session/pos (ทรี b) → gates91 (merge set เต็ม + p1.1 + p1.3 + fitness ±env + typecheck) → push → 36/55 + TG · HF-FU builder ทรี c ยังทำอยู่
+
+### 15 ต.ค. ~12:25Z — HF-FU built → R1
+- builder HF-FU: `wip/pos-hf-fu` **f5e1c8a4** (code f0387417 = afef29e7 + merge ledger-only origin) push แล้ว · 21 รายการครบ (รวม f3) · `qc-hf-fu` 25/25 ×2 unforced · merge set เขียว (p2.5 49 · p2.6 67 · p2.9b 53 · p2.4 50 · p2.8 61 ST6 เขียว · p2.9 62 · hf-tx 22 · p1.1 180 · p1.3 128 · p1.8 49 · p2.3 46 · p2.11 33/34 ST4 lane pin · p2.2 42 · p1.18 81 · authz 81 · account 16 · cpa 107 · restaurant ×4 · typecheck 0 · fitness ±env) · CONTROLLER-DECISION ไม่มี · extras 3 (purge ส่ง hash · b sweep ใช้ floor OPEN เป็น hint · setRecipeChoiceLines reasons)
+- spawn **R1 HF-FU** (Opus read-only ทรี c) prompt `pos-prompt-accountB-HF-FU-R.md` (d962f9ea) → แล้ว hunter เงิน (sweeper double-accept/lock · rotation Σ/VAT · j retry · z1/z3 gate) → merge
+- P2.9bU: R2 MERGEABLE → fix 2 เล็ก (G1+G3) กำลังทำ · chain78 vis80 กำลังถ่าย
+- เลน: 1 = P2.9bU fix 2 ทรี b · 2 = HF-FU R1 ทรี c (read-only)
