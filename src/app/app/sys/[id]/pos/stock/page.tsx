@@ -13,6 +13,7 @@ import { weighedBarcodeSettings } from "@/lib/modules/pos/scan-shared";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { StockClient, type StockTab } from "./StockClient";
+import { posUnitInventoryMap } from "@/lib/modules/pos/catalog"; // POS P2.11U ▸ มติ 9 ◂
 
 // POS P1.14 U — หน้าสต็อกของจุดขาย: ตรวจนับ (ภาพ 05ค · มือถือก่อน) + ทางลัดรับของ/โอน/ปรับ + ประวัติ (ภาพ 16 เฉพาะส่วนของ P1.14)
 // 🔴 ข้อมูลตั้งต้นอ่านฝั่งเซิร์ฟเวอร์ครั้งเดียว (stockCountMeta — ไม่ใช้ action ตอนโหลดหน้า) · การกระทำทั้งหมดผ่าน stock-count-actions (คำปฏิเสธเป็นข้อมูล)
@@ -35,7 +36,8 @@ export default async function PosStockPage({
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   const m = posMembership(auth.active);
-  const units = (await posUnits(tenantId, id)).filter((u) => canAccessUnit(m, u.id)).map((u) => ({ id: u.id, name: u.name }));
+  const liveUnits = await posUnits(tenantId, id); // POS P2.11U ▸ ชื่อสาขาทั้งหมดของ POS (หมายเหตุคลังร่วม) ◂
+  const units = liveUnits.filter((u) => canAccessUnit(m, u.id)).map((u) => ({ id: u.id, name: u.name }));
   if (units.length === 0) notFound();
   const unitRaw = one(sp.unit);
   const unitId = units.some((u) => u.id === unitRaw) ? unitRaw! : units[0]!.id;
@@ -46,6 +48,11 @@ export default async function PosStockPage({
     { tenantId, systemId: id, unitId },
     { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
   );
+  // POS P2.11U ▸ มติ 9: แผนที่สาขา → คลัง อ่านครั้งเดียว (posUnitInventoryMap) — จอแสดงหมายเหตุ "คลังร่วมกับสาขา …" เมื่อสาขาที่เลือกอยู่ในกลุ่ม shared ◂
+  const invMap = meta.ok ? await posUnitInventoryMap(tenantId, id) : null;
+  const inventoryShare = invMap
+    ? { groups: invMap.groups.map((g) => ({ unitIds: g.unitIds, shared: g.shared })), names: Object.fromEntries(liveUnits.map((u) => [u.id, u.name])) }
+    : null;
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.stock");
   const locale = await getLocale();
@@ -68,6 +75,7 @@ export default async function PosStockPage({
           initialTab={tab}
           me={{ id: auth.user.id, name: auth.user.name ?? null }}
           weighed={weighedBarcodeSettings(sys.settings)}
+          inventoryShare={inventoryShare} // POS P2.11U ▸ มติ 9 ◂
         />
       )}
     </div>

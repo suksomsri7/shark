@@ -46,6 +46,12 @@ export default async function PosProductsPage({
   const m = posMembership(auth.active);
   if (!(await posUnits(tenantId, id)).some((u) => canAccessUnit(m, u.id))) notFound();
   const canPrice = posCanSetTenantPrice(m, await posPriceUnitIds(tenantId, id));
+  // POS P2.11U ▸ มติ 6 (โหมดผู้จัดการสาขา): ตั้งราคาทั้งร้านไม่ได้ แต่ตั้งราคาได้ที่สาขาของตัวเอง (pos.product.setPrice ที่สาขานั้น — กติกาเดียวกับ
+  //   setChannelPrices ที่ตรวจขอบเขตต่อแถว) ⇒ หน้า 06 แบบสาขา: ตัวกรองล็อกที่สาขาของตัวเอง · กลุ่ม "ทุกสาขา" อ่านอย่างเดียว · ไม่มีราคาขายในคลัง/ล้างแถว
+  //   ไม่มีสาขาที่ตั้งราคาได้เลย = การ์ดปฏิเสธเดิม (คืนก่อนอ่านข้อมูลสินค้า/บริการใด ๆ) ◂
+  const liveUnits = await posUnits(tenantId, id);
+  const branchUnits = canPrice ? [] : liveUnits.filter((u) => evaluate(m, { module: "pos", action: "pos.product.setPrice", unitId: u.id }));
+  const branchMode = !canPrice && branchUnits.length > 0;
   const def = systemDef(sys.type);
   const tStock = await getTranslations("pos.stock");
   const t = await getTranslations("pos.stock.productsPage");
@@ -59,7 +65,7 @@ export default async function PosProductsPage({
       <ModuleTabs items={tabs} />
     </>
   );
-  if (!canPrice)
+  if (!canPrice && !branchMode)
     return (
       <div className="flex max-w-2xl flex-col gap-5">
         {head()}
@@ -77,24 +83,29 @@ export default async function PosProductsPage({
   );
 
   // POS P2.2U ▸ ข้อมูลจอ 06: ทุกสาขาที่ผูก POS นี้ (ถึงตรงนี้ = ตั้งราคาได้ทุกสาขาแล้ว — การ์ดปฏิเสธของ HF-P1CLOSE คืนก่อน) ◂
-  const units = (await posUnits(tenantId, id)).map((u) => ({ id: u.id, name: u.name }));
+  // POS P2.11U ▸ มติ 6: โหมดสาขา = เฉพาะสาขาที่ตั้งราคาได้ · มติ 3: ล้างแถวที่เลิกใช้ = ขอบเขตทั้งสินค้า (posCanSetTenantPrice หรือตั้งราคาได้ครบทุกสาขาที่ผูก POS — กติกาเดียวกับ purgeDead) ◂
+  const units = (branchMode ? branchUnits : liveUnits).map((u) => ({ id: u.id, name: u.name }));
+  // POS P2.11U ▸ fix1 มติ 3 (R1 F3): โหมดสาขาไม่มีปุ่มล้าง (มติ 6) แม้ตั้งราคาได้ครบทุกสาขาที่ผูก POS ◂
+  const canPurge = !branchMode && (canPrice || (liveUnits.length > 0 && liveUnits.every((u) => evaluate(m, { module: "pos", action: "pos.product.setPrice", unitId: u.id }))));
   const tProducts = await getTranslations("pos.products");
-  const productsData = await loadProductsData({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, units);
+  const productsData = await loadProductsData({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, units, { liveUnitIds: liveUnits.map((u) => u.id) });
   const canEditPrices = evaluate(m, { module: "pos", action: "pos.product.setPrice" });
 
-  const { inventorySystemId, accountSystemId, items } = await listPosProducts(tenantId, id);
+  // POS P2.11U ▸ มติ 6: ราคาขายในคลัง/บริการ (ใช้ทั้งร้าน) = โหมดทุกสาขาเท่านั้น — โหมดสาขาไม่อ่าน ◂
+  const { inventorySystemId, accountSystemId, items } = canPrice ? await listPosProducts(tenantId, id) : { inventorySystemId: null, accountSystemId: null, items: [] };
   // บริการมาจากแคตตาล็อกกลาง (ต้นฉบับเดียวกับหน้าจอง) — หน้านี้อ่านอย่างเดียว
-  const services = await posServices(tenantId, inventorySystemId);
+  const services = canPrice ? await posServices(tenantId, inventorySystemId) : [];
 
   return (
     <div className="flex w-full min-w-0 max-w-[1600px] flex-col gap-5">
       {head(stockLink)}
 
       {/* POS P2.3U ▸ มติ 1: แก้สูตรได้ = pos.product.manage (ตัวเขียน catalog.ts ตรวจซ้ำตามขอบเขตแถว) ◂ */}
-      <ProductsClient systemId={id} data={productsData} canEdit={canEditPrices} initialUnit={unit ?? null} canEditRecipe={evaluate(m, { module: "pos", action: "pos.product.manage" })} canMark86={evaluate(m, { module: "pos", action: "pos.sale.create" }) || evaluate(m, { module: "pos", action: "pos.product.manage" })} /* POS P2.6U ▸ มติ 9b ◂ */ />
+      <ProductsClient systemId={id} data={productsData} canEdit={canEditPrices} initialUnit={unit ?? null} canEditRecipe={evaluate(m, { module: "pos", action: "pos.product.manage" })} canMark86={evaluate(m, { module: "pos", action: "pos.sale.create" }) || evaluate(m, { module: "pos", action: "pos.product.manage" })} /* POS P2.6U ▸ มติ 9b ◂ */ mode={branchMode ? "branch" : "all"} canPurge={canPurge} /* POS P2.11U ▸ มติ 3 6 ◂ */ />
 
       {/* POS P2.2U ▸ หน้าเดิม (บริการ + ราคาขายในคลัง) — พับไว้ · เปิดเองเมื่อมีผลจากฟอร์มเดิม (?err / ?ok) ◂ */}
-      <details data-testid="pos-products-legacy" open={!!(err || ok)} className="max-w-2xl">
+      {/* POS P2.11U ▸ มติ 6: โหมดสาขาไม่มีกล่องนี้ (ราคาขายในคลังใช้ทั้งร้าน) ◂ */}
+      {canPrice ? <details data-testid="pos-products-legacy" open={!!(err || ok)} className="max-w-2xl">
         <summary data-testid="pos-products-legacy-toggle" className="flex min-h-11 cursor-pointer items-center text-[14px] font-semibold">
           {tProducts("legacyTitle")}
         </summary>
@@ -200,7 +211,7 @@ export default async function PosProductsPage({
         </>
       )}
         </div>
-      </details>
+      </details> : null}
     </div>
   );
 }

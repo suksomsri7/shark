@@ -27,6 +27,7 @@ import { GeneralSettings } from "./GeneralSettings";
 import { StaffSettings } from "./StaffSettings";
 import { SharkSettings } from "./SharkSettings";
 import { ChannelsPane, OfflinePane } from "./shark-ui";
+import { receiptUnitOverride } from "@/lib/modules/pos/receipt-settings-shared"; // POS P2.11U ▸ มติ 8 ◂
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -51,6 +52,10 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   //   pos.device.manage ระดับร้าน (evaluate ก่อน) + ครบทุกสาขาที่ผูก POS นี้ · F1: unitAccess ["*"] อย่างเดียวไม่พอ (PromptPay ID ไม่ปิดบัง) ◂
   const deviceManageAtShop = evaluate(m, { module: "pos", action: "pos.device.manage" });
   const canEditReceipt = deviceManageAtShop && (await canManageAllLinkedUnits(prisma, { tenantId, systemId: id }, m));
+  // POS P2.11U ▸ มติ 8: ส่วน "ข้อมูลสาขาบนใบเสร็จ" = ผู้แก้ใบเสร็จได้ที่เป็น OWNER/ทุกสาขา ("*") เท่านั้น (สาขาที่ = ตัวตนภาษี — กติกาเดียวกับ
+  //   updatePosReceiptUnitSettings) · ค่าปัจจุบันของทุกสาขาอ่านจากค่าตั้งของระบบด้วยตัวอ่านบริสุทธิ์ receiptUnitOverride (ไม่มี action อ่านเพิ่ม) ◂
+  const canEditReceiptByUnit = canEditReceipt && (m.role === "OWNER" || m.unitAccess.includes("*"));
+  const receiptBranch = canEditReceiptByUnit ? { units, overrides: Object.fromEntries(units.map((u) => [u.id, receiptUnitOverride(sys.settings, u.id)])) } : null;
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.settings");
   const tPos = await getTranslations("pos");
@@ -122,7 +127,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             promptpayLink="/app/settings/payment"
           />
         ) : tab === "receipt" ? (
-          <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} />
+          <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} branch={receiptBranch} /* POS P2.11U ▸ มติ 8 ◂ */ />
         ) : canManageDevices ? (
           <DeviceSettings systemId={id} unitId={unitId} shopName={sys.name} />
         ) : (

@@ -7,12 +7,18 @@
 //     · เปลี่ยนช่วง/สาขา = หน่วง 300 ms แล้วค่อยยิง · ผลของมุมมองเก่าทิ้งด้วยลำดับคำขอ · ลองใหม่ในการ์ด = only:[ส่วนของการ์ดนั้น]
 // 🔴 บล็อกที่ยังไม่มีข้อมูล (รายชั่วโมง P2.12 · ช่องทาง P2.11 · สมาชิก P1.12 · ผู้ช่วย AI P3 · PDF P2) = ไม่แสดง (ไม่ทำตัวเลขปลอม)
 // 🔴 แต่ละส่วนถูกปฏิเสธแยกกัน — การ์ดที่ถูกปฏิเสธแสดงข้อความในการ์ดเอง หน้าไม่ว่าง
+// POS P2.11U ▸ มติ 7: ส่วน "channels" (reportChannels) = การ์ด "ช่องทางการขาย · % ของยอด" ระหว่าง "สินค้าขายดี" กับ "วิธีชำระ" (1440 = แถว 3 คอลัมน์ · 390 = เรียงลง) ·
+//   แถวต่อช่องทาง (ชื่อจาก DTO) = แท่ง (sharePct ของยอดสุทธิหลังหักค่าคอมฯ) + % + ยอด (hover · 390 แสดงในแถว) · หมายเหตุ "ยอดแพลตฟอร์มหักค่าคอมมิชชันแล้วในกำไรขั้นต้น" ◂
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl"; // POS P2.11U ▸ ชื่อช่องทาง builtin ตามภาษาจอ (pos.channel) ◂
+import { channelDisplayName } from "@/components/pos/settings/channel-text"; // POS P2.11U ◂
 import { formatBaht } from "@/lib/ui/money";
 import { posReportOverviewAction } from "@/lib/modules/pos/report-actions";
 import type { OverviewBranches, OverviewPart, OverviewSection, ReportOverview } from "@/lib/modules/pos/report-overview";
 import type {
+  ChannelRow, // POS P2.11U ◂
+  ChannelTotals, // POS P2.11U ◂
   DailyRow,
   DailyTotals,
   MarginRow,
@@ -31,6 +37,7 @@ type DailyRep = Report<"daily", DailyRow, DailyTotals>;
 type MarginRep = Report<"margin", MarginRow, MarginTotals>;
 type PaymentsRep = Report<"payments", PaymentRow, PaymentTotals>;
 type StaffRep = Report<"staff", StaffRow, StaffTotals>;
+type ChannelsRep = Report<"channels", ChannelRow, ChannelTotals>; // POS P2.11U ◂
 
 type Props = {
   systemId: string;
@@ -103,6 +110,8 @@ const ICON = {
   tag: ["M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z", "M9.3 8a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0Z"],
   wallet: ["M5.5 6h13A2.5 2.5 0 0 1 21 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5v-8A2.5 2.5 0 0 1 5.5 6Z", "M3 10h18"],
   users: ["M12.4 8a3.4 3.4 0 1 1-6.8 0 3.4 3.4 0 0 1 6.8 0Z", "M2.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16 5.4a3.4 3.4 0 0 1 0 6.4M18 14.8c2.2.6 3.5 2.3 3.5 5.2"],
+  // POS P2.11U ▸ ช่องทางการขาย (รถส่งของ ภาพ 08) ◂
+  scooter: ["M3 16.5V10h7l2 4h5", "M14 7h3l3 5v4.5", "M7.5 18.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM20.5 18.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z"],
 } as const;
 export function Icon({ d, className = "h-[18px] w-[18px]" }: { d: readonly string[]; className?: string }) {
   return (
@@ -238,7 +247,7 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
 }
 
 // ═══════════ จอภาพรวม ═══════════
-const ALL_SECTIONS: readonly OverviewSection[] = ["daily", "prev", "margin", "payments", "staff", "chart", "branches"];
+const ALL_SECTIONS: readonly OverviewSection[] = ["daily", "prev", "margin", "payments", "staff", "chart", "branches", "channels"]; // POS P2.11U ▸ มติ 7: + channels ◂
 /** ส่วนของภาพรวม → ช่อง (ส่วนที่กำลังโหลดใหม่ = loading) */
 function slotOf<R>(ov: ReportOverview | null, sec: OverviewSection, busy: ReadonlySet<OverviewSection>, whole: string | null): Slot<R> {
   if (busy.has(sec)) return { s: "loading" };
@@ -251,6 +260,7 @@ const partSlot = <R,>(p: OverviewPart<R>): Slot<R> => (p.ok ? { s: "ok", v: p.da
 
 export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll }: Props) {
   const [ov, setOv] = useState<ReportOverview | null>(null);
+  const tch = useTranslations("pos.channel"); // POS P2.11U ▸ ชื่อช่องทาง builtin ตามภาษาจอ ◂
   const [whole, setWhole] = useState<string | null>(null); // คำปฏิเสธทั้งก้อน (ช่วงผิด/สิทธิ์ระดับร้าน/ขัดข้อง)
   const [busy, setBusy] = useState<ReadonlySet<OverviewSection>>(() => new Set(ALL_SECTIONS));
   const seq = useRef(0); // ลำดับการโหลดทั้งก้อน — ผลของมุมมองเก่าห้ามทับ
@@ -348,6 +358,7 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
   const staff = slotOf<StaffRep>(ov, "staff", busy, whole);
   const chart = slotOf<DailyRep>(ov, "chart", busy, whole);
   const branches = slotOf<OverviewBranches>(ov, "branches", busy, whole);
+  const channels = slotOf<ChannelsRep>(ov, "channels", busy, whole); // POS P2.11U ◂
   const isTodayOnly = from === to && to === today;
   const vs = isTodayOnly ? t("overview.vsYesterday") : t("overview.vsPrev");
 
@@ -590,6 +601,39 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
     </section>
   );
 
+  // ── POS P2.11U ▸ มติ 7: ช่องทางการขาย (% ของยอดสุทธิหลังหักค่าคอมฯ · sharePct จากเซิร์ฟเวอร์) ◂ ──
+  const pct1 = (v: number) => `${v.toLocaleString("th-TH", { maximumFractionDigits: 1 })}%`;
+  const channelsCard = (
+    <section className={`${CARD} xl:flex-1`} aria-busy={channels.s === "loading"} data-testid="pos-rep-channels">
+      <CardHead icon={ICON.scooter} title={t("channels.title")} right={<span className={`text-[13px] ${MUTED}`}>{t("channels.pctOfTotal")}</span>} />
+      {channels.s === "loading" ? (
+        <Loading t={t} />
+      ) : channels.s === "err" ? (
+        <Refused id="channels" text={refusalText(channels.code)} t={t} onRetry={() => retry(["channels"])} />
+      ) : channels.v.rows.length === 0 ? (
+        <p className={`py-6 text-center text-sm ${MUTED}`} data-testid="pos-rep-channels-empty">{t("channels.empty")}</p>
+      ) : (
+        <div className="flex flex-col">
+          {channels.v.rows.map((r) => {
+            const name = channelDisplayName(r.channelCode, r.name, tch);
+            const w = Math.min(100, Math.max(r.sharePct > 0 ? 2 : 0, r.sharePct));
+            return (
+              <div key={r.channelCode} className="flex min-w-0 items-center gap-3 py-2 text-sm sm:gap-4" title={t("channels.amountTip", { name, amount: baht(r.netSatang) })} data-testid={`pos-rep-channels-row-${r.channelCode}`}>
+                <span className="w-24 shrink-0 truncate text-[color:var(--color-ink-soft)]">{name}</span>
+                <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--color-surface-2)]">
+                  <i className="block h-full rounded-full bg-[color:var(--color-ink)]" style={{ width: `${w}%` }} />
+                </span>
+                <span className="w-12 shrink-0 text-right font-bold tabular-nums">{pct1(r.sharePct)}</span>
+                <span className={`w-20 shrink-0 text-right text-[13px] tabular-nums md:hidden ${MUTED}`}>{baht(r.netSatang)}</span>
+              </div>
+            );
+          })}
+          <p className={`mt-2 text-[13px] ${MUTED}`} data-testid="pos-rep-channels-footnote">{t("channels.footnote")}</p>
+        </div>
+      )}
+    </section>
+  );
+
   // ── พนักงาน ──
   const staffAll = (
     <button data-testid="pos-report-ov-staff-all" type="button" className={SEE_ALL} onClick={() => onSeeAll("staff")}>
@@ -669,6 +713,7 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
       </div>
       <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:items-start xl:gap-8">
         {productsCard}
+        {channelsCard /* POS P2.11U ▸ มติ 7 ◂ */}
         {payCard}
       </div>
       {staffCard}

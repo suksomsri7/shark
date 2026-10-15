@@ -18,6 +18,8 @@ import { REFUND_PREFIX_DEFAULT } from "./refund-shared";
 import type { PosDeviceListItem } from "./device-shared";
 import { posReceiptSettings, updatePosReceiptSettings } from "./receipt-settings";
 import type { PosReceiptSettings, PosReceiptSettingsPatch, PosReceiptSettingsRefusal, PosReceiptSettingsResult } from "./receipt-settings-shared";
+import { updatePosReceiptUnitSettings } from "./receipt-settings"; // POS P2.11U ▸ มติ 8 ◂
+import type { PosReceiptUnitPatch, PosReceiptUnitResult } from "./receipt-settings-shared"; // POS P2.11U ◂
 
 /** ด่านสิทธิ์ระดับร้าน (assertCan · คืน boolean ไม่โยน) */
 function can(m: MembershipCtx, action: string): boolean {
@@ -157,6 +159,30 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
   } catch (e) {
     unstable_rethrow(e);
     console.error("[pos/receipt-settings-actions] page-data", e);
+    return { ok: false, code: "UNKNOWN", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
+  }
+}
+
+// ═══════════ POS P2.11U ▸ มติ 8: ตัวตนบนใบเสร็จต่อสาขา (17A "ข้อมูลสาขาบนใบเสร็จ") — เปลือกบาง session → updatePosReceiptUnitSettings ◂ ═══════════
+/**
+ * แก้ "สาขาที่ / ที่อยู่ / โทร" ของสาขาเดียว — ร้าน + ผู้ใช้จาก SESSION · กติกาทั้งหมดอยู่ใน updatePosReceiptUnitSettings
+ *   (สาขาผูก POS ไม่เก็บถาวร · pos.device.manage ที่สาขานั้น · taxBranchNo = OWNER/"*" · jsonb_set ใต้ FOR UPDATE · audit ปิดบังเบอร์)
+ * ปฏิเสธคืนเป็นข้อมูล {ok:false, code, message, field?} (field: unitId · taxBranchNo · address · phone · patch)
+ */
+export async function updatePosReceiptUnitSettingsAction(args: { systemId: string; unitId: string; patch: PosReceiptUnitPatch }): Promise<PosReceiptUnitResult> {
+  try {
+    const auth = await requireTenant();
+    const m = posMembership(auth.active);
+    const systemId = args && typeof args.systemId === "string" ? args.systemId : "";
+    const unitId = args && typeof args.unitId === "string" ? args.unitId : "";
+    return await updatePosReceiptUnitSettings(
+      { tenantId: auth.active.tenantId, systemId },
+      { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
+      { unitId, patch: args?.patch ?? {} },
+    );
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[pos/receipt-settings-actions] update unit", e);
     return { ok: false, code: "UNKNOWN", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
   }
 }

@@ -73,15 +73,19 @@ console.log("── [static] หน้า/แอ็กชันใช้ผล�
   // ORACLE-EDIT HF-P1CLOSE (มติ O13 ของผู้คุม: แคชเชียร์ที่หน้าสินค้า = การ์ดปฏิเสธ HTTP 200 แบบสต็อก/กะ/รายงาน แทน 404) —
   //   เดิม "ไม่ผ่าน posCanSetTenantPrice → notFound" · ใหม่ "ไม่ผ่าน → คืนการ์ดปฏิเสธ ก่อนอ่านข้อมูลสินค้า/บริการ (listPosProducts/posServices)" + ไม่มีสาขา POS ที่เข้าได้ = notFound
   //   guard ตัวเดิม (posCanSetTenantPrice กับ posPriceUnitIds) · ไม่มี assertCan — กติกาอื่นเดิม
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.11U ruling 6 — manager branch mode): ตั้งราคาทั้งร้านไม่ได้ (posCanSetTenantPrice) แต่มี pos.product.setPrice ที่สาขาของตัวเอง
+  //   = หน้า 06 โหมดสาขา (branchUnits = สาขาที่ผูก POS และ evaluate pos.product.setPrice ที่สาขานั้น) · ไม่มีสาขาที่ตั้งราคาได้เลย = การ์ดปฏิเสธเดิม (ก่อนอ่านข้อมูลใด ๆ) ·
+  //   ราคาขายในคลัง/บริการ (ใช้ทั้งร้าน · listPosProducts/posServices) อ่านเฉพาะเมื่อ canPrice · guard เดิม (posCanSetTenantPrice กับ posPriceUnitIds) · ไม่มี assertCan
   {
     const gate = "const canPrice = posCanSetTenantPrice(m, await posPriceUnitIds(tenantId, id));";
-    const refuse = "if (!canPrice) return (";
+    const branch = 'const branchUnits = canPrice ? [] : liveUnits.filter((u) => evaluate(m, { module: "pos", action: "pos.product.setPrice", unitId: u.id })); const branchMode = !canPrice && branchUnits.length > 0;';
+    const refuse = "if (!canPrice && !branchMode) return (";
     const firstRead = Math.min(...["await listPosProducts(", "await posServices("].map((n) => (prod.includes(n) ? prod.indexOf(n) : Infinity)));
-    chk("P-7", "[static] หน้าสินค้า: posCanSetTenantPrice กับ posPriceUnitIds → การ์ดปฏิเสธก่อนอ่านข้อมูลสินค้า/บริการ · ไม่มีสาขา POS = notFound (ไม่มี assertCan)",
+    chk("P-7", "[static] หน้าสินค้า: posCanSetTenantPrice กับ posPriceUnitIds · ไม่ผ่านแต่ตั้งราคาได้ที่สาขาของตัวเอง = โหมดสาขา · ไม่มีสาขาที่ตั้งราคาได้ = การ์ดปฏิเสธก่อนอ่านข้อมูลสินค้า/บริการ · ราคาในคลัง/บริการอ่านเฉพาะ canPrice · ไม่มีสาขา POS = notFound (ไม่มี assertCan)",
       has(prod,
         "const m = posMembership(auth.active); if (!(await posUnits(tenantId, id)).some((u) => canAccessUnit(m, u.id))) notFound();",
-        gate, refuse, 'data-testid="pos-products-refusal"') &&
-        prod.indexOf(gate) < prod.indexOf(refuse) && prod.indexOf(refuse) < firstRead && Number.isFinite(firstRead) && !prod.includes("assertCan("), "ครบ", "ไม่ครบ");
+        gate, branch, refuse, 'data-testid="pos-products-refusal"', "canPrice ? await listPosProducts(tenantId, id)", "canPrice ? await posServices(tenantId, inventorySystemId)") &&
+        prod.indexOf(gate) < prod.indexOf(branch) && prod.indexOf(branch) < prod.indexOf(refuse) && prod.indexOf(refuse) < firstRead && Number.isFinite(firstRead) && !prod.includes("assertCan("), "ครบ", "ไม่ครบ");
   }
   const price = fnBody(actions, "export async function setItemSalePriceAction");
   chk("P-8", "[static] ตั้งราคา: posPriceUnitIds → ไม่ผ่าน throw ForbiddenError ก่อนเขียน (ไม่มี assertCan)",

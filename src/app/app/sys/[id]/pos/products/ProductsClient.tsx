@@ -8,6 +8,9 @@
 // 🔴 ตัวเลือกสาขา = ขอบเขตที่ตารางและลิ้นชักอ่านแถว (ช่องทาง, สาขา) — null = ทุกสาขา · ไม่โหลดใหม่ (ข้อมูลทุกสาขาโหลดมาแล้ว)
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · ปุ่ม ≥ 44px · testid ตัวอักษรตรงบนแท็ก
 // ไม่ทำในใบนี้ (Q1 · มติ 1): แท็บประเภท · ตัวกรองสถานะ/ช่องทาง · CSV · เพิ่มสินค้า · เก็บถาวร/ทำสำเนา
+// POS P2.11U ▸ หลายสาขา (มติ 1 4 5 6): ตัวกรอง "สาขา: …" (pos-prod-unitFilter · ?unit= · โหมดสาขา = เฉพาะสาขาของตัวเอง ไม่มี "ทุกสาขา") ·
+//   คอลัมน์ "ราคา <สาขา>" (ราคาหน้าร้านที่สาขานั้นตามตัวแก้ · ของสาขาเอง = ตัวหนา + ชิป "สาขา" · สืบทอด = จาง + ชิป "ราคากลาง" · ไม่ขาย) →
+//   แตะ = เปิดลิ้นชักที่กลุ่มของสาขานั้น · ปุ่ม "คัดลอกราคาจากสาขา" (≥ 2 สาขา) · "เทียบราคาสาขา" (ตารางสินค้า × สาขา × ช่องทาง) ◂
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -21,13 +24,19 @@ import type { ProductsData, ProductsPriceRow, ProductsRecipeLine, ProductsRow } 
 import { channelsIn, chipChannels, differsByChannel, platformPriceOf } from "./products-scope";
 import { ProductPanel } from "./ProductPanel";
 import { BulkMarkupDialog } from "./BulkMarkupDialog";
+// POS P2.11U ▸ มติ 1 4 5 ◂
+import { branchCellOf } from "./products-scope";
+import { BranchCopyDialog } from "./BranchCopyDialog";
+import { BranchCompare } from "./BranchCompare";
 // POS P2.3U ▸ มติ 1/2: ผลบันทึกสูตร/สวิตช์จากลิ้นชัก ◂
 import type { RecipePatch } from "./RecipeSection";
 import type { KitchenPatch } from "@/components/pos/products/kitchen-ui"; // POS P2.6U ◂
 
-type Props = { systemId: string; data: ProductsData; canEdit: boolean; initialUnit: string | null; canEditRecipe?: boolean; canMark86?: boolean }; // POS P2.6U ▸ + canMark86 ◂
+type Props = { systemId: string; data: ProductsData; canEdit: boolean; initialUnit: string | null; canEditRecipe?: boolean; canMark86?: boolean; mode?: "all" | "branch"; canPurge?: boolean }; // POS P2.6U ▸ + canMark86 ◂ · POS P2.11U ▸ + mode · canPurge (มติ 3 6) ◂
 
-export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRecipe = false, canMark86 = false }: Props) {
+// POS P2.11U ▸ (fix1 มติ 8 ครอบ) + mode · canPurge
+export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRecipe = false, canMark86 = false, mode = "all", canPurge = false }: Props) {
+  // ◂
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tchip = useTranslations("pos.products.chip") as PT;
@@ -35,7 +44,9 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
   const locale = useLocale();
   const router = useRouter();
   const [products, setProducts] = useState<ProductsRow[]>(data.products);
-  const [unit, setUnit] = useState<string | null>(initialUnit && data.units.some((u) => u.id === initialUnit) ? initialUnit : null);
+  // POS P2.11U ▸ มติ 6: โหมดสาขา = ไม่มี "ทุกสาขา" — ค่าเริ่ม = สาขาแรกของตัวเอง ◂
+  const branchMode = mode === "branch";
+  const [unit, setUnit] = useState<string | null>(initialUnit && data.units.some((u) => u.id === initialUnit) ? initialUnit : branchMode ? (data.units[0]?.id ?? null) : null);
   const [q, setQ] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [diffOnly, setDiffOnly] = useState(false);
@@ -44,6 +55,10 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
   const [openId, setOpenId] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // POS P2.11U ▸ มติ 1 4 5: แตะช่อง "ราคา <สาขา>" = เปิดลิ้นชักที่กลุ่มสาขานั้น · กล่องคัดลอก · แผ่นเทียบ ◂
+  const [focusUnit, setFocusUnit] = useState<string | null>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   useEffect(() => setProducts(data.products), [data.products]);
   useEffect(() => {
@@ -92,9 +107,14 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
   const selectedRows = products.filter((p) => selected.has(p.id));
   const cat = categoryId ? { id: categoryId, name: catName(categoryId) } : null;
 
-  const onSaved = (productId: string, rows: ProductsPriceRow[]) => {
-    setProducts((ps) => ps.map((p) => (p.id === productId ? { ...p, rows } : p)));
-    setToast(tp("saved"));
+  // POS P2.11U ▸ มติ 3: purged = ล้างแถวที่เลิกใช้แล้ว (เซิร์ฟเวอร์ลบทุกแถวเลิกใช้ของสินค้า ⇒ นับ 0) ◂
+  const onSaved = (productId: string, rows: ProductsPriceRow[], purged = false) => {
+    setProducts((ps) => ps.map((p) => (p.id === productId ? { ...p, rows, ...(purged ? { deadRows: 0 } : {}) } : p)));
+    setToast(purged ? t("branch.dead.done") : tp("saved"));
+  };
+  const openProduct = (id: string, at: string | null = null) => {
+    setFocusUnit(at);
+    setOpenId(id);
   };
   // POS P2.3U ▸ บันทึกสูตร/สวิตช์แล้ว: แก้แถว (หรือตัวแปรในแถว) ทันที + อ่านหน้าใหม่ (ต้นทุน/จำนวนที่ทำได้ตามสูตรมาจากเซิร์ฟเวอร์) ◂
   const onRecipeSaved = (productId: string, patch: RecipePatch, text: string) => {
@@ -211,6 +231,27 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
       </span>
     );
   };
+  // POS P2.11U ▸ มติ 1: ช่อง "ราคา <สาขา>" — ราคาหน้าร้านที่สาขานั้นตามตัวแก้ (แถว (STORE, สาขา) > (STORE, ทุกสาขา) > (ทุกช่องทาง, สาขา) > ราคาปกติ) ◂
+  const branchPriceText = (p: ProductsRow, u: string) => {
+    const c = branchCellOf(p, u);
+    if (c.kind === "notSold") return <span className="text-[color:var(--color-muted)]">{t("branch.notSold")}</span>;
+    if (c.kind === "none") return <span className="text-[color:var(--color-muted)]">{t("noPrice")}</span>;
+    return (
+      <span className="inline-flex items-center gap-1.5 tabular-nums">
+        <span className={`inline-flex h-[18px] items-center whitespace-nowrap rounded-[5px] border px-[5px] text-[10.5px] ${c.own ? "border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-muted)]"}`}>{t(c.own ? "branch.chipOwn" : "branch.chipInherited")}</span>
+        <span className={c.own ? "font-bold" : "text-[color:var(--color-muted)]"}>{moneyText(c.priceSatang)}</span>
+      </span>
+    );
+  };
+  const branchCell = (p: ProductsRow, u: string) =>
+    p.unitId !== null && p.unitId !== u ? (
+      <span className="text-[color:var(--color-muted)]">{t("notSoldHere")}</span>
+    ) : (
+      <button type="button" data-testid={`pos-prod-cell-${p.id}-unit`} title={t("branch.cellTip")} className="inline-flex min-h-11 items-center justify-end rounded-lg px-1.5 hover:bg-[color:var(--color-surface-2)]" onClick={() => openProduct(p.id, u)}>
+        {branchPriceText(p, u)}
+      </button>
+    );
+  const unitName = (u: string | null) => (u ? (data.units.find((x) => x.id === u)?.name ?? "") : "");
   const marginCell = (p: ProductsRow) => {
     const c = hasRecipe(p) ? p.recipeCost : null;
     if (!c || c.marginBp === undefined) return dash;
@@ -245,6 +286,19 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
               {tp("bulk.title")}
             </button>
           ) : null}
+          {/* POS P2.11U ▸ มติ 4 5: คัดลอกราคาจากสาขา (ตั้งราคาได้ + ≥ 2 สาขาที่เข้าได้) · เทียบราคาสาขา (อ่านอย่างเดียว) ◂ */}
+          {canEdit && data.units.length >= 2 ? (
+            <button type="button" data-testid="pos-prod-copy-open" className="btn btn-ghost h-11 gap-1.5 rounded-[11px] px-4 text-[13px]" onClick={() => setCopyOpen(true)}>
+              <PriceIcon name="copy" size={15} />
+              {t("branch.copy.open")}
+            </button>
+          ) : null}
+          {data.units.length >= 1 ? (
+            <button type="button" data-testid="pos-prod-compare-open" className="btn btn-ghost h-11 gap-1.5 rounded-[11px] px-4 text-[13px]" onClick={() => setCompareOpen(true)}>
+              <PriceIcon name="tag" size={15} />
+              {t("branch.compare.open")}
+            </button>
+          ) : null}
         </div>
         {/* การ์ดสรุป */}
         <div className="card grid grid-cols-2 gap-4 !p-5 sm:grid-cols-3 lg:grid-cols-5">
@@ -268,8 +322,9 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
               </option>
             ))}
           </select>
-          <select data-testid="pos-prod-branch" aria-label={t("branchLabel")} className="input h-11 w-auto min-w-[150px] font-semibold" value={unit ?? ""} onChange={(e) => changeUnit(e.target.value)}>
-            <option value="">{tp("branch", { name: tp("allBranches") })}</option>
+          {/* POS P2.11U ▸ มติ 1 6: testid pos-prod-unitFilter (เดิม pos-prod-branch) · โหมดสาขา = ไม่มี "ทุกสาขา" ◂ */}
+          <select data-testid="pos-prod-unitFilter" aria-label={t("branchLabel")} className="input h-11 w-auto min-w-[150px] font-semibold" value={unit ?? ""} onChange={(e) => changeUnit(e.target.value)}>
+            {branchMode ? null : <option value="">{tp("branch", { name: tp("allBranches") })}</option>}
             {data.units.map((u) => (
               <option key={u.id} value={u.id}>
                 {tp("branch", { name: u.name })}
@@ -321,6 +376,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
                 <th className="px-2 py-2 font-semibold">{t("col.product")}</th>
                 <th className="px-2 py-2 font-semibold">{t("col.category")}</th>
                 <th className="px-2 py-2 text-right font-semibold">{t("col.price")}</th>
+                {unit ? <th className="px-2 py-2 text-right font-semibold">{t("branch.colPrice", { name: unitName(unit) })}</th> : null /* POS P2.11U ▸ มติ 1 ◂ */}
                 <th className="px-2 py-2 text-right font-semibold">{t("col.cost")}</th>
                 <th className="px-2 py-2 text-right font-semibold">{t("col.margin")}</th>
                 {unitsShown.map((u) => (
@@ -341,7 +397,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
                     <input type="checkbox" data-testid={`pos-prod-select-${p.id}`} aria-label={t("col.select")} className="size-5" checked={selected.has(p.id)} onChange={() => toggleSel(p.id)} />
                   </td>
                   <td className="px-2 py-2">
-                    <button type="button" data-testid={`pos-prod-open-${p.id}`} className="flex min-h-11 items-center gap-3 text-left" onClick={() => setOpenId(p.id)}>
+                    <button type="button" data-testid={`pos-prod-open-${p.id}`} className="flex min-h-11 items-center gap-3 text-left" onClick={() => openProduct(p.id) /* POS P2.11U ▸ มติ 1: เปิดผ่าน openProduct (ล้างกลุ่มที่เลื่อนไป) ◂ */}>
                       <span className="grid size-[34px] shrink-0 place-items-center rounded-[7px] border bg-[color:var(--color-surface-2)] text-[color:var(--color-muted)]">
                         <PriceIcon name="box" size={15} />
                       </span>
@@ -353,6 +409,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
                   </td>
                   <td className="px-2 py-2">{catName(p.categoryId)}</td>
                   <td className="px-2 py-2 text-right">{priceCell(p)}</td>
+                  {unit ? <td className="px-2 py-2 text-right">{branchCell(p, unit)}</td> : null /* POS P2.11U ▸ มติ 1 ◂ */}
                   <td className="px-2 py-2 text-right">{costCell(p)}</td>
                   <td className="px-2 py-2 text-right">{marginCell(p)}</td>
                   {unitsShown.map((u) => (
@@ -375,7 +432,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
           {shown.map((p) => (
             <div key={p.id} className="card flex items-start gap-3 !p-3">
               <input type="checkbox" data-testid={`pos-prod-cselect-${p.id}`} aria-label={t("col.select")} className="mt-3 size-5" checked={selected.has(p.id)} onChange={() => toggleSel(p.id)} />
-              <button type="button" data-testid={`pos-prod-copen-${p.id}`} className="flex min-h-11 min-w-0 flex-1 flex-col gap-1 text-left" onClick={() => setOpenId(p.id)}>
+              <button type="button" data-testid={`pos-prod-copen-${p.id}`} className="flex min-h-11 min-w-0 flex-1 flex-col gap-1 text-left" onClick={() => openProduct(p.id, unit) /* POS P2.11U ▸ มติ 1 (390): แตะการ์ด = เปิดที่กลุ่มสาขาที่กรอง ◂ */}>
                 <span className="flex w-full items-start gap-2">
                   <span className="min-w-0 flex-1">
                     <b className="block font-semibold leading-tight">{nameOf(p)}</b>
@@ -384,6 +441,13 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
                     {hasRecipe(p) && p.recipeCost?.costSatang !== undefined ? (
                       <small className="block text-[11px] tabular-nums text-[color:var(--color-muted)]">
                         {`${tr("recipeCost")} ${moneyText(p.recipeCost.costSatang)} · ${tr("grossMargin")} ${marginPctText(p.recipeCost.marginBp) ?? "—"}`}
+                      </small>
+                    ) : null}
+                    {/* POS P2.11U ▸ มติ 1 (390): ราคาของสาขาที่เลือกในการ์ด — แตะการ์ด = เปิดลิ้นชักที่กลุ่มสาขานั้น ◂ */}
+                    {unit && (p.unitId === null || p.unitId === unit) ? (
+                      <small data-testid={`pos-prod-cbranch-${p.id}`} className="mt-0.5 flex items-center gap-1 text-[11px]">
+                        <span className="text-[color:var(--color-muted)]">{t("branch.colPrice", { name: unitName(unit) })}</span>
+                        {branchPriceText(p, unit)}
                       </small>
                     ) : null}
                   </span>
@@ -403,12 +467,16 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
 
       {open ? (
         <ProductPanel
-          key={`${open.id}|${unit ?? ""}`}
+          key={`${open.id}|${unit ?? ""}|${focusUnit ?? ""}` /* POS P2.11U ▸ มติ 1: + focusUnit (แตะช่องสาขาอื่น = ลิ้นชักใหม่ที่กลุ่มนั้น) ◂ */}
           systemId={systemId}
           product={open}
           data={data}
           unit={unit}
           canEdit={canEdit}
+          focusUnit={focusUnit} // POS P2.11U ▸ มติ 1 2 3 6 (fix1 มติ 8 ครอบ 4 บรรทัด): focusUnit · branchMode · canPurge · onToast
+          branchMode={branchMode}
+          canPurge={canPurge}
+          onToast={setToast} // ◂
           onClose={() => setOpenId(null)}
           onSaved={onSaved}
           canEditRecipe={canEditRecipe}
@@ -437,6 +505,24 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
           }}
         />
       ) : null}
+
+      {/* POS P2.11U ▸ มติ 4 5 ◂ */}
+      {copyOpen ? (
+        <BranchCopyDialog
+          systemId={systemId}
+          units={data.units}
+          initialTo={unit}
+          visibleIds={shown.map((p) => p.id)}
+          onClose={() => setCopyOpen(false)}
+          onToast={setToast}
+          onDone={(text) => {
+            setCopyOpen(false);
+            setToast(text);
+            router.refresh();
+          }}
+        />
+      ) : null}
+      {compareOpen ? <BranchCompare systemId={systemId} units={data.units} channels={data.channels} products={shown} nameOf={nameOf} onClose={() => setCompareOpen(false)} /> : null}
 
       {toast ? (
         <div data-testid="pos-prod-toast" role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-[color:var(--color-ink)] px-4 py-2.5 text-[13px] text-[color:var(--color-surface)] shadow-lg">

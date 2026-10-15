@@ -8,6 +8,9 @@
 // 🔴 คำปฏิเสธแสดงผ่านคีย์ pos.settings.errors.* / fieldErrors.* (ไม่แสดงข้อความไทยของเซิร์ฟเวอร์) · ผู้อ่านอย่างเดียว = ช่องปิด + "เฉพาะผู้จัดการแก้ได้"
 // ไม่ทำในใบนี้: อัปโหลดโลโก้ (P1.18/media) · สมัคร e-Tax (รอผู้ให้บริการ) · ตั้งรูปแบบเลขเอกสาร (ระบบกำหนด · O2)
 // POS P1.11U ▸ สวิตช์ "QR ใบเสร็จออนไลน์" เปิดใช้ (ฟอร์ม + patch qrEReceipt) · คำอธิบาย "ยังไม่พิมพ์จนถึง P1.11" เอาออก ◂
+// POS P2.11U ▸ มติ 8 (17A ต่อสาขา): ส่วน "ข้อมูลสาขาบนใบเสร็จ" (เจ้าของ/ผู้ดูแลทุกสาขาเท่านั้น — หน้าส่ง branch=null ให้คนอื่น) · เลือกสาขา ·
+//   "สาขาที่" (5 หลัก · ผิดรูป = แดงในบรรทัด) · "ที่อยู่" (≤ 200) · "โทร" (≤ 30) — placeholder = ค่ากลางที่สืบทอด · "ใช้ค่ากลาง" = ส่ง null ·
+//   บันทึก = updatePosReceiptUnitSettingsAction (เฉพาะช่องที่เปลี่ยน) · ตัวอย่างขวาใช้ receiptUnitOverride ของสาขาที่เลือก (หัว "สาขา <เลข>" + ที่อยู่/โทรของสาขา) ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -22,12 +25,18 @@ import { updateDeviceAction } from "@/lib/modules/pos/device-actions";
 import type { PosDeviceListItem } from "@/lib/modules/pos/device-shared";
 import { renderReceiptHtml } from "@/lib/modules/pos/receipt-render";
 import { receiptSettingsPageDataAction, updatePosReceiptSettingsAction } from "@/lib/modules/pos/receipt-settings-actions";
+// POS P2.11U ▸ มติ 8 ◂
+import { updatePosReceiptUnitSettingsAction } from "@/lib/modules/pos/receipt-settings-actions";
+import { RECEIPT_ADDRESS_MAX, RECEIPT_PHONE_MAX, TAX_BRANCH_NO_RE, receiptUnitOverride, type PosReceiptUnitOverride } from "@/lib/modules/pos/receipt-settings-shared";
 import { CardHead, Chip, InlineNote, SettingsCard, SwitchKnob, TabHead } from "./settings-ui";
 
 type PageData = Awaited<ReturnType<typeof receiptSettingsPageDataAction>>;
 type PageOk = Extract<PageData, { ok: true }>;
 type Form = { name: string; phone: string; address: string; logoUrl: string; footer: string; showPoints: boolean; showCashier: boolean; qrEReceipt: boolean };
-type Props = { systemId: string; unitId: string; branchName: string; canEdit: boolean; canManageDevices: boolean };
+// POS P2.11U ▸ มติ 8: branch = สาขาที่ผูก POS + ค่าปัจจุบันต่อสาขา (null = ไม่แสดงส่วนต่อสาขา) ◂
+type BranchProps = { units: { id: string; name: string }[]; overrides: Record<string, PosReceiptUnitOverride> };
+type UnitField = "taxBranchNo" | "address" | "phone";
+type Props = { systemId: string; unitId: string; branchName: string; canEdit: boolean; canManageDevices: boolean; branch?: BranchProps | null };
 
 const FIELD_KEYS = new Set(["name", "phone", "address", "logoUrl", "footer"]);
 const ERROR_KEY: Record<string, string> = { NOT_FOUND: "notFound", PERMISSION_DENIED: "permissionDenied", VALIDATION: "validation", UNKNOWN: "unknown" };
@@ -58,7 +67,7 @@ const formOf = (d: PageOk): Form => ({
   qrEReceipt: d.settings.qrEReceipt,
 });
 
-export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canManageDevices }: Props) {
+export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canManageDevices, branch = null }: Props) {
   const t = useTranslations("pos.settings");
   const tr = useTranslations("pos.settings.receipt");
   const td = useTranslations("pos.device");
@@ -73,6 +82,14 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
   const [regNo, setRegNo] = useState<Record<string, string>>({});
   const [devErr, setDevErr] = useState<Record<string, string>>({});
   const [now] = useState(() => Date.now());
+  // POS P2.11U ▸ มติ 8: สาขาที่เลือก · ค่าที่เก็บต่อสาขา · ร่างของสาขาที่เลือก · คำปฏิเสธต่อช่อง ◂
+  const unitDraftOf = (o: PosReceiptUnitOverride | undefined): Record<UnitField, string> => ({ taxBranchNo: o?.taxBranchNo ?? "", address: o?.address ?? "", phone: o?.phone ?? "" });
+  const [selUnit, setSelUnit] = useState<string>(() => (branch?.units.some((u) => u.id === unitId) ? unitId : (branch?.units[0]?.id ?? "")));
+  const [byUnit, setByUnit] = useState<Record<string, PosReceiptUnitOverride>>(() => branch?.overrides ?? {});
+  const [unitDraft, setUnitDraft] = useState<Record<UnitField, string>>(() => unitDraftOf(branch?.overrides[selUnit]));
+  const [unitErr, setUnitErr] = useState<{ field: UnitField | "unitId" | null; key: string } | null>(null);
+  const [unitSaving, setUnitSaving] = useState(false);
+  const [unitSaved, setUnitSaved] = useState(false);
 
   const load = useCallback(async () => {
     setLoadErr(false);
@@ -100,24 +117,33 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
   const firstDevice = devices.find((d) => d.status === "ACTIVE");
   // POS HF-P1CLOSE ▸ O7: 17A "เลขเครื่อง POS ต่อเครื่อง" = เครื่องที่ใช้งานอยู่เท่านั้น (เครื่องเพิกถอนแล้วไม่มีเลขให้แก้ · ดูได้ที่แท็บเครื่อง) ◂
   const activeDevices = devices.filter((d) => d.status === "ACTIVE");
+  // POS P2.11U ▸ มติ 8: ตัวอย่าง = ค่าของสาขาที่เลือก (ร่างที่พิมพ์อยู่) ผ่าน receiptUnitOverride (ค่าผิดรูป = ไม่ใช้ · ลำดับเดียวกับ receipt.ts: สาขา → หัวใบของระบบ → สมุด) ◂
+  const unitOv = useMemo(() => {
+    if (!branch || !selUnit) return null;
+    const stored: Record<string, string> = {};
+    for (const k of ["taxBranchNo", "address", "phone"] as const) if (unitDraft[k].trim()) stored[k] = unitDraft[k].trim();
+    return receiptUnitOverride({ pos: { receipt: { byUnit: { [selUnit]: stored } } } }, selUnit);
+  }, [branch, selUnit, unitDraft]);
+  const previewBook = book && unitOv?.taxBranchNo ? { ...book, branchCode: unitOv.taxBranchNo } : book;
+  const previewBranch = branch && selUnit ? (branch.units.find((u) => u.id === selUnit)?.name ?? branchName) : branchName;
   const sample = useCallback(
     (copy: boolean, receiptNo: string) =>
       form
         ? samplePayload({
-            header: { name: form.name, phone: form.phone, address: form.address, logoUrl: form.logoUrl.trim() || null },
+            header: { name: form.name, phone: unitOv?.phone ?? form.phone, address: unitOv?.address ?? form.address, logoUrl: form.logoUrl.trim() || null },
             footer: form.footer,
             showPoints: form.showPoints,
             showCashier: form.showCashier,
-            book,
+            book: previewBook,
             text: { latte: tr("sampleLatte"), croissant: tr("sampleCroissant"), cashier: tr("sampleCashier"), member: tr("sampleMember") },
             receiptNo,
             issuedAt: new Date(now).toISOString(),
             copy,
-            branchName,
+            branchName: previewBranch,
             device: firstDevice ? { name: firstDevice.name, posRegNo: firstDevice.posRegNo } : undefined,
           })
         : null,
-    [form, book, tr, now, branchName, firstDevice],
+    [form, previewBook, tr, now, previewBranch, firstDevice, unitOv],
   );
   const period = bkkPeriod(now);
   const previewHtml = useMemo(() => {
@@ -190,6 +216,50 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
       setDevices((list) => list.map((x) => (x.id === d.id ? { ...x, posRegNo: r.device.posRegNo } : x)));
       setRegNo((m) => ({ ...m, [d.id]: r.device.posRegNo ?? "" }));
     } else setDevErr((e) => ({ ...e, [d.id]: td(`errors.${DEVICE_ERROR_KEY[r?.code ?? "INTERNAL"] ?? "internal"}`) }));
+  };
+
+  // POS P2.11U ▸ มติ 8: บันทึกข้อมูลสาขา — ส่งเฉพาะช่องที่เปลี่ยน (ว่าง = null = กลับไปใช้ค่ากลาง) ◂
+  const pickUnit = (id: string) => {
+    setSelUnit(id);
+    setUnitDraft(unitDraftOf(byUnit[id]));
+    setUnitErr(null);
+    setUnitSaved(false);
+  };
+  const setUnitField = (k: UnitField, v: string) => {
+    setUnitDraft((d) => ({ ...d, [k]: v }));
+    setUnitSaved(false);
+    if (unitErr?.field === k) setUnitErr(null);
+  };
+  const branchNoBad = !!unitDraft.taxBranchNo.trim() && !TAX_BRANCH_NO_RE.test(unitDraft.taxBranchNo.trim());
+  const saveUnit = async () => {
+    if (!branch || !selUnit || unitSaving || branchNoBad) return;
+    const cur = byUnit[selUnit] ?? { taxBranchNo: null, address: null, phone: null };
+    const patch: Partial<Record<UnitField, string | null>> = {};
+    for (const k of ["taxBranchNo", "address", "phone"] as const) {
+      const v = unitDraft[k].trim() || null;
+      if (v !== cur[k]) patch[k] = v;
+    }
+    if (!Object.keys(patch).length) {
+      setUnitSaved(true);
+      return;
+    }
+    setUnitSaving(true);
+    setUnitErr(null);
+    setUnitSaved(false);
+    try {
+      const r = await updatePosReceiptUnitSettingsAction({ systemId, unitId: selUnit, patch });
+      if (r.ok) {
+        setByUnit((m) => ({ ...m, [r.unitId]: r.override }));
+        if (r.unitId === selUnit) setUnitDraft(unitDraftOf(r.override));
+        setUnitSaved(true);
+      } else if (r.code === "VALIDATION" && (r.field === "taxBranchNo" || r.field === "address" || r.field === "phone" || r.field === "unitId")) setUnitErr({ field: r.field, key: `receipt.byUnit.fieldErrors.${r.field}` });
+      else if (r.code === "VALIDATION" && r.field === "patch") setUnitErr({ field: null, key: "receipt.byUnit.fieldErrors.patch" });
+      else setUnitErr({ field: null, key: `errors.${ERROR_KEY[r.code] ?? "unknown"}` });
+    } catch {
+      setUnitErr({ field: null, key: "errors.unknown" });
+    } finally {
+      setUnitSaving(false);
+    }
   };
 
   if (loadErr)
@@ -312,6 +382,104 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
               </div>
             </div>
           </SettingsCard>
+
+          {/* POS P2.11U ▸ มติ 8: ข้อมูลสาขาบนใบเสร็จ (เจ้าของ/ผู้ดูแลทุกสาขา) ◂ */}
+          {branch && branch.units.length > 0 ? (
+            <SettingsCard testid="pos-set-receipt-branch">
+              <CardHead icon="doc" title={tr("byUnit.title")} />
+              <div className="flex flex-col gap-[18px]">
+                <p className="text-[13px] text-[color:var(--color-muted)]">{tr("byUnit.desc")}</p>
+                <label className="flex min-w-0 flex-col gap-2">
+                  <span className="text-[13px] font-semibold text-[color:var(--color-ink-soft)]">{tr("byUnit.unit")}</span>
+                  <select data-testid="pos-set-receipt-unit" className={inp} value={selUnit} disabled={unitSaving} onChange={(e) => pickUnit(e.target.value)}>
+                    {branch.units.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                  {unitErr?.field === "unitId" ? <span data-testid="pos-set-receipt-unit-error" className="text-[12.5px] text-[color:var(--color-danger)]">{t(unitErr.key)}</span> : null}
+                </label>
+                <div className="grid grid-cols-1 gap-x-[22px] gap-y-[18px] md:grid-cols-2">
+                  <label className="flex min-w-0 flex-col gap-2">
+                    <span className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--color-ink-soft)]">
+                      <span className="min-w-0 flex-1">{tr("byUnit.branchNo")}</span>
+                      <button type="button" data-testid="pos-set-receipt-branchNo-inherit" disabled={unitSaving || !unitDraft.taxBranchNo} className="inline-flex min-h-11 items-center text-[12.5px] font-semibold text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)] disabled:opacity-60" onClick={() => setUnitField("taxBranchNo", "")}>
+                        {tr("byUnit.inherit")}
+                      </button>
+                    </span>
+                    <input
+                      data-testid="pos-set-receipt-branchNo"
+                      className={`${inp} font-mono tabular-nums ${branchNoBad || unitErr?.field === "taxBranchNo" ? "border-[color:var(--color-danger)]" : ""}`}
+                      inputMode="numeric"
+                      maxLength={5}
+                      value={unitDraft.taxBranchNo}
+                      placeholder={book?.branchCode?.trim() || "00000"}
+                      disabled={unitSaving}
+                      onChange={(e) => setUnitField("taxBranchNo", e.target.value)}
+                    />
+                    {branchNoBad || unitErr?.field === "taxBranchNo" ? (
+                      <span data-testid="pos-set-receipt-branchNo-error" className="text-[12.5px] text-[color:var(--color-danger)]">{t("receipt.byUnit.fieldErrors.taxBranchNo")}</span>
+                    ) : (
+                      <small className="text-[12.5px] text-[color:var(--color-muted)]">{tr("byUnit.branchNoHint")}</small>
+                    )}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-2">
+                    <span className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--color-ink-soft)]">
+                      <span className="min-w-0 flex-1">{tr("byUnit.phone")}</span>
+                      <button type="button" data-testid="pos-set-receipt-phone-inherit" disabled={unitSaving || !unitDraft.phone} className="inline-flex min-h-11 items-center text-[12.5px] font-semibold text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)] disabled:opacity-60" onClick={() => setUnitField("phone", "")}>
+                        {tr("byUnit.inherit")}
+                      </button>
+                    </span>
+                    <input
+                      data-testid="pos-set-receipt-phone"
+                      className={`${inp} ${unitErr?.field === "phone" ? "border-[color:var(--color-danger)]" : ""}`}
+                      type="tel"
+                      maxLength={RECEIPT_PHONE_MAX}
+                      value={unitDraft.phone}
+                      placeholder={form.phone.trim() || book?.phone?.trim() || ""}
+                      disabled={unitSaving}
+                      onChange={(e) => setUnitField("phone", e.target.value)}
+                    />
+                    {unitErr?.field === "phone" ? <span data-testid="pos-set-receipt-phone-error" className="text-[12.5px] text-[color:var(--color-danger)]">{t(unitErr.key)}</span> : null}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-2 md:col-span-2">
+                    <span className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--color-ink-soft)]">
+                      <span className="min-w-0 flex-1">{tr("byUnit.address")}</span>
+                      <button type="button" data-testid="pos-set-receipt-address-inherit" disabled={unitSaving || !unitDraft.address} className="inline-flex min-h-11 items-center text-[12.5px] font-semibold text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)] disabled:opacity-60" onClick={() => setUnitField("address", "")}>
+                        {tr("byUnit.inherit")}
+                      </button>
+                    </span>
+                    <input
+                      data-testid="pos-set-receipt-address"
+                      className={`${inp} ${unitErr?.field === "address" ? "border-[color:var(--color-danger)]" : ""}`}
+                      maxLength={RECEIPT_ADDRESS_MAX}
+                      value={unitDraft.address}
+                      placeholder={form.address.trim() || book?.address?.trim() || ""}
+                      disabled={unitSaving}
+                      onChange={(e) => setUnitField("address", e.target.value)}
+                    />
+                    {unitErr?.field === "address" ? <span data-testid="pos-set-receipt-address-error" className="text-[12.5px] text-[color:var(--color-danger)]">{t(unitErr.key)}</span> : null}
+                  </label>
+                </div>
+                {unitErr && unitErr.field === null ? (
+                  <InlineNote tone="error" testid="pos-set-receipt-unit-refusal">
+                    {t(unitErr.key)}
+                  </InlineNote>
+                ) : null}
+                {unitSaved ? (
+                  <InlineNote tone="ok" testid="pos-set-receipt-unit-saved">
+                    {tr("byUnit.saved")}
+                  </InlineNote>
+                ) : null}
+                <div className="flex justify-end">
+                  <button data-testid="pos-set-receipt-unit-save" type="button" className="btn btn-primary h-11 rounded-[11px] px-5 text-[14px] font-semibold disabled:opacity-50" disabled={unitSaving || branchNoBad} onClick={() => void saveUnit()}>
+                    {unitSaving ? t("saving") : tr("byUnit.save")}
+                  </button>
+                </div>
+              </div>
+            </SettingsCard>
+          ) : null}
 
           <SettingsCard testid="pos-settings-footer-card">
             <CardHead icon="list" title={tr("footerCard")} />
@@ -465,7 +633,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
               <RegisterIcon name="doc" size={14} />
               {tr("previewTitle", { paper: "80" })}
               <span className="flex-1" />
-              <span className="font-normal text-[color:var(--color-muted)]">{tr("previewHint")}</span>
+              <span className="font-normal text-[color:var(--color-muted)]">{branch && selUnit ? tr("byUnit.previewFor", { name: previewBranch }) : tr("previewHint")}</span>
             </div>
             <div className="flex justify-center rounded-[18px] bg-[color:var(--color-stage)] p-4 md:p-[22px]">
               <iframe
