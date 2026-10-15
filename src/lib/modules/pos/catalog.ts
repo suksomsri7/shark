@@ -2308,7 +2308,7 @@ export async function createCategory(
 
 // ═══════════════════ POS P2.2 ▸ ราคาตามช่องทาง / สาขา (R1 R2 · CD6 CD7 · มติ 1 5 6 11) — ผู้เขียนเดียวของ PosProductChannelPrice ◂ ═══════════════════
 
-const CP_TOP_KEYS: ReadonlySet<string> = new Set(["productId", "rows"]);
+const CP_TOP_KEYS: ReadonlySet<string> = new Set(["productId", "rows", "purgeDead"]); // POS P2.11 ▸ fix1 มติ 2 + purgeDead ◂
 const CP_ROW_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "priceSatang", "notSold"]);
 const BULK_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "markupBp", "roundTo", "productIds", "categoryId"]);
 type CpRow = { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean };
@@ -2398,12 +2398,15 @@ const scopeInv = (product: { unitId: string | null; invItemId: string | null }, 
  */
 export async function setChannelPrices(
   ctx: CatalogCtx,
-  input: { productId: string; rows: ChannelPriceInputRow[] },
+  input: { productId: string; rows: ChannelPriceInputRow[]; purgeDead?: boolean },
   client: CatalogClient = prisma,
 ): Promise<{ productId: string; rows: CpRow[]; changed: boolean }> {
   return boundary(async () => {
     assertCleanInputs(ctx, input);
     const top = ownFields(input, CP_TOP_KEYS, "ราคาตามช่องทาง", "ข้อมูลราคาตามช่องทางมีช่องที่ระบบไม่รู้จัก — ยังไม่ได้บันทึกอะไร");
+    // POS P2.11 ▸ fix1 มติ 2 (hunt L1): purgeDead = ล้างแถวตายของสินค้านี้ (ขอบเขตทั้งสินค้าเท่านั้น) · ไม่ส่ง/false = พฤติกรรมเดิม ◂
+    if (top.purgeDead !== undefined && top.purgeDead !== null && typeof top.purgeDead !== "boolean") throw invalidAt("ค่า \"ล้างแถวที่เลิกใช้\" ไม่ถูกต้อง", "purgeDead");
+    const purgeDead = top.purgeDead === true;
     if (!Array.isArray(top.rows)) throw invalidAt("แถวราคาต้องเป็นรายการ", "rows");
     if (top.rows.length > CHANNEL_PRICE_ROWS_MAX) throw invalidAt(`ตั้งราคาตามช่องทางได้ไม่เกิน ${CHANNEL_PRICE_ROWS_MAX} แถวต่อสินค้า`, "rows");
     const want = top.rows.map(cleanCpRow);
@@ -2430,6 +2433,14 @@ export async function setChannelPrices(
       const units = [...beforeRows, ...want].some((r) => r.unitId !== null) ? await liveUnitsOfPos(ctx, tx) : new Set<string>();
       const isDead = (r: { channelCode: string | null; unitId: string | null }) => (r.channelCode !== null && !codes.has(r.channelCode)) || (r.unitId !== null && !units.has(r.unitId));
       const changedRows = want.filter((r) => !beforeBy.has(cpKey(r)) || !cpSame(beforeBy.get(cpKey(r))!, r));
+      // POS P2.11 ▸ fix1 มติ 2: purgeDead ต้องมี pos.product.setPrice ที่ทุกสาขาที่ใช้งานของ POS นี้ (ขอบเขตทั้งสินค้า) — ตรวจก่อนเขียนอะไร ◂
+      if (purgeDead && actor) {
+        const liveAll = [...(await liveUnitsOfPos(ctx, tx))];
+        const wide = liveAll.length
+          ? liveAll.every((u) => canAccessUnit(actor, u) && evaluate(actor, { module: "pos", action: PERM_SET_PRICE, unitId: u }))
+          : isAllBranchActor(actor) && evaluate(actor, { module: "pos", action: PERM_SET_PRICE });
+        if (!wide) throw denied();
+      }
       if (changedRows.some(isDead)) {
         throw invalidAt("ช่องทางหรือสาขาของแถวราคานี้ถูกเก็บถาวร เลิกผูก หรือไม่มีในระบบ — แก้หรือเพิ่มแถวนี้ไม่ได้ (แถวเดิมเก็บไว้ตามเดิม) ยังไม่ได้บันทึกอะไร", "rows", "PRICE_ROW_DEAD");
       }
@@ -2447,22 +2458,27 @@ export async function setChannelPrices(
         }
       };
       // แถวเดิมที่ไม่ส่งมา: ในเอื้อม = ลบ · นอกเอื้อม = คงไว้ (POS P2.11 ▸ F4 ครึ่ง A/B ◂)
+      // POS P2.11 ▸ fix1 มติ 2: purgeDead = แถวตายทุกแถวของสินค้านี้ถูกลบ (ส่งมาหรือไม่ก็ตาม) · แถวนอกสิทธิ์ไม่เกี่ยว (ผู้ล้างมีขอบเขตทั้งสินค้า) ◂
+      const purged = purgeDead ? beforeRows.filter(isDead) : [];
       const removed: typeof beforeRows = [];
       const kept: typeof beforeRows = [];
       for (const r of beforeRows) {
+        if (purged.includes(r)) continue;
         if (wantBy.has(cpKey(r))) continue;
         if (await inReach(r)) removed.push(r);
         else kept.push(r);
       }
       // แถวที่เปลี่ยน/ใหม่ต้องมีสิทธิ์ที่ขอบเขตของแถว (นอกสิทธิ์ = PERMISSION_DENIED · ไม่เขียนอะไร)
       for (const r of changedRows) await requirePriceRowScope(ctx, actor, product, r.unitId, tx, cache);
-      const afterRows = cpSort([...want, ...kept.map(cpPlain)]);
-      if (!changedRows.length && !removed.length) {
-        // ไม่มีอะไรเปลี่ยน: ยังต้องมีสิทธิ์ราคาของสินค้านี้ (ผู้ไม่มีสิทธิ์ไม่ได้ "สำเร็จ") — ใช้สาขาของแถวที่ยังใช้งานได้แถวแรก
+      const purgedKeys = new Set(purged.map(cpKey));
+      const afterRows = cpSort([...want.filter((r) => !purgedKeys.has(cpKey(r))), ...kept.map(cpPlain)]);
+      if (!changedRows.length && !removed.length && !purged.length) {
+        // ไม่มีอะไรเปลี่ยน: ยังต้องมีสิทธิ์ราคาของสินค้านี้ (ผู้ไม่มีสิทธิ์ไม่ได้ "สำเร็จ")
         await requirePriceRowScope(ctx, actor, product, want.find((r) => r.unitId !== null && !isDead(r))?.unitId ?? null, tx, cache);
         return { productId: product.id, rows: afterRows, changed: false };
       }
       const userId = auditUserOf(ctx);
+      if (purged.length) await tx.posProductChannelPrice.deleteMany({ where: { tenantId: ctx.tenantId, id: { in: purged.map((r) => r.id) } } }); // POS P2.11 ▸ fix1 มติ 2 ◂
       if (removed.length) await tx.posProductChannelPrice.deleteMany({ where: { tenantId: ctx.tenantId, id: { in: removed.map((r) => r.id) } } });
       for (const r of changedRows) {
         const prev = beforeBy.get(cpKey(r));
@@ -2472,7 +2488,7 @@ export async function setChannelPrices(
             data: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: product.id, channelCode: r.channelCode, unitId: r.unitId, priceSatang: r.priceSatang, notSold: r.notSold, updatedByUserId: userId },
           });
       }
-      await audit(tx, ctx, "pos.product.channelPrice", "PosProduct", product.id, { productId: product.id, rows: cpSort(beforeRows.map(cpPlain)) }, { productId: product.id, rows: afterRows.map(cpPlain) });
+      await audit(tx, ctx, "pos.product.channelPrice", "PosProduct", product.id, { productId: product.id, rows: cpSort(beforeRows.map(cpPlain)) }, { productId: product.id, rows: afterRows.map(cpPlain), ...(purged.length ? { via: "purgeDead", purged: cpSort(purged.map(cpPlain)) } : {}) });
       return { productId: product.id, rows: afterRows, changed: true };
     });
   });
