@@ -12,6 +12,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { CatalogError, bulkChannelMarkup, setChannelPrices, type CatalogCtx, type CatalogErrorCode } from "./catalog";
+import { copyUnitPrices, unitPriceMatrix, type UnitPriceMatrix } from "./catalog"; // POS P2.11 ▸ คัดลอก/เทียบราคาสาขา ◂
 import type { ChannelPriceInputRow, ChannelPriceView } from "./price-shared";
 
 // POS P2.11 ▸ l-price: + reason (PRICE_REFUSAL_REASONS · คีย์ pos.price.errors.<camelCase>) · field ส่งต่อจาก CatalogError ◂
@@ -24,11 +25,13 @@ function refusalOf(where: string, e: unknown): PriceActionRefusal {
 }
 
 /** session → CatalogCtx · ด่านแรกระดับบทบาท (pos.product.setPrice) — ขอบเขตต่อแถวตรวจซ้ำใน catalog.ts กับ DB */
-async function sessionCtx(args: unknown): Promise<CatalogCtx | PriceActionRefusal> {
+async function sessionCtx(args: unknown, readOnly = false): Promise<CatalogCtx | PriceActionRefusal> {
   const auth = await requireTenant();
   const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
   const systemId = typeof a.systemId === "string" ? a.systemId : "";
   if (!systemId) return { ok: false, code: "NOT_FOUND", message: "ไม่พบรายการนี้ในระบบขาย" };
+  // POS P2.11 ▸ ตัวอ่าน (เทียบราคาสาขา) ไม่ผูกคีย์สิทธิ์ — สมาชิกของร้าน + สาขาที่เข้าได้ ตัดสินใน catalog.ts ◂
+  if (readOnly) return { tenantId: auth.active.tenantId, systemId, actorUserId: auth.user.id };
   const m = posMembership(auth.active);
   try {
     // ระดับบทบาท (ไม่ระบุสาขา): MANAGER ผ่าน · STAFF ต้องมี pos.product.setPrice — ขอบเขตสาขาต่อแถวตัดสินใน catalog.ts
@@ -87,3 +90,54 @@ export async function bulkChannelMarkupAction(args: {
   }
 }
 
+// ═══════════ POS P2.11 ▸ คัดลอก/เทียบราคาสาขา (brief P2.11 §1 F5 · P2.11U จอ 06 "คัดลอกราคาจากสาขา" / "ขายที่ 2 สาขา") ◂ ═══════════
+
+/**
+ * F5 — คัดลอกแถวราคาของสาขาต้นทาง → ปลายทาง (overwrite false = ข้ามแถวที่ปลายทางมีอยู่แล้ว) → {changed, written, skipped, productIds}
+ * ปฏิเสธ: VALIDATION (field fromUnitId/toUnitId/productIds · reason PRICE_ROW_DEAD/BULK_TOO_MANY) · PERMISSION_DENIED (ตั้งราคาที่ปลายทางไม่ได้) · NOT_FOUND · BUSY · INTERNAL
+ */
+export async function copyUnitPricesAction(args: {
+  systemId: string;
+  fromUnitId: string;
+  toUnitId: string;
+  overwrite: boolean;
+  productIds?: string[];
+}): Promise<{ ok: true; changed: boolean; written: number; skipped: number; productIds: string[] } | PriceActionRefusal> {
+  try {
+    const ctx = await sessionCtx(args);
+    if ("ok" in ctx) return ctx;
+    const a = args ?? ({} as typeof args);
+    const input: Parameters<typeof copyUnitPrices>[1] = { fromUnitId: a.fromUnitId, toUnitId: a.toUnitId, overwrite: a.overwrite };
+    if (a.productIds !== undefined) input.productIds = a.productIds;
+    const r = await copyUnitPrices(ctx, input);
+    return { ok: true, changed: r.changed, written: r.written, skipped: r.skipped, productIds: r.productIds };
+  } catch (e) {
+    unstable_rethrow(e);
+    return refusalOf("copyUnitPricesAction", e);
+  }
+}
+
+/**
+ * เทียบราคาสาขา (อ่านอย่างเดียว) — ราคาจริงต่อ สินค้า × สาขา × ช่องทาง (ทางเดียวกับหน้าขาย) · สาขาปริยาย = สาขาที่ผู้ใช้เข้าได้
+ * ปฏิเสธ: VALIDATION · NOT_FOUND (สินค้า/สาขานอกขอบเขต) · INTERNAL
+ */
+export async function unitPriceMatrixAction(args: {
+  systemId: string;
+  productIds: string[];
+  unitIds?: string[];
+  channelCodes?: string[];
+}): Promise<({ ok: true } & UnitPriceMatrix) | PriceActionRefusal> {
+  try {
+    const ctx = await sessionCtx(args, true);
+    if ("ok" in ctx) return ctx;
+    const a = args ?? ({} as typeof args);
+    const input: Parameters<typeof unitPriceMatrix>[1] = { productIds: a.productIds };
+    if (a.unitIds !== undefined) input.unitIds = a.unitIds;
+    if (a.channelCodes !== undefined) input.channelCodes = a.channelCodes;
+    const r = await unitPriceMatrix(ctx, input);
+    return { ok: true, units: r.units, channelCodes: r.channelCodes, cells: r.cells };
+  } catch (e) {
+    unstable_rethrow(e);
+    return refusalOf("unitPriceMatrixAction", e);
+  }
+}
