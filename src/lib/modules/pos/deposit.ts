@@ -330,7 +330,7 @@ export type RegisterDepositLookupRow = Pick<DepositView, "id" | "receiptNo" | "c
 export type RegisterDepositLookupResult = { ok: true; deposits: RegisterDepositLookupRow[] } | RegisterRefusal;
 const LOOKUP_MAX = 20;
 /**
- * R9 (มติ 19) — ค้นมัดจำของสาขานี้: เลขใบรับ (ตรงตัว) · ชื่อ (ขึ้นต้น ไม่สนตัวพิมพ์) · 4 หลักท้ายของเบอร์ · สิทธิ์ pos.sale.create ·
+ * R9 (มติ 19) — ค้นมัดจำของสาขานี้: เลขใบรับ (ตรงตัว) · ชื่อ (ขึ้นต้น ไม่สนตัวพิมพ์) · (fix3: ไม่ค้นด้วย 4 หลักท้าย — ใช้ยืนยันตอนใช้เท่านั้น) · สิทธิ์ pos.sale.create ·
  * อ่านอย่างเดียว (ไม่เขียนแถวใด) · สาขาอื่น/ร้านอื่น = ไม่พบ (ผลว่าง) · เบอร์ปิดบังเท่านั้น
  */
 export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterActor, input: { query?: string; phoneLast4?: string; memberId?: string }, client?: Db): Promise<RegisterDepositLookupResult> {
@@ -341,10 +341,10 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
     const q = isRecord(input) && typeof input.query === "string" ? input.query.trim() : "";
     // POS P2.9b ▸ fix1 มติ 5 (hunt D4): ค้นมัดจำของสมาชิกในบิล — รวมมัดจำของสมาชิกที่ถูกรวมเข้าคนนี้ (mergedIntoId ≤ 5 ชั้น) ◂
     const memberId = isRecord(input) && isId(input.memberId) ? input.memberId : null;
-    if ((!q && !memberId) || q.length > 60 || (q && [...q].length < 3)) return refuse("VALIDATION", "พิมพ์เลขใบรับมัดจำ ชื่อ (อย่างน้อย 3 ตัวอักษร) หรือ 4 หลักท้ายของเบอร์");
+    if ((!q && !memberId) || q.length > 60 || (q && [...q].length < 3)) return refuse("VALIDATION", "พิมพ์เลขใบรับมัดจำ หรือชื่อ (อย่างน้อย 3 ตัวอักษร)");
     const last4 = isRecord(input) && typeof input.phoneLast4 === "string" && /^\d{4}$/.test(input.phoneLast4) ? input.phoneLast4 : null;
     const or: Prisma.PosDepositWhereInput[] = q ? [{ receiptNo: q }, { customerName: { startsWith: q, mode: "insensitive" } }] : [];
-    if (/^\d{4}$/.test(q)) or.push({ phoneLast4: q });
+    // POS P2.9b ▸ fix3 มติ 2 (R3 F2 · hunter F1 · มติ 19 แก้): ไม่ค้นด้วย 4 หลักท้ายของเบอร์ — 4 หลักท้ายเป็นความลับยืนยันตอนใช้เท่านั้น (checkDepositPhone · ตัวนับ · DEPOSIT_LOCKED) ◂
     const family = memberId ? await mergedFamily(db, sc.ctx.tenantId, memberId) : [];
     if (memberId) or.push({ customerId: { in: family } });
     const rows = await db.posDeposit.findMany({
