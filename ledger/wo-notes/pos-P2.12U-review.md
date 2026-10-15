@@ -46,6 +46,6 @@ R1 = MERGEABLE-AFTER-FIXES. Builder decisions (iframe print path · overview = S
 - **F7 (added to fix 1)**: print pages log 16 console 404s each (th + en) — resources inside the srcdoc resolving relative to `about:srcdoc` (suspected) → absolute URLs / `<base href>`; harness to print the failing URL.
 - PDF probe this run = parent path (R1 F1) ⇒ not used as evidence; re-run after the probe fix (vis85).
 
-## R1 re-verify fix round 1 (@0c1177ca · 15 Oct 20:45Z) — verbatim summary
+## R1 re-verify fix round 1 (@0c1177ca · 15 Oct 20:39Z) — verbatim summary
 **MERGEABLE.** F1 probe prints the frame document (`visual-pos.mts:7949-7970`, base href = server origin) · F3 filter not rendered in `allMode` (`BillsClient.tsx:1111-1121`) · F4 visible `pos-reports-hourly-off` + aria-describedby (`ReportsClient.tsx:818-823`) · F2 hint values softened th/en (:2201), comment updated, key sets equal · F6 `relative` on the `Table` scroller (:104) + anomaly scroller (:219), `min-w-0` body, tab strip own scroll box (:779) — no other absolute/sticky children, 44 px kept · F7 `adoptFonts` resolves `url()` against the sheet's href / `document.baseURI`, data/blob/absolute untouched, same-origin only (CORS-blocked sheets skipped), no font rules ⇒ nothing injected but paper/body CSS; harness logs failing URLs. All hunks marked; no S/lane files; notes complete (F1–F7, F5 residue, 3 follow-ups).
 **Controller:** merge after vis85 (390 overflow gone · print pages 0 console errors · PDF probe text/pages sane).
