@@ -343,7 +343,8 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
     const last4 = isRecord(input) && typeof input.phoneLast4 === "string" && /^\d{4}$/.test(input.phoneLast4) ? input.phoneLast4 : null;
     const or: Prisma.PosDepositWhereInput[] = q ? [{ receiptNo: q }, { customerName: { startsWith: q, mode: "insensitive" } }] : [];
     if (/^\d{4}$/.test(q)) or.push({ phoneLast4: q });
-    if (memberId) or.push({ customerId: { in: await mergedFamily(db, sc.ctx.tenantId, memberId) } });
+    const family = memberId ? await mergedFamily(db, sc.ctx.tenantId, memberId) : [];
+    if (memberId) or.push({ customerId: { in: family } });
     const rows = await db.posDeposit.findMany({
       where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, OR: or },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -355,7 +356,8 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
         const v = viewOf(d);
         // ยอดเห็นได้เมื่อ: ตรงเลขใบรับ (มัดจำสมาชิก/ไม่มีเบอร์ หรือ walk-in ที่ 4 หลักท้ายถูก) หรือมัดจำของสมาชิกในบิล (memberId) · ค้นด้วยชื่อ/เบอร์ = ไม่มียอด
         const needsPhoneLast4 = !d.customerId && !!d.phoneLast4;
-        const holder = (q && d.receiptNo === q && (!needsPhoneLast4 || last4 === d.phoneLast4)) || (!!memberId && !!d.customerId);
+        // POS P2.9b ▸ fix2 มติ 1 (R2 F1): ค้นด้วยสมาชิก = เห็นยอดเฉพาะมัดจำของสมาชิกนั้น/ที่ถูกรวมเข้า (ไม่ใช่มัดจำของสมาชิกอื่นที่ชื่อตรงคำค้น) ◂
+        const holder = (q && d.receiptNo === q && (!needsPhoneLast4 || last4 === d.phoneLast4)) || (!!d.customerId && family.includes(d.customerId));
         return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: holder ? v.remainingSatang : null, status: v.status, expiresAt: v.expiresAt, amountSatang: holder ? v.amountSatang : null, memberLinked: !!d.customerId, needsPhoneLast4 };
       }),
     };
