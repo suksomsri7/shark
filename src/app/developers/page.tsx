@@ -131,6 +131,21 @@ export default function DevelopersPage() {
         </p>
       </section>
 
+      {/* POS P2.13 ▸ ลิงก์คู่มือ API ระบบขายหน้าร้าน (/developers/pos) ◂ */}
+      <section className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <h2 className="text-lg font-semibold">POS API — เชื่อมระบบขายหน้าร้าน (อ่าน+เขียนได้)</h2>
+        <p className="text-sm text-neutral-700">
+          ถ้าร้านของคุณเปิดใช้ระบบขายหน้าร้าน (POS) มี API แยกต่างหากที่ขายได้จริงด้วยราคาเดียวกับหน้าขาย: คิดราคาตะกร้า ขาย ตัดสต็อก ลงบัญชี
+          ออกใบเสร็จ คืนเงิน ยกเลิกบิล รับออเดอร์จากแอปหรือแพลตฟอร์มเดลิเวอรี แจ้งของหมด และดึงรายงานทุกชนิด (ส่งออก CSV ได้) คีย์ของโมดูลนี้มี{" "}
+          <strong>scope</strong> ของตัวเอง (เลือกได้ 3 ชุด: อ่านอย่างเดียว / งานหน้าเคาน์เตอร์ / ผู้ดูแล ที่หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบ SHARK)
+        </p>
+        <p className="text-sm">
+          <a className="font-medium text-emerald-700 underline" href="/developers/pos">
+            อ่านคู่มือ POS API ฉบับเต็ม (/developers/pos)
+          </a>
+        </p>
+      </section>
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">1. การยืนยันตัวตน (Authentication)</h2>
         <p className="text-sm text-neutral-700">

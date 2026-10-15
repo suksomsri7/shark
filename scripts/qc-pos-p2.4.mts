@@ -378,10 +378,11 @@ const ROI_FIELDS = ["id", "tenantId", "unitId", "orderId", "order", "menuItemId"
 const TABLE_DTO_KEYS = ["id", "name", "zoneId", "seats", "state", "sessionId", "guestCount", "openedAt", "unpaidSatang", "unsentCount", "readyCount", "member", "openedByStaff", "flags", "dirtySince", "reservation"];
 const SUMMARY_KEYS = ["used", "total", "guests", "avgMinutes", "unpaidSatang"];
 /** ทะเบียนผู้เรียก createSale ณ 6dbcafe0 (= qc-pos-p1.6 U4 · วัดด้วยสูตรเดียวกัน) */
+// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ ไฟล์ pos/api/ops/sales.ts ไม่เรียก createSale แล้ว (1 → 0 · ถอดแถว)
 const CALL_SITES: Record<string, number> = {
   "src/lib/actions/booking.ts": 1, "src/lib/actions/pos.ts": 1, "src/lib/ai/proposals.ts": 1, "src/lib/modules/booking/service.ts": 1,
   "src/lib/modules/clinic/service.ts": 1, "src/lib/modules/giftcard/service.ts": 2, "src/lib/modules/hotel/service.ts": 2,
-  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/api/ops/sales.ts": 1, "src/lib/modules/pos/register.ts": 1,
+  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/register.ts": 1,
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
 };

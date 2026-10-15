@@ -4,23 +4,35 @@
 //    (1) REST `/api/v1/pos/*`  (2) OpenAPI + คู่มือ + สกิล `shark-pos-api`  (3) tool ของผู้ช่วย AI สกิล `sales`
 //    ⇒ เพิ่ม endpoint = เพิ่ม op ที่ `ops/*.ts` แล้วต่อเข้าทะเบียนนี้ที่เดียว
 //
-// 🔴 P0.2 = โครงเท่านั้น (มติผู้คุมงาน 1 ต.ค.):
-//    - ยังไม่มี route `src/app/api/v1/pos` · ยังไม่มี bundle คีย์ API · ยังไม่มี config/actor ของ REST — ทั้งหมดคือใบ P2.13
+// 🔴 P0.2 = โครง · POS P2.13 ▸ route `src/app/api/v1/pos/[...path]` + config/actor/dispatch/openapi + bundle คีย์ `pos-*` มีแล้ว ◂
 //    - tool ของผู้ช่วย AI ยังเป็นตัวเขียนมือเดิมใน `src/lib/ai/tools.ts` (ไม่เปลี่ยนพฤติกรรม) — op ที่นี่ **ไม่ประกาศ `tool`**
 //      เพราะถ้าประกาศ ทะเบียนสกิลจะเห็นสองตัวชื่อเดียวกันตอนสลับ · การสลับ = P2.13/P3.9 (ตาราง POS_LEGACY_AI_TOOLS ด้านล่าง)
 
 import { allowedMethodsIn, matchOpIn } from "@/lib/api/dispatch";
 import type { ApiOp } from "./op";
+import { CHANNELS_OPS } from "./ops/channels";
+import { DEVICES_OPS } from "./ops/devices";
+import { META_OPS } from "./ops/meta";
+import { ORDERS_OPS } from "./ops/orders";
+import { PRODUCTS_OPS } from "./ops/products";
 import { REPORTS_OPS } from "./ops/reports";
 import { SALES_OPS } from "./ops/sales";
+import { SHIFTS_OPS } from "./ops/shifts";
 
 export * from "./op";
 
 /** ทุก op ของ API ขายหน้าร้าน — เรียงตามไฟล์ที่มา */
 export const POS_OPS: ApiOp[] = [
-  // POS P0.2 ▸ op จาก tool เดิมของสกิล `sales` ที่ตรรกะอยู่ในโมดูล POS จริง ◂
-  ...REPORTS_OPS,
+  // POS P2.13 ▸ 48 op ตามลำดับ brief §1 (meta → sales → shifts → devices → products → channels → orders → reports) ·
+  //   คง id ของ P0.2 (sales.create · sales.void · sales.summary · sales.byDay) · ไม่มี op ไหนประกาศ tool (มติ 7 — สลับ tool = P3.9) ◂
+  ...META_OPS,
   ...SALES_OPS,
+  ...SHIFTS_OPS,
+  ...DEVICES_OPS,
+  ...PRODUCTS_OPS,
+  ...CHANNELS_OPS,
+  ...ORDERS_OPS,
+  ...REPORTS_OPS,
 ];
 
 /**

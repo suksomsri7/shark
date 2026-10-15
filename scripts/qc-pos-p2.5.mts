@@ -522,10 +522,11 @@ const TS_FIELDS = ["id", "tenantId", "unitId", "tableId", "table", "status", "gu
 /** = qc-pos-p2.4/p2.6 ROI_FIELDS (ORACLE-EDIT 14 ต.ค. + stockTaken) */
 const ROI_FIELDS = ["id", "tenantId", "unitId", "orderId", "order", "menuItemId", "menuItem", "stationId", "station", "nameSnapshot", "unitPrice", "optionsTotal", "qty", "lineTotal", "note", "kdsStatus", "isRush", "cookingAt", "readyAt", "servedAt", "cancelledAt", "cancelReason", "cancelledByUserId", "saleId", "settledAt", "productId", "createdAt", "updatedAt", "options", "stockTaken"];
 /** ทะเบียนผู้เรียก createSale (= qc-pos-p2.4 L2 / qc-pos-p2.6 L3 · สูตรเดียวกัน) */
+// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ ไฟล์ pos/api/ops/sales.ts ไม่เรียก createSale แล้ว (1 → 0 · ถอดแถว)
 const CALL_SITES: Record<string, number> = {
   "src/lib/actions/booking.ts": 1, "src/lib/actions/pos.ts": 1, "src/lib/ai/proposals.ts": 1, "src/lib/modules/booking/service.ts": 1,
   "src/lib/modules/clinic/service.ts": 1, "src/lib/modules/giftcard/service.ts": 2, "src/lib/modules/hotel/service.ts": 2,
-  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/api/ops/sales.ts": 1, "src/lib/modules/pos/register.ts": 1,
+  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/register.ts": 1,
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
 };

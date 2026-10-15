@@ -401,7 +401,7 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/giftcard/service.ts": 2, // sell/reload · resolvePosForMember · tx ของผู้เรียก
   "src/lib/modules/hotel/service.ts": 2, // checkOut/recordDeposit · systemForUnit
   "src/lib/modules/member/subscription.ts": 1, // subscribe · resolvePosForMember
-  "src/lib/modules/pos/api/ops/sales.ts": 1, // REST/AI op sales.create · posUnitIsLinked
+  // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ ไฟล์ pos/api/ops/sales.ts ไม่เรียก createSale แล้ว (1 → 0 · ถอดแถว)
   "src/lib/modules/pos/order.ts": 1, // ORACLE-EDIT P2.8 (มติ 3 · CD7 · CD9): orderCreateSale — บิลของออเดอร์ (PLATFORM ตอนรับ · DIRECT ตอน payOrder) · คีย์ posorder-<id> · tx ของออเดอร์
   "src/lib/modules/pos/register.ts": 1, // หน้าขายใหม่ P1.3 · regScope · P1.7: จุดเดียวใน regCreateSale มี 2 โหมด (tx ของตัวเอง = ทาง P1.6 · tx ของผู้เรียก = ใบขอรับเงิน pi_ → ตัดสต็อกหลัง commit + scheduleDrain ทำซ้ำที่ผู้เรียก regSubmitWithIntents)
   "src/lib/modules/rental/service.ts": 2, // returnAsset (POS ตัวแรก · O21) / recordRentalDeposit (systemForUnit)

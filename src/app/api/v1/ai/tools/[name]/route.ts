@@ -36,6 +36,9 @@ export async function POST(
   // CRM C1.10 ▸ ร้าน CRM รุ่นเดิม: `crm_create_lead` เปิดให้ทุกคีย์เหมือนก่อน C1.10 (ระบบ = ที่คีย์ผูก/ส่วนหัว/ระบบ CRM แรก) ◂
   const crmLegacyLead =
     name === "crm_create_lead" && (await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get(HEADER_SYSTEM)?.trim() ?? null));
+  // POS P2.13 ▸ ด่านคีย์กลาง (HF-APIV1) มาก่อนด่าน scope — เครื่องมือนอก 4 โมดูล (รวมเครื่องมือขายของ POS ที่ผูก scope แล้ว · มติ 7)
+  //   ตอบคีย์ของโมดูลด้วย 403 key_not_general เหมือนเดิม · เครื่องมือของ 4 โมดูลผ่านด่านนี้เสมอ (ลำดับไม่เปลี่ยนผลของโมดูล) ◂
+  if (!generalToolGate(name, auth)) return keyNotGeneralResponse();
   if (!toolAllowedForApiKey(name, auth.scopes, { crmLegacyLead })) {
     return apiJson(
       {
@@ -46,8 +49,7 @@ export async function POST(
     );
   }
 
-  // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล (ขาย POS · การเงิน · ความจำ · คลังความรู้ · แชท …) = คีย์กลางเท่านั้น ◂
-  if (!generalToolGate(name, auth)) return keyNotGeneralResponse();
+  // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล (ขาย POS · การเงิน · ความจำ · คลังความรู้ · แชท …) = คีย์กลางเท่านั้น ◂ (POS P2.13 ▸ ย้ายขึ้นไปก่อนด่าน scope ◂)
 
   // ── สมุดบัญชีที่จะทำงานด้วย ────────────────────────────────────────────────
   // คีย์ที่ผูกเล่มไว้ = ผูกตายตัว · ส่งหัวมาต่างจากที่ผูก = ปฏิเสธ (กติกาเดียวกับ REST require.ts)

@@ -18079,6 +18079,426 @@
       "query": "unit=[unitId]"
     },
     {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api",
+        "note": "แสดงเมื่อ listPosApiKeysAction โยน (โหลดไม่สำเร็จ) → โหลดรายการคีย์ใหม่"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-empty-create",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-api-dialog",
+        "note": "การ์ดว่าง (ยังไม่มีคีย์ของระบบ POS นี้) · เฉพาะ canCreate (api.key.create) → กล่องสร้างคีย์"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-create",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-api-dialog",
+        "note": "\"+ สร้างคีย์\" หัวแผง (มีคีย์แล้ว · canCreate) → กล่องสร้างคีย์ · canCreate false = ไม่มีปุ่ม + pos-settings-api-readonly"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-docs",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/developers/pos",
+        "note": "ลิงก์คู่มือ API สาธารณะ (การ์ดว่าง / ใต้รายการ) — แท็บเดิม"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-row-revoke-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-api-revoke-confirm",
+        "note": "ต่อแถวคีย์ที่ยังไม่ถูกเพิกถอน · เฉพาะ canRevoke (api.key.revoke) → กล่องยืนยันเพิกถอน"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-dialog",
+        "note": "ชื่อคีย์ ≤ 60 ตัวอักษร (ว่าง/ยาวเกิน = pos-settings-api-create-error ฝั่ง client)"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-bundle-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-dialog",
+        "note": "การ์ดเลือกชุดสิทธิ์ 3 ใบ pos-read · pos-operate · pos-admin (radio · ค่าปริยาย pos-read) + คำอธิบาย 1 บรรทัด"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-ttl",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-dialog",
+        "note": "อายุคีย์ 30 / 90 / 365 วัน / ไม่หมดอายุ (0) · ค่าปริยาย 365"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-scope-all",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-dialog",
+        "note": "ทุกสาขา (ไม่ส่ง unitIds) — แสดงเฉพาะ allUnits true (เจ้าของ / ดูแลทุกสาขา)"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-scope-pick",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-units",
+        "note": "เลือกสาขา → รายการสาขาที่ผู้ดูดูแล — แสดงเฉพาะ allUnits true · allUnits false = บังคับเลือกสาขาเสมอ (ไม่มีสวิตช์นี้)"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-unit-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-units",
+        "note": "checkbox ต่อสาขา (listPosApiKeysAction.units) → unitIds · โหมดเลือกสาขาแต่ไม่เลือกเลย = pos-settings-api-create-error"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-create-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api",
+        "note": "ปิดกล่องสร้าง (แตะม่านก็ปิด — ยกเว้นกำลังส่ง)"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-create-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "createPosApiKeyAction",
+        "db": "ApiKey",
+        "note": "{systemId, name, bundle, ttlDays, unitIds?} → สำเร็จ = แผงคีย์ดิบครั้งเดียว pos-settings-api-raw · ปฏิเสธ = pos-settings-api-create-error (ข้อความตามรหัส)"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-raw-key",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-raw",
+        "note": "คีย์ดิบอ่านอย่างเดียว (โฟกัส = เลือกทั้งหมด) · แสดงครั้งเดียว ไม่เก็บที่ใด"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-raw-copy",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-raw",
+        "note": "navigator.clipboard.writeText → \"คัดลอกแล้ว\" · ใช้ไม่ได้ = เลือกข้อความ + execCommand(copy) · ยังไม่ได้ = pos-settings-api-raw-copy-failed"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-raw-done",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-list",
+        "note": "ปิดแผงคีย์ดิบ (แตะม่านไม่ปิด) → โหลดรายการใหม่"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-revoke-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api",
+        "note": "ปิดกล่องยืนยันเพิกถอน (ไม่เปลี่ยนอะไร)"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-revoke-yes",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "revokePosApiKeyAction",
+        "db": "ApiKey.revokedAt",
+        "note": "ปุ่มแดง \"เพิกถอนคีย์\" → {systemId, keyId} → โหลดรายการใหม่ (แถว = ชิป \"เพิกถอนแล้ว\" · ไม่มีปุ่มเพิกถอน) · ปฏิเสธ = pos-settings-api-revoke-error"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/developers/pos",
+      "testid": "developers-pos-md",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/developers/pos.md",
+        "note": "หน้าคู่มือ API สาธารณะ (ไม่ต้องล็อกอิน) → คู่มือฉบับ Markdown"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/developers/pos",
+      "testid": "developers-pos-openapi",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/api/v1/pos/openapi.json",
+        "note": "หน้าคู่มือ API สาธารณะ (ไม่ต้องล็อกอิน) → สเปก OpenAPI ของ /api/v1/pos (JSON)"
+      },
+      "wo": "P2.13",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
       "page": "/app/sys/[id]/pos/reports",
       "testid": "pos-reports-pdf",
       "kind": "link",

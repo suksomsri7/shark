@@ -467,7 +467,7 @@ function orderCreateSale(tx: Tx, input: CreateSaleInput) {
 }
 
 /** ฐานของบิลออเดอร์: sourceModule POS · sourceId = ออเดอร์ · คีย์ posorder-<id> · ช่องทาง + เลขอ้างอิง · ไม่มีค่าบริการ/ทิป/ส่วนลด (P2.1 CD8) */
-function saleBase(o: PosOrder, lines: CreateSaleInput["lines"], payMethods: CreateSaleInput["payMethods"], who: { soldByUserId: string | null; shiftId: string | null }): CreateSaleInput {
+function saleBase(o: PosOrder, lines: CreateSaleInput["lines"], payMethods: CreateSaleInput["payMethods"], who: { soldByUserId: string | null; shiftId: string | null | undefined /* POS P2.13 ▸ undefined = กติกา "ทางอื่น" (REST) ◂ */ }): CreateSaleInput {
   return {
     tenantId: o.tenantId,
     unitId: o.unitId,
@@ -1264,13 +1264,25 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     const sum = pays.reduce((t, p) => t + p.amountSatang, 0);
     if (sum !== o.totalSatang) return refuse("PAYMENT_MISMATCH", `ยอดชำระ ${sum} ไม่เท่ายอดออเดอร์ ${o.totalSatang}`);
     if (cashReceived !== null && cashReceived < cashRows[0]!.amountSatang) return refuse("PAYMENT_MISMATCH", "เงินที่รับมาน้อยกว่ายอดเงินสด");
-    const shift = await deviceShift(prisma, s, s.deviceId);
-    if ((cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
+    // POS P2.13 ▸ CD5 (ขยายถึง orders.pay): คำขอจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId · ไม่มีเครื่อง) = ไม่ส่ง shiftId ⇒ createSale ผูกกะตามกติกา
+    //   "ทางอื่น" (requiredOtherSources) แทนกะของเครื่อง · หน้าจอ (ไม่มี apiKeyId) = เดิมทุกไบต์ ◂
+    const apiPay = isRecord(ctx) && typeof (ctx as { apiKeyId?: unknown }).apiKeyId === "string" && !!(ctx as { apiKeyId?: unknown }).apiKeyId;
+    // POS P2.13 ▸ fix1 H3: เงินสดผ่าน REST ลงกะเสมอ (ไม่บันทึกเงินสดนอกกะ แม้ requiredOtherSources ปิด) — ผูกกะเปิดกะเดียวของสาขา ·
+    //   ไม่มีกะเปิด / เปิดหลายกะ (ไม่เดา) = SHIFT_REQUIRED ก่อนเขียน · ไม่มีเงินสด = กติกา "ทางอื่น" ของ createSale เหมือนเดิม ◂
+    let apiCashShift: string | undefined;
+    if (apiPay && cashRows.length > 0) {
+      const open = await prisma.posShift.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 });
+      if (open.length !== 1) return refuse("SHIFT_REQUIRED", open.length ? "สาขานี้เปิดกะอยู่หลายกะ — ระบุกะทาง API ไม่ได้ รับเงินสดของออเดอร์นี้ที่เครื่องหน้าร้าน" : "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนรับเงินสด");
+      apiCashShift = open[0]!.id;
+    }
+    const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: apiCashShift, required: false } : await deviceShift(prisma, s, s.deviceId);
+    if (!apiPay && (cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
     // POS HF-PP2 ▸ (P2.8U R1 F1 · บรีฟ §9 ข้อ 1–2): ด่านเดียวกับ submitRegisterSale (HF-PP) — ร้านตั้ง manualConfirmRequiresManager ⇒ พร้อมเพย์/บัตรที่ไม่อ้าง
     //   ใบขอรับเงินที่จ่ายแล้ว (pi_ ของสาขานี้ · PAID ใน 24 ชม. · ยอดตรงแถว · ไม่ซ้ำ · ยังไม่อยู่บนบิลใด — payOrder ไม่ตัดใบ จึงตรวจของจริง ไม่ใช่แค่รูปแบบ · fix1 F1) ต้องมี pos.shift.manage ·
     //   หลังตรวจแบบอ่านอย่างเดียวทั้งหมด ก่อนเขียนอะไร · ไม่มีวิธีจ่ายแบบนี้ / ผู้กระทำมีสิทธิ์ = ไม่แตะ DB เพิ่ม ◂
     const manual = pays.filter((p) => REGISTER_MANUAL_METHODS.has(p.type));
-    if (manual.length > 0 && !can(s.actor, "pos.shift.manage", s.unitId)) {
+    // POS P2.13 ▸ fix1 F3/H2 (option b): REST (apiPay) ไม่ผ่านด่านผู้จัดการเสมอ — ต้องอ้าง pi_ ที่จ่ายแล้ว หรือร้านไม่ได้ตั้งให้ผู้จัดการยืนยัน ◂
+    if (manual.length > 0 && (apiPay || !can(s.actor, "pos.shift.manage", s.unitId))) {
       const piIds = manual.flatMap((p) => (isPaymentIntentId(p.reference) ? [p.reference] : []));
       const allPi = piIds.length === manual.length && new Set(piIds).size === piIds.length;
       const used = allPi && (await prisma.posPayment.count({ where: { tenantId: s.tenantId, reference: { in: piIds } } })) > 0;

@@ -17,6 +17,7 @@ export const NON_API_SCOPE_KEYS: readonly string[] = ["account.approve.limit"];
 export function isApiScope(key: string): boolean {
   // CRM C1.10 ▸ ตัวกรองของคีย์ CRM (มติ C30 · RESOLUTIONS R-C.3) เป็น "pseudo-scope" ที่เก็บใน scopesJson ⇒ รับได้ที่นี่ ◂
   if (isCrmFilterScope(key)) return true;
+  if (isPosFilterScope(key)) return true; // POS P2.13 ▸ ตัวกรองสาขาของคีย์ POS (pseudo-scope) ◂
   return isPermissionKey(key) && !isPermissionParamKey(key) && !NON_API_SCOPE_KEYS.includes(key);
 }
 
@@ -50,6 +51,18 @@ export function crmFilterTargetsOf(scopes: readonly string[]): { teamIds: string
 }
 // ◂ CRM C1.10
 
+// POS P2.13 ▸ คีย์ API ของระบบขายหน้าร้าน (REST /api/v1/pos · มติ 2 3)
+//   scope = permission key ของ POS ตัวเดียวกับหน้าจอ · ตัวกรองสาขา `pos.filter.unit:<unitId>` = คีย์ทำงานได้เฉพาะสาขาที่ระบุ (ใส่ได้หลายตัว ·
+//   ไม่มีเลย = ทุกสาขาที่ผูกระบบ POS ของคีย์) · ผู้บังคับจริงคือ `pos/api/actor.ts` (unitAccess ของ actor สังเคราะห์) + ด่านสาขาของ op
+//   🔴 ที่นี่ตรวจแค่รูปแบบ id — สาขาต้องผูกระบบ POS ของคีย์ ตรวจตอนออกคีย์ (`pos/api-key-actions.ts`) · ตัวกรองที่ชี้สาขาอื่น = เห็นอะไรไม่ได้เลย
+export const POS_FILTER_UNIT_PREFIX = "pos.filter.unit:";
+const POS_FILTER_ID = /^[A-Za-z0-9_-]{8,64}$/;
+/** scope นี้เป็นตัวกรองสาขาของคีย์ POS ที่รูปแบบถูกต้องไหม */
+export function isPosFilterScope(key: string): boolean {
+  return key.startsWith(POS_FILTER_UNIT_PREFIX) && POS_FILTER_ID.test(key.slice(POS_FILTER_UNIT_PREFIX.length));
+}
+// ◂ POS P2.13
+
 /** permission key ของโมดูลบัญชีที่ใช้เป็น scope ได้ (ตัดค่าตั้ง/ค่าตัวเลขออก) — ที่มาเดียวคือทะเบียน PERMISSIONS */
 export const ACCOUNT_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
   (p) => p.module === "account" && isApiScope(p.key),
@@ -69,6 +82,9 @@ export const MEMBER_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
 export const CRM_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
   (p) => p.module === "crm" && isApiScope(p.key),
 ).map((p) => p.key);
+// POS P2.13 ▸ permission key ของ POS ที่ใช้เป็น scope ได้ — ที่มาเดียวคือทะเบียน PERMISSIONS ◂
+export const POS_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter((p) => p.module === "pos" && isApiScope(p.key)).map((p) => p.key);
+
 
 export type ApiScopeBundleId =
   // บัญชี (WO A1)
@@ -88,7 +104,11 @@ export type ApiScopeBundleId =
   // CRM C1.10 ▸ ระบบ CRM (read ⊂ operate ⊂ admin · ตัวชี้ขาด apiRole ของ `crm/api/actor.ts`) ◂
   | "crm.readonly"
   | "crm.operate"
-  | "crm.admin";
+  | "crm.admin"
+  // POS P2.13 ▸ ระบบขายหน้าร้าน (read ⊂ operate ⊂ admin · §2.1) ◂
+  | "pos-read"
+  | "pos-operate"
+  | "pos-admin";
 
 export type ApiScopeBundle = {
   id: ApiScopeBundleId;
@@ -251,6 +271,27 @@ const CRM_ADMIN_SCOPES: readonly string[] = [
 ];
 // ◂ CRM C1.10
 
+// POS P2.13 ▸ ระบบขายหน้าร้าน (brief §2.1 · มติ 3 — ตรงตัว) — 3 ชุดซ้อนกันเป็นชั้น: read ⊂ operate ⊂ admin
+//   read    → อ่านบิล/ใบเสร็จ/สินค้า/ช่องทาง/ออเดอร์ + รายงานขาย (ไม่เขียนอะไร)
+//   operate → + ขาย (ราคาจากแคตตาล็อกเท่านั้น) · รับ/เตรียม/ส่งมอบออเดอร์ · ดูกะ/X-Z · ดูเครื่องขาย
+//   admin   → + ยกเลิกบิล · คืนเงิน · ราคากำหนดเอง · ปฏิเสธ/ยกเลิกออเดอร์ · จัดการสินค้า/ราคา/ช่องทาง · ใบกำกับเต็มรูป · รายงานผิดปกติ
+//   🔴 ไม่มีชุดไหนถือ pos.settings.* / pos.staff.manage / pos.stock.count / pos.shift.operate — งานตั้งค่า/PIN/กะ ต้องทำบนหน้าจอเท่านั้น
+const POS_READ_SCOPES = ["pos.sale.read", "pos.report.view"] as const;
+const POS_OPERATE_SCOPES = [...POS_READ_SCOPES, "pos.sale.create", "pos.order.accept", "pos.shift.manage", "pos.device.manage"] as const;
+const POS_ADMIN_SCOPES = [
+  ...POS_OPERATE_SCOPES,
+  "pos.sale.void",
+  "pos.sale.refund",
+  "pos.sale.priceOverride",
+  "pos.order.reject",
+  "pos.product.manage",
+  "pos.product.setPrice",
+  "pos.channel.manage",
+  "pos.taxinvoice.issue",
+  "pos.report.anomaly",
+] as const;
+// ◂ POS P2.13
+
 /**
  * ชุดสำเร็จรูป 5 ชุด — ซ้อนกันเป็นชั้น: read-only ⊂ issue-and-collect ⊂ accountant
  * `danger` แยกออกจาก accountant เสมอ (ยกเลิก/เปิดงวด/รวมผู้ติดต่อ = กู้คืนยาก ต้องตั้งใจติ๊กเอง)
@@ -358,6 +399,28 @@ export const API_SCOPE_BUNDLES: readonly ApiScopeBundle[] = [
     scopes: CRM_ADMIN_SCOPES,
   },
   // ◂ CRM C1.10
+  // POS P2.13 ▸ ระบบขายหน้าร้าน — 3 ชุด (ดูหัวข้อ POS ข้างบน)
+  {
+    id: "pos-read",
+    label: "ขายหน้าร้าน — อ่านอย่างเดียว",
+    summary: "Read the POS system: bills and receipts, products, sales channels, online orders and every sales report. Writes nothing.",
+    scopes: POS_READ_SCOPES,
+  },
+  {
+    id: "pos-operate",
+    label: "ขายหน้าร้าน — งานหน้าเคาน์เตอร์",
+    summary:
+      "Everything in pos-read plus the counter work: sell at catalog prices, accept and progress online orders, mark items sold out, and read shifts (X/Z) and registered devices. No voids, refunds, custom prices or catalog changes. Reading shifts is not a manager approval: when the shop wants a manager to confirm PromptPay and card payments, API keys take CASH, TRANSFER and PLATFORM only.",
+    scopes: POS_OPERATE_SCOPES,
+  },
+  {
+    id: "pos-admin",
+    label: "ขายหน้าร้าน — ผู้ดูแล",
+    summary:
+      "Everything in pos-operate plus voiding and refunding bills, custom and open prices, rejecting and cancelling orders, managing products, prices and sales channels, issuing full tax invoices and the anomaly report. Settings, staff PINs and shifts still need the app.",
+    scopes: POS_ADMIN_SCOPES,
+  },
+  // ◂ POS P2.13
 ];
 
 /** ชุดปริยายเมื่อสร้างคีย์จากหน้าบัญชี (เจ้าของเคาะ: ออกเอกสาร+รับเงิน · 365 วัน) */

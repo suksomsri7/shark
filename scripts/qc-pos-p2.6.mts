@@ -424,10 +424,11 @@ const SIGS_BASE: Record<string, Record<string, string>> = {
   scope: { bizDateBkk: "904b1cf77499", nowMinutesBkk: "50abf9b645bc", dowBkk: "038b8485d5d4", baht: "5f8bdb640984", hhmmToMin: "a80d74af739e", kitchenOpenNow: "bdbb011302fa", "type ServiceHourDay": "74ce2d5dbdc4", "type SpecialClosure": "8dbb78ea5f91" },
 };
 /** ทะเบียนผู้เรียก createSale ณ f71f4e30 (= qc-pos-p1.6 U4 / qc-pos-p2.4 L2 · วัดด้วยสูตรเดียวกัน) */
+// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ ไฟล์ pos/api/ops/sales.ts ไม่เรียก createSale แล้ว (1 → 0 · ถอดแถว)
 const CALL_SITES: Record<string, number> = {
   "src/lib/actions/booking.ts": 1, "src/lib/actions/pos.ts": 1, "src/lib/ai/proposals.ts": 1, "src/lib/modules/booking/service.ts": 1,
   "src/lib/modules/clinic/service.ts": 1, "src/lib/modules/giftcard/service.ts": 2, "src/lib/modules/hotel/service.ts": 2,
-  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/api/ops/sales.ts": 1, "src/lib/modules/pos/register.ts": 1,
+  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/register.ts": 1,
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
 };

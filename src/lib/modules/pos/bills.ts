@@ -453,7 +453,8 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
     timeline.sort((p, n) => p.at - n.at);
 
     // ── ปุ่มที่กดได้ ──
-    const isPos = sale.sourceModule === "POS";
+    // POS P2.13 ▸ fix1 F1: บิลที่ขายผ่าน REST ของ POS (sourceModule "API") = บิลของ POS — ยกเลิก/คืนเงินจากลิ้นชักบิลได้ (กติกาเดียวกับ voidSaleByActor ข้างล่าง · CD-B4) ◂
+    const isPos = sale.sourceModule === "POS" || sale.sourceModule === "API";
     const canVoidPerm = evaluate(a, { module: "pos", action: VOID_PERMISSION, unitId });
     // P1.13U fix F2: ข้อมูลคำขอใบกำกับ (เลข/ที่อยู่/อีเมลของลูกค้า) เฉพาะผู้ที่ออกใบกำกับได้ที่สาขานี้ · ชื่อผู้ซื้อเห็นทุกคน
     const canIssueTax = evaluate(a, { module: "pos", action: "pos.taxinvoice.issue", unitId });
@@ -632,7 +633,8 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
     // เล่นซ้ำคีย์เดิม = ผลเดิม (ไม่ throw · ไม่มี event/audit ที่สอง) · คีย์ใหม่บนบิลที่ยกเลิกแล้ว = SALE_NOT_VOIDABLE
     if (sale.status === "VOIDED") return (await voidedWithKey(tenantId, sale.id, key)) ? { ok: true, sale: { id: sale.id, status: "VOIDED" }, duplicated: true } : refuse("SALE_NOT_VOIDABLE");
     // drift 3: บิลของโมดูลอื่นยกเลิกที่โมดูลนั้น (voidSale เองรับไว้เพื่อโมดูลเหล่านั้น — ปฏิเสธที่นี่เท่านั้น)
-    if (sale.docType !== "SALE" || sale.sourceModule !== "POS") return refuse("SALE_NOT_VOIDABLE");
+    // POS P2.13 ▸ fix1 F1: บิลของ REST POS (sourceModule "API") ยกเลิกผ่านทางนี้ได้ (REST sales.void + ลิ้นชักบิล) ⇒ กติกาอนุมัติ/กะปิดเดียวกับบิลหน้าขาย ◂
+    if (sale.docType !== "SALE" || (sale.sourceModule !== "POS" && sale.sourceModule !== "API")) return refuse("SALE_NOT_VOIDABLE");
     if (sale.refundedSatang > 0) return refuse("HAS_REFUNDS");
     if (sale.status !== "PAID") return refuse("SALE_NOT_VOIDABLE");
     if (sale.shiftId) {

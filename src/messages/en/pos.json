@@ -2411,6 +2411,95 @@
       "accountOffConfirm": "Turn off accounting",
       "cancel": "Cancel"
     },
+    "api": {
+      "title": "POS API keys",
+      "subtitle": "Let apps or outside systems read bills, take orders and sell through the shop's API",
+      "loading": "Loading API keys…",
+      "loadFailed": "Could not load the key list",
+      "retry": "Try again",
+      "create": "Create key",
+      "docs": "Read the POS API guide",
+      "emptyTitle": "No API keys yet",
+      "emptyBody": "An API key lets your ordering app, website or other system connect to this point of sale without anyone's password. You choose what it can do, which branches it covers and when it expires.",
+      "readOnly": "View only — creating or revoking keys needs the API key permission from the shop owner",
+      "allBranches": "All branches",
+      "unknownBranch": "A branch you do not manage",
+      "created": "Created {date}",
+      "lastUsed": "Last used {date}",
+      "neverUsed": "Never used",
+      "expires": "Expires {date}",
+      "noExpiry": "Never expires",
+      "expired": "Expired",
+      "status": {
+        "active": "Active",
+        "revoked": "Revoked",
+        "expired": "Expired"
+      },
+      "revoke": "Revoke",
+      "revokeLabel": "Revoke key {name}",
+      "bundle": {
+        "read": {
+          "title": "Read only",
+          "desc": "View bills, products, orders and reports only"
+        },
+        "operate": {
+          "title": "Run the counter",
+          "desc": "Everything in read + sell at menu prices, accept and progress orders, mark items sold out, view shifts and devices"
+        },
+        "admin": {
+          "title": "Admin",
+          "desc": "Everything in run the counter + void and refund bills, custom prices, reject and cancel orders, manage products, prices and channels, full tax invoices and the anomaly report"
+        },
+        "custom": "Custom permission set · {count} permissions"
+      },
+      "dialog": {
+        "title": "Create an API key",
+        "desc": "The key works only with this POS and can never do more than you can",
+        "name": "Key name",
+        "namePlaceholder": "e.g. Our ordering app",
+        "nameHint": "Up to {max} characters",
+        "nameRequired": "Give the key a memorable name (up to {max} characters)",
+        "bundle": "Permission set",
+        "ttl": "Key lifetime",
+        "ttl30": "30 days",
+        "ttl90": "90 days",
+        "ttl365": "1 year (365 days)",
+        "ttl0": "Never expires",
+        "branches": "Branches it can use",
+        "branchesAll": "All branches",
+        "branchesPick": "Choose branches",
+        "branchesRequired": "You do not manage every branch — pick at least 1 branch this key can use",
+        "pickOne": "Pick at least 1 branch",
+        "noBranches": "You do not manage any branch of this system — a key cannot be created",
+        "cancel": "Cancel",
+        "submit": "Create key",
+        "submitting": "Creating…"
+      },
+      "raw": {
+        "title": "Your new key is ready",
+        "warning": "Copy it now — this key is shown only once. After you close this window it cannot be shown again; if you lose it, create a new key.",
+        "label": "API key",
+        "copy": "Copy",
+        "copied": "Copied",
+        "copyFailed": "Could not copy automatically — press and hold the field to copy it yourself",
+        "done": "Done"
+      },
+      "revokeDialog": {
+        "title": "Revoke key {name}?",
+        "body": "This takes effect immediately — apps or systems using this key can no longer call the API, and it cannot be turned back on",
+        "cancel": "Cancel",
+        "confirm": "Revoke key",
+        "working": "Revoking…"
+      },
+      "refusal": {
+        "denied": "This account cannot manage POS API keys yet",
+        "createDenied": "This account cannot issue this key — it needs the API key permission and every permission in the set",
+        "revokeDenied": "This account cannot revoke API keys yet",
+        "validation": "Something is missing or invalid — check the name, permission set, lifetime and branches",
+        "notFound": "That key or system no longer exists — refresh the page and try again",
+        "unknown": "Something went wrong — try again"
+      }
+    },
     "cards": {
       "MEMBER": {
         "title": "Members",

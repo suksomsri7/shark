@@ -1149,6 +1149,40 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
   );
 }
 
+// POS P2.13 ▸ F13 (ต่อ): ทะเบียน API ของระบบขายหน้าร้าน — เงื่อนไขเดียวกับบัญชี/บอร์ดงาน/สมาชิก/CRM
+//   F13.13 ทุก op มี test id ที่อ้างถึงจริงใน scripts/qc-pos-*.mts · F13.14 docs/api/POS-API.md ตรงกับ generator (gen-pos-api-docs · import ฟังก์ชันบริสุทธิ์)
+//   F13.15 ไม่มี op ไหนประกาศ tool (มติ 7 — tool เดิมของสกิล `sales` ยังเป็นตัวเขียนมือ · สลับ = P3.9)
+//   🔴 โฟลเดอร์สกิล `.claude/skills/shark-pos-api` อยู่ใน .gitignore — `--check` ของ generator ตรวจเอง · ที่นี่เทียบเฉพาะ docs/api/POS-API.md ◂
+{
+  const { POS_OPS } = await import("@/lib/modules/pos/api/registry");
+  const posQcSrc = walk(join(ROOT, "scripts"), (f) => /qc-pos-.*\.mts$/.test(f))
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+  const untestedPos = POS_OPS.filter((o) => !o.test || !posQcSrc.includes(`"${o.test}"`));
+  chk(
+    "F13.13",
+    `ทุก op ของระบบขายหน้าร้าน (${POS_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-pos-*.mts`,
+    untestedPos.length === 0,
+    untestedPos.length ? `${untestedPos.length} op ไม่มีข้อสอบครอบ: ${untestedPos.map((o) => `${o.id}(test=${o.test || "-"})`).join(", ")}` : "ครบ",
+  );
+  let posDocsOk = true;
+  let posDocsDetail = "ตรง";
+  try {
+    const { renderDocs } = await import("./gen-pos-api-docs.mjs");
+    const docPath = join(ROOT, "docs", "api", "POS-API.md");
+    const onDisk = existsSync(docPath) ? readFileSync(docPath, "utf8") : "";
+    posDocsOk = onDisk === renderDocs();
+    if (!posDocsOk) posDocsDetail = "docs/api/POS-API.md ไม่ตรงกับทะเบียน — รัน: pnpm exec tsx scripts/gen-pos-api-docs.mts";
+  } catch (e) {
+    posDocsOk = false;
+    posDocsDetail = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  chk("F13.14", "docs/api/POS-API.md ตรงกับ generator (ไม่ stale)", posDocsOk, posDocsDetail);
+  const posWithTool = POS_OPS.filter((o) => o.tool);
+  chk("F13.15", `op ของระบบขายหน้าร้านไม่ประกาศ tool (มติ 7 · สลับ tool = P3.9)`, posWithTool.length === 0, posWithTool.length ? posWithTool.map((o) => o.id).join(", ") : "ครบ");
+}
+// ◂ POS P2.13
+
 // ═══════════════════════════════════════════════════════════════
 // F14 — ทะเบียนปุ่ม CRM (CRM-MASTER-PLAN §7 · ด่าน D8 ของทุกใบ UI)
 //   เจตนา: "ทุกปุ่ม/ลิงก์/ฟอร์มของ CRM ถูกกดจริงด้วยข้อสอบ" เริ่มจากการมีทะเบียนที่ตรงกับโค้ดเสมอ

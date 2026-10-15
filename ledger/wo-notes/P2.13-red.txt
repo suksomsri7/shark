@@ -1,0 +1,91 @@
+tree=/root/projects/shark-pos-b head=f37d605b dirty=4 (ledger/wo-notes/P2.13-red.txt ledger/wo-notes/pos-P2.13-oracle.md scripts/qc-pos-api-skill.mts scripts/qc-pos-p2.13.mts)
+# P2.13 fail-before · 2026-10-15T18:28Z · base origin/session/pos f37d605b · QC4 (DB ep-frosty-lab-aoylqlv)
+## --list (no DB)
+qc-pos-p2.13: qc-pos-p2.13 — 49 ข้อ (id · X · หัวข้อ) · qc-pos-api-skill: qc-pos-api-skill — 10 ข้อ (id · X · หัวข้อ)
+## --no-db
+JSON_SUMMARY {"suite":"qc-pos-p2.13","mode":"no-db","total":6,"passed":0,"failed":["P2.13-ST1","P2.13-ST2","P2.13-ST3","P2.13-ST4","P2.13-ST5","P2.13-ST6"],"skipped":false,"registered":49,"st5Pins":true,"mergeBase":"f37d605bd7a6ae75ee694917250b4b6c52bc1d53","m
+JSON_SUMMARY {"suite":"qc-pos-api-skill","mode":"no-db","total":7,"passed":0,"failed":["P2.13S-K1","P2.13S-K2","P2.13S-K3","P2.13S-K4","P2.13S-K5","P2.13S-K6","P2.13S-K7"],"registered":10,"recipes":0}
+## forced QC4: QC_FORCE=1 iso.sh qc4.sh with-gate-lock(/tmp/shark-gate-pos.lock) tsx scripts/qc-pos-p2.13.mts
+===== qc-pos-p2.13 ===== ผ่าน 3/49 (SKIP 1) (QC_FORCE)
+❌ P2.13-ST1 op 4 ตัว (คาด 48) · ขาด units.list · ขาด sales.list · ขาด sales.get · ขาด sales.receipt · ขาด sales.quote · ขาด sales.refundable · ขาด sales.refund …(+50)
+❌ P2.13-ST2 ไม่มี src/app/api/v1/pos/[...path]/route.ts · ไม่มี src/app/api/v1/pos/openapi.json/route.ts GET · ไม่มี api/config.ts · ไม่มี api/actor.ts · ไม่มี api/dispatch.ts · ไม่มี api/openapi.ts · ไม่มี api/http-errors.ts · ไม่มี api/ke
+❌ P2.13-ST3 sales.ts เรียก createSale( (มติ 1: ผ่าน submitRegisterSale) · posApiServiceKey โหลดไม่ได้
+❌ P2.13-ST4 ไม่มี scripts/gen-pos-api-docs.mts · ไม่มี docs/api/POS-API.md · ไม่มี .claude/skills/shark-pos-api/references/endpoints.md · ไม่มี src/app/developers/pos/page.tsx (buildOpenApi/POS_OPS) · ไม่มี src/app/developers/pos.md/route.t
+❌ P2.13-ST5 createSale( ต่อไฟล์ ต่าง: modules/pos/api/ops/sales.ts:0→1 · toolAllowedForApiKey ไม่มี hunk `POS P2.13 ▸` · sales_summary[kanban.card.read]=true (คาด false) · sales_by_day[account.doc.read]=true (คาด false) · pos_create_sale[po
+❌ P2.13-ST6 ไม่มี src/lib/modules/pos/api/http-errors.ts · POS_REFUSAL_HTTP โหลดไม่ได้
+❌ P2.13-AU1 0:ROUTE_MISSING / 0:ROUTE_MISSING
+❌ P2.13-AU2 0:ROUTE_MISSING
+❌ P2.13-AU3 0:ROUTE_MISSING
+❌ P2.13-AU4 0:ROUTE_MISSING / 0:ROUTE_MISSING
+❌ P2.13-AU5 0:ROUTE_MISSING / 0:ROUTE_MISSING / 0:ROUTE_MISSING
+❌ P2.13-AU6 0:ROUTE_MISSING hint= · 0:ROUTE_MISSING
+❌ P2.13-AU7 S2 GET /sales → 0:ROUTE_MISSING · S2 GET /products → 0:ROUTE_MISSING · S2 GET /orders → 0:ROUTE_MISSING · S2 POST /sales → 0:ROUTE_MISSING · t2 GET /sales → 0:ROUTE_MISSING · t2 GET /products → 0:ROUTE_MISSING · t2 GET /orders →
+❌ P2.13-AU8 GET /units → 0:ROUTE_MISSING · GET /sales → 0:ROUTE_MISSING · GET /reports/daily → 0:ROUTE_MISSING · POST /sales → 0:ROUTE_MISSING · /api/v1/sales เดิม → 200 ไม่มีบิล API
+❌ P2.13-RL1 write แรก 0:ROUTE_MISSING · X-RateLimit-Limit write = null · X-RateLimit-Limit read = null · X-RateLimit-Limit report = null · ไม่มีถัง pos:api:write:<keyId> (0 แถว) · คำขอที่ 61 → 0:ROUTE_MISSING retry-after=null
+❌ P2.13-RL2 0:ROUTE_MISSING · ถังอื่น 0
+❌ P2.13-ID1 0:ROUTE_MISSING
+❌ P2.13-ID2 ครั้งแรก 0:ROUTE_MISSING · ครั้งที่สอง 0:ROUTE_MISSING replay=null · บิล +0 · หลังลบแถวกันซ้ำ 0:ROUTE_MISSING saleId=undefined · หลัง TTL เกิดบิลที่สอง
+❌ P2.13-ID3 0:ROUTE_MISSING / 0:ROUTE_MISSING
+❌ P2.13-ID4 0:ROUTE_MISSING / 0:ROUTE_MISSING · +0
+❌ P2.13-ID5 0:ROUTE_MISSING,0:ROUTE_MISSING · +0
+❌ P2.13-SA1 API 0:ROUTE_MISSING  · แถวบิล api=false reg=true
+❌ P2.13-SA2 quote 0:ROUTE_MISSING · quote NaN ≠ quoteRegisterCart 60000 · บิล SA1 undefined ≠ quote NaN
+❌ P2.13-SA3 0:ROUTE_MISSING · +0 · admin 0:ROUTE_MISSING
+❌ P2.13-SA4 0:ROUTE_MISSING / 0:ROUTE_MISSING
+❌ P2.13-SA5 GIFT_CARD → 0:ROUTE_MISSING · STORE_CREDIT → 0:ROUTE_MISSING · DEPOSIT → 0:ROUTE_MISSING · ROOM_CHARGE → 0:ROUTE_MISSING · memberId → 0:ROUTE_MISSING · couponCode → 0:ROUTE_MISSING · staffToken → 0:ROUTE_MISSING · managerPin → 0
+❌ P2.13-SA6 ไม่มี confirm → 0:ROUTE_MISSING · void 0:ROUTE_MISSING · สถานะ undefined · ไม่มีการเคลื่อนไหวสต็อกของบิล (ตัดไม่เกิด) · บิล HOTEL → 0:ROUTE_MISSING
+❌ P2.13-SA7 refundable API 0:ROUTE_MISSING แต่ facade ok · refund 0:ROUTE_MISSING  · replay 0:ROUTE_MISSING · ใบ REFUND 0 · สต็อกสุทธิของบิล+ใบคืน -2 (คาด −2 +1 = −1) · pos.sale.refunded 0
+❌ P2.13-SA8 refundable pos-operate → 0:ROUTE_MISSING · refund pos-operate → 0:ROUTE_MISSING · tax-invoice pos-operate → 0:ROUTE_MISSING · tax-invoice admin 0:ROUTE_MISSING vs facade OK
+❌ P2.13-OR1 ครั้งแรก 0:ROUTE_MISSING dup=undefined · ครั้งที่สอง 0:ROUTE_MISSING dup=undefined · ออเดอร์ 0 · list API 0:ROUTE_MISSING แต่ facade ok · get facade ORDER_NOT_FOUND → คาด 404:not_found ได้ 0:ROUTE_MISSING
+❌ P2.13-OR2 accept 0:ROUTE_MISSING  · ไม่มีบิลของออเดอร์ · COMMISSION 0
+❌ P2.13-OR6 ไม่มี void → 0:ROUTE_MISSING · admin 0:ROUTE_MISSING
+❌ P2.13-OR3 0:ROUTE_MISSING · 0:ROUTE_MISSING · undefined
+❌ P2.13-OR4 create 0:ROUTE_MISSING · accept 0:ROUTE_MISSING · preparing 0:ROUTE_MISSING · ready 0:ROUTE_MISSING · complete 0:ROUTE_MISSING · preparing หลังส่งมอบ → 0:ROUTE_MISSING · pay 0:ROUTE_MISSING · ออเดอร์ undefined/undefined
+❌ P2.13-OR5 pause 0:ROUTE_MISSING · ระหว่างพัก → 0:ROUTE_MISSING · resume 0:ROUTE_MISSING · หลังเปิด → 0:ROUTE_MISSING
+❌ P2.13-PR1 list 0:ROUTE_MISSING page=false · รายการต่าง api=0 facade=5 · options API 0:ROUTE_MISSING แต่ facade ok
+❌ P2.13-PR2 บาร์โค้ด API 0:ROUTE_MISSING แต่ facade ok · ไม่พบสินค้าบาร์โค้ด · ป้ายชั่ง API 0:ROUTE_MISSING แต่ facade ok · ป้ายชั่งไม่มีสินค้า/1250 กรัม · ไม่พบ → 0:ROUTE_MISSING
+❌ P2.13-PR3 86 0:ROUTE_MISSING · event +0 · quote สินค้าหมด → 0:ROUTE_MISSING · หน้าขายยังเห็นขาย (soldOut=false) · คืนขาย 0:ROUTE_MISSING quote 0:ROUTE_MISSING
+❌ P2.13-PR4 create 0:ROUTE_MISSING  · update 0:ROUTE_MISSING · archive 0:ROUTE_MISSING · แถว ไม่มี · ไม่มี audit products.create · ไม่มี audit products.update · ไม่มี audit products.archive
+❌ P2.13-PR5 0:ROUTE_MISSING · 0:ROUTE_MISSING · 2500
+❌ P2.13-RP1 daily: API 0:ROUTE_MISSING แต่ facade ok · products: API 0:ROUTE_MISSING แต่ facade ok · staff: API 0:ROUTE_MISSING แต่ facade ok · payments: API 0:ROUTE_MISSING แต่ facade ok · margin: API 0:ROUTE_MISSING แต่ facade ok · shifts
+⏭ P2.13-RP2 SKIP: REPORT_KINDS ยังไม่มี branches,hourly,anomalies (P2.12 S ยังไม่ merge — มติ 10)
+❌ P2.13-RP3 csv 0:ROUTE_MISSING bom=false · csv ต่างจาก reportCsv (14/606) · 93 วัน → 0:ROUTE_MISSING
+❌ P2.13-RP4 daily สาขา B → 0:ROUTE_MISSING · daily ไม่ระบุสาขา facade PERMISSION_DENIED → คาด 403:forbidden ได้ 0:ROUTE_MISSING · sales สาขา B → 0:ROUTE_MISSING · ออกคีย์ตัวกรองไม่ได้ (isApiScope pos.filter.unit:)
+❌ P2.13-SH1 list: API 0:ROUTE_MISSING แต่ facade ok · x: API 0:ROUTE_MISSING แต่ facade ok · z: facade VALIDATION → คาด 422:validation ได้ 0:ROUTE_MISSING · current: API 0:ROUTE_MISSING แต่ facade ok · list ไม่มีกะของฟิกซ์เจอร์ · pos-read →
+❌ P2.13-SH2 units 0:ROUTE_MISSING "" · sales list 0:ROUTE_MISSING page=false api=0 facade=6 · sales.get facade SALE_NOT_FOUND → คาด 404:not_found ได้ 0:ROUTE_MISSING · receipt facade SALE_NOT_FOUND → คาด 404:not_found ได้ 0:ROUTE_MISSING · 
+❌ P2.13-SH3 POST /staff/verify-pin → 0:ROUTE_MISSING · GET /staff/pins → 0:ROUTE_MISSING · PUT /staff/pins → 0:ROUTE_MISSING · POST /display/pair → 0:ROUTE_MISSING · POST /sales/SALEID/split → 0:ROUTE_MISSING · POST /approvals → 0:ROUTE_MIS
+✅ P2.13-Z1 
+✅ P2.13-Z2 
+ลบร้านชั่วคราว cmv9vfxo60000y5kznoa72uzj: 335 ตาราง · แถวค้าง 0 {} · Tenant 0
+ลบร้านชั่วคราว cmv9vfxoi0001y5kzd9h7p3cr: 335 ตาราง · แถวค้าง 0 {} · Tenant 0
+ลบถังเพดานอัตราของคีย์รอบนี้ 0 แถว · เหลือ 0
+exit=1
+## forced QC4: QC_FORCE=1 iso.sh qc4.sh with-gate-lock(/tmp/shark-gate-pos.lock) tsx scripts/qc-pos-api-skill.mts
+===== qc-pos-api-skill ===== ผ่าน 1/10 (QC_FORCE)
+❌ P2.13S-K1 ไม่มี SKILL.md
+❌ P2.13S-K2 base URL,Bearer,X-Shark-System,endpoints.md,recipes.md
+❌ P2.13S-K3 satang,unitId,Idempotency-Key,error.code,pageSize,page,text/csv
+❌ P2.13S-K4 never void/refund/cancel,unless the user says so,confirm: true,reason,quote before selling,never ask for PINs
+❌ P2.13S-K5 ไม่มี endpoints.md
+❌ P2.13S-K6 repo ไม่มี SKILL.md · repo ไม่มี references/recipes.md · repo ไม่มี references/endpoints.md
+❌ P2.13S-K7 ไม่มี recipes.md · curl 0 ก้อน (คาด ≥ 8) · ไม่ครอบ: list units, quote, sell, receipt, refund part, accept order, mark 86, daily report CSV
+❌ P2.13S-K8 [expandBundles(pos-admin) ไม่รู้จัก] ไม่มีสูตร
+❌ P2.13S-K9 [expandBundles(pos-admin) ไม่รู้จัก] สูตร 0 ก้อน (คาด ≥ 8)
+✅ P2.13S-K10 
+exit=1
+## expected red-before: every check that needs the new code (route/registry/bundles/AI hunk/docs/skill) · green = Z1 Z2 K10 (+ RP2 SKIP-with-reason: P2.12 kinds absent) · ST5 pins sub-part (contract sha + no prisma diff) green inside the red ST5 (red only for ops/sales.ts createSale 1→0 + missing AI hunk)
+
+## §base-d0561566 (builder · 15 Oct 2026 · P2.12 S merged ⇒ RP2 real)
+forced QC4 qc-pos-p2.13: 2/49 (Z1 Z2 · RP2 now red instead of SKIP) — scratch runs/base-p213-forced.log
+forced QC4 qc-pos-api-skill: 1/10 (K10) — scratch runs/base-skill-forced.log
+
+## §fix1 (builder · 15 Oct 2026 · code = be0f92cb + test commits 0e69cecc ORACLE-EDIT OR4 · cb87affd ORACLE-ADD SA9 SA10 AU9 RP5 OR7)
+unforced QC4 qc-pos-p2.13 (54 checks): 48/54 — scratch runs/fix1/red-p213-u.log
+❌ P2.13-AU9  พร้อมเพย์ไม่อ้าง pi_ → 200 · บัตร → 200 · บิล +2 (pos-operate holds pos.shift.manage ⇒ manager gate passed · F3/H2)
+❌ P2.13-SA9  void → 200 · คำขออนุมัติ POS_VOID 0 ใบ · บิล VOIDED (REST void skips the POS_VOID rule · F1)
+❌ P2.13-SA10 void → 200 · บิล VOIDED (API bill in a closed shift voided · F2/H1)
+❌ P2.13-OR7  จ่ายเงินสด → 200 · ออเดอร์ PAID บิล=true · บิล +1 (cash recorded out of shift · H3)
+❌ P2.13-RP5  แถวคีย์ name=null (F4)
+❌ P2.13-OR4  after the edit the order of steps passes (accept/preparing/ready/pay/complete/illegal step all as expected) — still red on `pay.body.data.saleId`:
+   orders.pay answers data = the saleId string (CD9 single-field rule) on a first pay but {saleId, duplicated} on a replay ⇒ builder fixes the op to always answer {saleId, duplicated} (code, not oracle)
+expected red-before = AU9 SA9 SA10 OR7 RP5 (all red) · OR4 green after its edit (red only on the reply-shape defect above)

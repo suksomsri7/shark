@@ -294,10 +294,11 @@ const NEVER_TOUCH: string[] = [
 ];
 const NEVER_TOUCH_GLOB = /^(register[\w-]*|tender[\w-]*|refund[\w-]*)\.tsx?$/;
 /** ทะเบียนผู้เรียก createSale (= qc-pos-p2.5 L2 + pos/order.ts 1 · HF-TX ไม่มีจุดใหม่) */
+// ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ ไฟล์ pos/api/ops/sales.ts ไม่เรียก createSale แล้ว (1 → 0 · ถอดแถว)
 const CALL_SITES: Record<string, number> = {
   "src/lib/actions/booking.ts": 1, "src/lib/actions/pos.ts": 1, "src/lib/ai/proposals.ts": 1, "src/lib/modules/booking/service.ts": 1,
   "src/lib/modules/clinic/service.ts": 1, "src/lib/modules/giftcard/service.ts": 2, "src/lib/modules/hotel/service.ts": 2,
-  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/api/ops/sales.ts": 1, "src/lib/modules/pos/register.ts": 1,
+  "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/register.ts": 1,
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1, "src/lib/modules/pos/order.ts": 1,
 };
