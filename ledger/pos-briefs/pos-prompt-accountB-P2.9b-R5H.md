@@ -1,0 +1,16 @@
+# Prompt — P2.9b **R5** (reviewer, hunks of fix round 4) and **hunter sign-off** (money lane) — two read-only agents. Controller (account B, 15 Oct): head = `wip/pos-p2.9b` **9700c5e1** (code **0e15d4e3**); fix-4 commits: 838fc853 ORACLE-ADD A10 + X10 (red-before block 5 = 51/53) · 8f3d329d ruling 1 (zeroEntry marker row `account.external.zeroEntry` once per bill; commission gate accepts PAID JV **or** marker) · 10311440 ruling 2 (refund of deposit-paid bill after de-registration uses the refund's VAT: Dr 2200 / Cr money) · 307d5787 ruling 3 (document create failure throws → retry) · 0e15d4e3 ruling 4 (comments + owner lines). Rulings = `ledger/wo-notes/pos-P2.9b-review.md` §"Controller rulings — fix round 4" (tree b copy is synced). Notes §"Fix round 4" in `ledger/wo-notes/pos-P2.9b.md`. Tree `/root/projects/shark-pos-b`. Read-only: `git -C /root/projects/shark-pos-b show 9700c5e1:<path>`, `git -C /root/projects/shark-pos-b diff da045e04..0e15d4e3 -- . ':!ledger'`. English.
+
+## R5 (≤ 30 lines)
+- Ruling 1: what is the marker exactly (table/row, unique key per (action, refId)?) — written inside which transaction, idempotent on retry (no duplicate rows under concurrent retries — unique constraint or upsert?); the commission gate reads it where (cite) and still refuses when neither PAID JV nor marker exists; A10 asserts commission posted exactly once + refund reversal consistent (cite check lines).
+- Ruling 2: `applyExternalRefund` change scoped to deposit-paid bills after de-registration (VAT-registered books unchanged — cite the branch); the CN document shows VAT ฿20; X10 asserts Dr 2200 2000 / Cr cash 2000, income 100000, 2200 ends 5000, equal to the remainder-refund path.
+- Ruling 3: document failure rethrows only on the zero-entry path; the normal path unchanged; no double audit.
+- Ruling 4: comments accurate; owner lines present.
+- Hygiene: files touched = `account/index.ts`, `account-bridge.ts`?, `refund*`?, `scripts/qc-pos-p2.9b.mts`, ledger only; no `register.ts`/`service.ts`/`giftcard`/`member`/`prisma` (unless the marker needed a migration — say so: it must NOT; a new table/column is a CONTROLLER-DECISION); th/en key counts equal.
+Verdict first (`MERGEABLE` | `MERGEABLE-AFTER-FIXES` | `BLOCKED`), findings F1..Fn, "Verified OK" per ruling. Write `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p29b-r5/REPORT.md` and return it verbatim.
+
+## Hunter sign-off (≤ 25 lines) — code read + arithmetic
+- N1/N2 closed? Walk A10 (A9 + commission channel): commission expense/AP once, refund reversal once, no double post on event retry (marker + JV both present). Walk X10 arithmetic and the mixed case (partial refund of a deposit-paid bill after de-registration: VAT pro-rata, caps).
+- New risks from the marker: can a marker exist without a document (ordering)? Can the commission post on a bill whose marker exists but the sale was later voided before commission ran? Retry storms?
+- Ruling 3: a document failure now retries — is the zero-entry audit/marker idempotent across those retries?
+- Anything else in `account/index.ts` touched by fix 4 that changes VAT-registered behaviour.
+Verdict `SIGNED-OFF` | findings N1..Nn (severity, file:line, scenario, fix). Write `/tmp/claude-0/-root/a129a720-3235-582c-8bcd-f2169f38cd68/scratchpad/p29b-h5/REPORT.md` and return it verbatim.
