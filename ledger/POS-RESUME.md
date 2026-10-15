@@ -1689,3 +1689,8 @@
 - เลน: 1 = P2.12 S builder ทรี c · 2 = P2.10 fix 2 ทรี b · ทรี d = chain81
 - 16:35Z vis83 @e7f661a7 failures 0 th+en · **display-live ผ่านจริง** (F8 = harness) · done/member-stamps/settings ผ่าน → ภาพ P2.10 ครบ · รอ fix 2 (G1/G2) → R2 ตรวจ hunk → merge → gates95 ทรี b → push → 38/55
 - 16:4xZ builder fix 2: `wip/pos-p2.10` **6b2cefbb** push แล้ว (G2 9abca590 `mutSeq` counter ใน DeviceSettings · G1 dry en จริง 14 ภาพ locale en · notes deviation 6/follow-ups/amendment) · gates p2.10 13/13 · p1.18 81 · p1.12 72 · tsc · fitness ±env → ส่ง R2 (agent เดิม) ตรวจ hunk G2 + log G1 → MERGEABLE → merge 6b2cefbb (no-ff · msg `scratchpad/ctl/p210-merge-msg.txt`) → ทรี b detached → gates95 (`gates95-b.template.sh`) → push → QC5 migrate ทำแล้ว (chain80) → **38/55** + TG
+
+### 15 ต.ค. 16:38Z — P2.10 merged 9e72513f (ยังไม่ push) → gates95
+- R2 ตรวจ fix 2 @6b2cefbb = **MERGEABLE** → **merge 6b2cefbb เข้า session/pos = 9e72513f** (no-ff · ไม่ชน) · ทรี b detached 9e72513f + prisma generate → **gates95-b** (`/root/pos-runs/gates95-b-*`: p2.10 ×2 unforced · p1.10 p1.11 p1.18 p1.3 p1.1 p1.6 p1.7 p1.12 p2.9b authz hf-tx p2.8 p2.11 p1.16 p1.17 + fitness ±env/pos + typecheck)
+- ถัดไป: gates95 เขียว (p2.11 ST4/p2.8 ST6 lane pin อาจแดงจน push) → push → p2.8/p2.11 ซ้ำ → **38/55 (69%)** + TG + memory · QC5 migration ทำแล้ว (chain80) · P2.12 S builder ทรี c ยังทำอยู่ → ใบถัดไปหลัง P2.12 S: P2.12U · P2.13 · P2.14
+- เลน: 1 = P2.12 S builder ทรี c · ทรี b = gates95 (ผู้คุม) · ทรี d ว่าง @e7f661a7
