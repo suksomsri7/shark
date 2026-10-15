@@ -1695,3 +1695,8 @@
 - ถัดไป: gates95 เขียว (p2.11 ST4/p2.8 ST6 lane pin อาจแดงจน push) → push → p2.8/p2.11 ซ้ำ → **38/55 (69%)** + TG + memory · QC5 migration ทำแล้ว (chain80) · P2.12 S builder ทรี c ยังทำอยู่ → ใบถัดไปหลัง P2.12 S: P2.12U · P2.13 · P2.14
 - เลน: 1 = P2.12 S builder ทรี c · ทรี b = gates95 (ผู้คุม) · ทรี d ว่าง @e7f661a7
 - 17:21Z gates95 @9e72513f (`/root/pos-runs/gates95-b-20261015T163736Z`): p2.10 13/13 ×2 · 15 ชุดเขียว (p2.11 32/34 = ST1 migration + ST4 lane pin เทียบ origin ก่อน push) · fitness ±env/pos · typecheck 0 → **push session/pos 6f5b5fa5 → f37d605b** (code 9e72513f) → gates96-b (p2.8 + p2.11 ซ้ำ) `/root/pos-runs/gates96-b-20261015T172114Z` · แจ้ง P2.12 builder ว่า origin ขยับ (merge + prisma generate ก่อนด่านสุดท้าย)
+
+### 15 ต.ค. 17:3xZ — P2.10 ปิด → **38/55 (69%)**
+- gates96 @f37d605b (`/root/pos-runs/gates96-b-20261015T172114Z`): p2.8 61/61 · p2.11 34/34 → **P2.10 ✅ 38/55** · TG ส่งแล้ว · QC5 migration `pos_p210_customer_display` ทำแล้ว (chain80)
+- ทรี b ว่าง @9e72513f · ทรี d ว่าง @e7f661a7 · เลน 1 = P2.12 S builder ทรี c (แจ้ง origin ขยับแล้ว) · เลน 2 ว่าง
+- ถัดไป: P2.12 S รายงาน → R1 + hunter เบา (CH/BR sums · anomaly scope) → fix → merge → gates (§6 regression) → push → 39/55 → P2.12U (brief §1 U + §7 visual) → P2.13 API → P2.14 ปิดเฟส · เลน 2 ระหว่างรอ: ร่าง **P2.13 brief** (REST `/api/v1/pos` + สกิล + คู่มือ · lane S · ⏮ P1.18 · ~45 op) — ไม่ชน P2.12 S
