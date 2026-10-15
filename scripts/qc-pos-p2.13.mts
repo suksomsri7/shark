@@ -31,6 +31,9 @@
 //   unitId: บังคับบน op รายการ/สร้าง (GET /sales /products /orders /channels /devices /shifts · POST /sales /sales/quote /orders /products) — query (GET) / body (อื่น) ·
 //     ไม่บังคับบน op ที่มี {id} (ใช้สาขาของระเบียนนั้นหลังผ่านด่านสาขา · ส่งมาแล้วไม่ตรง = 404) — ข้อสอบยิงทั้งแบบมีและไม่มี
 //
+// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1): AU9 SA9 SA10 OR7 RP5 (มติ fix1 ข้อ 7 · ledger/wo-notes/pos-P2.13-review.md) — 49 + 5 = 54 ข้อ
+//   SA9 กติกา POS_VOID (F1) · SA10 กะของบิล API ปิดแล้ว (F2/H1) · AU9 ยืนยันจ่ายมือต้องผู้จัดการ (F3/H2 option b) · RP5 ชื่อคีย์ในรายงานพนักงาน (F4) · OR7 เงินสดของออเดอร์ต้องมีกะ (H3)
+//
 // 🔴 กติกาข้อสอบ (แบบเดียวกับ qc-pos-p2.10): SKIP เมื่อ route ยังไม่มี (exit 0 + เหตุผล) · QC_FORCE=1 = ข้ามด่าน SKIP (แดงตามเหตุผล ไม่ crash)
 //    --list = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต ST1–ST6 แบบอ่านไฟล์ (ไม่โหลด prisma ในโปรเซสนี้)
 //    ฐาน = QC4 เท่านั้น · ร้านชั่วคราว `posqc-p213-<rand>` (+ `-t2`) ลบทั้งร้านใน finally (คีย์ API · แถวกันซ้ำ · บิล · ออเดอร์ อยู่ในร้าน) +
@@ -74,6 +77,8 @@ const CHECKS: readonly Def[] = [
   D("AU6", "A", "[§2.1 มติ 3] คีย์ pos-read: POST /sales → 403 scope_missing + hint มี pos.sale.create · GET /sales → 200 · ไม่มีบิลเกิด"),
   D("AU7", "A", "[§2.2 มติ 2] unitId ของระบบ POS อื่นในร้าน (S2) / ร้านอื่น (-t2) / มั่ว → 404 not_found บน GET /sales · GET /products · POST /sales · GET /orders (ไม่บอกว่ามีอยู่) · ตัวควบคุมบวก: สาขา A → 200"),
   D("AU8", "A", "[HF-APIV1 PAR] คีย์รุ่นเดิม scope [] (+หัว S1) → 403 scope_missing ทุก op ที่ลอง (GET /units /sales /reports/daily · POST /sales) · /api/v1/sales เดิมด้วยคีย์นั้น → 200 มีบิล API ของรอบนี้ (ไม่เปลี่ยน)"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) (F3/H2 · มติ fix1 ข้อ 3 option b)
+  D("AU9", "A", "[มติ fix1 ข้อ 3 · HF-PP] ร้านตั้ง manualConfirmRequiresManager: คีย์ pos-operate (มี pos.shift.manage) POST /sales พร้อมเพย์ไม่อ้าง pi_ / บัตร → 403 forbidden · 0 บิล · ตัวควบคุมบวก: เงินสดคีย์เดียวกัน → 200"),
   // ── RL เพดานอัตรา ──
   D("RL1", "A", "[§0 rate] ถัง pos:api:write:<keyId> ครบ 60 ในนาทีนี้ → คำขอเขียนถัดไป 429 rate_limited + Retry-After · ไม่มีบิลเกิด · คำตอบสำเร็จมี X-RateLimit-Limit 60/300/30 ตามชนิด"),
   D("RL2", "A", "[§0 rate] ถังแยก: ระหว่างที่ write ของคีย์นั้น 429 → GET /units ของคีย์เดียวกัน 200 · ไม่มีแถว kb:api:% / acct:api:% ของคีย์นั้น"),
@@ -92,6 +97,9 @@ const CHECKS: readonly Def[] = [
   D("SA6", "M", "[§1 #7] void (danger): ไม่มี confirm → 409 confirm_required · confirm+reason → 200 VOIDED · JV สุทธิต่อบัญชี = 0 · สต็อกคืนครบ · บิลจากระบบอื่น (HOTEL) → 409 state_conflict ไม่ถูกยกเลิก"),
   D("SA7", "M", "[§1 #8–9] GET /sales/{id}/refundable = saleForRefund (PAR) · คืน 1 หน่วย (danger) → 200 ใบ REFUND · คืนสต็อก +1 · pos.sale.refunded 1 ครั้ง · ยิงซ้ำคีย์เดิม → replay ใบเดิม · ระบายคิว 2 รอบ ไม่ซ้ำผล"),
   D("SA8", "M", "[§1 #9 IN-B] คีย์ไม่มี pos.sale.refund → 403 scope_missing (refundable + refund) · tax-invoice: คีย์ไม่มี pos.taxinvoice.issue → 403 · pos-admin = ผลเดียวกับ issueFullTaxInvoice ตรงบนบิลคู่ (PAR)"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) (F1 · F2/H1)
+  D("SA9", "M", "[มติ fix1 ข้อ 1 · P1.15 R5] กติกา POS_VOID เกณฑ์ ฿1,000: REST void บิล API ฿50,000 → 409 state_conflict (APPROVAL_REQUIRED) · คำขออนุมัติ POS_VOID ของบิล 1 ใบ · บิลยัง PAID"),
+  D("SA10", "M", "[มติ fix1 ข้อ 2 · P1.9 S11] บิล API เงินสดผูกกะ S (shiftId) · ปิดกะ S → REST void → 409 state_conflict (SHIFT_CLOSED) · บิลยัง PAID"),
   // ── OR ออเดอร์ ──
   D("OR1", "O", "[§1 #25–27] POST /orders เข้าช่องทาง MANUAL (LINEMAN) เลขออเดอร์เดิมสองครั้ง (คนละ Idempotency-Key) → ออเดอร์เดียว ครั้งที่สอง duplicated:true · GET /orders + /orders/{id} = listOrders/getOrder (PAR)"),
   D("OR2", "O", "[§1 #28] accept ออเดอร์ PLATFORM (NEW) → 200 · บิลเดียว · JV COMMISSION ของบิล ≥ 1"),
@@ -100,6 +108,8 @@ const CHECKS: readonly Def[] = [
   D("OR4", "O", "[§1 #30–32 #34] ออเดอร์ DIRECT: accept → preparing → ready → pay CASH → complete → 200 บิล + ออเดอร์ PAID · ขั้นผิด (preparing บนออเดอร์ที่ส่งมอบแล้ว) → 409 state_conflict"),
   D("OR5", "O", "[§1 #23–24] pause ช่องทาง adapter API → POST /orders → 409 state_conflict (CHANNEL_PAUSED) · resume → POST /orders → 200"),
   D("OR6", "O", "[§1 #33] cancel ออเดอร์ที่มีบิล: คีย์มี pos.order.reject แต่ไม่มี pos.sale.void → 403 forbidden · บิลไม่ถูกยกเลิก · pos-admin → 200 · บิล VOIDED"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) (H3)
+  D("OR7", "O", "[มติ fix1 ข้อ 5] requiredOtherSources ปิด + สาขาไม่มีกะเปิด: POST /orders/{id}/pay เงินสด → 409 state_conflict (SHIFT_REQUIRED) · ออเดอร์ยังไม่จ่าย 0 บิล · ตัวควบคุมบวก: โอน → 200"),
   // ── PR สินค้า ──
   D("PR1", "R", "[§1 #14 #16] GET /products?unitId=A → รายการ id+ราคา = listForUnit (PAR) + page · GET /products/{id}/options = registerProductOptions (PAR)"),
   D("PR2", "R", "[§1 #15] GET /products/lookup บาร์โค้ดปกติ → สินค้านั้น · ป้ายชั่ง EAN-13 (20…) → สินค้าชั่ง + กรัม/ราคาของป้าย = registerScan (PAR) · บาร์โค้ดไม่มี → 200 ไม่พบ"),
@@ -111,6 +121,8 @@ const CHECKS: readonly Def[] = [
   D("RP2", "R", "[§1 #44–45 IN-B · มติ 10] /reports/{branches hourly anomalies} = reader ตรง (PAR) — SKIP-with-reason เมื่อ REPORT_KINDS ยังไม่มี (ก่อน P2.12 S merge)"),
   D("RP3", "R", "[§1 มติ 8] Accept: text/csv บน /reports/daily = reportCsv ตรง (ไบต์เดียวกัน · BOM) · ช่วง 93 วัน → 422 validation"),
   D("RP4", "A", "[มติ 2] คีย์ตัวกรอง pos.filter.unit:A: GET /reports/daily?unitId=B → 404 · ไม่ระบุสาขา = ยอดของ A เท่านั้น (PAR reader unitAccess [A]) · GET /sales?unitId=B → 404"),
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) (F4)
+  D("RP5", "R", "[มติ fix1 ข้อ 4 · มติ 3] /reports/staff: แถวของคีย์ผู้ขาย (userId = keyId) ชื่อ \"API: <ชื่อคีย์>\" · แถวคนจริงยังเป็นชื่อคน"),
   // ── SH กะ/เครื่อง/ช่องทาง/ทางที่ปิด ──
   D("SH1", "R", "[§1 #10–12 IN-B] /shifts · /shifts/{id}/x-report · /z-report · /shifts/current = listShifts/xReport/zReport/currentShift ตรง (PAR) · คีย์ pos-read → 403 scope_missing"),
   D("SH2", "R", "[§1 #1–4 #13 #22] GET /units = สาขาที่ผูก S1 (A,B ไม่มีสาขาของ S2/-t2) · GET /sales = billsPageData (id ชุดเดียวกัน + page) · /sales/{id} = billDetail · /sales/{id}/receipt = receiptPayload ต้นฉบับ (PAR) · GET /devices = listDevices · GET /channels = listChannels (PAR) · pos-read บน /devices → 403"),
@@ -702,6 +714,7 @@ const taxMod = await tryImport("@/lib/modules/pos/tax-invoice");
 const receiptMod = await tryImport("@/lib/modules/pos/receipt");
 const posIdx = await tryImport("@/lib/modules/pos");
 const consMod = await tryImport("@/lib/outbox-consumers");
+const apSvc = await tryImport("@/lib/modules/approval/service"); // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) SA9
 const legacySales = await tryImport("@/app/api/v1/sales/route");
 
 const RAND = Math.random().toString(36).slice(2, 8);
@@ -1196,6 +1209,30 @@ async function runDb() {
     chk("AU8", p.length === 0, "403 scope_missing ×4 · /api/v1/sales 200 มีบิล API", FXB(joinP(p, leg)));
   }
 
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) AU9 (F3/H2): API ไม่ผ่านด่านผู้จัดการของการยืนยันจ่ายมือ แม้คีย์มี pos.shift.manage (option b)
+  {
+    const p: string[] = [];
+    const readSet = async (): Promise<Any> => (await P.appSystem.findUnique({ where: { id: S.POS ?? "none" }, select: { settings: true } }).catch(() => null))?.settings ?? {};
+    const setManual = async (on: boolean) => {
+      const cur = await readSet();
+      const pos = isRecord(cur.pos) ? cur.pos : {};
+      const pay = isRecord(pos.payment) ? pos.payment : {};
+      await P.appSystem.update({ where: { id: S.POS }, data: { settings: { ...cur, pos: { ...pos, payment: { ...pay, manualConfirmRequiresManager: on } } } } });
+    };
+    if (!fx) await step("AU9 เปิด manualConfirmRequiresManager", () => setManual(true));
+    if (!(SCOPES.op ?? []).includes("pos.shift.manage")) p.push("(ฟิกซ์เจอร์) คีย์ pos-operate ไม่มี pos.shift.manage — ข้อนี้ตัดสินไม่ได้");
+    const s0 = await salesOfT();
+    const pp = await api("POST", `/sales`, raw("op"), { body: waterBody(1, { payMethods: [{ type: "PROMPTPAY", amountSatang: 1000 }], cashReceivedSatang: undefined }) });
+    if (!(pp.status === 403 && ecode(pp) === "forbidden")) p.push(`พร้อมเพย์ไม่อ้าง pi_ → ${st(pp)}`);
+    const cd = await api("POST", `/sales`, raw("op"), { body: waterBody(1, { payMethods: [{ type: "CARD", amountSatang: 1000, reference: "EDC-0009" }], cashReceivedSatang: undefined }) });
+    if (!(cd.status === 403 && ecode(cd) === "forbidden")) p.push(`บัตร → ${st(cd)}`);
+    if ((await salesOfT()) !== s0) p.push(`บิล +${(await salesOfT()) - s0}`);
+    const cash = await api("POST", `/sales`, raw("op"), { body: waterBody(1) });
+    if (cash.status !== 200) p.push(`ตัวควบคุมบวก เงินสด → ${st(cash)}`);
+    if (!fx) await step("AU9 ปิด manualConfirmRequiresManager", () => setManual(false));
+    chk("AU9", p.length === 0, "403 ×2 · 0 บิล · เงินสด 200", FXB(joinP(p)));
+  }
+
   // ════════ RL ════════
   console.log("\n── RL เพดานอัตรา ──");
   {
@@ -1422,6 +1459,48 @@ async function runDb() {
     chk("SA8", p.length === 0, "403 ×3 · tax-invoice PAR", FXB(joinP(p)));
   }
 
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) SA9 (F1): REST void ผ่าน voidSaleByActor ⇒ กติกา POS_VOID ของร้านมีผล
+  {
+    const p: string[] = [];
+    const pol = fx ? null : await step("SA9 กติกา POS_VOID", async () => String((await apSvc.createPolicy({ tenantId: T }, { name: `QC P2.13 ยกเลิกบิล ≥ ฿1,000 ${RAND}`, entityType: "POS_VOID", thresholdSatang: 100_000, steps: [{ order: 1, approverRole: "MANAGER" }] }))?.id ?? ""));
+    if (!pol) p.push("(ฟิกซ์เจอร์) สร้างกติกา POS_VOID ไม่ได้");
+    const BIG = 5_000_000;
+    const b = await api("POST", `/sales`, raw("admin"), { body: { unitId: U.A, lines: [{ name: `ชุดอุปกรณ์ใหญ่ ${RAND}`, qty: 1, unitPriceSatang: BIG }], payMethods: [{ type: "CASH", amountSatang: BIG }], cashReceivedSatang: BIG, expectedGrandTotalSatang: BIG } });
+    const id = String(b.body?.data?.saleId ?? "");
+    if (b.status !== 200 || !id) p.push(`(ฟิกซ์เจอร์) บิล ฿50,000 ${st(b)} ${short(b.body?.error?.message_th ?? "", 50)}`);
+    const v = await api("POST", `/sales/${id || "none"}/void`, raw("admin"), { body: { confirm: true, reason: "ลูกค้าขอยกเลิกบิลใหญ่" } });
+    if (!(v.status === 409 && ecode(v) === "state_conflict")) p.push(`void → ${st(v)}`);
+    const reqs = id ? ((await P.approvalRequest.findMany({ where: { tenantId: T, entityType: "POS_VOID", entityId: { startsWith: id } } }).catch(() => [])) as Any[]) : [];
+    if (reqs.length !== 1) p.push(`คำขออนุมัติ POS_VOID ${reqs.length} ใบ`);
+    const row = await saleRow(id);
+    if (row?.status !== "PAID") p.push(`บิล ${row?.status}`);
+    chk("SA9", p.length === 0, "409 · คำขอ 1 ใบ · บิล PAID", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) SA10 (F2/H1): บิล API ในกะที่ปิดแล้ว void ไม่ได้
+  {
+    const p: string[] = [];
+    const DEV2 = `qc213${RAND}dev2`;
+    let S2 = "";
+    if (!fx) {
+      await step("SA10 เครื่อง/กะที่สอง", async () => {
+        must("registerDevice 2", await call(devMod, "registerDevice", ctxU("A"), A("OWNER"), { name: `เคาน์เตอร์สอง ${RAND}`, deviceCode: DEV2 }));
+        const o = must("openShift 2", await call(shiftMod, "openShift", ctxU("A", DEV2), A("OWNER"), { deviceId: DEV2, deviceLabel: `เคาน์เตอร์สอง ${RAND}`, floatSatang: 0 }));
+        S2 = String(o.shift?.id ?? o.shiftId ?? "");
+      });
+    }
+    const a = await api("POST", `/sales`, raw("admin"), { body: waterBody(1, { shiftId: S2 || "none" }) });
+    const id = String(a.body?.data?.saleId ?? "");
+    const r0 = await saleRow(id);
+    if (a.status !== 200 || !id || !S2 || r0?.shiftId !== S2) p.push(`(ฟิกซ์เจอร์) บิล API ในกะ S ${st(a)} shift=${r0?.shiftId === S2 ? "S" : short(r0?.shiftId, 14)}`);
+    if (S2) await step("SA10 ปิดกะ", async () => must("closeShift", await call(shiftMod, "closeShift", ctxU("A", DEV2), A("OWNER"), { shiftId: S2, countedCashSatang: 1000, note: "ปิดกะทดสอบบิล API", idempotencyKey: newKey("close") })));
+    const sh = S2 ? await P.posShift.findFirst({ where: { id: S2, tenantId: T }, select: { status: true } }).catch(() => null) : null;
+    if (sh?.status === "OPEN" || !sh) p.push(`(ฟิกซ์เจอร์) กะ S ${sh?.status ?? "ไม่มี"}`);
+    const v = await api("POST", `/sales/${id || "none"}/void`, raw("admin"), { body: { confirm: true, reason: "ยกเลิกบิลหลังปิดกะ" } });
+    if (!(v.status === 409 && ecode(v) === "state_conflict" && /shift/i.test(String(v.body?.error?.message_en ?? "")))) p.push(`void → ${st(v)} ${short(v.body?.error?.message_en ?? "", 50)}`);
+    if ((await saleRow(id))?.status !== "PAID") p.push(`บิล ${(await saleRow(id))?.status}`);
+    chk("SA10", p.length === 0, "409 SHIFT_CLOSED · บิล PAID", FXB(joinP(p)));
+  }
+
   // ════════ OR ════════
   console.log("\n── OR ออเดอร์ ──");
   const ordBody = (channelId: string, extra: Any = {}): Any => ({ unitId: U.A, channelId, fulfilment: "PICKUP", lines: [{ productId: PR.water, qty: 1 }], customer: { name: `ลูกค้า ${RAND}` }, ...extra });
@@ -1506,6 +1585,30 @@ async function runDb() {
     const r2 = await api("POST", `/orders`, raw("admin"), { body: ordBody(CH.APP ?? "none", { externalRef: `APP-${RAND}-2` }) });
     if (r2.status !== 200) p.push(`หลังเปิด → ${st(r2)}`);
     chk("OR5", p.length === 0, "pause 200 · 409 · resume 200 · 200", FXB(joinP(p)));
+  }
+
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) OR7 (H3): เงินสดของออเดอร์ผ่าน API ต้องลงกะ (ไม่มีกะให้ผูก = SHIFT_REQUIRED · ไม่บันทึกเงินสดนอกกะ)
+  {
+    const p: string[] = [];
+    const chB = fx ? "" : String((await step("OR7 ช่องทาง DIRECT สาขา B", async () => must("saveChannel B", await call(chMod, "saveChannel", ctxU("B"), A("OWNER"), { code: "CUSTOM_WALKB", name: `สั่งล่วงหน้า B ${RAND}`, payout: "DIRECT" }))))?.channel?.id ?? "");
+    const sset: Any = (await P.appSystem.findUnique({ where: { id: S.POS ?? "none" }, select: { settings: true } }).catch(() => null))?.settings ?? {};
+    if (sset?.pos?.shift?.required?.otherSources === true) p.push("(ฟิกซ์เจอร์) requiredOtherSources เปิดอยู่");
+    const openB = Number(await P.posShift.count({ where: { tenantId: T, unitId: U.B ?? "none", status: "OPEN" } }).catch(() => -1));
+    if (openB !== 0) p.push(`(ฟิกซ์เจอร์) สาขา B มีกะเปิด ${openB}`);
+    const a = await api("POST", `/orders`, raw("admin"), { body: { unitId: U.B, channelId: chB || "none", fulfilment: "PICKUP", lines: [{ productId: PR.bar, qty: 1 }], customer: { name: `ลูกค้า B ${RAND}` }, startStatus: "NEW" } });
+    const id = String(a.body?.data?.orderId ?? "");
+    const ac = await api("POST", `/orders/${id || "none"}/accept`, raw("admin"), { body: { unitId: U.B } });
+    if (a.status !== 200 || !id || ac.status !== 200) p.push(`(ฟิกซ์เจอร์) ออเดอร์ ${st(a)} accept ${st(ac)}`);
+    const total = Number((await P.posOrder.findFirst({ where: { id: id || "none", tenantId: T } }).catch(() => null))?.totalSatang ?? 0);
+    const s0 = await salesOfT();
+    const pay = await api("POST", `/orders/${id || "none"}/pay`, raw("admin"), { body: { unitId: U.B, payMethods: [{ type: "CASH", amountSatang: total }], cashReceivedSatang: total } });
+    if (!(pay.status === 409 && ecode(pay) === "state_conflict" && /shift/i.test(String(pay.body?.error?.message_en ?? "")))) p.push(`จ่ายเงินสด → ${st(pay)} ${short(pay.body?.error?.message_en ?? "", 50)}`);
+    const o = await P.posOrder.findFirst({ where: { id: id || "none", tenantId: T } }).catch(() => null);
+    if (o?.paymentState === "PAID" || o?.saleId) p.push(`ออเดอร์ ${o?.paymentState} บิล=${!!o?.saleId}`);
+    if ((await salesOfT()) !== s0) p.push(`บิล +${(await salesOfT()) - s0}`);
+    const tr = await api("POST", `/orders/${id || "none"}/pay`, raw("admin"), { body: { unitId: U.B, payMethods: [{ type: "TRANSFER", amountSatang: total, reference: "TRF-0007" }] } });
+    if (tr.status !== 200) p.push(`ตัวควบคุมบวก โอน → ${st(tr)} ${short(tr.body?.error?.message_th ?? "", 50)}`);
+    chk("OR7", p.length === 0, "409 SHIFT_REQUIRED · ไม่จ่าย 0 บิล · โอน 200", FXB(joinP(p)));
   }
 
   // ════════ PR ════════
@@ -1631,6 +1734,21 @@ async function runDb() {
     if (!(c.status === 404 && ecode(c) === "not_found")) p.push(`sales สาขา B → ${st(c)}`);
     if (!K.filter) p.push("ออกคีย์ตัวกรองไม่ได้ (isApiScope pos.filter.unit:)");
     chk("RP4", p.length === 0, "B 404 · ยอด = เฉพาะ A", FXB(joinP(p)));
+  }
+
+  // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 fix 1) RP5 (F4): ผู้ขายที่เป็นคีย์ = "API: <ชื่อคีย์>"
+  {
+    const p: string[] = [];
+    const r = await api("GET", `/reports/staff?from=${FROM}&to=${today}`, raw("read"));
+    const rows: Any[] = Array.isArray(r.body?.data?.rows) ? r.body.data.rows : [];
+    if (r.status !== 200) p.push(`staff ${st(r)}`);
+    const want = `API: QC P2.13 admin2 ${RAND}`;
+    const kr = rows.find((x) => x?.userId === K.admin2?.id);
+    if (!kr) p.push("ไม่มีแถวของคีย์ admin2");
+    else if (kr.name !== want) p.push(`แถวคีย์ name=${short(kr.name, 40)} (คาด ${want})`);
+    const or = rows.find((x) => x?.userId === uid("OWNER"));
+    if (!or || or.name !== `OWNER คิวซี${RAND}`) p.push(`แถวเจ้าของ name=${short(or?.name, 30)}`);
+    chk("RP5", p.length === 0, "API: <ชื่อคีย์> · คนจริง = ชื่อคน", FXB(joinP(p)));
   }
 
   // ════════ SH ════════
