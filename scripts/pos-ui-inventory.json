@@ -10485,7 +10485,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-bills-list",
-        "note": "ทุกช่องทาง = ช่องทางขายของบิลวันนี้ (BillsPageData.salesChannels) → query salesChannelId · ตัวกรองระบบต้นทางเดิม pos-bills-channel คงไว้ (ป้ายว่าง \"ทุกระบบ\")"
+        "note": "ทุกช่องทาง = ช่องทางขายของบิลวันนี้ (BillsPageData.salesChannels) → query salesChannelId · ตัวกรองระบบต้นทางเดิม pos-bills-channel คงไว้ (ป้ายว่าง \"ทุกระบบ\") · P2.12U fix1 F3: ซ่อนเมื่อเลือก \"ทุกสาขา\" (รหัสช่องทางต่อสาขา)"
       },
       "wo": "P2.1U",
       "oracle": "",
@@ -18497,6 +18497,185 @@
       "oracle": "",
       "system": "POS",
       "query": ""
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-pdf",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/reports/print",
+        "note": "ปุ่ม PDF ข้าง CSV ทุกแท็บ + ภาพรวม → หน้าพิมพ์ในแท็บใหม่ ?kind=&from=&to=&unit=&locale= (ตัวกรองเดียวกับจอ · ภาพรวม = เอกสารสรุปหลายส่วน) · ช่วงผิด/รายชั่วโมงเกิน 31 วัน = ปิด (มติ 1)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports/print",
+      "testid": "pos-report-print-back",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/reports",
+        "note": "\"กลับไปหน้ารายงาน\" ด้วยตัวกรองเดิม (kind/from/to/unit) · มีทั้งหน้าปกติและการ์ดปฏิเสธ (มติ 1)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=daily&from=[date]&to=[date]&noprint=1"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports/print",
+      "testid": "pos-report-print-again",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-print-frame",
+        "note": "\"พิมพ์ / PDF\" → print() ของ iframe เอกสาร A4 (หลังฟอนต์พร้อม) · หน้าเปิดสั่งพิมพ์เองครั้งเดียว ยกเว้น ?noprint=1 (มติ 1)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=daily&from=[date]&to=[date]&noprint=1"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-table",
+        "note": "แท็บใหม่ต่อท้าย (P2.12U): hourly (24 ชั่วโมงของวันธุรกิจ + แถวรวม · ช่วง > 31 วัน = ปิด + \"เลือกช่วงไม่เกิน 31 วัน\") · branches (เห็น ≥ 2 สาขา · ตาราง + แถวรวมตัวหนาจาก totals) · anomalies (เฉพาะผู้มี pos.report.anomaly ที่สาขาใดสาขาหนึ่ง · กลุ่มกฎ A1–A10) → ?kind= (history.replaceState) + โหลดรายงาน"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-anomaly-bill-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "note": "แท็บจุดผิดปกติ: แถวที่อ้างบิล (refType PosSale · A4 A7) \"ดูบิล\" → หน้าบิล ?unit=<สาขาของแถว>&bill=<saleId> เปิดลิ้นชักบิลนั้น (billDetailAction ตรวจสาขา/สิทธิ์) · n = ลำดับแถวในรายงาน (มติ 4)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=anomalies"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-anomaly-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-anomaly",
+        "note": "การ์ด \"รายงาน: จุดสังเกตผิดปกติ\" (เฉพาะผู้แก้ค่าทั่วไปได้): เปิดการตรวจ (anomaly.enabled) · ปิด = แถวกฎจาง (มติ 6)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-anomaly-*-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-settings-general-field-error",
+        "note": "เกณฑ์ต่อกฎ <A1…A10>-<count|satang|bp> (ครั้ง/จำนวน · บาท → สตางค์ · % → bp) ช่วง POS_ANOMALY_LIMITS · ผิดช่วง/ปฏิเสธ field anomaly.rules.A#.<ช่อง> = ข้อความใต้แถวของกฎ (มติ 6)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-anomaly",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosGeneralSettingsAction",
+        "note": "การ์ดจุดสังเกตผิดปกติ: patch {anomaly:{enabled?, rules:{A#:{ช่องที่เปลี่ยน}}}} · ไม่มีอะไรเปลี่ยน = \"บันทึกแล้ว\" ไม่เรียกเซิร์ฟเวอร์ (มติ 6)",
+        "db": "AppSystem(POS).settings.pos.reports.anomaly"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-sales-unit-all",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "note": "ตัวเลือก \"ทุกสาขา\" ใน pos-bills-unit (เฉพาะผู้อ่านบิลได้ > 1 สาขา) → ?unit=* (BILLS_ALL_UNITS) · แถวมีชิปสาขา pos-sales-unitChip-<saleId> · ลิ้นชักใช้สาขาของบิล (มติ 7)"
+      },
+      "wo": "P2.12U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=*"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

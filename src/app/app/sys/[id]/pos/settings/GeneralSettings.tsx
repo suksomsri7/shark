@@ -8,11 +8,16 @@
 //   PERMISSION_DENIED = การ์ดอ่านอย่างเดียวพร้อมข้อความ · บันทึกแล้ว = "บันทึกแล้ว" 3 วินาที
 //   แคชเชียร์ (canEdit.general = false) = อ่านอย่างเดียวทั้งแท็บ ไม่มีปุ่ม · เพดานส่วนลดอยู่แท็บพนักงานและสิทธิ์ (17C)
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · testid ตัวอักษรตรงบนแท็ก · ปุ่ม/ช่อง ≥ 44px · เลขพร้อมเพย์แสดงแบบปิดบังเสมอ
+// POS P2.12U ▸ มติ 6: การ์ด "รายงาน: จุดสังเกตผิดปกติ" (เฉพาะผู้แก้ค่าทั่วไปได้ — เจ้าของ/pos.settings.manage) ต่อจากการ์ดรายงาน — สวิตช์เปิดการตรวจ +
+//   แถวต่อกฎ A1–A10 (ป้าย pos.report.anomaly.rules · ช่องตามสัญญา: ครั้ง/จำนวน · บาท (→ สตางค์) · % (→ bp)) · ช่วง POS_ANOMALY_LIMITS ตรวจที่จอก่อน ·
+//   บันทึก = updatePosGeneralSettingsAction({anomaly:{enabled?, rules:{A#:{ช่องที่เปลี่ยน}}}}) · คำปฏิเสธตาม field path (anomaly.rules.A#.<ช่อง>) แสดงใต้แถวนั้น ·
+//   คำอธิบาย: ชื่อพนักงานในรายงานนี้เห็นเฉพาะผู้มีสิทธิ์ pos.report.anomaly ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { posSettingsOverviewAction, updatePosGeneralSettingsAction, updatePosUnitPromptpayAction, updatePosUnitStockPolicyAction } from "@/lib/modules/pos/settings-actions";
 import { POS_GENERAL_LIMITS, settingsRefusalMessageKey, type PosGeneralSettings, type PosGeneralSettingsPatch, type PosOversellPolicy } from "@/lib/modules/pos/settings-shared";
+import { POS_ANOMALY_LIMITS, POS_ANOMALY_RULES, type PosAnomalyField, type PosAnomalyRule } from "@/lib/modules/pos/settings-shared"; // POS P2.12U ▸ มติ 6 ◂
 import type { PosSettingsOverviewResult } from "@/lib/modules/pos/settings-overview";
 import type { WeighedBarcodeKind, WeighedBarcodeRule } from "@/lib/modules/pos/scan-shared";
 import { isValidPromptPayId } from "@/lib/payment/promptpay";
@@ -21,7 +26,7 @@ import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { CardHead, Chip, InlineNote, SettingsCard, SwitchKnob, TabHead } from "./settings-ui";
 
 type Overview = Extract<PosSettingsOverviewResult, { ok: true }>;
-type CardKey = "register" | "shift" | "reports" | "stock" | "weighed" | "promptpay";
+type CardKey = "register" | "shift" | "reports" | "stock" | "weighed" | "promptpay" | "anomaly"; // POS P2.12U ▸ + anomaly ◂
 type CardState = { saving: boolean; saved: boolean; error: string | null; locked: string | null; fields: Record<string, string> };
 const IDLE: CardState = { saving: false, saved: false, error: null, locked: null, fields: {} };
 const PREFIXES = ["20", "21", "22", "23", "24", "25", "26", "27", "28", "29"] as const;
@@ -57,12 +62,27 @@ const bahtText = (satang: number) => (satang % 100 === 0 ? String(satang / 100) 
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const sameRules = (a: WeighedBarcodeRule[], b: WeighedBarcodeRule[]) => a.length === b.length && a.every((r, i) => r.prefix === b[i]!.prefix && r.kind === b[i]!.kind);
 
+// ── POS P2.12U ▸ มติ 6: เกณฑ์จุดผิดปกติ — ช่องของกฎตามสัญญา (ลำดับแสดง) · แปลงหน่วยจอ ↔ ค่าที่เก็บ (สตางค์ · bp) ◂ ──
+const ANOMALY_FIELDS: Record<PosAnomalyRule, PosAnomalyField[]> = { A1: ["count", "satang"], A2: ["count", "satang"], A3: ["bp"], A4: ["bp"], A5: ["count"], A6: ["count"], A7: ["count"], A8: ["satang"], A9: ["count"], A10: ["count"] };
+/** ค่าที่เก็บ → ข้อความในช่อง (บาท/เปอร์เซ็นต์ตัดศูนย์ท้าย) */
+const anomalyText = (f: PosAnomalyField, v: number) => (f === "count" ? String(v) : f === "satang" ? bahtText(v) : String(v / 100));
+/** ข้อความในช่อง → ค่าที่เก็บ · ผิดรูป/นอกช่วง POS_ANOMALY_LIMITS = null */
+function anomalyValue(f: PosAnomalyField, raw: string): number | null {
+  const v = raw.trim().replace(/,/g, "");
+  const lim = POS_ANOMALY_LIMITS[f];
+  if (f === "count") return intIn(v, lim.min, lim.max);
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(v)) return null;
+  const n = Math.round(Number(v) * 100);
+  return n >= lim.min && n <= lim.max ? n : null;
+}
+
 export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPromptpayMasked, shopPromptpayMasked }: Props) {
   const t = useTranslations("pos.settings");
   const tg = useTranslations("pos.settings.general");
   const [data, setData] = useState<Overview | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [cards, setCards] = useState<Record<CardKey, CardState>>({ register: IDLE, shift: IDLE, reports: IDLE, stock: IDLE, weighed: IDLE, promptpay: IDLE });
+  const [cards, setCards] = useState<Record<CardKey, CardState>>({ register: IDLE, shift: IDLE, reports: IDLE, stock: IDLE, weighed: IDLE, promptpay: IDLE, anomaly: IDLE });
+  const tr = useTranslations("pos.report"); // POS P2.12U ▸ ป้ายกฎ pos.report.anomaly.rules.* ◂
   const timers = useRef<Partial<Record<CardKey, ReturnType<typeof setTimeout>>>>({});
 
   // ── ร่างของแต่ละการ์ด ──
@@ -80,9 +100,12 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
   const [rules, setRules] = useState<WeighedBarcodeRule[]>([]);
   const [ppInput, setPpInput] = useState("");
   const [ppMasked, setPpMasked] = useState<string | null>(unitPromptpayMasked);
+  // POS P2.12U ▸ มติ 6: ร่างเกณฑ์จุดผิดปกติ (คีย์ "A1.count" …) ◂
+  const [anOn, setAnOn] = useState(true);
+  const [anDraft, setAnDraft] = useState<Record<string, string>>({});
 
   /** ร่างจากค่าที่บันทึก — part = เฉพาะการ์ดนั้น (บันทึกการ์ดหนึ่งไม่ล้างร่างที่ยังไม่บันทึกของการ์ดอื่น) · ไม่ส่ง = ทุกการ์ด */
-  const fill = useCallback((g: PosGeneralSettings, part?: "register" | "shift" | "reports" | "weighed") => {
+  const fill = useCallback((g: PosGeneralSettings, part?: "register" | "shift" | "reports" | "weighed" | "anomaly") => {
     if (!part || part === "register") {
       setAutoLock(String(g.autoLockMinutes));
       setHeldDays(String(g.heldCartExpireDays));
@@ -99,6 +122,13 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
     if (!part || part === "weighed") {
       setWbOn(g.weighedBarcode.enabled);
       setRules(g.weighedBarcode.rules.map((r) => ({ ...r })));
+    }
+    // POS P2.12U ▸ มติ 6 ◂
+    if (!part || part === "anomaly") {
+      setAnOn(g.anomaly.enabled);
+      const d: Record<string, string> = {};
+      for (const r of POS_ANOMALY_RULES) for (const f of ANOMALY_FIELDS[r]) d[`${r}.${f}`] = anomalyText(f, (g.anomaly.rules[r] as Record<string, number>)[f] ?? 0);
+      setAnDraft(d);
     }
   }, []);
 
@@ -133,6 +163,9 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
   const refuse = (k: CardKey, r: { code: string; field?: string }) => {
     if (r.code === "VALIDATION" && r.field) {
       if (FIELD_KEYS.has(r.field)) return patchCard(k, { saving: false, fields: { [r.field]: `general.fieldErrors.${r.field}` } });
+      // POS P2.12U ▸ มติ 6: anomaly.rules.A#.<ช่อง> = ข้อความใต้แถวของกฎนั้น (ช่วงของช่องนั้น) · anomaly.* อื่น = ข้อความรวมของการ์ด ◂
+      const an = /^anomaly\.rules\.(A\d+)\.(count|satang|bp)$/.exec(r.field);
+      if (an) return patchCard(k, { saving: false, fields: { [`${an[1]}.${an[2]}`]: `general.anomaly.err.${an[2]}` } });
       return patchCard(k, { saving: false, error: "errors.validation" });
     }
     if (r.code === "SETTINGS_SECTION_LOCKED" || r.code === "PERMISSION_DENIED")
@@ -146,7 +179,7 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
   const editPay = !!data?.canEdit.payment;
 
   // ── บันทึกค่าทั่วไป (เฉพาะคีย์ที่เปลี่ยน) ──
-  const saveGeneral = async (k: "register" | "shift" | "reports" | "weighed") => {
+  const saveGeneral = async (k: "register" | "shift" | "reports" | "weighed" | "anomaly") => {
     if (!g || !editGeneral || cards[k].saving || cards[k].locked) return;
     const patch: PosGeneralSettingsPatch = {};
     const fields: Record<string, string> = {};
@@ -172,6 +205,20 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
       if (Object.keys(sh).length) patch.shift = sh;
     } else if (k === "reports") {
       if (cutoff !== g.dayCutoffMinutes) patch.dayCutoffMinutes = cutoff;
+    } else if (k === "anomaly") {
+      // POS P2.12U ▸ มติ 6: ส่งเฉพาะช่องที่เปลี่ยน · ผิดช่วง = ข้อความใต้แถว ไม่ส่ง ◂
+      const rulesPatch: Record<string, Record<string, number>> = {};
+      for (const r of POS_ANOMALY_RULES) {
+        for (const f of ANOMALY_FIELDS[r]) {
+          const v = anomalyValue(f, anDraft[`${r}.${f}`] ?? "");
+          if (v === null) fields[`${r}.${f}`] = `general.anomaly.err.${f}`;
+          else if (v !== (g.anomaly.rules[r] as Record<string, number>)[f]) rulesPatch[r] = { ...(rulesPatch[r] ?? {}), [f]: v };
+        }
+      }
+      const an: NonNullable<PosGeneralSettingsPatch["anomaly"]> = {};
+      if (anOn !== g.anomaly.enabled) an.enabled = anOn;
+      if (Object.keys(rulesPatch).length) an.rules = rulesPatch as NonNullable<PosGeneralSettingsPatch["anomaly"]>["rules"];
+      if (Object.keys(an).length) patch.anomaly = an;
     } else {
       if (new Set(rules.map((r) => r.prefix)).size !== rules.length) fields["weighedBarcode.rules"] = "general.fieldErrors.weighedBarcode.rules";
       if (wbOn !== g.weighedBarcode.enabled || !sameRules(rules, g.weighedBarcode.rules)) patch.weighedBarcode = { enabled: wbOn, rules: rules.map((r) => ({ prefix: r.prefix, kind: r.kind })) };
@@ -306,6 +353,7 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
   const regRo = ro("register", editGeneral);
   const shiftRo = ro("shift", editGeneral);
   const repRo = ro("reports", editGeneral);
+  const anRo = ro("anomaly", editGeneral); // POS P2.12U ◂
   const stockRo = ro("stock", editStock);
   const wbRo = ro("weighed", editGeneral);
   const ppRo = ro("promptpay", editPay);
@@ -516,6 +564,73 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
             </button>,
           )}
         </SettingsCard>
+
+        {/* ── POS P2.12U ▸ มติ 6: รายงาน: จุดสังเกตผิดปกติ (เฉพาะผู้แก้ค่าทั่วไปได้) ◂ ── */}
+        {editGeneral && (
+          <SettingsCard testid="pos-settings-general-anomaly">
+            <CardHead icon="flag" title={tg("anomaly.title")} />
+            <p className="-mt-2 mb-3 text-[12.5px] text-[color:var(--color-muted)]" data-testid="pos-settings-anomaly-note">
+              {tg("anomaly.namesNote")}
+            </p>
+            {row(
+              tg("anomaly.enabled"),
+              tg("anomaly.enabledHint"),
+              <button data-testid="pos-settings-anomaly-enabled" type="button" role="switch" aria-checked={anOn} aria-label={tg("anomaly.enabled")} disabled={anRo} className="grid min-h-11 min-w-11 place-items-center" onClick={() => {
+                  setAnOn((v) => !v);
+                  touch("anomaly");
+                }}>
+                <SwitchKnob on={anOn} disabled={anRo} />
+              </button>,
+            )}
+            {POS_ANOMALY_RULES.map((r) => {
+              const errs = ANOMALY_FIELDS[r].map((f) => cards.anomaly.fields[`${r}.${f}`]).filter((x): x is string => !!x);
+              return (
+                <div key={r} className={anOn ? undefined : "opacity-60"}>
+                  {row(
+                    `${r} · ${tr(`anomaly.rules.${r}`)}`,
+                    tg(`anomaly.hint.${r}`),
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {ANOMALY_FIELDS[r].map((f, i) => (
+                        <span key={f} className="inline-flex items-center gap-2">
+                          {i > 0 ? <span className="text-[13px] text-[color:var(--color-muted)]">{tg("anomaly.or")}</span> : null}
+                          {suffix(
+                            <input
+                              data-testid={`pos-settings-anomaly-${r}-${f}`}
+                              inputMode={f === "count" ? "numeric" : "decimal"}
+                              className={inp}
+                              aria-label={`${r} ${tg(`anomaly.field.${f}`)}`}
+                              aria-invalid={!!cards.anomaly.fields[`${r}.${f}`]}
+                              value={anDraft[`${r}.${f}`] ?? ""}
+                              disabled={anRo}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setAnDraft((d) => ({ ...d, [`${r}.${f}`]: v }));
+                                touch("anomaly");
+                              }}
+                            />,
+                            f === "count" ? tg(`anomaly.countUnit.${r}`) : f === "satang" ? tg("unitBaht") : "%",
+                          )}
+                        </span>
+                      ))}
+                    </span>,
+                    errs.length ? (
+                      <span data-testid="pos-settings-general-field-error" data-field={`anomaly.rules.${r}`} role="alert" className="text-[12.5px] text-[color:var(--color-danger)]">
+                        {[...new Set(errs)].map((k) => t(k)).join(" · ")}
+                      </span>
+                    ) : null,
+                  )}
+                </div>
+              );
+            })}
+            {foot(
+              "anomaly",
+              editGeneral,
+              <button data-testid="pos-settings-general-save-anomaly" type="button" className={saveCls} disabled={anRo} onClick={() => void saveGeneral("anomaly")}>
+                {cards.anomaly.saving ? t("saving") : t("save")}
+              </button>,
+            )}
+          </SettingsCard>
+        )}
 
         {/* ── สต็อกของสาขา ── */}
         <SettingsCard testid="pos-settings-general-stock">

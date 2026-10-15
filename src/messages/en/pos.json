@@ -1061,7 +1061,7 @@
         "margin": "Gross margin",
         "voids": "Voided bills"
       },
-      "comingSoon": "Hourly · members are coming in a later release",
+      "comingSoon": "Members are coming in a later release",
       "chartTitle": "Daily sales",
       "chartRange": "Last {days} days to {date}",
       "legendActual": "Actual",
@@ -1078,7 +1078,7 @@
       "staff": "Staff",
       "seeAll": "See all",
       "highDiscount": "Unusually high discount",
-      "highDiscountHint": "On-screen hint: discount above 15% of net sales",
+      "highDiscountHint": "Shop threshold: discount above {pct} of net sales (Settings › General › Anomaly thresholds)",
       "cols": {
         "branch": "Branch",
         "sales": "Sales",
@@ -1168,11 +1168,29 @@
       "title": "Hourly sales",
       "forecast": "Forecast (4-week average)",
       "now": "This hour",
-      "tooLong": "The hourly report covers at most 31 days"
+      "tooLong": "The hourly report covers at most 31 days",
+      "peak": "Peak hours",
+      "inProgress": "hour not over yet",
+      "forecastNote": "Forecast = 4-week average (same hour, same weekday in earlier weeks) · new shops will see it lower than reality",
+      "foldNote": "The first hour also holds the leftover minutes of the last hour (the day cut-off is not on the hour)",
+      "cols": {
+        "hour": "Hour",
+        "bills": "Bills",
+        "net": "Net sales",
+        "forecast": "Forecast (4-week average)"
+      }
     },
     "branches": {
       "title": "Branch comparison",
-      "total": "All branches"
+      "total": "All branches",
+      "cols": {
+        "refunds": "Refunds",
+        "refundTotal": "Refund total",
+        "cash": "Cash",
+        "platform": "Platform",
+        "commission": "Commission",
+        "commissionVat": "Commission VAT"
+      }
     },
     "anomaly": {
       "title": "Staff anomalies",
@@ -1189,11 +1207,29 @@
         "A8": "Cash over/short",
         "A9": "Repeated cash shortage",
         "A10": "Rejected/cancelled orders"
-      }
+      },
+      "cols": {
+        "unit": "Branch",
+        "date": "Date",
+        "staff": "Staff",
+        "value": "Value",
+        "count": "Count",
+        "ref": "Reference"
+      },
+      "short": "short",
+      "over": "over",
+      "or": "or",
+      "threshold": "Threshold {text}",
+      "groupCount": "{n} findings",
+      "wholeRange": "Whole range",
+      "unnamed": "No name",
+      "viewBill": "View bill"
     },
     "print": {
       "button": "Print / PDF",
-      "generatedAt": "Generated {time}"
+      "generatedAt": "Generated {time}",
+      "back": "‹ Back to reports",
+      "overviewTitle": "Sales overview summary"
     }
   },
   "stock": {
@@ -1867,7 +1903,10 @@
       "refundNoShift": "Open a shift on this device to refund in cash",
       "refundClosed": "This deposit is used up or already refunded",
       "refundChanged": "The deposit balance changed — check the new amount and confirm again"
-    }
+    },
+    "unitAll": "All branches",
+    "dayNote": "Bill day = calendar day (the report day cut-off is not used here)",
+    "channelCounts": "Bills per channel"
   },
   "payment": {
     "errors": {
@@ -2138,7 +2177,41 @@
       },
       "anomaly": {
         "title": "Reports: anomaly thresholds",
-        "enabled": "Detect anomalies"
+        "enabled": "Detect anomalies",
+        "enabledHint": "Off = the anomaly report is empty and the staff card shows no \"Unusually high discount\" flag",
+        "namesNote": "Staff names in the anomaly report are shown only to people with the \"View staff anomaly report\" right (owners and managers by default) · the system only points things out, it does not decide anyone did wrong",
+        "or": "or",
+        "field": {
+          "count": "count",
+          "satang": "baht",
+          "bp": "percent"
+        },
+        "countUnit": {
+          "A1": "times",
+          "A2": "times",
+          "A5": "times",
+          "A6": "lines",
+          "A7": "times",
+          "A9": "shifts",
+          "A10": "orders"
+        },
+        "hint": {
+          "A1": "Voids per person per day — reaching this many, or this total",
+          "A2": "Refunds per person per day — reaching this many, or this total",
+          "A3": "Discount a staff member gave over the range above this % of their net sales (the staff card flag uses the same % as an approximate guide)",
+          "A4": "A single bill whose staff discount reaches this % of the pre-discount total (coupons and member benefits excluded)",
+          "A5": "Manager PIN overrides per approver per day reaching this many",
+          "A6": "Custom-price lines per person per day reaching this many",
+          "A7": "Receipt reprints of the same bill reaching this many",
+          "A8": "A shift that is short or over (recounts included) by at least this amount",
+          "A9": "The same shift opener short in this many shifts within the range",
+          "A10": "Rejected or cancelled orders per branch per day reaching this many"
+        },
+        "err": {
+          "count": "Enter a whole number 1–1,000",
+          "satang": "Enter an amount 0.01–1,000,000 baht",
+          "bp": "Enter 0.01–100 %"
+        }
       }
     },
     "history": {
@@ -2849,7 +2922,11 @@
       "channel": "Channel {name}",
       "commissionRate": "Platform commission {rate}",
       "vat": "VAT on commission",
-      "noteDirect": "The shop collected the payment · the commission is booked as owed to the platform"
+      "noteDirect": "The shop collected the payment · the commission is booked as owed to the platform",
+      "refunded": "Refunded",
+      "commissionNet": "Commission after refunds",
+      "vatNet": "Commission VAT after refunds",
+      "netAfterRefund": "Net received after refunds"
     },
     "label": "Channel",
     "all": "All channels",

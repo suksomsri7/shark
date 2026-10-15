@@ -80,13 +80,31 @@ const LABEL: Record<ReportPrintLocale, { range: string; unit: string; generatedA
   th: { range: "ช่วงวันที่", unit: "สาขา", generatedAt: "พิมพ์เมื่อ", empty: "ไม่มีข้อมูลในช่วงนี้", total: "รวม", rows: "แถว" },
   en: { range: "Date range", unit: "Branch", generatedAt: "Generated", empty: "No data in this range", total: "Total", rows: "rows" },
 };
+// POS P2.12U ▸ มติ 4 · F5 (deviation ที่ prompt อนุญาต — แผนที่ป้ายอังกฤษจุดเดียว): แบบพิมพ์ en ของ anomalies เคยมีป้ายกฎไทย (ANOMALY_RULE_LABEL_TH) ·
+//   คำเชื่อมเกณฑ์ "หรือ" · คำ "ขาด/เกิน" ของช่อง A8 — en แทนเฉพาะ 3 ช่องนี้ (ป้ายเดียวกับ pos.report.anomaly.rules ของ en) · แถว th = CSV ทุกช่องเหมือนเดิม ◂
+const ANOMALY_LABEL_EN: Readonly<Record<string, string>> = {
+  A1: "Frequent voids",
+  A2: "Frequent refunds",
+  A3: "High discount (staff)",
+  A4: "High discount (bill)",
+  A5: "Frequent overrides",
+  A6: "Custom prices",
+  A7: "Repeated reprints",
+  A8: "Cash over/short",
+  A9: "Repeated cash shortage",
+  A10: "Rejected/cancelled orders",
+};
+const enAnomalyRow = (r: string[]): string[] =>
+  r.map((c, i) => (i === 1 ? (ANOMALY_LABEL_EN[r[0] ?? ""] ?? c) : i === 7 ? c.replace(/^ขาด /, "short ").replace(/^เกิน /, "over ") : i === 8 ? c.split(" หรือ ").join(" or ") : c));
+
 /** แบบพิมพ์ของรายงานที่สำเร็จ (บริสุทธิ์) */
 export function buildReportPrint(report: AnyReport, opts: ReportPrintOptions): ReportPrintModel {
   const locale: ReportPrintLocale = opts.locale === "en" ? "en" : "th";
   const kind = report.kind;
   const th = CSV_HEADERS[kind];
   const en = EN_HEADERS[kind];
-  const rows = reportTableRows(report); // POS P2.12 ▸ fix1 H2: แถวตาราง = แถว CSV ไม่รวมบรรทัดแจ้ง (บรรทัดแจ้ง → notice) ◂
+  const csvRows = reportTableRows(report); // POS P2.12 ▸ fix1 H2: แถวตาราง = แถว CSV ไม่รวมบรรทัดแจ้ง (บรรทัดแจ้ง → notice) ◂
+  const rows = locale === "en" && kind === "anomalies" ? csvRows.map(enAnomalyRow) : csvRows; // POS P2.12U ▸ F5 ◂
   const totalRow = REPORT_TOTAL_ROW_KINDS.has(kind) && rows.length > 0; // POS P2.12 ▸ fix1 F2 ◂
   return {
     kind,

@@ -8,6 +8,12 @@
 // R4 (ภาพ 08): kind=overview (ค่าเริ่ม) = แดชบอร์ด ReportsOverview · หัวหน้า (ชื่อ · ช่วงวันที่ · สาขา · ข้อมูลถึง/เทียบกับ · ส่งออก CSV) ใช้ร่วมทุกชนิด
 // POS P2.11U ▸ มติ 7: ชนิด "channels" (ช่องทางการขาย) = ตาราง ช่องทาง · บิล · ยอดสุทธิ (ยอดขาย − คืน) · ค่าคอมมิชชัน (+ VAT ค่าคอมฯ) · กำไรขั้นต้น (net ของเซิร์ฟเวอร์) · % +
 //   แถวรวม · CSV ปุ่มเดิม (posReportCsvAction kind channels) · ตัวเลือกสาขาเดิม (P1.17) ใช้เหมือนชนิดอื่น ◂
+// POS P2.12U ▸ แท็บใหม่ต่อท้าย (testid pos-reports-tab-<kind>): "รายชั่วโมง" (มติ 2 · ตาราง 24 ชั่วโมง + แถวรวม + CSV · ช่วงเกิน HOURLY_MAX_DAYS = แท็บปิด +
+//   ข้อความ "เลือกช่วงไม่เกิน 31 วัน" ไม่เรียกเซิร์ฟเวอร์) · "เปรียบเทียบสาขา" (มติ 3 · เห็น ≥ 2 สาขา · ตาราง 13 คอลัมน์ + แถวรวมจาก totals
+//   (ตัวหนาเพราะเป็นแถวรวม ไม่ใช่เพราะข้อความ) + CSV · กำไรอยู่การ์ดภาพรวม) · "จุดผิดปกติของพนักงาน" (มติ 4 · เฉพาะผู้มี pos.report.anomaly ที่สาขาใดสาขาหนึ่ง —
+//   หน้าบอก canAnomaly · กลุ่มกฎ A1–A10 ตามลำดับ ป้าย pos.report.anomaly.rules.* · ค่า: เงิน A1 A2 A8 A9 (A8 + คำ ขาด/เกิน จาก totals.a8SignedSatang) ·
+//   % A3 A4 (bp) · จำนวนที่เหลือ · สาขา = totals.unitNames[unitId] ?? unitId · ว่าง = anomaly.empty · ไม่มีคีย์ = การ์ด anomaly.denied ·
+//   ถูกตัดแถว (totals.rowCount > rows.length) = บรรทัดแจ้ง) — ตัวเลขทั้งหมดจาก DTO ◂
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -21,6 +27,12 @@ import type {
   AnyReportResult,
   ChannelRow, // POS P2.11U ◂
   ChannelTotals, // POS P2.11U ◂
+  AnomalyRow, // POS P2.12U ◂
+  AnomalyTotals, // POS P2.12U ◂
+  BranchRow, // POS P2.12U ◂
+  BranchTotals, // POS P2.12U ◂
+  HourlyRow, // POS P2.12U ◂
+  HourlyTotals, // POS P2.12U ◂
   DailyRow,
   DailyTotals,
   MarginRow,
@@ -43,16 +55,32 @@ type Unit = { id: string; name: string };
 /** R4 — "overview" = แดชบอร์ดภาพ 08 (ไม่ใช่ชนิดรายงานของเซิร์ฟเวอร์ · CSV ของภาพรวม = daily) */
 export type ViewKind = ReportKind | "overview";
 type View = { kind: ViewKind; from: string; to: string; unitId: string };
-type Props = { systemId: string; units: Unit[]; initial: View; today: string; maxDays: number };
+type Props = {
+  systemId: string;
+  units: Unit[];
+  initial: View;
+  today: string;
+  maxDays: number;
+  /** POS P2.12U ▸ มติ 2: HOURLY_MAX_DAYS ของเซิร์ฟเวอร์ (ส่งจากหน้า — client ไม่ import reports.ts) · เวลาตัดวัน (นาที) ของระบบ ◂ */
+  hourlyMaxDays: number;
+  cutoffMinutes: number;
+  /** POS P2.12U ▸ มติ 4: ผู้ใช้มี pos.report.anomaly ที่สาขาใดสาขาหนึ่ง (ไม่มี = ไม่มีแท็บ "จุดผิดปกติ") ◂ */
+  canAnomaly: boolean;
+  /** POS P2.12U ▸ มติ 5: เกณฑ์ A3 (bp) ของระบบจาก posAnomalyThresholds ฝั่งเซิร์ฟเวอร์ · ปิดการตรวจ = null (ไม่มีป้าย) ◂ */
+  discountFlagBp: number | null;
+};
 type T = (key: string, values?: Record<string, string | number>) => string;
 type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
 
 /** ลำดับแท็บตามสเปก: overview (R4) · daily · products · staff · payments · margin · shifts · tax */
 const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels"]; // POS P2.11U ▸ มติ 7: + channels ◂
+/** POS P2.12U ▸ แท็บใหม่ (ต่อท้าย · testid pos-reports-tab-<kind>) ◂ */
+type NewKind = "branches" | "hourly" | "anomalies";
 /** ไอคอนจากภาพ 08 (ปฏิทิน · ร้าน · ส่งออก) */
 const I_CAL = ["M6 5h12a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 18 21H6a2.5 2.5 0 0 1-2.5-2.5v-11A2.5 2.5 0 0 1 6 5Z", "M3.5 10h17M8 3v4M16 3v4"] as const;
 const I_SHOP = ["M4 9V4h16v5", "M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z", "M9.5 13h5"] as const;
 const I_OUT = ["M12 20V7", "m6.5 12.5 5.5-5.5 5.5 5.5", "M4 3h16"] as const;
+const I_FILE = ["M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z", "M14 3v5h5"] as const; // POS P2.12U ▸ ไอคอนเอกสาร (ภาพ 08 ปุ่ม PDF) ◂
 const DAY_MS = 86_400_000;
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const spanDays = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1;
@@ -73,7 +101,7 @@ type Col<R> = { key: string; header: string; num?: boolean; cell: (r: R) => Reac
 
 function Table<R>({ cols, rows, rowKey, total, minWidth, testId }: { cols: Col<R>[]; rows: R[]; rowKey: (r: R, i: number) => string; total?: React.ReactNode[]; minWidth: number; testId: string }) {
   return (
-    <div className="w-full min-w-0 overflow-x-auto" data-testid={testId}>
+    <div className="relative w-full min-w-0 overflow-x-auto" data-testid={testId /* POS P2.12U ▸ fix1 F6: relative = กล่องอ้างอิงของลูก absolute (sr-only) ให้ถูกตัดในกรอบเลื่อน ไม่ดันความกว้างหน้า ◂ */}>
       <table className="w-full border-collapse text-sm" style={{ minWidth }}>
         <thead>
           <tr>
@@ -144,8 +172,98 @@ function DailyChart({ rows, t, locale }: { rows: DailyRow[]; t: T; locale: strin
   );
 }
 
+// ═══════════ POS P2.12U ▸ มติ 4: จุดผิดปกติ — กลุ่มต่อกฎ (A1 → A10) ◂ ═══════════
+const ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"] as const;
+const ANOMALY_MONEY = new Set<string>(["A1", "A2", "A8", "A9"]);
+const ANOMALY_BP = new Set<string>(["A3", "A4"]);
+const bpText = (bp: number) => `${(bp / 100).toFixed(2)}%`;
+function AnomalyBody({ rep, t, systemId }: { rep: Report<"anomalies", AnomalyRow, AnomalyTotals>; t: T; systemId: string }) {
+  const tt = rep.totals;
+  if (rep.rows.length === 0) return <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("anomaly.empty")}</p>;
+  const index = new Map(rep.rows.map((r, i) => [r, i]));
+  const unitName = (id: string) => tt.unitNames?.[id] ?? id;
+  const valueCell = (r: AnomalyRow) => {
+    if (r.rule === "A8") {
+      const signed = r.refId ? tt.a8SignedSatang?.[r.refId] : undefined;
+      if (signed === undefined || signed === 0) return M(r.value);
+      return (
+        <span className={signed < 0 ? "text-[color:var(--color-danger)]" : undefined}>
+          {`${signed < 0 ? t("anomaly.short") : t("anomaly.over")} ${signed < 0 ? "\u2212" : "+"}`}
+          <MoneyText satang={Math.abs(signed)} decimals />
+        </span>
+      );
+    }
+    return ANOMALY_MONEY.has(r.rule) ? M(r.value) : ANOMALY_BP.has(r.rule) ? bpText(r.value) : r.value.toLocaleString("th-TH");
+  };
+  const thresholdText = (rule: string, th: Record<string, number>) =>
+    Object.entries(th)
+      .map(([f, v]) => (f === "satang" ? `\u2265 ${formatBaht(v, { decimals: true })}` : f === "bp" ? `${rule === "A3" ? ">" : "\u2265"} ${bpText(v)}` : `\u2265 ${v.toLocaleString("th-TH")}`))
+      .join(` ${t("anomaly.or")} `);
+  const groups = ANOMALY_RULES.map((rule) => ({ rule, rows: rep.rows.filter((r) => r.rule === rule) })).filter((g) => g.rows.length > 0);
+  const ac = (k: string) => t(`anomaly.cols.${k}`);
+  const TH = "whitespace-nowrap border-b px-3 pb-2 text-left text-xs font-medium text-[color:var(--color-muted)]";
+  const TD = "border-b border-[color:var(--color-line)] px-3 py-2 align-top";
+  return (
+    <div className="flex min-w-0 flex-col gap-5" data-testid="pos-reports-anomalies">
+      {groups.map((g) => (
+        <section key={g.rule} className="flex min-w-0 flex-col gap-2" data-testid={`pos-reports-anomaly-group-${g.rule}`}>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 className="text-sm font-semibold">
+              <span className="mr-1.5 rounded-md border px-1.5 py-0.5 text-xs tabular-nums text-[color:var(--color-ink-soft)]">{g.rule}</span>
+              {t(`anomaly.rules.${g.rule}`)}
+            </h3>
+            <span className="text-xs text-[color:var(--color-muted)] tabular-nums">{t("anomaly.groupCount", { n: tt.byRule?.[g.rule] ?? g.rows.length })}</span>
+            <span className="text-xs text-[color:var(--color-muted)] tabular-nums">{t("anomaly.threshold", { text: thresholdText(g.rule, g.rows[0]!.threshold) })}</span>
+          </div>
+          {/* POS P2.12U ▸ fix1 F6 (390): ต้นเหตุล้น = <span sr-only> (absolute) ในหัวคอลัมน์สุดท้ายอ้างกล่องนอกกรอบเลื่อน ⇒ ไม่ถูกตัด ดัน html กว้าง 583 px · relative บนกรอบเลื่อน = ถูกตัด/เลื่อนในตาราง ◂ */}
+          <div className="relative w-full min-w-0 overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th scope="col" className={TH}>{ac("unit")}</th>
+                  <th scope="col" className={TH}>{ac("date")}</th>
+                  <th scope="col" className={TH}>{ac("staff")}</th>
+                  <th scope="col" className={`${TH} text-right`}>{ac("value")}</th>
+                  <th scope="col" className={`${TH} text-right`}>{ac("count")}</th>
+                  <th scope="col" className={TH}><span className="sr-only">{ac("ref")}</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.rows.map((r) => {
+                  const n = index.get(r)!;
+                  return (
+                    <tr key={n} data-testid={`pos-reports-anomaly-row-${n}`}>
+                      <td className={TD}>{unitName(r.unitId)}</td>
+                      <td className={`${TD} whitespace-nowrap tabular-nums`}>{r.businessDate ?? t("anomaly.wholeRange")}</td>
+                      <td className={TD}>{r.userId === null ? "\u2014" : (r.userName ?? <span className="text-[color:var(--color-muted)]">{t("anomaly.unnamed")}</span>)}</td>
+                      <td className={`${TD} whitespace-nowrap text-right font-semibold tabular-nums`}>{valueCell(r)}</td>
+                      <td className={`${TD} whitespace-nowrap text-right tabular-nums`}>{r.count.toLocaleString("th-TH")}</td>
+                      <td className={`${TD} whitespace-nowrap`}>
+                        {r.refType === "PosSale" && r.refId ? (
+                          <a data-testid={`pos-reports-anomaly-bill-${n}`} href={`/app/sys/${systemId}/pos/sales?${new URLSearchParams({ unit: r.unitId, bill: r.refId }).toString()}`} className="inline-flex min-h-[44px] items-center px-1 text-[13px] font-semibold text-[color:var(--color-accent)] hover:underline">
+                            {t("anomaly.viewBill")}
+                          </a>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+      {tt.rowCount > rep.rows.length ? (
+        <p className="text-xs text-[color:var(--color-muted)]" data-testid="pos-reports-anomaly-notice">
+          {t("rowLimit", { shown: rep.rows.length, total: tt.rowCount })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // ═══════════ ตารางต่อชนิด (คอลัมน์ตามลำดับ R5–R10) ═══════════
-function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: string }) {
+function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Loaded; t: T; tc: T; locale: string; cutoffMinutes: number; systemId: string }) {
   const tch = useTranslations("pos.channel"); // POS P2.11U ◂
   const c = (k: string) => t(`cols.${k}`);
   const empty = <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("empty")}</p>;
@@ -403,6 +521,64 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
         </div>
       );
     }
+    // POS P2.12U ▸ มติ 4 ◂
+    case "anomalies":
+      return <AnomalyBody rep={rep as Report<"anomalies", AnomalyRow, AnomalyTotals>} t={t} systemId={systemId} />;
+    // POS P2.12U ▸ มติ 3: เปรียบเทียบสาขา — แถวต่อสาขาที่มีเอกสาร/กะที่นับเงินในช่วง (ชื่อจาก DTO) + แถวรวมของทั้งขอบเขต (totals) ◂
+    case "branches": {
+      const x = rep as Report<"branches", BranchRow, BranchTotals>;
+      if (x.rows.length === 0) return empty;
+      const bc = (k: string) => t(`branches.cols.${k}`);
+      const os = (v: number) => <span className={v < 0 ? "text-[color:var(--color-danger)]" : undefined}>{M(v)}</span>;
+      const cols: Col<BranchRow>[] = [
+        { key: "unit", header: c("unit"), cell: (r) => r.name || r.unitId },
+        { key: "bills", header: c("bills"), num: true, cell: (r) => r.billCount },
+        { key: "net", header: c("netSales"), num: true, cell: (r) => <b>{M(r.netSalesSatang)}</b> },
+        { key: "avg", header: c("avgBill"), num: true, cell: (r) => M(r.avgBillSatang) },
+        { key: "refunds", header: bc("refunds"), num: true, cell: (r) => r.refundCount },
+        { key: "refundTotal", header: bc("refundTotal"), num: true, cell: (r) => M(r.refundTotalSatang) },
+        { key: "voids", header: c("voids"), num: true, cell: (r) => r.voidCount },
+        { key: "voidTotal", header: c("voidTotal"), num: true, cell: (r) => M(r.voidTotalSatang) },
+        { key: "cash", header: bc("cash"), num: true, cell: (r) => M(r.cashSatang) },
+        { key: "platform", header: bc("platform"), num: true, cell: (r) => M(r.platformSatang) },
+        { key: "commission", header: bc("commission"), num: true, cell: (r) => M(r.commissionSatang) },
+        { key: "commissionVat", header: bc("commissionVat"), num: true, cell: (r) => M(r.commissionVatSatang) },
+        { key: "overShort", header: c("overShort"), num: true, cell: (r) => os(r.overShortSatang) },
+      ];
+      const tt = x.totals;
+      return (
+        <Table
+          testId="pos-report-table"
+          cols={cols}
+          rows={x.rows}
+          rowKey={(r) => r.unitId}
+          minWidth={1240}
+          total={[t("branches.total"), tt.billCount, M(tt.netSalesSatang), M(tt.avgBillSatang), tt.refundCount, M(tt.refundTotalSatang), tt.voidCount, M(tt.voidTotalSatang), M(tt.cashSatang), M(tt.platformSatang), M(tt.commissionSatang), M(tt.commissionVatSatang), os(tt.overShortSatang)]}
+        />
+      );
+    }
+    // POS P2.12U ▸ มติ 2: รายชั่วโมง = 24 แถวของวันธุรกิจ (ป้ายจาก DTO) + แถวรวม · หมายเหตุคาดการณ์/ชั่วโมงพับ ◂
+    case "hourly": {
+      const x = rep as Report<"hourly", HourlyRow, HourlyTotals>;
+      if (x.totals.billCount === 0 && x.totals.netSalesSatang === 0 && x.totals.forecastSatang === 0) return empty;
+      const hc = (k: string) => t(`hourly.cols.${k}`);
+      const cols: Col<HourlyRow>[] = [
+        { key: "hour", header: hc("hour"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{`${r.label}:00`}</span> },
+        { key: "bills", header: hc("bills"), num: true, cell: (r) => r.billCount },
+        { key: "net", header: hc("net"), num: true, cell: (r) => <b>{M(r.netSalesSatang)}</b> },
+        { key: "forecast", header: hc("forecast"), num: true, cell: (r) => M(r.forecastSatang) },
+      ];
+      const tt = x.totals;
+      return (
+        <div className="flex flex-col gap-2">
+          <Table testId="pos-report-table" cols={cols} rows={x.rows} rowKey={(r) => String(r.hour)} minWidth={420} total={[t("total"), tt.billCount, M(tt.netSalesSatang), M(tt.forecastSatang)]} />
+          <div className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]" data-testid="pos-report-summary">
+            <p>{t("hourly.forecastNote")}</p>
+            {cutoffMinutes % 60 !== 0 ? <p>{t("hourly.foldNote")}</p> : null}
+          </div>
+        </div>
+      );
+    }
     case "tax": {
       const x = rep as Report<"tax", TaxRow, TaxTotals>;
       if (x.rows.length === 0) return empty;
@@ -436,7 +612,7 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
 }
 
 // ═══════════ จอหลัก ═══════════
-export function ReportsClient({ systemId, units, initial, today, maxDays }: Props) {
+export function ReportsClient({ systemId, units, initial, today, maxDays, hourlyMaxDays, cutoffMinutes, canAnomaly, discountFlagBp }: Props) {
   const t = useTranslations("pos.report");
   const tc = useTranslations("pos.shift"); // ป้ายวิธีชำระ + สถานะกะ (ใช้ร่วมกับจอกะ)
   const [view, setView] = useState<View>(initial);
@@ -449,7 +625,10 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
   const seq = useRef(0);
 
   // ตรวจช่วงที่จอ (สเปก: 92 วัน ฝั่งจอ + คำปฏิเสธของเซิร์ฟเวอร์ก็แสดง)
-  const rangeError = !isDate(view.from) || !isDate(view.to) ? "errors.validation" : view.from > view.to ? "errors.rangeOrder" : spanDays(view.from, view.to) > maxDays ? "errors.rangeTooLong" : null;
+  const baseRangeError = !isDate(view.from) || !isDate(view.to) ? "errors.validation" : view.from > view.to ? "errors.rangeOrder" : spanDays(view.from, view.to) > maxDays ? "errors.rangeTooLong" : null;
+  // POS P2.12U ▸ มติ 2: รายชั่วโมงเกิน HOURLY_MAX_DAYS = ข้อความในการ์ด (ไม่เรียกเซิร์ฟเวอร์ · CSV/PDF ปิด) · แท็บปิดเมื่อช่วงยาวเกิน ◂
+  const hourlyTooLong = !baseRangeError && spanDays(view.from, view.to) > hourlyMaxDays;
+  const rangeError = baseRangeError ?? (view.kind === "hourly" && hourlyTooLong ? "hourly.tooLong" : null);
   // ภาพรวมไม่ใช่ชนิดของเซิร์ฟเวอร์ ⇒ CSV ของภาพรวม = daily (R4 §2)
   const target = useCallback((v: View) => ({ systemId, kind: (v.kind === "overview" ? "daily" : v.kind) as ReportKind, from: v.from, to: v.to, ...(v.unitId ? { unitId: v.unitId } : {}) }), [systemId]);
   const [ovGeneratedAt, setOvGeneratedAt] = useState<string | null>(null);
@@ -530,9 +709,15 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
   };
   const shownError = rangeError ? t(rangeError) : errorCode ? t(refusalKey(errorCode)) : null;
   const overview = view.kind === "overview";
+  // POS P2.12U ▸ แท็บใหม่ที่ผู้ใช้นี้เห็น ◂
+  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly", ...(canAnomaly ? (["anomalies"] as const) : [])];
   const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
   const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
   const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[8.75rem]";
+  // POS P2.12U ▸ มติ 1: PDF = หน้าพิมพ์ pos/reports/print ในแท็บใหม่ ด้วยตัวกรองเดียวกับจอ (ภาพรวม = เอกสารสรุปหลายส่วน) · ช่วงผิด = ปุ่มปิด ◂
+  const pdfHref = rangeError
+    ? null
+    : `/app/sys/${systemId}/pos/reports/print?${new URLSearchParams({ kind: view.kind, from: view.from, to: view.to, ...(view.unitId ? { unit: view.unitId } : {}), locale: locale.startsWith("en") ? "en" : "th" }).toString()}`;
   const infoText = prev ? `${ovGeneratedAt ? `${t("overview.upToDate", { time: bkkHm(ovGeneratedAt, locale) })} · ` : ""}${t("overview.compare", { range: rangeLabel(prev.from, prev.to, locale) })}` : "";
 
   return (
@@ -545,6 +730,18 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
           <Icon d={I_OUT} className="h-[18px] w-[18px]" />
           {csvBusy ? t("downloading") : t("overview.exportCsv")}
         </button>
+        {/* POS P2.12U ▸ มติ 1: ปุ่ม PDF ข้าง CSV ทุกแท็บ (ภาพ 08 "ส่งออก CSV | PDF") ◂ */}
+        <a
+          data-testid="pos-reports-pdf"
+          href={pdfHref ?? undefined}
+          target="_blank"
+          rel="noopener"
+          aria-disabled={!pdfHref}
+          className={`btn btn-ghost order-2 inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap text-sm xl:order-3 ${pdfHref ? "" : "pointer-events-none opacity-50"}`}
+        >
+          <Icon d={I_FILE} className="h-[18px] w-[18px]" />
+          {t("print.button")}
+        </a>
         <div className="order-3 flex w-full min-w-0 flex-wrap items-center gap-3 sm:gap-4 xl:order-2 xl:ml-2 xl:w-auto xl:flex-1 xl:flex-nowrap">
           <div className="flex min-h-[48px] w-full min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3 sm:w-auto xl:shrink-0" role="group" aria-label={t("overview.dateRange")}>
             <Icon d={I_CAL} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />
@@ -578,7 +775,8 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
       {!overview ? <p className="-mt-2 text-xs text-[color:var(--color-muted)]">{t("rangeHint")}</p> : null}
 
       {/* แท็บชนิดรายงาน: ภาพรวม + 7 ชนิด — มือถือเลื่อนแนวนอนในแถบเอง */}
-      <div role="tablist" aria-label={t("kindsLabel")} className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-1" data-testid="pos-report-kinds">
+      {/* POS P2.12U ▸ fix1 F6: แถบชนิดรายงาน (11 ชนิด) = กรอบเลื่อนแนวนอนของตัวเอง (relative · ซ่อนแถบเลื่อน · ปุ่ม ≥ 44 px) ◂ */}
+      <div role="tablist" aria-label={t("kindsLabel")} className="relative -mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-testid="pos-report-kinds">
         {KINDS.map((k) => {
           const on = view.kind === k;
           return (
@@ -595,7 +793,34 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
             </button>
           );
         })}
+        {newKinds.map((k) => {
+          const on = view.kind === k;
+          const off = k === "hourly" && hourlyTooLong && !on;
+          return (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              aria-disabled={off || undefined}
+              disabled={off}
+              title={off ? t("hourly.tooLong") : undefined}
+              aria-describedby={off ? "pos-reports-hourly-off" : undefined /* POS P2.12U ▸ fix1 F4 ◂ */}
+              data-testid={`pos-reports-tab-${k}`}
+              className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-full border px-4 text-sm disabled:opacity-50 ${on ? "border-[color:var(--color-ink)] bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : "text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"}`}
+              onClick={() => set({ kind: k })}
+            >
+              {t(`kinds.${k}`)}
+            </button>
+          );
+        })}
       </div>
+      {/* POS P2.12U ▸ fix1 F4 (มติ 3): แท็บรายชั่วโมงปิด = ข้อความเล็กที่มองเห็นใต้แถบแท็บ (title อย่างเดียวไม่ขึ้นบนจอสัมผัส iPad/390) ◂ */}
+      {newKinds.includes("hourly") && hourlyTooLong && view.kind !== "hourly" ? (
+        <p id="pos-reports-hourly-off" className="-mt-2 text-xs text-[color:var(--color-muted)]" data-testid="pos-reports-hourly-off">
+          {t("hourly.tooLong")}
+        </p>
+      ) : null}
 
       {csvErrorCode && (
         <div role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-csv-error">
@@ -622,6 +847,8 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
             refusalText={(code) => t(refusalKey(code))}
             onGenerated={setOvGeneratedAt}
             onSeeAll={seeAll}
+            cutoffMinutes={cutoffMinutes}
+            discountFlagBp={discountFlagBp}
           />
         )
       ) : (
@@ -634,7 +861,12 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
               </span>
             ) : null}
           </div>
-          {shownError ? (
+          {!rangeError && view.kind === "anomalies" && errorCode === "PERMISSION_DENIED" ? (
+            // POS P2.12U ▸ มติ 4: ไม่มี pos.report.anomaly = การ์ดปฏิเสธของรายงานนี้ (ไม่มีปุ่มลองใหม่ — ลองซ้ำก็ได้ผลเดิม) ◂
+            <div role="alert" className="rounded-xl border p-3 text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-anomaly-denied">
+              {t("anomaly.denied")}
+            </div>
+          ) : shownError ? (
             <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-error">
               <span>{shownError}</span>
               {!rangeError && (
@@ -648,7 +880,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
               {t("loading")}
             </p>
           ) : (
-            <ReportBody rep={report} t={t} tc={tc} locale={locale} />
+            <ReportBody rep={report} t={t} tc={tc} locale={locale} cutoffMinutes={cutoffMinutes} systemId={systemId} />
           )}
         </section>
       )}
