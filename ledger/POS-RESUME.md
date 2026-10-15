@@ -1680,3 +1680,8 @@
 - oracle writer: `wip/pos-p2.12-oracle` **d6cb9006** push แล้ว · 30 ข้อ (ST1–3 CH1–3 BR1–3 HR1–2 AN1–12 PD1–3 BL1–2 Z1–2) · forced 3/30 เขียวที่ฐาน (ST1 Z1 Z2) · **CH1 ยืนยันบั๊ก: STORE 5 บิล/฿1,200 แทน 4/฿700 (ใบรับมัดจำนับซ้ำ)** · typecheck 0 · owner line P2.12T เพิ่มแล้ว · CD 1–10 → ผู้คุมรับทั้งหมด (brief §10 ข้อ 11: keys `pos.report.*` เอกพจน์ · print page = U · S ให้ `posReportPrintAction` · anomaly row + userName · rule defs ตามตาราง · thresholds clamp · branches เฉพาะสาขาที่มีบิล/กะ · bills `"*"` key set เดิม)
 - spawn **builder P2.12 S** (Opus ทรี c `wip/pos-p2.12` จาก origin/session/pos e6546359 + merge oracle) prompt `pos-prompt-accountB-P2.12.md`
 - เลน: 1 = P2.10 fix 1 ทรี b (รวม F8 display-live) · 2 = P2.12 S builder ทรี c · ทรี d ว่าง @7ac9efbe (build80 พร้อม serve ซ้ำ)
+
+### 15 ต.ค. 16:1xZ — P2.10 fix 1 เสร็จ → R2 + chain81
+- builder fix 1: `wip/pos-p2.10` **e7f661a7** push แล้ว · ORACLE-ADD CT3 (8bc606a2 · red-before 12/13 · แก้ false positive be57073d) · F1 done ส่งครั้งเดียว · F2 ชื่อ=memberCode ⇒ "" ทั้ง hook+server · F3 code panel โชว์แม้ paired · F4 `kind` + label generic (gift card = "บัตรกำนัล" เสมอ) · F5 accepted · F6 gate JS · F7 SSR refusal ⇒ paired+offline · **F8 สาเหตุ = harness: `newPage()` ทำแท็บจอ hidden → poll หยุดตามแบบ → แก้ `bringToFront()` + diagnostics (test only)** · gates 13/13 ×3 · p1.18/p1.3/p1.10/p1.12 · typecheck 0 · fitness ±env · `--dry` th/en
+- spawn **R2** (Opus read-only ทรี b) prompt `pos-prompt-accountB-P2.10-R2.md` · **chain81** ทรี d (build81 @e7f661a7 → vis83: settings-code/online · member-stamps · done · live th+en) → ผู้คุมดู (F3 ตรวจมือจาก settings-online "ขอรหัสใหม่")
+- เลน: 1 = P2.12 S builder ทรี c · 2 = P2.10 R2 ทรี b (read-only) · ทรี d = chain81
