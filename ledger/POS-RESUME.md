@@ -1766,3 +1766,9 @@
 - vis85 @0c1177ca failures 0 · 390 ไม่ล้น · print 0 error · PDF probe ผ่าน → **merge 0c1177ca เข้า session/pos = 861815e0** (no-ff) · ทรี c detached 861815e0 + prisma generate → **gates99-c** (p2.12 ×2 unforced · p1.17 p2.11 p1.18 p1.16 p2.1 p1.12 p1.3 p1.1 authz p2.8 p2.10 hf-tx hf-fu + fitness ±env/pos + typecheck)
 - ถัดไป: gates99 เขียว (lane pins p2.11 ST4 / hf-fu ST1 / p2.10 ST2 / p2.8 ST6 / p2.12 ST1 อาจแดงจน push) → push → รันซ้ำ → **40/55 (73%)** + TG · P2.13 fix 1 ทรี b ทำอยู่ · P2.7 brief ทำอยู่
 - เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 brief · ทรี c = gates99 · ทรี d ว่าง @0c1177ca
+
+### 15 ต.ค. 21:10Z — P2.7 brief + มติ §10 1–16 → oracle writer ทรี d
+- brief drafter ส่ง `pos-brief-P2.7.md` (§0–§9 · พบ 2 ข้อบกพร่องของ QR เดิม: ghost session ทุก view/poll · ยอด QR แขก ≠ บิลแคชเชียร์ เพราะ service charge floor vs half-up) → ผู้คุมเขียน **§10 มติ 1–16** (re-route ไม่รื้อ legacy จน P2.14 · ช่องทาง builtin `QR_ORDER` + adapter `QR` (ORACLE-EDIT p2.1 เท่านั้น) · Beam ถ้าเปิด ไม่งั้น PromptPay นิ่ง + claim + ยืนยันบน 09 · TTL = `qrExpiryMinutes` · ขายเมื่อรับออเดอร์ (CD3) · จ่ายที่โต๊ะ = ยอด POS (CD6) · ASAP เท่านั้น ไม่ re-phase advanceBookingBill · PENDING_PAYMENT/PREPAID บน PosOrder (CD2, S builder แก้ DESIGN/CONTRACTS) · ย้าย regResolveOptions (CD4) · intent คอลัมน์ nullable + orderId (CD5 + PY11) · migration ชื่อหลังอันล่าสุดตอนแตก branch · oracle ≈ 38 + OR1 (REST หลัง P2.13) · visual 390 ก่อน th/en · S builder หลัง P2.13 merge · U หลัง S · hunter เงินตอน merge S) commit 62a319cc · prompt `pos-prompt-accountB-P2.7-O.md` aa436b05
+- spawn **oracle writer P2.7** (Opus ทรี d `wip/pos-p2.7-oracle` จาก 62a319cc local) → `scripts/qc-pos-p2.7.mts` + `wo-notes/pos-P2.7-oracle.md` + `P2.7-red.txt`
+- เลน: 1 = P2.13 fix 1 ทรี b · 2 = P2.7 oracle ทรี d · ทรี c = gates99 (13/≈27 ชุด 21:10Z · p2.10 ST2 lane pin แดงตามคาด)
+- ⚠️ ภาพ P2.13 ตอน merge ต้องรอทรี d ว่าง (oracle writer) หรือใช้ทรี c หลัง gates100
