@@ -5,7 +5,7 @@
 
 import type { PosPayType, Prisma } from "@prisma/client";
 import { applyExternalChannelCommission, applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
-import { applyExternalDepositReceipt, applyExternalDepositRefund } from "@/lib/modules/account"; // POS P2.9b ▸ R3 R8 (ผ่าน facade เท่านั้น) ◂
+import { applyExternalDepositReceipt, applyExternalDepositRefund, posSalePosted } from "@/lib/modules/account"; // POS P2.9b ▸ R3 R8 (ผ่าน facade เท่านั้น) · fix1 มติ 3 ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
@@ -117,6 +117,8 @@ export async function bridgePosSalePaid(
   if (sale.sourceModule === "POS_DEPOSIT") return bridgePosDepositReceipt(sale, payments, detail);
   // POS P2.9b ▸ R5: บิลที่ใช้มัดจำ (แถว DEPOSIT อ้างใบรับ) — ยอด/VAT ของมัดจำจาก APPLY ของบิล · ไม่มีแถวอ้างใบ = ไม่มี query (JV เดิมทุกไบต์) ◂
   const depositUse = payments.some((p) => p.type === "DEPOSIT" && p.refSaleId) ? await depositApplied(sale) : null;
+  // POS P2.9b ▸ fix1 มติ 3 (hunt D2): ก่อนหัก VAT มัดจำ ต้องมี JV ของใบรับมัดจำแล้ว — ใบรับที่ยังไม่ลง (รับตอนไม่ผูกสมุด/คิวพลาด) = ลงแทนก่อน (แบบ refund-consumer F8) ◂
+  if (depositUse) await ensureDepositReceiptsPosted(sale, payments);
   const gross = sale.grandTotalSatang;
   // POS P1.6 ▸ ค่าบริการเป็นบรรทัดหนึ่งของเอกสาร (Σ บรรทัด = ยอดบิล) · ทิปไม่ใช่รายได้ ⇒ หักออกจากขา Dr ให้ JV ลงตัวที่ยอดบิล ◂
   const serviceCharge = Math.max(0, sale.serviceChargeSatang ?? 0);
@@ -195,6 +197,16 @@ const depositChannel = (t: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" => (t 
 async function depositApplied(sale: SaleForBridge): Promise<{ satang: number; vatSatang: number }> {
   const s = await prisma.posDepositTxn.aggregate({ where: { tenantId: sale.tenantId, saleId: sale.id, type: "APPLY" }, _sum: { satang: true, vatSatang: true } });
   return { satang: s._sum.satang ?? 0, vatSatang: s._sum.vatSatang ?? 0 };
+}
+/** fix1 มติ 3: ใบรับมัดจำที่บิลนี้อ้างแต่ยังไม่มี JV (posSalePosted = false) → ลง JV ใบรับก่อน (idempotent ต่อคีย์ PosSale#<ใบรับ>#PAID · ไม่ผูกสมุด = null ข้าม) */
+async function ensureDepositReceiptsPosted(sale: SaleForBridge, payments: { type: PosPayType; refSaleId?: string | null }[]): Promise<void> {
+  const refs = [...new Set(payments.filter((p) => p.type === "DEPOSIT" && p.refSaleId).map((p) => p.refSaleId!))];
+  for (const id of refs) {
+    if ((await posSalePosted({ tenantId: sale.tenantId, sourceSystemId: sale.systemId, refId: id })) !== false) continue;
+    const r = await prisma.posSale.findFirst({ where: { id, tenantId: sale.tenantId, sourceModule: "POS_DEPOSIT", docType: "SALE" }, include: { payments: true, lines: { orderBy: { id: "asc" } } } });
+    if (!r) continue;
+    await bridgePosDepositReceipt(r, r.payments, { lines: r.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })) });
+  }
 }
 /** R3 — ใบรับเงินมัดจำ → applyExternalDepositReceipt (คีย์ PosSale#<ใบรับ>#PAID · เอกสาร DEPOSIT_RECEIPT) · VAT = VAT ของมัดจำ (= vatSatang ของใบรับ) */
 async function bridgePosDepositReceipt(

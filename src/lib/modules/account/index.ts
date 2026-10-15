@@ -164,7 +164,8 @@ export async function applyExternalSale(input: {
   const { baseSatang: baseFull, vatSatang: vatFull } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
   // POS P2.9b ▸ R5: VAT ของมัดจำที่ใช้ (สมุดไม่จด VAT = 0 · ไม่เกิน VAT ของบิล/ยอดมัดจำ) — ไม่ส่ง = 0 ⇒ ทุกบรรทัดเดิม ◂
   const depositRows = input.payMethods.filter((p) => p.channel === "DEPOSIT").reduce((n, p) => n + p.amountSatang, 0);
-  const depositVat = vatRegistered && Number.isInteger(input.depositVatSatang) && input.depositVatSatang! > 0 ? Math.min(input.depositVatSatang!, depositRows) : 0;
+  // POS P2.9b ▸ fix1 มติ 3 (hunt D2): หักตามที่บันทึก/ลงไว้ตอนรับมัดจำเสมอ (สมุดเลิกจด VAT ภายหลัง = ไม่คิดใหม่ — ส่วนเกิน VAT ของบิลลดฐานรายได้) ◂
+  const depositVat = Number.isInteger(input.depositVatSatang) && input.depositVatSatang! > 0 ? Math.min(input.depositVatSatang!, depositRows) : 0;
   // POS P2.9b ▸ fix1 มติ 1 (R1 F2): VAT มัดจำที่ปล่อยเกิน VAT ของบิล (เศษสตางค์ที่ออกกับแถวสุดท้าย) = ส่วนที่ "รวม VAT ไปแล้ว" ⇒ ลดฐานรายได้ของบิล (ไม่ตัดทิ้ง) ⇒ 2110 สุทธิ 0 ◂
   const vat = Math.max(0, vatFull - depositVat);
   const base = baseFull - Math.max(0, depositVat - vatFull);
@@ -336,7 +337,8 @@ export async function applyExternalDepositReceipt(input: {
   if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดมัดจำต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
   const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
   if (paySum !== gross) return { posted: false, reason: `ยอดรับมัดจำแยกตามวิธี (${paySum}) ไม่เท่ากับยอดมัดจำ (${gross}) — ไม่บันทึกบัญชี` };
-  const vat = vatRegistered && Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
+  // POS P2.9b ▸ fix1 มติ 3: VAT ของใบรับ = VAT ที่ POS บันทึกตอนรับเงิน (PosDeposit.vatSatang) — ไม่คิดใหม่ตามค่าตั้งสมุด ณ เวลาลงบัญชี (ลงช้า/เลิกจดภายหลัง) ◂
+  const vat = Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
   const res = await postExternalDepositReceipt(ctx, {
     refId: input.refId,
     date: input.occurredAt,
