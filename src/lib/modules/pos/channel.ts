@@ -237,7 +237,8 @@ export async function saveChannel(ctx: RegisterCtx, actor: RegisterActor, input:
         if (row.code === "STORE" && (STORE_LOCKED.some(changed) || v.active === false)) return refuse("CHANNEL_BUILTIN_LOCKED");
         if (changed("payout")) return refuse("CHANNEL_BUILTIN_LOCKED");
       }
-      const data: Prisma.SalesChannelUpdateManyMutationInput = { name: v.name };
+      const data: Prisma.SalesChannelUpdateManyMutationInput = {};
+      if (v.name !== undefined) data.name = v.name; // POS P2.14 ▸ PRC-2: ไม่ส่งชื่อ = ชื่อเดิม ◂
       if (v.active !== undefined) data.active = v.active;
       if (v.payout !== undefined) data.payout = v.payout;
       if (v.commissionBp !== undefined) data.commissionBp = v.commissionBp;
@@ -245,23 +246,33 @@ export async function saveChannel(ctx: RegisterCtx, actor: RegisterActor, input:
       if (v.commissionVatBp !== undefined) data.commissionVatBp = v.commissionVatBp;
       if (v.sortOrder !== undefined) data.sortOrder = v.sortOrder;
       if (v.adapter !== undefined) data.adapter = v.adapter;
-      const n = await db.salesChannel.updateMany({ where: { id: row.id, tenantId: s.tenantId, unitId: s.unitId }, data });
-      if (n.count !== 1) return refuse("CHANNEL_NOT_FOUND");
-      const after = await db.salesChannel.findUniqueOrThrow({ where: { id: row.id } });
-      await writeAudit({
-        tenantId: s.tenantId,
-        actorId: s.actor.userId,
-        action: "pos.channel.updated",
-        targetType: "SalesChannel",
-        targetId: row.id,
-        before: { channelId: row.id, ...channelItem(row) },
-        after: { channelId: row.id, ...channelItem(after) },
+      // POS P2.14 ▸ PRC-2 (P3): เขียนช่องทาง + audit pos.channel.updated ในธุรกรรมเดียว (เดิม audit นอกธุรกรรม) ◂
+      const after = await runTx(db, async (tx): Promise<SalesChannel | null> => {
+        const n = await tx.salesChannel.updateMany({ where: { id: row.id, tenantId: s.tenantId, unitId: s.unitId }, data });
+        if (n.count !== 1) return null;
+        const a = await tx.salesChannel.findUniqueOrThrow({ where: { id: row.id } });
+        await tx.auditLog.create({
+          data: {
+            tenantId: s.tenantId,
+            actorType: "USER",
+            actorId: s.actor.userId,
+            action: "pos.channel.updated",
+            targetType: "SalesChannel",
+            targetId: row.id,
+            before: { channelId: row.id, ...channelItem(row) } as Prisma.InputJsonValue,
+            after: { channelId: row.id, ...channelItem(a) } as Prisma.InputJsonValue,
+          },
+        });
+        return a;
       });
+      if (!after) return refuse("CHANNEL_NOT_FOUND");
       return { ok: true, channel: channelItem(after) };
     }
 
     // ── สร้าง ──
     if (v.code === undefined) return refuse("VALIDATION", "ช่องทางใหม่ต้องมีรหัสช่องทาง", "code");
+    if (v.name === undefined) return refuse("VALIDATION", "ต้องระบุชื่อช่องทาง", "name"); // POS P2.14 ▸ PRC-2: สร้าง = ต้องมีชื่อ ◂
+    const name = v.name;
     const code = v.code;
     if (isChannelBuiltinCode(code)) return refuse("CHANNEL_CODE_TAKEN"); // builtins มีเสมอหลัง ensureUnitChannels (มติ 2)
     const preset = isChannelExternalPreset(code);
@@ -279,7 +290,7 @@ export async function saveChannel(ctx: RegisterCtx, actor: RegisterActor, input:
           unitId: s.unitId,
           code,
           kind: preset ? "EXTERNAL" : "CUSTOM",
-          name: v.name,
+          name,
           adapter: v.adapter ?? (preset ? "MANUAL" : "NONE"),
           active: v.active ?? true,
           sortOrder: v.sortOrder ?? Math.min(nextSort, 9_999),

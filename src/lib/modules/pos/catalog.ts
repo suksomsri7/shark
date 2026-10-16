@@ -39,7 +39,7 @@ import type { RecipeRefusalReason } from "./recipe-shared"; // POS HF-FU ▸ l1:
 // POS P2.3 ▸ สูตร/BOM: ตัวโหลดสูตรที่ใช้จริง (อ่านอย่างเดียว) + จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes, type RowRecipe } from "./recipe";
 import { recipePortions } from "./recipe-shared";
-import { loadPriceBook, priceOf } from "./price"; // POS P2.8 ▸ ราคาหน้าเว็บร้าน = ช่องทาง WEB (R9 อ่านสองทาง) ◂
+import { channelOriginOf, loadPriceBook, priceOf } from "./price"; // POS P2.14 ▸ PRC-3 channelOriginOf ◂ · POS P2.8 ▸ ราคาหน้าเว็บร้าน = ช่องทาง WEB (R9 อ่านสองทาง) ◂
 import type { PriceSource } from "./price-shared"; // POS P2.8 ◂
 import { emitOutbox } from "@/lib/core/outbox"; // POS P2.6 ▸ event pos.product.availability ในธุรกรรมของผู้เขียน ◂
 import type { AvailabilitySource, KdsRefusal, SetAvailabilityResult } from "./kds-shared"; // POS P2.6 ◂
@@ -2600,6 +2600,23 @@ export async function bulkChannelMarkup(
           })
         : [];
       const exBy = new Map(existing.map((r) => [r.productId, r]));
+      // POS P2.14 ▸ PRC-1 (P2): ปรับทั้งช่องทางรู้ระดับ — แถวใหม่ (ช่องทาง, สาขา) ชนะ (ช่องทาง, ทุกสาขา) และ (ทุกช่องทาง, สาขา) · แถว (ช่องทาง, ทุกสาขา) ชนะ (ทุกช่องทาง, สาขาใดก็ได้) ⇒
+      //   มีแถว "ไม่ขาย" ที่ระดับที่แถวใหม่จะชนะ (ของสินค้าเอง หรือของแม่ที่ตัวแปรสืบ) และยังไม่มีแถวของระดับเป้าหมาย = ข้าม (ไม่เปิดขายให้เอง) ◂
+      const famIds = [...new Set(visible.flatMap((p) => (p.parentId ? [p.id, p.parentId] : [p.id])))];
+      const outranked = famIds.length
+        ? await tx.posProductChannelPrice.findMany({
+            where: {
+              tenantId: ctx.tenantId,
+              systemId: ctx.systemId,
+              productId: { in: famIds },
+              notSold: true,
+              OR: unitId !== null ? [{ channelCode: code, unitId: null }, { channelCode: null, unitId }] : [{ channelCode: null, unitId: { not: null } }],
+            },
+            select: { productId: true },
+          })
+        : [];
+      const notSoldBelow = new Set(outranked.map((r) => r.productId));
+      // ◂
       const plan: { p: PosProduct; price: number; prev: (typeof existing)[number] | undefined }[] = [];
       const cache = new Map<string, CatalogWriteVerdict>();
       let skipped = 0;
@@ -2615,6 +2632,10 @@ export async function bulkChannelMarkup(
         // รีวิว F2: แถว (ช่องทาง, สาขา) เดิมที่ "ไม่ขาย" คงไว้ตามเดิม (ปรับทั้งชุดไม่เปิดขายให้เอง) · นับ skipped · ไม่มี audit
         if (prev?.notSold) {
           skipped++;
+          continue;
+        }
+        if (!prev && (notSoldBelow.has(p.id) || (p.parentId && notSoldBelow.has(p.parentId)))) {
+          skipped++; // POS P2.14 ▸ PRC-1 ◂
           continue;
         }
         const price = channelMarkupPrice(p.basePriceSatang, markupBp, roundTo);
@@ -2784,6 +2805,8 @@ export type UnitPriceMatrixCell = {
   unitPriceSatang: number | null;
   source: PriceSource | null;
   refusal: "PRICE_NOT_SET" | "CHANNEL_NOT_SOLD" | null;
+  /** POS P2.14 ▸ PRC-3 (P4 · drift D8): แถวที่ชนะผูกสาขานี้ ("own") / แถวระดับร้าน (ช่องทาง, ทุกสาขา) ("inherited") / ราคาฐานหรือขายไม่ได้ (null) · source เดิมคงอยู่ ◂ */
+  origin: "own" | "inherited" | null;
 };
 export type UnitPriceMatrix = { units: { unitId: string; name: string }[]; channelCodes: string[]; cells: UnitPriceMatrixCell[] };
 
@@ -2850,8 +2873,8 @@ export async function unitPriceMatrix(
           const r = priceOf(book, p, code);
           cells.push(
             r.ok
-              ? { productId: p.id, unitId: u.unitId, channelCode: code, unitPriceSatang: r.unitPriceSatang, source: r.source, refusal: null }
-              : { productId: p.id, unitId: u.unitId, channelCode: code, unitPriceSatang: null, source: null, refusal: r.code },
+              ? { productId: p.id, unitId: u.unitId, channelCode: code, unitPriceSatang: r.unitPriceSatang, source: r.source, refusal: null, origin: channelOriginOf(book, p, code) } // POS P2.14 ▸ PRC-3 ◂
+              : { productId: p.id, unitId: u.unitId, channelCode: code, unitPriceSatang: null, source: null, refusal: r.code, origin: null },
           );
         }
     }

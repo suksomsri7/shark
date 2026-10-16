@@ -30,3 +30,11 @@ export async function readDisplayAction(args: { sinceVer?: string }): Promise<Re
   if (!r.ok && r.code === "DISPLAY_NOT_PAIRED" && token) jar.set(DISPLAY_COOKIE, "", { ...DISPLAY_COOKIE_OPTIONS, maxAge: 0 });
   return r;
 }
+
+// POS P2.14 ▸ TL-5 (P6): SSR ของ /d อ่านได้ DISPLAY_NOT_PAIRED (จอถูกยกเลิก/token เก่า) = คุกกี้ค้าง — หน้าตั้งคุกกี้ระหว่าง render ไม่ได้ ⇒
+//   จอเรียก action นี้ครั้งเดียวตอนเปิด (ลบคุกกี้ · maxAge 0) แล้วแสดงฟอร์มใส่รหัส ◂
+export async function clearDisplayCookieAction(): Promise<{ ok: true }> {
+  const jar = await cookies();
+  if (jar.get(DISPLAY_COOKIE)?.value) jar.set(DISPLAY_COOKIE, "", { ...DISPLAY_COOKIE_OPTIONS, maxAge: 0 });
+  return { ok: true };
+}

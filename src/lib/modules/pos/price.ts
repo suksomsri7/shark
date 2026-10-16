@@ -8,6 +8,7 @@ import type { PrismaClient, Prisma } from "@prisma/client";
 import { CHANNEL_CODE_RE } from "./channel-shared";
 import {
   channelRowNotSold,
+  channelRowOrigin, // POS P2.14 ▸ PRC-3 ◂
   nextPriceEdge,
   resolveUnitPrice,
   type ChannelPriceRow,
@@ -95,6 +96,12 @@ export async function loadPriceBook(db: Db, scope: PriceScope, products: readonl
 export function channelNotSold(book: PriceBook, product: PriceProductLike, channelCode: string): boolean {
   const parent = product.parentId ? (book.parents.get(product.parentId) ?? null) : null;
   return channelRowNotSold(book.rows, product, parent, channelCode, book.unitId);
+}
+
+/** POS P2.14 ▸ PRC-3: ที่มาของแถวที่ชนะจากชุดที่โหลดแล้ว (own | inherited | null) ◂ */
+export function channelOriginOf(book: PriceBook, product: PriceProductLike, channelCode: string): "own" | "inherited" | null {
+  const parent = product.parentId ? (book.parents.get(product.parentId) ?? null) : null;
+  return channelRowOrigin(book.rows, product, parent, channelCode, book.unitId);
 }
 
 /** ราคาของสินค้า 1 รายการจากชุดที่โหลดแล้ว (ช่องทาง = รหัส) */

@@ -292,6 +292,17 @@ function winningRow(rows: readonly ChannelPriceRow[], ownId: string, parentId: s
 }
 
 /**
+ * POS P2.14 ▸ PRC-3 (P4): ที่มาของแถวราคาที่ชนะ (บริสุทธิ์) — "own" = แถวที่ผูกสาขานี้ ((ช่องทาง, สาขา) หรือ (ทุกช่องทาง, สาขา)) ·
+ * "inherited" = แถวระดับร้าน (ช่องทาง, ทุกสาขา) · null = ไม่มีแถวชนะ (ราคาฐาน) — จอเทียบราคาแยก "ตั้งที่สาขานี้" กับ "สืบจากทุกสาขา" ◂
+ */
+export function channelRowOrigin(rows: readonly ChannelPriceRow[], product: PriceProductLike, parent: PriceParentLike | null, channelCode: string, unitId: string): "own" | "inherited" | null {
+  const par = product.parentId && parent && parent.id === product.parentId ? parent : null;
+  const win = winningRow(rows, product.id, par ? par.id : null, channelCode, unitId);
+  if (!win) return null;
+  return (win.row.unitId ?? null) === null ? "inherited" : "own";
+}
+
+/**
  * R4 — ราคาต่อหน่วยของสินค้า 1 รายการ ณ `at` บนช่องทาง (รหัส) + สาขา · คืนค่าเสมอ (ไม่ throw)
  * `override` = ① (ราคาเปิด/รายการกำหนดเอง/ราคาของน้ำหนัก) — ไม่ดูแถว/กติกา · listPriceSatang null
  */

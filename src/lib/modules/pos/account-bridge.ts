@@ -176,14 +176,17 @@ export async function bridgePosSalePaid(
   // follow-up 3: มีผู้ซื้อแต่สมุดออกใบเต็มรูปไม่ได้ตอนลงบัญชี (ไม่ผูก/ไม่จด VAT/ปิดใบอย่างย่อ/ไม่มีเลขภาษี) — เส้นเดิมทำงานแล้ว · เตือน ops (ไม่มีข้อมูลผู้ซื้อ)
   //   reviewer N5: แยกข้อความตาม res.reason — สมุดออกไม่ได้ (ไม่ผูก/ไม่มีเหตุผล) กับ บรรทัดถูกปฏิเสธ (เอกสารไม่เกิด)
   else if (buyer) {
-    const linesRejected = !!res.reason && res.reason !== "unlinked" && !res.docId;
-    const msg = linesRejected
-      ? `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่บรรทัดถูกปฏิเสธตอนลงบัญชี — ไม่เกิดเอกสาร (เงินเข้า GL ตามปกติ)`
-      : `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่สมุดบัญชีออกไม่ได้ตอนลงบัญชี — ออกเอกสารตามเส้นเดิม`;
-    await logOps("WARN", "pos.taxInvoice", msg, { tenantId: sale.tenantId }).catch(() => undefined);
+    // POS P2.14 ▸ ACC-2 (P5): reason "other-book" = บิลอยู่ในสมุดเล่มอื่น (ผูก POS ใหม่หลังขาย) — ไม่ใช่บรรทัดถูกปฏิเสธ/สมุดออกไม่ได้ ⇒ ไม่ขึ้น WARN ข้อความผิด ◂
+    if (res.reason !== "other-book") {
+      const linesRejected = !!res.reason && res.reason !== "unlinked" && !res.docId;
+      const msg = linesRejected
+        ? `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่บรรทัดถูกปฏิเสธตอนลงบัญชี — ไม่เกิดเอกสาร (เงินเข้า GL ตามปกติ)`
+        : `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่สมุดบัญชีออกไม่ได้ตอนลงบัญชี — ออกเอกสารตามเส้นเดิม`;
+      await logOps("WARN", "pos.taxInvoice", msg, { tenantId: sale.tenantId }).catch(() => undefined);
+    }
   }
-  // บรรทัดถูกปฏิเสธ (ยอดไม่ตรง/ข้อมูลเพี้ยน) — เงินยังเข้า GL ตามปกติ · เตือนเป็นภาษาไทย **ห้ามมีข้อมูลลูกค้าใน log**
-  if (lines && res.reason && res.reason !== "unlinked" && !res.docId)
+  // บรรทัดถูกปฏิเสธ (ยอดไม่ตรง/ข้อมูลเพี้ยน) — เงินยังเข้า GL ตามปกติ · เตือนเป็นภาษาไทย **ห้ามมีข้อมูลลูกค้าใน log** · POS P2.14 ▸ ACC-2: other-book ไม่ใช่การปฏิเสธ ◂
+  if (lines && res.reason && res.reason !== "unlinked" && res.reason !== "other-book" && !res.docId)
     console.warn(`[บัญชี] บิล POS ${sale.id}: ไม่บันทึกบรรทัดสินค้าเข้าบัญชี — ${res.reason}`);
   // POS P2.1 ▸ R7: ค่าคอมฯ ช่องทาง = JV แยก (คีย์ PosSale#<id>#COMMISSION) หลัง PAID ในขั้นเดียวกันของคิว ·
   //   ล้ม = โยน ⇒ คิวลองใหม่ (PAID ข้ามด้วยคีย์ของตัวเอง) · ไม่ผูกสมุด = จบเงียบ (snapshot อยู่บนบิล) ◂

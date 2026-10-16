@@ -49,7 +49,7 @@ export type DisplayTotals = {
   lineDiscountSatang: number;
   billDiscountSatang: number;
   coupon?: { code: string; satang: number } | null;
-  member?: { kind?: DisplayMemberKind; label: string; satang: number }[]; // POS P2.10 ▸ fix1 F4: kind (ภาพที่ส่ง) · view = label + satang ◂
+  member?: { kind: DisplayMemberKind; label: string; satang: number }[]; // POS P2.10 ▸ fix1 F4: kind (ภาพที่ส่ง) · view = label + satang ◂ · POS P2.14 ▸ TL-5 kind บังคับ ◂
   serviceChargeSatang: number;
   grandTotalSatang: number;
 };
@@ -267,9 +267,9 @@ function parseTotals(v: unknown, path: string): DisplayTotals {
     t.member = o.member.map((m, i) => {
       const r = obj(m, `${path}.member[${i}]`, ["kind", "label", "satang"]);
       const p = `${path}.member[${i}]`;
-      if (has(r, "kind") && (typeof r.kind !== "string" || !DISPLAY_MEMBER_KINDS.includes(r.kind as DisplayMemberKind))) throw new Bad(`${p}.kind`);
-      const row: { kind?: DisplayMemberKind; label: string; satang: number } = { label: has(r, "kind") && !has(r, "label") ? "" : text(r.label, `${p}.label`), satang: satang(r.satang, `${p}.satang`) };
-      if (has(r, "kind")) row.kind = r.kind as DisplayMemberKind;
+      // POS P2.14 ▸ TL-5 (P6): kind บังคับ (ผู้ส่งเดียว use-display-publish ส่งทุกแถว) — ไม่มี kind = ภาพผิดรูป ◂
+      if (!has(r, "kind") || typeof r.kind !== "string" || !DISPLAY_MEMBER_KINDS.includes(r.kind as DisplayMemberKind)) throw new Bad(`${p}.kind`);
+      const row: { kind: DisplayMemberKind; label: string; satang: number } = { kind: r.kind as DisplayMemberKind, label: !has(r, "label") ? "" : text(r.label, `${p}.label`), satang: satang(r.satang, `${p}.satang`) };
       return row;
     }); // ◂
   }
