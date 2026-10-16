@@ -744,6 +744,7 @@ const p212uPath = (k: P212uKey): string => {
 type P27Key =
   | "table-menu" | "table-cart" | "table-sent" | "table-rounds" | "table-bill" | "table-notified" | "table-payhidden" | "table-closed" | "table-bad-token"
   | "pre-menu" | "pre-cart" | "pre-checkout" | "pre-pay" | "pre-claimed" | "pre-paid" | "pre-accepted" | "pre-ready" | "pre-expired" | "pre-rejected" | "pre-closed"
+  | "pre-pay-beam" | "pre-preparing" | "pre-handed" | "pre-cancelled" | "pre-bad-link" | "pre-bad-order" // POS P2.7U fix1 ▸ F5 ◂
   | "orders-qr-rows" | "orders-awaiting" | "orders-prepaid" | "orders-claim" | "orders-late-banner"
   | "tables-qr-dialog" | "tables-qr-print"
   | "settings-channel-qr-table" | "settings-channel-qr-order";
@@ -764,12 +765,18 @@ const P27_PLAN: { key: P27Key; page: PosPage; devices: readonly Device[]; users:
   { key: "pre-checkout", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "ตะกร้า → ข้อมูลผู้รับ: ชื่อ คุณภาพ (ภาพ QC) + เบอร์ 081-234-5678 + บรรทัด PDPA + ยอดที่ต้องจ่าย (ไม่กดสั่ง)" },
   { key: "pre-pay", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "/q/o/<ออเดอร์รอจ่าย>: ยอด + QR พร้อมเพย์ของใบขอรับเงินเดียวกัน + นับถอยหลังถึง payBy + ปุ่มโอนแล้ว (QR นิ่ง)" },
   { key: "pre-claimed", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "ออเดอร์ที่กดโอนแล้ว (claimPaid) → \"แจ้งร้านแล้ว — รอร้านตรวจยอด\"" },
+  { key: "pre-pay-beam", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "POS P2.7U fix1 F5 · ออเดอร์ที่จ่ายผ่าน Beam (fixture: เปิด beam ชั่วคราว + Beam ปลอมของสคริปต์ · ไม่เรียกภายนอก · คืนค่าทันที) → QR ของ Beam + \"ระบบยืนยันให้อัตโนมัติเมื่อเงินเข้า\" (pos-qr-order-auto · ไม่มีปุ่มโอนแล้ว)" },
   { key: "pre-paid", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "ใบขอรับเงินยืนยันเอง (เจ้าของ) → PREPAID → \"ได้รับเงินแล้ว — รอร้านรับออเดอร์\" · ขั้น 2/4" },
   { key: "pre-accepted", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "⚠️ PREPAID → acceptOrder (บิลพร้อมเพย์จริง · ไม่ลบ แบบ P2.8U) → \"ร้านรับออเดอร์แล้ว\" + พร้อมรับประมาณ hh:mm + ลิงก์ใบเสร็จ" },
+  { key: "pre-preparing", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "POS P2.7U fix1 F5 · ⚠️ รับแล้ว → เริ่มเตรียม (บิลจริง · ไม่ลบ) → \"กำลังเตรียม\" + พร้อมรับประมาณ hh:mm · ขั้น 3/4" },
   { key: "pre-ready", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "⚠️ รับแล้ว → เตรียม → พร้อม → \"พร้อมรับแล้ว\" + รหัสตัวใหญ่ + ลิงก์ใบเสร็จ" },
+  { key: "pre-handed", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "POS P2.7U fix1 F5 · ⚠️ รับ → เตรียม → พร้อม → ส่งมอบ (บิลจริง · ไม่ลบ) → \"รับของแล้ว ขอบคุณค่ะ\" + ลิงก์ใบเสร็จ · หยุดโพล" },
+  { key: "pre-cancelled", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "POS P2.7U fix1 F5 · ⚠️ รับแล้ว → cancelOrder (ร้านยกเลิก · บิลถูก void · ไม่ลบ) → \"ออเดอร์ถูกยกเลิก\" + ร้านคืนเงินให้ภายหลัง" },
   { key: "pre-expired", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "payBy เลื่อนเป็นอดีต + อ่านสถานะ (ปิดครั้งเดียว) → 19ค: PromptPay ยังไม่ได้รับเงิน · ลองใหม่ · เลือกวิธีอื่น · ยืนยันเอง" },
   { key: "pre-rejected", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "PREPAID → rejectOrder → \"ร้านไม่สามารถรับออเดอร์นี้ได้\" + ร้านคืนเงินให้ภายหลัง" },
   { key: "pre-closed", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "QR_ORDER พักรับ 30 นาที (คืนค่าหลังภาพ) → แบนเนอร์ + เมนูอ่านอย่างเดียว" },
+  { key: "pre-bad-link", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "POS P2.7U fix1 F5 · /q/<ลิงก์รูปถูกแต่ไม่มี 16 ตัว> → การ์ด \"QR นี้ใช้ไม่ได้แล้ว\" (HTTP 200)" },
+  { key: "pre-bad-order", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "POS P2.7U fix1 F5 · /q/o/<โทเคนออเดอร์รูปถูกแต่ไม่มี 12 ตัว> → การ์ดเดียวกัน (HTTP 200)" },
   { key: "orders-qr-rows", page: "orders", devices: P27_D3, users: ["owner"], note: "09: ราง \"หน้าร้าน QR N\" (≥1024 แตะแถว · 390 เลือกในตัวเลือกช่องทาง) → การ์ดรอบ QR โต๊ะ \"QR โต๊ะ Q2 · #n · ครัวกำลังทำ d/t · เก็บเงินรวมกับบิลโต๊ะ\"" },
   { key: "orders-awaiting", page: "orders", devices: P27_D3, users: ["owner"], note: "09 ทุกช่องทาง: รายการย่อย \"รอชำระ N\" ใต้หัวคอลัมน์ใหม่ (นับถอยหลังหมดเวลาจ่าย · ยกเลิก) — ไม่นับในคอลัมน์ใหม่" },
   { key: "orders-prepaid", page: "orders", devices: P27_D3, users: ["owner"], note: "09: การ์ดใหม่ของออเดอร์ PREPAID + ชิป \"จ่ายแล้ว · พร้อมเพย์ ฿x\" → แตะ = แผง (เมื่อกดรับ = เปิดบิลพร้อมเพย์จากเงินที่จ่ายแล้ว)" },
@@ -785,6 +792,9 @@ const P27_KEYS: ReadonlySet<string> = new Set(P27_PLAN.map((s) => s.key));
 const isP27State = (k: StateKey | null | undefined): k is P27Key => !!k && P27_KEYS.has(k);
 /** โทเคนรูปถูกที่ไม่มีจริง (โต๊ะ) */
 const P27_BAD_TABLE_TOKEN = "posqcvisp27nosuchtable0";
+// POS P2.7U fix1 ▸ F5: ลิงก์/ออเดอร์รูปถูก (Crockford ตัวใหญ่) ที่ไม่มีจริง ◂
+const P27_BAD_LINK_TOKEN = "ZZZZZZZZZZZZZZZZ";
+const P27_BAD_ORDER_TOKEN = "ZZZZZZZZZZZY";
 const p27Lang = (sep: "?" | "&") => (LOCALE_EN ? `${sep}lang=en` : "");
 /** โทเคน/ไอดีของ fixture (เติมตอน ensureP27Fixture · แผนใช้ตัวยึดก่อนนั้น) */
 type P27Fixture = {
@@ -828,6 +838,19 @@ function p27Path(k: P27Key): string {
       return order("paid");
     case "pre-accepted":
       return order("accepted");
+    // POS P2.7U fix1 ▸ F5 ◂
+    case "pre-pay-beam":
+      return order("beam");
+    case "pre-preparing":
+      return order("preparing");
+    case "pre-handed":
+      return order("handed");
+    case "pre-cancelled":
+      return order("cancelled");
+    case "pre-bad-link":
+      return `/q/${P27_BAD_LINK_TOKEN}${p27Lang("?")}`;
+    case "pre-bad-order":
+      return `/q/o/${P27_BAD_ORDER_TOKEN}${p27Lang("?")}`;
     case "pre-ready":
       return order("ready");
     case "pre-expired":
@@ -7710,6 +7733,49 @@ async function ensureP27Fixture(): Promise<void> {
     const rj = await place("rejected", A, "คุณแป้ง (ภาพ QC)");
     await pay(rj, "rejected");
     need(await ord.rejectOrder(ctx, actor, { id: rj.id, reasonCode: "TOO_BUSY" }), "rejectOrder");
+    // POS P2.7U fix1 ▸ F5: กำลังเตรียม · ส่งมอบแล้ว · ร้านยกเลิก (บิลจริงของทั้งสามใบ · เก็บไว้แบบ P2.8U) · Beam (เปิด beam ชั่วคราว + Beam ปลอม · คืนค่าทันที) ◂
+    const pr = await place("preparing", A, "คุณมิว (ภาพ QC)");
+    await pay(pr, "preparing");
+    need(await ord.acceptOrder(ctx, actor, { id: pr.id, prepMinutes: 15 }), "acceptOrder preparing");
+    need(await ord.markPreparing(ctx, actor, { id: pr.id }), "markPreparing preparing");
+    const hd = await place("handed", A, "คุณฝน (ภาพ QC)");
+    await pay(hd, "handed");
+    need(await ord.acceptOrder(ctx, actor, { id: hd.id, prepMinutes: 5 }), "acceptOrder handed");
+    need(await ord.markPreparing(ctx, actor, { id: hd.id }), "markPreparing handed");
+    need(await ord.markReady(ctx, actor, { id: hd.id }), "markReady handed");
+    need(await ord.handOver(ctx, actor, { id: hd.id }), "handOver handed");
+    const cx = await place("cancelled", A, "คุณเก่ง (ภาพ QC)");
+    await pay(cx, "cancelled");
+    need(await ord.acceptOrder(ctx, actor, { id: cx.id, prepMinutes: 10 }), "acceptOrder cancelled");
+    need(await ord.cancelOrder(ctx, actor, { id: cx.id, reason: "ภาพ QC: ร้านยกเลิก", idempotencyKey: `${P27_TAG}-cancel` }), "cancelOrder cancelled");
+    {
+      const sys = await prisma.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } });
+      const base = (sys?.settings && typeof sys.settings === "object" ? sys.settings : {}) as Record<string, Any>;
+      const pos = { ...(base.pos ?? {}) };
+      const payment = { ...(pos.payment ?? {}) };
+      const had = Object.prototype.hasOwnProperty.call(payment, "beam");
+      const before = payment.beam;
+      const setBeam = async (v: Any, keep: boolean) => {
+        const p2 = { ...payment };
+        if (keep) p2.beam = v;
+        else delete p2.beam;
+        await prisma.appSystem.update({ where: { id: SYS }, data: { settings: { ...base, pos: { ...pos, payment: p2 } } } });
+      };
+      let n = 0;
+      const fakeBeam = { enabled: () => true, createCharge: async () => ({ chargeId: `chg_${P27_TAG}_${++n}`, url: `https://pay.beam.example/${P27_TAG}/${n}`, qrPayload: `BEAMQR-${P27_TAG}-${n}` }) };
+      try {
+        await setBeam({ ...(before && typeof before === "object" ? before : {}), enabled: true }, true);
+        const r = await qr.placePreorder(fx.linkToken!, { lines: A, customer: { name: "คุณบีม (ภาพ QC)", phone: "0812345678" }, idempotencyKey: `${P27_TAG}-beam` }, { ip: p27Ip() }, { beam: fakeBeam as Any });
+        if (!r.ok) throw new StepError(`placePreorder beam: ${r.code}`);
+        const o = await prisma.posOrder.findUnique({ where: { publicToken: r.orderToken }, select: { id: true, code: true, paymentIntentId: true } });
+        if (!o) throw new StepError("ไม่พบออเดอร์ beam");
+        fx.orders.beam = { id: o.id, token: r.orderToken, code: o.code, intentId: o.paymentIntentId };
+        P27.orderIds.push(o.id);
+        if (o.paymentIntentId) P27.intentIds.push(o.paymentIntentId);
+      } finally {
+        await setBeam(before, had);
+      }
+    }
     // เงินเข้าหลังหมดเวลา: payBy อดีตก่อน → ยืนยันเงินเข้า (paidAt > payBy) → onIntentPaid = ปิด + late_payment (H4)
     const lt = await place("late", A, "คุณจอย (ภาพ QC)");
     await prisma.posOrder.update({ where: { id: lt.id }, data: { payBy: new Date(Date.now() - 5_000) } });
@@ -7856,9 +7922,23 @@ async function runP27State(page: Any, state: P27Key, device: Device): Promise<vo
     case "pre-paid":
       return void (await phase("paid"));
     case "pre-accepted":
-      await page.waitForFunction(() => /^(accepted|preparing)$/.test(document.querySelector('[data-testid="pos-qr-order"]')?.getAttribute("data-phase") ?? ""), { timeout: 20_000 }).catch(() => {
-        throw new StepError("หน้าสถานะไม่อยู่ในขั้นร้านรับ");
-      });
+      return void (await phase("accepted")); // POS P2.7U fix1 ▸ F5: กำลังเตรียม = สถานะของตัวเอง ◂
+    // POS P2.7U fix1 ▸ F5 ◂
+    case "pre-pay-beam":
+      await phase("pay");
+      await visibleEl(page, tid("pos-qr-order-auto"), 0, 15_000);
+      return;
+    case "pre-preparing":
+      await phase("preparing");
+      await visibleEl(page, tid("pos-qr-order-eta"), 0, 10_000);
+      return;
+    case "pre-handed":
+      return void (await phase("handed"));
+    case "pre-cancelled":
+      return void (await phase("cancelled"));
+    case "pre-bad-link":
+    case "pre-bad-order":
+      await visibleEl(page, tid("pos-qr-invalid"), 0, 15_000);
       return;
     case "pre-ready":
       return void (await phase("ready"));

@@ -8,8 +8,9 @@ import type { QrShopHeader } from "@/lib/modules/pos/qr-order-shared";
 
 export type QrFrameText = { th: string; en: string; language: string };
 
+// POS P2.7U fix1 ▸ nit (a): ลิงก์ภาษา ≥ 44×44 ◂
 export function QrLangLinks({ locale, text }: { locale: "th" | "en"; text: QrFrameText }) {
-  const cls = (on: boolean) => `inline-flex min-h-11 items-center px-2 ${on ? "font-semibold text-[color:var(--color-ink)]" : "text-[color:var(--color-muted)]"}`;
+  const cls = (on: boolean) => `inline-flex min-h-11 min-w-11 items-center justify-center px-2 ${on ? "font-semibold text-[color:var(--color-ink)]" : "text-[color:var(--color-muted)]"}`;
   return (
     <nav className="flex items-center text-[12.5px]" aria-label={text.language}>
       <a href="?lang=th" hrefLang="th" data-testid="pos-qr-lang-th" aria-current={locale === "th" ? "true" : undefined} className={cls(locale === "th")}>

@@ -252,6 +252,8 @@ export type QrOrderStatusView = {
   unit: { name: string };
   /** POS P2.7U ▸ หัวร้าน (เพิ่มล้วน) ◂ */
   shop?: QrShopHeader;
+  /** POS P2.7U fix1 ▸ F3: เวลาของเซิร์ฟเวอร์ตอนอ่าน (ISO) — นับถอยหลังบนหน้าจาก offset นี้ ไม่เชื่อนาฬิกาเครื่องลูกค้า ◂ */
+  serverNow?: string;
   /** POS P2.7U ▸ โทเคนลิงก์สั่งล่วงหน้าที่ใช้อยู่ของสาขา (ปุ่ม "ลองใหม่" ของหน้าหมดเวลา 19ค · null = ร้านปิดลิงก์แล้ว) — เพิ่มล้วน ◂ */
   orderAgainToken?: string | null;
   /** เวลารับโดยประมาณ (หลังร้านรับ = acceptedAt + prepMinutes) */

@@ -166,12 +166,12 @@ function PhaseBanner({ text }: { text: string }) {
 }
 
 /** ?tab=channels — มติ 7 · POS P2.1U ▸ มติ 1: แผงช่องทางขายจริงเต็มความกว้าง (แบนเนอร์ "เปิดใช้ในเฟสถัดไป" ออกแล้ว — ออฟไลน์ยังมีแบนเนอร์) ◂ */
-export function ChannelsPane({ systemId, unitId, canManage, storefront }: { systemId: string; unitId: string; canManage: boolean; storefront: Storefront }) {
+export function ChannelsPane({ systemId, unitId, canManage, canAccept, storefront }: { systemId: string; unitId: string; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAccept?: boolean; storefront: Storefront }) {
   const t = useTranslations("pos.settings.channels");
   return (
     <div data-testid="pos-settings-channels" className="flex min-w-0 flex-col gap-6 md:gap-8">
       <TabHead title={t("tabTitle")} desc={t("tabSub")} />
-      <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManage} storefront={storefront} wide />
+      <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManage} canAccept={canAccept} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} wide />
     </div>
   );
 }

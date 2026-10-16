@@ -637,6 +637,7 @@ const ORDER_STATUS_SELECT = {
   id: true,
   tenantId: true,
   systemId: true, // POS P2.7U ▸ หัวร้าน ◂
+  createdAt: true, // POS P2.7U fix1 ▸ F7 ◂
   unitId: true,
   code: true,
   status: true,
@@ -681,7 +682,7 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
       prisma.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { name: true, qty: true, options: true, lineTotalSatang: true } }),
       o.saleId ? prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: o.tenantId }, select: { publicToken: true } }) : Promise.resolve(null),
       prisma.businessUnit.findFirst({ where: { id: o.unitId, tenantId: o.tenantId }, select: { name: true } }),
-      prisma.posOrderLink.findFirst({ where: { tenantId: o.tenantId, systemId: o.systemId, unitId: o.unitId, status: "ACTIVE" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { token: true } }), // POS P2.7U ▸ "ลองใหม่" ◂
+      prisma.posOrderLink.findFirst({ where: { tenantId: o.tenantId, systemId: o.systemId, unitId: o.unitId, status: "ACTIVE" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { token: true, rotatedAt: true, createdAt: true } }), // POS P2.7U ▸ "ลองใหม่" ◂
     ]);
     const shop = await shopOf(o.tenantId, o.systemId, o.unitId, unit?.name ?? ""); // POS P2.7U ◂
     const closed = o.status === "REJECTED" || o.status === "CANCELLED";
@@ -699,7 +700,9 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
       customerName: o.customerName,
       unit: { name: unit?.name ?? "" },
       shop, // POS P2.7U ◂
-      orderAgainToken: againLink?.token ?? null, // POS P2.7U ◂
+      // POS P2.7U fix1 ▸ F7: ลิงก์ ACTIVE ที่เป็นลิงก์เดียวกับตอนสั่ง (rotatedAt null หรือ ≤ เวลาสั่ง · ลิงก์ ACTIVE ที่เกิดหลังออเดอร์ = ร้านเปลี่ยนลิงก์แล้ว) — ไม่งั้น null (หน้าให้สแกน QR ใหม่) ◂
+      orderAgainToken: againLink && (againLink.rotatedAt === null || againLink.rotatedAt.getTime() <= o.createdAt.getTime()) && againLink.createdAt.getTime() <= o.createdAt.getTime() ? againLink.token : null,
+      serverNow: new Date().toISOString(), // POS P2.7U fix1 ▸ F3 ◂
       readyEta: o.acceptedAt ? new Date(o.acceptedAt.getTime() + (o.prepMinutes ?? ORDER_PREP_DEFAULT_MIN) * MIN).toISOString() : null,
       closedReason: o.status === "REJECTED" ? "REJECTED" : o.status === "CANCELLED" ? (o.rejectReason === "PAYMENT_EXPIRED" ? "PAYMENT_EXPIRED" : "CANCELLED") : null,
       refundPending: (closed && it?.status === "PAID") || o.paymentState === "REFUNDED", // POS P2.7 ▸ fix2 R1 F3(a): บิลของออเดอร์ถูก void หลังรับ ◂

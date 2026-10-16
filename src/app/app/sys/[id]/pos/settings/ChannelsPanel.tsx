@@ -43,9 +43,9 @@ function Knob({ on, dim }: { on: boolean; dim?: boolean }) {
   );
 }
 
-type Props = { systemId: string; unitId: string; canManage: boolean; storefront: Storefront; wide?: boolean };
+type Props = { systemId: string; unitId: string; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept (ค่าตั้งรับออเดอร์ในลิ้นชัก QR) ◂ */ canAccept?: boolean; storefront: Storefront; wide?: boolean };
 
-export function ChannelsPanel({ systemId, unitId, canManage, storefront, wide = false }: Props) {
+export function ChannelsPanel({ systemId, unitId, canManage, canAccept = false, storefront, wide = false }: Props) {
   const t = useTranslations("pos.channel") as ChannelT;
   const tr = useTranslations("pos.register");
   const [items, setItems] = useState<ChannelItem[] | null>(null);
@@ -313,6 +313,7 @@ export function ChannelsPanel({ systemId, unitId, canManage, storefront, wide = 
           unitId={unitId}
           mode={drawer}
           canManage={canManage}
+          canAccept={canAccept} // POS P2.7U fix1 ▸ F6 ◂
           takenCodes={codes}
           atLimit={atLimit}
           onClose={() => setDrawer(null)}

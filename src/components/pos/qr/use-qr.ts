@@ -110,3 +110,20 @@ export function useToast() {
   }, []);
   return { toast, show };
 }
+
+// POS P2.7U fix1 ▸ F3: นาฬิกาของหน้า = เวลาเซิร์ฟเวอร์ตอนตอบ + เวลาที่ผ่านไปบนเครื่องแบบ monotonic (แบบ FloorClock/clockNow ของจอ 09) — ไม่เชื่อนาฬิกาเครื่องลูกค้า ◂
+const mono = (): number => (typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now());
+/** เวลาเซิร์ฟเวอร์โดยประมาณ (ms) หลัง mount · null ก่อน mount · serverIso ใหม่ = ตั้ง offset ใหม่ */
+export function useServerNow(serverIso: string | null | undefined, tickMs = 1000): number | null {
+  const anchor = useRef<{ serverMs: number; mono: number } | null>(null);
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const ms = serverIso ? Date.parse(serverIso) : NaN;
+    anchor.current = Number.isFinite(ms) ? { serverMs: ms, mono: mono() } : null;
+    const read = () => (anchor.current ? anchor.current.serverMs + (mono() - anchor.current.mono) : Date.now());
+    setNow(read());
+    const id = setInterval(() => setNow(read()), tickMs);
+    return () => clearInterval(id);
+  }, [serverIso, tickMs]);
+  return now;
+}

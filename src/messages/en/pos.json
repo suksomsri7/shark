@@ -4495,7 +4495,7 @@
       "payNoQr": "The shop will send a way to pay — please wait",
       "payWithin": "Pay within {time} (by {at})",
       "autoConfirm": "Confirmed automatically when the money arrives",
-      "claimHint": "After paying tap \"I've paid\" — the shop checks and starts",
+      "claimHint": "After paying tap \"I have paid\" — the shop checks and starts",
       "keepOpen": "Keep this page open — the status updates by itself",
       "readyEtaAt": "Ready at about {time}",
       "showCode": "Show this code at the counter",
@@ -4507,7 +4507,8 @@
       "expiredManualBody": "If you already paid, show this page (order {code}) to the staff to check and confirm it",
       "rejectedBody": "The shop cannot take this order right now — sorry",
       "cancelledBody": "This order has been cancelled",
-      "pickupFor": "Pickup for {name}"
+      "pickupFor": "Pickup for {name}",
+      "rescan": "The shop changed its order link — scan the QR again to order"
     },
     "errors": {
       "qrClosed": "The shop is not taking orders here right now",

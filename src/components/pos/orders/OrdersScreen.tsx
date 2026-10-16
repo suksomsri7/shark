@@ -203,10 +203,12 @@ export function OrdersScreen(p: OrdersScreenProps) {
       setListErr(null);
       setLastSyncAt(new Date());
       // ออเดอร์ใหม่ระหว่างรอบดึง (รอบแรก = ตั้งต้น ไม่เตือน)
-      const ids = new Set(r.orders.filter((o) => o.status === "NEW").map((o) => o.id));
+      // POS P2.7U fix1 ▸ F2: รอเงินเข้า (PENDING_PAYMENT) ยังไม่ใช่ออเดอร์ที่ต้องทำ — เตือนครั้งเดียวเมื่อกลายเป็น NEW ที่รับได้ (รวม PREPAID) ◂
+      const actionable = (o: OrderCard) => o.status === "NEW" && o.paymentState !== "PENDING_PAYMENT";
+      const ids = new Set(r.orders.filter(actionable).map((o) => o.id));
       const prev = seenNew.current;
       if (prev) {
-        const fresh = r.orders.filter((o) => o.status === "NEW" && !prev.has(o.id));
+        const fresh = r.orders.filter((o) => actionable(o) && !prev.has(o.id));
         if (fresh.length) {
           showToast({ text: t("newOrderToast", { channel: channelDisplayName(fresh[0]!.channel.code, fresh[0]!.channel.name, tch) }) });
           if (soundRef.current) beep();

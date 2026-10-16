@@ -34,6 +34,7 @@ All public pages: `force-dynamic`, noindex, no session import, token shape → `
 
 ## 4. Public status page (`QrOrderStatusApp`)
 Phase (`data-phase`) from `orderPhaseOf(view)`: pay · claimed · paid · accepted · preparing · ready · handed · expired · rejected · cancelled. Step bar pay → accepted → preparing → ready.
+- fix1 F3: the countdown runs on server time (`view.serverNow` + elapsed monotonic time, `useServerNow`), never the phone clock. fix1 F7: `orderAgainToken` only for the ACTIVE link the order was placed through; otherwise `pos-qr-order-rescan` ("สแกน QR ใหม่").
 - pay/claimed: amount `pos-qr-order-amount` + QR of the order intent `pos-qr-order-qr` (one amount, one expiry) + countdown `pos-qr-order-countdown` to `pay.expiresAt` (red < 60 s; at 0 = immediate poll → server expires once) · static = `pos-qr-claim` (event only) → `pos-qr-order-claimed` · Beam = `pos-qr-order-auto`.
 - paid: "ได้รับเงินแล้ว — รอร้านรับออเดอร์" + "จ่ายแล้ว · พร้อมเพย์ ฿x". accepted/preparing: `pos-qr-order-eta` "พร้อมรับประมาณ hh:mm". ready: big code `pos-qr-order-ready`. handed: thanks.
 - expired (19ค copy): title "PromptPay ยังไม่ได้รับเงิน" + `pos-qr-order-expired` with ลองใหม่ (`pos-qr-order-again` → the unit's ACTIVE link, additive `orderAgainToken`) · เลือกวิธีอื่น (order/pay at the shop) · ยืนยันเอง (show this page/code to staff for a manual check).
@@ -47,6 +48,7 @@ Phase (`data-phase`) from `orderPhaseOf(view)`: pay · claimed · paid · accept
 - "รอชำระ N" `pos-ord-awaiting` (top of the new column, muted, not in the new count): `pos-ord-await-card-<ref>` · countdown `pos-ord-await-left-<ref>` to `prepay.payBy` · claim chip `pos-ord-claim-<ref>` "ลูกค้าแจ้งโอนแล้ว · ตรวจยอด" + `pos-ord-await-confirm-<ref>` "ยืนยันรับเงิน" (`confirmPaymentIntentManualAction(prepay.intentId)`; disabled when the shop requires a manager and the user lacks it) · `pos-ord-await-cancel-<ref>` = reject sheet.
 - PREPAID chip `pos-ord-prepaid-<ref>` "จ่ายแล้ว · พร้อมเพย์ ฿x" (PREPAID, and PAID orders that came from a prepay). Panel: pending note `pos-ord-pending-note` + `pos-ord-confirm-pay`; accept disabled while PENDING_PAYMENT; on-accept line for PREPAID; timeline labels expired / customer_paid_claim / late_payment.
 - Banners: late money `pos-ord-late-<ref>` (additive `OrderCard.prepay.latePaid` from the `late_payment` event) "เงินเข้าหลังหมดเวลา ฿x · ref pi_… — ออเดอร์ … ถูกปิดแล้ว" + `pos-ord-late-open-<ref>`; expired today `pos-ord-expired-banner`.
+- fix1 F2: new-order sound/toast ignore PENDING_PAYMENT (alert once when the order becomes NEW-actionable or PREPAID). fix1 nit c: late banner only while the intent is still PAID.
 - Mode-tab badge = `counts.byColumn.new` (server: PENDING_PAYMENT excluded, PREPAID counted) — unchanged code.
 
 ## 6. 03 tables
@@ -54,7 +56,7 @@ Phase (`data-phase`) from `orderPhaseOf(view)`: pay · claimed · paid · accept
 - Floor toolbar `pos-tbl-print-qr` → `pos-tbl-qr-sheet` (A4 portrait, 3 columns, dashed cut lines; cell = shop name · "โต๊ะ X" · QR · hint · branch) · print CSS `@page A4` + visibility isolation · `pos-tbl-qr-sheet-print` = `window.print()`.
 
 ## 7. Settings › channels
-`pos-channel-qr` block inside the builtin drawer of QR_TABLE / QR_ORDER: active switch `pos-channel-qr-active` (saveChannel {id, name, active}) · QR_ORDER: auto-accept `pos-channel-qr-auto` + prep `pos-channel-qr-prep` · pause 15/30/60 `pos-channel-qr-pause-*` / `pos-channel-qr-reopen` (setChannelOrderSettings, P2.8) · QR_ORDER link block `pos-channel-qr-link` (none = `pos-channel-qr-link-create`; link = QR + URL + `pos-channel-qr-link-copy` + `pos-channel-qr-link-rotate` → confirm) · QR_TABLE → `pos-channel-qr-tables` · menu visibility = `pos-channel-qr-products` (P2.2 channel price rows "ไม่ขายในช่องทางนี้").
+fix1 F6: auto-accept · prep · pause · reopen disabled (tooltip `orders.perm.accept`) without `pos.order.accept`. `pos-channel-qr` block inside the builtin drawer of QR_TABLE / QR_ORDER: active switch `pos-channel-qr-active` (saveChannel {id, name, active}) · QR_ORDER: auto-accept `pos-channel-qr-auto` + prep `pos-channel-qr-prep` · pause 15/30/60 `pos-channel-qr-pause-*` / `pos-channel-qr-reopen` (setChannelOrderSettings, P2.8) · QR_ORDER link block `pos-channel-qr-link` (none = `pos-channel-qr-link-create`; link = QR + URL + `pos-channel-qr-link-copy` + `pos-channel-qr-link-rotate` → confirm) · QR_TABLE → `pos-channel-qr-tables` · menu visibility = `pos-channel-qr-products` (P2.2 channel price rows "ไม่ขายในช่องทางนี้").
 
 ## 8. States × viewports (visual `p2.7` · `P27_PLAN`)
 | page | state | 390 | 1024 | 1440 | th | en | fixture |
@@ -73,6 +75,9 @@ Phase (`data-phase`) from `orderPhaseOf(view)`: pay · claimed · paid · accept
 | qr-public | pre-paid · pre-accepted · pre-ready | ✓ | ✓ | | ✓ | ✓ | confirm intent manually (owner) → PREPAID → accept → ready |
 | qr-public | pre-expired · pre-rejected | ✓ | ✓ | | ✓ | ✓ | payBy moved to the past + lazy expiry · rejectOrder |
 | qr-public | pre-closed | ✓ | ✓ | | ✓ | ✓ | QR_ORDER paused (restored) |
+| qr-public | pre-pay-beam (fix1 F5) | ✓ | ✓ | | ✓ | ✓ | Beam enabled briefly + script fake Beam (no external call) · `pos-qr-order-auto` |
+| qr-public | pre-preparing · pre-handed · pre-cancelled (fix1 F5) | ✓ | ✓ | | ✓ | ✓ | accept → prepare / → ready → hand over / → cancelOrder (sales kept) |
+| qr-public | pre-bad-link · pre-bad-order (fix1 F5) | ✓ | ✓ | | ✓ | ✓ | well-formed unknown tokens → `pos-qr-invalid` (200) |
 | orders | orders-qr-rows · orders-awaiting · orders-prepaid · orders-claim · orders-late-banner | ✓ | ✓ | ✓ | ✓ | ✓ (1440) | same fixtures |
 | tables | tables-qr-dialog · tables-qr-print | ✓ | ✓ | ✓ | ✓ | ✓ (1440) | P2.7 fixture tables |
 | settings | settings-channel-qr-table · settings-channel-qr-order | ✓ | ✓ | ✓ | ✓ | ✓ (1440) | builtin drawers |

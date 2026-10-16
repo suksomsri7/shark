@@ -30,8 +30,10 @@ const hm = (iso: string | null) => {
 
 type OrderSet = { autoAccept: boolean; prepMinutes: number | null; pausedUntil: string | null };
 
-export function QrChannelBlock(p: { systemId: string; unitId: string; item: ChannelItem; canManage: boolean; onSaved: (c: ChannelItem) => void }) {
+export function QrChannelBlock(p: { systemId: string; unitId: string; item: ChannelItem; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAccept?: boolean; onSaved: (c: ChannelItem) => void }) {
   const t = useTranslations("pos.channel");
+  const to = useTranslations("pos.orders"); // POS P2.7U fix1 ▸ F6: tooltip เดียวกับปุ่มรับออเดอร์ของจอ 09 (orders.perm.accept) ◂
+  const noAccept = p.canAccept ? undefined : to("perm.accept");
   const tr = useTranslations("pos.register");
   const isOrder = p.item.code === "QR_ORDER";
   const target = useCallback(() => ({ systemId: p.systemId, unitId: p.unitId }), [p.systemId, p.unitId]);
@@ -154,7 +156,7 @@ export function QrChannelBlock(p: { systemId: string; unitId: string; item: Chan
               <span className="text-[14px] font-semibold">{t("qr.autoAccept")}</span>
               <span className="text-[12px] text-[color:var(--color-muted)]">{t("qr.autoAcceptHint")}</span>
             </span>
-            <button type="button" role="switch" aria-checked={!!set?.autoAccept} aria-label={t("qr.autoAccept")} data-testid="pos-channel-qr-auto" disabled={busy || !set} className={sw(!!set?.autoAccept)} onClick={() => set && void saveOrder({ autoAccept: !set.autoAccept })}>
+            <button type="button" role="switch" aria-checked={!!set?.autoAccept} aria-label={t("qr.autoAccept")} data-testid="pos-channel-qr-auto" title={noAccept} disabled={busy || !set || !p.canAccept /* POS P2.7U fix1 ▸ F6 ◂ */} className={sw(!!set?.autoAccept)} onClick={() => set && void saveOrder({ autoAccept: !set.autoAccept })}>
               {knob(!!set?.autoAccept)}
             </button>
           </div>
@@ -162,7 +164,8 @@ export function QrChannelBlock(p: { systemId: string; unitId: string; item: Chan
             {t("qr.prep")}
             <select
               data-testid="pos-channel-qr-prep"
-              disabled={busy || !set}
+              title={noAccept}
+              disabled={busy || !set || !p.canAccept /* POS P2.7U fix1 ▸ F6 ◂ */}
               value={set?.prepMinutes ?? ""}
               onChange={(e) => {
                 const n = Number(e.target.value);
@@ -189,7 +192,7 @@ export function QrChannelBlock(p: { systemId: string; unitId: string; item: Chan
           <div data-testid="pos-channel-qr-paused" className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[color:var(--color-surface-2)] px-3 py-2 text-[13px]">
             <RegisterIcon name="lock" size={13} />
             <span className="min-w-0 flex-1">{t("qr.pausedUntil", { time: hm(set?.pausedUntil ?? null) })}</span>
-            <button type="button" data-testid="pos-channel-qr-reopen" disabled={busy} className="btn btn-ghost h-11 rounded-[11px] px-3 text-[13px] font-bold" onClick={() => void saveOrder({ pausedUntil: null })}>
+            <button type="button" data-testid="pos-channel-qr-reopen" title={noAccept} disabled={busy || !p.canAccept /* POS P2.7U fix1 ▸ F6 ◂ */} className="btn btn-ghost h-11 rounded-[11px] px-3 text-[13px] font-bold" onClick={() => void saveOrder({ pausedUntil: null })}>
               {t("qr.reopen")}
             </button>
           </div>
@@ -200,7 +203,8 @@ export function QrChannelBlock(p: { systemId: string; unitId: string; item: Chan
                 key={m}
                 type="button"
                 data-testid={`pos-channel-qr-pause-${m}`}
-                disabled={busy || !set || now === null}
+                title={noAccept}
+                disabled={busy || !set || now === null || !p.canAccept /* POS P2.7U fix1 ▸ F6 ◂ */}
                 className="btn btn-ghost h-11 rounded-[11px] px-3 text-[13px]"
                 onClick={() => void saveOrder({ pausedUntil: new Date(Date.now() + m * 60_000).toISOString() })}
               >

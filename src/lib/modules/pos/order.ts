@@ -1435,7 +1435,12 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
   const receipt = new Map(sales.map((x) => [x.id, x.receiptNo]));
   // POS P2.7U ▸ เงินเข้าหลังหมดเวลา (บันทึก late_payment) ของออเดอร์จ่ายก่อน — ฟิลด์อ่านอย่างเดียวของการ์ด (แบนเนอร์จอ 09 · S5) ◂
   const prepayIds = rows.filter((r) => r.payBy || r.paymentIntentId).map((r) => r.id);
-  const latePaid = new Set(prepayIds.length ? (await db.posOrderEvent.findMany({ where: { tenantId, orderId: { in: prepayIds }, type: "late_payment" }, select: { orderId: true } })).map((e) => e.orderId) : []);
+  // POS P2.7U fix1 ▸ nit (c): แบนเนอร์เฉพาะเงินที่ยังค้าง (ใบขอรับเงิน PAID · ใช้แล้ว/คืน/ยกเลิก = ไม่แสดง) — ยังอ่านครั้งเดียว (join ใบของ payload.intentId) ◂
+  const latePaid = new Set(
+    prepayIds.length
+      ? (await db.$queryRaw<{ orderId: string }[]>`SELECT e."orderId" AS "orderId" FROM "PosOrderEvent" e JOIN "PosPaymentIntent" i ON i.id = (e.payload->>'intentId') WHERE e."tenantId" = ${tenantId} AND e.type = 'late_payment' AND e."orderId" = ANY(${prepayIds}) AND i."tenantId" = ${tenantId} AND i.status = 'PAID'`).map((e) => e.orderId)
+      : [],
+  );
   const nLines = new Map<string, number>();
   const nQty = new Map<string, number>();
   for (const l of lines) {

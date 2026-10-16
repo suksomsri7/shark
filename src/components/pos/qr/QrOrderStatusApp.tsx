@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { QR_STATUS_POLL_MS, type QrOkResult, type QrOrderStatusResult, type QrOrderStatusView } from "@/lib/modules/pos/qr-order-shared";
 import { QrCodeImage } from "./QrCodeImage";
-import { useNow, useToast, useVisiblePoll } from "./use-qr";
+import { useServerNow, useToast, useVisiblePoll } from "./use-qr"; // POS P2.7U fix1 ▸ F3: useServerNow แทน useNow ◂
 import { bkkHm, mmss, qrBaht, secondsLeft, type QrLocale } from "./qr-ui";
 
 export type QrOrderStatusActions = {
@@ -43,7 +43,7 @@ export function QrOrderStatusApp(p: { token: string; locale: QrLocale; initial: 
   const ver = useRef(p.ver);
   const [busy, setBusy] = useState(false);
   const { toast, show } = useToast();
-  const now = useNow(1000);
+  const now = useServerNow(v.serverNow, 1000); // POS P2.7U fix1 ▸ F3 ◂
   const phase = orderPhaseOf(v);
   const poll = useVisiblePoll(
     async () => {
@@ -167,7 +167,10 @@ export function QrOrderStatusApp(p: { token: string; locale: QrLocale; initial: 
                   {t("status.expiredRetry")}
                 </a>
               ) : (
-                <span className="font-semibold">{t("status.expiredRetry")}</span>
+                // POS P2.7U fix1 ▸ F7: ไม่มีลิงก์เดิมแล้ว (ร้านเปลี่ยน/ปิดลิงก์) = ให้สแกน QR ใหม่ของร้าน · ไม่มีโทเคนในหน้า ◂
+                <span data-testid="pos-qr-order-rescan" className="block rounded-[12px] bg-[color:var(--color-surface-2)] px-3 py-2.5">
+                  <b>{t("status.expiredRetry")}</b> · {t("status.rescan")}
+                </span>
               )}
             </li>
             <li className="rounded-[12px] bg-[color:var(--color-surface-2)] px-3 py-2.5">

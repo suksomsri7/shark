@@ -62,6 +62,8 @@ type Props = {
   unitId: string;
   mode: ChannelDrawerMode;
   canManage: boolean;
+  /** POS P2.7U fix1 ▸ F6: pos.order.accept — ค่าตั้งรับออเดอร์ของลิ้นชัก QR (ปิด + tooltip เมื่อไม่มี) ◂ */
+  canAccept?: boolean;
   /** รหัสที่สาขานี้ใช้แล้ว (รวมที่เก็บแล้ว) — ตัด datalist + เตือนก่อนส่ง */
   takenCodes: ReadonlySet<string>;
   atLimit: boolean;
@@ -69,7 +71,7 @@ type Props = {
   onSaved: (c: ChannelItem) => void;
 };
 
-export function ChannelDrawer({ systemId, unitId, mode, canManage, takenCodes, atLimit, onClose, onSaved }: Props) {
+export function ChannelDrawer({ systemId, unitId, mode, canManage, canAccept = false, takenCodes, atLimit, onClose, onSaved }: Props) {
   const t = useTranslations("pos.channel") as ChannelT;
   const tr = useTranslations("pos.register") as RT;
   const item = mode.kind === "edit" ? mode.item : null;
@@ -444,7 +446,7 @@ export function ChannelDrawer({ systemId, unitId, mode, canManage, takenCodes, a
           </label>
 
           {/* POS P2.7U ▸ ช่องทางพื้นฐาน QR_TABLE / QR_ORDER: เปิดรับ · รับอัตโนมัติ · เวลาเตรียม · พักรับ · ลิงก์สั่งล่วงหน้า ◂ */}
-          {item && isBuiltin && !item.archived && (item.code === "QR_TABLE" || item.code === "QR_ORDER") ? <QrChannelSection systemId={systemId} unitId={unitId} item={item} canManage={canManage} onSaved={() => undefined} /> : null}
+          {item && isBuiltin && !item.archived && (item.code === "QR_TABLE" || item.code === "QR_ORDER") ? <QrChannelSection systemId={systemId} unitId={unitId} item={item} canManage={canManage} canAccept={canAccept} /* POS P2.7U fix1 ▸ F6 ◂ */ onSaved={() => undefined} /> : null}
           <div data-testid="pos-channel-example" className="flex flex-col gap-1 rounded-[12px] border border-dashed px-3.5 py-3 text-[13px]">
             <span className="text-[12px] font-semibold text-[color:var(--color-muted)]">{t("drawer.exampleTitle")}</span>
             <span className="tabular-nums text-[color:var(--color-ink-soft)]">
