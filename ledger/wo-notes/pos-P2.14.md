@@ -57,7 +57,7 @@ Every new hunk in an existing file is marked `// POS P2.14 ▸ … ◂` (JSX: `{
 | DOC-2 | `898b9679` | `qc-pos-api-skill.mts:40, :45, :86–88, :311, :405` (SKILL_DIR + both homes) · `qc-pos-p2.13.mts:334` | 12 → 12 · 54 → 54 |
 | V4 (ADD) | `9e2b8c82` | `qc-hf-pos-page-authz.mts:160` (PG-1…PG-5) | 82 → 87 |
 | lane-pin (r3 · TL-1) | `d688a07b` | `qc-hf-fu.mts:233, :236` · `qc-pos-p2.8.mts:58, :295, :298` · `qc-pos-p2.11.mts:47, :267, :269` · `qc-pos-p2.12.mts:40, :270, :272` · `qc-pos-p2.13.mts:54, :350, :352` · `qc-pos-p2.10.mts:46, :221, :223` · `qc-pos-p2.7.mts:49, :361` | all unchanged (`--list`: hf-fu 29 · p2.8 61 · p2.11 34 · p2.12 33 · p2.13 54 · p2.10 13 · p2.7 42 — the commit message of `d688a07b` says p2.8 60 · p2.11 33 by mistake; no D() was added or removed) |
-| PIN-1 fix | `a88687b1` | `qc-pos-p1.15.mts:1520` (TK-PP clears the temp shop's C1/MGR PIN lock before asking for tokens) | 40 → 40 |
+| PIN-1 fix | `a88687b1` | `qc-pos-p1.15.mts:1517` (TK-PP clears the temp shop's C1/MGR PIN lock before asking for tokens) | 40 → 40 |
 | DOC-2 · K2 | `48016985` | `qc-pos-api-skill.mts:45, :88` (home paths via `join`, K6 text without the old skill path) | 12 → 12 |
 
 Lane-pin batch (ruling 3, one commit): the lane base of the seven suites is `rev-parse 64923c13` (fallback = each suite's own `BASE_REV`, unchanged); no `merge-base` call and no `origin/session/pos` string remain in code; four check descriptions that named the origin merge-base were reworded (p2.7:49 · p2.8:58 · p2.11:47 · p2.12:40) — those description lines are outside the §3 line ranges, recorded here. **K3 real and green** after the batch (`--no-db`, and forced run §7).
