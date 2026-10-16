@@ -670,8 +670,8 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
       ) : margin.v.rows.length === 0 ? (
         <div className="px-6 pb-6"><Empty t={t} /></div>
       ) : (
-        <div className="w-full min-w-0 overflow-x-auto">
-          <table className="w-full min-w-[400px] border-collapse text-sm">
+        <div className="relative w-full min-w-0 overflow-x-auto" /* POS P2.14 ▸ U2 O-5: กล่องเลื่อนแนวนอน (relative · แบบ P2.12U F6) + ตารางแคบลงให้คอลัมน์กำไรอยู่ในการ์ดที่ 1440 ◂ */>
+          <table className="w-full min-w-[340px] border-collapse text-sm">
             <thead>
               <tr>
                 <th scope="col" className={`${TH} text-left`}>{t("overview.cols.product")}</th>
