@@ -97,3 +97,6 @@
 - Builder gates (tree d · `/root/pos-runs/p214-builder/fx3-u1-20261016T105400Z`): p2.7 forced **42/42** · p2.14 forced **59/60** (H1 green now that HANDOVER-P2 exists · H3 parity sheet red for controller) · p2.10 forced **13/13** (st2Pins true · mergeBase 280b56f7) · typecheck 0 (head 32b8c549 dirty 0).
 - **Merged** no-ff → **session/pos 39644eb2** (11:03Z) · tree c detached 39644eb2 (generate + skills) · **gates109** `pos-gates109-c-1792148630` running (full manifest) · P2-close tip for the sweep = 39644eb2 (product tree = 32b8c549).
 - Sweep prep: matrix `ctl-scripts/p2close-matrix.txt` (146 runs = 23 manifest runs × users × locales) dry-validated 146/146 (`p2close-dry-20261016T105528Z`, 1,756 shots planned) · chain `ctl-scripts/chain-p2close.sh` (build d @39644eb2 8g → QC5 serve 3228 → all runs) — launch after gates109 (RAM).
+
+## gates109 (tree c @39644eb2 dirty 0 · `/root/pos-runs/gates109-c-20261016T110350Z` · 11:03Z→11:56Z) — **VERDICT green** · SET full 94/94 · HEAD-end=39644eb2 dirty-end=0 · accepted 13 (p2.14 H3 parity sheet · 7 account-api seed/served · acc-v2-pos-lines · member ×4) · p2.7 42 · p2.10 13 green
+- → push `session/pos` (controller tree tip = ledger on 39644eb2) · chain-p2close launched (build d @39644eb2 → QC5 sweep)
