@@ -190,6 +190,10 @@
       }
     },
     {
+      "suite": "qc-pos-p3.4",
+      "mode": "forced"
+    },
+    {
       "suite": "qc-pos-account",
       "mode": "unforced"
     },
