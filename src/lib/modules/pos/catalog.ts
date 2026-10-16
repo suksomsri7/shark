@@ -514,11 +514,13 @@ async function audit(
   // ในธุรกรรมเดียวกับการเขียน · createdAt = เวลาหลังได้ล็อก (ไม่ใช่เวลาเริ่ม tx ของ DB) ⇒ เรียงตามลำดับที่เขียนจริง (C11)
   // R2 F9: เรียกแบบระบบจากประตูเดิมที่รู้ผู้กระทำ = บันทึกคนจริง (audit อย่างเดียว)
   const human = typeof ctx.actorUserId === "string" ? ctx.actorUserId : typeof ctx.onBehalfOfUserId === "string" && ctx.onBehalfOfUserId ? ctx.onBehalfOfUserId : null;
+  // POS P2.14 ▸ API-3 มติ 9: ผู้เขียนผ่านคีย์ API (`apikey:<keyId>`) = actorType API_KEY + actorId = ApiKey.id (ไม่ใช่ USER ที่ id ขึ้นต้น apikey:) ◂
+  const apiKeyId = human && human.startsWith(CATALOG_API_ACTOR_PREFIX) ? human.slice(CATALOG_API_ACTOR_PREFIX.length) : null;
   await tx.auditLog.create({
     data: {
       tenantId: ctx.tenantId,
-      actorType: human ? "USER" : "SYSTEM",
-      actorId: human,
+      actorType: apiKeyId ? "API_KEY" : human ? "USER" : "SYSTEM",
+      actorId: apiKeyId ?? human,
       action,
       targetType,
       targetId,

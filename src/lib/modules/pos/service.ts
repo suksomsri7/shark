@@ -1397,6 +1397,8 @@ export type VoidSaleAudit = {
   via?: "approval" | "pin_override";
   requestId?: string | null;
   requestedByUserId?: string;
+  /** POS P2.14 ▸ API-9: ที่มาของคำสั่งยกเลิก — "API" = REST /api/v1/pos (ลง after.source) · ไม่ส่ง = หน้าจอ/ผู้เรียกเดิม (VoidSaleAudit ไม่อยู่ในสัญญา F15.2) ◂ */
+  source?: "API";
 };
 
 // void: กลับรายการ (คืนแต้ม + สถานะ)
@@ -1436,6 +1438,7 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string,
             ...(audit.idempotencyKey ? { idempotencyKey: audit.idempotencyKey } : {}),
             ...(audit.via ? { via: audit.via, requestId: audit.requestId ?? null } : {}),
             ...(audit.requestedByUserId ? { requestedByUserId: audit.requestedByUserId } : {}),
+            ...(audit.source ? { source: audit.source } : {}), // POS P2.14 ▸ API-9 ◂
           },
         },
       });

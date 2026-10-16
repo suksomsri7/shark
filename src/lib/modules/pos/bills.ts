@@ -642,13 +642,15 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
       if (sh?.status !== "OPEN") return refuse("SHIFT_CLOSED");
     }
     const deviceId = isRecord(ctx) && typeof ctx.deviceId === "string" ? ctx.deviceId : null;
+    // POS P2.14 ▸ API-9: คำสั่งจาก REST (ctx ของเซิร์ฟเวอร์มี apiKeyId) = audit pos.sale.void after.source "API" · หน้าจอ/ลิ้นชักบิล = ไม่มี source ◂
+    const viaApi: { source?: "API" } = isRecord(ctx) && typeof (ctx as { apiKeyId?: unknown }).apiKeyId === "string" && !!(ctx as { apiKeyId?: unknown }).apiKeyId ? { source: "API" } : {};
 
     // POS P1.15 ▸ R5 + CD4: PIN ผู้จัดการ = ยกเลิกทันที (แม้มีกติกา) · audit void ผู้กระทำ = ผู้จัดการ + pin_override · ยกเลิกคำขอที่รอของบิลนี้ ◂
     if (hasPin) {
       const v = await verifyManagerPin({ tenantId, unitId, deviceId }, { managerPin: input.managerPin, managerUserId: input.managerUserId });
       if (v.ok === false) return pinRefusal(v);
       if (!evaluate(v.actor, { module: "pos", action: VOID_PERMISSION, unitId })) return refuse("NO_PERMISSION", "PIN นี้ไม่มีสิทธิ์ยกเลิกบิล — ใช้ PIN ของผู้จัดการ");
-      const done = await voidNow(tenantId, unitId, sale.id, key, { actorUserId: v.actor.userId, reason, idempotencyKey: key, via: "pin_override", requestId: null, requestedByUserId: a.userId });
+      const done = await voidNow(tenantId, unitId, sale.id, key, { actorUserId: v.actor.userId, reason, idempotencyKey: key, via: "pin_override", requestId: null, requestedByUserId: a.userId, ...viaApi });
       if (!done.ok || done.duplicated) return done;
       const cancelled = await cancelOpenPosRequest(tenantId, "POS_VOID", sale.id);
       await auditPinOverride({ tenantId, action: "POS_VOID", requestId: cancelled, byUserId: v.actor.userId, forUserId: a.userId, targetType: "PosSale", targetId: sale.id, extra: { saleId: sale.id } });
@@ -671,7 +673,7 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
       const code = ap.status === "PENDING" ? "PENDING_APPROVAL" : "APPROVAL_REQUIRED";
       return { ok: false, code, message: POS_APPROVAL_MESSAGE[code], requestId: ap.requestId };
     }
-    return await voidNow(tenantId, unitId, sale.id, key, { actorUserId: a.userId, reason, idempotencyKey: key });
+    return await voidNow(tenantId, unitId, sale.id, key, { actorUserId: a.userId, reason, idempotencyKey: key, ...viaApi });
   } catch (e) {
     console.error("[pos/bills] voidSaleByActor", e);
     return refuse("UNKNOWN");
