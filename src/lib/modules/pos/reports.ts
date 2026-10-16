@@ -1665,7 +1665,7 @@ const bkkTime = (isoStr: string | null): string => (isoStr ? new Date(Date.parse
 const SHIFT_STATUS_TH: Record<string, string> = { OPEN: "เปิดอยู่", CLOSED: "ปิดแล้ว", FORCE_CLOSED: "ระบบปิดให้" };
 
 export const CSV_HEADERS: Record<ReportKind, string[]> = {
-  daily: ["วันที่", "จำนวนบิล", "ยอดก่อนส่วนลด", "ส่วนลด", "ค่าบริการ", "ยอดขายสุทธิ", "VAT", "ยอดก่อน VAT", "ทิป", "บิลยกเลิก", "ยอดบิลยกเลิก", "จำนวนคืนเงิน", "ยอดคืนเงิน", "เฉลี่ยต่อบิล"], // POS P2.14 ▸ API-11: คอลัมน์คืนเงินของ JSON (refundCount · refundTotalSatang) ◂
+  daily: ["วันที่", "จำนวนบิล", "ยอดก่อนส่วนลด", "ส่วนลด", "ค่าบริการ", "ยอดขายสุทธิ", "VAT", "ยอดก่อน VAT", "ทิป", "บิลยกเลิก", "ยอดบิลยกเลิก", "เฉลี่ยต่อบิล", "จำนวนคืนเงิน", "ยอดคืนเงิน"], // POS P2.14 ▸ API-11: คอลัมน์คืนเงินของ JSON (refundCount · refundTotalSatang) · fix1 F11: ต่อท้าย (คอลัมน์เดิมไม่เลื่อน) ◂
   products: ["รหัส", "ชื่อ", "จำนวน", "น้ำหนัก (กรัม)", "จำนวนบิล", "ยอดเต็ม", "ส่วนลดรายการ", "ยอดขาย"],
   staff: ["รหัสผู้ใช้", "ชื่อ", "จำนวนบิล", "ยอดขายสุทธิ", "ส่วนลด", "ทิป", "บิลยกเลิก", "ยอดบิลยกเลิก", "เฉลี่ยต่อบิล"],
   payments: ["วิธีชำระ", "รหัส", "จำนวนรายการ", "จำนวนบิล", "ยอดรับ"],
@@ -1704,9 +1704,9 @@ const dailyCells = (first: string, x: DailyTotals): Cells => [
   baht(x.tipSatang),
   x.voidCount,
   baht(x.voidTotalSatang),
-  x.refundCount, // POS P2.14 ▸ API-11 ◂
-  baht(x.refundTotalSatang), // POS P2.14 ▸ API-11 ◂
   baht(x.avgBillSatang),
+  x.refundCount, // POS P2.14 ▸ API-11 · fix1 F11: ต่อท้าย ◂
+  baht(x.refundTotalSatang), // POS P2.14 ▸ API-11 · fix1 F11: ต่อท้าย ◂
 ];
 
 /**

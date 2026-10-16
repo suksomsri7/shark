@@ -85,7 +85,7 @@ itself; never post it again there.
   the `Satang` suffix like every other field (`subtotalSatang`,
   `grandTotalSatang`, `refundedSatang`, ...). CSV reports show money in baht
   with two decimals (`55492.50`), as in the export button file; the daily CSV
-  has refund columns (count and amount) next to the voids. Use the JSON report
+  has refund columns (count and amount) as its last two columns. Use the JSON report
   (`*Satang` fields) when you need exact satang.
 - Payment methods through the API: `CASH`, `TRANSFER`, `PROMPTPAY`, `CARD`,
   and `PLATFORM` on delivery platform channels only. Gift cards, store credit,
