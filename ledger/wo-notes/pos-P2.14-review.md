@@ -73,3 +73,10 @@
 
 ### Fix round 2 sent (08:42Z) — 6 items
 1 G1/H2 throw on any ok:false except skipped + ORACLE-ADD O5c (+ G2 note/OWNER) · 2 H3/G5 runner (checks everywhere · failed|findings · rc∈{0,1}+summary · SET · HEAD-end · 3 self-tests) · 3 G3 per-caller messages th/en · 4 G4 doc wording · 5 G6 + H1 OWNER line D12/D12b + HF-FU2 lines (no shift-rule change) · 6 G7 markers + LEG veto set = 8 commits · gates: p2.14 ×3 (58/60) · p2.8 · shop ×2 · p2.13 · gate set once · fitness · gen-check · dry · typecheck
+
+## Fix round 2 delivered (09:49Z) — `wip/pos-p2.14` **e1c4d999** (368b5753..e1c4d999 · pushed · dirty 0)
+- p2.14 **58/60** ×3 (gate set + `fx2-final-20261016T094606Z` forced/unforced; H1 H3 only) · gate set `/root/pos-runs/p214-close-shark-pos-d-20261016T085341Z` → `SET full 94/94` · `HEAD-end=e1c4d999 dirty-end=0` · **VERDICT green** · 19 accepted with evidence + exact checks · fitness ±env/pos 0 · gen-check 0 · typecheck 0 · dry th 218 / en 139 · p2.8 60/61 (ST6) · shop 15/15 · shop-refund 12/12 · p2.13 54/54 (`fx2-pre-20261016T084832Z`)
+- Items: 1 f16afe32 + O5c 5c654718 (59→60) · 2 runner cadbdda6 + manifest 4ca65e97 (`--verdict <dir>`; accepted = evidence + checks; rc 1 + JSON_SUMMARY; failed|findings; SET; HEAD-end) · 3 bf4f3b1e per-caller messages th/en (http-errors passes a refusal's own en text) · 4 986c942a · 5 7c609f93 OWNER D12/D12b + HF-FU2 + G2 line · 6 72b08c2a · notes §9 e1c4d999
+- Runner self-tests (`/root/pos-runs/p214-builder/selftest-fx2/`): control green rc0 · hidden PL2.1 → RED rc1 · rc137 → RED rc1 · headchg → RED rc1
+- LEG veto set = 8 commits: 086094ca 7dd87a55 1150caa7 27ddcbfe 6fea40f0 dbdb68ed 2ce422d0 f5d74b1c
+- R3 (R2 agent, read-only) asked to re-verify the 6 hunks → then merge
