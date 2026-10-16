@@ -79,12 +79,19 @@ print(f"SET {'partial' if partial else 'full'} {len(rows)}/{total}")
 # POS HF-FU2 ▸ U(c)(d): HEAD.txt บรรทัด 1 + โทเค็น only= (ไม่มี = "-" · โฟลเดอร์เก่าก่อน HF-FU2) ◂
 head_line = None
 only = "-"
+head_lines = 0
+head_toks = {}
 try:
     head_txt = open(os.path.join(out, "HEAD.txt"), errors="replace").read()
+    head_lines = len(head_txt.splitlines())
     head_line = (head_txt.splitlines() or [""])[0]
-    for tok in head_txt.split():
-        if tok.startswith("only="):
-            only = tok[5:] or "-"
+    # POS HF-FU2 ▸ fix1 N2: อ่าน head/dirty/only จากบรรทัด 1 เท่านั้น (บรรทัดต่อท้ายปลอมไม่มีผล) · นับโทเค็นซ้ำ ◂
+    for tok in head_line.split():
+        for k in ("head=", "dirty=", "only="):
+            if tok.startswith(k):
+                head_toks.setdefault(k, []).append(tok[len(k):])
+    if head_toks.get("only="):
+        only = head_toks["only="][0] or "-"
 except Exception:
     pass
 names_all = [s["suite"] for s in man.get("suites", [])] + [c["name"] for c in man.get("commands", [])]
@@ -113,6 +120,14 @@ def ids_of(log):  # POS HF-FU2 ▸ U(a): คืน (ids, total, passed) ◂
 def is_crash_id(x):  # POS HF-FU2 ▸ U(b) ◂
     return x == "CRASH" or str(x).endswith("-ERR")
 red = []
+# POS HF-FU2 ▸ fix1 N2: HEAD.txt ต้องมีบรรทัดเดียว · โทเค็น head= dirty= only= ไม่ซ้ำ ◂
+if head_lines != 1:
+    print(f"RED HEAD.txt {head_lines} บรรทัด (ต้องมีบรรทัดเดียว)")
+    red.append("HEADTXT")
+for k, v in head_toks.items():
+    if len(v) > 1:
+        print(f"RED HEAD.txt มีโทเค็น {k} {len(v)} ตัว (ต้องมีไม่เกิน 1)")
+        red.append("HEADTXT")
 # POS HF-FU2 ▸ U(c): ชุดไม่ครบต้องมาจาก --only และแถวต้องตรงรายชื่อของ --only ◂
 if partial and only == "-":
     print(f"RED SET partial {len(rows)}/{total} (only=- — ชุดไม่ครบที่ไม่ได้มาจาก --only)")
@@ -185,15 +200,8 @@ for name, rc in rows:
         red.append(name)
     else:
         print(f"ACCEPTED {name} {rc} — {a.get('reason', '')[:120]}")
-head0 = dirty0 = None
-try:
-    for tok in open(os.path.join(out, "HEAD.txt")).read().split():
-        if tok.startswith("head="):
-            head0 = tok[5:]
-        if tok.startswith("dirty="):
-            dirty0 = tok[6:]
-except Exception:
-    pass
+head0 = (head_toks.get("head=") or [None])[0]  # POS HF-FU2 ▸ fix1 N2: จากบรรทัด 1 ของ HEAD.txt เท่านั้น ◂
+dirty0 = (head_toks.get("dirty=") or [None])[0]
 head1 = subprocess.run(["git", "-C", root, "rev-parse", "--short=8", "HEAD"], capture_output=True, text=True).stdout.strip()
 dirty1 = str(len([l for l in subprocess.run(["git", "-C", root, "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines() if l.strip()]))
 print(f"HEAD-end={head1} dirty-end={dirty1}")
