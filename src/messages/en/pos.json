@@ -312,7 +312,8 @@
         "tipCashOnly": "Tips need a cash, transfer, PromptPay or card payment",
         "tipOverCash": "Tip cannot exceed the cash-like part {amount}",
         "overDue": "Over the amount due by {amount} — remove a row and take it again",
-        "pinAgainRestart": "Bill total changed — take the payment again (gift cards need the PIN again)"
+        "pinAgainRestart": "Bill total changed — take the payment again (gift cards need the PIN again)",
+        "pinLeft": "{n} tries left before the card locks"
       },
       "depositValidation": "The deposit payment details are invalid — check the deposit rows and try again",
       "depositTileOff": "Not enabled",

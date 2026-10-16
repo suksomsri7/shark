@@ -12,7 +12,7 @@ import { useRef, useState } from "react";
 import { payOrderAction } from "@/lib/modules/pos/order-actions";
 import type { OrderDetail, OrderRefusal } from "@/lib/modules/pos/order-shared";
 import { REGISTER_MAX_PAY_METHODS, submitRefusalMessageKey } from "@/lib/modules/pos/register-shared";
-import { PayDialog, type PayChoice, type PayError, type PayPhase } from "@/components/pos/register/InterimPayDialog";
+import { PayDialog, type PayChoice, type PayError, type PayPhase, payErrorPinMeta } from "@/components/pos/register/InterimPayDialog" /* POS P2.14 ▸ UI-9 ◂ */;
 
 type Req = { payMethods: PayChoice["payMethods"]; cashReceivedSatang?: number };
 
@@ -61,7 +61,7 @@ export function OrderPay(p: {
         p.onGone(r);
         return;
       }
-      setError({ code: r.code, key: submitRefusalMessageKey(r) }); // fix 1 F1: ด่านผู้จัดการ = refusal.manualConfirmManager (HF-PP) · อื่น ๆ = refusalMessageKey
+      setError({ code: r.code, key: submitRefusalMessageKey(r), ...payErrorPinMeta(r) }); /* POS P2.14 ▸ UI-9 ◂ */ // fix 1 F1: ด่านผู้จัดการ = refusal.manualConfirmManager (HF-PP) · อื่น ๆ = refusalMessageKey
     } catch {
       setPhase("unknown");
     } finally {

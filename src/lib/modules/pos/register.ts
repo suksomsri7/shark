@@ -627,6 +627,11 @@ const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าข�
 function regRefuse(code: RegisterRefusalCode, message?: string, lineIndex?: number): RegisterRefusal {
   return lineIndex === undefined ? { ok: false, code, message: message ?? REG_MESSAGE[code] } : { ok: false, code, message: message ?? REG_MESSAGE[code], lineIndex };
 }
+// POS P2.14 ▸ UI-9: คำปฏิเสธ PIN บัตรของขวัญบอกแถว (giftCardRow) + ครั้งที่เหลือ (attemptsLeft) — รหัสอื่นคืนตามเดิม ◂
+function regPinRow(e: PosSaleError, r: RegisterRefusal): RegisterRefusal {
+  if (e.code !== "GIFT_CARD_PIN") return r;
+  return { ...r, ...(e.giftCardRow !== undefined ? { giftCardRow: e.giftCardRow } : {}), ...(e.attemptsLeft !== undefined ? { attemptsLeft: e.attemptsLeft } : {}) };
+}
 const isRegRefusal = (v: unknown): v is RegisterRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
 /** POS P1.12: คำปฏิเสธชุดข้อความเดียวกับหน้าขาย (register-member.ts ใช้ — MEMBER_NOT_FOUND ข้อความเดียวทุกทาง · 404-not-403) */
 export function registerRefuse(code: RegisterRefusalCode, message?: string): RegisterRefusal {
@@ -2821,7 +2826,7 @@ async function regSubmitWithIntents(
           const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
           return row ? regDuplicate(s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
       if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
@@ -2865,7 +2870,7 @@ async function regSubmitTable(
   try {
     await preverifySaleGiftPins(saleInput);
   } catch (e) {
-    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    if (e instanceof PosSaleError) return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code)); // POS P2.14 ▸ UI-9 ◂
     throw e;
   }
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -2921,7 +2926,7 @@ async function regSubmitTable(
           const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
           return row ? regTableDuplicate(db, s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
       if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
@@ -2957,7 +2962,7 @@ async function regSubmitSplitPart(
   try {
     await preverifySaleGiftPins(saleInput);
   } catch (e) {
-    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    if (e instanceof PosSaleError) return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code)); // POS P2.14 ▸ UI-9 ◂
     throw e;
   }
   // คีย์เดียวกันที่ commit แล้ว: บิลเดิม = บิลที่ใบนี้ถืออยู่ตอนนี้เท่านั้น (เทียบ payload ตามปกติ)
@@ -3029,7 +3034,7 @@ async function regSubmitSplitPart(
           const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
           return row ? replay(row) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
       if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
@@ -3279,7 +3284,7 @@ async function regCreate(db: RegDb, s: RegScope, req: RegParsedSubmit, saleInput
           return row ? regDuplicate(s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
         // POS P1.8: HAS_REFUNDS มาจาก voidSale เท่านั้น (createSale ไม่โยน) — กันชนิดไว้เป็น VALIDATION
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       // createSale ตรวจยอดอีกชั้น (เช่น ส่วนลดอัตโนมัติของระดับสมาชิกที่ P1.3 ยังไม่คิด · P1.12) — ไม่มีบิลเกิด
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");

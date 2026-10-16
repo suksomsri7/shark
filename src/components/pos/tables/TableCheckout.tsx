@@ -28,7 +28,7 @@ import {
 import type { PriceDiscount } from "@/lib/modules/pos/pricing-shared";
 import { quoteRegisterCartAction, quoteRegisterCartOverrideAction, submitRegisterSaleAction } from "@/lib/modules/pos/register-actions";
 import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
-import { PayDialog, type PayChoice, type PayError, type PayPhase } from "@/components/pos/register/InterimPayDialog";
+import { PayDialog, type PayChoice, type PayError, type PayPhase, payErrorPinMeta } from "@/components/pos/register/InterimPayDialog" /* POS P2.14 ▸ UI-9 ◂ */;
 import { PayDone } from "@/components/pos/register/PayDone";
 import { BillDiscountDialog } from "@/components/pos/register/BillDiscountDialog";
 import { CouponDialog } from "@/components/pos/register/CouponDialog";
@@ -265,7 +265,7 @@ export function TableCheckout(p: Props) {
       }
       if (r.code === "STAFF_TOKEN_INVALID") p.onStaffTokenDead();
       if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED") setPin(null);
-      setError({ code: r.code, key: submitRefusalMessageKey(r) }); // POS HF-PP ▸ fix 1: ด่านผู้จัดการ = refusal.manualConfirmManager · อื่น ๆ = refusalMessageKey ◂
+      setError({ code: r.code, key: submitRefusalMessageKey(r), ...payErrorPinMeta(r) }); /* POS P2.14 ▸ UI-9 ◂ */ // POS HF-PP ▸ fix 1: ด่านผู้จัดการ = refusal.manualConfirmManager · อื่น ๆ = refusalMessageKey ◂
       if (r.code === "PRICE_CHANGED" || r.code === "PAYMENT_MISMATCH" || r.code === "COUPON_INVALID" || r.code === "DISCOUNT_EXCEEDS_LIMIT") void requote();
     } catch {
       savePending(sale, "unknown");

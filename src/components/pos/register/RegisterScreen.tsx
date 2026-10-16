@@ -98,7 +98,7 @@ import { CouponDialog } from "./CouponDialog";
 import { CustomItemDialog } from "./CustomItemDialog";
 import { HeldBillsDialog } from "./HeldBillsDrawer";
 import { HeldRecallConfirmDialog, HoldLabelDialog } from "./HeldDialogs";
-import { PayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
+import { PayDialog, type PayChoice, type PayError, type PayPhase, payErrorPinMeta } from "./InterimPayDialog" /* POS P2.14 ▸ UI-9 ◂ */;
 import { LineEditor, type LineEditResult } from "./LineEditor";
 import { MobileCartBar } from "./MobileCartBar";
 // ชื่อลงท้าย Sheet/Tabs = ตัวสแกนปุ่ม (F15.3) นับเป็น "คอมโพเนนต์กดได้" ⇒ ใช้ชื่อแฝงตอนวาง (ตัวที่กดได้จริงข้างในมี testid ครบแล้ว)
@@ -1831,7 +1831,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         return;
       }
       // POS HF-PP ▸ fix 1: ด่านผู้จัดการของพร้อมเพย์/บัตรที่ไม่มีใบขอรับเงิน = ข้อความเฉพาะ (refusal.manualConfirmManager) ◂
-      setPayError({ code: r.code, ...(submitRefusalMessageKey(r) === "refusal.manualConfirmManager" ? { key: "refusal.manualConfirmManager" } : errorFor(r.code)) });
+      setPayError({ code: r.code, ...(submitRefusalMessageKey(r) === "refusal.manualConfirmManager" ? { key: "refusal.manualConfirmManager" } : errorFor(r.code)), ...payErrorPinMeta(r) }); // POS P2.14 ▸ UI-9 ◂
       if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
       // POS P1.15U ▸ PIN ผู้จัดการผิด/ล็อก = ล้างสิทธิ์ที่เตรียมไว้ (ใส่ใหม่ผ่านแผ่นส่วนลดเกินสิทธิ์) · ต้องรออนุมัติ = บิลถูกพักแล้ว ⇒ 21B (ล้างจอนอก send) ◂
       if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null); // POS P1.18U ▸ 10a ◂

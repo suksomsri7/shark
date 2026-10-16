@@ -76,7 +76,12 @@ import { HEAD_OFFICE_BRANCH_CODE, type TaxInvoiceBuyerInput } from "@/lib/module
 import type { DisplayPayIn } from "@/lib/modules/pos/display-shared"; // POS P2.10 ▸ จอลูกค้า ◂
 
 export type PayPhase = "form" | "sending" | "unknown" | "conflict";
-export type PayError = { code: string; key: string; values?: Record<string, string | number> };
+export type PayError = { code: string; key: string; values?: Record<string, string | number>; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือ ◂ */ giftCardRow?: number; attemptsLeft?: number };
+/** POS P2.14 ▸ UI-9: ส่งแถว/ครั้งที่เหลือของคำปฏิเสธ PIN ต่อให้กล่องจ่าย (ไม่มี = ทุกแถวบัตรใส่ใหม่ตามเดิม) ◂ */
+export function payErrorPinMeta(refusal: object): Pick<PayError, "giftCardRow" | "attemptsLeft"> {
+  const r = refusal as { giftCardRow?: unknown; attemptsLeft?: unknown };
+  return { ...(typeof r.giftCardRow === "number" ? { giftCardRow: r.giftCardRow } : {}), ...(typeof r.attemptsLeft === "number" ? { attemptsLeft: r.attemptsLeft } : {}) };
+}
 /** สิ่งที่กล่องส่งกลับเมื่อยืนยัน — RegisterScreen ประกอบเป็นคำขอ submit (คีย์บิล + expectedGrandTotalSatang อยู่ฝั่งนั้น) */
 export type PayChoice = { payMethods: RegisterPayMethod[]; cashReceivedSatang?: number; tipSatang: number };
 /** รายละเอียดยอดจาก quote (แสดงใต้ยอดใหญ่) */
@@ -178,7 +183,7 @@ type PayRow = {
    * POS P2.9U ▸ แถวบัตรของขวัญ/เครดิตร้าน: number = เลขที่สแกน/พิมพ์ (ส่งกับคำขอ · เครดิตร้าน = "") · masked/balanceSatang = ผลค้นล่าสุด
    * (balanceSatang null = ยังไม่รู้ — แถวที่สร้างคืนหลัง reload ก่อนค้นใหม่) · note = ข้อความใต้แถว · PIN อยู่ใน pinsRef เท่านั้น ◂
    */
-  card?: { number: string; masked: string; balanceSatang: number | null; note?: "pinWrong" | "pinAgain" | null };
+  card?: { number: string; masked: string; balanceSatang: number | null; note?: "pinWrong" | "pinAgain" | null; /** POS P2.14 ▸ UI-9: ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ left?: number | null };
   /**
    * POS P2.9bU ▸ แถวมัดจำ: id = PosDeposit.id (ส่งเป็น depositId) · receiptNo = เลขใบรับ (null = แถวที่สร้างคืนหลัง reload) ·
    * remainingSatang = ยอดค้นล่าสุด (null = ไม่รู้) · needsLast4 = ต้องส่ง 4 หลักท้าย (อยู่ใน last4Ref เท่านั้น) · note = ข้อความใต้แถว ◂
@@ -715,7 +720,14 @@ export function PayDialog(p: Props) {
     const e = p.error;
     if (!e || e === lastErr.current) return;
     lastErr.current = e;
-    if (e.code === "GIFT_CARD_PIN") {
+    // POS P2.14 ▸ UI-9: คำปฏิเสธบอกแถว (giftCardRow) ⇒ ล้าง PIN + ข้อความ "ไม่ถูกต้อง · เหลืออีก n ครั้ง" เฉพาะแถวนั้น แล้วเปิดแป้นของแถวนั้น ◂
+    const pinRow = e.code === "GIFT_CARD_PIN" && typeof e.giftCardRow === "number" ? gcRows[e.giftCardRow] : undefined;
+    if (pinRow) {
+      pinsRef.current.delete(pinRow.id);
+      setRows((s) => s.map((r) => (r.id === pinRow.id && r.card ? { ...r, card: { ...r.card, note: "pinWrong", left: e.attemptsLeft ?? null } } : r)));
+      setGcRowsNote(null);
+      reenterPin(pinRow);
+    } else if (e.code === "GIFT_CARD_PIN") {
       // ไม่มีเลขแถวในคำปฏิเสธ (register.ts:600 · service.ts tenderStep) ⇒ ทุกแถวบัตรต้องใส่ PIN ใหม่ · ใบเดียว = เปิดแป้นของใบนั้นทันที
       for (const r of gcRows) pinsRef.current.delete(r.id);
       setRows((s) => s.map((r) => (r.type === "GIFT_CARD" && r.card ? { ...r, card: { ...r.card, note: "pinWrong" } } : r)));
@@ -1441,6 +1453,7 @@ export function PayDialog(p: Props) {
                           <span className="flex basis-full items-center gap-3 pb-1 pl-[27px] max-md:order-last md:pl-[33px]">
                             <span data-testid={`pos-reg-paydlg-giftcard-row-note-${gcN}`} className="min-w-0 flex-1 text-[12.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
                               {t(r.card.note === "pinWrong" ? "pay.gc.pinWrong" : "pay.gc.pinAgain")}
+                              {r.card.note === "pinWrong" && typeof r.card.left === "number" && <> · {t("pay.gc.pinLeft", { n: r.card.left })}</>}{/* POS P2.14 ▸ UI-9 ◂ */}
                             </span>
                             <button
                               data-testid={`pos-reg-paydlg-giftcard-row-pin-${gcN}`}
