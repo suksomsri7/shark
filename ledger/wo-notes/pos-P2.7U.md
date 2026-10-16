@@ -60,3 +60,31 @@ Lane pins: none red — origin/session/pos (da27141d) contains the base, so p2.1
 - Done QR rounds are per round, not per table bill; a "paid table" row would need the sale link (P2.14).
 - Phone: 9-digit landline numbers still accepted by the server rule (S contract); the client now maps Thai digits / 0066 / +66 (0).
 - `pos.orders.expired.row` / `late.row` keys exist for a future done-row flag (CANCELLED orders are not on the board).
+
+## Fix round 1 (R1 MERGEABLE-AFTER-FIXES on 396b0092 + vis89 image findings · hunks `// POS P2.7U fix1 ▸ … ◂`)
+Commits on top of 396b0092: 50c08c9c (R1 F1 F2 F3 F5 F6 F7 + nits a–d) · 7293b447 (IMG-1..4) · notes commit (final head; typecheck at that head).
+- **F1** new read-only file `src/lib/modules/restaurant/pos-qr-readers.ts` (`guestRoundsTodayForPos` = RestaurantOrder DINE_IN of today's restaurant `bizDate` (`bizDateBkk`), QR source via `kds-shared` `ticketSourceOf` · `tableQrTokensForPos`), re-exported in `restaurant/index.ts` under `// POS P2.7U ▸ read-only readers for the POS QR staff screens ◂`. **Name deviation:** `restaurant/pos-qr.ts` already exists (the S card's guest-round writer file), so the read-only readers live in a separate file to keep "one new read-only file" literally true. `pos/qr-staff.ts` calls them via the lazy `restaurant()` facade import (like `table.ts`); `grep -c 'prisma.restaurant' src/lib/modules/pos/qr-staff.ts` = **0**. table/order/menu/kds/storefront/scope untouched; no createSale in index.ts.
+- **F2** `OrdersScreen` new-order beep/toast: `actionable = NEW && paymentState !== PENDING_PAYMENT` in both the `ids` and the `fresh` filter.
+- **F3** `QrOrderStatusView.serverNow` (ISO, `qr-order.ts` + shared type) · `use-qr.ts useServerNow` = server time at response + elapsed `performance.now()` (FloorClock/`clockNow` pattern) · status countdown uses it. 09 unchanged.
+- **F4** kept (no change).
+- **F5** `P27_PLAN` + `pre-pay-beam` (Beam enabled briefly in the coffee POS payment settings + the script's fake Beam adapter, restored in `finally`; no external call) · `pre-preparing` (own state; `pre-accepted` now strictly accepted) · `pre-handed` · `pre-cancelled` (accept → `cancelOrder`; voided sale kept) · `pre-bad-link` · `pre-bad-order`. Dry shots: th **67 → 79**, en **49 → 61**.
+- **F6** `QrChannelBlock` gets `canAccept` (`pos.order.accept` evaluated on the settings page, threaded page → ChannelsPane/SharkSettings → ChannelsPanel → ChannelDrawer); auto-accept, prep, pause and reopen disabled with tooltip `pos.orders.perm.accept` (same text as the 09 accept controls).
+- **F7** `orderAgainToken` only when the ACTIVE link has `rotatedAt` null or ≤ order `createdAt`, **and** the link's `createdAt` ≤ order `createdAt` (an ACTIVE row always has `rotatedAt` null after a rotation — the old row carries it — so the creation check is what detects "link changed after the order"). Otherwise null → `pos-qr-order-rescan` "สแกน QR ใหม่" / "Scan the QR again" (no token in the markup).
+- **Nits** (a) language links `min-w-11 min-h-11` · (b) en `claimHint` = "I have paid" · (c) late banner only while the intent is `PAID` — the single `latePaid` read is now one raw SELECT joining `PosOrderEvent` (late_payment) to `PosPaymentIntent` on `payload->>'intentId'` · (d) bizDate (in F1).
+- **IMG-1** settings step clicks `pos-channel-open-${code.toLowerCase()}`.
+- **IMG-2** tables toolbar `flex-wrap` + short print label below `sm` (the third button pushed the 390 document to 457 px); print preview 1 column below 480 px inside its own scroll box, paper stays 3 columns (`@media print` grid override).
+- **IMG-3** 09 < 768: the detail panel now replaces the board in-flow (was a fixed full-screen sheet that the full-page capture interleaved with the rail settings below). Root cause = P2.8U mobile layout; fixed here under the fix1 marker. iPad sheet unchanged.
+- **IMG-4** public toasts anchored bottom (above the cart bar), not over the header/table chip.
+- **Not verifiable here (CONTROLLER-RUN):** the 390 overflow re-check of `tables-qr-dialog` / `tables-qr-print` and the `orders-qr-rows` double sticky header need a build of this head (lane rule: builder runs no build/server; the QC5 server serves tree c @396b0092). Expected: the overflow came from the toolbar (fixed); the double header is a full-page capture artefact of the fixed mobile frame (the mobile panel is no longer fixed). Please shoot `--states --state tables-qr-dialog,tables-qr-print,orders-qr-rows,orders-claim,orders-prepaid,table-sent,table-notified,settings-channel-qr-table,settings-channel-qr-order` + the six F5 states.
+- `P27_PLAN` has owner rows only — a cashier run yields 0 shots (intended for this card).
+
+| gate (head 7293b447 · dirty 0 · unforced) | result | log `runs/` |
+|---|---|---|
+| qc-pos-p2.7 ×2 | 42/42 · 42/42 | f1b-qc-pos-p2.7 · f1b-qc-pos-p2.7-run2 |
+| qc-restaurant · -pay · -money · -void | pass · 19/19 · 6/6 · 11/11 | f1b-qc-restaurant* |
+| qc-pos-p2.4 · p2.8 · p2.6 | 50/50 · 61/61 · 67/67 | f1b-… |
+| qc-hf-pos-page-authz · p1.16 · p2.10 · p2.1 · p2.13 | 82/82 · 28/28 · 13/13 · 55/55 · 54/54 | f1b-… |
+| fitness no env / env · fitness-pos | 53/53 · 53/53 · 8/8 | f1b-fitness-* |
+| visual-pos p2.7 --states --dry th / en (iso) | exit 0 · 79 / 61 shots | f1b-visual-dry-th/en |
+| typecheck (8192 · once at the final head = this notes commit, dirty 0) | see `typecheck-3.log` | typecheck-3 |
+(Same suite list also green at 50c08c9c before the IMG fixes — `runs/f1-*`.)
