@@ -89,6 +89,7 @@ const CHECKS: readonly Def[] = [
   D("O4", "O", "[C8 ORD-5] บิลของออเดอร์ถูกคืนเงินครบ (REFUNDED) → handOver ปฏิเสธ · ออเดอร์ไม่เป็น HANDED"),
   D("O5", "O", "[C8 ORD-1 · ORD-1b] ประตูเว็บ ingestInTx ใช้การมองเห็นตามคลังของสาขา (C3) เมื่อสาขาผูกคลัง: สินค้าคลังที่สาขา W (ผูกคลังอื่น) → PRODUCT_NOT_FOUND lineIndex 0 · สาขา A → ok · สาขา B (ไม่ผูกคลังเลย) → ok ตามกติกาเดิม"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-1b · CD-B5)
   D("O5b", "O", "[fix1 H1 ORD-1b] เว็บร้าน createOrder: สินค้าที่สาขาผูกคลังมองไม่เห็น → throw · ShopOrder 0 · PosSale 0 · PosOrder 0 · สาขาไม่ผูกคลัง → ShopOrder 1 + PosOrder 1 · ไม่มี ShopOrder ที่ไม่มี PosOrder ในร้านนี้"), // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 ORD-1b · O5b)
+  D("O5c", "O", "[fix2 G1/H2] เว็บร้านสาขาผูก POS (A): สินค้าราคาเกิน ORDER_UNIT_PRICE_MAX → createOrder throw · ShopOrder 0 · ร้านนี้ไม่มีบิล ECOM ที่ไม่มี PosOrder (สาขาผูก POS)"), // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 G1/H2 · O5c)
   // ── P ราคา · มัดจำ · ช่องทาง · บัญชี · จอ ──
   D("P1", "P", "[C11 DEP-1] คำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED มี depositId ของแถวนั้น"),
   D("P2", "P", "[C11 PRC-1] bulkChannelMarkup level-aware: (code, ทุกสาขา) notSold → ปรับที่ (code, A) ข้าม · (null, A) notSold → ปรับที่ (code, ทุกสาขา) ข้าม · สินค้ายังไม่ขาย"),
@@ -2184,6 +2185,31 @@ async function runDb() {
     const orphan = shopIds.filter((id: string) => !linked.has(id));
     if (orphan.length) p.push(`ShopOrder ที่ไม่มี PosOrder ${orphan.length}`);
     chk("O5b", !fx && p.length === 0, "เว็บร้าน: มองไม่เห็น = ไม่มี ShopOrder · ไม่ผูกคลัง = ออเดอร์ POS ตามเดิม · ไม่มีเงินโดยไม่มีออเดอร์", why(p));
+  });
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 G1/H2 · O5c) ▸ คำปฏิเสธใดก็ตามของประตู POS = เว็บร้านไม่รับออเดอร์ (ไม่ใช่ log แล้วรับ) ◂
+  await run("O5c", async () => {
+    const p: string[] = [];
+    if (!shopSvc?.createOrder) throw new Error("(fixture) shop createOrder");
+    const MAX = 100_000_000; // = ORDER_UNIT_PRICE_MAX (order-shared.ts)
+    const sc = (u: string): Any => ({ tenantId: T, unitId: u, actorUserId: uid("OWNER") });
+    const sp = await shopSvc.createProduct(sc(U.A!), { name: `ของแพงเกิน O5c ${RAND}`, priceSatang: MAX + 1 });
+    if (!sp?.id) p.push("(fixture) ShopProduct ราคาเกินไม่ถูกสร้าง");
+    const so0 = await P.shopOrder.count({ where: { tenantId: T, unitId: U.A } });
+    let err = "";
+    try {
+      await shopSvc.createOrder(sc(U.A!), { customerName: "คุณ O5c", customerPhone: "0833333333", lines: [{ productId: String(sp?.id ?? "none"), qty: 1 }] });
+    } catch (e) {
+      err = String((e as Error).message).slice(0, 80);
+    }
+    const so1 = await P.shopOrder.count({ where: { tenantId: T, unitId: U.A } });
+    if (!err) p.push("ราคาเกินเพดาน createOrder ไม่ throw");
+    if (so1 !== so0) p.push(`ShopOrder สาขา A ${so0}→${so1} (คาด ไม่เพิ่ม)`);
+    const linkedUnits = (await P.appSystemUnit.findMany({ where: { tenantId: T, type: "POS" }, select: { unitId: true } })).map((x: Any) => x.unitId);
+    const ecom = await P.posSale.findMany({ where: { tenantId: T, sourceModule: "ECOM", refSaleId: null, unitId: { in: linkedUnits } }, select: { id: true } }); // บิลขาย (ไม่นับใบคืน)
+    const withOrder = new Set((await P.posOrder.findMany({ where: { tenantId: T, saleId: { in: ecom.map((x: Any) => x.id) } }, select: { saleId: true } })).map((x: Any) => x.saleId));
+    const orphan = ecom.filter((x: Any) => !withOrder.has(x.id));
+    if (orphan.length) p.push(`บิล ECOM ที่ไม่มี PosOrder บนสาขาผูก POS ${orphan.length}`);
+    chk("O5c", !fx && p.length === 0, "เว็บร้าน: ประตู POS ปฏิเสธ = ไม่มี ShopOrder · ไม่มีบิล ECOM ไร้ออเดอร์", why(p));
   });
 
   // ════════════════ P ราคา · มัดจำ · ช่องทาง · บัญชี · จอ ════════════════
