@@ -120,6 +120,9 @@ export type BillDetail = {
     priceSource: "BASE" | "BRANCH" | "CHANNEL" | "RULE" | "OPEN" | "CUSTOM" | "WEIGHED" | null;
     priceRuleName: string | null;
     listPriceSatang: number | null;
+    /** POS P2.14 ▸ UI-4: ต้นทุนของบรรทัดจากความเคลื่อนไหวสต็อกของบิล (ไม่ผูกสต็อก/ยังไม่ตัด = null) · กำไร = ยอดบรรทัด − ต้นทุน ◂ */
+    costSatang: number | null;
+    marginSatang: number | null;
   }[];
   /** สตางค์ทั้งหมด · subtotal − lineDiscount − billDiscount − coupon − tier + serviceCharge = grandTotal */
   totals: {

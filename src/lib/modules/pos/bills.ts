@@ -16,7 +16,9 @@ import { receiptKindOf } from "./receipt-shared";
 import { snapshotBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ R7 ◂
 import { saleForRefund } from "./refund";
 import { saleChannelResolver } from "./channel"; // POS P2.1 ▸ R11 ◂
-import { PAY_TYPE_ORDER, PosSaleError, voidSale, type VoidSaleAudit } from "./service";
+import { CHANNEL_CODE_RE } from "./channel-shared"; // POS P2.14 ▸ RPT-5 ◂
+import { posDayCutoffMinutes } from "./settings-shared"; // POS P2.14 ▸ RPT-3 ◂
+import { PAY_TYPE_ORDER, PosSaleError, lineConsumption, voidSale, type VoidSaleAudit } from "./service"; // POS P2.14 ▸ UI-4 lineConsumption ◂
 // POS P1.15 ▸ R5: ยกเลิกบิลผ่านสายอนุมัติ (POS_VOID) · PIN ผู้จัดการชนะคำขอที่รอ (CD4) ◂
 import { POS_APPROVAL_MESSAGE, auditPinOverride, cancelOpenPosRequest, submitPosApproval } from "./pos-approval";
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
@@ -89,13 +91,13 @@ function unitReadable(actor: RegisterActor, unitId: string): boolean | null {
   if (!scope) return null;
   return scope.allUnits || scope.unitIds.includes(unitId);
 }
-/** ช่วงเวลา UTC [start, end) ของวันที่ตามเวลาไทย */
-function bkkRange(date: string): { start: Date; end: Date } {
-  const start = new Date(Date.parse(`${date}T00:00:00+07:00`));
+/** ช่วงเวลา UTC [start, end) ของวันที่ตามเวลาไทย · POS P2.14 ▸ RPT-3: cutoffMin = นาทีตัดวันธุรกิจ (settings.pos.reports.dayCutoffMinutes · ตัวเดียวกับรายงาน) ◂ */
+function bkkRange(date: string, cutoffMin = 0): { start: Date; end: Date } {
+  const start = new Date(Date.parse(`${date}T00:00:00+07:00`) + cutoffMin * 60_000);
   return { start, end: new Date(start.getTime() + 86_400_000) };
 }
-const dayWhere = (date: string) => {
-  const { start, end } = bkkRange(date);
+const dayWhere = (date: string, cutoffMin = 0) => {
+  const { start, end } = bkkRange(date, cutoffMin);
   return { OR: [{ paidAt: { gte: start, lt: end } }, { paidAt: null, createdAt: { gte: start, lt: end } }] };
 };
 const timeOf = (s: { paidAt: Date | null; createdAt: Date }) => s.paidAt ?? s.createdAt;
@@ -116,7 +118,7 @@ type CustomerLite = { id: string; name: string | null; firstName: string | null;
 const customerName = (c: CustomerLite) => nonEmpty(c.name) ?? nonEmpty([c.firstName, c.lastName].filter(Boolean).join(" ")) ?? nonEmpty(c.memberCode) ?? "-";
 
 // ═══════════ billsPageData (R1) ═══════════
-type CleanQuery = { unitId: string; date: string; status: BillStatusFilter; q: string; channel: string | null; staffUserId: string | null; page: number; pageSize: number; salesChannelId: string | null };
+type CleanQuery = { unitId: string; date: string; status: BillStatusFilter; q: string; channel: string | null; staffUserId: string | null; page: number; pageSize: number; salesChannelId: string | null; /** POS P2.14 ▸ RPT-5 ◂ */ channelCode: string | null };
 function cleanQuery(raw: unknown): CleanQuery | BillsRefusal {
   if (!isRecord(raw)) return refuse("VALIDATION");
   if (!isId(raw.unitId)) return refuse("VALIDATION");
@@ -142,6 +144,12 @@ function cleanQuery(raw: unknown): CleanQuery | BillsRefusal {
     if (!isId(raw.salesChannelId)) return refuse("VALIDATION");
     salesChannelId = raw.salesChannelId;
   }
+  // POS P2.14 ▸ RPT-5 (R4): ตัวกรองรหัสช่องทาง (code · ข้ามสาขาได้เมื่อ unitId "*") — ตัวกรอง salesChannelId (id ของสาขาเดียว) คงเดิม ◂
+  let channelCode: string | null = null;
+  if (!absent(raw.channelCode) && raw.channelCode !== "") {
+    if (typeof raw.channelCode !== "string" || !CHANNEL_CODE_RE.test(raw.channelCode)) return refuse("VALIDATION");
+    channelCode = raw.channelCode;
+  }
   let staffUserId: string | null = null;
   if (!absent(raw.staffUserId) && raw.staffUserId !== "") {
     if (!isId(raw.staffUserId)) return refuse("VALIDATION");
@@ -157,7 +165,7 @@ function cleanQuery(raw: unknown): CleanQuery | BillsRefusal {
     if (typeof raw.pageSize !== "number" || !(BILL_PAGE_SIZES as readonly number[]).includes(raw.pageSize)) return refuse("VALIDATION");
     pageSize = raw.pageSize;
   }
-  return { unitId: raw.unitId, date: raw.date, status, q, channel, staffUserId, page, pageSize, salesChannelId };
+  return { unitId: raw.unitId, date: raw.date, status, q, channel, staffUserId, page, pageSize, salesChannelId, channelCode };
 }
 
 const emptyPage = (x: CleanQuery): BillsPageData => ({
@@ -199,9 +207,11 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
     const unitWhere = !allUnits ? { unitId: x.unitId } : readScope.allUnits ? {} : { unitId: { in: readScope.unitIds } };
     const base = { tenantId, systemId, ...unitWhere, docType: "SALE" as const, status: { in: LISTED } };
 
+    // POS P2.14 ▸ RPT-3 (R3): วันของหน้าบิล = วันธุรกิจ (ตัดวันตามค่าตั้งรายงาน) — channelCounts/ยอดตรงกับรายงานช่องทางเมื่อ cut-off ≠ 0 ◂
+    const cutoff = posDayCutoffMinutes((await prisma.appSystem.findFirst({ where: { id: systemId, tenantId }, select: { settings: true } }))?.settings);
     const [rows, yRows] = await Promise.all([
       prisma.posSale.findMany({
-        where: { ...base, ...dayWhere(x.date) },
+        where: { ...base, ...dayWhere(x.date, cutoff) },
         select: {
           id: true,
           receiptNo: true,
@@ -223,7 +233,7 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
         },
       }),
       prisma.posSale.findMany({
-        where: { ...base, status: { in: ["PAID", "REFUNDED"] }, ...dayWhere(addBillDays(x.date, -1)) },
+        where: { ...base, status: { in: ["PAID", "REFUNDED"] }, ...dayWhere(addBillDays(x.date, -1), cutoff) },
         select: { status: true, grandTotalSatang: true, refundedSatang: true, sourceModule: true },
       }),
     ]);
@@ -271,7 +281,7 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
     // POS P2.12 ▸ CH3: บิล PAID+REFUNDED ต่อรหัสช่องทาง (ชุดเดียวกับ summary.billCount) ◂
     for (const r of rows) if (r.status === "PAID" || r.status === "REFUNDED") summary.channelCounts[chOf(r).code] = (summary.channelCounts[chOf(r).code] ?? 0) + 1;
     const filtered = rows
-      .filter((r) => matchesStatus(r) && (!x.channel || r.sourceModule === x.channel) && (!x.salesChannelId || chOf(r).id === x.salesChannelId) && (!x.staffUserId || r.soldByUserId === x.staffUserId) && matchesQ(r))
+      .filter((r) => matchesStatus(r) && (!x.channel || r.sourceModule === x.channel) && (!x.salesChannelId || chOf(r).id === x.salesChannelId) && (!x.channelCode || chOf(r).code === x.channelCode) /* POS P2.14 ▸ RPT-5 ◂ */ && (!x.staffUserId || r.soldByUserId === x.staffUserId) && matchesQ(r))
       .sort((p, n) => timeOf(n).getTime() - timeOf(p).getTime() || (n.id < p.id ? -1 : n.id > p.id ? 1 : 0));
     const pageRows = filtered.slice((x.page - 1) * x.pageSize, x.page * x.pageSize);
 
@@ -374,6 +384,18 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
     const ruleNames = new Map(
       ruleIds.length ? (await prisma.posPriceRule.findMany({ where: { tenantId, systemId, id: { in: ruleIds } }, select: { id: true, name: true } })).map((r) => [r.id, r.name]) : [],
     );
+    // POS P2.14 ▸ UI-4 (R5): ต้นทุนต่อบรรทัด = Σ |qtyDelta| × costSatang ของความเคลื่อนไหวที่บิลนี้ตัด (คีย์ pos-consume-<บิล>-<บรรทัด>[-<ของ>] · ตัวเดียวกับรายงานกำไร) ·
+    //   บรรทัดที่ไม่ผูกสต็อก / ยังไม่ตัด = null · กำไร = ยอดบรรทัด − ต้นทุน ◂
+    const partsByLine = new Map(sale.lines.map((l) => [l.id, lineConsumption(sale.id, { id: l.id, itemId: l.itemId, qty: l.qty, weightGrams: l.weightGrams, components: l.components })]));
+    const consumeKeys = [...partsByLine.values()].flat().map((x) => x.key);
+    const movedCost = new Map(
+      consumeKeys.length ? (await prisma.invMovement.findMany({ where: { tenantId, idempotencyKey: { in: consumeKeys } }, select: { idempotencyKey: true, qtyDelta: true, costSatang: true } })).map((m) => [m.idempotencyKey, Math.abs(m.qtyDelta) * m.costSatang]) : [],
+    );
+    const lineCostOf = (lineId: string): number | null => {
+      const parts = partsByLine.get(lineId) ?? [];
+      if (!parts.length || !parts.every((x) => movedCost.has(x.key))) return null;
+      return parts.reduce((t, x) => t + (movedCost.get(x.key) ?? 0), 0);
+    };
 
     const [bookId, shift, customer, coupons, refundDocs, audits] = await Promise.all([
       account.posAccountSystemId(tenantId, systemId),
@@ -514,6 +536,9 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         priceSource: l.priceSource ?? null,
         priceRuleName: l.priceRuleId ? (ruleNames.get(l.priceRuleId) ?? null) : null,
         listPriceSatang: l.listPriceSatang ?? null,
+        // POS P2.14 ▸ UI-4 ◂
+        costSatang: lineCostOf(l.id),
+        marginSatang: lineCostOf(l.id) === null ? null : l.lineTotalSatang - (lineCostOf(l.id) ?? 0),
       })),
       totals: {
         subtotal,

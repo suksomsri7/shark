@@ -274,7 +274,18 @@ export async function posStockItemSearchAction(args: Target & { q: string }): Pr
   }
 }
 
-type StockMove = { id: string; type: "IN" | "OUT" | "ADJUST" | "TRANSFER"; qtyDelta: number; itemName: string; locationId: string | null; note: string | null; sourceModule: string | null; createdAt: string };
+type StockMove = {
+  id: string;
+  type: "IN" | "OUT" | "ADJUST" | "TRANSFER";
+  qtyDelta: number;
+  itemName: string;
+  locationId: string | null;
+  note: string | null;
+  sourceModule: string | null;
+  createdAt: string;
+  /** POS P2.14 ▸ UI-4 (R5): ความเคลื่อนไหวของบิล POS (ตัด/คืน) = เลขบิล + ชื่อบรรทัด + จำนวน · อื่น = ไม่มี ◂ */
+  sale?: { receiptNo: string | null; lineName: string | null; qty: number };
+};
 type HistoryResult = { ok: true; counts: StockCountView[] | null; movements: StockMove[] | null } | StockCountRefusal;
 
 /**
@@ -300,14 +311,39 @@ export async function posStockHistoryAction(args: Target & { limit?: number }): 
       canMove ? inventory.recentMovements({ tenantId, systemId: inv.id }, limit * 3) : Promise.resolve(null),
     ]);
     if (counts && !counts.ok) return counts;
+    const shown = moves ? moves.filter((m) => m.refType !== "PosStockCount").slice(0, limit) : null;
+    // POS P2.14 ▸ UI-4 (R5): บิลของความเคลื่อนไหว (คีย์ pos-consume-<บิล>-<บรรทัด>[-<ของ>] / pos-refund-<ใบคืน>-<บรรทัด>[-<ของ>]) — อ่านเลขบิล + ชื่อบรรทัดของร้านนี้ (2 คำสั่ง) ◂
+    const refOf = (key: string): { saleId: string; lineId: string } | null => {
+      const m = /^pos-(?:consume|refund)-([A-Za-z0-9_]+)-([A-Za-z0-9_]+)(?:-|$)/.exec(key);
+      return m ? { saleId: m[1]!, lineId: m[2]! } : null;
+    };
+    const refs = (shown ?? []).filter((m) => m.refType === "PosSale").map((m) => refOf(m.idempotencyKey)).filter((x): x is { saleId: string; lineId: string } => !!x);
+    const [saleRows, lineRows] = refs.length
+      ? await Promise.all([
+          prisma.posSale.findMany({ where: { tenantId, id: { in: [...new Set(refs.map((r) => r.saleId))] } }, select: { id: true, receiptNo: true, refSaleId: true } }),
+          prisma.posSaleLine.findMany({ where: { tenantId, id: { in: [...new Set(refs.map((r) => r.lineId))] } }, select: { id: true, name: true } }),
+        ])
+      : [[], []];
+    const receiptOf = new Map(saleRows.map((x) => [x.id, x.receiptNo]));
+    const lineName = new Map(lineRows.map((x) => [x.id, x.name]));
     return {
       ok: true,
       counts: counts ? counts.items : null,
-      movements: moves
-        ? moves
-            .filter((m) => m.refType !== "PosStockCount")
-            .slice(0, limit)
-            .map((m) => ({ id: m.id, type: m.type, qtyDelta: m.qtyDelta, itemName: m.item.name, locationId: m.locationId, note: m.note, sourceModule: m.sourceModule, createdAt: m.createdAt.toISOString() }))
+      movements: shown
+        ? shown.map((m) => {
+            const ref = m.refType === "PosSale" ? refOf(m.idempotencyKey) : null;
+            return {
+              id: m.id,
+              type: m.type,
+              qtyDelta: m.qtyDelta,
+              itemName: m.item.name,
+              locationId: m.locationId,
+              note: m.note,
+              sourceModule: m.sourceModule,
+              createdAt: m.createdAt.toISOString(),
+              ...(ref ? { sale: { receiptNo: receiptOf.get(ref.saleId) ?? null, lineName: lineName.get(ref.lineId) ?? null, qty: Math.abs(m.qtyDelta) } } : {}),
+            };
+          })
         : null,
     };
   } catch (e) {

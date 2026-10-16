@@ -106,8 +106,11 @@ export type StaffRow = {
   /** P1.8 — ใบคืนเงินของบิลที่คนนี้ขาย (คืนในช่วงรายงาน · เพิ่มล้วน) */
   refundCount?: number;
   refundTotalSatang?: number;
+  /** POS P2.14 ▸ RPT-2: ส่วนลดที่พนักงานคุมได้ (ฐาน A3 = บรรทัด + ท้ายบิล − คูปอง − สมาชิก) + ธง A3 ของผู้ขายคนนี้ (เพิ่มล้วน · แถวเท่านั้น) ◂ */
+  staffDiscountSatang?: number;
+  a3Flag?: boolean;
 };
-export type StaffTotals = Omit<StaffRow, "userId" | "name">;
+export type StaffTotals = Omit<StaffRow, "userId" | "name" | "staffDiscountSatang" | "a3Flag">;
 
 /** P1.8 — amountSatang = รับสุทธิหลังหักเงินคืนของวิธีนั้น · refundCount/refundSatang = ใบคืน (มีเฉพาะเมื่อมีการคืน) */
 export type PaymentRow = { type: string; label: string; count: number; billCount: number; amountSatang: number; cashTenderedSatang?: number; changeSatang?: number; refundCount?: number; refundSatang?: number };
@@ -733,13 +736,21 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
         row.voidTotalSatang += x.grandTotalSatang;
       }
     }
+    // POS P2.14 ▸ RPT-2 (R2): ฐาน A3 ต่อผู้ขาย (staffDiscountSatang) + ธง a3Flag (staffDiscount × 10000 > net × A3.bp · net > 0) — ภาพรวมใช้ธงนี้แทนการเทียบ Σ ส่วนลดทั้งหมด ◂
+    const staffDisc = await staffDiscountBySale(db, s, r, sales.filter((x) => x.docType === "SALE" && x.status !== "VOIDED"));
+    const sd = new Map<string, number>();
+    for (const x of sales) if (x.docType === "SALE" && x.status !== "VOIDED") sd.set(seller.ofSale(x) ?? "", (sd.get(seller.ofSale(x) ?? "") ?? 0) + (staffDisc.get(x.id) ?? 0));
+    const a3bp = posAnomalyThresholds(s.settings).rules.A3.bp;
     const names = await userNames(db, [...m.values()].map((x) => x.userId).filter((x): x is string => !!x));
     // POS P2.13 ▸ fix1 F4: ผู้ขายที่เป็นคีย์ API (soldByUserId = keyId · มติ 3) = "API: <ชื่อคีย์>" — เฉพาะ id ที่ไม่ใช่ผู้ใช้ · คำสั่งเดียวต่อก้อน (ร้านนี้เท่านั้น) ◂
     for (const part of chunks([...m.values()].map((x) => x.userId).filter((x): x is string => !!x && !names.has(x)))) {
       for (const k of await db.apiKey.findMany({ where: { tenantId: s.tenantId, id: { in: part } }, select: { id: true, name: true } })) names.set(k.id, `API: ${k.name}`);
     }
     const rows = [...m.values()]
-      .map((x) => ({ ...x, name: x.userId ? (names.get(x.userId) ?? null) : null, avgBillSatang: avg(x.netSalesSatang, x.billCount) }))
+      .map((x) => {
+        const staffDiscountSatang = sd.get(x.userId ?? "") ?? 0; // POS P2.14 ▸ RPT-2 ◂
+        return { ...x, name: x.userId ? (names.get(x.userId) ?? null) : null, avgBillSatang: avg(x.netSalesSatang, x.billCount), staffDiscountSatang, a3Flag: x.netSalesSatang > 0 && staffDiscountSatang * 10_000 > x.netSalesSatang * a3bp };
+      })
       .sort((a, b) => b.netSalesSatang - a.netSalesSatang || (a.userId === null ? 1 : b.userId === null ? -1 : cmpStr(a.userId, b.userId)));
     const net = sum(rows, (x) => x.netSalesSatang);
     const bills = sum(rows, (x) => x.billCount);
@@ -1316,6 +1327,41 @@ function memberBenefitDiscount(v: unknown): number {
   return t;
 }
 
+/**
+ * POS P2.14 ▸ RPT-2 (R2): ส่วนลดที่พนักงานคุมได้ต่อบิล (ฐานเดียวกับ A3/A4 ของจุดผิดปกติ) = Σ ส่วนลดบรรทัด + max(0, ส่วนลดท้ายบิล − คูปอง − สมาชิก) ·
+ * คิวรีคงที่ต่อก้อน (บรรทัดที่มีส่วนลด · คูปองที่ไม่ RELEASED · memberBenefits ของบิลที่มีส่วนลดท้ายบิล) · อ่านอย่างเดียว ◂
+ */
+async function staffDiscountBySale(db: Db, s: Scope, r: Range, paid: readonly SaleRow[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const lineDisc = new Map<string, number>();
+  for (const ids of chunks(paid.map((x) => x.id))) {
+    const g = await db.posSaleLine.groupBy({ by: ["saleId"], where: { tenantId: s.tenantId, saleId: { in: ids }, discountSatang: { gt: 0 } }, _sum: { discountSatang: true } });
+    for (const x of g) lineDisc.set(x.saleId, (lineDisc.get(x.saleId) ?? 0) + (x._sum.discountSatang ?? 0));
+  }
+  const notStaff = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const ids of chunks(paid.filter((x) => x.discountSatang > 0).map((x) => x.id))) {
+    const inChunk = new Set(ids);
+    const reds = await db.couponRedemption.findMany({
+      where: { tenantId: s.tenantId, status: { not: "RELEASED" }, OR: [{ saleId: { in: ids } }, { refType: "PosSale", refId: { in: ids } }] },
+      select: { id: true, saleId: true, refId: true, discountSatang: true },
+    });
+    for (const c of reds) {
+      const sid = c.saleId && inChunk.has(c.saleId) ? c.saleId : c.refId;
+      if (!sid || seen.has(c.id)) continue;
+      seen.add(c.id);
+      notStaff.set(sid, (notStaff.get(sid) ?? 0) + c.discountSatang);
+    }
+    const mem = await db.posSale.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: r.start, lt: r.end }, id: { in: ids } }, select: { id: true, memberBenefits: true } });
+    for (const x of mem) {
+      const m = memberBenefitDiscount(x.memberBenefits);
+      if (m > 0) notStaff.set(x.id, (notStaff.get(x.id) ?? 0) + m);
+    }
+  }
+  for (const x of paid) out.set(x.id, (lineDisc.get(x.id) ?? 0) + Math.max(0, x.discountSatang - (notStaff.get(x.id) ?? 0)));
+  return out;
+}
+
 /** ชื่อแสดงผลเท่านั้น (PDPA มติ 4: ไม่ถอยไปใช้อีเมล) · ไม่มีชื่อ = null */
 async function displayNames(db: Db, ids: string[]): Promise<Map<string, string | null>> {
   const out = new Map<string, string | null>();
@@ -1498,6 +1544,26 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
       const g = acc(g5, t.unitId, day(au.createdAt), au.actorId);
       (g.keys ??= new Set<string>()).add(`${au.targetId}|${kind}`);
     }
+    // POS P2.14 ▸ RPT-1 (R1): override ด้วย PIN ผู้จัดการบนแผนแยกบิล (targetType PosTableSplit) นับรวม A5 ด้วย — สาขาจากแถวแผน (ในขอบเขต) ·
+    //   ครั้ง = (แผน, ชนิด) ไม่ซ้ำ (กติกาเดียวกับบิล) · อ่านอย่างเดียว ◂
+    const splitAudits = await db.auditLog.findMany({
+      where: { tenantId: s.tenantId, createdAt: { gte: r.start, lt: r.end }, targetType: "PosTableSplit", action: { in: ["pos.discount.override", "pos.approval.pin_override"] } },
+      select: { action: true, actorId: true, targetId: true, after: true, createdAt: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    const splitUnit = new Map<string, string>();
+    for (const ids of chunks([...new Set(splitAudits.map((x) => x.targetId).filter(isId))])) {
+      for (const x of await db.posTableSplit.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, id: { in: ids } }, select: { id: true, unitId: true } })) splitUnit.set(x.id, x.unitId);
+    }
+    for (const au of splitAudits) {
+      const u = au.targetId ? splitUnit.get(au.targetId) : undefined;
+      if (!u || !isId(au.actorId)) continue;
+      const act = afterOf(au.after).action;
+      const kind = au.action === "pos.discount.override" || act === "POS_DISCOUNT_OVER" ? "DISCOUNT" : String(act ?? "");
+      const g = acc(g5, u, day(au.createdAt), au.actorId);
+      (g.keys ??= new Set<string>()).add(`split:${au.targetId}|${kind}`);
+    }
+    // ◂
     for (const g of g5.values()) {
       const n = g.keys?.size ?? 0;
       if (n >= T.rules.A5.count) emit("A5", "USER", g, null, n, n);
