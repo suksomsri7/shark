@@ -1782,7 +1782,12 @@ async function runDb() {
     const apiRows: Any[] = Array.isArray(ls.body?.data) ? ls.body.data : ls.body?.data?.items ?? [];
     if (ls.status !== 200 || !ls.body?.page || ld?.ok !== true || idsOf(apiRows) !== idsOf(ld.items) || !idsOf(apiRows).includes(API_SALE1 || "@@")) p.push(`sales list ${st(ls)} page=${!!ls.body?.page} api=${apiRows.length} facade=${ld?.items?.length ?? codeOf(ld)}`);
     const gs = await api("GET", `/sales/${API_SALE1 || "none"}?unitId=${U.A}`, raw("read"));
-    const gd = await call(billsMod, "billDetail", ctxU("A"), synthOf("read"), { saleId: API_SALE1 || "none", unitId: U.A });
+    const gd0 = await call(billsMod, "billDetail", ctxU("A"), synthOf("read"), { saleId: API_SALE1 || "none", unitId: U.A });
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-6) ▸ มติ 17: REST sales.get ตอบ totals ชื่อ *Satang (API-10) — PAR กับ billDetail ที่แปลงชื่อ totals แบบเดียวกัน ◂
+    const t0 = gd0?.ok === true ? gd0.bill?.totals : null;
+    const gd = t0
+      ? { ...gd0, bill: { ...gd0.bill, totals: { subtotalSatang: t0.subtotal, lineDiscountSatang: t0.lineDiscount, billDiscountSatang: t0.billDiscount, couponSatang: t0.coupon, tierSatang: t0.tier, serviceChargeSatang: t0.serviceCharge, vatSatang: t0.vatSatang, vatRateBp: t0.vatRateBp, grandTotalSatang: t0.grandTotal, tipSatang: t0.tip, refundedSatang: t0.refunded } } }
+      : gd0;
     if (parOf(gs, gd)) p.push(`sales.get ${parOf(gs, gd)}`);
     const rc = await api("GET", `/sales/${API_SALE1 || "none"}/receipt?unitId=${U.A}`, raw("read"));
     const rcd = await call(receiptMod, "receiptPayload", { tenantId: T, systemId: S.POS, unitId: U.A }, synthOf("read"), { saleId: API_SALE1 || "none", copy: false });
