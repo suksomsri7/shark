@@ -65,6 +65,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosDepositTxn: tenant,
   // POS P2.10 ▸ จอลูกค้า (ผู้เขียนเดียว = pos/display.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId · อ่านไม่มี session ด้วย tokenHash) ◂
   PosCustomerDisplay: sys(),
+  // POS P3.5 ▸ R7 สมุดค่าคอมฯ พนักงานขาย (ผู้เขียนเดียว = pos/staff-commission.ts · ทุกคำสั่งกรอง tenantId (+ systemId/saleId/userId)) ◂
+  PosStaffCommission: sys(),
   PosStockCountEntry: tenant,
   // POS P1.10 — ทะเบียนเครื่องขาย (ผู้เขียนเดียว = pos/device.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
   PosDevice: sys(),

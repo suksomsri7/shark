@@ -184,6 +184,7 @@ export const POS_MODELS = {
   // POS P2.9b ▸ มัดจำเป็นวิธีชำระ (migration 20261211100000_pos_p29b_deposits) — ผู้เขียน pos/deposit.ts (รับ/คืน/คืนสภาพ) + service.createSale (ใช้) ◂
   posDeposit: { model: "PosDeposit", file: "pos.prisma", role: "มัดจำ (P2.9b · OPEN/USED/REFUNDED · คงเหลือ = ยอด − ใช้ − คืน · ใบรับ = PosSale POS_DEPOSIT · VAT ตอนรับ)" },
   posDepositTxn: { model: "PosDepositTxn", file: "pos.prisma", role: "รายการของมัดจำ (P2.9b · RECEIVE/APPLY/RESTORE/REFUND · คีย์ unique ต่อรายการ)" },
+  posStaffCommission: { model: "PosStaffCommission", file: "pos.prisma", role: "สมุดค่าคอมฯ พนักงานขาย (P3.5 · ACCRUE/REVERSE · OPEN→SENT เข้างวดเงินเดือน HR)" }, // POS P3.5 ▸ R7 ◂
   // POS P2.10 ▸ จอลูกค้า (migration 20261215100000_pos_p210_customer_display) — ผู้เขียนเดียว pos/display.ts ◂
   posCustomerDisplay: { model: "PosCustomerDisplay", file: "pos.prisma", role: "จอลูกค้า (P2.10 · 1 ACTIVE ต่อเครื่อง · tokenHash/pairCodeHash · ภาพบิลล่าสุด state + stateSeq · lastPolledAt)" },
 } as const;
