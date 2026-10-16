@@ -114,3 +114,6 @@ Merge candidate stays **14bbe1a8 + fix 3** (merge message filled: `ctl/p27u-merg
 
 ## gates106 (04:02Z) — `gates106-c-20261016T033551Z` @64923c13 dirty 0
 p2.7 42/42 ×2 unforced · p2.8 · p2.4 · p2.6 · restaurant ×4 · authz · p1.16 · p2.10 · p1.3 · p1.1 · p2.1 · p2.13 · p2.11 · p2.12 all green (the p2.8/p2.13/p2.10/p2.11/p2.12 pins are green without a push: P2.7U touches none of their pinned files) · fitness ±env · fitness-pos · typecheck 0. Red = **hf-fu ST1 only** (restaurant module + visual-pos.mts differ from the origin merge-base 964909f2 — the ruled F1 read-only readers + the visual plan; lane-pin class) → **pushed session/pos (origin 64923c13 + ledger)** → gates107-c re-run of the six pin suites.
+
+## gates107 (04:12Z) — `gates107-c-20261016T040451Z` @64923c13 dirty 0 (relaunch after the duplicate A/B runs were stopped; dirs 040229Z/040237Z incomplete, skipped)
+Lane pins re-run after the push: p2.8 61/61 · p2.13 54/54 · p2.10 13/13 · **hf-fu 29/29** (ST1 green against the new origin merge-base) · p2.11 34/34 · p2.12 33/33 — all green. **P2.7U closed → 43/55 (78%).**
