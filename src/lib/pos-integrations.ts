@@ -54,7 +54,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", true, null], ["promptpayReconcile", false, "P3.10"]], // POS P2.14 ▸ DOC-1: ค่าคอมฯ แพลตฟอร์มลง JV ตั้งแต่ P2.1 S ◂
   // POS P2.3U ▸ มติ 8: ตัดตามสูตร BOM ใช้งานจริงแล้ว (P2.3 S ตัด + P2.3U จอ 06 ตั้งสูตร/สวิตช์) ◂
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
-  HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
+  HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // POS P3.5 ▸ R14: ด่านตารางงาน · ค่าคอมฯ → เงินเดือน · ลา = ปลดล็อกไม่ได้ (C-8 v2) — เดิม false "P3.5" ◂
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]],
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
@@ -63,7 +63,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   AI: [["shiftDaySummary", false, "P3.9"], ["purchaseSuggestion", false, "P3.9"], ["anomalyDetection", false, "P3.9"]],
 };
 /** การ์ดที่ยังไม่มีสาย POS ↔ ระบบนั้นเลย (P1) — PLANNED พร้อมเฟส (ร้านไม่มีระบบนั้น = NO_SYSTEM · AI ไม่ใช่ SystemType = PLANNED เสมอ) */
-const PLANNED_TYPE: Partial<Record<PosIntegrationCode, SystemType>> = { HR: "HR", MARKETING: "MARKETING", BOOKING: "BOOKING" };
+const PLANNED_TYPE: Partial<Record<PosIntegrationCode, SystemType>> = { MARKETING: "MARKETING", BOOKING: "BOOKING" }; // POS P3.5 ▸ HR มีสายแล้ว (การ์ดของตัวเองด้านล่าง) ◂
 const UNIT_CARDS: readonly PosIntegrationCode[] = ["MEMBER", "POINT", "COUPON", "INVENTORY", "REWARD"];
 const BACKLOG_PENDING_MIN = 10;
 const BACKLOG_TIMEOUT_MS = 3_000;
@@ -219,7 +219,19 @@ export async function posIntegrationCards(ctx: UnitCtx, actor: Actor, _input: un
       else cards.set("KANBAN", card("KANBAN", ofType("KANBAN").length ? "OFF" : "NO_SYSTEM", { scope: "TENANT", manage }));
     }
 
-    // ── ยังไม่มีสาย (P1): HR MARKETING BOOKING AI ──
+    // POS P3.5 ▸ R14 HR (ระดับร้าน · C-8 v2): ระบบ HR ที่เปิดใช้ = LINKED (จอล็อกเห็นตาราง/ลา · ด่านตารางงาน · ค่าคอมฯ ส่งเข้างวด) ·
+    //   มีแต่ปิดใช้ = OFF · ไม่มี = NO_SYSTEM · กิจกรรมล่าสุด = แถวสมุดค่าคอมฯ ล่าสุดของ POS นี้ (อ่านอย่างเดียว) ◂
+    {
+      const hrs = ofType("HR");
+      const target = hrs.find((s) => s.active) ?? hrs[0];
+      const manage = target ? { href: `/app/sys/${target.id}/hr`, canManage: evaluate(m, { module: "hr", action: "hr.employee.create" }) } : null;
+      if (target && target.active) {
+        const last = await prisma.posStaffCommission.findFirst({ where: { tenantId, systemId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { createdAt: true } });
+        cards.set("HR", card("HR", "LINKED", { scope: "TENANT", target: { systemId: target.id, name: target.name }, lastActivityAt: iso(last?.createdAt), manage }));
+      } else cards.set("HR", card("HR", hrs.length ? "OFF" : "NO_SYSTEM", { scope: "TENANT", manage }));
+    }
+
+    // ── ยังไม่มีสาย (P1): MARKETING BOOKING AI ──
     for (const [code, type] of Object.entries(PLANNED_TYPE) as [PosIntegrationCode, SystemType][]) cards.set(code, card(code, ofType(type).length ? "PLANNED" : "NO_SYSTEM"));
     cards.set("AI", card("AI", "PLANNED"));
 
