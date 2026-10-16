@@ -339,22 +339,35 @@ export function TablesScreen(p: TablesScreenProps) {
   const splitSum = shownDetail?.split ?? null;
   const splitKey = splitSum && selSession ? `${selSession}:${splitSum.splitId}:${splitSum.partCount}:${splitSum.paidParts}:${splitSum.remainingSatang}` : "";
   const [planTotals, setPlanTotals] = useState<{ key: string; v: { baseSatang: number; discountSatang: number; serviceChargeSatang: number; serviceChargeBp: number; totalSatang: number } } | null>(null);
+  // POS P2.14 ▸ UI-5: โหลดยอดของแผนไม่สำเร็จ = ไม่ค้าง "…" — แผงขึ้น "—" + บอกว่าจะลองใหม่ แล้วลองซ้ำทุก 5 วิ (จนสำเร็จ/แผนเปลี่ยน) ◂
+  const [planFailedKey, setPlanFailedKey] = useState<string | null>(null);
+  const [planNonce, setPlanNonce] = useState(0);
   useEffect(() => {
     if (!splitKey || !selSession) return;
     let live = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const failed = () => {
+      if (!live) return;
+      setPlanFailedKey(splitKey);
+      retry = setTimeout(() => setPlanNonce((n) => n + 1), 5_000);
+    };
     void registerSplitDetailAction({ systemId: p.systemId, unitId: p.unitId, tableSessionId: selSession })
       .then((r) => {
-        if (!live || !r.ok || !r.split || r.split.status !== "OPEN") return;
+        if (!live) return;
+        if (!r.ok || !r.split || r.split.status !== "OPEN") return failed();
         const x = r.split;
+        setPlanFailedKey(null);
         setPlanTotals({ key: splitKey, v: { baseSatang: x.baseSatang, discountSatang: x.discountSatang, serviceChargeSatang: x.serviceChargeSatang, serviceChargeBp: x.serviceChargeBp, totalSatang: x.totalSatang } });
       })
-      .catch(() => undefined);
+      .catch(failed);
     return () => {
       live = false;
+      if (retry) clearTimeout(retry);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- splitKey รวม session + สรุปแผน
-  }, [splitKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- splitKey รวม session + สรุปแผน · planNonce = ลองใหม่หลังโหลดไม่สำเร็จ
+  }, [splitKey, planNonce]);
   const shownPlan = planTotals && planTotals.key === splitKey ? planTotals.v : null;
+  const planFailed = !shownPlan && !!splitKey && planFailedKey === splitKey; // POS P2.14 ▸ UI-5 ◂
 
   // ═══════ ดึงซ้ำทุก 20 วิ ขณะเห็นจอ ═══════
   const pollRef = useRef({ refreshFloor, loadDetail, selSession });
@@ -868,6 +881,7 @@ export function TablesScreen(p: TablesScreenProps) {
         onSplit: () => openSplit(selCard),
         onPreBill: () => selCard.sessionId && openLayer({ kind: "prebill", sessionId: selCard.sessionId }),
         plan: shownPlan, // fix1 V2 ◂
+        planFailed, // POS P2.14 ▸ UI-5 ◂
       }}
     />
   ) : null;

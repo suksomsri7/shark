@@ -3648,7 +3648,8 @@
       "closeBody": "Only tables with nothing unpaid can close · an unsent draft round is discarded",
       "unlinkMember": "Unlink member",
       "guestsNone": "-",
-      "planDiscount": "Bill discount (split plan)"
+      "planDiscount": "Bill discount (split plan)",
+      "planLoadFailed": "Could not load the split plan totals — retrying"
     },
     "actions": {
       "orderMore": "Order more",

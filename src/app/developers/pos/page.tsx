@@ -78,7 +78,8 @@ export default function PosDevelopersPage() {
           คีย์ผูกระบบขายหน้าร้านหนึ่งระบบ และทำงานในนามของตัวเอง (บิลที่ขายผ่าน API ผูกกับคีย์ ไม่ใช่คนที่ออกคีย์) · จำกัดสาขาได้ด้วย{" "}
           <code className={codeCls}>{POS_FILTER_UNIT_PREFIX}&lt;unitId&gt;</code>
         </p>
-        <table className={tableCls}>
+        <div className="max-w-full overflow-x-auto" /* POS P2.14 ▸ UI-6: ตารางกว้างเลื่อนแนวนอนในกล่อง (390 ไม่ล้นจอ) ◂ */>
+<table className={tableCls}>
           <thead>
             <tr>
               <th className={th}>ชุดสิทธิ์</th>
@@ -99,6 +100,7 @@ export default function PosDevelopersPage() {
             ))}
           </tbody>
         </table>
+</div>
       </section>
 
       <section className={sectionCls}>
@@ -119,7 +121,8 @@ export default function PosDevelopersPage() {
         <section key={kind} className={sectionCls}>
           <h2 className={h2}>{KIND_LABEL[kind]}</h2>
           <p className="text-sm text-[color:var(--color-ink-soft)]">{KIND_BLURB[kind]}</p>
-          <table className={tableCls}>
+          <div className="max-w-full overflow-x-auto" /* POS P2.14 ▸ UI-6: ตารางกว้างเลื่อนแนวนอนในกล่อง (390 ไม่ล้นจอ) ◂ */>
+<table className={tableCls}>
             <thead>
               <tr>
                 <th className={th}>กลุ่ม</th>
@@ -144,6 +147,7 @@ export default function PosDevelopersPage() {
               ))}
             </tbody>
           </table>
+</div>
         </section>
       ))}
 
