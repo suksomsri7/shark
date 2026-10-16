@@ -1,6 +1,6 @@
-# Prompt — P2.7U reviewer **R1** (independent, read-only). Controller (account B, __DATE__). Head `wip/pos-p2.7u` **__HEAD__**, tree `/root/projects/shark-pos-b` (checked out; do not checkout/fetch/edit). Base = `session/pos` 92b7149d. Read-only: no edits/commits/DB writes/build/servers/`.env*`/pnpm/prisma/`cd`. English, ≤ 50 lines.
+# Prompt — P2.7U reviewer **R1** (independent, read-only). Controller (account B, 16 Oct 02:14Z). Head `wip/pos-p2.7u` **396b0092**, tree `/root/projects/shark-pos-b` (checked out; do not checkout/fetch/edit). Base = `session/pos` 92b7149d. Read-only: no edits/commits/DB writes/build/servers/`.env*`/pnpm/prisma/`cd`. English, ≤ 50 lines.
 
-Read: `pos-brief-P2.7.md` (§3, §5, §10 rulings 11 15 16), `pos-P2.7.md` "U-card contract", builder notes `pos-P2.7U.md`, spec `pos-spec-P2.7-qr-ui.md`, `git -C /root/projects/shark-pos-b log --oneline 92b7149d..__HEAD__` + each commit, `git -C /root/projects/shark-pos-b diff 92b7149d..__HEAD__ -- . ':!ledger'`.
+Read: `pos-brief-P2.7.md` (§3, §5, §10 rulings 11 15 16), `pos-P2.7.md` "U-card contract", builder notes `pos-P2.7U.md`, spec `pos-spec-P2.7-qr-ui.md`, `git -C /root/projects/shark-pos-b log --oneline 92b7149d..396b0092` + each commit, `git -C /root/projects/shark-pos-b diff 92b7149d..396b0092 -- . ':!ledger'`.
 
 Verify (cite file:line):
 - **Contract**: no S-card server change except additive marked DTO fields; `order.ts`/`payment-intent.ts`/restaurant module untouched; every public page reads only the S doors; client islands import only `*-shared`/`*-actions`; no session import on public pages; force-dynamic + noindex kept; no SSR `new Date()`; polling uses `sinceVer` + Page-Visibility pause and writes nothing.
