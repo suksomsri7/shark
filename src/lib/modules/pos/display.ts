@@ -333,6 +333,10 @@ export async function publishDisplayState(ctx: RegisterCtx, actor: RegisterActor
     if (!parsed.success) return refuse("DISPLAY_STATE_INVALID");
     const code = input.deviceCode;
     if (typeof code !== "string" || !POS_DEVICE_CODE_RE.test(code)) return { ok: true, paired: false };
+    // POS P2.14 ▸ DSP-1 มติ 9: จอที่เขียน = จอของเครื่องในคำขอ (ctx.deviceId = รหัสเครื่องของหน้าขายตัวเดียวกับ heartbeat/กะ/บิล) ·
+    //   deviceCode ที่ส่งมาต้องตรงเครื่องนั้น — เครื่อง X ส่งภาพให้จอของเครื่อง Y ไม่ได้ · ไม่มีเครื่องใน ctx = ไม่เขียน (ไม่บอกว่ามีจอ) ◂
+    const own = isRecord(ctx) && typeof (ctx as { deviceId?: unknown }).deviceId === "string" ? (ctx as { deviceId: string }).deviceId : null;
+    if (!own || own !== code) return { ok: true, paired: false };
     const device = await db.posDevice.findUnique({ where: { unitId_deviceCode: { unitId: s.unitId, deviceCode: code } }, select: { id: true, tenantId: true, systemId: true, status: true } });
     if (!device || device.tenantId !== s.tenantId || device.systemId !== s.systemId || device.status !== "ACTIVE") return { ok: true, paired: false };
     const row = await db.posCustomerDisplay.findFirst({

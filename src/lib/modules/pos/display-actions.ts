@@ -105,11 +105,14 @@ export async function customerDisplayStatusAction(args: Target & { deviceId: str
 }
 
 /** หน้าขายส่งภาพบิลให้จอ — paired:false = เครื่องนี้ไม่มีจอที่จับคู่ (หน้าขายหยุดส่ง) */
-export async function publishDisplayStateAction(args: Target & { deviceCode: string; seq: number; state: DisplayState }): Promise<PublishDisplayStateResult> {
+// POS P2.14 ▸ DSP-1 มติ 9: deviceId = รหัสเครื่องของหน้าขายนี้ (ค่าเดียวกับ heartbeat/กะ/บิลของ register-actions) → ctx.deviceId ·
+//   display.ts เขียนเฉพาะจอของเครื่องนั้น (deviceCode ต้องตรง) · ไม่ส่ง deviceId = ไม่เขียน ◂
+export async function publishDisplayStateAction(args: Target & { deviceId?: string; deviceCode: string; seq: number; state: DisplayState }): Promise<PublishDisplayStateResult> {
   try {
     const s = await sessionScope(args, "pos.sale.create");
     if ("ok" in s) return s;
-    return await publishDisplayState(s.ctx, s.actor, { deviceCode: str(args?.deviceCode), seq: args?.seq, state: args?.state });
+    const deviceId = str(args?.deviceId); // POS P2.14 ▸ DSP-1 ◂
+    return await publishDisplayState(deviceId ? { ...s.ctx, deviceId } : s.ctx, s.actor, { deviceCode: str(args?.deviceCode), seq: args?.seq, state: args?.state });
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("publishDisplayStateAction", e);
