@@ -540,7 +540,7 @@ const P28U_ORDERS_PLAN: { key: P28uOrdersKey; devices: readonly Device[]; note: 
   { key: "orders-pay-dialog", devices: ["desktop", "ipad", "mobile"], note: "แผงโทรสั่งที่รอชำระ → รับเงิน → จอชำระเดิมผูก payOrderAction (ไม่กดยืนยัน)" },
 ];
 const P28U_REG_PLAN: { key: P28uRegKey; devices: readonly Device[]; note: string }[] = [
-  { key: "register-tab-badge", devices: ["desktop", "ipad"], note: "หน้าขาย: แท็บ \"ออเดอร์ออนไลน์\" เป็นลิงก์ + ป้ายนับออเดอร์ใหม่ (pos-reg-tab-orders-badge · ดึงทุก 10 วิ) — มือถือไม่มีแถบโหมด" },
+  { key: "register-tab-badge", devices: ["desktop", "ipad", "mobile"] /* POS P2.14 ▸ U2 H5: + 390 (UI-13) ◂ */, note: "หน้าขาย: แท็บ \"ออเดอร์ออนไลน์\" เป็นลิงก์ + ป้ายนับออเดอร์ใหม่ (pos-reg-tab-orders-badge · ดึงทุก 10 วิ) — มือถือไม่มีแถบโหมด" },
 ];
 const P28U_WO = /^p2\.?8u/i.test(WO);
 const P28U_ORDERS_KEYS: ReadonlySet<string> = new Set(P28U_ORDERS_PLAN.map((s) => s.key));
