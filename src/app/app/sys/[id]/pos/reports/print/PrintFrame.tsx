@@ -85,6 +85,17 @@ export function PrintFrame({ html, wide, autoPrint, toolbar, printLabel, frameTi
     });
   }, [prepare, autoPrint]);
 
+  // POS P2.14 ▸ RPT-6: Ctrl+P / ⌘P บนหน้าแม่ = พิมพ์เอกสารใน iframe (ไม่ใช่หน้าแอป) · พิมพ์จากเมนูเบราว์เซอร์ = สไตล์ print ด้านล่างซ่อนเปลือกแอป เหลือแต่เอกสาร ◂
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "p") return;
+      e.preventDefault();
+      void doPrint();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [doPrint]);
+
   // srcdoc อาจโหลดเสร็จก่อน React ผูก onLoad (หน้า SSR) — ตรวจเองหนึ่งครั้งหลัง mount
   useEffect(() => {
     const doc = ref.current?.contentDocument;
@@ -93,6 +104,8 @@ export function PrintFrame({ html, wide, autoPrint, toolbar, printLabel, frameTi
 
   return (
     <>
+      {/* POS P2.14 ▸ RPT-6: พิมพ์จากเมนูเบราว์เซอร์บนหน้าแม่ — ซ่อนทุกอย่างยกเว้นกรอบเอกสาร (กรอบวางมุมซ้ายบน · กว้าง A4) ◂ */}
+      <style>{`@media print { body * { visibility: hidden !important; } [data-testid="pos-report-print-frame"] { visibility: visible !important; position: absolute !important; left: 0; top: 0; box-shadow: none !important; } }`}</style>
       <div className="flex min-w-0 flex-wrap items-center gap-3 print:hidden" data-testid="pos-report-print-toolbar">
         {toolbar}
         <button type="button" data-testid="pos-report-print-again" className="btn btn-primary min-h-[44px] text-sm" disabled={!ready} onClick={() => void doPrint()}>
