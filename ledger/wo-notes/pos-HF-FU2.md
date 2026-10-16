@@ -91,3 +91,17 @@ Source: `ledger/wo-notes/pos-HF-FU2-review.md` (R1 F1–F4 · hunter N1–N5). O
 - Results at **b3e3848e** dirty 0 (HEAD-end b3e3848e dirty-end 0), QC4, POS lock: `qc-hf-fu2` forced **29/29 ×2** · `--no-db` **21/21** · `qc-pos-p2.14` 60/60 · `qc-pos-p2.2` 42/42 · `qc-pos-p2.1` 55/55 · `qc-pos-p1.8` 49/49 · `qc-pos-p2.9b` 53/53 · fitness no-env 0 · fitness QC4 0 · `gen-pos-api-docs --check` 0.
 - Runner `--only qc-hf-fu2,qc-pos-p2.14,qc-hf-fu`: `/root/pos-runs/hffu2b-fix1-only-p11-20261016T220835Z` — HEAD.txt one line `… only=qc-hf-fu2,qc-pos-p2.14,qc-hf-fu` · SET partial 3/97 · qc-hf-fu2 29/29 (third forced run) · only RED = `qc-hf-fu` (HF-FU-ST1 lane pin) ⇒ VERDICT red (1), as expected.
 - Lane pins unchanged from the list above (qc-hf-fu:233 · p2.12:270 · p2.11:267 · p2.10:221) — controller re-pin at merge.
+
+**Typecheck (fix round 1):** exit 0 at ffca3f00 dirty 0 (heap 8192 · ISO_MEM 10500M).
+
+## Fix round 2 delivered (controller ruling CD-FU2d · 17 Oct · tree p11 · from ffca3f00)
+| id | commit | change |
+|---|---|---|
+| N6 | 6245ffd6 | runner: exit-0 rows of kind=suite need exactly one JSON_SUMMARY (allowlist `NO_JSON_SUITES = ["qc-restaurant", "qc-nav-functions"]` near the top) · int `total` == int `passed` > 0 (string/missing/zero ⇒ RED) · `skipped:true` ⇒ RED · manifest `mode: "forced"` + `forced:false` ⇒ RED · command rows untouched |
+| N7 | ce54fb7e | runner: `failed`/`findings` present but not a list ⇒ RED (accepted rc 1 rows and exit-0 rows) · accepted rows with more counted ids than total − passed ⇒ RED |
+| cosmetic | 47492e25 | no ACCEPTED line for a row already marked RED |
+| ORACLE-ADD | bf256b4e | `qc-hf-fu2.mts` RG14 (no JSON + EXIT 0 · passed as string · total 0 · skipped:true · forced suite forced:false ⇒ RED; qc-restaurant without JSON ⇒ green) · RG15 (failed:2 with accepted rc 1 · failed:0 with exit 0 · total 0 passed 0 failed [id] ⇒ RED) · **count 29 → 31** (`--no-db` 21 → 23). Positive control: the 8 forgeries all go green on the ffca3f00 runner, so RG14 and RG15 are red there (transient swap of `pos-gates-all.sh`, restored byte-equal, never committed). |
+- Results at **bf256b4e** dirty 0 (HEAD-end bf256b4e dirty-end 0), QC4, POS lock: `qc-hf-fu2` forced **31/31 ×2** (+ 31/31 in the runner run) · `--no-db` **23/23** · `--list` 31 · fitness no-env 0 · fitness QC4 0 · `gen-pos-api-docs --check` 0.
+- Runner `--only qc-hf-fu2,qc-pos-p2.14,qc-hf-fu`: `/root/pos-runs/hffu2b-fix2-only-p11-20261016T223456Z` — SET partial 3/97 · only RED = `qc-hf-fu` (HF-FU-ST1 lane pin) ⇒ VERDICT red (1), as expected.
+- Re-judge with the new `--verdict` (copies under scratch): gates111-c ⇒ same RED rows as before (SET partial 96/97 because the manifest now has 97 · qc-pos-p2.12 · qc-pos-p2.14 · qc-hf-fu not accepted · HEAD of the copy); hffu2b-fix1-only-p11 ⇒ qc-hf-fu + HEAD of the copy only. **No real row trips N6 or N7.**
+- **Typecheck (fix round 2):** `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` at **bf256b4e** dirty 0 → **exit 0**. The commit after it changes only this file.
