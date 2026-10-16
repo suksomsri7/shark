@@ -1,7 +1,7 @@
 # SHARK POS API
 
 Machine readable contract: `/api/v1/pos/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/pos` - contract version 1.0.0 - 48 operations.
+Base URL: `https://shark.in.th/api/v1/pos` - contract version 1.0.0 - 49 operations.
 Generated from the operation registry by `scripts/gen-pos-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -19,7 +19,7 @@ Scopes are the same permission keys the staff roles use, so a key can never do m
 | --- | --- | --- |
 | `pos-read` | Read the POS system: bills and receipts, products, sales channels, online orders and every sales report. Writes nothing. | `pos.sale.read` `pos.report.view` |
 | `pos-operate` | Everything in pos-read plus the counter work: sell at catalog prices, accept and progress online orders, mark items sold out, and read shifts (X/Z) and registered devices. No voids, refunds, custom prices or catalog changes. Reading shifts is not a manager approval: when the shop wants a manager to confirm PromptPay and card payments, API keys take CASH, TRANSFER and PLATFORM only. | `pos.sale.read` `pos.report.view` `pos.sale.create` `pos.order.accept` `pos.shift.manage` `pos.device.manage` |
-| `pos-admin` | Everything in pos-operate plus voiding and refunding bills, custom and open prices, rejecting and cancelling orders, managing products, prices and sales channels, issuing full tax invoices and the anomaly report. Settings, staff PINs and shifts still need the app. | `pos.sale.read` `pos.report.view` `pos.sale.create` `pos.order.accept` `pos.shift.manage` `pos.device.manage` `pos.sale.void` `pos.sale.refund` `pos.sale.priceOverride` `pos.order.reject` `pos.product.manage` `pos.product.setPrice` `pos.channel.manage` `pos.taxinvoice.issue` `pos.report.anomaly` |
+| `pos-admin` | Everything in pos-operate plus voiding and refunding bills, custom and open prices, rejecting and cancelling orders, managing products, prices and sales channels, issuing full tax invoices and the anomaly report. Settings, staff PINs and shifts still need the app. | `pos.sale.read` `pos.report.view` `pos.sale.create` `pos.order.accept` `pos.shift.manage` `pos.device.manage` `pos.sale.void` `pos.sale.refund` `pos.sale.priceOverride` `pos.order.reject` `pos.product.manage` `pos.product.setPrice` `pos.channel.manage` `pos.taxinvoice.issue` `pos.report.anomaly` `pos.offline.sync` |
 
 A key may be limited to some branches with the pseudo-scope `pos.filter.unit:<unitId>` (one per branch). Branches outside the list answer 404 `not_found`, and reports without `unitId` only cover the allowed branches.
 
@@ -229,7 +229,7 @@ Under the code above, the POS tells why in `message_th` / `message_en`. This is 
 
 ### Read operations
 
-Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited (`POST /sales/quote` is a read too). 29 of the 48 operations.
+Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited (`POST /sales/quote` is a read too). 29 of the 49 operations.
 
 #### `units.list`
 
@@ -689,7 +689,25 @@ curl -sS -X GET "https://shark.in.th/api/v1/pos/reports/tax" \
 
 ### Write operations
 
-Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 15 of the 48 operations.
+Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 16 of the 49 operations.
+
+#### `sync.sales`
+
+**POST /sync/sales** - Sync bills a register sold while offline (max 50 per call, processed in sold time order). Each bill is re-priced at its sold time or at the device's price snapshot; every bill gets its own result: OK (new bill), DUPLICATE (already synced) or REJECTED with a reason for the manager queue. · scope: `pos.offline.sync` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `unitId` | string | yes | Branch (BusinessUnit id) of this POS system. · min length 1 · max length 64 |
+| `deviceId` | string | yes | Device code of the register that sold the bills (registered at this branch). · min length 8 · max length 64 |
+| `items` | array of object | yes | Bills to sync (max 50). · max 50 items |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/pos/sync/sales" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"unitId":"unt_123","deviceId":"dev_counter_01","items":[]}'
+```
 
 #### `sales.taxInvoice`
 
@@ -1004,7 +1022,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/pos/orders" \
 
 ### Danger operations
 
-Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 48 operations.
+Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 49 operations.
 
 #### `sales.refund`
 

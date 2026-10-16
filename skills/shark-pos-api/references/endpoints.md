@@ -2,7 +2,7 @@
 
 Generated from the operation registry by `scripts/gen-pos-api-docs.mts` (`--check` covers this file too). Do not edit by hand.
 
-Base URL: `https://shark.in.th/api/v1/pos`. 48 operations. Full prose, field tables and curl examples: `docs/api/POS-API.md` (also served at `https://shark.in.th/developers/pos.md`). Machine readable contract: `/api/v1/pos/openapi.json`.
+Base URL: `https://shark.in.th/api/v1/pos`. 49 operations. Full prose, field tables and curl examples: `docs/api/POS-API.md` (also served at `https://shark.in.th/developers/pos.md`). Machine readable contract: `/api/v1/pos/openapi.json`.
 
 ## Read operations
 
@@ -46,6 +46,7 @@ Change data. `Idempotency-Key` is required and every success is written to the a
 
 | Operation id | Method + path | Scope | Notes |
 | --- | --- | --- | --- |
+| `sync.sales` | `POST /sync/sales` | `pos.offline.sync` | - |
 | `sales.taxInvoice` | `POST /sales/{id}/tax-invoice` | `pos.taxinvoice.issue` | - |
 | `sales.create` | `POST /sales` | `pos.sale.create` | - |
 | `products.availability` | `POST /products/{id}/availability` | `pos.sale.create` | - |
