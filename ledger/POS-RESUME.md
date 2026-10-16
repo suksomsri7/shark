@@ -1857,3 +1857,4 @@
 - ส่งข้อความ fix round 1 ให้ builder P2.7U (agent af05d419f6a2d9995 · ทรี b) แล้ว 02:26Z · ยังห้าม push · ผลภาพ vis89 (chain86 ทรี c · build86 เริ่ม 02:14Z) จะส่งเข้ารอบเดียวกัน
 - โควตา: session 50% · weekly 90%
 - ถัดไป: build86 → vis89 → ผู้คุมตัดสินภาพ → ส่ง builder → builder รายงาน head ใหม่ → R1 ตรวจซ้ำ hunks → merge (`p27u-merge-msg.txt`) → tree c → gates106 → push → lane pins → **43/55 (78%)**
+- 02:41Z vis89 ตัดสินแล้ว (118 ใบ): หน้าลูกค้า th/en + 09 + 03 ผ่านตามแบบ · พบ IMG-1 สคริปต์ testid ตัวพิมพ์ (drawer QR ยังไม่ได้ดู) · IMG-2 โต๊ะ QR/พิมพ์ ล้น 390 · IMG-3 รายละเอียดออเดอร์ 390 ทับแถบตั้งค่า · IMG-4 toast บังหัวหน้าลูกค้า → ส่งเข้า fix round 1 แล้ว · ต้อง build+vis90 หลัง fix (chain86 template · ทรี c)
