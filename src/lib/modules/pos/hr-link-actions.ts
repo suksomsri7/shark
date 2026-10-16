@@ -6,7 +6,7 @@
 // 🔴 ลงเวลา = ตัวเองเท่านั้น (คนในโทเคนผู้ขายของเครื่องนี้ — ไม่รับ userId) · ส่งค่าคอมฯ เข้างวดตอนนี้ = เจ้าของ/ผู้ดูเงินเดือน (มติ 7)
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan, canAccessUnit } from "@/lib/core/rbac";
+import { assertCan, canAccessUnit, canViewPayroll } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { posClockForShift, type PosClockResult } from "./hr-link";
 import type { RegisterRefusal } from "./register-shared";
@@ -48,6 +48,23 @@ export async function posClockAction(args: { systemId: string; unitId: string; d
   } catch (e) {
     unstable_rethrow(e);
     console.error("[pos/hr-link-actions] posClockAction", e);
+    return refusal("UNKNOWN", "เกิดข้อผิดพลาด — ลองอีกครั้ง");
+  }
+}
+
+/** R9 — ปุ่ม "ส่งเข้างวดเงินเดือนตอนนี้" (เจ้าของ/ผู้ดูเงินเดือน): ส่งแถว OPEN ของเดือนที่จบแล้วของร้านนี้ทันที (ไม่รอรอบรายชั่วโมง) */
+export async function syncStaffCommissionNowAction(): Promise<{ ok: true; sent: number; adjustments: number; noEmployee: number } | RegisterRefusal> {
+  const auth = await session("syncStaffCommissionNowAction");
+  if ("ok" in auth) return auth;
+  try {
+    const m = posMembership(auth.active);
+    if (!canViewPayroll(m)) return refusal("PERMISSION_DENIED", "เฉพาะเจ้าของร้านหรือผู้ดูเงินเดือน");
+    const { syncStaffCommissionToPayroll } = await import("./staff-commission");
+    const r = await syncStaffCommissionToPayroll({ tenantId: auth.active.tenantId, now: new Date(), deadline: Date.now() + 20_000 });
+    return { ok: true, sent: r.sentRows, adjustments: r.adjustments, noEmployee: r.noEmployee };
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[pos/hr-link-actions] syncStaffCommissionNowAction", e);
     return refusal("UNKNOWN", "เกิดข้อผิดพลาด — ลองอีกครั้ง");
   }
 }
