@@ -21,11 +21,13 @@ MANIFEST="$ROOT/scripts/pos-gates.json"
 DRY=0
 OUT=""
 ONLY=""
+VERDICT_DIR="" # POS P2.14 ▸ fix2 H3 ◂
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry) DRY=1 ;;
     --out) OUT="${2:-}"; shift ;;
     --only) ONLY="${2:-}"; shift ;;
+    --verdict) VERDICT_DIR="${2:-}"; shift ;; # POS P2.14 ▸ fix2 H3 ◂
     *) echo "🔴 ไม่รู้จักอาร์กิวเมนต์ $1" >&2; exit 2 ;;
   esac
   shift
@@ -50,6 +52,98 @@ case "$TC_RUN" in
   *"$TYPECHECK_MEM"*) case "$TC_RUN" in *"$TYPECHECK_LOCK"*) ;; *) echo "🔴 typecheck ในแมนิเฟสต์ไม่ถือ $TYPECHECK_LOCK" >&2; exit 2 ;; esac ;;
   *) echo "🔴 typecheck ในแมนิเฟสต์ไม่ใช้ ISO_MEM=$TYPECHECK_MEM" >&2; exit 2 ;;
 esac
+
+# POS P2.14 ▸ fix2 H3/G5: คำตัดสินของโฟลเดอร์ผล — รายการ exit ≠ 0 ยอมรับได้เมื่อ (1) แมนิเฟสต์มี accepted ที่มี evidence และ checks (id ตรงตัว หรือ CRASH)
+#   (2) exit = 1 และ log มีบรรทัด JSON_SUMMARY (exit 137 / ไม่มีสรุป = red) (3) id ที่ล้ม (failed ∪ findings คำแรก · crashed = CRASH) อยู่ใน checks ทั้งหมด ·
+#   พิมพ์ SET full|partial n/N · HEAD-end/dirty-end — head หรือ dirty ต่างจาก HEAD.txt = red ◂
+verdict() {
+  python3 - "$MANIFEST" "$1" "$ROOT" "${2:-0}" <<'PY' >> "$1/SUMMARY.txt"
+import json, os, subprocess, sys
+man = json.load(open(sys.argv[1])); out = sys.argv[2]; root = sys.argv[3]; nset = int(sys.argv[4] or 0)
+acc = {s["suite"]: s.get("accepted") for s in man.get("suites", []) if s.get("accepted")}
+acc.update({c["name"]: c.get("accepted") for c in man.get("commands", []) if c.get("accepted")})
+total = len(man.get("suites", [])) + len(man.get("commands", []))
+rows = []
+for line in open(os.path.join(out, "SUMMARY.txt")).read().splitlines():
+    parts = line.split()
+    if len(parts) == 2 and parts[1].lstrip("-").isdigit():
+        rows.append((parts[0], int(parts[1])))
+n = nset or len(rows)
+print(f"SET {'full' if n == total and len(rows) == total else 'partial'} {len(rows)}/{total}")
+def ids_of(log):
+    j = None
+    try:
+        for l in open(log, errors="replace"):
+            if l.startswith("JSON_SUMMARY "):
+                j = json.loads(l[len("JSON_SUMMARY "):])
+    except Exception:
+        return None
+    if j is None:
+        return None
+    ids = []
+    for k in ("failed", "findings"):
+        v = j.get(k)
+        if isinstance(v, list):
+            for x in v:
+                t = str(x.get("id", "")) if isinstance(x, dict) else (str(x).split() or [""])[0]
+                if t:
+                    ids.append(t)
+    if j.get("crashed"):
+        ids.append("CRASH")
+    return ids
+red = []
+for name, rc in rows:
+    if rc == 0:
+        continue
+    a = acc.get(name)
+    why = ""
+    if not a:
+        why = "ไม่ accepted"
+    elif not str(a.get("evidence", "")).strip():
+        why = "accepted ไม่มี evidence"
+    elif not isinstance(a.get("checks"), list) or not a.get("checks"):
+        why = "accepted ไม่มี checks"
+    elif rc != 1:
+        why = f"exit {rc} (ยอมรับเฉพาะ 1)"
+    else:
+        ids = ids_of(os.path.join(out, f"{name}.log"))
+        if ids is None:
+            why = "ไม่มีบรรทัด JSON_SUMMARY"
+        else:
+            extra = sorted(set(ids) - set(a["checks"]))
+            if extra:
+                why = f"ล้มนอก accepted.checks: {','.join(extra)}"
+    if why:
+        print(f"RED {name} {rc} ({why})")
+        red.append(name)
+    else:
+        print(f"ACCEPTED {name} {rc} — {a.get('reason', '')[:120]}")
+head0 = dirty0 = None
+try:
+    for tok in open(os.path.join(out, "HEAD.txt")).read().split():
+        if tok.startswith("head="):
+            head0 = tok[5:]
+        if tok.startswith("dirty="):
+            dirty0 = tok[6:]
+except Exception:
+    pass
+head1 = subprocess.run(["git", "-C", root, "rev-parse", "--short=8", "HEAD"], capture_output=True, text=True).stdout.strip()
+dirty1 = str(len([l for l in subprocess.run(["git", "-C", root, "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines() if l.strip()]))
+print(f"HEAD-end={head1} dirty-end={dirty1}")
+if head0 != head1 or dirty0 != dirty1:
+    print(f"RED (head/dirty เปลี่ยนระหว่างรัน: เริ่ม head={head0} dirty={dirty0} · จบ head={head1} dirty={dirty1})")
+    red.append("HEAD")
+print(f"VERDICT {'red' if red else 'green'}" + (f" ({len(red)}: {' '.join(red)})" if red else ""))
+PY
+}
+# POS P2.14 ▸ fix2 H3: --verdict <dir> = คิดคำตัดสินใหม่ของโฟลเดอร์ผลที่มีอยู่ (ทดสอบตัวตัดสิน · ไม่รันอะไร) ◂
+if [ -n "$VERDICT_DIR" ]; then
+  [ -f "$VERDICT_DIR/SUMMARY.txt" ] || { echo "🔴 ไม่มี $VERDICT_DIR/SUMMARY.txt" >&2; exit 2; }
+  sed -i '/^\(SET\|HEAD-end=\|RED\|ACCEPTED\|VERDICT\|DONE\)\b/d' "$VERDICT_DIR/SUMMARY.txt"
+  verdict "$VERDICT_DIR" 0
+  grep -E '^(SET|HEAD-end=|RED|VERDICT)' "$VERDICT_DIR/SUMMARY.txt"
+  case "$(grep '^VERDICT ' "$VERDICT_DIR/SUMMARY.txt" | tail -1)" in "VERDICT green"*) exit 0 ;; *) exit 1 ;; esac
+fi
 
 if [ "$DRY" -eq 1 ]; then
   while IFS=$'\t' read -r kind name rest; do
@@ -111,45 +205,10 @@ while IFS=$'\t' read -r kind name rest; do
   echo "$name $RC" >> "$OUT/SUMMARY.txt"
   echo "  $name → $RC"
 done <<< "$PLAN"
-# POS P2.14 ▸ fix1 H5: คำตัดสิน — exit ≠ 0 ที่ไม่ accepted (หรือ accepted แบบ checks แต่ล้มนอกรายการ / ไม่มี evidence) = red ◂
-python3 - "$MANIFEST" "$OUT" <<'PY' >> "$OUT/SUMMARY.txt"
-import json, os, sys
-man = json.load(open(sys.argv[1])); out = sys.argv[2]
-acc = {s["suite"]: s.get("accepted") for s in man.get("suites", []) if s.get("accepted")}
-acc.update({c["name"]: c.get("accepted") for c in man.get("commands", []) if c.get("accepted")})
-red = []
-for line in open(os.path.join(out, "SUMMARY.txt")).read().splitlines():
-    parts = line.split()
-    if len(parts) != 2 or not parts[1].lstrip("-").isdigit() or parts[1] == "0":
-        continue
-    name, rc = parts
-    a = acc.get(name)
-    if not a or not str(a.get("evidence", "")).strip():
-        print(f"RED {name} {rc}" + (" (accepted ไม่มี evidence)" if a else ""))
-        red.append(name)
-        continue
-    checks = a.get("checks")
-    if checks:
-        failed = None
-        try:
-            for l in open(os.path.join(out, f"{name}.log"), errors="replace"):
-                if l.startswith("JSON_SUMMARY "):
-                    j = json.loads(l[len("JSON_SUMMARY "):])
-                    failed = j.get("failed")
-                    if j.get("crashed"):
-                        failed = ["CRASH"]
-        except Exception:
-            failed = None
-        extra = sorted(set(failed or ["(no JSON_SUMMARY)"]) - set(checks)) if failed is not None else ["(no JSON_SUMMARY)"]
-        if extra:
-            print(f"RED {name} {rc} (ล้มนอก accepted.checks: {','.join(extra)})")
-            red.append(name)
-            continue
-    print(f"ACCEPTED {name} {rc} — {a.get('reason', '')[:120]}")
-print(f"VERDICT {'red' if red else 'green'}" + (f" ({len(red)}: {' '.join(red)})" if red else ""))
-PY
+# POS P2.14 ▸ fix1 H5 · fix2 H3/G5: คำตัดสิน (ฟังก์ชันเดียว — ใช้ทั้งท้ายการรันและ --verdict <dir>) ◂
+verdict "$OUT" 0
 VERDICT_LINE="$(grep '^VERDICT ' "$OUT/SUMMARY.txt" | tail -1)"
 echo "DONE" >> "$OUT/SUMMARY.txt"
 echo "$VERDICT_LINE"
 echo "✅ pos-gates-all จบ — $OUT/SUMMARY.txt"
-case "$VERDICT_LINE" in "VERDICT green"*) exit 0 ;; *) exit 1 ;; esac
+case "$VERDICT_LINE" in "VERDICT green"*) exit 0 ;; *) exit 1 ;; esac # POS P2.14 ▸ fix1 H5: exit ตามคำตัดสิน ◂
