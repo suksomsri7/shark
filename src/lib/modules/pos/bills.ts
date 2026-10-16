@@ -387,11 +387,14 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
     // POS P2.14 ▸ UI-4 (R5): ต้นทุนต่อบรรทัด = Σ |qtyDelta| × costSatang ของความเคลื่อนไหวที่บิลนี้ตัด (คีย์ pos-consume-<บิล>-<บรรทัด>[-<ของ>] · ตัวเดียวกับรายงานกำไร) ·
     //   บรรทัดที่ไม่ผูกสต็อก / ยังไม่ตัด = null · กำไร = ยอดบรรทัด − ต้นทุน ◂
     const partsByLine = new Map(sale.lines.map((l) => [l.id, lineConsumption(sale.id, { id: l.id, itemId: l.itemId, qty: l.qty, weightGrams: l.weightGrams, components: l.components })]));
-    const consumeKeys = [...partsByLine.values()].flat().map((x) => x.key);
+    // POS P2.14 ▸ fix1 H2: ต้นทุน/กำไร = ผู้ดูรายงานได้ (pos.report.view ที่สาขานี้) เท่านั้น — ทุกทางที่อ่านผ่านตัวนี้ (ลิ้นชักบิล · REST sales.get) · อื่น = null ◂
+    const canCost = evaluate(a, { module: "pos", action: "pos.report.view", unitId });
+    const consumeKeys = canCost ? [...partsByLine.values()].flat().map((x) => x.key) : []; // POS P2.14 ▸ fix1 H2 ◂
     const movedCost = new Map(
       consumeKeys.length ? (await prisma.invMovement.findMany({ where: { tenantId, idempotencyKey: { in: consumeKeys } }, select: { idempotencyKey: true, qtyDelta: true, costSatang: true } })).map((m) => [m.idempotencyKey, Math.abs(m.qtyDelta) * m.costSatang]) : [],
     );
     const lineCostOf = (lineId: string): number | null => {
+      if (!canCost) return null; // POS P2.14 ▸ fix1 H2 ◂
       const parts = partsByLine.get(lineId) ?? [];
       if (!parts.length || !parts.every((x) => movedCost.has(x.key))) return null;
       return parts.reduce((t, x) => t + (movedCost.get(x.key) ?? 0), 0);

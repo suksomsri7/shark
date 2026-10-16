@@ -252,7 +252,9 @@ const salesGet = definePosOp({
     const unitId = await posSaleUnit(actor, params.id ?? "", input.unitId);
     // POS P2.14 ▸ API-10 มติ 8: เงินของบิลใน REST ใช้ชื่อลงท้าย Satang ทุกคีย์ (แปลงที่ op · ลิ้นชักบิลของจอยังใช้ DTO เดิมของ billDetail) ◂
     const { bill } = posResult(await billDetail({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { saleId: params.id, unitId }));
-    return { ...bill, totals: posApiBillTotals(bill.totals) };
+    // POS P2.14 ▸ fix1 H2: ต้นทุน/กำไรต่อบรรทัด = เฉพาะคีย์ที่มี pos.report.view (billDetail คืน null ให้คนอื่น) — null = ไม่มีฟิลด์ในคำตอบ ◂
+    const lines = bill.lines.map(({ costSatang, marginSatang, ...l }) => ({ ...l, ...(costSatang === null ? {} : { costSatang }), ...(marginSatang === null ? {} : { marginSatang }) }));
+    return { ...bill, lines, totals: posApiBillTotals(bill.totals) };
   },
 });
 
