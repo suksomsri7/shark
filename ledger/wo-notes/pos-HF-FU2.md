@@ -74,3 +74,20 @@ All on tree d, QC4 (`ep-frosty-lab`), POS lock, CI never exported. Chain = `scra
 Red-before on the base (step 1): forced 9/24 · `--no-db` 4/16 (same as `HF-FU2-red.txt`).
 
 **Typecheck** `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` at **c8f089d7** dirty 0 → **exit 0** (head/dirty unchanged after). The commit after it touches only this file.
+
+## Fix round 1 delivered (controller ruling CD-FU2c · 17 Oct · tree p11 · branch `wip/pos-hf-fu2` from 1224fd12)
+Source: `ledger/wo-notes/pos-HF-FU2-review.md` (R1 F1–F4 · hunter N1–N5). One commit per fix, marker `POS HF-FU2 ▸ fix1 <id> ◂`.
+| id | commit | change |
+|---|---|---|
+| F1 | ab624a83 | `catalog.ts` bulk carry: `liveUnitsOfPos` call + `live.has(x) &&` dropped — every outranked `(null, X)` notSold row is carried (dead units included; ruling 4 as written) |
+| N2 | 2c3739c4 | runner: head/dirty/only parsed from HEAD.txt line 1 only · HEAD.txt ≠ 1 line ⇒ `RED HEAD.txt …` · duplicate `head=`/`dirty=`/`only=` tokens ⇒ RED (covers R1-F4) |
+| N3 | ab537e95 | runner: more than one `JSON_SUMMARY` line ⇒ RED · the single one must be the line right before the final `EXIT` |
+| N1 | e07ccb7e | runner: SUMMARY rc must equal the log's final `EXIT n` line · rc 0 rows: JSON_SUMMARY unreadable, failed/findings non-empty, crashed, or passed ≠ total ⇒ RED (covers R1-F2) |
+| N4 | a8b022ce | runner rule (a): counts `failed` only when the suite reports `failed` (findings never pad); findings-only suites (51 of the real gates111/p214-close suites) count `findings` · `0 ≤ passed ≤ total` else RED |
+| N5 | a1b8a210 | `refund-consumer.ts`: ACC-1 WARN via `prisma.opsEvent.create` (level WARN · source · message · detail · tenantId — the logOps fields) inside the try ⇒ insert failure → errors.push → retry · find-then-write dedupe kept |
+| ORACLE-ADD | b3e3848e | `qc-hf-fu2.mts` RG9 (rc ≠ EXIT · 0 vs EXIT 1 and accepted 1 vs EXIT 137 · control) · RG10 (rc 0 + failed / findings / crashed / passed<total) · RG11 (2-line HEAD.txt · two `only=`) · RG12 (forged second JSON_SUMMARY · summary not before EXIT) · RG13 (findings padding · passed>total · findings-only control green) · AC1 + injected `opsEvent.create` failure (findFirst ⇒ null, create rejects, source-scoped, restored in finally) ⇒ consumer must throw the injected message, create called once, no row added. **Count 24 → 29** (`--list` 29 · `--no-db` 16 → 21). Positive control: all five RG red against the 1224fd12 runner (transient swap of `pos-gates-all.sh`, restored byte-equal, never committed). |
+- F3 (match anywhere in the log) accepted as written — no change.
+- Real-dir check of the new rules: `--verdict` on copies of gates111-c, p214-close-…085341Z, hffu2b-only-d-…212613Z — no new RED line (only the old not-accepted rows + HEAD of the copy).
+- Results at **b3e3848e** dirty 0 (HEAD-end b3e3848e dirty-end 0), QC4, POS lock: `qc-hf-fu2` forced **29/29 ×2** · `--no-db` **21/21** · `qc-pos-p2.14` 60/60 · `qc-pos-p2.2` 42/42 · `qc-pos-p2.1` 55/55 · `qc-pos-p1.8` 49/49 · `qc-pos-p2.9b` 53/53 · fitness no-env 0 · fitness QC4 0 · `gen-pos-api-docs --check` 0.
+- Runner `--only qc-hf-fu2,qc-pos-p2.14,qc-hf-fu`: `/root/pos-runs/hffu2b-fix1-only-p11-20261016T220835Z` — HEAD.txt one line `… only=qc-hf-fu2,qc-pos-p2.14,qc-hf-fu` · SET partial 3/97 · qc-hf-fu2 29/29 (third forced run) · only RED = `qc-hf-fu` (HF-FU-ST1 lane pin) ⇒ VERDICT red (1), as expected.
+- Lane pins unchanged from the list above (qc-hf-fu:233 · p2.12:270 · p2.11:267 · p2.10:221) — controller re-pin at merge.
