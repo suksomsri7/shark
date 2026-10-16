@@ -25,6 +25,7 @@ export function useOrdersBadge(systemId: string, unitId: string | undefined, ena
     if (!enabled || !unitId || md !== (media === "md")) return; // POS P2.14 ▸ UI-13 ◂
     let alive = true;
     const run = async () => {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return; // POS P2.14 ▸ U2 H1: ออฟไลน์ = ไม่ดึง (ไม่ยิงคำขอที่รู้ว่าล้ม) ◂
       try {
         const r = await listOrdersAction({ systemId, unitId });
         if (alive) setN(r.ok ? r.counts.byColumn.new : null);
