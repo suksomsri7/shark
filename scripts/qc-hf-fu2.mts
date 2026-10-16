@@ -67,6 +67,9 @@ const CHECKS: readonly Def[] = [
   D("RG11", "G", "[fix1 N2] HEAD.txt 2 บรรทัด (บรรทัด 2 ปลอม head/only) ⇒ RED · บรรทัดเดียวมี only= 2 ตัว ⇒ RED"),
   D("RG12", "G", "[fix1 N3] JSON_SUMMARY 2 บรรทัด (ปลอมต่อท้ายตัวจริงให้ accepted) ⇒ RED · JSON_SUMMARY ไม่ใช่บรรทัดก่อน EXIT ⇒ RED"),
   D("RG13", "G", "[fix1 N4] findings เติมจำนวน (failed 1 + findings 1 · total−passed 2) ⇒ RED · passed > total ⇒ RED · ตัวควบคุม: ชุดที่รายงานแค่ findings นับ findings ⇒ green"),
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix2 N6–N7) ▸ RG14–RG15 = ช่องที่ hunter รอบสองพบที่ ffca3f00 ◂
+  D("RG14", "G", "[fix2 N6] suite exit 0: ไม่มี JSON_SUMMARY ⇒ RED · passed เป็นสตริง ⇒ RED · total 0 ⇒ RED · skipped:true ⇒ RED · ชุด forced รายงาน forced:false ⇒ RED · ตัวควบคุม qc-restaurant ไม่มี JSON ⇒ green"),
+  D("RG15", "G", "[fix2 N7] failed ไม่ใช่รายการ (failed:2 · accepted rc 1 และ exit 0) ⇒ RED · total 0 passed 0 failed [id ที่ยอมรับ] ⇒ RED"),
   // ── MF แมนิเฟสต์ (V) ──
   D("MF1", "S", "[V มติ 7] pos-gates.json: qc-pos-p2.14 ไม่มี accepted · ทุก accepted ที่ checks มี CRASH หรือ *-ERR มี match (สตริงไม่ว่าง · อยู่ใน log ของ gates111 ถ้ามี) · มีชุด qc-hf-fu2 (mode forced)"),
   // ── AC ค่าคอมฯ ข้ามสมุด (B · ACC-1 · มติ 1) ──
@@ -822,6 +825,42 @@ async function runTooling(): Promise<void> {
     chk("RG13", p.length === 0, "นับ failed เท่านั้น · 0 ≤ passed ≤ total", P8(p) || "ครบ");
   });
 
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix2 N6–N7) ▸ RG14–RG15 ◂
+  await step("RG14", () => {
+    const r = need();
+    const plainSuite = (Array.isArray(man?.suites) ? man.suites : []).map((x: Any) => String(x?.suite ?? "")).find((n: string) => n && !["qc-restaurant", "qc-nav-functions"].includes(n) && !(man.suites.find((x: Any) => x.suite === n)?.accepted)) ?? "";
+    const forcedSuite = (Array.isArray(man?.suites) ? man.suites : []).find((x: Any) => x?.mode === "forced" && !x?.accepted)?.suite ?? "";
+    if (!plainSuite || !forcedSuite || !names.includes("qc-restaurant")) throw new Error(`(fixture) ชุดสำหรับ RG14 ไม่ครบ (${plainSuite}/${forcedSuite}/qc-restaurant)`);
+    const cases: [string, string, string][] = [
+      ["ไม่มี JSON_SUMMARY", plainSuite, "ผ่านทั้งหมด (สรุปถูกลบ)"],
+      ["passed เป็นสตริง", plainSuite, js({ total: 3, passed: "3", failed: [] })],
+      ["total 0", plainSuite, js({ total: 0, passed: 0, failed: [] })],
+      ["skipped:true", plainSuite, js({ total: 3, passed: 3, failed: [], skipped: true })],
+      ["forced:false (ชุด forced)", forcedSuite, js({ total: 3, passed: 3, failed: [], forced: false })],
+    ];
+    const p: string[] = [];
+    for (const [lbl, nm, body] of cases) {
+      const v = verdictOf(r, mkOut(r, ok0(names, { [nm]: { rc: 0, body } }), "-"));
+      if (!isRed(v)) p.push(`${nm} exit 0 + ${lbl} → ${vline(v)} (คาด RED)`);
+    }
+    const ctl = verdictOf(r, mkOut(r, ok0(names, { "qc-restaurant": { rc: 0, body: "qc-restaurant ผ่าน (ชุดนี้ไม่พิมพ์ JSON_SUMMARY)" } }), "-"));
+    if (!ctl.green) p.push(`(ตัวควบคุม) qc-restaurant ไม่มี JSON → ${vline(ctl)} (คาด green)`);
+    chk("RG14", p.length === 0, "suite exit 0 ต้องมีสรุปที่ผ่านจริง (ยกเว้นชุดที่ไม่พิมพ์สรุป)", P8(p) || "ครบ (5 กรณี + ตัวควบคุม)");
+  });
+  await step("RG15", () => {
+    const r = need();
+    const id0 = ncChecks[0]!;
+    const first = names[0]!;
+    const va = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: js({ total: 10, passed: 9, failed: 2, findings: [id0] }) } }), "-"));
+    const vb = verdictOf(r, mkOut(r, ok0(names, { [first]: { rc: 0, body: js({ total: 3, passed: 3, failed: 0 }) } }), "-"));
+    const vc = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: js({ total: 0, passed: 0, failed: [id0] }) } }), "-"));
+    const p: string[] = [];
+    if (!isRed(va)) p.push(`${nc} accepted rc 1 · failed:2 (+ findings [${id0}]) → ${vline(va)} (คาด RED)`);
+    if (!isRed(vb)) p.push(`${first} exit 0 · failed:0 → ${vline(vb)} (คาด RED)`);
+    if (!isRed(vc)) p.push(`${nc} total 0 passed 0 failed [${id0}] → ${vline(vc)} (คาด RED)`);
+    chk("RG15", p.length === 0, "failed ต้องเป็นรายการ · ไม่เกิน total−passed", P8(p) || "ครบ");
+  });
+
   console.log("\n── MF แมนิเฟสต์ ──");
   await step("MF1", () => {
     const p: string[] = [];
@@ -859,7 +898,7 @@ function rmRg(): string {
 
 // ═════════════════════════ 1d. --no-db ═════════════════════════
 const loadBlame = async () => (existsSync(join(ROOT, F.blame)) && purePath(F.blame) ? await tryImport("@/components/pos/register/deposit-blame") : null);
-const NODB_IDS = ["ST1", "ST2", "DP1", "DP2", "DP3", "DS1", "PB1", "RG1", "RG2", "RG3", "RG4", "RG5", "RG6", "RG7", "RG8", "RG9", "RG10", "RG11", "RG12", "RG13", "MF1"]; // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix1 N1–N4): + RG9–RG13 ◂
+const NODB_IDS = ["ST1", "ST2", "DP1", "DP2", "DP3", "DS1", "PB1", "RG1", "RG2", "RG3", "RG4", "RG5", "RG6", "RG7", "RG8", "RG9", "RG10", "RG11", "RG12", "RG13", "RG14", "RG15", "MF1"]; // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix1 N1–N4): + RG9–RG13 ◂ · ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix2 N6–N7): + RG14–RG15 ◂
 if (NODB) {
   const ids = NODB_IDS.map((x) => `HF-FU2-${x}`);
   console.log(`[${SUITE}] --no-db: รัน ${ids.length} ข้อ (สถิต + บริสุทธิ์ + ตัวรันด่าน · ไม่โหลด prisma)`);
