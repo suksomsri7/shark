@@ -104,6 +104,7 @@ const CHECKS: readonly Def[] = [
   D("PY5", "X4", "[R9] void บิลที่ส่งแล้ว ⇒ REVERSE เดือนนี้ → ส่ง ⇒ C1 ใบใหม่ DEDUCTION amount = |Σ| (บวก) · periodKey เดือนถัดไป · ไม่แตะใบเดิม"),
   D("PY6", "X2", "[R9 R11] C6 (ไม่มีพนักงาน) + MGR (มีพนักงานแต่ไม่มีโปรไฟล์เงินเดือน) ⇒ แถวยัง OPEN · รายงาน commission noEmployee true · แถวรายงานตรงสมุด (accrued reversed net sent open) · ทุกใบของ POS crmCommissionId null · adjustmentStatuses คืน PENDING runId null"),
   D("PY7", "X4", "[fix2 N1 · ORACLE-ADD ผู้คุม 17 ต.ค.] รอบจ่ายถูกสร้างระหว่างส่งกับอนุมัติ: ใบ PENDING ของ C2 (งวด M1) → createPayrollRun(M1) → decideAdjustment APPROVED ⇒ ใบย้ายไปเดือนแรกที่ยังไม่มีรอบ (M2) · APPROVED · runId null · adjustmentStatuses (POS) เห็น periodKey M2"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1)
+  D("PY8", "X4", "[fix2 N1 · ORACLE-ADD ผู้คุม 17 ต.ค.] ตัวกวาดรายการค้าง: ใบ DEDUCTION PENDING ของ C1 (งวด M1 ที่เพิ่งมีรอบใน PY7) + ใบ COMMISSION เดิมของ C1 (งวดนี้ที่มีรอบตั้งแต่ PY4) → syncStaffCommissionToPayroll ⇒ ย้ายไป M2 · ยัง PENDING · ไม่มีใบ POS ที่ค้างในงวดที่มีรอบ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1)
   // ── HC ชั่วโมง ──
   D("HC1", "X5", "[R12 R1] posClockForShift IN (โทเคน C1 · กะของ C1) ⇒ {ok, kind IN} · HrAttendance +1 IN ของพนักงาน C1 · note มี #<shiftNo>"),
   D("HC2", "X1", "[R12] กดซ้ำ IN ⇒ ALREADY_CLOCKED · HrAttendance ยัง +1"),
@@ -1774,6 +1775,20 @@ async function runDb() {
       if (!x || x.status !== "APPROVED" || x.periodKey !== M2) p.push(`adjustmentStatuses → ${short(x ?? st, 80)} (คาด APPROVED · periodKey ${M2})`);
     }
     chk("PY7", NC === "" && !fx && p.length === 0, `อนุมัติหลังรอบ ${M1} ⇒ ย้ายไป ${M2}`, FX(NC + (P8(p) || "ครบ")));
+  }
+  // PY8 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1): รายการของระบบที่ค้างในงวดที่มีรอบแล้ว ถูกย้ายไปงวดแรกที่ยังไม่มีรอบ (ตัวกวาดของ HR ที่รอบส่งของ POS เรียก)
+  {
+    const p: string[] = [];
+    const ded = (await posAdj()).find((a) => a.employeeId === EMP.C1 && a.kind === "DEDUCTION");
+    if (!ded || ded.periodKey !== M1 || ded.status !== "PENDING") p.push(`(fixture) ใบหักของ C1 ${short(ded && [ded.periodKey, ded.status], 60)} (คาด ${M1} PENDING)`);
+    await sync(NEXT_MONTH_NOW);
+    const runs = new Set(((await P.hrPayrollRun.findMany({ where: { tenantId: T }, select: { periodKey: true } }).catch(() => [])) as Any[]).map((r) => r.periodKey));
+    const all = await posAdj();
+    const d2 = all.find((a) => ded && a.id === ded.id);
+    if (!d2 || d2.periodKey !== M2 || d2.status !== "PENDING" || d2.runId) p.push(`ใบหักของ C1 หลังกวาด ${short(d2 && [d2.periodKey, d2.status, d2.runId], 60)} (คาด ${M2} PENDING)`);
+    const stuck = all.filter((a) => !a.runId && (a.status === "PENDING" || a.status === "APPROVED") && runs.has(a.periodKey));
+    if (stuck.length) p.push(`ใบ POS ยังค้างในงวดที่มีรอบ ${stuck.length}: ${short(stuck.map((a) => [a.kind, a.periodKey]), 80)}`);
+    chk("PY8", NC === "" && !fx && p.length === 0, `ตัวกวาด ⇒ ${M2}`, FX(NC + (P8(p) || "ครบ")));
   }
 
   // ════════ HC ชั่วโมง ════════
