@@ -261,6 +261,16 @@
 - **O27-run (ต่อ)** 🧪 qc:all บน QC6 ยังทำให้ working tree สกปรก: `scripts/fixtures/acc-v2/kbank-2026-08.csv` · `kbank-2026-08.expected.json` · `kbank-2026-09.csv` (+1) ถูกเขียนทับระหว่าง seed/ชุด acc-v2 → ผู้คุม POS คืนค่าด้วย `git checkout -- scripts/fixtures/acc-v2` ก่อนด่าน (ไม่ commit) · **เจ้าของเลน ACCOUNT**: ให้ seed/ชุดเขียน fixture ลง /tmp หรือเช็กว่า idempotent
 - **O27-run สรุป (16 ต.ค. 17:0xZ)** 🧪 qc:all ทั้งรีโปบน QC6 = ผ่าน 288/420 · แดงที่เป็นของเลนอื่น (ไม่ใช่ POS · ยกให้เจ้าของเลน): **ACCOUNT** seed-acc-v2 self-check เน่าตามวันที่ (29+5 ชุด) + fixtures ถูกเขียนทับ · **CRM** 18 ชุด (crm-buttons `crmActivity.create()` invalid · c1.1 party ซ้ำ 29 vs 15 / snapshot idempotent · c1.10 c1.11 c2.x …) บน DB ที่ไม่มีข้อมูล CRM เดิม · **MEMBER** 36 ชุด (member-expected.json ไม่ตรง seed: `reading 'role' of null` · `ไม่พบ Membership`) · **HR** migrate-status drift คอลัมน์ HrEmployee.pinHash/pinSetAt · HrPayrollRun (schema ไม่มี · DB มี) · **KANBAN** k2.3 ต้องมีภาพ/เซิร์ฟเวอร์ · log `/root/pos-runs/qcall-c-20261016T151116Z/` + `/tmp/claude-0/qc-all/*.log` (ชั่วคราว)
 
+## 16 ต.ค. 2026 (บัญชี A) — HF-FU2 (ตามเก็บ P2 · เครื่องมือด่าน + แก้เล็ก) — เรื่องที่ยกออกจากใบนี้ (มติผู้คุม §8.6)
+- 16 ต.ค. · **HF-FU2 K QR-4 → P3** 💳 QR พร้อมเพย์นิ่ง (tag 62 เลขอ้างอิงในตัว QR) ต้องทดสอบกับแอปธนาคารจริงหลายเจ้า ⇒ ย้ายไป P3 (ไม่แตะโค้ดใน HF-FU2) · ที่มา OP :246(1)
+- 16 ต.ค. · **HF-FU2 P RPT-6 → P4** 🖨️ รายงานพิมพ์ยังใช้ `PrintFrame.tsx` + CSS พิมพ์ (ไม่มี route `text/html` แยก · deviation D5) ⇒ route พิมพ์แยก (ต้องมีด่านสิทธิ์ของตัวเอง) ไป P4 · ที่มา OP :255(2)
+- 16 ต.ค. · **HF-FU2 Q UI-6 → เลน KANBAN** 📱 ตารางใน `/developers/kanban` ไม่มี `overflow-x-auto` (จอ 390 ล้นแนวนอน) — POS ไม่แก้หน้าของโมดูลอื่น (ข้อสอบ `qc-kanban-k1.15` อ่านหน้านี้) ⇒ เจ้าของเลน kanban แก้ · ที่มา OP :255(3)
+- 16 ต.ค. · **HF-FU2 Q UI-6 → เลน ACCOUNT** 📱 ตารางใน `/developers/account` ไม่มี `overflow-x-auto` (จอ 390 ล้นแนวนอน) — POS ไม่แก้ (ข้อสอบ `qc-account-api-docs` อ่านหน้านี้) ⇒ เจ้าของเลน account แก้ · ที่มา OP :255(3)
+- 16 ต.ค. · **HF-FU2 Q UI-6 → เลน MEMBER** 📱 ตารางใน `/developers/member` ไม่มี `overflow-x-auto` (จอ 390 ล้นแนวนอน) — POS ไม่แก้ (ข้อสอบ `qc-member-m1.11/m2.10/m3.10` อ่านหน้านี้) ⇒ เจ้าของเลน member แก้ · ที่มา OP :255(3)
+- 16 ต.ค. · **HF-FU2 S D1c → P3** 🔐 เปิดกะอ้างรหัสเครื่องของคนอื่นได้ (`shift-actions.ts` ไม่มีตัวตนเครื่องฝั่งเซิร์ฟเวอร์ · `PosDevice` ไม่ผูก session) ⇒ คุกกี้เครื่องแบบลงลายมือชื่อใน P3 · ที่มา OP :257(2)
+- 16 ต.ค. · **HF-FU2 D11 → P3** 🧩 หน้าตั้งค่าของสาขาที่ผูก POS (setup writers ของระบบเดิม) ยังเปิดอยู่บนสาขาที่ผูกแล้ว ⇒ ย้ายเข้าจอตั้งค่า POS ใน P3 · ที่มา `wo-notes/pos-P2.14.md:163`
+- 16 ต.ค. · **HF-FU2 (หมายเหตุ ไม่มีบรรทัดใหม่)** แถว W6 (CD-F7) · W7 (one-OPEN-shift) · W8 (ACC-1 `commission_other_book`) อยู่ในตารางรอคำตอบด้านล่างแล้ว · fixtures acc-v2 = เลน ACCOUNT (OP :262 เดิม)
+
 ## รอคำตอบเจ้าของ (รวม · เริ่ม 16 ต.ค. 19:1xZ ตามคำสั่ง "จดไว้ ทำต่อถึง 100%") — ค่าเริ่มต้นที่ใช้ไปก่อนอยู่ในวงเล็บ
 | # | เรื่อง | ค่าเริ่มต้นที่ใช้ | ที่มา |
 |---|---|---|---|

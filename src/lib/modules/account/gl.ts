@@ -1966,6 +1966,11 @@ export async function posSaleEntryPosted(ctx: GlCtx, refId: string, event: "PAID
   return alreadyPosted(ctx, `PosSale#${refId}#${event}`, prisma);
 }
 
+/** POS HF-FU2 ▸ ACC-1 (มติ 1): คีย์ PosSale#<refId>#<event> อยู่ในสมุดอื่นของร้านนี้ (POS ถูกย้ายไปผูกสมุดใหม่หลังลงบิล) — อ่านอย่างเดียว ◂ */
+export async function posSaleEntryInOtherBook(ctx: GlCtx, refId: string, event: "PAID" | "COMMISSION" | "COMMISSION_REFUNDED"): Promise<boolean> {
+  return postedInOtherBook(ctx, `PosSale#${refId}#${event}`, prisma);
+}
+
 /**
  * ผู้ติดต่อบนบรรทัดลูกหนี้ (คีย์ arKey) ฝั่ง Dr ของ JV ขาย PosSale#<saleRefId>#PAID — ไม่มี JV/ไม่มีผู้ติดต่อ/ไม่มีการจับคู่คีย์ = null
  * ใช้ให้การคืนเงิน/ค่าคอมฯ ลงลูกหนี้แพลตฟอร์ม "คนเดียวกับตอนขาย" แม้ช่องทางถูกเปลี่ยนชื่อภายหลัง (รีวิว F3)

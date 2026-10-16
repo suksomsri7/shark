@@ -2612,12 +2612,32 @@ export async function bulkChannelMarkup(
               notSold: true,
               OR: unitId !== null ? [{ channelCode: code, unitId: null }, { channelCode: null, unitId }] : [{ channelCode: null, unitId: { not: null } }],
             },
-            select: { productId: true },
+            select: { productId: true, unitId: true }, // POS HF-FU2 ▸ PRC-1: ต้องรู้สาขา X ของแถว (ทุกช่องทาง, X) ไม่ขาย ◂
           })
         : [];
       const notSoldBelow = new Set(outranked.map((r) => r.productId));
       // ◂
-      const plan: { p: PosProduct; price: number; prev: (typeof existing)[number] | undefined }[] = [];
+      // POS HF-FU2 ▸ PRC-1 (มติ 4): unitId = null ⇒ แถวที่แพ้มีแค่ (ทุกช่องทาง, X) ไม่ขาย — ไม่ข้ามทั้งสินค้าแล้ว: เขียน (ช่องทาง, ทุกสาขา)
+      //   และ "พา" ไม่ขายลงชั้นช่องทาง (ช่องทาง, X, ไม่ขาย) ทุก X ที่ยังไม่มีแถว (ช่องทาง, X) ของตัวเอง/แม่ (ไม่ทับแถวราคาเดิม) · พาทุก X รวมสาขาที่เลิกผูก/เก็บถาวรตอนนี้ (POS HF-FU2 ▸ fix1 F1 ◂: ผูกกลับทีหลังต้องยังไม่ขาย · แถวไม่ขายบนสาขาที่ตายขายไม่ได้อยู่แล้ว)
+      //   ⇒ X ยังไม่ขายบนช่องทางนี้ · สาขาอื่นได้ราคาบวก · tx เดียวกัน audit แถวเดียว (via bulk · rows ครบทุกแถวที่เขียน) ◂
+      const carryOf = new Map<string, string[]>();
+      if (unitId === null && outranked.length) {
+        const codeRows = await tx.posProductChannelPrice.findMany({
+          where: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: { in: famIds }, channelCode: code, unitId: { not: null } },
+          select: { productId: true, unitId: true },
+        });
+        const has = new Set(codeRows.map((r) => `${r.productId}|${r.unitId}`));
+        for (const p of visible) {
+          if (p.unitId !== null) continue; // สินค้าของสาขา = ข้ามตามเดิม (ด้านล่าง)
+          const fam = p.parentId ? [p.id, p.parentId] : [p.id];
+          const xs = [...new Set(outranked.filter((r) => fam.includes(r.productId) && r.unitId !== null).map((r) => r.unitId as string))]
+            .filter((x) => !fam.some((pid) => has.has(`${pid}|${x}`))) // POS HF-FU2 ▸ fix1 F1: ไม่กรองสาขาที่ยังผูก (มติ 4 ตามตัวอักษร) ◂
+            .sort();
+          carryOf.set(p.id, xs);
+        }
+      }
+      // ◂
+      const plan: { p: PosProduct; price: number; prev: (typeof existing)[number] | undefined; carry: string[] }[] = []; // POS HF-FU2 ▸ PRC-1: carry = สาขา X ที่พา notSold ลง ◂
       const cache = new Map<string, CatalogWriteVerdict>();
       let skipped = 0;
       for (const p of visible) {
@@ -2634,8 +2654,8 @@ export async function bulkChannelMarkup(
           skipped++;
           continue;
         }
-        if (!prev && (notSoldBelow.has(p.id) || (p.parentId && notSoldBelow.has(p.parentId)))) {
-          skipped++; // POS P2.14 ▸ PRC-1 ◂
+        if (!prev && (unitId !== null || p.unitId !== null) && (notSoldBelow.has(p.id) || (p.parentId && notSoldBelow.has(p.parentId)))) {
+          skipped++; // POS P2.14 ▸ PRC-1 ◂ · POS HF-FU2 ▸ PRC-1: ยังข้ามเมื่อระบุสาขา หรือเป็นสินค้าของสาขา (ที่เหลือ = พา notSold ลง) ◂
           continue;
         }
         const price = channelMarkupPrice(p.basePriceSatang, markupBp, roundTo);
@@ -2644,16 +2664,18 @@ export async function bulkChannelMarkup(
           skipped++;
           continue;
         }
-        plan.push({ p, price, prev });
+        plan.push({ p, price, prev, carry: prev ? [] : (carryOf.get(p.id) ?? []) }); // POS HF-FU2 ▸ PRC-1: มีแถว (ช่องทาง, ทุกสาขา) เดิมอยู่แล้ว = ชนะ (ทุกช่องทาง, X) อยู่ก่อน ไม่พาเพิ่ม ◂
       }
       const userId = auditUserOf(ctx);
       for (const x of plan) {
         if (x.prev) await tx.posProductChannelPrice.update({ where: { id: x.prev.id }, data: { priceSatang: x.price, notSold: false, updatedByUserId: userId } });
         else await tx.posProductChannelPrice.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: x.p.id, channelCode: code, unitId, priceSatang: x.price, notSold: false, updatedByUserId: userId } });
+        // POS HF-FU2 ▸ PRC-1: แถว (ช่องทาง, X, ไม่ขาย) ที่พาลง — tx เดียวกัน · อยู่ใน audit แถวเดียวกัน ◂
+        for (const ux of x.carry) await tx.posProductChannelPrice.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: x.p.id, channelCode: code, unitId: ux, priceSatang: null, notSold: true, updatedByUserId: userId } });
         const before = x.prev ? [{ channelCode: code, unitId, priceSatang: x.prev.priceSatang, notSold: x.prev.notSold }] : [];
         await audit(tx, ctx, "pos.product.channelPrice", "PosProduct", x.p.id, { productId: x.p.id, rows: before }, {
           productId: x.p.id,
-          rows: [{ channelCode: code, unitId, priceSatang: x.price, notSold: false }],
+          rows: [{ channelCode: code, unitId, priceSatang: x.price, notSold: false }, ...x.carry.map((ux) => ({ channelCode: code, unitId: ux, priceSatang: null, notSold: true }))], // POS HF-FU2 ▸ PRC-1 ◂
           via: "bulk",
           markupBp,
           roundTo,

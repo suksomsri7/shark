@@ -2245,7 +2245,11 @@ async function runDb() {
     const cx = await matrixCell(PP.mx!, "A", "LINEMAN");
     if (cx?.refusal !== "CHANNEL_NOT_SOLD") p.push(`X ที่ A/LINEMAN → ${short(cx, 60)} (คาด CHANNEL_NOT_SOLD)`);
     const by = await call(catalog, "bulkChannelMarkup", cc(), { channelCode: "LINEMAN", unitId: null, markupBp: 1000, roundTo: 1, productIds: [PP.my] });
-    if ((await cpRows(PP.my!)).some((r) => r.channelCode === "LINEMAN" && r.unitId === null)) p.push(`Y: เขียนแถว (LINEMAN, ทุกสาขา) ทับ notSold ของ A (${short(by, 50)})`);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (HF-FU2 PRC-1) ▸ มติ 4 HF-FU2: แถว (LINEMAN, ทุกสาขา) ได้ — ต้องมาคู่กับ (LINEMAN, A, ไม่ขาย) ที่พาลง · B ได้ราคาบวก (10000 +10% = 11000) ◂
+    const ry = await cpRows(PP.my!);
+    if (ry.some((r) => r.channelCode === "LINEMAN" && r.unitId === null) && !ry.some((r) => r.channelCode === "LINEMAN" && r.unitId === U.A && r.notSold === true)) p.push(`Y: เขียนแถว (LINEMAN, ทุกสาขา) โดยไม่พา notSold ของ A ลง (${short(by, 50)})`);
+    const cyB = await matrixCell(PP.my!, "B", "LINEMAN");
+    if (cyB?.unitPriceSatang !== 11_000) p.push(`Y ที่ B/LINEMAN → ${short(cyB, 60)} (คาด 11000)`);
     const cy = await matrixCell(PP.my!, "A", "LINEMAN");
     if (cy?.refusal !== "CHANNEL_NOT_SOLD") p.push(`Y ที่ A/LINEMAN → ${short(cy, 60)} (คาด CHANNEL_NOT_SOLD)`);
     chk("P2", !fx && p.length === 0, "ปรับทั้งช่องทางไม่ทำให้สินค้าที่ไม่ขายกลับมาขาย", why(p));

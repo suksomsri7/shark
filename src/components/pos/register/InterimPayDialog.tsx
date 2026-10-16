@@ -68,6 +68,7 @@ import {
 } from "@/lib/modules/pos/register-shared";
 import { registerGiftCardLookupAction, registerPayTendersAction } from "@/lib/modules/pos/register-actions"; // POS P2.9U ▸ มติ 1–2 ◂
 import { registerDepositLookupAction } from "@/lib/modules/pos/deposit-actions"; // POS P2.9bU ▸ มติ 2 ◂
+import { depositBlame } from "./deposit-blame"; // POS HF-FU2 ▸ DEP-1 ◂
 import { hundredthsText, parseHundredths } from "./LineEditor";
 import { RegisterDialog } from "./RegisterDialog";
 import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
@@ -76,11 +77,15 @@ import { HEAD_OFFICE_BRANCH_CODE, type TaxInvoiceBuyerInput } from "@/lib/module
 import type { DisplayPayIn } from "@/lib/modules/pos/display-shared"; // POS P2.10 ▸ จอลูกค้า ◂
 
 export type PayPhase = "form" | "sending" | "unknown" | "conflict";
-export type PayError = { code: string; key: string; values?: Record<string, string | number>; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือ ◂ */ giftCardRow?: number; attemptsLeft?: number };
-/** POS P2.14 ▸ UI-9: ส่งแถว/ครั้งที่เหลือของคำปฏิเสธ PIN ต่อให้กล่องจ่าย (ไม่มี = ทุกแถวบัตรใส่ใหม่ตามเดิม) ◂ */
-export function payErrorPinMeta(refusal: object): Pick<PayError, "giftCardRow" | "attemptsLeft"> {
-  const r = refusal as { giftCardRow?: unknown; attemptsLeft?: unknown };
-  return { ...(typeof r.giftCardRow === "number" ? { giftCardRow: r.giftCardRow } : {}), ...(typeof r.attemptsLeft === "number" ? { attemptsLeft: r.attemptsLeft } : {}) };
+export type PayError = { /** POS HF-FU2 ▸ DEP-1: ใบมัดจำที่คำปฏิเสธ DEPOSIT_* ระบุ (register.ts) ◂ */ depositId?: string; code: string; key: string; values?: Record<string, string | number>; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือ ◂ */ giftCardRow?: number; attemptsLeft?: number };
+/** POS P2.14 ▸ UI-9: ส่งแถว/ครั้งที่เหลือของคำปฏิเสธ PIN ต่อให้กล่องจ่าย (ไม่มี = ทุกแถวบัตรใส่ใหม่ตามเดิม) ◂ · POS HF-FU2 ▸ DEP-1: + depositId ของคำปฏิเสธมัดจำ (ผู้เรียกทั้งสามไม่ต้องแก้) ◂ */
+export function payErrorPinMeta(refusal: object): Pick<PayError, "giftCardRow" | "attemptsLeft" | "depositId"> {
+  const r = refusal as { giftCardRow?: unknown; attemptsLeft?: unknown; depositId?: unknown };
+  return {
+    ...(typeof r.giftCardRow === "number" ? { giftCardRow: r.giftCardRow } : {}),
+    ...(typeof r.attemptsLeft === "number" ? { attemptsLeft: r.attemptsLeft } : {}),
+    ...(typeof r.depositId === "string" && r.depositId ? { depositId: r.depositId } : {}), // POS HF-FU2 ▸ DEP-1 ◂
+  };
 }
 /** สิ่งที่กล่องส่งกลับเมื่อยืนยัน — RegisterScreen ประกอบเป็นคำขอ submit (คีย์บิล + expectedGrandTotalSatang อยู่ฝั่งนั้น) */
 export type PayChoice = { payMethods: RegisterPayMethod[]; cashReceivedSatang?: number; tipSatang: number };
@@ -753,56 +758,37 @@ export function PayDialog(p: Props) {
         setMethod("CASH");
         setEntry("");
       }
-    } else if (e.code === "DEPOSIT_NOT_FOUND" || e.code === "DEPOSIT_CLOSED") {
-      // POS P2.9bU ▸ มติ 4: ถอดแถวมัดจำที่ใช้ไม่ได้แล้ว + ข้อความใต้รายการ ◂
-      void depDropClosed(e.code);
-    } else if (e.code === "DEPOSIT_NOT_OWNER") {
-      // POS P2.9bU ▸ fix1 มติ 1 (R1 F1): คำปฏิเสธไม่บอกแถว ⇒ โทษตามที่มาของแถว (ไม่มีจำนวนครั้งที่เหลือ — คำปฏิเสธไม่มี):
-      //   (0) ชุดแถวเดิมโดนซ้ำหลังใส่ 4 หลักใหม่ ⇒ ถอดแถวมัดจำที่เหลือทั้งหมด + ข้อความกลาง (ไม่วนแถวเดิม)
-      //   (1) ชุดที่ลองซ้ำไม่มี 4 หลัก (sentStripped) / 4 หลักที่ใส่ใหม่ทางแถว (forRow — แผงไม่ได้ตรวจ) ⇒ ล้าง 4 หลักของแถวนั้น + "อีกครั้ง"/"ไม่ถูกต้อง"
-      //   (2) แถวที่แผงตรวจแล้ว: มัดจำสมาชิก (memberLinked — จากรายการสมาชิกในบิล / เลขใบเสร็จตรงที่เห็นยอดโดยไม่ใช้ 4 หลัก · S service.ts:417) ⇒ ถอด + errors.depositNotOwner
-      //   (3) ไม่มีแถวสมาชิก ⇒ แถว 4 หลัก "ไม่ถูกต้อง" · ไม่มีอะไรให้โทษ ⇒ ถอดทุกแถวมัดจำ ◂
-      const sig = (list: PayRow[]) => list.map((r) => r.id).sort((a, b) => a - b).join(",");
-      const all = depRows;
-      const l4Rows = all.filter((r) => r.dep?.needsLast4);
-      const suspects = sentStripped.current ? l4Rows : l4Rows.filter((r) => !r.dep?.l4Checked);
-      const own = all.filter((r) => r.dep?.memberLinked);
-      const dropRows = (ids: Set<number>, key: string) => {
-        for (const id of ids) last4Ref.current.delete(id);
-        setRows((s) => s.filter((r) => !ids.has(r.id)));
-        setDepLast4("");
-        setDp(DP_EMPTY);
-        setDepNote(key);
-        notOwnerSet.current = null; // ชุดเปลี่ยนแล้ว — ครั้งถัดไปโทษแถว 4 หลักก่อน
-      };
-      const blameL4 = (list: PayRow[], note: "wrong" | "again") => {
-        const ids = new Set(list.map((r) => r.id));
-        for (const id of ids) last4Ref.current.delete(id);
-        setRows((s) => s.map((r) => (r.type === "DEPOSIT" && r.dep && ids.has(r.id) ? { ...r, dep: { ...r.dep, note, l4Checked: false } } : r)));
-        setDepNote(null);
-        notOwnerSet.current = sig(all);
-        reenterLast4(list[0]!);
-      };
-      // POS P2.9bU ▸ fix2 G1: ชุดเดิมซ้ำ + ยังมีแถวสมาชิก ⇒ ถอดเฉพาะแถวสมาชิก (errors.depositNotOwner) · ตั้งชุดเป็นแถวที่เหลือ ⇒ ซ้ำอีกครั้ง = ถอดทั้งหมด
-      //   (แถว walk-in ที่ใส่ 4 หลักถูกแล้วรอดคำปฏิเสธที่มาจากแถวสมาชิก · ไม่วน — ลองเพิ่มได้อีกครั้งเดียว) ◂
-      if (all.length && notOwnerSet.current === sig(all) && own.length) {
-        const ids = new Set(own.map((r) => r.id));
-        dropRows(ids, DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
-        const left = all.filter((r) => !ids.has(r.id));
-        notOwnerSet.current = left.length ? sig(left) : null;
-      } else if (all.length && notOwnerSet.current === sig(all)) dropRows(new Set(all.map((r) => r.id)), "errors.depositNotOwnerAgain");
-      else if (suspects.length) blameL4(suspects, sentStripped.current ? "again" : "wrong");
-      else if (own.length) dropRows(new Set(own.map((r) => r.id)), DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
-      else if (l4Rows.length) blameL4(l4Rows, "wrong");
-      else dropRows(new Set(all.map((r) => r.id)), DEP_NOTE_KEY.DEPOSIT_NOT_OWNER!);
-    } else if (e.code === "DEPOSIT_LOCKED") {
-      // POS P2.9bU ▸ มติ 4: ล็อก 15 นาที ⇒ ถอดแถวที่ต้องใช้ 4 หลัก (คำปฏิเสธไม่บอกใบ) + ข้อความ ◂
-      const drop = new Set(depRows.filter((r) => r.dep?.needsLast4).map((r) => r.id));
-      for (const id of drop) last4Ref.current.delete(id);
-      setRows((s) => s.filter((r) => !drop.has(r.id)));
-      setDepLast4("");
-      setDp(DP_EMPTY);
-      setDepNote(DEP_NOTE_KEY.DEPOSIT_LOCKED!);
+    } else if (e.code === "DEPOSIT_NOT_FOUND" || e.code === "DEPOSIT_CLOSED" || e.code === "DEPOSIT_NOT_OWNER" || e.code === "DEPOSIT_LOCKED") {
+      // POS HF-FU2 ▸ DEP-1 (มติ 5): ตัดสินแถวที่โดนด้วย depositBlame (บริสุทธิ์ · deposit-blame.ts) —
+      //   คำปฏิเสธมี depositId ⇒ ถอด/ถาม 4 หลักเฉพาะแถวของใบนั้น (หลัง reload ก็ถามเฉพาะแถวนั้น) ·
+      //   ไม่มี depositId (D2) ⇒ กติกาเดิม P2.9bU มติ 4 · fix1 มติ 1 · fix2 G1 ทุกประการ (ข้อสอบ DP3 golden) ◂
+      const b = depositBlame({
+        code: e.code,
+        depositId: e.depositId ?? null,
+        rows: depRows.map((r) => ({ id: r.id, depositId: r.dep?.id ?? "", receiptNo: r.dep?.receiptNo ?? null, needsLast4: !!r.dep?.needsLast4, memberLinked: !!r.dep?.memberLinked, l4Checked: !!r.dep?.l4Checked })),
+        sentStripped: sentStripped.current,
+        notOwnerSet: notOwnerSet.current,
+      });
+      if (b.lookup) void depDropClosed(e.code);
+      else {
+        const drop = new Set(b.drop);
+        const reask = new Set(b.reask);
+        for (const id of [...drop, ...reask]) last4Ref.current.delete(id);
+        setRows((s) =>
+          s.flatMap((r): PayRow[] =>
+            drop.has(r.id) ? [] : r.type === "DEPOSIT" && r.dep && reask.has(r.id) ? [{ ...r, dep: { ...r.dep, needsLast4: true, note: b.reaskNote, l4Checked: false } }] : [r],
+          ),
+        );
+        setDepNote(b.note);
+        notOwnerSet.current = b.notOwnerSet;
+        const first = b.reask.length ? depRows.find((r) => r.id === b.reask[0]) : undefined;
+        if (first) reenterLast4(first);
+        else {
+          setDepLast4("");
+          setDp(DP_EMPTY);
+        }
+      }
+      // ◂
     } else if (e.code === "DEPOSIT_EXCEEDS") {
       // POS P2.9bU ▸ มติ 4: ยอดมัดจำเปลี่ยน ⇒ ค้นทุกแถวมัดจำใหม่อัตโนมัติ · ตัดจำนวนลงเหลือยอดใหม่ · แบนเนอร์ ◂
       setDepBanner(true);
