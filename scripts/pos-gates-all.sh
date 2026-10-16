@@ -106,17 +106,24 @@ def ids_of(log):  # POS HF-FU2 ▸ U(a): คืน (ids, total, passed) ◂
     if not isinstance(j, dict):  # POS HF-FU2 ▸ U(a) ◂
         return None
     ids = []
+    per = {}  # POS HF-FU2 ▸ fix1 N4: id แยกตามคีย์ — นับ (a) จากรายการเดียว ◂
     for k in ("failed", "findings"):
         v = j.get(k)
         if isinstance(v, list):
+            per[k] = []  # POS HF-FU2 ▸ fix1 N4 ◂
             for x in v:
                 t = str(x.get("id", "")) if isinstance(x, dict) else (str(x).split() or [""])[0]
                 if t:
                     ids.append(t)
+                    per[k].append(t)  # POS HF-FU2 ▸ fix1 N4 ◂
     if j.get("crashed"):
         ids.append("CRASH")
+    # POS HF-FU2 ▸ fix1 N4: (a) นับเฉพาะ failed เมื่อชุดรายงาน failed (findings ไม่เติมจำนวน) · ชุดที่รายงานแค่ findings = นับ findings · crashed = CRASH ◂
+    counted = list(per["failed"]) if "failed" in per else list(per.get("findings", []))
+    if j.get("crashed"):
+        counted.append("CRASH")
     t, p = j.get("total"), j.get("passed")  # POS HF-FU2 ▸ U(a) ◂
-    return ids, (t if isinstance(t, int) and not isinstance(t, bool) else None), (p if isinstance(p, int) and not isinstance(p, bool) else None)
+    return ids, (t if isinstance(t, int) and not isinstance(t, bool) else None), (p if isinstance(p, int) and not isinstance(p, bool) else None), counted
 def is_crash_id(x):  # POS HF-FU2 ▸ U(b) ◂
     return x == "CRASH" or str(x).endswith("-ERR")
 red = []
@@ -223,14 +230,16 @@ for name, rc in rows:
         if got is None:
             why = "ไม่มีบรรทัด JSON_SUMMARY"
         else:
-            ids, t, p = got  # POS HF-FU2 ▸ U(a)(b) ◂
+            ids, t, p, counted = got  # POS HF-FU2 ▸ U(a)(b) ◂ · POS HF-FU2 ▸ fix1 N4: counted = รายการที่นับ (a) ◂
             extra = sorted(set(ids) - set(a["checks"]))
             if extra:
                 why = f"ล้มนอก accepted.checks: {','.join(extra)}"
             elif t is None or p is None:  # POS HF-FU2 ▸ U(a): แดงซ่อน — ต้องนับได้ ◂
                 why = "JSON_SUMMARY ไม่มี total/passed"
-            elif len(set(ids)) < t - p:
-                why = f"รายการล้มสั้นกว่า total−passed ({len(set(ids))} < {t}−{p})"
+            elif not (0 <= p <= t):  # POS HF-FU2 ▸ fix1 N4 ◂
+                why = f"passed/total ผิดรูป (passed {p} · total {t} · ต้อง 0 ≤ passed ≤ total)"
+            elif len(set(counted)) < t - p:  # POS HF-FU2 ▸ fix1 N4: นับ failed เท่านั้น (findings ไม่เติม) ◂
+                why = f"รายการล้มสั้นกว่า total−passed ({len(set(counted))} < {t}−{p})"
             elif any(is_crash_id(x) for x in a["checks"]):
                 m = a.get("match")
                 if not isinstance(m, str) or not m.strip():  # POS HF-FU2 ▸ U(b) ◂
