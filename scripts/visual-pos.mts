@@ -7254,6 +7254,14 @@ async function runP28uState(page: Any, state: P28uOrdersKey | P28uRegKey, device
     await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
     await ensureShift(page);
     if (P28U.error) throw new StepError(`fixture P2.8U: ${P28U.error}`);
+    // POS P2.14 ▸ U2 H5 (CD-U2c): 390 ไม่มีแถบโหมด — ป้ายอยู่ที่ปุ่มออเดอร์บนหัวมือถือ (UI-13 · ขึ้นเมื่อมีออเดอร์ใหม่ · ออเดอร์ของ fixture P2.8U สร้างก่อนงานแรกแล้ว) ◂
+    if (device === "mobile") {
+      await visibleEl(page, tid("pos-reg-mobile-orders-badge"), 0, 20_000).catch(() => {
+        throw new StepError("ป้ายนับออเดอร์ใหม่บนหัวมือถือไม่ขึ้นภายใน 20 วิ");
+      });
+      return;
+    }
+    // ◂
     await visibleEl(page, tid("pos-reg-tab-online-orders"), 0, 10_000);
     await visibleEl(page, tid("pos-reg-tab-orders-badge"), 0, 20_000).catch(() => {
       throw new StepError("ป้ายนับออเดอร์ใหม่บนแท็บไม่ขึ้นภายใน 20 วิ");
