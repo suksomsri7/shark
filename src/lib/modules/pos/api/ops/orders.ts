@@ -7,12 +7,17 @@
 import { z } from "zod";
 import type { ApiActor } from "@/lib/api/actor";
 import { acceptOrder, cancelOrder, getOrder, handOver, ingestOrder, listOrders, markPreparing, markReady, payOrder, rejectOrder } from "../../order";
-import { ORDER_FULFILMENTS, ORDER_INPUT_PAYMENT_STATES, ORDER_REJECT_REASONS, ORDER_START_STATUSES, ORDER_STATUSES } from "../../order-shared";
+import { ORDER_FULFILMENTS, ORDER_INPUT_PAYMENT_STATES, ORDER_REJECT_REASONS, ORDER_START_STATUSES, ORDER_STATUSES, type OrderCard } from "../../order-shared";
 import { posRegisterActorOf } from "../actor";
 import { posData, posResult } from "../http-errors";
 import { definePosOp, POS_SCOPES, type ApiOp } from "../op";
 import { posOrderUnit, requirePosUnit } from "../units";
 import { posOpServiceKey } from "./sales";
+
+// POS P2.14 ▸ API-8 (A9): คำตอบของการเปลี่ยนสถานะออเดอร์ = การ์ดออเดอร์เสมอ (saleId อยู่ในการ์ด — ไม่ห่อ {order, saleId} เฉพาะบางครั้ง) ◂
+function orderCardReply(r: { order: OrderCard; saleId?: string | null }): OrderCard {
+  return { ...r.order, saleId: r.saleId ?? r.order.saleId };
+}
 
 const satang = z.number().int().min(0).max(2_147_483_647);
 const unitIdField = z.string().min(1).max(64).describe("Branch (BusinessUnit id) of this POS system.");
@@ -117,7 +122,9 @@ const ordersCreate = definePosOp({
   async handler({ actor, input, idempotencyKey, requestId }) {
     const unitId = await requirePosUnit(actor, input.unitId);
     const { unitId: _u, ...body } = input;
-    return posData(await ingestOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { ...body, idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId) }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    const r = posResult(await ingestOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { ...body, idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId) }));
+    return { orderId: r.orderId, duplicated: r.duplicated, saleId: r.saleId };
   },
 });
 
@@ -136,7 +143,8 @@ const ordersAccept = definePosOp({
   auditTarget: orderTarget,
   async handler({ actor, params, input }) {
     const unitId = await posOrderUnit(actor, params.id ?? "", input.unitId);
-    return posData(await acceptOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "", ...(input.prepMinutes ? { prepMinutes: input.prepMinutes } : {}) }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return orderCardReply(posResult(await acceptOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "", ...(input.prepMinutes ? { prepMinutes: input.prepMinutes } : {}) })));
   },
 });
 
@@ -159,7 +167,8 @@ const ordersReject = definePosOp({
   auditTarget: orderTarget,
   async handler({ actor, params, input }) {
     const unitId = await posOrderUnit(actor, params.id ?? "", input.unitId);
-    return posData(await rejectOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "", reasonCode: input.reasonCode, ...(input.note ? { note: input.note } : {}) }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return orderCardReply(posResult(await rejectOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "", reasonCode: input.reasonCode, ...(input.note ? { note: input.note } : {}) })));
   },
 });
 
@@ -176,7 +185,8 @@ const ordersPreparing = definePosOp({
   auditTarget: orderTarget,
   async handler({ actor, params, input }) {
     const unitId = await posOrderUnit(actor, params.id ?? "", input.unitId);
-    return posData(await markPreparing(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "" }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return orderCardReply(posResult(await markPreparing(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "" })));
   },
 });
 
@@ -193,7 +203,8 @@ const ordersReady = definePosOp({
   auditTarget: orderTarget,
   async handler({ actor, params, input }) {
     const unitId = await posOrderUnit(actor, params.id ?? "", input.unitId);
-    return posData(await markReady(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "" }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return orderCardReply(posResult(await markReady(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "" })));
   },
 });
 
@@ -210,7 +221,8 @@ const ordersComplete = definePosOp({
   auditTarget: orderTarget,
   async handler({ actor, params, input }) {
     const unitId = await posOrderUnit(actor, params.id ?? "", input.unitId);
-    return posData(await handOver(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "" }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return orderCardReply(posResult(await handOver(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "" })));
   },
 });
 
@@ -227,8 +239,9 @@ const ordersCancel = definePosOp({
   auditTarget: orderTarget,
   async handler({ actor, params, input, idempotencyKey, requestId }) {
     const unitId = await posOrderUnit(actor, params.id ?? "", input.unitId);
-    return posData(
-      await cancelOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "", reason: input.reason, idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId) }),
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return orderCardReply(
+      posResult(await cancelOrder(ctxOf(actor, unitId), posRegisterActorOf(actor), { id: params.id ?? "", reason: input.reason, idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId) })),
     );
   },
 });

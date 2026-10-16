@@ -25,7 +25,7 @@ import { posRegisterActorOf, posActorCanUseUnit } from "../actor";
 import { posData, posResult, toPosApiError } from "../http-errors";
 import { posApiServiceKey } from "../keys";
 import { definePosOp, POS_SCOPES, type ApiOp } from "../op";
-import { posSaleHead, posSaleUnit, requirePosUnit } from "../units";
+import { posApiPriorSale, posApiShiftState, posSaleHead, posSaleShiftId, posSaleUnit, requirePosUnit } from "../units";
 
 /** เพดานของคอลัมน์เงิน/จำนวน (Postgres Int — pos.prisma: PosSale.*Satang · PosSaleLine · PosPayment) */
 export const POS_INT_MAX = 2_147_483_647;
@@ -331,7 +331,24 @@ const salesCreate = definePosOp({
   async handler({ actor, input, idempotencyKey, requestId }) {
     // ด่าน id + สาขา: สาขาต้องผูกกับระบบ POS ของ actor จริง และผู้กระทำต้องใช้สาขานั้นได้ (ไม่ผ่าน = ไม่พบ)
     const unitId = await requirePosUnit(actor, input.unitId);
-    const ctx = registerCtx(actor, unitId, input.shiftId);
+    const serviceKey = posOpServiceKey(actor, idempotencyKey, requestId);
+    // POS P2.14 ▸ API-7: ลองซ้ำหลัง TTL 24 ชม. ของ ApiIdempotency = บิลเดิม — ค้นคีย์ก่อนด่านกะ/quote ของ op (หน้าขายค้นคีย์ก่อนคิดราคาอยู่แล้ว ·
+    //   quote ของ op เองต้องไม่ปฏิเสธก่อน เช่น สินค้าถูก 86 หลังขาย) · ยอดที่ส่งต่อ = ยอดของบิลเดิม ⇒ facade คืนบิลเดิม (duplicated) ◂
+    const prior = await posApiPriorSale(actor, serviceKey);
+    // POS P2.14 ▸ API-1 มติ 2 · มติ 12 (CD-1 409): ไม่ส่ง shiftId + ร้านตั้ง "ทางอื่นต้องมีกะ" ⇒ กะเปิดกะเดียวของสาขา (ผูกกะนั้น) ·
+    //   0 กะ = SHIFT_REQUIRED · ≥ 2 กะ + เงินสด = SHIFT_REQUIRED (ไม่เดากะ — ส่ง shiftId) · ≥ 2 กะ ไม่มีเงินสด = กติกาเดิมของ createSale (นอกกะ) ·
+    //   ร้านไม่ตั้ง = แบบเดิม (นอกกะ) + คำตอบบอก outOfShift: true · บิลเดิม (prior) ไม่ผ่านด่านนี้ (คำตอบเดิม) ◂
+    let shiftId = input.shiftId;
+    if (!prior && !shiftId) {
+      const st = await posApiShiftState(actor, unitId);
+      if (st.otherSourcesRequired) {
+        const hasCash = input.payMethods.some((p) => p.type === "CASH");
+        if (st.open.length === 0) throw toPosApiError({ ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนขาย (ร้านตั้งให้บิลจากทางอื่นต้องอยู่ในกะ)" });
+        if (st.open.length === 1) shiftId = st.open[0];
+        else if (hasCash) throw toPosApiError({ ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้เปิดกะอยู่หลายกะ — ส่ง shiftId ของกะที่รับเงินสดนี้ (ดูกะที่เปิดอยู่ได้ที่ GET /shifts)" });
+      }
+    }
+    const ctx = registerCtx(actor, unitId, shiftId);
     const ra = posRegisterActorOf(actor);
     const lines = toRegisterLines(input.lines);
     const cart = {
@@ -339,11 +356,11 @@ const salesCreate = definePosOp({
       ...(input.channelId ? { channelId: input.channelId } : {}),
       ...(input.billDiscount ? { billDiscount: input.billDiscount } : {}),
     } as Parameters<typeof quoteRegisterCart>[2];
-    // CD4: ไม่ส่งยอดที่คาด = ไม่ตรวจยอด ⇒ ใช้ยอดของ quote ตัวเดียวกับหน้าขาย (ไม่คิดเงินที่นี่)
-    const expected = input.expectedGrandTotalSatang ?? (posData(await quoteRegisterCart(ctx, ra, cart)) as { grandTotalSatang: number }).grandTotalSatang;
+    // CD4: ไม่ส่งยอดที่คาด = ไม่ตรวจยอด ⇒ ใช้ยอดของ quote ตัวเดียวกับหน้าขาย (ไม่คิดเงินที่นี่) · บิลเดิม = ยอดของบิลเดิม (POS P2.14 ▸ API-7 ◂)
+    const expected = input.expectedGrandTotalSatang ?? prior?.grandTotalSatang ?? (posResult(await quoteRegisterCart(ctx, ra, cart)) as { grandTotalSatang: number }).grandTotalSatang;
     const cash = input.payMethods.find((p) => p.type === "CASH")?.amountSatang;
     const cashReceived = input.cashReceivedSatang ?? cash;
-    return posData(
+    const r = posResult(
       await submitRegisterSale(ctx, ra, {
         ...cart,
         payMethods: input.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang, ...(p.reference ? { reference: p.reference } : {}) })),
@@ -351,9 +368,19 @@ const salesCreate = definePosOp({
         ...(cashReceived !== undefined ? { cashReceivedSatang: cashReceived } : {}),
         ...(input.channelRef ? { channelRef: input.channelRef } : {}),
         ...(input.note ? { note: input.note } : {}),
-        idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId),
+        idempotencyKey: serviceKey,
       } as Parameters<typeof submitRegisterSale>[2]),
     );
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ (ไม่ขึ้นกับ duplicated) + API-1 outOfShift = บิลไม่อยู่ในกะ (อ่านจากบิลจริง — บิลเดิมก็ตอบตามบิลเดิม) ◂
+    return {
+      saleId: r.saleId,
+      receiptNo: r.receiptNo,
+      grandTotalSatang: r.grandTotalSatang,
+      changeSatang: r.changeSatang,
+      duplicated: r.duplicated,
+      outOfShift: (await posSaleShiftId(actor, r.saleId)) === null,
+      ...(r.member ? { member: r.member } : {}),
+    };
   },
 });
 
@@ -440,7 +467,7 @@ const salesVoid = definePosOp({
     //   กะของบิลปิดแล้ว = SHIFT_CLOSED · audit ในtx · คีย์บริการผูกคีย์ API (เล่นซ้ำ = ผลเดิม) — ไม่เรียก voidSale ตรงอีก ◂
     let r: Awaited<ReturnType<typeof voidSaleByActor>>;
     try {
-      r = await voidSaleByActor({ tenantId: actor.tenantId, systemId: actor.systemId, unitId: sale.unitId }, posRegisterActorOf(actor), {
+      r = await voidSaleByActor(registerCtx(actor, sale.unitId) /* POS P2.14 ▸ API-9: apiKeyId ⇒ audit source API ◂ */, posRegisterActorOf(actor), {
         unitId: sale.unitId,
         saleId: sale.id,
         reason: input.reason,
@@ -503,7 +530,8 @@ const salesRefund = definePosOp({
   auditTarget: saleTarget,
   async handler({ actor, params, input, idempotencyKey, requestId }) {
     const unitId = await posSaleUnit(actor, params.id ?? "", input.unitId);
-    return posData(
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    const r = posResult(
       await refundSale(registerCtx(actor, unitId), posRegisterActorOf(actor), {
         saleId: params.id ?? "",
         lines: input.lines.map((l) => ({ lineId: l.lineId, qty: l.qty, restock: l.restock ?? true })), // ของคืนเข้าคลังโดยปริยาย (ส่ง false = ของเสีย)
@@ -513,6 +541,7 @@ const salesRefund = definePosOp({
         idempotencyKey: posOpServiceKey(actor, idempotencyKey, requestId),
       }),
     );
+    return { refund: r.refund, sale: r.sale, duplicated: r.duplicated === true };
   },
 });
 
@@ -546,7 +575,13 @@ const salesTaxInvoice = definePosOp({
   auditTarget: saleTarget,
   async handler({ actor, params, input }) {
     const unitId = await posSaleUnit(actor, params.id ?? "", input.unitId);
-    return posData(await issueFullTaxInvoice({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { saleId: params.id ?? "", buyer: input.buyer }));
+    // POS P2.14 ▸ API-5: คีย์บริการผูกคีย์ API + บิล (pos-api:<keyId>:<saleId>) — facade ใช้กันซ้ำ/ลง audit · ผู้กระทำที่ไม่ใช่คีย์ = ไม่มีคีย์บริการ (ทางเดิม) ◂
+    const serviceKey = actor.kind === "apikey" && actor.keyId ? `pos-api:${actor.keyId}:${params.id ?? ""}` : undefined;
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    const r = posResult(
+      await issueFullTaxInvoice({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { saleId: params.id ?? "", buyer: input.buyer, ...(serviceKey ? { serviceKey } : {}) }),
+    );
+    return { docId: r.docId, docNo: r.docNo };
   },
 });
 
