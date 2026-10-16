@@ -1,0 +1,16 @@
+# Prompt — HF-FU2 brief drafter (read-only survey). Controller (account A, 16 Oct 2026 19:2xZ). Base = `session/pos` product tip **3d2f6db8** (tree `/root/projects/shark-pos-b` detached there — read-only; never cd; `git -C`). Ledger = controller tree `/root/projects/shark-pos/ledger`.
+
+You are the BRIEF DRAFTER for hotfix card **HF-FU2 — follow-ups bucket from P2 (controller tooling + small product fixes deferred "HF-FU2")**. Precedent = `ledger/pos-briefs/pos-brief-HF-FU.md` (+ `pos-prompt-accountB-HF-FU-B.md`), `wo-notes/pos-HF-FU*.md`.
+
+## Source list (every line tagged HF-FU2 in `ledger/POS-OWNER-PENDING.md` — read each in full; line numbers as of 16 Oct):
+:223 deposit refusals must carry `depositId` (check whether P2.14 DEP-1 already did this — if yes, mark DONE) · :225 PLATFORM-bill refund after relink: commission reversal not auto-posted · :237 catalog audit by API key = `actorType "API_KEY"` + display "API: <name>" (check P2.14 API-3/4 coverage) · :238 `POST /sales` CASH outside shift two paths (check P2.14 API-1 + CD-F7; list what remains) · :239 approval requests from REST void/refund show raw keyId instead of "API: <name>" · :246 P2.7 fix2 follow-ups (static PromptPay QR without reference / EMV tag-62 · PREPAID without … · whatever the line lists) · :255 PRC-1 bulk markup skipping too much · RPT-6 route variant · developers overflow (check U2/U3 for what is already done) · :257 D12b: stop sending `deviceId` from the client in `use-display-publish.ts` · add test D1c (shift open claiming another device) · one-open-shift rule note · :259 `pos-gates-all.sh` hardening 2(a)–(d) (failed list shorter than total−passed ⇒ red · … read the line) · plus the P2.14 review's HF-FU2 items in `wo-notes/pos-P2.14-review.md` (search "HF-FU2": runner hardening 2(a)–(d), client deviceId, D1c, one-open-shift, CD-F7 unification, PRC-1, RPT-6, developers overflow) and `HANDOVER-2026-10-16-POS-P2.md` §5.
+Also fold in the controller's two housekeeping items: remove the now-stale `qc-pos-p2.14` accepted entry from `scripts/pos-gates.json` (p2.14 is 60/60) and note the `scripts/fixtures/acc-v2/*` rewrite side effect is ACCOUNT-lane (no POS action).
+
+## What the brief must settle
+1. For each item: still open at 3d2f6db8? (verify with file:line — several were closed by P2.14 U rounds) · size (XS/S) · product vs tooling · money/security relevance · which oracle covers it (existing check to extend with ORACLE-ADD, or new `qc-hf-fu2.mts`).
+2. Proposed fix per open item (smallest), with the files touched and which lane pins bite (p2.10 ST2 zero-hunk · p2.12 ST1 lane-A · hf-fu ST1 — all LANE_PIN c5fc223b → list the ORACLE-EDIT re-pins the controller must do).
+3. Oracle plan: `scripts/qc-hf-fu2.mts` ≈ 20–30 checks (fail-before per item · runner hardening self-tests like P2.14 fix2 · residue/fingerprint) + regression list.
+4. Open questions ≤ 6 with recommendations (e.g., :225 commission reversal across books = product rule or owner decision?).
+
+## Output
+Write `ledger/pos-briefs/pos-brief-HF-FU2.md` in `/root/projects/shark-pos` (do **not** commit) · ≤ 150 lines · final message ≤ 12 lines: items DONE-already vs open, top 3 questions, the path. Scratch only under `/tmp/claude-0/.../scratchpad/hffu2-brief/`.

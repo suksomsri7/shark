@@ -1922,3 +1922,4 @@
 - TG 4692 (ประตู legacy · API เงินสดต้องมีกะ) = ใช้ตามที่ทำ (ถอดได้ด้วย revert ชุด LEG 8 commit) · เช็กพอยต์ "ปิด P2" = รับทราบโดยปริยาย (เจ้าของสั่งทำต่อ)
 - **เปิด P3 ทันที** (12 ใบ: เชื่อมทุกระบบ + AI + ออฟไลน์) · 2 เลน · ใบที่รอของจากเจ้าของ (P3.1–3.3 adapter แพลตฟอร์ม · 3.10 · 3.11) = ทำโครง + ปิดสุภาพ เปิดสวิตช์เมื่อ creds มา
 - 19:1xZ (A) **เปิด P3**: spawn brief drafter **P3.4 ออฟไลน์ PWA + /sync/sales** ‖ **P3.5 HR (PIN ตามตารางงาน · ค่าคอมฯ · ชั่วโมง)** (prompt `pos-prompt-accountA-P3.4-B.md` / `-P3.5-B.md` · ทรี b = session/pos อ่านอย่างเดียว) · ตาราง "รอคำตอบเจ้าของ (รวม)" W1–W5 ใน POS-OWNER-PENDING.md
+- 19:2xZ (A) spawn brief drafter **HF-FU2** (bucket follow-up จาก P2 · prompt `pos-prompt-accountA-HF-FU2-B.md`) — ตอนนี้ 3 drafter อ่านอย่างเดียว (P3.4 · P3.5 · HF-FU2) · ทรี b detached 3d2f6db8 · เลน builder 0/2
