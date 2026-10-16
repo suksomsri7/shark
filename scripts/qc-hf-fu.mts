@@ -45,7 +45,7 @@ const CHECKS: readonly Def[] = [
   D("HN2", "X1", "[a มติ 1] เพดาน 1 + ตั๋วค้าง → ออเดอร์ R (GRAB ของไม่พอ) + CHAT c1 c2 c3 = NEW + held {reason:backlog} · kdsTicketDone ตั๋วค้าง → listOrders (กวาดตอนอ่าน) → R ถูกปฏิเสธบิล (STOCK_INSUFFICIENT) คง NEW + held {reason:sale_refused} 1 แถว ไม่มีบิล · c1 ACCEPTED · c2 c3 NEW (หยุดที่ตัวแรกที่ติดเพดาน) · done c1 → kdsBoard (กวาดตอนอ่าน) → c2 · done c2 → listOrders → c3 · FIFO ตาม receivedAt · R ไม่ถูกลองซ้ำ (sale_refused ยัง 1)"),
   D("HN3", "X1", "[a มติ 1] กวาด ‖ พนักงาน acceptOrder ออเดอร์เดียวกัน (ธุรกรรมที่สามถือแถว PosOrder · ทั้งคู่รอ) → ACCEPTED 1 · บิล PLATFORM 1 · รอบครัว 1 · ตัวควบคุมที่ไม่ถูกกวาด: ช่องทางปิดรับอัตโนมัติภายหลัง · MANUAL ที่เริ่ม NEW · NEW ที่ไม่มี held · ช่องทางพักรับ (pausedUntil) · ออเดอร์ held ของสาขา B · ของร้าน T2"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): HN4 (R1 F2)
-  D("HN4", "X1", "[a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที่สามถือแถว o1 ให้ตัวแรกผ่านด่านเพดานแล้วรอ · ช่องทาง o1 ปิดรับอัตโนมัติระหว่างนั้น) → ACCEPTED 1 · ตั๋วค้าง ≤ เพดาน · บิล 1 · รอบครัว 1"),
+  D("HN4", "X1", "[a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที่สามถือแถว o1 ให้ตัวแรกผ่านด่านเพดานแล้วรอ · ช่องทาง o1 ปิดรับอัตโนมัติหลังกวาด — ORD-6) → ACCEPTED 1 · ตั๋วค้าง ≤ เพดาน · บิล 1 · รอบครัว 1"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-6 · CD-B6)
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): HN5 (hunter H1)
   D("HN5", "X1", "[a fix2 มติ 1] ออเดอร์ PLATFORM (PLATFORM_PAID) พักที่เพดาน 1 · (ก) ช่องทาง CUSTOM เปลี่ยน payout เป็น DIRECT ก่อนกวาด → กวาด ⇒ ยัง NEW + held sale_refused 1 · บิล 0 · รอบครัว 0 · พนักงาน acceptOrder คู่ที่ไม่ตรง ⇒ CHANNEL_PAY_MISMATCH ไม่มีบิล · (ข) ช่องทางปิดรับอัตโนมัติระหว่างตัวกวาดรอล็อกต่อสาขา (ธุรกรรมที่สามถือ posorder-release) ⇒ ยัง NEW · ไม่มี held ใหม่ · บิล 0 · รอบครัว 0"),
   // ── OD รอบร่างกำพร้า (b) ──
@@ -1312,7 +1312,7 @@ async function runDb() {
       const [o1] = ids;
       const sweeps: Promise<Any>[] = [];
       const hl = await holdLock(LOCK_ORDER, [o1], [() => release()], async () => {
-        must("H4 ปิดรับอัตโนมัติ", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: ch1, autoAccept: false }));
+        // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-6 · CD-B6): การแก้ช่องทางย้ายออกนอกล็อกแถว o1 (ORD-6: ตัวกวาดถือ SalesChannel FOR SHARE ⇒ การแก้ช่องทางรอตัวกวาด) — ปิดรับอัตโนมัติหลังกวาด
         for (let i = 0; i < 5; i++) sweeps.push((i < 3 ? release() : O("listOrders", ctxA(), A("OWNER"), {})).catch((e: unknown) => ({ ok: false, code: errCode(e), threw: true })));
         // รอจน S2–S6 จบ (ไม่มีล็อกต่อสาขา) หรือรอคิวล็อกครบ 5 (มีล็อก) — แล้วปล่อยแถว o1
         const t0 = Date.now();
@@ -1326,6 +1326,7 @@ async function runDb() {
         await sleep(600);
       });
       const rs = await Promise.all(sweeps);
+      must("H4 ปิดรับอัตโนมัติ (หลังกวาด)", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: ch1, autoAccept: false })); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-6 · CD-B6)
       const sw1 = hl.res[0];
       if (hl.blocked < 1) p.push("S1 ไม่รอแถว PosOrder ของ o1 (จัดฉากไม่ถึง)");
       if (sw1?.ok === false || rs.some((r) => r?.ok === false)) p.push(`ตัวกวาด → ${[sw1, ...rs].map(codeOf).join(",")}`);
