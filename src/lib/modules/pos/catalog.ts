@@ -2618,11 +2618,10 @@ export async function bulkChannelMarkup(
       const notSoldBelow = new Set(outranked.map((r) => r.productId));
       // ◂
       // POS HF-FU2 ▸ PRC-1 (มติ 4): unitId = null ⇒ แถวที่แพ้มีแค่ (ทุกช่องทาง, X) ไม่ขาย — ไม่ข้ามทั้งสินค้าแล้ว: เขียน (ช่องทาง, ทุกสาขา)
-      //   และ "พา" ไม่ขายลงชั้นช่องทาง (ช่องทาง, X, ไม่ขาย) ทุก X ที่ยังไม่มีแถว (ช่องทาง, X) ของตัวเอง/แม่ (ไม่ทับแถวราคาเดิม) · สาขาที่เลิกผูก/เก็บถาวร ไม่พา
+      //   และ "พา" ไม่ขายลงชั้นช่องทาง (ช่องทาง, X, ไม่ขาย) ทุก X ที่ยังไม่มีแถว (ช่องทาง, X) ของตัวเอง/แม่ (ไม่ทับแถวราคาเดิม) · พาทุก X รวมสาขาที่เลิกผูก/เก็บถาวรตอนนี้ (POS HF-FU2 ▸ fix1 F1 ◂: ผูกกลับทีหลังต้องยังไม่ขาย · แถวไม่ขายบนสาขาที่ตายขายไม่ได้อยู่แล้ว)
       //   ⇒ X ยังไม่ขายบนช่องทางนี้ · สาขาอื่นได้ราคาบวก · tx เดียวกัน audit แถวเดียว (via bulk · rows ครบทุกแถวที่เขียน) ◂
       const carryOf = new Map<string, string[]>();
       if (unitId === null && outranked.length) {
-        const live = await liveUnitsOfPos(ctx, tx);
         const codeRows = await tx.posProductChannelPrice.findMany({
           where: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: { in: famIds }, channelCode: code, unitId: { not: null } },
           select: { productId: true, unitId: true },
@@ -2632,7 +2631,7 @@ export async function bulkChannelMarkup(
           if (p.unitId !== null) continue; // สินค้าของสาขา = ข้ามตามเดิม (ด้านล่าง)
           const fam = p.parentId ? [p.id, p.parentId] : [p.id];
           const xs = [...new Set(outranked.filter((r) => fam.includes(r.productId) && r.unitId !== null).map((r) => r.unitId as string))]
-            .filter((x) => live.has(x) && !fam.some((pid) => has.has(`${pid}|${x}`)))
+            .filter((x) => !fam.some((pid) => has.has(`${pid}|${x}`))) // POS HF-FU2 ▸ fix1 F1: ไม่กรองสาขาที่ยังผูก (มติ 4 ตามตัวอักษร) ◂
             .sort();
           carryOf.set(p.id, xs);
         }
