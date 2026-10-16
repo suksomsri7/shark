@@ -66,11 +66,27 @@ export function scheduleGateDecide(item: OnShiftTodayItem | null, role: string, 
   if (role === "OWNER" || role === "MANAGER" || !item) return { ok: true, capAt: null };
   if (!item.active) return { ok: false, reason: "INACTIVE" };
   if (item.onLeave) return { ok: false, reason: "LEAVE" };
+  const covering = coveringWindow(item, now, gate);
+  if (covering) return { ok: true, capAt: covering };
   const s = item.schedule;
   if (!s) return { ok: true, capAt: null };
   if (s.dayOff) return { ok: false, reason: "DAY_OFF" };
-  if (!inWindow(minOfDayBkk(now), s, gate)) return { ok: false, reason: "OUTSIDE_HOURS", window: { startMin: s.startMin, endMin: s.endMin } };
-  return { ok: true, capAt: new Date(bkkDayStart(now).getTime() + (s.endMin + gate.lateMin) * MIN_MS) };
+  return { ok: false, reason: "OUTSIDE_HOURS", window: { startMin: s.startMin, endMin: s.endMin } };
+}
+
+/**
+ * POS P3.5 ▸ fix2 N6: ช่วงที่ครอบ "ตอนนี้" — ตารางวันนี้ (นาทีของวัน) · เมื่อวาน (นาที + 1440 · กะเลยเที่ยงคืน) · พรุ่งนี้ (นาที − 1440 · เข้าก่อนเที่ยงคืน) ·
+ * วันหยุดไม่ครอบ · คืนเพดานโทเคน = เที่ยงคืนของวันของแถว + end + lateMin · ไม่มีแถวไหนครอบ = null ◂
+ */
+function coveringWindow(item: OnShiftTodayItem, now: Date, gate: Pick<PosScheduleGate, "earlyMin" | "lateMin">): Date | null {
+  const minute = minOfDayBkk(now);
+  const day0 = bkkDayStart(now).getTime();
+  const cands: [OnShiftTodayItem["schedule"] | undefined, number][] = [[item.schedule, 0], [item.adjacent?.yesterday, -1], [item.adjacent?.tomorrow, 1]];
+  for (const [row, dayOffset] of cands) {
+    if (!row || row.dayOff) continue;
+    if (inWindow(minute - dayOffset * 1_440, row, gate)) return new Date(day0 + dayOffset * 86_400_000 + (row.endMin + gate.lateMin) * MIN_MS);
+  }
+  return null;
 }
 
 /** สถานะ HR ของผู้ใช้คนเดียว (ด่าน R4) — ร้านไม่มีระบบ HR / ไม่ผูก = null */
@@ -88,7 +104,6 @@ export async function staffHrStates(tenantId: string, userIds: string[], now: Da
   if (!r.hrLinked) return null;
   const by = new Map(r.items.map((x) => [x.userId, x]));
   const out = new Map<string, StaffHrState>();
-  const minute = minOfDayBkk(now);
   for (const u of userIds) {
     const it = by.get(u);
     if (!it) {
@@ -96,7 +111,8 @@ export async function staffHrStates(tenantId: string, userIds: string[], now: Da
       continue;
     }
     const s = it.schedule && !it.schedule.dayOff ? { startMin: it.schedule.startMin, endMin: it.schedule.endMin } : null;
-    const inSchedule = !it.active || it.onLeave || it.schedule?.dayOff ? false : s ? inWindow(minute, s, gate) : null;
+    // POS P3.5 ▸ fix2 N6: "อยู่ในช่วง" = ด่านจะปลดล็อกให้ (รวมแถวเมื่อวาน/พรุ่งนี้ข้ามเที่ยงคืน) · ไม่มีแถววันนี้และไม่มีแถวไหนครอบ = null (ไม่มีข้อมูล) ◂
+    const inSchedule = !it.active || it.onLeave ? false : coveringWindow(it, now, gate) ? true : it.schedule ? false : null;
     out.set(u, { schedule: s, onLeave: it.onLeave, inSchedule });
   }
   return out;

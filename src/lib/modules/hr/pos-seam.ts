@@ -21,6 +21,8 @@ export type OnShiftTodayItem = {
   /** ตารางของวันในสัปดาห์ (เวลาไทย) ของ `at` · null = ยังไม่ตั้ง (ห้ามกล่าวหาจากข้อมูลที่ไม่มี) */
   schedule: PosSeamSchedule | null;
   clock: PosSeamClockMarks;
+  /** POS P3.5 ▸ fix2 N6: ตารางของวันก่อน/วันถัดไป (กะข้ามเที่ยงคืน · เพิ่มล้วน) ◂ */
+  adjacent: { yesterday: PosSeamSchedule | null; tomorrow: PosSeamSchedule | null };
 };
 export type OnShiftTodayResult = { hrLinked: boolean; items: OnShiftTodayItem[] };
 export type ClockSelfResult = { ok: true; kind: "IN" | "OUT"; judgement?: string | null } | { ok: false; code: "NO_EMPLOYEE" | "ALREADY_CLOCKED" };
@@ -55,6 +57,8 @@ export async function onShiftToday(input: { tenantId: string; unitId?: string | 
       attendanceMarks(ctx, emp.employeeId, dayStart, at),
     ]);
     const row = week[weekday] ?? null;
+    const sch = (r: { startMin: number; endMin: number; graceMin: number; dayOff: boolean } | null | undefined): PosSeamSchedule | null =>
+      r ? { startMin: r.startMin, endMin: r.endMin, graceMin: r.graceMin, dayOff: r.dayOff } : null;
     items.push({
       userId,
       employeeId: emp.employeeId,
@@ -66,6 +70,7 @@ export async function onShiftToday(input: { tenantId: string; unitId?: string | 
         lastKind: marks.lastKind === "IN" || marks.lastKind === "OUT" ? marks.lastKind : null,
         lastAt: marks.lastAt ? marks.lastAt.toISOString() : null,
       },
+      adjacent: { yesterday: sch(week[(weekday + 6) % 7]), tomorrow: sch(week[(weekday + 1) % 7]) }, // POS P3.5 ▸ fix2 N6 ◂
     });
   }
   return { hrLinked: true, items };
