@@ -164,3 +164,24 @@ Pre-gate check at `f48c4f98` (dirty 0, `/root/pos-runs/p214-builder/fx1-pre-2026
 - **D12** DSP-1b uses the session user's OPEN shift device (no server-side device identity in P1.10). Displays on registers selling without a shift by that user, or where another staff member opened the shift, are refused `DEVICE_NOT_REGISTERED`.
 - **CD-F7** `orders.pay` via REST keeps "cash always in a shift" (`strictCash`, `order.ts` payOrder ≈:1341) because `qc-pos-p2.13.mts:1591–1612` OR7 (controller ORACLE-ADD, P2.13 fix 1 H3) pins `requiredOtherSources` off + no open shift + cash ⇒ 409 SHIFT_REQUIRED. F7's "otherSources off ⇒ outOfShift, no bind" for orders.pay would turn OR7 red and put REST cash outside any shift. One resolver is shared (`shift.ts resolveApiSaleShift`); flipping `strictCash` to false is a one-line change + an OR7 ORACLE-EDIT if the controller rules that way.
 - O5 (oracle) was edited, not only O5b added: with ORD-1b the unlinked unit B no longer refuses, so O5's refusal moved to a unit linked to a second inventory (W) and B became the "old rule" control.
+
+## 9. Fix round 2 (controller 16 Oct · R2 MERGEABLE with Low G1–G7 · hunter round 2 = 3 findings) — from `368b5753`
+
+| # | item | commit(s) | notes |
+|---|---|---|---|
+| 1 | G1/H2 web createOrder throws on **every** ingest refusal (only `skipped` passes — that is `ok:true`) | code `f16afe32` · test `5c654718` **O5c** (59 → 60): ShopProduct at `ORDER_UNIT_PRICE_MAX + 1` on linked unit A ⇒ throw, ShopOrder unchanged; invariant: no ECOM sale (refSaleId null) without a PosOrder on POS-linked units | **G2** (noted): an archived/missing POS product behind a web product now refuses on unlinked units too (stricter) — OWNER line |
+| 2 | H3/G5 runner | `cadbdda6` (verdict function; `--verdict <dir>`) · `4ca65e97` (every accepted entry has exact `checks`: 19 entries) | rules: accepted needs `evidence` + non-empty `checks`; exit must be 1 and the log must print `JSON_SUMMARY`; ids = `failed` ∪ `findings` (first token / `.id`) ∪ `CRASH` when crashed; `SET full|partial n/N`; `HEAD-end=… dirty-end=…` must equal HEAD.txt |
+| 3 | G3 per-caller shift refusals (th + en) | `bf4f3b1e` | `shift.ts API_SHIFT_MSG` sale / orderPay (orderPay never asks for `shiftId`; setting off ⇒ "cash must land in a shift"); `http-errors.ts` uses a refusal's own `messageEn`; p2.13 OR7 still green (54/54) |
+| 4 | G4 doc wording | `986c942a` | cost/margin present only with `pos.report.view` **and** a stock-consumed line |
+| 5 | G6 + hunter H1 | `7c609f93` | OWNER D12/D12b line (needs the user's own OPEN shift; shift-open device claim bypass `shift-actions.ts:98` → P3 signed device cookie; owner decides one-OPEN-shift-per-user) + HF-FU2 line (drop client `deviceId` at `use-display-publish.ts:144`, D1c later) — no shift-rule change |
+| 6 | G7 markers | `72b08c2a` | runner `case` exit lines + kitchen.ts JSDoc line marked. **LEG veto set = 8 commits**: `086094ca` `7dd87a55` `1150caa7` `27ddcbfe` `6fea40f0` `dbdb68ed` `2ce422d0` `f5d74b1c` (p2.5 P8 belongs to the set) |
+
+### Runner self-tests (`/root/pos-runs/p214-builder/selftest-fx2/`, copies of the fix-1 gate set with HEAD.txt set to the current head)
+```
+bash scripts/pos-gates-all.sh --verdict /root/pos-runs/p214-builder/selftest-fx2/control   → SET full 94/94 · VERDICT green · rc 0   (positive control)
+bash scripts/pos-gates-all.sh --verdict /root/pos-runs/p214-builder/selftest-fx2/hidden    → RED qc-acc-v2-pos-lines 1 (ล้มนอก accepted.checks: PL2.1) · VERDICT red · rc 1   (made-up hidden red in findings)
+bash scripts/pos-gates-all.sh --verdict /root/pos-runs/p214-builder/selftest-fx2/rc137     → RED qc-pos-p2.14 137 (exit 137 (ยอมรับเฉพาะ 1)) · VERDICT red · rc 1   (rc 137 with failed=[H1,H3])
+bash scripts/pos-gates-all.sh --verdict /root/pos-runs/p214-builder/selftest-fx2/headchg   → RED (head/dirty เปลี่ยนระหว่างรัน: เริ่ม head=deadbeef …) · VERDICT red · rc 1   (head changed)
+```
+
+Pre-gate at the fix-2 code head (dirty 0, `/root/pos-runs/p214-builder/fx2-pre-20261016T084832Z/`): p2.14 forced **58/60** (H1 H3) · p2.8 60/61 (ST6 lane-pin) · qc-shop 15/15 · qc-shop-refund 12/12 · p2.13 54/54. Final gate set path + VERDICT: final report (head unchanged after the run).
