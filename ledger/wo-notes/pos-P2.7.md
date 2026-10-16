@@ -122,3 +122,15 @@ Test-first: bf33113e `test(qc-pos-p2.7)` ORACLE-ADD (marker `// ORACLE-ADD ผ�
 | qc-pos-p2.13 | 53/54 (ST5 lane class) | g2-qc-pos-p2.13 |
 | typecheck (8192, at 2f3d6645 + ledger) | exit 0 | typecheck-2 |
 | fitness no env / env | 53/53 · 53/53 | g2-fitness-noenv/env |
+
+## Fix round 3 (R2 G1 · G2 · nits a c · controller rulings in `pos-P2.7-review.md` "R2")
+Test-first a7d8bdb3 `test(qc-pos-p2.7)` ORACLE-ADD `(P2.7 fix 3)`: PY13 negative (register quote + submit with `channelId` = inactive QR_ORDER ⇒ CHANNEL_INVALID, 0 PosSale). Red-before at a7d8bdb3 = **41/42** (PY13: quote/submit OK — `P2.7-red.txt` §fix3). Code 09b26350:
+- **G1** the inactive-QR_ORDER exemption is now an async-context allowance `withInactiveQrOrderAllowed` (`channel.ts`, `AsyncLocalStorage`) wrapped around the single `orderCreateSale` call of the PREPAID accept branch (`order.ts`). Every other `resolveSaleChannel` caller (register quote/submit, createSale for REST/deposit/booking/AI) is back to `!active ⇒ CHANNEL_INVALID`. `resolveSaleChannel` also takes `opts.allowInactiveQrOrder?: true` as the ruled option name (no caller sets it). **Deviation from the ruling's mechanism**: an internal `CreateSaleInput` flag via `saleBase` would need a `service.ts` edit (`saleChannelOf` → resolveSaleChannel) and a CreateSaleInput change — `service.ts` and the createSale contract are sha-pinned (P2.7 ST3, COMMON rule 2) — so the flag rides the async context of the one call instead (not reachable from public inputs, REST or CreateSaleInput).
+- **nit (a)** table page shows CALL_STAFF / REQUEST_BILL only when a session exists · `tableServiceRequest` NO_SESSION ⇒ public code `NO_SESSION` (`QR_PUBLIC_CODES`; the five pinned `QR_REFUSAL_CODES` unchanged) ⇒ `pos.qr.errors.noSession` th/en · stale docstring fixed. **nit (c)** fix2 markers added (qr-order `mapOut` CHANNEL_PAUSED, `sendRound` split; order.ts `closeExpiredInTx` written `(POS P2.7 fix2)` inside the P2.7 block). P2.14 owner line (legacy `service-request` / `session` routes).
+
+| gate (head 09b26350) | result | log `runs/` |
+|---|---|---|
+| qc-pos-p2.7 forced / unforced | **42/42 · 42/42** | g3-p27-forced · g3-p27-unforced |
+| qc-pos-p2.8 · p1.3 · p2.9b · hf-pos-page-authz | 60/61 (ST6 lane) · 128/128 · 53/53 · 82/82 | g3-… |
+| fitness no env / env | 53/53 · 53/53 | g3-fitness-noenv/env |
+| typecheck (G2, heap 8192, final head dirty=0) | see `typecheck-3.log` line 1 | typecheck-3 |
