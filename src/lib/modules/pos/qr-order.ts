@@ -29,7 +29,7 @@ import { priceCart } from "./pricing-shared";
 import { regResolveOptions, type RegOptGroup, type RegPickedOption, type RegisterActor } from "./register-shared";
 import { registerTableBillPreview } from "./register";
 import { posPaymentSettings } from "./payment-settings";
-import { orderIntentUnused, orderPaymentReadiness, prepareOrderIntent, type PaymentIntentDeps } from "./payment-intent";
+import { orderIntentUnused, orderPaymentReadiness, prepareOrderIntent, type PaymentIntentDeps, type PreparedOrderIntent } from "./payment-intent";
 import { promptpayIdForUnit } from "./payment-intent-shared";
 import { maskPhone, ORDER_PREP_DEFAULT_MIN, type OrderLineOption } from "./order-shared";
 import { receiptShopHeader } from "./receipt"; // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ (อ่านอย่างเดียว) ◂
@@ -410,11 +410,15 @@ export async function placeTableRound(qrToken: string, input: unknown, meta: { i
     const p = await priceLines(t.u, "QR_TABLE", parsed.value.lines);
     if (!p.ok) return p;
     const dedupeKey = parsed.value.guestToken ? `${t.view.table.id}|${parsed.value.guestToken}|${parsed.value.expectedSessionId ?? "-"}|${qrCartHash(parsed.value.lines)}|${parsed.value.note ?? ""}` : null;
-    return singleFlight(inflightRounds, dedupeKey, QR_ROUND_DEDUPE_MS, () => sendRound(t, parsed.value, p.priced)); // POS P2.7 ▸ fix2 R1 F1/H2: single-flight (ตัวเขียนรอบแยกเป็น sendRound) ◂
+    return singleFlight(inflightRounds, dedupeKey, QR_ROUND_DEDUPE_MS, () => sendRound(t, parsed.value, p.priced, dedupeKey)); // POS P2.7 ▸ fix2 R1 F1/H2: single-flight (ตัวเขียนรอบแยกเป็น sendRound) ◂ · POS P2.14 ▸ QR-3 คีย์ถาวรใน DB ◂
   });
 }
 // POS P2.7 ▸ fix2 R1 F1/H2: ส่งรอบจริง (ถูกเรียกครั้งเดียวต่อคีย์ของ single-flight) ◂
-async function sendRound(t: TableCtx, v: { expectedSessionId: string | null | undefined; guestToken: string | null; note: string | null }, priced: Priced[]): Promise<QrPlaceRoundResult> {
+// POS P2.14 ▸ QR-3 มติ 9 (Q5): กันรอบซ้ำข้าม instance — ในธุรกรรมของรอบ: pg_advisory_xact_lock(hashtext(คีย์ของรอบ = โต๊ะ|guestToken|session|ตะกร้า|โน้ต)) แล้วค้น
+//   ตัวบอกของรอบเดียวกันใน 10 วิ (AuditLog pos.qr.round · after.dedupeKey = sha256 ของคีย์ · ไม่แตะ schema ร้านอาหาร) · เจอ = รอบเดิม · ไม่เจอ = เขียนรอบ + ตัวบอกในธุรกรรมเดียวกัน ·
+//   instance ที่สองรอล็อกจนรอบแรก commit แล้วเห็นตัวบอก (read committed) ⇒ สองเครื่องส่งพร้อมกัน = รอบเดียว · ไม่มี guestToken = ไม่กันซ้ำ (เหมือนเดิม) ◂
+const QR_ROUND_AUDIT = "pos.qr.round";
+async function sendRound(t: TableCtx, v: { expectedSessionId: string | null | undefined; guestToken: string | null; note: string | null }, priced: Priced[], dedupeKey: string | null = null): Promise<QrPlaceRoundResult> {
     const R = await restaurant();
     const lines = priced.map((x) => ({
       productId: x.row.id,
@@ -429,10 +433,25 @@ async function sendRound(t: TableCtx, v: { expectedSessionId: string | null | un
     }));
     let r: { roundId: string; sessionId: string };
     try {
+      const keyHash = dedupeKey ? createHash("sha256").update(`${t.u.tenantId}|${dedupeKey}`).digest("hex") : null; // POS P2.14 ▸ QR-3 ◂
       r = await retryTx(async (tx) => {
+        // POS P2.14 ▸ QR-3 (Q5): ล็อก + ค้นตัวบอกของรอบเดียวกันใน 10 วิ ก่อนเขียน ◂
+        if (keyHash) {
+          await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posqr-round:${keyHash}`}))) l`;
+          const prior = await tx.auditLog.findFirst({
+            where: { tenantId: t.u.tenantId, action: QR_ROUND_AUDIT, targetType: "RestaurantOrder", createdAt: { gte: new Date(Date.now() - QR_ROUND_DEDUPE_MS) }, after: { path: ["dedupeKey"], equals: keyHash } },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: { targetId: true, after: true },
+          });
+          const pa = prior && isRecord(prior.after) ? prior.after : null;
+          if (prior?.targetId && pa && typeof pa.sessionId === "string") return { roundId: prior.targetId, sessionId: pa.sessionId };
+        }
         const g = await R.guestRoundInTx(tx, { tenantId: t.u.tenantId, unitId: t.u.unitId, tableId: t.view.table.id, expectedSessionId: v.expectedSessionId, guestToken: v.guestToken, note: v.note, lines });
         if (!g.ok) throw new QrAbort(qrRefuse(g.code === "SESSION_CHANGED" ? "SESSION_CHANGED" : "TOKEN_INVALID"));
         await emitGuestRoundStockFlipsInTx(tx, { tenantId: t.u.tenantId, unitId: t.u.unitId }, g.menuItemIds);
+        // POS P2.14 ▸ QR-3: ตัวบอกของรอบ (ผู้กระทำ = ระบบ · แขกไม่มีบัญชี) ในธุรกรรมเดียวกับรอบ ◂
+        if (keyHash)
+          await tx.auditLog.create({ data: { tenantId: t.u.tenantId, unitId: t.u.unitId, actorType: "SYSTEM", actorId: null, action: QR_ROUND_AUDIT, targetType: "RestaurantOrder", targetId: g.roundId, after: { dedupeKey: keyHash, sessionId: g.sessionId, tableId: t.view.table.id } } });
         return { roundId: g.roundId, sessionId: g.sessionId };
       });
     } catch (e) {
@@ -614,20 +633,33 @@ async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentInt
     // POS P2.7 ▸ fix2 note 1: CHANNEL_PAUSED/CHANNEL_INVALID จากการตรวจซ้ำในธุรกรรม = QR_CLOSED ◂
     const mapOut = (r: orders.PreorderIngestResult): QrPlacePreorderResult =>
       r.ok ? { ok: true, orderToken: r.publicToken, duplicated: r.duplicated } : qrRefuse(r.code === "IDEMPOTENCY_CONFLICT" || r.code === "VALIDATION" ? "VALIDATION" : r.code === "CHANNEL_INVALID" || r.code === "CHANNEL_PAUSED" ? "QR_CLOSED" : "INTERNAL");
-    const pre = await orders.findPreorderByKey(l.u, door.channel.id, v.idempotencyKey, lines);
-    if (pre) return mapOut(pre);
     const total = lines.reduce((s, x) => s + x.unitPriceSatang * x.qty, 0);
-    const prep = await prepareOrderIntent(l.u, total, deps);
-    if (!prep.ok) return qrRefuse(prep.code === "PROMPTPAY_NOT_CONFIGURED" ? "QR_CLOSED" : prep.code === "VALIDATION" ? "VALIDATION" : "INTERNAL");
     const channelId = door.channel.id;
-    let r: orders.PreorderIngestResult;
+    // POS P2.14 ▸ QR-3 มติ 9 (Q6): คีย์ใน DB ตรวจก่อนเตรียม Beam charge ใต้ล็อกเดียวกัน (ข้าม instance) — ธุรกรรมเดียว: ล็อกต่อ (สาขา · คีย์) → ค้นออเดอร์ของคีย์ →
+    //   เตรียมใบ (Beam charge ครั้งเดียวต่อคำขอ · ลองธุรกรรมซ้ำใช้ใบที่เตรียมแล้ว) → รับเข้า · instance ที่สองรอล็อกแล้วเห็นออเดอร์ของคีย์ = duplicated ไม่ charge ◂
+    let prepared = null as PreparedOrderIntent | null;
+    type Out = { kind: "dup"; r: orders.PreorderIngestResult } | { kind: "refused"; out: QrPlacePreorderResult } | { kind: "ingested"; r: orders.PreorderIngestResult };
+    let out: Out;
     try {
-      r = await retryTx((tx) => orders.ingestPreorderInTx(tx, l.u, { channelId, lines, customer: v.customer, idempotencyKey: v.idempotencyKey, note: v.note, prepared: prep.prepared }));
+      out = await retryTx(async (tx): Promise<Out> => {
+        await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posqr-pre:${l.u.tenantId}:${l.u.unitId}:${v.idempotencyKey}`}))) l`;
+        const pre = await orders.findPreorderByKey(l.u, channelId, v.idempotencyKey, lines);
+        if (pre) return { kind: "dup", r: pre };
+        if (!prepared) {
+          const prep = await prepareOrderIntent(l.u, total, deps);
+          if (!prep.ok) return { kind: "refused", out: qrRefuse(prep.code === "PROMPTPAY_NOT_CONFIGURED" ? "QR_CLOSED" : prep.code === "VALIDATION" ? "VALIDATION" : "INTERNAL") };
+          prepared = prep.prepared;
+        }
+        return { kind: "ingested", r: await orders.ingestPreorderInTx(tx, l.u, { channelId, lines, customer: v.customer, idempotencyKey: v.idempotencyKey, note: v.note, prepared }) };
+      });
     } catch (e) {
-      await orderIntentUnused(l.u, prep.prepared, "INGEST_FAILED"); // POS P2.7 ▸ fix2 F6 ◂
+      if (prepared) await orderIntentUnused(l.u, prepared, "INGEST_FAILED"); // POS P2.7 ▸ fix2 F6 ◂
       throw e;
     }
-    if (!r.ok || r.duplicated) await orderIntentUnused(l.u, prep.prepared, r.ok ? "DUPLICATE" : "REFUSED"); // POS P2.7 ▸ fix2 F6 ◂
+    if (out.kind === "refused") return out.out;
+    if (out.kind === "dup") return mapOut(out.r);
+    const r = out.r;
+    if ((!r.ok || r.duplicated) && prepared) await orderIntentUnused(l.u, prepared, r.ok ? "DUPLICATE" : "REFUSED"); // POS P2.7 ▸ fix2 F6 ◂
     await orders.preorderIngested(l.u.tenantId, r);
     return mapOut(r);
 }
@@ -676,7 +708,9 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
     const o = await orderOfToken(orderToken);
     if (!o) return TOKEN_INVALID();
     const it = o.paymentIntentId ? await prisma.posPaymentIntent.findUnique({ where: { id: o.paymentIntentId }, select: { kind: true, amountSatang: true, qrPayload: true, expiresAt: true, status: true } }) : null;
-    const ver = sinceVer([o.version, o.status, o.paymentState, it?.status, o.saleId ? 1 : 0]);
+    // POS P2.14 ▸ QR-2 (Q4): ตัวบอกถาวร "ร้านคืนเงินให้" = PosOrderEvent refund_needed (order.ts เขียน · อ่านเฉพาะออเดอร์ที่ปิดแล้ว) — อยู่ในรุ่นของหน้า (เพิ่มหลังปิดได้) ◂
+    const refundMark = o.status === "REJECTED" || o.status === "CANCELLED" ? await prisma.posOrderEvent.findFirst({ where: { tenantId: o.tenantId, orderId: o.id, type: "refund_needed" }, select: { id: true } }) : null;
+    const ver = sinceVer([o.version, o.status, o.paymentState, it?.status, o.saleId ? 1 : 0, refundMark ? 1 : 0]);
     if (isRecord(opts) && typeof opts.sinceVer === "string" && opts.sinceVer === ver) return { ok: true, changed: false, ver };
     const [lines, sale, unit, againLink] = await Promise.all([
       prisma.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { name: true, qty: true, options: true, lineTotalSatang: true } }),
@@ -707,7 +741,7 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
       serverNow: new Date().toISOString(), // POS P2.7U fix1 ▸ F3 ◂
       readyEta: o.acceptedAt ? new Date(o.acceptedAt.getTime() + (o.prepMinutes ?? ORDER_PREP_DEFAULT_MIN) * MIN).toISOString() : null,
       closedReason: o.status === "REJECTED" ? "REJECTED" : o.status === "CANCELLED" ? (o.rejectReason === "PAYMENT_EXPIRED" ? "PAYMENT_EXPIRED" : "CANCELLED") : null,
-      refundPending: (closed && it?.status === "PAID") || o.paymentState === "REFUNDED", // POS P2.7 ▸ fix2 R1 F3(a): บิลของออเดอร์ถูก void หลังรับ ◂
+      refundPending: (closed && it?.status === "PAID") || o.paymentState === "REFUNDED" || !!refundMark, // POS P2.7 ▸ fix2 R1 F3(a): บิลของออเดอร์ถูก void หลังรับ ◂ · POS P2.14 ▸ QR-2 ตัวบอกถาวร ◂
       lines: lines.map((l) => ({ name: l.name, qty: l.qty, options: Array.isArray(l.options) ? (l.options as { choiceName?: unknown }[]).flatMap((x) => (typeof x?.choiceName === "string" ? [x.choiceName] : [])) : [], lineTotalSatang: l.lineTotalSatang })),
     };
     return { ok: true, changed: true, ver, view };

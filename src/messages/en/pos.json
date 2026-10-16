@@ -4030,7 +4030,8 @@
       "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead",
       "memberNotFound": "This member was not found in this shop",
       "partyNotFound": "This contact was not found in this shop",
-      "conversationNotFound": "This chat conversation was not found in this shop"
+      "conversationNotFound": "This chat conversation was not found in this shop",
+      "saleRefunded": "This order's bill has been fully refunded — it cannot be handed over; cancel the order instead"
     },
     "page": {
       "refusal": "This account cannot view online orders at this branch yet — ask the owner for bill or sale access",
