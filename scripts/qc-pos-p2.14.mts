@@ -101,6 +101,7 @@ const CHECKS: readonly Def[] = [
   D("R3", "R", "[C12 RPT-3] บิลวันนี้จัดวันตามวันธุรกิจ (ตัดวัน 04:00): บิล 02:00 ของเมื่อวาน = วันก่อนหน้า ไม่ใช่เมื่อวาน"),
   D("R4", "R", "[C12 RPT-5] บิลทุกสาขา กรองรหัสช่องทาง (channelCode LINEMAN) ข้ามสาขา → เฉพาะบิล LINEMAN ของ A และ B"),
   D("R5", "R", "[U13 UI-4] billDetail บรรทัดมี costSatang (จากความเคลื่อนไหวสต็อกของบิล) + marginSatang · ประวัติสต็อก (posStockHistoryAction) แถวของบิลมี sale {receiptNo lineName qty}"),
+  D("R5b", "R", "[fix1 H2] ต้นทุน/กำไรต่อบรรทัด = pos.report.view เท่านั้น: แคชเชียร์ (CASH) billDetail → costSatang/marginSatang null · คีย์ API มีแค่ pos.sale.read → GET /sales/{id} ไม่มีฟิลด์ · คีย์ pos-read (มี report.view) → ค่า · เจ้าของ → ค่า"), // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 H2 · R5b)
   // ── U จอ ──
   D("U1", "U", "[U13 UI-8] saleNeedsKitchen: บิลสินค้าปลีกล้วน → false · บิลเมนูที่มีสถานี → true · kdsQueueNoAction คืน kitchen · PayDone แสดง kitchenNoTicket เฉพาะเมื่อ kitchen"),
   // ── K เอกสาร/เครื่องมือ ──
@@ -2295,6 +2296,29 @@ async function runDb() {
     if (h?.ok !== true) p.push(`posStockHistoryAction → ${codeOf(h)} ${short(h?.message ?? "", 40)}`);
     else if (!mv || !String(mv.sale.lineName ?? "").includes(RAND) || Math.abs(Number(mv.sale.qty)) !== 2) p.push(`ประวัติสต็อกไม่มี sale {receiptNo ${rno} · lineName · qty 2} (${short(mv?.sale, 60)})`);
     chk("R5", !fx && p.length === 0, "ต้นทุน/กำไรต่อบรรทัด · ประวัติสต็อกบอกบิล", why(p));
+  });
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 H2 · R5b) ▸ ต้นทุน/กำไรเห็นได้เฉพาะผู้ดูรายงาน — ลิ้นชักบิลและ REST ทางเดียวกัน ◂
+  await run("R5b", async () => {
+    const p: string[] = [];
+    const s = await regSale("A", DEV1, [{ productId: PP.water, qty: 1 }], 1000);
+    const id = String(s?.saleId ?? "");
+    if (!id) p.push(`(fixture) ขาย ${codeOf(s)} ${short(s?.message ?? "", 40)}`);
+    await drain(3);
+    const lnOf = (d: Any): Any => ((d?.bill?.lines ?? []) as Any[])[0];
+    const own = lnOf(await call(billsMod, "billDetail", ctxU("A"), A("OWNER"), { saleId: id || "none", unitId: U.A }));
+    if (!own || own.costSatang !== 400) p.push(`เจ้าของ billDetail cost ${short(own?.costSatang)} (คาด 400)`);
+    const cash = lnOf(await call(billsMod, "billDetail", ctxU("A"), A("CASH"), { saleId: id || "none", unitId: U.A }));
+    if (!cash) p.push("แคชเชียร์ billDetail ไม่มีบรรทัด");
+    else if (cash.costSatang !== null || cash.marginSatang !== null) p.push(`แคชเชียร์ billDetail cost ${short(cash.costSatang)} margin ${short(cash.marginSatang)} (คาด null)`);
+    const kSale = await mkKey("sale-read-only", ["pos.sale.read"]);
+    const gNo = await api("GET", `/sales/${id || "none"}?unitId=${U.A}`, kSale?.raw ?? "shark_none_sale");
+    const lNo = ((gNo.body?.data?.lines ?? []) as Any[])[0];
+    if (gNo.status !== 200 || !lNo) p.push(`คีย์ pos.sale.read GET → ${gNo.status} ${short(gNo.body, 60)}`);
+    else if ("costSatang" in lNo || "marginSatang" in lNo) p.push(`คีย์ pos.sale.read ได้ cost ${short(lNo.costSatang)} margin ${short(lNo.marginSatang)} (คาด ไม่มีฟิลด์)`);
+    const gYes = await api("GET", `/sales/${id || "none"}?unitId=${U.A}`, raw("read"));
+    const lYes = ((gYes.body?.data?.lines ?? []) as Any[])[0];
+    if (gYes.status !== 200 || lYes?.costSatang !== 400) p.push(`(ตัวควบคุม) คีย์ pos-read GET cost ${short(lYes?.costSatang)} (คาด 400)`);
+    chk("R5b", !fx && p.length === 0, "ต้นทุน/กำไร = ผู้ดูรายงานเท่านั้น (ลิ้นชัก · REST)", why(p));
   });
   await run("R3", async () => {
     const p: string[] = [];
