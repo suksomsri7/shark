@@ -81,6 +81,8 @@ type Props = {
   /** POS P2.12U ▸ มติ 7: โหมดทุกสาขา (unitId = BILLS_ALL_UNITS) — สาขาที่ออกใบกำกับได้ (แทน canIssueTaxInvoice ของสาขาเดียว) · สาขาของบิลใน ?bill= ◂ */
   taxInvoiceUnits?: string[];
   initialBillUnitId?: string | null;
+  /** POS P2.14 ▸ UI-4: แสดงต้นทุน/กำไรต่อบรรทัดในลิ้นชัก (pos.report.view) ◂ */
+  canSeeCost?: boolean;
 };
 /** P1.13U: เหตุผลที่ปฏิเสธคำขอใบกำกับ (มติ 4 — แผ่นเหตุผล ≤200 · เซิร์ฟเวอร์รับ ≤500) */
 const TAX_REJECT_MAX = 200;
@@ -142,7 +144,7 @@ function BillDialog({ labelledBy, testid, wide, onClose, children }: { labelledB
   );
 }
 
-export function BillsClient({ systemId, units, unitId: listUnitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice: canIssueOne = false, initialBillId = null, taxInvoiceUnits = [], initialBillUnitId = null }: Props) {
+export function BillsClient({ systemId, units, unitId: listUnitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice: canIssueOne = false, initialBillId = null, taxInvoiceUnits = [], initialBillUnitId = null, canSeeCost = false /* POS P2.14 ▸ UI-4 ◂ */ }: Props) {
   // POS P2.12U ▸ มติ 7: listUnitId = สาขาของรายการ (หรือ "*") · unitId = สาขาของงานในลิ้นชัก (โหมดทุกสาขา = สาขาของบิลที่เปิด) ◂
   const allMode = listUnitId === BILLS_ALL_UNITS;
   const [rowUnit, setRowUnit] = useState<string | null>(allMode ? initialBillUnitId : null);
@@ -1465,6 +1467,11 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                           {priceNote(l)}
                         </small>
                       ) : null}
+                      {canSeeCost && l.costSatang !== null && ( // POS P2.14 ▸ UI-4: ต้นทุนจากความเคลื่อนไหวสต็อกของบิล + กำไร ◂
+                        <small data-testid={`pos-bill-line-cost-${i}`} className="text-[11px] tabular-nums text-[color:var(--color-muted)]">
+                          {t("drawer.lineCost", { cost: money(l.costSatang), margin: money(l.marginSatang ?? 0) })}
+                        </small>
+                      )}
                     </span>
                     <span className="font-semibold tabular-nums">{money(l.lineTotalSatang)}</span>
                   </div>

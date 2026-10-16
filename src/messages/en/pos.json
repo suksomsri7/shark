@@ -1400,7 +1400,10 @@
       "resume": "Continue",
       "empty": "No history yet",
       "out": "Out {name}",
-      "scopeNote": "History of this inventory (every branch that shares it)"
+      "scopeNote": "History of this inventory (every branch that shares it)",
+      "saleCut": "Used by recipe: {name}",
+      "saleReturn": "Returned from bill: {name}",
+      "saleRef": "{line} · bill {receipt}"
     },
     "productsPage": {
       "desc": "Services/products — set up what the register sells",
@@ -1775,7 +1778,8 @@
         "refund": "Refunded {amount}",
         "void": "Bill voided",
         "reprint": "Copy printed"
-      }
+      },
+      "lineCost": "Cost {cost} · margin {margin}"
     },
     "voidHint": {
       "NO_PERMISSION": "Voiding needs manager rights · only before the shift closes",

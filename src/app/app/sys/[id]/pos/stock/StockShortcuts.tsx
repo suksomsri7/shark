@@ -604,9 +604,13 @@ export function HistoryPanel({
                 <StockIcon name={MOVE_ICON[m.type]} size={15} />
               </span>
               <span className="min-w-0 flex-1">
-                <b className="block truncate text-sm font-semibold">{t(`history.${MOVE_KEY[m.type]}`, { name: m.itemName })}</b>
+                {/* POS P2.14 ▸ UI-4 (D8): ความเคลื่อนไหวของบิล = "ตัดตามสูตร/คืนจากบิล {ของ}" + "{บรรทัด} · บิล {เลข}" (R5 sale) ◂ */}
+                <b className="block truncate text-sm font-semibold">
+                  {m.sale ? t(m.qtyDelta < 0 ? "history.saleCut" : "history.saleReturn", { name: m.itemName }) : t(`history.${MOVE_KEY[m.type]}`, { name: m.itemName })}
+                </b>
                 <span className="block truncate text-xs text-[color:var(--color-muted)]">
                   {bkkDayHm(m.createdAt, locale)} · {locName(m.locationId)}
+                  {m.sale ? ` · ${t("history.saleRef", { line: m.sale.lineName ?? "-", receipt: m.sale.receiptNo ?? "-" })}` : ""}
                   {m.note ? ` · ${m.note}` : ""}
                 </span>
               </span>

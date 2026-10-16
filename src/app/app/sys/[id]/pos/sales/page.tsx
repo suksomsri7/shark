@@ -69,6 +69,7 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
           initialBillId={allMode && !initialBillUnitId ? null : billParam} // POS P2.8U ▸ ?bill= ◂ · POS P2.12U ▸ ทุกสาขา: ต้องรู้สาขาของบิล ◂
           taxInvoiceUnits={taxInvoiceUnits}
           initialBillUnitId={initialBillUnitId}
+          canSeeCost={allMode ? units.some((u) => evaluate(m, { module: "pos", action: "pos.report.view", unitId: u.id })) : evaluate(m, { module: "pos", action: "pos.report.view", unitId })} // POS P2.14 ▸ UI-4: ต้นทุน/กำไรต่อบรรทัด = ผู้ดูรายงานได้ ◂
         />
       ) : (
         <div className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-bills-no-unit">
