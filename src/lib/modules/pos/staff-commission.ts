@@ -86,7 +86,7 @@ async function reconcileSale(tenantId: string, saleId: string, accrue: boolean):
         const q = mine.reduce((t, l) => t + l.qty, 0);
         const amt = mine.reduce((t, l) => t + l.lineTotalSatang, 0);
         cumQty += q;
-        const share = staffCommissionRefundShare(acc.amountSatang, acc.baseSatang, amt, prev, qtyTotal > 0 && cumQty >= qtyTotal);
+        const share = staffCommissionRefundShare(acc.amountSatang, acc.baseSatang, amt, prev, qtyTotal > 0 && cumQty >= qtyTotal, { q, Q: qtyTotal }); // POS P3.5 ▸ fix2 N4 ◂
         prev += share;
         if (share > 0) reversals.push(reverseRow(acc, `REFUND:${rf.id}:${acc.lineId}`, -share, staffCommissionPeriodOf(rf.paidAt ?? rf.createdAt)));
       }

@@ -45,9 +45,18 @@ export function staffCommissionBases(lineTotals: number[], serviceChargeSatang: 
  * R8 มติ 9 — ส่วนที่กลับรายการของใบคืนหนึ่งใบ (ขนาด ≥ 0): ใบที่ทำให้บรรทัดคืนครบ = ที่เหลือทั้งหมด (accrual − prev) ·
  * ใบที่ยังไม่ครบ = min(ปัดครึ่งขึ้น(accrual × ยอดคืน / ยอดสุทธิของบรรทัด), ที่เหลือ) ⇒ Σ ทุกใบ = accrual พอดี (แบบ P2.1 R6)
  */
-export function staffCommissionRefundShare(accrualSatang: number, lineNetSatang: number, refundSatang: number, prevReversedSatang: number, completesLine: boolean): number {
+export function staffCommissionRefundShare(
+  accrualSatang: number,
+  lineNetSatang: number,
+  refundSatang: number,
+  prevReversedSatang: number,
+  completesLine: boolean,
+  qty?: { q: number; Q: number }, // POS P3.5 ▸ fix2 N4: จำนวนที่คืน/ทั้งบรรทัด — ใช้เมื่อยอดสุทธิของบรรทัด ≤ 0 (ของแถมที่มีค่าคอมฯ คงที่ต่อชิ้น) ◂
+): number {
   const left = Math.max(0, accrualSatang - Math.max(0, prevReversedSatang));
   if (completesLine) return left;
+  // POS P3.5 ▸ fix2 N4: สุทธิ ≤ 0 ⇒ สัดส่วนตามจำนวน halfUp(accrual × q / Q) (ใบที่ครบเก็บเศษ ⇒ Σ = accrual) ◂
+  if (lineNetSatang <= 0) return qty && qty.Q > 0 ? Math.min(halfUpDiv(Math.max(0, accrualSatang) * Math.max(0, qty.q), qty.Q), left) : 0;
   return Math.min(halfUpDiv(Math.max(0, accrualSatang) * Math.max(0, refundSatang), lineNetSatang), left);
 }
 
