@@ -10530,6 +10530,25 @@
       "system": "POS"
     },
     {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-channel-code-filter",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-list",
+        "note": "ทุกสาขา (?unit=*): กรองบิลตามรหัสช่องทางข้ามสาขา (billsPageData channelCode · P2.14 RPT-5) — แทนตัวกรอง salesChannelId ต่อสาขาที่ซ่อนในโหมดนี้"
+      },
+      "wo": "P2.14",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=*"
+    },
+    {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-paydlg-method-platform",
       "kind": "button",

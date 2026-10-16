@@ -42,6 +42,8 @@ export type BillsPageQuery = {
   channel?: string;
   /** POS P2.1 ▸ R11 Q4: ช่องทางขาย (SalesChannel.id ของสาขา) — บิลเดิมนับเป็นช่องทางปริยายตาม sourceModule ◂ */
   salesChannelId?: string;
+  /** POS P2.14 ▸ RPT-5: รหัสช่องทาง (STORE · LINEMAN …) — กรองข้ามสาขา (ทุกสาขา) ◂ */
+  channelCode?: string;
   staffUserId?: string;
   /** เริ่มที่ 1 */
   page?: number;
