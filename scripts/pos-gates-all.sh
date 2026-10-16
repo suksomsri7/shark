@@ -291,7 +291,7 @@ for name, rc in rows:
     if why:
         print(f"RED {name} {rc} ({why})")
         red.append(name)
-    else:
+    elif name not in red:  # POS HF-FU2 ▸ fix2 cosmetic: แถวที่แดงแล้ว (log-head/EXIT/JSON) ไม่พิมพ์ ACCEPTED ซ้อน ◂
         print(f"ACCEPTED {name} {rc} — {a.get('reason', '')[:120]}")
 head0 = (head_toks.get("head=") or [None])[0]  # POS HF-FU2 ▸ fix1 N2: จากบรรทัด 1 ของ HEAD.txt เท่านั้น ◂
 dirty0 = (head_toks.get("dirty=") or [None])[0]
