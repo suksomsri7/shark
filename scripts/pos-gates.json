@@ -190,6 +190,10 @@
       }
     },
     {
+      "suite": "qc-pos-p3.5",
+      "mode": "forced"
+    },
+    {
       "suite": "qc-pos-account",
       "mode": "unforced"
     },
@@ -291,6 +295,43 @@
     },
     {
       "suite": "qc-account-cpa",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hr",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hr-attendance",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hr-payadjust",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hr-roster",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hr-leave-booking",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-payroll",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-payroll-reverse",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-crm-c3.3",
+      "mode": "unforced",
+      "needs": "crm-seed"
+    },
+    {
+      "suite": "qc-booking-hours-hr",
       "mode": "unforced"
     },
     {
