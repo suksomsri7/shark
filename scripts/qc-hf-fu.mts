@@ -218,7 +218,7 @@ function constBody(src: string, marker: string): string {
 const firstStatement = (raw: string) => raw.replace(/^\s*(\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*/, "").trimStart();
 const isUseClient = (raw: string) => /^["']use client["']/.test(firstStatement(raw));
 
-// ── git (PAR: ของที่ HF-FU ห้ามแตะ = ตรงฐาน c3c52ef1 หรือตรงหมุดของเลน 05975437) ──
+// ── git (PAR: ของที่ HF-FU ห้ามแตะ = ตรงฐาน c3c52ef1 หรือตรงหมุดของเลน c5fc223b) ──
 const BASE_REV = "c3c52ef1";
 function gitRun(args: string[]): { ok: boolean; status: number; out: string } {
   try {
@@ -230,7 +230,7 @@ function gitRun(args: string[]): { ok: boolean; status: number; out: string } {
   }
 }
 let mergeBaseRev: string | null | undefined;
-const LANE_PIN = "05975437"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
+const LANE_PIN = "c5fc223b"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437 · CD-B1c gates111 → U3 merge c5fc223b: ปลาย P2-close หลังรอบ U2/U2b/U3 ที่แตะ RegisterScreen (CD-U2b) · use-display-publish (H1b) · visual-pos (H5) ตามมติผู้คุม): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 function mergeBase(): string | null {
   if (mergeBaseRev !== undefined) return mergeBaseRev;
   const r = gitRun(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`]); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง

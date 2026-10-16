@@ -37,7 +37,7 @@ type Def = readonly [string, string, string];
 const D = (id: string, x: string, title: string): Def => [`P2.12-${id}`, x, title] as const;
 const CHECKS: readonly Def[] = [
   // ── ST สถิต ──
-  D("ST1", "S", "[§10 มติ 1 9] ไม่มี migration: prisma/ เท่า หมุดของเลน 05975437 (หรือ e6546359) · ไม่มีไฟล์ใหม่ใต้ prisma/ · ไฟล์เลน A ไม่ถูกแตะ: RegisterScreen.tsx · InterimPayDialog.tsx · DeviceSettings.tsx · display* · pos/receipt*.ts · register*.ts(x) · tender* · refund* · service.ts · account-bridge.ts · outbox-consumers.ts · modules/account|giftcard|member/**"),  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin): คำอธิบายฐาน = หมุดของเลน (K3)
+  D("ST1", "S", "[§10 มติ 1 9] ไม่มี migration: prisma/ เท่า หมุดของเลน c5fc223b (หรือ e6546359) · ไม่มีไฟล์ใหม่ใต้ prisma/ · ไฟล์เลน A ไม่ถูกแตะ: RegisterScreen.tsx · InterimPayDialog.tsx · DeviceSettings.tsx · display* · pos/receipt*.ts · register*.ts(x) · tender* · refund* · service.ts · account-bridge.ts · outbox-consumers.ts · modules/account|giftcard|member/**"),  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin): คำอธิบายฐาน = หมุดของเลน (K3)
   D("ST2", "S", "[§2 §4 มติ 2 9] reports.ts อ่านอย่างเดียว · ทุกคิวรี posSale กรอง unitId + createdAt (ตัวจับ p1.17 ST5) · คิวรี AuditLog/PosOrder/PosHeldCart มี tenantId + เวลา · PosShift/Recount มี tenantId + (เวลา | id/shiftId IN | status OPEN) · billsPageData/billDetail อ่านอย่างเดียว · report-print-shared.ts มีอยู่ ไม่ import prisma/db ไม่มี new Date( / Date.now / performance.now / Math.random / process.env · settings-shared.ts ยังบริสุทธิ์"),
   D("ST3", "S", "[ตารางชื่อ] REPORT_KINDS + CSV_HEADERS มี branches hourly anomalies · export reportBranches reportHourly reportAnomalies + ANOMALY_PERMISSION = \"pos.report.anomaly\" · OVERVIEW_SECTIONS มี hourly · settings-shared export posAnomalyThresholds POS_ANOMALY_RULES · GENERAL_KEYS มี anomaly · permissions.ts บล็อก pos มี pos.report.anomaly ป้ายไทย · report-print-shared export buildReportPrint renderReportPrintHtml · report-actions export posReportPrintAction · bills-shared channelCounts/unitName/commissionNetSatang · ข้อความ th (ไทย) / en (ไม่มีอักษรไทย) ครบชุด"),
   // ── CH ช่องทาง ──
@@ -258,7 +258,7 @@ const purePath = (f: string): boolean => {
   return !valueImportsOf(s).some((p) => /@prisma\/client|\/db$|^\.\/db$|@\/lib\/core\/db|@\/lib\/core\/(rbac|context|audit)|@\/lib\/modules\/(?!pos\/[a-z-]+-shared)|^\.\/(?![a-z-]+-shared$)[a-z-]+$/.test(p));
 };
 
-// ── git (ฐาน = หมุดของเลน 05975437 · สำรอง e6546359) ──
+// ── git (ฐาน = หมุดของเลน c5fc223b · สำรอง e6546359) ──
 const BASE_REV = "e6546359";
 function git(args: string[]): string | null {
   try {
@@ -267,7 +267,7 @@ function git(args: string[]): string | null {
     return null;
   }
 }
-const LANE_PIN = "05975437"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
+const LANE_PIN = "c5fc223b"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437 · CD-B1c gates111 → U3 merge c5fc223b: ปลาย P2-close หลังรอบ U2/U2b/U3 ที่แตะ RegisterScreen (CD-U2b) · use-display-publish (H1b) · visual-pos (H5) ตามมติผู้คุม): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 const MB = (() => {
   const r = git(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`]); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return r ? r.trim() : "";

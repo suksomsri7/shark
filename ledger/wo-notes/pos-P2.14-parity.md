@@ -90,6 +90,30 @@ Result: **no new money-screen deviation in P2** — 01/12/11C/P2.9U/P2.9bU = MAT
 
 U2 = one builder fix round (`wip/pos-p2.14-u2` from `session/pos`) → re-shoot only the touched states (`--states --state …` th + en on QC5 after a rebuild of tree d) → gate set → push → rows above get the re-shoot evidence appended (addendum).
 
+## Addendum — U2 re-shoot (controller · 16 Oct 17:16–17:26Z · tree d @230accb8 · build `taamEmOgfjv5vh5BxchCU` · QC5 · `/root/pos-runs/vis-u2-qc5-20261016T171622Z/` · 25 runs · 74 shots · 5 failed = H1/H2 only)
+| id | shot re-opened | result |
+|---|---|---|
+| O-1 | p2.4u/tables-floor-owner-390x844 · tables-panel-rounds -en | ✅ FIXED — B9 reserved card: booking line clamped ("จอง 00:36 · คุณอรทัย (ภาพ QC) 6 คน · กันโต๊ะ…"), "ดูการจอง" button clear; en panel buttons one line |
+| O-2 | p2.5u/tables-split-equal-owner-1024x768 | ✅ FIXED — "บิล 1 · สมใจ ลูกค้าประจำ (P…" truncates inside the card |
+| O-3 | p2.8u/orders-mixed-owner-1440x900-en · p2.6u/kds-expo-owner-1440x900-en | ✅ FIXED — "1 item · ฿130" / "2 items" · "Served today 1 ticket" |
+| O-4 | p2.3u/products-recipe-view-owner-390x844 | ✅ FIXED — title full width, toolbar wraps under it |
+| O-5 | p2.12u/reports-hourly-owner-1440x900 | ✅ FIXED — top-products card shows the กำไร column |
+| O-6 | p1.3/register-taxinvoice-dialog-owner-1440x900 | ✅ FIXED — "บุคคลธรรมดา" one line · branch field wider |
+| O-7 | p2.11u/stock-shared-inventory-manager-1440x900-en | ✅ FIXED — return rows "17 Oct, 00:22 · คลังหลัก · bill 202610-0747 · คืน…" (no "-"); note: the trailing reason text is Thai (data from the bill) |
+| O-8 | p2.12u/reports-branches-tab-owner-1024x768 | ✅ FIXED — "11 ต.ค. 2569 – 17 ต.ค. 2569 · ข้อมูล ณ 17 ต.ค. 00:23" |
+| Q3 | p2.6u/kds-expo-owner-1440x900-en | ✅ FIXED — "last #41 · Chat" |
+| Q4 | p1.3/register-default-cashier-1440x900 | ✅ FIXED — cashier tabs: หน้าขาย · ออเดอร์ออนไลน์ · บิลวันนี้ · กะ · สินค้า · รายงาน · ตั้งค่า (no "โต๊ะ · เร็ว ๆ นี้") |
+| H5 | p2.8u/register-register-tab-badge-owner-390x844 | ✅ SHOT — badge "3" on the mobile orders button |
+| H1/H2 | p1.3/register-offline-cashier-* th ×3 · en ×2 | ❌ still red — controller request trace (`dbg-offline-cashier-trace.log` in the run folder): the failing POST is server action `publishDisplayStateAction` (customer-display publish loop, P2.10) fired every few seconds for the display-paired cashier device; U2b guards did not cover it → **U3 H1b** (gate the display hook on `navigator.onLine`, publish once on `online`) → re-shoot after the U3 merge |
+| O-9 | p2.12u/reports-print-overview-owner-1440x900 | ✅ by hunk (reports.ts `idCell`: "API …<last6>") — the re-shot print covers business day 17 Oct (00:23) and has no API-key seller row to show; the CSV/print column change is code-reviewed by the controller |
+
+## Addendum — U3 re-shoot (controller · 16 Oct 17:53–17:58Z · tree d @c5fc223b · build `n3lL2TIziX4uyZen-AcML` · QC5 · `/root/pos-runs/vis-u3-qc5-20261016T175326Z/` · 6 runs · 79 shots · **0 failed**)
+| id | shot | result |
+|---|---|---|
+| H1/H2 | p1.3/register-offline-cashier-{1440x900,1024x768,390x844} th · {1440x900,390x844} en | ✅ FIXED — no console error after `setOfflineMode` (customer-display publish loop gated on `navigator.onLine`, U3 H1b); owner control still green |
+| 11A | p2.10 display states (th, owner) | ✅ harness green — display pairing/publish unchanged |
+| 10/17 · pages | p2close settings + all pages (th, owner) | ✅ harness green — registry/accordion additions do not change the POS page layouts |
+
 ## Rows
 
 | frame | state/shot path | size | locale | status | note |
@@ -239,27 +263,3 @@ U2 = one builder fix round (`wip/pos-p2.14-u2` from `session/pos`) → re-shoot 
 - **Q6 05ค** is the scan stock-count phone frame (not money). The addendum lists "05" as CTRL, so I marked 05ค CTRL — do you want me to judge it instead?
 - **Q7** QC5 residue visible in shots (212 revoked devices, open count #12, P2.13 agent-test order "เลยเวลาเตรียม 849 นาที", duplicate held bills "โต๊ะ 4 (ภาพ QC)") — data only; any cleanup wanted before HANDOVER-P2 images?
 
-
-## Addendum — U2 re-shoot (controller · 16 Oct 17:16–17:26Z · tree d @230accb8 · build `taamEmOgfjv5vh5BxchCU` · QC5 · `/root/pos-runs/vis-u2-qc5-20261016T171622Z/` · 25 runs · 74 shots · 5 failed = H1/H2 only)
-| id | shot re-opened | result |
-|---|---|---|
-| O-1 | p2.4u/tables-floor-owner-390x844 · tables-panel-rounds -en | ✅ FIXED — B9 reserved card: booking line clamped ("จอง 00:36 · คุณอรทัย (ภาพ QC) 6 คน · กันโต๊ะ…"), "ดูการจอง" button clear; en panel buttons one line |
-| O-2 | p2.5u/tables-split-equal-owner-1024x768 | ✅ FIXED — "บิล 1 · สมใจ ลูกค้าประจำ (P…" truncates inside the card |
-| O-3 | p2.8u/orders-mixed-owner-1440x900-en · p2.6u/kds-expo-owner-1440x900-en | ✅ FIXED — "1 item · ฿130" / "2 items" · "Served today 1 ticket" |
-| O-4 | p2.3u/products-recipe-view-owner-390x844 | ✅ FIXED — title full width, toolbar wraps under it |
-| O-5 | p2.12u/reports-hourly-owner-1440x900 | ✅ FIXED — top-products card shows the กำไร column |
-| O-6 | p1.3/register-taxinvoice-dialog-owner-1440x900 | ✅ FIXED — "บุคคลธรรมดา" one line · branch field wider |
-| O-7 | p2.11u/stock-shared-inventory-manager-1440x900-en | ✅ FIXED — return rows "17 Oct, 00:22 · คลังหลัก · bill 202610-0747 · คืน…" (no "-"); note: the trailing reason text is Thai (data from the bill) |
-| O-8 | p2.12u/reports-branches-tab-owner-1024x768 | ✅ FIXED — "11 ต.ค. 2569 – 17 ต.ค. 2569 · ข้อมูล ณ 17 ต.ค. 00:23" |
-| Q3 | p2.6u/kds-expo-owner-1440x900-en | ✅ FIXED — "last #41 · Chat" |
-| Q4 | p1.3/register-default-cashier-1440x900 | ✅ FIXED — cashier tabs: หน้าขาย · ออเดอร์ออนไลน์ · บิลวันนี้ · กะ · สินค้า · รายงาน · ตั้งค่า (no "โต๊ะ · เร็ว ๆ นี้") |
-| H5 | p2.8u/register-register-tab-badge-owner-390x844 | ✅ SHOT — badge "3" on the mobile orders button |
-| H1/H2 | p1.3/register-offline-cashier-* th ×3 · en ×2 | ❌ still red — controller request trace (`dbg-offline-cashier-trace.log` in the run folder): the failing POST is server action `publishDisplayStateAction` (customer-display publish loop, P2.10) fired every few seconds for the display-paired cashier device; U2b guards did not cover it → **U3 H1b** (gate the display hook on `navigator.onLine`, publish once on `online`) → re-shoot after the U3 merge |
-| O-9 | p2.12u/reports-print-overview-owner-1440x900 | ✅ by hunk (reports.ts `idCell`: "API …<last6>") — the re-shot print covers business day 17 Oct (00:23) and has no API-key seller row to show; the CSV/print column change is code-reviewed by the controller |
-
-## Addendum — U3 re-shoot (controller · 16 Oct 17:53–17:58Z · tree d @c5fc223b · build `n3lL2TIziX4uyZen-AcML` · QC5 · `/root/pos-runs/vis-u3-qc5-20261016T175326Z/` · 6 runs · 79 shots · **0 failed**)
-| id | shot | result |
-|---|---|---|
-| H1/H2 | p1.3/register-offline-cashier-{1440x900,1024x768,390x844} th · {1440x900,390x844} en | ✅ FIXED — no console error after `setOfflineMode` (customer-display publish loop gated on `navigator.onLine`, U3 H1b); owner control still green |
-| 11A | p2.10 display states (th, owner) | ✅ harness green — display pairing/publish unchanged |
-| 10/17 · pages | p2close settings + all pages (th, owner) | ✅ harness green — registry/accordion additions do not change the POS page layouts |
