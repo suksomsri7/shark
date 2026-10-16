@@ -209,7 +209,9 @@ export async function createOrder(ctx: ShopCtx, input: CreateOrderInput): Promis
           if (mirrored.code === "PRODUCT_UNAVAILABLE") throw new Error("สินค้าบางรายการหมดชั่วคราว — เอาออกแล้วสั่งใหม่");
           // POS P2.14 ▸ ORD-1b (fix1 · H1): สินค้าที่สาขานี้มองไม่เห็น (คลังของสาขา C3) = ปฏิเสธลูกค้า — ไม่มี ShopOrder ไม่มีเงิน (เดิม log แล้วรับออเดอร์ ⇒ บิลไม่มีออเดอร์) ◂
           if (mirrored.code === "PRODUCT_NOT_FOUND") throw new Error("สินค้าบางรายการไม่มีขายที่สาขานี้ — เอาออกแล้วสั่งใหม่");
-          console.error(`[shop] createOrder: ไม่ได้ส่งออเดอร์เข้าจอ POS (${mirrored.code}) tenant=${ctx.tenantId}`);
+          // POS P2.14 ▸ fix2 G1/H2: คำปฏิเสธอื่นทุกรหัส (VALIDATION · CHANNEL_INVALID · ฯลฯ) = throw เหมือนกัน — ShopOrder rollback · ไม่มีออเดอร์เว็บที่ POS ไม่เห็น (เดิม log แล้วรับ ⇒ บิลไม่มีออเดอร์) · ไม่มี POS = ok:true skipped (ไม่เข้าทางนี้) ◂
+          console.error(`[shop] createOrder: ออเดอร์เข้าจอ POS ไม่ได้ (${mirrored.code}) tenant=${ctx.tenantId} — ปฏิเสธคำสั่งซื้อ`);
+          throw new Error("สั่งซื้อไม่สำเร็จ — ร้านรับออเดอร์นี้ไม่ได้ในตอนนี้ ลองใหม่หรือติดต่อร้าน");
         }
         // ◂
         return created;
