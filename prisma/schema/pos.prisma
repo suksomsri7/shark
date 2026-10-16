@@ -130,6 +130,13 @@ model PosSale {
   channelCommissionSatang    Int                 @default(0)
   channelCommissionVatSatang Int                 @default(0)
 
+  // ── POS P3.4 ▸ ออฟไลน์ (R1 · มติ 3) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = บิลออนไลน์) ──
+  // offlineRef = เลขชั่วคราวของเครื่อง "OFF-C1-0007" (ผู้เขียนเดียว = createSale ผ่าน input.offline ที่ pos/offline-sync.ts ส่งมา)
+  //   unique (unitId, offlineRef) WHERE offlineRef IS NOT NULL = partial unique เขียนมือใน migration (prisma แสดง WHERE ไม่ได้)
+  // syncedAt = เวลาเซิร์ฟเวอร์ตอนซิงก์ · paidAt = soldAt ของเครื่อง · createdAt = เวลาเซิร์ฟเวอร์ (ไม่ย้อน) ◂
+  offlineRef                 String?
+  syncedAt                   DateTime?
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
@@ -529,6 +536,10 @@ model PosDevice {
   revokedAt          DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
+  // POS P3.4 ▸ ออฟไลน์ (R1): offlineCode = รหัสสั้น "C<n>" ต่อสาขา (ตั้งตอนออก snapshot ครั้งแรก · partial unique (unitId, offlineCode) เขียนมือ) ·
+  //   offlineSeq = เลข OFF สูงสุดที่ซิงก์ผ่านแล้ว (high-water · เขียนด้วย GREATEST คำสั่งเดียว) ◂
+  offlineCode        String?
+  offlineSeq         Int             @default(0)
 
   @@unique([unitId, deviceCode])
   @@index([tenantId, unitId, status])
@@ -1068,3 +1079,47 @@ model PosCustomerDisplay {
   @@index([tenantId, unitId, status])
 }
 // ◂ POS P2.10
+
+// ═══════════════════ POS P3.4 ▸ ออฟไลน์ (R1 · มติ 2 · CD-2 · CD-9) — ตารางใหม่ล้วน · ผู้เขียนเดียว = pos/offline-sync.ts ═══════════════════
+// PosOfflineSale = ทุกรายการที่เครื่องส่งมาซิงก์ (บันทึกก่อนตัดสิน · payload ไม่เปลี่ยน — แม้บิลที่ถูกปฏิเสธก็มีหลักฐาน)
+//   status (String · ไม่มี enum ใหม่) = SYNCED | REJECTED | ACCEPTED_BY_MANAGER | DISCARDED · reason = รหัสที่ปฏิเสธ (หรือเหตุผลที่ทิ้ง)
+//   deviceId = รหัสเครื่อง (PosDevice.deviceCode = PosShift.deviceId) · payload ไม่เก็บโทเคนผู้ขายดิบ/PIN/4 หลักท้าย (CD-9 · R13)
+//   drift = ราคาที่ต่างจากราคา ณ soldAt แต่ตรง snapshot ของเครื่อง (R6) · saleId = บิลที่เกิด (id หลวม ไม่มี FK)
+model PosOfflineSale {
+  id               String   @id @default(cuid())
+  tenantId         String
+  unitId           String
+  systemId         String // AppSystem.id (type POS)
+  deviceId         String // PosDevice.deviceCode
+  offlineRef       String // OFF-C1-0007
+  idempotencyKey   String // คีย์บิลเดียวกับหน้าขาย (reg2: namespace ที่ createSale)
+  payload          Json
+  soldAt           DateTime
+  status           String
+  reason           String?
+  drift            Json?
+  saleId           String?
+  resolvedByUserId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, soldAt])
+  @@index([tenantId, unitId, offlineRef])
+}
+
+// PosOfflineSnapshot = หลักฐานราคาที่เครื่องได้ไป (R2 R6) · เก็บ 2 แถวล่าสุดต่อเครื่อง · priceMap {productId|choiceId: สตางค์} · hash = ETag
+model PosOfflineSnapshot {
+  id       String   @id @default(cuid())
+  tenantId String
+  unitId   String
+  deviceId String // PosDevice.deviceCode
+  issuedAt DateTime
+  priceMap Json
+  hash     String
+  createdAt DateTime @default(now())
+
+  @@unique([unitId, deviceId, hash])
+  @@index([tenantId, unitId, deviceId, issuedAt])
+}
+// ◂ POS P3.4
