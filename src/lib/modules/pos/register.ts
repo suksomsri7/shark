@@ -627,6 +627,11 @@ const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าข�
 function regRefuse(code: RegisterRefusalCode, message?: string, lineIndex?: number): RegisterRefusal {
   return lineIndex === undefined ? { ok: false, code, message: message ?? REG_MESSAGE[code] } : { ok: false, code, message: message ?? REG_MESSAGE[code], lineIndex };
 }
+// POS P2.14 ▸ UI-9: คำปฏิเสธ PIN บัตรของขวัญบอกแถว (giftCardRow) + ครั้งที่เหลือ (attemptsLeft) — รหัสอื่นคืนตามเดิม ◂
+function regPinRow(e: PosSaleError, r: RegisterRefusal): RegisterRefusal {
+  if (e.code !== "GIFT_CARD_PIN") return r;
+  return { ...r, ...(e.giftCardRow !== undefined ? { giftCardRow: e.giftCardRow } : {}), ...(e.attemptsLeft !== undefined ? { attemptsLeft: e.attemptsLeft } : {}) };
+}
 const isRegRefusal = (v: unknown): v is RegisterRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
 /** POS P1.12: คำปฏิเสธชุดข้อความเดียวกับหน้าขาย (register-member.ts ใช้ — MEMBER_NOT_FOUND ข้อความเดียวทุกทาง · 404-not-403) */
 export function registerRefuse(code: RegisterRefusalCode, message?: string): RegisterRefusal {
@@ -657,7 +662,7 @@ const regIsId = (v: unknown): v is string => typeof v === "string" && v.length >
  */
 const regIsIdemKey = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(v);
 /** namespace ของคีย์หน้าขายใหม่ใน PosSale.idempotencyKey (ตายตัว — มติ R4.1 ข้อ 2) */
-const REG_KEY_PREFIX = "reg2:";
+export const REG_KEY_PREFIX = "reg2:"; // POS P2.14 ▸ fix1 F7: export (REST ใช้ค่าเดียวกัน) ◂
 /** คีย์ของออบเจกต์อยู่ในรายการที่รู้จักทั้งหมดไหม (คีย์แปลกปลอม = VALIDATION ไม่เงียบทิ้ง) */
 const regOnlyKeys = (o: Record<string, unknown>, allowed: ReadonlySet<string>) => Object.keys(o).every((k) => allowed.has(k));
 
@@ -745,6 +750,16 @@ function regVisibleWhere(s: RegScope): Prisma.Sql {
     AND (p."kind" <> 'BUNDLE' OR ${bundleOk})
     AND (p."kind" <> 'MENU' OR ${menuOk})
     AND (p."parentId" IS NULL OR EXISTS (SELECT 1 FROM "PosProduct" pp WHERE pp.id = p."parentId" AND pp."tenantId" = ${s.tenantId} AND pp."archivedAt" IS NULL))`;
+}
+// POS P2.14 ▸ ORD-1 (O5): กติกามองเห็นสินค้าของหน้าขาย (regVisibleWhere · คลังของสาขา C3 · สินค้าของสาขา · ชุด/สูตร · แม่เก็บถาวร) สำหรับประตูที่ไม่ผ่านหน้าขาย
+//   (ประตูเว็บร้าน ingestInTx) — คืน id ที่มองเห็นได้ที่สาขานี้ · อ่านอย่างเดียว · ใช้ client/tx ของผู้เรียก ◂
+export async function registerVisibleProductIds(db: Pick<Prisma.TransactionClient, "appSystemUnit" | "$queryRaw">, s: { tenantId: string; systemId: string; unitId: string }, ids: string[]): Promise<Set<string>> {
+  const want = [...new Set(ids.filter((x) => regIsId(x)))];
+  if (!want.length) return new Set();
+  const inv = await db.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: s.tenantId, unitId: s.unitId, type: "INVENTORY" } }, select: { systemId: true } });
+  const scope = { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, unitName: "", unitInv: inv?.systemId ?? null } as RegScope;
+  const rows = await db.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p WHERE ${regVisibleWhere(scope)} AND p.id = ANY(${want}::text[])`;
+  return new Set(rows.map((r) => r.id));
 }
 const regLike = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
@@ -2510,13 +2525,14 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       for (const x of req.payMethods) {
         if (!x.depositId) continue;
         const d = byId.get(x.depositId);
-        if (!d) return regRefuse("DEPOSIT_NOT_FOUND");
+        // POS P2.14 ▸ DEP-1 (P1): คำปฏิเสธของมัดจำพก depositId ของแถวนั้น (เพิ่มล้วน) — จอชี้แถวที่ผิดได้ ไม่ต้องเดา ◂
+        if (!d) return { ...regRefuse("DEPOSIT_NOT_FOUND"), depositId: x.depositId };
         // POS P2.9b ▸ fix1 มติ 6 (hunt D5): มัดจำ walk-in ที่บันทึกเบอร์ไว้ = ผู้ถือต้องบอก 4 หลักท้าย (ไม่ส่ง/ผิด = DEPOSIT_NOT_OWNER) · ไม่มีเบอร์ = ผู้ถือใบรับ ◂
         // POS P2.9b ▸ fix2 มติ 3 (hunter N2): เทียบผ่านตัวนับต่อมัดจำ (ผิด 5 ครั้ง = DEPOSIT_LOCKED 15 นาที · ถูกระหว่างล็อก = ยังล็อก) ◂
         if (!d.customerId && d.phoneLast4) {
           const ph = await (await import("./deposit-links")).checkDepositPhone(s0.tenantId, d, x.phoneLast4, db);
-          if (ph === "LOCKED") return regRefuse("DEPOSIT_LOCKED");
-          if (ph !== "OK") return regRefuse("DEPOSIT_NOT_OWNER");
+          if (ph === "LOCKED") return { ...regRefuse("DEPOSIT_LOCKED"), depositId: d.id }; // POS P2.14 ▸ DEP-1 ◂
+          if (ph !== "OK") return { ...regRefuse("DEPOSIT_NOT_OWNER"), depositId: d.id }; // POS P2.14 ▸ DEP-1 ◂
         }
         x.refSaleId = d.receiptSaleId;
       }
@@ -2810,7 +2826,7 @@ async function regSubmitWithIntents(
           const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
           return row ? regDuplicate(s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
       if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
@@ -2854,7 +2870,7 @@ async function regSubmitTable(
   try {
     await preverifySaleGiftPins(saleInput);
   } catch (e) {
-    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    if (e instanceof PosSaleError) return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code)); // POS P2.14 ▸ UI-9 ◂
     throw e;
   }
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -2910,7 +2926,7 @@ async function regSubmitTable(
           const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
           return row ? regTableDuplicate(db, s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
       if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
@@ -2946,7 +2962,7 @@ async function regSubmitSplitPart(
   try {
     await preverifySaleGiftPins(saleInput);
   } catch (e) {
-    if (e instanceof PosSaleError) return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code);
+    if (e instanceof PosSaleError) return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code)); // POS P2.14 ▸ UI-9 ◂
     throw e;
   }
   // คีย์เดียวกันที่ commit แล้ว: บิลเดิม = บิลที่ใบนี้ถืออยู่ตอนนี้เท่านั้น (เทียบ payload ตามปกติ)
@@ -3018,7 +3034,7 @@ async function regSubmitSplitPart(
           const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
           return row ? replay(row) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
       if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
@@ -3268,7 +3284,7 @@ async function regCreate(db: RegDb, s: RegScope, req: RegParsedSubmit, saleInput
           return row ? regDuplicate(s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
         }
         // POS P1.8: HAS_REFUNDS มาจาก voidSale เท่านั้น (createSale ไม่โยน) — กันชนิดไว้เป็น VALIDATION
-        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        return regPinRow(e, regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined)); // POS P2.14 ▸ UI-9 ◂
       }
       // createSale ตรวจยอดอีกชั้น (เช่น ส่วนลดอัตโนมัติของระดับสมาชิกที่ P1.3 ยังไม่คิด · P1.12) — ไม่มีบิลเกิด
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");

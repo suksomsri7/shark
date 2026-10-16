@@ -333,6 +333,10 @@ export async function publishDisplayState(ctx: RegisterCtx, actor: RegisterActor
     if (!parsed.success) return refuse("DISPLAY_STATE_INVALID");
     const code = input.deviceCode;
     if (typeof code !== "string" || !POS_DEVICE_CODE_RE.test(code)) return { ok: true, paired: false };
+    // POS P2.14 ▸ DSP-1 มติ 9: จอที่เขียน = จอของเครื่องในคำขอ (ctx.deviceId = รหัสเครื่องของหน้าขายตัวเดียวกับ heartbeat/กะ/บิล) ·
+    //   deviceCode ที่ส่งมาต้องตรงเครื่องนั้น — เครื่อง X ส่งภาพให้จอของเครื่อง Y ไม่ได้ · ไม่มีเครื่องใน ctx = ไม่เขียน (ไม่บอกว่ามีจอ) ◂
+    const own = isRecord(ctx) && typeof (ctx as { deviceId?: unknown }).deviceId === "string" ? (ctx as { deviceId: string }).deviceId : null;
+    if (!own || own !== code) return { ok: true, paired: false };
     const device = await db.posDevice.findUnique({ where: { unitId_deviceCode: { unitId: s.unitId, deviceCode: code } }, select: { id: true, tenantId: true, systemId: true, status: true } });
     if (!device || device.tenantId !== s.tenantId || device.systemId !== s.systemId || device.status !== "ACTIVE") return { ok: true, paired: false };
     const row = await db.posCustomerDisplay.findFirst({
@@ -477,3 +481,12 @@ export async function readCustomerDisplay(input: { token: string; sinceSeq?: num
   });
 }
 
+/**
+ * POS P2.14 ▸ DSP-1b (fix1 H4): เครื่องของผู้ส่งภาพจอลูกค้า — เซิร์ฟเวอร์รู้เองจากกะ OPEN ของผู้ใช้ session ที่สาขานี้ (PosShift.deviceId · ไม่มีคุกกี้เครื่องใน P1.10) ·
+ *   deviceCode ที่ขอเขียนต้องเป็นเครื่องของกะ OPEN ที่ผู้นี้เปิดไว้ ⇒ คืนรหัสเครื่องนั้น · ไม่ตรง/ไม่มีกะ = null (ผู้เรียกปฏิเสธ DEVICE_NOT_REGISTERED) · deviceId ของ client ไม่ใช้ ◂
+ */
+export async function displayPublisherDevice(ctx: { tenantId: string; unitId: string }, actor: { userId: string }, deviceCode: string): Promise<string | null> {
+  if (typeof deviceCode !== "string" || !POS_DEVICE_CODE_RE.test(deviceCode) || !actor?.userId) return null;
+  const row = await prisma.posShift.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, status: "OPEN", openedByUserId: actor.userId, deviceId: deviceCode }, select: { deviceId: true } });
+  return row?.deviceId ?? null;
+}

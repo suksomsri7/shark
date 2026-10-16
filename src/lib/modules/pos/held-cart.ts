@@ -408,8 +408,11 @@ export async function sweepOrphanTableDrafts(db: Db, s: { tenantId: string; syst
     if (!st || st === "OPEN") continue;
     const { id, tableSessionId, ...before } = r;
     const done = await db.$transaction(async (tx) => {
-      // POS HF-FU ▸ b fix1 (R1 F1): ล็อกแถวร่างก่อน แล้วอ่าน session ซ้ำผ่าน facade ด้วย tx — void ที่เปิด session กลับ (unlinkTableSaleInTx)
-      //   ระหว่างการอ่านนอกธุรกรรมกับการทิ้ง ⇒ เห็น OPEN ที่นี่ ⇒ ไม่ทิ้ง · อ่านไม่ได้ = ไม่แตะ (ไม่ล็อก session — ลำดับล็อกปิดโต๊ะ = session → ร่าง) ◂
+      // POS P2.14 ▸ ORD-4 (O3): ล็อกแถว session ก่อน (FOR SHARE ผ่าน facade ของร้านอาหาร · ลำดับเดียวกับปิดโต๊ะ = session → ร่าง) แล้วจึงอ่านซ้ำ —
+      //   ธุรกรรมที่ถือ session อยู่ (void ที่เปิด session กลับ · unlinkTableSaleInTx) ต้อง commit ก่อน ⇒ เห็น OPEN ที่นี่ ⇒ ไม่ทิ้ง (ไม่มีช่อง µs ระหว่างอ่านกับทิ้ง) ◂
+      const ses = await rest.lockOpenSessionInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId: tableSessionId! });
+      if (ses.ok || ses.code === "NOT_FOUND") return false;
+      // POS HF-FU ▸ b fix1 (R1 F1): ล็อกแถวร่าง แล้วอ่าน session ซ้ำผ่าน facade ด้วย tx · อ่านไม่ได้ = ไม่แตะ ◂
       const lk = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosHeldCart" WHERE id = ${id} AND "tenantId" = ${s.tenantId} AND status = 'HELD' AND "tableSessionId" = ${tableSessionId} FOR UPDATE`;
       if (!lk.length) return false;
       const again = await rest.tableSessionForPos(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId: tableSessionId! });
@@ -553,7 +556,8 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
         const k = q.lineIndex;
         if (typeof k !== "number" || k < 0 || k >= probe.length) break;
         // P1.2 R2 F5: ปฏิเสธเพราะสิทธิ์ล้วน (น้ำหนักกรอกเอง) = "ต้องมีสิทธิ์" ไม่ใช่ "ขายไม่ได้แล้ว"
-        notices.push({ lineIndex: probe[k]!, code: q.code === "PRODUCT_NOT_FOUND" ? "PRODUCT_NOT_FOUND" : q.code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : "PRODUCT_UNAVAILABLE" });
+        // POS P2.14 ▸ UI-12: CHANNEL_NOT_SOLD (ช่องทางของบิลพักไม่ขายสินค้านี้) แยกจาก "ขายไม่ได้แล้ว" ◂
+        notices.push({ lineIndex: probe[k]!, code: q.code === "PRODUCT_NOT_FOUND" ? "PRODUCT_NOT_FOUND" : q.code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : q.code === "CHANNEL_NOT_SOLD" ? "CHANNEL_NOT_SOLD" : "PRODUCT_UNAVAILABLE" });
         probe = probe.filter((_, x) => x !== k);
       }
     }

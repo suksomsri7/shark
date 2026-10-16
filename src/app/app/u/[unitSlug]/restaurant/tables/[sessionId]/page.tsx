@@ -17,6 +17,8 @@ import { formatBaht } from "@/lib/ui/money";
 // POS P2.4U ▸ มติ 10 (F4b): สาขาที่ใช้โหมดโต๊ะของ POS ⇒ ซ่อน "เช็คบิล" + "ยกเลิก" รายการ + โน้ต "จัดการที่ POS › โต๊ะ" ◂
 import { getTranslations } from "next-intl/server";
 import { posTableModeForUnit } from "@/lib/modules/pos/table-legacy";
+import { redirect } from "next/navigation"; // POS P2.14 ▸ LEG-2/4 ◂
+import { posLinkedLegacyPage } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS = หน้าเดิมปิด → หน้า POS ◂
 
 const KDS_LABEL: Record<string, string> = {
   NEW: "รอครัว",
@@ -33,6 +35,11 @@ export default async function SessionPage({
 }) {
   const { unitSlug, sessionId } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS ⇒ หน้าเดิมปิด — ไปหน้าโต๊ะของ POS (from=legacy = แถบแจ้งที่หน้า POS) ·
+  //   หน้าขายแบบเดิม (ไม่เปิด registerV2) ยังไม่มีหน้าโต๊ะ/ครัว ⇒ ไปหน้าขาย · ไม่ผูก POS = หน้าเดิมตามเดิม
+  const posDoor = await posLinkedLegacyPage(auth.active.tenantId, unit.id);
+  if (posDoor) redirect(`/app/sys/${posDoor.systemId}/pos/${posDoor.v2 ? "tables" : "register"}?unit=${encodeURIComponent(unit.id)}&from=legacy`);
+  // ◂
   const { tenantId } = auth.active;
   const session = await getSession(tenantId, unit.id, sessionId);
   if (!session) notFound();

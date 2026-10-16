@@ -10,7 +10,7 @@
 import type { ApiActor } from "@/lib/api/actor";
 import { ApiError } from "@/lib/api/respond";
 import { prisma } from "../db";
-import { posUnitIsLinked } from "../register";
+import { posUnitIsLinked, REG_KEY_PREFIX } from "../register"; // POS P2.14 ▸ fix1 F7: + REG_KEY_PREFIX ◂
 import { posActorCanUseUnit } from "./actor";
 
 const NOT_FOUND_EN: Record<string, string> = {
@@ -89,3 +89,18 @@ export async function posProductUnit(actor: ApiActor, productId: string, given: 
     { path: "unitId", message: "ต้องระบุสาขา" },
   ]);
 }
+
+// POS P2.14 ▸ API-1 (มติ 2 · มติ 12) + API-7: ตัวอ่านของ sales.create (อ่านอย่างเดียว · ไม่มีตรรกะเงิน)
+/** namespace ของคีย์บิลหน้าขายใหม่ใน PosSale.idempotencyKey = REG_KEY_PREFIX ของ register.ts (คีย์บริการ REST ทุกตัวเดินผ่าน submitRegisterSale) · POS P2.14 ▸ fix1 F7: import ค่าเดียว ◂ */
+const REGISTER_KEY_NS = REG_KEY_PREFIX;
+/** บิลเดิมของคีย์บริการนี้ (ลองซ้ำหลัง TTL 24 ชม. ของ ApiIdempotency) — null = ยังไม่มีบิล */
+export async function posApiPriorSale(actor: ApiActor, serviceKey: string): Promise<{ id: string; grandTotalSatang: number } | null> {
+  return prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: `${REGISTER_KEY_NS}${serviceKey}` } }, select: { id: true, grandTotalSatang: true } });
+}
+/** กะของบิล (หลังขาย) — null = นอกกะ · ไม่พบ = null */
+export async function posSaleShiftId(actor: ApiActor, saleId: string): Promise<string | null> {
+  const row = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: actor.tenantId, systemId: actor.systemId }, select: { shiftId: true } });
+  return row?.shiftId ?? null;
+}
+// POS P2.14 ▸ fix1 F7: ตัวหากะของ REST อยู่ที่ shift.ts resolveApiSaleShift (ตัวเดียวกับ orders.pay) ◂
+// ◂

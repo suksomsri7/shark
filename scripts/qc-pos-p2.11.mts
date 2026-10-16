@@ -44,7 +44,7 @@ type Def = readonly [string, string, string];
 const D = (id: string, x: string, title: string): Def => [`P2.11-${id}`, x, title] as const;
 const CHECKS: readonly Def[] = [
   // ── ST สถิต ──
-  D("ST1", "S", "[§10 มติ 1 · ไม่มี migration] prisma/ (schema + migrations) ไม่ต่างจาก merge-base กับ origin/session/pos (หรือ f164d9d6) · ไม่มีไฟล์ใหม่ใต้ prisma/"),
+  D("ST1", "S", "[§10 มติ 1 · ไม่มี migration] prisma/ (schema + migrations) ไม่ต่างจาก หมุดของเลน 64923c13 (หรือ f164d9d6) · ไม่มีไฟล์ใหม่ใต้ prisma/"),  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin): คำอธิบายฐาน = หมุดของเลน (K3)
   D("ST2", "S", "[F15.1 · มติ 6 · m(i)] PosProductChannelPrice + PosRecipeChoiceLine เขียนใน catalog.ts เท่านั้น · posUnitInventoryMap export ที่เดียวใน src/lib · ไม่มี function inventorySystemsOfPos · recipe-actions.ts ไม่ค้นลิงก์ INVENTORY เอง (ใช้ posUnitInventoryMap) · catalog.ts export copyUnitPrices unitPriceMatrix · unitPriceMatrix/reportChannels อ่านอย่างเดียว"),
   D("ST3", "S", "[§4 §5 มติ 4 5 Q6] reports.ts REPORT_KINDS มี \"channels\" + CSV_HEADERS.channels + export reportChannels · report-overview.ts OVERVIEW_SECTIONS มี \"channels\" · receipt-settings-shared.ts export receiptUnitOverride (ไม่ import prisma/db) · receipt-settings.ts export updatePosReceiptUnitSettings + คีย์ byUnit · ข้อความ report.kinds.channels th (ไทย) + en (ไม่มีอักษรไทย)"),
   D("ST4", "S", "[§3 มติ 9] ไฟล์เลน A ไม่ถูกแตะ (= merge-base หรือ f164d9d6): pos/service.ts · register*.ts · tender*.ts · refund*.ts · account-bridge.ts · outbox-consumers.ts · modules/account/** · receipt.ts/receipt-render.ts: ทุก hunk ที่เปลี่ยนมีเครื่องหมาย P2.11"),
@@ -255,7 +255,7 @@ const purePath = (f: string): boolean => {
   return ![...valueImports, ...reexports, ...dyn].some((p) => /@prisma\/client|\/db$|^\.\/db$|@\/lib\/core\/db|@\/lib\/core\/(rbac|context|audit)|@\/lib\/modules\/(?!pos\/[a-z-]+-shared)|^\.\/(?![a-z-]+-shared$)[a-z-]+$/.test(p));
 };
 
-// ── git (ฐาน = merge-base กับ origin/session/pos · สำรอง f164d9d6) ──
+// ── git (ฐาน = หมุดของเลน 64923c13 · สำรอง f164d9d6) ──
 const BASE_REV = "f164d9d6";
 function git(args: string[]): string | null {
   try {
@@ -264,8 +264,9 @@ function git(args: string[]): string | null {
     return null;
   }
 }
+const LANE_PIN = "64923c13"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 const MB = (() => {
-  const r = git(["merge-base", "HEAD", "origin/session/pos"]);
+  const r = git(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`]); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return r ? r.trim() : "";
 })();
 const BASES = [MB, BASE_REV].filter((x, i, a) => !!x && a.indexOf(x) === i);

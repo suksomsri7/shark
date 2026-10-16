@@ -243,7 +243,7 @@ export type RegisterRefusalCode =
   | "DEPOSIT_LOCKED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
-export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
+export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number };
 
 export type RegisterSoldOutReason = "UNAVAILABLE" | "NO_STOCK";
 export type RegisterProduct = {
@@ -593,7 +593,7 @@ export type HeldCartSummary = {
   createdAt: string;
 };
 /** P1.2 R2 F5: PERMISSION_DENIED = บรรทัดยังขายได้ แต่ผู้เรียกคืนไม่มีสิทธิ์ที่บรรทัดต้องใช้ (เช่น น้ำหนักที่กรอกเอง = pos.sale.priceOverride) */
-export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUCT_UNAVAILABLE" | "PERMISSION_DENIED";
+export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUCT_UNAVAILABLE" | "PERMISSION_DENIED" | /** POS P2.14 ▸ UI-12: ช่องทางของบิลพักไม่ขายสินค้านี้ ◂ */ "CHANNEL_NOT_SOLD";
 /** คำเตือนต่อบรรทัดตอนเรียกคืน (ลำดับบรรทัดเดียวกับ cart ที่คืน) — PRICE_CHANGED มีราคาตอนพัก/ราคาปัจจุบัน */
 export type HeldCartNotice = { lineIndex: number; code: HeldCartNoticeCode; heldUnitPriceSatang?: number; unitPriceSatang?: number };
 export type HoldRegisterCartInput = { cart: RegisterQuoteInput; label?: string | null };

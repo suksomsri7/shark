@@ -269,7 +269,12 @@
         "cardEdc": "EDC · enter a reference",
         "overPaid": "Received {amount} more than the bill — refund it yourself",
         "roundsExhausted": "Could not create the QR after several tries — try again",
-        "refundYourself": "This bill can no longer be saved but the money has arrived — refund the customer yourself"
+        "refundYourself": "This bill can no longer be saved but the money has arrived — refund the customer yourself",
+        "failedTitle": "PromptPay payment not received",
+        "failedTitleCard": "Card payment not received",
+        "otherMethod": "Choose another method",
+        "failedManualHint": "Saw the money arrive? Create a new QR, then tap \"Confirm manually when the money arrives\"",
+        "ref": "Ref {ref}"
       },
       "platformHint": "Paid in full via the platform",
       "platformVia": "Full amount via {name}",
@@ -312,7 +317,8 @@
         "tipCashOnly": "Tips need a cash, transfer, PromptPay or card payment",
         "tipOverCash": "Tip cannot exceed the cash-like part {amount}",
         "overDue": "Over the amount due by {amount} — remove a row and take it again",
-        "pinAgainRestart": "Bill total changed — take the payment again (gift cards need the PIN again)"
+        "pinAgainRestart": "Bill total changed — take the payment again (gift cards need the PIN again)",
+        "pinLeft": "{n} tries left before the card locks"
       },
       "depositValidation": "The deposit payment details are invalid — check the deposit rows and try again",
       "depositTileOff": "Not enabled",
@@ -528,7 +534,8 @@
       "noticeNeedsPermission": "{name}: needs a manager (typed weight) — ask a manager or remove it",
       "confirmTitle": "Recall bill \"{label}\" {total}",
       "confirmDetail": "The current cart has {count} items — hold it first?",
-      "confirmHoldFirst": "Hold current cart, then recall"
+      "confirmHoldFirst": "Hold current cart, then recall",
+      "noticeChannelNotSold": "{name}: not sold on this bill's channel — remove it before paying"
     },
     "note": {
       "title": "Bill note",
@@ -1393,7 +1400,10 @@
       "resume": "Continue",
       "empty": "No history yet",
       "out": "Out {name}",
-      "scopeNote": "History of this inventory (every branch that shares it)"
+      "scopeNote": "History of this inventory (every branch that shares it)",
+      "saleCut": "Used by recipe: {name}",
+      "saleReturn": "Returned from bill: {name}",
+      "saleRef": "{line} · bill {receipt}"
     },
     "productsPage": {
       "desc": "Services/products — set up what the register sells",
@@ -1768,7 +1778,8 @@
         "refund": "Refunded {amount}",
         "void": "Bill voided",
         "reprint": "Copy printed"
-      }
+      },
+      "lineCost": "Cost {cost} · margin {margin}"
     },
     "voidHint": {
       "NO_PERMISSION": "Voiding needs manager rights · only before the shift closes",
@@ -2727,7 +2738,8 @@
       "title": "Test print",
       "line": "Printer test"
     },
-    "reprint": "Reprint"
+    "reprint": "Reprint",
+    "failedToast": "Print failed"
   },
   "taxInvoice": {
     "errors": {
@@ -3648,7 +3660,8 @@
       "closeBody": "Only tables with nothing unpaid can close · an unsent draft round is discarded",
       "unlinkMember": "Unlink member",
       "guestsNone": "-",
-      "planDiscount": "Bill discount (split plan)"
+      "planDiscount": "Bill discount (split plan)",
+      "planLoadFailed": "Could not load the split plan totals — retrying"
     },
     "actions": {
       "orderMore": "Order more",
@@ -3796,7 +3809,9 @@
     },
     "legacy": {
       "manageAtPos": "Manage in POS › Tables",
-      "note": "This branch uses POS table mode — check out and cancel items in POS"
+      "note": "This branch uses POS table mode — check out and cancel items in POS",
+      "posLinked": "This branch uses the POS — bills, item cancels, table merges and kitchen work are done in the POS (Tables / Kitchen display)",
+      "fromLegacy": "The old restaurant pages are closed for branches on the POS — manage tables and bills here"
     },
     "qr": {
       "button": "Table QR",
@@ -3904,7 +3919,8 @@
       "viewBill": "View bill",
       "printLabel": "Print shipping label",
       "keyOrder": "+ Key in order",
-      "viewBillNo": "View bill {no}"
+      "viewBillNo": "View bill {no}",
+      "acceptCard": "Accept"
     },
     "status": {
       "NEW": "New",
@@ -4028,7 +4044,8 @@
       "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead",
       "memberNotFound": "This member was not found in this shop",
       "partyNotFound": "This contact was not found in this shop",
-      "conversationNotFound": "This chat conversation was not found in this shop"
+      "conversationNotFound": "This chat conversation was not found in this shop",
+      "saleRefunded": "This order's bill has been fully refunded — it cannot be handed over; cancel the order instead"
     },
     "page": {
       "refusal": "This account cannot view online orders at this branch yet — ask the owner for bill or sale access",
@@ -4246,7 +4263,8 @@
     "legacyBanner": {
       "text": "A new kitchen display is available — tickets from the register, tables, QR and online orders in one place, including paid items (this screen cannot advance them)",
       "open": "Open the new kitchen display"
-    }
+    },
+    "legacyFrom": "The old kitchen screen is closed for branches on the POS — use this kitchen display instead"
   },
   "nav": {
     "overview": "Overview",

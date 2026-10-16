@@ -18,7 +18,7 @@
 //   src/lib/api-keys/scopes.ts — bundle pos-read / pos-operate / pos-admin (§2.1 ตรงตัว) + POS_SCOPE_KEYS + pseudo-scope "pos.filter.unit:<unitId>"
 //   src/lib/modules/pos/api-key-actions.ts ("use server") — สร้าง/รายการ/เพิกถอนคีย์ · bundle ต้องเป็น pos-* · api.key.create/api.key.revoke + pos.settings.manage
 //   src/lib/ai/skills.ts toolAllowedForApiKey — hunk เดียว `POS P2.13 ▸` : sales_summary/sales_by_day ⇐ pos.sale.read · pos_create_sale ⇐ pos.sale.create · void_sale ⇐ pos.sale.void
-//   scripts/gen-pos-api-docs.mts (--check) → docs/api/POS-API.md + .claude/skills/shark-pos-api/references/endpoints.md
+//   scripts/gen-pos-api-docs.mts (--check) → docs/api/POS-API.md + skills/shark-pos-api/references/endpoints.md (P2.14 DOC-2 · ในรีโป)
 //   src/app/developers/pos/page.tsx + src/app/developers/pos.md/route.ts + ลิงก์ใน src/app/developers/page.tsx · fitness.mts บล็อก F13 ของ POS
 // สัญญาคำตอบ (ข้อสอบเทียบ PAR กับ facade ตรงด้วย actor สังเคราะห์ของคีย์):
 //   op อ่าน: `data` = ผลสำเร็จของ facade ตัด `ok` ทิ้ง (หรือค่าของฟิลด์เดียวที่เหลือ) · รายการแบ่งหน้า (sales.list · products.list) = data[] + page
@@ -51,7 +51,7 @@ const ROOT = process.cwd();
 const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
-/** ฐานของข้อสอบ (origin/session/pos f37d605b) — ใช้เมื่อหา merge-base ไม่ได้ (หมุด ST5 เทียบ "ของที่ใบนี้แก้" เท่านั้น) */
+/** ฐานของข้อสอบ (f37d605b) — ใช้เมื่อหาหมุดของเลนไม่ได้ (หมุด ST5 เทียบ "ของที่ใบนี้แก้" เท่านั้น) */ // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin) 
 const BASE_REV = process.env.P213_BASE || "f37d605b";
 /** sha256 ของ scripts/pos-sale-contract.json — มติ 10: ห้าม regenerate (ค่าเดียวกับ qc-pos-p2.9b L1 / p2.10) */
 const CONTRACT_SHA = "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad";
@@ -331,7 +331,7 @@ const F = {
   outbox: "src/lib/outbox-consumers.ts",
   gen: "scripts/gen-pos-api-docs.mts",
   doc: "docs/api/POS-API.md",
-  skillEndpoints: ".claude/skills/shark-pos-api/references/endpoints.md",
+  skillEndpoints: "skills/shark-pos-api/references/endpoints.md", // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2) มติ 4: สกิลอยู่ในรีโป (เดิม .claude/skills/…)
   devPage: "src/app/developers/pos/page.tsx",
   devMd: "src/app/developers/pos.md/route.ts",
   devIndex: "src/app/developers/page.tsx",
@@ -346,9 +346,10 @@ const skipReasons: string[] = [];
 if (!existsSync(join(ROOT, F.route))) skipReasons.push(`${F.route} ยังไม่มี`);
 for (const f of API_FILES) if (!existsSync(join(ROOT, f))) skipReasons.push(`${f} ยังไม่มี`);
 
-// ── merge-base (หมุด ST5 เทียบเฉพาะสิ่งที่ใบนี้แก้) ──
+// ── หมุดของเลน (หมุด ST5 เทียบเฉพาะสิ่งที่ใบนี้แก้) ──
+const LANE_PIN = "64923c13"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 const MB = (() => {
-  const mb = gitStr(["merge-base", "HEAD", "origin/session/pos"])?.trim();
+  const mb = gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim(); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return process.env.P213_BASE ? BASE_REV : mb || BASE_REV;
 })();
 
@@ -1782,7 +1783,12 @@ async function runDb() {
     const apiRows: Any[] = Array.isArray(ls.body?.data) ? ls.body.data : ls.body?.data?.items ?? [];
     if (ls.status !== 200 || !ls.body?.page || ld?.ok !== true || idsOf(apiRows) !== idsOf(ld.items) || !idsOf(apiRows).includes(API_SALE1 || "@@")) p.push(`sales list ${st(ls)} page=${!!ls.body?.page} api=${apiRows.length} facade=${ld?.items?.length ?? codeOf(ld)}`);
     const gs = await api("GET", `/sales/${API_SALE1 || "none"}?unitId=${U.A}`, raw("read"));
-    const gd = await call(billsMod, "billDetail", ctxU("A"), synthOf("read"), { saleId: API_SALE1 || "none", unitId: U.A });
+    const gd0 = await call(billsMod, "billDetail", ctxU("A"), synthOf("read"), { saleId: API_SALE1 || "none", unitId: U.A });
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-6) ▸ มติ 17: REST sales.get ตอบ totals ชื่อ *Satang (API-10) — PAR กับ billDetail ที่แปลงชื่อ totals แบบเดียวกัน ◂
+    const t0 = gd0?.ok === true ? gd0.bill?.totals : null;
+    const gd = t0
+      ? { ...gd0, bill: { ...gd0.bill, totals: { subtotalSatang: t0.subtotal, lineDiscountSatang: t0.lineDiscount, billDiscountSatang: t0.billDiscount, couponSatang: t0.coupon, tierSatang: t0.tier, serviceChargeSatang: t0.serviceCharge, vatSatang: t0.vatSatang, vatRateBp: t0.vatRateBp, grandTotalSatang: t0.grandTotal, tipSatang: t0.tip, refundedSatang: t0.refunded } } }
+      : gd0;
     if (parOf(gs, gd)) p.push(`sales.get ${parOf(gs, gd)}`);
     const rc = await api("GET", `/sales/${API_SALE1 || "none"}/receipt?unitId=${U.A}`, raw("read"));
     const rcd = await call(receiptMod, "receiptPayload", { tenantId: T, systemId: S.POS, unitId: U.A }, synthOf("read"), { saleId: API_SALE1 || "none", copy: false });

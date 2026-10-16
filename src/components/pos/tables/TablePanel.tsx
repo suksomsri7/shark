@@ -62,6 +62,8 @@ type Props = {
      * (baseSatang · discountSatang · serviceChargeSatang · totalSatang ที่ registerSplitTable เก็บ = ยอดทั้งโต๊ะ · Σ ใบ = totalSatang) · null = ยังโหลดไม่เสร็จ
      */
     plan?: { baseSatang: number; discountSatang: number; serviceChargeSatang: number; serviceChargeBp: number; totalSatang: number } | null;
+    /** POS P2.14 ▸ UI-5: โหลดยอดของแผนไม่สำเร็จ (กำลังลองใหม่) — แสดง "—" + ข้อความ แทน "…" ค้าง ◂ */
+    planFailed?: boolean;
   };
 };
 
@@ -277,6 +279,7 @@ export function TablePanel(p: Props) {
   const hasUnpaid = !!d && d.unpaidItemIds.length > 0; // POS P2.5U ▸ แยกบิล/ใบรายการต้องมีรายการค้างจ่าย (หรือแผนที่เปิดอยู่) ◂
   // POS P2.5U ▸ fix1 V2: แผนเปิดอยู่ = ยอดของแผน (เซิร์ฟเวอร์) แทน quote ทั้งโต๊ะที่ S ปฏิเสธ ◂
   const plan = d?.split ? (p.split?.plan ?? null) : null;
+  const planWait = p.split?.planFailed ? "—" : "…"; // POS P2.14 ▸ UI-5 ◂
 
   const itemRow = (it: TableRoundItem) => {
     const cancellable = !it.paid && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED";
@@ -398,7 +401,7 @@ export function TablePanel(p: Props) {
           <>
             <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
               <span>{t("panel.subtotal")}</span>
-              <span data-testid="pos-tbl-plan-subtotal" className="tabular-nums">{plan ? moneyText(plan.baseSatang) : "…"}</span>
+              <span data-testid="pos-tbl-plan-subtotal" className="tabular-nums">{plan ? moneyText(plan.baseSatang) : planWait}</span>
             </div>
             {plan && plan.discountSatang > 0 && (
               <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
@@ -409,13 +412,18 @@ export function TablePanel(p: Props) {
             {(!plan || plan.serviceChargeSatang !== 0) && (
               <div className="flex justify-between py-0.5 text-[color:var(--color-ink-soft)]">
                 <span>{t("panel.serviceCharge", { rate: pct(plan ? plan.serviceChargeBp : scRate) })}</span>
-                <span className="tabular-nums">{plan ? moneyText(plan.serviceChargeSatang) : "…"}</span>
+                <span className="tabular-nums">{plan ? moneyText(plan.serviceChargeSatang) : planWait}</span>
               </div>
             )}
             <div className="flex items-baseline justify-between pt-1 text-[20px] font-bold text-[color:var(--color-ink)]">
               <span>{t("panel.net")}</span>
-              <span data-testid="pos-tbl-net" className="tabular-nums">{plan ? moneyText(plan.totalSatang) : "…"}</span>
+              <span data-testid="pos-tbl-net" className="tabular-nums">{plan ? moneyText(plan.totalSatang) : planWait}</span>
             </div>
+            {!plan && p.split?.planFailed && ( // POS P2.14 ▸ UI-5 ◂
+              <p role="status" data-testid="pos-tbl-plan-error" className="pt-1 text-[12.5px] text-[color:var(--color-danger)]">
+                {t("panel.planLoadFailed")}
+              </p>
+            )}
           </>
         ) : (
           <>

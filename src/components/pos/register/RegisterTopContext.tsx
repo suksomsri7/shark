@@ -20,6 +20,7 @@ import { formatThaiTime } from "@/lib/ui/date";
 import type { RegisterRole, RegisterShiftInfo } from "@/lib/modules/pos/register-shared";
 import { RegisterIcon } from "./RegisterIcon";
 import { LocaleChooser } from "@/components/pos/LocaleChooser";
+import { useOrdersBadge } from "@/components/pos/orders/use-orders-badge"; // POS P2.14 ▸ UI-13 ◂
 
 type Unit = { id: string; name: string };
 type Props = {
@@ -43,6 +44,8 @@ type Props = {
   onLock?: () => void;
   /** POS P2.9bU ▸ มติ 5: ปุ่ม "รับมัดจำ" บนแถบมือถือ · null/ไม่ส่ง = ไม่มีปุ่ม ◂ */
   onDepositReceive?: (() => void) | null;
+  /** POS P2.14 ▸ UI-13: ลิงก์หน้าออเดอร์ของสาขานี้ — มือถือ (< 768 ไม่มีแถบโหมด) แสดงปุ่มพร้อมป้ายนับเมื่อมีออเดอร์ใหม่ · ไม่ส่ง = ไม่มี ◂ */
+  ordersHref?: string | null;
 };
 
 const ROLE_KEY: Record<RegisterRole, string> = { OWNER: "roles.owner", MANAGER: "roles.manager", STAFF: "roles.cashier" };
@@ -120,6 +123,7 @@ export function RegisterTopContext(p: Props) {
     setLooked(true);
   }, []);
   const unitName = p.units.find((u) => u.id === p.activeUnitId)?.name ?? "";
+  const mobileOrders = useOrdersBadge(p.systemId, p.activeUnitId, !!p.ordersHref, "mobile"); // POS P2.14 ▸ UI-13 ◂
   const dot = (
     <i
       aria-hidden
@@ -184,6 +188,24 @@ export function RegisterTopContext(p: Props) {
         >
           <RegisterIcon name="cheque" size={14} />
         </button>
+      )}
+      {p.ordersHref && mobileOrders !== null && mobileOrders > 0 && ( // POS P2.14 ▸ UI-13: ป้ายออเดอร์ใหม่บนมือถือ (แถบโหมดซ่อน < 768) ◂
+        <Link
+          data-testid="pos-reg-mobile-orders"
+          href={p.ordersHref}
+          className="relative grid size-11 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]"
+          aria-label={t("tabs.ordersBadge", { count: mobileOrders })}
+          title={t("tabs.onlineOrders")}
+        >
+          <RegisterIcon name="truck" size={14} />
+          <span
+            data-testid="pos-reg-mobile-orders-badge"
+            aria-hidden
+            className="absolute -right-1.5 -top-1.5 inline-grid h-[19px] min-w-[19px] place-items-center rounded-full bg-[color:var(--color-ink)] px-1 text-[11px] font-bold leading-none text-[color:var(--color-surface)] tabular-nums"
+          >
+            {mobileOrders > 99 ? "99+" : mobileOrders}
+          </span>
+        </Link>
       )}
       {p.inApp && (
         <button

@@ -36,6 +36,9 @@ type Props = {
   messages: { th: Record<string, unknown>; en: Record<string, unknown> };
   pairAction: (code: string) => Promise<{ ok: true } | DisplayRefusal>;
   readAction: (args: { sinceVer?: string }) => Promise<ReadCustomerDisplayResult>;
+  /** POS P2.14 ▸ TL-5: SSR อ่านคุกกี้ได้ DISPLAY_NOT_PAIRED (คุกกี้ค้าง) → ล้างครั้งเดียวตอนเปิด ◂ */
+  staleCookie?: boolean;
+  clearCookieAction?: () => Promise<{ ok: true }>;
 };
 
 function useT(messages: Props["messages"], locale: DisplayLocale): T {
@@ -334,7 +337,11 @@ function PairPanel({ t, prefill, submitCode }: { t: T; prefill: string; submitCo
 }
 
 // ═══════════ จอ ═══════════
-export function DisplayScreen({ initial, pairedOffline = false, prefillCode, fallbackLocale, messages, pairAction, readAction }: Props) { // POS P2.10 ▸ fix1 F7: + pairedOffline ◂
+export function DisplayScreen({ initial, pairedOffline = false, prefillCode, fallbackLocale, messages, pairAction, readAction, staleCookie = false, clearCookieAction }: Props) { // POS P2.10 ▸ fix1 F7: + pairedOffline ◂ · POS P2.14 ▸ TL-5 ◂
+  // POS P2.14 ▸ TL-5: คุกกี้ค้าง = ล้างครั้งเดียว (ไม่รอผล · ล้มเงียบ — โพลถัดไปก็ล้างได้) ◂
+  useEffect(() => {
+    if (staleCookie && clearCookieAction) void clearCookieAction().catch(() => undefined);
+  }, [staleCookie, clearCookieAction]);
   const [view, setView] = useState<DisplayView | null>(initial?.view ?? null);
   // POS P2.10 ▸ fix1 F7: SSR อ่านล้มทั้งที่มีคุกกี้ = จับคู่อยู่ + ออฟไลน์ (โพลเริ่มทันที · DISPLAY_NOT_PAIRED จากโพลค่อยกลับฟอร์ม)
   const [paired, setPaired] = useState(!!initial || pairedOffline);

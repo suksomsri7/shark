@@ -81,6 +81,8 @@ type Props = {
   /** POS P2.12U ▸ มติ 7: โหมดทุกสาขา (unitId = BILLS_ALL_UNITS) — สาขาที่ออกใบกำกับได้ (แทน canIssueTaxInvoice ของสาขาเดียว) · สาขาของบิลใน ?bill= ◂ */
   taxInvoiceUnits?: string[];
   initialBillUnitId?: string | null;
+  /** POS P2.14 ▸ UI-4: แสดงต้นทุน/กำไรต่อบรรทัดในลิ้นชัก (pos.report.view) ◂ */
+  canSeeCost?: boolean;
 };
 /** P1.13U: เหตุผลที่ปฏิเสธคำขอใบกำกับ (มติ 4 — แผ่นเหตุผล ≤200 · เซิร์ฟเวอร์รับ ≤500) */
 const TAX_REJECT_MAX = 200;
@@ -142,7 +144,7 @@ function BillDialog({ labelledBy, testid, wide, onClose, children }: { labelledB
   );
 }
 
-export function BillsClient({ systemId, units, unitId: listUnitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice: canIssueOne = false, initialBillId = null, taxInvoiceUnits = [], initialBillUnitId = null }: Props) {
+export function BillsClient({ systemId, units, unitId: listUnitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice: canIssueOne = false, initialBillId = null, taxInvoiceUnits = [], initialBillUnitId = null, canSeeCost = false /* POS P2.14 ▸ UI-4 ◂ */ }: Props) {
   // POS P2.12U ▸ มติ 7: listUnitId = สาขาของรายการ (หรือ "*") · unitId = สาขาของงานในลิ้นชัก (โหมดทุกสาขา = สาขาของบิลที่เปิด) ◂
   const allMode = listUnitId === BILLS_ALL_UNITS;
   const [rowUnit, setRowUnit] = useState<string | null>(allMode ? initialBillUnitId : null);
@@ -190,6 +192,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("");
   const [salesChannelId, setSalesChannelId] = useState(""); // POS P2.1U ▸ มติ 3 ◂
+  const [channelCode, setChannelCode] = useState(""); // POS P2.14 ▸ RPT-5: ทุกสาขา = กรองตามรหัสช่องทาง (ข้ามสาขา) ◂
   const [staffUserId, setStaffUserId] = useState("");
   const [status, setStatus] = useState<BillStatusFilter>("ALL");
   const [page, setPage] = useState(1);
@@ -225,6 +228,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
       ...(q ? { q } : {}),
       ...(channel ? { channel } : {}),
       ...(salesChannelId ? { salesChannelId } : {}),
+      ...(allMode && channelCode ? { channelCode } : {}), // POS P2.14 ▸ RPT-5 ◂
       ...(staffUserId ? { staffUserId } : {}),
       page,
       pageSize: 10,
@@ -241,7 +245,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
     return () => {
       alive = false;
     };
-  }, [systemId, listUnitId, date, status, q, channel, salesChannelId, staffUserId, page, reloadTick]);
+  }, [systemId, listUnitId, date, status, q, channel, salesChannelId, channelCode, allMode, staffUserId, page, reloadTick]); // POS P2.14 ▸ RPT-5: + channelCode ◂
 
   // แก้รอบ 1 F1: บิลที่ผู้ใช้ต้องการล่าสุด — ผลของคำขอเก่า (แตะ A ช้า แล้วแตะ B) ห้ามทับลิ้นชักของ B
   const wantedRef = useRef<string | null>(null);
@@ -966,7 +970,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
     setPage(1);
   };
   const lastPage = ok ? Math.max(1, Math.ceil(ok.total / ok.pageSize)) : 1;
-  const filtered = !!(q || channel || salesChannelId || staffUserId || status !== "ALL");
+  const filtered = !!(q || channel || salesChannelId || (allMode && channelCode) || staffUserId || status !== "ALL"); // POS P2.14 ▸ RPT-5 ◂
 
   // ═══════════ แถวของตาราง / การ์ด ═══════════
   const rowMenu = (r: BillRow) =>
@@ -1118,7 +1122,17 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                 </option>
               ))}
             </select>
-          ) : null}
+          ) : (
+            // POS P2.14 ▸ RPT-5: ทุกสาขา = ตัวกรองต่อรหัสช่องทาง (หนึ่งตัวเลือกต่อรหัส · กรองข้ามสาขาที่เซิร์ฟเวอร์ channelCode) ◂
+            <select data-testid="pos-bills-channel-code-filter" aria-label={t("allChannels")} className="input h-11 w-auto max-w-[220px]" value={channelCode} onChange={(e) => setFilter(() => setChannelCode(e.target.value))}>
+              <option value="">{t("allChannels")}</option>
+              {[...new Map((ok?.salesChannels ?? []).map((c) => [c.code, c] as const)).values()].map((c) => (
+                <option key={c.code} value={c.code}>
+                  {channelDisplayName(c.code, c.name, tch)}
+                </option>
+              ))}
+            </select>
+          )}
           <select data-testid="pos-bills-channel" aria-label={t("channel.allSources")} className="input h-11 w-auto" value={channel} onChange={(e) => setFilter(() => setChannel(e.target.value))}>
             <option value="">{t("channel.allSources")}</option>
             {(ok?.channels ?? []).map((c) => (
@@ -1465,6 +1479,11 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                           {priceNote(l)}
                         </small>
                       ) : null}
+                      {canSeeCost && l.costSatang !== null && ( // POS P2.14 ▸ UI-4: ต้นทุนจากความเคลื่อนไหวสต็อกของบิล + กำไร ◂
+                        <small data-testid={`pos-bill-line-cost-${i}`} className="text-[11px] tabular-nums text-[color:var(--color-muted)]">
+                          {t("drawer.lineCost", { cost: money(l.costSatang), margin: money(l.marginSatang ?? 0) })}
+                        </small>
+                      )}
                     </span>
                     <span className="font-semibold tabular-nums">{money(l.lineTotalSatang)}</span>
                   </div>

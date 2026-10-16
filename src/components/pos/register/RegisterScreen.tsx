@@ -98,7 +98,7 @@ import { CouponDialog } from "./CouponDialog";
 import { CustomItemDialog } from "./CustomItemDialog";
 import { HeldBillsDialog } from "./HeldBillsDrawer";
 import { HeldRecallConfirmDialog, HoldLabelDialog } from "./HeldDialogs";
-import { PayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
+import { PayDialog, type PayChoice, type PayError, type PayPhase, payErrorPinMeta } from "./InterimPayDialog" /* POS P2.14 ▸ UI-9 ◂ */;
 import { LineEditor, type LineEditResult } from "./LineEditor";
 import { MobileCartBar } from "./MobileCartBar";
 // ชื่อลงท้าย Sheet/Tabs = ตัวสแกนปุ่ม (F15.3) นับเป็น "คอมโพเนนต์กดได้" ⇒ ใช้ชื่อแฝงตอนวาง (ตัวที่กดได้จริงข้างในมี testid ครบแล้ว)
@@ -1831,7 +1831,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         return;
       }
       // POS HF-PP ▸ fix 1: ด่านผู้จัดการของพร้อมเพย์/บัตรที่ไม่มีใบขอรับเงิน = ข้อความเฉพาะ (refusal.manualConfirmManager) ◂
-      setPayError({ code: r.code, ...(submitRefusalMessageKey(r) === "refusal.manualConfirmManager" ? { key: "refusal.manualConfirmManager" } : errorFor(r.code)) });
+      setPayError({ code: r.code, ...(submitRefusalMessageKey(r) === "refusal.manualConfirmManager" ? { key: "refusal.manualConfirmManager" } : errorFor(r.code)), ...payErrorPinMeta(r) }); // POS P2.14 ▸ UI-9 ◂
       if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
       // POS P1.15U ▸ PIN ผู้จัดการผิด/ล็อก = ล้างสิทธิ์ที่เตรียมไว้ (ใส่ใหม่ผ่านแผ่นส่วนลดเกินสิทธิ์) · ต้องรออนุมัติ = บิลถูกพักแล้ว ⇒ 21B (ล้างจอนอก send) ◂
       if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null); // POS P1.18U ▸ 10a ◂
@@ -2334,7 +2334,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
               ? t("held.noticePriceChanged", { name: noticeName(n.key), from: moneyText(n.from ?? 0), to: moneyText(n.to ?? 0) })
               : n.code === "PERMISSION_DENIED"
                 ? t("held.noticeNeedsPermission", { name: noticeName(n.key) })
-                : t("held.noticeUnavailable", { name: noticeName(n.key) })}
+                : n.code === "CHANNEL_NOT_SOLD" // POS P2.14 ▸ UI-12 ◂
+                  ? t("held.noticeChannelNotSold", { name: noticeName(n.key) })
+                  : t("held.noticeUnavailable", { name: noticeName(n.key) })}
           </li>
         ))}
       </ul>
@@ -2882,6 +2884,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           onCamera={openCamera}
           onLock={staff || noPinMode ? lockNow : undefined}
           onDepositReceive={openDepositReceive} // POS P2.9bU ▸ มติ 5: ปุ่มมือถือ ◂
+          ordersHref={`/app/sys/${systemId}/pos/orders?unit=${encodeURIComponent(unitId)}`} // POS P2.14 ▸ UI-13 ◂
         />
         {/* POS P2.4U ▸ มติ 1: แท็บ "โต๊ะ" เป็นลิงก์เมื่อสาขามีโหมดโต๊ะ ◂ */}
         {/* POS P2.8U ▸ มติ 1: unitId = ลิงก์แท็บออเดอร์ของสาขานี้ + ป้ายนับออเดอร์ใหม่ (ดึงทุก 10 วิ ขณะแถบ mount) ◂ */}
@@ -2982,7 +2985,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 empty={cart.lines.length === 0}
                 onOpen={() => push({ kind: "sheet" })}
                 onPay={tableOn ? () => void tableRun(true) : openPay}
-                {...(tableOn ? { payLabel: tTables("actions.sendRound") } : {})}
+                {...(tableOn ? { payLabel: tTables("actions.sendRound") } : { onOpenHeld: openHeld, heldCount })} // POS P2.14 ▸ UI-2: ตะกร้าว่าง 390 → บิลที่พัก ◂
               />
             )}
           </div>

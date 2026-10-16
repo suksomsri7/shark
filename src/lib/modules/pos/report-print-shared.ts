@@ -64,7 +64,7 @@ const TITLE: Record<ReportPrintLocale, Record<ReportKind, string>> = {
 };
 /** หัวตารางภาษาอังกฤษ (ลำดับเดียวกับ CSV_HEADERS) — จำนวนช่องไม่เท่า = ใช้หัวไทย (กันตารางเลื่อนช่อง) */
 const EN_HEADERS: Record<ReportKind, string[]> = {
-  daily: ["Date", "Bills", "Gross", "Discount", "Service charge", "Net sales", "VAT", "Net ex VAT", "Tips", "Voided bills", "Voided total", "Average bill"],
+  daily: ["Date", "Bills", "Gross", "Discount", "Service charge", "Net sales", "VAT", "Net ex VAT", "Tips", "Voided bills", "Voided total", "Average bill", "Refunds", "Refunded total"], // POS P2.14 ▸ API-11 · fix1 F11: ต่อท้าย ◂
   products: ["Code", "Name", "Qty", "Weight (g)", "Bills", "Gross", "Line discount", "Sales"],
   staff: ["User ID", "Name", "Bills", "Net sales", "Discount", "Tips", "Voided bills", "Voided total", "Average bill"],
   payments: ["Method", "Code", "Payments", "Bills", "Received"],

@@ -23,8 +23,8 @@ import { afterSaleCommitted, createSale, posDayStart, posSystemForSale, PosSaleE
 import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (แทน proxy เฉพาะที่ของ P2.8) ◂
 import { ensureUnitChannels, withInactiveQrOrderAllowed } from "./channel"; // POS P2.7 ▸ fix3 G1: + withInactiveQrOrderAllowed ◂
 import { channelCommission, channelNet } from "./channel-shared";
-import { quoteRegisterCart } from "./register";
-import { registerShiftStatus, isShiftDeviceId } from "./shift";
+import { quoteRegisterCart, registerVisibleProductIds } from "./register"; // POS P2.14 ▸ ORD-1 ◂
+import { registerShiftStatus, isShiftDeviceId, resolveApiSaleShift } from "./shift"; // POS P2.14 ▸ fix1 F7: + resolveApiSaleShift ◂
 import { voidSaleByActor } from "./bills";
 import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
 import { loadRowRecipes } from "./recipe";
@@ -668,7 +668,11 @@ async function ingestInsideTx(tx: Tx, plan: IngestPlan): Promise<IngestDone | Or
   // รับทันที: สถานะเริ่ม ACCEPTED (พนักงาน) หรือรับอัตโนมัติของช่องทาง (ไม่ใช่ MANUAL · มติ 11 · ผู้รับ = null)
   // POS P2.6 ▸ R13 มติ 10: ครัวหยุดรับ หรือมีสถานีที่ตั๋วค้าง ≥ autoAcceptMaxOpen ⇒ ไม่รับอัตโนมัติ (ออเดอร์อยู่ NEW รอคนรับ) ◂
   // POS HF-FU ▸ a: รับอัตโนมัติไม่ได้ "เพราะครัว" (พัก/คิวค้าง) ⇒ บันทึก held (NEW→NEW · reason paused|backlog) ให้ตัวกวาด releaseHeldOrders รับต่อเมื่อครัวว่าง ◂
-  const held = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && (await autoAcceptBlockedInTx(tx, s));
+  // POS P2.14 ▸ ORD-3 (O2): รับอัตโนมัติของ ingest ถือล็อกเดียวกับตัวกวาด (posorder-release ต่อสาขา) ก่อนตรวจเพดาน — ingest ‖ ตัวกวาด ไม่เกิน autoAcceptMaxOpen ·
+  //   ลำดับล็อก: ref → key → code → release (ตัวกวาดถือแค่ release ⇒ ไม่มีวงล็อก) ◂
+  const autoCand = start === "NEW" && ch.autoAccept && !isManual(ch.adapter);
+  if (autoCand) await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posorder-release:${s.tenantId}:${s.unitId}`}))) l`;
+  const held = autoCand && (await autoAcceptBlockedInTx(tx, s));
   if (held) await addEvent(tx, order, { type: "held", from: "NEW", to: "NEW", actorUserId: null, payload: { reason: (await kitchenPausedForUnit(tx, s.tenantId, s.unitId)) ? "paused" : "backlog" } });
   const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter) && !held;
   if (start !== "ACCEPTED" && !auto) return { orderId: order.id, duplicated: false, saleId: null, saleLines: null, accepted: "none" };
@@ -829,6 +833,11 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
     parentIds.length ? (await tx.posProduct.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, id: { in: parentIds }, archivedAt: null }, select: { id: true } })).map((x) => x.id) : [],
   );
   const soldOut = await menuSoldOutIds(s.tenantId, rows, tx);
+  // POS P2.14 ▸ ORD-1 (O5): การมองเห็นตามคลังของสาขา (C3) + กติกาเดียวกับหน้าขาย (regVisibleWhere) — มองไม่เห็นที่สาขานี้ = PRODUCT_NOT_FOUND (บรรทัดนั้น) ◂
+  // POS P2.14 ▸ ORD-1b (fix1 · CD-B5/H1): สาขาที่ไม่ผูกระบบคลังเลย = กติกาเดิมก่อน P2.14 (ไม่กรอง C3 — ทุกแถวที่พบถือว่ามองเห็น) ·
+  //   ผูกคลังแล้ว = กรองตามหน้าขาย (มองไม่เห็น = PRODUCT_NOT_FOUND → เว็บร้าน throw ไม่สร้าง ShopOrder) ◂
+  const invLinked = rows.length ? !!(await tx.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: s.tenantId, unitId: s.unitId, type: "INVENTORY" } }, select: { systemId: true } })) : false;
+  const visible = !rows.length ? new Set<string>() : invLinked ? await registerVisibleProductIds(tx, s, rows.map((r) => r.id)) : new Set(rows.map((r) => r.id)); // POS P2.14 ▸ ORD-1b ◂
   const book = inp.lines.some((l) => l.kind === "catalog") ? await loadPriceBook(tx, s, rows, new Date()) : null;
   const lines: ResolvedLine[] = [];
   for (let i = 0; i < inp.lines.length; i++) {
@@ -839,7 +848,9 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
     }
     const row = rowById.get(l.productId);
     if (!row) return refuse("PRODUCT_NOT_FOUND", undefined, { lineIndex: i });
-    if (!rowAvailable(row, s.unitId, soldOut) || (row.parentId && !liveParents.has(row.parentId))) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i });
+    if (row.parentId && !liveParents.has(row.parentId)) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i }); // แม่เก็บถาวร = ขายไม่ได้ (คำตอบเดิม)
+    if (!visible.has(row.id)) return refuse("PRODUCT_NOT_FOUND", undefined, { lineIndex: i }); // POS P2.14 ▸ ORD-1 ◂
+    if (!rowAvailable(row, s.unitId, soldOut)) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i });
     if (l.kind === "priced") {
       // ราคาต้นทาง = ราคาของช่องทางนี้ ณ ตอนลูกค้าสั่ง (เว็บร้าน: ราคาหน้าเว็บที่ลูกค้าเห็น)
       // POS P2.8 fix รอบ 3 (H5): ที่มาของราคาจากต้นทาง (เว็บร้าน = ชั้น WEB ของ webPricesForShop) · ไม่ส่ง = CHANNEL
@@ -999,19 +1010,23 @@ const sweepLive = (c: SalesChannel, now: Date) => c.active && c.autoAccept && !i
  * ครั้งเดียว (ไม่ลองซ้ำ — พนักงานรับเอง) · หลัง commit เหมือนรับเข้า (ตัดสต็อก · adapter accept · audit pos.order.accept {auto, swept} ผู้กระทำระบบ · ระบายคิว) ·
  * ไม่ throw ให้ผู้เรียก (ทางอ่านเรียกก่อนอ่าน — ล้ม = WARN แล้วอ่านต่อ)
  */
-export async function releaseHeldOrders(tenantId: string, unitId: string, opts: { limit?: number } = {}): Promise<{ accepted: string[] }> {
+// POS P2.14 ▸ QR-1b (Q2 · CD-3): ออเดอร์ที่ครัวพักไว้ข้ามเที่ยงคืนถูกกวาดด้วย (เดิมจำกัดต้นวันไทย ⇒ ค้าง NEW) — ย้อนได้ 7 วัน (ไม่สแกนทั้งประวัติ) ◂
+const RELEASE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+export async function releaseHeldOrders(tenantId: string, unitId: string, opts: { limit?: number } = {}): Promise<{ accepted: string[]; swept: boolean }> {
   const accepted: string[] = [];
+  // POS P2.14 ▸ ORD-2 (O1): ทางอ่าน (listOrders/kdsBoard ทุกจอ) ไม่จอดรอล็อกของตัวกวาด — pg_try_advisory_xact_lock · ไม่ว่าง = หยุดรอบนี้ (swept:false · ตัวกวาดอีกตัวกำลังทำ) ◂
+  let swept = true;
   try {
-    if (!isId(tenantId) || !isId(unitId)) return { accepted };
+    if (!isId(tenantId) || !isId(unitId)) return { accepted, swept };
     const limit = Math.max(1, Math.min(RELEASE_LIMIT_MAX, Math.floor(opts?.limit ?? RELEASE_LIMIT_MAX)));
     const now = new Date();
-    const rows = await prisma.posOrder.findMany({ where: { tenantId, unitId, status: "NEW", receivedAt: { gte: posDayStart(now) } }, orderBy: [{ receivedAt: "asc" }, { id: "asc" }], take: 500 });
-    if (!rows.length) return { accepted };
+    const rows = await prisma.posOrder.findMany({ where: { tenantId, unitId, status: "NEW", receivedAt: { gte: new Date(now.getTime() - RELEASE_LOOKBACK_MS) } }, orderBy: [{ receivedAt: "asc" }, { id: "asc" }], take: 500 }); // POS P2.14 ▸ Q2 ◂
+    if (!rows.length) return { accepted, swept };
     const evs = await prisma.posOrderEvent.findMany({ where: { tenantId, orderId: { in: rows.map((o) => o.id) }, type: "held" }, select: { orderId: true, payload: true } });
     const heldIds = new Set(evs.map((e) => e.orderId));
     const refusedIds = new Set(evs.filter((e) => isRecord(e.payload) && e.payload.reason === "sale_refused").map((e) => e.orderId));
     const cand = rows.filter((o) => heldIds.has(o.id) && !refusedIds.has(o.id) && !isManual(o.adapter));
-    if (!cand.length) return { accepted };
+    if (!cand.length) return { accepted, swept };
     const chs = new Map((await prisma.salesChannel.findMany({ where: { tenantId, unitId, id: { in: [...new Set(cand.map((o) => o.channelId))] }, archivedAt: null } })).map((c) => [c.id, c]));
     const live = cand.filter((o) => {
       const c = chs.get(o.channelId);
@@ -1020,18 +1035,22 @@ export async function releaseHeldOrders(tenantId: string, unitId: string, opts: 
     for (const o of live.slice(0, limit)) {
       const ch = chs.get(o.channelId)!;
       const prep = o.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
-      let r: Awaited<ReturnType<typeof acceptInTx>> | "blocked" | "skip";
+      let r: Awaited<ReturnType<typeof acceptInTx>> | "blocked" | "skip" | "busy";
       try {
         r = await runTx(
           async (tx) => {
             // POS HF-FU ▸ a fix1 (R1 F2): ตัวกวาดของสาขาเดียวกันเรียงคิวกันก่อนตรวจเพดาน (ทางอ่าน listOrders/kdsBoard ทุกจอ) — ผู้ถัดไปเห็นรอบครัวของผู้ก่อน
-            //   ⇒ ตั๋วค้างไม่เกิน autoAcceptMaxOpen จากตัวกวาด · ล็อกแรกของธุรกรรม (ก่อนแถว PosOrder) · ingest ยังไม่ถือล็อกนี้ (ติดตามต่อ) ◂
-            await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`posorder-release:${tenantId}:${unitId}`}))) l`;
+            //   ⇒ ตั๋วค้างไม่เกิน autoAcceptMaxOpen จากตัวกวาด · ล็อกแรกของธุรกรรม (ก่อนแถว PosOrder) ◂
+            // POS P2.14 ▸ ORD-2: try-lock — ผู้ถือล็อก (ตัวกวาด/ingest รับอัตโนมัติอีกตัว) ทำอยู่ ⇒ "busy" ไม่รอ (connection ไม่ถูกจอด) ◂
+            const got = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`posorder-release:${tenantId}:${unitId}`})) AS ok`;
+            if (got[0]?.ok !== true) return "busy" as const;
             if (await autoAcceptBlockedInTx(tx, { tenantId, unitId })) return "blocked" as const;
             const fresh = await tx.posOrder.findFirst({ where: { id: o.id, tenantId, unitId } });
             if (!fresh || fresh.status !== "NEW") return "skip" as const;
             // POS HF-FU ▸ a fix2 (hunter H1): แถวช่องทางจากก่อนธุรกรรมอาจเก่า (ออเดอร์ถูกพักเป็นนาที–ชั่วโมง · เจ้าของเปลี่ยน payout/ปิดรับอัตโนมัติ/พักรับ/เก็บช่องทาง) ⇒
             //   อ่านซ้ำด้วย tx หลังล็อกต่อสาขา + ตรวจ live ซ้ำ · ไม่ live = ข้าม (คง NEW · ไม่บันทึกอะไร — พนักงานตัดสิน) · acceptInTx ได้แถวสด (คู่ payout ↔ paymentState ตรวจที่นั่น) ◂
+            // POS P2.14 ▸ ORD-6: ล็อกแถวช่องทาง FOR SHARE ก่อนอ่านซ้ำ — การแก้ช่องทาง (payout/รับอัตโนมัติ/พักรับ/เก็บ) ที่กำลังเขียนต้องรอธุรกรรมนี้ หรือธุรกรรมนี้เห็นค่าหลังแก้ ◂
+            await tx.$queryRaw`SELECT id FROM "SalesChannel" WHERE id = ${o.channelId} AND "tenantId" = ${tenantId} FOR SHARE`;
             const chNow = await tx.salesChannel.findFirst({ where: { id: o.channelId, tenantId, unitId, archivedAt: null } });
             if (!chNow || !sweepLive(chNow, new Date())) return "skip" as const;
             return acceptInTx(tx, fresh, chNow, { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true });
@@ -1060,6 +1079,10 @@ export async function releaseHeldOrders(tenantId: string, unitId: string, opts: 
         //   (เดิมโยน ⇒ ตัวนี้ถูกลองก่อนทุกรอบอ่านและบังตัวหลังทั้งหมด) ◂
         console.warn(`[pos/order] releaseHeldOrders: ออเดอร์ ${o.id} รับอัตโนมัติไม่สำเร็จ — ข้ามไปตัวถัดไป`, e);
         continue;
+      }
+      if (r === "busy") {
+        swept = false; // POS P2.14 ▸ ORD-2 ◂
+        break;
       }
       if (r === "blocked") break;
       if (r === "skip") continue;
@@ -1091,7 +1114,7 @@ export async function releaseHeldOrders(tenantId: string, unitId: string, opts: 
       console.warn("[pos/order] releaseHeldOrders: scheduleDrain ล้ม", e); // POS HF-FU ▸ a fix1 (R1 F3) ◂
     }
   }
-  return { accepted };
+  return { accepted, swept };
 }
 
 /** ปฏิเสธ (pos.order.reject): NEW เท่านั้น → REJECTED + เหตุผล (OUT_OF_STOCK CLOSING TOO_BUSY OTHER) · เว็บร้าน = ตัวรับคิวยกเลิก ShopOrder (มติ 13) */
@@ -1113,6 +1136,7 @@ export async function rejectOrder(ctx: RegisterCtx, actor: RegisterActor, input:
       const after = await transition(tx, o, "REJECTED", { rejectReason: reason, closedAt: new Date() }, { actorUserId: s.actor.userId, payload: { reasonCode: inp.reasonCode, note } });
       // POS P2.7 ▸ ยังไม่จ่าย = ปิดใบขอรับเงินในธุรกรรมเดียวกัน (เงินเข้าทีหลัง = INTENT_CANCELLED + ops refund_needed เดิม) ◂
       if (o.paymentState === "PENDING_PAYMENT" && o.paymentIntentId) await cancelOrderIntentInTx(tx, o.paymentIntentId);
+      if (o.paymentState === "PREPAID") await addRefundNeededInTx(tx, after, "rejected_prepaid"); // POS P2.14 ▸ QR-2: เงินเข้าแล้วแต่ร้านปฏิเสธ = ตัวบอกถาวร ◂
       return after;
     });
     if (isRefusal(r)) return r;
@@ -1126,6 +1150,9 @@ export async function rejectOrder(ctx: RegisterCtx, actor: RegisterActor, input:
 
 /** POS HF-FU ▸ h1 fix1 (R1 F4): ตัวบอก (identity) ว่าบิลถูก void ระหว่างส่งมอบ — โยนใน mutate ให้ rollback · ผู้เรียกแทนด้วย stateInvalid หลังธุรกรรม ◂ */
 const HANDOVER_SALE_VOIDED: OrderRefusal = Object.freeze(refuse("ORDER_STATE_INVALID", ORDER_SALE_VOIDED_MESSAGE));
+// POS P2.14 ▸ ORD-5 (O4): บิลของออเดอร์ถูกคืนเงินครบ (REFUNDED) = ส่งมอบไม่ได้ (ของบนบิลคืนเงินแล้ว) — ตัวบอกแบบเดียวกับ voided ◂
+const ORDER_SALE_REFUNDED_MESSAGE = "บิลของออเดอร์นี้คืนเงินครบแล้ว — ส่งมอบไม่ได้ ยกเลิกออเดอร์แทน";
+const HANDOVER_SALE_REFUNDED: OrderRefusal = Object.freeze(refuse("ORDER_STATE_INVALID", ORDER_SALE_REFUNDED_MESSAGE));
 /** ขั้นถัดไปของวงจร (pos.order.accept): ACCEPTED → PREPARING · PREPARING → READY · READY → HANDED (DIRECT ยังไม่จ่าย = ORDER_UNPAID) */
 async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input: { id: string }, to: "PREPARING" | "READY" | "HANDED"): Promise<OrderActionResult> {
   return guard(name, async (): Promise<OrderActionResult> => {
@@ -1147,11 +1174,13 @@ async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input:
       if (to === "HANDED" && o.saleId) {
         const sale = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosSale" WHERE id = ${o.saleId} AND "tenantId" = ${s.tenantId} FOR SHARE`;
         if (sale[0]?.status === "VOIDED") throw new OrderAbort(HANDOVER_SALE_VOIDED); // POS HF-FU ▸ h1 fix1 (R1 F4): ตัวบอกในธุรกรรม — การ์ดสร้างหลัง rollback ◂
+        if (sale[0]?.status === "REFUNDED") throw new OrderAbort(HANDOVER_SALE_REFUNDED); // POS P2.14 ▸ ORD-5 ◂
       }
       return after;
     });
     // POS HF-FU ▸ h1 fix1 (R1 F4): คำปฏิเสธ saleVoided (การ์ดอ่านผ่าน prisma หลัก) สร้างหลังธุรกรรม rollback แล้ว — ไม่ยืม connection ที่สองระหว่างถือแถว PosOrder ◂
     if (r === HANDOVER_SALE_VOIDED) return stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided");
+    if (r === HANDOVER_SALE_REFUNDED) return stateInvalid(s, o, ORDER_SALE_REFUNDED_MESSAGE, "orders.errors.saleRefunded"); // POS P2.14 ▸ ORD-5 ◂
     if (isRefusal(r)) return r;
     if (to === "READY") await ORDER_ADAPTERS[r.adapter]?.setReady?.({ orderId: o.id, externalRef: o.externalRef });
     if (to !== "PREPARING") scheduleDrain();
@@ -1309,10 +1338,11 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     // POS P2.13 ▸ fix1 H3: เงินสดผ่าน REST ลงกะเสมอ (ไม่บันทึกเงินสดนอกกะ แม้ requiredOtherSources ปิด) — ผูกกะเปิดกะเดียวของสาขา ·
     //   ไม่มีกะเปิด / เปิดหลายกะ (ไม่เดา) = SHIFT_REQUIRED ก่อนเขียน · ไม่มีเงินสด = กติกา "ทางอื่น" ของ createSale เหมือนเดิม ◂
     let apiCashShift: string | undefined;
-    if (apiPay && cashRows.length > 0) {
-      const open = await prisma.posShift.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 });
-      if (open.length !== 1) return refuse("SHIFT_REQUIRED", open.length ? "สาขานี้เปิดกะอยู่หลายกะ — ระบุกะทาง API ไม่ได้ รับเงินสดของออเดอร์นี้ที่เครื่องหน้าร้าน" : "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนรับเงินสด");
-      apiCashShift = open[0]!.id;
+    if (apiPay) {
+      // POS P2.14 ▸ fix1 F7: ตัวหากะตัวเดียวกับ POST /sales (shift.ts resolveApiSaleShift) · เงินสดลงกะเสมอ (strictCash — มติ P2.13 fix1 H3 · CONTROLLER-DECISION CD-F7) ◂
+      const st = await resolveApiSaleShift(prisma, s, { hasCash: cashRows.length > 0, strictCash: true, caller: "orderPay" }); // POS P2.14 ▸ fix2 G3: + caller ◂
+      if (!st.ok) return Object.assign(refuse("SHIFT_REQUIRED", st.message), { messageEn: st.messageEn }); // POS P2.14 ▸ fix2 G3: en ของผู้เรียกนี้ ◂
+      apiCashShift = st.shiftId ?? undefined;
     }
     const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: apiCashShift, required: false } : await deviceShift(prisma, s, s.deviceId);
     if (!apiPay && (cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
@@ -1826,8 +1856,67 @@ async function closeExpiredInTx(tx: Tx, o: PosOrder, now: Date): Promise<boolean
 export async function expirePreorders(tenantId?: string, now: Date = new Date()): Promise<{ expired: number }> {
   return expireDuePreorders(typeof tenantId === "string" && tenantId ? { tenantId } : {}, now);
 }
+// POS P2.14 ▸ QR-1a มติ 9 (Q1 Q3): ออเดอร์ NEW + PREPAID ที่ไม่มีใครรับจนเงินเข้าเกินหน้าต่างใช้ใบ (24 ชม.) — รับไม่ได้อีกแล้ว (INTENT_EXPIRED ค้าง) ⇒
+//   ปิด CANCELLED (ไม่มี enum ใหม่) + บันทึก expired_paid + refund_needed (ตัวบอกถาวรของหน้าสถานะ) + outbox pos.order.cancelled + ops ERROR pos.payment.refund_needed
+//   ครั้งเดียวต่อการปิด (ล็อกแถว · CAS version) · ใบยัง PAID ไม่ถูกใช้ (ร้านคืนเงินนอกระบบ) · เล่นซ้ำ = ไม่มีผล ◂
+async function expirePaidOneInTx(tx: Tx, orderId: string, now: Date): Promise<PosOrder | null> {
+  await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} FOR UPDATE`;
+  const o = await tx.posOrder.findUnique({ where: { id: orderId } });
+  if (!o || o.status !== "NEW" || o.paymentState !== "PREPAID" || !o.paidAt || now.getTime() - o.paidAt.getTime() < PAYMENT_INTENT_CONSUME_WINDOW_MS) return null;
+  const n = await tx.posOrder.updateMany({ where: { id: o.id, tenantId: o.tenantId, status: "NEW", paymentState: "PREPAID", version: o.version }, data: { status: "CANCELLED", closedAt: now, rejectReason: "PREPAID_NOT_ACCEPTED", version: { increment: 1 } } });
+  if (n.count !== 1) return null;
+  await addEvent(tx, o, { type: "expired_paid", from: "NEW", to: "CANCELLED", actorUserId: null, payload: { reason: "PREPAID_NOT_ACCEPTED", intentId: o.paymentIntentId, paidAt: o.paidAt.toISOString() }, at: now });
+  await addRefundNeededInTx(tx, o, "expired_paid", now);
+  const after = await tx.posOrder.findUniqueOrThrow({ where: { id: o.id } });
+  await emitOrderEvent(tx, after, "pos.order.cancelled", "CANCELLED");
+  return after;
+}
+/** POS P2.14 ▸ QR-2 (Q4): ตัวบอกถาวร "ต้องคืนเงินลูกค้า" = PosOrderEvent refund_needed ครั้งเดียวต่อออเดอร์ (type เป็นข้อความอิสระ · ไม่มี migration) — หน้าสถานะอ่านแถวนี้ ◂ */
+async function addRefundNeededInTx(tx: Tx, o: PosOrder, cause: "expired_paid" | "late_payment" | "rejected_prepaid", now: Date = new Date()): Promise<boolean> {
+  const had = await tx.posOrderEvent.findFirst({ where: { tenantId: o.tenantId, orderId: o.id, type: "refund_needed" }, select: { id: true } });
+  if (had) return false;
+  await addEvent(tx, o, { type: "refund_needed", from: o.status, to: o.status === "NEW" ? "CANCELLED" : o.status, actorUserId: null, payload: { cause, intentId: o.paymentIntentId, amountSatang: o.totalSatang }, at: now });
+  return true;
+}
+/** POS P2.14 ▸ QR-2 (Q4): เงินเข้าหลังใบของออเดอร์ถูกยกเลิก (payment-intent INTENT_CANCELLED) — บันทึก refund_needed ครั้งเดียว (ล็อกแถวออเดอร์) · ไม่ throw ◂ */
+export async function recordOrderRefundNeeded(tenantId: string, orderId: string, intentId: string): Promise<boolean> {
+  if (!isId(tenantId) || !isId(orderId)) return false;
+  return runTx(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+    const o = await tx.posOrder.findFirst({ where: { id: orderId, tenantId } });
+    if (!o || o.paymentIntentId !== intentId || (o.status !== "REJECTED" && o.status !== "CANCELLED")) return false;
+    return addRefundNeededInTx(tx, o, "late_payment");
+  });
+}
+async function expireDuePaidPreorders(where: { tenantId?: string; unitId?: string }, now: Date): Promise<number> {
+  let closed = 0;
+  try {
+    const due = await prisma.posOrder.findMany({
+      where: { ...where, status: "NEW", paymentState: "PREPAID", paidAt: { lte: new Date(now.getTime() - PAYMENT_INTENT_CONSUME_WINDOW_MS) } },
+      orderBy: [{ paidAt: "asc" }, { id: "asc" }],
+      take: PREORDER_EXPIRE_BATCH,
+    });
+    for (const d of due) {
+      try {
+        const o = await runTx((tx) => expirePaidOneInTx(tx, d.id, now));
+        if (!o) continue;
+        closed++;
+        await logOps("ERROR", "pos.payment", `${OPS_REFUND_NEEDED} — ออเดอร์จ่ายก่อนไม่มีใครรับจนเงินเข้าเกิน 24 ชม. (ใช้เงินที่หน้าขายไม่ได้แล้ว) ปิดออเดอร์ ต้องคืนเงินลูกค้า`, {
+          tenantId: o.tenantId,
+          detail: `intent ${o.paymentIntentId ?? "-"} · ออเดอร์ ${o.code} (${o.id}) · ยอด ${bahtText(o.totalSatang)} · EXPIRED_PAID`,
+        }).catch(() => undefined);
+      } catch (e) {
+        console.warn(`[pos/order] expirePreorders: ออเดอร์จ่ายก่อน ${d.id} ปิดไม่สำเร็จ — รอบถัดไปลองใหม่`, e);
+      }
+    }
+  } catch (e) {
+    console.warn("[pos/order] expirePreorders (PREPAID) ล้ม (ไม่กระทบผู้เรียก)", e);
+  }
+  return closed;
+}
 async function expireDuePreorders(where: { tenantId?: string; unitId?: string }, now: Date = new Date()): Promise<{ expired: number }> {
   let expired = 0;
+  expired += await expireDuePaidPreorders(where, now); // POS P2.14 ▸ QR-1a ◂
   try {
     const due = await prisma.posOrder.findMany({
       where: { ...where, status: "NEW", paymentState: "PENDING_PAYMENT", payBy: { lt: now } },
@@ -1913,6 +2002,7 @@ export async function onIntentPaid(intentId: string): Promise<void> {
         const had = await tx.posOrderEvent.findFirst({ where: { tenantId: cur.tenantId, orderId: cur.id, type: "late_payment" }, select: { id: true } });
         if (had) return { kind: "none" };
         await addEvent(tx, cur, { type: "late_payment", from: cur.status, to: cur.status, actorUserId: null, payload: { intentId, amountSatang: it.amountSatang } });
+        await addRefundNeededInTx(tx, cur, "late_payment"); // POS P2.14 ▸ QR-2 (Q4): ตัวบอกถาวรของหน้าสถานะ (ไม่ขึ้นกับสถานะใบในภายหลัง) ◂
         return { kind: "late", order: cur };
       }
       return { kind: "none" };

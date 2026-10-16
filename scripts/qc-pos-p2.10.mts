@@ -43,7 +43,7 @@ const ROOT = process.cwd();
 const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
-/** ฐานของข้อสอบ (session/pos 57a8b19a) — ใช้เมื่อหา merge-base กับ origin/session/pos ไม่ได้ (หมุด ST2 เทียบ "ของที่ใบนี้แก้" เท่านั้น) */
+/** ฐานของข้อสอบ (57a8b19a) — ใช้เมื่อหาหมุดของเลนไม่ได้ (หมุด ST2 เทียบ "ของที่ใบนี้แก้" เท่านั้น) */ // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin) 
 const BASE_REV = process.env.P210_BASE || "57a8b19a";
 /** sha256 ของ scripts/pos-sale-contract.json (ใบนี้ไม่แตะสัญญา createSale · ค่าเดียวกับ qc-pos-p2.9b L1) */
 const CONTRACT_SHA = "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad";
@@ -217,9 +217,10 @@ if (!existsSync(join(ROOT, F.display))) skipReasons.push(`${F.display} ยัง
 for (const n of DISPLAY_FNS) if (!exportsFn(srcOf(F.display), n)) skipReasons.push(`ยังไม่มี export ${n} (pos/display.ts)`);
 if (!migDir()) skipReasons.push("ยังไม่มี migration *_pos_p210_customer_display");
 
-// ── merge-base (หมุด ST2 เทียบเฉพาะสิ่งที่ใบนี้แก้ — ผู้สร้างตั้งต้นจาก commit merge ของ HF-FU) ──
+// ── หมุดของเลน (หมุด ST2 เทียบเฉพาะสิ่งที่ใบนี้แก้) ──
+const LANE_PIN = "64923c13"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 const MB = (() => {
-  const mb = gitStr(["merge-base", "HEAD", "origin/session/pos"])?.trim();
+  const mb = gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim(); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return process.env.P210_BASE ? BASE_REV : mb || BASE_REV;
 })();
 /** บรรทัดที่เพิ่ม (เลขบรรทัดของไฟล์ปัจจุบัน) + จำนวนบรรทัดที่ลบ เทียบ MB (รวมของที่ยังไม่ commit) */
@@ -726,7 +727,9 @@ async function runDb() {
   };
   const MEMBER_IN = { firstName: MEMBER.name, tier: "Gold", points: 98_765 };
   const STAMP_IN = { name: "สะสมครบ 10 แก้ว ฟรี 1 แก้ว", stamps: 6, slots: 10, toAdd: 1 };
-  const CART = (over: Any = {}): Any => ({ phase: "cart", member: MEMBER_IN, lines: LINES, totals: TOTALS, stamp: STAMP_IN, ...over });
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-4) ▸ มติ 15: ภาพที่ส่ง (publish) มี kind "TIER" บนแถวสมาชิก (TL-5 kind บังคับ) — TOTALS คงรูปของ view (label + satang) ที่ข้อเทียบใช้ ◂
+  const TOTALS_PUB = { ...TOTALS, member: TOTALS.member.map((m) => ({ kind: "TIER", ...m })) };
+  const CART = (over: Any = {}): Any => ({ phase: "cart", member: MEMBER_IN, lines: LINES, totals: TOTALS_PUB, stamp: STAMP_IN, ...over });
   const PAY = (over: Any = {}): Any => ({ method: "PROMPTPAY", dueSatang: 62_500, roundSatang: 32_500, paidSatang: 30_000, remainingSatang: 32_500, ...over });
   const PAYING = (pay: Any, over: Any = {}): Any => ({ ...CART(), phase: "paying", pay, ...over });
   const DONE = (done: Any): Any => ({ phase: "done", member: MEMBER_IN, done });

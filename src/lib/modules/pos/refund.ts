@@ -285,6 +285,8 @@ export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: 
     const sh = apiShift ? null : await resolveRegisterShift(db, s, x.deviceId);
     const preShiftId = apiShift ? apiShift.shiftId : sh?.ok ? sh.shiftId : null;
     const commit = (opts: RefundTxOpts) => runRefundTx(db, s, x, preShiftId, apiShift ? apiShift.required : shiftSettings.requiredRegister, opts);
+    // POS P2.14 ▸ API-9: ใบคืนที่ทำผ่าน REST (ctx ของเซิร์ฟเวอร์มี apiKeyId) = audit pos.sale.refund after.source "API" (ทุกทาง: ทันที · PIN) · หน้าจอ = ไม่มี source ◂
+    const apiTag: Record<string, unknown> = apiKeyId ? { source: "API" } : {};
 
     // POS P1.15 ▸ R5 + CD4: PIN ผู้จัดการ = คืนทันที (แม้มีกติกา) · ยกเลิกคำขอคืนเงินที่รอของบิลนี้ · audit pin_override ◂
     if (hasPin) {
@@ -293,7 +295,7 @@ export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: 
       const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId: x.deviceId ?? null }, { managerPin: raw.managerPin, managerUserId: raw.managerUserId });
       if (v.ok === false) return pinRefusal(v);
       if (!evaluate(v.actor, { module: "pos", action: REFUND_PERMISSION, unitId: s.unitId })) return refuse("NO_PERMISSION", "PIN นี้ไม่มีสิทธิ์คืนเงิน — ใช้ PIN ของผู้จัดการ");
-      const done = await commit({ mode: "commit", auditActorId: v.actor.userId, auditExtra: { via: "pin_override", requestedByUserId: s.actor.userId } });
+      const done = await commit({ mode: "commit", auditActorId: v.actor.userId, auditExtra: { via: "pin_override", requestedByUserId: s.actor.userId, ...apiTag } });
       if (done.kind !== "result" || !done.result.ok || done.result.duplicated) return done.kind === "result" ? done.result : refuse("UNKNOWN");
       const cancelled = await cancelOpenPosRequest(s.tenantId, "POS_REFUND", x.saleId);
       await auditPinOverride({ tenantId: s.tenantId, action: "POS_REFUND", requestId: cancelled, byUserId: v.actor.userId, forUserId: s.actor.userId, targetType: "PosSale", targetId: done.result.refund.id, extra: { saleId: x.saleId } });
@@ -328,7 +330,7 @@ export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: 
       const code = ap.status === "PENDING" ? "PENDING_APPROVAL" : "APPROVAL_REQUIRED";
       return { ok: false, code, message: POS_APPROVAL_MESSAGE[code], requestId: ap.requestId };
     }
-    const done = await commit({ mode: "commit" });
+    const done = await commit({ mode: "commit", ...(apiKeyId ? { auditExtra: apiTag } : {}) });
     return done.kind === "result" ? done.result : refuse("UNKNOWN");
   } catch (e) {
     console.error("[pos/refund] refundSale", e);

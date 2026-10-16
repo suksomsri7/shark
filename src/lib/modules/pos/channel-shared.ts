@@ -58,7 +58,8 @@ export type ChannelItem = {
 export type ChannelInput = {
   id?: string;
   code?: string;
-  name: string;
+  /** POS P2.14 ▸ PRC-2: ไม่บังคับตอนแก้ (มี id) · บังคับตอนสร้าง ◂ */
+  name?: string;
   active?: boolean;
   payout?: ChannelPayout;
   commissionBp?: number;
@@ -168,7 +169,7 @@ export function parseChannelInput(raw: unknown): ParseChannelInputResult {
     if (!isRecord(raw)) return bad("ข้อมูลช่องทางไม่ถูกต้อง");
     const extra = Object.keys(raw).filter((k) => !(INPUT_KEYS as readonly string[]).includes(k));
     if (extra.length) return bad(`มีช่องข้อมูลที่ไม่รู้จัก: ${extra.slice(0, 3).join(", ")}`, extra[0]);
-    const out: ChannelInput = { name: "" };
+    const out: ChannelInput = {};
     if (raw.id !== undefined) {
       if (typeof raw.id !== "string" || !raw.id || raw.id.length > 200 || raw.id.includes("\u0000")) return bad("รหัสอ้างอิงช่องทางไม่ถูกต้อง", "id");
       out.id = raw.id;
@@ -177,10 +178,13 @@ export function parseChannelInput(raw: unknown): ParseChannelInputResult {
       if (typeof raw.code !== "string" || !CHANNEL_CODE_RE.test(raw.code)) return bad("รหัสช่องทางต้องเป็น A-Z 0-9 _ ขึ้นต้นด้วยตัวอักษร ยาว 2–24 ตัว", "code");
       out.code = raw.code;
     }
-    if (typeof raw.name !== "string") return bad("ต้องระบุชื่อช่องทาง", "name");
-    const name = raw.name.trim();
-    if (!name || [...name].length > CHANNEL_NAME_MAX || /[\u0000-\u001F\u007F]/.test(name)) return bad(`ชื่อช่องทางต้องยาว 1–${CHANNEL_NAME_MAX} ตัวอักษร`, "name");
-    out.name = name;
+    // POS P2.14 ▸ PRC-2 (P3): แก้ (มี id) ไม่ต้องส่งชื่อ — ไม่ส่ง = ชื่อเดิม (กันแก้พร้อมกันแล้วชื่อย้อน) · สร้าง = ต้องมีชื่อ (channel.ts ตรวจ) ◂
+    if (!(raw.name === undefined && out.id !== undefined)) {
+      if (typeof raw.name !== "string") return bad("ต้องระบุชื่อช่องทาง", "name");
+      const name = raw.name.trim();
+      if (!name || [...name].length > CHANNEL_NAME_MAX || /[\u0000-\u001F\u007F]/.test(name)) return bad(`ชื่อช่องทางต้องยาว 1–${CHANNEL_NAME_MAX} ตัวอักษร`, "name");
+      out.name = name;
+    }
     if (raw.active !== undefined) {
       if (typeof raw.active !== "boolean") return bad("สถานะเปิดใช้งานไม่ถูกต้อง", "active");
       out.active = raw.active;

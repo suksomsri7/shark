@@ -46,7 +46,7 @@ const CHECKS: readonly Def[] = [
   // ── ST สถิต ──
   D("ST1", "S", "[R1 มติ 8 10 12] schema + migration เพิ่มอย่างเดียว: enum PosOrderPaymentState + PENDING_PAYMENT PREPAID · SalesChannelAdapter + QR · PosOrder + payBy/paidAt/customerClaimAt DateTime? · paymentIntentId String? · publicToken String? @unique · @@index([tenantId, unitId, paymentState, payBy]) · PosPaymentIntent + orderId String? · deviceId/createdByUserId String? · model PosOrderLink (id tenantId systemId unitId token @unique status createdByUserId rotatedAt? · ไม่มี @relation) · schema ร้านอาหาร/PosSale/SalesChannel/PosOrderLine/PosOrderEvent ไม่เปลี่ยน · migration เดียว `<ts>_pos_p27_qr_orders` (ts ใหม่กว่าทุก migration เดิม) คำสั่งในรายการเท่านั้น (lock_timeout 3s · ADD VALUE IF NOT EXISTS ×3 · ADD COLUMN IF NOT EXISTS · DROP NOT NULL ×2 · CREATE TABLE IF NOT EXISTS PosOrderLink ไม่มี REFERENCES · CREATE [UNIQUE] INDEX IF NOT EXISTS) · scope.ts PosOrderLink: sys() · pos-qc-env POS_MODELS posOrderLink"),
   D("ST2", "S", "[R2 R4 มติ 2 13 hard rules] ไฟล์/ชื่อ/ผู้เขียนเดียว: qr-order-shared บริสุทธิ์ + export ค่าคงที่/ตัวแกะตามตารางชื่อ (QR_REFUSAL_CODES = 5 รหัส · โทเคน 16/12 ตัว Crockford · 30 บรรทัด/qty 50/โน้ต 200/ชื่อ 100 · normalizeThaiPhone · qrRefusalMessageKey) · qr-order.ts export ประตูสาธารณะครบ + ไม่เขียน PosOrder*/PosPaymentIntent/Restaurant*/TableSession เอง + ไม่ import session/auth + ร้านอาหารผ่าน import(\"@/lib/modules/restaurant\") เท่านั้น · ผู้เขียน PosOrder*/PosOrderLink = order.ts · PosPaymentIntent = payment-intent.ts · order.ts บล็อก // POS P2.7 ▸ … ◂ (ingestPreorderInTx · onIntentPaid · กิ่ง PREPAID ใน acceptInTx ที่ใช้ lockSaleIntents/consumeSaleIntents · expirePreorders · ลิงก์) + createSale( จุดเดียวใน orderCreateSale · payment-intent.ts createIntentForOrderInTx · restaurant/index.ts บล็อก POS P2.7 export guestRoundInTx guestTableViewForPos rotateTableQrForPos · pos/table.ts registerRotateTableQr · channel-shared QR_ORDER (ท้ายสุด · \"สั่งออนไลน์ (QR)\") · ORDER_ADAPTERS QR: local(\"QR\") · ORDER_INPUT_PAYMENT_STATES = UNPAID PAY_ON_PICKUP · outbox-consumers intent_paid เรียก onIntentPaid (บล็อก POS P2.7) · cron hourly เรียก expirePreorders"),
-  D("ST3", "S", "[มติ 1 5 9 CD7] ของเดิม: register.ts ต่างจากฐานเฉพาะการย้าย regResolveOptions (+ RegOptGroup/RegOptChoice/RegPickedOption) ไปไฟล์ *-shared บริสุทธิ์แล้ว import กลับ · service.ts tender.ts pos-sale-contract.json sha = ฐาน · ทะเบียนผู้เรียก createSale = ฐาน (order.ts ยัง 1 จุด) · ลายเซ็น export ของ restaurant/{table,order,menu,kds,storefront,scope}.ts = ฐาน P2.4 L3 · storefront.ts + api/store/…/restaurant/** + components/restaurant-qr.tsx ตรงฐานทุกไบต์ · restaurant/order.ts createOrder/writeOrderTx/cancelOrderItem/billPreview/placeGuestOrder ตรงฐาน (ตัวแทนสถิตของ S2.42) — ฐาน = 62a319cc หรือ merge-base กับ session/pos / origin/session/pos"),
+  D("ST3", "S", "[มติ 1 5 9 CD7] ของเดิม: register.ts ต่างจากฐานเฉพาะการย้าย regResolveOptions (+ RegOptGroup/RegOptChoice/RegPickedOption) ไปไฟล์ *-shared บริสุทธิ์แล้ว import กลับ · service.ts tender.ts pos-sale-contract.json sha = ฐาน · ทะเบียนผู้เรียก createSale = ฐาน (order.ts ยัง 1 จุด) · ลายเซ็น export ของ restaurant/{table,order,menu,kds,storefront,scope}.ts = ฐาน P2.4 L3 · storefront.ts + api/store/…/restaurant/** + components/restaurant-qr.tsx ตรงฐานทุกไบต์ · restaurant/order.ts createOrder/writeOrderTx/cancelOrderItem/billPreview/placeGuestOrder ตรงฐาน (ตัวแทนสถิตของ S2.42) — ฐาน = 62a319cc หรือ หมุดของเลน 64923c13"),  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin): คำอธิบายฐาน = หมุดของเลน (K3)
   D("ST4", "S", "[§3 มติ 1 11 15 hard rules · ST7] หน้า (store)/q/t/[qrToken] · (store)/q/[linkToken] · (store)/q/o/[orderToken]: force-dynamic · noindex · ไม่ import session/auth · ไม่มี new Date()/Date.now() ในหน้า SSR · notFound() เมื่อโทเคนผิดรูป · (store)/q/actions.ts \"use server\" async ล้วน + เรียก qr-order · 'use client' import ได้แค่ *-shared/*-actions · 0 อักษรไทยในโค้ด (store)/q/** + components/pos/qr/** · pos.json th/en ก้อน qr.* คีย์ชุดเดียวกัน (th มีไทย · en ไม่มี) + qr.errors.{qrClosed sessionChanged tokenInvalid rateLimited preorderExpired productUnavailable validation} · หน้าเดิม restaurant/t/[qrToken]/page.tsx = ฐาน + บรรทัดในบล็อก // POS P2.7 ▸ … ◂ ที่ redirect ไป /q/t/ เท่านั้น"),
   // ── TK โทเคน ──
   D("TK1", "X2", "[§3 มติ 11] โทเคนโต๊ะ: tableDoor(qrToken A1) = สาขา A (ชื่อสาขา/โต๊ะ · เมนูราคา QR_TABLE ของ A) · qrToken B1 = สาขา B · โต๊ะที่เก็บถาวร/ปิดใช้ → TOKEN_INVALID · รอบที่ส่งด้วยโทเคน A ลงสาขา A เท่านั้น (สาขา B 0 แถว)"),
@@ -339,7 +339,7 @@ function exportSigs(src: string): Map<string, string> {
   return out;
 }
 
-// ── git (ฐานของสิ่งที่ใบนี้ห้ามแตะ = 62a319cc หรือ merge-base กับ session/pos / origin/session/pos — ผ่านเมื่อตรงฐานใดฐานหนึ่ง) ──
+// ── git (ฐานของสิ่งที่ใบนี้ห้ามแตะ = 62a319cc หรือหมุดของเลน 64923c13 — ผ่านเมื่อตรงฐานใดฐานหนึ่ง) ──
 const BASE_REV = "62a319cc";
 function gitBuf(args: string[]): Buffer | null {
   try {
@@ -358,7 +358,7 @@ function baseRevs(): string[] {
     if (v && !out.includes(v)) out.push(v);
   };
   add(gitBuf(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`])?.toString("utf8"));
-  for (const ref of ["session/pos", "origin/session/pos"]) add(gitBuf(["merge-base", "HEAD", ref])?.toString("utf8"));
+  add(gitBuf(["rev-parse", "--verify", "-q", "64923c13^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   baseRevsCache = out;
   return out;
 }
@@ -390,6 +390,35 @@ function sameAsBase(path: string): string | null {
   for (const r of revs) if (shaAt(r, path) === h) return null;
   return `${path.split("/").slice(-3).join("/")} ต่างจากฐาน (${revs.map((r) => r.slice(0, 8)).join("/")})`;
 }
+
+// ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-2) ▸ มติ 13: route เดิมใต้ api/store/…/restaurant/** = ฐาน + บรรทัดในบล็อก `// POS P2.14 ▸ … ◂` (ไม่นับบรรทัดว่าง) —
+//   กฎเดียวกับ P2.14 L2 (ตัวกัน LEG-1 อยู่ในบล็อกที่มาร์ก · เนื้อเดิมทุกบรรทัดคงอยู่) · storefront.ts + restaurant-qr.tsx ยังตรงฐานทุกไบต์
+function p214Marked(src: string): Set<number> {
+  const mk = new Set<number>();
+  let open = false;
+  src.split("\n").forEach((l, i) => {
+    const starts = /POS P2\.14\s*▸/.test(l);
+    if (starts || open) mk.add(i);
+    if (starts && !l.includes("◂")) open = true;
+    else if (open && l.includes("◂")) open = false;
+  });
+  return mk;
+}
+const p214NormBlank = (s: string) => s.split("\n").map((l) => l.trimEnd()).filter((l) => l.trim() !== "").join("\n");
+function sameAsBaseOrP214Marked(path: string): string | null {
+  const exact = sameAsBase(path);
+  if (!exact) return null;
+  const now = existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path), "utf8") : null;
+  if (now === null) return exact;
+  const mk = p214Marked(now);
+  const stripped = p214NormBlank(now.split("\n").filter((_, i) => !mk.has(i)).join("\n"));
+  for (const r of baseRevs()) {
+    const b = showAt(r, path);
+    if (b !== null && p214NormBlank(b) === stripped) return null;
+  }
+  return `${exact} (ไม่ใช่ฐาน + บล็อก POS P2.14 ด้วย)`;
+}
+// ◂ ORACLE-EDIT
 
 // ═════════════════════════ ค่าคงที่ของสัญญา (ตารางชื่อ — ledger/wo-notes/pos-P2.7-oracle.md) ═════════════════════════
 const POS_DIR = "src/lib/modules/pos";
@@ -883,7 +912,7 @@ async function runStatic(): Promise<void> {
     }
     // ประตูเดิมตรงทุกไบต์
     for (const f of [F.storefront, F.restQrUi, ...walk(LEGACY_API_DIR)]) {
-      const r = sameAsBase(f);
+      const r = f.startsWith(LEGACY_API_DIR) ? sameAsBaseOrP214Marked(f) : sameAsBase(f); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-2)
       if (r) p.push(r);
     }
     const ro = rd(F.restOrder);

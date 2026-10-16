@@ -191,6 +191,18 @@ export class PosSaleError extends Error {
     this.name = "PosSaleError";
     this.code = code;
   }
+  // POS P2.14 ▸ UI-9: GIFT_CARD_PIN บอกแถว (ลำดับของแถวบัตรของขวัญในวิธีชำระ เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ — ไม่มี = ไม่รู้ ◂
+  giftCardRow?: number;
+  attemptsLeft?: number;
+}
+// POS P2.14 ▸ UI-9: ติดแถว/ครั้งที่เหลือให้คำปฏิเสธ PIN — ครั้งที่เหลือมาจากข้อความของโมดูลบัตร ("เหลืออีก N ครั้ง") · ไม่ตรงรูป = ไม่ใส่ ◂
+function tagGiftPinRow<E>(e: E, ordinal: number): E {
+  if (e instanceof PosSaleError && e.code === "GIFT_CARD_PIN") {
+    e.giftCardRow = ordinal;
+    const m = /เหลืออีก (\d+) ครั้ง/.exec(e.message);
+    if (m) e.attemptsLeft = Number(m[1]);
+  }
+  return e;
 }
 const MAX_PAY_METHODS = 10; // R2
 const MAX_NOTE = 500; // R5
@@ -330,15 +342,18 @@ async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSyst
   const member = await import("@/lib/modules/member");
   const db = tx as Prisma.TransactionClient;
   const out: SaleTender[] = [];
+  let gcOrdinal = -1; // POS P2.14 ▸ UI-9 ◂
   for (const { p, index } of rows) {
     if (p.type === "GIFT_CARD") {
+      gcOrdinal += 1; // POS P2.14 ▸ UI-9 ◂
+      const ord = gcOrdinal; // POS P2.14 ▸ UI-9 ◂
       // มติ 3: PIN ทุกครั้ง (ผิด = ตัวนับนอก tx คงอยู่ · บิลไม่เกิด) · บัตรทั้งร้าน (CD11)
       // POS P2.9 ▸ fix2: PIN ผ่านขั้นตรวจก่อนบิลของคำขอนี้แล้ว ⇒ ตรวจสถานะ/ยอดซ้ำโดยไม่เทียบ PIN (ไม่ใช้ connection ที่สองระหว่างถือ tx) ◂
       const r = await tenderStep(member, () =>
         pinsVerified
           ? member.recheckGiftCardTender(input.tenantId, { number: p.giftCard!.number, satang: p.amountSatang }, db)
           : member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }, db),
-      );
+      ).catch((e: unknown) => Promise.reject(tagGiftPinRow(e, ord))); // POS P2.14 ▸ UI-9 ◂
       out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
       continue;
     }
@@ -364,18 +379,21 @@ async function preverifyGiftPins(input: CreateSaleInput): Promise<boolean> {
     const dup = await t.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } }, select: { id: true } });
     if (dup) return "dup" as const;
     validateSaleInput(input);
+    let ord = -1; // POS P2.14 ▸ UI-9: ลำดับแถวบัตรของขวัญ ◂
     for (const p of input.payMethods) {
-      if (p.type !== "GIFT_CARD" || !p.giftCard) continue;
+      if (p.type !== "GIFT_CARD") continue; // POS P2.14 ▸ UI-9: นับทุกแถวบัตรของขวัญ (เดิม: ข้ามแถวไม่มี giftCard ก่อนนับ) ◂
+      ord += 1; // POS P2.14 ▸ UI-9 ◂
+      if (!p.giftCard) continue; // POS P2.14 ▸ UI-9 ◂
       try {
         await member.prepareGiftCardTender(input.tenantId, { number: p.giftCard.number, pin: p.giftCard.pin, satang: p.amountSatang }, t, t);
       } catch (e) {
-        return e;
+        return { e, ord }; // POS P2.14 ▸ UI-9 ◂
       }
     }
     return null;
   }, { timeout: 20_000, maxWait: 10_000 });
   if (failure === "dup") return false;
-  if (failure) await tenderStep(member, () => Promise.reject(failure));
+  if (failure) await tenderStep(member, () => Promise.reject(failure.e)).catch((e: unknown) => Promise.reject(tagGiftPinRow(e, failure.ord))); // POS P2.14 ▸ UI-9 ◂
   return true;
 }
 
@@ -1397,6 +1415,8 @@ export type VoidSaleAudit = {
   via?: "approval" | "pin_override";
   requestId?: string | null;
   requestedByUserId?: string;
+  /** POS P2.14 ▸ API-9: ที่มาของคำสั่งยกเลิก — "API" = REST /api/v1/pos (ลง after.source) · ไม่ส่ง = หน้าจอ/ผู้เรียกเดิม (VoidSaleAudit ไม่อยู่ในสัญญา F15.2) ◂ */
+  source?: "API";
 };
 
 // void: กลับรายการ (คืนแต้ม + สถานะ)
@@ -1436,6 +1456,7 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string,
             ...(audit.idempotencyKey ? { idempotencyKey: audit.idempotencyKey } : {}),
             ...(audit.via ? { via: audit.via, requestId: audit.requestId ?? null } : {}),
             ...(audit.requestedByUserId ? { requestedByUserId: audit.requestedByUserId } : {}),
+            ...(audit.source ? { source: audit.source } : {}), // POS P2.14 ▸ API-9 ◂
           },
         },
       });

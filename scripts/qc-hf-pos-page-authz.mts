@@ -157,6 +157,35 @@ console.log("── [static] หน้า/แอ็กชันใช้ผล�
         rp.indexOf(units) < rp.indexOf(allowed) && rp.indexOf(allowed) < rp.indexOf(gate) && firstRead > rp.indexOf(gate) && !rp.includes("assertCan("), "ครบ", "ไม่ครบ");
   }
 
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 V4 · ⚠️6) ▸ PG-1…PG-5 หมุดประตูของหน้าพนักงานที่เดิมไม่มีหมุด (สต็อก · กะ · ตั้งค่า · รายงาน · กติการาคา):
+  //   ระบบต้องเป็น POS ของร้าน (ไม่ใช่ = notFound) · สาขา = สาขาของ POS ที่ผู้ใช้เข้าได้ (canAccessUnit) · ไม่มีเลย = notFound · ?unit= รับเฉพาะสาขาในชุดนั้น ·
+  //   ไม่มีสิทธิ์ของหน้า = การ์ดปฏิเสธในหน้า (testid ตามหน้า) · ไม่มี assertCan (ไม่ throw 500) ◂
+  {
+    const SYS_GATE = 'const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } }); if (!sys) notFound();';
+    const MEM = "const m = posMembership(auth.active);";
+    const FIL = ".filter((u) => canAccessUnit(m, u.id))";
+    const NF = "if (units.length === 0) notFound();";
+    const gate = (f: string, ...extra: string[]) => {
+      const t = norm(f);
+      return !!t && has(t, SYS_GATE, MEM, FIL, NF, ...extra) && t.indexOf(SYS_GATE) < t.indexOf(NF) && !t.includes("assertCan(");
+    };
+    const UNIT = "const unitId = units.some((u) => u.id === unit) ? unit! : units[0]!.id;";
+    chk("PG-1", "[static] หน้าสต็อก: ระบบ POS ของร้าน · สาขาที่เข้าได้ · ไม่มี = notFound · ?unit= ∈ สาขา · การ์ดปฏิเสธ pos-stock-refusal (ไม่มี assertCan)",
+      gate("src/app/app/sys/[id]/pos/stock/page.tsx", "const unitId = units.some((u) => u.id === unitRaw) ? unitRaw! : units[0]!.id;", 'data-testid="pos-stock-refusal"'), "ครบ", "ไม่ครบ");
+    chk("PG-2", "[static] หน้ากะ: ประตูเดียวกัน · ?unit= ∈ สาขา · การ์ดปฏิเสธ pos-shift-refusal ใน ShiftsClient (ไม่มี assertCan)",
+      gate("src/app/app/sys/[id]/pos/shifts/page.tsx", UNIT) && norm("src/app/app/sys/[id]/pos/shifts/ShiftsClient.tsx").includes('data-testid="pos-shift-refusal"'), "ครบ", "ไม่ครบ");
+    chk("PG-3", "[static] หน้าตั้งค่า: ประตูเดียวกัน · ?unit= ∈ สาขา · การ์ดปฏิเสธ pos-settings-refusal (SettingsRefusal · ไม่มี assertCan)",
+      gate("src/app/app/sys/[id]/pos/settings/page.tsx", UNIT, '<SettingsRefusal message={t("refusal")} />') && norm("src/app/app/sys/[id]/pos/settings/settings-ui.tsx").includes('data-testid="pos-settings-refusal"'), "ครบ", "ไม่ครบ");
+    chk("PG-4", "[static] หน้ารายงาน: ประตูเดียวกัน · สาขาที่ดูได้ = pos.report.view ต่อสาขา · ?unit= ∈ สาขาที่ดูได้ · ไม่มีเลย = การ์ดปฏิเสธ pos-report-refusal (ไม่มี assertCan)",
+      gate("src/app/app/sys/[id]/pos/reports/page.tsx",
+        'const allowed = units.filter((u) => evaluate(m, { module: "pos", action: REPORT_PERMISSION, unitId: u.id }));',
+        'const unitId = allowed.some((u) => u.id === unitRaw) ? unitRaw! : "";',
+        'data-testid="pos-report-refusal"'), "ครบ", "ไม่ครบ");
+    chk("PG-5", "[static] หน้ากติการาคา: ประตูเดียวกัน · ?unit= ∈ สาขา · การ์ดปฏิเสธ pos-price-rules-refusal (ไม่มี assertCan)",
+      gate("src/app/app/sys/[id]/pos/products/price-rules/page.tsx", UNIT, 'data-testid="pos-price-rules-refusal"'), "ครบ", "ไม่ครบ");
+  }
+  // ◂ ORACLE-ADD
+
   const ov = norm("src/app/app/sys/[id]/page.tsx");
   const posContent = ov.slice(ov.indexOf("async function PosContent"));
   chk("O-1", "[static] หน้าภาพรวม: posScope จาก posSalesScope · ไม่มีสิทธิ์ = ไม่ render PosContent",

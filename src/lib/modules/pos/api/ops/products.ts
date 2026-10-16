@@ -10,7 +10,7 @@ import { paged } from "@/lib/api/respond";
 import { archive, createProduct, listForUnit, PRODUCT_KINDS, setAvailability, setPrice, updateProduct } from "../../catalog";
 import { registerProductOptions, registerScan } from "../../register";
 import { posCatalogCtxOf, posRegisterActorOf } from "../actor";
-import { posData, toPosApiError } from "../http-errors";
+import { posData, posResult, toPosApiError } from "../http-errors";
 import { definePosOp, POS_SCOPES, type ApiOp } from "../op";
 import { posProductUnit, requirePosUnit } from "../units";
 
@@ -206,7 +206,8 @@ const productsAvailability = definePosOp({
   auditTarget: productTarget,
   async handler({ actor, params, input }) {
     const unitId = (await posProductUnit(actor, params.id ?? "", input.unitId, true))!;
-    return posData(
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    const r = posResult(
       await setAvailability({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), {
         productId: params.id ?? "",
         unitId,
@@ -215,6 +216,7 @@ const productsAvailability = definePosOp({
         ...(input.note ? { note: input.note } : {}),
       }),
     );
+    return { changed: r.changed, available: r.available };
   },
 });
 

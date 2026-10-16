@@ -141,7 +141,7 @@ export function useDisplayPublish(i: DisplayPublishInput): (v: DisplayPayIn | nu
     r.lastAt = now;
     r.seq = displaySeqNow(now, r.seq);
     try {
-      const res = await publishDisplayStateAction({ systemId: cur.systemId, unitId: cur.unitId, deviceCode: cur.deviceCode, seq: r.seq, state: cur.state });
+      const res = await publishDisplayStateAction({ systemId: cur.systemId, unitId: cur.unitId, deviceId: cur.deviceCode /* POS P2.14 ▸ DSP-1: เครื่องของหน้าขายนี้ ◂ */, deviceCode: cur.deviceCode, seq: r.seq, state: cur.state });
       // POS P2.10 ▸ fix1 F8: ผลการส่งล่าสุด (ไว้ดูตอนวินิจฉัย — ไม่มีเนื้อหาภาพ/ข้อมูลลูกค้า) · window.__posDisplayPublish
       (window as unknown as { __posDisplayPublish?: unknown }).__posDisplayPublish = {
         at: Date.now(),

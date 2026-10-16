@@ -166,8 +166,12 @@ export async function revokePosApiKeyAction(input: { systemId: string; keyId: st
     if (!canRevoke(g.m)) return refuse("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์เพิกถอนคีย์ API (api.key.revoke)");
     const keyId = str(input.keyId);
     // เพิกถอนได้เฉพาะคีย์ที่ผูก **ระบบ POS นี้** (แบบ kanban HF-APIV1) — คีย์กลาง/คีย์ของระบบอื่น = ไม่พบ
-    const owned = keyId ? await prisma.apiKey.findFirst({ where: { id: keyId, tenantId: g.tenantId, systemId: g.systemId }, select: { id: true, revokedAt: true } }) : null;
+    const owned = keyId ? await prisma.apiKey.findFirst({ where: { id: keyId, tenantId: g.tenantId, systemId: g.systemId }, select: { id: true, revokedAt: true, scopesJson: true } }) : null;
     if (!owned) return refuse("NOT_FOUND", "ไม่พบคีย์นี้ในระบบขายหน้าร้านนี้ — รีเฟรชหน้าแล้วลองใหม่");
+    // POS P2.14 ▸ API-2: เพิกถอนได้เฉพาะคีย์ที่ผู้เพิกถอนดูแลครบทุกสาขาของคีย์ (กติกาเดียวกับการออก) — คีย์จำกัดสาขา = ต้องเข้าถึงทุกสาขาในตัวกรอง ·
+    //   คีย์ไม่จำกัดสาขา (= ทุกสาขา) = ต้องดูแลทุกสาขา (เจ้าของ / unitAccess "*") · ไม่ผ่าน = PERMISSION_DENIED ไม่เพิกถอน ◂
+    const keyUnits = (Array.isArray(owned.scopesJson) ? (owned.scopesJson as unknown[]) : []).filter((x): x is string => typeof x === "string" && x.startsWith(POS_FILTER_UNIT_PREFIX)).map((x) => x.slice(POS_FILTER_UNIT_PREFIX.length));
+    if (keyUnits.length === 0 ? !allUnits(g.m) : keyUnits.some((u) => !canAccessUnit(g.m, u))) return refuse("PERMISSION_DENIED", "เพิกถอนคีย์นี้ไม่ได้ — คีย์นี้ใช้ได้กับสาขาที่บัญชีนี้ไม่ได้ดูแล");
     if (!owned.revokedAt) {
       await revokeApiKey({ tenantId: g.tenantId }, keyId);
       await writeAudit({ tenantId: g.tenantId, actorId: g.userId, action: "pos.api.key.revoke", targetType: "ApiKey", targetId: keyId, after: { revoked: true, systemId: g.systemId } });

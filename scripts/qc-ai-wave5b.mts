@@ -112,7 +112,7 @@ try {
   // ══ restaurant_close_bill (DESTRUCTIVE) ══
   const rUnit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "RESTAURANT", name: "ครัวปิดบิล", slug: `w5br-${Date.now()}` } });
   const rPos = await sys.createSystem(tid, "POS", "POS ครัว");
-  await sys.linkUnit(tid, rPos.id, rUnit.id);
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-3) ▸ มติ 20: สาขานี้ไม่ผูก POS (ทางเดิมของผู้ช่วยปิดบิลยังถูกครอบ) — สาขาที่ผูก POS = ปฏิเสธ (W5B-3.6) ◂
   await menu.ensureDefaultStations(tid, rUnit.id);
   const stations = await menu.listStations(tid, rUnit.id);
   const cat = await menu.createCategory(tid, rUnit.id, { name: "จานเดียว" });
@@ -131,14 +131,33 @@ try {
   const rc1b = await run("restaurant_close_bill", { tableName: "A1", payMethod: "CASH" }, { confirm2x: true });
   const sessClosed = await prisma.tableSession.findFirst({ where: { tenantId: tid, id: sess.id } });
   chk("W5B-3.2", "confirm2x → ปิดบิล + โต๊ะ CLOSED", rc1b?.ok === true && sessClosed?.status === "CLOSED");
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-3) ▸ สาขาไม่ผูก POS = บิลของร้านอาหารเอง (รายการผูก saleId "rest-…") · ไม่มี PosSale (เดิม: PosSale RESTAURANT ≥ 1 บนสาขาที่ผูก POS)
+  const billedItems = await prisma.restaurantOrderItem.findMany({ where: { order: { tenantId: tid, sessionId: sess.id } }, select: { saleId: true } });
   const posFromRest = await prisma.posSale.count({ where: { tenantId: tid, sourceModule: "RESTAURANT" } });
-  chk("W5B-3.3", "เช็คบิล → PosSale (sourceModule RESTAURANT) เกิด", posFromRest >= 1);
+  chk("W5B-3.3", "เช็คบิล (สาขาไม่ผูก POS) → รายการผูกบิล rest-… · ไม่มี PosSale", billedItems.length > 0 && billedItems.every((x) => String(x.saleId ?? "").startsWith("rest-")) && posFromRest === 0);
 
   const rc2 = await run("restaurant_close_bill", { tableName: "Z9" }, { confirm2x: true });
   chk("W5B-3.4", "โต๊ะไม่พบ → ok:false (guard)", rc2?.ok === false);
 
   const rcTool = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "restaurant_close_bill", { tableName: "A1" }));
   chk("W5B-3.5", "tool restaurant_close_bill → proposal", !!rcTool.proposalId, "MAJOR");
+
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-3) ▸ สาขาที่ผูก POS: ผู้ช่วยปิดบิลทางเดิมไม่ได้ (POS_LINKED) — โต๊ะยังเปิด · ไม่มี PosSale
+  const lUnit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "RESTAURANT", name: "ครัวผูกพีโอเอส", slug: `w5bl-${Date.now()}` } });
+  await sys.linkUnit(tid, rPos.id, lUnit.id);
+  await menu.ensureDefaultStations(tid, lUnit.id);
+  const lStations = await menu.listStations(tid, lUnit.id);
+  const lCat = await menu.createCategory(tid, lUnit.id, { name: "จานเดียว" });
+  const lIt = await menu.createItem(tid, lUnit.id, { categoryId: lCat.id, stationId: lStations[0].id, name: "ข้าวผัด", basePrice: 5000 });
+  const lZone = await rtable.createZone(tid, lUnit.id, "ในร้าน");
+  const lTb = await rtable.createTable(tid, lUnit.id, { zoneId: lZone.id, name: "B7", seats: 2 });
+  const lSess = await rtable.openSession(tid, lUnit.id, lTb.id, { guestCount: 1 });
+  await rorder.createOrder({ tenantId: tid, unitId: lUnit.id, type: "DINE_IN", sessionId: lSess.id, cart: [{ menuItemId: lIt.id, qty: 1, choiceIds: [] }], placedByUserId: "staff-qc" });
+  const rcL = await run("restaurant_close_bill", { tableName: "B7", unitName: "ครัวผูกพีโอเอส", payMethod: "CASH" }, { confirm2x: true });
+  const lSessAfter = await prisma.tableSession.findFirst({ where: { tenantId: tid, id: lSess.id } });
+  const posL = await prisma.posSale.count({ where: { tenantId: tid, unitId: lUnit.id } });
+  chk("W5B-3.6", "สาขาที่ผูก POS → ผู้ช่วยปิดบิลทางเดิมถูกปฏิเสธ (POS_LINKED) · โต๊ะยังเปิด · ไม่มี PosSale", rcL?.ok === false && /POS_LINKED/.test(String(rcL?.note ?? "")) && lSessAfter?.status === "OPEN" && posL === 0);
+  // ◂ ORACLE-EDIT
 
   // ══ kanban_my_tasks (READ) ══
   const kSys = await sys.createSystem(tid, "KANBAN", "บอร์ดงาน");

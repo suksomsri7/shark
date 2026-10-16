@@ -308,14 +308,17 @@ export async function posApprovalCards(tenantId: string, requestIds: string[]): 
   const devices = rows.map((r) => ({ unitId: s(pl(r).unitId), code: s(pl(r).deviceId) })).filter((d): d is { unitId: string; code: string } => !!d.unitId && !!d.code);
   const saleIds = [...new Set(rows.map((r) => s(pl(r).saleId)).filter((x): x is string => !!x))];
   const lineIds = rows.flatMap((r) => (Array.isArray(pl(r).lines) ? (pl(r).lines as unknown[]).flatMap((l) => (isRecord(l) && typeof l.lineId === "string" ? [l.lineId] : [])) : []));
-  const [users, members, devs, sales, lines] = await Promise.all([
+  // POS P2.14 ▸ API-4: คำขอจาก REST เก็บ requestedById = ApiKey.id (payload เดิมไม่เปลี่ยน) ⇒ ฝั่งอ่านแปลเป็น "API: <ชื่อคีย์>" (คีย์ของร้านนี้เท่านั้น) ◂
+  const [users, members, devs, sales, lines, keys] = await Promise.all([
     userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [],
     userIds.length ? prisma.membership.findMany({ where: { tenantId, userId: { in: userIds } }, select: { userId: true, role: true } }) : [],
     devices.length ? prisma.posDevice.findMany({ where: { tenantId, OR: devices.map((d) => ({ unitId: d.unitId, deviceCode: d.code })) }, select: { unitId: true, deviceCode: true, name: true } }) : [],
     saleIds.length ? prisma.posSale.findMany({ where: { tenantId, id: { in: saleIds } }, select: { id: true, receiptNo: true } }) : [],
     lineIds.length ? prisma.posSaleLine.findMany({ where: { tenantId, id: { in: [...new Set(lineIds)] } }, select: { id: true, name: true } }) : [],
+    userIds.length ? prisma.apiKey.findMany({ where: { tenantId, id: { in: userIds } }, select: { id: true, name: true } }) : [], // POS P2.14 ▸ API-4 ◂
   ]);
-  const nameOf = new Map(users.map((u) => [u.id, u.name]));
+  const nameOf = new Map<string, string | null>(users.map((u) => [u.id, u.name]));
+  for (const k of keys) if (!nameOf.has(k.id)) nameOf.set(k.id, `API: ${k.name}`); // POS P2.14 ▸ API-4 ◂
   const roleOf = new Map(members.map((m) => [m.userId, String(m.role)]));
   const devOf = new Map(devs.map((d) => [`${d.unitId}|${d.deviceCode}`, d.name]));
   const receiptOf = new Map(sales.map((x) => [x.id, x.receiptNo]));

@@ -11,7 +11,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { setAvailability, updateProduct, CatalogError } from "./catalog"; // POS P2.6U ▸ + updateProduct (มติ 9b · สถานีของสินค้าที่ไม่ใช่เมนู) ◂
-import { kdsBoard, kdsLineDone, kdsRecall, kdsRush, kdsServed, kdsSetAutoAcceptMax, kdsStart, kdsTicketDone, kitchenProgress, kitchenSlipPayload, kitchenStateForUnit, kdsKitchenProducts, kdsStations, roundOfSale } from "./kds"; // POS P2.6U ▸ + kitchenStateForUnit · roundOfSale · kdsKitchenProducts · kdsStations ◂
+import { kdsBoard, kdsLineDone, kdsRecall, kdsRush, kdsServed, kdsSetAutoAcceptMax, kdsStart, kdsTicketDone, kitchenProgress, kitchenSlipPayload, kitchenStateForUnit, kdsKitchenProducts, kdsStations, roundOfSale, saleNeedsKitchen } from "./kds"; // POS P2.6U ▸ + kitchenStateForUnit · roundOfSale · kdsKitchenProducts · kdsStations ◂
 import type {
   KdsActionResult,
   KdsAutoAcceptResult,
@@ -256,13 +256,15 @@ export async function kdsKitchenStateAction(args: Target): Promise<{ ok: true; p
 }
 
 /** มติ 10 (PayDone "คิว N") + fix1 F2: เลขคิว + id รอบครัวของบิลนี้ (null = ไม่มีรอบ) — roundOfSale ของ kds.ts (อ่านอย่างเดียว) */
-export async function kdsQueueNoAction(args: Target & { saleId: string }): Promise<{ ok: true; queueNo: number | null; orderId: string | null } | KdsRefusal> {
+export async function kdsQueueNoAction(args: Target & { saleId: string }): Promise<{ ok: true; queueNo: number | null; orderId: string | null; kitchen: boolean } | KdsRefusal> {
   try {
     const s = await sessionScope(args, "sale");
     if ("ok" in s) return s;
     if (typeof args?.saleId !== "string" || !args.saleId) return { ok: false, code: "VALIDATION", message: "ข้อมูลไม่ถูกต้อง" };
     const r = await roundOfSale(s.ctx.tenantId, s.ctx.unitId, args.saleId);
-    return { ok: true, queueNo: r?.no ?? null, orderId: r?.orderId ?? null };
+    // POS P2.14 ▸ UI-8 (U1): kitchen = บิลมีบรรทัดที่เข้าครัว (มีรอบแล้ว = true · ยังไม่มี = saleNeedsKitchen) — จอเตือน "ใบครัวไม่ออก" เฉพาะเมื่อ kitchen ◂
+    const kitchen = r ? true : await saleNeedsKitchen(s.ctx.tenantId, s.ctx.unitId, args.saleId);
+    return { ok: true, queueNo: r?.no ?? null, orderId: r?.orderId ?? null, kitchen };
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("kdsQueueNoAction", e);

@@ -26,6 +26,8 @@ type Props = {
   /** PromptPay ID ของร้าน (ผู้อ่านอย่างเดียวเห็นแบบปิดบัง) · null = ยังไม่ตั้ง */
   promptpayId: string | null;
   promptpayLink: string;
+  /** POS P2.14 ▸ UI-10: เจ้าของร้าน — อื่น = การ์ดทิป/มัดจำแสดง "เฉพาะเจ้าของร้าน" (ไม่มีสวิตช์) ◂ */
+  isOwner?: boolean;
 };
 const ERROR_KEY: Record<string, string> = {
   NOT_FOUND: "errors.notFound",
@@ -34,7 +36,7 @@ const ERROR_KEY: Record<string, string> = {
   UNKNOWN: "errors.unknown",
 };
 
-export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, promptpayId, promptpayLink }: Props) {
+export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, promptpayId, promptpayLink, isOwner = false /* POS P2.14 ▸ UI-10 ◂ */ }: Props) {
   const t = useTranslations("pos.settings");
   const tp = useTranslations("pos.settings.payments");
   const [saved, setSaved] = useState<PosIntentSettings>(initial);
@@ -216,9 +218,9 @@ export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, pr
             )}
           </SettingsCard>
           {/* POS P2.9U ▸ มติ 6: ทิป + บัญชีพักทิป (LIABILITY) ◂ */}
-          <TipSettingsCard systemId={systemId} />
+          <TipSettingsCard systemId={systemId} isOwner={isOwner} /* POS P2.14 ▸ UI-10 ◂ */ />
           {/* POS P2.9bU ▸ มติ 8: รับเงินมัดจำ (เจ้าของร้าน · บันทึกทันที) ◂ */}
-          <DepositSettingsCard systemId={systemId} />
+          <DepositSettingsCard systemId={systemId} isOwner={isOwner} /* POS P2.14 ▸ UI-10 ◂ */ />
         </div>
       </div>
     </div>

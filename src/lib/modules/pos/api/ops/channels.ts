@@ -5,7 +5,7 @@ import { z } from "zod";
 import { listChannels } from "../../channel";
 import { setChannelOrderSettings } from "../../order";
 import { posRegisterActorOf } from "../actor";
-import { posData } from "../http-errors";
+import { posData, posResult } from "../http-errors";
 import { definePosOp, POS_SCOPES, type ApiOp } from "../op";
 import { posChannelUnit, requirePosUnit } from "../units";
 
@@ -44,7 +44,8 @@ const channelsPause = definePosOp({
   auditTarget: channelTarget,
   async handler({ actor, params, input }) {
     const unitId = await posChannelUnit(actor, params.id ?? "", input.unitId);
-    return posData(await setChannelOrderSettings({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { channelId: params.id ?? "", pausedUntil: input.until }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return posResult(await setChannelOrderSettings({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { channelId: params.id ?? "", pausedUntil: input.until })).channel;
   },
 });
 
@@ -61,7 +62,8 @@ const channelsResume = definePosOp({
   auditTarget: channelTarget,
   async handler({ actor, params, input }) {
     const unitId = await posChannelUnit(actor, params.id ?? "", input.unitId);
-    return posData(await setChannelOrderSettings({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { channelId: params.id ?? "", pausedUntil: null }));
+    // POS P2.14 ▸ API-8 (A9): คำตอบรูปคงที่ — ไม่ผ่าน posData (ผลฟิลด์เดียว = ค่าเปล่า · หลายฟิลด์ = วัตถุ ⇒ รูปเปลี่ยนตามผล) ◂
+    return posResult(await setChannelOrderSettings({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { channelId: params.id ?? "", pausedUntil: null })).channel;
   },
 });
 

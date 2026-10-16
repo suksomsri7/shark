@@ -2220,7 +2220,8 @@ async function runDb() {
     const c0 = await counts();
     const s0 = await snap(s.sid, String(pl?.splitId ?? ""));
     const r = await call(proposals, "runKind", m, T, "restaurant_close_bill", { unitName: `${TAG} สาขาA`, tableName: "P8", payMethod: "CASH" }, `${KEY_PREFIX}-p8`, uid("OWNER"));
-    if (!(r?.ok === false && r.threw && /แยกบิล/.test(String(r.message ?? "")))) p.push(`ปิดบิลด้วยผู้ช่วย ขณะแผน OPEN → ${short(r, 100)} (คาด โยนเหตุผลของตัวกัน)`);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-3 · CD-B4): สาขา A ผูก POS ⇒ ผู้ช่วยปฏิเสธ POS_LINKED ก่อนตัวกันแผน — นับเป็นการปฏิเสธ (ไม่มีบิล · แผน/โต๊ะเดิม)
+    if (!(r?.ok === false && ((r.threw && /แยกบิล/.test(String(r.message ?? ""))) || r.code === "POS_LINKED" || /POS_LINKED/.test(String(r.message ?? ""))))) p.push(`ปิดบิลด้วยผู้ช่วย ขณะแผน OPEN → ${short(r, 100)} (คาด โยนเหตุผลของตัวกัน หรือ POS_LINKED)`);
     const c1 = await counts();
     if (c1.sale !== c0.sale) p.push(`บิล ${c0.sale}→${c1.sale}`);
     if ((await snap(s.sid, String(pl?.splitId ?? ""))) !== s0 || (await planRow(String(pl?.splitId ?? "")))?.status !== "OPEN") p.push("รายการ/แผน/session เปลี่ยน");
@@ -2228,8 +2229,9 @@ async function runDb() {
     const q = await seat("Q8", { guestCount: 2, lines: [ml("kaprao", 1)] });
     const before = (await counts()).sale;
     const ok = await call(proposals, "runKind", m, T, "restaurant_close_bill", { unitName: `${TAG} สาขาA`, tableName: "Q8", payMethod: "CASH" }, `${KEY_PREFIX}-q8`, uid("OWNER"));
-    if (typeof ok !== "string" || (await counts()).sale !== before + 1 || (await sessRow(q.sid))?.status !== "CLOSED") p.push(`(ตัวควบคุม) โต๊ะไม่มีแผน → ${short(ok, 100)} · session ${(await sessRow(q.sid))?.status}`);
-    chk("P8", p.length === 0, "ผู้ช่วย AI ปิดบิลโต๊ะที่แยกบิลอยู่ไม่ได้ · โต๊ะปกติปิดได้", FX(P8(p) || "ครบ"));
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-3 · CD-B4): สาขาที่ผูก POS = POS_LINKED แม้โต๊ะไม่มีแผน — ไม่มีบิล · โต๊ะยัง OPEN
+    if (!(ok?.ok === false && (ok?.code === "POS_LINKED" || /POS_LINKED/.test(String(ok?.message ?? "")))) || (await counts()).sale !== before || (await sessRow(q.sid))?.status !== "OPEN") p.push(`(สาขาผูก POS) โต๊ะไม่มีแผน → ${short(ok, 100)} · บิล ${before}→${(await counts()).sale} · session ${(await sessRow(q.sid))?.status} (คาด POS_LINKED · ไม่มีบิล · OPEN)`);
+    chk("P8", p.length === 0, "ผู้ช่วย AI ปิดบิลโต๊ะที่แยกบิลอยู่ไม่ได้ · สาขาผูก POS = POS_LINKED ไม่มีบิล โต๊ะยังเปิด", FX(P8(p) || "ครบ")); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-3 · CD-B4)
   });
 
   // ════════ C แข่งกัน (ธุรกรรมที่สามถือล็อก) ════════

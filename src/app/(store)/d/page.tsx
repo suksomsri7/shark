@@ -13,7 +13,7 @@ import enPos from "@/messages/en/pos.json";
 import { DisplayScreen, type DisplayInitial } from "@/components/pos/display/DisplayScreen";
 import { readCustomerDisplay } from "@/lib/modules/pos/display";
 import { DISPLAY_COOKIE, normalizePairCode, type DisplayLocale } from "@/lib/modules/pos/display-shared";
-import { pairDisplayAction, readDisplayAction } from "./actions";
+import { clearDisplayCookieAction, pairDisplayAction, readDisplayAction } from "./actions"; // POS P2.14 ▸ TL-5 clearDisplayCookieAction ◂
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: thPos.display.screen.title, robots: { index: false, follow: false } };
@@ -30,11 +30,13 @@ export default async function CustomerDisplayPage({ searchParams }: { searchPara
   const token = jar.get(DISPLAY_COOKIE)?.value;
   let initial: DisplayInitial | null = null;
   let pairedOffline = false; // POS P2.10 ▸ fix1 F7 ◂
+  let staleCookie = false; // POS P2.14 ▸ TL-5: คุกกี้ที่ SSR อ่านได้ DISPLAY_NOT_PAIRED = ค้าง → จอล้างผ่าน clearDisplayCookieAction ◂
   if (token) {
     const r = await readCustomerDisplay({ token }).catch(() => null);
     if (r && r.ok && r.changed) initial = { ver: r.ver, view: r.view, nextPollMs: r.nextPollMs };
     // POS P2.10 ▸ fix1 F7 (มติ fix1 ข้อ 7): อ่านล้ม (INTERNAL/โยน) ทั้งที่มีคุกกี้ = จับคู่อยู่แต่ออฟไลน์ → เริ่มโพล · DISPLAY_NOT_PAIRED เท่านั้นที่กลับฟอร์ม
     else if (!(r && !r.ok && r.code === "DISPLAY_NOT_PAIRED")) pairedOffline = true; // ◂
+    else staleCookie = true; // POS P2.14 ▸ TL-5 ◂
   }
   return (
     <>
@@ -48,6 +50,8 @@ export default async function CustomerDisplayPage({ searchParams }: { searchPara
       <DisplayScreen
         initial={initial}
         pairedOffline={pairedOffline} // POS P2.10 ▸ fix1 F7 ◂
+        staleCookie={staleCookie} // POS P2.14 ▸ TL-5 ◂
+        clearCookieAction={clearDisplayCookieAction} // POS P2.14 ▸ TL-5 ◂
         prefillCode={normalizePairCode(c ?? "") ?? ""}
         fallbackLocale={fallbackLocale}
         messages={{ th: thPos.display, en: enPos.display }}

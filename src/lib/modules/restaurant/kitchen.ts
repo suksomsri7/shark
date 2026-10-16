@@ -20,7 +20,27 @@ const REF_MAX = 40;
 // ═══════════ สถานี · ค่าตั้ง (อ่าน) ═══════════
 
 export type KitchenStationRow = { id: string; name: string; nameEn: string | null; sortOrder: number };
-/** สถานีที่ใช้งาน (ไม่เก็บถาวร) ของสาขา — ลำดับ sortOrder, createdAt */
+// POS P2.14 ▸ UI-8 (U1): อ่านอย่างเดียว — บรรทัดชุดนี้มีบรรทัดที่เข้าครัวได้ไหม (กติกาเดียวกับ createKitchenRoundInTx: เมนูของสาขา → สถานีของเมนู ·
+//   ไม่ใช่เมนู → stationHint · สถานีต้องใช้งานอยู่) — จอปิดบิลใช้ตัดสินว่า "ใบครัวไม่ออก" ควรเตือนไหม ◂
+export async function kitchenRoutesForPos(db: Db, s: Scope, lines: { productId: string | null; stationHint: string | null }[]): Promise<boolean> {
+  if (!lines.length) return false;
+  const stations = new Set((await db.kdsStation.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null }, select: { id: true } })).map((x) => x.id));
+  if (!stations.size) return false;
+  const pids = [...new Set(lines.map((l) => l.productId).filter((x): x is string => !!x))];
+  const menuOf = new Map<string, string>();
+  if (pids.length) {
+    const rows = await db.menuItem.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, posProductId: { in: pids }, archivedAt: null }, select: { stationId: true, posProductId: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    for (const m of rows) if (m.posProductId && !menuOf.has(m.posProductId)) menuOf.set(m.posProductId, m.stationId);
+  }
+  return lines.some((l) => {
+    const st = l.productId ? menuOf.get(l.productId) : undefined;
+    if (st !== undefined) return stations.has(st);
+    return !!l.stationHint && stations.has(l.stationHint);
+  });
+}
+// ◂
+
+/** สถานีที่ใช้งาน (ไม่เก็บถาวร) ของสาขา — ลำดับ sortOrder, createdAt */ // POS P2.14 ▸ fix1 F11 · fix2 G7: JSDoc ติดกับ kitchenStationsForPos (บล็อก UI-8 อยู่ข้างบน) ◂
 export async function kitchenStationsForPos(db: Db, s: Scope): Promise<KitchenStationRow[]> {
   return db.kdsStation.findMany({
     where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null },

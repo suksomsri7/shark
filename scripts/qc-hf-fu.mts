@@ -41,18 +41,18 @@ const CHECKS: readonly Def[] = [
   D("ST1", "PAR", "[§3 §4 §7 มติ 6] ไม่มี migration · prisma/ ไม่เปลี่ยน (เทียบฐาน c3c52ef1 หรือ merge-base) · ไฟล์ห้ามแตะ §4 (register*.ts service.ts tender*.ts refund*.ts deposit.ts account-bridge.ts · InterimPayDialog PayDone BillsClient · restaurant/** · visual-pos.mts) ไม่เปลี่ยน · outbox-consumers: บรรทัดเหนือ \"pos.sale.voided\": เพิ่ม ≤ 4 · รอยต่อ POS P2.4/P2.6/P2.8 อยู่ใน ±8 บรรทัดของคีย์ · รอยต่อ HF-FU j (ถ้ามี) อยู่ใต้คีย์ · *-shared/pre-bill-render บริสุทธิ์ · 'use client' ไม่ import pos/table(-split)/order/kds · ทะเบียนผู้เรียก createSale เท่าเดิม"),
   D("ST2", "S", "[มติ 7 9 10 · ST7] คีย์ข้อความใหม่ th = en (th ไทย · en ไม่มีไทย): orders.event.held · orders.errors.memberNotFound/partyNotFound/conversationNotFound · recipe.errors.kind/itemArchived/itemService/duplicate/noLines/shape · products.branch.incomplete ({unit}) · products.branch.conflict · OrderPanel EVENT_TYPES มี held · POS-OWNER-PENDING มีบรรทัด P2.9b + HF-FU (บิลเงินสดล้วนหลังเลิกจด VAT ค้าง 2200 · z4)"),
   // ── HN ออเดอร์ที่ครัวพักไว้ (a) ──
-  D("HN1", "-", "[a มติ 1] พักครัว + ช่องทาง adapter NONE รับอัตโนมัติ → ingest = NEW + event held 1 แถว (NEW→NEW · payload.reason paused) · kitchenPauseAction เรียก releaseHeldOrders หลัง setKitchenPause (รอยต่อ POS HF-FU) · เลิกพัก + releaseHeldOrders(T, A) → ACCEPTED (acceptedByUserId null · event accepted ผู้กระทำ null · รอบครัว 1 · บิล PLATFORM 1 · audit pos.order.accept {auto:true, swept:true} ผู้กระทำ SYSTEM) · ผลคืน accepted มี id · ออเดอร์ที่รับเข้าก่อนต้นวันไทย (receivedAt) ยัง NEW · กวาดซ้ำ = ไม่มีอะไรเปลี่ยน"),
+  D("HN1", "-", "[a มติ 1] พักครัว + ช่องทาง adapter NONE รับอัตโนมัติ → ingest = NEW + event held 1 แถว (NEW→NEW · payload.reason paused) · kitchenPauseAction เรียก releaseHeldOrders หลัง setKitchenPause (รอยต่อ POS HF-FU) · เลิกพัก + releaseHeldOrders(T, A) → ACCEPTED (acceptedByUserId null · event accepted ผู้กระทำ null · รอบครัว 1 · บิล PLATFORM 1 · audit pos.order.accept {auto:true, swept:true} ผู้กระทำ SYSTEM) · ผลคืน accepted มี id · ออเดอร์ที่รับเข้าก่อนต้นวันไทย (receivedAt · ครัวพักข้ามเที่ยงคืน) ถูกกวาดด้วย (P2.14 Q2 · มติ 14) · กวาดซ้ำ = ไม่มีอะไรเปลี่ยน"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
   D("HN2", "X1", "[a มติ 1] เพดาน 1 + ตั๋วค้าง → ออเดอร์ R (GRAB ของไม่พอ) + CHAT c1 c2 c3 = NEW + held {reason:backlog} · kdsTicketDone ตั๋วค้าง → listOrders (กวาดตอนอ่าน) → R ถูกปฏิเสธบิล (STOCK_INSUFFICIENT) คง NEW + held {reason:sale_refused} 1 แถว ไม่มีบิล · c1 ACCEPTED · c2 c3 NEW (หยุดที่ตัวแรกที่ติดเพดาน) · done c1 → kdsBoard (กวาดตอนอ่าน) → c2 · done c2 → listOrders → c3 · FIFO ตาม receivedAt · R ไม่ถูกลองซ้ำ (sale_refused ยัง 1)"),
   D("HN3", "X1", "[a มติ 1] กวาด ‖ พนักงาน acceptOrder ออเดอร์เดียวกัน (ธุรกรรมที่สามถือแถว PosOrder · ทั้งคู่รอ) → ACCEPTED 1 · บิล PLATFORM 1 · รอบครัว 1 · ตัวควบคุมที่ไม่ถูกกวาด: ช่องทางปิดรับอัตโนมัติภายหลัง · MANUAL ที่เริ่ม NEW · NEW ที่ไม่มี held · ช่องทางพักรับ (pausedUntil) · ออเดอร์ held ของสาขา B · ของร้าน T2"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): HN4 (R1 F2)
-  D("HN4", "X1", "[a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที่สามถือแถว o1 ให้ตัวแรกผ่านด่านเพดานแล้วรอ · ช่องทาง o1 ปิดรับอัตโนมัติระหว่างนั้น) → ACCEPTED 1 · ตั๋วค้าง ≤ เพดาน · บิล 1 · รอบครัว 1"),
+  D("HN4", "X1", "[a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที่สามถือแถว o1 ให้ตัวแรกผ่านด่านเพดานแล้วรอ · ช่องทาง o1 ปิดรับอัตโนมัติหลังกวาด — ORD-6) → ACCEPTED 1 · ตั๋วค้าง ≤ เพดาน · บิล 1 · รอบครัว 1"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-6 · CD-B6)
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): HN5 (hunter H1)
-  D("HN5", "X1", "[a fix2 มติ 1] ออเดอร์ PLATFORM (PLATFORM_PAID) พักที่เพดาน 1 · (ก) ช่องทาง CUSTOM เปลี่ยน payout เป็น DIRECT ก่อนกวาด → กวาด ⇒ ยัง NEW + held sale_refused 1 · บิล 0 · รอบครัว 0 · พนักงาน acceptOrder คู่ที่ไม่ตรง ⇒ CHANNEL_PAY_MISMATCH ไม่มีบิล · (ข) ช่องทางปิดรับอัตโนมัติระหว่างตัวกวาดรอล็อกต่อสาขา (ธุรกรรมที่สามถือ posorder-release) ⇒ ยัง NEW · ไม่มี held ใหม่ · บิล 0 · รอบครัว 0"),
+  D("HN5", "X1", "[a fix2 มติ 1] ออเดอร์ PLATFORM (PLATFORM_PAID) พักที่เพดาน 1 · (ก) ช่องทาง CUSTOM เปลี่ยน payout เป็น DIRECT ก่อนกวาด → กวาด ⇒ ยัง NEW + held sale_refused 1 · บิล 0 · รอบครัว 0 · พนักงาน acceptOrder คู่ที่ไม่ตรง ⇒ CHANNEL_PAY_MISMATCH ไม่มีบิล · (ข) ธุรกรรมที่สามถือ posorder-release ⇒ ตัวกวาดคืนทันที swept:false ไม่รับ · ปล่อยล็อกแล้วครั้งถัดไป = รับ (บิล 1 · รอบครัว 1) — ORD-2 try-lock"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-2 · CD-B6)
   // ── OD รอบร่างกำพร้า (b) ──
   D("OD1", "X1", "[b มติ 2] รอบร่าง HELD ของ session ที่หน้าเดิมปิด (table.closeSession) และของ session ที่หน้าเดิมรวมเข้าโต๊ะอื่น (MERGED) → registerTables (อ่านผัง) → DISCARDED ทั้งคู่ + audit pos.heldCart.discard 1 แถว/ร่าง (actorType SYSTEM · after {status DISCARDED, via session_not_open, tableSessionId}) · อ่านซ้ำไม่เพิ่ม audit · registerTables เรียก sweepOrphanTableDrafts"),
   D("OD2", "PAR", "[b มติ 2] ไม่แตะ: ร่างของ session ที่ยัง OPEN · บิลพักในลิ้นชัก (tableSessionId null) · ร่างของ session ที่ปิดแล้วของสาขา B (อ่านผังสาขา A) — ยัง HELD ทุกแถว version เดิม"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): OD3 (R1 F1)
-  D("OD3", "X1", "[b fix1 มติ 1] ร่าง HELD ของ session CLOSED (จ่ายครบ + หน้าเดิมปิด) · ธุรกรรมที่สามถือแถวร่าง → registerTables (ตัวกวาดอ่าน CLOSED แล้วรอ) → void บิลโต๊ะ + ระบายคิวเปิด session กลับ OPEN → ปล่อย ⇒ ร่างยัง HELD (version เดิม · ไม่มี audit ทิ้ง)"),
+  D("OD3", "X1", "[b fix1 มติ 1] ร่าง HELD ของ session CLOSED (จ่ายครบ + หน้าเดิมปิด) · ธุรกรรมที่สามถือแถว session และเปิดกลับ OPEN → registerTables (ตัวกวาดอ่าน CLOSED แล้วรอ session · ORD-4) → ปล่อย ⇒ ร่างยัง HELD (version เดิม · ไม่มี audit ทิ้ง)"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-4 · CD-B6)
   // ── EQ เศษส่วนแบ่ง (c) ──
   D("EQ1", "P", "[c มติ 3] allocateTableSplit บริสุทธิ์: 30 รายการราคาคี่ EQUAL 3 ค่าบริการ 0 → ฐานต่อใบห่าง ≤ 1 · |ค่าบริการของใบ| ≤ 1 · Σ สุทธิ = ยอดโต๊ะ · SEAT กลางโต๊ะล้วน 30 รายการ → ฐานห่าง ≤ 1 · ผลตรงตัวอ้างอิงหมุนเศษ (rot) ทุกบรรทัด · เจ้าของสต็อก = ใบ 1"),
   D("EQ2", "X4", "[c มติ 3] 500 แผนสุ่ม (EQUAL/SEAT มีกลางโต๊ะ · seed คงที่) ตรงตัวอ้างอิงหมุนเศษ · ยอดส่วนแบ่งต่อใบห่าง ≤ 1 · Σ สุทธิตรง · เรียกซ้ำผลเดิม · แผนจริงบน DB (EQUAL 3 ราคาคี่ · ลำดับรายการตามบิลโต๊ะ createdAt,id) = ผลบริสุทธิ์ทุกบรรทัด · ฐานห่าง ≤ 1"),
@@ -77,7 +77,7 @@ const CHECKS: readonly Def[] = [
   D("ZE1", "X2", "[z3 มติ 9] เครื่องหมายของบิล X ในสมุด A (recordExternalSaleZeroEntry เขียน after.bookSystemId) → ย้าย POS ไปผูกสมุด B → applyExternalChannelCommission = {posted:false, reason:no-paid} (ไม่มี JV ใดในสมุด B) · ผูกกลับ A → posted (หรือ already)"),
   D("ZE2", "-", "[z1 มติ 8] posSalePosted: เครื่องหมาย + เอกสารขาย = true · เครื่องหมายไม่มีเอกสาร = false · บิลที่มี JV PAID = true (ตัวควบคุม)"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): ZE3 (hunter H2)
-  D("ZE3", "X2", "[z fix2 มติ 2] บิล zero entry ที่มีค่าคอมฯ จริงในสมุด A (ฉาก A10: มัดจำตอนจด VAT → เลิกจด → บิลสุดท้าย ฿20 · ตัวแทน DIRECT 10%) → ย้าย POS ไปผูกสมุด B → คืนบิลครบ → ระบายคิว ⇒ pos.sale.refunded DONE · ไม่มี P2002 ใน log · COMMISSION ในสมุด B 0 · COMMISSION_REFUNDED ในสมุด B 0 (ปักไว้ · เรื่องเจ้าของ) · COMMISSION ในสมุด A ยัง 1 · ความเคลื่อนไหวสต็อกไม่เพิ่ม"),
+  D("ZE3", "X2", "[z fix2 มติ 2] บิล zero entry ที่มีค่าคอมฯ จริงในสมุด A (ฉาก A10: มัดจำตอนจด VAT → เลิกจด → บิลสุดท้าย ฿20 · ตัวแทน DIRECT 10%) → ย้าย POS ไปผูกสมุด B → คืนบิลครบ → ระบายคิว ⇒ pos.sale.refunded DONE · ไม่มี P2002 ใน log · COMMISSION ในสมุด B 0 · COMMISSION_REFUNDED ในสมุด B 0 (ปักไว้ · เรื่องเจ้าของ) · COMMISSION ในสมุด A ยัง 1 · + บิลที่ 3 (มีสต็อก · ลง JV ในสมุด A ก่อนย้าย) คืนหลังย้าย = ข้าม other-book ในสมุด B · สต็อก +1 (ใบคืน) ไม่ตัดซ้ำ"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3)
   // ── FU P2.11 (f1 f2 f3) ──
   D("FU1", "-", "[f1 f2 มติ 7] report.channels.empty th \"ไม่มียอดในช่วงนี้\" en \"No sales in this period\" (ไม่มี วันนี้/today) · loadProductsData สาขาที่โหลดไม่ครบ (CatalogError — สาขาไม่ผูก POS) อยู่ใน incompleteUnitIds · สาขาปกติไม่อยู่ · ProductPanel ใช้ incompleteUnitIds/branch.incomplete"),
   D("FU2", "X1", "[f3 มติ 10] setChannelPrices + expectedRowsHash: ค่าเก่า → CatalogError CONFLICT ไม่เขียน · ตรง (= ProductsRow.rowsHash = channelRowsHash(rows)) → ok เขียน · ไม่ส่ง → ok (ของเดิม) · channelRowsHash ไม่ขึ้นกับลำดับแถว · คีย์ products.branch.conflict"),
@@ -218,7 +218,7 @@ function constBody(src: string, marker: string): string {
 const firstStatement = (raw: string) => raw.replace(/^\s*(\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*/, "").trimStart();
 const isUseClient = (raw: string) => /^["']use client["']/.test(firstStatement(raw));
 
-// ── git (PAR: ของที่ HF-FU ห้ามแตะ = ตรงฐาน c3c52ef1 หรือตรง merge-base กับ origin/session/pos) ──
+// ── git (PAR: ของที่ HF-FU ห้ามแตะ = ตรงฐาน c3c52ef1 หรือตรงหมุดของเลน 64923c13) ──
 const BASE_REV = "c3c52ef1";
 function gitRun(args: string[]): { ok: boolean; status: number; out: string } {
   try {
@@ -230,9 +230,10 @@ function gitRun(args: string[]): { ok: boolean; status: number; out: string } {
   }
 }
 let mergeBaseRev: string | null | undefined;
+const LANE_PIN = "64923c13"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 function mergeBase(): string | null {
   if (mergeBaseRev !== undefined) return mergeBaseRev;
-  const r = gitRun(["merge-base", "HEAD", "origin/session/pos"]);
+  const r = gitRun(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`]); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   mergeBaseRev = r.ok ? r.out.trim() || null : null;
   return mergeBaseRev;
 }
@@ -1153,7 +1154,7 @@ async function runDb() {
     const hv = await heldEvs(h1);
     if (o0?.status !== "NEW") p.push(`พักครัว + รับอัตโนมัติ → ${ostr(o0)} (คาด NEW)`);
     if (hv.length !== 1 || hv[0]?.fromStatus !== "NEW" || hv[0]?.toStatus !== "NEW" || hv[0]?.payload?.reason !== "paused") p.push(`event held ${hv.length} ${short(hv.map((e) => [e.fromStatus, e.toStatus, e.payload]), 100)} (คาด 1 · NEW→NEW · reason paused)`);
-    // ออเดอร์ของวันก่อน (เวลา receivedAt ย้อนก่อนต้นวันไทย) — ไม่ถูกกวาด (มติ 1)
+    // ออเดอร์ของวันก่อน (เวลา receivedAt ย้อนก่อนต้นวันไทย) — ถูกกวาดด้วย // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3) มติ 14: P2.14 Q2 ชนะ · เดิม "ไม่ถูกกวาด (มติ 1)"
     await P.$executeRawUnsafe(`UPDATE "PosOrder" SET "receivedAt" = $2 WHERE id = $1 AND "tenantId" = $3`, hOld, new Date(bkkDayStart(new Date()).getTime() - 2 * 3_600_000), T);
     const a0 = await auditsOf(AUDIT_ACCEPT);
     // = kitchenPauseAction หลังเลิกพัก (setKitchenPause แล้ว → releaseHeldOrders)
@@ -1165,19 +1166,20 @@ async function runDb() {
     for (const s of sales) MY_SALES.push(String(s.id));
     const au = (await auditsOf(AUDIT_ACCEPT, h1)).filter((x) => !a0.some((y) => y.id === x.id));
     if (r?.ok === false) p.push(`releaseHeldOrders → ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
-    else if (!Array.isArray(r?.accepted) || !r.accepted.includes(h1) || r.accepted.includes(hOld)) p.push(`ผลคืน accepted ${short(r?.accepted, 80)} (คาดมี h1 ไม่มีออเดอร์วันก่อน)`);
+    else if (!Array.isArray(r?.accepted) || !r.accepted.includes(h1) || !r.accepted.includes(hOld)) p.push(`ผลคืน accepted ${short(r?.accepted, 80)} (คาดมี h1 และออเดอร์วันก่อน)`); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
     if (o1?.status !== "ACCEPTED" || o1?.acceptedByUserId !== null || !o1?.saleId) p.push(`หลังกวาด ${ostr(o1)} (คาด ACCEPTED · ผู้รับ null · มีบิล PLATFORM)`);
     if (acc.length !== 1 || acc[0]?.actorUserId !== null) p.push(`event accepted ${acc.length} ผู้กระทำ ${short(acc[0]?.actorUserId)}`);
     if (rounds.length !== 1 || sales.length !== 1) p.push(`รอบครัว ${rounds.length} · บิล ${sales.length} (คาด 1 · 1)`);
     if (au.length !== 1 || au[0]?.actorType !== "SYSTEM" || au[0]?.after?.auto !== true || au[0]?.after?.swept !== true) p.push(`audit ${AUDIT_ACCEPT} ${au.length} ${short(au.map((x) => [x.actorType, x.after]), 120)} (คาด 1 · SYSTEM · {auto:true, swept:true})`);
     const oOld = await orow(hOld);
-    if (oOld?.status !== "NEW") p.push(`ออเดอร์วันก่อน → ${ostr(oOld)} (คาด NEW คงไว้ให้พนักงาน)`);
+    for (const s of await salesOf(hOld)) MY_SALES.push(String(s.id)); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
+    if (oOld?.status !== "ACCEPTED") p.push(`ออเดอร์วันก่อน → ${ostr(oOld)} (คาด ACCEPTED · ครัวพักข้ามเที่ยงคืนถูกกวาด)`); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
     // กวาดซ้ำ = ไม่มีอะไรเปลี่ยน
     const ev0 = Number(await P.posOrderEvent.count({ where: { tenantId: T } }).catch(() => -1));
     const n0 = (await auditsOf(AUDIT_ACCEPT)).length;
     const r2 = await release();
     if (r2?.ok === false || (Array.isArray(r2?.accepted) && r2.accepted.length) || Number(await P.posOrderEvent.count({ where: { tenantId: T } }).catch(() => -1)) !== ev0 || (await auditsOf(AUDIT_ACCEPT)).length !== n0) p.push(`กวาดซ้ำ → ${codeOf(r2)} ${short(r2?.accepted, 60)} (คาด ไม่มีอะไรเปลี่ยน)`);
-    chk("HN1", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "held ตอนพักครัว · เลิกพักแล้วกวาด = ACCEPTED (ระบบรับ) + audit swept · วันก่อนไม่กวาด · กวาดซ้ำ no-op", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
+    chk("HN1", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "held ตอนพักครัว · เลิกพักแล้วกวาด = ACCEPTED (ระบบรับ) + audit swept · วันก่อนกวาดด้วย (P2.14 Q2) · กวาดซ้ำ no-op", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
   });
 
   await step("HN2", async () => {
@@ -1310,7 +1312,7 @@ async function runDb() {
       const [o1] = ids;
       const sweeps: Promise<Any>[] = [];
       const hl = await holdLock(LOCK_ORDER, [o1], [() => release()], async () => {
-        must("H4 ปิดรับอัตโนมัติ", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: ch1, autoAccept: false }));
+        // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-6 · CD-B6): การแก้ช่องทางย้ายออกนอกล็อกแถว o1 (ORD-6: ตัวกวาดถือ SalesChannel FOR SHARE ⇒ การแก้ช่องทางรอตัวกวาด) — ปิดรับอัตโนมัติหลังกวาด
         for (let i = 0; i < 5; i++) sweeps.push((i < 3 ? release() : O("listOrders", ctxA(), A("OWNER"), {})).catch((e: unknown) => ({ ok: false, code: errCode(e), threw: true })));
         // รอจน S2–S6 จบ (ไม่มีล็อกต่อสาขา) หรือรอคิวล็อกครบ 5 (มีล็อก) — แล้วปล่อยแถว o1
         const t0 = Date.now();
@@ -1324,6 +1326,7 @@ async function runDb() {
         await sleep(600);
       });
       const rs = await Promise.all(sweeps);
+      must("H4 ปิดรับอัตโนมัติ (หลังกวาด)", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: ch1, autoAccept: false })); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-6 · CD-B6)
       const sw1 = hl.res[0];
       if (hl.blocked < 1) p.push("S1 ไม่รอแถว PosOrder ของ o1 (จัดฉากไม่ถึง)");
       if (sw1?.ok === false || rs.some((r) => r?.ok === false)) p.push(`ตัวกวาด → ${[sw1, ...rs].map(codeOf).join(",")}`);
@@ -1404,24 +1407,30 @@ async function runDb() {
       ids.push(oA);
       await heldAtCeiling(oA, "oA");
       await doneRoundsOf(b2);
-      const hl = await holdLock(LOCK_RELEASE, [`posorder-release:${T}:${U.A}`], [() => release()], async () => {
-        must("H5A ปิดรับอัตโนมัติ", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: chA, autoAccept: false }));
+      // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-2 · CD-B6): ตัวกวาดทางอ่านใช้ try-lock (ORD-2) — ระหว่างธุรกรรมที่สามถือ posorder-release ตัวกวาดคืนทันที swept:false ไม่รับ ·
+      //   ปล่อยล็อกแล้วเรียกครั้งถัดไป = รับออเดอร์ (บิล 1 · รอบครัว 1) — แทนฉาก "รอล็อกแล้วช่องทางปิดรับ" ที่ try-lock ทำให้เกิดไม่ได้
+      let rBusy: Any = null;
+      let busyMs = -1;
+      await holdLock(LOCK_RELEASE, [`posorder-release:${T}:${U.A}`], [], async () => {
+        const t0 = Date.now();
+        rBusy = await release();
+        busyMs = Date.now() - t0;
       });
-      const rA = hl.res[0];
+      const oA0 = await orow(oA);
+      if (rBusy?.swept !== false || (Array.isArray(rBusy?.accepted) && rBusy.accepted.length) || busyMs < 0 || busyMs > 2000 || oA0?.status !== "NEW")
+        p.push(`(ข) ตัวกวาดระหว่างล็อกถูกถือ → ${short(rBusy, 60)} ${busyMs} ms · ${ostr(oA0)} (คาด swept:false · ไม่รับ · < 2 วิ · NEW)`);
+      const rNext = await release();
       const oA1 = await orow(oA);
       const sA = await salesOf(oA);
       for (const s of sA) MY_SALES.push(String(s.id));
-      const hvA = await heldEvs(oA);
       const roundsA = (await roundsOf(oA)).length;
-      if (hl.blocked < 1) p.push("(ข) ตัวกวาดไม่รอล็อก posorder-release (จัดฉากไม่ถึง)");
-      if (rA?.ok === false) p.push(`(ข) releaseHeldOrders → ${codeOf(rA)}`);
-      if (oA1?.status !== "NEW" || hvA.length !== 1 || sA.length !== 0 || roundsA !== 0 || (Array.isArray(rA?.accepted) && rA.accepted.includes(oA)))
-        p.push(`(ข) ปิดรับอัตโนมัติระหว่างรอล็อก → ${ostr(oA1)} · held ${hvA.length} ${short(hvA.map((e) => e.payload?.reason), 40)} · บิล ${sA.length} · รอบครัว ${roundsA} · accepted ${short(rA?.accepted, 40)} (คาด NEW · held 1 (backlog) · 0 · 0 · ไม่มี)`);
+      if (!(Array.isArray(rNext?.accepted) && rNext.accepted.includes(oA)) || oA1?.status !== "ACCEPTED" || sA.length !== 1 || roundsA !== 1)
+        p.push(`(ข) ครั้งถัดไปหลังปล่อยล็อก → ${short(rNext, 60)} · ${ostr(oA1)} · บิล ${sA.length} · รอบครัว ${roundsA} (คาด รับ · ACCEPTED · 1 · 1)`);
     } finally {
       await K("kdsSetAutoAcceptMax", ctxA(), A("OWNER"), { maxOpen: null });
       for (const id of ids) if ((await orow(id))?.status === "NEW") await O("rejectOrder", ctxA(DEV1), A("OWNER"), { id, reasonCode: "OTHER" });
     }
-    chk("HN5", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "ช่องทางเปลี่ยนก่อนกวาด: payout ไม่ตรง = NEW + sale_refused ไม่มีบิล · ปิดรับอัตโนมัติ = NEW ไม่มี held ใหม่ · ไม่มีบิลจากคู่ที่ไม่ตรง", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
+    chk("HN5", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "ช่องทางเปลี่ยนก่อนกวาด: payout ไม่ตรง = NEW + sale_refused ไม่มีบิล · ล็อกถูกถือ = swept:false ไม่รับ แล้วครั้งถัดไปรับ (ORD-2) · ไม่มีบิลจากคู่ที่ไม่ตรง" /* ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-2 · CD-B6) */, FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
   });
 
   // ════════ VO CN HU LK2 (ออเดอร์ LINEMAN · บิล PLATFORM) ════════
@@ -1710,19 +1719,17 @@ async function runDb() {
     const r0 = await heldRow(d);
     if (!d || !saleId || cl?.ok !== true || s0?.status !== "CLOSED" || r0?.status !== "HELD") throw new Error(`(fixture) ร่าง ${d ? "✓" : "✗"} · จ่าย ${codeOf(pay)} ${short(pay?.message ?? "", 60)} · ปิด ${short(cl)} · session ${s0?.status} · ร่าง ${r0?.status}`);
     const a0 = (await discards()).filter((x) => x.targetId === d).length;
-    let vd: Any = null;
-    let mid = "";
-    const LOCK_DRAFT = `SELECT id FROM "PosHeldCart" WHERE id = $1 FOR UPDATE`;
-    const hl = await holdLock(LOCK_DRAFT, [d], [() => tbl("registerTables", ctxA(), A("OWNER"))], async () => {
-      vd = await voidSale(saleId);
-      await drain();
-      mid = String((await sessRow(sv.sid))?.status ?? "none");
-    });
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-4 · CD-B6): ORD-4 ตัวกวาดล็อก session ก่อนร่าง ⇒ ฉากใหม่ = ธุรกรรมที่สามถือแถว session (เปิดกลับ OPEN ในธุรกรรมนั้น ·
+    //   แบบที่ตัวรับ void ทำ) → registerTables (ตัวกวาดอ่าน CLOSED แล้วรอ session) → ปล่อย ⇒ ร่างต้องยัง HELD · แล้ว void บิลโต๊ะตามจริง (session คง OPEN)
+    const LOCK_SESSION_REOPEN = `UPDATE "TableSession" SET status = 'OPEN', "closedAt" = NULL WHERE id = $1 RETURNING id`;
+    const hl = await holdLock(LOCK_SESSION_REOPEN, [sv.sid], [() => tbl("registerTables", ctxA(), A("OWNER"))]);
     const f = hl.res[0];
     const r1 = await heldRow(d);
     const a1 = (await discards()).filter((x) => x.targetId === d).length;
-    if (hl.blocked < 1) p.push("ตัวกวาดไม่รอแถวร่าง (จัดฉากไม่ถึง)");
-    if (vd?.ok !== true || mid !== "OPEN") p.push(`(ฉาก) void ${codeOf(vd)} ${short(vd?.message ?? "", 60)} · session ระหว่างรอ ${mid} (คาด ok · OPEN)`);
+    const vd = await voidSale(saleId);
+    await drain();
+    if (hl.blocked < 1) p.push("ตัวกวาดไม่รอแถว session (จัดฉากไม่ถึง)");
+    if (vd?.ok !== true) p.push(`(ฉาก) void ${codeOf(vd)} ${short(vd?.message ?? "", 60)} (คาด ok)`);
     if (f?.ok !== true) p.push(`registerTables → ${codeOf(f)}`);
     if (r1?.status !== "HELD" || r1?.version !== r0?.version || a1 !== a0) p.push(`ร่างของ session ที่ถูกเปิดกลับ → ${r1?.status} v${r1?.version} (คาด HELD v${r0?.version}) · audit ทิ้ง +${a1 - a0} (คาด 0)`);
     if ((await sessRow(sv.sid))?.status !== "OPEN") p.push(`session หลังจบ ${(await sessRow(sv.sid))?.status} (คาด OPEN)`);
@@ -2026,7 +2033,17 @@ async function runDb() {
     };
     await sale("z3b1", 105_000);
     const b2 = await sale("z3b2", 2_000);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) ▸ บิลที่ 3 (ไม่ใช่ zero entry · บรรทัดผูกสต็อกจริง itemId น้ำเปล่า) — ลง JV PAID ในสมุด A3 ก่อนย้ายสมุด ⇒ คืนหลังย้าย = ตัวรับคืนเงินรันเส้นขายซ้ำในสมุด B
+    //   (posSalePosted ของสมุด B = false) ⇒ postExternalSale เจอคีย์ในสมุดอื่น = ข้าม other-book · สต็อกขยับเฉพาะใบคืน (+1) ไม่ตัดซ้ำ ◂
+    await sysSvc.linkUnit(T, S.INV, unit);
+    const b3r = await call(svcMod, "createSale", { tenantId: T, unitId: unit, systemId: pos, idempotencyKey: newKey("z3b3"), lines: [{ name: `น้ำ z3b3 ${RAND}`, qty: 1, unitPriceSatang: 1_000, itemId: INV.water }], payMethods: [xfer(1_000)] });
+    if (!b3r || b3r.ok === false || typeof b3r.saleId !== "string") throw new Error(`(fixture) บิล z3b3 ${codeOf(b3r)} ${short(b3r?.message ?? "", 80)}`);
+    const b3 = String(b3r.saleId);
+    MY_SALES.push(b3);
     await drain();
+    const b3Moves0 = Number(await P.invMovement.count({ where: { tenantId: T, itemId: INV.water } }).catch(() => -1));
+    if ((await jvCount(accA, `PosSale#${b3}#PAID`)) !== 1) throw new Error(`(fixture) บิล z3b3 ไม่มี JV PAID ในสมุด A3 (${await jvCount(accA, `PosSale#${b3}#PAID`)})`);
+    // ◂ ORACLE-EDIT
     // ฉากก่อนย้ายสมุด: บิล ฿20 ไม่มี JV ขาย · เครื่องหมายของสมุด A3 · COMMISSION ในสมุด A3 1 รายการ
     const comKey = `PosSale#${b2}#COMMISSION`;
     const mk = (await auditsOf(ZERO_ENTRY_ACTION, b2)).filter((x) => x?.after?.bookSystemId === accA);
@@ -2037,6 +2054,7 @@ async function runDb() {
     const logs: string[] = [];
     const orig = { error: console.error, warn: console.warn };
     let rid = "";
+    let rid3 = ""; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3)
     try {
       await relink(S.ACCB);
       const line = await P.posSaleLine.findFirst({ where: { saleId: b2 } });
@@ -2045,6 +2063,13 @@ async function runDb() {
       for (const d of docs) MY_SALES.push(String(d.id));
       if (f?.ok !== true || docs.length !== 1) throw new Error(`(fixture) คืน ฿20 → ${codeOf(f)} ${short(f?.message ?? "", 80)} · ใบคืน ${docs.length}`);
       rid = String(docs[0].id);
+      // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) ▸ คืนบิลที่ 3 ครบ (คืนเข้าคลัง) หลังย้ายสมุด ◂
+      const line3 = await P.posSaleLine.findFirst({ where: { saleId: b3 } });
+      const f3 = await call(refundMod, "refundSale", ctxZ, owner, { saleId: b3, lines: [{ lineId: String(line3?.id ?? "none"), qty: 1, restock: true }], payMethods: [xfer(1_000)], reasonCode: "CHANGED_MIND", idempotencyKey: newKey("z3rf3") });
+      const docs3 = (await P.posSale.findMany({ where: { tenantId: T, docType: "REFUND", refSaleId: b3 } }).catch(() => [])) as Any[];
+      for (const d of docs3) MY_SALES.push(String(d.id));
+      if (f3?.ok !== true || docs3.length !== 1) throw new Error(`(fixture) คืน z3b3 → ${codeOf(f3)} ${short(f3?.message ?? "", 80)} · ใบคืน ${docs3.length}`);
+      rid3 = String(docs3[0].id);
       const cap = (k: "error" | "warn") => (...a: unknown[]) => {
         logs.push(a.map((x) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x, Object.getOwnPropertyNames(x ?? {})); } catch { return String(x); } })())).join(" "));
         orig[k](...a);
@@ -2058,6 +2083,17 @@ async function runDb() {
       await relink(accA);
     }
     const ev = ((await P.outboxEvent.findMany({ where: { tenantId: T, type: "pos.sale.refunded" } }).catch(() => [])) as Any[]).filter((e) => e.payload?.refundSaleId === rid);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) ▸ บิลที่ 3: คิวคืน DONE · ไม่มี JV/เอกสารของบิลในสมุด B (ข้าม other-book) · JV PAID ในสมุด A3 ยัง 1 · สต็อกน้ำเปล่า +1 แถวเดียว (ใบคืน) ◂
+    const ev3 = ((await P.outboxEvent.findMany({ where: { tenantId: T, type: "pos.sale.refunded" } }).catch(() => [])) as Any[]).filter((e) => e.payload?.refundSaleId === rid3);
+    const paidB3 = await jvCount(S.ACCB, `PosSale#${b3}#PAID`);
+    const paidA3 = await jvCount(accA, `PosSale#${b3}#PAID`);
+    const docB3 = Number(await P.accountDocument.count({ where: { tenantId: T, systemId: S.ACCB, refType: "PosSale", refId: b3 } }).catch(() => -1));
+    const b3Moves1 = Number(await P.invMovement.count({ where: { tenantId: T, itemId: INV.water } }).catch(() => -1));
+    if (ev3.length !== 1 || ev3[0]?.status !== "DONE") p.push(`บิลที่ 3 pos.sale.refunded ${ev3.length} · ${ev3.map((e) => `${e.status}/${e.attempts}`).join(",")} ${short(ev3[0]?.lastError ?? "", 80)} (คาด 1 · DONE)`);
+    if (paidB3 !== 0 || docB3 !== 0) p.push(`บิลที่ 3 ในสมุด B: JV PAID ${paidB3} · เอกสาร ${docB3} (คาด 0 · 0 — ข้าม other-book)`);
+    if (paidA3 !== 1) p.push(`บิลที่ 3 JV PAID ในสมุด A3 ${paidA3} (คาด 1 เดิม)`);
+    if (b3Moves0 < 0 || b3Moves1 !== b3Moves0 + 1) p.push(`สต็อกน้ำเปล่า ${b3Moves0} → ${b3Moves1} (คาด +1 = ใบคืน · ไม่ตัดซ้ำ)`);
+    // ◂ ORACLE-EDIT
     const p2002 = logs.filter((l) => /P2002|Unique constraint/i.test(l)).length + ev.filter((e) => /P2002|Unique constraint/i.test(String(e.lastError ?? ""))).length;
     const comB = await jvCount(S.ACCB, comKey);
     const revB = await jvCount(S.ACCB, `PosSale#${rid}#COMMISSION_REFUNDED`);
@@ -2072,7 +2108,7 @@ async function runDb() {
     if (comB !== 0) p.push(`COMMISSION ในสมุด B ${comB} (คาด 0)`);
     if (revB !== 0) p.push(`COMMISSION_REFUNDED ในสมุด B ${revB} (คาด 0 · ปักไว้ มติ fix2 ข้อ 2)`);
     if (comA !== 1) p.push(`COMMISSION ในสมุด A3 ${comA} (คาด 1 เดิม)`);
-    if (mv0 < 0 || mv1 !== mv0) p.push(`ความเคลื่อนไหวสต็อกของร้าน ${mv0} → ${mv1} (คาด เท่าเดิม)`);
+    if (mv0 < 0 || mv1 !== mv0 + 1) p.push(`ความเคลื่อนไหวสต็อกของร้าน ${mv0} → ${mv1} (คาด +1 = ใบคืนบิลที่ 3 เท่านั้น)`); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) (เดิม "เท่าเดิม" — บรรทัดไม่มี itemId จึงไม่เคยแดง)
     chk("ZE3", p.length === 0, "คืนบิลหลังย้ายสมุด: คิว DONE · ไม่มี P2002 · ไม่มี COMMISSION/COMMISSION_REFUNDED ในสมุด B · สต็อกไม่ขยับ", FX(P8(p) || "ครบ"));
   });
 }

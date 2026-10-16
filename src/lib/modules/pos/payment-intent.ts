@@ -391,6 +391,8 @@ async function opsAfter(out: PaidOutcome, o: PaidOpts): Promise<void> {
       tenantId: r.tenantId,
       detail: `intent ${r.id} · ยอด ${r.amountSatang} · via ${o.via}${o.beamRef ? ` · charge ${o.beamRef}` : ""}`,
     });
+    // POS P2.14 ▸ QR-2 (Q4): ใบของออเดอร์ (ปฏิเสธ/ยกเลิกตอนรอเงิน) ⇒ ตัวบอกถาวร refund_needed บนออเดอร์ (ผู้เขียน PosOrderEvent = order.ts) · ซ้ำ = ไม่เพิ่มแถว · ล้ม = ไม่กระทบผลของใบ ◂
+    if (r.orderId) await (await import("./order")).recordOrderRefundNeeded(r.tenantId, r.orderId, r.id).catch((e: unknown) => console.warn(`[pos/payment-intent] refund_needed ของออเดอร์ ${r.orderId} ไม่สำเร็จ`, e));
   }
 }
 

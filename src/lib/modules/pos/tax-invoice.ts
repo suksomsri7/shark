@@ -118,7 +118,7 @@ async function docNoOf(ctx: TaxInvoiceCtx, saleId: string, docId: string): Promi
   return ref && ref.docId === docId ? ref.docNo : null;
 }
 
-type IssueCore = { ctx: TaxInvoiceCtx; actor: RegisterActor; saleId: string; buyer: TaxInvoiceBuyer; requestId: string | null; rememberBuyer: boolean; via: "LATER" | "REQUEST" };
+type IssueCore = { ctx: TaxInvoiceCtx; actor: RegisterActor; saleId: string; buyer: TaxInvoiceBuyer; requestId: string | null; rememberBuyer: boolean; via: "LATER" | "REQUEST"; /** POS P2.14 ▸ API-5 คีย์บริการของ REST (pos-api:<keyId>:<saleId>) ◂ */ serviceKey?: string | null };
 
 /** แกนของ R3 (ผ่านด่านสิทธิ์ + ตัวแกะผู้ซื้อมาแล้ว) */
 async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
@@ -209,7 +209,7 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
     action: AUDIT_ISSUED,
     targetType: "PosSale",
     targetId: sale.id,
-    after: { saleId: sale.id, unitId: sale.unitId, docId: conv.docId, docNo: conv.docNo, kind: buyer.kind, buyerName: buyer.name, taxId: maskTaxId(buyer.taxId), branchCode: buyer.branchCode, via: x.via, ...(request ? { requestId: request.id } : {}) },
+    after: { saleId: sale.id, unitId: sale.unitId, docId: conv.docId, docNo: conv.docNo, kind: buyer.kind, buyerName: buyer.name, taxId: maskTaxId(buyer.taxId), branchCode: buyer.branchCode, via: x.via, ...(request ? { requestId: request.id } : {}), ...(x.serviceKey ? { serviceKey: x.serviceKey } : {}) /* POS P2.14 ▸ API-5 ◂ */ },
   });
   for (const r of autoRejected)
     await writeAudit({
@@ -230,19 +230,23 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
  * R3 — ออกใบกำกับภาษีเต็มรูปให้บิลที่ชำระแล้ว (แทนใบกำกับอย่างย่อ) · {ok:true, docId, docNo} | ปฏิเสธเป็นข้อมูล
  * input = {saleId, buyer, requestId?, rememberBuyer?} · ไม่ throw
  */
-export async function issueFullTaxInvoice(ctx: TaxInvoiceCtx, actor: RegisterActor, input: { saleId: string; buyer: unknown; requestId?: string; rememberBuyer?: boolean }): Promise<TaxInvoiceIssueResult> {
+// POS P2.14 ▸ API-5: คีย์บริการของผู้เรียกผ่าน REST — ผูกคีย์ API + บิล (pos-api:<keyId>:<saleId>) · ลง audit pos.taxinvoice.issued (after.serviceKey) ·
+//   บิลเดียวมีใบเต็มรูปเดียว (ผู้ซื้อเดิม = เอกสารเดิม) ⇒ ยิงซ้ำด้วย Idempotency-Key ใหม่ = เอกสารเดิม · หน้าจอไม่ส่ง = ทางเดิม ◂
+const SERVICE_KEY_RE = /^pos-api:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$/;
+export async function issueFullTaxInvoice(ctx: TaxInvoiceCtx, actor: RegisterActor, input: { saleId: string; buyer: unknown; requestId?: string; rememberBuyer?: boolean; serviceKey?: string }): Promise<TaxInvoiceIssueResult> {
   try {
     const c = ctxOf(ctx);
     const a = receiptActorOf(actor);
     if (!c) return taxInvoiceRefuse("SALE_NOT_FOUND");
     if (!a || !canIssue(a, c.unitId)) return taxInvoiceRefuse("PERMISSION_DENIED");
-    if (!isRecord(input) || !onlyKeys(input, ["saleId", "buyer", "requestId", "rememberBuyer"])) return taxInvoiceRefuse("VALIDATION");
+    if (!isRecord(input) || !onlyKeys(input, ["saleId", "buyer", "requestId", "rememberBuyer", "serviceKey"])) return taxInvoiceRefuse("VALIDATION");
+    if (input.serviceKey !== undefined && !(typeof input.serviceKey === "string" && SERVICE_KEY_RE.test(input.serviceKey) && input.serviceKey.endsWith(`:${String(input.saleId)}`))) return taxInvoiceRefuse("VALIDATION"); // POS P2.14 ▸ API-5 ◂
     if (input.rememberBuyer !== undefined && input.rememberBuyer !== null && typeof input.rememberBuyer !== "boolean") return taxInvoiceRefuse("VALIDATION");
     if (input.requestId !== undefined && input.requestId !== null && !isId(input.requestId)) return taxInvoiceRefuse("NOT_FOUND");
     const b = parseTaxInvoiceBuyer(input.buyer);
     if (!b.ok) return taxInvoiceRefuse(b.code, b.message);
     if (!isId(input.saleId)) return taxInvoiceRefuse("SALE_NOT_FOUND");
-    return await issueCore({ ctx: c, actor: a, saleId: input.saleId, buyer: b.buyer, requestId: isId(input.requestId) ? input.requestId : null, rememberBuyer: input.rememberBuyer === true, via: "LATER" });
+    return await issueCore({ ctx: c, actor: a, saleId: input.saleId, buyer: b.buyer, requestId: isId(input.requestId) ? input.requestId : null, rememberBuyer: input.rememberBuyer === true, via: "LATER", serviceKey: input.serviceKey ?? null });
   } catch (e) {
     return internal("issueFullTaxInvoice", e);
   }

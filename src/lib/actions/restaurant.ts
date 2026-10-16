@@ -15,10 +15,20 @@ import * as kds from "@/lib/modules/restaurant/kds";
 import type { CartLine } from "@/lib/modules/restaurant/order";
 import { CatalogError } from "@/lib/modules/pos";
 import { legacyCancelItemSplitGuard, legacyCheckoutSplitGuard, legacyMergeSplitGuard } from "@/lib/modules/pos/table-split"; // POS P2.5 ▸ fix1 มติ 2 (N2): หน้าเดิมไม่เช็คบิล/ยกเลิกรายการของโต๊ะที่แยกบิลอยู่ ◂
+import { posLinkedLegacyDoor } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS = action เงิน/ครัวของหน้าเดิมปิด ◂
 
 function base(unitSlug: string) {
   return `/app/u/${unitSlug}/restaurant`;
 }
+
+// POS P2.14 ▸ LEG-2/4 มติ 1 · มติ 23: สาขาที่ผูก POS ⇒ เช็คบิล/ยืนยันพร้อมเพย์/ยกเลิกรายการ/รวมโต๊ะ/เดิน-ดึงกลับครัวจากหน้าเดิมไม่ได้
+//   (กันเก็บเงินซ้ำ/คืนของซ้ำข้ามประตู — ทำที่ POS › โต๊ะ / ครัว) · ค้นไม่ได้ = ปิด (fail-closed) · action ที่คืน void = redirect ?err=POS_LINKED ไปหน้างาน (มีแถบแจ้ง)
+const POS_LINKED_REASON = "สาขานี้ใช้ POS แล้ว — ทำรายการนี้ที่ POS (โต๊ะ / จอครัว)";
+const POS_LINKED_REFUSAL = { ok: false as const, code: "POS_LINKED" as const, reason: POS_LINKED_REASON };
+async function posLinkedUnit(tenantId: string, unitId: string): Promise<boolean> {
+  return posLinkedLegacyDoor(tenantId, unitId, { write: true });
+}
+// ◂
 
 // บริบทหน่วย + ตรวจสิทธิ์ (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
 async function ctx(unitSlug: string, action: string) {
@@ -143,6 +153,7 @@ const itemSchema = z.object({
 
 export async function createItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   const tags = formData.getAll("tags").map(String);
   const p = itemSchema.safeParse({
     categoryId: formData.get("categoryId"),
@@ -194,6 +205,7 @@ export async function setItemStockAction(unitSlug: string, formData: FormData) {
 
 export async function duplicateItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.duplicate");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await menu.duplicateItem(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   revalidatePath(`${base(unitSlug)}/menu`);
 }
@@ -247,6 +259,7 @@ export async function archiveTableAction(unitSlug: string, formData: FormData) {
 
 export async function setTableStatusAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.setStatus");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   const parsed = z.nativeEnum(TableStatus).safeParse(formData.get("status"));
   if (parsed.success) {
     await table.updateTable(tenantId, unitId, String(formData.get("id") ?? ""), { status: parsed.data });
@@ -257,6 +270,7 @@ export async function setTableStatusAction(unitSlug: string, formData: FormData)
 
 export async function rotateQrAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.rotateQr");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await table.rotateQr(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/setup`);
 }
@@ -264,6 +278,7 @@ export async function rotateQrAction(unitSlug: string, formData: FormData) {
 // ───────────────────────── Sessions ─────────────────────────
 export async function openSessionAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.session.open");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   const tableId = String(formData.get("tableId") ?? "");
   const guestCount = Number(formData.get("guestCount") ?? 0) || undefined;
   await table.openSession(tenantId, unitId, tableId, { guestCount, openedByUserId: userId });
@@ -272,12 +287,14 @@ export async function openSessionAction(unitSlug: string, formData: FormData): P
 
 export async function closeSessionAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.close");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await table.closeSession(tenantId, unitId, String(formData.get("sessionId") ?? ""));
   revalidatePath(base(unitSlug));
 }
 
 export async function moveSessionAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.move");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await table.moveSession(
     tenantId,
     unitId,
@@ -289,6 +306,7 @@ export async function moveSessionAction(unitSlug: string, formData: FormData): P
 
 export async function mergeSessionAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.merge");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   // POS P2.5 ▸ fix2 มติ 2 (F2): โต๊ะที่แยกบิลอยู่ (แผน OPEN ฝั่งใดฝั่งหนึ่ง) รวมจากหน้าเดิมไม่ได้ ◂
   const sg = await legacyMergeSplitGuard({ tenantId, unitId, intoSessionId: String(formData.get("intoSessionId") ?? ""), fromSessionId: String(formData.get("fromSessionId") ?? "") });
   if (!sg.ok) redirect(`${base(unitSlug)}?err=${encodeURIComponent(sg.reason)}`);
@@ -303,6 +321,7 @@ export async function mergeSessionAction(unitSlug: string, formData: FormData): 
 
 export async function linkMemberByPhoneAction(unitSlug: string, sessionId: string, phone: string) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.linkMember");
+  if (await posLinkedUnit(tenantId, unitId)) return { ok: false as const, reason: POS_LINKED_REASON }; // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   const memberSystemId = await systemForUnit(tenantId, unitId, "MEMBER");
   if (!memberSystemId) return { ok: false as const, reason: "ยังไม่ได้เชื่อมระบบสมาชิก" };
   const customer = await member.findOrCreate({ tenantId, memberSystemId, phone, source: "SELF" });
@@ -317,6 +336,7 @@ export async function createStaffOrderAction(
   args: { sessionId?: string; type: "DINE_IN" | "TAKEAWAY"; cart: CartLine[]; note?: string; guestName?: string; guestPhone?: string },
 ) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.order.create");
+  if (await posLinkedUnit(tenantId, unitId)) return { ok: false as const, err: { code: "POS_LINKED" as const, reason: POS_LINKED_REASON } }; // POS P2.14 ▸ LEG-2b (fix1 H3): ไม่สร้างรอบด้วยราคาเมนูเดิมบนโต๊ะ POS ◂
   const res = await order.createOrder({
     tenantId,
     unitId,
@@ -335,12 +355,14 @@ export async function createStaffOrderAction(
 
 export async function confirmOrderAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.order.confirm");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await order.confirmOrder(tenantId, unitId, String(formData.get("orderId") ?? ""));
   revalidatePath(`${base(unitSlug)}/orders`);
 }
 
 export async function cancelOrderItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.order.cancelItem");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   const reason = String(formData.get("reason") ?? "") || "ยกเลิกโดยพนักงาน";
   // POS P2.5 ▸ fix1 มติ 2: รายการในแผนแยกบิลที่เปิดอยู่ ยกเลิกจากหน้าเดิมไม่ได้ (แผนจะค้างจ่ายไม่ได้) ◂
   const sg = await legacyCancelItemSplitGuard({ tenantId, unitId, itemId: String(formData.get("itemId") ?? "") });
@@ -351,6 +373,7 @@ export async function cancelOrderItemAction(unitSlug: string, formData: FormData
 
 export async function rushOrderAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.order.rush");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await order.setOrderRush(tenantId, unitId, String(formData.get("orderId") ?? ""), formData.get("rush") !== "false");
   revalidatePath(base(unitSlug));
 }
@@ -358,12 +381,14 @@ export async function rushOrderAction(unitSlug: string, formData: FormData) {
 // ───────────────────────── Service requests ─────────────────────────
 export async function ackRequestAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.request.ack");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await order.ackServiceRequest(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   revalidatePath(base(unitSlug));
 }
 
 export async function doneRequestAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.request.done");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
   await order.doneServiceRequest(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(base(unitSlug));
 }
@@ -372,6 +397,7 @@ export async function doneRequestAction(unitSlug: string, formData: FormData) {
 // error inline ผ่าน ?err= (pattern เดียวกับ voidCheckoutAction) · idempotent: กดซ้ำ → ไม่มีรายการค้าง → err
 export async function confirmPromptpayPaymentAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   const sessionId = String(formData.get("sessionId") ?? "");
   const requestId = String(formData.get("requestId") ?? "");
   // POS P2.5 ▸ fix1 มติ 2: โต๊ะที่แยกบิลอยู่ (แผน OPEN) เช็คบิลจากหน้าเดิมไม่ได้ (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) ◂
@@ -389,6 +415,7 @@ export async function confirmPromptpayPaymentAction(unitSlug: string, formData: 
 // ───────────────────────── KDS ─────────────────────────
 export async function advanceItemAction(unitSlug: string, itemId: string, to: KdsItemStatus) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kds.advance");
+  if (await posLinkedUnit(tenantId, unitId)) return POS_LINKED_REFUSAL; // POS P2.14 ▸ LEG-2/4 ◂
   const res = await kds.advanceItem(tenantId, unitId, itemId, to);
   revalidatePath(`${base(unitSlug)}/kds`);
   return res;
@@ -396,6 +423,7 @@ export async function advanceItemAction(unitSlug: string, itemId: string, to: Kd
 
 export async function recallItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kds.recall");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   await kds.recallItem(tenantId, unitId, String(formData.get("itemId") ?? ""));
   revalidatePath(`${base(unitSlug)}/kds`);
 }
@@ -406,6 +434,7 @@ export async function checkoutAction(
   args: { sessionId: string; itemIds?: string[]; payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY" },
 ) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
+  if (await posLinkedUnit(tenantId, unitId)) return POS_LINKED_REFUSAL; // POS P2.14 ▸ LEG-2/4 ◂
   // POS P2.5 ▸ fix1 มติ 2: โต๊ะที่แยกบิลอยู่ (แผน OPEN) เช็คบิลจากหน้าเดิมไม่ได้ ◂
   const sg = await legacyCheckoutSplitGuard({ tenantId, unitId, sessionId: args.sessionId });
   if (!sg.ok) return sg;
@@ -424,6 +453,7 @@ export async function checkoutAction(
 // ยกเลิกบิล/คืนเงินหลังชำระ — void PosSale + คืนรายการ + เปิดโต๊ะกลับ · error inline ผ่าน ?err= (pattern เดียวกับ shop.refund)
 export async function voidCheckoutAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.void");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2b (fix1 H3): ยกเลิกบิล POS ทำที่ POS › บิล (สิทธิ์ void · อนุมัติ · PIN · กะ) — ไม่ void PosSale จากหน้าเดิม ◂
   const sessionId = String(formData.get("sessionId") ?? "");
   const res = await order.voidCheckout(tenantId, unitId, sessionId);
   revalidatePath(base(unitSlug));

@@ -42,6 +42,8 @@ export type BillsPageQuery = {
   channel?: string;
   /** POS P2.1 ▸ R11 Q4: ช่องทางขาย (SalesChannel.id ของสาขา) — บิลเดิมนับเป็นช่องทางปริยายตาม sourceModule ◂ */
   salesChannelId?: string;
+  /** POS P2.14 ▸ RPT-5: รหัสช่องทาง (STORE · LINEMAN …) — กรองข้ามสาขา (ทุกสาขา) ◂ */
+  channelCode?: string;
   staffUserId?: string;
   /** เริ่มที่ 1 */
   page?: number;
@@ -120,6 +122,9 @@ export type BillDetail = {
     priceSource: "BASE" | "BRANCH" | "CHANNEL" | "RULE" | "OPEN" | "CUSTOM" | "WEIGHED" | null;
     priceRuleName: string | null;
     listPriceSatang: number | null;
+    /** POS P2.14 ▸ UI-4: ต้นทุนของบรรทัดจากความเคลื่อนไหวสต็อกของบิล (ไม่ผูกสต็อก/ยังไม่ตัด = null) · กำไร = ยอดบรรทัด − ต้นทุน ◂ */
+    costSatang: number | null;
+    marginSatang: number | null;
   }[];
   /** สตางค์ทั้งหมด · subtotal − lineDiscount − billDiscount − coupon − tier + serviceCharge = grandTotal */
   totals: {

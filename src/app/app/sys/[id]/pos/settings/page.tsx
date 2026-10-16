@@ -126,6 +126,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             beamConfigured={beamEnabled()}
             promptpayId={canEditReceipt ? ppId : maskPromptPayId(ppId)}
             promptpayLink="/app/settings/payment"
+            isOwner={m.role === "OWNER"} /* POS P2.14 ▸ UI-10: สวิตช์ทิป/มัดจำ = เจ้าของร้านเท่านั้น (ตัวเก็บยอมเฉพาะ OWNER) ◂ */
           />
         ) : tab === "receipt" ? (
           <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} branch={receiptBranch} /* POS P2.11U ▸ มติ 8 ◂ */ />

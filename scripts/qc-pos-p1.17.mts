@@ -207,7 +207,7 @@ const REPORT_ACTIONS: [string, string[]][] = [
 ];
 /** หัวตาราง CSV ต่อชนิด (R11 · ชื่อที่ตั้งใหม่ — ผู้คุมงานรับรอง) */
 const CSV_HEADERS: Record<string, string[]> = {
-  daily: ["วันที่", "จำนวนบิล", "ยอดก่อนส่วนลด", "ส่วนลด", "ค่าบริการ", "ยอดขายสุทธิ", "VAT", "ยอดก่อน VAT", "ทิป", "บิลยกเลิก", "ยอดบิลยกเลิก", "เฉลี่ยต่อบิล"],
+  daily: ["วันที่", "จำนวนบิล", "ยอดก่อนส่วนลด", "ส่วนลด", "ค่าบริการ", "ยอดขายสุทธิ", "VAT", "ยอดก่อน VAT", "ทิป", "บิลยกเลิก", "ยอดบิลยกเลิก", "เฉลี่ยต่อบิล", "จำนวนคืนเงิน", "ยอดคืนเงิน"], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-5) ▸ มติ 16: + จำนวนคืนเงิน · ยอดคืนเงิน (API-11) · ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 API-11 · CD-B2): ต่อท้ายหลังเฉลี่ยต่อบิล (F11) ◂
   products: ["รหัส", "ชื่อ", "จำนวน", "น้ำหนัก (กรัม)", "จำนวนบิล", "ยอดเต็ม", "ส่วนลดรายการ", "ยอดขาย"],
   staff: ["รหัสผู้ใช้", "ชื่อ", "จำนวนบิล", "ยอดขายสุทธิ", "ส่วนลด", "ทิป", "บิลยกเลิก", "ยอดบิลยกเลิก", "เฉลี่ยต่อบิล"],
   payments: ["วิธีชำระ", "รหัส", "จำนวนรายการ", "จำนวนบิล", "ยอดรับ"],
@@ -1188,7 +1188,7 @@ async function runDb() {
       const rows = parseCsv(body.replace(/^\uFEFF/, ""));
       if (JSON.stringify(rows[0]) !== JSON.stringify(CSV_HEADERS.daily)) p.push(`หัวตาราง ${short(rows[0], 80)}`);
       const e = expDaily(F12);
-      const toCells = (x: Any, first: string) => [first, String(x.billCount), baht(x.grossSatang), baht(x.discountSatang), baht(x.serviceChargeSatang), baht(x.netSalesSatang), baht(x.vatSatang), baht(x.netExVatSatang), baht(x.tipSatang), String(x.voidCount), baht(x.voidTotalSatang), baht(x.avgBillSatang)];
+      const toCells = (x: Any, first: string) => [first, String(x.billCount), baht(x.grossSatang), baht(x.discountSatang), baht(x.serviceChargeSatang), baht(x.netSalesSatang), baht(x.vatSatang), baht(x.netExVatSatang), baht(x.tipSatang), String(x.voidCount), baht(x.voidTotalSatang), baht(x.avgBillSatang), String(x.refundCount), baht(x.refundTotalSatang)]; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 API-11 · CD-B2): สองคอลัมน์คืนเงินต่อท้าย (F11)
       const want = [...e.rows.map((x: Any) => toCells(x, x.businessDate)), toCells(e.totals, "รวม")];
       if (rows.length - 1 !== want.length) p.push(`แถวข้อมูล ${rows.length - 1} ≠ ${want.length}`);
       want.forEach((w, i) => {

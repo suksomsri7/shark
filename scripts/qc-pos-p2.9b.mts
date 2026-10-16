@@ -194,7 +194,47 @@ function walk(dir: string, out: string[] = [], re = /\.(tsx|ts)$/): string[] {
   }
   return out;
 }
-const stripComments = (s: string) => s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+// ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 TL-2) ▸ ตัดคอมเมนต์แบบไล่ตัวอักษร (เคารพสตริง '…' "…" `…` และคอมเมนต์บรรทัด) — แบบ regex เดิม
+//   ให้ "/*" ที่อยู่ในคอมเมนต์บรรทัด (เช่น /m/* ใน scope.ts) กลืนโค้ดยาวถึง "*/" ถัดไป ⇒ ST2 อ่าน scope.ts ไม่ครบ (pos-P2.9b.md:48) · โมเดลเดียวกับ stripCode ของ qc-pos-p2.14 ◂
+function stripComments(src: string): string {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i]!;
+    const d = src[i + 1];
+    if (c === "/" && d === "/") {
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && d === "*") {
+      const e = src.indexOf("*/", i + 2);
+      i = e < 0 ? n : e + 2;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") {
+      const q = c;
+      out += c;
+      i++;
+      while (i < n && src[i] !== q) {
+        if (src[i] === "\\" && i + 1 < n) {
+          out += src[i]! + src[i + 1]!;
+          i += 2;
+          continue;
+        }
+        if (q !== "`" && src[i] === "\n") break;
+        out += src[i]!;
+        i++;
+      }
+      if (i < n) out += src[i]!;
+      i++;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
 const stripPrismaComments = (s: string) => s.replace(/\/\/.*$/gm, "");
 const exportsFn = (src: string, n: string) => new RegExp(`export\\s+(async\\s+)?function\\s+${n}\\b|export\\s+const\\s+${n}\\b|export\\s*\\{[^}]*\\b${n}\\b[^}]*\\}`).test(src);
 function prismaBlock(src: string, kind: "model" | "enum", name: string): string {
