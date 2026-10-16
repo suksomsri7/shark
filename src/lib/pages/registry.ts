@@ -66,6 +66,17 @@ export const WIDGET_DEFS: WidgetDef[] = [
   S("POS", "/pos/products", "สินค้า/บริการ (POS)", "🏷️"),
   S("POS", "/pos/sales", "ประวัติบิล", "🧾"),
   S("POS", "/pos/close", "ปิดวัน", "🌙"),
+  // POS P2.14 ▸ U3 (qc-pages RG-1): เมนู POS ที่เพิ่มใน childrenFor หลัง P1 — สต็อก (P1.14U) · กะ (P1.9U) · รายงาน (P1.17U) · ตั้งค่า (P1.10U) ◂
+  S("POS", "/pos/stock", "สต็อก (POS)", "📦"),
+  S("POS", "/pos/shifts", "กะ", "🕒"),
+  S("POS", "/pos/reports", "รายงานขาย", "📈"),
+  S("POS", "/pos/settings", "ตั้งค่าหน้าขาย", "⚙️"),
+  S("POS", "/pos/tables", "โต๊ะ (POS)", "🪑"),
+  S("POS", "/pos/orders", "ออเดอร์ออนไลน์", "🛵"),
+  S("POS", "/pos/kds", "จอครัว (POS)", "👨‍🍳"),
+  S("POS", "/pos/products/price-rules", "โปรราคา / Happy hour", "⏰"),
+  S("POS", "/pos/reports/print", "พิมพ์รายงานขาย", "🖨️"),
+  // ◂
   S("ACCOUNT", "", "ภาพรวมบัญชี", "📒"),
   S("ACCOUNT", "/account/documents", "เอกสารบัญชี", "📄"),
   S("ACCOUNT", "/account/journal", "สมุดรายวัน", "📓"),
