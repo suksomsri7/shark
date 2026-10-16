@@ -141,6 +141,8 @@ import {
   webSaleBoundInTx as orderWebSaleBoundInTx,
   webClaimRevertInTx as orderWebClaimRevertInTx,
   kitchenProgressInTx as orderKitchenProgressInTx, // POS P2.6 ▸ R11 ◂
+  onIntentPaid as orderOnIntentPaid, // POS P2.7 ▸ ตัวรับ pos.payment.intent_paid ◂
+  expirePreorders as orderExpirePreorders, // POS P2.7 ▸ ตัวกวาดรายชั่วโมง ◂
 } from "./order";
 export const orders = {
   /** R3 — พนักงานคีย์ออเดอร์ (MANUAL/CHAT/ช่องทางกำหนดเอง) · X1 idempotency */
@@ -173,6 +175,9 @@ export const orders = {
   webSaleBoundInTx: orderWebSaleBoundInTx,
   /** H1 — เว็บร้านคืนการ claim (บิลไม่เกิด) ⇒ ออเดอร์กลับเป็น UNPAID */
   webClaimRevertInTx: orderWebClaimRevertInTx,
+  // POS P2.7 ▸ จ่ายก่อน (QR_ORDER): ตัวรับ intent_paid (composition root) · ตัวกวาดออเดอร์ที่เลยเวลาจ่าย (cron รายชั่วโมง) ◂
+  onIntentPaid: orderOnIntentPaid,
+  expirePreorders: orderExpirePreorders,
   /** POS P2.6 ▸ R11 CD7 — ครัวขับ ACCEPTED→PREPARING→READY ในธุรกรรมของจอครัว (pos/kds.ts เรียก · ไม่ถอยสถานะ) ◂ */
   kitchenProgressInTx: orderKitchenProgressInTx,
 } as const;

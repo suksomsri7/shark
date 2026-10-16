@@ -88,6 +88,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosOrder: sys(),
   PosOrderLine: sys(),
   PosOrderEvent: sys(),
+  PosOrderLink: sys(), // POS P2.7 ▸ ลิงก์สั่งล่วงหน้าต่อสาขา (/q/<token>) ◂
   // POS P2.6 ▸ 86/ของหมด: ใคร/เมื่อไร/จากไหน ต่อสินค้าต่อสาขา (ผู้เขียน pos/catalog.ts + catalog-legacy.ts · กรอง tenantId + systemId/unitId ในโค้ด) ◂
   PosAvailabilityMark: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)

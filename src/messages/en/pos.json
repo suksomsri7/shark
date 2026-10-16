@@ -2889,7 +2889,8 @@
       "STORE": "Store",
       "QR_TABLE": "QR table",
       "WEB": "SHARK Shop website",
-      "CHAT": "Chat"
+      "CHAT": "Chat",
+      "QR_ORDER": "Online order (QR)"
     },
     "field": {
       "name": "Channel name",
@@ -3861,7 +3862,9 @@
       "PAY_ON_PICKUP": "Pay on pickup",
       "PLATFORM_PAID": "Paid via platform",
       "PAID": "Paid",
-      "REFUNDED": "Refunded"
+      "REFUNDED": "Refunded",
+      "PENDING_PAYMENT": "Awaiting payment (pay first)",
+      "PREPAID": "Paid · awaiting accept"
     },
     "fulfilment": {
       "PICKUP": "Pickup",
@@ -4002,7 +4005,10 @@
       "sale_bound": "Bill linked",
       "prep_changed": "Prep time changed",
       "refunded": "Bill voided/refunded",
-      "held": "Held by the kitchen (auto-accept waiting)"
+      "held": "Held by the kitchen (auto-accept waiting)",
+      "expired": "Payment time ran out (auto-cancelled)",
+      "customer_paid_claim": "Customer says they paid · check the transfer",
+      "late_payment": "Money arrived after the order was closed"
     },
     "toast": {
       "accepted": "Accepted {ref}",
@@ -4256,6 +4262,115 @@
       "langTh": "Thai",
       "langEn": "English",
       "saved": "Saved"
+    }
+  },
+  "qr": {
+    "common": {
+      "loading": "Loading…",
+      "retry": "Try again",
+      "language": "Language",
+      "th": "Thai",
+      "en": "English",
+      "total": "Total",
+      "subtotal": "Items",
+      "serviceCharge": "Service charge",
+      "qty": "Qty",
+      "add": "Add",
+      "remove": "Remove",
+      "note": "Note to the shop",
+      "close": "Close",
+      "back": "Back",
+      "baht": "THB {amount}"
+    },
+    "item": {
+      "soldOut": "Sold out",
+      "required": "Choose {min}",
+      "optional": "Up to {max}",
+      "addToCart": "Add to cart"
+    },
+    "closed": {
+      "banner": "The shop is not taking orders here right now — you can browse the menu but not order",
+      "CHANNEL_OFF": "Ordering here is turned off",
+      "CHANNEL_PAUSED": "The shop has paused orders",
+      "KITCHEN_PAUSED": "The kitchen has paused orders",
+      "KITCHEN_CLOSED": "The kitchen is closed / outside ordering hours",
+      "PAYMENT_NOT_READY": "Online payment is not set up yet"
+    },
+    "table": {
+      "title": "Table {table}",
+      "menu": "Menu",
+      "cart": "Cart",
+      "send": "Send to kitchen",
+      "sent": "Sent to the kitchen",
+      "rounds": "Ordered",
+      "roundNo": "Round #{no}",
+      "callStaff": "Call staff",
+      "requestBill": "Ask for the bill",
+      "requested": "Staff notified",
+      "bill": "Table bill",
+      "payPromptpay": "Pay with PromptPay (scan QR)",
+      "notifyPaid": "I have paid — tell the shop",
+      "notified": "Shop notified — staff are checking the transfer",
+      "payHidden": "This table is splitting the bill — please pay at the cashier",
+      "empty": "Nothing ordered yet",
+      "serviceChargeNote": "Service charge {rate}%"
+    },
+    "kitchen": {
+      "NEW": "Waiting",
+      "COOKING": "Cooking",
+      "READY": "Ready to serve",
+      "SERVED": "Served",
+      "CANCELLED": "Cancelled"
+    },
+    "preorder": {
+      "title": "Order online · {unit}",
+      "menu": "Menu",
+      "cart": "Cart",
+      "checkout": "Pickup details",
+      "name": "Name",
+      "phone": "Phone",
+      "pdpa": "Used only to contact you about this order",
+      "place": "Order and pay",
+      "prepNote": "About {min} minutes after the shop accepts",
+      "pickupOnly": "Pickup at the shop"
+    },
+    "status": {
+      "title": "Order {code}",
+      "pay": "Scan to pay with PromptPay",
+      "payAmount": "Amount to pay",
+      "payBy": "Pay before",
+      "claim": "I have paid",
+      "claimed": "Shop notified — waiting for the shop to check",
+      "paid": "Payment received — waiting for the shop to accept",
+      "accepted": "The shop accepted your order",
+      "preparing": "Preparing",
+      "ready": "Ready for pickup",
+      "readyEta": "Ready around",
+      "handed": "Picked up — thank you",
+      "expired": "PromptPay payment not received — the time to pay has run out",
+      "orderAgain": "Order again",
+      "rejected": "The shop could not take this order",
+      "cancelled": "The order was cancelled",
+      "refund": "The shop will refund you — please contact the shop",
+      "receipt": "View receipt",
+      "items": "Items",
+      "phone": "Contact phone"
+    },
+    "errors": {
+      "qrClosed": "The shop is not taking orders here right now",
+      "sessionChanged": "This table's bill was closed or changed — reload the page before ordering",
+      "tokenInvalid": "This QR code no longer works — ask the shop for a new one",
+      "rateLimited": "Too many requests — wait a moment and try again",
+      "preorderExpired": "This order ran out of time to pay or was closed — please order again",
+      "productUnavailable": "Something in your cart is sold out or unavailable — remove it and try again",
+      "validation": "Some details are not valid — please check",
+      "channelNotSold": "This item is not sold here",
+      "optionsRequired": "Please finish choosing the options",
+      "optionsInvalid": "That option is not valid — choose again",
+      "optionUnavailable": "That option is sold out — choose another",
+      "priceNotSet": "This item has no price yet — order at the shop",
+      "internal": "Something went wrong — please try again",
+      "noSession": "This table has no order yet — order first, then call staff or ask for the bill"
     }
   }
 }

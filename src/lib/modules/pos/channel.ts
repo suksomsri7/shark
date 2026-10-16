@@ -11,6 +11,7 @@ import type { Prisma, PrismaClient, SalesChannel } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { prisma } from "./db";
+import { AsyncLocalStorage } from "node:async_hooks"; // POS P2.7 ▸ fix3 R2 G1 ◂
 import {
   CHANNEL_BUILTIN_CODES,
   CHANNEL_BUILTIN_NAMES,
@@ -142,7 +143,7 @@ export async function ensureUnitChannels(db: Db, scope: { tenantId: string; syst
       code,
       kind: "BUILTIN" as const,
       name: CHANNEL_BUILTIN_NAMES[code],
-      adapter: code === "WEB" ? ("WEB" as const) : code === "CHAT" ? ("CHAT" as const) : ("NONE" as const),
+      adapter: code === "WEB" ? ("WEB" as const) : code === "CHAT" ? ("CHAT" as const) : code === "QR_ORDER" ? ("QR" as const) /* POS P2.7 ▸ QR_ORDER → QR (มติ 2 · CD-O5) ◂ */ : ("NONE" as const),
       active: true,
       sortOrder: i,
       payout: "DIRECT" as const,
@@ -175,7 +176,9 @@ export async function resolveSaleChannel(
   const invalid = { ok: false as const, code: "CHANNEL_INVALID" as const, message: "ช่องทางขายนี้ใช้ไม่ได้ (ไม่พบ ปิดอยู่ เก็บแล้ว หรือเป็นของสาขาอื่น) — ยังไม่ได้บันทึกบิล" };
   if (!opts.giftCard && opts.channelId !== undefined && opts.channelId !== null) {
     const row = await channelInScope(db, scope, opts.channelId);
-    if (!row || row.archivedAt || !row.active) return invalid;
+    // POS P2.7 ▸ fix2 hunter H3 (มติ 11) · fix3 R2 G1: QR_ORDER ปิดใช้ = ปิดประตูสาธารณะ (กันคำสั่งใหม่) — บิลของออเดอร์ที่ลูกค้าจ่ายแล้ว (รับ PREPAID) ยังลงช่องทางนี้ได้ ·
+    //   ข้อยกเว้นใช้ได้เฉพาะในบริบทการรับ PREPAID (withInactiveQrOrderAllowed ของ order.ts) — ผู้เรียกอื่นทุกตัว (หน้าขาย/REST/มัดจำ/จอง/AI) ช่องทางปิด = CHANNEL_INVALID ◂
+    if (!row || row.archivedAt || (!row.active && !(row.kind === "BUILTIN" && row.code === "QR_ORDER" && qrOrderAcceptScope.getStore() === true /* POS P2.7 ▸ fix3: บริบทการรับ PREPAID เท่านั้น ◂ */))) return invalid;
     return { ok: true, channel: row };
   }
   const code = opts.giftCard ? "STORE" : defaultChannelCode(opts.sourceModule);
@@ -183,6 +186,14 @@ export async function resolveSaleChannel(
   const row = rows.find((r) => r.code === code && r.kind === "BUILTIN");
   return row ? { ok: true, channel: row } : invalid;
 }
+
+// POS P2.7 ▸ fix3 R2 G1: บริบท "รับออเดอร์ PREPAID" (async context ของคำเรียกเดียว · ไม่อยู่ในอินพุตสาธารณะ/REST/CreateSaleInput) — createSale (service.ts ห้ามแตะ · ST3)
+//   เรียก resolveSaleChannel แบบไม่มีตัวเลือก ⇒ order.ts ห่อการสร้างบิลของการรับ PREPAID ด้วยตัวนี้ · นอกบริบท = กติกาเดิม (ช่องทางปิด = CHANNEL_INVALID) ◂
+const qrOrderAcceptScope = new AsyncLocalStorage<boolean>();
+export function withInactiveQrOrderAllowed<T>(fn: () => Promise<T>): Promise<T> {
+  return qrOrderAcceptScope.run(true, fn);
+}
+// ◂ POS P2.7
 
 // ═══════════ API ═══════════
 

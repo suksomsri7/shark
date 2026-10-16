@@ -866,3 +866,22 @@ export async function registerTablePreBill(
   });
 }
 // ◂ POS P2.5
+
+// ═══════════════════ POS P2.7 ▸ เปลี่ยน QR ของโต๊ะจาก POS (มติ 11 · TK2) ═══════════════════
+/**
+ * เปลี่ยน QR ของโต๊ะ (sticker เก่าใช้ไม่ได้ทันที — ประตู /q/t/<qrToken> ตอบ TOKEN_INVALID) — ด่านหน้าขาย + restaurant.table.rotateQr ที่สาขานี้ ·
+ * โต๊ะของสาขาอื่น/ร้านอื่น/เก็บถาวร = TABLE_NOT_FOUND · ตัวเขียน = restaurant rotateQr เดิม (ผ่าน facade) · audit
+ */
+export async function registerRotateTableQr(ctx: RegisterCtx, actor: RegisterActor, input: { tableId: string }, client?: Db): Promise<{ ok: true; tableId: string; qrToken: string } | RegisterRefusal> {
+  return guard("registerRotateTableQr", async () => {
+    const db: Db = client ?? prisma;
+    const s = await scope(db, ctx, actor, "restaurant.table.rotateQr");
+    if (isRefusal(s)) return s;
+    if (!isRecord(input) || !isId(input.tableId) || Object.keys(input).some((k) => k !== "tableId")) return refuse("VALIDATION");
+    const r = await (await restaurant()).rotateTableQrForPos(db, { tenantId: s.tenantId, unitId: s.unitId, tableId: input.tableId });
+    if (!r.ok) return refuse("TABLE_NOT_FOUND");
+    await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "restaurant.table.rotateQr", targetType: "RestaurantTable", targetId: input.tableId, after: { tableId: input.tableId, via: "POS" } });
+    return { ok: true as const, tableId: input.tableId, qrToken: r.qrToken };
+  });
+}
+// ◂ POS P2.7

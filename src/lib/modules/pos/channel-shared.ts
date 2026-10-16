@@ -7,7 +7,7 @@
 
 // ═══════════ ค่าคงที่ ═══════════
 /** ช่องทางพื้นฐานของทุกสาขา (สร้างแบบขี้เกียจ · ensureUnitChannels) — ลำดับนี้ = ลำดับแสดง */
-export const CHANNEL_BUILTIN_CODES = ["STORE", "QR_TABLE", "WEB", "CHAT"] as const;
+export const CHANNEL_BUILTIN_CODES = ["STORE", "QR_TABLE", "WEB", "CHAT", "QR_ORDER"] as const; // POS P2.7 ▸ + QR_ORDER สั่งออนไลน์ผ่านลิงก์/QR ของร้าน (จ่ายก่อน · มติ 2) ◂
 /** แพลตฟอร์มสำเร็จรูป — สร้างด้วยรหัสนี้ ⇒ kind EXTERNAL · payout ปริยาย PLATFORM · adapter ปริยาย MANUAL (มติ 2) */
 export const CHANNEL_EXTERNAL_PRESETS = ["LINEMAN", "GRAB", "FOODPANDA", "SHOPEE", "LAZADA", "TIKTOK"] as const;
 /** เพดานช่องทางต่อสาขา (นับแถวที่เก็บแล้วด้วย — รหัสยังจองอยู่ · มติ 5) */
@@ -27,13 +27,15 @@ export const CHANNEL_BUILTIN_NAMES: Readonly<Record<ChannelBuiltinCode, string>>
   QR_TABLE: "QR โต๊ะ",
   WEB: "เว็บร้าน SHARK Shop",
   CHAT: "แชท",
+  QR_ORDER: "สั่งออนไลน์ (QR)", // POS P2.7 ▸ มติ 2 ◂
 };
 
 export const CHANNEL_KINDS = ["BUILTIN", "EXTERNAL", "CUSTOM"] as const;
 export const CHANNEL_ADAPTERS = ["NONE", "MANUAL", "WEB", "CHAT", "API"] as const;
 export const CHANNEL_PAYOUTS = ["PLATFORM", "DIRECT"] as const;
 export type ChannelKind = (typeof CHANNEL_KINDS)[number];
-export type ChannelAdapter = (typeof CHANNEL_ADAPTERS)[number];
+// POS P2.7 ▸ adapter QR = ของช่องทาง builtin QR_ORDER เท่านั้น (ensureUnitChannels ตั้งให้) — ไม่อยู่ในรายการที่ผู้ใช้เลือกได้ (CHANNEL_ADAPTERS) ◂
+export type ChannelAdapter = (typeof CHANNEL_ADAPTERS)[number] | "QR";
 export type ChannelPayout = (typeof CHANNEL_PAYOUTS)[number];
 
 // ═══════════ ชนิดข้อมูล (สัญญา P2.1U) ═══════════

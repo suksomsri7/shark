@@ -308,7 +308,7 @@ function runC9(): void {
   if (!files.length) p.push("ไม่มี migration ที่สร้าง PosPaymentIntent");
   for (const f of files) {
     const stmts = rd(f).replace(/--.*$/gm, "").split(";").map((s) => s.trim()).filter(Boolean);
-    const bad = stmts.filter((s) => !/^CREATE\s+(TYPE|TABLE|UNIQUE\s+INDEX|INDEX)\b/i.test(s) && !/^ALTER\s+TABLE\s+"[A-Za-z]+"\s+ADD\s+(COLUMN|CONSTRAINT)\b/i.test(s) && !/^ALTER\s+TYPE\s+"[A-Za-z]+"\s+ADD\s+VALUE\b/i.test(s));
+    const bad = stmts.filter((s) => !/^SET\s+(LOCAL\s+)?lock_timeout\b/i.test(s) /* ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7 fix 1) CD-B4: SET lock_timeout ได้ */ && !(/^ALTER\s+TABLE\s+"[A-Za-z]+"\s+/i.test(s) && s.replace(/^ALTER\s+TABLE\s+"[A-Za-z]+"\s+/i, "").split(/,\s*(?=ADD\s|ALTER\s)/i).every((c) => /^(ADD\s+(COLUMN|CONSTRAINT)\b|ALTER\s+COLUMN\s+"\w+"\s+DROP\s+NOT\s+NULL\s*$)/i.test(c.trim()))) /* ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7 fix 2) F8: ALTER TABLE ที่ทุกส่วนเป็น ADD COLUMN/CONSTRAINT หรือ ALTER COLUMN … DROP NOT NULL = เพิ่มอย่างเดียว (ตรวจทีละส่วน) */ && !/^CREATE\s+(TYPE|TABLE|UNIQUE\s+INDEX|INDEX)\b/i.test(s) && !/^ALTER\s+TABLE\s+"[A-Za-z]+"\s+ADD\s+(COLUMN|CONSTRAINT)\b/i.test(s) && !/^ALTER\s+TYPE\s+"[A-Za-z]+"\s+ADD\s+VALUE\b/i.test(s));
     if (bad.length) p.push(`${f.split("/").slice(-2, -1)[0]}: คำสั่งที่ไม่ใช่การเพิ่ม (${short(bad[0], 60)})`);
   }
   // ลงทะเบียน

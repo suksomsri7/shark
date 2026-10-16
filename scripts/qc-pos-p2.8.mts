@@ -496,7 +496,8 @@ async function runStatic(): Promise<void> {
   // ST1 schema + migration
   await step("ST1", async () => {
     const p: string[] = [];
-    for (const [en, vals] of [["PosOrderStatus", ORDER_STATUSES], ["PosOrderPaymentState", PAY_STATES], ["PosOrderFulfilment", FULFILMENTS]] as const) {
+    const PAY_STATES_SCHEMA = [...PAY_STATES, "PENDING_PAYMENT", "PREPAID"] as const; // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7) CD-O4: enum ใน schema = 5 เดิม + PENDING_PAYMENT PREPAID (มติ 8 · เพิ่มอย่างเดียว) — ใช้เทียบ schema ที่นี่เท่านั้น · :545 (migration p28) และ :786 (ORDER_PAYMENT_STATES) ยังใช้ PAY_STATES 5 ค่า
+    for (const [en, vals] of [["PosOrderStatus", ORDER_STATUSES], ["PosOrderPaymentState", PAY_STATES_SCHEMA], ["PosOrderFulfilment", FULFILMENTS]] as const) {
       const v = enumValues(prismaBlock(schemaSrc, "enum", en));
       if (!v.length) p.push(`ไม่มี enum ${en}`);
       else if (setStr(v) !== setStr([...vals])) p.push(`${en} = ${v.join(",")} (คาด ${vals.join(",")})`);
@@ -519,7 +520,7 @@ async function runStatic(): Promise<void> {
       if (now !== setStr(base) && now !== atMb) p.push(`${m} ฟิลด์เปลี่ยน (เกิน ${fieldNames(prismaBlock(schemaSrc, "model", m)).filter((f) => !base.includes(f)).join(",") || "-"} · ขาด ${base.filter((f) => !fieldNames(prismaBlock(schemaSrc, "model", m)).includes(f)).join(",") || "-"})`);
     }
     // migration
-    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /"PosOrder"|"PosOrderLine"|"PosOrderEvent"|"PosOrderStatus"/.test(rd(f)));
+    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /CREATE TABLE IF NOT EXISTS "PosOrder(Line|Event)?"/.test(rd(f))); // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.7 fix 1) CD-B3: นับเฉพาะ migration ที่สร้างตาราง PosOrder* (ALTER เพิ่มล้วนของใบหลังไม่นับ)
     if (files.length !== 1) p.push(`migration ที่แตะ PosOrder* = ${files.length} ไฟล์ (คาด 1)`);
     for (const f of files) {
       const name = f.split("/").slice(-2, -1)[0] ?? "";

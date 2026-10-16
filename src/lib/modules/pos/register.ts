@@ -501,6 +501,8 @@ import {
   type RegisterVatConfigResult,
   type RegisterWeighedScan,
 } from "./register-shared";
+import { regResolveOptions } from "./register-shared"; // POS P2.7 ▸ CD4 มติ 9: ตัวตรวจตัวเลือกย้ายไป register-shared (ประตู QR สาธารณะใช้ตัวเดียวกัน) ◂
+import type { RegOptChoice, RegOptGroup, RegPickedOption } from "./register-shared"; // POS P2.7 ▸ CD4 ◂
 
 /** ผู้เรียกส่ง PrismaClient ของตัวเองได้ (ข้อสอบยิงพร้อมกันบน connection แยกต่อคำขอ) — ไม่ส่ง = prisma ของแอป */
 type RegDb = PrismaClient;
@@ -877,8 +879,6 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
 }
 
 // ── POS P1.2 ▸ ตัวช่วยอ่านตัวเลือก/ตัวแปร/ค่าตั้งป้ายชั่ง (อ่านอย่างเดียว · ใช้ร่วม quote/submit/สแกน/ป๊อปโอเวอร์) ◂ ──
-type RegOptChoice = { id: string; name: string; nameEn: string | null; priceDelta: number; isDefault: boolean; isOutOfStock: boolean };
-type RegOptGroup = { id: string; name: string; nameEn: string | null; minSelect: number; maxSelect: number; choices: RegOptChoice[] };
 
 /**
  * กลุ่มตัวเลือกที่ผูกกับสินค้า (owner = แม่ของตัวแปร หรือตัวเอง) อ่านสดจาก MenuOptionGroup/Choice (brief §3 · ไม่มีสำเนา):
@@ -910,25 +910,7 @@ async function regOptionCatalog(db: RegDb, tenantId: string, ownerIds: string[])
   return out;
 }
 
-type RegPickedOption = { choiceId: string; groupId: string; groupName: string; name: string; priceDeltaSatang: number };
-/**
- * R2 — ตัวเลือกที่ส่งมากับบรรทัด ตรวจตามลำดับ: ไม่ใช่ตัวเลือกที่ใช้งานของกลุ่มที่ผูก = OPTIONS_INVALID → 86 = OPTION_UNAVAILABLE →
- * กลุ่มใดเลือกน้อยกว่า minSelect = OPTIONS_REQUIRED → เกิน maxSelect = OPTIONS_INVALID · ไม่ใส่ isDefault ให้เอง · ราคา/ชื่อจาก DB เท่านั้น
- */
-function regResolveOptions(groups: RegOptGroup[], chosen: string[]): { ok: true; picked: RegPickedOption[]; delta: number } | { ok: false; code: "OPTIONS_INVALID" | "OPTION_UNAVAILABLE" | "OPTIONS_REQUIRED" } {
-  const byChoice = new Map<string, { g: RegOptGroup; c: RegOptChoice }>();
-  for (const g of groups) for (const c of g.choices) byChoice.set(c.id, { g, c });
-  const hits = chosen.map((id) => byChoice.get(id));
-  if (hits.some((h) => !h)) return { ok: false, code: "OPTIONS_INVALID" };
-  const found = hits as { g: RegOptGroup; c: RegOptChoice }[];
-  if (found.some((h) => h.c.isOutOfStock)) return { ok: false, code: "OPTION_UNAVAILABLE" };
-  const count = new Map<string, number>();
-  for (const h of found) count.set(h.g.id, (count.get(h.g.id) ?? 0) + 1);
-  if (groups.some((g) => (count.get(g.id) ?? 0) < g.minSelect)) return { ok: false, code: "OPTIONS_REQUIRED" };
-  if (groups.some((g) => (count.get(g.id) ?? 0) > g.maxSelect)) return { ok: false, code: "OPTIONS_INVALID" };
-  const picked = found.map((h) => ({ choiceId: h.c.id, groupId: h.g.id, groupName: h.g.name, name: h.c.name, priceDeltaSatang: h.c.priceDelta }));
-  return { ok: true, picked, delta: picked.reduce((t, x) => t + x.priceDeltaSatang, 0) };
-}
+
 
 /** ตัวแปรของแม่ที่ขายได้ที่สาขานี้ (กติกามองเห็นเดียวกับกริด) เรียงชื่อ+id */
 async function regChildViews(db: RegDb, s: RegScope, parentId: string): Promise<RegisterProduct[]> {

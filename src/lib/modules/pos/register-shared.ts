@@ -1116,3 +1116,28 @@ export type RegisterMemberBenefits = {
 };
 export type RegisterMemberBenefitsResult = RegisterMemberBenefits | RegisterRefusal;
 export type RegisterFulfilRewardResult = { ok: true } | RegisterRefusal;
+
+// ═══════════ POS P2.7 ▸ CD4 มติ 9: ตัวตรวจตัวเลือกของบรรทัด (ย้ายจาก register.ts ทุกตัวอักษร · register.ts import กลับ) — ประตูสาธารณะ QR (pos/qr-order.ts) ใช้ตัวเดียวกับหน้าขาย ═══════════
+export type RegOptChoice = { id: string; name: string; nameEn: string | null; priceDelta: number; isDefault: boolean; isOutOfStock: boolean };
+export type RegOptGroup = { id: string; name: string; nameEn: string | null; minSelect: number; maxSelect: number; choices: RegOptChoice[] };
+
+export type RegPickedOption = { choiceId: string; groupId: string; groupName: string; name: string; priceDeltaSatang: number };
+/**
+ * R2 — ตัวเลือกที่ส่งมากับบรรทัด ตรวจตามลำดับ: ไม่ใช่ตัวเลือกที่ใช้งานของกลุ่มที่ผูก = OPTIONS_INVALID → 86 = OPTION_UNAVAILABLE →
+ * กลุ่มใดเลือกน้อยกว่า minSelect = OPTIONS_REQUIRED → เกิน maxSelect = OPTIONS_INVALID · ไม่ใส่ isDefault ให้เอง · ราคา/ชื่อจาก DB เท่านั้น
+ */
+export function regResolveOptions(groups: RegOptGroup[], chosen: string[]): { ok: true; picked: RegPickedOption[]; delta: number } | { ok: false; code: "OPTIONS_INVALID" | "OPTION_UNAVAILABLE" | "OPTIONS_REQUIRED" } {
+  const byChoice = new Map<string, { g: RegOptGroup; c: RegOptChoice }>();
+  for (const g of groups) for (const c of g.choices) byChoice.set(c.id, { g, c });
+  const hits = chosen.map((id) => byChoice.get(id));
+  if (hits.some((h) => !h)) return { ok: false, code: "OPTIONS_INVALID" };
+  const found = hits as { g: RegOptGroup; c: RegOptChoice }[];
+  if (found.some((h) => h.c.isOutOfStock)) return { ok: false, code: "OPTION_UNAVAILABLE" };
+  const count = new Map<string, number>();
+  for (const h of found) count.set(h.g.id, (count.get(h.g.id) ?? 0) + 1);
+  if (groups.some((g) => (count.get(g.id) ?? 0) < g.minSelect)) return { ok: false, code: "OPTIONS_REQUIRED" };
+  if (groups.some((g) => (count.get(g.id) ?? 0) > g.maxSelect)) return { ok: false, code: "OPTIONS_INVALID" };
+  const picked = found.map((h) => ({ choiceId: h.c.id, groupId: h.g.id, groupName: h.g.name, name: h.c.name, priceDeltaSatang: h.c.priceDelta }));
+  return { ok: true, picked, delta: picked.reduce((t, x) => t + x.priceDeltaSatang, 0) };
+}
+// ◂ POS P2.7

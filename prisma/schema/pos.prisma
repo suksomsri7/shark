@@ -33,6 +33,7 @@ enum SalesChannelAdapter {
   WEB
   CHAT
   API
+  QR // POS P2.7: ช่องทาง builtin QR_ORDER (สั่งออนไลน์ผ่านลิงก์/QR ของร้าน · จ่ายก่อน)
 }
 
 enum SalesChannelPayout {
@@ -696,8 +697,8 @@ model PosPaymentIntent {
   qrPayload         String? // EMV ของ QR (STATIC/Beam) · บัตร = URL หน้าชำระของ Beam
   beamChargeId      String?
   beamRef           String? // chargeId ที่ webhook ยืนยัน
-  deviceId          String
-  createdByUserId   String
+  deviceId          String? // POS P2.7 CD5: null = ใบของออเดอร์สาธารณะ (ไม่มีเครื่อง)
+  createdByUserId   String? // POS P2.7 CD5: null = ระบบ (ลูกค้าสั่งเองผ่าน /q/<token>)
   confirmedVia      String? // "WEBHOOK" | "MANUAL"
   confirmedByUserId String?
   paidAt            DateTime?
@@ -708,9 +709,12 @@ model PosPaymentIntent {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  orderId           String? // POS P2.7: PosOrder.id ของใบที่ลูกค้าจ่ายก่อน (QR_ORDER)
+
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, unitId, status, createdAt])
   @@index([beamChargeId])
+  @@index([orderId])
 }
 
 // ═══════════════════ POS P1.15 — PIN พนักงาน · ข้อมูลประกอบคำขออนุมัติของ POS (ตารางใหม่ล้วน · CD1–CD5) ═══════════════════
