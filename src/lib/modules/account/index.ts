@@ -729,6 +729,8 @@ export async function applyExternalChannelCommission(input: {
   if (!input.reverse && !(await posSaleEntryPosted(ctx, input.refId, "PAID")) && !(await externalSaleZeroEntryRecorded(ctx, input.refId))) return { posted: false, reason: "no-paid" };
   if (input.reverse && saleId && !(await posSaleEntryPosted(ctx, saleId, "COMMISSION"))) {
     // POS HF-FU2 ▸ ACC-1 (มติ 1): ค่าคอมฯ ของบิลลงไว้ในสมุดอื่น (ย้ายสมุดหลังขาย) ⇒ "other-book" — ไม่โพสต์ข้ามสมุด · ผู้เรียก (POS) เตือน ops ให้ปรับมือในสมุดเดิม (W8) ◂
+    //   ใบคืนนี้กลับค่าคอมฯ ไว้ในสมุดเดิมแล้ว (ลงก่อนย้ายสมุด · เล่นซ้ำหลังย้าย) = "already" — ไม่เตือนซ้ำว่าต้องปรับมือ
+    if (await posSaleEntryInOtherBook(ctx, input.refId, "COMMISSION_REFUNDED")) return { posted: false, reason: "already" };
     if (await posSaleEntryInOtherBook(ctx, saleId, "COMMISSION")) return { posted: false, reason: "other-book" };
     return { posted: false, reason: "no-commission" };
   }
