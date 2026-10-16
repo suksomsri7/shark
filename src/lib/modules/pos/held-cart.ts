@@ -556,7 +556,8 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
         const k = q.lineIndex;
         if (typeof k !== "number" || k < 0 || k >= probe.length) break;
         // P1.2 R2 F5: ปฏิเสธเพราะสิทธิ์ล้วน (น้ำหนักกรอกเอง) = "ต้องมีสิทธิ์" ไม่ใช่ "ขายไม่ได้แล้ว"
-        notices.push({ lineIndex: probe[k]!, code: q.code === "PRODUCT_NOT_FOUND" ? "PRODUCT_NOT_FOUND" : q.code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : "PRODUCT_UNAVAILABLE" });
+        // POS P2.14 ▸ UI-12: CHANNEL_NOT_SOLD (ช่องทางของบิลพักไม่ขายสินค้านี้) แยกจาก "ขายไม่ได้แล้ว" ◂
+        notices.push({ lineIndex: probe[k]!, code: q.code === "PRODUCT_NOT_FOUND" ? "PRODUCT_NOT_FOUND" : q.code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : q.code === "CHANNEL_NOT_SOLD" ? "CHANNEL_NOT_SOLD" : "PRODUCT_UNAVAILABLE" });
         probe = probe.filter((_, x) => x !== k);
       }
     }

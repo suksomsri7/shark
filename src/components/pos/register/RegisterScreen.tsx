@@ -2334,7 +2334,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
               ? t("held.noticePriceChanged", { name: noticeName(n.key), from: moneyText(n.from ?? 0), to: moneyText(n.to ?? 0) })
               : n.code === "PERMISSION_DENIED"
                 ? t("held.noticeNeedsPermission", { name: noticeName(n.key) })
-                : t("held.noticeUnavailable", { name: noticeName(n.key) })}
+                : n.code === "CHANNEL_NOT_SOLD" // POS P2.14 ▸ UI-12 ◂
+                  ? t("held.noticeChannelNotSold", { name: noticeName(n.key) })
+                  : t("held.noticeUnavailable", { name: noticeName(n.key) })}
           </li>
         ))}
       </ul>

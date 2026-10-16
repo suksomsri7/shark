@@ -529,7 +529,8 @@
       "noticeNeedsPermission": "{name}: needs a manager (typed weight) — ask a manager or remove it",
       "confirmTitle": "Recall bill \"{label}\" {total}",
       "confirmDetail": "The current cart has {count} items — hold it first?",
-      "confirmHoldFirst": "Hold current cart, then recall"
+      "confirmHoldFirst": "Hold current cart, then recall",
+      "noticeChannelNotSold": "{name}: not sold on this bill's channel — remove it before paying"
     },
     "note": {
       "title": "Bill note",
