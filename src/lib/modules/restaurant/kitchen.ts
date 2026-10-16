@@ -40,7 +40,7 @@ export async function kitchenRoutesForPos(db: Db, s: Scope, lines: { productId: 
 }
 // ◂
 
-/** สถานีที่ใช้งาน (ไม่เก็บถาวร) ของสาขา — ลำดับ sortOrder, createdAt */
+/** สถานีที่ใช้งาน (ไม่เก็บถาวร) ของสาขา — ลำดับ sortOrder, createdAt */ // POS P2.14 ▸ fix1 F11 · fix2 G7: JSDoc ติดกับ kitchenStationsForPos (บล็อก UI-8 อยู่ข้างบน) ◂
 export async function kitchenStationsForPos(db: Db, s: Scope): Promise<KitchenStationRow[]> {
   return db.kdsStation.findMany({
     where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null },

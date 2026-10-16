@@ -142,7 +142,7 @@ if [ -n "$VERDICT_DIR" ]; then
   sed -i '/^\(SET\|HEAD-end=\|RED\|ACCEPTED\|VERDICT\|DONE\)\b/d' "$VERDICT_DIR/SUMMARY.txt"
   verdict "$VERDICT_DIR" 0
   grep -E '^(SET|HEAD-end=|RED|VERDICT)' "$VERDICT_DIR/SUMMARY.txt"
-  case "$(grep '^VERDICT ' "$VERDICT_DIR/SUMMARY.txt" | tail -1)" in "VERDICT green"*) exit 0 ;; *) exit 1 ;; esac
+  case "$(grep '^VERDICT ' "$VERDICT_DIR/SUMMARY.txt" | tail -1)" in "VERDICT green"*) exit 0 ;; *) exit 1 ;; esac # POS P2.14 ▸ fix2 G7: exit ตามคำตัดสิน ◂
 fi
 
 if [ "$DRY" -eq 1 ]; then
