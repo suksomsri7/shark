@@ -104,6 +104,17 @@ POST /sync/sales  { deviceId, items:[{ offlineRef:'OFF-C1-0007', idempotencyKey,
 ```
 - ออฟไลน์ขายได้เฉพาะ: เงินสด · โอน(แนบสลิป) · สินค้าในแคช · ไม่ใช้แต้ม/คูปอง/ว่อชเชอร์/บัตร (ต้องออนไลน์) · ใบเสร็จพิมพ์ "รอออกเลขจริง"
 - ขัดแย้ง (สินค้าถูกลบ/ราคาเปลี่ยน) → REJECTED + ผู้จัดการแก้มือ
+- **v2 (P3.4 S as-built · มติ 2 3 4 6 10 · CD-P34a)** — แทนสองบรรทัดบนเมื่อขัดกัน:
+  ```ts
+  // REST: POST /api/v1/pos/sync/sales (op sync.sales · scope pos.offline.sync · kind write) { unitId, deviceId, items[≤50] }
+  // หน้าขายของร้าน: POST /api/pos/sync (route ของ session · pos.sale.create ของผู้ใช้ · ไม่ใช้ scope) { systemId, unitId, deviceId, items[≤50] }
+  item   = { offlineRef:'OFF-C1-0007', idempotencyKey, soldAt (ISO เครื่อง), shiftId?, staffToken?, sellerUserId?, snapshotHash, sale: RegisterSubmitInput − {idempotencyKey, staffToken} }
+  result = { offlineRef, status:'OK'|'DUPLICATE'|'REJECTED', offlineSaleId?, saleId?, receiptNo?, reason?, drift? }   // ทำทีละรายการเรียง (soldAt, seq)
+  ```
+  - ราคา (มติ 10 · R6 hybrid): คิดใหม่ ณ soldAt (โปร ณ เวลาขาย) — ตรงยอดที่เครื่องอ้าง (`sale.expectedGrandTotalSatang`) = OK · ไม่ตรงแต่ตรงราคา snapshot ของเครื่อง = OK ที่ราคา snapshot + `drift` (audit) · ไม่ตรงทั้งคู่ = REJECTED `PRICE_MISMATCH`
+  - ขายได้: เงินสด · โอน (เลขอ้างอิงไม่บังคับ · ไม่มีรูปสลิป — P3.10) · walk-in เท่านั้น · ห้าม พร้อมเพย์/บัตร/บัตรของขวัญ/เครดิตร้าน/มัดจำ/แต้ม/คูปอง/ว่อชเชอร์/โต๊ะ/บิลพัก/ช่องทาง → REJECTED `VALIDATION`
+  - เลขจริงออกตอนซิงก์จากตัวนับเดือนของ soldAt · `paidAt = soldAt` · `createdAt` = เวลาเซิร์ฟเวอร์ · สลิปออฟไลน์ = "ใบรับเงินชั่วคราว — รอออกเลขจริง" (ไม่ใช่ ABB · ไม่มี QR)
+  - เหตุผลที่ปฏิเสธ: `PRICE_MISMATCH CLOCK_INVALID SHIFT_CLOSED SELLER_MISMATCH OFFLINE_REF_TAKEN STOCK_INSUFFICIENT SNAPSHOT_UNKNOWN DEVICE_REVOKED STAFF_TOKEN_INVALID VALIDATION` (+ รหัสของหน้าขาย) → คิวผู้จัดการ (pos.shift.manage: รับ = นอกกะ · ทิ้ง = เหตุผล ≥ 5 ตัว)
 
 ## Event ใหม่ทั้งหมด (ทุกตัวต้องมี consumer อย่างน้อย 1 — กฎ reference_outbox_new_event_needs_consumer)
 | event | payload หลัก | consumer (เมื่อเชื่อม) |
