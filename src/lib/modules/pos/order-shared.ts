@@ -186,7 +186,7 @@ export type OrderCard = {
   shopOrderId: string | null;
   version: number;
   /** POS P2.7 ▸ ออเดอร์จ่ายก่อน (QR_ORDER): หมดเวลาจ่าย · เงินเข้า · ลูกค้ากด "โอนแล้ว" · ใบขอรับเงิน (ยืนยันเอง/ตรวจยอดบนจอ 09) — อื่น = null ◂ */
-  prepay: { payBy: string | null; paidAt: string | null; claimedAt: string | null; intentId: string | null } | null;
+  prepay: { payBy: string | null; paidAt: string | null; claimedAt: string | null; intentId: string | null; /** POS P2.7U ▸ เงินเข้าหลังหมดเวลา (มีบันทึก late_payment · แบนเนอร์จอ 09 · อ่านอย่างเดียว · เพิ่มล้วน) ◂ */ latePaid?: boolean } | null;
 };
 export type OrderLineView = {
   id: string;

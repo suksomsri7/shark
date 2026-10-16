@@ -67,6 +67,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const canAddSystem = evaluate(m, { module: "systems", action: "systems.system.create" });
   // POS P2.1U ▸ มติ 1: แผงช่องทางขาย — แก้ได้เมื่อมี pos.channel.manage ที่สาขานี้ (action ตรวจซ้ำทุกครั้ง) · ไม่มี = อ่านอย่างเดียว ◂
   const canManageChannels = evaluate(m, { module: "pos", action: "pos.channel.manage", unitId });
+  const canAcceptOrders = evaluate(m, { module: "pos", action: "pos.order.accept", unitId }); // POS P2.7U fix1 ▸ F6: ค่าตั้งรับออเดอร์ในลิ้นชัก QR (แบบ RailSettings) ◂
   const needProfile = canRead && (tab === "payments" || tab === "general" || tab === "shark");
   const payProfile = needProfile ? await getPaymentProfile({ tenantId }) : null;
   const ppId = payProfile?.promptpayId?.trim() || null;
@@ -112,9 +113,9 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             <SettingsRefusal message={t("staff.refusal")} />
           )
         ) : tab === "shark" ? (
-          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} />
+          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} />
         ) : tab === "channels" ? (
-          <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} storefront={storefront} />
+          <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
         ) : tab === "offline" ? (
           <OfflinePane />
         ) : tab === "payments" ? (

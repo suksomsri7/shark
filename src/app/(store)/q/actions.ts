@@ -13,6 +13,7 @@ import {
   placeTableRound,
   quotePreorderCart,
   quoteTableCart,
+  tableBill,
   tableNotifyPaid,
   tablePoll,
   tableServiceRequest,
@@ -24,6 +25,7 @@ import type {
   QrPlaceRoundResult,
   QrPreorderInput,
   QrQuoteResult,
+  QrTableBillResult,
   QrTablePollResult,
   QrTableRoundInput,
 } from "@/lib/modules/pos/qr-order-shared";
@@ -63,6 +65,10 @@ export async function placeTableRoundAction(qrToken: string, input: QrTableRound
 }
 export async function tableServiceRequestAction(qrToken: string, kind: "CALL_STAFF" | "REQUEST_BILL"): Promise<QrOkResult> {
   return tableServiceRequest(qrToken, { kind }, { ip: await clientIp() });
+}
+// POS P2.7U ▸ bill of the table for the client island (read-only · same door as the SSR page) ◂
+export async function tableBillAction(qrToken: string): Promise<QrTableBillResult> {
+  return tableBill(qrToken);
 }
 export async function tableNotifyPaidAction(qrToken: string): Promise<QrOkResult> {
   return tableNotifyPaid(qrToken, { ip: await clientIp() });

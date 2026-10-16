@@ -1433,6 +1433,14 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
   ]);
   const chById = new Map(chs.map((c) => [c.id, c]));
   const receipt = new Map(sales.map((x) => [x.id, x.receiptNo]));
+  // POS P2.7U ▸ เงินเข้าหลังหมดเวลา (บันทึก late_payment) ของออเดอร์จ่ายก่อน — ฟิลด์อ่านอย่างเดียวของการ์ด (แบนเนอร์จอ 09 · S5) ◂
+  const prepayIds = rows.filter((r) => r.payBy || r.paymentIntentId).map((r) => r.id);
+  // POS P2.7U fix1 ▸ nit (c): แบนเนอร์เฉพาะเงินที่ยังค้าง (ใบขอรับเงิน PAID · ใช้แล้ว/คืน/ยกเลิก = ไม่แสดง) — ยังอ่านครั้งเดียว (join ใบของ payload.intentId) ◂
+  const latePaid = new Set(
+    prepayIds.length
+      ? (await db.$queryRaw<{ orderId: string }[]>`SELECT e."orderId" AS "orderId" FROM "PosOrderEvent" e JOIN "PosPaymentIntent" i ON i.id = (e.payload->>'intentId') WHERE e."tenantId" = ${tenantId} AND e.type = 'late_payment' AND e."orderId" = ANY(${prepayIds}) AND i."tenantId" = ${tenantId} AND i.status = 'PAID'`).map((e) => e.orderId)
+      : [],
+  );
   const nLines = new Map<string, number>();
   const nQty = new Map<string, number>();
   for (const l of lines) {
@@ -1475,7 +1483,7 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
       receiptNo: o.saleId ? (receipt.get(o.saleId) ?? null) : null,
       shopOrderId: o.shopOrderId,
       version: o.version,
-      prepay: o.payBy || o.paymentIntentId ? { payBy: iso(o.payBy), paidAt: iso(o.paidAt), claimedAt: iso(o.customerClaimAt), intentId: o.paymentIntentId } : null, // POS P2.7 ◂
+      prepay: o.payBy || o.paymentIntentId ? { payBy: iso(o.payBy), paidAt: iso(o.paidAt), claimedAt: iso(o.customerClaimAt), intentId: o.paymentIntentId, ...(latePaid.has(o.id) ? { latePaid: true } : {}) } : null, // POS P2.7 ◂ · POS P2.7U ▸ + latePaid ◂
     };
   });
 }

@@ -21,7 +21,7 @@ import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, type OrdersChanne
 
 export type PanelPerms = { accept: boolean; reject: boolean; create: boolean; voidSale: boolean };
 
-const EVENT_TYPES = new Set(["received", "accepted", "preparing", "ready", "completed", "rejected", "cancelled", "paid", "paid_reverted", "sale_bound", "prep_changed", "refunded", "held"]); // POS HF-FU ▸ a: + held (ครัวพักไว้) ◂
+const EVENT_TYPES = new Set(["received", "accepted", "preparing", "ready", "completed", "rejected", "cancelled", "paid", "paid_reverted", "sale_bound", "prep_changed", "refunded", "held", "expired", "customer_paid_claim", "late_payment"]); // POS HF-FU ▸ a: + held (ครัวพักไว้) ◂ · POS P2.7U ▸ + expired · customer_paid_claim · late_payment ◂
 
 export function OrderPanel(p: {
   detail: OrderDetail | null;
@@ -50,6 +50,8 @@ export function OrderPanel(p: {
   onClose?: () => void;
   /** POS P2.6U ▸ มติ 9c: สาขามีสถานีครัวไหม (บรรทัด "เมื่อกดรับ") · มาตรครัวของออเดอร์นี้ (kitchenProgressAction) ◂ */
   kitchen?: { hasStations: boolean; progress: { done: number; total: number } | null };
+  /** POS P2.7U ▸ ออเดอร์จ่ายก่อนที่ลูกค้าแจ้งโอน: ยืนยันรับเงิน (confirmPaymentIntentManual) · null = ยืนยันไม่ได้ (กติกาผู้จัดการ/สิทธิ์) ◂ */
+  onConfirmPay?: (() => void) | null;
 }) {
   const t = useTranslations("pos.orders");
   const tch = useTranslations("pos.channel");
@@ -135,6 +137,23 @@ export function OrderPanel(p: {
         </p>
         {d.paymentState !== "PLATFORM_PAID" ? <p className="text-[12px] text-[color:var(--color-accent)]">{t(`payment.${d.paymentState}`)}</p> : null}
       </div>
+      {/* POS P2.7U ▸ ออเดอร์จ่ายก่อน: รอเงินเข้า (+ ลูกค้าแจ้งโอน · ยืนยันรับเงิน) · เงินเข้าหลังหมดเวลา (S5) ◂ */}
+      {d.paymentState === "PENDING_PAYMENT" && d.status === "NEW" ? (
+        <div data-testid="pos-ord-pending-note" className="flex flex-col gap-2 border-b bg-[color:var(--color-surface-2)] px-5 py-3 text-[12.5px]">
+          <p className="text-[color:var(--color-ink-soft)]">{t("awaiting.panelNote")}</p>
+          {d.prepay?.claimedAt ? <p className="font-bold text-[color:var(--color-accent)]">{t("awaiting.claimed")}</p> : null}
+          {d.prepay?.claimedAt && d.prepay.intentId ? (
+            <button type="button" data-testid="pos-ord-confirm-pay" disabled={p.busy || !p.onConfirmPay} title={!p.onConfirmPay ? t("awaiting.managerOnly") : undefined} className="btn btn-primary h-12 rounded-[14px] text-[14px] font-bold disabled:opacity-50" onClick={() => p.onConfirmPay?.()}>
+              {t("awaiting.confirmAmount", { amount: moneyText(d.totalSatang) })}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {d.prepay?.latePaid ? (
+        <p data-testid="pos-ord-panel-late" role="alert" className="border-b px-5 py-3 text-[12.5px] font-bold text-[color:var(--color-danger)]">
+          {t("late.banner", { amount: moneyText(d.totalSatang), ref: d.prepay.intentId ?? "-", order: d.ref })}
+        </p>
+      ) : null}
 
       <section className="border-b px-5 py-3">
         <h3 className="mb-1.5 text-[12px] font-bold text-[color:var(--color-muted)]">{t("detail.lines")}</h3>
@@ -186,7 +205,7 @@ export function OrderPanel(p: {
         <section data-testid="pos-ord-on-accept" className="border-b px-5 py-3 text-[12.5px]">
           <h3 className="mb-1.5 text-[12px] font-bold text-[color:var(--color-muted)]">{t("detail.onAccept")}</h3>
           <ul className="flex list-disc flex-col gap-1 pl-5 text-[color:var(--color-ink-soft)]">
-            {platform ? <li>{t("detail.onAcceptSaleNow", { channel: channelName })}</li> : <li>{t("detail.onAcceptSaleLater")}</li>}
+            {platform ? <li>{t("detail.onAcceptSaleNow", { channel: channelName })}</li> : d.paymentState === "PREPAID" ? <li>{t("detail.onAcceptPrepaid", { amount: moneyText(d.totalSatang) })}</li> /* POS P2.7U ◂ */ : <li>{t("detail.onAcceptSaleLater")}</li>}
             {platform ? <li>{t("detail.onAcceptStock")}</li> : null}
             {/* POS P2.6U ▸ มติ 9c: ส่งใบครัวจริงเมื่อรับ (สาขามีสถานีครัว) — ไม่มีสถานี = ไม่ส่ง ◂ */}
             {p.kitchen?.hasStations ? <li data-testid="pos-ord-on-accept-kitchen">{t("detail.onAcceptKitchenLive")}</li> : null}
@@ -242,7 +261,7 @@ export function OrderPanel(p: {
         ) : null}
         {d.status === "NEW" && (
           <>
-            <button type="button" data-testid="pos-ord-accept" disabled={p.busy || !p.perms.accept} title={noAccept} className="btn btn-primary h-14 rounded-[14px] text-[16px] font-bold disabled:opacity-50" onClick={p.onAccept}>
+            <button type="button" data-testid="pos-ord-accept" disabled={p.busy || !p.perms.accept || d.paymentState === "PENDING_PAYMENT" /* POS P2.7U ▸ รอเงินเข้า = รับไม่ได้ (ORDER_UNPAID) ◂ */} title={d.paymentState === "PENDING_PAYMENT" ? t("awaiting.panelNote") : noAccept} className="btn btn-primary h-14 rounded-[14px] text-[16px] font-bold disabled:opacity-50" onClick={p.onAccept}>
               {t("actions.acceptWithPrep", { n: p.acceptPrep })}
             </button>
             <div className={`grid gap-2 ${webPaid ? "grid-cols-1" : "grid-cols-2"}`}>

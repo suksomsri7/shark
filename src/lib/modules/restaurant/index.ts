@@ -102,3 +102,7 @@ export {
   type GuestRoundView,
 } from "./pos-qr";
 // ◂ POS P2.7
+
+// POS P2.7U ▸ read-only readers for the POS QR staff screens ◂
+// fix1 F1: รอบ QR โต๊ะของวันนี้ (จอ 09) · QR ของโต๊ะ (แผงโต๊ะ/แผ่นพิมพ์) · อ่านอย่างเดียว · ผู้เรียก = pos/qr-staff.ts (lazy import)
+export { guestRoundsTodayForPos, tableQrTokensForPos, type GuestRoundTodayRow, type TableQrTokenRow } from "./pos-qr-readers";

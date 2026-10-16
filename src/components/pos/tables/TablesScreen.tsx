@@ -54,6 +54,9 @@ import { TableSplitDialog } from "./TableSplitDialog";
 import { TablePreBillDialog } from "./TablePreBillDialog";
 import { TablePickDialog } from "./TablePickDialog";
 import { TableMergeConfirm, TableMergeChooser, TableMoveConfirm } from "./TableMoveMerge";
+import { TableQrDialog, TableQrPrintPage } from "./TableQr"; // POS P2.7U ◂
+import { qrTablesAction, rotateTableQrAction } from "@/lib/modules/pos/qr-staff-actions"; // POS P2.7U ◂
+import type { QrTableTokenRow } from "@/lib/modules/pos/qr-staff-shared";
 import type { SplitPayPart } from "./table-split-ui";
 // ◂
 
@@ -98,7 +101,10 @@ type Layer =
   | { kind: "move" }
   | { kind: "moveConfirm"; from: TableCard; to: TableCard }
   | { kind: "merge"; into: TableCard; preselect: string[] }
-  | { kind: "mergeConfirm"; into: TableCard; froms: TableCard[] };
+  | { kind: "mergeConfirm"; into: TableCard; froms: TableCard[] }
+  // POS P2.7U ▸ QR ของโต๊ะ (กล่อง) · แผ่นพิมพ์ QR (ทุกโต๊ะ / โต๊ะเดียว) ◂
+  | { kind: "qr"; card: TableCard }
+  | { kind: "qrSheet"; tableId: string | null };
 
 const POLL_MS = 20_000;
 const TICK_MS = 30_000;
@@ -478,6 +484,47 @@ export function TablesScreen(p: TablesScreenProps) {
   }, []);
 
   const target = () => ({ systemId: p.systemId, unitId: p.unitId, ...(deviceId ? { deviceId } : {}) });
+  // POS P2.7U ▸ QR ของโต๊ะ: อ่านเมื่อเปิดกล่อง/แผ่นพิมพ์ (qrTablesAction) · เปลี่ยน QR = rotateTableQrAction (restaurant.table.rotateQr) ◂
+  const [qrData, setQrData] = useState<{ rows: QrTableTokenRow[]; shopName: string; unitName: string; canRotate: boolean } | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrErr, setQrErr] = useState<string | null>(null);
+  const loadQr = async () => {
+    setQrLoading(true);
+    setQrErr(null);
+    try {
+      const r = await qrTablesAction(target());
+      if (r.ok) setQrData({ rows: r.tables, shopName: r.shopName, unitName: r.unitName, canRotate: r.canRotate });
+      else setQrErr(tr(refusalMessageKey(r.code)));
+    } catch {
+      setQrErr(t("page.loadFailed"));
+    } finally {
+      setQrLoading(false);
+    }
+  };
+  const openQr = (l: Extract<Layer, { kind: "qr" | "qrSheet" }>) => {
+    openLayer(l);
+    void loadQr();
+  };
+  const rotateQr = async (card: TableCard): Promise<boolean> => {
+    if (busy) return false;
+    setBusy(true);
+    setLayerErr(null);
+    try {
+      const r = await rotateTableQrAction({ ...target(), tableId: card.id });
+      if (!r.ok) {
+        setLayerErr(tr(refusalMessageKey(r.code)));
+        return false;
+      }
+      setQrData((d) => (d ? { ...d, rows: d.rows.map((x) => (x.tableId === card.id ? { ...x, qrToken: r.qrToken } : x)) } : d));
+      showToast({ key: "qr.rotated", ns: "tables", values: { name: card.name } });
+      return true;
+    } catch {
+      setLayerErr(t("page.loadFailed"));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
   const reloadAll = async () => {
     await refreshFloor();
     if (selSession) await loadDetail(selSession);
@@ -809,6 +856,7 @@ export function TablesScreen(p: TablesScreenProps) {
       }
       onUnlinkMember={() => void linkMember(null)}
       onViewBooking={() => openLayer({ kind: "reservations" })}
+      onShowQr={() => openQr({ kind: "qr", card: selCard })} // POS P2.7U ◂
       onClose={xl ? undefined : closePanel}
       // POS P2.5U ▸ มติ 1: ย้าย/รวม (คีย์) · แยกบิล (pos.sale.create) · ใบรายการ ◂
       split={{
@@ -1012,6 +1060,32 @@ export function TablesScreen(p: TablesScreenProps) {
         return <TableMergeChooser into={layer.into} tables={floor?.tables ?? []} preselect={layer.preselect} busy={busy} error={layerErr} onConfirm={(froms) => void mergeInto(layer.into, froms)} onClose={closeLayer} />;
       case "mergeConfirm":
         return <TableMergeConfirm into={layer.into} froms={layer.froms} busy={busy} error={layerErr} onConfirm={() => void mergeInto(layer.into, layer.froms)} onClose={closeLayer} />;
+      // POS P2.7U ▸ QR ของโต๊ะ · แผ่นพิมพ์ ◂
+      case "qr":
+        return (
+          <TableQrDialog
+            tableName={layer.card.name}
+            row={qrData?.rows.find((x) => x.tableId === layer.card.id) ?? null}
+            loading={qrLoading && !qrData}
+            error={layerErr ?? qrErr}
+            canRotate={!!qrData?.canRotate}
+            busy={busy}
+            onRotate={() => rotateQr(layer.card)}
+            onPrint={() => setLayer({ kind: "qrSheet", tableId: layer.card.id })}
+            onClose={closeLayer}
+          />
+        );
+      case "qrSheet":
+        return (
+          <TableQrPrintPage
+            shopName={qrData?.shopName ?? p.tenantName}
+            unitName={qrData?.unitName ?? ""}
+            rows={(qrData?.rows ?? []).filter((x) => (layer.tableId ? x.tableId === layer.tableId : true))}
+            loading={qrLoading && !qrData}
+            error={qrErr}
+            onClose={closeLayer}
+          />
+        );
       // ◂
     }
   })();
@@ -1050,6 +1124,7 @@ export function TablesScreen(p: TablesScreenProps) {
       onOpen={(c) => openLayer({ kind: "open", card: c })}
       onCleared={(c) => void clearTable(c)}
       onReservations={() => openLayer({ kind: "reservations" })}
+      onPrintQr={() => openQr({ kind: "qrSheet", tableId: null })} // POS P2.7U ◂
       alerts={xl ? undefined : alertsNode(true)}
       drag={canMove || canMerge ? { canMove, canMerge, onDrop: dropCard } : null} // POS P2.5U ▸ มติ 8: ลากย้าย/รวม (มีคีย์เท่านั้น) ◂
     />

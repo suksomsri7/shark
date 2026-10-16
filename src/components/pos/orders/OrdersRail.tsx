@@ -3,7 +3,7 @@
 // OrdersRail.tsx — รางซ้ายของจอ 09 (POS P2.8U · มติ 2): ช่องทาง + ตัวนับ · รับอัตโนมัติ · เวลาเตรียมมาตรฐาน · ปิดรับชั่วคราว
 //   เดสก์ท็อป/iPad (≥1024) = คอลัมน์ 220px · มือถือ = ตัวเลือกช่องทาง (ChannelChooser) บนกระดาน + ส่วนตั้งค่า (RailSettings) ท้ายจอ
 //   แถว: "ทุกช่องทาง N" + 1 แถวต่อช่องทางจาก ordersChannelsAction (หน้าร้าน/QR โต๊ะซ่อน) · ตัวนับ = counts.byChannel ของเซิร์ฟเวอร์ ·
-//   "หน้าร้าน QR" = ชิปเร็ว ๆ นี้ (มติ 6 · P2.7) · ช่องที่ปิดรับอยู่ = ชิป "ปิดรับถึง hh:mm"
+//   "หน้าร้าน QR N" = รอบ QR โต๊ะของวันนี้ (POS P2.7U · เดิมชิปเร็ว ๆ นี้) · สั่งออนไลน์ (QR) = แถวช่องทางปกติ (QR_ORDER) · ช่องที่ปิดรับอยู่ = ชิป "ปิดรับถึง hh:mm"
 //   ตั้งค่า (เฉพาะผู้มี pos.order.accept — คนอื่นไม่เห็นส่วนนี้): สวิตช์รับอัตโนมัติต่อช่องทางที่ไม่ใช่ MANUAL ·
 //   "พักรับอัตโนมัติเมื่อครัวค้าง" = ชิปเร็ว ๆ นี้ (P2.6) · เวลาเตรียม 10/15/20/30/45/60 → prepMinutes · ปิดรับชั่วคราว → แผ่นเลือกเวลา (OrderSheets)
 //   🔴 ไม่มีข้อความไทยนอก t() · เวลาวาดหลัง mount (now = null ก่อน mount)
@@ -12,7 +12,7 @@ import { useTranslations } from "next-intl";
 import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/RegisterIcon";
 import { channelDisplayName } from "@/components/pos/settings/channel-text";
 import { PlannedChip } from "./OrderCardView";
-import { bkkClock, PREP_CHOICES, type OrdersChannel } from "./orders-ui";
+import { bkkClock, PREP_CHOICES, QR_TABLE_FILTER, type OrdersChannel } from "./orders-ui";
 
 /** ช่องทางที่โชว์ในราง/ตัวเลือก (ซ่อนหน้าร้าน + QR โต๊ะ — มติ 2/6) */
 export const railChannels = (items: readonly OrdersChannel[]): OrdersChannel[] => items.filter((c) => c.code !== "STORE" && c.code !== "QR_TABLE" && !c.archived);
@@ -21,7 +21,7 @@ export const autoAcceptChannels = (items: readonly OrdersChannel[]): OrdersChann
 /** ปิดรับอยู่ตอนนี้ไหม */
 export const isPausedNow = (c: Pick<OrdersChannel, "pausedUntil">, now: number | null): boolean => !!c.pausedUntil && now !== null && Date.parse(c.pausedUntil) > now;
 
-const ICON: Record<string, RegisterIconName> = { WEB: "shop", CHAT: "mail" };
+const ICON: Record<string, RegisterIconName> = { WEB: "shop", CHAT: "mail", QR_ORDER: "qr" }; // POS P2.7U ▸ + สั่งออนไลน์ (QR) ◂
 const iconOf = (c: OrdersChannel): RegisterIconName => ICON[c.code] ?? (c.kind === "EXTERNAL" ? "truck" : "box");
 
 export function OrdersRail(p: {
@@ -32,6 +32,8 @@ export function OrdersRail(p: {
   onFilter: (id: string) => void;
   now: number | null;
   settings: React.ReactNode;
+  /** POS P2.7U ▸ จำนวนรอบ QR โต๊ะของวันนี้ (แถว "หน้าร้าน QR N" · null = อ่านไม่ได้/ยังไม่โหลด) ◂ */
+  qrCount?: number | null;
 }) {
   const t = useTranslations("pos.orders");
   const tch = useTranslations("pos.channel");
@@ -63,18 +65,17 @@ export function OrdersRail(p: {
           )}
         </button>
       ))}
-      <div className="flex min-h-11 items-center gap-2.5 px-3 text-[14px] text-[color:var(--color-muted)]">
-        <RegisterIcon name="qr" size={14} />
-        <span className="min-w-0 flex-1 truncate">{t("rail.qrTable")}</span>
-        <span className="shrink-0 rounded-[6px] border px-1.5 text-[10.5px]">{t("planned")}</span>
-      </div>
+      {/* POS P2.7U ▸ แถว "หน้าร้าน QR N" ใช้งานจริง — รอบที่แขกสั่งผ่าน QR โต๊ะวันนี้ (กรองกระดานเหลือการ์ดรอบ QR) ◂ */}
+      <button type="button" data-testid="pos-ord-ch-qr-table" aria-pressed={p.filter === QR_TABLE_FILTER} className={rowCls(p.filter === QR_TABLE_FILTER)} onClick={() => p.onFilter(QR_TABLE_FILTER)}>
+        {rowBody("qr", t("rail.qrTable"), p.qrCount ?? null, null)}
+      </button>
       {p.settings}
     </aside>
   );
 }
 
 /** มือถือ/จอแคบ: ตัวเลือกช่องทางแทนราง (มติ 2) */
-export function ChannelChooser(p: { channels: readonly OrdersChannel[]; counts: Record<string, number> | null; total: number | null; filter: string; onFilter: (id: string) => void }) {
+export function ChannelChooser(p: { channels: readonly OrdersChannel[]; counts: Record<string, number> | null; total: number | null; filter: string; onFilter: (id: string) => void; qrCount?: number | null }) {
   const t = useTranslations("pos.orders");
   const tch = useTranslations("pos.channel");
   return (
@@ -87,6 +88,8 @@ export function ChannelChooser(p: { channels: readonly OrdersChannel[]; counts: 
             {`${channelDisplayName(c.code, c.name, tch)}${p.counts ? ` ${p.counts[c.id] ?? 0}` : ""}`}
           </option>
         ))}
+        {/* POS P2.7U ▸ รอบ QR โต๊ะ ◂ */}
+        <option value={QR_TABLE_FILTER}>{`${t("rail.qrTable")}${p.qrCount !== null && p.qrCount !== undefined ? ` ${p.qrCount}` : ""}`}</option>
       </select>
     </label>
   );

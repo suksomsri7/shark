@@ -28,6 +28,9 @@ import {
   setPrepMinutesAction,
 } from "@/lib/modules/pos/order-actions";
 import { ordersChannelsAction } from "@/lib/modules/pos/order-ui-actions";
+import { qrTableRoundsAction } from "@/lib/modules/pos/qr-staff-actions"; // POS P2.7U ▸ รอบ QR โต๊ะ ◂
+import { confirmPaymentIntentManualAction } from "@/lib/modules/pos/payment-intent-actions"; // POS P2.7U ▸ ยืนยันรับเงินของออเดอร์จ่ายก่อน ◂
+import type { QrTableRoundCard } from "@/lib/modules/pos/qr-staff-shared";
 import { kdsKitchenStateAction, kdsSetAutoAcceptMaxAction, kitchenProgressAction } from "@/lib/modules/pos/kds-actions"; // POS P2.6U ▸ มติ 9c/11 ◂
 import { ORDER_COLUMNS, ORDER_PREP_DEFAULT_MIN, type ListOrdersResult, type OrderActionResult, type OrderCard, type OrderColumn, type OrderDetail, type OrderRefusal, type OrderRejectReason } from "@/lib/modules/pos/order-shared";
 import { moneyText, refusalMessageKey, type RegisterStatus } from "@/lib/modules/pos/register-shared";
@@ -40,6 +43,7 @@ import { RegisterModeTabs as ModeTabsNav } from "@/components/pos/register/Regis
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { channelDisplayName } from "@/components/pos/settings/channel-text";
 import { DoneRow, OrderCardView } from "./OrderCardView";
+import { AwaitingPayList, LateMoneyBanner, QrRoundCardView, QrRoundDoneRow } from "./QrOrderBits"; // POS P2.7U ◂
 import { OrderPanel } from "./OrderPanel";
 import { ChannelChooser, isPausedNow, OrdersRail, RailSettings, railChannels } from "./OrdersRail";
 import { CancelDialog, PauseDialog, PrepDialog, RejectDialog } from "./OrderDialogs";
@@ -60,6 +64,8 @@ import {
   PAUSE_UNTIL_REOPEN_MS,
   readSoundPref,
   writeSoundPref,
+  awaitingPayCards,
+  QR_TABLE_FILTER,
   type FloorClock,
   type OrdersChannel,
 } from "./orders-ui";
@@ -176,6 +182,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
   const [list, setList] = useState<List | null>(null);
   const [listErr, setListErr] = useState<string | null>(null);
   const [channels, setChannels] = useState<OrdersChannel[]>([]);
+  const [qrRounds, setQrRounds] = useState<QrTableRoundCard[] | null>(null); // POS P2.7U ▸ รอบ QR โต๊ะของวันนี้ (อ่านไม่ได้ = null) ◂
   // POS P2.6U ▸ มติ 9c/11: สถานะครัวของสาขา (ดึงพร้อมรายการ) — progress ต่อออเดอร์ · พักครัว · เพดาน · ตั๋วค้างสูงสุดต่อสถานี · อ่านไม่ได้ = null ◂
   const [kitchen, setKitchen] = useState<{ progress: Record<string, { done: number; total: number }>; paused: boolean; maxOpen: number | null; backlogMax: number; hasStations: boolean } | null>(null);
   const seenNew = useRef<Set<string> | null>(null);
@@ -183,9 +190,10 @@ export function OrdersScreen(p: OrdersScreenProps) {
   const refreshList = useCallback(async (): Promise<List | null> => {
     const seq = ++listSeq.current;
     try {
-      const [r, ch] = await Promise.all([listOrdersAction(target()), ordersChannelsAction(target()).catch(() => null)]);
+      const [r, ch, qr] = await Promise.all([listOrdersAction(target()), ordersChannelsAction(target()).catch(() => null), qrTableRoundsAction(target()).catch(() => null)]);
       if (seq !== listSeq.current) return null;
       if (ch && ch.ok) setChannels(ch.items);
+      setQrRounds(qr && qr.ok ? qr.rounds : null); // POS P2.7U ◂
       if (!r.ok) {
         setListErr(refusalText(r));
         return null;
@@ -195,10 +203,12 @@ export function OrdersScreen(p: OrdersScreenProps) {
       setListErr(null);
       setLastSyncAt(new Date());
       // ออเดอร์ใหม่ระหว่างรอบดึง (รอบแรก = ตั้งต้น ไม่เตือน)
-      const ids = new Set(r.orders.filter((o) => o.status === "NEW").map((o) => o.id));
+      // POS P2.7U fix1 ▸ F2: รอเงินเข้า (PENDING_PAYMENT) ยังไม่ใช่ออเดอร์ที่ต้องทำ — เตือนครั้งเดียวเมื่อกลายเป็น NEW ที่รับได้ (รวม PREPAID) ◂
+      const actionable = (o: OrderCard) => o.status === "NEW" && o.paymentState !== "PENDING_PAYMENT";
+      const ids = new Set(r.orders.filter(actionable).map((o) => o.id));
       const prev = seenNew.current;
       if (prev) {
-        const fresh = r.orders.filter((o) => o.status === "NEW" && !prev.has(o.id));
+        const fresh = r.orders.filter((o) => actionable(o) && !prev.has(o.id));
         if (fresh.length) {
           showToast({ text: t("newOrderToast", { channel: channelDisplayName(fresh[0]!.channel.code, fresh[0]!.channel.name, tch) }) });
           if (soundRef.current) beep();
@@ -298,6 +308,13 @@ export function OrdersScreen(p: OrdersScreenProps) {
   const [mobileCol, setMobileCol] = useState<OrderColumn>("new");
   const shownCards = useMemo(() => (list ? (filter === "all" ? list.orders : list.orders.filter((o) => o.channel.id === filter)) : []), [list, filter]);
   const cols = useMemo(() => cardsByColumn(shownCards), [shownCards]);
+  // POS P2.7U ▸ รอบ QR โต๊ะ (ทุกช่องทาง / แถวหน้าร้าน QR) · รอชำระ (ออเดอร์จ่ายก่อนที่เงินยังไม่เข้า) · เงินเข้าหลังปิด · หมดเวลาจ่ายวันนี้ ◂
+  const qrShown = useMemo(() => (filter === "all" || filter === QR_TABLE_FILTER ? (qrRounds ?? []) : []), [filter, qrRounds]);
+  const qrCols = useMemo(() => ({ new: [] as QrTableRoundCard[], preparing: qrShown.filter((r) => r.column === "preparing"), ready: qrShown.filter((r) => r.column === "ready"), done: qrShown.filter((r) => r.column === "done") }), [qrShown]);
+  const awaiting = useMemo(() => awaitingPayCards(shownCards), [shownCards]);
+  const lateCards = useMemo(() => (list ? list.orders.filter((o) => o.prepay?.latePaid) : []), [list]);
+  const expiredToday = useMemo(() => (list ? list.orders.filter((o) => o.status === "CANCELLED" && o.rejectReason === "PAYMENT_EXPIRED").length : 0), [list]);
+  const roundHref = (r: QrTableRoundCard) => `${base}/pos/tables?unit=${encodeURIComponent(p.unitId)}${r.sessionOpen ? `&open=${encodeURIComponent(r.sessionId)}` : ""}`;
   const chanById = useMemo(() => new Map(channels.map((c) => [c.id, c])), [channels]);
   const railRows = useMemo(() => railChannels(channels), [channels]);
   /**
@@ -420,6 +437,23 @@ export function OrdersScreen(p: OrdersScreenProps) {
         return false;
       },
     });
+  // POS P2.7U ▸ ยืนยันรับเงินของออเดอร์จ่ายก่อนที่ลูกค้าแจ้งโอน (ใบขอรับเงินเดิม · กติกาผู้จัดการของร้าน) → ตัวรับคิวพาไป PREPAID ◂
+  const confirmPay = async (c: { ref: string; prepay: OrderCard["prepay"] }) => {
+    if (busy || !c.prepay?.intentId) return;
+    setBusy(true);
+    try {
+      const r = await confirmPaymentIntentManualAction({ ...target(), intentId: c.prepay.intentId });
+      if (r.ok) {
+        showToast({ text: t("toast.paymentConfirmed", { ref: c.ref }) });
+        void reloadAll();
+      } else showToast({ text: tr(refusalMessageKey(r.code)), tone: "danger" });
+    } catch {
+      showToast({ text: t("page.loadFailed"), tone: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const canConfirmPay = p.perms.create && !p.payManagerOnly;
   const changePrep = (c: OrderCard, n: number) => void handle(() => setPrepMinutesAction({ ...target(), id: c.id, prepMinutes: n }), { inLayer: true, okToast: t("toast.prepChanged", { n }) });
 
   /** ค่าตั้งรับออเดอร์ของช่องทาง (ทีละช่อง · ช่องไหนพัง = แจ้ง + หยุด) */
@@ -472,7 +506,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
   };
 
   // ═══════ ส่วนประกอบของจอ ═══════
-  const total = list?.summary.count ?? null;
+  const total = list ? list.summary.count + (qrRounds?.length ?? 0) : null; // POS P2.7U ▸ + รอบ QR โต๊ะ ◂
   const settingsNode = p.perms.accept ? (
     <RailSettings
       channels={railRows}
@@ -515,6 +549,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
         onRetry={() => void loadDetail(selCard.id)}
         onClose={inAside ? undefined : closePanel}
         kitchen={kitchen ? { hasStations: kitchen.hasStations, progress: kitchen.progress[selCard.id] ?? null } : undefined} // POS P2.6U ▸ มติ 9c ◂
+        onConfirmPay={canConfirmPay ? () => void confirmPay(selCard) : null} // POS P2.7U ◂
       />
     ) : null;
 
@@ -602,9 +637,14 @@ export function OrdersScreen(p: OrdersScreenProps) {
     setPanelErr(null);
     setSelectedId(c.id);
   };
+  // POS P2.7U fix2 ▸ N2: มือถือ — แผงรายละเอียดแทนที่กระดานในหน้า ⇒ เลือกออเดอร์แล้วเลื่อนขึ้นบนสุด (แผงเปิดที่หัว ไม่ใช่กลางหน้า) ◂
+  useEffect(() => {
+    if (wide === false && selectedId) window.scrollTo({ top: 0 });
+  }, [wide, selectedId]);
   const columnNode = (col: OrderColumn) => {
     const cards = cols[col];
-    const n = list ? list.counts.byColumn[col] : null;
+    const qrc = qrCols[col]; // POS P2.7U ◂
+    const n = list ? (filter === QR_TABLE_FILTER ? 0 : list.counts.byColumn[col]) + qrc.length : null;
     return (
       <section key={col} data-testid={`pos-ord-col-${col}`} aria-label={colTitle[col]} className="flex min-w-0 flex-col gap-2.5">
         <h3 className="flex items-center gap-2 px-1 text-[13.5px] font-bold">
@@ -617,12 +657,29 @@ export function OrdersScreen(p: OrdersScreenProps) {
             </span>
           ) : null}
         </h3>
+        {col === "new" ? (
+          <AwaitingPayList
+            cards={awaiting}
+            now={now}
+            busy={busy}
+            canReject={p.perms.reject}
+            canConfirm={canConfirmPay}
+            managerOnly={p.payManagerOnly}
+            selectedId={selectedId}
+            onPick={pick}
+            onConfirm={(c) => void confirmPay(c)}
+            onCancel={(c) => openLayer({ kind: "reject", card: c })}
+          />
+        ) : null /* POS P2.7U ▸ รอชำระ N ◂ */}
         {col === "done" ? (
           <>
-            {cards.length ? (
+            {cards.length || qrc.length ? (
               <ul className="overflow-hidden rounded-[16px] border bg-[color:var(--color-surface)]">
                 {cards.map((c) => (
                   <DoneRow key={c.id} card={c} selected={c.id === selectedId} now={now} onPick={() => pick(c)} />
+                ))}
+                {qrc.map((r) => (
+                  <QrRoundDoneRow key={r.orderId} round={r} now={now} to={roundHref(r)} />
                 ))}
               </ul>
             ) : (
@@ -636,7 +693,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
               </div>
             ) : null}
           </>
-        ) : cards.length ? (
+        ) : cards.length || qrc.length ? (
           <ul className="flex flex-col gap-2.5">
             {cards.map((c) => (
               <OrderCardView
@@ -653,6 +710,9 @@ export function OrdersScreen(p: OrdersScreenProps) {
                 kitchen={{ progress: kitchen?.progress[c.id] ?? null, held: kitchenHeld && !!chanById.get(c.channel.id)?.autoAccept && c.channel.adapter !== "MANUAL" }} // POS P2.6U ▸ มติ 9c/11 · fix1 F4: เฉพาะช่องทางที่รับอัตโนมัติ ◂
               />
             ))}
+            {qrc.map((r) => (
+              <QrRoundCardView key={r.orderId} round={r} now={now} to={roundHref(r)} />
+            )) /* POS P2.7U ▸ การ์ดรอบ QR โต๊ะ ◂ */}
           </ul>
         ) : (
           <p className="px-1 text-[12.5px] text-[color:var(--color-muted)]">{t("columns.empty")}</p>
@@ -661,7 +721,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
     );
   };
 
-  const empty = !!list && list.orders.length === 0;
+  const empty = !!list && list.orders.length === 0 && !(qrRounds?.length); // POS P2.7U ▸ + รอบ QR โต๊ะ ◂
   const board = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-3 md:px-5">
@@ -697,7 +757,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
       </div>
       {!lg && wide !== null && (
         <div className="flex items-center gap-2 border-b px-4 py-2">
-          <ChannelChooser channels={channels} counts={list?.counts.byChannel ?? null} total={total} filter={filter} onFilter={setFilter} />
+          <ChannelChooser channels={channels} counts={list?.counts.byChannel ?? null} total={total} filter={filter} onFilter={setFilter} qrCount={qrRounds ? qrRounds.length : null} />
         </div>
       )}
       {paused.map((c) => (
@@ -711,6 +771,15 @@ export function OrdersScreen(p: OrdersScreenProps) {
           ) : null}
         </div>
       ))}
+      {/* POS P2.7U ▸ เงินเข้าหลังหมดเวลา/ออเดอร์ปิดแล้ว (S5) + ออเดอร์จ่ายก่อนที่หมดเวลาจ่ายวันนี้ ◂ */}
+      {lateCards.map((c) => (
+        <LateMoneyBanner key={c.id} card={c} onPick={() => pick(c)} />
+      ))}
+      {expiredToday > 0 ? (
+        <p data-testid="pos-ord-expired-banner" role="status" className="border-b px-5 py-2 text-[12.5px] text-[color:var(--color-muted)]">
+          {t("expired.banner", { count: expiredToday })}
+        </p>
+      ) : null}
       {!p.perms.accept && list ? (
         <p data-testid="pos-ord-readonly" className="border-b px-5 py-2 text-[12.5px] text-[color:var(--color-muted)]">
           {t("page.readOnly")}
@@ -745,7 +814,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
                   className={`h-11 truncate rounded-[10px] px-1 text-[12.5px] ${mobileCol === col ? "bg-[color:var(--color-surface)] font-bold shadow-sm" : "text-[color:var(--color-ink-soft)]"}`}
                   onClick={() => setMobileCol(col)}
                 >
-                  {`${colTitle[col]} ${list.counts.byColumn[col]}`}
+                  {`${colTitle[col]} ${(filter === QR_TABLE_FILTER ? 0 : list.counts.byColumn[col]) + qrCols[col].length}`}
                 </button>
               ))}
             </div>
@@ -781,8 +850,15 @@ export function OrdersScreen(p: OrdersScreenProps) {
         />
         <ModeTabsNav systemId={p.systemId} active="online-orders" unitId={p.unitId} tablesHref={p.tablesHref} ordersBadge={newCount} />
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          {lg && <OrdersRail channels={channels} counts={list?.counts.byChannel ?? null} total={total} filter={filter} onFilter={setFilter} now={now} settings={settingsNode} />}
-          {board}
+          {lg && <OrdersRail channels={channels} counts={list?.counts.byChannel ?? null} total={total} filter={filter} onFilter={setFilter} now={now} settings={settingsNode} qrCount={qrRounds ? qrRounds.length : null} />}
+          {/* POS P2.7U fix1 ▸ IMG-3: มือถือ (< 768) = แผงรายละเอียดแทนที่กระดานในหน้า (ไม่ลอยทับ/ไม่สลับกับส่วนตั้งค่าท้ายจอ · ภาพเต็มหน้าไม่ซ้อน) — ปัญหาเดิมของ P2.8U ◂ */}
+          {wide === false && panel ? (
+            <div data-testid="pos-ord-panel-frame" className="flex min-h-0 flex-1 flex-col bg-[color:var(--color-surface)] pb-[env(safe-area-inset-bottom)]">
+              {panel}
+            </div>
+          ) : (
+            board
+          )}
           {xl && (
             <aside data-testid="pos-ord-side" className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-l">
               {panelOf(true) ?? (
@@ -796,14 +872,12 @@ export function OrdersScreen(p: OrdersScreenProps) {
       </div>
 
       {/* แผงบน iPad (แผ่นขวา) / มือถือ (เต็มจอ) — เปิดเมื่อเลือกออเดอร์ */}
-      {!xl && wide !== null && panel && (
+      {!xl && wide === true && panel && ( /* POS P2.7U fix1 ▸ IMG-3: แผ่นขวาเฉพาะ iPad (768–1279) ◂ */
         <div className="contents" inert={!!layer}>
           <div
             data-testid="pos-ord-panel-frame"
             className={
-              wide
-                ? "fixed bottom-0 right-0 top-14 z-40 flex w-[380px] max-w-[100vw] flex-col overflow-y-auto border-l bg-[color:var(--color-surface)] shadow-2xl"
-                : "fixed inset-0 z-40 flex flex-col overflow-y-auto bg-[color:var(--color-surface)] pb-[env(safe-area-inset-bottom)]"
+              "fixed bottom-0 right-0 top-14 z-40 flex w-[380px] max-w-[100vw] flex-col overflow-y-auto border-l bg-[color:var(--color-surface)] shadow-2xl"
             }
           >
             {panel}

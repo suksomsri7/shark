@@ -48,7 +48,7 @@ const ADD_SYSTEM_HREF = "/app/settings/systems";
 /** ชื่อการ์ดที่เป็นชื่อเฉพาะ (ไม่แปล) */
 const PROPER_TITLE: Partial<Record<PosIntegrationCard["code"], string>> = { CRM: "CRM" };
 
-type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean };
+type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAcceptOrders?: boolean };
 
 function relTime(iso: string, locale: string): string {
   const at = new Date(iso);
@@ -78,7 +78,7 @@ function IconTile({ icon, accent }: { icon: RegisterIconName; accent?: boolean }
   );
 }
 
-export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false }: Props) {
+export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false, canAcceptOrders = false }: Props) {
   const t = useTranslations("pos.settings");
   const tk = useTranslations("pos.settings.shark");
   const tc = useTranslations("pos.settings.cards");
@@ -353,7 +353,7 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
       )}
       {/* POS P1.18U ▸ แก้รอบ 2 V3: สองแผงวางคู่กันตั้งแต่ xl (เดิม lg) — ที่ 1024 แผงละ ~200px ชิป "เร็ว ๆ นี้" เบียดชื่อจนเหลือ ~8px · ใต้ xl = เรียงลงเต็มความกว้าง ◂ */}
       <div className="flex min-w-0 flex-col items-stretch gap-6 xl:flex-row xl:items-start xl:gap-3">
-        <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManageChannels} storefront={storefront} />
+        <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
         <PaymentsPanel systemId={systemId} unitId={unitId} pay={pay} />
       </div>
       {/* POS P2.13 ▸ การ์ดคีย์ API (U-lite §7) — ใต้แผงช่องทางขาย/วิธีรับเงิน · เต็มความกว้าง ◂ */}

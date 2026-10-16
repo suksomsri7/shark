@@ -27,6 +27,8 @@ type Props = {
   onOpen: (c: TableCard) => void;
   onCleared: (c: TableCard) => void;
   onReservations: () => void;
+  /** POS P2.7U ▸ "พิมพ์ QR ทุกโต๊ะ" (แผ่น A4) — ไม่ส่ง = ไม่มีปุ่ม ◂ */
+  onPrintQr?: () => void;
   /** แถบแจ้งเตือนจากโต๊ะ (จอที่ไม่มีคอลัมน์ขวา วางไว้เหนือกริด) */
   alerts?: React.ReactNode;
   /**
@@ -44,7 +46,7 @@ const SWATCH: Record<string, string> = {
   RESERVED: "border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)]",
 };
 
-export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick, onOpen, onCleared, onReservations, alerts, drag }: Props) {
+export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick, onOpen, onCleared, onReservations, onPrintQr, alerts, drag }: Props) {
   const t = useTranslations("pos.tables");
   // POS P2.5U ▸ มติ 8: ลากได้เฉพาะตัวชี้ละเอียด (เดสก์ท็อป) — รู้หลัง mount ◂
   const [fine, setFine] = useState(false);
@@ -98,7 +100,8 @@ export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick,
             </button>
           ))}
         </div>
-        <div className="flex shrink-0 items-center gap-2 pb-2 pt-1">
+        {/* POS P2.7U fix1 ▸ IMG-2: แถบปุ่มขวาตัดบรรทัดได้ (390 = ไม่ดันหน้ากว้างเกินจอ) ◂ */}
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 pb-2 pt-1">
           {/* มติ 2 (Q2): คิวหน้าร้าน = PLANNED — ชิปจาง ไม่ใช่ปุ่ม · ไม่มีข้อมูลคิว */}
           <span
             data-testid="pos-tbl-queue-planned"
@@ -119,6 +122,20 @@ export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick,
             <RegisterIcon name="cal" size={13} />
             {t("reservationsToday", { n: floor.reservationsToday })}
           </button>
+          {onPrintQr ? (
+            <button
+              data-testid="pos-tbl-print-qr"
+              type="button"
+              aria-label={t("qr.printAll")}
+              className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-[12px] border px-3 text-[13.5px] text-[color:var(--color-ink)] hover:bg-[color:var(--color-surface-2)]"
+              onClick={onPrintQr}
+            >
+              <RegisterIcon name="qr" size={13} />
+              <span className="hidden sm:inline">{t("qr.printAll")}</span>
+              <span className="sm:hidden">{t("qr.printAllShort")}</span>
+              {/* POS P2.7U fix1 ▸ IMG-2: 390 = ป้ายสั้น ◂ */}
+            </button>
+          ) : null /* POS P2.7U ◂ */}
         </div>
       </div>
 

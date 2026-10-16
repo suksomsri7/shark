@@ -195,6 +195,8 @@ export type QrMenuItem = {
   available: boolean;
   optionGroups: QrMenuGroup[];
 };
+/** POS P2.7U ▸ หัวร้านของหน้าสาธารณะ (ชื่อร้าน · โลโก้ · ชื่อสาขา — ไม่มีข้อมูลส่วนตัว) ◂ */
+export type QrShopHeader = { name: string; logoUrl: string | null; branch: string };
 /** เหตุที่ประตูปิด (หน้าแสดงแบนเนอร์ · เมนูยังเห็นแบบอ่านอย่างเดียว) */
 export const QR_CLOSED_REASONS = ["CHANNEL_OFF", "CHANNEL_PAUSED", "KITCHEN_PAUSED", "KITCHEN_CLOSED", "PAYMENT_NOT_READY"] as const;
 export type QrClosedReason = (typeof QR_CLOSED_REASONS)[number];
@@ -203,6 +205,8 @@ export type QrRoundItem = { name: string; qty: number; options: string[]; status
 export type QrRound = { id: string; no: number; at: string; items: QrRoundItem[] };
 export type QrTableView = {
   unit: { name: string };
+  /** POS P2.7U ▸ หัวร้านของหน้า (แหล่งเดียวกับหัวใบเสร็จ · receiptShopHeader) — เพิ่มล้วน ◂ */
+  shop?: QrShopHeader;
   table: { name: string };
   open: boolean;
   closedReason?: QrClosedReason;
@@ -222,7 +226,7 @@ export type QrBillLine = { name: string; qty: number; options: string[]; amountS
 export type QrTableBill = { lines: QrBillLine[]; subtotalSatang: number; serviceChargeSatang: number; totalSatang: number; promptpayPayload: string | null; payHidden: boolean };
 export type QrTableBillResult = { ok: true; bill: QrTableBill } | QrRefusal;
 
-export type QrLinkView = { unit: { name: string }; open: boolean; closedReason?: QrClosedReason; menu: QrMenuItem[]; prepMinutes: number };
+export type QrLinkView = { unit: { name: string }; /** POS P2.7U ▸ หัวร้าน (เพิ่มล้วน) ◂ */ shop?: QrShopHeader; open: boolean; closedReason?: QrClosedReason; menu: QrMenuItem[]; prepMinutes: number };
 export type QrLinkDoorResult = { ok: true; view: QrLinkView } | QrRefusal;
 
 export type QrPlaceRoundResult = { ok: true; roundId: string; sessionId: string } | QrRefusal;
@@ -246,6 +250,12 @@ export type QrOrderStatusView = {
   phoneMasked: string | null;
   customerName: string;
   unit: { name: string };
+  /** POS P2.7U ▸ หัวร้าน (เพิ่มล้วน) ◂ */
+  shop?: QrShopHeader;
+  /** POS P2.7U fix1 ▸ F3: เวลาของเซิร์ฟเวอร์ตอนอ่าน (ISO) — นับถอยหลังบนหน้าจาก offset นี้ ไม่เชื่อนาฬิกาเครื่องลูกค้า ◂ */
+  serverNow?: string;
+  /** POS P2.7U ▸ โทเคนลิงก์สั่งล่วงหน้าที่ใช้อยู่ของสาขา (ปุ่ม "ลองใหม่" ของหน้าหมดเวลา 19ค · null = ร้านปิดลิงก์แล้ว) — เพิ่มล้วน ◂ */
+  orderAgainToken?: string | null;
   /** เวลารับโดยประมาณ (หลังร้านรับ = acceptedAt + prepMinutes) */
   readyEta: string | null;
   /** เหตุของการปิด (หมดเวลาจ่าย · ร้านปฏิเสธ · ยกเลิก) — ร้านคืนเงินให้ภายหลังเมื่อจ่ายแล้ว */
