@@ -108,6 +108,8 @@ const REASON_OF: Readonly<Record<string, string>> = { PRICE_CHANGED: "PRICE_MISM
 /** คำปฏิเสธชั่วคราว — หยุดทั้งชุด (เครื่องส่งใหม่ด้วยคีย์เดิม · ไม่พักรายการ) */
 const TRANSIENT = new Set(["BUSY", "INTERNAL", "UNKNOWN"]);
 
+/** รูปเลข OFF ที่ซิงก์รับ (เทียบ createSale.offline ใน service.ts) */
+const OFFLINE_REF_LOOSE = /^OFF-([A-Z0-9]{1,8})-([0-9]{4,8})$/;
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const isStr = (v: unknown, max: number, min = 1): v is string => typeof v === "string" && v.length >= min && v.length <= max;
 const isIdemKey = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(v);
@@ -341,8 +343,10 @@ async function decide(
 ): Promise<Verdict> {
   const { db, ctx } = e;
   if (offlineSaleRefusal(it.sale)) return reject("VALIDATION");
-  const ref = parseOfflineRef(it.offlineRef);
-  if (!ref || !e.dev.offlineCode || ref.code !== e.dev.offlineCode) return reject("VALIDATION");
+  // เลข OFF: รูป OFF-<รหัส>-<seq 4+> · รหัสในเนมสเปซของเซิร์ฟเวอร์ (C<n>) ต้องเป็นของเครื่องนี้เท่านั้น (ขโมยรหัสเครื่องอื่น/จองรหัสที่ยังไม่แจก = ปฏิเสธ) ·
+  //   รหัสนอกเนมสเปซ C<n> ชนกับเครื่องอื่นไม่ได้ (เซิร์ฟเวอร์ไม่แจก) — ความไม่ซ้ำต่อสาขาตัดสินด้วยเลขเต็ม (OFFLINE_REF_TAKEN + unique ของบิล) · CONTROLLER-DECISION CD-P34c
+  const refCode = OFFLINE_REF_LOOSE.exec(it.offlineRef)?.[1];
+  if (!refCode || (/^C[0-9]+$/.test(refCode) && refCode !== e.dev.offlineCode)) return reject("VALIDATION");
   const takenRow = await db.posOfflineSale.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, offlineRef: it.offlineRef, NOT: { idempotencyKey: it.idempotencyKey } }, select: { id: true } });
   const takenSale = await db.posSale.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, offlineRef: it.offlineRef, NOT: { idempotencyKey: `${REG_KEY_PREFIX}${it.idempotencyKey}` } }, select: { id: true } });
   if (takenRow || takenSale) return reject("OFFLINE_REF_TAKEN");

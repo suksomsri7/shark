@@ -57,7 +57,7 @@ function saleOfflineSoldAt(input: CreateSaleInput): Date | null {
   if (input.offline === undefined || input.offline === null) return null;
   const o = input.offline;
   const at = o.soldAt instanceof Date ? o.soldAt : typeof o.soldAt === "string" ? new Date(o.soldAt) : new Date(Number.NaN);
-  if (typeof o.ref !== "string" || !/^OFF-C[1-9][0-9]{0,5}-[0-9]{4,8}$/.test(o.ref) || !Number.isFinite(at.getTime())) throw new PosSaleError("VALIDATION", "ข้อมูลบิลออฟไลน์ไม่ถูกต้อง");
+  if (typeof o.ref !== "string" || !/^OFF-[A-Z0-9]{1,8}-[0-9]{4,8}$/.test(o.ref) || !Number.isFinite(at.getTime())) throw new PosSaleError("VALIDATION", "ข้อมูลบิลออฟไลน์ไม่ถูกต้อง");
   return at;
 } // ◂
 
