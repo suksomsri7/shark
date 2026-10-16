@@ -243,7 +243,7 @@ function markedLines(src: string): Set<number> {
   const s = new Set<number>();
   const lines = src.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    if (!/POS P2\.10 ▸/.test(lines[i]!)) continue;
+    if (!/POS P2\.(10|14) ▸/.test(lines[i]!)) continue; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 U2 · CD-U2b): RegisterScreen/InterimPayDialog รับบล็อกมาร์กของใบปิดเฟส `// POS P2.14 ▸ … ◂` ด้วย (H1 offline gate) — กติกา "เพิ่มได้เฉพาะในบล็อกมาร์ก" คงเดิม
     let j = i;
     while (j < lines.length && !lines[j]!.slice(j === i ? lines[i]!.indexOf("▸") : 0).includes("◂")) j++;
     for (let k = i; k <= Math.min(j, lines.length - 1); k++) s.add(k + 1);
