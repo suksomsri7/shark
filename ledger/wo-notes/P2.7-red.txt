@@ -99,3 +99,16 @@ cmd: bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/
   ✅ [P2.7-Z2] รอยของรอบนี้นอกร้านชั่วคราว = 0 (PosOrder/PosSale คีย์ · InvItem sku · AuditLog/
 ===== qc-pos-p2.7 ===== ผ่าน 2/38 (QC_FORCE)
 ```
+
+## §fix2 — red-before of the fix-2 ORACLE-ADDs (unforced QC4 at eb19d347 = 3c29ceac + test commits bf33113e/eb19d347, before the fix-2 code) · 2026-10-16T00:05:46Z
+result: 37/42 · red by reason: PY2 (Beam 10 parallel same key ⇒ createCharge 10, expected 1 · H5) · PY12 (register sale with the PREPAID order's pi_ ⇒ OK + sale, intent CONSUMED · H1/F2) · PY13 (accept PREPAID with QR_ORDER inactive ⇒ CHANNEL_INVALID · H3) · PY9b (late Beam money without a prior read ⇒ NEW/PREPAID, no expired event, no late_payment ops · H4) · TB8 (3 parallel same guestToken ⇒ 3 rounds · F1/H2) · 0 crashed
+```
+tree=/root/projects/shark-pos-d head=eb19d34781 dirty=0
+cmd: bash scripts/iso.sh env  bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p2.7.mts · start 2026-10-15T23:55:54Z
+  ❌ [P2.7-PY2] [S6] คีย์เดิม ×2 → ออเดอร์เดิม + intent เดิม (duplicated true · ไม่มีแถวเ�
+  ❌ [P2.7-PY12] [R1 F2 · hunter H1] ใบของออเดอร์ที่ยังเปิดอยู่ (PENDING_PAYMENT · PREPAID) → บิล
+  ❌ [P2.7-PY13] [hunter H3 · มติ 11] PREPAID แล้วร้านปิดช่องทาง QR_ORDER (active false) → acceptOrder ได้ �
+  ❌ [P2.7-PY9b] [hunter H4 · S5] Beam: ย้อน payBy/expiresAt โดยไม่อ่านสถานะ/ไม่กวาด → webhook → ร�
+  ❌ [P2.7-TB8] [R1 F1 · hunter H2 · CD-O7] ส่งรอบเดียวกัน 3 คำขอพร้อมกัน guestToken + ตะกร้า
+===== qc-pos-p2.7 ===== ผ่าน 37/42
+```
