@@ -392,6 +392,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [heldNotices, setHeldNotices] = useState<{ key: string; code: HeldCartNoticeCode; from?: number; to?: number }[]>([]);
   const heldSeq = useRef(0);
   const refreshHeld = useCallback(async () => {
+    // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // ◂
     const seq = ++heldSeq.current;
     try {
       const r = await listHeldCartsAction({ systemId, unitId });
@@ -428,6 +431,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const benefitsCartJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart, { choices: false })), [cart]);
   const refreshBenefits = useCallback(
     async (memberId: string, cartJson: string) => {
+      // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      // ◂
       const seq = ++benefitsSeq.current;
       try {
         const r = await registerMemberBenefitsAction({ systemId, unitId, memberId, cart: JSON.parse(cartJson) as RegisterQuoteInput });
@@ -591,6 +597,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** null = ยังไม่รู้ · true = มีคนตั้ง PIN แล้วอย่างน้อย 1 คน */
   const [anyPin, setAnyPin] = useState<boolean | null>(null);
   const refreshPins = useCallback(async () => {
+    // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // ◂
     try {
       const r = await listStaffForDeviceAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}) });
       const has = r.ok ? r.items.some((x) => x.hasPin) : true; // อ่านไม่ได้ = ถือว่ามี PIN (ล็อกไว้ก่อน — ปลอดภัยกว่า)
@@ -836,6 +845,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ── แถบสถานะ: ทุก 60 วิ ขณะเห็นจอ + หลังขายเสร็จ ──
   const statusSeq = useRef(0);
   const refreshStatus = useCallback(async () => {
+    // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // ◂
     const seq = ++statusSeq.current;
     try {
       const r = await registerStatusAction({ systemId, unitId, deviceId: getPosDeviceId() });
@@ -866,6 +878,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [refreshStatus]);
+  // POS P2.14 ▸ U2 H1 (CD-U2b): กลับมาออนไลน์ = ถามสถานะ/เครื่อง · PIN · บิลที่พัก · สิทธิ์สมาชิก ครั้งเดียว (ระหว่างออฟไลน์ตัวถามทั้งสี่ข้ามเอง)
+  useEffect(() => {
+    const resume = () => {
+      void refreshStatus();
+      void refreshPins();
+      void refreshHeld();
+      const mid = cartRef.current.memberId;
+      if (mid) void refreshBenefits(mid, JSON.stringify(cartToQuoteInput(cartRef.current, { choices: false })));
+    };
+    window.addEventListener("online", resume);
+    return () => window.removeEventListener("online", resume);
+  }, [refreshStatus, refreshPins, refreshHeld, refreshBenefits]);
+  // ◂
 
   // ── โหลดกริด: คำค้น (หน่วง 200ms) · หมวด (ทันที) · หน้าถัดไป ──
   const loadCatalog = useCallback(
