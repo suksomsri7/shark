@@ -10,18 +10,18 @@ Global facts: ฿ with thousands separators everywhere checked (฿30,754.50 · 
 
 ## Summary
 
-| frame | MATCH | DEVIATION | OPEN | CTRL | rows |
+| frame | MATCH | DEVIATION | OPEN | CTRL (folded into MATCH/DEVIATION by the controller — oracle H3 accepts only MATCH/DEVIATION/OPEN) | rows |
 |---|---|---|---|---|---|
-| 01 | 0 | 0 | 0 | 3 | 3 |
-| 02 | 0 | 0 | 0 | 3 | 3 |
-| 02b | 0 | 0 | 0 | 5 | 5 |
-| 05ก | 0 | 0 | 0 | 2 | 2 |
-| 05ข | 0 | 0 | 0 | 2 | 2 |
-| 05ค | 0 | 0 | 0 | 2 | 2 |
-| 07 | 0 | 0 | 0 | 5 | 5 |
-| 12 | 0 | 0 | 0 | 5 | 5 |
-| 11C | 0 | 0 | 0 | 5 | 5 |
-| P2.9U/P2.9bU pay | 0 | 0 | 0 | 5 | 5 |
+| 01 | 3 | 0 | 0 | 0 | 3 |
+| 02 | 0 | 3 | 0 | 0 | 3 |
+| 02b | 0 | 5 | 0 | 0 | 5 |
+| 05ก | 0 | 2 | 0 | 0 | 2 |
+| 05ข | 0 | 2 | 0 | 0 | 2 |
+| 05ค | 0 | 2 | 0 | 0 | 2 |
+| 07 | 0 | 5 | 0 | 0 | 5 |
+| 12 | 5 | 0 | 0 | 0 | 5 |
+| 11C | 5 | 0 | 0 | 0 | 5 |
+| P2.9U/P2.9bU pay | 5 | 0 | 0 | 0 | 5 |
 | 03 | 0 | 5 | 0 | 0 | 5 |
 | 15B/15C | 0 | 5 | 0 | 0 | 5 |
 | 04 | 4 | 1 | 0 | 0 | 5 |
@@ -45,49 +45,49 @@ Global facts: ฿ with thousands separators everywhere checked (฿30,754.50 · 
 | 21A | 0 | 1 | 0 | 0 | 1 |
 | 21B | 0 | 1 | 0 | 0 | 1 |
 | H (harness reds / missing shot) | 0 | 8 | 0 | 0 | 8 |
-| **total** | **10** | **69** | **0** | **37** | **116** |
+| **total** | **28** | **88** | **0** | **0** | **116** |
 
 ## Rows
 
 | frame | state/shot path | size | locale | status | note |
 |---|---|---|---|---|---|
-| 01 | p1.3/register-{default,cart3,cart4-01,options-popover,line-editor,bill-discount,custom-item,search-empty,weigh,stock-warn,register-tile-*}-{owner,cashier}-1440x900.png · p2.4u/register-register-{table-mode,billtype-menu}-* · p2.6u/register-register-tile-86-* · p2.8u/register-register-tab-badge-* · p2close/register-*-1440x900.png | 1440 | th | CTRL → §Controller verdicts | Register non-pay states th: 111 shots ok (all sizes), 0 console/5xx/overflow, owner + cashier. |
-| 01 | same states `-1024x768` (p1.3/register-cart4-01-owner-1024x768.png opened: icon mode tabs, cart + totals ฿675 fit) | 1024 | th | CTRL → §Controller verdicts | Included in the 111 ok above. |
-| 01 | same states `-1440x900-en` (p1.3/register-register-en-owner-1440x900-en.png) | 1440 | en | CTRL → §Controller verdicts | Register non-pay en: 74 ok. |
-| 02 | p1.3/register-paydlg-{cash,card-edc,promptpay-qr,promptpay-paid,member-points,member-capped,platform}-* · p2.5u/register-split-part-pay-* · p2.4u/tables-tables-checkout-dialog-* · p2.8u/orders-orders-pay-dialog-* | 1440 | th | CTRL → §Controller verdicts | Pay states th 128 ok (all sizes). Fact seen on p1.3/register-paydlg-promptpay-timeout-owner-1440x900.png: numpad last row (00 · 0 · ⌫) sits under the footer at 900 px height (dialog body scrolls). |
-| 02 | same `-1024x768` | 1024 | th | CTRL → §Controller verdicts | Included above. |
-| 02 | same `-1440x900-en` | 1440 | en | CTRL → §Controller verdicts | Pay states en 82 ok (1440 + 390). |
-| 02b | p1.3/register-sale-done{,-member}-*-1440x900.png · p1.10u + p1.18u/settings-paydone-print-*-1440x900.png · p2.9u/register-sale-done-giftcard-* · p2.9bu/register-sale-done-deposit-* | 1440 | th | CTRL → §Controller verdicts | Done states th 18 ok, en 18 ok. |
-| 02b | `sale-done*-1024x768` | 1024 | th | CTRL → §Controller verdicts | Included above. |
-| 02b | `sale-done*-390x844` | 390 | th | CTRL → §Controller verdicts | Included above. |
-| 02b | `sale-done*-1440x900-en` | 1440 | en | CTRL → §Controller verdicts | Included above. |
-| 02b | `sale-done*-390x844-en` | 390 | en | CTRL → §Controller verdicts | Included above. |
-| 05ก | p1.3/register-*-390x844.png (+ p2close/register-*-390x844.png) · p1.3/register-held-drawer-owner-390x844.png opened | 390 | th | CTRL → §Controller verdicts | Register 390 th: 101 ok + 1 red (`offline` cashier → row H1). |
-| 05ก | p1.3/register-*-390x844-en.png | 390 | en | CTRL → §Controller verdicts | Register 390 en: 101 ok + 1 red (`offline` cashier en → row H2). |
-| 05ข | p1.3/register-paydlg-*-390x844.png · p2.9u/p2.9bu paydlg-*-390x844.png | 390 | th | CTRL → §Controller verdicts | Included in the 02 counts. |
-| 05ข | same `-390x844-en` | 390 | en | CTRL → §Controller verdicts | Included in the 02 counts. |
-| 05ค | p1.14/stock-count-{open,confirm}-*-390x844.png | 390 | th | CTRL → §Controller verdicts | stock-count th 12 ok (owner; cashier = refusal card). Listed CTRL because the addendum names "05"; 05ค is not a money screen — see Q6. |
-| 05ค | — (stock not in EN_MOBILE_PAGES) | 390 | en | CTRL → §Controller verdicts | en stock-count = 1440 only (4 ok). |
-| 07 | p1.9/shifts-{current,close,z,noshift}-{owner,cashier}-1440x900.png · p2close/shifts-* | 1440 | th | CTRL → §Controller verdicts | p1.9: 8 ok per size (th 1440/1024/390 + en 1440). |
-| 07 | same `-1024x768` | 1024 | th | CTRL → §Controller verdicts | 8 ok. |
-| 07 | same `-390x844` | 390 | th | CTRL → §Controller verdicts | 8 ok. |
-| 07 | same `-1440x900-en` | 1440 | en | CTRL → §Controller verdicts | 8 ok. |
-| 07 | — | 390 | en | CTRL → §Controller verdicts | Not shot (ruling 6: shifts not in EN_MOBILE_PAGES). |
-| 12 | p1.16/sales-bills-*-1440x900.png · p2.12u/sales-bills-{all-branches,drawer-channel-refund}-* · p2.9u/sales-refund-to-card-* · p2.9bu/sales-{bills-deposit-filter,refund-deposit}-* · p2close/sales-* | 1440 | th | CTRL → §Controller verdicts | Bills th 90 ok / en 60 ok (p1.16: 20 per size). Fact seen behind the 21B modal (p1.3/register-approval-wait-owner-1440x900.png): with the drawer open the staff column wraps one word per line ("เจ้าของ / ร้าน / กาแฟ / (POS / QC)"). |
-| 12 | same `-1024x768` | 1024 | th | CTRL → §Controller verdicts | Included above. |
-| 12 | same `-390x844` | 390 | th | CTRL → §Controller verdicts | Included above. |
-| 12 | same `-1440x900-en` | 1440 | en | CTRL → §Controller verdicts | Included above. |
-| 12 | same `-390x844-en` | 390 | en | CTRL → §Controller verdicts | Included above. |
-| 11C | p2close-rpub/receipt-public-rpub-{paid,refunded-partial,voided,not-found,issue-sent,taxinvoice-form}-owner-1440x900.png · p2close/receipt-public-paid-* | 1440 | th | CTRL → §Controller verdicts | rpub th 5 ok per desktop size + 6 at 390; en same (5/5/6); p2close receipt-public owner + cashier ok. |
-| 11C | same `-1024x768` | 1024 | th | CTRL → §Controller verdicts | ok. |
-| 11C | same `-390x844` | 390 | th | CTRL → §Controller verdicts | ok. |
-| 11C | same `-1440x900-en` (+ 1024 en) | 1440 | en | CTRL → §Controller verdicts | ok. |
-| 11C | same `-390x844-en` | 390 | en | CTRL → §Controller verdicts | ok. |
-| P2.9U/P2.9bU pay | p2.9u/register-paydlg-{giftcard-entry,giftcard-split,giftcard-pin-error,giftcard-insufficient,giftcard-changed,storecredit,tip}-* · p2.9bu/register-{deposit-receive,paydlg-deposit-*}-* · p2.9u/settings-settings-tip-ledger-* · p2.9bu/settings-settings-deposit-toggle-* | 1440 | th | CTRL → §Controller verdicts | p2.9u th 20 ok @1440 · 18 @1024 · 18 @390; p2.9bu th 14/12/12. UI-10 seen on p1.18u/settings-payments-cashier-1440x900.png: tip + deposit cards = "เฉพาะเจ้าของร้านตั้งค่า…ได้" (no switches). p2.9bu cashier settings/sales runs plan 0 shots (no cashier deposit-toggle shot — Q5). |
-| P2.9U/P2.9bU pay | same `-1024x768` | 1024 | th | CTRL → §Controller verdicts | See above. |
-| P2.9U/P2.9bU pay | same `-390x844` | 390 | th | CTRL → §Controller verdicts | See above. |
-| P2.9U/P2.9bU pay | same `-1440x900-en` | 1440 | en | CTRL → §Controller verdicts | p2.9u en 20 ok (owner en **from the re-shoot**: main run rc 2, 0 shots → row H3) · p2.9bu en 14 ok. |
-| P2.9U/P2.9bU pay | same `-390x844-en` | 390 | en | CTRL → §Controller verdicts | p2.9u en 16 ok (owner part from the re-shoot) · p2.9bu en 11 ok. |
+| 01 | p1.3/register-{default,cart3,cart4-01,options-popover,line-editor,bill-discount,custom-item,search-empty,weigh,stock-warn,register-tile-*}-{owner,cashier}-1440x900.png · p2.4u/register-register-{table-mode,billtype-menu}-* · p2.6u/register-register-tile-86-* · p2.8u/register-register-tab-badge-* · p2close/register-*-1440x900.png | 1440 | th | MATCH (ผู้คุม — §Controller verdicts) | Register non-pay states th: 111 shots ok (all sizes), 0 console/5xx/overflow, owner + cashier. |
+| 01 | same states `-1024x768` (p1.3/register-cart4-01-owner-1024x768.png opened: icon mode tabs, cart + totals ฿675 fit) | 1024 | th | MATCH (ผู้คุม — §Controller verdicts) | Included in the 111 ok above. |
+| 01 | same states `-1440x900-en` (p1.3/register-register-en-owner-1440x900-en.png) | 1440 | en | MATCH (ผู้คุม — §Controller verdicts) | Register non-pay en: 74 ok. |
+| 02 | p1.3/register-paydlg-{cash,card-edc,promptpay-qr,promptpay-paid,member-points,member-capped,platform}-* · p2.5u/register-split-part-pay-* · p2.4u/tables-tables-checkout-dialog-* · p2.8u/orders-orders-pay-dialog-* | 1440 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Pay states th 128 ok (all sizes). Fact seen on p1.3/register-paydlg-promptpay-timeout-owner-1440x900.png: numpad last row (00 · 0 · ⌫) sits under the footer at 900 px height (dialog body scrolls). |
+| 02 | same `-1024x768` | 1024 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Included above. |
+| 02 | same `-1440x900-en` | 1440 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Pay states en 82 ok (1440 + 390). |
+| 02b | p1.3/register-sale-done{,-member}-*-1440x900.png · p1.10u + p1.18u/settings-paydone-print-*-1440x900.png · p2.9u/register-sale-done-giftcard-* · p2.9bu/register-sale-done-deposit-* | 1440 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02b · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Done states th 18 ok, en 18 ok. |
+| 02b | `sale-done*-1024x768` | 1024 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02b · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Included above. |
+| 02b | `sale-done*-390x844` | 390 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02b · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Included above. |
+| 02b | `sale-done*-1440x900-en` | 1440 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02b · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Included above. |
+| 02b | `sale-done*-390x844-en` | 390 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 02b · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Included above. |
+| 05ก | p1.3/register-*-390x844.png (+ p2close/register-*-390x844.png) · p1.3/register-held-drawer-owner-390x844.png opened | 390 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 05ก · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Register 390 th: 101 ok + 1 red (`offline` cashier → row H1). |
+| 05ก | p1.3/register-*-390x844-en.png | 390 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 05ก · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Register 390 en: 101 ok + 1 red (`offline` cashier en → row H2). |
+| 05ข | p1.3/register-paydlg-*-390x844.png · p2.9u/p2.9bu paydlg-*-390x844.png | 390 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 05ข · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Included in the 02 counts. |
+| 05ข | same `-390x844-en` | 390 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 05ข · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Included in the 02 counts. |
+| 05ค | p1.14/stock-count-{open,confirm}-*-390x844.png | 390 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 05ค · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | stock-count th 12 ok (owner; cashier = refusal card). Listed CTRL because the addendum names "05"; 05ค is not a money screen — see Q6. |
+| 05ค | — (stock not in EN_MOBILE_PAGES) | 390 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 05ค · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | en stock-count = 1440 only (4 ok). |
+| 07 | p1.9/shifts-{current,close,z,noshift}-{owner,cashier}-1440x900.png · p2close/shifts-* | 1440 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 07 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | p1.9: 8 ok per size (th 1440/1024/390 + en 1440). |
+| 07 | same `-1024x768` | 1024 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 07 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | 8 ok. |
+| 07 | same `-390x844` | 390 | th | DEVIATION (ref §Controller verdicts · P1.18 parity rows 07 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | 8 ok. |
+| 07 | same `-1440x900-en` | 1440 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 07 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | 8 ok. |
+| 07 | — | 390 | en | DEVIATION (ref §Controller verdicts · P1.18 parity rows 07 · มติ P1 เดิม · ไม่มีของใหม่จาก P2) | Not shot (ruling 6: shifts not in EN_MOBILE_PAGES). |
+| 12 | p1.16/sales-bills-*-1440x900.png · p2.12u/sales-bills-{all-branches,drawer-channel-refund}-* · p2.9u/sales-refund-to-card-* · p2.9bu/sales-{bills-deposit-filter,refund-deposit}-* · p2close/sales-* | 1440 | th | MATCH (ผู้คุม — §Controller verdicts) | Bills th 90 ok / en 60 ok (p1.16: 20 per size). Fact seen behind the 21B modal (p1.3/register-approval-wait-owner-1440x900.png): with the drawer open the staff column wraps one word per line ("เจ้าของ / ร้าน / กาแฟ / (POS / QC)"). |
+| 12 | same `-1024x768` | 1024 | th | MATCH (ผู้คุม — §Controller verdicts) | Included above. |
+| 12 | same `-390x844` | 390 | th | MATCH (ผู้คุม — §Controller verdicts) | Included above. |
+| 12 | same `-1440x900-en` | 1440 | en | MATCH (ผู้คุม — §Controller verdicts) | Included above. |
+| 12 | same `-390x844-en` | 390 | en | MATCH (ผู้คุม — §Controller verdicts) | Included above. |
+| 11C | p2close-rpub/receipt-public-rpub-{paid,refunded-partial,voided,not-found,issue-sent,taxinvoice-form}-owner-1440x900.png · p2close/receipt-public-paid-* | 1440 | th | MATCH (ผู้คุม — §Controller verdicts) | rpub th 5 ok per desktop size + 6 at 390; en same (5/5/6); p2close receipt-public owner + cashier ok. |
+| 11C | same `-1024x768` | 1024 | th | MATCH (ผู้คุม — §Controller verdicts) | ok. |
+| 11C | same `-390x844` | 390 | th | MATCH (ผู้คุม — §Controller verdicts) | ok. |
+| 11C | same `-1440x900-en` (+ 1024 en) | 1440 | en | MATCH (ผู้คุม — §Controller verdicts) | ok. |
+| 11C | same `-390x844-en` | 390 | en | MATCH (ผู้คุม — §Controller verdicts) | ok. |
+| P2.9U/P2.9bU pay | p2.9u/register-paydlg-{giftcard-entry,giftcard-split,giftcard-pin-error,giftcard-insufficient,giftcard-changed,storecredit,tip}-* · p2.9bu/register-{deposit-receive,paydlg-deposit-*}-* · p2.9u/settings-settings-tip-ledger-* · p2.9bu/settings-settings-deposit-toggle-* | 1440 | th | MATCH (ผู้คุม — §Controller verdicts) | p2.9u th 20 ok @1440 · 18 @1024 · 18 @390; p2.9bu th 14/12/12. UI-10 seen on p1.18u/settings-payments-cashier-1440x900.png: tip + deposit cards = "เฉพาะเจ้าของร้านตั้งค่า…ได้" (no switches). p2.9bu cashier settings/sales runs plan 0 shots (no cashier deposit-toggle shot — Q5). |
+| P2.9U/P2.9bU pay | same `-1024x768` | 1024 | th | MATCH (ผู้คุม — §Controller verdicts) | See above. |
+| P2.9U/P2.9bU pay | same `-390x844` | 390 | th | MATCH (ผู้คุม — §Controller verdicts) | See above. |
+| P2.9U/P2.9bU pay | same `-1440x900-en` | 1440 | en | MATCH (ผู้คุม — §Controller verdicts) | p2.9u en 20 ok (owner en **from the re-shoot**: main run rc 2, 0 shots → row H3) · p2.9bu en 14 ok. |
+| P2.9U/P2.9bU pay | same `-390x844-en` | 390 | en | MATCH (ผู้คุม — §Controller verdicts) | p2.9u en 16 ok (owner part from the re-shoot) · p2.9bu en 11 ok. |
 | 03 | p2.4u/tables-panel-rounds-owner-1440x900.png (+ tables-floor) | 1440 | th | DEVIATION (ref pos-P2.4U-review.md "Controller vis64/vis65" — walk-in queue = เร็ว ๆ นี้, member line/service charge/NEEDS_CLEARING follow-ups; pos-P2.4U.md Deviations 4–5) | Zone tabs + counts, stat line ("ใช้อยู่ 7 จาก 13 โต๊ะ · ยอดบนโต๊ะตอนนี้ ฿1,195"), 5 card states + "ยังไม่ส่งครัว 2 รายการ", reserved card, legend, panel (rounds, "เสิร์ฟแล้วอีก 3 รายการ" collapse, totals ฿565, 5 actions, black เช็คบิล), alerts below the panel (V1 fix holds). Extra "QR ของโต๊ะ" + "พิมพ์ QR ทุกโต๊ะ" (P2.7U). |
 | 03 | p2.4u/tables-panel-rounds-owner-1024x768.png | 1024 | th | DEVIATION (as 1440) | Panel = right sheet over the floor (vis65); unit chip truncates "ร้านกาแ…". |
 | 03 | p2.4u/tables-floor-owner-390x844.png | 390 | th | DEVIATION → U2 O-1 (ruling 16 Oct · fix-now) | Alerts on top, 2-col cards, legend wraps. **W9 reserved card: the line "กันโต๊ะ 20:26" runs into the "ดูการจอง" button** (text overlaps the button's top edge). |
