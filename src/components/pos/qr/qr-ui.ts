@@ -99,3 +99,14 @@ export const newPreorderKey = (): string => `qrp-${randomHex()}`.slice(0, 60);
 
 /** ลิงก์สลับภาษาของหน้าเดิม (คง path · แทน ?lang) */
 export const langHref = (lang: QrLocale): string => `?lang=${lang}`;
+
+/**
+ * เบอร์ที่ลูกค้าพิมพ์ → รูปที่ normalizeThaiPhone ของเซิร์ฟเวอร์อ่านได้ (ฝั่งเครื่องเท่านั้น · ไม่แตะสัญญา S · บันทึกติดตามของ hunter ข้อ 3):
+ * เลขไทย ๐–๙ → 0–9 · "0066…" → "+66…" · "+66 (0)8…" → "+668…" — กติกา 9/10 หลักเดิมของเซิร์ฟเวอร์
+ */
+export function phoneForServer(raw: string): string {
+  let s = raw.replace(/[\u0E50-\u0E59]/g, (d) => String(d.charCodeAt(0) - 0x0e50)).trim();
+  s = s.replace(/^00\s*66/, "+66");
+  s = s.replace(/^(\+?66)[\s-]*\(0\)/, "$1");
+  return s;
+}

@@ -14,7 +14,7 @@ import { normalizeThaiPhone, QR_MAX_QTY, QR_NAME_MAX, QR_NOTE_MAX, type QrLinkVi
 import { QrMenuBoard, type QrPick } from "./QrMenu";
 import { QrCartBar, QrCartBody, QrBottomPanel } from "./QrCart";
 import { useQrQuote, useToast } from "./use-qr";
-import { cartAdd, cartCount, cartLines, cartSetQty, newPreorderKey, qrBaht, type QrCartItem, type QrLocale } from "./qr-ui";
+import { cartAdd, cartCount, cartLines, cartSetQty, newPreorderKey, phoneForServer, qrBaht, type QrCartItem, type QrLocale } from "./qr-ui";
 
 export type QrPreorderActions = {
   quote: (linkToken: string, lines: unknown) => Promise<QrQuoteResult>;
@@ -59,7 +59,7 @@ export function QrPreorderApp(p: { token: string; locale: QrLocale; view: QrLink
       return n;
     });
   };
-  const phoneOk = normalizeThaiPhone(phone) !== null;
+  const phoneOk = normalizeThaiPhone(phoneForServer(phone)) !== null;
   const nameOk = name.trim().length > 0 && name.trim().length <= QR_NAME_MAX;
   const fresh = !!quote && quote.lines.length === cart.length;
   const place = async () => {
@@ -68,7 +68,7 @@ export function QrPreorderApp(p: { token: string; locale: QrLocale; view: QrLink
     setBusy(true);
     setErr(null);
     try {
-      const r = await p.actions.place(p.token, { lines: cartLines(cart), customer: { name: name.trim(), phone: phone.trim() }, idempotencyKey: key, ...(note.trim() ? { note: note.trim() } : {}) });
+      const r = await p.actions.place(p.token, { lines: cartLines(cart), customer: { name: name.trim(), phone: phoneForServer(phone) }, idempotencyKey: key, ...(note.trim() ? { note: note.trim() } : {}) });
       if (r.ok) {
         router.push(`/q/o/${encodeURIComponent(r.orderToken)}?lang=${p.locale}`);
         return;
