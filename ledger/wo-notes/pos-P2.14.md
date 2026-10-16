@@ -148,7 +148,7 @@ Evidence provenance (R1 F10): the earlier gate set `p214-close-shark-pos-d-20261
 | 12 | CD-B3/B7 manifest | `acad9309` + OP lines | excerpts below |
 | 13 | F11 small · DOC-3 · F8 · RPT-5 · HF-FU2 | `b5c42222` (kitchen.ts block above the `kitchenStationsForPos` JSDoc · UI-5 retries only on a failed fetch) · `ac723409` (DOC-3 LANE-RULES §5 = 8192 / 10500M · F8 tax-invoice summary "one per bill, request key audit-only") · `375a0608` **RPT-5** (all-branches channel-code filter `pos-bills-channel-code-filter` + inventory row) · `f48c4f98` HF-FU2 line (PRC-1 over-skip · RPT-6 route variant · developers kanban/account overflow · CD-F7) | DOC-6 was already true at base (`register.ts:2742` HF-TX rewrote the regCreateSale comment) — nothing to change |
 
-Pre-gate check at `f48c4f98` (dirty 0, `/root/pos-runs/builder` runs `fx1-pre-20261016T071346Z`): p2.14 forced **57/59** (H1 H3) · p2.8 60/61 (ST6) · hf-fu 28/29 (ST1) · p2.5 49/49 · p1.17 40/40 · p1.6 48/48 · p2.13 54/54.
+Pre-gate check at `f48c4f98` (dirty 0, `/root/pos-runs/p214-builder/fx1-pre-20261016T071346Z/`): p2.14 forced **57/59** (H1 H3) · p2.8 60/61 (ST6) · hf-fu 28/29 (ST1) · p2.5 49/49 · p1.17 40/40 · p1.6 48/48 · p2.13 54/54.
 
 ### Accepted-red evidence (ruling 21) — manifest `accepted.evidence`
 - `qc-account-api-ai-skill` (gate log): `❌ [E1-K2.1] account_dashboard … act {"error":"ยังไม่ได้เปิดระบบบัญชี …` (all E1-K2.x the same) — seed tenant has no account system on QC4.
