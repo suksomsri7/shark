@@ -77,7 +77,7 @@ const CHECKS: readonly Def[] = [
   D("ZE1", "X2", "[z3 มติ 9] เครื่องหมายของบิล X ในสมุด A (recordExternalSaleZeroEntry เขียน after.bookSystemId) → ย้าย POS ไปผูกสมุด B → applyExternalChannelCommission = {posted:false, reason:no-paid} (ไม่มี JV ใดในสมุด B) · ผูกกลับ A → posted (หรือ already)"),
   D("ZE2", "-", "[z1 มติ 8] posSalePosted: เครื่องหมาย + เอกสารขาย = true · เครื่องหมายไม่มีเอกสาร = false · บิลที่มี JV PAID = true (ตัวควบคุม)"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): ZE3 (hunter H2)
-  D("ZE3", "X2", "[z fix2 มติ 2] บิล zero entry ที่มีค่าคอมฯ จริงในสมุด A (ฉาก A10: มัดจำตอนจด VAT → เลิกจด → บิลสุดท้าย ฿20 · ตัวแทน DIRECT 10%) → ย้าย POS ไปผูกสมุด B → คืนบิลครบ → ระบายคิว ⇒ pos.sale.refunded DONE · ไม่มี P2002 ใน log · COMMISSION ในสมุด B 0 · COMMISSION_REFUNDED ในสมุด B 0 (ปักไว้ · เรื่องเจ้าของ) · COMMISSION ในสมุด A ยัง 1 · ความเคลื่อนไหวสต็อกไม่เพิ่ม"),
+  D("ZE3", "X2", "[z fix2 มติ 2] บิล zero entry ที่มีค่าคอมฯ จริงในสมุด A (ฉาก A10: มัดจำตอนจด VAT → เลิกจด → บิลสุดท้าย ฿20 · ตัวแทน DIRECT 10%) → ย้าย POS ไปผูกสมุด B → คืนบิลครบ → ระบายคิว ⇒ pos.sale.refunded DONE · ไม่มี P2002 ใน log · COMMISSION ในสมุด B 0 · COMMISSION_REFUNDED ในสมุด B 0 (ปักไว้ · เรื่องเจ้าของ) · COMMISSION ในสมุด A ยัง 1 · + บิลที่ 3 (มีสต็อก · ลง JV ในสมุด A ก่อนย้าย) คืนหลังย้าย = ข้าม other-book ในสมุด B · สต็อก +1 (ใบคืน) ไม่ตัดซ้ำ"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3)
   // ── FU P2.11 (f1 f2 f3) ──
   D("FU1", "-", "[f1 f2 มติ 7] report.channels.empty th \"ไม่มียอดในช่วงนี้\" en \"No sales in this period\" (ไม่มี วันนี้/today) · loadProductsData สาขาที่โหลดไม่ครบ (CatalogError — สาขาไม่ผูก POS) อยู่ใน incompleteUnitIds · สาขาปกติไม่อยู่ · ProductPanel ใช้ incompleteUnitIds/branch.incomplete"),
   D("FU2", "X1", "[f3 มติ 10] setChannelPrices + expectedRowsHash: ค่าเก่า → CatalogError CONFLICT ไม่เขียน · ตรง (= ProductsRow.rowsHash = channelRowsHash(rows)) → ok เขียน · ไม่ส่ง → ok (ของเดิม) · channelRowsHash ไม่ขึ้นกับลำดับแถว · คีย์ products.branch.conflict"),
@@ -2027,7 +2027,17 @@ async function runDb() {
     };
     await sale("z3b1", 105_000);
     const b2 = await sale("z3b2", 2_000);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) ▸ บิลที่ 3 (ไม่ใช่ zero entry · บรรทัดผูกสต็อกจริง itemId น้ำเปล่า) — ลง JV PAID ในสมุด A3 ก่อนย้ายสมุด ⇒ คืนหลังย้าย = ตัวรับคืนเงินรันเส้นขายซ้ำในสมุด B
+    //   (posSalePosted ของสมุด B = false) ⇒ postExternalSale เจอคีย์ในสมุดอื่น = ข้าม other-book · สต็อกขยับเฉพาะใบคืน (+1) ไม่ตัดซ้ำ ◂
+    await sysSvc.linkUnit(T, S.INV, unit);
+    const b3r = await call(svcMod, "createSale", { tenantId: T, unitId: unit, systemId: pos, idempotencyKey: newKey("z3b3"), lines: [{ name: `น้ำ z3b3 ${RAND}`, qty: 1, unitPriceSatang: 1_000, itemId: INV.water }], payMethods: [xfer(1_000)] });
+    if (!b3r || b3r.ok === false || typeof b3r.saleId !== "string") throw new Error(`(fixture) บิล z3b3 ${codeOf(b3r)} ${short(b3r?.message ?? "", 80)}`);
+    const b3 = String(b3r.saleId);
+    MY_SALES.push(b3);
     await drain();
+    const b3Moves0 = Number(await P.invMovement.count({ where: { tenantId: T, itemId: INV.water } }).catch(() => -1));
+    if ((await jvCount(accA, `PosSale#${b3}#PAID`)) !== 1) throw new Error(`(fixture) บิล z3b3 ไม่มี JV PAID ในสมุด A3 (${await jvCount(accA, `PosSale#${b3}#PAID`)})`);
+    // ◂ ORACLE-EDIT
     // ฉากก่อนย้ายสมุด: บิล ฿20 ไม่มี JV ขาย · เครื่องหมายของสมุด A3 · COMMISSION ในสมุด A3 1 รายการ
     const comKey = `PosSale#${b2}#COMMISSION`;
     const mk = (await auditsOf(ZERO_ENTRY_ACTION, b2)).filter((x) => x?.after?.bookSystemId === accA);
@@ -2038,6 +2048,7 @@ async function runDb() {
     const logs: string[] = [];
     const orig = { error: console.error, warn: console.warn };
     let rid = "";
+    let rid3 = ""; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3)
     try {
       await relink(S.ACCB);
       const line = await P.posSaleLine.findFirst({ where: { saleId: b2 } });
@@ -2046,6 +2057,13 @@ async function runDb() {
       for (const d of docs) MY_SALES.push(String(d.id));
       if (f?.ok !== true || docs.length !== 1) throw new Error(`(fixture) คืน ฿20 → ${codeOf(f)} ${short(f?.message ?? "", 80)} · ใบคืน ${docs.length}`);
       rid = String(docs[0].id);
+      // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) ▸ คืนบิลที่ 3 ครบ (คืนเข้าคลัง) หลังย้ายสมุด ◂
+      const line3 = await P.posSaleLine.findFirst({ where: { saleId: b3 } });
+      const f3 = await call(refundMod, "refundSale", ctxZ, owner, { saleId: b3, lines: [{ lineId: String(line3?.id ?? "none"), qty: 1, restock: true }], payMethods: [xfer(1_000)], reasonCode: "CHANGED_MIND", idempotencyKey: newKey("z3rf3") });
+      const docs3 = (await P.posSale.findMany({ where: { tenantId: T, docType: "REFUND", refSaleId: b3 } }).catch(() => [])) as Any[];
+      for (const d of docs3) MY_SALES.push(String(d.id));
+      if (f3?.ok !== true || docs3.length !== 1) throw new Error(`(fixture) คืน z3b3 → ${codeOf(f3)} ${short(f3?.message ?? "", 80)} · ใบคืน ${docs3.length}`);
+      rid3 = String(docs3[0].id);
       const cap = (k: "error" | "warn") => (...a: unknown[]) => {
         logs.push(a.map((x) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x, Object.getOwnPropertyNames(x ?? {})); } catch { return String(x); } })())).join(" "));
         orig[k](...a);
@@ -2059,6 +2077,17 @@ async function runDb() {
       await relink(accA);
     }
     const ev = ((await P.outboxEvent.findMany({ where: { tenantId: T, type: "pos.sale.refunded" } }).catch(() => [])) as Any[]).filter((e) => e.payload?.refundSaleId === rid);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) ▸ บิลที่ 3: คิวคืน DONE · ไม่มี JV/เอกสารของบิลในสมุด B (ข้าม other-book) · JV PAID ในสมุด A3 ยัง 1 · สต็อกน้ำเปล่า +1 แถวเดียว (ใบคืน) ◂
+    const ev3 = ((await P.outboxEvent.findMany({ where: { tenantId: T, type: "pos.sale.refunded" } }).catch(() => [])) as Any[]).filter((e) => e.payload?.refundSaleId === rid3);
+    const paidB3 = await jvCount(S.ACCB, `PosSale#${b3}#PAID`);
+    const paidA3 = await jvCount(accA, `PosSale#${b3}#PAID`);
+    const docB3 = Number(await P.accountDocument.count({ where: { tenantId: T, systemId: S.ACCB, refType: "PosSale", refId: b3 } }).catch(() => -1));
+    const b3Moves1 = Number(await P.invMovement.count({ where: { tenantId: T, itemId: INV.water } }).catch(() => -1));
+    if (ev3.length !== 1 || ev3[0]?.status !== "DONE") p.push(`บิลที่ 3 pos.sale.refunded ${ev3.length} · ${ev3.map((e) => `${e.status}/${e.attempts}`).join(",")} ${short(ev3[0]?.lastError ?? "", 80)} (คาด 1 · DONE)`);
+    if (paidB3 !== 0 || docB3 !== 0) p.push(`บิลที่ 3 ในสมุด B: JV PAID ${paidB3} · เอกสาร ${docB3} (คาด 0 · 0 — ข้าม other-book)`);
+    if (paidA3 !== 1) p.push(`บิลที่ 3 JV PAID ในสมุด A3 ${paidA3} (คาด 1 เดิม)`);
+    if (b3Moves0 < 0 || b3Moves1 !== b3Moves0 + 1) p.push(`สต็อกน้ำเปล่า ${b3Moves0} → ${b3Moves1} (คาด +1 = ใบคืน · ไม่ตัดซ้ำ)`);
+    // ◂ ORACLE-EDIT
     const p2002 = logs.filter((l) => /P2002|Unique constraint/i.test(l)).length + ev.filter((e) => /P2002|Unique constraint/i.test(String(e.lastError ?? ""))).length;
     const comB = await jvCount(S.ACCB, comKey);
     const revB = await jvCount(S.ACCB, `PosSale#${rid}#COMMISSION_REFUNDED`);
@@ -2073,7 +2102,7 @@ async function runDb() {
     if (comB !== 0) p.push(`COMMISSION ในสมุด B ${comB} (คาด 0)`);
     if (revB !== 0) p.push(`COMMISSION_REFUNDED ในสมุด B ${revB} (คาด 0 · ปักไว้ มติ fix2 ข้อ 2)`);
     if (comA !== 1) p.push(`COMMISSION ในสมุด A3 ${comA} (คาด 1 เดิม)`);
-    if (mv0 < 0 || mv1 !== mv0) p.push(`ความเคลื่อนไหวสต็อกของร้าน ${mv0} → ${mv1} (คาด เท่าเดิม)`);
+    if (mv0 < 0 || mv1 !== mv0 + 1) p.push(`ความเคลื่อนไหวสต็อกของร้าน ${mv0} → ${mv1} (คาด +1 = ใบคืนบิลที่ 3 เท่านั้น)`); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ACC-3) (เดิม "เท่าเดิม" — บรรทัดไม่มี itemId จึงไม่เคยแดง)
     chk("ZE3", p.length === 0, "คืนบิลหลังย้ายสมุด: คิว DONE · ไม่มี P2002 · ไม่มี COMMISSION/COMMISSION_REFUNDED ในสมุด B · สต็อกไม่ขยับ", FX(P8(p) || "ครบ"));
   });
 }
