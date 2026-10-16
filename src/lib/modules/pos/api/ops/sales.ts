@@ -243,9 +243,28 @@ const salesGet = definePosOp({
   input: idUnitInput,
   async handler({ actor, params, input }) {
     const unitId = await posSaleUnit(actor, params.id ?? "", input.unitId);
-    return posData(await billDetail({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { saleId: params.id, unitId }));
+    // POS P2.14 ▸ API-10 มติ 8: เงินของบิลใน REST ใช้ชื่อลงท้าย Satang ทุกคีย์ (แปลงที่ op · ลิ้นชักบิลของจอยังใช้ DTO เดิมของ billDetail) ◂
+    const { bill } = posResult(await billDetail({ tenantId: actor.tenantId, systemId: actor.systemId, unitId }, posRegisterActorOf(actor), { saleId: params.id, unitId }));
+    return { ...bill, totals: posApiBillTotals(bill.totals) };
   },
 });
+
+/** POS P2.14 ▸ API-10: totals ของ billDetail → ชื่อของ REST (*Satang · vatRateBp คงชื่อ) — สตางค์จำนวนเต็มทุกช่อง ◂ */
+export function posApiBillTotals(t: { subtotal: number; lineDiscount: number; billDiscount: number; coupon: number; tier: number; serviceCharge: number; vatSatang: number; vatRateBp: number; grandTotal: number; tip: number; refunded: number }) {
+  return {
+    subtotalSatang: t.subtotal,
+    lineDiscountSatang: t.lineDiscount,
+    billDiscountSatang: t.billDiscount,
+    couponSatang: t.coupon,
+    tierSatang: t.tier,
+    serviceChargeSatang: t.serviceCharge,
+    vatSatang: t.vatSatang,
+    vatRateBp: t.vatRateBp,
+    grandTotalSatang: t.grandTotal,
+    tipSatang: t.tip,
+    refundedSatang: t.refunded,
+  };
+}
 
 const salesReceipt = definePosOp({
   id: "sales.receipt",

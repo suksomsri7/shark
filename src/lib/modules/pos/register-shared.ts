@@ -243,7 +243,7 @@ export type RegisterRefusalCode =
   | "DEPOSIT_LOCKED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
-export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
+export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string };
 
 export type RegisterSoldOutReason = "UNAVAILABLE" | "NO_STOCK";
 export type RegisterProduct = {
