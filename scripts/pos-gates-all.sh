@@ -110,6 +110,7 @@ def ids_of(log):  # POS HF-FU2 ▸ U(a): คืน (ids, total, passed) ◂
         return None
     ids = []
     per = {}  # POS HF-FU2 ▸ fix1 N4: id แยกตามคีย์ — นับ (a) จากรายการเดียว ◂
+    shape = [k for k in ("failed", "findings") if k in j and not isinstance(j.get(k), list)]  # POS HF-FU2 ▸ fix2 N7: failed/findings ต้องเป็นรายการ ◂
     for k in ("failed", "findings"):
         v = j.get(k)
         if isinstance(v, list):
@@ -126,7 +127,7 @@ def ids_of(log):  # POS HF-FU2 ▸ U(a): คืน (ids, total, passed) ◂
     if j.get("crashed"):
         counted.append("CRASH")
     t, p = j.get("total"), j.get("passed")  # POS HF-FU2 ▸ U(a) ◂
-    return ids, (t if isinstance(t, int) and not isinstance(t, bool) else None), (p if isinstance(p, int) and not isinstance(p, bool) else None), counted
+    return ids, (t if isinstance(t, int) and not isinstance(t, bool) else None), (p if isinstance(p, int) and not isinstance(p, bool) else None), counted, shape  # POS HF-FU2 ▸ fix2 N7 ◂
 def is_crash_id(x):  # POS HF-FU2 ▸ U(b) ◂
     return x == "CRASH" or str(x).endswith("-ERR")
 red = []
@@ -205,6 +206,8 @@ for name, rc in rows:
         bad0 = ""
         if not isinstance(j0, dict):
             bad0 = "JSON_SUMMARY อ่านไม่ได้"
+        elif any(k in j0 and not isinstance(j0[k], list) for k in ("failed", "findings")):  # POS HF-FU2 ▸ fix2 N7 ◂
+            bad0 = "failed/findings ไม่ใช่รายการ"
         elif j0.get("failed") or j0.get("findings"):
             bad0 = "failed/findings ไม่ว่าง"
         elif j0.get("crashed"):
@@ -260,9 +263,11 @@ for name, rc in rows:
         if got is None:
             why = "ไม่มีบรรทัด JSON_SUMMARY"
         else:
-            ids, t, p, counted = got  # POS HF-FU2 ▸ U(a)(b) ◂ · POS HF-FU2 ▸ fix1 N4: counted = รายการที่นับ (a) ◂
+            ids, t, p, counted, shape = got  # POS HF-FU2 ▸ U(a)(b) ◂ · POS HF-FU2 ▸ fix1 N4: counted = รายการที่นับ (a) ◂ · POS HF-FU2 ▸ fix2 N7: shape ◂
             extra = sorted(set(ids) - set(a["checks"]))
-            if extra:
+            if shape:  # POS HF-FU2 ▸ fix2 N7 ◂
+                why = f"JSON_SUMMARY {'/'.join(shape)} ไม่ใช่รายการ"
+            elif extra:
                 why = f"ล้มนอก accepted.checks: {','.join(extra)}"
             elif t is None or p is None:  # POS HF-FU2 ▸ U(a): แดงซ่อน — ต้องนับได้ ◂
                 why = "JSON_SUMMARY ไม่มี total/passed"
@@ -270,6 +275,8 @@ for name, rc in rows:
                 why = f"passed/total ผิดรูป (passed {p} · total {t} · ต้อง 0 ≤ passed ≤ total)"
             elif len(set(counted)) < t - p:  # POS HF-FU2 ▸ fix1 N4: นับ failed เท่านั้น (findings ไม่เติม) ◂
                 why = f"รายการล้มสั้นกว่า total−passed ({len(set(counted))} < {t}−{p})"
+            elif len(set(counted)) > t - p:  # POS HF-FU2 ▸ fix2 N7: รายการล้มเกิน total−passed (เช่น total 0 passed 0 failed [X]) ◂
+                why = f"รายการล้มเกิน total−passed ({len(set(counted))} > {t}−{p})"
             elif any(is_crash_id(x) for x in a["checks"]):
                 m = a.get("match")
                 if not isinstance(m, str) or not m.strip():  # POS HF-FU2 ▸ U(b) ◂
