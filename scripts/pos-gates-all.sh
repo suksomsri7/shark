@@ -4,7 +4,9 @@
 #     forced = env QC_FORCE=1 (ชุดที่มีด่าน SKIP — ของที่ขาดต้องแดง ไม่ใช่ข้าม) · unforced = ไม่ตั้ง QC_FORCE
 #   คำสั่ง (fitness ±env · fitness-pos · gen-check · typecheck heap 8192 / ISO_MEM 10500M บนล็อก /tmp/pos-gate.lock · visual --list/--dry) = bash -c <run> ที่รากทรี
 #   ผล: /root/pos-runs/p214-close-<ทรี>-<เวลา UTC>/ — HEAD.txt (tree= head= dirty= เวลา) · <name>.log (บรรทัดแรก = HEAD · บรรทัดท้าย EXIT <code>) ·
-#        SUMMARY.txt ("<name> <exit>" ต่อรายการตามลำดับแมนิเฟสต์ · บรรทัดสุดท้าย DONE)
+#        SUMMARY.txt ("<name> <exit>" ต่อรายการตามลำดับแมนิเฟสต์ · แล้ว ACCEPTED/RED ต่อรายการที่ exit ≠ 0 · "VERDICT green|red" · บรรทัดสุดท้าย DONE)
+#   POS P2.14 ▸ fix1 H5: VERDICT = green เมื่อทุกรายการ exit 0 หรือ accepted ในแมนิเฟสต์ (accepted ต้องมี evidence · มี checks = ยอมเฉพาะ id เหล่านั้นใน JSON_SUMMARY.failed) ·
+#     exit 1 เมื่อ red หรือชื่อใน --only ไม่ตรงแมนิเฟสต์ (บอกชื่อ) · ทรีมีไฟล์ค้าง (dirty > 0) = ไม่รัน (พิมพ์ porcelain) ◂
 # ใช้: bash scripts/pos-gates-all.sh [--dry] [--out <dir>] [--only <name,name,…>]
 #   --dry = พิมพ์ "PLAN <name> <forced|unforced|command>" ทุกรายการตามลำดับ แล้วจบ (ไม่รันอะไร · ไม่แตะ DB)
 #   รันยาว (≈ 1 ชม.): systemd-run --unit=pos-gates-$(date +%s) --collect /usr/bin/bash <ทรี>/scripts/pos-gates-all.sh
@@ -57,6 +59,27 @@ if [ "$DRY" -eq 1 ]; then
   exit 0
 fi
 
+# POS P2.14 ▸ fix1 H5: --only ต้องตรงชื่อในแมนิเฟสต์ทุกชื่อ · ทรีต้องสะอาด ◂
+if [ -n "$ONLY" ]; then
+  UNMATCHED=""
+  IFS=',' read -ra WANT <<< "$ONLY"
+  for w in "${WANT[@]}"; do
+    [ -z "$w" ] && continue
+    printf '%s\n' "$PLAN" | awk -F'\t' -v n="$w" '$2 == n { f = 1 } END { exit f ? 0 : 1 }' || UNMATCHED="$UNMATCHED $w"
+  done
+  if [ -n "$UNMATCHED" ]; then
+    echo "🔴 --only ไม่ตรงแมนิเฟสต์:$UNMATCHED" >&2
+    echo "VERDICT red (unmatched --only:$UNMATCHED)"
+    exit 1
+  fi
+fi
+PORC="$(git -C "$ROOT" status --porcelain)"
+if [ -n "$PORC" ]; then
+  echo "🔴 ทรีมีไฟล์ค้าง (dirty $(printf '%s\n' "$PORC" | wc -l)) — commit ก่อนรันชุดด่าน:" >&2
+  printf '%s\n' "$PORC" >&2
+  exit 2
+fi
+
 TREE="$(basename "$ROOT")"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 [ -n "$OUT" ] || OUT="/root/pos-runs/p214-close-${TREE}-${STAMP}"
@@ -88,5 +111,45 @@ while IFS=$'\t' read -r kind name rest; do
   echo "$name $RC" >> "$OUT/SUMMARY.txt"
   echo "  $name → $RC"
 done <<< "$PLAN"
+# POS P2.14 ▸ fix1 H5: คำตัดสิน — exit ≠ 0 ที่ไม่ accepted (หรือ accepted แบบ checks แต่ล้มนอกรายการ / ไม่มี evidence) = red ◂
+python3 - "$MANIFEST" "$OUT" <<'PY' >> "$OUT/SUMMARY.txt"
+import json, os, sys
+man = json.load(open(sys.argv[1])); out = sys.argv[2]
+acc = {s["suite"]: s.get("accepted") for s in man.get("suites", []) if s.get("accepted")}
+acc.update({c["name"]: c.get("accepted") for c in man.get("commands", []) if c.get("accepted")})
+red = []
+for line in open(os.path.join(out, "SUMMARY.txt")).read().splitlines():
+    parts = line.split()
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit() or parts[1] == "0":
+        continue
+    name, rc = parts
+    a = acc.get(name)
+    if not a or not str(a.get("evidence", "")).strip():
+        print(f"RED {name} {rc}" + (" (accepted ไม่มี evidence)" if a else ""))
+        red.append(name)
+        continue
+    checks = a.get("checks")
+    if checks:
+        failed = None
+        try:
+            for l in open(os.path.join(out, f"{name}.log"), errors="replace"):
+                if l.startswith("JSON_SUMMARY "):
+                    j = json.loads(l[len("JSON_SUMMARY "):])
+                    failed = j.get("failed")
+                    if j.get("crashed"):
+                        failed = ["CRASH"]
+        except Exception:
+            failed = None
+        extra = sorted(set(failed or ["(no JSON_SUMMARY)"]) - set(checks)) if failed is not None else ["(no JSON_SUMMARY)"]
+        if extra:
+            print(f"RED {name} {rc} (ล้มนอก accepted.checks: {','.join(extra)})")
+            red.append(name)
+            continue
+    print(f"ACCEPTED {name} {rc} — {a.get('reason', '')[:120]}")
+print(f"VERDICT {'red' if red else 'green'}" + (f" ({len(red)}: {' '.join(red)})" if red else ""))
+PY
+VERDICT_LINE="$(grep '^VERDICT ' "$OUT/SUMMARY.txt" | tail -1)"
 echo "DONE" >> "$OUT/SUMMARY.txt"
+echo "$VERDICT_LINE"
 echo "✅ pos-gates-all จบ — $OUT/SUMMARY.txt"
+case "$VERDICT_LINE" in "VERDICT green"*) exit 0 ;; *) exit 1 ;; esac
