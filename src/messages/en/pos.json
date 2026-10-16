@@ -1403,7 +1403,8 @@
       "scopeNote": "History of this inventory (every branch that shares it)",
       "saleCut": "Used by recipe: {name}",
       "saleReturn": "Returned from bill: {name}",
-      "saleRef": "{line} · bill {receipt}"
+      "saleRef": "{line} · bill {receipt}",
+      "saleRefBill": "bill {receipt}"
     },
     "productsPage": {
       "desc": "Services/products — set up what the register sells",
