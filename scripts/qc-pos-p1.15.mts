@@ -1514,6 +1514,8 @@ async function runDb() {
       const r = await call(register, "submitRegisterSale", ctxA(DEV1), actor, { ...cartOf(c), idempotencyKey: key, expectedGrandTotalSatang: g, payMethods: [{ type: "PROMPTPAY", amountSatang: g }], ...extra });
       return { r, key };
     };
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 PIN-1 fix): PN-F2 ล็อก PIN ของ MGR ไว้ 15 นาทีในรอบเดียวกัน — ล้างตัวนับ/ล็อกของ C1 MGR ในร้านชั่วคราวก่อนขอโทเคน (ลำดับข้อสอบไม่มีผล)
+    if (PSP) await PSP.updateMany({ where: { tenantId: T, userId: { in: [uid("C1"), uid("MGR")] } }, data: { failedCount: 0, lockedUntil: null } });
     const vC1 = await verify({ pin: PIN.C1, userId: uid("C1") }, "TK-PP verify C1");
     const vMg = await verify({ pin: PIN.MGR, userId: uid("MGR") }, "TK-PP verify MGR");
     const tC1 = vC1?.ok === true ? String(vC1.staffToken) : "";
