@@ -86,7 +86,8 @@ const CHECKS: readonly Def[] = [
   D("O2", "O", "[C8 ORD-3] ingest รับอัตโนมัติถือล็อกเดียวกับตัวกวาด: ระหว่างล็อกถูกถือ ingest ไม่รับอัตโนมัติจนกว่าล็อกจะว่าง (รอ หรือคง NEW + held)"),
   D("O3", "O", "[C8 ORD-4] ทิ้งรอบร่างกำพร้า: ล็อก session ก่อนอ่านซ้ำ — ธุรกรรมอื่นถือ session (เปิดกลับ OPEN) ขณะกวาด → ร่างยัง HELD"),
   D("O4", "O", "[C8 ORD-5] บิลของออเดอร์ถูกคืนเงินครบ (REFUNDED) → handOver ปฏิเสธ · ออเดอร์ไม่เป็น HANDED"),
-  D("O5", "O", "[C8 ORD-1] ประตูเว็บ ingestInTx ใช้การมองเห็นตามคลังของสาขา (C3): สินค้าคลังที่สาขา B (ไม่มีคลัง) → PRODUCT_NOT_FOUND lineIndex 0 · สาขา A → ok"),
+  D("O5", "O", "[C8 ORD-1 · ORD-1b] ประตูเว็บ ingestInTx ใช้การมองเห็นตามคลังของสาขา (C3) เมื่อสาขาผูกคลัง: สินค้าคลังที่สาขา W (ผูกคลังอื่น) → PRODUCT_NOT_FOUND lineIndex 0 · สาขา A → ok · สาขา B (ไม่ผูกคลังเลย) → ok ตามกติกาเดิม"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-1b · CD-B5)
+  D("O5b", "O", "[fix1 H1 ORD-1b] เว็บร้าน createOrder: สินค้าที่สาขาผูกคลังมองไม่เห็น → throw · ShopOrder 0 · PosSale 0 · PosOrder 0 · สาขาไม่ผูกคลัง → ShopOrder 1 + PosOrder 1 · ไม่มี ShopOrder ที่ไม่มี PosOrder ในร้านนี้"), // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 ORD-1b · O5b)
   // ── P ราคา · มัดจำ · ช่องทาง · บัญชี · จอ ──
   D("P1", "P", "[C11 DEP-1] คำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED มี depositId ของแถวนั้น"),
   D("P2", "P", "[C11 PRC-1] bulkChannelMarkup level-aware: (code, ทุกสาขา) notSold → ปรับที่ (code, A) ข้าม · (null, A) notSold → ปรับที่ (code, ทุกสาขา) ข้าม · สินค้ายังไม่ขาย"),
@@ -1032,6 +1033,7 @@ const consMod = await tryImport("@/lib/outbox-consumers");
 const akSvc = await tryImport("@/lib/api-keys/service");
 const scopesMod = await tryImport("@/lib/api-keys/scopes");
 const menu = await tryImport("@/lib/modules/restaurant/menu");
+const shopSvc = await tryImport("@/lib/modules/shop/service"); // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 ORD-1b · O5b)
 const rtable = await tryImport("@/lib/modules/restaurant/table");
 const rorder = await tryImport("@/lib/modules/restaurant/order");
 const coreHash = await tryImport("@/lib/core/hash");
@@ -2075,21 +2077,66 @@ async function runDb() {
     if (h?.ok === true || o?.status === "HANDED") p.push(`handOver ออเดอร์ที่คืนเงินครบ → ${codeOf(h)} สถานะ ${o?.status}`);
     chk("O4", !fx && p.length === 0, "บิล REFUNDED → ส่งมอบไม่ได้", why(p));
   });
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-1b · CD-B5): สาขาไม่ผูกคลัง (B) = กติกาเดิม (ok) · สาขาผูกคลังอื่น (W ใหม่ · คลังที่สอง) = มองไม่เห็น ⇒ PRODUCT_NOT_FOUND
+  let unitW = "";
   await run("O5", async () => {
     const p: string[] = [];
     const input = (k: string) => ({ channelCode: "WEB", idempotencyKey: newKey(k), lines: [{ productId: PP.water, qty: 1 }], customer: { name: `คุณเว็บ ${k}` }, fulfilment: "PICKUP" });
     const viaTx = async (u: string, k: string): Promise<Any> => {
       try {
-        return await P.$transaction((tx: Any) => orderMod.ingestInTx(tx, { tenantId: T, unitId: U[u] }, input(k)));
+        return await P.$transaction((tx: Any) => orderMod.ingestInTx(tx, { tenantId: T, unitId: u }, input(k)));
       } catch (e) {
         return { ok: false, code: errCode(e), message: String((e as Error).message).slice(0, 120), threw: true };
       }
     };
-    const rB = await viaTx("B", "o5b");
-    if (!(rB?.ok === false && rB?.code === "PRODUCT_NOT_FOUND" && rB?.lineIndex === 0)) p.push(`สาขา B (ไม่มีคลัง) → ${short(rB, 80)} (คาด PRODUCT_NOT_FOUND lineIndex 0)`);
-    const rA = await viaTx("A", "o5a");
+    unitW = (await P.businessUnit.create({ data: { tenantId: T, type: "SHOP", name: `${TAG} สาขาW`, slug: `${T_SLUG}-w` } })).id;
+    const inv2 = (await sysSvc.createSystem(T, "INVENTORY", `คลังสอง ${RAND}`)).id;
+    await sysSvc.linkUnit(T, S.POS, unitW);
+    await sysSvc.linkUnit(T, inv2, unitW);
+    const rW = await viaTx(unitW, "o5w");
+    if (!(rW?.ok === false && rW?.code === "PRODUCT_NOT_FOUND" && rW?.lineIndex === 0)) p.push(`สาขา W (ผูกคลังอื่น) → ${short(rW, 80)} (คาด PRODUCT_NOT_FOUND lineIndex 0)`);
+    const rB = await viaTx(U.B!, "o5b");
+    if (rB?.ok !== true || rB?.skipped) p.push(`สาขา B (ไม่ผูกคลัง · กติกาเดิม) → ${short(rB, 80)} (คาด ok)`);
+    const rA = await viaTx(U.A!, "o5a");
     if (rA?.ok !== true || rA?.skipped) p.push(`(ตัวควบคุม) สาขา A → ${short(rA, 80)}`);
-    chk("O5", !fx && p.length === 0, "ประตูเว็บใช้การมองเห็นตามคลังของสาขา", why(p));
+    chk("O5", !fx && p.length === 0, "ประตูเว็บใช้การมองเห็นตามคลังของสาขาที่ผูกคลัง · ไม่ผูกคลัง = กติกาเดิม", why(p));
+  });
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 ORD-1b · O5b) ▸ เว็บร้านจริง (shop createOrder) — ไม่มีเงินโดยไม่มีออเดอร์ ◂
+  await run("O5b", async () => {
+    const p: string[] = [];
+    if (!shopSvc?.createOrder || !unitW) throw new Error(`(fixture) shop createOrder ${!!shopSvc?.createOrder} · unitW ${!!unitW}`);
+    const waterInv = String((await P.posProduct.findFirst({ where: { id: PP.water }, select: { invItemId: true } }))?.invItemId ?? "");
+    const sc = (u: string): Any => ({ tenantId: T, unitId: u, actorUserId: uid("OWNER") });
+    const spW = await shopSvc.createProduct(sc(unitW), { name: `น้ำ W ${RAND}`, priceSatang: 1000, invItemId: waterInv });
+    const spB = await shopSvc.createProduct(sc(U.B!), { name: `น้ำ B ${RAND}`, priceSatang: 1000, invItemId: waterInv });
+    const mapped = await P.shopProduct.findMany({ where: { tenantId: T, id: { in: [String(spW?.id), String(spB?.id)] } }, select: { id: true, posProductId: true } });
+    if (mapped.some((m: Any) => !m.posProductId)) p.push(`(fixture) ShopProduct ไม่ผูก posProductId ${short(mapped, 80)}`);
+    let wErr = "";
+    try {
+      await shopSvc.createOrder(sc(unitW), { customerName: "คุณ O5b W", customerPhone: "0811111111", lines: [{ productId: String(spW?.id), qty: 1 }] });
+    } catch (e) {
+      wErr = String((e as Error).message).slice(0, 80);
+    }
+    if (!wErr) p.push("สาขา W (ผูกคลัง · มองไม่เห็น) createOrder ไม่ throw");
+    const soW = await P.shopOrder.count({ where: { tenantId: T, unitId: unitW } });
+    const poW = await P.posOrder.count({ where: { tenantId: T, unitId: unitW } });
+    const psW = await P.posSale.count({ where: { tenantId: T, unitId: unitW } });
+    if (soW !== 0 || poW !== 0 || psW !== 0) p.push(`สาขา W: ShopOrder ${soW} · PosOrder ${poW} · PosSale ${psW} (คาด 0 · 0 · 0)`);
+    let bOrder: Any = null;
+    try {
+      bOrder = await shopSvc.createOrder(sc(U.B!), { customerName: "คุณ O5b B", customerPhone: "0822222222", lines: [{ productId: String(spB?.id), qty: 1 }] });
+    } catch (e) {
+      p.push(`สาขา B (ไม่ผูกคลัง) createOrder throw ${String((e as Error).message).slice(0, 60)} (คาด สร้างได้ตามเดิม)`);
+    }
+    if (bOrder?.id) {
+      const po = await P.posOrder.count({ where: { tenantId: T, unitId: U.B, shopOrderId: bOrder.id } });
+      if (po !== 1) p.push(`สาขา B: PosOrder ของ ShopOrder ${po} (คาด 1)`);
+    }
+    const shopIds = (await P.shopOrder.findMany({ where: { tenantId: T }, select: { id: true } })).map((x: Any) => x.id);
+    const linked = new Set((await P.posOrder.findMany({ where: { tenantId: T, shopOrderId: { in: shopIds } }, select: { shopOrderId: true } })).map((x: Any) => x.shopOrderId));
+    const orphan = shopIds.filter((id: string) => !linked.has(id));
+    if (orphan.length) p.push(`ShopOrder ที่ไม่มี PosOrder ${orphan.length}`);
+    chk("O5b", !fx && p.length === 0, "เว็บร้าน: มองไม่เห็น = ไม่มี ShopOrder · ไม่ผูกคลัง = ออเดอร์ POS ตามเดิม · ไม่มีเงินโดยไม่มีออเดอร์", why(p));
   });
 
   // ════════════════ P ราคา · มัดจำ · ช่องทาง · บัญชี · จอ ════════════════
