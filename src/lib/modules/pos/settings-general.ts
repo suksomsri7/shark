@@ -11,7 +11,7 @@
 // 🔴 แพตช์ที่ไม่เปลี่ยนอะไร (ค่าเดิม) = ok · ไม่เขียน · ไม่มี audit (มติ 11)
 
 import type { Prisma } from "@prisma/client";
-import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
+import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // POS P3.5 ▸ + canViewPayroll (อัตราค่าคอมฯ · มติ 1) ◂
 import { writeAudit } from "@/lib/core/audit";
 import { prisma } from "./db";
 import { posDiscountCaps, posHeldCartExpireDays, posRegisterAutoLockMinutes, type PosDiscountCaps } from "./register-shared";
@@ -37,6 +37,16 @@ import {
   type PosSettingsRefusal,
   type PosSettingsRefusalCode,
   type PosUnitStockPolicyResult,
+  // POS P3.5 ▸ R3 R6 R12 ◂
+  POS_SCHEDULE_GATE_LIMITS,
+  POS_STAFF_COMMISSION_LIMITS,
+  POS_STAFF_ROLES,
+  posClockOnShift,
+  posScheduleGate,
+  posStaffCommission,
+  type PosClockOnShift,
+  type PosScheduleGate,
+  type PosStaffCommissionConfig,
 } from "./settings-shared";
 
 type Db = typeof prisma | Prisma.TransactionClient;
@@ -534,3 +544,112 @@ export async function posSettingsHistory(ctx: Ctx, actor: PosSettingsWriterActor
     return settingsRefuse("UNKNOWN");
   }
 }
+
+// ═══════════ POS P3.5 ▸ R3 R6 R12 ค่าตั้งพนักงาน × HR (ด่านตารางงาน · ลงเวลาจากกะ · อัตราค่าคอมฯ) ◂ ═══════════
+// 🔴 ทางเขียนเดียวกับ updatePosGeneralSettings: สิทธิ์ → ตรวจแพตช์ทั้งก้อน (ช่วงเดียวกับตัวอ่าน settings-shared) → tx + ล็อกแถว FOR UPDATE →
+//    mergePosKeys เฉพาะคีย์ของตัวเอง (pos.staff = รวมทับเฉพาะ scheduleGate/clockOnShift · pos.staffCommission = ทั้งก้อน) → audit pos.settings.updated
+// 🔴 ด่านตารางงาน/ลงเวลา = เจ้าของร้านเท่านั้น (มติ 3 · prompt) · อัตราค่าคอมฯ = เจ้าของ หรือผู้ดูเงินเดือน (canViewPayroll · มติ 1)
+// 🔴 audit ของอัตราค่าคอมฯ = สรุป (เปิด/ปิด · ค่าปริยาย · จำนวนแถว · บทบาท) — ไม่ลงตารางอัตรารายสินค้าในประวัติที่ผู้จัดการเห็น
+export type PosStaffSettingsPatch = { scheduleGate?: Partial<PosScheduleGate>; clockOnShift?: PosClockOnShift };
+export type PosStaffSettingsResult = { ok: true; scheduleGate: PosScheduleGate; clockOnShift: PosClockOnShift } | PosSettingsRefusal;
+export type PosStaffCommissionResult = { ok: true; staffCommission: PosStaffCommissionConfig } | PosSettingsRefusal;
+
+/** R3 R12 — ด่านตารางงาน + ถามลงเวลาหลังเปิด/ปิดกะ (เจ้าของร้านเท่านั้น) */
+export async function updatePosStaffSettings(ctx: Ctx, actor: PosSettingsWriterActor, patch: unknown): Promise<PosStaffSettingsResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || m.role !== "OWNER") return settingsRefuse("PERMISSION_DENIED", "ด่านตารางงานและการลงเวลาจากกะ เจ้าของร้านเท่านั้นที่ตั้งได้");
+    if (!isRecord(patch)) return settingsRefuse("VALIDATION", "แพตช์ต้องเป็นออบเจกต์");
+    for (const k of Object.keys(patch)) if (k !== "scheduleGate" && k !== "clockOnShift") return settingsRefuse("VALIDATION", `ไม่รู้จักคีย์ ${k}`, k);
+    const g = patch.scheduleGate;
+    if (g !== undefined) {
+      if (!isRecord(g)) return settingsRefuse("VALIDATION", "scheduleGate ต้องเป็นออบเจกต์", "scheduleGate");
+      for (const [k, v] of Object.entries(g)) {
+        if (k === "enabled") {
+          if (typeof v !== "boolean") return settingsRefuse("VALIDATION", "enabled ต้องเป็นจริง/เท็จ", "scheduleGate.enabled");
+        } else if (k === "earlyMin" || k === "lateMin" || k === "overrideTtlMin") {
+          const lim = POS_SCHEDULE_GATE_LIMITS[k];
+          if (!isInt(v, lim.min, lim.max)) return settingsRefuse("VALIDATION", `${k} ต้องเป็นจำนวนเต็ม ${lim.min}–${lim.max} นาที`, `scheduleGate.${k}`);
+        } else return settingsRefuse("VALIDATION", `ไม่รู้จักคีย์ ${k}`, `scheduleGate.${k}`);
+      }
+    }
+    if (patch.clockOnShift !== undefined && patch.clockOnShift !== "OFF" && patch.clockOnShift !== "ASK") return settingsRefuse("VALIDATION", "clockOnShift ต้องเป็น OFF หรือ ASK", "clockOnShift");
+    const hrLinked = (await prisma.appSystem.count({ where: { tenantId: ctx.tenantId, type: "HR" } })) > 0;
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
+      const pos = posOf(sys.settings);
+      const staff = recOf(pos.staff);
+      const beforeGate = posScheduleGate(sys.settings);
+      const beforeClock = posClockOnShift(sys.settings, hrLinked);
+      const nextStaff: Record<string, unknown> = { ...staff };
+      if (isRecord(g)) nextStaff.scheduleGate = { ...beforeGate, ...g };
+      if (patch.clockOnShift !== undefined) nextStaff.clockOnShift = patch.clockOnShift;
+      const afterSettings = { pos: { ...pos, staff: nextStaff } };
+      const afterGate = posScheduleGate(afterSettings);
+      const afterClock = posClockOnShift(afterSettings, hrLinked);
+      if (canon(staff) === canon(nextStaff)) return { ok: true as const, scheduleGate: beforeGate, clockOnShift: beforeClock, audit: null };
+      await mergePosKeys(tx, ctx, { staff: nextStaff });
+      const view = (gate: PosScheduleGate, clock: PosClockOnShift) => ({ section: "staff", scheduleGate: gate, clockOnShift: clock });
+      return { ok: true as const, scheduleGate: afterGate, clockOnShift: afterClock, audit: { before: view(beforeGate, beforeClock), after: view(afterGate, afterClock) } };
+    });
+    if (!done.ok) return done;
+    if (done.audit) await writeAudit({ tenantId: ctx.tenantId, actorId: m.userId, action: POS_SETTINGS_AUDIT, targetType: "AppSystem", targetId: ctx.systemId, before: done.audit.before, after: done.audit.after });
+    return { ok: true, scheduleGate: done.scheduleGate, clockOnShift: done.clockOnShift };
+  } catch (e) {
+    console.error("[pos/settings-general] staff", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+
+/** R6 — อัตราค่าคอมฯ พนักงานขาย (เจ้าของ หรือผู้มี hr.payroll.read) · แพตช์ = ก้อนใหม่ทั้งก้อน (คีย์ที่ไม่ส่ง = ค่าเดิม) */
+export async function updatePosStaffCommission(ctx: Ctx, actor: PosSettingsWriterActor, patch: unknown): Promise<PosStaffCommissionResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || !canViewPayroll(m)) return settingsRefuse("PERMISSION_DENIED", "อัตราค่าคอมฯ พนักงาน เจ้าของร้านหรือผู้ดูเงินเดือนเท่านั้นที่ตั้งได้");
+    if (!isRecord(patch)) return settingsRefuse("VALIDATION", "แพตช์ต้องเป็นออบเจกต์");
+    const L = POS_STAFF_COMMISSION_LIMITS;
+    const rateOk = (v: unknown) => isRecord(v) && Object.keys(v).length > 0 && Object.entries(v).every(([k, x]) => (k === "bp" ? isInt(x, L.bp.min, L.bp.max) : k === "fixedSatang" ? isInt(x, L.fixedSatang.min, L.fixedSatang.max) : false));
+    let entries = 0;
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === "enabled") {
+        if (typeof v !== "boolean") return settingsRefuse("VALIDATION", "enabled ต้องเป็นจริง/เท็จ", k);
+      } else if (k === "defaultBp") {
+        if (!isInt(v, L.bp.min, L.bp.max)) return settingsRefuse("VALIDATION", `defaultBp ต้องเป็นจำนวนเต็ม ${L.bp.min}–${L.bp.max}`, k);
+      } else if (k === "byCategory" || k === "byProduct") {
+        if (!isRecord(v)) return settingsRefuse("VALIDATION", `${k} ต้องเป็นออบเจกต์`, k);
+        for (const [id, r] of Object.entries(v)) {
+          if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !rateOk(r)) return settingsRefuse("VALIDATION", `อัตราของ ${id} ไม่ถูกต้อง (bp 0–5000 · fixedSatang 0–100000)`, `${k}.${id}`);
+          entries++;
+        }
+      } else if (k === "sellerRoles") {
+        if (!Array.isArray(v) || !v.every((x) => typeof x === "string" && (POS_STAFF_ROLES as readonly string[]).includes(x))) return settingsRefuse("VALIDATION", "sellerRoles ต้องเป็น OWNER/MANAGER/STAFF", k);
+      } else return settingsRefuse("VALIDATION", `ไม่รู้จักคีย์ ${k}`, k);
+    }
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
+      const pos = posOf(sys.settings);
+      const before = posStaffCommission(sys.settings);
+      const merged = { ...before, ...(patch as Record<string, unknown>) } as PosStaffCommissionConfig;
+      const total = Object.keys(merged.byCategory ?? {}).length + Object.keys(merged.byProduct ?? {}).length;
+      if (entries > L.entries || total > L.entries) return settingsRefuse("VALIDATION", `อัตรารายสินค้า/หมวดรวมได้ไม่เกิน ${L.entries} แถว`, "byProduct");
+      const after = posStaffCommission({ pos: { staffCommission: merged } });
+      if (canon(before) === canon(after) && isRecord(pos.staffCommission)) return { ok: true as const, staffCommission: before, audit: null };
+      await mergePosKeys(tx, ctx, { staffCommission: after });
+      const view = (c: PosStaffCommissionConfig) => ({ section: "staffCommission", enabled: c.enabled, defaultBp: c.defaultBp, categoryRates: Object.keys(c.byCategory).length, productRates: Object.keys(c.byProduct).length, sellerRoles: c.sellerRoles.join(",") });
+      return { ok: true as const, staffCommission: after, audit: { before: view(before), after: view(after) } };
+    });
+    if (!done.ok) return done;
+    if (done.audit) await writeAudit({ tenantId: ctx.tenantId, actorId: m.userId, action: POS_SETTINGS_AUDIT, targetType: "AppSystem", targetId: ctx.systemId, before: done.audit.before, after: done.audit.after });
+    return { ok: true, staffCommission: done.staffCommission };
+  } catch (e) {
+    console.error("[pos/settings-general] staffCommission", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+// ◂ POS P3.5
