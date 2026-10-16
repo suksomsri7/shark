@@ -157,6 +157,30 @@ for name, rc in rows:
     if head_line is None or l1 != head_line:
         print(f"RED {name} {rc} (log-head: บรรทัด 1 ของ {name}.log ≠ HEAD.txt บรรทัด 1)")
         red.append(name)
+# POS HF-FU2 ▸ fix1 N3: JSON_SUMMARY ต้องมีบรรทัดเดียว และต้องเป็นบรรทัดก่อน EXIT ตัวสุดท้าย (สรุปปลอมที่ต่อท้าย/แทรกกลาง = red) ◂
+_logs = {}
+def log_lines(name):
+    if name not in _logs:
+        try:
+            _logs[name] = open(os.path.join(out, f"{name}.log"), errors="replace").read().splitlines()
+        except Exception:
+            _logs[name] = None
+    return _logs[name]
+def exit_idx(L):  # POS HF-FU2 ▸ fix1 N3: ดัชนีบรรทัด EXIT ตัวสุดท้าย (None = ไม่มี) ◂
+    ix = [i for i, l in enumerate(L) if l.startswith("EXIT ")]
+    return ix[-1] if ix else None
+for name, rc in rows:
+    L = log_lines(name)
+    if L is None:
+        continue  # ไม่มี log = red ที่ log-head แล้ว
+    js = [i for i, l in enumerate(L) if l.startswith("JSON_SUMMARY ")]
+    ex = exit_idx(L)
+    if len(js) > 1:
+        print(f"RED {name} {rc} (JSON_SUMMARY {len(js)} บรรทัด — ต้องมีบรรทัดเดียว)")
+        red.append(name)
+    elif js and ex is not None and js[0] != ex - 1:
+        print(f"RED {name} {rc} (JSON_SUMMARY ไม่ใช่บรรทัดก่อน EXIT)")
+        red.append(name)
 for name, rc in rows:
     if rc == 0:
         continue
