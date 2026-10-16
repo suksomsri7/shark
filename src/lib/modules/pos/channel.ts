@@ -171,14 +171,14 @@ export type SaleChannelResolution =
 export async function resolveSaleChannel(
   db: Db,
   scope: { tenantId: string; systemId: string; unitId: string },
-  opts: { channelId?: string | null; sourceModule?: string | null; giftCard?: boolean; allowInactiveQrOrder?: true /* POS P2.7 ▸ fix3 G1 ◂ */ },
+  opts: { channelId?: string | null; sourceModule?: string | null; giftCard?: boolean },
 ): Promise<SaleChannelResolution> {
   const invalid = { ok: false as const, code: "CHANNEL_INVALID" as const, message: "ช่องทางขายนี้ใช้ไม่ได้ (ไม่พบ ปิดอยู่ เก็บแล้ว หรือเป็นของสาขาอื่น) — ยังไม่ได้บันทึกบิล" };
   if (!opts.giftCard && opts.channelId !== undefined && opts.channelId !== null) {
     const row = await channelInScope(db, scope, opts.channelId);
     // POS P2.7 ▸ fix2 hunter H3 (มติ 11) · fix3 R2 G1: QR_ORDER ปิดใช้ = ปิดประตูสาธารณะ (กันคำสั่งใหม่) — บิลของออเดอร์ที่ลูกค้าจ่ายแล้ว (รับ PREPAID) ยังลงช่องทางนี้ได้ ·
     //   ข้อยกเว้นใช้ได้เฉพาะในบริบทการรับ PREPAID (withInactiveQrOrderAllowed ของ order.ts) — ผู้เรียกอื่นทุกตัว (หน้าขาย/REST/มัดจำ/จอง/AI) ช่องทางปิด = CHANNEL_INVALID ◂
-    if (!row || row.archivedAt || (!row.active && !(row.kind === "BUILTIN" && row.code === "QR_ORDER" && (opts.allowInactiveQrOrder === true || qrOrderAcceptScope.getStore() === true)))) return invalid;
+    if (!row || row.archivedAt || (!row.active && !(row.kind === "BUILTIN" && row.code === "QR_ORDER" && qrOrderAcceptScope.getStore() === true /* POS P2.7 ▸ fix3: บริบทการรับ PREPAID เท่านั้น ◂ */))) return invalid;
     return { ok: true, channel: row };
   }
   const code = opts.giftCard ? "STORE" : defaultChannelCode(opts.sourceModule);
