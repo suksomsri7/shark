@@ -308,19 +308,19 @@ type Fact = readonly [string, boolean, string | null];
 const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   MEMBER: [["memberLookup", true, null], ["memberSpend", true, null], ["memberSignup", true, null]],
   POINT: [["pointRate", true, null], ["pointRedeem", true, null], ["pointVoidReverse", true, null]],
-  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P2.9"], ["couponUnitLimit", true, null]],
+  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P3"], ["couponUnitLimit", true, null]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: voucherPayment "P3" — เดิม "P2.9"
   REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", true, null]], // ORACLE-EDIT P2.10 (15 Oct 2026 · brief §10 ruling 10, pre-approved): rewardNearCustomerDisplay live — was ["rewardNearCustomerDisplay", false, "P2.10"]
-  ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", false, "P2.1"], ["promptpayReconcile", false, "P3.10"]],
+  ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", true, null], ["promptpayReconcile", false, "P3.10"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: platformCommission live — เดิม false "P2.1"
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]], // ORACLE-EDIT P2.3U (มติ 8 ผู้คุม): bomDeduct live — เดิม ["bomDeduct", false, "P2.3"]
   HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]], // ORACLE-EDIT P2.8 (มติ 5): พนักงานคีย์ออเดอร์จากแชท
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
-  BOOKING: [["tableReservationsOnMap", false, "P2.4"], ["callQueueFromTable", false, "P2.4"], ["advanceBookingBill", false, "P2.7"]],
+  BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: เดิม [false "P2.4"] [false "P2.4"] [false "P2.7"]
   AI: [["shiftDaySummary", false, "P3.9"], ["purchaseSuggestion", false, "P3.9"], ["anomalyDetection", false, "P3.9"]],
 };
-const PLANNED_PHASE: Record<string, string> = { HR: "P3.5", MARKETING: "P2.2", BOOKING: "P2.4", AI: "P3.9" };
+const PLANNED_PHASE: Record<string, string> = { HR: "P3.5", MARKETING: "P2.2", BOOKING: "P3", AI: "P3.9" }; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3" — เดิม "P2.4"
 const NAV_KEYS = ["overview", "register", "products", "stock", "sales", "shifts", "close", "reports", "settings"] as const;
 const NAV_TH = ["ภาพรวม", "ขายหน้าร้าน", "สินค้า/บริการ", "สต็อก", "บิลวันนี้", "กะ", "ปิดวัน", "รายงาน", "ตั้งค่า"];
 const ROLE_ROWS: readonly [string, string | null, string | null][] = [
@@ -1472,12 +1472,13 @@ async function runDb() {
   {
     const p: string[] = [];
     const r = await cards("OWNER");
-    for (const [code, state, phase] of [["HR", "PLANNED", "P3.5"], ["BOOKING", "PLANNED", "P2.4"], ["AI", "PLANNED", "P3.9"], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) {
+    for (const [code, state, phase] of [["HR", "PLANNED", "P3.5"], ["BOOKING", "PLANNED", "P3"], ["AI", "PLANNED", "P3.9"], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) { // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3"
       const c = cardOf(r, code);
       if (c?.state !== state) p.push(`${code} ${short(c?.state, 12)} (คาด ${state})`);
       if (c && (c.scope !== null || c.target !== null || c.manage !== null || c.lastActivityAt !== null)) p.push(`${code} scope/target/manage/lastActivity ไม่ใช่ null`);
       // ORACLE-EDIT P1.18 S (ขัดกันเองกับ I12/ตารางชื่อ: BOOKING advanceBookingBill = P2.7 ไม่ใช่ P2.4) — ทุกข้อ live:false มี phase · และมีอย่างน้อยหนึ่งข้อเป็นเฟสของการ์ด
-      if (phase && c && !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === false && typeof f?.phase === "string" && !!f.phase) && c.facts.some((f: Any) => f?.phase === PLANNED_PHASE[code]))) p.push(`${code} facts ไม่ใช่ planned ${phase}`);
+      // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1 · D16) มติ 8: การ์ด PLANNED มีข้อที่ใช้งานแล้วได้ (BOOKING tableReservationsOnMap live ตั้งแต่ P2.4) — ข้อที่ยังไม่มี (live false) ต้องมี phase · อย่างน้อยหนึ่งข้อเป็นเฟสของการ์ด
+      if (phase && c && !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === true ? f?.phase === null : typeof f?.phase === "string" && !!f.phase) && c.facts.some((f: Any) => f?.phase === PLANNED_PHASE[code]))) p.push(`${code} facts ไม่ใช่ planned ${phase}`);
     }
     chk("I8", NI === "" && p.length === 0, "PLANNED (HR BOOKING AI) · NO_SYSTEM (MARKETING CHAT)", FX(NI + (p.join(" · ") || "ครบ")));
   }
