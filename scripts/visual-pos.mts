@@ -747,7 +747,8 @@ type P27Key =
   | "pre-pay-beam" | "pre-preparing" | "pre-handed" | "pre-cancelled" | "pre-bad-link" | "pre-bad-order" // POS P2.7U fix1 ▸ F5 ◂
   | "orders-qr-rows" | "orders-awaiting" | "orders-prepaid" | "orders-claim" | "orders-late-banner"
   | "tables-qr-dialog" | "tables-qr-print"
-  | "settings-channel-qr-table" | "settings-channel-qr-order";
+  | "settings-channel-qr-table" | "settings-channel-qr-order"
+  | "settings-channel-qr-order-link"; // POS P2.7U fix3 ▸ ภาพที่สองของลิ้นชัก QR_ORDER = บล็อกลิงก์สั่งล่วงหน้า ◂
 const P27_PUB: readonly Device[] = ["mobile", "ipad"];
 const P27_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
 const P27_PLAN: { key: P27Key; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
@@ -785,7 +786,8 @@ const P27_PLAN: { key: P27Key; page: PosPage; devices: readonly Device[]; users:
   { key: "tables-qr-dialog", page: "tables", devices: P27_D3, users: ["owner"], note: "03: เปิดโต๊ะ Q2 (?open=) → QR ของโต๊ะ → กล่อง: ภาพ QR + ลิงก์ /q/t/… + คัดลอก + พิมพ์ + เปลี่ยน QR (ไม่กด)" },
   { key: "tables-qr-print", page: "tables", devices: P27_D3, users: ["owner"], note: "03: พิมพ์ QR ทุกโต๊ะ → แผ่น A4 3 คอลัมน์ (ชื่อร้าน + โต๊ะ + QR ต่อช่อง) — ไม่กดพิมพ์" },
   { key: "settings-channel-qr-table", page: "settings", devices: P27_D3, users: ["owner"], note: "ช่องทาง → QR โต๊ะ → ลิ้นชัก: เปิดรับ · พักรับ · ลิงก์พิมพ์ QR โต๊ะ · เมนูตามราคาช่องทาง" },
-  { key: "settings-channel-qr-order", page: "settings", devices: P27_D3, users: ["owner"], note: "ช่องทาง → สั่งออนไลน์ (QR) → ลิ้นชัก: เปิดรับ · รับอัตโนมัติ · เวลาเตรียม · พักรับ · ลิงก์ + QR + คัดลอก + เปลี่ยนลิงก์" },
+  { key: "settings-channel-qr-order", page: "settings", devices: P27_D3, users: ["owner"], note: "ช่องทาง → สั่งออนไลน์ (QR) → ลิ้นชัก (fix3: เลื่อนกล่องเลื่อนของลิ้นชักไปที่บล็อก QR): เปิดรับ · รับอัตโนมัติ · เวลาเตรียม · พักรับ" },
+  { key: "settings-channel-qr-order-link", page: "settings", devices: P27_D3, users: ["owner"], note: "POS P2.7U fix3 · ลิ้นชักเดียวกัน เลื่อนถึงบล็อกลิงก์สั่งล่วงหน้า: ภาพ QR (รอวาดเสร็จ) + ลิงก์ + คัดลอก + เปลี่ยนลิงก์ (ไม่กด)" },
 ];
 const p27On = STATES_ON && tenantKey === "coffee" && P27_WO;
 const P27_KEYS: ReadonlySet<string> = new Set(P27_PLAN.map((s) => s.key));
@@ -863,6 +865,7 @@ function p27Path(k: P27Key): string {
       return `/app/sys/${SYS}/pos/tables?unit=${u}`;
     case "settings-channel-qr-table":
     case "settings-channel-qr-order":
+    case "settings-channel-qr-order-link": // POS P2.7U fix3 ◂
       return `/app/sys/${SYS}/pos/settings?tab=channels&unit=${u}`;
     default:
       return `/app/sys/${SYS}/pos/orders?unit=${u}`;
@@ -7993,11 +7996,28 @@ async function runP27State(page: Any, state: P27Key, device: Device): Promise<vo
     await sleep(800);
     return;
   }
-  if (state === "settings-channel-qr-table" || state === "settings-channel-qr-order") {
+  if (state === "settings-channel-qr-table" || state === "settings-channel-qr-order" || state === "settings-channel-qr-order-link") {
     const code = state === "settings-channel-qr-table" ? "QR_TABLE" : "QR_ORDER";
     await clickEl(page, tid(`pos-channel-open-${code.toLowerCase()}`)); // POS P2.7U fix1 ▸ IMG-1: testid ของแถวเป็นตัวเล็ก (ChannelsPanel) ◂
     await visibleEl(page, `${tid("pos-channel-qr")}[data-code="${code}"]`, 0, 15_000);
     if (code === "QR_ORDER") await visibleEl(page, `${tid("pos-channel-qr-link-image")}[data-ready="1"]`, 0, 15_000).catch(() => undefined);
+    // POS P2.7U fix3 ▸ บล็อก QR อยู่ใต้ส่วนทั่วไปของลิ้นชัก (กล่องเลื่อนของลิ้นชัก ไม่ใช่หน้า) — เลื่อนกล่องนั้นให้บล็อก/บล็อกลิงก์อยู่บนสุดก่อนถ่าย
+    //   ภาพแรก = หัวบล็อก QR (เปิดรับ · รับอัตโนมัติ · เวลาเตรียม · พักรับ) · ภาพที่สอง (-link) = บล็อกลิงก์ + ภาพ QR ◂
+    const target = state === "settings-channel-qr-order-link" ? "pos-channel-qr-link" : "pos-channel-qr";
+    const moved = await page.evaluate((sel: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return false;
+      let box: HTMLElement | null = el.parentElement;
+      while (box && !(box.scrollHeight > box.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+      if (!box) {
+        el.scrollIntoView({ block: "start" });
+        return true;
+      }
+      box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
+      return true;
+    }, `${tid(target)}`);
+    if (!moved) throw new StepError(`ไม่พบ ${target} ในลิ้นชัก`);
+    await sleep(400);
     return;
   }
 }
