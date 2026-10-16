@@ -246,3 +246,42 @@ Base note: the local `session/pos` tip was `cbad4204` ("parity rulings done · U
 | p1.14 | stock-default | stock | owner | th + en | O-7 history rows |
 | p1.3 | default · offline | register | cashier | th 1440 · 1024 · 390 | Q4 (no "เร็ว ๆ นี้" tab) · H1 |
 | p2.4u | register-table-mode | register | owner | th 1440 | Q4 control (tables tab still shown when table mode is on) |
+
+## U2b (controller decisions CD-U2b / CD-U2c) — same branch, after `git merge session/pos` (`3bbad2b7` → merge `583ba598`)
+
+| item | commit | change |
+|---|---|---|
+| H1/H2 | `a84ac9ab` | `RegisterScreen.tsx` — **pure additions (25 lines, 0 removed/edited)**, each inside a `// POS P2.14 ▸ U2 H1 (CD-U2b) … // ◂` block: an offline guard (`navigator.onLine === false` ⇒ return) as the first statement of `refreshHeld` (≈:395), `refreshBenefits` (≈:431), `refreshPins` (≈:600) and `refreshStatus` (≈:845 — also covers `heartbeatAction`, which only runs from `refreshStatus → refreshDevice`); plus one new effect right after the status-interval effect (≈:872–884) that listens to `online` and refreshes status · PINs · held list · member benefits once. The price quote on cart change is user-driven and unchanged (the 19ง banner already disables pay offline). p2.10 ST2 green with the hunks (CD-U2b markedLines) |
+| H5 | `3a5e4df2` | `visual-pos.mts` `runP28uState` register-tab-badge: at `device === "mobile"` wait for `pos-reg-mobile-orders-badge` (20 s) inside a `// POS P2.14 ▸ U2 H5 (CD-U2c) … // ◂` block; desktop/ipad path unchanged. The P2.8U fixture (NEW orders) is created once before the first fixture state regardless of viewport, so the 390 job sees the orders; dry plan now lists register-tab-badge at 1440 · 1024 · 390 |
+
+**Why only the cashier errored (from the code):** `refreshPins` runs from an effect keyed on `status` (`if (deviceReady && anyPinRef.current === false) void refreshPins()`) and from the device-ready effect; the cashier run seeds staff PINs on a registered ACTIVE device (`p115State.pinsSet`, `deviceReady` true) so every status refresh — including the first one after the harness flips the page offline — chains `listStaffForDeviceAction` (a server action = POST to the register URL ⇒ "Failed to load resource … ERR_INTERNET_DISCONNECTED @ /pos/register?unit=…"). All four background askers now return early while offline, so none of them hits the network in the `offline` state. Proof = the controller's re-shoot of `--state offline --user cashier` th/en.
+
+### Gates (tree d @`3a5e4df2` dirty 0 · `/root/pos-runs/p214-builder/u2b-20261016T160554Z/`)
+- qc-pos-p2.14 forced **59/60** — `failed:["P2.14-H3"]`: after `3bbad2b7` the sheet has no CTRL rows, but H3 now flags DEVIATION rows whose status cell has no reference (`(ref`, `→`, `มติ`, `ruling`) — e.g. `p2.4u/tables-panel-rounds-owner-1024x768`, `p2.5u/tables-split-items-owner-1440x900-en`, `p2.8u/orders-mixed-owner-1024x768`, `p1.18u/settings-shark-owner-1024x768`, `p2.13/settings-shark-api-keys-list-owner-390x844`, `p2close-en/settings-owner-1440x900-en`, `p1.3/register-member-*`, `p1.3/register-held-drawer-*`, `p1.14/stock-adjust-owner-390x844` (9 by my read of the oracle rule; the log line shows the first 5 + "(+36)" further messages) — controller sheet wording vs oracle rule; no sheet/oracle edit by me
+- qc-pos-p2.10 forced **13/13** (ST2 green with the RegisterScreen hunks) · qc-pos-p1.3 **128/128** · qc-pos-p2.8 **61/61** · qc-pos-p1.12 **72/72** · fitness-pos 0
+- typecheck `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh pnpm exec tsc --noEmit` → **0** (16:14:50 → 16:15:46, incremental `tsconfig.tsbuildinfo` rewritten 16:15; started at 11 GB available) · HEAD-typecheck `head=3a5e4df2 dirty=0`
+
+### Consolidated re-shoot list (U2 + U2b · QC5 tree d after rebuild · `--states --state …`)
+| wo | state | page | users | locales / sizes | items |
+|---|---|---|---|---|---|
+| p2.4u | tables-floor | tables | owner | th 390 · 1024 · 1440 + en 1440 | O-1 |
+| p2.4u | tables-panel-rounds | tables | owner | th + en 1440 | O-1 |
+| p2.5u | tables-split-equal | tables | owner | th 1024 (+1440/390) | O-2 |
+| p2.5u | tables-floor-split | tables | owner | en 1440 | O-3 |
+| p2.8u | orders-mixed | orders | owner · cashier | en 1440 | O-3 |
+| p2.8u | register-tab-badge | register | owner · cashier | th 1440 · 1024 · **390** | H5 · UI-13 |
+| p2.6u | kds-expo | kds | owner | en + th 1440 | O-3 · Q3 |
+| p2.3u | products-recipe-view | products | owner | th 390 | O-4 |
+| p2.2u / p1.18u | products (default) | products | owner · cashier | th + en 390 | O-4 |
+| p2.12u | reports-hourly | reports | owner | th + en 1440 | O-5 |
+| p2.12u | reports-staff-flag | reports | owner | en 1440 | O-5 |
+| p2.12u | reports-branches-tab | reports | owner | th 1024 | O-8 |
+| p2.12u | reports-anomalies | reports | owner | th 390 | O-8 |
+| p1.17 | reports (daily default) | reports | owner | th + en | O-8 |
+| p2.12u | reports-print-overview (+ staff print) | reports/print | owner | th 1440 | O-9 |
+| p1.3 | taxinvoice-dialog | register | owner | th 1440 | O-6 |
+| p2.11u | stock-shared-inventory | stock | manager | en 1440 | O-7 |
+| p1.14 | stock-default | stock | owner | th + en | O-7 |
+| p1.3 | offline | register | **cashier** (+ owner control) | th 1440 · 1024 · 390 + en | H1/H2 |
+| p1.3 | default | register | cashier | th 1440 | Q4 (no "เร็ว ๆ นี้" tab) |
+| p2.4u | register-table-mode | register | owner | th 1440 | Q4 control (tables tab shown) |
