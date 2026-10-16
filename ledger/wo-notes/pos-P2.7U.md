@@ -88,3 +88,16 @@ Commits on top of 396b0092: 50c08c9c (R1 F1 F2 F3 F5 F6 F7 + nits a–d) · 7293
 | visual-pos p2.7 --states --dry th / en (iso) | exit 0 · 79 / 61 shots | f1b-visual-dry-th/en |
 | typecheck (8192 · once at the final head = this notes commit, dirty 0) | see `typecheck-3.log` | typecheck-3 |
 (Same suite list also green at 50c08c9c before the IMG fixes — `runs/f1-*`.)
+
+## Fix round 2 (R1 re-verify of ac59ce6f · hunks `// POS P2.7U fix2 ▸ … ◂` · client-side + one comment)
+Code commit b9e04e68 on top of ac59ce6f; this notes commit is the final head (typecheck at it).
+- **G1** `use-qr.ts useServerNow` anchors `{serverMs, localMs: Date.now()}` and reads `clockNow(anchor, Date.now())` (the 09 `tables/table-ui` helper) — wall-clock elapsed keeps running while the phone sleeps (performance.now() stops on iOS Safari/macOS); re-anchors on every response that carries `serverNow`.
+- **N1** `qr-order.ts` F7 comment rewritten: the `createdAt ≤ order.createdAt` test detects a rotated/recreated link; the `rotatedAt` half is always true for an ACTIVE row (kept as ruled).
+- **N2** `OrdersScreen` phone: when a card is selected (detail replaces the board) → `window.scrollTo({top: 0})`.
+
+| gate (head b9e04e68 · dirty 0) | result | log `runs/` |
+|---|---|---|
+| qc-pos-p2.7 unforced | 42/42 | f2-qc-pos-p2.7 |
+| visual-pos p2.7 --states --dry th / en (iso) | exit 0 · 79 / 61 shots | f2-visual-dry-th/en |
+| fitness-pos · qc-pos-p2.7 --no-db (pre-commit/static) | 8/8 · 4/4 | (console) |
+| typecheck (8192 · once at the final head = this notes commit, dirty 0) | see `typecheck-4.log` | typecheck-4 |
