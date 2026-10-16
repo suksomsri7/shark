@@ -1827,3 +1827,4 @@
 - 00:26Z P2.7 fix 2 = `wip/pos-p2.7` **83163ae1** · p2.7 42/42 ×3 · regression เขียว · lane pins p2.8 ST6 / p2.13 ST5 · F5 เปลี่ยนพฤติกรรม: เรียกพนักงานจากโต๊ะว่าง = ปฏิเสธ (รับ) → spawn **R2 P2.7** (read-only ทรี d)
 - 00:27Z spawn **R2 P2.7** (Opus read-only ทรี d @83163ae1) · เตรียม `p27-merge-msg.txt` + gates104-c template (p2.7 ×2 unforced + §6 regression 24 ชุด + fitness + typecheck 8192)
 - 00:38Z R2 P2.7 (@83163ae1) = **MERGEABLE-AFTER-FIXES** G1 Low (ช่องทาง QR_ORDER ปิดแล้วยังขายผ่านหน้าขาย/REST ได้ — รั่วจาก H3) · G2 typecheck ที่ head สุดท้าย · nits → **fix 3** ส่ง builder → R2 ตรวจ hunks → merge
+- 00:55Z P2.7 fix 3 = `wip/pos-p2.7` **9ce99849** (G1 ผ่าน AsyncLocalStorage allowance รอบ orderCreateSale เท่านั้น · PY13 negative · typecheck head สุดท้าย dirty=0 · nits) → R2 ตรวจ hunks → merge → gates104
