@@ -379,6 +379,26 @@ function runStatic(): void {
     for (const f of [...changed, ...untracked]) {
       const b = f.split("/").pop()!;
       if (!f.startsWith(`${POS_DIR}/`) || f.slice(POS_DIR.length + 1).includes("/") || !FORBID.test(b)) continue;
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.5 CD-B2): register.ts อนุญาต hunk เดียว — 3 บรรทัดที่เพิ่มใน REG_MESSAGE (OFF_SCHEDULE · ALREADY_CLOCKED · NO_EMPLOYEE ·
+      //   บรรทัดแรกมีป้าย `// POS P3.5 ▸ CD-B2 REG_MESSAGE ◂`) · ไม่มีบรรทัดถูกลบ · อื่นใดใน register.ts = แดงเหมือนเดิม
+      if (b === "register.ts" && changed.includes(f)) {
+        const d = (git(["diff", "--no-color", "-U0", LANE_PIN, "--", f]) ?? "").split("\n");
+        const added = d.filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+        const removed = d.filter((l) => l.startsWith("-") && !l.startsWith("---"));
+        const hunks = d.filter((l) => l.startsWith("@@"));
+        const cur = rd(f);
+        const i = cur.indexOf("const REG_MESSAGE");
+        const j = i >= 0 ? cur.indexOf("\n};", i) : -1;
+        const body = i >= 0 && j > i ? cur.slice(i, j) : "";
+        const ok =
+          hunks.length === 1 && removed.length === 0 && added.length === 3 &&
+          /^\+\s*OFF_SCHEDULE:\s*"[^"]*",\s*\/\/ POS P3\.5 ▸ CD-B2 REG_MESSAGE ◂\s*$/.test(added[0]!) &&
+          /^\+\s*ALREADY_CLOCKED:\s*"[^"]*",\s*$/.test(added[1]!) &&
+          /^\+\s*NO_EMPLOYEE:\s*"[^"]*",\s*$/.test(added[2]!) &&
+          added.every((l) => body.includes(l.slice(1)));
+        if (!ok) p.push(`register.ts มี hunk นอก CD-B2 (${hunks.length} hunk · +${added.length} −${removed.length})`);
+        continue;
+      }
       if (b === SHARED_OK && changed.includes(f)) {
         const names = (src: string) => new Set([...stripComments(src).matchAll(/export\s+(?:async\s+)?(?:function|const|type|class|interface|let)\s+(\w+)/g)].map((m) => m[1]!));
         const before = names(atPin(f) ?? ""), now = names(rd(f));
