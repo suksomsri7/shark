@@ -23,7 +23,7 @@ import { afterSaleCommitted, createSale, posDayStart, posSystemForSale, PosSaleE
 import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (แทน proxy เฉพาะที่ของ P2.8) ◂
 import { ensureUnitChannels, withInactiveQrOrderAllowed } from "./channel"; // POS P2.7 ▸ fix3 G1: + withInactiveQrOrderAllowed ◂
 import { channelCommission, channelNet } from "./channel-shared";
-import { quoteRegisterCart } from "./register";
+import { quoteRegisterCart, registerVisibleProductIds } from "./register"; // POS P2.14 ▸ ORD-1 ◂
 import { registerShiftStatus, isShiftDeviceId } from "./shift";
 import { voidSaleByActor } from "./bills";
 import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
@@ -833,6 +833,8 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
     parentIds.length ? (await tx.posProduct.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, id: { in: parentIds }, archivedAt: null }, select: { id: true } })).map((x) => x.id) : [],
   );
   const soldOut = await menuSoldOutIds(s.tenantId, rows, tx);
+  // POS P2.14 ▸ ORD-1 (O5): การมองเห็นตามคลังของสาขา (C3) + กติกาเดียวกับหน้าขาย (regVisibleWhere) — มองไม่เห็นที่สาขานี้ = PRODUCT_NOT_FOUND (บรรทัดนั้น) ◂
+  const visible = rows.length ? await registerVisibleProductIds(tx, s, rows.map((r) => r.id)) : new Set<string>();
   const book = inp.lines.some((l) => l.kind === "catalog") ? await loadPriceBook(tx, s, rows, new Date()) : null;
   const lines: ResolvedLine[] = [];
   for (let i = 0; i < inp.lines.length; i++) {
@@ -843,7 +845,9 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
     }
     const row = rowById.get(l.productId);
     if (!row) return refuse("PRODUCT_NOT_FOUND", undefined, { lineIndex: i });
-    if (!rowAvailable(row, s.unitId, soldOut) || (row.parentId && !liveParents.has(row.parentId))) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i });
+    if (row.parentId && !liveParents.has(row.parentId)) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i }); // แม่เก็บถาวร = ขายไม่ได้ (คำตอบเดิม)
+    if (!visible.has(row.id)) return refuse("PRODUCT_NOT_FOUND", undefined, { lineIndex: i }); // POS P2.14 ▸ ORD-1 ◂
+    if (!rowAvailable(row, s.unitId, soldOut)) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i });
     if (l.kind === "priced") {
       // ราคาต้นทาง = ราคาของช่องทางนี้ ณ ตอนลูกค้าสั่ง (เว็บร้าน: ราคาหน้าเว็บที่ลูกค้าเห็น)
       // POS P2.8 fix รอบ 3 (H5): ที่มาของราคาจากต้นทาง (เว็บร้าน = ชั้น WEB ของ webPricesForShop) · ไม่ส่ง = CHANNEL

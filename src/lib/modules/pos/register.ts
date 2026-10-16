@@ -746,6 +746,16 @@ function regVisibleWhere(s: RegScope): Prisma.Sql {
     AND (p."kind" <> 'MENU' OR ${menuOk})
     AND (p."parentId" IS NULL OR EXISTS (SELECT 1 FROM "PosProduct" pp WHERE pp.id = p."parentId" AND pp."tenantId" = ${s.tenantId} AND pp."archivedAt" IS NULL))`;
 }
+// POS P2.14 ▸ ORD-1 (O5): กติกามองเห็นสินค้าของหน้าขาย (regVisibleWhere · คลังของสาขา C3 · สินค้าของสาขา · ชุด/สูตร · แม่เก็บถาวร) สำหรับประตูที่ไม่ผ่านหน้าขาย
+//   (ประตูเว็บร้าน ingestInTx) — คืน id ที่มองเห็นได้ที่สาขานี้ · อ่านอย่างเดียว · ใช้ client/tx ของผู้เรียก ◂
+export async function registerVisibleProductIds(db: Pick<Prisma.TransactionClient, "appSystemUnit" | "$queryRaw">, s: { tenantId: string; systemId: string; unitId: string }, ids: string[]): Promise<Set<string>> {
+  const want = [...new Set(ids.filter((x) => regIsId(x)))];
+  if (!want.length) return new Set();
+  const inv = await db.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: s.tenantId, unitId: s.unitId, type: "INVENTORY" } }, select: { systemId: true } });
+  const scope = { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, unitName: "", unitInv: inv?.systemId ?? null } as RegScope;
+  const rows = await db.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p WHERE ${regVisibleWhere(scope)} AND p.id = ANY(${want}::text[])`;
+  return new Set(rows.map((r) => r.id));
+}
 const regLike = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 type RegCursor = { n: string; i: string };
@@ -2510,13 +2520,14 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       for (const x of req.payMethods) {
         if (!x.depositId) continue;
         const d = byId.get(x.depositId);
-        if (!d) return regRefuse("DEPOSIT_NOT_FOUND");
+        // POS P2.14 ▸ DEP-1 (P1): คำปฏิเสธของมัดจำพก depositId ของแถวนั้น (เพิ่มล้วน) — จอชี้แถวที่ผิดได้ ไม่ต้องเดา ◂
+        if (!d) return { ...regRefuse("DEPOSIT_NOT_FOUND"), depositId: x.depositId };
         // POS P2.9b ▸ fix1 มติ 6 (hunt D5): มัดจำ walk-in ที่บันทึกเบอร์ไว้ = ผู้ถือต้องบอก 4 หลักท้าย (ไม่ส่ง/ผิด = DEPOSIT_NOT_OWNER) · ไม่มีเบอร์ = ผู้ถือใบรับ ◂
         // POS P2.9b ▸ fix2 มติ 3 (hunter N2): เทียบผ่านตัวนับต่อมัดจำ (ผิด 5 ครั้ง = DEPOSIT_LOCKED 15 นาที · ถูกระหว่างล็อก = ยังล็อก) ◂
         if (!d.customerId && d.phoneLast4) {
           const ph = await (await import("./deposit-links")).checkDepositPhone(s0.tenantId, d, x.phoneLast4, db);
-          if (ph === "LOCKED") return regRefuse("DEPOSIT_LOCKED");
-          if (ph !== "OK") return regRefuse("DEPOSIT_NOT_OWNER");
+          if (ph === "LOCKED") return { ...regRefuse("DEPOSIT_LOCKED"), depositId: d.id }; // POS P2.14 ▸ DEP-1 ◂
+          if (ph !== "OK") return { ...regRefuse("DEPOSIT_NOT_OWNER"), depositId: d.id }; // POS P2.14 ▸ DEP-1 ◂
         }
         x.refSaleId = d.receiptSaleId;
       }
