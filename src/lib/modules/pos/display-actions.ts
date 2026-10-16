@@ -11,7 +11,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { customerDisplayStatus, enableCustomerDisplay, publishDisplayState, revokeCustomerDisplay, updateCustomerDisplaySettings } from "./display";
+import { customerDisplayStatus, displayPublisherDevice, enableCustomerDisplay, publishDisplayState, revokeCustomerDisplay, updateCustomerDisplaySettings } from "./display"; // POS P2.14 ▸ DSP-1b: + displayPublisherDevice ◂
 import type {
   CustomerDisplayStatusResult,
   DisplayLocale,
@@ -111,8 +111,10 @@ export async function publishDisplayStateAction(args: Target & { deviceId?: stri
   try {
     const s = await sessionScope(args, "pos.sale.create");
     if ("ok" in s) return s;
-    const deviceId = str(args?.deviceId); // POS P2.14 ▸ DSP-1 ◂
-    return await publishDisplayState(deviceId ? { ...s.ctx, deviceId } : s.ctx, s.actor, { deviceCode: str(args?.deviceCode), seq: args?.seq, state: args?.state });
+    // POS P2.14 ▸ DSP-1b (fix1 H4): เครื่องมาจากเซิร์ฟเวอร์ (กะ OPEN ของผู้ใช้นี้ที่สาขา) — args.deviceId ของ client ไม่ใช้ · ไม่มี = DEVICE_NOT_REGISTERED ◂
+    const deviceId = await displayPublisherDevice(s.ctx, s.actor, str(args?.deviceCode));
+    if (!deviceId) return refusal("DEVICE_NOT_REGISTERED", "เครื่องนี้ไม่มีกะที่เปิดอยู่ของผู้ใช้นี้ — เปิดกะที่เครื่องนี้ก่อนส่งภาพให้จอลูกค้า");
+    return await publishDisplayState({ ...s.ctx, deviceId }, s.actor, { deviceCode: str(args?.deviceCode), seq: args?.seq, state: args?.state });
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("publishDisplayStateAction", e);

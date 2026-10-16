@@ -481,3 +481,12 @@ export async function readCustomerDisplay(input: { token: string; sinceSeq?: num
   });
 }
 
+/**
+ * POS P2.14 ▸ DSP-1b (fix1 H4): เครื่องของผู้ส่งภาพจอลูกค้า — เซิร์ฟเวอร์รู้เองจากกะ OPEN ของผู้ใช้ session ที่สาขานี้ (PosShift.deviceId · ไม่มีคุกกี้เครื่องใน P1.10) ·
+ *   deviceCode ที่ขอเขียนต้องเป็นเครื่องของกะ OPEN ที่ผู้นี้เปิดไว้ ⇒ คืนรหัสเครื่องนั้น · ไม่ตรง/ไม่มีกะ = null (ผู้เรียกปฏิเสธ DEVICE_NOT_REGISTERED) · deviceId ของ client ไม่ใช้ ◂
+ */
+export async function displayPublisherDevice(ctx: { tenantId: string; unitId: string }, actor: { userId: string }, deviceCode: string): Promise<string | null> {
+  if (typeof deviceCode !== "string" || !POS_DEVICE_CODE_RE.test(deviceCode) || !actor?.userId) return null;
+  const row = await prisma.posShift.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, status: "OPEN", openedByUserId: actor.userId, deviceId: deviceCode }, select: { deviceId: true } });
+  return row?.deviceId ?? null;
+}
