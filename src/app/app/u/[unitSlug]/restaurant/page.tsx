@@ -9,6 +9,8 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBaht } from "@/lib/ui/money";
+import { redirect } from "next/navigation"; // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
+import { posLinkedLegacyPage } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2b (fix1 H3) ◂
 // POS P2.4U ▸ มติ 10 (F4b): สาขาที่ใช้โหมดโต๊ะของ POS ⇒ ซ่อน "เช็คบิล" (รวม "ยืนยันรับเงิน" พร้อมเพย์ = เช็คบิลเดิม) + โน้ต "จัดการที่ POS › โต๊ะ" ◂
 import { getTranslations } from "next-intl/server";
 import { posTableModeForUnit } from "@/lib/modules/pos/table-legacy";
@@ -28,6 +30,10 @@ export default async function RestaurantPage({
   const { unitSlug } = await params;
   const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
+  // POS P2.14 ▸ LEG-2b (fix1 H3): สาขาที่ผูก POS = ศูนย์ร้านอาหารเดิมปิด (ไม่มีฟอร์มเปิดโต๊ะ/ยกเลิกบิล) → หน้า POS พร้อมแถบแจ้ง เหมือนหน้าเดิมอื่น ◂
+  const posDoor = await posLinkedLegacyPage(auth.active.tenantId, unit.id);
+  if (posDoor) redirect(`/app/sys/${posDoor.systemId}/pos/${posDoor.v2 ? "tables" : "register"}?unit=${encodeURIComponent(unit.id)}&from=legacy${err === "POS_LINKED" ? "&err=POS_LINKED" : ""}`);
+  // ◂
   const { tenantId } = auth.active;
   const [tables, requests, today, setting, bills] = await Promise.all([
     floorPlan(tenantId, unit.id),
