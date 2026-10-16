@@ -24,7 +24,8 @@ import { POS_OPS } from "@/lib/modules/pos/api/registry";
 const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const DOC_PATH = resolve(ROOT, "docs/api/POS-API.md");
 /** ตารางอ้างอิงของสกิล Claude — ทะเบียนเดียวกัน รูปแบบสั้น ไม่มีร้อยแก้ว */
-const SKILL_ENDPOINTS_PATH = resolve(ROOT, ".claude/skills/shark-pos-api/references/endpoints.md");
+// POS P2.14 ▸ DOC-2 มติ 4: สกิล POS อยู่ในรีโปที่ skills/shark-pos-api (สำเนาบ้าน = scripts/sync-skills.sh) ◂
+const SKILL_ENDPOINTS_PATH = resolve(ROOT, "skills/shark-pos-api/references/endpoints.md");
 const BASE_URL = "https://shark.in.th/api/v1/pos";
 /** ชุดสิทธิ์ที่เป็นของ POS (ทะเบียนเดียวกับการ์ดออกคีย์) */
 const POS_BUNDLES = API_SCOPE_BUNDLES.filter((b) => b.id.startsWith("pos-"));
@@ -371,7 +372,8 @@ export function renderDocs(ops: ApiOp[] = POS_OPS): string {
     "- **Writes** answer the record they made or changed: `POST /sales` -> `{ saleId, receiptNo, grandTotalSatang, changeSatang, duplicated }`, `POST /sales/{id}/refund` -> `{ refund, sale }`, `POST /orders` -> `{ orderId, duplicated, saleId }`, `POST /orders/{id}/pay` -> `{ saleId, duplicated }`.",
     // POS P2.13 ▸ skill fix ช่องโหว่ 8 + 4/6 (บันทึกไว้ · เปลี่ยนชื่อ/คอลัมน์ = P2.14): duplicated ≠ การเล่นซ้ำ · ชื่อเงินของบิลไม่มี Satang · CSV เป็นบาท ◂
     "- **`duplicated` is not the replay flag.** A retry with the same `Idempotency-Key` inside the 24 hour window replays the stored first answer (so `duplicated` stays `false`) with the header `Idempotent-Replayed: true`. `duplicated: true` means the POS already held the record and returned it: the same `externalRef` on the same channel for `POST /orders`, or the same key after the replay window for `POST /sales` and `POST /orders/{id}/pay`.",
-    "- **Known naming gaps.** `GET /sales/{id}` answers its money under `totals` without the `Satang` suffix (`subtotal`, `grandTotal`, `refunded`, ...); the values are integer satang all the same. CSV reports show money in baht with two decimals, like the export button, and the daily CSV has no refund columns; the JSON report carries every `*Satang` field.",
+    // POS P2.14 ▸ API-10/11: ช่องว่างชื่อปิดแล้ว (totals *Satang · CSV รายวันมีคอลัมน์คืนเงิน) ◂
+    "- **Money in reports and bills.** `GET /sales/{id}` answers its money under `totals` with the `Satang` suffix like every other field (`subtotalSatang`, `grandTotalSatang`, `refundedSatang`, ...). CSV reports show money in baht with two decimals, like the export button; the daily CSV carries refund count and refund total next to the voids; the JSON report carries every `*Satang` field.",
     "",
   );
 
@@ -453,7 +455,7 @@ if (invokedDirectly) {
       process.exit(0);
     }
     if (!docOk) console.error(`❌ docs/api/POS-API.md ไม่ตรงกับทะเบียน (${current.length} ไบต์บนดิสก์ vs ${markdown.length} ไบต์ที่ควรเป็น)\n   แก้ด้วย: pnpm exec tsx scripts/gen-pos-api-docs.mts`);
-    if (!refOk) console.error(`❌ .claude/skills/shark-pos-api/references/endpoints.md ไม่ตรงกับทะเบียน (${currentRef.length} ไบต์บนดิสก์ vs ${endpointsRef.length} ไบต์ที่ควรเป็น)\n   แก้ด้วย: pnpm exec tsx scripts/gen-pos-api-docs.mts`);
+    if (!refOk) console.error(`❌ skills/shark-pos-api/references/endpoints.md ไม่ตรงกับทะเบียน (${currentRef.length} ไบต์บนดิสก์ vs ${endpointsRef.length} ไบต์ที่ควรเป็น)\n   แก้ด้วย: pnpm exec tsx scripts/gen-pos-api-docs.mts`);
     process.exit(1);
   }
   mkdirSync(dirname(DOC_PATH), { recursive: true });

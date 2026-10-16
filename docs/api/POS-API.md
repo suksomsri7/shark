@@ -63,7 +63,7 @@ Conventions that apply to every operation:
 - **CSV.** 11 report operations render CSV when asked with `Accept: text/csv`.
 - **Writes** answer the record they made or changed: `POST /sales` -> `{ saleId, receiptNo, grandTotalSatang, changeSatang, duplicated }`, `POST /sales/{id}/refund` -> `{ refund, sale }`, `POST /orders` -> `{ orderId, duplicated, saleId }`, `POST /orders/{id}/pay` -> `{ saleId, duplicated }`.
 - **`duplicated` is not the replay flag.** A retry with the same `Idempotency-Key` inside the 24 hour window replays the stored first answer (so `duplicated` stays `false`) with the header `Idempotent-Replayed: true`. `duplicated: true` means the POS already held the record and returned it: the same `externalRef` on the same channel for `POST /orders`, or the same key after the replay window for `POST /sales` and `POST /orders/{id}/pay`.
-- **Known naming gaps.** `GET /sales/{id}` answers its money under `totals` without the `Satang` suffix (`subtotal`, `grandTotal`, `refunded`, ...); the values are integer satang all the same. CSV reports show money in baht with two decimals, like the export button, and the daily CSV has no refund columns; the JSON report carries every `*Satang` field.
+- **Money in reports and bills.** `GET /sales/{id}` answers its money under `totals` with the `Satang` suffix like every other field (`subtotalSatang`, `grandTotalSatang`, `refundedSatang`, ...). CSV reports show money in baht with two decimals, like the export button; the daily CSV carries refund count and refund total next to the voids; the JSON report carries every `*Satang` field.
 
 ## Error codes
 
@@ -725,7 +725,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/pos/sales/123/tax-invoice" \
 | `channelRef` | string | no | Order number on the platform (platform channels). · min length 1 · max length 40 |
 | `billDiscount` | object | no | Bill level discount. Limited by the discount ceiling of the key (STAFF). |
 | `note` | string | no | Bill note. · max length 200 |
-| `shiftId` | string | no | Bind the bill to this OPEN shift of the same branch. Absent = the shop's rule for sales from other sources (Shifts). · min length 1 · max length 64 |
+| `shiftId` | string | no | Bind the bill to this OPEN shift of the same branch. Absent: when the shop requires a shift for sales from other sources, the single open shift of the branch is used (no open shift, or several open shifts with a CASH payment = 409 state_conflict SHIFT_REQUIRED); otherwise the bill is out of any shift and the answer has outOfShift: true. · min length 1 · max length 64 |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/pos/sales" \

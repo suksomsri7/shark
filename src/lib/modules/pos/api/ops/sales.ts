@@ -121,7 +121,14 @@ const createInput = z
     channelRef: z.string().trim().min(1).max(40).optional().describe("Order number on the platform (platform channels)."),
     billDiscount: discount.optional().describe("Bill level discount. Limited by the discount ceiling of the key (STAFF)."),
     note: z.string().max(200).optional().describe("Bill note."),
-    shiftId: z.string().min(1).max(64).optional().describe("Bind the bill to this OPEN shift of the same branch. Absent = the shop's rule for sales from other sources (Shifts)."),
+    shiftId: z
+      .string()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe(
+        "Bind the bill to this OPEN shift of the same branch. Absent: when the shop requires a shift for sales from other sources, the single open shift of the branch is used (no open shift, or several open shifts with a CASH payment = 409 state_conflict SHIFT_REQUIRED); otherwise the bill is out of any shift and the answer has outOfShift: true.",
+      ), // POS P2.14 ▸ API-1 ◂
   })
   .strict()
   .superRefine((v, ctx) => {
