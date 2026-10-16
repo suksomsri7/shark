@@ -103,7 +103,8 @@ const CHECKS: readonly Def[] = [
   D("I5", "X5", "[R7] ACCOUNT = LINKED scope POS target ระบบบัญชี · AccountSystemLink enabled=false → OFF · ระบบ POS Y (ไม่มีลิงก์ · ร้านมีบัญชี) → OFF"),
   D("I6", "-", "[R7] CRM ประตูปิด (uiVersion 1) → OFF scope TENANT · เปิดประตู (uiVersion 2 + bridgesEnabled) → LINKED"),
   D("I7", "-", "[R7] KANBAN: มีระบบแต่ไม่มี issueBoardId/กฎการ์ดบิลยกเลิก → OFF · ตั้ง issueBoardId (ตัวเขียนใบเสร็จ) → LINKED scope TENANT"),
-  D("I8", "-", "[R7 CD3] HR (มีระบบ) PLANNED phase P3.5 · BOOKING PLANNED P2.4 · AI PLANNED P3.9 · MARKETING (ไม่มีระบบ) NO_SYSTEM · CHAT (ไม่มีระบบ) NO_SYSTEM · PLANNED/NO_SYSTEM: scope null target null manage null lastActivityAt null"),
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR (มีระบบ) LINKED scope TENANT facts live — เดิม "HR (มีระบบ) PLANNED phase P3.5"
+  D("I8", "-", "[R7 CD3] HR (มีระบบ) LINKED (P3.5) · BOOKING PLANNED P2.4 · AI PLANNED P3.9 · MARKETING (ไม่มีระบบ) NO_SYSTEM · CHAT (ไม่มีระบบ) NO_SYSTEM · PLANNED/NO_SYSTEM: scope null target null manage null lastActivityAt null"),
   D("I9", "-", "[R7 CD3] header.linked = จำนวนการ์ด LINKED เท่านั้น"),
   D("I10", "-", "[R7] backlog = {pending: PENDING > 10 นาที, failed: FAILED} ของ OutboxEvent systemId X type pos.% → {2, 1} (+ แถวจริงของ X ที่ค้าง) · ของ Y / แถวใหม่ < 10 นาที / type อื่น ไม่นับ"),
   D("I11", "-", "[R7] เกินเวลา (opts {statementTimeoutMs 50, testDelayMs 400} → pg_sleep ใน tx เดียวกับ SET LOCAL) → backlog null · การ์ดยังครบ 13"),
@@ -312,7 +313,7 @@ const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", true, null]], // ORACLE-EDIT P2.10 (15 Oct 2026 · brief §10 ruling 10, pre-approved): rewardNearCustomerDisplay live — was ["rewardNearCustomerDisplay", false, "P2.10"]
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", true, null], ["promptpayReconcile", false, "P3.10"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: platformCommission live — เดิม false "P2.1"
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]], // ORACLE-EDIT P2.3U (มติ 8 ผู้คุม): bomDeduct live — เดิม ["bomDeduct", false, "P2.3"]
-  HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
+  HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR facts live — เดิม [false "P3.5"] ×3
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]], // ORACLE-EDIT P2.8 (มติ 5): พนักงานคีย์ออเดอร์จากแชท
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
@@ -320,7 +321,7 @@ const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: เดิม [false "P2.4"] [false "P2.4"] [false "P2.7"]
   AI: [["shiftDaySummary", false, "P3.9"], ["purchaseSuggestion", false, "P3.9"], ["anomalyDetection", false, "P3.9"]],
 };
-const PLANNED_PHASE: Record<string, string> = { HR: "P3.5", MARKETING: "P2.2", BOOKING: "P3", AI: "P3.9" }; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3" — เดิม "P2.4"
+const PLANNED_PHASE: Record<string, string> = { MARKETING: "P2.2", BOOKING: "P3", AI: "P3.9" }; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR ไม่ PLANNED แล้ว (เดิม HR: "P3.5") · // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3" — เดิม "P2.4"
 const NAV_KEYS = ["overview", "register", "products", "stock", "sales", "shifts", "close", "reports", "settings"] as const;
 const NAV_TH = ["ภาพรวม", "ขายหน้าร้าน", "สินค้า/บริการ", "สต็อก", "บิลวันนี้", "กะ", "ปิดวัน", "รายงาน", "ตั้งค่า"];
 const ROLE_ROWS: readonly [string, string | null, string | null][] = [
@@ -1472,7 +1473,7 @@ async function runDb() {
   {
     const p: string[] = [];
     const r = await cards("OWNER");
-    for (const [code, state, phase] of [["HR", "PLANNED", "P3.5"], ["BOOKING", "PLANNED", "P3"], ["AI", "PLANNED", "P3.9"], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) { // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3"
+    for (const [code, state, phase] of [["BOOKING", "PLANNED", "P3"], ["AI", "PLANNED", "P3.9"], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) { // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3"
       const c = cardOf(r, code);
       if (c?.state !== state) p.push(`${code} ${short(c?.state, 12)} (คาด ${state})`);
       if (c && (c.scope !== null || c.target !== null || c.manage !== null || c.lastActivityAt !== null)) p.push(`${code} scope/target/manage/lastActivity ไม่ใช่ null`);
@@ -1480,7 +1481,12 @@ async function runDb() {
       // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1 · D16) มติ 8: การ์ด PLANNED มีข้อที่ใช้งานแล้วได้ (BOOKING tableReservationsOnMap live ตั้งแต่ P2.4) — ข้อที่ยังไม่มี (live false) ต้องมี phase · อย่างน้อยหนึ่งข้อเป็นเฟสของการ์ด
       if (phase && c && !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === true ? f?.phase === null : typeof f?.phase === "string" && !!f.phase) && c.facts.some((f: Any) => f?.phase === PLANNED_PHASE[code]))) p.push(`${code} facts ไม่ใช่ planned ${phase}`);
     }
-    chk("I8", NI === "" && p.length === 0, "PLANNED (HR BOOKING AI) · NO_SYSTEM (MARKETING CHAT)", FX(NI + (p.join(" · ") || "ครบ")));
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR มีสายแล้ว — ร้านมีระบบ HR ⇒ LINKED · scope TENANT · target = ระบบ HR · facts live ทุกข้อ (เดิม ["HR", "PLANNED", "P3.5"] ในลูปข้างบน)
+    {
+      const c = cardOf(r, "HR");
+      if (c?.state !== "LINKED" || c?.scope !== "TENANT" || !c?.target || !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === true && f?.phase === null))) p.push(`HR ${short(c && { s: c.state, sc: c.scope, t: !!c.target }, 60)} (คาด LINKED TENANT facts live)`);
+    }
+    chk("I8", NI === "" && p.length === 0, "HR LINKED · PLANNED (BOOKING AI) · NO_SYSTEM (MARKETING CHAT)", FX(NI + (p.join(" · ") || "ครบ")));
   }
   {
     const p: string[] = [];
