@@ -25,7 +25,9 @@ import { posRegisterActorOf, posActorCanUseUnit } from "../actor";
 import { posData, posResult, toPosApiError } from "../http-errors";
 import { posApiServiceKey } from "../keys";
 import { definePosOp, POS_SCOPES, type ApiOp } from "../op";
-import { posApiPriorSale, posApiShiftState, posSaleHead, posSaleShiftId, posSaleUnit, requirePosUnit } from "../units";
+import { posApiPriorSale, posSaleHead, posSaleShiftId, posSaleUnit, requirePosUnit } from "../units"; // POS P2.14 ▸ fix1 F7: − posApiShiftState ◂
+import { resolveApiSaleShift } from "../../shift"; // POS P2.14 ▸ fix1 F7 ◂
+import { prisma } from "../../db"; // POS P2.14 ▸ fix1 F7 ◂
 
 /** เพดานของคอลัมน์เงิน/จำนวน (Postgres Int — pos.prisma: PosSale.*Satang · PosSaleLine · PosPayment) */
 export const POS_INT_MAX = 2_147_483_647;
@@ -368,13 +370,10 @@ const salesCreate = definePosOp({
     //   ร้านไม่ตั้ง = แบบเดิม (นอกกะ) + คำตอบบอก outOfShift: true · บิลเดิม (prior) ไม่ผ่านด่านนี้ (คำตอบเดิม) ◂
     let shiftId = input.shiftId;
     if (!prior && !shiftId) {
-      const st = await posApiShiftState(actor, unitId);
-      if (st.otherSourcesRequired) {
-        const hasCash = input.payMethods.some((p) => p.type === "CASH");
-        if (st.open.length === 0) throw toPosApiError({ ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนขาย (ร้านตั้งให้บิลจากทางอื่นต้องอยู่ในกะ)" });
-        if (st.open.length === 1) shiftId = st.open[0];
-        else if (hasCash) throw toPosApiError({ ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้เปิดกะอยู่หลายกะ — ส่ง shiftId ของกะที่รับเงินสดนี้ (ดูกะที่เปิดอยู่ได้ที่ GET /shifts)" });
-      }
+      // POS P2.14 ▸ fix1 F7: ตัวหากะตัวเดียวกับ orders.pay (shift.ts resolveApiSaleShift) ◂
+      const st = await resolveApiSaleShift(prisma, { tenantId: actor.tenantId, systemId: actor.systemId, unitId }, { hasCash: input.payMethods.some((p) => p.type === "CASH") });
+      if (!st.ok) throw toPosApiError(st);
+      if (st.shiftId) shiftId = st.shiftId;
     }
     const ctx = registerCtx(actor, unitId, shiftId);
     const ra = posRegisterActorOf(actor);

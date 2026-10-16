@@ -1095,3 +1095,26 @@ export async function shiftsPageData(ctx: RegisterCtx, actor: RegisterActor, inp
     };
   });
 }
+
+/**
+ * POS P2.14 ▸ fix1 F7: ตัวหากะของบิลจากทางอื่น (REST) ตัวเดียว — POST /sales (API-1 · มติ 2) และ POST /orders/{id}/pay ใช้ร่วมกัน ·
+ *   ร้านตั้ง requiredOtherSources: กะเปิดกะเดียวของสาขา = ผูก · 0 กะ = SHIFT_REQUIRED · ≥ 2 กะ + เงินสด = SHIFT_REQUIRED (ไม่เดา) · ≥ 2 กะ ไม่มีเงินสด = ไม่ผูก ·
+ *   ร้านไม่ตั้ง = ไม่ผูก (บิลนอกกะ · ผู้เรียกตอบ outOfShift) — ยกเว้น strictCash (เงินสดต้องลงกะเสมอ: ทางของ orders.pay ตามมติ P2.13 fix1 H3 · CONTROLLER-DECISION CD-F7) ◂
+ */
+export type ApiSaleShift = { ok: true; shiftId: string | null } | { ok: false; code: "SHIFT_REQUIRED"; message: string };
+export async function resolveApiSaleShift(
+  db: Db | Tx,
+  s: { tenantId: string; systemId: string; unitId: string },
+  opts: { hasCash: boolean; strictCash?: boolean },
+): Promise<ApiSaleShift> {
+  const [sys, open] = await Promise.all([
+    db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } }),
+    db.posShift.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 }),
+  ]);
+  const required = parseShiftSettings(sys?.settings).requiredOtherSources || (opts.strictCash === true && opts.hasCash);
+  if (!required) return { ok: true, shiftId: null };
+  if (open.length === 0) return { ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนขาย (ร้านตั้งให้บิลจากทางอื่นต้องอยู่ในกะ)" };
+  if (open.length === 1) return { ok: true, shiftId: open[0]!.id };
+  if (opts.hasCash) return { ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้เปิดกะอยู่หลายกะ — ส่ง shiftId ของกะที่รับเงินสดนี้ (ดูกะที่เปิดอยู่ได้ที่ GET /shifts)" };
+  return { ok: true, shiftId: null };
+}

@@ -662,7 +662,7 @@ const regIsId = (v: unknown): v is string => typeof v === "string" && v.length >
  */
 const regIsIdemKey = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(v);
 /** namespace ของคีย์หน้าขายใหม่ใน PosSale.idempotencyKey (ตายตัว — มติ R4.1 ข้อ 2) */
-const REG_KEY_PREFIX = "reg2:";
+export const REG_KEY_PREFIX = "reg2:"; // POS P2.14 ▸ fix1 F7: export (REST ใช้ค่าเดียวกัน) ◂
 /** คีย์ของออบเจกต์อยู่ในรายการที่รู้จักทั้งหมดไหม (คีย์แปลกปลอม = VALIDATION ไม่เงียบทิ้ง) */
 const regOnlyKeys = (o: Record<string, unknown>, allowed: ReadonlySet<string>) => Object.keys(o).every((k) => allowed.has(k));
 

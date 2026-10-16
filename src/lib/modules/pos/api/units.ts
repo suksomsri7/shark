@@ -10,8 +10,7 @@
 import type { ApiActor } from "@/lib/api/actor";
 import { ApiError } from "@/lib/api/respond";
 import { prisma } from "../db";
-import { posUnitIsLinked } from "../register";
-import { parseShiftSettings } from "../shift"; // POS P2.14 ▸ API-1 ◂
+import { posUnitIsLinked, REG_KEY_PREFIX } from "../register"; // POS P2.14 ▸ fix1 F7: + REG_KEY_PREFIX ◂
 import { posActorCanUseUnit } from "./actor";
 
 const NOT_FOUND_EN: Record<string, string> = {
@@ -92,8 +91,8 @@ export async function posProductUnit(actor: ApiActor, productId: string, given: 
 }
 
 // POS P2.14 ▸ API-1 (มติ 2 · มติ 12) + API-7: ตัวอ่านของ sales.create (อ่านอย่างเดียว · ไม่มีตรรกะเงิน)
-/** namespace ของคีย์บิลหน้าขายใหม่ใน PosSale.idempotencyKey — ค่าเดียวกับ REG_KEY_PREFIX ของ register.ts (คีย์บริการ REST ทุกตัวเดินผ่าน submitRegisterSale) */
-const REGISTER_KEY_NS = "reg2:";
+/** namespace ของคีย์บิลหน้าขายใหม่ใน PosSale.idempotencyKey = REG_KEY_PREFIX ของ register.ts (คีย์บริการ REST ทุกตัวเดินผ่าน submitRegisterSale) · POS P2.14 ▸ fix1 F7: import ค่าเดียว ◂ */
+const REGISTER_KEY_NS = REG_KEY_PREFIX;
 /** บิลเดิมของคีย์บริการนี้ (ลองซ้ำหลัง TTL 24 ชม. ของ ApiIdempotency) — null = ยังไม่มีบิล */
 export async function posApiPriorSale(actor: ApiActor, serviceKey: string): Promise<{ id: string; grandTotalSatang: number } | null> {
   return prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: `${REGISTER_KEY_NS}${serviceKey}` } }, select: { id: true, grandTotalSatang: true } });
@@ -103,12 +102,5 @@ export async function posSaleShiftId(actor: ApiActor, saleId: string): Promise<s
   const row = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: actor.tenantId, systemId: actor.systemId }, select: { shiftId: true } });
   return row?.shiftId ?? null;
 }
-/** ค่าตั้ง "ทางอื่นต้องมีกะ" + กะที่เปิดอยู่ของสาขา (สูงสุด 2 แถว — 2 = "หลายกะ") */
-export async function posApiShiftState(actor: ApiActor, unitId: string): Promise<{ otherSourcesRequired: boolean; open: string[] }> {
-  const [sys, open] = await Promise.all([
-    prisma.appSystem.findFirst({ where: { id: actor.systemId, tenantId: actor.tenantId }, select: { settings: true } }),
-    prisma.posShift.findMany({ where: { tenantId: actor.tenantId, systemId: actor.systemId, unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 }),
-  ]);
-  return { otherSourcesRequired: parseShiftSettings(sys?.settings).requiredOtherSources, open: open.map((x) => x.id) };
-}
+// POS P2.14 ▸ fix1 F7: ตัวหากะของ REST อยู่ที่ shift.ts resolveApiSaleShift (ตัวเดียวกับ orders.pay) ◂
 // ◂

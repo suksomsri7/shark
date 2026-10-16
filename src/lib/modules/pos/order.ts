@@ -24,7 +24,7 @@ import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมอง
 import { ensureUnitChannels, withInactiveQrOrderAllowed } from "./channel"; // POS P2.7 ▸ fix3 G1: + withInactiveQrOrderAllowed ◂
 import { channelCommission, channelNet } from "./channel-shared";
 import { quoteRegisterCart, registerVisibleProductIds } from "./register"; // POS P2.14 ▸ ORD-1 ◂
-import { registerShiftStatus, isShiftDeviceId } from "./shift";
+import { registerShiftStatus, isShiftDeviceId, resolveApiSaleShift } from "./shift"; // POS P2.14 ▸ fix1 F7: + resolveApiSaleShift ◂
 import { voidSaleByActor } from "./bills";
 import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
 import { loadRowRecipes } from "./recipe";
@@ -1338,10 +1338,11 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     // POS P2.13 ▸ fix1 H3: เงินสดผ่าน REST ลงกะเสมอ (ไม่บันทึกเงินสดนอกกะ แม้ requiredOtherSources ปิด) — ผูกกะเปิดกะเดียวของสาขา ·
     //   ไม่มีกะเปิด / เปิดหลายกะ (ไม่เดา) = SHIFT_REQUIRED ก่อนเขียน · ไม่มีเงินสด = กติกา "ทางอื่น" ของ createSale เหมือนเดิม ◂
     let apiCashShift: string | undefined;
-    if (apiPay && cashRows.length > 0) {
-      const open = await prisma.posShift.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 });
-      if (open.length !== 1) return refuse("SHIFT_REQUIRED", open.length ? "สาขานี้เปิดกะอยู่หลายกะ — ระบุกะทาง API ไม่ได้ รับเงินสดของออเดอร์นี้ที่เครื่องหน้าร้าน" : "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนรับเงินสด");
-      apiCashShift = open[0]!.id;
+    if (apiPay) {
+      // POS P2.14 ▸ fix1 F7: ตัวหากะตัวเดียวกับ POST /sales (shift.ts resolveApiSaleShift) · เงินสดลงกะเสมอ (strictCash — มติ P2.13 fix1 H3 · CONTROLLER-DECISION CD-F7) ◂
+      const st = await resolveApiSaleShift(prisma, s, { hasCash: cashRows.length > 0, strictCash: true });
+      if (!st.ok) return refuse("SHIFT_REQUIRED", st.message);
+      apiCashShift = st.shiftId ?? undefined;
     }
     const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: apiCashShift, required: false } : await deviceShift(prisma, s, s.deviceId);
     if (!apiPay && (cashRows.length > 0 || shift.required) && !shift.shiftId) return refuse("SHIFT_REQUIRED");
