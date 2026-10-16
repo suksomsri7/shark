@@ -143,9 +143,15 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
       if (com.reason === "other-book") {
         const seen = await prisma.opsEvent.findFirst({ where: { tenantId: evt.tenantId, level: "WARN", source: COMMISSION_OTHER_BOOK, message: { contains: refund.id } }, select: { id: true } });
         if (!seen) {
-          await logOps("WARN", COMMISSION_OTHER_BOOK, `ใบคืน ${refund.id} ของบิล ${sale.id}: ค่าคอมฯ ช่องทางของบิลลงไว้ในสมุดบัญชีอื่น (ย้ายสมุดหลังขาย) — ไม่กลับรายการข้ามสมุด · ปรับมือในสมุดเดิม`, {
-            tenantId: evt.tenantId,
-            detail: JSON.stringify({ refundId: refund.id, saleId: sale.id, receiptNo: refund.receiptNo ?? null, commissionSatang: shareC, commissionVatSatang: shareV, payout: refund.channelPayout }),
+          // POS HF-FU2 ▸ fix1 N5: เขียน OpsEvent ตรง (ฟิลด์เดียวกับ logOps) — logOps กลืน error ⇒ ถ้าเขียนไม่ได้ต้องโยนให้คิวลองใหม่ (ห้ามเงียบ) ◂
+          await prisma.opsEvent.create({
+            data: {
+              level: "WARN",
+              source: COMMISSION_OTHER_BOOK,
+              message: `ใบคืน ${refund.id} ของบิล ${sale.id}: ค่าคอมฯ ช่องทางของบิลลงไว้ในสมุดบัญชีอื่น (ย้ายสมุดหลังขาย) — ไม่กลับรายการข้ามสมุด · ปรับมือในสมุดเดิม`,
+              detail: JSON.stringify({ refundId: refund.id, saleId: sale.id, receiptNo: refund.receiptNo ?? null, commissionSatang: shareC, commissionVatSatang: shareV, payout: refund.channelPayout }),
+              tenantId: evt.tenantId,
+            },
           });
         }
       }
