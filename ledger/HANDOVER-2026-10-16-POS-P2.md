@@ -81,7 +81,7 @@ SHA = commit merge บน `session/pos` (ตรวจด้วย `git merge-bas
 ## §3 parity (มติ P2.14 ข้อ 6 · H3)
 แหล่ง: `ledger/wo-notes/pos-P2.14-parity.md` (รูปแบบ P1.18: กรอบ × ขนาด × ภาษา · MATCH / DEVIATION(+มติ) / OPEN · H3 = ต้องไม่มี OPEN) · แผนถ่าย `scripts/pos-visual-sweep.json` 23 run (pages-th/en `p2close` · P1 wo 8 ชุด · rpub · P2 wo 13 ชุด: p2.2u p2.3u p2.4u p2.5u p2.6u p2.8u p2.9u p2.9bu p2.10 p2.11u p2.12u p2.13 p2.7) + exempt 3 (`reports/print` → reports · `products/price-rules` → products · `/developers/pos` → settings) · build ครั้งเดียวที่ทิปปิดเฟส บนทรี d · QC5
 
-**สรุป: __PARITY_SUMMARY__**
+**สรุป: 116 แถว = MATCH 10 · DEVIATION 69 · OPEN 0 · CTRL 37** (ชีต `wo-notes/pos-P2.14-parity.md` · sweep `vis-p2close-qc5-20261016T121501Z` @39644eb2 build ovHP3ndB · 146 run · 1,741 ภาพ (th 1,144 · en 597) · 13 ภาพแดง/7 run → ถ่ายซ้ำเขียว `vis-p2close-reshoot1-qc5-20261016T150615Z`) · จอเงิน 01/02/02b/05/07/12/11C/P2.9U/P2.9bU ผู้คุมดูเอง: **ไม่มี deviation ใหม่จาก P2** (01/12/11C/แยกจ่ายบัตรของขวัญ-มัดจำ = MATCH · 02/02b/05/07 = deviation เดิมที่รับใน P1) · OPEN 21 → มติผู้คุม 16 ต.ค.: O-1…O-9 fix-now (ข้อความทับปุ่มการ์ดโต๊ะจอง · ชื่อบิลล้นการ์ดแยกบิล 1024 · พหูพจน์ en · หัวหน้าสินค้า 390 · คอลัมน์กำไรถูกตัด · แท็บบุคคลธรรมดาตัดบรรทัด · "-" ในประวัติสต็อก en · วันที่ ISO ในการ์ดรายงาน th · cuid คีย์ API ในหน้าพิมพ์) · H1/H2 วินิจฉัย offline แคชเชียร์ · H5 harness 390 · Q3/Q4 fix-now · Q1/Q2/Q5/Q7 accept → **รอบแก้ U2** (`wip/pos-p2.14-u2`) → ถ่ายซ้ำเฉพาะ state ที่แตะ (addendum ท้ายชีต)
 
 ภาพที่ผู้คุมตัดสินแล้วตอน merge แต่ละใบ (เทียบ `ledger/design-pos/NN` · ไม่ซ้ำในแผ่น parity เว้นแต่ sweep เจอต่าง):
 | ใบ | ภาพ (run) | กรอบแบบ |
