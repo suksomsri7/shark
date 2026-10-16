@@ -1325,6 +1325,11 @@ async function dispatch(
   if (kind === "restaurant_close_bill") {
     const p = payload as RestaurantCloseBillPayload;
     const unit = await resolveUnit(tenantId, { type: "RESTAURANT", unitName: p.unitName, label: "ร้านอาหาร" });
+    // POS P2.14 ▸ LEG-3 มติ 1: สาขาที่ผูก POS ⇒ ผู้ช่วยปิดบิลทางเดิมไม่ได้ (POS_LINKED — ทางเดิมไม่มีล็อกโต๊ะ/แผนแยกบิลของ POS · ปิดบิลที่ POS › โต๊ะ) ·
+    //   ค้นไม่ได้ = ปฏิเสธ (fail-closed · ทางเงิน) · สาขาไม่ผูก POS = ทางเดิม
+    if (await (await import("@/lib/modules/pos/legacy-door")).posLinkedLegacyDoor(tenantId, unit.id, { write: true }))
+      throw new Error("POS_LINKED: สาขานี้ใช้ POS แล้ว — ปิดบิลโต๊ะที่ POS › โต๊ะ (ผู้ช่วยปิดบิลทางหน้าร้านอาหารเดิมไม่ได้)");
+    // ◂
     const wantTable = String(p.tableName ?? "").trim();
     if (!wantTable) throw new Error("ต้องระบุหมายเลข/ชื่อโต๊ะ");
     // resolve โต๊ะจากชื่อ (contains) ในร้าน (active) → หา session ที่ยังเปิดอยู่ของโต๊ะนั้น
