@@ -310,27 +310,52 @@
     {
       "suite": "qc-account-api-read-docs",
       "mode": "unforced",
-      "needs": "acc-v2-seed"
+      "needs": "acc-v2-seed",
+      "accepted": {
+        "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (QC4 has no acc-v2 seed tenant: setup crash 'ไม่พบระบบที่จะผูกคีย์ในร้านนี้' · run 16 Oct p214-builder/accv2-20261016T045411Z)",
+        "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
+        "opRef": "acc-v2-seed account-api ×5"
+      }
     },
     {
       "suite": "qc-account-api-read-finance",
       "mode": "unforced",
-      "needs": "acc-v2-seed"
+      "needs": "acc-v2-seed",
+      "accepted": {
+        "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
+        "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
+        "opRef": "acc-v2-seed account-api ×5"
+      }
     },
     {
       "suite": "qc-account-api-read-gl",
       "mode": "unforced",
-      "needs": "acc-v2-seed"
+      "needs": "acc-v2-seed",
+      "accepted": {
+        "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
+        "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
+        "opRef": "acc-v2-seed account-api ×5"
+      }
     },
     {
       "suite": "qc-account-api-read-master",
       "mode": "unforced",
-      "needs": "acc-v2-seed"
+      "needs": "acc-v2-seed",
+      "accepted": {
+        "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
+        "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
+        "opRef": "acc-v2-seed account-api ×5"
+      }
     },
     {
       "suite": "qc-account-api-settings",
       "mode": "unforced",
-      "needs": "acc-v2-seed"
+      "needs": "acc-v2-seed",
+      "accepted": {
+        "reason": "needs acc-v2 seed + a served QC build (acc-v2-serve.sh :3215 — POS lanes never build/serve) — green on the ACCOUNT-API lane (0/9 on QC4 · run 16 Oct accv2-20261016T045411Z)",
+        "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
+        "opRef": "acc-v2-seed account-api ×5"
+      }
     },
     {
       "suite": "qc-account-api-webhooks",
