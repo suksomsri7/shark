@@ -1913,3 +1913,4 @@
 - 17:0xZ (A) **qc:all QC6 จบ 288/420** (ผลใน HANDOVER §0/§2 · OP O27-run สรุป) · POS จริง 2 จุด (qc-pages RG-1 · nav S5) → **U3** builder ทรี b `wip/pos-p2.14-u3` · chain: build d @230accb8 เริ่ม 17:00Z → ถ่ายซ้ำ U2 → gates110
 - 17:4xZ (A) **U3 ส่งงาน 2a24e6cf (registry 9 widget · accordion POS ครบ · manifest +2 · H1b hook จอลูกค้า) → merge session/pos c5fc223b** · หยุด gates110 (แทนด้วย gates111 ปลายสุดท้าย) · chain หลัง U3: build d → ถ่ายซ้ำ offline/display ‖ **gates111** (96 รายการ)
 - 17:58Z (A) **ถ่ายซ้ำหลัง U3 เขียวหมด (79 ภาพ · 0 แดง) — offline แคชเชียร์ th/en ไม่มี console error แล้ว (H1b พิสูจน์)** · gates111 ทรี c @c5fc223b กำลังรัน
+- 18:4xZ (A) gates111 (61/96) แดง 3 เรื่องหมุด/ชีต (p2.14 H3 ตารางผู้คุม · p2.12 ST1 + hf-fu ST1 lane pin ชนรอบ U2b/U3) → **CD-B1c** re-pin hf-fu/p2.12 → c5fc223b + ย้าย addenda ขึ้น → commit 3d2f6db8 · gates111b (3 ชุด @3d2f6db8) ตั้งรอหลัง gates111 จบ
