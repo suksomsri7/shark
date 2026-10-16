@@ -1743,7 +1743,9 @@ function csvTableRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
     case "staff": {
       const x = rep as Report<"staff", StaffRow, StaffTotals>;
       const cells = (a: string, b: string, t: StaffTotals): Cells => [a, b, t.billCount, baht(t.netSalesSatang), baht(t.discountSatang), baht(t.tipSatang), t.voidCount, baht(t.voidTotalSatang), baht(t.avgBillSatang)];
-      return [...x.rows.map((r) => cells(r.userId ?? "", r.userId ? (r.name ?? "") : "ไม่ระบุ", r)), cells(TOTAL_LABEL, "", x.totals)];
+      // POS P2.14 ▸ U2 O-9: ผู้ขายที่เป็นคีย์ API (ชื่อ "API: <ชื่อคีย์>" จากด้านบน) = รหัสสั้นของคีย์ ("API …ท้าย 6 ตัว") แทน cuid เต็มในช่องรหัสผู้ใช้ (CSV · หน้าพิมพ์) ◂
+      const idCell = (r: StaffRow) => (r.userId && r.name?.startsWith("API: ") ? `API …${r.userId.slice(-6)}` : (r.userId ?? ""));
+      return [...x.rows.map((r) => cells(idCell(r), r.userId ? (r.name ?? "") : "ไม่ระบุ", r)), cells(TOTAL_LABEL, "", x.totals)];
     }
     case "payments": {
       const x = rep as Report<"payments", PaymentRow, PaymentTotals>;
