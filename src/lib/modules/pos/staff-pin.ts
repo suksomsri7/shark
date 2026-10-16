@@ -411,7 +411,7 @@ async function scheduleGate(
   const d = link.scheduleGateDecide(await link.hrScheduleItem(s.tenantId, m.actor.userId, now), m.actor.role, now, gate);
   if (d.ok) return { ttlMs: d.capAt ? Math.max(MIN_TOKEN_MS, Math.min(STAFF_TOKEN_TTL_MS, d.capAt.getTime() - nowMs)) : STAFF_TOKEN_TTL_MS };
   const denied = async () =>
-    writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: SCHEDULE_DENIED_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, reason: d.reason, deviceId, unitId: s.unitId } });
+    writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: SCHEDULE_DENIED_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, reason: d.reason, deviceId } });
   if (anonymous) {
     await denied();
     return refuse("PIN_INVALID");
@@ -436,7 +436,7 @@ async function scheduleGate(
     await denied();
     return v;
   }
-  await writeAudit({ tenantId: s.tenantId, actorId: v.actor.userId, action: SCHEDULE_OVERRIDE_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, byUserId: v.actor.userId, reason: d.reason, deviceId, unitId: s.unitId } });
+  await writeAudit({ tenantId: s.tenantId, actorId: v.actor.userId, action: SCHEDULE_OVERRIDE_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, byUserId: v.actor.userId, reason: d.reason, deviceId } });
   return { ttlMs: gate.overrideTtlMin * 60_000 };
 }
 
