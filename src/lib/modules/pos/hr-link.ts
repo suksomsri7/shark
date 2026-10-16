@@ -213,10 +213,14 @@ export async function hrRequestPayAdjustment(ctx: { tenantId: string; systemId: 
 export async function hrPayrollLinkedUserIds(tenantId: string, userIds: string[]): Promise<Set<string>> {
   return new Set(await (await hr()).activeLinkedUserIds(tenantId, userIds));
 }
-/** สถานะของรายการปรับเงิน (PENDING/APPROVED/REJECTED · runId) ตาม id */
-export async function hrAdjustmentStatuses(tenantId: string, ids: string[]): Promise<Map<string, { status: string; runId: string | null }>> {
+/** สถานะของรายการปรับเงิน (PENDING/APPROVED/REJECTED · runId · periodKey) ตาม id */
+export async function hrAdjustmentStatuses(tenantId: string, ids: string[]): Promise<Map<string, { status: string; runId: string | null; periodKey: string }>> {
   const rows = ids.length ? await (await hr()).adjustmentStatuses({ tenantId, ids }) : [];
-  return new Map(rows.map((r) => [r.id, { status: r.status, runId: r.runId }]));
+  return new Map(rows.map((r) => [r.id, { status: r.status, runId: r.runId, periodKey: r.periodKey }])); // POS P3.5 ▸ fix2 N1: + periodKey ◂
+}
+/** POS P3.5 ▸ fix2 N1: ให้ HR ย้ายรายการของระบบ (ค่าคอมฯ POS) ที่ค้างในงวดที่มีรอบแล้ว ไปงวดแรกที่ว่าง — คืนจำนวนที่ย้าย ◂ */
+export async function hrRehomeStrandedSystemAdjustments(tenantId: string): Promise<number> {
+  return (await hr()).rehomeStrandedSystemAdjustments(tenantId, 100);
 }
 /** ร้านนี้มีระบบ HR ไหม (การ์ดการเชื่อมต่อ · ค่าปริยาย clockOnShift) — อ่าน AppSystem ของเคอร์เนล ไม่แตะตาราง HR */
 export async function tenantHasHr(tenantId: string): Promise<boolean> {

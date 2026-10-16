@@ -11,7 +11,7 @@
 //    ลบ = DEDUCTION (ยอด |สุทธิ|) · 0 = SENT โดยไม่มีรายการ · รายการ HR = PENDING (อนุมัติด้วยกติกา 4 ตาของ HR) · เขียน HR ผ่าน hr.requestAdjustment ใน tx เดียวกัน
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
-import { hrPayrollEmployeeOf, hrPayrollRunPeriods, hrRequestPayAdjustment } from "./hr-link";
+import { hrPayrollEmployeeOf, hrPayrollRunPeriods, hrRehomeStrandedSystemAdjustments, hrRequestPayAdjustment } from "./hr-link";
 import { posStaffCommission } from "./settings-shared";
 import { nextPeriodKey, resolveStaffCommissionRate, staffCommissionAmount, staffCommissionBases, staffCommissionPeriodOf, staffCommissionRefundShare } from "./staff-commission-shared";
 
@@ -170,7 +170,7 @@ function reverseRow(acc: { tenantId: string; systemId: string; unitId: string; s
 }
 
 // ═══════════ R9 ส่งเข้างวดเงินเดือน (รอบรายชั่วโมง minute-jobs + ปุ่มของเจ้าของ) ═══════════
-export type StaffCommissionSyncResult = { ok: true; users: number; adjustments: number; sentRows: number; noEmployee: number; failed: number; stoppedEarly: boolean };
+export type StaffCommissionSyncResult = { ok: true; users: number; adjustments: number; sentRows: number; noEmployee: number; failed: number; stoppedEarly: boolean; /** POS P3.5 ▸ fix2 N1 ◂ */ rehomed: number };
 
 /**
  * ส่งแถว OPEN ของเดือนไทยที่จบแล้ว (periodKey < เดือนของ now) เข้างวดเงินเดือน HR — ทั้งระบบ หรือร้านเดียว (tenantId) ·
@@ -180,7 +180,7 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
   const now = input?.now instanceof Date && Number.isFinite(input.now.getTime()) ? input.now : new Date();
   const deadline = typeof input?.deadline === "number" && Number.isFinite(input.deadline) ? input.deadline : Date.now() + 20_000;
   const current = staffCommissionPeriodOf(now);
-  const res: StaffCommissionSyncResult = { ok: true, users: 0, adjustments: 0, sentRows: 0, noEmployee: 0, failed: 0, stoppedEarly: false };
+  const res: StaffCommissionSyncResult = { ok: true, users: 0, adjustments: 0, sentRows: 0, noEmployee: 0, failed: 0, stoppedEarly: false, rehomed: 0 };
   const pairs = await prisma.posStaffCommission.findMany({
     where: { status: "OPEN", periodKey: { lt: current }, ...(isId(input?.tenantId) ? { tenantId: input.tenantId } : {}) },
     distinct: ["tenantId", "userId"],
@@ -206,6 +206,24 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
     } catch (e) {
       res.failed++;
       console.error(`[pos/staff-commission] push ${tenantId} ${(e as { name?: string })?.name ?? "Error"}: ${String((e as Error)?.message ?? "").slice(0, 160)}`);
+    }
+  }
+  // POS P3.5 ▸ fix2 N1: รายการที่ส่งไปแล้วแต่งวดของมันเพิ่งมีรอบจ่าย (ก่อนอนุมัติ / ก่อนผูกโปรไฟล์) ⇒ HR ย้ายไปงวดแรกที่ว่าง —
+  //   ร้านที่เคยส่งเข้า HR (แถว SENT ที่มีรายการ) · ทีละร้านจนถึง deadline · ล้มร้านหนึ่งไม่หยุดร้านอื่น ◂
+  const sweepTenants = isId(input?.tenantId)
+    ? [input.tenantId]
+    : (await prisma.$queryRaw<{ tenantId: string }[]>`
+        SELECT DISTINCT "tenantId" FROM "PosStaffCommission" WHERE status = 'SENT' AND "hrPayAdjustmentId" IS NOT NULL ORDER BY "tenantId" LIMIT ${PUSH_BATCH}`).map((x) => x.tenantId);
+  for (const tenantId of sweepTenants) {
+    if (Date.now() >= deadline) {
+      res.stoppedEarly = true;
+      break;
+    }
+    try {
+      res.rehomed += await hrRehomeStrandedSystemAdjustments(tenantId);
+    } catch (e) {
+      res.failed++;
+      console.error(`[pos/staff-commission] rehome ${tenantId} ${(e as { name?: string })?.name ?? "Error"}`);
     }
   }
   return res;

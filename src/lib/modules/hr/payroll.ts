@@ -188,7 +188,7 @@ export async function decideAdjustment(
   //   (createPayrollRun ดึงรายการของงวดได้ครั้งเดียว) ⇒ ย้ายไปงวดถัดไปที่ยังไม่มีรอบ **ในคำสั่งเดียวกับการอนุมัติ** (guard: PENDING ·
   //   runId IS NULL · งวดเดิม) · รายการที่ไม่ผูกคอมมิชชันใช้ทางเดิม ◂
   let moveTo: string | null = null;
-  if (status === "APPROVED" && row.crmCommissionId) {
+  if (status === "APPROVED" && (row.crmCommissionId || isSystemAdjustment(row))) { // POS P3.5 ▸ fix2 N1: + รายการของระบบ (ค่าคอมฯ หน้าร้าน POS) ◂
     const runs = new Set((await tenantDb(ctx).hrPayrollRun.findMany({ where: { systemId: ctx.systemId }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
     if (runs.has(row.periodKey)) {
       moveTo = nextRunlessPeriod(row.periodKey, runs);
@@ -203,6 +203,43 @@ export async function decideAdjustment(
   // รีวิวเงิน note (c): ผู้เรียก (payroll-actions) ลง audit การย้ายงวด from → to จาก movedFrom/movedTo
   return moveTo ? { ok: true, reason: `งวด ${row.periodKey} มีรอบจ่ายแล้ว — อนุมัติและย้ายรายการไปงวด ${moveTo}`, movedFrom: row.periodKey, movedTo: moveTo } : { ok: true };
 }
+
+// POS P3.5 ▸ fix2 N1 (มติผู้คุม CD-P35c · บล็อกของ HR ที่เลน POS เขียน): "รายการของระบบ" = ยื่นโดยระบบ ไม่มีผู้ใช้ (requestedById null) ·
+//   ไม่ผูกคอมมิชชัน CRM · ชนิด COMMISSION/DEDUCTION — วันนี้คือค่าคอมฯ ขายหน้าร้านของ POS (`syncStaffCommissionToPayroll`) · ใช้จนกว่า H1.3 มี sourceType ·
+//   ได้กติกาเดียวกับคอมมิชชัน CRM (C3.3-fix H5): อนุมัติหลังงวดมีรอบแล้ว = ย้ายไปงวดถัดไปที่ว่างในคำสั่งเดียวกัน · ตัวกวาดย้ายรายการที่ค้างในงวดที่มีรอบ ◂
+const SYSTEM_ADJUST_KINDS: ReadonlySet<string> = new Set(["COMMISSION", "DEDUCTION"]);
+function isSystemAdjustment(row: { crmCommissionId: string | null; requestedById: string | null; kind: string }): boolean {
+  return !row.crmCommissionId && !row.requestedById && SYSTEM_ADJUST_KINDS.has(String(row.kind));
+}
+/**
+ * POS P3.5 ▸ fix2 N1: ย้ายรายการของระบบที่ "ค้าง" (PENDING/APPROVED · ไม่เข้ารอบ · งวดมีรอบแล้ว) ไปงวดแรกถัดไปที่ยังไม่มีรอบ — ทุกระบบ HR ของร้าน ·
+ * guard คำสั่งเดียว (id · runId IS NULL · สถานะ · งวดเดิม) ⇒ ยิงซ้อนได้ผลเดียว · คืนจำนวนที่ย้าย ◂
+ */
+export async function rehomeStrandedSystemAdjustments(tenantId: string, limit = 100): Promise<number> {
+  if (!tenantId) return 0;
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, take: 50 });
+  let moved = 0;
+  for (const sys of systems) {
+    const db = tenantDb({ tenantId, systemId: sys.id });
+    const runs = new Set((await db.hrPayrollRun.findMany({ where: { systemId: sys.id }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+    if (runs.size === 0) continue;
+    const rows = await db.hrPayAdjustment.findMany({
+      where: { systemId: sys.id, runId: null, crmCommissionId: null, requestedById: null, kind: { in: ["COMMISSION", "DEDUCTION"] }, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: [...runs] } },
+      select: { id: true, periodKey: true, status: true },
+      orderBy: { id: "asc" },
+      take: Math.max(1, limit - moved),
+    });
+    for (const r of rows) {
+      const to = nextRunlessPeriod(r.periodKey, runs);
+      if (!to) continue;
+      const n = await db.hrPayAdjustment.updateMany({ where: { id: r.id, runId: null, status: r.status, periodKey: r.periodKey, crmCommissionId: null, requestedById: null }, data: { periodKey: to } });
+      moved += n.count;
+    }
+    if (moved >= limit) break;
+  }
+  return moved;
+}
+// ◂ POS P3.5 fix2 N1
 
 /** CRM C3.3-fix H5 ▸ เดือนแรก > `periodKey` ที่ยังไม่มีรอบจ่าย (ค้นไม่เกิน 240 เดือน) · ไม่พบ = null */
 function nextRunlessPeriod(periodKey: string, runs: Set<string>): string | null {

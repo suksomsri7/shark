@@ -98,7 +98,7 @@ export async function clockSelf(input: { tenantId: string; userId: string; kind:
 }
 
 /** สถานะของรายการปรับเงินเดือน (HrPayAdjustment) ตาม id — PENDING/APPROVED/REJECTED + รอบจ่าย (runId) · ข้ามร้าน/ไม่พบ = ไม่อยู่ในผล */
-export async function adjustmentStatuses(input: { tenantId: string; ids: string[] }): Promise<{ id: string; status: string; runId: string | null }[]> {
+export async function adjustmentStatuses(input: { tenantId: string; ids: string[] }): Promise<{ id: string; status: string; runId: string | null; periodKey: string }[]> { // POS P3.5 ▸ fix2 N1: + periodKey (เพิ่มล้วน) ◂
   if (!isId(input?.tenantId) || !Array.isArray(input.ids)) return [];
   return adjustmentStatusRows(input.tenantId, input.ids);
 }

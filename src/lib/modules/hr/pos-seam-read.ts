@@ -44,13 +44,13 @@ export async function attendanceMarks(ctx: Ctx, employeeId: string, dayStart: Da
 }
 
 /** สถานะของรายการปรับเงินตาม id (ทุกระบบ HR ของร้าน · ไม่เกิน 1,000 id) — id ที่ไม่ใช่ของร้านนี้ไม่ถูกคืน */
-export async function adjustmentStatusRows(tenantId: string, ids: string[]): Promise<{ id: string; status: string; runId: string | null }[]> {
+export async function adjustmentStatusRows(tenantId: string, ids: string[]): Promise<{ id: string; status: string; runId: string | null; periodKey: string }[]> {
   const want = [...new Set(ids.filter((x) => typeof x === "string" && x.length > 0 && x.length <= 200))].slice(0, 1_000);
   if (!tenantId || want.length === 0) return [];
-  const out: { id: string; status: string; runId: string | null }[] = [];
+  const out: { id: string; status: string; runId: string | null; periodKey: string }[] = []; // POS P3.5 ▸ fix2 N1: + periodKey (ย้ายงวดตอนอนุมัติ/กวาด) ◂
   for (const systemId of await hrSystemIdsOf(tenantId)) {
-    const rows = await tenantDb({ tenantId, systemId }).hrPayAdjustment.findMany({ where: { id: { in: want } }, select: { id: true, status: true, runId: true }, take: 1_000 });
-    out.push(...rows.map((r) => ({ id: r.id, status: String(r.status), runId: r.runId ?? null })));
+    const rows = await tenantDb({ tenantId, systemId }).hrPayAdjustment.findMany({ where: { id: { in: want } }, select: { id: true, status: true, runId: true, periodKey: true }, take: 1_000 });
+    out.push(...rows.map((r) => ({ id: r.id, status: String(r.status), runId: r.runId ?? null, periodKey: r.periodKey })));
   }
   return out;
 }

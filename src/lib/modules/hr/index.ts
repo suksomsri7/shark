@@ -44,3 +44,6 @@ export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAd
 export type { OnShiftTodayItem, OnShiftTodayResult, PosSeamSchedule, PosSeamClockMarks, ClockSelfResult } from "./pos-seam";
 export { onShiftToday, workedMinutesBetween, clockSelf, adjustmentStatuses } from "./pos-seam";
 // ◂ POS P3.5
+// POS P3.5 ▸ fix2 N1 (มติผู้คุม CD-P35c): ตัวกวาดรายการของระบบ (ค่าคอมฯ POS) ที่ค้างในงวดที่มีรอบแล้ว — re-export ล้วน (ตัวงานอยู่ที่ payroll.ts)
+export { rehomeStrandedSystemAdjustments } from "./payroll";
+// ◂ POS P3.5 fix2 N1
