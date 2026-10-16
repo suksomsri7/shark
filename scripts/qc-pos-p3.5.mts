@@ -74,6 +74,7 @@ const CHECKS: readonly Def[] = [
   D("SG9", "X3", "[R4 P1.15 F2] override ด้วย managerPin ผิด ⇒ PIN_INVALID · failedCount ของ MGR +1 · ของ C1 ไม่เปลี่ยน · ไม่มีโทเคน · ไม่มี audit override เพิ่ม"),
   D("SG10", "X2", "[R4 มติ 6 R13] PIN แบบไม่ระบุคนของ C3 (วันหยุด) ⇒ PIN_INVALID ข้อความเดียวกับ PIN ผิดจริง ไม่มี reason/window · ร้าน T2 (ไม่มีระบบ HR · ด่านเปิด) 03:00 ⇒ ✓ · refusalMessageKey(OFF_SCHEDULE ALREADY_CLOCKED NO_EMPLOYEE) ไม่ใช่ errors.unknown · ไม่ซ้ำ · th ไทย / en มี"),
   D("SG11", "X2", "[fix2 N5 = R1-F2 · ORACLE-ADD ผู้คุม 17 ต.ค.] PIN แบบไม่ระบุคนของ C3 (นอกตาราง) ×N ที่เครื่องเดียว ⇒ PIN_INVALID ทุกครั้ง + แถว pos.staff.pin_failed N แถวของเครื่องนั้น (ตัวนับเห็นเหมือน PIN ผิด) · ครั้งที่ N+1 (PIN C1 ถูก · ในเวลา) ⇒ PIN_THROTTLED"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N5)
+  D("SG12", "X3", "[fix2 N6 · ORACLE-ADD ผู้คุม 17 ต.ค.] ตารางข้ามเที่ยงคืน: C2 วันนี้ 16:00–23:45 · พรุ่งนี้ DAY_OFF ⇒ พรุ่งนี้ 00:05 ✓ (แถวเมื่อวาน +1440 · late 30 · expiresAt 00:15) · วันนี้ 23:00 ✓ (แถว DAY_OFF ของพรุ่งนี้ไม่บล็อก) · ตัวควบคุม พรุ่งนี้ 01:00 ⇒ DAY_OFF"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N6)
   // ── LS รายชื่อจอล็อก ──
   D("LS1", "-", "[R5 R1] listStaffForDevice(…, {now 12:00}): C1 hr {schedule {540,1020}, onLeave false, inSchedule true} · C2 {schedule null, onLeave false (PENDING ไม่นับ), inSchedule null} · C3/C5 inSchedule false · C4 onLeave true inSchedule false · C6 ไม่มี hr หรือ {null,false,null} · facade onShiftToday: hrLinked true · C1 {employeeId, active true, onLeave false, schedule {540,1020,15,dayOff false}} · C6 ไม่อยู่ใน items · T2 hrLinked false items []"),
   D("LS2", "X2", "[R5 privacy L] รายการจอล็อกไม่มีชนิด/เหตุผลการลา/เงิน: hr มีแค่ schedule onLeave inSchedule · schedule มีแค่ startMin endMin · ไม่มีคีย์ /ommission|salary|satang|reason|leaveType/ ทั้งก้อน · ร้าน T2 (ไม่มี HR) ไม่มีคีย์ hr"),
@@ -1299,6 +1300,28 @@ async function runDb() {
     const next = await call(staffMod, "verifyStaffPin", ctxA(dev), { unitId: U.A, deviceId: dev, pin: PIN.C1 }, undefined, { now: NOW0 });
     if (!(next?.ok === false && next.code === "PIN_THROTTLED")) p.push(`ครั้งที่ ${N + 1} (PIN C1 ถูก) → ${codeOf(next)} (คาด PIN_THROTTLED)`);
     chk("SG11", !fx && p.length === 0, "นอกตารางแบบไม่ระบุคน = กินโควตาเหมือน PIN ผิด", FX(P8(p) || `ครบ (N = ${N})`));
+  }
+  // SG12 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N6): แถวเมื่อวาน (นาที + 1440) / พรุ่งนี้ (นาที − 1440) · C2 ถูกตั้งตารางชั่วคราวแล้วคืนเป็น "ไม่มีแถว" (LS1 ใช้)
+  {
+    const p: string[] = [];
+    const wd = new Date(NOW0.getTime() + BKK).getUTCDay();
+    const TOMORROW = new Date(Date.parse(`${todayBkk}T00:00:00Z`) + 24 * HOUR).toISOString().slice(0, 10);
+    const set = EMP.C2 ? await hrSvc.setSchedule(hrCtx(), EMP.C2, [
+      { weekday: wd, dayOff: false, startMin: 960, endMin: 1425, graceMin: 0 },
+      { weekday: (wd + 1) % 7, dayOff: true, startMin: 540, endMin: 1020, graceMin: 0 },
+    ]) : null;
+    if (!set?.ok) p.push(`(fixture) setSchedule C2 ${short(set)}`);
+    else {
+      const cap = bkkAt("00:15", TOMORROW).getTime();
+      const a = await verify("C2", bkkAt("00:05", TOMORROW));
+      if (!expNear(a, cap)) p.push(`พรุ่งนี้ 00:05 → ${codeOf(a)} ${short(a?.reason ?? a?.expiresAt)} (คาด ✓ หมด 00:15)`);
+      const b = await verify("C2", bkkAt("23:00"));
+      if (!expNear(b, cap)) p.push(`วันนี้ 23:00 → ${codeOf(b)} ${short(b?.reason ?? b?.expiresAt)} (คาด ✓ หมด 00:15)`);
+      const c = await verify("C2", bkkAt("01:00", TOMORROW));
+      if (!offSched(c, "DAY_OFF")) p.push(`(ตัวควบคุม) พรุ่งนี้ 01:00 → ${codeOf(c)} ${short(c?.reason)} (คาด DAY_OFF)`);
+    }
+    if (EMP.C2) await hrSvc.setSchedule(hrCtx(), EMP.C2, []);
+    chk("SG12", !fx && p.length === 0, "ข้ามเที่ยงคืนด้วยแถวเมื่อวาน/พรุ่งนี้", FX(P8(p) || "ครบ"));
   }
 
   // ════════ LS รายชื่อจอล็อก ════════
