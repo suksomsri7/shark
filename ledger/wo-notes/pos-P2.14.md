@@ -300,3 +300,8 @@ Gates (tree b @`44e89c7b` dirty 0, QC4 under `/tmp/shark-gate-pos.lock`, `/root/
 - fitness-pos 0 · typecheck (8192 · ISO_MEM 10500M, started at 11 GB available, 17:27:03 → 17:29:59, `head=44e89c7b dirty=0`) **0**
 
 Re-shoot (if the controller wants the accordion seen): any POS page in th + en at 1440 with the app drawer open (accordion now has 14 POS items); no screen layout changed otherwise.
+
+### U3 H1b (controller trace: the cashier-only offline request = `publishDisplayStateAction`)
+- `6390e7bf` — `src/components/pos/display/use-display-publish.ts`, pure additions in `// POS P2.14 ▸ U3 H1b … ◂` blocks: **:136–138** offline guard at the top of `send` (`navigator.onLine === false` ⇒ return; covers the image-change schedule, the 15 s keepalive and the paired:false recheck) · **:213–216** `online` listener in the keepalive effect that sends once (key changed while offline ⇒ normal send · same key ⇒ forced keepalive; `done` stays send-once as before) · **:218** listener removal in the cleanup. Server-side stale behaviour of the display untouched. Hook still imports only display-actions/display-shared.
+- Why cashier only: the cashier run's device is the one paired with a customer display on QC5, so only its register runs the publish/keepalive loop (owner's device unpaired ⇒ `paired:"no"` ⇒ recheck every 5 min, none during the offline shot).
+- Gates (tree b @`6390e7bf` dirty 0 · `/root/pos-runs/p214-builder/u3h1b-20261016T173145Z/`): qc-pos-p2.10 forced **13/13** (ST2/S5.17 green) · qc-pos-p1.3 forced **128/128** · typecheck **0** (incremental, `head=6390e7bf dirty=0`). Proof = controller re-shoot `p1.3 --state offline --user cashier` th+en after the U3 merge.
