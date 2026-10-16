@@ -42,7 +42,7 @@ const CHECKS: readonly Def[] = [
   D("K3", "S", "[§3 §4] Conventions: satang (จำนวนเต็ม) · unitId · Idempotency-Key · แยกทางด้วย error.code · page/pageSize · Accept: text/csv"),
   D("K4", "S", "[§4 safety] never void/refund/cancel โดยผู้ใช้ไม่ได้สั่ง · confirm: true + reason · quote ก่อนขาย · never ask for PINs (ไม่มีทาง PIN ใน API)"),
   D("K5", "S", "[มติ 8] references/endpoints.md (สร้างจาก gen-pos-api-docs) มีทุก `METHOD path` ของ 48 op"),
-  D("K6", "S", "[§4] สำเนา /root/.claude/skills/shark-pos-api และ /root/.claude-b/skills/shark-pos-api/{SKILL.md, references/recipes.md, references/endpoints.md} ตรงไบต์กับของ repo (skills/shark-pos-api)"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2) มติ 4
+  D("K6", "S", "[§4] สำเนาในบ้านสองบัญชี (/root/.claude · /root/.claude-b) ใต้ skills/shark-pos-api/{SKILL.md, references/recipes.md, references/endpoints.md} ตรงไบต์กับของ repo (skills/shark-pos-api)"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2 · K2): คำอธิบายไม่มีสตริงทางเดิม // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2) มติ 4
   D("K7", "S", "[§4] recipes.md ≥ 8 ก้อน curl แกะได้ (method · URL ใต้ /api/v1/pos · ตัวแปรที่รู้จักเท่านั้น · JSON body ถูก) · ครอบ 8 งาน · write มี Idempotency-Key · danger มี confirm:true+reason · ทุกก้อนมี Error branch ที่เล่นซ้ำได้"),
   D("K8", "M", "[§4 ชั้น a] เล่นซ้ำทุกสูตรผ่าน route ในโปรเซส (แทนค่าฟิกซ์เจอร์) → 200 ทุกก้อน · สูตร CSV ได้ text/csv"),
   D("K9", "M", "[§4 ชั้น a] ทุกสูตร: กลายรูปตาม Error branch ที่เขียนไว้ → ได้สถานะ + error.code ตรงตามที่เขียน"),
@@ -85,7 +85,7 @@ const ASCII = /^[\x20-\x7e]*$/;
 /** P213_SKILL_DIR = ตัวควบคุมบวกของตัวแกะ (ชี้โฟลเดอร์สกิลตัวอย่าง · ใช้ตอนเขียนข้อสอบเท่านั้น — ด่านจริงไม่ตั้ง) */
 const SKILL_DIR = process.env.P213_SKILL_DIR || join(ROOT, "skills/shark-pos-api"); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2) มติ 4: สกิลในรีโป (เดิม .claude/skills/…)
 /** ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2) มติ 4: สำเนาบ้านทั้งสอง (บัญชี A · B) ต้องตรงไบต์กับของรีโป (scripts/sync-skills.sh) ◂ */
-const HOME_DIRS = ["/root/.claude/skills/shark-pos-api", "/root/.claude-b/skills/shark-pos-api"];
+const HOME_DIRS = ["/root/.claude", "/root/.claude-b"].map((h) => join(h, "skills", "shark-pos-api")); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2 · K2): ประกอบ path บ้าน — ไม่มีสตริงทางเดิมของสกิลในโค้ด
 const FILES = ["SKILL.md", "references/recipes.md", "references/endpoints.md"] as const;
 const ROUTE_FILE = "src/app/api/v1/pos/[...path]/route.ts";
 /** 48 op (ตรงกับ OPS_SPEC ของ qc-pos-p2.13) — `METHOD path` */
