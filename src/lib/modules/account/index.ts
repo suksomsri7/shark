@@ -75,6 +75,7 @@ import {
   postExternalRefund,
   postExternalChannelCommission, // POS P2.1 ◂
   posSaleEntryPosted, // POS P2.1 ▸ fix round 1 (F1) ◂
+  posSaleEntryInOtherBook, // POS HF-FU2 ▸ ACC-1 ◂
   posSalePaidContact, // POS P2.1 ▸ fix round 1 (F3) ◂
   ensureAccounting, // POS P2.1 ▸ ก่อนโพสต์คีย์ช่องทาง (R7) ◂
   externalSalePosted,
@@ -726,7 +727,11 @@ export async function applyExternalChannelCommission(input: {
   // POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): บิล zero entry (ทุกบรรทัดบัญชี 0 · ไม่มี JV PAID ตลอดไป) นับว่า "ลงขายแล้ว" ด้วยเครื่องหมายของบิล ⇒ ค่าคอมฯ ลงครั้งเดียว ·
   //   ฝั่งคืนเงินกลับค่าคอมฯ ได้ตามปกติ (มี COMMISSION ของบิลแล้ว) ◂
   if (!input.reverse && !(await posSaleEntryPosted(ctx, input.refId, "PAID")) && !(await externalSaleZeroEntryRecorded(ctx, input.refId))) return { posted: false, reason: "no-paid" };
-  if (input.reverse && saleId && !(await posSaleEntryPosted(ctx, saleId, "COMMISSION"))) return { posted: false, reason: "no-commission" };
+  if (input.reverse && saleId && !(await posSaleEntryPosted(ctx, saleId, "COMMISSION"))) {
+    // POS HF-FU2 ▸ ACC-1 (มติ 1): ค่าคอมฯ ของบิลลงไว้ในสมุดอื่น (ย้ายสมุดหลังขาย) ⇒ "other-book" — ไม่โพสต์ข้ามสมุด · ผู้เรียก (POS) เตือน ops ให้ปรับมือในสมุดเดิม (W8) ◂
+    if (await posSaleEntryInOtherBook(ctx, saleId, "COMMISSION")) return { posted: false, reason: "other-book" };
+    return { posted: false, reason: "no-commission" };
+  }
   await ensureAccounting(ctx); // R7: ผัง/การจับคู่คีย์ครบก่อนโพสต์ — ห้ามตก 9999 SUSPENSE
   const { vatRegistered } = await vatConfigOf(link.systemId);
   // fix round 1 (รีวิว F3) ▸ PLATFORM: ผู้ติดต่อ = ผู้ติดต่อบนบรรทัด 1100 ของ PAID ของบิล (ช่องทางเปลี่ยนชื่อทีหลังก็ยังเป็นรายเดิม) · ไม่มี = ชื่อช่องทาง ◂

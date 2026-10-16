@@ -19,6 +19,9 @@ import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleRefunded } fro
 import { bridgePosDepositRefunded } from "./account-bridge"; // POS P2.9b ▸ R8 คืนเงินมัดจำ → applyExternalDepositRefund ◂
 import { restockRefundDoc } from "./service";
 
+/** POS HF-FU2 ▸ ACC-1: แหล่งของ WARN ค่าคอมฯ ข้ามสมุด (OpsEvent.source) ◂ */
+const COMMISSION_OTHER_BOOK = "pos.account.commission_other_book";
+
 type Evt = Parameters<OutboxHandler>[0];
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -122,7 +125,7 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
   // POS P2.1 ▸ 1c. R9: กลับค่าคอมฯ ช่องทางตามส่วนแบ่งของใบคืน (คีย์ PosSale#<ใบคืน>#COMMISSION_REFUNDED · ล้ม = โยน ⇒ ลองใหม่) ◂
   try {
     if (shareC + shareV > 0 && refund.channelPayout) {
-      await applyExternalChannelCommission({
+      const com = await applyExternalChannelCommission({ // POS HF-FU2 ▸ ACC-1: เก็บผล (other-book = เตือน ops ด้านล่าง) ◂
         tenantId: evt.tenantId,
         sourceSystemId: refund.systemId,
         refId: refund.id,
@@ -135,6 +138,17 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
         reverse: true,
         saleRefId: sale.id, // fix round 1 (F1 F3): กลับได้เฉพาะเมื่อบิลมี COMMISSION · ผู้ติดต่อ = ของ PAID ◂
       });
+      // POS HF-FU2 ▸ ACC-1 (มติ 1 · W8): ค่าคอมฯ ของบิลอยู่ในสมุดเดิม (POS ย้ายไปผูกสมุดใหม่) ⇒ ไม่โพสต์ข้ามสมุด · เตือน ops 1 แถวต่อใบคืน
+      //   (เล่นซ้ำ/ลองใหม่ = ไม่เตือนซ้ำ: มีแถว WARN ของใบคืนนี้แล้ว = ข้าม) · พนักงานบัญชีกลับรายการเองในสมุดเดิม ◂
+      if (com.reason === "other-book") {
+        const seen = await prisma.opsEvent.findFirst({ where: { tenantId: evt.tenantId, level: "WARN", source: COMMISSION_OTHER_BOOK, message: { contains: refund.id } }, select: { id: true } });
+        if (!seen) {
+          await logOps("WARN", COMMISSION_OTHER_BOOK, `ใบคืน ${refund.id} ของบิล ${sale.id}: ค่าคอมฯ ช่องทางของบิลลงไว้ในสมุดบัญชีอื่น (ย้ายสมุดหลังขาย) — ไม่กลับรายการข้ามสมุด · ปรับมือในสมุดเดิม`, {
+            tenantId: evt.tenantId,
+            detail: JSON.stringify({ refundId: refund.id, saleId: sale.id, receiptNo: refund.receiptNo ?? null, commissionSatang: shareC, commissionVatSatang: shareV, payout: refund.channelPayout }),
+          });
+        }
+      }
     }
   } catch (e) {
     errors.push(e);
