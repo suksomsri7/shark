@@ -115,3 +115,8 @@
 - Chain `after-u3-chain.sh`: build d @c5fc223b → re-shoot offline cashier th/en + owner control + p2.10 display + settings/pages spot ‖ gates111 (tree c @c5fc223b, 96 entries).
 
 ## gates111 (tree c @c5fc223b · `gates111-c-20261016T175326Z` · 17:53Z→) — interim reds at 61/96: **qc-pos-p2.14 H3** (controller's addenda tables sat below the Rows table → "สถานะแปลก" → moved above · --no-db 15/15) · **qc-pos-p2.12 ST1** (lane-A files touched vs pin 05975437: RegisterScreen.tsx (U2b CD-U2b) · use-display-publish.ts (U3 H1b)) · **qc-hf-fu ST1** (scripts/visual-pos.mts changed vs pin: U2 H5) → **CD-B1c**: LANE_PIN of qc-hf-fu + qc-pos-p2.12 → c5fc223b (U3 merge = product tree of the P2-close tip; same pattern as CD-B1b) · commit **3d2f6db8** · gates111b re-runs the 3 suites at 3d2f6db8 after gates111 ends.
+
+## Close (18:5xZ) — **P2.14 ปิด · ตัวนับ 44/55 (80%)**
+- gates111 @c5fc223b: SET full 96/96 · HEAD-end c5fc223b dirty 0 · reds = p2.12 ST1 + hf-fu ST1 (lane pins vs U2b/U3) → CD-B1c re-pin (3d2f6db8) → gates111b @3d2f6db8: hf-fu 29/29 · p2.12 33/33 · **p2.14 60/60** · dirty 0.
+- Parity: 116 rows OPEN 0 (+ addenda U2 11/12 fixed, U3 H1/H2 fixed · 0 failures) · qc:all QC6 288/420 (all reds explained; 2 POS gaps fixed in U3) · HANDOVER-P2 complete (no placeholders left except template names).
+- Push `session/pos` → tg checkpoint "ปิด P2" to the owner · QC6 branch deleted after this entry.
