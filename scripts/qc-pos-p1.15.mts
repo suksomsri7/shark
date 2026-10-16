@@ -87,6 +87,8 @@ const CHECKS: readonly Def[] = [
   D("AP-U1", "X5", "[P1.15U มติ 5] เรียกคืนบิลพักที่อนุมัติส่วนลดแล้ว → {approvedRequestId = requestId · heldCartId} + quote ok ด้วยเพดานที่อนุมัติ (15% ฿240 → ฿204) · submit {heldCartId} ผ่าน ฿204 · บิลพักธรรมดา (ไม่มีอนุมัติ) เรียกคืน → ไม่มี approvedRequestId · [fix รอบ 1] อนุมัติที่ถูกใช้แล้ว: บิลพักเดิม (ตั้งกลับ HELD) เรียกคืน → ไม่มี approvedRequestId + quote ถูกปฏิเสธ DISCOUNT_EXCEEDS_LIMIT"),
   D("AP-U2", "X1", "[P1.15U มติ 5] คำขอส่วนลดเกินสิทธิ์ถูกปฏิเสธ → drain → บิลพัก DISCARDED · audit pos.heldCart.discard 1 แถว (actorId ผู้ตัดสิน · after.via approval_rejected · after.requestId) · event rejected DONE · เล่น rejected ซ้ำ ×2 ไม่มี audit ที่สอง · เรียกคืน → NOT_FOUND"),
   D("TK-U1", "X3", "[P1.15U มติ 2] ยกเลิกบิล/คืนเงินพก staffToken: โทเคนมั่ว → STAFF_TOKEN_INVALID (บิลยัง PAID · ไม่มี audit void · ไม่มีใบคืน) · session เจ้าของ + โทเคน STAFF (C1) ที่ถูกต้อง ยกเลิกบิล ฿60 → VOIDED · audit pos.sale.void actorId = คนในโทเคน (ไม่ใช่ session) · [fix รอบ 1] คืนเงินด้วยโทเคน C1 ที่ถูกต้อง (มีกติกา POS_REFUND) → APPROVAL_REQUIRED · คำขอ requestedById = C1 (ไม่ใช่ session)"),
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 PIN-1) ▸ โทเคนผู้ขาย × ด่านยืนยันเงินเข้า (HF-PP · pos-HF-PP-review.md:8 · follow-up v) ◂
+  D("TK-PP", "X3", "[P2.14 PIN-1 · HF-PP] ร้านตั้ง manualConfirmRequiresManager: session เจ้าของ + โทเคนของ C1 (ไม่มี pos.shift.manage) จ่ายพร้อมเพย์ยืนยันเอง (ไม่อ้าง pi_) → PERMISSION_DENIED ข้อความผู้จัดการ ไม่มีบิล · โทเคนผู้จัดการ → ผ่าน soldBy ผู้จัดการ · ตัวควบคุม: เจ้าของไม่มีโทเคน → ผ่าน · C1 session ไม่มีโทเคน → PERMISSION_DENIED · ปิดค่าตั้ง → โทเคน C1 ผ่าน"),
   // ── NC ตัวควบคุมลบ ──
   D("NC", "-", "ตัวควบคุมลบ: ตัวตรวจของข้อสอบจับคำตอบที่ผิดโดยตั้งใจได้ (hash ดิบ/sha256/salt สั้น · PIN ผิด · หมดอายุ 24 ชม./1 ชม. · ล็อก 5 นาที · audit มี PIN · คำปฏิเสธที่ throw/ไม่มีข้อความ/อังกฤษ · คีย์ errors.unknown)"),
   // ── Z คืนสภาพ ──
@@ -1493,6 +1495,49 @@ async function runDb() {
     if (!rqRf || rqRf.requestedById !== uid("C1")) p.push(`คืนเงินโทเคน C1 → ${codeOf(rfOk)} requestedBy ${rqRf?.requestedById === uid("OWNER") ? "OWNER (session)" : short(rqRf?.requestedById, 30)}`);
     chk("TK-U1", NS === "" && !!sU && !!sR && p.length === 0, "โทเคนมั่ว = STAFF_TOKEN_INVALID ไม่มีผล · โทเคน C1 = ยกเลิกได้ · audit actor = C1", FX(NS + (p.join(" · ") || "ครบ")));
   }
+
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 PIN-1) ▸ TK-PP: ผู้กระทำที่ด่าน manualConfirmRequiresManager ตัดสิน = คนในโทเคน (ไม่ใช่ผู้ใช้ session) ◂
+  {
+    const p: string[] = [];
+    const setManual = async (on: boolean) => {
+      const sys = await P.appSystem.findUnique({ where: { id: S.A }, select: { settings: true } });
+      const cur = isRecord(sys?.settings) ? sys.settings : {};
+      const pos = isRecord(cur.pos) ? { ...cur.pos } : {};
+      pos.payment = { ...(isRecord(pos.payment) ? pos.payment : {}), manualConfirmRequiresManager: on };
+      await P.appSystem.update({ where: { id: S.A }, data: { settings: { ...cur, pos } } });
+    };
+    const MSG = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
+    const pp = async (actor: Any, label: string, extra: Record<string, unknown> = {}) => {
+      const c: CartIn = { amount: 2500, name: `TK-PP ${label}` };
+      const g = grandOf(c);
+      const key = newKey(`pp-${label}`);
+      const r = await call(register, "submitRegisterSale", ctxA(DEV1), actor, { ...cartOf(c), idempotencyKey: key, expectedGrandTotalSatang: g, payMethods: [{ type: "PROMPTPAY", amountSatang: g }], ...extra });
+      return { r, key };
+    };
+    const vC1 = await verify({ pin: PIN.C1, userId: uid("C1") }, "TK-PP verify C1");
+    const vMg = await verify({ pin: PIN.MGR, userId: uid("MGR") }, "TK-PP verify MGR");
+    const tC1 = vC1?.ok === true ? String(vC1.staffToken) : "";
+    const tMg = vMg?.ok === true ? String(vMg.staffToken) : "";
+    if (!tC1 || !tMg) p.push(`(fixture) โทเคน C1 ${codeOf(vC1)} · MGR ${codeOf(vMg)}`);
+    await setManual(true);
+    try {
+      const a = await pp(A("OWNER"), "own-c1", { staffToken: tC1 });
+      if (!(a.r?.ok === false && a.r?.code === "PERMISSION_DENIED" && a.r?.message === MSG) || (await saleByKey(`reg2:${a.key}`))) p.push(`เจ้าของ + โทเคน C1 → ${codeOf(a.r)} ${short(a.r?.message ?? "", 40)} (คาด PERMISSION_DENIED ข้อความผู้จัดการ · ไม่มีบิล)`);
+      const b = await pp(A("OWNER"), "own-mgr", { staffToken: tMg });
+      const sb = b.r?.ok === true ? await saleRow(b.r.saleId) : null;
+      if (b.r?.ok !== true || sb?.soldByUserId !== uid("MGR")) p.push(`เจ้าของ + โทเคนผู้จัดการ → ${codeOf(b.r)} soldBy ${short(sb?.soldByUserId)} (คาด ผ่าน · MGR)`);
+      const c = await pp(A("OWNER"), "own");
+      if (c.r?.ok !== true) p.push(`(ตัวควบคุม) เจ้าของไม่มีโทเคน → ${codeOf(c.r)}`);
+      const d = await pp(A("C1"), "c1");
+      if (!(d.r?.ok === false && d.r?.code === "PERMISSION_DENIED")) p.push(`(ตัวควบคุม) C1 session → ${codeOf(d.r)} (คาด PERMISSION_DENIED)`);
+    } finally {
+      await setManual(false);
+    }
+    const e = await pp(A("OWNER"), "off-c1", { staffToken: tC1 });
+    if (e.r?.ok !== true) p.push(`ปิดค่าตั้ง + โทเคน C1 → ${codeOf(e.r)} (คาด ผ่าน)`);
+    chk("TK-PP", NS === "" && p.length === 0, "ด่านยืนยันเงินเข้าใช้คนในโทเคน · ผู้จัดการผ่าน · C1 ไม่ผ่าน", FX(NS + (p.join(" · ") || "ครบ")));
+  }
+  // ◂ ORACLE-ADD
 
   // ════════ PN8 ปฏิเสธเป็นข้อมูล + คีย์ข้อความ ════════
   {
