@@ -531,6 +531,16 @@
           "M1.7-ERR"
         ]
       }
+    },
+    {
+      "suite": "qc-pages",
+      "mode": "unforced",
+      "why": "P2.14 U3 (G1): repo-wide page registry / accordion completeness — POS routes can break them"
+    },
+    {
+      "suite": "qc-nav-functions",
+      "mode": "unforced",
+      "why": "P2.14 U3 (G1): repo-wide page registry / accordion completeness — POS routes can break them"
     }
   ],
   "commands": [
