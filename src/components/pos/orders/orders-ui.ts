@@ -49,6 +49,7 @@ export function prepState(card: Pick<OrderCard, "prepDueAt" | "status">, nowMs: 
 export function cardsByColumn(cards: readonly OrderCard[]): Record<OrderColumn, OrderCard[]> {
   const out: Record<OrderColumn, OrderCard[]> = { new: [], preparing: [], ready: [], done: [] };
   for (const c of cards) {
+    if (c.paymentState === "PENDING_PAYMENT") continue; // POS P2.7U ▸ รอเงินเข้า = รายการย่อย "รอชำระ" (ไม่อยู่ในคอลัมน์ใหม่ · S1) ◂
     const col = orderColumnOf(c.status);
     if (col) out[col].push(c);
   }
@@ -133,3 +134,22 @@ export function beep(): void {
 
 /** แถวช่องทางของรางซ้าย (ordersChannelsAction · ChannelItem + ค่าตั้งรับออเดอร์ของ P2.8) — ชนิดเท่านั้น ไม่ import ตัว action ตอนรัน */
 export type OrdersChannel = Extract<Awaited<ReturnType<typeof import("@/lib/modules/pos/order-ui-actions").ordersChannelsAction>>, { ok: true }>["items"][number];
+
+// ═══════════ POS P2.7U ▸ ออเดอร์จ่ายก่อน (QR_ORDER) + รอบ QR โต๊ะ บนจอ 09 ═══════════
+/** ออเดอร์ที่รอเงินเข้า (NEW + PENDING_PAYMENT) — ใกล้หมดเวลาจ่ายก่อน */
+export function awaitingPayCards(cards: readonly OrderCard[]): OrderCard[] {
+  const by = (c: OrderCard) => Date.parse(c.prepay?.payBy ?? "") || Number.MAX_SAFE_INTEGER;
+  return cards.filter((c) => c.status === "NEW" && c.paymentState === "PENDING_PAYMENT").sort((a, b) => by(a) - by(b));
+}
+/** วินาทีที่เหลือถึงหมดเวลาจ่าย (null = ไม่มี payBy) */
+export function payLeftSec(c: Pick<OrderCard, "prepay">, nowMs: number): number | null {
+  const by = Date.parse(c.prepay?.payBy ?? "");
+  if (!Number.isFinite(by)) return null;
+  return Math.max(0, Math.ceil((by - nowMs) / 1000));
+}
+/** ออเดอร์จ่ายก่อนที่จ่ายแล้ว (PREPAID รอรับ · หรือรับแล้วบิลเกิดจากเงินก้อนนั้น) */
+export const isPrepaidCard = (c: Pick<OrderCard, "paymentState" | "prepay">): boolean => !!c.prepay && (c.paymentState === "PREPAID" || (c.paymentState === "PAID" && !!c.prepay.paidAt));
+/** ลูกค้ากด "โอนแล้ว" (QR นิ่ง · ยังไม่มีเงินเข้า) */
+export const isClaimedCard = (c: Pick<OrderCard, "paymentState" | "prepay">): boolean => c.paymentState === "PENDING_PAYMENT" && !!c.prepay?.claimedAt;
+/** ค่าตัวกรองรางของรอบ QR โต๊ะ (ไม่ใช่ id ช่องทาง) */
+export const QR_TABLE_FILTER = "qr-table";

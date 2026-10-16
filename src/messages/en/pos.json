@@ -3918,7 +3918,8 @@
       "webPaidNote": "Paid web shop order — refund or cancel it on the web shop",
       "onAcceptKitchenLive": "Send kitchen tickets to each item's station",
       "kitchenSection": "Kitchen tickets",
-      "kitchenSent": "Sent to the kitchen: {total} items · {done} done"
+      "kitchenSent": "Sent to the kitchen: {total} items · {done} done",
+      "onAcceptPrepaid": "Open a PromptPay bill of {amount} from the customer's payment + send to the kitchen"
     },
     "manual": {
       "title": "Key in order",
@@ -4025,7 +4026,39 @@
       "paid": "Received {amount}",
       "paidAlready": "This order was already paid",
       "manualSaved": "Order saved",
-      "manualDuplicated": "This order was already saved"
+      "manualDuplicated": "This order was already saved",
+      "paymentConfirmed": "Payment for {ref} confirmed"
+    },
+    "qr": {
+      "chip": "Table QR",
+      "roundRef": "{table} · #{no}",
+      "collectWithTable": "Paid together with the table bill",
+      "kitchen": "Kitchen {done}/{total}",
+      "ready": "Ready to serve {done}/{total}"
+    },
+    "awaiting": {
+      "title": "Awaiting payment",
+      "hint": "Not counted as new yet — cancelled automatically when the payment time runs out",
+      "left": "Payment due in {time}",
+      "expiring": "Payment time over · closing",
+      "claimed": "Customer says paid · check the account",
+      "confirm": "Confirm payment",
+      "confirmAmount": "Confirm payment {amount}",
+      "cancel": "Cancel",
+      "managerOnly": "The shop requires a manager to confirm payments",
+      "panelNote": "Waiting for the customer to pay — the order can be accepted once the money arrives (not sent to the kitchen · no stock cut)"
+    },
+    "prepaid": {
+      "chip": "Paid · PromptPay {amount}"
+    },
+    "late": {
+      "banner": "Money arrived after the deadline {amount} · ref {ref} — order {order} is closed: refund the customer or use this payment at the register within 24 h",
+      "open": "View order",
+      "row": "Paid after closing"
+    },
+    "expired": {
+      "banner": "{count} pay-first orders expired today (cancelled automatically · no bill)",
+      "row": "Payment expired"
     }
   },
   "kds": {

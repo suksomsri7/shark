@@ -14257,7 +14257,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-ord-col-*",
-        "note": "ราง: แถวช่องทาง pos-ord-ch-<รหัส> + ตัวนับ counts.byChannel · ชิปปิดรับถึง hh:mm — กรองการ์ดตามช่องทาง (หน้าร้าน/QR ซ่อน · หน้าร้าน QR = เร็ว ๆ นี้)"
+        "note": "ราง: แถวช่องทาง pos-ord-ch-<รหัส> + ตัวนับ counts.byChannel · ชิปปิดรับถึง hh:mm — กรองการ์ดตามช่องทาง (หน้าร้าน/QR ซ่อน · หน้าร้าน QR = pos-ord-ch-qr-table (P2.7U) · สั่งออนไลน์ (QR) = pos-ord-ch-QR_ORDER)"
       },
       "wo": "P2.8U",
       "oracle": "",
@@ -19186,6 +19186,142 @@
       "oracle": "",
       "system": "POS",
       "query": ""
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-ch-qr-table",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ราง: หน้าร้าน QR N = รอบที่แขกสั่งผ่าน QR โต๊ะวันนี้ (qrTableRoundsAction) — กรองกระดานเหลือการ์ดรอบ QR (เดิมชิปเร็ว ๆ นี้)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-qr-round-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "การ์ดรอบ QR โต๊ะ \"QR โต๊ะ B2 · #18 · ครัวกำลังทำ 0/2 · เก็บเงินรวมกับบิลโต๊ะ\" → /pos/tables?unit=&open=<session> (เปิดแผงโต๊ะ)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-qr-done-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "แถวเสร็จวันนี้ของรอบ QR โต๊ะ (เสิร์ฟครบ) → หน้าโต๊ะ"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-await-card-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "รอชำระ: แถวออเดอร์จ่ายก่อนที่เงินยังไม่เข้า (นับถอยหลังถึงหมดเวลาจ่าย) → เลือก/เปิดแผง"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-await-confirm-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "รอชำระ: ลูกค้าแจ้งโอนแล้ว → ยืนยันรับเงิน = confirmPaymentIntentManualAction (กติกาผู้จัดการเดิม · ปิดเมื่อไม่มีสิทธิ์) → PREPAID"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-await-cancel-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "รอชำระ: ยกเลิก → แผ่นเหตุผลปฏิเสธ (rejectOrderAction · ใบขอรับเงินถูกยกเลิกในธุรกรรมเดียวกัน)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-late-open-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "แบนเนอร์เงินเข้าหลังหมดเวลา (S5) → เปิดแผงของออเดอร์นั้น"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-confirm-pay",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "แผง: ออเดอร์รอเงินเข้าที่ลูกค้าแจ้งโอน → ยืนยันรับเงิน ฿x (confirmPaymentIntentManualAction)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

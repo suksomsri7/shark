@@ -1433,6 +1433,9 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
   ]);
   const chById = new Map(chs.map((c) => [c.id, c]));
   const receipt = new Map(sales.map((x) => [x.id, x.receiptNo]));
+  // POS P2.7U ▸ เงินเข้าหลังหมดเวลา (บันทึก late_payment) ของออเดอร์จ่ายก่อน — ฟิลด์อ่านอย่างเดียวของการ์ด (แบนเนอร์จอ 09 · S5) ◂
+  const prepayIds = rows.filter((r) => r.payBy || r.paymentIntentId).map((r) => r.id);
+  const latePaid = new Set(prepayIds.length ? (await db.posOrderEvent.findMany({ where: { tenantId, orderId: { in: prepayIds }, type: "late_payment" }, select: { orderId: true } })).map((e) => e.orderId) : []);
   const nLines = new Map<string, number>();
   const nQty = new Map<string, number>();
   for (const l of lines) {
@@ -1475,7 +1478,7 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
       receiptNo: o.saleId ? (receipt.get(o.saleId) ?? null) : null,
       shopOrderId: o.shopOrderId,
       version: o.version,
-      prepay: o.payBy || o.paymentIntentId ? { payBy: iso(o.payBy), paidAt: iso(o.paidAt), claimedAt: iso(o.customerClaimAt), intentId: o.paymentIntentId } : null, // POS P2.7 ◂
+      prepay: o.payBy || o.paymentIntentId ? { payBy: iso(o.payBy), paidAt: iso(o.paidAt), claimedAt: iso(o.customerClaimAt), intentId: o.paymentIntentId, ...(latePaid.has(o.id) ? { latePaid: true } : {}) } : null, // POS P2.7 ◂ · POS P2.7U ▸ + latePaid ◂
     };
   });
 }

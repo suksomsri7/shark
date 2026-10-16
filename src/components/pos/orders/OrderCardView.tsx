@@ -14,7 +14,8 @@ import { moneyText } from "@/lib/modules/pos/register-shared";
 import type { OrderCard } from "@/lib/modules/pos/order-shared";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { channelDisplayName } from "@/components/pos/settings/channel-text";
-import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, prepState } from "./orders-ui";
+import { acceptLeftSec, bkkClock, isPrepaidCard, mmss, ORDERS_ACCEPT_RED_SEC, prepState } from "./orders-ui";
+import { PrepaidChip } from "./QrOrderBits"; // POS P2.7U ◂
 
 export type CardPerms = { accept: boolean; reject: boolean };
 /** POS P2.6U ▸ มติ 9c/11: มาตรครัวของออเดอร์ (kitchenProgressAction · ไม่มีรอบ = null) · ออเดอร์ใหม่ค้างเพราะครัว (พักครัว / ครัวค้าง ≥ เพดาน) ◂ */
@@ -146,6 +147,7 @@ export function OrderCardView({
             <span className="text-[12px] text-[color:var(--color-accent)]">{t(`payment.${c.paymentState}`)}</span>
           ) : null}
         </button>
+        {isPrepaidCard(c) ? <PrepaidChip card={c} /> : null /* POS P2.7U ▸ ออเดอร์จ่ายก่อนที่เงินเข้าแล้ว ◂ */}
         {/* POS P2.6U ▸ มติ 9c: มาตรครัวจริง "ครัวกำลังทำ d/t" (แทนชิปเร็ว ๆ นี้) · ไม่มีรอบครัว = ไม่แสดง ◂ */}
         {(c.status === "ACCEPTED" || c.status === "PREPARING" || c.status === "READY") && kitchen?.progress && kitchen.progress.total > 0 && (
           <span data-testid="pos-ord-kitchen-meter" className="flex items-center gap-2 text-[12px] text-[color:var(--color-ink-soft)]">
