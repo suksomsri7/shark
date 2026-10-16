@@ -75,6 +75,7 @@ const CHECKS: readonly Def[] = [
   D("SG10", "X2", "[R4 มติ 6 R13] PIN แบบไม่ระบุคนของ C3 (วันหยุด) ⇒ PIN_INVALID ข้อความเดียวกับ PIN ผิดจริง ไม่มี reason/window · ร้าน T2 (ไม่มีระบบ HR · ด่านเปิด) 03:00 ⇒ ✓ · refusalMessageKey(OFF_SCHEDULE ALREADY_CLOCKED NO_EMPLOYEE) ไม่ใช่ errors.unknown · ไม่ซ้ำ · th ไทย / en มี"),
   D("SG11", "X2", "[fix2 N5 = R1-F2 · ORACLE-ADD ผู้คุม 17 ต.ค.] PIN แบบไม่ระบุคนของ C3 (นอกตาราง) ×N ที่เครื่องเดียว ⇒ PIN_INVALID ทุกครั้ง + แถว pos.staff.pin_failed N แถวของเครื่องนั้น (ตัวนับเห็นเหมือน PIN ผิด) · ครั้งที่ N+1 (PIN C1 ถูก · ในเวลา) ⇒ PIN_THROTTLED"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N5)
   D("SG12", "X3", "[fix2 N6 · ORACLE-ADD ผู้คุม 17 ต.ค.] ตารางข้ามเที่ยงคืน: C2 วันนี้ 16:00–23:45 · พรุ่งนี้ DAY_OFF ⇒ พรุ่งนี้ 00:05 ✓ (แถวเมื่อวาน +1440 · late 30 · expiresAt 00:15) · วันนี้ 23:00 ✓ (แถว DAY_OFF ของพรุ่งนี้ไม่บล็อก) · ตัวควบคุม พรุ่งนี้ 01:00 ⇒ DAY_OFF"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N6)
+  D("SG13", "X3", "[fix2 R1-F3 · ORACLE-ADD ผู้คุม 17 ต.ค.] ตัดสิน OWNER/MANAGER ก่อนอ่าน HR: ตัวอ่าน HR ที่ฉีดให้ throw (opts.hrItem) ⇒ OWNER และ MANAGER ยังได้โทเคน 12 ชม. · ตัวฉีดไม่ถูกเรียกในทางของสองบทบาทนี้ · STAFF ที่ผูก HR (C1 12:00) ⇒ ไม่ได้โทเคน (INTERNAL) · ตัวฉีดถูกเรียก"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 F3)
   // ── LS รายชื่อจอล็อก ──
   D("LS1", "-", "[R5 R1] listStaffForDevice(…, {now 12:00}): C1 hr {schedule {540,1020}, onLeave false, inSchedule true} · C2 {schedule null, onLeave false (PENDING ไม่นับ), inSchedule null} · C3/C5 inSchedule false · C4 onLeave true inSchedule false · C6 ไม่มี hr หรือ {null,false,null} · facade onShiftToday: hrLinked true · C1 {employeeId, active true, onLeave false, schedule {540,1020,15,dayOff false}} · C6 ไม่อยู่ใน items · T2 hrLinked false items []"),
   D("LS2", "X2", "[R5 privacy L] รายการจอล็อกไม่มีชนิด/เหตุผลการลา/เงิน: hr มีแค่ schedule onLeave inSchedule · schedule มีแค่ startMin endMin · ไม่มีคีย์ /ommission|salary|satang|reason|leaveType/ ทั้งก้อน · ร้าน T2 (ไม่มี HR) ไม่มีคีย์ hr"),
@@ -1322,6 +1323,25 @@ async function runDb() {
     }
     if (EMP.C2) await hrSvc.setSchedule(hrCtx(), EMP.C2, []);
     chk("SG12", !fx && p.length === 0, "ข้ามเที่ยงคืนด้วยแถวเมื่อวาน/พรุ่งนี้", FX(P8(p) || "ครบ"));
+  }
+  // SG13 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 F3): HR อ่านไม่ได้ต้องไม่ล็อกหน้าขายของเจ้าของ/ผู้จัดการ (opts.hrItem = ตะเข็บทดสอบฝั่งเซิร์ฟเวอร์)
+  {
+    const p: string[] = [];
+    let calls = 0;
+    const boom = async () => {
+      calls++;
+      throw new Error("QC P3.5 SG13: HR อ่านไม่ได้ (ฉีด)");
+    };
+    for (const k of ["OWNER", "MGR"]) {
+      const at = bkkAt("03:00");
+      const r = await call(staffMod, "verifyStaffPin", ctxA(DEV[0]), { unitId: U.A, deviceId: DEV[0], pin: PIN[k], userId: uid(k) }, undefined, { now: at, hrItem: boom });
+      if (!ttl12(r, at.getTime())) p.push(`${k} → ${codeOf(r)} ${short(r?.expiresAt)} (คาด ✓ 12 ชม.)`);
+    }
+    if (calls !== 0) p.push(`ตัวฉีดถูกเรียก ${calls} ครั้งในทางของ OWNER/MANAGER (คาด 0)`);
+    const s = await call(staffMod, "verifyStaffPin", ctxA(DEV[0]), { unitId: U.A, deviceId: DEV[0], pin: PIN.C1, userId: uid("C1") }, undefined, { now: NOW0, hrItem: boom });
+    if (!(s?.ok === false && !s.staffToken)) p.push(`C1 (HR อ่านไม่ได้) → ${codeOf(s)}${s?.staffToken ? " (มีโทเคน!)" : ""} (คาด ไม่ได้โทเคน)`);
+    if (calls === 0) p.push("ตัวฉีดไม่ถูกเรียกในทางของ STAFF");
+    chk("SG13", !fx && p.length === 0, "OWNER/MANAGER ก่อนอ่าน HR · STAFF ล้มแบบปิด", FX(P8(p) || "ครบ"));
   }
 
   // ════════ LS รายชื่อจอล็อก ════════
