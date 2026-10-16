@@ -19492,6 +19492,198 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-active",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปิด/ปิดรับ = saveChannelAction {id, name, active} (pos.channel.manage)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-auto",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): รับอัตโนมัติเมื่อเงินเข้า (QR_ORDER) = setChannelOrderSettingsAction {autoAccept} (pos.order.accept)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-prep",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เวลาเตรียม (QR_ORDER) = setChannelOrderSettingsAction {prepMinutes}"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-pause-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): พักรับ 15/30/60 นาที = setChannelOrderSettingsAction {pausedUntil}"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-reopen",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปิดรับอีกครั้ง = pausedUntil null"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-link-create",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): สร้างลิงก์สั่งล่วงหน้า = createOrderLinkAction (pos.channel.manage · idempotent)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-link-copy",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): คัดลอก <origin>/q/<token>"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-link-rotate",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปลี่ยนลิงก์ → กล่องยืนยันในบรรทัด"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-link-rotate-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): ยกเลิกการเปลี่ยนลิงก์"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-link-rotate-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): ยืนยันเปลี่ยนลิงก์ = rotateOrderLinkAction (ลิงก์/QR เดิมใช้ไม่ได้ทันที)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-tables",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): QR_TABLE → จอโต๊ะ (พิมพ์ QR ทุกโต๊ะ)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-qr-products",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เมนูที่ขายทางนี้ = ราคาช่องทาง (P2.2) → หน้าสินค้า"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=channels&unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

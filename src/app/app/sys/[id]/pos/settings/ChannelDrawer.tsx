@@ -33,6 +33,7 @@ import {
 } from "@/lib/modules/pos/channel-shared";
 import { moneyText, refusalMessageKey } from "@/lib/modules/pos/register-shared";
 import { CHANNEL_PRESET_BRAND, channelDisplayName, type ChannelT } from "@/components/pos/settings/channel-text";
+import { QrChannelBlock as QrChannelSection } from "./QrChannelBlock"; // POS P2.7U ▸ ลิ้นชัก QR_TABLE / QR_ORDER ◂
 
 export type ChannelDrawerMode = { kind: "edit"; item: ChannelItem } | { kind: "create" };
 type PayoutChoice = "PLATFORM" | "DIRECT" | "NONE";
@@ -442,6 +443,8 @@ export function ChannelDrawer({ systemId, unitId, mode, canManage, takenCodes, a
             {errFor("sortOrder")}
           </label>
 
+          {/* POS P2.7U ▸ ช่องทางพื้นฐาน QR_TABLE / QR_ORDER: เปิดรับ · รับอัตโนมัติ · เวลาเตรียม · พักรับ · ลิงก์สั่งล่วงหน้า ◂ */}
+          {item && isBuiltin && !item.archived && (item.code === "QR_TABLE" || item.code === "QR_ORDER") ? <QrChannelSection systemId={systemId} unitId={unitId} item={item} canManage={canManage} onSaved={() => undefined} /> : null}
           <div data-testid="pos-channel-example" className="flex flex-col gap-1 rounded-[12px] border border-dashed px-3.5 py-3 text-[13px]">
             <span className="text-[12px] font-semibold text-[color:var(--color-muted)]">{t("drawer.exampleTitle")}</span>
             <span className="tabular-nums text-[color:var(--color-ink-soft)]">

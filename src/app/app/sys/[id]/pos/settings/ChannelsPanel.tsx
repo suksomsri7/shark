@@ -21,7 +21,7 @@ import { ChannelDrawer as ChannelDrawerView, channelErrorText, type ChannelDrawe
 
 export type Storefront = { name: string; path: string } | null;
 
-const BUILTIN_ICON: Record<string, RegisterIconName> = { STORE: "shop", WEB: "link", QR_TABLE: "qr", CHAT: "mail" };
+const BUILTIN_ICON: Record<string, RegisterIconName> = { STORE: "shop", WEB: "link", QR_TABLE: "qr", CHAT: "mail", QR_ORDER: "qr" }; // POS P2.7U ▸ + QR_ORDER ◂
 
 /** ป้าย 32px มุมมน (ภาพ 10 .lrow) — อักษรย่อแพลตฟอร์ม · ไอคอน builtin · อักษรแรกของช่องทางที่ร้านตั้งเอง */
 export function ChannelBadge({ code, name, label }: { code: string; name: string; label: string }) {

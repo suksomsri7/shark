@@ -2983,6 +2983,38 @@
         "commissionVatBp": "Choose 0% or 7% VAT on commission",
         "sortOrder": "Sort order must be a whole number from 0 to 9999"
       }
+    },
+    "qr": {
+      "orderTitle": "Online order (QR) · pay first",
+      "tableTitle": "Table QR · guests order at the table",
+      "orderIntro": "Customers open the shop's link/QR → pick from the menu → pay by PromptPay first (Beam if enabled) → the order reaches screen 09 · pickup at the shop",
+      "tableIntro": "Guests scan the QR on the table → orders go straight to the kitchen (no accept step) · paid together with the table bill",
+      "active": "Accept orders here",
+      "activeOn": "On — customers can order",
+      "activeOff": "Off — customers can see the menu but cannot order",
+      "autoAccept": "Accept automatically once paid",
+      "autoAcceptHint": "Off = staff accept on screen 09",
+      "prep": "Preparation time",
+      "prepDefault": "Default (15 min)",
+      "minutes": "{n} min",
+      "prepHint": "Customers see \"ready at about hh:mm\"",
+      "pause": "Pause orders",
+      "pauseFor": "Pause {n} min",
+      "pausedUntil": "Paused until {time}",
+      "reopen": "Reopen",
+      "pauseHintOrder": "While paused customers can see the menu but cannot order · paid orders can still be accepted",
+      "pauseHintTable": "While paused guests at the table can see the menu but cannot send to the kitchen",
+      "link": "Pre-order link of this branch",
+      "loading": "Loading…",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "rotate": "Change link",
+      "rotateBody": "The old link and QR stop working at once — share/print the new link",
+      "rotateConfirm": "Change link",
+      "create": "Create pre-order link",
+      "linkHint": "Put this QR at the shop front or post it on social media · creating/changing the link needs the sales channel permission",
+      "tablesLink": "Print table QRs (tables screen → print all table QRs)",
+      "menuVisibility": "What is sold here = channel prices on the products page (\"Not sold on this channel\" hides it from customers)"
     }
   },
   "price": {
