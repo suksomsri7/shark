@@ -105,6 +105,7 @@ const CHECKS: readonly Def[] = [
   D("PY6", "X2", "[R9 R11] C6 (ไม่มีพนักงาน) + MGR (มีพนักงานแต่ไม่มีโปรไฟล์เงินเดือน) ⇒ แถวยัง OPEN · รายงาน commission noEmployee true · แถวรายงานตรงสมุด (accrued reversed net sent open) · ทุกใบของ POS crmCommissionId null · adjustmentStatuses คืน PENDING runId null"),
   D("PY7", "X4", "[fix2 N1 · ORACLE-ADD ผู้คุม 17 ต.ค.] รอบจ่ายถูกสร้างระหว่างส่งกับอนุมัติ: ใบ PENDING ของ C2 (งวด M1) → createPayrollRun(M1) → decideAdjustment APPROVED ⇒ ใบย้ายไปเดือนแรกที่ยังไม่มีรอบ (M2) · APPROVED · runId null · adjustmentStatuses (POS) เห็น periodKey M2"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1)
   D("PY8", "X4", "[fix2 N1 · ORACLE-ADD ผู้คุม 17 ต.ค.] ตัวกวาดรายการค้าง: ใบ DEDUCTION PENDING ของ C1 (งวด M1 ที่เพิ่งมีรอบใน PY7) + ใบ COMMISSION เดิมของ C1 (งวดนี้ที่มีรอบตั้งแต่ PY4) → syncStaffCommissionToPayroll ⇒ ย้ายไป M2 · ยัง PENDING · ไม่มีใบ POS ที่ค้างในงวดที่มีรอบ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1)
+  D("PY9", "X5", "[fix2 N2 = R1-F1 · ORACLE-ADD ผู้คุม 17 ต.ค.] 600 คู่ (ร้าน · ผู้ใช้) ที่ไม่มีพนักงาน HR และเรียงอยู่หน้า (userId 0p35…) ไม่บล็อกรอบส่ง: C2 ขายใหม่ 300 ⇒ ใบ COMMISSION 300 ใหม่ของ C2 · 600 คู่ยัง OPEN"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N2)
   // ── HC ชั่วโมง ──
   D("HC1", "X5", "[R12 R1] posClockForShift IN (โทเคน C1 · กะของ C1) ⇒ {ok, kind IN} · HrAttendance +1 IN ของพนักงาน C1 · note มี #<shiftNo>"),
   D("HC2", "X1", "[R12] กดซ้ำ IN ⇒ ALREADY_CLOCKED · HrAttendance ยัง +1"),
@@ -1789,6 +1790,29 @@ async function runDb() {
     const stuck = all.filter((a) => !a.runId && (a.status === "PENDING" || a.status === "APPROVED") && runs.has(a.periodKey));
     if (stuck.length) p.push(`ใบ POS ยังค้างในงวดที่มีรอบ ${stuck.length}: ${short(stuck.map((a) => [a.kind, a.periodKey]), 80)}`);
     chk("PY8", NC === "" && !fx && p.length === 0, `ตัวกวาด ⇒ ${M2}`, FX(NC + (P8(p) || "ครบ")));
+  }
+  // PY9 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N2): คู่ที่ค้างถาวรต้องไม่กินคิวของรอบส่ง (แถว 600 คู่ = ข้อมูลทดสอบในร้านชั่วคราว · เขียนตรงด้วย prisma ของข้อสอบ)
+  {
+    const p: string[] = [];
+    const S10 = await sale({ seller: uid("C2"), lines: [["Q2", 1, 3_000, PR.P1 ?? null]] });
+    await drain();
+    if (S10.id && net(await ledger({ saleId: S10.id })) !== 300) p.push(`(fixture) C2 accrual ${net(await ledger({ saleId: S10.id }))} (คาด 300)`);
+    const stuckRows = Array.from({ length: 600 }, (_, i) => ({
+      tenantId: T, systemId: S.A, unitId: U.A, saleId: `qc35stuck${RAND}`, lineId: `qc35stuck${RAND}l${i}`, userId: `0p35${RAND}u${String(i).padStart(4, "0")}`,
+      kind: "ACCRUE", sourceKey: `QCSTUCK:${RAND}:${i}`, baseSatang: 100, rateBp: 100, fixedSatang: 0, amountSatang: 1, periodKey: MONTH, status: "OPEN",
+    }));
+    try {
+      if (PSC) await PSC.createMany({ data: stuckRows });
+    } catch (e) {
+      p.push(`(fixture) แถวค้าง ${(e as Error).message.slice(0, 60)}`);
+    }
+    const before = (await posAdj()).filter((a) => a.employeeId === EMP.C2).map((a) => a.id);
+    await sync(NEXT_MONTH_NOW);
+    const fresh = (await posAdj()).filter((a) => a.employeeId === EMP.C2 && !before.includes(a.id));
+    if (fresh.length !== 1 || fresh[0]?.kind !== "COMMISSION" || fresh[0]?.amountSatang !== 300) p.push(`ใบใหม่ของ C2 ${short(fresh.map((a) => [a.kind, a.amountSatang, a.periodKey]), 100)} (คาด COMMISSION 300 ใบเดียว)`);
+    const stillOpen = PSC ? Number(await PSC.count({ where: { tenantId: T, sourceKey: { startsWith: `QCSTUCK:${RAND}:` }, status: "OPEN" } })) : -1;
+    if (stillOpen !== 600) p.push(`แถวค้าง OPEN ${stillOpen} (คาด 600)`);
+    chk("PY9", NC === "" && !fx && p.length === 0, "600 คู่ค้างไม่บล็อก C2", FX(NC + (P8(p) || "ครบ")));
   }
 
   // ════════ HC ชั่วโมง ════════
