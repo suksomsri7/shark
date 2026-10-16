@@ -46,6 +46,7 @@ export type PosRefusalHttp = { status: number; code: PosApiErrorCode; en: string
 /** คำปฏิเสธ → HTTP (ครบทุกรหัส · ตรวจด้วย typecheck) */
 export const POS_REFUSAL_HTTP: Record<PosRefusalCode, PosRefusalHttp> = {
   ACCOUNT_PENDING: { status: 409, code: "state_conflict", en: "The accounting link of this shop is not ready yet, so this cannot be done now." },
+  ALREADY_CLOCKED: { status: 409, code: "state_conflict", en: "This clock in/out was already recorded today." }, // POS P3.5 ▸ R13 (REST ไม่มี op ลงเวลา — ครบรหัสตาม Record) ◂
   ALREADY_ISSUED: { status: 409, code: "state_conflict", en: "A full tax invoice was already issued for this bill." },
   ALREADY_RECALLED: { status: 409, code: "state_conflict", en: "This held bill was already recalled by another device." },
   ALREADY_RECOUNTED: { status: 409, code: "state_conflict", en: "This shift was already recounted." },
@@ -98,7 +99,9 @@ export const POS_REFUSAL_HTTP: Record<PosRefusalCode, PosRefusalHttp> = {
   MEMBER_SYSTEM_MISSING: { status: 409, code: "state_conflict", en: "This branch has no member system linked." },
   NOT_ELIGIBLE: { status: 409, code: "state_conflict", en: "The bill is not eligible for this operation." },
   NOT_FOUND: { status: 404, code: "not_found", en: "The record was not found in this POS system." },
+  NO_EMPLOYEE: { status: 409, code: "state_conflict", en: "This user is not linked to an employee in HR." }, // POS P3.5 ▸ R13 ◂
   NO_PERMISSION: { status: 403, code: "forbidden", en: "This API key is not allowed to do that at this branch." },
+  OFF_SCHEDULE: { status: 403, code: "forbidden", en: "Outside the scheduled working hours. A manager must allow it." }, // POS P3.5 ▸ R13 ◂
   OPTIONS_INVALID: { status: 422, code: "validation", en: "The chosen options are not valid for this product." },
   OPTIONS_REQUIRED: { status: 422, code: "validation", en: "This product needs its options to be chosen." },
   OPTION_UNAVAILABLE: { status: 409, code: "state_conflict", en: "One of the chosen options is sold out." },

@@ -520,7 +520,7 @@ export async function unlockStaffPin(ctx: StaffPinCtx, actor: RegisterActor, inp
 
 // ═══════════ รายชื่อพนักงานของจอล็อก (R8) ═══════════
 /** สมาชิกของสาขาที่มี pos.sale.create (ชื่อแสดงได้ — จอพนักงานบนเครื่องของร้าน) · hasPin · กะ OPEN ของคนนั้นในสาขานี้ */
-export async function listStaffForDevice(ctx: StaffPinCtx, input: { unitId: string }, client?: Db, opts?: { now?: Date } /* POS P3.5 ▸ CD-2 ◂ */): Promise<ListStaffForDeviceResult> {
+export async function listStaffForDevice(ctx: StaffPinCtx, input: { unitId: string }, client?: Db, opts?: { now?: Date; hr?: boolean } /* POS P3.5 ▸ CD-2 · hr:false = ไม่แนบสถานะ HR ◂ */): Promise<ListStaffForDeviceResult> {
   return guard("listStaffForDevice", async (): Promise<ListStaffForDeviceResult> => {
     const db = client ?? prisma;
     const s = await unitScope(db, ctx);
@@ -549,7 +549,7 @@ export async function listStaffForDevice(ctx: StaffPinCtx, input: { unitId: stri
       .map(({ actor, name }) => ({ userId: actor.userId, name, role: actor.role as RegisterRole, hasPin: hasPin.has(actor.userId), shift: shiftOf.get(actor.userId) ?? null }))
       .sort((x, y) => (x.name ?? "").localeCompare(y.name ?? "", "th") || (x.userId < y.userId ? -1 : 1));
     // POS P3.5 ▸ R5: สถานะจากระบบพนักงาน — เฉพาะร้านที่มีระบบ HR (ไม่มี = ไม่มีคีย์ hr) · ไม่มีชนิด/เหตุผลการลา ไม่มีเงิน ◂
-    if (items.length) {
+    if (items.length && opts?.hr !== false) {
       const now = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
       const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS" }, select: { settings: true } });
       const states = await (await import("./hr-link")).staffHrStates(s.tenantId, items.map((x) => x.userId), now, posScheduleGate(sys?.settings));

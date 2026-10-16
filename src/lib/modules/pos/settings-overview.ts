@@ -124,7 +124,7 @@ export async function posStaffOverview(ctx: UnitCtx, actor: PosSettingsWriterAct
     const { m } = s;
     const { tenantId, systemId, unitId } = s.ctx;
     if (!evaluate(m, { module: "pos", action: PERM_SETTINGS_MANAGE, unitId })) return settingsRefuse("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์ดูพนักงานและสิทธิ์ของสาขานี้");
-    const list = await listStaffForDevice({ tenantId, systemId, unitId }, { unitId });
+    const list = await listStaffForDevice({ tenantId, systemId, unitId }, { unitId }, undefined, { hr: false }); // POS P3.5 ▸ R5: สถานะ HR เป็นของจอล็อก — แท็บตั้งค่าพนักงานยังไม่ใช้ (P3.5U เปิดได้) ◂
     if (!list.ok) return settingsRefuse(list.code === "NOT_FOUND" ? "NOT_FOUND" : "UNKNOWN");
     // มติ 7: STAFF ที่เข้าสาขานี้ได้ (unitAccess มีสาขานี้ หรือ "*") · ผู้ถือคีย์ = evaluate ที่สาขานี้ (คีย์ชัดแจ้งหรือ pos.*)
     const members = await prisma.membership.findMany({ where: { tenantId, role: "STAFF", acceptedAt: { not: null } }, select: { unitAccess: true, permissions: true } });
