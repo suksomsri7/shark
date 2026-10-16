@@ -107,3 +107,7 @@ Merge candidate stays **14bbe1a8 + fix 3** (merge message filled: `ctl/p27u-merg
 
 ## Fix round 3 delivered (tree b · 03:33Z) — `wip/pos-p2.7u` **1c354079** (377ad30a visual step: drawer scroll box scrolled to the QR block before the shot + new state `settings-channel-qr-order-link` (pre-order link block) · 1c354079 notes; no app code)
 --dry th 82 / en 62 · typecheck 0 @1c354079 dirty 0. → **vis91** tree c (`pos-vis91-c-1792121609`: checkout 1c354079, served build87 @ac59ce6f unchanged, states qr-table · qr-order · qr-order-link, owner th + en) → judge the QR block → merge **1c354079** (message filled).
+
+## vis91 (03:36Z) — owner-th 9/9 · owner-en 3/3 @1c354079 (served build87): QR_TABLE drawer block (open toggle · พัก 15/30/60 · พิมพ์ QR ทุกโต๊ะ link · เมนูที่ขาย · bill preview ฿420) · QR_ORDER block (open · รับอัตโนมัติเมื่อเงินเข้า · เวลาเตรียม · พัก · pre-order link QR + URL + คัดลอก/เปลี่ยนลิงก์ + hint) · `qr-order-link` state · en consistent — **PASS**. P2.7U = **MERGEABLE** at 1c354079.
+
+## Merge (03:36Z) — `wip/pos-p2.7u` **1c354079** → **session/pos 64923c13** (no-ff; controller + tree c `prisma generate`; tree c detached 64923c13) → **gates106-c** (`pos-gates106-c-1792121751`: p2.7 ×2 unforced · p2.8 p2.4 p2.6 restaurant ×4 authz p1.16 p2.10 p1.3 p1.1 p2.1 p2.13 p2.11 p2.12 hf-fu forced · fitness ±env/pos · typecheck 8192). Lane pins expected red before push: p2.8 ST6 · p2.13 ST5 · p2.10 ST2 · hf-fu ST1 · p2.11 ST1/ST4 · p2.12 ST1 → push → re-run (gates107).
