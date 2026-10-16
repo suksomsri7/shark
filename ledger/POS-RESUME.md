@@ -1858,3 +1858,4 @@
 - โควตา: session 50% · weekly 90%
 - ถัดไป: build86 → vis89 → ผู้คุมตัดสินภาพ → ส่ง builder → builder รายงาน head ใหม่ → R1 ตรวจซ้ำ hunks → merge (`p27u-merge-msg.txt`) → tree c → gates106 → push → lane pins → **43/55 (78%)**
 - 02:41Z vis89 ตัดสินแล้ว (118 ใบ): หน้าลูกค้า th/en + 09 + 03 ผ่านตามแบบ · พบ IMG-1 สคริปต์ testid ตัวพิมพ์ (drawer QR ยังไม่ได้ดู) · IMG-2 โต๊ะ QR/พิมพ์ ล้น 390 · IMG-3 รายละเอียดออเดอร์ 390 ทับแถบตั้งค่า · IMG-4 toast บังหัวหน้าลูกค้า → ส่งเข้า fix round 1 แล้ว · ต้อง build+vis90 หลัง fix (chain86 template · ทรี c)
+- 02:46Z **P2.14 oracle ส่งแล้ว** `wip/pos-p2.14-oracle` 5fe09f6b (pushed · 56 เช็ก · red-before 8/56 · manifests 86 suites/23 runs) → มติ CD-1–12 = brief §10 ข้อ 12–24 · เปิด `wo-notes/pos-P2.14-review.md` · prompt S builder `pos-briefs/pos-prompt-accountB-P2.14-S.md` พร้อม (เติม __BASE__ = SHA merge P2.7U · ทรี d) · เริ่มหลัง merge P2.7U
