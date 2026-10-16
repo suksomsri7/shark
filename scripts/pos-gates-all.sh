@@ -181,6 +181,29 @@ for name, rc in rows:
     elif js and ex is not None and js[0] != ex - 1:
         print(f"RED {name} {rc} (JSON_SUMMARY ไม่ใช่บรรทัดก่อน EXIT)")
         red.append(name)
+    # POS HF-FU2 ▸ fix1 N1: exit ใน SUMMARY ต้อง = บรรทัดสุดท้าย "EXIT n" ของ log · แถว exit 0 ต้องมีสรุปที่ไม่ล้ม (failed/findings ว่าง · ไม่ crashed · passed = total) ◂
+    tail = [l for l in L if l.strip()]
+    last = tail[-1].split() if tail else []
+    if len(last) != 2 or last[0] != "EXIT" or last[1] != str(rc):
+        print(f"RED {name} {rc} (exit ใน SUMMARY ≠ บรรทัดท้ายของ log: {' '.join(last)[:40] or 'ว่าง'})")
+        red.append(name)
+    if rc == 0 and js:
+        try:
+            j0 = json.loads(L[js[-1]][len("JSON_SUMMARY "):])
+        except Exception:
+            j0 = None
+        bad0 = ""
+        if not isinstance(j0, dict):
+            bad0 = "JSON_SUMMARY อ่านไม่ได้"
+        elif j0.get("failed") or j0.get("findings"):
+            bad0 = "failed/findings ไม่ว่าง"
+        elif j0.get("crashed"):
+            bad0 = "crashed"
+        elif isinstance(j0.get("total"), int) and isinstance(j0.get("passed"), int) and j0["passed"] != j0["total"]:
+            bad0 = f"passed {j0['passed']} ≠ total {j0['total']}"
+        if bad0:
+            print(f"RED {name} 0 (exit 0 แต่สรุปล้ม: {bad0})")
+            red.append(name)
 for name, rc in rows:
     if rc == 0:
         continue
