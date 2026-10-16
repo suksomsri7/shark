@@ -737,6 +737,24 @@
       "label": "More",
       "kds": "Kitchen display",
       "depositReceive": "Take deposit"
+    },
+    "offline": {
+      "refusal": {
+        "priceMismatch": "Price matches neither the price at sale time nor this device's price list — waiting for a manager",
+        "clockInvalid": "The device sale time is invalid (ahead of server time, before the shift opened or older than 24 hours) — waiting for a manager",
+        "shiftClosed": "The shift of this bill is already closed — a manager can accept it as off-shift cash",
+        "sellerMismatch": "The seller of this bill is not the user who synced it — waiting for a manager",
+        "offlineRefTaken": "This temporary number is already used by another bill — waiting for a manager",
+        "stockInsufficient": "Not enough stock under the block-oversell policy — adjust stock, then a manager can accept the bill",
+        "snapshotUnknown": "The prices used are not this device's latest price list — waiting for a manager",
+        "deviceRevoked": "The device was revoked before the sale time — waiting for a manager",
+        "staffTokenInvalid": "The staff sign-in of this bill is not valid (expired or PIN changed) — waiting for a manager",
+        "validation": "This bill has items that cannot be sold offline — waiting for a manager",
+        "other": "This bill could not be synced — waiting for a manager"
+      },
+      "slip": {
+        "title": "TEMPORARY RECEIPT — AWAITING FINAL NUMBER"
+      }
     }
   },
   "shift": {
