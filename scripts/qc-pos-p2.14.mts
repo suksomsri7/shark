@@ -57,7 +57,7 @@ const CHECKS: readonly Def[] = [
   // ── L ประตูร้านอาหารเดิมบนสาขาที่ผูก POS (LEG-1–4 · มติ 1 "guard, not delete") ──
   D("L1", "L", "[F1 LEG-1 มติ 1] route เดิม 5 ตัว (api/store/…/restaurant/{order,session,service-request} · (store)/s/…/restaurant/{bill,notify-payment}) บนสาขา A ที่ผูก POS → 409 {error POS_LINKED, door /q/t/<qrToken>} · ไม่มี TableSession/RestaurantOrder/คำขอบริการใหม่ · ทุก route เรียก posLinkedLegacyDoor ก่อน storefront"),
   D("L2", "L", "[F1 ตัวควบคุม] สาขา N ไม่ผูก POS: route เดิม 5 ตัวตอบแบบเดิม (session/order/service-request/bill/notify-payment = 200 ok) · ไฟล์ route ทั้ง 5 = ฐาน 92b7149d + บล็อก // POS P2.14 ▸ … ◂ เท่านั้น"),
-  D("L3", "L", "[F1 LEG-2/4] action เดิมบนสาขา A ปฏิเสธ (checkoutAction · confirmPromptpayPaymentAction · cancelOrderItemAction · mergeSessionAction · advanceItemAction · recallItemAction) ไม่มีบิล/ไม่ยกเลิก/ไม่รวม/ไม่เลื่อน · ตัวควบคุม: advanceItemAction ที่สาขา N เลื่อนได้ · หน้าเดิม 5 หน้า (checkout/[sessionId] tables/[sessionId] order kds kds/[stationId]) เรียก guard + redirect ไป /pos/"),
+  D("L3", "L", "[F1 LEG-2/4] action เดิมบนสาขา A ปฏิเสธ (checkoutAction · confirmPromptpayPaymentAction · cancelOrderItemAction · mergeSessionAction · advanceItemAction · recallItemAction) ไม่มีบิล/ไม่ยกเลิก/ไม่รวม/ไม่เลื่อน · + voidCheckoutAction (0 VOIDED · บิลยัง PAID · โต๊ะเดิม) · createStaffOrderAction (0 รอบ) · ผู้เขียนเดิมทุกตัวมีด่าน · ตัวควบคุม: advanceItemAction ที่สาขา N เลื่อนได้ · หน้าเดิม 5 หน้า (checkout/[sessionId] tables/[sessionId] order kds kds/[stationId]) เรียก guard + redirect ไป /pos/"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-2b · H3)
   D("L4", "L", "[F1 LEG-3] ข้อเสนอ AI restaurant_close_bill บนโต๊ะของสาขา A (runKind) → ปฏิเสธ (throw) · ไม่มี PosSale · session ยัง OPEN"),
   D("L5", "L", "[F1 มติ 1 fail-closed] posLinkedLegacyDoor(T, A) = true · (T, N) = false · DB ล้ม (client ที่ throw) + write → true (ปิด) · ไม่ throw"),
   // ── A REST /api/v1/pos + คีย์ (API-1..11) ──
@@ -370,7 +370,9 @@ const LEGACY_PAGES = [
   "src/app/app/u/[unitSlug]/restaurant/kds/page.tsx",
   "src/app/app/u/[unitSlug]/restaurant/kds/[stationId]/page.tsx",
 ] as const;
-const LEGACY_ACTIONS = ["checkoutAction", "confirmPromptpayPaymentAction", "cancelOrderItemAction", "mergeSessionAction", "advanceItemAction", "recallItemAction"] as const;
+const LEGACY_ACTIONS = ["checkoutAction", "confirmPromptpayPaymentAction", "cancelOrderItemAction", "mergeSessionAction", "advanceItemAction", "recallItemAction",
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-2b · H3): ผู้เขียนเดิมทุกตัวที่แตะโต๊ะ/รอบ/บิลของสาขาที่ผูก POS
+  "voidCheckoutAction", "createStaffOrderAction", "createItemAction", "duplicateItemAction", "openSessionAction", "closeSessionAction", "moveSessionAction", "setTableStatusAction", "rotateQrAction", "linkMemberByPhoneAction", "confirmOrderAction", "rushOrderAction", "ackRequestAction", "doneRequestAction"] as const;
 /** มติ 3: หกชุดที่ปักกับ merge-base ของ origin/session/pos (+ p2.7 ST3 แบบทนทาน — CONTROLLER-DECISION ในโน้ต) = ชุด re-pin ท้ายใบ */
 const REPIN_PENDING = ["qc-hf-fu.mts", "qc-pos-p2.8.mts", "qc-pos-p2.11.mts", "qc-pos-p2.12.mts", "qc-pos-p2.13.mts", "qc-pos-p2.10.mts", "qc-pos-p2.7.mts"];
 /** มติ 3: allow-list หลังชุด re-pin = ว่าง (ถ้าผู้คุมให้ p2.7 คงแบบทนทาน → ORACLE-EDIT เพิ่มที่นี่) */
@@ -1547,6 +1549,26 @@ async function runDb() {
     if (!refused(rp) || (await salesOfSession(S3)) !== 0) p.push(`confirmPromptpayPaymentAction → ${short(rp, 50)} · บิล ${await salesOfSession(S3)}`);
     const rk = await act(ck, path, restAct, "checkoutAction", SLUG.A, { sessionId: S3, payMethod: "CASH" });
     if (!posLinked(rk) || (await salesOfSession(S3)) !== 0) p.push(`checkoutAction → ${short(rk, 50)} · บิล ${await salesOfSession(S3)} (คาด POS_LINKED 0 บิล)`);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 LEG-2b · H3): voidCheckout บนโต๊ะที่มีบิล POS ชำระแล้ว = ปฏิเสธ (0 VOIDED · บิลยัง PAID · โต๊ะเดิม) · createStaffOrder = ปฏิเสธ (0 รอบ)
+    const vs = await call(posSvc, "createSale", { tenantId: T, unitId: U.A, systemId: S.POS, sourceModule: "POS", idempotencyKey: newKey("l3void"), lines: [{ name: `โต๊ะ L3 ${RAND}`, qty: 1, unitPriceSatang: 5000 }], payMethods: [{ type: "CASH", amountSatang: 5000 }] });
+    const vSale = String(vs?.saleId ?? "");
+    const it4 = (await itemsOf(S4))[0];
+    if (!vSale || !it4) p.push(`(fixture) บิลโต๊ะ ${codeOf(vs)} · รายการ S4 ${!!it4}`);
+    else await P.restaurantOrderItem.update({ where: { id: it4.id }, data: { saleId: vSale } });
+    const s4b = await P.tableSession.findUnique({ where: { id: S4 } }).catch(() => null);
+    const voided0 = await P.posSale.count({ where: { tenantId: T, unitId: U.A, status: "VOIDED" } });
+    const rv = await act(ck, path, restAct, "voidCheckoutAction", SLUG.A, fd({ sessionId: S4 }));
+    const vRow = vSale ? await P.posSale.findUnique({ where: { id: vSale }, select: { status: true } }) : null;
+    const voided = (await P.posSale.count({ where: { tenantId: T, unitId: U.A, status: "VOIDED" } })) - voided0;
+    const s4c = await P.tableSession.findUnique({ where: { id: S4 } }).catch(() => null);
+    const it4b = it4 ? await P.restaurantOrderItem.findUnique({ where: { id: it4.id } }) : null;
+    if (!refused(rv) || vRow?.status !== "PAID" || voided !== 0 || s4c?.status !== s4b?.status || it4b?.saleId !== vSale) p.push(`voidCheckoutAction → ${short(rv, 50)} · บิล ${vRow?.status} · VOIDED ${voided} · โต๊ะ ${s4b?.status}→${s4c?.status} · รายการผูกบิล ${it4b?.saleId === vSale} (คาด ปฏิเสธ · PAID · 0 · เดิม · ผูกเดิม)`);
+    const ordersOf = async (sid: string) => Number(await P.restaurantOrder.count({ where: { sessionId: sid } }).catch(() => -1));
+    const o3 = await ordersOf(S3);
+    const ro = await act(ck, path, restAct, "createStaffOrderAction", SLUG.A, { sessionId: S3, type: "DINE_IN", cart: [{ menuItemId: MI.padthai!, qty: 1, choiceIds: [] }] });
+    const o3b = await ordersOf(S3);
+    if (!posLinked(ro) && !(ro?.ok === false && ro?.err?.code === "POS_LINKED")) p.push(`createStaffOrderAction → ${short(ro, 60)} (คาด POS_LINKED)`);
+    if (o3b !== o3) p.push(`createStaffOrderAction สร้างรอบ ${o3}→${o3b} (คาด 0 รอบใหม่)`);
     // สถิต: action + หน้าเดิม
     const actCode = srcOf(F.actRest);
     const actNames = doorCallNames(actCode);
