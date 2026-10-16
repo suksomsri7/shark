@@ -49,7 +49,7 @@ export type DisplayTotals = {
   lineDiscountSatang: number;
   billDiscountSatang: number;
   coupon?: { code: string; satang: number } | null;
-  member?: { kind: DisplayMemberKind; label: string; satang: number }[]; // POS P2.10 ▸ fix1 F4: kind (ภาพที่ส่ง) · view = label + satang ◂ · POS P2.14 ▸ TL-5 kind บังคับ ◂
+  member?: { kind?: DisplayMemberKind; label: string; satang: number }[]; // POS P2.10 ▸ fix1 F4: kind (ภาพที่ส่ง) · view = label + satang ◂ · POS P2.14 ▸ TL-5: ตัวตรวจภาพที่ส่ง (displayStateSchema) บังคับ kind · ชนิดนี้ใช้ร่วมกับ view (ไม่มี kind) ◂
   serviceChargeSatang: number;
   grandTotalSatang: number;
 };
