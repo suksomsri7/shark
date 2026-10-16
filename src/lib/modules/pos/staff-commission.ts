@@ -194,12 +194,12 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
       break;
     }
     res.users++;
-    const emp = await hrPayrollEmployeeOf(tenantId, userId);
-    if (!emp) {
-      res.noEmployee++; // ยังไม่ผูกพนักงาน HR (หรือยังไม่มีโปรไฟล์เงินเดือน) — แถวค้าง OPEN · รายงาน noEmployee
-      continue;
-    }
     try {
+      const emp = await hrPayrollEmployeeOf(tenantId, userId); // POS P3.5 ▸ fix2 N7: อ่าน HR ใน try ต่อคู่ — ร้านหนึ่งล้มไม่หยุดทั้งรอบ ◂
+      if (!emp) {
+        res.noEmployee++; // ยังไม่ผูกพนักงาน HR (หรือยังไม่มีโปรไฟล์เงินเดือน) — แถวค้าง OPEN · รายงาน noEmployee
+        continue;
+      }
       const r = await pushUser(tenantId, userId, emp, current);
       res.adjustments += r.adjustments;
       res.sentRows += r.sentRows;
