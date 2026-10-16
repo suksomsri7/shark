@@ -61,7 +61,7 @@
       "service": "Service",
       "sizes": "{count} sizes",
       "noPrice": "No price set",
-      "variants": "{count} variants",
+      "variants": "{count, plural, one {# variant} other {# variants}}",
       "byWeight": "per kg",
       "notSoldStore": "Not sold in store",
       "soldOutKitchen": "Sold out · kitchen {time}"
@@ -318,7 +318,7 @@
         "tipOverCash": "Tip cannot exceed the cash-like part {amount}",
         "overDue": "Over the amount due by {amount} — remove a row and take it again",
         "pinAgainRestart": "Bill total changed — take the payment again (gift cards need the PIN again)",
-        "pinLeft": "{n} tries left before the card locks"
+        "pinLeft": "{n, plural, one {# try} other {# tries}} left before the card locks"
       },
       "depositValidation": "The deposit payment details are invalid — check the deposit rows and try again",
       "depositTileOff": "Not enabled",
@@ -527,13 +527,13 @@
       "discarded": "Held bill discarded",
       "untitled": "Bill {time}",
       "untitledShort": "Held bill",
-      "meta": "{count} items · held {time}",
-      "expiryNote": "Held bills older than {days} days are discarded automatically · prices are re-checked on recall",
+      "meta": "{count, plural, one {# item} other {# items}} · held {time}",
+      "expiryNote": "Held bills older than {days, plural, one {# day} other {# days}} are discarded automatically · prices are re-checked on recall",
       "noticePriceChanged": "{name}: price changed {from} → {to}",
       "noticeUnavailable": "{name}: no longer sold — remove it before payment",
       "noticeNeedsPermission": "{name}: needs a manager (typed weight) — ask a manager or remove it",
       "confirmTitle": "Recall bill \"{label}\" {total}",
-      "confirmDetail": "The current cart has {count} items — hold it first?",
+      "confirmDetail": "The current cart has {count, plural, one {# item} other {# items}} — hold it first?",
       "confirmHoldFirst": "Hold current cart, then recall",
       "noticeChannelNotSold": "{name}: not sold on this bill's channel — remove it before paying"
     },
@@ -574,7 +574,7 @@
       "title": "Enter PIN to unlock",
       "lockedAt": "locked at {time}",
       "pickStaff": "Tap a staff name to start",
-      "dotsLabel": "{count} digits entered",
+      "dotsLabel": "{count, plural, one {# digit} other {# digits}} entered",
       "hint": "6-digit PIN · 5 wrong tries locks it until a manager unlocks",
       "forgot": "Forgot PIN",
       "confirm": "Confirm",
@@ -624,7 +624,7 @@
       "loadFailed": "Could not load staff",
       "retry": "Try again",
       "heldTitle": "{count} held bills",
-      "heldLine": "{label} · {lines} items · held {time} by {name}",
+      "heldLine": "{label} · {lines, plural, one {# item} other {# items}} · held {time} by {name}",
       "noPinOwn": "No PIN yet — tap to set your PIN",
       "noPinBanner": "Set staff PINs to turn on the screen lock"
     },
@@ -897,12 +897,12 @@
       "noDiff": "Not counted",
       "chipNote": "Has reason",
       "chipForced": "Force-closed",
-      "billsN": "{n} bills",
+      "billsN": "{n, plural, one {# bill} other {# bills}}",
       "recountBrief": "Recounted {amount}"
     },
     "off": {
       "title": "Off-shift cash today",
-      "text": "{n} bills took cash while no shift was open — the owner should check",
+      "text": "{n, plural, one {# bill} other {# bills}} took cash while no shift was open — the owner should check",
       "view": "View bills",
       "hide": "Hide bills"
     },
@@ -976,8 +976,8 @@
     "retry": "Try again",
     "generatedAt": "Data as of {time}",
     "chartTitle": "Net sales per day",
-    "rowLimit": "Showing {shown} of {total} rows — download the CSV to see all",
-    "rowLimitAtLeast": "Showing the first {shown} rows — download the CSV to see all",
+    "rowLimit": "Showing {shown} of {total, plural, one {# row} other {# rows}} — download the CSV to see all",
+    "rowLimitAtLeast": "Showing the first {shown, plural, one {# row} other {# rows}} — download the CSV to see all",
     "errors": {
       "validation": "The date range isn't valid — pick a start and end date (up to 92 days)",
       "rangeOrder": "The start date can't be after the end date",
@@ -1044,7 +1044,7 @@
       "uncostedRevenue": "Sales without cost",
       "netExVat": "Net sales ex. VAT",
       "netMargin": "Net margin ex. VAT",
-      "shiftCounts": "{shifts} shifts · short {short} · over {over} · closed by system {forced} · open {open}"
+      "shiftCounts": "{shifts, plural, one {# shift} other {# shifts}} · short {short} · over {over} · closed by system {forced} · open {open}"
     },
     "overview": {
       "tab": "Overview",
@@ -1070,14 +1070,14 @@
       },
       "comingSoon": "Members are coming in a later release",
       "chartTitle": "Daily sales",
-      "chartRange": "Last {days} days to {date}",
+      "chartRange": "Last {days, plural, one {# day} other {# days}} to {date}",
       "legendActual": "Actual",
       "legendToday": "Today",
       "legendLast": "Last day",
       "branches": "Branch comparison",
       "selected": "(selected)",
       "allBranches": "All branches",
-      "branchesCap": "Showing {shown} of {total} branches",
+      "branchesCap": "Showing {shown} of {total, plural, one {# branch} other {# branches}}",
       "topProducts": "Top products",
       "payMethods": "Payment methods",
       "pctOfTotal": "% of total",
@@ -1227,7 +1227,7 @@
       "over": "over",
       "or": "or",
       "threshold": "Threshold {text}",
-      "groupCount": "{n} findings",
+      "groupCount": "{n, plural, one {# finding} other {# findings}}",
       "wholeRange": "Whole range",
       "unnamed": "No name",
       "viewBill": "View bill"
@@ -1301,7 +1301,7 @@
       "empty": "No lines in this filter",
       "addBackNote": "Sales made while counting are added back automatically",
       "pause": "Pause",
-      "confirmN": "Confirm {n} variances",
+      "confirmN": "Confirm {n, plural, one {# variance} other {# variances}}",
       "confirmNone": "Confirm count (no variance)",
       "sendToManager": "Send to a manager to confirm",
       "needAdjust": "Confirming needs the stock adjust permission (inventory.movement.adjust)"
@@ -1311,7 +1311,7 @@
       "counted": "Counted",
       "withVariance": "Lines with variance",
       "net": "Net variance (units)",
-      "uncounted": "{n} lines not counted",
+      "uncounted": "{n, plural, one {# line} other {# lines}} not counted",
       "skip": "Skip (keep current quantity)",
       "zero": "Count as 0",
       "note": "Stock is adjusted by the variance, adding back sales made after each line was counted. Nothing is posted to the ledger.",
@@ -1325,7 +1325,7 @@
     },
     "done": {
       "title": "Count #{no} confirmed",
-      "body": "{n} lines adjusted · variance value {value}",
+      "body": "{n, plural, one {# line} other {# lines}} adjusted · variance value {value}",
       "newCount": "Start a new count",
       "back": "Back"
     },
@@ -1347,7 +1347,7 @@
       "expiryNeedsLot": "Enter a lot code before an expiry date",
       "submit": "Receive into stock",
       "clear": "Clear list",
-      "total": "{n} lines · value {value}",
+      "total": "{n, plural, one {# line} other {# lines}} · value {value}",
       "poLink": "Receiving against a purchase order is done in the inventory system →"
     },
     "transfer": {
@@ -1391,7 +1391,7 @@
       "transfer": "Transferred {name}",
       "adjust": "Adjusted {name}",
       "count": "Count #{no}",
-      "adjusted": "{n} lines adjusted",
+      "adjusted": "{n, plural, one {# line} other {# lines}} adjusted",
       "status": {
         "OPEN": "Counting",
         "CONFIRMED": "Confirmed",
@@ -1657,7 +1657,7 @@
       "requested": "Requested · waiting for the shop",
       "issued": "Full tax invoice issued",
       "title": "Request a full tax invoice",
-      "hint": "Available within {days} days of payment · the shop issues the invoice from these details",
+      "hint": "Available within {days, plural, one {# day} other {# days}} of payment · the shop issues the invoice from these details",
       "name": "Buyer / company name",
       "taxId": "Tax ID (13 digits)",
       "branchCode": "Branch code (head office = 00000)",
@@ -1671,7 +1671,7 @@
     "review": {
       "open": "Rate the shop",
       "title": "Rate the shop",
-      "star": "{n} stars",
+      "star": "{n, plural, one {# star} other {# stars}}",
       "body": "Tell us more (optional)",
       "submit": "Send rating",
       "pick": "Pick a star rating first",
@@ -1738,7 +1738,7 @@
       "refund": "Refund",
       "void": "Void bill"
     },
-    "showing": "Showing {n} of {total} bills",
+    "showing": "Showing {n} of {total, plural, one {# bill} other {# bills}}",
     "pagePrev": "Previous page",
     "pageNext": "Next page",
     "empty": {
@@ -1834,7 +1834,7 @@
       "reference": "Reference (optional)",
       "summary": "Refund {amount}",
       "tickPoints": "Deduct points pro rata (≈{n} points)",
-      "tickStock": "Return {n} items to stock",
+      "tickStock": "Return {n, plural, one {# item} other {# items}} to stock",
       "tickCn": "Issue a credit note (auto-numbered)",
       "tickJv": "Reverse the accounting automatically",
       "auditNote": "The person and the reason are recorded in the audit log",
@@ -2377,7 +2377,7 @@
         "enter": "Enter a new 4–6 digit PIN",
         "confirm": "Enter the same PIN again to confirm",
         "cancel": "Close",
-        "dots": "{count} digits entered",
+        "dots": "{count, plural, one {# digit} other {# digits}} entered",
         "mismatch": "The two PINs don't match — start again",
         "clear": "Clear",
         "del": "Delete last digit",
@@ -2461,7 +2461,7 @@
           "title": "Admin",
           "desc": "Everything in run the counter + void and refund bills, custom prices, reject and cancel orders, manage products, prices and channels, full tax invoices and the anomaly report"
         },
-        "custom": "Custom permission set · {count} permissions"
+        "custom": "Custom permission set · {count, plural, one {# permission} other {# permissions}}"
       },
       "dialog": {
         "title": "Create an API key",
@@ -3216,13 +3216,13 @@
     "selected": "{count} selected",
     "clearSelection": "Clear selection",
     "truncated": "Not all items shown — a branch has more than 2,000 items",
-    "showing": "Showing {count} of {total} items",
+    "showing": "Showing {count} of {total, plural, one {# item} other {# items}}",
     "empty": "No products in this POS yet",
     "emptyFilter": "No products match the filters",
     "plannedTip": "Coming soon · {phase}",
     "sku": "SKU {sku}",
-    "options": "{count} options",
-    "variants": "{count} variants",
+    "options": "{count, plural, one {# option} other {# options}}",
+    "variants": "{count, plural, one {# variant} other {# variants}}",
     "noPrice": "No price",
     "noStock": "Not stocked",
     "notSoldHere": "Not sold",
@@ -3267,7 +3267,7 @@
     "drawer": {
       "close": "Close",
       "titleSku": "{name} · SKU {sku}",
-      "sub": "{category} · sold at {count} branches",
+      "sub": "{category} · sold at {count, plural, one {# branch} other {# branches}}",
       "subBranch": "{category} · {unit} only",
       "noCategory": "No category",
       "soon": "Coming soon · {phase}",
@@ -3386,9 +3386,9 @@
     "notAtBranch": "This menu is hidden at branch {name}",
     "empty": "No recipe yet",
     "saved": "Recipe saved",
-    "pendingStockCuts": "{n} bills waiting for stock deduction",
+    "pendingStockCuts": "{n, plural, one {# bill} other {# bills}} waiting for stock deduction",
     "retryStockCuts": "Try again",
-    "retryDone": "Deducted {cut} bills · {left} still waiting",
+    "retryDone": "Deducted {cut, plural, one {# bill} other {# bills}} · {left} still waiting",
     "stockHistoryLabel": "Recipe deduction · {menu} ×{n} · bill {receiptNo}",
     "errors": {
       "noRecipe": "No recipe yet — add ingredients before turning on recipe deduction",
@@ -3460,8 +3460,8 @@
       "shared": "Shared",
       "seat": "Seat {no}",
       "sharedNote": "Shared by every seat, {amount} each · included in the totals",
-      "people": "{n} guests",
-      "equalPerPerson": "{n} guests × {amount}",
+      "people": "{n, plural, one {# guest} other {# guests}}",
+      "equalPerPerson": "{n, plural, one {# guest} other {# guests}} × {amount}",
       "equalEven": "{total} ÷ {n} exactly · incl. {rate} service charge",
       "equalRemainder": "Bills 1–{r} +0.01",
       "subtotal": "Subtotal",
@@ -3474,7 +3474,7 @@
       "payOneByOne": "Pay bill by bill",
       "payBill": "Pay bill {no} {amount}",
       "remaining": "Pay bill by bill · {amount} left",
-      "progress": "Paid {paid} of {count} bills · {amount} left · the table closes when every bill is paid",
+      "progress": "Paid {paid} of {count, plural, one {# bill} other {# bills}} · {amount} left · the table closes when every bill is paid",
       "status": {
         "paid": "Paid",
         "paying": "Paying",
@@ -3491,7 +3491,7 @@
       "heading": "Split bill · Table {table} · {total}",
       "leftAmount": "{amount} left",
       "nothing": "No unpaid items to split yet",
-      "allItemsCount": "All items · {count} items",
+      "allItemsCount": "All items · {count, plural, one {# item} other {# items}}",
       "loading": "Loading the split…",
       "close": "Close",
       "lockedHint": "The split is locked — void the paid bill to change it",
@@ -3519,7 +3519,7 @@
       "pickSeatHint": "Tap a seat chip for the selected item",
       "fewer": "Fewer",
       "more": "More",
-      "unassignedCount": "{n} items have no bill or seat yet",
+      "unassignedCount": "{n, plural, one {# item} other {# items}} have no bill or seat yet",
       "emptyBill": "This bill has no items — assign items or remove it",
       "seatRowEmpty": "No items yet",
       "payChip": "Bill {no} of {of} · Table {table}"
@@ -3542,7 +3542,7 @@
     "merge": {
       "title": "Merge tables",
       "pickTables": "Pick tables to merge",
-      "summary": "Merge {from} into {into} · {guests} guests · {total}",
+      "summary": "Merge {from} into {into} · {guests, plural, one {# guest} other {# guests}} · {total}",
       "confirm": "Merge tables",
       "done": "Tables merged",
       "hasDraft": "More than one table has an unsent draft — send or discard it first",
@@ -3575,8 +3575,8 @@
     "tapToOpen": "Tap a table to open it",
     "dragHint": "Drag a table to move or merge",
     "summary": {
-      "used": "{used} of {total} tables in use",
-      "guests": "{n} guests in store",
+      "used": "{used} of {total, plural, one {# table} other {# tables}} in use",
+      "guests": "{n, plural, one {# guest} other {# guests}} in store",
       "avgMinutes": "Average stay {n} min",
       "unpaid": "Open on tables now {amount}",
       "openTablesInfo": "Tables still open {n} · {amount}"
@@ -3590,18 +3590,18 @@
       "INACTIVE": "Inactive"
     },
     "card": {
-      "seats": "{n} seats",
-      "guests": "{n} guests",
+      "seats": "{n, plural, one {# seat} other {# seats}}",
+      "guests": "{n, plural, one {# guest} other {# guests}}",
       "open": "Open table",
       "minutes": "{n} min",
       "sentAt": "Sent to kitchen {time}",
-      "unsent": "{n} items not sent yet",
+      "unsent": "{n, plural, one {# item} other {# items}} not sent yet",
       "ready": "{n} ready to serve",
       "viaQr": "Requested via QR",
       "atTable": "Called at table",
       "dirtyFor": "Not cleared · {n} min",
       "cleared": "Cleared",
-      "reservedLine": "Reserved {time} · {name} {n} guests",
+      "reservedLine": "Reserved {time} · {name} {n, plural, one {# guest} other {# guests}}",
       "holdFrom": "Held from {time}",
       "fromBooking": "From bookings",
       "hoursMinutes": "{h} h {m} min",
@@ -3647,9 +3647,9 @@
       "roundByStaffAnon": "Taken at table by staff",
       "memberPrefix": "Member",
       "noRounds": "No orders yet — tap Order more",
-      "draftCount": "{n} items not sent to the kitchen",
+      "draftCount": "{n, plural, one {# item} other {# items}} not sent to the kitchen",
       "editDraft": "Review & send",
-      "freeBody": "{seats} seats · ready for guests",
+      "freeBody": "{seats, plural, one {# seat} other {# seats}} · ready for guests",
       "inactiveBody": "This table is inactive",
       "cancelTitle": "Cancel {name}?",
       "cancelBody": "The item is removed from the bill and the kitchen is told",
@@ -3727,7 +3727,7 @@
       "table": "Table",
       "anyTable": "No table yet",
       "save": "Save reservation",
-      "row": "{time} · {name} · {n} guests",
+      "row": "{time} · {name} · {n, plural, one {# guest} other {# guests}}",
       "pickTable": "Pick a table to seat them",
       "cancelConfirm": "Cancel {name}'s reservation?",
       "created": "Reservation saved",
@@ -3797,7 +3797,7 @@
     },
     "order": {
       "chip": "Table {name} · order more",
-      "send": "Send {n} items to kitchen",
+      "send": "Send {n, plural, one {# item} other {# items}} to kitchen",
       "save": "Save for later",
       "back": "Back to floor",
       "loading": "Loading table…",
@@ -3831,7 +3831,7 @@
       "rotateNoPerm": "Changing the QR needs the table permission (change QR) — ask the owner/manager",
       "rotated": "QR of table {name} changed — print the new QR",
       "printAll": "Print all table QRs",
-      "sheetTitle": "Print table QRs ({count} tables)",
+      "sheetTitle": "Print table QRs ({count, plural, one {# table} other {# tables}})",
       "sheetHint": "A4 paper · 3 columns — cut along the dashed lines and stick on each table",
       "sheetEmpty": "No tables yet",
       "printNow": "Print",
@@ -3866,7 +3866,7 @@
     "rail": {
       "all": "All channels",
       "autoAccept": "Auto accept",
-      "autoPauseHint": "Pause automatically when the kitchen has more than {n} tickets",
+      "autoPauseHint": "Pause automatically when the kitchen has more than {n, plural, one {# ticket} other {# tickets}}",
       "prepDefault": "Default prep time",
       "prepMinutes": "{n} min",
       "prepToPlatform": "Sent to the platform as the pickup-ready time",
@@ -3889,10 +3889,10 @@
       "autoPauseMore": "Raise the kitchen backlog limit",
       "autoPauseTurnOff": "Turn off",
       "autoPauseOffShort": "Off",
-      "autoPauseValue": "{n} tickets"
+      "autoPauseValue": "{n, plural, one {# ticket} other {# tickets}}"
     },
     "card": {
-      "items": "{count} items · <b>{amount}</b>",
+      "items": "{count, plural, one {# item} other {# items}} · <b>{amount}</b>",
       "acceptWithin": "Accept within {time}",
       "acceptLate": "Accept time passed",
       "prepDue": "Preparing · ready in {n} min",
@@ -3992,7 +3992,7 @@
       "webPaidNote": "Paid web shop order — refund or cancel it on the web shop",
       "onAcceptKitchenLive": "Send kitchen tickets to each item's station",
       "kitchenSection": "Kitchen tickets",
-      "kitchenSent": "Sent to the kitchen: {total} items · {done} done",
+      "kitchenSent": "Sent to the kitchen: {total, plural, one {# item} other {# items}} · {done} done",
       "onAcceptPrepaid": "Open a PromptPay bill of {amount} from the customer's payment + send to the kitchen"
     },
     "manual": {
@@ -4036,7 +4036,7 @@
     "summary": {
       "rejectedCancelled": "Cancelled/rejected today {count}",
       "avgAccept": "Average accept time {seconds} s",
-      "onTime": "On time {n} of {m} orders"
+      "onTime": "On time {n} of {m, plural, one {# order} other {# orders}}"
     },
     "errors": {
       "webPaid": "This web shop order is already paid — refund or cancel it on the web shop",
@@ -4181,7 +4181,7 @@
     "tableStaff": "Taken at table by {name}",
     "qrGuest": "Guest ordered via QR",
     "waitingCounter": "Waiting at counter · Queue {n}",
-    "servedToday": "Served today {count} tickets",
+    "servedToday": "Served today {count, plural, one {# ticket} other {# tickets}}",
     "servedLast": "last #{no} · {label} · {time}",
     "tapRecall": "tap to recall",
     "pending": "Pending today:",
