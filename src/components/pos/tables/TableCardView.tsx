@@ -57,7 +57,7 @@ export function TableCardView({ card: c, selected, now, onPick, onOpen, onCleare
   else if (c.state === "NEEDS_CLEARING") sub = <span>{now !== null ? t("card.dirtyFor", { n: minutesSince(c.dirtySince, now) }) : ""}</span>;
   else if (c.state === "RESERVED" && c.reservation)
     sub = (
-      <span>
+      <span className="line-clamp-2 break-words" /* POS P2.14 ▸ U2 O-1: บรรทัดการจองไม่เกิน 2 บรรทัด ◂ */>
         {now !== null ? t("card.reservedLine", { time: bkkClock(c.reservation.at), name: c.reservation.name, n: c.reservation.partySize }) : c.reservation.name}
         {now !== null && (
           <>
@@ -134,7 +134,7 @@ export function TableCardView({ card: c, selected, now, onPick, onOpen, onCleare
         data-selected={selected ? "true" : undefined}
         type="button"
         aria-pressed={selected}
-        className={`flex h-full min-h-[136px] w-full flex-col rounded-[16px] px-3.5 pb-3 pt-3 text-left transition-colors xl:min-h-[150px] ${FRAME[c.state]} ${
+        className={`flex h-full min-h-[136px] w-full flex-col rounded-[16px] px-3.5 ${c.state === "RESERVED" ? "pb-[60px]" /* POS P2.14 ▸ U2 O-1: เว้นที่ใต้เนื้อหาให้ปุ่ม "ดูการจอง" (ปุ่มลอยล่างการ์ด) ◂ */ : "pb-3"} pt-3 text-left transition-colors xl:min-h-[150px] ${FRAME[c.state]} ${
           selected || drag?.over ? "outline outline-[2.5px] outline-offset-[-1px] outline-[color:var(--color-accent)]" : ""
         } ${drag?.source ? "cursor-grab active:cursor-grabbing" : ""}`}
         onClick={onPick}

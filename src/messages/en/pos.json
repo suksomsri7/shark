@@ -3664,10 +3664,10 @@
       "planLoadFailed": "Could not load the split plan totals — retrying"
     },
     "actions": {
-      "orderMore": "Order more",
+      "orderMore": "Order",
       "sendRound": "Send to kitchen",
-      "moveTable": "Move table",
-      "mergeTable": "Merge tables",
+      "moveTable": "Move",
+      "mergeTable": "Merge",
       "splitBill": "Split bill",
       "printList": "Print item list",
       "checkout": "Check out {amount}",
