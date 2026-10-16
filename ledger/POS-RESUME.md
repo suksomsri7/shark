@@ -1821,3 +1821,6 @@
 ### 16 ต.ค. 23:56Z — P2.13 skill fix-up merged 4bb550cf → gates103
 - skill fix-up `wip/pos-p2.13-skill` **4ccd0df9** (K7b/K8b · 12 recipes · openapi wording · gates เขียว) → **merge → session/pos 4bb550cf** → ทรี c detached + sync สกิล → **gates103-c** (`gates103-c-20261015T235552Z`) → เขียว → push → **41/55 (75%)** + TG + memory
 - เลน: 1 = P2.7 fix 2 ทรี d · ทรี b ว่าง @4ccd0df9 · ทรี c = gates103
+- 00:04Z gates103 @4bb550cf (`gates103-c-20261015T235552Z`): api-skill 12/12 ×2 · p2.13 54 · kanban 30 · account-api-core 64 · p0.2 56 · gen --check · fitness ±env/pos · typecheck 0 → **push session/pos 8f327cd4 → P2.13 ✅ 41/55 (75%)** · TG ส่งแล้ว · memory อัปเดต
+- เลน: 1 = P2.7 fix 2 ทรี d · ทรี b ว่าง @4ccd0df9 · ทรี c ว่าง @4bb550cf (build85 = f95348ac ยังเสิร์ฟได้สำหรับภาพ P2.7U ต้อง build ใหม่หลัง merge S+U)
+- ถัดไป: P2.7 fix 2 รายงาน → R2 (prompt `-P2.7-R2.md` เติม head) → merge → gates (ทรี c: p2.7 ×2 unforced + §6 regression + lane pins ซ้ำหลัง push) → QC5 migrate deploy → spawn P2.7U builder ทรี b (prompt `-P2.7U.md` เติม head/tree) → 42/55
