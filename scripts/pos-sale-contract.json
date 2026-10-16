@@ -252,6 +252,10 @@
       "payMethods[].giftCard.pin": {
         "optional": false,
         "type": "string"
+      },
+      "offline": {
+        "optional": true,
+        "type": "Readonly<{ ref: string; soldAt: Date | string }>"
       }
     },
     "MemberSaleChoices": {
