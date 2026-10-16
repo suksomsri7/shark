@@ -267,6 +267,58 @@ function fnBody(code: string, name: string): string {
 const ORIGIN_POS = ["origin", "session", "pos"].join("/");
 const MERGE_BASE = ["merge", "base"].join("-");
 
+// ── ประตูเดิม: ชื่อที่นับเป็น "เรียก guard" = posLinkedLegacyDoor · ชื่อที่ import จาก legacy-door · ฟังก์ชันในไฟล์ที่เรียกชื่อเหล่านั้น ──
+function doorCallNames(code: string): string[] {
+  const names = new Set<string>(["posLinkedLegacyDoor"]);
+  for (const m of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*["'][^"']*legacy-door["']/g))
+    for (const n of m[1]!.split(",")) {
+      const x = (n.trim().split(/\s+as\s+/).pop() ?? "").trim();
+      if (/^\w+$/.test(x)) names.add(x);
+    }
+  const defs = [...code.matchAll(/(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(|(?:^|\n)\s*(?:export\s+)?const\s+(\w+)\s*=\s*(?:async\s*)?\(/g)].map((m) => ({ name: m[1] ?? m[2] ?? "", at: m.index ?? 0 }));
+  for (let pass = 0; pass < 3; pass++)
+    defs.forEach((d, i) => {
+      if (!d.name || names.has(d.name)) return;
+      const body = code.slice(d.at, defs[i + 1]?.at ?? code.length);
+      const inner = body.slice(body.indexOf("(") + 1);
+      if ([...names].some((n) => new RegExp(`\\b${n}\\s*\\(`).test(inner))) names.add(d.name);
+    });
+  return [...names];
+}
+/** ตำแหน่งแรกที่เรียกชื่อใดชื่อหนึ่ง (ไม่นับบรรทัดประกาศฟังก์ชัน) · -1 = ไม่เรียก */
+function firstDoorCall(code: string, names: string[]): number {
+  const masked = code.replace(/function\s+(\w+)\s*\(/g, "function __def(").replace(/const\s+(\w+)\s*=\s*(async\s*)?\(/g, "const __def = (");
+  const idx = names.map((n) => masked.search(new RegExp(`\\b${n}\\s*\\(`))).filter((i) => i >= 0);
+  return idx.length ? Math.min(...idx) : -1;
+}
+/** CSV แบบมีเครื่องหมายคำพูด (RFC 4180 อย่างง่าย) */
+function csvParse(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (q) {
+      if (ch === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n") {
+      row.push(cell.replace(/\r$/, ""));
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else cell += ch;
+  }
+  if (cell || row.length) rows.push([...row, cell]);
+  return rows;
+}
 const POS_DIR = "src/lib/modules/pos";
 const F = {
   legacyDoor: `${POS_DIR}/legacy-door.ts`,
@@ -1432,7 +1484,7 @@ async function runDb() {
     for (const k of Object.keys(c0) as (keyof typeof c0)[]) if (c1[k] !== c0[k]) p.push(`${k} ${c0[k]}→${c1[k]} (คาดไม่เปลี่ยน)`);
     for (const f of LEGACY_ROUTES) {
       const code = srcOf(f);
-      const gi = code.search(/\bposLinkedLegacyDoor\s*\(/);
+      const gi = firstDoorCall(code, doorCallNames(code));
       const si = code.search(/\b(placeGuestOrder|resolveTableSession|guestBill|notifyPromptpayPayment)\s*\(/);
       if (gi < 0 || (si >= 0 && gi > si)) p.push(`${f.split("/").slice(-2).join("/")}: posLinkedLegacyDoor ${gi < 0 ? "ไม่ถูกเรียก" : "อยู่หลัง storefront"}`);
     }
@@ -1494,10 +1546,14 @@ async function runDb() {
     if (!posLinked(rk) || (await salesOfSession(S3)) !== 0) p.push(`checkoutAction → ${short(rk, 50)} · บิล ${await salesOfSession(S3)} (คาด POS_LINKED 0 บิล)`);
     // สถิต: action + หน้าเดิม
     const actCode = srcOf(F.actRest);
-    for (const fn of LEGACY_ACTIONS) if (!/posLinkedLegacyDoor|POS_LINKED/.test(fnBody(actCode, fn))) p.push(`${fn} ไม่มีด่าน POS_LINKED`);
+    const actNames = doorCallNames(actCode);
+    for (const fn of LEGACY_ACTIONS) {
+      const b = fnBody(actCode, fn);
+      if (!/POS_LINKED/.test(b) && firstDoorCall(b, actNames) < 0) p.push(`${fn} ไม่มีด่าน POS_LINKED`);
+    }
     for (const f of LEGACY_PAGES) {
       const c = srcOf(f);
-      if (!/\bposLinkedLegacyDoor\s*\(/.test(c) || !/\bredirect\s*\(/.test(c) || !/\/pos\//.test(c)) p.push(`${f.replace("src/app/app/u/[unitSlug]/restaurant/", "")} ไม่ redirect ไป /pos/ ด้วย guard`);
+      if (firstDoorCall(c, doorCallNames(c)) < 0 || !/\bredirect\s*\(/.test(c) || !/\/pos\//.test(c)) p.push(`${f.replace("src/app/app/u/[unitSlug]/restaurant/", "")} ไม่ redirect ไป /pos/ ด้วย guard`);
     }
     chk("L3", !fx && p.length === 0, "action เดิม 6 ตัวปฏิเสธบนสาขาที่ผูก POS · N ทำงาน · หน้าเดิม 5 หน้า redirect", why(p));
   });
@@ -1513,7 +1569,8 @@ async function runDb() {
     if (r?.missing) p.push(MISSING + " runKind");
     else if (r?.threw !== true) p.push(`runKind → ${short(r, 80)} (คาด throw ปฏิเสธ)`);
     if (sales !== 0 || s5?.status !== "OPEN") p.push(`บิล ${sales} · session ${s5?.status} (คาด 0 · OPEN)`);
-    if (!/posLinkedLegacyDoor|POS_LINKED/.test(srcOf(F.proposals))) p.push("proposals.ts ไม่มีด่าน POS_LINKED");
+    const pc = srcOf(F.proposals);
+    if (!/POS_LINKED/.test(pc) && firstDoorCall(pc, doorCallNames(pc)) < 0) p.push("proposals.ts ไม่มีด่าน POS_LINKED");
     chk("L4", !fx && p.length === 0, "ข้อเสนอ AI ปิดบิลถูกปฏิเสธ · 0 บิล · โต๊ะยังเปิด", why(p));
   });
   await run("L5", async () => {
@@ -1754,7 +1811,7 @@ async function runDb() {
     const row = (j?.report?.rows ?? []).find((r: Any) => r.businessDate === today);
     if (!row || !(row.refundCount >= 1)) p.push(`(fixture) วันนี้ไม่มีใบคืน (refundCount ${short(row?.refundCount)})`);
     const c = await call(reportsMod, "reportCsv", rctx("A"), A("OWNER"), { kind: "daily", from: today, to: today });
-    const lines = String(c?.body ?? "").replace(/^﻿/, "").split("\n").map((l) => l.split(","));
+    const lines = csvParse(String(c?.body ?? "").replace(/^﻿/, ""));
     const data = lines.find((l) => l[0] === today);
     if (c?.ok !== true || !data) p.push(`reportCsv daily → ${codeOf(c)}`);
     else if (ic >= 0 && ia >= 0 && row) {
