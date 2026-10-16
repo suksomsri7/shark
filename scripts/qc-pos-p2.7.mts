@@ -391,6 +391,35 @@ function sameAsBase(path: string): string | null {
   return `${path.split("/").slice(-3).join("/")} ต่างจากฐาน (${revs.map((r) => r.slice(0, 8)).join("/")})`;
 }
 
+// ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-2) ▸ มติ 13: route เดิมใต้ api/store/…/restaurant/** = ฐาน + บรรทัดในบล็อก `// POS P2.14 ▸ … ◂` (ไม่นับบรรทัดว่าง) —
+//   กฎเดียวกับ P2.14 L2 (ตัวกัน LEG-1 อยู่ในบล็อกที่มาร์ก · เนื้อเดิมทุกบรรทัดคงอยู่) · storefront.ts + restaurant-qr.tsx ยังตรงฐานทุกไบต์
+function p214Marked(src: string): Set<number> {
+  const mk = new Set<number>();
+  let open = false;
+  src.split("\n").forEach((l, i) => {
+    const starts = /POS P2\.14\s*▸/.test(l);
+    if (starts || open) mk.add(i);
+    if (starts && !l.includes("◂")) open = true;
+    else if (open && l.includes("◂")) open = false;
+  });
+  return mk;
+}
+const p214NormBlank = (s: string) => s.split("\n").map((l) => l.trimEnd()).filter((l) => l.trim() !== "").join("\n");
+function sameAsBaseOrP214Marked(path: string): string | null {
+  const exact = sameAsBase(path);
+  if (!exact) return null;
+  const now = existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path), "utf8") : null;
+  if (now === null) return exact;
+  const mk = p214Marked(now);
+  const stripped = p214NormBlank(now.split("\n").filter((_, i) => !mk.has(i)).join("\n"));
+  for (const r of baseRevs()) {
+    const b = showAt(r, path);
+    if (b !== null && p214NormBlank(b) === stripped) return null;
+  }
+  return `${exact} (ไม่ใช่ฐาน + บล็อก POS P2.14 ด้วย)`;
+}
+// ◂ ORACLE-EDIT
+
 // ═════════════════════════ ค่าคงที่ของสัญญา (ตารางชื่อ — ledger/wo-notes/pos-P2.7-oracle.md) ═════════════════════════
 const POS_DIR = "src/lib/modules/pos";
 const REST_DIR = "src/lib/modules/restaurant";
@@ -883,7 +912,7 @@ async function runStatic(): Promise<void> {
     }
     // ประตูเดิมตรงทุกไบต์
     for (const f of [F.storefront, F.restQrUi, ...walk(LEGACY_API_DIR)]) {
-      const r = sameAsBase(f);
+      const r = f.startsWith(LEGACY_API_DIR) ? sameAsBaseOrP214Marked(f) : sameAsBase(f); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-2)
       if (r) p.push(r);
     }
     const ro = rd(F.restOrder);
