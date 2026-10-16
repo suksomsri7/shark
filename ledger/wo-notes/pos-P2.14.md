@@ -185,3 +185,15 @@ bash scripts/pos-gates-all.sh --verdict /root/pos-runs/p214-builder/selftest-fx2
 ```
 
 Pre-gate at the fix-2 code head (dirty 0, `/root/pos-runs/p214-builder/fx2-pre-20261016T084832Z/`): p2.14 forced **58/60** (H1 H3) · p2.8 60/61 (ST6 lane-pin) · qc-shop 15/15 · qc-shop-refund 12/12 · p2.13 54/54. Final gate set path + VERDICT: final report (head unchanged after the run).
+
+## 10. Fix round 3 (U1 · CD-U1) — branch `wip/pos-p2.14-u1` from `session/pos` `c9e63cad`
+
+gates108 (controller, tree c @280b56f7): `qc-pos-p2.7` ST2 red — "order.ts onIntentPaid ไม่อยู่ในบล็อก // POS P2.7 ▸ … ◂". Cause: the P2.14 QR-1a/QR-2 helpers sat inside the big P2.7 block of `src/lib/modules/pos/order.ts` (open ≈1697, close `// ◂ POS P2.7` ≈2152) and their comments carry `◂` (≈1861/1874/1881) plus the call-site comment (≈1919), so `markedLines()` closed the P2.7 block before `onIntentPaid`.
+
+Fix (ruling option (a), pure move, no behaviour change) — `32b8c549`: the 58-line chunk `expirePaidOneInTx` · `addRefundNeededInTx` · `recordOrderRefundNeeded` · `expireDuePaidPreorders` (+ their comments) moved verbatim below `// ◂ POS P2.7` into its own block (`// ═══ POS P2.14 ▸ QR-1a / QR-2 (fix3 U1 CD-U1 …)` … `// ◂ POS P2.14 QR-1a / QR-2`); the one call site inside `expireDuePreorders` keeps its `// POS P2.14 ▸ QR-1a …` comment without `◂`. Diff = 62+/59− (sorted-line diff: only the call-site comment changed + 2 block-marker lines + 1 blank line). No `◂` remains between the P2.7 open and `onIntentPaid`; `ingestPreorderInTx` (1754), `expirePreorders` (1856), `onIntentPaid` (1922) all inside the P2.7 block. No `scripts/qc-*.mts` touched.
+
+Gates (tree d @`32b8c549` dirty 0, QC4 under `/tmp/shark-gate-pos.lock`, `/root/pos-runs/p214-builder/fx3-u1-20261016T105400Z/`):
+- `qc-pos-p2.7` forced **42/42** — `{"total":42,"passed":42,"failed":[]…}`
+- `qc-pos-p2.14` forced **59/60** — `{"total":60,"passed":59,"failed":["P2.14-H3"]…}` (H1 now green: HANDOVER-P2 is on the tip; H3 = parity sheet, controller)
+- `qc-pos-p2.10` forced **13/13** — `{"total":13,"passed":13,"failed":[],"st2Pins":true,"mergeBase":"280b56f7…"}`
+- typecheck `env NODE_OPTIONS=--max-old-space-size=8192 bash scripts/iso.sh env ISO_MEM=10500M pnpm exec tsc --noEmit` → exit **0** (10:56:48 → 11:01:40, no output), HEAD-typecheck.txt `head=32b8c549 dirty=0`
