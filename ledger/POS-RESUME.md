@@ -1912,3 +1912,4 @@
 - 16:3xZ (A) **U2b ส่งงาน 56323200 (H1 offline gate ในบล็อก P2.14 · H5 กิ่ง 390 · ด่านเขียว) → ชีต parity ย้ายตารางผู้คุมขึ้นเหนือ Rows + ref 9 แถว (c8310d2f · p2.14 --no-db 15/15 H3 ✅) → merge U2 → session/pos 230accb8** · chain หลัง qc:all: build d → ถ่ายซ้ำ 25 run → gates110 (unit pos-after-qcall-*) · qc:all ยังรัน
 - 17:0xZ (A) **qc:all QC6 จบ 288/420** (ผลใน HANDOVER §0/§2 · OP O27-run สรุป) · POS จริง 2 จุด (qc-pages RG-1 · nav S5) → **U3** builder ทรี b `wip/pos-p2.14-u3` · chain: build d @230accb8 เริ่ม 17:00Z → ถ่ายซ้ำ U2 → gates110
 - 17:4xZ (A) **U3 ส่งงาน 2a24e6cf (registry 9 widget · accordion POS ครบ · manifest +2 · H1b hook จอลูกค้า) → merge session/pos c5fc223b** · หยุด gates110 (แทนด้วย gates111 ปลายสุดท้าย) · chain หลัง U3: build d → ถ่ายซ้ำ offline/display ‖ **gates111** (96 รายการ)
+- 17:58Z (A) **ถ่ายซ้ำหลัง U3 เขียวหมด (79 ภาพ · 0 แดง) — offline แคชเชียร์ th/en ไม่มี console error แล้ว (H1b พิสูจน์)** · gates111 ทรี c @c5fc223b กำลังรัน

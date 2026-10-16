@@ -256,3 +256,10 @@ U2 = one builder fix round (`wip/pos-p2.14-u2` from `session/pos`) → re-shoot 
 | H5 | p2.8u/register-register-tab-badge-owner-390x844 | ✅ SHOT — badge "3" on the mobile orders button |
 | H1/H2 | p1.3/register-offline-cashier-* th ×3 · en ×2 | ❌ still red — controller request trace (`dbg-offline-cashier-trace.log` in the run folder): the failing POST is server action `publishDisplayStateAction` (customer-display publish loop, P2.10) fired every few seconds for the display-paired cashier device; U2b guards did not cover it → **U3 H1b** (gate the display hook on `navigator.onLine`, publish once on `online`) → re-shoot after the U3 merge |
 | O-9 | p2.12u/reports-print-overview-owner-1440x900 | ✅ by hunk (reports.ts `idCell`: "API …<last6>") — the re-shot print covers business day 17 Oct (00:23) and has no API-key seller row to show; the CSV/print column change is code-reviewed by the controller |
+
+## Addendum — U3 re-shoot (controller · 16 Oct 17:53–17:58Z · tree d @c5fc223b · build `n3lL2TIziX4uyZen-AcML` · QC5 · `/root/pos-runs/vis-u3-qc5-20261016T175326Z/` · 6 runs · 79 shots · **0 failed**)
+| id | shot | result |
+|---|---|---|
+| H1/H2 | p1.3/register-offline-cashier-{1440x900,1024x768,390x844} th · {1440x900,390x844} en | ✅ FIXED — no console error after `setOfflineMode` (customer-display publish loop gated on `navigator.onLine`, U3 H1b); owner control still green |
+| 11A | p2.10 display states (th, owner) | ✅ harness green — display pairing/publish unchanged |
+| 10/17 · pages | p2close settings + all pages (th, owner) | ✅ harness green — registry/accordion additions do not change the POS page layouts |
