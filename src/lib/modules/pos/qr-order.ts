@@ -657,7 +657,11 @@ async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentInt
       throw e;
     }
     if (out.kind === "refused") return out.out;
-    if (out.kind === "dup") return mapOut(out.r);
+    if (out.kind === "dup") {
+      // POS P2.14 ▸ fix1 H6: รอบแรกเตรียมเงิน (Beam) แล้วล้ม/ลองใหม่ แต่คีย์เดียวกันลงไปก่อน ⇒ ใบที่เตรียมไว้ไม่ถูกใช้ — ปิดทิ้ง (ไม่ค้าง PENDING) ◂
+      if (prepared) await orderIntentUnused(l.u, prepared, "DUPLICATE");
+      return mapOut(out.r);
+    }
     const r = out.r;
     if ((!r.ok || r.duplicated) && prepared) await orderIntentUnused(l.u, prepared, r.ok ? "DUPLICATE" : "REFUSED"); // POS P2.7 ▸ fix2 F6 ◂
     await orders.preorderIngested(l.u.tenantId, r);
