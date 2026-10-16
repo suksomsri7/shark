@@ -205,6 +205,9 @@ const P213_WO = /^p2\.?13(?![0-9])/i.test(WO ?? "");
 // POS P2.12U ▸ มติ 8: wo p2.12u = สถานะรายงาน/บิล/ตั้งค่าของใบนี้ (ไม่ส่ง --page = reports + sales + settings) ◂
 const P212U_WO = /^p2\.?12u/i.test(WO ?? "");
 const P212U_PAGES = ["reports", "sales", "settings"] as const satisfies readonly PosPage[];
+// POS P2.7U ▸ มติ 15: wo p2.7 = หน้าสาธารณะ QR (/q/**) + จอ 09 + จอโต๊ะ + ลิ้นชักช่องทาง (ไม่ส่ง --page = qr-public + orders + tables + settings) ◂
+const P27_WO = /^p2\.?7(?![0-9])/i.test(WO ?? "");
+const P27_PAGES = ["qr-public", "orders", "tables", "settings"] as const satisfies readonly PosPage[];
 
 function die(msg: string): never {
   console.error(`❌ ${msg}`);
@@ -231,7 +234,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -259,10 +262,12 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   kds: { owner: 200, cashier: 200, manager: "record" },
   // POS P2.10 ▸ จอลูกค้า /d: หน้าสาธารณะ (ไม่อ่าน session) ⇒ 200 ทุกบทบาท ◂
   display: { owner: 200, cashier: 200, manager: "record" },
+  // POS P2.7U ▸ หน้าสาธารณะ QR /q/** (ไม่อ่าน session) ⇒ 200 ทุกบทบาท (โทเคนใช้ไม่ได้ = การ์ด 200 · รูปผิด = 404) ◂
+  "qr-public": { owner: 200, cashier: 200, manager: "record" },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
-const pathOf = (p: PosPage) => p === "display" ? `/d${LOCALE_EN ? "?lang=en" : ""}` /* POS P2.10 */ : `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" || p === "orders" || p === "kds" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂ · POS P2.8U ▸ + orders ◂
+const pathOf = (p: PosPage) => p === "qr-public" ? "/q/t/<p27:q1>" /* POS P2.7U ▸ ภาพเฉพาะ --states (p27Path) ◂ */ : p === "display" ? `/d${LOCALE_EN ? "?lang=en" : ""}` /* POS P2.10 */ : `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" || p === "orders" || p === "kds" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂ · POS P2.8U ▸ + orders ◂
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
@@ -272,7 +277,7 @@ const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const PDF_PROBE = argv.includes("--pdf");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key; // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key; // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -733,6 +738,114 @@ const p212uPath = (k: P212uKey): string => {
   }
 };
 // ◂
+// ── POS P2.7U ▸ QR สั่ง / สั่งล่วงหน้าจ่ายก่อน (มติ 15 · wo p2.7 · --states · เจ้าของร้าน · ไม่ส่ง --page = qr-public + orders + tables + settings) ◂
+//   qr-public (หน้าสาธารณะ /q/** · ไม่อ่าน session) = 390 + 1024 ทั้ง th และ LOCALE=en (?lang=en) · หน้าพนักงาน 3 ขนาด (en = 1440)
+//   path ที่มีโทเคน = ตัวยึด <p27:…> เติมจริงตอน fixture (p27Path) · fixture/เก็บกวาดใน ensureP27Fixture/prepP27/cleanupP27
+type P27Key =
+  | "table-menu" | "table-cart" | "table-sent" | "table-rounds" | "table-bill" | "table-notified" | "table-payhidden" | "table-closed" | "table-bad-token"
+  | "pre-menu" | "pre-cart" | "pre-checkout" | "pre-pay" | "pre-claimed" | "pre-paid" | "pre-accepted" | "pre-ready" | "pre-expired" | "pre-rejected" | "pre-closed"
+  | "orders-qr-rows" | "orders-awaiting" | "orders-prepaid" | "orders-claim" | "orders-late-banner"
+  | "tables-qr-dialog" | "tables-qr-print"
+  | "settings-channel-qr-table" | "settings-channel-qr-order";
+const P27_PUB: readonly Device[] = ["mobile", "ipad"];
+const P27_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P27_PLAN: { key: P27Key; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "table-menu", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "/q/t/<โต๊ะ Q1 ว่าง>: หัวร้าน (แหล่งหัวใบเสร็จ) + ป้ายโต๊ะ · ชิปหมวด · เมนูราคา QR_TABLE · หมด = เทา" },
+  { key: "table-cart", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "แตะ + อเมริกาโน่ ×2 + ลาเต้ (ตัวเลือก = เลือกตัวแรกของกลุ่ม) → ตะกร้า (390 = แผ่นล่าง · 1024 = คอลัมน์ขวา) ยอดจาก quoteTableCartAction" },
+  { key: "table-sent", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "⚠️ ตะกร้าแบบ table-cart → ส่งเข้าครัว (รอบแขกจริงบนโต๊ะ Q1 · ลบพร้อมโซนตอนเก็บกวาด) → แบนเนอร์ส่งแล้ว + แท็บสั่งแล้ว" },
+  { key: "table-rounds", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "/q/t/<Q2>: รอบแขก 2 รอบ · สถานะครัวต่อรายการ กำลังทำ / พร้อมเสิร์ฟ / เสิร์ฟแล้ว · ครัวทำเสร็จ d/t · ปุ่มเรียกพนักงาน/ขอเช็คบิล" },
+  { key: "table-bill", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "Q2 แท็บบิล: รายการ + ค่าบริการ POS + ยอดรวม (= บิลโต๊ะของหน้าขาย) + QR พร้อมเพย์ของยอดนั้น + ปุ่มโอนแล้ว แจ้งร้าน" },
+  { key: "table-notified", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "⚠️ Q2 แท็บบิล → แตะโอนแล้ว แจ้งร้าน (คำขอ PAY_PROMPTPAY จริง · ลบพร้อมโซน) → \"แจ้งร้านแล้ว\"" },
+  { key: "table-payhidden", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "/q/t/<Q3 แยกบิล EQUAL 2>: แท็บบิล → \"โต๊ะนี้แยกบิลอยู่ — ชำระที่แคชเชียร์\" (ไม่มี QR)" },
+  { key: "table-closed", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "QR_TABLE พักรับ 30 นาที (setChannelOrderSettings · คืนค่าหลังภาพ) → แบนเนอร์ CHANNEL_PAUSED + เมนูอ่านอย่างเดียว" },
+  { key: "table-bad-token", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "/q/t/<โทเคนรูปถูกแต่ไม่มี> → การ์ด \"QR นี้ใช้ไม่ได้แล้ว\" (HTTP 200 · ไม่มีช่องรู้ว่ามีอยู่)" },
+  { key: "pre-menu", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "/q/<ลิงก์สั่งล่วงหน้าของสาขา>: รับเองที่ร้าน · เตรียมประมาณ N นาที · เมนูราคา QR_ORDER" },
+  { key: "pre-cart", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "แตะ + 3 ชิ้น → ตะกร้า (quotePreorderCartAction · ไม่มีค่าบริการ)" },
+  { key: "pre-checkout", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "ตะกร้า → ข้อมูลผู้รับ: ชื่อ คุณภาพ (ภาพ QC) + เบอร์ 081-234-5678 + บรรทัด PDPA + ยอดที่ต้องจ่าย (ไม่กดสั่ง)" },
+  { key: "pre-pay", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "/q/o/<ออเดอร์รอจ่าย>: ยอด + QR พร้อมเพย์ของใบขอรับเงินเดียวกัน + นับถอยหลังถึง payBy + ปุ่มโอนแล้ว (QR นิ่ง)" },
+  { key: "pre-claimed", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "ออเดอร์ที่กดโอนแล้ว (claimPaid) → \"แจ้งร้านแล้ว — รอร้านตรวจยอด\"" },
+  { key: "pre-paid", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "ใบขอรับเงินยืนยันเอง (เจ้าของ) → PREPAID → \"ได้รับเงินแล้ว — รอร้านรับออเดอร์\" · ขั้น 2/4" },
+  { key: "pre-accepted", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "⚠️ PREPAID → acceptOrder (บิลพร้อมเพย์จริง · ไม่ลบ แบบ P2.8U) → \"ร้านรับออเดอร์แล้ว\" + พร้อมรับประมาณ hh:mm + ลิงก์ใบเสร็จ" },
+  { key: "pre-ready", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "⚠️ รับแล้ว → เตรียม → พร้อม → \"พร้อมรับแล้ว\" + รหัสตัวใหญ่ + ลิงก์ใบเสร็จ" },
+  { key: "pre-expired", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "payBy เลื่อนเป็นอดีต + อ่านสถานะ (ปิดครั้งเดียว) → 19ค: PromptPay ยังไม่ได้รับเงิน · ลองใหม่ · เลือกวิธีอื่น · ยืนยันเอง" },
+  { key: "pre-rejected", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "PREPAID → rejectOrder → \"ร้านไม่สามารถรับออเดอร์นี้ได้\" + ร้านคืนเงินให้ภายหลัง" },
+  { key: "pre-closed", page: "qr-public", devices: P27_PUB, users: ["owner"], note: "QR_ORDER พักรับ 30 นาที (คืนค่าหลังภาพ) → แบนเนอร์ + เมนูอ่านอย่างเดียว" },
+  { key: "orders-qr-rows", page: "orders", devices: P27_D3, users: ["owner"], note: "09: ราง \"หน้าร้าน QR N\" (≥1024 แตะแถว · 390 เลือกในตัวเลือกช่องทาง) → การ์ดรอบ QR โต๊ะ \"QR โต๊ะ Q2 · #n · ครัวกำลังทำ d/t · เก็บเงินรวมกับบิลโต๊ะ\"" },
+  { key: "orders-awaiting", page: "orders", devices: P27_D3, users: ["owner"], note: "09 ทุกช่องทาง: รายการย่อย \"รอชำระ N\" ใต้หัวคอลัมน์ใหม่ (นับถอยหลังหมดเวลาจ่าย · ยกเลิก) — ไม่นับในคอลัมน์ใหม่" },
+  { key: "orders-prepaid", page: "orders", devices: P27_D3, users: ["owner"], note: "09: การ์ดใหม่ของออเดอร์ PREPAID + ชิป \"จ่ายแล้ว · พร้อมเพย์ ฿x\" → แตะ = แผง (เมื่อกดรับ = เปิดบิลพร้อมเพย์จากเงินที่จ่ายแล้ว)" },
+  { key: "orders-claim", page: "orders", devices: P27_D3, users: ["owner"], note: "09: แถวรอชำระที่ลูกค้าแจ้งโอน → ชิป \"ลูกค้าแจ้งโอนแล้ว · ตรวจยอด\" + ยืนยันรับเงิน → แตะแถว = แผง (ไม่กดยืนยัน)" },
+  { key: "orders-late-banner", page: "orders", devices: P27_D3, users: ["owner"], note: "09: แบนเนอร์ \"เงินเข้าหลังหมดเวลา ฿x · ref pi_…\" (ออเดอร์ที่จ่ายหลัง payBy → ปิด + late_payment) + แบนเนอร์หมดเวลาจ่ายวันนี้" },
+  { key: "tables-qr-dialog", page: "tables", devices: P27_D3, users: ["owner"], note: "03: เปิดโต๊ะ Q2 (?open=) → QR ของโต๊ะ → กล่อง: ภาพ QR + ลิงก์ /q/t/… + คัดลอก + พิมพ์ + เปลี่ยน QR (ไม่กด)" },
+  { key: "tables-qr-print", page: "tables", devices: P27_D3, users: ["owner"], note: "03: พิมพ์ QR ทุกโต๊ะ → แผ่น A4 3 คอลัมน์ (ชื่อร้าน + โต๊ะ + QR ต่อช่อง) — ไม่กดพิมพ์" },
+  { key: "settings-channel-qr-table", page: "settings", devices: P27_D3, users: ["owner"], note: "ช่องทาง → QR โต๊ะ → ลิ้นชัก: เปิดรับ · พักรับ · ลิงก์พิมพ์ QR โต๊ะ · เมนูตามราคาช่องทาง" },
+  { key: "settings-channel-qr-order", page: "settings", devices: P27_D3, users: ["owner"], note: "ช่องทาง → สั่งออนไลน์ (QR) → ลิ้นชัก: เปิดรับ · รับอัตโนมัติ · เวลาเตรียม · พักรับ · ลิงก์ + QR + คัดลอก + เปลี่ยนลิงก์" },
+];
+const p27On = STATES_ON && tenantKey === "coffee" && P27_WO;
+const P27_KEYS: ReadonlySet<string> = new Set(P27_PLAN.map((s) => s.key));
+const isP27State = (k: StateKey | null | undefined): k is P27Key => !!k && P27_KEYS.has(k);
+/** โทเคนรูปถูกที่ไม่มีจริง (โต๊ะ) */
+const P27_BAD_TABLE_TOKEN = "posqcvisp27nosuchtable0";
+const p27Lang = (sep: "?" | "&") => (LOCALE_EN ? `${sep}lang=en` : "");
+/** โทเคน/ไอดีของ fixture (เติมตอน ensureP27Fixture · แผนใช้ตัวยึดก่อนนั้น) */
+type P27Fixture = {
+  tables: Partial<Record<"q1" | "q2" | "q3", { tableId: string; name: string; qrToken: string; sessionId: string | null }>>;
+  orders: Record<string, { id: string; token: string; code: string; intentId: string | null }>;
+  linkToken: string | null;
+};
+const P27S: { fx: P27Fixture | null } = { fx: null };
+const p27Fx = () => P27S.fx;
+/** path ของสถานะ (ตัวยึดในแผน · ค่าจริงหลัง fixture — P27 ประกาศทีหลังในไฟล์ จึงอ่านผ่านฟังก์ชัน) */
+function p27Path(k: P27Key): string {
+  const F = p27Fx();
+  const u = encodeURIComponent(unitId);
+  const tq = (n: "q1" | "q2" | "q3") => `/q/t/${F?.tables[n]?.qrToken ?? `<p27:${n}>`}${p27Lang("?")}`;
+  const order = (n: string) => `/q/o/${F?.orders[n]?.token ?? `<p27:${n}>`}${p27Lang("?")}`;
+  const link = `/q/${F?.linkToken ?? "<p27:link>"}${p27Lang("?")}`;
+  switch (k) {
+    case "table-menu":
+    case "table-cart":
+    case "table-sent":
+    case "table-closed":
+      return tq("q1");
+    case "table-rounds":
+    case "table-bill":
+    case "table-notified":
+      return tq("q2");
+    case "table-payhidden":
+      return tq("q3");
+    case "table-bad-token":
+      return `/q/t/${P27_BAD_TABLE_TOKEN}${p27Lang("?")}`;
+    case "pre-menu":
+    case "pre-cart":
+    case "pre-checkout":
+    case "pre-closed":
+      return link;
+    case "pre-pay":
+      return order("pay");
+    case "pre-claimed":
+      return order("claimed");
+    case "pre-paid":
+      return order("paid");
+    case "pre-accepted":
+      return order("accepted");
+    case "pre-ready":
+      return order("ready");
+    case "pre-expired":
+      return order("expired");
+    case "pre-rejected":
+      return order("rejected");
+    case "tables-qr-dialog":
+      return `/app/sys/${SYS}/pos/tables?unit=${u}&open=${encodeURIComponent(F?.tables.q2?.sessionId ?? "<p27:q2-session>")}`;
+    case "tables-qr-print":
+      return `/app/sys/${SYS}/pos/tables?unit=${u}`;
+    case "settings-channel-qr-table":
+    case "settings-channel-qr-order":
+      return `/app/sys/${SYS}/pos/settings?tab=channels&unit=${u}`;
+    default:
+      return `/app/sys/${SYS}/pos/orders?unit=${u}`;
+  }
+}
+// ◂
 // ── POS P2.13 ▸ การ์ดคีย์ API (U-lite §7 · wo p2.13 · --states · 3 ขนาด · th + LOCALE=en · owner + manager) ◂
 //   ลำดับสำคัญ: empty ก่อนรอบนี้สร้างคีย์ใด ๆ · create = กรอกกล่องไม่ส่ง · raw = ส่งจริง (คีย์ของรอบ 1 ใบ) · list/revoke = + คีย์ fixture 2 ใบ · developers-pos ท้ายสุด
 type P213Key = "settings-shark-api-keys-empty" | "settings-shark-api-keys-create" | "settings-shark-api-keys-raw" | "settings-shark-api-keys-list" | "settings-shark-api-keys-revoke" | "developers-pos";
@@ -829,6 +942,16 @@ const RPUB_VIEWPORT = POS_VIEWPORTS.find((v) => v.name === "mobile")!;
 const rpubOn = tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && pages.includes("receipt-public");
 const rpubPlan = RPUB_STATE_PLAN.filter((st) => STATES_ON || st.key === "rpub-paid");
 const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
+  // POS P2.7U ▸ มติ 15: wo p2.7 + --states = สถานะ QR ของหน้านี้ (qr-public = 390 + 1024 ทั้งสองภาษา · หน้าพนักงาน 3 ขนาด · en = 1440) · หน้า qr-public นอก wo นี้ = ไม่มีงาน ◂
+  p27On && (P27_PAGES as readonly string[]).includes(p)
+    ? P27_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        (p === "qr-public" ? POS_VIEWPORTS.filter((v) => st.devices.includes(v.name)) : viewports.filter((v) => st.devices.includes(v.name))).map(
+          (v): Job => ({ page: p, v, state: st.key, path: p27Path(st.key), expect: 200, file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` }),
+        ),
+      )
+    : p === "qr-public"
+    ? []
+    :
   // POS P2.10 ▸ มติ 11: wo p2.10 + --states = สถานะจอลูกค้าของหน้านี้ (display: 1280×800 + 1024×768 · LOCALE=en = 1280 · settings: 3 ขนาด · en = 1440) ◂
   p210On && (p === "display" || p === "settings")
     ? P210_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
@@ -1042,9 +1165,11 @@ if (LIST) {
   for (const st of P212U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("settings P2.13 (wo p2.13 --states · owner + manager):"); // POS P2.13
   for (const st of P213_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
+  console.log("qr-public/orders/tables/settings P2.7U (wo p2.7 --states · เจ้าของ):"); // POS P2.7U
+  for (const st of P27_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1208,6 +1333,20 @@ if (DRY) {
           `คาดการณ์ 4 สัปดาห์ก่อนวันเดียวกัน (3 ใบ/สัปดาห์ 08/09/12 น. · เลื่อน createdAt/paidAt) · สาขา: 1 บิลวันนี้ที่สาขาอารีย์ · จุดผิดปกติ: 2 บิล → voidSale (A1) · บิล LINE MAN ` +
           `(ช่องทาง P2.1U) → refundSale 1 บรรทัด PLATFORM (A2 + ลิ้นชักหลังคืน) · บิลส่วนลดท้ายบิล 40% (A4) · เกณฑ์ A1 2 ครั้ง · A2 1 ครั้ง · A3 1% · A4 20% ` +
           `(updatePosGeneralSettings เจ้าของ · ซากเกณฑ์ของรอบที่ถูก kill = กวาดเป็นค่าปริยาย · คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ)`,
+      );
+    }
+    // POS P2.7U ▸ มติ 15 ◂
+    if (jobs.some((j) => isP27State(j.state))) {
+      console.log(`สถานะ QR P2.7U (${userKey} · qr-public 390 + 1024${LOCALE_EN ? " · ?lang=en" : ""} · หน้าพนักงาน ${LOCALE_EN ? "1440" : "3 ขนาด"}):`);
+      for (const st of P27_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(27)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P2.7U: fixture (สาขา ${unitKey} · ร้าน QC coffee เท่านั้น · id/ชื่อ posqc-vis-p27-<pid>) — ช่องทาง QR_TABLE/QR_ORDER: เปิด + ไม่พัก + QR_ORDER รับอัตโนมัติปิด (จำค่าเดิม · คืนตอนเก็บกวาด) · ` +
+          `PromptPay ID ของร้าน QC (P1.7U · คืนค่า) · โซน "QR ภาพ · posqc-vis-p27 <ตัวอักษร>" + โต๊ะ Q1 (ว่าง) Q2 (รอบแขก 2 รอบผ่าน placeTableRound + สถานะครัว advanceItem) Q3 (รอบแขก + แผนแยกบิล EQUAL 2) · ` +
+          `ลิงก์สั่งล่วงหน้า (getOrderLink · ไม่มี = createOrderLink แล้วลบตอนเก็บกวาด) · ออเดอร์จ่ายก่อน 9 ใบผ่าน placePreorder (IP posqc-vis-p27-<pid>-<n>): รอจ่าย · แจ้งโอน (claimPaid) · ` +
+          `จ่ายแล้ว (confirmPaymentIntentManual เจ้าของ + onIntentPaid) · ⚠️ รับแล้ว / พร้อม (acceptOrder = บิลพร้อมเพย์จริง · ไม่ลบ · ส่งมอบตอนเก็บกวาด) · หมดเวลา (payBy อดีต + expirePreorderIfDue) · ` +
+          `ปฏิเสธ (rejectOrder · ops refund_needed) · เงินเข้าหลังหมดเวลา (payBy อดีต → ยืนยันเอง → onIntentPaid = late_payment + ops) · ` +
+          `ก่อนภาพ closed = พักรับ 30 นาที แล้วคืน · คำขอของหน้า qr-public ส่งหัว x-forwarded-for posqc-vis-p27-<pid>-ui (ถังเพดานของรอบ) · ` +
+          `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: แผนแยกบิล → โซน/โต๊ะ/session/รอบ/คำขอ (deleteP24uRows) · ออเดอร์ที่ไม่มีบิล + บรรทัด/เหตุการณ์/outbox/audit/ใบขอรับเงิน/ops ของรอบ · ลิงก์ที่รอบสร้าง · ถังเพดาน · ช่องทางคืนค่าเดิม`,
       );
     }
     // POS P2.10 ▸ มติ 11 ◂
@@ -1492,6 +1631,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P29U.log.length) console.error(`${P29U.ok ? "🧹" : "⚠️"} P2.9U: ${P29U.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.9U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.7U: คืนช่องทาง · ลบชุดโต๊ะ/ออเดอร์/ลิงก์/ถังเพดานของรอบ (เหมือน finally)
+      try {
+        await cleanupP27();
+        if (P27.log.length) console.error(`${P27.ok ? "🧹" : "⚠️"} P2.7U: ${P27.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.7U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.10: ยกเลิกจับคู่จอ · ปิดกะ + เพิกถอนเครื่องของภาพจอลูกค้า (เหมือน finally)
       try {
@@ -2060,6 +2206,7 @@ async function cleanupP115(): Promise<void> {
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isP27State(state)) return runP27State(page, state, device); // POS P2.7U
   if (isP213State(state)) return runP213State(page, state); // POS P2.13
   if (isP210State(state)) return runP210State(page, state, device); // POS P2.10
   if (isP211uState(state)) return runP211uState(page, state, device); // POS P2.11U
@@ -7428,6 +7575,440 @@ async function runP23uPendingCuts(page: Any): Promise<void> {
 }
 // ◂
 
+// ═══════════════════ POS P2.7U ▸ QR สั่ง / สั่งล่วงหน้าจ่ายก่อน (มติ 15 · wo p2.7 · --states · เจ้าของร้าน · ร้าน QC coffee) ═══════════════════
+//   fixture (ensureP27Fixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล) ผ่านประตูของใบ S เท่านั้น (qr-order · order · payment-intent · restaurant facade):
+//   • ช่องทาง QR_TABLE / QR_ORDER ของสาขา: เปิด · ไม่พัก · QR_ORDER รับอัตโนมัติปิด (จำค่าเดิม → คืนตอนเก็บกวาด) · PromptPay ID ของร้าน QC (ensureQcPromptPay · คืนค่าใน cleanupIntents)
+//   • โซน "QR ภาพ · posqc-vis-p27 <ตัวอักษร>" + โต๊ะ <ตัวอักษร>Q1 (ว่าง) · Q2 (รอบแขก 2 รอบ placeTableRound + สถานะครัว advanceItem) · Q3 (รอบแขก + แผนแยกบิล EQUAL 2)
+//   • ลิงก์สั่งล่วงหน้า (มีอยู่ = ใช้ · ไม่มี = createOrderLink แล้วลบตอนเก็บกวาด) · ออเดอร์ 9 ใบ (placePreorder · IP ของรอบ) ตามสถานะของหน้า /q/o/
+//   เก็บกวาด (cleanupP27 · หลังงานสุดท้าย/finally/สัญญาณ · เรียกซ้ำได้): แผนแยกบิล · ชุดโต๊ะ (deleteP24uRows) · สถานีครัวที่รอบสร้าง · ออเดอร์ที่ไม่มีบิล + บรรทัด/เหตุการณ์/
+//   outbox/audit/ใบขอรับเงิน/ops · ออเดอร์ที่มีบิล (รับแล้ว/พร้อม) = ส่งมอบให้จบแล้วเก็บไว้ (แบบ P2.8U) · ลิงก์ที่รอบสร้าง · ถังเพดาน pos:qrSubmit:posqc-vis-p27-<pid>-* · ช่องทางคืนค่าเดิม ◂
+const P27_TAG = `posqc-vis-p27-${process.pid}`;
+const P27_LETTER = "ABCDEFGHJKLMNPQRSTUVWXYZ"[(process.pid + 7) % 24]!;
+const P27_UI_IP = `${P27_TAG}-ui`;
+const P27 = {
+  done: false,
+  error: null as string | null,
+  ok: true,
+  log: [] as string[],
+  zones: [] as string[],
+  sessions: [] as string[],
+  orderIds: [] as string[],
+  intentIds: [] as string[],
+  linkCreatedId: null as string | null,
+  channels: {} as Record<string, { id: string; name: string; active: boolean; autoAccept: boolean; pausedUntil: string | null }>,
+  pausedNow: null as string | null,
+  stationsBefore: null as string[] | null,
+  ipSeq: 0,
+};
+const p27Ip = () => `${P27_TAG}-${++P27.ipSeq}`;
+async function p27Ctx() {
+  return { ctx: { tenantId: T.tenantId, systemId: SYS, unitId }, actor: await memberActorOf("owner") };
+}
+async function ensureP27Fixture(): Promise<void> {
+  if (P27.done || P27.error) return;
+  try {
+    if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบอเมริกาโน่เย็น/ลาเต้ร้อนของร้าน QC (seed-pos-qc)");
+    const { ctx, actor } = await p27Ctx();
+    const ch = await import("@/lib/modules/pos/channel");
+    const ord = await import("@/lib/modules/pos/order");
+    const qr = await import("@/lib/modules/pos/qr-order");
+    const pi = await import("@/lib/modules/pos/payment-intent");
+    const tbl = await import("@/lib/modules/restaurant/table");
+    const kds = await import("@/lib/modules/restaurant/kds");
+    const pt = await import("@/lib/modules/pos/table");
+    const sp = await import("@/lib/modules/pos/table-split");
+    const need = <R extends { ok: boolean }>(r: R, what: string): R & { ok: true } => {
+      if (!r.ok) throw new StepError(`${what}: ${JSON.stringify(r).slice(0, 160)}`);
+      return r as R & { ok: true };
+    };
+    await ensureQcPromptPay();
+    // ซากของรอบที่ตาย (เกิน 1 ชม.) — โซนตามชื่อ
+    const stale = (await prisma.restaurantZone.findMany({ where: { tenantId: T.tenantId, unitId, name: { contains: "posqc-vis-p27" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } }, select: { id: true } })).map((z) => z.id);
+    if (stale.length) P27.log.push(`ซาก: ${await deleteP24uRows(stale)}`);
+    // ช่องทาง QR (listChannels ⇒ ensureUnitChannels สร้างแถว builtin ที่ขาด)
+    need(await ch.listChannels(ctx, actor, { includeArchived: true }), "listChannels");
+    for (const code of ["QR_TABLE", "QR_ORDER"] as const) {
+      const row = await prisma.salesChannel.findFirst({ where: { tenantId: T.tenantId, unitId, code, kind: "BUILTIN", archivedAt: null }, select: { id: true, name: true, active: true, autoAccept: true, pausedUntil: true } });
+      if (!row) throw new StepError(`ไม่มีช่องทาง ${code} ของสาขา QC`);
+      P27.channels[code] = { id: row.id, name: row.name, active: row.active, autoAccept: row.autoAccept, pausedUntil: row.pausedUntil ? row.pausedUntil.toISOString() : null };
+      if (!row.active) need(await ch.saveChannel(ctx, actor, { id: row.id, name: row.name, active: true }), `เปิด ${code}`);
+      need(await ord.setChannelOrderSettings(ctx, actor, { channelId: row.id, pausedUntil: null, ...(code === "QR_ORDER" ? { autoAccept: false } : {}) }), `ค่าตั้ง ${code}`);
+    }
+    // ชุดโต๊ะ
+    P27.stationsBefore = (await prisma.kdsStation.findMany({ where: { tenantId: T.tenantId, unitId }, select: { id: true } })).map((s) => s.id);
+    const z = need(await tbl.createZone(T.tenantId, unitId, `QR ภาพ · posqc-vis-p27 ${P27_LETTER}`), "createZone");
+    P27.zones.push(z.id);
+    const fx: P27Fixture = { tables: {}, orders: {}, linkToken: null };
+    for (const [k, n] of [["q1", 1], ["q2", 2], ["q3", 3]] as const) {
+      const t = need(await tbl.createTable(T.tenantId, unitId, { zoneId: z.id, name: `${P27_LETTER}Q${n}`, seats: 4 }), `createTable Q${n}`);
+      fx.tables[k] = { tableId: t.id, name: `${P27_LETTER}Q${n}`, qrToken: t.qrToken, sessionId: null };
+    }
+    const guest = `g${P27_TAG.replace(/[^A-Za-z0-9]/g, "")}`.slice(0, 40);
+    const round = async (k: "q2" | "q3", lines: { productId: string; qty: number }[]) => {
+      const tk = fx.tables[k]!;
+      const r = await qr.placeTableRound(tk.qrToken, { lines, expectedSessionId: tk.sessionId, guestToken: `${guest}${k}${lines.length}` }, { ip: p27Ip() });
+      if (!r.ok) throw new StepError(`placeTableRound ${k}: ${r.code}`);
+      tk.sessionId = r.sessionId;
+      if (!P27.sessions.includes(r.sessionId)) P27.sessions.push(r.sessionId);
+      return (await prisma.restaurantOrderItem.findMany({ where: { tenantId: T.tenantId, orderId: r.roundId }, orderBy: { createdAt: "asc" }, select: { id: true } })).map((x) => x.id);
+    };
+    const to = async (id: string, steps: ("COOKING" | "READY" | "SERVED")[]) => {
+      for (const s of steps) {
+        const r = await kds.advanceItem(T.tenantId, unitId, id, s);
+        if (!r.ok) throw new StepError(`advanceItem ${s}: ${r.reason}`);
+      }
+    };
+    const r1 = await round("q2", [{ productId: QC_IDS.amer, qty: 2 }, { productId: QC_IDS.latte, qty: 1 }]);
+    await to(r1[0]!, ["COOKING", "SERVED"]);
+    await to(r1[1]!, ["COOKING", "READY"]);
+    const r2 = await round("q2", [{ productId: QC_IDS.latte, qty: 2 }]);
+    await to(r2[0]!, ["COOKING"]);
+    await round("q3", [{ productId: QC_IDS.amer, qty: 2 }, { productId: QC_IDS.latte, qty: 2 }]);
+    const d3 = need(await pt.registerTableDetail(ctx, actor, { tableSessionId: fx.tables.q3!.sessionId! }), "registerTableDetail Q3");
+    need(await sp.registerSplitTable(ctx, actor, { tableSessionId: fx.tables.q3!.sessionId!, mode: "EQUAL", partCount: 2, expectedItemsHash: d3.itemsHash, allocations: null }), "registerSplitTable Q3");
+    // ลิงก์สั่งล่วงหน้า
+    const cur = need(await ord.getOrderLink(ctx, actor), "getOrderLink");
+    if (cur.link) fx.linkToken = cur.link.token;
+    else {
+      const c = need(await ord.createOrderLink(ctx, actor), "createOrderLink");
+      fx.linkToken = c.link!.token;
+      P27.linkCreatedId = c.link!.id;
+    }
+    // ออเดอร์จ่ายก่อน
+    const place = async (tag: string, lines: { productId: string; qty: number }[], name: string) => {
+      const r = await qr.placePreorder(fx.linkToken!, { lines, customer: { name, phone: "0812345678" }, idempotencyKey: `${P27_TAG}-${tag}` }, { ip: p27Ip() });
+      if (!r.ok) throw new StepError(`placePreorder ${tag}: ${r.code}`);
+      const o = await prisma.posOrder.findUnique({ where: { publicToken: r.orderToken }, select: { id: true, code: true, paymentIntentId: true } });
+      if (!o) throw new StepError(`ไม่พบออเดอร์ ${tag}`);
+      fx.orders[tag] = { id: o.id, token: r.orderToken, code: o.code, intentId: o.paymentIntentId };
+      P27.orderIds.push(o.id);
+      if (o.paymentIntentId) P27.intentIds.push(o.paymentIntentId);
+      return fx.orders[tag]!;
+    };
+    const pay = async (o: { intentId: string | null }, tag: string) => {
+      if (!o.intentId) throw new StepError(`ออเดอร์ ${tag} ไม่มีใบขอรับเงิน`);
+      need(await pi.confirmPaymentIntentManual(ctx, actor, { intentId: o.intentId }), `confirmPaymentIntentManual ${tag}`);
+      await ord.onIntentPaid(o.intentId);
+    };
+    const A = [{ productId: QC_IDS.amer, qty: 1 }, { productId: QC_IDS.latte, qty: 1 }];
+    await place("pay", A, "คุณพลอย (ภาพ QC)");
+    const cl = await place("claimed", A, "คุณกิ่ง (ภาพ QC)");
+    need(await qr.claimPaid(cl.token, { ip: p27Ip() }), "claimPaid");
+    await pay(await place("paid", A, "คุณบี (ภาพ QC)"), "paid");
+    const ac = await place("accepted", A, "คุณเต้ย (ภาพ QC)");
+    await pay(ac, "accepted");
+    need(await ord.acceptOrder(ctx, actor, { id: ac.id, prepMinutes: 10 }), "acceptOrder accepted");
+    const rd = await place("ready", [{ productId: QC_IDS.latte, qty: 2 }], "คุณนัท (ภาพ QC)");
+    await pay(rd, "ready");
+    need(await ord.acceptOrder(ctx, actor, { id: rd.id, prepMinutes: 5 }), "acceptOrder ready");
+    need(await ord.markPreparing(ctx, actor, { id: rd.id }), "markPreparing ready");
+    need(await ord.markReady(ctx, actor, { id: rd.id }), "markReady ready");
+    const ex = await place("expired", A, "คุณโอ (ภาพ QC)");
+    await prisma.posOrder.update({ where: { id: ex.id }, data: { payBy: new Date(Date.now() - 60_000) } });
+    if (ex.intentId) await prisma.posPaymentIntent.update({ where: { id: ex.intentId }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+    if (!(await ord.expirePreorderIfDue(T.tenantId, ex.id))) throw new StepError("expirePreorderIfDue ไม่ปิดออเดอร์ที่เลยเวลา");
+    const rj = await place("rejected", A, "คุณแป้ง (ภาพ QC)");
+    await pay(rj, "rejected");
+    need(await ord.rejectOrder(ctx, actor, { id: rj.id, reasonCode: "TOO_BUSY" }), "rejectOrder");
+    // เงินเข้าหลังหมดเวลา: payBy อดีตก่อน → ยืนยันเงินเข้า (paidAt > payBy) → onIntentPaid = ปิด + late_payment (H4)
+    const lt = await place("late", A, "คุณจอย (ภาพ QC)");
+    await prisma.posOrder.update({ where: { id: lt.id }, data: { payBy: new Date(Date.now() - 5_000) } });
+    await pay(lt, "late");
+    P27S.fx = fx;
+    P27.done = true;
+    P27.log.push(`โต๊ะ ${Object.values(fx.tables).map((t) => t!.name).join("/")} · session ${P27.sessions.length} · ลิงก์ ${P27.linkCreatedId ? "สร้างใหม่" : "เดิม"} · ออเดอร์ ${Object.keys(fx.orders).join("/")}`);
+    for (const j of jobs) if (isP27State(j.state)) j.path = p27Path(j.state);
+  } catch (e) {
+    P27.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** พักรับช่องทาง (ก่อนภาพ closed) / คืนค่า — คืนเป็นค่าก่อนพัก (null) */
+async function p27Pause(code: "QR_TABLE" | "QR_ORDER" | null): Promise<void> {
+  const ord = await import("@/lib/modules/pos/order");
+  const { ctx, actor } = await p27Ctx();
+  if (P27.pausedNow && P27.pausedNow !== code) {
+    const c = P27.channels[P27.pausedNow];
+    if (c) await ord.setChannelOrderSettings(ctx, actor, { channelId: c.id, pausedUntil: null });
+    P27.pausedNow = null;
+  }
+  if (!code || P27.pausedNow === code) return;
+  const c = P27.channels[code];
+  if (!c) throw new StepError(`ไม่มีช่องทาง ${code}`);
+  const r = await ord.setChannelOrderSettings(ctx, actor, { channelId: c.id, pausedUntil: new Date(Date.now() + 30 * 60_000).toISOString() });
+  if (!r.ok) throw new StepError(`พักรับ ${code}: ${r.code}`);
+  P27.pausedNow = code;
+}
+/** ก่อนเปิดหน้า: fixture · หัว x-forwarded-for ของคำขอหน้าสาธารณะ · พักรับก่อนภาพ closed — พังไม่โยน (runP27State โยนเหตุผล) */
+const P27_PREP_ERR = new Map<Any, string>();
+async function prepP27(page: Any, k: P27Key): Promise<void> {
+  try {
+    await ensureP27Fixture();
+    if (P27.error) throw new StepError(`fixture P2.7U: ${P27.error}`);
+    if (k.startsWith("table-") || k.startsWith("pre-")) await page.setExtraHTTPHeaders({ "x-forwarded-for": P27_UI_IP });
+    await p27Pause(k === "table-closed" ? "QR_TABLE" : k === "pre-closed" ? "QR_ORDER" : null);
+  } catch (e) {
+    P27_PREP_ERR.set(page, e instanceof Error ? e.message.slice(0, 200) : String(e));
+  }
+}
+/** เมนูของหน้าสาธารณะ: แตะ + ของสินค้า (แผ่นตัวเลือก = เลือกตัวแรกของทุกกลุ่มแล้วใส่ตะกร้า) */
+async function p27Add(page: Any, productId: string, times: number): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await clickEl(page, tid(`pos-qr-item-add-${productId}`));
+    const sheet = await page.$(tid("pos-qr-opt-sheet"));
+    if (sheet && (await sheet.isVisible().catch(() => false))) {
+      await page.evaluate(() => {
+        for (const fs of Array.from(document.querySelectorAll('[data-testid="pos-qr-opt-sheet"] fieldset'))) {
+          const b = fs.querySelector('button[data-testid^="pos-qr-choice-"]:not([disabled])') as HTMLButtonElement | null;
+          b?.click();
+        }
+      });
+      await sleep(200);
+      await clickEl(page, tid("pos-qr-opt-add"));
+    }
+  }
+}
+/** ตะกร้า (390 = เปิดแผ่นจากแถบลอย) + รอยอดจาก quote */
+async function p27Cart(page: Any, device: Device, scope: "pos-qr-table" | "pos-qr-preorder"): Promise<void> {
+  await visibleEl(page, `${tid(scope)}[data-open="1"]`, 0, 15_000).catch(() => {
+    throw new StepError(`ประตูปิดอยู่ (${scope} data-open ≠ 1) — ช่องทาง/ครัว/PromptPay ของสาขา QC`);
+  });
+  await p27Add(page, QC_IDS.amer, 2);
+  await p27Add(page, QC_IDS.latte, 1);
+  if (device === "mobile") {
+    await clickEl(page, tid("pos-qr-cart-bar"));
+    await visibleEl(page, tid("pos-qr-cart-sheet"), 0, 5_000);
+  }
+  await page
+    .waitForFunction(() => Array.from(document.querySelectorAll('[data-testid="pos-qr-cart-total"]')).some((e) => e.getClientRects().length > 0 && /\d/.test(e.textContent ?? "")), { timeout: 15_000 })
+    .catch(() => {
+      throw new StepError("ยอดตะกร้าไม่มาจาก quote ภายใน 15 วิ");
+    });
+}
+async function runP27State(page: Any, state: P27Key, device: Device): Promise<void> {
+  const pe = P27_PREP_ERR.get(page);
+  if (pe) throw new StepError(pe);
+  const tab = async (k: "rounds" | "bill") => {
+    if (device === "mobile") await clickEl(page, tid(`pos-qr-tab-${k}`));
+  };
+  const phase = async (ph: string) =>
+    visibleEl(page, `${tid("pos-qr-order")}[data-phase="${ph}"]`, 0, 20_000).catch(() => {
+      throw new StepError(`หน้าสถานะไม่อยู่ในขั้น ${ph}`);
+    });
+  switch (state) {
+    case "table-menu":
+      await visibleEl(page, `${tid("pos-qr-table")}[data-open="1"]`, 0, 15_000).catch(() => {
+        throw new StepError("หน้าโต๊ะปิดรับ (ช่องทาง QR_TABLE/ครัวของสาขา QC)");
+      });
+      return;
+    case "table-cart":
+      return p27Cart(page, device, "pos-qr-table");
+    case "table-sent":
+      await p27Cart(page, device, "pos-qr-table");
+      await clickEl(page, tid("pos-qr-send"));
+      await visibleEl(page, tid("pos-qr-sent"), 0, 20_000);
+      return;
+    case "table-rounds":
+      await tab("rounds");
+      await visibleEl(page, tid("pos-qr-round"), 0, 15_000);
+      return;
+    case "table-bill":
+      await tab("bill");
+      await visibleEl(page, `${tid("pos-qr-bill-qr")}[data-ready="1"]`, 0, 15_000).catch(() => {
+        throw new StepError("QR พร้อมเพย์ของบิลโต๊ะไม่ขึ้น (PromptPay ID ของร้าน QC?)");
+      });
+      return;
+    case "table-notified":
+      await tab("bill");
+      await clickEl(page, tid("pos-qr-notify-paid"));
+      await visibleEl(page, tid("pos-qr-notified"), 0, 15_000);
+      return;
+    case "table-payhidden":
+      await tab("bill");
+      await visibleEl(page, tid("pos-qr-pay-hidden"), 0, 15_000);
+      return;
+    case "table-closed":
+    case "pre-closed":
+      await visibleEl(page, tid("pos-qr-closed"), 0, 15_000);
+      return;
+    case "table-bad-token":
+      await visibleEl(page, tid("pos-qr-invalid"), 0, 15_000);
+      return;
+    case "pre-menu":
+      await visibleEl(page, `${tid("pos-qr-preorder")}[data-open="1"]`, 0, 15_000).catch(() => {
+        throw new StepError("หน้าสั่งล่วงหน้าปิดรับ (QR_ORDER/ครัว/PromptPay ของสาขา QC)");
+      });
+      return;
+    case "pre-cart":
+      return p27Cart(page, device, "pos-qr-preorder");
+    case "pre-checkout":
+      await p27Cart(page, device, "pos-qr-preorder");
+      if (device === "mobile") await clickEl(page, tid("pos-qr-to-checkout"));
+      await typeInto(page, tid("pos-qr-co-name"), "คุณภาพ (ภาพ QC)");
+      await typeInto(page, tid("pos-qr-co-phone"), "081-234-5678");
+      await visibleEl(page, tid("pos-qr-pdpa"), 0, 5_000);
+      return;
+    case "pre-pay":
+      await phase("pay");
+      await visibleEl(page, `${tid("pos-qr-order-qr")}[data-ready="1"]`, 0, 15_000);
+      return;
+    case "pre-claimed":
+      return void (await phase("claimed"));
+    case "pre-paid":
+      return void (await phase("paid"));
+    case "pre-accepted":
+      await page.waitForFunction(() => /^(accepted|preparing)$/.test(document.querySelector('[data-testid="pos-qr-order"]')?.getAttribute("data-phase") ?? ""), { timeout: 20_000 }).catch(() => {
+        throw new StepError("หน้าสถานะไม่อยู่ในขั้นร้านรับ");
+      });
+      return;
+    case "pre-ready":
+      return void (await phase("ready"));
+    case "pre-expired":
+      await phase("expired");
+      await visibleEl(page, tid("pos-qr-order-expired"), 0, 5_000);
+      return;
+    case "pre-rejected":
+      await phase("rejected");
+      await visibleEl(page, tid("pos-qr-order-refund"), 0, 5_000);
+      return;
+    default:
+      break;
+  }
+  const F = p27Fx();
+  if (state.startsWith("orders-")) {
+    await visibleEl(page, tid("pos-ord-root"), 0, 15_000);
+    switch (state) {
+      case "orders-qr-rows":
+        // ≥ 1024 = แถวในราง · 390 = ตัวเลือกช่องทาง + แท็บคอลัมน์ "กำลังเตรียม" (การ์ดรอบ QR อยู่คอลัมน์กำลังเตรียม/พร้อม)
+        if (device === "mobile") {
+          await page.select(tid("pos-ord-ch-select"), "qr-table");
+          await clickEl(page, tid("pos-ord-coltab-preparing"));
+        } else await clickEl(page, tid("pos-ord-ch-qr-table"));
+        await visibleEl(page, tidPrefix("pos-ord-qr-round-"), 0, 20_000);
+        return;
+      case "orders-awaiting":
+        await visibleEl(page, tid("pos-ord-awaiting"), 0, 20_000);
+        return;
+      case "orders-prepaid":
+        await visibleEl(page, tidPrefix("pos-ord-prepaid-"), 0, 20_000);
+        await clickEl(page, tid(`pos-ord-card-${F?.orders.paid?.code ?? "-"}`));
+        await visibleEl(page, tid("pos-ord-panel"), 0, 15_000);
+        return;
+      case "orders-claim":
+        await clickEl(page, tid(`pos-ord-await-card-${F?.orders.claimed?.code ?? "-"}`));
+        await visibleEl(page, tid("pos-ord-confirm-pay"), 0, 15_000);
+        return;
+      case "orders-late-banner":
+        await visibleEl(page, tid(`pos-ord-late-${F?.orders.late?.code ?? "-"}`), 0, 20_000);
+        return;
+    }
+  }
+  if (state === "tables-qr-dialog") {
+    await clickEl(page, tid("pos-tbl-panel-qr"));
+    await visibleEl(page, `${tid("pos-tbl-qr-image")}[data-ready="1"]`, 0, 15_000);
+    return;
+  }
+  if (state === "tables-qr-print") {
+    await clickEl(page, tid("pos-tbl-print-qr"));
+    await visibleEl(page, tid("pos-tbl-qr-sheet"), 0, 15_000);
+    await sleep(800);
+    return;
+  }
+  if (state === "settings-channel-qr-table" || state === "settings-channel-qr-order") {
+    const code = state === "settings-channel-qr-table" ? "QR_TABLE" : "QR_ORDER";
+    await clickEl(page, tid(`pos-channel-open-${code}`));
+    await visibleEl(page, `${tid("pos-channel-qr")}[data-code="${code}"]`, 0, 15_000);
+    if (code === "QR_ORDER") await visibleEl(page, `${tid("pos-channel-qr-link-image")}[data-ready="1"]`, 0, 15_000).catch(() => undefined);
+    return;
+  }
+}
+async function cleanupP27(): Promise<void> {
+  const ord = await import("@/lib/modules/pos/order");
+  const sp = await import("@/lib/modules/pos/table-split");
+  let ctxA: Awaited<ReturnType<typeof p27Ctx>> | null = null;
+  try {
+    ctxA = await p27Ctx();
+  } catch (e) {
+    P27.ok = false;
+    P27.log.push(`ผู้ใช้เจ้าของ: ${e instanceof Error ? e.message.slice(0, 100) : String(e)}`);
+  }
+  const step = async (what: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (e) {
+      P27.ok = false;
+      P27.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 140) : String(e)}`);
+    }
+  };
+  if (ctxA) {
+    const { ctx, actor } = ctxA;
+    await step("คืนค่าช่องทาง", async () => {
+      for (const [code, c] of Object.entries(P27.channels)) {
+        const back = c.pausedUntil && Date.parse(c.pausedUntil) > Date.now() ? c.pausedUntil : null;
+        await ord.setChannelOrderSettings(ctx, actor, { channelId: c.id, pausedUntil: back, ...(code === "QR_ORDER" ? { autoAccept: c.autoAccept } : {}) });
+        if (!c.active) await (await import("@/lib/modules/pos/channel")).saveChannel(ctx, actor, { id: c.id, name: c.name, active: false });
+      }
+      if (Object.keys(P27.channels).length) P27.log.push("คืนค่าช่องทาง QR_TABLE/QR_ORDER");
+      P27.channels = {};
+      P27.pausedNow = null;
+    });
+    await step("ยกเลิกแผนแยกบิล", async () => {
+      for (const sid of P27.sessions) {
+        const open = await sp.openSplitOfSession(prisma, { tenantId: T.tenantId, sessionId: sid });
+        if (open) await sp.registerCancelSplit(ctx, actor, { splitId: open.id, expectedVersion: open.version });
+      }
+    });
+    await step("ส่งมอบออเดอร์ที่มีบิล", async () => {
+      const rows = P27.orderIds.length ? await prisma.posOrder.findMany({ where: { tenantId: T.tenantId, id: { in: P27.orderIds }, saleId: { not: null } }, select: { id: true, status: true } }) : [];
+      for (const o of rows) {
+        if (o.status === "ACCEPTED") await ord.markPreparing(ctx, actor, { id: o.id });
+        if (o.status === "ACCEPTED" || o.status === "PREPARING") await ord.markReady(ctx, actor, { id: o.id });
+        if (o.status !== "HANDED") await ord.handOver(ctx, actor, { id: o.id });
+      }
+      if (rows.length) P27.log.push(`ออเดอร์มีบิล ${rows.length} ใบ = ส่งมอบแล้วเก็บไว้ (บิลพร้อมเพย์ไม่ลบ)`);
+    });
+  }
+  await step("ลบชุดโต๊ะ", async () => {
+    if (P27.zones.length) P27.log.push(`ลบ: ${await deleteP24uRows(P27.zones)}`);
+    P27.zones = [];
+    if (P27.stationsBefore) {
+      const st = await prisma.kdsStation.deleteMany({ where: { tenantId: T.tenantId, unitId, id: { notIn: P27.stationsBefore }, orderItems: { none: {} }, menuItems: { none: {} } } });
+      if (st.count) P27.log.push(`สถานีครัวที่รอบสร้างให้ ${st.count}`);
+    }
+  });
+  await step("ลบออเดอร์", async () => {
+    const tenantId = T.tenantId;
+    const withSale = P27.orderIds.length ? (await prisma.posOrder.findMany({ where: { tenantId, id: { in: P27.orderIds }, saleId: { not: null } }, select: { id: true } })).map((x) => x.id) : [];
+    const kill = P27.orderIds.filter((x) => !withSale.includes(x));
+    if (!kill.length) return;
+    const intents = (await prisma.posPaymentIntent.findMany({ where: { tenantId, orderId: { in: kill } }, select: { id: true } })).map((x) => x.id);
+    const ids = [...kill, ...intents];
+    const ev = (await prisma.posOrderEvent.deleteMany({ where: { tenantId, orderId: { in: kill } } })).count;
+    const ln = (await prisma.posOrderLine.deleteMany({ where: { tenantId, orderId: { in: kill } } })).count;
+    const ob = (await prisma.outboxEvent.deleteMany({ where: { tenantId, OR: ids.map((id) => ({ idempotencyKey: { contains: id } })) } })).count;
+    const au = (await prisma.auditLog.deleteMany({ where: { tenantId, targetId: { in: ids } } })).count;
+    const ops = (await prisma.opsEvent.deleteMany({ where: { tenantId, createdAt: { gte: RUN_STARTED }, OR: ids.map((id) => ({ detail: { contains: id } })) } })).count;
+    const pi = (await prisma.posPaymentIntent.deleteMany({ where: { tenantId, id: { in: intents } } })).count;
+    const od = (await prisma.posOrder.deleteMany({ where: { tenantId, id: { in: kill }, saleId: null } })).count;
+    P27.log.push(`ลบ: ออเดอร์ ${od} · บรรทัด ${ln} · เหตุการณ์ ${ev} · ใบขอรับเงิน ${pi} · outbox ${ob} · audit ${au} · ops ${ops}`);
+    P27.orderIds = withSale;
+  });
+  await step("ลบลิงก์ที่รอบสร้าง", async () => {
+    if (!P27.linkCreatedId) return;
+    await prisma.posOrderLink.deleteMany({ where: { tenantId: T.tenantId, id: P27.linkCreatedId } });
+    await prisma.auditLog.deleteMany({ where: { tenantId: T.tenantId, targetId: P27.linkCreatedId } });
+    P27.log.push("ลบลิงก์สั่งล่วงหน้าที่รอบสร้าง");
+    P27.linkCreatedId = null;
+  });
+  await step("ลบถังเพดาน", async () => {
+    const nb = (await prisma.chatRateBucket.deleteMany({ where: { key: { startsWith: `pos:qrSubmit:${P27_TAG}` } } })).count;
+    if (nb) P27.log.push(`ถังเพดาน ${nb}`);
+  });
+  P27.sessions = [];
+  P27.done = false;
+  P27S.fx = null;
+}
+// ◂ POS P2.7U
+
 // ═══════════════════ POS P2.10 ▸ จอลูกค้า (มติ 11 · wo p2.10 · --states · เจ้าของร้าน · th + LOCALE=en) ═══════════════════
 //   fixture (ensureP210Fixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
 //   • เครื่อง P210_DEV "เคาน์เตอร์ 1" (registerDevice · เจ้าของ) — หน้าตั้งค่าเลือกเครื่องนี้ (localStorage) · จอที่จับคู่กับเครื่องนี้ = ภาพจอทุกสถานะที่ป้อนด้วย publishDisplayState
@@ -8098,6 +8679,12 @@ try {
           await prepP210(page, job.state);
           if (first) console.log(P210.error ? `  ⚠️ fixture P2.10: ${P210.error}` : `  fixture P2.10: ${P210.log.join(" · ")}`);
         }
+        // POS P2.7U ▸ fixture/หัว x-forwarded-for/พักรับก่อนภาพ closed (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP27State(job.state)) {
+          const first = !P27.done && !P27.error;
+          await prepP27(page, job.state);
+          if (first) console.log(P27.error ? `  ⚠️ fixture P2.7U: ${P27.error}` : `  fixture P2.7U: ${P27.log.join(" · ")}`);
+        }
         // POS P2.13 ▸ กวาดซาก/ลบคีย์ UI ของภาพก่อนหน้า/คีย์ fixture ของรายการ ก่อนเปิดหน้า (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (isP213State(job.state)) {
           const before = P213.log.length;
@@ -8109,7 +8696,7 @@ try {
           await ensureP24uFixture();
           console.log(P24U.error ? `  ⚠️ fixture P2.4U: ${P24U.error}` : `  fixture P2.4U: ${P24U.log.join(" · ")}`);
         }
-        const resp = await page.goto(`${BASE}${isP26uState(job.state) ? p26uPath(job) /* POS P2.6U */ : job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+        const resp = await page.goto(`${BASE}${isP27State(job.state) ? p27Path(job.state) /* POS P2.7U */ : isP26uState(job.state) ? p26uPath(job) /* POS P2.6U */ : job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
         let stepError: string | null = null;
@@ -8198,6 +8785,8 @@ try {
         if (job.state && P212U_PRINT.has(job.state)) await page.emulateMediaType(null).catch(() => undefined); // POS P2.12U ▸ คืนสื่อ screen หลังภาพหน้าพิมพ์ ◂
         if (isP212uState(job.state) && job === jobs.filter((j) => isP212uState(j.state)).at(-1)) await cleanupP212u(); // POS P2.12U
         if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
+        if ((job.state === "table-closed" || job.state === "pre-closed") && P27.pausedNow) await p27Pause(null).catch(() => undefined); // POS P2.7U ▸ คืนพักรับหลังภาพ closed ◂
+        if (isP27State(job.state) && job === jobs.filter((j) => isP27State(j.state)).at(-1)) await cleanupP27(); // POS P2.7U
         if (isP213State(job.state) && job === jobs.filter((j) => isP213State(j.state)).at(-1)) await cleanupP213(); // POS P2.13
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
@@ -8230,6 +8819,8 @@ try {
 } catch (e) {
   fatal = e instanceof Fatal ? e.message : `ผิดพลาดกลางคัน — ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`;
 } finally {
+  await cleanupP27().catch((e: unknown) => console.error(`❌ เก็บกวาด P2.7U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`)); // POS P2.7U
+  if (P27.log.length) console.error(`${P27.ok ? "🧹" : "⚠️"} P2.7U: ${P27.log.join(" · ")}`);
   await cleanupP210(); // POS P2.10 (ก่อนปิดกะ/เพิกถอนเครื่องของรอบ — ยกเลิกจับคู่จอ · ปิดกะ + เพิกถอนเครื่อง P2.10)
   if (P210.log.length) console.error(`${P210.ok ? "🧹" : "⚠️"} P2.10: ${P210.log.join(" · ")}`);
   if (!P210.ok) failures++;
