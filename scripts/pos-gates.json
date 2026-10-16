@@ -140,11 +140,30 @@
     },
     {
       "suite": "qc-pos-p2.7",
-      "mode": "forced"
+      "mode": "forced",
+      "accepted": {
+        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
+        "owner": "controller (re-pin at merge)",
+        "opRef": "P2.14 lane-pin wip",
+        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
+        "checks": [
+          "P2.7-ST2",
+          "P2.7-ST3"
+        ]
+      }
     },
     {
       "suite": "qc-pos-p2.8",
-      "mode": "forced"
+      "mode": "forced",
+      "accepted": {
+        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
+        "owner": "controller (re-pin at merge)",
+        "opRef": "P2.14 lane-pin wip",
+        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
+        "checks": [
+          "P2.8-ST6"
+        ]
+      }
     },
     {
       "suite": "qc-pos-p2.9",
@@ -159,17 +178,44 @@
     {
       "suite": "qc-pos-p2.10",
       "mode": "forced",
-      "needs": "pos-seed"
+      "needs": "pos-seed",
+      "accepted": {
+        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
+        "owner": "controller (re-pin at merge)",
+        "opRef": "P2.14 lane-pin wip",
+        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
+        "checks": [
+          "P2.10-ST2"
+        ]
+      }
     },
     {
       "suite": "qc-pos-p2.11",
       "mode": "forced",
-      "needs": "pos-seed"
+      "needs": "pos-seed",
+      "accepted": {
+        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
+        "owner": "controller (re-pin at merge)",
+        "opRef": "P2.14 lane-pin wip",
+        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
+        "checks": [
+          "P2.11-ST4"
+        ]
+      }
     },
     {
       "suite": "qc-pos-p2.12",
       "mode": "forced",
-      "needs": "pos-seed"
+      "needs": "pos-seed",
+      "accepted": {
+        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
+        "owner": "controller (re-pin at merge)",
+        "opRef": "P2.14 lane-pin wip",
+        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
+        "checks": [
+          "P2.12-ST1"
+        ]
+      }
     },
     {
       "suite": "qc-pos-p2.13",
@@ -177,7 +223,17 @@
     },
     {
       "suite": "qc-pos-p2.14",
-      "mode": "forced"
+      "mode": "forced",
+      "accepted": {
+        "reason": "H1 (HANDOVER-2026-10-xx-POS-P2.md) and H3 (pos-P2.14-parity.md) are written by the controller at phase close (work order: only H1 H3 may stay red)",
+        "owner": "controller (phase close docs)",
+        "opRef": "P2.14 H1/H3 controller docs",
+        "evidence": "work order pos-prompt-accountB-P2.14-S.md 'Done =' · builder runs ledger/wo-notes/pos-P2.14.md §7",
+        "checks": [
+          "P2.14-H1",
+          "P2.14-H3"
+        ]
+      }
     },
     {
       "suite": "qc-pos-account",
@@ -213,7 +269,16 @@
     },
     {
       "suite": "qc-hf-fu",
-      "mode": "forced"
+      "mode": "forced",
+      "accepted": {
+        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
+        "owner": "controller (re-pin at merge)",
+        "opRef": "P2.14 lane-pin wip",
+        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
+        "checks": [
+          "HF-FU-ST1"
+        ]
+      }
     },
     {
       "suite": "qc-hf-hr-privacy",
@@ -285,11 +350,23 @@
     },
     {
       "suite": "qc-account-api-ai-external",
-      "mode": "unforced"
+      "mode": "unforced",
+      "accepted": {
+        "reason": "crashes at base 64923c13 (reading 'slice') — account-api lane fixes it; run on that lane before deploy",
+        "owner": "account-api (ACCOUNT-API lane)",
+        "opRef": "P2.14 CD-B7 account-api ai-external",
+        "evidence": "controller base run /root/pos-runs/aiext-base-c-20261016T064733Z/qc-account-api-ai-external.log (same crash at 64923c13)"
+      }
     },
     {
       "suite": "qc-account-api-ai-skill",
-      "mode": "unforced"
+      "mode": "unforced",
+      "accepted": {
+        "reason": "QC4 seed tenant has no account system ('ยังไม่ได้เปิดระบบบัญชี') — seed-only failure; account-api lane runs it on the acc-v2 seed before deploy",
+        "owner": "account-api (ACCOUNT-API lane)",
+        "opRef": "P2.14 CD-B7 account-api ai-skill",
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-account-api-ai-skill.log (E1-K2.x act 'ยังไม่ได้เปิดระบบบัญชี') · green run = ACCOUNT-API lane"
+      }
     },
     {
       "suite": "qc-account-api-core",
@@ -314,7 +391,8 @@
       "accepted": {
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (QC4 has no acc-v2 seed tenant: setup crash 'ไม่พบระบบที่จะผูกคีย์ในร้านนี้' · run 16 Oct p214-builder/accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
-        "opRef": "acc-v2-seed account-api ×5"
+        "opRef": "acc-v2-seed account-api ×5",
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
       }
     },
     {
@@ -324,7 +402,8 @@
       "accepted": {
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
-        "opRef": "acc-v2-seed account-api ×5"
+        "opRef": "acc-v2-seed account-api ×5",
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
       }
     },
     {
@@ -334,7 +413,8 @@
       "accepted": {
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
-        "opRef": "acc-v2-seed account-api ×5"
+        "opRef": "acc-v2-seed account-api ×5",
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
       }
     },
     {
@@ -344,7 +424,8 @@
       "accepted": {
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
-        "opRef": "acc-v2-seed account-api ×5"
+        "opRef": "acc-v2-seed account-api ×5",
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
       }
     },
     {
@@ -352,9 +433,10 @@
       "mode": "unforced",
       "needs": "acc-v2-seed",
       "accepted": {
-        "reason": "needs acc-v2 seed + a served QC build (acc-v2-serve.sh :3215 — POS lanes never build/serve) — green on the ACCOUNT-API lane (0/9 on QC4 · run 16 Oct accv2-20261016T045411Z)",
-        "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
-        "opRef": "acc-v2-seed account-api ×5"
+        "reason": "needs a served build — account-api lane runs it before deploy (POS lanes never build/serve; also needs the acc-v2 seed)",
+        "owner": "account-api (ACCOUNT-API lane)",
+        "opRef": "acc-v2-seed account-api ×5",
+        "evidence": "QC4 0/9 /root/pos-runs/p214-builder/accv2-20261016T045411Z · gate set p214-close-shark-pos-d-20261016T053356Z · green run = ACCOUNT-API lane with acc-v2-serve.sh"
       }
     },
     {
@@ -396,7 +478,8 @@
       "accepted": {
         "reason": "QC4 has no acc-v2 seed (SIAM DIVE QC shop) and POS lanes must not reseed QC4; PL1.x document assertions read 0 documents (65/79 since P1, HANDOVER-2026-10-10-POS-P1.md §2).",
         "owner": "account module (acc-v2 seed owner)",
-        "opRef": "qc-acc-v2-pos-lines"
+        "opRef": "qc-acc-v2-pos-lines",
+        "evidence": "HANDOVER-2026-10-10-POS-P1.md §2 (R14 exception, 65/79 since P1) · gate set p214-close-shark-pos-d-20261016T053356Z/qc-acc-v2-pos-lines.log (PL1.x 0 documents)"
       }
     },
     {
@@ -406,7 +489,8 @@
       "accepted": {
         "reason": "Setup crash on QC4: TypeError reading 'role' of null — member-expected.json does not match the QC4 member seed; POS must not reseed.",
         "owner": "member module",
-        "opRef": "qc-member-m2.6/m2.7/m2.8"
+        "opRef": "qc-member-m2.6/m2.7/m2.8",
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.6.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
       }
     },
     {
@@ -416,7 +500,8 @@
       "accepted": {
         "reason": "Setup crash on QC4 (same as m2.6): member seed on QC4 does not match member-expected.json.",
         "owner": "member module",
-        "opRef": "qc-member-m2.6/m2.7/m2.8"
+        "opRef": "qc-member-m2.6/m2.7/m2.8",
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
       }
     },
     {
@@ -426,7 +511,8 @@
       "accepted": {
         "reason": "Setup crash on QC4 (same as m2.6): member seed on QC4 does not match member-expected.json.",
         "owner": "member module",
-        "opRef": "qc-member-m2.6/m2.7/m2.8"
+        "opRef": "qc-member-m2.6/m2.7/m2.8",
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.8.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
       }
     },
     {
@@ -436,7 +522,8 @@
       "accepted": {
         "reason": "Setup crash on QC4 (seed does not match member-expected.json) — S6.2/S6.3 never ran; p1.18 K4b covers the core rule meanwhile.",
         "owner": "member module",
-        "opRef": "m1.7 ล้มตอน setup บน QC4"
+        "opRef": "m1.7 ล้มตอน setup บน QC4",
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m1.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
       }
     }
   ],
