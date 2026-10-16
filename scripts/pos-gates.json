@@ -1,0 +1,460 @@
+{
+  "$schema": "pos-gates/1",
+  "$note": "P2 gate set = the acceptance of 'qc:all เขียว' for POS (brief P2.14 §10 ruling 5). Data only; the runner scripts/pos-gates-all.sh reads this file. Whole-repo qc:all stays one CONTROLLER-RUN on a private Neon branch before deploy (O27).",
+  "$owner": "POS RUN controller (oracle P2.14 writes this list; later cards append their qc-pos-* file — G1 of qc-pos-p2.14 fails when a qc-pos-*/qc-hf-* file is missing here)",
+  "$modes": "forced = the suite has a SKIP gate (QC_FORCE) and runs with QC_FORCE=1 so a missing piece is red, not skipped · unforced = the suite has no SKIP gate (QC_FORCE has no effect)",
+  "$runner": {
+    "suite": "forced: bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<suite>.mts · unforced: the same without env QC_FORCE=1",
+    "command": "bash -c <run> from the tree root",
+    "out": "/root/pos-runs/p214-close-<tree>-<UTC stamp>/ : HEAD.txt (line 1 = tree=<path> head=<short sha> dirty=<n> <UTC time>) · <name>.log (line 1 = HEAD.txt, last line = EXIT <code>) · SUMMARY.txt (one line '<name> <exit code>' per entry in manifest order, last line DONE)",
+    "dry": "--dry prints one line 'PLAN <name> <forced|unforced|command>' per entry in manifest order and runs nothing",
+    "rules": "never export CI (with-gate-lock.sh skips flock when CI is set) · unset CI VERCEL at the top · QC4 only via qc4.sh · POS lock /tmp/shark-gate-pos.lock · typecheck on /tmp/pos-gate.lock · absolute paths (systemd-run does not inherit cwd)"
+  },
+  "suites": [
+    {
+      "suite": "qc-pos-p0.2",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-p1.1",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.2",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.3",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.4",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.5",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.6",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.7",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.8",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.9",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.9b",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.10",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.10u-print",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-p1.11",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.12",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.13",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.14",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.15",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p1.16",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.17",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p1.18",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.1",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p2.2",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p2.3",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.4",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.5",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.6",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.7",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.8",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.9",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p2.9b",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p2.10",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p2.11",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p2.12",
+      "mode": "forced",
+      "needs": "pos-seed"
+    },
+    {
+      "suite": "qc-pos-p2.13",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p2.14",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-account",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-api-skill",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-closeday",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-coupon",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-inventory",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-products",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-register",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hf-apiv1-scope",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hf-fu",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-hf-hr-privacy",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hf-inventory-atomic",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hf-inventory-authz",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hf-o23",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-hf-pos-page-authz",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hf-reports-authz",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hf-tx",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-restaurant",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-restaurant-money",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-restaurant-pay",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-restaurant-void",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-shop",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-shop-refund",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-hotel-money",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ticket-money",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-subscription-money",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-cpa",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-ai-external",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-ai-skill",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-core",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-docs",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-keys",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-openapi",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-read-docs",
+      "mode": "unforced",
+      "needs": "acc-v2-seed"
+    },
+    {
+      "suite": "qc-account-api-read-finance",
+      "mode": "unforced",
+      "needs": "acc-v2-seed"
+    },
+    {
+      "suite": "qc-account-api-read-gl",
+      "mode": "unforced",
+      "needs": "acc-v2-seed"
+    },
+    {
+      "suite": "qc-account-api-read-master",
+      "mode": "unforced",
+      "needs": "acc-v2-seed"
+    },
+    {
+      "suite": "qc-account-api-settings",
+      "mode": "unforced",
+      "needs": "acc-v2-seed"
+    },
+    {
+      "suite": "qc-account-api-webhooks",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-write-docs",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-write-finance",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-write-gl",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-write-master",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-write-ops",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-write-payments",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-account-api-write-settings",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-acc-v2-pos-lines",
+      "mode": "unforced",
+      "needs": "acc-v2-seed",
+      "accepted": {
+        "reason": "QC4 has no acc-v2 seed (SIAM DIVE QC shop) and POS lanes must not reseed QC4; PL1.x document assertions read 0 documents (65/79 since P1, HANDOVER-2026-10-10-POS-P1.md §2).",
+        "owner": "account module (acc-v2 seed owner)",
+        "opRef": "qc-acc-v2-pos-lines"
+      }
+    },
+    {
+      "suite": "qc-member-m2.6",
+      "mode": "unforced",
+      "needs": "member-seed",
+      "accepted": {
+        "reason": "Setup crash on QC4: TypeError reading 'role' of null — member-expected.json does not match the QC4 member seed; POS must not reseed.",
+        "owner": "member module",
+        "opRef": "qc-member-m2.6/m2.7/m2.8"
+      }
+    },
+    {
+      "suite": "qc-member-m2.7",
+      "mode": "unforced",
+      "needs": "member-seed",
+      "accepted": {
+        "reason": "Setup crash on QC4 (same as m2.6): member seed on QC4 does not match member-expected.json.",
+        "owner": "member module",
+        "opRef": "qc-member-m2.6/m2.7/m2.8"
+      }
+    },
+    {
+      "suite": "qc-member-m2.8",
+      "mode": "unforced",
+      "needs": "member-seed",
+      "accepted": {
+        "reason": "Setup crash on QC4 (same as m2.6): member seed on QC4 does not match member-expected.json.",
+        "owner": "member module",
+        "opRef": "qc-member-m2.6/m2.7/m2.8"
+      }
+    },
+    {
+      "suite": "qc-member-m1.7",
+      "mode": "unforced",
+      "needs": "member-seed",
+      "accepted": {
+        "reason": "Setup crash on QC4 (seed does not match member-expected.json) — S6.2/S6.3 never ran; p1.18 K4b covers the core rule meanwhile.",
+        "owner": "member module",
+        "opRef": "m1.7 ล้มตอน setup บน QC4"
+      }
+    }
+  ],
+  "commands": [
+    {
+      "name": "fitness-noenv",
+      "run": "pnpm exec tsx scripts/fitness.mts",
+      "why": "X12: fitness without .env"
+    },
+    {
+      "name": "fitness-qc4",
+      "run": "bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts",
+      "why": "fitness with the QC4 env"
+    },
+    {
+      "name": "fitness-pos",
+      "run": "pnpm exec tsx scripts/fitness-pos.mts",
+      "why": "F15.x POS fitness (not a qc-* file, so qc:all never runs it)"
+    },
+    {
+      "name": "gen-check",
+      "run": "pnpm exec tsx scripts/gen-pos-api-docs.mts --check",
+      "why": "docs/api/POS-API.md + skill endpoints in sync with the registry"
+    },
+    {
+      "name": "typecheck",
+      "run": "env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck",
+      "why": "heap 8192 / ISO_MEM 10500M since P2.7 (3584 default and 5632 OOM)"
+    },
+    {
+      "name": "visual-list",
+      "run": "pnpm exec tsx scripts/visual-pos.mts --list",
+      "why": "state ids of the visual harness (no DB, no server)"
+    },
+    {
+      "name": "visual-dry-th",
+      "run": "pnpm exec tsx scripts/visual-pos.mts all --states --dry --user owner",
+      "why": "shot plan th (no DB, no server, no chromium)"
+    },
+    {
+      "name": "visual-dry-en",
+      "run": "env LOCALE=en pnpm exec tsx scripts/visual-pos.mts all --states --dry --user owner",
+      "why": "shot plan en (LOCALE inside the command, never before iso.sh)"
+    }
+  ]
+}
