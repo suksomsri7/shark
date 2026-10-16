@@ -123,12 +123,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         return [
           { href: s, label: posNav("nav.overview") },
           { href: `${s}/pos/register`, label: posNav("nav.register") },
+          // POS P2.14 ▸ U3 (qc-nav-functions S5): หน้าที่เปิดใช้จริงแล้ว — โต๊ะ (P2.4U) · ออเดอร์ออนไลน์ (P2.8U) · จอครัว (P2.6U) · โปรราคา (P2.2U) · พิมพ์รายงาน (P2.12U) — ป้ายจาก messages ที่มีอยู่ ◂
+          { href: `${s}/pos/tables`, label: posNav("register.tabs.tables") }, // POS P2.14 ▸ U3 ◂
+          { href: `${s}/pos/orders`, label: posNav("register.tabs.onlineOrders") }, // POS P2.14 ▸ U3 ◂
+          { href: `${s}/pos/kds`, label: posNav("kds.title") }, // POS P2.14 ▸ U3 ◂
           { href: `${s}/pos/products`, label: posNav("nav.products") },
+          { href: `${s}/pos/products/price-rules`, label: posNav("price.rule.title") }, // POS P2.14 ▸ U3 ◂
           { href: `${s}/pos/stock`, label: posNav("nav.stock") }, // POS P1.14 U ▸ ต้องตรงกับ posTabs ◂
           { href: `${s}/pos/sales`, label: posNav("nav.sales") },
           { href: `${s}/pos/shifts`, label: posNav("nav.shifts") }, // POS P1.9 U ▸ ต้องตรงกับ posTabs ◂
           { href: `${s}/pos/close`, label: posNav("nav.close") },
           { href: `${s}/pos/reports`, label: posNav("nav.reports") }, // POS P1.17 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/reports/print`, label: posNav("report.print.button") }, // POS P2.14 ▸ U3 ◂
           { href: `${s}/pos/settings`, label: posNav("nav.settings") }, // POS P1.10 U ▸ ต้องตรงกับ posTabs ◂
         ];
       case "ACCOUNT":
