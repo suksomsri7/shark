@@ -7341,6 +7341,14 @@ async function runP28uState(page: Any, state: P28uOrdersKey | P28uRegKey, device
       await visibleEl(page, tid("pos-ord-manual-sheet"), 0, 10_000);
       await visibleEl(page, tid(`pos-ord-man-product-${QC_IDS.amer}`), 0, 15_000);
       await clickEl(page, tid(`pos-ord-man-product-${QC_IDS.amer}`));
+      // POS P2.14 ▸ UI-7 (P2.8U V2): clickEl เลื่อนรายการสินค้าในแผ่นให้แถวอยู่กลาง ⇒ คืน scrollTop 0 ของกล่องเลื่อนแรก (ภาพ = ที่ผู้ใช้เห็นตอนเปิด) ◂
+      await page
+        .$eval(tid(`pos-ord-man-product-${QC_IDS.amer}`), (e: Element) => {
+          let box = e.parentElement;
+          while (box && !(box.scrollHeight > box.clientHeight && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+          if (box) box.scrollTop = 0;
+        })
+        .catch(() => undefined);
       await page
         .waitForFunction(() => /\d/.test(document.querySelector('[data-testid="pos-ord-man-total"]')?.textContent ?? ""), { timeout: 15_000 })
         .catch(() => {

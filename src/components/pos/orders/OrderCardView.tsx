@@ -176,7 +176,7 @@ export function OrderCardView({
               className="btn btn-primary h-11 grow-[3] whitespace-nowrap rounded-[12px] px-1.5 text-[14px] font-bold disabled:opacity-50 @max-[140px]:px-1 @max-[140px]:text-[13px]"
               onClick={onAccept}
             >
-              {t("actions.accept")}
+              {t("actions.acceptCard") /* POS P2.14 ▸ UI-7: ป้ายสั้นบนการ์ด (en "Accept") — การ์ดแคบไม่ดัน "ปฏิเสธ" ลงบรรทัด · แผงคงป้ายเต็ม ◂ */}
             </button>
             {!webPaid && (
               <button

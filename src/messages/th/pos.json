@@ -3919,7 +3919,8 @@
       "viewBill": "ดูบิล",
       "printLabel": "พิมพ์ใบปะหน้า",
       "keyOrder": "+ คีย์ออเดอร์",
-      "viewBillNo": "ดูบิล {no}"
+      "viewBillNo": "ดูบิล {no}",
+      "acceptCard": "รับออเดอร์"
     },
     "status": {
       "NEW": "ใหม่",

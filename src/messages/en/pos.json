@@ -3919,7 +3919,8 @@
       "viewBill": "View bill",
       "printLabel": "Print shipping label",
       "keyOrder": "+ Key in order",
-      "viewBillNo": "View bill {no}"
+      "viewBillNo": "View bill {no}",
+      "acceptCard": "Accept"
     },
     "status": {
       "NEW": "New",
