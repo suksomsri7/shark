@@ -101,3 +101,15 @@ Code commit b9e04e68 on top of ac59ce6f; this notes commit is the final head (ty
 | visual-pos p2.7 --states --dry th / en (iso) | exit 0 · 79 / 61 shots | f2-visual-dry-th/en |
 | fitness-pos · qc-pos-p2.7 --no-db (pre-commit/static) | 8/8 · 4/4 | (console) |
 | typecheck (8192 · once at the final head = this notes commit, dirty 0) | see `typecheck-4.log` | typecheck-4 |
+
+## Fix round 3 (vis90 at ac59ce6f · script only · `// POS P2.7U fix3 ▸ … ◂`)
+Commit 377ad30a (`scripts/visual-pos.mts`); this notes commit is the final head (typecheck at it). No app code change.
+- `settings-channel-qr-table` / `settings-channel-qr-order`: after the drawer opens (and the QR_ORDER link-image wait), the step scrolls the drawer's own scroll container so `pos-channel-qr` sits at the top before the shot (fallback `scrollIntoView` if no scrolling ancestor).
+- New state `settings-channel-qr-order-link` (same drawer, scrolled to `pos-channel-qr-link`: QR image + URL + copy + change link, nothing clicked) at 1440/1024/390.
+- Dry shots: th **79 → 82**, en **61 → 62**.
+
+| gate (head 377ad30a · dirty 0) | result | log `runs/` |
+|---|---|---|
+| visual-pos p2.7 --states --dry th / en (iso) | exit 0 · 82 / 62 shots | f3-visual-dry-th/en |
+| typecheck (8192 · once at the final head = this notes commit, dirty 0) | see `typecheck-5.log` | typecheck-5 |
+Controller re-shoot: `--states --state settings-channel-qr-table,settings-channel-qr-order,settings-channel-qr-order-link`.
