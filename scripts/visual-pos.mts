@@ -946,7 +946,7 @@ const EMPTY_UNIT = { id: `${EMPTY_PREFIX}${process.pid}`, slug: `pos-qc-vis-empt
 const EMPTY_POS_NAME = "ขายหน้าร้าน · แคตตาล็อกว่าง (ภาพ QC)";
 const EMPTY_DEVICE_ID = `${EMPTY_PREFIX}${process.pid}`;
 const EMPTY_PATH_PLACEHOLDER = `/app/sys/<empty-pos>/pos/register?unit=${EMPTY_UNIT.id}`;
-const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
+const EN_MOBILE_PAGES = new Set<string>(["register", "sales", "receipt-public", "display", "qr-public"]); const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop" || (v.name === "mobile" && pages.some((x) => EN_MOBILE_PAGES.has(x)))) : [...POS_VIEWPORTS]; // POS P2.14 ▸ มติ 6 (V1): LOCALE=en = 1440 ทุกหน้า + 390 ของหน้าขาย/จอชำระ/บิล/หน้าสาธารณะ (EN_MOBILE_PAGES · แบบ KDS G3b · หน้าอื่นตัด 390 ที่ jobsPlanned) ◂
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
 const stockStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "stock" || /^p1\.14/i.test(WO));
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
@@ -1133,7 +1133,7 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           .map((v): Job => ({ page: p, v, state: st.key, ...(st.key === "register-empty-catalogue" ? { path: EMPTY_PATH_PLACEHOLDER } : {}), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
     : viewports.map((v): Job => ({ page: p, v, state: null, file: LOCALE_EN ? fileOf(p, v.w, v.h).replace(/\.png$/, "-en.png") : fileOf(p, v.w, v.h) })),
-);
+).filter((j) => !(LOCALE_EN && j.v.name === "mobile" && viewports.some((v) => v.name === "mobile") && !EN_MOBILE_PAGES.has(j.page) && j.page !== "kds")); // POS P2.14 ▸ มติ 6: 390 ภาษาอังกฤษเฉพาะ EN_MOBILE_PAGES (+ kds G3b เดิม) ◂
 // POS ผู้คุม 10 ต.ค. ▸ --state a,b,c = ถ่ายเฉพาะสถานะที่ระบุ (ต้องคู่กับ --states) — รอบแก้ถ่ายเฉพาะ state ที่ใบงานแตะ · รอบ merge/ปิดเฟสถ่ายเต็ม
 //   คีย์ที่ไม่อยู่ในแผนของหน้า/ผู้ใช้/ภาษานี้ = หยุดพร้อมรายชื่อที่ใช้ได้ (กันพิมพ์ผิดแล้วได้ 0 ภาพเงียบ ๆ) ◂
 const onlyStates = flag("--state")?.split(",").map((x) => x.trim()).filter(Boolean) ?? null;
