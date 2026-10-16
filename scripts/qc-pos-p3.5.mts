@@ -103,6 +103,7 @@ const CHECKS: readonly Def[] = [
   D("PY4", "X4", "[R9] งวดเดือนนี้มีรอบจ่ายแล้ว (createPayrollRun) ⇒ C2 ขายใหม่ → ส่ง ⇒ periodKey = เดือนถัดไป (เดือนแรกที่ไม่มีรอบ) COMMISSION 500"),
   D("PY5", "X4", "[R9] void บิลที่ส่งแล้ว ⇒ REVERSE เดือนนี้ → ส่ง ⇒ C1 ใบใหม่ DEDUCTION amount = |Σ| (บวก) · periodKey เดือนถัดไป · ไม่แตะใบเดิม"),
   D("PY6", "X2", "[R9 R11] C6 (ไม่มีพนักงาน) + MGR (มีพนักงานแต่ไม่มีโปรไฟล์เงินเดือน) ⇒ แถวยัง OPEN · รายงาน commission noEmployee true · แถวรายงานตรงสมุด (accrued reversed net sent open) · ทุกใบของ POS crmCommissionId null · adjustmentStatuses คืน PENDING runId null"),
+  D("PY7", "X4", "[fix2 N1 · ORACLE-ADD ผู้คุม 17 ต.ค.] รอบจ่ายถูกสร้างระหว่างส่งกับอนุมัติ: ใบ PENDING ของ C2 (งวด M1) → createPayrollRun(M1) → decideAdjustment APPROVED ⇒ ใบย้ายไปเดือนแรกที่ยังไม่มีรอบ (M2) · APPROVED · runId null · adjustmentStatuses (POS) เห็น periodKey M2"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1)
   // ── HC ชั่วโมง ──
   D("HC1", "X5", "[R12 R1] posClockForShift IN (โทเคน C1 · กะของ C1) ⇒ {ok, kind IN} · HrAttendance +1 IN ของพนักงาน C1 · note มี #<shiftNo>"),
   D("HC2", "X1", "[R12] กดซ้ำ IN ⇒ ALREADY_CLOCKED · HrAttendance ยัง +1"),
@@ -1753,6 +1754,26 @@ async function runDb() {
     const list: Any[] = Array.isArray(st) ? st : Array.isArray(st?.items) ? st.items : [];
     if (list.length !== adj.length || list.some((x) => x.status !== "PENDING" || (x.runId ?? null) !== null)) p.push(`adjustmentStatuses → ${short(st, 100)}`);
     chk("PY6", NC === "" && !fx && p.length === 0, "ไม่มีพนักงาน ⇒ OPEN · รายงานตรงสมุด · crmCommissionId null · statuses", FX(NC + (P8(p) || "ครบ")));
+  }
+  // PY7 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1): รายการของระบบ (POS · crmCommissionId null · requestedById null) ย้ายงวดตอนอนุมัติเหมือนคอมมิชชัน CRM
+  const M2 = nextMonth(M1);
+  {
+    const p: string[] = [];
+    const target = (await posAdj()).find((a) => a.employeeId === EMP.C2 && a.periodKey === M1 && a.status === "PENDING");
+    if (!target) p.push(`(fixture) ไม่มีใบ PENDING ของ C2 งวด ${M1}`);
+    else {
+      const run = await call(hrPay, "createPayrollRun", hrCtx(), { periodKey: M1, payDate: new Date(`${M2}-01T03:00:00+07:00`) });
+      if (!run?.id) p.push(`(fixture) createPayrollRun ${M1} → ${codeOf(run)} ${short(run?.message ?? "", 60)}`);
+      const d = await call(hrPay, "decideAdjustment", hrCtx(), target.id, "APPROVED", { userId: uid("OWNER"), isOwner: true });
+      if (d?.ok !== true) p.push(`decideAdjustment → ${short(d, 80)}`);
+      const row = (await adjustments()).find((a) => a.id === target.id);
+      if (!row || row.periodKey !== M2 || row.status !== "APPROVED" || row.runId) p.push(`ใบหลังอนุมัติ ${short(row && [row.periodKey, row.status, row.runId], 80)} (คาด ${M2} APPROVED runId null)`);
+      const st = await call(hrFacade, "adjustmentStatuses", { tenantId: T, ids: [target.id] });
+      const list: Any[] = Array.isArray(st) ? st : Array.isArray(st?.items) ? st.items : [];
+      const x = list.find((y) => y.id === target.id);
+      if (!x || x.status !== "APPROVED" || x.periodKey !== M2) p.push(`adjustmentStatuses → ${short(x ?? st, 80)} (คาด APPROVED · periodKey ${M2})`);
+    }
+    chk("PY7", NC === "" && !fx && p.length === 0, `อนุมัติหลังรอบ ${M1} ⇒ ย้ายไป ${M2}`, FX(NC + (P8(p) || "ครบ")));
   }
 
   // ════════ HC ชั่วโมง ════════
