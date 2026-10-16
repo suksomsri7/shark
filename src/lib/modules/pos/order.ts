@@ -834,7 +834,10 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
   );
   const soldOut = await menuSoldOutIds(s.tenantId, rows, tx);
   // POS P2.14 ▸ ORD-1 (O5): การมองเห็นตามคลังของสาขา (C3) + กติกาเดียวกับหน้าขาย (regVisibleWhere) — มองไม่เห็นที่สาขานี้ = PRODUCT_NOT_FOUND (บรรทัดนั้น) ◂
-  const visible = rows.length ? await registerVisibleProductIds(tx, s, rows.map((r) => r.id)) : new Set<string>();
+  // POS P2.14 ▸ ORD-1b (fix1 · CD-B5/H1): สาขาที่ไม่ผูกระบบคลังเลย = กติกาเดิมก่อน P2.14 (ไม่กรอง C3 — ทุกแถวที่พบถือว่ามองเห็น) ·
+  //   ผูกคลังแล้ว = กรองตามหน้าขาย (มองไม่เห็น = PRODUCT_NOT_FOUND → เว็บร้าน throw ไม่สร้าง ShopOrder) ◂
+  const invLinked = rows.length ? !!(await tx.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: s.tenantId, unitId: s.unitId, type: "INVENTORY" } }, select: { systemId: true } })) : false;
+  const visible = !rows.length ? new Set<string>() : invLinked ? await registerVisibleProductIds(tx, s, rows.map((r) => r.id)) : new Set(rows.map((r) => r.id)); // POS P2.14 ▸ ORD-1b ◂
   const book = inp.lines.some((l) => l.kind === "catalog") ? await loadPriceBook(tx, s, rows, new Date()) : null;
   const lines: ResolvedLine[] = [];
   for (let i = 0; i < inp.lines.length; i++) {

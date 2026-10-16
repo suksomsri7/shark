@@ -207,6 +207,8 @@ export async function createOrder(ctx: ShopCtx, input: CreateOrderInput): Promis
         if (mirrored.ok === false) {
           if (mirrored.code === "CHANNEL_PAUSED") throw new Error("ร้านปิดรับออเดอร์ออนไลน์ชั่วคราว");
           if (mirrored.code === "PRODUCT_UNAVAILABLE") throw new Error("สินค้าบางรายการหมดชั่วคราว — เอาออกแล้วสั่งใหม่");
+          // POS P2.14 ▸ ORD-1b (fix1 · H1): สินค้าที่สาขานี้มองไม่เห็น (คลังของสาขา C3) = ปฏิเสธลูกค้า — ไม่มี ShopOrder ไม่มีเงิน (เดิม log แล้วรับออเดอร์ ⇒ บิลไม่มีออเดอร์) ◂
+          if (mirrored.code === "PRODUCT_NOT_FOUND") throw new Error("สินค้าบางรายการไม่มีขายที่สาขานี้ — เอาออกแล้วสั่งใหม่");
           console.error(`[shop] createOrder: ไม่ได้ส่งออเดอร์เข้าจอ POS (${mirrored.code}) tenant=${ctx.tenantId}`);
         }
         // ◂
