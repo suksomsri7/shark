@@ -6,9 +6,9 @@
 // 🔴 ไฟล์ของ HR ที่เลน POS เขียน (มติ 5): ประกอบจากฟังก์ชันของ HR เอง (service/rules) + ตัวอ่าน pos-seam-read.ts ·
 //    เขียนตาราง HR ทางเดียว = `clock()` ของ service.ts (ไม่มีคำสั่งเขียน/SQL ดิบในไฟล์นี้) · ไม่ import โมดูล POS
 // 🔴 ไม่มีข้อมูลเงิน/ชนิดการลา/เหตุผลการลาในผลลัพธ์ (privacy [L] — จอล็อกเป็นเครื่องกลางของร้าน)
-import { bkkParts, clock, employeeOfUser, getSchedule, isOnLeave, nextClockKind } from "./service";
+import { bkkParts, clock, employeeOfUser, getSchedule, isOnLeave, nextClockKind, type HrTx } from "./service";
 import { workedMinutes } from "./rules";
-import { adjustmentStatusRows, attendanceBetween, attendanceMarks, employeeActiveOf, hrSystemIdsOf } from "./pos-seam-read";
+import { adjustmentStatusRows, attendanceBetween, attendanceMarks, employeeActiveOf, hrSystemIdsOf, linkedEmployeeOf } from "./pos-seam-read";
 
 export type PosSeamSchedule = { startMin: number; endMin: number; graceMin: number; dayOff: boolean };
 /** สถานะการลงเวลาของวันไทยของ `at` (ไม่เกิน `at`): IN แรกของวัน · รายการล่าสุด (ไม่จำกัดวัน) — ใช้คำเตือนชั่วโมงของกะ (R12 · CD-6) */
@@ -89,16 +89,18 @@ export async function workedMinutesBetween(input: { tenantId: string; userId: st
  * ลงเวลาของตัวเอง (ผู้ใช้ที่ผูกกับพนักงาน active) — ชนิดที่ขอต้องตรงกับ "ครั้งถัดไปของวันนี้" ของ HR (nextClockKind) ไม่งั้น ALREADY_CLOCKED
  * (กดซ้ำ = ไม่เพิ่มแถว · กันซ้ำที่ฐาน) · ไม่ผูก/ลาออกแล้ว = NO_EMPLOYEE · เขียนผ่าน clock() ของ HR เท่านั้น (คำตัดสินสาย/ตรงเวลาเป็นของ HR)
  */
-export async function clockSelf(input: { tenantId: string; userId: string; kind: "IN" | "OUT"; note?: string | null }): Promise<ClockSelfResult> {
+export async function clockSelf(
+  input: { tenantId: string; userId: string; kind: "IN" | "OUT"; note?: string | null },
+  opts: { tx?: HrTx } = {}, // POS P3.5 ▸ fix2 F4: ทุกคำสั่ง (อ่าน + clock) ใน tx ของผู้เรียก — POS ถือล็อกกันกดซ้ำอยู่ ไม่เปิด connection ที่สอง · ไม่ส่ง = ทางเดิม ◂
+): Promise<ClockSelfResult> {
   if (!isId(input?.tenantId) || !isId(input.userId) || (input.kind !== "IN" && input.kind !== "OUT")) return { ok: false, code: "NO_EMPLOYEE" };
-  const emp = await employeeOfUser(input.tenantId, input.userId);
-  if (!emp) return { ok: false, code: "NO_EMPLOYEE" };
+  const emp = await linkedEmployeeOf(input.tenantId, input.userId, opts.tx);
+  if (!emp || !emp.active) return { ok: false, code: "NO_EMPLOYEE" };
   const ctx = { tenantId: input.tenantId, systemId: emp.systemId };
-  if ((await employeeActiveOf(ctx, emp.employeeId)) !== true) return { ok: false, code: "NO_EMPLOYEE" };
-  const next = await nextClockKind(ctx, emp.employeeId);
+  const next = await nextClockKind(ctx, emp.employeeId, opts);
   if (next !== input.kind) return { ok: false, code: "ALREADY_CLOCKED" };
   const note = typeof input.note === "string" ? input.note.slice(0, 200) : null;
-  const r = await clock(ctx, { employeeId: emp.employeeId, kind: input.kind, note });
+  const r = await clock(ctx, { employeeId: emp.employeeId, kind: input.kind, note }, opts);
   return { ok: true, kind: input.kind, judgement: r.judgement };
 }
 

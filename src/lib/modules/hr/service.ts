@@ -15,6 +15,8 @@ import * as party from "@/lib/modules/party";
 // scope: ทุก query ผ่าน tenantDb({ tenantId, systemId }) — inject tenantId+systemId อัตโนมัติ
 
 export type Ctx = { tenantId: string; systemId: string };
+/** POS P3.5 ▸ fix2 F4: tx ของผู้เรียก (clock/nextClockKind/getSchedule รับเพิ่มได้ · ไม่ส่ง = ทางเดิม) ◂ */
+export type HrTx = Prisma.TransactionClient;
 
 // แปลง "YYYY-MM-DD" → Date เที่ยงคืน UTC (ตรงกับ @db.Date + rules ที่ตัด ISO 10 ตัวแรก)
 //   รับ Date มาแล้วก็ได้ (เช่น จาก server action ที่ parse เอง) → ใช้ตรง ๆ
@@ -292,13 +294,15 @@ export async function setEmployeeActive(
 export async function clock(
   ctx: Ctx,
   input: { employeeId: string; kind: HrAttendanceKind; note?: string | null },
+  opts: { tx?: HrTx } = {}, // POS P3.5 ▸ fix2 F4: tx ของผู้เรียก (ลงเวลาใต้ล็อกของ POS — ไม่เปิด connection ที่สอง) · ไม่ส่ง = ทางเดิม ◂
 ): Promise<{ id: string; judgement: AttendanceJudgement | null; lateMin: number | null }> {
   const at = new Date();
   const detail =
     input.kind === "IN"
-      ? clockInDetail(at, (await getSchedule(ctx, input.employeeId))[bkkParts(at).weekday] ?? null)
+      ? clockInDetail(at, (await getSchedule(ctx, input.employeeId, opts))[bkkParts(at).weekday] ?? null)
       : null;
-  const a = await tenantDb(ctx).hrAttendance.create({
+  const writer = opts.tx ? opts.tx.hrAttendance : tenantDb(ctx).hrAttendance; // POS P3.5 ▸ fix2 F4 (tenantId/systemId อยู่ใน data ครบ) ◂
+  const a = await writer.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
@@ -340,11 +344,11 @@ export async function setPin(ctx: Ctx, employeeId: string, pin: string): Promise
 }
 
 /** ครั้งถัดไปของวันนี้ (เวลาไทย) ควรเป็นเข้าหรือออก — พนักงานไม่ต้องเลือกเอง */
-export async function nextClockKind(ctx: Ctx, employeeId: string): Promise<HrAttendanceKind> {
+export async function nextClockKind(ctx: Ctx, employeeId: string, opts: { tx?: HrTx } = {} /* POS P3.5 ▸ fix2 F4 ◂ */): Promise<HrAttendanceKind> {
   const { dateStr } = bkkParts(new Date());
   const dayStart = new Date(`${dateStr}T00:00:00+07:00`);
-  const last = await tenantDb(ctx).hrAttendance.findFirst({
-    where: { employeeId, at: { gte: dayStart } },
+  const last = await (opts.tx ? opts.tx.hrAttendance : tenantDb(ctx).hrAttendance).findFirst({
+    where: { employeeId, at: { gte: dayStart }, tenantId: ctx.tenantId, systemId: ctx.systemId }, // POS P3.5 ▸ fix2 F4: ขอบเขตตรง (ทาง tx ไม่มีตัวฉีดของ tenantDb) ◂
     orderBy: { at: "desc" },
     select: { kind: true },
   });
@@ -638,8 +642,9 @@ export type ScheduleRow = {
 };
 
 /** ตารางของพนักงานคนหนึ่ง ครบ 7 วัน — วันที่ยังไม่ตั้งคืน null เพื่อให้ UI รู้ว่า "ยังไม่ได้ตั้ง" */
-export async function getSchedule(ctx: Ctx, employeeId: string): Promise<(ScheduleRow | null)[]> {
-  const rows = await tenantDb(ctx).hrWorkSchedule.findMany({ where: { employeeId } });
+export async function getSchedule(ctx: Ctx, employeeId: string, opts: { tx?: HrTx } = {} /* POS P3.5 ▸ fix2 F4 ◂ */): Promise<(ScheduleRow | null)[]> {
+  const where = { employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const rows = opts.tx ? await opts.tx.hrWorkSchedule.findMany({ where }) : await tenantDb(ctx).hrWorkSchedule.findMany({ where });
   const byDay = new Map(rows.map((r) => [r.weekday, r]));
   return Array.from({ length: 7 }, (_, wd) => {
     const r = byDay.get(wd);

@@ -6,6 +6,7 @@
 //    ตัวอ่านที่ HR ยังไม่มี (ระบบ HR ของร้าน · active ของพนักงาน · การลงเวลาช่วงหนึ่ง · สถานะรายการปรับเงินตาม id) จึงอยู่ที่นี่ —
 //    HR (H1.1/H2.1/H2.4) ย้ายเข้า service.ts/clock.ts ได้โดย POS ไม่ต้องแก้ (POS เห็นแค่ 4 ชื่อผ่าน hr/index.ts)
 import { tenantDb } from "@/lib/core/db";
+import type { HrTx } from "./service";
 
 type Ctx = { tenantId: string; systemId: string };
 
@@ -53,4 +54,24 @@ export async function adjustmentStatusRows(tenantId: string, ids: string[]): Pro
     out.push(...rows.map((r) => ({ id: r.id, status: String(r.status), runId: r.runId ?? null, periodKey: r.periodKey })));
   }
   return out;
+}
+
+/**
+ * POS P3.5 ▸ fix2 F4: พนักงานที่ผูกกับผู้ใช้ (กติกาเดียวกับ service.employeeOfUser: ระบบ HR เก่าสุดก่อน · active มาก่อน · สร้างก่อนมาก่อน) + active ·
+ * อ่านผ่าน tx ของผู้เรียกได้ (ไม่เปิด connection ที่สองใต้ล็อก) · ไม่พบ = null ◂
+ */
+export async function linkedEmployeeOf(tenantId: string, userId: string, tx?: HrTx): Promise<{ employeeId: string; systemId: string; active: boolean } | null> {
+  if (!tenantId || !userId) return null;
+  const systems = tx
+    ? await tx.appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 50 })
+    : await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 50 });
+  for (const s of systems) {
+    const where = { tenantId, systemId: s.id, linkedUserId: userId };
+    const orderBy = [{ active: "desc" as const }, { createdAt: "asc" as const }];
+    const row = tx
+      ? await tx.hrEmployee.findFirst({ where, orderBy, select: { id: true, systemId: true, active: true } })
+      : await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findFirst({ where, orderBy, select: { id: true, systemId: true, active: true } });
+    if (row) return { employeeId: row.id, systemId: row.systemId, active: row.active };
+  }
+  return null;
 }

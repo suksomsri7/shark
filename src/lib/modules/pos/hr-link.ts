@@ -144,10 +144,11 @@ export async function posClockForShift(ctx: RegisterCtx, input: PosClockInput): 
     const note = `POS กะ #${shift.shiftNo} · ${shift.deviceLabel ?? shift.deviceId}`;
     const facade = await hr();
     // กดพร้อมกันสองเครื่อง: ล็อกต่อ (ร้าน · ผู้ใช้) ระหว่าง "อ่านครั้งถัดไป → ลงเวลา" ⇒ ตัวหลังเห็นแถวของตัวแรกแล้ว = ALREADY_CLOCKED
+    //   POS P3.5 ▸ fix2 F4: clockSelf อ่าน/เขียนผ่าน tx เดียวกับล็อก (ไม่ใช้ connection ที่สองของ pool ใต้ pg_advisory_xact_lock) ◂
     const r = await prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${"pos.hr.clock:"}::text || ${ctx.tenantId}::text || ':' || ${actor.userId}::text))) l`;
-        return facade.clockSelf({ tenantId: ctx.tenantId, userId: actor.userId, kind: input.kind, note });
+        return facade.clockSelf({ tenantId: ctx.tenantId, userId: actor.userId, kind: input.kind, note }, { tx }); // POS P3.5 ▸ fix2 F4: ใน tx ของล็อก ◂
       },
       { maxWait: 10_000, timeout: 20_000 },
     );
