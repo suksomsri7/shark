@@ -2884,6 +2884,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           onCamera={openCamera}
           onLock={staff || noPinMode ? lockNow : undefined}
           onDepositReceive={openDepositReceive} // POS P2.9bU ▸ มติ 5: ปุ่มมือถือ ◂
+          ordersHref={`/app/sys/${systemId}/pos/orders?unit=${encodeURIComponent(unitId)}`} // POS P2.14 ▸ UI-13 ◂
         />
         {/* POS P2.4U ▸ มติ 1: แท็บ "โต๊ะ" เป็นลิงก์เมื่อสาขามีโหมดโต๊ะ ◂ */}
         {/* POS P2.8U ▸ มติ 1: unitId = ลิงก์แท็บออเดอร์ของสาขานี้ + ป้ายนับออเดอร์ใหม่ (ดึงทุก 10 วิ ขณะแถบ mount) ◂ */}

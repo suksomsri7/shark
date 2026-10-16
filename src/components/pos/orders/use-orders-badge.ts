@@ -10,7 +10,8 @@ import { useEffect, useState } from "react";
 import { listOrdersAction } from "@/lib/modules/pos/order-actions";
 import { ORDERS_POLL_MS } from "./orders-ui";
 
-export function useOrdersBadge(systemId: string, unitId: string | undefined, enabled: boolean): number | null {
+// POS P2.14 ▸ UI-13: media = "mobile" ⇒ ดึงเฉพาะจอ < 768 (ป้ายบนหัวมือถือของหน้าขาย) · ปริยาย "md" = แถบโหมด (เดิม) ◂
+export function useOrdersBadge(systemId: string, unitId: string | undefined, enabled: boolean, media: "md" | "mobile" = "md"): number | null {
   const [n, setN] = useState<number | null>(null);
   const [md, setMd] = useState(false);
   useEffect(() => {
@@ -21,7 +22,7 @@ export function useOrdersBadge(systemId: string, unitId: string | undefined, ena
     return () => m.removeEventListener("change", on);
   }, []);
   useEffect(() => {
-    if (!enabled || !unitId || !md) return;
+    if (!enabled || !unitId || md !== (media === "md")) return; // POS P2.14 ▸ UI-13 ◂
     let alive = true;
     const run = async () => {
       try {
@@ -44,6 +45,6 @@ export function useOrdersBadge(systemId: string, unitId: string | undefined, ena
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [systemId, unitId, enabled, md]);
+  }, [systemId, unitId, enabled, md, media]); // POS P2.14 ▸ UI-13 ◂
   return n;
 }

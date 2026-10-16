@@ -17260,6 +17260,25 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-mobile-orders",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/orders",
+        "note": "มือถือ (< 768 ไม่มีแถบโหมด): ปุ่มออเดอร์ออนไลน์พร้อมป้ายนับออเดอร์ใหม่ (pos-reg-mobile-orders-badge · ดึงทุก 10 วิ เฉพาะจอ < 768) — แสดงเฉพาะเมื่อมีออเดอร์ใหม่ > 0 (P2.14 UI-13)"
+      },
+      "wo": "P2.14",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-deprcv-close",
       "kind": "button",
       "roles": [
