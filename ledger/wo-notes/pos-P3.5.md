@@ -83,3 +83,26 @@ qc-pos-p1.15 40/40 · p1.9 53/53 · p1.17 40/40 · p1.18 80/81 (ST2 = CD-B3; S1 
 - `qc-pos-p1.18` 80/81 (ST2 = CD-B3) · `qc-pos-p2.13` 53/54 (ST5 lane pin) · `qc-pos-p2.14` 60/60.
 - fitness no env 53/53 · fitness QC4 env 53/53 · fitness-pos 8/8 · `gen-pos-api-docs --check` exit 0.
 - typecheck (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`, 22:16:53Z → 22:22:10Z): **exit 2 — one error only**, `src/lib/modules/pos/register.ts(510,7) TS2739` REG_MESSAGE missing OFF_SCHEDULE/ALREADY_CLOCKED/NO_EMPLOYEE = **CD-B2** (patch above; register.ts not touched per ruling 11).
+
+## Fix round 1 delivered (controller rulings CD-P35b · 17 Oct 2026)
+- **CD-B2 = option (a)** — commit d6465459, the only hunk in `src/lib/modules/pos/register.ts` (REG_MESSAGE, after `DEPOSIT_LOCKED`):
+  ```ts
+  OFF_SCHEDULE: "ยังไม่อยู่ในเวลางานตามตาราง — ให้ผู้จัดการใส่ PIN เพื่ออนุญาต", // POS P3.5 ▸ CD-B2 REG_MESSAGE ◂
+  ALREADY_CLOCKED: "ลงเวลานี้ไปแล้ววันนี้",
+  NO_EMPLOYEE: "ผู้ใช้นี้ยังไม่ได้ผูกกับพนักงานในระบบพนักงาน (HR)",
+  ```
+  ORACLE-EDIT `qc-pos-p3.5` ST2 (commit 047db1f0, 45 → 45): register.ts passes only with exactly 1 hunk · +3 −0 · lines = OFF_SCHEDULE (with the marker) / ALREADY_CLOCKED / NO_EMPLOYEE · inside REG_MESSAGE. Negative control: one extra line in register.ts ⇒ ST2 red.
+- **CD-B1 accepted** (no change): `hr/pos-seam-read.ts` read-only via `tenantDb`; the seam writes HR only via `clock()`.
+- **CD-B3** — ORACLE-EDIT `qc-pos-p1.18` ST2 `:469` (commit 3fbb1225, 81 → 81): `pos/hr-link.ts` + `pos/hr-link-actions.ts` exempt for the facade `@/lib/modules/hr` only (C-8 v2 seam, P3.5 §10.5); hr subpaths/relative imports and every other POS file stay red.
+- Migration without `SET lock_timeout` accepted.
+- Audit shapes (commit 83812ee9, P3.9 CD-5): `pos.staff.schedule_override` after = `{userId, byUserId, reason, deviceId}` (actorId = manager, targetType PosStaffPin, targetId = the staff PIN row) · `pos.staff.schedule_denied` after = `{userId, reason, deviceId}` (actorId = staff) — `unitId` dropped from both · never a PIN.
+- Gates at 3fbb1225 (dirty 0, QC4): `qc-pos-p3.5` forced 45/45 · 45/45 · `--no-db` 10/10 · `qc-pos-p1.18` 81/81 · `qc-pos-p1.15` 40/40 · `qc-pos-p1.9` 53/53 · fitness no env 53/53 · QC4 env 53/53 · `gen-pos-api-docs --check` 0 · **typecheck exit 0** (22:51:52Z → 22:54:34Z, heap 8192 · ISO_MEM 10500M).
+- Lane-pin reds (controller re-pins at merge):
+  - `qc-pos-p2.7` ST1 (`:47` · `:689`): "20261216100000_pos_p27_qr_orders ไม่ใช่ migration ล่าสุด (ล่าสุด 20261217100000_pos_p35_staff_commission — มติ 12: ใหม่กว่าทุกตัว)" — not in the controller's list; the new migration trips it.
+  - `qc-pos-p2.7` ST3 (`:49` · `:875` · `BASE_REV = "62a319cc"` `:343`): "register.ts ต่างจากฐานเกินการย้าย regResolveOptions (มติ 9 — hunk import เท่านั้น)".
+  - `qc-pos-p2.8` ST6 (`:58` · `:735` · `LANE_PIN = "05975437"` `:295`): "register.ts เปลี่ยน (sha 637fd49803fc ≠ ฐาน 304e04e734e7 / merge-base 2ce36572b5f2)".
+  - `qc-pos-p2.10` ST2 (`:58` · `:221`): "register-shared.ts มี hunk (+23 −3) · register.ts มี hunk (+3 −0) · src/lib/outbox-consumers.ts มี hunk (+11 −2) · qc-pos-p1.18 แก้นอกบรรทัด rewardNearCustomerDisplay 10 บรรทัด · scripts/qc-pos-p2.12.mts ถูกแก้".
+  - `qc-pos-p2.12` ST1 (`:40` · `:270`): "prisma/ ต่างจากฐาน: …20261217100000…/migration.sql, prisma/schema/pos.prisma · ไฟล์เลน A ถูกแตะ: lib/outbox-consumers.ts, pos/register-shared.ts, pos/register.ts".
+  - `qc-pos-p2.13` ST5 (`:69` · `:350/:352`): "prisma/ เปลี่ยน: …migration.sql,prisma/schema/pos.prisma · src/lib/outbox-consumers.ts ถูกแก้".
+  - `qc-hf-fu` ST1 (`:41` · `:233` · `:296`): "prisma เปลี่ยนจากฐาน c3c52ef1/merge-base c5fc223b · register-shared.ts … · register.ts เปลี่ยนจากฐาน (§4 ห้ามแตะ)".
+  - Counts: p2.7 40/42 · p2.8 60/61 · p2.10 12/13 · p2.12 32/33 · p2.13 53/54 · hf-fu 28/29.
