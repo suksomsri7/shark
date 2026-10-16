@@ -80,3 +80,7 @@
 - Runner self-tests (`/root/pos-runs/p214-builder/selftest-fx2/`): control green rc0 · hidden PL2.1 → RED rc1 · rc137 → RED rc1 · headchg → RED rc1
 - LEG veto set = 8 commits: 086094ca 7dd87a55 1150caa7 27ddcbfe 6fea40f0 dbdb68ed 2ce422d0 f5d74b1c
 - R3 (R2 agent, read-only) asked to re-verify the 6 hunks → then merge
+
+### R3 (tree d @e1c4d999 · 09:54Z) — **MERGEABLE** · items 1–6 FIXED (no REST shape change outside message text; O5c would have been red at 368b5753) · runner hardening notes 2(a)–(d) → HF-FU2: (a) require len(ids) ≥ total−passed · (b) `accepted.match` substring for CRASH/*-ERR entries · (c) `SET partial` = red unless `--only` given · (d) compare each log header with HEAD.txt
+
+## Merge (09:54Z) — `wip/pos-p2.14` **e1c4d999** → **session/pos 05975437** (no-ff, msg `ctl-scripts/p214-merge-msg.txt`, no conflicts) → **re-pin commit 280b56f7** (`repin-p214.sh`: seven suites 64923c13 → 05975437 · manifest accepted 19 → 13 · counts unchanged) → tree c detached 280b56f7 + `prisma generate` + `sync-skills.sh` (3 targets byte-equal) → **gates108-c** (`pos-gates108-c-1792144413` = `pos-gates-all.sh` of tree c, full manifest with VERDICT) · push after VERDICT green · LEG veto set (8 commits) still droppable until the owner answers TG 4692 (then a revert PR on session/pos, not a history rewrite, since the merge is pushed)
