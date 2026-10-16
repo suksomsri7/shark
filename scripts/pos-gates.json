@@ -140,30 +140,11 @@
     },
     {
       "suite": "qc-pos-p2.7",
-      "mode": "forced",
-      "accepted": {
-        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
-        "owner": "controller (re-pin at merge)",
-        "opRef": "P2.14 lane-pin wip",
-        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
-        "checks": [
-          "P2.7-ST2",
-          "P2.7-ST3"
-        ]
-      }
+      "mode": "forced"
     },
     {
       "suite": "qc-pos-p2.8",
-      "mode": "forced",
-      "accepted": {
-        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
-        "owner": "controller (re-pin at merge)",
-        "opRef": "P2.14 lane-pin wip",
-        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
-        "checks": [
-          "P2.8-ST6"
-        ]
-      }
+      "mode": "forced"
     },
     {
       "suite": "qc-pos-p2.9",
@@ -178,44 +159,17 @@
     {
       "suite": "qc-pos-p2.10",
       "mode": "forced",
-      "needs": "pos-seed",
-      "accepted": {
-        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
-        "owner": "controller (re-pin at merge)",
-        "opRef": "P2.14 lane-pin wip",
-        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
-        "checks": [
-          "P2.10-ST2"
-        ]
-      }
+      "needs": "pos-seed"
     },
     {
       "suite": "qc-pos-p2.11",
       "mode": "forced",
-      "needs": "pos-seed",
-      "accepted": {
-        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
-        "owner": "controller (re-pin at merge)",
-        "opRef": "P2.14 lane-pin wip",
-        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
-        "checks": [
-          "P2.11-ST4"
-        ]
-      }
+      "needs": "pos-seed"
     },
     {
       "suite": "qc-pos-p2.12",
       "mode": "forced",
-      "needs": "pos-seed",
-      "accepted": {
-        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
-        "owner": "controller (re-pin at merge)",
-        "opRef": "P2.14 lane-pin wip",
-        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
-        "checks": [
-          "P2.12-ST1"
-        ]
-      }
+      "needs": "pos-seed"
     },
     {
       "suite": "qc-pos-p2.13",
@@ -269,16 +223,7 @@
     },
     {
       "suite": "qc-hf-fu",
-      "mode": "forced",
-      "accepted": {
-        "reason": "lane-pin class on wip/pos-p2.14 (CD-B1): the old lanes' 'unchanged since 64923c13' pins see P2.14's own edits; the controller re-pins the seven suites to the P2.14 merge SHA right after the merge — remove this accepted entry in that commit",
-        "owner": "controller (re-pin at merge)",
-        "opRef": "P2.14 lane-pin wip",
-        "evidence": "controller ruling CD-B1 ledger/wo-notes/pos-P2.14-review.md (06:35Z) · builder notes ledger/wo-notes/pos-P2.14.md §6/§8",
-        "checks": [
-          "HF-FU-ST1"
-        ]
-      }
+      "mode": "forced"
     },
     {
       "suite": "qc-hf-hr-privacy",

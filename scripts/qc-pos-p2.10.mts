@@ -218,9 +218,9 @@ for (const n of DISPLAY_FNS) if (!exportsFn(srcOf(F.display), n)) skipReasons.pu
 if (!migDir()) skipReasons.push("ยังไม่มี migration *_pos_p210_customer_display");
 
 // ── หมุดของเลน (หมุด ST2 เทียบเฉพาะสิ่งที่ใบนี้แก้) ──
-const LANE_PIN = "64923c13"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
+const LANE_PIN = "05975437"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 const MB = (() => {
-  const mb = gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim(); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
+  const mb = gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim(); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return process.env.P210_BASE ? BASE_REV : mb || BASE_REV;
 })();
 /** บรรทัดที่เพิ่ม (เลขบรรทัดของไฟล์ปัจจุบัน) + จำนวนบรรทัดที่ลบ เทียบ MB (รวมของที่ยังไม่ commit) */
