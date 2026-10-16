@@ -71,7 +71,7 @@ export default async function RestaurantPage({
 
       {err && (
         <div className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
-          {err}
+          {err === "POS_LINKED" ? tl("legacy.posLinked") : err /* POS P2.14 ▸ LEG-2/4 มติ 23: action เดิมปฏิเสธบนสาขาที่ผูก POS ◂ */}
         </div>
       )}
 

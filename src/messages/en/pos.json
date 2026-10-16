@@ -3796,7 +3796,9 @@
     },
     "legacy": {
       "manageAtPos": "Manage in POS › Tables",
-      "note": "This branch uses POS table mode — check out and cancel items in POS"
+      "note": "This branch uses POS table mode — check out and cancel items in POS",
+      "posLinked": "This branch uses the POS — bills, item cancels, table merges and kitchen work are done in the POS (Tables / Kitchen display)",
+      "fromLegacy": "The old restaurant pages are closed for branches on the POS — manage tables and bills here"
     },
     "qr": {
       "button": "Table QR",
@@ -4246,7 +4248,8 @@
     "legacyBanner": {
       "text": "A new kitchen display is available — tickets from the register, tables, QR and online orders in one place, including paid items (this screen cannot advance them)",
       "open": "Open the new kitchen display"
-    }
+    },
+    "legacyFrom": "The old kitchen screen is closed for branches on the POS — use this kitchen display instead"
   },
   "nav": {
     "overview": "Overview",

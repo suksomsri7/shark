@@ -15,10 +15,20 @@ import * as kds from "@/lib/modules/restaurant/kds";
 import type { CartLine } from "@/lib/modules/restaurant/order";
 import { CatalogError } from "@/lib/modules/pos";
 import { legacyCancelItemSplitGuard, legacyCheckoutSplitGuard, legacyMergeSplitGuard } from "@/lib/modules/pos/table-split"; // POS P2.5 ▸ fix1 มติ 2 (N2): หน้าเดิมไม่เช็คบิล/ยกเลิกรายการของโต๊ะที่แยกบิลอยู่ ◂
+import { posLinkedLegacyDoor } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS = action เงิน/ครัวของหน้าเดิมปิด ◂
 
 function base(unitSlug: string) {
   return `/app/u/${unitSlug}/restaurant`;
 }
+
+// POS P2.14 ▸ LEG-2/4 มติ 1 · มติ 23: สาขาที่ผูก POS ⇒ เช็คบิล/ยืนยันพร้อมเพย์/ยกเลิกรายการ/รวมโต๊ะ/เดิน-ดึงกลับครัวจากหน้าเดิมไม่ได้
+//   (กันเก็บเงินซ้ำ/คืนของซ้ำข้ามประตู — ทำที่ POS › โต๊ะ / ครัว) · ค้นไม่ได้ = ปิด (fail-closed) · action ที่คืน void = redirect ?err=POS_LINKED ไปหน้างาน (มีแถบแจ้ง)
+const POS_LINKED_REASON = "สาขานี้ใช้ POS แล้ว — ทำรายการนี้ที่ POS (โต๊ะ / จอครัว)";
+const POS_LINKED_REFUSAL = { ok: false as const, code: "POS_LINKED" as const, reason: POS_LINKED_REASON };
+async function posLinkedUnit(tenantId: string, unitId: string): Promise<boolean> {
+  return posLinkedLegacyDoor(tenantId, unitId, { write: true });
+}
+// ◂
 
 // บริบทหน่วย + ตรวจสิทธิ์ (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
 async function ctx(unitSlug: string, action: string) {
@@ -289,6 +299,7 @@ export async function moveSessionAction(unitSlug: string, formData: FormData): P
 
 export async function mergeSessionAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.merge");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   // POS P2.5 ▸ fix2 มติ 2 (F2): โต๊ะที่แยกบิลอยู่ (แผน OPEN ฝั่งใดฝั่งหนึ่ง) รวมจากหน้าเดิมไม่ได้ ◂
   const sg = await legacyMergeSplitGuard({ tenantId, unitId, intoSessionId: String(formData.get("intoSessionId") ?? ""), fromSessionId: String(formData.get("fromSessionId") ?? "") });
   if (!sg.ok) redirect(`${base(unitSlug)}?err=${encodeURIComponent(sg.reason)}`);
@@ -341,6 +352,7 @@ export async function confirmOrderAction(unitSlug: string, formData: FormData) {
 
 export async function cancelOrderItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.order.cancelItem");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   const reason = String(formData.get("reason") ?? "") || "ยกเลิกโดยพนักงาน";
   // POS P2.5 ▸ fix1 มติ 2: รายการในแผนแยกบิลที่เปิดอยู่ ยกเลิกจากหน้าเดิมไม่ได้ (แผนจะค้างจ่ายไม่ได้) ◂
   const sg = await legacyCancelItemSplitGuard({ tenantId, unitId, itemId: String(formData.get("itemId") ?? "") });
@@ -372,6 +384,7 @@ export async function doneRequestAction(unitSlug: string, formData: FormData) {
 // error inline ผ่าน ?err= (pattern เดียวกับ voidCheckoutAction) · idempotent: กดซ้ำ → ไม่มีรายการค้าง → err
 export async function confirmPromptpayPaymentAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   const sessionId = String(formData.get("sessionId") ?? "");
   const requestId = String(formData.get("requestId") ?? "");
   // POS P2.5 ▸ fix1 มติ 2: โต๊ะที่แยกบิลอยู่ (แผน OPEN) เช็คบิลจากหน้าเดิมไม่ได้ (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) ◂
@@ -389,6 +402,7 @@ export async function confirmPromptpayPaymentAction(unitSlug: string, formData: 
 // ───────────────────────── KDS ─────────────────────────
 export async function advanceItemAction(unitSlug: string, itemId: string, to: KdsItemStatus) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kds.advance");
+  if (await posLinkedUnit(tenantId, unitId)) return POS_LINKED_REFUSAL; // POS P2.14 ▸ LEG-2/4 ◂
   const res = await kds.advanceItem(tenantId, unitId, itemId, to);
   revalidatePath(`${base(unitSlug)}/kds`);
   return res;
@@ -396,6 +410,7 @@ export async function advanceItemAction(unitSlug: string, itemId: string, to: Kd
 
 export async function recallItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kds.recall");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P2.14 ▸ LEG-2/4 ◂
   await kds.recallItem(tenantId, unitId, String(formData.get("itemId") ?? ""));
   revalidatePath(`${base(unitSlug)}/kds`);
 }
@@ -406,6 +421,7 @@ export async function checkoutAction(
   args: { sessionId: string; itemIds?: string[]; payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY" },
 ) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
+  if (await posLinkedUnit(tenantId, unitId)) return POS_LINKED_REFUSAL; // POS P2.14 ▸ LEG-2/4 ◂
   // POS P2.5 ▸ fix1 มติ 2: โต๊ะที่แยกบิลอยู่ (แผน OPEN) เช็คบิลจากหน้าเดิมไม่ได้ ◂
   const sg = await legacyCheckoutSplitGuard({ tenantId, unitId, sessionId: args.sessionId });
   if (!sg.ok) return sg;

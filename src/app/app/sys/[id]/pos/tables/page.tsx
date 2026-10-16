@@ -13,6 +13,7 @@ import { parsePosIntentSettings, promptpayIdForUnit } from "@/lib/modules/pos/pa
 import { posMembership, posRegisterView } from "@/lib/modules/pos/access";
 import { registerTableMode, registerTables } from "@/lib/modules/pos/table";
 import { TablesScreen } from "@/components/pos/tables/TablesScreen";
+import { LegacyDoorNotice } from "@/components/pos/LegacyDoorNotice"; // POS P2.14 ▸ LEG-2 แถบแจ้งเมื่อมาจากหน้าเดิม ◂
 
 // POS P2.4U — หน้า "โต๊ะ" ของหน้าขาย (ภาพ 03 · มติผู้คุม 1–11): ผังโต๊ะ + แผงโต๊ะ + แจ้งเตือนจากโต๊ะ + เช็คบิลด้วยจอชำระเดิม
 // 🔴 ประตู (มติ 1 · O13): POS ของร้านนี้ + หน้าขายใหม่ (registerV2) · ไม่มีสาขาที่เข้าได้ = notFound ·
@@ -28,7 +29,7 @@ export default async function PosTablesPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ unit?: string | string[]; open?: string | string[]; sent?: string | string[] }>;
+  searchParams: Promise<{ unit?: string | string[]; open?: string | string[]; sent?: string | string[]; from?: string | string[] }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -73,7 +74,10 @@ export default async function PosTablesPage({
   const canCreateTables = mode.ok ? mode.canCreateTables : false;
   const sent = Number(one(sp.sent));
 
+  const fromLegacy = one(sp.from) === "legacy"; // POS P2.14 ▸ LEG-2 ◂
   return (
+    <>
+    {fromLegacy && <LegacyDoorNotice text={t("legacy.fromLegacy")} />}
     <TablesScreen
       key={active.id}
       systemId={id}
@@ -103,5 +107,6 @@ export default async function PosTablesPage({
         promptpayLink: "/app/settings/payment",
       }}
     />
+    </>
   );
 }

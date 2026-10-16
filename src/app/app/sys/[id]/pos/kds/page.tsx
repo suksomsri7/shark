@@ -7,6 +7,7 @@ import { posUnits } from "@/lib/modules/pos/register";
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
 import { posKdsView, posMembership } from "@/lib/modules/pos/access";
 import { KdsScreen } from "@/components/pos/kds/KdsScreen";
+import { LegacyDoorNotice } from "@/components/pos/LegacyDoorNotice"; // POS P2.14 ▸ LEG-4 แถบแจ้งเมื่อมาจากจอครัวเดิม ◂
 
 // POS P2.6U — จอครัว (KDS · ภาพ 04 · มติผู้คุม 1–14) · เต็มจอ: ไม่มีแท็บโมดูล POS / ไม่อยู่ใน POS_NAV_KEYS (มติ 1 · Q12) · ปุ่ม ‹ กลับภาพรวม POS
 // 🔴 ประตู (มติ 1 · O13): POS ของร้านนี้ + หน้าขายใหม่ (registerV2) · ไม่มีสาขาที่เข้าได้ = notFound ·
@@ -19,7 +20,7 @@ import { KdsScreen } from "@/components/pos/kds/KdsScreen";
 const RAIL_PAD = "px-4 pb-10 pt-4 sm:px-6";
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
-export default async function PosKdsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string | string[]; station?: string | string[] }> }) {
+export default async function PosKdsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string | string[]; station?: string | string[]; from?: string | string[] }> }) {
   const { id } = await params;
   const sp = await searchParams;
   const unitParam = one(sp.unit);
@@ -52,7 +53,10 @@ export default async function PosKdsPage({ params, searchParams }: { params: Pro
   // ลิงก์ตั้งสถานีครัว (หน้าร้านอาหารเดิม · restaurant.station.create) — ต้องใช้ slug ของสาขา
   const unitRow = await prisma.businessUnit.findFirst({ where: { id: active.id, tenantId }, select: { slug: true } });
 
+  const fromLegacy = one(sp.from) === "legacy"; // POS P2.14 ▸ LEG-4 ◂
   return (
+    <>
+    {fromLegacy && <LegacyDoorNotice text={t("legacyFrom")} />}
     <KdsScreen
       key={active.id}
       systemId={id}
@@ -71,5 +75,6 @@ export default async function PosKdsPage({ params, searchParams }: { params: Pro
         availability: can("pos", "pos.sale.create") || can("restaurant", "restaurant.kds.advance") || can("pos", "pos.product.manage"),
       }}
     />
+    </>
   );
 }
