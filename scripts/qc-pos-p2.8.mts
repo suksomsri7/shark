@@ -55,7 +55,7 @@ const CHECKS: readonly Def[] = [
   D("ST3", "S", "[R4 R10 CD1 CD7 มติ 1 3 13 hard rules] ขอบเขต: มี pos/order.ts order-shared.ts order-adapters.ts order-actions.ts · order.ts export ฟังก์ชันครบ 14 ตัว + createSale( จุดเดียวในฟังก์ชัน orderCreateSale · order-shared บริสุทธิ์ · order-adapters export ORDER_ADAPTERS (MANUAL WEB CHAT) · order-actions \"use server\" async ล้วน + catch + เรียกฟังก์ชันผู้ใช้ทุกตัว · pos/index.ts export `orders` (14 ตัว) · ผู้เขียน PosOrder* = pos/order.ts เท่านั้น · ไม่มีเส้น pos→shop/pos→chat (pos→restaurant ได้เฉพาะบรรทัด POS P2.4) และไฟล์ order* ไม่ import shop/chat/restaurant · shop/service.ts เรียก orders. ผ่าน @/lib/modules/pos ภายในรอยต่อ POS P2.8 ▸ … ◂ (ingestInTx ใน createOrder · sourceCancelledInTx ใน cancelOrder) · outbox-consumers มี 6 pos.order.* + รอยต่อ POS P2.8 ที่ shop.order.paid / pos.sale.voided และเรียก shop cancelOrder ที่ composition root · automation labels 6 event · catalog.ts export backfillWebPrices · catalog-legacy create/updateShopProduct มีรอยต่อ POS P2.8"),
   D("ST4", "S", "[มติ 8 15] POS-OWNER-PENDING.md มีบรรทัด P2.8: (ก) เจ้าของเว็บร้าน (shop/service.ts · ShopOrderLine.posProductId · ราคาเว็บ) (ข) แบบฟอร์มคีย์ออเดอร์ไม่มีในภาพ 09 (ค) webPriceConflict"),
   D("ST5", "S", "[มติ 5 CD9] facts: pos-integrations CHAT chatOrders = true (null) · orderStatusBot ยัง false \"P3.7\" · ป้าย th settings.cards.CHAT.facts.chatOrders = \"คีย์ออเดอร์จากแชทโดยพนักงาน\" · settings-overview แถว onlineOrders permission \"pos.order.accept\" planned null"),
-  D("ST6", "PAR", "[มติ 3 7 hard rules] register.ts · service.ts · channel.ts · pos-sale-contract.json ไม่ถูก P2.8 แตะ (sha = be246009 หรือ = merge-base กับ origin/session/pos) · POS_NAV_KEYS ไม่มี orders (ตรงฐาน) · ทุกไฟล์ \"use server\" ใน modules/pos export async function ล้วน · modules/pos ไม่ import @/lib/modules/chat หรือ @/lib/modules/shop"),
+  D("ST6", "PAR", "[มติ 3 7 hard rules] register.ts · service.ts · channel.ts · pos-sale-contract.json ไม่ถูก P2.8 แตะ (sha = be246009 หรือ = หมุดของเลน 64923c13) · POS_NAV_KEYS ไม่มี orders (ตรงฐาน) · ทุกไฟล์ \"use server\" ใน modules/pos export async function ล้วน · modules/pos ไม่ import @/lib/modules/chat หรือ @/lib/modules/shop"),  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin): คำอธิบายฐาน = หมุดของเลน (K3)
   D("ST7", "P", "[R2 R3 R8 R11] order-shared บริสุทธิ์: ORDER_STATUSES / ORDER_PAYMENT_STATES / ORDER_FULFILMENTS / ORDER_REJECT_REASONS ตรงลำดับ · canTransition ครบ 49 คู่ (9 คู่ที่อนุญาต) · ORDER_ACCEPT_WINDOW_SEC 120 · acceptRemainingSec · orderLateMinutes · maskPhone \"08x-xxx-1234\" · parseIngestInput (คีย์แปลก / 101 บรรทัด / qty 0 / ref 41 ตัว / fulfilment แปลก / startStatus READY / บรรทัดไม่มีสินค้าและไม่มีชื่อ+ราคา / ไม่มี idempotencyKey → VALIDATION · ถูกต้อง → ok + ref ตัดช่องว่าง) · refusalMessageKey 5 รหัส"),
   // ── I รับออเดอร์ ──
   D("I1", "-", "[R3 R4 R6 มติ 10] MANUAL LINEMAN (STAFF · เครื่อง 1) startStatus ACCEPTED ref LM-48213 ผัดไทยกุ้ง×2 (ไม่ใส่ไข่ · ไม่ใส่ผักชี) + ต้มยำ + น้ำ → {ok, orderId, duplicated:false, saleId} · PosOrder (channel LINEMAN · adapter MANUAL · ref · code <PFX>-NNNN · ACCEPTED · PLATFORM_PAID · DELIVERY · ลูกค้า · 42000 · saleId · acceptedBy/createdBy STAFF · prepMinutes 15) · 3 บรรทัด Σ 42000"),
@@ -282,7 +282,7 @@ function markedLines(raw: string, tag = "POS P2.8"): Set<number> {
   return out;
 }
 
-// ── git (PAR: ของที่ P2.8 ห้ามแตะ = ตรงฐาน be246009 หรือตรง merge-base กับ origin/session/pos) ──
+// ── git (PAR: ของที่ P2.8 ห้ามแตะ = ตรงฐาน be246009 หรือตรงหมุดของเลน 64923c13) ──
 const BASE_REV = "be246009";
 function gitBuf(args: string[]): Buffer | null {
   try {
@@ -292,9 +292,10 @@ function gitBuf(args: string[]): Buffer | null {
   }
 }
 let mergeBaseRev: string | null | undefined;
+const LANE_PIN = "64923c13"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 function mergeBase(): string | null {
   if (mergeBaseRev !== undefined) return mergeBaseRev;
-  const r = gitBuf(["merge-base", "HEAD", "origin/session/pos"]);
+  const r = gitBuf(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`]); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1): หมุดคงที่ 64923c13 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   mergeBaseRev = r ? r.toString("utf8").trim() || null : null;
   return mergeBaseRev;
 }
