@@ -693,7 +693,7 @@ Change data. `Idempotency-Key` is required and every success is written to the a
 
 #### `sales.taxInvoice`
 
-**POST /sales/{id}/tax-invoice** - Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill. · scope: `pos.taxinvoice.issue` · write
+**POST /sales/{id}/tax-invoice** - Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill: a repeat call (any Idempotency-Key) answers the bill's existing invoice; the request key is kept on the audit row only. · scope: `pos.taxinvoice.issue` · write
 
 Path parameters: `id` (required).
 

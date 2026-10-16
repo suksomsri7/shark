@@ -595,7 +595,7 @@ const salesTaxInvoice = definePosOp({
   path: "/sales/{id}/tax-invoice",
   kind: "write",
   action: POS_SCOPES.taxInvoiceIssue,
-  summary: "Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill.",
+  summary: "Issue a full tax invoice for a paid bill (the shop must be VAT registered with the accounting module linked). One invoice per bill: a repeat call (any Idempotency-Key) answers the bill's existing invoice; the request key is kept on the audit row only.", // POS P2.14 ▸ fix1 F8 ◂
   label: "ออกใบกำกับภาษีเต็มรูป",
   test: "sales.taxInvoice",
   input: taxInvoiceInput,
