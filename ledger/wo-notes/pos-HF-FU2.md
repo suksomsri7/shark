@@ -72,3 +72,5 @@ All on tree d, QC4 (`ep-frosty-lab`), POS lock, CI never exported. Chain = `scra
 | visual `--dry` | th 9 + 6 + 3 = 18 shots · en 6 + 2 + 1 = 9 shots · exit 0 |
 | typecheck | see the last line |
 Red-before on the base (step 1): forced 9/24 · `--no-db` 4/16 (same as `HF-FU2-red.txt`).
+
+**Typecheck** `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` at **c8f089d7** dirty 0 → **exit 0** (head/dirty unchanged after). The commit after it touches only this file.
