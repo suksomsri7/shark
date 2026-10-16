@@ -18676,6 +18676,516 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=*"
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-lang-th",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลิงก์ภาษา ?lang=th (ใช้ทั้ง 3 หน้า /q/**)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-lang-en",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลิงก์ภาษา ?lang=en (ใช้ทั้ง 3 หน้า /q/**)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-cat-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ชิปหมวดเมนู → เลื่อนไปหมวด (โต๊ะ + สั่งล่วงหน้า)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-item-add-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · + ที่เมนู: ไม่มีตัวเลือก = ใส่ตะกร้า 1 · มีตัวเลือก = แผ่นเลือก (pos-qr-opt-sheet) · หมด/ประตูปิด = ไม่มีปุ่ม"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-opt-backdrop",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ฉากหลังแผ่นตัวเลือก → ปิด"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-opt-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · × ปิดแผ่นตัวเลือก (Esc ได้)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-choice-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ตัวเลือก (radio เมื่อเลือกได้ 1 · checkbox ไม่เกิน max · หมด = ปิด)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-opt-note",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมายเหตุถึงครัว ≤ 200"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-opt-qty-minus",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลดจำนวนในแผ่นตัวเลือก (≥ 1)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-opt-qty-plus",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เพิ่มจำนวนในแผ่นตัวเลือก (≤ 50)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-opt-add",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ใส่ตะกร้า — ปิดจนกว่ากลุ่มบังคับครบ"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-cart-bar",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · แถบตะกร้าลอย (จอ < 1024) → แผ่นตะกร้า (pos-qr-cart-sheet)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-sheet-backdrop",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ฉากหลังแผ่นตะกร้า → ปิด"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-sheet-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · × ปิดแผ่นตะกร้า"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-cart-qty-*-minus",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลดจำนวนบรรทัดตะกร้า (0 = เอาออก) → quote ใหม่"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-cart-qty-*-plus",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เพิ่มจำนวนบรรทัดตะกร้า (≤ 50) → quote ใหม่"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · แท็บ เมนู / สั่งแล้ว N / บิล (จอ < 1024 · บิล = มี session เท่านั้น)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-send",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ส่งเข้าครัว = placeTableRoundAction(session ที่หน้าเห็น + guestToken ต่อเครื่อง) · SESSION_CHANGED/PRODUCT_UNAVAILABLE = ข้อความในตะกร้า"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-call-staff",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เรียกพนักงาน (มี session เท่านั้น) → แจ้งเตือนบนผังโต๊ะ"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-request-bill",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ขอเช็คบิล (มี session เท่านั้น)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/t/[qrToken]",
+      "testid": "pos-qr-notify-paid",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · โอนแล้ว แจ้งร้าน = คำขอ PAY_PROMPTPAY (ยอด = บิลของหน้าขาย) → pos-qr-notified"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/[linkToken]",
+      "testid": "pos-qr-to-checkout",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ตะกร้า → ขั้นข้อมูลผู้รับ (จอ < 1024)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/[linkToken]",
+      "testid": "pos-qr-co-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ชื่อผู้รับ (บังคับ ≤ 100)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/[linkToken]",
+      "testid": "pos-qr-co-phone",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เบอร์ไทย (normalizeThaiPhone · ผิด = pos-qr-co-phone-error) · ใช้ติดต่อเรื่องออเดอร์นี้เท่านั้น"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/[linkToken]",
+      "testid": "pos-qr-co-note",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมายเหตุถึงร้าน ≤ 200"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/[linkToken]",
+      "testid": "pos-qr-place",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · สั่งและจ่าย = placePreorderAction (คีย์ 1 ต่อตะกร้า+ผู้รับ) → /q/o/<orderToken>"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/[linkToken]",
+      "testid": "pos-qr-co-back",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · กลับไปเลือกเมนู (จอ < 1024)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/o/[orderToken]",
+      "testid": "pos-qr-claim",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · โอนแล้ว (QR นิ่งเท่านั้น) = claimPaidAction — บันทึกอย่างเดียว ไม่มีผลเงิน → แจ้งร้านแล้ว"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/o/[orderToken]",
+      "testid": "pos-qr-order-again",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมดเวลาจ่าย (19ค): ลองใหม่ → /q/<ลิงก์ที่ใช้อยู่ของสาขา>"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/q/o/[orderToken]",
+      "testid": "pos-qr-order-receipt",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ดูใบเสร็จ → /r/<token> (หลังร้านรับ · บิลเกิดแล้ว)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

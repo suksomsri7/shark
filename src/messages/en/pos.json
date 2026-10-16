@@ -4280,13 +4280,23 @@
       "note": "Note to the shop",
       "close": "Close",
       "back": "Back",
-      "baht": "THB {amount}"
+      "baht": "THB {amount}",
+      "decrease": "Decrease",
+      "increase": "Increase",
+      "sending": "Sending…",
+      "qrFailed": "Could not draw the QR — please tell the staff",
+      "footer": "Ordered through the shop's point of sale · no sign-up needed",
+      "invalidBody": "Scan the QR on the table again or ask the shop for a new link"
     },
     "item": {
       "soldOut": "Sold out",
       "required": "Choose {min}",
       "optional": "Up to {max}",
-      "addToCart": "Add to cart"
+      "addToCart": "Add to cart",
+      "hasOptions": "Options",
+      "addNamed": "Add {name} to cart",
+      "noteLabel": "Note to the kitchen",
+      "notePlaceholder": "e.g. no vegetables, less sweet"
     },
     "closed": {
       "banner": "The shop is not taking orders here right now — you can browse the menu but not order",
@@ -4313,7 +4323,16 @@
       "notified": "Shop notified — staff are checking the transfer",
       "payHidden": "This table is splitting the bill — please pay at the cashier",
       "empty": "Nothing ordered yet",
-      "serviceChargeNote": "Service charge {rate}%"
+      "serviceChargeNote": "Service charge {rate}%",
+      "tabs": "Page sections",
+      "roundsTab": "Ordered",
+      "billTab": "Bill",
+      "sentBanner": "Sent to the kitchen — follow your food under \"Ordered\"",
+      "kitchenProgress": "Kitchen done {done}/{total}",
+      "emptyRounds": "Nothing ordered yet — pick from the menu and send it to the kitchen",
+      "billEmpty": "No amount on this table yet",
+      "payHint": "This is the same total as the cashier's bill — after paying, tap \"I've paid, tell the shop\"",
+      "payAtCashier": "Please pay at the cashier"
     },
     "kitchen": {
       "NEW": "Waiting",
@@ -4332,7 +4351,14 @@
       "pdpa": "Used only to contact you about this order",
       "place": "Order and pay",
       "prepNote": "About {min} minutes after the shop accepts",
-      "pickupOnly": "Pickup at the shop"
+      "pickupOnly": "Pickup at the shop",
+      "sub": "Order online · {branch}",
+      "next": "Enter pickup details",
+      "nameRequired": "Enter the pickup name",
+      "phoneInvalid": "Invalid phone number — use a Thai number, e.g. 0812345678",
+      "payTotal": "Amount to pay",
+      "payNote": "After you order you get a PromptPay QR for this amount — the shop starts once it is paid in time",
+      "backToMenu": "Back to the menu"
     },
     "status": {
       "title": "Order {code}",
@@ -4354,7 +4380,44 @@
       "refund": "The shop will refund you — please contact the shop",
       "receipt": "View receipt",
       "items": "Items",
-      "phone": "Contact phone"
+      "phone": "Contact phone",
+      "sub": "Online order · {branch}",
+      "phase": {
+        "pay": "Scan to pay with PromptPay",
+        "claimed": "Shop notified — waiting for the shop to check",
+        "paid": "Payment received — waiting for the shop to accept",
+        "accepted": "The shop accepted your order",
+        "preparing": "Preparing",
+        "ready": "Ready for pickup",
+        "handed": "Picked up — thank you",
+        "expired": "PromptPay has not received the payment",
+        "rejected": "The shop could not accept this order",
+        "cancelled": "The order was cancelled"
+      },
+      "paidChip": "Paid · PromptPay {amount}",
+      "stepsLabel": "Order steps",
+      "step": {
+        "pay": "Pay",
+        "accept": "Accepted",
+        "prepare": "Preparing",
+        "ready": "Ready"
+      },
+      "payNoQr": "The shop will send a way to pay — please wait",
+      "payWithin": "Pay within {time} (by {at})",
+      "autoConfirm": "Confirmed automatically when the money arrives",
+      "claimHint": "After paying tap \"I've paid\" — the shop checks and starts",
+      "keepOpen": "Keep this page open — the status updates by itself",
+      "readyEtaAt": "Ready at about {time}",
+      "showCode": "Show this code at the counter",
+      "expiredBody": "The payment time is over and this order is closed — choose what to do next",
+      "expiredRetry": "Try again (order again)",
+      "expiredOther": "Choose another method",
+      "expiredOtherBody": "Order and pay at the shop instead",
+      "expiredManual": "Confirm manually",
+      "expiredManualBody": "If you already paid, show this page (order {code}) to the staff to check and confirm it",
+      "rejectedBody": "The shop cannot take this order right now — sorry",
+      "cancelledBody": "This order has been cancelled",
+      "pickupFor": "Pickup for {name}"
     },
     "errors": {
       "qrClosed": "The shop is not taking orders here right now",
@@ -4371,6 +4434,15 @@
       "priceNotSet": "This item has no price yet — order at the shop",
       "internal": "Something went wrong — please try again",
       "noSession": "This table has no order yet — order first, then call staff or ask for the bill"
+    },
+    "menu": {
+      "categories": "Menu categories",
+      "other": "Other",
+      "empty": "Nothing can be ordered here yet — please order with the staff"
+    },
+    "cart": {
+      "empty": "Your cart is empty — tap + on the menu",
+      "noteLine": "Note: {note}"
     }
   }
 }

@@ -32,6 +32,7 @@ import { posPaymentSettings } from "./payment-settings";
 import { orderIntentUnused, orderPaymentReadiness, prepareOrderIntent, type PaymentIntentDeps } from "./payment-intent";
 import { promptpayIdForUnit } from "./payment-intent-shared";
 import { maskPhone, ORDER_PREP_DEFAULT_MIN, type OrderLineOption } from "./order-shared";
+import { receiptShopHeader } from "./receipt"; // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ (อ่านอย่างเดียว) ◂
 import * as orders from "./order";
 import type { GuestTableView } from "@/lib/modules/restaurant";
 import {
@@ -62,6 +63,7 @@ import {
   type QrRefusal,
   type QrRefusalCode,
   type QrRound,
+  type QrShopHeader,
   type QrTableBill,
   type QrTableBillResult,
   type QrTableDoorResult,
@@ -112,6 +114,12 @@ async function submitGuard(token: string, ip: unknown): Promise<QrRefusal | null
   return null;
 }
 const ipOf = (meta: unknown): string => (isRecord(meta) && typeof meta.ip === "string" ? meta.ip : "unknown");
+
+// POS P2.7U ▸ หัวร้านของหน้าสาธารณะ = หัวใบเสร็จ (ชื่อร้าน · โลโก้ · สาขา · อ่านอย่างเดียว) — อ่านไม่ได้ = ชื่อสาขา (หน้าไม่ล้ม) ◂
+async function shopOf(tenantId: string, systemId: string, unitId: string, unitName: string): Promise<QrShopHeader> {
+  const h = await receiptShopHeader(prisma, tenantId, systemId, unitId).catch(() => null);
+  return { name: h?.shopName || unitName, logoUrl: h?.logoUrl ?? null, branch: h?.branchName || unitName };
+}
 
 // ═══════════ ประตูเปิด/ปิด (มติ 11: ช่องทาง active ∧ ไม่พักรับ ∧ ครัวเปิด ∧ ผูก POS — นิยาม "ช่องทางปิด" ของ QR เท่านั้น) ═══════════
 type Door = { open: boolean; closedReason?: QrClosedReason; channel: SalesChannel | null };
@@ -273,9 +281,10 @@ function roundsOf(view: GuestTableView): QrRound[] {
   return (view.session?.rounds ?? []).map((r) => ({ id: r.id, no: r.no, at: r.at.toISOString(), items: r.items.map((it) => ({ name: it.name, qty: it.qty, options: it.options, status: it.status, lineTotalSatang: it.lineTotal })) }));
 }
 async function tableViewOf(t: TableCtx): Promise<QrTableView> {
-  const [door, cat, bp] = await Promise.all([doorOf(t.u, "QR_TABLE", false), catalogOf(t.u), tableServiceBp(t.u)]);
+  const [door, cat, bp, shop] = await Promise.all([doorOf(t.u, "QR_TABLE", false), catalogOf(t.u), tableServiceBp(t.u), shopOf(t.u.tenantId, t.u.systemId, t.u.unitId, t.u.unitName)]); // POS P2.7U ▸ + หัวร้าน ◂
   const body = {
     unit: { name: t.u.unitName },
+    shop, // POS P2.7U ◂
     table: { name: t.view.table.name },
     open: door.open,
     ...(door.closedReason ? { closedReason: door.closedReason } : {}),
@@ -535,11 +544,12 @@ export async function linkDoor(linkToken: string, deps?: PaymentIntentDeps): Pro
   return qrGuard("linkDoor", async (): Promise<QrLinkDoorResult> => {
     const l = await linkCtx(linkToken);
     if (!l) return TOKEN_INVALID();
-    const [door, cat] = await Promise.all([doorOf(l.u, "QR_ORDER", true, deps), catalogOf(l.u)]);
+    const [door, cat, shop] = await Promise.all([doorOf(l.u, "QR_ORDER", true, deps), catalogOf(l.u), shopOf(l.u.tenantId, l.u.systemId, l.u.unitId, l.u.unitName)]); // POS P2.7U ▸ + หัวร้าน ◂
     return {
       ok: true,
       view: {
         unit: { name: l.u.unitName },
+        shop, // POS P2.7U ◂
         open: door.open,
         ...(door.closedReason ? { closedReason: door.closedReason } : {}),
         menu: menuOf(cat, l.u.unitId, "QR_ORDER"),
@@ -626,6 +636,7 @@ async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentInt
 const ORDER_STATUS_SELECT = {
   id: true,
   tenantId: true,
+  systemId: true, // POS P2.7U ▸ หัวร้าน ◂
   unitId: true,
   code: true,
   status: true,
@@ -666,11 +677,13 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
     const it = o.paymentIntentId ? await prisma.posPaymentIntent.findUnique({ where: { id: o.paymentIntentId }, select: { kind: true, amountSatang: true, qrPayload: true, expiresAt: true, status: true } }) : null;
     const ver = sinceVer([o.version, o.status, o.paymentState, it?.status, o.saleId ? 1 : 0]);
     if (isRecord(opts) && typeof opts.sinceVer === "string" && opts.sinceVer === ver) return { ok: true, changed: false, ver };
-    const [lines, sale, unit] = await Promise.all([
+    const [lines, sale, unit, againLink] = await Promise.all([
       prisma.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { name: true, qty: true, options: true, lineTotalSatang: true } }),
       o.saleId ? prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: o.tenantId }, select: { publicToken: true } }) : Promise.resolve(null),
       prisma.businessUnit.findFirst({ where: { id: o.unitId, tenantId: o.tenantId }, select: { name: true } }),
+      prisma.posOrderLink.findFirst({ where: { tenantId: o.tenantId, systemId: o.systemId, unitId: o.unitId, status: "ACTIVE" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { token: true } }), // POS P2.7U ▸ "ลองใหม่" ◂
     ]);
+    const shop = await shopOf(o.tenantId, o.systemId, o.unitId, unit?.name ?? ""); // POS P2.7U ◂
     const closed = o.status === "REJECTED" || o.status === "CANCELLED";
     const view: QrOrderStatusView = {
       code: o.code,
@@ -685,6 +698,8 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
       phoneMasked: maskPhone(o.customerPhone),
       customerName: o.customerName,
       unit: { name: unit?.name ?? "" },
+      shop, // POS P2.7U ◂
+      orderAgainToken: againLink?.token ?? null, // POS P2.7U ◂
       readyEta: o.acceptedAt ? new Date(o.acceptedAt.getTime() + (o.prepMinutes ?? ORDER_PREP_DEFAULT_MIN) * MIN).toISOString() : null,
       closedReason: o.status === "REJECTED" ? "REJECTED" : o.status === "CANCELLED" ? (o.rejectReason === "PAYMENT_EXPIRED" ? "PAYMENT_EXPIRED" : "CANCELLED") : null,
       refundPending: (closed && it?.status === "PAID") || o.paymentState === "REFUNDED", // POS P2.7 ▸ fix2 R1 F3(a): บิลของออเดอร์ถูก void หลังรับ ◂
