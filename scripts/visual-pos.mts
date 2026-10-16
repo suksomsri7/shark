@@ -540,7 +540,7 @@ const P28U_ORDERS_PLAN: { key: P28uOrdersKey; devices: readonly Device[]; note: 
   { key: "orders-pay-dialog", devices: ["desktop", "ipad", "mobile"], note: "แผงโทรสั่งที่รอชำระ → รับเงิน → จอชำระเดิมผูก payOrderAction (ไม่กดยืนยัน)" },
 ];
 const P28U_REG_PLAN: { key: P28uRegKey; devices: readonly Device[]; note: string }[] = [
-  { key: "register-tab-badge", devices: ["desktop", "ipad"], note: "หน้าขาย: แท็บ \"ออเดอร์ออนไลน์\" เป็นลิงก์ + ป้ายนับออเดอร์ใหม่ (pos-reg-tab-orders-badge · ดึงทุก 10 วิ) — มือถือไม่มีแถบโหมด" },
+  { key: "register-tab-badge", devices: ["desktop", "ipad", "mobile"] /* POS P2.14 ▸ U2 H5: + 390 (UI-13) ◂ */, note: "หน้าขาย: แท็บ \"ออเดอร์ออนไลน์\" เป็นลิงก์ + ป้ายนับออเดอร์ใหม่ (pos-reg-tab-orders-badge · ดึงทุก 10 วิ) — มือถือไม่มีแถบโหมด" },
 ];
 const P28U_WO = /^p2\.?8u/i.test(WO);
 const P28U_ORDERS_KEYS: ReadonlySet<string> = new Set(P28U_ORDERS_PLAN.map((s) => s.key));
@@ -7254,6 +7254,14 @@ async function runP28uState(page: Any, state: P28uOrdersKey | P28uRegKey, device
     await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
     await ensureShift(page);
     if (P28U.error) throw new StepError(`fixture P2.8U: ${P28U.error}`);
+    // POS P2.14 ▸ U2 H5 (CD-U2c): 390 ไม่มีแถบโหมด — ป้ายอยู่ที่ปุ่มออเดอร์บนหัวมือถือ (UI-13 · ขึ้นเมื่อมีออเดอร์ใหม่ · ออเดอร์ของ fixture P2.8U สร้างก่อนงานแรกแล้ว) ◂
+    if (device === "mobile") {
+      await visibleEl(page, tid("pos-reg-mobile-orders-badge"), 0, 20_000).catch(() => {
+        throw new StepError("ป้ายนับออเดอร์ใหม่บนหัวมือถือไม่ขึ้นภายใน 20 วิ");
+      });
+      return;
+    }
+    // ◂
     await visibleEl(page, tid("pos-reg-tab-online-orders"), 0, 10_000);
     await visibleEl(page, tid("pos-reg-tab-orders-badge"), 0, 20_000).catch(() => {
       throw new StepError("ป้ายนับออเดอร์ใหม่บนแท็บไม่ขึ้นภายใน 20 วิ");

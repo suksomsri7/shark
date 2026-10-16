@@ -34,6 +34,8 @@ import { kitchenPauseAction } from "@/lib/actions/restaurant";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { KdsTopBar } from "./KdsTopBar";
 import { KdsChannelChip, KdsTicketCard, useSourceText } from "./KdsTicketCard";
+import { channelDisplayName } from "@/components/pos/settings/channel-text"; // POS P2.14 ▸ U2 Q3 ◂
+import { CHANNEL_BUILTIN_NAMES, isChannelBuiltinCode } from "@/lib/modules/pos/channel-shared"; // POS P2.14 ▸ U2 Q3 ◂
 import { KdsBottomBar, KdsEightySixPanel } from "./KdsEightySix";
 import { printKitchenSlips } from "./kds-print";
 import { bkkClock, clockNow, columnTickets, expoGroups, KDS_TICK_MS, midnightWindow, shortName, stationName, ticketKey, type FloorClock } from "./kds-ui";
@@ -60,6 +62,13 @@ export function KdsScreen(p: KdsScreenProps) {
   const tpr = useTranslations("pos.print");
   const locale = useLocale();
   const sourceText = useSourceText();
+  // POS P2.14 ▸ U2 Q3: ป้ายช่องทางของ "ล่าสุด" (ออนไลน์ = "ชื่อช่องทาง · เลขอ้างอิง" จากเซิร์ฟเวอร์) — ชื่อ builtin แปลผ่านตัวช่วยเดียวกับจอออเดอร์ ("Chat") · ชื่อที่ร้านตั้งเอง = คงเดิม ◂
+  const tch = useTranslations("pos.channel");
+  const onlineLastLabel = (label: string): string => {
+    const [name = "", ...rest] = label.split(" · ");
+    const code = Object.keys(CHANNEL_BUILTIN_NAMES).find((c) => isChannelBuiltinCode(c) && CHANNEL_BUILTIN_NAMES[c] === name);
+    return [code ? channelDisplayName(code, name, tch) : name, ...rest].join(" · ");
+  };
   const target = useMemo(() => ({ systemId: p.systemId, unitId: p.unitId }), [p.systemId, p.unitId]);
 
   // ═══════ เวลา (หลัง mount เท่านั้น) ═══════
@@ -332,7 +341,7 @@ export function KdsScreen(p: KdsScreenProps) {
     >
       <b className="text-[13px] text-[color:var(--color-ink)]">{t("servedToday", { count: board?.servedToday.count ?? 0 })}</b>
       {last && mounted ? (
-        <span>{`${t("servedLast", { no: last.no, label: sourceText({ source: last.source, label: last.label }) || last.label, time: bkkClock(last.at) })} — ${t("tapRecall")}`}</span>
+        <span>{`${t("servedLast", { no: last.no, label: sourceText({ source: last.source, label: last.label }) || (last.source === "ONLINE" ? onlineLastLabel(last.label) : last.label) /* POS P2.14 ▸ U2 Q3 ◂ */, time: bkkClock(last.at) })} — ${t("tapRecall")}`}</span>
       ) : (
         <span>{t("servedNone")}</span>
       )}

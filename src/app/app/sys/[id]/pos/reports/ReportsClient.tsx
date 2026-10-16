@@ -94,6 +94,9 @@ const bkkTime = (iso: string | null, locale: string) =>
 /** YYYY-MM-DD → วันที่สั้นตามภาษาจอ (ไม่เลื่อนวัน: ตีความเป็น UTC เที่ยงวัน) */
 const shortDate = (d: string, locale: string) =>
   new Intl.DateTimeFormat(locale.startsWith("en") ? "en-GB" : "th-TH", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(`${d}T12:00:00Z`));
+// POS P2.14 ▸ U2 O-8: YYYY-MM-DD → วันที่ตามภาษาจอพร้อมปี (th = พ.ศ. · ไม่เลื่อนวัน) — ช่วงของรายงานและช่องวันที่ในตาราง ◂
+const dayDate = (d: string, locale: string) =>
+  new Intl.DateTimeFormat(locale.startsWith("en") ? "en-GB" : "th-TH", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }).format(new Date(`${d}T12:00:00Z`));
 const pct = (bp: number | null) => (bp === null ? "—" : `${(bp / 100).toFixed(2)}%`);
 
 // ═══════════ ตารางกลาง ═══════════
@@ -177,7 +180,7 @@ const ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A1
 const ANOMALY_MONEY = new Set<string>(["A1", "A2", "A8", "A9"]);
 const ANOMALY_BP = new Set<string>(["A3", "A4"]);
 const bpText = (bp: number) => `${(bp / 100).toFixed(2)}%`;
-function AnomalyBody({ rep, t, systemId }: { rep: Report<"anomalies", AnomalyRow, AnomalyTotals>; t: T; systemId: string }) {
+function AnomalyBody({ rep, t, systemId, locale = "th" }: { rep: Report<"anomalies", AnomalyRow, AnomalyTotals>; t: T; systemId: string; /** POS P2.14 ▸ U2 O-8 ◂ */ locale?: string }) {
   const tt = rep.totals;
   if (rep.rows.length === 0) return <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("anomaly.empty")}</p>;
   const index = new Map(rep.rows.map((r, i) => [r, i]));
@@ -234,7 +237,7 @@ function AnomalyBody({ rep, t, systemId }: { rep: Report<"anomalies", AnomalyRow
                   return (
                     <tr key={n} data-testid={`pos-reports-anomaly-row-${n}`}>
                       <td className={TD}>{unitName(r.unitId)}</td>
-                      <td className={`${TD} whitespace-nowrap tabular-nums`}>{r.businessDate ?? t("anomaly.wholeRange")}</td>
+                      <td className={`${TD} whitespace-nowrap tabular-nums`}>{r.businessDate ? dayDate(r.businessDate, locale) : t("anomaly.wholeRange") /* POS P2.14 ▸ U2 O-8 ◂ */}</td>
                       <td className={TD}>{r.userId === null ? "\u2014" : (r.userName ?? <span className="text-[color:var(--color-muted)]">{t("anomaly.unnamed")}</span>)}</td>
                       <td className={`${TD} whitespace-nowrap text-right font-semibold tabular-nums`}>{valueCell(r)}</td>
                       <td className={`${TD} whitespace-nowrap text-right tabular-nums`}>{r.count.toLocaleString("th-TH")}</td>
@@ -275,7 +278,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Load
       const x = rep as Report<"daily", DailyRow, DailyTotals>;
       if (x.totals.billCount === 0 && x.totals.voidCount === 0) return empty;
       const cols: Col<DailyRow>[] = [
-        { key: "date", header: c("date"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{r.businessDate}</span> },
+        { key: "date", header: c("date"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{dayDate(r.businessDate, locale) /* POS P2.14 ▸ U2 O-8 ◂ */}</span> },
         { key: "bills", header: c("bills"), num: true, cell: (r) => r.billCount },
         { key: "gross", header: c("gross"), num: true, cell: (r) => M(r.grossSatang) },
         { key: "discount", header: c("discount"), num: true, cell: (r) => M(r.discountSatang) },
@@ -523,7 +526,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Load
     }
     // POS P2.12U ▸ มติ 4 ◂
     case "anomalies":
-      return <AnomalyBody rep={rep as Report<"anomalies", AnomalyRow, AnomalyTotals>} t={t} systemId={systemId} />;
+      return <AnomalyBody rep={rep as Report<"anomalies", AnomalyRow, AnomalyTotals>} t={t} systemId={systemId} locale={locale} /* POS P2.14 ▸ U2 O-8 ◂ */ />;
     // POS P2.12U ▸ มติ 3: เปรียบเทียบสาขา — แถวต่อสาขาที่มีเอกสาร/กะที่นับเงินในช่วง (ชื่อจาก DTO) + แถวรวมของทั้งขอบเขต (totals) ◂
     case "branches": {
       const x = rep as Report<"branches", BranchRow, BranchTotals>;
@@ -583,7 +586,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Load
       const x = rep as Report<"tax", TaxRow, TaxTotals>;
       if (x.rows.length === 0) return empty;
       const cols: Col<TaxRow>[] = [
-        { key: "date", header: c("date"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{r.businessDate}</span> },
+        { key: "date", header: c("date"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{dayDate(r.businessDate, locale) /* POS P2.14 ▸ U2 O-8 ◂ */}</span> },
         { key: "unit", header: c("unit"), cell: (r) => r.unitName },
         { key: "first", header: c("firstReceipt"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{r.firstReceiptNo ?? "—"}</span> },
         { key: "last", header: c("lastReceipt"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{r.lastReceiptNo ?? "—"}</span> },
@@ -857,7 +860,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
             <h2 className="text-base font-semibold">{t(`kinds.${view.kind}`)}</h2>
             {report && !loading ? (
               <span className="text-xs text-[color:var(--color-muted)]" data-testid="pos-report-generated">
-                {view.from} – {view.to} · {t("generatedAt", { time: bkkTime(report.generatedAt, locale) })}
+                {view.from === view.to ? dayDate(view.from, locale) : `${dayDate(view.from, locale)} – ${dayDate(view.to, locale)}` /* POS P2.14 ▸ U2 O-8 ◂ */} · {t("generatedAt", { time: bkkTime(report.generatedAt, locale) })}
               </span>
             ) : null}
           </div>

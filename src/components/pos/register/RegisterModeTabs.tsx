@@ -50,6 +50,8 @@ export function RegisterModeTabs({
     { key: "settings", msg: "settings", icon: "gear", href: `${base}/pos/settings` }, // POS P1.10 U ▸ หน้าตั้งค่าหน้าขาย ◂
   ];
   const soon = new Set<TabKey>(tablesHref || active === "tables" ? [] : ["tables"]); // POS P2.4U ▸ โต๊ะ live ◂ · POS P2.8U ▸ ออเดอร์ออนไลน์ live ◂
+  // POS P2.14 ▸ U2 Q4 (แบบ P1 O1): หน้าโต๊ะเปิดแล้ว — ผู้ใช้/สาขาที่ไม่เห็นโหมดโต๊ะ = ซ่อนแท็บ (ไม่โชว์ "เร็ว ๆ นี้" ของหน้าที่ใช้งานได้จริง) ◂
+  const shown = tabs.filter((tab) => !soon.has(tab.key));
   // ขีดล่าง 2px ทับเส้นขอบของแถบพอดี (mb-[-1px]) · โครงเดียวกันทุกแท็บ ต่างแค่สี/น้ำหนัก
   const cell =
     "relative -mb-px flex shrink-0 flex-col items-center justify-center gap-[3px] border-b-2 px-[13px] pb-1.5 pt-2 text-[13px] whitespace-nowrap min-w-16 xl:min-w-0 xl:flex-row xl:gap-[9px] xl:px-[22px] xl:pb-4 xl:pt-[18px] xl:text-[15px]";
@@ -58,7 +60,7 @@ export function RegisterModeTabs({
       aria-label={t("tabs.label")}
       className="hidden shrink-0 overflow-x-auto border-b px-2 [scrollbar-width:none] md:flex xl:px-[26px] [&::-webkit-scrollbar]:hidden"
     >
-      {tabs.map((tab) => {
+      {shown.map((tab) => { /* POS P2.14 ▸ U2 Q4 ◂ */
         const label = (
           <>
             <RegisterIcon name={tab.icon} size={19} className="xl:hidden" />

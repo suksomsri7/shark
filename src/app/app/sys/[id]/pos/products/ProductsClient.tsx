@@ -273,7 +273,7 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {/* หัว + ปุ่มบนตาราง */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-sm:basis-full" /* POS P2.14 ▸ U2 O-4: ต่ำกว่า sm หัวเต็มบรรทัด แถบปุ่มลงบรรทัดใต้หัว (แบบ P1 O4) ◂ */>
             <h2 className="text-[22px] font-bold tracking-[-0.01em]">{t("title")}</h2>
             <p className="text-[12.5px] text-[color:var(--color-muted)]">{t("desc")}</p>
           </div>

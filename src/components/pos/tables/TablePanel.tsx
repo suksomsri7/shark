@@ -469,7 +469,7 @@ export function TablePanel(p: Props) {
 
       <div className="grid grid-cols-3 gap-2 px-4">
         {p.orderMoreHref ? (
-          <Link data-testid="pos-tbl-order-more" href={p.orderMoreHref} className="btn-sm inline-flex h-11 items-center justify-center gap-1.5 rounded-[12px] text-[13.5px] font-bold">
+          <Link data-testid="pos-tbl-order-more" href={p.orderMoreHref} className="btn-sm inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-[12px] text-[13.5px] font-bold" /* POS P2.14 ▸ U2 O-1: บรรทัดเดียว (en สั้น "Order · Move · Merge") ◂ */>
             <RegisterIcon name="plus" size={13} />
             {t("actions.orderMore")}
           </Link>

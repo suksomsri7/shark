@@ -1403,7 +1403,8 @@
       "scopeNote": "ประวัติของคลังนี้ (ทุกสาขาที่ใช้คลังร่วม)",
       "saleCut": "ตัดตามสูตร {name}",
       "saleReturn": "คืนจากบิล {name}",
-      "saleRef": "{line} · บิล {receipt}"
+      "saleRef": "{line} · บิล {receipt}",
+      "saleRefBill": "บิล {receipt}"
     },
     "productsPage": {
       "desc": "บริการ/สินค้า — ตั้งรายการที่ขายหน้าร้าน",

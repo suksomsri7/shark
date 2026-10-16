@@ -610,7 +610,7 @@ export function HistoryPanel({
                 </b>
                 <span className="block truncate text-xs text-[color:var(--color-muted)]">
                   {bkkDayHm(m.createdAt, locale)} · {locName(m.locationId)}
-                  {m.sale ? ` · ${t("history.saleRef", { line: m.sale.lineName ?? "-", receipt: m.sale.receiptNo ?? "-" })}` : ""}
+                  {m.sale ? ` · ${m.sale.lineName ? t("history.saleRef", { line: m.sale.lineName, receipt: m.sale.receiptNo ?? "-" }) : t("history.saleRefBill", { receipt: m.sale.receiptNo ?? "-" }) /* POS P2.14 ▸ U2 O-7: ไม่มีชื่อบรรทัด (เช่น คืนจากบิล) = ไม่แสดงช่องว่าง "-" ◂ */}` : ""}
                   {m.note ? ` · ${m.note}` : ""}
                 </span>
               </span>

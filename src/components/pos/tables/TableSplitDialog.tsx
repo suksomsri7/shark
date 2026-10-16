@@ -425,8 +425,8 @@ export function TableSplitDialog(p: Props) {
             className="flex min-h-11 min-w-0 flex-1 flex-col items-start text-left disabled:cursor-default"
             onClick={() => setSelected(n)}
           >
-            <span className="flex min-w-0 items-center gap-1.5 text-[14.5px] font-bold text-[color:var(--color-ink)]">
-              <span className="truncate">{[t("split.bill", { no: n }), memberLabel(mid)].filter(Boolean).join(" · ")}</span>
+            <span className="flex w-full min-w-0 items-center gap-1.5 text-[14.5px] font-bold text-[color:var(--color-ink)]" /* POS P2.14 ▸ U2 O-2: กว้างเท่าการ์ด (items-start ไม่ยืด) ⇒ ชื่อยาวตัด … ในการ์ด ◂ */>
+              <span className="min-w-0 truncate">{[t("split.bill", { no: n }), memberLabel(mid)].filter(Boolean).join(" · ")}</span>
             </span>
             <span className="mt-1 text-[24px] font-bold leading-tight tabular-nums">{v ? moneyText(v.total) : "—"}</span>
             <span className={`text-[12.5px] ${paid ? "font-bold text-[color:var(--color-ink)]" : "text-[color:var(--color-muted)]"}`}>
