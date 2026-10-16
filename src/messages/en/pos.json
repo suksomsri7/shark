@@ -3765,6 +3765,31 @@
     "legacy": {
       "manageAtPos": "Manage in POS › Tables",
       "note": "This branch uses POS table mode — check out and cancel items in POS"
+    },
+    "qr": {
+      "button": "Table QR",
+      "open": "Table QR (guests scan to order)",
+      "title": "QR of table {name}",
+      "loading": "Loading QR…",
+      "notFound": "No QR found for this table",
+      "hint": "Guests scan to see the menu, order, call staff and view the table bill",
+      "inactive": "This table is inactive — scanning it cannot order yet",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "print": "Print QR",
+      "rotate": "Change QR",
+      "rotateTitle": "Change this table's QR?",
+      "rotateBody": "The old QR on the table stops working at once (guests who scan it see \"This QR no longer works\") — print and stick the new QR",
+      "rotateConfirm": "Change QR",
+      "rotateNoPerm": "Changing the QR needs the table permission (change QR) — ask the owner/manager",
+      "rotated": "QR of table {name} changed — print the new QR",
+      "printAll": "Print all table QRs",
+      "sheetTitle": "Print table QRs ({count} tables)",
+      "sheetHint": "A4 paper · 3 columns — cut along the dashed lines and stick on each table",
+      "sheetEmpty": "No tables yet",
+      "printNow": "Print",
+      "cellTable": "Table {name}",
+      "cellHint": "Scan to see the menu and order"
     }
   },
   "orders": {

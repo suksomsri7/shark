@@ -42,6 +42,8 @@ type Props = {
   onUnlinkMember: (() => void) | null;
   onViewBooking: () => void;
   onClose?: () => void;
+  /** POS P2.7U ▸ ปุ่ม "QR ของโต๊ะ" บนหัวแผง (กล่อง QR · พิมพ์ · เปลี่ยน QR) — ไม่ส่ง = ไม่มีปุ่ม ◂ */
+  onShowQr?: () => void;
   /** fix 1 V1: แผงในคอลัมน์ขวา (xl) ห้ามหด — คอลัมน์เลื่อนทั้งก้อน (แผงแล้วตามด้วยแจ้งเตือน · ภาพ 03) · แผ่น iPad/มือถือ = ค่าเดิม */
   noShrink?: boolean;
   // POS P2.5U ▸ มติ 1: ปุ่ม ย้ายโต๊ะ · รวมโต๊ะ · แยกบิล · พิมพ์ใบรายการ ใช้งานได้ (แทนปุ่ม PLANNED) —
@@ -112,6 +114,19 @@ export function TablePanel(p: Props) {
         {t(`state.${c.state}`)}
       </span>
       <span className="flex-1" />
+      {p.onShowQr ? (
+        <button
+          data-testid="pos-tbl-panel-qr"
+          type="button"
+          aria-label={t("qr.open")}
+          title={t("qr.open")}
+          className="inline-flex h-11 items-center gap-1.5 rounded-[12px] border px-2.5 text-[13px] text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"
+          onClick={p.onShowQr}
+        >
+          <RegisterIcon name="qr" size={14} />
+          <span className="hidden sm:inline">{t("qr.button")}</span>
+        </button>
+      ) : null /* POS P2.7U ◂ */}
       {d && (
         <div ref={menuBox} className="relative">
           <button

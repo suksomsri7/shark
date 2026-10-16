@@ -19322,6 +19322,176 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-panel-qr",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "แผงโต๊ะ: QR ของโต๊ะ → กล่อง QR (qrTablesAction · ภาพ QR + ลิงก์ /q/t/<qrToken>)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-print-qr",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "แถบบนผัง: พิมพ์ QR ทุกโต๊ะ → แผ่น A4 3 คอลัมน์ (ชื่อร้าน · ชื่อโต๊ะ · QR)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดกล่อง QR ของโต๊ะ"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-copy",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "คัดลอกลิงก์ <origin>/q/t/<qrToken>"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-print",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "พิมพ์ QR โต๊ะนี้ → แผ่นพิมพ์ (ช่องเดียว)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-rotate",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เปลี่ยน QR → กล่องยืนยันในกล่องเดิม (ปิด + คำอธิบายเมื่อไม่มี restaurant.table.rotateQr)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-rotate-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิกการเปลี่ยน QR"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-rotate-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ยืนยันเปลี่ยน QR = rotateTableQrAction (restaurant.table.rotateQr · QR เดิมใช้ไม่ได้ทันที) → toast + ภาพ QR ใหม่"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-sheet-print",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "แผ่นพิมพ์ QR: พิมพ์ (window.print · CSS @page A4)"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tbl-qr-sheet-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแผ่นพิมพ์ QR"
+      },
+      "wo": "P2.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
