@@ -68,6 +68,9 @@ man = json.load(open(sys.argv[1])); out = sys.argv[2]; root = sys.argv[3]; nset 
 acc = {s["suite"]: s.get("accepted") for s in man.get("suites", []) if s.get("accepted")}
 acc.update({c["name"]: c.get("accepted") for c in man.get("commands", []) if c.get("accepted")})
 total = len(man.get("suites", [])) + len(man.get("commands", []))
+# POS HF-FU2 ▸ fix2 N6: ชุดข้อสอบที่จริงไม่พิมพ์ JSON_SUMMARY (exit 0 ได้โดยไม่มีสรุป) — นอกจากนี้ทุก suite ที่ exit 0 ต้องมีสรุปบรรทัดเดียว ◂
+NO_JSON_SUITES = ["qc-restaurant", "qc-nav-functions"]
+suite_mode = {s["suite"]: s.get("mode") for s in man.get("suites", [])}  # POS HF-FU2 ▸ fix2 N6: kind=suite + mode ◂
 rows = []
 for line in open(os.path.join(out, "SUMMARY.txt")).read().splitlines():
     parts = line.split()
@@ -210,6 +213,33 @@ for name, rc in rows:
             bad0 = f"passed {j0['passed']} ≠ total {j0['total']}"
         if bad0:
             print(f"RED {name} 0 (exit 0 แต่สรุปล้ม: {bad0})")
+            red.append(name)
+    # POS HF-FU2 ▸ fix2 N6: suite ที่ exit 0 — ต้องมี JSON_SUMMARY บรรทัดเดียว (ยกเว้น NO_JSON_SUITES) · total = passed > 0 เป็นจำนวนเต็ม ·
+    #   skipped:true = red · mode forced ต้องไม่รายงาน forced:false (ชุด forced ที่ SKIP แล้ว exit 0 = red) · แถวคำสั่ง (typecheck/fitness/…) ไม่ตรวจ ◂
+    if rc == 0 and name in suite_mode:
+        bad6 = ""
+        j6 = None
+        if js:
+            try:
+                j6 = json.loads(L[js[-1]][len("JSON_SUMMARY "):])
+            except Exception:
+                j6 = None
+        if not js:
+            if name not in NO_JSON_SUITES:
+                bad6 = "suite exit 0 ไม่มี JSON_SUMMARY"
+        elif not isinstance(j6, dict):
+            bad6 = "JSON_SUMMARY อ่านไม่ได้"
+        else:
+            t6, p6 = j6.get("total"), j6.get("passed")
+            isint = lambda v: isinstance(v, int) and not isinstance(v, bool)
+            if not isint(t6) or not isint(p6) or t6 != p6 or t6 <= 0:
+                bad6 = f"total/passed ต้องเป็นจำนวนเต็มเท่ากันและ > 0 (total {t6!r} · passed {p6!r})"
+            elif j6.get("skipped") is True:
+                bad6 = "skipped:true"
+            elif suite_mode.get(name) == "forced" and "forced" in j6 and j6.get("forced") is False:
+                bad6 = "mode forced แต่ forced:false (ชุด SKIP)"
+        if bad6:
+            print(f"RED {name} 0 (N6: {bad6})")
             red.append(name)
 for name, rc in rows:
     if rc == 0:
