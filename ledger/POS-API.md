@@ -1,5 +1,7 @@
 # POS ใหม่ — API (ส่วนต่างจากสเปกเดิม `docs/modules/14-pos.md` §5) + REST v1 สำหรับระบบภายนอก/AI + tool manifest
 
+> **16 ต.ค. 2569 · P2.14 (ruling 7) — เอกสารนี้คือแบบตั้งต้น (1 ต.ค.) ไม่ใช่ความจริงปัจจุบัน.** REST `/api/v1/pos` ที่สร้างจริง (48 op · scope · รหัสข้อผิดพลาด · webhook) = **`docs/api/POS-API.md`** (สร้างจากทะเบียน `pos/api/registry.ts` ด้วย `scripts/gen-pos-api-docs.mts` · `--check` อยู่ในชุดด่าน P2) · สกิลของ Claude = `skills/shark-pos-api/` · สรุปปิดเฟส = HANDOVER-P2
+
 > 1 ต.ค. 2569 · แบบอย่างเดียว · ของเดิม §5.1–5.7 (sales/products/stock/shifts/devices/held-carts/reports/public) **ยังใช้ทั้งหมด** · ที่นี่คือส่วน "เพิ่ม/แก้"
 > เส้นทางภายใน: `/api/u/[unitId]/pos/...` (unit-scoped + `X-Pos-Device`) · เส้นทางภายนอก: `/api/v1/pos/...` (API key แบบบัญชี/CRM: scope · ผูกระบบ · expiresAt · Idempotency-Key · rate limit DB — ทะเบียนเดียว 3 ผิวหน้าแบบ `account/api/registry.ts`)
 

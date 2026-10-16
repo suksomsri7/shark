@@ -115,8 +115,31 @@ POST /sync/sales  { deviceId, items:[{ offlineRef:'OFF-C1-0007', idempotencyKey,
 | **`pos.shift.opened` / `pos.shift.closed`** | shiftId · deviceId · overShortSatang · zNumber | Account JV ขาด/เกิน · Kanban การ์ดตรวจเงิน · Meeting/LINE สรุป |
 | **`pos.product.availability`** | productId · available · source (KDS/STOCK/MANUAL) | adapter ทุกช่องทาง (setAvailability) · Kanban ของหมด |
 | **`pos.order.received/accepted/rejected/ready/completed`** | externalOrderId · channelId | KDS · Chat สถานะ · Kanban ปฏิเสธ · Meeting ค้างนาน |
-| **`pos.stockcount.confirmed`** | countId · diffs[] | Inventory adjust (มี) · Account ผลต่าง (C-1) |
+| **`pos.stockCount.confirmed`** | countId · diffs[] | Inventory adjust (มี) · Account ผลต่าง (C-1) — P2.14 DOC-5: ชื่อจริงใน `outbox-consumers.ts` (เดิมในเอกสาร `stockcount`) |
 | **`pos.receipt.issue_reported`** | saleId · message · channel | Kanban การ์ด · Chat ตอบรับ |
+| **`pos.receipt.taxInvoiceRequested`** (P1.11) | requestId · saleId · unitId | ไม่มีผลข้างเคียง (ตัวรับว่าง · webhook ของร้าน) — คำขอใบกำกับเต็มรูปจากใบเสร็จออนไลน์ รอร้านออก/ปฏิเสธ |
+| **`pos.payment.intent_paid`** (P1.7 · P2.7) | intentId · unitId · amountSatang · via · kind · lateWebhook | `orders.onIntentPaid` (ออเดอร์จ่ายก่อน → PREPAID · เงินเข้าหลังปิด = late_payment + refund_needed) · จอลูกค้า |
+| **`pos.sale.taxInvoiceIssued`** (P1.13) | saleId · docId · unitId · via (LATER/REQUEST) · requestId? | ไม่มีผลข้างเคียง (ตัวรับว่าง · webhook ของร้าน) — ออกใบกำกับเต็มรูปแทนใบอย่างย่อแล้ว |
 
 ## ตารางสิทธิ์เพิ่มจากสเปก §9
 `pos.channel.manage` · `pos.order.accept` · `pos.order.reject` · `pos.approval.decide` (ผ่าน approval core) · `pos.offline.sync` · `pos.price.rule` (การตลาด/ผู้จัดการ)
+
+### ตารางสิทธิ์ของ POS ตามที่สร้างจริง (as-built ปิด P2 · P2.14 ruling 7 · ที่มา `src/lib/core/permissions.ts`)
+| คีย์ | ใช้ที่ | หมายเหตุ |
+|---|---|---|
+| `pos.sale.create` | หน้าขาย · โต๊ะ · ออเดอร์ (รับเงิน) · จอลูกค้า (ส่งภาพ) · 86 · REST `sales.create`/`sales.quote` | ขายได้ที่สาขาที่เข้าถึง |
+| `pos.sale.read` | บิลวันนี้ · ใบเสร็จ/สำเนา · REST อ่านบิล | ผู้มี `pos.sale.create` อ่านได้โดยปริยาย |
+| `pos.sale.void` · `pos.sale.refund` | ลิ้นชักบิล · ยกเลิกออเดอร์ที่มีบิล · REST void/refund | กติกาอนุมัติ POS_VOID/POS_REFUND · PIN ผู้จัดการแทนได้ |
+| `pos.sale.priceOverride` | รายการกำหนดเอง/ราคาเปิด · REST custom lines | |
+| `pos.sale.manage` | บิลพัก/ส่วนลดที่อนุมัติแล้วของคนอื่น | |
+| `pos.shift.operate` · `pos.shift.manage` | กะของตัวเอง · กะของคนอื่น/Z/ยืนยันเงินเข้าเอง | `manualConfirmRequiresManager` = ต้องมี `pos.shift.manage` |
+| `pos.product.manage` · `pos.product.setPrice` · `pos.price.rule` | แคตตาล็อก · ราคา · โปร/happy hour | ผู้เขียนเดียว `pos/catalog.ts` |
+| `pos.channel.manage` | ตั้งค่าช่องทาง · ลิงก์สั่งล่วงหน้า · ราคาช่องทาง | |
+| `pos.order.accept` · `pos.order.reject` | จอออเดอร์ · REST orders.* · พักรับช่องทาง | ยกเลิกออเดอร์ที่มีบิล = ต้องมี `pos.sale.void` ด้วย |
+| `pos.report.view` · `pos.report.anomaly` | รายงาน · CSV · แบบพิมพ์ · จุดผิดปกติ (PDPA = คีย์แยก) | |
+| `pos.stock.count` | ตรวจนับสต็อกจากหน้าขาย | |
+| `pos.device.manage` | ทะเบียนเครื่อง · เครื่องพิมพ์ · จอลูกค้า (เปิด/ยกเลิก) | |
+| `pos.staff.manage` | PIN ของพนักงานคนอื่น | |
+| `pos.taxinvoice.issue` | ใบกำกับเต็มรูป · คำขอจากใบเสร็จออนไลน์ | REST: คีย์บริการ `pos-api:<keyId>:<saleId>` (P2.14 API-5) |
+| `pos.settings.manage` · `pos.settings.payment` | ตั้งค่าหน้าขาย · คีย์ API (+ `api.key.create`/`api.key.revoke`) · วิธีรับเงิน (เจ้าของ) | เพิกถอนคีย์ได้เฉพาะคีย์ที่ดูแลครบทุกสาขา (P2.14 API-2) |
+
