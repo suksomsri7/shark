@@ -18,7 +18,7 @@
 //   src/lib/api-keys/scopes.ts — bundle pos-read / pos-operate / pos-admin (§2.1 ตรงตัว) + POS_SCOPE_KEYS + pseudo-scope "pos.filter.unit:<unitId>"
 //   src/lib/modules/pos/api-key-actions.ts ("use server") — สร้าง/รายการ/เพิกถอนคีย์ · bundle ต้องเป็น pos-* · api.key.create/api.key.revoke + pos.settings.manage
 //   src/lib/ai/skills.ts toolAllowedForApiKey — hunk เดียว `POS P2.13 ▸` : sales_summary/sales_by_day ⇐ pos.sale.read · pos_create_sale ⇐ pos.sale.create · void_sale ⇐ pos.sale.void
-//   scripts/gen-pos-api-docs.mts (--check) → docs/api/POS-API.md + .claude/skills/shark-pos-api/references/endpoints.md
+//   scripts/gen-pos-api-docs.mts (--check) → docs/api/POS-API.md + skills/shark-pos-api/references/endpoints.md (P2.14 DOC-2 · ในรีโป)
 //   src/app/developers/pos/page.tsx + src/app/developers/pos.md/route.ts + ลิงก์ใน src/app/developers/page.tsx · fitness.mts บล็อก F13 ของ POS
 // สัญญาคำตอบ (ข้อสอบเทียบ PAR กับ facade ตรงด้วย actor สังเคราะห์ของคีย์):
 //   op อ่าน: `data` = ผลสำเร็จของ facade ตัด `ok` ทิ้ง (หรือค่าของฟิลด์เดียวที่เหลือ) · รายการแบ่งหน้า (sales.list · products.list) = data[] + page
@@ -331,7 +331,7 @@ const F = {
   outbox: "src/lib/outbox-consumers.ts",
   gen: "scripts/gen-pos-api-docs.mts",
   doc: "docs/api/POS-API.md",
-  skillEndpoints: ".claude/skills/shark-pos-api/references/endpoints.md",
+  skillEndpoints: "skills/shark-pos-api/references/endpoints.md", // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2) มติ 4: สกิลอยู่ในรีโป (เดิม .claude/skills/…)
   devPage: "src/app/developers/pos/page.tsx",
   devMd: "src/app/developers/pos.md/route.ts",
   devIndex: "src/app/developers/page.tsx",
