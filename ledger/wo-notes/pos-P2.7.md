@@ -102,3 +102,23 @@ Re-runs at 72cd28e0 (unforced, QC4, logs `runs/f1-<suite>.log`):
 | qc-pos-p2.8 | **60/61** | ST6 = lane pin vs origin merge-base (register.ts CD4 hunk · channel.ts QR_ORDER→QR) |
 | qc-pos-p1.7 | **33/33** | |
 | qc-pos-p2.13 | **53/54** | ST4 green with the copied skill dir; ST5 = lane pin vs merge-base ("prisma/ changed · outbox-consumers.ts edited" — the R1 migration + the ruled intent_paid consumer hunk), already listed above — not 54/54 |
+
+## Fix round 2 (R1 F1–F8 + money hunter H1–H5 + note 1 · controller rulings in `pos-P2.7-review.md`)
+Test-first: bf33113e `test(qc-pos-p2.7)` ORACLE-ADD (marker `// ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2)`) TB8 · PY12 · PY13 · PY9b + PY2 Beam batch (38 → 42) · eb19d347 `test(qc-pos-p1.7)` F8 C9 allows `ALTER COLUMN … DROP NOT NULL` per clause. Red-before at eb19d347 = **37/42** (PY2 PY12 PY13 PY9b TB8 red by reason · `P2.7-red.txt` §fix2). Code 2f3d6645 (hunks `// POS P2.7 ▸ fix2 … ◂`; inside the big P2.7 blocks of order.ts / payment-intent.ts written `(POS P2.7 fix2)` so the oracle's block markers stay one span):
+- **F1/H2** guest rounds: single-flight map (`qr-order.ts singleFlight`) — the in-flight Promise is stored before the tx, followers await it, refusal/throw deletes the key, success kept 10 s (CD-O7). Key = table · guestToken · expected session · cart hash · note. Table page emits a per-render `guestToken` hidden input (no-JS double submit dedupes). Round `note` is now written (`createGuestOrderInTx(…, note)` → `roundInTx who.note`).
+- **F2/H1** `lockSaleIntents(tx, s, refs, now, {orderId})`: an intent with `orderId` is refused (`INTENT_CONSUMED`) unless the caller is that order's PREPAID accept (`{orderId: o.id}`) or the order is CANCELLED/REJECTED (late money stays consumable 24 h). Covers register, deposit (`deposit.ts:238` calls the same function — no deposit.ts hunk needed) and REST sales. `payOrder` HF-PP2 gate ignores intents of live orders. `onIntentPaid` acts only on status PAID (not CONSUMED).
+- **H3** `channel.ts resolveSaleChannel`: an inactive (not archived) builtin `QR_ORDER` still resolves ⇒ PREPAID accept bills on QR_ORDER; the public door (`doorOf`) and `ingestPreorderInTx` (note 1: re-check active/paused in the tx ⇒ CHANNEL_PAUSED ⇒ QR_CLOSED) still refuse new submits.
+- **H4** `onIntentPaid`: money with `paidAt > payBy` on a still PENDING_PAYMENT order ⇒ `closeExpiredInTx` (CANCELLED · event expired · outbox cancelled) in the same tx, then the late path (late_payment event + ops ERROR once; intent stays PAID).
+- **H5** pre-order submit single-flight per `linkToken|qr:<key>` (in-flight only; later replays answer from the DB key) ⇒ 10 parallel same-key Beam submits = 1 createCharge.
+- **F3(a)** status `refundPending` also when `paymentState === "REFUNDED"`. **F4** `doorOf` reads the builtin row (no `ensureUnitChannels`); missing ⇒ CHANNEL_OFF. **F5** CALL_STAFF/REQUEST_BILL/PAY never open a session (no session ⇒ VALIDATION; deviation: CALL_STAFF on an empty table is refused rather than opening one). **F6** `PreparedOrderIntent.amountSatang` asserted in `createIntentForOrderInTx` (mismatch throws ⇒ tx rolls back) + ops INFO `pos.payment.beam_unused` (charge ref) when a prepared Beam charge is not used (duplicate / refused / ingest throw).
+- Follow-up owner lines appended (tag-62 reference · PREPAID > 24 h + held across midnight · F3(b) durable refund marker · durable round key · P2.14 hard-close of legacy routes · P2.7U phone normaliser).
+
+| gate (head 386a961b) | result | log `runs/` |
+|---|---|---|
+| qc-pos-p2.7 forced ×2 / unforced | **42/42 · 42/42 · 42/42** | g2-p27-forced-1/2 · g2-p27-unforced |
+| qc-pos-p1.7 (edited) · p2.8 · p2.6 | 33/33 · 60/61 (ST6 lane) · 67/67 | g2-qc-pos-p1.7/p2.8/p2.6 |
+| restaurant · -pay · -money · -void | pass · 19/19 · 6/6 · 11/11 | g2-qc-restaurant* |
+| qc-pos-p2.4 · p1.6 · hf-tx · p2.9b · p2.1 · p1.3 | 50/50 · 48/48 · 22/22 · 53/53 · 55/55 · 128/128 | g2-… |
+| qc-pos-p2.13 | 53/54 (ST5 lane class) | g2-qc-pos-p2.13 |
+| typecheck (8192, at 2f3d6645 + ledger) | exit 0 | typecheck-2 |
+| fitness no env / env | 53/53 · 53/53 | g2-fitness-noenv/env |
