@@ -496,9 +496,21 @@ function runPure() {
     if (names.includes("updatePosPaymentSettingsAction")) hasSettingsAction = true;
     // แต่ละ action ต้องมี catch ในตัวของมัน (ตัดช่วงจาก export หนึ่งถึง export ถัดไป)
     const idx = names.map((n) => code.indexOf(`function ${n}`));
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-B8): action ที่คืนผ่านตัวห่อในไฟล์เดียวกัน (ฟังก์ชันไม่ export ที่มี try/catch เช่น run() ของ qr-staff-actions.ts) = มี catch
+    const wrappers = [...code.matchAll(/^(?:async\s+)?function\s+(\w+)\s*(?:<[^>]*>)?\s*\(/gm)]
+      .map((m) => ({ n: m[1]!, at: m.index! }))
+      .filter((w) => !names.includes(w.n))
+      .filter((w) => {
+        const rest = code.slice(w.at);
+        const end = rest.slice(1).search(/^(?:export\s+)?(?:async\s+)?function\s|^const\s|^\/\*\*/m);
+        const b = end < 0 ? rest : rest.slice(0, end + 1);
+        return /\btry\s*\{/.test(b) && /\bcatch\b/.test(b);
+      })
+      .map((w) => w.n);
     names.forEach((n, i) => {
       const body = code.slice(idx[i], i + 1 < idx.length ? idx[i + 1] : undefined);
-      if (!/\bcatch\b/.test(body)) p22.push(`${f}#${n}: ไม่มี catch`);
+      const viaWrapper = wrappers.some((w) => new RegExp(`\\breturn\\s+(?:await\\s+)?${w}\\s*(?:<[^>]*>)?\\(`).test(body)); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-B8)
+      if (!/\bcatch\b/.test(body) && !viaWrapper) p22.push(`${f}#${n}: ไม่มี catch`);
     });
   }
   if (!hasSettingsAction) p22.push("ไม่มี updatePosPaymentSettingsAction ใน src/lib/modules/pos/*actions*.ts");
