@@ -29,8 +29,7 @@ import { priceCart } from "./pricing-shared";
 import { regResolveOptions, type RegOptGroup, type RegPickedOption, type RegisterActor } from "./register-shared";
 import { registerTableBillPreview } from "./register";
 import { posPaymentSettings } from "./payment-settings";
-import { ensureUnitChannels } from "./channel";
-import { orderPaymentReadiness, prepareOrderIntent, type PaymentIntentDeps } from "./payment-intent";
+import { orderIntentUnused, orderPaymentReadiness, prepareOrderIntent, type PaymentIntentDeps } from "./payment-intent";
 import { promptpayIdForUnit } from "./payment-intent-shared";
 import { maskPhone, ORDER_PREP_DEFAULT_MIN, type OrderLineOption } from "./order-shared";
 import * as orders from "./order";
@@ -56,6 +55,7 @@ import {
   type QrOrderStatusResult,
   type QrOrderStatusView,
   type QrParsedLine,
+  type QrParsedPreorder,
   type QrPlacePreorderResult,
   type QrPlaceRoundResult,
   type QrQuoteResult,
@@ -116,8 +116,8 @@ const ipOf = (meta: unknown): string => (isRecord(meta) && typeof meta.ip === "s
 // ═══════════ ประตูเปิด/ปิด (มติ 11: ช่องทาง active ∧ ไม่พักรับ ∧ ครัวเปิด ∧ ผูก POS — นิยาม "ช่องทางปิด" ของ QR เท่านั้น) ═══════════
 type Door = { open: boolean; closedReason?: QrClosedReason; channel: SalesChannel | null };
 async function doorOf(u: PosUnit, code: "QR_TABLE" | "QR_ORDER", needPayment: boolean, deps?: PaymentIntentDeps): Promise<Door> {
-  const rows = await ensureUnitChannels(prisma, u);
-  const ch = rows.find((r) => r.code === code && r.kind === "BUILTIN" && !r.archivedAt) ?? null;
+  // POS P2.7 ▸ fix2 R1 F4: อ่านอย่างเดียว (มติ 11 = 0 เขียน) — สาขาเก่าที่ยังไม่มีแถว builtin = ปิด (แถวเกิดเมื่อพนักงานเปิดจอ/หน้าขาย · ensureUnitChannels) ◂
+  const ch = await prisma.salesChannel.findFirst({ where: { tenantId: u.tenantId, unitId: u.unitId, code, kind: "BUILTIN", archivedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   if (!ch || !ch.active) return { open: false, closedReason: "CHANNEL_OFF", channel: ch };
   if (ch.pausedUntil && ch.pausedUntil.getTime() > Date.now()) return { open: false, closedReason: "CHANNEL_PAUSED", channel: ch };
   const k = await (await restaurant()).guestKitchenForPos(prisma, { tenantId: u.tenantId, unitId: u.unitId });
@@ -321,13 +321,30 @@ export async function quoteTableCart(qrToken: string, input: { lines: unknown })
   });
 }
 
-/** CD-O7: ส่งตะกร้าเดิมซ้ำจากเครื่องเดิม (guestToken) ภายใน 10 วิ = รอบเดิม (ในหน่วยความจำ · ต่อ instance · คีย์ถาวร = P2.14) */
-const recentRounds = new Map<string, { at: number; roundId: string; sessionId: string }>();
-function recentRound(key: string | null, now: number): { roundId: string; sessionId: string } | null {
-  if (!key) return null;
-  for (const [k, v] of recentRounds) if (now - v.at > QR_ROUND_DEDUPE_MS) recentRounds.delete(k);
-  const hit = recentRounds.get(key);
-  return hit ? { roundId: hit.roundId, sessionId: hit.sessionId } : null;
+/**
+ * CD-O7 · POS P2.7 ▸ fix2 R1 F1 / hunter H2: single-flight ต่อ (โต๊ะ · guestToken · session ที่หน้าเห็น · ตะกร้า) — คำขอแรกวาง Promise ลงแผนที่ "ก่อน" ธุรกรรม ·
+ *   คำขอที่ตามมาภายใน 10 วิ รอ Promise เดียวกัน (ผลเดียวกัน · รอบเดียว) · คำปฏิเสธ/โยน = ลบออก (ส่งใหม่ได้) · ในหน่วยความจำต่อ instance (คีย์ถาวร = P2.14) ◂
+ */
+const inflightRounds = new Map<string, { at: number; p: Promise<QrPlaceRoundResult> }>();
+/** ttlMs = เก็บผลที่สำเร็จไว้ตอบซ้ำนานเท่านี้ · 0 = เฉพาะระหว่างกำลังทำ (สำเร็จแล้วลบ — ประตูที่มีคีย์ใน DB อยู่แล้ว) */
+function singleFlight<T extends { ok: boolean }>(map: Map<string, { at: number; p: Promise<T> }>, key: string | null, ttlMs: number, run: () => Promise<T>): Promise<T> {
+  if (!key) return run();
+  const now = Date.now();
+  if (ttlMs > 0) for (const [k, v] of map) if (now - v.at > ttlMs) map.delete(k);
+  const hit = map.get(key);
+  if (hit) return hit.p;
+  const p = run().then(
+    (r) => {
+      if (!r.ok || ttlMs === 0) map.delete(key);
+      return r;
+    },
+    (e) => {
+      map.delete(key);
+      throw e;
+    },
+  );
+  map.set(key, { at: now, p });
+  return p;
 }
 
 const isRetryable = (e: unknown): boolean => {
@@ -383,12 +400,13 @@ export async function placeTableRound(qrToken: string, input: unknown, meta: { i
     if (!door.open) return qrRefuse("QR_CLOSED");
     const p = await priceLines(t.u, "QR_TABLE", parsed.value.lines);
     if (!p.ok) return p;
-    const now = Date.now();
-    const dedupeKey = parsed.value.guestToken ? `${t.view.table.id}|${parsed.value.guestToken}|${parsed.value.expectedSessionId ?? "-"}|${qrCartHash(parsed.value.lines)}` : null;
-    const again = recentRound(dedupeKey, now);
-    if (again) return { ok: true, ...again };
+    const dedupeKey = parsed.value.guestToken ? `${t.view.table.id}|${parsed.value.guestToken}|${parsed.value.expectedSessionId ?? "-"}|${qrCartHash(parsed.value.lines)}|${parsed.value.note ?? ""}` : null;
+    return singleFlight(inflightRounds, dedupeKey, QR_ROUND_DEDUPE_MS, () => sendRound(t, parsed.value, p.priced));
+  });
+}
+async function sendRound(t: TableCtx, v: { expectedSessionId: string | null | undefined; guestToken: string | null; note: string | null }, priced: Priced[]): Promise<QrPlaceRoundResult> {
     const R = await restaurant();
-    const lines = p.priced.map((x) => ({
+    const lines = priced.map((x) => ({
       productId: x.row.id,
       name: x.row.name,
       qty: x.qty,
@@ -402,7 +420,7 @@ export async function placeTableRound(qrToken: string, input: unknown, meta: { i
     let r: { roundId: string; sessionId: string };
     try {
       r = await retryTx(async (tx) => {
-        const g = await R.guestRoundInTx(tx, { tenantId: t.u.tenantId, unitId: t.u.unitId, tableId: t.view.table.id, expectedSessionId: parsed.value.expectedSessionId, guestToken: parsed.value.guestToken, lines });
+        const g = await R.guestRoundInTx(tx, { tenantId: t.u.tenantId, unitId: t.u.unitId, tableId: t.view.table.id, expectedSessionId: v.expectedSessionId, guestToken: v.guestToken, note: v.note, lines });
         if (!g.ok) throw new QrAbort(qrRefuse(g.code === "SESSION_CHANGED" ? "SESSION_CHANGED" : "TOKEN_INVALID"));
         await emitGuestRoundStockFlipsInTx(tx, { tenantId: t.u.tenantId, unitId: t.u.unitId }, g.menuItemIds);
         return { roundId: g.roundId, sessionId: g.sessionId };
@@ -412,10 +430,8 @@ export async function placeTableRound(qrToken: string, input: unknown, meta: { i
       if (e instanceof R.GuestRoundLineError) return roundLineRefusal(e);
       throw e;
     }
-    if (dedupeKey) recentRounds.set(dedupeKey, { at: now, ...r });
     scheduleDrain();
     return { ok: true, roundId: r.roundId, sessionId: r.sessionId };
-  });
 }
 
 /** เรียกพนักงาน / ขอเช็คบิล (คำขอจากโต๊ะของร้านอาหาร · กันซ้ำ 2 นาทีในตัว · เรียกพนักงานบนโต๊ะว่าง = เปิด session ของแขก) */
@@ -562,7 +578,13 @@ export async function placePreorder(linkToken: string, input: unknown, meta: { i
     if (lim) return lim;
     const parsed = parseQrPreorder(input);
     if (!parsed.ok) return parsed;
-    const v = parsed.value;
+    // POS P2.7 ▸ fix2 hunter H5: single-flight ต่อ (ลิงก์ · คีย์) รอบทั้งคำขอ — คำขอคีย์เดิมพร้อมกันรอผลเดียวกัน ⇒ Beam charge เดียว ◂
+    return singleFlight(inflightPreorders, `${linkToken}|qr:${parsed.value.idempotencyKey}`, QR_PREORDER_FLIGHT_MS, () => submitPreorder(l, parsed.value, deps));
+  });
+}
+const inflightPreorders = new Map<string, { at: number; p: Promise<QrPlacePreorderResult> }>();
+const QR_PREORDER_FLIGHT_MS = 0; // ระหว่างทำเท่านั้น — คำขอซ้ำทีหลังตอบจากคีย์ใน DB (duplicated) ◂
+async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentIntentDeps): Promise<QrPlacePreorderResult> {
     const door = await doorOf(l.u, "QR_ORDER", true, deps);
     if (!door.open || !door.channel) return qrRefuse("QR_CLOSED");
     const p = await priceLines(l.u, "QR_ORDER", v.lines);
@@ -579,17 +601,23 @@ export async function placePreorder(linkToken: string, input: unknown, meta: { i
       note: x.note,
     }));
     const mapOut = (r: orders.PreorderIngestResult): QrPlacePreorderResult =>
-      r.ok ? { ok: true, orderToken: r.publicToken, duplicated: r.duplicated } : qrRefuse(r.code === "IDEMPOTENCY_CONFLICT" || r.code === "VALIDATION" ? "VALIDATION" : r.code === "CHANNEL_INVALID" ? "QR_CLOSED" : "INTERNAL");
+      r.ok ? { ok: true, orderToken: r.publicToken, duplicated: r.duplicated } : qrRefuse(r.code === "IDEMPOTENCY_CONFLICT" || r.code === "VALIDATION" ? "VALIDATION" : r.code === "CHANNEL_INVALID" || r.code === "CHANNEL_PAUSED" ? "QR_CLOSED" : "INTERNAL");
     const pre = await orders.findPreorderByKey(l.u, door.channel.id, v.idempotencyKey, lines);
     if (pre) return mapOut(pre);
     const total = lines.reduce((s, x) => s + x.unitPriceSatang * x.qty, 0);
     const prep = await prepareOrderIntent(l.u, total, deps);
     if (!prep.ok) return qrRefuse(prep.code === "PROMPTPAY_NOT_CONFIGURED" ? "QR_CLOSED" : prep.code === "VALIDATION" ? "VALIDATION" : "INTERNAL");
     const channelId = door.channel.id;
-    const r = await retryTx((tx) => orders.ingestPreorderInTx(tx, l.u, { channelId, lines, customer: v.customer, idempotencyKey: v.idempotencyKey, note: v.note, prepared: prep.prepared }));
+    let r: orders.PreorderIngestResult;
+    try {
+      r = await retryTx((tx) => orders.ingestPreorderInTx(tx, l.u, { channelId, lines, customer: v.customer, idempotencyKey: v.idempotencyKey, note: v.note, prepared: prep.prepared }));
+    } catch (e) {
+      await orderIntentUnused(l.u, prep.prepared, "INGEST_FAILED"); // POS P2.7 ▸ fix2 F6 ◂
+      throw e;
+    }
+    if (!r.ok || r.duplicated) await orderIntentUnused(l.u, prep.prepared, r.ok ? "DUPLICATE" : "REFUSED"); // POS P2.7 ▸ fix2 F6 ◂
     await orders.preorderIngested(l.u.tenantId, r);
     return mapOut(r);
-  });
 }
 
 // ═══════════════════════════ หน้าสถานะ (§1 c) ═══════════════════════════
@@ -657,7 +685,7 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
       unit: { name: unit?.name ?? "" },
       readyEta: o.acceptedAt ? new Date(o.acceptedAt.getTime() + (o.prepMinutes ?? ORDER_PREP_DEFAULT_MIN) * MIN).toISOString() : null,
       closedReason: o.status === "REJECTED" ? "REJECTED" : o.status === "CANCELLED" ? (o.rejectReason === "PAYMENT_EXPIRED" ? "PAYMENT_EXPIRED" : "CANCELLED") : null,
-      refundPending: closed && it?.status === "PAID",
+      refundPending: (closed && it?.status === "PAID") || o.paymentState === "REFUNDED", // POS P2.7 ▸ fix2 R1 F3(a): บิลของออเดอร์ถูก void หลังรับ ◂
       lines: lines.map((l) => ({ name: l.name, qty: l.qty, options: Array.isArray(l.options) ? (l.options as { choiceName?: unknown }[]).flatMap((x) => (typeof x?.choiceName === "string" ? [x.choiceName] : [])) : [], lineTotalSatang: l.lineTotalSatang })),
     };
     return { ok: true, changed: true, ver, view };

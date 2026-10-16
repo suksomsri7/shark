@@ -527,7 +527,7 @@ async function acceptInTx(
   //   กะ = กะของเครื่องที่รับ (รับอัตโนมัติ = null · ไม่ใช่เงินสด · P2.8 มติ 10) · ใบใช้ไม่ได้/บิลถูกปฏิเสธ (BLOCK · PRICE_NOT_SET …) = OrderAbort ⇒ rollback ทั้งก้อน (ยัง NEW/PREPAID) ◂
   if (o.paymentState === "PREPAID") {
     if (!o.paymentIntentId) throw new OrderAbort(refuse("ORDER_STATE_INVALID"));
-    const lk = await lockSaleIntents(tx, { tenantId: o.tenantId, unitId: o.unitId }, [{ intentId: o.paymentIntentId, payType: "PROMPTPAY", amountSatang: o.totalSatang }]);
+    const lk = await lockSaleIntents(tx, { tenantId: o.tenantId, unitId: o.unitId }, [{ intentId: o.paymentIntentId, payType: "PROMPTPAY", amountSatang: o.totalSatang }], new Date(), { orderId: o.id }); // POS P2.7 ▸ fix2 H1: ใบของออเดอร์นี้เอง ◂
     if (!lk.ok) throw new OrderAbort(refuse(lk.code as OrderRefusalCode));
     const plines = await tx.posOrderLine.findMany({ where: { tenantId: o.tenantId, orderId: o.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
     const psaleLines = await saleLinesOf(tx, o, plines);
@@ -1323,7 +1323,14 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
       const piIds = manual.flatMap((p) => (isPaymentIntentId(p.reference) ? [p.reference] : []));
       const allPi = piIds.length === manual.length && new Set(piIds).size === piIds.length;
       const used = allPi && (await prisma.posPayment.count({ where: { tenantId: s.tenantId, reference: { in: piIds } } })) > 0;
-      const pis = allPi && !used ? await prisma.posPaymentIntent.findMany({ where: { id: { in: piIds }, tenantId: s.tenantId, unitId: s.unitId, status: "PAID", paidAt: { gte: new Date(Date.now() - PAYMENT_INTENT_CONSUME_WINDOW_MS) } }, select: { id: true, amountSatang: true } }) : [];
+      const pis0 = allPi && !used ? await prisma.posPaymentIntent.findMany({ where: { id: { in: piIds }, tenantId: s.tenantId, unitId: s.unitId, status: "PAID", paidAt: { gte: new Date(Date.now() - PAYMENT_INTENT_CONSUME_WINDOW_MS) } }, select: { id: true, amountSatang: true, orderId: true } }) : [];
+      // POS P2.7 ▸ fix2 R1 F2 / hunter H1: ใบของออเดอร์จ่ายก่อนที่ยังเปิดอยู่ไม่นับเป็น "ใบที่จ่ายแล้ว" ของบิลอื่น (กติกาเดียวกับ lockSaleIntents) ◂
+      const liveOrders = new Set(
+        pis0.some((x) => x.orderId)
+          ? (await prisma.posOrder.findMany({ where: { tenantId: s.tenantId, id: { in: pis0.flatMap((x) => (x.orderId ? [x.orderId] : [])) }, status: { notIn: ["CANCELLED", "REJECTED"] } }, select: { id: true } })).map((x) => x.id)
+          : [],
+      );
+      const pis = pis0.filter((x) => !x.orderId || !liveOrders.has(x.orderId));
       const allPaid = manual.every((p) => pis.some((x) => x.id === p.reference && x.amountSatang === p.amountSatang));
       const sys = allPaid ? null : await prisma.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
       if (sys && parsePosIntentSettings(sys.settings).manualConfirmRequiresManager) return refuse("PERMISSION_DENIED", REGISTER_MANUAL_MANAGER_MESSAGE);
@@ -1714,6 +1721,8 @@ export async function ingestPreorderInTx(tx: Tx, scope: { tenantId: string; syst
   if (dup) return dup;
   const ch = await tx.salesChannel.findFirst({ where: { id: input.channelId, tenantId: s.tenantId, unitId: s.unitId, archivedAt: null } });
   if (!ch) return refuse("CHANNEL_INVALID");
+  // (POS P2.7 fix2) hunter note 1: ตรวจประตูซ้ำในธุรกรรม (ร้านปิด/พักช่องทางระหว่างลูกค้ากดสั่ง) — ปิด = CHANNEL_PAUSED (ประตูสาธารณะตอบ QR_CLOSED)
+  if (!ch.active || isPaused(ch, new Date())) return refuse("CHANNEL_PAUSED");
   await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`${s.tenantId}:posorder-code:${s.unitId}`}))) l`;
   const now = new Date();
   const seq = (await tx.posOrder.count({ where: { tenantId: s.tenantId, unitId: s.unitId, receivedAt: { gte: posDayStart(now) } } })) + 1;
@@ -1792,9 +1801,13 @@ async function expireOneInTx(tx: Tx, orderId: string, now: Date): Promise<boolea
     const st = await expireOrderIntentInTx(tx, o.paymentIntentId);
     if (st === "PAID" || st === "CONSUMED") return false;
   }
+  return closeExpiredInTx(tx, o, now);
+}
+/** CAS NEW → CANCELLED ของออเดอร์ที่เลยเวลาจ่าย (rejectReason PAYMENT_EXPIRED · event expired · outbox cancelled) — ผู้เรียกถือล็อกแถวแล้ว · ไม่แตะใบ */
+async function closeExpiredInTx(tx: Tx, o: PosOrder, now: Date): Promise<boolean> {
   const n = await tx.posOrder.updateMany({ where: { id: o.id, tenantId: o.tenantId, status: "NEW", version: o.version }, data: { status: "CANCELLED", closedAt: now, rejectReason: "PAYMENT_EXPIRED", version: { increment: 1 } } });
   if (n.count !== 1) return false;
-  await addEvent(tx, o, { type: "expired", from: "NEW", to: "CANCELLED", actorUserId: null, payload: { reason: "PAYMENT_EXPIRED", payBy: o.payBy.toISOString() }, at: now });
+  await addEvent(tx, o, { type: "expired", from: "NEW", to: "CANCELLED", actorUserId: null, payload: { reason: "PAYMENT_EXPIRED", payBy: o.payBy ? o.payBy.toISOString() : null }, at: now });
   await emitOrderEvent(tx, await tx.posOrder.findUniqueOrThrow({ where: { id: o.id } }), "pos.order.cancelled", "CANCELLED");
   return true;
 }
@@ -1868,7 +1881,7 @@ export async function claimPreorderPaid(tenantId: string, orderId: string, now: 
 export async function onIntentPaid(intentId: string): Promise<void> {
   if (!isPaymentIntentId(intentId)) return;
   const it = await prisma.posPaymentIntent.findUnique({ where: { id: intentId }, select: { id: true, tenantId: true, orderId: true, status: true, paidAt: true, confirmedVia: true, amountSatang: true } });
-  if (!it?.orderId || (it.status !== "PAID" && it.status !== "CONSUMED")) return;
+  if (!it?.orderId || it.status !== "PAID") return; // (POS P2.7 fix2) hunter H1c: เฉพาะใบที่ยัง PAID (ไม่ถูกใช้ที่อื่น)
   const orderId = it.orderId;
   type Out = { kind: "none" } | { kind: "prepaid"; order: PosOrder } | { kind: "late"; order: PosOrder };
   let out: Out;
@@ -1877,15 +1890,20 @@ export async function onIntentPaid(intentId: string): Promise<void> {
       await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} AND "tenantId" = ${it.tenantId} FOR UPDATE`;
       const o = await tx.posOrder.findFirst({ where: { id: orderId, tenantId: it.tenantId } });
       if (!o || o.paymentIntentId !== intentId) return { kind: "none" };
-      if (o.status === "NEW" && o.paymentState === "PENDING_PAYMENT") {
-        const after = await touch(tx, o, { paymentState: "PREPAID", paidAt: it.paidAt ?? new Date() }, { type: "paid", actorUserId: null, payload: { intentId, via: it.confirmedVia ?? null } });
+      // (POS P2.7 fix2) hunter H4: เงินเข้าหลังเวลาจ่าย (ยังไม่มีใครอ่าน/กวาด) = ปิดออเดอร์ตอนนี้ (expired) แล้วไปทางเงินเข้าหลังปิด — ไม่ใช่ PREPAID
+      let cur: PosOrder = o;
+      if (o.status === "NEW" && o.paymentState === "PENDING_PAYMENT" && o.payBy && it.paidAt && it.paidAt.getTime() > o.payBy.getTime()) {
+        if (await closeExpiredInTx(tx, o, new Date())) cur = await tx.posOrder.findUniqueOrThrow({ where: { id: o.id } });
+      }
+      if (cur.status === "NEW" && cur.paymentState === "PENDING_PAYMENT") {
+        const after = await touch(tx, cur, { paymentState: "PREPAID", paidAt: it.paidAt ?? new Date() }, { type: "paid", actorUserId: null, payload: { intentId, via: it.confirmedVia ?? null } });
         return { kind: "prepaid", order: after };
       }
-      if ((o.status === "CANCELLED" || o.status === "REJECTED") && it.status === "PAID" && o.paymentState === "PENDING_PAYMENT") {
-        const had = await tx.posOrderEvent.findFirst({ where: { tenantId: o.tenantId, orderId: o.id, type: "late_payment" }, select: { id: true } });
+      if ((cur.status === "CANCELLED" || cur.status === "REJECTED") && cur.paymentState === "PENDING_PAYMENT") {
+        const had = await tx.posOrderEvent.findFirst({ where: { tenantId: cur.tenantId, orderId: cur.id, type: "late_payment" }, select: { id: true } });
         if (had) return { kind: "none" };
-        await addEvent(tx, o, { type: "late_payment", from: o.status, to: o.status, actorUserId: null, payload: { intentId, amountSatang: it.amountSatang } });
-        return { kind: "late", order: o };
+        await addEvent(tx, cur, { type: "late_payment", from: cur.status, to: cur.status, actorUserId: null, payload: { intentId, amountSatang: it.amountSatang } });
+        return { kind: "late", order: cur };
       }
       return { kind: "none" };
     });

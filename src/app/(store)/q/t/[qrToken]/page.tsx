@@ -4,6 +4,7 @@
 // No locale-dependent date/number output in SSR — times are ISO strings, money via qrMoney.
 
 import type { Metadata } from "next";
+import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { PromptPayQr } from "@/components/PromptPayQr";
 import { tableBill, tableDoor } from "@/lib/modules/pos/qr-order";
@@ -32,6 +33,8 @@ export default async function QrTablePage({ params, searchParams }: { params: Pr
   const billRes = v.session ? await tableBill(qrToken) : null;
   const bill = billRes && billRes.ok ? billRes.bill : null;
   const roundAction = tableRoundFormAction.bind(null, qrToken);
+  // fix2 (R1 F1): one guest token per render so a double submit of the same form is deduped server-side (the U card keeps a per-device token)
+  const guestToken = `g${randomUUID().replace(/-/g, "")}`;
   const requestAction = tableRequestFormAction.bind(null, qrToken);
   const notice = typeof e === "string" && /^qr\.[a-zA-Z.]+$/.test(e) ? t(e) : null;
   const other = locale === "th" ? "en" : "th";
@@ -65,6 +68,7 @@ export default async function QrTablePage({ params, searchParams }: { params: Pr
             <li key={m.productId} className="rounded-md border p-3" data-testid="qr-menu-item">
               <form action={roundAction} className="flex flex-col gap-2">
                 <input type="hidden" name="sessionId" value={v.session?.id ?? ""} />
+                <input type="hidden" name="guestToken" value={guestToken} />
                 <input type="hidden" name="lang" value={locale} />
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{locale === "en" && m.nameEn ? m.nameEn : m.name}</span>

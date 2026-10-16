@@ -351,15 +351,16 @@ export async function createGuestOrderInTx(
   tx: Prisma.TransactionClient,
   input: Omit<OrderInTxInput, "placedByUserId">,
   guestToken: string | null,
+  note: string | null = null, // POS P2.7 ▸ fix2 R1 F1 nit: โน้ตของรอบจากแขก ◂
 ): Promise<{ ok: true; id: string; dailyNo: number; itemIds: string[] }> {
-  return roundInTx(tx, input, { placedByUserId: null, guestToken });
+  return roundInTx(tx, input, { placedByUserId: null, guestToken, note });
 }
 // ◂ POS P2.7
 
 async function roundInTx(
   tx: Prisma.TransactionClient,
   input: Omit<OrderInTxInput, "placedByUserId">,
-  who: { placedByUserId: string | null; guestToken: string | null }, // POS P2.7 ▸ ผู้สั่ง: พนักงาน (createOrderInTx) หรือแขก (createGuestOrderInTx) ◂
+  who: { placedByUserId: string | null; guestToken: string | null; note?: string | null }, // POS P2.7 ▸ ผู้สั่ง: พนักงาน (createOrderInTx) หรือแขก (createGuestOrderInTx) · fix2 โน้ตของรอบ ◂
 ): Promise<{ ok: true; id: string; dailyNo: number; itemIds: string[] }> {
   const { tenantId, unitId } = input;
   if (!input.lines.length) throw new OrderInTxError({ code: "EMPTY", reason: "ยังไม่มีรายการ" }, null);
@@ -438,7 +439,7 @@ async function roundInTx(
       guestName: null,
       guestPhone: null,
       guestToken: who.guestToken, // POS P2.7 ◂
-      note: null,
+      note: who.note ?? null, // POS P2.7 ▸ fix2 ◂
       placedByUserId: who.placedByUserId, // POS P2.7 ◂
       pickupAt: null,
       lines,

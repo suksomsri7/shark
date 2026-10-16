@@ -109,6 +109,8 @@ export type GuestRoundInput = {
   /** session ที่หน้าเห็นตอนโหลด · null/undefined = หน้าไม่เห็น session (รอบแรก) */
   expectedSessionId: string | null | undefined;
   guestToken: string | null;
+  /** POS P2.7 ▸ fix2: โน้ตของทั้งรอบ (≤ 200) ◂ */
+  note?: string | null;
   /** บรรทัดที่ POS คิดราคาแล้ว (ราคาช่องทาง QR_TABLE · unitPrice ไม่รวมตัวเลือก + optionsTotal) */
   lines: OrderInTxLine[];
 };
@@ -147,7 +149,7 @@ export async function guestRoundInTx(tx: Tx, input: GuestRoundInput): Promise<Gu
     sessionCreated = opened.created;
   }
   if (!sessionCreated && !(await holdOpenSessionInTx(tx, { ...s, sessionId }))) return { ok: false, code: "SESSION_CHANGED" };
-  const w = await createGuestOrderInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId, lines: input.lines }, input.guestToken);
+  const w = await createGuestOrderInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId, lines: input.lines }, input.guestToken, input.note ?? null);
   const items = w.itemIds.length ? await tx.restaurantOrderItem.findMany({ where: { id: { in: w.itemIds }, tenantId: s.tenantId }, select: { menuItemId: true } }) : [];
   const menuItemIds = [...new Set(items.flatMap((x) => (x.menuItemId ? [x.menuItemId] : [])))];
   return { ok: true, roundId: w.id, dailyNo: w.dailyNo, sessionId, sessionCreated, menuItemIds };
@@ -163,20 +165,15 @@ export async function rotateTableQrForPos(db: Db, s: Scope & { tableId: string }
 
 /**
  * คำขอจากโต๊ะของแขก (เรียกพนักงาน · ขอเช็คบิล · แจ้งชำระ) — ตัวเขียนเดิม createServiceRequest (กันซ้ำ 2 นาทีในตัว) ลง session ปลายทาง ·
- * ไม่มี session: CALL_STAFF เปิด session ของแขก (การกดเรียก = การกระทำ ไม่ใช่การเปิดหน้า) · อื่น = NO_SESSION
+ * ไม่มี session = NO_SESSION ทุกชนิด (POS P2.7 ▸ fix2 R1 F5: ไม่เปิด session ให้ — คำขอต้องผูก session · สติกเกอร์ไม่ทำให้โต๊ะว่างกลายเป็นมีลูกค้า) ◂
  */
 export async function guestServiceRequestForPos(
   db: PrismaClient,
   input: Scope & { tableId: string; type: ServiceRequestType; note?: string | null },
 ): Promise<{ ok: true; sessionId: string } | { ok: false; code: "NO_SESSION" | "NO_TABLE" }> {
   const s = { tenantId: input.tenantId, unitId: input.unitId };
-  let target = await targetSessionOf(db, { ...s, tableId: input.tableId });
-  if (!target) {
-    if (input.type !== "CALL_STAFF") return { ok: false, code: "NO_SESSION" };
-    const opened = await db.$transaction((tx) => openGuestSessionInTx(tx, { ...s, tableId: input.tableId }));
-    if (!opened) return { ok: false, code: "NO_TABLE" };
-    target = { id: opened.id, openedByUserId: null };
-  }
+  const target = await targetSessionOf(db, { ...s, tableId: input.tableId });
+  if (!target) return { ok: false, code: "NO_SESSION" }; // POS P2.7 ▸ fix2 R1 F5 ◂
   const r = await createServiceRequest(s.tenantId, s.unitId, target.id, input.type, input.note ?? undefined);
   return r.ok ? { ok: true, sessionId: target.id } : { ok: false, code: "NO_SESSION" };
 }

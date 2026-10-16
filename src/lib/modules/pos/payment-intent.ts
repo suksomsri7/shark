@@ -525,6 +525,7 @@ export async function lockSaleIntents(
   s: { tenantId: string; unitId: string },
   refs: SaleIntentRef[],
   now: Date = new Date(),
+  opts: { orderId?: string } = {}, // POS P2.7 ▸ fix2 R1 F2 / hunter H1: ใบของออเดอร์จ่ายก่อนใช้ได้เฉพาะการรับออเดอร์นั้นเอง ◂
 ): Promise<{ ok: true; notes: Map<string, string> } | { ok: false; code: SaleIntentRefusalCode }> {
   const ids = [...new Set(refs.map((r) => r.intentId))].sort();
   if (ids.length !== refs.length) return { ok: false, code: "VALIDATION" };
@@ -535,6 +536,12 @@ export async function lockSaleIntents(
   for (const ref of refs) {
     const r = byId.get(ref.intentId);
     if (!r || r.tenantId !== s.tenantId || r.unitId !== s.unitId) return { ok: false, code: "INTENT_NOT_FOUND" };
+    // POS P2.7 ▸ fix2 R1 F2 / hunter H1: ใบที่ผูกออเดอร์ (orderId) = เงินของออเดอร์นั้น — บิลอื่น (หน้าขาย · มัดจำ · REST) ใช้ได้เฉพาะเมื่อออเดอร์ปิดแล้ว
+    //   (ปฏิเสธ/ยกเลิก/หมดเวลา = เงินเข้าหลังปิด ใช้ได้ใน 24 ชม. · CD4 P1.7) · การรับออเดอร์นั้นเองส่ง opts.orderId · ยังเปิดอยู่ = INTENT_CONSUMED (จองโดยออเดอร์) ◂
+    if (r.orderId && r.orderId !== opts.orderId) {
+      const ord = await tx.posOrder.findFirst({ where: { id: r.orderId, tenantId: s.tenantId }, select: { status: true } });
+      if (ord && ord.status !== "CANCELLED" && ord.status !== "REJECTED") return { ok: false, code: "INTENT_CONSUMED" };
+    }
     if (!kindMatches(r.kind, ref.payType)) return { ok: false, code: "VALIDATION" };
     if (r.status === "CONSUMED") return { ok: false, code: "INTENT_CONSUMED" };
     if (r.status !== "PAID" || !r.paidAt) return { ok: false, code: "INTENT_NOT_PAID" };
@@ -561,7 +568,7 @@ export async function consumeSaleIntents(tx: Tx, s: { tenantId: string; unitId: 
 //   ชนิดตามค่าตั้งของร้าน: Beam (ร้านเปิด + กุญแจ) → PROMPTPAY_BEAM · ไม่งั้น/Beam ล้ม → PROMPTPAY_STATIC (EMV ล็อกยอด · ยืนยันเองบนจอ 09) ·
 //   Beam (network) "นอกธุรกรรม" ใน prepareOrderIntent → แถวในธุรกรรมของออเดอร์ (createIntentForOrderInTx) · คีย์ posorder-pay-<orderId> · expiresAt = payBy ·
 //   หมดเวลา/ยกเลิกของออเดอร์ = ตัวช่วยในธุรกรรมของออเดอร์ (ล็อกแถว FOR UPDATE เหมือน markPaidCore) — เงินเข้าแล้ว (PAID) ไม่ถูกแตะ
-export type PreparedOrderIntent = { id: string; kind: "PROMPTPAY_STATIC" | "PROMPTPAY_BEAM"; qrPayload: string; beamChargeId: string | null; qrExpiryMinutes: number };
+export type PreparedOrderIntent = { id: string; kind: "PROMPTPAY_STATIC" | "PROMPTPAY_BEAM"; qrPayload: string; beamChargeId: string | null; qrExpiryMinutes: number; amountSatang: number /* (POS P2.7 fix2) F6: ยอดที่ล็อกลง QR */ };
 
 /** ค่าตั้งการรับเงินของ POS สำหรับประตูสาธารณะ (อ่านอย่างเดียว) — Beam ใช้ได้ไหม · อายุ QR · มีพร้อมเพย์ของสาขาไหม (ไม่มีทั้งคู่ = ประตูสั่งล่วงหน้าปิด) */
 export async function orderPaymentReadiness(s: { tenantId: string; systemId: string; unitId: string }, deps?: PaymentIntentDeps): Promise<{ ready: boolean; beam: boolean; qrExpiryMinutes: number }> {
@@ -600,13 +607,13 @@ export async function prepareOrderIntent(
     if (st.beam.enabled && safeEnabled(beam)) {
       const ch = await charge(beam, { amountSatang, referenceId, method: "promptpay" });
       if (!("error" in ch) && typeof ch.qrPayload === "string" && ch.qrPayload) {
-        return { ok: true, prepared: { id, kind: "PROMPTPAY_BEAM", qrPayload: ch.qrPayload, beamChargeId: ch.chargeId, qrExpiryMinutes: st.qrExpiryMinutes } };
+        return { ok: true, prepared: { id, kind: "PROMPTPAY_BEAM", qrPayload: ch.qrPayload, beamChargeId: ch.chargeId, qrExpiryMinutes: st.qrExpiryMinutes, amountSatang } };
       }
       await logOps("WARN", OPS_SOURCE, `${OPS_BEAM_FALLBACK} — Beam สร้าง QR ของออเดอร์สั่งล่วงหน้าไม่สำเร็จ ใช้ QR พร้อมเพย์นิ่งแทน`, { tenantId: s.tenantId, detail: `ref ${referenceId} · ${"error" in ch ? ch.error : "no_qr"}` });
     }
     const ppId = await orderPromptpayId(s, sys.settings);
     if (!ppId) return refuse("PROMPTPAY_NOT_CONFIGURED");
-    return { ok: true, prepared: { id, kind: "PROMPTPAY_STATIC", qrPayload: promptpayPayload({ id: ppId, amountSatang }), beamChargeId: null, qrExpiryMinutes: st.qrExpiryMinutes } };
+    return { ok: true, prepared: { id, kind: "PROMPTPAY_STATIC", qrPayload: promptpayPayload({ id: ppId, amountSatang }), beamChargeId: null, qrExpiryMinutes: st.qrExpiryMinutes, amountSatang } };
   });
 }
 
@@ -619,6 +626,8 @@ export async function createIntentForOrderInTx(
   input: { tenantId: string; systemId: string; unitId: string; orderId: string; amountSatang: number; expiresAt: Date; prepared: PreparedOrderIntent },
 ): Promise<PosPaymentIntent> {
   const idempotencyKey = `posorder-pay-${input.orderId}`;
+  // (POS P2.7 fix2) F6: ยอดของ QR (Beam/นิ่ง) ต้องเท่ายอดของแถว — ไม่เท่า = โยน ⇒ ธุรกรรมของออเดอร์ย้อน (ไม่มีออเดอร์ที่ QR ยอดผิด)
+  if (input.prepared.amountSatang !== input.amountSatang) throw new Error(`AMOUNT_MISMATCH: QR ของใบ ${input.prepared.id} = ${input.prepared.amountSatang} ≠ ยอดออเดอร์ ${input.amountSatang}`);
   const ex = await tx.posPaymentIntent.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey } } });
   if (ex) return ex;
   return tx.posPaymentIntent.create({
@@ -657,5 +666,14 @@ export async function cancelOrderIntentInTx(tx: Tx, intentId: string): Promise<s
   if (got[0]!.status !== "PENDING") return got[0]!.status;
   await tx.posPaymentIntent.updateMany({ where: { id: intentId, status: "PENDING" }, data: { status: "CANCELLED" } });
   return "CANCELLED";
+}
+
+/** (POS P2.7 fix2) F6: ใบที่เตรียมแล้วไม่ได้ใช้ (คำขอซ้ำคีย์เดิม · รับเข้าล้ม) — Beam charge ค้างที่ไม่มีแถว = ops INFO พร้อม ref (ไม่มีเงินเข้า · ไม่มี outbox) */
+export async function orderIntentUnused(s: { tenantId: string }, prepared: PreparedOrderIntent, reason: "DUPLICATE" | "INGEST_FAILED" | "REFUSED"): Promise<void> {
+  if (!prepared.beamChargeId) return;
+  await logOps("INFO", OPS_SOURCE, "pos.payment.beam_unused — Beam charge ของออเดอร์สั่งล่วงหน้าที่ไม่ได้ใช้ (ไม่มีแถวใบขอรับเงิน)", {
+    tenantId: s.tenantId,
+    detail: `ref ${POS_BEAM_REF_PREFIX}${prepared.id} · charge ${prepared.beamChargeId} · ยอด ${prepared.amountSatang} · ${reason}`,
+  }).catch(() => {});
 }
 // ◂ POS P2.7

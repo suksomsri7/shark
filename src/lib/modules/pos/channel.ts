@@ -175,7 +175,8 @@ export async function resolveSaleChannel(
   const invalid = { ok: false as const, code: "CHANNEL_INVALID" as const, message: "ช่องทางขายนี้ใช้ไม่ได้ (ไม่พบ ปิดอยู่ เก็บแล้ว หรือเป็นของสาขาอื่น) — ยังไม่ได้บันทึกบิล" };
   if (!opts.giftCard && opts.channelId !== undefined && opts.channelId !== null) {
     const row = await channelInScope(db, scope, opts.channelId);
-    if (!row || row.archivedAt || !row.active) return invalid;
+    // POS P2.7 ▸ fix2 hunter H3 (มติ 11): QR_ORDER ปิดใช้ = ปิดประตูสาธารณะ (กันคำสั่งใหม่) เท่านั้น — บิลของออเดอร์ที่ลูกค้าจ่ายแล้ว (รับ PREPAID) ยังลงช่องทางนี้ได้ (ไม่เก็บถาวร) ◂
+    if (!row || row.archivedAt || (!row.active && !(row.kind === "BUILTIN" && row.code === "QR_ORDER"))) return invalid;
     return { ok: true, channel: row };
   }
   const code = opts.giftCard ? "STORE" : defaultChannelCode(opts.sourceModule);
