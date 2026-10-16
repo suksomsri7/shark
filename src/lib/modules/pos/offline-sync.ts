@@ -34,11 +34,13 @@ import {
   type RegisterOfflineDrift,
   type RegisterOfflineSubmit,
 } from "./register";
+import { parseShiftSettings } from "./shift";
 import { posMemberActor, staffActorFromToken } from "./staff-pin";
 import {
   OFFLINE_CLOCK_SKEW_MS,
   OFFLINE_ITEM_KEYS,
   OFFLINE_MAX_AGE_MS,
+  OFFLINE_PRICE_GRACE_MS,
   OFFLINE_SHIFT_SLACK_MS,
   OFFLINE_SYNC_BATCH_MAX,
   offlineBatches,
@@ -259,7 +261,8 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
     const serviceChargeBp = pay.ok && pay.serviceCharge.enabled ? pay.serviceCharge.rateBp : 0;
     const offlineCode = await ensureOfflineCode(db, c, dev);
     // หลักฐานราคา (R6): productId → ราคาหน้าร้าน (ต่อกก. ของสินค้าชั่ง) · choiceId → ส่วนต่าง
-    const priceMap: Record<string, number> = {};
+    // "$priceValidUntil" = ขอบโปรถัดไปของ snapshot (ทางราคา snapshot ใช้ได้ถึงขอบนี้ + 15 นาที · มติ 6) — คีย์ขึ้นต้น $ ไม่ชน id สินค้า/ตัวเลือก
+    const priceMap: Record<string, number | string | null> = { $priceValidUntil: pvu };
     for (const p of products) {
       if (typeof p.priceSatang === "number") priceMap[p.id] = p.priceSatang;
       for (const ch of p.choices) priceMap[ch.choiceId] = ch.priceDeltaSatang;
@@ -314,7 +317,7 @@ type Verdict = { kind: "ok"; saleId: string; receiptNo: string | null; duplicate
 const reject = (reason: string): Verdict => ({ kind: "rejected", reason });
 
 /** หลักฐาน snapshot ของรายการ (แช่แข็งลง payload ตอนบันทึกครั้งแรก — ผู้จัดการรับทีหลังได้แม้ snapshot ถูกตัดทิ้งแล้ว) */
-type Evidence = { issuedAt: string; prices: Record<string, number> } | null;
+type Evidence = { issuedAt: string; priceValidUntil: string | null; prices: Record<string, number> } | null;
 async function evidenceOf(db: Db, e: Env, hash: string, sale: Record<string, unknown>): Promise<Evidence> {
   const row = await db.posOfflineSnapshot.findFirst({ where: { tenantId: e.ctx.tenantId, unitId: e.ctx.unitId, deviceId: e.dev.deviceCode, hash }, select: { issuedAt: true, priceMap: true } });
   if (!row) return null;
@@ -327,7 +330,8 @@ async function evidenceOf(db: Db, e: Env, hash: string, sale: Record<string, unk
   }
   const prices: Record<string, number> = {};
   for (const k of want) if (typeof map[k] === "number" && Number.isInteger(map[k])) prices[k] = map[k] as number;
-  return { issuedAt: row.issuedAt.toISOString(), prices };
+  const pvu = typeof map.$priceValidUntil === "string" ? map.$priceValidUntil : null;
+  return { issuedAt: row.issuedAt.toISOString(), priceValidUntil: pvu, prices };
 }
 
 /**
@@ -354,18 +358,32 @@ async function decide(
   // R7 นาฬิกา
   const soldMs = Date.parse(it.soldAt);
   if (!Number.isFinite(soldMs) || !/^\d{4}-\d{2}-\d{2}T/.test(it.soldAt)) return reject("VALIDATION");
-  if (soldMs > e.now + OFFLINE_CLOCK_SKEW_MS || soldMs < e.now - OFFLINE_MAX_AGE_MS) return reject("CLOCK_INVALID");
-  if (evidence && soldMs < Date.parse(evidence.issuedAt)) return reject("CLOCK_INVALID");
+  // ผู้จัดการรับบิลเก่ากว่า 24 ชม. ได้ (ตัดสินเอง) · อนาคต / ก่อน snapshot / snapshot อายุเกิน 24 ชม. ตอนขาย = ไม่ได้ทั้งคู่
+  if (soldMs > e.now + OFFLINE_CLOCK_SKEW_MS || (!manager && soldMs < e.now - OFFLINE_MAX_AGE_MS)) return reject("CLOCK_INVALID");
+  if (evidence && (soldMs < Date.parse(evidence.issuedAt) || soldMs - Date.parse(evidence.issuedAt) > OFFLINE_MAX_AGE_MS)) return reject("CLOCK_INVALID");
   // R8 เครื่อง (CD-12): ถูกเพิกถอนก่อน/ตอน soldAt = ปฏิเสธ · หลัง soldAt = ขายได้ (audit บันทึก revokedAt)
   if (e.dev.status === "REVOKED" && (!e.dev.revokedAt || e.dev.revokedAt.getTime() <= soldMs)) return reject("DEVICE_REVOKED");
   // R8 กะ: กะของเครื่องนี้ที่บันทึกไว้ต้องยัง OPEN · soldAt ≥ เปิดกะ − 5 นาที
+  //   ไม่ส่งกะ = กะของเครื่องที่ครอบ soldAt (กันซ่อนบิลเงินสดไว้นอกกะ) · ไม่มีกะครอบ + ร้านบังคับมีกะ = SHIFT_REQUIRED · ผู้จัดการรับ = นอกกะ
   let shiftId: string | null = null;
-  if (!manager && it.shiftId) {
-    const sh = await db.posShift.findFirst({ where: { id: it.shiftId, tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: ctx.unitId, deviceId: e.dev.deviceCode }, select: { id: true, status: true, openedAt: true } });
-    if (!sh) return reject("VALIDATION");
-    if (sh.status !== "OPEN") return reject("SHIFT_CLOSED");
-    if (soldMs < sh.openedAt.getTime() - OFFLINE_SHIFT_SLACK_MS) return reject("CLOCK_INVALID");
-    shiftId = sh.id;
+  if (!manager) {
+    const where = { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: ctx.unitId, deviceId: e.dev.deviceCode };
+    const sh = it.shiftId
+      ? await db.posShift.findFirst({ where: { ...where, id: it.shiftId }, select: { id: true, status: true, openedAt: true } })
+      : await db.posShift.findFirst({
+          where: { ...where, openedAt: { lte: new Date(soldMs + OFFLINE_SHIFT_SLACK_MS) }, OR: [{ status: "OPEN" }, { closedAt: { gte: new Date(soldMs) } }] },
+          orderBy: [{ openedAt: "desc" }, { id: "desc" }],
+          select: { id: true, status: true, openedAt: true },
+        });
+    if (it.shiftId && !sh) return reject("VALIDATION");
+    if (sh) {
+      if (sh.status !== "OPEN") return reject("SHIFT_CLOSED");
+      if (soldMs < sh.openedAt.getTime() - OFFLINE_SHIFT_SLACK_MS) return reject("CLOCK_INVALID");
+      shiftId = sh.id;
+    } else {
+      const sys = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
+      if (parseShiftSettings(sys?.settings).requiredRegister) return reject("SHIFT_REQUIRED");
+    }
   }
   // R8 ผู้ขาย (CD-3): โทเคน ณ soldAt (มติ 12) · ผู้ขายที่อ้างต้องเป็นคนในโทเคน / ผู้ใช้ที่ซิงก์
   let seller: RegisterActor = e.actor;
@@ -384,7 +402,8 @@ async function decide(
     ref: it.offlineRef,
     soldAt: new Date(soldMs),
     shiftId,
-    snapshotPrices: evidence ? new Map(Object.entries(evidence.prices)) : null,
+    // ทางราคา snapshot ใช้ได้ถึง priceValidUntil + 15 นาที ของ snapshot นั้น (มติ 6 — เลยแล้ว = ราคา ณ soldAt เท่านั้น)
+    snapshotPrices: evidence && !(evidence.priceValidUntil && soldMs > Date.parse(evidence.priceValidUntil) + OFFLINE_PRICE_GRACE_MS) ? new Map(Object.entries(evidence.prices)) : null,
   };
   const regCtx = registerOfflineCtx({ ...baseCtx(ctx), deviceId: e.dev.deviceCode, ...(ctx.apiKeyId ? { apiKeyId: ctx.apiKeyId } : {}) }, off);
   const res = await submitRegisterSale(regCtx, seller, { ...(it.sale as Omit<RegisterSubmitInput, "idempotencyKey">), idempotencyKey: it.idempotencyKey }, db);
