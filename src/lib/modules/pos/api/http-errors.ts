@@ -220,7 +220,9 @@ export function toPosApiError(e: unknown): unknown {
   const row = POS_REFUSAL_HTTP[code];
   const raw = returned ? r.message : thrown ? (e as Error).message : undefined;
   const th = isThai(raw) ? raw : (FALLBACK_TH[row.status] ?? FALLBACK_TH[422]!);
-  const err = posApiError(row.status, row.code, th, row.en, hintOf(code, r), detailsOf(r, th));
+  // POS P2.14 ▸ fix2 G3: คำปฏิเสธที่พก messageEn (ภาษาอังกฤษล้วน) ใช้แทนข้อความกลางของรหัส ◂
+  const en = typeof r.messageEn === "string" && r.messageEn.trim() && !isThai(r.messageEn) ? r.messageEn : row.en;
+  const err = posApiError(row.status, row.code, th, en, hintOf(code, r), detailsOf(r, th));
   // ค่าที่ "คืน" = ปฏิเสธก่อนเขียน · ที่ "โยน" ถือว่าอาจเขียนไปแล้ว ยกเว้น BUSY (catalog: "ยังไม่ได้บันทึก")
   // POS P2.13 ▸ fix1 F6: APPROVAL_REQUIRED = facade ยื่นคำขออนุมัติแล้ว (เขียนแถว) ⇒ ไม่ใช่ nothingWritten — เก็บคำตอบ (requestId) ให้คีย์เดิมตอบซ้ำ ◂
   const safe = (returned && code !== "APPROVAL_REQUIRED") || code === "BUSY";

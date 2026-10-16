@@ -1340,8 +1340,8 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
     let apiCashShift: string | undefined;
     if (apiPay) {
       // POS P2.14 ▸ fix1 F7: ตัวหากะตัวเดียวกับ POST /sales (shift.ts resolveApiSaleShift) · เงินสดลงกะเสมอ (strictCash — มติ P2.13 fix1 H3 · CONTROLLER-DECISION CD-F7) ◂
-      const st = await resolveApiSaleShift(prisma, s, { hasCash: cashRows.length > 0, strictCash: true });
-      if (!st.ok) return refuse("SHIFT_REQUIRED", st.message);
+      const st = await resolveApiSaleShift(prisma, s, { hasCash: cashRows.length > 0, strictCash: true, caller: "orderPay" }); // POS P2.14 ▸ fix2 G3: + caller ◂
+      if (!st.ok) return Object.assign(refuse("SHIFT_REQUIRED", st.message), { messageEn: st.messageEn }); // POS P2.14 ▸ fix2 G3: en ของผู้เรียกนี้ ◂
       apiCashShift = st.shiftId ?? undefined;
     }
     const shift: { shiftId: string | null | undefined; required: boolean } = apiPay ? { shiftId: apiCashShift, required: false } : await deviceShift(prisma, s, s.deviceId);

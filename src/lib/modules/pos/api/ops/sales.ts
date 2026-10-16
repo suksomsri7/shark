@@ -371,7 +371,7 @@ const salesCreate = definePosOp({
     let shiftId = input.shiftId;
     if (!prior && !shiftId) {
       // POS P2.14 ▸ fix1 F7: ตัวหากะตัวเดียวกับ orders.pay (shift.ts resolveApiSaleShift) ◂
-      const st = await resolveApiSaleShift(prisma, { tenantId: actor.tenantId, systemId: actor.systemId, unitId }, { hasCash: input.payMethods.some((p) => p.type === "CASH") });
+      const st = await resolveApiSaleShift(prisma, { tenantId: actor.tenantId, systemId: actor.systemId, unitId }, { hasCash: input.payMethods.some((p) => p.type === "CASH"), caller: "sale" }); // POS P2.14 ▸ fix2 G3: + caller ◂
       if (!st.ok) throw toPosApiError(st);
       if (st.shiftId) shiftId = st.shiftId;
     }

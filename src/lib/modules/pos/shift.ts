@@ -1101,20 +1101,38 @@ export async function shiftsPageData(ctx: RegisterCtx, actor: RegisterActor, inp
  *   ร้านตั้ง requiredOtherSources: กะเปิดกะเดียวของสาขา = ผูก · 0 กะ = SHIFT_REQUIRED · ≥ 2 กะ + เงินสด = SHIFT_REQUIRED (ไม่เดา) · ≥ 2 กะ ไม่มีเงินสด = ไม่ผูก ·
  *   ร้านไม่ตั้ง = ไม่ผูก (บิลนอกกะ · ผู้เรียกตอบ outOfShift) — ยกเว้น strictCash (เงินสดต้องลงกะเสมอ: ทางของ orders.pay ตามมติ P2.13 fix1 H3 · CONTROLLER-DECISION CD-F7) ◂
  */
-export type ApiSaleShift = { ok: true; shiftId: string | null } | { ok: false; code: "SHIFT_REQUIRED"; message: string };
+export type ApiSaleShift = { ok: true; shiftId: string | null } | { ok: false; code: "SHIFT_REQUIRED"; message: string; /** POS P2.14 ▸ fix2 G3 ◂ */ messageEn: string };
+// POS P2.14 ▸ fix2 G3: ข้อความต่อผู้เรียก (th + en) — orders.pay ไม่มีช่อง shiftId และร้านอาจไม่ได้ตั้ง "ทางอื่นต้องมีกะ" (strictCash) ◂
+const API_SHIFT_MSG = {
+  sale: {
+    none: ["สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนขาย (ร้านตั้งให้บิลจากทางอื่นต้องอยู่ในกะ)", "No shift is open at this branch: open a shift first (the shop requires bills from other sources to be in a shift)."],
+    many: ["สาขานี้เปิดกะอยู่หลายกะ — ส่ง shiftId ของกะที่รับเงินสดนี้ (ดูกะที่เปิดอยู่ได้ที่ GET /shifts)", "Several shifts are open at this branch: send the shiftId of the shift taking this cash (see GET /shifts)."],
+  },
+  orderPay: {
+    none: ["สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนรับชำระออเดอร์ (ร้านตั้งให้บิลจากทางอื่นต้องอยู่ในกะ)", "No shift is open at this branch: open a shift before taking payment for the order (the shop requires bills from other sources to be in a shift)."],
+    noneCash: ["สาขานี้ยังไม่มีกะที่เปิดอยู่ — เงินสดของออเดอร์ต้องลงกะ เปิดกะก่อนรับเงินสด", "No shift is open at this branch: cash for an order must land in a shift, so open a shift before taking cash."],
+    many: ["สาขานี้เปิดกะอยู่หลายกะ — รับเงินสดของออเดอร์นี้ที่เครื่องหน้าร้าน (ทาง API เลือกกะไม่ได้)", "Several shifts are open at this branch and this call cannot pick one: take this cash payment at the register."],
+  },
+} as const;
 export async function resolveApiSaleShift(
   db: Db | Tx,
   s: { tenantId: string; systemId: string; unitId: string },
-  opts: { hasCash: boolean; strictCash?: boolean },
+  opts: { hasCash: boolean; strictCash?: boolean; caller?: "sale" | "orderPay" }, // POS P2.14 ▸ fix2 G3: + caller ◂
 ): Promise<ApiSaleShift> {
   const [sys, open] = await Promise.all([
     db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } }),
     db.posShift.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "OPEN" }, select: { id: true }, orderBy: [{ openedAt: "asc" }, { id: "asc" }], take: 2 }),
   ]);
-  const required = parseShiftSettings(sys?.settings).requiredOtherSources || (opts.strictCash === true && opts.hasCash);
+  const setting = parseShiftSettings(sys?.settings).requiredOtherSources;
+  const required = setting || (opts.strictCash === true && opts.hasCash);
   if (!required) return { ok: true, shiftId: null };
-  if (open.length === 0) return { ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนขาย (ร้านตั้งให้บิลจากทางอื่นต้องอยู่ในกะ)" };
+  // POS P2.14 ▸ fix2 G3: ข้อความตามผู้เรียก ◂
+  const msg = (k: "none" | "many"): { message: string; messageEn: string } => {
+    const t = opts.caller === "orderPay" ? (k === "none" && !setting ? API_SHIFT_MSG.orderPay.noneCash : API_SHIFT_MSG.orderPay[k]) : API_SHIFT_MSG.sale[k];
+    return { message: t[0], messageEn: t[1] };
+  };
+  if (open.length === 0) return { ok: false, code: "SHIFT_REQUIRED", ...msg("none") };
   if (open.length === 1) return { ok: true, shiftId: open[0]!.id };
-  if (opts.hasCash) return { ok: false, code: "SHIFT_REQUIRED", message: "สาขานี้เปิดกะอยู่หลายกะ — ส่ง shiftId ของกะที่รับเงินสดนี้ (ดูกะที่เปิดอยู่ได้ที่ GET /shifts)" };
+  if (opts.hasCash) return { ok: false, code: "SHIFT_REQUIRED", ...msg("many") };
   return { ok: true, shiftId: null };
 }
