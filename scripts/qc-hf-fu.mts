@@ -52,7 +52,7 @@ const CHECKS: readonly Def[] = [
   D("OD1", "X1", "[b มติ 2] รอบร่าง HELD ของ session ที่หน้าเดิมปิด (table.closeSession) และของ session ที่หน้าเดิมรวมเข้าโต๊ะอื่น (MERGED) → registerTables (อ่านผัง) → DISCARDED ทั้งคู่ + audit pos.heldCart.discard 1 แถว/ร่าง (actorType SYSTEM · after {status DISCARDED, via session_not_open, tableSessionId}) · อ่านซ้ำไม่เพิ่ม audit · registerTables เรียก sweepOrphanTableDrafts"),
   D("OD2", "PAR", "[b มติ 2] ไม่แตะ: ร่างของ session ที่ยัง OPEN · บิลพักในลิ้นชัก (tableSessionId null) · ร่างของ session ที่ปิดแล้วของสาขา B (อ่านผังสาขา A) — ยัง HELD ทุกแถว version เดิม"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): OD3 (R1 F1)
-  D("OD3", "X1", "[b fix1 มติ 1] ร่าง HELD ของ session CLOSED (จ่ายครบ + หน้าเดิมปิด) · ธุรกรรมที่สามถือแถวร่าง → registerTables (ตัวกวาดอ่าน CLOSED แล้วรอ) → void บิลโต๊ะ + ระบายคิวเปิด session กลับ OPEN → ปล่อย ⇒ ร่างยัง HELD (version เดิม · ไม่มี audit ทิ้ง)"),
+  D("OD3", "X1", "[b fix1 มติ 1] ร่าง HELD ของ session CLOSED (จ่ายครบ + หน้าเดิมปิด) · ธุรกรรมที่สามถือแถว session และเปิดกลับ OPEN → registerTables (ตัวกวาดอ่าน CLOSED แล้วรอ session · ORD-4) → ปล่อย ⇒ ร่างยัง HELD (version เดิม · ไม่มี audit ทิ้ง)"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-4 · CD-B6)
   // ── EQ เศษส่วนแบ่ง (c) ──
   D("EQ1", "P", "[c มติ 3] allocateTableSplit บริสุทธิ์: 30 รายการราคาคี่ EQUAL 3 ค่าบริการ 0 → ฐานต่อใบห่าง ≤ 1 · |ค่าบริการของใบ| ≤ 1 · Σ สุทธิ = ยอดโต๊ะ · SEAT กลางโต๊ะล้วน 30 รายการ → ฐานห่าง ≤ 1 · ผลตรงตัวอ้างอิงหมุนเศษ (rot) ทุกบรรทัด · เจ้าของสต็อก = ใบ 1"),
   D("EQ2", "X4", "[c มติ 3] 500 แผนสุ่ม (EQUAL/SEAT มีกลางโต๊ะ · seed คงที่) ตรงตัวอ้างอิงหมุนเศษ · ยอดส่วนแบ่งต่อใบห่าง ≤ 1 · Σ สุทธิตรง · เรียกซ้ำผลเดิม · แผนจริงบน DB (EQUAL 3 ราคาคี่ · ลำดับรายการตามบิลโต๊ะ createdAt,id) = ผลบริสุทธิ์ทุกบรรทัด · ฐานห่าง ≤ 1"),
@@ -1719,19 +1719,17 @@ async function runDb() {
     const r0 = await heldRow(d);
     if (!d || !saleId || cl?.ok !== true || s0?.status !== "CLOSED" || r0?.status !== "HELD") throw new Error(`(fixture) ร่าง ${d ? "✓" : "✗"} · จ่าย ${codeOf(pay)} ${short(pay?.message ?? "", 60)} · ปิด ${short(cl)} · session ${s0?.status} · ร่าง ${r0?.status}`);
     const a0 = (await discards()).filter((x) => x.targetId === d).length;
-    let vd: Any = null;
-    let mid = "";
-    const LOCK_DRAFT = `SELECT id FROM "PosHeldCart" WHERE id = $1 FOR UPDATE`;
-    const hl = await holdLock(LOCK_DRAFT, [d], [() => tbl("registerTables", ctxA(), A("OWNER"))], async () => {
-      vd = await voidSale(saleId);
-      await drain();
-      mid = String((await sessRow(sv.sid))?.status ?? "none");
-    });
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-4 · CD-B6): ORD-4 ตัวกวาดล็อก session ก่อนร่าง ⇒ ฉากใหม่ = ธุรกรรมที่สามถือแถว session (เปิดกลับ OPEN ในธุรกรรมนั้น ·
+    //   แบบที่ตัวรับ void ทำ) → registerTables (ตัวกวาดอ่าน CLOSED แล้วรอ session) → ปล่อย ⇒ ร่างต้องยัง HELD · แล้ว void บิลโต๊ะตามจริง (session คง OPEN)
+    const LOCK_SESSION_REOPEN = `UPDATE "TableSession" SET status = 'OPEN', "closedAt" = NULL WHERE id = $1 RETURNING id`;
+    const hl = await holdLock(LOCK_SESSION_REOPEN, [sv.sid], [() => tbl("registerTables", ctxA(), A("OWNER"))]);
     const f = hl.res[0];
     const r1 = await heldRow(d);
     const a1 = (await discards()).filter((x) => x.targetId === d).length;
-    if (hl.blocked < 1) p.push("ตัวกวาดไม่รอแถวร่าง (จัดฉากไม่ถึง)");
-    if (vd?.ok !== true || mid !== "OPEN") p.push(`(ฉาก) void ${codeOf(vd)} ${short(vd?.message ?? "", 60)} · session ระหว่างรอ ${mid} (คาด ok · OPEN)`);
+    const vd = await voidSale(saleId);
+    await drain();
+    if (hl.blocked < 1) p.push("ตัวกวาดไม่รอแถว session (จัดฉากไม่ถึง)");
+    if (vd?.ok !== true) p.push(`(ฉาก) void ${codeOf(vd)} ${short(vd?.message ?? "", 60)} (คาด ok)`);
     if (f?.ok !== true) p.push(`registerTables → ${codeOf(f)}`);
     if (r1?.status !== "HELD" || r1?.version !== r0?.version || a1 !== a0) p.push(`ร่างของ session ที่ถูกเปิดกลับ → ${r1?.status} v${r1?.version} (คาด HELD v${r0?.version}) · audit ทิ้ง +${a1 - a0} (คาด 0)`);
     if ((await sessRow(sv.sid))?.status !== "OPEN") p.push(`session หลังจบ ${(await sessRow(sv.sid))?.status} (คาด OPEN)`);
