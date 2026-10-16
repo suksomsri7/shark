@@ -621,6 +621,9 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   DEPOSIT_EXCEEDS: "ยอดที่ใช้เกินมัดจำคงเหลือ (อาจเพิ่งถูกใช้จากอีกเครื่อง) — ค้นมัดจำใหม่แล้วชำระอีกครั้ง ยังไม่ได้เก็บเงิน",
   DEPOSIT_CLOSED: "มัดจำใบนี้ใช้หมดหรือคืนเงินไปแล้ว",
   DEPOSIT_LOCKED: "ใส่ 4 หลักท้ายของเบอร์ผิดหลายครั้ง — มัดจำใบนี้ถูกระงับชั่วคราว 15 นาที", // POS P2.9b ▸ fix2 มติ 3 ◂
+  OFF_SCHEDULE: "ยังไม่อยู่ในเวลางานตามตาราง — ให้ผู้จัดการใส่ PIN เพื่ออนุญาต", // POS P3.5 ▸ CD-B2 REG_MESSAGE ◂
+  ALREADY_CLOCKED: "ลงเวลานี้ไปแล้ววันนี้",
+  NO_EMPLOYEE: "ผู้ใช้นี้ยังไม่ได้ผูกกับพนักงานในระบบพนักงาน (HR)",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
