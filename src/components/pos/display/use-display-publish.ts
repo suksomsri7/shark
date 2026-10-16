@@ -133,6 +133,9 @@ export function useDisplayPublish(i: DisplayPublishInput): (v: DisplayPayIn | nu
     const r = ref.current;
     const cur = live.current;
     if (!cur.state || !cur.deviceCode || r.busy) return;
+    // POS P2.14 ▸ U3 H1b: ออฟไลน์ = ไม่ส่ง (ไม่ยิงคำขอที่รู้ว่าล้ม · จอลูกค้าแสดงภาพล่าสุดตามกติกาเดิมของเซิร์ฟเวอร์) — กลับมาออนไลน์ = ส่งทันทีหนึ่งครั้ง (ตัวฟัง online ด้านล่าง)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // ◂
     const now = Date.now();
     if (r.paired === "no" && now < r.recheckAt) return;
     if (!force && cur.key === r.sentKey) return;
@@ -207,7 +210,12 @@ export function useDisplayPublish(i: DisplayPublishInput): (v: DisplayPayIn | nu
       }
     };
     document.addEventListener("visibilitychange", onVis);
+    // POS P2.14 ▸ U3 H1b: กลับมาออนไลน์ = ส่งทันที (ภาพเปลี่ยนระหว่างออฟไลน์ = ส่งภาพใหม่ · ภาพเดิม = ส่งซ้ำแบบ keepalive)
+    const onOnline = () => void send(live.current.key !== ref.current.sentKey ? false : true);
+    window.addEventListener("online", onOnline);
+    // ◂
     return () => {
+      window.removeEventListener("online", onOnline); // POS P2.14 ▸ U3 H1b ◂
       clearInterval(iv);
       document.removeEventListener("visibilitychange", onVis);
       if (ref.current.timer) clearTimeout(ref.current.timer);
