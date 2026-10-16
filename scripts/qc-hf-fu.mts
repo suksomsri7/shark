@@ -41,7 +41,7 @@ const CHECKS: readonly Def[] = [
   D("ST1", "PAR", "[§3 §4 §7 มติ 6] ไม่มี migration · prisma/ ไม่เปลี่ยน (เทียบฐาน c3c52ef1 หรือ merge-base) · ไฟล์ห้ามแตะ §4 (register*.ts service.ts tender*.ts refund*.ts deposit.ts account-bridge.ts · InterimPayDialog PayDone BillsClient · restaurant/** · visual-pos.mts) ไม่เปลี่ยน · outbox-consumers: บรรทัดเหนือ \"pos.sale.voided\": เพิ่ม ≤ 4 · รอยต่อ POS P2.4/P2.6/P2.8 อยู่ใน ±8 บรรทัดของคีย์ · รอยต่อ HF-FU j (ถ้ามี) อยู่ใต้คีย์ · *-shared/pre-bill-render บริสุทธิ์ · 'use client' ไม่ import pos/table(-split)/order/kds · ทะเบียนผู้เรียก createSale เท่าเดิม"),
   D("ST2", "S", "[มติ 7 9 10 · ST7] คีย์ข้อความใหม่ th = en (th ไทย · en ไม่มีไทย): orders.event.held · orders.errors.memberNotFound/partyNotFound/conversationNotFound · recipe.errors.kind/itemArchived/itemService/duplicate/noLines/shape · products.branch.incomplete ({unit}) · products.branch.conflict · OrderPanel EVENT_TYPES มี held · POS-OWNER-PENDING มีบรรทัด P2.9b + HF-FU (บิลเงินสดล้วนหลังเลิกจด VAT ค้าง 2200 · z4)"),
   // ── HN ออเดอร์ที่ครัวพักไว้ (a) ──
-  D("HN1", "-", "[a มติ 1] พักครัว + ช่องทาง adapter NONE รับอัตโนมัติ → ingest = NEW + event held 1 แถว (NEW→NEW · payload.reason paused) · kitchenPauseAction เรียก releaseHeldOrders หลัง setKitchenPause (รอยต่อ POS HF-FU) · เลิกพัก + releaseHeldOrders(T, A) → ACCEPTED (acceptedByUserId null · event accepted ผู้กระทำ null · รอบครัว 1 · บิล PLATFORM 1 · audit pos.order.accept {auto:true, swept:true} ผู้กระทำ SYSTEM) · ผลคืน accepted มี id · ออเดอร์ที่รับเข้าก่อนต้นวันไทย (receivedAt) ยัง NEW · กวาดซ้ำ = ไม่มีอะไรเปลี่ยน"),
+  D("HN1", "-", "[a มติ 1] พักครัว + ช่องทาง adapter NONE รับอัตโนมัติ → ingest = NEW + event held 1 แถว (NEW→NEW · payload.reason paused) · kitchenPauseAction เรียก releaseHeldOrders หลัง setKitchenPause (รอยต่อ POS HF-FU) · เลิกพัก + releaseHeldOrders(T, A) → ACCEPTED (acceptedByUserId null · event accepted ผู้กระทำ null · รอบครัว 1 · บิล PLATFORM 1 · audit pos.order.accept {auto:true, swept:true} ผู้กระทำ SYSTEM) · ผลคืน accepted มี id · ออเดอร์ที่รับเข้าก่อนต้นวันไทย (receivedAt · ครัวพักข้ามเที่ยงคืน) ถูกกวาดด้วย (P2.14 Q2 · มติ 14) · กวาดซ้ำ = ไม่มีอะไรเปลี่ยน"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
   D("HN2", "X1", "[a มติ 1] เพดาน 1 + ตั๋วค้าง → ออเดอร์ R (GRAB ของไม่พอ) + CHAT c1 c2 c3 = NEW + held {reason:backlog} · kdsTicketDone ตั๋วค้าง → listOrders (กวาดตอนอ่าน) → R ถูกปฏิเสธบิล (STOCK_INSUFFICIENT) คง NEW + held {reason:sale_refused} 1 แถว ไม่มีบิล · c1 ACCEPTED · c2 c3 NEW (หยุดที่ตัวแรกที่ติดเพดาน) · done c1 → kdsBoard (กวาดตอนอ่าน) → c2 · done c2 → listOrders → c3 · FIFO ตาม receivedAt · R ไม่ถูกลองซ้ำ (sale_refused ยัง 1)"),
   D("HN3", "X1", "[a มติ 1] กวาด ‖ พนักงาน acceptOrder ออเดอร์เดียวกัน (ธุรกรรมที่สามถือแถว PosOrder · ทั้งคู่รอ) → ACCEPTED 1 · บิล PLATFORM 1 · รอบครัว 1 · ตัวควบคุมที่ไม่ถูกกวาด: ช่องทางปิดรับอัตโนมัติภายหลัง · MANUAL ที่เริ่ม NEW · NEW ที่ไม่มี held · ช่องทางพักรับ (pausedUntil) · ออเดอร์ held ของสาขา B · ของร้าน T2"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): HN4 (R1 F2)
@@ -1153,7 +1153,7 @@ async function runDb() {
     const hv = await heldEvs(h1);
     if (o0?.status !== "NEW") p.push(`พักครัว + รับอัตโนมัติ → ${ostr(o0)} (คาด NEW)`);
     if (hv.length !== 1 || hv[0]?.fromStatus !== "NEW" || hv[0]?.toStatus !== "NEW" || hv[0]?.payload?.reason !== "paused") p.push(`event held ${hv.length} ${short(hv.map((e) => [e.fromStatus, e.toStatus, e.payload]), 100)} (คาด 1 · NEW→NEW · reason paused)`);
-    // ออเดอร์ของวันก่อน (เวลา receivedAt ย้อนก่อนต้นวันไทย) — ไม่ถูกกวาด (มติ 1)
+    // ออเดอร์ของวันก่อน (เวลา receivedAt ย้อนก่อนต้นวันไทย) — ถูกกวาดด้วย // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3) มติ 14: P2.14 Q2 ชนะ · เดิม "ไม่ถูกกวาด (มติ 1)"
     await P.$executeRawUnsafe(`UPDATE "PosOrder" SET "receivedAt" = $2 WHERE id = $1 AND "tenantId" = $3`, hOld, new Date(bkkDayStart(new Date()).getTime() - 2 * 3_600_000), T);
     const a0 = await auditsOf(AUDIT_ACCEPT);
     // = kitchenPauseAction หลังเลิกพัก (setKitchenPause แล้ว → releaseHeldOrders)
@@ -1165,19 +1165,20 @@ async function runDb() {
     for (const s of sales) MY_SALES.push(String(s.id));
     const au = (await auditsOf(AUDIT_ACCEPT, h1)).filter((x) => !a0.some((y) => y.id === x.id));
     if (r?.ok === false) p.push(`releaseHeldOrders → ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
-    else if (!Array.isArray(r?.accepted) || !r.accepted.includes(h1) || r.accepted.includes(hOld)) p.push(`ผลคืน accepted ${short(r?.accepted, 80)} (คาดมี h1 ไม่มีออเดอร์วันก่อน)`);
+    else if (!Array.isArray(r?.accepted) || !r.accepted.includes(h1) || !r.accepted.includes(hOld)) p.push(`ผลคืน accepted ${short(r?.accepted, 80)} (คาดมี h1 และออเดอร์วันก่อน)`); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
     if (o1?.status !== "ACCEPTED" || o1?.acceptedByUserId !== null || !o1?.saleId) p.push(`หลังกวาด ${ostr(o1)} (คาด ACCEPTED · ผู้รับ null · มีบิล PLATFORM)`);
     if (acc.length !== 1 || acc[0]?.actorUserId !== null) p.push(`event accepted ${acc.length} ผู้กระทำ ${short(acc[0]?.actorUserId)}`);
     if (rounds.length !== 1 || sales.length !== 1) p.push(`รอบครัว ${rounds.length} · บิล ${sales.length} (คาด 1 · 1)`);
     if (au.length !== 1 || au[0]?.actorType !== "SYSTEM" || au[0]?.after?.auto !== true || au[0]?.after?.swept !== true) p.push(`audit ${AUDIT_ACCEPT} ${au.length} ${short(au.map((x) => [x.actorType, x.after]), 120)} (คาด 1 · SYSTEM · {auto:true, swept:true})`);
     const oOld = await orow(hOld);
-    if (oOld?.status !== "NEW") p.push(`ออเดอร์วันก่อน → ${ostr(oOld)} (คาด NEW คงไว้ให้พนักงาน)`);
+    for (const s of await salesOf(hOld)) MY_SALES.push(String(s.id)); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
+    if (oOld?.status !== "ACCEPTED") p.push(`ออเดอร์วันก่อน → ${ostr(oOld)} (คาด ACCEPTED · ครัวพักข้ามเที่ยงคืนถูกกวาด)`); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-3)
     // กวาดซ้ำ = ไม่มีอะไรเปลี่ยน
     const ev0 = Number(await P.posOrderEvent.count({ where: { tenantId: T } }).catch(() => -1));
     const n0 = (await auditsOf(AUDIT_ACCEPT)).length;
     const r2 = await release();
     if (r2?.ok === false || (Array.isArray(r2?.accepted) && r2.accepted.length) || Number(await P.posOrderEvent.count({ where: { tenantId: T } }).catch(() => -1)) !== ev0 || (await auditsOf(AUDIT_ACCEPT)).length !== n0) p.push(`กวาดซ้ำ → ${codeOf(r2)} ${short(r2?.accepted, 60)} (คาด ไม่มีอะไรเปลี่ยน)`);
-    chk("HN1", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "held ตอนพักครัว · เลิกพักแล้วกวาด = ACCEPTED (ระบบรับ) + audit swept · วันก่อนไม่กวาด · กวาดซ้ำ no-op", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
+    chk("HN1", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "held ตอนพักครัว · เลิกพักแล้วกวาด = ACCEPTED (ระบบรับ) + audit swept · วันก่อนกวาดด้วย (P2.14 Q2) · กวาดซ้ำ no-op", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
   });
 
   await step("HN2", async () => {
