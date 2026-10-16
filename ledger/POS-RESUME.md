@@ -1835,3 +1835,4 @@
 - builder ลบ opt-in → `wip/pos-p2.7` **0787cbf1** → **merge → session/pos 92b7149d** (no-ff) · generate ทั้งสองทรี · **gates104-c** (`gates104-c-20261016T010124Z`) · lane pins ที่คาดแดงก่อน push: p2.8 ST6 · p2.13 ST5 · p2.10 ST2 · hf-fu ST1 · p2.11 ST1/ST4 · p2.12 ST1 → push → gates105 ซ้ำ → **42/55 (76%)** + TG
 - spawn **P2.7U builder** (Opus ทรี b `wip/pos-p2.7u` จาก 92b7149d local) prompt `pos-prompt-accountB-P2.7U.md` (หน้า public th/en 390→1024 · 09 rail QR · TablePanel QR + พิมพ์ · drawers ช่องทาง · visual p2.7)
 - เลน: 1 = P2.7U builder ทรี b · ทรี c = gates104 · ทรี d ว่าง @0787cbf1 (QC5 migrate แล้ว · ใช้ build+ภาพ P2.7U ได้)
+- 01:03Z spawn **P2.14 brief drafter** (Opus read-only · survey 92b7149d) prompt `-P2.14-B.md` → `pos-brief-P2.14.md` DRAFT · เตรียม `-P2.7U-R.md` template · เลน: 1 = P2.7U builder ทรี b · read-only = P2.14 drafter · ทรี c = gates104 · ทรี d ว่าง
