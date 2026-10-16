@@ -76,7 +76,7 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) R1 F2: ใบของออเดอร์ผูกกับออเดอร์ (lockSaleIntents forOrderId)
   D("PY12", "X2", "[R1 F2 · hunter H1] ใบของออเดอร์ที่ยังเปิดอยู่ (PENDING_PAYMENT · PREPAID) → บิลหน้าขาย / มัดจำ อ้าง pi_ นี้ (ยอดเท่ากัน) ถูกปฏิเสธ INTENT_* · 0 บิล · intent ยัง PAID · ออเดอร์ยัง PREPAID · หลังออเดอร์ถูกปฏิเสธ (ปิดแล้ว) หน้าขายใช้ pi_ ได้ (CONSUMED · เงินเข้าหลังปิด 24 ชม.)"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) hunter H3: ช่องทางปิดกันเฉพาะคำสั่งใหม่
-  D("PY13", "X5", "[hunter H3 · มติ 11] PREPAID แล้วร้านปิดช่องทาง QR_ORDER (active false) → acceptOrder ได้ · บิลช่องทาง QR_ORDER · intent CONSUMED · สั่งใหม่ → QR_CLOSED (0 แถว) · เปิดคืน"),
+  D("PY13", "X5", "[hunter H3 · มติ 11] PREPAID แล้วร้านปิดช่องทาง QR_ORDER (active false) → acceptOrder ได้ · บิลช่องทาง QR_ORDER · intent CONSUMED · สั่งใหม่ → QR_CLOSED (0 แถว) · (fix 3 G1) บิลหน้าขาย channelId = QR_ORDER ที่ปิดอยู่ → CHANNEL_INVALID (quote + submit · 0 บิล) · เปิดคืน"), // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 3)
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 2) hunter H4: เงินเข้าหลังหมดเวลาโดยไม่มีใครอ่านสถานะก่อน
   D("PY9b", "X4", "[hunter H4 · S5] Beam: ย้อน payBy/expiresAt โดยไม่อ่านสถานะ/ไม่กวาด → webhook → ระบาย → ออเดอร์ CANCELLED (event expired 1) ไม่ใช่ PREPAID · ops ERROR pos.order.late_payment 1 · intent PAID lateWebhook ไม่ถูกใช้ · ไม่มีบิล"),
   // ── TB QR โต๊ะ ──
@@ -2245,6 +2245,13 @@ async function runDb() {
       const c0 = await counts();
       const n = await preorder([pl("padthai", 1)]);
       if (!refused(n.r, "QR_CLOSED")) p.push(`สั่งใหม่ตอนปิด → ${codeOf(n.r)} (คาด QR_CLOSED)`);
+      // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.7 fix 3) R2 G1: ข้อยกเว้นช่องทางปิดใช้ได้เฉพาะการรับ PREPAID — หน้าขายเลือก QR_ORDER ที่ปิดอยู่ไม่ได้
+      const sl0 = Number(await P.posSale.count({ where: { tenantId: T } }).catch(() => -1));
+      const rq = await call(register, "quoteRegisterCart", ctxU("A", DEV1), A("OWNER"), { lines: [rl("water", 1)], channelId: qo });
+      if (!refused(rq, "CHANNEL_INVALID")) p.push(`quote หน้าขายช่องทาง QR_ORDER ที่ปิด → ${codeOf(rq)} (คาด CHANNEL_INVALID)`);
+      const rsub = await call(register, "submitRegisterSale", ctxU("A", DEV1), A("OWNER"), { lines: [rl("water", 1)], channelId: qo, idempotencyKey: newKey("rsq"), expectedGrandTotalSatang: 1000, payMethods: [{ type: "CASH", amountSatang: 1000 }], cashReceivedSatang: 1000 });
+      if (!refused(rsub, "CHANNEL_INVALID")) p.push(`ขายหน้าขายช่องทาง QR_ORDER ที่ปิด → ${codeOf(rsub)} (คาด CHANNEL_INVALID)`);
+      if (Number(await P.posSale.count({ where: { tenantId: T } }).catch(() => -1)) !== sl0) p.push("หน้าขายช่องทางปิดแล้วมีบิล");
       const d = diffCounts(c0, await counts());
       if (d.length) p.push(`ปิดแล้วเขียน: ${d.join(", ")}`);
       const a = await O("acceptOrder", ctxU("A", DEV1), A("OWNER"), { id: x.row.id });
