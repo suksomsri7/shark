@@ -321,7 +321,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             {loadErr}
           </p>
         )}
-        {printRes && <PrintStatus result={printRes} onRetry={() => void print(lastKind)} onBrowser={() => void print(lastKind, true)} />}
+        {printRes && <PrintStatus result={printRes} variant="toast" /* POS P2.14 ▸ UI-1 (19ค) ◂ */ onRetry={() => void print(lastKind)} onBrowser={() => void print(lastKind, true)} />}
         <div className="flex w-full flex-col-reverse gap-[10px] md:w-auto md:flex-row md:items-center md:justify-center">
           <button
             data-testid="pos-print-receipt"

@@ -1662,7 +1662,18 @@ export function PayDialog(p: Props) {
                 }`}
               >
                 {intentMode && p.intent && (
-                  <PayIntentPanel h={pi} setup={p.intent} method={method === "CARD" ? "CARD" : "PROMPTPAY"} amountSatang={roundAmount} waiting={intentWaiting} />
+                  <PayIntentPanel
+                    h={pi}
+                    setup={p.intent}
+                    method={method === "CARD" ? "CARD" : "PROMPTPAY"}
+                    amountSatang={roundAmount}
+                    waiting={intentWaiting}
+                    onOtherMethod={() => {
+                      // POS P2.14 ▸ UI-1: การ์ดแดง 19ค "เลือกวิธีอื่น" = กลับเงินสด ◂
+                      setMethod("CASH");
+                      setEntry("");
+                    }}
+                  />
                 )}
                 {!p.intent && method === "PROMPTPAY" && p.promptpayId && (
                   <div data-testid="pos-reg-paydlg-qr" className="flex items-center gap-5 rounded-[12px] border bg-[color:var(--color-surface)] p-[14px] max-md:flex-col xl:gap-[31px]">

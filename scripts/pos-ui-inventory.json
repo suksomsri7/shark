@@ -6992,6 +6992,25 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-other-method",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "note": "การ์ดแดง 19ค (ใบ EXPIRED/CANCELLED) ปุ่มเลือกวิธีอื่น — กล่องชำระกลับไปวิธีเงินสด (P2.14 UI-1)"
+      },
+      "wo": "P2.14",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-pay-intent-retry",
       "kind": "button",
       "roles": [

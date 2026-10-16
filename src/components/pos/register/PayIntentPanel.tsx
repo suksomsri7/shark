@@ -314,6 +314,7 @@ export function PayIntentPanel({
   method,
   amountSatang,
   waiting,
+  onOtherMethod, // POS P2.14 ▸ UI-1 ◂
 }: {
   h: PayIntentHandle;
   setup: PayIntentSetup;
@@ -321,6 +322,8 @@ export function PayIntentPanel({
   amountSatang: number;
   /** ยอดรอบนี้ยังไม่พร้อม (ว่าง/เกิน/แถวเต็ม) — ยังไม่สร้างใบ */
   waiting: boolean;
+  /** POS P2.14 ▸ UI-1: ปุ่ม "เลือกวิธีอื่น" ของการ์ดแดง 19ค (ไม่ส่ง = ไม่มีปุ่ม) ◂ */
+  onOtherMethod?: () => void;
 }) {
   const t = useTranslations("pos.register.pay.intent");
   const tp = useTranslations("pos");
@@ -362,14 +365,31 @@ export function PayIntentPanel({
       </span>
     );
   } else if (it && (it.status === "EXPIRED" || it.status === "CANCELLED")) {
+    // POS P2.14 ▸ UI-1 (19ค): การ์ดแดง "ยังไม่ได้รับเงิน" + เหตุผล + ลองใหม่ (QR ใหม่) / เลือกวิธีอื่น + เลขอ้างอิงของใบ ·
+    //   ยืนยันเองบนใบที่หมดอายุ = S ปฏิเสธ (INTENT_EXPIRED · payment-intent.ts markPaidCore) ⇒ ปุ่มยืนยันเองอยู่บน QR ใบใหม่ (คำใบ้ใต้ปุ่ม) ◂
     body = (
-      <div className="flex flex-col gap-2">
-        <p data-testid="pos-pay-intent-expired" role="alert" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]">
+      <div data-testid="pos-pay-intent-failed-card" role="alert" className="flex flex-col gap-2.5 rounded-[14px] border-[1.5px] border-[color:var(--color-danger)] p-4">
+        <b className="flex items-start gap-2 text-[14.5px] text-[color:var(--color-danger)]">
+          <RegisterIcon name="warn" size={15} className="mt-0.5 shrink-0" />
+          {it.kind === "CARD_BEAM" ? t("failedTitleCard") : t("failedTitle")}
+        </b>
+        <p data-testid="pos-pay-intent-expired" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]">
           {it.status === "EXPIRED" ? t("expired") : t("cancelled")}
         </p>
-        <button data-testid="pos-pay-intent-regenerate" type="button" className="btn btn-ghost h-11 self-start rounded-[11px] px-4 text-[14px]" onClick={h.regenerate}>
-          {t("regenerate")}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button data-testid="pos-pay-intent-regenerate" type="button" className="btn btn-primary h-11 rounded-[11px] px-4 text-[14px]" onClick={h.regenerate}>
+            {t("regenerate")}
+          </button>
+          {onOtherMethod && (
+            <button data-testid="pos-pay-intent-other-method" type="button" className="btn btn-ghost h-11 rounded-[11px] px-4 text-[14px]" onClick={onOtherMethod}>
+              {t("otherMethod")}
+            </button>
+          )}
+        </div>
+        {it.kind !== "CARD_BEAM" && <small className="text-[12px] text-[color:var(--color-muted)]">{t("failedManualHint")}</small>}
+        <small data-testid="pos-pay-intent-ref" className="text-[12px] text-[color:var(--color-muted)] tabular-nums">
+          {t("ref", { ref: it.id.slice(-8).toUpperCase() })}
+        </small>
       </div>
     );
   } else if (it && it.status === "PENDING") {
