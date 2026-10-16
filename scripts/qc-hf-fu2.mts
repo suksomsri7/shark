@@ -61,6 +61,12 @@ const CHECKS: readonly Def[] = [
   D("RG6", "G", "[U(d)] log บรรทัด 1 ของหนึ่งรายการ ≠ HEAD.txt บรรทัด 1 ⇒ RED มีคำว่า log-head exit ≠ 0"),
   D("RG7", "PAR", "[fix2 H3] ชุด accepted exit 137 ⇒ RED exit ≠ 0"),
   D("RG8", "PAR", "[fix2 H3] ชุด accepted exit 1 · findings มี id ที่ไม่อยู่ใน checks (แดงซ่อน แบบ PL2.1) ⇒ RED exit ≠ 0"),
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix1 N1–N4) ▸ RG9–RG13 = ของปลอมที่ hunter ทำให้ green ได้ที่ 1224fd12 ◂
+  D("RG9", "G", "[fix1 N1] exit ใน SUMMARY ≠ บรรทัด EXIT ท้าย log ⇒ RED (แถว 0 แต่ log EXIT 1 · แถว accepted 1 แต่ log EXIT 137) · ตัวควบคุม EXIT ตรง ⇒ green"),
+  D("RG10", "G", "[fix1 N1] แถว exit 0 แต่ JSON_SUMMARY ล้ม ⇒ RED (failed ไม่ว่าง · findings ไม่ว่าง · crashed:true · passed < total)"),
+  D("RG11", "G", "[fix1 N2] HEAD.txt 2 บรรทัด (บรรทัด 2 ปลอม head/only) ⇒ RED · บรรทัดเดียวมี only= 2 ตัว ⇒ RED"),
+  D("RG12", "G", "[fix1 N3] JSON_SUMMARY 2 บรรทัด (ปลอมต่อท้ายตัวจริงให้ accepted) ⇒ RED · JSON_SUMMARY ไม่ใช่บรรทัดก่อน EXIT ⇒ RED"),
+  D("RG13", "G", "[fix1 N4] findings เติมจำนวน (failed 1 + findings 1 · total−passed 2) ⇒ RED · passed > total ⇒ RED · ตัวควบคุม: ชุดที่รายงานแค่ findings นับ findings ⇒ green"),
   // ── MF แมนิเฟสต์ (V) ──
   D("MF1", "S", "[V มติ 7] pos-gates.json: qc-pos-p2.14 ไม่มี accepted · ทุก accepted ที่ checks มี CRASH หรือ *-ERR มี match (สตริงไม่ว่าง · อยู่ใน log ของ gates111 ถ้ามี) · มีชุด qc-hf-fu2 (mode forced)"),
   // ── AC ค่าคอมฯ ข้ามสมุด (B · ACC-1 · มติ 1) ──
@@ -740,6 +746,82 @@ async function runTooling(): Promise<void> {
     chk("RG8", !v.green && v.rc !== 0, "แดงซ่อนนอก checks ⇒ RED", vline(v));
   });
 
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix1 N1–N4) ▸ RG9–RG13: แก้ไฟล์ในโฟลเดอร์ผลชั่วคราวหลัง mkOut ให้เหมือนของปลอมของ hunter (ทุกอย่างอื่นสอดคล้อง) ◂
+  const setLog = (dir: string, name: string, fn: (lines: string[]) => string[]) => {
+    const f = join(dir, `${name}.log`);
+    const L = readFileSync(f, "utf8").replace(/\n$/, "").split("\n");
+    writeFileSync(f, `${fn(L).join("\n")}\n`);
+  };
+  const isRed = (v: { rc: number; green: boolean }) => !v.green && v.rc !== 0;
+  await step("RG9", () => {
+    const r = need();
+    const first = names[0]!;
+    const a = mkOut(r, ok0(names), "-");
+    setLog(a, first, (L) => [...L.slice(0, -1), "EXIT 1"]);
+    const va = verdictOf(r, a);
+    const b = mkOut(r, ok0(names, { [nc]: { rc: 1, body: js({ total: 10, passed: 9, failed: [ncChecks[0]] }) } }), "-");
+    setLog(b, nc, (L) => [...L.slice(0, -1), "EXIT 137"]);
+    const vb = verdictOf(r, b);
+    const vc = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: js({ total: 10, passed: 9, failed: [ncChecks[0]] }) } }), "-"));
+    const p: string[] = [];
+    if (!isRed(va)) p.push(`${first} SUMMARY 0 · log EXIT 1 → ${vline(va)} (คาด RED)`);
+    if (!isRed(vb)) p.push(`${nc} SUMMARY 1 · log EXIT 137 → ${vline(vb)} (คาด RED)`);
+    if (!vc.green) p.push(`(ตัวควบคุม) ${nc} EXIT 1 ตรง → ${vline(vc)} (คาด green)`);
+    chk("RG9", p.length === 0, "exit ใน SUMMARY = EXIT ท้าย log", P8(p) || "ครบ");
+  });
+  await step("RG10", () => {
+    const r = need();
+    const first = names[0]!;
+    const cases: [string, Any][] = [
+      ["failed ไม่ว่าง", { total: 3, passed: 2, failed: ["QCX-RG10-1"] }],
+      ["findings ไม่ว่าง", { total: 3, passed: 3, findings: ["QCX-RG10-2 ซ่อน"] }],
+      ["crashed:true", { total: 3, passed: 3, failed: [], crashed: true }],
+      ["passed < total", { total: 3, passed: 2, failed: [] }],
+    ];
+    const p: string[] = [];
+    for (const [lbl, j] of cases) {
+      const v = verdictOf(r, mkOut(r, ok0(names, { [first]: { rc: 0, body: js(j) } }), "-"));
+      if (!isRed(v)) p.push(`${first} exit 0 + ${lbl} → ${vline(v)} (คาด RED)`);
+    }
+    chk("RG10", p.length === 0, "แถว exit 0 ที่สรุปล้ม ⇒ RED", P8(p) || "ครบ (4 กรณี)");
+  });
+  await step("RG11", () => {
+    const r = need();
+    const two = names.slice(0, 2);
+    const a = mkOut(r, ok0(two), "-");
+    writeFileSync(join(a, "HEAD.txt"), `${readFileSync(join(a, "HEAD.txt"), "utf8").replace(/\n$/, "")}\nhead=${r.head} dirty=0 only=${two.join(",")}\n`);
+    const va = verdictOf(r, a);
+    const vb = verdictOf(r, mkOut(r, ok0(two), `- only=${two.join(",")}`));
+    const p: string[] = [];
+    if (!isRed(va)) p.push(`HEAD.txt 2 บรรทัด (บรรทัด 2 only=${two.join(",")}) → ${vline(va)} (คาด RED)`);
+    if (!isRed(vb)) p.push(`บรรทัดเดียว only=- only=${two.join(",")} → ${vline(vb)} (คาด RED)`);
+    chk("RG11", p.length === 0, "HEAD.txt บรรทัดเดียว · only= ตัวเดียว", P8(p) || "ครบ");
+  });
+  await step("RG12", () => {
+    const r = need();
+    const real = js({ total: 10, passed: 9, failed: ["QCX-RG12-NOT-ACCEPTED"] });
+    const forged = js({ total: 10, passed: 9, failed: [ncChecks[0]] });
+    const va = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: `${real}\n${forged}` } }), "-"));
+    const vb = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: `${forged}\nบรรทัดต่อท้ายหลังสรุป` } }), "-"));
+    const p: string[] = [];
+    if (!isRed(va)) p.push(`${nc} JSON_SUMMARY 2 บรรทัด (ปลอมต่อท้าย) → ${vline(va)} (คาด RED)`);
+    if (!isRed(vb)) p.push(`${nc} JSON_SUMMARY ไม่ใช่บรรทัดก่อน EXIT → ${vline(vb)} (คาด RED)`);
+    chk("RG12", p.length === 0, "JSON_SUMMARY บรรทัดเดียว ก่อน EXIT", P8(p) || "ครบ");
+  });
+  await step("RG13", () => {
+    const r = need();
+    const id0 = ncChecks[0]!;
+    const id1 = ncChecks[1] ?? `${ncChecks[0]}-B`;
+    const va = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: js({ total: 10, passed: 8, failed: [id0], findings: [id1] }) } }), "-"));
+    const vb = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: js({ total: 10, passed: 11, failed: [id0] }) } }), "-"));
+    const vc = verdictOf(r, mkOut(r, ok0(names, { [nc]: { rc: 1, body: js({ total: 10, passed: 8, findings: [id0, id1] }) } }), "-"));
+    const p: string[] = [];
+    if (!isRed(va)) p.push(`${nc} failed[${id0}] + findings[${id1}] · total−passed 2 → ${vline(va)} (คาด RED)`);
+    if (!isRed(vb)) p.push(`${nc} passed 11 > total 10 → ${vline(vb)} (คาด RED)`);
+    if (!vc.green) p.push(`(ตัวควบคุม) ${nc} findings อย่างเดียว 2 ตัว · total−passed 2 → ${vline(vc)} (คาด green)`);
+    chk("RG13", p.length === 0, "นับ failed เท่านั้น · 0 ≤ passed ≤ total", P8(p) || "ครบ");
+  });
+
   console.log("\n── MF แมนิเฟสต์ ──");
   await step("MF1", () => {
     const p: string[] = [];
@@ -777,7 +859,7 @@ function rmRg(): string {
 
 // ═════════════════════════ 1d. --no-db ═════════════════════════
 const loadBlame = async () => (existsSync(join(ROOT, F.blame)) && purePath(F.blame) ? await tryImport("@/components/pos/register/deposit-blame") : null);
-const NODB_IDS = ["ST1", "ST2", "DP1", "DP2", "DP3", "DS1", "PB1", "RG1", "RG2", "RG3", "RG4", "RG5", "RG6", "RG7", "RG8", "MF1"];
+const NODB_IDS = ["ST1", "ST2", "DP1", "DP2", "DP3", "DS1", "PB1", "RG1", "RG2", "RG3", "RG4", "RG5", "RG6", "RG7", "RG8", "RG9", "RG10", "RG11", "RG12", "RG13", "MF1"]; // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix1 N1–N4): + RG9–RG13 ◂
 if (NODB) {
   const ids = NODB_IDS.map((x) => `HF-FU2-${x}`);
   console.log(`[${SUITE}] --no-db: รัน ${ids.length} ข้อ (สถิต + บริสุทธิ์ + ตัวรันด่าน · ไม่โหลด prisma)`);
@@ -1188,6 +1270,34 @@ async function runDb() {
           } catch (e) {
             replay.push(`เล่นซ้ำ ${i + 1} throw ${(e as Error).message.slice(0, 60)}`);
           }
+      // ORACLE-ADD ผู้คุม 17 ต.ค. (HF-FU2 fix1 N5) ▸ เขียน WARN ไม่ได้ต้องโยน (คิวลองใหม่) ไม่ใช่กลืนเงียบ: ฉีด findFirst = null + create ล้ม เฉพาะ source ของ WARN นี้ ·
+      //   เรียก consumer ตรง (ยังผูกสมุด 2) ⇒ ต้อง throw ข้อความที่ฉีด · create ถูกเรียก 1 ครั้ง · ไม่มีแถวเพิ่ม (คืนของเดิมใน finally) ◂
+      if (ev && typeof h === "function") {
+        const dlg = P.opsEvent;
+        const f0 = dlg.findFirst;
+        const c0 = dlg.create;
+        let calls = 0;
+        let threw = "";
+        dlg.findFirst = (a: Any) => (String(a?.where?.source ?? "") === OPS_KEY ? Promise.resolve(null) : f0.call(dlg, a));
+        dlg.create = (a: Any) => {
+          if (String(a?.data?.source ?? "") === OPS_KEY) {
+            calls++;
+            return Promise.reject(new Error("QCX-HFFU2-INJECTED-OPS-CREATE"));
+          }
+          return c0.call(dlg, a);
+        };
+        try {
+          await h(ev);
+        } catch (e) {
+          threw = String((e as Error)?.message ?? e);
+        } finally {
+          dlg.findFirst = f0;
+          dlg.create = c0;
+        }
+        if (dlg.create !== c0 || dlg.findFirst !== f0) replay.push("(ข้อสอบ) คืน delegate ไม่สำเร็จ");
+        if (calls !== 1 || !threw.includes("QCX-HFFU2-INJECTED-OPS-CREATE")) replay.push(`ฉีด create ล้ม: เรียก create ${calls} ครั้ง · consumer throw "${threw.slice(0, 60)}" (คาด 1 ครั้ง · throw ข้อความที่ฉีด — ห้ามกลืนเงียบ · N5)`);
+        else console.log("  (AC1 ข้อมูล) ฉีด create ล้ม ⇒ consumer throw (คิวลองใหม่) ✓");
+      }
       await drain();
     } finally {
       await relink(S.ACC1!);
