@@ -12,13 +12,14 @@
 //   Q17.4 รายงาน = pos.report.view · การ์ดวันนี้ = pos.sale.create → REPORT_PERMISSION / CARD_PERMISSION
 import type { PosShift, PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
-import { canAccessUnit, evaluate } from "@/lib/core/rbac";
+import { canAccessUnit, canViewPayroll, evaluate } from "@/lib/core/rbac"; // POS P3.5 ▸ + canViewPayroll (รายงานค่าคอมฯ · มติ 7) ◂
 import { lineConsumption, PAY_TYPE_LABEL_TH, PAY_TYPE_ORDER } from "./service";
 import { computeReport, type ShiftReport } from "./shift";
 import type { RegisterActor } from "./register-shared";
 import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวันตามค่าตั้งของระบบ POS ◂
 import { POS_ANOMALY_RULES, posAnomalyThresholds, type PosAnomalyRule } from "./settings-shared"; // POS P2.12 ▸ AN เกณฑ์จุดผิดปกติ (ตัวอ่านเดียว) ◂
 import { channelFallbackName, defaultChannelCode } from "./channel-shared"; // POS P2.11 ▸ รายงานช่องทาง (รหัสของบิลเดิม · ชื่อสำรอง) ◂
+import { hrAdjustmentStatuses, hrPayrollLinkedUserIds } from "./hr-link"; // POS P3.5 ▸ R11 noEmployee · สถานะใน HR ◂
 
 type Db = PrismaClient;
 
@@ -46,7 +47,7 @@ const BKK_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
 const shiftOffsetMs = (cutoffMin: number): number => BKK_OFFSET_MS - cutoffMin * 60_000;
 
-export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels", "branches", "hourly", "anomalies"] as const; // POS P2.11 ▸ + channels ◂ · POS P2.12 ▸ + branches hourly anomalies ◂
+export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels", "branches", "hourly", "anomalies", "commission"] as const; // POS P3.5 ▸ + commission (ผู้ดูเงินเดือนเท่านั้น · REST ไม่เปิด) ◂ · // POS P2.11 ▸ + channels ◂ · POS P2.12 ▸ + branches hourly anomalies ◂
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 // ═══════════ ชนิดข้อมูล ═══════════
@@ -253,6 +254,21 @@ export type AnomalyRow = {
 };
 // POS P2.12 ▸ fix1 F1: unitNames = ชื่อสาขาของหน่วยที่อยู่ในแถวที่คืน (CSV/แบบพิมพ์แสดงชื่อแทนรหัส · คีย์แถวไม่เปลี่ยน) ◂
 // POS P2.12 ▸ fix1 H4: a8SignedSatang = ค่าแบบมีเครื่องหมายของฝั่งที่ชนะของแถว A8 (คีย์ = PosShift id = refId · ติดลบ = ขาด · บวก = เกิน) — value ในแถวคงเป็นค่าสัมบูรณ์ ◂
+// POS P3.5 ▸ R11 มติ 7: ค่าคอมฯ พนักงานขายต่อผู้ขาย (จากสมุด PosStaffCommission · แถวที่ลงในช่วง) — reversedSatang = ขนาด (≥ 0) ·
+//   netSatang = accrued − reversed · sent/open = ผลรวมมีเครื่องหมายตามสถานะ · noEmployee = ยังไม่ผูกพนักงาน HR ที่มีโปรไฟล์เงินเดือน (แถวค้าง OPEN) ◂
+export type CommissionRow = {
+  userId: string;
+  name: string | null;
+  accruedSatang: number;
+  reversedSatang: number;
+  netSatang: number;
+  sentSatang: number;
+  openSatang: number;
+  noEmployee: boolean;
+  /** สถานะของรายการปรับเงินล่าสุดใน HR (PENDING/APPROVED/REJECTED · PAID = เข้ารอบจ่ายแล้ว) — ยังไม่เคยส่ง = ไม่มีคีย์ */
+  hrStatus?: string;
+};
+export type CommissionTotals = { rowCount: number; accruedSatang: number; reversedSatang: number; netSatang: number; sentSatang: number; openSatang: number };
 export type AnomalyTotals = { rowCount: number; byRule: Record<PosAnomalyRule, number>; unitNames: Record<string, string>; a8SignedSatang: Record<string, number> };
 
 export type DashboardCard = {
@@ -282,6 +298,7 @@ export type ChannelsReportResult = ReportResult<"channels", ChannelRow, ChannelT
 export type BranchesReportResult = ReportResult<"branches", BranchRow, BranchTotals>;
 export type HourlyReportResult = ReportResult<"hourly", HourlyRow, HourlyTotals>;
 export type AnomaliesReportResult = ReportResult<"anomalies", AnomalyRow, AnomalyTotals>;
+export type CommissionReportResult = ReportResult<"commission", CommissionRow, CommissionTotals>; // POS P3.5 ◂
 export type AnyReportResult =
   | DailyReportResult
   | ProductsReportResult
@@ -293,7 +310,8 @@ export type AnyReportResult =
   | ChannelsReportResult // POS P2.11 ◂
   | BranchesReportResult // POS P2.12 ◂
   | HourlyReportResult
-  | AnomaliesReportResult;
+  | AnomaliesReportResult
+  | CommissionReportResult; // POS P3.5 ◂
 /** POS P2.12 ▸ รายงานที่สำเร็จ (ใช้กับแบบพิมพ์ report-print-shared.ts) ◂ */
 export type AnyReport = Extract<AnyReportResult, { ok: true }>["report"];
 
@@ -1641,6 +1659,57 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
   });
 }
 
+// ═══════════ POS P3.5 ▸ R11 ค่าคอมฯ พนักงานขาย (มติ 7: pos.report.view และ canViewPayroll · MANAGER ไม่ผ่านโดยบทบาท) ◂ ═══════════
+const COMMISSION_DENIED = "บัญชีนี้ยังไม่มีสิทธิ์ดูค่าคอมฯ พนักงาน — เฉพาะเจ้าของร้านหรือผู้ได้รับสิทธิ์ดูเงินเดือน";
+export async function reportStaffCommission(ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db): Promise<CommissionReportResult> {
+  return guard("reportStaffCommission", async () => {
+    const db = client ?? prisma;
+    const p = await prepare(db, ctx, actor, input);
+    if (isRefusal(p)) return p;
+    const a = actorOf(actor);
+    if (!a || !canViewPayroll(a)) return refuse("PERMISSION_DENIED", COMMISSION_DENIED);
+    const { s, r } = p;
+    const ledger = await db.posStaffCommission.findMany({
+      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: r.start, lt: r.end } },
+      select: { userId: true, kind: true, status: true, amountSatang: true, hrPayAdjustmentId: true, sentAt: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: 100_000,
+    });
+    const m = new Map<string, CommissionRow & { lastAdj: { id: string; at: number } | null }>();
+    for (const x of ledger) {
+      const row = m.get(x.userId) ?? { userId: x.userId, name: null, accruedSatang: 0, reversedSatang: 0, netSatang: 0, sentSatang: 0, openSatang: 0, noEmployee: false, lastAdj: null };
+      if (x.kind === "ACCRUE") row.accruedSatang += x.amountSatang;
+      else row.reversedSatang -= x.amountSatang;
+      if (x.status === "SENT") row.sentSatang += x.amountSatang;
+      else row.openSatang += x.amountSatang;
+      const at = x.sentAt?.getTime() ?? 0;
+      if (x.hrPayAdjustmentId && (!row.lastAdj || at >= row.lastAdj.at)) row.lastAdj = { id: x.hrPayAdjustmentId, at };
+      m.set(x.userId, row);
+    }
+    const ids = [...m.keys()];
+    const [names, linked, statuses] = await Promise.all([
+      userNames(db, ids),
+      ids.length ? hrPayrollLinkedUserIds(s.tenantId, ids) : Promise.resolve(new Set<string>()),
+      hrAdjustmentStatuses(s.tenantId, [...new Set([...m.values()].map((x) => x.lastAdj?.id).filter((x): x is string => !!x))]),
+    ]);
+    const rows: CommissionRow[] = [...m.values()]
+      .map(({ lastAdj, ...x }) => {
+        const st = lastAdj ? statuses.get(lastAdj.id) : undefined;
+        const hrStatus = st ? (st.runId ? "IN_RUN" : st.status) : undefined;
+        return { ...x, name: names.get(x.userId) ?? null, netSatang: x.accruedSatang - x.reversedSatang, noEmployee: !linked.has(x.userId), ...(hrStatus ? { hrStatus } : {}) };
+      })
+      .sort((x, y) => y.netSatang - x.netSatang || cmpStr(x.userId, y.userId));
+    return envelope("commission", s, r, rows, {
+      rowCount: rows.length,
+      accruedSatang: sum(rows, (x) => x.accruedSatang),
+      reversedSatang: sum(rows, (x) => x.reversedSatang),
+      netSatang: sum(rows, (x) => x.netSatang),
+      sentSatang: sum(rows, (x) => x.sentSatang),
+      openSatang: sum(rows, (x) => x.openSatang),
+    });
+  });
+}
+
 // ═══════════ CSV (R11) ═══════════
 const CSV_BOM = "﻿";
 const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
@@ -1677,9 +1746,10 @@ export const CSV_HEADERS: Record<ReportKind, string[]> = {
   branches: ["สาขา", "จำนวนบิล", "ยอดขายสุทธิ", "เฉลี่ยต่อบิล", "ใบคืนเงิน", "ยอดคืนเงิน", "บิลยกเลิก", "ยอดบิลยกเลิก", "เงินสด", "แพลตฟอร์ม", "ค่าคอมมิชชัน", "VAT ค่าคอมมิชชัน", "ขาด/เกิน"],
   hourly: ["ชั่วโมง", "จำนวนบิล", "ยอดขายสุทธิ", "คาดการณ์ (เฉลี่ย 4 สัปดาห์)"],
   anomalies: ["กฎ", "จุดสังเกต", "สาขา", "วันที่", "พนักงาน", "ชนิดอ้างอิง", "รหัสอ้างอิง", "ค่า", "เกณฑ์", "จำนวน"], // POS P2.12 ▸ fix1 F1: ชื่อสาขา (เดิม รหัสสาขา) ◂
+  commission: ["รหัสผู้ใช้", "ชื่อ", "ค่าคอมฯ ที่ได้", "กลับรายการ", "สุทธิ", "ส่งเข้างวดแล้ว", "ยังไม่ส่ง", "ยังไม่ผูกพนักงาน HR", "สถานะใน HR"], // POS P3.5 ▸ R11 ◂
 };
 /** POS P2.12 ▸ fix1 F2: ชนิดที่แถวท้ายของ CSV/แบบพิมพ์เป็นแถว "รวม" เสมอ (ตัดสินจากชนิด ไม่ใช่ข้อความในช่อง) — channels/anomalies ไม่มีแถวรวม ◂ */
-export const REPORT_TOTAL_ROW_KINDS: ReadonlySet<ReportKind> = new Set<ReportKind>(["daily", "products", "staff", "payments", "margin", "shifts", "tax", "branches", "hourly"]);
+export const REPORT_TOTAL_ROW_KINDS: ReadonlySet<ReportKind> = new Set<ReportKind>(["daily", "products", "staff", "payments", "margin", "shifts", "tax", "branches", "hourly", "commission"]); // POS P3.5 ▸ + commission ◂
 // POS P2.12 ▸ ค่าของแถวจุดผิดปกติในตาราง: เงิน (A1 A2 A8 A9) = บาท · สัดส่วน (A3 A4) = % · อื่น = จำนวน ◂
 const ANOMALY_MONEY_RULES: ReadonlySet<string> = new Set(["A1", "A2", "A8", "A9"]);
 const ANOMALY_BP_RULES: ReadonlySet<string> = new Set(["A3", "A4"]);
@@ -1852,6 +1922,14 @@ function csvTableRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
         r.count,
       ]);
     }
+    // POS P3.5 ▸ R11: ค่าคอมฯ ต่อผู้ขาย + แถว "รวม" ◂
+    case "commission": {
+      const x = rep as Report<"commission", CommissionRow, CommissionTotals>;
+      return [
+        ...x.rows.map((r) => [r.userId, r.name ?? "", baht(r.accruedSatang), baht(r.reversedSatang), baht(r.netSatang), baht(r.sentSatang), baht(r.openSatang), r.noEmployee ? "ใช่" : "", r.hrStatus ?? ""]),
+        [TOTAL_LABEL, "", baht(x.totals.accruedSatang), baht(x.totals.reversedSatang), baht(x.totals.netSatang), baht(x.totals.sentSatang), baht(x.totals.openSatang), "", ""],
+      ];
+    }
   }
 }
 /** POS P2.12 ▸ PD: แถว CSV (ข้อมูล + "รวม") ของรายงานที่สำเร็จ เป็นข้อความทีละช่อง — แบบพิมพ์ใช้ชุดเดียวกับ CSV (report-print-shared.ts) ◂ */
@@ -1876,6 +1954,7 @@ const REPORT_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input
   branches: reportBranches,
   hourly: reportHourly,
   anomalies: reportAnomalies,
+  commission: reportStaffCommission, // POS P3.5 ◂
 };
 export const isReportKind = (v: unknown): v is ReportKind => typeof v === "string" && (REPORT_KINDS as readonly string[]).includes(v);
 
