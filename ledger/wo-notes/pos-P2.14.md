@@ -285,3 +285,18 @@ Base note: the local `session/pos` tip was `cbad4204` ("parity rulings done · U
 | p1.3 | offline | register | **cashier** (+ owner control) | th 1440 · 1024 · 390 + en | H1/H2 |
 | p1.3 | default | register | cashier | th 1440 | Q4 (no "เร็ว ๆ นี้" tab) |
 | p2.4u | register-table-mode | register | owner | th 1440 | Q4 control (tables tab shown) |
+
+## U3 (repo-wide oracles from the controller's qc:all) — branch `wip/pos-p2.14-u3` from `session/pos` `1f3dff38` (contains U2 merge `230accb8`) · worked in tree **b** (tree d busy with the controller's build)
+
+| item | commit | change |
+|---|---|---|
+| qc-pages RG-1 | `9c7212ef` | `src/lib/pages/registry.ts` — 9 `S("POS", …)` widgets in a marked block, same shape as the existing POS entries (type · suffix · label · icon — the registry has no permission field; the target page enforces its own gate): `/pos/stock` · `/pos/shifts` · `/pos/reports` · `/pos/settings` (the four RG-1 gaps) + `/pos/tables` · `/pos/orders` · `/pos/kds` · `/pos/products/price-rules` · `/pos/reports/print` (RG-1 requires a widget for every `childrenFor` menu, so the S5 additions below need theirs) |
+| qc-nav-functions S5 | `bb4df859` | `src/app/app/layout.tsx` `case "POS"` — 5 accordion items (tables · online orders · kitchen display after register; price rules after products; report print after reports). The oracle has no exclusion convention for variants (only `COMPAT_REDIRECTS` for legacy-link redirect pages, which needs a written reason and does not fit live pages), and other modules list their variant pages (restaurant menu/options, menu/stock) — so they are real menu items. Labels reuse existing `pos` messages (`register.tabs.tables`, `register.tabs.onlineOrders`, `kds.title`, `price.rule.title`, `report.print.button`) — no new `pos.nav.*` key (p1.18 ST5 forbids extra nav keys) and no Thai in the layout POS block |
+| manifest G1 | `44e89c7b` | `scripts/pos-gates.json` + `qc-pages`, `qc-nav-functions` (unforced, with `why`) → 98 entries; `--dry` lists them; `--verdict` on an old folder now reports `SET partial 94/96` (self-consistent: total follows the manifest) |
+
+Gates (tree b @`44e89c7b` dirty 0, QC4 under `/tmp/shark-gate-pos.lock`, `/root/pos-runs/p214-builder/u3-20261016T170525Z/`; the first unit was stopped after qc-pages while the controller's tree-d build held RAM at 2 GB available, the rest ran after build `DONE`):
+- qc-pages **31/31** (`{"total":31,"passed":31,"findings":[]}`) · qc-nav-functions **11/11** ("ผ่านทั้งหมด — 11 เช็ก")
+- qc-pos-p2.14 forced **60/60** · qc-hf-pos-page-authz 87/87 · qc-pos-p1.10 40/40 · qc-pos-p1.17 40/40 · qc-pos-p1.14 30/30 · qc-pos-p1.9 53/53
+- fitness-pos 0 · typecheck (8192 · ISO_MEM 10500M, started at 11 GB available, 17:27:03 → 17:29:59, `head=44e89c7b dirty=0`) **0**
+
+Re-shoot (if the controller wants the accordion seen): any POS page in th + en at 1440 with the app drawer open (accordion now has 14 POS items); no screen layout changed otherwise.
