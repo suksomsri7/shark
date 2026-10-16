@@ -468,6 +468,8 @@ async function runStatic(): Promise<void> {
       const nm = f.slice(POS_DIR.length + 1);
       // pos→crm ผ่าน facade มีอยู่แล้วใน allowlist F2 (register.ts ผูกบิลเข้าดีล) — ห้ามเฉพาะไฟล์ภายในของ crm · chat/kanban/hr ห้ามทั้งหมด
       const hits = [...s.matchAll(/["'](@\/lib\/modules\/(?:chat|kanban|hr)(?:\/[^"']*)?|@\/lib\/modules\/crm\/[^"']+|(?:\.\.\/)+(?:crm|chat|kanban|hr)(?:\/[^"']*)?|@\/lib\/pos-integrations(?:-actions)?|@\/lib\/platform\/(?:crm|kanban)-bridges[^"']*)["']/g)].map((x) => x[1]!);
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.5 CD-B3 · C-8 v2 seam, P3.5 §10.5): pos/hr-link.ts + pos/hr-link-actions.ts = ทางเดียวของ POS ไป HR — ยกเว้นเฉพาะ facade "@/lib/modules/hr" ของสองไฟล์นี้ (subpath/relative ของ hr ยังแดง · ไฟล์อื่นยังแดง)
+      if (nm === "hr-link.ts" || nm === "hr-link-actions.ts") for (let k = hits.length - 1; k >= 0; k--) if (hits[k] === "@/lib/modules/hr") hits.splice(k, 1);
       if (hits.length) p.push(`${nm} import ${[...new Set(hits)].join(",")}`);
     }
     chk("ST2", p.length === 0, "root export ครบ · pos ไม่ import crm/chat/kanban/hr/root · root ผ่าน facade", joinP(p) || `ครบ (${posFiles.length} ไฟล์ pos)`);
