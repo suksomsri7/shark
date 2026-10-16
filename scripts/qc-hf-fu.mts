@@ -47,7 +47,7 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 1): HN4 (R1 F2)
   D("HN4", "X1", "[a fix1 มติ 2] ออเดอร์ held 3 รายการที่เพดาน 1 · ตัวกวาด 6 ตัวพร้อมกัน (releaseHeldOrders ×4 + listOrders ×2 · ธุรกรรมที่สามถือแถว o1 ให้ตัวแรกผ่านด่านเพดานแล้วรอ · ช่องทาง o1 ปิดรับอัตโนมัติหลังกวาด — ORD-6) → ACCEPTED 1 · ตั๋วค้าง ≤ เพดาน · บิล 1 · รอบครัว 1"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-6 · CD-B6)
   // ORACLE-ADD ผู้คุม 15 ต.ค. (HF-FU fix 2): HN5 (hunter H1)
-  D("HN5", "X1", "[a fix2 มติ 1] ออเดอร์ PLATFORM (PLATFORM_PAID) พักที่เพดาน 1 · (ก) ช่องทาง CUSTOM เปลี่ยน payout เป็น DIRECT ก่อนกวาด → กวาด ⇒ ยัง NEW + held sale_refused 1 · บิล 0 · รอบครัว 0 · พนักงาน acceptOrder คู่ที่ไม่ตรง ⇒ CHANNEL_PAY_MISMATCH ไม่มีบิล · (ข) ช่องทางปิดรับอัตโนมัติระหว่างตัวกวาดรอล็อกต่อสาขา (ธุรกรรมที่สามถือ posorder-release) ⇒ ยัง NEW · ไม่มี held ใหม่ · บิล 0 · รอบครัว 0"),
+  D("HN5", "X1", "[a fix2 มติ 1] ออเดอร์ PLATFORM (PLATFORM_PAID) พักที่เพดาน 1 · (ก) ช่องทาง CUSTOM เปลี่ยน payout เป็น DIRECT ก่อนกวาด → กวาด ⇒ ยัง NEW + held sale_refused 1 · บิล 0 · รอบครัว 0 · พนักงาน acceptOrder คู่ที่ไม่ตรง ⇒ CHANNEL_PAY_MISMATCH ไม่มีบิล · (ข) ธุรกรรมที่สามถือ posorder-release ⇒ ตัวกวาดคืนทันที swept:false ไม่รับ · ปล่อยล็อกแล้วครั้งถัดไป = รับ (บิล 1 · รอบครัว 1) — ORD-2 try-lock"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-2 · CD-B6)
   // ── OD รอบร่างกำพร้า (b) ──
   D("OD1", "X1", "[b มติ 2] รอบร่าง HELD ของ session ที่หน้าเดิมปิด (table.closeSession) และของ session ที่หน้าเดิมรวมเข้าโต๊ะอื่น (MERGED) → registerTables (อ่านผัง) → DISCARDED ทั้งคู่ + audit pos.heldCart.discard 1 แถว/ร่าง (actorType SYSTEM · after {status DISCARDED, via session_not_open, tableSessionId}) · อ่านซ้ำไม่เพิ่ม audit · registerTables เรียก sweepOrphanTableDrafts"),
   D("OD2", "PAR", "[b มติ 2] ไม่แตะ: ร่างของ session ที่ยัง OPEN · บิลพักในลิ้นชัก (tableSessionId null) · ร่างของ session ที่ปิดแล้วของสาขา B (อ่านผังสาขา A) — ยัง HELD ทุกแถว version เดิม"),
@@ -1407,24 +1407,30 @@ async function runDb() {
       ids.push(oA);
       await heldAtCeiling(oA, "oA");
       await doneRoundsOf(b2);
-      const hl = await holdLock(LOCK_RELEASE, [`posorder-release:${T}:${U.A}`], [() => release()], async () => {
-        must("H5A ปิดรับอัตโนมัติ", await O("setChannelOrderSettings", ctxA(), A("OWNER"), { channelId: chA, autoAccept: false }));
+      // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-2 · CD-B6): ตัวกวาดทางอ่านใช้ try-lock (ORD-2) — ระหว่างธุรกรรมที่สามถือ posorder-release ตัวกวาดคืนทันที swept:false ไม่รับ ·
+      //   ปล่อยล็อกแล้วเรียกครั้งถัดไป = รับออเดอร์ (บิล 1 · รอบครัว 1) — แทนฉาก "รอล็อกแล้วช่องทางปิดรับ" ที่ try-lock ทำให้เกิดไม่ได้
+      let rBusy: Any = null;
+      let busyMs = -1;
+      await holdLock(LOCK_RELEASE, [`posorder-release:${T}:${U.A}`], [], async () => {
+        const t0 = Date.now();
+        rBusy = await release();
+        busyMs = Date.now() - t0;
       });
-      const rA = hl.res[0];
+      const oA0 = await orow(oA);
+      if (rBusy?.swept !== false || (Array.isArray(rBusy?.accepted) && rBusy.accepted.length) || busyMs < 0 || busyMs > 2000 || oA0?.status !== "NEW")
+        p.push(`(ข) ตัวกวาดระหว่างล็อกถูกถือ → ${short(rBusy, 60)} ${busyMs} ms · ${ostr(oA0)} (คาด swept:false · ไม่รับ · < 2 วิ · NEW)`);
+      const rNext = await release();
       const oA1 = await orow(oA);
       const sA = await salesOf(oA);
       for (const s of sA) MY_SALES.push(String(s.id));
-      const hvA = await heldEvs(oA);
       const roundsA = (await roundsOf(oA)).length;
-      if (hl.blocked < 1) p.push("(ข) ตัวกวาดไม่รอล็อก posorder-release (จัดฉากไม่ถึง)");
-      if (rA?.ok === false) p.push(`(ข) releaseHeldOrders → ${codeOf(rA)}`);
-      if (oA1?.status !== "NEW" || hvA.length !== 1 || sA.length !== 0 || roundsA !== 0 || (Array.isArray(rA?.accepted) && rA.accepted.includes(oA)))
-        p.push(`(ข) ปิดรับอัตโนมัติระหว่างรอล็อก → ${ostr(oA1)} · held ${hvA.length} ${short(hvA.map((e) => e.payload?.reason), 40)} · บิล ${sA.length} · รอบครัว ${roundsA} · accepted ${short(rA?.accepted, 40)} (คาด NEW · held 1 (backlog) · 0 · 0 · ไม่มี)`);
+      if (!(Array.isArray(rNext?.accepted) && rNext.accepted.includes(oA)) || oA1?.status !== "ACCEPTED" || sA.length !== 1 || roundsA !== 1)
+        p.push(`(ข) ครั้งถัดไปหลังปล่อยล็อก → ${short(rNext, 60)} · ${ostr(oA1)} · บิล ${sA.length} · รอบครัว ${roundsA} (คาด รับ · ACCEPTED · 1 · 1)`);
     } finally {
       await K("kdsSetAutoAcceptMax", ctxA(), A("OWNER"), { maxOpen: null });
       for (const id of ids) if ((await orow(id))?.status === "NEW") await O("rejectOrder", ctxA(DEV1), A("OWNER"), { id, reasonCode: "OTHER" });
     }
-    chk("HN5", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "ช่องทางเปลี่ยนก่อนกวาด: payout ไม่ตรง = NEW + sale_refused ไม่มีบิล · ปิดรับอัตโนมัติ = NEW ไม่มี held ใหม่ · ไม่มีบิลจากคู่ที่ไม่ตรง", FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
+    chk("HN5", NF(orderMod, "releaseHeldOrders") === "" && p.length === 0, "ช่องทางเปลี่ยนก่อนกวาด: payout ไม่ตรง = NEW + sale_refused ไม่มีบิล · ล็อกถูกถือ = swept:false ไม่รับ แล้วครั้งถัดไปรับ (ORD-2) · ไม่มีบิลจากคู่ที่ไม่ตรง" /* ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-2 · CD-B6) */, FX(NF(orderMod, "releaseHeldOrders") + (P8(p) || "ครบ")));
   });
 
   // ════════ VO CN HU LK2 (ออเดอร์ LINEMAN · บิล PLATFORM) ════════
