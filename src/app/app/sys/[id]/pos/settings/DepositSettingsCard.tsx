@@ -13,10 +13,10 @@ import { CardHead, InlineNote, SettingsCard, SwitchKnob } from "./settings-ui";
 
 type Load = { state: "loading" } | { state: "denied" } | { state: "error" } | { state: "ready" };
 
-export function DepositSettingsCard({ systemId }: { systemId: string }) {
+export function DepositSettingsCard({ systemId, isOwner = false }: { systemId: string; /** POS P2.14 ▸ UI-10 ◂ */ isOwner?: boolean }) {
   const tp = useTranslations("pos.settings.payments");
   const t = useTranslations("pos.settings");
-  const [load, setLoad] = useState<Load>({ state: "loading" });
+  const [load, setLoad] = useState<Load>(isOwner ? { state: "loading" } : { state: "denied" }); // POS P2.14 ▸ UI-10 ◂
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -24,6 +24,8 @@ export function DepositSettingsCard({ systemId }: { systemId: string }) {
 
   useEffect(() => {
     let live = true;
+    // POS P2.14 ▸ UI-10: ไม่ใช่เจ้าของร้าน ⇒ ไม่โหลด · ข้อความ "เฉพาะเจ้าของร้าน" (ไม่มีสวิตช์) ◂
+    if (!isOwner) return;
     posPaymentSettingsAction({ systemId })
       .then((s) => {
         if (!live) return;
@@ -35,7 +37,7 @@ export function DepositSettingsCard({ systemId }: { systemId: string }) {
     return () => {
       live = false;
     };
-  }, [systemId]);
+  }, [systemId, isOwner]); // POS P2.14 ▸ UI-10 ◂
 
   const toggle = async () => {
     if (load.state !== "ready" || busy) return;

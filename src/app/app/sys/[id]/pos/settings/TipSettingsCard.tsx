@@ -16,10 +16,10 @@ import { CardHead, InlineNote, SettingsCard, SwitchKnob } from "./settings-ui";
 
 type Load = { state: "loading" } | { state: "denied" } | { state: "error" } | { state: "ready"; linked: boolean; ledgers: PosTipLedger[] };
 
-export function TipSettingsCard({ systemId }: { systemId: string }) {
+export function TipSettingsCard({ systemId, isOwner = false }: { systemId: string; /** POS P2.14 ▸ UI-10 ◂ */ isOwner?: boolean }) {
   const tp = useTranslations("pos.settings.payments");
   const t = useTranslations("pos.settings");
-  const [load, setLoad] = useState<Load>({ state: "loading" });
+  const [load, setLoad] = useState<Load>(isOwner ? { state: "loading" } : { state: "denied" }); // POS P2.14 ▸ UI-10 ◂
   const [savedTip, setSavedTip] = useState<{ enabled: boolean; ledgerAccountId: string | null }>({ enabled: false, ledgerAccountId: null });
   const [on, setOn] = useState(false);
   const [ledgerId, setLedgerId] = useState("");
@@ -30,6 +30,8 @@ export function TipSettingsCard({ systemId }: { systemId: string }) {
 
   useEffect(() => {
     let live = true;
+    // POS P2.14 ▸ UI-10: ไม่ใช่เจ้าของร้าน ⇒ ไม่โหลด · การ์ดแสดง "เฉพาะเจ้าของร้าน" (ไม่มีสวิตช์/ตัวเลือกบัญชี) ◂
+    if (!isOwner) return;
     void (async () => {
       const [s, l] = await Promise.all([posPaymentSettingsAction({ systemId }).catch(() => null), posTipLedgersAction({ systemId }).catch(() => null)]);
       if (!live) return;
@@ -43,7 +45,7 @@ export function TipSettingsCard({ systemId }: { systemId: string }) {
     return () => {
       live = false;
     };
-  }, [systemId]);
+  }, [systemId, isOwner]); // POS P2.14 ▸ UI-10 ◂
 
   // มติ 6: แสดง/เลือกได้เฉพาะบัญชีหมวดหนี้สิน — ค่าที่บันทึกไว้แต่ไม่ใช่หนี้สิน (ข้อมูลเก่า) = ไม่อยู่ในรายการ ⇒ ต้องเลือกใหม่
   const liab = load.state === "ready" ? load.ledgers.filter((x) => isTipLedgerType(x.type)) : [];
