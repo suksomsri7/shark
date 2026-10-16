@@ -38,6 +38,9 @@ import {
   type VerifyStaffPinOk,
 } from "./register-shared";
 import { posScheduleGate } from "./settings-shared"; // POS P3.5 ▸ R3 ด่านตารางงาน (ตัวอ่านเดียว) ◂
+import type { HrScheduleItem } from "./hr-link"; // POS P3.5 ▸ fix2 F3: ชนิดของตะเข็บทดสอบ opts.hrItem (type-only) ◂
+/** POS P3.5 ▸ fix2 F3: ตัวเลือกฝั่งเซิร์ฟเวอร์ของ verifyStaffPin — now (CD-2) · hrItem = ตัวอ่านสถานะ HR แทนของจริง (ข้อสอบ · คำขอจากเครื่องส่งไม่ได้) ◂ */
+export type VerifyStaffPinOpts = { now?: Date; hrItem?: (tenantId: string, userId: string, at: Date) => Promise<HrScheduleItem | null> };
 
 type Db = PrismaClient;
 /** ขอบเขตของคำขอ (ctx ของหน้าขาย — deviceId ไม่บังคับ) */
@@ -402,13 +405,17 @@ async function scheduleGate(
   input: { managerUserId?: unknown; managerPin?: unknown },
   anonymous: boolean,
   nowMs: number,
+  hrItem?: VerifyStaffPinOpts["hrItem"],
 ): Promise<{ ttlMs: number } | RegisterRefusal> {
   const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS" }, select: { settings: true } });
   const gate = posScheduleGate(sys?.settings);
   if (!gate.enabled) return { ttlMs: STAFF_TOKEN_TTL_MS };
+  // POS P3.5 ▸ fix2 F3: เจ้าของ/ผู้จัดการยกเว้นตามบทบาท "ก่อน" อ่าน HR — HR ล่ม/ช้าต้องไม่ล็อกหน้าขายของคนที่ไม่ถูกจำกัดอยู่แล้ว ◂
+  if (m.actor.role === "OWNER" || m.actor.role === "MANAGER") return { ttlMs: STAFF_TOKEN_TTL_MS };
   const link = await import("./hr-link");
   const now = new Date(nowMs);
-  const d = link.scheduleGateDecide(await link.hrScheduleItem(s.tenantId, m.actor.userId, now), m.actor.role, now, gate);
+  const item = await (hrItem ?? link.hrScheduleItem)(s.tenantId, m.actor.userId, now);
+  const d = link.scheduleGateDecide(item, m.actor.role, now, gate);
   if (d.ok) return { ttlMs: d.capAt ? Math.max(MIN_TOKEN_MS, Math.min(STAFF_TOKEN_TTL_MS, d.capAt.getTime() - nowMs)) : STAFF_TOKEN_TTL_MS };
   const denied = async () =>
     writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: SCHEDULE_DENIED_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, reason: d.reason, deviceId } });
@@ -461,7 +468,7 @@ export async function verifyStaffPin(
   ctx: StaffPinCtx,
   input: { unitId: string; deviceId: string; pin: string; userId?: string | null; /** POS P3.5 ▸ R4 override ด้วย PIN ผู้จัดการ ◂ */ managerUserId?: string | null; managerPin?: string | null },
   client?: Db,
-  opts?: { now?: Date }, // POS P3.5 ▸ CD-2: นาฬิกาของด่านตารางงาน (ฝั่งเซิร์ฟเวอร์เท่านั้น · คำขอจากเครื่องไม่มีช่องนี้) ◂
+  opts?: VerifyStaffPinOpts, // POS P3.5 ▸ CD-2: นาฬิกาของด่านตารางงาน (ฝั่งเซิร์ฟเวอร์เท่านั้น · คำขอจากเครื่องไม่มีช่องนี้) · fix2 F3 + hrItem ◂
 ): Promise<VerifyStaffPinOk | RegisterRefusal> {
   return guard("verifyStaffPin", async (): Promise<VerifyStaffPinOk | RegisterRefusal> => {
     const db = client ?? prisma;
@@ -482,7 +489,7 @@ export async function verifyStaffPin(
     if (isRefusal(m)) return m;
     // POS P3.5 ▸ R4 มติ 3 4 6 12: ด่านตารางงาน HR (จุดเดียว · หลัง PIN ถูก) — ปิด (ค่าปริยาย) = ทางเดิมทุกประการ (โทเคน 12 ชม.) ◂
     const nowMs = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now.getTime() : Date.now();
-    const gated = await scheduleGate(db, s, deviceId, m, input, anonymous, nowMs);
+    const gated = await scheduleGate(db, s, deviceId, m, input, anonymous, nowMs, opts?.hrItem);
     if (isRefusal(gated)) return gated;
     const t = makeToken(key, s.tenantId, s.unitId, deviceId, m.actor.userId, m.pinHash, nowMs, gated.ttlMs);
     await writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: "pos.staff.pin_verified", targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, unitId: s.unitId, deviceId } });

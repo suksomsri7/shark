@@ -49,6 +49,8 @@ function actorOf(a: unknown): RegisterActor | null {
 }
 
 // ═══════════ R4 R5 ด่านตารางงาน + สถานะบนจอล็อก ═══════════
+/** POS P3.5 ▸ fix2 F3: ชนิดของสถานะ HR ต่อคน (ตะเข็บทดสอบ opts.hrItem ของ verifyStaffPin — staff-pin ไม่ import HR) ◂ */
+export type HrScheduleItem = OnShiftTodayItem;
 export type ScheduleGateDecision = { ok: true; capAt: Date | null } | { ok: false; reason: StaffScheduleReason; window?: { startMin: number; endMin: number } };
 
 /** ช่วงที่ปลดล็อกได้ของตารางวันนั้น (นาทีเวลาไทย · รวมปลาย) = [start − early, end + late] */
