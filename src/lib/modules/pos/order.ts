@@ -1856,67 +1856,9 @@ async function closeExpiredInTx(tx: Tx, o: PosOrder, now: Date): Promise<boolean
 export async function expirePreorders(tenantId?: string, now: Date = new Date()): Promise<{ expired: number }> {
   return expireDuePreorders(typeof tenantId === "string" && tenantId ? { tenantId } : {}, now);
 }
-// POS P2.14 ▸ QR-1a มติ 9 (Q1 Q3): ออเดอร์ NEW + PREPAID ที่ไม่มีใครรับจนเงินเข้าเกินหน้าต่างใช้ใบ (24 ชม.) — รับไม่ได้อีกแล้ว (INTENT_EXPIRED ค้าง) ⇒
-//   ปิด CANCELLED (ไม่มี enum ใหม่) + บันทึก expired_paid + refund_needed (ตัวบอกถาวรของหน้าสถานะ) + outbox pos.order.cancelled + ops ERROR pos.payment.refund_needed
-//   ครั้งเดียวต่อการปิด (ล็อกแถว · CAS version) · ใบยัง PAID ไม่ถูกใช้ (ร้านคืนเงินนอกระบบ) · เล่นซ้ำ = ไม่มีผล ◂
-async function expirePaidOneInTx(tx: Tx, orderId: string, now: Date): Promise<PosOrder | null> {
-  await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} FOR UPDATE`;
-  const o = await tx.posOrder.findUnique({ where: { id: orderId } });
-  if (!o || o.status !== "NEW" || o.paymentState !== "PREPAID" || !o.paidAt || now.getTime() - o.paidAt.getTime() < PAYMENT_INTENT_CONSUME_WINDOW_MS) return null;
-  const n = await tx.posOrder.updateMany({ where: { id: o.id, tenantId: o.tenantId, status: "NEW", paymentState: "PREPAID", version: o.version }, data: { status: "CANCELLED", closedAt: now, rejectReason: "PREPAID_NOT_ACCEPTED", version: { increment: 1 } } });
-  if (n.count !== 1) return null;
-  await addEvent(tx, o, { type: "expired_paid", from: "NEW", to: "CANCELLED", actorUserId: null, payload: { reason: "PREPAID_NOT_ACCEPTED", intentId: o.paymentIntentId, paidAt: o.paidAt.toISOString() }, at: now });
-  await addRefundNeededInTx(tx, o, "expired_paid", now);
-  const after = await tx.posOrder.findUniqueOrThrow({ where: { id: o.id } });
-  await emitOrderEvent(tx, after, "pos.order.cancelled", "CANCELLED");
-  return after;
-}
-/** POS P2.14 ▸ QR-2 (Q4): ตัวบอกถาวร "ต้องคืนเงินลูกค้า" = PosOrderEvent refund_needed ครั้งเดียวต่อออเดอร์ (type เป็นข้อความอิสระ · ไม่มี migration) — หน้าสถานะอ่านแถวนี้ ◂ */
-async function addRefundNeededInTx(tx: Tx, o: PosOrder, cause: "expired_paid" | "late_payment" | "rejected_prepaid", now: Date = new Date()): Promise<boolean> {
-  const had = await tx.posOrderEvent.findFirst({ where: { tenantId: o.tenantId, orderId: o.id, type: "refund_needed" }, select: { id: true } });
-  if (had) return false;
-  await addEvent(tx, o, { type: "refund_needed", from: o.status, to: o.status === "NEW" ? "CANCELLED" : o.status, actorUserId: null, payload: { cause, intentId: o.paymentIntentId, amountSatang: o.totalSatang }, at: now });
-  return true;
-}
-/** POS P2.14 ▸ QR-2 (Q4): เงินเข้าหลังใบของออเดอร์ถูกยกเลิก (payment-intent INTENT_CANCELLED) — บันทึก refund_needed ครั้งเดียว (ล็อกแถวออเดอร์) · ไม่ throw ◂ */
-export async function recordOrderRefundNeeded(tenantId: string, orderId: string, intentId: string): Promise<boolean> {
-  if (!isId(tenantId) || !isId(orderId)) return false;
-  return runTx(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR UPDATE`;
-    const o = await tx.posOrder.findFirst({ where: { id: orderId, tenantId } });
-    if (!o || o.paymentIntentId !== intentId || (o.status !== "REJECTED" && o.status !== "CANCELLED")) return false;
-    return addRefundNeededInTx(tx, o, "late_payment");
-  });
-}
-async function expireDuePaidPreorders(where: { tenantId?: string; unitId?: string }, now: Date): Promise<number> {
-  let closed = 0;
-  try {
-    const due = await prisma.posOrder.findMany({
-      where: { ...where, status: "NEW", paymentState: "PREPAID", paidAt: { lte: new Date(now.getTime() - PAYMENT_INTENT_CONSUME_WINDOW_MS) } },
-      orderBy: [{ paidAt: "asc" }, { id: "asc" }],
-      take: PREORDER_EXPIRE_BATCH,
-    });
-    for (const d of due) {
-      try {
-        const o = await runTx((tx) => expirePaidOneInTx(tx, d.id, now));
-        if (!o) continue;
-        closed++;
-        await logOps("ERROR", "pos.payment", `${OPS_REFUND_NEEDED} — ออเดอร์จ่ายก่อนไม่มีใครรับจนเงินเข้าเกิน 24 ชม. (ใช้เงินที่หน้าขายไม่ได้แล้ว) ปิดออเดอร์ ต้องคืนเงินลูกค้า`, {
-          tenantId: o.tenantId,
-          detail: `intent ${o.paymentIntentId ?? "-"} · ออเดอร์ ${o.code} (${o.id}) · ยอด ${bahtText(o.totalSatang)} · EXPIRED_PAID`,
-        }).catch(() => undefined);
-      } catch (e) {
-        console.warn(`[pos/order] expirePreorders: ออเดอร์จ่ายก่อน ${d.id} ปิดไม่สำเร็จ — รอบถัดไปลองใหม่`, e);
-      }
-    }
-  } catch (e) {
-    console.warn("[pos/order] expirePreorders (PREPAID) ล้ม (ไม่กระทบผู้เรียก)", e);
-  }
-  return closed;
-}
 async function expireDuePreorders(where: { tenantId?: string; unitId?: string }, now: Date = new Date()): Promise<{ expired: number }> {
   let expired = 0;
-  expired += await expireDuePaidPreorders(where, now); // POS P2.14 ▸ QR-1a ◂
+  expired += await expireDuePaidPreorders(where, now); // POS P2.14 ▸ QR-1a: ตัวกวาด PREPAID อยู่ในบล็อก P2.14 ใต้บล็อก P2.7 (บรรทัดนี้ไม่ปิดบล็อก P2.7)
   try {
     const due = await prisma.posOrder.findMany({
       where: { ...where, status: "NEW", paymentState: "PENDING_PAYMENT", payBy: { lt: now } },
@@ -2150,3 +2092,64 @@ export async function revokeOrderLink(ctx: RegisterCtx, actor: RegisterActor, in
   });
 }
 // ◂ POS P2.7
+
+// ═══════════════════ POS P2.14 ▸ QR-1a / QR-2 (fix3 U1 CD-U1: ย้ายออกจากบล็อก P2.7 ทั้งก้อน · ไม่เปลี่ยนพฤติกรรม) — ตัวกวาดออเดอร์จ่ายก่อนที่เกินหน้าต่างใบ + ตัวบอก refund_needed ═══════════════════
+// POS P2.14 ▸ QR-1a มติ 9 (Q1 Q3): ออเดอร์ NEW + PREPAID ที่ไม่มีใครรับจนเงินเข้าเกินหน้าต่างใช้ใบ (24 ชม.) — รับไม่ได้อีกแล้ว (INTENT_EXPIRED ค้าง) ⇒
+//   ปิด CANCELLED (ไม่มี enum ใหม่) + บันทึก expired_paid + refund_needed (ตัวบอกถาวรของหน้าสถานะ) + outbox pos.order.cancelled + ops ERROR pos.payment.refund_needed
+//   ครั้งเดียวต่อการปิด (ล็อกแถว · CAS version) · ใบยัง PAID ไม่ถูกใช้ (ร้านคืนเงินนอกระบบ) · เล่นซ้ำ = ไม่มีผล ◂
+async function expirePaidOneInTx(tx: Tx, orderId: string, now: Date): Promise<PosOrder | null> {
+  await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} FOR UPDATE`;
+  const o = await tx.posOrder.findUnique({ where: { id: orderId } });
+  if (!o || o.status !== "NEW" || o.paymentState !== "PREPAID" || !o.paidAt || now.getTime() - o.paidAt.getTime() < PAYMENT_INTENT_CONSUME_WINDOW_MS) return null;
+  const n = await tx.posOrder.updateMany({ where: { id: o.id, tenantId: o.tenantId, status: "NEW", paymentState: "PREPAID", version: o.version }, data: { status: "CANCELLED", closedAt: now, rejectReason: "PREPAID_NOT_ACCEPTED", version: { increment: 1 } } });
+  if (n.count !== 1) return null;
+  await addEvent(tx, o, { type: "expired_paid", from: "NEW", to: "CANCELLED", actorUserId: null, payload: { reason: "PREPAID_NOT_ACCEPTED", intentId: o.paymentIntentId, paidAt: o.paidAt.toISOString() }, at: now });
+  await addRefundNeededInTx(tx, o, "expired_paid", now);
+  const after = await tx.posOrder.findUniqueOrThrow({ where: { id: o.id } });
+  await emitOrderEvent(tx, after, "pos.order.cancelled", "CANCELLED");
+  return after;
+}
+/** POS P2.14 ▸ QR-2 (Q4): ตัวบอกถาวร "ต้องคืนเงินลูกค้า" = PosOrderEvent refund_needed ครั้งเดียวต่อออเดอร์ (type เป็นข้อความอิสระ · ไม่มี migration) — หน้าสถานะอ่านแถวนี้ ◂ */
+async function addRefundNeededInTx(tx: Tx, o: PosOrder, cause: "expired_paid" | "late_payment" | "rejected_prepaid", now: Date = new Date()): Promise<boolean> {
+  const had = await tx.posOrderEvent.findFirst({ where: { tenantId: o.tenantId, orderId: o.id, type: "refund_needed" }, select: { id: true } });
+  if (had) return false;
+  await addEvent(tx, o, { type: "refund_needed", from: o.status, to: o.status === "NEW" ? "CANCELLED" : o.status, actorUserId: null, payload: { cause, intentId: o.paymentIntentId, amountSatang: o.totalSatang }, at: now });
+  return true;
+}
+/** POS P2.14 ▸ QR-2 (Q4): เงินเข้าหลังใบของออเดอร์ถูกยกเลิก (payment-intent INTENT_CANCELLED) — บันทึก refund_needed ครั้งเดียว (ล็อกแถวออเดอร์) · ไม่ throw ◂ */
+export async function recordOrderRefundNeeded(tenantId: string, orderId: string, intentId: string): Promise<boolean> {
+  if (!isId(tenantId) || !isId(orderId)) return false;
+  return runTx(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "PosOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+    const o = await tx.posOrder.findFirst({ where: { id: orderId, tenantId } });
+    if (!o || o.paymentIntentId !== intentId || (o.status !== "REJECTED" && o.status !== "CANCELLED")) return false;
+    return addRefundNeededInTx(tx, o, "late_payment");
+  });
+}
+async function expireDuePaidPreorders(where: { tenantId?: string; unitId?: string }, now: Date): Promise<number> {
+  let closed = 0;
+  try {
+    const due = await prisma.posOrder.findMany({
+      where: { ...where, status: "NEW", paymentState: "PREPAID", paidAt: { lte: new Date(now.getTime() - PAYMENT_INTENT_CONSUME_WINDOW_MS) } },
+      orderBy: [{ paidAt: "asc" }, { id: "asc" }],
+      take: PREORDER_EXPIRE_BATCH,
+    });
+    for (const d of due) {
+      try {
+        const o = await runTx((tx) => expirePaidOneInTx(tx, d.id, now));
+        if (!o) continue;
+        closed++;
+        await logOps("ERROR", "pos.payment", `${OPS_REFUND_NEEDED} — ออเดอร์จ่ายก่อนไม่มีใครรับจนเงินเข้าเกิน 24 ชม. (ใช้เงินที่หน้าขายไม่ได้แล้ว) ปิดออเดอร์ ต้องคืนเงินลูกค้า`, {
+          tenantId: o.tenantId,
+          detail: `intent ${o.paymentIntentId ?? "-"} · ออเดอร์ ${o.code} (${o.id}) · ยอด ${bahtText(o.totalSatang)} · EXPIRED_PAID`,
+        }).catch(() => undefined);
+      } catch (e) {
+        console.warn(`[pos/order] expirePreorders: ออเดอร์จ่ายก่อน ${d.id} ปิดไม่สำเร็จ — รอบถัดไปลองใหม่`, e);
+      }
+    }
+  } catch (e) {
+    console.warn("[pos/order] expirePreorders (PREPAID) ล้ม (ไม่กระทบผู้เรียก)", e);
+  }
+  return closed;
+}
+// ◂ POS P2.14 QR-1a / QR-2
