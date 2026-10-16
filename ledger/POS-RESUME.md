@@ -1824,3 +1824,4 @@
 - 00:04Z gates103 @4bb550cf (`gates103-c-20261015T235552Z`): api-skill 12/12 ×2 · p2.13 54 · kanban 30 · account-api-core 64 · p0.2 56 · gen --check · fitness ±env/pos · typecheck 0 → **push session/pos 8f327cd4 → P2.13 ✅ 41/55 (75%)** · TG ส่งแล้ว · memory อัปเดต
 - เลน: 1 = P2.7 fix 2 ทรี d · ทรี b ว่าง @4ccd0df9 · ทรี c ว่าง @4bb550cf (build85 = f95348ac ยังเสิร์ฟได้สำหรับภาพ P2.7U ต้อง build ใหม่หลัง merge S+U)
 - ถัดไป: P2.7 fix 2 รายงาน → R2 (prompt `-P2.7-R2.md` เติม head) → merge → gates (ทรี c: p2.7 ×2 unforced + §6 regression + lane pins ซ้ำหลัง push) → QC5 migrate deploy → spawn P2.7U builder ทรี b (prompt `-P2.7U.md` เติม head/tree) → 42/55
+- 00:26Z P2.7 fix 2 = `wip/pos-p2.7` **83163ae1** · p2.7 42/42 ×3 · regression เขียว · lane pins p2.8 ST6 / p2.13 ST5 · F5 เปลี่ยนพฤติกรรม: เรียกพนักงานจากโต๊ะว่าง = ปฏิเสธ (รับ) → spawn **R2 P2.7** (read-only ทรี d)
