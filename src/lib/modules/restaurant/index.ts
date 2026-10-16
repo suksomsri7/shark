@@ -62,6 +62,7 @@ export {
   kitchenItemForPos,
   kitchenRoundsOfOrdersForPos,
   kitchenSoldOutMenusForPos,
+  kitchenRoutesForPos, // POS P2.14 ▸ UI-8 (U1) ◂
   type KitchenRoundInput,
   type KitchenRoundLine,
   type KitchenRoundResult,

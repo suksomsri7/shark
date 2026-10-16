@@ -114,10 +114,12 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
     if (!unitId || !saleId) return;
     let live = true;
     void (async () => {
+      let kitchen = true; // POS P2.14 ▸ UI-8: บิลมีบรรทัดที่เข้าครัว (จากเซิร์ฟเวอร์ · ถามไม่ได้ = ถือว่ามี — เตือนแบบเดิม) ◂
       for (let i = 0; i < 3 && live; i++) {
         if (i > 0) await new Promise((r) => setTimeout(r, 1000));
         const r = await kdsQueueNoAction({ systemId, unitId, saleId }).catch(() => null);
         if (!live) return;
+        if (r && r.ok === true) kitchen = r.kitchen !== false; // POS P2.14 ▸ UI-8 ◂
         if (r && r.ok === true && r.queueNo !== null) {
           setQueueNo(r.queueNo);
           if (r.orderId) void printKitchen(r.orderId).catch(() => undefined); // POS P2.6U ▸ fix1 F2 ◂
@@ -126,7 +128,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
         if (r && r.ok !== true) return;
       }
       // POS P2.6U ▸ fix2 N1: ถาม 3 ครั้งไม่ได้รอบ ขณะเครื่องนี้ตั้งพิมพ์ใบครัวหลังขาย = บอกว่าใบครัวไม่ออก (ไม่บล็อกจอ · ร้านที่ไม่ใช้ใบครัวไม่เห็น) ◂
-      if (live && kitchenSlipSettings(printer.config).mode === "after-sale") setKitchenErr(t("done.kitchenNoTicket"));
+      if (live && kitchen && kitchenSlipSettings(printer.config).mode === "after-sale") setKitchenErr(t("done.kitchenNoTicket")); // POS P2.14 ▸ UI-8: บิลไม่มีบรรทัดครัว = ไม่เตือน ◂
     })();
     return () => {
       live = false;

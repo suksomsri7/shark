@@ -402,6 +402,18 @@ export async function roundOfSale(tenantId: string, unitId: string, saleId: stri
   const r = await prisma.restaurantOrder.findFirst({ where: { tenantId, unitId, posSaleId: saleId }, select: { id: true, dailyNo: true } });
   return r ? { orderId: r.id, no: r.dailyNo } : null;
 }
+/**
+ * POS P2.14 ▸ UI-8 (U1): บิลนี้มีบรรทัดที่เข้าครัวไหม (เมนูที่มีสถานี / สินค้าที่ผูกสถานีของสาขา · สถานีใช้งานอยู่) — อ่านอย่างเดียว ·
+ * บิลขายปลีกล้วน (น้ำดื่ม ฯลฯ) = false ⇒ จอปิดบิลไม่เตือน "ใบครัวไม่ออก" ผิด ๆ · ไม่พบบิล = false ◂
+ */
+export async function saleNeedsKitchen(tenantId: string, unitId: string, saleId: string): Promise<boolean> {
+  if (!isId(tenantId) || !isId(unitId) || !isId(saleId)) return false;
+  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId, unitId }, select: { lines: { select: { productId: true } } } });
+  if (!sale || !sale.lines.length) return false;
+  const hints = await stationHints(prisma, tenantId, sale.lines.map((l) => l.productId));
+  const R = await restaurant();
+  return R.kitchenRoutesForPos(prisma, { tenantId, unitId }, sale.lines.map((l) => ({ productId: l.productId, stationHint: l.productId ? (hints.get(l.productId) ?? null) : null })));
+}
 /** POS P2.6U ▸ มติ 9c/11: สถานะครัวของสาขาสำหรับจอ 09 (พักครัว · เพดานรับอัตโนมัติ · ตั๋วค้างต่อสถานี) — อ่านอย่างเดียว · ผู้เรียกตรวจสิทธิ์ ◂ */
 export async function kitchenStateForUnit(tenantId: string, unitId: string): Promise<{ paused: boolean; maxOpen: number | null; backlog: KitchenBacklogRow[] }> {
   if (!isId(tenantId) || !isId(unitId)) return { paused: false, maxOpen: null, backlog: [] };
