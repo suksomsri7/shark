@@ -177,17 +177,7 @@
     },
     {
       "suite": "qc-pos-p2.14",
-      "mode": "forced",
-      "accepted": {
-        "reason": "H1 (HANDOVER-2026-10-xx-POS-P2.md) and H3 (pos-P2.14-parity.md) are written by the controller at phase close (work order: only H1 H3 may stay red)",
-        "owner": "controller (phase close docs)",
-        "opRef": "P2.14 H1/H3 controller docs",
-        "evidence": "work order pos-prompt-accountB-P2.14-S.md 'Done =' · builder runs ledger/wo-notes/pos-P2.14.md §7",
-        "checks": [
-          "P2.14-H1",
-          "P2.14-H3"
-        ]
-      }
+      "mode": "forced"
     },
     {
       "suite": "qc-pos-account",
@@ -254,6 +244,10 @@
       "mode": "forced"
     },
     {
+      "suite": "qc-hf-fu2",
+      "mode": "forced"
+    },
+    {
       "suite": "qc-restaurant",
       "mode": "unforced"
     },
@@ -303,7 +297,8 @@
         "evidence": "controller base run /root/pos-runs/aiext-base-c-20261016T064733Z/qc-account-api-ai-external.log (same crash at 64923c13)",
         "checks": [
           "CRASH"
-        ]
+        ],
+        "match": "Cannot read properties of undefined (reading 'slice')"
       }
     },
     {
@@ -350,7 +345,8 @@
         "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
         "checks": [
           "CRASH"
-        ]
+        ],
+        "match": "ไม่พบระบบที่จะผูกคีย์ในร้านนี้"
       }
     },
     {
@@ -364,7 +360,8 @@
         "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
         "checks": [
           "CRASH"
-        ]
+        ],
+        "match": "ไม่พบระบบที่จะผูกคีย์ในร้านนี้"
       }
     },
     {
@@ -378,7 +375,8 @@
         "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
         "checks": [
           "CRASH"
-        ]
+        ],
+        "match": "ไม่พบระบบที่จะผูกคีย์ในร้านนี้"
       }
     },
     {
@@ -392,7 +390,8 @@
         "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
         "checks": [
           "CRASH"
-        ]
+        ],
+        "match": "ไม่พบระบบที่จะผูกคีย์ในร้านนี้"
       }
     },
     {
@@ -414,7 +413,8 @@
           "S1.7",
           "S1.8",
           "CRASH"
-        ]
+        ],
+        "match": "No element found for selector: [data-testid=\"api-key-name\"]"
       }
     },
     {
@@ -487,7 +487,8 @@
         "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.6.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
         "checks": [
           "M2.6-ERR"
-        ]
+        ],
+        "match": "Cannot read properties of null (reading 'role')"
       }
     },
     {
@@ -501,7 +502,8 @@
         "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
         "checks": [
           "M2.7-ERR"
-        ]
+        ],
+        "match": "Cannot read properties of null (reading 'role')"
       }
     },
     {
@@ -515,7 +517,8 @@
         "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.8.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
         "checks": [
           "M2.8-ERR"
-        ]
+        ],
+        "match": "Cannot read properties of null (reading 'role')"
       }
     },
     {
@@ -529,7 +532,8 @@
         "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m1.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
         "checks": [
           "M1.7-ERR"
-        ]
+        ],
+        "match": "Cannot read properties of null (reading 'role')"
       }
     },
     {

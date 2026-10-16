@@ -56,6 +56,11 @@ esac
 # POS P2.14 ▸ fix2 H3/G5: คำตัดสินของโฟลเดอร์ผล — รายการ exit ≠ 0 ยอมรับได้เมื่อ (1) แมนิเฟสต์มี accepted ที่มี evidence และ checks (id ตรงตัว หรือ CRASH)
 #   (2) exit = 1 และ log มีบรรทัด JSON_SUMMARY (exit 137 / ไม่มีสรุป = red) (3) id ที่ล้ม (failed ∪ findings คำแรก · crashed = CRASH) อยู่ใน checks ทั้งหมด ·
 #   พิมพ์ SET full|partial n/N · HEAD-end/dirty-end — head หรือ dirty ต่างจาก HEAD.txt = red ◂
+# POS HF-FU2 ▸ U: กติกาเพิ่ม (a) accepted: จำนวน id ที่ล้ม (ไม่ซ้ำ) < total−passed = red (แดงซ่อน) · ไม่มี total/passed = red
+#   (b) accepted.checks มี CRASH หรือ *-ERR ⇒ ต้องมี accepted.match (สตริง) และสตริงนั้นต้องอยู่ใน <name>.log
+#   (c) HEAD.txt มีโทเค็น only=<csv|-> (ไม่มี = -) · SET partial + only=- = red · only=<csv> ⇒ แถวต้องตรงชื่อที่ระบุ (จำนวน + ชื่อ)
+#   (d) บรรทัด 1 ของ <name>.log ทุกแถวต้อง = บรรทัด 1 ของ HEAD.txt (red log-head) · ชื่อแถวต้องอยู่ในแมนิเฟสต์และไม่ซ้ำ
+#   --verdict อ่านเฉพาะ $ROOT/scripts/pos-gates.json + git ของ $ROOT (self-contained · ไม่มีตัวเลือก path แมนิเฟสต์) ◂
 verdict() {
   python3 - "$MANIFEST" "$1" "$ROOT" "${2:-0}" <<'PY' >> "$1/SUMMARY.txt"
 import json, os, subprocess, sys
@@ -69,8 +74,21 @@ for line in open(os.path.join(out, "SUMMARY.txt")).read().splitlines():
     if len(parts) == 2 and parts[1].lstrip("-").isdigit():
         rows.append((parts[0], int(parts[1])))
 n = nset or len(rows)
-print(f"SET {'full' if n == total and len(rows) == total else 'partial'} {len(rows)}/{total}")
-def ids_of(log):
+partial = not (n == total and len(rows) == total)  # POS HF-FU2 ▸ U(c) ◂
+print(f"SET {'partial' if partial else 'full'} {len(rows)}/{total}")
+# POS HF-FU2 ▸ U(c)(d): HEAD.txt บรรทัด 1 + โทเค็น only= (ไม่มี = "-" · โฟลเดอร์เก่าก่อน HF-FU2) ◂
+head_line = None
+only = "-"
+try:
+    head_txt = open(os.path.join(out, "HEAD.txt"), errors="replace").read()
+    head_line = (head_txt.splitlines() or [""])[0]
+    for tok in head_txt.split():
+        if tok.startswith("only="):
+            only = tok[5:] or "-"
+except Exception:
+    pass
+names_all = [s["suite"] for s in man.get("suites", [])] + [c["name"] for c in man.get("commands", [])]
+def ids_of(log):  # POS HF-FU2 ▸ U(a): คืน (ids, total, passed) ◂
     j = None
     try:
         for l in open(log, errors="replace"):
@@ -78,7 +96,7 @@ def ids_of(log):
                 j = json.loads(l[len("JSON_SUMMARY "):])
     except Exception:
         return None
-    if j is None:
+    if not isinstance(j, dict):  # POS HF-FU2 ▸ U(a) ◂
         return None
     ids = []
     for k in ("failed", "findings"):
@@ -90,8 +108,40 @@ def ids_of(log):
                     ids.append(t)
     if j.get("crashed"):
         ids.append("CRASH")
-    return ids
+    t, p = j.get("total"), j.get("passed")  # POS HF-FU2 ▸ U(a) ◂
+    return ids, (t if isinstance(t, int) and not isinstance(t, bool) else None), (p if isinstance(p, int) and not isinstance(p, bool) else None)
+def is_crash_id(x):  # POS HF-FU2 ▸ U(b) ◂
+    return x == "CRASH" or str(x).endswith("-ERR")
 red = []
+# POS HF-FU2 ▸ U(c): ชุดไม่ครบต้องมาจาก --only และแถวต้องตรงรายชื่อของ --only ◂
+if partial and only == "-":
+    print(f"RED SET partial {len(rows)}/{total} (only=- — ชุดไม่ครบที่ไม่ได้มาจาก --only)")
+    red.append("SET")
+if only != "-":
+    want = [w for w in only.split(",") if w]
+    got = [nm for nm, _ in rows]
+    if len(got) != len(set(want)) or sorted(set(got)) != sorted(set(want)):
+        print(f"RED SET only (only={only} {len(set(want))} ชื่อ · แถวใน SUMMARY {len(got)}: {','.join(got)[:200]})")
+        red.append("ONLY")
+# POS HF-FU2 ▸ U(d): ชื่อแถวต้องอยู่ในแมนิเฟสต์ ไม่ซ้ำ · log บรรทัด 1 = HEAD.txt บรรทัด 1 ◂
+seen = set()
+for name, rc in rows:
+    if name not in names_all:
+        print(f"RED {name} {rc} (ไม่มีชื่อนี้ในแมนิเฟสต์)")
+        red.append(name)
+    if name in seen:
+        print(f"RED {name} {rc} (แถวซ้ำใน SUMMARY)")
+        red.append(name)
+    seen.add(name)
+    l1 = None
+    try:
+        with open(os.path.join(out, f"{name}.log"), errors="replace") as fh:
+            l1 = fh.readline().rstrip("\n")
+    except Exception:
+        pass
+    if head_line is None or l1 != head_line:
+        print(f"RED {name} {rc} (log-head: บรรทัด 1 ของ {name}.log ≠ HEAD.txt บรรทัด 1)")
+        red.append(name)
 for name, rc in rows:
     if rc == 0:
         continue
@@ -106,13 +156,30 @@ for name, rc in rows:
     elif rc != 1:
         why = f"exit {rc} (ยอมรับเฉพาะ 1)"
     else:
-        ids = ids_of(os.path.join(out, f"{name}.log"))
-        if ids is None:
+        log = os.path.join(out, f"{name}.log")
+        got = ids_of(log)
+        if got is None:
             why = "ไม่มีบรรทัด JSON_SUMMARY"
         else:
+            ids, t, p = got  # POS HF-FU2 ▸ U(a)(b) ◂
             extra = sorted(set(ids) - set(a["checks"]))
             if extra:
                 why = f"ล้มนอก accepted.checks: {','.join(extra)}"
+            elif t is None or p is None:  # POS HF-FU2 ▸ U(a): แดงซ่อน — ต้องนับได้ ◂
+                why = "JSON_SUMMARY ไม่มี total/passed"
+            elif len(set(ids)) < t - p:
+                why = f"รายการล้มสั้นกว่า total−passed ({len(set(ids))} < {t}−{p})"
+            elif any(is_crash_id(x) for x in a["checks"]):
+                m = a.get("match")
+                if not isinstance(m, str) or not m.strip():  # POS HF-FU2 ▸ U(b) ◂
+                    why = "accepted มี CRASH/*-ERR แต่ไม่มี accepted.match"
+                else:
+                    try:
+                        body = open(log, errors="replace").read()
+                    except Exception:
+                        body = ""
+                    if m not in body:
+                        why = f"accepted.match ไม่อยู่ใน {name}.log ({m[:60]})"
     if why:
         print(f"RED {name} {rc} ({why})")
         red.append(name)
@@ -141,7 +208,7 @@ if [ -n "$VERDICT_DIR" ]; then
   [ -f "$VERDICT_DIR/SUMMARY.txt" ] || { echo "🔴 ไม่มี $VERDICT_DIR/SUMMARY.txt" >&2; exit 2; }
   sed -i '/^\(SET\|HEAD-end=\|RED\|ACCEPTED\|VERDICT\|DONE\)\b/d' "$VERDICT_DIR/SUMMARY.txt"
   verdict "$VERDICT_DIR" 0
-  grep -E '^(SET|HEAD-end=|RED|VERDICT)' "$VERDICT_DIR/SUMMARY.txt"
+  grep -E '^(SET|HEAD-end=|RED|ACCEPTED|VERDICT)' "$VERDICT_DIR/SUMMARY.txt" # POS HF-FU2 ▸ U: พิมพ์ ACCEPTED ด้วย ◂
   case "$(grep '^VERDICT ' "$VERDICT_DIR/SUMMARY.txt" | tail -1)" in "VERDICT green"*) exit 0 ;; *) exit 1 ;; esac # POS P2.14 ▸ fix2 G7: exit ตามคำตัดสิน ◂
 fi
 
@@ -178,7 +245,7 @@ TREE="$(basename "$ROOT")"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 [ -n "$OUT" ] || OUT="/root/pos-runs/p214-close-${TREE}-${STAMP}"
 mkdir -p "$OUT"
-HEADLINE="tree=$ROOT head=$(git -C "$ROOT" rev-parse --short=8 HEAD) dirty=$(git -C "$ROOT" status --porcelain | wc -l) $(date -u +%FT%TZ)"
+HEADLINE="tree=$ROOT head=$(git -C "$ROOT" rev-parse --short=8 HEAD) dirty=$(git -C "$ROOT" status --porcelain | wc -l) $(date -u +%FT%TZ) only=${ONLY:--}" # POS HF-FU2 ▸ U(c): only=<csv|-> ◂
 echo "$HEADLINE" > "$OUT/HEAD.txt"
 : > "$OUT/SUMMARY.txt"
 echo "🟢 pos-gates-all → $OUT"
