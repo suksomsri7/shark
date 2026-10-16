@@ -637,6 +637,10 @@ export function OrdersScreen(p: OrdersScreenProps) {
     setPanelErr(null);
     setSelectedId(c.id);
   };
+  // POS P2.7U fix2 ▸ N2: มือถือ — แผงรายละเอียดแทนที่กระดานในหน้า ⇒ เลือกออเดอร์แล้วเลื่อนขึ้นบนสุด (แผงเปิดที่หัว ไม่ใช่กลางหน้า) ◂
+  useEffect(() => {
+    if (wide === false && selectedId) window.scrollTo({ top: 0 });
+  }, [wide, selectedId]);
   const columnNode = (col: OrderColumn) => {
     const cards = cols[col];
     const qrc = qrCols[col]; // POS P2.7U ◂

@@ -700,7 +700,9 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
       customerName: o.customerName,
       unit: { name: unit?.name ?? "" },
       shop, // POS P2.7U ◂
-      // POS P2.7U fix1 ▸ F7: ลิงก์ ACTIVE ที่เป็นลิงก์เดียวกับตอนสั่ง (rotatedAt null หรือ ≤ เวลาสั่ง · ลิงก์ ACTIVE ที่เกิดหลังออเดอร์ = ร้านเปลี่ยนลิงก์แล้ว) — ไม่งั้น null (หน้าให้สแกน QR ใหม่) ◂
+      // POS P2.7U fix1 ▸ F7 · fix2 ▸ N1: ลิงก์ ACTIVE ที่เป็นลิงก์เดียวกับตอนสั่ง — ไม่งั้น null (หน้าให้สแกน QR ใหม่) · ตัวตรวจจริงคือ createdAt ของลิงก์ ≤ createdAt ของออเดอร์:
+      //   การเปลี่ยนลิงก์ = แถวเก่า REVOKED (+ rotatedAt) + แถว ACTIVE ใหม่ที่ rotatedAt เป็น null เสมอ ⇒ ครึ่ง rotatedAt ของเงื่อนไขจริงเสมอสำหรับแถว ACTIVE (คงไว้ตามมติ) ·
+      //   ลิงก์ที่ถูกเปลี่ยน/สร้างใหม่หลังออเดอร์ = ACTIVE ที่เกิดทีหลัง ⇒ createdAt > เวลาสั่ง ⇒ null ◂
       orderAgainToken: againLink && (againLink.rotatedAt === null || againLink.rotatedAt.getTime() <= o.createdAt.getTime()) && againLink.createdAt.getTime() <= o.createdAt.getTime() ? againLink.token : null,
       serverNow: new Date().toISOString(), // POS P2.7U fix1 ▸ F3 ◂
       readyEta: o.acceptedAt ? new Date(o.acceptedAt.getTime() + (o.prepMinutes ?? ORDER_PREP_DEFAULT_MIN) * MIN).toISOString() : null,

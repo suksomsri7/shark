@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { QrQuoteResult } from "@/lib/modules/pos/qr-order-shared";
 import { cartLines, type QrCartItem } from "./qr-ui";
+import { clockNow, type FloorClock } from "@/components/pos/tables/table-ui"; // POS P2.7U fix2 ▸ G1 ◂
 
 type QuoteOk = Extract<QrQuoteResult, { ok: true }>;
 type QuoteBad = Extract<QrQuoteResult, { ok: false }>;
@@ -111,16 +112,17 @@ export function useToast() {
   return { toast, show };
 }
 
-// POS P2.7U fix1 ▸ F3: นาฬิกาของหน้า = เวลาเซิร์ฟเวอร์ตอนตอบ + เวลาที่ผ่านไปบนเครื่องแบบ monotonic (แบบ FloorClock/clockNow ของจอ 09) — ไม่เชื่อนาฬิกาเครื่องลูกค้า ◂
-const mono = (): number => (typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now());
-/** เวลาเซิร์ฟเวอร์โดยประมาณ (ms) หลัง mount · null ก่อน mount · serverIso ใหม่ = ตั้ง offset ใหม่ */
+// POS P2.7U fix1 ▸ F3: นาฬิกาของหน้า = เวลาเซิร์ฟเวอร์ตอนตอบ + เวลาที่ผ่านไปบนเครื่อง (clockNow ของจอ 09) — ไม่เชื่อนาฬิกาเครื่องลูกค้า ◂
+// POS P2.7U fix2 ▸ G1: เวลาที่ผ่านไป = Date.now() (นาฬิกาผนัง · ค่าคลาดคงที่ของเครื่องหักกันในผลต่าง · เดินต่อระหว่างเครื่องพักหน้าจอ — performance.now() หยุดบน iOS Safari/macOS)
+//   ตัวเดียวกับ clockNow ของ tables/table-ui · ตั้งหลักใหม่ทุกคำตอบที่มี serverNow ◂
+/** เวลาเซิร์ฟเวอร์โดยประมาณ (ms) หลัง mount · null ก่อน mount · serverIso ใหม่ = ตั้งหลักใหม่ */
 export function useServerNow(serverIso: string | null | undefined, tickMs = 1000): number | null {
-  const anchor = useRef<{ serverMs: number; mono: number } | null>(null);
+  const anchor = useRef<FloorClock | null>(null);
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     const ms = serverIso ? Date.parse(serverIso) : NaN;
-    anchor.current = Number.isFinite(ms) ? { serverMs: ms, mono: mono() } : null;
-    const read = () => (anchor.current ? anchor.current.serverMs + (mono() - anchor.current.mono) : Date.now());
+    anchor.current = Number.isFinite(ms) ? { serverMs: ms, localMs: Date.now() } : null;
+    const read = () => clockNow(anchor.current, Date.now());
     setNow(read());
     const id = setInterval(() => setNow(read()), tickMs);
     return () => clearInterval(id);
