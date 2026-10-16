@@ -1,0 +1,18 @@
+# Prompt — P2.14 S reviewer **R2** (independent, read-only; re-verify fix round 1). Controller (account A, 16 Oct 2026 08:24Z). Head `wip/pos-p2.14` **368b5753**, tree `/root/projects/shark-pos-d` (checked out, dirty 0; do not checkout/fetch/edit; never `cd`; `git -C /root/projects/shark-pos-d`). R1 head was 6e6a66ac. Read-only: no edits/commits/DB writes/build/servers/`.env*`/prisma generate. English, ≤ 60 lines.
+
+Read: `/root/projects/shark-pos/ledger/wo-notes/pos-P2.14-review.md` (R1 F1–F11, hunter H1–H6, controller rulings + fix round 1 list — the contract for this round), the builder's notes `ledger/wo-notes/pos-P2.14.md` §8 (tree d), `git -C /root/projects/shark-pos-d log --oneline 6e6a66ac..368b5753` and each commit, `git -C /root/projects/shark-pos-d diff 6e6a66ac..368b5753 -- . ':!ledger'`.
+
+Verify per item (cite file:line; say FIXED / PARTIAL / NOT-FIXED / REGRESSION):
+1 ORD-1b (7141e7cc): unlinked unit = old rule; linked unit + invisible product ⇒ createOrder throws, no ShopOrder, no money; ShopOrder commit path cannot "log and continue" anywhere else; O5/O5b (3cf694f6) assert exactly that; fixture 7a11e2a1 only links inventory to S.
+2 cost/margin (7673ac45): null unless pos.report.view for drawer DTO and REST alike; REST drops null fields; docs regenerated; R5b (53f8fb16) covers CASH actor + API key without the permission.
+3 LEG-2b (dbdb68ed): all operational legacy writers refuse POS_LINKED on linked units (list any writer left open, incl. the hub page); non-linked units byte-identical behaviour; LEG set still reverse-applies cleanly (`git apply -R --check` of the LEG commits as a set); L3 rows (2ce422d0) real (0 VOIDED, bill still PAID).
+4 DSP-1b (a560af7d): device derived from the session user's OPEN shift; client deviceId ignored everywhere (actions + client hook); D1b (d9154d0e) forges {deviceId:Y,deviceCode:Y} through the action; any other publish path (heartbeat? REST?) still trusting client values?
+5 orderIntentUnused on dup (c313ab9f) — inside the right branch, no double release.
+6 shared shift resolver (e3ed1ebd): one implementation used by POST /sales and orders.pay; behaviour of each unchanged vs its oracle (A1 lenient when otherSources off; OR7 strict) — CD-F7 ruled: keep OR7, no loosening.
+7 runner (f130dd31, acad9309): VERDICT, exit 1 on non-accepted red / unmatched --only, dirty refuse, accepted entries carry evidence + checks; the lane-pin accepted entries are limited to the named check ids; verify the gate set at `/root/pos-runs/p214-close-shark-pos-d-20261016T072543Z/` has HEAD dirty=0 at 368b5753 and that every accepted suite's log matches its reason.
+8–11 ORACLE-EDITs (d6d163dc p1.6 R2 · b16d2601 p1.17 · f5d74b1c p2.5 P8 · b63fb633/8a9244a8/11f91af4 hf-fu HN4/HN5/OD3): each is within the ruling, keeps the race/assert strength, counts as reported; CSV refund columns at the END; no other test line changed.
+13 kitchen JSDoc · UI-5 retry · DOC-3 · F8 docs · RPT-5 (375a0608: channel-code filter across branches — any money/visibility risk? new testid in the inventory) · HF-FU2 lines present.
+Deviations D11 (setup writers still open on linked units) and D12 (display needs the session user's open shift) — state the risk of each in one line.
+Hunks: every new hunk marked `// POS P2.14 ▸ … ◂`; single writers unchanged; no prisma/outbox/enum/contract change; th/en key parity; `gen-pos-api-docs --check` 0 per the gate log.
+
+Report: verdict (`MERGEABLE` | `MERGEABLE-AFTER-FIXES` | `BLOCKED`), G1..Gn (severity, file:line, smallest fix), "Verified FIXED" list, follow-up lines. Write `/tmp/claude-0/-root/c597e450-d0cf-5838-9f6d-470b7bf7192c/scratchpad/p214-r2/REPORT.md` and return it verbatim as your final message.
