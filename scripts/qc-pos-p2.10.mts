@@ -726,7 +726,9 @@ async function runDb() {
   };
   const MEMBER_IN = { firstName: MEMBER.name, tier: "Gold", points: 98_765 };
   const STAMP_IN = { name: "สะสมครบ 10 แก้ว ฟรี 1 แก้ว", stamps: 6, slots: 10, toAdd: 1 };
-  const CART = (over: Any = {}): Any => ({ phase: "cart", member: MEMBER_IN, lines: LINES, totals: TOTALS, stamp: STAMP_IN, ...over });
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 CD-4) ▸ มติ 15: ภาพที่ส่ง (publish) มี kind "TIER" บนแถวสมาชิก (TL-5 kind บังคับ) — TOTALS คงรูปของ view (label + satang) ที่ข้อเทียบใช้ ◂
+  const TOTALS_PUB = { ...TOTALS, member: TOTALS.member.map((m) => ({ kind: "TIER", ...m })) };
+  const CART = (over: Any = {}): Any => ({ phase: "cart", member: MEMBER_IN, lines: LINES, totals: TOTALS_PUB, stamp: STAMP_IN, ...over });
   const PAY = (over: Any = {}): Any => ({ method: "PROMPTPAY", dueSatang: 62_500, roundSatang: 32_500, paidSatang: 30_000, remainingSatang: 32_500, ...over });
   const PAYING = (pay: Any, over: Any = {}): Any => ({ ...CART(), phase: "paying", pay, ...over });
   const DONE = (done: Any): Any => ({ phase: "done", member: MEMBER_IN, done });
