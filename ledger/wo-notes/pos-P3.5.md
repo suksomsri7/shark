@@ -77,3 +77,9 @@ qc-pos-p1.15 40/40 · p1.9 53/53 · p1.17 40/40 · p1.18 80/81 (ST2 = CD-B3; S1 
 
 ## `--state` list for P3.5U (visual · controller shoots)
 `13b-schedule-chip-today` · `13b-schedule-chip-leave` · `13b-offschedule-refusal` · `13b-override-sheet` · `13b-override-wrong-pin` · `13a-shift-list-hr` · `17c-staff-hr-switch-owner` · `17c-staff-schedule-gate-card` · `17c-staff-commission-card` · `07-shift-clock-ask-in` · `07-shift-clock-ask-out` · `07-shift-hours-owner` · `07-shift-hours-warnings` · `08-report-commission-owner` · `08-report-commission-denied` (th 3 sizes + en 1440 · owner/cashier).
+
+## Final gates (head 95d619ee · dirty 0 · QC4 · never `export CI`)
+- `qc-pos-p3.5` forced ×2: **45/45 · 45/45** (exit 0 · residue 0 · guard 0) · `--no-db` **10/10**.
+- `qc-pos-p1.18` 80/81 (ST2 = CD-B3) · `qc-pos-p2.13` 53/54 (ST5 lane pin) · `qc-pos-p2.14` 60/60.
+- fitness no env 53/53 · fitness QC4 env 53/53 · fitness-pos 8/8 · `gen-pos-api-docs --check` exit 0.
+- typecheck (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`, 22:16:53Z → 22:22:10Z): **exit 2 — one error only**, `src/lib/modules/pos/register.ts(510,7) TS2739` REG_MESSAGE missing OFF_SCHEDULE/ALREADY_CLOCKED/NO_EMPLOYEE = **CD-B2** (patch above; register.ts not touched per ruling 11).
