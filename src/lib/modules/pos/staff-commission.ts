@@ -11,7 +11,7 @@
 //    ลบ = DEDUCTION (ยอด |สุทธิ|) · 0 = SENT โดยไม่มีรายการ · รายการ HR = PENDING (อนุมัติด้วยกติกา 4 ตาของ HR) · เขียน HR ผ่าน hr.requestAdjustment ใน tx เดียวกัน
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
-import { hrPayrollEmployeeOf, hrPayrollRunPeriods, hrRehomeStrandedSystemAdjustments, hrRequestPayAdjustment } from "./hr-link";
+import { hrPayrollEmployeeOf, hrPayrollLinkedUserIds, hrPayrollRunPeriods, hrRehomeStrandedSystemAdjustments, hrRequestPayAdjustment } from "./hr-link";
 import { posStaffCommission } from "./settings-shared";
 import { nextPeriodKey, resolveStaffCommissionRate, staffCommissionAmount, staffCommissionBases, staffCommissionPeriodOf, staffCommissionRefundShare } from "./staff-commission-shared";
 
@@ -181,32 +181,66 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
   const deadline = typeof input?.deadline === "number" && Number.isFinite(input.deadline) ? input.deadline : Date.now() + 20_000;
   const current = staffCommissionPeriodOf(now);
   const res: StaffCommissionSyncResult = { ok: true, users: 0, adjustments: 0, sentRows: 0, noEmployee: 0, failed: 0, stoppedEarly: false, rehomed: 0 };
-  const pairs = await prisma.posStaffCommission.findMany({
-    where: { status: "OPEN", periodKey: { lt: current }, ...(isId(input?.tenantId) ? { tenantId: input.tenantId } : {}) },
-    distinct: ["tenantId", "userId"],
-    select: { tenantId: true, userId: true },
-    orderBy: [{ tenantId: "asc" }, { userId: "asc" }],
-    take: PUSH_BATCH,
-  });
-  for (const { tenantId, userId } of pairs) {
+  // POS P3.5 ▸ fix2 N2 = R1-F1: คู่ (ร้าน · ผู้ใช้) ด้วย SELECT DISTINCT ของฐาน (ไม่อ่านทุกแถวเข้าหน่วยความจำ) · เฉพาะร้านที่มีระบบ HR ·
+  //   เรียงด้วย md5(ร้าน:ผู้ใช้:ชั่วโมง) ⇒ ลำดับหมุนทุกชั่วโมง · keyset ทีละหน้าจนหมดหรือถึง deadline · กรองผู้ใช้ด้วย activeLinkedUserIds ของ HR
+  //   ก่อนทำงานรายคู่ ⇒ คู่ที่ค้างถาวร (ไม่มีพนักงาน/โปรไฟล์) ไม่กินคิวของคู่ข้างหลัง ◂
+  const salt = String(Math.floor(now.getTime() / 3_600_000));
+  const onlyTenant = isId(input?.tenantId) ? input.tenantId : null;
+  let cursor: string | null = null;
+  for (;;) {
     if (Date.now() >= deadline) {
       res.stoppedEarly = true;
       break;
     }
-    res.users++;
-    try {
-      const emp = await hrPayrollEmployeeOf(tenantId, userId); // POS P3.5 ▸ fix2 N7: อ่าน HR ใน try ต่อคู่ — ร้านหนึ่งล้มไม่หยุดทั้งรอบ ◂
-      if (!emp) {
-        res.noEmployee++; // ยังไม่ผูกพนักงาน HR (หรือยังไม่มีโปรไฟล์เงินเดือน) — แถวค้าง OPEN · รายงาน noEmployee
+    const page: { tenantId: string; userId: string; h: string }[] = await prisma.$queryRaw<{ tenantId: string; userId: string; h: string }[]>`
+      SELECT DISTINCT c."tenantId", c."userId", md5(c."tenantId" || ':' || c."userId" || ':' || ${salt}) AS h
+      FROM "PosStaffCommission" c
+      WHERE c.status = 'OPEN' AND c."periodKey" < ${current}
+        AND (${onlyTenant}::text IS NULL OR c."tenantId" = ${onlyTenant}::text)
+        AND EXISTS (SELECT 1 FROM "AppSystem" s WHERE s."tenantId" = c."tenantId" AND s.type = 'HR')
+        AND (${cursor}::text IS NULL OR md5(c."tenantId" || ':' || c."userId" || ':' || ${salt}) > ${cursor}::text)
+      ORDER BY h
+      LIMIT ${PUSH_BATCH}`;
+    if (!page.length) break;
+    cursor = page[page.length - 1]!.h;
+    const byTenant = new Map<string, string[]>();
+    for (const x of page) byTenant.set(x.tenantId, [...(byTenant.get(x.tenantId) ?? []), x.userId]);
+    const linked = new Map<string, Set<string>>();
+    for (const [tenantId, users] of byTenant) {
+      try {
+        linked.set(tenantId, await hrPayrollLinkedUserIds(tenantId, users));
+      } catch (e) {
+        res.failed++;
+        console.error(`[pos/staff-commission] linked ${tenantId} ${(e as { name?: string })?.name ?? "Error"}`);
+      }
+    }
+    for (const { tenantId, userId } of page) {
+      if (Date.now() >= deadline) {
+        res.stoppedEarly = true;
+        break;
+      }
+      const set = linked.get(tenantId);
+      if (!set) continue; // อ่านไม่ได้ทั้งร้าน (นับใน failed แล้ว) — รอบหน้า
+      if (!set.has(userId)) {
+        res.noEmployee++; // ยังไม่ผูกพนักงาน HR ที่มีโปรไฟล์เงินเดือน — แถวค้าง OPEN · รายงาน noEmployee
         continue;
       }
-      const r = await pushUser(tenantId, userId, emp, current);
-      res.adjustments += r.adjustments;
-      res.sentRows += r.sentRows;
-    } catch (e) {
-      res.failed++;
-      console.error(`[pos/staff-commission] push ${tenantId} ${(e as { name?: string })?.name ?? "Error"}: ${String((e as Error)?.message ?? "").slice(0, 160)}`);
+      res.users++;
+      try {
+        const emp = await hrPayrollEmployeeOf(tenantId, userId); // POS P3.5 ▸ fix2 N7: อ่าน HR ใน try ต่อคู่ — ร้านหนึ่งล้มไม่หยุดทั้งรอบ ◂
+        if (!emp) {
+          res.noEmployee++;
+          continue;
+        }
+        const r = await pushUser(tenantId, userId, emp, current);
+        res.adjustments += r.adjustments;
+        res.sentRows += r.sentRows;
+      } catch (e) {
+        res.failed++;
+        console.error(`[pos/staff-commission] push ${tenantId} ${(e as { name?: string })?.name ?? "Error"}: ${String((e as Error)?.message ?? "").slice(0, 160)}`);
+      }
     }
+    if (res.stoppedEarly || page.length < PUSH_BATCH) break;
   }
   // POS P3.5 ▸ fix2 N1: รายการที่ส่งไปแล้วแต่งวดของมันเพิ่งมีรอบจ่าย (ก่อนอนุมัติ / ก่อนผูกโปรไฟล์) ⇒ HR ย้ายไปงวดแรกที่ว่าง —
   //   ร้านที่เคยส่งเข้า HR (แถว SENT ที่มีรายการ) · ทีละร้านจนถึง deadline · ล้มร้านหนึ่งไม่หยุดร้านอื่น ◂
