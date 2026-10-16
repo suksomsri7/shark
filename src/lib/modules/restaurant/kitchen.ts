@@ -20,7 +20,6 @@ const REF_MAX = 40;
 // ═══════════ สถานี · ค่าตั้ง (อ่าน) ═══════════
 
 export type KitchenStationRow = { id: string; name: string; nameEn: string | null; sortOrder: number };
-/** สถานีที่ใช้งาน (ไม่เก็บถาวร) ของสาขา — ลำดับ sortOrder, createdAt */
 // POS P2.14 ▸ UI-8 (U1): อ่านอย่างเดียว — บรรทัดชุดนี้มีบรรทัดที่เข้าครัวได้ไหม (กติกาเดียวกับ createKitchenRoundInTx: เมนูของสาขา → สถานีของเมนู ·
 //   ไม่ใช่เมนู → stationHint · สถานีต้องใช้งานอยู่) — จอปิดบิลใช้ตัดสินว่า "ใบครัวไม่ออก" ควรเตือนไหม ◂
 export async function kitchenRoutesForPos(db: Db, s: Scope, lines: { productId: string | null; stationHint: string | null }[]): Promise<boolean> {
@@ -41,6 +40,7 @@ export async function kitchenRoutesForPos(db: Db, s: Scope, lines: { productId: 
 }
 // ◂
 
+/** สถานีที่ใช้งาน (ไม่เก็บถาวร) ของสาขา — ลำดับ sortOrder, createdAt */
 export async function kitchenStationsForPos(db: Db, s: Scope): Promise<KitchenStationRow[]> {
   return db.kdsStation.findMany({
     where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null },

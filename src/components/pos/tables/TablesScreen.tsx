@@ -354,7 +354,8 @@ export function TablesScreen(p: TablesScreenProps) {
     void registerSplitDetailAction({ systemId: p.systemId, unitId: p.unitId, tableSessionId: selSession })
       .then((r) => {
         if (!live) return;
-        if (!r.ok || !r.split || r.split.status !== "OPEN") return failed();
+        if (!r.ok) return failed();
+        if (!r.split || r.split.status !== "OPEN") return; // POS P2.14 ▸ fix1 F11: แผนปิด/ไม่มีแผน = ไม่ใช่ความล้มเหลว (ไม่ลองซ้ำ) ◂
         const x = r.split;
         setPlanFailedKey(null);
         setPlanTotals({ key: splitKey, v: { baseSatang: x.baseSatang, discountSatang: x.discountSatang, serviceChargeSatang: x.serviceChargeSatang, serviceChargeBp: x.serviceChargeBp, totalSatang: x.totalSatang } });
