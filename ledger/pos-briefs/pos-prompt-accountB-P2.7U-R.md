@@ -1,0 +1,14 @@
+# Prompt — P2.7U reviewer **R1** (independent, read-only). Controller (account B, __DATE__). Head `wip/pos-p2.7u` **__HEAD__**, tree `/root/projects/shark-pos-b` (checked out; do not checkout/fetch/edit). Base = `session/pos` 92b7149d. Read-only: no edits/commits/DB writes/build/servers/`.env*`/pnpm/prisma/`cd`. English, ≤ 50 lines.
+
+Read: `pos-brief-P2.7.md` (§3, §5, §10 rulings 11 15 16), `pos-P2.7.md` "U-card contract", builder notes `pos-P2.7U.md`, spec `pos-spec-P2.7-qr-ui.md`, `git -C /root/projects/shark-pos-b log --oneline 92b7149d..__HEAD__` + each commit, `git -C /root/projects/shark-pos-b diff 92b7149d..__HEAD__ -- . ':!ledger'`.
+
+Verify (cite file:line):
+- **Contract**: no S-card server change except additive marked DTO fields; `order.ts`/`payment-intent.ts`/restaurant module untouched; every public page reads only the S doors; client islands import only `*-shared`/`*-actions`; no session import on public pages; force-dynamic + noindex kept; no SSR `new Date()`; polling uses `sinceVer` + Page-Visibility pause and writes nothing.
+- **Security/PDPA**: pages never render member data, staff names, other tables' orders, or a full phone; tokens never echoed into URLs other than their own door; QR image generation server-side or from a pure lib; print sheet shows only table name + QR; rate-limited actions not auto-retried in a loop.
+- **Money copy**: amounts formatted from satang (no float math), service charge line only on table bills, countdown from `payBy` (server time delta, no client clock drift assumptions), expired copy = 19ค wording, PREPAID chip amount = intent amount, claim chip never implies money received.
+- **09 / tables / settings**: rail counts = NEW + PREPAID only; "รอชำระ" excluded from badges; PREPAID accept uses the existing manual-confirm/manager paths (no new server action); TablePanel rotate behind `restaurant.table.rotateQr`, link rotate behind `pos.channel.manage` (UI hides + server refuses); drawers reuse P2.8 settings actions.
+- **i18n/ST7/HF-418**: 0 Thai literals in client files; th/en key parity; tokens; ≥ 44 px targets; 390 no horizontal overflow (check the dry-run logs or reason from CSS); en = `LOCALE=en` dry run exit 0.
+- **Visual plan**: `P27_PLAN` states match the contract's state list; fixtures use `posqc-vis-*` ids and clean up; `--dry` th + en exit 0 in the builder logs; `pos-ui-inventory.json` rows present; `qc-hf-pos-page-authz` unchanged or justified.
+- **Gates**: p2.7 38→42 unchanged and green, regression per the prompt, typecheck 0 (8192), fitness ±env; lane pins listed with reasons.
+
+Report: verdict (`MERGEABLE` | `MERGEABLE-AFTER-FIXES` | `BLOCKED`), F1..Fn (severity, file:line, input → wrong behaviour, smallest fix), "Verified OK" list, states the controller should look at first in the images. Return the report verbatim as your final message.
