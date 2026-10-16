@@ -1049,6 +1049,7 @@ async function runDb() {
     await sysSvc.linkUnit(T, S.POS, U.A);
     await sysSvc.linkUnit(T, S.POS, U.B);
     await sysSvc.linkUnit(T, S.INV, U.A);
+    await sysSvc.linkUnit(T, S.INV, U.S); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 ORD-1b · CD-B5): สาขาเว็บร้าน S ขายสินค้าคลัง ⇒ ผูกคลังเดียวกัน (ประตูเว็บกรองตามคลังของสาขาที่ผูกคลัง)
     await sysSvc.linkUnit(T2, S.POSX, U.X);
   } catch (e) {
     fx = `ร้านชั่วคราว:${(e as Error).message.slice(0, 160)}`;
