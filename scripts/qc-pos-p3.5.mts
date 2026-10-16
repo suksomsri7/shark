@@ -83,6 +83,7 @@ const CHECKS: readonly Def[] = [
   D("CM4", "X4", "[R7 มติ 8] staffCommissionBases(lineTotals, SC, grand) = lineNets ของบัญชีทุกสตางค์ (200 สุ่ม) · Σ(total − base) = ส่วนลดระดับบิลพอดี · ค่าบริการไม่ถูกเกลี่ย"),
   D("CM5", "X4", "[R8 มติ 9] staffCommissionRefundShare 3 ใบ (200 สุ่ม): ใบที่ยังไม่ครบ = min(halfUp(accrual × refund / net), ที่เหลือ) · ใบที่ครบ = เศษที่เหลือ · Σ = accrual พอดี · ไม่ติดลบ"),
   D("CM6", "-", "[R3 R6] ตัวอ่านค่าตั้ง: posScheduleGate clamp early/late 0–180 · ttl 0–720 · ไม่ใช่จำนวนเต็ม = ค่าปริยาย · คีย์แปลกไม่ออก · posStaffCommission ค่าปริยาย {false,0,{},{},[STAFF,MANAGER]} · bp 0–5000 · fixed 0–100000 · ≤ 500 แถว · บทบาทแปลกถูกตัด · คีย์บนสุด ⊆ 5 คีย์"),
+  D("CM7", "X4", "[fix2 N4 · ORACLE-ADD ผู้คุม 17 ต.ค.] staffCommissionRefundShare บรรทัดสุทธิ ≤ 0 (ของแถม · ค่าคอมฯ คงที่ต่อชิ้น) แบ่งตามจำนวน halfUp(acc×q/Q): fixed 500×4 = 2000 คืน 1+1+2 ⇒ 500 · 500 · 1000 · 200 สุ่ม Σ = accrual · ไม่ติดลบ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N4)
   // ── CL สมุดค่าคอมฯ ──
   D("CL1", "X5", "[R7 R8] pos.sale.paid ⇒ ACCRUE 1 แถวต่อบรรทัด (4 บรรทัด · ส่วนลดท้ายบิล ฿10 เกลี่ย) · sourceKey PAID:<sale>:<line> · base = lineNets · rateBp/fixedSatang snapshot · amount ตามสูตร · periodKey = เดือนไทยของ paidAt · OPEN · userId = soldBy · unit/system/sale/line ตรง"),
   D("CL2", "X1", "[R8 มติ 9] drain ซ้ำ 2 รอบ + consumers[pos.sale.paid] เล่นซ้ำ ×2 ⇒ แถวเท่าเดิมทุกไบต์ (4 แถว)"),
@@ -283,7 +284,7 @@ const MSG_LEAVES = ["report.kinds.commission"] as const;
 
 const srcOf = (f: string) => stripComments(rd(f));
 const STATIC_IDS = ["ST1", "ST2", "ST3", "PV4"].map((x) => `P3.5-${x}`);
-const PURE_IDS = ["CM1", "CM2", "CM3", "CM4", "CM5", "CM6"].map((x) => `P3.5-${x}`);
+const PURE_IDS = ["CM1", "CM2", "CM3", "CM4", "CM5", "CM6", "CM7" /* ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N4) */].map((x) => `P3.5-${x}`);
 const skipReasons: string[] = [];
 for (const [f, label] of [[F.seam, "hr/pos-seam.ts"], [F.link, "pos/hr-link.ts"], [F.comm, "pos/staff-commission.ts"], [F.commShared, "pos/staff-commission-shared.ts"]] as const)
   if (!existsSync(join(ROOT, f))) skipReasons.push(`${label} ยังไม่มี`);
@@ -709,6 +710,44 @@ async function runPure(): Promise<void> {
     } else if (c1.err) p.push(c1.err);
     else p.push(`posStaffCommission → ${short(c1.v, 60)}`);
     chk("CM6", p.length === 0, "clamp · ค่าปริยาย · คีย์แปลก · ≤500 · บทบาท", P8(p) || "ครบ (gate 3 แบบ · commission 2 แบบ)");
+  }
+  // CM7 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N4): บรรทัดที่สุทธิ ≤ 0 แบ่งค่าคอมฯ ที่กลับรายการตามจำนวน (อาร์กิวเมนต์ที่ 6 {q, Q} · เพิ่มล้วน)
+  {
+    const p: string[] = [];
+    let prev = 0;
+    const got: number[] = [];
+    for (const [q, done] of [[1, false], [1, false], [2, true]] as const) {
+      const r = pure(sh, "staffCommissionRefundShare", 2000, 0, 0, prev, done, { q, Q: 4 });
+      if (r.err) {
+        p.push(r.err);
+        break;
+      }
+      got.push(Number(r.v));
+      prev += Number(r.v);
+    }
+    if (!p.length && JSON.stringify(got) !== JSON.stringify([500, 500, 1000])) p.push(`ของแถม 1/1/2 จาก 4 → ${got.join(",")} (คาด 500,500,1000)`);
+    const R = rng(3507);
+    for (let i = 0; i < 200 && !p.length; i++) {
+      const Q = 2 + Math.floor(R() * 8);
+      const acc = Math.floor(R() * 20_000);
+      const lineNet = -Math.floor(R() * 500);
+      let left = Q, prevS = 0, cum = 0;
+      while (left > 0 && !p.length) {
+        const q = Math.max(1, Math.min(left, 1 + Math.floor(R() * left)));
+        cum += q;
+        left -= q;
+        const done = left === 0;
+        const r = pure(sh, "staffCommissionRefundShare", acc, lineNet, 0, prevS, done, { q, Q });
+        const want = done ? acc - prevS : Math.min(hu(acc * q, Q), acc - prevS);
+        if (r.err || r.v !== want || r.v < 0) {
+          p.push(`(acc ${acc} net ${lineNet} q ${q}/${Q} prev ${prevS}${done ? " ครบ" : ""}) → ${short(r.v ?? r.err)} (คาด ${want})`);
+          break;
+        }
+        prevS += r.v as number;
+      }
+      if (!p.length && prevS !== acc) p.push(`Σ ${prevS} ≠ accrual ${acc}`);
+    }
+    chk("CM7", NS === "" && p.length === 0, "สุทธิ ≤ 0 แบ่งตามจำนวน · Σ = accrual", NS + (P8(p) || "ครบ (ของแถม 1/1/2 + 200 สุ่ม)"));
   }
 }
 
