@@ -218,7 +218,7 @@ for (const n of DISPLAY_FNS) if (!exportsFn(srcOf(F.display), n)) skipReasons.pu
 if (!migDir()) skipReasons.push("ยังไม่มี migration *_pos_p210_customer_display");
 
 // ── หมุดของเลน (หมุด ST2 เทียบเฉพาะสิ่งที่ใบนี้แก้) ──
-const LANE_PIN = "280b56f7"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin · gates108): หมุด = commit re-pin ของผู้คุม 280b56f7 (ต่อจาก merge 05975437 · แก้แต่ scripts/ — ต้นไม้ผลิตภัณฑ์เท่ากับ merge) เพื่อให้กฎ "ข้อสอบเดิมไม่ถูกแก้" วัดจากหลัง re-pin ของผู้คุม ไม่ใช่วงกลมกับ commit re-pin เอง
+const LANE_PIN = "3d2f6db8"; // ORACLE-EDIT ผู้คุม 16 ต.ค. 20:0xZ (CD-FU2a · re-pin → 3d2f6db8 = commit re-pin CD-B1c ของผู้คุม · ต้นไม้ผลิตภัณฑ์ = c5fc223b) · ก่อนหน้า: ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin · gates108): หมุด = commit re-pin ของผู้คุม 280b56f7 (ต่อจาก merge 05975437 · แก้แต่ scripts/ — ต้นไม้ผลิตภัณฑ์เท่ากับ merge) เพื่อให้กฎ "ข้อสอบเดิมไม่ถูกแก้" วัดจากหลัง re-pin ของผู้คุม ไม่ใช่วงกลมกับ commit re-pin เอง
 const MB = (() => {
   const mb = gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim(); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return process.env.P210_BASE ? BASE_REV : mb || BASE_REV;
@@ -356,7 +356,8 @@ function runStatic(): void {
       if (out.length) pins.push(`${f.split("/").pop()} เพิ่มนอกบล็อก // POS P2.10 ▸ … ◂ ที่บรรทัด ${out.slice(0, 5).join(",")}${out.length > 5 ? "…" : ""}`);
     }
     // ข้อสอบเดิมไม่ถูกแก้ (ยกเว้น ORACLE-EDIT p1.18 บรรทัด rewardNearCustomerDisplay)
-    const changed = (gitStr(["diff", "--name-only", MB, "--", "scripts"]) ?? "").split("\n").filter((f) => /^scripts\/qc-(pos|hf)-[^/]+\.mts$/.test(f) && f !== F.self);
+    // ORACLE-EDIT ผู้คุม 16 ต.ค. (CD-FU2a): "ข้อสอบเดิมไม่ถูกแก้" = เทียบเฉพาะไฟล์ที่มีอยู่แล้วที่หมุด (M) · ไฟล์ข้อสอบใหม่ของใบถัดไป (A) ไม่ใช่ "ข้อสอบเดิม" — กฎคงเดิม
+    const changed = (gitStr(["diff", "--name-only", "--diff-filter=M", MB, "--", "scripts"]) ?? "").split("\n").filter((f) => /^scripts\/qc-(pos|hf)-[^/]+\.mts$/.test(f) && f !== F.self);
     for (const f of changed) {
       if (f !== F.p118) {
         pins.push(`${f} ถูกแก้ (CONTROLLER-DECISION)`);
