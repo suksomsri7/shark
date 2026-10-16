@@ -100,7 +100,8 @@ export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick,
             </button>
           ))}
         </div>
-        <div className="flex shrink-0 items-center gap-2 pb-2 pt-1">
+        {/* POS P2.7U fix1 ▸ IMG-2: แถบปุ่มขวาตัดบรรทัดได้ (390 = ไม่ดันหน้ากว้างเกินจอ) ◂ */}
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 pb-2 pt-1">
           {/* มติ 2 (Q2): คิวหน้าร้าน = PLANNED — ชิปจาง ไม่ใช่ปุ่ม · ไม่มีข้อมูลคิว */}
           <span
             data-testid="pos-tbl-queue-planned"
@@ -125,11 +126,14 @@ export function TableFloor({ floor, zone, onZone, selectedId, now, busy, onPick,
             <button
               data-testid="pos-tbl-print-qr"
               type="button"
+              aria-label={t("qr.printAll")}
               className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-[12px] border px-3 text-[13.5px] text-[color:var(--color-ink)] hover:bg-[color:var(--color-surface-2)]"
               onClick={onPrintQr}
             >
               <RegisterIcon name="qr" size={13} />
-              {t("qr.printAll")}
+              <span className="hidden sm:inline">{t("qr.printAll")}</span>
+              <span className="sm:hidden">{t("qr.printAllShort")}</span>
+              {/* POS P2.7U fix1 ▸ IMG-2: 390 = ป้ายสั้น ◂ */}
             </button>
           ) : null /* POS P2.7U ◂ */}
         </div>

@@ -7995,7 +7995,7 @@ async function runP27State(page: Any, state: P27Key, device: Device): Promise<vo
   }
   if (state === "settings-channel-qr-table" || state === "settings-channel-qr-order") {
     const code = state === "settings-channel-qr-table" ? "QR_TABLE" : "QR_ORDER";
-    await clickEl(page, tid(`pos-channel-open-${code}`));
+    await clickEl(page, tid(`pos-channel-open-${code.toLowerCase()}`)); // POS P2.7U fix1 ▸ IMG-1: testid ของแถวเป็นตัวเล็ก (ChannelsPanel) ◂
     await visibleEl(page, `${tid("pos-channel-qr")}[data-code="${code}"]`, 0, 15_000);
     if (code === "QR_ORDER") await visibleEl(page, `${tid("pos-channel-qr-link-image")}[data-ready="1"]`, 0, 15_000).catch(() => undefined);
     return;

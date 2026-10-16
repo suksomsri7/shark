@@ -3821,7 +3821,8 @@
       "sheetEmpty": "No tables yet",
       "printNow": "Print",
       "cellTable": "Table {name}",
-      "cellHint": "Scan to see the menu and order"
+      "cellHint": "Scan to see the menu and order",
+      "printAllShort": "Print QRs"
     }
   },
   "orders": {

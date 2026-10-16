@@ -3821,7 +3821,8 @@
       "sheetEmpty": "ยังไม่มีโต๊ะ",
       "printNow": "พิมพ์",
       "cellTable": "โต๊ะ {name}",
-      "cellHint": "สแกนเพื่อดูเมนูและสั่งอาหาร"
+      "cellHint": "สแกนเพื่อดูเมนูและสั่งอาหาร",
+      "printAllShort": "พิมพ์ QR"
     }
   },
   "orders": {

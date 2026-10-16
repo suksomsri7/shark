@@ -175,7 +175,8 @@ export function QrPreorderApp(p: { token: string; locale: QrLocale; view: QrLink
         </div>
       ) : null}
       {toast ? (
-        <div data-testid="pos-qr-toast" role="status" aria-live="polite" className={`pointer-events-none fixed inset-x-4 top-4 z-[60] mx-auto max-w-[440px] rounded-[14px] px-4 py-3 text-[14px] shadow-xl ${toast.tone === "danger" ? "bg-[color:var(--color-danger)] text-[color:var(--color-surface)]" : "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]"}`}>
+        <div data-testid="pos-qr-toast" role="status" aria-live="polite" className={`pointer-events-none fixed inset-x-4 bottom-[calc(96px+env(safe-area-inset-bottom))] z-[60] mx-auto max-w-[440px] rounded-[14px] px-4 py-3 text-[14px] shadow-xl ${toast.tone === "danger" ? "bg-[color:var(--color-danger)] text-[color:var(--color-surface)]" : "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]"}`}>
+          {/* POS P2.7U fix1 ▸ IMG-4: ข้อความลอยอยู่ล่าง (เหนือแถบตะกร้า) — ไม่ทับหัวร้าน/ป้ายโต๊ะ ◂ */}
           {toast.text}
         </div>
       ) : null}

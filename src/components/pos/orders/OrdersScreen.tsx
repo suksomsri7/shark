@@ -847,7 +847,14 @@ export function OrdersScreen(p: OrdersScreenProps) {
         <ModeTabsNav systemId={p.systemId} active="online-orders" unitId={p.unitId} tablesHref={p.tablesHref} ordersBadge={newCount} />
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           {lg && <OrdersRail channels={channels} counts={list?.counts.byChannel ?? null} total={total} filter={filter} onFilter={setFilter} now={now} settings={settingsNode} qrCount={qrRounds ? qrRounds.length : null} />}
-          {board}
+          {/* POS P2.7U fix1 ▸ IMG-3: มือถือ (< 768) = แผงรายละเอียดแทนที่กระดานในหน้า (ไม่ลอยทับ/ไม่สลับกับส่วนตั้งค่าท้ายจอ · ภาพเต็มหน้าไม่ซ้อน) — ปัญหาเดิมของ P2.8U ◂ */}
+          {wide === false && panel ? (
+            <div data-testid="pos-ord-panel-frame" className="flex min-h-0 flex-1 flex-col bg-[color:var(--color-surface)] pb-[env(safe-area-inset-bottom)]">
+              {panel}
+            </div>
+          ) : (
+            board
+          )}
           {xl && (
             <aside data-testid="pos-ord-side" className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-l">
               {panelOf(true) ?? (
@@ -861,14 +868,12 @@ export function OrdersScreen(p: OrdersScreenProps) {
       </div>
 
       {/* แผงบน iPad (แผ่นขวา) / มือถือ (เต็มจอ) — เปิดเมื่อเลือกออเดอร์ */}
-      {!xl && wide !== null && panel && (
+      {!xl && wide === true && panel && ( /* POS P2.7U fix1 ▸ IMG-3: แผ่นขวาเฉพาะ iPad (768–1279) ◂ */
         <div className="contents" inert={!!layer}>
           <div
             data-testid="pos-ord-panel-frame"
             className={
-              wide
-                ? "fixed bottom-0 right-0 top-14 z-40 flex w-[380px] max-w-[100vw] flex-col overflow-y-auto border-l bg-[color:var(--color-surface)] shadow-2xl"
-                : "fixed inset-0 z-40 flex flex-col overflow-y-auto bg-[color:var(--color-surface)] pb-[env(safe-area-inset-bottom)]"
+              "fixed bottom-0 right-0 top-14 z-40 flex w-[380px] max-w-[100vw] flex-col overflow-y-auto border-l bg-[color:var(--color-surface)] shadow-2xl"
             }
           >
             {panel}

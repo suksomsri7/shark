@@ -134,6 +134,7 @@ const PRINT_CSS = `
   #pos-tbl-qr-print { position: absolute !important; left: 0; top: 0; width: 190mm !important; margin: 0 !important; box-shadow: none !important; border: 0 !important; padding: 0 !important; }
   .pos-qr-noprint { display: none !important; }
   .pos-qr-cell { break-inside: avoid; page-break-inside: avoid; }
+  #pos-tbl-qr-print { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } /* POS P2.7U fix1 ▸ IMG-2: กระดาษ = 3 คอลัมน์เสมอ ◂ */
 }`;
 
 /** แผ่นพิมพ์ QR (ทุกโต๊ะ หรือโต๊ะเดียว) — ตาราง A4 3 คอลัมน์ · ปุ่มพิมพ์ = window.print() */
@@ -141,7 +142,7 @@ export function TableQrPrintPage(p: { shopName: string; unitName: string; rows: 
   const t = useTranslations("pos.tables");
   const origin = useOrigin();
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-[color:var(--color-surface-2)]">
+    <div className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[color:var(--color-surface-2)]">
       <style>{PRINT_CSS}</style>
       <div className="pos-qr-noprint flex flex-wrap items-center gap-2 border-b bg-[color:var(--color-surface)] px-4 py-3">
         <h2 className="min-w-0 flex-1 truncate text-[17px] font-bold">{t("qr.sheetTitle", { count: p.rows.length })}</h2>
@@ -154,7 +155,7 @@ export function TableQrPrintPage(p: { shopName: string; unitName: string; rows: 
         </button>
       </div>
       <p className="pos-qr-noprint px-4 pt-2 text-[12.5px] text-[color:var(--color-muted)]">{t("qr.sheetHint")}</p>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
         {p.loading ? (
           <p className="py-10 text-center text-[14px] text-[color:var(--color-muted)]">{t("qr.loading")}</p>
         ) : p.error ? (
@@ -164,7 +165,7 @@ export function TableQrPrintPage(p: { shopName: string; unitName: string; rows: 
         ) : !p.rows.length ? (
           <p className="py-10 text-center text-[14px] text-[color:var(--color-muted)]">{t("qr.sheetEmpty")}</p>
         ) : (
-          <div id="pos-tbl-qr-print" data-testid="pos-tbl-qr-sheet" data-count={p.rows.length} className="mx-auto grid w-full max-w-[794px] grid-cols-2 gap-0 bg-white text-black shadow-lg sm:grid-cols-3">
+          <div id="pos-tbl-qr-print" data-testid="pos-tbl-qr-sheet" data-count={p.rows.length} className="mx-auto grid w-full min-w-0 max-w-[794px] grid-cols-1 gap-0 bg-white text-black shadow-lg min-[480px]:grid-cols-2 sm:grid-cols-3" /* POS P2.7U fix1 ▸ IMG-2: 390 = 1 คอลัมน์ในกรอบ (ไม่ขยายเอกสาร) · พิมพ์ = 3 คอลัมน์ ◂ */>
             {p.rows.map((r) => (
               <div key={r.tableId} data-testid="pos-tbl-qr-cell" className="pos-qr-cell flex flex-col items-center gap-1 border border-dashed border-neutral-300 px-2 pb-3 pt-3 text-center" style={{ minHeight: "88mm" }}>
                 <p className="w-full truncate text-[11px] tracking-wide">{p.shopName}</p>
