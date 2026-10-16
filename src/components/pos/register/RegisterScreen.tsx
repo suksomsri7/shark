@@ -2985,7 +2985,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 empty={cart.lines.length === 0}
                 onOpen={() => push({ kind: "sheet" })}
                 onPay={tableOn ? () => void tableRun(true) : openPay}
-                {...(tableOn ? { payLabel: tTables("actions.sendRound") } : {})}
+                {...(tableOn ? { payLabel: tTables("actions.sendRound") } : { onOpenHeld: openHeld, heldCount })} // POS P2.14 ▸ UI-2: ตะกร้าว่าง 390 → บิลที่พัก ◂
               />
             )}
           </div>

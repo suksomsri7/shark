@@ -512,6 +512,25 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-cart-bar-held",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-held-drawer",
+        "note": "มือถือ < 768 ตะกร้าว่าง: ทางเข้าบิลที่พักในแถบตะกร้าล่าง (14B · P2.14 UI-2) — เปิดลิ้นชักเดียวกับ pos-reg-held-bills · โหมดโต๊ะไม่มี"
+      },
+      "wo": "P2.14",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-member-pick",
       "kind": "button",
       "roles": [
