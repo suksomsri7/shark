@@ -4369,7 +4369,8 @@
       "optionsInvalid": "That option is not valid — choose again",
       "optionUnavailable": "That option is sold out — choose another",
       "priceNotSet": "This item has no price yet — order at the shop",
-      "internal": "Something went wrong — please try again"
+      "internal": "Something went wrong — please try again",
+      "noSession": "This table has no order yet — order first, then call staff or ask for the bill"
     }
   }
 }

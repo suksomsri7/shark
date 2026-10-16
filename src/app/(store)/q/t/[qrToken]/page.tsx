@@ -126,6 +126,8 @@ export default async function QrTablePage({ params, searchParams }: { params: Pr
         )}
       </section>
 
+      {/* fix3 nit (a): no session yet = nothing to call staff for / no bill — buttons hidden */}
+      {v.session ? (
       <section className="mb-6 flex gap-2">
         {(["CALL_STAFF", "REQUEST_BILL"] as const).map((k) => (
           <form key={k} action={requestAction} className="flex-1">
@@ -137,6 +139,7 @@ export default async function QrTablePage({ params, searchParams }: { params: Pr
           </form>
         ))}
       </section>
+      ) : null}
 
       {bill && bill.lines.length ? (
         <section className="mb-6" data-testid="qr-bill">

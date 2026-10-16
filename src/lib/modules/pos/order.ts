@@ -21,7 +21,7 @@ import { scheduleDrain } from "@/lib/outbox-consumers";
 import { prisma } from "./db";
 import { afterSaleCommitted, createSale, posDayStart, posSystemForSale, PosSaleError, type CreateSaleInput } from "./service";
 import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (แทน proxy เฉพาะที่ของ P2.8) ◂
-import { ensureUnitChannels } from "./channel";
+import { ensureUnitChannels, withInactiveQrOrderAllowed } from "./channel"; // POS P2.7 ▸ fix3 G1: + withInactiveQrOrderAllowed ◂
 import { channelCommission, channelNet } from "./channel-shared";
 import { quoteRegisterCart } from "./register";
 import { registerShiftStatus, isShiftDeviceId } from "./shift";
@@ -533,7 +533,9 @@ async function acceptInTx(
     const psaleLines = await saleLinesOf(tx, o, plines);
     let psaleId: string;
     try {
-      const r = await orderCreateSale(tx, saleBase(after, psaleLines, [{ type: "PROMPTPAY", amountSatang: o.totalSatang, reference: o.paymentIntentId }], { soldByUserId: who.actorUserId, shiftId: who.shiftId }));
+      // POS P2.7 ▸ fix3 R2 G1: ช่องทาง QR_ORDER ที่ร้านปิดหลังลูกค้าจ่าย ยังรับได้ — เฉพาะบิลนี้ (บริบท async ของการเรียกนี้) ◂
+      const pbase = saleBase(after, psaleLines, [{ type: "PROMPTPAY", amountSatang: o.totalSatang, reference: o.paymentIntentId as string }], { soldByUserId: who.actorUserId, shiftId: who.shiftId });
+      const r = await withInactiveQrOrderAllowed(() => orderCreateSale(tx, pbase));
       psaleId = r.saleId;
     } catch (e) {
       const rf = saleRefusal(e);
@@ -1803,7 +1805,7 @@ async function expireOneInTx(tx: Tx, orderId: string, now: Date): Promise<boolea
   }
   return closeExpiredInTx(tx, o, now);
 }
-/** CAS NEW → CANCELLED ของออเดอร์ที่เลยเวลาจ่าย (rejectReason PAYMENT_EXPIRED · event expired · outbox cancelled) — ผู้เรียกถือล็อกแถวแล้ว · ไม่แตะใบ */
+/** (POS P2.7 fix2) hunter H4: แยกจาก expireOneInTx ให้ onIntentPaid ใช้ร่วม — CAS NEW → CANCELLED ของออเดอร์ที่เลยเวลาจ่าย (rejectReason PAYMENT_EXPIRED · event expired · outbox cancelled) — ผู้เรียกถือล็อกแถวแล้ว · ไม่แตะใบ */
 async function closeExpiredInTx(tx: Tx, o: PosOrder, now: Date): Promise<boolean> {
   const n = await tx.posOrder.updateMany({ where: { id: o.id, tenantId: o.tenantId, status: "NEW", version: o.version }, data: { status: "CANCELLED", closedAt: now, rejectReason: "PAYMENT_EXPIRED", version: { increment: 1 } } });
   if (n.count !== 1) return false;

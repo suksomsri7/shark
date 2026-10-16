@@ -401,9 +401,10 @@ export async function placeTableRound(qrToken: string, input: unknown, meta: { i
     const p = await priceLines(t.u, "QR_TABLE", parsed.value.lines);
     if (!p.ok) return p;
     const dedupeKey = parsed.value.guestToken ? `${t.view.table.id}|${parsed.value.guestToken}|${parsed.value.expectedSessionId ?? "-"}|${qrCartHash(parsed.value.lines)}|${parsed.value.note ?? ""}` : null;
-    return singleFlight(inflightRounds, dedupeKey, QR_ROUND_DEDUPE_MS, () => sendRound(t, parsed.value, p.priced));
+    return singleFlight(inflightRounds, dedupeKey, QR_ROUND_DEDUPE_MS, () => sendRound(t, parsed.value, p.priced)); // POS P2.7 ▸ fix2 R1 F1/H2: single-flight (ตัวเขียนรอบแยกเป็น sendRound) ◂
   });
 }
+// POS P2.7 ▸ fix2 R1 F1/H2: ส่งรอบจริง (ถูกเรียกครั้งเดียวต่อคีย์ของ single-flight) ◂
 async function sendRound(t: TableCtx, v: { expectedSessionId: string | null | undefined; guestToken: string | null; note: string | null }, priced: Priced[]): Promise<QrPlaceRoundResult> {
     const R = await restaurant();
     const lines = priced.map((x) => ({
@@ -434,7 +435,7 @@ async function sendRound(t: TableCtx, v: { expectedSessionId: string | null | un
     return { ok: true, roundId: r.roundId, sessionId: r.sessionId };
 }
 
-/** เรียกพนักงาน / ขอเช็คบิล (คำขอจากโต๊ะของร้านอาหาร · กันซ้ำ 2 นาทีในตัว · เรียกพนักงานบนโต๊ะว่าง = เปิด session ของแขก) */
+/** เรียกพนักงาน / ขอเช็คบิล (คำขอจากโต๊ะของร้านอาหาร · กันซ้ำ 2 นาทีในตัว) — POS P2.7 ▸ fix2 F5 · fix3: ไม่เปิด session ให้เลย (โต๊ะว่าง = NO_SESSION · หน้าไม่แสดงปุ่ม) ◂ */
 export async function tableServiceRequest(qrToken: string, input: { kind: "CALL_STAFF" | "REQUEST_BILL" }, meta: { ip: string }): Promise<QrOkResult> {
   return qrGuard("tableServiceRequest", async (): Promise<QrOkResult> => {
     const t = await tableCtx(qrToken);
@@ -444,7 +445,7 @@ export async function tableServiceRequest(qrToken: string, input: { kind: "CALL_
     const kind = isRecord(input) ? input.kind : undefined;
     if (kind !== "CALL_STAFF" && kind !== "REQUEST_BILL") return qrRefuse("VALIDATION");
     const r = await (await restaurant()).guestServiceRequestForPos(prisma, { tenantId: t.u.tenantId, unitId: t.u.unitId, tableId: t.view.table.id, type: kind });
-    return r.ok ? { ok: true } : qrRefuse(r.code === "NO_TABLE" ? "TOKEN_INVALID" : "VALIDATION");
+    return r.ok ? { ok: true } : qrRefuse(r.code === "NO_TABLE" ? "TOKEN_INVALID" : "NO_SESSION"); // POS P2.7 ▸ fix3 nit (a): qr.errors.noSession ◂
   });
 }
 
@@ -600,6 +601,7 @@ async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentInt
       options: optionSnapshot(x),
       note: x.note,
     }));
+    // POS P2.7 ▸ fix2 note 1: CHANNEL_PAUSED/CHANNEL_INVALID จากการตรวจซ้ำในธุรกรรม = QR_CLOSED ◂
     const mapOut = (r: orders.PreorderIngestResult): QrPlacePreorderResult =>
       r.ok ? { ok: true, orderToken: r.publicToken, duplicated: r.duplicated } : qrRefuse(r.code === "IDEMPOTENCY_CONFLICT" || r.code === "VALIDATION" ? "VALIDATION" : r.code === "CHANNEL_INVALID" || r.code === "CHANNEL_PAUSED" ? "QR_CLOSED" : "INTERNAL");
     const pre = await orders.findPreorderByKey(l.u, door.channel.id, v.idempotencyKey, lines);

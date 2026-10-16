@@ -23,6 +23,7 @@ export const QR_PUBLIC_CODES = [
   "OPTIONS_INVALID",
   "OPTION_UNAVAILABLE",
   "PRICE_NOT_SET",
+  "NO_SESSION", // POS P2.7 ▸ fix3 nit (a): เรียกพนักงาน/ขอเช็คบิลบนโต๊ะที่ยังไม่มีรายการ ◂
   "INTERNAL",
 ] as const;
 export type QrRefusalCode = (typeof QR_PUBLIC_CODES)[number];
