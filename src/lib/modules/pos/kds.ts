@@ -304,6 +304,7 @@ export async function healMissingTickets(tenantId: string, unitId: string): Prom
     SELECT s.id FROM "PosSale" s
     WHERE s."tenantId" = ${tenantId} AND s."unitId" = ${unitId} AND s.status::text = 'PAID' AND s."docType"::text = 'SALE'
       AND s."sourceModule" = 'POS' AND s."sourceId" IS NULL AND s."createdAt" >= ${since}
+      AND s."offlineRef" IS NULL -- POS P3.4 ▸ CD-1 R9: บิลออฟไลน์ที่ซิงก์ทีหลังไม่สร้างรอบครัว (ครัวทำ/เสิร์ฟไปแล้วตอนขาย) ◂
       AND NOT EXISTS (SELECT 1 FROM "RestaurantOrder" o WHERE o."posSaleId" = s.id)
       AND EXISTS (
         SELECT 1 FROM "PosSaleLine" l
