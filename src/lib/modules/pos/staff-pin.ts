@@ -414,6 +414,18 @@ async function scheduleGate(
     writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: SCHEDULE_DENIED_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, reason: d.reason, deviceId } });
   if (anonymous) {
     await denied();
+    // POS P3.5 ▸ fix2 N5 = R1-F2: นอกตารางแบบไม่ระบุคน = แถว pin_failed รูปเดียวกับ matchAnonymousPin ⇒ ด่านกันเดานับเหมือน PIN ผิด (แยกไม่ออกจากตัวนับ) ◂
+    const bucket = await pinDeviceBucket(db as unknown as PinTx, s, deviceId);
+    await db.auditLog.create({
+      data: {
+        tenantId: s.tenantId,
+        actorType: "USER",
+        actorId: null,
+        action: PIN_FAILED_AUDIT,
+        targetType: "PosDevice",
+        after: bucket === deviceId ? { deviceId, unitId: s.unitId } : { deviceId: bucket, deviceCode: deviceId, unitId: s.unitId },
+      },
+    });
     return refuse("PIN_INVALID");
   }
   const off: RegisterRefusal = { ...refuse("OFF_SCHEDULE", OFF_SCHEDULE_MSG), reason: d.reason, ...(d.window ? { window: d.window } : {}) };
