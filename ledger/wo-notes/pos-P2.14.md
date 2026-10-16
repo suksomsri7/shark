@@ -197,3 +197,52 @@ Gates (tree d @`32b8c549` dirty 0, QC4 under `/tmp/shark-gate-pos.lock`, `/root/
 - `qc-pos-p2.14` forced **59/60** — `{"total":60,"passed":59,"failed":["P2.14-H3"]…}` (H1 now green: HANDOVER-P2 is on the tip; H3 = parity sheet, controller)
 - `qc-pos-p2.10` forced **13/13** — `{"total":13,"passed":13,"failed":[],"st2Pins":true,"mergeBase":"280b56f7…"}`
 - typecheck `env NODE_OPTIONS=--max-old-space-size=8192 bash scripts/iso.sh env ISO_MEM=10500M pnpm exec tsc --noEmit` → exit **0** (10:56:48 → 11:01:40, no output), HEAD-typecheck.txt `head=32b8c549 dirty=0`
+
+## U2 (parity fix round) — branch `wip/pos-p2.14-u2` from `session/pos` `cbad4204`
+
+Base note: the local `session/pos` tip was `cbad4204` ("parity rulings done · U2 sent"), one ledger-only commit on top of the expected `0cabcd99`; used `cbad4204`. Tree d had an untracked older draft of `ledger/wo-notes/pos-P2.14-parity.md` (197 lines, ≠ the tracked 241-line sheet) that blocked the switch — moved (not deleted) to `/root/pos-runs/p214-builder/u2-backup/pos-P2.14-parity.untracked-at-39644eb2.md`. `.next` untouched; no build/serve.
+
+| item | commit | change |
+|---|---|---|
+| O-1 | `a0413465` | `TableCardView.tsx` reserved card: booking line `line-clamp-2` + card `pb-[60px]` so the floating "ดูการจอง / View booking" button never covers it · `TablePanel.tsx` order-more link `whitespace-nowrap` · en `tables.actions.{orderMore,moveTable,mergeTable}` = "Order" · "Move" · "Merge" (th unchanged) |
+| O-2 | `7b22adbf` | `TableSplitDialog.tsx` bill-card title row `w-full` + `min-w-0 truncate` (the select button is `items-start`, so the title never shrank) |
+| O-3 | `4464f219` | en ICU plurals for 55 count strings (items/tickets/bills/guests/seats/tables/lines/rows/variances/findings/shifts/branches/permissions/orders/days/tries/stars …) — only keys whose call sites pass numbers (checked per site); **left unchanged**: every points/pts string (`member.*`, `display.screen.*`, `receipt.public.points.unit`, `bills.drawer.points`, `bills.refund.tickPoints` — callers pass `toLocaleString`/pre-formatted text, a plural would throw) and `{max}`/`{min}`/`{limit}` caps; keys with no static call site (`register.search.chooseOne`, `register.product.sizes`, `settings.shark.*`, `price.bulk.done`, `price.rule.scope`, `products.branch.copy/compare.*`, `tables.split.title/allItems`, `settings.history.*`, `settings.cards.ACCOUNT.facts.autoPostMulti`) and `tables.panel.openedLine*` (guests may be a text placeholder) also left. All 62 plural strings parse + format with intl-messageformat (scratch check, 0 bad) |
+| O-4 | `19c643b8` | `ProductsClient.tsx` title block `max-sm:basis-full` ⇒ toolbar wraps under the title below sm |
+| O-5 | `432d91fe` | `ReportsOverview.tsx` top-products scroll box `relative` + table `min-w-[340px]` (was 400 — 5 px wider than the card at 1440, so "Margin" was cut) |
+| O-6 | `5fe9936a` | `TaxInvoiceDialog.tsx` segmented labels `whitespace-nowrap`; head-office radio `shrink-0` (auto width) so "สาขาที่" gets the rest; branch input `min-w-[6ch]` |
+| O-7 | `8767e192` | `StockShortcuts.tsx` bill movement without a line name ⇒ `history.saleRefBill` "บิล {receipt}" / "bill {receipt}" (no "-") |
+| O-8 | `96d8a07f` | `ReportsClient.tsx` `dayDate()` (day · short month · year, th-TH = BE): generated range line, daily + tax date cells, anomaly date cells (`AnomalyBody` gets `locale`) |
+| O-9 | `af03d813` | `reports.ts` staff CSV/print user-id cell: API-key sellers ("API: <name>") ⇒ `API …<last 6 of key id>` |
+| Q3 | `f37f3026` | `KdsScreen.tsx` "served today · last" label: built-in online channel names go through `channelDisplayName` (en "Chat"); "แชท" is the built-in CHAT name (`CHANNEL_BUILTIN_NAMES.CHAT`), not a shop-named channel |
+| Q4 | `ccbfb115` | `RegisterModeTabs.tsx` tables tab hidden when table mode is not visible for the actor/unit (no "เร็ว ๆ นี้"); RegisterScreen/InterimPayDialog untouched |
+| H1/H2 | `bf677aa4` (partial) | **not diagnosed to a single request — CONTROLLER-DECISION.** Without a served build (forbidden) the cashier-only request cannot be observed. Static read: the requests that can fire on the register while offline and are not gated on `navigator.onLine` are in `RegisterScreen.tsx` (P2.10 zero-hunk pin): `refreshStatus` 60 s interval + visibility (`RegisterScreen.tsx:≈853–866`, → `registerStatusAction` + `heartbeatAction`), `refreshPins` (`:≈611–622`, `listStaffForDeviceAction` — cashier/staff-PIN path, the strongest cashier-only candidate since the cashier run seeds staff PINs), `refreshHeld`, quote/benefits on cart change — any gate there needs a hunk in the pinned file ⇒ stopped. The only unpinned poller, `use-orders-badge.ts` (mode-tab badge, every 10 s), now skips while offline. Proposed next step: controller runs `--states --state offline --user cashier` on QC5 with request logging, or allows a gated hunk in RegisterScreen.tsx |
+| H5 | `f7193733` | `visual-pos.mts` p2.8u plan: `register-tab-badge` devices + "mobile". ⚠️ The state handler (`visual-pos.mts:≈7253–7261`) waits for `pos-reg-tab-online-orders` / `pos-reg-tab-orders-badge`, which are `hidden` below md — the 390 shot will fail as written; at 390 the badge is `pos-reg-mobile-orders`/`pos-reg-mobile-orders-badge` (UI-13, shown only when new orders > 0). The one-line rule kept me from branching the handler — controller call |
+
+### Gates (tree d @`f7193733` dirty 0, QC4 under `/tmp/shark-gate-pos.lock`, `/root/pos-runs/p214-builder/u2-20261016T153823Z/`)
+- qc-pos-p2.14 forced **59/60** — `failed:["P2.14-H3"]`: H3 reads the parity sheet's status column and accepts only `MATCH|DEVIATION|OPEN`; the sheet's money-screen rows carry `CTRL → §Controller verdicts` (81 rows "สถานะแปลก") — controller document vs oracle rule, not code (no oracle/sheet edit by me)
+- p2.4 50/50 · p2.5 49/49 · p2.12 33/33 · p2.8 61/61 · p1.13 33/33 · p1.14 30/30 · p2.11 34/34 · p2.6 67/67 · p1.3 128/128 · p2.10 13/13 · p1.18 81/81 · p2.1 55/55 (all forced, rc 0)
+- fitness-pos 0 · typecheck (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh pnpm exec tsc --noEmit`, 15:54:49 → 15:59:28, `HEAD-typecheck.txt head=f7193733 dirty=0`) **0**
+
+### Re-shoot list (QC5 tree d after rebuild · `--states --state …`)
+| wo | state | page | users | locales | why |
+|---|---|---|---|---|---|
+| p2.4u | tables-floor | tables | owner | th (390 · 1024 · 1440) + en 1440 | O-1 reserved card |
+| p2.4u | tables-panel-rounds | tables | owner | th + en 1440 | O-1 panel buttons (en) |
+| p2.5u | tables-split-equal | tables | owner | th 1024 (+1440/390) | O-2 |
+| p2.5u | tables-floor-split | tables | owner | en 1440 | O-3 plurals on the split chip/progress |
+| p2.8u | orders-mixed | orders | owner · cashier | en 1440 | O-3 "1 item" on order cards |
+| p2.8u | register-tab-badge | register | owner · cashier | th 1440 · 1024 · 390 | H5 (390 expected to fail — see H5) |
+| p2.6u | kds-expo | kds | owner | en 1440 (+th) | O-3 "Served today 1 ticket" · Q3 "Chat" |
+| p2.3u | products-recipe-view | products | owner | th 390 | O-4 header |
+| p2.2u / p1.18u | products default (`products`) | products | owner · cashier | th 390 + en 390 | O-4 |
+| p2.12u | reports-hourly | reports | owner | th + en 1440 | O-5 top products |
+| p2.12u | reports-staff-flag | reports | owner | en 1440 | O-5 |
+| p2.12u | reports-branches-tab | reports | owner | th 1024 | O-8 range |
+| p2.12u | reports-anomalies | reports | owner | th 390 | O-8 date cells |
+| p1.17 | reports default (daily) | reports | owner | th + en | O-8 daily date cells |
+| p2.12u | reports-print-overview (+ staff print) | reports/print | owner | th 1440 | O-9 |
+| p1.3 | taxinvoice-dialog | register | owner | th 1440 | O-6 |
+| p2.11u | stock-shared-inventory | stock | manager | en 1440 | O-7 |
+| p1.14 | stock-default | stock | owner | th + en | O-7 history rows |
+| p1.3 | default · offline | register | cashier | th 1440 · 1024 · 390 | Q4 (no "เร็ว ๆ นี้" tab) · H1 |
+| p2.4u | register-table-mode | register | owner | th 1440 | Q4 control (tables tab still shown when table mode is on) |
