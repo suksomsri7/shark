@@ -3355,7 +3355,9 @@
         "channels": "Channels",
         "notSold": "Not sold",
         "legend": "Bold = price set · muted = regular price · — = no price yet",
-        "capped": "Showing {shown} of {total} products (at most {max} at a time)"
+        "capped": "Showing {shown} of {total} products (at most {max} at a time)",
+        "chipOwn": "Set here",
+        "chipInherited": "All branches"
       },
       "incomplete": "Products of branch {unit} are not fully loaded",
       "conflict": "This product's prices were changed elsewhere — reload"

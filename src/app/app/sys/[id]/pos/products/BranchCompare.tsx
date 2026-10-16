@@ -106,7 +106,22 @@ export function BranchCompare({ systemId, units, channels, products, nameOf, onC
     if (!c) return <span className="text-[color:var(--color-muted)]">—</span>;
     if (c.refusal === "CHANNEL_NOT_SOLD") return <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("notSold")}</span>;
     if (c.refusal === "PRICE_NOT_SET" || c.unitPriceSatang === null) return <span className="text-[color:var(--color-muted)]">—</span>;
-    return <span className={`tabular-nums ${c.source === "BASE" ? "text-[color:var(--color-muted)]" : "font-bold"}`}>{moneyText(c.unitPriceSatang)}</span>;
+    const price = <span className={`tabular-nums ${c.source === "BASE" ? "text-[color:var(--color-muted)]" : "font-bold"}`}>{moneyText(c.unitPriceSatang)}</span>;
+    // POS HF-FU2 ▸ PRC-3 (มติ 6): ป้ายที่มาของแถวราคาที่ชนะ (c.origin จาก unitPriceMatrix) — "own" = ตั้งที่สาขานี้ · "inherited" = สืบจากแถวทุกสาขา · null = ราคาปกติ (ไม่มีป้าย) ◂
+    if (c.origin !== "own" && c.origin !== "inherited") return price;
+    return (
+      <span className="inline-flex items-center justify-end gap-1.5">
+        {/* POS HF-FU2 ▸ PRC-3 ◂ */}
+        <span
+          data-testid={`pos-prod-compare-origin-${p.id}-${unitId}-${code}`}
+          data-origin={c.origin}
+          className={`rounded-full border px-1.5 py-px text-[10.5px] font-semibold leading-4 ${c.origin === "own" ? "border-[color:var(--color-ink)] text-[color:var(--color-ink)]" : "text-[color:var(--color-muted)]"}`}
+        >
+          {c.origin === "own" ? t("chipOwn") : t("chipInherited")}
+        </span>
+        {price}
+      </span>
+    );
   };
 
   return (
