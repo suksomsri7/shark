@@ -278,9 +278,17 @@ async function pushUser(tenantId: string, userId: string, emp: { employeeId: str
       for (let i = 0; i < PERIOD_HOPS_MAX && runs.has(p); i++) p = nextPeriodKey(p);
       return p;
     };
+    // POS P3.5 ▸ fix2 N3: งวดเป้าหมายไม่ย้อนไปก่อนประวัติรอบจ่าย = max(งวดว่างแรกตั้งแต่เดือนของแถว, เดือนถัดจากรอบล่าสุด)
+    //   (เดือนเก่าที่ไม่มีรอบ ขณะที่เดือนหลังมีรอบแล้ว = งวดที่ HR จะไม่มีวันรัน) ◂
+    const lastRun = [...runs].sort().pop();
+    const floor = lastRun ? nextPeriodKey(lastRun) : null;
+    const targetOf = (pk: string) => {
+      const t = freeFrom(pk);
+      return floor && floor > t ? floor : t;
+    };
     const groups = new Map<string, typeof rows>();
     for (const r of rows) {
-      const t = freeFrom(r.periodKey);
+      const t = targetOf(r.periodKey);
       groups.set(t, [...(groups.get(t) ?? []), r]);
     }
     let adjustments = 0;
