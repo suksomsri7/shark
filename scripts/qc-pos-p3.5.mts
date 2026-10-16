@@ -73,6 +73,7 @@ const CHECKS: readonly Def[] = [
   D("SG8", "X5", "[R4 มติ 4] override: C1 08:00 + managerUserId MGR + managerPin ⇒ ✓ expiresAt = 08:00 + 240 นาที · audit pos.staff.schedule_override 1 แถว {userId C1, byUserId MGR, reason OUTSIDE_HOURS, deviceId} · audit schedule_denied ต่อการปฏิเสธหลัง PIN ถูกที่ระบุคน 1:1 (C1 08:00 · C1 17:31 · C3 · C4 · C5 · C1 03:00) · audit ไม่มี PIN · C2 อ้างเป็น \"ผู้จัดการ\" ⇒ PERMISSION_DENIED ไม่มีโทเคน/override"),
   D("SG9", "X3", "[R4 P1.15 F2] override ด้วย managerPin ผิด ⇒ PIN_INVALID · failedCount ของ MGR +1 · ของ C1 ไม่เปลี่ยน · ไม่มีโทเคน · ไม่มี audit override เพิ่ม"),
   D("SG10", "X2", "[R4 มติ 6 R13] PIN แบบไม่ระบุคนของ C3 (วันหยุด) ⇒ PIN_INVALID ข้อความเดียวกับ PIN ผิดจริง ไม่มี reason/window · ร้าน T2 (ไม่มีระบบ HR · ด่านเปิด) 03:00 ⇒ ✓ · refusalMessageKey(OFF_SCHEDULE ALREADY_CLOCKED NO_EMPLOYEE) ไม่ใช่ errors.unknown · ไม่ซ้ำ · th ไทย / en มี"),
+  D("SG11", "X2", "[fix2 N5 = R1-F2 · ORACLE-ADD ผู้คุม 17 ต.ค.] PIN แบบไม่ระบุคนของ C3 (นอกตาราง) ×N ที่เครื่องเดียว ⇒ PIN_INVALID ทุกครั้ง + แถว pos.staff.pin_failed N แถวของเครื่องนั้น (ตัวนับเห็นเหมือน PIN ผิด) · ครั้งที่ N+1 (PIN C1 ถูก · ในเวลา) ⇒ PIN_THROTTLED"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N5)
   // ── LS รายชื่อจอล็อก ──
   D("LS1", "-", "[R5 R1] listStaffForDevice(…, {now 12:00}): C1 hr {schedule {540,1020}, onLeave false, inSchedule true} · C2 {schedule null, onLeave false (PENDING ไม่นับ), inSchedule null} · C3/C5 inSchedule false · C4 onLeave true inSchedule false · C6 ไม่มี hr หรือ {null,false,null} · facade onShiftToday: hrLinked true · C1 {employeeId, active true, onLeave false, schedule {540,1020,15,dayOff false}} · C6 ไม่อยู่ใน items · T2 hrLinked false items []"),
   D("LS2", "X2", "[R5 privacy L] รายการจอล็อกไม่มีชนิด/เหตุผลการลา/เงิน: hr มีแค่ schedule onLeave inSchedule · schedule มีแค่ startMin endMin · ไม่มีคีย์ /ommission|salary|satang|reason|leaveType/ ทั้งก้อน · ร้าน T2 (ไม่มี HR) ไม่มีคีย์ hr"),
@@ -1280,6 +1281,24 @@ async function runDb() {
       if (new Set(keys.map(([, k]) => k)).size !== keys.length) p.push("คีย์ข้อความซ้ำกัน");
     }
     chk("SG10", !fx && p.length === 0, "ไม่ระบุคน = PIN_INVALID ไม่รั่ว · T2 ✓ · ข้อความ 3 รหัส", FX(P8(p) || "ครบ"));
+  }
+  // SG11 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N5): ปฏิเสธนอกตารางแบบไม่ระบุคน ต้องกินโควตาด่านกันเดาเหมือน PIN ผิด
+  {
+    const p: string[] = [];
+    const dev = DEV[2]!;
+    const N = typeof regShared?.STAFF_PIN_DEVICE_THROTTLE_AFTER === "number" ? (regShared.STAFF_PIN_DEVICE_THROTTLE_AFTER as number) : 10;
+    for (let i = 0; i < N; i++) {
+      const r = await call(staffMod, "verifyStaffPin", ctxA(dev), { unitId: U.A, deviceId: dev, pin: PIN.C3 }, undefined, { now: NOW0 });
+      if (!(r?.ok === false && r.code === "PIN_INVALID" && !r.staffToken)) {
+        p.push(`ครั้งที่ ${i + 1} → ${codeOf(r)} (คาด PIN_INVALID)`);
+        break;
+      }
+    }
+    const failedRows = ((await P.auditLog.findMany({ where: { tenantId: T, action: "pos.staff.pin_failed" } }).catch(() => [])) as Any[]).filter((a) => a.after?.deviceId === dev);
+    if (failedRows.length !== N) p.push(`แถว pin_failed ของเครื่อง ${failedRows.length} (คาด ${N})`);
+    const next = await call(staffMod, "verifyStaffPin", ctxA(dev), { unitId: U.A, deviceId: dev, pin: PIN.C1 }, undefined, { now: NOW0 });
+    if (!(next?.ok === false && next.code === "PIN_THROTTLED")) p.push(`ครั้งที่ ${N + 1} (PIN C1 ถูก) → ${codeOf(next)} (คาด PIN_THROTTLED)`);
+    chk("SG11", !fx && p.length === 0, "นอกตารางแบบไม่ระบุคน = กินโควตาเหมือน PIN ผิด", FX(P8(p) || `ครบ (N = ${N})`));
   }
 
   // ════════ LS รายชื่อจอล็อก ════════
