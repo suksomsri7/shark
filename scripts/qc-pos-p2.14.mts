@@ -74,6 +74,7 @@ const CHECKS: readonly Def[] = [
   D("A11", "A", "[C10 API-11 มติ 8] CSV daily มีคอลัมน์ จำนวนคืนเงิน · ยอดคืนเงิน = refundCount / refundTotalSatang ของ JSON (วันที่มีใบคืน)"),
   // ── D จอลูกค้า ──
   D("D1", "D", "[F3 DSP-1 มติ 9] แคชเชียร์บนเครื่อง X (ctx.deviceId X) ส่งภาพให้จอของ Y → จอ Y ไม่ถูกเขียน · ctx ไม่มี deviceId → ไม่เขียน · ตัวควบคุม: deviceCode X จาก X → เขียนจอ X"),
+  D("D1b", "D", "[fix1 H4 DSP-1b] ผ่าน publishDisplayStateAction (session จริง): แคชเชียร์ (ไม่มีกะ) และเจ้าของ (กะ OPEN ที่ X) ส่ง {deviceId:Y, deviceCode:Y} ปลอม → DEVICE_NOT_REGISTERED · จอ Y ไม่เปลี่ยน · ตัวควบคุม: เจ้าของ deviceCode X → เขียนจอ X"), // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 H4 · D1b)
   // ── Q QR / สั่งล่วงหน้า ──
   D("Q1", "Q", "[F5 QR-1a มติ 9] ออเดอร์ PREPAID ที่ไม่มีใครรับ เงินเข้าเกิน 24 ชม. → expirePreorders → CANCELLED · PosOrderEvent expired_paid 1 · ops pos.payment.refund_needed 1 · หน้าสถานะ refundPending true · acceptOrder หลังนั้นไม่ใช่ INTENT_EXPIRED ค้าง"),
   D("Q2", "Q", "[F5 QR-1b] ออเดอร์ held (พักครัว) ที่รับเข้าเมื่อวาน → releaseHeldOrders → ACCEPTED (ไม่จำกัดต้นวันนี้)"),
@@ -1875,6 +1876,29 @@ async function runDb() {
     const x3 = Number((await rowOf(DEV1))?.stateSeq ?? -1);
     if (r3?.ok !== true || r3?.written !== true || x3 !== seq + 2) p.push(`(ตัวควบคุม) X → จอ X ${short(r3, 60)} seq ${x3}`);
     chk("D1", !fx && p.length === 0, "จอผูกเครื่องของ ctx · X เขียนจอ Y ไม่ได้", why(p));
+  });
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 H4 · D1b) ▸ ผ่าน action จริง — เครื่องมาจากเซิร์ฟเวอร์ (กะ OPEN ของผู้ใช้) ไม่ใช่ args ◂
+  await run("D1b", async () => {
+    const p: string[] = [];
+    const dispActs = await tryImport("@/lib/modules/pos/display-actions");
+    const path = `/app/sys/${S.POS}/pos/register`;
+    const rowOf = async (dev: string): Promise<Any> => P.posCustomerDisplay.findFirst({ where: { tenantId: T, deviceId: DEVID[dev] ?? "none", status: "ACTIVE" } }).catch(() => null);
+    const state = { phase: "cart", lines: [{ qty: 1, name: "น้ำเปล่า", grossSatang: 1000, discountSatang: 0 }], totals: { subtotalSatang: 1000, lineDiscountSatang: 0, billDiscountSatang: 0, serviceChargeSatang: 0, grandTotalSatang: 1000 } };
+    if (!(await rowOf(DEV2)) || !(await rowOf(DEV1))) p.push("(fixture) จอ X/Y ไม่ได้จับคู่ (D1)");
+    const ckCash = await cookieOf("CASH");
+    const y0 = Number((await rowOf(DEV2))?.stateSeq ?? -1);
+    const seq = Math.floor(Date.now() / 1000) + 100;
+    const base = { systemId: S.POS, unitId: U.A, seq, state };
+    const rc = await act(ckCash, path, dispActs, "publishDisplayStateAction", { ...base, deviceId: DEV2, deviceCode: DEV2 });
+    const ro = await act(CK.OWNER ?? "", path, dispActs, "publishDisplayStateAction", { ...base, seq: seq + 1, deviceId: DEV2, deviceCode: DEV2 });
+    const y1 = Number((await rowOf(DEV2))?.stateSeq ?? -1);
+    if (rc?.code !== "DEVICE_NOT_REGISTERED") p.push(`แคชเชียร์ปลอม Y → ${short(rc, 60)} (คาด DEVICE_NOT_REGISTERED)`);
+    if (ro?.code !== "DEVICE_NOT_REGISTERED") p.push(`เจ้าของ (กะ X) ปลอม Y → ${short(ro, 60)} (คาด DEVICE_NOT_REGISTERED)`);
+    if (y1 !== y0) p.push(`จอ Y เปลี่ยน seq ${y0}→${y1}`);
+    const rx = await act(CK.OWNER ?? "", path, dispActs, "publishDisplayStateAction", { ...base, seq: seq + 2, deviceCode: DEV1 });
+    const x1 = Number((await rowOf(DEV1))?.stateSeq ?? -1);
+    if (rx?.ok !== true || rx?.written !== true || x1 !== seq + 2) p.push(`(ตัวควบคุม) เจ้าของ X → จอ X ${short(rx, 60)} seq ${x1}`);
+    chk("D1b", !fx && p.length === 0, "action ใช้เครื่องจากกะของผู้ใช้ · deviceId ปลอมไม่มีผล", why(p));
   });
 
   // ════════════════ Q QR / สั่งล่วงหน้า ════════════════
