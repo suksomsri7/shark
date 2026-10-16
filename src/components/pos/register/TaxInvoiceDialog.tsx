@@ -240,7 +240,7 @@ export function TaxInvoiceDialog(p: Props) {
   };
 
   const seg = (on: boolean) =>
-    `flex h-11 flex-1 items-center justify-center gap-2 rounded-[10px] px-3 text-[14px] transition-colors ${
+    `flex h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] px-3 text-[14px] transition-colors ${ /* POS P2.14 ▸ U2 O-6: ป้ายบรรทัดเดียว ◂ */
       on ? "bg-[color:var(--color-surface)] font-bold text-[color:var(--color-ink)] shadow-[0_0_0_1px_var(--color-line)]" : "text-[color:var(--color-ink-soft)]"
     }`;
   const label = "text-[12.5px] font-bold text-[color:var(--color-ink)]";
@@ -439,7 +439,7 @@ export function TaxInvoiceDialog(p: Props) {
                 <div className="flex gap-2">
                   <button
                     data-testid="pos-taxinv-branch-hq"
-                    className={`flex h-12 flex-1 items-center gap-2 rounded-[11px] border px-3 text-[13.5px] ${hq ? "border-[1.5px] border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-ink-soft)]"}`}
+                    className={`flex h-12 shrink-0 items-center gap-2 whitespace-nowrap rounded-[11px] border px-3 text-[13.5px] ${hq ? "border-[1.5px] border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-ink-soft)]"}`} /* POS P2.14 ▸ U2 O-6: กว้างตามป้าย (ช่องสาขาที่ได้ที่เหลือ) ◂ */
                     type="button"
                     role="radio"
                     aria-checked={hq}
@@ -472,11 +472,11 @@ export function TaxInvoiceDialog(p: Props) {
                       <span className={`grid size-4 shrink-0 place-items-center rounded-full border-2 ${!hq ? "border-[color:var(--color-ink)]" : "border-[color:var(--color-line)]"}`}>
                         {!hq ? <span className="size-2 rounded-full bg-[color:var(--color-ink)]" /> : null}
                       </span>
-                      <span className={!hq ? "font-bold" : ""}>{t("branchNo")}</span>
+                      <span className={`whitespace-nowrap ${!hq ? "font-bold" : ""}` /* POS P2.14 ▸ U2 O-6 ◂ */}>{t("branchNo")}</span>
                     </button>
                     <input
                       data-testid="pos-taxinv-branch-code"
-                      className="h-9 w-full min-w-0 border-b border-dashed border-[color:var(--color-line)] bg-transparent text-[14px] tabular-nums outline-none"
+                      className="h-9 w-full min-w-[6ch] border-b border-dashed border-[color:var(--color-line)] bg-transparent text-[14px] tabular-nums outline-none" /* POS P2.14 ▸ U2 O-6: กว้างพอเลขสาขา 5 หลัก ◂ */
                       inputMode="numeric"
                       autoComplete="off"
                       placeholder="_____"
