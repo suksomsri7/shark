@@ -65,7 +65,7 @@ const CHECKS: readonly Def[] = [
   D("AN11", "X5", "[§3 มติ 3] settings.pos.reports.anomaly: posAnomalyThresholds ค่าปริยาย + ตัดช่วง (นอกช่วง = ขอบ · ไม่ใช่จำนวนเต็ม = ค่าปริยาย · คีย์แปลกไม่สน) · updatePosGeneralSettings {anomaly} รวมทับบางส่วน + audit pos.settings.updated · ค่าเดิม = ไม่ลง audit · ผิดช่วง/คีย์แปลก → VALIDATION field ไม่เขียนอะไร · ผู้จัดการ A → PERMISSION_DENIED · dayCutoffMinutes กับ anomaly ไม่ทับกัน · A3 1400 → O ที่ B ขึ้นแถว · 1600 → K หาย · enabled false → rows []"),
   D("AN12", "X3", "[§3 มติ 4 PDPA] พนักงานมี pos.report.view ไม่มี pos.report.anomaly → PERMISSION_DENIED ทั้งตัวอ่าน · CSV · print action · มี anomaly ไม่มี view → PERMISSION_DENIED · พนักงาน A มีทั้งสอง → แถว A เท่านั้น · ผู้จัดการ A → แถว A เท่านั้น · ร้าน T2 NOT_FOUND · แถวมีแค่คีย์ในสัญญา (ไม่มี email/phone) · userName = ชื่อแสดงผล · เรียง กฎ→สาขา→วัน→ผู้ใช้→ref · totals.rowCount/byRule"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ AN13 (hunter H1) · AN14 (hunter H2) ◂
-  D("AN13", "X4", "[fix1 H1] A3/A4 วัดส่วนลดที่พนักงานคุมได้ (Σ ส่วนลดบรรทัด + ท้ายบิล − คูปอง − สมาชิก) · ฐาน A4 = ยอดก่อนส่วนลดบรรทัด: วัน DA สาขา B บิล L1 (2 บรรทัด · บรรทัดแรกลด 100%) → แถว A4 value 5000 · บิล Q1 (คูปอง ฿60 อย่างเดียว) → ไม่มีแถว A4 · A3 ของ O ที่ B นับส่วนลดบรรทัด (value 7143 · 2 บิล)"),
+  D("AN13", "X4", "[fix1 H1] A3/A4 วัดส่วนลดที่พนักงานคุมได้ (Σ ส่วนลดบรรทัด + ท้ายบิล − คูปอง − สมาชิก) · ฐาน A4 = ยอดก่อนส่วนลดบรรทัด: วัน DA สาขา B บิล L1 (2 บรรทัด · บรรทัดแรกลด 100%) → แถว A4 value 5000 · บิล Q1 (คูปอง ฿60 อย่างเดียว) → ไม่มีแถว A4 · A3 ของ O ที่ B นับส่วนลดบรรทัด (value 7143 · 2 บิล) · [P2.14 RPT-4] บิล M1 ส่วนลดสมาชิกล้วน (วัน DM) ไม่ขึ้น A4 และไม่ทำให้ O/B ขึ้น A3"), // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 RPT-4)
   D("AN14", "X4", "[fix1 H2] ตัดแถวต่อกฎ: ช่วง DA–วันนี้ แถว A4 > limit (= จำนวนกฎที่มีแถว) → ทุกกฎยังอยู่ (A8 ไม่หาย) · แต่ละกฎ ≤ ⌈limit/กฎ⌉ · ≤ limit แถว · ลำดับเดิม · totals = ไม่ตัด · แถว CSV ท้าย = \"แสดง N จาก M แถว\" · แบบพิมพ์ notice เดียวกัน (ไม่อยู่ในแถว) · ไม่ตัด = ไม่มีบรรทัดแจ้ง"),
   // ── PD แบบพิมพ์ ──
   D("PD1", "PAR", "[§4 มติ 2] buildReportPrint ทุกชนิดใน REPORT_KINDS (11): kind/from/to/locale/generatedAt/shopName/unitLabel ตามอินพุต · headers = CSV_HEADERS[kind] · rows = แถว CSV ของ reportCsv ช่วงเดียวกันทีละช่อง · title th มีอักษรไทย · en: title ไม่มีอักษรไทย ≠ th · จำนวนหัว/แถวเท่า th"),
@@ -1030,6 +1030,12 @@ async function runDb() {
   const XS: Sold[] = [];
   for (let i = 0; i < 10; i++) XS.push(await sell(`X${i + 1}`, "B", owner, [pl("P")], { billDiscount: { type: "AMOUNT", value: 5000 } }));
   moves.push([L1.saleId, bkk(DA, "12:00")], [Q1.saleId, bkk(DA, "12:05")], ...XS.map((x, i): [string, Date] => [x.saleId, bkk(DB, `12:${String(i).padStart(2, "0")}`)]));
+  // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 RPT-4) ▸ AN13 ครึ่งสมาชิก: M1 = P ลดท้ายบิล ฿30 ที่เป็นสิทธิ์สมาชิกล้วน (memberBenefits TIER 3000) วัน DM = วันนี้−8 (นอกทุกช่วงของข้อเดิม เหมือน DA/DB) ◂
+  const DM = addDays(TD, -8);
+  const M1 = await sell("M1", "B", owner, [pl("P")], { billDiscount: { type: "AMOUNT", value: 3000 } });
+  if (M1.saleId) await step("สิทธิ์สมาชิกของ M1", () => P.$executeRawUnsafe(`UPDATE "PosSale" SET "memberBenefits" = $2::jsonb WHERE id = $1 AND "tenantId" = $3`, M1.saleId, JSON.stringify({ lines: [{ kind: "TIER", ref: `qc212-${RAND}`, label: "Gold", discountSatang: 3000 }], pointsBurned: 0 }), T));
+  moves.push([M1.saleId, bkk(DM, "12:00")]);
+  // ◂ ORACLE-ADD
   await moveAll();
   // A8/A9 — กะทดสอบที่เครื่อง S1 (M ขาด ฿100 · M ขาด ฿99.99 · K ขาด ฿50) · S2 (O · ระบบปิด + นับย้อนหลังเกิน ฿100)
   const SH: Record<string, string> = {};
@@ -1578,7 +1584,16 @@ async function runDb() {
     if (!o3 || o3.value !== want3 || o3.count !== 2 || a3.length !== 1) p.push(`A3 O ที่ B → ${short(o3 ? { value: o3.value, count: o3.count } : "ไม่มีแถว", 60)} (คาด value ${want3} count 2) · A3 ${a3.length} แถว`);
     const other = rows.filter((x) => x?.rule !== "A3" && x?.rule !== "A4");
     if (other.length) p.push(`แถวกฎอื่นในวัน DA ${other.map((x) => x?.rule).join(",")}`);
-    chk("AN13", !fx && p.length === 0, "A4 = L1 (ลดบรรทัด 100% · 5000) · Q1 คูปองอย่างเดียวไม่มี · A3 O/B 7143 × 2 บิล", FX(NOTE() + (P8(p) || "ครบ")));
+    // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 RPT-4) ▸ ครึ่งสมาชิก: บิลที่ส่วนลดเป็นสิทธิ์สมาชิกล้วน (M1 · วัน DM) ไม่ขึ้นแถว A4 และไม่ทำให้ O ที่ B ขึ้น A3 (ส่วนลดพนักงาน 0) ◂
+    const rM = M1.saleId ? raw(M1.saleId) : undefined;
+    if (!rM || rM.subtotalSatang !== 10_000 || rM.discountSatang !== 3000 || bizDate(rM.createdAt) !== DM) p.push(`fixture M1 ${short(fxv(rM), 60)}`);
+    const rm = await rep("reportAnomalies", undefined, owner, DM, DM);
+    const mRows: Any[] = rm?.ok === true ? (rm.report?.rows ?? []) : [];
+    if (rm?.ok !== true) p.push(`reportAnomalies DM → ${codeOf(rm)}`);
+    if (mRows.some((x) => x?.rule === "A4" && x?.refId === M1.saleId)) p.push("A4 บิลสิทธิ์สมาชิกล้วน (M1) ขึ้นแถว");
+    if (mRows.some((x) => x?.rule === "A3" && x?.unitId === U.B && x?.userId === O)) p.push("A3 O ที่ B ขึ้นแถวจากส่วนลดสมาชิกล้วน (M1)");
+    // ◂ ORACLE-ADD
+    chk("AN13", !fx && p.length === 0, "A4 = L1 (ลดบรรทัด 100% · 5000) · Q1 คูปองอย่างเดียวไม่มี · A3 O/B 7143 × 2 บิล · M1 สมาชิกล้วนไม่ขึ้น A3/A4", FX(NOTE() + (P8(p) || "ครบ")));
   }
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ AN14 (H2) ตัดแถวต่อกฎ + บรรทัดแจ้ง ◂
   {
