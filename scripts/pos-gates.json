@@ -355,7 +355,10 @@
         "reason": "crashes at base 64923c13 (reading 'slice') — account-api lane fixes it; run on that lane before deploy",
         "owner": "account-api (ACCOUNT-API lane)",
         "opRef": "P2.14 CD-B7 account-api ai-external",
-        "evidence": "controller base run /root/pos-runs/aiext-base-c-20261016T064733Z/qc-account-api-ai-external.log (same crash at 64923c13)"
+        "evidence": "controller base run /root/pos-runs/aiext-base-c-20261016T064733Z/qc-account-api-ai-external.log (same crash at 64923c13)",
+        "checks": [
+          "CRASH"
+        ]
       }
     },
     {
@@ -365,7 +368,14 @@
         "reason": "QC4 seed tenant has no account system ('ยังไม่ได้เปิดระบบบัญชี') — seed-only failure; account-api lane runs it on the acc-v2 seed before deploy",
         "owner": "account-api (ACCOUNT-API lane)",
         "opRef": "P2.14 CD-B7 account-api ai-skill",
-        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-account-api-ai-skill.log (E1-K2.x act 'ยังไม่ได้เปิดระบบบัญชี') · green run = ACCOUNT-API lane"
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-account-api-ai-skill.log (E1-K2.x act 'ยังไม่ได้เปิดระบบบัญชี') · green run = ACCOUNT-API lane",
+        "checks": [
+          "E1-K2.1",
+          "E1-K2.3",
+          "E1-K2.5",
+          "E1-K2.6",
+          "E1-K2.8"
+        ]
       }
     },
     {
@@ -392,7 +402,10 @@
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (QC4 has no acc-v2 seed tenant: setup crash 'ไม่พบระบบที่จะผูกคีย์ในร้านนี้' · run 16 Oct p214-builder/accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
         "opRef": "acc-v2-seed account-api ×5",
-        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
+        "checks": [
+          "CRASH"
+        ]
       }
     },
     {
@@ -403,7 +416,10 @@
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
         "opRef": "acc-v2-seed account-api ×5",
-        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
+        "checks": [
+          "CRASH"
+        ]
       }
     },
     {
@@ -414,7 +430,10 @@
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
         "opRef": "acc-v2-seed account-api ×5",
-        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
+        "checks": [
+          "CRASH"
+        ]
       }
     },
     {
@@ -425,7 +444,10 @@
         "reason": "needs acc-v2 seed — green on the ACCOUNT-API lane (same setup crash on QC4 · run 16 Oct accv2-20261016T045411Z)",
         "owner": "account-api (ACCOUNT-API lane · acc-v2 seed owner)",
         "opRef": "acc-v2-seed account-api ×5",
-        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy"
+        "evidence": "QC4 crash evidence /root/pos-runs/p214-builder/accv2-20261016T045411Z · green run = ACCOUNT-API lane (acc-v2 seed) before deploy",
+        "checks": [
+          "CRASH"
+        ]
       }
     },
     {
@@ -436,7 +458,18 @@
         "reason": "needs a served build — account-api lane runs it before deploy (POS lanes never build/serve; also needs the acc-v2 seed)",
         "owner": "account-api (ACCOUNT-API lane)",
         "opRef": "acc-v2-seed account-api ×5",
-        "evidence": "QC4 0/9 /root/pos-runs/p214-builder/accv2-20261016T045411Z · gate set p214-close-shark-pos-d-20261016T053356Z · green run = ACCOUNT-API lane with acc-v2-serve.sh"
+        "evidence": "QC4 0/9 /root/pos-runs/p214-builder/accv2-20261016T045411Z · gate set p214-close-shark-pos-d-20261016T053356Z · green run = ACCOUNT-API lane with acc-v2-serve.sh",
+        "checks": [
+          "S1.1",
+          "S1.2",
+          "S1.3",
+          "S1.4",
+          "S1.5",
+          "S1.6",
+          "S1.7",
+          "S1.8",
+          "CRASH"
+        ]
       }
     },
     {
@@ -479,7 +512,23 @@
         "reason": "QC4 has no acc-v2 seed (SIAM DIVE QC shop) and POS lanes must not reseed QC4; PL1.x document assertions read 0 documents (65/79 since P1, HANDOVER-2026-10-10-POS-P1.md §2).",
         "owner": "account module (acc-v2 seed owner)",
         "opRef": "qc-acc-v2-pos-lines",
-        "evidence": "HANDOVER-2026-10-10-POS-P1.md §2 (R14 exception, 65/79 since P1) · gate set p214-close-shark-pos-d-20261016T053356Z/qc-acc-v2-pos-lines.log (PL1.x 0 documents)"
+        "evidence": "HANDOVER-2026-10-10-POS-P1.md §2 (R14 exception, 65/79 since P1) · gate set p214-close-shark-pos-d-20261016T053356Z/qc-acc-v2-pos-lines.log (PL1.x 0 documents)",
+        "checks": [
+          "PL1.1",
+          "PL1.2",
+          "PL1.3",
+          "PL1.4",
+          "PL1.6",
+          "PL1.7",
+          "PL1.11",
+          "PL1.15",
+          "PL1.17",
+          "PL10.3",
+          "PL10.4",
+          "PL10.5",
+          "PL10.6",
+          "PL10.7"
+        ]
       }
     },
     {
@@ -490,7 +539,10 @@
         "reason": "Setup crash on QC4: TypeError reading 'role' of null — member-expected.json does not match the QC4 member seed; POS must not reseed.",
         "owner": "member module",
         "opRef": "qc-member-m2.6/m2.7/m2.8",
-        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.6.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.6.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
+        "checks": [
+          "M2.6-ERR"
+        ]
       }
     },
     {
@@ -501,7 +553,10 @@
         "reason": "Setup crash on QC4 (same as m2.6): member seed on QC4 does not match member-expected.json.",
         "owner": "member module",
         "opRef": "qc-member-m2.6/m2.7/m2.8",
-        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
+        "checks": [
+          "M2.7-ERR"
+        ]
       }
     },
     {
@@ -512,7 +567,10 @@
         "reason": "Setup crash on QC4 (same as m2.6): member seed on QC4 does not match member-expected.json.",
         "owner": "member module",
         "opRef": "qc-member-m2.6/m2.7/m2.8",
-        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.8.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m2.8.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
+        "checks": [
+          "M2.8-ERR"
+        ]
       }
     },
     {
@@ -523,7 +581,10 @@
         "reason": "Setup crash on QC4 (seed does not match member-expected.json) — S6.2/S6.3 never ran; p1.18 K4b covers the core rule meanwhile.",
         "owner": "member module",
         "opRef": "m1.7 ล้มตอน setup บน QC4",
-        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m1.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane"
+        "evidence": "gate set p214-close-shark-pos-d-20261016T053356Z/qc-member-m1.7.log ('Cannot read properties of null (reading role)' at fixture) · R14 exception HANDOVER-2026-10-10-POS-P1.md §2 · green run = member lane",
+        "checks": [
+          "M1.7-ERR"
+        ]
       }
     }
   ],
