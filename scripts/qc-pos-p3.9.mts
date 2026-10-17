@@ -53,7 +53,7 @@ const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของใบ (ฐานของ brief · ST4/ST5 เทียบไฟล์ที่ห้าม/จำกัดการแก้) */
-const PIN = process.env.P39_PIN || "683a7cc8"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2 · P3.9 merge · ST4 pin 72669941 → 683a7cc8)
+const PIN = process.env.P39_PIN || "8bded5a7"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2: หมุด = ฐานก่อน P3.9 ที่รวม P3.4/P3.5 แล้ว · ST1/ST5 เห็นการเปลี่ยนแปลงของใบ · ST4 เทียบ prisma/register/service/outbox)
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · T tool อ่าน/ด่าน · P ข้อเสนอ/เขียน · A จุดผิดปกติ · B สรุปเช้า · V ความเป็นส่วนตัว · Z คืนสภาพ
@@ -107,7 +107,7 @@ const CHECKS: readonly Def[] = [
   D("PV3", "V", "[R1 มติ 1] งานภายใน scheduled-task (aiSystemActor) เรียก sales_summary → ปฏิเสธ (ไม่มียอด)"),
   D("PV4", "V", "[R2 §5] ไม่มีไฟล์ \"use client\" import ai-brief.ts / ai-insights.ts / pos/api/tools.ts · ไฟล์ใหม่ไม่อ่าน commission / hr / staffCommission"),
   // ── ST สถิต ──
-  D("ST1", "S", "[R1 มติ 1 · F13.15] op ที่ประกาศ tool = TOOL_SPEC (11 · ชื่อตรง) · op 48 ตัว · skills.ts sales.tools = SALES_TOOLS · fitness F13.15 ไม่ตรึง \"ไม่มี tool\" แล้ว"),
+  D("ST1", "S", "[R1 มติ 1 · F13.15] op ที่ประกาศ tool = TOOL_SPEC (11 · ชื่อตรง) · op 49 ตัว (หลัง P3.4) · skills.ts sales.tools = SALES_TOOLS · fitness F13.15 ไม่ตรึง \"ไม่มี tool\" แล้ว"),
   D("ST2", "S", "[R1] pos/api/tools.ts export 7 ชื่อ · ไม่ import @/lib/ai/* · ไม่ import prisma ดิบ · ai/tools-pos.ts export posTools · ai/tools.ts ...posTools() + ไม่มี tool เขียนมือชื่อ sales_summary/sales_by_day"),
   D("ST3", "S", "[⚠️8 p2.8 ST6] src/lib/modules/pos/** ไม่ import @/lib/modules/chat · @/lib/modules/shop · @/lib/ai/*"),
   D("ST4", "S", "[§3 มติ 10] ไม่มี diff เทียบหมุด ใน prisma/ · pos/register*.ts · pos/service.ts · pos/refund*.ts · outbox-consumers.ts · pos-sale-contract.json (+ ไม่มีไฟล์ใหม่ใต้ prisma/)"),
@@ -142,7 +142,7 @@ const TOOL_SPEC: readonly ToolSpec[] = [
   ["products.availability", "pos_set_availability", "write", "pos.sale.create"],
   ["sales.void", "void_sale", "danger", "pos.sale.void"],
 ];
-const OP_COUNT = 48;
+const OP_COUNT = 49; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2: P3.4 sync.sales merged before P3.9 — 48 → 49 ops)
 const LEGACY_SALES = ["sales_summary", "sales_by_day", "pos_create_sale", "void_sale", "record_expense", "financial_summary"];
 const NEW_SALES = ["pos_top_products", "pos_shift_report", "pos_shift_now", "pos_anomalies", "pos_hourly", "pos_find_product", "pos_set_price", "pos_set_availability", "pos_draft_po"];
 const SALES_TOOLS = [...LEGACY_SALES, ...NEW_SALES];
