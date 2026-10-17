@@ -338,3 +338,25 @@ export async function listTaskTargetBoards(
 export async function integrationsActor(ctx: KanbanCtx): Promise<KanbanActor | null> {
   return loadActor(ctx);
 }
+
+// POS P3.8 ▸ SO3 (CD-P38-B1 · ผู้คุม POS 17 ต.ค.): ความเห็นในนาม "ระบบ" บนการ์ดที่เกิดจากโมดูลอื่น (POS: "กลับมาขายแล้ว" บนบอร์ดที่ไม่มีคอลัมน์เสร็จ) —
+//   ประตูของโมดูลนี้ให้ composition root เรียก แทนการเขียนแถวตรงจากนอกโมดูล · ผู้เขียน = ผู้สร้างการ์ด ?? เจ้าของร้านคนแรก ·
+//   กันซ้ำด้วยข้อความเดิมใต้ pg_advisory_xact_lock ต่อการ์ด · กิจกรรม COMMENT_ADDED (actorUserId null = "ระบบทำ") · ไม่ยิง kanban.comment.added
+//   (แบบ platform/kanban-bridges systemComment) · คืน false เมื่อไม่ได้เขียนอะไร (ไม่พบการ์ด · ซ้ำ · ร้านไม่มีเจ้าของ · ข้อความว่าง)
+export async function addSystemCardComment(tenantId: string, cardId: string, body: string): Promise<boolean> {
+  const text = String(body ?? "").trim();
+  if (!tenantId || !cardId || !text) return false;
+  const card = await prisma.kanbanCard.findFirst({ where: { id: cardId, tenantId }, select: { id: true, boardId: true, createdById: true } });
+  if (!card) return false;
+  const author =
+    card.createdById ?? (await prisma.membership.findFirst({ where: { tenantId, role: "OWNER" }, orderBy: { createdAt: "asc" }, select: { userId: true } }))?.userId ?? null;
+  if (!author) return false;
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`kanban:syscomment:${card.id}`}, 0))`;
+    if (await tx.kanbanComment.findFirst({ where: { cardId: card.id, tenantId, body: text }, select: { id: true } })) return false;
+    const row = await tx.kanbanComment.create({ data: { tenantId, cardId: card.id, authorUserId: author, body: text, mentions: [] } });
+    await tx.kanbanActivity.create({ data: { tenantId, boardId: card.boardId, cardId: card.id, actorUserId: null, type: "COMMENT_ADDED", data: { commentId: row.id, bridge: true } } });
+    return true;
+  });
+}
+// ◂ POS P3.8

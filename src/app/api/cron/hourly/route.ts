@@ -130,6 +130,16 @@ export async function GET(req: Request) {
     });
   }
   // ◂ POS P3.9
+  // POS P3.8 ▸ R5 R6 R8 R10: บอร์ดงาน/ห้องทีม POS — 86 นานเกิน N ชม. → การ์ด · คืนขาย → ปิดการ์ด · refund_needed 7 วัน → การ์ด · สรุปเช้าในห้องทีม (opt-in) ·
+  //   ปริยายปิดทุกร้าน · งบ 20 วิ · พังรายระบบ = ops WARN pos.board · best-effort: ล้มห้ามทำให้รอบนี้แดง
+  try {
+    await (await import("@/lib/pos-board-bridges")).sweepPosBoard({ now: new Date(), deadline: new Date(Date.now() + 20_000) });
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepPosBoard (บอร์ดงาน/ห้องทีม POS) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ POS P3.8
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;
