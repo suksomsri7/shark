@@ -1727,7 +1727,7 @@ export type PreorderIngestInput = {
   idempotencyKey: string;
   note: string | null;
   prepared: PreparedOrderIntent;
-  chatConversationId?: string | null; // POS P3.7 ▸ R8 ประตู B: ห้องแชทจากแท็กที่ตรวจแล้ว (ไม่ใช่ห้องของร้านนี้ = ไม่ผูก · ไม่ปฏิเสธ) ◂
+  chatConversationId?: string | null; // POS P3.7 R8 ประตู B: ห้องแชทจากแท็กที่ตรวจแล้ว (ไม่ใช่ห้องของร้านนี้ = ไม่ผูก · ไม่ปฏิเสธ) — รอยต่อบรรทัดเดียวไม่มีลูกศร (ไม่ปิดบล็อก P2.7)
 };
 export type PreorderIngestResult = { ok: true; orderId: string; publicToken: string; duplicated: boolean } | OrderRefusal;
 
@@ -1769,7 +1769,7 @@ export async function ingestPreorderInTx(tx: Tx, scope: { tenantId: string; syst
   const seq = (await tx.posOrder.count({ where: { tenantId: s.tenantId, unitId: s.unitId, receivedAt: { gte: posDayStart(now) } } })) + 1;
   const payBy = new Date(now.getTime() + input.prepared.qrExpiryMinutes * 60_000);
   const total = input.lines.reduce((t, l) => t + l.unitPriceSatang * l.qty, 0);
-  const chatConv = isId(input.chatConversationId) ? ((await tx.chatConversation.findFirst({ where: { id: input.chatConversationId, tenantId: s.tenantId }, select: { id: true } }))?.id ?? null) : null; // POS P3.7 ▸ R8 ◂
+  const chatConv = isId(input.chatConversationId) ? ((await tx.chatConversation.findFirst({ where: { id: input.chatConversationId, tenantId: s.tenantId }, select: { id: true } }))?.id ?? null) : null; // POS P3.7 R8
   const order = await tx.posOrder.create({
     data: {
       tenantId: s.tenantId,
@@ -1793,7 +1793,7 @@ export async function ingestPreorderInTx(tx: Tx, scope: { tenantId: string; syst
       payBy,
       paymentIntentId: input.prepared.id,
       publicToken: newReceiptToken(),
-      ...(chatConv ? { chatConversationId: chatConv } : {}), // POS P3.7 ▸ R8 ◂
+      ...(chatConv ? { chatConversationId: chatConv } : {}), // POS P3.7 R8
     },
   });
   await tx.posOrderLine.createMany({
@@ -2162,8 +2162,8 @@ async function expireDuePaidPreorders(where: { tenantId?: string; unitId?: strin
 //   ออเดอร์ช่องทาง CHAT · NEW · UNPAID|PAY_ON_PICKUP · ผูกห้องแชท ⇒ (ล็อกแถว) PENDING_PAYMENT + payBy (ตอนนี้ + อายุ QR) + publicToken (ตัวสร้างของใบเสร็จออนไลน์)
 //   + paymentIntentId (createIntentForOrderInTx · expiresAt = payBy) + PosOrderEvent payment_requested (version +1) — จากนี้ = วงจร P2.7 เดิมทั้งหมด
 //   (เงินเข้า → PREPAID → รับ = บิลใช้ใบ · เลยเวลา → CANCELLED) · ขอซ้ำ = ใบ/โทเคนเดิม (duplicated · ไม่เขียน) · ปฏิเสธ = คืน (ไม่ throw · ไม่เขียน)
-export type ChatPaymentRefusalCode = "ORDER_NOT_FOUND" | "ORDER_STATE_INVALID" | "ORDER_STATE_CHANGED" | "NO_CHAT_LINK" | "INTENT_REQUIRED";
-export type ChatPaymentInTxResult = { ok: true; duplicated: boolean; order: PosOrder; intentId: string } | { ok: false; code: ChatPaymentRefusalCode };
+export type ChatPaymentRefusalCode = "ORDER_NOT_FOUND" | "ORDER_STATE_INVALID" | "ORDER_STATE_CHANGED" | "NO_CHAT_LINK";
+export type ChatPaymentInTxResult = { ok: true; duplicated: boolean; order: PosOrder; intentId: string } | { ok: false; code: ChatPaymentRefusalCode } | { ok: false; needsIntent: true };
 export async function requestChatPaymentInTx(
   tx: Tx,
   s: { tenantId: string; systemId: string; unitId: string },
@@ -2181,7 +2181,7 @@ export async function requestChatPaymentInTx(
   if (o.channelCode !== "CHAT" || o.adapter !== "CHAT" || o.status !== "NEW" || (o.paymentState !== "UNPAID" && o.paymentState !== "PAY_ON_PICKUP")) return { ok: false, code: "ORDER_STATE_INVALID" };
   if (!o.chatConversationId) return { ok: false, code: "NO_CHAT_LINK" };
   // ผ่านทุกด่านแต่ยังไม่มีใบที่เตรียมไว้ = ผู้ประสานไปเตรียมใบ (นอกธุรกรรม) แล้วเรียกใหม่ · ยอดเปลี่ยนระหว่างนั้น = ORDER_STATE_CHANGED
-  if (!input.prepared) return { ok: false, code: "INTENT_REQUIRED" };
+  if (!input.prepared) return { ok: false, needsIntent: true };
   if (input.prepared.amountSatang !== o.totalSatang) return { ok: false, code: "ORDER_STATE_CHANGED" };
   const now = input.now ?? new Date();
   const payBy = new Date(now.getTime() + input.prepared.qrExpiryMinutes * 60_000);

@@ -67,7 +67,7 @@ export async function requestChatPayment(ctx: RegisterCtx, actorRaw: RegisterAct
     const first = await prisma.$transaction((tx) => requestChatPaymentInTx(tx, s, { orderId: o.id, prepared: null, actorUserId: actor.userId }), { timeout: 30_000, maxWait: 15_000 });
     let r = first;
     let prepared: PreparedOrderIntent | null = null;
-    if (!first.ok && first.code === "INTENT_REQUIRED") {
+    if (!first.ok && "needsIntent" in first) {
       const prep = await prepareOrderIntent(s, o.totalSatang, deps);
       if (!prep.ok) return refuse(prep.code === "PROMPTPAY_NOT_CONFIGURED" ? "PROMPTPAY_NOT_CONFIGURED" : prep.code === "NOT_FOUND" ? "NOT_FOUND" : "INTERNAL");
       prepared = prep.prepared;
@@ -79,7 +79,7 @@ export async function requestChatPayment(ctx: RegisterCtx, actorRaw: RegisterAct
       }
       if (!r.ok || r.duplicated) await orderIntentUnused(s, prepared, r.ok ? "DUPLICATE" : "REFUSED");
     }
-    if (!r.ok) return refuse(r.code === "INTENT_REQUIRED" ? "ORDER_STATE_CHANGED" : r.code);
+    if (!r.ok) return refuse("needsIntent" in r ? "ORDER_STATE_CHANGED" : r.code);
     const ord = r.order;
     if (!ord.payBy || !ord.publicToken || !ord.chatConversationId) return refuse("ORDER_STATE_INVALID");
     if (!r.duplicated)
