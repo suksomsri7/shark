@@ -93,6 +93,7 @@ const CHECKS: readonly Def[] = [
   D("SY15", "SY", "[R4 R1 มติ 14] offlineRef ซ้ำคีย์ใหม่ → REJECTED OFFLINE_REF_TAKEN · D2 มี offlineCode ของตัวเอง (≠ D1) seq 1 อิสระ → OK · D2 ส่งเลขของ D1 → REJECTED · PosDevice.offlineSeq = high-water · snapshot ใหม่บอก offlineSeq"),
   D("SY16", "SY", "[R9] บิลซิงก์ไม่สร้างรอบครัว (สินค้าผูกสถานี) แม้ healMissingTickets · ตัวควบคุม: บิลออนไลน์ของสินค้าเดียวกัน → มีรอบ"),
   D("SY17", "SY", "[R10 มติ 7] คิวผู้จัดการ: list มี REJECTED ของสาขา (ไม่มี SYNCED) · accept ×2 = บิลเดียว · discard ×2 = DISCARDED ครั้งเดียว · เหตุผล < 5 ตัว → VALIDATION · accept หลัง discard → ปฏิเสธ · แคชเชียร์ไม่มี pos.shift.manage → PERMISSION_DENIED (list/accept/discard) · audit"),
+  D("SY18", "SY", "[fix1 N1 · CD-P34g] ผู้ขายที่ตรวจแล้วเท่านั้น: โทเคนปลอมอ้าง OWNER / sellerUserId = OWNER + ส่วนลด 50% (เกินเพดานแคชเชียร์) ซิงก์โดย CASH → REJECTED · list แยก claimedSellerUserId (OWNER) / verifiedSellerUserId (CASH) · ผู้จัดการรับ → คิดด้วยเพดานของ CASH ⇒ ปฏิเสธ · ไม่มีบิล (ไม่มีบิลที่ soldBy = OWNER)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N1)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2043,6 +2044,51 @@ async function runDb() {
     if (!Array.isArray(scopesMod?.POS_SCOPE_KEYS) || !scopesMod.POS_SCOPE_KEYS.includes(SCOPE_KEY)) p.push(`POS_SCOPE_KEYS ไม่มี ${SCOPE_KEY}`);
     chk("RS5", p.length === 0, `${OPS_TOTAL} op · openapi ${OPS_TOTAL} + /sync/sales · scope ของคีย์`, joinP(p));
   }
+  // ═════ fix1 (CD-P34g) — เครื่องใหม่ N1–N6 ของรอบแก้ (snapshot เมื่อ 40 นาทีก่อน · ไม่มีกะ) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N1)
+  const NOW1 = Date.now();
+  if (!fx) {
+    await fstep("fix1 เครื่อง N1–N6", async () => {
+      for (const k of ["N1", "N2", "N3", "N4", "N5", "N6"]) {
+        DEV[k] = `p34${RAND}${k.toLowerCase()}dev`;
+        const r = must(`registerDevice ${k}`, await call(devMod, "registerDevice", ctxU("A"), A("OWNER"), { name: `เครื่อง ${k} ${RAND}`, deviceCode: DEV[k] }));
+        DEVID[k] = String(r.device?.id ?? "");
+        const sn = await issue(k, NOW1 - 40 * MIN);
+        if (sn?.ok === true && isRecord(sn.snapshot)) SN[k] = sn.snapshot;
+        else notes.push(`snapshot ${k}: ${codeOf(sn)}`);
+      }
+    });
+  }
+  // ═════ SY18 ผู้ขายที่ตรวจแล้ว (N1) ═════
+  {
+    const p: string[] = [];
+    if (!fx) {
+      const forged = `${Buffer.from(JSON.stringify({ u: uid("OWNER"), e: NOW1 + 6 * H, v: "-" })).toString("base64url")}.forgedsignature000000`;
+      const disc = () => [{ productId: PR.water, qty: 1, discount: { type: "PERCENT", value: 5000 } }];
+      const iTok = mkItem("N1", { lines: disc(), total: 500, soldAt: NOW1 - 30 * MIN, shift: null, staffToken: forged });
+      const iClaim = mkItem("N1", { lines: disc(), total: 500, soldAt: NOW1 - 29 * MIN, shift: null, sellerUserId: uid("OWNER") });
+      const r = await sync("N1", [iTok, iClaim], { actor: "CASH" });
+      for (const [k, it] of [["โทเคนปลอม", iTok], ["อ้างผู้ขาย", iClaim]] as const) {
+        const x = resOf(r, it.offlineRef);
+        if (x?.status !== "REJECTED" || x?.saleId) p.push(`รอบแรก ${k} ${stOf(x)} ${why(r)}`);
+      }
+      const ls = await call(offMod, "listOfflineRejected", ctxU("A"), A("OWNER"), { limit: 200 });
+      for (const [k, it] of [["โทเคนปลอม", iTok], ["อ้างผู้ขาย", iClaim]] as const) {
+        const row = await offRowOf(it.offlineRef);
+        const li = (Array.isArray(ls?.items) ? ls.items : []).find((x: Any) => x?.id === row?.id);
+        if (li?.claimedSellerUserId !== uid("OWNER") || li?.verifiedSellerUserId !== uid("CASH")) p.push(`list ${k} claimed ${li?.claimedSellerUserId ?? "-"} verified ${li?.verifiedSellerUserId ?? "-"}`);
+        if (JSON.stringify(row?.payload ?? "").includes("forgedsignature")) p.push(`${k} payload เก็บโทเคน`);
+        const ac = await call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(row?.id ?? "none") });
+        if (ac?.ok === true) {
+          const s = await saleRow(ac.saleId);
+          p.push(`accept ${k} ได้บิล (soldBy ${s?.soldByUserId === uid("OWNER") ? "OWNER" : s?.soldByUserId ?? "-"} · ต้องปฏิเสธด้วยเพดานของ CASH)`);
+        }
+        const n = Number(await P.posSale.count({ where: { tenantId: T, offlineRef: it.offlineRef } }).catch(() => -1));
+        if (n !== 0) p.push(`${k} มีบิล ${n}`);
+      }
+    }
+    if (!NO_FX("SY18")) chk("SY18", p.length === 0, "REJECTED ×2 · claimed/verified แยก · accept ปฏิเสธ (เพดาน CASH) · ไม่มีบิล", FXB(joinP(p)));
+  }
+  // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
 }
 
