@@ -239,6 +239,10 @@ function trimValue(v: unknown, maxRows: number): unknown {
   return out;
 }
 const bytes = (s: string) => Buffer.byteLength(s, "utf8");
+/** POS P3.9 ▸ fix1 N5: ตัวตัดเดียวกันให้เครื่องมือเขียนมือของสกิล sales (pos_draft_po) — ผลเป็น JSON ≤ 8 KB เสมอ ◂ */
+export function capPosToolResult(v: unknown): unknown {
+  return capResult(v);
+}
 /** ผลอ่าน → JSON ≤ 8 KB: ตัดแถวลงทีละครึ่งจนพอดี (บอกโมเดลว่าถูกตัด) */
 function capResult(v: unknown): unknown {
   for (let rows = MAX_ROWS; rows >= 1; rows = Math.floor(rows / 2)) {

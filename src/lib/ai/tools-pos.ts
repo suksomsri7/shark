@@ -6,7 +6,7 @@
 //   - เครื่องมือเขียนมือ 1 ตัว: `pos_draft_po` (ร่างใบสั่งซื้อจากยอดขาย — ไม่มี op REST คู่ · ต้องมีระบบ POS + คลังสินค้า)
 // กติกา 3 ชั้นเหมือนทุกโมดูล: read = ทำทันทีด้วยสิทธิ์ของคนถาม · write = ข้อเสนอ · danger = ข้อเสนอ DESTRUCTIVE (ยืนยัน 2 ชั้น)
 
-import { posToolInfos, runPosTool, type PosToolCtx } from "@/lib/modules/pos/api/tools";
+import { capPosToolResult, posToolInfos, runPosTool, type PosToolCtx } from "@/lib/modules/pos/api/tools";
 import { purchaseSuggestions } from "@/lib/modules/pos/ai-insights";
 import { tenantDb } from "@/lib/core/db";
 import { createProposal, type ProposalKind } from "./proposals";
@@ -26,8 +26,10 @@ function bridgeCtx(ctx: ToolCtx): PosToolCtx {
 async function propose(ctx: ToolCtx, kind: string, summary: string, payload: Record<string, unknown>, extra: Record<string, unknown> = {}): Promise<string> {
   if (!ctx.conversationId) return JSON.stringify({ error: "ต้องอยู่ในบทสนทนาก่อนจึงจะเสนอการกระทำได้" });
   const p = await createProposal({ tenantId: ctx.tenantId }, { conversationId: ctx.conversationId, kind: kind as ProposalKind, summary, payload });
-  return JSON.stringify({ proposalId: p.id, summary, waiting: pendingConfirmation, ...extra });
+  // POS P3.9 ▸ fix1 N5: ผลของเครื่องมือผ่านตัวตัด 8 KB ของสะพาน (รายการเสริมถูกตัดที่ 10 แล้วตอนประกอบ) ◂
+  return JSON.stringify(capPosToolResult({ proposalId: p.id, summary, waiting: pendingConfirmation, ...extra }));
 }
+const LIST_MAX = 10; // POS P3.9 ▸ fix1 N5 ◂
 
 /** R5 — เครื่องมือเขียนมือ: ร่างใบสั่งซื้อจากความเร็วขาย 14 วัน (ข้อเสนอ kind `pos_draft_po` · สิทธิ์คนกด = inventory.po.create) */
 const posDraftPo: AiTool = {
@@ -58,14 +60,14 @@ const posDraftPo: AiTool = {
     const unitId = typeof a.unitId === "string" && a.unitId.trim() ? a.unitId.trim() : undefined;
     const r = await purchaseSuggestions({ tenantId: ctx.tenantId, systemId: pos.id, ...(unitId ? { unitId } : {}) }, b.person);
     if (r.ok !== true) return JSON.stringify({ error: r.message });
-    const noSupplier = r.suggestions.filter((s) => !s.supplierId).map((s) => ({ สินค้า: s.name, จำนวนที่ควรสั่ง: s.qty, คงเหลือ: s.onHand }));
+    const noSupplier = r.suggestions.filter((s) => !s.supplierId).slice(0, LIST_MAX).map((s) => ({ สินค้า: s.name.slice(0, 80), จำนวนที่ควรสั่ง: s.qty, คงเหลือ: s.onHand }));
     const withSup = r.suggestions.filter((s) => s.supplierId && (typeof a.supplierId !== "string" || s.supplierId === a.supplierId));
     if (!withSup.length) {
-      return JSON.stringify(
+      return JSON.stringify(capPosToolResult(
         noSupplier.length
           ? { error: "ยังไม่มีผู้ขายของสินค้าที่ควรสั่ง — ถามผู้ใช้ว่าจะสั่งจากผู้ขายรายไหน แล้วสร้างใบสั่งซื้อในระบบคลังสินค้า", ยังไม่มีผู้ขาย: noSupplier }
           : { ผล: `ไม่มีสินค้าที่ต้องสั่งเพิ่ม (ยอดขาย ${r.from} ถึง ${r.to})` },
-      );
+      ));
     }
     // ใบสั่งซื้อ 1 ใบต่อผู้ขาย 1 ราย ⇒ เลือกผู้ขายที่มีรายการมากสุด (ที่เหลือแจ้งให้เสนอใหม่ด้วย supplierId)
     const bySup = new Map<string, typeof withSup>();
@@ -74,11 +76,11 @@ const posDraftPo: AiTool = {
     const g = groups[0]!;
     const lines = g.map((s) => ({ itemId: s.itemId, qty: s.qty, costSatang: s.costSatang }));
     const total = g.reduce((t, s) => t + s.qty * s.costSatang, 0);
-    const summary = `ร่างใบสั่งซื้อถึง "${g[0]!.supplierName ?? "ผู้ขาย"}" ${g.length} รายการ (${g.map((s) => `${s.name} ×${s.qty}`).join(", ")}) · ประมาณ ฿${(total / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const summary = `ร่างใบสั่งซื้อถึง "${g[0]!.supplierName ?? "ผู้ขาย"}" ${g.length} รายการ (${g.slice(0, LIST_MAX).map((s) => `${s.name.slice(0, 60)} ×${s.qty}`).join(", ")}${g.length > LIST_MAX ? ` และอีก ${g.length - LIST_MAX} รายการ` : ""}) · ประมาณ ฿${(total / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const payload = { inventorySystemId: g[0]!.inventorySystemId, supplierId: g[0]!.supplierId, lines, posSystemId: pos.id, window: { from: r.from, to: r.to } };
     return propose(ctx, "pos_draft_po", summary, payload, {
       ...(noSupplier.length ? { ยังไม่มีผู้ขาย: noSupplier } : {}),
-      ...(groups.length > 1 ? { ผู้ขายอื่นที่ควรสั่งด้วย: groups.slice(1).map((x) => ({ supplierId: x[0]!.supplierId, ผู้ขาย: x[0]!.supplierName, รายการ: x.length })) } : {}),
+      ...(groups.length > 1 ? { ผู้ขายอื่นที่ควรสั่งด้วย: groups.slice(1, 1 + LIST_MAX).map((x) => ({ supplierId: x[0]!.supplierId, ผู้ขาย: x[0]!.supplierName, รายการ: x.length })) } : {}),
     });
   },
 };
