@@ -43,6 +43,13 @@ export async function posBriefSystemName(tenantId: string, sys: { id: string; na
 export async function loadBriefInput(ctx: { tenantId: string; systemId: string }, recipient: RegisterActor, businessDate: string, deps: BriefDeps = {}): Promise<BriefInput> {
   const sys = await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS" }, select: { name: true, settings: true } });
   const ai = posAiSettings(sys?.settings);
+  const systemName = sys ? await posBriefSystemName(ctx.tenantId, { id: ctx.systemId, name: sys.name }) : ""; // POS P3.9 ▸ fix1 F5 ◂
+  // POS P3.9 ▸ fix1 F5: ผู้รับต้องดูรายงานได้อย่างน้อยหนึ่งสาขาที่ผูกระบบ POS นี้ — ไม่ได้เลย = ทุกส่วน null (ตัวอ่านรายงานนับสาขาของผู้ใช้ที่ไม่ได้ผูกระบบนี้เป็น "ยอด 0") ◂
+  const units = await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
+  const viewUnits = units.map((u) => u.unitId).filter((u) => evaluate(recipient, { module: "pos", action: "pos.report.view", unitId: u }));
+  if (!viewUnits.length) {
+    return { businessDate, systemName, daily: null, lastWeek: null, topProducts: null, bottomProducts: null, peakHour: null, openShifts: null, overShort: null, anomalies: null, stockRisks: null, soldOut: null, pendingApprovals: null, pendingProposals: null };
+  }
   const rc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const day = { from: businessDate, to: businessDate };
   const [d, lw, pr, hr, sh, an] = await Promise.all([
@@ -74,9 +81,7 @@ export async function loadBriefInput(ctx: { tenantId: string; systemId: string }
   const overShort = sh.ok === true ? sh.report.rows.filter((x) => typeof x.overShortSatang === "number").map((x) => ({ label: x.deviceLabel ?? `กะ ${x.shiftNo}`, overShortSatang: x.overShortSatang as number })) : null;
   let anomalies: BriefInput["anomalies"] = null;
   if (an && an.ok === true) anomalies = POS_ANOMALY_RULES.map((rule) => ({ rule, count: an.report.totals.byRule[rule] ?? 0 })).filter((x) => x.count > 0);
-  // ของหมด (86) ณ ตอนนี้ — สาขาที่ผู้รับดูรายงานได้เท่านั้น
-  const units = await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
-  const viewUnits = units.map((u) => u.unitId).filter((u) => evaluate(recipient, { module: "pos", action: "pos.report.view", unitId: u }));
+  // ของหมด (86) ณ ตอนนี้ — สาขาที่ผู้รับดูรายงานได้เท่านั้น (viewUnits ข้างบน)
   let soldOut: BriefInput["soldOut"] = null;
   if (viewUnits.length) {
     const marks = await prisma.posAvailabilityMark.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: { in: viewUnits } }, select: { productId: true } });
@@ -91,7 +96,7 @@ export async function loadBriefInput(ctx: { tenantId: string; systemId: string }
   const pendingApprovals = deps.pendingApprovals ? await deps.pendingApprovals(ctx.tenantId, recipient).catch(() => null) : null;
   return {
     businessDate,
-    systemName: sys ? await posBriefSystemName(ctx.tenantId, { id: ctx.systemId, name: sys.name }) : "", // POS P3.9 ▸ fix1 F5 ◂
+    systemName,
     daily: dailyOf(d),
     lastWeek: dailyOf(lw),
     topProducts,
