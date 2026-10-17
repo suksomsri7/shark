@@ -11,6 +11,15 @@ Contract = `pos-brief-P3.9.md` §10 rulings 1–13 + CD-P39a + TEAM_SAFE_SECTION
 - Typecheck run at **781af5d4**, dirty 0: `pnpm typecheck` with heap 8192, ISO 10500M, `/tmp/pos-gate.lock`, **exit 0**. The tree at 781af5d4 is identical to the code after the CD-9 edit c69e3b95. This note was then committed on top as a ledger-only commit.
 - `qc-pos-p3.9` forced ×2 (QC4 · `SHARK_AI_MOCK=1` · `P39_PIN=3e0e0214` until the ST4 re-pin, CD-10) = **42/42 ×2**: Z2 green, residue 0, guardHits 0. `--no-db` gave **6/6**.
 
+## Fix round 2 delivered (CD-P39d · 17 Oct) — R2 MERGEABLE · hunter CLEAN · two Lows closed
+| item | commit(s) | what |
+|---|---|---|
+| oracle | f6eb26d8 PR13 (add · 47 → 48) · d526f7b6 BR10 (edit · 48 → 48) | red-before on 857268eb: **46/48** (PR13: proposal created for an all-branch 86 · BR10: no `(…<id8>)` suffix) |
+| N6 (= R2-L1) | c60362e7 | `targetOf`: `products.availability` on an all-branch product without `unitId` ⇒ refused at propose ("สินค้านี้ขายทุกสาขา — ระบุสาขา"), no proposal |
+| N7 (= R2-L2) | 089ecdb2 | `posBriefSystemName`: shop with ≥ 2 POS systems ⇒ every system's brief title carries `(…<id last 8>)` (not only on name collision) |
+
+**Gates (fix round 2):** `qc-pos-p3.9` forced **48/48 ×2** · `--no-db` 6/6 · `qc-ai-proposals` 16/16 · fitness no-env 53/53 · QC4 53/53 · **typecheck exit 0 at 089ecdb2, dirty 0** (this notes commit on top is ledger only).
+
 ## Fix round 1 delivered (CD-P39c · 17 Oct) — R1 F1–F6 + hunter N1–N5
 | item | commit(s) | what |
 |---|---|---|
