@@ -110,28 +110,37 @@ export async function loadBriefInput(ctx: { tenantId: string; systemId: string }
 const bkkHour = (d: Date) => new Date(d.getTime() + 7 * 3_600_000).getUTCHours();
 const ROLES: readonly RegisterRole[] = ["OWNER", "MANAGER", "STAFF"];
 
+/** ระบบ POS ที่เปิดผู้ช่วย AI (ร้าน ACTIVE) ทีละหน้า 200 ตาม id — หยุดเมื่อหมดหรือเลยงบเวลา */
+async function* aiPosSystems(tenantId: string | undefined, deadline: number): AsyncGenerator<{ id: string; tenantId: string; name: string; settings: unknown }> {
+  let cursor: string | null = null;
+  while (Date.now() <= deadline) {
+    const page: { id: string; tenantId: string; name: string; settings: unknown }[] = await prisma.appSystem.findMany({
+      where: { type: "POS", active: true, settings: { path: ["pos", "ai", "enabled"], equals: true }, ...(tenantId ? { tenantId } : {}), ...(cursor ? { id: { gt: cursor } } : {}) },
+      orderBy: { id: "asc" },
+      take: MAX_SYSTEMS,
+      select: { id: true, tenantId: true, name: true, settings: true },
+    });
+    // ร้านที่ยังใช้งาน (ไม่มี relation tenant บน AppSystem ⇒ คิวรีที่สองแบบรายการ id)
+    const live = new Set(page.length ? (await prisma.tenant.findMany({ where: { id: { in: [...new Set(page.map((x) => x.tenantId))] }, status: "ACTIVE" }, select: { id: true } })).map((t) => t.id) : []);
+    for (const x of page) if (live.has(x.tenantId) && posAiSettings(x.settings).enabled) yield x;
+    if (page.length < MAX_SYSTEMS) return;
+    cursor = page[page.length - 1]!.id;
+  }
+}
+
 export type SendBriefsResult = { ok: true; systems: number; sent: number; skipped: number; failed: number };
 type PushPost = (payloads: unknown[]) => Promise<unknown[]>;
 
 /**
- * R8 R9 — งานรายชั่วโมง: ส่งสรุปเช้าของทุกระบบ POS ที่เปิดผู้ช่วย AI (≤ 200 ระบบ/รอบ · งบเวลา 20 วิ · พังรายระบบ = logOps WARN แล้วไปต่อ)
+ * R8 R9 — งานรายชั่วโมง: ส่งสรุปเช้าของทุกระบบ POS ที่เปิดผู้ช่วย AI (หน้าละ 200 ระบบตาม id จนหมดหรือถึงงบเวลา 20 วิ · พังรายระบบ = logOps WARN แล้วไปต่อ)
  * `tenantId` = กรองร้าน (ข้อสอบ · CD-8) · `post` = ตัวส่ง push ที่ฉีดได้ (ส่งต่อให้ sendPushToUser)
  */
 export async function sendPosDailyBriefs(opts: { now?: Date; deadline?: Date; tenantId?: string; post?: PushPost } & BriefDeps = {}): Promise<SendBriefsResult> {
   const now = opts.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
   const deadline = opts.deadline instanceof Date ? opts.deadline.getTime() : Date.now() + DEFAULT_BUDGET_MS;
   const res: SendBriefsResult = { ok: true, systems: 0, sent: 0, skipped: 0, failed: 0 };
-  const all = await prisma.appSystem.findMany({
-    where: { type: "POS", active: true, settings: { path: ["pos", "ai", "enabled"], equals: true }, ...(opts.tenantId ? { tenantId: opts.tenantId } : {}) },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: MAX_SYSTEMS,
-    select: { id: true, tenantId: true, name: true, settings: true },
-  });
-  // เฉพาะระบบที่เปิดผู้ช่วย AI + ร้านที่ยังใช้งาน (ไม่มี relation tenant บน AppSystem ⇒ คิวรีที่สองแบบรายการ id)
-  const on = all.filter((s) => posAiSettings(s.settings).enabled);
-  const live = new Set(on.length ? (await prisma.tenant.findMany({ where: { id: { in: [...new Set(on.map((s) => s.tenantId))] }, status: "ACTIVE" }, select: { id: true } })).map((t) => t.id) : []);
-  const systems = on.filter((s) => live.has(s.tenantId));
-  for (const sys of systems) {
+  // POS P3.9 ▸ fix1 (hunter info): อ่านระบบเป็นหน้า ๆ ละ 200 ตาม id (keyset) จนหมดหรือถึงงบเวลา — เดิม take 200 ครั้งเดียว ⇒ ระบบที่ 201+ ไม่เคยได้สรุป ◂
+  for await (const sys of aiPosSystems(opts.tenantId, deadline)) {
     if (Date.now() > deadline) break;
     const ai = posAiSettings(sys.settings);
     if (!ai.enabled || !ai.brief.enabled || bkkHour(now) < ai.brief.hourBkk) continue;
