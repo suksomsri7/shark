@@ -81,7 +81,7 @@ const CHECKS: readonly Def[] = [
   D("SY3", "SY", "[R5] ชุดที่ตัวกลางเป็นสินค้าไม่มีจริง → 1,3 OK · 2 REJECTED ไม่มีบิล · ทั้ง 3 ลง PosOfflineSale (SYNCED/REJECTED/SYNCED · payload เก็บ)"),
   D("SY4", "SY", "[R6 มติ 10] ราคาเปลี่ยนหลัง snapshot (เค้ก 4500 → 5500) ขายที่ 4500 → OK ที่ราคา snapshot (ยอดบิล 4500) + drift ในผล · PosOfflineSale.drift · audit after.drift"),
   D("SY5", "SY", "[R6] ราคาปลอม (ไม่ตรงราคา ณ soldAt และไม่ตรง snapshot) → REJECTED PRICE_MISMATCH · ไม่มีบิล · ลง PosOfflineSale REJECTED"),
-  D("SY6", "SY", "[R6] happy hour เปิดตอน soldAt ปิดตอนซิงก์ → OK ไม่มี drift (ยอด 3000) · ตัวควบคุม: ราคาโปรหลังโปรจบ → PRICE_MISMATCH"),
+  D("SY6", "SY", "[R6 · fix1 N3] happy hour เปิดตอน soldAt ปิดตอนซิงก์ (ช้ากว่า 30 นาที) → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt 3000 ไม่มี drift · ตัวควบคุม: ราคาโปรหลังโปรจบ → PRICE_MISMATCH"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
   D("SY7", "SY", "[R8 มติ 7] กะที่บันทึกถูกปิดก่อนซิงก์ → REJECTED SHIFT_CLOSED ไม่มีบิล → ผู้จัดการ accept → บิล shiftId null · อยู่ใน offShiftCash ของวันนี้"),
   D("SY8", "SY", "[R8] เครื่องถูกเพิกถอน: soldAt ก่อน revokedAt → OK · soldAt หลัง revokedAt → REJECTED ไม่มีบิล"),
   D("SY9", "SY", "[R8 มติ 12] โทเคนหมดอายุตอนซิงก์แต่ยังไม่หมดตอน soldAt → OK ผู้ขาย = คนในโทเคน · soldAt หลังหมดอายุ → REJECTED · ตั้ง PIN ใหม่ → REJECTED · staffActorFromToken(…, {at}) ทำงาน · ไม่มีโทเคน: sellerUserId ≠ ผู้ใช้ session → SELLER_MISMATCH · = ผู้ใช้ session → OK · payload ไม่เก็บโทเคนดิบ"),
@@ -102,7 +102,7 @@ const CHECKS: readonly Def[] = [
   // ── SEC ──
   D("SEC1", "SEC", "[R2 R13] snapshot: สินค้า keys ⊆ RegisterProduct + choices · ไม่มีคีย์ cost/margin/onHand/phone/email/member/token ทั้งก้อน · ราคา = ราคาหน้าร้าน ณ issuedAt · PosOfflineSnapshot (เครื่อง, hash) เก็บ priceMap ตรง"),
   D("SEC2", "SEC", "[R5 มติ 2] route src/app/api/pos/sync/route.ts: POST · session (@/lib/core/context) · pos.sale.create · เรียก syncOfflineSales · ไม่ใช่ \"use server\" · facade: ctx สาขา A + เครื่องของสาขา B / ctx สาขา B + เครื่อง A → ปฏิเสธ 0 แถว"),
-  D("SEC3", "SEC", "[R6 มติ 14] snapshot ต่อเครื่อง: รายการของ D1 ที่อ้าง hash ของ D2 → REJECTED ไม่มีบิล · เครื่อง D5 ออก snapshot 3 ครั้ง (ราคาเปลี่ยน) → เก็บ 2 แถว · hash ที่ถูกตัดทิ้ง → REJECTED"),
+  D("SEC3", "SEC", "[R6 มติ 14 · fix1 N4] snapshot ต่อเครื่อง: รายการของ D1 ที่อ้าง hash ของ D2 → REJECTED ไม่มีบิล · เครื่อง D5 ออก snapshot 3 ครั้ง (−30 ชม. −29 ชม. ตอนนี้ · ราคาเปลี่ยน) → เก็บ 2 แถว · hash ที่ถูกตัดทิ้ง → REJECTED"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
   // ── Z ──
   D("Z1", "Z", "QC4 คืนสภาพ: ร้านชั่วคราว 0 แถวทุกตารางที่มี tenantId (รวม PosOfflineSale/PosOfflineSnapshot) + Tenant ถูกลบ · ผู้ใช้ของรอบ 0 · ถังเพดานอัตราของคีย์รอบนี้ 0"),
   D("Z2", "Z", "ลายนิ้วมือนอกร้านชั่วคราว (PosSale · PosReceiptCounter seq · PosDevice offlineSeq/status · PosOfflineSale · PosOfflineSnapshot · AuditLog pos.sale.offline_*) เท่าเดิม"),
@@ -1471,16 +1471,21 @@ async function runDb() {
       if (x5?.status !== "REJECTED" || x5?.reason !== "PRICE_MISMATCH" || x5?.saleId) p5.push(`ผล ${stOf(x5)}`);
       const o5 = await offRowOf(i5.offlineRef);
       if (o5?.status !== "REJECTED" || o5?.reason !== "PRICE_MISMATCH" || o5?.saleId) p5.push(`PosOfflineSale ${short(o5 && { s: o5.status, r: o5.reason }, 50)}`);
-      // SY6
+      // SY6 — ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N3 · CD-P34g): ราคาโปร ณ soldAt < ราคาตอนซิงก์ และซิงก์ช้ากว่า 30 นาที ⇒ REJECTED PRICE_WINDOW_REVIEW (คิวผู้จัดการ) ·
+      //   ผู้จัดการรับ ⇒ คิดราคา ณ soldAt = 3000 ไม่มี drift (พิสูจน์ R6 เดิมผ่านทางรับ)
       const x6 = resOf(r, i6.offlineRef);
       if (w) p6.push(w);
-      if (x6?.status !== "OK" || (x6?.drift !== undefined && x6?.drift !== null)) p6.push(`โปรตอนขาย ${stOf(x6)} drift ${short(x6?.drift, 30)}`);
-      const s6 = await saleRow(x6?.saleId);
+      if (x6?.status !== "REJECTED" || x6?.reason !== "PRICE_WINDOW_REVIEW" || x6?.saleId) p6.push(`โปรตอนขาย (ซิงก์ช้า) ${stOf(x6)} (คาด REJECTED:PRICE_WINDOW_REVIEW)`);
+      const a6 = await call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(x6?.offlineSaleId ?? "none") });
+      if (a6?.ok !== true) p6.push(`accept โปร ${codeOf(a6)}`);
+      const s6 = await saleRow(a6?.saleId);
       if (s6?.grandTotalSatang !== 3000) p6.push(`ยอด ${s6?.grandTotalSatang ?? "-"}`);
+      const o6 = s6 ? await offRowOf(i6.offlineRef) : null;
+      if (o6 && o6.drift) p6.push(`drift ${short(o6.drift, 30)} (คาด ไม่มี)`);
       const x6c = resOf(r, i6c.offlineRef);
       if (x6c?.status !== "REJECTED" || x6c?.reason !== "PRICE_MISMATCH") p6.push(`ตัวควบคุมหลังโปรจบ ${stOf(x6c)}`);
       const after = await countT("PosSale");
-      if (after - before !== 2) p5.push(`บิลใหม่ ${after - before} (คาด 2: SY4 + SY6)`);
+      if (after - before !== 2) p5.push(`บิลใหม่ ${after - before} (คาด 2: SY4 + SY6 ที่ผู้จัดการรับ)`); // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N3): นับหลัง accept ของ SY6
     }
     if (!NO_FX("SY4")) chk("SY4", p4.length === 0, "OK ที่ 4500 + drift (ผล · แถว · audit)", FXB(joinP(p4)));
     if (!NO_FX("SY5")) chk("SY5", p5.length === 0, "REJECTED PRICE_MISMATCH ไม่มีบิล", FXB(joinP(p5)));
@@ -1907,7 +1912,8 @@ async function runDb() {
       for (const [i, price] of [1600, 1700, 1800].entries()) {
         const sp = await call(catalog, "setPrice", cc(), PR.gum, price);
         if (sp?.ok === false) p.push(`setPrice gum ${price} ${codeOf(sp)}`);
-        const sn = await issue("D5", Date.now() - (3 - i) * MIN);
+        // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N4 · CD-P34g): เก็บทุก snapshot ภายใน 24 ชม. ∪ 2 ล่าสุด ⇒ สองใบแรกออกเมื่อ 30/29 ชม.ก่อน (ใบแรกพ้นทั้งสองเกณฑ์ = ถูกตัด)
+        const sn = await issue("D5", i === 2 ? Date.now() - MIN : Date.now() - (30 - i) * H);
         hs.push(String(sn?.snapshot?.hash ?? `none${i}`));
       }
       if (new Set(hs).size !== 3) p.push(`hash ไม่ต่างกัน ${hs.join(",")}`);
