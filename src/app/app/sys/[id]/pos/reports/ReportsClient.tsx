@@ -176,7 +176,7 @@ function DailyChart({ rows, t, locale }: { rows: DailyRow[]; t: T; locale: strin
 }
 
 // ═══════════ POS P2.12U ▸ มติ 4: จุดผิดปกติ — กลุ่มต่อกฎ (A1 → A10) ◂ ═══════════
-const ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"] as const;
+const ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11"] as const; // POS P3.9 ▸ R11: + A11 ◂
 const ANOMALY_MONEY = new Set<string>(["A1", "A2", "A8", "A9"]);
 const ANOMALY_BP = new Set<string>(["A3", "A4"]);
 const bpText = (bp: number) => `${(bp / 100).toFixed(2)}%`;
