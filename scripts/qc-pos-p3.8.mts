@@ -50,8 +50,7 @@ const ROOT = process.cwd();
 const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
-/** หมุดของใบ (ฐานของ brief) — ST เทียบกับ merge-base(HEAD, origin/session/pos) ถ้าหาได้ (ใบอื่นที่ merge ก่อนไม่ทำให้แดง) · ตั้งเองได้ P38_PIN=<rev> */
-const BRIEF_PIN = "72669941";
+// หมุดของ brief = 72669941 (BRIEF_PIN — หมายเหตุเท่านั้น) · ST เทียบกับหมุดคงที่ BASE ด้านล่าง · ตั้งเองได้ P38_PIN=<rev> // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B2)
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: C ค่าตั้ง · K การ์ด · R ห้องทีม · A จุดผิดปกติ · V ความเป็นส่วนตัว · X ข้ามร้าน · F facts · S สถิต · Z คืนสภาพ
@@ -190,12 +189,8 @@ const BRIEF_FILE = existsSync(join(ROOT, F.briefShared));
 const BRIEF_WIRED = /ai-brief/.test(stripComments(rd(F.bridges)));
 const BRIEF_READY = (BRIEF_FILE && BRIEF_WIRED) || process.env.P38_R8 === "1";
 
-/** ฐานเทียบ: P38_PIN > merge-base(HEAD, origin/session/pos) > หมุดของ brief */
-const BASE = (() => {
-  if (process.env.P38_PIN) return process.env.P38_PIN;
-  const mb = gitStr(["merge-base", "HEAD", "origin/session/pos"])?.trim();
-  return mb && /^[0-9a-f]{7,40}$/.test(mb) ? mb.slice(0, 12) : BRIEF_PIN;
-})();
+/** ฐานเทียบ: P38_PIN > หมุดคงที่ 42b823e9 (ฐานของผู้สร้าง) · หมุดของ brief (BRIEF_PIN 72669941) เก็บไว้เป็นหมายเหตุเท่านั้น */
+const BASE = process.env.P38_PIN || "42b823e9"; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B2): หมุดคงที่ — เดิม P38_PIN › หมุดจากสาขา session › BRIEF_PIN (qc-pos-p2.14 K3)
 
 // ═════════════════════════ 1. ข้อสถิต ═════════════════════════
 const stNotes: Record<string, string[]> = {};
