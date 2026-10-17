@@ -208,8 +208,10 @@ export async function decideAdjustment(
 //   ไม่ผูกคอมมิชชัน CRM · ชนิด COMMISSION/DEDUCTION — วันนี้คือค่าคอมฯ ขายหน้าร้านของ POS (`syncStaffCommissionToPayroll`) · ใช้จนกว่า H1.3 มี sourceType ·
 //   ได้กติกาเดียวกับคอมมิชชัน CRM (C3.3-fix H5): อนุมัติหลังงวดมีรอบแล้ว = ย้ายไปงวดถัดไปที่ว่างในคำสั่งเดียวกัน · ตัวกวาดย้ายรายการที่ค้างในงวดที่มีรอบ ◂
 const SYSTEM_ADJUST_KINDS: ReadonlySet<string> = new Set(["COMMISSION", "DEDUCTION"]);
-function isSystemAdjustment(row: { crmCommissionId: string | null; requestedById: string | null; kind: string }): boolean {
-  return !row.crmCommissionId && !row.requestedById && SYSTEM_ADJUST_KINDS.has(String(row.kind));
+/** POS P3.5 ▸ fix3 N10: หัวข้อความที่รอบส่งของ POS เขียนเสมอ — รายการที่ HR ยื่นเองไม่โดนกติกานี้ (จนกว่า H1.3 sourceType) ◂ */
+export const POS_STAFF_COMMISSION_NOTE_PREFIX = "ค่าคอมฯ ขายหน้าร้าน (POS)";
+function isSystemAdjustment(row: { crmCommissionId: string | null; requestedById: string | null; kind: string; note?: string | null }): boolean {
+  return !row.crmCommissionId && !row.requestedById && SYSTEM_ADJUST_KINDS.has(String(row.kind)) && typeof row.note === "string" && row.note.startsWith(POS_STAFF_COMMISSION_NOTE_PREFIX); // POS P3.5 ▸ fix3 N10 ◂
 }
 /**
  * POS P3.5 ▸ fix2 N1: ย้ายรายการของระบบที่ "ค้าง" (PENDING/APPROVED · ไม่เข้ารอบ · งวดมีรอบแล้ว) ไปงวดแรกถัดไปที่ยังไม่มีรอบ — ทุกระบบ HR ของร้าน ·
@@ -224,7 +226,7 @@ export async function rehomeStrandedSystemAdjustments(tenantId: string, limit = 
     const runs = new Set((await db.hrPayrollRun.findMany({ where: { systemId: sys.id }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
     if (runs.size === 0) continue;
     const rows = await db.hrPayAdjustment.findMany({
-      where: { systemId: sys.id, runId: null, crmCommissionId: null, requestedById: null, kind: { in: ["COMMISSION", "DEDUCTION"] }, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: [...runs] } },
+      where: { systemId: sys.id, runId: null, crmCommissionId: null, requestedById: null, kind: { in: ["COMMISSION", "DEDUCTION"] }, note: { startsWith: POS_STAFF_COMMISSION_NOTE_PREFIX } /* POS P3.5 ▸ fix3 N10 ◂ */, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: [...runs] } },
       select: { id: true, periodKey: true, status: true },
       orderBy: { id: "asc" },
       take: Math.max(1, limit - moved),
@@ -232,7 +234,7 @@ export async function rehomeStrandedSystemAdjustments(tenantId: string, limit = 
     for (const r of rows) {
       const to = nextRunlessPeriod(r.periodKey, runs);
       if (!to) continue;
-      const n = await db.hrPayAdjustment.updateMany({ where: { id: r.id, runId: null, status: r.status, periodKey: r.periodKey, crmCommissionId: null, requestedById: null }, data: { periodKey: to } });
+      const n = await db.hrPayAdjustment.updateMany({ where: { id: r.id, runId: null, status: r.status, periodKey: r.periodKey, crmCommissionId: null, requestedById: null, note: { startsWith: POS_STAFF_COMMISSION_NOTE_PREFIX } }, data: { periodKey: to } });
       moved += n.count;
     }
     if (moved >= limit) break;
