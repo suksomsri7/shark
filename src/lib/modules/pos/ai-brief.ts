@@ -30,6 +30,15 @@ const toStrings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x 
 /** ตัวนับเสริมที่ผู้เรียกฉีดได้ (route ส่ง "คำขออนุมัติที่รอผู้รับคนนี้" ผ่านบริการอนุมัติกลาง · ไม่ส่ง = ส่วนนั้นไม่แสดง) */
 export type BriefDeps = { pendingApprovals?: (tenantId: string, recipient: RegisterActor) => Promise<number | null> };
 
+/**
+ * POS P3.9 ▸ fix1 F5 (=N2 · CD-P39c): ชื่อระบบในสรุปเช้า — ร้านมี POS ชื่อซ้ำกัน ⇒ ต่อท้าย "(…<id 4 ตัวท้าย>)" ให้หัวเรื่อง (= คีย์กันซ้ำต่อผู้รับ) ไม่ชนข้ามระบบ ·
+ *   ชื่อไม่ซ้ำ = ชื่อเดิม (AppNotification ไม่มีช่อง data — กันซ้ำด้วยหัวเรื่องที่มีชื่อระบบ + วันที่ · ไม่มี migration) ◂
+ */
+export async function posBriefSystemName(tenantId: string, sys: { id: string; name: string }): Promise<string> {
+  const same = await prisma.appSystem.count({ where: { tenantId, type: "POS", name: sys.name, id: { not: sys.id } } });
+  return same > 0 ? `${sys.name} (…${sys.id.slice(-4)})` : sys.name;
+}
+
 /** R6 R7 — ข้อมูลสรุปเช้าของผู้รับหนึ่งคน ณ วันธุรกิจหนึ่ง (YYYY-MM-DD) */
 export async function loadBriefInput(ctx: { tenantId: string; systemId: string }, recipient: RegisterActor, businessDate: string, deps: BriefDeps = {}): Promise<BriefInput> {
   const sys = await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS" }, select: { name: true, settings: true } });
@@ -82,7 +91,7 @@ export async function loadBriefInput(ctx: { tenantId: string; systemId: string }
   const pendingApprovals = deps.pendingApprovals ? await deps.pendingApprovals(ctx.tenantId, recipient).catch(() => null) : null;
   return {
     businessDate,
-    systemName: sys?.name ?? "",
+    systemName: sys ? await posBriefSystemName(ctx.tenantId, { id: ctx.systemId, name: sys.name }) : "", // POS P3.9 ▸ fix1 F5 ◂
     daily: dailyOf(d),
     lastWeek: dailyOf(lw),
     topProducts,
@@ -129,7 +138,7 @@ export async function sendPosDailyBriefs(opts: { now?: Date; deadline?: Date; te
     res.systems += 1;
     try {
       const date = addDays(bkkBusinessDate(now, posDayCutoffMinutes(sys.settings)), -1);
-      const title = briefTitle(sys.name, date, "th");
+      const title = briefTitle(await posBriefSystemName(sys.tenantId, sys), date, "th"); // POS P3.9 ▸ fix1 F5: ชื่อซ้ำ = มี id ท้าย ◂
       const ms = await prisma.membership.findMany({
         where: { tenantId: sys.tenantId, acceptedAt: { not: null }, OR: [{ role: "OWNER" }, { role: "MANAGER", userId: { in: ai.brief.managerUserIds } }] },
         select: { userId: true, role: true, unitAccess: true, permissions: true },
@@ -149,6 +158,11 @@ export async function sendPosDailyBriefs(opts: { now?: Date; deadline?: Date; te
         const actor: RegisterActor = { userId: r.userId, role: r.role as RegisterRole, unitAccess: toStrings(r.unitAccess), permissions: isRecord(r.permissions) ? r.permissions : {} };
         const input = await loadBriefInput({ tenantId: sys.tenantId, systemId: sys.id }, actor, date, { pendingApprovals: opts.pendingApprovals });
         const b = composeBrief(input, "th");
+        // POS P3.9 ▸ fix1 F5: ทุกส่วนถูกปฏิเสธ (ไม่มีบรรทัด) = ไม่ส่งแจ้งเตือนเปล่า ◂
+        if (b.lines.length === 0) {
+          res.skipped += 1;
+          continue;
+        }
         briefs.push({ userId: r.userId, body: b.lines.join("\n"), first: b.lines[0] ?? title });
       }
       const created = await prisma.$transaction(async (tx) => {

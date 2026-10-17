@@ -65,6 +65,11 @@ async function linkedItems(ctx: Ctx) {
 export async function posStockRisks(ctx: Ctx, actor: RegisterActor): Promise<StockRisk[] | null> {
   if (!canReadInventory(memOf(actor))) return null;
   if (ctx.unitId && !evaluate(memOf(actor), { module: "pos", action: "pos.report.view", unitId: ctx.unitId })) return null;
+  // POS P3.9 ▸ fix1 F5: ไม่ระบุสาขา = ต้องดูรายงานได้อย่างน้อยหนึ่งสาขาของระบบ POS นี้ (ผู้จัดการของสาขาระบบอื่นไม่เห็นสต็อกของระบบนี้ · สรุปที่ทุกส่วนถูกปฏิเสธจึงว่างจริง) ◂
+  if (!ctx.unitId) {
+    const links = await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
+    if (!links.some((l) => evaluate(memOf(actor), { module: "pos", action: "pos.report.view", unitId: l.unitId }))) return null;
+  }
   const items = await linkedItems(ctx);
   return items
     .filter((i) => i.reorderPoint > 0 && i.onHand <= i.reorderPoint)
