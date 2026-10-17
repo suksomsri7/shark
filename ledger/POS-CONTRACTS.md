@@ -114,6 +114,7 @@ POST /sync/sales  { deviceId, items:[{ offlineRef:'OFF-C1-0007', idempotencyKey,
   - ราคา (มติ 10 · R6 hybrid): คิดใหม่ ณ soldAt (โปร ณ เวลาขาย) — ตรงยอดที่เครื่องอ้าง (`sale.expectedGrandTotalSatang`) = OK · ไม่ตรงแต่ตรงราคา snapshot ของเครื่อง = OK ที่ราคา snapshot + `drift` (audit) · ไม่ตรงทั้งคู่ = REJECTED `PRICE_MISMATCH`
   - ขายได้: เงินสด · โอน (เลขอ้างอิงไม่บังคับ · ไม่มีรูปสลิป — P3.10) · walk-in เท่านั้น · ห้าม พร้อมเพย์/บัตร/บัตรของขวัญ/เครดิตร้าน/มัดจำ/แต้ม/คูปอง/ว่อชเชอร์/โต๊ะ/บิลพัก/ช่องทาง → REJECTED `VALIDATION`
   - เลขจริงออกตอนซิงก์จากตัวนับเดือนของ soldAt · `paidAt = soldAt` · `createdAt` = เวลาเซิร์ฟเวอร์ · สลิปออฟไลน์ = "ใบรับเงินชั่วคราว — รอออกเลขจริง" (ไม่ใช่ ABB · ไม่มี QR)
+  - (fix2 G4 · CD-P34i) รายการที่ซิงก์ผ่าน REST (ผู้ซิงก์ = คีย์ API) รับโดยผู้จัดการไม่ได้ — ผู้ขายที่ตรวจแล้วคือคีย์ ไม่ใช่สมาชิก ⇒ accept = `SELLER_MISMATCH` ⇒ ทิ้ง (discard) แล้วขายใหม่เท่านั้น
   - เหตุผลที่ปฏิเสธ: `PRICE_MISMATCH CLOCK_INVALID SHIFT_CLOSED SELLER_MISMATCH OFFLINE_REF_TAKEN STOCK_INSUFFICIENT SNAPSHOT_UNKNOWN DEVICE_REVOKED STAFF_TOKEN_INVALID VALIDATION` (+ รหัสของหน้าขาย) → คิวผู้จัดการ (pos.shift.manage: รับ = นอกกะ · ทิ้ง = เหตุผล ≥ 5 ตัว)
 
 ## Event ใหม่ทั้งหมด (ทุกตัวต้องมี consumer อย่างน้อย 1 — กฎ reference_outbox_new_event_needs_consumer)
