@@ -84,6 +84,7 @@ const CHECKS: readonly Def[] = [
   // ── AN จุดผิดปกติ ──
   D("PR11", "P", "[fix1 F2=N1 · CD-P39c] propose_plan ที่มีขั้น POS (void_sale · pos.products.setPrice · pos_draft_po) → ปฏิเสธตั้งแต่เสนอ · ไม่มีแผนเกิด (ไม่มีแผนทำครึ่งเดียว) · ตัวควบคุม: แผนที่ไม่มีขั้น POS สร้างได้"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR11)
   D("PR12", "P", "[fix1 F4=N4 · CD-P39c] ผู้จัดการ A เสนอ void บิลสาขา B → ปฏิเสธ · ไม่มีเลขบิล/ยอดของ B ในผล · ไม่มีข้อเสนอ · การ์ดตั้งราคา: สินค้าทุกสาขา = \"ทุกสาขา\" · สินค้าสาขา A = \"สาขา <ชื่อ>\""), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR12)
+  D("PR13", "P", "[fix2 N6 · CD-P39d] pos_set_availability ของสินค้าทุกสาขาโดยไม่ระบุ unitId → ปฏิเสธตอนเสนอ (\"ระบุสาขา\") · ไม่มีข้อเสนอ · ระบุ unitId → เสนอได้ (ตัวควบคุม)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix2 PR13)
   D("AN1", "A", "[R11 มติ 6] A11: pos.staff.schedule_override ×3 ของผู้จัดการ/สาขา A/D−1 → แถว A11 count 3 refType USER · เจ้าของ ×2 → ไม่มีแถว"),
   D("AN2", "A", "[R4 มติ 2] A1 นับ void ของ AI: audit pos.sale.void ผู้จัดการ (PR7) → แถว A1 ของผู้จัดการ (เกณฑ์ A1.count 1 ของฟิกซ์เจอร์)"),
   D("AN3", "A", "[R11] POS_ANOMALY_RULES = A1…A11 · ค่าปริยาย A11 {count 3} · A1–A10 เดิม · ตัวอ่านตัดช่วง A11 (0→1 · 5000→1000 · \"x\"→3)"),
@@ -1409,6 +1410,18 @@ async function runDb() {
     if (!String(one.j?.summary ?? "").includes(`สาขา ${TAG} สาขาA`)) p.push(`การ์ดสินค้าสาขา A ${short(one.j?.summary ?? one.raw, 80)}`);
     for (const x of [all, one]) if (x.j?.proposalId) await call(propMod, "rejectProposal", { tenantId: T, actor: memberActor("OWNER") }, String(x.j.proposalId));
     chk("PR12", p.length === 0, "ปฏิเสธข้ามสาขา · การ์ดบอกขอบเขต", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix2 PR13) ▸ 86 ของสินค้าทุกสาขาต้องระบุสาขาตั้งแต่ตอนเสนอ ◂
+  {
+    const p: string[] = [];
+    const before = Number(await P.aiProposal.count({ where: { tenantId: T } }).catch(() => -1));
+    const o = await rt("CASH", "pos_set_availability", { productId: PR.p86, available: false }, { conv: true });
+    if (!isErr(o.j) || !/ระบุสาขา/.test(String(o.j?.error ?? ""))) p.push(`ไม่ระบุสาขา ${short(o.raw, 70)}`);
+    if (Number(await P.aiProposal.count({ where: { tenantId: T } }).catch(() => -1)) !== before) p.push("มีข้อเสนอเกิด");
+    const ok = await rt("CASH", "pos_set_availability", { productId: PR.p86, unitId: U.A, available: false }, { conv: true });
+    if (isErr(ok.j) || !ok.j?.proposalId) p.push(`(ตัวควบคุม) ระบุสาขา A ${short(ok.raw, 60)}`);
+    if (ok.j?.proposalId) await call(propMod, "rejectProposal", { tenantId: T, actor: memberActor("CASH") }, String(ok.j.proposalId));
+    chk("PR13", p.length === 0, "ปฏิเสธ · ระบุสาขาแล้วเสนอได้", FXB(joinP(p)));
   }
   // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR11) ▸ ขั้น POS ในแผน = ต้องให้คนกดเองทีละรายการ ◂
   {
