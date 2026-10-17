@@ -120,3 +120,5 @@ Fix: re-label SYNCED only if `committed.offlineRef === row.offlineRef`; otherwis
 - **N7**: no verified token ∧ claimed ≠ sync user ⇒ price with the LOWER of the claimed member's caps and the sync user's caps (claimed must be a member of the unit, else SELLER_MISMATCH). ORACLE-ADD SY26.
 - **N9**: discard re-labels SYNCED only when `committed.offlineRef === row.offlineRef`; otherwise normal discard. ORACLE-EDIT SY22 (+ case).
 - **G4**: acknowledged — REST-synced rows (API-key actor) cannot be accepted (SELLER_MISMATCH ⇒ discard only) — builder adds the sentence to `POS-CONTRACTS.md` C-13 and the notes; no code.
+
+## Fix round 2 delivered (db4b444b · code e39a842f · 51/51 ×2) — CD-P34j accepted (snapshot-path review only when soldAt > pvu · recorded shift opened after soldAt ⇒ CLOCK_INVALID) → R3 + hunter final re-check
