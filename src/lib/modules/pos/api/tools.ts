@@ -347,7 +347,12 @@ export async function dispatchPosKind(ctx: PosConfirmCtx, kind: string, rawPaylo
     // ข้อเสนอค้างรุ่นเดิม {saleId} — re-route ทางเดียวกับ void_sale ใหม่ (มติ 2 · CD-4)
     const saleId = String(payload.saleId ?? "").trim();
     if (!saleId) throw new Error("ต้องระบุรหัสบิลที่จะยกเลิก");
-    const sale = await tenantDb({ tenantId: ctx.tenantId }).posSale.findFirst({ where: { id: saleId }, select: { systemId: true } }).catch(() => null);
+    // PosSale เป็นตารางระดับระบบ (tenantDb ต้องได้ systemId) ⇒ หาในทุกระบบ POS ของร้าน (ปกติ 1–2 ระบบ)
+    let sale: { systemId: string } | null = null;
+    for (const s of await tenantDb({ tenantId: ctx.tenantId }).appSystem.findMany({ where: { type: "POS" }, select: { id: true } })) {
+      sale = await tenantDb({ tenantId: ctx.tenantId, systemId: s.id }).posSale.findFirst({ where: { id: saleId }, select: { systemId: true } });
+      if (sale) break;
+    }
     if (!sale) throw new Error("ไม่พบบิลนี้");
     opId = "sales.void";
     input = { reason: typeof payload.reason === "string" && payload.reason.trim().length >= 5 ? payload.reason.trim() : POS_LEGACY_VOID_REASON };
