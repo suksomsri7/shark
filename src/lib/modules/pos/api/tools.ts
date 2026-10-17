@@ -270,6 +270,8 @@ async function targetOf(p: Prepared, asker: ApiActor, tenantId: string, systemId
   if (p.op.id.startsWith("products.") && p.params.id) {
     const row = await db.posProduct.findFirst({ where: { id: p.params.id }, select: { name: true, basePriceSatang: true, unitId: true } });
     if (!row || (row.unitId && !posActorCanUseUnit(asker, row.unitId))) return { error: "ไม่พบสินค้านี้ในระบบขายหน้าร้าน" };
+    // POS P3.9 ▸ fix2 N6 (CD-P39d): 86 เป็นรายสาขา — สินค้าทุกสาขาต้องระบุ unitId ตั้งแต่ตอนเสนอ (เดิมเสนอได้แล้วไปล้ม 422 ตอนกดยืนยัน) ◂
+    if (p.op.id === "products.availability" && row.unitId === null && !given) return { error: "สินค้านี้ขายทุกสาขา — ระบุสาขา (unitId) ที่จะแจ้งของหมด/คืนขาย" };
     return { kind: "product", name: row.name, basePriceSatang: row.basePriceSatang, unitId: row.unitId };
   }
   if (p.op.id.startsWith("sales.") && p.params.id) {
