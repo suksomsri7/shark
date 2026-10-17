@@ -31,12 +31,13 @@ const toStrings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x 
 export type BriefDeps = { pendingApprovals?: (tenantId: string, recipient: RegisterActor) => Promise<number | null> };
 
 /**
- * POS P3.9 ▸ fix1 F5 (=N2 · CD-P39c): ชื่อระบบในสรุปเช้า — ร้านมี POS ชื่อซ้ำกัน ⇒ ต่อท้าย "(…<id 4 ตัวท้าย>)" ให้หัวเรื่อง (= คีย์กันซ้ำต่อผู้รับ) ไม่ชนข้ามระบบ ·
- *   ชื่อไม่ซ้ำ = ชื่อเดิม (AppNotification ไม่มีช่อง data — กันซ้ำด้วยหัวเรื่องที่มีชื่อระบบ + วันที่ · ไม่มี migration) ◂
+ * POS P3.9 ▸ fix1 F5 (=N2 · CD-P39c) + fix2 N7: ชื่อระบบในสรุปเช้า — ร้านมี POS หลายระบบ ⇒ ต่อท้าย "(…<id 8 ตัวท้าย>)" ให้หัวเรื่อง (= คีย์กันซ้ำต่อผู้รับ) ไม่ชนข้ามระบบ ·
+ *   ร้านมี POS ระบบเดียว = ชื่อเดิม (AppNotification ไม่มีช่อง data — กันซ้ำด้วยหัวเรื่องที่มีชื่อระบบ + วันที่ · ไม่มี migration) ◂
  */
+// POS P3.9 ▸ fix2 N7 (CD-P39d): ร้านมี POS ≥ 2 ระบบ ⇒ ทุกระบบมี "(…<id 8 ตัวท้าย>)" เสมอ (ไม่ขึ้นกับชื่อซ้ำ) — เปลี่ยนชื่อ/ตั้งชื่อซ้ำกลางวันไม่ทำให้หัวเรื่องชนกัน ◂
 export async function posBriefSystemName(tenantId: string, sys: { id: string; name: string }): Promise<string> {
-  const same = await prisma.appSystem.count({ where: { tenantId, type: "POS", name: sys.name, id: { not: sys.id } } });
-  return same > 0 ? `${sys.name} (…${sys.id.slice(-4)})` : sys.name;
+  const others = await prisma.appSystem.count({ where: { tenantId, type: "POS", id: { not: sys.id } } });
+  return others > 0 ? `${sys.name} (…${sys.id.slice(-8)})` : sys.name;
 }
 
 /** R6 R7 — ข้อมูลสรุปเช้าของผู้รับหนึ่งคน ณ วันธุรกิจหนึ่ง (YYYY-MM-DD) */
