@@ -1682,6 +1682,8 @@ async function runDb() {
     allBriefRows.push(...rows);
     const own = rows.filter((x) => x.recipientUserId === uid("OWNER"));
     if (own.length !== 2 || new Set(own.map((x) => x.title)).size !== 2) p.push(`เจ้าของ ${own.length} ใบ [${own.map((x) => short(x.title, 50)).join(" | ")}]`);
+    // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.9 fix2 N7 · BR10): ร้านมี POS ≥ 2 ระบบ ⇒ ทุกหัวเรื่องมี "(…<id 8 ตัวท้าย>)" ของระบบนั้น (ไม่ขึ้นกับชื่อซ้ำ) — เดิมตรวจแค่ "ไม่ชน"
+    for (const sid of [S.POS ?? "none", S2 || "none"]) if (!own.some((x) => String(x.title).includes(`(…${sid.slice(-8)})`))) p.push(`ไม่มีหัวเรื่องที่ลงท้าย (…${sid.slice(-8)})`);
     const m2 = rows.filter((x) => x.recipientUserId === MGR2);
     if (m2.length !== 1) p.push(`ผู้จัดการสาขา C ${m2.length} ใบ (คาด 1 — ของระบบตัวเอง)`);
     const empty = rows.filter((x) => !String(x.body ?? "").trim());
