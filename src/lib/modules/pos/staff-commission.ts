@@ -280,7 +280,8 @@ async function pushUser(tenantId: string, userId: string, emp: { employeeId: str
     };
     // POS P3.5 ▸ fix2 N3: งวดเป้าหมายไม่ย้อนไปก่อนประวัติรอบจ่าย = max(งวดว่างแรกตั้งแต่เดือนของแถว, เดือนถัดจากรอบล่าสุด)
     //   (เดือนเก่าที่ไม่มีรอบ ขณะที่เดือนหลังมีรอบแล้ว = งวดที่ HR จะไม่มีวันรัน) ◂
-    const lastRun = [...runs].sort().pop();
+    // POS P3.5 ▸ fix3 N9: เพดานล่างนับเฉพาะรอบที่งวด ≤ เดือนไทยปัจจุบัน — รอบล่วงหน้าไม่ดันงวด (freeFrom + PERIOD_CLOSED ยังข้ามงวดที่มีรอบให้) ◂
+    const lastRun = [...runs].filter((k) => k <= current).sort().pop();
     const floor = lastRun ? nextPeriodKey(lastRun) : null;
     const targetOf = (pk: string) => {
       const t = freeFrom(pk);
