@@ -41,7 +41,7 @@ const CHECKS: readonly Def[] = [
   D("K2", "S", "[§4] Setup: https://shark.in.th/api/v1/pos · Authorization: Bearer · X-Shark-System · ชี้ไป references/endpoints.md + recipes.md"),
   D("K3", "S", "[§3 §4] Conventions: satang (จำนวนเต็ม) · unitId · Idempotency-Key · แยกทางด้วย error.code · page/pageSize · Accept: text/csv"),
   D("K4", "S", "[§4 safety] never void/refund/cancel โดยผู้ใช้ไม่ได้สั่ง · confirm: true + reason · quote ก่อนขาย · never ask for PINs (ไม่มีทาง PIN ใน API)"),
-  D("K5", "S", "[มติ 8] references/endpoints.md (สร้างจาก gen-pos-api-docs) มีทุก `METHOD path` ของ 48 op"),
+  D("K5", "S", "[มติ 8] references/endpoints.md (สร้างจาก gen-pos-api-docs) มีทุก `METHOD path` ของ 49 op"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 K5): + POST /sync/sales · 48 → 49
   D("K6", "S", "[§4] สำเนาในบ้านสองบัญชี (/root/.claude · /root/.claude-b) ใต้ skills/shark-pos-api/{SKILL.md, references/recipes.md, references/endpoints.md} ตรงไบต์กับของ repo (skills/shark-pos-api)"), // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2 · K2): คำอธิบายไม่มีสตริงทางเดิม // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2) มติ 4
   D("K7", "S", "[§4] recipes.md ≥ 8 ก้อน curl แกะได้ (method · URL ใต้ /api/v1/pos · ตัวแปรที่รู้จักเท่านั้น · JSON body ถูก) · ครอบ 8 งาน · write มี Idempotency-Key · danger มี confirm:true+reason · ทุกก้อนมี Error branch ที่เล่นซ้ำได้"),
   D("K8", "M", "[§4 ชั้น a] เล่นซ้ำทุกสูตรผ่าน route ในโปรเซส (แทนค่าฟิกซ์เจอร์) → 200 ทุกก้อน · สูตร CSV ได้ text/csv"),
@@ -88,7 +88,7 @@ const SKILL_DIR = process.env.P213_SKILL_DIR || join(ROOT, "skills/shark-pos-api
 const HOME_DIRS = ["/root/.claude", "/root/.claude-b"].map((h) => join(h, "skills", "shark-pos-api")); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-2 · K2): ประกอบ path บ้าน — ไม่มีสตริงทางเดิมของสกิลในโค้ด
 const FILES = ["SKILL.md", "references/recipes.md", "references/endpoints.md"] as const;
 const ROUTE_FILE = "src/app/api/v1/pos/[...path]/route.ts";
-/** 48 op (ตรงกับ OPS_SPEC ของ qc-pos-p2.13) — `METHOD path` */
+/** 49 op (ตรงกับ OPS_SPEC ของ qc-pos-p2.13) — `METHOD path` */ // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 K5): + POST /sync/sales · 48 → 49
 const OP_PATHS = [
   "GET /units", "GET /sales", "GET /sales/{id}", "GET /sales/{id}/receipt", "POST /sales/quote", "POST /sales", "POST /sales/{id}/void", "GET /sales/{id}/refundable",
   "POST /sales/{id}/refund", "POST /sales/{id}/tax-invoice", "GET /shifts", "GET /shifts/current", "GET /shifts/{id}/x-report", "GET /shifts/{id}/z-report", "GET /devices",
@@ -97,6 +97,7 @@ const OP_PATHS = [
   "POST /orders/{id}/accept", "POST /orders/{id}/reject", "POST /orders/{id}/preparing", "POST /orders/{id}/ready", "POST /orders/{id}/complete", "POST /orders/{id}/cancel",
   "POST /orders/{id}/pay", "GET /reports/summary", "GET /reports/daily", "GET /reports/products", "GET /reports/staff", "GET /reports/payments", "GET /reports/margin",
   "GET /reports/shifts", "GET /reports/tax", "GET /reports/channels", "GET /reports/branches", "GET /reports/hourly", "GET /reports/anomalies",
+  "POST /sync/sales", // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 K5): + POST /sync/sales · 48 → 49
 ] as const;
 const VARS = ["SHARK_API_KEY", "SHARK_SYSTEM_ID", "UNIT_ID", "PRODUCT_ID", "SALE_ID", "LINE_ID", "ORDER_ID", "CHANNEL_ID", "FROM", "TO", "IDEMPOTENCY_KEY",
   "CHANNEL_CODE", /* ORACLE-ADD ผู้คุม 15 ต.ค. (P2.13 skill fix) */
@@ -298,7 +299,7 @@ function runStatic(): void {
   }
   {
     const miss = OP_PATHS.filter((op) => !endpointsMd.includes(op) && !endpointsMd.includes(op.replace(" /", " /api/v1/pos/")));
-    chk("K5", endpointsMd && miss.length === 0, "48/48", endpointsMd ? `${OP_PATHS.length - miss.length}/48 ขาด ${miss.slice(0, 4).join(", ")}` : "ไม่มี endpoints.md");
+    chk("K5", endpointsMd && miss.length === 0, "49/49", endpointsMd ? `${OP_PATHS.length - miss.length}/49 ขาด ${miss.slice(0, 4).join(", ")}` : "ไม่มี endpoints.md"); // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 K5): + POST /sync/sales · 48 → 49
   }
   {
     const p: string[] = [];

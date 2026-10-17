@@ -1,4 +1,4 @@
-// QC — POS RUN ใบ P2.13: REST `/api/v1/pos` (ทะเบียนเดียว 48 op) + คีย์ API ของ POS + คู่มือ/OpenAPI/สกิล (registry) + ด่าน AI ของคีย์
+// QC — POS RUN ใบ P2.13: REST `/api/v1/pos` (ทะเบียนเดียว 49 op) + คีย์ API ของ POS + คู่มือ/OpenAPI/สกิล (registry) + ด่าน AI ของคีย์ // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
 //   เขียนก่อนสร้าง (fail-before) · ผู้สร้าง (builder) P2.13 S (+ U-lite) หลัง P2.12 S merge
 // requires: (ไม่ต้อง seed — ร้านชั่วคราวของข้อสอบเอง · ลายนิ้วมือ Z2 อ่านร้าน seed ถ้ามี)
 //
@@ -62,10 +62,10 @@ type Def = readonly [string, string, string];
 const D = (id: string, x: string, title: string): Def => [`P2.13-${id}`, x, title] as const;
 const CHECKS: readonly Def[] = [
   // ── ST สถิต ──
-  D("ST1", "S", "[§1 §2.1 มติ 3] ทะเบียน 48 op = OPS_SPEC (id·method·path·scope·kind ตรงตัว) · module pos · auditAction pos.api.<id> · summary ASCII · ป้ายไทย · test id ไม่ซ้ำ · ไม่มี tool (P0.2 S3.5) · POS_SCOPES ครบทุก scope ที่ใช้ · bundle pos-read/pos-operate/pos-admin = §2.1 ตรงตัว · scope เป็นคีย์สิทธิ์จริง · (DB) input strict + รูป P0.2 ของ sales.create ยังผ่าน schema"),
+  D("ST1", "S", "[§1 §2.1 มติ 3] ทะเบียน 49 op = OPS_SPEC (id·method·path·scope·kind ตรงตัว) · module pos · auditAction pos.api.<id> · summary ASCII · ป้ายไทย · test id ไม่ซ้ำ · ไม่มี tool (P0.2 S3.5) · POS_SCOPES ครบทุก scope ที่ใช้ · bundle pos-read/pos-operate/pos-admin = §2.1 ตรงตัว · scope เป็นคีย์สิทธิ์จริง · (DB) input strict + รูป P0.2 ของ sales.create ยังผ่าน schema"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
   D("ST2", "S", "[§6 มติ 8] ไฟล์ตามตารางชื่อ: route [...path] = 5 export บางส่งต่อ dispatch ของโมดูล (ไม่มี prisma/if/await อื่น) · openapi.json/route.ts · pos/api/{config,actor,dispatch,openapi,http-errors,keys}.ts · ops/{meta,sales,shifts,devices,products,channels,orders,reports}.ts · config rateNs pos/systemType POS/scopePrefix pos. · api-key-actions.ts \"use server\" create/list/revoke + api.key.create/api.key.revoke + pos.settings.manage + bundle pos-* + createApiKey"),
   D("ST3", "S", "[§5 มติ 1] ops/*.ts เรียก facade เท่านั้น: ไม่มี createSale( (sales.ts 1 → 0) · ไม่มี $transaction / .create( .update( .upsert( .delete( *Many( / $executeRaw · ไม่ import @prisma/client ค่า · keys.ts posApiServiceKey = api_ + sha256(keyId\\n+key)[0..63] (DB: ค่าจริง)"),
-  D("ST4", "S", "[§4 มติ 8] gen-pos-api-docs --check exit 0 · docs/api/POS-API.md + skill endpoints.md มีทุก `METHOD path` · /developers/pos (buildOpenApi/POS_OPS) + /developers/pos.md route + ลิงก์จาก /developers · fitness.mts F13 เรียก gen-pos-api-docs · (DB) openapi.json = 48 operation · pos.md = ไฟล์คู่มือเป๊ะ"),
+  D("ST4", "S", "[§4 มติ 8] gen-pos-api-docs --check exit 0 · docs/api/POS-API.md + skill endpoints.md มีทุก `METHOD path` · /developers/pos (buildOpenApi/POS_OPS) + /developers/pos.md route + ลิงก์จาก /developers · fitness.mts F13 เรียก gen-pos-api-docs · (DB) openapi.json = 49 operation · pos.md = ไฟล์คู่มือเป๊ะ"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
   D("ST5", "S", "[⚠️4 มติ 1 7 10] หมุด (เทียบ merge-base): pos-sale-contract.json sha คงเดิม · ไม่มี diff ใต้ prisma/ · outbox-consumers.ts ai/tools.ts package.json ไม่แตะ · createSale( ต่อไฟล์ = ฐาน ยกเว้น pos/api/ops/sales.ts → 0 · skills.ts มี hunk `POS P2.13 ▸` ใน toolAllowedForApiKey · (DB) ด่าน AI: sales_summary/by_day ⇐ pos.sale.read · pos_create_sale ⇐ create · void_sale ⇐ void (คีย์อื่น false)"),
   D("ST6", "S", "[§3 มติ 5] http-errors.ts: POS_REFUSAL_HTTP เป็น Record<PosRefusalCode,…> ครอบทุกรหัสของ facade ที่ op เรียก (register bills receipt refund shift device catalog channel order reports tax-invoice + PosSaleErrorCode) · message_en ASCII ทุกแถว · สถานะตาม §3 (NOT_FOUND 404 · PERMISSION_DENIED 403 · VALIDATION/PAYMENT_MISMATCH 422 · state 409 · *_TAKEN 409 duplicate · BUSY 503 · INTERNAL 500)"),
   // ── AU ด่านหน้า ──
@@ -144,7 +144,7 @@ if (LIST) {
 // ═════════════════════════ ตารางสัญญา ═════════════════════════
 type OpKind = "read" | "write" | "danger";
 type OpSpec = readonly [id: string, method: string, path: string, action: string, kind: OpKind];
-/** 48 op (มติ §10: IN 45 + anomalies/tax-invoice/shifts-current) — ตรงตัว */
+/** 49 op (มติ §10: IN 45 + anomalies/tax-invoice/shifts-current · P3.4 + sync.sales) — ตรงตัว */ // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
 const OPS_SPEC: readonly OpSpec[] = [
   ["units.list", "GET", "/units", "pos.sale.read", "read"],
   ["sales.list", "GET", "/sales", "pos.sale.read", "read"],
@@ -194,11 +194,12 @@ const OPS_SPEC: readonly OpSpec[] = [
   ["reports.branches", "GET", "/reports/branches", "pos.report.view", "read"],
   ["reports.hourly", "GET", "/reports/hourly", "pos.report.view", "read"],
   ["reports.anomalies", "GET", "/reports/anomalies", "pos.report.anomaly", "read"],
+  ["sync.sales", "POST", "/sync/sales", "pos.offline.sync", "write"], // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
 ];
 /** bundle ตาม §2.1 (ตรงตัว — มติ 3) */
 const POS_READ = ["pos.sale.read", "pos.report.view"];
 const POS_OPERATE = [...POS_READ, "pos.sale.create", "pos.order.accept", "pos.shift.manage", "pos.device.manage"];
-const POS_ADMIN = [...POS_OPERATE, "pos.sale.void", "pos.sale.refund", "pos.sale.priceOverride", "pos.order.reject", "pos.product.manage", "pos.product.setPrice", "pos.channel.manage", "pos.taxinvoice.issue", "pos.report.anomaly"];
+const POS_ADMIN = [...POS_OPERATE, "pos.sale.void", "pos.sale.refund", "pos.sale.priceOverride", "pos.order.reject", "pos.product.manage", "pos.product.setPrice", "pos.channel.manage", "pos.taxinvoice.issue", "pos.report.anomaly", "pos.offline.sync"]; // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1 · CD-8 → CD-P34b): pos-admin + pos.offline.sync (pos-operate ไม่ได้ — qc-pos-p3.4 RS4) · 15 → 16
 const BUNDLE_SPEC: Record<string, string[]> = { "pos-read": POS_READ, "pos-operate": POS_OPERATE, "pos-admin": POS_ADMIN };
 const FILTER_PREFIX = "pos.filter.unit:";
 /** รายงานของ P2.12 S (RP2 · SKIP เมื่อ REPORT_KINDS ยังไม่มี) */

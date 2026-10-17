@@ -91,6 +91,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosOrderLine: sys(),
   PosOrderEvent: sys(),
   PosOrderLink: sys(), // POS P2.7 ▸ ลิงก์สั่งล่วงหน้าต่อสาขา (/q/<token>) ◂
+  // POS P3.4 ▸ ออฟไลน์: รายการที่เครื่องส่งซิงก์ (มี systemId ของ POS) · snapshot ราคาต่อเครื่อง (tenantId + unitId · CD-2) — ผู้เขียนเดียว pos/offline-sync.ts ◂
+  PosOfflineSale: sys(),
+  PosOfflineSnapshot: unit,
   // POS P2.6 ▸ 86/ของหมด: ใคร/เมื่อไร/จากไหน ต่อสินค้าต่อสาขา (ผู้เขียน pos/catalog.ts + catalog-legacy.ts · กรอง tenantId + systemId/unitId ในโค้ด) ◂
   PosAvailabilityMark: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)

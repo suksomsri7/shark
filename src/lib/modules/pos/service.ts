@@ -48,6 +48,18 @@ function bkkPeriod(): string {
   const d = new Date(Date.now() + 7 * 3600000);
   return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
+// POS P3.4 ▸ R7 มติ 3: บิลออฟไลน์ — เดือนของเลขใบเสร็จ = เดือนไทยของ soldAt · soldAt/เลข OFF ผิดรูป = VALIDATION (ผู้ส่ง offline-sync ตรวจกรอบเวลาแล้ว)
+function bkkPeriodOf(at: Date): string {
+  const d = new Date(at.getTime() + 7 * 3600000);
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+function saleOfflineSoldAt(input: CreateSaleInput): Date | null {
+  if (input.offline === undefined || input.offline === null) return null;
+  const o = input.offline;
+  const at = o.soldAt instanceof Date ? o.soldAt : typeof o.soldAt === "string" ? new Date(o.soldAt) : new Date(Number.NaN);
+  if (typeof o.ref !== "string" || !/^OFF-[A-Z0-9]{1,8}-[0-9]{4,8}$/.test(o.ref) || !Number.isFinite(at.getTime())) throw new PosSaleError("VALIDATION", "ข้อมูลบิลออฟไลน์ไม่ถูกต้อง");
+  return at;
+} // ◂
 
 /**
  * สิทธิ์สมาชิกที่พนักงาน/ลูกค้า "เลือกใช้" กับบิลนี้ (M2.8 · §9.1)
@@ -145,6 +157,10 @@ export type CreateSaleInput = {
   channelId?: string;
   /** POS P2.1 (R4 · เพิ่มล้วน): เลขออเดอร์ของแพลตฟอร์ม (ตัดช่องว่าง · ≤ 40 ตัว ไม่งั้น VALIDATION · ว่าง = null) · ไม่อยู่ใน samePayload */
   channelRef?: string;
+  // POS P3.4 ▸ R7 มติ 3 (เพิ่มล้วน): บิลที่เครื่องขายตอนออฟไลน์แล้วซิงก์ (ผู้ส่งเดียว = pos/offline-sync.ts ผ่าน submitRegisterSale) —
+  //   ref = เลข OFF ของเครื่อง → PosSale.offlineRef (unique ต่อสาขา) · soldAt = เวลาขายของเครื่อง → paidAt (GL = เวลาขาย) + เดือนของเลขใบเสร็จ ·
+  //   syncedAt = เวลาเซิร์ฟเวอร์ · createdAt ไม่ย้อน · ไม่ส่ง = บิลออนไลน์เหมือนเดิมทุกไบต์ · ไม่อยู่ใน samePayload
+  offline?: Readonly<{ ref: string; soldAt: Date | string }>; // ◂
 };
 
 export type SaleResult = {
@@ -779,6 +795,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
 
     // ── P1.6: โครงฟิลด์ใหม่ + สาขา↔ระบบ (R7/O21) — ทั้งหมดก่อนแตะตัวนับใบเสร็จ ──
     validateSaleInput(input);
+    const offlineSoldAt = saleOfflineSoldAt(input); // POS P3.4 ▸ R7 ◂
     await assertUnitOfSystem(tx, input);
     // R4 H5: ทิปต้องเปิดที่ค่าตั้งของ POS นี้ (ผู้เรียกเดิมข้ามหน้าขายไม่ได้) — ปิด = VALIDATION ก่อนแตะตัวนับ
     if ((input.tipSatang ?? 0) > 0) {
@@ -881,7 +898,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     }
 
     // เลขใบเสร็จรันต่อ unit/เดือน
-    const period = bkkPeriod();
+    const period = offlineSoldAt ? bkkPeriodOf(offlineSoldAt) : bkkPeriod(); // POS P3.4 ▸ มติ 3: บิลออฟไลน์ = ตัวนับเดือนของ soldAt ◂
     const counter = await tx.posReceiptCounter.upsert({
       where: { unitId_period: { unitId: input.unitId, period } },
       create: { tenantId: input.tenantId, unitId: input.unitId, period, seq: 1 },
@@ -915,7 +932,9 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         serviceChargeSatang: serviceCharge,
         tipSatang: tip,
         note: input.note ?? null,
-        paidAt: new Date(),
+        // POS P3.4 ▸ R7 มติ 3: บิลออฟไลน์ paidAt = soldAt · offlineRef · syncedAt = เวลาเซิร์ฟเวอร์ (createdAt = ค่าปริยายของ DB · ไม่ย้อน)
+        paidAt: offlineSoldAt ?? new Date(),
+        ...(offlineSoldAt ? { offlineRef: input.offline!.ref, syncedAt: new Date() } : {}), // ◂
         shiftId,
         soldByUserId: input.soldByUserId ?? null, // POS P1.17 ▸ R6 ◂
         ...(input.taxInvoice ? { taxInvoice: input.taxInvoice as unknown as Prisma.InputJsonValue } : {}), // POS P1.13 ▸ R1 ◂

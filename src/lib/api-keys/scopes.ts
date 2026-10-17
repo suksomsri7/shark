@@ -289,6 +289,7 @@ const POS_ADMIN_SCOPES = [
   "pos.channel.manage",
   "pos.taxinvoice.issue",
   "pos.report.anomaly",
+  "pos.offline.sync", // POS P3.4 ▸ CD-8 → CD-P34b: ชุดที่ถือ pos.sale.create และไม่ทำให้ qc-pos-p3.4 RS4 (pos-operate ไม่มีคีย์นี้) แดง ◂
 ] as const;
 // ◂ POS P2.13
 

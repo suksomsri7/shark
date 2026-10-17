@@ -301,7 +301,40 @@ export async function issueStaffToken(
  * โทเคน → ผู้กระทำ (สิทธิ์สดจาก membership) · null = ลายเซ็นผิด (ร้าน/สาขา/เครื่องอื่น · ถูกแก้) · หมดอายุ · ตั้ง PIN ใหม่แล้ว ·
  * ไม่มี pos.sale.create ที่สาขานี้แล้ว · เครื่องถูกเพิกถอน · ไม่มี SESSION_SECRET
  */
-export async function staffActorFromToken(ctx: unknown, token: unknown, client?: Db): Promise<RegisterActor | null> {
+// POS P3.4 ▸ มติ 12 · CD-12 (R8): `opts.at` = ตัดสินโทเคน "ณ เวลาขาย" ของบิลออฟไลน์ที่ซิงก์ทีหลัง (ผู้เรียก = pos/offline-sync.ts ที่บีบ soldAt แล้ว) —
+//   หมดอายุเทียบ at (และ at ต้องอยู่ในอายุของโทเคน: ออกก่อน at · at ไม่ล้ำนาฬิกาเซิร์ฟเวอร์เกิน 2 นาที) · เครื่องถูกเพิกถอนเทียบ revokedAt ≤ at ·
+//   PIN เวอร์ชัน + สิทธิ์ขายยังตรวจ "ตอนนี้" (เปลี่ยน PIN/ถอดสิทธิ์แล้ว = null) · ไม่ส่ง at = กติกาเดิมทุกไบต์ (staffActorFromTokenNow)
+export async function staffActorFromToken(ctx: unknown, token: unknown, client?: Db, opts?: { at?: Date }): Promise<RegisterActor | null> {
+  if (opts?.at === undefined) return staffActorFromTokenNow(ctx, token, client);
+  try {
+    const db = client ?? prisma;
+    const at = opts.at instanceof Date ? opts.at.getTime() : Number.NaN;
+    if (!Number.isFinite(at) || at > Date.now() + 120_000) return null;
+    if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.unitId) || !isPosDeviceCode(ctx.deviceId)) return null;
+    if (typeof token !== "string" || token.length > TOKEN_MAX) return null;
+    const key = tokenKey();
+    if (!key) return null;
+    const parts = token.split(".");
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+    const [body, sig] = parts as [string, string];
+    const want = Buffer.from(signBody(key, ctx.tenantId, ctx.unitId, ctx.deviceId, body));
+    const got = Buffer.from(sig);
+    if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
+    const p: unknown = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (!isRecord(p) || !isId(p.u) || typeof p.e !== "number" || typeof p.v !== "string") return null;
+    if (!(p.e > at) || at < p.e - STAFF_TOKEN_TTL_MS) return null;
+    const row = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: ctx.unitId, userId: p.u } }, select: { tenantId: true, pinHash: true } });
+    if (!row || row.tenantId !== ctx.tenantId || pinVersionOf(row.pinHash) !== p.v) return null;
+    const actor = await posMemberActor(ctx.tenantId, p.u, db);
+    if (!actor || !canSellAt(actor, ctx.unitId)) return null;
+    const dev = await db.posDevice.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, deviceCode: ctx.deviceId }, select: { status: true, revokedAt: true } });
+    if (dev?.status === "REVOKED" && (!dev.revokedAt || dev.revokedAt.getTime() <= at)) return null;
+    return actor;
+  } catch {
+    return null;
+  }
+}
+async function staffActorFromTokenNow(ctx: unknown, token: unknown, client?: Db): Promise<RegisterActor | null> { // ◂
   try {
     const db = client ?? prisma;
     if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.unitId) || !isPosDeviceCode(ctx.deviceId)) return null;

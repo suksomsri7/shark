@@ -34,6 +34,7 @@ export const POS_SCOPES = {
   orderReject: "pos.order.reject",
   reportView: "pos.report.view",
   reportAnomaly: "pos.report.anomaly",
+  offlineSync: "pos.offline.sync", // POS P3.4 ▸ มติ 2: ซิงก์บิลออฟไลน์ผ่าน REST (sync.sales) — หน้าขายของร้านใช้ route ของ session ไม่ต้องมีคีย์นี้ ◂
 } as const;
 
 export type PosScope = (typeof POS_SCOPES)[keyof typeof POS_SCOPES];

@@ -690,6 +690,41 @@ const regApiKeyOf = (ctx: unknown): string | null => (regIsRecord(ctx) && regIsI
 const regApiShiftOf = (ctx: unknown): string | undefined => (regIsRecord(ctx) && regIsId(ctx.apiShiftId) ? ctx.apiShiftId : undefined);
 const regSaleSource = (s: RegScope): string => (s.apiKeyId ? "API" : "POS");
 // ◂ POS P2.13
+// POS P3.4 ▸ R5–R9 (มติ 3 10 12 · CD-4 CD-12): บิลออฟไลน์ที่ซิงก์ — ผู้ส่งเดียว = pos/offline-sync.ts ผ่าน registerOfflineCtx (คีย์ Symbol ของโมดูลนี้ ⇒
+//   มาจาก body ของคำขอ / server action / JSON ไม่ได้) · facade ตัดสินนาฬิกา · กะที่บันทึก · เครื่องถูกเพิกถอน ณ soldAt · โทเคน ณ soldAt · ผู้ขาย · snapshot มาแล้ว ·
+//   ที่นี่: คิดราคา ณ soldAt (กติกาโปร ณ เวลาขาย) → ไม่ตรงยอดที่เครื่องอ้างแต่ตรงราคา snapshot ของเครื่อง = ขายที่ราคานั้น + drift → ไม่ตรงทั้งคู่ =
+//   PRICE_CHANGED (facade แปลเป็น PRICE_MISMATCH) · กะ = ที่เครื่องบันทึก (null = นอกกะ · createSale ล็อก + ตรวจ OPEN ซ้ำ) · ไม่ใช้ด่านเครื่องถูกเพิกถอน "ตอนนี้" ·
+//   ปฏิเสธใด ๆ ของการคิดราคา = คืนทันที (ไม่พักบิล/ไม่มี PIN ผู้จัดการตอนซิงก์) · ไม่ออกตั๋วครัว (ครัวทำไปแล้วตอนขาย) · createSale ได้ offline {ref, soldAt}
+export type RegisterOfflineDrift = { totalAtSoldAtSatang: number | null; snapshotTotalSatang: number; lines: { productId: string; priceAtSoldAtSatang: number | null; snapshotPriceSatang: number }[] };
+export type RegisterOfflineSubmit = {
+  ref: string;
+  soldAt: Date;
+  shiftId: string | null;
+  /** ราคาจาก PosOfflineSnapshot ของเครื่อง (productId | choiceId → สตางค์) · null = ไม่มีหลักฐาน (ไม่มีทางที่สอง) */
+  snapshotPrices: ReadonlyMap<string, number> | null;
+  /** ผลขาออก: บรรทัดที่ราคา ณ soldAt ≠ ราคา snapshot เมื่อบิลถูกขายด้วยราคา snapshot · null = ไม่มี drift */
+  drift?: RegisterOfflineDrift | null;
+  // POS P3.4 ▸ fix1 N3 (CD-P34g): เวลาราคา — nowMs = เวลาซิงก์ · priceAtSyncSatang (ขาออก · audit) = ยอดของตะกร้าเดียวกัน ณ เวลาซิงก์ ·
+  //   windowReview (ขาออก) = ราคา ณ soldAt (มีโปรตามเวลา) ถูกกว่าราคาตอนซิงก์ และซิงก์ช้ากว่า 30 นาที ⇒ ไม่ขาย ส่งคิวผู้จัดการ · skipWindowReview = ผู้จัดการรับ
+  nowMs?: number;
+  priceAtSyncSatang?: number | null;
+  windowReview?: boolean;
+  skipWindowReview?: boolean;
+  /** POS P3.4 ▸ fix2 N6: soldAt อยู่หลัง priceValidUntil ของ snapshot (ช่วงผ่อน 15 นาที) — ทางราคา snapshot ก็ต้องผ่านการตรวจช่วงเวลาราคา */
+  snapshotPastPvu?: boolean;
+  /** POS P3.4 ▸ fix2 N7: ผู้ขายที่เครื่องอ้าง (ไม่มีโทเคน) ≠ ผู้ซิงก์ — เพดานส่วนลด/ราคาเปิด = ต่ำกว่าของสองคน */
+  capActor?: RegisterActor | null;
+};
+const REG_OFFLINE_WINDOW_REVIEW_MS = 30 * 60_000; // POS P3.4 ▸ fix1 N3 (ในบล็อก R5–R9)
+const REG_OFFLINE: unique symbol = Symbol("pos.register.offline");
+/** ctx ของบิลออฟไลน์ (สำเนา ctx + ข้อมูลออฟไลน์ใต้คีย์ Symbol) — offline-sync.ts เท่านั้น */
+export function registerOfflineCtx<C extends RegisterCtx>(ctx: C, off: RegisterOfflineSubmit): C {
+  return Object.assign({ ...ctx }, { [REG_OFFLINE]: off });
+}
+const regOfflineOf = (ctx: unknown): RegisterOfflineSubmit | null => {
+  const v = regIsRecord(ctx) ? (ctx as unknown as Record<symbol, unknown>)[REG_OFFLINE] : undefined;
+  return regIsRecord(v) ? (v as unknown as RegisterOfflineSubmit) : null;
+}; // ◂
 
 function regActorOf(a: unknown): RegisterActor | null {
   if (!regIsRecord(a) || !regIsId(a.userId)) return null;
@@ -1417,7 +1452,7 @@ async function regPrice(
   /** POS P1.15: เพดานที่ใช้แทนของผู้ขาย (PIN ผู้จัดการ · ส่วนลดที่อนุมัติ · null = ไม่จำกัด) — ไม่ส่ง = เพดานของ s.actor ตามค่าตั้ง */
   maxBp?: number | null,
   /** POS P1.12: display = คิดราคาเพื่อแสดงสิทธิ์อย่างเดียว (registerBenefitsCart · ไม่ขาย) — ข้ามด่านสิทธิ์ราคาเอง */
-  opts: { display?: boolean } = {},
+  opts: { display?: boolean; at?: Date; snapshotPrices?: ReadonlyMap<string, number> } = {}, // POS P3.4 ▸ R6: at = เวลาขายของบิลออฟไลน์ · snapshotPrices = ราคาที่เครื่องได้ไป (ทางที่สอง) ◂
 ): Promise<RegPriced | RegisterRefusal> {
   // Q8: รายการกำหนดเอง / ราคาเปิด ต้องมี pos.sale.priceOverride (OWNER/MANAGER ได้ตามบทบาท · STAFF ต้องได้รับ)
   // P1.2 R12 (มติ P4): กรอกน้ำหนักเอง = ตั้งราคาเอง (กันโกงตาชั่ง) · สแกนป้ายชั่งไม่ต้องมีสิทธิ์
@@ -1448,7 +1483,7 @@ async function regPrice(
     : [];
   const rows = await regRowsInOrder(db, s.tenantId, visibleIds);
   // POS P2.2 ▸ R5: เวลาเดียว (at) + ชุดราคาเดียวต่อการคิดราคา 1 ครั้ง (แถวราคา + กติกา · 2 คำสั่ง) ⇒ สินค้าเดียวในบิลเดียวได้ราคาเดียว (B1.1) ◂
-  const book = await regPriceBook(db, s, rows, new Date());
+  const book = await regPriceBook(db, s, rows, opts.at ?? new Date()); // POS P3.4 ▸ R6: บิลออฟไลน์ = ราคา ณ soldAt ◂
   const priceChannelCode = channel?.code ?? "STORE";
   const views = new Map((await regViews(db, s, rows, book)).map((v) => [v.id, v]));
   const rowById = new Map(rows.map((r) => [r.id, r]));
@@ -1516,7 +1551,7 @@ async function regPrice(
     const row = rowById.get(l.productId);
     // มติ 3.1 ข้อ 3: สาขาอื่น / คลังอื่น / ร้านอื่น / เก็บถาวร / ไม่มีจริง = PRODUCT_NOT_FOUND (ไม่คิดราคา · ไม่บอกชื่อ)
     if (!v || !row || bundleBlocked.has(row.id)) return regRefuse("PRODUCT_NOT_FOUND", undefined, i);
-    if (v.soldOutReason === "UNAVAILABLE") return regRefuse("PRODUCT_UNAVAILABLE", undefined, i);
+    if (v.soldOutReason === "UNAVAILABLE" && !opts.at) return regRefuse("PRODUCT_UNAVAILABLE", undefined, i); // POS P3.4 ▸ fix1 F2: บิลออฟไลน์ (opts.at) ขายไปแล้วก่อน 86 — ไม่ใช้ด่านของหมด (เก็บถาวร = PRODUCT_NOT_FOUND ด้านบน · สต็อกตัด/ตรวจที่ createSale) ◂
     // P1.2 R6: แม่ที่มีตัวแปรขายได้ = ต้องเลือกตัวแปร (ไม่คิดราคา)
     if (v.variantCount > 0) return regRefuse("VARIANT_REQUIRED", undefined, i);
     // P1.2 R1/R2: ตัวเลือก (ตัวแปร = กลุ่มของแม่) — ราคา/ชื่อสดจาก DB · ไม่ส่ง options เลยกับกลุ่มบังคับ = OPTIONS_REQUIRED (P1.3 S3.26 คงเดิม)
@@ -1572,6 +1607,23 @@ async function regPrice(
         priceRule = rp.ruleId ? { id: rp.ruleId, name: rp.ruleName ?? "" } : null;
       }
     }
+    // POS P3.4 ▸ R6 (ทางที่สองของบิลออฟไลน์): ราคา snapshot ของเครื่องแทนราคาฐาน (ต่อกก. ของสินค้าชั่งที่กรอกน้ำหนัก) + ส่วนต่างตัวเลือก ·
+    //   ไม่มีในหลักฐาน = คิดด้วย snapshot ไม่ได้ (คำขอนี้ไม่ผ่านทางที่สอง) · บรรทัดที่ราคาเปลี่ยน = priceSource OPEN (ราคาไม่ได้มาจากสมุดราคา)
+    if (opts.snapshotPrices && l.openPrice === null && l.weighedBarcode === null) {
+      const sp = opts.snapshotPrices;
+      const snap = sp.get(row.id);
+      if (snap === undefined || opt.picked.some((c) => !sp.has(c.choiceId))) return regRefuse("INVALID_LINE", "ราคาไม่อยู่ใน snapshot ของเครื่อง", i);
+      const nb = row.soldByWeight ? weighedPriceSatang(weightGrams ?? 0, snap) : snap;
+      const picked = opt.picked.map((c) => ({ ...c, priceDeltaSatang: sp.get(c.choiceId)! }));
+      const nd = picked.reduce((t, c) => t + c.priceDeltaSatang, 0);
+      if (nb + nd !== base + opt.delta) {
+        priceSource = "OPEN";
+        priceRule = null;
+      }
+      base = nb;
+      opt.picked = picked;
+      opt.delta = nd;
+    } // ◂
     // R1: ราคาต่อหน่วย = ฐาน + Σ delta (ส่วนลดบรรทัด/ท้ายบิลคิดบนราคานี้) · ติดลบ = INVALID_LINE
     const unit = base + opt.delta;
     if (unit < 0 || unit > PRICE_MAX_SATANG) return regRefuse("INVALID_LINE", "ราคารวมตัวเลือกไม่ถูกต้อง", i);
@@ -2478,6 +2530,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     const db: RegDb = client ?? prisma;
     const s0 = await regScope(db, ctx, actor);
     if (isRegRefusal(s0)) return s0;
+    const off = regOfflineOf(ctx); // POS P3.4 ▸ บิลออฟไลน์ (null = หน้าขายออนไลน์เหมือนเดิมทุกไบต์) ◂
     // POS P1.9: รหัสเครื่องผิดรูป = VALIDATION (ไม่ส่ง = ไม่มีเครื่อง → ตัดสินตามค่าตั้ง S6 หลังค้นคีย์)
     const deviceId = regDeviceOf(ctx);
     if (deviceId === false) return regRefuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
@@ -2567,10 +2620,10 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       if (parsePosIntentSettings(sys?.settings).manualConfirmRequiresManager) return regRefuse("PERMISSION_DENIED", REG_MANUAL_MANAGER_MESSAGE);
     }
     // POS P1.10 ▸ R2: เครื่องที่ถูกเพิกถอนของสาขานี้ขายไม่ได้ (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ก่อนเพิกถอน = บิลเดิม) · ไม่ลงทะเบียน = ขายได้ (Q3) ◂
-    if (deviceId && (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId))) return regRefuse("DEVICE_REVOKED");
+    if (!off && deviceId && (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId))) return regRefuse("DEVICE_REVOKED"); // POS P3.4 ▸ CD-12: บิลออฟไลน์ = revokedAt เทียบ soldAt ที่ facade ◂
     // POS P1.9 ▸ S6: กะของเครื่อง (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ในกะที่ปิดแล้ว = บิลเดิม) · บังคับมีกะแต่ไม่มี = SHIFT_REQUIRED ไม่มีบิล ◂
     // POS P2.13 ▸ CD5 มติ 6: ผู้ขายผ่าน REST ไม่มีเครื่อง ⇒ ไม่ส่ง shiftId (createSale ผูกกะตามกติกา "ทางอื่น") หรือส่งกะที่ระบุ (createSale ตรวจ OPEN/สาขาเดียวกัน) ◂
-    const shift: Awaited<ReturnType<typeof resolveRegisterShift>> | { ok: true; shiftId: string | undefined } = s.apiKeyId ? { ok: true, shiftId: regApiShiftOf(ctx) } : await resolveRegisterShift(db, s, deviceId);
+    const shift: Awaited<ReturnType<typeof resolveRegisterShift>> | { ok: true; shiftId: string | undefined } = off ? { ok: true, shiftId: off.shiftId } : s.apiKeyId ? { ok: true, shiftId: regApiShiftOf(ctx) } : await resolveRegisterShift(db, s, deviceId); // POS P3.4 ▸ R8: กะที่เครื่องบันทึก ◂
     if (!shift.ok) return regRefuse("SHIFT_REQUIRED");
     // P1.6: ค่าตั้งการชำระเงิน (ค่าบริการ · ทิป) — ทิปส่งมาตอนระบบไม่เปิดรับทิป = VALIDATION (ไม่มีบิล)
     const paySettings = await regPaySettings(db, s);
@@ -2601,6 +2654,45 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // ②
     const caps = await regDiscountCaps(db, s);
     let p = await regPrice(db, s, req.cart, paySettings, regMaxDiscountBp(s.actor, caps));
+    // POS P3.4 ▸ R6 CD-4 (มติ 10): บิลออฟไลน์ — คิดราคาใหม่ ณ soldAt · ไม่ตรงยอดที่เครื่องอ้าง (expectedGrandTotalSatang) แต่ตรงราคา snapshot = ขายที่ราคา snapshot + drift ·
+    //   ไม่ตรงทั้งคู่ = PRICE_CHANGED ที่ ③ · ปฏิเสธของการคิดราคา (รวมส่วนลดเกินสิทธิ์) = คืนทันที ไม่เข้าทางพักบิล/PIN ผู้จัดการ
+    if (off) {
+      // POS P3.4 ▸ fix2 N7: ผู้ขายที่อ้าง ≠ ผู้ซิงก์ ⇒ เพดานส่วนลดต่ำกว่าของสองคน (null = ไม่จำกัด) · ราคาเปิด/กำหนดเอง ต้องมีสิทธิ์ทั้งคู่
+      const ownBp = regMaxDiscountBp(s.actor, caps);
+      const capBp = off.capActor ? regMaxDiscountBp(off.capActor, caps) : null;
+      const maxBp = !off.capActor ? ownBp : ownBp === null ? capBp : capBp === null ? ownBp : Math.min(ownBp, capBp);
+      if (off.capActor && req.cart.lines.some((l) => l.kind === "custom" || (l.kind === "product" && (l.openPrice !== null || l.weightGrams !== null))) && !evaluate(off.capActor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
+        return regRefuse("PERMISSION_DENIED", "ผู้ขายที่อ้างไม่มีสิทธิ์ตั้งราคาเอง");
+      }
+      // POS P3.4 ▸ fix2 G2 N6: ราคาตอนซิงก์คิดทางออฟไลน์ (opts.at = เวลาซิงก์ · ไม่ใช้ด่าน 86 — แคชเชียร์ 86 สินค้าเพื่อหลบการตรวจไม่ได้) · ยังปฏิเสธ = null = ปิดทางแบบปลอดภัย (ตรวจ)
+      const pSync = await regPrice(db, s, req.cart, paySettings, maxBp, { at: new Date(off.nowMs ?? Date.now()) });
+      p = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt });
+      if (isRegRefusal(p)) return p;
+      off.drift = null;
+      // POS P3.4 ▸ fix1 N3: โปรตามเวลา ณ soldAt ถูกกว่าราคาตอนซิงก์ + ซิงก์ช้า > 30 นาที = ไม่ขายเอง (ผู้จัดการตรวจ) — ผู้จัดการรับ = คิด ณ soldAt ได้
+      off.priceAtSyncSatang = isRegRefusal(pSync) ? null : pSync.quote.grandTotalSatang;
+      const lateMs = (off.nowMs ?? Date.now()) - off.soldAt.getTime();
+      const late = !off.skipWindowReview && lateMs > REG_OFFLINE_WINDOW_REVIEW_MS;
+      const cheaperThanSync = (t: number) => off.priceAtSyncSatang === null || off.priceAtSyncSatang === undefined || t < off.priceAtSyncSatang;
+      if (late && p.quote.grandTotalSatang === req.expected && p.resolved.some((l) => l.priceRule !== null) && cheaperThanSync(p.quote.grandTotalSatang)) {
+        off.windowReview = true;
+        return regRefuse("PRICE_CHANGED");
+      }
+      if (p.quote.grandTotalSatang !== req.expected && off.snapshotPrices) {
+        const ps = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt, snapshotPrices: off.snapshotPrices });
+        if (!isRegRefusal(ps) && ps.quote.grandTotalSatang === req.expected) {
+          // POS P3.4 ▸ fix2 N6: ทาง snapshot ในช่วงผ่อนหลัง priceValidUntil + ซิงก์ช้า + ถูกกว่าราคาตอนซิงก์ = ตรวจ (กันใช้ snapshot ช่วงโปรขายทั้งวัน)
+          if (late && off.snapshotPastPvu && cheaperThanSync(ps.quote.grandTotalSatang)) {
+            off.windowReview = true;
+            return regRefuse("PRICE_CHANGED");
+          }
+          const at = p.resolved;
+          const lines = ps.resolved.flatMap((l, i) => (l.unitPriceSatang !== at[i]?.unitPriceSatang ? [{ productId: l.productId ?? "", priceAtSoldAtSatang: at[i]?.unitPriceSatang ?? null, snapshotPriceSatang: l.unitPriceSatang }] : []));
+          off.drift = { totalAtSoldAtSatang: p.quote.grandTotalSatang, snapshotTotalSatang: ps.quote.grandTotalSatang, lines };
+          p = ps;
+        }
+      }
+    } // ◂
     // POS P1.15 ▸ R4/R5/R6: ส่วนลดเกินเพดานของผู้ขาย — บิลพักที่อนุมัติแล้ว · PIN ผู้จัดการ · กติกา POS_DISCOUNT_OVER (พักบิล + ยื่นคำขอ) ◂
     //   POS P2.4 ▸ บิลโต๊ะ: PIN ผู้จัดการเท่านั้น (ไม่พักบิลรออนุมัติ — ตะกร้ามาจากโต๊ะ) ◂
     let over: RegDiscountOverride | null = null;
@@ -2695,6 +2787,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       // POS P1.13 ▸ R1 R2: สำเนาผู้ซื้อเขียนใน tx ของบิล (createSale) · requestedAt = เวลาที่ขอ ◂
       ...(req.taxInvoice ? { taxInvoice: { ...req.taxInvoice, requestedAt: new Date().toISOString() } } : {}),
     };
+    if (off) saleInput.offline = { ref: off.ref, soldAt: off.soldAt }; // POS P3.4 ▸ R7 มติ 3: offlineRef · paidAt = soldAt · เลขใบเสร็จเดือนของ soldAt ◂
     // POS P1.7 ▸ R4: PROMPTPAY/CARD ที่อ้าง "pi_…" = ใช้ใบขอรับเงินที่ PAID ในธุรกรรมเดียวกับบิล (ล็อก FOR UPDATE) · ไม่มี = ทาง P1.6 เดิมทุกไบต์ ◂
     const intentRefs: SaleIntentRef[] = req.payMethods.flatMap((x) =>
       (x.type === "PROMPTPAY" || x.type === "CARD") && x.reference !== null && isPaymentIntentId(x.reference) ? [{ intentId: x.reference, payType: x.type, amountSatang: x.amountSatang }] : [],
@@ -3266,7 +3359,7 @@ async function regCreate(db: RegDb, s: RegScope, req: RegParsedSubmit, saleInput
     try {
       const r = await regCreateSale(saleInput, db);
       // POS P2.6 ▸ R3 มติ 3: ตั๋วครัวหลัง commit (ทางปกติ · createSale เป็นเจ้าของธุรกรรมและทำงานหลัง commit แล้ว · ไม่ปฏิเสธบิล — ล้ม = log แล้ว heal) ◂
-      await (await import("./kds")).ticketForSale(s.tenantId, s.unitId, r.saleId);
+      if (!saleInput.offline) await (await import("./kds")).ticketForSale(s.tenantId, s.unitId, r.saleId); // POS P3.4 ▸ R9: บิลออฟไลน์ไม่ออกตั๋วครัว (ครัวทำไปแล้ว) ◂
       // createSale คืนบิลเดิมเงียบ ๆ เมื่อคีย์ถูกบันทึกระหว่างที่เราตรวจ ⇒ อ่านบิลจริงมาเทียบ payload ทุกครั้ง
       const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
       if (!row || row.id !== r.saleId) return regRefuse("INTERNAL");

@@ -18,6 +18,7 @@ import { PRODUCTS_OPS } from "./ops/products";
 import { REPORTS_OPS } from "./ops/reports";
 import { SALES_OPS } from "./ops/sales";
 import { SHIFTS_OPS } from "./ops/shifts";
+import { SYNC_OPS } from "./ops/sync"; // POS P3.4 ▸ op ที่ 49 (sync.sales) ◂
 
 export * from "./op";
 
@@ -33,6 +34,7 @@ export const POS_OPS: ApiOp[] = [
   ...CHANNELS_OPS,
   ...ORDERS_OPS,
   ...REPORTS_OPS,
+  ...SYNC_OPS, // POS P3.4 ▸ มติ 2: POST /sync/sales ◂
 ];
 
 /**
