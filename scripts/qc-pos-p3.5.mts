@@ -108,6 +108,7 @@ const CHECKS: readonly Def[] = [
   D("PY9", "X5", "[fix2 N2 = R1-F1 · ORACLE-ADD ผู้คุม 17 ต.ค.] 600 คู่ (ร้าน · ผู้ใช้) ที่ไม่มีพนักงาน HR และเรียงอยู่หน้า (userId 0p35…) ไม่บล็อกรอบส่ง: C2 ขายใหม่ 300 ⇒ ใบ COMMISSION 300 ใหม่ของ C2 · 600 คู่ยัง OPEN"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N2)
   D("PY10", "X4", "[fix2 N3 · ORACLE-ADD ผู้คุม 17 ต.ค.] แถว OPEN ของเดือนเก่า (6 เดือนก่อน · ไม่มีรอบ) ขณะที่เดือนหลังมีรอบแล้ว ⇒ งวดเป้าหมาย = max(เดือนของแถว, เดือนถัดจากรอบล่าสุด) — ไม่ใช่เดือนเก่าที่จะไม่มีวันมีรอบ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N3)
   D("PY11", "X4", "[fix3 N9 · ORACLE-ADD ผู้คุม 17 ต.ค.] รอบจ่ายล่วงหน้า (8 เดือนข้างหน้า) ไม่ดันงวดเป้าหมาย: แถว OPEN 555 ของ C1 (เดือนนี้ · จบแล้ว) ⇒ งวด = เดือนถัดจากรอบล่าสุดที่ ≤ เดือนปัจจุบัน — ไม่ใช่เดือนถัดจากรอบล่วงหน้า"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N9)
+  D("PY12", "X5", "[fix3 N8 · ORACLE-ADD ผู้คุม 17 ต.ค.] ตัวกวาดมีเวลาของตัวเอง + ลำดับหมุน: 600 ร้าน (สมมุติ) ที่มีแถว SENT เรียงอยู่หน้า · ไม่มีระบบ HR · ร้านนี้มีใบ POS ค้างในงวดที่เพิ่งมีรอบ ⇒ รอบส่งแบบทั้งระบบ (ไม่ระบุร้าน) ≤ 2 รอบ ย้ายใบค้างของร้านนี้ครบ · แถวสมมุติถูกลบท้ายข้อ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N8)
   // ── HC ชั่วโมง ──
   D("HC1", "X5", "[R12 R1] posClockForShift IN (โทเคน C1 · กะของ C1) ⇒ {ok, kind IN} · HrAttendance +1 IN ของพนักงาน C1 · note มี #<shiftNo>"),
   D("HC2", "X1", "[R12] กดซ้ำ IN ⇒ ALREADY_CLOCKED · HrAttendance ยัง +1"),
@@ -1858,6 +1859,32 @@ async function runDb() {
     if (adj.length !== 1 || adj[0]?.periodKey !== want) p.push(`ใบ 555 ของ C1 ${short(adj.map((a) => [a.kind, a.periodKey]), 80)} (คาด ${want} · ไม่ใช่ ${nextMonth(FUT)})`);
     chk("PY11", NC === "" && !fx && p.length === 0, `รอบล่วงหน้า ${FUT} ไม่ดันงวด ⇒ ${want}`, FX(NC + (P8(p) || "ครบ")));
   }
+  // PY12 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N8): ร้านที่อยู่หลังในลำดับยังได้กวาด (แถวสมมุติ 600 ร้าน = id หลวมในสมุด ไม่มีแถว Tenant · ลบท้ายข้อ + ใน wipe)
+  {
+    const p: string[] = [];
+    const M2x = nextMonth(M1);
+    const runM = await call(hrPay, "createPayrollRun", hrCtx(), { periodKey: M2x, payDate: new Date(`${nextMonth(M2x)}-01T03:00:00+07:00`) });
+    if (!runM?.id) p.push(`(fixture) createPayrollRun ${M2x} → ${codeOf(runM)} ${short(runM?.message ?? "", 60)}`);
+    const runsNow = new Set(((await P.hrPayrollRun.findMany({ where: { tenantId: T }, select: { periodKey: true } }).catch(() => [])) as Any[]).map((r) => String(r.periodKey)));
+    const stuck0 = (await posAdj()).filter((a) => !a.runId && (a.status === "PENDING" || a.status === "APPROVED") && runsNow.has(a.periodKey));
+    if (!stuck0.length) p.push("(fixture) ไม่มีใบ POS ค้างในงวดที่มีรอบ");
+    const fake = Array.from({ length: 600 }, (_, i) => ({
+      tenantId: `0p35${RAND}t${String(i).padStart(4, "0")}`, systemId: "qc35fake", unitId: "qc35fake", saleId: `qc35sweep${RAND}`, lineId: `qc35sweep${RAND}l${i}`, userId: "qc35fake",
+      kind: "ACCRUE", sourceKey: `QCSWEEP:${RAND}:${i}`, baseSatang: 100, rateBp: 100, fixedSatang: 0, amountSatang: 1, periodKey: MONTH, status: "SENT", hrPayAdjustmentId: `qc35fakeadj${i}`, sentAt: new Date(),
+    }));
+    try {
+      if (PSC) await PSC.createMany({ data: fake });
+      for (let k = 0; k < 2; k++) {
+        await call(commMod, "syncStaffCommissionToPayroll", { now: NEXT_MONTH_NOW, deadline: Date.now() + 120_000 });
+        const left = (await posAdj()).filter((a) => !a.runId && (a.status === "PENDING" || a.status === "APPROVED") && runsNow.has(a.periodKey));
+        if (!left.length) break;
+        if (k === 1) p.push(`ใบ POS ยังค้างหลัง 2 รอบ ${left.length}: ${short(left.map((a) => [a.kind, a.periodKey]), 80)}`);
+      }
+    } finally {
+      await P.$executeRawUnsafe(`DELETE FROM "PosStaffCommission" WHERE "sourceKey" LIKE $1`, `QCSWEEP:${RAND}:%`).catch(() => 0);
+    }
+    chk("PY12", NC === "" && !fx && p.length === 0, "ร้านหลังในลำดับยังได้กวาด ≤ 2 รอบ", FX(NC + (P8(p) || `ครบ (${stuck0.length} ใบย้ายแล้ว)`)));
+  }
 
   // ════════ HC ชั่วโมง ════════
   const token = async (k: string, dev: string): Promise<string> => {
@@ -2065,6 +2092,8 @@ async function wipeTenants(): Promise<WipeReport> {
       rep.err = `อ่าน Tenant ไม่ได้: ${(e as Error).message.slice(0, 60)}`;
     }
   }
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N8): แถวสมมุติของ PY12 (tenantId หลวม · ไม่อยู่ในร้านชั่วคราว) — ลบเสมอแม้ข้อสอบล้มกลางทาง
+  await P.$executeRawUnsafe(`DELETE FROM "PosStaffCommission" WHERE "sourceKey" LIKE $1`, `QCSWEEP:${RAND}:%`).catch(() => 0);
   if (ok.length) {
     await drain();
     await sleep(300);
