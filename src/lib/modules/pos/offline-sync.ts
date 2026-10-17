@@ -98,6 +98,7 @@ const AUDIT_SYNCED = "pos.sale.offline_synced";
 const AUDIT_DISCARDED = "pos.sale.offline_discarded";
 const SNAPSHOT_KEEP = 2;
 const SNAPSHOT_KEEP_RECENT_MAX = 200; // POS P3.4 ▸ fix1 N4 ◂
+const SNAPSHOT_MIN_INTERVAL_MS = 60_000; // POS P3.4 ▸ fix2 N8 ◂
 const SNAPSHOT_PAGE = 500;
 const SNAPSHOT_MAX_PAGES = 40;
 const DISCARD_REASON_MIN = 5;
@@ -234,6 +235,16 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
     if (!dev) return refuse("DEVICE_NOT_FOUND", "ไม่พบเครื่องขายนี้ในสาขา");
     if (dev.status !== "ACTIVE") return refuse("DEVICE_REVOKED", "เครื่องนี้ถูกเพิกถอนแล้ว");
     const now = nowOf(opts);
+    // POS P3.4 ▸ fix2 N8 (CD-P34i): 1 ใบต่อเครื่องต่อ 60 วิ (ยกเว้นเลยขอบ priceValidUntil ของใบล่าสุดแล้ว) — กันเดินแคตตาล็อกซ้ำ + กันไล่ตัด snapshot ที่ยังใช้ ◂
+    {
+      const lastSnap = await db.posOfflineSnapshot.findFirst({
+        where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, issuedAt: { gt: new Date(now.getTime() - SNAPSHOT_MIN_INTERVAL_MS) } },
+        orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
+        select: { priceMap: true },
+      });
+      const pvuLast = isRecord(lastSnap?.priceMap) ? (lastSnap.priceMap as Record<string, unknown>).$priceValidUntil : null;
+      if (lastSnap && !(typeof pvuLast === "string" && Date.parse(pvuLast) <= now.getTime())) return refuse("RATE_LIMITED", "เพิ่งออกราคาให้เครื่องนี้ไป — รอสักครู่แล้วลองใหม่");
+    }
     const rc = baseCtx(c);
     // สินค้า (แม่) ทุกหน้า + ตัวเลือก/ตัวแปร
     const parents: RegisterProduct[] = [];
@@ -291,7 +302,14 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
       db.posOfflineSnapshot.findMany({ where: { ...devWhere, issuedAt: { gte: new Date(now.getTime() - 2 * OFFLINE_MAX_AGE_MS) } }, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP_RECENT_MAX }),
     ]);
     const keep = [...new Set([...last, ...recent].map((k) => k.id))];
-    await db.posOfflineSnapshot.deleteMany({ where: { ...devWhere, id: { notIn: keep } } });
+    // POS P3.4 ▸ fix2 N8: hash ที่รายการค้าง (PROCESSING/REJECTED · ACCEPTED ที่ยังไม่มีบิล) อ้างอยู่ ไม่ถูกตัด ◂
+    const pending = await db.posOfflineSale.findMany({
+      where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, OR: [{ status: STATUS.REJECTED }, { status: STATUS.ACCEPTED, saleId: null }] },
+      select: { payload: true },
+      take: 2000,
+    });
+    const referenced = [...new Set(pending.map((r) => (isRecord(r.payload) && typeof r.payload.snapshotHash === "string" ? r.payload.snapshotHash : "")).filter(Boolean))];
+    await db.posOfflineSnapshot.deleteMany({ where: { ...devWhere, id: { notIn: keep }, ...(referenced.length ? { hash: { notIn: referenced } } : {}) } });
     const fresh = await db.posDevice.findFirst({ where: { id: dev.id, tenantId: c.tenantId }, select: { offlineSeq: true } });
     return {
       ok: true,
