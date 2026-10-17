@@ -7,6 +7,10 @@ Contract = `pos-brief-P3.9.md` §10 rulings 1–13 + CD-P39a + TEAM_SAFE_SECTION
 - `qc-pos-p3.9` forced (QC4 · `SHARK_AI_MOCK=1` · `P39_PIN=3e0e0214`) **38/42 ×2** — red only PR2 PR3 PR4 PR5 = **CD-9** (oracle fixture vs catalog all-branch rule; code-independent). Same suite with the proposed 1-line fixture fix (scratch copy): **42/42 ×2** · `--no-db` **6/6** · residue 0 · fetch-guard 0.
 - Red-before on this base (forced, P39_PIN=3e0e0214): **6/42** (ST3 ST4 PV4 PV1 Z1 Z2 green) — same as the oracle writer's red-before.
 
+## Final (after controller rulings · 17 Oct)
+- Typecheck run at **781af5d4**, dirty 0: `pnpm typecheck` with heap 8192, ISO 10500M, `/tmp/pos-gate.lock`, **exit 0**. The tree at 781af5d4 is identical to the code after the CD-9 edit c69e3b95. This note was then committed on top as a ledger-only commit.
+- `qc-pos-p3.9` forced ×2 (QC4 · `SHARK_AI_MOCK=1` · `P39_PIN=3e0e0214` until the ST4 re-pin, CD-10) = **42/42 ×2**: Z2 green, residue 0, guardHits 0. `--no-db` gave **6/6**.
+
 ## Commits (wip/pos-p3.9)
 | commit | what |
 |---|---|
