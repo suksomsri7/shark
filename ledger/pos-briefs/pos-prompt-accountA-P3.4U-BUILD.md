@@ -1,0 +1,43 @@
+# Prompt — P3.4U builder (ออฟไลน์ 19ง: IndexedDB · ขายเงินสด/โอน · สลิป OFF · คิว+ซิงก์ · คิวผู้จัดการ · สวิตช์ · PIN ออฟไลน์). Rulings CD-P34U-1…4 by the controller 17 Oct 05:4xZ (binding). Controller 17 Oct: base `session/pos` **__BASE__** (**P3.5U merged**; P3.4 S merged), tree **__TREE__** (own node_modules; never `pnpm install`), branch `wip/pos-p3.4u`. Lane U — S exports are the contract, no server behaviour change.
+
+---
+
+You are the BUILDER for POS work order **P3.4U**: client offline layer, `"use server"` wrappers, one route, messages, visual states.
+
+## Read first
+- `pos-brief-{COMMON,LANE-RULES}.md` (§เลนภาพ), `pos-brief-P3.4.md` §1 (IN P3.4U) · §2 R2–R4, R11–R13 · §6 Q4–Q7 · §10 + CD-P34a, `ledger/wo-notes/pos-P3.4.md` §5 · §7 **U-only handoff**, `pos-P3.4-oracle.md` §6 (U SKIP list ST3-U/ST6-U/ST7-U/ST8-U/Q-U), `pos-P3.4-review.md` (R3 H1, hunter N10/N11).
+- Mockups `ledger/design-pos/19-states.{html,body.html,png}` (19ง banner "ออฟไลน์ตั้งแต่ 10:42 · ขายต่อได้ด้วยเงินสดและโอน · รอซิงก์ 3 บิล · OFF-C1-0007" + chip "ใช้ได้เมื่อออนไลน์") · `10-settings-integrations.png` · `01-register.png` (status bar). No mockup for the slip, manager queue, live tab ⇒ derived, owner-ack.
+- S contract: `src/lib/modules/pos/offline-shared.ts` (pure: `offlineRef` `nextOfflineSeq` `offlineBatches` `classifyOfflineResult` `offlineSellGate` `offlineCartTotals` `offlineSlipPayload` `OFFLINE_SLIP_TITLE` `offlineRefusalMessageKey` `posOfflineEnabled`) · server facades `offline-sync.ts` (`issueOfflineSnapshot` `listOfflineRejected` `acceptOfflineSale` `discardOfflineSale`) · `POST /api/pos/sync` `{systemId,unitId,deviceId,items}` (`src/app/api/pos/sync/route.ts`) · writer `updatePosOfflineEnabled` in `settings-general.ts`. Messages `pos.register.offline.{refusal,slip}`, `pos.settings.offline.*` exist; add the rest (th+en).
+- Shells: `components/pos/register/{RegisterScreen,RegisterStatusBar,LockScreen,PayDone}.tsx`, `components/pos/print/printReceipt.ts`, `settings/shark-ui.tsx` (`OfflineCard`, `OfflinePane`), `shifts/{page,ShiftsClient}.tsx`.
+- Rules: `'use client'` imports `*-shared`/pure + `*-actions` only (S5.17); `"use server"` async-only, no `throw`; **ST7 0 Thai literals outside `t()`**; tokens, ≥ 44 px, HF-418; foreign hunks in `// POS P3.4U ▸ … ◂`.
+
+## Controller rulings (binding)
+1. **Flag off (default) = today's pixels** for register and states `offline` / `settings-offline`; the page server passes `posOfflineEnabled(settings)`. **CD-P34U-1**: with the flag off, the `OfflineCard` changes only in two places — the OWNER-enabled live switch and the "planned" chip; everything else renders as today (ST8-U).
+2. **IndexedDB** `shark-pos-off:<systemId>:<unitId>`: stores snapshot · queue (append-only, no local delete/void) · seq · PIN verifier; rows tagged `userId`. Never write `managerPin|pin|phoneLast4|cost|member` (`stripPayPins`). Wipe snapshot on logout / `STAFF_TOKEN_INVALID`; queue survives until synced.
+3. **Sell offline** only when `offlineSellGate` ok: walk-in, CASH + TRANSFER (reference optional), totals via `offlineCartTotals`; points/coupon/card/PromptPay/table/split/deposit/held = disabled with the 19ง chip. `offlineRef = OFF-<code>-<seq>` from `nextOfflineSeq(local, server)` in one IDB tx; an online `unknown` bill moves into the queue with its key.
+4. **Slip** = `offlineSlipPayload` → `printReceipt`; title `OFFLINE_SLIP_TITLE`, no `/r/` QR, not ABB (W11); after sync reprint = `reprintReceiptAction`.
+5. **Sync loop**: Web Locks leader; triggers online event / heartbeat ok / 30 s; `offlineBatches` → `POST /api/pos/sync`; `classifyOfflineResult` (remove+store receiptNo / park "รอผู้จัดการ" read-only / keep); backoff on network, 5xx, `BUSY`. Badge `รอซิงก์ n` = local queue only.
+6. **Guards**: shift close on this device blocked while queue > 0 ("ซิงก์ก่อนปิดกะ"); no void/refund for unsynced bills ("รอซิงก์"); copy "อย่าปิด/รีเฟรชหน้านี้ขณะออฟไลน์" (W12: no service worker, no Cache API, no `public/sw.js`, no config edit — ST4 green).
+7. **Offline PIN (ruling 8)**: idle lock still fires; verifier PBKDF2-SHA256 ≥ 310k, per-device salt, written only at an online unlock of the token holder, 5 tries then locked until online, no staff switch offline, wiped with the token. Edits `LockScreen` on top of P3.5U.
+8. **Snapshot transport (CD-P34f) — CD-P34U-2**: new sibling route `src/app/api/pos/sync/snapshot/route.ts` (sync-route guards; `RATE_LIMITED` ⇒ backoff); refresh on load, each `priceValidUntil` edge, 15 min online. Fix N11/H1 (advisory lock by deviceId around check+insert, keep oldest-in-48h) — **CD-P34U-3**: ONE marked hunk in `offline-sync.ts` `issueOfflineSnapshot` (suite stays 51/51 — this is the only server hunk of the card; flag it first in the notes for the reviewer).
+9. **Manager queue — CD-P34U-4**: a section on the Shifts page "บิลออฟไลน์รอผู้จัดการ" (no new page, `qc-hf-pos-page-authz` count unchanged). Rows via new `offline-actions.ts` (wrappers over `listOfflineRejected`/`acceptOfflineSale`/`discardOfflineSale`/`updatePosOfflineEnabled`): ref, soldAt (client-only after mount), reason via `offlineRefusalMessageKey`, claimed vs verified seller, total; accept/discard (reason ≥ 5), refusals inline; N10 hint on `SHIFT_CLOSED` rows ("ซิงก์หลังเครื่องปิดกะ") from existing fields only.
+10. **Settings**: `OfflineCard` switch → action (OWNER); pending list = this device (IDB) + server REJECTED count.
+11. **Fixtures**: each `offline-*` state in a fresh browser context, flag on via module fn (restored in `finally`); snapshot fetched online, then `setOfflineMode`; `offline-rejected` item via `syncOfflineSales` (forged price), discarded in cleanup.
+
+## Visual states (`visual-pos.mts` wo `p3.4u` `--states`; pages `register shifts settings`; 1440/1024/390 th + `LOCALE=en` 1440; owner + cashier, rejected queue + settings owner)
+`offline-sale` · `offline-queue` · `offline-tenders` · `offline-sync-back` · `offline-rejected` · `settings-offline-live` + `offline-slip` · `offline-lock-pin` · `offline-close-blocked` (added). Add `P34U_WO`/`P34U_PLAN`; old states untouched. Testids `pos-reg-offline-{chip-<tender>,badge,slip}`, `pos-lock-offline-*`, `pos-shift-offline-{queue,accept-<id>,discard-<id>}`, `pos-settings-offline-{switch,pending}`; update `pos-ui-inventory.json` (F15.3 rows +n, say n) + `pos-spec-P3.4-offline-ui.md`.
+
+## Build order
+(1) client modules (IDB, verifier, sync) + actions + route → (2) sell/banner/slip → (3) sync + status → (4) guards → (5) lock PIN → (6) Shifts queue → (7) settings → (8) visual + inventory + spec → (9) merge `origin/session/pos` → gates. Commit per step.
+
+## Gates before "done"
+typecheck 0 · `qc-pos-p3.4` **51/51** (= forced; `--no-db` 15/15) · p3.5 55 · `qc-pos-p1.3` 128 (S4.1, S5.17) · `qc-pos-p1.15` 40 · `qc-pos-p1.9` 53 · `qc-pos-p1.17` 40 · `qc-pos-p1.18` 81 (ST7 0) · `qc-pos-p1.16` 28 · `qc-pos-p1.6` 48 (R2) · `qc-pos-p2.1` 55 · `qc-pos-p1.12` 72 · fitness ±env · fitness-pos (F15.3) · `visual-pos.mts p3.4u --states --dry` rc 0 th + en. Other numbers are P2.12U-era: rule = unchanged on the base.
+
+## Forbidden files
+`register.ts` `service.ts` `staff-pin.ts` `kds.ts` `shift.ts` `offline-shared.ts` (new pure helpers → `offline-client-shared.ts`) `hr-link*` `staff-commission*` `ai-*` `settings-general.ts` `api/**` `outbox-consumers.ts` `prisma/` `public/**` `next.config.ts` `proxy.ts`; `offline-sync.ts` only the ruled hunk; any `qc-*.mts` (except the inventory update).
+
+## Tree / commands
+`git -C __TREE__ status --short` clean → `git -C __TREE__ fetch origin session/pos && git -C __TREE__ checkout -B wip/pos-p3.4u origin/session/pos`. Absolute paths; never `cd`/`pkill -f`/`export CI` (`CI=1` only on `--dry`); no builds/servers/QC5/`.env*`. DB suites: `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<suite>.mts`. Typecheck: `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`. Scratch `/tmp/claude-0/-root/c597e450-d0cf-5838-9f6d-470b7bf7192c/scratchpad/p34u/`.
+
+## Done =
+Push `wip/pos-p3.4u`; notes `ledger/wo-notes/pos-P3.4U.md` (components, keys, testids, deviations per ruling, fixtures, **`--state` list**, gates + logs); report ≤ 25 lines (head SHA first, verified). Do not merge. Trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
