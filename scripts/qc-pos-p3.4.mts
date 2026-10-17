@@ -98,6 +98,7 @@ const CHECKS: readonly Def[] = [
   D("SY20", "SY", "[fix1 N3 · CD-P34g] เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
   D("SY21", "SY", "[fix1 N4 = F1 · CD-P34g] snapshot ภายใน 24 ชม. ไม่ถูกตัด: ขายบน S1 แล้วเครื่องออก S2 + S3 ก่อนซิงก์ → บิลบน S1 = OK · PosOfflineSnapshot ของเครื่อง 3 แถว"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
   D("SY22", "SY", "[fix1 N5 = F4 · CD-P34g] คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
+  D("SY23", "SY", "[fix1 F2 · CD-P34g] ของหมด (86) หลังขายออฟไลน์: ลาเต้ถูก 86 ที่สาขาก่อนซิงก์ → บิลที่ขายไปแล้ว = OK · สินค้าที่ถูกเก็บถาวร (เค้ก) → REJECTED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F2)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2190,6 +2191,27 @@ async function runDb() {
       if (ab?.ok !== true || !ab?.saleId) p.push(`รับซ้ำ ${codeOf(ab)}`);
     }
     if (!NO_FX("SY22")) chk("SY22", p.length === 0, "PROCESSING ที่มีบิล → SYNCED (ไม่ทิ้ง) · ACCEPTED ไม่มีบิล อยู่ใน list + รับซ้ำได้", FXB(joinP(p)));
+  }
+  // ═════ SY23 ของหมดหลังขาย (F2) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F2)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      const price = (id: string) => Number((Array.isArray(SN.N6?.products) ? SN.N6.products : []).find((x: Any) => x?.id === id)?.priceSatang ?? -1);
+      const av = await call(catalog, "setAvailability", ctxU("A"), A("OWNER"), { productId: PR.latte, unitId: U.A, available: false, source: "MANUAL" });
+      if (av?.ok === false) p.push(`setAvailability ${codeOf(av)}`);
+      const i86 = mkItem("N6", { lines: [{ productId: PR.latte, qty: 1 }], total: price(PR.latte), soldAt: Date.now() - 15 * MIN, shift: null });
+      const cakeAt = price(PR.cake);
+      const ar = await call(catalog, "archive", cc(), PR.cake);
+      if (ar?.ok === false) p.push(`archive เค้ก ${codeOf(ar)}`);
+      const iArc = mkItem("N6", { lines: [{ productId: PR.cake, qty: 1 }], total: cakeAt, soldAt: Date.now() - 14 * MIN, shift: null });
+      const r = await sync("N6", [i86, iArc]);
+      const x86 = resOf(r, i86.offlineRef);
+      const xa = resOf(r, iArc.offlineRef);
+      if (x86?.status !== "OK" || !x86?.saleId) p.push(`ลาเต้ 86 หลังขาย ${stOf(x86)} ${why(r)}`);
+      if (xa?.status !== "REJECTED" || xa?.saleId) p.push(`เค้กเก็บถาวร ${stOf(xa)}`);
+      await call(catalog, "setAvailability", ctxU("A"), A("OWNER"), { productId: PR.latte, unitId: U.A, available: true, source: "MANUAL" });
+    }
+    if (!NO_FX("SY23")) chk("SY23", p.length === 0, "86 หลังขาย OK · เก็บถาวร REJECTED", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
