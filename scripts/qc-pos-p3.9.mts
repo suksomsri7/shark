@@ -87,6 +87,7 @@ const CHECKS: readonly Def[] = [
   D("AN1", "A", "[R11 มติ 6] A11: pos.staff.schedule_override ×3 ของผู้จัดการ/สาขา A/D−1 → แถว A11 count 3 refType USER · เจ้าของ ×2 → ไม่มีแถว"),
   D("AN2", "A", "[R4 มติ 2] A1 นับ void ของ AI: audit pos.sale.void ผู้จัดการ (PR7) → แถว A1 ของผู้จัดการ (เกณฑ์ A1.count 1 ของฟิกซ์เจอร์)"),
   D("AN3", "A", "[R11] POS_ANOMALY_RULES = A1…A11 · ค่าปริยาย A11 {count 3} · A1–A10 เดิม · ตัวอ่านตัดช่วง A11 (0→1 · 5000→1000 · \"x\"→3)"),
+  D("AN5", "A", "[fix1 F1=N3 · CD-P39c] รหัสเครื่องเดียวกันในสาขา A และ B: override รูป P3.5 (targetType PosStaffPin ของสาขา A) ×3 → A11 ที่สาขา A ไม่ใช่ B · รหัสกำกวมที่ไม่มีแถว PIN → ไม่นับ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 AN5)
   D("AN4", "A", "[R10 R6] anomalyInBrief false → loadBriefInput.anomalies null + ไม่มีบรรทัดจุดผิดปกติ · true → มี A11 (ตัวควบคุม)"),
   // ── BR สรุปเช้า ──
   D("BR1", "B", "[R6 R12] composeBrief fixture F1 (ครบทุกส่วน) th + en = ข้อความตายตัวทุกบรรทัด + title + sections"),
@@ -1487,6 +1488,29 @@ async function runDb() {
     const on = await loadInput("OWNER");
     if (!Array.isArray(on?.anomalies) || !on.anomalies.some((x: Any) => x?.rule === "A11" && x?.count >= 1)) p.push(`(ตัวควบคุม) เปิดแล้วไม่มี A11 ${short(on?.anomalies, 60)}`);
     chk("AN4", p.length === 0, "ปิด = ไม่มี · เปิด = มี", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 AN5) ▸ สาขาของ A11 มาจากแถว PIN ก่อน · รหัสเครื่องที่อยู่หลายสาขา = ไม่เดา ◂
+  {
+    const p: string[] = [];
+    const D2 = dayStr(2);
+    if (!fx) {
+      await step("AN5 เครื่องซ้ำ + PIN + audit", async () => {
+        await P.posDevice.create({ data: { tenantId: T, unitId: U.B, systemId: S.POS, name: `เครื่องซ้ำ ${RAND}`, deviceCode: DEV, registeredByUserId: uid("OWNER") } });
+        const pin = await P.posStaffPin.create({ data: { tenantId: T, unitId: U.A, userId: uid("CASH"), pinHash: `qc39-${RAND}`, setById: uid("OWNER") } });
+        const mk = (by: string, targetType: string, targetId: string, i: number, hh: number) =>
+          P.auditLog.create({ data: { tenantId: T, actorType: "USER", actorId: uid(by), action: "pos.staff.schedule_override", targetType, targetId, after: { userId: uid("CASH"), byUserId: uid(by), reason: "OUTSIDE_HOURS", deviceId: DEV }, createdAt: at(2, hh, i) } });
+        for (let i = 0; i < 3; i++) await mk("MGR", "PosStaffPin", pin.id, i, 8);
+        for (let i = 0; i < 3; i++) await mk("OWNER", "QcUnknown", "none", i, 9);
+      });
+    }
+    const r = await call(reportsMod, "reportAnomalies", rctx(), A("OWNER"), { from: D2, to: D2 });
+    const rows: Any[] = r?.ok === true ? (r.report?.rows ?? []).filter((x: Any) => x.rule === "A11") : [];
+    if (r?.ok !== true) p.push(`reportAnomalies ${codeOf(r)}`);
+    const mg = rows.find((x) => x.userId === uid("MGR"));
+    if (!mg || mg.unitId !== U.A || mg.count !== 3) p.push(`ผู้จัดการ ${short(mg ? { unit: mg.unitId === U.A ? "A" : mg.unitId === U.B ? "B" : mg.unitId, count: mg.count } : null, 60)}`);
+    if (rows.some((x) => x.unitId === U.B)) p.push("มีแถว A11 ที่สาขา B");
+    if (rows.some((x) => x.userId === uid("OWNER"))) p.push("รหัสกำกวมถูกนับ (เจ้าของ)");
+    chk("AN5", p.length === 0, "A11 ที่สาขา A · กำกวม = ไม่นับ", FXB(joinP(p)));
   }
 
   // ════════ BR ════════
