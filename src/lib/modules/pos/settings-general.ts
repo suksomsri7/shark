@@ -577,19 +577,6 @@ export async function updatePosStaffSettings(ctx: Ctx, actor: PosSettingsWriterA
     }
     if (patch.clockOnShift !== undefined && patch.clockOnShift !== "OFF" && patch.clockOnShift !== "ASK") return settingsRefuse("VALIDATION", "clockOnShift ต้องเป็น OFF หรือ ASK", "clockOnShift");
     const hrLinked = (await prisma.appSystem.count({ where: { tenantId: ctx.tenantId, type: "HR" } })) > 0;
-// POS P3.4 ▸ R3 (มติ 2 · ST8): ธงขายออฟไลน์ของระบบ POS — settings.pos.offline.enabled (ปริยาย false = จอ 19ง วันนี้ทุกไบต์) ·
-//   ตัวอ่านเดียว posOfflineEnabled (offline-shared.ts) · ตัวเขียน = เจ้าของร้านเท่านั้น (บิลออฟไลน์ = บิลที่เครื่องอ้างเอง · เปิดผิวการโกงเพิ่ม) ·
-//   ล็อกแถว FOR UPDATE + jsonb_set ใต้ settings.pos (คีย์อื่นไม่ถูกแตะ) + audit pos.settings.updated {section: "offline"} · ค่าเดิม = ไม่เขียน ไม่ลง audit ·
-//   จอสวิตช์ (การ์ด 10 / แท็บ offline) = ใบ P3.4U
-export type PosOfflineEnabledResult = { ok: true; enabled: boolean } | PosSettingsRefusal;
-export async function updatePosOfflineEnabled(ctx: Ctx, actor: PosSettingsWriterActor, input: unknown): Promise<PosOfflineEnabledResult> {
-  try {
-    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
-    const m = settingsMembership(actor);
-    if (!m) return settingsRefuse("PERMISSION_DENIED");
-    if (m.role !== "OWNER") return settingsRefuse("SETTINGS_SECTION_LOCKED");
-    if (!isRecord(input) || Object.keys(input).some((k) => k !== "enabled") || typeof input.enabled !== "boolean") return settingsRefuse("VALIDATION", "ต้องส่ง enabled เป็นจริง/เท็จ", "enabled");
-    const want = input.enabled;
     const done = await prisma.$transaction(async (tx) => {
       if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
       const sys = await posSystem(tx, ctx);
@@ -667,6 +654,24 @@ export async function updatePosStaffCommission(ctx: Ctx, actor: PosSettingsWrite
   }
 }
 // ◂ POS P3.5
+
+// POS P3.4 ▸ R3 (มติ 2 · ST8): ธงขายออฟไลน์ของระบบ POS — settings.pos.offline.enabled (ปริยาย false = จอ 19ง วันนี้ทุกไบต์) ·
+//   ตัวอ่านเดียว posOfflineEnabled (offline-shared.ts) · ตัวเขียน = เจ้าของร้านเท่านั้น (บิลออฟไลน์ = บิลที่เครื่องอ้างเอง · เปิดผิวการโกงเพิ่ม) ·
+//   ล็อกแถว FOR UPDATE + jsonb_set ใต้ settings.pos (คีย์อื่นไม่ถูกแตะ) + audit pos.settings.updated {section: "offline"} · ค่าเดิม = ไม่เขียน ไม่ลง audit ·
+//   จอสวิตช์ (การ์ด 10 / แท็บ offline) = ใบ P3.4U
+export type PosOfflineEnabledResult = { ok: true; enabled: boolean } | PosSettingsRefusal;
+export async function updatePosOfflineEnabled(ctx: Ctx, actor: PosSettingsWriterActor, input: unknown): Promise<PosOfflineEnabledResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m) return settingsRefuse("PERMISSION_DENIED");
+    if (m.role !== "OWNER") return settingsRefuse("SETTINGS_SECTION_LOCKED");
+    if (!isRecord(input) || Object.keys(input).some((k) => k !== "enabled") || typeof input.enabled !== "boolean") return settingsRefuse("VALIDATION", "ต้องส่ง enabled เป็นจริง/เท็จ", "enabled");
+    const want = input.enabled;
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
       const before = posOfflineEnabled(sys.settings);
       if (before === want) return { ok: true as const, enabled: before, audit: false };
       const pos = posOf(sys.settings);
