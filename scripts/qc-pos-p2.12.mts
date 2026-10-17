@@ -314,7 +314,7 @@ const KIND_FN: Record<string, string> = {
 };
 const NEW_READERS = ["reportBranches", "reportHourly", "reportAnomalies"] as const;
 const ANOMALY_KEY = "pos.report.anomaly";
-const RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"] as const;
+const RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11"] as const; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R11): + A11 ข้ามตารางงานบ่อย (เดิม A1–A10)
 type RuleId = (typeof RULES)[number];
 /** §3 มติ 3 — ค่าปริยายของเกณฑ์ (count = ครั้ง/ใบ/บรรทัด · satang = สตางค์ · bp = 1/100 %) */
 const AN_DEFAULTS: Record<RuleId, Record<string, number>> = {
@@ -328,6 +328,7 @@ const AN_DEFAULTS: Record<RuleId, Record<string, number>> = {
   A8: { satang: 10_000 },
   A9: { count: 2 },
   A10: { count: 3 },
+  A11: { count: 3 }, // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R11): ค่าปริยาย A11 (W14)
 };
 /** ช่วงของตัวอ่าน/ตัวเขียน (ตัวอ่านตัดเข้าขอบ · ตัวเขียนปฏิเสธ) */
 const AN_LIMITS: Record<string, [number, number]> = { count: [1, 1000], satang: [1, 100_000_000], bp: [1, 10_000] };
@@ -1673,7 +1674,7 @@ async function runDb() {
       [{ anomaly: { rules: { A1: { count: 2.5 } } } }, "anomaly.rules.A1.count"],
       [{ anomaly: { rules: { A8: { satang: 0 } } } }, "anomaly.rules.A8.satang"],
       [{ anomaly: { rules: { A3: { count: 3 } } } }, "anomaly.rules.A3.count"],
-      [{ anomaly: { rules: { A11: { count: 3 } } } }, "anomaly.rules.A11"],
+      [{ anomaly: { rules: { A12: { count: 3 } } } }, "anomaly.rules.A12"], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R11): กฎที่ไม่รู้จัก = A12 (A11 เป็นกฎจริงแล้ว) — เดิม A11
       [{ anomaly: { enabled: "yes" } }, "anomaly.enabled"],
       [{ anomaly: { foo: 1 } }, "anomaly.foo"],
       [{ anomaly: [] }, "anomaly"],
