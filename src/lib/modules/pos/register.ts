@@ -709,6 +709,8 @@ export type RegisterOfflineSubmit = {
   skipWindowReview?: boolean;
   /** POS P3.4 ▸ fix2 N6: soldAt อยู่หลัง priceValidUntil ของ snapshot (ช่วงผ่อน 15 นาที) — ทางราคา snapshot ก็ต้องผ่านการตรวจช่วงเวลาราคา */
   snapshotPastPvu?: boolean;
+  /** POS P3.4 ▸ fix2 N7: ผู้ขายที่เครื่องอ้าง (ไม่มีโทเคน) ≠ ผู้ซิงก์ — เพดานส่วนลด/ราคาเปิด = ต่ำกว่าของสองคน */
+  capActor?: RegisterActor | null;
 };
 const REG_OFFLINE_WINDOW_REVIEW_MS = 30 * 60_000; // POS P3.4 ▸ fix1 N3 (ในบล็อก R5–R9)
 const REG_OFFLINE: unique symbol = Symbol("pos.register.offline");
@@ -2652,7 +2654,13 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // POS P3.4 ▸ R6 CD-4 (มติ 10): บิลออฟไลน์ — คิดราคาใหม่ ณ soldAt · ไม่ตรงยอดที่เครื่องอ้าง (expectedGrandTotalSatang) แต่ตรงราคา snapshot = ขายที่ราคา snapshot + drift ·
     //   ไม่ตรงทั้งคู่ = PRICE_CHANGED ที่ ③ · ปฏิเสธของการคิดราคา (รวมส่วนลดเกินสิทธิ์) = คืนทันที ไม่เข้าทางพักบิล/PIN ผู้จัดการ
     if (off) {
-      const maxBp = regMaxDiscountBp(s.actor, caps);
+      // POS P3.4 ▸ fix2 N7: ผู้ขายที่อ้าง ≠ ผู้ซิงก์ ⇒ เพดานส่วนลดต่ำกว่าของสองคน (null = ไม่จำกัด) · ราคาเปิด/กำหนดเอง ต้องมีสิทธิ์ทั้งคู่
+      const ownBp = regMaxDiscountBp(s.actor, caps);
+      const capBp = off.capActor ? regMaxDiscountBp(off.capActor, caps) : null;
+      const maxBp = !off.capActor ? ownBp : ownBp === null ? capBp : capBp === null ? ownBp : Math.min(ownBp, capBp);
+      if (off.capActor && req.cart.lines.some((l) => l.kind === "custom" || (l.kind === "product" && (l.openPrice !== null || l.weightGrams !== null))) && !evaluate(off.capActor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
+        return regRefuse("PERMISSION_DENIED", "ผู้ขายที่อ้างไม่มีสิทธิ์ตั้งราคาเอง");
+      }
       // POS P3.4 ▸ fix2 G2 N6: ราคาตอนซิงก์คิดทางออฟไลน์ (opts.at = เวลาซิงก์ · ไม่ใช้ด่าน 86 — แคชเชียร์ 86 สินค้าเพื่อหลบการตรวจไม่ได้) · ยังปฏิเสธ = null = ปิดทางแบบปลอดภัย (ตรวจ)
       const pSync = await regPrice(db, s, req.cart, paySettings, maxBp, { at: new Date(off.nowMs ?? Date.now()) });
       p = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt });

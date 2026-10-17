@@ -370,7 +370,7 @@ async function decide(
   e: Env,
   it: { offlineRef: string; idempotencyKey: string; soldAt: string; shiftId: string | null; staffToken: string | null; sellerUserId: string | null; snapshotHash: string; sale: Record<string, unknown> },
   evidence: Evidence,
-  manager: { actor: RegisterActor; verifiedSellerId: string | null } | null, // POS P3.4 ▸ fix1 N1 ◂
+  manager: { actor: RegisterActor; verifiedSellerId: string | null; capSellerId?: string | null } | null, // POS P3.4 ▸ fix1 N1 ◂ · POS P3.4 ▸ fix2 N7 capSellerId ◂
 ): Promise<Verdict> {
   const { db, ctx } = e;
   if (offlineSaleRefusal(it.sale)) return reject("VALIDATION");
@@ -432,6 +432,7 @@ async function decide(
   } // ◂
   // R8 ผู้ขาย (CD-3): โทเคน ณ soldAt (มติ 12) · ผู้ขายที่อ้างต้องเป็นคนในโทเคน / ผู้ใช้ที่ซิงก์
   let seller: RegisterActor = e.actor;
+  let capActor: RegisterActor | null = null; // POS P3.4 ▸ fix2 N7 ◂
   if (manager) {
     // POS P3.4 ▸ fix1 N1 (High): ผู้จัดการรับ = ขายในนามผู้ขายที่ตรวจแล้วเท่านั้น (สิทธิ์ + เพดานส่วนลดของคนนั้น) · ไม่ใช่ผู้จัดการ · ไม่ใช่ผู้ขายที่อ้าง ·
     //   คนนั้นขายที่สาขานี้ไม่ได้แล้ว (หรือเป็นคีย์ API) = รับไม่ได้ (SELLER_MISMATCH → ทิ้งแล้วขายใหม่ออนไลน์) ◂
@@ -439,6 +440,13 @@ async function decide(
     const ok = orig ? await registerScopeCheck(baseCtx(ctx), orig, db) : null;
     if (!ok?.ok) return reject("SELLER_MISMATCH");
     seller = ok.actor;
+    // POS P3.4 ▸ fix2 N7 (CD-P34i): ผู้ขายที่อ้าง (ไม่มีโทเคนที่ผ่าน) ≠ ผู้ซิงก์ ⇒ ต้องเป็นสมาชิกที่ขายที่สาขานี้ได้ · ราคา/ส่วนลด = เพดานต่ำกว่าของสองคน ◂
+    if (manager.capSellerId) {
+      const ca = await posMemberActor(ctx.tenantId, manager.capSellerId, db);
+      const okc = ca ? await registerScopeCheck(baseCtx(ctx), ca, db) : null;
+      if (!okc?.ok) return reject("SELLER_MISMATCH");
+      capActor = okc.actor;
+    }
   } else if (it.staffToken) {
     const ta = await staffActorFromToken({ tenantId: ctx.tenantId, unitId: ctx.unitId, deviceId: e.dev.deviceCode }, it.staffToken, db, { at: new Date(soldMs) });
     if (!ta) return reject("STAFF_TOKEN_INVALID");
@@ -454,6 +462,7 @@ async function decide(
     nowMs: e.now, // POS P3.4 ▸ fix1 N3 ◂
     skipWindowReview: !!manager, // POS P3.4 ▸ fix1 N3: ผู้จัดการรับ = คิด ณ soldAt ◂
     snapshotPastPvu: !!evidence?.priceValidUntil && soldMs > Date.parse(evidence.priceValidUntil), // POS P3.4 ▸ fix2 N6 ◂
+    capActor, // POS P3.4 ▸ fix2 N7 ◂
   };
   const regCtx = registerOfflineCtx({ ...baseCtx(ctx), deviceId: e.dev.deviceCode, ...(ctx.apiKeyId ? { apiKeyId: ctx.apiKeyId } : {}) }, off);
   const res = await submitRegisterSale(regCtx, seller, { ...(it.sale as Omit<RegisterSubmitInput, "idempotencyKey">), idempotencyKey: it.idempotencyKey }, db);
@@ -709,7 +718,16 @@ export async function acceptOfflineSale(ctx: OfflineCtx, actor: RegisterActor, i
         sale: isRecord(p.sale) ? p.sale : {},
       },
       (p.evidence as Evidence) ?? null,
-      { actor: sc.actor, verifiedSellerId: strOf(p.verifiedSellerUserId, p.syncedByUserId) }, // POS P3.4 ▸ fix1 N1: ไม่ใช้ sellerUserId/คำอ้างในโทเคน ◂
+      {
+        actor: sc.actor,
+        verifiedSellerId: strOf(p.verifiedSellerUserId, p.syncedByUserId), // POS P3.4 ▸ fix1 N1: ไม่ใช้ sellerUserId/คำอ้างในโทเคน ◂
+        // POS P3.4 ▸ fix2 N7: ไม่มีโทเคนที่ผ่าน (verified = ผู้ซิงก์) + มีผู้ขายที่อ้างคนอื่น ⇒ ใช้เพดานต่ำกว่า ◂
+        capSellerId: (() => {
+          const v = strOf(p.verifiedSellerUserId, p.syncedByUserId);
+          const cl = strOf(p.claimedSellerUserId, p.sellerUserId, p.staffClaimUserId);
+          return cl && v && cl !== v && v === strOf(p.syncedByUserId) ? cl : null;
+        })(),
+      },
     );
     if (v.kind === "transient") {
       await db.posOfflineSale.updateMany({ where: { id: row.id, tenantId: sc.ctx.tenantId, status: STATUS.ACCEPTED, saleId: null }, data: { status: STATUS.REJECTED, resolvedByUserId: null } });
