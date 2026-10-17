@@ -80,7 +80,10 @@ export type OfflineRejectedItem = {
   status: string;
   createdAt: string;
   expectedGrandTotalSatang: number | null;
-  sellerUserId: string | null;
+  /** POS P3.4 ▸ fix1 N1: ผู้ขายที่เครื่อง "อ้าง" (sellerUserId / u ในโทเคนที่ยังไม่ตรวจ) — แสดงเท่านั้น ไม่ให้สิทธิ์ใด ๆ ◂ */
+  claimedSellerUserId: string | null;
+  /** POS P3.4 ▸ fix1 N1: ผู้ขายที่ตรวจแล้ว = คนในโทเคนที่ผ่าน ณ soldAt ตอนซิงก์ครั้งแรก ไม่งั้นผู้ใช้ที่ซิงก์ — ผู้จัดการรับบิลด้วยสิทธิ์/เพดานของคนนี้ ◂ */
+  verifiedSellerUserId: string | null;
 };
 export type OfflineRejectedResult = { ok: true; items: OfflineRejectedItem[] } | Refusal;
 export type OfflineAcceptResult = { ok: true; saleId: string; receiptNo: string | null; duplicated?: boolean } | Refusal;
@@ -142,6 +145,8 @@ function stripSecrets(v: unknown): unknown {
   for (const [k, x] of Object.entries(v)) if (!SECRET_KEYS.has(k)) out[k] = stripSecrets(x);
   return out;
 }
+/** POS P3.4 ▸ fix1 N1: ค่าสตริงแรกที่ไม่ว่าง ◂ */
+const strOf = (...xs: unknown[]): string | null => xs.find((x): x is string => typeof x === "string" && !!x) ?? null;
 const actorOk = (a: unknown): a is RegisterActor => isRecord(a) && typeof a.userId === "string" && !!a.userId;
 const ctxOk = (c: unknown): c is OfflineCtx => isRecord(c) && isStr(c.tenantId, 200) && isStr(c.systemId, 200) && isStr(c.unitId, 200);
 const baseCtx = (c: OfflineCtx): RegisterCtx => ({ tenantId: c.tenantId, systemId: c.systemId, unitId: c.unitId });
@@ -337,13 +342,13 @@ async function evidenceOf(db: Db, e: Env, hash: string, sale: Record<string, unk
 /**
  * ตัดสินรายการหนึ่ง (ใช้ร่วมซิงก์ครั้งแรก + ผู้จัดการรับ) — ลำดับ: เนื้อหาที่ออฟไลน์ห้าม → เลข OFF ของเครื่องนี้ → เลขถูกใช้แล้ว → snapshot → นาฬิกา →
  * เครื่องถูกเพิกถอน ณ soldAt → กะที่บันทึก → ผู้ขาย/โทเคน ณ soldAt → submitRegisterSale (ราคา ณ soldAt / snapshot · สต็อก · createSale)
- * manager: กะ = null (นอกกะ) · ไม่ตรวจเปิดกะ − 5 นาที · ผู้ขาย = คนเดิมถ้ายังขายได้ ไม่งั้นผู้จัดการ · หลักฐาน snapshot จาก payload
+ * manager: ไม่ตรวจเปิดกะ − 5 นาที · ผู้ขาย = ผู้ขายที่ตรวจแล้วเท่านั้น (fix1 N1) · หลักฐาน snapshot จาก payload
  */
 async function decide(
   e: Env,
   it: { offlineRef: string; idempotencyKey: string; soldAt: string; shiftId: string | null; staffToken: string | null; sellerUserId: string | null; snapshotHash: string; sale: Record<string, unknown> },
   evidence: Evidence,
-  manager: { actor: RegisterActor; originalSellerId: string | null } | null,
+  manager: { actor: RegisterActor; verifiedSellerId: string | null } | null, // POS P3.4 ▸ fix1 N1 ◂
 ): Promise<Verdict> {
   const { db, ctx } = e;
   if (offlineSaleRefusal(it.sale)) return reject("VALIDATION");
@@ -388,9 +393,12 @@ async function decide(
   // R8 ผู้ขาย (CD-3): โทเคน ณ soldAt (มติ 12) · ผู้ขายที่อ้างต้องเป็นคนในโทเคน / ผู้ใช้ที่ซิงก์
   let seller: RegisterActor = e.actor;
   if (manager) {
-    const orig = manager.originalSellerId ? await posMemberActor(ctx.tenantId, manager.originalSellerId, db) : null;
+    // POS P3.4 ▸ fix1 N1 (High): ผู้จัดการรับ = ขายในนามผู้ขายที่ตรวจแล้วเท่านั้น (สิทธิ์ + เพดานส่วนลดของคนนั้น) · ไม่ใช่ผู้จัดการ · ไม่ใช่ผู้ขายที่อ้าง ·
+    //   คนนั้นขายที่สาขานี้ไม่ได้แล้ว (หรือเป็นคีย์ API) = รับไม่ได้ (SELLER_MISMATCH → ทิ้งแล้วขายใหม่ออนไลน์) ◂
+    const orig = manager.verifiedSellerId ? await posMemberActor(ctx.tenantId, manager.verifiedSellerId, db) : null;
     const ok = orig ? await registerScopeCheck(baseCtx(ctx), orig, db) : null;
-    seller = ok?.ok ? ok.actor : manager.actor;
+    if (!ok?.ok) return reject("SELLER_MISMATCH");
+    seller = ok.actor;
   } else if (it.staffToken) {
     const ta = await staffActorFromToken({ tenantId: ctx.tenantId, unitId: ctx.unitId, deviceId: e.dev.deviceCode }, it.staffToken, db, { at: new Date(soldMs) });
     if (!ta) return reject("STAFF_TOKEN_INVALID");
@@ -502,16 +510,18 @@ async function syncOne(e: Env, it: OfflineSyncItem): Promise<OfflineSyncResult> 
   const evidence = row ? ((isRecord(row.payload) ? (row.payload.evidence as Evidence) : null) ?? null) : await evidenceOf(db, e, it.snapshotHash, sale);
   if (!row) {
     const soldMs = Date.parse(it.soldAt);
+    // POS P3.4 ▸ fix1 N1: ผู้ขายที่ตรวจแล้ว (โทเคนผ่าน ณ soldAt) ไม่งั้นผู้ใช้ที่ซิงก์ — บันทึกครั้งเดียวตอนแรก · คำอ้างเก็บแยกไว้แสดงเท่านั้น ◂
+    const ta = item.staffToken && Number.isFinite(soldMs) ? await staffActorFromToken({ tenantId: ctx.tenantId, unitId: ctx.unitId, deviceId: e.dev.deviceCode }, item.staffToken, db, { at: new Date(soldMs) }) : null;
     const payload = {
       v: 1,
       itemHash,
       offlineRef: it.offlineRef,
       soldAt: it.soldAt,
       shiftId: item.shiftId,
-      sellerUserId: item.sellerUserId,
+      claimedSellerUserId: item.sellerUserId ?? tokenClaimUser(item.staffToken), // POS P3.4 ▸ fix1 N1 ◂
+      verifiedSellerUserId: ta?.userId ?? e.actor.userId, // POS P3.4 ▸ fix1 N1 ◂
       syncedByUserId: e.actor.userId,
       hasStaffToken: !!item.staffToken,
-      staffClaimUserId: tokenClaimUser(item.staffToken),
       snapshotHash: it.snapshotHash,
       evidence,
       sale: stripSecrets(sale),
@@ -603,7 +613,8 @@ export async function listOfflineRejected(ctx: OfflineCtx, actor: RegisterActor,
           status: r.status,
           createdAt: r.createdAt.toISOString(),
           expectedGrandTotalSatang: typeof s.expectedGrandTotalSatang === "number" ? s.expectedGrandTotalSatang : null,
-          sellerUserId: typeof p.sellerUserId === "string" ? p.sellerUserId : typeof p.syncedByUserId === "string" ? p.syncedByUserId : null,
+          claimedSellerUserId: strOf(p.claimedSellerUserId, p.sellerUserId, p.staffClaimUserId), // POS P3.4 ▸ fix1 N1 ◂
+          verifiedSellerUserId: strOf(p.verifiedSellerUserId, p.syncedByUserId), // POS P3.4 ▸ fix1 N1 ◂
         };
       }),
     };
@@ -617,7 +628,7 @@ async function managerRow(db: Db, c: OfflineCtx, id: unknown): Promise<RowState 
 const youngProcessing = (r: RowState) => r.status === STATUS.REJECTED && r.reason === PROCESSING && Date.now() - r.createdAt.getTime() < PROCESSING_GUARD_MS;
 
 /**
- * ผู้จัดการรับบิลที่ถูกปฏิเสธ (R10): ตัดสินใหม่ด้วยกติกาเดิม + ข้อยกเว้นของผู้จัดการ — กะ = null (เงินสดนอกกะ) · ผู้ขาย = คนเดิมถ้ายังขายได้ ไม่งั้นผู้จัดการ ·
+ * ผู้จัดการรับบิลที่ถูกปฏิเสธ (R10): ตัดสินใหม่ด้วยกติกาเดิม + ข้อยกเว้นของผู้จัดการ — ผู้ขาย = ผู้ขายที่ตรวจแล้วเท่านั้น (fix1 N1) ·
  * สต็อกตรวจใหม่ · ราคา/นาฬิกา/เครื่องถูกเพิกถอน/เลข OFF ยังบังคับ (ไม่ผ่าน = ปฏิเสธพร้อมรหัส ให้ทิ้งแล้วขายใหม่ออนไลน์) ·
  * idempotent: รับซ้ำ = บิลเดิม (duplicated) · หลังทิ้ง = CONFLICT · audit pos.sale.offline_synced {via: "manager"}
  */
@@ -653,7 +664,7 @@ export async function acceptOfflineSale(ctx: OfflineCtx, actor: RegisterActor, i
         sale: isRecord(p.sale) ? p.sale : {},
       },
       (p.evidence as Evidence) ?? null,
-      { actor: sc.actor, originalSellerId: [p.sellerUserId, p.staffClaimUserId, p.syncedByUserId].find((x): x is string => typeof x === "string" && !!x) ?? null },
+      { actor: sc.actor, verifiedSellerId: strOf(p.verifiedSellerUserId, p.syncedByUserId) }, // POS P3.4 ▸ fix1 N1: ไม่ใช้ sellerUserId/คำอ้างในโทเคน ◂
     );
     if (v.kind === "transient") {
       await db.posOfflineSale.updateMany({ where: { id: row.id, tenantId: sc.ctx.tenantId, status: STATUS.ACCEPTED, saleId: null }, data: { status: STATUS.REJECTED, resolvedByUserId: null } });
