@@ -91,16 +91,23 @@ async function linkedUnitIds(tenantId: string, posSystemId: string): Promise<str
   return (await prisma.appSystemUnit.findMany({ where: { tenantId, systemId: posSystemId, type: "POS" }, select: { unitId: true } })).map((r) => r.unitId);
 }
 
-/** ops WARN ครั้งเดียวต่อ (ระบบ POS, กฎ, วันไทย) — กุญแจอยู่หัว detail ของ OpsEvent ของร้านนั้น (แบบ crm.teamroom warnOnceKey) · ids ล้วน */
+/**
+ * ops WARN ครั้งเดียวต่อ (ระบบ POS, กฎ, วันไทย) (CD-5) — กุญแจอยู่หัว detail ของ OpsEvent ของร้านนั้น (แบบ crm.teamroom warnOnceKey) · ids ล้วน ·
+ * ตรวจ + เขียนใน tx เดียวใต้ advisory lock ต่อกุญแจ ⇒ event เดียวกันวิ่งพร้อมกันสองทาง = แถวเดียว (แถว OpsEvent ระดับ WARN = สิ่งเดียวกับที่ logOps เขียน)
+ * ล้มเอง = เงียบ (logger ห้ามพางานหลักพัง)
+ */
 async function warnOnce(tenantId: string, posSystemId: string, rule: string, now: Date, message: string, detail: string): Promise<void> {
   const key = `warn:${posSystemId}:${rule}:${bkkYmd(now)}`;
   try {
-    const had = await prisma.opsEvent.findFirst({ where: { tenantId, source: OPS_SOURCE, detail: { startsWith: `${key} ` } }, select: { id: true } });
-    if (had) return;
+    await prisma.$transaction(async (tx: Tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pos:board:${tenantId}:${key}`}, 0))`;
+      const had = await tx.opsEvent.findFirst({ where: { tenantId, source: OPS_SOURCE, detail: { startsWith: `${key} ` } }, select: { id: true } });
+      if (had) return;
+      await tx.opsEvent.create({ data: { level: "WARN", source: OPS_SOURCE, message, detail: `${key} ${detail}`.slice(0, 4000), tenantId } });
+    });
   } catch {
-    /* อ่านไม่ได้ = เตือนไปเลย (logOps ไม่ throw) */
+    await logOps("WARN", OPS_SOURCE, message, { tenantId, detail: `${key} ${detail}` });
   }
-  await logOps("WARN", OPS_SOURCE, message, { tenantId, detail: `${key} ${detail}` });
 }
 
 type BoardTarget = { boardId: string; kanbanSystemId: string };
