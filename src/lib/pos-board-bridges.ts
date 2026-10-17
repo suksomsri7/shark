@@ -498,7 +498,7 @@ export async function createAnomalyCard(ctx: { tenantId: string; systemId: strin
     if (!isBoardSettingsId(tenantId) || !isBoardSettingsId(systemId)) return refuse("NOT_FOUND", "ไม่พบจุดขายนี้");
     const m = membershipOf(actor);
     if (!m) return refuse("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์");
-    const i = isRecord(input) ? input : {};
+    const i: Record<string, unknown> = isRecord(input) ? input : {};
     const unitId = str(i.unitId);
     const rule = str(i.rule);
     const businessDate = str(i.businessDate);
