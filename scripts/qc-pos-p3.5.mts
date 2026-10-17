@@ -52,6 +52,10 @@ const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของเลน (มติ 11): ต้นไม้ที่ข้อสอบนี้เขียนเทียบ — session/pos 72669941 (ต้นไม้ผลิตภัณฑ์ = c5fc223b) */
 const LANE_PIN = "72669941";
+// ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.5 ST2): ต้นไม้ของงานพี่น้องที่ merge แล้วแต่ไม่มีที่หมุด (ไม่มี P3.5 ทั้งคู่) — ไฟล์ห้ามแตะที่ "ไบต์เท่าต้นไม้พี่น้อง" = hunk ของพี่น้อง ไม่ใช่ของใบนี้
+//   db4b444b = ทิป P3.4 S (72669941 + P3.4 · = 0617d17b^2 · บล็อก POS P3.4 ▸ ใน register.ts/service.ts) · 3b8a228d = merge HF-FU2 (refund-consumer.ts ACC-1 · หมุด 72669941 อยู่ก่อน HF-FU2)
+//   เทียบไบต์กับต้นไม้พี่น้องแทน "ตัดบล็อก P3.4" เพราะ P3.4 ลบบรรทัดเดิมบางบรรทัด (register −6 · service −2) ซึ่งการตัดบล็อกคืนให้ไม่ได้ — รับเฉพาะสิ่งที่พี่น้อง merge จริง
+const SIB_REVS = (process.env.P35_SIBS || "db4b444b,3b8a228d").split(",").map((x) => x.trim()).filter(Boolean);
 
 // ═════════════════════════ ทะเบียนข้อสอบ D(id · X-group · หัวข้อ) — --list พิมพ์ชุดนี้ ═════════════════════════
 // X-group: S สถิต · X1 idempotency/เล่นซ้ำ · X2 ข้ามขอบเขต/ความเป็นส่วนตัว · X3 สิทธิ์ · X4 เงิน · X5 ผลข้างเคียงครบทุกทาง · "-" เชิงหน้าที่
@@ -392,21 +396,27 @@ function runStatic(): void {
       // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.5 CD-B2): register.ts อนุญาต hunk เดียว — 3 บรรทัดที่เพิ่มใน REG_MESSAGE (OFF_SCHEDULE · ALREADY_CLOCKED · NO_EMPLOYEE ·
       //   บรรทัดแรกมีป้าย `// POS P3.5 ▸ CD-B2 REG_MESSAGE ◂`) · ไม่มีบรรทัดถูกลบ · อื่นใดใน register.ts = แดงเหมือนเดิม
       if (b === "register.ts" && changed.includes(f)) {
-        const d = (git(["diff", "--no-color", "-U0", LANE_PIN, "--", f]) ?? "").split("\n");
-        const added = d.filter((l) => l.startsWith("+") && !l.startsWith("+++"));
-        const removed = d.filter((l) => l.startsWith("-") && !l.startsWith("---"));
-        const hunks = d.filter((l) => l.startsWith("@@"));
-        const cur = rd(f);
-        const i = cur.indexOf("const REG_MESSAGE");
-        const j = i >= 0 ? cur.indexOf("\n};", i) : -1;
-        const body = i >= 0 && j > i ? cur.slice(i, j) : "";
-        const ok =
-          hunks.length === 1 && removed.length === 0 && added.length === 3 &&
-          /^\+\s*OFF_SCHEDULE:\s*"[^"]*",\s*\/\/ POS P3\.5 ▸ CD-B2 REG_MESSAGE ◂\s*$/.test(added[0]!) &&
-          /^\+\s*ALREADY_CLOCKED:\s*"[^"]*",\s*$/.test(added[1]!) &&
-          /^\+\s*NO_EMPLOYEE:\s*"[^"]*",\s*$/.test(added[2]!) &&
-          added.every((l) => body.includes(l.slice(1)));
-        if (!ok) p.push(`register.ts มี hunk นอก CD-B2 (${hunks.length} hunk · +${added.length} −${removed.length})`);
+        // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.5 ST2): กฎ CD-B2 เดิมทุกข้อ เทียบหมุด หรือเทียบทิป P3.4 S (register.ts ที่มีบล็อก P3.4 แล้ว) — ผ่านอันใดอันหนึ่ง
+        let p35RegDesc = "";
+        const cdB2 = (rev: string): boolean => {
+          const d = (git(["diff", "--no-color", "-U0", rev, "--", f]) ?? "").split("\n");
+          const added = d.filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+          const removed = d.filter((l) => l.startsWith("-") && !l.startsWith("---"));
+          const hunks = d.filter((l) => l.startsWith("@@"));
+          const cur = rd(f);
+          const i = cur.indexOf("const REG_MESSAGE");
+          const j = i >= 0 ? cur.indexOf("\n};", i) : -1;
+          const body = i >= 0 && j > i ? cur.slice(i, j) : "";
+          const ok =
+            hunks.length === 1 && removed.length === 0 && added.length === 3 &&
+            /^\+\s*OFF_SCHEDULE:\s*"[^"]*",\s*\/\/ POS P3\.5 ▸ CD-B2 REG_MESSAGE ◂\s*$/.test(added[0]!) &&
+            /^\+\s*ALREADY_CLOCKED:\s*"[^"]*",\s*$/.test(added[1]!) &&
+            /^\+\s*NO_EMPLOYEE:\s*"[^"]*",\s*$/.test(added[2]!) &&
+            added.every((l) => body.includes(l.slice(1)));
+          if (!ok && rev === LANE_PIN) p35RegDesc = `${hunks.length} hunk · +${added.length} −${removed.length}`;
+          return ok;
+        };
+        if (!cdB2(LANE_PIN) && !SIB_REVS.some((rv) => git(["rev-parse", "--verify", "-q", `${rv}^{commit}`]) !== null && cdB2(rv))) p.push(`register.ts มี hunk นอก CD-B2 (${p35RegDesc})`);
         continue;
       }
       if (b === SHARED_OK && changed.includes(f)) {
@@ -416,6 +426,8 @@ function runStatic(): void {
         if (lost.length) p.push(`register-shared.ts export หาย ${lost.slice(0, 4).join(",")}`);
         continue;
       }
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.5 ST2): ไบต์เท่าต้นไม้พี่น้อง (P3.4 S / HF-FU2) = ไม่ใช่ hunk ของใบนี้
+      if (changed.includes(f) && SIB_REVS.some((rv) => { const at = git(["show", `${rv}:${f}`]); return at !== null && sha(at) === sha(rd(f)); })) continue;
       p.push(`${b} มี hunk/ไฟล์ใหม่ (ห้ามแตะ · มติ 11)`);
     }
     const schemaDiff = git(["diff", "--no-color", "-U0", LANE_PIN, "--", "prisma/schema"]) ?? "";
@@ -423,6 +435,8 @@ function runStatic(): void {
     if (removed.length) p.push(`schema มีบรรทัดถูกลบ/แก้ ${removed.length} (${short(removed[0], 60)})`);
     const pinMigs = new Set((git(["ls-tree", "--name-only", `${LANE_PIN}:prisma/migrations`]) ?? "").split("\n").filter(Boolean));
     const nowMigs = existsSync(join(ROOT, "prisma/migrations")) ? readdirSync(join(ROOT, "prisma/migrations")) : [];
+    // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.5 ST2): migration ที่มีอยู่ในต้นไม้พี่น้อง (*_pos_p34_offline ของ P3.4 S) ไม่ใช่ "ใหม่ที่ไม่ใช่ของใบนี้"
+    for (const rv of SIB_REVS) for (const x of (git(["ls-tree", "--name-only", `${rv}:prisma/migrations`]) ?? "").split("\n").filter(Boolean)) if (x !== MIG_NAME) pinMigs.add(x);
     const extra = nowMigs.filter((d) => !pinMigs.has(d) && d !== MIG_NAME);
     if (pinMigs.size === 0) p.push("อ่านรายชื่อ migration ที่หมุดไม่ได้");
     if (extra.length) p.push(`migration ใหม่ที่ไม่ใช่ของใบนี้: ${extra.join(",")}`);
