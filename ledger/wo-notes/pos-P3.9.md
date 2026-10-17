@@ -3,8 +3,9 @@
 Base `session/pos` **3e0e0214** (product tree 688fc3ed = HF-FU2 + P3.5 S) + oracle `origin/wip/pos-p3.9-oracle` **f6df707c** merged (852f3101, ledger + suite only, no conflict).
 Contract = `pos-brief-P3.9.md` §10 rulings 1–13 + CD-P39a + TEAM_SAFE_SECTIONS addendum · names table `wo-notes/pos-P3.9-oracle.md` · suite `scripts/qc-pos-p3.9.mts` (42).
 
-## Status
-- see "Gates" below (filled at the end of the card).
+## Status (17 Oct ~02:1xZ · code head 014a075a = typechecked head · dirty 0)
+- `qc-pos-p3.9` forced (QC4 · `SHARK_AI_MOCK=1` · `P39_PIN=3e0e0214`) **38/42 ×2** — red only PR2 PR3 PR4 PR5 = **CD-9** (oracle fixture vs catalog all-branch rule; code-independent). Same suite with the proposed 1-line fixture fix (scratch copy): **42/42 ×2** · `--no-db` **6/6** · residue 0 · fetch-guard 0.
+- Red-before on this base (forced, P39_PIN=3e0e0214): **6/42** (ST3 ST4 PV4 PV1 Z1 Z2 green) — same as the oracle writer's red-before.
 
 ## Commits (wip/pos-p3.9)
 | commit | what |
@@ -14,7 +15,8 @@ Contract = `pos-brief-P3.9.md` §10 rulings 1–13 + CD-P39a + TEAM_SAFE_SECTION
 | 7a2c5e2d | feat R1 R3 R4 R5 (bridge · adapter · ops `tool` · AI layer hunks · bills.ts token · insights · inventory facade block) |
 | ebd9c499 | feat R6–R10 (brief composer/loader/job · settings parser + OWNER writer · cron block · AI integration card) |
 | 12028c00 | feat R11 R13 (A11 · labels · messages) |
-| (ORACLE-EDIT commits) | listed in §ORACLE-EDIT |
+| d6cabf3e a2ebcf36 b3060e21 649a40d5 866b715c e3bde0b6 17f9c5f1 | test(pos) ORACLE-EDITs (table below) |
+| dedd6bd4 | fix R4 legacy void_sale lookup (PosSale is system-axis — search each POS system) |
 
 ## Files / hunks per ruling
 - **R1 (ruling 1) registry tools** — `pos/api/ops/{reports,shifts,products,sales}.ts`: `tool: {name, hint}` on the 11 ops of TOOL_SPEC (op count 48 unchanged · `--check` 0, docs unchanged: the generator does not print tool names).
@@ -52,14 +54,36 @@ Contract = `pos-brief-P3.9.md` §10 rulings 1–13 + CD-P39a + TEAM_SAFE_SECTION
 - **CD-10 pin**: suite default `P39_PIN=72669941` predates the P3.5 merge on this base ⇒ ST4 red on `prisma/…p35…`, `register*.ts`, `refund-consumer.ts`, `outbox-consumers.ts` (P3.5 changes, not P3.9). All runs here use `P39_PIN=3e0e0214` (this card's base) — controller re-pin at merge.
 - CD-11 `/api/v1/ai/*` `general-key-gate.ts` still treats POS registry tools as "outside the 4 modules" (non-general POS keys get `key_not_general` on the route, as at base). Opening the AI route to `pos-*` keys would be a route hunk outside this card's file list — left for the controller.
 
-## ORACLE-EDIT (each its own `test(pos)` commit · counts before → after)
-(filled below)
+## ORACLE-EDIT (each its own `test(pos)` commit · counts on the P3.9 code before → after the edit)
+| commit | suite | checks | before → after |
+|---|---|---|---|
+| 7078d767 | `pos-gates.json` | + `qc-pos-p3.9` forced (G1) | suites 99 → 100 · `qc-pos-p2.14` 60/60 |
+| d6cabf3e | `fitness.mts` | F13.15 "no POS op declares tool" → ops with tool ⊆ sales skill · unique | 52/53 → 53/53 |
+| a2ebcf36 | `qc-pos-p0.2` | S3.1 (⊆) · S3.5 (= 11 TOOL_SPEC ops) · S3.6 (15 live) | 53/56 → 56/56 |
+| b3060e21 | `qc-pos-p1.18` | FACTS.AI true×3 · PLANNED_PHASE − AI · I8 AI OFF | 79/81 → 81/81 |
+| 649a40d5 | `qc-pos-p2.13` | ST1 tool allowed on the 11 ops (+ title) · ST5 skills hunk `POS P3.9 ▸`/posToolAllowedForScopes · key cases ⇐ pos.report.view | 52/54 → 53/54 (ST5 lane pin) |
+| 866b715c | `qc-pos-p2.12` | RULES + A11 · AN_DEFAULTS.A11 · AN11 unknown-rule probe A11 → A12 | 30/33 → 32/33 (ST1 lane pin) |
+| e3bde0b6 | `qc-ai-phase-a` | PA-2.6/2.7 pass confirmer userId (CD-4) | 8/9 → 9/9 |
+| 17f9c5f1 | `qc-ai-phase-b1` | B1-1.1 link the unit to the POS system (R3) | 8/9 → 9/9 |
+Not needed (green untouched): `qc-ai-tools` TU-1.5 18/18 · `qc-ai-tools2` V2-1.3 8/8 · `qc-hf-apiv1-scope` 143/143 (CD-7 kept) · `qc-ai-skills` 23/23.
 
 ## Lane-pin reds (expected)
-- `qc-pos-p2.13` ST5 lane pin (`ai/tools.ts` diff vs merge-base) — controller re-pin at merge (CD-B1b rule).
+- `qc-pos-p2.13` ST5 (`scripts/qc-pos-p2.13.mts:534` region): `src/lib/ai/tools.ts` diff vs merge-base 05975437 (this card) **plus** `prisma/…pos_p35_staff_commission` + `outbox-consumers.ts` (already red at base 3e0e0214 = P3.5 merge) — controller re-pin.
+- `qc-pos-p2.12` ST1: prisma/ + `register*.ts` + `outbox-consumers.ts` vs pin c5fc223b — P3.5 changes, red at base too (no P3.9 file) — controller re-pin.
+- `qc-pos-p3.9` ST4 with the suite default pin 72669941 (CD-10) — green with `P39_PIN=3e0e0214`.
+- No P3.9 diff in `prisma/`, `register*.ts`, `service.ts`, `refund*.ts`, `outbox-consumers.ts`, `pos-sale-contract.json` (ST4 green at 3e0e0214).
 
 ## `--state` list for P3.9U
 - reports `anomalies` with an A11 group (`pos-reports-anomaly-group-A11`) · settings general → anomaly table A11 row · integrations card AI `OFF` / `LINKED` · (U adds: 08 AI panel brief/empty/refused/AI-off · 10 AI card switch + brief sheet).
 
-## Gates
-(filled at the end)
+## Gates (QC4 · POS lock · never CI · logs in scratch `p39b/{runs,final,final2}`)
+- `qc-pos-p3.9` forced ×2 = 38/42 (CD-9) · scratch CD-9 copy ×2 = 42/42 · `--no-db` 6/6.
+- `qc-pos-p0.2` 56/56 · `qc-pos-p2.13` 53/54 (ST5 lane pin) · `qc-pos-p1.18` 81/81 · `qc-pos-p2.12` 32/33 (ST1 lane pin) · `qc-pos-p2.14` 60/60 (G1) · `qc-pos-api-skill` 12/12.
+- `qc-ai-skills` 23/23 · `qc-ai-tools` 18/18 · `qc-ai-tools2` 8/8 · `qc-ai-phase-a` 9/9 · `qc-ai-phase-b1` 9/9 · `qc-ai-plan` 7/7 · `qc-ai-proposals` 16/16 · `qc-ai-proactive` 6/6 · `qc-ai-schedule` 8/8 · `qc-hf-apiv1-scope` 143/143.
+- `qc-account-api-ai-skill` 28/33 — the 5 E1-K2.x reds are the manifest's **accepted** seed-only failure ('ยังไม่ได้เปิดระบบบัญชี' on QC4) · `qc-member-m1.11` 7/10 + crash `null.nickname` at S2.2/S2.3 = `// requires: member-seed` (QC4 seed mismatch, same class as the accepted m1.7/m2.8) — it dies before its tool checks; P3.9 does not touch the member bridge; not reseeded (forbidden).
+- `qc-pos-inventory` 25/25 · `qc-hf-inventory-atomic` 143/143 · `qc-hf-inventory-authz` 118/118 · `qc-account-cpa` 107/107 · money set: restaurant 6/6 · shop-refund 12/12 · hotel 5/5 · ticket 6/6 · subscription 14/14.
+- `pnpm fitness` no-env 53/53 · QC4 env 53/53 · `fitness-pos` 8/8 · `gen-pos-api-docs --check` 0 (48 op) · `pnpm typecheck` (heap 8192 · ISO 10500M · /tmp/pos-gate.lock) **exit 0 at 014a075a dirty 0**.
+- Note: one final round (02:05–02:08Z) had Z2 red from **another lane writing QC4** (non-posqc PosSale 503→612 · AuditLog 4068→3800 while my runs held the POS lock); re-run on a quiet DB: Z2 green ×4.
+
+## Hunter targets (ruling 12) — where to look
+- replay / concurrent confirm: `executeProposal` atomic claim PENDING→EXECUTED (ai/proposals.ts) + op `idempotencyKey = proposalId` (`posOpServiceKey`) · void vs refund race / approval pending: `voidSaleByActor` (bills.ts) unchanged except the source token · PO twice: claim + one `createPo` per dispatch · brief job vs route: `pg_advisory_xact_lock(hashtext('pos:brief:<system>:<date>'))` + title/recipient re-check inside the tx (ai-brief.ts).
