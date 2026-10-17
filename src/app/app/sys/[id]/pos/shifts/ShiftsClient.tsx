@@ -562,7 +562,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
     const h = hours?.[id];
     if (!h) return null;
     return (
-      <span data-testid={`pos-shift-hours-${id}`} className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] text-[color:var(--color-muted)] tabular-nums">
+      <span data-testid={`pos-shift-hours-${id}`} data-warnings={h.warnings.join(",")} className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] text-[color:var(--color-muted)] tabular-nums">
         <span>
           {t("hours.duration")} <b className="text-[color:var(--color-ink)]">{durOf(h.durationMin)}</b>
         </span>
