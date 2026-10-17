@@ -57,7 +57,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
   HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // POS P3.5 ▸ R14: ด่านตารางงาน · ค่าคอมฯ → เงินเดือน · ลา = ปลดล็อกไม่ได้ (C-8 v2) — เดิม false "P3.5" ◂
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
-  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]],
+  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", true, null]], // POS P3.7 ▸ R11: บอทตอบสถานะออเดอร์ (ตามกฎ) live ◂
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", true, null], ["shiftCloseCashCheck", true, null]], // POS P3.8 ▸ R11 มติ 9: การ์ดของหมดนาน/ผลต่างกะ + ตรวจเงินปิดกะ มีจริงแล้ว (เดิม false "P3.8") ◂
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // POS P2.14 ▸ DOC-1: โต๊ะจองบนผังมีจริงตั้งแต่ P2.4 · คิว/บิลจองล่วงหน้า = P3 ◂

@@ -196,6 +196,10 @@
       "mode": "forced"
     },
     {
+      "suite": "qc-pos-p3.7",
+      "mode": "forced"
+    },
+    {
       "suite": "qc-pos-account",
       "mode": "unforced"
     },

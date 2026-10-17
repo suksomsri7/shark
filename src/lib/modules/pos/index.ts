@@ -184,3 +184,38 @@ export const orders = {
 export type * from "./order-shared";
 export { ORDER_ADAPTERS } from "./order-adapters";
 export type { OrderAdapter, OrderAdapterKind } from "./order-adapters";
+
+// POS P3.7 ▸ แชท (ใบเสร็จอัตโนมัติ · สถานะออเดอร์ · ขอชำระในแชท ประตู A · ลิงก์ติดแท็ก ประตู B · บอทตามกฎ) — ผู้เรียกนอกโมดูล = composition root
+//   `src/lib/pos-chat-bridges.ts` (POS ไม่ import แชท) · `chatLink.<fn>` อ่านตาราง POS แล้วคืนเป้าหมาย/ข้อเท็จจริง · ตัวส่งอยู่ที่รอยต่อของแชท · รายการชัดเจน (ไม่ใช่ export *)
+import {
+  chatPreorderLink as chatLinkPreorderLink,
+  orderChatPlan as chatLinkOrderPlan,
+  orderIdOfIntent as chatLinkOrderIdOfIntent,
+  ordersForChat as chatLinkOrdersForChat,
+  orderStatusUrl as chatLinkStatusUrl,
+  posChatSettingsOf as chatLinkSettingsOf,
+  posSystemForChatUnit as chatLinkSystemForUnit,
+  receiptChatPlan as chatLinkReceiptPlan,
+  refundChatPlan as chatLinkRefundPlan,
+  setPosChatSettings as chatLinkSetSettings,
+} from "./chat-link";
+import { requestChatPayment as chatLinkRequestPayment } from "./chat-order";
+export const chatLink = {
+  settingsOf: chatLinkSettingsOf,
+  systemForUnit: chatLinkSystemForUnit,
+  setSettings: chatLinkSetSettings,
+  receiptPlan: chatLinkReceiptPlan,
+  refundPlan: chatLinkRefundPlan,
+  orderPlan: chatLinkOrderPlan,
+  orderIdOfIntent: chatLinkOrderIdOfIntent,
+  ordersForChat: chatLinkOrdersForChat,
+  statusUrl: chatLinkStatusUrl,
+  preorderLink: chatLinkPreorderLink,
+  requestPayment: chatLinkRequestPayment,
+} as const;
+export type { ChatPaymentPosResult, ChatPaymentRefusal, ChatPaymentCode } from "./chat-order";
+export type { PosChatTarget, ReceiptChatPlan, RefundChatPlan, OrderChatPlan, OrderChatFacts, ChatOrderItem, ChatPreorderLinkResult, PosChatSettingsResult } from "./chat-link";
+export { POS_CHAT_DEFAULTS, POS_CHAT_STATUS_LABELS, bangkokHHmm, chatMoney, chatReasonLabel, chatText, matchBotIntent, posChatLang, posChatSettings, withStatusLink } from "./chat-link-shared";
+export type { PosBotIntent, PosChatLang, PosChatSettings, PosChatStatusKind, PosChatTextKey } from "./chat-link-shared";
+export type { RegisterActor, RegisterCtx } from "./register-shared";
+// ◂ POS P3.7

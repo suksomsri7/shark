@@ -12,17 +12,18 @@ import { linkDoor } from "@/lib/modules/pos/qr-order";
 import { isLinkToken } from "@/lib/modules/pos/qr-order-shared";
 import { QrNoticeCard, QrPublicFrame } from "@/components/pos/qr/QrPublicFrame";
 import { QrPreorderApp } from "@/components/pos/qr/QrPreorderApp";
-import { placePreorderAction, quotePreorderCartAction } from "../actions";
+import { placePreorderAction, placeTaggedPreorderAction, quotePreorderCartAction } from "../actions"; // POS P3.7 ▸ + placeTaggedPreorderAction ◂
 import { qrLocale, qrT } from "../qr-i18n";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 const MSGS = { th: thPos, en: enPos } as const;
 
-export default async function QrPreorderPage({ params, searchParams }: { params: Promise<{ linkToken: string }>; searchParams: Promise<{ lang?: string; e?: string }> }) {
+export default async function QrPreorderPage({ params, searchParams }: { params: Promise<{ linkToken: string }>; searchParams: Promise<{ lang?: string; e?: string; c?: string }> }) {
   const { linkToken } = await params;
   if (!isLinkToken(linkToken)) notFound();
-  const { lang, e } = await searchParams;
+  const { lang, e, c } = await searchParams; // POS P3.7 ▸ R8: c = chat tag (verified server-side in placePreorder) ◂
+  const chatTag = typeof c === "string" && c.length > 0 && c.length <= 400 ? c : null; // POS P3.7 ▸ R8 ◂
   const locale = await qrLocale(lang);
   const t = qrT(locale);
   const text = { th: t("common.th"), en: t("common.en"), language: t("common.language") };
@@ -48,7 +49,7 @@ export default async function QrPreorderPage({ params, searchParams }: { params:
       footer={t("common.footer")}
     >
       <NextIntlClientProvider locale={locale} timeZone="Asia/Bangkok" messages={{ pos: { qr: MSGS[locale].qr } }}>
-        <QrPreorderApp token={linkToken} locale={locale} view={v} notice={notice} actions={{ quote: quotePreorderCartAction, place: placePreorderAction }} />
+        <QrPreorderApp token={linkToken} locale={locale} view={v} notice={notice} actions={{ quote: quotePreorderCartAction, place: chatTag ? placeTaggedPreorderAction.bind(null, chatTag) : placePreorderAction }} />
       </NextIntlClientProvider>
     </QrPublicFrame>
   );
