@@ -9694,12 +9694,13 @@
         "cashier"
       ],
       "expect": {
-        "type": "ui",
-        "target": "pos-settings-staff-pins",
-        "note": "ดึงรายชื่อจาก HR — ฝั่งเซิร์ฟเวอร์ live แล้ว (P3.5 S: ด่านตารางงาน · สถานะ HR บนจอล็อก · ค่าคอมฯ → เงินเดือน · ตัวเขียน updatePosStaffSettings เจ้าของเท่านั้น) · สวิตช์บนแท็บนี้ยัง aria-disabled จนถึง P3.5U (เจ้าของเท่านั้น) — ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14) เดิม \"ปิดเสมอ (aria-disabled · ชิป เร็ว ๆ นี้ · P3.5)\""
+        "type": "mutation",
+        "target": "updatePosStaffSettingsAction",
+        "note": "P3.5U มติ 6: สวิตช์ live = settings.pos.staff.scheduleGate.enabled (บันทึกทันที) · เจ้าของร้านเท่านั้น — ผู้จัดการเห็น aria-disabled + \"เจ้าของร้านเท่านั้นที่ตั้งค่านี้ได้\" · ร้านไม่มีระบบ HR = ข้อความ noHr (เปิดได้ แต่ด่านไม่มีตารางให้ตรวจ) · ปฏิเสธ = pos-settings-staff-hr-error · เดิม (P1.18U/P3.5 R14) aria-disabled เสมอ",
+        "db": "AppSystem(POS).settings.pos.staff.scheduleGate.enabled"
       },
-      "wo": "P1.18U",
-      "oracle": "",
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -19793,6 +19794,349 @@
         "type": "ui",
         "target": "pos-lock-screen",
         "note": "ปิดแผ่นผู้จัดการอนุญาต = ทิ้ง PIN ของพนักงานที่ค้างไว้ (ต้องใส่ PIN ใหม่) · อนุญาตสำเร็จ = verifyStaffPinAction + managerUserId/managerPin → โทเคน overrideTtlMin · PIN ผู้จัดการผิด = pos-mgr-pin-error (PIN_INVALID/PIN_LOCKED) · ไม่ใช่ผู้จัดการ = PERMISSION_DENIED · ร้านปิดการอนุญาต = overrideDisabled"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-gate-early",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-gate-save",
+        "note": "การ์ด \"เข้ากะตามตารางงาน HR\": เข้าก่อนเวลาได้ (นาที · จำนวนเต็ม 0–180 · POS_SCHEDULE_GATE_LIMITS) · ผิด = pos-settings-staff-gate-early-error · ผู้จัดการ = disabled (เจ้าของร้านเท่านั้น)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-gate-late",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-gate-save",
+        "note": "ใช้ต่อหลังเลิกงานได้ (นาที · 0–180) · ผิด = pos-settings-staff-gate-late-error"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-gate-ttl",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-gate-save",
+        "note": "ผู้จัดการอนุญาตได้นาน (นาที · 0–720 · 0 = ไม่อนุญาตนอกตาราง) · ผิด = pos-settings-staff-gate-ttl-error"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-gate-clock-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-gate-save",
+        "note": "ASK / OFF (radio) = settings.pos.staff.clockOnShift — ถามลงเวลาเข้า-ออกงานหลังเปิด/ปิดกะ (หน้า 07) · ไม่มีระบบ HR = ตัวอ่านคืน OFF เสมอ"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-gate-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosStaffSettingsAction",
+        "note": "บันทึก {scheduleGate: {earlyMin, lateMin, overrideTtlMin}, clockOnShift} · ปฏิเสธตาม field scheduleGate.<ช่อง> = ข้อความใต้ช่อง · อื่น = pos-settings-staff-gate-error · สำเร็จ = pos-settings-staff-gate-saved · แสดงเฉพาะเจ้าของร้าน (คนอื่น = pos-settings-staff-gate-owner-only)",
+        "db": "AppSystem(POS).settings.pos.staff"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-switch",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "การ์ด \"ค่าคอมฯ พนักงานขาย\" (เฉพาะผู้ดูเงินเดือน canViewPayroll — หน้าไม่ส่ง config = ไม่มีการ์ด) · เปิด/ปิดคิดค่าคอมฯ (บันทึกพร้อมการ์ด)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-default",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "อัตราปกติ % (0–50 ทศนิยม 2 ↔ bp 0–5000) · ผิด = pos-settings-staff-commission-field-error"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-role-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "บทบาทที่ได้ค่าคอมฯ OWNER/MANAGER/STAFF (aria-pressed · sellerRoles)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-cat-bp-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "อัตรารายหมวด % ต่อหมวดจากตัวอ่านแคตตาล็อกเดิม registerCatalogAction (CD-P35U-3) · ว่างทั้ง % และบาท = ไม่มีแถว"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-cat-fixed-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "อัตรารายหมวด บาทต่อชิ้น (0–1,000 ↔ fixedSatang 0–100000)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-prod-bp-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "อัตรารายสินค้า % (ชื่อสินค้าจาก registerCatalogAction ≤ 500 · ไม่พบ = \"สินค้านอกรายการขายของสาขานี้\")"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-prod-fixed-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "อัตรารายสินค้า บาทต่อชิ้น"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-prod-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-save",
+        "note": "เอาแถวอัตรารายสินค้าออก (มีผลเมื่อกดบันทึก)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-prod-search",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-prod-add-*",
+        "note": "ค้นหาสินค้าเพื่อเพิ่มแถวอัตรา — กรองแคตตาล็อกที่โหลดแล้ว · เกิน 500 รายการ = registerCatalogAction {q} · ไม่พบ = \"ไม่พบสินค้า\""
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-prod-add-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-commission-prod-bp-*",
+        "note": "เพิ่มแถวอัตรารายสินค้า (ว่าง) ใต้หัว \"อัตราตามสินค้า\""
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosStaffCommissionAction",
+        "note": "บันทึกทั้งการ์ด {enabled, defaultBp, sellerRoles, byCategory, byProduct} (อ่านแคตตาล็อกไม่ได้ = ไม่ส่ง byCategory/byProduct · แถวเดิมคงอยู่ + จำนวนแบบอ่านอย่างเดียว) · ปฏิเสธตาม field = ข้อความใต้ช่อง · PERMISSION_DENIED = payrollOnly · สำเร็จ = pos-settings-staff-commission-saved",
+        "db": "AppSystem(POS).settings.pos.staffCommission"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-commission-sync",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "syncStaffCommissionNowAction",
+        "note": "ส่งเข้างวดเงินเดือนตอนนี้ (แถว OPEN ของเดือนที่จบแล้ว → hr.requestAdjustment PENDING) · ผล = pos-settings-staff-commission-sync-result \"ส่งแล้ว n แถว · m รายการปรับเงิน · ยังไม่ผูก HR k คน\" (จำนวนเท่านั้น ไม่มียอดเงิน)",
+        "db": "PosStaffCommission.status · HrPayAdjustment"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
