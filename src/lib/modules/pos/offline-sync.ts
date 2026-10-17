@@ -575,7 +575,7 @@ async function syncOne(e: Env, it: OfflineSyncItem): Promise<OfflineSyncResult> 
 
 /**
  * ซิงก์บิลออฟไลน์ของเครื่อง (R5): ปฏิเสธทั้งชุด (ไม่เขียนอะไร) เมื่อ โครงผิด / > 50 รายการ / deviceId ≠ ctx.deviceId / ขอบเขตหรือสิทธิ์ขายไม่ผ่าน /
- * ปิดธง / เครื่องไม่อยู่ในสาขานี้ · ผ่านแล้วทำทีละรายการเรียง (soldAt, seq) — ผลรายรายการ OK | DUPLICATE | REJECTED (เหตุผล) ·
+ * เครื่องไม่อยู่ในสาขานี้ (ปิดธง = ยังรับ · fix1 F5) · ผ่านแล้วทำทีละรายการเรียง (soldAt, seq) — ผลรายรายการ OK | DUPLICATE | REJECTED (เหตุผล) ·
  * ขัดข้องชั่วคราวกลางชุด (BUSY/INTERNAL) = หยุดทั้งชุด {ok:false, code BUSY} (ส่งใหม่ด้วยคีย์เดิม = รายการที่ผ่านแล้วได้ DUPLICATE)
  */
 export async function syncOfflineSales(ctx: OfflineCtx, actor: RegisterActor, input: OfflineSyncInput, opts: { now?: Date } = {}, client?: Db): Promise<OfflineSyncBatchResult> {
@@ -586,7 +586,7 @@ export async function syncOfflineSales(ctx: OfflineCtx, actor: RegisterActor, in
     if (isRecord(ctx) && ctx.deviceId !== undefined && ctx.deviceId !== b.deviceId) return refuse("VALIDATION", "รหัสเครื่องของคำขอไม่ตรงกับเครื่องของ session");
     const sc = await scopeOf(db, ctx, actor);
     if ("ok" in sc) return sc;
-    if (!(await flagOn(db, sc.ctx))) return refuse("OFFLINE_DISABLED", "ร้านยังไม่เปิดขายแบบออฟไลน์");
+    // POS P3.4 ▸ fix1 F5 (CD-P34g): ธงออฟไลน์คุมการออก snapshot (การขาย) เท่านั้น — บิลที่ค้างในเครื่องตอนปิดธงยังซิงก์ได้ (เงินสดต้องลงบิล) ◂
     const dev = await deviceOf(db, sc.ctx, b.deviceId);
     if (!dev) return refuse("DEVICE_NOT_FOUND", "ไม่พบเครื่องขายนี้ในสาขา");
     const e: Env = { db, ctx: { ...sc.ctx, ...(isRecord(ctx) && typeof ctx.apiKeyId === "string" && ctx.apiKeyId ? { apiKeyId: ctx.apiKeyId } : {}) }, actor: sc.actor, dev, now: nowOf(opts).getTime() };
