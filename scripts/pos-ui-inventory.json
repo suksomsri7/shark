@@ -18647,7 +18647,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-report-table",
-        "note": "แท็บใหม่ต่อท้าย (P2.12U): hourly (24 ชั่วโมงของวันธุรกิจ + แถวรวม · ช่วง > 31 วัน = ปิด + \"เลือกช่วงไม่เกิน 31 วัน\") · branches (เห็น ≥ 2 สาขา · ตาราง + แถวรวมตัวหนาจาก totals) · anomalies (เฉพาะผู้มี pos.report.anomaly ที่สาขาใดสาขาหนึ่ง · กลุ่มกฎ A1–A10) → ?kind= (history.replaceState) + โหลดรายงาน"
+        "note": "แท็บใหม่ต่อท้าย (P2.12U): hourly (24 ชั่วโมงของวันธุรกิจ + แถวรวม · ช่วง > 31 วัน = ปิด + \"เลือกช่วงไม่เกิน 31 วัน\") · branches (เห็น ≥ 2 สาขา · ตาราง + แถวรวมตัวหนาจาก totals) · anomalies (เฉพาะผู้มี pos.report.anomaly ที่สาขาใดสาขาหนึ่ง · กลุ่มกฎ A1–A10) · commission (P3.5U มติ 8: เฉพาะผู้ดูเงินเดือน canViewPayroll — ตารางต่อผู้ขาย ได้/กลับรายการ/สุทธิ/ส่งแล้ว/ยังไม่ส่ง/สถานะใน HR + แถวรวม · ไม่มีสิทธิ์ = ไม่มีแท็บ และ ?kind=commission = pos-reports-commission-denied) → ?kind= (history.replaceState) + โหลดรายงาน"
       },
       "wo": "P2.12U",
       "oracle": "",
