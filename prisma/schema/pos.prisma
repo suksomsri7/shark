@@ -1068,3 +1068,43 @@ model PosCustomerDisplay {
   @@index([tenantId, unitId, status])
 }
 // ◂ POS P2.10
+
+// POS P3.5 ▸ R7 สมุดค่าคอมฯ พนักงานขาย (มติ 1 2 8 9) — ผู้เขียนเดียว = pos/staff-commission.ts · ไม่มี @relation ไป HR (id หลวม) ·
+//   ACCRUE คีย์ PAID:<sale>:<line> · REVERSE คีย์ VOID:<sale>:<line> / REFUND:<refundSale>:<refLine> · amountSatang มีเครื่องหมาย (REVERSE ติดลบ) ·
+//   periodKey = เดือนไทย (YYYY-MM) ของ paidAt (ACCRUE) / ของเหตุการณ์ (REVERSE) · OPEN → SENT เมื่อส่งเข้างวดเงินเดือนของ HR (hrPayAdjustmentId ·
+//   สุทธิ 0 = SENT โดย id ว่าง) · rateBp/fixedSatang/baseSatang = สำเนาอัตรา ณ เวลาลงสมุด (แก้อัตราทีหลังไม่ย้อน) ◂
+enum PosStaffCommissionKind {
+  ACCRUE
+  REVERSE
+}
+
+enum PosStaffCommissionStatus {
+  OPEN
+  SENT
+}
+
+model PosStaffCommission {
+  id                String                   @id @default(cuid())
+  tenantId          String
+  systemId          String // AppSystem.id (type POS) ของบิล
+  unitId            String
+  saleId            String // PosSale.id ของบิลขาย (REVERSE ของใบคืน = บิลเดิม)
+  lineId            String // PosSaleLine.id ของบิลขาย
+  userId            String // ผู้ขายของบิล (PosSale.soldByUserId)
+  kind              PosStaffCommissionKind
+  sourceKey         String                   @unique
+  baseSatang        Int // ยอดสุทธิของบรรทัดหลังส่วนลดท้ายบิล (lineNets · รวม VAT)
+  rateBp            Int
+  fixedSatang       Int // ต่อหน่วย
+  amountSatang      Int // มีเครื่องหมาย
+  periodKey         String
+  status            PosStaffCommissionStatus @default(OPEN)
+  hrSystemId        String?
+  hrPayAdjustmentId String?
+  sentAt            DateTime?
+  createdAt         DateTime                 @default(now())
+
+  @@index([tenantId, userId, status, periodKey])
+  @@index([saleId])
+}
+// ◂ POS P3.5

@@ -68,7 +68,8 @@ const CHECKS: readonly Def[] = [
   D("AN13", "X4", "[fix1 H1] A3/A4 วัดส่วนลดที่พนักงานคุมได้ (Σ ส่วนลดบรรทัด + ท้ายบิล − คูปอง − สมาชิก) · ฐาน A4 = ยอดก่อนส่วนลดบรรทัด: วัน DA สาขา B บิล L1 (2 บรรทัด · บรรทัดแรกลด 100%) → แถว A4 value 5000 · บิล Q1 (คูปอง ฿60 อย่างเดียว) → ไม่มีแถว A4 · A3 ของ O ที่ B นับส่วนลดบรรทัด (value 7143 · 2 บิล) · [P2.14 RPT-4] บิล M1 ส่วนลดสมาชิกล้วน (วัน DM) ไม่ขึ้น A4 และไม่ทำให้ O/B ขึ้น A3"), // ORACLE-ADD ผู้คุม 16 ต.ค. (P2.14 RPT-4)
   D("AN14", "X4", "[fix1 H2] ตัดแถวต่อกฎ: ช่วง DA–วันนี้ แถว A4 > limit (= จำนวนกฎที่มีแถว) → ทุกกฎยังอยู่ (A8 ไม่หาย) · แต่ละกฎ ≤ ⌈limit/กฎ⌉ · ≤ limit แถว · ลำดับเดิม · totals = ไม่ตัด · แถว CSV ท้าย = \"แสดง N จาก M แถว\" · แบบพิมพ์ notice เดียวกัน (ไม่อยู่ในแถว) · ไม่ตัด = ไม่มีบรรทัดแจ้ง"),
   // ── PD แบบพิมพ์ ──
-  D("PD1", "PAR", "[§4 มติ 2] buildReportPrint ทุกชนิดใน REPORT_KINDS (11): kind/from/to/locale/generatedAt/shopName/unitLabel ตามอินพุต · headers = CSV_HEADERS[kind] · rows = แถว CSV ของ reportCsv ช่วงเดียวกันทีละช่อง · title th มีอักษรไทย · en: title ไม่มีอักษรไทย ≠ th · จำนวนหัว/แถวเท่า th"),
+  // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R11): REPORT_KINDS ต่อท้าย "commission" (12 ชนิด) — เดิม "(11)"
+  D("PD1", "PAR", "[§4 มติ 2] buildReportPrint ทุกชนิดใน REPORT_KINDS (12 · + commission P3.5): kind/from/to/locale/generatedAt/shopName/unitLabel ตามอินพุต · headers = CSV_HEADERS[kind] · rows = แถว CSV ของ reportCsv ช่วงเดียวกันทีละช่อง · title th มีอักษรไทย · en: title ไม่มีอักษรไทย ≠ th · จำนวนหัว/แถวเท่า th"),
   D("PD2", "P", "[§4 มติ 2 ⚠️7] renderReportPrintHtml: สร้างสองครั้ง sha256 เท่ากัน · เปลี่ยน report.generatedAt (envelope) → sha เดิม · เปลี่ยน opts.generatedAt → sha เปลี่ยน · ชื่อร้าน <b>&\"' ถูก escape (ไม่มี <b> ดิบ) · มี @page + A4 · ไม่มี <script · มีหัวตาราง + \"รวม\""),
   D("PD3", "X3", "[§4 มติ 2 4 · OV2] posReportPrintAction ผ่าน session ปลอม: พนักงานไม่มีสิทธิ์รายงาน → PERMISSION_DENIED · พนักงานมี view: daily ok (html มีหัวตาราง ไม่มี <script) · anomalies PERMISSION_DENIED · เจ้าของ anomalies ok · kind แปลก → VALIDATION"),
   // ORACLE-ADD ผู้คุม 15 ต.ค. (P2.12 fix 1) ▸ PD4 (hunter H3 H4) ◂
@@ -296,7 +297,7 @@ const F = {
   msgEn: "src/messages/en/pos.json",
 };
 const NEW_KINDS = ["branches", "hourly", "anomalies"] as const;
-const ALL_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels", ...NEW_KINDS] as const;
+const ALL_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels", ...NEW_KINDS, "commission"] as const; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R11): + "commission" — เดิม 11 ชนิด
 const KIND_FN: Record<string, string> = {
   daily: "reportDailySales",
   products: "reportProducts",
@@ -309,6 +310,7 @@ const KIND_FN: Record<string, string> = {
   branches: "reportBranches",
   hourly: "reportHourly",
   anomalies: "reportAnomalies",
+  commission: "reportStaffCommission", // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R11)
 };
 const NEW_READERS = ["reportBranches", "reportHourly", "reportAnomalies"] as const;
 const ANOMALY_KEY = "pos.report.anomaly";
@@ -1813,7 +1815,7 @@ async function runDb() {
   const reports: Record<string, Any> = {};
   {
     const p: string[] = [];
-    if (J([...kindsNow].sort()) !== J([...ALL_KINDS].sort())) p.push(`REPORT_KINDS ${kindsNow.join(",")} (คาด 11 ชนิด)`);
+    if (J([...kindsNow].sort()) !== J([...ALL_KINDS].sort())) p.push(`REPORT_KINDS ${kindsNow.join(",")} (คาด 12 ชนิด)`); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R11): เดิม "คาด 11 ชนิด"
     for (const k of ALL_KINDS) {
       const [from, to] = rangeOf(k);
       const r = await rep(KIND_FN[k]!, undefined, owner, from!, to!, { limit: 1000 });
@@ -1847,7 +1849,7 @@ async function runDb() {
       if (!isRecord(e) || typeof e.title !== "string" || !e.title.trim() || THAI.test(e.title) || e.title === m.title) p.push(`${k}: en title ${short(e?.title, 30)}`);
       else if (!Array.isArray(e.headers) || e.headers.length !== (Array.isArray(m.headers) ? m.headers.length : -1) || !Array.isArray(e.rows) || e.rows.length !== (Array.isArray(m.rows) ? m.rows.length : -1)) p.push(`${k}: en หัว/แถวไม่เท่า th`);
     }
-    chk("PD1", !fx && p.length === 0, "11 ชนิด: model = CSV_HEADERS + แถว CSV · th/en", FX(NOTE() + (P8(p) || "ครบ")));
+    chk("PD1", !fx && p.length === 0, "12 ชนิด: model = CSV_HEADERS + แถว CSV · th/en", FX(NOTE() + (P8(p) || "ครบ")));
   }
   {
     const p: string[] = [];

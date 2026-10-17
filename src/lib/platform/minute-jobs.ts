@@ -456,6 +456,19 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C3.9
+// POS P3.5 ▸ R9 มติ 8: ค่าคอมฯ พนักงานขายหน้าร้าน → งวดเงินเดือน HR — รายชั่วโมง (แบบ crm.commissions.payroll) · ส่งเฉพาะเดือนไทยที่จบแล้ว
+//   AUDIT-CLASS X5: ล็อกต่อ (ร้าน · ผู้ใช้) + แถว FOR UPDATE + สถานะ OPEN ⇒ route + crontab ยิงซ้อนได้ผลเดียว · เคารพ ctrl.deadline (รอบหลังทำต่อ)
+//   โหลด POS ตอนรันเท่านั้น (ไฟล์นี้ถูก import จาก route — ห้ามลากกราฟ POS/HR ตอนโหลด) · ไม่มีงาน = จบทันที (คิวรีเดียว)
+registerMinuteJob({
+  name: "pos.staffCommission.payroll",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const { syncStaffCommissionToPayroll } = await import("@/lib/modules/pos/staff-commission");
+    await syncStaffCommissionToPayroll({ now, deadline: ctrl.deadline });
+  },
+});
+// ◂ POS P3.5
 
 function errorText(e: unknown): string {
   let s: string;

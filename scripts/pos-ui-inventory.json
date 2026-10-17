@@ -9696,7 +9696,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-settings-staff-pins",
-        "note": "ดึงรายชื่อจาก HR — ปิดเสมอ (aria-disabled · ชิป เร็ว ๆ นี้ · P3.5)"
+        "note": "ดึงรายชื่อจาก HR — ฝั่งเซิร์ฟเวอร์ live แล้ว (P3.5 S: ด่านตารางงาน · สถานะ HR บนจอล็อก · ค่าคอมฯ → เงินเดือน · ตัวเขียน updatePosStaffSettings เจ้าของเท่านั้น) · สวิตช์บนแท็บนี้ยัง aria-disabled จนถึง P3.5U (เจ้าของเท่านั้น) — ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14) เดิม \"ปิดเสมอ (aria-disabled · ชิป เร็ว ๆ นี้ · P3.5)\""
       },
       "wo": "P1.18U",
       "oracle": "",

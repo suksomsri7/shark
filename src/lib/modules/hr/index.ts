@@ -37,3 +37,13 @@ export { payrollEmployeeOfUser, payrollRunPeriods, adjustmentOfCommission, adjus
 //   รายการค้าง (PENDING/APPROVED) ในงวดที่มีรอบแล้ว
 export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAdjustments, moveCommissionAdjustmentPeriod } from "./payroll";
 // ◂ CRM C3.3
+// POS P3.5 ▸ รอยต่อ HR ↔ POS ฉบับ C-8 v2 (มติ 5 · ledger/POS-CONTRACTS.md C-8) — re-export ล้วน (ตัวงานอยู่ที่ pos-seam.ts)
+//   onShiftToday = ใครเป็นพนักงาน · active · ลาวันนี้ · ตารางของวัน (unitId ยังไม่ใช้จนกว่า H1.1) · workedMinutesBetween = นาทีทำงานช่วงหนึ่ง ·
+//   clockSelf = ลงเวลาของตัวเอง (เขียนผ่าน clock() ของ HR เท่านั้น) · adjustmentStatuses = สถานะรายการปรับเงินที่ POS ส่งเข้างวด
+//   HR เปลี่ยนตัวในได้เอง (H2.1 · H1.1 · H2.4) — 4 ชื่อนี้แช่แข็ง POS ไม่ต้องแก้
+export type { OnShiftTodayItem, OnShiftTodayResult, PosSeamSchedule, PosSeamClockMarks, ClockSelfResult } from "./pos-seam";
+export { onShiftToday, workedMinutesBetween, clockSelf, adjustmentStatuses } from "./pos-seam";
+// ◂ POS P3.5
+// POS P3.5 ▸ fix2 N1 (มติผู้คุม CD-P35c): ตัวกวาดรายการของระบบ (ค่าคอมฯ POS) ที่ค้างในงวดที่มีรอบแล้ว — re-export ล้วน (ตัวงานอยู่ที่ payroll.ts)
+export { rehomeStrandedSystemAdjustments } from "./payroll";
+// ◂ POS P3.5 fix2 N1

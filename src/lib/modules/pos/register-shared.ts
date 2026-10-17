@@ -71,7 +71,19 @@ export const STAFF_PIN_UNIT_THROTTLE_AFTER = 30;
 export type StaffPinOk = { ok: true };
 /** ผล verifyStaffPin: staffToken ส่งต่อใน staffToken ของ submit/พัก/เรียกคืน/เปิดกะ · expiresAt = ISO */
 export type VerifyStaffPinOk = { ok: true; userId: string; role: RegisterRole; staffToken: string; expiresAt: string };
-export type StaffListItem = { userId: string; name: string | null; role: RegisterRole; hasPin: boolean; shift: { id: string; openedAt: string } | null };
+export type StaffListItem = {
+  userId: string;
+  name: string | null;
+  role: RegisterRole;
+  hasPin: boolean;
+  shift: { id: string; openedAt: string } | null;
+  /** POS P3.5 ▸ R5: สถานะจากระบบพนักงาน (มีคีย์เฉพาะร้านที่มีระบบ HR) — ไม่มีชนิด/เหตุผลการลา ไม่มีเงิน (privacy [L]) ◂ */
+  hr?: StaffHrState;
+};
+/** POS P3.5 ▸ R4: เหตุที่ด่านตารางงานไม่ปลดล็อก (หลัง PIN ถูก · มีเฉพาะทางที่ระบุคน) ◂ */
+export type StaffScheduleReason = "OUTSIDE_HOURS" | "DAY_OFF" | "LEAVE" | "INACTIVE";
+/** POS P3.5 ▸ R5: schedule = เวลาเข้า/เลิกของวันนี้ (นาทีเวลาไทย · null = ไม่มีตาราง/วันหยุด/ไม่ผูก) · inSchedule null = ไม่มีข้อมูลให้ตัดสิน ◂ */
+export type StaffHrState = { schedule: { startMin: number; endMin: number } | null; onLeave: boolean; inSchedule: boolean | null };
 export type ListStaffForDeviceResult = { ok: true; items: StaffListItem[] } | RegisterRefusal;
 
 /** POS P1.5: บิลที่พัก (HELD) อายุเกินกี่วันนับจาก createdAt (24 ชม.ต่อวัน แบบเลื่อน) ⇒ ทิ้งเองตอนเปิดรายการ — ตั้งได้ที่
@@ -240,10 +252,14 @@ export type RegisterRefusalCode =
   | "DEPOSIT_EXCEEDS"
   | "DEPOSIT_CLOSED"
   // POS P2.9b ▸ fix2 มติ 3: 4 หลักท้ายของเบอร์ผิดครบ 5 ครั้ง — ระงับ 15 นาที ◂
-  | "DEPOSIT_LOCKED";
+  | "DEPOSIT_LOCKED"
+  // POS P3.5 ▸ R13: นอกตารางงาน HR (หลัง PIN ถูก · reason/window) · ลงเวลาซ้ำ · ผู้ใช้ไม่ผูกพนักงาน HR ◂
+  | "OFF_SCHEDULE"
+  | "ALREADY_CLOCKED"
+  | "NO_EMPLOYEE";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
-export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number };
+export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number; /** POS P3.5 ▸ R4: OFF_SCHEDULE — เหตุ + ช่วงตาราง (OUTSIDE_HOURS) ◂ */ reason?: StaffScheduleReason; window?: { startMin: number; endMin: number } };
 
 export type RegisterSoldOutReason = "UNAVAILABLE" | "NO_STOCK";
 export type RegisterProduct = {
@@ -1038,6 +1054,10 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   ORDER_STATE_CHANGED: "errors.orderStateChanged",
   ORDER_UNPAID: "errors.orderUnpaid",
   CHANNEL_PAUSED: "errors.channelPaused",
+  // POS P3.5 ▸ R13 ด่านตารางงาน · ลงเวลาจากกะ ◂
+  OFF_SCHEDULE: "lock.schedule.offSchedule",
+  ALREADY_CLOCKED: "errors.alreadyClocked",
+  NO_EMPLOYEE: "errors.noEmployee",
 };
 
 /**

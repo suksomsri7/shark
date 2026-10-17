@@ -85,6 +85,91 @@ export function posAnomalyThresholds(settings: unknown): PosAnomalyThresholds {
   return { enabled: typeof raw?.enabled === "boolean" ? raw.enabled : true, rules: rules as unknown as PosAnomalyRules };
 }
 
+// POS P3.5 ▸ R3 R6 R12 มติ 1 3 12: ค่าตั้งพนักงาน × HR ต่อระบบ POS — ตัวอ่านเดียวต่อคีย์ (บริสุทธิ์) · ตัวเขียน (settings-general.ts) ปฏิเสธค่านอกช่วงเดียวกันนี้
+//   settings.pos.staff.scheduleGate = {enabled, earlyMin, lateMin, overrideTtlMin} (ค่าปริยายปิด · 30/30/240) · จำนวนเต็มนอกช่วง = ตัดเข้าขอบ ·
+//   ไม่ใช่จำนวนเต็ม/ชนิดผิด = ค่าปริยาย · คีย์แปลก = ไม่ออก
+//   settings.pos.staffCommission = {enabled, defaultBp, byCategory, byProduct, sellerRoles} (ค่าปริยายปิด) · แถวละ {bp?, fixedSatang?} · ≤ 500 แถวรวม ·
+//   bp 0–5000 · fixed 0–100000 สตางค์ต่อหน่วย · บทบาทที่ไม่รู้จักถูกตัด
+//   settings.pos.staff.clockOnShift = "OFF" | "ASK" (ไม่ตั้ง = ASK เมื่อร้านมีระบบ HR · ไม่มี = OFF) ◂
+export type PosScheduleGate = { enabled: boolean; earlyMin: number; lateMin: number; overrideTtlMin: number };
+export const POS_SCHEDULE_GATE_DEFAULTS: Readonly<PosScheduleGate> = { enabled: false, earlyMin: 30, lateMin: 30, overrideTtlMin: 240 };
+export const POS_SCHEDULE_GATE_LIMITS = { earlyMin: { min: 0, max: 180 }, lateMin: { min: 0, max: 180 }, overrideTtlMin: { min: 0, max: 720 } } as const;
+const clampInt = (v: unknown, lim: { min: number; max: number }, def: number): number =>
+  typeof v === "number" && Number.isInteger(v) ? Math.min(lim.max, Math.max(lim.min, v)) : def;
+/** R3 — ตัวอ่านเดียวของ settings.pos.staff.scheduleGate */
+export function posScheduleGate(settings: unknown): PosScheduleGate {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const staff = pos && isRecord(pos.staff) ? pos.staff : null;
+  const g = staff && isRecord(staff.scheduleGate) ? staff.scheduleGate : null;
+  const d = POS_SCHEDULE_GATE_DEFAULTS;
+  return {
+    enabled: typeof g?.enabled === "boolean" ? g.enabled : d.enabled,
+    earlyMin: clampInt(g?.earlyMin, POS_SCHEDULE_GATE_LIMITS.earlyMin, d.earlyMin),
+    lateMin: clampInt(g?.lateMin, POS_SCHEDULE_GATE_LIMITS.lateMin, d.lateMin),
+    overrideTtlMin: clampInt(g?.overrideTtlMin, POS_SCHEDULE_GATE_LIMITS.overrideTtlMin, d.overrideTtlMin),
+  };
+}
+export type PosClockOnShift = "OFF" | "ASK";
+/** R12 — ถามลงเวลาหลังเปิด/ปิดกะไหม · ไม่ตั้ง/ผิดรูป = ASK เมื่อร้านมีระบบ HR · ไม่มี HR = OFF เสมอ */
+export function posClockOnShift(settings: unknown, hrLinked: boolean): PosClockOnShift {
+  if (!hrLinked) return "OFF";
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const staff = pos && isRecord(pos.staff) ? pos.staff : null;
+  return staff?.clockOnShift === "OFF" ? "OFF" : "ASK";
+}
+export const POS_STAFF_ROLES = ["OWNER", "MANAGER", "STAFF"] as const;
+export type PosStaffRole = (typeof POS_STAFF_ROLES)[number];
+export type PosStaffCommissionRate = { bp?: number; fixedSatang?: number };
+export type PosStaffCommissionConfig = {
+  enabled: boolean;
+  defaultBp: number;
+  byCategory: Record<string, PosStaffCommissionRate>;
+  byProduct: Record<string, PosStaffCommissionRate>;
+  sellerRoles: PosStaffRole[];
+};
+export const POS_STAFF_COMMISSION_LIMITS = { bp: { min: 0, max: 5_000 }, fixedSatang: { min: 0, max: 100_000 }, entries: 500 } as const;
+const STAFF_COMMISSION_DEFAULT_ROLES: readonly PosStaffRole[] = ["STAFF", "MANAGER"];
+const RATE_KEY_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** แถวอัตรา → {bp?, fixedSatang?} ที่ถูกตัดเข้าช่วง · ไม่มีช่องที่ใช้ได้ = null */
+function rateOf(v: unknown): PosStaffCommissionRate | null {
+  if (!isRecord(v)) return null;
+  const out: PosStaffCommissionRate = {};
+  if (typeof v.bp === "number" && Number.isInteger(v.bp)) out.bp = clampInt(v.bp, POS_STAFF_COMMISSION_LIMITS.bp, 0);
+  if (typeof v.fixedSatang === "number" && Number.isInteger(v.fixedSatang)) out.fixedSatang = clampInt(v.fixedSatang, POS_STAFF_COMMISSION_LIMITS.fixedSatang, 0);
+  return out.bp === undefined && out.fixedSatang === undefined ? null : out;
+}
+/** R6 — ตัวอ่านเดียวของ settings.pos.staffCommission (สินค้าก่อนหมวด เมื่อรวมเกิน 500 แถว) */
+export function posStaffCommission(settings: unknown): PosStaffCommissionConfig {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const c = pos && isRecord(pos.staffCommission) ? pos.staffCommission : null;
+  let left: number = POS_STAFF_COMMISSION_LIMITS.entries;
+  const table = (v: unknown): Record<string, PosStaffCommissionRate> => {
+    const out: Record<string, PosStaffCommissionRate> = {};
+    if (!isRecord(v)) return out;
+    for (const [k, x] of Object.entries(v)) {
+      if (left <= 0) break;
+      if (!RATE_KEY_RE.test(k)) continue;
+      const r = rateOf(x);
+      if (!r) continue;
+      out[k] = r;
+      left--;
+    }
+    return out;
+  };
+  const byProduct = table(c?.byProduct);
+  const byCategory = table(c?.byCategory);
+  const roles = Array.isArray(c?.sellerRoles)
+    ? [...new Set((c!.sellerRoles as unknown[]).filter((x): x is PosStaffRole => typeof x === "string" && (POS_STAFF_ROLES as readonly string[]).includes(x)))]
+    : [...STAFF_COMMISSION_DEFAULT_ROLES];
+  return {
+    enabled: typeof c?.enabled === "boolean" ? c.enabled : false,
+    defaultBp: clampInt(c?.defaultBp, POS_STAFF_COMMISSION_LIMITS.bp, 0),
+    byCategory,
+    byProduct,
+    sellerRoles: roles,
+  };
+}
+
 /** ช่วงของตัวเขียนทั่วไป (= ช่วงของตัวอ่านแต่ละตัว) */
 export const POS_GENERAL_LIMITS = {
   heldCartExpireDays: { min: 1, max: 365 },

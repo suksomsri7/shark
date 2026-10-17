@@ -716,7 +716,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M2.8: + สะพานสมาชิก (ยอดสะสม/แต้ม/สแตมป์/ที่มา/ระดับ/ไทม์ไลน์) — ย้ายออกจาก tx ของบิลมาที่คิวนี้
   // CRM C2.7 ▸ + ทางเดินเงินของ CRM (บิลที่แคชเชียร์ผูกไว้กับดีล → paidSatang) — ต่อ **ท้ายสุด** เสมอ:
   //   บัญชี (posSalePaid) → ตรา (stampFromSale) → สมาชิก (memberSaleBridge) → CRM · ทุกตัวก่อนหน้าทำงานเหมือนเดิมทุกประการ ◂
-  "pos.sale.paid": withAutomation(compose(compose(compose(posSalePaid, stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))),
+  // POS P3.5 ▸ R8 มติ 9: + สมุดค่าคอมฯ พนักงานขาย เป็น "งานหลัก" คู่บัญชี (bothMain: วิ่งทั้งคู่ · ล้มตัวใด = event retry · idempotent ต่อ sourceKey) ◂
+  "pos.sale.paid": withAutomation(compose(compose(compose(bothMain(posSalePaid, async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt)), stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))),
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
   // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
@@ -768,11 +769,19 @@ const baseConsumers: Record<string, OutboxHandler> = {
         if (!failed) err = e;
         failed = true;
       }
+      // POS P3.5 ▸ R8 มติ 9: กลับรายการค่าคอมฯ พนักงานของบิลที่ถูก void (งานหลัก · idempotent ต่อ VOID:<sale>:<line>) ◂
+      try {
+        await (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
       if (failed) throw err;
     }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
   ),
   // POS P1.8 ▸ คืนเงิน: ใบลดหนี้ + JV ตามสัดส่วน · รับของคืนที่ต้นทุนเดิม · แต้ม/ยอดสะสม/ตรา (ตัวรับอยู่ pos/refund-consumer.ts · โหลดตอนใช้ กันวงโหลดไฟล์) ◂
-  "pos.sale.refunded": withAutomation(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt)),
+  // POS P3.5 ▸ R8 มติ 9: + กลับรายการค่าคอมฯ พนักงานตามสัดส่วนใบคืน เป็นงานหลักคู่ (bothMain · ไม่แตะ refund-consumer.ts) ◂
+  "pos.sale.refunded": withAutomation(bothMain(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt), async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSaleRefunded(evt))),
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   // M3.7: + ไทม์ไลน์ VISIT (+ แถวจองย้อนหลัง) · แต้มโบนัส CHECKIN · ขอรีวิว (ร้านที่เปิดรีวิว) — สแตมป์ของ M2.3 ยังเป็นงานหลัก (พัง = retry เหมือนเดิม)
   // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกนัด (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:

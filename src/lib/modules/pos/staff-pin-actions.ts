@@ -72,11 +72,13 @@ export async function setOwnStaffPinAction(args: Target & { pin: string }): Prom
 }
 
 /** ใส่ PIN ที่เครื่อง → โทเคนผู้ขาย (userId = คนที่แตะในรายชื่อ ถ้ามี) */
-export async function verifyStaffPinAction(args: Target & { deviceId: string; pin: string; userId?: string | null }): Promise<VerifyStaffPinOk | RegisterRefusal> {
+export async function verifyStaffPinAction(args: Target & { deviceId: string; pin: string; userId?: string | null; managerUserId?: string | null; managerPin?: string | null }): Promise<VerifyStaffPinOk | RegisterRefusal> {
   try {
     const s = await scoped("verifyStaffPinAction", args);
     if ("ok" in s) return s;
-    return await verifyStaffPin(s.ctx, { unitId: s.ctx.unitId, deviceId: typeof args?.deviceId === "string" ? args.deviceId : "", pin: args?.pin, userId: typeof args?.userId === "string" ? args.userId : null });
+    // POS P3.5 ▸ R4 มติ 4: override นอกตารางงานด้วย PIN ผู้จัดการ (คีย์ตรงตัว · ไม่ส่ง = ทางเดิม) ◂
+    const override = typeof args?.managerUserId === "string" && args.managerUserId ? { managerUserId: args.managerUserId, managerPin: typeof args?.managerPin === "string" ? args.managerPin : "" } : {};
+    return await verifyStaffPin(s.ctx, { unitId: s.ctx.unitId, deviceId: typeof args?.deviceId === "string" ? args.deviceId : "", pin: args?.pin, userId: typeof args?.userId === "string" ? args.userId : null, ...override });
   } catch (e) {
     return unexpected("verifyStaffPinAction", e);
   }

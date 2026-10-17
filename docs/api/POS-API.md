@@ -103,6 +103,7 @@ Under the code above, the POS tells why in `message_th` / `message_en`. This is 
 | Reason | HTTP | `error.code` | `message_en` |
 | --- | --- | --- | --- |
 | `ACCOUNT_PENDING` | 409 (state or duplicate conflict) | `state_conflict` | The accounting link of this shop is not ready yet, so this cannot be done now. |
+| `ALREADY_CLOCKED` | 409 (state or duplicate conflict) | `state_conflict` | This clock in/out was already recorded today. |
 | `ALREADY_ISSUED` | 409 (state or duplicate conflict) | `state_conflict` | A full tax invoice was already issued for this bill. |
 | `ALREADY_RECALLED` | 409 (state or duplicate conflict) | `state_conflict` | This held bill was already recalled by another device. |
 | `ALREADY_RECOUNTED` | 409 (state or duplicate conflict) | `state_conflict` | This shift was already recounted. |
@@ -155,7 +156,9 @@ Under the code above, the POS tells why in `message_th` / `message_en`. This is 
 | `MEMBER_SYSTEM_MISSING` | 409 (state or duplicate conflict) | `state_conflict` | This branch has no member system linked. |
 | `NOT_ELIGIBLE` | 409 (state or duplicate conflict) | `state_conflict` | The bill is not eligible for this operation. |
 | `NOT_FOUND` | 404 (not found / not in this POS system) | `not_found` | The record was not found in this POS system. |
+| `NO_EMPLOYEE` | 409 (state or duplicate conflict) | `state_conflict` | This user is not linked to an employee in HR. |
 | `NO_PERMISSION` | 403 (refused by a business rule) | `forbidden` | This API key is not allowed to do that at this branch. |
+| `OFF_SCHEDULE` | 403 (refused by a business rule) | `forbidden` | Outside the scheduled working hours. A manager must allow it. |
 | `OPTIONS_INVALID` | 422 (a value cannot be accepted) | `validation` | The chosen options are not valid for this product. |
 | `OPTIONS_REQUIRED` | 422 (a value cannot be accepted) | `validation` | This product needs its options to be chosen. |
 | `OPTION_UNAVAILABLE` | 409 (state or duplicate conflict) | `state_conflict` | One of the chosen options is sold out. |

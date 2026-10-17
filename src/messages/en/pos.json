@@ -505,7 +505,10 @@
       "orderStateInvalid": "The order is in a state that does not allow this",
       "orderStateChanged": "This order was just changed on another device — check its latest status",
       "orderUnpaid": "This order has not been paid — take payment before handing over",
-      "channelPaused": "This channel is not taking orders right now"
+      "channelPaused": "This channel is not taking orders right now",
+      "offSchedule": "Outside scheduled working hours — ask a manager to allow",
+      "alreadyClocked": "Already clocked for today",
+      "noEmployee": "This user is not linked to an employee in HR"
     },
     "refusal": {
       "manualConfirmManager": "This shop lets only managers confirm money received — ask a manager to confirm this PromptPay/card payment, or take cash"
@@ -609,7 +612,21 @@
       "needPinBillsBody": "This device needs to know who is acting — unlock the register with your PIN, then come back to void or refund",
       "goRegister": "Go to the register",
       "managerAllow": "Manager approves with a PIN",
-      "checkingDevice": "Checking this device…"
+      "checkingDevice": "Checking this device…",
+      "schedule": {
+        "offSchedule": "Outside scheduled working hours — ask a manager to enter their PIN to allow",
+        "outsideHours": "Outside working hours (today {start}–{end})",
+        "dayOff": "Today is a scheduled day off",
+        "leave": "On approved leave today",
+        "inactive": "This person is no longer on the staff register",
+        "chipToday": "Today {start}–{end}",
+        "chipLeave": "On leave today",
+        "chipNoSchedule": "No schedule set",
+        "chipOff": "Off hours",
+        "overrideTitle": "Manager override",
+        "overrideBody": "Pick a manager and enter their PIN — allowed for {minutes} minutes",
+        "overrideConfirm": "Allow"
+      }
     },
     "staff": {
       "title": "Who is using this register",
@@ -928,7 +945,22 @@
       "new": "Open a new shift",
       "dismiss": "Close report"
     },
-    "savedReloadFailed": "Saved — reloading the page failed, try refreshing"
+    "savedReloadFailed": "Saved — reloading the page failed, try refreshing",
+    "hours": {
+      "title": "Working hours",
+      "askIn": "Clock in as well?",
+      "askOut": "Clock out as well?",
+      "clockIn": "Clock in",
+      "clockOut": "Clock out",
+      "skip": "Not now",
+      "done": "Clocked",
+      "duration": "Shift length",
+      "worked": "Worked (HR)",
+      "minutes": "{minutes} min",
+      "warnNoClockIn": "No clock-in",
+      "warnNoClockOut": "No clock-out yet",
+      "warnNoEmployee": "Not linked to an HR employee"
+    }
   },
   "report": {
     "title": "Sales reports",
@@ -953,7 +985,8 @@
       "channels": "Sales channels",
       "branches": "Branch comparison",
       "hourly": "Hourly sales",
-      "anomalies": "Staff anomalies"
+      "anomalies": "Staff anomalies",
+      "commission": "Staff commission"
     },
     "card": {
       "today": "Today's sales",
@@ -1237,6 +1270,28 @@
       "generatedAt": "Generated {time}",
       "back": "‹ Back to reports",
       "overviewTitle": "Sales overview summary"
+    },
+    "commission": {
+      "title": "Staff sales commission",
+      "desc": "Per seller, from the register's commission ledger — visible to the owner and payroll viewers only",
+      "denied": "This account cannot view staff commission",
+      "noEmployee": "Not linked to an HR employee",
+      "syncNow": "Send to payroll now",
+      "cols": {
+        "seller": "Seller",
+        "accrued": "Earned",
+        "reversed": "Reversed",
+        "net": "Net",
+        "sent": "Sent to payroll",
+        "open": "Not sent",
+        "hrStatus": "HR status"
+      },
+      "hrStatus": {
+        "PENDING": "Pending approval",
+        "APPROVED": "Approved",
+        "REJECTED": "Rejected",
+        "IN_RUN": "In a pay run"
+      }
     }
   },
   "stock": {
@@ -2386,6 +2441,30 @@
         "next": "Next",
         "save": "Save PIN",
         "saving": "Saving…"
+      },
+      "scheduleGate": {
+        "title": "Shifts follow the HR schedule",
+        "hint": "The register unlocks only within scheduled hours · managers and owners are exempt",
+        "enabled": "Enable the schedule gate",
+        "earlyMin": "Early start allowed (minutes)",
+        "lateMin": "Late finish allowed (minutes)",
+        "overrideTtlMin": "Manager override lasts (minutes)",
+        "clockOnShift": "Ask to clock in/out when opening/closing a shift",
+        "clockAsk": "Always ask",
+        "clockOff": "Don't ask",
+        "ownerOnly": "Only the owner can change this"
+      },
+      "commission": {
+        "title": "Staff sales commission",
+        "hint": "Based on each line's net after discounts (VAT included) · sent to HR payroll after the month ends",
+        "enabled": "Calculate commission",
+        "defaultBp": "Default rate (%)",
+        "byCategory": "Rates by category",
+        "byProduct": "Rates by product",
+        "fixed": "Baht per unit",
+        "sellerRoles": "Roles that earn commission",
+        "syncNow": "Send to payroll now",
+        "payrollOnly": "Only the owner or a payroll viewer can change this"
       }
     },
     "shark": {

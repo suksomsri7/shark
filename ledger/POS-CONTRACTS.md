@@ -59,6 +59,22 @@ hr.onShiftToday({ tenantId, unitId, date })  // C-2 เดิม — ราย�
 hr.recordCommission({ employeeId, saleId, lineId, amountSatang, kind:'SERVICE'|'PRODUCT', idempotencyKey })  // outbox consumer ของ pos.sale.paid เมื่อ HR เชื่อม
 ```
 - บิลเงินสดจาก source อื่นตอนไม่มีกะ → `PosSale.shiftId = null` + โผล่รายงาน "เงินสดนอกกะ" (D17 เดิม)
+### C-8 v2 — รอยต่อ HR ↔ POS ที่แช่แข็ง (POS P3.5 · มติ 5 · 16 ต.ค. 2026) — แทน `staff.verifyPin`/`hr.onShiftToday`/`hr.recordCommission` ด้านบน
+ไฟล์ของ HR ที่เลน POS เขียน: `src/lib/modules/hr/pos-seam.ts` (+ ตัวอ่านอย่างเดียว `hr/pos-seam-read.ts`) · re-export ที่บล็อก `// POS P3.5 ▸ … ◂` ต่อท้าย `// ◂ CRM C3.3` ใน `hr/index.ts` · POS เรียกผ่าน `@/lib/modules/hr` จาก `pos/hr-link.ts` (+ `hr-link-actions.ts`) เท่านั้น (fitness `"pos→hr"`)
+```ts
+hr.onShiftToday({ tenantId, unitId?, at, userIds })      // → { hrLinked, items: [{ userId, employeeId, active, onLeave, schedule: {startMin,endMin,graceMin,dayOff} | null, clock: {firstInAt, lastKind, lastAt}, adjacent: {yesterday, tomorrow} /* fix2 N6 · ตารางวันก่อน/ถัดไป (กะข้ามเที่ยงคืน) */ }] }
+                                                         //   items = เฉพาะผู้ใช้ที่ผูก HrEmployee · ไม่มีระบบ HR = {hrLinked:false, items:[]} · unitId ยังไม่ใช้จนกว่า H1.1
+hr.workedMinutesBetween({ tenantId, userId, from, to })  // → number (คู่ IN/OUT ด้วย rules.workedMinutes)
+hr.clockSelf({ tenantId, userId, kind, note }, { tx? })  // → {ok:true, kind, judgement?} | {ok:false, code:"NO_EMPLOYEE"|"ALREADY_CLOCKED"} — เขียนผ่าน clock() ของ HR เท่านั้น · tx = ทุกคำสั่งใน tx ของผู้เรียก (fix2 F4)
+hr.adjustmentStatuses({ tenantId, ids })                 // → [{ id, status, runId, periodKey }] (periodKey · fix2 N1)
+hr.rehomeStrandedSystemAdjustments(tenantId, limit?)     // → จำนวนที่ย้าย — เฉพาะ "รายการของระบบ" (crmCommissionId null ∧ requestedById null ∧ COMMISSION|DEDUCTION ∧ note ขึ้นต้น "ค่าคอมฯ ขายหน้าร้าน (POS)") ที่ค้างในงวดที่มีรอบ ⇒ งวดแรกที่ว่าง (fix2 N1 · fix3 N10 · HR block ใน payroll.ts · จนกว่า H1.3 sourceType)
+hr.requestAdjustment(hrCtx, {employeeId, periodKey, kind:"COMMISSION"|"DEDUCTION", amountSatang, note:"ค่าคอมฯ ขายหน้าร้าน (POS) · …", requestedById:null}, {tx})  // ของเดิม (CRM C3.3) — POS ยื่นใน tx ของตัวเอง
+```
+- **HR เปลี่ยนตัวในได้เอง POS ไม่ต้องแก้**: H2.1 (roster แทน `HrWorkSchedule` รายสัปดาห์) · H1.1 (แกนสาขา — เริ่มใช้ `unitId`) · H2.4 (ย้าย `clock` ไป `hr/clock.ts` หลัง export เดิม) · H1.3 (`sourceType POS_STAFF_COMMISSION` + `sourceRef = <user>:<period>:<seq>` — POS จะส่งเพิ่มเมื่อมี · ตอนนี้กันซ้ำด้วยล็อก + สถานะ OPEN ของสมุด POS) — ชื่อ + รูปร่างอินพุต/ผลลัพธ์ห้ามเปลี่ยน (เพิ่มฟิลด์ได้)
+- POS ไม่เขียนตาราง HR เอง: ลงเวลา = `clockSelf` · ค่าคอมฯ = `requestAdjustment` (PENDING · อนุมัติด้วยกติกา 4 ตาของ HR · JV เงินเดือนของ HR ลงค่าใช้จ่ายตอนอนุมัติรอบ — ไม่มี JV ของ POS มติ 2)
+- สมุดของ POS: `PosStaffCommission` (ACCRUE `PAID:<sale>:<line>` · REVERSE `VOID:<sale>:<line>` / `REFUND:<refundSale>:<refLine>`) ← งานหลักของ `pos.sale.paid/.voided/.refunded` · ส่งเข้างวด = `syncStaffCommissionToPayroll` (รายชั่วโมง `pos.staffCommission.payroll` + ปุ่มเจ้าของ) · เฉพาะเดือนไทยที่จบแล้ว · งวด = เดือนของแถว หรือเดือนแรกถัดไปที่ยังไม่มีรอบจ่าย
+- PIN: คง `PosStaffPin` (มติ 6 · W10) — ด่านตารางงานอยู่ใน `verifyStaffPin` จุดเดียว (หลัง PIN ถูก · ปิดเป็นค่าปริยาย)
+
 - ปิดกะ: Account consumer `pos.shift.closed` → JV เงินขาด/เกิน (บัญชีเป็นผู้เลือกผัง) · Kanban consumer → การ์ด "ตรวจเงิน" ถ้า |overShort| > เกณฑ์ · Meeting/LINE เจ้าของ → สรุปกะ
 
 ## C-9 อนุมัติ (POS ↔ Approval core) — แทนที่ "ขอ PIN ผู้จัดการ" เมื่อร้านตั้งนโยบาย
