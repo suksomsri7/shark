@@ -20,8 +20,11 @@ import { parsePosPaymentSettings } from "./payment-settings"; // POS P2.9 ▸ R9
 //   ROOM_CHARGE → ลงบิลห้องยังไม่จ่าย → Dr 1100 ลูกหนี้
 //   POS P2.1: PLATFORM → แพลตฟอร์มเก็บเงินแทน → Dr ลูกหนี้แพลตฟอร์ม (ห้ามตกไป TRANSFER = ธนาคาร)
 //   POS P2.9: GIFT_CARD/STORE_CREDIT → เงินรับล่วงหน้า (STORED_VALUE → Dr/Cr 2110 · มติ 1 · CD1b · มติ 9) — ห้ามตกไป TRANSFER
-function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" {
+//   POS P3.6: ON_ACCOUNT → วางบิล (เครดิตเทอม) → Dr 1100 ผู้ติดต่อของบริษัท + ใบแจ้งหนี้ (ห้ามตกไป TRANSFER = ธนาคาร)
+function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT" {
   switch (type) {
+    case "ON_ACCOUNT": // POS P3.6 ▸ R7 ◂
+      return "ON_ACCOUNT";
     case "GIFT_CARD": // POS P2.9 ▸ ◂
     case "STORE_CREDIT":
       return "STORED_VALUE";
@@ -63,6 +66,9 @@ type SaleForBridge = {
   /** POS P2.9b ▸ ที่มาของบิล (POS_DEPOSIT = ใบรับเงินมัดจำ → ทางของมัดจำ) + VAT บนบิล — แถว PosSale ที่ consumer ส่งมามีอยู่แล้ว ◂ */
   sourceModule?: string | null;
   vatSatang?: number;
+  /** POS P3.6 ▸ R5 R7: ลูกค้าองค์กรของบิล + เงื่อนไขวางบิล (แถว PosSale ที่ consumer ส่งมามีอยู่แล้ว) — ไม่มี = เดิมทุกไบต์ ◂ */
+  customerPartyId?: string | null;
+  creditTerms?: Prisma.JsonValue | null;
 };
 
 /** บรรทัดบิลที่ consumer อ่านมาจาก PosSaleLine (WO 4.2) */
@@ -154,6 +160,9 @@ export async function bridgePosSalePaid(
   const commissionVat = Math.max(0, sale.channelCommissionVatSatang ?? 0);
   const needsChannel = pays.some((p) => p.type === "PLATFORM") || (commission + commissionVat > 0 && !!sale.channelPayout);
   const channelName = needsChannel ? await saleChannelName(prisma, sale.tenantId, sale.channelId, sale.channelCode) : null;
+  // POS P3.6 ▸ R5 R7: ผู้ติดต่อของบิล = บริษัท (customerPartyId) ก่อนสมาชิก · บิลวางบิล = onAccount {partyId, dueDate, termDays} จาก creditTerms ◂
+  const p36Credit = sale.customerPartyId && pays.some((p) => p.type === "ON_ACCOUNT") ? creditTermsOf(sale.creditTerms) : null;
+  const p36Customer = sale.customerPartyId ? { partyId: sale.customerPartyId, name: buyer?.name ?? null } : null;
   const res = await applyExternalSale({
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
@@ -166,7 +175,8 @@ export async function bridgePosSalePaid(
     payMethods: pays.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
     ...(tipLedgerId ? { tip: { satang: tipSatang, ledgerId: tipLedgerId } } : {}), // POS P2.9 ▸ R9 ◂
     lines,
-    customer: detail?.customer ?? undefined,
+    customer: p36Customer ?? detail?.customer ?? undefined, // POS P3.6 ▸ R5 ◂
+    ...(p36Credit && sale.customerPartyId ? { onAccount: { partyId: sale.customerPartyId, dueDate: p36Credit.dueDate, termDays: p36Credit.termDays } } : {}), // POS P3.6 ▸ R7 ◂
     receiptNo: sale.receiptNo ?? null,
     // POS P1.13 ▸ R2: บิลที่มีผู้ซื้อขอใบกำกับเต็มรูป → เอกสาร TAX_INVOICE แทน ABB (GL เดิม) ◂
     ...(buyer ? { buyer: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId, branchCode: buyer.branchCode, address: buyer.address, email: buyer.email } } : {}),
@@ -362,4 +372,13 @@ export async function bridgePosSaleRefunded(
     ...(typeof refund.vatSatang === "number" ? { vatSatang: refund.vatSatang } : {}),
     ...(depositPaid ? { depositPaid: true } : {}), // POS P2.9b ▸ fix4 มติ 2 ◂
   });
+}
+
+// POS P3.6 ▸ R7: creditTerms ของบิล (Json · เขียนครั้งเดียวที่ createSale) → {dueDate, termDays} · ผิดรูป = วันครบกำหนด = วันขาย (facade ใช้วันไทยของ occurredAt) ◂
+function creditTermsOf(v: Prisma.JsonValue | null | undefined): { dueDate: string; termDays: number } {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  return {
+    dueDate: typeof o.dueDate === "string" ? o.dueDate : "",
+    termDays: typeof o.termDays === "number" && Number.isInteger(o.termDays) ? o.termDays : 0,
+  };
 }

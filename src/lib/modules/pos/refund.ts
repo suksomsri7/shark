@@ -547,6 +547,17 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
     }
   }
 
+  // POS P3.6 ▸ R8 (CD-6 REFUND_METHOD_INVALID): บิลวางบิล = คืนเป็น "วางบิล" แถวเดียว (ลดหนี้ของใบแจ้งหนี้ — ร้านไม่ได้รับเงินสด) · บิลอื่นคืนเป็น ON_ACCOUNT ไม่ได้ ◂
+  {
+    const saleOnAccount = (await tx.posPayment.count({ where: { saleId: sale.id, tenantId: s.tenantId, type: "ON_ACCOUNT" } })) > 0;
+    const askOnAccount = x.payMethods.filter((p) => p.type === "ON_ACCOUNT").length;
+    if (saleOnAccount ? askOnAccount !== 1 || x.payMethods.length !== 1 : askOnAccount > 0) {
+      return refuse(
+        "REFUND_METHOD_INVALID",
+        saleOnAccount ? "บิลนี้วางบิล (เครดิตเทอม) — คืนเป็น \"วางบิล\" แถวเดียว (ลดหนี้ของใบแจ้งหนี้) ไม่คืนเงินสด/โอน" : "บิลนี้ไม่ได้วางบิล — คืนเป็น \"วางบิล\" ไม่ได้",
+      );
+    }
+  }
   const prior = await priorRefunds(tx, sale);
   const byId = new Map(sale.lines.map((l) => [l.id, l]));
   for (const r of x.lines) if (!byId.has(r.lineId)) return refuse("VALIDATION", "ไม่พบรายการนี้ในบิล");

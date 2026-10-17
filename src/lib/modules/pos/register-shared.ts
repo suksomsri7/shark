@@ -21,7 +21,8 @@ export const REGISTER_PAGE_MAX = 500;
 /** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
 // POS P2.9 ▸ R1: + GIFT_CARD (giftCard {number, pin} · ≤ 3 ใบ) + STORE_CREDIT (เครดิตร้านของสมาชิกในบิล · ไม่มี PIN · แถวเดียว) ◂
 // POS P2.9b ▸ R4 มติ 2: + DEPOSIT (= {DEPOSIT, amountSatang, depositId} เท่านั้น · ไม่มี depositId = VALIDATION · ทิปไม่จ่ายจากมัดจำ) — payOrder ยังปฏิเสธ (order.ts) ◂
-export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
+// POS P3.6 ▸ R6 มติ 9: + ON_ACCOUNT (วางบิล · เครดิตเทอม) = {ON_ACCOUNT, amountSatang} แถวเดียวเต็มยอด · ต้องมี customerPartyId (บริษัท) — ตัวตัดสินจริง = createSale ◂
+export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT", "ON_ACCOUNT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
 /** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
 export const REGISTER_MAX_PAY_METHODS = 10;
 /** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */
@@ -256,10 +257,18 @@ export type RegisterRefusalCode =
   // POS P3.5 ▸ R13: นอกตารางงาน HR (หลัง PIN ถูก · reason/window) · ลงเวลาซ้ำ · ผู้ใช้ไม่ผูกพนักงาน HR ◂
   | "OFF_SCHEDULE"
   | "ALREADY_CLOCKED"
-  | "NO_EMPLOYEE";
+  | "NO_EMPLOYEE"
+  // POS P3.6 ▸ R15: วางบิล (เครดิตเทอม) + ลูกค้าองค์กร + ดีล ◂
+  | "CREDIT_DISABLED"
+  | "CREDIT_NOT_ALLOWED"
+  | "CREDIT_TERM_ZERO"
+  | "CREDIT_LIMIT_EXCEEDED"
+  | "CREDIT_INVOICE_PAID"
+  | "CUSTOMER_INVALID"
+  | "DEAL_INVALID";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
-export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number; /** POS P3.5 ▸ R4: OFF_SCHEDULE — เหตุ + ช่วงตาราง (OUTSIDE_HOURS) ◂ */ reason?: StaffScheduleReason; window?: { startMin: number; endMin: number } };
+export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number; /** POS P3.5 ▸ R4: OFF_SCHEDULE — เหตุ + ช่วงตาราง (OUTSIDE_HOURS) ◂ */ reason?: StaffScheduleReason; window?: { startMin: number; endMin: number }; /** POS P3.6 ▸ CD-4: CREDIT_LIMIT_EXCEEDED — วงเงิน + ภาพหนี้ (สตางค์) เฉพาะผู้ถือ pos.credit.manage ◂ */ limitSatang?: number; exposureSatang?: number };
 
 export type RegisterSoldOutReason = "UNAVAILABLE" | "NO_STOCK";
 export type RegisterProduct = {
@@ -453,7 +462,8 @@ export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
  */
 export type RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; staffToken?: string; managerPin?: string; managerUserId?: string; heldCartId?: string; idempotencyKey?: string };
 
-export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
+// POS P3.6 ▸ ชนิดของจอ (PayDone/InterimPayDialog ใช้ Record<RegisterPayType,…>) ยังไม่รวม ON_ACCOUNT จนการ์ด P3.6U — เซิร์ฟเวอร์รับ ON_ACCOUNT ตาม REGISTER_PAY_TYPES ◂
+export type RegisterPayType = Exclude<(typeof REGISTER_PAY_TYPES)[number], "ON_ACCOUNT">;
 /** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
 /** POS P2.9 ▸ giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น (เลขที่สแกน/พิมพ์ + PIN ของลูกค้า · ห้ามเก็บ/บันทึก PIN ที่จอ) ◂ */
 /** POS P2.9b ▸ depositId = มัดจำของแถว DEPOSIT เท่านั้น (PosDeposit.id จาก registerDepositLookup · เซิร์ฟเวอร์แก้เป็นใบรับเอง) ◂ */
@@ -488,6 +498,12 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   taxInvoice?: TaxInvoiceBuyerInput;
   /** POS P1.13 R6: จำผู้ซื้อไว้กับสมาชิกของบิล (มี memberId เท่านั้น) */
   rememberBuyer?: boolean;
+  /** POS P3.6 ▸ R5: ลูกค้าองค์กรของบิล (Party.id ของบริษัท จาก registerCompanySearch / registerMemberCompanies) — ผิด = CUSTOMER_INVALID ◂ */
+  customerPartyId?: string;
+  /** POS P3.6 ▸ R10: ดีลที่ผูกบิล (ต้องอยู่ในรายการ registerDealOptions ของผู้ขาย ณ ตอนส่ง ไม่งั้น DEAL_INVALID · ไม่มีบิล) ◂ */
+  crmDealId?: string;
+  /** POS P3.6 ▸ มติ 2 CD-1: PIN ผู้จัดการ (ถือ pos.credit.manage) อนุญาตวางบิลเกินวงเงิน — ผิด = PIN_INVALID (+1 บนแถวผู้จัดการ) · แยกจาก managerPin ของส่วนลด ◂ */
+  creditOverride?: { managerUserId: string; managerPin: string };
 };
 export type RegisterSubmitOk = {
   ok: true;
@@ -1058,6 +1074,14 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   OFF_SCHEDULE: "lock.schedule.offSchedule",
   ALREADY_CLOCKED: "errors.alreadyClocked",
   NO_EMPLOYEE: "errors.noEmployee",
+  // POS P3.6 ▸ R15 วางบิล · ลูกค้าองค์กร · ดีล ◂
+  CREDIT_DISABLED: "credit.errors.disabled",
+  CREDIT_NOT_ALLOWED: "credit.errors.notAllowed",
+  CREDIT_TERM_ZERO: "credit.errors.termZero",
+  CREDIT_LIMIT_EXCEEDED: "credit.errors.limitExceeded",
+  CREDIT_INVOICE_PAID: "credit.errors.invoicePaid",
+  CUSTOMER_INVALID: "credit.errors.customerInvalid",
+  DEAL_INVALID: "deal.errors.invalid",
 };
 
 /**
