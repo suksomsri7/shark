@@ -86,3 +86,26 @@ None new in S (no UI). Visual `--list` / `--dry` th/en must stay unchanged (§9)
 - gates1 at 737102e8 (`scratchpad/p34b/gates1/`): green — p1.3 p1.6 p1.7 p1.9 p1.9b p1.11 p1.12 p1.15 hf-tx p1.1 p1.18 · money restaurant-money shop-refund hotel-money ticket-money subscription-money account-cpa · fitness no-env 53/53 · fitness QC4 0 · fitness-pos 8/8 · `gen-pos-api-docs --check` 0 · visual `--list` / `--dry` th / en exit 0 (visual-pos.mts untouched ⇒ no new state).
   Red = pin-only, §6: p1.10 ST2 · p2.1 S8 · p2.2 S3 · p2.6 ST1+L3 · p2.7 ST1+ST3 · p2.8 ST1+ST6+L2 · p2.9 L1 · p2.9b L1 · p2.10 ST2 · p2.11 ST1+ST4 · p2.12 ST1 · p2.13 ST5 · hf-fu ST1 · api-skill K6 · p2.14 K2 (no behavioural red).
 - typecheck: mid-way f0ff7298 exit 0; final head — see commit message of the push / report.
+
+## 10. Fix round 1 delivered (CD-P34g · hunter N1–N5 + R1 F1–F6) — 17 Oct
+Fix commits (marker `// POS P3.4 ▸ fix1 <id> ◂`; inside existing register.ts blocks the marker carries no `◂` so the P3.4 block stays one block for ST2):
+| Item | Commit | What |
+|---|---|---|
+| N1 High | `02c4622c` | payload stores `verifiedSellerUserId` (token user verified at soldAt on pass 1, else sync user) + `claimedSellerUserId` (display only); accept sells as the verified seller only (cannot sell any more → SELLER_MISMATCH, never the manager); list returns claimed/verified separately |
+| N2 = F3 | `abc6cd86` | accept: recorded/covering shift OPEN → bound · closed → null · none → device's OPEN shift else null · pass 1: no covering shift ∧ (device OPEN shift ∨ shift within 24 h) → SHIFT_REQUIRED |
+| N3 | `cfaa8935` `0d543417` | soldAt > evidence.priceValidUntil + 15 min → CLOCK_INVALID · audit `after.priceAtSyncSatang` · at-soldAt total (rule-priced line) < total at sync ∧ sync − soldAt > 30 min → `PRICE_WINDOW_REVIEW` (new code in `OFFLINE_REFUSAL_CODES`, `register.offline.refusal.priceWindowReview` th/en) · accept skips the review and prices at soldAt |
+| N4 = F1 | `f6a1842d` | snapshot retention = issued within 24 h (cap 200/device) ∪ last 2 |
+| N5 = F4 | `77776824` `cdc0bff1` | discard: sale of `reg2:<key>` exists → row SYNCED (+ offline_synced audit `via:"recovered"` only if none yet), refuse CONFLICT · list includes ACCEPTED_BY_MANAGER with saleId null |
+| F2 | `9974752a` | register.ts regPrice: `UNAVAILABLE && !opts.at` (offline skips 86/menu sold-out; archived = PRODUCT_NOT_FOUND; stock via createSale) — 6 base lines replaced in register.ts (ST2 limit 8) |
+| F5 | `096f8a8c` | flag off gates snapshot issue only; `syncOfflineSales` no longer checks the flag |
+| F6 | `3222d081` | `C<n>` ref must parse canonically (`parseOfflineRef`) else REJECTED VALIDATION |
+
+Oracle (each its own `test(pos)` commit; checks 42 → 49):
+- ORACLE-ADD SY18 (N1) `47241a08` · SY19 (N2) `2337c387` · SY20 (N3) `9d2678e9` · SY21 (N4) `c1514a66` · SY22 (N5) `a2e051c4` · SY23 (F2) `c0937031` + fixture fix `b3207da0` (gum: latte is MENU without a MenuItem at unit A) · SY24 (F6) `e1f31992`.
+- ORACLE-EDIT F5 `42115e63` (SY13: flag-off sync of a queued batch is accepted · count 42 → 42).
+- **ORACLE-EDIT forced by the rulings (not on the CD-P34g list — CD-P34h)** `6bc89969`: SY6 (+ the SY5 count line) — the happy-hour bill sold 2 h before sync is exactly the N3 review case ⇒ now REJECTED PRICE_WINDOW_REVIEW then manager accept at 3000 (at-soldAt pricing still proven); SEC3 — with 24 h retention the D5 eviction test issues its first two snapshots 30 h / 29 h ago (still "3 issued → 2 kept → evicted hash REJECTED").
+- Red against the old code: all oracle commits sit on the 737102e8 code (no src change until the first fix commit) — forced run at b3207da0's predecessor `e1f31992` = **40/49**, red exactly SY6 SY13 SY18 SY19 SY20 SY21 SY22 SY23 SY24 (SY23's first run red on its fixture; fixed in b3207da0 before the fixes). No swap-in needed (nothing to restore).
+
+Results at code head `3222d081` (QC4):
+- `qc-pos-p3.4` forced **49/49** ×2 (fix1-r1 · gates-fix1) · `--no-db` **15/15**.
+- `qc-pos-p1.9` 0 · `qc-pos-p1.15` 0 · `qc-hf-tx` 0 · `qc-pos-p2.6` 65/67 (red = pins ST1 PosDevice fields + L3 contract sha; behavioural part green incl. PAR) · `qc-pos-p2.2` 41/42 (red = pin S3 contract sha) · fitness no-env 0 · fitness QC4 0 · fitness-pos 0 · `gen-pos-api-docs --check` 0.
