@@ -11,6 +11,20 @@ Contract = `pos-brief-P3.9.md` §10 rulings 1–13 + CD-P39a + TEAM_SAFE_SECTION
 - Typecheck run at **781af5d4**, dirty 0: `pnpm typecheck` with heap 8192, ISO 10500M, `/tmp/pos-gate.lock`, **exit 0**. The tree at 781af5d4 is identical to the code after the CD-9 edit c69e3b95. This note was then committed on top as a ledger-only commit.
 - `qc-pos-p3.9` forced ×2 (QC4 · `SHARK_AI_MOCK=1` · `P39_PIN=3e0e0214` until the ST4 re-pin, CD-10) = **42/42 ×2**: Z2 green, residue 0, guardHits 0. `--no-db` gave **6/6**.
 
+## Fix round 1 delivered (CD-P39c · 17 Oct) — R1 F1–F6 + hunter N1–N5
+| item | commit(s) | what |
+|---|---|---|
+| oracle | 509414d4 TL9 · adc3b5e3 TL6 (edit) · f3982c7f PR11 · 817312d6 PR12 · e3bad019 AN5 · 040e33eb BR10 | 42 → 47 checks · red-before on 4b0e3ddf with all six applied: **41/47** (TL6 TL9 PR11 PR12 AN5 BR10 red by reason · Z green) |
+| F2 = N1 | 943cfa90 | `ai/plans.ts PLAN_HUMAN_ONLY` + `void_sale` `pos_draft_po` · `pos.*` via `humanOnlyNote` ⇒ refused at createPlan/propose_plan and at plan start · no userId passed into plan runs |
+| F1 = N3 | 135f5063 | A11 branch: `after.unitId` → `PosStaffPin.unitId` → PosDevice target → device code **only if it maps to one branch**; ambiguous skipped |
+| F3 | 8a8e4919 | `SCOPELESS_LEGACY` = sales_summary · sales_by_day only ⇒ general key refused on void_sale + pos_create_sale (deliberate) · **deviation**: `POS_HAND_TOOL_SCOPES` kept — not dead: it is the scoped-key manifest gate pinned by `qc-pos-p3.9` TL7 (`toolAllowedForApiKey(pos_create_sale, pos-read) = false`) and `qc-pos-p2.13` ST5 (`pos_create_sale ⇐ pos.sale.create`); deleting it makes both red |
+| F4 = N4 | 19688ddb | `targetOf()` checks `posActorCanUseUnit(asker, row.unitId)` (+ given unitId) before any summary — not found / other branch = one message, no data · card shows `สาขา <name>` / `ทุกสาขา` |
+| F5 = N2 | 340481da · 5294eeea | `posBriefSystemName`: POS systems sharing a name get `(…<id4>)` in the brief title (= dedupe key; AppNotification has no data column, no migration) · empty brief (lines 0) not sent · stock risks + whole brief need `pos.report.view` on a branch linked to that system (found while writing BR10: a manager of another system's branch got a ฿0.00 brief + this system's low stock) |
+| N5 | 4fe4a6bc | `pos_draft_po` lists sliced to 10 · JSON through `capPosToolResult` (bridge 8 KB cap) |
+| hunter info | 935a1158 | brief job walks AI-enabled systems in id keyset pages of 200 until done / deadline · **BR11 not added** (needs > 200 AI-enabled systems on QC4) |
+| F6 | ledger | OP §Inventory line: raw read-only `invItem`/`poLine`/`supplier` reads in `ai-insights.ts` |
+| OP §AI | ledger | general key refused on void_sale + pos_create_sale (F3) · POS steps refused in AI plans (F2) |
+
 ## Commits (wip/pos-p3.9)
 | commit | what |
 |---|---|
