@@ -97,7 +97,7 @@ const CHECKS: readonly Def[] = [
   D("SY19", "SY", "[fix1 N2 = F3 · fix2 G1 · CD-P34g/i] อ้างกะ A ที่ปิดแล้วขณะ soldAt อยู่ในกะ B ที่เปิด → ไม่ใช่ SHIFT_CLOSED · รับ = ผูกกะ B · กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
   D("SY20", "SY", "[fix1 N3 · fix2 G2 N6 · CD-P34g/i] + บิลโปรที่มีสินค้า 86 ตอนซิงก์ → REVIEW · ทาง snapshot soldAt ∈ (pvu, pvu+15] ซิงก์ช้า → REVIEW · โปรซิงก์ภายใน 30 นาที → OK · เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
   D("SY21", "SY", "[fix1 N4 = F1 · CD-P34g] snapshot ภายใน 24 ชม. ไม่ถูกตัด: ขายบน S1 แล้วเครื่องออก S2 + S3 ก่อนซิงก์ → บิลบน S1 = OK · PosOfflineSnapshot ของเครื่อง 3 แถว"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
-  D("SY22", "SY", "[fix1 N5 = F4 · CD-P34g] คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
+  D("SY22", "SY", "[fix1 N5 = F4 · fix2 N9 · CD-P34g/i] + รายการที่คีย์ชนบิลออนไลน์อื่น → ทิ้งได้ (DISCARDED ไม่ผูกบิลนั้น) · คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
   D("SY23", "SY", "[fix1 F2 · CD-P34g] ของหมด (86) หลังขายออฟไลน์: หมากฝรั่งถูก 86 ที่สาขาก่อนซิงก์ → บิลที่ขายไปแล้ว = OK · สินค้าที่ถูกเก็บถาวร (เค้ก) → REJECTED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F2)
   D("SY24", "SY", "[fix1 F6 · CD-P34g] เลข OFF รหัส C<n> ต้องเป็นรูปมาตรฐาน: OFF-<รหัสเครื่อง>-00011 (เติมศูนย์เกิน) → REJECTED ไม่มีบิล · OFF-<รหัสเครื่อง>-0012 → OK"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F6)
   D("SY25", "SY", "[fix2 N8 · CD-P34i] snapshot: ออกซ้ำเครื่องเดิมภายใน 60 วิ → RATE_LIMITED · hash ที่แถว REJECTED ยังอ้างอยู่ไม่ถูกตัด แม้เก่ากว่า 48 ชม. และไม่ใช่ 2 ล่าสุด (3 แถว)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix2 N8)
@@ -2250,6 +2250,19 @@ async function runDb() {
       if (!(Array.isArray(ls?.items) && ls.items.some((x: Any) => x?.id === xb?.offlineSaleId && x?.status === "ACCEPTED_BY_MANAGER"))) p.push(`list ไม่มีแถว ACCEPTED_BY_MANAGER ที่ไม่มีบิล (${codeOf(ls)})`);
       const ab = await call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(xb?.offlineSaleId ?? "none") });
       if (ab?.ok !== true || !ab?.saleId) p.push(`รับซ้ำ ${codeOf(ab)}`);
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix2 N9 · CD-P34i): (c) รายการที่ใช้คีย์ของบิลออนไลน์อื่น (IDEMPOTENCY_CONFLICT) → ทิ้ง = DISCARDED (ไม่ย้ายไปผูกบิลออนไลน์นั้น)
+      {
+        const key = newKey("n9");
+        const on = await call(regFacade, "submitRegisterSale", ctxU("A", DEV.N5), A("OWNER"), { lines: [W(2)], payMethods: [{ type: "CASH", amountSatang: 2000 }], cashReceivedSatang: 2000, expectedGrandTotalSatang: 2000, idempotencyKey: key });
+        if (on?.ok !== true) p.push(`บิลออนไลน์ ${codeOf(on)}`);
+        const ic = mkItem("N5", { lines: [W(1)], total: 1000, soldAt: Date.now() - 18 * MIN, shift: null, key });
+        const rc = await sync("N5", [ic]);
+        const xc = resOf(rc, ic.offlineRef);
+        if (xc?.status !== "REJECTED") p.push(`คีย์ชนบิลออนไลน์ ${stOf(xc)} ${why(rc)}`);
+        const dc = await call(offMod, "discardOfflineSale", ctxU("A"), A("OWNER"), { id: String(xc?.offlineSaleId ?? "none"), reason: "คีย์ชนบิลออนไลน์อื่น" });
+        const rowC = await offRowOf(ic.offlineRef);
+        if (dc?.ok !== true || rowC?.status !== "DISCARDED" || rowC?.saleId) p.push(`ทิ้งรายการคีย์ชน → ${codeOf(dc)} · แถว ${short(rowC && { s: rowC.status, sale: rowC.saleId }, 60)} (คาด DISCARDED ไม่มี saleId)`);
+      }
     }
     if (!NO_FX("SY22")) chk("SY22", p.length === 0, "PROCESSING ที่มีบิล → SYNCED (ไม่ทิ้ง) · ACCEPTED ไม่มีบิล อยู่ใน list + รับซ้ำได้", FXB(joinP(p)));
   }
