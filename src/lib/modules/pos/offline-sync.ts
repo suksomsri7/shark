@@ -287,7 +287,8 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
     const order = [{ issuedAt: "desc" as const }, { createdAt: "desc" as const }, { id: "desc" as const }];
     const [last, recent] = await Promise.all([
       db.posOfflineSnapshot.findMany({ where: devWhere, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP }),
-      db.posOfflineSnapshot.findMany({ where: { ...devWhere, issuedAt: { gte: new Date(Date.now() - OFFLINE_MAX_AGE_MS) } }, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP_RECENT_MAX }),
+      // POS P3.4 ▸ fix2 G3: หน้าต่าง 48 ชม. (snapshot อายุได้ถึง 24 ชม. ตอนขาย + บิลอายุได้ถึง 24 ชม. ตอนซิงก์) · นับจากเวลาออก (opts.now) ◂
+      db.posOfflineSnapshot.findMany({ where: { ...devWhere, issuedAt: { gte: new Date(now.getTime() - 2 * OFFLINE_MAX_AGE_MS) } }, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP_RECENT_MAX }),
     ]);
     const keep = [...new Set([...last, ...recent].map((k) => k.id))];
     await db.posOfflineSnapshot.deleteMany({ where: { ...devWhere, id: { notIn: keep } } });
