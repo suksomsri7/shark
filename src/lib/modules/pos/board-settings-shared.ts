@@ -263,18 +263,24 @@ export function posRefundCardText(x: { orderCode: string; amountSatang: number; 
   };
 }
 
+/** ค่าของแถวจุดผิดปกติเป็นข้อความ (A1 A2 A8 A9 = สตางค์ · A3 A4 = 1/100 % · อื่น = จำนวน) */
+export function posAnomalyValueText(rule: string, value: number, locale: PosBoardLocale = "th"): string {
+  if (["A1", "A2", "A8", "A9"].includes(rule)) return posBoardBaht(value);
+  if (rule === "A3" || rule === "A4") return `${(value / 100).toFixed(2)}%`;
+  return locale === "en" ? `${value} times` : `${value} ครั้ง`;
+}
+
 /** R9 การ์ดจุดผิดปกติ (กดเอง) — ไม่มี userName */
-export function posAnomalyCardText(x: { rule: string; unitName: string; businessDate: string; value: number; count: number; isMoney: boolean }, locale: PosBoardLocale = "th"): { title: string; description: string; linkLabel: string } {
+export function posAnomalyCardText(x: { rule: string; unitName: string; businessDate: string; valueText: string }, locale: PosBoardLocale = "th"): { title: string; description: string; linkLabel: string } {
   const label = POS_ANOMALY_RULE_LABEL[locale][x.rule] ?? x.rule;
-  const amount = x.isMoney ? posBoardBaht(x.value) : locale === "en" ? `${x.count} times` : `${x.count} ครั้ง`;
   if (locale === "en")
     return {
-      title: `Check anomaly ${label} · ${x.unitName} · ${x.businessDate} · ${amount}`,
+      title: `Check anomaly ${label} · ${x.unitName} · ${x.businessDate} · ${x.valueText}`,
       description: [`Rule ${x.rule}: ${label}`, "See the details in the anomaly report (permission required)."].join("\n"),
       linkLabel: "Anomaly report",
     };
   return {
-    title: `ตรวจจุดผิดปกติ ${label} · ${x.unitName} · ${x.businessDate} · ${amount}`,
+    title: `ตรวจจุดผิดปกติ ${label} · ${x.unitName} · ${x.businessDate} · ${x.valueText}`,
     description: [`กฎ ${x.rule}: ${label}`, "ดูรายละเอียดในรายงานจุดผิดปกติ (ต้องมีสิทธิ์)"].join("\n"),
     linkLabel: "รายงานจุดผิดปกติ",
   };
