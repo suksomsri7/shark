@@ -130,3 +130,18 @@ Info (b)(c) accepted, no change.
 - qc-pos-p1.15 40/40 · p1.9 53/53 · p2.1 55/55 · p1.18 81/81 · qc-hf-hr-privacy 194/194.
 - fitness no env 53/53 · QC4 env 53/53 · `gen-pos-api-docs --check` 0 · **typecheck exit 0** (00:21:18Z → 00:24:11Z, heap 8192 · ISO_MEM 10500M).
 - Lane-pin reds unchanged from fix round 1 (p2.7 ST1/ST3 · p2.8 ST6 · p2.10 ST2 · p2.12 ST1 · p2.13 ST5 · hf-fu ST1) — not re-run this round; controller re-pins at merge.
+
+## Fix round 3 delivered (controller rulings CD-P35d · 17 Oct 2026)
+Oracle 53 → **55** (PY11 · PY12). Red-before: both adds committed while product code was byte-equal to c900da28 (`git diff c900da28 HEAD -- src prisma` empty) ⇒ forced run **53/55**, exactly PY11 + PY12 red; no fixture rows leaked (QCSWEEP/QCSTUCK/QCOLD/QCFUT count 0 on QC4).
+Commits (oldest first):
+- 8bfc5198 ledger(pos): P3.5 fix3 G1 — POS-CONTRACTS C-8 v2 grown shapes (adjustmentStatuses + periodKey · clockSelf {tx?} · onShiftToday adjacent · rehomeStrandedSystemAdjustments system-adjustm
+- 42462a8d test(pos): ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N9) PY11 — a payroll run 8 months ahead does not lift the push target (floor = month after the latest run ≤ current month
+- d21c4e09 test(pos): ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N8) PY12 — 600 SENT-row tenants ahead in sort order (no HR) do not stop the global run's stranded sweep from rehoming this 
+- aba10910 fix(pos): P3.5 fix3 N9 — push floor = month after the latest run whose period ≤ current Bangkok month (future runs ignored for the floor; freeFrom + PERIOD_CLOSED hop still skip them)
+- 98faeed1 fix(pos): P3.5 fix3 N8 = R2-G2 — stranded sweep gets its own slice (max(25% of the remaining budget, 5 s)) the push loop cannot consume, and walks tenants with an HR system by the same ho
+- 86346691 fix(pos): P3.5 fix3 N10 — HR system-adjustment rule also requires note to start with "ค่าคอมฯ ขายหน้าร้าน (POS)" (POS_STAFF_COMMISSION_NOTE_PREFIX · a
+- G1: POS-CONTRACTS C-8 v2 shapes (adjustmentStatuses + periodKey · clockSelf {tx?} · onShiftToday adjacent · rehomeStrandedSystemAdjustments system-adjustments-only).
+- N9: floor = month after the latest run with period ≤ current Bangkok month (future runs ignored; freeFrom + PERIOD_CLOSED still skip them).
+- N8: sweep slice = max(25% of remaining budget, 5 s), push loop stops at deadline − slice; sweep walks tenants with an HR system by md5(tenant:hour) keyset.
+- N10: isSystemAdjustment + sweep require note prefix "ค่าคอมฯ ขายหน้าร้าน (POS)" (`POS_STAFF_COMMISSION_NOTE_PREFIX`); OP HR owner line updated. PY7/PY8 green.
+Gates (head 86346691 · dirty 0 · QC4): qc-pos-p3.5 forced **55/55 · 55/55** · --no-db 11/11 · HR set green (qc-hr 9 · hr-attendance 31 · hr-payadjust 27 · hr-roster 24 · hr-leave-booking 14 · payroll 19 · payroll-reverse 14 · crm-c3.3 90 · booking-hours-hr 13) · fitness no env 53/53 · QC4 env 53/53 · **typecheck exit 0**.
