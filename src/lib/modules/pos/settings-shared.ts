@@ -30,7 +30,7 @@ export function posDayCutoffMinutes(settings: unknown): number {
 // POS P2.12 ▸ AN เกณฑ์จุดผิดปกติ (§3 มติ 3 · CD-6): settings.pos.reports.anomaly = {enabled, rules:{A1…A10}} ต่อระบบ POS ·
 //   ตัวอ่านเดียว posAnomalyThresholds — จำนวนเต็มนอกช่วง = ตัดเข้าขอบ · ไม่ใช่จำนวนเต็ม/ไม่ใช่ตัวเลข = ค่าปริยาย · กฎ/ช่องที่ไม่รู้จัก = ไม่สน ·
 //   enabled ไม่ใช่ boolean = true · ผลมี A1…A10 ครบเสมอ · ตัวเขียน (settings-general.ts) ปฏิเสธค่านอกช่วงด้วยช่วงเดียวกันนี้ ◂
-export const POS_ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"] as const;
+export const POS_ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11"] as const; // POS P3.9 ▸ R11 มติ 6: + A11 ข้ามตารางงานบ่อย ◂
 export type PosAnomalyRule = (typeof POS_ANOMALY_RULES)[number];
 /** ช่องของเกณฑ์: count = ครั้ง/ใบ/บรรทัด/กะ · satang = สตางค์ · bp = 1/100 % */
 export type PosAnomalyField = "count" | "satang" | "bp";
@@ -45,6 +45,7 @@ export type PosAnomalyRules = {
   A8: { satang: number };
   A9: { count: number };
   A10: { count: number };
+  A11: { count: number }; // POS P3.9 ▸ R11 ◂
 };
 export type PosAnomalyThresholds = { enabled: boolean; rules: PosAnomalyRules };
 /** ค่าปริยาย (มติ 3 · รอเจ้าของยืนยัน — POS-OWNER-PENDING) · A3 = 15% เท่าธงเดิมของการ์ดพนักงาน (HIGH_DISCOUNT_BP) */
@@ -59,6 +60,8 @@ export const POS_ANOMALY_DEFAULTS: Readonly<PosAnomalyRules> = {
   A8: { satang: 10_000 },
   A9: { count: 2 },
   A10: { count: 3 },
+  // POS P3.9 ▸ R11 มติ 6 (W14): ผู้อนุมัติให้พนักงานเข้ากะนอกตารางงาน (audit pos.staff.schedule_override) ≥ 3 ครั้ง/สาขา/วัน ◂
+  A11: { count: 3 },
 };
 export const POS_ANOMALY_LIMITS: Readonly<Record<PosAnomalyField, { min: number; max: number }>> = {
   count: { min: 1, max: 1000 },
@@ -83,6 +86,38 @@ export function posAnomalyThresholds(settings: unknown): PosAnomalyThresholds {
     rules[id] = out;
   }
   return { enabled: typeof raw?.enabled === "boolean" ? raw.enabled : true, rules: rules as unknown as PosAnomalyRules };
+}
+
+// POS P3.9 ▸ R10 มติ 4 5: ค่าตั้งผู้ช่วย AI ของระบบ POS — settings.pos.ai = {enabled, brief:{enabled, hourBkk, email, managerUserIds}, anomalyInBrief} ·
+//   ตัวอ่านเดียว (บริสุทธิ์) · ค่าปริยาย = ปิด (enabled false) · hourBkk จำนวนเต็ม 0–23 (อื่น = 6) · managerUserIds = สตริงไม่ว่าง ไม่ซ้ำ คงลำดับ (≤ 50) ·
+//   ชนิดผิด = ค่าปริยาย · ตัวเขียน = ai-settings-actions.ts (เจ้าของร้านเท่านั้น) ◂
+export type PosAiBriefSettings = { enabled: boolean; hourBkk: number; email: boolean; managerUserIds: string[] };
+export type PosAiSettings = { enabled: boolean; brief: PosAiBriefSettings; anomalyInBrief: boolean };
+export const POS_AI_BRIEF_HOUR_DEFAULT = 6;
+export const POS_AI_MANAGERS_MAX = 50;
+export function posAiSettings(settings: unknown): PosAiSettings {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const ai = pos && isRecord(pos.ai) ? pos.ai : null;
+  const b = ai && isRecord(ai.brief) ? ai.brief : null;
+  const h = b?.hourBkk;
+  const ids: string[] = [];
+  if (Array.isArray(b?.managerUserIds)) {
+    for (const v of b.managerUserIds as unknown[]) {
+      if (typeof v !== "string" || !v.trim() || v.length > 64 || ids.includes(v)) continue;
+      ids.push(v);
+      if (ids.length >= POS_AI_MANAGERS_MAX) break;
+    }
+  }
+  return {
+    enabled: typeof ai?.enabled === "boolean" ? ai.enabled : false,
+    brief: {
+      enabled: typeof b?.enabled === "boolean" ? b.enabled : true,
+      hourBkk: typeof h === "number" && Number.isInteger(h) && h >= 0 && h <= 23 ? h : POS_AI_BRIEF_HOUR_DEFAULT,
+      email: typeof b?.email === "boolean" ? b.email : false,
+      managerUserIds: ids,
+    },
+    anomalyInBrief: typeof ai?.anomalyInBrief === "boolean" ? ai.anomalyInBrief : true,
+  };
 }
 
 // POS P3.5 ▸ R3 R6 R12 มติ 1 3 12: ค่าตั้งพนักงาน × HR ต่อระบบ POS — ตัวอ่านเดียวต่อคีย์ (บริสุทธิ์) · ตัวเขียน (settings-general.ts) ปฏิเสธค่านอกช่วงเดียวกันนี้
