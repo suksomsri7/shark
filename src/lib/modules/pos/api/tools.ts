@@ -124,7 +124,9 @@ export function posToolScope(toolName: string): string | null {
 /** tool เขียนมือของสกิล sales ที่ต้องมี scope ของ POS เมื่อผู้เรียกเป็นคีย์ API (P2.13 มติ 7 — คงชื่อเดิม) */
 const POS_HAND_TOOL_SCOPES: Readonly<Record<string, string>> = { pos_create_sale: "pos.sale.create" };
 /** CD-7: คีย์กลางรุ่นเดิม (ไม่มี scope เลย) ยังเรียกชื่อเดิมได้เหมือนก่อน P3.9 */
-const SCOPELESS_LEGACY: ReadonlySet<string> = new Set(["sales_summary", "sales_by_day", "void_sale", "pos_create_sale"]);
+// POS P3.9 ▸ fix1 F3 (CD-P39c): คีย์กลางรุ่นเดิมได้เฉพาะ "อ่าน" ชื่อเดิม 2 ตัว — เสนอเขียนของ POS (void_sale · pos_create_sale) ไม่ได้ (ตั้งใจ · OP §AI) ·
+//   POS_HAND_TOOL_SCOPES ข้างบนคงไว้: เป็นด่าน manifest/route ของคีย์ที่มี scope (pos_create_sale ⇐ pos.sale.create — ตรึงโดย qc-pos-p3.9 TL7 + qc-pos-p2.13 ST5) ◂
+const SCOPELESS_LEGACY: ReadonlySet<string> = new Set(["sales_summary", "sales_by_day"]);
 
 /**
  * คีย์ API ที่ถือ scope ชุดนี้เรียก tool นี้ได้ไหม (tool นอก POS = ไม่เกี่ยว คืน true)
