@@ -611,7 +611,8 @@ export async function listOfflineRejected(ctx: OfflineCtx, actor: RegisterActor,
     if ("ok" in sc) return sc;
     const lim = isRecord(input) && Number.isInteger(input.limit) && (input.limit as number) > 0 ? Math.min(input.limit as number, LIST_MAX) : 50;
     const rows = await db.posOfflineSale.findMany({
-      where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, systemId: sc.ctx.systemId, status: STATUS.REJECTED },
+      // POS P3.4 ▸ fix1 N5 = F4: + แถวที่ผู้จัดการจองรับแล้วแต่ยังไม่มีบิล (ล้มกลางทาง) — รับซ้ำได้ ◂
+      where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, systemId: sc.ctx.systemId, OR: [{ status: STATUS.REJECTED }, { status: STATUS.ACCEPTED, saleId: null }] },
       orderBy: [{ soldAt: "desc" }, { id: "desc" }],
       take: lim,
       select: { id: true, offlineRef: true, deviceId: true, soldAt: true, reason: true, status: true, createdAt: true, payload: true },
@@ -709,6 +710,22 @@ export async function discardOfflineSale(ctx: OfflineCtx, actor: RegisterActor, 
     if (row.status === STATUS.DISCARDED) return { ok: true, duplicated: true };
     if (row.status !== STATUS.REJECTED) return refuse("CONFLICT", "รายการนี้ถูกรับเป็นบิลแล้ว — ทิ้งไม่ได้");
     if (youngProcessing(row)) return refuse("BUSY", "รายการนี้กำลังซิงก์ — ลองใหม่อีกครั้ง");
+    // POS P3.4 ▸ fix1 N5 = F4 (CD-P34g): บิลของคีย์นี้ commit แล้ว (ล้มหลัง createSale ก่อนปรับแถว) ⇒ ห้ามทิ้ง · ปรับแถวเป็น SYNCED + audit ซิงก์ (ครั้งเดียว) ◂
+    const committed = await db.posSale.findFirst({ where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, idempotencyKey: `${REG_KEY_PREFIX}${row.idempotencyKey}` }, select: { id: true, offlineRef: true, syncedAt: true, soldByUserId: true } });
+    if (committed) {
+      const w = await db.posOfflineSale.updateMany({ where: { id: row.id, tenantId: sc.ctx.tenantId, status: STATUS.REJECTED }, data: { status: STATUS.SYNCED, saleId: committed.id, reason: null } });
+      if (w.count === 1 && committed.offlineRef === row.offlineRef) {
+        await writeAudit({
+          tenantId: sc.ctx.tenantId,
+          actorId: sc.actor.userId,
+          action: AUDIT_SYNCED,
+          targetType: "PosSale",
+          targetId: committed.id,
+          after: { offlineRef: row.offlineRef, offlineSaleId: row.id, deviceId: row.deviceId, soldAt: row.soldAt.toISOString(), syncedAt: (committed.syncedAt ?? new Date()).toISOString(), sellerUserId: committed.soldByUserId, via: "recovered" },
+        });
+      }
+      return refuse("CONFLICT", "บิลของรายการนี้บันทึกแล้ว — ปรับเป็นซิงก์แล้ว ไม่ต้องทิ้ง");
+    }
     const u = await db.posOfflineSale.updateMany({ where: { id: row.id, tenantId: sc.ctx.tenantId, status: STATUS.REJECTED }, data: { status: STATUS.DISCARDED, reason: text, resolvedByUserId: sc.actor.userId } });
     if (u.count !== 1) {
       const now = await managerRow(db, sc.ctx, row.id);
