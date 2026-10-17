@@ -36,9 +36,17 @@ type StepState = {
 const PLAN_HUMAN_ONLY: Record<string, string> = {
   hr_decide_leave: "ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาอนุมัติใบลาในหน้าระบบพนักงาน",
   approval_decide: "ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาตัดสินคำขอในหน้า “อนุมัติ”",
+  // POS P3.9 ▸ fix1 F2 (=N1 · CD-P39c): ขั้นของหน้าขายต้องให้คนกดยืนยันเองทีละรายการ — payload ของแผนมาจากโมเดล (ร่าง PO เชื่อผู้ขาย/จำนวน/ต้นทุน)
+  //   และการลงมือของ POS ต้องรู้ตัวผู้กด (ไม่ส่ง userId เข้าแผนโดยตั้งใจ) · kind `pos.*` ทุกตัวใช้ข้อความเดียวกัน (humanOnlyNote) ◂
+  void_sale: "ทำรายการขายหน้าร้านผ่านแผนงานอัตโนมัติไม่ได้ — ให้ผู้ช่วยเสนอทีละรายการแล้วกดยืนยันเอง",
+  pos_draft_po: "ทำรายการขายหน้าร้านผ่านแผนงานอัตโนมัติไม่ได้ — ให้ผู้ช่วยเสนอทีละรายการแล้วกดยืนยันเอง",
 };
 const humanOnlyNote = (kind: unknown): string | null =>
-  typeof kind === "string" && Object.prototype.hasOwnProperty.call(PLAN_HUMAN_ONLY, kind) ? PLAN_HUMAN_ONLY[kind]! : null;
+  typeof kind === "string" && Object.prototype.hasOwnProperty.call(PLAN_HUMAN_ONLY, kind)
+    ? PLAN_HUMAN_ONLY[kind]!
+    : typeof kind === "string" && kind.startsWith("pos.") // POS P3.9 ▸ fix1 F2 ◂
+      ? PLAN_HUMAN_ONLY.void_sale!
+      : null;
 // ◂ HF-HR-0
 
 // ── สร้างแผน (PENDING + TTL 24 ชม.) — steps ว่าง/เกิน 8 หรือ kind ปลอม → throw ไทย ──
