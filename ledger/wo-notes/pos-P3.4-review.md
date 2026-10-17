@@ -143,3 +143,19 @@ Read-only: diff f10e7669..db4b444b. Source changes are only offline-sync.ts and 
 - **G4**: C-13 sentence added (REST rows ⇒ SELLER_MISMATCH ⇒ discard only); no code ✓.
 - **Oracle**: SY19/SY20/SY22/SEC3 edits only replace titles and add cases (no assertion removed; SEC3 moves to −60/−59 h for the 48 h window). SY25/SY26 added ✓.
 - **Typecheck**: e39a842f dirty=0 exit 0 is recorded in the notes; only ledger follows ✓.
+
+## Hunter final (db4b444b) — CLEAN for escalation · N10/N11 Low → P3.4U (queue hint 'synced after close' · lock/insert-first on snapshot issue + keep oldest-in-48h)
+# P3.4 S HUNTER final re-check @ db4b444b (code e39a842f): verdict = CLEAN for money-escalation paths. N6-N9 and G1-G3 are closed. Two LOW residuals (N10-N11) do not block the merge.
+Method: read the diff 3222d081..9824f1fe (src unchanged after it) plus notes §11. Line refs: offline-sync.ts (os) and register.ts (reg) at e39a842f. No DB.
+**Closed (scenarios re-walked)**
+- **N6:** with soldAt in (pvu, pvu+15], a late sync with a total below price-at-sync now gives PRICE_WINDOW_REVIEW (reg:2682). With soldAt ≤ pvu, a happy-hour snapshot price equals the soldAt price, so the soldAt branch reviews it. The CD-P34j narrowing leaves no bypass.
+- **G2:** pSync uses `{at: now}` (reg:2665), so 86ing an item no longer skips the review; a refusal fails closed (null → review).
+- **N7:** maxBp = min(own, claimed) (reg:2660) and priceOverride is needed from both, so the claimed user's cap can only lower the limit, never raise it. A forged owner claim prices at the cashier's caps; a non-member claim gives SELLER_MISMATCH. On a PRICE_WINDOW_REVIEW accept, the seller is the verified seller (or the lower of both), never the manager, unless the manager's own session synced the bill.
+- **G1:** covering shift first (os:405-416); a recorded shift counts only while it covers soldAt. Cash cannot land in another open shift: there is one OPEN shift per device (partial unique) and the queries are scoped to `e.dev` (on accept, the row's device), so not another device's shift. The slack ordering (openedAt desc) can only pick the device's newer OPEN shift.
+- **G3 / N8:** retention is 48 h from opts.now, and hashes referenced by pending rows are never evicted (os:312). The pvu-edge exception (os:246) only applies once the last snapshot's pvu has already passed. Each issue sets a new future pvu, so re-triggering needs a real rule edge; editing a rule needs catalog rights, not the cashier role. At most about one extra issue per edge.
+- **N9:** re-label happens only when `committed.offlineRef === row.offlineRef` (os:760); otherwise a normal discard.
+
+**N10 LOW (ruling-7 residual, same shape as G1 but done with soldAt):** os:422 then os:419. The cashier sells in open shift B, claims soldAt inside closed shift A (keeping an A-era snapshot, within 24 h and ≤ pvu+15) → SHIFT_CLOSED → the manager accepts → off-shift → B's expected cash excludes the bill. Q5 blocks closing a device shift while its queue is non-empty, so an honest SHIFT_CLOSED is rare (force-close, or close from another screen).
+Fix (optional): when the covering shift was closed normally on this same device and the row was created after that close, show "synced after this device closed the shift" in the queue. Or on accept, bind the device's current OPEN shift instead of null.
+**N11 LOW (eviction and cost DoS, reduced but not gone):** os:240-246 checks then inserts with no lock, so N parallel issue requests all pass the 60 s check and walk the catalog. Separately, about 200 issues over ~3.3 h for a victim device code can still evict an honest snapshot that only unsynced device-side bills use (those bills → SNAPSHOT_UNKNOWN → queue, recoverable at the soldAt price).
+Fix: take an advisory lock or insert-first (unique per device and minute) before the catalog walk, and keep the oldest snapshot inside 48 h in addition to the newest 200.
