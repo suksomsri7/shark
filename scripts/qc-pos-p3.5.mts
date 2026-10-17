@@ -107,6 +107,7 @@ const CHECKS: readonly Def[] = [
   D("PY8", "X4", "[fix2 N1 · ORACLE-ADD ผู้คุม 17 ต.ค.] ตัวกวาดรายการค้าง: ใบ DEDUCTION PENDING ของ C1 (งวด M1 ที่เพิ่งมีรอบใน PY7) + ใบ COMMISSION เดิมของ C1 (งวดนี้ที่มีรอบตั้งแต่ PY4) → syncStaffCommissionToPayroll ⇒ ย้ายไป M2 · ยัง PENDING · ไม่มีใบ POS ที่ค้างในงวดที่มีรอบ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N1)
   D("PY9", "X5", "[fix2 N2 = R1-F1 · ORACLE-ADD ผู้คุม 17 ต.ค.] 600 คู่ (ร้าน · ผู้ใช้) ที่ไม่มีพนักงาน HR และเรียงอยู่หน้า (userId 0p35…) ไม่บล็อกรอบส่ง: C2 ขายใหม่ 300 ⇒ ใบ COMMISSION 300 ใหม่ของ C2 · 600 คู่ยัง OPEN"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N2)
   D("PY10", "X4", "[fix2 N3 · ORACLE-ADD ผู้คุม 17 ต.ค.] แถว OPEN ของเดือนเก่า (6 เดือนก่อน · ไม่มีรอบ) ขณะที่เดือนหลังมีรอบแล้ว ⇒ งวดเป้าหมาย = max(เดือนของแถว, เดือนถัดจากรอบล่าสุด) — ไม่ใช่เดือนเก่าที่จะไม่มีวันมีรอบ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 N3)
+  D("PY11", "X4", "[fix3 N9 · ORACLE-ADD ผู้คุม 17 ต.ค.] รอบจ่ายล่วงหน้า (8 เดือนข้างหน้า) ไม่ดันงวดเป้าหมาย: แถว OPEN 555 ของ C1 (เดือนนี้ · จบแล้ว) ⇒ งวด = เดือนถัดจากรอบล่าสุดที่ ≤ เดือนปัจจุบัน — ไม่ใช่เดือนถัดจากรอบล่วงหน้า"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N9)
   // ── HC ชั่วโมง ──
   D("HC1", "X5", "[R12 R1] posClockForShift IN (โทเคน C1 · กะของ C1) ⇒ {ok, kind IN} · HrAttendance +1 IN ของพนักงาน C1 · note มี #<shiftNo>"),
   D("HC2", "X1", "[R12] กดซ้ำ IN ⇒ ALREADY_CLOCKED · HrAttendance ยัง +1"),
@@ -1834,6 +1835,28 @@ async function runDb() {
     const adj = (await posAdj()).filter((a) => a.employeeId === EMP.C1 && a.amountSatang === 777);
     if (adj.length !== 1 || adj[0]?.periodKey !== want || adj[0]?.kind !== "COMMISSION") p.push(`ใบ 777 ของ C1 ${short(adj.map((a) => [a.kind, a.periodKey]), 80)} (คาด COMMISSION ${want} · ไม่ใช่ ${OLD})`);
     chk("PY10", NC === "" && !fx && p.length === 0, `เดือนเก่า ${OLD} ⇒ ${want}`, FX(NC + (P8(p) || "ครบ")));
+  }
+  // PY11 — ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix3 N9): รอบในอนาคตไม่นับเป็นเพดานล่างของงวด (freeFrom + PERIOD_CLOSED ยังข้ามให้)
+  {
+    const p: string[] = [];
+    let FUT = MONTH;
+    for (let i = 0; i < 8; i++) FUT = nextMonth(FUT);
+    const run = await call(hrPay, "createPayrollRun", hrCtx(), { periodKey: FUT, payDate: new Date(`${nextMonth(FUT)}-01T03:00:00+07:00`) });
+    if (!run?.id) p.push(`(fixture) createPayrollRun ${FUT} → ${codeOf(run)} ${short(run?.message ?? "", 60)}`);
+    try {
+      if (PSC) await PSC.createMany({ data: [{ tenantId: T, systemId: S.A, unitId: U.A, saleId: `qc35fut${RAND}`, lineId: `qc35fut${RAND}l`, userId: uid("C1"), kind: "ACCRUE", sourceKey: `QCFUT:${RAND}`, baseSatang: 5_550, rateBp: 1000, fixedSatang: 0, amountSatang: 555, periodKey: MONTH, status: "OPEN" }] });
+    } catch (e) {
+      p.push(`(fixture) แถว 555 ${(e as Error).message.slice(0, 60)}`);
+    }
+    const cur = M1; // เดือนไทยของ NEXT_MONTH_NOW
+    const runs = ((await P.hrPayrollRun.findMany({ where: { tenantId: T }, select: { periodKey: true } }).catch(() => [])) as Any[]).map((r) => String(r.periodKey));
+    const past = runs.filter((k) => k <= cur).sort();
+    let want = past.length ? nextMonth(past[past.length - 1]!) : MONTH;
+    while (runs.includes(want)) want = nextMonth(want);
+    await sync(NEXT_MONTH_NOW);
+    const adj = (await posAdj()).filter((a) => a.employeeId === EMP.C1 && a.amountSatang === 555);
+    if (adj.length !== 1 || adj[0]?.periodKey !== want) p.push(`ใบ 555 ของ C1 ${short(adj.map((a) => [a.kind, a.periodKey]), 80)} (คาด ${want} · ไม่ใช่ ${nextMonth(FUT)})`);
+    chk("PY11", NC === "" && !fx && p.length === 0, `รอบล่วงหน้า ${FUT} ไม่ดันงวด ⇒ ${want}`, FX(NC + (P8(p) || "ครบ")));
   }
 
   // ════════ HC ชั่วโมง ════════
