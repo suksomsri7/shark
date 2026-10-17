@@ -293,11 +293,34 @@ function runStatic(): void {
     ];
     const out = gitStr(["diff", "--name-only", BASE, "--", ...paths]);
     if (out === null) p.push(`git diff เทียบ ${BASE} ไม่ได้`);
-    else for (const f of out.split("\n").filter(Boolean)) p.push(`แตะ ${f}`);
+    else for (const f of out.split("\n").filter(Boolean)) if (!(f === SO3_FILE && so3HunkOnly())) p.push(`แตะ ${f}`); // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B5 · CD-P38-B1 export addSystemCardComment)
     const untracked = gitStr(["ls-files", "--others", "--exclude-standard", "--", "prisma"]) ?? "";
     for (const f of untracked.split("\n").filter(Boolean)) p.push(`ไฟล์ใหม่ ${f}`);
     stNotes.ST3 = p;
   }
+}
+// ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B5 · CD-P38-B1 export addSystemCardComment): ข้อยกเว้นแคบที่สุดของ ST3 —
+//   src/lib/modules/kanban/integrations.ts ผ่านได้เฉพาะเมื่อ diff เทียบ BASE เป็นบรรทัดเพิ่มล้วน (ไม่มีบรรทัด "-" นอกหัว) และทุกบรรทัดเพิ่มที่ไม่ว่าง
+//   อยู่ในบล็อกที่ขึ้นต้นด้วยบรรทัดที่มี `POS P3.8 ▸ SO3` และจบที่บรรทัด `◂` ถัดไป (หรือบรรทัดนั้นมี `POS P3.8 ▸` เอง) · ไฟล์ kanban อื่น/บรรทัดลบ-แก้/บรรทัดไม่มีป้าย = แดงตามเดิม
+const SO3_FILE = "src/lib/modules/kanban/integrations.ts";
+function so3HunkOnly(): boolean {
+  const diff = gitStr(["diff", "-U0", BASE, "--", SO3_FILE]);
+  if (diff === null) return false;
+  let inBlock = false;
+  let added = 0;
+  for (const l of diff.split("\n")) {
+    if (l.startsWith("---") || l.startsWith("+++")) continue;
+    if (l.startsWith("-")) return false;
+    if (!l.startsWith("+")) continue;
+    const body = l.slice(1);
+    if (body.includes("POS P3.8 ▸ SO3")) inBlock = true;
+    const ok = inBlock || body.includes("POS P3.8 ▸");
+    if (inBlock && body.includes("◂")) inBlock = false;
+    if (body.trim() === "") continue;
+    if (!ok) return false;
+    added++;
+  }
+  return added > 0;
 }
 function finishStatic(): void {
   for (const id of ["ST1", "ST2", "ST3"]) {
