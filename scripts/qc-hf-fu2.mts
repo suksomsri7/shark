@@ -188,7 +188,8 @@ function balancedFrom(src: string, at: number): string {
 }
 
 // ── git (หมุดของเลน = ฐานของใบนี้ 72669941 · ต้นไม้ผลิตภัณฑ์ = c5fc223b + CD-FU2a) ──
-const LANE_PIN = "72669941";
+const LANE_PIN = "0617d17b"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-hf-fu2 ST1 · lane-pin 72669941 → 0617d17b = merge P3.4 S หลัง P3.5 S) · ST2 (บรรทัด OP/คีย์ข้อความ "ใหม่") ยังเทียบฐานของใบ CARD_BASE
+const CARD_BASE = "72669941"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-hf-fu2 ST2): ฐานของใบ HF-FU2 — "ใหม่" = ไม่มีที่ฐานนี้ (หมุดเลนย้ายแล้ว ⇒ แยกฐานของ ST2 ไว้คงที่)
 function gitRun(args: string[], cwd = ROOT): { ok: boolean; status: number; out: string } {
   try {
     const out = execFileSync("git", ["-C", cwd, ...args], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 }).toString("utf8");
@@ -204,6 +205,13 @@ function pin(): string | null {
   const r = gitRun(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`]);
   pinRev = r.ok ? r.out.trim() || null : null;
   return pinRev;
+}
+let cardRev: string | null | undefined; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-hf-fu2 ST2)
+function cardBase(): string | null {
+  if (cardRev !== undefined) return cardRev;
+  const r = gitRun(["rev-parse", "--verify", "-q", `${CARD_BASE}^{commit}`]);
+  cardRev = r.ok ? r.out.trim() || null : null;
+  return cardRev;
 }
 /** path ใน working tree ตรงกับ rev ไหม (รวมไฟล์ใหม่ที่ยังไม่ track) · null = git ใช้ไม่ได้ */
 function sameAsRev(rev: string, path: string): boolean | null {
@@ -408,7 +416,7 @@ async function runStatic(): Promise<void> {
     const p: string[] = [];
     const mb = pin();
     if (!mb) {
-      chk("ST1", false, "หาหมุด 72669941 ได้", "หาหมุดไม่ได้ (git fetch origin session/pos)");
+      chk("ST1", false, `หาหมุด ${LANE_PIN} ได้`, "หาหมุดไม่ได้ (git fetch origin session/pos)");
       return;
     }
     // prisma/ + ไฟล์ใหม่ใต้ prisma/
@@ -465,7 +473,7 @@ async function runStatic(): Promise<void> {
   });
   await step("ST2", () => {
     const p: string[] = [];
-    const mb = pin();
+    const mb = cardBase(); // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-hf-fu2 ST2): เดิม pin() — ฐานของใบ 72669941 คงที่
     const cur = rd(F.ownerPending).split("\n");
     const baseSet = new Set((mb ? (showAt(mb, F.ownerPending) ?? "") : "").split("\n"));
     const fresh = cur.filter((l) => !baseSet.has(l) && l.includes(MARK));
