@@ -229,6 +229,11 @@ function gitBuf(args: string[]): Buffer | null {
 const gitStr = (args: string[]) => gitBuf(args)?.toString("utf8") ?? null;
 const showAt = (rev: string, f: string): string | null => gitStr(["show", `${rev}:${f}`]);
 const BASE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`])?.trim();
+// ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST1/ST2): ใบพี่น้อง P3.5 S merge เข้า session/pos ก่อน (688fc3ed = 72669941 + HF-FU2 + P3.5 S) —
+//   ไฟล์ร้อน/migration/enum ที่ "ตรงกับ 688fc3ed + บล็อก POS P3.4 เท่านั้น" = ของพี่น้อง ไม่ใช่ของใบนี้ ⇒ รับ (ฐาน BASE_REV ยังรับเหมือนเดิม)
+//   เทียบกับต้นไม้ของ merge P3.5 แทน "ตัดบรรทัดในบล็อก P3.5" เพราะโค้ด P3.5 ไม่ได้อยู่ใน ▸…◂ ทุกบรรทัด (เช่นเนื้อ scheduleGate · REG_MESSAGE 2 บรรทัดหลัง) — รับเฉพาะสิ่งที่ merge P3.5 มีจริง
+const SIB_REV = process.env.P34_SIB || "688fc3ed";
+const SIB_OK = !!gitStr(["rev-parse", "--verify", "-q", `${SIB_REV}^{commit}`])?.trim();
 /** บรรทัดในบล็อก // POS P3.4 ▸ … ◂ (บรรทัดเดียวหรือหลายบรรทัด) */
 function markedLines(src: string): { lines: Set<number>; blocks: number; text: string } {
   const ls = src.split("\n");
@@ -461,6 +466,8 @@ async function runStatic(): Promise<void> {
     const p: string[] = [];
     const dirs = readdirSync(abs(F.migrations)).filter((d) => statSync(abs(`${F.migrations}/${d}`)).isDirectory());
     const baseDirs = new Set((gitStr(["ls-tree", "--name-only", BASE_REV, `${F.migrations}/`]) ?? "").split("\n").map((x) => x.split("/").pop() ?? ""));
+    // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST1): migration ที่มีอยู่แล้วใน merge P3.5 (SIB_REV) = ของพี่น้อง (*_pos_p35_staff_commission) ไม่นับเป็น "ใหม่อื่น"
+    if (SIB_OK) for (const x of (gitStr(["ls-tree", "--name-only", SIB_REV, `${F.migrations}/`]) ?? "").split("\n")) if (!/_pos_p34_offline$/.test(x)) baseDirs.add(x.split("/").pop() ?? "");
     const fresh = dirs.filter((d) => !baseDirs.has(d));
     const mine = dirs.filter((d) => /_pos_p34_offline$/.test(d));
     if (mine.length !== 1) p.push(`migration *_pos_p34_offline ${mine.length} ใบ (คาด 1)`);
@@ -529,7 +536,8 @@ async function runStatic(): Promise<void> {
     else for (const [f, re] of [["tenantId", /^String\b/], ["unitId", /^String\b/], ["deviceId", /^String\b/], ["issuedAt", /^DateTime\b/], ["priceMap", /^Json\b/], ["hash", /^String\b/]] as [string, RegExp][]) if (!snap.get(f) || !re.test(snap.get(f)!)) p.push(`PosOfflineSnapshot.${f} ${snap.get(f) ?? "ไม่มี"}`);
     const enumsBase = (allSchema(BASE_REV).match(/\nenum\s+\w+/g) ?? []).length;
     const enumsNow = (allNow.match(/\nenum\s+\w+/g) ?? []).length;
-    if (enumsNow !== enumsBase) p.push(`enum ${enumsBase}→${enumsNow} (มติ 2: ไม่มี enum ใหม่)`);
+    const enumsSib = SIB_OK ? (allSchema(SIB_REV).match(/\nenum\s+\w+/g) ?? []).length : -1; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST1): enum ของ P3.5 (PosStaffCommissionKind/Status) มีที่ SIB_REV แล้ว
+    if (enumsNow !== enumsBase && enumsNow !== enumsSib) p.push(`enum ${enumsBase}→${enumsNow} (มติ 2: ไม่มี enum ใหม่ · พี่น้อง ${enumsSib})`);
     const ns = gitStr(["diff", "-w", "--numstat", BASE_REV, "--", F.schemaDir]) ?? "";
     const delLines = ns.split("\n").filter(Boolean).reduce((t, l) => t + (Number(l.split("\t")[1]) || 0), 0);
     if (!BASE_OK) p.push(`ไม่มี ${BASE_REV} ให้เทียบ`);
@@ -554,24 +562,42 @@ async function runStatic(): Promise<void> {
     const cd = [...new Set([...Object.keys(cb), ...Object.keys(ch)])].filter((f) => (cb[f] ?? 0) !== (ch[f] ?? 0)).map((f) => `${f.replace("src/lib/", "")}:${cb[f] ?? 0}→${ch[f] ?? 0}`);
     if (!Object.keys(cb).length) p.push("นับผู้เรียกที่ฐานไม่ได้");
     if (cd.length) p.push(`ผู้เรียก createSale ต่าง: ${cd.join(", ")}`);
-    const ob = gitBuf(["show", `${BASE_REV}:${F.outbox}`]);
-    const oh = ex(F.outbox) ? readFileSync(abs(F.outbox)) : null;
-    if (!ob || !oh || !ob.equals(oh)) p.push("outbox-consumers.ts ไม่ตรงไบต์กับฐาน");
-    const spB = showAt(BASE_REV, F.staffPin) ?? "";
-    const spH = rd(F.staffPin);
-    const sp = onlyMarked(spB, spH);
-    if (sp.blocks !== 1) p.push(`staff-pin.ts บล็อก POS P3.4 ${sp.blocks} (คาด 1)`);
-    if (sp.blocks && !/\bat\b/.test(sp.text)) p.push("บล็อก P3.4 ของ staff-pin.ts ไม่มีตัวเลือก at");
-    if (sp.added.length) p.push(`staff-pin.ts แก้นอกบล็อก: ${sp.added.slice(0, 2).join(" | ")}`);
-    if (sp.dropped > 3) p.push(`staff-pin.ts บรรทัดฐานหาย ${sp.dropped}`);
-    const vb = fnBody(stripCode(spB), "verifyStaffPin");
-    const vh = fnBody(stripCode(markedStrip(spH)), "verifyStaffPin");
-    if (!vb || vb.replace(/\s+/g, "") !== vh.replace(/\s+/g, "")) p.push("verifyStaffPin ถูกแตะ (มติ 12)");
+    // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST2): ไฟล์ร้อนผ่านเมื่อตรงเงื่อนไขเดิมเทียบ BASE_REV หรือเทียบ SIB_REV (merge P3.5 S) — กฎเดิมทุกข้อ (outbox ตรงไบต์ · staff-pin บล็อก P3.4 เดียว + at · ไม่แก้นอกบล็อก · verifyStaffPin ไม่ถูกแตะ "นอกจากของ P3.5") ใช้ทั้งคู่ · ไม่ผ่านทั้งคู่ = รายงานปัญหาเทียบ BASE_REV
+    const revsHot = SIB_OK ? [BASE_REV, SIB_REV] : [BASE_REV];
+    const firstOk = (fn: (rev: string) => string[]): string[] => {
+      const r0 = fn(BASE_REV);
+      if (!r0.length) return r0;
+      for (const rv of revsHot.slice(1)) if (!fn(rv).length) return [];
+      return r0;
+    };
+    p.push(...firstOk((rv) => {
+      const ob = gitBuf(["show", `${rv}:${F.outbox}`]);
+      const oh = ex(F.outbox) ? readFileSync(abs(F.outbox)) : null;
+      return !ob || !oh || !ob.equals(oh) ? ["outbox-consumers.ts ไม่ตรงไบต์กับฐาน"] : [];
+    }));
+    p.push(...firstOk((rv) => {
+      const q: string[] = [];
+      const spB = showAt(rv, F.staffPin) ?? "";
+      const spH = rd(F.staffPin);
+      const sp = onlyMarked(spB, spH);
+      if (sp.blocks !== 1) q.push(`staff-pin.ts บล็อก POS P3.4 ${sp.blocks} (คาด 1)`);
+      if (sp.blocks && !/\bat\b/.test(sp.text)) q.push("บล็อก P3.4 ของ staff-pin.ts ไม่มีตัวเลือก at");
+      if (sp.added.length) q.push(`staff-pin.ts แก้นอกบล็อก: ${sp.added.slice(0, 2).join(" | ")}`);
+      if (sp.dropped > 3) q.push(`staff-pin.ts บรรทัดฐานหาย ${sp.dropped}`);
+      const vb = fnBody(stripCode(spB), "verifyStaffPin");
+      const vh = fnBody(stripCode(markedStrip(spH)), "verifyStaffPin");
+      if (!vb || vb.replace(/\s+/g, "") !== vh.replace(/\s+/g, "")) q.push("verifyStaffPin ถูกแตะ (มติ 12)");
+      return q;
+    }));
     for (const f of [F.register, F.service]) {
-      const r = onlyMarked(showAt(BASE_REV, f) ?? "", rd(f));
-      if (r.blocks < 1) p.push(`${f.split("/").pop()} ไม่มีบล็อก POS P3.4`);
-      if (r.added.length) p.push(`${f.split("/").pop()} แก้นอกบล็อก ${r.added.length}: ${r.added.slice(0, 2).join(" | ")}`);
-      if (r.dropped > 8) p.push(`${f.split("/").pop()} บรรทัดฐานหาย ${r.dropped}`);
+      p.push(...firstOk((rv) => {
+        const q: string[] = [];
+        const r = onlyMarked(showAt(rv, f) ?? "", rd(f));
+        if (r.blocks < 1) q.push(`${f.split("/").pop()} ไม่มีบล็อก POS P3.4`);
+        if (r.added.length) q.push(`${f.split("/").pop()} แก้นอกบล็อก ${r.added.length}: ${r.added.slice(0, 2).join(" | ")}`);
+        if (r.dropped > 8) q.push(`${f.split("/").pop()} บรรทัดฐานหาย ${r.dropped}`);
+        return q;
+      }));
     }
     chk("ST2", p.length === 0, "สัญญาเพิ่มล้วน + offline · ผู้เรียกเท่าเดิม · outbox ตรงไบต์ · staff-pin 1 บล็อก (at) · register/service ในบล็อก", joinP(p));
   });

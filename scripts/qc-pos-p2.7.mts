@@ -358,7 +358,7 @@ function baseRevs(): string[] {
     if (v && !out.includes(v)) out.push(v);
   };
   add(gitBuf(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`])?.toString("utf8"));
-  add(gitBuf(["rev-parse", "--verify", "-q", "05975437^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
+  add(gitBuf(["rev-parse", "--verify", "-q", "0617d17b^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.7 ST1/ST3 · lane-pin 05975437 → 0617d17b = merge P3.4 S หลัง P3.5 S) · ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   baseRevsCache = out;
   return out;
 }
@@ -686,7 +686,11 @@ async function runStatic(): Promise<void> {
     if (mine.length !== 1) p.push(`migration *${MIGRATION_SUFFIX} = ${mine.length} โฟลเดอร์ (คาด 1)`);
     else {
       const name = mine[0]!;
-      if (dirs[dirs.length - 1] !== name) p.push(`${name} ไม่ใช่ migration ล่าสุด (ล่าสุด ${dirs[dirs.length - 1]} — มติ 12: ใหม่กว่าทุกตัว)`);
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.7 ST1): มติ 12 = ใหม่กว่าทุก migration ที่มีอยู่ที่ฐานของ P2.7 (64923c13) — ไม่ใช่ "ล่าสุดตลอดกาล" (ใบหลัง ๆ เพิ่ม migration ตามแบบ · เดิม dirs[last] === name)
+      const p27BaseDirs = (gitBuf(["ls-tree", "--name-only", "64923c13", "prisma/migrations/"])?.toString("utf8") ?? "").split("\n").map((x) => x.split("/").pop() ?? "").filter((d) => /^\d{14}_/.test(d) && d !== name);
+      if (!p27BaseDirs.length) p.push("อ่านรายชื่อ migration ที่ฐาน 64923c13 ไม่ได้ (git)");
+      const notOlder = p27BaseDirs.filter((d) => d >= name);
+      if (notOlder.length) p.push(`${name} ไม่ใหม่กว่า migration ที่ฐาน 64923c13: ${notOlder.join(",")} (มติ 12)`);
       const sql = rd(`prisma/migrations/${name}/migration.sql`).replace(/--[^\n]*/g, "");
       const stmts = sql
         .split(/;\s*(?=\n|$)/)

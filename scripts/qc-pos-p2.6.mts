@@ -377,7 +377,7 @@ const F = {
 };
 /** sha256 ของ scripts/pos-sale-contract.json (มติ 15 · = ค่า re-pin ของ qc-pos-p2.4 ST4 ที่ 0c20c473) */
 // ORACLE-EDIT ผู้คุม 14 ต.ค. (CD-P29-1: payMethods[].giftCard + pos/order.ts caller recorded) — เดิม 7a418de17b44bf7c54e9ee99a3cb740ae596fb6fb240978901e8a07b011697cd ◂
-const CONTRACT_SHA_BASE = "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad";
+const CONTRACT_SHA_BASE = "ba68f669fa2105ce708df5aa555c9127948f82c30d373bce6f65ebac0753c7c2"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.6 L3): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 const MIGRATION_NAME = "20261208100000_pos_p26_kds";
 const NEW_CODES = ["TICKET_NOT_FOUND", "TICKET_TOO_OLD", "KDS_STATION_NOT_FOUND"] as const;
 /** ฟังก์ชันของ pos/kds.ts (ชื่อตรงตัว — ตารางชื่อของโน้ต) */
@@ -397,7 +397,7 @@ const RO_NEW: [string, RegExp][] = [
 /** ฟิลด์ ณ f71f4e30 */
 const RO_BASE = ["id", "tenantId", "unitId", "type", "status", "sessionId", "session", "bizDate", "dailyNo", "memberId", "guestName", "guestPhone", "guestToken", "note", "isRush", "pickupStatus", "pickupAt", "readyAt", "pickedUpAt", "placedByUserId", "cancelReason", "createdAt", "updatedAt", "items"];
 const RS_BASE = ["id", "tenantId", "unitId", "serviceChargeBps", "requireApproval", "serviceHours", "specialClosures", "lastOrderMins", "kitchenPaused", "kitchenPausedNote", "kdsWarnMins", "kdsCriticalMins", "pickupEnabled", "pickupSlotMins", "pickupLeadMins", "createdAt", "updatedAt"];
-const PD_BASE = ["id", "tenantId", "unitId", "systemId", "name", "deviceCode", "status", "posRegNo", "printerConfig", "registeredByUserId", "lastSeenAt", "revokedAt", "createdAt", "updatedAt"];
+const PD_BASE = ["id", "tenantId", "unitId", "systemId", "name", "deviceCode", "status", "posRegNo", "printerConfig", "registeredByUserId", "lastSeenAt", "revokedAt", "createdAt", "updatedAt", "offlineCode", "offlineSeq"]; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.6 ST1): + offlineCode offlineSeq (P3.4 S · ADD COLUMN nullable/DEFAULT · มติ 12 ยังห้าม role/kind)
 const MARK_FIELDS: [string, RegExp][] = [
   ["id", /^id\s+String\s+@id\b/],
   ["tenantId", /^tenantId\s+String(\s|$)/],
