@@ -368,28 +368,37 @@ async function decide(
   if (evidence && (soldMs < Date.parse(evidence.issuedAt) || soldMs - Date.parse(evidence.issuedAt) > OFFLINE_MAX_AGE_MS)) return reject("CLOCK_INVALID");
   // R8 เครื่อง (CD-12): ถูกเพิกถอนก่อน/ตอน soldAt = ปฏิเสธ · หลัง soldAt = ขายได้ (audit บันทึก revokedAt)
   if (e.dev.status === "REVOKED" && (!e.dev.revokedAt || e.dev.revokedAt.getTime() <= soldMs)) return reject("DEVICE_REVOKED");
-  // R8 กะ: กะของเครื่องนี้ที่บันทึกไว้ต้องยัง OPEN · soldAt ≥ เปิดกะ − 5 นาที
-  //   ไม่ส่งกะ = กะของเครื่องที่ครอบ soldAt (กันซ่อนบิลเงินสดไว้นอกกะ) · ไม่มีกะครอบ + ร้านบังคับมีกะ = SHIFT_REQUIRED · ผู้จัดการรับ = นอกกะ
+  // R8 กะ: กะของเครื่องนี้ที่บันทึกไว้ต้องยัง OPEN · soldAt ≥ เปิดกะ − 5 นาที · ไม่ส่งกะ = กะของเครื่องที่ครอบ soldAt (กันซ่อนบิลเงินสดไว้นอกกะ)
+  // POS P3.4 ▸ fix1 N2 = F3 (CD-P34g): รอบแรก — ไม่มีกะครอบ soldAt แต่เครื่องมีกะเปิดอยู่ หรือมีกะภายใน 24 ชม. = SHIFT_REQUIRED (คิวผู้จัดการ ไม่ใช่นอกกะ) ·
+  //   ผู้จัดการรับ — กะที่บันทึก/กะที่ครอบ soldAt ยังเปิด = ผูกกะนั้น · ปิดแล้ว = นอกกะ (null) · ไม่มีกะครอบ = กะที่เปิดอยู่ของเครื่อง (ถ้ามี) ไม่งั้นนอกกะ
   let shiftId: string | null = null;
-  if (!manager) {
+  {
     const where = { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: ctx.unitId, deviceId: e.dev.deviceCode };
-    const sh = it.shiftId
-      ? await db.posShift.findFirst({ where: { ...where, id: it.shiftId }, select: { id: true, status: true, openedAt: true } })
-      : await db.posShift.findFirst({
-          where: { ...where, openedAt: { lte: new Date(soldMs + OFFLINE_SHIFT_SLACK_MS) }, OR: [{ status: "OPEN" }, { closedAt: { gte: new Date(soldMs) } }] },
-          orderBy: [{ openedAt: "desc" }, { id: "desc" }],
-          select: { id: true, status: true, openedAt: true },
-        });
-    if (it.shiftId && !sh) return reject("VALIDATION");
-    if (sh) {
+    const sel = { id: true, status: true, openedAt: true } as const;
+    const recorded = it.shiftId ? await db.posShift.findFirst({ where: { ...where, id: it.shiftId }, select: sel }) : null;
+    if (it.shiftId && !recorded && !manager) return reject("VALIDATION");
+    const sh =
+      recorded ??
+      (await db.posShift.findFirst({
+        where: { ...where, openedAt: { lte: new Date(soldMs + OFFLINE_SHIFT_SLACK_MS) }, OR: [{ status: "OPEN" }, { closedAt: { gte: new Date(soldMs) } }] },
+        orderBy: [{ openedAt: "desc" }, { id: "desc" }],
+        select: sel,
+      }));
+    if (manager) {
+      if (sh) shiftId = sh.status === "OPEN" ? sh.id : null;
+      else shiftId = (await db.posShift.findFirst({ where: { ...where, status: "OPEN" }, orderBy: [{ openedAt: "desc" }, { id: "desc" }], select: { id: true } }))?.id ?? null;
+    } else if (sh) {
       if (sh.status !== "OPEN") return reject("SHIFT_CLOSED");
       if (soldMs < sh.openedAt.getTime() - OFFLINE_SHIFT_SLACK_MS) return reject("CLOCK_INVALID");
       shiftId = sh.id;
     } else {
+      const since = new Date(e.now - OFFLINE_MAX_AGE_MS);
+      const recent = await db.posShift.findFirst({ where: { ...where, OR: [{ status: "OPEN" }, { openedAt: { gte: since } }, { closedAt: { gte: since } }] }, select: { id: true } });
+      if (recent) return reject("SHIFT_REQUIRED");
       const sys = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
       if (parseShiftSettings(sys?.settings).requiredRegister) return reject("SHIFT_REQUIRED");
     }
-  }
+  } // ◂
   // R8 ผู้ขาย (CD-3): โทเคน ณ soldAt (มติ 12) · ผู้ขายที่อ้างต้องเป็นคนในโทเคน / ผู้ใช้ที่ซิงก์
   let seller: RegisterActor = e.actor;
   if (manager) {
@@ -628,7 +637,7 @@ async function managerRow(db: Db, c: OfflineCtx, id: unknown): Promise<RowState 
 const youngProcessing = (r: RowState) => r.status === STATUS.REJECTED && r.reason === PROCESSING && Date.now() - r.createdAt.getTime() < PROCESSING_GUARD_MS;
 
 /**
- * ผู้จัดการรับบิลที่ถูกปฏิเสธ (R10): ตัดสินใหม่ด้วยกติกาเดิม + ข้อยกเว้นของผู้จัดการ — ผู้ขาย = ผู้ขายที่ตรวจแล้วเท่านั้น (fix1 N1) ·
+ * ผู้จัดการรับบิลที่ถูกปฏิเสธ (R10): ตัดสินใหม่ด้วยกติกาเดิม + ข้อยกเว้นของผู้จัดการ — กะ = กะที่ยังเปิดของ soldAt (fix1 N2 · ปิดแล้ว = นอกกะ) · ผู้ขาย = ผู้ขายที่ตรวจแล้วเท่านั้น (fix1 N1) ·
  * สต็อกตรวจใหม่ · ราคา/นาฬิกา/เครื่องถูกเพิกถอน/เลข OFF ยังบังคับ (ไม่ผ่าน = ปฏิเสธพร้อมรหัส ให้ทิ้งแล้วขายใหม่ออนไลน์) ·
  * idempotent: รับซ้ำ = บิลเดิม (duplicated) · หลังทิ้ง = CONFLICT · audit pos.sale.offline_synced {via: "manager"}
  */
@@ -657,7 +666,7 @@ export async function acceptOfflineSale(ctx: OfflineCtx, actor: RegisterActor, i
         offlineRef: row.offlineRef,
         idempotencyKey: row.idempotencyKey,
         soldAt: typeof p.soldAt === "string" ? p.soldAt : row.soldAt.toISOString(),
-        shiftId: null,
+        shiftId: typeof p.shiftId === "string" && p.shiftId ? p.shiftId : null, // POS P3.4 ▸ fix1 N2: กะที่บันทึก (ผูกเมื่อยังเปิด) ◂
         staffToken: null,
         sellerUserId: null,
         snapshotHash: typeof p.snapshotHash === "string" ? p.snapshotHash : "",
