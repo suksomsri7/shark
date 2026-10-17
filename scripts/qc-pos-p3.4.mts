@@ -95,6 +95,7 @@ const CHECKS: readonly Def[] = [
   D("SY17", "SY", "[R10 มติ 7] คิวผู้จัดการ: list มี REJECTED ของสาขา (ไม่มี SYNCED) · accept ×2 = บิลเดียว · discard ×2 = DISCARDED ครั้งเดียว · เหตุผล < 5 ตัว → VALIDATION · accept หลัง discard → ปฏิเสธ · แคชเชียร์ไม่มี pos.shift.manage → PERMISSION_DENIED (list/accept/discard) · audit"),
   D("SY18", "SY", "[fix1 N1 · CD-P34g] ผู้ขายที่ตรวจแล้วเท่านั้น: โทเคนปลอมอ้าง OWNER / sellerUserId = OWNER + ส่วนลด 50% (เกินเพดานแคชเชียร์) ซิงก์โดย CASH → REJECTED · list แยก claimedSellerUserId (OWNER) / verifiedSellerUserId (CASH) · ผู้จัดการรับ → คิดด้วยเพดานของ CASH ⇒ ปฏิเสธ · ไม่มีบิล (ไม่มีบิลที่ soldBy = OWNER)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N1)
   D("SY19", "SY", "[fix1 N2 = F3 · CD-P34g] กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
+  D("SY20", "SY", "[fix1 N3 · CD-P34g] เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2107,6 +2108,40 @@ async function runDb() {
       if (nb !== 0) p.push(`ช่องว่าง มีบิล ${nb}`);
     }
     if (!NO_FX("SY19")) chk("SY19", p.length === 0, "accept ผูกกะ D7 ที่เปิด · ไม่มีกะครอบ + เครื่องมีกะเปิด → SHIFT_REQUIRED", FXB(joinP(p)));
+  }
+  // ═════ SY20 เวลาราคา (N3) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      // (a) priceValidUntil ของ snapshot N3 = 35 นาทีก่อน (SQL ดิบเฉพาะแถวของร้านชั่วคราว) · ขายเมื่อ 10 นาทีก่อน = เลย pvu + 15 นาที
+      const h3 = String(SN.N3?.hash ?? "none");
+      await P.$executeRawUnsafe(`UPDATE "PosOfflineSnapshot" SET "priceMap" = jsonb_set("priceMap", '{$priceValidUntil}', to_jsonb($1::text)) WHERE "tenantId" = $2 AND hash = $3`, iso(NOW1 - 35 * MIN), T, h3).catch((e: Error) => p.push(`ตั้ง pvu ไม่ได้ ${e.message.slice(0, 40)}`));
+      const ia = mkItem("N3", { lines: [W(1)], total: 1000, soldAt: Date.now() - 10 * MIN, shift: null });
+      const ra = await sync("N3", [ia]);
+      const xa = resOf(ra, ia.offlineRef);
+      if (xa?.status !== "REJECTED" || xa?.reason !== "CLOCK_INVALID" || xa?.saleId) p.push(`เลย pvu + 15 นาที ${stOf(xa)} ${why(ra)}`);
+      // (b) โปรชาเขียว ณ soldAt (T0−150 นาที) ซิงก์ตอนนี้ (โปรจบแล้ว)
+      const ib = mkItem("D1", { lines: [{ productId: PR.tea, qty: 1 }], total: 3000, soldAt: T0 - 150 * MIN });
+      const rb = await sync("D1", [ib]);
+      const xb = resOf(rb, ib.offlineRef);
+      if (xb?.status !== "REJECTED" || xb?.reason !== "PRICE_WINDOW_REVIEW" || xb?.saleId) p.push(`โปรซิงก์ช้า ${stOf(xb)} ${why(rb)}`);
+      const ab = await call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(xb?.offlineSaleId ?? "none") });
+      const sb = ab?.ok === true ? await saleRow(ab.saleId) : null;
+      if (ab?.ok !== true || sb?.grandTotalSatang !== 3000) p.push(`accept โปร ${codeOf(ab)} ยอด ${sb?.grandTotalSatang ?? "-"}`);
+      // (c) audit priceAtSyncSatang
+      const ic = mkItem("D2", { lines: [W(1)], total: 1000, soldAt: Date.now() - 5 * MIN, shift: null });
+      const rc = await sync("D2", [ic]);
+      const xc = resOf(rc, ic.offlineRef);
+      const au = xc?.saleId ? await audits(AUDIT_SYNCED, String(xc.saleId)) : [];
+      if (xc?.status !== "OK" || au[0]?.after?.priceAtSyncSatang !== 1000) p.push(`audit priceAtSyncSatang ${stOf(xc)} ${short(au[0]?.after?.priceAtSyncSatang, 20)}`);
+      const codes = sh?.OFFLINE_REFUSAL_CODES ?? (await import("@/lib/modules/pos/offline-shared" as string).catch(() => null))?.OFFLINE_REFUSAL_CODES;
+      if (!Array.isArray(codes) || !codes.includes("PRICE_WINDOW_REVIEW")) p.push("OFFLINE_REFUSAL_CODES ไม่มี PRICE_WINDOW_REVIEW");
+      const mk = (await import("@/lib/modules/pos/offline-shared" as string).catch(() => null))?.offlineRefusalMessageKey?.("PRICE_WINDOW_REVIEW");
+      const th = readJson(rd(F.thPos));
+      const en = readJson(rd(F.enPos));
+      if (!mk || mk === "offline.refusal.other" || !THAI.test(String(getPath(th?.register, mk) ?? "")) || !String(getPath(en?.register, mk) ?? "").trim() || THAI.test(String(getPath(en?.register, mk) ?? ""))) p.push(`ข้อความ PRICE_WINDOW_REVIEW ${mk ?? "-"}`);
+    }
+    if (!NO_FX("SY20")) chk("SY20", p.length === 0, "pvu + 15 นาที → CLOCK_INVALID · โปรซิงก์ช้า → PRICE_WINDOW_REVIEW → accept 3000 · audit priceAtSyncSatang · รหัส + ข้อความ", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
