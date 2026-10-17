@@ -2704,7 +2704,16 @@
           "lineReceipt": "Send receipts via LINE",
           "chatOrders": "Staff key in orders from chat",
           "orderStatusBot": "Auto-answer order status questions"
-        }
+        },
+        "quota": "Uses the shop's LINE OA message quota",
+        "ownerOnly": "Only the owner can switch these",
+        "switches": {
+          "receiptAuto": "Auto-send receipts via LINE",
+          "refundNotice": "Refund notice in chat",
+          "orderStatus": "Order status in chat",
+          "autoReply": "Auto-reply (status · menu · call staff)"
+        },
+        "botPauseHours": "Pause the bot after a staff request (hours)"
       },
       "KANBAN": {
         "title": "Task boards",
@@ -4250,6 +4259,30 @@
     "expired": {
       "banner": "{count} pay-first orders expired today (cancelled automatically · no bill)",
       "row": "Payment expired"
+    },
+    "chatPay": {
+      "send": "Send pay link in chat",
+      "sent": "Sent in chat",
+      "notSent": "Pay link created but the chat message failed — copy the link and send it yourself",
+      "duplicated": "The pay link for this order was already sent",
+      "payBy": "Pay by {time}",
+      "errors": {
+        "noChatLink": "This order is not linked to a chat room — can't send a pay link in chat",
+        "promptpayNotConfigured": "This branch has no PromptPay ID yet — set it in payment settings first",
+        "stateInvalid": "Pay links can only be sent for new, unpaid chat orders"
+      }
+    }
+  },
+  "chat": {
+    "notify": {
+      "title": "Automatic chat messages",
+      "receipt": "Auto-send receipts via LINE",
+      "refund": "Refund notice in chat",
+      "order": "Order status in chat",
+      "ordpay": "Pay link in chat",
+      "bot": "Chat bot reply",
+      "sentAuto": "Sent via LINE automatically",
+      "failed": "Chat message could not be sent"
     }
   },
   "kds": {

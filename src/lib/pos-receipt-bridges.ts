@@ -12,7 +12,7 @@
 // 🔴 PDPA: ไม่พิมพ์ข้อความลูกค้า/ช่องทางติดต่อลง log
 import { prisma } from "@/lib/core/db";
 import type { OutboxHandler } from "@/lib/core/outbox";
-import { sendLineToParty } from "@/lib/modules/chat";
+import { notifyCustomer, sendLineToParty } from "@/lib/modules/chat"; // POS P3.7 ▸ + notifyCustomer (ตอบรับแจ้งปัญหา · มติ 8) ◂
 import { createCardFromExternal } from "@/lib/modules/kanban/links";
 import { receiptSettingsOf } from "@/lib/modules/pos/receipt-settings";
 import type { ReceiptLineSender } from "@/lib/modules/pos/receipt-send";
@@ -65,7 +65,9 @@ export async function onReceiptIssueReported(evt: IssueEvt): Promise<ReceiptIssu
   try {
     const member = sale.memberId ? await prisma.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { partyId: true } }) : null;
     if (member?.partyId) {
-      await sendLineToParty({ tenantId }, { partyId: member.partyId, text: `ร้านได้รับเรื่องที่แจ้งเกี่ยวกับบิล ${receiptNo} แล้ว — เจ้าหน้าที่จะติดต่อกลับโดยเร็ว ขอบคุณค่ะ` });
+      // POS P3.7 ▸ มติ 8 (Q8): ตอบรับผ่าน notifyCustomer คีย์ pos:issue-ack:<issueId> — เล่น event ซ้ำ (ร้านไม่มีบอร์ด) = ไม่ส่งซ้ำ · ขึ้นในห้องแชทให้ทีมเห็น
+      await notifyCustomer({ tenantId, target: { partyId: member.partyId }, text: `ร้านได้รับเรื่องที่แจ้งเกี่ยวกับบิล ${receiptNo} แล้ว — เจ้าหน้าที่จะติดต่อกลับโดยเร็ว ขอบคุณค่ะ`, dedupeKey: `pos:issue-ack:${issue.id}`, kind: "issue-ack" });
+      // ◂ POS P3.7
     }
   } catch {
     /* ไม่ throw — การ์ด/แถวสำคัญกว่าการตอบรับ */
