@@ -94,7 +94,7 @@ const CHECKS: readonly Def[] = [
   D("SY16", "SY", "[R9] บิลซิงก์ไม่สร้างรอบครัว (สินค้าผูกสถานี) แม้ healMissingTickets · ตัวควบคุม: บิลออนไลน์ของสินค้าเดียวกัน → มีรอบ"),
   D("SY17", "SY", "[R10 มติ 7] คิวผู้จัดการ: list มี REJECTED ของสาขา (ไม่มี SYNCED) · accept ×2 = บิลเดียว · discard ×2 = DISCARDED ครั้งเดียว · เหตุผล < 5 ตัว → VALIDATION · accept หลัง discard → ปฏิเสธ · แคชเชียร์ไม่มี pos.shift.manage → PERMISSION_DENIED (list/accept/discard) · audit"),
   D("SY18", "SY", "[fix1 N1 · CD-P34g] ผู้ขายที่ตรวจแล้วเท่านั้น: โทเคนปลอมอ้าง OWNER / sellerUserId = OWNER + ส่วนลด 50% (เกินเพดานแคชเชียร์) ซิงก์โดย CASH → REJECTED · list แยก claimedSellerUserId (OWNER) / verifiedSellerUserId (CASH) · ผู้จัดการรับ → คิดด้วยเพดานของ CASH ⇒ ปฏิเสธ · ไม่มีบิล (ไม่มีบิลที่ soldBy = OWNER)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N1)
-  D("SY19", "SY", "[fix1 N2 = F3 · CD-P34g] กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
+  D("SY19", "SY", "[fix1 N2 = F3 · fix2 G1 · CD-P34g/i] อ้างกะ A ที่ปิดแล้วขณะ soldAt อยู่ในกะ B ที่เปิด → ไม่ใช่ SHIFT_CLOSED · รับ = ผูกกะ B · กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
   D("SY20", "SY", "[fix1 N3 · CD-P34g] เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
   D("SY21", "SY", "[fix1 N4 = F1 · CD-P34g] snapshot ภายใน 24 ชม. ไม่ถูกตัด: ขายบน S1 แล้วเครื่องออก S2 + S3 ก่อนซิงก์ → บิลบน S1 = OK · PosOfflineSnapshot ของเครื่อง 3 แถว"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
   D("SY22", "SY", "[fix1 N5 = F4 · CD-P34g] คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
@@ -2110,6 +2110,25 @@ async function runDb() {
       if (xb?.status !== "REJECTED" || xb?.reason !== "SHIFT_REQUIRED" || xb?.saleId) p.push(`ช่องว่างก่อนเปิดกะ ไม่ส่ง shiftId ${stOf(xb)} (คาด REJECTED:SHIFT_REQUIRED)`);
       const nb = Number(await P.posSale.count({ where: { tenantId: T, offlineRef: b.offlineRef } }).catch(() => -1));
       if (nb !== 0) p.push(`ช่องว่าง มีบิล ${nb}`);
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix2 G1 · CD-P34i): อ้างกะ A ที่ปิดแล้ว ขณะ soldAt อยู่ในกะ B ที่เปิด ⇒ ไม่ใช่ SHIFT_CLOSED · ผู้จัดการรับ = ผูกกะ B
+      {
+        const oa = await call(shiftMod, "openShift", ctxU("A", DEV.N2), A("OWNER"), { deviceId: DEV.N2, deviceLabel: "เครื่อง N2", floatSatang: 0 });
+        const shA = String(oa?.shift?.id ?? "");
+        const ca = shA ? await call(shiftMod, "closeShift", ctxU("A", DEV.N2), A("OWNER"), { shiftId: shA, countedCashSatang: 0, note: "ปิดกะ A ก่อนเปิด B", idempotencyKey: newKey("closeA") }) : null;
+        if (!shA || ca?.ok !== true) p.push(`กะ A ${codeOf(oa)} / ปิด ${codeOf(ca)}`);
+        await P.$executeRawUnsafe(`UPDATE "PosShift" SET "openedAt" = $1, "closedAt" = $2 WHERE id = $3 AND "tenantId" = $4`, new Date(Date.now() - 3 * H), new Date(Date.now() - 90 * MIN), shA || "none", T);
+        const ob = await call(shiftMod, "openShift", ctxU("A", DEV.N2), A("OWNER"), { deviceId: DEV.N2, deviceLabel: "เครื่อง N2", floatSatang: 0 });
+        const shB = String(ob?.shift?.id ?? "");
+        if (!shB) p.push(`กะ B ${codeOf(ob)}`);
+        await P.$executeRawUnsafe(`UPDATE "PosShift" SET "openedAt" = $1 WHERE id = $2 AND "tenantId" = $3`, new Date(Date.now() - 60 * MIN), shB || "none", T);
+        const c = mkItem("N2", { lines: [W(1)], total: 1000, soldAt: Date.now() - 30 * MIN, shift: shA || null });
+        const rc = await sync("N2", [c]);
+        const xc = resOf(rc, c.offlineRef);
+        if (xc?.status !== "REJECTED" || xc?.reason === "SHIFT_CLOSED" || xc?.saleId) p.push(`อ้างกะ A ที่ไม่ครอบ soldAt ${stOf(xc)} (คาด REJECTED ที่ไม่ใช่ SHIFT_CLOSED) ${why(rc)}`);
+        const acc = await call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(xc?.offlineSaleId ?? "none") });
+        const sc2 = acc?.ok === true ? await saleRow(acc.saleId) : null;
+        if (acc?.ok !== true || !shB || sc2?.shiftId !== shB) p.push(`accept อ้างกะ A ${codeOf(acc)} shiftId ${sc2?.shiftId ?? "-"} (คาด กะ B ${shB || "-"})`);
+      }
     }
     if (!NO_FX("SY19")) chk("SY19", p.length === 0, "accept ผูกกะ D7 ที่เปิด · ไม่มีกะครอบ + เครื่องมีกะเปิด → SHIFT_REQUIRED", FXB(joinP(p)));
   }
