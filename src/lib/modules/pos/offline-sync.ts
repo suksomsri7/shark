@@ -359,6 +359,7 @@ async function decide(
   //   รหัสนอกเนมสเปซ C<n> ชนกับเครื่องอื่นไม่ได้ (เซิร์ฟเวอร์ไม่แจก) — ความไม่ซ้ำต่อสาขาตัดสินด้วยเลขเต็ม (OFFLINE_REF_TAKEN + unique ของบิล) · CONTROLLER-DECISION CD-P34c
   const refCode = OFFLINE_REF_LOOSE.exec(it.offlineRef)?.[1];
   if (!refCode || (/^C[0-9]+$/.test(refCode) && refCode !== e.dev.offlineCode)) return reject("VALIDATION");
+  if (/^C[0-9]+$/.test(refCode) && !parseOfflineRef(it.offlineRef)) return reject("VALIDATION"); // POS P3.4 ▸ fix1 F6: รหัส C<n> ต้องเป็นรูปมาตรฐาน (OFF-C1-00007 ≠ OFF-C1-0007 — สลิปสองใบห้ามมีเลข 7 ซ้ำ) ◂
   const takenRow = await db.posOfflineSale.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, offlineRef: it.offlineRef, NOT: { idempotencyKey: it.idempotencyKey } }, select: { id: true } });
   const takenSale = await db.posSale.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, offlineRef: it.offlineRef, NOT: { idempotencyKey: `${REG_KEY_PREFIX}${it.idempotencyKey}` } }, select: { id: true } });
   if (takenRow || takenSale) return reject("OFFLINE_REF_TAKEN");
