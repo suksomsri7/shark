@@ -264,7 +264,7 @@ function git(args: string[]): string | null {
     return null;
   }
 }
-const LANE_PIN = "a2c9a4c7"; // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · product tip after P3.8 merge · re-pin 8bded5a7 → a2c9a4c7) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP1b · settings-general re-resolution · re-pin 0617d17b → 8bded5a7) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP1 lane-pin · re-pin 3b8a228d → 0617d17b) · ORACLE-EDIT ผู้คุม 16.10 (HF-FU2 lane-pin · re-pin 05975437 → 3b8a228d) · ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
+const LANE_PIN = "02b67f91"; // ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · product tip after P3.7 merge · re-pin a2c9a4c7 → 02b67f91) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · product tip after P3.8 merge · re-pin 8bded5a7 → a2c9a4c7) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP1b · settings-general re-resolution · re-pin 0617d17b → 8bded5a7) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP1 lane-pin · re-pin 3b8a228d → 0617d17b) · ORACLE-EDIT ผู้คุม 16.10 (HF-FU2 lane-pin · re-pin 05975437 → 3b8a228d) · ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 const MB = (() => {
   const r = git(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`]); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return r ? r.trim() : "";
