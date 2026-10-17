@@ -99,6 +99,7 @@ const CHECKS: readonly Def[] = [
   D("SY21", "SY", "[fix1 N4 = F1 · CD-P34g] snapshot ภายใน 24 ชม. ไม่ถูกตัด: ขายบน S1 แล้วเครื่องออก S2 + S3 ก่อนซิงก์ → บิลบน S1 = OK · PosOfflineSnapshot ของเครื่อง 3 แถว"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
   D("SY22", "SY", "[fix1 N5 = F4 · CD-P34g] คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
   D("SY23", "SY", "[fix1 F2 · CD-P34g] ของหมด (86) หลังขายออฟไลน์: ลาเต้ถูก 86 ที่สาขาก่อนซิงก์ → บิลที่ขายไปแล้ว = OK · สินค้าที่ถูกเก็บถาวร (เค้ก) → REJECTED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F2)
+  D("SY24", "SY", "[fix1 F6 · CD-P34g] เลข OFF รหัส C<n> ต้องเป็นรูปมาตรฐาน: OFF-<รหัสเครื่อง>-00011 (เติมศูนย์เกิน) → REJECTED ไม่มีบิล · OFF-<รหัสเครื่อง>-0012 → OK"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F6)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2212,6 +2213,21 @@ async function runDb() {
       await call(catalog, "setAvailability", ctxU("A"), A("OWNER"), { productId: PR.latte, unitId: U.A, available: true, source: "MANUAL" });
     }
     if (!NO_FX("SY23")) chk("SY23", p.length === 0, "86 หลังขาย OK · เก็บถาวร REJECTED", FXB(joinP(p)));
+  }
+  // ═════ SY24 เลข OFF มาตรฐาน (F6) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F6)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      const c6 = String(SN.N6?.offlineCode ?? "C99");
+      const bad = mkItem("N6", { lines: [W(1)], total: 1000, soldAt: Date.now() - 12 * MIN, shift: null, ref: `OFF-${c6}-00011` });
+      const good = mkItem("N6", { lines: [W(1)], total: 1000, soldAt: Date.now() - 11 * MIN, shift: null, ref: `OFF-${c6}-0012` });
+      const r = await sync("N6", [bad, good]);
+      const xb = resOf(r, bad.offlineRef);
+      const xg = resOf(r, good.offlineRef);
+      if (xb?.status !== "REJECTED" || xb?.saleId) p.push(`ไม่มาตรฐาน ${stOf(xb)} ${why(r)}`);
+      if (xg?.status !== "OK") p.push(`มาตรฐาน ${stOf(xg)}`);
+    }
+    if (!NO_FX("SY24")) chk("SY24", p.length === 0, "-00011 REJECTED · -0012 OK", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
