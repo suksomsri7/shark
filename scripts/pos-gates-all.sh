@@ -69,7 +69,7 @@ acc = {s["suite"]: s.get("accepted") for s in man.get("suites", []) if s.get("ac
 acc.update({c["name"]: c.get("accepted") for c in man.get("commands", []) if c.get("accepted")})
 total = len(man.get("suites", [])) + len(man.get("commands", []))
 # POS HF-FU2 ▸ fix2 N6: ชุดข้อสอบที่จริงไม่พิมพ์ JSON_SUMMARY (exit 0 ได้โดยไม่มีสรุป) — นอกจากนี้ทุก suite ที่ exit 0 ต้องมีสรุปบรรทัดเดียว ◂
-NO_JSON_SUITES = ["qc-restaurant", "qc-nav-functions"]
+NO_JSON_SUITES = ["qc-restaurant", "qc-nav-functions", "qc-payroll-reverse"]  # POS HF-FU2 ▸ ctl 17 ต.ค.: + qc-payroll-reverse (HR suite พิมพ์แต่สรุปข้อความ · gates114) ◂
 suite_mode = {s["suite"]: s.get("mode") for s in man.get("suites", [])}  # POS HF-FU2 ▸ fix2 N6: kind=suite + mode ◂
 rows = []
 for line in open(os.path.join(out, "SUMMARY.txt")).read().splitlines():
