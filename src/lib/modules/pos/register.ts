@@ -706,9 +706,9 @@ export type RegisterOfflineSubmit = {
   nowMs?: number;
   priceAtSyncSatang?: number | null;
   windowReview?: boolean;
-  skipWindowReview?: boolean; // ◂
+  skipWindowReview?: boolean;
 };
-const REG_OFFLINE_WINDOW_REVIEW_MS = 30 * 60_000; // POS P3.4 ▸ fix1 N3 ◂
+const REG_OFFLINE_WINDOW_REVIEW_MS = 30 * 60_000; // POS P3.4 ▸ fix1 N3 (ในบล็อก R5–R9)
 const REG_OFFLINE: unique symbol = Symbol("pos.register.offline");
 /** ctx ของบิลออฟไลน์ (สำเนา ctx + ข้อมูลออฟไลน์ใต้คีย์ Symbol) — offline-sync.ts เท่านั้น */
 export function registerOfflineCtx<C extends RegisterCtx>(ctx: C, off: RegisterOfflineSubmit): C {
@@ -2651,7 +2651,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     //   ไม่ตรงทั้งคู่ = PRICE_CHANGED ที่ ③ · ปฏิเสธของการคิดราคา (รวมส่วนลดเกินสิทธิ์) = คืนทันที ไม่เข้าทางพักบิล/PIN ผู้จัดการ
     if (off) {
       const maxBp = regMaxDiscountBp(s.actor, caps);
-      const pNow = p; // POS P3.4 ▸ fix1 N3: ราคาตอนซิงก์ ◂
+      const pNow = p; // POS P3.4 ▸ fix1 N3: ราคาตอนซิงก์ (ในบล็อก R6)
       p = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt });
       if (isRegRefusal(p)) return p;
       off.drift = null;
@@ -2661,7 +2661,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       if (!off.skipWindowReview && p.quote.grandTotalSatang === req.expected && off.priceAtSyncSatang !== null && p.quote.grandTotalSatang < off.priceAtSyncSatang && p.resolved.some((l) => l.priceRule !== null) && lateMs > REG_OFFLINE_WINDOW_REVIEW_MS) {
         off.windowReview = true;
         return regRefuse("PRICE_CHANGED");
-      } // ◂
+      }
       if (p.quote.grandTotalSatang !== req.expected && off.snapshotPrices) {
         const ps = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt, snapshotPrices: off.snapshotPrices });
         if (!isRegRefusal(ps) && ps.quote.grandTotalSatang === req.expected) {
