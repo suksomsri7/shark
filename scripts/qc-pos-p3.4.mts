@@ -234,6 +234,9 @@ const BASE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`]
 //   เทียบกับต้นไม้ของ merge P3.5 แทน "ตัดบรรทัดในบล็อก P3.5" เพราะโค้ด P3.5 ไม่ได้อยู่ใน ▸…◂ ทุกบรรทัด (เช่นเนื้อ scheduleGate · REG_MESSAGE 2 บรรทัดหลัง) — รับเฉพาะสิ่งที่ merge P3.5 มีจริง
 const SIB_REV = process.env.P34_SIB || "688fc3ed";
 const SIB_OK = !!gitStr(["rev-parse", "--verify", "-q", `${SIB_REV}^{commit}`])?.trim();
+// ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · หมุดเลนที่ 3 = product tip หลัง merge P3.8 ซึ่งแตะ outbox-consumers.ts · ST2 ยอมรับไบต์เท่ากับ rev ใดก็ได้ใน revsHot)
+const LANE_REV = process.env.P34_LANE || "a2c9a4c7";
+const LANE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${LANE_REV}^{commit}`])?.trim();
 /** บรรทัดในบล็อก // POS P3.4 ▸ … ◂ (บรรทัดเดียวหรือหลายบรรทัด) */
 function markedLines(src: string): { lines: Set<number>; blocks: number; text: string } {
   const ls = src.split("\n");
@@ -563,7 +566,7 @@ async function runStatic(): Promise<void> {
     if (!Object.keys(cb).length) p.push("นับผู้เรียกที่ฐานไม่ได้");
     if (cd.length) p.push(`ผู้เรียก createSale ต่าง: ${cd.join(", ")}`);
     // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST2): ไฟล์ร้อนผ่านเมื่อตรงเงื่อนไขเดิมเทียบ BASE_REV หรือเทียบ SIB_REV (merge P3.5 S) — กฎเดิมทุกข้อ (outbox ตรงไบต์ · staff-pin บล็อก P3.4 เดียว + at · ไม่แก้นอกบล็อก · verifyStaffPin ไม่ถูกแตะ "นอกจากของ P3.5") ใช้ทั้งคู่ · ไม่ผ่านทั้งคู่ = รายงานปัญหาเทียบ BASE_REV
-    const revsHot = SIB_OK ? [BASE_REV, SIB_REV] : [BASE_REV];
+    const revsHot = [BASE_REV, ...(SIB_OK ? [SIB_REV] : []), ...(LANE_OK ? [LANE_REV] : [])]; // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4)
     const firstOk = (fn: (rev: string) => string[]): string[] => {
       const r0 = fn(BASE_REV);
       if (!r0.length) return r0;

@@ -53,7 +53,9 @@ const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของใบ (ฐานของ brief · ST4/ST5 เทียบไฟล์ที่ห้าม/จำกัดการแก้) */
-const PIN = process.env.P39_PIN || "8bded5a7"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2: หมุด = ฐานก่อน P3.9 ที่รวม P3.4/P3.5 แล้ว · ST1/ST5 เห็นการเปลี่ยนแปลงของใบ · ST4 เทียบ prisma/register/service/outbox)
+const PIN = process.env.P39_PIN || "8bded5a7";
+// ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · P3.8 merge แตะ outbox-consumers.ts · ST4 เทียบไฟล์ห้ามแตะกับหมุดเลน ไม่ใช่หมุดใบ · ST1/ST5 ยังใช้ PIN)
+const LANE_PIN = process.env.P39_LANE_PIN || "a2c9a4c7"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2: หมุด = ฐานก่อน P3.9 ที่รวม P3.4/P3.5 แล้ว · ST1/ST5 เห็นการเปลี่ยนแปลงของใบ · ST4 เทียบ prisma/register/service/outbox)
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · T tool อ่าน/ด่าน · P ข้อเสนอ/เขียน · A จุดผิดปกติ · B สรุปเช้า · V ความเป็นส่วนตัว · Z คืนสภาพ
@@ -469,8 +471,8 @@ function runStatic(): void {
   // ST4 หมุดไฟล์ห้ามแตะ
   {
     const p: string[] = [];
-    const changed = gitStr(["diff", "--name-only", PIN]);
-    if (changed === null) p.push(`git diff ${PIN} ไม่ได้`);
+    const changed = gitStr(["diff", "--name-only", LANE_PIN]); // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · หมุดเลน)
+    if (changed === null) p.push(`git diff ${LANE_PIN} ไม่ได้`);
     const untracked = gitStr(["ls-files", "--others", "--exclude-standard"]) ?? "";
     const files = [...(changed ?? "").split("\n"), ...untracked.split("\n")].map((x) => x.trim()).filter(Boolean);
     const banned = (f: string) =>
