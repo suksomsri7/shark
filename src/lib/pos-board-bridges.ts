@@ -4,8 +4,7 @@
 //    ไม่อยู่ใน allowlist ของ fitness F2 (ตั้งใจให้ POS ไม่รู้จักทั้งสองโมดูล) ⇒ ต่อสายที่นี่แบบเดียวกับ `pos-receipt-bridges.ts` (P1.11)
 // 🔴 ขอบเขต (มติ 9): บอร์ดงานเขียนผ่าน `kanban/links.createCardFromExternal` (การ์ดใหม่ · sourceKey กันซ้ำ) + `kanban/moves.moveCard` (ย้ายเข้าคอลัมน์เสร็จ) ·
 //    แชททีมเขียนผ่าน `@/lib/modules/meeting` (index) `postSystemMessage(…, tx)` เท่านั้น · import บอร์ดงานเฉพาะ links/moves/notify/types
-//    ⚠️ ข้อยกเว้นเดียว (CONTROLLER-DECISION CD-P38-B1 ใน wo-notes): ความเห็น "กลับมาขายแล้ว" บนบอร์ดที่ไม่มีคอลัมน์เสร็จ (R5) — บอร์ดงานไม่มีประตู
-//    เขียนความเห็นในนามระบบให้โมดูลอื่น ⇒ เขียนแถวตรงแบบเดียวกับ `platform/kanban-bridges.ts#systemComment` (กันซ้ำด้วยข้อความเดิม)
+//    + ความเห็นในนามระบบ "กลับมาขายแล้ว" (R5 บอร์ดที่ไม่มีคอลัมน์เสร็จ) ผ่าน `kanban/integrations.addSystemCardComment` (CD-P38-B1) — ไม่มีการเขียนแถวบอร์ดงานตรงในไฟล์นี้
 // 🔴 ปริยายปิดทุกอย่าง (มติ 3): consumer/sweep คืนก่อนอ่านบอร์ดงาน/แชททีมใด ๆ เมื่อร้านไม่ได้เปิด
 // 🔴 ผู้กระทำ (มติ 5): การ์ดจากเหตุการณ์/ตัวกวาด = ระบบ (actorUserId null · createdById null) · ผู้รับ = ผู้จัดการคนแรกของสาขา ·
 //    การ์ดจุดผิดปกติแบบกดเอง = คนกด (ต้องผ่าน pos.report.view + pos.report.anomaly ที่สาขา และ EDITOR ของบอร์ด)
@@ -18,6 +17,7 @@ import type { OutboxHandler } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { canOpenCardOnBoard, createCardFromExternal, type AddLinkInput } from "@/lib/modules/kanban/links";
+import { addSystemCardComment } from "@/lib/modules/kanban/integrations";
 import { moveCard } from "@/lib/modules/kanban/moves";
 import { cardLink } from "@/lib/modules/kanban/notify";
 import type { KanbanActor, KanbanCtx } from "@/lib/modules/kanban/types";
@@ -388,26 +388,8 @@ async function sweepSoldOut(sys: PosSys, b: PosBoardSettings, units: string[], n
     if (done) {
       const mv = await moveCard(moveCtx(tenantId, c.systemId), { cardId: c.id, toColumnId: done.id, force: true });
       if (mv.ok) res.closed += 1;
-    } else if (await backOnSaleComment(tenantId, c, posSoldOutBackComment(locale))) res.commented += 1;
+    } else if (await addSystemCardComment(tenantId, c.id, posSoldOutBackComment(locale))) res.commented += 1; // CD-P38-B1: ประตูของบอร์ดงาน (integrations)
   }
-}
-
-/**
- * ความเห็นของระบบ "กลับมาขายแล้ว" (บอร์ดไม่มีคอลัมน์เสร็จ — การ์ดอยู่ที่เดิม) · กันซ้ำด้วยข้อความเดิม · ผู้เขียน = ผู้สร้างการ์ด ?? เจ้าของร้านคนแรก
- * ⚠️ CD-P38-B1: แถวตรง (สำเนา `platform/kanban-bridges.ts#systemComment`) — บอร์ดงานไม่มีประตูความเห็นในนามระบบ · ไม่ยิง kanban.comment.added
- */
-async function backOnSaleComment(tenantId: string, card: { id: string; boardId: string; createdById: string | null }, body: string): Promise<boolean> {
-  const dup = await prisma.kanbanComment.findFirst({ where: { cardId: card.id, tenantId, body }, select: { id: true } });
-  if (dup) return false;
-  const author = card.createdById ?? (await prisma.membership.findFirst({ where: { tenantId, role: "OWNER" }, orderBy: { createdAt: "asc" }, select: { userId: true } }))?.userId ?? null;
-  if (!author) return false;
-  await prisma.$transaction(async (tx: Tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pos:86back:${card.id}`}, 0))`;
-    if (await tx.kanbanComment.findFirst({ where: { cardId: card.id, tenantId, body }, select: { id: true } })) return;
-    const row = await tx.kanbanComment.create({ data: { tenantId, cardId: card.id, authorUserId: author, body, mentions: [] } });
-    await tx.kanbanActivity.create({ data: { tenantId, boardId: card.boardId, cardId: card.id, actorUserId: null, type: "COMMENT_ADDED", data: { commentId: row.id, bridge: true } } });
-  });
-  return true;
 }
 
 /** R6 — PosOrderEvent refund_needed ใน 7 วัน (ครบ 3 สาเหตุ รวม late_payment ที่ไม่มี outbox ⚠️3) → การ์ด `pos-refund:<orderId>` บนบอร์ดของสาขาออเดอร์ */
