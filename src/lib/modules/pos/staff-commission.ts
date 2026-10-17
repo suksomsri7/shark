@@ -181,6 +181,9 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
   const deadline = typeof input?.deadline === "number" && Number.isFinite(input.deadline) ? input.deadline : Date.now() + 20_000;
   const current = staffCommissionPeriodOf(now);
   const res: StaffCommissionSyncResult = { ok: true, users: 0, adjustments: 0, sentRows: 0, noEmployee: 0, failed: 0, stoppedEarly: false, rehomed: 0 };
+  // POS P3.5 ▸ fix3 N8: ตัวกวาดมีเวลาของตัวเอง = max(25% ของงบที่เหลือ, 5 วินาที) — รอบส่งใช้ได้ถึง pushDeadline เท่านั้น ◂
+  const sweepSliceMs = Math.max(Math.floor(Math.max(0, deadline - Date.now()) * 0.25), 5_000);
+  const pushDeadline = deadline - sweepSliceMs;
   // POS P3.5 ▸ fix2 N2 = R1-F1: คู่ (ร้าน · ผู้ใช้) ด้วย SELECT DISTINCT ของฐาน (ไม่อ่านทุกแถวเข้าหน่วยความจำ) · เฉพาะร้านที่มีระบบ HR ·
   //   เรียงด้วย md5(ร้าน:ผู้ใช้:ชั่วโมง) ⇒ ลำดับหมุนทุกชั่วโมง · keyset ทีละหน้าจนหมดหรือถึง deadline · กรองผู้ใช้ด้วย activeLinkedUserIds ของ HR
   //   ก่อนทำงานรายคู่ ⇒ คู่ที่ค้างถาวร (ไม่มีพนักงาน/โปรไฟล์) ไม่กินคิวของคู่ข้างหลัง ◂
@@ -188,7 +191,7 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
   const onlyTenant = isId(input?.tenantId) ? input.tenantId : null;
   let cursor: string | null = null;
   for (;;) {
-    if (Date.now() >= deadline) {
+    if (Date.now() >= pushDeadline) {
       res.stoppedEarly = true;
       break;
     }
@@ -215,7 +218,7 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
       }
     }
     for (const { tenantId, userId } of page) {
-      if (Date.now() >= deadline) {
+      if (Date.now() >= pushDeadline) {
         res.stoppedEarly = true;
         break;
       }
@@ -242,23 +245,41 @@ export async function syncStaffCommissionToPayroll(input: { tenantId?: string; n
     }
     if (res.stoppedEarly || page.length < PUSH_BATCH) break;
   }
-  // POS P3.5 ▸ fix2 N1: รายการที่ส่งไปแล้วแต่งวดของมันเพิ่งมีรอบจ่าย (ก่อนอนุมัติ / ก่อนผูกโปรไฟล์) ⇒ HR ย้ายไปงวดแรกที่ว่าง —
-  //   ร้านที่เคยส่งเข้า HR (แถว SENT ที่มีรายการ) · ทีละร้านจนถึง deadline · ล้มร้านหนึ่งไม่หยุดร้านอื่น ◂
-  const sweepTenants = isId(input?.tenantId)
-    ? [input.tenantId]
-    : (await prisma.$queryRaw<{ tenantId: string }[]>`
-        SELECT DISTINCT "tenantId" FROM "PosStaffCommission" WHERE status = 'SENT' AND "hrPayAdjustmentId" IS NOT NULL ORDER BY "tenantId" LIMIT ${PUSH_BATCH}`).map((x) => x.tenantId);
-  for (const tenantId of sweepTenants) {
+  // POS P3.5 ▸ fix2 N1 + fix3 N8: รายการที่ส่งไปแล้วแต่งวดของมันเพิ่งมีรอบจ่าย (ก่อนอนุมัติ / ก่อนผูกโปรไฟล์) ⇒ HR ย้ายไปงวดแรกที่ว่าง —
+  //   ร้านที่เคยส่งเข้า HR (แถว SENT ที่มีรายการ) และยังมีระบบ HR · ลำดับ md5(ร้าน:ชั่วโมง) แบบ keyset (เกลือเดียวกับรอบส่ง) จนถึง deadline ·
+  //   ล้มร้านหนึ่งไม่หยุดร้านอื่น ◂
+  let sweepCursor: string | null = null;
+  let sweepStopped = false;
+  for (;;) {
     if (Date.now() >= deadline) {
-      res.stoppedEarly = true;
+      res.stoppedEarly = sweepStopped = true;
       break;
     }
-    try {
-      res.rehomed += await hrRehomeStrandedSystemAdjustments(tenantId);
-    } catch (e) {
-      res.failed++;
-      console.error(`[pos/staff-commission] rehome ${tenantId} ${(e as { name?: string })?.name ?? "Error"}`);
+    const tenants: { tenantId: string; h: string }[] = onlyTenant
+      ? [{ tenantId: onlyTenant, h: "" }]
+      : await prisma.$queryRaw<{ tenantId: string; h: string }[]>`
+          SELECT DISTINCT c."tenantId", md5(c."tenantId" || ':' || ${salt}) AS h
+          FROM "PosStaffCommission" c
+          WHERE c.status = 'SENT' AND c."hrPayAdjustmentId" IS NOT NULL
+            AND EXISTS (SELECT 1 FROM "AppSystem" s WHERE s."tenantId" = c."tenantId" AND s.type = 'HR')
+            AND (${sweepCursor}::text IS NULL OR md5(c."tenantId" || ':' || ${salt}) > ${sweepCursor}::text)
+          ORDER BY h
+          LIMIT ${PUSH_BATCH}`;
+    if (!tenants.length) break;
+    sweepCursor = tenants[tenants.length - 1]!.h;
+    for (const { tenantId } of tenants) {
+      if (Date.now() >= deadline) {
+        res.stoppedEarly = sweepStopped = true;
+        break;
+      }
+      try {
+        res.rehomed += await hrRehomeStrandedSystemAdjustments(tenantId);
+      } catch (e) {
+        res.failed++;
+        console.error(`[pos/staff-commission] rehome ${tenantId} ${(e as { name?: string })?.name ?? "Error"}`);
+      }
     }
+    if (onlyTenant || sweepStopped || tenants.length < PUSH_BATCH) break;
   }
   return res;
 }
