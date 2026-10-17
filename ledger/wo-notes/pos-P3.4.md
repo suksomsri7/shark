@@ -109,3 +109,4 @@ Oracle (each its own `test(pos)` commit; checks 42 → 49):
 Results at code head `3222d081` (QC4):
 - `qc-pos-p3.4` forced **49/49** ×2 (fix1-r1 · gates-fix1) · `--no-db` **15/15**.
 - `qc-pos-p1.9` 0 · `qc-pos-p1.15` 0 · `qc-hf-tx` 0 · `qc-pos-p2.6` 65/67 (red = pins ST1 PosDevice fields + L3 contract sha; behavioural part green incl. PAR) · `qc-pos-p2.2` 41/42 (red = pin S3 contract sha) · fitness no-env 0 · fitness QC4 0 · fitness-pos 0 · `gen-pos-api-docs --check` 0.
+- **Typecheck** (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`): head **18229723** dirty=0 (2026-10-17T01:04:59Z) → **exit 0**. (Earlier: f0ff7298 exit 0 · eca8f126 exit 0.) The only later commit is this ledger line.
