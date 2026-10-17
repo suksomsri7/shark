@@ -757,10 +757,10 @@ export async function discardOfflineSale(ctx: OfflineCtx, actor: RegisterActor, 
     if (youngProcessing(row)) return refuse("BUSY", "รายการนี้กำลังซิงก์ — ลองใหม่อีกครั้ง");
     // POS P3.4 ▸ fix1 N5 = F4 (CD-P34g): บิลของคีย์นี้ commit แล้ว (ล้มหลัง createSale ก่อนปรับแถว) ⇒ ห้ามทิ้ง · ปรับแถวเป็น SYNCED + audit ซิงก์ (ครั้งเดียว) ◂
     const committed = await db.posSale.findFirst({ where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, idempotencyKey: `${REG_KEY_PREFIX}${row.idempotencyKey}` }, select: { id: true, offlineRef: true, syncedAt: true, soldByUserId: true } });
-    if (committed) {
+    if (committed && committed.offlineRef === row.offlineRef) { // POS P3.4 ▸ fix2 N9: เฉพาะบิลออฟไลน์ของรายการนี้ — คีย์ชนบิลออนไลน์อื่น = ทิ้งได้ตามปกติ ◂
       const w = await db.posOfflineSale.updateMany({ where: { id: row.id, tenantId: sc.ctx.tenantId, status: STATUS.REJECTED }, data: { status: STATUS.SYNCED, saleId: committed.id, reason: null } });
       const had = await db.auditLog.count({ where: { tenantId: sc.ctx.tenantId, action: AUDIT_SYNCED, targetId: committed.id } });
-      if (w.count === 1 && committed.offlineRef === row.offlineRef && had === 0) {
+      if (w.count === 1 && had === 0) {
         await writeAudit({
           tenantId: sc.ctx.tenantId,
           actorId: sc.actor.userId,
