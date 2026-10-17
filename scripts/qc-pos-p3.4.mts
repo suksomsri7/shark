@@ -95,7 +95,7 @@ const CHECKS: readonly Def[] = [
   D("SY17", "SY", "[R10 มติ 7] คิวผู้จัดการ: list มี REJECTED ของสาขา (ไม่มี SYNCED) · accept ×2 = บิลเดียว · discard ×2 = DISCARDED ครั้งเดียว · เหตุผล < 5 ตัว → VALIDATION · accept หลัง discard → ปฏิเสธ · แคชเชียร์ไม่มี pos.shift.manage → PERMISSION_DENIED (list/accept/discard) · audit"),
   D("SY18", "SY", "[fix1 N1 · CD-P34g] ผู้ขายที่ตรวจแล้วเท่านั้น: โทเคนปลอมอ้าง OWNER / sellerUserId = OWNER + ส่วนลด 50% (เกินเพดานแคชเชียร์) ซิงก์โดย CASH → REJECTED · list แยก claimedSellerUserId (OWNER) / verifiedSellerUserId (CASH) · ผู้จัดการรับ → คิดด้วยเพดานของ CASH ⇒ ปฏิเสธ · ไม่มีบิล (ไม่มีบิลที่ soldBy = OWNER)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N1)
   D("SY19", "SY", "[fix1 N2 = F3 · fix2 G1 · CD-P34g/i] อ้างกะ A ที่ปิดแล้วขณะ soldAt อยู่ในกะ B ที่เปิด → ไม่ใช่ SHIFT_CLOSED · รับ = ผูกกะ B · กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
-  D("SY20", "SY", "[fix1 N3 · CD-P34g] เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
+  D("SY20", "SY", "[fix1 N3 · fix2 G2 N6 · CD-P34g/i] + บิลโปรที่มีสินค้า 86 ตอนซิงก์ → REVIEW · ทาง snapshot soldAt ∈ (pvu, pvu+15] ซิงก์ช้า → REVIEW · โปรซิงก์ภายใน 30 นาที → OK · เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
   D("SY21", "SY", "[fix1 N4 = F1 · CD-P34g] snapshot ภายใน 24 ชม. ไม่ถูกตัด: ขายบน S1 แล้วเครื่องออก S2 + S3 ก่อนซิงก์ → บิลบน S1 = OK · PosOfflineSnapshot ของเครื่อง 3 แถว"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
   D("SY22", "SY", "[fix1 N5 = F4 · CD-P34g] คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
   D("SY23", "SY", "[fix1 F2 · CD-P34g] ของหมด (86) หลังขายออฟไลน์: หมากฝรั่งถูก 86 ที่สาขาก่อนซิงก์ → บิลที่ขายไปแล้ว = OK · สินค้าที่ถูกเก็บถาวร (เค้ก) → REJECTED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F2)
@@ -2163,6 +2163,44 @@ async function runDb() {
       const th = readJson(rd(F.thPos));
       const en = readJson(rd(F.enPos));
       if (!mk || mk === "offline.refusal.other" || !THAI.test(String(getPath(th?.register, mk) ?? "")) || !String(getPath(en?.register, mk) ?? "").trim() || THAI.test(String(getPath(en?.register, mk) ?? ""))) p.push(`ข้อความ PRICE_WINDOW_REVIEW ${mk ?? "-"}`);
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix2 G2 N6 · CD-P34i): (d) บิลโปรที่มีสินค้าที่ถูก 86 ตอนซิงก์ → ยังเข้าคิว PRICE_WINDOW_REVIEW (ราคาตอนซิงก์คิดทางออฟไลน์ ไม่ใช้ด่าน 86)
+      {
+        const off86 = await call(catalog, "setAvailability", ctxU("A"), A("OWNER"), { productId: PR.gum, unitId: U.A, available: false, source: "MANUAL" });
+        if (off86?.ok === false) p.push(`86 หมากฝรั่ง ${codeOf(off86)}`);
+        const gumNow = Number(((await P.posProduct.findFirst({ where: { tenantId: T, id: PR.gum }, select: { basePriceSatang: true } }).catch(() => null)) as Any)?.basePriceSatang ?? 1800);
+        const id = mkItem("D1", { lines: [{ productId: PR.tea, qty: 1 }, { productId: PR.gum, qty: 1 }], total: 3000 + gumNow, soldAt: T0 - 140 * MIN });
+        const rd2 = await sync("D1", [id]);
+        const xd = resOf(rd2, id.offlineRef);
+        if (xd?.status !== "REJECTED" || xd?.reason !== "PRICE_WINDOW_REVIEW" || xd?.saleId) p.push(`โปร + สินค้า 86 ${stOf(xd)} ${why(rd2)} (คาด PRICE_WINDOW_REVIEW)`);
+        await call(catalog, "setAvailability", ctxU("A"), A("OWNER"), { productId: PR.gum, unitId: U.A, available: true, source: "MANUAL" });
+      }
+      // (e) ทาง snapshot: soldAt ∈ (pvu, pvu + 15 นาที] ซิงก์ช้า 2 ชม. + ราคา snapshot ถูกกว่าราคาตอนซิงก์ → PRICE_WINDOW_REVIEW
+      {
+        DEV.N7 = `p34${RAND}n7dev`;
+        const rg = await call(devMod, "registerDevice", ctxU("A"), A("OWNER"), { name: `เครื่อง N7 ${RAND}`, deviceCode: DEV.N7 });
+        DEVID.N7 = String(rg?.device?.id ?? "");
+        const sn7 = await issue("N7", Date.now() - 3 * H);
+        if (sn7?.ok === true) SN.N7 = sn7.snapshot;
+        else p.push(`snapshot N7 ${codeOf(sn7)}`);
+        const gumSnap = Number((Array.isArray(SN.N7?.products) ? SN.N7.products : []).find((x: Any) => x?.id === PR.gum)?.priceSatang ?? -1);
+        const up = await call(catalog, "setPrice", cc(), PR.gum, gumSnap + 200);
+        if (up?.ok === false) p.push(`setPrice gum ${codeOf(up)}`);
+        const soldE = Date.now() - 2 * H;
+        await P.$executeRawUnsafe(`UPDATE "PosOfflineSnapshot" SET "priceMap" = jsonb_set("priceMap", '{$priceValidUntil}', to_jsonb($1::text)) WHERE "tenantId" = $2 AND hash = $3`, iso(soldE - 5 * MIN), T, String(SN.N7?.hash ?? "none"));
+        const ie = mkItem("N7", { lines: [{ productId: PR.gum, qty: 1 }], total: gumSnap, soldAt: soldE, shift: null });
+        const re = await sync("N7", [ie]);
+        const xe = resOf(re, ie.offlineRef);
+        if (xe?.status !== "REJECTED" || xe?.reason !== "PRICE_WINDOW_REVIEW" || xe?.saleId) p.push(`ทาง snapshot ในช่วงผ่อน pvu ซิงก์ช้า ${stOf(xe)} ${why(re)} (คาด PRICE_WINDOW_REVIEW)`);
+      }
+      // (f) ตัวควบคุมบวก: บิลโปรที่ซิงก์ภายใน 30 นาที (opts.now = soldAt + 20 นาที) → OK ยอด 3000
+      {
+        const soldF = T0 - 130 * MIN;
+        const iF = mkItem("D1", { lines: [{ productId: PR.tea, qty: 1 }], total: 3000, soldAt: soldF });
+        const rF = await sync("D1", [iF], { now: soldF + 20 * MIN });
+        const xF = resOf(rF, iF.offlineRef);
+        const sF = await saleRow(xF?.saleId);
+        if (xF?.status !== "OK" || sF?.grandTotalSatang !== 3000) p.push(`โปรซิงก์ภายใน 30 นาที ${stOf(xF)} ยอด ${sF?.grandTotalSatang ?? "-"} ${why(rF)} (คาด OK 3000)`);
+      }
     }
     if (!NO_FX("SY20")) chk("SY20", p.length === 0, "pvu + 15 นาที → CLOCK_INVALID · โปรซิงก์ช้า → PRICE_WINDOW_REVIEW → accept 3000 · audit priceAtSyncSatang · รหัส + ข้อความ", FXB(joinP(p)));
   }
