@@ -373,7 +373,7 @@ const CONSUMER_WIRING: readonly [string, string][] = [
   ["pos.order.cancelled", "onOrderEventChat"],
   ["chat.message.received", "onChatMessageReceivedBot"],
 ];
-const SALE_PAID_CHAIN = 'compose(compose(compose(posSalePaid, stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))';
+const SALE_PAID_CHAIN = 'compose(compose(compose(bothMain(posSalePaid, async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt)), stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))'; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.7 CD-B1 · base 42b823e9 carries the P3.5 chain) — เดิม 'compose(compose(compose(posSalePaid, stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))'
 const CHAT_DEFAULTS = { receiptAuto: false, refundNotice: false, orderStatus: false, autoReply: false, statusKinds: ["accepted", "ready", "cancelled", "paid"], botPauseHours: 24 };
 const TEXT_KEYS = ["accepted", "ready", "paid", "cancelled", "refundLine", "expired", "payRequest", "refundNotice", "botNotFound", "botHandoff", "botOrderLink", "botOrderClosed"] as const;
 const INTENT_TABLE: readonly [string, string | null][] = [
