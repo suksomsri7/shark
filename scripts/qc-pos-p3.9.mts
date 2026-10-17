@@ -69,6 +69,7 @@ const CHECKS: readonly Def[] = [
   D("TL6", "T", "[R2] pos_top_products (14 วัน · > 10 สินค้าขาย) → แถว ≤ 10 · JSON ≤ 8 KB · ทุกผลของ tool อ่านในรอบนี้ ≤ 8 KB"),
   D("TL7", "T", "[R1 P2.13 มติ 7] คีย์ pos-read: sales_summary ได้ผล · pos_set_price / void_sale / pos_create_sale ปฏิเสธ ไม่มีข้อเสนอ · toolAllowedForApiKey + posToolAllowedForScopes ตรงกัน"),
   D("TL8", "T", "[R1] ข้อมูลร้าน T2 ไม่โผล่ในผลของเจ้าของ T (ชื่อสินค้า/ยอด) · actor ของ T2 บน ctx ของ T → ปฏิเสธ · unitId ของ T2 → error"),
+  D("TL9", "T", "[fix1 F3 · CD-P39c] คีย์กลาง (scope ว่าง ไม่ผูกระบบ): sales_summary/sales_by_day ได้ (CD-7) · void_sale + pos_create_sale + pos_set_price ปฏิเสธ (toolAllowedForApiKey + posToolAllowedForScopes + runTool) · ไม่มีข้อเสนอ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 TL9)
   // ── PR ข้อเสนอ ──
   D("PR1", "P", "[R1 มติ 7] ผู้จัดการ A pos_set_price → ข้อเสนอ PENDING kind pos.products.setPrice · ราคายังไม่เปลี่ยน · ผลมี proposalId + waiting user_confirm"),
   D("PR2", "P", "[R1 มติ 7] ผู้จัดการยืนยัน → ok · ราคาเปลี่ยนครั้งเดียวผ่าน catalog · AuditLog ของสินค้าโดยผู้จัดการ actorType USER ≥ 1"),
@@ -1168,6 +1169,42 @@ async function runDb() {
     const u = await rt("OWNER", "sales_summary", { ...RANGE, unitId: U.X });
     if (!isErr(u.j)) p.push(`unitId T2 ไม่ error ${short(u.raw, 50)}`);
     chk("TL8", p.length === 0, "ไม่ข้ามร้าน", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 TL9) ▸ คีย์กลางรุ่นเดิม: อ่านชื่อเดิมได้ · เสนอเขียนของ POS ไม่ได้ (ตั้งใจ — F3) ◂
+  {
+    const p: string[] = [];
+    const gen: Any = typeof actorMod?.aiApiKeyActor === "function" ? actorMod.aiApiKeyActor({ tenantId: T, keyId: `qc39${RAND}general`, scopes: [], systemId: null }) : null;
+    if (!gen) p.push("(ฟิกซ์เจอร์) aiApiKeyActor");
+    const want: [string, boolean][] = [["sales_summary", true], ["sales_by_day", true], ["void_sale", false], ["pos_create_sale", false], ["pos_set_price", false]];
+    for (const [t, w] of want) {
+      const a = callSync(skillsMod, "toolAllowedForApiKey", t, []);
+      const b = callSync(bridge, "posToolAllowedForScopes", t, []);
+      if (a !== w) p.push(`toolAllowedForApiKey(${t},[]) ${short(a, 20)}`);
+      if (b !== w) p.push(`posToolAllowedForScopes(${t},[]) ${short(b, 20)}`);
+    }
+    let conv = "";
+    if (gen && !fx) {
+      await step("ห้องคีย์กลาง", async () => {
+        conv = convMod.newConversationId({ tenantId: T, actor: gen });
+        await P.aiConversation.create({ data: { id: conv, tenantId: T, title: "qc39 general key" } });
+      });
+    }
+    const run = async (name: string, args: Any) => {
+      try {
+        return parseJ(String(await toolsMod.runTool({ tenantId: T, actor: gen, ...(conv ? { conversationId: conv } : {}) }, name, args)));
+      } catch (e) {
+        return { error: `THROW ${(e as Error).message.slice(0, 60)}` };
+      }
+    };
+    const before = Number(await P.aiProposal.count({ where: { tenantId: T } }).catch(() => -1));
+    const v = await run("void_sale", { saleId: V1.saleId || "none", reason: "คีย์กลางขอยกเลิก" });
+    const c = await run("pos_create_sale", { unitName: `${TAG} สาขาA`, lines: [{ name: PN.bar, qty: 1, unitPriceSatang: 2500 }], payType: "CASH" });
+    if (!isErr(v)) p.push(`void_sale คีย์กลางไม่ถูกปฏิเสธ ${short(v, 50)}`);
+    if (!isErr(c)) p.push(`pos_create_sale คีย์กลางไม่ถูกปฏิเสธ ${short(c, 50)}`);
+    if (Number(await P.aiProposal.count({ where: { tenantId: T } }).catch(() => -1)) !== before) p.push("มีข้อเสนอเกิด");
+    const r = await run("sales_summary", { ...RANGE });
+    if (isErr(r)) p.push(`(ตัวควบคุม) sales_summary คีย์กลาง error ${short(r.error, 60)}`);
+    chk("TL9", p.length === 0, "อ่านได้ · เสนอเขียนไม่ได้", FXB(joinP(p)));
   }
 
   // ════════ PR ════════
