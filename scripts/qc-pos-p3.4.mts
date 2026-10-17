@@ -100,6 +100,7 @@ const CHECKS: readonly Def[] = [
   D("SY22", "SY", "[fix1 N5 = F4 · CD-P34g] คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
   D("SY23", "SY", "[fix1 F2 · CD-P34g] ของหมด (86) หลังขายออฟไลน์: หมากฝรั่งถูก 86 ที่สาขาก่อนซิงก์ → บิลที่ขายไปแล้ว = OK · สินค้าที่ถูกเก็บถาวร (เค้ก) → REJECTED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F2)
   D("SY24", "SY", "[fix1 F6 · CD-P34g] เลข OFF รหัส C<n> ต้องเป็นรูปมาตรฐาน: OFF-<รหัสเครื่อง>-00011 (เติมศูนย์เกิน) → REJECTED ไม่มีบิล · OFF-<รหัสเครื่อง>-0012 → OK"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F6)
+  D("SY25", "SY", "[fix2 N8 · CD-P34i] snapshot: ออกซ้ำเครื่องเดิมภายใน 60 วิ → RATE_LIMITED · hash ที่แถว REJECTED ยังอ้างอยู่ไม่ถูกตัด แม้เก่ากว่า 48 ชม. และไม่ใช่ 2 ล่าสุด (3 แถว)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix2 N8)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2286,6 +2287,36 @@ async function runDb() {
       if (xg?.status !== "OK") p.push(`มาตรฐาน ${stOf(xg)}`);
     }
     if (!NO_FX("SY24")) chk("SY24", p.length === 0, "-00011 REJECTED · -0012 OK", FXB(joinP(p)));
+  }
+  // ═════ SY25 snapshot: เพดานอัตรา + ไม่ตัด hash ที่ยังอ้าง (N8) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix2 N8)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      for (const k of ["N8", "N9"]) {
+        DEV[k] = `p34${RAND}${k.toLowerCase()}dev`;
+        const rg = await call(devMod, "registerDevice", ctxU("A"), A("OWNER"), { name: `เครื่อง ${k} ${RAND}`, deviceCode: DEV[k] });
+        DEVID[k] = String(rg?.device?.id ?? "");
+      }
+      const tq = Date.now() - 5 * MIN;
+      const q1 = await issue("N8", tq);
+      const q2 = await issue("N8", tq + 10_000);
+      if (q1?.ok !== true || q2?.ok !== false || q2?.code !== "RATE_LIMITED") p.push(`ออกซ้ำใน 60 วิ ${codeOf(q1)} → ${codeOf(q2)} (คาด RATE_LIMITED)`);
+      // N9: S1 เมื่อ 50 ชม.ก่อน · รายการที่อ้าง S1 ถูกปฏิเสธ (เก่ากว่า 24 ชม.) · แล้วออก S2 S3 ⇒ S1 ต้องยังอยู่
+      const s1 = await issue("N9", Date.now() - 50 * H);
+      if (s1?.ok === true) SN.N9 = s1.snapshot;
+      else p.push(`S1 ${codeOf(s1)}`);
+      const it = mkItem("N9", { lines: [W(1)], total: 1000, soldAt: Date.now() - 49 * H, shift: null, hash: String(SN.N9?.hash ?? "none") });
+      const r = await sync("N9", [it]);
+      if (resOf(r, it.offlineRef)?.status !== "REJECTED") p.push(`รายการบน S1 ${stOf(resOf(r, it.offlineRef))} ${why(r)}`);
+      for (const ago of [3, 1]) {
+        const sx = await issue("N9", Date.now() - ago * MIN);
+        if (sx?.ok !== true) p.push(`ออก snapshot ${ago} นาที ${codeOf(sx)}`);
+      }
+      const n = Number(await P.posOfflineSnapshot.count({ where: { tenantId: T, deviceId: { in: [DEVID.N9, DEV.N9] } } }).catch(() => -1));
+      const kept = Number(await P.posOfflineSnapshot.count({ where: { tenantId: T, hash: String(SN.N9?.hash ?? "none") } }).catch(() => -1));
+      if (n !== 3 || kept !== 1) p.push(`PosOfflineSnapshot ของ N9 ${n} แถว · S1 ${kept} (คาด 3 · 1)`);
+    }
+    if (!NO_FX("SY25")) chk("SY25", p.length === 0, "RATE_LIMITED · hash ที่ยังอ้างไม่ถูกตัด", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
