@@ -324,7 +324,7 @@ export async function sweepPosBoard(opts: { now?: Date; deadline?: Date | number
       res.systems += 1;
       try {
         const units = await linkedUnitIds(sys.tenantId, sys.id);
-        if (soldOutOn) await sweepSoldOut(sys, b, units, now, res);
+        if (soldOutOn) await sweepSoldOut(sys, b, units, now, deadline, res);
         if (refundOn) await sweepRefunds(sys, b, now, res);
         if (briefOn) await postTeamBrief(sys, r, now, res);
       } catch (e) {
@@ -338,57 +338,84 @@ export async function sweepPosBoard(opts: { now?: Date; deadline?: Date | number
   return res;
 }
 
-/** R5 — 86 นาน ≥ N ชม. (แหล่งที่เลือก) → การ์ด `pos-86:<unit>:<product>:<markId>` · 86 ที่ markId หายไปแล้ว (คืนขาย/86 ใหม่) → ปิดการ์ด */
-async function sweepSoldOut(sys: PosSys, b: PosBoardSettings, units: string[], now: Date, res: SweepPosBoardResult): Promise<void> {
+/**
+ * R5 — 86 นาน ≥ N ชม. (แหล่งที่เลือก) → การ์ด `pos-86:<unit>:<product>:<markId>` · 86 ที่ markId หายไปแล้ว (คืนขาย/86 ใหม่) → ปิดการ์ด
+ * POS P3.8 ▸ fix2 N2: ทั้งสองการสแกน (1) จำกัดที่สาขาของ POS นี้ (2) ตัดแถวที่ทำแล้วออกตั้งแต่ใน query (mark ที่มีการ์ดแล้ว · การ์ดที่ completedAt แล้ว/มีความเห็นกลับมาขายแล้ว)
+ *   (3) อ่านเป็นหน้า ๆ ละ PAGE แถวด้วย cursor ตาม id จนหมดหรือถึงงบเวลา (ไม่มีหน้าต่างตายตัว) ◂
+ */
+const PAGE = 200;
+async function sweepSoldOut(sys: PosSys, b: PosBoardSettings, units: string[], now: Date, deadline: number, res: SweepPosBoardResult): Promise<void> {
   const tenantId = sys.tenantId;
   const rule = b.rules.soldOut;
   const locale = localeOf(sys.settings);
-  if (units.length && rule.sources.length) {
-    const marks = await prisma.posAvailabilityMark.findMany({
-      where: { tenantId, systemId: sys.id, unitId: { in: units }, source: { in: rule.sources }, markedAt: { lte: new Date(now.getTime() - rule.hours * HOUR_MS) } },
-      orderBy: [{ markedAt: "asc" }, { id: "asc" }],
-      take: MAX_ROWS,
-      select: { id: true, unitId: true, productId: true, source: true, markedAt: true },
-    });
-    for (const m of marks) {
-      const key = posBoardKeys.soldOut(m.unitId, m.productId, m.id);
-      if (await cardBySourceKey(tenantId, key)) continue;
-      const target = await resolveBoard(tenantId, b, m.unitId);
-      if (!target) {
-        await warnOnce(tenantId, sys.id, "soldOut", now, "เปิดการ์ดสินค้าหมดนานไม่ได้ — บอร์ดที่ตั้งไว้ใช้ไม่ได้", `unit:${m.unitId} board:${posBoardIdForUnit(b, m.unitId) ?? "-"}`);
-        continue;
+  if (!units.length) return;
+  // ── (ก) mark ที่นานพอและยังไม่มีการ์ด (NOT EXISTS ต่อกุญแจ · อ่านอย่างเดียว) ──
+  if (rule.sources.length) {
+    const cutoff = new Date(now.getTime() - rule.hours * HOUR_MS);
+    let cursor = "";
+    for (;;) {
+      if (Date.now() > deadline) return;
+      const marks = await prisma.$queryRaw<{ id: string; unitId: string; productId: string; source: string; markedAt: Date }[]>`
+        SELECT m.id, m."unitId", m."productId", m.source::text AS source, m."markedAt"
+        FROM "PosAvailabilityMark" m
+        WHERE m."tenantId" = ${tenantId} AND m."systemId" = ${sys.id} AND m."unitId" = ANY(${units}::text[])
+          AND m.source::text = ANY(${rule.sources as string[]}::text[]) AND m."markedAt" <= ${cutoff} AND m.id > ${cursor}
+          AND NOT EXISTS (SELECT 1 FROM "KanbanCard" k WHERE k."tenantId" = m."tenantId" AND k."sourceKey" = 'pos-86:' || m."unitId" || ':' || m."productId" || ':' || m.id)
+        ORDER BY m.id ASC LIMIT ${PAGE}`;
+      for (const m of marks) {
+        if (Date.now() > deadline) return;
+        const key = posBoardKeys.soldOut(m.unitId, m.productId, m.id);
+        const target = await resolveBoard(tenantId, b, m.unitId);
+        if (!target) {
+          await warnOnce(tenantId, sys.id, "soldOut", now, "เปิดการ์ดสินค้าหมดนานไม่ได้ — บอร์ดที่ตั้งไว้ใช้ไม่ได้", `unit:${m.unitId} board:${posBoardIdForUnit(b, m.unitId) ?? "-"}`);
+          continue;
+        }
+        const product = await prisma.posProduct.findFirst({ where: { id: m.productId, tenantId }, select: { name: true } });
+        const t = posSoldOutCardText({ hours: rule.hours, productName: product?.name ?? m.productId, unitName: await unitNameOf(tenantId, m.unitId), markedAt: m.markedAt, source: m.source }, locale);
+        const c = await systemCard(tenantId, target, { title: t.title, description: t.description, sourceKey: key, unitId: m.unitId, assignManager: b.assignManager });
+        if (c.created) res.created += 1;
       }
-      const product = await prisma.posProduct.findFirst({ where: { id: m.productId, tenantId }, select: { name: true } });
-      const t = posSoldOutCardText({ hours: rule.hours, productName: product?.name ?? m.productId, unitName: await unitNameOf(tenantId, m.unitId), markedAt: m.markedAt, source: m.source }, locale);
-      const c = await systemCard(tenantId, target, { title: t.title, description: t.description, sourceKey: key, unitId: m.unitId, assignManager: b.assignManager });
-      if (c.created) res.created += 1;
+      if (marks.length < PAGE) break;
+      cursor = marks[marks.length - 1]!.id;
     }
   }
-  // ── ปิดการ์ด 86 ที่ markId ไม่อยู่แล้ว (สาขาของ POS นี้เท่านั้น) ──
-  const open = await prisma.kanbanCard.findMany({
-    where: { tenantId, status: "ACTIVE", completedAt: null, sourceKey: { startsWith: "pos-86:" } },
-    orderBy: { id: "asc" },
-    take: MAX_ROWS,
-    select: { id: true, boardId: true, systemId: true, sourceKey: true, createdById: true },
-  });
-  const mine = open
-    .map((c) => ({ c, parts: String(c.sourceKey ?? "").split(":") }))
-    .filter((x) => x.parts.length === 4 && units.includes(x.parts[1]!) && isBoardSettingsId(x.parts[3]));
-  if (!mine.length) return;
-  const alive = new Set(
-    (await prisma.posAvailabilityMark.findMany({ where: { tenantId, id: { in: mine.map((x) => x.parts[3]!) } }, select: { id: true } })).map((m) => m.id),
-  );
-  for (const { c, parts } of mine) {
-    if (alive.has(parts[3]!)) continue;
-    const done = await prisma.kanbanColumn.findFirst({
-      where: { boardId: c.boardId, tenantId, systemId: c.systemId, status: "ACTIVE", isDoneColumn: true },
-      orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
-      select: { id: true },
+  // ── (ข) การ์ด 86 ที่ยังเปิดของสาขาของ POS นี้ (ยังไม่ completed · ยังไม่มีความเห็นกลับมาขาย) ที่ markId ไม่อยู่แล้ว → ปิด ──
+  const back = posSoldOutBackComment(locale);
+  let cursor = "";
+  for (;;) {
+    if (Date.now() > deadline) return;
+    const open = await prisma.kanbanCard.findMany({
+      where: {
+        tenantId,
+        status: "ACTIVE",
+        completedAt: null,
+        OR: units.map((u) => ({ sourceKey: { startsWith: `pos-86:${u}:` } })),
+        comments: { none: { body: back } },
+        ...(cursor ? { id: { gt: cursor } } : {}),
+      },
+      orderBy: { id: "asc" },
+      take: PAGE,
+      select: { id: true, boardId: true, systemId: true, sourceKey: true },
     });
-    if (done) {
-      const mv = await moveCard(moveCtx(tenantId, c.systemId), { cardId: c.id, toColumnId: done.id, force: true });
-      if (mv.ok) res.closed += 1;
-    } else if (await addSystemCardComment(tenantId, c.id, posSoldOutBackComment(locale))) res.commented += 1; // CD-P38-B1: ประตูของบอร์ดงาน (integrations)
+    const mine = open.map((c) => ({ c, parts: String(c.sourceKey ?? "").split(":") })).filter((x) => x.parts.length === 4 && isBoardSettingsId(x.parts[3]));
+    const alive = mine.length
+      ? new Set((await prisma.posAvailabilityMark.findMany({ where: { tenantId, id: { in: mine.map((x) => x.parts[3]!) } }, select: { id: true } })).map((m) => m.id))
+      : new Set<string>();
+    for (const { c, parts } of mine) {
+      if (alive.has(parts[3]!)) continue;
+      if (Date.now() > deadline) return;
+      const done = await prisma.kanbanColumn.findFirst({
+        where: { boardId: c.boardId, tenantId, systemId: c.systemId, status: "ACTIVE", isDoneColumn: true },
+        orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+        select: { id: true },
+      });
+      if (done) {
+        const mv = await moveCard(moveCtx(tenantId, c.systemId), { cardId: c.id, toColumnId: done.id, force: true });
+        if (mv.ok) res.closed += 1;
+      } else if (await addSystemCardComment(tenantId, c.id, back)) res.commented += 1; // CD-P38-B1: ประตูของบอร์ดงาน (integrations)
+    }
+    if (open.length < PAGE) break;
+    cursor = open[open.length - 1]!.id;
   }
 }
 
@@ -506,9 +533,11 @@ export async function createAnomalyCard(ctx: { tenantId: string; systemId: strin
     if (!(await canOpenCardOnBoard(tenantId, kActor, target.boardId))) return refuse("PERMISSION_DENIED", "ต้องเป็นผู้แก้ไขของบอร์ดงานนี้");
     const rep = await reportAnomalies({ tenantId, systemId: pos.id }, actor, { from: businessDate, to: businessDate });
     if (!rep.ok) return rep.code === "PERMISSION_DENIED" ? refuse("PERMISSION_DENIED", "ต้องมีสิทธิ์ดูรายงานจุดผิดปกติของสาขานี้") : refuse("NOT_FOUND", "ไม่พบแถวจุดผิดปกตินี้");
+    // POS P3.8 ▸ fix2 N3: แถวบางกฎ (A7) ไม่มี businessDate (null) — รายงานถูกขอ from = to = businessDate อยู่แล้ว ⇒ null = วันที่ขอ · กุญแจใช้วันที่ขอเสมอ ◂
+    const sameDay = (d: string | null) => d === null || d === businessDate;
     const row = rep.report.rows.find(
-      (x) => x.rule === rule && x.unitId === unitId && x.businessDate === businessDate && x.refType === refType && (x.refId ?? null) === refId,
-    ) ?? rep.report.rows.find((x) => x.rule === rule && x.unitId === unitId && x.businessDate === businessDate && x.refType === refType && x.refId === null && refId !== null && x.userId === refId);
+      (x) => x.rule === rule && x.unitId === unitId && sameDay(x.businessDate) && x.refType === refType && (x.refId ?? null) === refId,
+    ) ?? rep.report.rows.find((x) => x.rule === rule && x.unitId === unitId && sameDay(x.businessDate) && x.refType === refType && x.refId === null && refId !== null && x.userId === refId);
     if (!row) return refuse("NOT_FOUND", "ไม่พบแถวจุดผิดปกตินี้ในรายงาน");
     const key = posBoardKeys.anomaly(row.rule, row.unitId, businessDate, row.refId ?? row.userId ?? "unit");
     const had = await cardBySourceKey(tenantId, key);
