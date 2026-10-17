@@ -217,4 +217,5 @@ export type { ChatPaymentPosResult, ChatPaymentRefusal, ChatPaymentCode } from "
 export type { PosChatTarget, ReceiptChatPlan, RefundChatPlan, OrderChatPlan, OrderChatFacts, ChatOrderItem, ChatPreorderLinkResult, PosChatSettingsResult } from "./chat-link";
 export { POS_CHAT_DEFAULTS, POS_CHAT_STATUS_LABELS, bangkokHHmm, chatMoney, chatReasonLabel, chatText, matchBotIntent, posChatLang, posChatSettings, withStatusLink } from "./chat-link-shared";
 export type { PosBotIntent, PosChatLang, PosChatSettings, PosChatStatusKind, PosChatTextKey } from "./chat-link-shared";
+export type { RegisterActor, RegisterCtx } from "./register-shared";
 // ◂ POS P3.7

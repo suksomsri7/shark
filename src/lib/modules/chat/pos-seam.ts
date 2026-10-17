@@ -183,10 +183,12 @@ export type PosBotContext = {
   /** ข้อความล่าสุดที่พนักงานส่ง (OUT · มีผู้ส่ง) — ISO · null = ไม่มี */
   lastStaffOutAt: string | null;
   lastIn: { id: string; type: string; body: string | null; at: string } | null;
+  /** ข้อความเข้าที่ระบุ (input.messageId · ต้องเป็น IN ของห้องนี้) — ไม่ระบุ/ไม่พบ = null */
+  message: { id: string; type: string; body: string | null; at: string } | null;
 };
 
 /** บริบทของห้องสำหรับบอทตามกฎ (อ่านอย่างเดียว) — ห้องของร้านอื่น/ไม่มี = null · ไม่ throw */
-export async function botContext(input: { tenantId: string; conversationId: string }): Promise<PosBotContext | null> {
+export async function botContext(input: { tenantId: string; conversationId: string; messageId?: string | null }): Promise<PosBotContext | null> {
   try {
     if (!isRecord(input) || !isStr(input.tenantId) || !isStr(input.conversationId)) return null;
     const { tenantId, conversationId } = input;
@@ -195,10 +197,13 @@ export async function botContext(input: { tenantId: string; conversationId: stri
       select: { id: true, systemId: true, channel: true, unitId: true, assigneeUserId: true, meta: true, contact: { select: { id: true, partyId: true, customerId: true, lang: true } } },
     });
     if (!c) return null;
-    const [staff, lastIn] = await Promise.all([
+    const peek = { id: true, type: true, body: true, createdAt: true } as const;
+    const [staff, lastIn, one] = await Promise.all([
       prisma.chatMessage.findFirst({ where: { tenantId, conversationId, direction: "OUT", senderUserId: { not: null } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { createdAt: true } }),
-      prisma.chatMessage.findFirst({ where: { tenantId, conversationId, direction: "IN" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, type: true, body: true, createdAt: true } }),
+      prisma.chatMessage.findFirst({ where: { tenantId, conversationId, direction: "IN" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: peek }),
+      isStr(input.messageId) ? prisma.chatMessage.findFirst({ where: { id: input.messageId, tenantId, conversationId, direction: "IN" }, select: peek }) : Promise.resolve(null),
     ]);
+    const view = (m: { id: string; type: string; body: string | null; createdAt: Date } | null) => (m ? { id: m.id, type: m.type, body: m.body ? m.body.slice(0, BODY_PEEK_MAX) : null, at: m.createdAt.toISOString() } : null);
     const raw = isRecord(c.meta) ? c.meta.posBotPausedUntil : null;
     const paused = typeof raw === "string" && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : null;
     return {
@@ -210,7 +215,8 @@ export async function botContext(input: { tenantId: string; conversationId: stri
       assigneeUserId: c.assigneeUserId,
       posBotPausedUntil: paused,
       lastStaffOutAt: staff ? staff.createdAt.toISOString() : null,
-      lastIn: lastIn ? { id: lastIn.id, type: lastIn.type, body: lastIn.body ? lastIn.body.slice(0, BODY_PEEK_MAX) : null, at: lastIn.createdAt.toISOString() } : null,
+      lastIn: view(lastIn),
+      message: view(one),
     };
   } catch (e) {
     console.error("[chat/pos-seam] botContext", e instanceof Error ? e.name : "Error");

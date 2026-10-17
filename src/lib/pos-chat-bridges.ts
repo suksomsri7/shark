@@ -10,8 +10,8 @@
 // 🔴 ความยินยอม (R4): สมาชิกที่ถอนความยินยอม LINE (granted false) = ไม่ส่ง · ยังไม่เคยตั้ง (null) = ส่งได้ (ข้อความธุรกรรม) · ออเดอร์แพลตฟอร์ม = ไม่ส่งเลย
 // 🔴 PDPA (R10): ข้อความมีแค่รหัส/ยอด/เวลา/ลิงก์ · audit/ops เก็บรหัส/ไอดี ไม่เก็บเนื้อความ/LINE id/เบอร์/ชื่อ
 // 🔴 deps (CD-P3): send = ตัวส่งที่ฉีดเข้ารอยต่อ · notify = แทนรอยต่อทั้งตัว (สปาย) · now = นาฬิกาของด่านพัก/อัตรา/หมดอายุ — production ไม่ส่งอะไร
-import type { OutboxEvent } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
+import { prisma } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { botContext, notifyCustomer as chatNotifyCustomer, setBotPaused, type NotifyCustomerInput, type NotifyCustomerResult, type PosSeamSend } from "@/lib/modules/chat";
@@ -37,7 +37,8 @@ import type { RegisterActor, RegisterCtx } from "@/lib/modules/pos";
 export { notifyCustomer } from "@/lib/modules/chat";
 
 export type PosChatDeps = { send?: PosSeamSend; notify?: (input: NotifyCustomerInput) => Promise<NotifyCustomerResult>; now?: Date };
-type Evt = Pick<OutboxEvent, "tenantId" | "type" | "payload"> & Partial<Pick<OutboxEvent, "id" | "systemId" | "unitId" | "idempotencyKey">>;
+/** แถว outbox (ตัวระบายคิวส่ง {id tenantId type payload systemId unitId} · ข้อสอบ/ผู้เรียกตรงส่งแถวเต็มได้) */
+type Evt = { tenantId: string; type: string; payload: unknown; id?: string; systemId?: string | null; unitId?: string | null; idempotencyKey?: string | null };
 
 const OPS_SOURCE = "pos.chat";
 const OPS_NOTIFY = "pos.chat.notify";
@@ -236,10 +237,13 @@ export async function ordersForChatCustomer(input: { tenantId: string; conversat
   }
 }
 
-const inboundIdOf = (evt: Evt): string | null => {
-  const m = /^chat\.msg\.(.+)$/.exec(str(evt?.idempotencyKey));
+/** id ของข้อความเข้าของ event (คีย์ outbox `chat.msg.<messageId>` · ตัวระบายไม่ส่งคีย์มา = อ่านจากแถว event ของร้านนี้) */
+async function inboundIdOf(evt: Evt): Promise<string | null> {
+  let key = str(evt?.idempotencyKey);
+  if (!key && evt?.id) key = (await prisma.outboxEvent.findFirst({ where: { id: evt.id, tenantId: evt.tenantId }, select: { idempotencyKey: true } }).catch(() => null))?.idempotencyKey ?? "";
+  const m = /^chat\.msg\.(.+)$/.exec(key);
   return m ? m[1]! : null;
-};
+}
 /**
  * chat.message.received (ต่อท้ายสายเดิม) → บอทตามกฎ: สวิตช์ autoReply ของ POS ของสาขาห้อง · ข้อความเข้าล่าสุดเป็นตัวหนังสือ (= ข้อความของ event นี้) ·
  * ช่องทาง LINE/WEBCHAT · ไม่มีผู้รับผิดชอบ · พนักงานไม่ได้ตอบใน 30 นาที · ไม่ได้พักบอท · ≤ 1 คำตอบ/ห้อง/20 วิ + ≤ 30/วัน (posbot:<ห้อง>) ·
@@ -251,16 +255,23 @@ export async function onChatMessageReceivedBot(evt: Evt, deps?: PosChatDeps): Pr
     const conversationId = str(payloadOf(evt).conversationId);
     if (!tenantId || !conversationId) return;
     const now = deps?.now ?? new Date();
-    const ctx = await botContext({ tenantId, conversationId });
-    if (!ctx || (ctx.channel !== "LINE" && ctx.channel !== "WEBCHAT")) return;
-    const pos = await chatLink.systemForUnit({ tenantId, unitId: ctx.unitId });
+    // สวิตช์ก่อน (สาขาของห้อง = unitId ของ event · ปิด = ไม่อ่านแชทเลย) แล้วจึงอ่านบริบทห้อง
+    const evtUnit = typeof evt.unitId === "string" && evt.unitId ? evt.unitId : null;
+    let pos = evtUnit || evt.unitId === null ? await chatLink.systemForUnit({ tenantId, unitId: evtUnit }) : null;
+    if (pos && !pos.chat.autoReply) return;
+    const first = await botContext({ tenantId, conversationId });
+    if (!first || (first.channel !== "LINE" && first.channel !== "WEBCHAT")) return;
+    if (!pos || first.unitId !== evtUnit) pos = await chatLink.systemForUnit({ tenantId, unitId: first.unitId });
     if (!pos?.chat.autoReply) return;
-    const inId = inboundIdOf(evt) ?? ctx.lastIn?.id ?? null;
-    if (!ctx.lastIn || !inId || ctx.lastIn.id !== inId || ctx.lastIn.type !== "TEXT") return;
+    // ข้อความของ event นี้ (ไม่รู้ = ข้อความเข้าล่าสุด) ต้องเป็นตัวหนังสือ — รูป/สติกเกอร์/เสียง = เงียบ
+    const inId = (await inboundIdOf(evt)) ?? first.lastIn?.id ?? null;
+    const ctx = inId && inId !== first.lastIn?.id ? await botContext({ tenantId, conversationId, messageId: inId }) : first;
+    const msg = ctx && inId ? (ctx.lastIn?.id === inId ? ctx.lastIn : ctx.message) : null;
+    if (!ctx || !msg || !inId || msg.type !== "TEXT") return;
     if (ctx.assigneeUserId) return;
     if (ctx.lastStaffOutAt && now.getTime() - Date.parse(ctx.lastStaffOutAt) < BOT_STAFF_QUIET_MS) return;
     if (ctx.posBotPausedUntil && Date.parse(ctx.posBotPausedUntil) > now.getTime()) return;
-    const intent = matchBotIntent(ctx.lastIn.body);
+    const intent = matchBotIntent(msg.body);
     if (!intent) return;
     const lang = ctx.contact.lang;
     let text: string;
