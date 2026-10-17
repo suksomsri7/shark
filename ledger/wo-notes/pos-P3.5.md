@@ -106,3 +106,27 @@ qc-pos-p1.15 40/40 · p1.9 53/53 · p1.17 40/40 · p1.18 80/81 (ST2 = CD-B3; S1 
   - `qc-pos-p2.13` ST5 (`:69` · `:350/:352`): "prisma/ เปลี่ยน: …migration.sql,prisma/schema/pos.prisma · src/lib/outbox-consumers.ts ถูกแก้".
   - `qc-hf-fu` ST1 (`:41` · `:233` · `:296`): "prisma เปลี่ยนจากฐาน c3c52ef1/merge-base c5fc223b · register-shared.ts … · register.ts เปลี่ยนจากฐาน (§4 ห้ามแตะ)".
   - Counts: p2.7 40/42 · p2.8 60/61 · p2.10 12/13 · p2.12 32/33 · p2.13 53/54 · hf-fu 28/29.
+
+## Fix round 2 delivered (controller rulings CD-P35c · 17 Oct 2026)
+Oracle 45 → **53** (CM7 · SG11 · SG12 · SG13 · PY7 · PY8 · PY9 · PY10 — 8 adds; the review's "54" recount = 53). Each ORACLE-ADD is its own `test(pos)` commit (marker `// ORACLE-ADD ผู้คุม 17 ต.ค. (P3.5 fix2 <id>)`).
+- **Red-before control:** the 8 adds were committed while the product code was still byte-equal to 3fbb1225 (`git diff 3fbb1225 HEAD -- src prisma` empty — no swap needed, nothing to restore). Forced run then: **45/53**, exactly the 8 new ids red (CM7 SG11 SG12 SG13 PY7 PY8 PY9 PY10), every earlier id green (`/tmp/…/scratchpad/p35b/red-fix2.txt`).
+| item | commit | change |
+|---|---|---|
+| CM7 / N4 | 2c39c5aa / 80691bc8 | `staffCommissionRefundShare(…, qty?: {q, Q})` — line net ≤ 0 ⇒ `halfUp(acc×q/Q)`, completing refund keeps the remainder; consumer passes `{q, Q}` |
+| SG11 / N5 | 1f8f7433 / 78dcfa3a | anonymous off-schedule deny also writes `pos.staff.pin_failed` (same shape/bucket as `matchAnonymousPin`) |
+| SG12 / N6 | 4aa8c0ae / 15adb697 | gate + lock-screen `inSchedule` test yesterday's row (minute+1440) and tomorrow's (minute−1440); cap = that row's day + end + late; seam items gain additive `adjacent {yesterday, tomorrow}` |
+| SG13 / F3 | 66a07d04 / 27a4661f | OWNER/MANAGER exempt before any HR read; server-only `opts.hrItem` seam (`VerifyStaffPinOpts`) |
+| PY7 PY8 / N1 | ceae9334 ccab6312 / aef925b3 | HR-owned block `// POS P3.5 ▸ fix2 N1` in `hr/payroll.ts`: system adjustment = `crmCommissionId null ∧ requestedById null ∧ kind ∈ {COMMISSION, DEDUCTION}` → move-on-approve (`decideAdjustment`) + new `rehomeStrandedSystemAdjustments(tenantId)` (re-export block in `hr/index.ts`), called per tenant by the POS push · `adjustmentStatuses` + `periodKey` · OP HR owner line |
+| PY9 / N2 | 87146221 / f45ffb54 | raw `SELECT DISTINCT tenantId,userId` (tenants with an HR system) ordered by `md5(tenant:user:hour)` keyset loop until the deadline · pre-filter `activeLinkedUserIds` |
+| PY10 / N3 | e00b2285 / 943b3b81 | target = max(first free month from the row month, month after the latest run) |
+| N7 | 99ac6b9f | `hrPayrollEmployeeOf` inside the per-pair try |
+| F4 | 8171f0f5 | `clockSelf(input, {tx})` (4 names unchanged) · `pos-seam-read.linkedEmployeeOf(…, tx)` · HR-owned marked hunks in `hr/service.ts` (`clock`/`nextClockKind`/`getSchedule` accept `opts.tx`, explicit tenant/system scope, `HrTx` type) · `posClockForShift` runs it inside its lock tx · OP HR owner line |
+| OP design | 1fc16980 | HR REJECT/withdraw ⇒ POS rows stay SENT, `hrStatus` visible, re-open = later card |
+Info (b)(c) accepted, no change.
+
+### Gates (head 1fc16980 · dirty 0 · QC4)
+- `qc-pos-p3.5` forced **53/53 · 53/53** · `--no-db` **11/11**.
+- HR set all green: qc-hr 9/9 · hr-attendance 31/31 · hr-payadjust 27/27 · hr-roster 24/24 · hr-leave-booking 14/14 · payroll 19/19 · payroll-reverse 14/14 · crm-c3.3 90/90 · booking-hours-hr 13/13.
+- qc-pos-p1.15 40/40 · p1.9 53/53 · p2.1 55/55 · p1.18 81/81 · qc-hf-hr-privacy 194/194.
+- fitness no env 53/53 · QC4 env 53/53 · `gen-pos-api-docs --check` 0 · **typecheck exit 0** (00:21:18Z → 00:24:11Z, heap 8192 · ISO_MEM 10500M).
+- Lane-pin reds unchanged from fix round 1 (p2.7 ST1/ST3 · p2.8 ST6 · p2.10 ST2 · p2.12 ST1 · p2.13 ST5 · hf-fu ST1) — not re-run this round; controller re-pins at merge.
