@@ -88,3 +88,35 @@ Read-only: diff eca8f126..f10e7669 (22 commits). Source changes are only in offl
 - **F6**: `C<n>` refs must satisfy `parseOfflineRef`, else VALIDATION ✓.
 - **Oracle**: ORACLE-ADDs SY18–SY24 each map to one ruling and were red before the fixes (40/49, per notes). The F5 ORACLE-EDIT (SY13) is in its own commit. CD-P34h `6bc89969`: SY6 → REVIEW, then accept at 3000 (still proves pricing at soldAt) + the SY5 count after accept; SEC3 issues its first 2 snapshots at −30/−29 h. Both are minimal and forced by N3/N4 ✓.
 - **Typecheck**: notes §10 records 18229723 dirty=0 exit 0; the only later commit is ledger ✓.
+
+## Hunter re-check (f10e7669) — N1–N5 closed · N6 Med · N7–N9 Low
+# P3.4 S HUNTER re-check @ f10e7669 (code 3222d081): verdict = FINDINGS N6-N9 (1 MEDIUM · 3 LOW). Not CLEAN.
+Method: read the diff eca8f126..3222d081 plus oracle edit 6bc89969; pure reading. Line refs: offline-sync.ts (os) and register.ts (reg) at 3222d081.
+**(1) N1-N5 re-walked**
+- **N1 closed.** os:540 stores the token user verified at soldAt, else the sync user. Accept (os:686, os:410-417) uses only that; a seller who can no longer sell → SELLER_MISMATCH, never the manager. A forged token or owner claim now prices with the cashier's caps.
+- **N2 closed.** Forced reject → accept binds the recorded or covering shift if OPEN, else the device's OPEN shift (os:393-396). The gap case gives SHIFT_REQUIRED (os:403). Residual by ruling 7: soldAt backdated into a really-closed shift → SHIFT_CLOSED → off-shift; that is a visible manager decision.
+- **N3 only partly closed (see N6).** The pvu+15 CLOCK_INVALID check (os:374) and the review on the price-at-soldAt path (reg:2662) work.
+- **N4 closed** (os:288-293: last 24 h, cap 200, plus the last 2). **N5 closed** (os:715 re-labels a committed sale SYNCED; the list includes ACCEPTED rows with saleId null), but see N9.
+**N6 MEDIUM: the snapshot path skips PRICE_WINDOW_REVIEW, so happy-hour backdating still works all day.** The review needs the soldAt price to equal expected (reg:2660-2663). The snapshot branch (reg:2665-2672) never checks `lateMs` or `priceAtSyncSatang`.
+Scenario: keep a snapshot issued during happy hour (pvu 17:00). Send every later cash bill that day with `soldAt=17:14` (≤ pvu+15, inside the open shift) and expected = the happy-hour snapshot total. The soldAt price is full ≠ expected, the snapshot path matches, and the bill is OK with drift only, no queue. Allowed for up to 24 h after issue.
+Fix: after a snapshot match, `ps.total < priceAtSync && lateMs > 30 min` → `windowReview`. Add an oracle case: soldAt in (pvu, pvu+15], sync 2 h later.
+**N7 LOW: discount caps follow the sync session, not the seller.** os:540 falls back to `e.actor`. In no-PIN mode, a bill by cashier X synced while a manager is logged in on the shared tablet becomes SELLER_MISMATCH. Accept then prices it with the manager's caps (an over-cap discount from a tampered client passes). If the client omits `sellerUserId`, it is OK at once. Online this needs the manager session in hand, so it mostly widens the timing.
+Fix: when claimed ≠ sync user and there is no verified token, use the lower of the claimed member's caps and the sync user's.
+**N8 LOW: eviction and cost DoS on snapshots.** os:284-293 has no rate limit. Any `pos.sale.create` user can issue more than 200 snapshots for any device code of the unit and evict an honest snapshot still inside its 24 h (bills → SNAPSHOT_UNKNOWN → queue, recoverable at the soldAt price). Each issue is a full catalog walk.
+Fix: one issue per device per 60 s (outside a pvu edge); never evict a hash still referenced by a PROCESSING or REJECTED row.
+**N9 LOW: discard can re-label a row to another sale.** os:715 matches only `reg2:<key>` within the unit. If a queued item reused the key of a different online sale (first pass IDEMPOTENCY_CONFLICT), discard marks the row SYNCED with that other saleId. The offline cash bill leaves the queue with no audit.
+Fix: re-label SYNCED only if `committed.offlineRef === row.offlineRef`; otherwise allow a normal discard.
+**Checked OK**
+- Review threshold gaming: the soldAt path is bounded by pvu+15 and 30 min lateness, so about 30 min of post-promo leakage at most. The +2 min skew does not help (soldAt ≤ now+2).
+- SHIFT_REQUIRED 24 h lookback: no shift for 25 h with `requiredRegister` off → off-shift, the same as online. Intended.
+- Discard across units: scoped to unit and tenant, no cross-unit match. F5 (flag off still syncs): no snapshot → SNAPSHOT_UNKNOWN, only queue rows. F2: no money impact. F6: canonical refs enforced.
+- SY6/SEC3 edits keep the PRICE_MISMATCH control, the other-device hash check and eviction, so they weaken nothing. Gap: nothing asserts that a happy-hour bill synced within 30 min is OK automatically.
+
+## Controller rulings — fix round 2 (CD-P34i · 17 Oct 02:4xZ) — fix all, one commit per item, marker `// POS P3.4 ▸ fix2 <id> ◂`
+- **G1 (N2 residue)**: resolve the covering shift first on both passes; a recorded `shiftId` counts only if soldAt ∈ [openedAt − 5 min, closedAt ?? now], else pass 1 = VALIDATION and accept uses the covering shift; bind the covering shift when OPEN. ORACLE-EDIT SY19 (+ case: recorded closed shift A while soldAt is inside open shift B ⇒ not SHIFT_CLOSED; bound to B).
+- **G2 + N6 (N3 bypass)**: price-at-sync computed with the `opts.at = now` path (skips the 86 gate; fail closed: if it still refuses ⇒ treat as review when late > 30 min and a rule-priced line exists); the snapshot-match branch also applies the window review (`snapshotTotal < priceAtSync ∧ lateMs > 30 min ⇒ PRICE_WINDOW_REVIEW`). ORACLE-EDIT SY20 (+2 cases: 86'd item in the bill · snapshot path with soldAt ∈ (pvu, pvu+15] synced 2 h later ⇒ review) + a positive case (happy-hour bill synced within 30 min ⇒ OK).
+- **G3**: retention window = 2 × `OFFLINE_MAX_AGE_MS` (48 h) ∪ last 2, cap 200; eviction uses `opts.now`. ORACLE-EDIT SY21/SEC3 as needed.
+- **N8**: snapshot issue rate limit 1 per device per 60 s (except at a priceValidUntil edge) ⇒ `RATE_LIMITED`; never evict a hash referenced by a PROCESSING/REJECTED/ACCEPTED-null row. ORACLE-ADD SY25.
+- **N7**: no verified token ∧ claimed ≠ sync user ⇒ price with the LOWER of the claimed member's caps and the sync user's caps (claimed must be a member of the unit, else SELLER_MISMATCH). ORACLE-ADD SY26.
+- **N9**: discard re-labels SYNCED only when `committed.offlineRef === row.offlineRef`; otherwise normal discard. ORACLE-EDIT SY22 (+ case).
+- **G4**: acknowledged — REST-synced rows (API-key actor) cannot be accepted (SELLER_MISMATCH ⇒ discard only) — builder adds the sentence to `POS-CONTRACTS.md` C-13 and the notes; no code.
