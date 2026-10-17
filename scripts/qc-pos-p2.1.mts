@@ -551,8 +551,11 @@ async function runStatic(): Promise<void> {
     // ORACLE-EDIT (P2.2 · มติผู้คุมงาน): สัญญาเพิ่ม 3 ฟิลด์บรรทัดของ P2.2 (ไม่บังคับ) — นอกจากนั้นต้องไม่มี
     const P22_LINE = ["lines[].listPriceSatang", "lines[].priceRuleId", "lines[].priceSource"];
     // ORACLE-EDIT ผู้คุม 15 ต.ค. (CD-P29-1 contract sha re-pin — P2.11 CD-1): ไฟล์สัญญา = sha ที่ผู้คุมรับแล้ว ⇒ รับ 3 ฟิลด์ payMethods[].giftCard ของ P2.9 (0e9e3144) — เดิมไม่มี sha (ไฟล์ก่อน P2.9 = 7a418de17b44bf7c54e9ee99a3cb740ae596fb6fb240978901e8a07b011697cd)
-    const P29_GIFT = createHash("sha256").update(existsSync(join(ROOT, F.contract)) ? readFileSync(join(ROOT, F.contract)) : Buffer.from("")).digest("hex") === "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad" ? ["payMethods[].giftCard", "payMethods[].giftCard.number", "payMethods[].giftCard.pin"] : [];
-    if (short(extra) !== short(["channelId", "channelRef", ...P22_LINE, ...P29_GIFT].sort())) p.push(`ฟิลด์ใหม่ = ${extra.join(",") || "—"} (คาด channelId,channelRef + 3 ฟิลด์บรรทัด P2.2)`);
+    // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.1 S8): ไฟล์สัญญา sha ba68f669… (P3.4 S · 0617d17b) = ไฟล์ 72afb258 + CreateSaleInput.offline ⇒ รับ 3 ฟิลด์ giftCard + offline · sha อื่น = ไม่รับเหมือนเดิม
+    const CONTRACT_FILE_SHA = createHash("sha256").update(existsSync(join(ROOT, F.contract)) ? readFileSync(join(ROOT, F.contract)) : Buffer.from("")).digest("hex");
+    const P29_GIFT = CONTRACT_FILE_SHA === "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad" || CONTRACT_FILE_SHA === "ba68f669fa2105ce708df5aa555c9127948f82c30d373bce6f65ebac0753c7c2" ? ["payMethods[].giftCard", "payMethods[].giftCard.number", "payMethods[].giftCard.pin"] : [];
+    const P34_OFFLINE = CONTRACT_FILE_SHA === "ba68f669fa2105ce708df5aa555c9127948f82c30d373bce6f65ebac0753c7c2" ? ["offline"] : []; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.1 S8)
+    if (short(extra) !== short(["channelId", "channelRef", ...P22_LINE, ...P29_GIFT, ...P34_OFFLINE].sort())) p.push(`ฟิลด์ใหม่ = ${extra.join(",") || "—"} (คาด channelId,channelRef + 3 ฟิลด์บรรทัด P2.2)`);
     for (const k of P22_LINE) if (cs[k] && cs[k].optional !== true) p.push(`${k} ไม่ใช่ optional`);
     for (const k of ["channelId", "channelRef"]) if (cs[k] && (cs[k].optional !== true || cs[k].type !== "string")) p.push(`${k} = ${short(cs[k], 60)} (คาด optional string)`);
     chk("S8", p.length === 0, "ของเดิมตรงฐาน · เพิ่ม channelId? channelRef? พอดี", p.join(" · ") || `ครบ (${Object.keys(cs).length} ฟิลด์)`);
