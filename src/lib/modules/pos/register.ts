@@ -1544,7 +1544,7 @@ async function regPrice(
     const row = rowById.get(l.productId);
     // มติ 3.1 ข้อ 3: สาขาอื่น / คลังอื่น / ร้านอื่น / เก็บถาวร / ไม่มีจริง = PRODUCT_NOT_FOUND (ไม่คิดราคา · ไม่บอกชื่อ)
     if (!v || !row || bundleBlocked.has(row.id)) return regRefuse("PRODUCT_NOT_FOUND", undefined, i);
-    if (v.soldOutReason === "UNAVAILABLE") return regRefuse("PRODUCT_UNAVAILABLE", undefined, i);
+    if (v.soldOutReason === "UNAVAILABLE" && !opts.at) return regRefuse("PRODUCT_UNAVAILABLE", undefined, i); // POS P3.4 ▸ fix1 F2: บิลออฟไลน์ (opts.at) ขายไปแล้วก่อน 86 — ไม่ใช้ด่านของหมด (เก็บถาวร = PRODUCT_NOT_FOUND ด้านบน · สต็อกตัด/ตรวจที่ createSale) ◂
     // P1.2 R6: แม่ที่มีตัวแปรขายได้ = ต้องเลือกตัวแปร (ไม่คิดราคา)
     if (v.variantCount > 0) return regRefuse("VARIANT_REQUIRED", undefined, i);
     // P1.2 R1/R2: ตัวเลือก (ตัวแปร = กลุ่มของแม่) — ราคา/ชื่อสดจาก DB · ไม่ส่ง options เลยกับกลุ่มบังคับ = OPTIONS_REQUIRED (P1.3 S3.26 คงเดิม)
