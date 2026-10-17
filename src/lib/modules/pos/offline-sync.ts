@@ -434,6 +434,7 @@ async function decide(
     snapshotPrices: evidence ? new Map(Object.entries(evidence.prices)) : null,
     nowMs: e.now, // POS P3.4 ▸ fix1 N3 ◂
     skipWindowReview: !!manager, // POS P3.4 ▸ fix1 N3: ผู้จัดการรับ = คิด ณ soldAt ◂
+    snapshotPastPvu: !!evidence?.priceValidUntil && soldMs > Date.parse(evidence.priceValidUntil), // POS P3.4 ▸ fix2 N6 ◂
   };
   const regCtx = registerOfflineCtx({ ...baseCtx(ctx), deviceId: e.dev.deviceCode, ...(ctx.apiKeyId ? { apiKeyId: ctx.apiKeyId } : {}) }, off);
   const res = await submitRegisterSale(regCtx, seller, { ...(it.sale as Omit<RegisterSubmitInput, "idempotencyKey">), idempotencyKey: it.idempotencyKey }, db);

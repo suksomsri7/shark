@@ -707,6 +707,8 @@ export type RegisterOfflineSubmit = {
   priceAtSyncSatang?: number | null;
   windowReview?: boolean;
   skipWindowReview?: boolean;
+  /** POS P3.4 ▸ fix2 N6: soldAt อยู่หลัง priceValidUntil ของ snapshot (ช่วงผ่อน 15 นาที) — ทางราคา snapshot ก็ต้องผ่านการตรวจช่วงเวลาราคา */
+  snapshotPastPvu?: boolean;
 };
 const REG_OFFLINE_WINDOW_REVIEW_MS = 30 * 60_000; // POS P3.4 ▸ fix1 N3 (ในบล็อก R5–R9)
 const REG_OFFLINE: unique symbol = Symbol("pos.register.offline");
@@ -2651,20 +2653,28 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     //   ไม่ตรงทั้งคู่ = PRICE_CHANGED ที่ ③ · ปฏิเสธของการคิดราคา (รวมส่วนลดเกินสิทธิ์) = คืนทันที ไม่เข้าทางพักบิล/PIN ผู้จัดการ
     if (off) {
       const maxBp = regMaxDiscountBp(s.actor, caps);
-      const pNow = p; // POS P3.4 ▸ fix1 N3: ราคาตอนซิงก์ (ในบล็อก R6)
+      // POS P3.4 ▸ fix2 G2 N6: ราคาตอนซิงก์คิดทางออฟไลน์ (opts.at = เวลาซิงก์ · ไม่ใช้ด่าน 86 — แคชเชียร์ 86 สินค้าเพื่อหลบการตรวจไม่ได้) · ยังปฏิเสธ = null = ปิดทางแบบปลอดภัย (ตรวจ)
+      const pSync = await regPrice(db, s, req.cart, paySettings, maxBp, { at: new Date(off.nowMs ?? Date.now()) });
       p = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt });
       if (isRegRefusal(p)) return p;
       off.drift = null;
       // POS P3.4 ▸ fix1 N3: โปรตามเวลา ณ soldAt ถูกกว่าราคาตอนซิงก์ + ซิงก์ช้า > 30 นาที = ไม่ขายเอง (ผู้จัดการตรวจ) — ผู้จัดการรับ = คิด ณ soldAt ได้
-      off.priceAtSyncSatang = isRegRefusal(pNow) ? null : pNow.quote.grandTotalSatang;
+      off.priceAtSyncSatang = isRegRefusal(pSync) ? null : pSync.quote.grandTotalSatang;
       const lateMs = (off.nowMs ?? Date.now()) - off.soldAt.getTime();
-      if (!off.skipWindowReview && p.quote.grandTotalSatang === req.expected && off.priceAtSyncSatang !== null && p.quote.grandTotalSatang < off.priceAtSyncSatang && p.resolved.some((l) => l.priceRule !== null) && lateMs > REG_OFFLINE_WINDOW_REVIEW_MS) {
+      const late = !off.skipWindowReview && lateMs > REG_OFFLINE_WINDOW_REVIEW_MS;
+      const cheaperThanSync = (t: number) => off.priceAtSyncSatang === null || off.priceAtSyncSatang === undefined || t < off.priceAtSyncSatang;
+      if (late && p.quote.grandTotalSatang === req.expected && p.resolved.some((l) => l.priceRule !== null) && cheaperThanSync(p.quote.grandTotalSatang)) {
         off.windowReview = true;
         return regRefuse("PRICE_CHANGED");
       }
       if (p.quote.grandTotalSatang !== req.expected && off.snapshotPrices) {
         const ps = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt, snapshotPrices: off.snapshotPrices });
         if (!isRegRefusal(ps) && ps.quote.grandTotalSatang === req.expected) {
+          // POS P3.4 ▸ fix2 N6: ทาง snapshot ในช่วงผ่อนหลัง priceValidUntil + ซิงก์ช้า + ถูกกว่าราคาตอนซิงก์ = ตรวจ (กันใช้ snapshot ช่วงโปรขายทั้งวัน)
+          if (late && off.snapshotPastPvu && cheaperThanSync(ps.quote.grandTotalSatang)) {
+            off.windowReview = true;
+            return regRefuse("PRICE_CHANGED");
+          }
           const at = p.resolved;
           const lines = ps.resolved.flatMap((l, i) => (l.unitPriceSatang !== at[i]?.unitPriceSatang ? [{ productId: l.productId ?? "", priceAtSoldAtSatang: at[i]?.unitPriceSatang ?? null, snapshotPriceSatang: l.unitPriceSatang }] : []));
           off.drift = { totalAtSoldAtSatang: p.quote.grandTotalSatang, snapshotTotalSatang: ps.quote.grandTotalSatang, lines };
