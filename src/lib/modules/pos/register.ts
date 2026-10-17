@@ -701,7 +701,14 @@ export type RegisterOfflineSubmit = {
   snapshotPrices: ReadonlyMap<string, number> | null;
   /** ผลขาออก: บรรทัดที่ราคา ณ soldAt ≠ ราคา snapshot เมื่อบิลถูกขายด้วยราคา snapshot · null = ไม่มี drift */
   drift?: RegisterOfflineDrift | null;
+  // POS P3.4 ▸ fix1 N3 (CD-P34g): เวลาราคา — nowMs = เวลาซิงก์ · priceAtSyncSatang (ขาออก · audit) = ยอดของตะกร้าเดียวกัน ณ เวลาซิงก์ ·
+  //   windowReview (ขาออก) = ราคา ณ soldAt (มีโปรตามเวลา) ถูกกว่าราคาตอนซิงก์ และซิงก์ช้ากว่า 30 นาที ⇒ ไม่ขาย ส่งคิวผู้จัดการ · skipWindowReview = ผู้จัดการรับ
+  nowMs?: number;
+  priceAtSyncSatang?: number | null;
+  windowReview?: boolean;
+  skipWindowReview?: boolean; // ◂
 };
+const REG_OFFLINE_WINDOW_REVIEW_MS = 30 * 60_000; // POS P3.4 ▸ fix1 N3 ◂
 const REG_OFFLINE: unique symbol = Symbol("pos.register.offline");
 /** ctx ของบิลออฟไลน์ (สำเนา ctx + ข้อมูลออฟไลน์ใต้คีย์ Symbol) — offline-sync.ts เท่านั้น */
 export function registerOfflineCtx<C extends RegisterCtx>(ctx: C, off: RegisterOfflineSubmit): C {
@@ -2644,9 +2651,17 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     //   ไม่ตรงทั้งคู่ = PRICE_CHANGED ที่ ③ · ปฏิเสธของการคิดราคา (รวมส่วนลดเกินสิทธิ์) = คืนทันที ไม่เข้าทางพักบิล/PIN ผู้จัดการ
     if (off) {
       const maxBp = regMaxDiscountBp(s.actor, caps);
+      const pNow = p; // POS P3.4 ▸ fix1 N3: ราคาตอนซิงก์ ◂
       p = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt });
       if (isRegRefusal(p)) return p;
       off.drift = null;
+      // POS P3.4 ▸ fix1 N3: โปรตามเวลา ณ soldAt ถูกกว่าราคาตอนซิงก์ + ซิงก์ช้า > 30 นาที = ไม่ขายเอง (ผู้จัดการตรวจ) — ผู้จัดการรับ = คิด ณ soldAt ได้
+      off.priceAtSyncSatang = isRegRefusal(pNow) ? null : pNow.quote.grandTotalSatang;
+      const lateMs = (off.nowMs ?? Date.now()) - off.soldAt.getTime();
+      if (!off.skipWindowReview && p.quote.grandTotalSatang === req.expected && off.priceAtSyncSatang !== null && p.quote.grandTotalSatang < off.priceAtSyncSatang && p.resolved.some((l) => l.priceRule !== null) && lateMs > REG_OFFLINE_WINDOW_REVIEW_MS) {
+        off.windowReview = true;
+        return regRefuse("PRICE_CHANGED");
+      } // ◂
       if (p.quote.grandTotalSatang !== req.expected && off.snapshotPrices) {
         const ps = await regPrice(db, s, req.cart, paySettings, maxBp, { at: off.soldAt, snapshotPrices: off.snapshotPrices });
         if (!isRegRefusal(ps) && ps.quote.grandTotalSatang === req.expected) {

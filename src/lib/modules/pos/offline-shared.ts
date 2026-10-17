@@ -38,6 +38,7 @@ export const OFFLINE_REFUSAL_CODES = [
   "DEVICE_REVOKED",
   "STAFF_TOKEN_INVALID",
   "VALIDATION",
+  "PRICE_WINDOW_REVIEW", // POS P3.4 ▸ fix1 N3: โปรตามเวลา ณ soldAt ถูกกว่าราคาตอนซิงก์ + ซิงก์ช้า > 30 นาที → คิวผู้จัดการ ◂
 ] as const;
 export type OfflineRefusalCode = (typeof OFFLINE_REFUSAL_CODES)[number];
 /** คีย์ของรายการซิงก์ (R5 · CD-3) — คีย์อื่น = VALIDATION ทั้งชุด */
@@ -338,6 +339,7 @@ const OFFLINE_REFUSAL_KEY: Readonly<Record<string, string>> = {
   DEVICE_REVOKED: "offline.refusal.deviceRevoked",
   STAFF_TOKEN_INVALID: "offline.refusal.staffTokenInvalid",
   VALIDATION: "offline.refusal.validation",
+  PRICE_WINDOW_REVIEW: "offline.refusal.priceWindowReview", // POS P3.4 ▸ fix1 N3 ◂
 };
 /** รหัสปฏิเสธของรายการออฟไลน์ → คีย์ข้อความใต้ `pos.register` (จอห้ามแสดง message ไทยของเซิร์ฟเวอร์) · รหัสอื่น = offline.refusal.other */
 export function offlineRefusalMessageKey(code: string): string {

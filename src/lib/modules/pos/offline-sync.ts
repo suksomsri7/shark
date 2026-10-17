@@ -318,7 +318,7 @@ function parseBatch(input: unknown): { deviceId: string; items: OfflineSyncItem[
 
 type Env = { db: Db; ctx: OfflineCtx; actor: RegisterActor; dev: DeviceRow; now: number };
 type RowState = { id: string; status: string; reason: string | null; saleId: string | null; createdAt: Date; payload: Prisma.JsonValue; unitId: string; deviceId: string; offlineRef: string; idempotencyKey: string; soldAt: Date };
-type Verdict = { kind: "ok"; saleId: string; receiptNo: string | null; duplicated: boolean; drift: RegisterOfflineDrift | null } | { kind: "rejected"; reason: string } | { kind: "transient"; code: string };
+type Verdict = { kind: "ok"; saleId: string; receiptNo: string | null; duplicated: boolean; drift: RegisterOfflineDrift | null; priceAtSyncSatang?: number | null } | { kind: "rejected"; reason: string } | { kind: "transient"; code: string };
 const reject = (reason: string): Verdict => ({ kind: "rejected", reason });
 
 /** หลักฐาน snapshot ของรายการ (แช่แข็งลง payload ตอนบันทึกครั้งแรก — ผู้จัดการรับทีหลังได้แม้ snapshot ถูกตัดทิ้งแล้ว) */
@@ -366,6 +366,8 @@ async function decide(
   // ผู้จัดการรับบิลเก่ากว่า 24 ชม. ได้ (ตัดสินเอง) · อนาคต / ก่อน snapshot / snapshot อายุเกิน 24 ชม. ตอนขาย = ไม่ได้ทั้งคู่
   if (soldMs > e.now + OFFLINE_CLOCK_SKEW_MS || (!manager && soldMs < e.now - OFFLINE_MAX_AGE_MS)) return reject("CLOCK_INVALID");
   if (evidence && (soldMs < Date.parse(evidence.issuedAt) || soldMs - Date.parse(evidence.issuedAt) > OFFLINE_MAX_AGE_MS)) return reject("CLOCK_INVALID");
+  // POS P3.4 ▸ fix1 N3: ขายเลย priceValidUntil + 15 นาทีของ snapshot = เครื่องที่ถูกต้องหยุดขายแล้ว (offlineSellGate) ⇒ CLOCK_INVALID (กันย้อนเวลาเข้าโปร) ◂
+  if (evidence?.priceValidUntil && soldMs > Date.parse(evidence.priceValidUntil) + OFFLINE_PRICE_GRACE_MS) return reject("CLOCK_INVALID");
   // R8 เครื่อง (CD-12): ถูกเพิกถอนก่อน/ตอน soldAt = ปฏิเสธ · หลัง soldAt = ขายได้ (audit บันทึก revokedAt)
   if (e.dev.status === "REVOKED" && (!e.dev.revokedAt || e.dev.revokedAt.getTime() <= soldMs)) return reject("DEVICE_REVOKED");
   // R8 กะ: กะของเครื่องนี้ที่บันทึกไว้ต้องยัง OPEN · soldAt ≥ เปิดกะ − 5 นาที · ไม่ส่งกะ = กะของเครื่องที่ครอบ soldAt (กันซ่อนบิลเงินสดไว้นอกกะ)
@@ -419,13 +421,15 @@ async function decide(
     ref: it.offlineRef,
     soldAt: new Date(soldMs),
     shiftId,
-    // ทางราคา snapshot ใช้ได้ถึง priceValidUntil + 15 นาที ของ snapshot นั้น (มติ 6 — เลยแล้ว = ราคา ณ soldAt เท่านั้น)
-    snapshotPrices: evidence && !(evidence.priceValidUntil && soldMs > Date.parse(evidence.priceValidUntil) + OFFLINE_PRICE_GRACE_MS) ? new Map(Object.entries(evidence.prices)) : null,
+    snapshotPrices: evidence ? new Map(Object.entries(evidence.prices)) : null,
+    nowMs: e.now, // POS P3.4 ▸ fix1 N3 ◂
+    skipWindowReview: !!manager, // POS P3.4 ▸ fix1 N3: ผู้จัดการรับ = คิด ณ soldAt ◂
   };
   const regCtx = registerOfflineCtx({ ...baseCtx(ctx), deviceId: e.dev.deviceCode, ...(ctx.apiKeyId ? { apiKeyId: ctx.apiKeyId } : {}) }, off);
   const res = await submitRegisterSale(regCtx, seller, { ...(it.sale as Omit<RegisterSubmitInput, "idempotencyKey">), idempotencyKey: it.idempotencyKey }, db);
-  if (res.ok) return { kind: "ok", saleId: res.saleId, receiptNo: res.receiptNo ?? null, duplicated: !!res.duplicated, drift: off.drift ?? null };
+  if (res.ok) return { kind: "ok", saleId: res.saleId, receiptNo: res.receiptNo ?? null, duplicated: !!res.duplicated, drift: off.drift ?? null, priceAtSyncSatang: off.priceAtSyncSatang ?? null };
   if (TRANSIENT.has(res.code)) return { kind: "transient", code: res.code };
+  if (off.windowReview) return reject("PRICE_WINDOW_REVIEW"); // POS P3.4 ▸ fix1 N3 ◂
   // แข่งกันเอาเลข OFF เดียวกัน (unique (unitId, offlineRef) ของบิล) = OFFLINE_REF_TAKEN
   const raced = await db.posSale.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, offlineRef: it.offlineRef, NOT: { idempotencyKey: `${REG_KEY_PREFIX}${it.idempotencyKey}` } }, select: { id: true } });
   if (raced) return reject("OFFLINE_REF_TAKEN");
@@ -475,6 +479,7 @@ async function settle(e: Env, row: { id: string; offlineRef: string; soldAt: Dat
         sellerUserId: sale.soldByUserId,
         ...(e.dev.revokedAt ? { deviceRevokedAt: e.dev.revokedAt.toISOString() } : {}),
         ...(drift ? { drift } : {}),
+        priceAtSyncSatang: v.priceAtSyncSatang ?? null, // POS P3.4 ▸ fix1 N3 ◂
         ...(via ? { via: "manager" } : {}),
       },
     });

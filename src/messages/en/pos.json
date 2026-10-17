@@ -750,7 +750,8 @@
         "deviceRevoked": "The device was revoked before the sale time — waiting for a manager",
         "staffTokenInvalid": "The staff sign-in of this bill is not valid (expired or PIN changed) — waiting for a manager",
         "validation": "This bill has items that cannot be sold offline — waiting for a manager",
-        "other": "This bill could not be synced — waiting for a manager"
+        "other": "This bill could not be synced — waiting for a manager",
+        "priceWindowReview": "Sold at a time-window promo price but synced more than 30 minutes later — waiting for a manager to check the sale time"
       },
       "slip": {
         "title": "TEMPORARY RECEIPT — AWAITING FINAL NUMBER"
