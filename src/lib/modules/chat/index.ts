@@ -34,3 +34,9 @@ export {
 
 // CRM C1.8 ▸ ผูก ChatContact → Party (ครั้งเดียว · มี audit) — ผู้เรียก: สะพาน CRM `platform/crm-bridges/chat.ts` ◂
 export { linkChatContactParty } from "./party-bridge";
+
+// POS P3.7 ▸ รอยต่อข้อความอัตโนมัติจากจุดขาย (ใบเสร็จ · สถานะออเดอร์ · ลิงก์จ่าย · บอทตามกฎ) — ผู้เรียก: composition root `src/lib/pos-chat-bridges.ts`
+//   (POS ไม่ import แชท) · ส่งไม่เกินครั้งเดียวต่อคีย์ · ข้อความขึ้นในห้อง (senderUserId null) · ไม่มีตรรกะความยินยอม (ผู้เรียกตัดสิน)
+export type { NotifyCustomerDeps, NotifyCustomerInput, NotifyCustomerResult, PosBotContext, PosNotifyCode, PosNotifyTarget, PosSeamSend } from "./pos-seam";
+export { botContext, notifyCustomer, setBotPaused } from "./pos-seam";
+// ◂ POS P3.7
