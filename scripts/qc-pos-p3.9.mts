@@ -1133,6 +1133,12 @@ async function runDb() {
     if (bytes(o.raw) > MAX_TOOL_BYTES) p.push(`ขนาด ${bytes(o.raw)} B`);
     for (const name of ["sales_by_day", "pos_shift_report", "pos_hourly"]) await rt("OWNER", name, { ...RANGE }, { read: true });
     if (SHIFT) await rt("OWNER", "pos_shift_now", { shiftId: SHIFT }, { read: true });
+    // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.9 fix1 N5 · TL6): ผลของ pos_draft_po ≤ 8 KB · รายการ ≤ 10 · adapter ส่งผ่านตัวตัดของสะพาน (capPosToolResult) — เดิม TL6 ไม่ครอบ pos_draft_po
+    const dp = await rt("OWNER", "pos_draft_po", { unitId: U.A }, { conv: true });
+    if (bytes(dp.raw) > MAX_TOOL_BYTES) p.push(`pos_draft_po ${bytes(dp.raw)} B`);
+    if (maxArrayLen(dp.j) > 10) p.push(`pos_draft_po รายการ ${maxArrayLen(dp.j)}`);
+    if (!/capPosToolResult\s*\(/.test(srcOf(F.adapter))) p.push("ai/tools-pos.ts ไม่ส่งผล pos_draft_po ผ่าน capPosToolResult");
+    if (dp.j?.proposalId) await call(propMod, "rejectProposal", { tenantId: T, actor: memberActor("OWNER") }, String(dp.j.proposalId));
     const big = readOutputs.filter((x) => bytes(x) > MAX_TOOL_BYTES);
     if (big.length) p.push(`ผลอ่านเกิน 8 KB ${big.length} ตัว (${Math.max(...big.map(bytes))} B)`);
     chk("TL6", p.length === 0, "≤ 10 แถว · ≤ 8 KB", FXB(joinP(p)));
