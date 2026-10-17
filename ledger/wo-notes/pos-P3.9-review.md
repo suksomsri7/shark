@@ -87,3 +87,25 @@
 **Low follow-ups (not blocking)**
 - L1 `pos/api/tools.ts` summarize: an 86 on an **all-branch** product with no `unitId` shows "ทุกสาขา" on the card. At confirm, `posProductUnit(…, needUnit=true)` returns 422 and the proposal goes FAILED. Fix: in `targetOf`, for `products.availability` where `row.unitId===null` and no unitId was given, return "ระบุสาขา" before proposing.
 - L2 `ai-brief.ts:37`: the title suffix depends on whether a name collision exists right now. If someone creates or renames a POS system to the same name mid-day, the first system's title changes and its recipients get one extra brief that day. Accept as is, or always suffix once a shop has ≥2 POS systems.
+
+## Hunter re-check (857268eb) — N1–N5 closed · N6/N7 Low → CD-P39d fix round 2 (small): N6=L1 86 all-branch needs unit before propose · N7=L2 brief title suffix = id.slice(-8) and always when the shop has ≥ 2 POS systems
+# P3.9 hunter re-check: wip/pos-p3.9 @ 857268eb (code 58a3fb19). Verdict: CLEAN for N1–N5; 2 new Low findings (N6, N7), neither blocks merge
+(1) N1–N5 re-walked. N1 closed: plans.ts:36-50 adds `void_sale` and `pos_draft_po` to PLAN_HUMAN_ONLY and refuses any `pos.*` step through `humanOnlyNote`. This is checked at createPlan and again at plan start (old stored plans included). Plan runs still get no userId.
+- N2 closed for normal names: `posBriefSystemName` puts `(…id4)` in the title (ai-brief.ts:37, :155).
+- N3 closed: the A11 branch is resolved from after.unitId, then the PosStaffPin row (@@unique(unitId,userId)), then the PosDevice row, then a device code that maps to exactly one branch. Ambiguous codes are skipped (reports.ts:1645-1676).
+- N4 closed: `targetOf` (tools.ts:266) checks the given unitId and then the row's unit with `posActorCanUseUnit` (person Membership or key unit filter). Only the POS-system lookup runs before it. Every failure returns one message with no bill no., total, name or price. Card text is now "สาขา <name>" or "ทุกสาขา".
+- N5 closed: lists are sliced to 10 and `capPosToolResult` is applied to both the proposal and the no-supplier results.
+(2) New surface:
+- Plan coverage is complete. The bridge dispatches exactly `void_sale`, `pos_draft_po`, `pos.products.setPrice`, `pos.products.availability` and `pos.sales.void` (`isPosKind` = POS_LEGACY_KINDS plus write ops; KIND_ACCESS has no other alias). All are refused. `isKnownKind` rejects case variants. `pos_create_sale` is not dispatched by the bridge, so it stays plan-capable as before, still behind the R3 guard (confirmer unit, catalog price or priceOverride).
+- Paging is sound: keyset on the unique `id` (`id > cursor`, orderBy id asc, ai-brief.ts:124). No system is visited twice or skipped at a page edge.
+(3) Privacy: the unit name is read with tenantDb, only for a unit the asker already passed `posActorCanUseUnit` on, and only the name is returned. Low stock now needs pos.report.view on a branch of that POS system (ai-insights.ts:68-72), and items come only from that system's linked products. A recipient with no viewable branch gets an all-null input, so no notification is sent.
+
+**N6 Low: an all-branch 86 card says "ทุกสาขา" for a write that can never run.** File: pos/api/tools.ts:292-294.
+- Scenario: `pos_set_availability {productId: <all-branch product>, available:false}` with no unitId. The card reads "แจ้งของหมด (86) · ทุกสาขา". On confirm, `posProductUnit(..., needUnit=true)` returns 422 and the proposal goes FAILED. It fails safe, but the card tells the confirmer something that will not happen.
+- Fix: in `targetOf`, when op = products.availability, the product's unitId is null and no unitId is given, return the error "สินค้านี้ขายทุกสาขา — ระบุสาขา".
+
+**N7 Low/Info: the F5 dedupe key is the system name, not the systemId, so it can still collide.**
+- Scenario A: the OWNER names system C "X" (so A, also named "X", gets the title "X (…abcd)") and renames B to "X (…abcd)" (unique, so no suffix). Two systems now share one title, and one brief is suppressed. Only the OWNER can rename, so this is self-inflicted.
+- Scenario B: two same-name systems whose cuids share the last 4 characters (about 1 in 1.7M) collide the same way.
+- Side effect: creating a second same-name system in the middle of the day changes A's title, so A's brief is sent again that day.
+- Fix (optional): use the full id or `id.slice(-8)` in the suffix, and also add the suffix when the name itself already contains "(…".
