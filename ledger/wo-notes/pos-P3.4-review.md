@@ -122,3 +122,24 @@ Fix: re-label SYNCED only if `committed.offlineRef === row.offlineRef`; otherwis
 - **G4**: acknowledged — REST-synced rows (API-key actor) cannot be accepted (SELLER_MISMATCH ⇒ discard only) — builder adds the sentence to `POS-CONTRACTS.md` C-13 and the notes; no code.
 
 ## Fix round 2 delivered (db4b444b · code e39a842f · 51/51 ×2) — CD-P34j accepted (snapshot-path review only when soldAt > pvu · recorded shift opened after soldAt ⇒ CLOCK_INVALID) → R3 + hunter final re-check
+
+## R3 (db4b444b) — MERGEABLE (H1 Low → P3.4U: lock around snapshot issue · H2/H3 residuals by ruling)
+# P3.4 S R3 (fix round 2): `wip/pos-p3.4` db4b444b (code e39a842f). Verdict: **MERGEABLE** (H1 Low, H2–H3 residuals within the rulings · nothing blocking)
+Read-only: diff f10e7669..db4b444b. Source changes are only offline-sync.ts and the register.ts R6 block; the rest is ledger and oracle. Commits are one per item with `fix2` markers ✓. No gates run; 51/51 ×2 is the builder's claim.
+
+## Findings
+- **H1 Low (N8)**: the rate limit is check-then-insert with no lock (`issueOfflineSnapshot`: findFirst on issuedAt > now−60 s, then create). N parallel issues for one device all pass the check ⇒ the 60 s limit doesn't hold under concurrency (each request walks the whole catalog, and a burst of more than 200 could evict unreferenced snapshots inside 48 h). Today this can't be reached: S exposes no snapshot route or op (CD-P34f). Fix at P3.4U when the transport lands: `pg_advisory_xact_lock(hash(deviceId))` around check+insert, or a unique minute bucket.
+- **H2 Residual (G1, by ruling 7)**: the cashier still chooses soldAt, so (a) a backdate into a really-closed shift gives SHIFT_CLOSED and accept puts it off-shift (a visible manager decision), and (b) inside the ≤ 5 min slack overlap (B opened − 5 min ≤ soldAt ≤ A closed) a recorded A covers, so the cashier can pick A over B. Either way the cash can only leave an open shift through a manager accept that shows SHIFT_CLOSED; there's no silent path left.
+- **H3 Residual (N7 as ruled)**: lower-of-caps applies only when a claim exists. If the client omits `sellerUserId` in no-PIN mode, the bill is still priced with the sync session's caps on pass 1 (the hunter's alternative, not in CD-P34i).
+
+## Verified OK
+- **G1**: the covering shift is resolved first on both passes. A recorded shift counts only if soldAt ∈ [openedAt − 5 min, closedAt ?? now + 2 min]. Pass 1: opened after soldAt ⇒ CLOCK_INVALID; closed before soldAt ⇒ VALIDATION (CD-P34j). Accept: `sh = recordedCovers ? recorded : covering`, OPEN ⇒ bind, closed ⇒ null, none ⇒ the device's OPEN shift. The R2 G1 attack (old closed A while soldAt is in open B) now binds B ✓ (SY19 case).
+- **G2**: price at sync = `regPrice(…, {at: now})`, which skips the 86 gate, so a cashier can't bypass the review by 86-ing an item. A refusal ⇒ `priceAtSyncSatang null` ⇒ `cheaperThanSync` = true ⇒ review when late > 30 min and a line is rule-priced (fails closed) ✓. Audit keeps `priceAtSyncSatang`.
+- **N6**: on the snapshot-match branch, `late ∧ snapshotPastPvu ∧ cheaper` ⇒ PRICE_WINDOW_REVIEW, which closes the hunter's (pvu, pvu+15] "sell all day at 17:14" path. CD-P34j (only past pvu) is reasoned (SY4 honest late drift stays OK); backdating inside the window is caught by the soldAt-path review ✓.
+- **G3**: keep = last 2 ∪ issued ≥ now − 2×24 h (opts.now, newest first, cap 200) ✓.
+- **N8**: the limit is 1 per device per 60 s; the exception applies only when the last snapshot's own `$priceValidUntil` ≤ now. A new snapshot always carries the next (future) edge, so the exception can't repeat inside 60 s (except for H1). Hashes referenced by REJECTED rows (incl. PROCESSING) and ACCEPTED-null rows are excluded from deleteMany ✓. Evidence is already frozen in the payload, so this is belt and braces.
+- **N7**: the cap seller is used at accept only when verified == sync user (no valid token) and the claim differs. The claim must be a member who can sell at the unit, else SELLER_MISMATCH. `maxBp = min(own, cap)` with null = unlimited handled correctly. Custom, open-price and typed-weight lines need `priceOverride` from both. The claim can only lower authority, never raise it ✓.
+- **N9**: re-label to SYNCED only when `committed.offlineRef === row.offlineRef`; otherwise a normal discard ✓ (SY22 case).
+- **G4**: C-13 sentence added (REST rows ⇒ SELLER_MISMATCH ⇒ discard only); no code ✓.
+- **Oracle**: SY19/SY20/SY22/SEC3 edits only replace titles and add cases (no assertion removed; SEC3 moves to −60/−59 h for the 48 h window). SY25/SY26 added ✓.
+- **Typecheck**: e39a842f dirty=0 exit 0 is recorded in the notes; only ledger follows ✓.
