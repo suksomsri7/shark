@@ -32,7 +32,7 @@ export type NotifyCustomerInput = {
   preferSystemId?: string | null;
 };
 export type NotifyCustomerResult =
-  | { ok: true; duplicated?: boolean; messageId?: string; conversationId?: string }
+  | { ok: true; duplicated?: boolean; messageId?: string; conversationId?: string; /** สถานะส่งของแถว (ซ้ำ = ของแถวเดิม · fix round 2 F2) */ deliveryStatus?: "PENDING" | "SENT" | "FAILED" }
   | { ok: false; code: PosNotifyCode; messageId?: string; conversationId?: string };
 /** ตัวส่งที่ฉีดได้ (ข้อสอบ/ผู้เรียก) — throw = ส่งไม่สำเร็จ · ไม่ฉีด = adapter ของช่องทาง */
 export type PosSeamSend = (m: { channel: ChatChannelType; externalUserId: string; text: string; tenantId: string; systemId: string; connectionId: string }) => Promise<{ externalMessageId?: string }>;
@@ -65,7 +65,7 @@ async function senderAliasOf(tenantId: string, systemId: string): Promise<string
 }
 
 /**
- * ส่งข้อความของระบบ (ร้าน → ลูกค้า) ลงห้องแชท + ออกช่องทาง — ไม่เกินครั้งเดียวต่อ dedupeKey ต่อห้อง · ไม่ throw
+ * ส่งข้อความของระบบ (ร้าน → ลูกค้า) ลงห้องแชท + ออกช่องทาง — ไม่เกินครั้งเดียวต่อ dedupeKey ต่อร้าน (ทุกห้อง · fix round 2 F3) · ไม่ throw
  * ลำดับ: ผู้ติดต่อ → ห้อง → การเชื่อมต่อ → เขียนแถว OUT (PENDING · senderUserId null) → ส่ง (นอก tx) → SENT/FAILED → denorm ห้อง
  */
 export async function notifyCustomer(input: NotifyCustomerInput, deps?: NotifyCustomerDeps): Promise<NotifyCustomerResult> {
@@ -102,6 +102,13 @@ export async function notifyCustomer(input: NotifyCustomerInput, deps?: NotifyCu
       conv = c;
     } else return { ok: false, code: "VALIDATION" };
 
+    // ── คีย์นี้เคยส่งแล้วในห้องใดของร้าน (fix round 2 F3) — ห้องล่าสุดของผู้ติดต่อเปลี่ยนได้ (ห้องใหม่หลังปิดเรื่อง) ⇒ ห้ามส่งซ้ำในห้องใหม่ ──
+    const seen = await prisma.chatMessage.findFirst({
+      where: { tenantId, clientMessageId: input.dedupeKey, direction: "OUT", meta: { path: ["source"], equals: "pos" } },
+      select: { id: true, conversationId: true, deliveryStatus: true },
+    });
+    if (seen) return { ok: true, duplicated: true, messageId: seen.id, conversationId: seen.conversationId, deliveryStatus: seen.deliveryStatus };
+
     // ── การเชื่อมต่อที่ใช้งานอยู่ของช่องทางนี้ ──
     const connId = conv.channelConnectionId ?? contact.channelConnectionId;
     const conn: ChatChannelConnection | null = connId ? await prisma.chatChannelConnection.findFirst({ where: { id: connId, tenantId } }) : null;
@@ -130,8 +137,8 @@ export async function notifyCustomer(input: NotifyCustomerInput, deps?: NotifyCu
       messageId = row.id;
     } catch (e) {
       if (isUnique(e)) {
-        const prev = await prisma.chatMessage.findFirst({ where: { tenantId, conversationId: conv.id, clientMessageId: input.dedupeKey }, select: { id: true } }).catch(() => null);
-        return { ok: true, duplicated: true, conversationId: conv.id, ...(prev ? { messageId: prev.id } : {}) };
+        const prev = await prisma.chatMessage.findFirst({ where: { tenantId, conversationId: conv.id, clientMessageId: input.dedupeKey }, select: { id: true, deliveryStatus: true } }).catch(() => null);
+        return { ok: true, duplicated: true, conversationId: conv.id, ...(prev ? { messageId: prev.id, deliveryStatus: prev.deliveryStatus } : {}) };
       }
       throw e;
     }
@@ -164,7 +171,7 @@ export async function notifyCustomer(input: NotifyCustomerInput, deps?: NotifyCu
     await prisma.chatConversation
       .updateMany({ where: { id: conv.id, tenantId }, data: { lastMessageAt: now, lastMessagePreview: text.slice(0, PREVIEW_MAX), lastMessageDirection: "OUT" } })
       .catch(() => undefined);
-    return fail ? { ok: false, code: "SEND_FAILED", messageId, conversationId: conv.id } : { ok: true, duplicated: false, messageId, conversationId: conv.id };
+    return fail ? { ok: false, code: "SEND_FAILED", messageId, conversationId: conv.id } : { ok: true, duplicated: false, messageId, conversationId: conv.id, deliveryStatus: "SENT" };
   } catch (e) {
     console.error("[chat/pos-seam] notifyCustomer", e instanceof Error ? e.name : "Error");
     return { ok: false, code: "SEND_FAILED" };

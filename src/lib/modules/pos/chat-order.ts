@@ -33,6 +33,7 @@ const KEY: Partial<Record<ChatPaymentCode, string>> = {
   NO_CHAT_LINK: "orders.chatPay.errors.noChatLink",
   PROMPTPAY_NOT_CONFIGURED: "orders.chatPay.errors.promptpayNotConfigured",
   ORDER_STATE_INVALID: "orders.chatPay.errors.stateInvalid",
+  ORDER_STATE_CHANGED: "orders.chatPay.errors.stateChanged", // fix round 2 F2
 };
 const refuse = (code: ChatPaymentCode): ChatPaymentRefusal => ({ ok: false, code, message: MSG[code], ...(KEY[code] ? { messageKey: KEY[code] } : {}) });
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);

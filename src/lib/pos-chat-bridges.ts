@@ -200,7 +200,9 @@ export async function requestChatPayment(ctx: RegisterCtx, actor: RegisterActor,
     const text = withStatusLink(chatText(lang, "payRequest", { amount: chatMoney(r.totalSatang), time: bangkokHHmm(r.payBy) }), statusUrl);
     const n = await send(deps, { tenantId: ctx.tenantId, target: { conversationId: r.conversationId }, text, dedupeKey: `${KEY.ordpay}${r.orderId}:${r.intentId}`, kind: "ordpay" });
     await warn(ctx.tenantId, "ordpay", n, r.orderId);
-    return { ok: true, orderId: r.orderId, intentId: r.intentId, statusUrl, sent: n.ok, duplicated: r.duplicated, ...(n.ok ? {} : { code: n.code }) };
+    // fix round 2 F2: ซ้ำ = สถานะของแถวเดิม (FAILED/PENDING ≠ ส่งแล้ว) · sent = ok ∧ SENT
+    const sent = n.ok && n.deliveryStatus === "SENT";
+    return { ok: true, orderId: r.orderId, intentId: r.intentId, statusUrl, sent, duplicated: r.duplicated, ...(n.ok ? (sent ? {} : { code: n.deliveryStatus ?? "PENDING" }) : { code: n.code }) };
   } catch (e) {
     console.error("[pos-chat-bridges] requestChatPayment", e instanceof Error ? e.name : "Error");
     return { ok: false, code: "INTERNAL", message: "ระบบขัดข้องชั่วคราว — ลองอีกครั้ง" };

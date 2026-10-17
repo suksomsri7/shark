@@ -4269,7 +4269,8 @@
       "errors": {
         "noChatLink": "This order is not linked to a chat room — can't send a pay link in chat",
         "promptpayNotConfigured": "This branch has no PromptPay ID yet — set it in payment settings first",
-        "stateInvalid": "Pay links can only be sent for new, unpaid chat orders"
+        "stateInvalid": "Pay links can only be sent for new, unpaid chat orders",
+        "stateChanged": "This order was closed or changed — the pay link can't be sent again; check the latest status"
       }
     }
   },
