@@ -97,6 +97,7 @@ const CHECKS: readonly Def[] = [
   D("SY19", "SY", "[fix1 N2 = F3 · CD-P34g] กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
   D("SY20", "SY", "[fix1 N3 · CD-P34g] เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
   D("SY21", "SY", "[fix1 N4 = F1 · CD-P34g] snapshot ภายใน 24 ชม. ไม่ถูกตัด: ขายบน S1 แล้วเครื่องออก S2 + S3 ก่อนซิงก์ → บิลบน S1 = OK · PosOfflineSnapshot ของเครื่อง 3 แถว"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
+  D("SY22", "SY", "[fix1 N5 = F4 · CD-P34g] คิวค้าง: แถว PROCESSING เก่า (> 5 นาที) ที่บิล reg2:<key> commit แล้ว → ทิ้งไม่ได้ · ปรับเป็น SYNCED + saleId เดิม · ไม่มี audit ทิ้ง · แถว ACCEPTED_BY_MANAGER ที่ไม่มี saleId อยู่ใน list → รับซ้ำได้บิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2161,6 +2162,34 @@ async function runDb() {
       if (x?.status !== "OK" || !x?.saleId) p.push(`บิลบน S1 ${stOf(x)} ${why(r)}`);
     }
     if (!NO_FX("SY21")) chk("SY21", p.length === 0, "S1 ยังอยู่ (3 แถว) · บิลบน S1 OK", FXB(joinP(p)));
+  }
+  // ═════ SY22 คิวค้าง (N5) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N5)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      // (a) จำลองล้มหลัง createSale ก่อน settle: แถวกลับเป็น PROCESSING เก่า 10 นาที ไม่มี saleId (SQL ดิบเฉพาะแถวของร้านชั่วคราว)
+      const ia = mkItem("N5", { lines: [W(1)], total: 1000, soldAt: Date.now() - 20 * MIN, shift: null });
+      const ra = await sync("N5", [ia]);
+      const xa = resOf(ra, ia.offlineRef);
+      if (xa?.status !== "OK" || !xa?.saleId) p.push(`ซิงก์ ${stOf(xa)} ${why(ra)}`);
+      const rowA = await offRowOf(ia.offlineRef);
+      await P.$executeRawUnsafe(`UPDATE "PosOfflineSale" SET status = 'REJECTED', reason = 'PROCESSING', "saleId" = NULL, "createdAt" = $1 WHERE id = $2 AND "tenantId" = $3`, new Date(Date.now() - 10 * MIN), String(rowA?.id ?? "none"), T);
+      const da = await call(offMod, "discardOfflineSale", ctxU("A"), A("OWNER"), { id: String(rowA?.id ?? "none"), reason: "ทิ้งแถวค้างหลังล้ม" });
+      const ra2 = await offRowOf(ia.offlineRef);
+      if (ra2?.status !== "SYNCED" || ra2?.saleId !== xa?.saleId) p.push(`ทิ้งแถว PROCESSING ที่มีบิล → ${codeOf(da)} · แถว ${short(ra2 && { s: ra2.status, sale: ra2.saleId }, 60)} (คาด SYNCED + บิลเดิม)`);
+      if ((await audits(AUDIT_DISCARDED, String(rowA?.id ?? "none"))).length) p.push("มี audit ทิ้ง");
+      // (b) ACCEPTED_BY_MANAGER ไม่มี saleId (ล้มหลังจอง) → อยู่ใน list · รับซ้ำได้บิล
+      const ib = mkItem("N5", { lines: [W(1)], total: 1000, soldAt: Date.now() - 19 * MIN, shift: null, sellerUserId: uid("CASH2") });
+      const rb = await sync("N5", [ib]);
+      const xb = resOf(rb, ib.offlineRef);
+      if (xb?.status !== "REJECTED") p.push(`รายการ (b) ${stOf(xb)}`);
+      await P.$executeRawUnsafe(`UPDATE "PosOfflineSale" SET status = 'ACCEPTED_BY_MANAGER', "resolvedByUserId" = $1 WHERE id = $2 AND "tenantId" = $3`, uid("OWNER"), String(xb?.offlineSaleId ?? "none"), T);
+      const ls = await call(offMod, "listOfflineRejected", ctxU("A"), A("OWNER"), { limit: 200 });
+      if (!(Array.isArray(ls?.items) && ls.items.some((x: Any) => x?.id === xb?.offlineSaleId && x?.status === "ACCEPTED_BY_MANAGER"))) p.push(`list ไม่มีแถว ACCEPTED_BY_MANAGER ที่ไม่มีบิล (${codeOf(ls)})`);
+      const ab = await call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(xb?.offlineSaleId ?? "none") });
+      if (ab?.ok !== true || !ab?.saleId) p.push(`รับซ้ำ ${codeOf(ab)}`);
+    }
+    if (!NO_FX("SY22")) chk("SY22", p.length === 0, "PROCESSING ที่มีบิล → SYNCED (ไม่ทิ้ง) · ACCEPTED ไม่มีบิล อยู่ใน list + รับซ้ำได้", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
