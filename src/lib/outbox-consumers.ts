@@ -717,7 +717,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // CRM C2.7 ▸ + ทางเดินเงินของ CRM (บิลที่แคชเชียร์ผูกไว้กับดีล → paidSatang) — ต่อ **ท้ายสุด** เสมอ:
   //   บัญชี (posSalePaid) → ตรา (stampFromSale) → สมาชิก (memberSaleBridge) → CRM · ทุกตัวก่อนหน้าทำงานเหมือนเดิมทุกประการ ◂
   // POS P3.5 ▸ R8 มติ 9: + สมุดค่าคอมฯ พนักงานขาย เป็น "งานหลัก" คู่บัญชี (bothMain: วิ่งทั้งคู่ · ล้มตัวใด = event retry · idempotent ต่อ sourceKey) ◂
-  "pos.sale.paid": withAutomation(compose(compose(compose(bothMain(posSalePaid, async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt)), stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))),
+  "pos.sale.paid": withAutomation(compose(compose(compose(compose(bothMain(posSalePaid, async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt)), stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid")), posChat("onSalePaidChat"))), // POS P3.7 ▸ R5 ใบเสร็จอัตโนมัติ (ชั้นนอกสุด · ของแถม) ◂
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
   // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
@@ -781,7 +781,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   ),
   // POS P1.8 ▸ คืนเงิน: ใบลดหนี้ + JV ตามสัดส่วน · รับของคืนที่ต้นทุนเดิม · แต้ม/ยอดสะสม/ตรา (ตัวรับอยู่ pos/refund-consumer.ts · โหลดตอนใช้ กันวงโหลดไฟล์) ◂
   // POS P3.5 ▸ R8 มติ 9: + กลับรายการค่าคอมฯ พนักงานตามสัดส่วนใบคืน เป็นงานหลักคู่ (bothMain · ไม่แตะ refund-consumer.ts) ◂
-  "pos.sale.refunded": withAutomation(bothMain(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt), async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSaleRefunded(evt))),
+  "pos.sale.refunded": withAutomation(compose(bothMain(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt), async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSaleRefunded(evt)), posChat("onSaleRefundedChat"))), // POS P3.7 ▸ R5 แจ้งคืนเงิน (ของแถม) ◂
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   // M3.7: + ไทม์ไลน์ VISIT (+ แถวจองย้อนหลัง) · แต้มโบนัส CHECKIN · ขอรีวิว (ร้านที่เปิดรีวิว) — สแตมป์ของ M2.3 ยังเป็นงานหลัก (พัง = retry เหมือนเดิม)
   // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกนัด (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
@@ -811,16 +811,16 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "pos.receipt.taxInvoiceRequested": withAutomation(async () => {}),
   // POS P1.7 ▸ เงินเข้าใบขอรับเงิน (webhook/ยืนยันเอง) — กฎอัตโนมัติเท่านั้น (จอลูกค้า P2 ต่อบน event เดิม) · ไม่มี event ตอน CONSUMED ◂
   // POS P2.7 ▸ S3 มติ 13: ใบของออเดอร์จ่ายก่อน (orderId) → PREPAID (+ รับอัตโนมัติ) / เงินเข้าหลังปิด = ops late_payment · ใบของหน้าขาย = ไม่มีอะไร · idempotent ◂
-  "pos.payment.intent_paid": withAutomation(async (evt) => void (await (await import("@/lib/modules/pos")).orders.onIntentPaid(String((evt.payload as { intentId?: unknown } | null)?.intentId ?? "")))), // POS P2.7 ▸ onIntentPaid ◂
+  "pos.payment.intent_paid": withAutomation(compose(async (evt) => void (await (await import("@/lib/modules/pos")).orders.onIntentPaid(String((evt.payload as { intentId?: unknown } | null)?.intentId ?? ""))), posChat("onIntentPaidChat"))), // POS P2.7 ▸ onIntentPaid ◂ · POS P3.7 ▸ + "ได้รับเงิน" ในแชท หลัง onIntentPaid (ของแถม) ◂
   // POS P1.13 ▸ ออกใบกำกับภาษีเต็มรูปให้บิล (ตอนชำระ · ออกทีหลัง · จากคำขอ) — กฎอัตโนมัติเท่านั้น (ส่งอีเมลเอกสาร = งานต่อบน event เดิม) ◂
   "pos.sale.taxInvoiceIssued": withAutomation(async () => {}),
   // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09) — กฎอัตโนมัติ/เว็บฮุคเท่านั้น · rejected ของออเดอร์เว็บร้าน = ยกเลิก ShopOrder ที่นี่ (composition root · มติ 13 — POS ไม่ import shop) ◂
   "pos.order.received": withAutomation(async () => {}),
-  "pos.order.accepted": withAutomation(async () => {}),
-  "pos.order.rejected": withAutomation(bothMain(posOrderRejected, kdsOnOrderClosed)), // POS P2.6 ▸ + ยกเลิกรายการครัวของรอบออเดอร์ (CD 18) ◂
-  "pos.order.ready": withAutomation(async () => {}),
+  "pos.order.accepted": withAutomation(compose(async () => {}, posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 สถานะในแชท ◂
+  "pos.order.rejected": withAutomation(compose(bothMain(posOrderRejected, kdsOnOrderClosed), posChat("onOrderEventChat"))), // POS P2.6 ▸ + ยกเลิกรายการครัวของรอบออเดอร์ (CD 18) ◂ · POS P3.7 ▸ R6 ◂
+  "pos.order.ready": withAutomation(compose(async () => {}, posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 ◂
   "pos.order.completed": withAutomation(async () => {}),
-  "pos.order.cancelled": withAutomation(bothMain(posOrderRejected, kdsOnOrderClosed)), // POS P2.8 ▸ fix รอบ 3 (H2): ร้านยกเลิกออเดอร์เว็บที่ยังไม่จ่าย ⇒ ยกเลิก ShopOrder (รอชำระเท่านั้น · idempotent) ◂ · POS P2.6 ▸ + ยกเลิกรายการครัว "ออเดอร์ถูกยกเลิก" (CD 18) ◂
+  "pos.order.cancelled": withAutomation(compose(bothMain(posOrderRejected, kdsOnOrderClosed), posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 ◂ · POS P2.8 ▸ fix รอบ 3 (H2): ร้านยกเลิกออเดอร์เว็บที่ยังไม่จ่าย ⇒ ยกเลิก ShopOrder (รอชำระเท่านั้น · idempotent) ◂ · POS P2.6 ▸ + ยกเลิกรายการครัว "ออเดอร์ถูกยกเลิก" (CD 18) ◂
   // POS P2.6 ▸ 86 / คืนขายต่อสาขา → adapter ทุกช่องทาง active (adapter ≠ NONE) ของสาขา (no-op ใน P2 · P3 ส่งจริง) · ไม่เขียนแถว ⇒ เล่นซ้ำไม่มีผลเพิ่ม ◂
   "pos.product.availability": withAutomation(kdsOnAvailability),
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
@@ -828,7 +828,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)
   //   งานนี้ต้อง **ไม่ทำให้ consumer ล้ม** ถ้าฝั่งบัญชีมีปัญหา (ไม่งั้น event แชทค้าง PENDING ทั้งคิว)
   // CRM C1.8 ▸ + ห้องแชท → Party → ผู้ติดต่อ CRM / lead (ถ้าร้านเปิด chatToLead) เป็นของแถมใต้ compose ◂
-  "chat.message.received": withAutomation(compose(async (evt) => {
+  "chat.message.received": withAutomation(compose(compose(async (evt) => { // POS P3.7 ▸ + บอทตามกฎ ต่อท้ายสายเดิม (ชั้นนอก) ◂
     try {
       await chatInboundToAccountInbox(evt);
     } catch (e) {
@@ -846,7 +846,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     } catch (e) {
       await logOps("WARN", "outbox", `ให้คะแนนจากแชทไม่สำเร็จ (${evt.type})`, { tenantId: evt.tenantId, detail: errDetail(e) });
     }
-  }, crmBridge("onChatMessage"))),
+  }, crmBridge("onChatMessage")), posChat("onChatMessageReceivedBot"))), // POS P3.7 ▸ R9 ◂
   // WO-C2 (§3.4): แอดมินตอบ / เธรดเปลี่ยนสถานะ — ผลข้างเคียงเกิดใน service ไปแล้ว
   // consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล
   // พร้อม lastError "ไม่มี consumer…" — outbox.ts:111) + เป็นจุดให้ Automation/Webhooks ยิงต่อ
@@ -1413,3 +1413,16 @@ export function scheduleDrain(): void {
   //   ผ่านจุดเดียวกับ `wakeOutbox` ของ CRM (`core/after-drain.ts`) — การระบายที่ตั้งไว้แล้วแต่ยังไม่เริ่มไม่ถูกตั้งซ้ำ ◂
   scheduleCoalescedDrain(() => drainAll());
 }
+
+// POS P3.7 ▸ ตัวรับคิวของ POS ↔ แชท (composition root `src/lib/pos-chat-bridges.ts` · โหลดตอนใช้ — ไม่มีเส้น pos↔chat)
+//   เป็น "ของแถม" เสมอ (ข้อความแชทล้มห้ามพาบัญชี/สต็อก/ออเดอร์ retry) · ตัวรับเองไม่ throw · โหลดไม่ได้ = WARN
+function posChat(name: "onSalePaidChat" | "onSaleRefundedChat" | "onOrderEventChat" | "onIntentPaidChat" | "onChatMessageReceivedBot"): OutboxHandler {
+  return async (evt) => {
+    try {
+      await (await import("@/lib/pos-chat-bridges"))[name](evt);
+    } catch (e) {
+      await logOps("WARN", "outbox", `ขั้นแชทของ POS (${name}) ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
+    }
+  };
+}
+// ◂ POS P3.7
