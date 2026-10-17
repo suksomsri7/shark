@@ -83,6 +83,7 @@ const CHECKS: readonly Def[] = [
   D("PR10", "P", "[R5 มติ 8] purchaseSuggestions: น้ำ qty = 28 − 5 = 23 + ผู้ขาย PO ล่าสุด · เสื้อ supplierId null · ของพอ ไม่อยู่ · pos_draft_po → ยืนยัน → PO DRAFT 1 ใบ (ผู้ขายล่าสุด · น้ำ 23) · ยืนยันซ้ำ = ยังคง 1"),
   // ── AN จุดผิดปกติ ──
   D("PR11", "P", "[fix1 F2=N1 · CD-P39c] propose_plan ที่มีขั้น POS (void_sale · pos.products.setPrice · pos_draft_po) → ปฏิเสธตั้งแต่เสนอ · ไม่มีแผนเกิด (ไม่มีแผนทำครึ่งเดียว) · ตัวควบคุม: แผนที่ไม่มีขั้น POS สร้างได้"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR11)
+  D("PR12", "P", "[fix1 F4=N4 · CD-P39c] ผู้จัดการ A เสนอ void บิลสาขา B → ปฏิเสธ · ไม่มีเลขบิล/ยอดของ B ในผล · ไม่มีข้อเสนอ · การ์ดตั้งราคา: สินค้าทุกสาขา = \"ทุกสาขา\" · สินค้าสาขา A = \"สาขา <ชื่อ>\""), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR12)
   D("AN1", "A", "[R11 มติ 6] A11: pos.staff.schedule_override ×3 ของผู้จัดการ/สาขา A/D−1 → แถว A11 count 3 refType USER · เจ้าของ ×2 → ไม่มีแถว"),
   D("AN2", "A", "[R4 มติ 2] A1 นับ void ของ AI: audit pos.sale.void ผู้จัดการ (PR7) → แถว A1 ของผู้จัดการ (เกณฑ์ A1.count 1 ของฟิกซ์เจอร์)"),
   D("AN3", "A", "[R11] POS_ANOMALY_RULES = A1…A11 · ค่าปริยาย A11 {count 3} · A1–A10 เดิม · ตัวอ่านตัดช่วง A11 (0→1 · 5000→1000 · \"x\"→3)"),
@@ -1388,6 +1389,24 @@ async function runDb() {
     const wl = (po?.lines ?? []).find((l: Any) => l.itemId === INV.W);
     if (po?.status !== "DRAFT" || po?.supplierId !== SUP_NEW || wl?.qty !== 23) p.push(`PO ${po?.status}/${po?.supplierId === SUP_NEW ? "SUP_NEW" : short(po?.supplierId, 12)}/น้ำ ${wl?.qty}`);
     chk("PR10", p.length === 0, "23 · SUP_NEW · DRAFT ×1", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR12) ▸ ไม่ข้ามสาขาตอนเสนอ + การ์ดบอกขอบเขต ◂
+  {
+    const p: string[] = [];
+    const bBill = (await P.posSale.findFirst({ where: { tenantId: T, unitId: U.B, docType: "SALE", status: "PAID" }, select: { id: true, receiptNo: true, grandTotalSatang: true } }).catch(() => null)) as Any;
+    if (!bBill) p.push("(ฟิกซ์เจอร์) บิลสาขา B");
+    const before = Number(await P.aiProposal.count({ where: { tenantId: T } }).catch(() => -1));
+    const o = await rt("MGR", "void_sale", { saleId: bBill?.id ?? "none", reason: "ลองยกเลิกบิลสาขาอื่น" }, { conv: true });
+    if (!isErr(o.j)) p.push(`void บิล B ไม่ถูกปฏิเสธ ${short(o.raw, 60)}`);
+    if (bBill?.receiptNo && o.raw.includes(String(bBill.receiptNo))) p.push("ผลมีเลขบิลของ B");
+    if (bBill && hasAmount(o.raw, Number(bBill.grandTotalSatang))) p.push("ผลมียอดบิลของ B");
+    if (Number(await P.aiProposal.count({ where: { tenantId: T } }).catch(() => -1)) !== before) p.push("มีข้อเสนอเกิด");
+    const all = await rt("OWNER", "pos_set_price", { productId: PR.bar, priceSatang: 2600 }, { conv: true });
+    const one = await rt("OWNER", "pos_set_price", { productId: PR.price, priceSatang: 5600 }, { conv: true });
+    if (!String(all.j?.summary ?? "").includes("ทุกสาขา")) p.push(`การ์ดสินค้าทุกสาขา ${short(all.j?.summary ?? all.raw, 80)}`);
+    if (!String(one.j?.summary ?? "").includes(`สาขา ${TAG} สาขาA`)) p.push(`การ์ดสินค้าสาขา A ${short(one.j?.summary ?? one.raw, 80)}`);
+    for (const x of [all, one]) if (x.j?.proposalId) await call(propMod, "rejectProposal", { tenantId: T, actor: memberActor("OWNER") }, String(x.j.proposalId));
+    chk("PR12", p.length === 0, "ปฏิเสธข้ามสาขา · การ์ดบอกขอบเขต", FXB(joinP(p)));
   }
   // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR11) ▸ ขั้น POS ในแผน = ต้องให้คนกดเองทีละรายการ ◂
   {
