@@ -7,3 +7,8 @@
 - N4 Low — per-key advisory lock held across assignee push/email inside `createCardFromExternal` → **CD-P38-R4 accepted as deviation** (sequential drains · 60 s tx timeout · no notify:false door among allowed imports).
 - Verified OK: boundary (imports :19–24 · zero kanban/meeting writes in bridge) · CD-P38-B1 export additive +22/−0 marked · consumer one line :806 · hf-fu ST1 untouched · cron additions only · defaults-off early return · parser pure + probe · writer OWNER/VALIDATION/CD-4 · PV1 text builders numbers-only · R8 TEAM_SAFE + owner re-check · locks keyed correctly · actions no throw · ORACLE-EDITs 4 own commits · facts KANBAN true ×2, MEETING absent.
 - Fix round 2 sent to the builder on **tree d** (p11 taken by P3.5U).
+
+## R1-FIX2 (head f5005fd8 · code 3173e2c4) — PASS
+- N1/N2/N3 verified (cursor paging by unique id · in-query exclusion · tenant/unit scoping · deadline per page/row · locks unchanged) · CD-P38-R4 accepted.
+- Note 1: marks query is raw SQL that only **reads** `KanbanCard` (`NOT EXISTS`) — controller: rule "no raw SQL into Kanban*" = writes; accepted (ST1 green). Note 2 cosmetic (locale flip ⇒ one extra comment) accepted.
+→ merge.
