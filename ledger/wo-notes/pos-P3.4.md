@@ -110,3 +110,19 @@ Results at code head `3222d081` (QC4):
 - `qc-pos-p3.4` forced **49/49** ×2 (fix1-r1 · gates-fix1) · `--no-db` **15/15**.
 - `qc-pos-p1.9` 0 · `qc-pos-p1.15` 0 · `qc-hf-tx` 0 · `qc-pos-p2.6` 65/67 (red = pins ST1 PosDevice fields + L3 contract sha; behavioural part green incl. PAR) · `qc-pos-p2.2` 41/42 (red = pin S3 contract sha) · fitness no-env 0 · fitness QC4 0 · fitness-pos 0 · `gen-pos-api-docs --check` 0.
 - **Typecheck** (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`): head **18229723** dirty=0 (2026-10-17T01:04:59Z) → **exit 0**. (Earlier: f0ff7298 exit 0 · eca8f126 exit 0.) The only later commit is this ledger line.
+
+## 11. Fix round 2 delivered (CD-P34i · R2 G1–G4 + hunter N6–N9) — 17 Oct
+| Item | Commit | What |
+|---|---|---|
+| G1 | `65ffde7b` | covering shift resolved first on both passes · recorded shift counts only if soldAt ∈ [openedAt − 5 min, closedAt ?? now]; pass 1 not covering = CLOCK_INVALID (opened after soldAt — keeps SY11's R7 code) / VALIDATION (closed before soldAt); accept falls back to the covering shift (OPEN → bound) |
+| G2 + N6 | `b52e768b` | price-at-sync = `regPrice(…, {at: syncTime})` (offline path, no 86 gate); refusal ⇒ null ⇒ fail closed (review when late > 30 min ∧ rule-priced line) · snapshot-match branch: late > 30 min ∧ soldAt > snapshot pvu ∧ snapshot total < price-at-sync (or null) ⇒ PRICE_WINDOW_REVIEW |
+| G3 | `8c2cfc4b` | retention = issued within 2 × OFFLINE_MAX_AGE_MS (48 h) of opts.now ∪ last 2 · cap 200 |
+| N8 | `e1436b13` | snapshot issue 1/device/60 s (issuedAt window; allowed when the last snapshot's pvu has passed) ⇒ RATE_LIMITED (before the catalogue walk) · never evict a hash referenced by PROCESSING/REJECTED/ACCEPTED-without-sale rows |
+| N7 | `0df1386f` | accept with claimed seller ≠ verified (= sync user, no token): claimed must sell at the unit (else SELLER_MISMATCH); discount cap = lower of both; open/custom/typed-weight lines need priceOverride of the claimed seller too |
+| N9 | `9824f1fe` | discard re-labels SYNCED only when the committed sale's offlineRef = the row's; otherwise normal discard |
+| G4 | `08585311` | C-13: REST-synced rows (API-key actor) cannot be accepted — SELLER_MISMATCH ⇒ discard only (acknowledged; no code) |
+
+Oracle (own `test(pos)` commits; checks 49 → 51): ORACLE-EDIT SY19 (G1) `c9a4f299` · SY20 (G2/N6 +3 cases incl. positive) `9596142e` · SEC3 (G3: −60/−59 h) `51bdbc7b` · SY22 (N9) `bf4ca866` · ORACLE-ADD SY25 (N8) `0275c1c0` · SY26 (N7) `b85d620f`.
+Red before the fixes (code = 3222d081, head bf4ca866): forced **46/51**, red exactly SY19 SY20 SY22 SY25 SY26 (SY20's positive case and SEC3 green on old code = controls). No swap-in needed.
+**CD-P34j (deviation)**: N6's snapshot-branch review is applied only when soldAt is past the snapshot's priceValidUntil (the N6 bypass window (pvu, pvu+15]). The literal "snapshotTotal < priceAtSync ∧ late > 30 min" would also queue every honest base-price drift synced late (SY4: cake 4500 snapshot vs 5500 now, synced 90 min later must stay OK + drift). G1 pass-1 code for a recorded shift that opened after soldAt stays CLOCK_INVALID (SY11) — VALIDATION only when it closed before soldAt.
+Results at code head 9824f1fe (gates at 08585311, ledger-only after): `qc-pos-p3.4` forced **51/51 ×2** · `--no-db` **15/15** · `qc-pos-p1.9` 0 · `qc-hf-tx` 0 · `qc-pos-p2.6` 65/67 (pins ST1 + L3 only; behavioural + PAR green) · `qc-pos-p2.2` 41/42 (pin S3 only) · fitness no-env 0 · fitness QC4 0 · `gen-pos-api-docs --check` 0.
