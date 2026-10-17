@@ -714,7 +714,8 @@ export async function discardOfflineSale(ctx: OfflineCtx, actor: RegisterActor, 
     const committed = await db.posSale.findFirst({ where: { tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, idempotencyKey: `${REG_KEY_PREFIX}${row.idempotencyKey}` }, select: { id: true, offlineRef: true, syncedAt: true, soldByUserId: true } });
     if (committed) {
       const w = await db.posOfflineSale.updateMany({ where: { id: row.id, tenantId: sc.ctx.tenantId, status: STATUS.REJECTED }, data: { status: STATUS.SYNCED, saleId: committed.id, reason: null } });
-      if (w.count === 1 && committed.offlineRef === row.offlineRef) {
+      const had = await db.auditLog.count({ where: { tenantId: sc.ctx.tenantId, action: AUDIT_SYNCED, targetId: committed.id } });
+      if (w.count === 1 && committed.offlineRef === row.offlineRef && had === 0) {
         await writeAudit({
           tenantId: sc.ctx.tenantId,
           actorId: sc.actor.userId,
