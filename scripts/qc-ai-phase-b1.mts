@@ -37,7 +37,9 @@ try {
 
   // 1) POS ขาย: หน่วยเดียว → ขายจริงผ่าน proposal
   const shopUnit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: "หน้าร้าน", slug: `pb1-${Date.now()}` } });
-  await sys.createSystem(tid, "POS", "ขาย");
+  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 B1-1.1 · R3 มติ 9): จุดขายต้องผูกระบบ POS (ด่าน R3 ของ pos_create_sale) — เดิมสร้างระบบโดยไม่ linkUnit
+  const pb1Pos = await sys.createSystem(tid, "POS", "ขาย");
+  await sys.linkUnit(tid, pb1Pos.id, shopUnit.id);
   const sp = await props.createProposal(ctx, { conversationId: conv.id, kind: "pos_create_sale", summary: "เปิดบิล 150 บาท", payload: { lines: [{ name: "กาแฟ", qty: 1, unitPriceSatang: 15000 }], payType: "CASH" } });
   const sx = await props.executeProposal(OWNER, ctx, sp.id);
   const sale = await prisma.posSale.findFirst({ where: { tenantId: tid, status: "PAID" } });

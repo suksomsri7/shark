@@ -25,6 +25,7 @@ import { kanbanTools } from "./tools-kanban";
 import { memberTools } from "./tools-member";
 // CRM C1.10 ▸ สกิล crm (14 tool จากทะเบียน op ของ REST CRM · แทน crm_create_lead รุ่นเขียนมือ) ◂
 import { crmTools } from "./tools-crm";
+import { posTools } from "./tools-pos"; // POS P3.9 ▸ R1 ◂
 import { createProposal, isKnownKind as isKnownKindName, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
@@ -161,40 +162,7 @@ const listSystems: AiTool = {
   },
 };
 
-// ── 2) sales_summary — สรุปยอดขาย N วันล่าสุด (POS) ──
-const salesSummary: AiTool = {
-  def: {
-    name: "sales_summary",
-    description: "สรุปยอดขายหน้าร้าน (POS) ในช่วงกี่วันล่าสุด — คืนจำนวนบิลที่ชำระแล้วและยอดรวมเป็นบาท",
-    parameters: {
-      type: "object",
-      properties: {
-        days: { type: "integer", minimum: 1, maximum: 365, description: "จำนวนวันย้อนหลัง (ค่าเริ่มต้น 7)" },
-      },
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const raw = asRecord(args).days;
-    const n = Number(raw);
-    const days = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 365) : 7;
-
-    const pos = await findSystem(ctx.tenantId, "POS");
-    if (!pos) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบขายหน้าร้าน (POS)" });
-
-    const since = new Date(Date.now() - days * 86_400_000);
-    const sales = await tenantDb({ tenantId: ctx.tenantId, systemId: pos.id }).posSale.findMany({
-      where: { status: "PAID", docType: "SALE", createdAt: { gte: since } },
-      select: { grandTotalSatang: true },
-    });
-    const totalSatang = sales.reduce((s, x) => s + (x.grandTotalSatang ?? 0), 0);
-    return JSON.stringify({
-      ช่วงเวลา: `${days} วันล่าสุด`,
-      จำนวนบิลที่ชำระแล้ว: sales.length,
-      ยอดขายรวมบาท: Math.round(totalSatang) / 100,
-    });
-  },
-};
+// POS P3.9 ▸ R1 มติ 1: sales_summary / sales_by_day / void_sale ย้ายไปทะเบียน op ของ POS (tools-pos.ts · ชื่อเดิม · pos.report.view + สาขา + วันธุรกิจ + หักคืนเงิน) ◂
 
 // ── 3) low_stock — สินค้าใกล้หมด/หมด (คลังสินค้า) ──
 const lowStock: AiTool = {
@@ -288,50 +256,6 @@ const customerSearch: AiTool = {
         รหัสสมาชิก: c.memberCode,
       })),
     });
-  },
-};
-
-// ── 5c) sales_by_day — ยอดขาย PAID แยกรายวัน (วัน BKK) ย้อนหลัง N วัน ──
-const salesByDay: AiTool = {
-  def: {
-    name: "sales_by_day",
-    description:
-      "ยอดขายหน้าร้าน (POS) ที่ชำระแล้ว แยกเป็นรายวันตามเวลาไทย ย้อนหลังกี่วันล่าสุด — คืนแต่ละวันพร้อมยอดบาทและจำนวนบิล",
-    parameters: {
-      type: "object",
-      properties: {
-        days: { type: "integer", minimum: 1, maximum: 90, description: "จำนวนวันย้อนหลัง (ค่าเริ่มต้น 7)" },
-      },
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const raw = asRecord(args).days;
-    const n = Number(raw);
-    const days = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 90) : 7;
-
-    const pos = await findSystem(ctx.tenantId, "POS");
-    if (!pos) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบขายหน้าร้าน (POS)" });
-
-    const since = new Date(Date.now() - days * 86_400_000);
-    const sales = await tenantDb({ tenantId: ctx.tenantId, systemId: pos.id }).posSale.findMany({
-      where: { status: "PAID", docType: "SALE", createdAt: { gte: since } },
-      select: { grandTotalSatang: true, createdAt: true },
-    });
-
-    // จัดกลุ่มตามวันแบบเวลาไทย (dayKeyBangkok) — สะสมยอดสตางค์ + นับบิล
-    const byDay = new Map<string, { satang: number; count: number }>();
-    for (const s of sales) {
-      const day = dayKeyBangkok(s.createdAt);
-      const g = byDay.get(day) ?? { satang: 0, count: 0 };
-      g.satang += s.grandTotalSatang ?? 0;
-      g.count += 1;
-      byDay.set(day, g);
-    }
-    const รายวัน = [...byDay.entries()]
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // ใหม่→เก่า
-      .map(([day, g]) => ({ วัน: day, ยอดบาท: Math.round(g.satang) / 100, จำนวนบิล: g.count }));
-    return JSON.stringify({ ช่วงเวลา: `${days} วันล่าสุด`, รายวัน });
   },
 };
 
@@ -1082,29 +1006,6 @@ const askClarify: AiTool = {
   // ไม่มีผลข้างเคียง (service loop จัดการก่อนถึงตรงนี้) — คืน marker เผื่อถูกเรียกตรง
   async execute() {
     return JSON.stringify({ clarify: true });
-  },
-};
-
-// ── void_sale — เสนอยกเลิก (void) บิลขายที่ชำระแล้ว (destructive — ยืนยัน 2 ชั้น) ──
-const voidSale: AiTool = {
-  action: true,
-  def: {
-    name: "void_sale",
-    description:
-      "เสนอยกเลิก (void) บิลขายหน้าร้านที่ชำระแล้ว (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้ยืนยัน 2 ชั้นก่อน เพราะเป็นการลบถาวรที่ย้อนกลับไม่ได้) ระบุ saleId (รหัสบิล)",
-    parameters: {
-      type: "object",
-      properties: {
-        saleId: { type: "string", description: "รหัสบิลที่จะยกเลิก" },
-      },
-      required: ["saleId"],
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const saleId = String(asRecord(args).saleId ?? "").trim();
-    if (!saleId) return JSON.stringify({ error: "ต้องระบุรหัสบิลที่จะยกเลิก" });
-    return propose(ctx, "void_sale", `ยกเลิก (void) บิลรหัส ${saleId}`, { saleId });
   },
 };
 
@@ -2423,12 +2324,10 @@ function registryTools(): AiTool[] {
   return [
     // read-only (8)
     listSystems,
-    salesSummary,
     lowStock,
     pendingLeaves,
     memberCount,
     customerSearch,
-    salesByDay,
     growthRecommendations,
     kbSearch,
     askClarify,
@@ -2470,7 +2369,6 @@ function registryTools(): AiTool[] {
     recordExpense,
     scheduleTask,
     automationCreateRule,
-    voidSale,
     // Phase B1 action — เงินเดิน (เปิดบิล / จองบริการ / จองห้อง / บัตรคิว / ยืนยันออเดอร์)
     posCreateSale,
     bookingCreateAppointment,
@@ -2502,6 +2400,8 @@ function registryTools(): AiTool[] {
     ...memberTools(),
     // CRM C1.10 ▸ สกิล crm (R-E.4) — สร้างจากทะเบียน op ของ REST CRM ด้วยกติกาเดียวกัน (kind `crm.*`) ◂
     ...crmTools(),
+    // POS P3.9 ▸ R1 มติ 1: สกิล sales จากทะเบียน op ของ REST POS (11 tool · kind `pos.*`) + pos_draft_po ◂
+    ...posTools(),
   ];
 }
 

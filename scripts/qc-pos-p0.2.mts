@@ -166,7 +166,8 @@ try {
   const salesSkill = SKILLS.find((s) => s.id === "sales");
   const skillTools = [...(salesSkill?.tools ?? [])].sort();
   const mapTools = reg.POS_LEGACY_AI_TOOLS.map((r) => r.tool).sort();
-  chk("P0.2-S3.1", "ตาราง POS_LEGACY_AI_TOOLS = รายชื่อ tool ของสกิล sales พอดี", JSON.stringify(skillTools) === JSON.stringify(mapTools), skillTools.join(","), mapTools.join(","));
+  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 S3.1): สกิล sales มี tool ใหม่จากทะเบียน (P3.9) ⇒ ตาราง tool เดิม ⊆ รายชื่อสกิล (เดิม: เท่ากันพอดี)
+  chk("P0.2-S3.1", "ตาราง POS_LEGACY_AI_TOOLS ⊆ รายชื่อ tool ของสกิล sales (P3.9)", mapTools.length === 6 && mapTools.every((n) => skillTools.includes(n)), "6 ⊆ sales", mapTools.filter((n) => !skillTools.includes(n)).join(",") || `6 ⊆ ${skillTools.length}`);
   const mapOpIds = reg.POS_LEGACY_AI_TOOLS.map((r) => r.opId).filter((x): x is string => x !== null);
   const danglingMap = mapOpIds.filter((id) => !byId.has(id));
   chk("P0.2-S3.2", "opId ทุกแถวมีจริงในทะเบียน", danglingMap.length === 0, "0", danglingMap.join(",") || "0");
@@ -175,11 +176,15 @@ try {
   chk("P0.2-S3.3", "op ของ P0.2 ทุกตัวมีแถวในตาราง", unmapped.length === 0, "0", unmapped.map((o) => o.id).join(",") || "0");
   const ownerOk = reg.POS_LEGACY_AI_TOOLS.every((r) => (r.owner === "pos") === (r.opId !== null));
   chk("P0.2-S3.4", "แถวที่ไม่ใช่ของ POS ไม่มี op ปลอม (owner≠pos ⇔ opId=null)", ownerOk, "true", String(ownerOk));
+  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 S3.5): สลับ tool = P3.9 ⇒ op ที่ประกาศ tool = 11 ตัวตาม TOOL_SPEC ของ qc-pos-p3.9 (เดิม: ไม่มีเลย)
+  const P39_TOOLS: Record<string, string> = { "sales.summary": "sales_summary", "sales.byDay": "sales_by_day", "reports.products": "pos_top_products", "reports.shifts": "pos_shift_report", "shifts.xReport": "pos_shift_now", "reports.anomalies": "pos_anomalies", "reports.hourly": "pos_hourly", "products.lookup": "pos_find_product", "products.setPrice": "pos_set_price", "products.availability": "pos_set_availability", "sales.void": "void_sale" };
   const withTool = OPS.filter((o) => o.tool);
-  chk("P0.2-S3.5", "ไม่มี op ไหนประกาศ tool (มติข้อ 1)", withTool.length === 0, "0", withTool.map((o) => o.id).join(",") || "0");
+  const toolBad = withTool.filter((o) => P39_TOOLS[o.id] !== o.tool?.name).map((o) => `${o.id}:${o.tool?.name}`);
+  chk("P0.2-S3.5", "op ที่ประกาศ tool = 11 ตัวของ P3.9 (ชื่อตรง)", withTool.length === 11 && toolBad.length === 0, "11", `${withTool.length} · ผิด ${toolBad.join(",") || "-"}`);
   const live = new Set(toolRegistry().map((t) => t.def.name));
   const missingLive = skillTools.filter((n) => !live.has(n));
-  chk("P0.2-S3.6", "tool เดิมทั้ง 6 ของสกิล sales ยังอยู่ในทะเบียน tool จริง", missingLive.length === 0 && skillTools.length === 6, "6 ครบ", `${skillTools.length} · ขาด ${missingLive.join(",") || "-"}`);
+  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 S3.6): สกิล sales = 15 tool (6 เดิม + 9 ใหม่) ทุกตัวอยู่ในทะเบียน tool จริง (เดิม: 6 ตัวพอดี)
+  chk("P0.2-S3.6", "tool ทั้ง 15 ของสกิล sales อยู่ในทะเบียน tool จริง (P3.9)", missingLive.length === 0 && skillTools.length === 15, "15 ครบ", `${skillTools.length} · ขาด ${missingLive.join(",") || "-"}`);
   let complete = "ok";
   try {
     assertSkillRegistryComplete();

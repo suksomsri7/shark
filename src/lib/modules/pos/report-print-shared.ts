@@ -96,6 +96,7 @@ const ANOMALY_LABEL_EN: Readonly<Record<string, string>> = {
   A8: "Cash over/short",
   A9: "Repeated cash shortage",
   A10: "Rejected/cancelled orders",
+  A11: "Frequent schedule overrides", // POS P3.9 ▸ R11 ◂
 };
 const enAnomalyRow = (r: string[]): string[] =>
   r.map((c, i) => (i === 1 ? (ANOMALY_LABEL_EN[r[0] ?? ""] ?? c) : i === 7 ? c.replace(/^ขาด /, "short ").replace(/^เกิน /, "over ") : i === 8 ? c.split(" หรือ ").join(" or ") : c));

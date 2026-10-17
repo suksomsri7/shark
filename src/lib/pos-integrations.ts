@@ -19,7 +19,7 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import { canOnAllLinkedUnits, ctxOk, PERM_SETTINGS_MANAGE, settingsMembership, settingsRefuse, unitLinkedToPos } from "@/lib/modules/pos/settings-general";
 import { receiptSettingsOf } from "@/lib/modules/pos/receipt-settings";
 import { unitOversellPolicy } from "@/lib/modules/pos/service";
-import type { PosSettingsRefusal } from "@/lib/modules/pos/settings-shared";
+import { posAiSettings, type PosSettingsRefusal } from "@/lib/modules/pos/settings-shared"; // POS P3.9 ▸ R10: + posAiSettings ◂
 
 // ═══════════ ชนิดข้อมูล (สัญญาของ P1.18U) ═══════════
 export const POS_INTEGRATION_CODES = ["MEMBER", "POINT", "COUPON", "REWARD", "ACCOUNT", "INVENTORY", "HR", "CRM", "CHAT", "KANBAN", "MARKETING", "BOOKING", "AI"] as const;
@@ -60,7 +60,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // POS P2.14 ▸ DOC-1: โต๊ะจองบนผังมีจริงตั้งแต่ P2.4 · คิว/บิลจองล่วงหน้า = P3 ◂
-  AI: [["shiftDaySummary", false, "P3.9"], ["purchaseSuggestion", false, "P3.9"], ["anomalyDetection", false, "P3.9"]],
+  AI: [["shiftDaySummary", true, null], ["purchaseSuggestion", true, null], ["anomalyDetection", true, null]], // POS P3.9 ▸ R10: สรุปเช้า · ร่าง PO · จุดผิดปกติในสรุป (ความสามารถมีแล้ว — การ์ด LINKED เมื่อ settings.pos.ai.enabled) ◂
 };
 /** การ์ดที่ยังไม่มีสาย POS ↔ ระบบนั้นเลย (P1) — PLANNED พร้อมเฟส (ร้านไม่มีระบบนั้น = NO_SYSTEM · AI ไม่ใช่ SystemType = PLANNED เสมอ) */
 const PLANNED_TYPE: Partial<Record<PosIntegrationCode, SystemType>> = { MARKETING: "MARKETING", BOOKING: "BOOKING" }; // POS P3.5 ▸ HR มีสายแล้ว (การ์ดของตัวเองด้านล่าง) ◂
@@ -233,7 +233,7 @@ export async function posIntegrationCards(ctx: UnitCtx, actor: Actor, _input: un
 
     // ── ยังไม่มีสาย (P1): MARKETING BOOKING AI ──
     for (const [code, type] of Object.entries(PLANNED_TYPE) as [PosIntegrationCode, SystemType][]) cards.set(code, card(code, ofType(type).length ? "PLANNED" : "NO_SYSTEM"));
-    cards.set("AI", card("AI", "PLANNED"));
+    cards.set("AI", card("AI", posAiSettings(pos.settings).enabled ? "LINKED" : "OFF")); // POS P3.9 ▸ R10: เปิดผู้ช่วย AI ของ POS = LINKED · ปิด (ปริยาย) = OFF ◂
 
     const list = POS_INTEGRATION_CODES.map((c) => cards.get(c)!);
     const backlog = await backlogOf(tenantId, systemId, now, opts);

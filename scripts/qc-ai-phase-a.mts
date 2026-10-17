@@ -69,10 +69,11 @@ try {
   const posSvc = (await import("@/lib/modules/pos/service")) as unknown as { createSale: (i: any) => Promise<{ saleId: string }> };
   const sale = await posSvc.createSale({ tenantId: tid, unitId: unit.id, systemId: posSys.id, idempotencyKey: `pa-void-${Date.now()}`, lines: [{ name: "ของ", qty: 1, unitPriceSatang: 10000 }], payMethods: [{ type: "CASH", amountSatang: 10000 }] });
   const vp = await props.createProposal(ctx, { conversationId: conv.id, kind: "void_sale", summary: "ยกเลิกบิล", payload: { saleId: sale.saleId } });
-  const v1 = await props.executeProposal(OWNER, ctx, vp.id);
+  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 PA-2.6/2.7 · CD-4): kind เดิม void_sale เดินทาง sales.void → voidSaleByActor (เหตุผลปริยาย · audit · สายอนุมัติ) ⇒ ต้องรู้ตัวผู้กดยืนยัน (userId) — เดิมไม่ส่ง userId
+  const v1 = await props.executeProposal(OWNER, ctx, vp.id, { userId: OWNER.userId });
   const saleMid = await prisma.posSale.findUnique({ where: { id: sale.saleId } });
   chk("PA-2.6", "void_sale ชั้นเดียว → บิลยัง PAID + needsSecondConfirm", v1?.ok === false && v1?.needsSecondConfirm === true && saleMid?.status === "PAID");
-  const v2 = await props.executeProposal(OWNER, ctx, vp.id, { confirm2x: true });
+  const v2 = await props.executeProposal(OWNER, ctx, vp.id, { confirm2x: true, userId: OWNER.userId }); // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 PA-2.7 · CD-4)
   const saleEnd = await prisma.posSale.findUnique({ where: { id: sale.saleId } });
   chk("PA-2.7", "void_sale ชั้นสอง → บิล VOIDED จริง", v2?.ok === true && saleEnd?.status === "VOIDED");
 

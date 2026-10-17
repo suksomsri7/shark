@@ -1265,7 +1265,8 @@
         "A7": "Repeated reprints",
         "A8": "Cash over/short",
         "A9": "Repeated cash shortage",
-        "A10": "Rejected/cancelled orders"
+        "A10": "Rejected/cancelled orders",
+        "A11": "Frequent schedule overrides"
       },
       "cols": {
         "unit": "Branch",
@@ -2279,7 +2280,8 @@
           "A6": "lines",
           "A7": "times",
           "A9": "shifts",
-          "A10": "orders"
+          "A10": "orders",
+          "A11": "times"
         },
         "hint": {
           "A1": "Voids per person per day — reaching this many, or this total",
@@ -2291,7 +2293,8 @@
           "A7": "Receipt reprints of the same bill reaching this many",
           "A8": "A shift that is short or over (recounts included) by at least this amount",
           "A9": "The same shift opener short in this many shifts within the range",
-          "A10": "Rejected or cancelled orders per branch per day reaching this many"
+          "A10": "Rejected or cancelled orders per branch per day reaching this many",
+          "A11": "Overrides of the staff schedule per approver per branch per day reaching this many"
         },
         "err": {
           "count": "Enter a whole number 1–1,000",
@@ -2791,6 +2794,18 @@
       "credit": "Store credit",
       "creditSub": "Regular customers only · limit per person",
       "readOnly": "Edit on the Payment methods tab"
+    },
+    "ai": {
+      "title": "POS AI assistant",
+      "desc": "The morning brief goes to the owner and the managers you choose. The assistant only proposes; every write needs a person to confirm.",
+      "enabled": "Turn on the POS AI assistant",
+      "briefEnabled": "Send the morning brief every day",
+      "briefHour": "Morning brief time (Thailand)",
+      "briefEmail": "Also send by e-mail",
+      "managers": "Managers who receive the brief",
+      "anomalyInBrief": "Show anomalies in the brief",
+      "ownerOnly": "Only the shop owner can change this setting",
+      "invalidManager": "Recipients must be managers of the shop who accepted the invitation"
     },
     "offline": {
       "cardTitle": "Offline",
@@ -4654,6 +4669,20 @@
     "cart": {
       "empty": "Your cart is empty — tap + on the menu",
       "noteLine": "Note: {note}"
+    }
+  },
+  "ai": {
+    "brief": {
+      "title": "POS morning brief",
+      "empty": "No morning brief yet",
+      "off": "The POS AI assistant is off",
+      "proposeOnly": "AI only proposes — every write needs a person to confirm"
+    },
+    "tools": {
+      "denied": "This account cannot see this POS data yet. Ask the shop owner for access.",
+      "reasonRequired": "Give a reason for the void (at least 5 characters)",
+      "noSupplier": "This item has no supplier yet. Pick a supplier before drafting a purchase order.",
+      "priceOverride": "Custom prices need the price override permission"
     }
   }
 }

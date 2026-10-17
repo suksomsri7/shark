@@ -69,6 +69,7 @@ const productsLookup = definePosOp({
   summary: "Find the product of a barcode exactly like the register scanner: product barcode, stock item barcode, or a scale label (grams and price of the label). match is one, choose (pick a variant) or none.",
   label: "ค้นสินค้าจากบาร์โค้ด",
   test: "products.lookup",
+  tool: { name: "pos_find_product", hint: "Use to find a product from a scanned barcode at a branch." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: z.object({ unitId: unitIdField, barcode: z.string().min(1).max(64).describe("Scanned code (EAN/UPC/internal, or a weighed EAN-13 label).") }).strict(),
   async handler({ actor, input }) {
     const unitId = await requirePosUnit(actor, input.unitId);
@@ -162,6 +163,7 @@ const productsSetPrice = definePosOp({
   summary: "Set the base price of a product (satang). Linked menu, web shop and accounting prices follow from the same write.",
   label: "ตั้งราคาสินค้า",
   test: "products.setPrice",
+  tool: { name: "pos_set_price", hint: "Proposes a new base price; nothing changes until a person with the price permission confirms." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: z.object({ unitId: unitIdOpt, priceSatang: satang.describe("New base price in satang.") }).strict(),
   auditTarget: productTarget,
   async handler({ actor, params, input }) {
@@ -196,6 +198,7 @@ const productsAvailability = definePosOp({
   summary: "Mark a product sold out (86) or back on sale at a branch. The register, kitchen screens and channels see it at once; emits pos.product.availability when it flips.",
   label: "แจ้งของหมด / คืนขาย",
   test: "products.availability",
+  tool: { name: "pos_set_availability", hint: "Proposes marking a product sold out (86) or back on sale at a branch; a person confirms first." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: z
     .object({
       unitId: unitIdOpt,

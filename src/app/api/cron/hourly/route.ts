@@ -10,6 +10,8 @@ import { isCronAuthorized } from "@/lib/core/cron-auth";
 import { forceCloseStaleShifts } from "@/lib/modules/pos/shift";
 import { expirePaymentIntents } from "@/lib/modules/pos/payment-intent"; // POS P1.7 ▸ R5 ◂
 import { expirePreorders } from "@/lib/modules/pos/order"; // POS P2.7 ▸ S2 ◂
+import { sendPosDailyBriefs } from "@/lib/modules/pos/ai-brief"; // POS P3.9 ▸ R9 ◂
+import { listPending as approvalListPending } from "@/lib/modules/approval/service"; // POS P3.9 ▸ R6 (คำขอที่รอผู้รับสรุปเช้า) ◂
 import { drainAll } from "@/lib/outbox-consumers";
 
 // GET /api/cron/hourly — งานประจำของผู้ช่วย AI (Vercel Cron เรียกทุกต้นชั่วโมง)
@@ -111,6 +113,23 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
+  // POS P3.9 ▸ R8 R9 มติ 4 5: สรุปเช้า POS รายผู้รับ (เจ้าของ + ผู้จัดการที่เลือก) เมื่อชั่วโมงไทย ≥ เวลาที่ร้านตั้ง (ปริยาย 06:00 · พลาด = ส่งตามหลังวันเดียวกัน) ·
+  //   กันซ้ำในตัว (advisory lock + หัวเรื่องต่อผู้รับ) · งบ 20 วิ · best-effort: ล้มห้ามทำให้รอบนี้แดง ◂
+  let posBriefsSent = -1;
+  try {
+    posBriefsSent = (
+      await sendPosDailyBriefs({
+        now: new Date(),
+        deadline: new Date(Date.now() + 20_000),
+        pendingApprovals: async (tenantId, r) => (await approvalListPending({ tenantId }, { userId: r.userId, role: r.role, unitAccess: r.unitAccess, permissions: r.permissions })).length,
+      })
+    ).sent;
+  } catch (e) {
+    await logOps("WARN", "cron", "sendPosDailyBriefs (สรุปเช้า POS) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ POS P3.9
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;
@@ -136,6 +155,7 @@ export async function GET(req: Request) {
     posShiftsForced,
     posIntentsExpired,
     posPreordersExpired, // POS P2.7 ◂
+    posBriefsSent, // POS P3.9 ◂
     outboxDrained,
     at: new Date().toISOString(),
   });

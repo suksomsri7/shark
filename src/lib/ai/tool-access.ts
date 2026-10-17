@@ -27,6 +27,7 @@ import { crmCan, crmApi } from "@/lib/modules/crm";
 import { canReadMember, hasMemberPerm, isUnitScoped, toMemberActor } from "@/lib/modules/member/access";
 import { membershipCanAccount } from "@/lib/modules/account/api/actor";
 import { memberToolScope } from "@/lib/modules/member/api/tools";
+import { posToolScope } from "@/lib/modules/pos/api/tools"; // POS P3.9 ▸ R1 ◂
 import { accountToolScope } from "./account-ops";
 import { kanbanMembershipCan, kanbanToolScope } from "./kanban-ops";
 import { aiActorMembership, isGeneralKeyActor, type AiActor, type AiApiKeyActor } from "./actor";
@@ -36,7 +37,7 @@ import { toolAllowedForApiKey } from "./skills";
 export type AccessQuery = { module: string; action: string };
 
 /** โมดูลที่มีทะเบียน scope ของคีย์ API เป็นของตัวเอง */
-const SCOPED_MODULES = new Set(["crm", "member", "account", "kanban"]);
+const SCOPED_MODULES = new Set(["crm", "member", "account", "kanban", "pos"]); // POS P3.9 ▸ R1: + pos (ทะเบียน op ของ REST POS) ◂
 
 type HandRule = {
   /** คีย์สิทธิ์ที่ต้องมี **ทุกตัว** (ว่าง = ใครก็ตามที่เข้าผู้ช่วยได้แล้ว — ประตูเว็บไม่มีคีย์อ่าน) */
@@ -75,8 +76,7 @@ export const HAND_TOOL_ACCESS: Readonly<Record<string, HandRule>> = {
   forget_fact: { needs: [], writesNow: true },
   list_memories: OPEN,
   // ── อ่าน · ประตูเว็บไม่มีคีย์อ่าน ──
-  sales_summary: OPEN, // /app/sys/[id] (POS) · pos/sales
-  sales_by_day: OPEN,
+  // POS P3.9 ▸ R1 มติ 1: sales_summary / sales_by_day ย้ายเป็นเครื่องมือของทะเบียน POS (pos.report.view + สาขา — moduleToolQuery) ◂
   low_stock: OPEN, // inventory hub / items
   pending_leaves: OPEN, // hr/leave
   kb_search: OPEN, // /app/kb
@@ -118,7 +118,8 @@ export const HAND_ACTION_KIND: Readonly<Record<string, string>> = {
   record_expense: "record_expense",
   schedule_task: "ai_schedule_task",
   automation_create_rule: "automation_create_rule",
-  void_sale: "void_sale",
+  // POS P3.9 ▸ R4 มติ 2: void_sale = เครื่องมือของทะเบียน POS (kind pos.sales.void · pos.sale.void) — kind เดิม void_sale ยังกดยืนยันได้ (proposals.ts) ◂
+  pos_draft_po: "pos_draft_po", // POS P3.9 ▸ R5 มติ 8 (inventory.po.create) ◂
   pos_create_sale: "pos_create_sale",
   booking_create_appointment: "booking_create_appointment",
   hotel_create_reservation: "hotel_create_reservation",
@@ -150,6 +151,9 @@ function moduleToolQuery(name: string): AccessQuery | null {
   if (member) return { module: "member", action: member };
   const crm = crmApi.crmToolScope(name);
   if (crm) return { module: "crm", action: crm };
+  // POS P3.9 ▸ R1: tool ของทะเบียน POS → op.action (อ่าน = คีย์อ่าน · เขียน = คีย์ของคนกดยืนยัน = posKindAccess) ◂
+  const pos = posToolScope(name);
+  if (pos) return { module: "pos", action: pos };
   return null;
 }
 

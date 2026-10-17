@@ -319,9 +319,9 @@ const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: เดิม [false "P2.4"] [false "P2.4"] [false "P2.7"]
-  AI: [["shiftDaySummary", false, "P3.9"], ["purchaseSuggestion", false, "P3.9"], ["anomalyDetection", false, "P3.9"]],
+  AI: [["shiftDaySummary", true, null], ["purchaseSuggestion", true, null], ["anomalyDetection", true, null]], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R10): AI facts live — เดิม [false "P3.9"] ×3
 };
-const PLANNED_PHASE: Record<string, string> = { MARKETING: "P2.2", BOOKING: "P3", AI: "P3.9" }; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR ไม่ PLANNED แล้ว (เดิม HR: "P3.5") · // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3" — เดิม "P2.4"
+const PLANNED_PHASE: Record<string, string> = { MARKETING: "P2.2", BOOKING: "P3" }; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R10): AI ไม่ PLANNED แล้ว (เดิม AI: "P3.9") · // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR ไม่ PLANNED แล้ว (เดิม HR: "P3.5") · // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3" — เดิม "P2.4"
 const NAV_KEYS = ["overview", "register", "products", "stock", "sales", "shifts", "close", "reports", "settings"] as const;
 const NAV_TH = ["ภาพรวม", "ขายหน้าร้าน", "สินค้า/บริการ", "สต็อก", "บิลวันนี้", "กะ", "ปิดวัน", "รายงาน", "ตั้งค่า"];
 const ROLE_ROWS: readonly [string, string | null, string | null][] = [
@@ -1475,7 +1475,7 @@ async function runDb() {
   {
     const p: string[] = [];
     const r = await cards("OWNER");
-    for (const [code, state, phase] of [["BOOKING", "PLANNED", "P3"], ["AI", "PLANNED", "P3.9"], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) { // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3"
+    for (const [code, state, phase] of [["BOOKING", "PLANNED", "P3"], ["AI", "OFF", null], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) { // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R10): AI = OFF เมื่อ settings.pos.ai.enabled ปิด (ปริยาย) — เดิม ["AI", "PLANNED", "P3.9"] · // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3"
       const c = cardOf(r, code);
       if (c?.state !== state) p.push(`${code} ${short(c?.state, 12)} (คาด ${state})`);
       if (c && (c.scope !== null || c.target !== null || c.manage !== null || c.lastActivityAt !== null)) p.push(`${code} scope/target/manage/lastActivity ไม่ใช่ null`);

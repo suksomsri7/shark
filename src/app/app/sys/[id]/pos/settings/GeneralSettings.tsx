@@ -63,7 +63,7 @@ const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:
 const sameRules = (a: WeighedBarcodeRule[], b: WeighedBarcodeRule[]) => a.length === b.length && a.every((r, i) => r.prefix === b[i]!.prefix && r.kind === b[i]!.kind);
 
 // ── POS P2.12U ▸ มติ 6: เกณฑ์จุดผิดปกติ — ช่องของกฎตามสัญญา (ลำดับแสดง) · แปลงหน่วยจอ ↔ ค่าที่เก็บ (สตางค์ · bp) ◂ ──
-const ANOMALY_FIELDS: Record<PosAnomalyRule, PosAnomalyField[]> = { A1: ["count", "satang"], A2: ["count", "satang"], A3: ["bp"], A4: ["bp"], A5: ["count"], A6: ["count"], A7: ["count"], A8: ["satang"], A9: ["count"], A10: ["count"] };
+const ANOMALY_FIELDS: Record<PosAnomalyRule, PosAnomalyField[]> = { A1: ["count", "satang"], A2: ["count", "satang"], A3: ["bp"], A4: ["bp"], A5: ["count"], A6: ["count"], A7: ["count"], A8: ["satang"], A9: ["count"], A10: ["count"], A11: ["count"] }; // POS P3.9 ▸ R11: + A11 ◂
 /** ค่าที่เก็บ → ข้อความในช่อง (บาท/เปอร์เซ็นต์ตัดศูนย์ท้าย) */
 const anomalyText = (f: PosAnomalyField, v: number) => (f === "count" ? String(v) : f === "satang" ? bahtText(v) : String(v / 100));
 /** ข้อความในช่อง → ค่าที่เก็บ · ผิดรูป/นอกช่วง POS_ANOMALY_LIMITS = null */

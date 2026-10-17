@@ -1305,6 +1305,7 @@ export const ANOMALY_RULE_LABEL_TH: Readonly<Record<PosAnomalyRule, string>> = {
   A8: "เงินขาด/เกิน",
   A9: "เงินขาดซ้ำ",
   A10: "ยกเลิก/ปฏิเสธออเดอร์",
+  A11: "ข้ามตารางงานบ่อย", // POS P3.9 ▸ R11 ◂
 };
 const ANOMALY_AUDIT_ACTIONS = ["pos.sale.void", "pos.discount.override", "pos.approval.pin_override", "pos.receipt.reprint"];
 const ANOMALY_DENIED = "บัญชีนี้ยังไม่มีสิทธิ์ดูรายงานจุดผิดปกติของพนักงาน — ขอสิทธิ์จากเจ้าของร้าน";
@@ -1632,6 +1633,48 @@ export async function reportAnomalies(ctx: ReportCtx, actor: RegisterActor, inpu
     const g10 = new Map<string, Acc>();
     for (const o of orders) acc(g10, o.unitId, day(o.receivedAt), null).count += 1;
     for (const g of g10.values()) if (g.count >= T.rules.A10.count) emit("A10", "UNIT", g, null, g.count, g.count);
+
+    // POS P3.9 ▸ R11 มติ 6 (CD-5) A11 ข้ามตารางงานบ่อย — audit pos.staff.schedule_override ต่อผู้อนุมัติ (actorId) / สาขา / วัน ≥ count ·
+    //   สาขา = after.unitId · หรือ targetType PosDevice → สาขาของเครื่อง · หรือ after.deviceId (รหัสเครื่อง — รูปที่ P3.5 เขียนจริง) → สาขาของเครื่องในระบบนี้ ·
+    //   นอกขอบเขตสาขา/หาสาขาไม่ได้ = ไม่นับ · อ่านอย่างเดียว ◂
+    const overrides = await db.auditLog.findMany({
+      where: { tenantId: s.tenantId, createdAt: { gte: r.start, lt: r.end }, action: "pos.staff.schedule_override" },
+      select: { actorId: true, targetType: true, targetId: true, after: true, createdAt: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    // POS P3.9 ▸ fix1 F1 (=N3 · CD-P39c): ลำดับหาสาขา = after.unitId → แถว PIN (targetType PosStaffPin = รูปที่ P3.5 เขียน · @@unique(unitId,userId)) →
+    //   แถวเครื่อง (targetType PosDevice) → รหัสเครื่อง **เฉพาะเมื่อรหัสนั้นอยู่สาขาเดียว** (รหัสเดียวกันได้หลายสาขา — @@unique(unitId, deviceCode)) · กำกวม = ไม่นับ ◂
+    const devById = new Map<string, string>();
+    const pinUnit = new Map<string, string>();
+    const devByCode = new Map<string, Set<string>>();
+    const devIds = [...new Set(overrides.filter((x) => x.targetType === "PosDevice").map((x) => x.targetId).filter(isId))];
+    const pinIds = [...new Set(overrides.filter((x) => x.targetType === "PosStaffPin").map((x) => x.targetId).filter(isId))];
+    const devCodes = [...new Set(overrides.map((x) => afterOf(x.after).deviceId).filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64))];
+    for (const ids of chunks(devIds)) for (const d of await db.posDevice.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, id: { in: ids } }, select: { id: true, unitId: true } })) devById.set(d.id, d.unitId);
+    for (const ids of chunks(pinIds)) for (const x of await db.posStaffPin.findMany({ where: { tenantId: s.tenantId, id: { in: ids } }, select: { id: true, unitId: true } })) pinUnit.set(x.id, x.unitId);
+    for (const codes of chunks(devCodes)) {
+      for (const d of await db.posDevice.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, deviceCode: { in: codes } }, select: { deviceCode: true, unitId: true } })) {
+        devByCode.set(d.deviceCode, (devByCode.get(d.deviceCode) ?? new Set<string>()).add(d.unitId));
+      }
+    }
+    const oneUnitOf = (code: string): string | undefined => {
+      const us = devByCode.get(code);
+      return us && us.size === 1 ? [...us][0] : undefined;
+    };
+    const g11 = new Map<string, Acc>();
+    for (const au of overrides) {
+      if (!isId(au.actorId)) continue;
+      const a11 = afterOf(au.after);
+      const code = typeof a11.deviceId === "string" ? a11.deviceId : "";
+      const u =
+        (typeof a11.unitId === "string" && a11.unitId) ||
+        (au.targetType === "PosStaffPin" && au.targetId ? pinUnit.get(au.targetId) : undefined) ||
+        (au.targetType === "PosDevice" && au.targetId ? devById.get(au.targetId) : undefined) ||
+        (code ? oneUnitOf(code) : undefined);
+      if (!u || !inScope.has(u)) continue;
+      acc(g11, u, day(au.createdAt), au.actorId).count += 1;
+    }
+    for (const g of g11.values()) if (g.count >= T.rules.A11.count) emit("A11", "USER", g, null, g.count, g.count);
 
     // ── ชื่อ + เรียง + totals ──
     const kept = out.filter((x) => inScope.has(x.unitId));

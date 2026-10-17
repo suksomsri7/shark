@@ -59,6 +59,8 @@ import {
   memberKindAccess,
 } from "@/lib/modules/member/api/tools";
 // CRM C1.10 ▸ kind `crm.*` เดินผ่านทะเบียน op ของ REST CRM (สะพานอยู่ในโมดูล `crm/api/tools.ts`) ◂
+// POS P3.9 ▸ R1 R3 R4 R5: kind `pos.*` + void_sale (เดิม) + pos_draft_po เดินผ่านสะพานในโมดูล (`pos/api/tools.ts`) · ด่าน R3 ของ pos_create_sale ◂
+import { assertLegacySaleAllowed, dispatchPosKind, isPosKind, posDestructiveKinds, posKindAccess } from "@/lib/modules/pos/api/tools";
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
@@ -81,6 +83,7 @@ type StaticProposalKind =
   | "record_expense"
   // ── Phase B1: ทำแทนโมดูลเงินเดิน (proposal NORMAL ทั้งหมด) ──
   | "pos_create_sale"
+  | "pos_draft_po" // POS P3.9 ▸ R5 ◂
   | "booking_create_appointment"
   | "hotel_create_reservation"
   | "queue_issue_ticket"
@@ -114,7 +117,7 @@ type StaticProposalKind =
  * kind ทั้งหมด — รวมของโมดูลบัญชีที่ derive จากทะเบียน op (`account.documents.create` ฯลฯ)
  * ไม่พิมพ์รายชื่อบัญชีซ้ำที่นี่: op เปลี่ยน/เพิ่มเมื่อไร ข้อเสนอเปลี่ยนตามทันที
  */
-export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}` | `member.${string}` | `crm.${string}`;
+export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}` | `member.${string}` | `crm.${string}` | `pos.${string}`; // POS P3.9 ▸ + pos.* ◂
 
 type Ctx = { tenantId: string };
 
@@ -131,6 +134,7 @@ export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
   ...(memberDestructiveKinds() as ProposalKind[]),
   // CRM C1.10 ▸ ทุก op ชนิด danger ของ CRM ที่เปิดเป็นเครื่องมือ (ชุดแรกยังไม่มี — 14 tool เป็น read/write ล้วน) ◂
   ...(crmSvc.crmApi.crmDestructiveKinds() as ProposalKind[]),
+  ...(posDestructiveKinds() as ProposalKind[]), // POS P3.9 ▸ R4: pos.sales.void ◂
   "void_sale",
   "cancel_appointment",
   "cancel_reservation",
@@ -157,6 +161,7 @@ const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: s
   record_expense: { module: "account", action: "account.doc.create" },
   // Phase B1 — action string ตรงกับปุ่มจริง (ดู */actions.ts)
   pos_create_sale: { module: "pos", action: "pos.sale.create" },
+  pos_draft_po: { module: "inventory", action: "inventory.po.create" }, // POS P3.9 ▸ R5 มติ 8: ร่าง PO (DRAFT) ◂
   booking_create_appointment: { module: "booking", action: "booking.appointment.create" },
   hotel_create_reservation: { module: "hotel", action: "hotel.reservation.create" },
   queue_issue_ticket: { module: "queue", action: "queue.ticket.issue" },
@@ -200,6 +205,8 @@ const KIND_ACCESS: Record<string, { module: string; action: string }> = {
   ...memberKindAccess(),
   // CRM C1.10 ▸ kind `crm.*` → `op.action` ของทะเบียน REST CRM (kind เดิม `crm_create_lead` คงอยู่ใน STATIC_KIND_ACCESS) ◂
   ...crmSvc.crmApi.crmKindAccess(),
+  // POS P3.9 ▸ R1 มติ 7: kind `pos.*` → op.action ของทะเบียน REST POS (setPrice → pos.product.setPrice · 86 → pos.sale.create · void → pos.sale.void) ◂
+  ...posKindAccess(),
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -304,7 +311,7 @@ type AutomationCreateRulePayload = {
   minAmountSatang?: number;
   notifyTitle?: string;
 };
-type VoidSalePayload = { saleId: string };
+// POS P3.9 ▸ R4: VoidSalePayload ย้ายไป pos/api/tools.ts (dispatchPosKind · kind เดิม void_sale) ◂
 type CancelAppointmentPayload = { appointmentId: string };
 type CancelReservationPayload = { reservationId: string; reason?: string };
 type KanbanArchiveCardPayload = { cardId: string };
@@ -539,6 +546,13 @@ async function dispatch(
     return crmSvc.crmApi.dispatchCrmKind({ tenantId, ...m, userId: userId ?? null, proposalId }, kind, payload);
   }
   // ◂ CRM C1.10
+
+  // POS P3.9 ▸ R1 R4 R5 มติ 2 7 8: kind `pos.*` (ทะเบียน op · คนกด = actor user · idempotencyKey = id ข้อเสนอ) · kind เดิม void_sale
+  //   (re-route → sales.void → voidSaleByActor: เหตุผลปริยาย CD-4 · กติกาอนุมัติ · audit) · pos_draft_po (ร่าง PO ผ่าน facade คลัง) ◂
+  if (isPosKind(kind)) {
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการของระบบขายหน้าร้านได้");
+    return dispatchPosKind({ tenantId, ...m, userId: userId ?? "", proposalId }, kind, payload);
+  }
 
   if (kind === "inventory_receive") {
     const p = payload as ReceivePayload;
@@ -787,6 +801,9 @@ async function dispatch(
       if (!Number.isFinite(l.qty) || l.qty <= 0) throw new Error(`จำนวนของ "${l.name}" ต้องมากกว่า 0`);
       if (!Number.isFinite(l.unitPriceSatang) || l.unitPriceSatang < 0) throw new Error(`ราคาของ "${l.name}" ติดลบไม่ได้`);
     }
+    // POS P3.9 ▸ R3 มติ 9: ผู้กดยืนยันต้องใช้สาขานี้ได้ + สาขาผูกระบบ POS นี้ · บรรทัดที่ไม่ตรงชื่อ+ราคาแคตตาล็อก = ราคาเอง ⇒ ต้องมี pos.sale.priceOverride ◂
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะเปิดบิลได้");
+    await assertLegacySaleAllowed({ tenantId, systemId: system.id, unitId: unit.id }, m, lines);
     const grand = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
     let payType: PosPayType = "CASH";
     if (p.payType === "TRANSFER") payType = "TRANSFER";
@@ -936,16 +953,7 @@ async function dispatch(
     return `คืนเงินออเดอร์ ${code} เรียบร้อยแล้ว — กลับรายการขาย คืนแต้ม/คูปอง และคืนสต็อกให้อัตโนมัติ`;
   }
 
-  if (kind === "void_sale") {
-    const p = payload as VoidSalePayload;
-    const saleId = String(p.saleId ?? "").trim();
-    if (!saleId) throw new Error("ต้องระบุรหัสบิลที่จะยกเลิก");
-    // อ่าน unitId ของบิล (mutate จริงผ่าน posSvc.voidSale เท่านั้น) — ไม่พบ = FAILED ไทย
-    const sale = await prisma.posSale.findFirst({ where: { tenantId, id: saleId }, select: { unitId: true } });
-    if (!sale) throw new Error("ไม่พบบิลนี้");
-    await posSvc.voidSale(tenantId, sale.unitId, saleId);
-    return "ยกเลิก (void) บิลเรียบร้อยแล้ว";
-  }
+  // POS P3.9 ▸ R4: kind void_sale เดินผ่านบล็อก pos.* ข้างบน (voidSaleByActor) — ทางเดิม voidSale ไม่มี audit/เหตุผล/สายอนุมัติ ถอดแล้ว ◂
 
   if (kind === "cancel_appointment") {
     const p = payload as CancelAppointmentPayload;

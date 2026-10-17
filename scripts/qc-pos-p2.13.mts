@@ -62,7 +62,7 @@ type Def = readonly [string, string, string];
 const D = (id: string, x: string, title: string): Def => [`P2.13-${id}`, x, title] as const;
 const CHECKS: readonly Def[] = [
   // ── ST สถิต ──
-  D("ST1", "S", "[§1 §2.1 มติ 3] ทะเบียน 49 op = OPS_SPEC (id·method·path·scope·kind ตรงตัว) · module pos · auditAction pos.api.<id> · summary ASCII · ป้ายไทย · test id ไม่ซ้ำ · ไม่มี tool (P0.2 S3.5) · POS_SCOPES ครบทุก scope ที่ใช้ · bundle pos-read/pos-operate/pos-admin = §2.1 ตรงตัว · scope เป็นคีย์สิทธิ์จริง · (DB) input strict + รูป P0.2 ของ sales.create ยังผ่าน schema"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
+  D("ST1", "S", "[§1 §2.1 มติ 3] ทะเบียน 49 op = OPS_SPEC (id·method·path·scope·kind ตรงตัว) · module pos · auditAction pos.api.<id> · summary ASCII · ป้ายไทย · test id ไม่ซ้ำ · tool เฉพาะ 11 op ของ P3.9 (ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 ST1) — เดิม: ไม่มี tool (P0.2 S3.5)) · POS_SCOPES ครบทุก scope ที่ใช้ · bundle pos-read/pos-operate/pos-admin = §2.1 ตรงตัว · scope เป็นคีย์สิทธิ์จริง · (DB) input strict + รูป P0.2 ของ sales.create ยังผ่าน schema"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
   D("ST2", "S", "[§6 มติ 8] ไฟล์ตามตารางชื่อ: route [...path] = 5 export บางส่งต่อ dispatch ของโมดูล (ไม่มี prisma/if/await อื่น) · openapi.json/route.ts · pos/api/{config,actor,dispatch,openapi,http-errors,keys}.ts · ops/{meta,sales,shifts,devices,products,channels,orders,reports}.ts · config rateNs pos/systemType POS/scopePrefix pos. · api-key-actions.ts \"use server\" create/list/revoke + api.key.create/api.key.revoke + pos.settings.manage + bundle pos-* + createApiKey"),
   D("ST3", "S", "[§5 มติ 1] ops/*.ts เรียก facade เท่านั้น: ไม่มี createSale( (sales.ts 1 → 0) · ไม่มี $transaction / .create( .update( .upsert( .delete( *Many( / $executeRaw · ไม่ import @prisma/client ค่า · keys.ts posApiServiceKey = api_ + sha256(keyId\\n+key)[0..63] (DB: ค่าจริง)"),
   D("ST4", "S", "[§4 มติ 8] gen-pos-api-docs --check exit 0 · docs/api/POS-API.md + skill endpoints.md มีทุก `METHOD path` · /developers/pos (buildOpenApi/POS_OPS) + /developers/pos.md route + ลิงก์จาก /developers · fitness.mts F13 เรียก gen-pos-api-docs · (DB) openapi.json = 49 operation · pos.md = ไฟล์คู่มือเป๊ะ"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 ST1): + sync.sales (มติ 2) · 48 → 49
@@ -427,7 +427,9 @@ function runStatic(): void {
       if (o.kind !== kind) p.push(`${id} kind ${o.kind} (คาด ${kind})`);
       if (!o.summary || !ASCII.test(o.summary)) p.push(`${id} summary ไม่ใช่ ASCII`);
       if (!THAI.test(o.label)) p.push(`${id} ป้ายไม่ใช่ไทย`);
-      if (o.hasTool) p.push(`${id} ประกาศ tool (มติ 7: ไม่สลับ tool)`);
+      // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 ST1): สลับ tool = P3.9 ⇒ อนุญาต tool เฉพาะ 11 op ของ TOOL_SPEC (qc-pos-p3.9) — เดิม: op ใดประกาศ tool = แดง
+      const P39_TOOL_OPS = ["sales.summary", "sales.byDay", "reports.products", "reports.shifts", "shifts.xReport", "reports.anomalies", "reports.hourly", "products.lookup", "products.setPrice", "products.availability", "sales.void"];
+      if (o.hasTool !== P39_TOOL_OPS.includes(id)) p.push(`${id} ${o.hasTool ? "ประกาศ tool นอกตาราง P3.9" : "ไม่ประกาศ tool (P3.9)"}`);
     }
     const extra = ops.filter((o) => !OPS_SPEC.some(([id]) => id === o.id)).map((o) => o.id);
     if (extra.length) p.push(`op เกินตาราง: ${extra.join(",")}`);
@@ -562,7 +564,8 @@ function runStatic(): void {
     const sk = rd(F.skills);
     const at = sk.indexOf("export function toolAllowedForApiKey");
     const fnTxt = at < 0 ? "" : sk.slice(at, at + 4000).split(/\n\}\n/)[0] ?? "";
-    if (!/POS P2\.13 ▸/.test(fnTxt)) p.push("toolAllowedForApiKey ไม่มี hunk `POS P2.13 ▸`");
+    // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 ST5): hunk ของ POS ใน toolAllowedForApiKey เป็นของ P3.9 แล้ว (derive จากทะเบียน · posToolAllowedForScopes) — เดิม `POS P2.13 ▸`
+    if (!/POS P3\.9 ▸/.test(fnTxt) || !/posToolAllowedForScopes\(/.test(fnTxt)) p.push("toolAllowedForApiKey ไม่มี hunk `POS P3.9 ▸` (posToolAllowedForScopes)");
     st5PinsOk = h === CONTRACT_SHA && prismaDiff !== null && !prismaDiff.trim();
     stNotes.ST5 = p;
   }
@@ -1100,7 +1103,8 @@ async function runDb() {
     if (typeof allow !== "function") p.push("toolAllowedForApiKey โหลดไม่ได้");
     else {
       const cases: [string, string[], boolean][] = [
-        ["sales_summary", ["kanban.card.read"], false], ["sales_summary", ["pos.sale.read"], true], ["sales_by_day", ["account.doc.read"], false], ["sales_by_day", ["pos.sale.read"], true],
+        // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 ST5): sales_summary/sales_by_day ⇐ pos.report.view (op.action ของทะเบียน) — เดิม ⇐ pos.sale.read
+        ["sales_summary", ["kanban.card.read"], false], ["sales_summary", ["pos.report.view"], true], ["sales_summary", ["pos.sale.read"], false], ["sales_by_day", ["account.doc.read"], false], ["sales_by_day", ["pos.report.view"], true],
         ["pos_create_sale", ["pos.sale.read"], false], ["pos_create_sale", ["pos.sale.create"], true], ["void_sale", ["pos.sale.create"], false], ["void_sale", ["pos.sale.void"], true],
       ];
       for (const [t, s, want] of cases) {
