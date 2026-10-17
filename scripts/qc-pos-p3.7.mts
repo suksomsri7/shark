@@ -263,6 +263,7 @@ const at = (o: unknown, path: string): unknown => path.split(".").reduce<unknown
 
 // ── git (หมุด = 72669941 · ฐานของใบ P3.7) ──
 const BASE_REV = "72669941";
+const P37_PIN = process.env.P37_PIN || "42b823e9"; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.7 CD-B5): หมุดของเลน (ฐานของผู้สร้าง S)
 function gitBuf(args: string[]): Buffer | null {
   try {
     return execFileSync("git", ["-C", ROOT, ...args], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 });
@@ -274,7 +275,7 @@ const gitStr = (args: string[]) => gitBuf(args)?.toString("utf8") ?? null;
 const baseOk = () => bases().length > 0;
 let basesCache: string[] | null = null;
 /**
- * ฐานที่ยอมรับ (ไม่ซ้ำ · มีจริง): 72669941 (ฐานของบรีฟ) · merge-base HEAD session/pos · merge-base HEAD origin/session/pos —
+ * ฐานที่ยอมรับ (ไม่ซ้ำ · มีจริง): 72669941 (ฐานของบรีฟ) · หมุดของเลน P37_PIN (ปริยาย 42b823e9 = ฐานของผู้สร้างที่รวม P3.4/P3.5/P3.9 แล้ว) —  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.7 CD-B5): หมุดคงที่แทนฐานร่วมกับสาขาต้นทาง (qc-pos-p2.14 K3)
  * ผ่านเมื่อตรงฐานใดฐานหนึ่ง (ผู้สร้างอาจเริ่มจากปลาย session/pos ที่รวมใบอื่นแล้ว เช่น P3.4/P3.9 · แบบเดียวกับ qc-pos-p2.7)
  */
 function bases(): string[] {
@@ -285,12 +286,11 @@ function bases(): string[] {
     if (v && !out.includes(v)) out.push(v);
   };
   add(gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`]));
-  add(gitStr(["merge-base", "HEAD", "session/pos"]));
-  add(gitStr(["merge-base", "HEAD", "origin/session/pos"]));
+  add(gitStr(["rev-parse", "--verify", "-q", `${P37_PIN}^{commit}`])); // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.7 CD-B5): เดิมฐานร่วม HEAD กับ session/pos (ท้องถิ่น + origin) — ตัดทิ้ง ใช้หมุดคงที่
   basesCache = out;
   return out;
 }
-/** ฐานที่ใกล้ที่สุด (merge-base ถ้ามี ไม่งั้น 72669941) — ใช้หา "ไฟล์ที่ใบนี้เปลี่ยน" */
+/** ฐานที่ใกล้ที่สุด (หมุด P37_PIN ถ้ามี ไม่งั้น 72669941) — ใช้หา "ไฟล์ที่ใบนี้เปลี่ยน" (ORACLE-EDIT P3.7 CD-B5) */
 const nearBase = (): string => bases()[bases().length - 1] ?? BASE_REV;
 const showAt = (path: string, rev = BASE_REV): string | null => gitStr(["show", `${rev}:${path}`]);
 /** ไฟล์ตรงฐานใดฐานหนึ่งทุกไบต์ — null = ตรง · ไม่งั้นเหตุผล */
@@ -594,7 +594,7 @@ async function runStatic(): Promise<void> {
     const perBase = bases().map((rev) => ({ rev, v: hunkViolations(rev) }));
     const best = perBase.sort((a, b) => a.v.length - b.v.length)[0];
     if (best && best.v.length) p.push(...best.v.map((x) => `[${best.rev.slice(0, 8)}] ${x}`));
-    chk("ST3", p.length === 0, `หมุดเทียบ ${BASE_REV} (หรือ merge-base ของ session/pos) ครบ`, P8(p) || "ครบ (ตรงฐาน/รอยต่อเท่านั้น)");
+    chk("ST3", p.length === 0, `หมุดเทียบ ${BASE_REV} (หรือหมุดเลน ${P37_PIN}) ครบ`, P8(p) || "ครบ (ตรงฐาน/รอยต่อเท่านั้น)");
   });
   /** ข้อผิดของรอยต่อใน outbox-consumers.ts · chat/index.ts · order.ts เทียบฐาน rev */
   function hunkViolations(rev: string): string[] {
