@@ -9,7 +9,7 @@
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { writeAudit } from "@/lib/core/audit";
-import { assertCan, ForbiddenError } from "@/lib/core/rbac";
+import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { prisma } from "./db";
 import { posAiSettings, POS_AI_MANAGERS_MAX, type PosAiSettings, type PosSettingsRefusal } from "./settings-shared";
@@ -17,6 +17,15 @@ import { posAiSettings, POS_AI_MANAGERS_MAX, type PosAiSettings, type PosSetting
 type Result = { ok: true; ai: PosAiSettings } | PosSettingsRefusal;
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const refuse = (code: PosSettingsRefusal["code"], message: string, field?: string): PosSettingsRefusal => ({ ok: false, code, message, ...(field ? { field } : {}) });
+/** ด่านสิทธิ์ระดับร้าน (assertCan · คืน boolean ไม่โยน — กฎ P1.6-R2) */
+function can(m: MembershipCtx, action: string): boolean {
+  try {
+    assertCan(m, { module: "pos", action });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** อ่านค่าตั้งผู้ช่วย AI ของระบบ POS (สมาชิกของร้านที่เปิดหน้าตั้งค่าได้) */
 export async function getPosAiSettingsAction(systemId: string): Promise<Result> {
@@ -38,12 +47,8 @@ export async function updatePosAiSettingsAction(systemId: string, patch: unknown
     const auth = await requireTenant();
     const tenantId = auth.active.tenantId;
     if (auth.active.role !== "OWNER") return refuse("PERMISSION_DENIED", "เฉพาะเจ้าของร้านเท่านั้นที่แก้ค่าตั้งผู้ช่วย AI ได้");
-    try {
-      assertCan(posMembership(auth.active), { module: "pos", action: "pos.settings.manage" });
-    } catch (e) {
-      if (e instanceof ForbiddenError) return refuse("PERMISSION_DENIED", "เฉพาะเจ้าของร้านเท่านั้นที่แก้ค่าตั้งผู้ช่วย AI ได้");
-      throw e;
-    }
+    // POS P3.9 ▸ R10 fix (gates115 P1.6-R2: ไฟล์ action ห้ามมี throw) ◂ — ด่านสิทธิ์คืน boolean แบบ settings-actions.ts
+    if (!can(posMembership(auth.active), "pos.settings.manage")) return refuse("PERMISSION_DENIED", "เฉพาะเจ้าของร้านเท่านั้นที่แก้ค่าตั้งผู้ช่วย AI ได้");
     if (!isRecord(patch)) return refuse("VALIDATION", "ข้อมูลไม่ถูกต้อง");
     const sys = await prisma.appSystem.findFirst({ where: { id: String(systemId ?? ""), tenantId, type: "POS" }, select: { id: true, settings: true } });
     if (!sys) return refuse("NOT_FOUND", "ไม่พบระบบขายหน้าร้านนี้");
