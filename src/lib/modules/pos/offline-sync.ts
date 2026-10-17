@@ -380,16 +380,22 @@ async function decide(
   let shiftId: string | null = null;
   {
     const where = { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: ctx.unitId, deviceId: e.dev.deviceCode };
-    const sel = { id: true, status: true, openedAt: true } as const;
+    // POS P3.4 ▸ fix2 G1 (CD-P34i): กะที่ครอบ soldAt ก่อนเสมอ · กะที่บันทึกนับเฉพาะเมื่อ soldAt ∈ [เปิด − 5 นาที, ปิด ?? ตอนนี้] —
+    //   ไม่ครอบ: รอบแรก = เปิดทีหลัง soldAt → CLOCK_INVALID (R7 เดิม) / ปิดก่อน soldAt → VALIDATION · ผู้จัดการรับ = ใช้กะที่ครอบ soldAt แทน (กันอ้างกะเก่าที่ปิดเพื่อย้ายเงินออกจากกะที่เปิด) ◂
+    const sel = { id: true, status: true, openedAt: true, closedAt: true } as const;
+    const covering = await db.posShift.findFirst({
+      where: { ...where, openedAt: { lte: new Date(soldMs + OFFLINE_SHIFT_SLACK_MS) }, OR: [{ status: "OPEN" }, { closedAt: { gte: new Date(soldMs) } }] },
+      orderBy: [{ openedAt: "desc" }, { id: "desc" }],
+      select: sel,
+    });
     const recorded = it.shiftId ? await db.posShift.findFirst({ where: { ...where, id: it.shiftId }, select: sel }) : null;
     if (it.shiftId && !recorded && !manager) return reject("VALIDATION");
-    const sh =
-      recorded ??
-      (await db.posShift.findFirst({
-        where: { ...where, openedAt: { lte: new Date(soldMs + OFFLINE_SHIFT_SLACK_MS) }, OR: [{ status: "OPEN" }, { closedAt: { gte: new Date(soldMs) } }] },
-        orderBy: [{ openedAt: "desc" }, { id: "desc" }],
-        select: sel,
-      }));
+    if (recorded && !manager) {
+      if (soldMs < recorded.openedAt.getTime() - OFFLINE_SHIFT_SLACK_MS) return reject("CLOCK_INVALID");
+      if (soldMs > (recorded.closedAt?.getTime() ?? e.now + OFFLINE_CLOCK_SKEW_MS)) return reject("VALIDATION");
+    }
+    const recordedCovers = !!recorded && soldMs >= recorded.openedAt.getTime() - OFFLINE_SHIFT_SLACK_MS && soldMs <= (recorded.closedAt?.getTime() ?? e.now + OFFLINE_CLOCK_SKEW_MS);
+    const sh = recordedCovers ? recorded : covering;
     if (manager) {
       if (sh) shiftId = sh.status === "OPEN" ? sh.id : null;
       else shiftId = (await db.posShift.findFirst({ where: { ...where, status: "OPEN" }, orderBy: [{ openedAt: "desc" }, { id: "desc" }], select: { id: true } }))?.id ?? null;
