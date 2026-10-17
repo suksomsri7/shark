@@ -62,3 +62,28 @@
 - **N5**: `pos_draft_po` output capped (lists sliced to 10, JSON ≤ 8 KB via `capResult`). Covered by TL6-style assertion (ORACLE-EDIT TL6 to include `pos_draft_po`).
 - **Info (hunter)**: `sendPosDailyBriefs` ≤ 200 systems with no cursor — add a keyset loop until the deadline (small) — ORACLE-ADD BR11 optional if cheap, else note.
 - **F6**: raw inventory reads in `ai-insights.ts` noted on the OP Inventory line (no code); marker date cosmetic ignored.
+
+## R2 (857268eb) — MERGEABLE (L1 86 all-branch needs unit before propose · L2 title suffix mid-day rename → small fix round 2 with hunter items if any)
+# P3.9 R2 — fix round 1 · wip/pos-p3.9 @857268eb (code 58a3fb19) · verdict **MERGEABLE** (2 low follow-ups, not blocking)
+
+- **F2/N1 ✅** `plans.ts:36–49`: `PLAN_HUMAN_ONLY` now holds `void_sale` and `pos_draft_po`. `humanOnlyNote` also catches **every** `kind.startsWith("pos.")`, as a pattern rather than a list, so future `pos.*` kinds are covered too. It is enforced at createPlan, and therefore at propose_plan (the error is returned to the model) and again at plan start. runKind still gets no userId (as ruled). `pos_create_sale` stays allowed in plans: it is not a bridge kind, its R3 guard runs on the confirmer's `m`, and the ruling did not ask for it.
+- **F1/N3 ✅** `reports.ts:1645–1676`: lookup order is `after.unitId` → `PosStaffPin.unitId` (targetType PosStaffPin; selects id/unitId only, no pinHash) → `PosDevice` target → device code via `oneUnitOf` (Set per code, used only when size===1). Ambiguous codes are skipped, so the old "last row wins" is gone. The `inScope` filter is kept.
+- **F3 ✅** `pos/api/tools.ts:127–129`: `SCOPELESS_LEGACY` is now only `sales_summary` and `sales_by_day`. For a general key: `void_sale` and `pos_set_price` are refused by `posToolAllowedForScopes`; `pos_create_sale` is refused by `actorCanConfirmKind` (scoped module); `pos_draft_po` passes the gate but the tool itself refuses non-person callers. So a general key effectively gets only the 2 reads, which is consistent. Keeping `POS_HAND_TOOL_SCOPES` (accepted deviation) is correct: it is the scoped-key gate pinned by TL7 and ST5, not dead code.
+- **F4/N4 ✅** `targetOf()` (:262–283) runs before any summary and uses the same actor as reads: person Membership, or the key's unit filter.
+  - A given `unitId` and the row's unit are checked with `posActorCanUseUnit`.
+  - Not found and other branch return the same message, with no bill no., total, product name or price.
+  - `summarize()` appends "สาขา <name>" (86 = given unit; bill / unit product = row unit) or "ทุกสาขา" for an all-branch product.
+- **F5/N2 ✅** `ai-brief.ts:37–40`: `posBriefSystemName` adds `(…id4)` only when another POS system in the shop has the same name. (AppNotification has no data column, so the ruling's "data.systemId otherwise" is moot; title + date stays the key.)
+  - A brief with `lines.length===0` is not sent (:175).
+  - A recipient who cannot view any branch linked to this system gets an all-null brief input (:46–52).
+  - `posStockRisks` without a unitId now needs `pos.report.view` on a linked unit (`ai-insights.ts:68–72`), so another system's low stock no longer leaks.
+- **N5 ✅** `tools-pos.ts`: every `pos_draft_po` output goes through `capPosToolResult` (the bridge's 8 KB cap): the no-supplier and propose paths, and `propose()` for every tool. Lists are sliced to 10, names trimmed to 60/80 characters, and the summary says "และอีก N รายการ".
+- **Paging ✅** `aiPosSystems` (:118–134) is an id keyset with a strictly increasing cursor `id > last`. It stops when a page has < 200 rows (raw page length, before the enabled/ACTIVE filter) or at the deadline, so the loop always ends. Inactive tenants are filtered per page.
+- **qc-ai-plan PL-4.1 ✅ justified**: the destructive example moves from `void_sale` (now refused at createPlan, which made the setup crash) to `cancel_appointment`. That kind is still in DESTRUCTIVE_KINDS and not human-only, so the needsSecondConfirm assertion is unchanged. No weakening; the void refusal itself is pinned by PR11.
+- **Oracle ✅**: the `qc-pos-p3.9` diff only adds lines (TL9, PR11, PR12, AN5, BR10 + the TL6 extension). Red-before 41/47 on 4b0e3ddf, each red for the stated reason. 42 → 47 checks, now 47/47 ×2.
+- **Files ✅**: only plans.ts (one marked hunk), tools-pos.ts, pos/api/tools.ts, ai-brief.ts, ai-insights.ts, reports.ts, scripts and ledger changed. No diff in prisma, register, service, refund or outbox-consumers. Markers are `POS P3.9 ▸ fix1 <id> ◂`. OP §AI and §Inventory lines are updated.
+- **Typecheck ✅ (as recorded)**: builder notes say exit 0 at 58a3fb19 with 0 dirty files. Regression set green apart from the known lane pins (p2.12 ST1, p2.13 ST5).
+
+**Low follow-ups (not blocking)**
+- L1 `pos/api/tools.ts` summarize: an 86 on an **all-branch** product with no `unitId` shows "ทุกสาขา" on the card. At confirm, `posProductUnit(…, needUnit=true)` returns 422 and the proposal goes FAILED. Fix: in `targetOf`, for `products.availability` where `row.unitId===null` and no unitId was given, return "ระบุสาขา" before proposing.
+- L2 `ai-brief.ts:37`: the title suffix depends on whether a name collision exists right now. If someone creates or renames a POS system to the same name mid-day, the first system's title changes and its recipients get one extra brief that day. Accept as is, or always suffix once a shop has ≥2 POS systems.
