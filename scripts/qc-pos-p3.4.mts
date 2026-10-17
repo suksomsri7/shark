@@ -101,6 +101,7 @@ const CHECKS: readonly Def[] = [
   D("SY23", "SY", "[fix1 F2 · CD-P34g] ของหมด (86) หลังขายออฟไลน์: หมากฝรั่งถูก 86 ที่สาขาก่อนซิงก์ → บิลที่ขายไปแล้ว = OK · สินค้าที่ถูกเก็บถาวร (เค้ก) → REJECTED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F2)
   D("SY24", "SY", "[fix1 F6 · CD-P34g] เลข OFF รหัส C<n> ต้องเป็นรูปมาตรฐาน: OFF-<รหัสเครื่อง>-00011 (เติมศูนย์เกิน) → REJECTED ไม่มีบิล · OFF-<รหัสเครื่อง>-0012 → OK"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 F6)
   D("SY25", "SY", "[fix2 N8 · CD-P34i] snapshot: ออกซ้ำเครื่องเดิมภายใน 60 วิ → RATE_LIMITED · hash ที่แถว REJECTED ยังอ้างอยู่ไม่ถูกตัด แม้เก่ากว่า 48 ชม. และไม่ใช่ 2 ล่าสุด (3 แถว)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix2 N8)
+  D("SY26", "SY", "[fix2 N7 · CD-P34i] ผู้ขายที่อ้างโดยไม่มีโทเคน ≠ ผู้ใช้ที่ซิงก์ (OWNER): รับบิล = เพดานส่วนลดต่ำกว่าระหว่างคนที่อ้าง (CASH 10%) กับผู้ซิงก์ ⇒ ส่วนลด 50% ปฏิเสธ ไม่มีบิล · ส่วนลด 5% → OK (soldBy = ผู้ซิงก์) · คนที่อ้างไม่ใช่สมาชิกของสาขา → SELLER_MISMATCH"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix2 N7)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2317,6 +2318,27 @@ async function runDb() {
       if (n !== 3 || kept !== 1) p.push(`PosOfflineSnapshot ของ N9 ${n} แถว · S1 ${kept} (คาด 3 · 1)`);
     }
     if (!NO_FX("SY25")) chk("SY25", p.length === 0, "RATE_LIMITED · hash ที่ยังอ้างไม่ถูกตัด", FXB(joinP(p)));
+  }
+  // ═════ SY26 ผู้ขายที่อ้าง ≠ ผู้ซิงก์ = เพดานต่ำกว่า (N7) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix2 N7)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      const ln = (bp: number) => [{ productId: PR.water, qty: 1, discount: { type: "PERCENT", value: bp } }];
+      const big = mkItem("N1", { lines: ln(5000), total: 500, soldAt: Date.now() - 25 * MIN, shift: null, sellerUserId: uid("CASH") });
+      const small = mkItem("N1", { lines: ln(500), total: 950, soldAt: Date.now() - 24 * MIN, shift: null, sellerUserId: uid("CASH") });
+      const alien = mkItem("N1", { lines: ln(500), total: 950, soldAt: Date.now() - 23 * MIN, shift: null, sellerUserId: uid("OWNER2") });
+      const r = await sync("N1", [big, small, alien]);
+      for (const it of [big, small, alien]) if (resOf(r, it.offlineRef)?.status !== "REJECTED") p.push(`รอบแรก ${it.offlineRef} ${stOf(resOf(r, it.offlineRef))} ${why(r)}`);
+      const acc = async (it: Any) => call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(resOf(r, it.offlineRef)?.offlineSaleId ?? "none") });
+      const aBig = await acc(big);
+      if (aBig?.ok === true) p.push(`ส่วนลด 50% ได้บิล (ต้องปฏิเสธด้วยเพดาน CASH)`);
+      const aSmall = await acc(small);
+      const sSmall = aSmall?.ok === true ? await saleRow(aSmall.saleId) : null;
+      if (aSmall?.ok !== true || sSmall?.soldByUserId !== uid("OWNER")) p.push(`ส่วนลด 5% ${codeOf(aSmall)} soldBy ${sSmall?.soldByUserId ?? "-"}`);
+      const aAlien = await acc(alien);
+      if (aAlien?.ok !== false || aAlien?.code !== "SELLER_MISMATCH") p.push(`อ้างคนนอกสาขา → ${codeOf(aAlien)} (คาด SELLER_MISMATCH)`);
+    }
+    if (!NO_FX("SY26")) chk("SY26", p.length === 0, "50% ปฏิเสธ · 5% OK · คนนอก SELLER_MISMATCH", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
