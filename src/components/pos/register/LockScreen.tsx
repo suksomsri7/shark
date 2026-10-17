@@ -10,15 +10,22 @@
 //   ไม่ได้ลงทะเบียนเครื่อง = "ลงทะเบียนเครื่องนี้ก่อน" + ลิงก์ตั้งค่า (ไม่มีแป้น PIN) · เครื่องถูกเพิกถอน = ข้อความแดง
 // 🔴 PIN ไม่ถูกเก็บที่ใดนอก state ของจอนี้ (ล้างทันทีหลังส่ง) · โทเคนที่ได้ส่งให้ RegisterScreen ผ่าน onUnlocked เท่านั้น
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · testid ตัวอักษรตรงบนแท็ก · ปุ่ม ≥ 44px
+// POS P3.5U ▸ มติ 1–4 (ภาพ 13B · ตารางงาน HR): การ์ดพนักงานมีชิปจาก StaffListItem.hr เมื่อมีคีย์เท่านั้น (ตารางวันนี้ HH:MM–HH:MM · ลาวันนี้ ·
+//   ยังไม่ตั้งตาราง · นอกเวลางาน — ลา = จริง/ไม่ ไม่มีชนิด/เหตุผล) · ไม่มีคีย์ hr = จอเดิมทุกไบต์ · การ์ดนอกเวลา/ลาเลือกได้เหมือนเดิม ·
+//   PIN ถูกแต่นอกตาราง (OFF_SCHEDULE {reason, window}) → ข้อความ lock.schedule.<reason> + ปุ่ม "ให้ผู้จัดการอนุญาต" (แสดงเสมอ — ร้านที่ปิดการอนุญาต
+//   (overrideTtlMin 0) ได้คำปฏิเสธเดิมจากเซิร์ฟเวอร์ → ข้อความ overrideDisabled · CD-P35U-2) → แผ่น ManagerPinPad → verifyStaffPinAction เดิม
+//   + managerUserId/managerPin · CD-P35U-1: PIN ของพนักงานอยู่ใน ref ของจอนี้จนแผ่นปิด/สำเร็จ/เริ่มใส่ใหม่ (ไม่เก็บ ไม่ log · ไม่ถามซ้ำ) ·
+//   PIN แบบไม่ระบุคนยังเป็น PIN_INVALID ทั่วไป (จอนี้ส่ง userId เสมอ) ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { formatThaiDate, formatThaiTime } from "@/lib/ui/date";
-import { moneyText, refusalMessageKey, type HeldCartSummary, type RegisterRole, type RegisterShiftInfo, type StaffListItem } from "@/lib/modules/pos/register-shared";
+import { moneyText, refusalMessageKey, type HeldCartSummary, type RegisterRole, type RegisterShiftInfo, type StaffListItem, type StaffScheduleReason } from "@/lib/modules/pos/register-shared";
 import { listStaffForDeviceAction, setOwnStaffPinAction, unlockStaffPinAction, verifyStaffPinAction } from "@/lib/modules/pos/staff-pin-actions";
 import type { StaffSession } from "@/lib/modules/pos/staff-session";
 import { RegisterIcon } from "./RegisterIcon";
+import { ManagerPinPad } from "./ManagerPinPad"; // POS P3.5U ▸ มติ 3 ◂
 
 const ROLE_KEY: Record<RegisterRole, string> = { OWNER: "roles.owner", MANAGER: "roles.manager", STAFF: "roles.cashier" };
 const PIN_MAX = 6;
@@ -28,6 +35,10 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 export type LockMode = "checking" | "unregistered" | "revoked" | "ready";
 type Phase = { kind: "pin" } | { kind: "manager"; forUserId: string; forgot: boolean } | { kind: "set"; userId: string; first: string | null };
 type Msg = { key: string; values?: Record<string, string | number>; tone?: "danger" | "ok" };
+// POS P3.5U ▸ นาทีของวัน → "HH:MM" ด้วยเลขล้วน (HF-418: ไม่สร้าง Date ตอนวาด) · เหตุ → คีย์ใต้ lock.schedule ◂
+const hm = (min: number) => `${String(Math.floor((((min % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}:${String((((min % 1440) + 1440) % 1440) % 60).padStart(2, "0")}`;
+const REASON_KEY: Record<StaffScheduleReason, string> = { OUTSIDE_HOURS: "outsideHours", DAY_OFF: "dayOff", LEAVE: "leave", INACTIVE: "inactive" };
+type OffSchedule = { userId: string; reason: StaffScheduleReason | null; window: { startMin: number; endMin: number } | null };
 
 export function LockScreen(p: {
   mode: LockMode;
@@ -69,6 +80,15 @@ export function LockScreen(p: {
   //   ให้ "HH:MM" ของเซิร์ฟเวอร์ ≠ ของเบราว์เซอร์เมื่อข้ามนาทีระหว่าง SSR → hydrate = React #418 (text) แบบสุ่มทุกรอบภาพ
   //   null = ยังไม่ mount (SSR/เฟรมแรก) ⇒ เว้นที่ของเวลาไว้ (invisible) ไม่ให้หัวจอขยับ
   const [now, setNow] = useState<Date | null>(null);
+  // POS P3.5U ▸ มติ 2 3 · CD-P35U-1: คำปฏิเสธนอกตารางของคนที่เลือก + PIN ของพนักงาน (ref เท่านั้น · ล้างเมื่อแผ่นปิด/สำเร็จ/เริ่มใส่ใหม่) ◂
+  const [offSchedule, setOffSchedule] = useState<OffSchedule | null>(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const pendingPin = useRef<string | null>(null);
+  const clearOverride = () => {
+    pendingPin.current = null;
+    setOffSchedule(null);
+    setOverrideOpen(false);
+  };
   const target = { systemId: p.systemId, unitId: p.unitId, ...(p.deviceId ? { deviceId: p.deviceId } : {}) };
 
   const loadStaff = useCallback(async () => {
@@ -106,6 +126,7 @@ export function LockScreen(p: {
   };
   const choose = (s: StaffListItem) => {
     if (busyRef.current) return;
+    clearOverride(); // POS P3.5U
     if (phase.kind === "manager") {
       if (!isManagerRole(s.role) || !s.hasPin) return;
       setManager(s.userId);
@@ -152,6 +173,17 @@ export function LockScreen(p: {
           return;
         }
         if (r.code === "PIN_LOCKED") setLocked((s) => new Set(s).add(sel.userId));
+        // POS P3.5U ▸ มติ 2: PIN ถูกแต่นอกตาราง = เหตุ + ช่วงตาราง + ปุ่มผู้จัดการอนุญาต (เก็บ PIN ไว้ใน ref จนแผ่นปิด/สำเร็จ · CD-P35U-1) ◂
+        if (r.code === "OFF_SCHEDULE") {
+          pendingPin.current = value;
+          setOffSchedule({ userId: sel.userId, reason: r.reason ?? null, window: r.window ?? null });
+          setMsg(
+            r.reason === "OUTSIDE_HOURS" && r.window
+              ? { key: "lock.schedule.outsideHours", values: { start: hm(r.window.startMin), end: hm(r.window.endMin) }, tone: "danger" }
+              : { key: r.reason ? `lock.schedule.${REASON_KEY[r.reason]}` : "lock.schedule.offSchedule", tone: "danger" },
+          );
+          return;
+        }
         setMsg(refusal(r.code));
         return;
       }
@@ -210,6 +242,7 @@ export function LockScreen(p: {
 
   const press = (k: string) => {
     if (busyRef.current) return;
+    if (pendingPin.current !== null || offSchedule) clearOverride(); // POS P3.5U ▸ เริ่มใส่ PIN ใหม่ = ทิ้ง PIN ที่ค้างไว้ ◂
     setMsg((m) => (m?.tone === "danger" ? null : m));
     if (k === "del") return setPin((v) => v.slice(0, -1));
     setPin((v) => {
@@ -220,12 +253,13 @@ export function LockScreen(p: {
     });
   };
   // แป้นพิมพ์จริง: ตัวเลข · Backspace · Enter (PIN 4–5 หลัก)
-  const keyRef = useRef({ press, submit, pin });
-  keyRef.current = { press, submit, pin };
+  const keyRef = useRef({ press, submit, pin, overrideOpen });
+  keyRef.current = { press, submit, pin, overrideOpen };
   useEffect(() => {
     if (p.mode !== "ready") return;
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing) return;
+      if (keyRef.current.overrideOpen) return; // POS P3.5U ▸ แผ่นผู้จัดการเปิดอยู่ = แป้นของแผ่น (ไม่ใส่ PIN พนักงานซ้อน) ◂
       if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
         keyRef.current.press(e.key);
@@ -243,6 +277,7 @@ export function LockScreen(p: {
 
   const startManager = (forgot: boolean) => {
     if (!sel) return;
+    clearOverride(); // POS P3.5U
     setManager(null);
     setPhase({ kind: "manager", forUserId: sel.userId, forgot });
     reset({ key: forgot ? "lock.forgotBody" : "lock.managerBody" });
@@ -251,6 +286,34 @@ export function LockScreen(p: {
     setPhase({ kind: "pin" });
     setManager(null);
     reset(null);
+  };
+
+  // POS P3.5U ▸ มติ 3: ผู้จัดการอนุญาตนอกตาราง — คำขอเดิม (PIN ของพนักงานที่ค้างไว้ + userId) + managerUserId/managerPin ◂
+  const overridePin = async (managerUserId: string, managerPin: string): Promise<{ ok: true } | { ok: false; code: string }> => {
+    const off = offSchedule;
+    const staffPin = pendingPin.current;
+    if (!off || staffPin === null || !p.deviceId) {
+      clearOverride();
+      return { ok: false, code: "UNKNOWN" };
+    }
+    const r = await verifyStaffPinAction({ ...target, deviceId: p.deviceId, pin: staffPin, userId: off.userId, managerUserId, managerPin });
+    if (!r.ok) return { ok: false, code: r.code };
+    const name = byId.get(off.userId)?.name ?? null;
+    clearOverride();
+    setMsg(null);
+    p.onUnlocked({ userId: r.userId, name, role: r.role, staffToken: r.staffToken, expiresAt: r.expiresAt });
+    return { ok: true };
+  };
+  /** ชิปตารางงานของการ์ด (มีคีย์ hr เท่านั้น) — คีย์ใต้ lock.schedule + ค่า */
+  const chipOf = (s: StaffListItem): { kind: string; text: string } | null => {
+    const h = s.hr;
+    if (!h) return null;
+    if (h.onLeave) return { kind: "leave", text: t("lock.schedule.chipLeave") };
+    if (h.schedule) {
+      const today = t("lock.schedule.chipToday", { start: hm(h.schedule.startMin), end: hm(h.schedule.endMin) });
+      return h.inSchedule === false ? { kind: "off", text: `${today} · ${t("lock.schedule.chipOff")}` } : { kind: "today", text: today };
+    }
+    return h.inSchedule === false ? { kind: "off", text: t("lock.schedule.chipOff") } : { kind: "none", text: t("lock.schedule.chipNoSchedule") };
   };
 
   // ── วาด ──
@@ -385,6 +448,11 @@ export function LockScreen(p: {
                   {t(msg.key, msg.values ?? {})}
                 </p>
               )}
+              {offSchedule && phase.kind === "pin" && sel?.userId === offSchedule.userId && (
+                <button data-testid="pos-lock-override-open" type="button" disabled={busy} className="btn btn-primary h-12 rounded-[13px] px-6 text-[15px]" onClick={() => setOverrideOpen(true)}>
+                  {t("lock.schedule.overrideButton")}
+                </button>
+              )}
               {sel && locked.has(sel.userId) && phase.kind === "pin" && (
                 <button data-testid="pos-lock-manager-unlock" type="button" className="btn btn-primary h-12 rounded-[13px] px-6 text-[15px]" onClick={() => startManager(false)}>
                   {t("lock.managerUnlock")}
@@ -470,7 +538,8 @@ export function LockScreen(p: {
               <ul className="flex flex-col gap-3">
                 {staff.map((s) => {
                   const isSel = phase.kind === "manager" ? manager === s.userId : selected === s.userId;
-                  const dim = phase.kind === "manager" ? !isManagerRole(s.role) || !s.hasPin : !s.hasPin && s.userId !== selected;
+                  const dim = phase.kind === "manager" ? !isManagerRole(s.role) || !s.hasPin : (!s.hasPin && s.userId !== selected) || !!s.hr?.onLeave; // POS P3.5U ▸ ลาวันนี้ = จาง (ยังเลือกได้) ◂
+                  const chip = chipOf(s);
                   return (
                     <li key={s.userId}>
                       <button
@@ -485,6 +554,15 @@ export function LockScreen(p: {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[16px] font-bold">{s.name ?? "-"}</span>
                           <span className="block truncate text-[13px] text-[color:var(--color-muted)]">{staffLine(s)}</span>
+                          {chip && (
+                            <span
+                              data-testid={`pos-lock-schedule-chip-${s.userId}`}
+                              data-chip={chip.kind}
+                              className={`mt-1 inline-flex h-6 max-w-full items-center truncate rounded-[7px] border px-2 text-[12px] font-semibold ${chip.kind === "off" ? "border-[color:var(--color-danger)] text-[color:var(--color-danger)]" : chip.kind === "today" ? "text-[color:var(--color-ink-soft)]" : "text-[color:var(--color-muted)]"}`}
+                            >
+                              {chip.text}
+                            </span>
+                          )}
                         </span>
                         {p.current?.userId === s.userId && (
                           <span data-testid="pos-staff-active" className="shrink-0 rounded-[8px] border-[1.5px] border-[color:var(--color-ink)] px-2.5 py-1 text-[12px] font-bold">
@@ -533,6 +611,32 @@ export function LockScreen(p: {
           </aside>
         )}
       </div>
+      {/* POS P3.5U ▸ มติ 3: แผ่นผู้จัดการอนุญาตนอกตาราง (ManagerPinPad เดิม) ◂ */}
+      {overrideOpen && offSchedule && (
+        <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6" data-testid="pos-lock-override-backdrop">
+          <div data-testid="pos-lock-override-sheet" role="dialog" aria-modal="true" aria-labelledby="pos-lock-override-title" className="flex max-h-full w-full max-w-[620px] flex-col gap-4 overflow-y-auto rounded-t-[20px] bg-[color:var(--color-surface)] p-5 sm:rounded-[20px] sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="min-w-0 flex-1">
+                <h3 id="pos-lock-override-title" className="text-[18px] font-bold">
+                  {t("lock.schedule.overrideTitle")}
+                </h3>
+                <p className="mt-1 text-[13.5px] text-[color:var(--color-ink-soft)]">{t("lock.schedule.overrideFor", { name: nameOf(offSchedule.userId) })}</p>
+                <p className="mt-1 text-[12.5px] text-[color:var(--color-muted)]">{t("lock.schedule.overrideHint")}</p>
+              </span>
+              <button data-testid="pos-lock-override-close" type="button" aria-label={t("lock.schedule.close")} className="grid size-11 shrink-0 place-items-center rounded-[11px] border" onClick={clearOverride}>
+                <RegisterIcon name="x" size={16} />
+              </button>
+            </div>
+            <ManagerPinPad
+              systemId={p.systemId}
+              unitId={p.unitId}
+              deviceId={p.deviceId}
+              onPinEntered={overridePin}
+              messageKeyOf={(code) => (code === "OFF_SCHEDULE" ? "lock.schedule.overrideDisabled" : null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

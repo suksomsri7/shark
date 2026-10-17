@@ -19760,6 +19760,44 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=channels&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-lock-override-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-lock-override-sheet",
+        "note": "หลัง PIN ถูกแต่นอกตารางงาน HR (OFF_SCHEDULE {reason, window}) — ข้อความ lock.schedule.<reason> + ปุ่ม \"ให้ผู้จัดการอนุญาต\" (แสดงเสมอ · CD-P35U-2) → แผ่น ManagerPinPad · PIN ของพนักงานค้างใน ref จนแผ่นปิด/สำเร็จ (CD-P35U-1)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-lock-override-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-lock-screen",
+        "note": "ปิดแผ่นผู้จัดการอนุญาต = ทิ้ง PIN ของพนักงานที่ค้างไว้ (ต้องใส่ PIN ใหม่) · อนุญาตสำเร็จ = verifyStaffPinAction + managerUserId/managerPin → โทเคน overrideTtlMin · PIN ผู้จัดการผิด = pos-mgr-pin-error (PIN_INVALID/PIN_LOCKED) · ไม่ใช่ผู้จัดการ = PERMISSION_DENIED · ร้านปิดการอนุญาต = overrideDisabled"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

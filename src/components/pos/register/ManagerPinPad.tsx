@@ -21,6 +21,8 @@ export function ManagerPinPad(p: {
   /** ปิดแป้นทั้งหมด (เช่น คำขอจบแล้ว) */
   disabled?: boolean;
   onPinEntered: (managerUserId: string, pin: string) => Promise<ManagerPinResult>;
+  /** POS P3.5U ▸ มติ 3: คีย์ข้อความเฉพาะของผู้เรียก (ใต้ pos.register) ต่อรหัสปฏิเสธ — null/ไม่ส่ง = ทางเดิม ◂ */
+  messageKeyOf?: (code: string) => string | null;
 }) {
   const t = useTranslations("pos.register");
   const [managers, setManagers] = useState<StaffListItem[] | null>(null);
@@ -49,7 +51,7 @@ export function ManagerPinPad(p: {
     setErr(null);
     try {
       const r = await p.onPinEntered(mgr, value);
-      if (!r.ok) setErr(t(r.code === "PIN_LOCKED" ? "lock.pinLocked" : refusalMessageKey(r.code)));
+      if (!r.ok) setErr(t(p.messageKeyOf?.(r.code) ?? (r.code === "PIN_LOCKED" ? "lock.pinLocked" : refusalMessageKey(r.code))));
     } catch {
       setErr(t("errors.unknown"));
     } finally {
