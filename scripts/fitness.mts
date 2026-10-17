@@ -1152,7 +1152,7 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
 
 // POS P2.13 ▸ F13 (ต่อ): ทะเบียน API ของระบบขายหน้าร้าน — เงื่อนไขเดียวกับบัญชี/บอร์ดงาน/สมาชิก/CRM
 //   F13.13 ทุก op มี test id ที่อ้างถึงจริงใน scripts/qc-pos-*.mts · F13.14 docs/api/POS-API.md ตรงกับ generator (gen-pos-api-docs · import ฟังก์ชันบริสุทธิ์)
-//   F13.15 ไม่มี op ไหนประกาศ tool (มติ 7 — tool เดิมของสกิล `sales` ยังเป็นตัวเขียนมือ · สลับ = P3.9)
+//   F13.15 op ที่ประกาศ tool = ชื่อในสกิล `sales` (ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 F13.15) — สลับ tool แล้ว: 11 op · เดิม "ไม่มี op ไหนประกาศ tool" มติ 7 P2.13)
 //   🔴 โฟลเดอร์สกิล `.claude/skills/shark-pos-api` อยู่ใน .gitignore — `--check` ของ generator ตรวจเอง · ที่นี่เทียบเฉพาะ docs/api/POS-API.md ◂
 {
   const { POS_OPS } = await import("@/lib/modules/pos/api/registry");
@@ -1179,8 +1179,19 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
     posDocsDetail = e instanceof Error ? e.message.slice(0, 300) : String(e);
   }
   chk("F13.14", "docs/api/POS-API.md ตรงกับ generator (ไม่ stale)", posDocsOk, posDocsDetail);
+  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 F13.15) ▸ เดิม: ไม่มี op ประกาศ tool (มติ 7 P2.13) · ใหม่: มี op ประกาศ tool และทุกชื่ออยู่ในสกิล `sales` · ชื่อไม่ซ้ำ (แบบ F13.12) ◂
   const posWithTool = POS_OPS.filter((o) => o.tool);
-  chk("F13.15", `op ของระบบขายหน้าร้านไม่ประกาศ tool (มติ 7 · สลับ tool = P3.9)`, posWithTool.length === 0, posWithTool.length ? posWithTool.map((o) => o.id).join(", ") : "ครบ");
+  const skillsSrcPos = readFileSync(join(ROOT, "src", "lib", "ai", "skills.ts"), "utf8");
+  const salesAt = skillsSrcPos.indexOf('id: "sales"');
+  const salesBlock = salesAt < 0 ? "" : skillsSrcPos.slice(salesAt, salesAt + 2500);
+  const posOrphans = posWithTool.filter((o) => !salesBlock.includes(`"${o.tool!.name}"`)).map((o) => `${o.id}:${o.tool!.name}`);
+  const posToolDup = posWithTool.map((o) => o.tool!.name).filter((n, i, a) => a.indexOf(n) !== i);
+  chk(
+    "F13.15",
+    `tool ของ op ระบบขายหน้าร้าน (${posWithTool.length} ตัว) ลงทะเบียนในสกิล sales แล้ว (P3.9)`,
+    posWithTool.length > 0 && posOrphans.length === 0 && posToolDup.length === 0,
+    !posWithTool.length ? "ไม่มี op ประกาศ tool" : posOrphans.length || posToolDup.length ? `ไม่อยู่ในสกิล sales: ${posOrphans.join(", ") || "-"} · ชื่อซ้ำ: ${posToolDup.join(", ") || "-"}` : "ครบ",
+  );
 }
 // ◂ POS P2.13
 
