@@ -274,7 +274,18 @@ async function runStatic(): Promise<void> {
     }
     for (const f of files) {
       const stmts = rd(f).replace(/--.*$/gm, "").split(";").map((s) => s.trim()).filter(Boolean);
-      const bad = stmts.filter((s) => !/^CREATE\s+(TYPE|TABLE|UNIQUE\s+INDEX|INDEX)\b/i.test(s));
+      // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p1.10 ST2): ยกเว้นเฉพาะ *_pos_p34_offline — คำสั่งที่แตะ PosDevice ต้องเป็น CREATE หรือ
+      //   ALTER TABLE "PosDevice" ADD COLUMN … ที่ nullable หรือมี DEFAULT ทุกคอลัมน์ (P3.4 S offlineCode/offlineSeq) · คำสั่งของตารางอื่นในไฟล์นั้นไม่ใช่เรื่องของ PosDevice (qc-pos-p3.4 ST1 คุม) · อื่นใด = แดงเหมือนเดิม
+      const p34 = /_pos_p34_offline$/.test(f.split("/").slice(-2, -1)[0] ?? "");
+      const p34AddCol = (s: string) => {
+        const m = /^ALTER\s+TABLE\s+"PosDevice"\s+([\s\S]+)$/i.exec(s);
+        if (!m) return false;
+        return m[1]!.split(/,\s*(?=ADD\s+COLUMN)/i).every((part) => {
+          const c = /^ADD\s+COLUMN\s+"\w+"\s+([\s\S]+)$/i.exec(part.trim());
+          return !!c && (!/NOT\s+NULL/i.test(c[1]!) || /\bDEFAULT\b/i.test(c[1]!));
+        });
+      };
+      const bad = stmts.filter((s) => !/^CREATE\s+(TYPE|TABLE|UNIQUE\s+INDEX|INDEX)\b/i.test(s) && !(p34 && (!/"PosDevice"|PosDeviceStatus/.test(s) || p34AddCol(s))));
       if (bad.length) p.push(`${f.split("/").slice(-2, -1)[0]}: คำสั่งไม่ใช่ CREATE (${short(bad[0], 50)})`);
     }
     chk("ST2", p.length === 0, "CREATE TYPE/TABLE/INDEX เท่านั้น", p.join(" · ") || `ครบ (${files.length} ไฟล์)`);
