@@ -31,6 +31,7 @@ import { registerTableBillPreview } from "./register";
 import { posPaymentSettings } from "./payment-settings";
 import { orderIntentUnused, orderPaymentReadiness, prepareOrderIntent, type PaymentIntentDeps, type PreparedOrderIntent } from "./payment-intent";
 import { promptpayIdForUnit } from "./payment-intent-shared";
+import { verifyChatTag } from "./chat-tag"; // POS P3.7 ▸ R8 ประตู B: แท็กห้องแชทบนลิงก์สั่งล่วงหน้า ◂
 import { maskPhone, ORDER_PREP_DEFAULT_MIN, type OrderLineOption } from "./order-shared";
 import { receiptShopHeader } from "./receipt"; // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ (อ่านอย่างเดียว) ◂
 import * as orders from "./order";
@@ -606,15 +607,17 @@ export async function placePreorder(linkToken: string, input: unknown, meta: { i
     if (!l) return TOKEN_INVALID();
     const lim = await submitGuard(linkToken, ipOf(meta));
     if (lim) return lim;
-    const parsed = parseQrPreorder(input);
+    const chatTag: unknown = isRecord(input) ? input.chatTag : undefined; // POS P3.7 ▸ R8: chatTag ไม่ผ่านตัวแกะเดิม (คีย์ตายตัว) ◂
+    const parsed = parseQrPreorder(isRecord(input) && "chatTag" in input ? Object.fromEntries(Object.entries(input).filter(([k]) => k !== "chatTag")) : input); // POS P3.7 ▸ R8 ◂
     if (!parsed.ok) return parsed;
+    const chatConversationId = chatTag === undefined ? null : verifyChatTag(chatTag, { tenantId: l.u.tenantId, linkToken }); // POS P3.7 ▸ R8: แท็กเสีย/หมดอายุ/ร้านอื่น = ไม่ผูก (ไม่ปฏิเสธลูกค้า) ◂
     // POS P2.7 ▸ fix2 hunter H5: single-flight ต่อ (ลิงก์ · คีย์) รอบทั้งคำขอ — คำขอคีย์เดิมพร้อมกันรอผลเดียวกัน ⇒ Beam charge เดียว ◂
-    return singleFlight(inflightPreorders, `${linkToken}|qr:${parsed.value.idempotencyKey}`, QR_PREORDER_FLIGHT_MS, () => submitPreorder(l, parsed.value, deps));
+    return singleFlight(inflightPreorders, `${linkToken}|qr:${parsed.value.idempotencyKey}`, QR_PREORDER_FLIGHT_MS, () => submitPreorder(l, parsed.value, deps, chatConversationId)); // POS P3.7 ▸ + chatConversationId ◂
   });
 }
 const inflightPreorders = new Map<string, { at: number; p: Promise<QrPlacePreorderResult> }>();
 const QR_PREORDER_FLIGHT_MS = 0; // ระหว่างทำเท่านั้น — คำขอซ้ำทีหลังตอบจากคีย์ใน DB (duplicated) ◂
-async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentIntentDeps): Promise<QrPlacePreorderResult> {
+async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentIntentDeps, chatConversationId: string | null = null /* POS P3.7 ▸ R8 ◂ */): Promise<QrPlacePreorderResult> {
     const door = await doorOf(l.u, "QR_ORDER", true, deps);
     if (!door.open || !door.channel) return qrRefuse("QR_CLOSED");
     const p = await priceLines(l.u, "QR_ORDER", v.lines);
@@ -650,7 +653,7 @@ async function submitPreorder(l: LinkCtx, v: QrParsedPreorder, deps?: PaymentInt
           if (!prep.ok) return { kind: "refused", out: qrRefuse(prep.code === "PROMPTPAY_NOT_CONFIGURED" ? "QR_CLOSED" : prep.code === "VALIDATION" ? "VALIDATION" : "INTERNAL") };
           prepared = prep.prepared;
         }
-        return { kind: "ingested", r: await orders.ingestPreorderInTx(tx, l.u, { channelId, lines, customer: v.customer, idempotencyKey: v.idempotencyKey, note: v.note, prepared }) };
+        return { kind: "ingested", r: await orders.ingestPreorderInTx(tx, l.u, { channelId, lines, customer: v.customer, idempotencyKey: v.idempotencyKey, note: v.note, prepared, chatConversationId }) }; // POS P3.7 ▸ R8 + chatConversationId ◂
       });
     } catch (e) {
       if (prepared) await orderIntentUnused(l.u, prepared, "INGEST_FAILED"); // POS P2.7 ▸ fix2 F6 ◂

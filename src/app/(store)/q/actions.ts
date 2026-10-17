@@ -94,6 +94,10 @@ export async function quotePreorderCartAction(linkToken: string, lines: unknown)
 export async function placePreorderAction(linkToken: string, input: QrPreorderInput): Promise<QrPlacePreorderResult> {
   return placePreorder(linkToken, input, { ip: await clientIp() });
 }
+// POS P3.7 ▸ R8 door B: the page binds the chat tag from ?c= (invalid/expired tag = order placed unlinked, never refused) ◂
+export async function placeTaggedPreorderAction(chatTag: string, linkToken: string, input: QrPreorderInput): Promise<QrPlacePreorderResult> {
+  return placePreorder(linkToken, { ...input, chatTag }, { ip: await clientIp() }); // POS P3.7 ▸ R8 ◂
+}
 /** form: place the pre-order and go to its status page (/q/o/<orderToken>) */
 export async function preorderFormAction(linkToken: string, fd: FormData): Promise<void> {
   const lang = str(fd.get("lang"));
