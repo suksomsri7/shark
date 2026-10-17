@@ -82,6 +82,7 @@ const CHECKS: readonly Def[] = [
   D("PR9", "P", "[R3 มติ 9] pos_create_sale: ผู้จัดการ A ระบุสาขา B → ไม่มีบิล · แคชเชียร์ บรรทัดราคาเอง (ไม่มีในแคตตาล็อก) ไม่มี priceOverride → ไม่มีบิล · บรรทัดแคตตาล็อก → บิล AI สาขา A · createSale( ใน proposals.ts = 1"),
   D("PR10", "P", "[R5 มติ 8] purchaseSuggestions: น้ำ qty = 28 − 5 = 23 + ผู้ขาย PO ล่าสุด · เสื้อ supplierId null · ของพอ ไม่อยู่ · pos_draft_po → ยืนยัน → PO DRAFT 1 ใบ (ผู้ขายล่าสุด · น้ำ 23) · ยืนยันซ้ำ = ยังคง 1"),
   // ── AN จุดผิดปกติ ──
+  D("PR11", "P", "[fix1 F2=N1 · CD-P39c] propose_plan ที่มีขั้น POS (void_sale · pos.products.setPrice · pos_draft_po) → ปฏิเสธตั้งแต่เสนอ · ไม่มีแผนเกิด (ไม่มีแผนทำครึ่งเดียว) · ตัวควบคุม: แผนที่ไม่มีขั้น POS สร้างได้"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR11)
   D("AN1", "A", "[R11 มติ 6] A11: pos.staff.schedule_override ×3 ของผู้จัดการ/สาขา A/D−1 → แถว A11 count 3 refType USER · เจ้าของ ×2 → ไม่มีแถว"),
   D("AN2", "A", "[R4 มติ 2] A1 นับ void ของ AI: audit pos.sale.void ผู้จัดการ (PR7) → แถว A1 ของผู้จัดการ (เกณฑ์ A1.count 1 ของฟิกซ์เจอร์)"),
   D("AN3", "A", "[R11] POS_ANOMALY_RULES = A1…A11 · ค่าปริยาย A11 {count 3} · A1–A10 เดิม · ตัวอ่านตัดช่วง A11 (0→1 · 5000→1000 · \"x\"→3)"),
@@ -1387,6 +1388,26 @@ async function runDb() {
     const wl = (po?.lines ?? []).find((l: Any) => l.itemId === INV.W);
     if (po?.status !== "DRAFT" || po?.supplierId !== SUP_NEW || wl?.qty !== 23) p.push(`PO ${po?.status}/${po?.supplierId === SUP_NEW ? "SUP_NEW" : short(po?.supplierId, 12)}/น้ำ ${wl?.qty}`);
     chk("PR10", p.length === 0, "23 · SUP_NEW · DRAFT ×1", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 PR11) ▸ ขั้น POS ในแผน = ต้องให้คนกดเองทีละรายการ ◂
+  {
+    const p: string[] = [];
+    const planCount = async () => Number(await P.aiPlan.count({ where: { tenantId: T } }).catch(() => -1));
+    const before = await planCount();
+    const exp = { kind: "record_expense", summary: "ค่าน้ำแข็ง", payload: { note: `qc39 ${RAND}`, amountSatang: 100 } };
+    const posSteps: [string, Any][] = [
+      ["void_sale", { saleId: BIG.saleId || "none" }],
+      ["pos.products.setPrice", { opId: "products.setPrice", input: { priceSatang: 100 }, params: { id: PR.price ?? "none" }, systemId: S.POS }],
+      ["pos_draft_po", { inventorySystemId: S.INV, supplierId: SUP_NEW, lines: [{ itemId: INV.W ?? "none", qty: 999, costSatang: 1 }] }],
+    ];
+    for (const [kind, payload] of posSteps) {
+      const o = await rt("OWNER", "propose_plan", { title: `qc39 แผน ${kind}`, steps: [exp, { kind, summary: "ขั้น POS", payload }] }, { conv: true });
+      if (!isErr(o.j)) p.push(`${kind} ไม่ถูกปฏิเสธ ${short(o.raw, 60)}`);
+    }
+    if ((await planCount()) !== before) p.push(`มีแผนเกิด ${(await planCount()) - before}`);
+    const ctl = await rt("OWNER", "propose_plan", { title: "qc39 แผนปกติ", steps: [exp] }, { conv: true });
+    if (isErr(ctl.j) || !ctl.j?.planId) p.push(`(ตัวควบคุม) แผนไม่มีขั้น POS ${short(ctl.raw, 60)}`);
+    chk("PR11", p.length === 0, "ปฏิเสธ ×3 · แผน Δ0", FXB(joinP(p)));
   }
 
   // ════════ AN ════════
