@@ -54,7 +54,7 @@ const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของข้อสอบ (f37d605b) — ใช้เมื่อหาหมุดของเลนไม่ได้ (หมุด ST5 เทียบ "ของที่ใบนี้แก้" เท่านั้น) */ // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin) 
 const BASE_REV = process.env.P213_BASE || "f37d605b";
 /** sha256 ของ scripts/pos-sale-contract.json — มติ 10: ห้าม regenerate (ค่าเดียวกับ qc-pos-p2.9b L1 / p2.10) */
-const CONTRACT_SHA = "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad";
+const CONTRACT_SHA = "ba68f669fa2105ce708df5aa555c9127948f82c30d373bce6f65ebac0753c7c2"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.13 ST5): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · A ด่านหน้า (คีย์/ระบบ/สิทธิ์/สาขา) · I กันซ้ำ · M เงิน/สต็อก (PAR กับหน้าขาย) · O ออเดอร์ · R รายงาน/อ่าน · Z คืนสภาพ
@@ -348,7 +348,7 @@ if (!existsSync(join(ROOT, F.route))) skipReasons.push(`${F.route} ยังไ�
 for (const f of API_FILES) if (!existsSync(join(ROOT, f))) skipReasons.push(`${f} ยังไม่มี`);
 
 // ── หมุดของเลน (หมุด ST5 เทียบเฉพาะสิ่งที่ใบนี้แก้) ──
-const LANE_PIN = "05975437"; // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
+const LANE_PIN = "0617d17b"; // ORACLE-EDIT ผู้คุม 17.10 (CD-RP1 lane-pin · re-pin 05975437 → 0617d17b) · ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
 const MB = (() => {
   const mb = gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim(); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return process.env.P213_BASE ? BASE_REV : mb || BASE_REV;
