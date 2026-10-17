@@ -97,6 +97,7 @@ const PROCESSING_GUARD_MS = 5 * 60_000;
 const AUDIT_SYNCED = "pos.sale.offline_synced";
 const AUDIT_DISCARDED = "pos.sale.offline_discarded";
 const SNAPSHOT_KEEP = 2;
+const SNAPSHOT_KEEP_RECENT_MAX = 200; // POS P3.4 ▸ fix1 N4 ◂
 const SNAPSHOT_PAGE = 500;
 const SNAPSHOT_MAX_PAGES = 40;
 const DISCARD_REASON_MIN = 5;
@@ -280,14 +281,16 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
     } catch (e) {
       if ((e as { code?: unknown } | null)?.code !== "P2002") throw e; // ออกซ้ำเนื้อหาเดิมเวลาเดิม = แถวเดิม
     }
-    // เก็บ 2 ล่าสุดต่อเครื่อง (hash ที่ถูกตัดทิ้ง = SNAPSHOT_UNKNOWN ตอนซิงก์ · SEC3)
-    const keep = await db.posOfflineSnapshot.findMany({
-      where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode },
-      orderBy: [{ issuedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-      select: { id: true },
-      take: SNAPSHOT_KEEP,
-    });
-    await db.posOfflineSnapshot.deleteMany({ where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, id: { notIn: keep.map((k) => k.id) } } });
+    // POS P3.4 ▸ fix1 N4 = F1 (CD-P34g): เก็บทุก snapshot ที่ออกภายใน 24 ชม. (เพดาน 200 ต่อเครื่อง) ∪ 2 ล่าสุด — บิลที่ขายบน snapshot เก่ายังซิงก์ได้หลังเครื่องดึงใบใหม่ ·
+    //   นอกนั้นถูกตัด (hash ที่ถูกตัด = SNAPSHOT_UNKNOWN · SEC3) ◂
+    const devWhere = { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode };
+    const order = [{ issuedAt: "desc" as const }, { createdAt: "desc" as const }, { id: "desc" as const }];
+    const [last, recent] = await Promise.all([
+      db.posOfflineSnapshot.findMany({ where: devWhere, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP }),
+      db.posOfflineSnapshot.findMany({ where: { ...devWhere, issuedAt: { gte: new Date(Date.now() - OFFLINE_MAX_AGE_MS) } }, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP_RECENT_MAX }),
+    ]);
+    const keep = [...new Set([...last, ...recent].map((k) => k.id))];
+    await db.posOfflineSnapshot.deleteMany({ where: { ...devWhere, id: { notIn: keep } } });
     const fresh = await db.posDevice.findFirst({ where: { id: dev.id, tenantId: c.tenantId }, select: { offlineSeq: true } });
     return {
       ok: true,
