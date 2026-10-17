@@ -53,7 +53,7 @@ const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของใบ (ฐานของ brief · ST4/ST5 เทียบไฟล์ที่ห้าม/จำกัดการแก้) */
-const PIN = process.env.P39_PIN || "72669941";
+const PIN = process.env.P39_PIN || "683a7cc8"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2 · P3.9 merge · ST4 pin 72669941 → 683a7cc8)
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · T tool อ่าน/ด่าน · P ข้อเสนอ/เขียน · A จุดผิดปกติ · B สรุปเช้า · V ความเป็นส่วนตัว · Z คืนสภาพ
