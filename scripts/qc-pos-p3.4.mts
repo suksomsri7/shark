@@ -94,6 +94,7 @@ const CHECKS: readonly Def[] = [
   D("SY16", "SY", "[R9] บิลซิงก์ไม่สร้างรอบครัว (สินค้าผูกสถานี) แม้ healMissingTickets · ตัวควบคุม: บิลออนไลน์ของสินค้าเดียวกัน → มีรอบ"),
   D("SY17", "SY", "[R10 มติ 7] คิวผู้จัดการ: list มี REJECTED ของสาขา (ไม่มี SYNCED) · accept ×2 = บิลเดียว · discard ×2 = DISCARDED ครั้งเดียว · เหตุผล < 5 ตัว → VALIDATION · accept หลัง discard → ปฏิเสธ · แคชเชียร์ไม่มี pos.shift.manage → PERMISSION_DENIED (list/accept/discard) · audit"),
   D("SY18", "SY", "[fix1 N1 · CD-P34g] ผู้ขายที่ตรวจแล้วเท่านั้น: โทเคนปลอมอ้าง OWNER / sellerUserId = OWNER + ส่วนลด 50% (เกินเพดานแคชเชียร์) ซิงก์โดย CASH → REJECTED · list แยก claimedSellerUserId (OWNER) / verifiedSellerUserId (CASH) · ผู้จัดการรับ → คิดด้วยเพดานของ CASH ⇒ ปฏิเสธ · ไม่มีบิล (ไม่มีบิลที่ soldBy = OWNER)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N1)
+  D("SY19", "SY", "[fix1 N2 = F3 · CD-P34g] กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2087,6 +2088,25 @@ async function runDb() {
       }
     }
     if (!NO_FX("SY18")) chk("SY18", p.length === 0, "REJECTED ×2 · claimed/verified แยก · accept ปฏิเสธ (เพดาน CASH) · ไม่มีบิล", FXB(joinP(p)));
+  }
+  // ═════ SY19 กะของบิล (N2 = F3) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      const a = mkItem("D7", { lines: [W(1)], total: 1000, soldAt: T0 - 60 * MIN, sellerUserId: uid("CASH2") });
+      const b = mkItem("D7", { lines: [W(1)], total: 1000, soldAt: T0 - 4 * H - 10 * MIN, shift: null });
+      const r = await sync("D7", [a, b]);
+      const xa = resOf(r, a.offlineRef);
+      const xb = resOf(r, b.offlineRef);
+      if (xa?.status !== "REJECTED" || xa?.reason !== "SELLER_MISMATCH") p.push(`ผู้ขายไม่ตรง ${stOf(xa)} ${why(r)}`);
+      const ac = await call(offMod, "acceptOfflineSale", ctxU("A"), A("OWNER"), { id: String(xa?.offlineSaleId ?? "none") });
+      const s = ac?.ok === true ? await saleRow(ac.saleId) : null;
+      if (ac?.ok !== true || !s || s.shiftId !== SH.D7) p.push(`accept ${codeOf(ac)} shiftId ${s?.shiftId ?? "-"} (คาด กะ D7 ที่ยังเปิด ${SH.D7})`);
+      if (xb?.status !== "REJECTED" || xb?.reason !== "SHIFT_REQUIRED" || xb?.saleId) p.push(`ช่องว่างก่อนเปิดกะ ไม่ส่ง shiftId ${stOf(xb)} (คาด REJECTED:SHIFT_REQUIRED)`);
+      const nb = Number(await P.posSale.count({ where: { tenantId: T, offlineRef: b.offlineRef } }).catch(() => -1));
+      if (nb !== 0) p.push(`ช่องว่าง มีบิล ${nb}`);
+    }
+    if (!NO_FX("SY19")) chk("SY19", p.length === 0, "accept ผูกกะ D7 ที่เปิด · ไม่มีกะครอบ + เครื่องมีกะเปิด → SHIFT_REQUIRED", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
