@@ -109,7 +109,7 @@ const CHECKS: readonly Def[] = [
   // ── SEC ──
   D("SEC1", "SEC", "[R2 R13] snapshot: สินค้า keys ⊆ RegisterProduct + choices · ไม่มีคีย์ cost/margin/onHand/phone/email/member/token ทั้งก้อน · ราคา = ราคาหน้าร้าน ณ issuedAt · PosOfflineSnapshot (เครื่อง, hash) เก็บ priceMap ตรง"),
   D("SEC2", "SEC", "[R5 มติ 2] route src/app/api/pos/sync/route.ts: POST · session (@/lib/core/context) · pos.sale.create · เรียก syncOfflineSales · ไม่ใช่ \"use server\" · facade: ctx สาขา A + เครื่องของสาขา B / ctx สาขา B + เครื่อง A → ปฏิเสธ 0 แถว"),
-  D("SEC3", "SEC", "[R6 มติ 14 · fix1 N4] snapshot ต่อเครื่อง: รายการของ D1 ที่อ้าง hash ของ D2 → REJECTED ไม่มีบิล · เครื่อง D5 ออก snapshot 3 ครั้ง (−30 ชม. −29 ชม. ตอนนี้ · ราคาเปลี่ยน) → เก็บ 2 แถว · hash ที่ถูกตัดทิ้ง → REJECTED"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
+  D("SEC3", "SEC", "[R6 มติ 14 · fix1 N4] snapshot ต่อเครื่อง: รายการของ D1 ที่อ้าง hash ของ D2 → REJECTED ไม่มีบิล · เครื่อง D5 ออก snapshot 3 ครั้ง (−60 ชม. −59 ชม. ตอนนี้ · ราคาเปลี่ยน · fix2 G3) → เก็บ 2 แถว · hash ที่ถูกตัดทิ้ง → REJECTED"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
   // ── Z ──
   D("Z1", "Z", "QC4 คืนสภาพ: ร้านชั่วคราว 0 แถวทุกตารางที่มี tenantId (รวม PosOfflineSale/PosOfflineSnapshot) + Tenant ถูกลบ · ผู้ใช้ของรอบ 0 · ถังเพดานอัตราของคีย์รอบนี้ 0"),
   D("Z2", "Z", "ลายนิ้วมือนอกร้านชั่วคราว (PosSale · PosReceiptCounter seq · PosDevice offlineSeq/status · PosOfflineSale · PosOfflineSnapshot · AuditLog pos.sale.offline_*) เท่าเดิม"),
@@ -1920,7 +1920,8 @@ async function runDb() {
         const sp = await call(catalog, "setPrice", cc(), PR.gum, price);
         if (sp?.ok === false) p.push(`setPrice gum ${price} ${codeOf(sp)}`);
         // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 N4 · CD-P34g): เก็บทุก snapshot ภายใน 24 ชม. ∪ 2 ล่าสุด ⇒ สองใบแรกออกเมื่อ 30/29 ชม.ก่อน (ใบแรกพ้นทั้งสองเกณฑ์ = ถูกตัด)
-        const sn = await issue("D5", i === 2 ? Date.now() - MIN : Date.now() - (30 - i) * H);
+        // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix2 G3 · CD-P34i): หน้าต่างเก็บ = 48 ชม. ⇒ สองใบแรกออกเมื่อ 60/59 ชม.ก่อน
+        const sn = await issue("D5", i === 2 ? Date.now() - MIN : Date.now() - (60 - i) * H);
         hs.push(String(sn?.snapshot?.hash ?? `none${i}`));
       }
       if (new Set(hs).size !== 3) p.push(`hash ไม่ต่างกัน ${hs.join(",")}`);
