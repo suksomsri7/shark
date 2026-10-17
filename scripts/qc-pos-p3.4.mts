@@ -96,6 +96,7 @@ const CHECKS: readonly Def[] = [
   D("SY18", "SY", "[fix1 N1 · CD-P34g] ผู้ขายที่ตรวจแล้วเท่านั้น: โทเคนปลอมอ้าง OWNER / sellerUserId = OWNER + ส่วนลด 50% (เกินเพดานแคชเชียร์) ซิงก์โดย CASH → REJECTED · list แยก claimedSellerUserId (OWNER) / verifiedSellerUserId (CASH) · ผู้จัดการรับ → คิดด้วยเพดานของ CASH ⇒ ปฏิเสธ · ไม่มีบิล (ไม่มีบิลที่ soldBy = OWNER)"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N1)
   D("SY19", "SY", "[fix1 N2 = F3 · CD-P34g] กะของบิล: ผู้จัดการรับบิลที่ถูกปฏิเสธด้วยเหตุอื่น (ผู้ขายไม่ตรง) ขณะกะ D7 ที่ครอบ soldAt ยังเปิด → บิลผูกกะ D7 (ไม่ใช่นอกกะ) · รอบแรก: ไม่ส่ง shiftId · ไม่มีกะครอบ soldAt · เครื่องมีกะเปิดอยู่ → REJECTED SHIFT_REQUIRED ไม่มีบิล"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N2)
   D("SY20", "SY", "[fix1 N3 · CD-P34g] เวลาราคา: snapshot มี priceValidUntil แล้ว soldAt > pvu + 15 นาที → CLOCK_INVALID · โปร ณ soldAt ถูกกว่าราคาตอนซิงก์ และซิงก์ช้า > 30 นาที → REJECTED PRICE_WINDOW_REVIEW → ผู้จัดการรับ = ราคา ณ soldAt · audit after.priceAtSyncSatang ของบิลที่ซิงก์ · PRICE_WINDOW_REVIEW อยู่ใน OFFLINE_REFUSAL_CODES + ข้อความ th/en"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N3)
+  D("SY21", "SY", "[fix1 N4 = F1 · CD-P34g] snapshot ภายใน 24 ชม. ไม่ถูกตัด: ขายบน S1 แล้วเครื่องออก S2 + S3 ก่อนซิงก์ → บิลบน S1 = OK · PosOfflineSnapshot ของเครื่อง 3 แถว"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
   // ── RS REST ──
   D("RS1", "RS", "[R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline.sync) → 200 data.results ต่อรายการ (status OK · saleId · receiptNo) · บิลมี offlineRef"),
   D("RS2", "RS", "[R5] Idempotency-Key เดิม → replay (idempotent-replayed true · data เดิม) · ลบแถว ApiIdempotency แล้วส่งใหม่ → DUPLICATE saleId เดิม · 1 บิล"),
@@ -2142,6 +2143,24 @@ async function runDb() {
       if (!mk || mk === "offline.refusal.other" || !THAI.test(String(getPath(th?.register, mk) ?? "")) || !String(getPath(en?.register, mk) ?? "").trim() || THAI.test(String(getPath(en?.register, mk) ?? ""))) p.push(`ข้อความ PRICE_WINDOW_REVIEW ${mk ?? "-"}`);
     }
     if (!NO_FX("SY20")) chk("SY20", p.length === 0, "pvu + 15 นาที → CLOCK_INVALID · โปรซิงก์ช้า → PRICE_WINDOW_REVIEW → accept 3000 · audit priceAtSyncSatang · รหัส + ข้อความ", FXB(joinP(p)));
+  }
+  // ═════ SY21 snapshot ภายใน 24 ชม. (N4) ═════ // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.4 fix1 N4)
+  {
+    const p: string[] = [];
+    if (!fx) {
+      const h1 = String(SN.N4?.hash ?? "none-n4");
+      const it = mkItem("N4", { lines: [W(1)], total: 1000, soldAt: Date.now() - 30 * MIN, shift: null, hash: h1 });
+      for (const ago of [20, 10]) {
+        const sn = await issue("N4", Date.now() - ago * MIN);
+        if (sn?.ok !== true) p.push(`ออก snapshot ${ago} นาที ${codeOf(sn)}`);
+      }
+      const n = Number(await Promise.resolve(P.posOfflineSnapshot?.count?.({ where: { tenantId: T, deviceId: { in: [DEVID.N4, DEV.N4] } } })).catch(() => -1));
+      if (n !== 3) p.push(`PosOfflineSnapshot ของ N4 ${n} แถว (คาด 3)`);
+      const r = await sync("N4", [it]);
+      const x = resOf(r, it.offlineRef);
+      if (x?.status !== "OK" || !x?.saleId) p.push(`บิลบน S1 ${stOf(x)} ${why(r)}`);
+    }
+    if (!NO_FX("SY21")) chk("SY21", p.length === 0, "S1 ยังอยู่ (3 แถว) · บิลบน S1 OK", FXB(joinP(p)));
   }
   // ── fix1 ADD END ──
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);
