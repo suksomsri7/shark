@@ -46,7 +46,7 @@ const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของข้อสอบ (57a8b19a) — ใช้เมื่อหาหมุดของเลนไม่ได้ (หมุด ST2 เทียบ "ของที่ใบนี้แก้" เท่านั้น) */ // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin) 
 const BASE_REV = process.env.P210_BASE || "57a8b19a";
 /** sha256 ของ scripts/pos-sale-contract.json (ใบนี้ไม่แตะสัญญา createSale · ค่าเดียวกับ qc-pos-p2.9b L1) */
-const CONTRACT_SHA = "72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad";
+const CONTRACT_SHA = "ba68f669fa2105ce708df5aa555c9127948f82c30d373bce6f65ebac0753c7c2"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.10 ST2): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · X1 idempotency/เล่นซ้ำ/แข่ง · X2 ข้ามขอบเขต (ไม่บอกว่ามีอยู่) · X3 สิทธิ์ · X4 เงิน (ของที่เซิร์ฟเวอร์สร้างเอง) · X5 ไม่เขียน/PDPA · "-" เชิงหน้าที่
@@ -218,7 +218,7 @@ for (const n of DISPLAY_FNS) if (!exportsFn(srcOf(F.display), n)) skipReasons.pu
 if (!migDir()) skipReasons.push("ยังไม่มี migration *_pos_p210_customer_display");
 
 // ── หมุดของเลน (หมุด ST2 เทียบเฉพาะสิ่งที่ใบนี้แก้) ──
-const LANE_PIN = "728dae0e"; // ORACLE-EDIT ผู้คุม 16.10 (HF-FU2 lane-pin · p2.10 → re-pin commit · re-pin 3d2f6db8 → 728dae0e) · ORACLE-EDIT ผู้คุม 16 ต.ค. 20:0xZ (CD-FU2a · re-pin → 3d2f6db8 = commit re-pin CD-B1c ของผู้คุม · ต้นไม้ผลิตภัณฑ์ = c5fc223b) · ก่อนหน้า: ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin · gates108): หมุด = commit re-pin ของผู้คุม 280b56f7 (ต่อจาก merge 05975437 · แก้แต่ scripts/ — ต้นไม้ผลิตภัณฑ์เท่ากับ merge) เพื่อให้กฎ "ข้อสอบเดิมไม่ถูกแก้" วัดจากหลัง re-pin ของผู้คุม ไม่ใช่วงกลมกับ commit re-pin เอง
+const LANE_PIN = "c687501e"; // ORACLE-EDIT ผู้คุม 17.10 (CD-RP1 lane-pin · p2.10 → re-pin commit · re-pin 728dae0e → c687501e) · ORACLE-EDIT ผู้คุม 16.10 (HF-FU2 lane-pin · p2.10 → re-pin commit · re-pin 3d2f6db8 → 728dae0e) · ORACLE-EDIT ผู้คุม 16 ต.ค. 20:0xZ (CD-FU2a · re-pin → 3d2f6db8 = commit re-pin CD-B1c ของผู้คุม · ต้นไม้ผลิตภัณฑ์ = c5fc223b) · ก่อนหน้า: ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin · gates108): หมุด = commit re-pin ของผู้คุม 280b56f7 (ต่อจาก merge 05975437 · แก้แต่ scripts/ — ต้นไม้ผลิตภัณฑ์เท่ากับ merge) เพื่อให้กฎ "ข้อสอบเดิมไม่ถูกแก้" วัดจากหลัง re-pin ของผู้คุม ไม่ใช่วงกลมกับ commit re-pin เอง
 const MB = (() => {
   const mb = gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim(); // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   return process.env.P210_BASE ? BASE_REV : mb || BASE_REV;
