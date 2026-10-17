@@ -14,6 +14,9 @@
 //   หน้าบอก canAnomaly · กลุ่มกฎ A1–A10 ตามลำดับ ป้าย pos.report.anomaly.rules.* · ค่า: เงิน A1 A2 A8 A9 (A8 + คำ ขาด/เกิน จาก totals.a8SignedSatang) ·
 //   % A3 A4 (bp) · จำนวนที่เหลือ · สาขา = totals.unitNames[unitId] ?? unitId · ว่าง = anomaly.empty · ไม่มีคีย์ = การ์ด anomaly.denied ·
 //   ถูกตัดแถว (totals.rowCount > rows.length) = บรรทัดแจ้ง) — ตัวเลขทั้งหมดจาก DTO ◂
+// POS P3.5U ▸ มติ 8: แท็บ "ค่าคอมฯ พนักงาน" (pos-reports-tab-commission) ต่อท้าย — เฉพาะเมื่อหน้าส่ง canPayroll (canViewPayroll) · ไม่มี = ไม่มีแท็บ และ
+//   ?kind=commission = การ์ดปฏิเสธ report.commission.denied (ไม่เรียกเซิร์ฟเวอร์ · CSV/PDF ปิด) · ตาราง report.commission.cols ต่อผู้ขาย + แถวรวมจาก totals ·
+//   ชิป "ยังไม่ผูกพนักงาน HR" · สถานะใน HR · CSV/PDF ปุ่มเดิม (P2.12U) · ตัวเลขค่าคอมฯ มีที่นี่ที่เดียว ◂
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -26,6 +29,8 @@ import { channelDisplayName } from "@/components/pos/settings/channel-text"; // 
 import type {
   AnyReportResult,
   ChannelRow, // POS P2.11U ◂
+  CommissionRow, // POS P3.5U ◂
+  CommissionTotals, // POS P3.5U ◂
   ChannelTotals, // POS P2.11U ◂
   AnomalyRow, // POS P2.12U ◂
   AnomalyTotals, // POS P2.12U ◂
@@ -68,6 +73,8 @@ type Props = {
   canAnomaly: boolean;
   /** POS P2.12U ▸ มติ 5: เกณฑ์ A3 (bp) ของระบบจาก posAnomalyThresholds ฝั่งเซิร์ฟเวอร์ · ปิดการตรวจ = null (ไม่มีป้าย) ◂ */
   discountFlagBp: number | null;
+  /** POS P3.5U ▸ มติ 8: ผู้ดูเงินเดือน (canViewPayroll ฝั่งหน้า) — ไม่มี = ไม่มีแท็บค่าคอมฯ ◂ */
+  canPayroll?: boolean;
 };
 type T = (key: string, values?: Record<string, string | number>) => string;
 type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
@@ -75,7 +82,7 @@ type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
 /** ลำดับแท็บตามสเปก: overview (R4) · daily · products · staff · payments · margin · shifts · tax */
 const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels"]; // POS P2.11U ▸ มติ 7: + channels ◂
 /** POS P2.12U ▸ แท็บใหม่ (ต่อท้าย · testid pos-reports-tab-<kind>) ◂ */
-type NewKind = "branches" | "hourly" | "anomalies";
+type NewKind = "branches" | "hourly" | "anomalies" | "commission"; // POS P3.5U ▸ + commission ◂
 /** ไอคอนจากภาพ 08 (ปฏิทิน · ร้าน · ส่งออก) */
 const I_CAL = ["M6 5h12a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 18 21H6a2.5 2.5 0 0 1-2.5-2.5v-11A2.5 2.5 0 0 1 6 5Z", "M3.5 10h17M8 3v4M16 3v4"] as const;
 const I_SHOP = ["M4 9V4h16v5", "M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z", "M9.5 13h5"] as const;
@@ -97,6 +104,7 @@ const shortDate = (d: string, locale: string) =>
 // POS P2.14 ▸ U2 O-8: YYYY-MM-DD → วันที่ตามภาษาจอพร้อมปี (th = พ.ศ. · ไม่เลื่อนวัน) — ช่วงของรายงานและช่องวันที่ในตาราง ◂
 const dayDate = (d: string, locale: string) =>
   new Intl.DateTimeFormat(locale.startsWith("en") ? "en-GB" : "th-TH", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }).format(new Date(`${d}T12:00:00Z`));
+const HR_STATUS_KEYS = new Set(["PENDING", "APPROVED", "REJECTED", "IN_RUN"]); // POS P3.5U ▸ สถานะใน HR ที่มีป้าย (report.commission.hrStatus.*) ◂
 const pct = (bp: number | null) => (bp === null ? "—" : `${(bp / 100).toFixed(2)}%`);
 
 // ═══════════ ตารางกลาง ═══════════
@@ -493,6 +501,49 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Load
         </div>
       );
     }
+    // POS P3.5U ▸ มติ 8: ค่าคอมฯ พนักงานขายต่อผู้ขาย (ผู้ดูเงินเดือน) ◂
+    case "commission": {
+      const x = rep as Report<"commission", CommissionRow, CommissionTotals>;
+      if (x.rows.length === 0) return empty;
+      const cc = (k: string) => t(`commission.cols.${k}`);
+      const hrText = (st: string | undefined) => (st && HR_STATUS_KEYS.has(st) ? t(`commission.hrStatus.${st}`) : "—");
+      const cols: Col<CommissionRow>[] = [
+        {
+          key: "seller",
+          header: cc("seller"),
+          cell: (r) => (
+            <span className="flex flex-col gap-0.5">
+              <span>{r.name ?? r.userId}</span>
+              {r.noEmployee ? (
+                <span className="w-fit whitespace-nowrap rounded-full border border-[color:var(--color-danger)] px-2 py-0.5 text-xs text-[color:var(--color-danger)]" data-testid={`pos-reports-commission-noemp-${r.userId}`}>
+                  {t("commission.noEmployee")}
+                </span>
+              ) : null}
+            </span>
+          ),
+        },
+        { key: "accrued", header: cc("accrued"), num: true, cell: (r) => M(r.accruedSatang) },
+        { key: "reversed", header: cc("reversed"), num: true, cell: (r) => M(r.reversedSatang) },
+        { key: "net", header: cc("net"), num: true, cell: (r) => <b>{M(r.netSatang)}</b> },
+        { key: "sent", header: cc("sent"), num: true, cell: (r) => M(r.sentSatang) },
+        { key: "open", header: cc("open"), num: true, cell: (r) => M(r.openSatang) },
+        { key: "hrStatus", header: cc("hrStatus"), cell: (r) => <span className="whitespace-nowrap">{hrText(r.hrStatus)}</span> },
+      ];
+      const tt = x.totals;
+      return (
+        <div className="flex flex-col gap-2" data-testid="pos-reports-commission">
+          <p className="text-xs text-[color:var(--color-muted)]">{t("commission.desc")}</p>
+          <Table
+            testId="pos-report-table"
+            cols={cols}
+            rows={x.rows}
+            rowKey={(r) => r.userId}
+            minWidth={860}
+            total={[t("total"), M(tt.accruedSatang), M(tt.reversedSatang), M(tt.netSatang), M(tt.sentSatang), M(tt.openSatang), ""]}
+          />
+        </div>
+      );
+    }
     // POS P2.11U ▸ มติ 7 ◂
     case "channels": {
       const x = rep as Report<"channels", ChannelRow, ChannelTotals>;
@@ -615,7 +666,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Load
 }
 
 // ═══════════ จอหลัก ═══════════
-export function ReportsClient({ systemId, units, initial, today, maxDays, hourlyMaxDays, cutoffMinutes, canAnomaly, discountFlagBp }: Props) {
+export function ReportsClient({ systemId, units, initial, today, maxDays, hourlyMaxDays, cutoffMinutes, canAnomaly, discountFlagBp, canPayroll = false }: Props) {
   const t = useTranslations("pos.report");
   const tc = useTranslations("pos.shift"); // ป้ายวิธีชำระ + สถานะกะ (ใช้ร่วมกับจอกะ)
   const [view, setView] = useState<View>(initial);
@@ -632,6 +683,8 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
   // POS P2.12U ▸ มติ 2: รายชั่วโมงเกิน HOURLY_MAX_DAYS = ข้อความในการ์ด (ไม่เรียกเซิร์ฟเวอร์ · CSV/PDF ปิด) · แท็บปิดเมื่อช่วงยาวเกิน ◂
   const hourlyTooLong = !baseRangeError && spanDays(view.from, view.to) > hourlyMaxDays;
   const rangeError = baseRangeError ?? (view.kind === "hourly" && hourlyTooLong ? "hourly.tooLong" : null);
+  // POS P3.5U ▸ มติ 8: ไม่ใช่ผู้ดูเงินเดือน + ?kind=commission = การ์ดปฏิเสธ (ไม่เรียกเซิร์ฟเวอร์) ◂
+  const commissionDenied = view.kind === "commission" && !canPayroll;
   // ภาพรวมไม่ใช่ชนิดของเซิร์ฟเวอร์ ⇒ CSV ของภาพรวม = daily (R4 §2)
   const target = useCallback((v: View) => ({ systemId, kind: (v.kind === "overview" ? "daily" : v.kind) as ReportKind, from: v.from, to: v.to, ...(v.unitId ? { unitId: v.unitId } : {}) }), [systemId]);
   const [ovGeneratedAt, setOvGeneratedAt] = useState<string | null>(null);
@@ -670,7 +723,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
     } catch {
       /* URL เป็นแค่ความสะดวก — พังไม่กระทบรายงาน */
     }
-    if (rangeError || view.kind === "overview") {
+    if (rangeError || view.kind === "overview" || commissionDenied) {
       // ภาพรวมโหลดการ์ดของตัวเอง (ReportsOverview) — ตารางชนิดเดียวไม่ต้องเรียก
       seq.current++;
       setReport(null);
@@ -678,10 +731,10 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
       return;
     }
     void load(view);
-  }, [view, rangeError, load]);
+  }, [view, rangeError, load, commissionDenied]);
 
   const downloadCsv = async () => {
-    if (csvBusy || rangeError) return;
+    if (csvBusy || rangeError || commissionDenied) return;
     setCsvBusy(true);
     setCsvErrorCode(null);
     try {
@@ -713,12 +766,12 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
   const shownError = rangeError ? t(rangeError) : errorCode ? t(refusalKey(errorCode)) : null;
   const overview = view.kind === "overview";
   // POS P2.12U ▸ แท็บใหม่ที่ผู้ใช้นี้เห็น ◂
-  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly", ...(canAnomaly ? (["anomalies"] as const) : [])];
+  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly", ...(canAnomaly ? (["anomalies"] as const) : []), ...(canPayroll ? (["commission"] as const) : [])]; // POS P3.5U ▸ + commission ◂
   const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
   const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
   const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[8.75rem]";
   // POS P2.12U ▸ มติ 1: PDF = หน้าพิมพ์ pos/reports/print ในแท็บใหม่ ด้วยตัวกรองเดียวกับจอ (ภาพรวม = เอกสารสรุปหลายส่วน) · ช่วงผิด = ปุ่มปิด ◂
-  const pdfHref = rangeError
+  const pdfHref = rangeError || commissionDenied
     ? null
     : `/app/sys/${systemId}/pos/reports/print?${new URLSearchParams({ kind: view.kind, from: view.from, to: view.to, ...(view.unitId ? { unit: view.unitId } : {}), locale: locale.startsWith("en") ? "en" : "th" }).toString()}`;
   const infoText = prev ? `${ovGeneratedAt ? `${t("overview.upToDate", { time: bkkHm(ovGeneratedAt, locale) })} · ` : ""}${t("overview.compare", { range: rangeLabel(prev.from, prev.to, locale) })}` : "";
@@ -729,7 +782,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
       {/* R6 V4: ปุ่ม CSV อยู่แถวเดียวกับชื่อเสมอ (ภาพ 08) — ≥ xl ทุกอย่างแถวเดียว ข้อความสถานะตัดท้าย (title = เต็ม) · < xl ตัวกรอง + สถานะลงแถวถัดไป */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3" data-testid="pos-report-header">
         <h2 className="order-1 text-2xl font-bold tracking-tight">{overview ? t("overview.title") : t("title")}</h2>
-        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost order-2 ml-auto min-h-[44px] shrink-0 whitespace-nowrap text-sm xl:order-3" disabled={csvBusy || !!rangeError || (!overview && loading)} onClick={() => void downloadCsv()}>
+        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost order-2 ml-auto min-h-[44px] shrink-0 whitespace-nowrap text-sm xl:order-3" disabled={csvBusy || !!rangeError || commissionDenied || (!overview && loading)} onClick={() => void downloadCsv()}>
           <Icon d={I_OUT} className="h-[18px] w-[18px]" />
           {csvBusy ? t("downloading") : t("overview.exportCsv")}
         </button>
@@ -864,7 +917,12 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
               </span>
             ) : null}
           </div>
-          {!rangeError && view.kind === "anomalies" && errorCode === "PERMISSION_DENIED" ? (
+          {!rangeError && view.kind === "commission" && (commissionDenied || errorCode === "PERMISSION_DENIED") ? (
+            // POS P3.5U ▸ มติ 8: ไม่ใช่ผู้ดูเงินเดือน = การ์ดปฏิเสธของรายงานนี้ ◂
+            <div role="alert" className="rounded-xl border p-3 text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-commission-denied">
+              {t("commission.denied")}
+            </div>
+          ) : !rangeError && view.kind === "anomalies" && errorCode === "PERMISSION_DENIED" ? (
             // POS P2.12U ▸ มติ 4: ไม่มี pos.report.anomaly = การ์ดปฏิเสธของรายงานนี้ (ไม่มีปุ่มลองใหม่ — ลองซ้ำก็ได้ผลเดิม) ◂
             <div role="alert" className="rounded-xl border p-3 text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-anomaly-denied">
               {t("anomaly.denied")}

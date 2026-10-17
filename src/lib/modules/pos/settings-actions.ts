@@ -9,7 +9,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { posSettingsHistory, updatePosDiscountCaps, updatePosGeneralSettings, updatePosUnitStockPolicy } from "./settings-general";
+import { posSettingsHistory, updatePosDiscountCaps, updatePosGeneralSettings, updatePosStaffCommission, updatePosStaffSettings, updatePosUnitStockPolicy, type PosStaffCommissionResult, type PosStaffSettingsResult } from "./settings-general"; // POS P3.5U ▸ + ตัวเขียนค่าตั้งพนักงาน × HR ◂
 import { posSettingsOverview, posStaffOverview, type PosSettingsOverviewResult, type PosStaffOverviewResult } from "./settings-overview";
 import { updatePosUnitPromptpay, type PosUnitPromptpayResult } from "./payment-settings";
 import type { PosDiscountCapsResult, PosGeneralSettingsResult, PosSettingsHistoryResult, PosSettingsRefusal, PosUnitStockPolicyResult } from "./settings-shared";
@@ -126,3 +126,30 @@ export async function posStaffOverviewAction(args: { systemId: string; unitId: s
     return unexpected("staff", e);
   }
 }
+
+// POS P3.5U ▸ มติ 6: แท็บพนักงาน (17C) — ด่านตารางงาน + ถามลงเวลา (เจ้าของร้านเท่านั้น · ตัวเขียนตรวจบทบาทซ้ำ) ·
+//   อัตราค่าคอมฯ พนักงานขาย (เจ้าของ หรือผู้ดูเงินเดือน canViewPayroll · ตัวเขียนตัดสิน — ไม่ผูกคีย์ pos.* ที่ action) ·
+//   คำปฏิเสธคืน {ok:false, code, message, field?} เสมอ (จอแสดงตาม field) ◂
+/** R3 R12 ด่านตารางงาน + ถามลงเวลาหลังเปิด/ปิดกะ */
+export async function updatePosStaffSettingsAction(args: { systemId: string; patch: unknown }): Promise<PosStaffSettingsResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await updatePosStaffSettings({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, args?.patch);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("staffSettings", e);
+  }
+}
+
+/** R6 อัตราค่าคอมฯ พนักงานขาย */
+export async function updatePosStaffCommissionAction(args: { systemId: string; patch: unknown }): Promise<PosStaffCommissionResult> {
+  try {
+    const s = await session();
+    return await updatePosStaffCommission({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, args?.patch);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("staffCommission", e);
+  }
+}
+// ◂ POS P3.5U

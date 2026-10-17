@@ -170,6 +170,11 @@
 //   reports-staff-flag · reports-pdf-button · reports-print-overview · reports-print-channels · settings-general-anomaly (เจ้าของ) · bills-all-branches ·
 //   bills-drawer-channel-refund — ตารางใน P212U_PLAN · fixture/เก็บกวาดใน ensureP212uFixture/cleanupP212u (บิลคีย์ต่อวันผ่าน createSale/voidSale/refundSale ·
 //   เกณฑ์จุดผิดปกติลดชั่วคราวผ่าน updatePosGeneralSettings แล้วคืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ) ◂
+// POS P3.5U ▸ HR × POS (มติ 10 · wo p3.5u · --states · ไม่ส่ง --page = register + shifts + settings + reports · 3 ขนาด · th + LOCALE=en · owner + cashier):
+//   13b-schedule-chip-today · 13b-schedule-chip-leave · 13b-offschedule-refusal · 13b-override-sheet · 13b-override-wrong-pin (แคชเชียร์) · 13a-shift-list-hr ·
+//   17c-staff-hr-switch-owner · 17c-staff-schedule-gate-card · 17c-staff-commission-card · 07-shift-clock-ask-in · 07-shift-clock-ask-out · 07-shift-hours-owner ·
+//   07-shift-hours-warnings · 08-report-commission-owner · 08-report-commission-denied (แคชเชียร์) — ตารางใน P35U_PLAN · fixture/เก็บกวาดใน ensureP35uFixture/
+//   prepP35u/cleanupP35u (ระบบ HR ชั่วคราว + พนักงานผูกผู้ใช้ QC ผ่านฟังก์ชันของ HR · ค่าตั้งด่าน/ค่าคอมฯ คืนค่าเดิม · ลบหลังงานสุดท้าย/finally/สัญญาณ) ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -205,6 +210,9 @@ const P213_WO = /^p2\.?13(?![0-9])/i.test(WO ?? "");
 // POS P2.12U ▸ มติ 8: wo p2.12u = สถานะรายงาน/บิล/ตั้งค่าของใบนี้ (ไม่ส่ง --page = reports + sales + settings) ◂
 const P212U_WO = /^p2\.?12u/i.test(WO ?? "");
 const P212U_PAGES = ["reports", "sales", "settings"] as const satisfies readonly PosPage[];
+// POS P3.5U ▸ มติ 10: wo p3.5u = สถานะ HR ของใบนี้ (ไม่ส่ง --page = register + shifts + settings + reports) ◂
+const P35U_WO = /^p3\.?5u/i.test(WO ?? "");
+const P35U_PAGES = ["register", "shifts", "settings", "reports"] as const satisfies readonly PosPage[];
 // POS P2.7U ▸ มติ 15: wo p2.7 = หน้าสาธารณะ QR (/q/**) + จอ 09 + จอโต๊ะ + ลิ้นชักช่องทาง (ไม่ส่ง --page = qr-public + orders + tables + settings) ◂
 const P27_WO = /^p2\.?7(?![0-9])/i.test(WO ?? "");
 const P27_PAGES = ["qr-public", "orders", "tables", "settings"] as const satisfies readonly PosPage[];
@@ -234,7 +242,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -277,7 +285,7 @@ const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const PDF_PROBE = argv.includes("--pdf");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key; // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey; // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -684,6 +692,55 @@ const P210_KEYS: ReadonlySet<string> = new Set(P210_PLAN.map((s) => s.key));
 const isP210State = (k: StateKey | null | undefined): k is P210Key => !!k && P210_KEYS.has(k);
 const p210Path = (k: P210Key): string =>
   k.startsWith("settings-") ? `/app/sys/${SYS}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}` : `/d${LOCALE_EN && k === "display-pair" ? "?lang=en" : ""}`;
+// ── POS P3.5U ▸ HR × POS (มติ 10 · wo p3.5u · --states · 3 ขนาด · th + LOCALE=en (1440 · หน้าขาย 390 ด้วยตาม EN_MOBILE_PAGES) · owner + cashier) ◂
+type P35uKey =
+  | "13b-schedule-chip-today"
+  | "13b-schedule-chip-leave"
+  | "13b-offschedule-refusal"
+  | "13b-override-sheet"
+  | "13b-override-wrong-pin"
+  | "13a-shift-list-hr"
+  | "07-shift-clock-ask-in"
+  | "07-shift-clock-ask-out"
+  | "07-shift-hours-owner"
+  | "07-shift-hours-warnings"
+  | "17c-staff-hr-switch-owner"
+  | "17c-staff-schedule-gate-card"
+  | "17c-staff-commission-card"
+  | "08-report-commission-owner"
+  | "08-report-commission-denied";
+const P35U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P35U_PLAN: { key: P35uKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "13b-schedule-chip-today", page: "register", devices: P35U_D3, users: ["owner", "cashier"], note: "13B: จอล็อก → การ์ดแคชเชียร์มีชิป \"ตารางวันนี้ HH:MM–HH:MM\" (ตาราง HR ครอบตอนนี้) · เจ้าของ = ชิปตารางของตัวเอง" },
+  { key: "13b-schedule-chip-leave", page: "register", devices: P35U_D3, users: ["owner", "cashier"], note: "13B: ใบลา APPROVED วันนี้ของแคชเชียร์ → ชิป \"ลาวันนี้\" + การ์ดจาง (ยังแตะได้)" },
+  { key: "13b-offschedule-refusal", page: "register", devices: P35U_D3, users: ["owner", "cashier"], note: "13B: ตารางแคชเชียร์ห่างตอนนี้ ≥ 1 ชม. · แตะแคชเชียร์ + PIN ถูก → \"นอกเวลางาน (ตารางวันนี้ …)\" + ปุ่ม \"ให้ผู้จัดการอนุญาต\"" },
+  { key: "13b-override-sheet", page: "register", devices: P35U_D3, users: ["owner", "cashier"], note: "13B: ปุ่มผู้จัดการอนุญาต → แผ่น ManagerPinPad (ผู้จัดการ/เจ้าของที่มี PIN) — ไม่ใส่ PIN" },
+  { key: "13b-override-wrong-pin", page: "register", devices: P35U_D3, users: ["cashier"], note: "13B: แผ่นผู้จัดการ → PIN ผู้จัดการผิด 6 หลัก → ข้อความ PIN ไม่ถูกต้อง (ล้างตัวนับผิดของเจ้าของหลังภาพ)" },
+  { key: "13a-shift-list-hr", page: "shifts", devices: P35U_D3, users: ["owner"], note: "13A: กล่องเปิดกะ \"พนักงานที่เปิดกะ · จากตารางงาน HR วันนี้\" — เจ้าของ (ผู้เปิด · กรอบดำ) + แคชเชียร์ (เวลา HH:MM–HH:MM) — ไม่กดยืนยัน" },
+  { key: "07-shift-clock-ask-in", page: "shifts", devices: P35U_D3, users: ["owner"], note: "07: เปิดกะผ่านกล่อง (โทเคนเจ้าของของเครื่อง) → แผ่น \"ลงเวลาเข้างานด้วยไหม\" — ไม่กดลงเวลา (กะของรอบปิดในงานถัดไป/เก็บกวาด)" },
+  { key: "07-shift-clock-ask-out", page: "shifts", devices: P35U_D3, users: ["owner"], note: "07: ปิดกะ (นับ ฿0) → แผง Z + แผ่น \"ลงเวลาออกงานด้วยไหม\" — ไม่กดลงเวลา" },
+  { key: "07-shift-hours-owner", page: "shifts", devices: P35U_D3, users: ["owner"], note: "07 (CD-P35U-5 เลย์เอาต์อนุพันธ์): กะที่ปิดแล้ว (ดูทั้งหมด) → บรรทัด \"ระยะเวลากะ 2:00 · เวลาทำงานตาม HR 1:50\" ไม่มีเตือน (กะ fixture + ลงเวลา HR)" },
+  { key: "07-shift-hours-warnings", page: "shifts", devices: P35U_D3, users: ["owner"], note: "07: กะ fixture ไม่มีลงเวลา → ชิป \"ไม่ได้ลงเวลาเข้างาน\"" },
+  { key: "17c-staff-hr-switch-owner", page: "settings", devices: P35U_D3, users: ["owner"], note: "17C แท็บพนักงาน: สวิตช์ \"ดึงรายชื่อและตารางงานจากระบบพนักงาน (HR)\" live (เปิดโดย fixture · เจ้าของแก้ได้)" },
+  { key: "17c-staff-schedule-gate-card", page: "settings", devices: P35U_D3, users: ["owner"], note: "17C: การ์ด \"เข้ากะตามตารางงาน HR\" 30/30/240 นาที + ถามลงเวลา ASK — ไม่กดบันทึก" },
+  { key: "17c-staff-commission-card", page: "settings", devices: P35U_D3, users: ["owner"], note: "17C: การ์ด \"ค่าคอมฯ พนักงานขาย\" (ผู้ดูเงินเดือน) อัตราปกติ 2% · หมวด/สินค้าจากแคตตาล็อก · ส่งเข้างวดเงินเดือน — ไม่กด" },
+  { key: "08-report-commission-owner", page: "reports", devices: P35U_D3, users: ["owner"], note: "08 แท็บ \"ค่าคอมฯ พนักงาน\" วันนี้: แถวแคชเชียร์ (บิล fixture → ACCRUE) + แถวรวม · ชิปยังไม่ผูกพนักงาน HR (ไม่มีโปรไฟล์เงินเดือน)" },
+  { key: "08-report-commission-denied", page: "reports", devices: P35U_D3, users: ["cashier"], note: "08 ?kind=commission ของแคชเชียร์ (ไม่มี pos.report.view) = การ์ดปฏิเสธ \"บัญชีนี้ยังไม่มีสิทธิ์ดูค่าคอมฯ พนักงาน\"" },
+];
+const p35uOn = STATES_ON && tenantKey === "coffee" && P35U_WO;
+const P35U_KEYS: ReadonlySet<string> = new Set(P35U_PLAN.map((s) => s.key));
+const isP35uState = (k: StateKey | null | undefined): k is P35uKey => !!k && P35U_KEYS.has(k);
+const p35uPath = (k: P35uKey): string => {
+  const u = encodeURIComponent(unitId);
+  const page = P35U_PLAN.find((x) => x.key === k)!.page;
+  if (page === "reports") {
+    const d = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+    return `/app/sys/${SYS}/pos/reports?kind=commission&from=${d}&to=${d}&unit=${u}`;
+  }
+  if (page === "settings") return `/app/sys/${SYS}/pos/settings?tab=staff&unit=${u}`;
+  return `/app/sys/${SYS}/pos/${page}?unit=${u}`;
+};
+// ◂ POS P3.5U
 // ── POS P2.12U ▸ รายงาน 08 + บิล 12 + การ์ดเกณฑ์ (มติ 8 · wo p2.12u · --states · 3 ขนาด · หน้าพิมพ์ 1440 + สื่อ print · th + LOCALE=en · owner + cashier) ◂
 type P212uKey = "reports-hourly" | "reports-branches-tab" | "reports-anomalies" | "reports-anomalies-empty" | "reports-staff-flag" | "reports-pdf-button" | "reports-print-overview" | "reports-print-channels" | "settings-general-anomaly" | "bills-all-branches" | "bills-drawer-channel-refund";
 const P212U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
@@ -950,11 +1007,11 @@ const EN_MOBILE_PAGES = new Set<string>(["register", "sales", "receipt-public", 
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
 const stockStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "stock" || /^p1\.14/i.test(WO));
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
-const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
+const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P35U_WO /* POS P3.5U */ && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
 const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
   isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
@@ -993,6 +1050,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: p213Path(st.key), ...(st.key === "developers-pos" ? { expect: 200 } : {}), file: `${OUT}/${st.key === "developers-pos" ? st.key : `${p}-${st.key.slice(p.length + 1)}`}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+  // POS P3.5U ▸ มติ 10: wo p3.5u + --states = สถานะ HR ของใบนี้ตามหน้า/ผู้ใช้ ◂
+  : p35uOn
+    ? P35U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p35uPath(st.key), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
   // POS P2.12U ▸ มติ 8: wo p2.12u + --states = สถานะของใบนี้ตามหน้า/ผู้ใช้ (หน้าพิมพ์ 1440 เท่านั้น) ◂
   : p212uOn
@@ -1144,7 +1208,7 @@ if (onlyStates) {
   if (unknown.length) die(`--state ไม่รู้จัก/ไม่อยู่ในแผนของหน้า-ผู้ใช้นี้: ${unknown.join(", ")} — ใช้ได้: ${[...known].join(" · ")}`);
 }
 const jobs: Job[] = onlyStates ? jobsPlanned.filter((j) => j.state && onlyStates.includes(String(j.state))) : jobsPlanned;
-const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state) && !P28U_REG_KEYS.has(j.state) && !isP26uState(j.state) && !isP25uState(j.state)); // POS P2.6U ▸ ไทล์ 86 ไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ // POS P2.5U ▸ จอชำระใบแยกบิลก็ไม่ใช้ ◂ // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ · POS P2.8U ▸ ป้ายแท็บก็ไม่ใช้ ◂
+const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state) && !P28U_REG_KEYS.has(j.state) && !isP26uState(j.state) && !isP25uState(j.state) && !isP35uState(j.state) /* POS P3.5U */); // POS P2.6U ▸ ไทล์ 86 ไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ // POS P2.5U ▸ จอชำระใบแยกบิลก็ไม่ใช้ ◂ // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ · POS P2.8U ▸ ป้ายแท็บก็ไม่ใช้ ◂
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
 
@@ -1189,13 +1253,15 @@ if (LIST) {
   for (const st of P210_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("reports/sales/settings P2.12U (wo p2.12u --states · owner + cashier):"); // POS P2.12U
   for (const st of P212U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
+  console.log("register/shifts/settings/reports P3.5U (wo p3.5u --states · owner + cashier):"); // POS P3.5U
+  for (const st of P35U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("settings P2.13 (wo p2.13 --states · owner + manager):"); // POS P2.13
   for (const st of P213_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("qr-public/orders/tables/settings P2.7U (wo p2.7 --states · เจ้าของ):"); // POS P2.7U
   for (const st of P27_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1359,6 +1425,16 @@ if (DRY) {
           `คาดการณ์ 4 สัปดาห์ก่อนวันเดียวกัน (3 ใบ/สัปดาห์ 08/09/12 น. · เลื่อน createdAt/paidAt) · สาขา: 1 บิลวันนี้ที่สาขาอารีย์ · จุดผิดปกติ: 2 บิล → voidSale (A1) · บิล LINE MAN ` +
           `(ช่องทาง P2.1U) → refundSale 1 บรรทัด PLATFORM (A2 + ลิ้นชักหลังคืน) · บิลส่วนลดท้ายบิล 40% (A4) · เกณฑ์ A1 2 ครั้ง · A2 1 ครั้ง · A3 1% · A4 20% ` +
           `(updatePosGeneralSettings เจ้าของ · ซากเกณฑ์ของรอบที่ถูก kill = กวาดเป็นค่าปริยาย · คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ)`,
+      );
+    }
+    // POS P3.5U ▸ มติ 10 ◂
+    if (jobs.some((j) => isP35uState(j.state))) {
+      console.log(`สถานะ HR P3.5U (${userKey}${userKey === "cashier" ? " — 08 = การ์ดปฏิเสธของหน้า · 13b-override-wrong-pin" : ""}):`);
+      for (const st of P35U_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(29)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P3.5U: fixture (สาขา ${unitKey}) — ระบบ HR ชั่วคราว "ทีมงาน (ภาพ QC P3.5U <pid>)" (system/service.createSystem) + พนักงาน 2 คนผูกเจ้าของ/แคชเชียร์ QC (hr.createEmployee + linkedUserId) · ` +
+          `ตารางวันนี้ตามเวลาไทยจริง (in/out/leave ต่อสถานะ · setSchedule/requestLeave/decideLeave) · ด่านตารางงานเปิด 30/30/240 + ASK + ค่าคอมฯ 2% (updatePosStaffSettings/updatePosStaffCommission · คืนค่าเดิม) · ` +
+          `กะ fixture 2 กะบนเครื่อง posqc-vis-p35uh-${process.pid} (เลื่อนเวลา) + ลงเวลา HR · บิลแคชเชียร์ 1 ใบ → staffCommissionOnSalePaid · เก็บกวาด: ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ (หลังงานสุดท้าย/finally/สัญญาณ)`,
       );
     }
     // POS P2.7U ▸ มติ 15 ◂
@@ -1671,6 +1747,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P210.log.length) console.error(`${P210.ok ? "🧹" : "⚠️"} P2.10: ${P210.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.10 ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P3.5U: ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ (เหมือน finally)
+      try {
+        await cleanupP35u();
+        if (P35U.log.length) console.error(`${P35U.ok ? "🧹" : "⚠️"} P3.5U: ${P35U.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P3.5U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.12U: คืนเกณฑ์จุดผิดปกติเดิม (เหมือน finally)
       try {
@@ -2237,6 +2320,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   if (isP210State(state)) return runP210State(page, state, device); // POS P2.10
   if (isP211uState(state)) return runP211uState(page, state, device); // POS P2.11U
   if (isP212uState(state)) return runP212uState(page, state, device); // POS P2.12U
+  if (isP35uState(state)) return runP35uState(page, state, device); // POS P3.5U
   if (isP29uState(state)) return runP29uState(page, state, device); // POS P2.9U
   if (isP29buState(state)) return runP29buState(page, state, device); // POS P2.9bU
   if (isP26uState(state)) return runP26uState(page, state, device); // POS P2.6U
@@ -6361,6 +6445,382 @@ async function runP212uState(page: Any, state: P212uKey, _device: Device): Promi
     }
   }
 }
+// ═══════════════════ POS P3.5U ▸ HR: ชิปตารางงาน 13B · ผู้จัดการอนุญาตนอกเวลา · รายชื่อ 13A · 17C · ลงเวลา/ชั่วโมง 07 · ค่าคอมฯ 08 (มติ 10) ═══════════════════
+// fixture (ensureP35uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
+//   • ระบบ HR ชั่วคราวของร้าน QC "ทีมงาน (ภาพ QC P3.5U <pid>)" ผ่าน system/service.createSystem (ร้าน QC ไม่มีระบบ HR · ซากของ pid ที่ตายแล้ว = กวาดก่อน) ·
+//     พนักงาน 2 คนผ่าน hr/service.createEmployee + ผูก linkedUserId ของเจ้าของ/แคชเชียร์ QC (ทางเดียวกับ qc-pos-p3.5 — ฐานไม่มีตัวเขียน) ·
+//     ตาราง (setSchedule · แถวของวันนี้ตามเวลาไทยจริง) · ใบลา (requestLeave + decideLeave APPROVED) — ต่อสถานะ: in = ช่วงครอบตอนนี้ · out = ห่างตอนนี้ ≥ 1 ชม. · leave
+//   • ค่าตั้ง POS: ด่านตารางงานเปิด (30/30/240) + clockOnShift ASK ผ่าน updatePosStaffSettings · ค่าคอมฯ (ปกติ 2% · หมวดของลาเต้ 3% · ลาเต้ 5% + ฿5/ชิ้น)
+//     ผ่าน updatePosStaffCommission — ค่าเดิมของ settings.pos.staff / settings.pos.staffCommission จำไว้ คืนแบบคีย์ตรงตัว (ไม่มีเดิม = ลบคีย์) ตอนเก็บกวาด
+//   • ชั่วโมงของกะ (07): 2 กะของเจ้าของบนเครื่อง posqc-vis-p35uh-<pid> (openShift/closeShift) เลื่อน openedAt/closedAt ย้อนหลัง — กะเตือน (ไม่มีลงเวลา ⇒ NO_CLOCK_IN) ·
+//     กะชั่วโมง (clock IN/OUT ของ HR แล้วเลื่อน at เข้าในกะ ⇒ workedMin ไม่มีเตือน)
+//   • ค่าคอมฯ 08: บิลวันนี้ 1 ใบ ผู้ขาย = แคชเชียร์ (createSale คีย์ต่อวัน) → staffCommissionOnSalePaid (ตัวรับเดิม) ⇒ แถว ACCRUE
+//   เก็บกวาด (งานสุดท้าย/finally/สัญญาณ): ปิดกะของรอบ · คืนค่าตั้ง · ลบแถว PosStaffCommission ของบิล fixture · ลบเวลา/ใบลา/ตาราง/พนักงาน/ระบบ HR ของรอบ ·
+//   ล้างตัวนับ PIN ผิดของเจ้าของ (13b-override-wrong-pin) · บิล fixture คงอยู่ (แบบ sale-done) · ไม่ใช้ seed-hr-qc ไม่ reseed QC4 ◂
+const P35U_HR_PREFIX = "ทีมงาน (ภาพ QC P3.5U ";
+const P35U_HDEV = `posqc-vis-p35uh-${process.pid}`;
+const P35U = {
+  done: false,
+  error: null as string | null,
+  ok: true,
+  log: [] as string[],
+  cleaned: false,
+  hrSystemId: "",
+  emp: { owner: "", cashier: "" },
+  sched: "" as "" | "in" | "out" | "leave",
+  staffBefore: undefined as unknown,
+  commissionBefore: undefined as unknown,
+  settingsTouched: false,
+  hoursShift: "",
+  warnShift: "",
+  saleIds: [] as string[],
+};
+const p35uHrCtx = () => ({ tenantId: T.tenantId, systemId: P35U.hrSystemId });
+/** นาทีของวันเวลาไทย + วันในสัปดาห์ (0 = อาทิตย์ · แบบ hr/service.bkkParts) */
+const p35uNow = () => {
+  const d = new Date(Date.now() + 7 * 3_600_000);
+  return { minute: d.getUTCHours() * 60 + d.getUTCMinutes(), weekday: d.getUTCDay(), day: d.toISOString().slice(0, 10) };
+};
+/** ลบระบบ HR ของภาพ (เวลา · ใบลา · ตาราง · พนักงาน · ลิงก์สาขา · ระบบ) — เขียนตรงเฉพาะแถวของระบบนี้ */
+async function p35uDropHr(systemId: string): Promise<void> {
+  const where = { tenantId: T.tenantId, systemId };
+  await prisma.hrAttendance.deleteMany({ where });
+  await prisma.hrLeave.deleteMany({ where });
+  await prisma.hrWorkSchedule.deleteMany({ where });
+  await prisma.hrEmployee.deleteMany({ where });
+  await prisma.appSystemUnit.deleteMany({ where: { tenantId: T.tenantId, systemId } });
+  await prisma.appSystem.deleteMany({ where: { id: systemId, tenantId: T.tenantId, type: "HR" } });
+}
+/** ตารางวันนี้ของแคชเชียร์ตามสถานะ (in/out/leave) — แถวของวันในสัปดาห์นี้แถวเดียว (วันข้างเคียงไม่มีแถว = ไม่ครอบ) */
+async function p35uCashier(mode: "in" | "out" | "leave"): Promise<void> {
+  if (P35U.sched === mode) return;
+  const hr = await import("@/lib/modules/hr/service");
+  const n = p35uNow();
+  const inRow = { weekday: n.weekday, dayOff: false, startMin: Math.max(0, n.minute - 120), endMin: Math.min(1439, Math.max(n.minute + 240, Math.max(0, n.minute - 120) + 30)), graceMin: 0 };
+  const outRow = n.minute >= 720 ? { weekday: n.weekday, dayOff: false, startMin: 60, endMin: 180, graceMin: 0 } : { weekday: n.weekday, dayOff: false, startMin: 1260, endMin: 1380, graceMin: 0 };
+  await prisma.hrLeave.deleteMany({ where: { tenantId: T.tenantId, systemId: P35U.hrSystemId, employeeId: P35U.emp.cashier } });
+  const r = await hr.setSchedule(p35uHrCtx(), P35U.emp.cashier, [mode === "out" ? outRow : inRow]);
+  if (!r.ok) throw new StepError(`setSchedule แคชเชียร์ (${mode}): ${r.reason ?? "?"}`);
+  if (mode === "leave") {
+    const l = await hr.requestLeave(p35uHrCtx(), { employeeId: P35U.emp.cashier, type: "PERSONAL", fromDate: n.day, toDate: n.day, reason: "ภาพ QC P3.5U" });
+    await hr.decideLeave(p35uHrCtx(), l.id, "APPROVED");
+  }
+  P35U.sched = mode;
+}
+async function ensureP35uFixture(): Promise<void> {
+  if (P35U.done || P35U.error) return;
+  try {
+    const want = (...ks: P35uKey[]) => ks.some((k) => jobs.some((j) => j.state === k));
+    const owner = await ownerActor();
+    // ซากของรอบที่ถูก kill (pid ไม่อยู่แล้ว)
+    const stale = await prisma.appSystem.findMany({ where: { tenantId: T.tenantId, type: "HR", name: { startsWith: P35U_HR_PREFIX } }, select: { id: true, name: true } });
+    for (const s of stale) {
+      const pid = Number(/(\d+)\)$/.exec(s.name)?.[1] ?? 0);
+      let alive = false;
+      try {
+        alive = pid > 0 && pid !== process.pid && process.kill(pid, 0);
+      } catch {
+        alive = false;
+      }
+      if (!alive && pid !== process.pid) {
+        await p35uDropHr(s.id);
+        P35U.log.push(`กวาดระบบ HR ซาก ${s.id}`);
+      }
+    }
+    const { createSystem } = await import("@/lib/modules/system/service");
+    P35U.hrSystemId = (await createSystem(T.tenantId, "HR", `${P35U_HR_PREFIX}${process.pid})`)).id;
+    const hr = await import("@/lib/modules/hr/service");
+    for (const k of ["owner", "cashier"] as const) {
+      const e = await hr.createEmployee(p35uHrCtx(), { name: `${T.users[k].name} (ภาพ QC)` });
+      P35U.emp[k] = e.id;
+      await prisma.hrEmployee.updateMany({ where: { id: e.id, tenantId: T.tenantId }, data: { linkedUserId: T.users[k].userId } });
+    }
+    const n = p35uNow();
+    const ownRow = { weekday: n.weekday, dayOff: false, startMin: Math.max(0, n.minute - 180), endMin: Math.min(1439, Math.max(n.minute + 180, Math.max(0, n.minute - 180) + 30)), graceMin: 0 };
+    const so = await hr.setSchedule(p35uHrCtx(), P35U.emp.owner, [ownRow]);
+    if (!so.ok) throw new StepError(`setSchedule เจ้าของ: ${so.reason ?? "?"}`);
+    await p35uCashier("in");
+    P35U.log.push(`ระบบ HR ${P35U.hrSystemId} · พนักงาน 2 คน (ผูกเจ้าของ/แคชเชียร์ QC)`);
+    // ค่าตั้ง POS (จำค่าเดิมของคีย์ตรงตัว)
+    const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
+    const pos = ((sys?.settings as Record<string, unknown> | null)?.pos ?? {}) as Record<string, unknown>;
+    P35U.staffBefore = pos.staff;
+    P35U.commissionBefore = pos.staffCommission;
+    P35U.settingsTouched = true;
+    const { updatePosStaffSettings, updatePosStaffCommission } = await import("@/lib/modules/pos/settings-general");
+    const g = await updatePosStaffSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { scheduleGate: { enabled: true, earlyMin: 30, lateMin: 30, overrideTtlMin: 240 }, clockOnShift: "ASK" });
+    if (!g.ok) throw new StepError(`updatePosStaffSettings: ${g.code}`);
+    const latte = QC_IDS.latte ? await prisma.posProduct.findFirst({ where: { id: QC_IDS.latte, tenantId: T.tenantId }, select: { id: true, categoryId: true } }) : null;
+    const c = await updatePosStaffCommission({ tenantId: T.tenantId, systemId: SYS }, owner, {
+      enabled: true,
+      defaultBp: 200,
+      sellerRoles: ["STAFF", "MANAGER"],
+      byCategory: latte?.categoryId ? { [latte.categoryId]: { bp: 300 } } : {},
+      byProduct: latte ? { [latte.id]: { bp: 500, fixedSatang: 500 } } : {},
+    });
+    if (!c.ok) throw new StepError(`updatePosStaffCommission: ${c.code} ${c.field ?? ""}`);
+    P35U.log.push("ด่านตารางงานเปิด 30/30/240 · ถามลงเวลา ASK · ค่าคอมฯ 2% (+ หมวดลาเต้ 3% · ลาเต้ 5% + ฿5)");
+    // ชั่วโมงของกะ (07)
+    if (want("07-shift-hours-owner", "07-shift-hours-warnings")) {
+      const { openShift } = await import("@/lib/modules/pos/shift");
+      const ctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+      const mk = async (fromMin: number, toMin: number, tag: string): Promise<string> => {
+        const o = await openShift(ctx, owner, { deviceId: P35U_HDEV, floatSatang: 0 });
+        if (!o.ok) throw new StepError(`openShift (${tag}): ${o.code}`);
+        const cl = await closeShiftAsOwner(o.shift.id, `p35u-${tag}`);
+        if (!cl.ok) throw new StepError(`closeShift (${tag}): ${cl.detail}`);
+        await prisma.posShift.update({ where: { id: o.shift.id }, data: { openedAt: new Date(Date.now() - fromMin * 60_000), closedAt: new Date(Date.now() - toMin * 60_000) } });
+        return o.shift.id;
+      };
+      P35U.warnShift = await mk(300, 240, "warn");
+      P35U.hoursShift = await mk(180, 60, "hours");
+      const inA = await hr.clock(p35uHrCtx(), { employeeId: P35U.emp.owner, kind: "IN", note: "ภาพ QC P3.5U" });
+      const outA = await hr.clock(p35uHrCtx(), { employeeId: P35U.emp.owner, kind: "OUT", note: "ภาพ QC P3.5U" });
+      await prisma.hrAttendance.update({ where: { id: inA.id }, data: { at: new Date(Date.now() - 175 * 60_000) } });
+      await prisma.hrAttendance.update({ where: { id: outA.id }, data: { at: new Date(Date.now() - 65 * 60_000) } });
+      P35U.log.push(`กะเตือน ${P35U.warnShift} (−5:00…−4:00 · ไม่มีลงเวลา) · กะชั่วโมง ${P35U.hoursShift} (−3:00…−1:00 · IN −2:55 · OUT −1:05)`);
+    }
+    // ค่าคอมฯ 08
+    if (want("08-report-commission-owner")) {
+      const { createSale } = await import("@/lib/modules/pos/service");
+      const r = await createSale({
+        tenantId: T.tenantId,
+        unitId,
+        systemId: SYS,
+        sourceModule: "POS",
+        shiftId: null,
+        soldByUserId: T.users.cashier.userId,
+        idempotencyKey: `${FIX.prefix}p35u-comm-${n.day}`,
+        lines: [{ name: `ลาเต้เย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 7500 }],
+        payMethods: [{ type: "CASH", amountSatang: 15000 }],
+      } as never);
+      const saleId = (r as { saleId: string }).saleId;
+      P35U.saleIds.push(saleId);
+      const { staffCommissionOnSalePaid } = await import("@/lib/modules/pos/staff-commission");
+      await staffCommissionOnSalePaid({ tenantId: T.tenantId, payload: { saleId } } as never);
+      const rows = await prisma.posStaffCommission.count({ where: { tenantId: T.tenantId, saleId } });
+      P35U.log.push(`บิลค่าคอมฯ ${saleId} (ผู้ขาย แคชเชียร์) → แถว ACCRUE ${rows}`);
+    }
+    P35U.done = true;
+  } catch (e) {
+    P35U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** ก่อนเปิดหน้าของแต่ละงาน: ตารางของแคชเชียร์ตามสถานะ · กะของเครื่องหน้ากะ · โทเคนเจ้าของของเครื่องหน้ากะ */
+async function prepP35u(page: Any, state: P35uKey): Promise<void> {
+  if (!P35U.done) return;
+  try {
+    if (state === "13b-schedule-chip-leave") await p35uCashier("leave");
+    else if (state === "13b-offschedule-refusal" || state === "13b-override-sheet" || state === "13b-override-wrong-pin") await p35uCashier("out");
+    else await p35uCashier("in");
+    if (state === "13b-override-wrong-pin") await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users.owner.userId }, data: { failedCount: 0, lockedUntil: null } });
+    const page35 = P35U_PLAN.find((x) => x.key === state)?.page;
+    if (page35 === "shifts" && userKey === "owner") {
+      if (state !== "07-shift-clock-ask-out") {
+        const open = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: SHIFTS_DEVICE_ID, status: "OPEN" }, select: { id: true } });
+        if (open) await closeShiftAsOwner(open.id, `p35u-prep-${Date.now()}`);
+      }
+      await registerShiftsDeviceOnce();
+      const json = await staffSessionJson("owner", SHIFTS_DEVICE_ID);
+      if (!json) throw new StepError(`ออกโทเคนเจ้าของของเครื่อง ${SHIFTS_DEVICE_ID} ไม่ได้`);
+      await injectStaff(page, SHIFTS_DEVICE_ID, json);
+    }
+  } catch (e) {
+    P35U.error = `เตรียม ${state}: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
+  }
+}
+/** หลังงาน P3.5U สุดท้าย / finally / สัญญาณ — เรียกซ้ำได้ · ไม่โยน */
+async function cleanupP35u(): Promise<void> {
+  if (P35U.cleaned) return;
+  P35U.cleaned = true;
+  const step = async (what: string, fn: () => Promise<string | void>) => {
+    try {
+      const s = await fn();
+      if (s) P35U.log.push(s);
+    } catch (e) {
+      P35U.ok = false;
+      P35U.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  await step("ปิดกะของรอบ", async () => {
+    const open = await prisma.posShift.findMany({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: { in: [SHIFTS_DEVICE_ID, P35U_HDEV] }, status: "OPEN" }, select: { id: true } });
+    for (const o of open) await closeShiftAsOwner(o.id, `p35u-clean-${o.id.slice(-6)}`);
+    return open.length ? `ปิดกะค้าง ${open.length}` : undefined;
+  });
+  if (P35U.settingsTouched)
+    await step("คืนค่าตั้ง POS", async () => {
+      await prisma.$transaction(async (tx) => {
+        const sys = await tx.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
+        const settings = { ...((sys?.settings as Record<string, unknown> | null) ?? {}) };
+        const pos = { ...((settings.pos as Record<string, unknown> | undefined) ?? {}) };
+        if (P35U.staffBefore === undefined) delete pos.staff;
+        else pos.staff = P35U.staffBefore;
+        if (P35U.commissionBefore === undefined) delete pos.staffCommission;
+        else pos.staffCommission = P35U.commissionBefore;
+        await tx.appSystem.update({ where: { id: SYS }, data: { settings: { ...settings, pos } as never } });
+      });
+      return "คืนค่าตั้ง settings.pos.staff / staffCommission เดิม";
+    });
+  if (P35U.saleIds.length)
+    await step("ลบแถวค่าคอมฯ", async () => `ลบแถว PosStaffCommission ${(await prisma.posStaffCommission.deleteMany({ where: { tenantId: T.tenantId, saleId: { in: P35U.saleIds } } })).count}`);
+  await step("ล้างตัวนับ PIN เจ้าของ", async () => {
+    await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users.owner.userId }, data: { failedCount: 0, lockedUntil: null } });
+  });
+  if (P35U.hrSystemId)
+    await step("ลบระบบ HR ของรอบ", async () => {
+      await p35uDropHr(P35U.hrSystemId);
+      return `ลบระบบ HR ${P35U.hrSystemId} (พนักงาน/ตาราง/ใบลา/เวลา)`;
+    });
+}
+async function runP35uState(page: Any, state: P35uKey, device: Device): Promise<void> {
+  if (P35U.error) throw new StepError(`fixture P3.5U: ${P35U.error}`);
+  if (!P35U.done) throw new StepError("fixture P3.5U ยังไม่ได้สร้าง");
+  const into = async (sel: string, block: "start" | "center" = "center") => {
+    const el = await visibleEl(page, sel, 0, 20_000);
+    await el.evaluate((e: Element, b: string) => e.scrollIntoView({ block: b as "start" | "center" }), block);
+    await sleep(200);
+    return el;
+  };
+  const cashierId = T.users.cashier.userId;
+  const lockAndPickCashier = async () => {
+    if (P115.error || !P115.seeded) throw new StepError(`ไม่มีข้อมูลภาพ P1.15U: ${P115.error ?? "ยังไม่ได้สร้าง"}`);
+    await lockFromRegister(page, device);
+    const cards = await page.$$(tid("pos-staff-card"));
+    let hit = false;
+    for (const c of cards) {
+      if (String(await c.evaluate((n: Element) => n.textContent ?? "")).includes(T.users.cashier.name)) {
+        await c.evaluate((n: Element) => n.scrollIntoView({ block: "center" }));
+        await c.click();
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) throw new StepError("จอล็อกไม่มีการ์ดแคชเชียร์");
+    await sleep(300);
+  };
+  const offSchedule = async () => {
+    await lockAndPickCashier();
+    if (!P115.pins.cashier) throw new StepError("ไม่มี PIN ของแคชเชียร์ (seedP115Once)");
+    await clickPinDigits(page, P115.pins.cashier);
+    await visibleEl(page, tid("pos-lock-override-open"), 0, 15_000).catch(() => {
+      throw new StepError("PIN แคชเชียร์นอกตารางแล้วไม่เห็นปุ่ม \"ให้ผู้จัดการอนุญาต\" (pos-lock-override-open)");
+    });
+  };
+  switch (state) {
+    case "13b-schedule-chip-today":
+    case "13b-schedule-chip-leave": {
+      await lockFromRegister(page, device);
+      const chip = await into(tid(`pos-lock-schedule-chip-${cashierId}`));
+      const kind = (await chip.evaluate((e: Element) => e.getAttribute("data-chip"))) as string | null;
+      const wantKind = state === "13b-schedule-chip-leave" ? "leave" : "today";
+      if (kind !== wantKind) throw new StepError(`ชิปของแคชเชียร์ = ${kind} (คาด ${wantKind})`);
+      return;
+    }
+    case "13b-offschedule-refusal":
+      await offSchedule();
+      return;
+    case "13b-override-sheet":
+      await offSchedule();
+      await clickEl(page, tid("pos-lock-override-open"));
+      await visibleEl(page, tid("pos-lock-override-sheet"), 0, 10_000);
+      await visibleEl(page, tid("pos-mgr-pin-dots"), 0, 10_000);
+      return;
+    case "13b-override-wrong-pin": {
+      await offSchedule();
+      await clickEl(page, tid("pos-lock-override-open"));
+      await visibleEl(page, tid("pos-lock-override-sheet"), 0, 10_000);
+      const own = P115.pins.owner ?? "";
+      const managers = await page.$$(tid("pos-mgr-pin-manager"));
+      if (!managers.length) throw new StepError("แผ่นผู้จัดการไม่มีรายชื่อผู้จัดการ (pos-mgr-pin-manager)");
+      if (managers.length > 1) await managers[0].click();
+      const wrong = own ? `${(Number(own[0]) + 1) % 10}${own.slice(1)}` : "908172";
+      for (const d of wrong) await clickEl(page, tid(`pos-mgr-pin-key-${d}`));
+      await visibleEl(page, tid("pos-mgr-pin-error"), 0, 15_000).catch(() => {
+        throw new StepError("PIN ผู้จัดการผิดแล้วไม่เห็นข้อความ (pos-mgr-pin-error)");
+      });
+      await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users.owner.userId }, data: { failedCount: 0, lockedUntil: null } });
+      return;
+    }
+    case "13a-shift-list-hr":
+      await clickEl(page, tid("pos-shift-open-start"));
+      await visibleEl(page, tid("pos-shift-open-dialog"), 0, 10_000);
+      await visibleEl(page, tid(`pos-shift-open-staff-${cashierId}`), 0, 15_000).catch(() => {
+        throw new StepError("กล่องเปิดกะไม่มีรายชื่อจากตารางงาน HR (pos-shift-open-staff-<แคชเชียร์>)");
+      });
+      return;
+    case "07-shift-clock-ask-in":
+      await clickEl(page, tid("pos-shift-open-start"));
+      await visibleEl(page, tid("pos-shift-open-dialog"), 0, 10_000);
+      await clickEl(page, tid("pos-shift-open-submit"));
+      await visibleEl(page, tid("pos-shift-clock-sheet"), 0, 20_000).catch(() => {
+        throw new StepError("เปิดกะแล้วไม่เห็นแผ่นถามลงเวลาเข้างาน (pos-shift-clock-sheet)");
+      });
+      return;
+    case "07-shift-clock-ask-out": {
+      const cur = await visibleEl(page, tid("pos-shift-current"), 0, 4_000).then(() => true).catch(() => false);
+      if (!cur) {
+        await clickEl(page, tid("pos-shift-open-start"));
+        await visibleEl(page, tid("pos-shift-open-dialog"), 0, 10_000);
+        await clickEl(page, tid("pos-shift-open-submit"));
+        const sk = await visibleEl(page, tid("pos-shift-clock-skip"), 0, 15_000).catch(() => null);
+        if (sk) await clickEl(page, tid("pos-shift-clock-skip"));
+        await visibleEl(page, tid("pos-shift-current"), 0, 15_000);
+      }
+      await into(tid("pos-shift-close"));
+      await typeInto(page, tid("pos-shift-close-coins"), "0");
+      await sleep(300);
+      await clickEl(page, tid("pos-shift-close-submit"));
+      await visibleEl(page, tid("pos-shift-clock-sheet"), 0, 20_000).catch(() => {
+        throw new StepError("ปิดกะแล้วไม่เห็นแผ่นถามลงเวลาออกงาน (pos-shift-clock-sheet)");
+      });
+      return;
+    }
+    case "07-shift-hours-owner":
+    case "07-shift-hours-warnings": {
+      const id = state === "07-shift-hours-owner" ? P35U.hoursShift : P35U.warnShift;
+      if (!id) throw new StepError("ไม่มีกะ fixture ของชั่วโมง");
+      const all = await page.$(tid("pos-shift-closed-all"));
+      if (all && (await all.evaluate((e: Element) => e.getAttribute("aria-expanded"))) !== "true") await clickEl(page, tid("pos-shift-closed-all"));
+      const el = await into(tid(`pos-shift-hours-${id}`));
+      const w = String((await el.evaluate((e: Element) => e.getAttribute("data-warnings"))) ?? "");
+      if (state === "07-shift-hours-owner" && w) throw new StepError(`กะชั่วโมงมีเตือน "${w}" (คาดไม่มี)`);
+      if (state === "07-shift-hours-warnings" && !w.includes("NO_CLOCK_IN")) throw new StepError(`กะเตือนมีเตือน "${w}" (คาด NO_CLOCK_IN)`);
+      return;
+    }
+    case "17c-staff-hr-switch-owner": {
+      const sw = await into(tid("pos-settings-staff-hr-switch"));
+      const a = (await sw.evaluate((e: Element) => [e.getAttribute("aria-checked"), e.getAttribute("aria-disabled")])) as [string | null, string | null];
+      if (a[0] !== "true" || a[1] === "true") throw new StepError(`สวิตช์ HR aria-checked=${a[0]} aria-disabled=${a[1]} (คาด true/false)`);
+      return;
+    }
+    case "17c-staff-schedule-gate-card": {
+      await into(tid("pos-settings-staff-gate"), "start");
+      const v = (await page.$eval(tid("pos-settings-staff-gate-early"), (e: Element) => (e as HTMLInputElement).value)) as string;
+      if (v !== "30") throw new StepError(`ช่องเข้าก่อนเวลา = "${v}" (คาด 30)`);
+      return;
+    }
+    case "17c-staff-commission-card": {
+      await into(tid("pos-settings-staff-commission"), "start");
+      const v = (await page.$eval(tid("pos-settings-staff-commission-default"), (e: Element) => (e as HTMLInputElement).value)) as string;
+      if (v !== "2") throw new StepError(`อัตราปกติ = "${v}" (คาด 2)`);
+      await page.waitForFunction(() => !!document.querySelector('[data-testid^="pos-settings-staff-commission-cat-bp-"], [data-testid="pos-settings-staff-commission-product-count"]'), { timeout: 15_000 }).catch(() => {
+        throw new StepError("การ์ดค่าคอมฯ ไม่มีแถวหมวด/จำนวนอัตรา (แคตตาล็อกไม่โหลด)");
+      });
+      return;
+    }
+    case "08-report-commission-owner":
+      await visibleEl(page, tid("pos-reports-commission"), 0, 20_000).catch(() => {
+        throw new StepError("แท็บค่าคอมฯ ไม่มีตาราง (pos-reports-commission)");
+      });
+      await visibleEl(page, tid("pos-report-table-total"), 0, 10_000);
+      return;
+    case "08-report-commission-denied":
+      await visibleEl(page, `${tid("pos-report-refusal")},${tid("pos-reports-commission-denied")}`, 0, 20_000);
+      return;
+  }
+}
+// ◂ POS P3.5U
+
 // ═══════════════════ POS P2.11U ▸ หลายสาขา: fixture + ขั้นตอนของสถานะ (มติ 11) ◂ ═══════════════════
 // fixture (ensureP211uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
 //   • หน้า products: ลาเต้ += แถว (STORE, สีลม) = ราคาฐาน − ฿5 (ช่อง "ราคา สีลม" ตัวหนา + ชิป "สาขา") · ช่องทาง ZZVIS ที่สีลม (saveChannel) →
@@ -8784,6 +9244,14 @@ try {
           await ensureP212uFixture();
           console.log(P212U.error ? `  ⚠️ fixture P2.12U: ${P212U.error}` : `  fixture P2.12U: ${P212U.log.join(" · ")}`);
         }
+        // POS P3.5U ▸ fixture HR ก่อนงานแรกของใบนี้ · ตาราง/กะ/โทเคนต่องาน (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP35uState(job.state)) {
+          if (!P35U.done && !P35U.error) {
+            await ensureP35uFixture();
+            console.log(P35U.error ? `  ⚠️ fixture P3.5U: ${P35U.error}` : `  fixture P3.5U: ${P35U.log.join(" · ")}`);
+          }
+          await prepP35u(page, job.state);
+        }
         // POS P2.11U ▸ fixture หลายสาขาก่อนงานแรกของใบนี้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (isP211uState(job.state) && !P211U.done && !P211U.error) {
           await ensureP211uFixture();
@@ -8900,6 +9368,7 @@ try {
         if (isP211uState(job.state) && job === jobs.filter((j) => isP211uState(j.state)).at(-1)) await cleanupP211u(); // POS P2.11U
         if (job.state && P212U_PRINT.has(job.state)) await page.emulateMediaType(null).catch(() => undefined); // POS P2.12U ▸ คืนสื่อ screen หลังภาพหน้าพิมพ์ ◂
         if (isP212uState(job.state) && job === jobs.filter((j) => isP212uState(j.state)).at(-1)) await cleanupP212u(); // POS P2.12U
+        if (isP35uState(job.state) && job === jobs.filter((j) => isP35uState(j.state)).at(-1)) await cleanupP35u(); // POS P3.5U
         if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
         if ((job.state === "table-closed" || job.state === "pre-closed") && P27.pausedNow) await p27Pause(null).catch(() => undefined); // POS P2.7U ▸ คืนพักรับหลังภาพ closed ◂
         if (isP27State(job.state) && job === jobs.filter((j) => isP27State(j.state)).at(-1)) await cleanupP27(); // POS P2.7U
@@ -8940,6 +9409,9 @@ try {
   await cleanupP210(); // POS P2.10 (ก่อนปิดกะ/เพิกถอนเครื่องของรอบ — ยกเลิกจับคู่จอ · ปิดกะ + เพิกถอนเครื่อง P2.10)
   if (P210.log.length) console.error(`${P210.ok ? "🧹" : "⚠️"} P2.10: ${P210.log.join(" · ")}`);
   if (!P210.ok) failures++;
+  await cleanupP35u(); // POS P3.5U (ก่อนเพิกถอนเครื่อง — ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ)
+  if (P35U.log.length) console.error(`${P35U.ok ? "🧹" : "⚠️"} P3.5U: ${P35U.log.join(" · ")}`);
+  if (!P35U.ok) failures++;
   await closeRunShift();
   if (SHIFT.close && !SHIFT.close.ok) console.error(`⚠️ ${SHIFT.close.detail}`);
   await cleanupP115(); // POS P1.15U (หลังปิดกะ — เพิกถอนเครื่องเป็นขั้นท้าย)

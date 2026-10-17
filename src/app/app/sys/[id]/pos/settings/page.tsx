@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { canAccessUnit, evaluate } from "@/lib/core/rbac";
+import { canAccessUnit, canViewPayroll, evaluate } from "@/lib/core/rbac"; // POS P3.5U ▸ + canViewPayroll (การ์ดค่าคอมฯ · มติ 6) ◂
 import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership } from "@/lib/modules/pos/access";
@@ -28,6 +28,7 @@ import { StaffSettings } from "./StaffSettings";
 import { SharkSettings } from "./SharkSettings";
 import { ChannelsPane, OfflinePane } from "./shark-ui";
 import { receiptUnitOverride } from "@/lib/modules/pos/receipt-settings-shared"; // POS P2.11U ▸ มติ 8 ◂
+import { posClockOnShift, posScheduleGate, posStaffCommission } from "@/lib/modules/pos/settings-shared"; // POS P3.5U ▸ มติ 6 ◂
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -89,6 +90,15 @@ export default async function PosSettingsPage({ params, searchParams }: { params
         )[0] ?? null)
       : null;
   const storefront = shop ? { name: shop.name, path: `/s/${auth.active.tenant.slug}/${shop.slug}/shop` } : null;
+  // POS P3.5U ▸ มติ 6: แท็บพนักงาน — ค่าตั้งด่านตารางงาน/ลงเวลา (ตัวอ่านบริสุทธิ์ · ร้านมีระบบ HR ไหม = นับ AppSystem) · อัตราค่าคอมฯ เฉพาะผู้ดูเงินเดือน ◂
+  const staffHr =
+    canRead && tab === "staff" && canManageStaff
+      ? await (async () => {
+          const hrLinked = (await prisma.appSystem.count({ where: { tenantId, type: "HR" } })) > 0;
+          return { hrLinked, scheduleGate: posScheduleGate(sys.settings), clockOnShift: posClockOnShift(sys.settings, hrLinked) };
+        })()
+      : undefined;
+  const staffCommission = staffHr && canViewPayroll(m) ? posStaffCommission(sys.settings) : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -108,7 +118,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           />
         ) : tab === "staff" ? (
           canManageStaff ? (
-            <StaffSettings key={unitId} systemId={id} unitId={unitId} isOwner={m.role === "OWNER"} />
+            <StaffSettings key={unitId} systemId={id} unitId={unitId} isOwner={m.role === "OWNER"} hr={staffHr} commission={staffCommission} /* POS P3.5U ▸ มติ 6 ◂ */ />
           ) : (
             <SettingsRefusal message={t("staff.refusal")} />
           )
