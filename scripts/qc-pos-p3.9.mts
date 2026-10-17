@@ -99,6 +99,7 @@ const CHECKS: readonly Def[] = [
   D("BR7", "B", "[R9] พลาด 06:00 → 09:10 ส่งตามหลัง 1 ใบต่อผู้รับ · push ถึงเครื่องของเจ้าของ + ผู้จัดการ"),
   D("BR8", "B", "[R10] ai.enabled false → 0 · brief.enabled false → 0 · posAiSettings ค่าปริยาย + ตัดค่าเพี้ยน (hourBkk 24 → 6 · managerUserIds สตริงไม่ซ้ำ)"),
   D("BR9", "B", "[R8 มติ 4] push (post ฉีด) ส่งเฉพาะ token ของผู้รับ — ไม่มี token ของพนักงาน/แคชเชียร์ทุกรอบ"),
+  D("BR10", "B", "[fix1 F5=N2 · CD-P39c] ระบบ POS 2 ระบบชื่อเดียวกัน → เจ้าของได้ 2 ใบ (หัวเรื่องไม่ชน) · ผู้รับที่ทุกส่วนถูกปฏิเสธ (ผู้จัดการของสาขาระบบอื่น) → ไม่มีแจ้งเตือนเปล่า · ทุกใบมีเนื้อความ"), // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 BR10)
   // ── PV ความเป็นส่วนตัว ──
   D("PV1", "V", "[R2 §5] ผลของ tool ทุกตัว + BriefInput + composeBrief + แจ้งเตือน ไม่มี /staffCommission|payroll|salary|hrPay|pinHash|phone|email/i (ตัวควบคุม: regex จับแถว User ได้)"),
   D("PV2", "V", "[R7 R8] แจ้งเตือนสรุปเช้าทุกใบ recipientUserId ไม่ null"),
@@ -1640,6 +1641,43 @@ async function runDb() {
     if (bad.length) p.push(`token นอกผู้รับ ${bad.length} [${[...new Set(bad.map((t) => Object.entries(TOKEN).find(([, v]) => v === t)?.[0] ?? short(t, 20)))].join(",")}]`);
     if (!posted.length) p.push("ไม่มี push เลย");
     chk("BR9", p.length === 0, "เฉพาะ token ผู้รับ", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 17 ต.ค. (P3.9 fix1 BR10) ▸ กันซ้ำแยกระบบ + ไม่ส่งสรุปเปล่า ◂
+  {
+    const p: string[] = [];
+    let S2 = "";
+    let MGR2 = "";
+    if (!fx) {
+      await step("BR10 ระบบที่สองชื่อซ้ำ", async () => {
+        const UC = (await P.businessUnit.create({ data: { tenantId: T, type: "SHOP", name: `${TAG} สาขาC`, slug: `${T_SLUG}-c` } })).id;
+        S2 = (await sysSvc.createSystem(T, "POS", `POS คิวซี ${RAND}`)).id;
+        await sysSvc.linkUnit(T, S2, UC);
+        const u = await P.user.create({ data: { email: `${T_SLUG}-mgr2@qc.invalid`, name: `MGR2 คิวซี${RAND}` } });
+        MGR2 = u.id;
+        await P.membership.create({ data: { userId: u.id, tenantId: T, role: "MANAGER", unitAccess: [UC], permissions: {}, acceptedAt: new Date() } });
+        const s0 = (await P.appSystem.findUnique({ where: { id: S2 }, select: { settings: true } }))?.settings ?? {};
+        const s2 = isRecord(s0) ? JSON.parse(JSON.stringify(s0)) : {};
+        s2.pos = { ...(isRecord(s2.pos) ? s2.pos : {}), ai: { enabled: true, brief: { enabled: true, hourBkk: 6, email: false, managerUserIds: [MGR2] }, anomalyInBrief: true } };
+        await P.appSystem.update({ where: { id: S2 }, data: { settings: s2 } });
+        await patchPos((pos) => (pos.ai = { ...aiSettings(), brief: { ...aiSettings().brief, managerUserIds: [uid("MGR"), MGR2] } }));
+      });
+    }
+    await delBriefs();
+    const r = await call(briefMod, "sendPosDailyBriefs", { now: at(0, 9, 40), deadline: new Date(Date.now() + 60_000), tenantId: T, post });
+    if (r?.ok === false) p.push(`job ${codeOf(r)}`);
+    const rows = await briefRows();
+    allBriefRows.push(...rows);
+    const own = rows.filter((x) => x.recipientUserId === uid("OWNER"));
+    if (own.length !== 2 || new Set(own.map((x) => x.title)).size !== 2) p.push(`เจ้าของ ${own.length} ใบ [${own.map((x) => short(x.title, 50)).join(" | ")}]`);
+    const m2 = rows.filter((x) => x.recipientUserId === MGR2);
+    if (m2.length !== 1) p.push(`ผู้จัดการสาขา C ${m2.length} ใบ (คาด 1 — ของระบบตัวเอง)`);
+    const empty = rows.filter((x) => !String(x.body ?? "").trim());
+    if (empty.length) p.push(`แจ้งเตือนเปล่า ${empty.length}`);
+    await step("คืนค่า BR10", async () => {
+      await patchPos((pos) => (pos.ai = aiSettings()));
+      if (S2) await P.appSystem.update({ where: { id: S2 }, data: { active: false } });
+    });
+    chk("BR10", p.length === 0, "2 ใบ · ไม่มีใบเปล่า", FXB(joinP(p)));
   }
 
   // ════════ PV ════════
