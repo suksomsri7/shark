@@ -32,7 +32,7 @@ export default async function PosShiftsPage({ params, searchParams }: { params: 
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id, await getTranslations("pos"))} />
-      <ShiftsClient systemId={id} units={units} unitId={unitId} canManage={canManage} meName={auth.user.name?.trim() || auth.user.email || "-"} />
+      <ShiftsClient systemId={id} units={units} unitId={unitId} canManage={canManage} meName={auth.user.name?.trim() || auth.user.email || "-"} meUserId={auth.user.id} /* POS P3.5U ▸ มติ 5 ◂ */ />
     </div>
   );
 }
