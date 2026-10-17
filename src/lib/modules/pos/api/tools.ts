@@ -25,7 +25,7 @@ import { detailsMessageTh, runOpAsActor, validateOpInput } from "@/lib/api/run";
 import { posUnitIsLinked } from "../register";
 import { bkkToday } from "../index";
 import { draftPurchaseOrder } from "../ai-insights";
-import { posApiKeyActor, posRealScopes } from "./actor";
+import { posActorCanUseUnit, posApiKeyActor, posRealScopes } from "./actor";
 import { POS_OPS } from "./registry";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,20 +254,40 @@ function capResult(v: unknown): unknown {
 
 const baht = (satang: number) => `฿${(satang / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-async function summarize(p: Prepared, tenantId: string, systemId: string): Promise<string> {
-  const body = isRecord(p.input) ? p.input : {};
-  const parts: string[] = [p.op.label];
+/**
+ * POS P3.9 ▸ fix1 F4 (=N4 · CD-P39c): ระเบียนเป้าหมายของข้อเสนอ + ด่านสาขาของ "คนที่ถาม" **ก่อน** อ่านอะไรมาแสดง —
+ *   ไม่พบ / อยู่สาขาที่ผู้ถามใช้ไม่ได้ (คนนอกสาขา · คีย์ที่มีตัวกรองสาขา) = ข้อความเดียวกัน (ไม่บอกว่ามีอยู่ ไม่คืนเลขบิล/ยอด/ชื่อ/ราคา) ◂
+ */
+type Target = { kind: "product"; name: string; basePriceSatang: number | null; unitId: string | null } | { kind: "sale"; receiptNo: string | null; grandTotalSatang: number; unitId: string } | { kind: "none" };
+async function targetOf(p: Prepared, asker: ApiActor, tenantId: string, systemId: string): Promise<Target | { error: string }> {
   const db = tenantDb({ tenantId, systemId });
+  const given = isRecord(p.input) && typeof p.input.unitId === "string" ? p.input.unitId : null;
+  if (given && !posActorCanUseUnit(asker, given)) return { error: "ไม่พบจุดขายนี้ในระบบขายหน้าร้านที่เชื่อมไว้" };
   if (p.op.id.startsWith("products.") && p.params.id) {
-    const row = await db.posProduct.findFirst({ where: { id: p.params.id }, select: { name: true, basePriceSatang: true } });
-    if (row) parts.push(`"${row.name}"${p.op.id === "products.setPrice" && typeof row.basePriceSatang === "number" ? ` (ราคาเดิม ${baht(row.basePriceSatang)})` : ""}`);
+    const row = await db.posProduct.findFirst({ where: { id: p.params.id }, select: { name: true, basePriceSatang: true, unitId: true } });
+    if (!row || (row.unitId && !posActorCanUseUnit(asker, row.unitId))) return { error: "ไม่พบสินค้านี้ในระบบขายหน้าร้าน" };
+    return { kind: "product", name: row.name, basePriceSatang: row.basePriceSatang, unitId: row.unitId };
   }
   if (p.op.id.startsWith("sales.") && p.params.id) {
-    const row = await db.posSale.findFirst({ where: { id: p.params.id }, select: { receiptNo: true, grandTotalSatang: true } });
-    if (row) parts.push(`บิล ${row.receiptNo ?? p.params.id.slice(-6)} ยอด ${baht(row.grandTotalSatang)}`);
+    const row = await db.posSale.findFirst({ where: { id: p.params.id }, select: { receiptNo: true, grandTotalSatang: true, unitId: true } });
+    if (!row || !posActorCanUseUnit(asker, row.unitId)) return { error: "ไม่พบบิลนี้ในระบบขายหน้าร้าน" };
+    return { kind: "sale", receiptNo: row.receiptNo, grandTotalSatang: row.grandTotalSatang, unitId: row.unitId };
   }
+  return { kind: "none" };
+}
+
+async function summarize(p: Prepared, t: Target, tenantId: string): Promise<string> {
+  const body = isRecord(p.input) ? p.input : {};
+  const parts: string[] = [p.op.label];
+  const unitName = async (id: string) => (await tenantDb({ tenantId }).businessUnit.findFirst({ where: { id }, select: { name: true } }))?.name ?? id;
+  if (t.kind === "product") parts.push(`"${t.name}"${p.op.id === "products.setPrice" && typeof t.basePriceSatang === "number" ? ` (ราคาเดิม ${baht(t.basePriceSatang)})` : ""}`);
+  if (t.kind === "sale") parts.push(`บิล ${t.receiptNo ?? (p.params.id ?? "").slice(-6)} ยอด ${baht(t.grandTotalSatang)}`);
   if (typeof body.priceSatang === "number") parts.push(`ราคาใหม่ ${baht(body.priceSatang)}`);
   if (typeof body.available === "boolean") parts.push(body.available ? "คืนขาย" : "แจ้งของหมด (86)");
+  // POS P3.9 ▸ fix1 F4: ขอบเขตจริงของการเขียน — 86 = สาขาที่ระบุ/ของสินค้า · ตั้งราคาสินค้าทุกสาขา = "ทุกสาขา" · บิล = สาขาของบิล ◂
+  const scopeUnit = typeof body.unitId === "string" && p.op.id === "products.availability" ? body.unitId : t.kind === "none" ? null : t.unitId;
+  if (scopeUnit) parts.push(`สาขา ${await unitName(scopeUnit)}`);
+  else if (t.kind === "product") parts.push("ทุกสาขา");
   if (typeof body.reason === "string") parts.push(`เหตุผล: ${body.reason}`);
   return parts.join(" · ");
 }
@@ -296,21 +316,25 @@ export async function runPosTool(ctx: PosToolCtx, name: string, rawArgs: unknown
   if (!prep.ok) return { mode: "error", error: prep.error };
   const p = prep.prepared;
 
-  if (op.kind !== "read") {
-    // 🔴 ผู้ช่วยไม่เขียนเอง — ข้อเสนอให้คนกดยืนยัน (สิทธิ์ตรวจตอนกดด้วย op.action ของคนกด)
-    const summary = await summarize(p, ctx.tenantId, system.id);
-    const flat: Record<string, unknown> = {};
-    for (const { arg, param } of pathArgsOf(op)) if (p.params[param] !== undefined) flat[arg] = p.params[param];
-    if (isRecord(p.input)) Object.assign(flat, p.input);
-    return { mode: "propose", kind: posKindOf(op.id), summary, payload: { ...flat, opId: op.id, input: p.input, params: p.params, systemId: system.id } };
-  }
-
   let actor: ApiActor;
   if (ctx.key) {
     // CD-7: คีย์กลางรุ่นเดิม (scope ว่าง) อ่านชื่อเดิมได้ด้วยสิทธิ์อ่านรายงานเท่านั้น · คีย์ปกติ = scope ของคีย์ตรงตัว
     const scopes = ctx.key.scopes.length === 0 && ctx.key.general && SCOPELESS_LEGACY.has(name) ? ["pos.report.view"] : ctx.key.scopes;
     actor = posApiKeyActor({ tenantId: ctx.tenantId, systemId: system.id, keyId: ctx.key.keyId, keyName: "ผู้ช่วย AI ภายนอก", scopes });
   } else actor = personActor("assistant", ctx.tenantId, system.id, ctx.person!);
+
+  if (op.kind !== "read") {
+    // 🔴 ผู้ช่วยไม่เขียนเอง — ข้อเสนอให้คนกดยืนยัน (สิทธิ์ตรวจตอนกดด้วย op.action ของคนกด)
+    // POS P3.9 ▸ fix1 F4: ด่านสาขาของผู้ถามก่อนสรุป (ไม่มีข้อมูลข้ามสาขารั่ว) ◂
+    const t = await targetOf(p, actor, ctx.tenantId, system.id);
+    if ("error" in t) return { mode: "error", error: t.error };
+    const summary = await summarize(p, t, ctx.tenantId);
+    const flat: Record<string, unknown> = {};
+    for (const { arg, param } of pathArgsOf(op)) if (p.params[param] !== undefined) flat[arg] = p.params[param];
+    if (isRecord(p.input)) Object.assign(flat, p.input);
+    return { mode: "propose", kind: posKindOf(op.id), summary, payload: { ...flat, opId: op.id, input: p.input, params: p.params, systemId: system.id } };
+  }
+
   if (!actor.can(op.action)) return { mode: "error", error: `คุณไม่มีสิทธิ์ดูข้อมูลส่วนนี้ (ต้องมีสิทธิ์ ${op.action}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน` };
   try {
     const env = await runOpAsActor(op, actor, { input: p.input, params: p.params, requestId: `ai-${Date.now().toString(36)}` });
