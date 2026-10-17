@@ -130,14 +130,29 @@ async function cardBySourceKey(tenantId: string, sourceKey: string) {
   return prisma.kanbanCard.findFirst({ where: { tenantId, sourceKey }, select: { id: true, cardNo: true, boardId: true, systemId: true, completedAt: true } });
 }
 
-/** การ์ดในนามระบบ (sourceType AUTOMATION · createdById null) — กันซ้ำด้วย sourceKey ที่ประตูของบอร์ดงาน */
+/**
+ * ทำ fn ทีละรายต่อกุญแจ (pg_advisory_xact_lock ใน tx สั้นที่ถือล็อกไว้เฉย ๆ — fn ใช้ connection อื่นของ pool ได้ตามปกติ) ·
+ * เหตุผล: ประตู createCardFromExternal กันการ์ดซ้ำได้ แต่ผู้แพ้ที่ชน unique คืน "ใบเดิม" ทันทีขณะผู้ชนะยังตั้งผู้รับ/ลิงก์ไม่เสร็จ ⇒
+ * event เดียวกันส่งซ้ำพร้อมกัน (lease หมด · cron + after-drain) ต้องจบด้วยการ์ดที่ครบแล้วทุกทาง · ล็อกหลุดเองตอน commit/rollback
+ */
+async function underKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  return prisma.$transaction(
+    async (tx: Tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+      return fn();
+    },
+    { timeout: 60_000, maxWait: 10_000 },
+  );
+}
+
+/** การ์ดในนามระบบ (sourceType AUTOMATION · createdById null) — กันซ้ำด้วย sourceKey ที่ประตูของบอร์ดงาน + ล็อกต่อกุญแจ */
 async function systemCard(
   tenantId: string,
   target: BoardTarget,
   input: { title: string; description: string; sourceKey: string; unitId: string; assignManager: boolean; dueAt?: Date | null; links?: AddLinkInput[] },
 ): Promise<{ created: boolean; cardId: string }> {
   const manager = input.assignManager ? await managerOfUnit(tenantId, input.unitId) : null;
-  const r = await createCardFromExternal(systemCtx(tenantId, target.kanbanSystemId), {
+  const r = await underKeyLock(`pos:card:${tenantId}:${input.sourceKey}`, () => createCardFromExternal(systemCtx(tenantId, target.kanbanSystemId), {
     boardId: target.boardId,
     title: input.title,
     description: input.description,
@@ -146,7 +161,7 @@ async function systemCard(
     assigneeUserIds: manager ? [manager] : [],
     dueAt: input.dueAt ?? null,
     links: input.links ?? [],
-  });
+  }));
   return { created: r.created, cardId: r.cardId };
 }
 
@@ -511,7 +526,7 @@ export async function createAnomalyCard(ctx: { tenantId: string; systemId: strin
     if (had) return { ok: true, created: false, cardNo: had.cardNo, cardId: had.id };
     const locale = localeOf(pos.settings);
     const t = posAnomalyCardText({ rule: row.rule, unitName: await unitNameOf(tenantId, unitId), businessDate, valueText: posAnomalyValueText(row.rule, row.value, locale) }, locale);
-    const c = await createCardFromExternal(
+    const c = await underKeyLock(`pos:card:${tenantId}:${key}`, () => createCardFromExternal(
       { tenantId, systemId: target.kanbanSystemId, actorUserId: m.userId, actor: kActor },
       {
         boardId: target.boardId,
@@ -521,7 +536,7 @@ export async function createAnomalyCard(ctx: { tenantId: string; systemId: strin
         sourceKey: key,
         links: [{ linkType: "URL", linkId: posUrl(pos.id, `reports?kind=anomalies&from=${businessDate}&to=${businessDate}&unit=${unitId}`), label: t.linkLabel, role: "SOURCE" }],
       },
-    );
+    ));
     return { ok: true, created: c.created, cardNo: c.cardNo, cardId: c.cardId };
   } catch (e) {
     const name = e instanceof Error ? e.name : "";
