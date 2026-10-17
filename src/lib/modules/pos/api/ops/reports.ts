@@ -84,6 +84,7 @@ const salesSummary = definePosOp({
   summary: "Totals of paid sales over a range of Thai business days (default the last 7 including today): bills, gross, discounts, net sales after refunds and voids, VAT, tips, voids and refunds in satang.",
   label: "สรุปยอดขายช่วงวัน",
   test: "POS-P0.2-OP.1",
+  tool: { name: "sales_summary", hint: "Use for how-much-did-we-sell questions over a range of days (default the last 7). Old argument days (1-92) is still accepted." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: reportInput,
   async handler({ actor, input }) {
     const r = (await runReport(reportDailySales as Reader, actor, input)) as { from: string; to: string; unitId: string | null; totals: Record<string, unknown> };
@@ -101,6 +102,7 @@ const salesByDay = definePosOp({
   summary: "Sales per Thai business day over a range: bills, gross, discounts, net sales, VAT, tips, voids, refunds and average bill (satang), with totals. CSV with Accept: text/csv.",
   label: "ยอดขายรายวัน",
   test: "POS-P0.2-OP.2",
+  tool: { name: "sales_by_day", hint: "Use for day by day sales figures over a range (default the last 7 days). Old argument days (1-92) is still accepted." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: reportInput,
   csv: csvOf("daily"),
   async handler({ actor, input }) {
@@ -118,6 +120,7 @@ const reportsProducts = definePosOp({
   summary: "Best sellers over a range: quantity, weight, bills and sales per product, ranked. CSV with Accept: text/csv.",
   label: "รายงานสินค้าขายดี",
   test: "reports.products",
+  tool: { name: "pos_top_products", hint: "Use for best sellers; returns at most 10 products unless limit is given." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: reportInput,
   csv: csvOf("products"),
   async handler({ actor, input }) {
@@ -186,6 +189,7 @@ const reportsShifts = definePosOp({
   summary: "Shifts of a range with their Z totals, counted cash and over/short. CSV with Accept: text/csv.",
   label: "รายงานกะ",
   test: "reports.shifts",
+  tool: { name: "pos_shift_report", hint: "Use for shift results and cash over/short of a range of days." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: reportInput,
   csv: csvOf("shifts"),
   async handler({ actor, input }) {
@@ -254,6 +258,7 @@ const reportsHourly = definePosOp({
   summary: "Sales per hour of the business day over a range (at most 31 days), with a same weekday forecast. CSV with Accept: text/csv.",
   label: "รายงานยอดขายรายชั่วโมง",
   test: "reports.hourly",
+  tool: { name: "pos_hourly", hint: "Use for the busiest hours of the day." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: reportInput,
   csv: csvOf("hourly"),
   async handler({ actor, input }) {
@@ -271,6 +276,7 @@ const reportsAnomalies = definePosOp({
   summary: "Anomaly report over a range: hits of the anomaly rules against the shop thresholds, per branch, day and staff member. Needs pos.report.anomaly and pos.report.view. CSV with Accept: text/csv.",
   label: "รายงานจุดผิดปกติ",
   test: "reports.anomalies",
+  tool: { name: "pos_anomalies", hint: "Use for suspicious voids, refunds, discounts or cash differences per staff member (needs the anomaly permission)." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: reportInput,
   csv: csvOf("anomalies"),
   async handler({ actor, input }) {

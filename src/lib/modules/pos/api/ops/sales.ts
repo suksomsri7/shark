@@ -476,6 +476,7 @@ const salesVoid = definePosOp({
     "Void a paid POS bill (register or API). Reverses accounting, coupons, member rights and stock. Cannot be undone; a bill with refunds must be refunded instead, and a bill of a closed shift cannot be voided. When the shop's approval rule for voids applies, nothing is voided: 409 state_conflict with the approval request id in hint, and the request waits for a manager in the app.",
   label: "ยกเลิกบิลขาย",
   test: "POS-P0.2-OP.4",
+  tool: { name: "void_sale", hint: "Proposes voiding a paid bill; reason is required (at least 5 characters) and a person confirms twice. The shop void approval rule still applies." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: voidInput,
   auditTarget: saleTarget,
   async handler({ actor, params, input, idempotencyKey, requestId }) {

@@ -662,7 +662,7 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
     if (sale.status === "VOIDED") return (await voidedWithKey(tenantId, sale.id, key)) ? { ok: true, sale: { id: sale.id, status: "VOIDED" }, duplicated: true } : refuse("SALE_NOT_VOIDABLE");
     // drift 3: บิลของโมดูลอื่นยกเลิกที่โมดูลนั้น (voidSale เองรับไว้เพื่อโมดูลเหล่านั้น — ปฏิเสธที่นี่เท่านั้น)
     // POS P2.13 ▸ fix1 F1: บิลของ REST POS (sourceModule "API") ยกเลิกผ่านทางนี้ได้ (REST sales.void + ลิ้นชักบิล) ⇒ กติกาอนุมัติ/กะปิดเดียวกับบิลหน้าขาย ◂
-    if (sale.docType !== "SALE" || (sale.sourceModule !== "POS" && sale.sourceModule !== "API")) return refuse("SALE_NOT_VOIDABLE");
+    if (sale.docType !== "SALE" || (sale.sourceModule !== "POS" && sale.sourceModule !== "API" && sale.sourceModule !== "AI")) return refuse("SALE_NOT_VOIDABLE"); // POS P3.9 ▸ R4 มติ 2 (Q2): + บิลที่ผู้ช่วย AI เปิด (pos_create_sale) ◂
     if (sale.refundedSatang > 0) return refuse("HAS_REFUNDS");
     if (sale.status !== "PAID") return refuse("SALE_NOT_VOIDABLE");
     if (sale.shiftId) {

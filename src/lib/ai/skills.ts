@@ -19,6 +19,7 @@ import { kanbanToolAllowedForScopes, kanbanToolNames } from "./kanban-ops";
 import { memberToolAllowedForScopes, memberToolNames } from "@/lib/modules/member/api/tools";
 // CRM C1.10 ▸ สกิล `crm` — 14 tool จากทะเบียน op ของ REST CRM (R-E.4) ◂
 import { crmApi } from "@/lib/modules/crm";
+import { posToolAllowedForScopes, posToolInfos } from "@/lib/modules/pos/api/tools"; // POS P3.9 ▸ R1 ◂
 import { toolRegistry } from "./tools";
 
 /** สกิล 1 ชุด — โครงนี้คือสิ่งที่จะกลายเป็น manifest สาธารณะสำหรับ AI ภายนอก */
@@ -52,8 +53,12 @@ export const SKILLS: Skill[] = [
   {
     id: "sales",
     label: "ขายหน้าร้านและการเงิน",
-    summary: "Point of sale: open bills, void sales, sales figures by day, expenses, financial summary.",
-    tools: ["sales_summary", "sales_by_day", "pos_create_sale", "void_sale", "record_expense", "financial_summary"],
+    summary: "Point of sale: open bills, void sales, sales figures by day, best sellers, shifts, busiest hours, anomalies, prices and sold out items, draft purchase orders, expenses, financial summary.",
+    // POS P3.9 ▸ R1 มติ 1: 6 ตัวเดิม (ชื่อคงที่) + 9 ตัวใหม่ — 11 ตัวมาจาก op ที่ประกาศ tool ใน POS_OPS (assertSkillRegistryComplete ตรวจไม่ขาด) · pos_draft_po เขียนมือ ◂
+    tools: [
+      "sales_summary", "sales_by_day", "pos_create_sale", "void_sale", "record_expense", "financial_summary",
+      "pos_top_products", "pos_shift_report", "pos_shift_now", "pos_anomalies", "pos_hourly", "pos_find_product", "pos_set_price", "pos_set_availability", "pos_draft_po",
+    ],
     systems: ["POS", "ACCOUNT"],
   },
   {
@@ -322,14 +327,6 @@ export function skillsForTenant(openedSystemTypes: string[]): Skill[] {
   return SKILLS.filter((s) => !s.systems || s.systems.some((t) => opened.has(t)));
 }
 
-// POS P2.13 ▸ มติ 7: scope ที่ tool เดิมของ POS ต้องการเมื่อผู้เรียกคือคีย์ API (ไม่มีตัวไหน = เรียกไม่ได้) ◂
-const POS_TOOL_SCOPES: Record<string, readonly string[]> = {
-  sales_summary: ["pos.sale.read", "pos.sale.create"],
-  sales_by_day: ["pos.sale.read", "pos.sale.create"],
-  pos_create_sale: ["pos.sale.create"],
-  void_sale: ["pos.sale.void"],
-};
-
 /**
  * tool ตัวนี้ "คีย์ API ใบนี้" เรียกได้ไหม (WO E2)
  *
@@ -351,10 +348,9 @@ export function toolAllowedForApiKey(
     memberToolAllowedForScopes(toolName, scopes) &&
     // CRM C1.10 ▸ AUDIT H1: คีย์ที่ไม่มี `crm.*` ใช้ tool ของ CRM ไม่ได้เลย (รวม crm_create_lead รุ่นเดิม) ◂
     ((opts.crmLegacyLead === true && toolName === "crm_create_lead") || crmApi.crmToolAllowedForScopes(toolName, scopes)) &&
-    // POS P2.13 ▸ มติ 7 (ปิด HF-APIV1 #2 ฝั่ง POS): tool เดิม 4 ตัวของสกิล `sales` ต้องมี scope ของ POS (ตารางเดียวกับ op ในทะเบียน POS) ·
-    //   sales_summary/sales_by_day ⇐ pos.sale.read|create · pos_create_sale ⇐ pos.sale.create · void_sale ⇐ pos.sale.void · tool อื่นไม่เปลี่ยน ·
-    //   คีย์กลางรุ่นเดิม (scope []) = พฤติกรรมเดิม (HF-APIV1: ด่านคีย์กลางของ route ตัดสินต่อ) ◂
-    (POS_TOOL_SCOPES[toolName] === undefined || scopes.length === 0 || POS_TOOL_SCOPES[toolName]!.some((sc) => scopes.includes(sc)))
+    // POS P3.9 ▸ R1 มติ 1 (แทนตาราง POS P2.13): tool ของสกิล `sales` ⇐ `op.action` ของทะเบียน POS (sales_summary/sales_by_day ⇐ pos.report.view ·
+    //   void_sale ⇐ pos.sale.void · …) · pos_create_sale (เขียนมือ) ⇐ pos.sale.create · คีย์กลางรุ่นเดิม (scope []) ใช้ชื่อเดิมได้ตามเดิม (CD-7) ◂
+    posToolAllowedForScopes(toolName, scopes)
   );
 }
 
@@ -435,6 +431,10 @@ export function assertSkillRegistryComplete(): void {
   const declaredCrm = new Set(SKILLS.find((s) => s.id === "crm")?.tools ?? []);
   const missingCrm = crmApi.crmToolNames().filter((n) => !declaredCrm.has(n));
   if (missingCrm.length > 0) problems.push(`สกิล crm ขาด tool ของทะเบียน: ${missingCrm.join(", ")}`);
+  // POS P3.9 ▸ R1: ทุกชื่อในทะเบียน op ของ POS ต้องอยู่ในสกิล sales (ทางเดียว: สกิลนี้ถือ tool เขียนมือ 4 ตัวด้วย) ◂
+  const declaredPos = new Set(SKILLS.find((s) => s.id === "sales")?.tools ?? []);
+  const missingPos = posToolInfos().map((t) => t.name).filter((n) => !declaredPos.has(n));
+  if (missingPos.length > 0) problems.push(`สกิล sales ขาด tool ของทะเบียน POS: ${missingPos.join(", ")}`);
 
   if (problems.length > 0) {
     throw new Error(`ทะเบียนสกิลไม่ครบ/ขัดกัน:\n  - ${problems.join("\n  - ")}`);

@@ -54,6 +54,7 @@ const shiftsX = definePosOp({
   summary: "X report of a shift (running totals so far: sales by payment method, cash in and out, expected cash in the drawer).",
   label: "รายงาน X ของกะ",
   test: "shifts.xReport",
+  tool: { name: "pos_shift_now", hint: "Use for the running totals of one open shift (find the shift with pos_shift_report)." }, // POS P3.9 ▸ R1 มติ 1 ◂
   input: reportInput,
   async handler({ actor, params, input }) {
     const unitId = await posShiftUnit(actor, params.id ?? "", input.unitId);
