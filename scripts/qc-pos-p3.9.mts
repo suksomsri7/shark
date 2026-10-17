@@ -866,7 +866,7 @@ async function runDb() {
         PR[key] = String(must(`createProduct ${key}`, await call(catalog, "createProduct", cc(), { name: PN[key], kind: "PRODUCT", basePriceSatang: price, ...extra }))?.id ?? "");
       };
       await mk("bar", "ขนม", 2500);
-      await mk("price", "สินค้าตั้งราคา", 5000);
+      await mk("price", "สินค้าตั้งราคา", 5000, { unitId: U.A }); // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.9 CD-9: all-branch price needs rights at every linked branch — catalog.ts rowWriteVerdict; PR2–PR5 target a unit-A product)
       await mk("p86", "สินค้าหมด", 3000);
       await mk("bc", "สินค้าบาร์โค้ด", 4000, { barcode: BARCODE });
       for (let i = 1; i <= 12; i++) await mk(`m${i}`, `เมนูทดสอบ${i}`, 1000 + i * 10);
