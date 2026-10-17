@@ -190,6 +190,8 @@ export const POS_MODELS = {
   // POS P3.4 ▸ ออฟไลน์ (migration 20261217110000_pos_p34_offline) — ผู้เขียนเดียว pos/offline-sync.ts ◂
   posOfflineSale: { model: "PosOfflineSale", file: "pos.prisma", role: "รายการซิงก์ออฟไลน์ต่อบิล (P3.4 · SYNCED/REJECTED/ACCEPTED_BY_MANAGER/DISCARDED · unique (tenantId, idempotencyKey) · payload ไม่มีโทเคน/PIN)" },
   posOfflineSnapshot: { model: "PosOfflineSnapshot", file: "pos.prisma", role: "snapshot ราคาต่อเครื่อง (P3.4 · priceMap productId|choiceId → สตางค์ · hash = ETag · เก็บ 2 ล่าสุด)" },
+  // POS P3.6 ▸ บัญชีเครดิตลูกค้าองค์กร (migration 20261219100100_pos_p36_credit) — ผู้เขียนเดียว pos/credit.ts ◂
+  posCreditAccount: { model: "PosCreditAccount", file: "pos.prisma", role: "วงเงิน/เทอมวางบิลต่อบริษัท (P3.6 · unique (systemId, partyId) · termDays null = ผู้ติดต่อสมุด → ค่าปริยายสมุด)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
