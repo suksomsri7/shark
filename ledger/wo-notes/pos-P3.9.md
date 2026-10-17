@@ -24,6 +24,9 @@ Contract = `pos-brief-P3.9.md` §10 rulings 1–13 + CD-P39a + TEAM_SAFE_SECTION
 | hunter info | 935a1158 | brief job walks AI-enabled systems in id keyset pages of 200 until done / deadline · **BR11 not added** (needs > 200 AI-enabled systems on QC4) |
 | F6 | ledger | OP §Inventory line: raw read-only `invItem`/`poLine`/`supplier` reads in `ai-insights.ts` |
 | OP §AI | ledger | general key refused on void_sale + pos_create_sale (F3) · POS steps refused in AI plans (F2) |
+| qc-ai-plan | 58a3fb19 (test) | ORACLE-EDIT PL-4.1 destructive example void_sale → cancel_appointment (POS steps now refused at createPlan) · 6/7 (CRASH) → 7/7 |
+
+**Gates (fix round 1 · QC4 · POS lock · `P39_PIN=3e0e0214`):** `qc-pos-p3.9` forced **47/47 ×2** (Z1/Z2 green) · `--no-db` 6/6 · `qc-ai-plan` 7/7 · `qc-ai-proposals` 16/16 · `qc-ai-skills` 23/23 · `qc-ai-tools` 18/18 · `qc-ai-tools2` 8/8 · `qc-hf-apiv1-scope` 143/143 · `qc-ai-phase-a` 9/9 · `qc-ai-phase-b1` 9/9 · `qc-pos-p0.2` 56/56 · `qc-pos-p2.12` 32/33 (A11/AN checks all green · ST1 = P3.5 lane pin) · `qc-pos-p2.13` 53/54 (ST5 lane pin) · fitness no-env 53/53 · QC4 53/53 · `gen-pos-api-docs --check` 0 · **typecheck exit 0 at 58a3fb19, dirty 0** (this notes commit on top is ledger only).
 
 ## Commits (wip/pos-p3.9)
 | commit | what |
