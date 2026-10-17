@@ -373,7 +373,8 @@ function runStatic(): void {
       if (short(cur.functions, 100_000) !== short(base.functions, 100_000)) p.push("functions เปลี่ยน");
       for (const [tn, fields] of Object.entries(base.types ?? {}) as [string, Any][]) {
         for (const [k, v] of Object.entries(fields)) if (short(cur.types?.[tn]?.[k]) !== short(v)) p.push(`${tn}.${k} เปลี่ยน/หาย`);
-        for (const k of Object.keys(cur.types?.[tn] ?? {})) if (!(k in fields) && !/^payMethods\[\]\.giftCard(\.|$)/.test(k)) p.push(`${tn}.${k} ใหม่นอกขอบเขต`);
+        // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.9 L1): + CreateSaleInput.offline (P3.4 S · 0617d17b · เพิ่มอย่างเดียว) — ฟิลด์ใหม่อื่นยังแดง
+        for (const k of Object.keys(cur.types?.[tn] ?? {})) if (!(k in fields) && !/^payMethods\[\]\.giftCard(\.|$)/.test(k) && !(tn === "CreateSaleInput" && k === "offline")) p.push(`${tn}.${k} ใหม่นอกขอบเขต`);
       }
       for (const tn of Object.keys(cur.types ?? {})) if (!(tn in (base.types ?? {}))) p.push(`ชนิดใหม่ ${tn}`);
       for (const [fn, files] of Object.entries(base.callers ?? {}) as [string, Any][]) {
