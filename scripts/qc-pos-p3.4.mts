@@ -88,7 +88,7 @@ const CHECKS: readonly Def[] = [
   D("SY10", "SY", "[R3 มติ 4 5] เนื้อหาที่ออฟไลน์ห้าม (PROMPTPAY · CARD · GIFT_CARD · DEPOSIT · memberId · couponCode · memberChoices · tableSessionId) → REJECTED VALIDATION ไม่มีบิล · TRANSFER (มีเลขอ้างอิง) + เงินสด → OK"),
   D("SY11", "SY", "[R7 มติ 6] นาฬิกา: soldAt > now + 2 นาที · < snapshot.issuedAt · < เปิดกะ − 5 นาที · < now − 24 ชม. → CLOCK_INVALID · soldAt ผิดรูป → REJECTED · ตัวควบคุม soldAt = now + 60 วิ → OK"),
   D("SY12", "SY", "[R9] สต็อก ALLOW_NEGATIVE: ตัดครั้งเดียว (InvMovement 1 แถว · ติดลบได้ · ส่งซ้ำไม่ตัดซ้ำ) · BLOCK + ไม่พอ → REJECTED STOCK_INSUFFICIENT ไม่มีบิล"),
-  D("SY13", "SY", "[R5 R3] ปฏิเสธทั้งชุด ไม่เขียนอะไร: ร้านอื่น (T2 + เครื่องของ T) · ผู้ขายนอกสาขา · เครื่องไม่ลงทะเบียน · ไม่มี pos.sale.create · ปิดธง · > 50 รายการ · snapshot ของเครื่องไม่ลงทะเบียน/ปิดธง ถูกปฏิเสธ"),
+  D("SY13", "SY", "[R5 R3] ปฏิเสธทั้งชุด ไม่เขียนอะไร: ร้านอื่น (T2 + เครื่องของ T) · ผู้ขายนอกสาขา · เครื่องไม่ลงทะเบียน · ไม่มี pos.sale.create · > 50 รายการ · ปิดธง = sync ยังรับ (F5) · snapshot ของเครื่องไม่ลงทะเบียน/ปิดธง ถูกปฏิเสธ"), // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 F5)
   D("SY14", "SY", "[R4] บิลออนไลน์ unknown ที่ commit แล้ว (คีย์เดียวกัน) ถูกซิงก์ → DUPLICATE saleId เดิม · Δบิล 0"),
   D("SY15", "SY", "[R4 R1 มติ 14] offlineRef ซ้ำคีย์ใหม่ → REJECTED OFFLINE_REF_TAKEN · D2 มี offlineCode ของตัวเอง (≠ D1) seq 1 อิสระ → OK · D2 ส่งเลขของ D1 → REJECTED · PosDevice.offlineSeq = high-water · snapshot ใหม่บอก offlineSeq"),
   D("SY16", "SY", "[R9] บิลซิงก์ไม่สร้างรอบครัว (สินค้าผูกสถานี) แม้ healMissingTickets · ตัวควบคุม: บิลออนไลน์ของสินค้าเดียวกัน → มีรอบ"),
@@ -1692,8 +1692,9 @@ async function runDb() {
       const s0 = (await P.appSystem.findUnique({ where: { id: S.POS }, select: { settings: true } }))?.settings ?? {};
       await P.appSystem.update({ where: { id: S.POS }, data: { settings: { ...s0, pos: { ...(isRecord(s0.pos) ? s0.pos : {}), offline: { enabled: false } } } } });
       try {
-        const r = await sync("D1", one("D1"));
-        if (r?.ok !== false || String(r?.code ?? "").startsWith("MISSING")) p.push(`ปิดธง sync → ${codeOf(r)}`);
+        // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.4 fix1 F5): ปิดธง = หยุดออก snapshot (หยุดขาย) เท่านั้น · บิลที่ค้างในคิวยังซิงก์ได้ (เงินสดต้องลงบิล) — ส่งชุดว่าง (ไม่เขียนอะไร) ต้องไม่ถูกปฏิเสธ
+        const r = await sync("D1", []);
+        if (r?.ok !== true || !Array.isArray(r?.results)) p.push(`ปิดธง sync ชุดค้าง → ${codeOf(r)} (คาด ok — มติ F5)`);
         const sn = await issue("D2", Date.now());
         if (sn?.ok !== false || String(sn?.code ?? "").startsWith("MISSING")) p.push(`ปิดธง snapshot → ${codeOf(sn)}`);
       } finally {
