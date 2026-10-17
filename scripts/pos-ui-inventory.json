@@ -20142,6 +20142,47 @@
       "oracle": "qc-pos-p3.5",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-clock-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "posClockAction",
+        "note": "P3.5U มติ 7: แผ่น \"ลงเวลาเข้างาน/ออกงานด้วยไหม\" หลังเปิด/ปิดกะสำเร็จ เมื่อ clockOnShift=ASK + ร้านมีระบบ HR + เครื่องมีโทเคนผู้ขาย → hr.clockSelf ของคนในโทเคน (ต้องเป็นผู้เปิดกะ) · สำเร็จ = ปิดแผ่น + pos-shift-notice \"ลงเวลาแล้ว\" · ALREADY_CLOCKED / NO_EMPLOYEE / PERMISSION_DENIED = pos-shift-clock-message",
+        "db": "HrAttendance (ผ่าน hr.clockSelf)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-clock-skip",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shifts",
+        "note": "\"ไม่ใช่ตอนนี้\" = ปิดแผ่นลงเวลา (ไม่บันทึกอะไร)"
+      },
+      "wo": "P3.5U",
+      "oracle": "qc-pos-p3.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
