@@ -643,7 +643,7 @@ export function StaffCommissionCard({ systemId, unitId, initial }: { systemId: s
         )}
       </div>
       {sync.text && (
-        <p data-testid="pos-settings-staff-commission-sync-result" role={sync.error ? "alert" : "status"} className={`mt-2 text-[13px] ${sync.error ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-ink-soft)]"}`}>
+        <p data-testid="pos-settings-staff-commission-submit-result" role={sync.error ? "alert" : "status"} className={`mt-2 text-[13px] ${sync.error ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-ink-soft)]"}`}>
           {sync.text}
         </p>
       )}

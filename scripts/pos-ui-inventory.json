@@ -20135,7 +20135,7 @@
       "expect": {
         "type": "mutation",
         "target": "syncStaffCommissionNowAction",
-        "note": "ส่งเข้างวดเงินเดือนตอนนี้ (แถว OPEN ของเดือนที่จบแล้ว → hr.requestAdjustment PENDING) · ผล = pos-settings-staff-commission-sync-result \"ส่งแล้ว n แถว · m รายการปรับเงิน · ยังไม่ผูก HR k คน\" (จำนวนเท่านั้น ไม่มียอดเงิน)",
+        "note": "ส่งเข้างวดเงินเดือนตอนนี้ (แถว OPEN ของเดือนที่จบแล้ว → hr.requestAdjustment PENDING) · ผล = pos-settings-staff-commission-submit-result \"ส่งแล้ว n แถว · m รายการปรับเงิน · ยังไม่ผูก HR k คน\" (จำนวนเท่านั้น ไม่มียอดเงิน)",
         "db": "PosStaffCommission.status · HrPayAdjustment"
       },
       "wo": "P3.5U",
