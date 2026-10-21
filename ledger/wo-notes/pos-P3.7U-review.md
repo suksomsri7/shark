@@ -1,4 +1,4 @@
-# P3.7U — R1 (account B · 22 Oct 2026 01:0xZ · head 40354401 · base 8c0fc3c4)
+# P3.7U — R1 (account B · 21 Oct 2026 23:0xZ · head 40354401 · base 8c0fc3c4)
 
 MERGEABLE — P3.7U R1 · head wip/pos-p3.7u 40354401 (code 30cec653) vs base 8c0fc3c4 · read-only (git show/diff only, no probes needed). Merge still needs the controller's CD-B-U1 re-pin (qc-hf-fu ST1, qc-hf-fu2 ST1) and the QC5 round.
 F1 (Low · accept U4 as UI-only): the "can't turn ON without LINE" rule exists only in the client (ChatSettingsCard.tsx:56,67). The S writer chat-link.ts:63-68 checks only OWNER + parsePosChatPatch and has no LINKED check. Turning OFF matches the server (always allowed); turning ON does not (the server allows it). Input: a stale tab after LINE disconnects, or a direct action call → switch ON with no LINE. Harmless: no push without a CONNECTED LINE. Fix: none in U; OP/S follow-up line if the controller wants it enforced on the server.
@@ -16,4 +16,4 @@ Verified OK
 - Code rules: 'use client' imports are only *-actions, *-shared, type-only order-shared, and components (S5.17). 11 keys added th+en in one hunk per object (the prompt lists 11; "10" in R-brief is off by one). en has no Thai. ST7: every Thai in src hunks is in comments. HF-418: payBy is drawn only when now≠null. Targets ≥44px (min-h-11/h-11/h-12). Foreign hunks are marked `POS P3.7U ▸ CD-… ◂`, including both RegisterScreen.tsx hunks (:195,:3001). The cancel button is harmless. Inventory +8 interactive rows match the testids. qc-pos-p3.7 41/42 with ST3 = W21 only (notes table).
 - Visual: owner 8 states ×3 + paydone 1440 (25 th / 9 en), cashier 2 ×3 (6 / 2). paydone = one real PAID member bill (kept, like sale-done-member). No snapshot requests; settings-shark and orders-mixed code untouched (their render now includes the new rows, as expected).
 
-## Controller (B · 22 Oct 01:0xZ): MERGEABLE accepted · F2 → fix1 one-liner before the QC5 build · F1 = UI-only, OP line for Chat/S (server-side LINKED check later) · F3/F4 info · U4 both choices accepted · owner-ack 5 derived surfaces → W26 at merge.
+## Controller (B · 21 Oct 23:0xZ): MERGEABLE accepted · F2 → fix1 one-liner before the QC5 build · F1 = UI-only, OP line for Chat/S (server-side LINKED check later) · F3/F4 info · U4 both choices accepted · owner-ack 5 derived surfaces → W26 at merge.
