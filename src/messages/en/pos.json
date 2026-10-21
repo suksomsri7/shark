@@ -4917,5 +4917,52 @@
       "noSupplier": "This item has no supplier yet. Pick a supplier before drafting a purchase order.",
       "priceOverride": "Custom prices need the price override permission"
     }
+  },
+  "platform": {
+    "status": {
+      "awaitingCreds": "Waiting for credentials from the owner",
+      "keyMissing": "Encryption key not set — the administrator must set POS_CREDENTIALS_KEY before credentials can be saved",
+      "draft": "Not all fields filled",
+      "complete": "All fields filled · waiting for the switch",
+      "webhookUrl": "URL for the platform to send orders to",
+      "testDisabled": "Fill every field before testing"
+    },
+    "errors": {
+      "notFound": "Channel or system not found",
+      "permissionDenied": "You cannot manage this connection",
+      "validation": "Invalid connection data",
+      "notConfigured": "Not connected — waiting for credentials from the owner",
+      "adapterPending": "All fields filled, but the live connector is not switched on yet",
+      "keyMissing": "Encryption key (POS_CREDENTIALS_KEY) not set — cannot save",
+      "keyMismatch": "The encryption key does not match the stored data — paste every secret again",
+      "unknown": "Something went wrong — try again"
+    },
+    "slip": {
+      "attach": "Attach slip",
+      "confirm": "Confirm slip",
+      "reject": "Reject slip",
+      "autoVerifyPending": "Automatic slip check · waiting for a provider",
+      "errors": {
+        "notFound": "Slip not found",
+        "saleNotFound": "Bill or payment request not found in this branch",
+        "validation": "Invalid slip",
+        "permissionDenied": "You are not allowed to do this",
+        "slipSelfConfirm": "The person who attached a slip cannot confirm it — ask another manager",
+        "slipDuplicate": "This slip reference is already used in this shop",
+        "slipInvalidState": "This slip has already been decided",
+        "storageNotConfigured": "File storage is not set up — slips cannot be attached",
+        "uploadFailed": "Slip upload failed — try again",
+        "filePurged": "The slip file was deleted after its retention period",
+        "unknown": "Something went wrong — try again"
+      }
+    },
+    "etax": {
+      "pending": "Send e-Tax by e-mail · waiting for a provider"
+    },
+    "print": {
+      "lan": "LAN printer (via print helper)",
+      "agentNone": "No LAN print helper yet — register one in device settings",
+      "tokenOnce": "Copy this token now — it is shown only once"
+    }
   }
 }

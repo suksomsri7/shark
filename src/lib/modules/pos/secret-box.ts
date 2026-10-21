@@ -15,9 +15,13 @@ const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export type SecretBoxDeps = { key?: string | null };
 
-/** กุญแจดิบของรอบนี้ — deps.key (ฉีด · null = จงใจไม่มี) ก่อน env · ว่าง = null */
+/**
+ * กุญแจดิบของรอบนี้ — deps.key (ฉีด · null = จงใจไม่มี) ก่อน env · ว่าง = null
+ * 🔴 NODE_ENV=production: ไม่รับกุญแจที่ฉีดเลย (env เท่านั้น) — ทางฉีดมีไว้ให้ข้อสอบ/เทส · prod ไม่มี env = NOT_CONFIGURED เสมอ (SK3)
+ */
 export function posSecretKey(deps?: SecretBoxDeps): string | null {
-  const raw = deps && Object.prototype.hasOwnProperty.call(deps, "key") ? deps.key : process.env.POS_CREDENTIALS_KEY;
+  const injected = !!deps && Object.prototype.hasOwnProperty.call(deps, "key") && process.env.NODE_ENV !== "production";
+  const raw = injected ? deps!.key : process.env.POS_CREDENTIALS_KEY;
   return typeof raw === "string" && raw.trim() !== "" ? raw : null;
 }
 
