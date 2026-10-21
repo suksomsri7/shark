@@ -73,9 +73,9 @@ export async function posAiPanelAction(args: { systemId: string; date?: string; 
     const input = await loadBriefInput({ tenantId, systemId: sys.id }, actor, businessDate);
     const b = composeBrief(input, a.locale === "en" ? "en" : "th");
     const anomalyHits = !!input.anomalies && input.anomalies.length > 0;
-    // POS P3.9U ▸ fix1 N1: วันที่ยังไม่มีบิล = ตัดเฉพาะบรรทัดยอดขาย ฿0 (บรรทัดอื่นแสดงตามเดิม) ◂
+    // POS P3.9U ▸ fix1 N1 + fix3: วันที่ยังไม่มีบิล = ตัดบรรทัดยอดขาย ฿0 และบรรทัดเทียบสัปดาห์ก่อน (ไม่มี "−100%" ในวันว่าง) · บรรทัดอื่นแสดงตามเดิม ◂
     const zeroBills = input.daily !== null && input.daily.billCount === 0;
-    const keep = b.sections.map((sec, i) => ({ sec, line: b.lines[i] ?? "" })).filter((x) => !(zeroBills && x.sec === "sales"));
+    const keep = b.sections.map((sec, i) => ({ sec, line: b.lines[i] ?? "" })).filter((x) => !(zeroBills && (x.sec === "sales" || x.sec === "vsLastWeek")));
     return {
       ok: true,
       title: b.title,
@@ -83,7 +83,7 @@ export async function posAiPanelAction(args: { systemId: string; date?: string; 
       sections: keep.map((x) => x.sec),
       anomalyHits,
       // POS P3.9U ▸ fix2 (CD-P39U-B1 สุดท้าย · มติผู้คุม): "ว่าง" = วันนั้นไม่มีบิล **และ** ไม่มีบรรทัดที่ต้องทำต่อ · มีบิล = แสดงสรุปเสมอ ◂
-      empty: zeroBills && !keep.some((x) => ACTIONABLE.has(x.sec) && (x.sec !== "anomalies" || anomalyHits)),
+      empty: keep.length === 0 || (zeroBills && !keep.some((x) => ACTIONABLE.has(x.sec) && (x.sec !== "anomalies" || anomalyHits))), // POS P3.9U ▸ fix3: ไม่มีบรรทัดเลย (daily null) = ว่าง ◂
       businessDate,
       generatedAt: now.toISOString(),
       canManage,

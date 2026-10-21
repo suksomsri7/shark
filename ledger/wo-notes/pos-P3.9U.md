@@ -121,3 +121,6 @@ Note: with the revised rule a day **with sales but no actionable line** shows "�
 
 ## Fix round 2 (controller B 21 Oct 21:5xZ) — CD-P39U-B1 final
 - `src/lib/modules/pos/ai-panel-actions.ts:86` `empty: zeroBills && !keep.some(actionable)` — a day with sales shows the brief; 0 bills + actionable = those lines without the ฿0 sales line; 0 bills + nothing actionable = empty. Harness unchanged (brief has bills + A11; empty = 2024-01-02 with 86/low-stock parked and no pending proposals). Spec §1/§6 + notes updated.
+
+## Fix round 3 (controller B 21 Oct 22:2xZ · R2 N2 Lows)
+- `ai-panel-actions.ts:78` a 0-bill day drops `vsLastWeek` together with `sales` · `:86` `empty: keep.length === 0 || (zeroBills && !keep.some(actionable))` (daily null with no lines ⇒ `brief.empty`). Harness/spec unchanged.
