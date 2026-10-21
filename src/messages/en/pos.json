@@ -4962,7 +4962,16 @@
     "print": {
       "lan": "LAN printer (via print helper)",
       "agentNone": "No LAN print helper yet — register one in device settings",
-      "tokenOnce": "Copy this token now — it is shown only once"
+      "tokenOnce": "Copy this token now — it is shown only once",
+      "errors": {
+        "notFound": "Print helper or print job not found",
+        "permissionDenied": "You are not allowed to do this",
+        "validation": "Invalid data",
+        "agentRevoked": "This print helper has been revoked",
+        "unauthorized": "Invalid print helper token",
+        "conflict": "This print job is already finished or expired",
+        "unknown": "Something went wrong — try again"
+      }
     }
   }
 }
