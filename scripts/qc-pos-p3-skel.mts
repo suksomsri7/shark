@@ -1239,8 +1239,8 @@ async function runDb() {
     let r2: Any = null;
     let rd0: Any = null;
     try {
-      r2 = keep(await save("A", "OWNER", credIn("LINEMAN", CH.LM ?? "none", part), undefined));
-      rd0 = keep(await readC("A", "OWNER", { kind: "PLATFORM", provider: "LINEMAN", channelId: CH.LM }, undefined));
+      r2 = keep(await save("A", "OWNER", credIn("LINEMAN", CH.LM ?? "none", part), {})); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-B1 fix1 F1: undefined → {} — ค่าปริยายของ save ฉีด RUN_KEY ทั้งที่ข้อนี้ "ไม่ฉีด") ◂
+      rd0 = keep(await readC("A", "OWNER", { kind: "PLATFORM", provider: "LINEMAN", channelId: CH.LM }, {})); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-B1 fix1 F1: undefined → {}) ◂
     } finally {
       envSet("NODE_ENV", ENV_SAVED.NODE_ENV);
       envSet("POS_CREDENTIALS_KEY", RUN_KEY);
