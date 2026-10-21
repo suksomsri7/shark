@@ -330,10 +330,11 @@ export async function billSlips(tenantId: string, saleId: string): Promise<{ id:
 }
 
 /** ลบไฟล์สลิปที่ถึงอายุเก็บ (งานรายชั่วโมง) — ไฟล์ก่อน แล้ว fileId = null · แถว + สถานะคงไว้ · รันซ้ำ = 0 · ที่เก็บล้ม = ลองรอบหน้า */
-export async function purgeExpiredSlips(opts?: { tenantId?: string; now?: Date; deps?: DeleteDeps }): Promise<{ ok: true; purged: number; failed: number }> {
+export async function purgeExpiredSlips(opts?: { tenantId?: string; now?: Date; deps?: DeleteDeps; deadline?: number }): Promise<{ ok: true; purged: number; failed: number; cutOff: boolean }> {
   const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
   let purged = 0;
   let failed = 0;
+  let cutOff = false;
   try {
     const rows = await prisma.posPaymentSlip.findMany({
       where: { ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}), fileId: { not: null }, purgeAfter: { lte: now } },
@@ -342,6 +343,11 @@ export async function purgeExpiredSlips(opts?: { tenantId?: string; now?: Date; 
       take: PURGE_BATCH,
     });
     for (const r of rows) {
+      // fix1 F6: เคารพงบของตัวรันรายนาที — ถึง deadline = หยุด (แถวที่เหลือรอบหน้า)
+      if (typeof opts?.deadline === "number" && Date.now() >= opts.deadline) {
+        cutOff = true;
+        break;
+      }
       const del = await deleteFileAsset({ tenantId: r.tenantId }, r.fileId!, opts?.deps);
       if (!del.ok) {
         failed++;
@@ -353,5 +359,5 @@ export async function purgeExpiredSlips(opts?: { tenantId?: string; now?: Date; 
   } catch (e) {
     console.error("[pos/payment-slip] purge", e instanceof Error ? e.name : "error");
   }
-  return { ok: true, purged, failed };
+  return { ok: true, purged, failed, cutOff };
 }

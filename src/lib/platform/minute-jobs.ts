@@ -475,11 +475,12 @@ registerMinuteJob({
   name: "pos.slip.purge",
   everyMinutes: 60,
   cadence: "hourly",
-  run: async (now) => {
-    const { purgeExpiredSlips } = await import("@/lib/modules/pos/payment-slip");
-    await purgeExpiredSlips({ now });
+  run: async (now, _budgetMs, ctrl) => {
+    // fix1 F6: งานพิมพ์หมดอายุก่อน (updateMany เดียว · ถูก) แล้วค่อยลบไฟล์สลิป (ทีละไฟล์ · หยุดที่ ctrl.deadline · รอบหน้าทำต่อ)
     const { expirePrintJobs } = await import("@/lib/modules/pos/print-relay");
     await expirePrintJobs({ now });
+    const { purgeExpiredSlips } = await import("@/lib/modules/pos/payment-slip");
+    await purgeExpiredSlips({ now, deadline: ctrl.deadline });
   },
 });
 // ◂ POS P3-SKEL
