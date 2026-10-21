@@ -204,6 +204,10 @@
       "mode": "forced"
     },
     {
+      "suite": "qc-pos-p3-skel",
+      "mode": "forced"
+    },
+    {
       "suite": "qc-pos-account",
       "mode": "unforced"
     },
