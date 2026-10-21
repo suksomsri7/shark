@@ -768,7 +768,7 @@ const P34U_PLAN: { key: P34uKey; page: PosPage; devices: readonly Device[]; user
   { key: "offline-tenders", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "19ง: cart3 ออฟไลน์ → ชิป แต้ม/คูปอง/บัตร/พร้อมเพย์ \"ใช้ได้เมื่อออนไลน์\" + แถว \"ชำระเงินสด ฿x · โอน\" → กล่องโอน (เลขอ้างอิงไม่บังคับ)" },
   { key: "offline-sync-back", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "ขายออฟไลน์ 1 บิล → กลับมาออนไลน์ → วงซิงก์ส่ง /api/pos/sync → แถบ \"ซิงก์บิลออฟไลน์แล้ว\" ป้าย 0 → รายการบิลออฟไลน์ \"ได้เลขจริง …\" (⚠️ บิลจริง 1 ใบในกะของรอบ)" },
   { key: "offline-slip", page: "register", devices: ["desktop", "mobile"], users: ["owner", "cashier"], note: "ขายออฟไลน์ → พิมพ์ใบรับเงินชั่วคราว (browser) → ถ่ายเอกสารสลิปเอง: หัว \"ใบรับเงินชั่วคราว — รอออกเลขจริง\" · เลข OFF · ไม่มี QR /r/ · ไม่ใช่ ABB" },
-  { key: "offline-lock-pin", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "มติ 7: ปลดล็อกออนไลน์ด้วย PIN (เขียนตัวตรวจ PBKDF2) → ตัดเน็ต → ล็อก → จอล็อกออฟไลน์ \"ปลดล็อกได้เฉพาะ <ชื่อ>\" + PIN ผิด 1 ครั้ง \"เหลืออีก 4 ครั้ง\" · สลับพนักงาน/ลืม PIN ปิด" },
+  { key: "offline-lock-pin", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "มติ 7 + fix1 F2: ปลดล็อกออนไลน์ด้วย PIN → ตัดเน็ต → ล็อก · แคชเชียร์ (STAFF) = ตัวตรวจ PBKDF2 → \"ปลดล็อกได้เฉพาะ <ชื่อ>\" + PIN ผิด 1 ครั้ง \"เหลืออีก 4 ครั้ง\" · เจ้าของ = ไม่มีตัวตรวจ → \"ปลดล็อกที่เครื่องนี้ไม่ได้\" · สลับพนักงาน/ลืม PIN ปิด" },
   { key: "offline-rejected", page: "shifts", devices: P34U_D3, users: ["owner"], note: "CD-P34U-4 (อนุพันธ์): การ์ด \"บิลออฟไลน์รอผู้จัดการ\" — แถว fixture ราคาปลอม (syncOfflineSales → REJECTED PRICE_MISMATCH) · ผู้ขายที่อ้าง/ที่ตรวจ · รับ/ทิ้ง → เปิดช่องเหตุผล (ไม่กดยืนยัน)" },
   { key: "offline-close-blocked", page: "shifts", devices: P34U_D3, users: ["owner"], note: "มติ 6: ขายออฟไลน์ 1 บิลบนหน้าขาย (ซิงก์ถูกกั้นด้วย request interception) → หน้ากะของเครื่องเดียวกัน → \"ซิงก์ก่อนปิดกะ — … 1 บิล\" + ปุ่มปิดกะปิด" },
   { key: "settings-offline-live", page: "settings", devices: P34U_D3, users: ["owner"], note: "มติ 10: แท็บออฟไลน์ธงเปิด — สวิตช์ live (เจ้าของ) · \"เปิดขายออฟไลน์อยู่\" · แบนเนอร์ live · รอซิงก์ = เครื่องนี้ 0 + รอผู้จัดการ 1" },
@@ -7153,13 +7153,22 @@ async function runP34uState(page: Any, state: P34uKey, device: Device): Promise<
     await page.waitForFunction((sel: string) => !document.querySelector(sel), { timeout: 15_000 }, tid("pos-lock-screen")).catch(() => {
       throw new StepError("ปลดล็อกออนไลน์ด้วย PIN ไม่สำเร็จ");
     });
-    await p34uWaitIdb(page, "unlock", "ปลดล็อกออนไลน์แล้วไม่มีตัวตรวจ PIN ออฟไลน์ใน IndexedDB (onPinVerified)");
+    // fix1 F2 (CD-P34U-R2): ตัวตรวจเขียนเฉพาะ STAFF — เจ้าของ/ผู้จัดการปลดออฟไลน์ไม่ได้ (PIN ของคนกลุ่มนี้คือ PIN อนุมัติ)
+    const staffRole = userOf(userKey).role === "STAFF";
+    if (staffRole) await p34uWaitIdb(page, "unlock", "ปลดล็อกออนไลน์แล้วไม่มีตัวตรวจ PIN ออฟไลน์ใน IndexedDB (onPinVerified)");
+    else {
+      await sleep(1500);
+      if ((await p34uIdb(page, "unlock")) === true) throw new StepError(`${userKey} ไม่ใช่ STAFF แต่มีตัวตรวจ PIN ออฟไลน์ใน IndexedDB`);
+    }
     await page.setOfflineMode(true);
     await visibleEl(page, tid("pos-reg-offline-live-banner"), 0, 10_000);
-    await lockFromRegister(page, device);
-    await visibleEl(page, `${tid("pos-lock-offline-note")}[data-state="holder"]`, 0, 10_000).catch(() => {
-      throw new StepError("จอล็อกออฟไลน์ไม่ขึ้นคนในโทเคน (pos-lock-offline-note data-state=holder)");
+    await clickEl(page, tid(device === "mobile" ? "pos-lock-now-mobile" : "pos-lock-now"));
+    await visibleEl(page, tid("pos-lock-screen"), 0, 10_000);
+    const want = staffRole ? "holder" : "unavailable";
+    await visibleEl(page, `${tid("pos-lock-offline-note")}[data-state="${want}"]`, 0, 10_000).catch(() => {
+      throw new StepError(`จอล็อกออฟไลน์ไม่ใช่ ${want} (pos-lock-offline-note data-state)`);
     });
+    if (!staffRole) return;
     await clickPinDigits(page, pin.replace(/\d/g, (d) => String((Number(d) + 1) % 10)));
     await visibleEl(page, tid("pos-lock-message"), 0, 15_000).catch(() => {
       throw new StepError("PIN ผิดตอนออฟไลน์ไม่ขึ้นข้อความ (pos-lock-message)");

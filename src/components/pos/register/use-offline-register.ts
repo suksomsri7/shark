@@ -49,7 +49,8 @@ export type OfflineRegister = {
   enqueue: (build: (ref: string) => OfflineQueueRecord) => Promise<OfflineQueueRecord | null>;
   kick: () => void;
   wipeSecrets: () => Promise<void>;
-  rememberUnlock: (userId: string, secret: string) => void;
+  /** fix1 F2 (CD-P34U-R2): secret null = ผู้ปลดไม่ใช่ STAFF ⇒ ไม่เขียน + ล้างตัวตรวจเดิม (เจ้าของ/ผู้จัดการปลดออฟไลน์ไม่ได้) */
+  rememberUnlock: (userId: string, secret: string | null) => void;
   tryUnlock: (userId: string, secret: string) => Promise<OfflineUnlockResult>;
   unlockHolder: { userId: string; locked: boolean } | null;
 };
@@ -262,9 +263,13 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
     setHolder(null);
   }, []);
   const rememberUnlock = useCallback(
-    (uid: string, secret: string) => {
+    (uid: string, secret: string | null) => {
       const d = dbRef.current;
-      if (!d || !enabled) return;
+      if (!d) return;
+      if (secret === null || !enabled) {
+        void forgetOfflineUnlock(d).then(() => setHolder(null));
+        return;
+      }
       void rememberOfflineUnlock(d, uid, secret).then(() => offlineUnlockHolder(d).then(setHolder));
     },
     [enabled],

@@ -70,7 +70,8 @@ export function LockScreen(p: {
    * tryUnlock สำเร็จ = หน้าขายปลดเอง (โทเคนเดิม) · holder null = ปลดออฟไลน์ไม่ได้ · onPinVerified = ปลดออนไลน์สำเร็จ (หน้าขายเขียนตัวตรวจ) ◂
    */
   offline?: { holder: { userId: string; name: string | null; role: RegisterRole; locked: boolean } | null; tryUnlock: (secret: string) => Promise<OfflineUnlockResult> };
-  onPinVerified?: (userId: string, secret: string) => void;
+  /** POS P3.4U ▸ fix1 F2 (CD-P34U-R2): secret = null ⇒ ผู้ปลดไม่ใช่ STAFF (เจ้าของ/ผู้จัดการ — PIN นี้คือ PIN อนุมัติ) = ไม่เขียน + ล้างตัวตรวจเดิม ◂ */
+  onPinVerified?: (userId: string, secret: string | null) => void;
 }) {
   const t = useTranslations("pos.register");
   const [staff, setStaff] = useState<StaffListItem[] | null>(null);
@@ -191,7 +192,7 @@ export function LockScreen(p: {
         const r = await verifyStaffPinAction({ ...target, deviceId: p.deviceId, pin: value, userId: sel.userId });
         if (r.ok) {
           setMsg(null);
-          p.onPinVerified?.(r.userId, value); // POS P3.4U ▸ มติ 7: ปลดออนไลน์สำเร็จ = เขียนตัวตรวจ PIN ออฟไลน์ของคนนี้ ◂
+          p.onPinVerified?.(r.userId, r.role === "STAFF" ? value : null); // POS P3.4U ▸ มติ 7 + fix1 F2: ปลดออนไลน์สำเร็จ = เขียนตัวตรวจ PIN ออฟไลน์ (STAFF เท่านั้น) ◂
           p.onUnlocked({ userId: r.userId, name: sel.name, role: r.role, staffToken: r.staffToken, expiresAt: r.expiresAt });
           return;
         }
@@ -254,7 +255,7 @@ export function LockScreen(p: {
         return setMsg(refusal(r.code));
       }
       setMsg(null);
-      p.onPinVerified?.(r.userId, value); // POS P3.4U ▸ มติ 7 ◂
+      p.onPinVerified?.(r.userId, r.role === "STAFF" ? value : null); // POS P3.4U ▸ มติ 7 + fix1 F2 ◂
       p.onUnlocked({ userId: r.userId, name: nameOf(phase.userId), role: r.role, staffToken: r.staffToken, expiresAt: r.expiresAt });
     } catch {
       setMsg({ key: "errors.loadFailed", tone: "danger" });
@@ -323,7 +324,7 @@ export function LockScreen(p: {
     const r = await verifyStaffPinAction({ ...target, deviceId: p.deviceId, pin: staffPin, userId: off.userId, managerUserId, managerPin });
     if (!r.ok) return { ok: false, code: r.code };
     const name = byId.get(off.userId)?.name ?? null;
-    p.onPinVerified?.(r.userId, staffPin); // POS P3.4U ▸ มติ 7 ◂
+    p.onPinVerified?.(r.userId, r.role === "STAFF" ? staffPin : null); // POS P3.4U ▸ มติ 7 + fix1 F2 ◂
     clearOverride();
     setMsg(null);
     p.onUnlocked({ userId: r.userId, name, role: r.role, staffToken: r.staffToken, expiresAt: r.expiresAt });
