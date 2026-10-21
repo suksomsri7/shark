@@ -31,6 +31,10 @@ import type { PrintResult } from "@/components/pos/print/types";
 import { refusalMessageKey, type StaffListItem } from "@/lib/modules/pos/register-shared";
 import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions"; // POS P3.5U ▸ มติ 5 ◂
 import { posClockAction } from "@/lib/modules/pos/hr-link-actions"; // POS P3.5U ▸ มติ 7 ◂
+// POS P3.4U ▸ มติ 6 9 (CD-P34U-4): ปิดกะไม่ได้ขณะเครื่องนี้มีบิลออฟไลน์รอซิงก์ · การ์ด "บิลออฟไลน์รอผู้จัดการ" ◂
+import { countQueuedOnDevice } from "@/components/pos/register/offline-store";
+import { offlineCloseBlocked } from "@/lib/modules/pos/offline-client-shared";
+import { OfflineQueueSection } from "./OfflineQueueSection";
 // POS P1.15U ▸ มติ 2: เปิดกะด้วยโทเคนผู้ขายของเครื่องนี้ (ผู้เปิดกะ = คนในโทเคน) — เฉพาะเมื่อเป็นเครื่องเดียวกับที่ออกโทเคน ◂
 import { readStaffSession } from "@/lib/modules/pos/staff-session";
 import type { RecountView, ShiftReport, ShiftsPageItem } from "@/lib/modules/pos/shift";
@@ -61,6 +65,8 @@ type Props = {
   clockAsk?: boolean;
   /** POS P3.5U ▸ มติ 7: ชั่วโมงต่อกะ (ผู้ดูเงินเดือนเท่านั้น · null/ไม่ส่ง = ไม่มีบรรทัดชั่วโมง) ◂ */
   hours?: Record<string, ShiftHours> | null;
+  /** POS P3.4U ▸ มติ 9: ผู้จัดการ (pos.shift.manage) เท่านั้น — enabled = ธงออฟไลน์ · names = ชื่อผู้ใช้ของร้าน (ผู้ขายที่อ้าง/ที่ตรวจ) · null = ไม่มีการ์ด ◂ */
+  offline?: { enabled: boolean; names: Record<string, string> } | null;
 };
 type PageData = Awaited<ReturnType<typeof shiftsPageDataAction>>;
 type PageOk = Extract<PageData, { ok: true }>;
@@ -169,7 +175,7 @@ function Dialog({ labelledBy, testid, wide, children }: { labelledBy: string; te
   );
 }
 
-export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUserId, clockAsk = false, hours = null }: Props) {
+export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUserId, clockAsk = false, hours = null, offline = null /* POS P3.4U ◂ */ }: Props) {
   const t = useTranslations("pos.shift") as T;
   const te = useTranslations("pos.register");
   const tc = useTranslations("common");
@@ -240,6 +246,23 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
     setDeviceId(dev);
     void load(dev).catch(() => setLoadFailed(true));
   }, [load]);
+
+  // POS P3.4U ▸ มติ 6: บิลออฟไลน์ "รอซิงก์" ของเครื่องนี้ (IndexedDB · อ่านอย่างเดียว · ไม่มีฐาน = 0) — อ่านใหม่เมื่อกลับมาที่แท็บ ◂
+  const [offQueued, setOffQueued] = useState(0);
+  const readOffQueued = useCallback(async () => {
+    const n = await countQueuedOnDevice(systemId, unitId, deviceId).catch(() => 0);
+    setOffQueued(n);
+    return n;
+  }, [systemId, unitId, deviceId]);
+  useEffect(() => {
+    void readOffQueued();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void readOffQueued();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [readOffQueued]);
+  const closeBlocked = offlineCloseBlocked(offQueued);
 
   // POS P1.10 U ▸ ลิ้นชัก: ค่าตั้งเครื่องนี้ (heartbeat) + จับคู่ในเบราว์เซอร์นี้ ◂
   const tpr = useTranslations("pos.print") as T;
@@ -379,6 +402,12 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
     run(async () => {
       if (!shift || countCalc === null) {
         setError(t("countInvalid"));
+        return false;
+      }
+      // POS P3.4U ▸ มติ 6: "ซิงก์ก่อนปิดกะ" — อ่านคิวของเครื่องสดก่อนส่ง ◂
+      const queuedNow = await readOffQueued();
+      if (offlineCloseBlocked(queuedNow)) {
+        setError(t("offline.closeBlocked", { count: queuedNow }));
         return false;
       }
       setReasonErr(null);
@@ -792,6 +821,12 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
         <FigureBox testid="pos-shift-close-diff" label={t("closeCard.diff")} value={diff === null ? "—" : signedMoney(diff)} danger={diff !== null && diff !== 0} />
       </div>
       {blindHidden ? <p className="-mt-2 text-[12px] text-[color:var(--color-muted)]">{t("blindHint")}</p> : null}
+      {closeBlocked ? (
+        /* POS P3.4U ▸ มติ 6: ซิงก์ก่อนปิดกะ ◂ */
+        <p role="alert" data-testid="pos-shift-close-offline-blocked" className="rounded-xl border border-[color:var(--color-danger)] px-4 py-3 text-[13.5px] font-semibold text-[color:var(--color-danger)]">
+          {t("offline.closeBlocked", { count: offQueued })}
+        </p>
+      ) : null}
       <div className="grid grid-cols-1 items-start gap-2 @md:grid-cols-[140px_minmax(0,1fr)] @md:gap-4">
         <label htmlFor="pos-shift-close-note" className="flex flex-col pt-1">
           <b className="text-[13px]">{t("reason")}</b>
@@ -818,7 +853,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
       </div>
       <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-center @2xl:justify-between">
         <div className="flex flex-wrap gap-3">
-          <button data-testid="pos-shift-close-submit" type="button" className="btn btn-primary h-12 rounded-[12px] px-6" disabled={busy || !countCalc} onClick={doClose}>
+          <button data-testid="pos-shift-close-submit" type="button" className="btn btn-primary h-12 rounded-[12px] px-6" disabled={busy || !countCalc || closeBlocked /* POS P3.4U ▸ มติ 6 ◂ */} onClick={doClose}>
             <ShiftIcon name="lock" />
             {t("closeCard.submit")}
           </button>
@@ -1401,6 +1436,12 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
       <div className="flex min-w-0 flex-col gap-5 @4xl:grid @4xl:grid-cols-[minmax(0,1fr)_340px] @4xl:items-start @6xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
           <div className="order-1 min-w-0 @4xl:order-none">{currentCard}</div>
+          {canManage && offline ? (
+            /* POS P3.4U ▸ มติ 9 (CD-P34U-4): บิลออฟไลน์รอผู้จัดการ — ปิดธง + ไม่มีแถว = ไม่วาด ◂ */
+            <div className="order-1 min-w-0 empty:hidden @4xl:order-none">
+              <OfflineQueueSection systemId={systemId} unitId={unitId} enabled={offline.enabled} names={offline.names} locale={locale} onChanged={() => void load(deviceId)} />
+            </div>
+          ) : null}
           {closeCard ? <div className="order-6 min-w-0 @4xl:order-none">{closeCard}</div> : null}
           {zPanel ? <div className="order-2 min-w-0 @4xl:order-none">{zPanel}</div> : null}
         </div>

@@ -20,6 +20,7 @@ import { beamEnabled } from "@/lib/payment/beam";
 import { parsePosIntentSettings, promptpayIdForUnit } from "@/lib/modules/pos/payment-intent-shared";
 // POS P2.4U ▸ มติ 1/4/6: แท็บ "โต๊ะ" + ชิปทานที่ร้าน (registerTableMode) · ?table=<session> = หน้าขายผูกโต๊ะ ◂
 import { registerTableMode } from "@/lib/modules/pos/table";
+import { posOfflineEnabled } from "@/lib/modules/pos/offline-shared"; // POS P3.4U ▸ มติ 1 ◂
 
 // หน้าขาย POS (cashier) — เปิดบิลเก็บเงิน walk-in เงินสด/พร้อมเพย์
 //
@@ -103,6 +104,7 @@ export default async function PosRegisterPage({
         tipEnabled={parsePosPaymentSettings(sys.settings).tip.enabled}
         oversellBlock={oversell === "BLOCK"}
         autoLockMinutes={posRegisterAutoLockMinutes(sys.settings)}
+        offlineEnabled={posOfflineEnabled(sys.settings)} // POS P3.4U ▸ มติ 1: ปิด (ปริยาย) = จอแบบวันนี้ ◂
         discountCaps={caps}
         payIntent={{
           beamCard: intentSet.beam.enabled && beamEnabled(),

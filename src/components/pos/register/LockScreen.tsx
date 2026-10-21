@@ -26,6 +26,7 @@ import { listStaffForDeviceAction, setOwnStaffPinAction, unlockStaffPinAction, v
 import type { StaffSession } from "@/lib/modules/pos/staff-session";
 import { RegisterIcon } from "./RegisterIcon";
 import { ManagerPinPad } from "./ManagerPinPad"; // POS P3.5U ▸ มติ 3 ◂
+import type { OfflineUnlockResult } from "./offline-pin"; // POS P3.4U ▸ มติ 7 ◂
 
 const ROLE_KEY: Record<RegisterRole, string> = { OWNER: "roles.owner", MANAGER: "roles.manager", STAFF: "roles.cashier" };
 const PIN_MAX = 6;
@@ -64,6 +65,13 @@ export function LockScreen(p: {
   /** ตั้ง PIN สำเร็จ — หน้าขายถามรายชื่อใหม่ (โหมดร้านไม่มี PIN จบ) */
   onStaffChanged?: () => void;
   onUnlocked: (s: StaffSession) => void;
+  /**
+   * POS P3.4U ▸ มติ 7 (PIN ออฟไลน์ · เปิดธงเท่านั้น): ออฟไลน์ = แป้นของ holder (คนในโทเคนที่มีตัวตรวจในเครื่อง) คนเดียว · ไม่สลับพนักงาน · ไม่มีทางผู้จัดการ ·
+   * tryUnlock สำเร็จ = หน้าขายปลดเอง (โทเคนเดิม) · holder null = ปลดออฟไลน์ไม่ได้ · onPinVerified = ปลดออนไลน์สำเร็จ (หน้าขายเขียนตัวตรวจ) ◂
+   */
+  offline?: { holder: { userId: string; name: string | null; role: RegisterRole; locked: boolean } | null; tryUnlock: (secret: string) => Promise<OfflineUnlockResult> };
+  /** POS P3.4U ▸ fix1 F2 (CD-P34U-R2): secret = null ⇒ ผู้ปลดไม่ใช่ STAFF (เจ้าของ/ผู้จัดการ — PIN นี้คือ PIN อนุมัติ) = ไม่เขียน + ล้างตัวตรวจเดิม ◂ */
+  onPinVerified?: (userId: string, secret: string | null) => void;
 }) {
   const t = useTranslations("pos.register");
   const [staff, setStaff] = useState<StaffListItem[] | null>(null);
@@ -115,7 +123,15 @@ export function LockScreen(p: {
     if (staff.length === 1) setSelected(staff[0]!.userId);
   }, [staff, selected]);
 
-  const byId = useMemo(() => new Map((staff ?? []).map((s) => [s.userId, s])), [staff]);
+  // POS P3.4U ▸ มติ 7: ออฟไลน์ (เปิดธง) = รายชื่อคือ holder คนเดียว (รายชื่อจากเซิร์ฟเวอร์อ่านไม่ได้) ◂
+  const offLock = !p.online && !!p.offline;
+  const offHolder = p.offline?.holder ?? null;
+  const staffList: StaffListItem[] | null = offLock ? (offHolder ? [{ userId: offHolder.userId, name: offHolder.name, role: offHolder.role, hasPin: true, shift: null }] : []) : staff;
+  useEffect(() => {
+    if (offLock && offHolder) setSelected(offHolder.userId);
+  }, [offLock, offHolder?.userId]); // eslint-disable-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = เข้าโหมดออฟไลน์/คนในโทเคน
+  // ◂ POS P3.4U
+  const byId = useMemo(() => new Map((staffList ?? []).map((s) => [s.userId, s])), [staffList]);
   const nameOf = (id: string | null) => (id ? (byId.get(id)?.name ?? (p.current?.userId === id ? p.current.name : null) ?? "-") : "-");
   const sel = selected ? (byId.get(selected) ?? null) : null;
   const isManagerRole = (r: RegisterRole) => r === "MANAGER" || r === "OWNER";
@@ -164,11 +180,19 @@ export function LockScreen(p: {
     setBusy(true);
     setPin("");
     try {
+      // POS P3.4U ▸ มติ 7: ออฟไลน์ = ตัวตรวจในเครื่อง (holder เท่านั้น · ผิด 5 ครั้ง = ล็อกจนออนไลน์) ◂
+      if (phase.kind === "pin" && offLock && p.offline) {
+        if (!offHolder || offHolder.locked) return setMsg({ key: offHolder?.locked ? "offline.lock.locked" : "offline.lock.unavailable", tone: "danger" });
+        const o = await p.offline.tryUnlock(value);
+        if (o.ok) return setMsg(null);
+        return setMsg(o.code === "OFFLINE_PIN_INVALID" ? { key: "offline.lock.invalid", values: { left: o.left ?? 0 }, tone: "danger" } : { key: o.code === "OFFLINE_PIN_LOCKED" ? "offline.lock.locked" : "offline.lock.unavailable", tone: "danger" });
+      }
       if (phase.kind === "pin") {
         if (!sel || !p.deviceId) return;
         const r = await verifyStaffPinAction({ ...target, deviceId: p.deviceId, pin: value, userId: sel.userId });
         if (r.ok) {
           setMsg(null);
+          p.onPinVerified?.(r.userId, r.role === "STAFF" ? value : null); // POS P3.4U ▸ มติ 7 + fix1 F2: ปลดออนไลน์สำเร็จ = เขียนตัวตรวจ PIN ออฟไลน์ (STAFF เท่านั้น) ◂
           p.onUnlocked({ userId: r.userId, name: sel.name, role: r.role, staffToken: r.staffToken, expiresAt: r.expiresAt });
           return;
         }
@@ -180,7 +204,7 @@ export function LockScreen(p: {
           setMsg(
             r.reason === "OUTSIDE_HOURS" && r.window
               ? { key: "lock.schedule.outsideHours", values: { start: hm(r.window.startMin), end: hm(r.window.endMin) }, tone: "danger" }
-              : { key: r.reason ? `lock.schedule.${REASON_KEY[r.reason]}` : "lock.schedule.offSchedule", tone: "danger" },
+              : { key: r.reason && r.reason !== "OUTSIDE_HOURS" /* POS P3.4U ▸ P3.5U-F2: OUTSIDE_HOURS ไม่มีช่วงเวลา = offSchedule (ไม่ส่ง {start,end} ที่ขาด) ◂ */ ? `lock.schedule.${REASON_KEY[r.reason]}` : "lock.schedule.offSchedule", tone: "danger" },
           );
           return;
         }
@@ -231,6 +255,7 @@ export function LockScreen(p: {
         return setMsg(refusal(r.code));
       }
       setMsg(null);
+      p.onPinVerified?.(r.userId, r.role === "STAFF" ? value : null); // POS P3.4U ▸ มติ 7 + fix1 F2 ◂
       p.onUnlocked({ userId: r.userId, name: nameOf(phase.userId), role: r.role, staffToken: r.staffToken, expiresAt: r.expiresAt });
     } catch {
       setMsg({ key: "errors.loadFailed", tone: "danger" });
@@ -299,6 +324,7 @@ export function LockScreen(p: {
     const r = await verifyStaffPinAction({ ...target, deviceId: p.deviceId, pin: staffPin, userId: off.userId, managerUserId, managerPin });
     if (!r.ok) return { ok: false, code: r.code };
     const name = byId.get(off.userId)?.name ?? null;
+    p.onPinVerified?.(r.userId, r.role === "STAFF" ? staffPin : null); // POS P3.4U ▸ มติ 7 + fix1 F2 ◂
     clearOverride();
     setMsg(null);
     p.onUnlocked({ userId: r.userId, name, role: r.role, staffToken: r.staffToken, expiresAt: r.expiresAt });
@@ -359,7 +385,9 @@ export function LockScreen(p: {
       : sel
         ? `${sel.name ?? "-"} · ${t(ROLE_KEY[sel.role])}${p.lockedAt && p.current?.userId === sel.userId ? ` · ${t("lock.lockedAt", { time: formatThaiTime(p.lockedAt) })}` : ""}`
         : null;
-  const padReady = p.mode === "ready" && (phase.kind === "manager" ? !!manager : phase.kind === "set" ? true : !!sel && sel.hasPin && !locked.has(sel.userId));
+  const padReady =
+    p.mode === "ready" &&
+    (offLock ? phase.kind === "pin" && !!offHolder && !offHolder.locked /* POS P3.4U ▸ มติ 7 ◂ */ : phase.kind === "manager" ? !!manager : phase.kind === "set" ? true : !!sel && sel.hasPin && !locked.has(sel.userId));
 
   return (
     <div
@@ -448,6 +476,11 @@ export function LockScreen(p: {
                   {t(msg.key, msg.values ?? {})}
                 </p>
               )}
+              {offLock && (
+                <p data-testid="pos-lock-offline-note" data-state={!offHolder ? "unavailable" : offHolder.locked ? "locked" : "holder"} role="status" className="max-w-[420px] text-center text-[13.5px] leading-[1.5] text-[color:var(--color-ink-soft)]">
+                  {!offHolder ? t("offline.lock.unavailable") : offHolder.locked ? t("offline.lock.locked") : t("offline.lock.note", { name: offHolder.name ?? "-" })}
+                </p>
+              )}
               {offSchedule && phase.kind === "pin" && sel?.userId === offSchedule.userId && (
                 <button data-testid="pos-lock-override-open" type="button" disabled={busy} className="btn btn-primary h-12 rounded-[13px] px-6 text-[15px]" onClick={() => setOverrideOpen(true)}>
                   {t("lock.schedule.overrideButton")}
@@ -475,7 +508,7 @@ export function LockScreen(p: {
                   <button
                     data-testid="pos-lock-forgot"
                     type="button"
-                    disabled={!sel || busy}
+                    disabled={!sel || busy || offLock /* POS P3.4U ▸ ทางผู้จัดการต้องออนไลน์ ◂ */}
                     className="h-[70px] rounded-[14px] border bg-[color:var(--color-surface-2)] text-[15px] font-semibold disabled:opacity-40"
                     onClick={() => startManager(true)}
                   >
@@ -519,7 +552,7 @@ export function LockScreen(p: {
         {p.mode === "ready" && (
           <aside className="flex shrink-0 flex-col gap-3.5 border-t bg-[color:var(--color-surface-2)] px-5 py-6 md:w-[460px] md:border-l md:border-t-0 md:px-10 md:py-10 xl:w-[574px]">
             <h3 className="text-[19px] font-bold">{t("staff.title")}</h3>
-            {staff === null ? (
+            {staffList === null /* POS P3.4U ▸ ออฟไลน์ = holder ◂ */ ? (
               staffErr ? (
                 <div className="flex items-center gap-3 text-[14px] text-[color:var(--color-muted)]">
                   {t("staff.loadFailed")}
@@ -530,13 +563,14 @@ export function LockScreen(p: {
               ) : (
                 <p className="text-[14px] text-[color:var(--color-muted)]">{t("staff.loading")}</p>
               )
-            ) : staff.length === 0 ? (
+            ) : staffList.length === 0 /* POS P3.4U ▸ ออฟไลน์ = holder ◂ */ ? (
               <p data-testid="pos-staff-empty" className="text-[14px] text-[color:var(--color-muted)]">
                 {t("staff.empty")}
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
-                {staff.map((s) => {
+                {/* POS P3.4U ▸ ออฟไลน์ = holder ◂ */}
+                {staffList.map((s) => {
                   const isSel = phase.kind === "manager" ? manager === s.userId : selected === s.userId;
                   const dim = phase.kind === "manager" ? !isManagerRole(s.role) || !s.hasPin : (!s.hasPin && s.userId !== selected) || !!s.hr?.onLeave; // POS P3.5U ▸ ลาวันนี้ = จาง (ยังเลือกได้) ◂
                   const chip = chipOf(s);
@@ -579,7 +613,7 @@ export function LockScreen(p: {
             <button
               data-testid="pos-staff-switch"
               type="button"
-              disabled={busy || !staff || staff.length < 2 || phase.kind === "manager"}
+              disabled={busy || !staff || staff.length < 2 || phase.kind === "manager" || offLock /* POS P3.4U ▸ มติ 7: ไม่สลับพนักงานตอนออฟไลน์ ◂ */}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-[14px] border bg-[color:var(--color-surface)] text-[15px] font-semibold disabled:opacity-50"
               onClick={switchNext}
             >

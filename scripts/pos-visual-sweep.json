@@ -511,6 +511,26 @@
       "states": true,
       "after": "P3.5U",
       "why": "same states LOCALE=en · 1440 every page + 390 register (EN_MOBILE_PAGES) · owner 17 + cashier 11 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.4u-offline",
+      "wo": "p3.4u",
+      "pages": [
+        "register",
+        "shifts",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "after": "P3.4U",
+      "why": "offline 19ง states (P3.4U · fresh browser context each · flag on via updatePosOfflineEnabled, restored): offline-sale/queue/tenders/sync-back/slip/lock-pin · Shifts offline-rejected/close-blocked · settings-offline-live"
     }
   ]
 }

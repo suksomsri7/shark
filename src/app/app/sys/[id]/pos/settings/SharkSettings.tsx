@@ -22,7 +22,7 @@ import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/R
 import { posSettingsHref } from "@/components/pos/settings/settings-tabs";
 import { useSettingsHistory } from "@/components/pos/settings/HistoryDrawer";
 import { InlineNote, TabHead } from "./settings-ui";
-import { CARD_HEAD, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type PaySummary, type Storefront } from "./shark-ui";
+import { CARD_HEAD, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type OfflineLive, type PaySummary, type Storefront } from "./shark-ui"; // POS P3.4U ▸ + OfflineLive ◂
 import { ChannelsPanel } from "./ChannelsPanel"; // POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) ◂
 import { ApiKeysCard } from "./ApiKeysCard"; // POS P2.13 ▸ การ์ดคีย์ API (U-lite §7) ◂
 
@@ -48,7 +48,7 @@ const ADD_SYSTEM_HREF = "/app/settings/systems";
 /** ชื่อการ์ดที่เป็นชื่อเฉพาะ (ไม่แปล) */
 const PROPER_TITLE: Partial<Record<PosIntegrationCard["code"], string>> = { CRM: "CRM" };
 
-type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAcceptOrders?: boolean };
+type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAcceptOrders?: boolean; /** POS P3.4U ▸ มติ 10: การ์ดออฟไลน์ live ◂ */ offline?: OfflineLive | null };
 
 function relTime(iso: string, locale: string): string {
   const at = new Date(iso);
@@ -78,7 +78,7 @@ function IconTile({ icon, accent }: { icon: RegisterIconName; accent?: boolean }
   );
 }
 
-export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false, canAcceptOrders = false }: Props) {
+export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false, canAcceptOrders = false, offline = null /* POS P3.4U ◂ */ }: Props) {
   const t = useTranslations("pos.settings");
   const tk = useTranslations("pos.settings.shark");
   const tc = useTranslations("pos.settings.cards");
@@ -348,7 +348,7 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
         <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-3 xl:gap-[23px]">
           {data.cards.map(card)}
           {receiptCard}
-          <OfflineCard />
+          <OfflineCard live={offline} /* POS P3.4U ▸ มติ 10 ◂ */ />
         </div>
       )}
       {/* POS P1.18U ▸ แก้รอบ 2 V3: สองแผงวางคู่กันตั้งแต่ xl (เดิม lg) — ที่ 1024 แผงละ ~200px ชิป "เร็ว ๆ นี้" เบียดชื่อจนเหลือ ~8px · ใต้ xl = เรียงลงเต็มความกว้าง ◂ */}

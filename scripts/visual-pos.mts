@@ -175,6 +175,10 @@
 //   17c-staff-hr-switch-owner · 17c-staff-schedule-gate-card · 17c-staff-commission-card · 07-shift-clock-ask-in · 07-shift-clock-ask-out · 07-shift-hours-owner ·
 //   07-shift-hours-warnings · 08-report-commission-owner · 08-report-commission-denied (แคชเชียร์) — ตารางใน P35U_PLAN · fixture/เก็บกวาดใน ensureP35uFixture/
 //   prepP35u/cleanupP35u (ระบบ HR ชั่วคราว + พนักงานผูกผู้ใช้ QC ผ่านฟังก์ชันของ HR · ค่าตั้งด่าน/ค่าคอมฯ คืนค่าเดิม · ลบหลังงานสุดท้าย/finally/สัญญาณ) ◂
+// POS P3.4U ▸ ออฟไลน์ 19ง (มติ 11 · wo p3.4u · --states · ไม่ส่ง --page = register + shifts + settings · 3 ขนาด · th + LOCALE=en 1440 · owner + cashier):
+//   offline-sale · offline-queue · offline-tenders · offline-sync-back · offline-slip · offline-lock-pin (หน้าขาย) · offline-rejected · offline-close-blocked (หน้ากะ เจ้าของ) ·
+//   settings-offline-live (แท็บออฟไลน์ เจ้าของ) — ตารางใน P34U_PLAN · ทุกสถานะ = browser context ใหม่ · ธงเปิดด้วย updatePosOfflineEnabled แล้วคืนค่าเดิม ·
+//   fixture/เก็บกวาดใน ensureP34uFixture/prepP34u/cleanupP34u (บิลราคาปลอม → คิวผู้จัดการ → ทิ้งตอนเก็บกวาด) · สถานะเดิม offline / settings-offline ไม่แตะ ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -213,6 +217,9 @@ const P212U_PAGES = ["reports", "sales", "settings"] as const satisfies readonly
 // POS P3.5U ▸ มติ 10: wo p3.5u = สถานะ HR ของใบนี้ (ไม่ส่ง --page = register + shifts + settings + reports) ◂
 const P35U_WO = /^p3\.?5u/i.test(WO ?? "");
 const P35U_PAGES = ["register", "shifts", "settings", "reports"] as const satisfies readonly PosPage[];
+// POS P3.4U ▸ มติ 11: wo p3.4u = สถานะออฟไลน์ของใบนี้ (ไม่ส่ง --page = register + shifts + settings) ◂
+const P34U_WO = /^p3\.?4u/i.test(WO ?? "");
+const P34U_PAGES = ["register", "shifts", "settings"] as const satisfies readonly PosPage[];
 // POS P2.7U ▸ มติ 15: wo p2.7 = หน้าสาธารณะ QR (/q/**) + จอ 09 + จอโต๊ะ + ลิ้นชักช่องทาง (ไม่ส่ง --page = qr-public + orders + tables + settings) ◂
 const P27_WO = /^p2\.?7(?![0-9])/i.test(WO ?? "");
 const P27_PAGES = ["qr-public", "orders", "tables", "settings"] as const satisfies readonly PosPage[];
@@ -242,7 +249,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P34U_WO ? [...P34U_PAGES] /* POS P3.4U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -285,7 +292,7 @@ const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const PDF_PROBE = argv.includes("--pdf");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey; // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey | P34uKey; // POS P3.4U ▸ + P34u ◂ // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -741,6 +748,41 @@ const p35uPath = (k: P35uKey): string => {
   return `/app/sys/${SYS}/pos/${page}?unit=${u}`;
 };
 // ◂ POS P3.5U
+// ── POS P3.4U ▸ ออฟไลน์ 19ง (มติผู้คุม 11 · wo p3.4u · --states · ไม่ส่ง --page = register + shifts + settings · 3 ขนาด · th + LOCALE=en 1440 · owner + cashier) ◂
+//   ทุกสถานะ = browser context ใหม่ (IndexedDB/คิวไม่ข้ามสถานะ) · ธงออฟไลน์เปิดด้วย updatePosOfflineEnabled (คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ) ·
+//   snapshot ดึงตอนออนไลน์ (ตอนโหลดหน้า) แล้วค่อย setOfflineMode · สถานะเดิม offline / settings-offline ไม่แตะ (ธงปิด = ภาพวันนี้)
+type P34uKey =
+  | "offline-sale"
+  | "offline-queue"
+  | "offline-tenders"
+  | "offline-sync-back"
+  | "offline-slip"
+  | "offline-lock-pin"
+  | "offline-rejected"
+  | "offline-close-blocked"
+  | "settings-offline-live";
+const P34U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P34U_PLAN: { key: P34uKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "offline-sale", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "19ง: cart3 → ตัดเน็ต → ชำระเงินสด (พอดี) → จอ \"บันทึกแล้ว · รอซิงก์\" + เลขชั่วคราว OFF-… (บิลอยู่ในคิวของเครื่อง)" },
+  { key: "offline-queue", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "19ง: ขายออฟไลน์ 2 บิล → แถบ \"ออฟไลน์ตั้งแต่ … · ขายต่อได้ด้วยเงินสดและโอน · รอซิงก์ 2 บิล · เลขชั่วคราว OFF-…\" + ป้ายรอซิงก์ 2" },
+  { key: "offline-tenders", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "19ง: cart3 ออฟไลน์ → ชิป แต้ม/คูปอง/บัตร/พร้อมเพย์ \"ใช้ได้เมื่อออนไลน์\" + แถว \"ชำระเงินสด ฿x · โอน\" → กล่องโอน (เลขอ้างอิงไม่บังคับ)" },
+  { key: "offline-sync-back", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "ขายออฟไลน์ 1 บิล → กลับมาออนไลน์ → วงซิงก์ส่ง /api/pos/sync → แถบ \"ซิงก์บิลออฟไลน์แล้ว\" ป้าย 0 → รายการบิลออฟไลน์ \"ได้เลขจริง …\" (⚠️ บิลจริง 1 ใบในกะของรอบ)" },
+  { key: "offline-slip", page: "register", devices: ["desktop", "mobile"], users: ["owner", "cashier"], note: "ขายออฟไลน์ → พิมพ์ใบรับเงินชั่วคราว (browser) → ถ่ายเอกสารสลิปเอง: หัว \"ใบรับเงินชั่วคราว — รอออกเลขจริง\" · เลข OFF · ไม่มี QR /r/ · ไม่ใช่ ABB" },
+  { key: "offline-lock-pin", page: "register", devices: P34U_D3, users: ["owner", "cashier"], note: "มติ 7 + fix1 F2: ปลดล็อกออนไลน์ด้วย PIN → ตัดเน็ต → ล็อก · แคชเชียร์ (STAFF) = ตัวตรวจ PBKDF2 → \"ปลดล็อกได้เฉพาะ <ชื่อ>\" + PIN ผิด 1 ครั้ง \"เหลืออีก 4 ครั้ง\" · เจ้าของ = ไม่มีตัวตรวจ → \"ปลดล็อกที่เครื่องนี้ไม่ได้\" · สลับพนักงาน/ลืม PIN ปิด" },
+  { key: "offline-rejected", page: "shifts", devices: P34U_D3, users: ["owner"], note: "CD-P34U-4 (อนุพันธ์): การ์ด \"บิลออฟไลน์รอผู้จัดการ\" — แถว fixture ราคาปลอม (syncOfflineSales → REJECTED PRICE_MISMATCH) · ผู้ขายที่อ้าง/ที่ตรวจ · รับ/ทิ้ง → เปิดช่องเหตุผล (ไม่กดยืนยัน)" },
+  { key: "offline-close-blocked", page: "shifts", devices: P34U_D3, users: ["owner"], note: "มติ 6: ขายออฟไลน์ 1 บิลบนหน้าขาย (ซิงก์ถูกกั้นด้วย request interception) → หน้ากะของเครื่องเดียวกัน → \"ซิงก์ก่อนปิดกะ — … 1 บิล\" + ปุ่มปิดกะปิด" },
+  { key: "settings-offline-live", page: "settings", devices: P34U_D3, users: ["owner"], note: "มติ 10: แท็บออฟไลน์ธงเปิด — สวิตช์ live (เจ้าของ) · \"เปิดขายออฟไลน์อยู่\" · แบนเนอร์ live · รอซิงก์ = เครื่องนี้ 0 + รอผู้จัดการ 1" },
+];
+const p34uOn = STATES_ON && tenantKey === "coffee" && P34U_WO;
+const P34U_KEYS: ReadonlySet<string> = new Set(P34U_PLAN.map((s) => s.key));
+const isP34uState = (k: StateKey | null | undefined): k is P34uKey => !!k && P34U_KEYS.has(k);
+const p34uPath = (k: P34uKey): string => {
+  const u = encodeURIComponent(unitId);
+  const page = P34U_PLAN.find((x) => x.key === k)!.page;
+  if (page === "settings") return `/app/sys/${SYS}/pos/settings?tab=offline&unit=${u}`;
+  return `/app/sys/${SYS}/pos/${page}?unit=${u}`;
+};
+// ◂ POS P3.4U
 // ── POS P2.12U ▸ รายงาน 08 + บิล 12 + การ์ดเกณฑ์ (มติ 8 · wo p2.12u · --states · 3 ขนาด · หน้าพิมพ์ 1440 + สื่อ print · th + LOCALE=en · owner + cashier) ◂
 type P212uKey = "reports-hourly" | "reports-branches-tab" | "reports-anomalies" | "reports-anomalies-empty" | "reports-staff-flag" | "reports-pdf-button" | "reports-print-overview" | "reports-print-channels" | "settings-general-anomaly" | "bills-all-branches" | "bills-drawer-channel-refund";
 const P212U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
@@ -1007,11 +1049,11 @@ const EN_MOBILE_PAGES = new Set<string>(["register", "sales", "receipt-public", 
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
 const stockStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "stock" || /^p1\.14/i.test(WO));
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
-const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P35U_WO /* POS P3.5U */ && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
+const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
 const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
   isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
@@ -1050,6 +1092,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: p213Path(st.key), ...(st.key === "developers-pos" ? { expect: 200 } : {}), file: `${OUT}/${st.key === "developers-pos" ? st.key : `${p}-${st.key.slice(p.length + 1)}`}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+  // POS P3.4U ▸ มติ 11: wo p3.4u + --states = สถานะออฟไลน์ของใบนี้ตามหน้า/ผู้ใช้ ◂
+  : p34uOn
+    ? P34U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p34uPath(st.key), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
   // POS P3.5U ▸ มติ 10: wo p3.5u + --states = สถานะ HR ของใบนี้ตามหน้า/ผู้ใช้ ◂
   : p35uOn
@@ -1208,7 +1257,7 @@ if (onlyStates) {
   if (unknown.length) die(`--state ไม่รู้จัก/ไม่อยู่ในแผนของหน้า-ผู้ใช้นี้: ${unknown.join(", ")} — ใช้ได้: ${[...known].join(" · ")}`);
 }
 const jobs: Job[] = onlyStates ? jobsPlanned.filter((j) => j.state && onlyStates.includes(String(j.state))) : jobsPlanned;
-const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state) && !P28U_REG_KEYS.has(j.state) && !isP26uState(j.state) && !isP25uState(j.state) && !isP35uState(j.state) /* POS P3.5U */); // POS P2.6U ▸ ไทล์ 86 ไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ // POS P2.5U ▸ จอชำระใบแยกบิลก็ไม่ใช้ ◂ // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ · POS P2.8U ▸ ป้ายแท็บก็ไม่ใช้ ◂
+const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state) && !P28U_REG_KEYS.has(j.state) && !isP26uState(j.state) && !isP25uState(j.state) && !isP35uState(j.state) /* POS P3.5U */ && !isP34uState(j.state) /* POS P3.4U */); // POS P2.6U ▸ ไทล์ 86 ไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ // POS P2.5U ▸ จอชำระใบแยกบิลก็ไม่ใช้ ◂ // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ · POS P2.8U ▸ ป้ายแท็บก็ไม่ใช้ ◂
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
 
@@ -1253,6 +1302,8 @@ if (LIST) {
   for (const st of P210_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("reports/sales/settings P2.12U (wo p2.12u --states · owner + cashier):"); // POS P2.12U
   for (const st of P212U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
+  console.log("register/shifts/settings P3.4U (wo p3.4u --states · owner + cashier):"); // POS P3.4U
+  for (const st of P34U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("register/shifts/settings/reports P3.5U (wo p3.5u --states · owner + cashier):"); // POS P3.5U
   for (const st of P35U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("settings P2.13 (wo p2.13 --states · owner + manager):"); // POS P2.13
@@ -1261,7 +1312,7 @@ if (LIST) {
   for (const st of P27_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN, P34U_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P3.4U ▸ + P34U ◂ // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1425,6 +1476,18 @@ if (DRY) {
           `คาดการณ์ 4 สัปดาห์ก่อนวันเดียวกัน (3 ใบ/สัปดาห์ 08/09/12 น. · เลื่อน createdAt/paidAt) · สาขา: 1 บิลวันนี้ที่สาขาอารีย์ · จุดผิดปกติ: 2 บิล → voidSale (A1) · บิล LINE MAN ` +
           `(ช่องทาง P2.1U) → refundSale 1 บรรทัด PLATFORM (A2 + ลิ้นชักหลังคืน) · บิลส่วนลดท้ายบิล 40% (A4) · เกณฑ์ A1 2 ครั้ง · A2 1 ครั้ง · A3 1% · A4 20% ` +
           `(updatePosGeneralSettings เจ้าของ · ซากเกณฑ์ของรอบที่ถูก kill = กวาดเป็นค่าปริยาย · คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ)`,
+      );
+    }
+    // POS P3.4U ▸ มติ 11 ◂
+    if (jobs.some((j) => isP34uState(j.state))) {
+      console.log(`สถานะออฟไลน์ P3.4U (${userKey} · context ใหม่ทุกสถานะ · เครื่อง ${DEVICE_ID}):`);
+      for (const st of P34U_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(23)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        "  P3.4U: fixture — ธง settings.pos.offline.enabled เปิด (updatePosOfflineEnabled · คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ) · " +
+          `ต่อสถานะลบ snapshot ของเครื่องรอบนี้ที่ออกภายใน 2 นาที (เพดาน 1 ใบ/60 วิ) · offline-rejected/settings-offline-live: snapshot + บิลราคาปลอม 1 ใบ (syncOfflineSales → REJECTED · ทิ้งตอนเก็บกวาด) · ` +
+          "offline-sync-back = บิลจริง 1 ใบในกะของรอบ · offline-close-blocked กั้น POST /api/pos/sync ด้วย request interception (ตอบ results ว่าง) · " +
+          "fix2: ต่อเน็ตกลับ (sync-back · close-blocked) รอ ≥ 62 วิ หลัง snapshot ตอนโหลด (หน้าดึงซ้ำเมื่อออนไลน์ — เลี่ยง 429) · slip คงออฟไลน์ · " +
+          "console ERR_INTERNET_DISCONNECTED/Failed to fetch ของ same-origin กรองเฉพาะช่วงที่ harness ตัดเน็ตเอง (นับในบรรทัดภาพ \"ออฟไลน์กรองแล้ว n\")",
       );
     }
     // POS P3.5U ▸ มติ 10 ◂
@@ -1747,6 +1810,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P210.log.length) console.error(`${P210.ok ? "🧹" : "⚠️"} P2.10: ${P210.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.10 ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P3.4U: ทิ้งแถวคิวผู้จัดการ · คืนธงออฟไลน์ · ลบ snapshot ของเครื่องรอบนี้ (เหมือน finally)
+      try {
+        await cleanupP34u();
+        if (P34U.log.length) console.error(`${P34U.ok ? "🧹" : "⚠️"} P3.4U: ${P34U.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P3.4U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P3.5U: ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ (เหมือน finally)
       try {
@@ -2315,6 +2385,7 @@ async function cleanupP115(): Promise<void> {
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isP34uState(state)) return runP34uState(page, state, device); // POS P3.4U
   if (isP27State(state)) return runP27State(page, state, device); // POS P2.7U
   if (isP213State(state)) return runP213State(page, state); // POS P2.13
   if (isP210State(state)) return runP210State(page, state, device); // POS P2.10
@@ -6830,6 +6901,376 @@ async function runP35uState(page: Any, state: P35uKey, device: Device): Promise<
   }
 }
 // ◂ POS P3.5U
+// ═══════════════════ POS P3.4U ▸ ออฟไลน์ 19ง: ขายเงินสด/โอนออฟไลน์ · คิว + ซิงก์ · สลิปชั่วคราว · PIN ออฟไลน์ · คิวผู้จัดการ · สวิตช์
+// fixture (ensureP34uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
+//   • ธง settings.pos.offline.enabled = true ผ่าน updatePosOfflineEnabled (เจ้าของ) — จำค่าเดิม · คืนหลังงานสุดท้าย/finally/สัญญาณ
+//     (ซากของรอบที่ถูก kill = แถวคิวผู้จัดการคำนำหน้า posqcvisp34u ค้าง ⇒ ทิ้ง + คืนธงเป็นปิด)
+//   • offline-rejected / settings-offline-live: snapshot ของเครื่องรอบนี้ (issueOfflineSnapshot) + บิลราคาปลอม 1 ใบผ่าน syncOfflineSales
+//     (เลข OFF ของเครื่อง · โทเคนเจ้าของ · ราคาต่ำกว่าจริง ฿10) → REJECTED PRICE_MISMATCH = แถวคิวผู้จัดการ · ทิ้ง (discardOfflineSale) ตอนเก็บกวาด
+// ต่อสถานะ: browser context ใหม่ (ลูปหลัก) · ลบ snapshot ของเครื่องรอบนี้ที่ออกภายใน 2 นาที (เพดาน 1 ใบ/เครื่อง/60 วิ ของ /api/pos/sync/snapshot —
+//   ไม่งั้นสถานะถัดไปดึงราคาไม่ได้) · บิลออฟไลน์ที่ไม่ซิงก์ตายไปพร้อม context (ไม่มีแถวฝั่งเซิร์ฟเวอร์) · offline-sync-back = บิลจริง 1 ใบในกะของรอบ
+const P34U_KEY_PREFIX = "posqcvisp34u";
+const P34U = {
+  done: false,
+  error: null as string | null,
+  ok: true,
+  cleaned: false,
+  log: [] as string[],
+  flagTouched: false,
+  flagBefore: false,
+  rejectedId: "",
+  snapHash: "",
+};
+const p34uCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: DEVICE_ID });
+const P34U_DB = () => `shark-pos-off:${SYS}:${unitId}`;
+/**
+ * เพดานอัตรา snapshot (1 ใบ/เครื่อง/60 วิ ของ S — ไม่แตะกฎ): ก่อนแต่ละภาพ ลบใบของเครื่องรอบนี้ที่ออกภายใน 2 นาที ⇒ การดึงตอนโหลดหน้าของภาพนี้ได้ 200 ·
+ * fix2: ไม่ยกเว้นใบของ fixture อีกแล้ว (ใบนั้นทำให้สถานะแรกได้ 429) — ปลอดภัยเพราะบิลของภาพก่อน ๆ ตายไปกับ context หรือซิงก์จบแล้ว และหลักฐานราคาของ
+ * แถวคิวผู้จัดการถูกแช่ไว้ใน payload ตั้งแต่ครั้งแรก · ห้ามลบระหว่างภาพ: บิลที่ยังไม่ซิงก์ต้องมี snapshot ของตัวเอง (ไม่มี = SNAPSHOT_UNKNOWN)
+ */
+async function p34uClearSnapRate(): Promise<void> {
+  await prisma.posOfflineSnapshot.deleteMany({ where: { tenantId: T.tenantId, unitId, deviceId: DEVICE_ID, issuedAt: { gt: new Date(Date.now() - 120_000) } } });
+}
+/**
+ * fix2 ▸ สถานะเครือข่ายต่อภาพ (รีเซ็ตทุกงานในลูปหลัก): offline = ช่วงที่ harness ตัดเน็ตของ context เอง · suppressed = จำนวน console error ที่กรองในช่วงนั้น ·
+ * snapAt = เวลาที่ snapshot ของภาพนี้ลง IndexedDB (การดึงตอนโหลดหน้า)
+ */
+const P34U_NET = { offline: false, suppressed: 0, snapAt: 0 };
+/** ตัด/ต่อเน็ตของหน้า + เปิด/ปิดช่วงกรอง — ต่อกลับ: ปิดช่วงกรองหลัง 1 วิ (คำขอที่ล้มตอนออฟไลน์รายงานช้าได้) */
+async function p34uOffline(page: Any, on: boolean): Promise<void> {
+  if (on) {
+    P34U_NET.offline = true;
+    await page.setOfflineMode(true);
+    return;
+  }
+  await page.setOfflineMode(false);
+  await sleep(1000);
+  P34U_NET.offline = false;
+}
+/** console error ที่กรองได้: เฉพาะช่วงที่ harness ตัดเน็ตเอง · เฉพาะ ERR_INTERNET_DISCONNECTED / Failed to fetch · เฉพาะทรัพยากร same-origin (หรือไม่มี URL) */
+function p34uSuppress(txt: string, url: string): boolean {
+  if (!P34U_NET.offline || !/ERR_INTERNET_DISCONNECTED|Failed to fetch/.test(txt)) return false;
+  if (url && !url.startsWith(BASE)) return false;
+  P34U_NET.suppressed += 1;
+  return true;
+}
+/**
+ * fix2 ▸ ก่อนต่อเน็ตกลับ: หน้าขายดึง snapshot ใหม่ทันทีเมื่อกลับมาออนไลน์ (พฤติกรรมของ product — ไม่แก้) ⇒ ต้องห่างจากการดึงตอนโหลดหน้า ≥ 60 วิ
+ * ไม่งั้น S ตอบ 429 (console error) · รอถึง snapAt + 62 วิ
+ */
+async function p34uSpaceBeforeOnline(): Promise<void> {
+  const wait = P34U_NET.snapAt ? P34U_NET.snapAt + 62_000 - Date.now() : 0;
+  if (wait > 0) await sleep(wait);
+}
+async function ensureP34uFixture(): Promise<void> {
+  if (P34U.done || P34U.error) return;
+  try {
+    const { updatePosOfflineEnabled } = await import("@/lib/modules/pos/settings-general");
+    const { posOfflineEnabled } = await import("@/lib/modules/pos/offline-shared");
+    const off = await import("@/lib/modules/pos/offline-sync");
+    const owner = await ownerActor();
+    const sysRow = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
+    P34U.flagBefore = posOfflineEnabled(sysRow?.settings ?? null);
+    const stale = await prisma.posOfflineSale.findMany({ where: { tenantId: T.tenantId, unitId, idempotencyKey: { startsWith: P34U_KEY_PREFIX }, status: "REJECTED" }, select: { id: true } });
+    for (const s of stale) {
+      const d = await off.discardOfflineSale(p34uCtx(), owner, { id: s.id, reason: "ภาพ QC P3.4U กวาดซากรอบก่อน" });
+      P34U.log.push(`ทิ้งแถวซาก ${s.id} (${d.ok ? "ok" : d.code})`);
+    }
+    if (stale.length) P34U.flagBefore = false; // รอบที่ถูก kill เปิดธงค้าง — คืนเป็นปิด (ค่าปริยายของร้าน QC)
+    P34U.flagTouched = true;
+    const on = await updatePosOfflineEnabled({ tenantId: T.tenantId, systemId: SYS }, owner, { enabled: true });
+    if (!on.ok) throw new Error(`เปิดธงออฟไลน์: ${on.code}`);
+    P34U.log.push(`ธงออฟไลน์เปิด (เดิม ${P34U.flagBefore ? "เปิด" : "ปิด"})`);
+    if (jobs.some((j) => j.state === "offline-rejected" || j.state === "settings-offline-live")) {
+      await p34uClearSnapRate();
+      const sn = await off.issueOfflineSnapshot(p34uCtx(), owner);
+      if (!sn.ok) throw new Error(`snapshot ของเครื่อง ${DEVICE_ID}: ${sn.code}`);
+      P34U.snapHash = sn.snapshot.hash;
+      const amer = sn.snapshot.products.find((p) => p.id === QC_IDS.amer);
+      if (!amer || typeof amer.priceSatang !== "number") throw new Error("ไม่พบราคาอเมริกาโน่เย็นใน snapshot");
+      const forged = Math.max(100, amer.priceSatang - 1000);
+      const tokJson = await staffSessionJson("owner", DEVICE_ID).catch(() => null);
+      const staffToken = tokJson ? (JSON.parse(tokJson) as { staffToken?: string }).staffToken : undefined;
+      const seq = sn.snapshot.offlineSeq + 500 + (process.pid % 400);
+      const item = {
+        offlineRef: `OFF-${sn.snapshot.offlineCode}-${String(seq).padStart(4, "0")}`,
+        idempotencyKey: `${P34U_KEY_PREFIX}${process.pid}r`,
+        soldAt: new Date().toISOString(),
+        ...(SHIFT.id ? { shiftId: SHIFT.id } : {}),
+        ...(staffToken ? { staffToken } : {}),
+        sellerUserId: owner.userId,
+        snapshotHash: sn.snapshot.hash,
+        sale: { lines: [{ productId: QC_IDS.amer, qty: 1 }], payMethods: [{ type: "CASH" as const, amountSatang: forged }], cashReceivedSatang: forged, expectedGrandTotalSatang: forged },
+      };
+      const r = await off.syncOfflineSales(p34uCtx(), owner, { deviceId: DEVICE_ID, items: [item as never] });
+      const x = r.ok ? r.results[0] : null;
+      if (!x || x.status !== "REJECTED" || !x.offlineSaleId) throw new Error(`บิลราคาปลอม: ${r.ok ? `${x?.status ?? "-"}:${x?.reason ?? "-"}` : r.code}`);
+      P34U.rejectedId = x.offlineSaleId;
+      P34U.log.push(`แถวคิวผู้จัดการ ${x.offlineSaleId} (${item.offlineRef} · ${x.reason})`);
+    }
+    P34U.done = true;
+  } catch (e) {
+    P34U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+async function prepP34u(): Promise<void> {
+  if (!P34U.done) return;
+  await p34uClearSnapRate().catch((e: unknown) => (P34U.error = `ลบ snapshot ล่าสุด: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`));
+}
+/** หลังงาน P3.4U สุดท้าย / finally / สัญญาณ — เรียกซ้ำได้ · ไม่โยน */
+async function cleanupP34u(): Promise<void> {
+  if (P34U.cleaned) return;
+  P34U.cleaned = true;
+  const step = async (what: string, fn: () => Promise<string | void>) => {
+    try {
+      const s = await fn();
+      if (s) P34U.log.push(s);
+    } catch (e) {
+      P34U.ok = false;
+      P34U.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  if (P34U.rejectedId)
+    await step("ทิ้งแถวคิวผู้จัดการ", async () => {
+      const { discardOfflineSale } = await import("@/lib/modules/pos/offline-sync");
+      const r = await discardOfflineSale(p34uCtx(), await ownerActor(), { id: P34U.rejectedId, reason: "ภาพ QC P3.4U เก็บกวาด" });
+      if (!r.ok) throw new Error(r.code);
+      return `ทิ้งแถว ${P34U.rejectedId}`;
+    });
+  if (P34U.flagTouched)
+    await step("คืนธงออฟไลน์", async () => {
+      const { updatePosOfflineEnabled } = await import("@/lib/modules/pos/settings-general");
+      const r = await updatePosOfflineEnabled({ tenantId: T.tenantId, systemId: SYS }, await ownerActor(), { enabled: P34U.flagBefore });
+      if (!r.ok) throw new Error(r.code);
+      return `ธงออฟไลน์คืนเป็น${P34U.flagBefore ? "เปิด" : "ปิด"}`;
+    });
+  await step("ลบ snapshot ของเครื่องรอบนี้", async () => `ลบ snapshot ${(await prisma.posOfflineSnapshot.deleteMany({ where: { tenantId: T.tenantId, unitId, deviceId: DEVICE_ID } })).count} ใบ`);
+}
+/** ค่าในฐาน IndexedDB ของหน้า (meta: snapshot/unlock · queued = จำนวนบิลรอซิงก์) — อ่านไม่ได้ = null */
+async function p34uIdb(page: Any, what: "snapshot" | "unlock" | "queued"): Promise<unknown> {
+  return page
+    .evaluate(
+      (name: string, w: string) =>
+        new Promise((res) => {
+          try {
+            const r = indexedDB.open(name);
+            r.onerror = () => res(null);
+            r.onsuccess = () => {
+              const db = r.result;
+              try {
+                const store = w === "queued" ? "queue" : "meta";
+                if (!db.objectStoreNames.contains(store)) return res(null);
+                const q = w === "queued" ? db.transaction(store, "readonly").objectStore(store).getAll() : db.transaction(store, "readonly").objectStore(store).get(w);
+                q.onsuccess = () => {
+                  const v = q.result as unknown;
+                  db.close();
+                  res(w === "queued" ? (Array.isArray(v) ? v.filter((x: { status?: string }) => x?.status === "queued").length : 0) : v ? true : null);
+                };
+                q.onerror = () => res(null);
+              } catch {
+                res(null);
+              }
+            };
+          } catch {
+            res(null);
+          }
+        }),
+      P34U_DB(),
+      what,
+    )
+    .catch(() => null);
+}
+async function p34uWaitIdb(page: Any, what: "snapshot" | "unlock", why: string, ms = 20_000): Promise<void> {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if ((await p34uIdb(page, what)) === true) return;
+    await sleep(500);
+  }
+  throw new StepError(why);
+}
+/** ตะกร้า (ออนไลน์) → รอ snapshot ของเครื่องลง IndexedDB → ตัดเน็ต → แถบ 19ง ขายได้ (ไม่มีเหตุขายไม่ได้) */
+async function p34uCartThenOffline(page: Any, device: Device): Promise<void> {
+  await addCart3(page, device, true);
+  await p34uWaitIdb(page, "snapshot", "เครื่องไม่ได้ snapshot ราคา (POST /api/pos/sync/snapshot) ภายใน 20 วิ — ธงออฟไลน์/เครื่อง/เพดานอัตรา?");
+  P34U_NET.snapAt = Date.now();
+  await p34uOffline(page, true);
+  await visibleEl(page, tid("pos-reg-offline-live-banner"), 0, 10_000).catch(() => {
+    throw new StepError("ตัดเน็ตแล้วไม่ขึ้นแถบขายออฟไลน์ (pos-reg-offline-live-banner)");
+  });
+  await sleep(400);
+  const gate = (await page.$eval(tid("pos-reg-offline-gate"), (el: Element) => el.textContent ?? "").catch(() => null)) as string | null;
+  if (gate) throw new StepError(`ขายออฟไลน์ไม่ได้: ${gate.slice(0, 120)}`);
+}
+/** เพิ่มอเมริกาโน่ + ลาเต้ ขณะออฟไลน์ (ยอดจาก snapshot) */
+async function p34uAddOffline(page: Any): Promise<void> {
+  if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC");
+  for (const id of [QC_IDS.amer, QC_IDS.latte]) await clickEl(page, tid(`pos-reg-product-${id}`));
+  await expectLines(page, 2);
+}
+/** กล่องชำระออฟไลน์ (เงินสดพอดี / โอน + เลขอ้างอิง) → จอบันทึกแล้ว — คืนเลข OFF */
+async function p34uPay(page: Any, device: Device, tender: "CASH" | "TRANSFER" = "CASH"): Promise<string> {
+  await page
+    .waitForFunction((sel: string) => Array.from(document.querySelectorAll(sel)).some((e) => e.getClientRects().length > 0 && !(e as HTMLButtonElement).disabled), { timeout: 10_000 }, device === "mobile" ? tid("pos-reg-cart-bar-pay") : tid("pos-reg-offline-pay-cash"))
+    .catch(() => {
+      throw new StepError("ปุ่มชำระออฟไลน์ไม่เปิด (ยอด snapshot/ด่านขายออฟไลน์)");
+    });
+  await clickEl(page, tid(device === "mobile" ? "pos-reg-cart-bar-pay" : "pos-reg-offline-pay-cash"));
+  await visibleEl(page, tid("pos-reg-offline-pay"), 0, 10_000);
+  if (tender === "TRANSFER") {
+    await clickEl(page, tid("pos-reg-offline-tender-transfer"));
+    await typeInto(page, tid("pos-reg-offline-reference"), "QC-1234");
+  }
+  await clickEl(page, tid("pos-reg-offline-confirm"));
+  const no = await visibleEl(page, tid("pos-reg-offline-done-no"), 0, 15_000).catch(() => {
+    throw new StepError("บันทึกบิลออฟไลน์ไม่ขึ้นจอเลขชั่วคราว (pos-reg-offline-done)");
+  });
+  const ref = String(await no.evaluate((el: Element) => el.textContent ?? "")).trim();
+  if (!/^OFF-[A-Z0-9]+-\d{4,}$/.test(ref)) throw new StepError(`เลขชั่วคราวผิดรูป: ${ref.slice(0, 40)}`);
+  return ref;
+}
+async function p34uNext(page: Any): Promise<void> {
+  await clickEl(page, tid("pos-reg-offline-next"));
+  await page.waitForFunction((sel: string) => !document.querySelector(sel), { timeout: 10_000 }, tid("pos-reg-offline-done")).catch(() => undefined);
+  await sleep(300);
+}
+async function runP34uState(page: Any, state: P34uKey, device: Device): Promise<void> {
+  if (P34U.error) throw new StepError(`fixture P3.4U: ${P34U.error}`);
+  if (!P34U.done) throw new StepError("fixture P3.4U ยังไม่ได้สร้าง");
+  if (state === "settings-offline-live") {
+    await visibleEl(page, tid("pos-settings-offline"), 0, 15_000).catch(() => {
+      throw new StepError("แท็บออฟไลน์ไม่ขึ้น (pos-settings-offline)");
+    });
+    await page.waitForFunction((sel: string) => document.querySelector(sel)?.getAttribute("aria-checked") === "true", { timeout: 10_000 }, tid("pos-settings-offline-switch")).catch(() => {
+      throw new StepError("สวิตช์ออฟไลน์ไม่ live/ไม่เปิด (pos-settings-offline-switch aria-checked)");
+    });
+    if (P34U.rejectedId)
+      await page.waitForFunction((sel: string) => Number(document.querySelector(sel)?.getAttribute("data-server") ?? "0") > 0, { timeout: 10_000 }, tid("pos-settings-offline-pending")).catch(() => {
+        throw new StepError("รอซิงก์ไม่นับบิลรอผู้จัดการ (pos-settings-offline-pending data-server)");
+      });
+    return;
+  }
+  if (state === "offline-rejected") {
+    if (!P34U.rejectedId) throw new StepError("ไม่มีแถวคิวผู้จัดการของ fixture");
+    await visibleEl(page, tid("pos-shift-offline-queue"), 0, 15_000).catch(() => {
+      throw new StepError("หน้ากะไม่มีการ์ดบิลออฟไลน์รอผู้จัดการ (pos-shift-offline-queue)");
+    });
+    await visibleEl(page, tid(`pos-shift-offline-row-${P34U.rejectedId}`), 0, 10_000);
+    await clickEl(page, tid(`pos-shift-offline-discard-${P34U.rejectedId}`));
+    await visibleEl(page, tid(`pos-shift-offline-reason-${P34U.rejectedId}`), 0, 5_000);
+    return;
+  }
+  if (state === "offline-close-blocked") {
+    // ซิงก์ถูกกั้น: POST /api/pos/sync ตอบ {ok:true, results:[]} (ทุกรายการ = keep · บิลค้างในคิว) — ไม่ใช่ 4xx/5xx (ไม่ให้ console/5xx ปนภาพ)
+    await page.setRequestInterception(true);
+    page.on("request", (rq: Any) => {
+      if (rq.isInterceptResolutionHandled?.()) return;
+      if (rq.method() === "POST" && /\/api\/pos\/sync(\?|$)/.test(String(rq.url()))) void rq.respond({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, results: [] }) }).catch(() => undefined);
+      else void rq.continue().catch(() => undefined);
+    });
+    await page.goto(`${BASE}/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`, { waitUntil: "networkidle2", timeout: 60_000 });
+    await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+    await ensureShift(page);
+    await p34uCartThenOffline(page, device);
+    await p34uPay(page, device);
+    await p34uNext(page);
+    await p34uSpaceBeforeOnline();
+    await p34uOffline(page, false);
+    if ((await p34uIdb(page, "queued")) !== 1) throw new StepError("คิวในเครื่องไม่ใช่ 1 บิลหลังกลับมาออนไลน์ (ซิงก์หลุดการกั้น?)");
+    await page.goto(`${BASE}${p34uPath(state)}`, { waitUntil: "networkidle2", timeout: 60_000 });
+    await visibleEl(page, tid("pos-shift-close-offline-blocked"), 0, 15_000).catch(() => {
+      throw new StepError("หน้ากะไม่ขึ้น \"ซิงก์ก่อนปิดกะ\" (pos-shift-close-offline-blocked) — มีกะเปิดของเครื่องนี้ไหม?");
+    });
+    const dis = (await page.$eval(tid("pos-shift-close-submit"), (el: Element) => (el as HTMLButtonElement).disabled).catch(() => null)) as boolean | null;
+    if (dis !== true) throw new StepError("ปุ่มปิดกะไม่ถูกปิดขณะมีบิลรอซิงก์");
+    return;
+  }
+  // ── หน้าขาย ──
+  await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root)");
+  });
+  await ensureShift(page);
+  if (state === "offline-lock-pin") {
+    const pin = P115.pins[userKey];
+    if (!pin) throw new StepError(`ไม่มี PIN ของ ${userKey} (ข้อมูลภาพ P1.15U)`);
+    await unlockRunPin().catch(() => undefined);
+    await p34uWaitIdb(page, "snapshot", "เครื่องไม่ได้ snapshot ราคาภายใน 20 วิ");
+    await lockFromRegister(page, device);
+    await clickPinDigits(page, pin);
+    await page.waitForFunction((sel: string) => !document.querySelector(sel), { timeout: 15_000 }, tid("pos-lock-screen")).catch(() => {
+      throw new StepError("ปลดล็อกออนไลน์ด้วย PIN ไม่สำเร็จ");
+    });
+    // fix1 F2 (CD-P34U-R2): ตัวตรวจเขียนเฉพาะ STAFF — เจ้าของ/ผู้จัดการปลดออฟไลน์ไม่ได้ (PIN ของคนกลุ่มนี้คือ PIN อนุมัติ)
+    const staffRole = userOf(userKey).role === "STAFF";
+    if (staffRole) await p34uWaitIdb(page, "unlock", "ปลดล็อกออนไลน์แล้วไม่มีตัวตรวจ PIN ออฟไลน์ใน IndexedDB (onPinVerified)");
+    else {
+      await sleep(1500);
+      if ((await p34uIdb(page, "unlock")) === true) throw new StepError(`${userKey} ไม่ใช่ STAFF แต่มีตัวตรวจ PIN ออฟไลน์ใน IndexedDB`);
+    }
+    await p34uOffline(page, true);
+    await visibleEl(page, tid("pos-reg-offline-live-banner"), 0, 10_000);
+    await clickEl(page, tid(device === "mobile" ? "pos-lock-now-mobile" : "pos-lock-now"));
+    await visibleEl(page, tid("pos-lock-screen"), 0, 10_000);
+    const want = staffRole ? "holder" : "unavailable";
+    await visibleEl(page, `${tid("pos-lock-offline-note")}[data-state="${want}"]`, 0, 10_000).catch(() => {
+      throw new StepError(`จอล็อกออฟไลน์ไม่ใช่ ${want} (pos-lock-offline-note data-state)`);
+    });
+    if (!staffRole) return;
+    await clickPinDigits(page, pin.replace(/\d/g, (d) => String((Number(d) + 1) % 10)));
+    await visibleEl(page, tid("pos-lock-message"), 0, 15_000).catch(() => {
+      throw new StepError("PIN ผิดตอนออฟไลน์ไม่ขึ้นข้อความ (pos-lock-message)");
+    });
+    return;
+  }
+  await p34uCartThenOffline(page, device);
+  if (state === "offline-tenders") {
+    if (device === "mobile") await clickEl(page, tid("pos-reg-cart-view"));
+    await visibleEl(page, tid("pos-reg-offline-chips"), 0, 10_000);
+    for (const c of ["points", "coupon", "card", "promptpay"]) await visibleEl(page, tid(`pos-reg-offline-chip-${c}`), 0, 5_000);
+    await visibleEl(page, tid("pos-reg-offline-pay-transfer"), 0, 5_000);
+    return;
+  }
+  const ref1 = await p34uPay(page, device);
+  if (state === "offline-sale") return;
+  if (state === "offline-slip") {
+    await clickEl(page, tid("pos-reg-offline-slip"));
+    const doc = (await page
+      .waitForFunction(() => (document.querySelector('iframe[data-pos-print="1"]') as HTMLIFrameElement | null)?.srcdoc || null, { timeout: 10_000 })
+      .then((h: Any) => h.jsonValue())
+      .catch(() => null)) as string | null;
+    if (!doc) throw new StepError("กดพิมพ์ใบรับเงินชั่วคราวแล้วไม่มีเอกสารพิมพ์ (iframe data-pos-print)");
+    const probs: string[] = [];
+    if (!doc.includes(ref1)) probs.push(`ไม่มีเลข ${ref1}`);
+    if (!/ใบรับเงินชั่วคราว — รอออกเลขจริง|TEMPORARY RECEIPT — AWAITING FINAL NUMBER/.test(doc)) probs.push("ไม่มีหัวใบรับเงินชั่วคราว");
+    if (/\/r\//.test(doc)) probs.push("มีลิงก์/QR /r/");
+    if (/ใบกำกับภาษีอย่างย่อ|ABB/.test(doc.replace(/ใบรับเงินชั่วคราว — รอออกเลขจริง/g, ""))) probs.push("มีคำว่าใบกำกับภาษีอย่างย่อ");
+    if (probs.length) throw new StepError(`สลิปออฟไลน์: ${probs.join(" · ")}`);
+    // fix2: คงออฟไลน์ (สลิปเป็น HTML ในตัว) — ต่อเน็ตกลับ = หน้าดึง snapshot ซ้ำภายใน 60 วิ = 429
+    await page.setContent(doc, { waitUntil: "load" });
+    return;
+  }
+  await p34uNext(page);
+  if (state === "offline-queue") {
+    await p34uAddOffline(page);
+    await p34uPay(page, device, "TRANSFER");
+    await p34uNext(page);
+    await page.waitForFunction((sel: string) => document.querySelector(sel)?.getAttribute("data-count") === "2", { timeout: 10_000 }, tid("pos-reg-offline-badge")).catch(() => {
+      throw new StepError("ป้ายรอซิงก์ไม่ใช่ 2 (pos-reg-offline-badge data-count)");
+    });
+    return;
+  }
+  // offline-sync-back (fix2: เว้น ≥ 60 วิ จาก snapshot ตอนโหลด ก่อนต่อเน็ต — บิลจริง 1 ใบต่อภาพเหมือนเดิม)
+  await p34uSpaceBeforeOnline();
+  await p34uOffline(page, false);
+  await page.waitForFunction((sel: string) => document.querySelector(sel)?.getAttribute("data-state") === "done", { timeout: 45_000 }, tid("pos-reg-offline-sync-strip")).catch(() => {
+    throw new StepError("กลับมาออนไลน์แล้วแถบซิงก์ไม่ถึง \"ซิงก์แล้ว\" ภายใน 45 วิ (pos-reg-offline-sync-strip data-state=done)");
+  });
+  await clickEl(page, `${tid("pos-reg-offline-sync-strip")} ${tid("pos-reg-offline-badge")}`);
+  await visibleEl(page, tid("pos-reg-offline-bills"), 0, 10_000);
+  await visibleEl(page, `${tid(`pos-reg-offline-bill-${ref1}`)}[data-status="synced"]`, 0, 10_000).catch(() => {
+    throw new StepError(`บิล ${ref1} ไม่ได้เลขจริง (ไม่อยู่ในรายการ synced)`);
+  });
+}
+// ◂ POS P3.4U
 
 // ═══════════════════ POS P2.11U ▸ หลายสาขา: fixture + ขั้นตอนของสถานะ (มติ 11) ◂ ═══════════════════
 // fixture (ensureP211uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
@@ -9138,19 +9579,22 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE_DIRS[0]}`],
   }));
   try {
-    if (STATES_ON && jobs.some((j) => j.state && (j.page === "register" || j.page === "tables" || j.state === "display-live" /* POS P2.10 */ || isP29buState(j.state)))) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 }); // POS P2.4U ▸ + tables ◂ · POS P2.9bU ▸ มัดจำ fixture ต้องมีกะของเครื่อง ◂
+    if (STATES_ON && jobs.some((j) => j.state && (j.page === "register" || j.page === "tables" || j.state === "display-live" /* POS P2.10 */ || isP29buState(j.state) || isP34uState(j.state) /* POS P3.4U */))) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 }); // POS P2.4U ▸ + tables ◂ · POS P2.9bU ▸ มัดจำ fixture ต้องมีกะของเครื่อง ◂
     for (const job of jobs) {
       {
         const p = job.page;
         const v = job.v;
-        const page = await browser.newPage();
+        // POS P3.4U ▸ มติ 11: สถานะออฟไลน์ = browser context ใหม่ (IndexedDB/คิวไม่ข้ามสถานะ) — ปิดหลังถ่าย ◂
+        const ctx34 = isP34uState(job.state) ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
+        Object.assign(P34U_NET, { offline: false, suppressed: 0, snapAt: 0 }); // POS P3.4U fix2 ▸ สถานะเครือข่ายต่อภาพ ◂
+        const page = ctx34 ? await ctx34.newPage() : await browser.newPage();
         await pinDevice(
           page,
-          isP210State(job.state) ? P210_DEV /* POS P2.10 */ : job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[isPaydoneState(job.state) ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
+          isP34uState(job.state) ? DEVICE_ID /* POS P3.4U ▸ เครื่องของกะรอบ (หน้ากะ/ตั้งค่าด้วย) ◂ */ : isP210State(job.state) ? P210_DEV /* POS P2.10 */ : job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[isPaydoneState(job.state) ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
         ); // P1.10 U: หน้าตั้งค่าใช้เครื่อง QC 1 (paydone-print = เครื่อง 2 ที่มีกะ) // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         // POS P1.15U ▸ หน้าขาย = โทเคนผู้ขายของเครื่องที่หน้านี้ใช้ (discount-over-sheet = แคชเชียร์ · เพดาน 10%) · ปลดล็อกแถว PIN ที่ lock-pin-locked ตั้งไว้ ◂
-        if ((p === "register" || (p === "tables" && !!job.state) || isPaydoneState(job.state)) && P115.seeded && job.state !== "register-empty-catalogue") { // POS P2.4U ▸ + tables ◂
+        if ((p === "register" || (p === "tables" && !!job.state) || isPaydoneState(job.state) || job.state === "offline-close-blocked" /* POS P3.4U ▸ ขายบนหน้าขายก่อนเปิดหน้ากะ ◂ */) && P115.seeded && job.state !== "register-empty-catalogue") { // POS P2.4U ▸ + tables ◂
           await unlockRunPin().catch(() => undefined);
           const dev = isPaydoneState(job.state) ? SETTINGS_DEVICE_CODES[1] : DEVICE_ID;
           const who: UserKey = job.state === "discount-over-sheet" && P115.pins.cashier ? "cashier" : userKey;
@@ -9178,6 +9622,7 @@ try {
           // POS P2.12U ▸ fix1 F7: "Failed to load resource" ต่อท้าย URL ที่ล้ม (m.location().url) — บรรทัดสถานะบอกได้เลยว่าไฟล์ไหน ◂
           if (m.type() === "error") {
             const txt = String(m.text());
+            if (isP34uState(job.state) && p34uSuppress(txt, String(m.location?.()?.url ?? ""))) return; // POS P3.4U fix2 ▸ ช่วงตัดเน็ตของ harness เท่านั้น ◂
             const at = /Failed to load resource/.test(txt) ? String(m.location?.()?.url ?? "").replace(BASE, "") : "";
             consoleErrors.push(at ? `${txt.slice(0, 120)} @ ${at.slice(0, 200)}` : txt.slice(0, 160));
           }
@@ -9261,6 +9706,14 @@ try {
             console.log(P35U.error ? `  ⚠️ fixture P3.5U: ${P35U.error}` : `  fixture P3.5U: ${P35U.log.join(" · ")}`);
           }
           await prepP35u(page, job.state);
+        }
+        // POS P3.4U ▸ fixture ออฟไลน์ก่อนงานแรกของใบนี้ · ลบ snapshot ล่าสุดของเครื่องทุกงาน (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP34uState(job.state)) {
+          if (!P34U.done && !P34U.error) {
+            await ensureP34uFixture();
+            console.log(P34U.error ? `  ⚠️ fixture P3.4U: ${P34U.error}` : `  fixture P3.4U: ${P34U.log.join(" · ")}`);
+          }
+          await prepP34u();
         }
         // POS P2.11U ▸ fixture หลายสาขาก่อนงานแรกของใบนี้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (isP211uState(job.state) && !P211U.done && !P211U.error) {
@@ -9379,6 +9832,7 @@ try {
         if (job.state && P212U_PRINT.has(job.state)) await page.emulateMediaType(null).catch(() => undefined); // POS P2.12U ▸ คืนสื่อ screen หลังภาพหน้าพิมพ์ ◂
         if (isP212uState(job.state) && job === jobs.filter((j) => isP212uState(j.state)).at(-1)) await cleanupP212u(); // POS P2.12U
         if (isP35uState(job.state) && job === jobs.filter((j) => isP35uState(j.state)).at(-1)) await cleanupP35u(); // POS P3.5U
+        if (isP34uState(job.state) && job === jobs.filter((j) => isP34uState(j.state)).at(-1)) await cleanupP34u(); // POS P3.4U
         if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
         if ((job.state === "table-closed" || job.state === "pre-closed") && P27.pausedNow) await p27Pause(null).catch(() => undefined); // POS P2.7U ▸ คืนพักรับหลังภาพ closed ◂
         if (isP27State(job.state) && job === jobs.filter((j) => isP27State(j.state)).at(-1)) await cleanupP27(); // POS P2.7U
@@ -9401,11 +9855,12 @@ try {
         }
         const ok = statusOk && !stepError && (!judged || (consoleErrors.length === 0 && !ov.over && http5xx.length === 0));
         if (!ok) failures++;
-        shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
+        shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ...(isP34uState(job.state) ? { offlineSuppressed: P34U_NET.suppressed } : {}) /* POS P3.4U fix2 ◂ */, ok });
         console.log(
-          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}${httpErrors.length ? ` · 4xx ${httpErrors.length}: ${httpErrors[0]}` /* POS P2.12U ▸ fix1 F7 ◂ */ : ""}` : ""} → ${file}${pdfNote /* POS P2.12U ▸ pdf probe ◂ */}`,
+          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${isP34uState(job.state) && P34U_NET.suppressed ? ` · ออฟไลน์กรองแล้ว ${P34U_NET.suppressed}` /* POS P3.4U fix2 ◂ */ : ""}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}${httpErrors.length ? ` · 4xx ${httpErrors.length}: ${httpErrors[0]}` /* POS P2.12U ▸ fix1 F7 ◂ */ : ""}` : ""} → ${file}${pdfNote /* POS P2.12U ▸ pdf probe ◂ */}`,
         );
         await page.close();
+        await ctx34?.close().catch(() => undefined); // POS P3.4U ◂
       }
     }
   } finally {
@@ -9419,6 +9874,9 @@ try {
   await cleanupP210(); // POS P2.10 (ก่อนปิดกะ/เพิกถอนเครื่องของรอบ — ยกเลิกจับคู่จอ · ปิดกะ + เพิกถอนเครื่อง P2.10)
   if (P210.log.length) console.error(`${P210.ok ? "🧹" : "⚠️"} P2.10: ${P210.log.join(" · ")}`);
   if (!P210.ok) failures++;
+  await cleanupP34u(); // POS P3.4U (ก่อนปิดกะ/เพิกถอนเครื่อง — ทิ้งแถวคิวผู้จัดการ · คืนธงออฟไลน์ · ลบ snapshot ของเครื่องรอบนี้)
+  if (P34U.log.length) console.error(`${P34U.ok ? "🧹" : "⚠️"} P3.4U: ${P34U.log.join(" · ")}`);
+  if (!P34U.ok) failures++;
   await cleanupP35u(); // POS P3.5U (ก่อนเพิกถอนเครื่อง — ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ)
   if (P35U.log.length) console.error(`${P35U.ok ? "🧹" : "⚠️"} P3.5U: ${P35U.log.join(" · ")}`);
   if (!P35U.ok) failures++;

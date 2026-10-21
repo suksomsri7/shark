@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useLocale, useTranslations } from "next-intl";
 import { formatThaiTime } from "@/lib/ui/date";
 import { useInApp } from "@/lib/ui/use-in-app";
-import { priceCart, type PriceDiscount } from "@/lib/modules/pos/pricing-shared";
+import { priceCart, type PriceCartOk, type PriceDiscount } from "@/lib/modules/pos/pricing-shared"; // POS P3.4U ▸ + PriceCartOk ◂
 import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
 import {
   cartAddProduct,
@@ -138,6 +138,12 @@ import { LockScreen, type LockMode } from "./LockScreen";
 import { ApprovalWaitDialog, type ApprovalPinResult } from "./ApprovalWaitDialog";
 // ชื่อลงท้าย Sheet = ตัวสแกนปุ่ม (F15.3) นับเป็นคอมโพเนนต์กดได้ ⇒ ชื่อแฝงตอนวาง (ปุ่มข้างในมี testid ครบ)
 import { DiscountOverSheet as DiscountOverBox } from "./DiscountOverSheet";
+// POS P3.4U ▸ ขายออฟไลน์ 19ง (มติ 2–7): ชั้น IndexedDB/วงซิงก์ · ชิ้นจอ · ตัวช่วยบริสุทธิ์ (offline-shared = สัญญาใบ S) ◂
+import { useOfflineRegister } from "./use-offline-register";
+import type { OfflineUnlockResult } from "./offline-pin";
+import { OfflineBadge, OfflineBillsDialog, OfflineChips, OfflineDoneDialog, OfflineLiveBanner, OfflinePayDialog, OfflinePayRow, type OfflinePayConfirm } from "./OfflineRegisterParts";
+import { offlineCartTotals, offlineSaleRefusal } from "@/lib/modules/pos/offline-shared";
+import { offlineGateMessageKey, type OfflineQueueRecord, type OfflineSlipLine } from "@/lib/modules/pos/offline-client-shared";
 import { useIdleLock } from "./use-idle-lock";
 // POS P1.10 U ▸ heartbeat ของเครื่องนี้ → ชื่อเครื่อง + printerConfig (พิมพ์ใบเสร็จ · ชิปแถบล่าง) · เครื่องถูกเพิกถอน = แถบแดงค้าง + ล็อกปุ่มชำระ ◂
 import { heartbeatAction } from "@/lib/modules/pos/device-actions";
@@ -184,6 +190,8 @@ export type RegisterScreenProps = {
   tableSessionId?: string | null;
   /** POS P2.4U ▸ มติ 1/6 (Q5): registerTableMode ของสาขา (เซิร์ฟเวอร์อ่านตอนโหลดหน้า) — visible = แท็บ "โต๊ะ" เป็นลิงก์ · tableCount > 0 = ชิป "ทานที่ร้าน" ◂ */
   tableMode?: { visible: boolean; tableCount: number } | null;
+  /** POS P3.4U ▸ มติ 1: settings.pos.offline.enabled (หน้าเพจส่ง posOfflineEnabled) — ปิด/ไม่ส่ง = จอแบบวันนี้ทุกพิกเซล ◂ */
+  offlineEnabled?: boolean;
 };
 
 /** ns "member" = คีย์ใต้ pos.member (P1.12U) · "recipe" = ใต้ pos.recipe (POS P2.3U) · ไม่ระบุ = ใต้ pos.register */
@@ -225,7 +233,11 @@ type Layer =
   | { kind: "billStrip" }
   | { kind: "tablePick" }
   // POS P2.9bU ▸ มติ 5: แผ่นรับมัดจำ (rcvKey = คีย์กันซ้ำของการเปิดแผ่นครั้งนี้ — ออกที่ openDepositReceive) ◂
-  | { kind: "depositReceive"; rcvKey: string };
+  | { kind: "depositReceive"; rcvKey: string }
+  // POS P3.4U ▸ มติ 3–5: กล่องชำระออฟไลน์ · จอหลังบันทึก (เลข OFF + สลิป · ปิดด้วยปุ่มเท่านั้น) · รายการบิลออฟไลน์ของเครื่อง ◂
+  | { kind: "offlinePay"; tender: "CASH" | "TRANSFER" }
+  | { kind: "offlineDone"; rec: OfflineQueueRecord }
+  | { kind: "offlineBills" };
 /**
  * POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานของบิลนี้: pin = PIN ผู้จัดการที่เครื่อง (ส่งพร้อม submit · heldCartId = บิลส่วนลดที่พักรอ) ·
  * approved = เรียกคืนบิลพักที่อนุมัติแล้ว (quote ด้วยเพดานที่อนุมัติ · ใช้ได้เฉพาะตะกร้าเดิมทุกไบต์ — inputJson) ◂
@@ -379,6 +391,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [status, setStatus] = useState<RegisterStatus | null>(props.initialStatus);
   const synced = () => setLastSyncAt(new Date());
+  const offKickRef = useRef<(() => void) | null>(null); // POS P3.4U ▸ มติ 5: heartbeat/สถานะผ่าน = กระตุ้นวงซิงก์ ◂
 
   // ═══════ P1.5 บิลที่พักของสาขา (ป้ายจำนวน + ลิ้นชัก) ═══════
   const [heldItems, setHeldItems] = useState<HeldCartSummary[] | null>(null);
@@ -655,9 +668,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setLockFlag(true);
     setLockedAt(new Date());
   }, []);
+  // ═══════ POS P3.4U ▸ ชั้นออฟไลน์ (มติ 2 5 7 8): snapshot · คิว · วงซิงก์ · ตัวตรวจ PIN ออฟไลน์ ◂ ═══════
+  const off = useOfflineRegister({ systemId, unitId, userId, enabled: !!props.offlineEnabled, online, deviceId, deviceActive: status?.deviceStatus === "ACTIVE", canSell: limits.canSell });
+  offKickRef.current = off.kick;
   /** คำขอใดตอบ STAFF_TOKEN_INVALID ⇒ ลบโทเคน + ล็อก (ไม่ถอยไปใช้ผู้ใช้ session) */
   const staffTokenDead = () => {
     clearStaffSession(deviceId);
+    void off.wipeSecrets(); // POS P3.4U ▸ มติ 2 7: โทเคนตาย = ล้าง snapshot + ตัวตรวจ PIN ออฟไลน์ (คิวคงไว้) ◂
     setStaff(null);
     setLockedAt(new Date());
     showToast({ key: "errors.staffTokenInvalid" });
@@ -856,6 +873,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         setStatus(r);
         synced();
         setDeviceKnown(true); // POS P1.15U ▸ จอล็อกรู้สถานะทะเบียนเครื่องแล้ว ◂
+        offKickRef.current?.(); // POS P3.4U ▸ มติ 5 ◂
       }
       void refreshDevice();
     } catch {
@@ -1198,8 +1216,32 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
   const payAmount = quoteSlow && !quoteFresh ? tc("loading") : totalsPending ? PENDING : moneyText(cart.lines.length ? lastAmount : 0);
 
+  // ═══════ POS P3.4U ▸ ขายออฟไลน์ (19ง · มติ 3): เปิดธง + ออฟไลน์ = ยอดจาก snapshot (offlineCartTotals) · เงินสด/โอน · walk-in เท่านั้น ═══════
+  const offMode = !!props.offlineEnabled && !online && !tableOn;
+  const offTotals = useMemo(() => (offMode && off.snapshot && cart.lines.length ? offlineCartTotals(off.snapshot, cartToQuoteInput(cart)) : null), [offMode, off.snapshot, cart]);
+  const offWalkIn = !cart.memberId && !cart.couponCode && !taxInv;
+  const offBlockKey: string | null = !offMode
+    ? null
+    : !off.gate.ok
+      ? offlineGateMessageKey(off.gate.reason)
+      : !offWalkIn
+        ? "offline.walkInOnly"
+        : offTotals && !offTotals.ok
+          ? offTotals.code === "DISCOUNT_EXCEEDS_LIMIT"
+            ? "offline.discountOver"
+            : "offline.cartRefused"
+          : discountOverCap
+            ? "offline.discountOver"
+            : null;
+  const offPayEnabled = offMode && !offBlockKey && !!offTotals?.ok && offTotals.grandTotalSatang > 0 && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked && !deviceRevoked;
+  const offAmount = offTotals?.ok ? moneyText(offTotals.grandTotalSatang) : moneyText(0);
+  // ◂ POS P3.4U
   // ข้อความใต้ยอด: ออฟไลน์ > ไม่มีสิทธิ์ > quote ล้ม
-  const errorMsg: Msg | null = !online
+  const errorMsg: Msg | null = offMode /* POS P3.4U ▸ เปิดธง: เหตุที่ขายออฟไลน์ไม่ได้แทน "ชำระได้เมื่อออนไลน์" ◂ */
+    ? offBlockKey && cart.lines.length
+      ? { key: offBlockKey }
+      : null
+    : !online
     ? { key: "errors.offline" }
     : !limits.canSell
       ? { key: "errors.permissionDenied" }
@@ -1758,8 +1800,142 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setDiscErr(null);
   };
 
+  // ═══════ POS P3.4U ▸ ชำระออฟไลน์ (มติ 3 4): กล่องเงินสด/โอน → คิวของเครื่อง (เลข OFF ใน transaction เดียว) → จอเลข OFF + สลิป ═══════
+  const [offBusy, setOffBusy] = useState(false);
+  const [offErr, setOffErr] = useState<string | null>(null);
+  const offShop = { name: props.tenantName, branchName: props.units.find((u) => u.id === unitId)?.name ?? "" };
+  const offLocale: "th" | "en" = locale.startsWith("en") ? "en" : "th";
+  /** บรรทัดสลิป (ชื่อตามภาษาจอ · ตัวเลือก · ราคาจาก snapshot) — ไม่มีต้นทุน */
+  const offSlipLines = (lines: RegisterQuoteInput["lines"], totals: PriceCartOk): OfflineSlipLine[] =>
+    lines.map((raw, i) => {
+      const l = raw as { productId?: string; name?: string; qty: number; options?: { choiceId: string }[]; weightGrams?: number };
+      const pl = totals.lines[i];
+      const prod = l.productId ? known.current.get(l.productId) : undefined;
+      const snapProd = l.productId ? off.snapshot?.products.find((x) => x.id === l.productId) : undefined;
+      const name = l.productId ? (prod ? displayName(prod, locale) : snapProd ? displayName(snapProd, locale) : (heldNames.current.get(l.productId) ?? "-")) : (l.name ?? "-");
+      const options = (l.options ?? []).map((o) => optionNames.current.get(o.choiceId) ?? snapProd?.choices.find((c) => c.choiceId === o.choiceId)?.name ?? "").filter(Boolean);
+      return { name, qty: l.qty, unitPriceSatang: (pl?.unitPriceSatang ?? 0) + (pl?.optionDeltaSatang ?? 0), discountSatang: pl?.discountSatang ?? 0, lineTotalSatang: pl?.lineTotalSatang ?? 0, options, ...(l.weightGrams ? { weightGrams: l.weightGrams } : {}) };
+    });
+  /** ระเบียนคิวของบิล (R4) — โทเคนผู้ขายระดับรายการ (ไม่อยู่ใน sale) · ผู้ขายที่อ้าง = คนในโทเคน ไม่งั้นผู้ใช้ session · กะ = กะของเครื่องที่รู้ล่าสุด */
+  const offRecOf =
+    (sale: OfflineQueueRecord["sale"], idempotencyKey: string, totals: PriceCartOk, token: string | undefined) =>
+    (ref: string): OfflineQueueRecord => {
+      const cash = sale.payMethods.find((m) => m.type === "CASH");
+      const received = sale.cashReceivedSatang ?? cash?.amountSatang ?? 0;
+      const change = cash ? Math.max(0, received - cash.amountSatang) : 0;
+      const st = staffRef.current;
+      return {
+        offlineRef: ref,
+        idempotencyKey,
+        soldAt: new Date().toISOString(),
+        ...(status?.shift?.id ? { shiftId: status.shift.id } : {}),
+        ...(token ? { staffToken: token } : {}),
+        sellerUserId: st?.userId ?? userId,
+        snapshotHash: off.snapshot?.hash ?? "",
+        sale,
+        userId,
+        deviceId: deviceId ?? "",
+        status: "queued",
+        totalSatang: totals.grandTotalSatang,
+        tender: cash ? "CASH" : "TRANSFER",
+        changeSatang: change,
+        slipLines: offSlipLines(sale.lines, totals),
+        totals,
+        payments: sale.payMethods.map((m) => ({ type: m.type === "CASH" ? "CASH" : "TRANSFER", amountSatang: m.amountSatang, ...(m.type === "CASH" ? { tenderedSatang: received, changeSatang: change } : {}), ...(m.reference ? { reference: m.reference } : {}) })),
+        ...(st?.name ? { cashierName: st.name } : {}),
+      };
+    };
+  const openOfflinePay = (tender: "CASH" | "TRANSFER") => {
+    if (!offPayEnabled || layersRef.current.some((l) => l.kind === "offlinePay" || l.kind === "pay")) return;
+    setOffErr(null);
+    setLayers((s) => [...s, { kind: "offlinePay", tender }]);
+  };
+  const openOfflineBills = () => {
+    if (!layersRef.current.some((l) => l.kind === "offlineBills")) push({ kind: "offlineBills" });
+  };
+  const confirmOffline = async (c: OfflinePayConfirm) => {
+    if (offBusy || !offPayEnabled || !offTotals?.ok || !off.snapshot) return;
+    if (lockedRef.current) return;
+    if (!staffRef.current && !noPinMode) {
+      lockNow();
+      return;
+    }
+    const total = offTotals.grandTotalSatang;
+    const received = c.tender === "CASH" ? Math.max(c.receivedSatang ?? total, total) : undefined;
+    const full = cartToSubmitInput(cart, {
+      idempotencyKey: idemKey,
+      payMethods: [{ type: c.tender, amountSatang: total, ...(c.reference ? { reference: c.reference } : {}) }],
+      ...(received !== undefined ? { cashReceivedSatang: received } : {}),
+      ...(cart.note ? { note: cart.note } : {}),
+      expectedGrandTotalSatang: total,
+    });
+    const { idempotencyKey, staffToken: _tok, ...sale } = full;
+    void _tok;
+    if (offlineSaleRefusal(sale)) {
+      setOffErr("offline.cartRefused");
+      return;
+    }
+    setOffBusy(true);
+    setOffErr(null);
+    try {
+      const rec = await off.enqueue(offRecOf(sale, idempotencyKey, offTotals, staffRef.current?.staffToken));
+      if (!rec) {
+        setOffErr("offline.sheet.failed");
+        return;
+      }
+      setLayers([{ kind: "offlineDone", rec }]);
+    } finally {
+      setOffBusy(false);
+    }
+  };
+  // กลับมาออนไลน์ระหว่างกล่องชำระออฟไลน์เปิด = ปิดกล่อง (ชำระทางปกติแทน)
+  useEffect(() => {
+    if (!offMode) setLayers((s) => (s.some((l) => l.kind === "offlinePay") ? s.filter((l) => l.kind !== "offlinePay") : s));
+  }, [offMode]);
+  // มติ 3: บิลออนไลน์ที่ผลยังไม่แน่ใจ (unknown) ตอนเน็ตหลุด = ย้ายเข้าคิวออฟไลน์ด้วยคีย์เดิม (ไม่ออกคีย์ใหม่) — เฉพาะบิลที่ขายออฟไลน์ได้ (เงินสด/โอน · walk-in)
+  const movingUnknown = useRef(false);
+  useEffect(() => {
+    const pend = pendingSubmit.current;
+    if (!offMode || payPhase !== "unknown" || !pend || !off.snapshot || !off.gate.ok || movingUnknown.current) return;
+    const { idempotencyKey, staffToken, ...sale } = pend;
+    if (offlineSaleRefusal(sale)) return;
+    const totals = offlineCartTotals(off.snapshot, sale);
+    if (!totals.ok) return;
+    // fix1 F5: ย้ายเฉพาะเมื่อ Σ วิธีชำระของบิลเดิม == ยอดจาก snapshot (ไม่งั้นสลิปชั่วคราวยอดไม่ตรงเงินที่รับ) — ไม่ตรง = คงสถานะไม่แน่ใจไว้
+    if (sale.payMethods.reduce((t, m) => t + m.amountSatang, 0) !== totals.grandTotalSatang) return;
+    movingUnknown.current = true;
+    void (async () => {
+      try {
+        const rec = await off.enqueue(offRecOf(sale, idempotencyKey, totals, staffToken));
+        if (!rec) return;
+        pendingSubmit.current = null;
+        clearPending();
+        setPayPhase("form");
+        setLayers([{ kind: "offlineDone", rec }]);
+        showToast({ key: "offline.unknownMoved", values: { ref: rec.offlineRef } });
+      } finally {
+        movingUnknown.current = false;
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = ออฟไลน์ × ผลไม่แน่ใจ × snapshot/ด่าน
+  }, [offMode, payPhase, off.snapshot, off.gate.ok]);
+  /** มติ 7: ปลดล็อกออฟไลน์ — เฉพาะคนในโทเคนที่ยังไม่หมดอายุ (ไม่สลับคน) · สำเร็จ = จอขายต่อด้วยโทเคนเดิม */
+  const offTryUnlock = async (secret: string): Promise<OfflineUnlockResult> => {
+    const st = staffRef.current;
+    if (!st || !(Date.parse(st.expiresAt) > Date.now())) return { ok: false, code: "OFFLINE_UNLOCK_UNAVAILABLE" };
+    const r = await off.tryUnlock(st.userId, secret);
+    if (r.ok) {
+      setLockFlag(false);
+      setLockedAt(null);
+    }
+    return r;
+  };
+  const offHolder = staff && off.unlockHolder && off.unlockHolder.userId === staff.userId ? { userId: staff.userId, name: staff.name, role: staff.role, locked: off.unlockHolder.locked } : null;
+  // ◂ POS P3.4U
+
   // ═══════ ชำระเงิน ═══════
   const openPay = () => {
+    if (offMode) return openOfflinePay("CASH"); // POS P3.4U ▸ มติ 3: ออฟไลน์ (เปิดธง) = กล่องชำระออฟไลน์ (F4 · ปุ่มแถบตะกร้ามือถือ) ◂
     // B2.2 S2: กล่องชำระเปิดอยู่แล้ว = ไม่ทำอะไร (แตะรัว/F4+คลิก ห้ามซ้อนกล่อง และห้ามล้าง error ของกล่องที่เปิดอยู่)
     if (!payEnabled || layersRef.current.some((l) => l.kind === "pay")) return;
     setPayError(null);
@@ -2220,7 +2396,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ═══════ แป้นลัด: ตัวจับเดียวบน window (สเปก §3.6) ═══════
   const keyState = useRef({ top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen, locked });
-  keyState.current = { top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen, locked };
+  keyState.current = { top, payEnabled: payEnabled || offPayEnabled /* POS P3.4U ▸ F4 = ชำระออฟไลน์ ◂ */, q, cartLen: cart.lines.length, payPhase, frozen, locked };
   const handlers = useRef({ openPay, onHold, pop, push, setQ });
   handlers.current = { openPay, onHold, pop, push, setQ };
   useEffect(() => {
@@ -2250,7 +2426,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         if (s.top) {
           // ปิดชั้นบนสุด · ระหว่างส่ง/ไม่แน่ใจ/บิลซ้ำ = ห้ามปิด (สเปก §3.4 ข้อ 3, 6)
           if (s.top.kind === "pay" && s.payPhase !== "form") return;
-          if (s.top.kind === "done") return; // ปิดด้วย "ขายบิลถัดไป" เท่านั้น
+          if (s.top.kind === "done" || s.top.kind === "offlineDone") return; // ปิดด้วย "ขายบิลถัดไป" เท่านั้น // POS P3.4U ▸ + offlineDone ◂
           e.preventDefault();
           h.pop();
           return;
@@ -2402,12 +2578,17 @@ export function RegisterScreen(props: RegisterScreenProps) {
         </button>
       </>
     ) : null;
+  // POS P3.4U ▸ มติ 3 (19ง): ชิป + แถวชำระออฟไลน์ (โหนดแยก — ปุ่มซ้อนในพร็อพทำให้ตัวสแกน F15.3 นับ CartPanel เป็นปุ่ม) ◂
+  const offChipsNode = offMode ? <OfflineChips /> : null;
+  const offPayNode = (sheet: boolean) => (offMode ? <OfflinePayRow amount={offAmount} enabled={offPayEnabled} sheet={sheet} onCash={() => openOfflinePay("CASH")} onTransfer={() => openOfflinePay("TRANSFER")} /> : null);
   const cartPanel = (variant: "inline" | "sheet") => (
     <CartPanel
       variant={variant}
       lines={lineModels}
-      totals={cart.lines.length ? shownTotals : null}
-      totalsPending={totalsPending}
+      totals={cart.lines.length ? (offMode ? (offTotals?.ok ? offTotals : null) : shownTotals) /* POS P3.4U ◂ */ : null}
+      totalsPending={offMode ? false : totalsPending}
+      offlineChips={offChipsNode}
+      offlinePay={offPayNode(variant === "sheet")}
       payAmount={payAmount}
       payEnabled={payEnabled}
       error={tableRetryNode ?? errorNode} // POS P2.4U ▸ มติ 4: BUSY = ปุ่มลองอีกครั้ง ◂
@@ -2789,6 +2970,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
             onRekey={() => setMemberFormKey(newKey())}
           />
         );
+      // POS P3.4U ▸ มติ 3–5 ◂
+      case "offlinePay":
+        return offTotals?.ok ? <OfflinePayDialog key={k} totalSatang={offTotals.grandTotalSatang} tender={l.tender} busy={offBusy} errorKey={offErr} onConfirm={(c) => void confirmOffline(c)} onClose={pop} /> : null;
+      case "offlineDone":
+        return <OfflineDoneDialog key={k} rec={l.rec} shop={offShop} printer={printer} locale={offLocale} onNext={nextSale} />;
+      case "offlineBills":
+        return <OfflineBillsDialog key={k} systemId={systemId} queue={off.queue} synced={off.synced} online={online} syncing={off.syncing} shop={offShop} printer={printer} locale={offLocale} onSyncNow={off.kick} onClose={pop} />;
       case "done":
         return (
           <PayDone
@@ -2914,10 +3102,21 @@ export function RegisterScreen(props: RegisterScreenProps) {
         {/* POS P2.4U ▸ มติ 1: แท็บ "โต๊ะ" เป็นลิงก์เมื่อสาขามีโหมดโต๊ะ ◂ */}
         {/* POS P2.8U ▸ มติ 1: unitId = ลิงก์แท็บออเดอร์ของสาขานี้ + ป้ายนับออเดอร์ใหม่ (ดึงทุก 10 วิ ขณะแถบ mount) ◂ */}
         <ModeTabsNav systemId={systemId} tablesHref={tableModeNow?.visible || tableOn ? tablesHref : null} unitId={unitId} onDepositReceive={openDepositReceive} />
-        {!online && (
+        {!online && !props.offlineEnabled /* POS P3.4U ▸ มติ 1: ปิดธง = แถบเดิมทุกพิกเซล ◂ */ && (
           <div data-testid="pos-reg-offline-banner" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-ink)] px-5 py-[13px] text-[14px] leading-[1.5] text-[color:var(--color-surface)]" role="status">
             <RegisterIcon name="warn" size={18} />
             <span>{t("status.offlineBanner", { time: formatThaiTime(offlineSince ?? new Date()) })}</span>
+          </div>
+        )}
+        {/* POS P3.4U ▸ มติ 3 5 (19ง): เปิดธง + ออฟไลน์ = แถบขายต่อได้ · กลับมาออนไลน์ระหว่างมีคิว/เพิ่งซิงก์ = แถบซิงก์ + ป้ายรอซิงก์ (คิวในเครื่อง) ◂ */}
+        {!online && props.offlineEnabled && (
+          <OfflineLiveBanner since={offlineSince} pending={off.queued} parked={off.parked} lastRef={off.lastRef} gateKey={off.gate.ok ? null : offlineGateMessageKey(off.gate.reason)} onBadge={openOfflineBills} />
+        )}
+        {online && props.offlineEnabled && (off.queue.length > 0 || off.recentSync) && (
+          <div data-testid="pos-reg-offline-sync-strip" data-state={off.syncing ? "syncing" : off.queued > 0 ? "waiting" : "done"} className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[7px] text-[13.5px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name="swap" size={16} />
+            <span className="min-w-0 flex-1">{t(off.syncing ? "offline.strip.syncing" : off.queued > 0 ? "offline.strip.waiting" : "offline.strip.done")}</span>
+            <OfflineBadge pending={off.queued} parked={off.parked} onOpen={openOfflineBills} />
           </div>
         )}
 
@@ -3005,8 +3204,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
               <MobileCartBar
                 peek={peek}
                 count={cart.lines.length}
-                totalText={payAmount}
-                payEnabled={tableOn ? tbl.phase === "ready" && cart.lines.length > 0 && !tblBusy : payEnabled}
+                totalText={offMode ? offAmount : payAmount /* POS P3.4U ◂ */}
+                payEnabled={tableOn ? tbl.phase === "ready" && cart.lines.length > 0 && !tblBusy : offMode ? offPayEnabled /* POS P3.4U ◂ */ : payEnabled}
                 empty={cart.lines.length === 0}
                 onOpen={() => push({ kind: "sheet" })}
                 onPay={tableOn ? () => void tableRun(true) : openPay}
@@ -3019,7 +3218,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
         <RegisterStatusBar
           pendingStock={status?.pendingStockCount ?? 0}
-          pendingSync={status?.pendingSyncCount ?? 0}
+          pendingSync={props.offlineEnabled ? off.queued : (status?.pendingSyncCount ?? 0) /* POS P3.4U ▸ มติ 5: เปิดธง = คิวในเครื่อง ◂ */}
           device={
             device === undefined
               ? undefined
@@ -3085,6 +3284,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
           onCancel={noPinMode ? () => setLockFlag(false) : undefined}
           onStaffChanged={() => void refreshPins()}
           onUnlocked={(n) => void onUnlocked(n)}
+          // POS P3.4U ▸ มติ 7: PIN ออฟไลน์ — เปิดธงเท่านั้น (ปลดได้เฉพาะคนในโทเคน · ตัวตรวจเขียนตอนปลดออนไลน์สำเร็จ) ◂
+          offline={props.offlineEnabled ? { holder: offHolder, tryUnlock: offTryUnlock } : undefined}
+          onPinVerified={props.offlineEnabled ? off.rememberUnlock : undefined}
         />
       )}
     </div>

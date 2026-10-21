@@ -235,86 +235,105 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
     if (!dev) return refuse("DEVICE_NOT_FOUND", "ไม่พบเครื่องขายนี้ในสาขา");
     if (dev.status !== "ACTIVE") return refuse("DEVICE_REVOKED", "เครื่องนี้ถูกเพิกถอนแล้ว");
     const now = nowOf(opts);
-    // POS P3.4 ▸ fix2 N8 (CD-P34i): 1 ใบต่อเครื่องต่อ 60 วิ (ยกเว้นเลยขอบ priceValidUntil ของใบล่าสุดแล้ว) — กันเดินแคตตาล็อกซ้ำ + กันไล่ตัด snapshot ที่ยังใช้ ◂
-    {
-      const lastSnap = await db.posOfflineSnapshot.findFirst({
-        where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, issuedAt: { gt: new Date(now.getTime() - SNAPSHOT_MIN_INTERVAL_MS) } },
-        orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
-        select: { priceMap: true },
-      });
-      const pvuLast = isRecord(lastSnap?.priceMap) ? (lastSnap.priceMap as Record<string, unknown>).$priceValidUntil : null;
-      if (lastSnap && !(typeof pvuLast === "string" && Date.parse(pvuLast) <= now.getTime())) return refuse("RATE_LIMITED", "เพิ่งออกราคาให้เครื่องนี้ไป — รอสักครู่แล้วลองใหม่");
-    }
-    const rc = baseCtx(c);
-    // สินค้า (แม่) ทุกหน้า + ตัวเลือก/ตัวแปร
-    const parents: RegisterProduct[] = [];
-    let pvu: string | null = null;
-    let cursor: string | undefined;
-    for (let page = 0; page < SNAPSHOT_MAX_PAGES; page++) {
-      const r = await registerCatalog(rc, sc.actor, { limit: SNAPSHOT_PAGE, ...(cursor ? { cursor } : {}) }, db);
-      if (!r.ok) return refuse(r.code, r.message);
-      parents.push(...r.products);
-      if (r.priceValidUntil && (!pvu || r.priceValidUntil < pvu)) pvu = r.priceValidUntil;
-      if (!r.nextCursor) break;
-      cursor = r.nextCursor;
-    }
-    const products: OfflineSnapshotProduct[] = [];
-    for (const p of parents) {
-      if (p.optionGroupCount === 0 && p.variantCount === 0) {
-        products.push(pickProduct(p, [], []));
-        continue;
-      }
-      const o = await registerProductOptions(rc, sc.actor, { productId: p.id }, db);
-      if (!o.ok) continue;
-      const choices: OfflineSnapshotChoice[] = o.groups.flatMap((g) => g.choices.map((x) => ({ choiceId: x.choiceId, groupId: g.groupId, name: x.name, priceDeltaSatang: x.priceDeltaSatang })));
-      const groups = o.groups.map((g) => ({ groupId: g.groupId, name: g.name, nameEn: g.nameEn, minSelect: g.minSelect, maxSelect: g.maxSelect, choices: g.choices.map((x) => ({ choiceId: x.choiceId, name: x.name, nameEn: x.nameEn, priceDeltaSatang: x.priceDeltaSatang, isDefault: x.isDefault, unavailable: x.unavailable })) }));
-      products.push(pickProduct(p, choices, groups));
-      const kidIds = o.variants.map((v) => v.id);
-      for (let i = 0; i < kidIds.length; i += 200) for (const k of await registerProductsByIds(rc, sc.actor, kidIds.slice(i, i + 200), db)) products.push(pickProduct(k, choices, groups));
-    }
-    const vat = await registerVatConfig(rc, db);
-    if (!vat.ok) return refuse(vat.code, vat.message);
-    const pay = await posPaymentSettings({ tenantId: c.tenantId, systemId: c.systemId }, db);
-    const serviceChargeBp = pay.ok && pay.serviceCharge.enabled ? pay.serviceCharge.rateBp : 0;
-    const offlineCode = await ensureOfflineCode(db, c, dev);
-    // หลักฐานราคา (R6): productId → ราคาหน้าร้าน (ต่อกก. ของสินค้าชั่ง) · choiceId → ส่วนต่าง
-    // "$priceValidUntil" = ขอบโปรถัดไปของ snapshot (ทางราคา snapshot ใช้ได้ถึงขอบนี้ + 15 นาที · มติ 6) — คีย์ขึ้นต้น $ ไม่ชน id สินค้า/ตัวเลือก
-    const priceMap: Record<string, number | string | null> = { $priceValidUntil: pvu };
-    for (const p of products) {
-      if (typeof p.priceSatang === "number") priceMap[p.id] = p.priceSatang;
-      for (const ch of p.choices) priceMap[ch.choiceId] = ch.priceDeltaSatang;
-    }
-    const issuedAt = now.toISOString();
-    const body = { vat: { mode: vat.mode, rateBp: vat.rateBp }, serviceChargeBp, products };
-    const hash = sha(`${c.unitId}|${dev.deviceCode}|${issuedAt}|${stable(body)}`).slice(0, 32);
+    // POS P3.4U ▸ CD-P34U-3 (hunter N11 · R3 H1 — ฮังก์ฝั่งเซิร์ฟเวอร์ฮังก์เดียวของใบ U): ล็อก advisory ต่อเครื่อง (pg_try_advisory_xact_lock) ครอบ
+    //   ตรวจเพดานอัตรา → เดินแคตตาล็อก → บันทึก snapshot → ตัดของเก่า ใน transaction เดียว · ล็อกไม่ได้ (มีคำขอของเครื่องนี้ค้างอยู่) = RATE_LIMITED ทันที
+    //   (คำขอพร้อมกัน N ตัวเดินแคตตาล็อกได้ตัวเดียว · ไม่มีใบซ้อนภายใน 60 วิ) · บันทึกด้วย createMany skipDuplicates (ชนแล้ว tx ไม่ abort) ·
+    //   ตัดของเก่า: เก็บ 2 ล่าสุด ∪ ภายใน 48 ชม. (เพดาน 200 ใบใหม่สุด) ∪ ใบ "เก่าสุด" ภายใน 48 ชม. ∪ hash ที่รายการค้างอ้าง — การยิงออกซ้ำ ~200 ครั้งไม่ไล่ตัดใบที่บิลในเครื่องยังใช้
+    const SNAPSHOT_MAX_IN_FLIGHT = 3;
+    const lockKey = `pos-off-snap:${c.tenantId}:${c.unitId}:${dev.deviceCode}`;
+    //   fix1 F1 (CD-P34U-R1): เพดานคำขอออก snapshot พร้อมกัน ≤ 3 ต่อโปรเซส (ตัวนับระดับโปรเซสบน globalThis) ตรวจ "ก่อน" $transaction —
+    //   tx ถือการเชื่อมต่อค้างตลอดการเดินแคตตาล็อก (อ่านผ่าน db) ⇒ ไม่จำกัด = คำขอพร้อมกัน ≥ 10 กินพูลทั้งโปรเซส · เกินเพดาน = RATE_LIMITED (จอถอยเวลาอยู่แล้ว)
+    const snapSem = ((globalThis as unknown as { __posOfflineSnapshotInFlight?: { n: number } }).__posOfflineSnapshotInFlight ??= { n: 0 });
+    if (snapSem.n >= SNAPSHOT_MAX_IN_FLIGHT) return refuse("RATE_LIMITED", "ระบบกำลังออกราคาให้หลายเครื่อง — รอสักครู่แล้วลองใหม่");
+    snapSem.n += 1;
     try {
-      await db.posOfflineSnapshot.create({ data: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, issuedAt: now, priceMap, hash } });
-    } catch (e) {
-      if ((e as { code?: unknown } | null)?.code !== "P2002") throw e; // ออกซ้ำเนื้อหาเดิมเวลาเดิม = แถวเดิม
+    return await db.$transaction(
+      async (tx): Promise<OfflineSnapshotResult> => {
+        const got = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS ok`;
+        if (got[0]?.ok !== true) return refuse("RATE_LIMITED", "เพิ่งออกราคาให้เครื่องนี้ไป — รอสักครู่แล้วลองใหม่");
+        // POS P3.4 ▸ fix2 N8 (CD-P34i): 1 ใบต่อเครื่องต่อ 60 วิ (ยกเว้นเลยขอบ priceValidUntil ของใบล่าสุดแล้ว) — กันเดินแคตตาล็อกซ้ำ + กันไล่ตัด snapshot ที่ยังใช้ ◂
+        {
+          const lastSnap = await tx.posOfflineSnapshot.findFirst({
+            where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, issuedAt: { gt: new Date(now.getTime() - SNAPSHOT_MIN_INTERVAL_MS) } },
+            orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
+            select: { priceMap: true },
+          });
+          const pvuLast = isRecord(lastSnap?.priceMap) ? (lastSnap.priceMap as Record<string, unknown>).$priceValidUntil : null;
+          if (lastSnap && !(typeof pvuLast === "string" && Date.parse(pvuLast) <= now.getTime())) return refuse("RATE_LIMITED", "เพิ่งออกราคาให้เครื่องนี้ไป — รอสักครู่แล้วลองใหม่");
+        }
+        const rc = baseCtx(c);
+        // สินค้า (แม่) ทุกหน้า + ตัวเลือก/ตัวแปร (อ่านผ่าน db — tx ถือแค่ล็อก)
+        const parents: RegisterProduct[] = [];
+        let pvu: string | null = null;
+        let cursor: string | undefined;
+        for (let page = 0; page < SNAPSHOT_MAX_PAGES; page++) {
+          const r = await registerCatalog(rc, sc.actor, { limit: SNAPSHOT_PAGE, ...(cursor ? { cursor } : {}) }, db);
+          if (!r.ok) return refuse(r.code, r.message);
+          parents.push(...r.products);
+          if (r.priceValidUntil && (!pvu || r.priceValidUntil < pvu)) pvu = r.priceValidUntil;
+          if (!r.nextCursor) break;
+          cursor = r.nextCursor;
+        }
+        const products: OfflineSnapshotProduct[] = [];
+        for (const p of parents) {
+          if (p.optionGroupCount === 0 && p.variantCount === 0) {
+            products.push(pickProduct(p, [], []));
+            continue;
+          }
+          const o = await registerProductOptions(rc, sc.actor, { productId: p.id }, db);
+          if (!o.ok) continue;
+          const choices: OfflineSnapshotChoice[] = o.groups.flatMap((g) => g.choices.map((x) => ({ choiceId: x.choiceId, groupId: g.groupId, name: x.name, priceDeltaSatang: x.priceDeltaSatang })));
+          const groups = o.groups.map((g) => ({ groupId: g.groupId, name: g.name, nameEn: g.nameEn, minSelect: g.minSelect, maxSelect: g.maxSelect, choices: g.choices.map((x) => ({ choiceId: x.choiceId, name: x.name, nameEn: x.nameEn, priceDeltaSatang: x.priceDeltaSatang, isDefault: x.isDefault, unavailable: x.unavailable })) }));
+          products.push(pickProduct(p, choices, groups));
+          const kidIds = o.variants.map((v) => v.id);
+          for (let i = 0; i < kidIds.length; i += 200) for (const k of await registerProductsByIds(rc, sc.actor, kidIds.slice(i, i + 200), db)) products.push(pickProduct(k, choices, groups));
+        }
+        const vat = await registerVatConfig(rc, db);
+        if (!vat.ok) return refuse(vat.code, vat.message);
+        const pay = await posPaymentSettings({ tenantId: c.tenantId, systemId: c.systemId }, db);
+        const serviceChargeBp = pay.ok && pay.serviceCharge.enabled ? pay.serviceCharge.rateBp : 0;
+        const offlineCode = await ensureOfflineCode(db, c, dev);
+        // หลักฐานราคา (R6): productId → ราคาหน้าร้าน (ต่อกก. ของสินค้าชั่ง) · choiceId → ส่วนต่าง
+        // "$priceValidUntil" = ขอบโปรถัดไปของ snapshot (ทางราคา snapshot ใช้ได้ถึงขอบนี้ + 15 นาที · มติ 6) — คีย์ขึ้นต้น $ ไม่ชน id สินค้า/ตัวเลือก
+        const priceMap: Record<string, number | string | null> = { $priceValidUntil: pvu };
+        for (const p of products) {
+          if (typeof p.priceSatang === "number") priceMap[p.id] = p.priceSatang;
+          for (const ch of p.choices) priceMap[ch.choiceId] = ch.priceDeltaSatang;
+        }
+        const issuedAt = now.toISOString();
+        const body = { vat: { mode: vat.mode, rateBp: vat.rateBp }, serviceChargeBp, products };
+        const hash = sha(`${c.unitId}|${dev.deviceCode}|${issuedAt}|${stable(body)}`).slice(0, 32);
+        // ออกซ้ำเนื้อหาเดิมเวลาเดิม = แถวเดิม (ON CONFLICT DO NOTHING — ไม่ทำให้ tx abort)
+        await tx.posOfflineSnapshot.createMany({ data: [{ tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, issuedAt: now, priceMap, hash }], skipDuplicates: true });
+        // POS P3.4 ▸ fix1 N4 = F1 (CD-P34g) + fix2 G3/N8: เก็บ 2 ล่าสุด ∪ ภายใน 48 ชม. (เพดาน 200) ∪ hash ที่รายการค้างอ้าง — นอกนั้นถูกตัด (SEC3) ◂
+        const devWhere = { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode };
+        const order = [{ issuedAt: "desc" as const }, { createdAt: "desc" as const }, { id: "desc" as const }];
+        const win = { ...devWhere, issuedAt: { gte: new Date(now.getTime() - 2 * OFFLINE_MAX_AGE_MS) } };
+        const [last, recent, oldest] = await Promise.all([
+          tx.posOfflineSnapshot.findMany({ where: devWhere, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP }),
+          tx.posOfflineSnapshot.findMany({ where: win, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP_RECENT_MAX }),
+          tx.posOfflineSnapshot.findMany({ where: win, orderBy: [{ issuedAt: "asc" }, { createdAt: "asc" }, { id: "asc" }], select: { id: true }, take: 1 }),
+        ]);
+        const keep = [...new Set([...last, ...recent, ...oldest].map((k) => k.id))];
+        const pending = await tx.posOfflineSale.findMany({
+          where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, OR: [{ status: STATUS.REJECTED }, { status: STATUS.ACCEPTED, saleId: null }] },
+          select: { payload: true },
+          take: 2000,
+        });
+        const referenced = [...new Set(pending.map((r) => (isRecord(r.payload) && typeof r.payload.snapshotHash === "string" ? r.payload.snapshotHash : "")).filter(Boolean))];
+        await tx.posOfflineSnapshot.deleteMany({ where: { ...devWhere, id: { notIn: keep }, ...(referenced.length ? { hash: { notIn: referenced } } : {}) } });
+        const fresh = await tx.posDevice.findFirst({ where: { id: dev.id, tenantId: c.tenantId }, select: { offlineSeq: true } });
+        return {
+          ok: true,
+          snapshot: { hash, issuedAt, priceValidUntil: pvu, offlineCode, offlineSeq: fresh?.offlineSeq ?? dev.offlineSeq, vat: body.vat, serviceChargeBp, products },
+        };
+      },
+      { maxWait: 10_000, timeout: 120_000 },
+    );
+    } finally {
+      snapSem.n -= 1;
     }
-    // POS P3.4 ▸ fix1 N4 = F1 (CD-P34g): เก็บทุก snapshot ที่ออกภายใน 24 ชม. (เพดาน 200 ต่อเครื่อง) ∪ 2 ล่าสุด — บิลที่ขายบน snapshot เก่ายังซิงก์ได้หลังเครื่องดึงใบใหม่ ·
-    //   นอกนั้นถูกตัด (hash ที่ถูกตัด = SNAPSHOT_UNKNOWN · SEC3) ◂
-    const devWhere = { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode };
-    const order = [{ issuedAt: "desc" as const }, { createdAt: "desc" as const }, { id: "desc" as const }];
-    const [last, recent] = await Promise.all([
-      db.posOfflineSnapshot.findMany({ where: devWhere, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP }),
-      // POS P3.4 ▸ fix2 G3: หน้าต่าง 48 ชม. (snapshot อายุได้ถึง 24 ชม. ตอนขาย + บิลอายุได้ถึง 24 ชม. ตอนซิงก์) · นับจากเวลาออก (opts.now) ◂
-      db.posOfflineSnapshot.findMany({ where: { ...devWhere, issuedAt: { gte: new Date(now.getTime() - 2 * OFFLINE_MAX_AGE_MS) } }, orderBy: order, select: { id: true }, take: SNAPSHOT_KEEP_RECENT_MAX }),
-    ]);
-    const keep = [...new Set([...last, ...recent].map((k) => k.id))];
-    // POS P3.4 ▸ fix2 N8: hash ที่รายการค้าง (PROCESSING/REJECTED · ACCEPTED ที่ยังไม่มีบิล) อ้างอยู่ ไม่ถูกตัด ◂
-    const pending = await db.posOfflineSale.findMany({
-      where: { tenantId: c.tenantId, unitId: c.unitId, deviceId: dev.deviceCode, OR: [{ status: STATUS.REJECTED }, { status: STATUS.ACCEPTED, saleId: null }] },
-      select: { payload: true },
-      take: 2000,
-    });
-    const referenced = [...new Set(pending.map((r) => (isRecord(r.payload) && typeof r.payload.snapshotHash === "string" ? r.payload.snapshotHash : "")).filter(Boolean))];
-    await db.posOfflineSnapshot.deleteMany({ where: { ...devWhere, id: { notIn: keep }, ...(referenced.length ? { hash: { notIn: referenced } } : {}) } });
-    const fresh = await db.posDevice.findFirst({ where: { id: dev.id, tenantId: c.tenantId }, select: { offlineSeq: true } });
-    return {
-      ok: true,
-      snapshot: { hash, issuedAt, priceValidUntil: pvu, offlineCode, offlineSeq: fresh?.offlineSeq ?? dev.offlineSeq, vat: body.vat, serviceChargeBp, products },
-    };
+    // ◂ POS P3.4U
   });
 }
 
