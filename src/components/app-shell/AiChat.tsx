@@ -33,7 +33,8 @@ type Msg = {
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // ~2MB ต่อรูป (base64 dataURL)
 
-export function AiChat() {
+// POS P3.9U ▸ CD-P39U-2: seed = ข้อความตั้งต้นจาก AiDock (app:ai-open detail.prompt) — วางในช่องพิมพ์ให้ผู้ใช้กดส่งเอง (ไม่ส่งอัตโนมัติ) · ไม่มี seed = เหมือนเดิม ◂
+export function AiChat({ seed = null }: { seed?: { text: string; n: number } | null } = {}) {
   const [state, setState] = useState<AiChatState | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [proposals, setProposals] = useState<PendingProposal[]>([]);
@@ -96,6 +97,11 @@ export function AiChat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, proposals, plans, pending]);
+
+  // POS P3.9U ▸ CD-P39U-2: อ่าน seed ครั้งเดียวต่อการเปิด (n) → ช่องพิมพ์ ◂
+  useEffect(() => {
+    if (seed) setText(seed.text);
+  }, [seed]);
 
   // override = ส่งข้อความสำเร็จรูป (กดปุ่มตัวเลือกจาก ask_clarify) — ไม่มีรูปแนบ
   function send(override?: string) {
