@@ -138,3 +138,28 @@ PRESUBMIT head=5c6e54a2 green=32 red=14 expected-lane-pin=10 unexpected-red=qc-p
 - **H6 (P3.1/P3.2-real)**: skeleton signature `x-shark-signature` has no timestamp/nonce ⇒ a captured signed body replays forever (harmless now: 503, no write). Real adapters must use the platform's signed timestamp/nonce with a ±5 min window **and** dedupe on `externalRef` (X1 unique already exists). Note: uppercase hex / `sha256=` prefix are refused today — match the platform's exact format.
 - **H8 (cost)**: each agent long-poll = 1 function for ≤ 25 s and ~1 claim UPDATE/s → consider a 2–5 s poll interval / backoff when idle, or LISTEN/NOTIFY, before many shops run agents.
 - **W19 follow-up (owner/accountant)**: retention now follows the current setting for existing slips (H4); still missing = a per-slip **legal hold** (dispute/audit) that blocks purge, and the PDPA erase path for slips (erase request vs 5-year bookkeeping duty — which wins, logged). Decide precedence before go-live.
+
+### Gates fix1 (one pre-submit · head d9f2d0fc · 19:50Z · logs `/root/pos-runs/presubmit-shark-pos-b-20261021T195044Z`)
+```
+PRESUBMIT-TABLE head=d9f2d0fc tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+wo-qc-pos-p3-skel-run1       0    41/41         74  
+wo-qc-pos-p3-skel-run2       0    41/41         73  
+wo-qc-pos-p3-skel-nodb       0    6/6            3  
+qc-pos-p1.1                  0    180/180      324  
+qc-pos-p1.3                  0    128/128      281  
+qc-pos-p1.6                  0    48/48         81  
+qc-pos-p1.7                  0    33/33        107  
+qc-pos-p1.9                  0    53/53         50  
+qc-pos-p1.18                 0    81/81         48  
+qc-pos-p2.13                 1    53/54        109  P2.13-ST5  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-fu                     1    28/29        164  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-tx                     0    22/22         91  
+qc-hf-fu2                    1    30/31        113  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+fitness-noenv                0    53/53         14  
+fitness-qc4                  0    53/53        105  
+fitness-pos                  0    8/8            8  
+gen-check                    0    -              1  
+PRESUBMIT head=d9f2d0fc green=14 red=3 expected-lane-pin=3 unexpected-red=- · wo: qc-pos-p3-skel-run1=41/41 · qc-pos-p3-skel-run2=41/41 · qc-pos-p3-skel-nodb=6/6 · VERDICT red (3: qc-pos-p2.13 qc-hf-fu qc-hf-fu2)
+```
+Lane-pin reds only (p2.13 ST5 · hf-fu ST1 · hf-fu2 ST1 — prisma/ incl. the new `20261218100100_pos_p3skel_slip_hash`). Typecheck once at the final head (this ledger commit) — result in the report.
