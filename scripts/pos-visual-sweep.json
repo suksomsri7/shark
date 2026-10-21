@@ -550,7 +550,7 @@
       "why": "same states LOCALE=en · owner 15 · 21 Oct 2026"
     },
     {
-      "id": "p3.9u-ai",
+      "id": "p3.9u-th",
       "wo": "p3.9u",
       "pages": [
         "reports",
@@ -561,12 +561,29 @@
         "cashier"
       ],
       "locales": [
-        "th",
+        "th"
+      ],
+      "states": true,
+      "after": "P3.9U",
+      "why": "P3.9U 10 states (reports-ai-panel brief/empty/off/refused · reports-anomalies-a11 · settings-general-anomaly-a11 · settings-ai-card off/linked · settings-ai-brief-sheet + invalid) · th owner 27 + cashier 3 · QC5 build G4XH7hWJLGATAyOGFtca_ @d040425c · vis-p39u-qc5-20261021T215753Z (40/40) · 21 Oct 2026"
+    },
+    {
+      "id": "p3.9u-en",
+      "wo": "p3.9u-en",
+      "pages": [
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
         "en"
       ],
       "states": true,
       "after": "P3.9U",
-      "why": "P3.9U 10 AI states (08 panel brief/empty/refused(cashier)/off · reports-anomalies-a11 · settings-general-anomaly-a11 · 10 AI card off/linked · brief sheet + invalid manager) · placeholder until the controller's QC5 round replaces it with p3.9u-th/p3.9u-en"
+      "why": "same states LOCALE=en · owner 9 + cashier 1 · 21 Oct 2026"
     }
   ]
 }
