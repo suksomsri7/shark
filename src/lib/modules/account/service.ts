@@ -7324,6 +7324,8 @@ export async function upsertPosCreditInvoiceDocument(input: {
   });
   try {
     const doc = await prisma.$transaction(async (tx) => {
+      // ล็อกต่อ (สมุด · บิล) ก่อนตรวจซ้ำ — สองคิวพร้อมกันได้ใบแจ้งหนี้ใบเดียว (ไม่มี unique ของเอกสารต่อ ref ให้พึ่ง)
+      await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`acc:pos-credit-invoice:${input.systemId}:${input.refId}`}))) l`;
       const again = await tx.accountDocument.findFirst({ where: { systemId: input.systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId: input.refId }, select: { id: true } });
       if (again) return { id: again.id, created: false };
       const docNo = await nextDocNo(tx, input.tenantId, input.systemId, POS_CREDIT_DOC_TYPE, input.occurredAt);

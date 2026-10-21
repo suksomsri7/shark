@@ -163,7 +163,7 @@ export async function bridgePosSalePaid(
   // POS P3.6 ▸ R5 R7: ผู้ติดต่อของบิล = บริษัท (customerPartyId) ก่อนสมาชิก · บิลวางบิล = onAccount {partyId, dueDate, termDays} จาก creditTerms ◂
   const p36Credit = sale.customerPartyId && pays.some((p) => p.type === "ON_ACCOUNT") ? creditTermsOf(sale.creditTerms) : null;
   const p36Customer = sale.customerPartyId ? { partyId: sale.customerPartyId, name: buyer?.name ?? null } : null;
-  const res = await applyExternalSale({
+  const res = await p36RetryOnceOnUnique(!!p36Credit, () => applyExternalSale({ // POS P3.6 ▸ บิลวางบิล: ชน unique (คิวสองตัวลง JV/ผู้ติดต่อพร้อมกัน) = ลองซ้ำ 1 ครั้ง (ทุกขั้น idempotent) · บิลอื่นเดิมทุกไบต์ ◂
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
@@ -181,7 +181,7 @@ export async function bridgePosSalePaid(
     // POS P1.13 ▸ R2: บิลที่มีผู้ซื้อขอใบกำกับเต็มรูป → เอกสาร TAX_INVOICE แทน ABB (GL เดิม) ◂
     ...(buyer ? { buyer: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId, branchCode: buyer.branchCode, address: buyer.address, email: buyer.email } } : {}),
     ...(depositUse ? { depositVatSatang: depositUse.vatSatang, depositGrossSatang: depositUse.satang } : {}), // POS P2.9b ▸ R5 มติ 1 15 ◂
-  });
+  })); // POS P3.6 ◂
   if (buyer && res.fullTaxInvoice && res.docId) await recordPayTimeTaxInvoice(sale, res.docId);
   // follow-up 3: มีผู้ซื้อแต่สมุดออกใบเต็มรูปไม่ได้ตอนลงบัญชี (ไม่ผูก/ไม่จด VAT/ปิดใบอย่างย่อ/ไม่มีเลขภาษี) — เส้นเดิมทำงานแล้ว · เตือน ops (ไม่มีข้อมูลผู้ซื้อ)
   //   reviewer N5: แยกข้อความตาม res.reason — สมุดออกไม่ได้ (ไม่ผูก/ไม่มีเหตุผล) กับ บรรทัดถูกปฏิเสธ (เอกสารไม่เกิด)
@@ -381,4 +381,16 @@ function creditTermsOf(v: Prisma.JsonValue | null | undefined): { dueDate: strin
     dueDate: typeof o.dueDate === "string" ? o.dueDate : "",
     termDays: typeof o.termDays === "number" && Number.isInteger(o.termDays) ? o.termDays : 0,
   };
+}
+
+// POS P3.6 ▸ บิลวางบิล (ON_ACCOUNT) ลงบัญชีหลายชั้น (ผู้ติดต่อ · JV · ใบแจ้งหนี้) — สองคิวที่ระบายพร้อมกันอาจชน unique (P2002) ที่ JV/ผู้ติดต่อ ·
+//   ผู้ชนะ commit แล้ว ⇒ ลองซ้ำ 1 ครั้งเห็นของที่มีแล้ว (ทุกขั้น idempotent) · ชนอีก/ล้มแบบอื่น = โยน (คิวลองใหม่) · on=false = เรียกครั้งเดียวเหมือนเดิม ◂
+async function p36RetryOnceOnUnique<T>(on: boolean, fn: () => Promise<T>): Promise<T> {
+  if (!on) return fn();
+  try {
+    return await fn();
+  } catch (e) {
+    if ((e as { code?: unknown } | null)?.code !== "P2002") throw e;
+    return fn();
+  }
 }
