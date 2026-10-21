@@ -21255,6 +21255,46 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-chatpay-send",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "requestChatPaymentAction",
+        "note": "CD-P37U-4 (ภาพ 09): ออเดอร์แชท (ไม่ใช่แพลตฟอร์ม) NEW ที่ยังไม่จ่าย → ส่งลิงก์ชำระในแชท (ประตู A · ไม่ขึ้นกับสวิตช์แชท CD-P5) · ปิด + เหตุผล pos-ord-chatpay-reason เมื่อไม่มีสิทธิ์รับ∧เปิดบิล (needPerm — แคชเชียร์ QC) / ไม่ผูกห้องแชท / สาขาไม่มีพร้อมเพย์ · ผล pos-ord-chatpay-result (ส่งแล้ว+ชำระภายใน · ซ้ำ · ส่งไม่สำเร็จ+คัดลอก · ปฏิเสธ) → โหลดออเดอร์ใหม่ · ไม่ส่งซ้ำอัตโนมัติ",
+        "db": "PosOrder.paymentState PENDING_PAYMENT + PosPaymentIntent + PosOrderEvent payment_requested + ChatMessage(OUT, pos:ordpay)"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-chatpay-copy",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-chatpay-copy",
+        "note": "CD-P37U-4: ผล ok ∧ !sent (ส่งเข้าแชทไม่สำเร็จ) → คัดลอกลิงก์สถานะ/ชำระ (statusUrl) ลงคลิปบอร์ด · ป้ายเปลี่ยนเป็น \"คัดลอกแล้ว\" · ไม่เขียนอะไร"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

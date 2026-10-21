@@ -550,6 +550,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
         onClose={inAside ? undefined : closePanel}
         kitchen={kitchen ? { hasStations: kitchen.hasStations, progress: kitchen.progress[selCard.id] ?? null } : undefined} // POS P2.6U ▸ มติ 9c ◂
         onConfirmPay={canConfirmPay ? () => void confirmPay(selCard) : null} // POS P2.7U ◂
+        chatPay={{ systemId: p.systemId, unitId: p.unitId, deviceId, promptpayConfigured: !!p.promptpayId, onDone: () => void reloadAll() }} // POS P3.7U ▸ CD-P37U-4 ◂
       />
     ) : null;
 
