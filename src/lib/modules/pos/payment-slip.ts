@@ -10,6 +10,7 @@
 //   purgeExpiredSlips (งานรายชั่วโมง pos.slip.purge) ลบไฟล์ (deleteFileAsset) แล้วตั้ง fileId = null — แถวคงไว้เป็นหลักฐาน (สถานะเดิม)
 // ลิงก์ดูไฟล์: slipViewerUrl หลังตรวจสิทธิ์ (pos.sale.read ที่สาขา) = /api/files/<id>?exp&sig ผูกผู้ดู STAFF:<userId> อายุ ≤ 300 วินาที
 // คำปฏิเสธ "คืน" เป็นข้อมูล {ok:false, code, message} เสมอ — ไม่โยน
+import { createHash } from "node:crypto";
 import { evaluate } from "@/lib/core/rbac";
 import { writeAudit } from "@/lib/core/audit";
 import { deleteFileAsset, privateFileUrl, storageEnabled, uploadFile, type DeleteDeps, type UploadDeps } from "@/lib/storage/service";
@@ -194,6 +195,7 @@ export async function attachSlip(ctx: SlipCtx, actor: SlipActor, input: unknown,
 
     // ── จองแถวใต้ล็อกของเป้าหมาย: เล่นซ้ำ → เลขอ้างอิงซ้ำ → เพดาน 3 ใบ ──
     const createdAt = new Date();
+    const fileSha = createHash("sha256").update(bytes).digest("hex"); // fix1 H3
     const lockKey = `pos:slip:${c.tenantId}:${target.paymentId ?? target.intentId}`;
     // fix1 H2: คีย์เดิมเล่นซ้ำได้เฉพาะสาขาเดียวกัน + เป้าหมายเดียวกัน — ไม่งั้น VALIDATION (ไม่คืนสลิปของสาขา/บิลอื่น)
     const sameTarget = (r: { unitId: string; saleId: string | null; paymentId: string | null; intentId: string | null }) =>
@@ -204,6 +206,8 @@ export async function attachSlip(ctx: SlipCtx, actor: SlipActor, input: unknown,
         const prev = await tx.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: { ...SLIP_SELECT, unitId: true } });
         if (prev) return sameTarget(prev) ? { replay: prev } : { refused: refuse("VALIDATION", "รหัสรายการนี้ถูกใช้กับสลิปอื่นแล้ว") };
         if (transRef && (await tx.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, transRef }, select: { id: true } }))) return { refused: refuse("SLIP_DUPLICATE") };
+        // fix1 H3: รูปเดิม (sha256 เดียวกัน) แนบซ้ำในร้าน = SLIP_DUPLICATE (กันสลิปใบเดียวใช้กับหลายบิล)
+        if (await tx.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, sha256: fileSha }, select: { id: true } })) return { refused: refuse("SLIP_DUPLICATE", "รูปสลิปนี้ถูกแนบไปแล้วในร้าน") };
         const n = await tx.posPaymentSlip.count({ where: { tenantId: c.tenantId, ...(target.paymentId ? { paymentId: target.paymentId } : { intentId: target.intentId }) } });
         if (n >= SLIP_MAX_PER_TARGET) return { refused: refuse("VALIDATION", "แนบสลิปได้ไม่เกิน 3 ใบต่อการชำระ") };
         const row = await tx.posPaymentSlip.create({
@@ -214,6 +218,7 @@ export async function attachSlip(ctx: SlipCtx, actor: SlipActor, input: unknown,
             ...target,
             contentType,
             bytes: bytes.length,
+            sha256: fileSha,
             transRef,
             amountSatang,
             note,

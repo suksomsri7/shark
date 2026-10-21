@@ -1232,6 +1232,7 @@ model PosPaymentSlip {
   fileId            String? // FileAsset.id · null = ยังอัปไม่เสร็จ หรือไฟล์ถูกลบตามอายุเก็บแล้ว
   contentType       String?
   bytes             Int?
+  sha256            String? // fix1 H3: sha256 hex ของไฟล์ — รูปเดิมซ้ำในร้าน = SLIP_DUPLICATE (migration 20261218100100_pos_p3skel_slip_hash)
   status            String    @default("UPLOADED") // "UPLOADED" | "CONFIRMED" | "REJECTED"
   verifiedVia       String? // "MANUAL" | "PROVIDER" | null
   provider          String?
@@ -1251,6 +1252,7 @@ model PosPaymentSlip {
 
   @@unique([tenantId, idempotencyKey])
   @@unique([tenantId, transRef])
+  @@unique([tenantId, sha256])
   @@index([tenantId, saleId])
   @@index([tenantId, intentId])
   @@index([purgeAfter])
