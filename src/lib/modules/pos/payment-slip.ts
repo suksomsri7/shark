@@ -96,6 +96,13 @@ export function slipRetentionDaysOf(settings: unknown): number {
   return Math.min(SLIP_RETENTION_MAX_DAYS, Math.max(SLIP_RETENTION_MIN_DAYS, Math.round(raw)));
 }
 
+/** อายุเก็บที่เจ้าของ "ตั้งไว้จริง" (fix1 H4) — ไม่ได้ตั้ง/ผิดรูป = null (ใช้ purgeAfter ตอนแนบ) · ตั้งแล้ว = ตัด 90–3,650 */
+export function explicitSlipRetentionDays(settings: unknown): number | null {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : {};
+  const pay = isRecord(pos.payment) ? pos.payment : {};
+  return typeof pay.slipRetentionDays === "number" && Number.isFinite(pay.slipRetentionDays) ? slipRetentionDaysOf(settings) : null;
+}
+
 type SlipRow = {
   id: string;
   status: string;
@@ -336,12 +343,19 @@ export async function purgeExpiredSlips(opts?: { tenantId?: string; now?: Date; 
   let failed = 0;
   let cutOff = false;
   try {
-    const rows = await prisma.posPaymentSlip.findMany({
-      where: { ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}), fileId: { not: null }, purgeAfter: { lte: now } },
-      select: { id: true, tenantId: true, fileId: true },
-      orderBy: { purgeAfter: "asc" },
-      take: PURGE_BATCH,
-    });
+    // fix1 H4 (W19): อายุเก็บตัดสินตอนลบจาก "ค่าตั้งปัจจุบัน" ของระบบ POS — เจ้าของตั้ง slipRetentionDays แล้ว (ขึ้นหรือลง · ขั้นต่ำ 90)
+    //   = ใช้กับสลิปเดิมทุกใบด้วย (createdAt + ค่าปัจจุบัน) · ไม่ได้ตั้ง = วันที่คำนวณไว้ตอนแนบ (purgeAfter · ค่าปริยาย 1,825)
+    const base = { ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}), fileId: { not: null } };
+    const systems = await prisma.posPaymentSlip.findMany({ where: base, select: { systemId: true }, distinct: ["systemId"] });
+    const settings = systems.length ? await prisma.appSystem.findMany({ where: { id: { in: systems.map((x) => x.systemId) } }, select: { id: true, settings: true } }) : [];
+    const daysBy = new Map(settings.map((x) => [x.id, explicitSlipRetentionDays(x.settings)]));
+    const rows: { id: string; tenantId: string; fileId: string | null }[] = [];
+    for (const { systemId } of systems) {
+      if (rows.length >= PURGE_BATCH) break;
+      const days = daysBy.get(systemId) ?? null;
+      const due = days === null ? { purgeAfter: { lte: now } } : { createdAt: { lte: new Date(now.getTime() - days * DAY_MS) } };
+      rows.push(...(await prisma.posPaymentSlip.findMany({ where: { ...base, systemId, ...due }, select: { id: true, tenantId: true, fileId: true }, orderBy: { createdAt: "asc" }, take: PURGE_BATCH - rows.length })));
+    }
     for (const r of rows) {
       // fix1 F6: เคารพงบของตัวรันรายนาที — ถึง deadline = หยุด (แถวที่เหลือรอบหน้า)
       if (typeof opts?.deadline === "number" && Date.now() >= opts.deadline) {
