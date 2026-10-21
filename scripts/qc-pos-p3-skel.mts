@@ -2089,14 +2089,20 @@ async function runDb() {
     s.on("error", () => {});
   });
   let PORT = 0;
-  try {
-    await new Promise<void>((res, rej) => {
-      srv.once("error", rej);
-      srv.listen(0, "127.0.0.1", () => res());
-    });
-    PORT = (srv.address() as AddressInfo).port;
-  } catch (e) {
-    console.log(`  ⚠️  เครื่องพิมพ์ปลอมเปิดไม่ได้: ${(e as Error).message.slice(0, 80)}`);
+  // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (fix1 H7: server + agent รับเฉพาะพอร์ตเครื่องพิมพ์ 9100–9102/515 ⇒ เครื่องพิมพ์ปลอมฟังที่พอร์ตว่างตัวแรกของ 9100–9102 แทนพอร์ตสุ่ม) ◂
+  for (const port of [9100, 9101, 9102]) {
+    try {
+      await new Promise<void>((res, rej) => {
+        srv.once("error", rej);
+        srv.listen(port, "127.0.0.1", () => res());
+      });
+      srv.removeAllListeners("error");
+      PORT = (srv.address() as AddressInfo).port;
+      break;
+    } catch (e) {
+      srv.removeAllListeners("error");
+      console.log(`  ⚠️  เครื่องพิมพ์ปลอมเปิดพอร์ต ${port} ไม่ได้: ${(e as Error).message.slice(0, 80)}`);
+    }
   }
   const LP_NEED = () => [...NEED([relay, "print-relay.ts"]), ...NT("PosPrintAgent", "PosPrintJob")];
   const AG: Record<string, { id: string; token: string }> = {};
