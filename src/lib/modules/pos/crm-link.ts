@@ -138,12 +138,27 @@ export async function sweepDealIntents(opts: { tenantId?: string; now?: Date; de
   const now = opts.now instanceof Date ? opts.now : new Date();
   const deadlineMs = opts.deadline instanceof Date ? opts.deadline.getTime() : typeof opts.deadline === "number" ? opts.deadline : Number.POSITIVE_INFINITY;
   const since = new Date(now.getTime() - DEAL_INTENT_WINDOW_DAYS * 86_400_000);
-  const bills = await prisma.posSale.findMany({
-    where: { ...(isId(opts.tenantId) ? { tenantId: opts.tenantId } : {}), docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, crmDealId: { not: null }, paidAt: { gte: since, lte: now } },
-    orderBy: [{ paidAt: "asc" }, { id: "asc" }],
-    take: SWEEP_BATCH,
-    select: { id: true, tenantId: true, crmDealId: true },
-  });
+  // fix2 H6: รอบละ SWEEP_BATCH บิลที่ "ยังไม่ถูกผูก/นับ" — ไล่หน้าละ SWEEP_BATCH ตามลำดับเวลา แล้วตัดบิลที่ดีลมีแถว POS_SALE (ไม่ใช่ LINKED) ออก
+  //   (เดิมเอา 500 ใบแรกเสมอ ⇒ บิลที่ผูกแล้วกินโควตา · บิลดีล > 500/สัปดาห์ = ใบหลัง ๆ ไม่ถูกเก็บ)
+  const bills: { id: string; tenantId: string; crmDealId: string | null }[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 40 && bills.length < SWEEP_BATCH && Date.now() <= deadlineMs; page++) {
+    const rows: { id: string; tenantId: string; crmDealId: string | null }[] = await prisma.posSale.findMany({
+      where: { ...(isId(opts.tenantId) ? { tenantId: opts.tenantId } : {}), docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, crmDealId: { not: null }, paidAt: { gte: since, lte: now } },
+      orderBy: [{ paidAt: "asc" }, { id: "asc" }],
+      take: SWEEP_BATCH,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: { id: true, tenantId: true, crmDealId: true },
+    });
+    if (!rows.length) break;
+    cursor = rows[rows.length - 1]!.id;
+    const byTenant = new Map<string, string[]>();
+    for (const r of rows) byTenant.set(r.tenantId, [...(byTenant.get(r.tenantId) ?? []), r.id]);
+    const done = new Set<string>();
+    for (const [tenantId, saleIds] of byTenant) for (const x of await crm.posSeam.posSaleDealRows({ tenantId, saleIds })) if (x.status !== "LINKED") done.add(x.saleId);
+    for (const r of rows) if (!done.has(r.id) && bills.length < SWEEP_BATCH) bills.push(r);
+    if (rows.length < SWEEP_BATCH) break;
+  }
   const systemsOf = new Map<string, string[]>();
   let linked = 0;
   let failed = 0;
@@ -189,3 +204,9 @@ export const dealOnSaleRefunded: OutboxHandler = async (evt) => {
   }
   if (err) throw err;
 };
+
+/** POS P3.6 fix2 H5 ▸ R12 "หรือแถว POS_SALE ที่ดีลนับแล้ว": บิลนี้ถูกนับเข้าดีล CRM แล้วไหม (ทางเก่า register-ui ผูกหลัง commit) — อ่านอย่างเดียว ◂ */
+export async function saleCountedByDeal(tenantId: string, saleId: string): Promise<boolean> {
+  if (!isId(tenantId) || !isId(saleId)) return false;
+  return (await crm.posSeam.posSaleDealRows({ tenantId, saleIds: [saleId] })).some((x) => x.status === "COUNTED");
+}

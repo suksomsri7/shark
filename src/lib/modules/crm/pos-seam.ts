@@ -98,3 +98,15 @@ export async function linkPosSaleSystem(ctx: MoneyCtx, input: { dealId: string; 
 export async function onPosSaleRefunded(ctx: MoneyCtx, input: { saleId: string; refundSaleId: string; satang?: number }): Promise<PosRefundNetResult> {
   return netPosSaleRefund(ctx, { saleId: input?.saleId, refundSaleId: input?.refundSaleId });
 }
+
+/**
+ * POS P3.6 fix2 H5 H6 ▸ สถานะแถวเงินของดีลที่มาจากบิลหน้าร้าน (refType POS_SALE · ทุกระบบ CRM ของร้าน · อ่านอย่างเดียว) ·
+ *   ตัวกวาดใช้ตัดบิลที่ผูก/นับแล้วออกจากรอบ · ค่าคอมฯ พนักงานใช้ข้าม "บิลที่ดีลนับแล้ว" (R12 ตามที่เขียน) ◂
+ */
+export async function posSaleDealRows(input: { tenantId: string; saleIds: readonly string[] }): Promise<{ saleId: string; status: string }[]> {
+  const ids = [...new Set((input?.saleIds ?? []).filter((x) => typeof x === "string" && x.length > 0))];
+  if (!input?.tenantId || !ids.length) return [];
+  const rows = await prisma.crmDealPayment.findMany({ where: { tenantId: input.tenantId, refType: "POS_SALE", refId: { in: ids } }, select: { refId: true, status: true } });
+  return rows.map((r) => ({ saleId: r.refId, status: r.status }));
+}
+// ◂ POS P3.6

@@ -136,11 +136,15 @@ export async function listCreditAccounts(ctx: { tenantId: string; systemId: stri
  * ภาพหนี้ (สตางค์) ของบริษัทบนระบบ POS นี้ — null = POS ไม่ผูกสมุดบัญชี · db = tx ของ createSale (ผู้เรียกถือล็อกวงเงินแล้ว) หรือ prisma
  * ลำดับอ่าน: บิล ON_ACCOUNT ของบริษัท (ทุกสถานะ) → คำสั่งเดียวของสมุด (เอกสารค้าง + บิลที่มีเอกสารแล้ว) ⇒ บิลที่ถูกระบายระหว่างนั้นนับครั้งเดียว
  */
+/** fix2 H6: หน้าต่างบิลวางบิลที่อ่านตอนคิดภาพหนี้ (บิลค้างระบาย/ใบแจ้งหนี้ที่ผูกผิดคนก่อน F1) — ใบแจ้งหนี้ที่ค้างของผู้ติดต่อบริษัทนับทุกอายุอยู่แล้ว */
+export const CREDIT_EXPOSURE_WINDOW_DAYS = 90;
 export async function creditExposureSatang(db: Db, s: { tenantId: string; systemId: string; partyId: string }): Promise<number | null> {
+  // fix2 H6: อ่านเฉพาะบิล 90 วันล่าสุด (เดิมทุกบิลของบริษัท ⇒ IN (…) ใหญ่เกินขีด bind ของ Postgres ที่ ~32k บิล = ขายวางบิลไม่ได้)
+  const since = new Date(Date.now() - CREDIT_EXPOSURE_WINDOW_DAYS * 86_400_000);
   const bills = await db.$queryRaw<{ id: string; status: string; amt: number }[]>`
     SELECT s.id, s.status::text AS status, COALESCE(SUM(p."amountSatang"), 0)::int AS amt
     FROM "PosSale" s JOIN "PosPayment" p ON p."saleId" = s.id AND p."type"::text = 'ON_ACCOUNT'
-    WHERE s."tenantId" = ${s.tenantId} AND s."systemId" = ${s.systemId} AND s."customerPartyId" = ${s.partyId} AND s."docType"::text = 'SALE'
+    WHERE s."tenantId" = ${s.tenantId} AND s."systemId" = ${s.systemId} AND s."customerPartyId" = ${s.partyId} AND s."docType"::text = 'SALE' AND s."createdAt" >= ${since}
     GROUP BY s.id, s.status`;
   const parts = await posCreditExposureParts({ tenantId: s.tenantId, sourceSystemId: s.systemId, partyId: s.partyId, saleRefIds: bills.map((b) => b.id) }, db as Prisma.TransactionClient);
   if (!parts) return null;
