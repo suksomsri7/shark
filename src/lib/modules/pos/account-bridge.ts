@@ -5,6 +5,7 @@
 
 import type { PosPayType, Prisma } from "@prisma/client";
 import { applyExternalChannelCommission, applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
+import { posCreditInvoiceState } from "@/lib/modules/account"; // POS P3.6 ▸ fix2 H3 ◂
 import { applyExternalDepositReceipt, applyExternalDepositRefund, posSalePosted } from "@/lib/modules/account"; // POS P2.9b ▸ R3 R8 (ผ่าน facade เท่านั้น) · fix1 มติ 3 ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
@@ -20,8 +21,11 @@ import { parsePosPaymentSettings } from "./payment-settings"; // POS P2.9 ▸ R9
 //   ROOM_CHARGE → ลงบิลห้องยังไม่จ่าย → Dr 1100 ลูกหนี้
 //   POS P2.1: PLATFORM → แพลตฟอร์มเก็บเงินแทน → Dr ลูกหนี้แพลตฟอร์ม (ห้ามตกไป TRANSFER = ธนาคาร)
 //   POS P2.9: GIFT_CARD/STORE_CREDIT → เงินรับล่วงหน้า (STORED_VALUE → Dr/Cr 2110 · มติ 1 · CD1b · มติ 9) — ห้ามตกไป TRANSFER
-function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" {
+//   POS P3.6: ON_ACCOUNT → วางบิล (เครดิตเทอม) → Dr 1100 ผู้ติดต่อของบริษัท + ใบแจ้งหนี้ (ห้ามตกไป TRANSFER = ธนาคาร)
+function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT" {
   switch (type) {
+    case "ON_ACCOUNT": // POS P3.6 ▸ R7 ◂
+      return "ON_ACCOUNT";
     case "GIFT_CARD": // POS P2.9 ▸ ◂
     case "STORE_CREDIT":
       return "STORED_VALUE";
@@ -63,6 +67,9 @@ type SaleForBridge = {
   /** POS P2.9b ▸ ที่มาของบิล (POS_DEPOSIT = ใบรับเงินมัดจำ → ทางของมัดจำ) + VAT บนบิล — แถว PosSale ที่ consumer ส่งมามีอยู่แล้ว ◂ */
   sourceModule?: string | null;
   vatSatang?: number;
+  /** POS P3.6 ▸ R5 R7: ลูกค้าองค์กรของบิล + เงื่อนไขวางบิล (แถว PosSale ที่ consumer ส่งมามีอยู่แล้ว) — ไม่มี = เดิมทุกไบต์ ◂ */
+  customerPartyId?: string | null;
+  creditTerms?: Prisma.JsonValue | null;
 };
 
 /** บรรทัดบิลที่ consumer อ่านมาจาก PosSaleLine (WO 4.2) */
@@ -154,7 +161,10 @@ export async function bridgePosSalePaid(
   const commissionVat = Math.max(0, sale.channelCommissionVatSatang ?? 0);
   const needsChannel = pays.some((p) => p.type === "PLATFORM") || (commission + commissionVat > 0 && !!sale.channelPayout);
   const channelName = needsChannel ? await saleChannelName(prisma, sale.tenantId, sale.channelId, sale.channelCode) : null;
-  const res = await applyExternalSale({
+  // POS P3.6 ▸ R5 R7: ผู้ติดต่อของบิล = บริษัท (customerPartyId) ก่อนสมาชิก · บิลวางบิล = onAccount {partyId, dueDate, termDays} จาก creditTerms ◂
+  const p36Credit = sale.customerPartyId && pays.some((p) => p.type === "ON_ACCOUNT") ? creditTermsOf(sale.creditTerms) : null;
+  const p36Customer = sale.customerPartyId ? { partyId: sale.customerPartyId, name: buyer?.name ?? null } : null;
+  const res = await p36RetryOnceOnUnique(!!p36Credit, () => applyExternalSale({ // POS P3.6 ▸ บิลวางบิล: ชน unique (คิวสองตัวลง JV/ผู้ติดต่อพร้อมกัน) = ลองซ้ำ 1 ครั้ง (ทุกขั้น idempotent) · บิลอื่นเดิมทุกไบต์ ◂
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
@@ -166,18 +176,20 @@ export async function bridgePosSalePaid(
     payMethods: pays.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
     ...(tipLedgerId ? { tip: { satang: tipSatang, ledgerId: tipLedgerId } } : {}), // POS P2.9 ▸ R9 ◂
     lines,
-    customer: detail?.customer ?? undefined,
+    customer: p36Customer ?? detail?.customer ?? undefined, // POS P3.6 ▸ R5 ◂
+    ...(p36Credit && sale.customerPartyId ? { onAccount: { partyId: sale.customerPartyId, dueDate: p36Credit.dueDate, termDays: p36Credit.termDays } } : {}), // POS P3.6 ▸ R7 ◂
     receiptNo: sale.receiptNo ?? null,
     // POS P1.13 ▸ R2: บิลที่มีผู้ซื้อขอใบกำกับเต็มรูป → เอกสาร TAX_INVOICE แทน ABB (GL เดิม) ◂
     ...(buyer ? { buyer: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId, branchCode: buyer.branchCode, address: buyer.address, email: buyer.email } } : {}),
     ...(depositUse ? { depositVatSatang: depositUse.vatSatang, depositGrossSatang: depositUse.satang } : {}), // POS P2.9b ▸ R5 มติ 1 15 ◂
-  });
+  })); // POS P3.6 ◂
   if (buyer && res.fullTaxInvoice && res.docId) await recordPayTimeTaxInvoice(sale, res.docId);
   // follow-up 3: มีผู้ซื้อแต่สมุดออกใบเต็มรูปไม่ได้ตอนลงบัญชี (ไม่ผูก/ไม่จด VAT/ปิดใบอย่างย่อ/ไม่มีเลขภาษี) — เส้นเดิมทำงานแล้ว · เตือน ops (ไม่มีข้อมูลผู้ซื้อ)
   //   reviewer N5: แยกข้อความตาม res.reason — สมุดออกไม่ได้ (ไม่ผูก/ไม่มีเหตุผล) กับ บรรทัดถูกปฏิเสธ (เอกสารไม่เกิด)
   else if (buyer) {
     // POS P2.14 ▸ ACC-2 (P5): reason "other-book" = บิลอยู่ในสมุดเล่มอื่น (ผูก POS ใหม่หลังขาย) — ไม่ใช่บรรทัดถูกปฏิเสธ/สมุดออกไม่ได้ ⇒ ไม่ขึ้น WARN ข้อความผิด ◂
-    if (res.reason !== "other-book") {
+    // POS P3.6 ▸ F2: บิลวางบิลที่ได้ใบแจ้งหนี้ (= ใบกำกับของบิล · W23) ไม่ใช่ "สมุดออกไม่ได้" ⇒ ไม่เตือน ◂
+    if (res.reason !== "other-book" && !(p36Credit && res.creditInvoice)) {
       const linesRejected = !!res.reason && res.reason !== "unlinked" && !res.docId;
       const msg = linesRejected
         ? `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่บรรทัดถูกปฏิเสธตอนลงบัญชี — ไม่เกิดเอกสาร (เงินเข้า GL ตามปกติ)`
@@ -322,11 +334,19 @@ export async function bridgePosSaleVoided(sale: {
   tenantId: string;
   systemId: string;
 }): Promise<{ posted: boolean }> {
-  return reverseExternalSale({
+  const res = await reverseExternalSale({
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
   });
+  // POS P3.6 ▸ fix2 H3: บิลวางบิลที่ใบแจ้งหนี้ยกเลิกไม่ได้ (มีรับชำระเข้ามาหลัง void commit) — JV กลับแล้วแต่ใบยังค้าง/จ่ายแล้ว ⇒ เตือน ops ให้นักบัญชีจัดการ ·
+  //   ไม่โยนให้คิวลองใหม่ (ลองกี่ครั้งก็ยกเลิกไม่ได้) · บิลอื่นไม่มีใบนี้ ⇒ ไม่มีอะไรเกิด ◂
+  if (!res.docVoided) {
+    const inv = await posCreditInvoiceState({ tenantId: sale.tenantId, sourceSystemId: sale.systemId, refId: sale.id });
+    if (inv && inv.status !== "VOIDED")
+      await logOps("WARN", "pos.credit.void_unposted", `บิล POS ${sale.id} (วางบิล) ถูกยกเลิกแต่ใบแจ้งหนี้ยกเลิกไม่ได้ (มีรับชำระแล้ว) — ให้นักบัญชีออกใบลดหนี้/คืนเงินในระบบบัญชี`, { tenantId: sale.tenantId, detail: JSON.stringify({ saleId: sale.id, docId: inv.docId }) }).catch(() => undefined);
+  }
+  return res; // ◂ POS P3.6
 }
 
 // POS P1.8 ▸ ใบคืนเงิน (docType REFUND) → ใบลดหนี้ + กลับรายการตามสัดส่วน (ผ่าน facade · REVIEW #6) ◂
@@ -362,4 +382,25 @@ export async function bridgePosSaleRefunded(
     ...(typeof refund.vatSatang === "number" ? { vatSatang: refund.vatSatang } : {}),
     ...(depositPaid ? { depositPaid: true } : {}), // POS P2.9b ▸ fix4 มติ 2 ◂
   });
+}
+
+// POS P3.6 ▸ R7: creditTerms ของบิล (Json · เขียนครั้งเดียวที่ createSale) → {dueDate, termDays} · ผิดรูป = วันครบกำหนด = วันขาย (facade ใช้วันไทยของ occurredAt) ◂
+function creditTermsOf(v: Prisma.JsonValue | null | undefined): { dueDate: string; termDays: number } {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  return {
+    dueDate: typeof o.dueDate === "string" ? o.dueDate : "",
+    termDays: typeof o.termDays === "number" && Number.isInteger(o.termDays) ? o.termDays : 0,
+  };
+}
+
+// POS P3.6 ▸ บิลวางบิล (ON_ACCOUNT) ลงบัญชีหลายชั้น (ผู้ติดต่อ · JV · ใบแจ้งหนี้) — สองคิวที่ระบายพร้อมกันอาจชน unique (P2002) ที่ JV/ผู้ติดต่อ ·
+//   ผู้ชนะ commit แล้ว ⇒ ลองซ้ำ 1 ครั้งเห็นของที่มีแล้ว (ทุกขั้น idempotent) · ชนอีก/ล้มแบบอื่น = โยน (คิวลองใหม่) · on=false = เรียกครั้งเดียวเหมือนเดิม ◂
+async function p36RetryOnceOnUnique<T>(on: boolean, fn: () => Promise<T>): Promise<T> {
+  if (!on) return fn();
+  try {
+    return await fn();
+  } catch (e) {
+    if ((e as { code?: unknown } | null)?.code !== "P2002") throw e;
+    return fn();
+  }
 }

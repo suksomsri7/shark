@@ -56,7 +56,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   // POS P2.3U ▸ มติ 8: ตัดตามสูตร BOM ใช้งานจริงแล้ว (P2.3 S ตัด + P2.3U จอ 06 ตั้งสูตร/สวิตช์) ◂
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
   HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // POS P3.5 ▸ R14: ด่านตารางงาน · ค่าคอมฯ → เงินเดือน · ลา = ปลดล็อกไม่ได้ (C-8 v2) — เดิม false "P3.5" ◂
-  CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
+  CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.x"], ["corporateCredit", true, null]], // POS P3.6 ▸ ลูกค้าองค์กร/วางบิล (เครดิตเทอม) = มีแล้ว · บิลใหญ่ → ดีล = ระบบอัตโนมัติของ CRM ภายหลัง (มติ 7 · CD-7) ◂
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", true, null]], // POS P3.7 ▸ R11: บอทตอบสถานะออเดอร์ (ตามกฎ) live ◂
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", true, null], ["shiftCloseCashCheck", true, null]], // POS P3.8 ▸ R11 มติ 9: การ์ดของหมดนาน/ผลต่างกะ + ตรวจเงินปิดกะ มีจริงแล้ว (เดิม false "P3.8") ◂
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],

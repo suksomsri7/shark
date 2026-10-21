@@ -5162,6 +5162,9 @@ export const EXTERNAL_REFUND_DOC_TYPE: AccountDocType = "CREDIT_NOTE";
  *   ใบลดหนี้/ลิงก์บัญชีของบิลอ้างใบเต็มรูปเมื่อมี · ไม่มีใบเต็มรูป = ABB เส้นเดิม (สถานะใดก็ได้ เหมือนเดิม)
  */
 export async function findExternalSaleDoc(systemId: string, refId: string): Promise<{ id: string; docNo: string | null; contactId: string | null } | null> {
+  // POS P3.6 ▸ R7 R8: บิลวางบิล (ON_ACCOUNT) = ใบแจ้งหนี้ของบิล — ชนะใบเต็มรูป/ABB (ใบลดหนี้ของใบคืนอ้างใบนี้ · void ยกเลิกใบนี้) · บิลอื่นไม่มีใบนี้ ⇒ ผลเดิม ◂
+  const posCreditInvoice = await findPosCreditInvoice(systemId, refId);
+  if (posCreditInvoice) return posCreditInvoice;
   const full = await prisma.accountDocument.findFirst({
     where: { systemId, docType: "TAX_INVOICE", refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } },
     select: { id: true, docNo: true, contactId: true },
@@ -7279,3 +7282,222 @@ export async function runAccountEmailReports(now: Date = new Date()): Promise<Em
   return out;
 }
 
+
+// ═══════════════════ POS P3.6 ▸ วางบิล (เครดิตเทอม) ของบิล POS — ชั้นเอกสาร + ตัวอ่านของ facade (R7 · มติ 3 4 · CD-9) ═══════════════════
+// 🔴 โค้ดของเลนบัญชีที่เลน POS เขียน (บล็อกเพิ่มล้วน · owner line OP §แจ้งเจ้าของโมดูล ACCOUNT) — facade index.ts ห้ามแตะ prisma (F5) จึงอยู่ที่นี่
+// 🔴 เอกสาร = INVOICE (ใบแจ้งหนี้) AWAITING_PAYMENT 1 ใบต่อบิล (refType PosSale · refId = บิล) · **ไม่โพสต์ GL ที่ตัวเอกสาร** — Dr 1100/Cr รายได้+VAT
+//    ลงที่ JV ของ POS (gl.postExternalSale คีย์ PosSale#<id>#PAID) เส้นเดียว · รับชำระทีหลัง = recordPayment เดิม (Dr เงิน / Cr 1100 ปิดหนี้)
+//    ⇒ ไม่ผ่าน issueDocument/postDocument (นั่นคือ Dr 1100/Cr รายได้ซ้ำ) · ยกเลิก = voidDocument เดิม (ไม่มี JV ของตัวเอกสารให้กลับ · มีรับชำระ = ปฏิเสธ)
+export const POS_CREDIT_DOC_TYPE: AccountDocType = "INVOICE";
+
+/** ใบแจ้งหนี้ของบิลวางบิล — idempotent ต่อ (สมุด · INVOICE · PosSale · บิล) · ยอดเอกสาร = ยอดบิลเป๊ะ ไม่งั้นไม่สร้าง */
+export async function upsertPosCreditInvoiceDocument(input: {
+  tenantId: string;
+  systemId: string;
+  refSystemId: string;
+  refId: string;
+  occurredAt: Date;
+  dueDate: Date;
+  contactId: string;
+  vatMode: AccountVatMode;
+  vatRegistered: boolean;
+  vatRateBp: number;
+  grandTotalSatang: number;
+  note?: string | null;
+  lines: ExternalSaleDocLine[];
+  buyer?: ExternalBuyerSnapshot;
+}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
+  const existing = await findDocByRef(input.systemId, POS_CREDIT_DOC_TYPE, EXTERNAL_SALE_REF_TYPE, input.refId);
+  if (existing) return { ok: true, docId: existing.id, created: false };
+  if (input.lines.length === 0) return { ok: false, reason: "บิลไม่มีรายการ — ไม่สร้างใบแจ้งหนี้" };
+  const totals = computeTotals({
+    lines: input.lines.map((l) => ({ description: l.description, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount ?? 0, vatRateBp: l.vatRateBp ?? undefined })),
+    vatMode: input.vatMode,
+    vatRegistered: input.vatRegistered,
+    vatRateBp: input.vatRateBp,
+  });
+  if (totals.grandTotal !== input.grandTotalSatang)
+    return { ok: false, reason: `ยอดรวมของบรรทัด (${totals.grandTotal}) ไม่เท่ากับยอดบิล (${input.grandTotalSatang}) — ไม่สร้างใบแจ้งหนี้ของบิลวางบิล` };
+  const contact = await prisma.accountContact.findFirst({
+    where: { id: input.contactId, systemId: input.systemId },
+    select: { name: true, taxId: true, legalType: true, branchCode: true, branchName: true, address: true, phone: true, email: true },
+  });
+  try {
+    const doc = await prisma.$transaction(async (tx) => {
+      // ล็อกต่อ (สมุด · บิล) ก่อนตรวจซ้ำ — สองคิวพร้อมกันได้ใบแจ้งหนี้ใบเดียว (ไม่มี unique ของเอกสารต่อ ref ให้พึ่ง)
+      await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`acc:pos-credit-invoice:${input.systemId}:${input.refId}`}))) l`;
+      const again = await tx.accountDocument.findFirst({ where: { systemId: input.systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId: input.refId }, select: { id: true } });
+      if (again) return { id: again.id, created: false };
+      const docNo = await nextDocNo(tx, input.tenantId, input.systemId, POS_CREDIT_DOC_TYPE, input.occurredAt);
+      const created = await tx.accountDocument.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          docType: POS_CREDIT_DOC_TYPE,
+          docNo,
+          status: "AWAITING_PAYMENT", // วางบิล = ยังไม่รับเงิน
+          direction: "OUT",
+          issueDate: input.occurredAt,
+          dueDate: input.dueDate,
+          contactId: input.contactId,
+          contactSnapshot: input.buyer ? buyerContactSnapshot(contact, input.buyer) : (contact ?? undefined),
+          vatMode: input.vatMode,
+          vatTiming: "ON_ISSUE", // ขายสินค้า: จุดความรับผิด = ส่งมอบ (มติ 4 · W16) — VAT ลงที่ JV ของ POS ตอนขาย
+          taxPointBasis: "ON_ISSUE",
+          subTotal: totals.subTotal,
+          vatAmount: totals.vatAmount,
+          grandTotal: totals.grandTotal,
+          paidTotal: 0,
+          source: "POS",
+          refSystemId: input.refSystemId,
+          refType: EXTERNAL_SALE_REF_TYPE,
+          refId: input.refId,
+          note: input.note ?? null,
+          lines: {
+            create: input.lines.map((l, i) => ({
+              tenantId: input.tenantId,
+              systemId: input.systemId,
+              sortOrder: i,
+              description: l.description,
+              qty: l.qty,
+              unitName: l.unitName ?? null,
+              unitPrice: l.unitPrice,
+              discount: l.discount ?? 0,
+              vatRateBp: l.vatRateBp ?? input.vatRateBp,
+              amount: lineAmount({ description: l.description, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount ?? 0 }),
+              productId: l.productId ?? null,
+            })),
+          },
+        },
+        select: { id: true },
+      });
+      return { id: created.id, created: true };
+    });
+    return { ok: true, docId: doc.id, created: doc.created };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "สร้างใบแจ้งหนี้ของบิลวางบิลไม่สำเร็จ") };
+  }
+}
+
+/** ใบแจ้งหนี้ (ยังไม่ CANCELLED) ของบิลวางบิล — id/เลข/ผู้ติดต่อ · null = ไม่มี */
+export async function findPosCreditInvoice(systemId: string, refId: string): Promise<{ id: string; docNo: string | null; contactId: string | null } | null> {
+  return prisma.accountDocument.findFirst({
+    where: { systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } },
+    select: { id: true, docNo: true, contactId: true },
+  });
+}
+
+/**
+ * fix2 H2: ที่ว่างให้คืนแบบ "วางบิล" ของบิลหนึ่ง — ล็อกใบแจ้งหนี้ (FOR UPDATE ใน tx ของผู้เรียก) แล้วคิด ค้าง = grand − paid − ใบลดหนี้ที่มีผลของครอบครัว ·
+ *   docRefundIds = ใบคืน (refundRefIds) ที่มีเอกสารแล้ว ⇒ ฝั่ง POS หักใบคืนที่ยังไม่ถูกระบายเอง · ไม่มีใบแจ้งหนี้ = null
+ */
+export async function posCreditRefundRoomInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, refId: string, refundRefIds: readonly string[]): Promise<{ remainingSatang: number; docRefundIds: string[] } | null> {
+  const doc = await tx.accountDocument.findFirst({ where: { tenantId, systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } }, select: { id: true } });
+  if (!doc) return null;
+  await lockDocumentRow(tx, tenantId, systemId, doc.id);
+  const row = await tx.accountDocument.findUnique({ where: { id: doc.id }, select: { grandTotal: true, paidTotal: true, status: true } });
+  if (!row) return null;
+  const credit = (await familyCreditByInvoice(tx, systemId, [doc.id])).get(doc.id) ?? 0;
+  const ids = [...new Set(refundRefIds.filter(Boolean))];
+  const withDoc = ids.length ? await tx.accountDocument.findMany({ where: { tenantId, systemId, refType: EXTERNAL_SALE_REF_TYPE, refId: { in: ids } }, select: { refId: true } }) : [];
+  const remainingSatang = row.status === "VOIDED" ? 0 : Math.max(0, row.grandTotal - row.paidTotal - credit);
+  return { remainingSatang, docRefundIds: [...new Set(withDoc.map((d) => d.refId!).filter(Boolean))] };
+}
+
+/** fix2 H3: ใบแจ้งหนี้ของบิลวางบิล (ทุกสถานะยกเว้น CANCELLED) + สถานะ — void ของ POS ใช้ตรวจว่ายกเลิกใบได้จริงไหม */
+export async function posCreditInvoiceState(systemId: string, refId: string): Promise<{ id: string; status: string } | null> {
+  return prisma.accountDocument.findFirst({
+    where: { systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } },
+    select: { id: true, status: true },
+  });
+}
+
+/** เทอมของผู้ติดต่อสมุด (ตาม partyId · ผู้ติดต่อเก่าสุดที่ยังไม่เก็บ) + ค่าปริยายของสมุด — 0 ของผู้ติดต่อ = "ไม่ตั้ง" (CD-3) */
+export async function posCreditTermsOfParty(tenantId: string, systemId: string, partyId: string): Promise<{ contactTermDays: number | null; defaultDueDays: number }> {
+  const [c, s] = await Promise.all([
+    prisma.accountContact.findFirst({ where: { systemId, archivedAt: null, partyId }, orderBy: { createdAt: "asc" }, select: { creditTermDays: true } }),
+    getSettings(tenantId, systemId),
+  ]);
+  const t = c?.creditTermDays;
+  return { contactTermDays: typeof t === "number" && Number.isInteger(t) && t > 0 ? t : null, defaultDueDays: s.defaultDueDays };
+}
+
+/**
+ * CD-9 — ภาพหนี้ของ Party หนึ่งในสมุดเล่มนี้ (คำสั่งเดียว = ภาพเดียว · อ่านอย่างเดียว · ใช้ client ของผู้เรียกได้ — createSale ถือล็อกวงเงินอยู่):
+ *   open = เอกสารขาออกที่ยังค้าง (AWAITING_PAYMENT/PARTIAL · ไม่ยกเลิก) ของผู้ติดต่อทุกรายที่ผูก partyId นี้ — ค้าง = grand − paid − ใบลดหนี้ที่มีผลของครอบครัว
+ *   docRefIds = บิล POS (จาก saleRefIds) ที่มีเอกสารของบิลแล้ว (ชนิดใดก็ได้ · สถานะใดก็ได้) ⇒ ฝั่ง POS นับบิลที่ "ยังไม่มีเอกสาร" เพิ่มเอง (outbox lag)
+ */
+export async function posCreditOpenDocs(
+  systemId: string,
+  partyId: string,
+  saleRefIds: readonly string[],
+  client?: Prisma.TransactionClient,
+): Promise<{ open: { docId: string; refType: string | null; refId: string | null; outstandingSatang: number }[]; docRefIds: string[] }> {
+  const db = client ?? (prisma as unknown as Prisma.TransactionClient);
+  const contacts = (await db.accountContact.findMany({ where: { systemId, partyId }, select: { id: true } })).map((c) => c.id);
+  const ids = [...new Set(saleRefIds.filter(Boolean))];
+  const or: Prisma.AccountDocumentWhereInput[] = [];
+  if (contacts.length) or.push({ contactId: { in: contacts }, direction: "OUT", status: { in: ["AWAITING_PAYMENT", "PARTIAL"] }, voidedAt: null });
+  if (ids.length) or.push({ refType: EXTERNAL_SALE_REF_TYPE, refId: { in: ids } });
+  if (!or.length) return { open: [], docRefIds: [] };
+  const rows = await db.accountDocument.findMany({
+    where: { systemId, OR: or },
+    select: { id: true, docType: true, contactId: true, direction: true, status: true, voidedAt: true, refType: true, refId: true, grandTotal: true, paidTotal: true },
+  });
+  // CD-P36-F1 (a): ใบแจ้งหนี้ของบิลใน saleRefIds = ค้างของบริษัทนี้ "ไม่ว่าผูกผู้ติดต่อใด" (ใบที่เคยผูกผิดคนก่อนแก้ ก็ยังถูกนับ — วงเงินไม่รั่ว)
+  const refMatched = (d: (typeof rows)[number]) => d.docType === POS_CREDIT_DOC_TYPE && d.refType === EXTERNAL_SALE_REF_TYPE && !!d.refId && ids.includes(d.refId);
+  const isOpen = (d: (typeof rows)[number]) => ((!!d.contactId && contacts.includes(d.contactId)) || refMatched(d)) && d.direction === "OUT" && (d.status === "AWAITING_PAYMENT" || d.status === "PARTIAL") && !d.voidedAt;
+  const openRows = rows.filter(isOpen);
+  const credit = await familyCreditByInvoice(db, systemId, openRows.map((d) => d.id));
+  return {
+    open: openRows.map((d) => ({ docId: d.id, refType: d.refType, refId: d.refId, outstandingSatang: Math.max(0, d.grandTotal - d.paidTotal - (credit.get(d.id) ?? 0)) })),
+    docRefIds: [...new Set(rows.filter((d) => d.refType === EXTERNAL_SALE_REF_TYPE && d.refId && ids.includes(d.refId)).map((d) => d.refId!))],
+  };
+}
+
+/** R8 — ล็อกใบแจ้งหนี้ของบิล (FOR UPDATE ใน tx ของผู้เรียก) แล้วตอบว่ามีรับชำระที่ยังมีผลไหม · ไม่มีใบ = false */
+export async function posCreditInvoicePaidInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, refId: string): Promise<boolean> {
+  const doc = await tx.accountDocument.findFirst({ where: { tenantId, systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } }, select: { id: true } });
+  if (!doc) return false;
+  await lockDocumentRow(tx, tenantId, systemId, doc.id);
+  const live = await tx.accountDocumentPayment.count({ where: { documentId: doc.id, voidedAt: null } });
+  return live > 0;
+}
+
+/**
+ * R9 — อายุหนี้ต่อ Party (รายงาน "credit" ของ POS · อ่านอย่างเดียว) — สูตรเดียวกับ agingReport (OUT · AWAITING_PAYMENT/PARTIAL · ไม่ยกเลิก ·
+ *   ค้าง = grand − paid − ใบลดหนี้ที่มีผลของครอบครัว · เลยกำหนด = floor((asOf − due)/วัน) > 0 · due = dueDate ?? issueDate) ·
+ *   ผลต่อ partyId: ค้าง · เลยกำหนด · ครบกำหนดเก่าสุดของเอกสารที่ยังค้าง (วันไทย YYYY-MM-DD) · ชื่อผู้ติดต่อในสมุด (ชื่อบริษัท)
+ */
+export async function posCreditAgingByParty(
+  systemId: string,
+  partyIds: readonly string[],
+  asOf: Date,
+): Promise<Map<string, { outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null; contactName: string | null }>> {
+  const out = new Map<string, { outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null; contactName: string | null }>();
+  const ids = [...new Set(partyIds.filter(Boolean))];
+  if (!ids.length) return out;
+  const contacts = await prisma.accountContact.findMany({ where: { systemId, partyId: { in: ids } }, select: { id: true, partyId: true, name: true }, orderBy: { createdAt: "asc" } });
+  if (!contacts.length) return out;
+  const partyOf = new Map(contacts.map((c) => [c.id, c.partyId!]));
+  for (const c of contacts) if (c.partyId && !out.has(c.partyId)) out.set(c.partyId, { outstandingSatang: 0, overdueSatang: 0, oldestDueDate: null, contactName: c.name ?? null });
+  const docs = await prisma.accountDocument.findMany({
+    where: { systemId, direction: "OUT", status: { in: ["AWAITING_PAYMENT", "PARTIAL"] }, voidedAt: null, contactId: { in: contacts.map((c) => c.id) } },
+    select: { id: true, contactId: true, grandTotal: true, paidTotal: true, dueDate: true, issueDate: true },
+  });
+  const credit = await familyCreditByInvoice(prisma as unknown as Prisma.TransactionClient, systemId, docs.map((d) => d.id));
+  const DAY = 86_400_000;
+  for (const d of docs) {
+    const left = d.grandTotal - d.paidTotal - (credit.get(d.id) ?? 0);
+    if (left <= 0 || !d.contactId) continue;
+    const row = out.get(partyOf.get(d.contactId) ?? "");
+    if (!row) continue;
+    const due = d.dueDate ?? d.issueDate;
+    row.outstandingSatang += left;
+    if (Math.floor((asOf.getTime() - due.getTime()) / DAY) > 0) row.overdueSatang += left;
+    const ymd = new Date(due.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    if (!row.oldestDueDate || ymd < row.oldestDueDate) row.oldestDueDate = ymd;
+  }
+  return out;
+}
+// ◂ POS P3.6

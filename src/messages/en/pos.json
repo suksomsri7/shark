@@ -508,7 +508,13 @@
       "channelPaused": "This channel is not taking orders right now",
       "offSchedule": "Outside scheduled working hours — ask a manager to allow",
       "alreadyClocked": "Already clocked for today",
-      "noEmployee": "This user is not linked to an employee in HR"
+      "noEmployee": "This user is not linked to an employee in HR",
+      "creditDisabled": "On-account billing is not turned on for this point of sale",
+      "creditNotAllowed": "This company has no on-account credit limit yet — choose another payment method or ask a manager to set a limit",
+      "creditTermZero": "This company's credit term is 0 days — it cannot be billed on account; take payment now",
+      "creditLimitExceeded": "This amount is over the company's credit limit — ask a manager to approve with a PIN or choose another payment method",
+      "creditInvoicePaid": "The invoice of this bill has already been paid — the bill cannot be voided; use a refund instead",
+      "dealInvalid": "This deal cannot be linked to this bill — pick another deal or sell without a deal"
     },
     "refusal": {
       "manualConfirmManager": "This shop lets only managers confirm money received — ask a manager to confirm this PromptPay/card payment, or take cash"
@@ -856,6 +862,41 @@
         "syncing": "Syncing offline bills…",
         "done": "Offline bills synced — see the final receipt numbers in the list"
       }
+    },
+    "credit": {
+      "title": "On account (credit terms)",
+      "tile": "On account",
+      "company": "Bill company",
+      "pickCompany": "Choose company",
+      "searchCompany": "Search company name or tax ID",
+      "fromMember": "Companies of this member",
+      "noCompany": "No company found",
+      "termDays": "{days}-day terms",
+      "dueDate": "Due {date}",
+      "sufficient": "Within credit limit",
+      "insufficient": "Over credit limit",
+      "remaining": "Remaining limit {amount}",
+      "overLimitTitle": "Over credit limit",
+      "overLimitBody": "This amount is over the company's credit limit — a manager PIN is needed to approve",
+      "managerPin": "Manager PIN",
+      "approve": "Approve over limit",
+      "errors": {
+        "disabled": "On-account sales are not enabled at this register",
+        "notAllowed": "This company has no on-account credit limit — choose another payment method",
+        "termZero": "This company's credit term is 0 days — pay now",
+        "limitExceeded": "This amount is over the company's credit limit — ask a manager to approve or choose another payment method",
+        "invoicePaid": "This bill's invoice has payments — it cannot be voided, refund it instead",
+        "customerInvalid": "The bill company is not valid — choose the company again"
+      }
+    },
+    "deal": {
+      "title": "Deal",
+      "pick": "Link bill to a deal",
+      "none": "No deal",
+      "empty": "This customer has no open deals",
+      "errors": {
+        "invalid": "This deal cannot be linked to this bill (other customer, closed or no access) — choose another deal"
+      }
     }
   },
   "shift": {
@@ -912,7 +953,8 @@
       "ROOM_CHARGE": "Room charge",
       "PLATFORM": "Platform · awaiting payout",
       "GIFT_CARD": "Gift card",
-      "STORE_CREDIT": "Store credit"
+      "STORE_CREDIT": "Store credit",
+      "ON_ACCOUNT": "On account"
     },
     "recount": {
       "title": "Recount (shift closed by system)",
@@ -1109,7 +1151,8 @@
       "branches": "Branch comparison",
       "hourly": "Hourly sales",
       "anomalies": "Staff anomalies",
-      "commission": "Staff commission"
+      "commission": "Staff commission",
+      "credit": "Corporate receivables"
     },
     "card": {
       "today": "Today's sales",
@@ -1296,7 +1339,8 @@
         "ROOM_CHARGE": "Room charge",
         "PLATFORM": "Platform",
         "GIFT_CARD": "Gift card",
-        "STORE_CREDIT": "Store credit"
+        "STORE_CREDIT": "Store credit",
+        "ON_ACCOUNT": "On account"
       },
       "tools": {
         "csvFile": "close-day-{date}.csv",
@@ -1416,6 +1460,17 @@
         "REJECTED": "Rejected",
         "IN_RUN": "In a pay run"
       }
+    },
+    "credit": {
+      "title": "Corporate receivables",
+      "company": "Company",
+      "bills": "Bills",
+      "credit": "On account",
+      "refunded": "Refunded/credited",
+      "outstanding": "Outstanding",
+      "overdue": "Overdue",
+      "oldestDue": "Oldest due date",
+      "empty": "No receivables in this range"
     }
   },
   "stock": {
@@ -1624,6 +1679,7 @@
       "refundEmpty": "Pick at least one line to refund",
       "paymentMismatch": "The refund split does not add up to the refund amount",
       "refundMethodInvalid": "Refunds cannot go to a deposit or a room bill — choose cash, transfer, PromptPay or card",
+      "creditRefundExceedsRemaining": "The refund is larger than what is still owed on the invoice (the customer already paid part of it). Refund up to the amount owed; the accountant refunds the rest in Accounting.",
       "shiftRequired": "Open a shift on this device before refunding cash",
       "reasonRequired": "Give a reason for the refund",
       "idempotencyConflict": "A refund with this key already exists with different lines or amounts — check the earlier refund",
@@ -1768,7 +1824,8 @@
         "PLATFORM": "Paid via platform",
         "GIFT_CARD": "Gift card",
         "STORE_CREDIT": "Store credit",
-        "OTHER": "Other"
+        "OTHER": "Other",
+        "ON_ACCOUNT": "On account"
       },
       "footer": "Sent by SHARK · no other personal data on this page",
       "lang": {
@@ -2953,6 +3010,21 @@
       "pendingServer": "Waiting for manager {count}",
       "saveFailed": "Could not save — try again",
       "liveBanner": "When the internet drops the register keeps selling with cash and transfer · do not close or refresh the register while offline · bills the system does not accept wait for a manager on the Shifts page"
+    },
+    "credit": {
+      "title": "Credit customers (on account)",
+      "desc": "Let companies with a credit limit buy on account — invoices are issued and collected in accounting",
+      "enabled": "Enable on-account sales",
+      "requireBuyer": "Require buyer details (company name, tax ID, branch, address)",
+      "limit": "Credit limit",
+      "termDays": "Terms (days)",
+      "termDefault": "Use the accounting contact terms",
+      "active": "Active",
+      "note": "Internal note",
+      "add": "Add company",
+      "save": "Save limit",
+      "empty": "No company has a credit limit yet",
+      "noPermission": "Only users who can manage credit customers"
     }
   },
   "print": {

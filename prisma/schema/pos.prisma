@@ -18,6 +18,7 @@ enum PosPayType {
   PLATFORM // P2.1: แพลตฟอร์มเก็บเงินแทน (LINE MAN/Grab …) — ลงลูกหนี้ 1100 รอแพลตฟอร์มโอน
   GIFT_CARD // P2.9: บัตรของขวัญ (GiftCard kind GIFT · PIN) — Dr 2110 · VAT ตอนใช้ (มติ 1)
   STORE_CREDIT // P2.9: เครดิตร้านของสมาชิก (GiftCard kind STORE_CREDIT · ไม่มี PIN · เจ้าของบิล = เจ้าของเครดิต) — Dr 2110
+  ON_ACCOUNT // POS P3.6 ▸ วางบิล (เครดิตเทอม) ของลูกค้าองค์กร — ใบแจ้งหนี้ AWAITING_PAYMENT · Dr 1100 ผู้ติดต่อบริษัท (ไม่ใช่ STORE_CREDIT) ◂
 }
 
 // ── P2.1 — ช่องทางขาย (SalesChannel) ต่อสาขา ──
@@ -136,6 +137,14 @@ model PosSale {
   // syncedAt = เวลาเซิร์ฟเวอร์ตอนซิงก์ · paidAt = soldAt ของเครื่อง · createdAt = เวลาเซิร์ฟเวอร์ (ไม่ย้อน) ◂
   offlineRef                 String?
   syncedAt                   DateTime?
+
+  // ── POS P3.6 ▸ ลูกค้าองค์กรบนบิล · ดีล · เครดิตเทอม (R5 · มติ 5) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = พฤติกรรมเดิม) ──
+  // customerPartyId = Party.id (kind COMPANY) ของบิล (id หลวม · ไม่มี FK/index — P6.1) · ผู้ติดต่อสมุดของบิล = party นี้ก่อนสมาชิก
+  // crmDealId = CrmDeal.id ที่บิลตั้งใจผูก (intent) — สะพาน CRM สร้างแถวเงินของดีลเอง (flag first) + ตัวกวาดรายชั่วโมง
+  // creditTerms = {termDays, dueDate "YYYY-MM-DD" (วันไทย), limitSatang, exposureSatang, overrideBy?} — เขียนครั้งเดียวใน tx ของ createSale ไม่แก้ ◂
+  customerPartyId            String?
+  crmDealId                  String?
+  creditTerms                Json?
 
   lines    PosSaleLine[]
   payments PosPayment[]
@@ -1162,3 +1171,24 @@ model PosOfflineSnapshot {
   @@index([tenantId, unitId, deviceId, issuedAt])
 }
 // ◂ POS P3.4
+
+// ═══════════════════ POS P3.6 ▸ บัญชีเครดิตลูกค้าองค์กร (R4 · มติ 1) — ตารางใหม่ล้วน · ผู้เขียนเดียว = pos/credit.ts (สิทธิ์ pos.credit.manage) ═══════════════════
+// วงเงิน/เทอมต่อ Party (บริษัท) ต่อระบบ POS · termDays null = ตามผู้ติดต่อสมุด → ค่าปริยายสมุด (มติ 6) · 0 = CREDIT_TERM_ZERO
+// note = บันทึกภายใน (ไม่ลง audit · ไม่ออกหน้าขาย) · ไม่มี FK (id หลวมแบบ PosSale)
+model PosCreditAccount {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String // AppSystem.id (type POS)
+  partyId     String // Party.id (kind COMPANY)
+  limitSatang Int // วงเงิน > 0
+  termDays    Int? // 0..365 · null = ตามลำดับเทอม
+  active      Boolean  @default(true)
+  note        String?
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([systemId, partyId])
+  @@index([tenantId])
+}
+// ◂ POS P3.6

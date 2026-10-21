@@ -200,6 +200,10 @@
       "mode": "forced"
     },
     {
+      "suite": "qc-pos-p3.6",
+      "mode": "forced"
+    },
+    {
       "suite": "qc-pos-account",
       "mode": "unforced"
     },

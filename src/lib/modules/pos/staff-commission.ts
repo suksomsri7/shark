@@ -112,6 +112,8 @@ async function accrualRows(tx: Tx, sale: SaleForAccrual): Promise<RowInput[]> {
   const sys = await tx.appSystem.findFirst({ where: { id: sale.systemId, tenantId: sale.tenantId, type: "POS" }, select: { settings: true } });
   const cfg = posStaffCommission(sys?.settings);
   if (!cfg.enabled) return [];
+  // POS P3.6 ▸ R12 มติ 10: บิลที่ผูกดีล CRM (crmDealId) ไม่ลงค่าคอมฯ พนักงาน — ค่าคอมฯ ของดีลจ่ายทาง CRM (afterPaymentCounted) · skipDealBills false = ลงทั้งคู่ ◂
+  if (cfg.skipDealBills && ((await tx.posSale.findFirst({ where: { id: sale.id, tenantId: sale.tenantId }, select: { crmDealId: true } }))?.crmDealId || (await (await import("./crm-link")).saleCountedByDeal(sale.tenantId, sale.id)))) return []; // fix2 H5: หรือดีลนับบิลนี้แล้ว (แถว POS_SALE COUNTED · ทางเก่า) ◂
   // ผู้ขายต้องเป็นสมาชิกของร้าน (ไม่ใช่คีย์ API — soldByUserId ของ REST = ApiKey.id) ที่บทบาทอยู่ใน sellerRoles
   const member = await tx.membership.findFirst({ where: { tenantId: sale.tenantId, userId: sale.soldByUserId, acceptedAt: { not: null } }, select: { role: true } });
   if (!member || !(cfg.sellerRoles as string[]).includes(member.role)) return [];

@@ -124,8 +124,16 @@ Under the code above, the POS tells why in `message_th` / `message_en`. This is 
 | `CHANNEL_PAY_MISMATCH` | 422 (a value cannot be accepted) | `validation` | The payment method does not fit the sales channel (platform channels take one PLATFORM payment only). |
 | `CONFLICT` | 409 (state or duplicate conflict) | `state_conflict` | The record changed or conflicts with another record. Read it again and retry. |
 | `COUPON_INVALID` | 422 (a value cannot be accepted) | `validation` | The coupon code cannot be used for this bill. |
+| `CREDIT_DISABLED` | 409 (state or duplicate conflict) | `state_conflict` | On-account (credit term) sales are turned off for this POS. |
+| `CREDIT_INVOICE_PAID` | 409 (state or duplicate conflict) | `state_conflict` | The invoice of this on-account bill already has a payment. Refund the bill instead of voiding it. |
+| `CREDIT_LIMIT_EXCEEDED` | 403 (refused by a business rule) | `forbidden` | This bill is over the credit limit of the company. A manager must allow it. |
+| `CREDIT_REFUND_EXCEEDS_REMAINING` | 409 (state or duplicate conflict) | `state_conflict` | The refund is larger than what is still owed on the invoice of this on-account bill. |
+| `CREDIT_NOT_ALLOWED` | 403 (refused by a business rule) | `forbidden` | This company has no active on-account credit. |
+| `CREDIT_TERM_ZERO` | 409 (state or duplicate conflict) | `state_conflict` | The credit term of this company is 0 days, so it must pay now. |
+| `CUSTOMER_INVALID` | 422 (a value cannot be accepted) | `validation` | The company of this bill is not valid for this shop. |
 | `DBD_NOT_CONFIGURED` | 503 (busy, nothing written) | `upstream_unavailable` | The company registry lookup is not configured. |
 | `DBD_UNAVAILABLE` | 503 (busy, nothing written) | `upstream_unavailable` | The company registry lookup is not reachable right now. |
+| `DEAL_INVALID` | 422 (a value cannot be accepted) | `validation` | This deal cannot be linked to this bill. |
 | `DEPOSIT_CLOSED` | 409 (state or duplicate conflict) | `state_conflict` | The deposit was already used up or refunded. |
 | `DEPOSIT_EXCEEDS` | 409 (state or duplicate conflict) | `state_conflict` | The deposit amount is larger than what is left on it. |
 | `DEPOSIT_LOCKED` | 409 (state or duplicate conflict) | `state_conflict` | The deposit is locked after too many wrong attempts. |

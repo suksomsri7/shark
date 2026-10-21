@@ -1383,6 +1383,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // ◂ CRM C3.9
 };
 
+// POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —
+//   งานหลักขั้นถัดจากงานเดิมของ "pos.sale.refunded" (bothMain: วิ่งทั้งคู่ · ล้มตัวใด = event retry · idempotent ต่อใบคืน) · ห่อจากภายนอก ไม่แก้บรรทัดเดิม
+baseConsumers["pos.sale.refunded"] = bothMain(baseConsumers["pos.sale.refunded"]!, async (evt) => (await import("@/lib/modules/pos/crm-link")).dealOnSaleRefunded(evt));
+// ◂ POS P3.6
+
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
 export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
   Object.entries(baseConsumers).map(([type, handler]) => [type, withWebhooks(handler)]),

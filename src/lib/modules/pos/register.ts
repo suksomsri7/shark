@@ -624,6 +624,15 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   OFF_SCHEDULE: "ยังไม่อยู่ในเวลางานตามตาราง — ให้ผู้จัดการใส่ PIN เพื่ออนุญาต", // POS P3.5 ▸ CD-B2 REG_MESSAGE ◂
   ALREADY_CLOCKED: "ลงเวลานี้ไปแล้ววันนี้",
   NO_EMPLOYEE: "ผู้ใช้นี้ยังไม่ได้ผูกกับพนักงานในระบบพนักงาน (HR)",
+  // POS P3.6 ▸ R15: วางบิล (เครดิตเทอม) · ลูกค้าองค์กร · ดีล
+  CREDIT_DISABLED: "จุดขายนี้ยังไม่เปิดการวางบิล (เครดิตเทอม)",
+  CREDIT_NOT_ALLOWED: "บริษัทนี้ยังไม่ได้เปิดวงเงินวางบิล — เลือกวิธีชำระอื่น หรือให้ผู้จัดการตั้งวงเงินก่อน",
+  CREDIT_TERM_ZERO: "บริษัทนี้ตั้งเทอมเครดิตไว้ 0 วัน — วางบิลไม่ได้ ให้ชำระทันที",
+  CREDIT_LIMIT_EXCEEDED: "ยอดนี้เกินวงเงินวางบิลของบริษัท — ให้ผู้จัดการใส่ PIN เพื่ออนุญาต หรือเลือกวิธีชำระอื่น",
+  CREDIT_INVOICE_PAID: "ใบแจ้งหนี้ของบิลนี้รับชำระแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน",
+  CUSTOMER_INVALID: "บริษัทของบิลไม่ถูกต้อง — เลือกบริษัทใหม่อีกครั้ง",
+  DEAL_INVALID: "ดีลนี้ผูกกับบิลนี้ไม่ได้ (ไม่ใช่ดีลที่เปิดอยู่ของลูกค้าในบิล หรือคุณไม่มีสิทธิ์) — เลือกดีลใหม่ หรือขายโดยไม่ผูกดีล",
+  // ◂ POS P3.6
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -632,6 +641,8 @@ function regRefuse(code: RegisterRefusalCode, message?: string, lineIndex?: numb
 }
 // POS P2.14 ▸ UI-9: คำปฏิเสธ PIN บัตรของขวัญบอกแถว (giftCardRow) + ครั้งที่เหลือ (attemptsLeft) — รหัสอื่นคืนตามเดิม ◂
 function regPinRow(e: PosSaleError, r: RegisterRefusal): RegisterRefusal {
+  // POS P3.6 ▸ R6 CD-4: CREDIT_LIMIT_EXCEEDED พกวงเงิน + ภาพหนี้จาก createSale — submit ตัดออกเมื่อผู้ขายไม่ถือ pos.credit.manage ◂
+  if (e.code === "CREDIT_LIMIT_EXCEEDED") return { ...r, ...(e.limitSatang !== undefined ? { limitSatang: e.limitSatang } : {}), ...(e.exposureSatang !== undefined ? { exposureSatang: e.exposureSatang } : {}) };
   if (e.code !== "GIFT_CARD_PIN") return r;
   return { ...r, ...(e.giftCardRow !== undefined ? { giftCardRow: e.giftCardRow } : {}), ...(e.attemptsLeft !== undefined ? { attemptsLeft: e.attemptsLeft } : {}) };
 }
@@ -1192,6 +1203,7 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   "taxInvoice", "rememberBuyer", // POS P1.13 ▸ R2 R6 ◂
   "channelRef", // POS P2.1 ▸ R10 ◂
   "expectedTableItemsHash", // POS P2.4 ▸ R7 แฮชชุดรายการจาก quote ของโต๊ะ ◂
+  "customerPartyId", "crmDealId", "creditOverride", // POS P3.6 ▸ R5 R10 CD-1: บริษัทของบิล · ดีล · PIN ผู้จัดการอนุญาตเกินวงเงิน (ตรวจใน submitRegisterSale) ◂
 ]);
 const REG_GIFT_KEYS: ReadonlySet<string> = new Set(["number", "pin"]); // POS P2.9 ◂
 const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference", "giftCard", "depositId", "phoneLast4"]); // POS P2.9b fix1 มติ 6 ▸ + phoneLast4 ◂ · POS P2.9 ▸ giftCard {number, pin} เฉพาะ GIFT_CARD ◂ · POS P2.9b ▸ depositId เฉพาะ DEPOSIT ◂
@@ -2726,6 +2738,14 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     if (req.taxInvoice && !(await taxInvoiceEligibleAtPay(s.tenantId, s.systemId, q.vatSatang))) return regRefuse("NOT_ELIGIBLE");
     // POS P1.15 ▸ R6: ยึดส่วนลดที่อนุมัติไว้ให้บิลคีย์นี้ (ใช้ได้ครั้งเดียว · แข่งกัน = ผู้ชนะคนเดียว) — ตรวจทุกอย่างผ่านแล้วจึงยึด ◂
     if (over?.claimRequestId && !(await claimApprovedDiscount(s.tenantId, over.claimRequestId, req.idempotencyKey))) return regRefuse("DISCOUNT_EXCEEDS_LIMIT");
+    // POS P3.6 ▸ R5 R6 R10 มติ 2 CD-1 CD-4: บริษัทของบิล · ดีล (ต้องอยู่ในตัวเลือกของผู้ขาย ณ ตอนส่ง) · PIN ผู้จัดการอนุญาตเกินวงเงิน (verifyManagerPin เดิม ·
+    //   ผิด = PIN_INVALID +1 บนแถวผู้จัดการ · ต้องถือ pos.credit.manage ที่สาขา) — ก่อนเขียนอะไร · ไม่ส่งทั้งสาม = เดิมทุกไบต์ (createSale ตัดสินวงเงิน/บริษัทอีกชั้น)
+    const p36 = await regP36(db, s, input, req, deviceId, actor.userId);
+    if (isRegRefusal(p36)) {
+      if (over?.claimRequestId) await releasePosApprovalClaim(s.tenantId, over.claimRequestId, req.idempotencyKey).catch(() => undefined);
+      return p36;
+    }
+    // ◂ POS P3.6
     // ⑥
     const saleInput: CreateSaleInput = {
       tenantId: s.tenantId,
@@ -2788,6 +2808,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       ...(req.taxInvoice ? { taxInvoice: { ...req.taxInvoice, requestedAt: new Date().toISOString() } } : {}),
     };
     if (off) saleInput.offline = { ref: off.ref, soldAt: off.soldAt }; // POS P3.4 ▸ R7 มติ 3: offlineRef · paidAt = soldAt · เลขใบเสร็จเดือนของ soldAt ◂
+    Object.assign(saleInput, p36.sale); // POS P3.6 ▸ customerPartyId · crmDealId · creditOverrideByUserId (ส่งเฉพาะที่มี) ◂
     // POS P1.7 ▸ R4: PROMPTPAY/CARD ที่อ้าง "pi_…" = ใช้ใบขอรับเงินที่ PAID ในธุรกรรมเดียวกับบิล (ล็อก FOR UPDATE) · ไม่มี = ทาง P1.6 เดิมทุกไบต์ ◂
     const intentRefs: SaleIntentRef[] = req.payMethods.flatMap((x) =>
       (x.type === "PROMPTPAY" || x.type === "CARD") && x.reference !== null && isPaymentIntentId(x.reference) ? [{ intentId: x.reference, payType: x.type, amountSatang: x.amountSatang }] : [],
@@ -2805,6 +2826,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       if (over?.claimRequestId) await releasePosApprovalClaim(s.tenantId, over.claimRequestId, req.idempotencyKey).catch(() => undefined);
       throw e;
     }
+    // POS P3.6 ▸ CD-4: ตัวเลขวงเงินของคำปฏิเสธเกินวงเงินเฉพาะผู้ขายที่ถือ pos.credit.manage (ไม่ถือ = รหัส + ข้อความเท่านั้น) ◂
+    if (!res.ok && res.code === "CREDIT_LIMIT_EXCEEDED" && !evaluate(s.actor, { module: "pos", action: "pos.credit.manage", unitId: s.unitId })) res = regRefuse("CREDIT_LIMIT_EXCEEDED");
     if (!res.ok) {
       if (over?.claimRequestId) await releasePosApprovalClaim(s.tenantId, over.claimRequestId, req.idempotencyKey).catch(() => undefined);
       return res;
@@ -3352,6 +3375,41 @@ async function regDiscountOver(
   const code = r.status === "PENDING" ? "PENDING_APPROVAL" : "APPROVAL_REQUIRED";
   return { ok: false, code, message: POS_APPROVAL_MESSAGE[code], requestId: r.requestId, heldCartId: held.id };
 }
+
+// ═══════ POS P3.6 ▸ ตัวตรวจของ submit: บริษัท · ดีล · อนุญาตเกินวงเงิน (R5 R6 R10 มติ 2 · CD-1 CD-2) ═══════
+//   customerPartyId = id ล้วน (บริษัทของร้านจริงไหม = createSale CUSTOMER_INVALID) · crmDealId ∈ registerDealOptions ของผู้ขาย (บริษัท/สมาชิกในบิล) ไม่งั้น DEAL_INVALID ·
+//   creditOverride {managerUserId, managerPin} เฉพาะบิลที่มีแถว ON_ACCOUNT → verifyManagerPin (ตัวนับผิด/ล็อกเดิม) → ผู้จัดการต้องถือ pos.credit.manage ที่สาขา
+//   (ไม่ถือ = PERMISSION_DENIED) ⇒ creditOverrideByUserId (createSale ตรวจซ้ำ CD-2)
+type RegP36 = { sale: Pick<CreateSaleInput, "customerPartyId" | "crmDealId" | "creditOverrideByUserId"> };
+async function regP36(db: RegDb, s: RegScope, raw: RegisterSubmitInput, req: RegParsedSubmit, deviceId: string | undefined, sellerUserId: string): Promise<RegP36 | RegisterRefusal> {
+  const r = raw as unknown as Record<string, unknown>;
+  const has = (k: string) => r[k] !== undefined && r[k] !== null;
+  if (!has("customerPartyId") && !has("crmDealId") && !has("creditOverride")) return { sale: {} };
+  const sale: RegP36["sale"] = {};
+  if (has("customerPartyId")) {
+    if (!regIsId(r.customerPartyId)) return regRefuse("CUSTOMER_INVALID");
+    sale.customerPartyId = r.customerPartyId;
+  }
+  if (has("crmDealId")) {
+    if (!regIsId(r.crmDealId)) return regRefuse("DEAL_INVALID");
+    const opts = await (await import("./crm-link")).registerDealOptions({ tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, s.actor, { memberId: req.cart.memberId ?? null, customerPartyId: sale.customerPartyId ?? null });
+    if (!opts.ok || !opts.items.some((d) => d.id === r.crmDealId)) return regRefuse("DEAL_INVALID");
+    sale.crmDealId = r.crmDealId;
+  }
+  if (has("creditOverride")) {
+    const o = r.creditOverride;
+    if (!regIsRecord(o) || !regOnlyKeys(o, new Set(["managerUserId", "managerPin"])) || !regIsId(o.managerUserId) || typeof o.managerPin !== "string") return regRefuse("VALIDATION", "PIN ผู้จัดการไม่ถูกต้อง");
+    if (!req.payMethods.some((x) => (x.type as string) === "ON_ACCOUNT")) return regRefuse("VALIDATION", "PIN อนุญาตเกินวงเงินใช้กับบิลวางบิลเท่านั้น");
+    const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId: deviceId ?? null }, { managerPin: o.managerPin, managerUserId: o.managerUserId }, db);
+    if (isRegRefusal(v)) return v;
+    if (!evaluate(v.actor, { module: "pos", action: "pos.credit.manage", unitId: s.unitId })) return regRefuse("PERMISSION_DENIED", "ผู้จัดการคนนี้ไม่มีสิทธิ์อนุญาตวางบิลเกินวงเงิน");
+    // fix2 H4 (CD-2 = บทบาท): ผู้อนุญาตต้องเป็นเจ้าของร้าน/ผู้จัดการ และไม่ใช่ผู้ขายของบิลนี้
+    if ((v.actor.role !== "OWNER" && v.actor.role !== "MANAGER") || v.actor.userId === sellerUserId) return regRefuse("PERMISSION_DENIED", "ต้องให้เจ้าของร้านหรือผู้จัดการคนอื่น (ไม่ใช่ผู้ขาย) อนุญาตวางบิลเกินวงเงิน");
+    sale.creditOverrideByUserId = v.actor.userId;
+  }
+  return { sale };
+}
+// ◂ POS P3.6
 
 /** ทาง P1.6 (ไม่มีใบขอรับเงิน): regCreateSale + เทียบคำขอซ้ำ (ลอจิกเดิมของ submit ขั้น ⑥) */
 async function regCreate(db: RegDb, s: RegScope, req: RegParsedSubmit, saleInput: CreateSaleInput, startedAt: number): Promise<RegisterSubmitResult> {

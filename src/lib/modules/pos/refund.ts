@@ -65,6 +65,7 @@ const MSG: Record<RefundRefusalCode, string> = {
   REASON_REQUIRED: "ระบุเหตุผลการคืนเงิน",
   IDEMPOTENCY_CONFLICT: "มีรายการคืนเงินของรหัสนี้อยู่แล้วแต่รายการ/ยอดไม่ตรงกัน — ตรวจใบคืนเดิมก่อน",
   VALIDATION: "ข้อมูลการคืนเงินไม่ถูกต้อง",
+  CREDIT_REFUND_EXCEEDS_REMAINING: "ยอดคืนเกินยอดค้างของใบแจ้งหนี้ (ลูกค้าชำระไปแล้ว) — คืนได้ไม่เกินยอดค้าง ส่วนที่เหลือให้นักบัญชีคืนในระบบบัญชี", // POS P3.6 ▸ fix2 H2 ◂
   UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
 };
 const refuse = (code: RefundRefusalCode, message?: string): RefundRefusal => ({ ok: false, code, message: message ?? MSG[code] });
@@ -547,6 +548,22 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
     }
   }
 
+  // POS P3.6 ▸ R8 (CD-6 REFUND_METHOD_INVALID): บิลวางบิล = คืนเป็น "วางบิล" แถวเดียว (ลดหนี้ของใบแจ้งหนี้ — ร้านไม่ได้รับเงินสด) · บิลอื่นคืนเป็น ON_ACCOUNT ไม่ได้ ◂
+  {
+    const saleOnAccount = (await tx.posPayment.count({ where: { saleId: sale.id, tenantId: s.tenantId, type: "ON_ACCOUNT" } })) > 0;
+    const askOnAccount = x.payMethods.filter((p) => p.type === "ON_ACCOUNT").length;
+    if (saleOnAccount ? askOnAccount !== 1 || x.payMethods.length !== 1 : askOnAccount > 0) {
+      return refuse(
+        "REFUND_METHOD_INVALID",
+        saleOnAccount ? "บิลนี้วางบิล (เครดิตเทอม) — คืนเป็น \"วางบิล\" แถวเดียว (ลดหนี้ของใบแจ้งหนี้) ไม่คืนเงินสด/โอน" : "บิลนี้ไม่ได้วางบิล — คืนเป็น \"วางบิล\" ไม่ได้",
+      );
+    }
+    // POS P3.6 ▸ fix2 H2: คืนแบบวางบิลได้ไม่เกินยอดค้างของใบแจ้งหนี้ (อ่านใต้ล็อกวงเงินของบริษัท + ล็อกใบ) — เกิน = ปฏิเสธ · นักบัญชีคืนส่วนที่จ่ายแล้วในระบบบัญชี ◂
+    if (saleOnAccount) {
+      const over = await (await import("./credit")).creditRefundExcess(tx, { tenantId: s.tenantId, systemId: s.systemId, saleId: sale.id, partyId: sale.customerPartyId ?? null, askSatang: Math.abs(x.payMethods[0]?.amountSatang ?? 0) });
+      if (over) return refuse("CREDIT_REFUND_EXCEEDS_REMAINING", `${MSG.CREDIT_REFUND_EXCEEDS_REMAINING} (คืนได้อีก ${(over.remainingSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+    }
+  }
   const prior = await priorRefunds(tx, sale);
   const byId = new Map(sale.lines.map((l) => [l.id, l]));
   for (const r of x.lines) if (!byId.has(r.lineId)) return refuse("VALIDATION", "ไม่พบรายการนี้ในบิล");

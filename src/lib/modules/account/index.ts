@@ -29,6 +29,8 @@ import {
 // CRM v2 · C0.3-A: ชนิด+คณิตศาสตร์บรรทัดเอกสาร (ไฟล์ `totals.ts` บริสุทธิ์ ไม่แตะ prisma) + ตัวจัดรูปเงิน
 import { lineAmount, type LineInput } from "./totals";
 import { baht, familyCreditByInvoice } from "./service";
+// POS P3.6 ▸ วางบิล (เครดิตเทอม): ใบแจ้งหนี้ของบิล + ตัวอ่านภาพหนี้/เทอม/สถานะรับชำระ (service.ts · บล็อก POS P3.6) ◂
+import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, posCreditInvoiceState as posCreditInvoiceStateOf, posCreditRefundRoomInTx, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
@@ -116,7 +118,14 @@ export async function applyExternalSale(input: {
   // ส่วนของยอดรวมที่มาจาก "บริการ" — ไม่ระบุ = ถือเป็นขายสินค้าทั้งก้อน (พฤติกรรมเดิม)
   serviceGrossSatang?: number;
   // POS P2.9 ▸ STORED_VALUE = บัตรของขวัญ/เครดิตร้านของ POS (เงินรับล่วงหน้า) → Dr 2110 (มติ 1 · CD1b · เพิ่มล้วน) ◂
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE"; amountSatang: number }[];
+  // POS P3.6 ▸ ON_ACCOUNT = วางบิล (เครดิตเทอม) → Dr 1100 ผู้ติดต่อของบริษัท (onAccount ต้องส่งคู่กัน) ◂
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT"; amountSatang: number }[];
+  /**
+   * POS P3.6 ▸ R7 มติ 3 4 (เพิ่มล้วน · ไม่ส่ง = เดิมทุกไบต์): บิลวางบิลของลูกค้าองค์กร — partyId = Party ของบริษัท (ผู้ติดต่อสมุดหาด้วย partyId ก่อน) ·
+   *   dueDate = วันครบกำหนด "YYYY-MM-DD" (วันไทย) · termDays = เทอมที่ใช้ ⇒ JV Dr 1100 (ผู้ติดต่อบริษัท) / Cr รายได้ + 2200 (postExternalSale เดิม JV เดียว) ·
+   *   เอกสาร = INVOICE AWAITING_PAYMENT + dueDate (ไม่ใช่ ABB/TAX_INVOICE · ไม่ขึ้นกับสวิตช์ใบกำกับอย่างย่อ) ◂
+   */
+  onAccount?: { partyId: string; dueDate: string; termDays: number };
   /**
    * POS P2.9 ▸ R9 (มติ 7 · เพิ่มล้วน): ทิปที่อยู่ในเงินที่รับ (Σ payMethods = gross + tip) → Cr บัญชีพักทิป `ledgerId` (LIABILITY ของสมุดที่ผูกเท่านั้น)
    *   ไม่ส่ง = เดิมทุกไบต์ (ผู้เรียกตัดทิปออกจาก payMethods เอง) · บัญชีไม่ใช่หนี้สินของสมุดนี้/ถูกเก็บ = โยน (คิวลองใหม่ — เงินเกินห้ามหายเงียบ) ◂
@@ -155,7 +164,7 @@ export async function applyExternalSale(input: {
    */
   depositVatSatang?: number;
   depositGrossSatang?: number;
-}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean; zeroEntry?: true }> {
+}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean; zeroEntry?: true; creditInvoice?: true /* POS P3.6 ▸ F2 ใบแจ้งหนี้ของบิลวางบิล ◂ */ }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
 
@@ -202,9 +211,11 @@ export async function applyExternalSale(input: {
   //   DEPOSIT → 2110 (DEPOSIT_RECEIVED ลดหนี้สินมัดจำรับ) · ROOM_CHARGE → 1100 (AR ลูกหนี้)
   //   POS P2.1: PLATFORM → ลูกหนี้แพลตฟอร์ม (PLATFORM_RECEIVABLE = 1100 · option A) ผูกผู้ติดต่อของช่องทาง
   const channelToKey = (
-    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE",
+    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT", // POS P3.6 ◂
   ): "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR" => {
     switch (ch) {
+      case "ON_ACCOUNT": // POS P3.6 ▸ วางบิล = ลูกหนี้การค้า 1100 ผูกผู้ติดต่อของบริษัท ◂
+        return "AR";
       case "CASH":
         return "CASH";
       case "DEPOSIT":
@@ -223,6 +234,8 @@ export async function applyExternalSale(input: {
   const hasPlatform = input.payMethods.some((p) => p.channel === "PLATFORM");
   if (hasPlatform) await ensureAccounting(ctx); // R7: คีย์ลูกหนี้แพลตฟอร์มต้องจับคู่ได้ก่อนโพสต์ (ห้ามตก 9999)
   const platformContactId = hasPlatform ? await platformContact(ctx, input.channelName) : null;
+  // POS P3.6 ▸ R7: ผู้ติดต่อของบริษัท (partyId ก่อน · ผู้ซื้อ/ชื่อ Party เป็นข้อมูลตอนสร้างใหม่) — ก่อนโพสต์ JV (ขา 1100 ผูกผู้ติดต่อนี้) ◂
+  const creditContactId = input.onAccount && input.payMethods.some((p) => p.channel === "ON_ACCOUNT") ? await posCreditContact(ctx, input.onAccount.partyId, input.buyer) : null;
   // POS P2.9b ▸ R5: ขา Dr 2110 ของแถวมัดจำลดด้วย depositVat (ส่วนที่เป็น VAT จ่ายไปแล้วตอนรับมัดจำ) · depositVat 0 = บรรทัดเดิม ◂
   let depVatLeft = depositVat;
   const drLines = input.payMethods.map((p) => {
@@ -232,6 +245,7 @@ export async function applyExternalSale(input: {
       key: channelToKey(p.channel),
       amountSatang: p.amountSatang - cut,
       ...(p.channel === "PLATFORM" && platformContactId ? { contactId: platformContactId } : {}),
+      ...(p.channel === "ON_ACCOUNT" && creditContactId ? { contactId: creditContactId } : {}), // POS P3.6 ◂
     };
   }).filter((l) => l.amountSatang > 0 || depositVat === 0);
 
@@ -276,6 +290,9 @@ export async function applyExternalSale(input: {
   //    POS P1.13: ผู้ซื้อขอใบกำกับเต็มรูป + สมุดจด VAT = สร้างใบเต็มรูปเสมอ (ลูกค้าขอเอกสารเอง ไม่ขึ้นกับสวิตช์ใบอย่างย่อ)
   // follow-up 3 (ป้องกัน): ใบเต็มรูปเฉพาะเมื่อสมุด "ออกใบกำกับได้" ณ ตอนลงบัญชี (จด VAT · เปิดใบอย่างย่อจาก POS · มีเลขผู้เสียภาษี · บิลมี VAT)
   //   ไม่ครบ = ถอยไปเส้น ABB/ใบเสร็จเดิม (ไม่ล้างสำเนาผู้ซื้อ · ฝั่ง POS เตือน ops) — หน้าขายปฏิเสธ NOT_ELIGIBLE ตั้งแต่ตอนชำระแล้ว
+  // POS P3.6 ▸ R7 มติ 4: บิลวางบิล = ใบแจ้งหนี้ AWAITING_PAYMENT + dueDate เสมอ (ไม่ขึ้นกับสวิตช์ใบกำกับอย่างย่อ · ไม่มี ABB/TAX_INVOICE ของบิลนี้) ◂
+  // POS P3.6 ▸ F2 (CD-P36-F2 · W16/W23): ใบแจ้งหนี้นี้ = "ใบแจ้งหนี้/ใบกำกับภาษี" ของบิลวางบิล (ไม่มี TAX_INVOICE แยก) · creditInvoice ⇒ ฝั่ง POS ไม่เตือน pos.taxInvoice ◂
+  if (creditContactId && input.onAccount) return { posted, ...(await posCreditInvoiceLayer(ctx, input, lines, creditContactId, { vatRegistered, vatRateBp })), creditInvoice: true as const, ...zeroMark };
   const full = !!input.buyer && vatRegistered && posAbbreviatedInvoice && vat > 0 && (await bookTaxIdOf(link.systemId)) !== "";
   if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted, ...zeroMark };
 
@@ -578,7 +595,8 @@ export async function applyExternalRefund(input: {
   /** ส่วนของยอดคืนที่เป็นบริการ (กลับ 4030) — ไม่ส่ง = สินค้าทั้งก้อน */
   serviceGrossSatang?: number;
   // POS P2.9 ▸ STORED_VALUE = คืนเข้าบัตรของขวัญ/เครดิตร้าน → Cr 2110 (R6 R7 · เพิ่มล้วน) ◂
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE"; amountSatang: number }[];
+  // POS P3.6 ▸ ON_ACCOUNT = คืนบนบิลวางบิล → Cr 1100 ผู้ติดต่อของบิล (ลดหนี้) + ใบลดหนี้อ้างใบแจ้งหนี้ ◂
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT"; amountSatang: number }[];
   /** POS P2.1 (เพิ่มล้วน): ชื่อช่องทางขาย — แถว PLATFORM (แพลตฟอร์มคืนลูกค้า) ลดลูกหนี้ 1100 ของผู้ติดต่อนี้ */
   channelName?: string | null;
   /** บรรทัดของใบคืน (Σ qty×unitPrice − discount = grossSatang เป๊ะ) — ไม่ส่ง/ว่าง = ไม่มีชั้นเอกสาร */
@@ -622,8 +640,14 @@ export async function applyExternalRefund(input: {
   const refundPlatformContact = input.payMethods.some((p) => p.channel === "PLATFORM")
     ? ((await posSalePaidContact(ctx, input.saleRefId, CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"])) ?? (await platformContact(ctx, input.channelName)))
     : null;
+  // POS P3.6 ▸ R7: คืนบนบิลวางบิล — ผู้ติดต่อ = ผู้ติดต่อบนขา 1100 ของ JV ขาย (PAID) ของบิลเดิม · ไม่มี = ผู้ติดต่อของใบแจ้งหนี้ ◂
+  const refundCreditContact = input.payMethods.some((p) => p.channel === "ON_ACCOUNT")
+    ? ((await posSalePaidContact(ctx, input.saleRefId, "AR")) ?? (await findExternalSaleDoc(link.systemId, input.saleRefId))?.contactId ?? null)
+    : null;
   const crLines = input.payMethods.map((p) =>
-    p.channel === "PLATFORM"
+    p.channel === "ON_ACCOUNT" // POS P3.6 ◂
+      ? { key: "AR" as const, amountSatang: p.amountSatang, ...(refundCreditContact ? { contactId: refundCreditContact } : {}) }
+      : p.channel === "PLATFORM"
       ? { key: CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"], amountSatang: p.amountSatang, ...(refundPlatformContact ? { contactId: refundPlatformContact } : {}) }
       : p.channel === "STORED_VALUE" // POS P2.9 ▸ คืนเข้าบัตร/เครดิตร้าน = เพิ่มเงินรับล่วงหน้า 2110 (R6 R7) ◂
         ? { key: "DEPOSIT_RECEIVED" as const, amountSatang: p.amountSatang }
@@ -631,7 +655,8 @@ export async function applyExternalRefund(input: {
   );
   const res = await postExternalRefund(ctx, { refId: input.refId, date: input.occurredAt, baseSatang: base, vatSatang: vat, serviceBaseSatang: svcBase, crLines });
   const posted = "entryId" in res;
-  if (lines.length === 0 || !posAbbreviatedInvoice) return { posted };
+  const onAccountRefund = input.payMethods.some((p) => p.channel === "ON_ACCOUNT"); // POS P3.6 ▸ ใบลดหนี้ของบิลวางบิลออกเสมอ (ลดหนี้ของใบแจ้งหนี้) ◂
+  if (lines.length === 0 || (!posAbbreviatedInvoice && !onAccountRefund)) return { posted };
 
   const abb = await findExternalSaleDoc(link.systemId, input.saleRefId);
   const map = await resolveProductIdsForExternalSale(ctx.systemId, { itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean), productIds: [] });
@@ -1569,3 +1594,118 @@ export async function setPosLinkEnabled(
   return enabled ? connectPosLink(ctx, "POS", posSystemId, actorUserId, tx) : disconnectPosLink(ctx, "POS", posSystemId, actorUserId, tx);
 }
 // ◂ POS P1.18
+
+// ═══════════════════ POS P3.6 ▸ วางบิล (เครดิตเทอม) ของลูกค้าองค์กร — โค้ดเลนบัญชีที่เลน POS เขียน (เพิ่มล้วน · owner line OP §ACCOUNT) ═══════════════════
+// POS ไม่รู้เลขบัญชี/ไม่เขียนแถวบัญชี: ส่ง partyId + วันครบกำหนด · อ่านภาพหนี้/เทอมผ่านที่นี่ (มติ 3 · CD-9)
+
+/**
+ * ผู้ติดต่อสมุดของบริษัท — CD-P36-F1 (R1 F1 High): ตาม **partyId เท่านั้น** (ensureAccountContact: ล็อกต่อ (สมุด, Party) · ไม่มี = สร้าง) ·
+ *   ห้ามถอยไปจับคู่ด้วยเลขภาษีของผู้ซื้อ (findOrCreateCustomerContact ข้อ 1) — ผู้ติดต่อเดิมเลขภาษีเดียวกันของ Party อื่นจะดูดใบแจ้งหนี้ ⇒ วงเงินรั่ว ·
+ *   เลขภาษี/สาขาของผู้ซื้อใช้ตอนสร้างใหม่ (ชนของ Party อื่น = ensureAccountContact สร้างโดยไม่ใส่เลขภาษี) และยังพิมพ์บนเอกสาร (สำเนาผู้ซื้อ)
+ */
+async function posCreditContact(
+  ctx: GlCtx,
+  partyId: string,
+  buyer?: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null },
+): Promise<string> {
+  const name = buyer?.name?.trim() || (await crmPartyFacade.listBriefsByIds(ctx.tenantId, [partyId]))[0]?.name || "ลูกค้าองค์กร POS";
+  const tax = normTaxId(buyer?.taxId ?? null);
+  const c = await ensurePartyContact(
+    { tenantId: ctx.tenantId, systemId: ctx.systemId },
+    { partyId, name, taxId: /^\d{13}$/.test(tax) ? tax : null, branchCode: buyer?.branchCode || "00000", email: buyer?.email ?? null, legalType: "COMPANY" },
+  );
+  return c.id;
+}
+
+/** ชั้นเอกสารของบิลวางบิล: INVOICE AWAITING_PAYMENT · dueDate = เที่ยงคืนไทยของวันครบกำหนด · ไม่มีบรรทัดที่ลงตัว = บรรทัดเดียวยอดเต็ม */
+async function posCreditInvoiceLayer(
+  ctx: GlCtx,
+  input: Parameters<typeof applyExternalSale>[0],
+  lines: Parameters<typeof applyExternalSale>[0]["lines"],
+  contactId: string,
+  vat: { vatRegistered: boolean; vatRateBp: number },
+): Promise<{ docId?: string; reason?: string }> {
+  const src = lines && lines.length > 0 ? lines : [{ name: "ขายหน้าร้าน POS (วางบิล)", qty: 1, unitPriceSatang: input.grossSatang, discountSatang: 0, itemId: null, accountProductId: null }];
+  const map = await resolveProductIdsForExternalSale(ctx.systemId, {
+    itemIds: src.map((l) => l.itemId ?? "").filter(Boolean),
+    productIds: src.map((l) => l.accountProductId ?? "").filter(Boolean),
+  });
+  const docLines: ExternalSaleDocLine[] = src.map((l) => ({
+    description: l.name,
+    qty: l.qty,
+    unitPrice: l.unitPriceSatang,
+    discount: l.discountSatang ?? 0,
+    vatRateBp: l.vatRateBp ?? null,
+    productId: (l.accountProductId ? map.byProductId.get(l.accountProductId) : undefined) ?? (l.itemId ? map.byItemId.get(l.itemId) : undefined) ?? null,
+  }));
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(input.onAccount!.dueDate) ? input.onAccount!.dueDate : new Date(input.occurredAt.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  const doc = await upsertPosCreditInvoiceDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    occurredAt: input.occurredAt,
+    dueDate: new Date(`${ymd}T00:00:00+07:00`),
+    contactId,
+    vatMode: vat.vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered: vat.vatRegistered,
+    vatRateBp: vat.vatRateBp,
+    grandTotalSatang: input.grossSatang,
+    note: input.receiptNo ? `ขายหน้าร้าน POS (วางบิล ${input.onAccount!.termDays} วัน) · ใบเสร็จ ${input.receiptNo}` : `ขายหน้าร้าน POS (วางบิล ${input.onAccount!.termDays} วัน)`,
+    lines: docLines,
+    ...(input.buyer ? { buyer: input.buyer } : {}),
+  });
+  if (!doc.ok) throw new Error(`บิล POS ${input.refId} (วางบิล): สร้างใบแจ้งหนี้ไม่สำเร็จ — ${doc.reason} · ลองใหม่อัตโนมัติ`); // ลูกหนี้ต้องมีเอกสาร ⇒ ล้ม = คิวลองใหม่ (upsert idempotent)
+  return { docId: doc.docId };
+}
+
+/** POS P3.6 ▸ R4 Q6: สมุดที่ผูก POS นี้ + เทอมของผู้ติดต่อ (partyId · 0 = ไม่ตั้ง CD-3) + ค่าปริยายของสมุด — ไม่ผูก = { linked:false } */
+export async function posCreditBook(input: { tenantId: string; sourceSystemId: string; partyId: string }): Promise<{ linked: false } | { linked: true; contactTermDays: number | null; defaultDueDays: number }> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { linked: false };
+  const t = await posCreditTermsOfParty(input.tenantId, link.systemId, input.partyId);
+  return { linked: true, ...t };
+}
+
+/**
+ * POS P3.6 ▸ CD-9: ภาพหนี้ของบริษัทในสมุดที่ผูก POS (คำสั่งเดียว · อ่านด้วย client ของผู้เรียกได้ — createSale ถือล็อกวงเงินในธุรกรรม) ·
+ *   open = เอกสารค้างของผู้ติดต่อที่ผูก partyId (หักใบลดหนี้ที่มีผล) · docRefIds = บิลใน saleRefIds ที่มีเอกสารแล้ว · ไม่ผูก = null
+ */
+export async function posCreditExposureParts(
+  input: { tenantId: string; sourceSystemId: string; partyId: string; saleRefIds: readonly string[] },
+  db?: Prisma.TransactionClient,
+): Promise<{ open: { docId: string; refType: string | null; refId: string | null; outstandingSatang: number }[]; docRefIds: string[] } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditOpenDocs(link.systemId, input.partyId, input.saleRefIds, db);
+}
+
+/** POS P3.6 ▸ R8: ล็อกใบแจ้งหนี้ของบิลวางบิลใน tx ของ voidSale แล้วตอบว่ามีรับชำระที่ยังมีผลไหม (มี = CREDIT_INVOICE_PAID) · ไม่ผูก/ไม่มีใบ = false */
+export async function posCreditInvoicePaid(tx: Prisma.TransactionClient, input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<boolean> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return false;
+  return posCreditInvoicePaidInTx(tx, input.tenantId, link.systemId, input.refId);
+}
+
+/** POS P3.6 fix2 H2: ที่ว่างให้คืนแบบวางบิลของบิล (ล็อกใบแจ้งหนี้ใน tx ของผู้เรียก) — null = ไม่ผูก/ยังไม่มีใบแจ้งหนี้ */
+export async function posCreditRefundRoom(tx: Prisma.TransactionClient, input: { tenantId: string; sourceSystemId: string; refId: string; refundRefIds: readonly string[] }): Promise<{ remainingSatang: number; docRefundIds: string[] } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditRefundRoomInTx(tx, input.tenantId, link.systemId, input.refId, input.refundRefIds);
+}
+
+/** POS P3.6 fix2 H3: ใบแจ้งหนี้ของบิลวางบิลในสมุดที่ผูก POS + สถานะ (null = ไม่ผูก/ไม่มีใบ) — void ใช้ตรวจว่ายกเลิกใบได้จริง */
+export async function posCreditInvoiceState(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<{ docId: string; status: string } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  const d = await posCreditInvoiceStateOf(link.systemId, input.refId);
+  return d ? { docId: d.id, status: d.status } : null;
+}
+
+/** POS P3.6 ▸ R9: อายุหนี้ของบริษัท (partyIds) ในสมุดที่ผูก POS — รายงาน "credit" ของ POS (อ่านอย่างเดียว · สูตรเดียวกับ agingReport) · ไม่ผูก = null */
+export async function posCreditAging(input: { tenantId: string; sourceSystemId: string; partyIds: readonly string[]; asOf?: Date }): Promise<Map<string, { outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null; contactName: string | null }> | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditAgingByParty(link.systemId, input.partyIds, input.asOf ?? new Date());
+}
+// ◂ POS P3.6

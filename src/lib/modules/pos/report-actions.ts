@@ -25,6 +25,7 @@ import {
   reportHourly,
   reportAnomalies,
   reportStaffCommission, // POS P3.5 ◂
+  reportCredit, // POS P3.6 ◂
   reportPrintNames,
   type AnyReportResult,
   type DashboardCardResult,
@@ -62,6 +63,7 @@ const KIND_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input: 
   hourly: reportHourly,
   anomalies: reportAnomalies,
   commission: reportStaffCommission, // POS P3.5 ▸ ตัวอ่านตรวจ canViewPayroll เพิ่ม (มติ 7) ◂
+  credit: reportCredit, // POS P3.6 ▸ R9 ลูกหนี้วางบิล (ตัวอ่านตรวจ pos.report.view ใน reportCredit) ◂
 };
 
 function unexpected(where: string, e: unknown): Internal {

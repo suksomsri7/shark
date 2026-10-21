@@ -161,6 +161,14 @@ export type CreateSaleInput = {
   //   ref = เลข OFF ของเครื่อง → PosSale.offlineRef (unique ต่อสาขา) · soldAt = เวลาขายของเครื่อง → paidAt (GL = เวลาขาย) + เดือนของเลขใบเสร็จ ·
   //   syncedAt = เวลาเซิร์ฟเวอร์ · createdAt ไม่ย้อน · ไม่ส่ง = บิลออนไลน์เหมือนเดิมทุกไบต์ · ไม่อยู่ใน samePayload
   offline?: Readonly<{ ref: string; soldAt: Date | string }>; // ◂
+  // POS P3.6 ▸ R5 R6 R10 R13 มติ 5 8 (เพิ่มล้วน · ไม่ส่ง = เดิมทุกไบต์ · ไม่อยู่ใน samePayload):
+  //   customerPartyId = Party (kind COMPANY) ของร้าน — ลูกค้าองค์กรของบิล (ผู้ติดต่อสมุดของบิล = บริษัทนี้ก่อนสมาชิก) · ผิด = CUSTOMER_INVALID ·
+  //   crmDealId = ดีลที่บิลตั้งใจผูก (intent · สะพาน CRM สร้างแถวเงินเอง + ตัวกวาด) · memberAttachOnly = แนบสมาชิกเฉย ๆ (ไม่คิดสิทธิ์/ส่วนลดระดับ · บิลออเดอร์) ·
+  //   creditOverrideByUserId = ผู้อนุญาตเกินวงเงินวางบิล (หน้าขายตั้งหลัง PIN ผู้จัดการ · createSale ตรวจซ้ำว่าถือ pos.credit.manage — CD-2) ◂
+  customerPartyId?: string;
+  crmDealId?: string;
+  memberAttachOnly?: boolean;
+  creditOverrideByUserId?: string;
 };
 
 export type SaleResult = {
@@ -198,7 +206,14 @@ export type PosSaleErrorCode =
   | "DEPOSIT_NOT_FOUND"
   | "DEPOSIT_NOT_OWNER"
   | "DEPOSIT_EXCEEDS"
-  | "DEPOSIT_CLOSED";
+  | "DEPOSIT_CLOSED"
+  // POS P3.6 ▸ R15: วางบิล (เครดิตเทอม) — ปิดอยู่ · บริษัทไม่มีวงเงิน/POS ไม่ผูกสมุด · เทอม 0 · เกินวงเงิน · ใบแจ้งหนี้รับชำระแล้ว (void) · ลูกค้าไม่ใช่บริษัทของร้าน ◂
+  | "CREDIT_DISABLED"
+  | "CREDIT_NOT_ALLOWED"
+  | "CREDIT_TERM_ZERO"
+  | "CREDIT_LIMIT_EXCEEDED"
+  | "CREDIT_INVOICE_PAID"
+  | "CUSTOMER_INVALID";
 export class PosSaleError extends Error {
   readonly code: PosSaleErrorCode;
   constructor(code: PosSaleErrorCode, message: string) {
@@ -210,6 +225,9 @@ export class PosSaleError extends Error {
   // POS P2.14 ▸ UI-9: GIFT_CARD_PIN บอกแถว (ลำดับของแถวบัตรของขวัญในวิธีชำระ เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ — ไม่มี = ไม่รู้ ◂
   giftCardRow?: number;
   attemptsLeft?: number;
+  // POS P3.6 ▸ R6: CREDIT_LIMIT_EXCEEDED พกวงเงิน + ภาพหนี้ก่อนบิลนี้ (สตางค์ · แบบ giftCardRow) — หน้าขายส่งต่อเฉพาะผู้ถือ pos.credit.manage (CD-4) ◂
+  limitSatang?: number;
+  exposureSatang?: number;
 }
 // POS P2.14 ▸ UI-9: ติดแถว/ครั้งที่เหลือให้คำปฏิเสธ PIN — ครั้งที่เหลือมาจากข้อความของโมดูลบัตร ("เหลืออีก N ครั้ง") · ไม่ตรงรูป = ไม่ใส่ ◂
 function tagGiftPinRow<E>(e: E, ordinal: number): E {
@@ -748,6 +766,73 @@ export function saleChannelCode(sale: { channelCode: string | null; sourceModule
   return sale.channelCode ?? defaultChannelCode(sale.sourceModule);
 }
 
+// ═══════ POS P3.6 ▸ ลูกค้าองค์กร · วางบิล (เครดิตเทอม) · แนบสมาชิกเฉย ๆ (R5 R6 R13 · มติ 2 5 8 9 · CD-2) ═══════
+//   ทุกการตรวจเฉพาะเมื่อส่งฟิลด์ใหม่/มีแถว ON_ACCOUNT — บิลอื่นไม่มี query เพิ่ม (คืน P36_NONE) ⇒ ทางเดิมทุกไบต์
+//   วางบิล: ปิดอยู่ = CREDIT_DISABLED → ไม่มี/ไม่ใช่บริษัท = CUSTOMER_INVALID → แถวเดียวเต็มยอด ไม่มีทิป/เงินที่รับ ไม่ใช่บิลขายบัตร/ใบรับมัดจำ/ออฟไลน์ →
+//   ผู้ซื้อ (requireBuyer) → credit.decideSaleCredit (บัญชีเครดิต · เทอม · ล็อกวงเงิน · ภาพหนี้ · ผู้อนุญาต) — ทั้งหมดก่อนล็อกสินค้า/ตัวนับใบเสร็จ
+type SaleP36 = {
+  attachOnly: boolean;
+  override: { byUserId: string; overSatang: number } | null;
+  columns: { customerPartyId?: string; crmDealId?: string; creditTerms?: Prisma.InputJsonValue; paidAt?: Date };
+};
+const P36_NONE: SaleP36 = { attachOnly: false, override: null, columns: {} };
+async function saleP36(tx: Prisma.TransactionClient, input: CreateSaleInput, offlineSoldAt: Date | null): Promise<SaleP36> {
+  const onAccount = input.payMethods.filter((p) => p.type === "ON_ACCOUNT");
+  const has = (v: unknown) => v !== undefined && v !== null;
+  if (!onAccount.length && !has(input.customerPartyId) && !has(input.crmDealId) && !has(input.memberAttachOnly) && !has(input.creditOverrideByUserId)) return P36_NONE;
+  const bad = (m: string) => new PosSaleError("VALIDATION", m);
+  const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200;
+  if (has(input.crmDealId) && !isId(input.crmDealId)) throw bad("รหัสดีลไม่ถูกต้อง");
+  if (has(input.creditOverrideByUserId) && !isId(input.creditOverrideByUserId)) throw bad("ผู้อนุญาตเกินวงเงินไม่ถูกต้อง");
+  if (has(input.memberAttachOnly) && typeof input.memberAttachOnly !== "boolean") throw bad("ค่าแนบสมาชิกไม่ถูกต้อง");
+  const attachOnly = input.memberAttachOnly === true;
+  if (attachOnly) {
+    // R13: แนบสมาชิกเฉย ๆ ต้องมีสมาชิก และห้ามคู่สิทธิ์ที่เลือก/เครดิตร้าน (ทางเลี่ยงส่วนลด/ตัดยอดโดยไม่ผ่าน applyOnSale)
+    if (!isId(input.memberId)) throw bad("แนบสมาชิกต้องระบุสมาชิกของบิล");
+    if (has(input.memberChoices)) throw bad("บิลที่แนบสมาชิกเฉย ๆ ใช้สิทธิ์สมาชิกไม่ได้");
+    if (input.payMethods.some((p) => p.type === "STORE_CREDIT")) throw bad("บิลที่แนบสมาชิกเฉย ๆ จ่ายด้วยเครดิตร้านไม่ได้");
+  }
+  const credit = await import("./credit");
+  if (has(input.customerPartyId) && !(await credit.isCompanyParty(tx, input.tenantId, input.customerPartyId))) {
+    throw new PosSaleError("CUSTOMER_INVALID", "ลูกค้าองค์กรของบิลนี้ไม่ถูกต้อง (ไม่พบ ไม่ใช่บริษัท หรือเป็นของร้านอื่น)");
+  }
+  const columns: SaleP36["columns"] = {
+    ...(isId(input.customerPartyId) ? { customerPartyId: input.customerPartyId } : {}),
+    ...(isId(input.crmDealId) ? { crmDealId: input.crmDealId } : {}),
+  };
+  if (!onAccount.length) return { attachOnly, override: null, columns };
+  const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
+  const cfg = (await import("./settings-shared")).posCreditSettings(sys?.settings);
+  if (!cfg.enabled) throw new PosSaleError("CREDIT_DISABLED", "จุดขายนี้ยังไม่เปิดการวางบิล (เครดิตเทอม)");
+  if (!isId(input.customerPartyId)) throw new PosSaleError("CUSTOMER_INVALID", "วางบิลต้องเลือกบริษัทของบิลก่อน");
+  if (input.payMethods.length !== 1) throw new PosSaleError("SPLIT_INVALID", "วางบิลต้องเป็นวิธีชำระเดียวเต็มยอด — แบ่งจ่ายกับวิธีอื่นไม่ได้");
+  if ((input.tipSatang ?? 0) > 0 || has(onAccount[0]!.cashTenderedSatang)) throw bad("บิลวางบิลไม่มีทิปและไม่มีเงินที่รับ");
+  if (input.sourceModule === "MEMBER" || input.sourceModule === POS_DEPOSIT_SOURCE) throw bad("บิลขายบัตรกำนัล/ใบรับมัดจำวางบิลไม่ได้");
+  if (offlineSoldAt) throw bad("บิลออฟไลน์วางบิลไม่ได้");
+  if (cfg.requireBuyer && !input.taxInvoice) throw bad("วางบิลต้องระบุผู้ซื้อ (ชื่อบริษัท เลขผู้เสียภาษี สาขา ที่อยู่)");
+  const paidAt = new Date();
+  const d = await credit.decideSaleCredit(tx, {
+    tenantId: input.tenantId,
+    systemId: input.systemId,
+    unitId: input.unitId,
+    partyId: input.customerPartyId,
+    amountSatang: onAccount[0]!.amountSatang,
+    overrideByUserId: input.creditOverrideByUserId ?? null,
+    sellerUserId: input.soldByUserId ?? null, // POS P3.6 fix2 H4: ผู้อนุญาตต้องไม่ใช่ผู้ขาย ◂
+    at: paidAt,
+  });
+  if (!d.ok) {
+    const e = new PosSaleError(d.code, d.message);
+    if (d.code === "CREDIT_LIMIT_EXCEEDED") {
+      e.limitSatang = d.limitSatang;
+      e.exposureSatang = d.exposureSatang;
+    }
+    throw e;
+  }
+  return { attachOnly, override: d.override, columns: { ...columns, creditTerms: d.creditTerms as unknown as Prisma.InputJsonValue, paidAt } };
+}
+// ◂ POS P3.6
+
 export async function createSale(input: CreateSaleInput, client: Client = prisma): Promise<SaleResult> {
   // เราเปิด tx เอง (client = prisma) → drain outbox ได้หลัง commit · ถ้าถูกเรียกใน tx ผู้อื่น ปล่อยให้ cron เก็บ
   const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
@@ -810,6 +895,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     const shiftId = await bindSaleShift(tx, input);
     // POS P2.1 ▸ R4 R5: ช่องทางของบิล + กติกาชำระแพลตฟอร์ม — หลังค้นคีย์ซ้ำ · ก่อนตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีอะไรถูกเขียน) ◂
     const channel = await saleChannelOf(tx, input);
+    // POS P3.6 ▸ R5 R6 R13: ลูกค้าองค์กร · วางบิล (ล็อกวงเงิน + ภาพหนี้) · แนบสมาชิกเฉย ๆ — ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีอะไรถูกเขียน) ◂
+    const p36 = await saleP36(tx as Prisma.TransactionClient, input, offlineSoldAt);
 
     const lines = input.lines.map((l) => ({
       ...l,
@@ -940,8 +1027,24 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         ...(input.taxInvoice ? { taxInvoice: input.taxInvoice as unknown as Prisma.InputJsonValue } : {}), // POS P1.13 ▸ R1 ◂
         ...(input.memberSnapshot ? { memberSnapshot: { ...input.memberSnapshot } as unknown as Prisma.InputJsonValue } : {}), // POS P1.12 ▸ R9 ◂
         ...channel.snapshot(beforeMember), // POS P2.1 ▸ R6 สำเนาช่องทาง + ค่าคอมฯ ◂
+        ...p36.columns, // POS P3.6 ▸ R5: customerPartyId · crmDealId · creditTerms (+ paidAt เดียวกับที่คิดวันครบกำหนด) — เขียนครั้งเดียว ◂
       },
     });
+    // POS P3.6 ▸ มติ 2: อนุญาตเกินวงเงิน → audit pos.credit.override ใน tx ของบิล (id + สตางค์เท่านั้น · R14) ◂
+    if (p36.override) {
+      await tx.auditLog.create({
+        data: {
+          tenantId: input.tenantId,
+          unitId: input.unitId,
+          actorType: "USER",
+          actorId: p36.override.byUserId,
+          action: "pos.credit.override",
+          targetType: "PosSale",
+          targetId: sale.id,
+          after: { saleId: sale.id, partyId: input.customerPartyId!, byUserId: p36.override.byUserId, overSatang: p36.override.overSatang },
+        },
+      });
+    }
     // POS P1.2: บรรทัดที่มีตัวเลือกต้องรู้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน)
     //   R2 F2: บิลที่มีตัวเลือก = ตั้ง id ให้ "ทุกบรรทัด" แบบเรียงตามลำดับบรรทัด (ฐานเดียวกัน + เลขลำดับความยาวคงที่) ⇒ อ่านกลับ orderBy id
     //   ได้ลำดับตะกร้าเดิม (ไม่ปน UUID/cuid) · บิลที่ไม่มีตัวเลือกใช้ id ปริยายแบบเดิม (ผู้เรียกเดิมไม่เปลี่ยน)
@@ -974,7 +1077,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     // POS P1.12 ▸ R9 (CD-2): สิทธิ์ที่ใช้กับบิลนี้ = บรรทัดของกระเป๋า "ไม่รวมคูปอง" (คูปองเป็นของ POS · อยู่ใน CouponRedemption) + แต้มที่ตัด ·
     //   เขียนทุกผู้เรียกเมื่อมีสิทธิ์สมาชิก (applied ไม่ null — แม้ไม่มีบรรทัด) · walk-in / ลูกค้านอกระบบสมาชิก = null · ห้ามแก้หลัง commit ◂
     let memberBenefits: { lines: { kind: string; ref: string | null; label: string; discountSatang: number; note?: string }[]; pointsBurned: number } | null = null;
-    if (input.memberId && memberSystemId) {
+    if (input.memberId && memberSystemId && !p36.attachOnly) { // POS P3.6 ▸ R13: แนบสมาชิกเฉย ๆ = ไม่คิดสิทธิ์ (ส่วนลดระดับ 0 · memberBenefits null) ◂
       // dynamic import: `member/index` → wallet → giftcard → `pos/index` = วงกลมของโมดูล
       // (เรียกตอนใช้งานเท่านั้น ⇒ ลำดับการโหลดไฟล์ไม่มีทางได้ facade ที่ยังประกอบไม่เสร็จ)
       const member = await import("@/lib/modules/member");
@@ -1448,6 +1551,10 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string,
     if (sale.sourceModule === POS_DEPOSIT_SOURCE) throw new Error("ใบรับเงินมัดจำยกเลิกแบบบิลขายไม่ได้ — ใช้การคืนเงินมัดจำแทน");
     // POS P1.8 ▸ §7 CD1: คืนเงินไปแล้วบางส่วน ⇒ void ทั้งใบจะกลับรายการส่วนที่คืนไปแล้วซ้ำ (JV · แต้ม · สต็อก) — ปฏิเสธก่อนเขียนอะไร (ทุกผู้เรียก) ◂
     if (sale.refundedSatang > 0) throw new PosSaleError("HAS_REFUNDS", "บิลนี้มีการคืนเงินแล้ว — ยกเลิกทั้งใบไม่ได้ ใช้การคืนเงินส่วนที่เหลือแทน");
+    // POS P3.6 ▸ R8: บิลวางบิลที่ใบแจ้งหนี้มีรับชำระแล้ว ⇒ ยกเลิกไม่ได้ (ใช้การคืนเงิน) — ล็อกแถวใบแจ้งหนี้ใน tx นี้ก่อนตัดสิน (แข่งกับรับชำระ · ทุกผู้เรียก) ◂
+    if ((await tx.posPayment.count({ where: { saleId, tenantId, type: "ON_ACCOUNT" } })) > 0 && (await (await import("@/lib/modules/account")).posCreditInvoicePaid(tx, { tenantId, sourceSystemId: sale.systemId, refId: saleId }))) {
+      throw new PosSaleError("CREDIT_INVOICE_PAID", "ใบแจ้งหนี้ของบิลวางบิลนี้รับชำระแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน");
+    }
     // POS P1.9 ▸ S11: บิลในกะที่ปิดแล้ว void ไม่ได้ (คืนเงินเท่านั้น) · ล็อกแถวกะ FOR SHARE แบบ createSale · บิลนอกกะ (null) = เดิม ◂
     // POS P1.9 R2 F4 ▸ เฉพาะบิลหน้าขาย (sourceModule "POS") · บิลของโมดูลอื่น (คืนเงินโรงแรม/จอง/… เคลมฝั่งตัวเองก่อนแล้วค่อย void) ไม่ถูกปฏิเสธ — ปฏิเสธ = ค้างครึ่งทาง ◂
     if (sale.shiftId && (sale.sourceModule === "POS" || sale.sourceModule === "API")) { // POS P2.13 ▸ fix1 F2/H1: บิลของ REST POS (API) ในกะที่ปิดแล้วก็ void ไม่ได้ ◂
@@ -1643,7 +1750,7 @@ export type PosDaySummary = {
   deposits: { receivedSatang: number; appliedSatang: number; refundedSatang: number };
 };
 
-export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT", "ROOM_CHARGE", "PLATFORM"]; // POS P2.1 ▸ PLATFORM ท้ายสุด ◂ · POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านต่อจากบัตร ◂
+export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT", "ROOM_CHARGE", "PLATFORM", "ON_ACCOUNT"]; // POS P3.6 ▸ ON_ACCOUNT ท้ายสุด (ไม่ใช่เงินสด · ไม่เข้าเงินที่ควรมี) ◂ // POS P2.1 ▸ PLATFORM ท้ายสุด ◂ · POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านต่อจากบัตร ◂
 export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   CASH: "เงินสด",
   PROMPTPAY: "พร้อมเพย์",
@@ -1654,6 +1761,7 @@ export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   PLATFORM: "แพลตฟอร์ม", // POS P2.1 ▸ แพลตฟอร์มเก็บเงินแทน (รอแพลตฟอร์มโอน) ◂
   GIFT_CARD: "บัตรของขวัญ", // POS P2.9 ◂
   STORE_CREDIT: "เครดิตร้าน", // POS P2.9 ◂
+  ON_ACCOUNT: "วางบิล (เครดิตเทอม)", // POS P3.6 ▸ มติ 9 (ไม่ใช่ "เครดิตร้าน" ของสมาชิก) ◂
 };
 
 // business date (BKK) → ช่วง UTC [start, end) ของวันนั้น · POS P1.18 (มติ Q9): วัน D = [D 00:00 + cutoff, D+1 00:00 + cutoff) เวลาไทย ◂

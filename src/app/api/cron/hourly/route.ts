@@ -140,6 +140,16 @@ export async function GET(req: Request) {
     });
   }
   // ◂ POS P3.8
+  // POS P3.6 ▸ R10 มติ 5: บิลที่ตั้งใจผูกดีล CRM (PosSale.crmDealId) แต่สะพาน pos.sale.paid พลาด (ปิดสะพาน/ล้ม = WARN) → ผูก + นับเข้าดีล ·
+  //   หน้าต่าง 7 วัน · ปักธงก่อน (เรียกซ้ำ = ไม่มีแถวเพิ่ม) · งบ 20 วิ · best-effort: ล้มห้ามทำให้รอบนี้แดง
+  try {
+    await (await import("@/lib/modules/pos/crm-link")).sweepDealIntents({ now: new Date(), deadline: new Date(Date.now() + 20_000) });
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepDealIntents (บิลผูกดีล CRM ที่ยังไม่ถูกนับ) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ POS P3.6
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;

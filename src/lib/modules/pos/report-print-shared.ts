@@ -48,6 +48,7 @@ const TITLE: Record<ReportPrintLocale, Record<ReportKind, string>> = {
     hourly: "รายงานยอดขายรายชั่วโมง",
     anomalies: "รายงานจุดผิดปกติของพนักงาน",
     commission: "รายงานค่าคอมฯ พนักงานขาย", // POS P3.5 ◂
+    credit: "รายงานลูกหนี้วางบิล (เครดิตเทอม)", // POS P3.6 ▸ R9 (REPORT_KINDS ต่อท้าย credit ⇒ แผนที่ชนิดต้องครบ) ◂
   },
   en: {
     daily: "Daily sales report",
@@ -62,6 +63,7 @@ const TITLE: Record<ReportPrintLocale, Record<ReportKind, string>> = {
     hourly: "Hourly sales report",
     anomalies: "Staff anomaly report",
     commission: "Staff sales commission report", // POS P3.5 ◂
+    credit: "On-account receivables report", // POS P3.6 ▸ R9 ◂
   },
 };
 /** หัวตารางภาษาอังกฤษ (ลำดับเดียวกับ CSV_HEADERS) — จำนวนช่องไม่เท่า = ใช้หัวไทย (กันตารางเลื่อนช่อง) */
@@ -78,6 +80,7 @@ const EN_HEADERS: Record<ReportKind, string[]> = {
   hourly: ["Hour", "Bills", "Net sales", "Forecast (4-week average)"],
   anomalies: ["Rule", "Finding", "Branch", "Date", "Staff", "Ref type", "Ref ID", "Value", "Threshold", "Count"], // POS P2.12 ▸ fix1 F1 ◂
   commission: ["User ID", "Name", "Earned", "Reversed", "Net", "Sent to payroll", "Not sent", "No HR employee", "HR status"], // POS P3.5 ◂
+  credit: ["Company ID (party)", "Company", "On-account bills", "On-account total", "Refunded", "Outstanding", "Overdue", "Oldest due date"], // POS P3.6 ▸ R9 ◂
 };
 const LABEL: Record<ReportPrintLocale, { range: string; unit: string; generatedAt: string; empty: string; total: string; rows: string }> = {
   th: { range: "ช่วงวันที่", unit: "สาขา", generatedAt: "พิมพ์เมื่อ", empty: "ไม่มีข้อมูลในช่วงนี้", total: "รวม", rows: "แถว" },

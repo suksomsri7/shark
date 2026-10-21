@@ -161,6 +161,8 @@ export type PosStaffCommissionConfig = {
   byCategory: Record<string, PosStaffCommissionRate>;
   byProduct: Record<string, PosStaffCommissionRate>;
   sellerRoles: PosStaffRole[];
+  // POS P3.6 ▸ R12 มติ 10: บิลที่ผูกดีล CRM (crmDealId) ไม่ลงค่าคอมฯ พนักงาน (ค่าคอมฯ ของดีลจ่ายทาง CRM) — ปริยาย true · false = ลงทั้งคู่ ◂
+  skipDealBills: boolean;
 };
 export const POS_STAFF_COMMISSION_LIMITS = { bp: { min: 0, max: 5_000 }, fixedSatang: { min: 0, max: 100_000 }, entries: 500 } as const;
 const STAFF_COMMISSION_DEFAULT_ROLES: readonly PosStaffRole[] = ["STAFF", "MANAGER"];
@@ -202,7 +204,24 @@ export function posStaffCommission(settings: unknown): PosStaffCommissionConfig 
     byCategory,
     byProduct,
     sellerRoles: roles,
+    skipDealBills: typeof c?.skipDealBills === "boolean" ? c.skipDealBills : true, // POS P3.6 ▸ R12 ◂
   };
+}
+
+// POS P3.6 ▸ R3 มติ 9: วางบิล (เครดิตเทอม) — settings.pos.credit = {enabled, requireBuyer} ต่อระบบ POS · ตัวอ่านเดียว (บริสุทธิ์) ·
+//   ปริยาย = ปิด (enabled false ⇒ ไม่มีไทล์ · ON_ACCOUNT = CREDIT_DISABLED · ทุกทางเหมือนเดิม) · requireBuyer ปริยาย true (บิลวางบิลต้องมีผู้ซื้อใบกำกับ) ·
+//   ชนิดผิด = ค่าปริยาย · คีย์อื่นไม่ออก · ตัวเขียน = เจ้าของร้าน (การ์ด "ลูกค้าเครดิต" ของ P3.6U) ◂
+export type PosCreditSettings = { enabled: boolean; requireBuyer: boolean };
+export function posCreditSettings(settings: unknown): PosCreditSettings {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const c = pos && isRecord(pos.credit) ? pos.credit : null;
+  return { enabled: typeof c?.enabled === "boolean" ? c.enabled : false, requireBuyer: typeof c?.requireBuyer === "boolean" ? c.requireBuyer : true };
+}
+// POS P3.6 ▸ R13 มติ 8 (W17): สมาชิกบนบิลออเดอร์ (settings.pos.orders.memberOnBill · ปริยาย true) — ออเดอร์ที่มีสมาชิก ⇒ บิลแนบสมาชิก (attach-only · ไม่ลดราคา) ◂
+export function posOrderMemberOnBill(settings: unknown): boolean {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const o = pos && isRecord(pos.orders) ? pos.orders : null;
+  return typeof o?.memberOnBill === "boolean" ? o.memberOnBill : true;
 }
 
 /** ช่วงของตัวเขียนทั่วไป (= ช่วงของตัวอ่านแต่ละตัว) */

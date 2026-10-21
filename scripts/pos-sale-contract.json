@@ -256,6 +256,22 @@
       "offline": {
         "optional": true,
         "type": "Readonly<{ ref: string; soldAt: Date | string }>"
+      },
+      "customerPartyId": {
+        "optional": true,
+        "type": "string"
+      },
+      "crmDealId": {
+        "optional": true,
+        "type": "string"
+      },
+      "memberAttachOnly": {
+        "optional": true,
+        "type": "boolean"
+      },
+      "creditOverrideByUserId": {
+        "optional": true,
+        "type": "string"
       }
     },
     "MemberSaleChoices": {

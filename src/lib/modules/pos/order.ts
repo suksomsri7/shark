@@ -21,6 +21,8 @@ import { scheduleDrain } from "@/lib/outbox-consumers";
 import { prisma } from "./db";
 import { afterSaleCommitted, createSale, posDayStart, posSystemForSale, PosSaleError, type CreateSaleInput } from "./service";
 import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (แทน proxy เฉพาะที่ของ P2.8) ◂
+import { systemForUnit } from "@/lib/modules/system/service"; // POS P3.6 ▸ R13 ระบบสมาชิกของสาขา (สมาชิกบนบิลออเดอร์) ◂
+import { posOrderMemberOnBill } from "./settings-shared"; // POS P3.6 ▸ R13 ◂
 import { ensureUnitChannels, withInactiveQrOrderAllowed } from "./channel"; // POS P2.7 ▸ fix3 G1: + withInactiveQrOrderAllowed ◂
 import { channelCommission, channelNet } from "./channel-shared";
 import { quoteRegisterCart, registerVisibleProductIds } from "./register"; // POS P2.14 ▸ ORD-1 ◂
@@ -469,8 +471,30 @@ async function saleLinesOf(tx: Tx, s: { tenantId: string; systemId: string; unit
 /** จุดเดียวที่ออเดอร์สร้างบิล (มติ 3 · ทะเบียน qc-pos-p1.6) — ในธุรกรรมของออเดอร์เสมอ (ไม่ซ้อน · callerTx) */
 // POS P2.8 ▸ HF-TX: switched — proxy เฉพาะที่ของ P2.8 ถูกลบ ใช้ callerTx กลาง (core/caller-tx) · งานหลัง commit = afterSaleCommit → afterSaleCommitted ◂
 function orderCreateSale(tx: Tx, input: CreateSaleInput) {
-  return createSale(input, callerTx(tx));
+  // POS P3.6 ▸ R13 มติ 8 (W17): ออเดอร์ที่มีสมาชิก ⇒ บิลแนบสมาชิกเฉย ๆ (memberAttachOnly · ไม่คิดส่วนลดระดับ/สิทธิ์ · ยอดบิล = ยอดออเดอร์เดิม) ทุกช่องทางรวม PLATFORM ·
+  //   แต้ม/ยอดสะสม/ตรา/ระดับ ได้หลังคิวระบาย (member-bridges เดิม) · ปิดได้ด้วย settings.pos.orders.memberOnBill (ปริยาย true) · สาขาไม่มีระบบสมาชิก = เดิมทุกไบต์
+  return orderMemberOnBill(tx, input).then((withMember) => createSale(withMember, callerTx(tx)));
 }
+async function orderMemberOnBill(tx: Tx, input: CreateSaleInput): Promise<CreateSaleInput> {
+  if (input.memberId || input.sourceModule !== "POS" || !input.sourceId) return input;
+  const o = await tx.posOrder.findFirst({ where: { id: input.sourceId, tenantId: input.tenantId, unitId: input.unitId }, select: { memberId: true } });
+  if (!o?.memberId) return input;
+  const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
+  if (!posOrderMemberOnBill(sys?.settings)) return input;
+  const memberSystemId = await systemForUnit(input.tenantId, input.unitId, "MEMBER", tx);
+  if (!memberSystemId) return input;
+  const c = await tx.customer.findFirst({ where: { id: o.memberId, tenantId: input.tenantId, memberSystemId }, select: { id: true, name: true, memberCode: true, phone: true, tierDefId: true } });
+  if (!c) return input;
+  const tier = c.tierDefId ? await tx.memberTierDef.findFirst({ where: { id: c.tierDefId, tenantId: input.tenantId }, select: { key: true, name: true } }) : null;
+  return {
+    ...input,
+    memberId: c.id,
+    memberSystemId,
+    memberAttachOnly: true,
+    memberSnapshot: { name: c.name ?? null, memberCode: c.memberCode ?? "", phoneMasked: maskPhone(c.phone), tierKey: tier?.key ?? null, tierName: tier?.name ?? null },
+  };
+}
+// ◂ POS P3.6
 
 /** ฐานของบิลออเดอร์: sourceModule POS · sourceId = ออเดอร์ · คีย์ posorder-<id> · ช่องทาง + เลขอ้างอิง · ไม่มีค่าบริการ/ทิป/ส่วนลด (P2.1 CD8) */
 function saleBase(o: PosOrder, lines: CreateSaleInput["lines"], payMethods: CreateSaleInput["payMethods"], who: { soldByUserId: string | null; shiftId: string | null | undefined /* POS P2.13 ▸ undefined = กติกา "ทางอื่น" (REST) ◂ */ }): CreateSaleInput {

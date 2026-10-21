@@ -507,7 +507,11 @@ function runStatic(): void {
     const rep = srcOf(F.reports);
     const kinds = /export const REPORT_KINDS\s*=\s*\[([^\]]*)\]/.exec(rep)?.[1] ?? "";
     const kindList = [...kinds.matchAll(/["']([a-z]+)["']/g)].map((m) => m[1]!);
-    if (kindList[kindList.length - 1] !== "commission") p.push(`REPORT_KINDS ไม่ได้ต่อท้าย "commission" (${kindList.slice(-2).join(",")})`);
+    // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-B3 · P3.6 R9 ต่อท้าย credit): เดิม "ตัวสุดท้าย = commission" ⇒ ต้องมี commission · ถ้ามี credit ต้องอยู่หลัง commission ◂
+    const iCommission = kindList.indexOf("commission");
+    const iCredit = kindList.indexOf("credit");
+    if (iCommission < 0) p.push(`REPORT_KINDS ไม่มี "commission" (${kindList.slice(-2).join(",")})`);
+    else if (iCredit >= 0 && iCredit < iCommission) p.push(`REPORT_KINDS: "credit" อยู่ก่อน "commission" (${kindList.slice(-3).join(",")})`);
     if (!/\n\s*commission\s*:\s*\[/.test(rep.slice(rep.indexOf("export const CSV_HEADERS")))) p.push("CSV_HEADERS ไม่มี commission");
     if (!exportsFn(rep, "reportStaffCommission")) p.push("reports.ts ไม่มี export reportStaffCommission");
     if (!/\bcanViewPayroll\b/.test(rep)) p.push("reports.ts ไม่ใช้ canViewPayroll (มติ 7)");
@@ -707,7 +711,7 @@ async function runPure(): Promise<void> {
     if (!g2.err && JSON.stringify(g2.v) !== JSON.stringify({ enabled: false, earlyMin: 30, lateMin: 30, overrideTtlMin: 240 })) p.push(`ชนิดผิด → ${short(g2.v, 90)} (คาดค่าปริยาย)`);
     const c0 = pure(ss, "posStaffCommission", {});
     if (c0.err) p.push(c0.err);
-    else if (JSON.stringify(c0.v) !== JSON.stringify({ enabled: false, defaultBp: 0, byCategory: {}, byProduct: {}, sellerRoles: ["STAFF", "MANAGER"] })) p.push(`posStaffCommission({}) → ${short(c0.v, 110)}`);
+    else if (JSON.stringify(c0.v) !== JSON.stringify({ enabled: false, defaultBp: 0, byCategory: {}, byProduct: {}, sellerRoles: ["STAFF", "MANAGER"], skipDealBills: true })) p.push(`posStaffCommission({}) → ${short(c0.v, 110)}`); // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.6 R12 มติ 10): ค่าปริยาย + skipDealBills: true
     const many: Record<string, Any> = {};
     for (let i = 0; i < 600; i++) many[`px${i}`] = { bp: 100 };
     const c1 = pure(ss, "posStaffCommission", { pos: { staffCommission: { enabled: true, defaultBp: 9000, byCategory: { cneg: { bp: -1 } }, byProduct: { pBig: { bp: 7000 }, pFix: { fixedSatang: 200_000 }, pBad: { bp: "x" } }, sellerRoles: ["OWNER", "X", "STAFF"], junk: true } } });
@@ -719,7 +723,7 @@ async function runPure(): Promise<void> {
     }
     if (!c1.err && isRecord(c1.v)) {
       const v = c1.v;
-      const extraKeys = Object.keys(v).filter((k) => !["enabled", "defaultBp", "byCategory", "byProduct", "sellerRoles"].includes(k));
+      const extraKeys = Object.keys(v).filter((k) => !["enabled", "defaultBp", "byCategory", "byProduct", "sellerRoles", "skipDealBills"].includes(k)); // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.6 R12 มติ 10): + skipDealBills (ปริยาย true) — เดิม 5 คีย์
       if (extraKeys.length) p.push(`คีย์แปลกหลุด ${extraKeys.join(",")}`);
       if (v.defaultBp !== 5000) p.push(`defaultBp 9000 → ${short(v.defaultBp)} (คาด 5000)`);
       if (!Array.isArray(v.sellerRoles) || v.sellerRoles.includes("X") || !v.sellerRoles.includes("STAFF")) p.push(`sellerRoles → ${short(v.sellerRoles)}`);
