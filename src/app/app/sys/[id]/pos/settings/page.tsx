@@ -30,6 +30,7 @@ import { ChannelsPane, OfflinePane } from "./shark-ui";
 import { posOfflineEnabled } from "@/lib/modules/pos/offline-shared"; // POS P3.4U ▸ มติ 10 · CD-P34U-1 ◂
 import { receiptUnitOverride } from "@/lib/modules/pos/receipt-settings-shared"; // POS P2.11U ▸ มติ 8 ◂
 import { posClockOnShift, posScheduleGate, posStaffCommission } from "@/lib/modules/pos/settings-shared"; // POS P3.5U ▸ มติ 6 ◂
+import { listStaffAccess } from "@/lib/staff/service"; // POS P3.9U ▸ CD-P39U-3: ตัวอ่านสมาชิกร้านที่มีอยู่ (ผู้จัดการที่รับคำเชิญแล้ว) ◂
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -102,6 +103,14 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const staffCommission = staffHr && canViewPayroll(m) ? posStaffCommission(sys.settings) : null;
   // POS P3.4U ▸ มติ 10 · CD-P34U-1: สวิตช์ออฟไลน์ live (เจ้าของร้านสลับได้ · คนอื่นเห็นสถานะ) — ส่งทุกครั้ง (ปิดธงเปลี่ยนแค่สวิตช์ + ชิป) ◂
   const offlineLive = { systemId: id, unitId, enabled: posOfflineEnabled(sys.settings), isOwner: m.role === "OWNER" };
+  // POS P3.9U ▸ มติ 4 · CD-P39U-3: การ์ด AI แท็บ shark — ตัวเลือกผู้รับสรุปเช้า = ผู้จัดการที่รับคำเชิญแล้ว {userId, name} (เจ้าของร้านเท่านั้น · ตัวเขียนตรวจซ้ำ) ◂
+  const aiCard =
+    canRead && tab === "shark"
+      ? {
+          isOwner: m.role === "OWNER",
+          managers: m.role === "OWNER" ? (await listStaffAccess(tenantId)).filter((r) => r.role === "MANAGER" && r.active).map((r) => ({ userId: r.userId, name: r.name })) : [],
+        }
+      : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -126,7 +135,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             <SettingsRefusal message={t("staff.refusal")} />
           )
         ) : tab === "shark" ? (
-          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ />
+          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ />
         ) : tab === "channels" ? (
           <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
         ) : tab === "offline" ? (
