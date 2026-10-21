@@ -289,6 +289,14 @@ async function wonValueInTx(db: Tx | typeof prisma, ctx: MoneyCtx, dealId: strin
     const sales = await db.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: saleIds } }, select: { grandTotalSatang: true, vatSatang: true } });
     for (const sale of sales) won += BigInt(Math.max(0, WON_VALUE_BASIS === "PRE_VAT" ? sale.grandTotalSatang - sale.vatSatang : sale.grandTotalSatang));
   }
+  // POS P3.6 ▸ R11: ใบคืนของบิลหน้าร้านที่หักจากดีลแล้ว (แถว POS_REFUND ที่นับ) ลดมูลค่าที่ชนะบนฐานเดียวกัน (ยอดใบคืน − VAT ของใบคืน) · ไม่ต่ำกว่า 0
+  const refundIds = [...new Set(rows.filter((r) => r.refType === POS_REFUND_REF_TYPE).map((r) => r.refId))];
+  if (refundIds.length > 0) {
+    const back = await db.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: refundIds }, docType: "REFUND" }, select: { grandTotalSatang: true, vatSatang: true } });
+    for (const r of back) won -= BigInt(Math.max(0, WON_VALUE_BASIS === "PRE_VAT" ? r.grandTotalSatang - r.vatSatang : r.grandTotalSatang));
+    if (won < ZERO) won = ZERO;
+  }
+  // ◂
   return won;
 }
 
@@ -1098,6 +1106,10 @@ export async function countPosSale(ctx: MoneyCtx, input: { saleId: string }): Pr
     orderBy: [{ dealId: "asc" }, { id: "asc" }],
     select: { id: true, dealId: true },
   });
+  // POS P3.6 ▸ R10 มติ 5: ยังไม่มีแถว + บิลมีดีลที่ตั้งใจผูก (PosSale.crmDealId · หน้าขายใหม่/createSale) ⇒ ผูกแบบระบบ (ปักธงก่อน ·
+  //   ระบาย ×2 / พร้อมกัน = แถว COUNTED แถวเดียว) · ไม่มี intent = เดิมทุกไบต์ (ไม่มีแถว = ไม่ใช่ error)
+  if (targets.length === 0) return posIntentCount(ctx, saleId);
+  // ◂
   if (targets.length === 0) return { counted: false, dealId: null };
 
   let anyCounted = false;
@@ -1303,3 +1315,127 @@ export async function dealMoney(ctx: MoneyCtx, actor: MemberActor, dealId: strin
     })),
   };
 }
+
+// ═══════════════════ POS P3.6 ▸ ดีลบนบิลหน้าขายใหม่ (intent `PosSale.crmDealId`) + คืนเงิน → ดีล (R1 R10 R11 · มติ 5) ═══════════════════
+// 🔴 โค้ดของโมดูล CRM ที่เลน POS เขียน (บล็อกเพิ่มล้วน · owner line OP §"แจ้งเจ้าของโมดูล CRM") — ทางเข้าจากนอกโมดูลผ่าน `pos-seam.ts` เท่านั้น
+// 🔴 linkPosSaleIntent = linkSaleToDeal "ไม่มี actor": ล็อกเดียวกัน (ref → ดีล → บริษัท → ผู้ติดต่อ → แถวดีล) · ปักธงก่อน (unique เดิม) ·
+//    บิลขาย/เติมบัตรกำนัล = ไม่นับ · ประตู canCount (v2 + สะพานเปิด) · ผูกได้เฉพาะดีลที่บิล "ตั้งใจ" (crmDealId ของบิลตรงกัน) · ดีลปิดแล้ว = ข้าม
+//    ผลลัพธ์ไม่ throw สำหรับกรณีปกติ (ไม่พบ/ข้าม) — ตัวกวาดวนทุกระบบ CRM ของร้านได้
+// 🔴 netPosSaleRefund = แถวติดลบ refType POS_REFUND · refId = ใบคืน (ปักธงก่อน ⇒ ส่งซ้ำ = ไม่มีแถวเพิ่ม) · Σ ใบคืนของบิล ≥ −ยอดที่ดีลนับจากบิลนั้น ·
+//    ไม่มีประตูสะพาน (เหมือนการถอนคืน — ปิดสะพานทีหลังห้ามกลืนการคืนเงิน) · บิลที่ดีลไม่เคยนับ = ไม่มีอะไรเกิด
+export const POS_REFUND_REF_TYPE = "POS_REFUND";
+export type PosIntentLinkResult = { linked: boolean; counted: boolean; dealId: string | null; skipped?: "GATE" | "NOT_FOUND" | "CLOSED" | "NO_INTENT" | "GIFT_CARD" | "NOT_PAID" | "TAKEN" };
+export type PosRefundNetResult = { applied: number; dealId: string | null };
+
+async function posIntentCount(ctx: MoneyCtx, saleId: string): Promise<CountPosSaleResult> {
+  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: ctx.tenantId }, select: { crmDealId: true } });
+  if (!sale?.crmDealId) return { counted: false, dealId: null };
+  const r = await linkPosSaleIntent(ctx, { dealId: sale.crmDealId, saleId });
+  return { counted: r.counted, dealId: r.dealId };
+}
+
+/** ผูก + นับบิลหน้าร้านเข้าดีลตาม intent ของบิล (สะพาน `pos.sale.paid` · ตัวกวาดรายชั่วโมง) — idempotent */
+export async function linkPosSaleIntent(ctx: MoneyCtx, input: { dealId: string; saleId: string }): Promise<PosIntentLinkResult> {
+  const dealId = str(input?.dealId);
+  const saleId = str(input?.saleId);
+  const none = (skipped: NonNullable<PosIntentLinkResult["skipped"]>): PosIntentLinkResult => ({ linked: false, counted: false, dealId: null, skipped });
+  if (!dealId || !saleId) return none("NOT_FOUND");
+  await resolveSystem(ctx);
+  if (!(await canCount(ctx))) return none("GATE");
+  const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: dealId } });
+  if (!pre) return none("NOT_FOUND");
+  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: ctx.tenantId }, select: { id: true, status: true, grandTotalSatang: true, giftCardId: true, crmDealId: true } });
+  if (!sale) return none("NOT_FOUND");
+  if (sale.crmDealId !== pre.id) return none("NO_INTENT");
+  if (sale.giftCardId) return none("GIFT_CARD");
+  if (sale.status !== "PAID" && sale.status !== "REFUNDED") return none("NOT_PAID");
+  // ทางลัดอ่านอย่างเดียว (ตัวกวาดรายชั่วโมงเรียกซ้ำ): นับ/ถอนไปแล้ว = ไม่เปิดธุรกรรม — ตัดสินจริงใต้ล็อกด้านล่างเสมอ
+  const seen = await prisma.crmDealPayment.findFirst({ where: { ...scopeOf(ctx), refType: "POS_SALE", refId: sale.id, status: { not: "LINKED" } }, select: { dealId: true, status: true } });
+  if (seen) return seen.dealId === pre.id ? { linked: true, counted: seen.status === "COUNTED", dealId: pre.id } : none("TAKEN");
+  const anchorWon = await anchorWonOf(ctx, pre);
+  const satang = BigInt(Math.max(0, sale.grandTotalSatang));
+  const out = await prisma.$transaction(async (tx) => {
+    await lockRef(tx, "POS_SALE", sale.id);
+    await lockMoney(tx, pre.id);
+    const deal = await lockRows(tx, ctx, pre);
+    if (!deal) return { skipped: "NOT_FOUND" as const };
+    const mine = await tx.crmDealPayment.findFirst({ where: { ...scopeOf(ctx), dealId: deal.id, refType: "POS_SALE", refId: sale.id }, select: { id: true } });
+    if (!mine && deal.kind !== "OPEN") return { skipped: "CLOSED" as const };
+    const other = await tx.crmDealPayment.findFirst({ where: { ...scopeOf(ctx), refType: "POS_SALE", refId: sale.id, dealId: { not: deal.id } }, select: { id: true } });
+    if (other) return { skipped: "TAKEN" as const };
+    const created = await flagRowInTx(tx, ctx, { dealId: deal.id, refType: "POS_SALE", refId: sale.id, satang, status: "LINKED" });
+    const existing = await tx.crmDealPayment.findFirst({ where: { ...scopeOf(ctx), dealId: deal.id, refType: "POS_SALE", refId: sale.id } });
+    if (!existing) return { skipped: "NOT_FOUND" as const };
+    let counted = existing.status === "COUNTED";
+    let justCounted = false;
+    let countedAt: Date | null = existing.status === "COUNTED" ? existing.countedAt : null;
+    if (existing.status === "LINKED") {
+      const got = await countLinkedRowInTx(tx, ctx, deal, existing.id, anchorWon);
+      justCounted = got.satang > ZERO;
+      counted = justCounted;
+      countedAt = got.at;
+    }
+    if (created) await emitMoneyUpdate(tx, ctx, deal.id, `pos-link-${sale.id}`, { saleId: sale.id, satang: Number(satang), counted });
+    if (justCounted) await emitMoneyUpdate(tx, ctx, deal.id, `pos-${sale.id}`, { saleId: sale.id, satang: Number(satang) });
+    return { created, counted, justCounted, countedAt };
+  }, TX_OPTS);
+  if ("skipped" in out) return none(out.skipped);
+  if (out.created) await audit(ctx, "crm.deal.pos.link", pre.id, { after: { saleId: sale.id, satang: Number(satang), counted: out.counted, via: "POS_INTENT" } });
+  if (out.justCounted) {
+    await (await import("./commissions")).afterPaymentCounted(ctx, { dealId: pre.id, refType: "POS_SALE", refId: sale.id });
+    await afterCounted(ctx, pre.id, out.countedAt ?? undefined);
+  }
+  // บิลที่ถูกคืนก่อนแถวถูกนับ (สะพานล้ม → ตัวกวาดมาเก็บทีหลัง) ⇒ หักใบคืนที่มีอยู่แล้วทันที (ต่อใบ idempotent)
+  if (out.counted) {
+    const refunds = await prisma.posSale.findMany({ where: { tenantId: ctx.tenantId, docType: "REFUND", refSaleId: sale.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+    for (const r of refunds) await netPosSaleRefund(ctx, { saleId: sale.id, refundSaleId: r.id });
+  }
+  return { linked: true, counted: out.counted, dealId: pre.id };
+}
+
+/** `pos.sale.refunded` → หักใบคืนออกจากเงินที่ดีลนับจากบิลนั้น (แถวติดลบ POS_REFUND · ยอด = ยอดใบคืนในฐาน ไม่เชื่อ payload) */
+export async function netPosSaleRefund(ctx: MoneyCtx, input: { saleId: string; refundSaleId: string }): Promise<PosRefundNetResult> {
+  const saleId = str(input?.saleId);
+  const refundSaleId = str(input?.refundSaleId);
+  if (!saleId || !refundSaleId) return { applied: 0, dealId: null };
+  await resolveSystem(ctx);
+  const refund = await prisma.posSale.findFirst({ where: { id: refundSaleId, tenantId: ctx.tenantId, docType: "REFUND", refSaleId: saleId }, select: { id: true, grandTotalSatang: true } });
+  if (!refund || refund.grandTotalSatang <= 0) return { applied: 0, dealId: null };
+  const targets = await prisma.crmDealPayment.findMany({ where: { ...scopeOf(ctx), refType: "POS_SALE", refId: saleId, status: "COUNTED" }, orderBy: [{ dealId: "asc" }, { id: "asc" }], select: { id: true, dealId: true } });
+  let applied = 0;
+  let firstDeal: string | null = null;
+  for (const t of targets) {
+    const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: t.dealId } });
+    if (!pre) continue;
+    firstDeal ??= pre.id;
+    const anchorWon = await anchorWonOf(ctx, pre);
+    const out = await prisma.$transaction(async (tx) => {
+      await lockRef(tx, "POS_SALE", saleId);
+      await lockMoney(tx, pre.id);
+      const deal = await lockRows(tx, ctx, pre);
+      if (!deal) return 0;
+      const row = await tx.crmDealPayment.findFirst({ where: { id: t.id, status: "COUNTED" }, select: { satang: true } });
+      if (!row) return 0;
+      const siblings = (await tx.posSale.findMany({ where: { tenantId: ctx.tenantId, docType: "REFUND", refSaleId: saleId }, select: { id: true } })).map((x) => x.id);
+      const taken = await tx.crmDealPayment.aggregate({ where: { ...scopeOf(ctx), dealId: deal.id, refType: POS_REFUND_REF_TYPE, refId: { in: siblings.length ? siblings : ["-"] }, status: "COUNTED" }, _sum: { satang: true } });
+      const left = Number(row.satang) + Number(taken._sum.satang ?? ZERO); // แถวคืนติดลบ
+      const target = Math.min(refund.grandTotalSatang, Math.max(0, left));
+      if (!(target > 0) || !isUsableSatang(target)) return 0;
+      const at = new Date();
+      const made = await flagRowInTx(tx, ctx, { dealId: deal.id, refType: POS_REFUND_REF_TYPE as MoneyRefType, refId: refund.id, satang: BigInt(-target), status: "COUNTED", countedAt: at });
+      if (!made) return 0;
+      await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: BigInt(-target), anchorWon, lifecycle: false });
+      await emitMoneyUpdate(tx, ctx, deal.id, `pos-refund-${refund.id}`, { saleId, refundSaleId: refund.id, satang: -target });
+      return target;
+    }, TX_OPTS);
+    if (out > 0) {
+      applied += out;
+      await audit(ctx, "crm.deal.pos.refund", pre.id, { after: { saleId, refundSaleId: refund.id, satang: -out } });
+      const commissions = await import("./commissions");
+      await commissions.afterPaymentCounted(ctx, { dealId: pre.id, refType: POS_REFUND_REF_TYPE, refId: refund.id });
+      await commissions.afterPaymentsReversed(ctx, { dealId: pre.id });
+    }
+  }
+  return { applied, dealId: firstDeal };
+}
+// ◂ POS P3.6

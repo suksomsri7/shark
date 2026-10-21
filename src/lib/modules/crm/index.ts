@@ -293,3 +293,7 @@ export * as limits from "./limits";
 // CRM C5.5 ▸ (fix1 r1b · L55-4 ต่อ) หน้าตั้งค่า webhook กลางของร้านตรวจ "สมัคร event ของ CRM ได้ไหม" ผ่านที่นี่
 export { crmPlatformWebhookProblem } from "./api/key-guard";
 // ◂ CRM C5.5
+// POS P3.6 ▸ ทางของหน้าขาย POS (`pos-seam.ts` · ผู้เรียกเดียว = src/lib/modules/pos/crm-link.ts + outbox/ตัวกวาดผ่านไฟล์นั้น):
+//   companiesForPos · companiesOfParty (แถวบริษัทไม่มีข้อมูลติดต่อ) · linkPosSaleSystem (intent ของบิล → ดีล) · onPosSaleRefunded (คืนเงิน → ดีล)
+export * as posSeam from "./pos-seam";
+// ◂ POS P3.6
