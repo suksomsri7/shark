@@ -195,11 +195,14 @@ export async function attachSlip(ctx: SlipCtx, actor: SlipActor, input: unknown,
     // ── จองแถวใต้ล็อกของเป้าหมาย: เล่นซ้ำ → เลขอ้างอิงซ้ำ → เพดาน 3 ใบ ──
     const createdAt = new Date();
     const lockKey = `pos:slip:${c.tenantId}:${target.paymentId ?? target.intentId}`;
+    // fix1 H2: คีย์เดิมเล่นซ้ำได้เฉพาะสาขาเดียวกัน + เป้าหมายเดียวกัน — ไม่งั้น VALIDATION (ไม่คืนสลิปของสาขา/บิลอื่น)
+    const sameTarget = (r: { unitId: string; saleId: string | null; paymentId: string | null; intentId: string | null }) =>
+      r.unitId === c.unitId && r.saleId === target.saleId && r.paymentId === target.paymentId && r.intentId === target.intentId;
     const reserved = await prisma
       .$transaction(async (tx) => {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))::text AS locked`;
-        const prev = await tx.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: SLIP_SELECT });
-        if (prev) return { replay: prev };
+        const prev = await tx.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: { ...SLIP_SELECT, unitId: true } });
+        if (prev) return sameTarget(prev) ? { replay: prev } : { refused: refuse("VALIDATION", "รหัสรายการนี้ถูกใช้กับสลิปอื่นแล้ว") };
         if (transRef && (await tx.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, transRef }, select: { id: true } }))) return { refused: refuse("SLIP_DUPLICATE") };
         const n = await tx.posPaymentSlip.count({ where: { tenantId: c.tenantId, ...(target.paymentId ? { paymentId: target.paymentId } : { intentId: target.intentId }) } });
         if (n >= SLIP_MAX_PER_TARGET) return { refused: refuse("VALIDATION", "แนบสลิปได้ไม่เกิน 3 ใบต่อการชำระ") };
@@ -225,8 +228,8 @@ export async function attachSlip(ctx: SlipCtx, actor: SlipActor, input: unknown,
       })
       .catch(async (e: unknown) => {
         if (!isUniqueViolation(e)) throw e;
-        const prev = await prisma.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: SLIP_SELECT });
-        if (prev) return { replay: prev };
+        const prev = await prisma.posPaymentSlip.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: { ...SLIP_SELECT, unitId: true } });
+        if (prev) return sameTarget(prev) ? { replay: prev } : { refused: refuse("VALIDATION", "รหัสรายการนี้ถูกใช้กับสลิปอื่นแล้ว") };
         return { refused: refuse("SLIP_DUPLICATE") };
       });
     if ("replay" in reserved && reserved.replay) return { ok: true, slip: viewOf(reserved.replay), replayed: true };

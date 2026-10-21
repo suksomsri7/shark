@@ -191,8 +191,10 @@ export async function enqueuePrintJob(ctx: Ctx, actor: Actor, input: unknown, de
     const agent = await prisma.posPrintAgent.findFirst({ where: { id: input.agentId, tenantId: c.tenantId, systemId: c.systemId, unitId: c.unitId }, select: { id: true, revokedAt: true } });
     if (!agent) return refuse("NOT_FOUND");
     if (agent.revokedAt) return refuse("AGENT_REVOKED");
-    const prev = await prisma.posPrintJob.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: JOB_SELECT });
-    if (prev) return { ok: true, job: jobView(prev), replayed: true };
+    // fix1 H2: คีย์เดิม = งานเดิมเฉพาะสาขา + agent + target + เครื่องเดียวกัน — ไม่งั้น VALIDATION (ไม่คืนงานของสาขาอื่น)
+    const same = (j: { unitId: string; agentId: string; target: string; deviceCode: string }) => j.unitId === c.unitId && j.agentId === agent.id && j.target === input.target && j.deviceCode === input.deviceCode;
+    const prev = await prisma.posPrintJob.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: { ...JOB_SELECT, unitId: true } });
+    if (prev) return same(prev) ? { ok: true, job: jobView(prev), replayed: true } : refuse("VALIDATION", "รหัสรายการนี้ถูกใช้กับงานพิมพ์อื่นแล้ว");
     const now = deps?.now instanceof Date && !Number.isNaN(deps.now.getTime()) ? deps.now : new Date();
     try {
       const row = await prisma.posPrintJob.create({
@@ -202,8 +204,8 @@ export async function enqueuePrintJob(ctx: Ctx, actor: Actor, input: unknown, de
       return { ok: true, job: jobView(row) };
     } catch (e) {
       if (!(isRecord(e) && e.code === "P2002")) return refuse("UNKNOWN");
-      const again = await prisma.posPrintJob.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: JOB_SELECT });
-      return again ? { ok: true, job: jobView(again), replayed: true } : refuse("UNKNOWN");
+      const again = await prisma.posPrintJob.findFirst({ where: { tenantId: c.tenantId, idempotencyKey: key }, select: { ...JOB_SELECT, unitId: true } });
+      return again && same(again) ? { ok: true, job: jobView(again), replayed: true } : again ? refuse("VALIDATION", "รหัสรายการนี้ถูกใช้กับงานพิมพ์อื่นแล้ว") : refuse("UNKNOWN");
     }
   } catch (e) {
     console.error("[pos/print-relay] enqueue", e instanceof Error ? e.name : "error");
