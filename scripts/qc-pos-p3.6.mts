@@ -1696,8 +1696,10 @@ async function runDb() {
   await blk("DL3", async () => {
     const p: string[] = [];
     const c0 = await counts();
-    for (const [lbl, id] of [["D2", DL.D2], ["D4 ปิดแล้ว", DL.D4], ["id มั่ว", `nodeal${RAND}`]] as const) {
-      const r = await reg(`dl3-${lbl}`, "SALES1", [pl("c")], cash, { cashReceivedSatang: 10_000, customerPartyId: P1, crmDealId: id });
+    // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-B1 DL3): คีย์ idempotency ต้องผ่านสัญญาผลิตภัณฑ์ regIsIdemKey (/^[A-Za-z0-9_-]{8,100}$/ · register.ts:677) —
+    //   คีย์ใช้ slug ASCII (newKey ต่อ RAND) · ป้ายไทยใช้เฉพาะข้อความตอนล้ม · เดิม `dl3-${lbl}` (ไทย+ช่องว่าง ⇒ VALIDATION ก่อนถึงตรวจดีล) · ก่อน 45/47 (DL3 PV3) → หลัง ดู wo-notes §fix1 ◂
+    for (const [lbl, slug, id] of [["D2", "dl3-d2", DL.D2], ["D4 ปิดแล้ว", "dl3-d4-closed", DL.D4], ["id มั่ว", "dl3-nodeal", `nodeal${RAND}`]] as const) {
+      const r = await reg(slug, "SALES1", [pl("c")], cash, { cashReceivedSatang: 10_000, customerPartyId: P1, crmDealId: id });
       if (r.code !== "DEAL_INVALID") p.push(`${lbl} → ${r.code}`);
     }
     if ((await counts()) !== c0) p.push("มีบิลเพิ่ม");
