@@ -548,6 +548,25 @@
       "states": true,
       "after": "P3.4U",
       "why": "same states LOCALE=en · owner 15 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.9u-ai",
+      "wo": "p3.9u",
+      "pages": [
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "after": "P3.9U",
+      "why": "P3.9U 10 AI states (08 panel brief/empty/refused(cashier)/off · reports-anomalies-a11 · settings-general-anomaly-a11 · 10 AI card off/linked · brief sheet + invalid manager) · placeholder until the controller's QC5 round replaces it with p3.9u-th/p3.9u-en"
     }
   ]
 }
