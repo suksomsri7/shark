@@ -14,3 +14,48 @@ This file is the restart checkpoint (§0 = status).
 `$transaction` + `pg_try_advisory_xact_lock(hashtextextended('pos-off-snap:<tenant>:<unit>:<deviceCode>',0))` around rate-check → catalog walk → insert → prune.
 Lock busy ⇒ `RATE_LIMITED` at once (N parallel issues ⇒ one catalog walk — N11/H1). Insert = `createMany skipDuplicates` (P2002 cannot abort the tx).
 Prune keeps: 2 newest ∪ ≤200 newest inside 48 h ∪ **the oldest inside 48 h** (N11) ∪ hashes referenced by pending rows. Catalog reads go through `db` (pool max 10, the tx holds only the lock + writes); tx `{maxWait 10 s, timeout 120 s}`.
+
+## 2. Components / files (all hunks marked `POS P3.4U ▸ … ◂`)
+| Ruling | File | What |
+|---|---|---|
+| 2 · R13 | `components/pos/register/offline-store.ts` (new) | IDB `shark-pos-off:<sys>:<unit>` (meta · queue · synced) · `enqueueOffline` (seq + add in one tx) · `applySyncResults` · `countQueuedOnDevice` (read-only, no DB creation) · every write via `offlineStoreSafe` |
+| 7 | `components/pos/register/offline-pin.ts` (new) | PBKDF2-SHA256 310k · 16-byte device salt · `rememberOfflineUnlock` / `tryOfflineUnlock` (5 fails ⇒ locked) / holder |
+| 3 5 8 | `components/pos/register/use-offline-register.ts` (new) | snapshot fetch (load · pvu edge · 15 min · backoff) · Web Locks leader sync loop (online · kick · 30 s) · gate · enqueue · wipe |
+| 3 4 5 6 | `components/pos/register/OfflineRegisterParts.tsx` (new) | 19ง banner · badge · chips · pay row · pay sheet · done + slip · bills list (no void/refund) |
+| — | `lib/modules/pos/offline-client-shared.ts` (new · pure) | DB name · forbidden keys · record types · backoff · gate/close/discard helpers · baht→satang · quick cash · N10 · `offlineSlipOf` |
+| 9 10 | `lib/modules/pos/offline-actions.ts` (new · "use server") | `listOfflineRejectedAction` `acceptOfflineSaleAction` `discardOfflineSaleAction` (pos.shift.manage) · `updatePosOfflineEnabledAction` (pos.settings.manage; writer re-checks OWNER) — async only, no throw, `unstable_rethrow` |
+| 8 (CD-P34U-2) | `app/api/pos/sync/snapshot/route.ts` (new) | POST, sync-route guards (same-origin · JSON · session · tenant status · body ≤ 4 kB) → `issueOfflineSnapshot` · `RATE_LIMITED` = 429 |
+| 8 (CD-P34U-3) | `lib/modules/pos/offline-sync.ts` | the one server hunk (§1) |
+| 1 3 5 7 | `RegisterScreen.tsx` · `CartPanel.tsx` · `register/page.tsx` | flag prop · offline mode (totals, chips, pay row, F4/mobile bar → offline sheet) · unknown → queue · status bar pendingSync = local queue (flag on) · banner/strip · lock props |
+| 7 | `LockScreen.tsx` | offline holder pad · `onPinVerified` at every online unlock · no switch/manager offline · P3.5U-F2 |
+| 6 9 | `shifts/ShiftsClient.tsx` · `shifts/page.tsx` · `shifts/OfflineQueueSection.tsx` (new) | close guard · manager queue card · member names (display) |
+| 10 | `settings/shark-ui.tsx` · `settings/SharkSettings.tsx` · `settings/page.tsx` | live card (CD-P34U-1) · offline tab banner |
+| — | `messages/{th,en}/pos.json` | keys §spec 7 (th = en key set · no Thai in en) |
+| 11 | `scripts/visual-pos.mts` · `scripts/pos-ui-inventory.json` (+36) | §5 |
+
+## 3. Deviations / design notes (per ruling)
+- **Carried-over work** (killed session): steps 2–3 + 5 were uncommitted; reviewed and kept, fixes: doc comment order in RegisterScreen; session-user change also wipes the PIN verifier; ternary testid → template (F15.3 readable).
+- R2/13 logout: no register-level logout exists — snapshot + verifier are wiped when another session user opens the register (snapshot userId ≠ session user) and on `STAFF_TOKEN_INVALID`; queue survives. The verifier alone is useless without the unexpired token in sessionStorage.
+- R3: totals offline = `offlineCartTotals`; lines with options are sellable only when the choice is in the snapshot (S contract); weighed-barcode lines refuse. Over-cap discounts cannot be approved offline (no manager PIN offline) ⇒ `offline.discountOver`.
+- R5: whole-batch non-2xx / `ok:false` ⇒ keep all + backoff (resend with same keys is safe). The status-bar "รอซิงก์" switches to the local queue only when the flag is on (flag off = server 0 as today).
+- R6: close guard counts `queued` only (parked rows are on the server's manager queue and would otherwise block forever). No void/refund of unsynced bills: they never reach "today's bills" (server) and the local list has no void/refund control.
+- R7: verifier written on every successful online unlock (PIN · set-own-PIN · manager override), only while the flag is on; offline unlock requires the in-memory token holder with an unexpired `expiresAt`.
+- CD-P34U-1: with the flag off the card shows the live switch + state chip; pending number stays "0" unless this device/server really has offline bills (then honest counts).
+- CD-P34U-4: the card is drawn for managers when the flag is on or rows exist (flag off + no rows = today's Shifts pixels). Seller names come from tenant memberships loaded by the page (display only).
+- Settings switch: OWNER toggles; everyone who can read settings sees the live state (aria-disabled).
+- Slip devices: `offline-slip` shot at 1440 + 390 only (document, same at 1024).
+
+## 4. CONTROLLER-DECISION
+- **CD-P34U-B1 (oracle ST7 vs inventory rule)**: `qc-pos-p3.4` ST7 requires a row for *every* new `offline|sync` testid, but the inventory has interactive kinds only (CRM `$fields`: "กล่อง/ข้อความ/แถวรายการที่ไม่มีตัวกดไม่ต้องมีแถว"). Built: 14 display testids nothing needed were dropped; the 14 kept display testids (banner, gate, chips/chip-*, sync strip, done, done-no, bills, bill-*, lock note, queue card, queue row-*, close-blocked note, settings state, pay sheet) have rows marked "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7" with the nearest kind (precedent `pos-settings-card-state-offline`). Alternative: ORACLE-EDIT ST7 to count only interactive testids (F15.3 scanner flag) and drop those 14 rows.
+- **CD-P34U-B2 (harness `offline-close-blocked`)**: the guard needs a still-queued bill after the page goes back online; the state answers `POST /api/pos/sync` with `{ok:true, results:[]}` via request interception (every item = keep) — not 4xx/5xx, so no console/5xx noise. Alternative: inject an IDB row (less real).
+- Owner-ack (derived screens, P2.8 precedent): offline pay sheet · done card · bills list · Shifts manager queue card · settings live state.
+
+## 5. Visual lane (`visual-pos.mts` wo `p3.4u --states` · pages register shifts settings)
+Plan `P34U_PLAN` + `P34U_WO`/`P34U_PAGES` (old plans/states untouched; `offline` + `settings-offline` keep flag off). Each P3.4U job = fresh browser context (closed after the shot), device pinned to the run device `posqc-vis-dev-<pid>` (has the run shift).
+Fixture `ensureP34uFixture` (first P3.4U job): flag on via `updatePosOfflineEnabled` (owner) — previous value restored after the last P3.4U job / finally / signal; stale `posqcvisp34u*` REJECTED rows of killed runs discarded (then restore = off). For `offline-rejected` / `settings-offline-live`: `issueOfflineSnapshot` for the run device + one forged-price bill via `syncOfflineSales` (amer −฿10, owner token) → REJECTED `PRICE_MISMATCH` → discarded in cleanup. Per job `prepP34u`: delete the run device's snapshots issued in the last 2 min (route limit 1/device/60 s). Cleanup also deletes the run device's snapshots. Side effect: `offline-sync-back` = 1 real cash bill per shot in the run shift (closed by `closeRunShift` as today).
+Dry plans (iso, `CI=1`): owner 26 shots rc 0 · cashier 17 rc 0 · `LOCALE=en` 15 rc 0.
+
+### `--state` list for the controller's QC5 round (run passes one at a time)
+`env CI=1 pnpm exec tsx scripts/visual-pos.mts p3.4u --states --user owner --state offline-sale,offline-queue,offline-tenders,offline-sync-back,offline-slip,offline-lock-pin,offline-rejected,offline-close-blocked,settings-offline-live`
+`… --user cashier --state offline-sale,offline-queue,offline-tenders,offline-sync-back,offline-slip,offline-lock-pin`
+`LOCALE=en … --user owner` (same list as owner) · regression: `p1.3 --states --state offline` + `p1.18u --states --state settings-offline` (flag off = today's pixels).
