@@ -263,7 +263,7 @@ function flatKeys(o: unknown, pre = "", out = new Map<string, string>()): Map<st
 //   LANE_PIN = หมุดเลน — ข้อ "ไฟล์ห้ามแตะ / ตรงฐาน / ไม่มี hunk นอกรอยต่อ" (ST1 REST · ST3 หมุด · account/** · รอยต่อ · schema เพิ่มอย่างเดียว) ·
 //   หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4) · 72669941 (ฐานออกแบบเดิม) ไม่มีข้อใดต้องใช้ ⇒ ตัดออก ◂
 const PIN = process.env.PSK_PIN || "71c49221"; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดใบ = 71c49221 · override ด้วย PSK_PIN) ◂
-const LANE_PIN = process.env.PSK_LANE_PIN || PIN; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดเลนแยกจากหมุดใบ · override ด้วย PSK_LANE_PIN) ◂
+const LANE_PIN = process.env.PSK_LANE_PIN || "80314e00"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · หมุดเลน = merge commit) · // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดเลนแยกจากหมุดใบ · override ด้วย PSK_LANE_PIN) ◂
 const BASE_REV = LANE_PIN; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ชื่อเดิมคงไว้ให้ข้อความ chk · = หมุดเลน) ◂
 function gitBuf(args: string[]): Buffer | null {
   try {
@@ -558,7 +558,7 @@ const ETAX_DOC = {
   vat: { rateBp: 700, inclusive: true },
 };
 /** แฮชตรึงของ renderEtaxXml(ETAX_DOC) — ว่าง = รอผู้คุมตรึงหลังเขียวแรก (ORACLE-EDIT · โน้ต §ORACLE-EDIT) */
-const ET1_GOLDEN_SHA256: string = "";
+const ET1_GOLDEN_SHA256: string = "e538a07652145299acb586d9f5366610d28dcd68adbe3f10e34d58f82538c22e"; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-B3: ตรึงแฮช e-Tax golden หลังเขียวแรก 41/41 @e05a7cec) ◂
 /** ค่าในแท็กแรกที่ชื่อท้าย (ไม่สน prefix) ลงท้ายด้วย local */
 const tagVals = (xml: string, local: string): string[] => [...xml.matchAll(new RegExp(`<(?:[\\w-]+:)?${local}(?:\\s[^>]*)?>([^<]*)</(?:[\\w-]+:)?${local}>`, "g"))].map((m) => m[1]!.trim());
 const blockOf = (xml: string, local: string): string => new RegExp(`<(?:[\\w-]+:)?${local}(?:\\s[^>]*)?>[\\s\\S]*?</(?:[\\w-]+:)?${local}>`).exec(xml)?.[0] ?? "";
