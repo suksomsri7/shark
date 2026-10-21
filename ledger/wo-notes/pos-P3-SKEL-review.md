@@ -66,3 +66,30 @@ Verified safe:
 - **H1 (Medium)**: a slip is evidence only when tied to the same intent **and** `amountSatang === intent.amountSatang`; otherwise the bill stays NEEDS_CHECK (or new flag AMOUNT_MISMATCH); reconcile also reads sale status so a refund after reconcile shows.
 - **H2**: idempotency lookup also matches unitId (+ target); mismatch ⇒ VALIDATION. **H3**: store sha256(bytes); a repeat within the tenant ⇒ `SLIP_DUPLICATE`. **H4**: compute purge date from the current `slipRetentionDays` at purge time; OP line (W19 follow-up: legal hold / PDPA erase precedence). **H5**: `POS_CREDENTIALS_KEY` < 32 chars ⇒ `keyConfigured:false`. **H6**: no code now — OP line for P3.1-real (timestamp/nonce window + externalRef dedupe). **H7**: server + agent allow only ports 9100–9102 and 515; agent `isLanHost` drops 169.254/16. **H8**: info — OP line (poll backoff later).
 - Gates fix1 (exception: one more pre-submit + one typecheck): `qc-pos-p3-skel` forced ×2 `PSK_PIN=71c49221` + `--no-db` · `pos-pre-submit.sh --set core --also qc-pos-p1.18,qc-pos-p2.13,qc-pos-p1.7,qc-pos-p1.9` · typecheck at the final head. Then R2 = reviewer re-check F1–F7 + H1–H5, H7.
+
+## R2 @4acc4044 (reviewer resume · 21 Oct 21:0xZ)
+MERGEABLE: every re-checked finding is FIXED. Basis: read-only diff e05a7cec..4acc4044 (14 files, all in the claimed hunks) plus pure probes under iso 2G. The 3 Low items at the end are not blocking.
+- F1 FIXED — `secret-box.ts:20-24`: no NODE_ENV case (probe in production: an injected key is used, `{key:null}` ⇒ null, `{}` ⇒ env). ORACLE-EDIT 175e29a4 `:1242-1243` `{}` is its own commit and weakens nothing.
+- F2 FIXED — `gen-pos-api-docs.mts:377-378` and `POS-API.md:67` match word for word: `slips {id,status,thumbUrl:null}`, no file link.
+- F3 FIXED — `integration-creds.ts:125-126` scopeKey `system:<id>`. Only an old QC row with scopeKey `"system"` would be orphaned (no prod data).
+- F4 FIXED — `dispatch.ts:115-123`: WARN ≤ 1 per channel per minute (memo is per process, acceptable).
+- F5 FIXED — `integration-creds.ts:288-310` reports NO_SECRET vs BOX_UNREADABLE; `dispatch.ts:105-111` WARNs ≤ 1 per channel per hour.
+- F6 FIXED — `minute-jobs.ts:478-485` runs expire first. The purge loop stops at `ctrl.deadline` (`payment-slip.ts:368-372`; `MinuteJobControl.deadline` is a number). Still inside the P3-SKEL marker block.
+- F7 FIXED — `print-relay.ts:27-30,:74-90`: printer `target`, a duplicate target is refused, `printerFor` does no name matching. An unmatched job gets `printer:null` ⇒ the agent acks a failure.
+- H1 FIXED — `payment-reconcile.ts:105-113`: only a CONFIRMED slip with `intentId === i.id` and the exact amount counts as evidence.
+  - No bypass: payment-row slips carry `intentId null`, and a slip on another intent is never "tied". PosPayment has no intent link, so this is the only safe tie.
+  - The RC1 ORACLE-EDIT (`:1958-1963,:2002`) adds a tied CONFIRMED 100 ฿ slip on m (2222) **and** a same-amount 2222 slip on ST2's payment row. Old code ⇒ OK (red); new code ⇒ AMOUNT_MISMATCH, so it really tests both the mismatch and the other-row case. The tolerance covers m only (NEEDS_CHECK | AMOUNT_MISMATCH).
+  - Gap (Info): no positive control (tied exact-amount slip ⇒ OK), and SALE_REVERSED is untested.
+- H2 FIXED — `payment-slip.ts:200-207` (unit + sale/payment/intent) and `print-relay.ts:194-197` (unit + agent + target + device), else VALIDATION. A legitimate retry rebuilds the identical target, so it still replays. The P2002 paths use the same check.
+- H3 FIXED — `payment-slip.ts:198,:209` sha256 ⇒ SLIP_DUPLICATE (checked after replay, so a retry with the same key still replays). The unique index backs up a race.
+- H4 FIXED per CD-SKEL-B5 — `payment-slip.ts:100-105,:354-366`: an explicit setting is applied to `createdAt` of existing slips; unset ⇒ attach-time `purgeAfter`.
+- H5 FIXED — `secret-box.ts:13-24`: key under 32 chars (after trim) ⇒ null (probe: 31 chars ⇒ null; seal with a short key throws). PLATFORM-SETUP and KEY_MISSING text updated.
+- H7 FIXED — server ports 9100-9102/515 and no 169.254 (`print-relay.ts:29,:62,:76`). Agent: `agent.mjs:23-35` refuses 169.254; the port check still applies under ALLOW_ANY_HOST (probe: 127.0.0.1:22 refused). The LP ORACLE-EDIT (CD-SKEL-B6) only moves the fake printer onto 9100-9102; the assertions are unchanged.
+- Migration `20261218100100_pos_p3skel_slip_hash`: `lock_timeout 5s`, `ADD COLUMN sha256 TEXT` (nullable), and a UNIQUE index on PosPaymentSlip only. Add-only; NULLs do not collide. The schema change is 2 added lines.
+- New Low (not blocking, U/OP):
+  1. A REJECTED slip's sha still blocks the same image from being attached to the correct bill (`:209`).
+  2. `refundedSatang > 0` ⇒ SALE_REVERSED ranks above NEEDS_CHECK and hides a missing-evidence case.
+  3. Purge runs `distinct systemId` over every slip that still has a file, every hour (no index). `SlipView.purgeAfter` shows the attach-time date even when an explicit setting applies.
+  Also note for U: a slip attached on PayDone (payment row) never clears NEEDS_CHECK — attach it to the PENDING intent before the manual confirm.
+
+### Controller: MERGEABLE accepted · 3 new Low → P3-SKEL U / OP (REJECTED slip sha blocks re-attach · SALE_REVERSED ranking · purge distinct scan + SlipView.purgeAfter) · U note: attach slip to the PENDING intent, not the payment row.

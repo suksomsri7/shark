@@ -5,6 +5,7 @@
 //    = no-op ทั้งหมด (ไม่มีอะไรให้ส่งกลับ — แพลตฟอร์มรับบนแท็บเล็ตของมันเอง · เว็บร้าน/แชทอ่านสถานะจาก POS)
 //    API (LINE MAN/Grab/… จริง) = P3.1–3.3: เติมตัวที่นี่ + ตรวจลายเซ็นที่ route webhook · ห้ามใส่ความลับใน adapterConfig จนกว่า P3.1 (มติ 11)
 // 🔴 ฟังก์ชันของ adapter ต้องไม่ throw ใส่ผู้เรียก (order.ts เรียกหลัง commit) · ไม่ import shop/chat/restaurant (มติ 1 5 6)
+import { platformDispatch } from "./platform/dispatch"; // POS P3-SKEL ▸ R1: API = ตัวกระจายแพลตฟอร์ม (LINE MAN/Grab/marketplace · โครง NOT_CONFIGURED + ops INFO 1 แถว/ช่องทาง/เมธอด/ชม.) ◂
 
 export type OrderAdapterKind = "MANUAL" | "WEB" | "CHAT" | "API" | "NONE" | "QR"; // POS P2.7 ▸ + QR (ช่องทาง QR_ORDER · ลูกค้าอ่านสถานะจากหน้า /q/o/<token> ⇒ no-op) ◂
 export type OrderAdapterRef = { orderId: string; externalRef: string | null };
@@ -33,4 +34,5 @@ export const ORDER_ADAPTERS: Readonly<Partial<Record<string, OrderAdapter>>> = {
   WEB: local("WEB"),
   CHAT: local("CHAT"),
   QR: local("QR"), // POS P2.7 ▸ มติ 2 ◂
+  API: platformDispatch, // POS P3-SKEL ▸ R1 มติ §10-9: บรรทัดเดียวของ adapter API ◂
 };

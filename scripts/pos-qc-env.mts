@@ -192,6 +192,11 @@ export const POS_MODELS = {
   posOfflineSnapshot: { model: "PosOfflineSnapshot", file: "pos.prisma", role: "snapshot ราคาต่อเครื่อง (P3.4 · priceMap productId|choiceId → สตางค์ · hash = ETag · เก็บ 2 ล่าสุด)" },
   // POS P3.6 ▸ บัญชีเครดิตลูกค้าองค์กร (migration 20261219100100_pos_p36_credit) — ผู้เขียนเดียว pos/credit.ts ◂
   posCreditAccount: { model: "PosCreditAccount", file: "pos.prisma", role: "วงเงิน/เทอมวางบิลต่อบริษัท (P3.6 · unique (systemId, partyId) · termDays null = ผู้ติดต่อสมุด → ค่าปริยายสมุด)" },
+  // POS P3-SKEL ▸ โครงเชื่อมภายนอก (migration 20261218100000_pos_p3skel) — creds · สลิป · ตัวช่วยพิมพ์ LAN ◂
+  posIntegrationCredential: { model: "PosIntegrationCredential", file: "pos.prisma", role: "ค่าที่เจ้าของวางจากแพลตฟอร์ม/ผู้ให้บริการ (P3-SKEL K2 · ค่าลับใน secretBox AES-256-GCM · DRAFT/COMPLETE · unique (tenantId, kind, provider, scopeKey))" }, // POS P3-SKEL ◂
+  posPaymentSlip: { model: "PosPaymentSlip", file: "pos.prisma", role: "สลิปโอนที่แนบ (P3-SKEL R6 · ไฟล์ส่วนตัว · UPLOADED/CONFIRMED/REJECTED · ไม่มีผลเงิน · purgeAfter แล้ว fileId null)" }, // POS P3-SKEL ◂
+  posPrintAgent: { model: "PosPrintAgent", file: "pos.prisma", role: "ตัวช่วยพิมพ์ LAN (P3-SKEL R13 · tokenHash · printers [{name, host, port}] · revokedAt)" }, // POS P3-SKEL ◂
+  posPrintJob: { model: "PosPrintJob", file: "pos.prisma", role: "งานพิมพ์ผ่าน relay (P3-SKEL R13 · QUEUED/SENT/DONE/FAILED/EXPIRED · ≤ 256 KB · หมดอายุ 10 นาที)" }, // POS P3-SKEL ◂
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 

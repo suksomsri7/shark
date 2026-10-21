@@ -25,6 +25,7 @@ import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
 import { moneyText, type RegisterActor, type RegisterCtx } from "./register-shared";
 import { paymentCards } from "./tender-cards"; // POS P2.9 ▸ R10 ◂
 import { paymentDeposits } from "./deposit-links"; // POS P2.9b ▸ R9 ลิงก์มัดจำของแถวชำระ ◂
+import { billSlips } from "./payment-slip"; // POS P3-SKEL ▸ R7: สลิปที่แนบของบิล (อ่านอย่างเดียว) ◂
 import {
   BILL_PAGE_SIZES,
   BILL_Q_MAX,
@@ -578,6 +579,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
           : null,
       accounting: accounting ? { docNo: accounting.docNo, docId: accounting.docId } : null,
       channel: billChannel, // POS P2.1 ▸ R11 มติ 7 ◂
+      slips: await billSlips(tenantId, sale.id), // POS P3-SKEL ▸ R7: [{id, status, thumbUrl null}] — ลิงก์ดูไฟล์ออกผ่าน slipViewerUrl หลังตรวจสิทธิ์ ◂
       receiptKind,
       taxInvoice: sale.taxInvoiceDocId
         ? {
