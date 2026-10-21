@@ -818,6 +818,7 @@ async function saleP36(tx: Prisma.TransactionClient, input: CreateSaleInput, off
     partyId: input.customerPartyId,
     amountSatang: onAccount[0]!.amountSatang,
     overrideByUserId: input.creditOverrideByUserId ?? null,
+    sellerUserId: input.soldByUserId ?? null, // POS P3.6 fix2 H4: ผู้อนุญาตต้องไม่ใช่ผู้ขาย ◂
     at: paidAt,
   });
   if (!d.ok) {

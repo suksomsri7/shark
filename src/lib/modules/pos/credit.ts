@@ -169,7 +169,7 @@ export type SaleCreditDecision =
  */
 export async function decideSaleCredit(
   tx: Prisma.TransactionClient,
-  s: { tenantId: string; systemId: string; unitId: string; partyId: string; amountSatang: number; overrideByUserId?: string | null; at: Date },
+  s: { tenantId: string; systemId: string; unitId: string; partyId: string; amountSatang: number; overrideByUserId?: string | null; sellerUserId?: string | null; at: Date },
 ): Promise<SaleCreditDecision> {
   const acct = await tx.posCreditAccount.findUnique({ where: { systemId_partyId: { systemId: s.systemId, partyId: s.partyId } } });
   if (!acct || acct.tenantId !== s.tenantId || !acct.active) return { ok: false, code: "CREDIT_NOT_ALLOWED", message: "บริษัทนี้ยังไม่ได้เปิดวงเงินวางบิล — เลือกวิธีชำระอื่น หรือให้ผู้จัดการตั้งวงเงินก่อน" };
@@ -182,7 +182,7 @@ export async function decideSaleCredit(
   const exposure = (await creditExposureSatang(tx, { tenantId: s.tenantId, systemId: s.systemId, partyId: s.partyId })) ?? 0;
   let override: { byUserId: string; overSatang: number } | null = null;
   if (exposure + s.amountSatang > acct.limitSatang) {
-    const by = s.overrideByUserId && isId(s.overrideByUserId) ? await approverOf(tx, s.tenantId, s.overrideByUserId, s.unitId) : null;
+    const by = s.overrideByUserId && isId(s.overrideByUserId) ? await approverOf(tx, s.tenantId, s.overrideByUserId, s.unitId, s.sellerUserId ?? null) : null;
     if (!by) return { ok: false, code: "CREDIT_LIMIT_EXCEEDED", message: "ยอดนี้เกินวงเงินวางบิลของบริษัท — ให้ผู้จัดการอนุญาต หรือเลือกวิธีชำระอื่น", limitSatang: acct.limitSatang, exposureSatang: exposure };
     override = { byUserId: by, overSatang: exposure + s.amountSatang - acct.limitSatang };
   }
@@ -192,10 +192,14 @@ export async function decideSaleCredit(
     override,
   };
 }
-/** CD-2: ผู้อนุญาตเกินวงเงิน = สมาชิกที่ยอมรับแล้วของร้านนี้ เข้าสาขาได้ และถือ pos.credit.manage ที่สาขา (OWNER/MANAGER ตามบทบาท) */
-async function approverOf(db: Db, tenantId: string, userId: string, unitId: string): Promise<string | null> {
+/**
+ * CD-2: ผู้อนุญาตเกินวงเงิน = สมาชิกที่ยอมรับแล้วของร้านนี้ เข้าสาขาได้ และถือ pos.credit.manage ที่สาขา ·
+ * fix2 H4 (CD-2 = บทบาท): ต้องเป็น OWNER/MANAGER **และ** ไม่ใช่ผู้ขายของบิลเอง (อนุญาตบิลตัวเองไม่ได้ · STAFF ที่ได้คีย์มาก็ไม่ได้)
+ */
+async function approverOf(db: Db, tenantId: string, userId: string, unitId: string, sellerUserId: string | null): Promise<string | null> {
+  if (sellerUserId && sellerUserId === userId) return null;
   const m = await db.membership.findFirst({ where: { tenantId, userId, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
-  if (!m) return null;
+  if (!m || (m.role !== "OWNER" && m.role !== "MANAGER")) return null;
   const a: RegisterActor = { userId, role: m.role as RegisterActor["role"], unitAccess: Array.isArray(m.unitAccess) ? m.unitAccess.filter((u): u is string => typeof u === "string") : [], permissions: isRecord(m.permissions) ? m.permissions : {} };
   return canAccessUnit(a, unitId) && canManageCredit(a, unitId) ? userId : null;
 }
