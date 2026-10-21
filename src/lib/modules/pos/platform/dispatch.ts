@@ -18,8 +18,18 @@ const SOURCE = "pos.platform";
 /** ข้อความของ OpsEvent INFO (ค้นหาได้ใน backoffice) */
 export const PLATFORM_NOT_CONFIGURED_OPS = "pos.platform.not_configured";
 const HOUR = 3_600_000;
+const MINUTE = 60_000;
 const MEMO_MAX = 5000;
 const memo = new Map<string, number>();
+/** true ครั้งแรกของ key ในช่วง windowMs (memo ในโปรเซส · ตั้งก่อน await) */
+function once(key: string, windowMs: number): boolean {
+  const now = Date.now();
+  const last = memo.get(key);
+  if (last !== undefined && now - last < windowMs) return false;
+  if (memo.size >= MEMO_MAX) memo.clear();
+  memo.set(key, now);
+  return true;
+}
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const idOf = (v: unknown, k: string): string | null => (isRecord(v) && typeof v[k] === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v[k] as string) ? (v[k] as string) : null);
 
@@ -41,12 +51,8 @@ async function targetOfChannel(input: unknown): Promise<Target | null> {
 
 /** INFO 1 แถวต่อ (ช่องทาง, เมธอด) ต่อชั่วโมง — กันซ้อนในโปรเซสด้วย memo (ตั้งก่อน await) + กันข้ามโปรเซสด้วยแถวในชั่วโมงล่าสุด */
 async function noteNotConfigured(t: Target, method: C7Method, reason: string): Promise<void> {
-  const key = `${t.tenantId}:${t.channelId}:${method}`;
+  if (!once(`${t.tenantId}:${t.channelId}:${method}`, HOUR)) return;
   const now = Date.now();
-  const last = memo.get(key);
-  if (last !== undefined && now - last < HOUR) return;
-  if (memo.size >= MEMO_MAX) memo.clear();
-  memo.set(key, now);
   const dup = await prisma.opsEvent.findFirst({
     where: { tenantId: t.tenantId, source: SOURCE, createdAt: { gte: new Date(now - HOUR) }, message: { endsWith: ` · ${method}` }, detail: { contains: `channel ${t.channelId} ` } },
     select: { id: true },
@@ -96,14 +102,24 @@ export async function handlePlatformInbound(input: { provider: string; channelId
     if (!ad || !/^[A-Za-z0-9_-]{8,64}$/.test(input.channelId)) return NOT_FOUND;
     const ch = await prisma.salesChannel.findUnique({ where: { id: input.channelId }, select: { id: true, tenantId: true, systemId: true, code: true, adapter: true, archivedAt: true } });
     if (!ch || ch.archivedAt || ch.adapter !== "API" || ch.code !== input.provider) return NOT_FOUND;
-    const creds = await platformInboundCreds(ch);
-    if (!creds) return { status: 503, body: { code: "NOT_CONFIGURED" } };
+    const got = await platformInboundCreds(ch);
+    if (!got.ok) {
+      // fix1 F5: มีกล่องแต่เปิดไม่ได้ (กุญแจถูกเปลี่ยน/ไม่มี env) = เงียบไม่ได้ — WARN ≤ 1 ครั้ง/ช่องทาง/ชม.
+      if (got.reason === "BOX_UNREADABLE" && once(`box:${ch.id}`, HOUR)) {
+        await logOps("WARN", SOURCE, "platform credentials เปิดกล่องไม่ได้ (POS_CREDENTIALS_KEY ไม่ตรง/ไม่มี)", { tenantId: ch.tenantId, detail: `${ch.code} · channel ${ch.id} · ตอบ 503 NOT_CONFIGURED จนกว่าจะวางค่าลับใหม่` });
+      }
+      return { status: 503, body: { code: "NOT_CONFIGURED" } };
+    }
+    const creds = got.creds;
     if (!ad.verifyInbound(input.raw, input.headers, creds)) {
-      const fp = createHash("sha256").update(input.raw).digest("hex").slice(0, 16);
-      await logOps("WARN", SOURCE, "platform webhook ลายเซ็นไม่ผ่าน", {
-        tenantId: ch.tenantId,
-        detail: `${ch.code} · channel ${ch.id} · body ${input.raw.length} ไบต์ · sha256:${fp} · sig ${input.headers.get("x-shark-signature") ? "มี" : "ไม่มี"}`,
-      });
+      // fix1 F4: คำขอที่ลายเซ็นผิดมาจากใครก็ได้ — WARN ≤ 1 ครั้ง/ช่องทาง/นาที (กัน ops ล้น) · ไม่ log เนื้อคำขอ
+      if (once(`sig:${ch.id}`, MINUTE)) {
+        const fp = createHash("sha256").update(input.raw).digest("hex").slice(0, 16);
+        await logOps("WARN", SOURCE, "platform webhook ลายเซ็นไม่ผ่าน", {
+          tenantId: ch.tenantId,
+          detail: `${ch.code} · channel ${ch.id} · body ${input.raw.length} ไบต์ · sha256:${fp} · sig ${input.headers.get("x-shark-signature") ? "มี" : "ไม่มี"} · (≤ 1 ครั้ง/นาที)`,
+        });
+      }
       return { status: 401, body: { error: "unauthorized" } };
     }
     // โครง: parseInbound = NOT_CONFIGURED เสมอ ⇒ ลายเซ็นถูกแต่ยังรับออเดอร์ไม่ได้ (ไม่เขียนอะไร) — adapter จริงแทนบรรทัดนี้ด้วย ingestInTx

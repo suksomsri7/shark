@@ -287,19 +287,23 @@ export async function testIntegrationConnection(ctx: PosIntegrationCtx, actor: P
 
 /**
  * ค่าลับสำหรับตรวจลายเซ็นขาเข้า (route /api/pos/platform/… เท่านั้น — ไม่มีผู้ใช้) — ร้านมาจากช่องทาง (ไม่ใช่จากคำขอ)
- * ไม่มีแถว / ไม่มี webhookSecret / ไม่มีกุญแจ / เปิดกล่องไม่ได้ = null (route ตอบ 503 NOT_CONFIGURED)
+ * NO_SECRET = ไม่มีแถว / ยังไม่กรอก webhookSecret · BOX_UNREADABLE = มีกล่องแต่ไม่มีกุญแจ/เปิดไม่ได้ (กุญแจถูกเปลี่ยน — fix1 F5: ผู้เรียกลง ops WARN)
+ * ทั้งสองกรณี route ตอบ 503 NOT_CONFIGURED · ไม่โยน
  */
-export async function platformInboundCreds(channel: { id: string; tenantId: string; systemId: string; code: string }, deps?: SecretBoxDeps): Promise<Record<string, string> | null> {
+export async function platformInboundCreds(
+  channel: { id: string; tenantId: string; systemId: string; code: string },
+  deps?: SecretBoxDeps,
+): Promise<{ ok: true; creds: Record<string, string> } | { ok: false; reason: "NO_SECRET" | "BOX_UNREADABLE" }> {
   try {
     const row = await prisma.posIntegrationCredential.findFirst({
       where: { tenantId: channel.tenantId, systemId: channel.systemId, kind: "PLATFORM", provider: channel.code, scopeKey: channel.id },
       select: { secretBox: true, secretNames: true },
     });
-    if (!row?.secretBox || !(row.secretNames ?? []).includes(WEBHOOK_SECRET_FIELD)) return null;
+    if (!row?.secretBox || !(row.secretNames ?? []).includes(WEBHOOK_SECRET_FIELD)) return { ok: false, reason: "NO_SECRET" };
     const opened = openPosSecret(row.secretBox, deps);
-    if (!opened || typeof opened[WEBHOOK_SECRET_FIELD] !== "string" || !opened[WEBHOOK_SECRET_FIELD]) return null;
-    return Object.fromEntries(Object.entries(opened).filter((e): e is [string, string] => typeof e[1] === "string"));
+    if (!opened || typeof opened[WEBHOOK_SECRET_FIELD] !== "string" || !opened[WEBHOOK_SECRET_FIELD]) return { ok: false, reason: "BOX_UNREADABLE" };
+    return { ok: true, creds: Object.fromEntries(Object.entries(opened).filter((e): e is [string, string] => typeof e[1] === "string")) };
   } catch {
-    return null;
+    return { ok: false, reason: "NO_SECRET" };
   }
 }
