@@ -47,7 +47,7 @@ const BKK_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
 const shiftOffsetMs = (cutoffMin: number): number => BKK_OFFSET_MS - cutoffMin * 60_000;
 
-export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels", "branches", "hourly", "anomalies", "commission"] as const; // POS P3.5 ▸ + commission (ผู้ดูเงินเดือนเท่านั้น · REST ไม่เปิด) ◂ · // POS P2.11 ▸ + channels ◂ · POS P2.12 ▸ + branches hourly anomalies ◂
+export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels", "branches", "hourly", "anomalies", "commission", "credit"] as const; // POS P3.6 ▸ + credit (ลูกหนี้วางบิล · REST ไม่เปิด · R9) ◂ // POS P3.5 ▸ + commission (ผู้ดูเงินเดือนเท่านั้น · REST ไม่เปิด) ◂ · // POS P2.11 ▸ + channels ◂ · POS P2.12 ▸ + branches hourly anomalies ◂
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 // ═══════════ ชนิดข้อมูล ═══════════
@@ -299,6 +299,10 @@ export type BranchesReportResult = ReportResult<"branches", BranchRow, BranchTot
 export type HourlyReportResult = ReportResult<"hourly", HourlyRow, HourlyTotals>;
 export type AnomaliesReportResult = ReportResult<"anomalies", AnomalyRow, AnomalyTotals>;
 export type CommissionReportResult = ReportResult<"commission", CommissionRow, CommissionTotals>; // POS P3.5 ◂
+// POS P3.6 ▸ R9: ลูกหนี้วางบิล (เครดิตเทอม) ต่อบริษัท — บิล/ยอดวางบิล/ยอดคืนในช่วง (ฝั่ง POS) + ค้าง/เลยกำหนด/ครบกำหนดเก่าสุด ณ ตอนนี้ (สมุดบัญชี · สูตร aging) ◂
+export type CreditRow = { partyId: string; name: string; bills: number; creditSatang: number; refundedSatang: number; outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null };
+export type CreditTotals = { rowCount: number; bills: number; creditSatang: number; refundedSatang: number; outstandingSatang: number; overdueSatang: number; bookLinked: boolean };
+export type CreditReportResult = ReportResult<"credit", CreditRow, CreditTotals>;
 export type AnyReportResult =
   | DailyReportResult
   | ProductsReportResult
@@ -311,7 +315,8 @@ export type AnyReportResult =
   | BranchesReportResult // POS P2.12 ◂
   | HourlyReportResult
   | AnomaliesReportResult
-  | CommissionReportResult; // POS P3.5 ◂
+  | CommissionReportResult // POS P3.5 ◂
+  | CreditReportResult; // POS P3.6 ◂
 /** POS P2.12 ▸ รายงานที่สำเร็จ (ใช้กับแบบพิมพ์ report-print-shared.ts) ◂ */
 export type AnyReport = Extract<AnyReportResult, { ok: true }>["report"];
 
@@ -1753,6 +1758,63 @@ export async function reportStaffCommission(ctx: ReportCtx, actor: RegisterActor
   });
 }
 
+// ═══════════ POS P3.6 ▸ R9 ลูกหนี้วางบิล (เครดิตเทอม) ต่อบริษัท — pos.report.view · ไม่ใช่ชนิดของ REST ใน P3.6 ═══════════
+//   ฝั่ง POS (ช่วง + สาขาที่เห็น): บิล SALE ที่มีแถว ON_ACCOUNT ของ customerPartyId · ยอดวางบิล · ยอดคืน ON_ACCOUNT ของใบคืนที่อ้างบิลเหล่านั้น
+//   ฝั่งสมุด (ณ ตอนนี้ · account.posCreditAging = สูตร agingReport): ค้าง · เลยกำหนด · ครบกำหนดเก่าสุด · ชื่อ = ผู้ติดต่อในสมุด → ผู้ซื้อบนบิล → partyId
+//   ไม่มีข้อมูลติดต่อ/วงเงิน (R14 · CD-4) · POS ไม่ผูกสมุด = ยอดฝั่งสมุด 0 + bookLinked false ◂
+export async function reportCredit(ctx: ReportCtx, actor: RegisterActor, input: ReportInput, client?: Db): Promise<CreditReportResult> {
+  return guard("reportCredit", async () => {
+    const db = client ?? prisma;
+    const p = await prepare(db, ctx, actor, input);
+    if (isRefusal(p)) return p;
+    const { s, r } = p;
+    const bills = await db.posSale.findMany({
+      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, docType: "SALE", customerPartyId: { not: null }, createdAt: { gte: r.start, lt: r.end }, status: { in: ["PAID", "REFUNDED"] }, payments: { some: { type: "ON_ACCOUNT" } } },
+      select: { id: true, customerPartyId: true, taxInvoice: true, payments: { where: { type: "ON_ACCOUNT" }, select: { amountSatang: true } } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: 100_000,
+    });
+    const by = new Map<string, CreditRow>();
+    const partyOfBill = new Map<string, string>();
+    for (const b of bills) {
+      const pid = b.customerPartyId!;
+      partyOfBill.set(b.id, pid);
+      const buyer = isRecord(b.taxInvoice) && typeof b.taxInvoice.name === "string" ? b.taxInvoice.name : "";
+      const row = by.get(pid) ?? { partyId: pid, name: buyer, bills: 0, creditSatang: 0, refundedSatang: 0, outstandingSatang: 0, overdueSatang: 0, oldestDueDate: null };
+      row.bills += 1;
+      row.creditSatang += b.payments.reduce((t, x) => t + x.amountSatang, 0);
+      if (!row.name && buyer) row.name = buyer;
+      by.set(pid, row);
+    }
+    for (const ids of chunks([...partyOfBill.keys()])) {
+      const back = await db.posSale.findMany({ where: { tenantId: s.tenantId, docType: "REFUND", refSaleId: { in: ids } }, select: { refSaleId: true, payments: { where: { type: "ON_ACCOUNT" }, select: { amountSatang: true } } } });
+      for (const x of back) {
+        const row = by.get(partyOfBill.get(x.refSaleId ?? "") ?? "");
+        if (row) row.refundedSatang += x.payments.reduce((t, y) => t + Math.abs(y.amountSatang), 0);
+      }
+    }
+    const aging = by.size ? await (await import("@/lib/modules/account")).posCreditAging({ tenantId: s.tenantId, sourceSystemId: s.systemId, partyIds: [...by.keys()] }) : null;
+    for (const row of by.values()) {
+      const a = aging?.get(row.partyId);
+      if (!a) continue;
+      row.outstandingSatang = a.outstandingSatang;
+      row.overdueSatang = a.overdueSatang;
+      row.oldestDueDate = a.oldestDueDate;
+      if (a.contactName) row.name = a.contactName;
+    }
+    const rows = [...by.values()].map((x) => ({ ...x, name: x.name || x.partyId })).sort((a, b) => b.outstandingSatang - a.outstandingSatang || b.creditSatang - a.creditSatang || cmpStr(a.partyId, b.partyId));
+    return envelope("credit", s, r, rows, {
+      rowCount: rows.length,
+      bills: sum(rows, (x) => x.bills),
+      creditSatang: sum(rows, (x) => x.creditSatang),
+      refundedSatang: sum(rows, (x) => x.refundedSatang),
+      outstandingSatang: sum(rows, (x) => x.outstandingSatang),
+      overdueSatang: sum(rows, (x) => x.overdueSatang),
+      bookLinked: aging !== null || by.size === 0,
+    });
+  });
+}
+
 // ═══════════ CSV (R11) ═══════════
 const CSV_BOM = "﻿";
 const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
@@ -1790,6 +1852,7 @@ export const CSV_HEADERS: Record<ReportKind, string[]> = {
   hourly: ["ชั่วโมง", "จำนวนบิล", "ยอดขายสุทธิ", "คาดการณ์ (เฉลี่ย 4 สัปดาห์)"],
   anomalies: ["กฎ", "จุดสังเกต", "สาขา", "วันที่", "พนักงาน", "ชนิดอ้างอิง", "รหัสอ้างอิง", "ค่า", "เกณฑ์", "จำนวน"], // POS P2.12 ▸ fix1 F1: ชื่อสาขา (เดิม รหัสสาขา) ◂
   commission: ["รหัสผู้ใช้", "ชื่อ", "ค่าคอมฯ ที่ได้", "กลับรายการ", "สุทธิ", "ส่งเข้างวดแล้ว", "ยังไม่ส่ง", "ยังไม่ผูกพนักงาน HR", "สถานะใน HR"], // POS P3.5 ▸ R11 ◂
+  credit: ["รหัสบริษัท (Party)", "บริษัท", "จำนวนบิลวางบิล", "ยอดวางบิล", "ยอดคืน", "ค้างชำระ", "เลยกำหนด", "ครบกำหนดเก่าสุด"], // POS P3.6 ▸ R9 ◂
 };
 /** POS P2.12 ▸ fix1 F2: ชนิดที่แถวท้ายของ CSV/แบบพิมพ์เป็นแถว "รวม" เสมอ (ตัดสินจากชนิด ไม่ใช่ข้อความในช่อง) — channels/anomalies ไม่มีแถวรวม ◂ */
 export const REPORT_TOTAL_ROW_KINDS: ReadonlySet<ReportKind> = new Set<ReportKind>(["daily", "products", "staff", "payments", "margin", "shifts", "tax", "branches", "hourly", "commission"]); // POS P3.5 ▸ + commission ◂
@@ -1973,6 +2036,11 @@ function csvTableRows(res: Exclude<AnyReportResult, ReportRefusal>): Cells[] {
         [TOTAL_LABEL, "", baht(x.totals.accruedSatang), baht(x.totals.reversedSatang), baht(x.totals.netSatang), baht(x.totals.sentSatang), baht(x.totals.openSatang), "", ""],
       ];
     }
+    // POS P3.6 ▸ R9: ลูกหนี้วางบิลต่อบริษัท (ไม่มีแถวรวม — ยอดค้างเป็นภาพ ณ ตอนนี้ ไม่ใช่ผลรวมของช่วง) ◂
+    case "credit": {
+      const x = rep as Report<"credit", CreditRow, CreditTotals>;
+      return x.rows.map((r) => [r.partyId, r.name, r.bills, baht(r.creditSatang), baht(r.refundedSatang), baht(r.outstandingSatang), baht(r.overdueSatang), r.oldestDueDate ?? ""]);
+    }
   }
 }
 /** POS P2.12 ▸ PD: แถว CSV (ข้อมูล + "รวม") ของรายงานที่สำเร็จ เป็นข้อความทีละช่อง — แบบพิมพ์ใช้ชุดเดียวกับ CSV (report-print-shared.ts) ◂ */
@@ -1998,6 +2066,7 @@ const REPORT_FN: Record<ReportKind, (ctx: ReportCtx, actor: RegisterActor, input
   hourly: reportHourly,
   anomalies: reportAnomalies,
   commission: reportStaffCommission, // POS P3.5 ◂
+  credit: reportCredit, // POS P3.6 ◂
 };
 export const isReportKind = (v: unknown): v is ReportKind => typeof v === "string" && (REPORT_KINDS as readonly string[]).includes(v);
 

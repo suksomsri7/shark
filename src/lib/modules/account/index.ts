@@ -30,7 +30,7 @@ import {
 import { lineAmount, type LineInput } from "./totals";
 import { baht, familyCreditByInvoice } from "./service";
 // POS P3.6 ▸ วางบิล (เครดิตเทอม): ใบแจ้งหนี้ของบิล + ตัวอ่านภาพหนี้/เทอม/สถานะรับชำระ (service.ts · บล็อก POS P3.6) ◂
-import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx } from "./service";
+import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty } from "./service";
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
@@ -1679,5 +1679,12 @@ export async function posCreditInvoicePaid(tx: Prisma.TransactionClient, input: 
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return false;
   return posCreditInvoicePaidInTx(tx, input.tenantId, link.systemId, input.refId);
+}
+
+/** POS P3.6 ▸ R9: อายุหนี้ของบริษัท (partyIds) ในสมุดที่ผูก POS — รายงาน "credit" ของ POS (อ่านอย่างเดียว · สูตรเดียวกับ agingReport) · ไม่ผูก = null */
+export async function posCreditAging(input: { tenantId: string; sourceSystemId: string; partyIds: readonly string[]; asOf?: Date }): Promise<Map<string, { outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null; contactName: string | null }> | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditAgingByParty(link.systemId, input.partyIds, input.asOf ?? new Date());
 }
 // ◂ POS P3.6

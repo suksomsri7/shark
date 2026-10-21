@@ -7434,4 +7434,41 @@ export async function posCreditInvoicePaidInTx(tx: Prisma.TransactionClient, ten
   const live = await tx.accountDocumentPayment.count({ where: { documentId: doc.id, voidedAt: null } });
   return live > 0;
 }
+
+/**
+ * R9 — อายุหนี้ต่อ Party (รายงาน "credit" ของ POS · อ่านอย่างเดียว) — สูตรเดียวกับ agingReport (OUT · AWAITING_PAYMENT/PARTIAL · ไม่ยกเลิก ·
+ *   ค้าง = grand − paid − ใบลดหนี้ที่มีผลของครอบครัว · เลยกำหนด = floor((asOf − due)/วัน) > 0 · due = dueDate ?? issueDate) ·
+ *   ผลต่อ partyId: ค้าง · เลยกำหนด · ครบกำหนดเก่าสุดของเอกสารที่ยังค้าง (วันไทย YYYY-MM-DD) · ชื่อผู้ติดต่อในสมุด (ชื่อบริษัท)
+ */
+export async function posCreditAgingByParty(
+  systemId: string,
+  partyIds: readonly string[],
+  asOf: Date,
+): Promise<Map<string, { outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null; contactName: string | null }>> {
+  const out = new Map<string, { outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null; contactName: string | null }>();
+  const ids = [...new Set(partyIds.filter(Boolean))];
+  if (!ids.length) return out;
+  const contacts = await prisma.accountContact.findMany({ where: { systemId, partyId: { in: ids } }, select: { id: true, partyId: true, name: true }, orderBy: { createdAt: "asc" } });
+  if (!contacts.length) return out;
+  const partyOf = new Map(contacts.map((c) => [c.id, c.partyId!]));
+  for (const c of contacts) if (c.partyId && !out.has(c.partyId)) out.set(c.partyId, { outstandingSatang: 0, overdueSatang: 0, oldestDueDate: null, contactName: c.name ?? null });
+  const docs = await prisma.accountDocument.findMany({
+    where: { systemId, direction: "OUT", status: { in: ["AWAITING_PAYMENT", "PARTIAL"] }, voidedAt: null, contactId: { in: contacts.map((c) => c.id) } },
+    select: { id: true, contactId: true, grandTotal: true, paidTotal: true, dueDate: true, issueDate: true },
+  });
+  const credit = await familyCreditByInvoice(prisma as unknown as Prisma.TransactionClient, systemId, docs.map((d) => d.id));
+  const DAY = 86_400_000;
+  for (const d of docs) {
+    const left = d.grandTotal - d.paidTotal - (credit.get(d.id) ?? 0);
+    if (left <= 0 || !d.contactId) continue;
+    const row = out.get(partyOf.get(d.contactId) ?? "");
+    if (!row) continue;
+    const due = d.dueDate ?? d.issueDate;
+    row.outstandingSatang += left;
+    if (Math.floor((asOf.getTime() - due.getTime()) / DAY) > 0) row.overdueSatang += left;
+    const ymd = new Date(due.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    if (!row.oldestDueDate || ymd < row.oldestDueDate) row.oldestDueDate = ymd;
+  }
+  return out;
+}
 // ◂ POS P3.6
