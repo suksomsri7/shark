@@ -4,17 +4,17 @@ Builder U · 21 Oct 2026 · base `origin/session/pos` 26b831d2 (product tip 959b
 **No server behaviour change.** S exports are the contract (`loadBriefInput`, `composeBrief`, `getPosAiSettingsAction`, `updatePosAiSettingsAction`, `posAiSettings`, `POS_AI_MANAGERS_MAX`). One new `"use server"` wrapper (CD-P39U-1). Brief text = template (no LLM, ruling 3).
 
 ## 1. 08 panel (ruling 1 · CD-P39U-1)
-- Reader `src/lib/modules/pos/ai-panel-actions.ts` `posAiPanelAction({systemId, date?, locale?})`: session → membership (posMembership) → `assertCan pos.report.view` as boolean → POS system of the tenant → **refused** `PERMISSION_DENIED` unless `pos.report.view` at ≥ 1 linked POS unit (same rule as `loadBriefInput`) → **AI-off** `AI_OFF` when `settings.pos.ai.enabled` false (`canManage` = OWNER) → business date = today by the system cutoff (`bkkBusinessDate` + `posDayCutoffMinutes`); a valid `date` ≤ today is used instead (the panel passes the overview's `to`) → `loadBriefInput(ctx, actor-of-session, date)` → `composeBrief(input, locale)` → `{ok, title, lines, sections, anomalyHits, empty, businessDate, generatedAt, canManage}`. No `throw`; INTERNAL on unexpected errors.
+- Reader `src/lib/modules/pos/ai-panel-actions.ts` `posAiPanelAction({systemId, date?, locale?})`: session → membership (posMembership) → `assertCan pos.report.view` as boolean → POS system of the tenant → **refused** `PERMISSION_DENIED` unless `pos.report.view` at ≥ 1 linked POS unit (same rule as `loadBriefInput`) → **AI-off** `AI_OFF` when `settings.pos.ai.enabled` false (`canManage` = OWNER) → business date = today by the system cutoff (`bkkBusinessDate` + `posDayCutoffMinutes`); a valid `date` ≤ today is used instead (the panel passes the overview's `to`) → `loadBriefInput(ctx, actor-of-session, date)` → `composeBrief(input, locale)` → `{ok, title, lines, sections, anomalyHits, empty, businessDate, generatedAt, canManage}`. fix1 N1: a day with 0 bills drops only the ฿0 `sales` line; `empty` = no actionable line (`soldOut` · `stock` · `anomalies` with a rule hit · `proposals`), regardless of bill count (server-side). No `throw`; INTERNAL on unexpected errors.
 - Component `reports/AiBriefPanel.tsx` (`"use client"`), placed in `ReportsOverview` bottom row next to the staff card (xl: staff 1.25 · panel 1; below xl stacked) — mockup 08.
   - **brief** `pos-reports-ai-panel` (accent border): spark tile + h2 `ai.brief.title` + `pos-reports-ai-at` "วิเคราะห์เมื่อ HH:MM" (`ai.panel.analyzedAt`, Bangkok time formatted on the client after mount — HF-418) · lines verbatim `pos-reports-ai-line-<n>` (`data-section`; red dot for `overShort` and for `anomalies` when a rule hit) · buttons `pos-reports-ai-draft-po` "สร้างใบสั่งซื้อ (ร่าง)" (primary) + `pos-reports-ai-ask` "ถามต่อ" · dashed footer `pos-reports-ai-propose-only` `ai.brief.proposeOnly`.
-  - **empty** `pos-reports-ai-empty` `ai.brief.empty` (+ ask button) — when the brief has no line **or the business day has 0 bills** (CD-P39U-B1 below).
+  - **empty** `pos-reports-ai-empty` `ai.brief.empty` (+ ask button) — when the brief has **no actionable line** (86 / low stock / anomaly hit / AI proposal), regardless of bill count (CD-P39U-B1 as revised by the controller, fix1 N1). With 0 bills and an actionable line the panel shows the lines + draft-PO button, minus the ฿0 sales line.
   - **refused** `pos-reports-ai-refused` `ai.panel.refused` (no figures). In `ReportsClient` it comes from the action; for an actor without `pos.report.view` at any unit the page renders the panel in refused mode **under** the page refusal card (`pos-report-refusal`) on kind=overview, without calling the action.
   - **off** `pos-reports-ai-off` dashed card `ai.brief.off` + OWNER link `pos-reports-ai-settings` → settings `?tab=shark`.
   - error `pos-reports-ai-error` + `pos-reports-ai-retry`.
 - "สร้างงานในบอร์ด" is **not** rendered (CD-P39U-2) → follow-up P3.8U (`createAnomalyCardAction`).
 
 ## 2. Dock seed (CD-P39U-2)
-- Buttons dispatch `CustomEvent("app:ai-open", {detail: {prompt}})`; prompts `ai.panel.seedDraftPo {lines}` / `ai.panel.seedAsk {title, lines}`.
+- Buttons dispatch `CustomEvent("app:ai-open", {detail: {prompt}})`; prompts `ai.panel.seedDraftPo {date}` / `ai.panel.seedAsk {title, date}` — title + business date + intent only, **no figures / over-short / anomaly text** (fix1 F1; the AI reads data through its own scoped POS tools).
 - `AiDock.tsx`: listener reads optional `detail.prompt` (non-empty string, ≤ 4000) into `seed {text, n}`; an event without detail sets `seed = null` ⇒ behaviour identical to before. `AiChat.tsx`: optional prop `seed` + one effect → input prefilled (**no auto-send**; the user presses send; confirm = existing proposal card).
 
 ## 3. 10 AI card + brief sheet (ruling 4 · CD-P39U-3)
@@ -28,8 +28,8 @@ Builder U · 21 Oct 2026 · base `origin/session/pos` 26b831d2 (product tip 959b
 ## 5. Visual (`visual-pos.mts p3.9u --states` · reports + settings · 3 sizes th + LOCALE=en 1440)
 | state | page | user | fixture |
 |---|---|---|---|
-| reports-ai-panel-brief | reports overview today | owner | AI on · 3 bills + 1 void today (createSale/voidSale, day keys, kept like P2.12U) |
-| reports-ai-panel-empty | reports overview 2024-01-02 | owner | AI on |
+| reports-ai-panel-brief | reports overview today | owner | AI on · 3 bills + 1 void today (createSale/voidSale, day keys, kept like P2.12U) + 3× A11 audit (actionable anomaly line) |
+| reports-ai-panel-empty | reports overview 2024-01-02 | owner | AI on · 86 marks of the system + reorder points of at-risk items parked for the shot and restored (kept in `_qcP39uBefore.park`); fails with a reason if the owner has pending AI proposals |
 | reports-ai-panel-refused | reports overview today | cashier | page refusal + refused panel |
 | reports-ai-panel-off | reports overview today | owner | AI off |
 | reports-anomalies-a11 | reports anomalies today | owner | 3× `pos.staff.schedule_override` audit (writeAudit · deleted in cleanup) |
@@ -40,4 +40,4 @@ Builder U · 21 Oct 2026 · base `origin/session/pos` 26b831d2 (product tip 959b
 `settings.pos.ai` is written by the harness only (CD-P39U-4: jsonb_set `{pos,ai}`, original kept in `_qcP39uBefore {had, v}` and restored after the last job / finally / signal).
 
 ## 6. Owner-ack (no mockup)
-Panel empty/refused/off states, the brief sheet, the seeded dock prefill.
+Panel empty (= no actionable line, any bill count — CD-P39U-B1 revised) / refused / off states, the brief sheet, the seeded dock prefill (title + date + intent).

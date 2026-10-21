@@ -805,8 +805,8 @@ type P39uKey =
   | "settings-ai-brief-sheet-invalid";
 const P39U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
 const P39U_PLAN: { key: P39uKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
-  { key: "reports-ai-panel-brief", page: "reports", devices: P39U_D3, users: ["owner"], note: "08 ภาพรวมวันนี้: แผง \"สรุปเช้า POS\" ข้างการ์ดพนักงาน — บรรทัดจาก composeBrief (บิล fixture วันนี้ + ยกเลิก 1 บิล) · \"วิเคราะห์เมื่อ HH:MM\" · ปุ่ม สร้างใบสั่งซื้อ (ร่าง) / ถามต่อ · กรอบประ AI เสนอเท่านั้น (ผู้ช่วย AI เปิด)" },
-  { key: "reports-ai-panel-empty", page: "reports", devices: P39U_D3, users: ["owner"], note: "08 ภาพรวมวันที่ 2024-01-02 (ไม่มีบิล): แผง = \"ยังไม่มีสรุปเช้า\" + ปุ่มถามต่อ (ผู้ช่วย AI เปิด)" },
+  { key: "reports-ai-panel-brief", page: "reports", devices: P39U_D3, users: ["owner"], note: "08 ภาพรวมวันนี้: แผง \"สรุปเช้า POS\" ข้างการ์ดพนักงาน — บรรทัดจาก composeBrief (บิล fixture วันนี้ + ยกเลิก 1 บิล + A11 ×3 = บรรทัดจุดผิดปกติที่ต้องทำต่อ) · \"วิเคราะห์เมื่อ HH:MM\" · ปุ่ม สร้างใบสั่งซื้อ (ร่าง) / ถามต่อ · กรอบประ AI เสนอเท่านั้น (ผู้ช่วย AI เปิด)" },
+  { key: "reports-ai-panel-empty", page: "reports", devices: P39U_D3, users: ["owner"], note: "08 ภาพรวมวันที่ 2024-01-02 (ไม่มีบิล): แผง = \"ยังไม่มีสรุปเช้า\" + ปุ่มถามต่อ (ผู้ช่วย AI เปิด · fix1 N1: ไม่มีบรรทัดที่ต้องทำต่อ — 86 ของระบบ + จุดสั่งซื้อของสินค้าใกล้หมดพักชั่วคราวแล้วคืน)" },
   { key: "reports-ai-panel-refused", page: "reports", devices: P39U_D3, users: ["cashier"], note: "08 ของแคชเชียร์ (ไม่มี pos.report.view): การ์ดปฏิเสธของหน้า + แผงผู้ช่วย AI สถานะปฏิเสธ (ไม่มีตัวเลข)" },
   { key: "reports-ai-panel-off", page: "reports", devices: P39U_D3, users: ["owner"], note: "08 ภาพรวมวันนี้ ผู้ช่วย AI ปิด: การ์ดเส้นประ \"ผู้ช่วย AI ของหน้าขายปิดอยู่\" + ลิงก์ไปตั้งค่า (เจ้าของร้าน)" },
   { key: "reports-anomalies-a11", page: "reports", devices: P39U_D3, users: ["owner"], note: "แท็บจุดผิดปกติวันนี้: กลุ่ม A11 \"ข้ามตารางงานบ่อย\" (audit pos.staff.schedule_override ×3 ของ fixture · ผู้อนุมัติ = เจ้าของ · เกณฑ์ 3)" },
@@ -1575,7 +1575,7 @@ if (DRY) {
       console.log(
         `  P3.9U: fixture (สาขา ${unitKey}) — บิลวันนี้ 3 ใบ + ยกเลิก 1 ใบ (createSale/voidSale คีย์ต่อวัน posqc-vis-p39u-<n>-<วันที่> · ไม่ลบ แบบ P2.12U) · ` +
           "settings.pos.ai ผ่าน jsonb ของ harness (CD-P39U-4 · ค่าเดิมเก็บใน _qcP39uBefore · ปิด = off states · เปิด = ที่เหลือ · คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ) · " +
-          "audit pos.staff.schedule_override ×3 ผ่าน writeAudit (CD-P39U-5 · เหตุผล \"ภาพ QC P3.9U <pid>\" · ลบตอนเก็บกวาด) · ผู้จัดการชั่วคราวของภาพ (Membership MANAGER ลบตอนเก็บกวาด · invalid = ลดเป็น STAFF ชั่วคราวก่อนกดบันทึก)",
+          "audit pos.staff.schedule_override ×3 ผ่าน writeAudit (CD-P39U-5 · เหตุผล \"ภาพ QC P3.9U <pid>\" · ลบตอนเก็บกวาด) · ผู้จัดการชั่วคราวของภาพ (Membership MANAGER ลบตอนเก็บกวาด · invalid = ลดเป็น STAFF ชั่วคราวก่อนกดบันทึก) · fix1 N1: brief ใช้ A11 ×3 เป็นบรรทัดที่ต้องทำต่อ · empty พัก 86 ของระบบ + จุดสั่งซื้อของสินค้าใกล้หมดชั่วคราว (เก็บใน _qcP39uBefore.park · คืนหลังภาพ/finally/สัญญาณ)",
       );
     }
     // POS P2.7U ▸ มติ 15 ◂
@@ -6619,7 +6619,12 @@ const P39U = {
   before: null as null | { had: boolean; v: unknown },
   mgr: false,
   audits: false,
+  // POS P3.9U ▸ fix1 N1: ภาพ "ว่าง" = วันที่ไม่มีบรรทัดที่ต้องทำต่อ ⇒ พัก 86 ของระบบ + จุดสั่งซื้อของสินค้าที่ใกล้หมดชั่วคราว (คืนหลังภาพ · ค่าที่พักเก็บใน _qcP39uBefore.park กัน kill) ◂
+  enabled: true,
+  park: null as null | P39uPark,
+  emptyNote: null as string | null,
 };
+type P39uPark = { marks: { id: string; tenantId: string; systemId: string; unitId: string; productId: string; source: string; note: string | null; markedAt: string; markedByUserId: string | null }[]; reorder: { id: string; reorderPoint: number }[] };
 const p39uRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 async function p39uReadAi(): Promise<{ had: boolean; v: unknown }> {
   const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
@@ -6648,15 +6653,52 @@ async function p39uSetAi(enabled: boolean): Promise<void> {
     const res = p39uRec(cur.v) && p39uRec(cur.v._qcP39uBefore) ? (cur.v._qcP39uBefore as { had?: unknown; v?: unknown }) : null;
     P39U.before = res ? { had: res.had === true, v: res.had === true ? res.v : undefined } : cur;
     if (res) P39U.log.push("กวาดซากค่าตั้งผู้ช่วย AI ของรอบก่อน (คืนจาก _qcP39uBefore)");
+    const oldPark = res && p39uRec(res) && p39uRec((res as Record<string, unknown>).park) ? ((res as Record<string, unknown>).park as P39uPark) : null;
+    if (oldPark) {
+      await p39uRestorePark(oldPark);
+      P39U.log.push(`คืน 86 ${oldPark.marks.length} · จุดสั่งซื้อ ${oldPark.reorder.length} ที่รอบก่อนพักไว้`);
+    }
   }
+  P39U.enabled = enabled;
   const base: Record<string, unknown> = p39uRec(P39U.before.v) ? P39U.before.v : {};
   await p39uWriteAi({
     ...base,
     enabled,
     brief: { ...(p39uRec(base.brief) ? base.brief : {}), enabled: true, hourBkk: 6, email: false, managerUserIds: [] },
     anomalyInBrief: true,
-    _qcP39uBefore: { had: P39U.before.had, v: P39U.before.had ? (P39U.before.v ?? null) : null },
+    _qcP39uBefore: { had: P39U.before.had, v: P39U.before.had ? (P39U.before.v ?? null) : null, park: P39U.park },
   });
+}
+async function p39uRestorePark(park: P39uPark): Promise<void> {
+  if (park.marks.length)
+    await prisma.posAvailabilityMark.createMany({ data: park.marks.map((m) => ({ ...m, source: m.source as never, markedAt: new Date(m.markedAt) })), skipDuplicates: true });
+  for (const r of park.reorder) await prisma.invItem.updateMany({ where: { id: r.id, tenantId: T.tenantId }, data: { reorderPoint: r.reorderPoint } });
+}
+/** ก่อนภาพ "ว่าง": พัก 86 ของระบบนี้ + ตั้งจุดสั่งซื้อ 0 ให้สินค้าที่ onHand ≤ จุดสั่งซื้อ (ตัวอ่าน posStockRisks) — จดค่าลง _qcP39uBefore ก่อนแก้ */
+async function p39uPark(): Promise<void> {
+  if (P39U.park) return;
+  const marks = await prisma.posAvailabilityMark.findMany({ where: { tenantId: T.tenantId, systemId: SYS } });
+  const prods = await prisma.posProduct.findMany({ where: { tenantId: T.tenantId, systemId: SYS, archivedAt: null, invItemId: { not: null } }, select: { invItemId: true } });
+  const ids = [...new Set(prods.map((x) => x.invItemId).filter((x): x is string => !!x))];
+  const items = ids.length ? await prisma.invItem.findMany({ where: { tenantId: T.tenantId, id: { in: ids }, kind: "PRODUCT", archivedAt: null, reorderPoint: { gt: 0 } }, select: { id: true, onHand: true, reorderPoint: true } }) : [];
+  P39U.park = {
+    marks: marks.map((m) => ({ id: m.id, tenantId: m.tenantId, systemId: m.systemId, unitId: m.unitId, productId: m.productId, source: String(m.source), note: m.note, markedAt: m.markedAt.toISOString(), markedByUserId: m.markedByUserId })),
+    reorder: items.filter((i) => i.onHand <= i.reorderPoint).map((i) => ({ id: i.id, reorderPoint: i.reorderPoint })),
+  };
+  await p39uSetAi(P39U.enabled); // จดก่อนแก้
+  if (P39U.park.marks.length) await prisma.posAvailabilityMark.deleteMany({ where: { tenantId: T.tenantId, id: { in: P39U.park.marks.map((m) => m.id) } } });
+  for (const r of P39U.park.reorder) await prisma.invItem.updateMany({ where: { id: r.id, tenantId: T.tenantId }, data: { reorderPoint: 0 } });
+  const props = await prisma.aiProposal.count({ where: { tenantId: T.tenantId, status: "PENDING", expiresAt: { gt: new Date() }, conversationId: { startsWith: `u~${T.users.owner.userId}~` } } });
+  P39U.emptyNote = props ? `เจ้าของมีข้อเสนอ AI รอยืนยัน ${props} รายการ (บรรทัดที่ต้องทำต่อ — ภาพว่างทำไม่ได้)` : null;
+  P39U.log.push(`ภาพว่าง: พัก 86 ${P39U.park.marks.length} · จุดสั่งซื้อ ${P39U.park.reorder.length} (คืนหลังภาพ)`);
+}
+async function p39uUnpark(): Promise<void> {
+  if (!P39U.park) return;
+  const park = P39U.park;
+  await p39uRestorePark(park);
+  P39U.park = null;
+  await p39uSetAi(P39U.enabled);
+  P39U.log.push(`คืน 86 ${park.marks.length} · จุดสั่งซื้อ ${park.reorder.length}`);
 }
 async function p39uMgrRole(role: "MANAGER" | "STAFF"): Promise<void> {
   await prisma.membership.updateMany({ where: { userId: P39U_MGR.userId, tenantId: T.tenantId }, data: { role } });
@@ -6692,7 +6734,8 @@ async function ensureP39uFixture(): Promise<void> {
       if (st?.status === "PAID") await voidSale(T.tenantId, unitId, v, { actorUserId: owner.userId, reason: `ลูกค้ายกเลิกออเดอร์ (${P39U_REASON})` });
       P39U.log.push("บิลวันนี้ 3 ใบ + ยกเลิก 1 ใบ");
     }
-    if (want("reports-anomalies-a11")) {
+    // POS P3.9U ▸ fix1 N1: ภาพ brief ต้องมีบรรทัดที่ต้องทำต่อ ⇒ ใช้ A11 ชุดเดียวกัน (จุดผิดปกติที่ถูกจับ) ◂
+    if (want("reports-anomalies-a11", "reports-ai-panel-brief")) {
       const { writeAudit } = await import("@/lib/core/audit");
       const dev = await prisma.posDevice.findFirst({ where: { tenantId: T.tenantId, systemId: SYS, unitId }, orderBy: { createdAt: "asc" }, select: { id: true, deviceCode: true } });
       if (!dev) throw new StepError("สาขานี้ไม่มีเครื่อง POS (A11 ต้องหาสาขาจากเครื่อง)");
@@ -6730,6 +6773,8 @@ async function prepP39u(state: P39uKey): Promise<void> {
   if (!P39U.done) return;
   try {
     await p39uSetAi(!(state === "reports-ai-panel-off" || state === "settings-ai-card-off"));
+    if (state === "reports-ai-panel-empty") await p39uPark(); // POS P3.9U ▸ fix1 N1 ◂
+    else await p39uUnpark();
     if (P39U.mgr) await p39uMgrRole("MANAGER");
   } catch (e) {
     P39U.error = `เตรียม ${state}: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
@@ -6747,6 +6792,14 @@ async function cleanupP39u(): Promise<void> {
       P39U.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
     }
   };
+  if (P39U.park) {
+    const park = P39U.park;
+    await step("คืน 86/จุดสั่งซื้อที่พักไว้", async () => {
+      await p39uRestorePark(park);
+      P39U.park = null;
+      return `คืน 86 ${park.marks.length} · จุดสั่งซื้อ ${park.reorder.length}`;
+    });
+  }
   if (P39U.before) {
     const b = P39U.before;
     await step("คืนค่าตั้งผู้ช่วย AI", async () => {
@@ -6795,6 +6848,7 @@ async function runP39uState(page: Any, state: P39uKey, _device: Device): Promise
       return;
     }
     case "reports-ai-panel-empty":
+      if (P39U.emptyNote) throw new StepError(P39U.emptyNote);
       await into(tid("pos-reports-ai-panel"));
       await visibleEl(page, tid("pos-reports-ai-empty"), 0, 20_000);
       if (await has(tid("pos-reports-ai-line-0"))) throw new StepError("วันไม่มีบิลแต่แผงมีบรรทัดสรุป");

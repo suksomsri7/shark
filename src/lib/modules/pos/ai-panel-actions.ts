@@ -29,13 +29,15 @@ type PanelOk = {
   sections: BriefSection[];
   /** มีจุดผิดปกติอย่างน้อย 1 กฎ (บรรทัด anomalies ไม่ใช่ "ไม่พบ") */
   anomalyHits: boolean;
-  /** ไม่มีอะไรให้สรุป: ไม่มีบรรทัดเลย หรือวันธุรกิจนั้นยังไม่มีบิล (billCount 0) */
+  /** POS P3.9U ▸ fix1 N1: ไม่มีบรรทัดที่ต้องทำต่อ (86 · ใกล้หมด · จุดผิดปกติที่ถูกจับ · ข้อเสนอ AI) — ไม่ขึ้นกับจำนวนบิล ◂ */
   empty: boolean;
   businessDate: string;
   generatedAt: string;
   canManage: boolean;
 };
 
+/** POS P3.9U ▸ fix1 N1 (CD-P39U-B1 แก้): บรรทัดที่ "ต้องทำอะไรต่อ" — ของหมด (86) · ใกล้หมด · จุดผิดปกติที่มีกฎถูกจับ · ข้อเสนอ AI รอยืนยัน ◂ */
+const ACTIONABLE: ReadonlySet<BriefSection> = new Set<BriefSection>(["soldOut", "stock", "anomalies", "proposals"]);
 const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const refuse = (code: PanelCode, message: string, canManage = false): PanelRefusal => ({ ok: false, code, message, canManage });
 /** ด่านสิทธิ์ระดับร้าน (assertCan · คืน boolean ไม่โยน — กฎ P1.6-R2) */
@@ -70,14 +72,18 @@ export async function posAiPanelAction(args: { systemId: string; date?: string; 
     const actor: RegisterActor = { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions };
     const input = await loadBriefInput({ tenantId, systemId: sys.id }, actor, businessDate);
     const b = composeBrief(input, a.locale === "en" ? "en" : "th");
+    const anomalyHits = !!input.anomalies && input.anomalies.length > 0;
+    // POS P3.9U ▸ fix1 N1: วันที่ยังไม่มีบิล = ตัดเฉพาะบรรทัดยอดขาย ฿0 (บรรทัดอื่นแสดงตามเดิม) ◂
+    const zeroBills = input.daily !== null && input.daily.billCount === 0;
+    const keep = b.sections.map((sec, i) => ({ sec, line: b.lines[i] ?? "" })).filter((x) => !(zeroBills && x.sec === "sales"));
     return {
       ok: true,
       title: b.title,
-      lines: b.lines,
-      sections: b.sections,
-      anomalyHits: !!input.anomalies && input.anomalies.length > 0,
-      // วันที่ยังไม่มีบิล = "ยังไม่มีสรุปเช้า" (บรรทัดสถานะปัจจุบันอย่างของหมด/ใกล้หมดไม่ทำให้มีสรุปของวันที่ไม่มีการขาย · CD-P39U-B1)
-      empty: b.lines.length === 0 || (input.daily !== null && input.daily.billCount === 0),
+      lines: keep.map((x) => x.line),
+      sections: keep.map((x) => x.sec),
+      anomalyHits,
+      // POS P3.9U ▸ fix1 N1 (CD-P39U-B1 แก้ · มติผู้คุม): "ว่าง" = ไม่มีบรรทัดที่ต้องทำต่อ ไม่ขึ้นกับจำนวนบิล ◂
+      empty: !keep.some((x) => ACTIONABLE.has(x.sec) && (x.sec !== "anomalies" || anomalyHits)),
       businessDate,
       generatedAt: now.toISOString(),
       canManage,
