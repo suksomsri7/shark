@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server"; // POS P3.9U ▸ + getLocale ◂
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { canAccessUnit, canViewPayroll, evaluate } from "@/lib/core/rbac"; // POS P3.5U ▸ + canViewPayroll (แท็บค่าคอมฯ · มติ 8) ◂
@@ -13,6 +13,7 @@ import { posBusinessToday } from "@/lib/modules/pos/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { ReportsClient } from "./ReportsClient";
+import { AiBriefPanel } from "./AiBriefPanel"; // POS P3.9U ▸ มติ 1 ◂
 
 // POS P1.17 U — หน้ารายงาน 7 ชุด (ภาพ 08 บางส่วน) · ข้อมูลทั้งหมดผ่าน report-actions (คำปฏิเสธเป็นข้อมูล)
 // 🔴 สิทธิ์/ขอบเขตจริงตัดสินใน reports.ts (pos.report.view ต่อสาขา) — หน้านี้แค่เลือกสาขาที่เข้าได้ + บอกจอว่าดูได้ไหม
@@ -83,6 +84,8 @@ export default async function PosReportsPage({
           canPayroll={canViewPayroll(m)} // POS P3.5U ▸ มติ 8 ◂
         />
       )}
+      {/* POS P3.9U ▸ มติ 1: ภาพรวม + ไม่มี pos.report.view ที่สาขาใดเลย = แผงผู้ช่วย AI สถานะปฏิเสธใต้การ์ดปฏิเสธของหน้า (ไม่ยิง action · ไม่มีตัวเลข) ◂ */}
+      {allowed.length === 0 && kind === "overview" && <AiBriefPanel systemId={id} locale={await getLocale()} refused />}
     </div>
   );
 }

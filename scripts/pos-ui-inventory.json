@@ -20875,6 +20875,264 @@
       "oracle": "qc-pos-p3.4",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-draft-po",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "app:ai-open",
+        "note": "มติ 1 · CD-P39U-2: แผงผู้ช่วย AI (ภาพ 08) ปุ่ม \"สร้างใบสั่งซื้อ (ร่าง)\" → เปิดแผงแชท AI (AiDock) พร้อมข้อความตั้งต้น pos.ai.panel.seedDraftPo · ยืนยันใบสั่งซื้อ = การ์ดข้อเสนอเดิมในแชท (pos_draft_po) · ไม่เขียนอะไรจากปุ่มนี้"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-ask",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "app:ai-open",
+        "note": "มติ 1 · CD-P39U-2: ปุ่ม \"ถามต่อ\" → เปิดแผงแชท AI พร้อมข้อความตั้งต้น pos.ai.panel.seedAsk (หัวเรื่อง + บรรทัดสรุป) · ผู้ใช้กดส่งเอง"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-ai-panel",
+        "note": "มติ 1: แผงผู้ช่วย AI โหลดไม่สำเร็จ (INTERNAL/NOT_FOUND) → ลองใหม่ = posAiPanelAction อีกครั้ง"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-settings",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "มติ 1: แผงผู้ช่วย AI ปิดอยู่ (settings.pos.ai.enabled false · pos-reports-ai-off) — เจ้าของร้านเห็นลิงก์ไปแท็บการเชื่อมต่อ SHARK (?tab=shark) · คนอื่นเห็นข้อความอย่างเดียว"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-switch",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosAiSettingsAction",
+        "note": "มติ 4: สวิตช์หัวการ์ดผู้ช่วย AI (ภาพ 10) — เจ้าของร้านเท่านั้น {enabled} → สถานะการ์ด LINKED/OFF ตามค่าที่บันทึก (โหลดการ์ดใหม่) · คนอื่น = ตัวแสดงสถานะ pos-settings-card-state-ai + settings.ai.ownerOnly",
+        "db": "AppSystem(POS).settings.pos.ai.enabled"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-ai-sheet",
+        "note": "มติ 4: ปุ่ม \"ตั้งค่าสรุปเช้า\" ใต้การ์ด AI → แผ่น AiBriefSheet (เจ้าของร้านเท่านั้น)"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-brief-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-ai-save",
+        "note": "มติ 4: แผ่นสรุปเช้า — ส่งสรุปเช้าทุกวัน (brief.enabled) · บันทึกเมื่อกดบันทึก"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-hour",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-ai-save",
+        "note": "มติ 4: เวลาส่งสรุปเช้า 0–23 น. เวลาไทย (brief.hourBkk · ค่าปริยาย 6)"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-email",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-ai-save",
+        "note": "มติ 4: ส่งทางอีเมลด้วย (brief.email)"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-anomaly",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-ai-save",
+        "note": "มติ 4: แสดงจุดผิดปกติในสรุปเช้า (anomalyInBrief)"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-manager-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-ai-save",
+        "note": "มติ 4 · CD-P39U-3: ช่องเลือกผู้จัดการที่รับสรุปเช้า (ผู้จัดการที่รับคำเชิญแล้ว จาก listStaffAccess ฝั่งหน้า · ≤ 50 · ครบแล้วช่องที่ยังไม่เลือกถูกปิด)"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosAiSettingsAction",
+        "note": "มติ 4: บันทึกเฉพาะคีย์ที่เปลี่ยน · ปฏิเสธ = ข้อความใต้ช่องตาม field (brief.managerUserIds → settings.ai.invalidManager · pos-settings-ai-error) · ไม่เปลี่ยน = ปิดแผ่น",
+        "db": "AppSystem(POS).settings.pos.ai.brief"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-ai-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-ai-sheet",
+        "note": "มติ 4: ปิดแผ่นโดยไม่บันทึก"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

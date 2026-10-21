@@ -25,6 +25,10 @@ import { InlineNote, TabHead } from "./settings-ui";
 import { CARD_HEAD, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type OfflineLive, type PaySummary, type Storefront } from "./shark-ui"; // POS P3.4U ▸ + OfflineLive ◂
 import { ChannelsPanel } from "./ChannelsPanel"; // POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) ◂
 import { ApiKeysCard } from "./ApiKeysCard"; // POS P2.13 ▸ การ์ดคีย์ API (U-lite §7) ◂
+// POS P3.9U ▸ มติ 4: การ์ด AI — สวิตช์จริงของเจ้าของร้าน (updatePosAiSettingsAction {enabled}) + แผ่นตั้งค่าสรุปเช้า · คนอื่นอ่านอย่างเดียว + settings.ai.ownerOnly ◂
+import { getPosAiSettingsAction, updatePosAiSettingsAction } from "@/lib/modules/pos/ai-settings-actions";
+import type { PosAiSettings } from "@/lib/modules/pos/settings-shared";
+import { AiBriefSettings, type AiManagerOption } from "./AiBriefSheet";
 
 type CardsOk = Extract<PosIntegrationCardsResult, { ok: true }>;
 type ReceiptData = Extract<Awaited<ReturnType<typeof receiptSettingsPageDataAction>>, { ok: true }>;
@@ -48,7 +52,7 @@ const ADD_SYSTEM_HREF = "/app/settings/systems";
 /** ชื่อการ์ดที่เป็นชื่อเฉพาะ (ไม่แปล) */
 const PROPER_TITLE: Partial<Record<PosIntegrationCard["code"], string>> = { CRM: "CRM" };
 
-type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAcceptOrders?: boolean; /** POS P3.4U ▸ มติ 10: การ์ดออฟไลน์ live ◂ */ offline?: OfflineLive | null };
+type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAcceptOrders?: boolean; /** POS P3.4U ▸ มติ 10: การ์ดออฟไลน์ live ◂ */ offline?: OfflineLive | null; /** POS P3.9U ▸ มติ 4 · CD-P39U-3: เจ้าของร้าน + ผู้จัดการที่รับคำเชิญแล้ว (ตัวเลือกผู้รับสรุปเช้า) ◂ */ ai?: { isOwner: boolean; managers: AiManagerOption[] } | null };
 
 function relTime(iso: string, locale: string): string {
   const at = new Date(iso);
@@ -78,7 +82,7 @@ function IconTile({ icon, accent }: { icon: RegisterIconName; accent?: boolean }
   );
 }
 
-export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false, canAcceptOrders = false, offline = null /* POS P3.4U ◂ */ }: Props) {
+export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false, canAcceptOrders = false, offline = null /* POS P3.4U ◂ */, ai = null /* POS P3.9U ◂ */ }: Props) {
   const t = useTranslations("pos.settings");
   const tk = useTranslations("pos.settings.shark");
   const tc = useTranslations("pos.settings.cards");
@@ -91,6 +95,11 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
   const [accBusy, setAccBusy] = useState(false);
   const [accDenied, setAccDenied] = useState(false);
   const [accMsg, setAccMsg] = useState<{ key: string; link: string | null } | null>(null);
+  // POS P3.9U ▸ มติ 4: ค่าตั้งผู้ช่วย AI ที่บันทึกไว้ (เจ้าของร้านเท่านั้นที่โหลด — สวิตช์/แผ่น) · คำปฏิเสธ = ข้อความใต้การ์ด ◂
+  const [aiSet, setAiSet] = useState<PosAiSettings | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState<string | null>(null);
+  const [aiSheet, setAiSheet] = useState(false);
 
   const load = useCallback(async () => {
     setLoadErr(null);
@@ -108,6 +117,29 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
       .then((r) => setReceipt(r.ok ? r : null))
       .catch(() => setReceipt(null));
   }, [load, systemId, unitId]);
+  // POS P3.9U ▸ มติ 4 ◂
+  const aiOwner = ai?.isOwner === true;
+  useEffect(() => {
+    if (!aiOwner) return;
+    void getPosAiSettingsAction(systemId)
+      .then((r) => setAiSet(r.ok ? r.ai : null))
+      .catch(() => setAiSet(null));
+  }, [aiOwner, systemId]);
+  const setAiEnabled = async (enabled: boolean) => {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setAiErr(null);
+    try {
+      const r = await updatePosAiSettingsAction(systemId, { enabled });
+      if (!r.ok) return setAiErr(r.code === "PERMISSION_DENIED" ? "ai.ownerOnly" : settingsRefusalMessageKey(r.code));
+      setAiSet(r.ai);
+      await load(); // สถานะการ์ด LINKED/OFF ตามค่าที่บันทึก (posIntegrationCardsAction)
+    } catch {
+      setAiErr("ai.saveFailed");
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const account = data?.cards.find((c) => c.code === "ACCOUNT") ?? null;
   const setAccount = async (enabled: boolean) => {
@@ -179,6 +211,20 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
         <span data-testid={`pos-settings-card-state-${code}`} role="switch" aria-checked="false" aria-disabled="true" aria-label={title} title={tk("soon", { phase: plannedPhase })} className={HEAD_SWITCH}>
           <MiniKnob on={false} />
         </span>
+      ) : c.code === "AI" && aiOwner ? (
+        // POS P3.9U ▸ มติ 4: สวิตช์จริงของเจ้าของร้าน — ค่า = ค่าที่บันทึก (ยังไม่โหลด = สถานะการ์ด) ◂
+        <button
+          data-testid="pos-settings-ai-switch"
+          type="button"
+          role="switch"
+          aria-checked={aiSet ? aiSet.enabled : c.state === "LINKED"}
+          aria-label={t("ai.enabled")}
+          disabled={aiBusy || !aiSet}
+          className={`${HEAD_SWITCH} disabled:opacity-50`}
+          onClick={() => aiSet && void setAiEnabled(!aiSet.enabled)}
+        >
+          <MiniKnob on={aiSet ? aiSet.enabled : c.state === "LINKED"} />
+        </button>
       ) : accountLive ? (
         <button
           data-testid="pos-settings-account-switch"
@@ -235,6 +281,22 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
           })}
         </ul>
         {c.code === "AI" && <div className="inline-block self-start rounded-[8px] border border-dashed px-[9px] py-1.5 text-[11.5px] text-[color:var(--color-muted)]">{tc("AI.note")}</div>}
+        {/* POS P3.9U ▸ มติ 4: เจ้าของร้าน = ปุ่มแผ่นตั้งค่าสรุปเช้า · คนอื่น = ข้อความเจ้าของร้านเท่านั้น · คำปฏิเสธของสวิตช์ใต้การ์ด ◂ */}
+        {c.code === "AI" &&
+          (aiOwner ? (
+            <button data-testid="pos-settings-ai-open" type="button" disabled={!aiSet} className="btn btn-ghost h-11 self-start rounded-[11px] px-4 text-[13px] disabled:opacity-50" onClick={() => setAiSheet(true)}>
+              {t("ai.sheetOpen")}
+            </button>
+          ) : (
+            <p data-testid="pos-settings-ai-owner-only" className="text-[11.5px] text-[color:var(--color-muted)]">
+              {t("ai.ownerOnly")}
+            </p>
+          ))}
+        {c.code === "AI" && aiErr && (
+          <p data-testid="pos-settings-ai-switch-error" role="alert" className="text-[11.5px] text-[color:var(--color-danger)]">
+            {t(aiErr)}
+          </p>
+        )}
         {/* POS P1.18U ▸ แก้รอบ 1 F3: สวิตช์บัญชีถูกล็อกเพราะไม่มีสิทธิ์ (ก่อนหรือหลังถูกปฏิเสธ) ⇒ บอกเหตุผลใต้การ์ดเสมอ ◂ */}
         {isAccount && (accDenied || (accountLive && accountLocked)) && (
           <p data-testid="pos-settings-account-denied" className="text-[11.5px] text-[color:var(--color-danger)]">
@@ -358,6 +420,19 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
       </div>
       {/* POS P2.13 ▸ การ์ดคีย์ API (U-lite §7) — ใต้แผงช่องทางขาย/วิธีรับเงิน · เต็มความกว้าง ◂ */}
       <ApiKeysCard systemId={systemId} />
+      {aiSheet && aiSet && ai && (
+        // POS P3.9U ▸ มติ 4 · CD-P39U-3 ◂
+        <AiBriefSettings
+          systemId={systemId}
+          initial={aiSet}
+          managers={ai.managers}
+          onClose={() => setAiSheet(false)}
+          onSaved={(next) => {
+            setAiSet(next);
+            setAiSheet(false);
+          }}
+        />
+      )}
       {confirmOff && (
         <RegisterDialog onDismiss={() => !accBusy && setConfirmOff(false)} locked={accBusy}>
           <div data-testid="pos-settings-account-confirm" className={REG_DIALOG_PANEL} role="alertdialog" aria-modal="true" aria-label={tk("accountOffTitle")}>
