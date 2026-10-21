@@ -122,7 +122,8 @@ async function resolveScope(c: PosIntegrationCtx, t: Parsed): Promise<Scope | nu
     return ch ? { scopeKey: ch.id, channelId: ch.id, channelCode: ch.code, archived: !!ch.archivedAt } : null;
   }
   const sys = await prisma.appSystem.findFirst({ where: { id: c.systemId, tenantId: c.tenantId, type: "POS" }, select: { id: true } });
-  return sys ? { scopeKey: "system", channelId: null, channelCode: null, archived: false } : null;
+  // fix1 F3: ขอบเขตระดับระบบ = "system:<systemId>" — ร้านที่มี POS หลายระบบบันทึก SLIP_VERIFY/ETAX แยกกันได้ (unique เดิมพอ ไม่ต้อง migration)
+  return sys ? { scopeKey: `system:${sys.id}`, channelId: null, channelCode: null, archived: false } : null;
 }
 
 type Row = { id: string; publicFields: unknown; secretBox: string | null; secretNames: string[]; status: string; updatedAt: Date };
