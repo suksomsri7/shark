@@ -120,3 +120,30 @@ PRESUBMIT head=b6ecb66a green=31 red=6 expected-lane-pin=4 unexpected-red=qc-pos
 - **F8** controller — `p3.4u-offline` sweep row untouched (merge kept upstream `p3.5u-th/en` + this row).
 - Merge `1e96ad13` = origin/session/pos `36f2a654` (p3.5u harness fixes, sweep rows, p2.10/hf-fu re-pins, ledger; conflict only in `pos-visual-sweep.json` → union).
 - Dry plans (iso, CI=1) @ merge: owner 26 · cashier 17 · en 15 — rc 0.
+- Typecheck @7d4a3397 dirty 0: **exit 0 · 0 errors** (15:12Z).
+- pos-pre-submit run 2 (last) @7d4a3397 · `P34_LANE=36f2a654` · logs `/root/pos-runs/presubmit-shark-pos-p11-20261021T151300Z/`:
+```
+PRESUBMIT-TABLE head=7d4a3397 tree=/root/projects/shark-pos-p11
+suite                        exit pass/total     s  failed
+wo-qc-pos-p3.4-run1          0    51/51        130  
+wo-qc-pos-p3.4-run2          0    51/51        140  
+wo-qc-pos-p3.4-nodb          0    15/15         65  
+qc-pos-p1.1                  0    180/180      163  
+qc-pos-p1.3                  0    128/128      305  
+qc-pos-p1.6                  0    48/48        176  
+qc-pos-p1.9                  0    53/53         63  
+qc-pos-p1.15                 0    40/40         77  
+qc-pos-p1.17                 0    40/40         62  
+qc-pos-p1.18                 0    81/81        149  
+qc-pos-p2.1                  0    55/55        164  
+qc-pos-p3.5                  0    55/55        102  
+qc-hf-fu                     1    28/29        187  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-tx                     0    22/22         69  
+qc-hf-fu2                    1    30/31        135  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+fitness-noenv                0    53/53         13  
+fitness-qc4                  0    53/53         24  
+fitness-pos                  0    8/8            9  
+gen-check                    0    -              2  
+PRESUBMIT head=7d4a3397 green=17 red=2 expected-lane-pin=2 unexpected-red=- · wo: qc-pos-p3.4-run1=51/51 · qc-pos-p3.4-run2=51/51 · qc-pos-p3.4-nodb=15/15 · VERDICT red (2: qc-hf-fu qc-hf-fu2)
+```
+- Reds = lane pins only (hf-fu ST1 · hf-fu2 ST1 — controller re-pins at merge); unexpected-red none.
