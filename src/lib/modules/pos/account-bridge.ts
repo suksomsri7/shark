@@ -185,7 +185,7 @@ export async function bridgePosSalePaid(
   if (buyer && res.fullTaxInvoice && res.docId) await recordPayTimeTaxInvoice(sale, res.docId);
   // follow-up 3: มีผู้ซื้อแต่สมุดออกใบเต็มรูปไม่ได้ตอนลงบัญชี (ไม่ผูก/ไม่จด VAT/ปิดใบอย่างย่อ/ไม่มีเลขภาษี) — เส้นเดิมทำงานแล้ว · เตือน ops (ไม่มีข้อมูลผู้ซื้อ)
   //   reviewer N5: แยกข้อความตาม res.reason — สมุดออกไม่ได้ (ไม่ผูก/ไม่มีเหตุผล) กับ บรรทัดถูกปฏิเสธ (เอกสารไม่เกิด)
-  else if (buyer) {
+  else if (buyer && !(p36Credit && res.creditInvoice)) { // POS P3.6 ▸ F2: บิลวางบิลที่ได้ใบแจ้งหนี้ (= ใบกำกับของบิล · W23) ไม่ใช่ "สมุดออกไม่ได้" ⇒ ไม่เตือน ◂
     // POS P2.14 ▸ ACC-2 (P5): reason "other-book" = บิลอยู่ในสมุดเล่มอื่น (ผูก POS ใหม่หลังขาย) — ไม่ใช่บรรทัดถูกปฏิเสธ/สมุดออกไม่ได้ ⇒ ไม่ขึ้น WARN ข้อความผิด ◂
     if (res.reason !== "other-book") {
       const linesRejected = !!res.reason && res.reason !== "unlinked" && !res.docId;

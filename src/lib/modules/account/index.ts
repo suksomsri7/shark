@@ -164,7 +164,7 @@ export async function applyExternalSale(input: {
    */
   depositVatSatang?: number;
   depositGrossSatang?: number;
-}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean; zeroEntry?: true }> {
+}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean; zeroEntry?: true; creditInvoice?: true /* POS P3.6 ▸ F2 ใบแจ้งหนี้ของบิลวางบิล ◂ */ }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
 
@@ -291,7 +291,8 @@ export async function applyExternalSale(input: {
   // follow-up 3 (ป้องกัน): ใบเต็มรูปเฉพาะเมื่อสมุด "ออกใบกำกับได้" ณ ตอนลงบัญชี (จด VAT · เปิดใบอย่างย่อจาก POS · มีเลขผู้เสียภาษี · บิลมี VAT)
   //   ไม่ครบ = ถอยไปเส้น ABB/ใบเสร็จเดิม (ไม่ล้างสำเนาผู้ซื้อ · ฝั่ง POS เตือน ops) — หน้าขายปฏิเสธ NOT_ELIGIBLE ตั้งแต่ตอนชำระแล้ว
   // POS P3.6 ▸ R7 มติ 4: บิลวางบิล = ใบแจ้งหนี้ AWAITING_PAYMENT + dueDate เสมอ (ไม่ขึ้นกับสวิตช์ใบกำกับอย่างย่อ · ไม่มี ABB/TAX_INVOICE ของบิลนี้) ◂
-  if (creditContactId && input.onAccount) return { posted, ...(await posCreditInvoiceLayer(ctx, input, lines, creditContactId, { vatRegistered, vatRateBp })), ...zeroMark };
+  // POS P3.6 ▸ F2 (CD-P36-F2 · W16/W23): ใบแจ้งหนี้นี้ = "ใบแจ้งหนี้/ใบกำกับภาษี" ของบิลวางบิล (ไม่มี TAX_INVOICE แยก) · creditInvoice ⇒ ฝั่ง POS ไม่เตือน pos.taxInvoice ◂
+  if (creditContactId && input.onAccount) return { posted, ...(await posCreditInvoiceLayer(ctx, input, lines, creditContactId, { vatRegistered, vatRateBp })), creditInvoice: true as const, ...zeroMark };
   const full = !!input.buyer && vatRegistered && posAbbreviatedInvoice && vat > 0 && (await bookTaxIdOf(link.systemId)) !== "";
   if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted, ...zeroMark };
 
