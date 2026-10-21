@@ -183,7 +183,7 @@ export async function enqueuePrintJob(ctx: Ctx, actor: Actor, input: unknown, de
     const now = deps?.now instanceof Date && !Number.isNaN(deps.now.getTime()) ? deps.now : new Date();
     try {
       const row = await prisma.posPrintJob.create({
-        data: { tenantId: c.tenantId, systemId: c.systemId, unitId: c.unitId, agentId: agent.id, deviceCode: input.deviceCode, target: input.target as string, bytes, byteLength: bytes.length, idempotencyKey: key, createdByUserId: (actor as Actor).userId, expiresAt: new Date(now.getTime() + PRINT_JOB_TTL_MS) },
+        data: { tenantId: c.tenantId, systemId: c.systemId, unitId: c.unitId, agentId: agent.id, deviceCode: input.deviceCode, target: input.target as string, bytes: new Uint8Array(bytes), byteLength: bytes.length, idempotencyKey: key, createdByUserId: (actor as Actor).userId, expiresAt: new Date(now.getTime() + PRINT_JOB_TTL_MS) },
         select: JOB_SELECT,
       });
       return { ok: true, job: jobView(row) };

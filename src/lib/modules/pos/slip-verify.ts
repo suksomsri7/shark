@@ -38,7 +38,8 @@ const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v =
 export async function verifySlip(ctx: Ctx, actor: Actor, input: { slipId?: unknown }): Promise<SlipVerifyRefusal> {
   try {
     if (!isRecord(ctx) || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string") return { ok: false, code: "NOT_FOUND", message: "ไม่พบสลิป" };
-    const m = isRecord(actor) && typeof actor.role === "string" ? posMembership(actor as Parameters<typeof posMembership>[0]) : null;
+    const a: unknown = actor;
+    const m = isRecord(a) && typeof a.role === "string" ? posMembership(a as Parameters<typeof posMembership>[0]) : null;
     if (!m || !evaluate(m, { module: "pos", action: "pos.shift.manage", unitId: ctx.unitId })) return { ok: false, code: "PERMISSION_DENIED", message: "ต้องเป็นผู้จัดการกะของสาขานี้" };
     const slipId = isRecord(input) && typeof input.slipId === "string" ? input.slipId : "";
     const slip = slipId ? await prisma.posPaymentSlip.findFirst({ where: { id: slipId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { id: true } }) : null;
