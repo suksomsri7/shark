@@ -8,9 +8,10 @@
 //     หลังทุกผล = โหลดออเดอร์ใหม่ (onDone) · ไม่มีปุ่มลองใหม่/ส่งซ้ำอัตโนมัติ (มติ 2 at-most-once)
 // 🔴 ไม่มีชื่อ LINE / externalUserId / ห้องแชท / ลิงก์ห้องแชท ในจอ (CD-P37U-8) · เวลาวาดหลัง mount (now) · ไม่มีข้อความไทยนอก t() · ปุ่ม ≥ 44px
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { requestChatPaymentAction } from "@/lib/modules/pos/chat-link-actions";
+import { registerMemberBenefitsAction } from "@/lib/modules/pos/register-actions";
 import { refusalMessageKey } from "@/lib/modules/pos/register-shared";
 import type { OrderDetail } from "@/lib/modules/pos/order-shared";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
@@ -99,5 +100,32 @@ export function ChatPayBlock({ d, target, canAccept, canCreate, busy, now }: { d
         )
       ) : null}
     </section>
+  );
+}
+
+// ═══════ POS P3.7U ▸ CD-P37U-6 (UI-13): ชื่อสมาชิก · ระดับ บนแผงออเดอร์ — registerMemberBenefitsAction ครั้งเดียวต่อการเปิดแผง ◂ ═══════
+//   แสดงเฉพาะชื่อ + ชื่อระดับ (ไม่มีเบอร์ · แต้ม · บัตรกำนัล) · ปฏิเสธ/ยังโหลด = ข้อความเดิม detail.isMember
+export function MemberTierText({ target, memberId }: { target: Pick<ChatPayTarget, "systemId" | "unitId" | "deviceId">; memberId: string }) {
+  const t = useTranslations("pos.orders");
+  const [m, setM] = useState<{ name: string; tier: string | null } | null>(null);
+  const { systemId, unitId, deviceId } = target;
+  useEffect(() => {
+    let live = true;
+    setM(null);
+    void registerMemberBenefitsAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), memberId, cart: { lines: [] } })
+      .then((r) => {
+        if (live && r.ok) setM({ name: r.member.name, tier: r.member.tier?.name ?? null });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวต่อสมาชิกของแผงที่เปิด (deviceId มาหลัง mount ไม่ต้องอ่านซ้ำ)
+  }, [systemId, unitId, memberId]);
+  if (!m) return <span className="text-[color:var(--color-muted)]">{t("detail.isMember")}</span>;
+  return (
+    <span data-testid="pos-ord-member-tier" className="min-w-0 truncate text-right font-bold">
+      {m.tier ? t("detail.memberTier", { name: m.name, tier: m.tier }) : m.name}
+    </span>
   );
 }

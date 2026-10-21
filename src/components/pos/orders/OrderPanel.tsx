@@ -18,7 +18,7 @@ import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text";
 import { ChannelChip, PlannedChip } from "./OrderCardView";
 import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, type OrdersChannel } from "./orders-ui";
-import { ChatPayBlock, isChatOrder, type ChatPayTarget } from "./OrderChatBits"; // POS P3.7U ▸ CD-P37U-4: ลิงก์ชำระในแชท (ประตู A) ◂
+import { ChatPayBlock, isChatOrder, MemberTierText, type ChatPayTarget } from "./OrderChatBits"; // POS P3.7U ▸ CD-P37U-4: ลิงก์ชำระในแชท (ประตู A) · CD-P37U-6: ชื่อ/ระดับสมาชิก ◂
 
 export type PanelPerms = { accept: boolean; reject: boolean; create: boolean; voidSale: boolean };
 
@@ -242,7 +242,8 @@ export function OrderPanel(p: {
         </p>
         <p className="flex justify-between gap-3">
           <span className="text-[color:var(--color-ink-soft)]">{t("detail.member")}</span>
-          <span className="text-[color:var(--color-muted)]">{d.memberId ? t("detail.isMember") : t("detail.notMember")}</span>
+          {/* POS P3.7U ▸ CD-P37U-6 (UI-13): สมาชิก = ชื่อ · ระดับ (ปฏิเสธ/ยังโหลด = เป็นสมาชิก) ◂ */}
+          {d.memberId && p.chatPay ? <MemberTierText key={`${d.id}:${d.memberId}`} target={p.chatPay} memberId={d.memberId} /> : <span className="text-[color:var(--color-muted)]">{d.memberId ? t("detail.isMember") : t("detail.notMember")}</span>}
         </p>
       </section>
 
