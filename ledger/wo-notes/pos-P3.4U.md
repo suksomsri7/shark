@@ -6,7 +6,8 @@ This file is the restart checkpoint (§0 = status).
 ## 0. Status / next
 - [x] step 1 `6a471c55` — client modules (IDB `offline-store.ts` · PBKDF2 `offline-pin.ts` · `use-offline-register.ts`) · `offline-actions.ts` · route `api/pos/sync/snapshot` · CD-P34U-3 hunk
 - [x] steps 2–3 + 5 (carried from the killed session, reviewed + 2 fixes, see §3) — sell/banner/chips/slip · sync strip + badge + status bar · LockScreen offline PIN
-- [ ] step 4 guards (Shifts close blocked) · [ ] step 6 Shifts manager queue · [ ] step 7 settings · [ ] step 8 visual + inventory + spec · [ ] step 9 merge + gates
+- [x] steps 4 + 6 `c1f6f1d3` — Shifts close guard + manager queue card · [x] step 7 `ac4b793b` settings live card · [x] step 8a `4d5fabbd` visual (9 states) · [x] 8b `2a92a7b1` inventory +36 · spec · [x] step 9 merge `09fe30cf` (origin b45584ad, ledger only)
+- [ ] typecheck (final head) · [ ] pos-pre-submit (≤ 2 runs) · [ ] push · [ ] final report
 
 ## 1. 🔴 Server hunk for the reviewer (CD-P34U-3 — the ONLY server hunk of the card)
 `src/lib/modules/pos/offline-sync.ts` `issueOfflineSnapshot` — one block `// POS P3.4U ▸ CD-P34U-3 … ◂ POS P3.4U`:
