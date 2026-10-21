@@ -24,7 +24,10 @@ const SEEN_THROTTLE_MS = 30_000;
 const MAX_PRINTERS = 8;
 export type PrintTarget = "kitchen" | "receipt";
 export const PRINT_TARGETS: readonly PrintTarget[] = ["kitchen", "receipt"];
-export type PrintPrinter = { name: string; host: string; port: number };
+/** fix1 F7: target = งานชนิดไหนไปเครื่องนี้ (kitchen/receipt · ไม่ระบุ = ใช้ได้เมื่อ agent มีเครื่องเดียว) — ไม่จับคู่จากชื่อเครื่อง */
+export type PrintPrinter = { name: string; host: string; port: number; target?: PrintTarget };
+/** fix1 H7: พอร์ตเครื่องพิมพ์ที่รับ — RAW 9100–9102 + LPD 515 (ไม่ใช่พอร์ตใดก็ได้ใน LAN) */
+export const PRINT_PRINTER_PORTS: readonly number[] = [9100, 9101, 9102, 515];
 export type PrintRelayCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "AGENT_REVOKED" | "UNAUTHORIZED" | "CONFLICT" | "UNKNOWN";
 export type PrintRelayRefusal = { ok: false; code: PrintRelayCode; message: string };
 export type PrintAgentView = { id: string; name: string; printers: PrintPrinter[]; lastSeenAt: string | null; online: boolean; revokedAt: string | null; createdAt: string };
@@ -56,10 +59,11 @@ const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 const HOSTNAME = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
 const hostOk = (h: string) => {
   const m = IPV4.exec(h);
-  return m ? m.slice(1).every((x) => Number(x) <= 255) : HOSTNAME.test(h);
+  // fix1 H7: 169.254/16 (link-local · metadata) ไม่ใช่เครื่องพิมพ์
+  return m ? m.slice(1).every((x) => Number(x) <= 255) && !(m[1] === "169" && m[2] === "254") : HOSTNAME.test(h);
 };
 
-/** เครื่องพิมพ์ของ agent — [{name ≤ 40, host (IPv4/ชื่อเครื่อง), port 1–65535}] 1–8 เครื่อง · ผิด = null */
+/** เครื่องพิมพ์ของ agent — [{name ≤ 40, host (IPv4/ชื่อเครื่อง), port 9100–9102/515, target? kitchen|receipt}] 1–8 เครื่อง · target ซ้ำ = ผิด · ผิด = null */
 export function parsePrinters(v: unknown): PrintPrinter[] | null {
   if (!Array.isArray(v) || v.length < 1 || v.length > MAX_PRINTERS) return null;
   const out: PrintPrinter[] = [];
@@ -69,12 +73,21 @@ export function parsePrinters(v: unknown): PrintPrinter[] | null {
     const host = typeof p.host === "string" ? p.host.trim() : "";
     const port = p.port;
     if (!name || name.length > 40 || !host || !hostOk(host)) return null;
-    if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) return null;
-    out.push({ name, host, port });
+    if (typeof port !== "number" || !Number.isInteger(port) || !PRINT_PRINTER_PORTS.includes(port)) return null;
+    if (p.target !== undefined && p.target !== null && !PRINT_TARGETS.includes(p.target as PrintTarget)) return null;
+    const target = p.target === undefined || p.target === null ? undefined : (p.target as PrintTarget);
+    if (target && out.some((x) => x.target === target)) return null;
+    out.push(target ? { name, host, port, target } : { name, host, port });
   }
   return out;
 }
 const printersOf = (v: unknown): PrintPrinter[] => parsePrinters(v) ?? [];
+/** เครื่องของงาน (fix1 F7): target ตรง → เครื่องนั้น · ไม่มีเครื่องไหนประกาศ target และ agent มีเครื่องเดียว → เครื่องนั้น · อื่น = null (agent ack ล้ม "ไม่มีเครื่องพิมพ์") */
+export function printerFor(printers: PrintPrinter[], target: string): PrintPrinter | null {
+  const hit = printers.find((p) => p.target === target);
+  if (hit) return hit;
+  return printers.length === 1 && !printers[0]!.target ? printers[0]! : null;
+}
 
 type AgentRow = { id: string; name: string; printers: unknown; lastSeenAt: Date | null; revokedAt: Date | null; createdAt: Date };
 const agentView = (a: AgentRow, now = Date.now()): PrintAgentView => ({
@@ -102,7 +115,7 @@ export async function registerPrintAgent(ctx: Ctx, actor: Actor, input: unknown)
     const name = typeof input.name === "string" ? input.name.trim() : "";
     if (!name || name.length > 60) return refuse("VALIDATION", "ชื่อตัวช่วยพิมพ์ 1–60 ตัวอักษร");
     const printers = parsePrinters(input.printers);
-    if (!printers) return refuse("VALIDATION", "เครื่องพิมพ์ต้องมี 1–8 เครื่อง แต่ละเครื่องมีชื่อ ที่อยู่ (IP/ชื่อเครื่อง) และพอร์ต 1–65535");
+    if (!printers) return refuse("VALIDATION", "เครื่องพิมพ์ต้องมี 1–8 เครื่อง แต่ละเครื่องมีชื่อ ที่อยู่ (IP/ชื่อเครื่อง) พอร์ต 9100–9102 หรือ 515 และงาน (kitchen/receipt) ไม่ซ้ำกัน");
     const sys = await prisma.appSystem.findFirst({ where: { id: c.systemId, tenantId: c.tenantId, type: "POS" }, select: { id: true } });
     if (!sys) return refuse("NOT_FOUND");
     const token = `spa_${randomBytes(32).toString("base64url")}`;
@@ -232,7 +245,7 @@ export async function claimPrintJobs(authorization: unknown, opts?: { now?: Date
       bytesB64: Buffer.from(r.bytes ?? new Uint8Array(0)).toString("base64"),
       target: r.target as PrintTarget,
       deviceCode: r.deviceCode,
-      printer: printers.find((p) => p.name === r.target) ?? printers[0] ?? null,
+      printer: printerFor(printers, r.target),
       expiresAt: r.expiresAt.toISOString(),
     }));
     return { ok: true, agentId: agent.id, jobs };

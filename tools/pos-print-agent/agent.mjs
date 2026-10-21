@@ -5,7 +5,7 @@
 // รัน:  SHARK_POS_URL=https://shark.in.th SHARK_PRINT_AGENT_TOKEN=spa_… node tools/pos-print-agent/agent.mjs
 //   (โทเคนได้ครั้งเดียวตอนลงทะเบียนตัวช่วยพิมพ์ในตั้งค่าเครื่อง 17B · หายแล้วให้ลงทะเบียนใหม่ · ห้ามแชร์)
 // 🔴 import แล้วไม่รันอะไรเอง (ข้อสอบโหลดไฟล์นี้) — main loop รันเฉพาะเมื่อสั่ง node ไฟล์นี้ตรง ๆ
-// 🔴 ต่อเครื่องพิมพ์ได้เฉพาะที่อยู่ใน LAN (10/8 · 172.16/12 · 192.168/16 · 127/8 · 169.254/16 · ชื่อ *.local) เว้นตั้ง SHARK_PRINT_AGENT_ALLOW_ANY_HOST=1
+// 🔴 ต่อเครื่องพิมพ์ได้เฉพาะที่อยู่ใน LAN (10/8 · 172.16/12 · 192.168/16 · 127/8 · ชื่อ *.local) เว้นตั้ง SHARK_PRINT_AGENT_ALLOW_ANY_HOST=1 · พอร์ต 9100–9102/515 เท่านั้น
 import net from "node:net";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -20,13 +20,18 @@ export function isLanHost(host) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (!m) return false;
   const [a, b] = [Number(m[1]), Number(m[2])];
-  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  // fix1 H7: ไม่รับ 169.254/16 (link-local · metadata ของคลาวด์)
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 }
+
+/** fix1 H7: พอร์ตเครื่องพิมพ์ที่ยอมต่อ — RAW 9100–9102 + LPD 515 */
+export const PRINTER_PORTS = [9100, 9101, 9102, 515];
 
 /** เขียนไบต์ไปเครื่องพิมพ์ TCP แล้วปิด — สำเร็จเมื่อปิดสายเรียบร้อย */
 export function sendToPrinter(host, port, bytes, timeoutMs = PRINT_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     if (!isLanHost(host)) return reject(new Error(`เครื่องพิมพ์ ${host} ไม่อยู่ใน LAN`));
+    if (!PRINTER_PORTS.includes(Number(port))) return reject(new Error(`พอร์ต ${port} ไม่ใช่พอร์ตเครื่องพิมพ์ (9100–9102 · 515)`));
     const sock = net.createConnection({ host, port });
     let settled = false;
     const done = (err) => {
