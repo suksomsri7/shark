@@ -64,3 +64,77 @@ Builder session 1 (killed ~13:10Z 21 Oct, cgroup OOM) did steps 1–7; session 2
 - **CD-B3 qc-pos-p3.5 ST3** — `scripts/qc-pos-p3.5.mts:510` requires `REPORT_KINDS` to end with `"commission"`; P3.6 oracle ST1 requires it to end with `"credit"` (ruling R9). Proposed ORACLE-EDIT: p3.5 ST3 `"commission" ∈ REPORT_KINDS` (not last).
 - **CD-B4** account document code placed in `account/service.ts` marked block (F5 forbids prisma in `account/index.ts`) — accept or move.
 - **CD-B5** residual intermittent pump P2002 (concurrent product after-commit drain vs oracle pump) on non-AR1 bills; the outbox retries in production. Retry-once is scoped to ON_ACCOUNT bills only to keep other bills byte-identical — widen only if the controller wants.
+
+## Later code commits (session 2)
+- 7548315e POS_REFUSAL_HTTP rows ×7 (`pos/api/http-errors.ts`, Record completeness · p2.13 ST6) + regenerated `docs/api/POS-API.md` (deviation: file not on the prompt's list; needed by typecheck + p2.13 ST6, P3.5 precedent).
+- 5e39b5eb typecheck fixes: `report-actions.ts` KIND_FN credit (deviation: not on the list; Record<ReportKind>) · `credit.ts` unitAccess Json→string[] · `crm/payments.ts` narrowing inside the P3.6 block.
+
+## Gates (final · head 5e39b5eb · dirty 0 · QC4 · never `export CI`)
+- typecheck `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`: run 1 at 7548315e exit 2 (3 errors, fixed in 5e39b5eb) · **run 2 at 5e39b5eb exit 0** (14:14:00Z → 14:14:46Z, incremental).
+- pre-submit run 1 at 45fc19ca (13:22Z) found p2.13 ST6 (7 codes without POS_REFUSAL_HTTP rows) → fixed. Run 2 (final, logs `/root/pos-runs/presubmit-shark-pos-b-20261021T141504Z`):
+```
+PRESUBMIT-TABLE head=5e39b5eb tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+wo-qc-pos-p3.6-run1          1    45/47         90  P3.6-DL3,P3.6-PV3
+wo-qc-pos-p3.6-run2          1    45/47        149  P3.6-DL3,P3.6-PV3
+wo-qc-pos-p3.6-nodb          0    4/4          111  
+qc-pos-p1.1                  0    180/180      282  
+qc-pos-p1.3                  0    128/128      160  
+qc-pos-p1.6                  0    48/48        113  
+qc-pos-p1.13                 0    33/33         92  
+qc-pos-p1.18                 0    81/81        118  
+qc-pos-p2.1                  1    54/55        122  P2.1-S8
+qc-pos-p2.7                  1    40/42        112  P2.7-ST1,P2.7-ST3  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.8                  1    58/61        212  P2.8-ST1,P2.8-ST6,P2.8-L2
+qc-pos-p2.9                  1    61/62        155  P2.9-L1
+qc-pos-p2.9b                 1    52/53        148  P2.9b-L1
+qc-pos-p2.10                 1    12/13         32  P2.10-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.11                 1    32/34         80  P2.11-ST1,P2.11-ST4  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.12                 1    32/33         64  P2.12-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.13                 1    53/54         78  P2.13-ST5  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.14                 1    59/60         77  P2.14-V2
+qc-pos-p3.5                  1    53/55         58  P3.5-ST2,P3.5-ST3  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.4                  1    49/51         85  P3.4-ST1,P3.4-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.9                  1    47/48         57  P3.9-ST4  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-fu                     1    28/29        112  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-tx                     0    22/22         25  
+qc-hf-fu2                    1    30/31         23  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-restaurant-money          0    6/6            4  
+qc-shop-refund               0    12/12          5  
+qc-hotel-money               0    5/5            4  
+qc-ticket-money              0    6/6            4  
+qc-subscription-money        0    14/14          4  
+qc-account-cpa               0    107/107       12  
+qc-crm-c3.3                  0    90/90        536  
+qc-account-api-core          0    64/64         12  
+qc-account-api-settings      0    0/0            1  
+qc-acc-v2-pos-lines          1    65/79          8  PL1.1,PL1.2,PL1.3,PL1.4,PL1.6,PL1.7 … [accepted]
+fitness-noenv                0    53/53         12  
+fitness-qc4                  0    53/53         14  
+fitness-pos                  0    8/8            8  
+gen-check                    0    -              1  
+PRESUBMIT head=5e39b5eb green=20 red=18 expected-lane-pin=10 unexpected-red=wo-qc-pos-p3.6-run1,wo-qc-pos-p3.6-run2,qc-pos-p2.1,qc-pos-p2.8,qc-pos-p2.9,qc-pos-p2.9b,qc-pos-p2.14,qc-acc-v2-pos-lines · wo: qc-pos-p3.6-run1=45/47 · qc-pos-p3.6-run2=45/47 · qc-pos-p3.6-nodb=4/4 · VERDICT red (16: qc-account-api-settings qc-pos-p2.1 qc-pos-p2.7 qc-pos-p2.8 qc-pos-p2.9 qc-pos-p2.9b qc-pos-p2.10 qc-pos-p2.11 qc-pos-p2.12 qc-pos-p2.13 qc-pos-p2.14 qc-pos-p3.5 qc-pos-p3.4 qc-pos-p3.9 qc-hf-fu qc-hf-fu2)
+```
+
+## Reds explained (file:line · failing text)
+- Lane pins (controller re-pins at merge): `qc-pos-p2.7.mts:728` ST1 "PosSale ฟิลด์เปลี่ยนจากฐาน" · `:931` ST3 "register.ts ต่างจากฐาน…" · `qc-pos-p2.8.mts:564` ST1 "PosSale ฟิลด์เปลี่ยน (เกิน offlineRef,syncedAt,customerPartyId,crmDealId,creditTerms)" · `:746` ST6 "register.ts/service.ts/pos-sale-contract.json เปลี่ยน" · `:764` L2 "pos-sale-contract.json เปลี่ยน (sha 762e073cd5f8)" · `qc-pos-p2.10.mts:420` ST2 "register-shared/register/service/outbox hunks" · `qc-pos-p2.11.mts:364` ST1 "prisma/ ต่างจากฐาน (p36 migrations)" · `:420` ST4 "ไฟล์เลน A ถูกแตะ: service.ts, account-bridge.ts, outbox-consumers.ts, refund*, register*" · `qc-pos-p2.12.mts:425` ST1 "prisma/ ต่างจากฐาน" · `qc-pos-p2.13.mts:57/:570` ST5 "contract sha 762e073cd5f8 (คาด ba68f669fa21) · prisma/ เปลี่ยน" · `qc-pos-p3.5.mts:443` ST2 "refund-shared.ts/refund.ts มี hunk" · `qc-pos-p3.4.mts:548` ST1 "migration ใหม่อื่น: p36 ×2" · `:605` ST2 "outbox-consumers.ts ไม่ตรงไบต์ · register.ts แก้นอกบล็อก" (P3.4 ST2 pins bytes of outbox-consumers/register, not contract key sets) · `qc-pos-p3.9.mts:486` ST4 "แก้ไฟล์ต้องห้าม: p36 migrations…" · `qc-hf-fu.mts:591` ST1 "prisma เปลี่ยนจากฐาน…" · `qc-hf-fu2.mts:419` ST1 "prisma/ ต่างจากหมุด · outbox-consumers.ts มี hunk".
+- Contract re-pins (same class as CD-RP1 of P3.4; tagged unexpected by the script): `qc-pos-p2.1.mts:553–556` S8 (accepted contract sha list) "ฟิลด์ใหม่ = …creditOverrideByUserId,crmDealId,customerPartyId,memberAttachOnly…" · `qc-pos-p2.9.mts:377` L1 "CreateSaleInput.customerPartyId/crmDealId/memberAttachOnly/creditOverrideByUserId ใหม่นอกขอบเขต" · `qc-pos-p2.9b.mts:47` L1 CONTRACT_SHA "actual 762e073cd5f8". New contract sha = `762e073cd5f80eeeb915835ae6b85e5793956facdfe233f90d65484db04dac55` (ba68f669 + 4 optional CreateSaleInput keys).
+- Not P3.6: `qc-pos-p2.14.mts:685` V2 "ไม่มีรอบของ /^p3\.?5u/" (`visual-pos.mts` unchanged vs b92d5598 — P3.5U leftover on the tip) · `qc-acc-v2-pos-lines` 65/79 PL1.x/PL10.x = identical failing set to gates117-c (17 Oct tip; seeded QC dataset absent) · `qc-account-api-settings` 0/0 SKIPPED (needs :3215 server = CONTROLLER-RUN).
+- Oracle defects: P3.6-DL3 + P3.6-PV3 = CD-B1 / CD-B2 above (probe 46/47 with the DL3 fix).
+
+## U-only handoff list (P3.6U)
+- 01/02 company chip + picker sheet (search `registerCompanySearchAction` · from member `registerMemberCompaniesAction` · recent) → `customerPartyId` on submit; buyer prefill from the company (name/taxId/branch) for `requireBuyer`.
+- 02 "วางบิล (เครดิตเทอม)" tile (hidden unless `settings.pos.credit.enabled`) + `registerCreditStatusAction` (cashier: sufficient yes/no only; `pos.credit.manage`: limit/exposure/remaining) + over-limit manager PIN sheet → `creditOverride {managerUserId, managerPin}`; refusal keys `pos.register.credit.*`.
+- 01 deal select on the new register (port of legacy `pos-deal-select`; `registerDealOptions`) → `crmDealId`; `DEAL_INVALID` refusal.
+- 08 report tab "ลูกหนี้" (kind `credit` · `reportCredit` · CSV `CSV_HEADERS.credit`).
+- 10/settings "ลูกค้าเครดิต" card (enabled · requireBuyer · credit accounts list/save via `listCreditAccountsAction`/`saveCreditAccountAction`) + `settings.pos.orders.memberOnBill` switch.
+- PayDone/receipt "ครบกำหนด <dueDate>" line for ON_ACCOUNT bills; refund sheet forces a single ON_ACCOUNT row on credit bills.
+- `pos-ui-inventory.json` rows (ORACLE-EDIT of the U card); CRM `crm-ui-inventory.json` only if `pos-deal-select` testid moves.
+
+## `--state` list for P3.6U (controller shoots · th 3 sizes + en 1440 · owner/cashier)
+`01-company-chip` · `01-company-picker-search` · `01-company-picker-member` · `01-deal-select` · `02-tile-on-account` · `02-on-account-sufficient-cashier` · `02-on-account-limit-manager` · `02-over-limit-pin-sheet` · `02-over-limit-wrong-pin` · `02-credit-disabled-hidden` · `07-paydone-due-date` · `12-bill-detail-on-account` · `12-refund-on-account-only` · `08-report-credit-owner` · `08-report-credit-denied` · `10-settings-credit-card` · `10-settings-credit-account-edit` · `10-settings-order-member-on-bill`.
+
+## OP lines (POS-OWNER-PENDING.md — controller pastes)
+- §"แจ้งเจ้าของโมดูล ACCOUNT": P3.6 เพิ่มบล็อก `// POS P3.6 ▸ … ◂` (เพิ่มล้วน) ใน `account/index.ts` (applyExternalSale `onAccount?` + ช่อง `ON_ACCOUNT` ทั้งขาย/คืน ⇒ JV Dr 1100 ผู้ติดต่อบริษัท / Cr รายได้+2200 · ใบแจ้งหนี้ INVOICE AWAITING_PAYMENT + dueDate · คืน ⇒ CREDIT_NOTE อ้าง INVOICE · void ⇒ INVOICE VOIDED · facade posCreditBook/posCreditExposureParts/posCreditInvoicePaid/posCreditAging) + บล็อกท้าย `account/service.ts` (upsertPosCreditInvoiceDocument · findPosCreditInvoice · posCreditTermsOfParty · posCreditOpenDocs (CD-9 หักใบลดหนี้) · posCreditInvoicePaidInTx · posCreditAgingByParty) + 3 บรรทัดใน `findExternalSaleDoc` (ใบแจ้งหนี้ของบิลวางบิลมาก่อน) — W16 นักบัญชี: VAT ลงตอนขาย (ค่าปริยาย) หรือ "ใบกำกับตอนรับเงิน" สำหรับบริการ.
+- §"CRM": ไฟล์ใหม่ `crm/pos-seam.ts` (companiesForPos · companiesOfParty · linkPosSaleSystem · onPosSaleRefunded — อ่าน/เรียกผ่านภายใน CRM ไม่มี raw SQL) · `crm/index.ts` ท้ายไฟล์ `export * as posSeam from "./pos-seam"` · `crm/payments.ts` บล็อกเดียว +136 −0 (linkPosSaleIntent = linkSaleToDeal ไม่มี actor · netPosSaleRefund แถว POS_REFUND ติดลบ · intent ใน posIntentCount ของสะพาน pos.sale.paid) · ค่าคอมฯ ดีลผ่าน afterPaymentCounted/afterPaymentsReversed เดิม.
+- W17 (เจ้าของ): แต้มสมาชิกบนบิลออเดอร์ทุกช่องทางรวม PLATFORM (ราคาแพลตฟอร์ม) — ค่าปริยายเปิด (`memberOnBill` true).
