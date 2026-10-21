@@ -20,6 +20,7 @@ import { canOnAllLinkedUnits, ctxOk, PERM_SETTINGS_MANAGE, settingsMembership, s
 import { receiptSettingsOf } from "@/lib/modules/pos/receipt-settings";
 import { unitOversellPolicy } from "@/lib/modules/pos/service";
 import { posAiSettings, type PosSettingsRefusal } from "@/lib/modules/pos/settings-shared"; // POS P3.9 ▸ R10: + posAiSettings ◂
+import { posBoardSettings } from "@/lib/modules/pos/board-settings-shared"; // POS P3.8 ▸ R11 ◂
 
 // ═══════════ ชนิดข้อมูล (สัญญาของ P1.18U) ═══════════
 export const POS_INTEGRATION_CODES = ["MEMBER", "POINT", "COUPON", "REWARD", "ACCOUNT", "INVENTORY", "HR", "CRM", "CHAT", "KANBAN", "MARKETING", "BOOKING", "AI"] as const;
@@ -56,8 +57,8 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
   HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // POS P3.5 ▸ R14: ด่านตารางงาน · ค่าคอมฯ → เงินเดือน · ลา = ปลดล็อกไม่ได้ (C-8 v2) — เดิม false "P3.5" ◂
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.x"], ["corporateCredit", true, null]], // POS P3.6 ▸ ลูกค้าองค์กร/วางบิล (เครดิตเทอม) = มีแล้ว · บิลใหญ่ → ดีล = ระบบอัตโนมัติของ CRM ภายหลัง (มติ 7 · CD-7) ◂
-  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]],
-  KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
+  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", true, null]], // POS P3.7 ▸ R11: บอทตอบสถานะออเดอร์ (ตามกฎ) live ◂
+  KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", true, null], ["shiftCloseCashCheck", true, null]], // POS P3.8 ▸ R11 มติ 9: การ์ดของหมดนาน/ผลต่างกะ + ตรวจเงินปิดกะ มีจริงแล้ว (เดิม false "P3.8") ◂
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // POS P2.14 ▸ DOC-1: โต๊ะจองบนผังมีจริงตั้งแต่ P2.4 · คิว/บิลจองล่วงหน้า = P3 ◂
   AI: [["shiftDaySummary", true, null], ["purchaseSuggestion", true, null], ["anomalyDetection", true, null]], // POS P3.9 ▸ R10: สรุปเช้า · ร่าง PO · จุดผิดปกติในสรุป (ความสามารถมีแล้ว — การ์ด LINKED เมื่อ settings.pos.ai.enabled) ◂
@@ -213,9 +214,14 @@ export async function posIntegrationCards(ctx: UnitCtx, actor: Actor, _input: un
       const board = issueBoardId ? await prisma.kanbanBoard.findFirst({ where: { id: issueBoardId, tenantId }, select: { systemId: true } }) : null;
       const viaBoard = board ? boards.find((b) => b.id === board.systemId) : undefined;
       const viaRule = boards.find((b) => voidCardRuleOn(b.settings));
-      const target = viaBoard ?? viaRule ?? boards[0];
+      // POS P3.8 ▸ R11: LINKED ด้วยค่าตั้งบอร์ดงานของ POS เอง (settings.pos.board เปิด + บอร์ดปริยาย/รายสาขาที่ยังใช้งานอยู่ของร้านนี้) ◂
+      const pb = posBoardSettings(pos.settings);
+      const pbIds = pb.enabled ? [pb.defaultBoardId, ...Object.values(pb.boardByUnit)].filter((x): x is string => !!x) : [];
+      const pbBoard = pbIds.length ? await prisma.kanbanBoard.findFirst({ where: { id: { in: pbIds }, tenantId, status: "ACTIVE", systemId: { in: boards.map((b) => b.id) } }, select: { systemId: true } }) : null;
+      const viaPosBoard = pbBoard ? boards.find((b) => b.id === pbBoard.systemId) : undefined;
+      const target = viaBoard ?? viaRule ?? viaPosBoard ?? boards[0];
       const manage = target ? { href: `/app/sys/${target.id}/kanban/settings`, canManage: evaluate(m, { module: "kanban", action: "kanban.automation.manage" }) } : null;
-      if (viaBoard || viaRule) cards.set("KANBAN", card("KANBAN", "LINKED", { scope: "TENANT", target: { systemId: target!.id, name: target!.name }, manage }));
+      if (viaBoard || viaRule || viaPosBoard) cards.set("KANBAN", card("KANBAN", "LINKED", { scope: "TENANT", target: { systemId: target!.id, name: target!.name }, manage }));
       else cards.set("KANBAN", card("KANBAN", ofType("KANBAN").length ? "OFF" : "NO_SYSTEM", { scope: "TENANT", manage }));
     }
 

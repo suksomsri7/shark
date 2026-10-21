@@ -192,6 +192,14 @@
       "mode": "forced"
     },
     {
+      "suite": "qc-pos-p3.8",
+      "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p3.7",
+      "mode": "forced"
+    },
+    {
       "suite": "qc-pos-p3.6",
       "mode": "forced"
     },

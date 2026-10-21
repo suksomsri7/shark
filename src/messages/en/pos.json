@@ -625,7 +625,12 @@
         "chipOff": "Off hours",
         "overrideTitle": "Manager override",
         "overrideBody": "Pick a manager and enter their PIN — allowed for {minutes} minutes",
-        "overrideConfirm": "Allow"
+        "overrideConfirm": "Allow",
+        "overrideButton": "Ask a manager to allow",
+        "overrideFor": "Allow {name} to work outside the schedule",
+        "overrideHint": "Manager: tap your name and enter your manager PIN — the override is recorded",
+        "overrideDisabled": "Overrides are turned off for this shop — the owner can turn them on in Settings → Staff",
+        "close": "Close"
       }
     },
     "staff": {
@@ -944,7 +949,8 @@
       "lastFloat": "Last float on this device {amount} · if the count differs, the difference is recorded in this shift",
       "prev": "Previous shift Z#{z} · closed {at} · difference {diff}",
       "prevView": "View Z#{z}",
-      "back": "Back"
+      "back": "Back",
+      "staffNoteHr": "from today's HR schedule"
     },
     "closeCard": {
       "title": "Close shift · count the cash",
@@ -2524,7 +2530,10 @@
         "clockOnShift": "Ask to clock in/out when opening/closing a shift",
         "clockAsk": "Always ask",
         "clockOff": "Don't ask",
-        "ownerOnly": "Only the owner can change this"
+        "ownerOnly": "Only the owner can change this",
+        "noHr": "This shop has no HR system yet — the gate can be on, but there is no schedule to check",
+        "minutesInvalid": "Enter a whole number {min}–{max} minutes",
+        "overrideOffHint": "0 = no overrides"
       },
       "commission": {
         "title": "Staff sales commission",
@@ -2536,7 +2545,20 @@
         "fixed": "Baht per unit",
         "sellerRoles": "Roles that earn commission",
         "syncNow": "Send to payroll now",
-        "payrollOnly": "Only the owner or a payroll viewer can change this"
+        "payrollOnly": "Only the owner or a payroll viewer can change this",
+        "bpInvalid": "Enter 0–50%",
+        "fixedInvalid": "Enter 0–1,000 baht",
+        "monthHint": "Commission counts by month of sale, then goes into the first open payroll period after that month ends",
+        "noCategories": "No categories yet",
+        "searchProduct": "Search products to set a rate",
+        "noMatch": "No products found",
+        "add": "Add",
+        "remove": "Remove",
+        "unknownProduct": "Product not on this branch's register",
+        "productCount": "{count} product rates set",
+        "catalogUnavailable": "Couldn't read this branch's catalogue — category/product rates can be edited by an account that sells here",
+        "syncDone": "Sent {sent} rows · {adjustments} pay adjustments · {noEmployee} not linked to HR",
+        "syncing": "Sending…"
       }
     },
     "shark": {
@@ -2754,7 +2776,16 @@
           "lineReceipt": "Send receipts via LINE",
           "chatOrders": "Staff key in orders from chat",
           "orderStatusBot": "Auto-answer order status questions"
-        }
+        },
+        "quota": "Uses the shop's LINE OA message quota",
+        "ownerOnly": "Only the owner can switch these",
+        "switches": {
+          "receiptAuto": "Auto-send receipts via LINE",
+          "refundNotice": "Refund notice in chat",
+          "orderStatus": "Order status in chat",
+          "autoReply": "Auto-reply (status · menu · call staff)"
+        },
+        "botPauseHours": "Pause the bot after a staff request (hours)"
       },
       "KANBAN": {
         "title": "Task boards",
@@ -4315,6 +4346,31 @@
     "expired": {
       "banner": "{count} pay-first orders expired today (cancelled automatically · no bill)",
       "row": "Payment expired"
+    },
+    "chatPay": {
+      "send": "Send pay link in chat",
+      "sent": "Sent in chat",
+      "notSent": "Pay link created but the chat message failed — copy the link and send it yourself",
+      "duplicated": "The pay link for this order was already sent",
+      "payBy": "Pay by {time}",
+      "errors": {
+        "noChatLink": "This order is not linked to a chat room — can't send a pay link in chat",
+        "promptpayNotConfigured": "This branch has no PromptPay ID yet — set it in payment settings first",
+        "stateInvalid": "Pay links can only be sent for new, unpaid chat orders",
+        "stateChanged": "This order was closed or changed — the pay link can't be sent again; check the latest status"
+      }
+    }
+  },
+  "chat": {
+    "notify": {
+      "title": "Automatic chat messages",
+      "receipt": "Auto-send receipts via LINE",
+      "refund": "Refund notice in chat",
+      "order": "Order status in chat",
+      "ordpay": "Pay link in chat",
+      "bot": "Chat bot reply",
+      "sentAuto": "Sent via LINE automatically",
+      "failed": "Chat message could not be sent"
     }
   },
   "kds": {

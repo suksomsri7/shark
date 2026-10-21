@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { canAccessUnit, evaluate } from "@/lib/core/rbac";
+import { canAccessUnit, canViewPayroll, evaluate } from "@/lib/core/rbac"; // POS P3.5U ▸ + canViewPayroll (แท็บค่าคอมฯ · มติ 8) ◂
 import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership } from "@/lib/modules/pos/access";
@@ -67,7 +67,7 @@ export default async function PosReportsPage({
       <ModuleTabs items={posTabs(id, await getTranslations("pos"))} data-testid="pos-report-module-tabs" />
       {allowed.length === 0 ? (
         <div role="alert" className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-report-refusal">
-          {t("errors.permissionDenied")}
+          {kind === "commission" ? t("commission.denied") /* POS P3.5U ▸ มติ 8: ?kind=commission ไม่มีสิทธิ์รายงาน = ข้อความของรายงานค่าคอมฯ ◂ */ : t("errors.permissionDenied")}
         </div>
       ) : (
         <ReportsClient
@@ -80,6 +80,7 @@ export default async function PosReportsPage({
           cutoffMinutes={posDayCutoffMinutes(sys.settings)}
           canAnomaly={canAnomaly}
           discountFlagBp={anomaly.enabled ? anomaly.rules.A3.bp : null}
+          canPayroll={canViewPayroll(m)} // POS P3.5U ▸ มติ 8 ◂
         />
       )}
     </div>

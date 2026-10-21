@@ -10,20 +10,31 @@
 //   แถวดึงรายชื่อจาก HR = สวิตช์ปิด + ชิป "เร็ว ๆ นี้ · P3.5"
 //   ไม่มีปุ่ม "ปลดล็อก": listStaffForDevice ไม่บอกสถานะล็อกของ PIN (ปลดล็อกทำที่จอล็อกด้วย PIN ผู้จัดการ — P1.15U) · ชิป "จาก HR ✓" ไม่แสดง (P3.5)
 // 🔴 คำปฏิเสธ → settingsRefusalMessageKey · ไม่มีข้อความไทยนอกคอมเมนต์ · testid ตัวอักษรตรงบนแท็ก · ปุ่ม ≥ 44px
+// POS P3.5U ▸ มติ 6: สวิตช์ pos-settings-staff-hr-switch = scheduleGate.enabled (เจ้าของร้านเท่านั้น · บันทึกทันทีผ่าน updatePosStaffSettingsAction ·
+//   คนอื่น aria-disabled + "เจ้าของร้านเท่านั้น") · การ์ด "ด่านตารางงาน" + "ค่าคอมฯ พนักงาน" (เฉพาะเมื่อหน้าส่ง commission = ผู้ดูเงินเดือน) อยู่ใน StaffHrCards ·
+//   CD-P35U-4: ไม่มีชิป "จาก HR ✓" ต่อคน (ไม่แก้ settings-overview.ts) ◂
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { posSettingsOverviewAction, posStaffOverviewAction, updatePosDiscountCapsAction } from "@/lib/modules/pos/settings-actions";
-import { settingsRefusalMessageKey } from "@/lib/modules/pos/settings-shared";
+import { posSettingsOverviewAction, posStaffOverviewAction, updatePosDiscountCapsAction, updatePosStaffSettingsAction } from "@/lib/modules/pos/settings-actions";
+import { settingsRefusalMessageKey, type PosClockOnShift, type PosScheduleGate, type PosStaffCommissionConfig } from "@/lib/modules/pos/settings-shared";
 import type { PosStaffOverviewResult } from "@/lib/modules/pos/settings-overview";
 import type { PosDiscountCaps, RegisterRole, StaffListItem } from "@/lib/modules/pos/register-shared";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { InlineNote, SettingsCard, SwitchKnob, TabHead } from "./settings-ui";
 import { StaffPinDialog } from "./StaffPinDialog";
+import { ScheduleGateCard, StaffCommissionCard } from "./StaffHrCards"; // POS P3.5U ◂
 
 type StaffOk = Extract<PosStaffOverviewResult, { ok: true }>;
-type Props = { systemId: string; unitId: string; isOwner: boolean };
+type Props = {
+  systemId: string;
+  unitId: string;
+  isOwner: boolean;
+  /** POS P3.5U ▸ มติ 6: ค่าตั้งพนักงาน × HR ที่หน้าอ่านด้วยตัวอ่านบริสุทธิ์ (ไม่มี = จอเดิม) · commission = ผู้ดูเงินเดือนเท่านั้น ◂ */
+  hr?: { hrLinked: boolean; scheduleGate: PosScheduleGate; clockOnShift: PosClockOnShift };
+  commission?: PosStaffCommissionConfig | null;
+};
 const ROLE_ORDER: RegisterRole[] = ["OWNER", "MANAGER", "STAFF"];
 const SUB_LABEL = new Set(["discount", "priceOverride", "onlineOrders"]);
 
@@ -46,7 +57,7 @@ function Check({ tone }: { tone: "ink" | "approval" }) {
   );
 }
 
-export function StaffSettings({ systemId, unitId, isOwner }: Props) {
+export function StaffSettings({ systemId, unitId, isOwner, hr, commission }: Props) {
   const t = useTranslations("pos.settings");
   const ts = useTranslations("pos.settings.staff");
   const [data, setData] = useState<StaffOk | null>(null);
@@ -59,6 +70,26 @@ export function StaffSettings({ systemId, unitId, isOwner }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [fieldErr, setFieldErr] = useState<{ MANAGER?: string; STAFF?: string }>({});
   const [pinFor, setPinFor] = useState<StaffListItem | null>(null);
+  // POS P3.5U ▸ มติ 6: สถานะด่านตารางงาน (สวิตช์ + การ์ด) ◂
+  const [gate, setGate] = useState<PosScheduleGate | null>(hr?.scheduleGate ?? null);
+  const [clockOnShift, setClockOnShift] = useState<PosClockOnShift>(hr?.clockOnShift ?? "OFF");
+  const [gateBusy, setGateBusy] = useState(false);
+  const [gateErr, setGateErr] = useState<string | null>(null);
+  const toggleGate = async () => {
+    if (!gate || !isOwner || gateBusy) return;
+    setGateBusy(true);
+    setGateErr(null);
+    try {
+      const r = await updatePosStaffSettingsAction({ systemId, patch: { scheduleGate: { enabled: !gate.enabled } } });
+      if (!r.ok) return setGateErr(r.code === "PERMISSION_DENIED" ? ts("scheduleGate.ownerOnly") : t(settingsRefusalMessageKey(r.code)));
+      setGate(r.scheduleGate);
+      setClockOnShift(r.clockOnShift);
+    } catch {
+      setGateErr(t("errors.unknown"));
+    } finally {
+      setGateBusy(false);
+    }
+  };
 
   const fillCaps = (c: PosDiscountCaps) => {
     setMgr(pctText(c.MANAGER));
@@ -352,6 +383,36 @@ export function StaffSettings({ systemId, unitId, isOwner }: Props) {
                 </div>
               ))
             )}
+            {gate ? (
+              // POS P3.5U ▸ มติ 6: สวิตช์ live = ด่านตารางงาน (เจ้าของร้านเท่านั้น) ◂
+              <div className="mt-2 flex flex-col gap-2 rounded-[14px] border bg-[color:var(--color-surface-2)] px-4 py-3.5">
+                <div className="flex items-center gap-4">
+                  <span className="min-w-0 flex-1">
+                    <b className="block text-[15px] font-semibold">{ts("hrSync")}</b>
+                    <small className="block text-[12.5px] text-[color:var(--color-muted)]">{ts("scheduleGate.hint")}</small>
+                    {!hr?.hrLinked && <small className="mt-1 block text-[12px] text-[color:var(--color-muted)]">{ts("scheduleGate.noHr")}</small>}
+                    {!isOwner && <small className="mt-1 block text-[12px] text-[color:var(--color-muted)]">{ts("scheduleGate.ownerOnly")}</small>}
+                  </span>
+                  <button
+                    data-testid="pos-settings-staff-hr-switch"
+                    type="button"
+                    role="switch"
+                    aria-checked={gate.enabled}
+                    aria-disabled={!isOwner || gateBusy}
+                    aria-label={ts("scheduleGate.enabled")}
+                    className="grid min-h-11 min-w-11 place-items-center"
+                    onClick={() => void toggleGate()}
+                  >
+                    <SwitchKnob on={gate.enabled} disabled={!isOwner} />
+                  </button>
+                </div>
+                {gateErr && (
+                  <InlineNote tone="error" testid="pos-settings-staff-hr-error">
+                    {gateErr}
+                  </InlineNote>
+                )}
+              </div>
+            ) : (
             <div className="mt-2 flex items-center gap-4 rounded-[14px] border bg-[color:var(--color-surface-2)] px-4 py-3.5">
               <span className="min-w-0 flex-1">
                 <b className="block text-[15px] font-semibold">{ts("hrSync")}</b>
@@ -362,9 +423,29 @@ export function StaffSettings({ systemId, unitId, isOwner }: Props) {
                 <SwitchKnob on={false} disabled />
               </span>
             </div>
+            )}
           </SettingsCard>
         </div>
       </div>
+      {/* POS P3.5U ▸ มติ 6: ด่านตารางงาน + ค่าคอมฯ พนักงาน (ผู้ดูเงินเดือน) ◂ */}
+      {(gate || commission) && (
+        <div className="grid min-w-0 grid-cols-1 gap-7 xl:grid-cols-2 xl:items-start">
+          {gate && hr && (
+            <ScheduleGateCard
+              systemId={systemId}
+              isOwner={isOwner}
+              hrLinked={hr.hrLinked}
+              gate={gate}
+              clockOnShift={clockOnShift}
+              onSaved={(g, c) => {
+                setGate(g);
+                setClockOnShift(c);
+              }}
+            />
+          )}
+          {commission && <StaffCommissionCard systemId={systemId} unitId={unitId} initial={commission} />}
+        </div>
+      )}
       {pinFor && (
         <StaffPinDialog
           systemId={systemId}

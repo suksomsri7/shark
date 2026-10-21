@@ -315,8 +315,8 @@ const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]], // ORACLE-EDIT P2.3U (มติ 8 ผู้คุม): bomDeduct live — เดิม ["bomDeduct", false, "P2.3"]
   HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR facts live — เดิม [false "P3.5"] ×3
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
-  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]], // ORACLE-EDIT P2.8 (มติ 5): พนักงานคีย์ออเดอร์จากแชท
-  KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
+  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", true, null]], // ORACLE-EDIT P2.8 (มติ 5): พนักงานคีย์ออเดอร์จากแชท · ORACLE-EDIT P3.7 (pre-approved · CD-P37a): orderStatusBot live — เดิม ["orderStatusBot", false, "P3.7"]
+  KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", true, null], ["shiftCloseCashCheck", true, null]], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 I12): KANBAN facts live (มติ 9) — เดิม [false "P3.8"] ×2
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: เดิม [false "P2.4"] [false "P2.4"] [false "P2.7"]
   AI: [["shiftDaySummary", true, null], ["purchaseSuggestion", true, null], ["anomalyDetection", true, null]], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R10): AI facts live — เดิม [false "P3.9"] ×3

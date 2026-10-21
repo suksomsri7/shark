@@ -11,6 +11,13 @@
 //   ส่ง ESC p 0 25 250 ล้วน (kickDrawer) · ไม่ลง audit (คำสั่งฮาร์ดแวร์ · มติ CD4) · หน้านี้เปิดได้เฉพาะ pos.shift.operate/manage อยู่แล้ว ◂
 // ไม่ทำในใบนี้: ส่งสรุปกะ LINE/PDF (P3) · พิมพ์ X/ใบเปิดกะ (P1.10) ·
 //   รายชื่อพนักงานจาก HR / PIN (P1.15/P3.5) · สถานะพร้อมเพย์/Beam ต่อวิธีชำระ (P1.7) · ตั้งค่า blind (P1.18)
+// POS P3.5U ▸ มติ 5 (13A): กล่องเปิดกะแสดงรายชื่อ "จากตารางงาน HR วันนี้" จาก listStaffForDeviceAction เดียวกับจอล็อก (ช่วงเวลา HH:MM–HH:MM / ชิป
+//   ลาวันนี้ · ยังไม่ตั้งตาราง · นอกเวลางาน) — เฉพาะเมื่อรายการมีคีย์ hr · ไม่มี = การ์ดผู้เปิดกะเดิม · ผู้เปิดกะ = คนในโทเคนของเครื่อง (ไม่มี = ผู้ใช้ session) ·
+//   การ์ดอื่นแสดงอย่างเดียว (ผู้เปิดกะเปลี่ยนด้วยการสลับพนักงานที่จอล็อก) ◂
+// POS P3.5U ▸ มติ 7 (07): เปิด/ปิดกะสำเร็จ + clockAsk (clockOnShift=ASK และร้านมีระบบ HR · หน้าส่งมา) + มีโทเคนผู้ขายของเครื่อง ⇒ แผ่น
+//   "ลงเวลาเข้างาน/ออกงานด้วยไหม" → posClockAction (คนในโทเคน · ALREADY_CLOCKED/NO_EMPLOYEE = ข้อความในแผ่น · "ไม่ใช่ตอนนี้" = ปิด) ·
+//   ผู้ดูเงินเดือน: หน้าส่ง hours (shiftHoursForOwner ฝั่งเซิร์ฟเวอร์) → บรรทัด "ระยะเวลากะ · เวลาทำงานตาม HR" + ชิปเตือน ในการ์ดกะปัจจุบันและแถวกะที่ปิดแล้ว
+//   (CD-P35U-5: เลย์เอาต์อนุพันธ์ — ภาพ 07 ไม่มีชั่วโมง · รอเจ้าของรับทราบ) · นาที → H:MM ด้วยเลขล้วน ◂
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,7 +28,9 @@ import { thisDevicePrinter, type ThisDevicePrinter } from "@/components/pos/prin
 import { PrintStatus } from "@/components/pos/print/PrintStatus";
 import { kickDrawer, printerPaired } from "@/components/pos/print/printReceipt";
 import type { PrintResult } from "@/components/pos/print/types";
-import { refusalMessageKey } from "@/lib/modules/pos/register-shared";
+import { refusalMessageKey, type StaffListItem } from "@/lib/modules/pos/register-shared";
+import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions"; // POS P3.5U ▸ มติ 5 ◂
+import { posClockAction } from "@/lib/modules/pos/hr-link-actions"; // POS P3.5U ▸ มติ 7 ◂
 // POS P1.15U ▸ มติ 2: เปิดกะด้วยโทเคนผู้ขายของเครื่องนี้ (ผู้เปิดกะ = คนในโทเคน) — เฉพาะเมื่อเป็นเครื่องเดียวกับที่ออกโทเคน ◂
 import { readStaffSession } from "@/lib/modules/pos/staff-session";
 import type { RecountView, ShiftReport, ShiftsPageItem } from "@/lib/modules/pos/shift";
@@ -38,7 +47,21 @@ import { OpenTablesInfo } from "@/components/pos/tables/OpenTablesInfo";
 import { CARD, FigureBox, Kpi, NOTE_DENOMS, Pill, ShiftIcon, bahtToSatang, bkkDate, bkkDay, bkkHm, denomTotal, elapsed, money, signedMoney, type T } from "./shifts-ui";
 
 type Unit = { id: string; name: string };
-type Props = { systemId: string; units: Unit[]; unitId: string; canManage: boolean; meName: string };
+/** POS P3.5U ▸ มติ 7: ชั่วโมงของกะ (ผู้ดูเงินเดือน · หน้าอ่านจาก shiftHoursForOwner — client ไม่ import hr-link) ◂ */
+type ShiftHours = { shiftId: string; durationMin: number; workedMin: number | null; warnings: string[] };
+type Props = {
+  systemId: string;
+  units: Unit[];
+  unitId: string;
+  canManage: boolean;
+  meName: string;
+  /** POS P3.5U ▸ ผู้ใช้ session (ผู้เปิดกะเมื่อเครื่องไม่มีโทเคน) ◂ */
+  meUserId?: string;
+  /** POS P3.5U ▸ มติ 7: ถามลงเวลาหลังเปิด/ปิดกะ (clockOnShift=ASK + ร้านมีระบบ HR) ◂ */
+  clockAsk?: boolean;
+  /** POS P3.5U ▸ มติ 7: ชั่วโมงต่อกะ (ผู้ดูเงินเดือนเท่านั้น · null/ไม่ส่ง = ไม่มีบรรทัดชั่วโมง) ◂ */
+  hours?: Record<string, ShiftHours> | null;
+};
 type PageData = Awaited<ReturnType<typeof shiftsPageDataAction>>;
 type PageOk = Extract<PageData, { ok: true }>;
 
@@ -50,6 +73,14 @@ const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT",
 const METHOD_ICON: Record<string, RegisterIconName> = { CASH: "cash", CARD: "card", PROMPTPAY: "qr", TRANSFER: "bank", DEPOSIT: "wallet", ROOM_CHARGE: "doc", PLATFORM: "truck" };
 const SOURCE_KEYS = new Set(["POS", "BOOKING", "HOTEL", "RESTAURANT", "TICKET"]);
 const emptyDen = (): Record<string, string> => Object.fromEntries(NOTE_DENOMS.map((d) => [String(d), ""]));
+/** POS P3.5U ▸ ระยะเวลา (นาที) → "H:MM" ด้วยเลขล้วน ◂ */
+const durOf = (min: number) => `${Math.floor(Math.max(0, min) / 60)}:${String(Math.max(0, min) % 60).padStart(2, "0")}`;
+const HOURS_WARN_KEY: Record<string, string> = { NO_CLOCK_IN: "hours.warnNoClockIn", NO_CLOCK_OUT: "hours.warnNoClockOut", NO_EMPLOYEE: "hours.warnNoEmployee" };
+/** POS P3.5U ▸ นาที → "HH:MM" ด้วยเลขล้วน (HF-418: ไม่สร้าง Date ตอนวาด) ◂ */
+const hmOf = (min: number) => {
+  const m = ((Math.trunc(min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
 
 /** รายงาน X/Z แบบการ์ด (Z แช่แข็งแสดงตามที่เก็บ · ยอดที่ซ่อน = "—") */
 function Report({ r, t }: { r: ShiftReport; t: T }) {
@@ -138,7 +169,7 @@ function Dialog({ labelledBy, testid, wide, children }: { labelledBy: string; te
   );
 }
 
-export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Props) {
+export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUserId, clockAsk = false, hours = null }: Props) {
   const t = useTranslations("pos.shift") as T;
   const te = useTranslations("pos.register");
   const tc = useTranslations("common");
@@ -162,6 +193,13 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
   const [floatB, setFloatB] = useState("0");
   const [floatDen, setFloatDen] = useState<Record<string, string>>(emptyDen);
   const [floatCoins, setFloatCoins] = useState("");
+  // POS P3.5U ▸ มติ 5: รายชื่อพนักงานของสาขา (สถานะ HR) — โหลดเมื่อเปิดกล่อง · พัง/ปฏิเสธ = การ์ดเดิม ◂
+  const [openStaff, setOpenStaff] = useState<StaffListItem[] | null>(null);
+  const [openerId, setOpenerId] = useState<string | null>(null);
+  // POS P3.5U ▸ มติ 7: แผ่นถามลงเวลา (หลังเปิด/ปิดกะสำเร็จ) ◂
+  const [clockFor, setClockFor] = useState<{ kind: "IN" | "OUT"; shiftId: string; staffToken: string } | null>(null);
+  const [clockBusy, setClockBusy] = useState(false);
+  const [clockErr, setClockErr] = useState<string | null>(null);
   // เงินเข้า/ออก
   const [moveDlg, setMoveDlg] = useState(false);
   const [moveKind, setMoveKind] = useState<"IN" | "OUT">("IN");
@@ -277,6 +315,12 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
     setFloatDen(emptyDen());
     setFloatCoins("");
     setOpenDlg(true);
+    // POS P3.5U ▸ มติ 5 ◂
+    setOpenerId(readStaffSession(deviceId)?.userId ?? meUserId ?? null);
+    setOpenStaff(null);
+    void listStaffForDeviceAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}) })
+      .then((r) => setOpenStaff(r.ok ? r.items : null))
+      .catch(() => setOpenStaff(null));
   };
   const doOpen = () =>
     run(async () => {
@@ -296,6 +340,12 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
       setOpenDlg(false);
       setViewZ(null);
       setViewRecount(null);
+      // POS P3.5U ▸ มติ 7: ถามลงเวลาเข้างาน (เปิดกะใหม่สำเร็จ · คนในโทเคน = ผู้เปิดกะ) · ผู้ดูเงินเดือน = โหลดชั่วโมงของหน้าใหม่ ◂
+      if (r.ok && clockAsk && staffToken) {
+        setClockErr(null);
+        setClockFor({ kind: "IN", shiftId: r.shift.id, staffToken });
+      }
+      if (r.ok && hours) router.refresh();
       return true;
     });
 
@@ -348,6 +398,13 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
       setCountCoins("");
       setNote("");
       setCloseKey(newKey());
+      // POS P3.5U ▸ มติ 7: ถามลงเวลาออกงานหลังปิดกะ (โทเคนของเครื่อง · เซิร์ฟเวอร์ตรวจว่าเป็นผู้เปิดกะ) ◂
+      const tok = readStaffSession(deviceId)?.staffToken;
+      if (clockAsk && tok) {
+        setClockErr(null);
+        setClockFor({ kind: "OUT", shiftId: shift.id, staffToken: tok });
+      }
+      if (hours) router.refresh();
       return true;
     });
   const showZ = (id: string) =>
@@ -434,7 +491,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
       {error}
     </div>
   ) : null;
-  const anyDialog = openDlg || moveDlg || !!recountFor;
+  const anyDialog = openDlg || moveDlg || !!recountFor || !!clockFor; // POS P3.5U ◂
 
   // ═══════════ หัวหน้า ═══════════
   const header = (
@@ -500,6 +557,29 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
   const r = x?.report ?? null;
   const blindHidden = !!r && r.expectedCashSatang === null;
   const el = shift ? elapsed(shift.openedAt, at) : { h: 0, m: 0 };
+  // POS P3.5U ▸ มติ 7 · CD-P35U-5: บรรทัดชั่วโมงของกะ (ผู้ดูเงินเดือน) ◂
+  const hoursLine = (id: string) => {
+    const h = hours?.[id];
+    if (!h) return null;
+    return (
+      <span data-testid={`pos-shift-hours-${id}`} data-warnings={h.warnings.join(",")} className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] text-[color:var(--color-muted)] tabular-nums">
+        <span>
+          {t("hours.duration")} <b className="text-[color:var(--color-ink)]">{durOf(h.durationMin)}</b>
+        </span>
+        <span aria-hidden>·</span>
+        <span>
+          {t("hours.worked")} <b className="text-[color:var(--color-ink)]">{h.workedMin === null ? "—" : durOf(h.workedMin)}</b>
+        </span>
+        {h.warnings.map((w) =>
+          HOURS_WARN_KEY[w] ? (
+            <Pill key={w} tone="danger">
+              {t(HOURS_WARN_KEY[w])}
+            </Pill>
+          ) : null,
+        )}
+      </span>
+    );
+  };
   const currentCard = !ok ? (
     <section className={CARD}>
       <p className="text-sm text-[color:var(--color-muted)]">{t("loading")}</p>
@@ -540,6 +620,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
           · {bkkHm(shift.openedAt, locale)} · {t("floatShort")} <b className="text-[color:var(--color-ink)] tabular-nums">{money(shift.floatSatang)}</b> · {t("elapsed", el)}
         </p>
       </div>
+      {hoursLine(shift.id) /* POS P3.5U ▸ มติ 7 ◂ */}
 
       {/* POS P2.4U ▸ มติ 9 (Q10) ◂ */}
       <OpenTablesInfo systemId={systemId} units={units.filter((u) => u.id === unitId)} />
@@ -818,6 +899,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
             {h.hasNote ? <Pill tone="muted">{t("closed.chipNote")}</Pill> : null}
             {h.status === "FORCE_CLOSED" ? <Pill tone="danger">{t("closed.chipForced")}</Pill> : null}
           </span>
+          {hoursLine(h.id) /* POS P3.5U ▸ มติ 7 ◂ */}
         </span>
         <span className="flex shrink-0 flex-col items-end gap-0.5 text-right">
           <b className="text-[13px] tabular-nums">{h.salesTotalSatang !== null ? money(h.salesTotalSatang) : "—"}</b>
@@ -1002,6 +1084,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
       </span>
     </label>
   );
+  // POS P3.5U ▸ มติ 5: รายชื่อแบบ HR เฉพาะเมื่อมีคีย์ hr (ร้านมีระบบ HR) — ผู้เปิดกะขึ้นก่อน ◂
+  const hrStaff = openStaff && openStaff.some((s) => s.hr) ? [...openStaff.filter((s) => s.hr)].sort((a, b) => Number(b.userId === openerId) - Number(a.userId === openerId)) : null;
   const openDialog = openDlg ? (
     <Dialog labelledBy="pos-shift-open-title" testid="pos-shift-open-dialog" wide>
       <div className="flex items-center justify-between gap-3 border-b px-5 py-4 sm:px-7">
@@ -1054,6 +1138,47 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
           </div>
         </div>
         <div className="flex flex-col gap-2.5">
+          {hrStaff ? (
+            // POS P3.5U ▸ มติ 5 (ภาพ 13A): "จากตารางงาน HR วันนี้" — ผู้เปิดกะ = กรอบดำ + เช็ก · ลา = จาง · การ์ดอื่นแสดงอย่างเดียว ◂
+            <>
+              <p className="text-[13px]">
+                <b>{t("openDlg.staffHeading")}</b> <span className="text-[color:var(--color-muted)]">· {t("openDlg.staffNoteHr")}</span>
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="pos-shift-open-staff">
+                {hrStaff.map((s) => {
+                  const me = s.userId === openerId;
+                  const h = s.hr!;
+                  const line = h.onLeave
+                    ? te("lock.schedule.chipLeave")
+                    : h.schedule
+                      ? `${hmOf(h.schedule.startMin)}–${hmOf(h.schedule.endMin)}${h.inSchedule === false ? ` · ${te("lock.schedule.chipOff")}` : ""}`
+                      : te(h.inSchedule === false ? "lock.schedule.chipOff" : "lock.schedule.chipNoSchedule");
+                  return (
+                    <div
+                      key={s.userId}
+                      data-testid={`pos-shift-open-staff-${s.userId}`}
+                      data-selected={me ? "true" : "false"}
+                      className={`flex min-h-[64px] items-center gap-3 rounded-xl px-4 py-3 ${me ? "border-2 border-[color:var(--color-ink)]" : "border"} ${h.onLeave ? "bg-[color:var(--color-surface-2)] text-[color:var(--color-muted)]" : ""}`}
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border text-[13px] font-bold">{(s.name ?? "?").trim().charAt(0).toUpperCase() || "?"}</span>
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <b className="truncate text-[15px]">{s.name ?? "-"}</b>
+                        <span data-testid={`pos-shift-open-chip-${s.userId}`} className={`truncate text-[12px] tabular-nums ${h.inSchedule === false && !h.onLeave ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-muted)]"}`}>
+                          {line}
+                        </span>
+                      </span>
+                      {me && (
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[color:var(--color-ink)] text-[color:var(--color-surface)]">
+                          <ShiftIcon name="check" size={14} />
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <>
           <p className="text-[13px]">
             <b>{t("openDlg.staffHeading")}</b> <span className="text-[color:var(--color-muted)]">· {t("openDlg.staffNote")}</span>
           </p>
@@ -1064,6 +1189,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
               <ShiftIcon name="check" size={14} />
             </span>
           </div>
+            </>
+          )}
         </div>
         <div className="flex flex-col gap-2.5">
           <p className="text-[13px]">
@@ -1113,6 +1240,49 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         <button data-testid="pos-shift-open-submit" type="button" className="btn btn-primary h-12 min-w-[200px] rounded-[12px] px-6" disabled={busy || !deviceId || floatTotal === null} onClick={doOpen}>
           {t("open")}
         </button>
+      </div>
+    </Dialog>
+  ) : null;
+
+  // ═══════════ POS P3.5U ▸ มติ 7: แผ่นถามลงเวลาเข้า/ออกงาน (posClockAction · คนในโทเคน) ◂ ═══════════
+  const doClock = async () => {
+    if (!clockFor || clockBusy || !deviceId) return;
+    setClockBusy(true);
+    setClockErr(null);
+    try {
+      const r = await posClockAction({ systemId, unitId, deviceId, kind: clockFor.kind, staffToken: clockFor.staffToken, shiftId: clockFor.shiftId });
+      if (!r.ok) return setClockErr(te(refusalMessageKey(r.code)));
+      setClockFor(null);
+      setNotice(t("hours.done"));
+      if (hours) router.refresh();
+    } catch {
+      setClockErr(te("errors.unknown"));
+    } finally {
+      setClockBusy(false);
+    }
+  };
+  const clockDialog = clockFor ? (
+    <Dialog labelledBy="pos-shift-clock-title" testid="pos-shift-clock-sheet">
+      <div className="flex flex-col gap-4 p-5 sm:p-6">
+        <div className="flex items-center gap-2.5">
+          <ShiftIcon name="clock" size={18} />
+          <h2 id="pos-shift-clock-title" className="text-[18px] font-bold">
+            {t(clockFor.kind === "IN" ? "hours.askIn" : "hours.askOut")}
+          </h2>
+        </div>
+        {clockErr && (
+          <p data-testid="pos-shift-clock-message" role="alert" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]">
+            {clockErr}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <button data-testid="pos-shift-clock-skip" type="button" className="btn btn-ghost h-12 rounded-[12px] px-5" disabled={clockBusy} onClick={() => setClockFor(null)}>
+            {t("hours.skip")}
+          </button>
+          <button data-testid="pos-shift-clock-confirm" type="button" className="btn btn-primary h-12 min-w-[180px] rounded-[12px] px-6" disabled={clockBusy} onClick={() => void doClock()}>
+            {t(clockFor.kind === "IN" ? "hours.clockIn" : "hours.clockOut")}
+          </button>
+        </div>
       </div>
     </Dialog>
   ) : null;
@@ -1249,6 +1419,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
       {openDialog}
       {moveDialog}
       {recountDialog}
+      {clockDialog /* POS P3.5U ▸ มติ 7 ◂ */}
     </div>
   );
 }
