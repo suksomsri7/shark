@@ -239,8 +239,15 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
     //   ตรวจเพดานอัตรา → เดินแคตตาล็อก → บันทึก snapshot → ตัดของเก่า ใน transaction เดียว · ล็อกไม่ได้ (มีคำขอของเครื่องนี้ค้างอยู่) = RATE_LIMITED ทันที
     //   (คำขอพร้อมกัน N ตัวเดินแคตตาล็อกได้ตัวเดียว · ไม่มีใบซ้อนภายใน 60 วิ) · บันทึกด้วย createMany skipDuplicates (ชนแล้ว tx ไม่ abort) ·
     //   ตัดของเก่า: เก็บ 2 ล่าสุด ∪ ภายใน 48 ชม. (เพดาน 200 ใบใหม่สุด) ∪ ใบ "เก่าสุด" ภายใน 48 ชม. ∪ hash ที่รายการค้างอ้าง — การยิงออกซ้ำ ~200 ครั้งไม่ไล่ตัดใบที่บิลในเครื่องยังใช้
+    const SNAPSHOT_MAX_IN_FLIGHT = 3;
     const lockKey = `pos-off-snap:${c.tenantId}:${c.unitId}:${dev.deviceCode}`;
-    return db.$transaction(
+    //   fix1 F1 (CD-P34U-R1): เพดานคำขอออก snapshot พร้อมกัน ≤ 3 ต่อโปรเซส (ตัวนับระดับโปรเซสบน globalThis) ตรวจ "ก่อน" $transaction —
+    //   tx ถือการเชื่อมต่อค้างตลอดการเดินแคตตาล็อก (อ่านผ่าน db) ⇒ ไม่จำกัด = คำขอพร้อมกัน ≥ 10 กินพูลทั้งโปรเซส · เกินเพดาน = RATE_LIMITED (จอถอยเวลาอยู่แล้ว)
+    const snapSem = ((globalThis as unknown as { __posOfflineSnapshotInFlight?: { n: number } }).__posOfflineSnapshotInFlight ??= { n: 0 });
+    if (snapSem.n >= SNAPSHOT_MAX_IN_FLIGHT) return refuse("RATE_LIMITED", "ระบบกำลังออกราคาให้หลายเครื่อง — รอสักครู่แล้วลองใหม่");
+    snapSem.n += 1;
+    try {
+    return await db.$transaction(
       async (tx): Promise<OfflineSnapshotResult> => {
         const got = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS ok`;
         if (got[0]?.ok !== true) return refuse("RATE_LIMITED", "เพิ่งออกราคาให้เครื่องนี้ไป — รอสักครู่แล้วลองใหม่");
@@ -323,6 +330,9 @@ export async function issueOfflineSnapshot(ctx: OfflineCtx, actor: RegisterActor
       },
       { maxWait: 10_000, timeout: 120_000 },
     );
+    } finally {
+      snapSem.n -= 1;
+    }
     // ◂ POS P3.4U
   });
 }
