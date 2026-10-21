@@ -344,7 +344,7 @@ const F = {
 };
 /** sha256 ของ scripts/pos-sale-contract.json — ORACLE-EDIT ผู้คุม 10 ต.ค.: re-pin ที่ 0c20c473 (merge P2.2 S เพิ่มคีย์บรรทัด priceSource/priceRuleId/listPriceSatang · CD4: P2.4 ห้ามเปลี่ยนอีก) · เดิม 6dbcafe0 = eaced8dc… */
 // ORACLE-EDIT ผู้คุม 14 ต.ค. (CD-P29-1: payMethods[].giftCard + pos/order.ts caller recorded) — เดิม 7a418de17b44bf7c54e9ee99a3cb740ae596fb6fb240978901e8a07b011697cd ◂
-const CONTRACT_SHA_BASE = "ba68f669fa2105ce708df5aa555c9127948f82c30d373bce6f65ebac0753c7c2"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.4 ST4): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
+const CONTRACT_SHA_BASE = "762e073cd5f80eeeb915835ae6b85e5793956facdfe233f90d65484db04dac55"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 qc-pos-p2.4): sha สัญญาหลัง merge P3.6 S f6ae3054 (+4 ฟิลด์ optional CreateSaleInput · ba68f669 → 762e073c) · ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.4 ST4): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 const MIGRATION_NAME = "20261206100000_pos_p24_tables";
 const NEW_CODES = ["TABLE_NOT_FOUND", "TABLE_INACTIVE", "TABLE_SESSION_CLOSED", "TABLE_EMPTY", "TABLE_ITEMS_CHANGED", "TABLE_HAS_UNPAID"] as const;
 const camelKey = (code: string) => "errors." + code.toLowerCase().replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
