@@ -64,3 +64,27 @@ Boundaries:
 - **H6**: exposure read = undrained ON_ACCOUNT bills only (NOT EXISTS doc) or a 90-day window — pick the one the oracle CR/AR goldens tolerate; sweeper excludes already-linked bills from the 500 batch.
 - F4 info accepted (7 marked hunks in register.ts; dead line in payments.ts kept for −0).
 - Gates fix2 (exception: one more pre-submit + one typecheck): `qc-pos-p3.6` forced ×2 + `--no-db` · `pos-pre-submit.sh --set core,money --also qc-pos-p3.5,qc-pos-p2.9,qc-pos-p2.9b,qc-pos-p2.12,qc-pos-p2.14,qc-hf-tx` · typecheck at the final head. Then R2 = reviewer re-check of F1–F3 + H2–H6.
+
+## R2 @e977458e (reviewer resume · 21 Oct 17:4xZ)
+MERGEABLE — every R1 finding re-checked at e977458e (code 45b7667f; diff vs b6e9838c, ledger ignored); all fixed. No new Medium/High; one Low residual from the H6 window question (F6).
+- **F1 FIXED.** Contact side: `account/index.ts:1612` `posCreditContact` → `ensureAccountContact` by partyId only, so there is no buyer-taxId fallback any more (`service.ts:4848–4858`: a taxId held by another Party ⇒ new contact without taxId). Exposure side: `service.ts:7447–7449` `refMatched`, so a credit INVOICE matched by the bill ref counts whatever its contact. CR10 (`c4467a49`) really tests the case: P8 with no taxId, C_old = `findOrCreateCustomerContact` (same taxId, partyId pOld), sale ฿4,000 with buyer taxId = C_old's. It asserts the INVOICE ≠ C_old, the contact's partyId = P8, C_old keeps pOld, and exposure = 400,000 (via `registerCreditStatus` → the same `creditExposureSatang`).
+- **F2 FIXED.** `index.ts:295` returns `creditInvoice:true`. `account-bridge.ts:191` now has `res.reason!=="other-book" && !(p36Credit && res.creditInvoice)`. `p36Credit` is null for every non-credit bill, so the P1.13 branch is unchanged in effect, and the literal `else if (buyer)` survives (45b7667f). No TAX_INVOICE row for credit bills, per the CD-P36-F2/W23 ruling.
+- **F3 FIXED.** `reports.ts:1790` now filters `createdAt {gte: r.start, lt: r.end}`.
+- **H2 FIXED.** `refund.ts:561–565` → `credit.ts:218–230` `creditRefundExcess`. It takes the company advisory lock (same key as the sale), then `posCreditRefundRoomInTx` (`service.ts:7394`) locks the INVOICE FOR UPDATE and computes remain = grand − paid − live CN − undrained prior ON_ACCOUNT refunds. Asking for more ⇒ refused.
+  - Example: INVOICE ฿10,000 with ฿6,000 paid ⇒ room ฿4,000, so a ฿8,000 refund is refused.
+  - No INVOICE yet (undrained, so it cannot have been paid) ⇒ only the old cap Σ ≤ grand applies.
+  - Lock order (PosSale → party → INVOICE) has no cycle with sale (party only), void (PosSale → INVOICE) or recordPayment (INVOICE only).
+  - The deviation is consistent: `RefundRefusalCode` + `REFUND_ERROR_KEYS.creditRefundExceedsRemaining`, th = en key `refund.errors.creditRefundExceedsRemaining`, `http-errors` 409 `state_conflict`, POS-API.md row. Acceptable.
+- **H3 FIXED.** `account-bridge.ts:337–349`: when the INVOICE could not be voided (`!docVoided`), `posCreditInvoiceState` is read. If the INVOICE still exists and is not VOIDED ⇒ WARN `pos.credit.void_unposted`, detail {saleId, docId} (ids only), no retry. For non-credit bills this adds one read-only query that returns null; no behaviour change.
+- **H4 FIXED.** `credit.ts:204–206` (role ∈ {OWNER, MANAGER}, ≠ seller) + `service.ts:821` (passes soldByUserId) + `register.ts:3406–3407` (same rule after the PIN check).
+- **H5 FIXED (R12 as written).** `staff-commission.ts:116` skips on `crmDealId` OR a COUNTED POS_SALE row via `crm-link.saleCountedByDeal` → `crm/pos-seam.ts:106` `posSaleDealRows` (findMany only, exported through `index posSeam`). Residual (timing, info): a legacy post-commit link that lands after the paid drain is not seen at accrual time.
+- **H6 FIXED.** `credit.ts:141–148`: 90-day bill window. `crm-link.ts:141–165`: the sweeper pages with a cursor (≤ 40 × 500) and drops non-LINKED rows before filling its 500.
+  - **Window answer — yes, the open-docs side is independent:** `posCreditOpenDocs` (`service.ts:7412`) loads every open OUT doc of the partyId contacts with no date filter. So an unpaid 100-day-old INVOICE (contact = P1 since F1) still counts.
+  - **F6 Low (new)** — the window does drop two kinds of bill older than 90 days:
+    - (a) bills that never got an INVOICE (pos.sale.paid DEAD/stuck) — no longer counted as lag;
+    - (b) INVOICEs whose contact no longer carries the partyId (an accountant merges or re-points the contact) — `refMatched` only covers ids inside the window.
+    - Pre-F1 mis-linked INVOICEs cannot exist in prod (the branch is unmerged).
+    - Fix (optional): count lag bills with no doc at any age via NOT EXISTS, or accept and add an OP line.
+- **Scope.** No changes outside these hunks; the only extra is the one read-only query in the void bridge. `credit-actions.ts` is untouched (only the word "throw" in a comment).
+
+### Controller: F6 Low accepted as follow-up (OP ACCOUNT/P3.12: count lag bills with no doc at any age via NOT EXISTS) · merge.
