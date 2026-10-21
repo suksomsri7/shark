@@ -51,7 +51,7 @@ const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของเลน (มติ 11): ต้นไม้ที่ข้อสอบนี้เขียนเทียบ — session/pos 72669941 (ต้นไม้ผลิตภัณฑ์ = c5fc223b) */
-const LANE_PIN = "bafdf89f";
+const LANE_PIN = "9cfa81bb";
 // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.5 ST2): ต้นไม้ของงานพี่น้องที่ merge แล้วแต่ไม่มีที่หมุด (ไม่มี P3.5 ทั้งคู่) — ไฟล์ห้ามแตะที่ "ไบต์เท่าต้นไม้พี่น้อง" = hunk ของพี่น้อง ไม่ใช่ของใบนี้
 //   db4b444b = ทิป P3.4 S (72669941 + P3.4 · = 0617d17b^2 · บล็อก POS P3.4 ▸ ใน register.ts/service.ts) · 3b8a228d = merge HF-FU2 (refund-consumer.ts ACC-1 · หมุด 72669941 อยู่ก่อน HF-FU2)
 //   เทียบไบต์กับต้นไม้พี่น้องแทน "ตัดบล็อก P3.4" เพราะ P3.4 ลบบรรทัดเดิมบางบรรทัด (register −6 · service −2) ซึ่งการตัดบล็อกคืนให้ไม่ได้ — รับเฉพาะสิ่งที่พี่น้อง merge จริง
