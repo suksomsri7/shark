@@ -1081,7 +1081,8 @@
       "discarded": "Bill discarded",
       "syncedAfterClose": "Synced after the device closed the shift — check that shift's drawer before accepting",
       "closeBlocked": "Sync before closing the shift — this device has {count} offline bills waiting to sync",
-      "unknownUser": "Unknown"
+      "unknownUser": "Unknown",
+      "empty": "No offline bills waiting for a manager"
     }
   },
   "report": {

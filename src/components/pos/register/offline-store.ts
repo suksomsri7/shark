@@ -183,3 +183,20 @@ export async function pruneSynced(db: OfflineDb, nowMs: number): Promise<void> {
   for (const r of drop) tx.objectStore(SYNCED).delete(r.idempotencyKey);
   await done(tx);
 }
+
+/**
+ * มติ 6 (หน้ากะ): จำนวนบิล "รอซิงก์" (queued) ของเครื่องนี้ในคิวของสาขา — อ่านอย่างเดียว · ไม่มีฐาน = 0 (ไม่สร้างฐานใหม่) ·
+ * บิล parked (รอผู้จัดการ) ไม่นับ — อยู่ที่เซิร์ฟเวอร์แล้ว (คิวผู้จัดการ) ไม่ใช่ "ยังไม่ซิงก์"
+ */
+export async function countQueuedOnDevice(systemId: string, unitId: string, deviceId: string | undefined): Promise<number> {
+  if (!deviceId || !(await offlineDbExists(systemId, unitId))) return 0;
+  const db = await openOfflineDb(systemId, unitId);
+  if (!db) return 0;
+  try {
+    return (await listQueue(db)).filter((r) => r.status === "queued" && r.deviceId === deviceId).length;
+  } catch {
+    return 0;
+  } finally {
+    db.close();
+  }
+}
