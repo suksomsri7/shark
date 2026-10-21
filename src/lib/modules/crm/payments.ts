@@ -1379,7 +1379,7 @@ export async function linkPosSaleIntent(ctx: MoneyCtx, input: { dealId: string; 
     if (justCounted) await emitMoneyUpdate(tx, ctx, deal.id, `pos-${sale.id}`, { saleId: sale.id, satang: Number(satang) });
     return { created, counted, justCounted, countedAt };
   }, TX_OPTS);
-  if ("skipped" in out) return none(out.skipped);
+  if ("skipped" in out) return none(out.skipped ?? "NOT_FOUND");
   if (out.created) await audit(ctx, "crm.deal.pos.link", pre.id, { after: { saleId: sale.id, satang: Number(satang), counted: out.counted, via: "POS_INTENT" } });
   if (out.justCounted) {
     await (await import("./commissions")).afterPaymentCounted(ctx, { dealId: pre.id, refType: "POS_SALE", refId: sale.id });

@@ -196,7 +196,7 @@ export async function decideSaleCredit(
 async function approverOf(db: Db, tenantId: string, userId: string, unitId: string): Promise<string | null> {
   const m = await db.membership.findFirst({ where: { tenantId, userId, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
   if (!m) return null;
-  const a: RegisterActor = { userId, role: m.role as RegisterActor["role"], unitAccess: [...m.unitAccess], permissions: isRecord(m.permissions) ? m.permissions : {} };
+  const a: RegisterActor = { userId, role: m.role as RegisterActor["role"], unitAccess: Array.isArray(m.unitAccess) ? m.unitAccess.filter((u): u is string => typeof u === "string") : [], permissions: isRecord(m.permissions) ? m.permissions : {} };
   return canAccessUnit(a, unitId) && canManageCredit(a, unitId) ? userId : null;
 }
 
