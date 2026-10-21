@@ -46,8 +46,14 @@ export default async function PosShiftsPage({ params, searchParams }: { params: 
   // POS P3.4U ▸ มติ 9 (CD-P34U-4): การ์ดบิลออฟไลน์รอผู้จัดการ — ผู้จัดการเท่านั้น · ชื่อผู้ใช้ของร้าน (ผู้ขายที่เครื่องอ้าง / ที่ตรวจแล้ว · แสดงเท่านั้น) ◂
   let offline: { enabled: boolean; names: Record<string, string> } | null = null;
   if (canManage) {
-    const ms = await prisma.membership.findMany({ where: { tenantId }, select: { userId: true, user: { select: { name: true, email: true } } }, take: 500 });
-    offline = { enabled: posOfflineEnabled(sys.settings), names: Object.fromEntries(ms.map((x) => [x.userId, x.user.name?.trim() || x.user.email || "-"])) };
+    // fix1 F4: ชื่อสมาชิกโหลดเฉพาะเมื่อธงเปิด หรือสาขามีแถวรอผู้จัดการ (REJECTED · ACCEPTED ที่ยังไม่มีบิล — ชุดเดียวกับ listOfflineRejected) ·
+    //   ส่งแค่ชื่อที่แสดง (ไม่มีอีเมล — ไม่มีชื่อ = "ไม่ทราบชื่อ" ที่จอ) · ปิดธง + ไม่มีแถว = ไม่ส่งรายชื่อเลย
+    const enabled = posOfflineEnabled(sys.settings);
+    const pending = enabled
+      ? 1
+      : await prisma.posOfflineSale.count({ where: { tenantId, systemId: id, unitId, OR: [{ status: "REJECTED" }, { status: "ACCEPTED_BY_MANAGER", saleId: null }] } });
+    const ms = pending > 0 ? await prisma.membership.findMany({ where: { tenantId }, select: { userId: true, user: { select: { name: true } } }, take: 500 }) : [];
+    offline = { enabled, names: Object.fromEntries(ms.flatMap((x) => (x.user.name?.trim() ? [[x.userId, x.user.name.trim()]] : []))) };
   }
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
