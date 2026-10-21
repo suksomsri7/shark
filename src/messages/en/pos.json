@@ -508,7 +508,13 @@
       "channelPaused": "This channel is not taking orders right now",
       "offSchedule": "Outside scheduled working hours — ask a manager to allow",
       "alreadyClocked": "Already clocked for today",
-      "noEmployee": "This user is not linked to an employee in HR"
+      "noEmployee": "This user is not linked to an employee in HR",
+      "creditDisabled": "On-account billing is not turned on for this point of sale",
+      "creditNotAllowed": "This company has no on-account credit limit yet — choose another payment method or ask a manager to set a limit",
+      "creditTermZero": "This company's credit term is 0 days — it cannot be billed on account; take payment now",
+      "creditLimitExceeded": "This amount is over the company's credit limit — ask a manager to approve with a PIN or choose another payment method",
+      "creditInvoicePaid": "The invoice of this bill has already been paid — the bill cannot be voided; use a refund instead",
+      "dealInvalid": "This deal cannot be linked to this bill — pick another deal or sell without a deal"
     },
     "refusal": {
       "manualConfirmManager": "This shop lets only managers confirm money received — ask a manager to confirm this PromptPay/card payment, or take cash"
