@@ -108,3 +108,15 @@ PRESUBMIT head=b6ecb66a green=31 red=6 expected-lane-pin=4 unexpected-red=qc-pos
 - Reds: lane pins (expected, controller re-pins at merge) p2.10 ST2 · p2.12 ST1 · hf-fu ST1 · hf-fu2 ST1 · `qc-acc-v2-pos-lines` 65/79 = manifest **accepted** (no acc-v2 seed in QC4, since P1).
 - `qc-pos-p2.14` V2 (unexpected): wo-gated visual constants need a run row in `scripts/pos-visual-sweep.json` → fixed `ad806bfa` (row `p3.4u-offline`); `--no-db` re-check 14/15 — remaining miss `/^p3\.?5u/` is **pre-existing on the base** (P3.5U gate without a sweep row) → CONTROLLER-DECISION B3: add the p3.5u row at the P3.5U visual merge.
 - visual `p3.4u --states --dry` (iso, CI=1): owner 26 · cashier 17 · en 15 — rc 0.
+
+## 7. Fix round 1 (R1 + hunt · CD-P34U-R1/R2 · controller B 21 Oct 14:3xZ) — one commit per finding
+- **F1** `228e6b86` · `src/lib/modules/pos/offline-sync.ts:242-248,332-334` — inside the CD-P34U-3 block (still one hunk): `SNAPSHOT_MAX_IN_FLIGHT = 3`, process-level counter on `globalThis.__posOfflineSnapshotInFlight` checked **before** `$transaction`; over the cap ⇒ `refuse("RATE_LIMITED")` (existing client backoff); `try { return await db.$transaction(…) } finally { n-- }`. Catalog walk still on `db` (not moved to `tx`).
+- **F2** `90630260` · `LockScreen.tsx:68-69,194,257,326` → `use-offline-register.ts` `rememberUnlock` — every online unlock passes `r.role === "STAFF" ? pin : null`; `null` (OWNER/MANAGER) ⇒ verifier **not written and any old one wiped** ⇒ holder null ⇒ existing copy `offline.lock.unavailable` (no new keys). Harness `offline-lock-pin`: cashier = holder flow, owner = `data-state="unavailable"` + asserts no verifier in IDB.
+- **F3** `3fde618b` · `use-offline-register.ts:104-105` (flag off ⇒ `forgetOfflineUnlock` every reload) and `:149-151` (`OFFLINE_DISABLED|DEVICE_REVOKED|DEVICE_NOT_FOUND` ⇒ forget + holder null).
+- **F4** `2cf09b60` · `shifts/page.tsx:49-56` — S DTO has user ids only ⇒ member load gated: flag on, or `posOfflineSale.count` of open rows (REJECTED · ACCEPTED without sale, same set as `listOfflineRejected`) > 0; names only (no e-mail; nameless = "ไม่ทราบชื่อ").
+- **F5** `e615834d` · `RegisterScreen.tsx:1904-1905` — unknown → queue only when Σ `payMethods.amountSatang` == snapshot `grandTotalSatang`; otherwise stays `unknown`.
+- **F6** `49f04082` · `use-offline-register.ts:132-160,176-191` — `fetchSnapshot(): Promise<boolean>`; pvu-edge timer: skipped/refused ⇒ exactly one retry at `max(snapNextAt − now, 15 s)`; cleared on unmount/pvu change.
+- **F7** `5bb50bd3` · markers `LockScreen.tsx:566,572` (`staffList`) · `shark-ui.tsx:231-233` (pending span + `{pendTotal}`).
+- **F8** controller — `p3.4u-offline` sweep row untouched (merge kept upstream `p3.5u-th/en` + this row).
+- Merge `1e96ad13` = origin/session/pos `36f2a654` (p3.5u harness fixes, sweep rows, p2.10/hf-fu re-pins, ledger; conflict only in `pos-visual-sweep.json` → union).
+- Dry plans (iso, CI=1) @ merge: owner 26 · cashier 17 · en 15 — rc 0.
