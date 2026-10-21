@@ -72,6 +72,8 @@ const CHECKS: readonly Def[] = [
   D("CR7", "X4", "[R6] วงเงิน: P1 ฿7,000 หลังบิล ฿4,000 ระบายแล้ว → CREDIT_LIMIT_EXCEEDED {limitSatang 1,000,000 · exposureSatang 400,000} ทั้ง createSale และ register (ผู้จัดการ) · ไม่มีบิล"),
   D("CR8", "X3", "[R6 มติ 2] override: createSale creditOverrideByUserId = MGR → PAID + audit pos.credit.override {saleId partyId byUserId overSatang 100,000} · = แคชเชียร์ (ไม่มี pos.credit.manage) → ยัง LIMIT · register PIN ผิด → PIN_INVALID failedCount MGR +1 ไม่มีบิล · PIN ถูก → บิล creditTerms.overrideBy = MGR"),
   D("CR9", "X4", "[R6 hunter] P5 วงเงิน ฿10,000: บิล ฿6,000 สองใบพร้อมกัน (คีย์ต่างกัน) → PAID 1 ใบพอดี · อีกใบ CREDIT_LIMIT_EXCEEDED exposureSatang 600,000 (นับบิลที่ยังไม่มีเอกสาร)"),
+  // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-F1 · R1 F1 High): ผู้ติดต่อเดิมเลขภาษีเดียวกันแต่ partyId อื่นห้ามรับใบแจ้งหนี้ + ภาพหนี้ต้องนับบิล ◂
+  D("CR10", "X5", "[R6 R7 CD-P36-F1] บริษัท P8 ที่สมุดมีผู้ติดต่อเดิมเลขภาษีเดียวกันของ Party อื่น (C_old) → บิลวางบิล ฿4,000 ระบาย → ใบแจ้งหนี้ผูกผู้ติดต่อของ P8 (ไม่ใช่ C_old · C_old partyId เดิม) · exposure ของ P8 = 400,000"),
   // ── AR บัญชีลูกหนี้ ──
   D("AR1", "X5", "[R7 Q4] ระบาย → เอกสารของบิล 1 ใบ = INVOICE AWAITING_PAYMENT · contactId = ผู้ติดต่อสมุดของ CO1 (partyId P1) · grandTotal = บิล · dueDate = creditTerms.dueDate · ไม่มี ABB/TAX_INVOICE ของบิล"),
   D("AR2", "X1", "[R7] JV เดียว (PosSale#id#PAID) Dr 1100 = grand ผูกผู้ติดต่อ CO1 · Cr 2200 = VAT ของ splitIncludedVat(grand, 700) · Cr รายได้ = ฐาน · ไม่มีขาเงินสด/ธนาคาร · เล่น pos.sale.paid ซ้ำ ×2 → เอกสาร/JV เท่าเดิม"),
@@ -1529,6 +1531,36 @@ async function runDb() {
     chk("CR9", p.length === 0, "1 ผ่าน · 1 CREDIT_LIMIT_EXCEEDED (exposure 600,000)", NO() + joinP(p));
   });
   await pump();
+
+  // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-F1): ช่องโหว่วงเงิน — ผู้ติดต่อเดิมเลขภาษีเดียวกันของ Party อื่นดูดใบแจ้งหนี้ ⇒ exposure 0 · ก่อนแก้ (b6e9838c) แดง · หลัง ดู wo-notes §fix2 ◂
+  await blk("CR10", async () => {
+    const p: string[] = [];
+    if (fx) {
+      chk("CR10", false, "ใบแจ้งหนี้ผูก P8 · exposure 400,000", NO());
+      return;
+    }
+    const tax8 = taxIdOf(`0105${rnd(8)}`);
+    const p8 = await P.party.create({ data: { tenantId: T, name: `${NAME_Q} แปด จำกัด`, kind: "COMPANY" } });
+    const pOld = await P.party.create({ data: { tenantId: T, name: `${NAME_Q} เดิม จำกัด`, kind: "COMPANY" } });
+    const old = await accSvc.findOrCreateCustomerContact(bookCtx(), { name: `${NAME_Q} เดิม จำกัด`, taxId: tax8, branchCode: "00000", partyId: pOld.id });
+    const cOld = String(old?.id ?? "");
+    const sv = await call(creditMod, "saveCreditAccount", pctx(), A("OWNER"), { partyId: p8.id, limitSatang: 1_000_000, termDays: null, active: true });
+    if (sv?.ok !== true) p.push(`saveCreditAccount P8 ${codeOf(sv)}`);
+    const buyer = { kind: "JURISTIC", name: `${NAME_Q} แปด จำกัด`, taxId: tax8, branchCode: "00000", address: `99 ถนนคิวซี เขตทดสอบ กรุงเทพฯ 10110`, email: null, source: "MANUAL", requestedAt: new Date().toISOString() };
+    const sale = await cs("cr10", { customerPartyId: p8.id, taxInvoice: buyer }, [{ name: "ของบริษัทแปด", qty: 1, unitPriceSatang: 400_000 }]);
+    if (!sale.ok) p.push(`createSale → ${sale.code}`);
+    await pump();
+    const inv = (await docsOf(sale.saleId)).filter((d) => d.docType === "INVOICE");
+    if (inv.length !== 1) p.push(`INVOICE ${inv.length} ใบ`);
+    const ct = inv[0]?.contactId ? await P.accountContact.findUnique({ where: { id: inv[0].contactId }, select: { id: true, partyId: true } }).catch(() => null) : null;
+    if (inv[0] && inv[0].contactId === cOld) p.push("ใบแจ้งหนี้ผูก C_old (ผู้ติดต่อเลขภาษีเดียวกันของ Party อื่น)");
+    if (ct && ct.partyId !== p8.id) p.push(`ผู้ติดต่อของใบแจ้งหนี้ partyId ≠ P8`);
+    const oldNow = cOld ? await P.accountContact.findUnique({ where: { id: cOld }, select: { partyId: true } }).catch(() => null) : null;
+    if (oldNow?.partyId !== pOld.id) p.push("C_old ถูกเปลี่ยน partyId");
+    const st = await status("MGR", p8.id, 0);
+    if (st?.ok !== true || st.exposureSatang !== 400_000) p.push(`exposure P8 ${short(st?.exposureSatang)} (คาด 400,000)`);
+    chk("CR10", p.length === 0, "ใบแจ้งหนี้ผูก P8 · exposure 400,000", NO() + joinP(p));
+  });
 
   // ════════ AR4–AR6 รับเงิน ════════
   const PAY_KEY = newKey("pay");
