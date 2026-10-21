@@ -105,11 +105,11 @@ export function OfflineQueueSection(p: { systemId: string; unitId: string; enabl
         {items && items.length > 0 ? <Pill tone="danger">{items.length}</Pill> : null}
       </div>
       {loadErr ? (
-        <p role="alert" data-testid="pos-shift-offline-load-error" className="text-[13px] text-[color:var(--color-danger)]">
+        <p role="alert" className="text-[13px] text-[color:var(--color-danger)]">
           {te(loadErr)}
         </p>
       ) : items && items.length === 0 ? (
-        <p data-testid="pos-shift-offline-empty" className="text-[13px] text-[color:var(--color-muted)]">
+        <p className="text-[13px] text-[color:var(--color-muted)]">
           {t("offline.empty")}
         </p>
       ) : (
@@ -129,7 +129,7 @@ export function OfflineQueueSection(p: { systemId: string; unitId: string; enabl
                 </div>
                 <p className="font-semibold text-[color:var(--color-danger)]">{te(offlineRefusalMessageKey(r.reason ?? ""))}</p>
                 {late ? (
-                  <p data-testid={`pos-shift-offline-late-${r.id}`} className="text-[12.5px] text-[color:var(--color-ink-soft)]">
+                  <p className="text-[12.5px] text-[color:var(--color-ink-soft)]">
                     {t("offline.syncedAfterClose")}
                   </p>
                 ) : null}
@@ -193,7 +193,7 @@ export function OfflineQueueSection(p: { systemId: string; unitId: string; enabl
                   </div>
                 )}
                 {m ? (
-                  <p data-testid={`pos-shift-offline-msg-${r.id}`} role={m.tone === "danger" ? "alert" : "status"} className={`text-[13px] font-semibold ${m.tone === "danger" ? "text-[color:var(--color-danger)]" : ""}`}>
+                  <p role={m.tone === "danger" ? "alert" : "status"} className={`text-[13px] font-semibold ${m.tone === "danger" ? "text-[color:var(--color-danger)]" : ""}`}>
                     {msgText(m)}
                   </p>
                 ) : null}
@@ -203,7 +203,7 @@ export function OfflineQueueSection(p: { systemId: string; unitId: string; enabl
         </ul>
       )}
       {doneMsgs.map(([id, m]) => (
-        <p key={id} data-testid="pos-shift-offline-done" role="status" className="text-[13px] font-semibold">
+        <p key={id} role="status" className="text-[13px] font-semibold">
           {msgText(m)}
         </p>
       ))}

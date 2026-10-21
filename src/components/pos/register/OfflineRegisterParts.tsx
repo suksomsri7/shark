@@ -50,7 +50,7 @@ export function OfflineLiveBanner(p: { since: Date | null; pending: number; park
             {p.lastRef ? ` · ${t("offline.ref", { ref: p.lastRef })}` : ""}
           </>
         )}
-        <span data-testid="pos-reg-offline-keep-open" className="block text-[12.5px] opacity-80">
+        <span className="block text-[12.5px] opacity-80">
           {t("offline.keepOpen")}
         </span>
       </span>
@@ -154,7 +154,7 @@ export function OfflinePayDialog(p: { totalSatang: number; tender: "CASH" | "TRA
         </div>
         <div className="flex items-baseline justify-between text-[24px] font-bold">
           <span className="text-[15px] font-semibold text-[color:var(--color-ink-soft)]">{t("offline.sheet.total")}</span>
-          <span data-testid="pos-reg-offline-pay-total" className="tabular-nums">
+          <span className="tabular-nums">
             {moneyText(p.totalSatang)}
           </span>
         </div>
@@ -195,7 +195,7 @@ export function OfflinePayDialog(p: { totalSatang: number; tender: "CASH" | "TRA
                 </button>
               ))}
             </div>
-            <p data-testid="pos-reg-offline-change" className={`flex justify-between text-[15px] ${change === null ? "text-[color:var(--color-danger)]" : ""}`} role={change === null ? "alert" : undefined}>
+            <p className={`flex justify-between text-[15px] ${change === null ? "text-[color:var(--color-danger)]" : ""}`} role={change === null ? "alert" : undefined}>
               <span>{change === null ? t("offline.sheet.short") : t("offline.sheet.change")}</span>
               <b className="tabular-nums">{change === null ? "—" : moneyText(change)}</b>
             </p>
@@ -207,7 +207,7 @@ export function OfflinePayDialog(p: { totalSatang: number; tender: "CASH" | "TRA
           </label>
         )}
         {p.errorKey && (
-          <p data-testid="pos-reg-offline-pay-error" role="alert" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]">
+          <p role="alert" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]">
             {t(p.errorKey)}
           </p>
         )}
@@ -270,7 +270,7 @@ export function OfflineDoneDialog(p: { rec: OfflineQueueRecord; shop: Shop; prin
           {p.rec.tender === "CASH" && (
             <>
               <dt className="text-[color:var(--color-muted)]">{t("offline.done.change")}</dt>
-              <dd data-testid="pos-reg-offline-done-change" className="text-right text-[18px] font-bold tabular-nums">
+              <dd className="text-right text-[18px] font-bold tabular-nums">
                 {moneyText(p.rec.changeSatang)}
               </dd>
             </>
@@ -344,7 +344,7 @@ export function OfflineBillsDialog(p: {
           </button>
         </div>
         {p.queue.length === 0 && p.synced.length === 0 ? (
-          <p data-testid="pos-reg-offline-bills-empty" className="py-6 text-center text-[14px] text-[color:var(--color-muted)]">
+          <p className="py-6 text-center text-[14px] text-[color:var(--color-muted)]">
             {t("offline.bills.empty")}
           </p>
         ) : (
@@ -383,7 +383,7 @@ export function OfflineBillsDialog(p: {
                   <b className="tabular-nums">{moneyText(s.totalSatang)}</b>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span data-testid={`pos-reg-offline-bill-no-${s.offlineRef}`} className="inline-flex h-6 items-center rounded-[7px] border border-[color:var(--color-ink)] px-2 text-[12px] font-bold tabular-nums">
+                  <span className="inline-flex h-6 items-center rounded-[7px] border border-[color:var(--color-ink)] px-2 text-[12px] font-bold tabular-nums">
                     {t("offline.bills.synced", { no: s.receiptNo ?? "-" })}
                   </span>
                   <span className="flex-1" />

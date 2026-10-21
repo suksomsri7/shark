@@ -205,7 +205,7 @@ export function OfflineCard({ wide = false, live = null }: { wide?: boolean; liv
         <div data-testid="pos-settings-offline-state" data-state={on ? "on" : "off"} className="-mt-1.5 flex flex-col gap-1 pl-[43px] text-[11.5px] text-[color:var(--color-muted)]">
           <span className="inline-flex h-6 w-fit items-center whitespace-nowrap rounded-[7px] border px-2">{on ? t("liveOn") : live.isOwner ? t("liveOff") : t("ownerOnly")}</span>
           {saveErr ? (
-            <span data-testid="pos-settings-offline-error" role="alert" className="text-[color:var(--color-danger)]">
+            <span role="alert" className="text-[color:var(--color-danger)]">
               {t("saveFailed")}
             </span>
           ) : null}
@@ -224,7 +224,7 @@ export function OfflineCard({ wide = false, live = null }: { wide?: boolean; liv
         {t("pending")}
         {live && pendTotal > 0 ? (
           /* POS P3.4U ▸ มติ 10: เครื่องนี้ + รอผู้จัดการ (0 ทั้งคู่ = ตัวเลข 0 แบบวันนี้) ◂ */
-          <span data-testid="pos-settings-offline-pending-detail" className="ml-auto text-right">
+          <span className="ml-auto text-right">
             {t("pendingDevice", { count: pend.device })} · {t("pendingServer", { count: pend.server })}
           </span>
         ) : null}

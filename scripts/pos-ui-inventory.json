@@ -20183,6 +20183,698 @@
       "oracle": "qc-pos-p3.5",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-pay-cash",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-offline-pay",
+        "note": "19ง (ธงออฟไลน์เปิด + ออฟไลน์): \"ชำระเงินสด ฿x\" แทนปุ่มชำระ — ยอดจาก snapshot (offlineCartTotals) · ปิดเมื่อด่านขายออฟไลน์ไม่ผ่าน/ไม่ใช่ลูกค้าทั่วไป/ส่วนลดเกินสิทธิ์ · F4 = ปุ่มนี้"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-pay-transfer",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-offline-pay",
+        "note": "19ง: \"โอน\" → กล่องชำระออฟไลน์แบบโอน (เลขอ้างอิงไม่บังคับ · ไม่มีรูปสลิป)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-pay-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-pay",
+        "note": "ปิดกล่องชำระออฟไลน์ (ระหว่างบันทึก = ปิด)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-tender-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-pay",
+        "note": "ตัวเลือกวิธีชำระในกล่อง: cash · transfer (radio)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-received",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-reg-offline-pay",
+        "note": "รับเงิน (บาท · ว่าง = พอดี) → เงินทอน · รับไม่ครบ = \"รับเงินยังไม่ครบยอด\" + ปุ่มบันทึกปิด"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-quick-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-received",
+        "note": "ปุ่มรับเงินด่วน (พอดี + ธนบัตรถัดไป · สูงสุด 4)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-reference",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-pay",
+        "note": "เลขอ้างอิงการโอน (ไม่บังคับ · ≤ 60 ตัวอักษร)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "IndexedDB shark-pos-off:<systemId>:<unitId> · queue",
+        "note": "บันทึกบิลลงคิวของเครื่อง: เลข OFF-<code>-<seq> จอง+เพิ่มใน transaction เดียว (nextOfflineSeq) · คีย์บิลเดิม · ไม่เก็บ PIN/4 หลัก/ต้นทุน/สมาชิก → จอ pos-reg-offline-done"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-slip",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "printReceipt",
+        "note": "พิมพ์ใบรับเงินชั่วคราว (offlineSlipPayload → printReceipt · หัว \"ใบรับเงินชั่วคราว — รอออกเลขจริง\" · ไม่มี QR /r/ · ไม่ใช่ ABB) · ครั้งแรกเงินสด = เปิดลิ้นชัก"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-next",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-root",
+        "note": "ขายบิลถัดไป (จอหลังบันทึกปิดด้วยปุ่มนี้เท่านั้น)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-badge",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-offline-bills",
+        "note": "ป้าย \"รอซิงก์ n\" (คิว queued ในเครื่องเท่านั้น · + \"รอผู้จัดการ m\") บนแถบออฟไลน์/แถบซิงก์ → รายการบิลออฟไลน์ของเครื่อง"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-bills-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-bills",
+        "note": "ปิดรายการบิลออฟไลน์"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-bills-sync",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "POST /api/pos/sync",
+        "note": "ซิงก์ตอนนี้ (ออนไลน์ + มีบิลรอซิงก์) — ผู้นำแท็บ Web Locks · ผล OK/DUPLICATE = ได้เลขจริง · REJECTED = รอผู้จัดการ"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-bill-slip-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "printReceipt",
+        "note": "พิมพ์ใบรับเงินชั่วคราวซ้ำของบิลในคิว (ไม่มีปุ่มยกเลิก/คืนเงินของบิลที่ยังไม่ซิงก์ · มติ 6)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-bill-reprint-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "reprintReceiptAction",
+        "note": "บิลที่ได้เลขจริงแล้ว: พิมพ์ใบเสร็จจริง (reprintReceiptAction · ออนไลน์เท่านั้น)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-live-banner",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-badge",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แถบ 19ง \"ออฟไลน์ตั้งแต่ HH:MM · ขายต่อได้ด้วยเงินสดและโอน · รอซิงก์ n บิล · เลขชั่วคราว OFF-…\" + \"อย่าปิดหรือรีเฟรชหน้านี้ขณะออฟไลน์\" (ธงปิด = แถบเดิม pos-reg-offline-banner)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-gate",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-live-banner",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): เหตุที่ขายออฟไลน์ไม่ได้ (offlineSellGate: ไม่มีราคา/เกิน 24 ชม./โปรหมดช่วง/คิวครบ 300/นาฬิกา/เครื่อง)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-chips",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-chip-*",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): กล่องชิป 19ง เหนือยอด + \"ใช้ได้เมื่อออนไลน์\""
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-chip-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-chips",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): ชิปจาง aria-disabled points · coupon · card · promptpay (แบบ pos-settings-card-state-offline)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-sync-strip",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-badge",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): ออนไลน์ + มีคิว/เพิ่งซิงก์ (15 นาที) — data-state waiting · syncing · done"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-pay",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-offline-confirm",
+        "note": "กล่องชำระออฟไลน์ (เงินสด/โอน) — ส่งแล้วเขียนคิวของเครื่อง (IndexedDB)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-done",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-next",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): จอ \"บันทึกแล้ว · รอซิงก์\" + เลขชั่วคราว + เงินทอน (ปิดด้วยปุ่มเท่านั้น)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-done-no",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-done",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): เลขชั่วคราว OFF-<code>-<seq>"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-bills",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-bills-sync",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): รายการบิลออฟไลน์ของเครื่อง (รอซิงก์ · รอผู้จัดการอ่านอย่างเดียว · ได้เลขจริง)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-offline-bill-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-offline-bills",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แถวบิลตามเลข OFF (data-status queued · parked · synced)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-lock-offline-note",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-lock-screen",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): จอล็อกออฟไลน์ (ธงเปิด) — data-state holder (\"ปลดล็อกได้เฉพาะ <ชื่อ>\") · locked (ผิด 5 ครั้ง) · unavailable (ไม่มีตัวตรวจ) · ไม่สลับพนักงาน/ไม่มีทางผู้จัดการ (มติ 7)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offline-accept-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "acceptOfflineSaleAction",
+        "note": "CD-P34U-4: รับบิลออฟไลน์ที่ถูกปฏิเสธ (pos.shift.manage · ตรวจซ้ำทุกด่านที่ facade · ซ้ำได้) → \"รับบิลแล้ว · เลขใบเสร็จ …\" · ปฏิเสธ = ข้อความในแถว",
+        "db": "PosOfflineSale.status ACCEPTED_BY_MANAGER + PosSale"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offline-discard-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-offline-reason-*",
+        "note": "CD-P34U-4: ทิ้งบิล → ช่องเหตุผล + ยืนยัน/ยกเลิก"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offline-reason-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-shift-offline-discard-confirm-*",
+        "note": "เหตุผลที่ทิ้ง ≥ 5 ตัวอักษร (offlineDiscardReasonOk) · สั้น = \"ใส่เหตุผลอย่างน้อย 5 ตัวอักษร\""
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offline-discard-confirm-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "discardOfflineSaleAction",
+        "note": "ยืนยันทิ้งบิล (audit pos.sale.offline_discarded · ซ้ำได้)",
+        "db": "PosOfflineSale.status DISCARDED"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offline-discard-cancel-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-offline-row-*",
+        "note": "ยกเลิกการทิ้ง (ปิดช่องเหตุผล)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offline-queue",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-offline-row-*",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): การ์ด \"บิลออฟไลน์รอผู้จัดการ\" (ผู้จัดการเท่านั้น · ธงปิด + ไม่มีแถว = ไม่วาด)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offline-row-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-offline-queue",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แถว: เลข OFF · เวลาขาย (หลัง mount) · เหตุผล · ผู้ขายที่เครื่องอ้าง vs ที่ตรวจแล้ว · ยอด · N10 \"ซิงก์หลังเครื่องปิดกะ\""
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-offline-blocked",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-close-submit",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): มติ 6 \"ซิงก์ก่อนปิดกะ — เครื่องนี้มีบิลออฟไลน์รอซิงก์ n บิล\" + ปุ่มปิดกะปิด (คิว queued ใน IndexedDB ของเครื่องนี้)"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-offline-switch",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosOfflineEnabledAction",
+        "note": "มติ 10 · CD-P34U-1: สวิตช์ live ของการ์ด/แท็บออฟไลน์ — เจ้าของร้านเท่านั้น (คนอื่นเห็นสถานะจริง aria-disabled) · แทน pos-settings-card-state-offline",
+        "db": "AppSystem(POS).settings.pos.offline.enabled"
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-offline-state",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-offline-switch",
+        "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แทนชิป \"เร็ว ๆ นี้ · P3.4\" — \"เปิดขายออฟไลน์อยู่\" / \"ปิดอยู่ · เจ้าของร้านเปิดได้\" / \"เจ้าของร้านเท่านั้น…\""
+      },
+      "wo": "P3.4U",
+      "oracle": "qc-pos-p3.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
