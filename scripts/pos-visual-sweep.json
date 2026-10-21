@@ -471,6 +471,26 @@
       "states": true,
       "after": "P2.7U",
       "why": "public /q/** pages th/en + 09 QR rows + TablePanel QR (P2.7U deliverables)"
+    },
+    {
+      "id": "p3.4u-offline",
+      "wo": "p3.4u",
+      "pages": [
+        "register",
+        "shifts",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "after": "P3.4U",
+      "why": "offline 19ง states (P3.4U · fresh browser context each · flag on via updatePosOfflineEnabled, restored): offline-sale/queue/tenders/sync-back/slip/lock-pin · Shifts offline-rejected/close-blocked · settings-offline-live"
     }
   ]
 }
