@@ -188,6 +188,8 @@ export type BillDetail = {
   timeline: { time: string; text: string; kind?: BillTimelineKind; params?: Record<string, string | number | boolean | null> }[];
   can: { void: boolean; refund: boolean; reprint: boolean };
   voidBlockedReason?: BillVoidBlockedReason;
+  /** POS P3-SKEL ▸ R7: สลิปโอนที่แนบ (หลักฐาน · ไม่มีผลเงิน) — thumbUrl null (ลิงก์ลงนามออกตอนกดดู) ◂ */
+  slips?: { id: string; status: "UPLOADED" | "CONFIRMED" | "REJECTED"; thumbUrl: string | null }[];
 };
 export type BillDetailResult = { ok: true; bill: BillDetail } | BillsRefusal;
 

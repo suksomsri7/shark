@@ -1192,3 +1192,116 @@ model PosCreditAccount {
   @@index([tenantId])
 }
 // ◂ POS P3.6
+
+// ═══════════════════ POS P3-SKEL ▸ โครงเชื่อมภายนอก (P3.1–3.3 · P3.10 · P3.11 · มติ §10) — ตารางใหม่ล้วน 4 ตาราง · สถานะเป็น TEXT · ไม่มี FK (id หลวมแบบ PosSale) ═══════════════════
+// migration 20261218100000_pos_p3skel (CREATE เท่านั้น) · ผู้เขียนเดียวต่อตาราง: creds = pos/integration-creds.ts · สลิป = pos/payment-slip.ts · agent/งานพิมพ์ = pos/print-relay.ts
+// PosIntegrationCredential = ค่าที่เจ้าของวางจากแพลตฟอร์ม/ผู้ให้บริการ (K2) · ค่าลับอยู่ใน secretBox (AES-256-GCM · กุญแจ env POS_CREDENTIALS_KEY · pos/secret-box.ts)
+//   publicFields = ค่าที่ไม่ลับ (รหัสร้าน/สาขาบนแพลตฟอร์ม) · secretNames = ชื่อฟิลด์ลับที่กรอกแล้ว (ไม่มีค่า) · scopeKey = channelId หรือ "system" (unique ต่อ kind/provider/ขอบเขต)
+model PosIntegrationCredential {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String // AppSystem.id (type POS)
+  unitId          String // BusinessUnit.id ของช่องทาง/ผู้บันทึก
+  channelId       String? // SalesChannel.id (kind PLATFORM) · null = ระดับระบบ (SLIP_VERIFY/ETAX)
+  scopeKey        String
+  kind            String // "PLATFORM" | "SLIP_VERIFY" | "ETAX"
+  provider        String // LINEMAN GRAB SHOPEE LAZADA TIKTOK · SLIPOK EASYSLIP … · INET LECEIPT …
+  publicFields    Json     @default("{}")
+  secretBox       String? // "b64(iv).b64(tag).b64(cipher)" — ห้ามมีค่าลับดิบในคอลัมน์ใด
+  secretNames     String[] @default([])
+  status          String   @default("DRAFT") // "DRAFT" | "COMPLETE" (ครบทุกฟิลด์ที่จำเป็น)
+  updatedByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, kind, provider, scopeKey])
+  @@index([tenantId, systemId, unitId])
+}
+
+// PosPaymentSlip = สลิปโอนที่แนบเป็นหลักฐาน (R6–R10) · ไฟล์ส่วนตัว (FileAsset t/<ร้าน>/private/…) · ไม่มีผลเงิน
+//   เป้าหมายอย่างเดียว: (saleId + paymentId ของแถว TRANSFER/PROMPTPAY) หรือ intentId (ใบขอรับเงิน PROMPTPAY_STATIC ที่รออยู่)
+//   ลบไฟล์เมื่อถึง purgeAfter (createdAt + slipRetentionDays · ค่าปริยาย 1,825 วัน · ขั้นต่ำ 90) แล้วตั้ง fileId = null · แถวคงไว้เป็นหลักฐาน (W19)
+model PosPaymentSlip {
+  id                String    @id @default(cuid())
+  tenantId          String
+  systemId          String
+  unitId            String
+  saleId            String?
+  paymentId         String?
+  intentId          String?
+  fileId            String? // FileAsset.id · null = ยังอัปไม่เสร็จ หรือไฟล์ถูกลบตามอายุเก็บแล้ว
+  contentType       String?
+  bytes             Int?
+  sha256            String? // fix1 H3: sha256 hex ของไฟล์ — รูปเดิมซ้ำในร้าน = SLIP_DUPLICATE (migration 20261218100100_pos_p3skel_slip_hash)
+  status            String    @default("UPLOADED") // "UPLOADED" | "CONFIRMED" | "REJECTED"
+  verifiedVia       String? // "MANUAL" | "PROVIDER" | null
+  provider          String?
+  providerRef       String?
+  transRef          String? // เลขอ้างอิงธนาคาร · ไม่ซ้ำในร้าน (SLIP_DUPLICATE)
+  amountSatang      Int?
+  note              String?
+  idempotencyKey    String
+  createdByUserId   String
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  rejectReason      String?
+  purgeAfter        DateTime
+  purgedAt          DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, transRef])
+  @@unique([tenantId, sha256])
+  @@index([tenantId, saleId])
+  @@index([tenantId, intentId])
+  @@index([purgeAfter])
+}
+
+// PosPrintAgent = ตัวช่วยพิมพ์ LAN (R13 · มติ 6) — สคริปต์ tools/pos-print-agent/agent.mjs บนเครื่องในร้าน ต่อออกมาหาเรา (outbound) ·
+//   tokenHash = sha256 hex ของโทเคน (โทเคนแสดงครั้งเดียวตอนลงทะเบียน) · printers [{name, host, port}] = เครื่องพิมพ์ ESC/POS พอร์ต 9100 ใน LAN
+model PosPrintAgent {
+  id              String    @id @default(cuid())
+  tenantId        String
+  systemId        String
+  unitId          String
+  name            String
+  tokenHash       String    @unique
+  printers        Json      @default("[]")
+  createdByUserId String
+  lastSeenAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId, unitId])
+}
+
+// PosPrintJob = งานพิมพ์ที่หน้าขายส่งผ่าน relay (ไบต์ ESC/POS ที่เรนเดอร์ในเบราว์เซอร์แล้ว ≤ 256 KB) · QUEUED → SENT (แจกครั้งเดียว) → DONE/FAILED · หมดอายุ 10 นาที = EXPIRED
+//   bytes ถูกล้างเมื่อจบงาน (DONE/FAILED/EXPIRED) — ใบเสร็จมีข้อมูลลูกค้า ไม่เก็บนานกว่างาน
+model PosPrintJob {
+  id              String    @id @default(cuid())
+  tenantId        String
+  systemId        String
+  unitId          String
+  agentId         String
+  deviceCode      String
+  target          String // "kitchen" | "receipt"
+  status          String    @default("QUEUED") // "QUEUED" | "SENT" | "DONE" | "FAILED" | "EXPIRED"
+  bytes           Bytes?
+  byteLength      Int
+  attempts        Int       @default(0)
+  error           String?
+  idempotencyKey  String
+  createdByUserId String
+  expiresAt       DateTime
+  sentAt          DateTime?
+  doneAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([agentId, status, createdAt])
+  @@index([status, expiresAt])
+}
+// ◂ POS P3-SKEL
