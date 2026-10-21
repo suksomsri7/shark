@@ -1955,6 +1955,12 @@ async function runDb() {
       await mkI("x", { kind: "PROMPTPAY_STATIC", amountSatang: 7777, status: "PENDING", createdAt: D2 });
       const id = `pi_qc3s${RAND}b`;
       RCI.b = await P.posPaymentIntent.create({ data: { id, tenantId: T, unitId: U.B, systemId: S.POS, idempotencyKey: `${KEY_PREFIX}-rc-b`, kind: "PROMPTPAY_BEAM", amountSatang: 8888, status: "PAID", confirmedVia: "WEBHOOK", paidAt: D1, createdAt: D1, expiresAt: new Date(D1.getTime() + 15 * MIN) } });
+      // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (fix1 H1: หลักฐานสลิปต้องผูกใบขอรับเงินเดียวกัน + ยอดตรง — สลิป CONFIRMED ยอดไม่ตรงบนใบ m + สลิป CONFIRMED บนแถวชำระของบิล ST2 (ไม่ผูกใบ) ⇒ m ยังต้องตรวจ) ◂
+      if (MODEL("posPaymentSlip")) {
+        const slipFx = (k: string, d: Any) => MODEL("posPaymentSlip").create({ data: { tenantId: T, systemId: S.POS, unitId: U.A, status: "CONFIRMED", verifiedVia: "MANUAL", idempotencyKey: `${KEY_PREFIX}-rcs-${k}`, createdByUserId: uid("STAFF"), confirmedByUserId: uid("MGR"), confirmedAt: D1, purgeAfter: new Date(Date.now() + 1825 * DAY), ...d } });
+        await slipFx("m-amt", { intentId: RCI.m.id, amountSatang: 100 });
+        await slipFx("m-sale", { saleId: B.ST2!.id, paymentId: B.ST2!.paymentId, amountSatang: 2222 });
+      }
     } catch (e) {
       console.log(`  ⚠️  (fixture) ใบขอรับเงินของรายงาน: ${(e as Error).message.slice(0, 120)}`);
     }
@@ -1993,7 +1999,7 @@ async function runDb() {
           p.push(`ไม่มีแถว ${k}`);
           continue;
         }
-        if (row.flag !== flag) p.push(`${k}.flag ${row.flag} (คาด ${flag})`);
+        if (row.flag !== flag && !(k === "m" && row.flag === "AMOUNT_MISMATCH")) p.push(`${k}.flag ${row.flag} (คาด ${flag})`); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (fix1 H1: m = NEEDS_CHECK หรือ AMOUNT_MISMATCH) ◂
         if (row.amountSatang !== RCI[k].amountSatang) p.push(`${k}.amountSatang ${row.amountSatang}`);
         for (const key of ["date", "kind", "status", "confirmedVia", "lateWebhook", "saleId", "receiptNo", "beamChargeId", "slipStatus"]) if (!(key in row)) p.push(`${k} ไม่มีคีย์ ${key}`);
       }
