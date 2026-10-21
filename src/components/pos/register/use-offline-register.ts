@@ -101,6 +101,8 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
         if (snap.userId !== userId) await forgetOfflineUnlock(d);
         setSnapshot(null);
       } else setSnapshot(snap?.snapshot ?? null);
+      // fix1 F3: ปิดธง = ล้างตัวตรวจ PIN ออฟไลน์เสมอ (มี snapshot หรือไม่ก็ตาม)
+      if (!enabled) await forgetOfflineUnlock(d);
       setQueue(q);
       setSynced(s);
       setHolder(await offlineUnlockHolder(d));
@@ -144,6 +146,8 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
       }
       if (body?.code === "OFFLINE_DISABLED" || body?.code === "DEVICE_REVOKED" || body?.code === "DEVICE_NOT_FOUND") {
         await wipeSnapshot(d);
+        await forgetOfflineUnlock(d); // fix1 F3: เครื่องถูกเพิกถอน/ไม่พบ/ปิดธง = ล้างตัวตรวจ PIN ออฟไลน์ด้วย
+        setHolder(null);
         setSnapshot(null);
       }
       snapFails.current += 1;
