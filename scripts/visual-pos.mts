@@ -1485,7 +1485,9 @@ if (DRY) {
       console.log(
         "  P3.4U: fixture — ธง settings.pos.offline.enabled เปิด (updatePosOfflineEnabled · คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ) · " +
           `ต่อสถานะลบ snapshot ของเครื่องรอบนี้ที่ออกภายใน 2 นาที (เพดาน 1 ใบ/60 วิ) · offline-rejected/settings-offline-live: snapshot + บิลราคาปลอม 1 ใบ (syncOfflineSales → REJECTED · ทิ้งตอนเก็บกวาด) · ` +
-          "offline-sync-back = บิลจริง 1 ใบในกะของรอบ · offline-close-blocked กั้น POST /api/pos/sync ด้วย request interception (ตอบ results ว่าง)",
+          "offline-sync-back = บิลจริง 1 ใบในกะของรอบ · offline-close-blocked กั้น POST /api/pos/sync ด้วย request interception (ตอบ results ว่าง) · " +
+          "fix2: ต่อเน็ตกลับ (sync-back · close-blocked) รอ ≥ 62 วิ หลัง snapshot ตอนโหลด (หน้าดึงซ้ำเมื่อออนไลน์ — เลี่ยง 429) · slip คงออฟไลน์ · " +
+          "console ERR_INTERNET_DISCONNECTED/Failed to fetch ของ same-origin กรองเฉพาะช่วงที่ harness ตัดเน็ตเอง (นับในบรรทัดภาพ \"ออฟไลน์กรองแล้ว n\")",
       );
     }
     // POS P3.5U ▸ มติ 10 ◂
@@ -6921,11 +6923,44 @@ const P34U = {
 };
 const p34uCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: DEVICE_ID });
 const P34U_DB = () => `shark-pos-off:${SYS}:${unitId}`;
-/** เพดานอัตรา snapshot: ลบใบของเครื่องรอบนี้ที่ออกภายใน 2 นาที (ยกเว้นใบที่บิล fixture อ้าง) */
+/**
+ * เพดานอัตรา snapshot (1 ใบ/เครื่อง/60 วิ ของ S — ไม่แตะกฎ): ก่อนแต่ละภาพ ลบใบของเครื่องรอบนี้ที่ออกภายใน 2 นาที ⇒ การดึงตอนโหลดหน้าของภาพนี้ได้ 200 ·
+ * fix2: ไม่ยกเว้นใบของ fixture อีกแล้ว (ใบนั้นทำให้สถานะแรกได้ 429) — ปลอดภัยเพราะบิลของภาพก่อน ๆ ตายไปกับ context หรือซิงก์จบแล้ว และหลักฐานราคาของ
+ * แถวคิวผู้จัดการถูกแช่ไว้ใน payload ตั้งแต่ครั้งแรก · ห้ามลบระหว่างภาพ: บิลที่ยังไม่ซิงก์ต้องมี snapshot ของตัวเอง (ไม่มี = SNAPSHOT_UNKNOWN)
+ */
 async function p34uClearSnapRate(): Promise<void> {
-  await prisma.posOfflineSnapshot.deleteMany({
-    where: { tenantId: T.tenantId, unitId, deviceId: DEVICE_ID, issuedAt: { gt: new Date(Date.now() - 120_000) }, ...(P34U.snapHash ? { hash: { not: P34U.snapHash } } : {}) },
-  });
+  await prisma.posOfflineSnapshot.deleteMany({ where: { tenantId: T.tenantId, unitId, deviceId: DEVICE_ID, issuedAt: { gt: new Date(Date.now() - 120_000) } } });
+}
+/**
+ * fix2 ▸ สถานะเครือข่ายต่อภาพ (รีเซ็ตทุกงานในลูปหลัก): offline = ช่วงที่ harness ตัดเน็ตของ context เอง · suppressed = จำนวน console error ที่กรองในช่วงนั้น ·
+ * snapAt = เวลาที่ snapshot ของภาพนี้ลง IndexedDB (การดึงตอนโหลดหน้า)
+ */
+const P34U_NET = { offline: false, suppressed: 0, snapAt: 0 };
+/** ตัด/ต่อเน็ตของหน้า + เปิด/ปิดช่วงกรอง — ต่อกลับ: ปิดช่วงกรองหลัง 1 วิ (คำขอที่ล้มตอนออฟไลน์รายงานช้าได้) */
+async function p34uOffline(page: Any, on: boolean): Promise<void> {
+  if (on) {
+    P34U_NET.offline = true;
+    await page.setOfflineMode(true);
+    return;
+  }
+  await page.setOfflineMode(false);
+  await sleep(1000);
+  P34U_NET.offline = false;
+}
+/** console error ที่กรองได้: เฉพาะช่วงที่ harness ตัดเน็ตเอง · เฉพาะ ERR_INTERNET_DISCONNECTED / Failed to fetch · เฉพาะทรัพยากร same-origin (หรือไม่มี URL) */
+function p34uSuppress(txt: string, url: string): boolean {
+  if (!P34U_NET.offline || !/ERR_INTERNET_DISCONNECTED|Failed to fetch/.test(txt)) return false;
+  if (url && !url.startsWith(BASE)) return false;
+  P34U_NET.suppressed += 1;
+  return true;
+}
+/**
+ * fix2 ▸ ก่อนต่อเน็ตกลับ: หน้าขายดึง snapshot ใหม่ทันทีเมื่อกลับมาออนไลน์ (พฤติกรรมของ product — ไม่แก้) ⇒ ต้องห่างจากการดึงตอนโหลดหน้า ≥ 60 วิ
+ * ไม่งั้น S ตอบ 429 (console error) · รอถึง snapAt + 62 วิ
+ */
+async function p34uSpaceBeforeOnline(): Promise<void> {
+  const wait = P34U_NET.snapAt ? P34U_NET.snapAt + 62_000 - Date.now() : 0;
+  if (wait > 0) await sleep(wait);
 }
 async function ensureP34uFixture(): Promise<void> {
   if (P34U.done || P34U.error) return;
@@ -7057,7 +7092,8 @@ async function p34uWaitIdb(page: Any, what: "snapshot" | "unlock", why: string, 
 async function p34uCartThenOffline(page: Any, device: Device): Promise<void> {
   await addCart3(page, device, true);
   await p34uWaitIdb(page, "snapshot", "เครื่องไม่ได้ snapshot ราคา (POST /api/pos/sync/snapshot) ภายใน 20 วิ — ธงออฟไลน์/เครื่อง/เพดานอัตรา?");
-  await page.setOfflineMode(true);
+  P34U_NET.snapAt = Date.now();
+  await p34uOffline(page, true);
   await visibleEl(page, tid("pos-reg-offline-live-banner"), 0, 10_000).catch(() => {
     throw new StepError("ตัดเน็ตแล้วไม่ขึ้นแถบขายออฟไลน์ (pos-reg-offline-live-banner)");
   });
@@ -7137,8 +7173,8 @@ async function runP34uState(page: Any, state: P34uKey, device: Device): Promise<
     await p34uCartThenOffline(page, device);
     await p34uPay(page, device);
     await p34uNext(page);
-    await page.setOfflineMode(false);
-    await sleep(800);
+    await p34uSpaceBeforeOnline();
+    await p34uOffline(page, false);
     if ((await p34uIdb(page, "queued")) !== 1) throw new StepError("คิวในเครื่องไม่ใช่ 1 บิลหลังกลับมาออนไลน์ (ซิงก์หลุดการกั้น?)");
     await page.goto(`${BASE}${p34uPath(state)}`, { waitUntil: "networkidle2", timeout: 60_000 });
     await visibleEl(page, tid("pos-shift-close-offline-blocked"), 0, 15_000).catch(() => {
@@ -7170,7 +7206,7 @@ async function runP34uState(page: Any, state: P34uKey, device: Device): Promise<
       await sleep(1500);
       if ((await p34uIdb(page, "unlock")) === true) throw new StepError(`${userKey} ไม่ใช่ STAFF แต่มีตัวตรวจ PIN ออฟไลน์ใน IndexedDB`);
     }
-    await page.setOfflineMode(true);
+    await p34uOffline(page, true);
     await visibleEl(page, tid("pos-reg-offline-live-banner"), 0, 10_000);
     await clickEl(page, tid(device === "mobile" ? "pos-lock-now-mobile" : "pos-lock-now"));
     await visibleEl(page, tid("pos-lock-screen"), 0, 10_000);
@@ -7208,7 +7244,7 @@ async function runP34uState(page: Any, state: P34uKey, device: Device): Promise<
     if (/\/r\//.test(doc)) probs.push("มีลิงก์/QR /r/");
     if (/ใบกำกับภาษีอย่างย่อ|ABB/.test(doc.replace(/ใบรับเงินชั่วคราว — รอออกเลขจริง/g, ""))) probs.push("มีคำว่าใบกำกับภาษีอย่างย่อ");
     if (probs.length) throw new StepError(`สลิปออฟไลน์: ${probs.join(" · ")}`);
-    await page.setOfflineMode(false);
+    // fix2: คงออฟไลน์ (สลิปเป็น HTML ในตัว) — ต่อเน็ตกลับ = หน้าดึง snapshot ซ้ำภายใน 60 วิ = 429
     await page.setContent(doc, { waitUntil: "load" });
     return;
   }
@@ -7222,8 +7258,9 @@ async function runP34uState(page: Any, state: P34uKey, device: Device): Promise<
     });
     return;
   }
-  // offline-sync-back
-  await page.setOfflineMode(false);
+  // offline-sync-back (fix2: เว้น ≥ 60 วิ จาก snapshot ตอนโหลด ก่อนต่อเน็ต — บิลจริง 1 ใบต่อภาพเหมือนเดิม)
+  await p34uSpaceBeforeOnline();
+  await p34uOffline(page, false);
   await page.waitForFunction((sel: string) => document.querySelector(sel)?.getAttribute("data-state") === "done", { timeout: 45_000 }, tid("pos-reg-offline-sync-strip")).catch(() => {
     throw new StepError("กลับมาออนไลน์แล้วแถบซิงก์ไม่ถึง \"ซิงก์แล้ว\" ภายใน 45 วิ (pos-reg-offline-sync-strip data-state=done)");
   });
@@ -9549,6 +9586,7 @@ try {
         const v = job.v;
         // POS P3.4U ▸ มติ 11: สถานะออฟไลน์ = browser context ใหม่ (IndexedDB/คิวไม่ข้ามสถานะ) — ปิดหลังถ่าย ◂
         const ctx34 = isP34uState(job.state) ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
+        Object.assign(P34U_NET, { offline: false, suppressed: 0, snapAt: 0 }); // POS P3.4U fix2 ▸ สถานะเครือข่ายต่อภาพ ◂
         const page = ctx34 ? await ctx34.newPage() : await browser.newPage();
         await pinDevice(
           page,
@@ -9584,6 +9622,7 @@ try {
           // POS P2.12U ▸ fix1 F7: "Failed to load resource" ต่อท้าย URL ที่ล้ม (m.location().url) — บรรทัดสถานะบอกได้เลยว่าไฟล์ไหน ◂
           if (m.type() === "error") {
             const txt = String(m.text());
+            if (isP34uState(job.state) && p34uSuppress(txt, String(m.location?.()?.url ?? ""))) return; // POS P3.4U fix2 ▸ ช่วงตัดเน็ตของ harness เท่านั้น ◂
             const at = /Failed to load resource/.test(txt) ? String(m.location?.()?.url ?? "").replace(BASE, "") : "";
             consoleErrors.push(at ? `${txt.slice(0, 120)} @ ${at.slice(0, 200)}` : txt.slice(0, 160));
           }
@@ -9816,9 +9855,9 @@ try {
         }
         const ok = statusOk && !stepError && (!judged || (consoleErrors.length === 0 && !ov.over && http5xx.length === 0));
         if (!ok) failures++;
-        shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
+        shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ...(isP34uState(job.state) ? { offlineSuppressed: P34U_NET.suppressed } : {}) /* POS P3.4U fix2 ◂ */, ok });
         console.log(
-          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}${httpErrors.length ? ` · 4xx ${httpErrors.length}: ${httpErrors[0]}` /* POS P2.12U ▸ fix1 F7 ◂ */ : ""}` : ""} → ${file}${pdfNote /* POS P2.12U ▸ pdf probe ◂ */}`,
+          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${isP34uState(job.state) && P34U_NET.suppressed ? ` · ออฟไลน์กรองแล้ว ${P34U_NET.suppressed}` /* POS P3.4U fix2 ◂ */ : ""}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}${httpErrors.length ? ` · 4xx ${httpErrors.length}: ${httpErrors[0]}` /* POS P2.12U ▸ fix1 F7 ◂ */ : ""}` : ""} → ${file}${pdfNote /* POS P2.12U ▸ pdf probe ◂ */}`,
         );
         await page.close();
         await ctx34?.close().catch(() => undefined); // POS P3.4U ◂
