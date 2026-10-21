@@ -3,7 +3,8 @@
 // reportIntentReconcile: ใบขอรับเงิน (PosPaymentIntent) สถานะ PAID/CONSUMED ของสาขานี้ ในช่วงวันไทย [from, to] (รวมปลาย · วัน = วันไทยของ createdAt)
 //   days = ต่อ (วัน, kind): webhookPaid · manualPaid · lateWebhook · paidNotConsumed · consumed · amountSatang
 //   rows = ต่อใบ + flag ตามลำดับ REFUND_NEEDED (PAID แต่ไม่มีบิล — ต้องคืนเงิน) > LATE (webhook มาหลังหมดเวลา) >
-//          NEEDS_CHECK (ยืนยันมือโดยไม่มีสลิปที่ผู้จัดการยืนยัน — ไม่มีหลักฐานธนาคาร) > OK
+//          SALE_REVERSED (บิลถูกยกเลิก/คืนเงินภายหลัง · fix1 H1) > AMOUNT_MISMATCH (สลิปยืนยันของใบนี้ยอดไม่ตรง · fix1 H1) >
+//          NEEDS_CHECK (ยืนยันมือโดยไม่มีสลิป CONFIRMED ที่ผูกใบนี้และยอดตรง — ไม่มีหลักฐานธนาคาร) > OK
 // reportIntentReconcileCsv: หัวตรึง date,intentId,kind,status,confirmedVia,lateWebhook,amountSatang,receiptNo,beamChargeId,slipStatus,flag (ไม่มีข้อมูลลูกค้า)
 // importBeamSettlement: โครง — NOT_CONFIGURED จนกว่าเจ้าของส่งไฟล์ settlement ตัวอย่างของ Beam (รูปคอลัมน์ยังไม่รู้ · W4/W20) — ไม่เขียนอะไร
 // 🔴 fact promptpayReconcile ใน pos-integrations.ts คง false (มติ §10-9) · สิทธิ์ pos.report.view ที่สาขา
@@ -13,7 +14,8 @@ import { prisma } from "./db";
 
 export const RECONCILE_CSV_HEADER = "date,intentId,kind,status,confirmedVia,lateWebhook,amountSatang,receiptNo,beamChargeId,slipStatus,flag";
 export const RECONCILE_MAX_DAYS = 92;
-export type ReconcileFlag = "REFUND_NEEDED" | "LATE" | "NEEDS_CHECK" | "OK";
+/** fix1 H1: + SALE_REVERSED (บิลถูกยกเลิก/คืนเงินหลังรับเงิน) · AMOUNT_MISMATCH (สลิปที่ยืนยันแล้วของใบนี้ยอดไม่ตรง) */
+export type ReconcileFlag = "REFUND_NEEDED" | "LATE" | "SALE_REVERSED" | "AMOUNT_MISMATCH" | "NEEDS_CHECK" | "OK";
 export type ReconcileDay = { date: string; kind: string; webhookPaid: number; manualPaid: number; lateWebhook: number; paidNotConsumed: number; consumed: number; amountSatang: number };
 export type ReconcileRow = {
   intentId: string;
@@ -27,6 +29,9 @@ export type ReconcileRow = {
   receiptNo: string | null;
   beamChargeId: string | null;
   slipStatus: string | null;
+  /** fix1 H1: สถานะบิลตอนอ่านรายงาน (PAID · VOIDED · REFUNDED) + ยอดคืนสะสม — คืนเงินหลังกระทบยอดก็เห็น */
+  saleStatus: string | null;
+  saleRefundedSatang: number;
   flag: ReconcileFlag;
 };
 export type ReconcileCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "NOT_CONFIGURED" | "UNKNOWN";
@@ -83,15 +88,15 @@ export async function reportIntentReconcile(ctx: ReconcileCtx, actor: ReconcileA
     const saleIds = [...new Set(intents.map((i) => i.saleId).filter((x): x is string => !!x))];
     const intentIds = intents.map((i) => i.id);
     const [sales, slips] = await Promise.all([
-      saleIds.length ? prisma.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: saleIds } }, select: { id: true, receiptNo: true } }) : [],
+      saleIds.length ? prisma.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: saleIds } }, select: { id: true, receiptNo: true, status: true, refundedSatang: true } }) : [],
       intentIds.length || saleIds.length
         ? prisma.posPaymentSlip.findMany({
             where: { tenantId: ctx.tenantId, OR: [...(intentIds.length ? [{ intentId: { in: intentIds } }] : []), ...(saleIds.length ? [{ saleId: { in: saleIds } }] : [])] },
-            select: { intentId: true, saleId: true, status: true },
+            select: { intentId: true, saleId: true, status: true, amountSatang: true },
           })
         : [],
     ]);
-    const receipt = new Map(sales.map((s) => [s.id, s.receiptNo]));
+    const saleOf = new Map(sales.map((s) => [s.id, s]));
     const slipOf = (intentId: string, saleId: string | null): string | null => {
       let best: string | null = null;
       for (const s of slips) if (s.intentId === intentId || (saleId && s.saleId === saleId)) if (!best || (SLIP_RANK[s.status] ?? 0) > (SLIP_RANK[best] ?? 0)) best = s.status;
@@ -99,7 +104,14 @@ export async function reportIntentReconcile(ctx: ReconcileCtx, actor: ReconcileA
     };
     const rows: ReconcileRow[] = intents.map((i) => {
       const slipStatus = slipOf(i.id, i.saleId);
-      const flag: ReconcileFlag = i.status === "PAID" && !i.saleId ? "REFUND_NEEDED" : i.lateWebhook ? "LATE" : i.confirmedVia === "MANUAL" && slipStatus !== "CONFIRMED" ? "NEEDS_CHECK" : "OK";
+      // fix1 H1: หลักฐานธนาคาร = สลิป CONFIRMED ที่ผูก "ใบขอรับเงินนี้" และยอดตรงทุกสตางค์ (สลิปบนแถวชำระอื่นของบิล/ไม่ระบุยอด ไม่นับ)
+      const tied = slips.filter((s) => s.intentId === i.id && s.status === "CONFIRMED");
+      const evidence = tied.some((s) => s.amountSatang === i.amountSatang);
+      const mismatch = !evidence && tied.some((s) => s.amountSatang !== null && s.amountSatang !== i.amountSatang);
+      const sale = i.saleId ? saleOf.get(i.saleId) : undefined;
+      const reversed = !!sale && (sale.status === "VOIDED" || sale.status === "REFUNDED" || sale.refundedSatang > 0);
+      const flag: ReconcileFlag =
+        i.status === "PAID" && !i.saleId ? "REFUND_NEEDED" : i.lateWebhook ? "LATE" : reversed ? "SALE_REVERSED" : mismatch ? "AMOUNT_MISMATCH" : i.confirmedVia === "MANUAL" && !evidence ? "NEEDS_CHECK" : "OK";
       return {
         intentId: i.id,
         date: thaiDate(i.createdAt),
@@ -109,9 +121,11 @@ export async function reportIntentReconcile(ctx: ReconcileCtx, actor: ReconcileA
         lateWebhook: i.lateWebhook,
         amountSatang: i.amountSatang,
         saleId: i.saleId,
-        receiptNo: i.saleId ? (receipt.get(i.saleId) ?? null) : null,
+        receiptNo: sale?.receiptNo ?? null,
         beamChargeId: i.beamChargeId,
         slipStatus,
+        saleStatus: sale?.status ?? null,
+        saleRefundedSatang: sale?.refundedSatang ?? 0,
         flag,
       };
     });
