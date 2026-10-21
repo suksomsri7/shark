@@ -50,6 +50,7 @@ const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของเลน (มติ 10 12): ต้นไม้ที่ข้อสอบนี้เขียนเทียบ — ST1 สัญญา · ST4 ไฟล์ห้ามแตะ */
 const PIN = process.env.P36_PIN || "72669941";
+const LANE_PIN = process.env.P36_LANE_PIN || PIN; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: หมุดเลนแยกจากหมุดใบ — ข้อ "ไฟล์ห้ามแตะ" (ST4) เทียบ LANE_PIN · หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4 17 ต.ค.) ◂
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · X1 idempotency/เล่นซ้ำ · X2 ข้ามขอบเขต/ความเป็นส่วนตัว · X3 สิทธิ์ · X4 เงิน · X5 ผลข้างเคียงครบทุกทาง · "-" เชิงหน้าที่
@@ -250,11 +251,47 @@ function changedSincePin(): string[] | null {
   const untracked = gitStr(["ls-files", "--others", "--exclude-standard"]) ?? "";
   return [...new Set([...changed.split("\n"), ...untracked.split("\n")].map((x) => x.trim()).filter(Boolean))];
 }
-function addedRemoved(file: string): { added: string[]; removed: string[]; hunks: number } | null {
+/** // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1 · กัน W21): hunk ของไฟล์ร้อนเทียบหมุด แยกเป็น "ของใบนี้" (ทุกบรรทัดที่เพิ่มอยู่ในบล็อก `POS P3.6 ▸ … ◂` หรือมีเครื่องหมายนั้น) ·
+ *  "ของใบอื่น" (ทุกบรรทัดที่เพิ่มอยู่ในบล็อก `POS P<อื่น> ▸ … ◂` ของใบที่ merge ก่อน/หลัง — ไม่นับ ไม่ตรวจ · oracle ของใบนั้นตรวจเอง) · "หลงทาง" (บรรทัดไม่ว่างที่ไม่อยู่ในบล็อกใด = แดง) ·
+ *  บรรทัดที่ถูกลบนับเฉพาะใน hunk ของใบนี้ · probe ลบ: บรรทัดไม่ marked นอกบล็อกต้องทำให้ stray > 0 ◂ */
+function ownHunks(file: string): { own: { added: string[]; removed: string[] }[]; other: number; stray: number } | null {
   const d = gitStr(["diff", "-U0", PIN, "--", file]);
   if (d === null) return null;
-  const lines = d.split("\n").filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
-  return { added: lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1)), removed: lines.filter((l) => l.startsWith("-")).map((l) => l.slice(1)), hunks: (d.match(/^@@/gm) ?? []).length };
+  const OWN = /POS P3\.6 ▸/;
+  const ANY = /POS (P\d+(?:\.\d+)?U?|HF-[A-Z0-9]+|P\d+-[A-Z]+) ▸/;
+  const res = { own: [] as { added: string[]; removed: string[] }[], other: 0, stray: 0 };
+  let cur: { added: string[]; removed: string[]; ownL: number; otherL: number; strayL: number } | null = null;
+  let inOwn = false;
+  let inOther = false;
+  const flush = () => {
+    if (!cur) return;
+    if (cur.strayL > 0) res.stray += cur.strayL;
+    else if (cur.ownL > 0) res.own.push({ added: cur.added, removed: cur.removed });
+    else if (cur.otherL > 0) res.other++;
+    else if (cur.removed.some((l) => l.trim())) res.stray++; // hunk ที่มีแต่บรรทัดถูกลบ ไม่มีเครื่องหมายใด = หลงทาง
+    cur = null;
+  };
+  for (const l of d.split("\n")) {
+    if (l.startsWith("@@")) { flush(); cur = { added: [], removed: [], ownL: 0, otherL: 0, strayL: 0 }; continue; }
+    if (!cur || l.startsWith("+++") || l.startsWith("---")) continue;
+    if (l.startsWith("-")) { cur.removed.push(l.slice(1)); continue; }
+    if (!l.startsWith("+")) continue;
+    const b = l.slice(1);
+    cur.added.push(b);
+    const isOwn = OWN.test(b);
+    const isAny = ANY.test(b);
+    const opens0 = b.includes("▸") && !b.includes("◂"); // ▸ ไม่มี ◂ = เปิดบล็อกหลายบรรทัด · เครื่องหมายบรรทัดเดียว (▸ … ◂) ไม่เปลี่ยนสถานะ
+    if (isOwn && opens0) inOwn = true;
+    else if (isAny && opens0) inOther = true;
+    if (b.trim() !== "") {
+      if (inOwn || isOwn) cur.ownL++;
+      else if (inOther || isAny) cur.otherL++;
+      else cur.strayL++;
+    }
+    if (b.includes("◂") && !b.includes("▸")) { inOwn = false; inOther = false; } // ◂ ไม่มี ▸ = ปิดบล็อกหลายบรรทัด
+  }
+  flush();
+  return res;
 }
 const getPath = (o: Any, path: string[]): Any => path.reduce((a, k) => (isRecord(a) ? a[k] : undefined), o);
 const hasThai = (s: string) => /[฀-๿]/.test(s);
@@ -343,12 +380,14 @@ function runStatic(): void {
     for (const n of ["posCreditSettings", "posOrderMemberOnBill"]) if (!exportsName(ss, n)) p.push(`settings-shared ไม่ export ${n}`);
     // e) crm/index.ts: บล็อกเดียว POS P3.6 ท้ายไฟล์ · re-export ./pos-seam ล้วน · ไม่มีบรรทัดถูกลบ
     {
-      const ar = addedRemoved(F.crmIndex);
-      if (!ar) p.push("git diff crm/index.ts ไม่ได้");
+      const oh = ownHunks(F.crmIndex); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: เทียบ hunk ของใบนี้เท่านั้น · hunk ในบล็อกของใบอื่นไม่นับ · บรรทัดนอกบล็อก = แดง ◂
+      const ar = oh ? { added: oh.own.flatMap((h) => h.added), removed: oh.own.flatMap((h) => h.removed), hunks: oh.own.length } : null;
+      if (!oh || !ar) p.push("git diff crm/index.ts ไม่ได้");
+      else if (oh.stray) p.push(`crm/index.ts มีบรรทัดเปลี่ยนนอกบล็อกที่มีเครื่องหมาย ${oh.stray} จุด`);
       else if (!ar.added.length) p.push("crm/index.ts ยังไม่มีบล็อก POS P3.6");
       else {
         if (ar.removed.length) p.push(`crm/index.ts ลบบรรทัดเดิม ${ar.removed.length}`);
-        if (ar.hunks !== 1) p.push(`crm/index.ts hunk ${ar.hunks} (คาด 1 บล็อก)`);
+        if (ar.hunks !== 1) p.push(`crm/index.ts hunk ของใบนี้ ${ar.hunks} (คาด 1 บล็อก)`);
         if (!ar.added.some((l) => /POS P3\.6 ▸/.test(l)) || !ar.added.some((l) => /◂/.test(l))) p.push("crm/index.ts ไม่มีเครื่องหมาย // POS P3.6 ▸ … ◂");
         const code = stripComments(ar.added.join("\n")).split("\n").map((l) => l.trim()).filter(Boolean).join(" ");
         const stmts = code.split(";").map((s) => s.trim()).filter(Boolean);
@@ -360,7 +399,9 @@ function runStatic(): void {
     }
     // f) payments.ts: บล็อกมีเครื่องหมาย (ไม่มีบรรทัดถูกลบ)
     {
-      const ar = addedRemoved(F.crmPayments);
+      const oh = ownHunks(F.crmPayments); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1 ◂
+      const ar = oh ? { added: oh.own.flatMap((h) => h.added), removed: oh.own.flatMap((h) => h.removed) } : null;
+      if (oh && oh.stray) p.push(`crm/payments.ts มีบรรทัดเปลี่ยนนอกบล็อกที่มีเครื่องหมาย ${oh.stray} จุด`);
       if (ar && ar.added.length && (!ar.added.some((l) => /POS P3\.6 ▸/.test(l)) || ar.removed.filter((l) => l.trim()).length)) p.push("crm/payments.ts แก้นอกบล็อก // POS P3.6 ▸ … ◂ (มีบรรทัดถูกลบ/ไม่มีเครื่องหมาย)");
     }
     // g) reports · permission · scope · POS_MODELS
@@ -544,7 +585,7 @@ function runStatic(): void {
   {
     const p: string[] = [];
     for (const f of [F.regUi, F.shift]) {
-      const d = gitStr(["diff", "--stat", PIN, "--", f]);
+      const d = gitStr(["diff", "--stat", LANE_PIN, "--", f]); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: LANE_PIN ◂
       if (d === null) p.push(`git diff ${f} ไม่ได้`);
       else if (d.trim()) p.push(`${f} ถูกแก้ (${d.trim().split("\n").pop()})`);
       if (!ex(f)) p.push(`${f} หาย`);
