@@ -258,8 +258,13 @@ function flatKeys(o: unknown, pre = "", out = new Map<string, string>()): Map<st
   return out;
 }
 
-// ── git (หมุด = 72669941 · ฐานของใบ P3-SKEL) ──
-const BASE_REV = "72669941";
+// ── git — // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดคงที่ env-override แทน 72669941 + ฐานร่วมของ session/pos ที่คำนวณตอนรัน (บทเรียน p2.14 K3) ·
+//   PIN = ปลายสินค้าที่ผู้สร้างแตกกิ่ง (session/pos หลัง merge P3.4U + P3.6 S) — ข้อ "ใบนี้ต้องเพิ่ม …" (ไฟล์ที่ใบนี้เปลี่ยน → "use server"/'use client') ·
+//   LANE_PIN = หมุดเลน — ข้อ "ไฟล์ห้ามแตะ / ตรงฐาน / ไม่มี hunk นอกรอยต่อ" (ST1 REST · ST3 หมุด · account/** · รอยต่อ · schema เพิ่มอย่างเดียว) ·
+//   หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4) · 72669941 (ฐานออกแบบเดิม) ไม่มีข้อใดต้องใช้ ⇒ ตัดออก ◂
+const PIN = process.env.PSK_PIN || "71c49221"; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดใบ = 71c49221 · override ด้วย PSK_PIN) ◂
+const LANE_PIN = process.env.PSK_LANE_PIN || PIN; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดเลนแยกจากหมุดใบ · override ด้วย PSK_LANE_PIN) ◂
+const BASE_REV = LANE_PIN; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ชื่อเดิมคงไว้ให้ข้อความ chk · = หมุดเลน) ◂
 function gitBuf(args: string[]): Buffer | null {
   try {
     return execFileSync("git", ["-C", ROOT, ...args], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 });
@@ -268,85 +273,137 @@ function gitBuf(args: string[]): Buffer | null {
   }
 }
 const gitStr = (args: string[]) => gitBuf(args)?.toString("utf8") ?? null;
-let basesCache: string[] | null = null;
-/**
- * ฐานที่ยอมรับ (ไม่ซ้ำ · มีจริง): 72669941 · merge-base HEAD session/pos · merge-base HEAD origin/session/pos —
- * ผ่านเมื่อตรงฐานใดฐานหนึ่ง (ผู้สร้างเริ่มจากปลาย session/pos ที่รวมใบ P3 อื่นแล้วได้ · แบบเดียวกับ qc-pos-p3.7)
- */
-function bases(): string[] {
-  if (basesCache) return basesCache;
-  const out: string[] = [];
-  const add = (r: string | null | undefined) => {
-    const v = (r ?? "").trim();
-    if (v && !out.includes(v)) out.push(v);
-  };
-  add(gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`]));
-  add(gitStr(["merge-base", "HEAD", "session/pos"]));
-  add(gitStr(["merge-base", "HEAD", "origin/session/pos"]));
-  basesCache = out;
-  return out;
-}
-const baseOk = () => bases().length > 0;
-const nearBase = (): string => bases()[bases().length - 1] ?? BASE_REV;
-/** ไฟล์ตรงฐานใดฐานหนึ่งทุกไบต์ — null = ตรง · ไม่งั้นเหตุผล */
-function sameAsBase(path: string): string | null {
-  const raw = ex(path) ? readFileSync(join(ROOT, path)) : null;
-  let w = "";
-  for (const rev of bases()) {
-    const b = gitBuf(["show", `${rev}:${path}`]);
-    if (!raw && !b) return null;
-    if (raw && b && sha256(raw) === sha256(b)) return null;
-    w = !raw ? `${path} ถูกลบ` : !b ? `${path} เป็นไฟล์ใหม่ (ฐานไม่มี)` : `${path.split("/").slice(-2).join("/")} ต่างจากฐาน (${bases().map((r) => r.slice(0, 8)).join("/")})`;
-  }
-  return w || `${path}: ไม่มีฐานให้เทียบ`;
-}
-/** ไฟล์ที่เปลี่ยน (เทียบฐานที่ใกล้ที่สุด · รวมยังไม่ commit) + ไฟล์ใหม่ที่ยังไม่ track ใต้ path */
-function changedFiles(path: string, rev = nearBase()): string[] {
+/** หมุดอ่านได้จริง (commit มีในทรี) — // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: แทน bases() หลายฐาน) ◂ */
+const revOk = (rev: string) => !!(gitStr(["rev-parse", "--verify", "-q", `${rev}^{commit}`]) ?? "").trim();
+const baseOk = () => revOk(PIN) && revOk(LANE_PIN);
+/** ไฟล์ที่เปลี่ยน (เทียบหมุด · รวมยังไม่ commit) + ไฟล์ใหม่ที่ยังไม่ track ใต้ path */
+function changedFiles(path: string, rev: string): string[] {
   const a = (gitStr(["diff", "--name-only", rev, "--", path]) ?? "").split("\n").filter(Boolean);
   const b = (gitStr(["ls-files", "--others", "--exclude-standard", "--", path]) ?? "").split("\n").filter(Boolean);
   return [...new Set([...a, ...b])];
 }
-type Hunk = { oldStart: number; removed: string[]; added: { line: number; text: string }[] };
-function hunksOf(path: string, rev = BASE_REV): Hunk[] | null {
+type Hunk = { oldStart: number; removed: { line: number; text: string }[]; added: { line: number; text: string }[] };
+function hunksOf(path: string, rev: string): Hunk[] | null {
   const d = gitStr(["diff", "-U0", rev, "--", path]);
   if (d === null) return null;
   const out: Hunk[] = [];
   let cur: Hunk | null = null;
   let newLine = 0;
+  let oldLine = 0;
   for (const l of d.split("\n")) {
-    const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l);
+    const h = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,\d+)? @@/.exec(l);
     if (h) {
       cur = { oldStart: Number(h[1]), removed: [], added: [] };
       out.push(cur);
-      newLine = Number(h[2]) - 1;
+      oldLine = Number(h[1]) - (h[2] === "0" ? 0 : 1);
+      newLine = Number(h[3]) - 1;
       continue;
     }
     if (!cur || l.startsWith("+++") || l.startsWith("---")) continue;
-    if (l.startsWith("-")) cur.removed.push(l.slice(1));
+    if (l.startsWith("-")) cur.removed.push({ line: oldLine++, text: l.slice(1) });
     else if (l.startsWith("+")) cur.added.push({ line: newLine++, text: l.slice(1) });
   }
   return out;
 }
-/** ไฟล์ "รอยต่อ" — ผ่านเมื่อฐานใดฐานหนึ่ง: ไม่มีบรรทัดถูกลบ (ที่ไม่ว่าง) · ทุกบรรทัดที่เพิ่มอยู่ในรอยต่อ POS P3-SKEL */
-function markedOnly(path: string): string | null {
-  if (!ex(path)) return `${path} ไม่มี`;
-  const now = rd(path);
-  const mk = markedLines(now);
-  let best: string | null = `${path}: ไม่มีฐาน`;
-  for (const rev of bases()) {
-    const hk = hunksOf(path, rev);
-    if (!hk) continue;
-    const v: string[] = [];
-    for (const h of hk) {
-      const rm = h.removed.filter((l) => l.trim() !== "");
-      if (rm.length) v.push(`ลบ/แก้บรรทัดเดิม: ${short(rm[0]!.trim(), 60)}`);
-      const un = h.added.filter((a) => a.text.trim() !== "" && !mk.has(a.line));
-      if (un.length) v.push(`บรรทัดใหม่นอกรอยต่อ ${MARK}: ${short(un[0]!.text.trim(), 60)}`);
+/** // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1 · กัน W21 · พอร์ตจาก ownHunks() ของ qc-pos-p3.6 CD-P36-O1): เลขบรรทัด (0-based) ในรอยต่อของใบอื่น
+ *  `POS P<x> ▸ … ◂` / `POS HF-… ▸ … ◂` (บรรทัดเดียว หรือ ▸ ไม่มี ◂ = เปิดบล็อกจนบรรทัดที่มี ◂) — รอยต่อของใบนี้ (POS P3-SKEL) ไม่นับเป็น "ใบอื่น" ◂ */
+const OWN = /POS P3-SKEL ▸/;
+const ANY = /POS (P\d+(?:\.\d+)?[a-z]?U?|HF-[A-Z0-9]+|P\d+-[A-Z]+) ▸/;
+function otherMarkedLines(raw: string): Set<number> {
+  const out = new Set<number>();
+  const lines = raw.split("\n");
+  let open = false;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]!;
+    const m = ANY.exec(l);
+    if (m && !OWN.test(l) && !l.includes(MARK)) {
+      out.add(i);
+      if (!l.slice(m.index + m[0].length).includes("◂")) open = true;
+      continue;
     }
-    if (!v.length) return null;
-    best = `${path.split("/").pop()}: ${v.slice(0, 2).join(" · ")}`;
+    if (open) {
+      out.add(i);
+      if (l.includes("◂")) open = false;
+    }
   }
-  return best;
+  return out;
+}
+/** // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1): แยก hunk ของไฟล์ร้อนเทียบหมุด rev เป็น
+ *  own = มีบรรทัดในรอยต่อ POS P3-SKEL (markedLines ของไฟล์ปัจจุบัน — บล็อกที่เปิดก่อน hunk ก็นับ) ·
+ *  other = ทุกบรรทัดไม่ว่างที่เพิ่ม/ลบอยู่ในรอยต่อของใบอื่น (ไม่นับ ไม่ตรวจ · oracle ของใบนั้นตรวจเอง) ·
+ *  stray = บรรทัดไม่ว่างที่เพิ่ม (หรือถูกลบ ใน hunk ที่ไม่มีบรรทัดเพิ่มที่ marked) นอกรอยต่อใดเลย = แดง · blank = hunk ที่มีแต่บรรทัดว่าง ·
+ *  probe ลบ (A–C) ดูโน้ต §ORACLE-EDIT CD-SKEL-O1: (A) บรรทัดไม่ marked ⇒ stray · (B) บล็อกใบอื่นอย่างเดียว ⇒ other (ไม่แดง) · (C) บล็อกตัวเอง + บรรทัดหลง ⇒ stray ◂ */
+// ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1 · ผล delete-probe 21 ต.ค. บนทรี e (แก้ working tree ชั่วคราว · คืนด้วย git checkout · ไม่ commit) ·
+//   PSK_PIN=ea14ad29 (= HEAD ⇒ ไฟล์สินค้าตรงหมุด · baseline ST3 ✅) · ไฟล์ร้อน order.ts (ห้ามแตะ) · order-adapters.ts (รอยต่อ) · api/dispatch.ts (ST1)):
+//   (A) บรรทัดไม่ marked ⇒ ST3 แดง "order.ts … นอกรอยต่อ 1 บรรทัด" + "order-adapters.ts: บรรทัดใหม่นอกรอยต่อ" · ST1 แดง api/dispatch.ts ✔
+//   (B) บล็อก `POS P3.9 ▸ … ◂` + บรรทัดเดียว `POS HF-FU2 ▸ … ◂` อย่างเดียว ⇒ ST3 ✅ · ST1 ไม่นับ api/dispatch.ts · ST2 ยังแดง "ไม่มีบรรทัด API: platformDispatch ในรอยต่อ POS P3-SKEL" (ข้อความขาดบล็อกตัวเอง) ✔
+//   (C) บล็อก `POS P3-SKEL ▸ … ◂` + บรรทัดหลง ⇒ ST3 แดง ทั้งสองไฟล์ (stray = __probeStray) ✔ ·
+//   (C0 ตัวควบคุม) บล็อกตัวเองอย่างเดียว ⇒ order-adapters ไม่แดง + ST2 พบ API: platformDispatch · order.ts แดง "hunk ในรอยต่อ POS P3-SKEL — ไฟล์ห้ามแตะ" ✔ ◂
+type HunkClass = { own: Hunk[]; other: number; stray: number; straySample: string; blank: number; isNew: boolean; isGone: boolean };
+function ownHunks(path: string, rev: string): HunkClass | null {
+  const hk = hunksOf(path, rev);
+  if (!hk) return null;
+  const nowRaw = ex(path) ? rd(path) : "";
+  const oldRaw = gitStr(["show", `${rev}:${path}`]);
+  const res: HunkClass = { own: [], other: 0, stray: 0, straySample: "", blank: 0, isNew: oldRaw === null && ex(path), isGone: oldRaw !== null && !ex(path) };
+  const ownNow = markedLines(nowRaw);
+  const othNow = otherMarkedLines(nowRaw);
+  const ownOld = markedLines(oldRaw ?? "");
+  const othOld = otherMarkedLines(oldRaw ?? "");
+  for (const h of hk) {
+    const add = h.added.filter((a) => a.text.trim() !== "");
+    const rm = h.removed.filter((r) => r.text.trim() !== "");
+    if (!add.length && !rm.length) {
+      if (h.added.length || h.removed.length) res.blank++;
+      continue;
+    }
+    const strayAdd = add.filter((a) => !ownNow.has(a.line) && !othNow.has(a.line));
+    const strayRm = add.length ? [] : rm.filter((r) => !ownOld.has(r.line) && !othOld.has(r.line));
+    if (strayAdd.length || strayRm.length) {
+      res.stray += strayAdd.length + strayRm.length;
+      if (!res.straySample) res.straySample = (strayAdd[0]?.text ?? `ลบ: ${strayRm[0]!.text}`).trim();
+      continue;
+    }
+    if (add.some((a) => ownNow.has(a.line)) || rm.some((r) => ownOld.has(r.line))) res.own.push(h);
+    else res.other++;
+  }
+  return res;
+}
+/** ไฟล์ห้ามแตะ (LANE_PIN) — null = ตรงหมุดทุกไบต์ หรือต่างเฉพาะรอยต่อของใบอื่น · ไม่งั้นเหตุผล
+ *  // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: แทน sameAsBase หลายฐาน · hunk ของใบนี้/หลงทาง/บรรทัดว่าง = แดงเหมือนเดิม) ◂ */
+function sameAsBase(path: string, rev = LANE_PIN): string | null {
+  const raw = ex(path) ? readFileSync(join(ROOT, path)) : null;
+  const b = gitBuf(["show", `${rev}:${path}`]);
+  if (!raw && !b) return null;
+  if (raw && b && sha256(raw) === sha256(b)) return null;
+  const name = path.split("/").slice(-2).join("/");
+  if (!raw) return `${path} ถูกลบ`;
+  if (!b) return `${path} เป็นไฟล์ใหม่ (หมุด ${rev.slice(0, 8)} ไม่มี)`;
+  const c = ownHunks(path, rev);
+  if (!c) return `${name}: git diff ไม่ได้`;
+  if (c.own.length) return `${name} ต่างจากหมุด ${rev.slice(0, 8)} (hunk ในรอยต่อ ${MARK} ${c.own.length} — ไฟล์ห้ามแตะ)`;
+  if (c.stray) return `${name} ต่างจากหมุด ${rev.slice(0, 8)} (นอกรอยต่อ ${c.stray} บรรทัด: ${short(c.straySample, 60)})`;
+  if (c.blank) return `${name} ต่างจากหมุด ${rev.slice(0, 8)} (บรรทัดว่าง ${c.blank} hunk)`;
+  return null; // ต่างเฉพาะรอยต่อของใบอื่น
+}
+/** ไฟล์ "รอยต่อ" (LANE_PIN) — ผ่านเมื่อ: ไม่มีบรรทัดเดิมถูกลบ/แก้ใน hunk ของใบนี้ · ไม่มีบรรทัดที่เพิ่มนอกรอยต่อ POS P3-SKEL (รอยต่อของใบอื่นไม่นับ)
+ *  // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ownHunks — hunk ของใบอื่นข้าม · บรรทัดหลงทาง = แดง) ◂ */
+function markedOnly(path: string, rev = LANE_PIN): string | null {
+  if (!ex(path)) return `${path} ไม่มี`;
+  const c = ownHunks(path, rev);
+  if (!c) return `${path}: ไม่มีหมุด ${rev.slice(0, 8)}`;
+  const v: string[] = [];
+  if (c.isNew) v.push(`เป็นไฟล์ใหม่ (หมุด ${rev.slice(0, 8)} ไม่มี)`);
+  for (const h of c.own) {
+    const rm = h.removed.filter((l) => l.text.trim() !== "");
+    if (rm.length) v.push(`ลบ/แก้บรรทัดเดิม: ${short(rm[0]!.text.trim(), 60)}`);
+  }
+  if (c.stray) v.push(`บรรทัดใหม่นอกรอยต่อ ${MARK}: ${short(c.straySample, 60)}`);
+  return v.length ? `${path.split("/").pop()}: ${v.slice(0, 2).join(" · ")}` : null;
+}
+/** ไฟล์ใต้ path ที่ใบนี้แตะเทียบ LANE_PIN (ข้ามไฟล์ที่ต่างเฉพาะรอยต่อของใบอื่น) — // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1) ◂ */
+function touchedFiles(path: string, rev = LANE_PIN): string[] {
+  return changedFiles(path, rev).filter((f) => sameAsBase(f, rev) !== null);
 }
 
 // ═════════════════════════ ค่าคงที่ของสัญญา (ตารางชื่อ — ledger/wo-notes/pos-P3-SKEL-oracle.md) ═════════════════════════
@@ -520,16 +577,11 @@ async function runStatic(): Promise<void> {
       chk("ST1", false, `อ่าน git ${BASE_REV} ได้`, "ไม่มี commit ฐาน");
       return;
     }
-    let bestApi: string[] | null = null;
-    for (const rev of bases()) {
-      const a = changedFiles(`${POS_DIR}/api`, rev);
-      const b = changedFiles("src/app/api/v1/pos", rev);
-      const all = [...a, ...b];
-      if (!bestApi || all.length < bestApi.length) bestApi = all;
-    }
-    if (bestApi && bestApi.length) p.push(`ไฟล์ REST ของ POS เปลี่ยน: ${bestApi.slice(0, 3).join(",")}`);
+    // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ไฟล์ห้ามแตะ → LANE_PIN · ไฟล์ร้อน api/** ต่างเฉพาะรอยต่อของใบอื่น = ไม่นับ · hunk ของใบนี้/หลงทาง = แดง (touchedFiles → sameAsBase → ownHunks) ◂
+    const bestApi = [...touchedFiles(`${POS_DIR}/api`), ...touchedFiles("src/app/api/v1/pos")];
+    if (bestApi.length) p.push(`ไฟล์ REST ของ POS เปลี่ยน: ${bestApi.slice(0, 3).join(",")}`);
     const v1New = (gitStr(["ls-files", "--others", "--exclude-standard", "--", "src/app/api/v1"]) ?? "").split("\n").filter(Boolean);
-    const v1Add = (gitStr(["diff", "--name-only", "--diff-filter=A", nearBase(), "--", "src/app/api/v1"]) ?? "").split("\n").filter(Boolean);
+    const v1Add = (gitStr(["diff", "--name-only", "--diff-filter=A", LANE_PIN, "--", "src/app/api/v1"]) ?? "").split("\n").filter(Boolean); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: LANE_PIN) ◂
     if ([...v1New, ...v1Add].length) p.push(`ไฟล์ใหม่ใต้ src/app/api/v1/: ${[...v1New, ...v1Add].slice(0, 3).join(",")}`);
     for (const f of [F.platformRoute, F.jobsRoute, F.ackRoute]) if (!ex(f)) p.push(`${MISSING} ${f}`);
     chk("ST1", p.length === 0, "REST 48 op ตรงฐาน · route ใหม่ใต้ src/app/api/pos/", why(p));
@@ -630,35 +682,28 @@ async function runStatic(): Promise<void> {
       chk("ST3", false, `อ่าน git ${BASE_REV} ได้`, "ไม่มี commit ฐาน");
       return;
     }
-    const posBase = [...new Set(bases().flatMap((rev) => (gitStr(["ls-tree", "--name-only", `${rev}:${POS_DIR}/`]) ?? "").split("\n").filter(Boolean)))];
+    const posBase = (gitStr(["ls-tree", "--name-only", `${LANE_PIN}:${POS_DIR}/`]) ?? "").split("\n").filter(Boolean); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ไฟล์ห้ามแตะเทียบ LANE_PIN ฐานเดียว) ◂
     const posNow = existsSync(join(ROOT, POS_DIR)) ? readdirSync(join(ROOT, POS_DIR)) : [];
     const pinned = [...new Set([...posBase, ...posNow])].filter((f) => PIN_RE.test(f)).map((f) => `${POS_DIR}/${f}`);
     for (const f of [...pinned, ...PIN_FIXED]) {
-      const r = sameAsBase(f);
+      const r = sameAsBase(f); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: LANE_PIN · order.ts/outbox-consumers.ts ฯลฯ ต่างเฉพาะรอยต่อของใบอื่น = ไม่นับ · ของใบนี้/หลงทาง/บรรทัดว่าง = แดง) ◂
       if (r) p.push(r);
     }
-    const acc = changedFiles("src/lib/modules/account");
-    let accBest = acc;
-    for (const rev of bases()) {
-      const a = changedFiles("src/lib/modules/account", rev);
-      if (a.length < accBest.length) accBest = a;
-    }
+    const accBest = touchedFiles("src/lib/modules/account"); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: LANE_PIN + ownHunks (account/index.ts ไฟล์ร้อน) ◂
     if (accBest.length) p.push(`modules/account/** เปลี่ยน: ${accBest.slice(0, 2).join(",")}`);
     for (const f of [F.orderAdapters, F.deviceShared, F.minuteJobs, F.scope]) {
-      const r = markedOnly(f);
+      const r = markedOnly(f); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: LANE_PIN · รอยต่อของใบอื่นข้าม · บรรทัดหลงทาง = แดง) ◂
       if (r) p.push(r);
     }
     // prisma/schema เพิ่มอย่างเดียว
     for (const f of walk("prisma/schema", [], /\.prisma$/)) {
-      let ok = false;
-      for (const rev of bases()) {
-        const hk = hunksOf(f, rev);
-        if (hk && !hk.some((h) => h.removed.some((l) => l.trim() !== ""))) ok = true;
-      }
+      const hk = hunksOf(f, LANE_PIN); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: LANE_PIN ฐานเดียว · เพิ่มอย่างเดียว = ไม่มีบรรทัดไม่ว่างถูกลบ (เดิม)) ◂
+      const ok = !!hk && !hk.some((h) => h.removed.some((l) => l.text.trim() !== ""));
       if (!ok) p.push(`${f.split("/").pop()} ลบ/แก้บรรทัดเดิม (schema ต้องเพิ่มอย่างเดียว)`);
     }
     // "use server" / 'use client'
-    const changed = changedFiles("src").filter((f) => /\.(ts|tsx)$/.test(f) && ex(f));
+    // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ไฟล์ที่ "ใบนี้" เปลี่ยน → PIN (ไม่ย้ายตามหมุดเลน)) ◂
+    const changed = changedFiles("src", PIN).filter((f) => /\.(ts|tsx)$/.test(f) && ex(f));
     for (const f of changed) {
       const raw = rd(f);
       if (isUseServer(raw)) {
@@ -676,7 +721,7 @@ async function runStatic(): Promise<void> {
       if (/CHAT_CREDENTIALS_KEY/.test(stripComments(rd(f)))) p.push(`${f.split("/").pop()} ใช้ CHAT_CREDENTIALS_KEY`);
     }
     if (!rd(F.integrations).includes(PROMPTPAY_FACT)) p.push(`fact ${PROMPTPAY_FACT} เปลี่ยน (§10-9 facts คง false)`);
-    chk("ST3", p.length === 0, `หมุดเทียบ ${BASE_REV} (หรือ merge-base ของ session/pos) ครบ`, why(p, "ครบ "));
+    chk("ST3", p.length === 0, `หมุดเทียบ LANE_PIN ${LANE_PIN} (ใบ PIN ${PIN}) ครบ`, why(p, "ครบ "));
   });
 
   // SK1 SK2 บริสุทธิ์ (secret-box import ได้เฉพาะ node:crypto)
