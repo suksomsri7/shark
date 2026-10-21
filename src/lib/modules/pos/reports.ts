@@ -1787,7 +1787,7 @@ export async function reportCredit(ctx: ReportCtx, actor: RegisterActor, input: 
       by.set(pid, row);
     }
     for (const ids of chunks([...partyOfBill.keys()])) {
-      const back = await db.posSale.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, docType: "REFUND", refSaleId: { in: ids }, createdAt: { gte: r.start } }, select: { refSaleId: true, payments: { where: { type: "ON_ACCOUNT" }, select: { amountSatang: true } } } });
+      const back = await db.posSale.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, docType: "REFUND", refSaleId: { in: ids }, createdAt: { gte: r.start, lt: r.end } /* POS P3.6 ▸ F3 ◂ */ }, select: { refSaleId: true, payments: { where: { type: "ON_ACCOUNT" }, select: { amountSatang: true } } } });
       for (const x of back) {
         const row = by.get(partyOfBill.get(x.refSaleId ?? "") ?? "");
         if (row) row.refundedSatang += x.payments.reduce((t, y) => t + Math.abs(y.amountSatang), 0);
