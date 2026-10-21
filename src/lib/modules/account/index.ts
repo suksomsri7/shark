@@ -30,7 +30,7 @@ import {
 import { lineAmount, type LineInput } from "./totals";
 import { baht, familyCreditByInvoice } from "./service";
 // POS P3.6 ▸ วางบิล (เครดิตเทอม): ใบแจ้งหนี้ของบิล + ตัวอ่านภาพหนี้/เทอม/สถานะรับชำระ (service.ts · บล็อก POS P3.6) ◂
-import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty } from "./service";
+import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
@@ -1597,16 +1597,21 @@ export async function setPosLinkEnabled(
 // ═══════════════════ POS P3.6 ▸ วางบิล (เครดิตเทอม) ของลูกค้าองค์กร — โค้ดเลนบัญชีที่เลน POS เขียน (เพิ่มล้วน · owner line OP §ACCOUNT) ═══════════════════
 // POS ไม่รู้เลขบัญชี/ไม่เขียนแถวบัญชี: ส่ง partyId + วันครบกำหนด · อ่านภาพหนี้/เทอมผ่านที่นี่ (มติ 3 · CD-9)
 
-/** ผู้ติดต่อสมุดของบริษัท: partyId ก่อน (findOrCreateCustomerContact ลำดับเดิม) · ชื่อ = ผู้ซื้อที่กรอก หรือชื่อ Party · ภาษี/สาขา/ที่อยู่ = ของผู้ซื้อ (ใช้ตอนสร้างใหม่) */
+/**
+ * ผู้ติดต่อสมุดของบริษัท — CD-P36-F1 (R1 F1 High): ตาม **partyId เท่านั้น** (ensureAccountContact: ล็อกต่อ (สมุด, Party) · ไม่มี = สร้าง) ·
+ *   ห้ามถอยไปจับคู่ด้วยเลขภาษีของผู้ซื้อ (findOrCreateCustomerContact ข้อ 1) — ผู้ติดต่อเดิมเลขภาษีเดียวกันของ Party อื่นจะดูดใบแจ้งหนี้ ⇒ วงเงินรั่ว ·
+ *   เลขภาษี/สาขาของผู้ซื้อใช้ตอนสร้างใหม่ (ชนของ Party อื่น = ensureAccountContact สร้างโดยไม่ใส่เลขภาษี) และยังพิมพ์บนเอกสาร (สำเนาผู้ซื้อ)
+ */
 async function posCreditContact(
   ctx: GlCtx,
   partyId: string,
   buyer?: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null },
 ): Promise<string> {
   const name = buyer?.name?.trim() || (await crmPartyFacade.listBriefsByIds(ctx.tenantId, [partyId]))[0]?.name || "ลูกค้าองค์กร POS";
-  const c = await findOrCreateCustomerContact(
+  const tax = normTaxId(buyer?.taxId ?? null);
+  const c = await ensurePartyContact(
     { tenantId: ctx.tenantId, systemId: ctx.systemId },
-    { name, partyId, taxId: buyer?.taxId ?? null, branchCode: buyer?.branchCode || "00000", address: buyer?.address ?? null, email: buyer?.email ?? null, legalType: "COMPANY" },
+    { partyId, name, taxId: /^\d{13}$/.test(tax) ? tax : null, branchCode: buyer?.branchCode || "00000", email: buyer?.email ?? null, legalType: "COMPANY" },
   );
   return c.id;
 }

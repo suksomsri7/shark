@@ -7417,9 +7417,11 @@ export async function posCreditOpenDocs(
   if (!or.length) return { open: [], docRefIds: [] };
   const rows = await db.accountDocument.findMany({
     where: { systemId, OR: or },
-    select: { id: true, contactId: true, direction: true, status: true, voidedAt: true, refType: true, refId: true, grandTotal: true, paidTotal: true },
+    select: { id: true, docType: true, contactId: true, direction: true, status: true, voidedAt: true, refType: true, refId: true, grandTotal: true, paidTotal: true },
   });
-  const isOpen = (d: (typeof rows)[number]) => !!d.contactId && contacts.includes(d.contactId) && d.direction === "OUT" && (d.status === "AWAITING_PAYMENT" || d.status === "PARTIAL") && !d.voidedAt;
+  // CD-P36-F1 (a): ใบแจ้งหนี้ของบิลใน saleRefIds = ค้างของบริษัทนี้ "ไม่ว่าผูกผู้ติดต่อใด" (ใบที่เคยผูกผิดคนก่อนแก้ ก็ยังถูกนับ — วงเงินไม่รั่ว)
+  const refMatched = (d: (typeof rows)[number]) => d.docType === POS_CREDIT_DOC_TYPE && d.refType === EXTERNAL_SALE_REF_TYPE && !!d.refId && ids.includes(d.refId);
+  const isOpen = (d: (typeof rows)[number]) => ((!!d.contactId && contacts.includes(d.contactId)) || refMatched(d)) && d.direction === "OUT" && (d.status === "AWAITING_PAYMENT" || d.status === "PARTIAL") && !d.voidedAt;
   const openRows = rows.filter(isOpen);
   const credit = await familyCreditByInvoice(db, systemId, openRows.map((d) => d.id));
   return {
