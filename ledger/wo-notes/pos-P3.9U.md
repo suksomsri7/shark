@@ -108,3 +108,13 @@ Run 1 (87619d0f · /root/pos-runs/presubmit-shark-pos-p11-20261021T195043Z): sam
 - `--user owner` th (1440/1024/390) + `LOCALE=en` 1440: `reports-ai-panel-brief` · `reports-ai-panel-empty` · `reports-ai-panel-off` · `reports-anomalies-a11` · `settings-general-anomaly-a11` · `settings-ai-card-off` · `settings-ai-card-linked` · `settings-ai-brief-sheet` · `settings-ai-brief-sheet-invalid` (owner th 27 · en 9)
 - `--user cashier` th (3 sizes) + en 1440: `reports-ai-panel-refused` (th 3 · en 1)
 - New build needed (UI + action changed). Fixture writes on QC5: day-keyed bills `posqc-vis-p39u-*` (kept) · `settings.pos.ai` restored · 3 audit rows deleted · temp MANAGER membership `posqc-coffee-mb-p39u-mgr` deleted.
+
+## Fix round 1 (R1 MERGEABLE-AFTER-FIXES · controller B 21 Oct 21:2xZ) — done 21:28Z
+| item | commit | what |
+|---|---|---|
+| merge | 6b4825f3 | `origin/session/pos` 29bad9a4 (P3-SKEL S schema merged; shared Prisma client was regenerated 21:03Z ⇒ pre-commit F10.1 red on the old base) — new lane base **29bad9a4** |
+| F1 | 408ce3d3 | `reports/AiBriefPanel.tsx:84,117` + th/en `pos.ai.panel.seedDraftPo {date}` / `seedAsk {title, date}` — no brief lines/figures in the dock seed; AiDock unchanged |
+| N1 | c94b61d4 | `ai-panel-actions.ts:22,76-88` empty = no actionable line (soldOut · stock · anomalies with hit · proposals), any bill count; 0 bills drops only the ฿0 `sales` line · harness: brief = + A11 ×3 (actionable) · empty = park 86 marks + reorder points of at-risk items (stash `_qcP39uBefore.park`, restored after the shot/finally/signal; pending owner proposals ⇒ StepError) · spec §1/§2/§5/§6 |
+| F2 | 259308f4 | notes body pasted (this file) |
+Gates (head 259308f4 = typechecked · dirty 0): `qc-pos-p3.9` forced **48/48** (P39_LANE_PIN=29bad9a4 · SHARK_AI_MOCK=1) · `--no-db` **6/6** · `qc-pos-p1.6` **48/48** · `qc-pos-p1.18` **81/81** (ST7 ✅) · `visual-pos.mts p3.9u --states --dry` (iso · CI=1) th owner 27 · th cashier 3 · en owner 9 · en cashier 1 — rc 0 ×4 · typecheck exit 0 at 259308f4 (21:24–21:28Z). No pre-submit this round (ruling).
+Note: with the revised rule a day **with sales but no actionable line** shows "ยังไม่มีสรุปเช้า" (sales/top/peak lines hidden) — literal reading of "regardless of bill count"; say if sales-only days should show the brief instead.
