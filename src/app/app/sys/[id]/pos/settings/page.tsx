@@ -34,7 +34,7 @@ import { listStaffAccess } from "@/lib/staff/service"; // POS P3.9U ▸ CD-P39U-
 // POS P3.8U ▸ CD-P38U-1 · CD-P38U-10: แท็บ "บอร์ดงานและห้องทีม" — ค่าตั้งจากตัวอ่านบริสุทธิ์ · ชื่อบอร์ดจาก visibleBoardOptions ของผู้ดู ·
 //   ตัวเลือกห้อง (listRoomOptions) เจ้าของร้านเท่านั้น · ห้องที่ยังใช้อยู่ = liveChannelIds (id ล้วน) · K3.3 getIntegrations + P1.11 issueBoardId อ่านอย่างเดียว ◂
 import { BoardSettings } from "./BoardSettings";
-import { posBoardSettings, posTeamRoomSettings } from "@/lib/modules/pos/board-settings-shared";
+import { posBoardSettings, posTeamRoomSettings, type PosRoomRef } from "@/lib/modules/pos/board-settings-shared";
 import { receiptSettingsOf } from "@/lib/modules/pos/receipt-settings";
 import { visibleBoardOptions } from "@/lib/modules/kanban/links";
 import { getIntegrations } from "@/lib/modules/kanban/integrations";
@@ -133,7 +133,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           const visible = await visibleBoardOptions(tenantId, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions });
           const kanbanSystemId = kanbanIds[0] ?? null;
           const integ = kanbanSystemId ? await getIntegrations(tenantId, kanbanSystemId) : null;
-          const refs = [teamRoom.defaultRoom, ...Object.values(teamRoom.roomByUnit)].filter((r): r is NonNullable<typeof r> => !!r);
+          const refs = [teamRoom.defaultRoom, ...Object.values(teamRoom.roomByUnit)].filter((r): r is PosRoomRef => !!r);
           const liveRooms = refs.length ? await liveChannelIds(tenantId, refs.map((r) => r.channelId)) : [];
           const rooms = isOwner ? await listRoomOptions(tenantId, auth.user.id) : null;
           const multiMeeting = !!rooms && new Set(rooms.map((o) => o.meetingSystemId)).size > 1;

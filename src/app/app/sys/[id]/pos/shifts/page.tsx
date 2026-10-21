@@ -72,7 +72,11 @@ export default async function PosShiftsPage({ params, searchParams }: { params: 
     const recent = await prisma.posShift.findMany({ where: { tenantId, systemId: id, unitId }, orderBy: [{ openedAt: "desc" }, { id: "desc" }], take: 50, select: { id: true } });
     const byKey = new Map(recent.map((x) => [posBoardKeys.shift(x.id), x.id]));
     const cards = byKey.size ? await posCardsForKeys(tenantId, [...byKey.keys()]) : [];
-    shiftCards = Object.fromEntries(cards.flatMap((c) => (byKey.has(c.key) ? [[byKey.get(c.key)!, { cardNo: c.cardNo, href: c.href, completed: c.completed }]] : [])));
+    shiftCards = {};
+    for (const c of cards) {
+      const sid = byKey.get(c.key);
+      if (sid) shiftCards[sid] = { cardNo: c.cardNo, href: c.href, completed: c.completed };
+    }
   }
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
