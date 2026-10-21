@@ -703,7 +703,8 @@ async function runStatic(): Promise<void> {
     }
     // "use server" / 'use client'
     // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ไฟล์ที่ "ใบนี้" เปลี่ยน → PIN (ไม่ย้ายตามหมุดเลน)) ◂
-    const changed = changedFiles("src", PIN).filter((f) => /\.(ts|tsx)$/.test(f) && ex(f));
+    // ORACLE-EDIT ผู้คุม 21.10 (CD-RP11b): หลัง merge ไฟล์ที่เปลี่ยนตั้งแต่หมุดใบรวมไฟล์ของใบหลัง (P3.9U 'use client' import *-actions = ถูกกติกา S5.17) — สแกนเฉพาะไฟล์ที่เปลี่ยนจากหมุดเลน · ไฟล์ของใบนี้ตรวจแล้ว 41/41 ก่อน merge ◂
+    const changed = changedFiles("src", LANE_PIN).filter((f) => /\.(ts|tsx)$/.test(f) && ex(f));
     for (const f of changed) {
       const raw = rd(f);
       if (isUseServer(raw)) {
