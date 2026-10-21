@@ -469,6 +469,18 @@ registerMinuteJob({
   },
 });
 // ◂ POS P3.5
+// POS P3-SKEL ▸ R10 มติ §10-2 (W19): ลบไฟล์สลิปโอนที่ถึงอายุเก็บ (purgeAfter) — รายชั่วโมง · ไฟล์ก่อน แล้ว fileId = null (แถวคงไว้) · รันซ้ำ = 0 ·
+//   โหลด POS ตอนรันเท่านั้น (ไฟล์นี้ถูก import จาก route — ห้ามลากกราฟ POS ตอนโหลด)
+registerMinuteJob({
+  name: "pos.slip.purge",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now) => {
+    const { purgeExpiredSlips } = await import("@/lib/modules/pos/payment-slip");
+    await purgeExpiredSlips({ now });
+  },
+});
+// ◂ POS P3-SKEL
 
 function errorText(e: unknown): string {
   let s: string;
