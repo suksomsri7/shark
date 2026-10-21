@@ -6799,6 +6799,10 @@ async function runP35uState(page: Any, state: P35uKey, device: Device): Promise<
       await clickEl(page, tid("pos-lock-override-open"));
       await visibleEl(page, tid("pos-lock-override-sheet"), 0, 10_000);
       const own = P115.pins.owner ?? "";
+      // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P35U-V2 · vis-p35u4): รายชื่อผู้จัดการโหลดแบบ async (ManagerPinPad managers === null → "กำลังโหลด") — รอให้ปรากฏก่อนอ่าน ไม่งั้น race แดงปลอม (3/7 ภาพ) ◂
+      await visibleEl(page, tid("pos-mgr-pin-manager"), 0, 10_000).catch(() => {
+        throw new StepError("แผ่นผู้จัดการไม่มีรายชื่อผู้จัดการ (pos-mgr-pin-manager) หลังรอ 10 วิ");
+      });
       const managers = await page.$$(tid("pos-mgr-pin-manager"));
       if (!managers.length) throw new StepError("แผ่นผู้จัดการไม่มีรายชื่อผู้จัดการ (pos-mgr-pin-manager)");
       if (managers.length > 1) await managers[0].click();
@@ -6872,8 +6876,14 @@ async function runP35uState(page: Any, state: P35uKey, device: Device): Promise<
       await into(tid("pos-settings-staff-commission"), "start");
       const v = (await page.$eval(tid("pos-settings-staff-commission-default"), (e: Element) => (e as HTMLInputElement).value)) as string;
       if (v !== "2") throw new StepError(`อัตราปกติ = "${v}" (คาด 2)`);
-      await page.waitForFunction(() => !!document.querySelector('[data-testid^="pos-settings-staff-commission-cat-bp-"], [data-testid="pos-settings-staff-commission-product-count"]'), { timeout: 15_000 }).catch(() => {
-        throw new StepError("การ์ดค่าคอมฯ ไม่มีแถวหมวด/จำนวนอัตรา (แคตตาล็อกไม่โหลด)");
+      // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P35U-V1 · vis-p35u4): แคตตาล็อกโหลดแล้วอาจ "ยังไม่มีหมวดสินค้า" (ร้าน QC coffee บน QC5 ไม่มีหมวด) — การ์ดเรนเดอร์ถูกต้อง ⇒ ยอมรับข้อความ noCategories (th/en) ด้วย · ยังแดงเมื่อค้าง "กำลังโหลด" หรือ catalogUnavailable ไม่มี product-count ◂
+      await page.waitForFunction(() => {
+        if (document.querySelector('[data-testid^="pos-settings-staff-commission-cat-bp-"], [data-testid="pos-settings-staff-commission-product-count"]')) return true;
+        const card = document.querySelector('[data-testid="pos-settings-staff-commission"]');
+        const txt = (card ?? document.body).textContent ?? "";
+        return txt.includes("ยังไม่มีหมวดสินค้า") || txt.includes("No categories yet");
+      }, { timeout: 15_000 }).catch(() => {
+        throw new StepError("การ์ดค่าคอมฯ ไม่มีแถวหมวด/จำนวนอัตรา/ข้อความไม่มีหมวด (แคตตาล็อกไม่โหลด)");
       });
       return;
     }

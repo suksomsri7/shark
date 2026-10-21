@@ -473,6 +473,46 @@
       "why": "public /q/** pages th/en + 09 QR rows + TablePanel QR (P2.7U deliverables)"
     },
     {
+      "id": "p3.5u-th",
+      "wo": "p3.5u",
+      "pages": [
+        "register",
+        "shifts",
+        "settings",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.5U",
+      "why": "P3.5U 15 states (13b schedule chip/off-schedule/override · 13a shift list HR · 07 clock ask + hours · 17c HR switch/gate/commission cards · 08 commission report) · th owner 39 + cashier 18 · QC5 build un_z-YV7HefNqH1RNNlhU @b92d5598 · vis-p35u4 + reshoot vis-p35u5 (harness CD-P35U-V1/V2) · 21 Oct 2026"
+    },
+    {
+      "id": "p3.5u-en",
+      "wo": "p3.5u-en",
+      "pages": [
+        "register",
+        "shifts",
+        "settings",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.5U",
+      "why": "same states LOCALE=en · 1440 every page + 390 register (EN_MOBILE_PAGES) · owner 17 + cashier 11 · 21 Oct 2026"
+    },
+    {
       "id": "p3.4u-offline",
       "wo": "p3.4u",
       "pages": [
