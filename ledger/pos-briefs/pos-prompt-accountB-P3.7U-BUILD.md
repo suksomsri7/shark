@@ -44,3 +44,4 @@ Push `wip/pos-p3.7u`. Write notes in `ledger/wo-notes/pos-P3.7U.md` (components 
 ## Controller additions (B · 21 Oct 23:3xZ)
 - CD-P37U-1…10 confirmed as drafted. Follow-up for the controller (not U work): a delivery-status reader through the chat seam (auto receipt/status send result) → OP §Chat; `qc-chat-*` suites run once by hand (security · security-scope · core-v2) because they are not in `pos-gates.json`.
 - `qc-pos-p3.7` has no `LANE_PIN` (older oracle) and its ST3 is a known W21 red on the tip — set `P37_LANE_PIN=8c0fc3c4` anyway (harmless) and report ST3 as the expected W21 red; do not ORACLE-EDIT it.
+- Any `*actions*.ts` you touch or add must pass `qc-pos-p1.6` (R2 no-throw rule · boolean `can()`); `qc-pos-p1.6` is in the pre-submit `core` set — report its count.
