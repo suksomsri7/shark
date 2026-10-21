@@ -8,6 +8,6 @@ Lane pin for gates: `P39_LANE_PIN=26b831d2` (card PIN stays 8bded5a7).
 - [x] (2) 08 panel — `reports/AiBriefPanel.tsx` (new) · `ReportsOverview.tsx` bottom row staff + panel · `page.tsx` refused panel under the page refusal (overview only)
 - [x] (3) dock seed — `AiDock.tsx` reads optional `detail.prompt` (no detail ⇒ seed null ⇒ old behaviour) · `AiChat.tsx` prop `seed` + one effect → input prefill (no auto-send)
 - [x] (4) AI card + brief sheet — `settings/AiBriefSheet.tsx` (new) · `SharkSettings.tsx` AI branch (owner switch · sheet button · ownerOnly line · switch refusal) · `settings/page.tsx` `ai={isOwner, managers}` via `listStaffAccess` (CD-P39U-3)
-- [ ] (5) A11 verify
-- [ ] (6) visual + inventory + spec
+- [x] (5) A11 verify — S shipped `ReportsClient` A11 group + `GeneralSettings` A11 row (default 3 · A1–A10 untouched); no code change · shot by `reports-anomalies-a11` / `settings-general-anomaly-a11`
+- [x] (6) visual `P39U_WO`/`P39U_PLAN` (10 states) + inventory +13 rows + `ledger/pos-briefs/pos-spec-P3.9-ai-ui.md`
 - [ ] (7) merge origin/session/pos → gates

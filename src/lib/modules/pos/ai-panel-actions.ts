@@ -29,7 +29,7 @@ type PanelOk = {
   sections: BriefSection[];
   /** มีจุดผิดปกติอย่างน้อย 1 กฎ (บรรทัด anomalies ไม่ใช่ "ไม่พบ") */
   anomalyHits: boolean;
-  /** ไม่มีอะไรให้สรุป: ไม่มีบรรทัดเลย หรือวันนี้ยังไม่มีบิลและไม่มีส่วนอื่นนอกจากยอดขาย */
+  /** ไม่มีอะไรให้สรุป: ไม่มีบรรทัดเลย หรือวันธุรกิจนั้นยังไม่มีบิล (billCount 0) */
   empty: boolean;
   businessDate: string;
   generatedAt: string;
@@ -70,14 +70,14 @@ export async function posAiPanelAction(args: { systemId: string; date?: string; 
     const actor: RegisterActor = { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions };
     const input = await loadBriefInput({ tenantId, systemId: sys.id }, actor, businessDate);
     const b = composeBrief(input, a.locale === "en" ? "en" : "th");
-    const onlySales = b.sections.every((s) => s === "sales" || s === "vsLastWeek");
     return {
       ok: true,
       title: b.title,
       lines: b.lines,
       sections: b.sections,
       anomalyHits: !!input.anomalies && input.anomalies.length > 0,
-      empty: b.lines.length === 0 || (onlySales && (input.daily?.billCount ?? 0) === 0),
+      // วันที่ยังไม่มีบิล = "ยังไม่มีสรุปเช้า" (บรรทัดสถานะปัจจุบันอย่างของหมด/ใกล้หมดไม่ทำให้มีสรุปของวันที่ไม่มีการขาย · CD-P39U-B1)
+      empty: b.lines.length === 0 || (input.daily !== null && input.daily.billCount === 0),
       businessDate,
       generatedAt: now.toISOString(),
       canManage,
