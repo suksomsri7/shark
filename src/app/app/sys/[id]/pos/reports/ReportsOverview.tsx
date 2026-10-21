@@ -67,6 +67,8 @@ type Props = {
   cutoffMinutes: number;
   /** POS P2.12U ▸ มติ 5: ป้าย "ส่วนลดสูงผิดปกติ" = กฎ A3 ของเซิร์ฟเวอร์ (bp จาก posAnomalyThresholds ที่หน้าอ่านฝั่งเซิร์ฟเวอร์) · null = ปิดการตรวจ (ไม่มีป้าย) ◂ */
   discountFlagBp: number | null;
+  /** POS P3.8U ▸ CD-P38U-8: ปุ่ม "สร้างงานในบอร์ด" ของแผงผู้ช่วย AI (บอร์ดงานเปิด ∧ มีสิทธิ์จุดผิดปกติ — หน้าคำนวณ) ◂ */
+  boardLink?: boolean;
 };
 
 // ═══════════ ตัวช่วยวันที่ (ใช้ร่วมกับ ReportsClient) ═══════════
@@ -340,7 +342,7 @@ function slotOf<R>(ov: ReportOverview | null, sec: OverviewSection, busy: Readon
 }
 const partSlot = <R,>(p: OverviewPart<R>): Slot<R> => (p.ok ? { s: "ok", v: p.data } : { s: "err", code: p.code });
 
-export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll, cutoffMinutes, discountFlagBp }: Props) {
+export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll, cutoffMinutes, discountFlagBp, boardLink = false /* POS P3.8U ◂ */ }: Props) {
   const [ov, setOv] = useState<ReportOverview | null>(null);
   const tch = useTranslations("pos.channel"); // POS P2.11U ▸ ชื่อช่องทาง builtin ตามภาษาจอ ◂
   const [whole, setWhole] = useState<string | null>(null); // คำปฏิเสธทั้งก้อน (ช่วงผิด/สิทธิ์ระดับร้าน/ขัดข้อง)
@@ -855,7 +857,7 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
       {/* POS P3.9U ▸ มติ 1: แถวล่าง = พนักงาน (1.25) + ผู้ช่วย AI (1) แบบภาพ 08 ◂ */}
       <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:items-start xl:gap-8">
         <div className="min-w-0 xl:flex-[1.25]">{staffCard}</div>
-        <AiBriefPanel systemId={systemId} date={to} locale={locale} />
+        <AiBriefPanel systemId={systemId} date={to} locale={locale} board={boardLink} /* POS P3.8U ▸ CD-P38U-8 ◂ */ />
       </div>
     </div>
   );

@@ -26,6 +26,10 @@ import { formatBaht } from "@/lib/ui/money";
 import { posReportAction, posReportCsvAction } from "@/lib/modules/pos/report-actions";
 import { bkkHm, Icon, prevRangeOf, rangeLabel, ReportsOverview } from "./ReportsOverview";
 import { channelDisplayName } from "@/components/pos/settings/channel-text"; // POS P2.11U ◂
+// POS P3.8U ▸ CD-P38U-7: ปุ่ม "สร้างงานในบอร์ด" + ชิปการ์ดของแถวจุดผิดปกติ (กุญแจ posBoardKeys.anomaly · ตัวอ่านชิป posBoardCardsAction) ◂
+import { createAnomalyCardAction } from "@/lib/pos-board-actions";
+import { posBoardCardsAction } from "@/lib/pos-board-ui-actions";
+import { posBoardKeys } from "@/lib/modules/pos/board-settings-shared";
 import type {
   AnyReportResult,
   ChannelRow, // POS P2.11U ◂
@@ -75,6 +79,8 @@ type Props = {
   discountFlagBp: number | null;
   /** POS P3.5U ▸ มติ 8: ผู้ดูเงินเดือน (canViewPayroll ฝั่งหน้า) — ไม่มี = ไม่มีแท็บค่าคอมฯ ◂ */
   canPayroll?: boolean;
+  /** POS P3.8U ▸ CD-P38U-7/8: บอร์ดงานของหน้าขายเปิด (posBoardSettings(sys.settings).enabled ฝั่งหน้า) — ปิด = ไม่มีปุ่ม/ชิปการ์ด ◂ */
+  boardOn?: boolean;
 };
 type T = (key: string, values?: Record<string, string | number>) => string;
 type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
@@ -188,8 +194,96 @@ const ANOMALY_RULES = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A1
 const ANOMALY_MONEY = new Set<string>(["A1", "A2", "A8", "A9"]);
 const ANOMALY_BP = new Set<string>(["A3", "A4"]);
 const bpText = (bp: number) => `${(bp / 100).toFixed(2)}%`;
-function AnomalyBody({ rep, t, systemId, locale = "th" }: { rep: Report<"anomalies", AnomalyRow, AnomalyTotals>; t: T; systemId: string; /** POS P2.14 ▸ U2 O-8 ◂ */ locale?: string }) {
+function AnomalyBody({ rep, t, systemId, locale = "th", boardOn = false }: { rep: Report<"anomalies", AnomalyRow, AnomalyTotals>; t: T; systemId: string; /** POS P2.14 ▸ U2 O-8 ◂ */ locale?: string; /** POS P3.8U ▸ CD-P38U-7: settings.pos.board.enabled (หน้าอ่านด้วยตัวอ่านบริสุทธิ์) ◂ */ boardOn?: boolean }) {
   const tt = rep.totals;
+  // POS P3.8U ▸ CD-P38U-7: วันของแถว = businessDate ของแถว ?? (ช่วงวันเดียว = วันนั้น) · ไม่มี = ปุ่มปิด toCard.oneDay ·
+  //   ตอนโหลด (boardOn) อ่านชิปครั้งเดียวด้วย posBoardCardsAction · กดแล้ว = ผลของแถวนั้น (ไม่มีวนถาม · ไม่มีชื่อคนในชิป) ◂
+  const cardDate = (r: AnomalyRow) => r.businessDate ?? (rep.from === rep.to ? rep.from : null);
+  const cardKey = (r: AnomalyRow) => {
+    const d = cardDate(r);
+    return d ? posBoardKeys.anomaly(r.rule, r.unitId, d, r.refId ?? r.userId ?? "unit") : null;
+  };
+  const keyList = boardOn ? [...new Set(rep.rows.map(cardKey).filter((k): k is string => !!k))] : [];
+  const keysSig = keyList.join("|");
+  const [cards, setCards] = useState<Record<string, { cardNo: number | null; href: string; completed: boolean }>>({});
+  const [rowCard, setRowCard] = useState<Record<number, { busy?: boolean; reason?: string; retry?: boolean; cardNo?: number | null; created?: boolean; href?: string }>>({});
+  useEffect(() => {
+    if (!boardOn || !keysSig) return;
+    let live = true;
+    void posBoardCardsAction({ systemId, keys: keysSig.split("|") })
+      .then((res) => {
+        if (live && res.ok) setCards(Object.fromEntries(res.cards.map((c) => [c.key, { cardNo: c.cardNo, href: c.href, completed: c.completed }])));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [boardOn, systemId, keysSig]);
+  const pressCard = async (n: number, r: AnomalyRow) => {
+    const d = cardDate(r);
+    if (!d || rowCard[n]?.busy) return;
+    setRowCard((x) => ({ ...x, [n]: { busy: true } }));
+    try {
+      const res = await createAnomalyCardAction({ systemId, row: { unitId: r.unitId, rule: r.rule, businessDate: d, refType: r.refType, refId: r.refId } });
+      if (res.ok) {
+        const k = cardKey(r);
+        const got = k ? await posBoardCardsAction({ systemId, keys: [k] }).catch(() => null) : null;
+        const href = got && got.ok ? got.cards.find((c) => c.key === k)?.href : undefined;
+        setRowCard((x) => ({ ...x, [n]: { cardNo: res.cardNo, created: res.created, ...(href ? { href } : {}) } }));
+      } else {
+        const reason = res.code === "PERMISSION_DENIED" ? "denied" : res.code === "NO_BOARD" ? "noBoard" : res.code === "NOT_FOUND" ? "stale" : "failed";
+        setRowCard((x) => ({ ...x, [n]: { reason, retry: res.code === "UNKNOWN" } }));
+      }
+    } catch {
+      setRowCard((x) => ({ ...x, [n]: { reason: "failed", retry: true } }));
+    }
+  };
+  const cardCell = (r: AnomalyRow, n: number) => {
+    if (!boardOn) return null;
+    const k = cardKey(r);
+    const have = k ? cards[k] : undefined;
+    const st = rowCard[n];
+    const chipCls = "inline-flex min-h-[44px] items-center px-1 text-[13px] font-semibold text-[color:var(--color-accent)] hover:underline";
+    if (have && !st?.cardNo)
+      return (
+        <a data-testid={`pos-reports-anomaly-card-chip-${n}`} href={have.href} className={chipCls}>
+          {have.completed ? t("anomaly.toCard.chipDone", { n: have.cardNo ?? 0 }) : t("anomaly.toCard.chip", { n: have.cardNo ?? 0 })}
+        </a>
+      );
+    if (st && st.cardNo !== undefined) {
+      const text = st.created ? t("anomaly.toCard.created", { n: st.cardNo ?? 0 }) : t("anomaly.toCard.exists", { n: st.cardNo ?? 0 });
+      return st.href ? (
+        <a data-testid={`pos-reports-anomaly-card-chip-${n}`} href={st.href} className={chipCls}>
+          {text}
+        </a>
+      ) : (
+        <span data-testid={`pos-reports-anomaly-card-done-${n}`} role="status" className="inline-flex min-h-[44px] items-center px-1 text-[13px] font-semibold text-[color:var(--color-ink-soft)]">
+          {text}
+        </span>
+      );
+    }
+    const noDay = cardDate(r) === null;
+    const reason = noDay ? "oneDay" : st?.reason;
+    return (
+      <span className="inline-flex flex-wrap items-center gap-x-2">
+        <button
+          data-testid={`pos-reports-anomaly-card-${n}`}
+          type="button"
+          className="btn btn-ghost min-h-[44px] whitespace-nowrap px-3 text-[13px] disabled:opacity-50"
+          disabled={noDay || !!st?.busy || (!!st?.reason && !st.retry)}
+          onClick={() => void pressCard(n, r)}
+        >
+          {st?.busy ? t("anomaly.toCard.creating") : t("anomaly.toCard.create")}
+        </button>
+        {reason ? (
+          <span data-testid={`pos-reports-anomaly-card-reason-${n}`} className="whitespace-normal text-[12px] text-[color:var(--color-muted)]">
+            {t(`anomaly.toCard.${reason}`)}
+          </span>
+        ) : null}
+      </span>
+    );
+  };
+  // ◂ POS P3.8U
   if (rep.rows.length === 0) return <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("anomaly.empty")}</p>;
   const index = new Map(rep.rows.map((r, i) => [r, i]));
   const unitName = (id: string) => tt.unitNames?.[id] ?? id;
@@ -255,6 +349,7 @@ function AnomalyBody({ rep, t, systemId, locale = "th" }: { rep: Report<"anomali
                             {t("anomaly.viewBill")}
                           </a>
                         ) : null}
+                        {cardCell(r, n) /* POS P3.8U ▸ CD-P38U-7 ◂ */}
                       </td>
                     </tr>
                   );
@@ -274,7 +369,7 @@ function AnomalyBody({ rep, t, systemId, locale = "th" }: { rep: Report<"anomali
 }
 
 // ═══════════ ตารางต่อชนิด (คอลัมน์ตามลำดับ R5–R10) ═══════════
-function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Loaded; t: T; tc: T; locale: string; cutoffMinutes: number; systemId: string }) {
+function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId, boardOn = false /* POS P3.8U ▸ CD-P38U-7 ◂ */ }: { rep: Loaded; t: T; tc: T; locale: string; cutoffMinutes: number; systemId: string; boardOn?: boolean }) {
   const tch = useTranslations("pos.channel"); // POS P2.11U ◂
   const c = (k: string) => t(`cols.${k}`);
   const empty = <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("empty")}</p>;
@@ -577,7 +672,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Load
     }
     // POS P2.12U ▸ มติ 4 ◂
     case "anomalies":
-      return <AnomalyBody rep={rep as Report<"anomalies", AnomalyRow, AnomalyTotals>} t={t} systemId={systemId} locale={locale} /* POS P2.14 ▸ U2 O-8 ◂ */ />;
+      return <AnomalyBody rep={rep as Report<"anomalies", AnomalyRow, AnomalyTotals>} t={t} systemId={systemId} locale={locale} /* POS P2.14 ▸ U2 O-8 ◂ */ boardOn={boardOn} key={rep.generatedAt} /* POS P3.8U ▸ CD-P38U-7: รายงานใหม่ = สถานะปุ่มต่อแถวใหม่ ◂ */ />;
     // POS P2.12U ▸ มติ 3: เปรียบเทียบสาขา — แถวต่อสาขาที่มีเอกสาร/กะที่นับเงินในช่วง (ชื่อจาก DTO) + แถวรวมของทั้งขอบเขต (totals) ◂
     case "branches": {
       const x = rep as Report<"branches", BranchRow, BranchTotals>;
@@ -666,7 +761,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId }: { rep: Load
 }
 
 // ═══════════ จอหลัก ═══════════
-export function ReportsClient({ systemId, units, initial, today, maxDays, hourlyMaxDays, cutoffMinutes, canAnomaly, discountFlagBp, canPayroll = false }: Props) {
+export function ReportsClient({ systemId, units, initial, today, maxDays, hourlyMaxDays, cutoffMinutes, canAnomaly, discountFlagBp, canPayroll = false, boardOn = false /* POS P3.8U ◂ */ }: Props) {
   const t = useTranslations("pos.report");
   const tc = useTranslations("pos.shift"); // ป้ายวิธีชำระ + สถานะกะ (ใช้ร่วมกับจอกะ)
   const [view, setView] = useState<View>(initial);
@@ -905,6 +1000,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
             onSeeAll={seeAll}
             cutoffMinutes={cutoffMinutes}
             discountFlagBp={discountFlagBp}
+            boardLink={boardOn && canAnomaly} // POS P3.8U ▸ CD-P38U-8 ◂
           />
         )
       ) : (
@@ -941,7 +1037,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
               {t("loading")}
             </p>
           ) : (
-            <ReportBody rep={report} t={t} tc={tc} locale={locale} cutoffMinutes={cutoffMinutes} systemId={systemId} />
+            <ReportBody rep={report} t={t} tc={tc} locale={locale} cutoffMinutes={cutoffMinutes} systemId={systemId} boardOn={boardOn} /* POS P3.8U ▸ CD-P38U-7 ◂ */ />
           )}
         </section>
       )}

@@ -21606,6 +21606,66 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-anomaly-card-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "createAnomalyCardAction",
+        "note": "CD-P38U-7: แท็บจุดผิดปกติ แถว n \"สร้างงานในบอร์ด\" — แสดงเมื่อหน้าส่ง boardOn (settings.pos.board.enabled) · ไม่มีวันของแถว + ช่วงหลายวัน = ปิด + toCard.oneDay · ปฏิเสธ = เหตุผลของแถว (PERMISSION_DENIED denied · NO_BOARD noBoard · NOT_FOUND stale · อื่น failed — กดซ้ำได้หลัง UNKNOWN เท่านั้น) · created = ชิป toCard.created · created:false = toCard.exists",
+        "db": "KanbanCard(sourceKey pos-anomaly:…)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=anomalies"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-anomaly-card-chip-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[kanbanId]/kanban/[boardId]",
+        "note": "CD-P38U-7: แถวที่มีการ์ดแล้ว (posBoardCardsAction ครั้งเดียวตอนโหลด / ผลของปุ่ม) = ชิป \"การ์ด #n\" ลิงก์ไปการ์ด (หน้าบอร์ดงานตรวจสิทธิ์เอง) · ไม่มีชื่อคน"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=anomalies"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-board",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/reports",
+        "note": "CD-P38U-8: แผงผู้ช่วย AI (ภาพ 08) ปุ่ม \"สร้างงานในบอร์ด\" → ?kind=anomalies&from=<วันธุรกิจ>&to=<วันธุรกิจ> (สร้างการ์ดทีละแถวที่นั่น) · แสดงเมื่อ anomalyHits ∧ canAnomaly ∧ boardOn"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
