@@ -73,4 +73,45 @@ QC tenant `coffee` only, no reseed, no snapshot requests · board `posqc-vis-p38
 - Room-post delivery/refusal reader through the meeting seam · multi-day range rows with null date (A7/A11) cannot become cards · kanban/meeting suites not in `pos-gates.json` (`qc-kanban-k3.3` CONTROLLER-RUN if needed) · 86/refund card links in POS screens (CD-P38U-9).
 
 ## Gates
-(filled below)
+- Code head **e56d3c46** (dirty 0) — this gates commit on top is ledger-only.
+- **Typecheck** `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` at e56d3c46 → **exit 0** (23:4x–23:55Z, once).
+- Pre-submit run 1 (head 7c1b5175) ran only the wo suite (my notes edit dirtied the tree during the run, so `pos-gates-all --only` refused) — wo 32/34 ×2 · `--no-db` 1/3; run 2 below is the full one.
+- Pre-submit run 2 (final · logs `/root/pos-runs/presubmit-shark-pos-b-20261021T230821Z`):
+```
+PRESUBMIT-TABLE head=e56d3c46 tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+wo-qc-pos-p3.8-run1          1    32/34         39  P3.8-ST2,P3.8-ST3
+wo-qc-pos-p3.8-run2          1    32/34         39  P3.8-ST2,P3.8-ST3
+wo-qc-pos-p3.8-nodb          1    1/3            1  P3.8-ST2,P3.8-ST3
+qc-pos-p1.1                  0    180/180      188  
+qc-pos-p1.3                  0    128/128      147  
+qc-pos-p1.6                  0    48/48         42  
+qc-pos-p1.9                  0    53/53         22  
+qc-pos-p1.11                 0    38/38         36  
+qc-pos-p1.18                 0    81/81         44  
+qc-pos-p2.12                 0    33/33         59  
+qc-pos-p2.13                 0    54/54         81  
+qc-pos-p2.14                 1    58/60        366  P2.14-Q6,P2.14-O1
+qc-pos-p3.9                  0    48/48         47  
+qc-hf-fu                     1    28/29        112  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-pos-page-authz         0    87/87          5  
+qc-hf-reports-authz          0    79/79          6  
+qc-hf-tx                     0    22/22         26  
+qc-hf-fu2                    1    30/31         24  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-restaurant-money          0    6/6            4  
+qc-shop-refund               0    12/12          8  
+qc-hotel-money               0    5/5            6  
+qc-ticket-money              0    6/6            5  
+qc-subscription-money        0    14/14          6  
+qc-account-cpa               0    107/107       14  
+qc-acc-v2-pos-lines          1    65/79         10  PL1.1,PL1.2,PL1.3,PL1.4,PL1.6,PL1.7 … [accepted]
+fitness-noenv                0    53/53         22  
+fitness-qc4                  0    53/53         20  
+fitness-pos                  0    8/8           13  
+gen-check                    0    -              3  
+PRESUBMIT head=e56d3c46 green=22 red=7 expected-lane-pin=2 unexpected-red=wo-qc-pos-p3.8-run1,wo-qc-pos-p3.8-run2,wo-qc-pos-p3.8-nodb,qc-pos-p2.14,qc-acc-v2-pos-lines · wo: qc-pos-p3.8-run1=32/34 · qc-pos-p3.8-run2=32/34 · qc-pos-p3.8-nodb=1/3 · VERDICT red (3: qc-pos-p2.14 qc-hf-fu qc-hf-fu2)
+```
+- `qc-pos-p3.8` forced ×2 **32/34** · `--no-db` **1/3**: only ST2/ST3 = known W21 reds — **ST2** `qc-pos-p3.8.mts:242–275` "diff outbox-consumers = +28/−10 (คาด +1/−1 …)" · **ST3** `qc-pos-p3.8.mts:277–299` "แตะ prisma/migrations/20261218100000_pos_p3skel/… · prisma/schema/pos.prisma · src/lib/modules/pos/order.ts · register-shared.ts · register.ts …(+2)". Reason lists identical to base: `git diff 8c0fc3c4 HEAD` over every path ST2/ST3 read (prisma · outbox-consumers · cron/hourly · pos register*/service/shift/order/catalog/receipt* · kanban · meeting · automation · kanban-bridges · pos-receipt-bridges) is empty. ST1 green (probe at the controller path = red, see CD-P38U-B1). skippedParts [] · residue 0 · guardHits 0.
+- Lane pins (expected): `qc-hf-fu` ST1 `scripts/qc-hf-fu.mts:233` LANE_PIN 85c366dd (visual-pos.mts in its forbidden list — this card's harness hunk) · `qc-hf-fu2` ST1 `scripts/qc-hf-fu2.mts:191` LANE_PIN 85c366dd (new hunks without HF-FU2 marker).
+- Unexpected reds (not this card's code): `qc-pos-p2.14` 58/60 **Q6** (child process gave no answer — libpq SSL notice, harness) + **O1** (`posorder-release` lock timing) — order/payment DB checks; this card touches no order/payment/register file; V2 (sweep row) and K3 green · `qc-acc-v2-pos-lines` 65/79 = **accepted** in the manifest (QC4 has no acc-v2 seed).
+- Targets met: p1.18 81/81 (ST7 0) · p1.3 128/128 · p1.6 48/48 · p2.12 33/33 · p2.13 54/54 · p3.9 48/48 · p1.9 53/53 · p1.11 38/38 · hf-reports-authz 79/79 · hf-pos-page-authz 87/87 · fitness ±env 53/53 · fitness-pos 8/8 (F15.3) · money set green · cpa 107/107.
