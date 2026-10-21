@@ -44,7 +44,7 @@ const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของใบ (session/pos e7b05787 · โค้ด 9ada96ef) — ข้อ L เทียบกับตัวนี้ */
 const BASE_REV = "e7b05787";
 /** sha256 ของ scripts/pos-sale-contract.json (มติ 2 CD2-A = ไม่เปลี่ยน · ค่าเดียวกับ qc-pos-p2.4 ST4 / p2.5 / p2.6 L3) */
-const CONTRACT_SHA = "ba68f669fa2105ce708df5aa555c9127948f82c30d373bce6f65ebac0753c7c2"; // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.9b L1): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
+const CONTRACT_SHA = "762e073cd5f80eeeb915835ae6b85e5793956facdfe233f90d65484db04dac55"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · contract +4 optional keys P3.6 · ba68f669 → 762e073c) · ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.9b L1): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · X1 idempotency/เล่นซ้ำ/แข่ง · X2 ข้ามขอบเขต (404-not-403) · X3 สิทธิ์ · X4 เงิน · X5 ผลข้างเคียงครบ/ไม่เขียนอะไร · PAR = เขียวทั้งก่อนและหลัง · "-" เชิงหน้าที่

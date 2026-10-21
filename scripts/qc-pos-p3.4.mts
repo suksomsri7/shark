@@ -232,10 +232,10 @@ const BASE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`]
 // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST1/ST2): ใบพี่น้อง P3.5 S merge เข้า session/pos ก่อน (688fc3ed = 72669941 + HF-FU2 + P3.5 S) —
 //   ไฟล์ร้อน/migration/enum ที่ "ตรงกับ 688fc3ed + บล็อก POS P3.4 เท่านั้น" = ของพี่น้อง ไม่ใช่ของใบนี้ ⇒ รับ (ฐาน BASE_REV ยังรับเหมือนเดิม)
 //   เทียบกับต้นไม้ของ merge P3.5 แทน "ตัดบรรทัดในบล็อก P3.5" เพราะโค้ด P3.5 ไม่ได้อยู่ใน ▸…◂ ทุกบรรทัด (เช่นเนื้อ scheduleGate · REG_MESSAGE 2 บรรทัดหลัง) — รับเฉพาะสิ่งที่ merge P3.5 มีจริง
-const SIB_REV = process.env.P34_SIB || "688fc3ed";
+const SIB_REV = process.env.P34_SIB || "688fc3ed"; // CD-RP9 21.10: คง 688fc3ed (ST2 staff-pin ต้องเทียบ rev ก่อน P3.4 merge) — migration/schema ใหม่ของใบหลัง ดูที่ LANE_REV ใน ST1
 const SIB_OK = !!gitStr(["rev-parse", "--verify", "-q", `${SIB_REV}^{commit}`])?.trim();
 // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · หมุดเลนที่ 3 = product tip หลัง merge P3.8 ซึ่งแตะ outbox-consumers.ts · ST2 ยอมรับไบต์เท่ากับ rev ใดก็ได้ใน revsHot)
-const LANE_REV = process.env.P34_LANE || "b2458030"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP8 · re-pin 02b67f91 → b2458030) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91)
+const LANE_REV = process.env.P34_LANE || "bafdf89f"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · re-pin b2458030 → bafdf89f) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP8 · re-pin 02b67f91 → b2458030) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91)
 const LANE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${LANE_REV}^{commit}`])?.trim();
 /** บรรทัดในบล็อก // POS P3.4 ▸ … ◂ (บรรทัดเดียวหรือหลายบรรทัด) */
 function markedLines(src: string): { lines: Set<number>; blocks: number; text: string } {
@@ -471,6 +471,8 @@ async function runStatic(): Promise<void> {
     const baseDirs = new Set((gitStr(["ls-tree", "--name-only", BASE_REV, `${F.migrations}/`]) ?? "").split("\n").map((x) => x.split("/").pop() ?? ""));
     // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST1): migration ที่มีอยู่แล้วใน merge P3.5 (SIB_REV) = ของพี่น้อง (*_pos_p35_staff_commission) ไม่นับเป็น "ใหม่อื่น"
     if (SIB_OK) for (const x of (gitStr(["ls-tree", "--name-only", SIB_REV, `${F.migrations}/`]) ?? "").split("\n")) if (!/_pos_p34_offline$/.test(x)) baseDirs.add(x.split("/").pop() ?? "");
+    // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 qc-pos-p3.4 ST1): migration ของใบที่ merge หลัง P3.4 (P3.6 S: *_pos_p36_credit_enum · *_pos_p36_credit) มีอยู่ที่หมุดเลน LANE_REV = ไม่ใช่ "ใหม่อื่น" — ใบนี้ยังต้องมี *_pos_p34_offline ใบเดียวและเพิ่มล้วน ◂
+    if (LANE_OK) for (const x of (gitStr(["ls-tree", "--name-only", LANE_REV, `${F.migrations}/`]) ?? "").split("\n")) if (!/_pos_p34_offline$/.test(x)) baseDirs.add(x.split("/").pop() ?? "");
     const fresh = dirs.filter((d) => !baseDirs.has(d));
     const mine = dirs.filter((d) => /_pos_p34_offline$/.test(d));
     if (mine.length !== 1) p.push(`migration *_pos_p34_offline ${mine.length} ใบ (คาด 1)`);

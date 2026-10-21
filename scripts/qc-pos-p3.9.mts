@@ -55,7 +55,7 @@ const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของใบ (ฐานของ brief · ST4/ST5 เทียบไฟล์ที่ห้าม/จำกัดการแก้) */
 const PIN = process.env.P39_PIN || "8bded5a7";
 // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · P3.8 merge แตะ outbox-consumers.ts · ST4 เทียบไฟล์ห้ามแตะกับหมุดเลน ไม่ใช่หมุดใบ · ST1/ST5 ยังใช้ PIN)
-const LANE_PIN = process.env.P39_LANE_PIN || "02b67f91"; // ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91) // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2: หมุด = ฐานก่อน P3.9 ที่รวม P3.4/P3.5 แล้ว · ST1/ST5 เห็นการเปลี่ยนแปลงของใบ · ST4 เทียบ prisma/register/service/outbox)
+const LANE_PIN = process.env.P39_LANE_PIN || "bafdf89f"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · re-pin 02b67f91 → bafdf89f) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91) // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP2: หมุด = ฐานก่อน P3.9 ที่รวม P3.4/P3.5 แล้ว · ST1/ST5 เห็นการเปลี่ยนแปลงของใบ · ST4 เทียบ prisma/register/service/outbox)
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · T tool อ่าน/ด่าน · P ข้อเสนอ/เขียน · A จุดผิดปกติ · B สรุปเช้า · V ความเป็นส่วนตัว · Z คืนสภาพ
