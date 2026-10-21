@@ -6649,7 +6649,7 @@ async function p39uSetAi(enabled: boolean): Promise<void> {
     P39U.before = res ? { had: res.had === true, v: res.had === true ? res.v : undefined } : cur;
     if (res) P39U.log.push("กวาดซากค่าตั้งผู้ช่วย AI ของรอบก่อน (คืนจาก _qcP39uBefore)");
   }
-  const base = p39uRec(P39U.before.v) ? P39U.before.v : {};
+  const base: Record<string, unknown> = p39uRec(P39U.before.v) ? P39U.before.v : {};
   await p39uWriteAi({
     ...base,
     enabled,
