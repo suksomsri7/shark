@@ -21666,6 +21666,26 @@
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-board-chip-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[kanbanId]/kanban/[boardId]",
+        "note": "CD-P38U-6: กะที่ปิดแล้ว — ชิป \"การ์ด #n\" / \"การ์ด #n เสร็จแล้ว\" ของการ์ดตรวจเงิน (posCardsForKeys ฝั่งหน้า · pos.shift.manage ∧ board.enabled · 50 กะล่าสุด) · ไม่มีชื่อคน"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -13,6 +13,10 @@ import { ShiftsClient } from "./ShiftsClient";
 import { posClockOnShift } from "@/lib/modules/pos/settings-shared"; // POS P3.5U ▸ มติ 7 ◂
 import { shiftHoursForOwner } from "@/lib/modules/pos/hr-link"; // POS P3.5U ▸ มติ 7: ตัวอ่านฝั่งเซิร์ฟเวอร์ (ระดับหน้าเท่านั้น) ◂
 import { posOfflineEnabled } from "@/lib/modules/pos/offline-shared"; // POS P3.4U ▸ มติ 9 ◂
+// POS P3.8U ▸ CD-P38U-6: ชิปการ์ดตรวจเงินของกะที่ปิดแล้ว (posCardsForKeys — ตัวอ่านไม่มีด่านข้างใน ⇒ เรียกจากหน้าเท่านั้น หลังด่าน pos.shift.manage) +
+//   บรรทัด "เมื่อปิดกะ" จากตัวอ่านบริสุทธิ์ (ห้องทีม = ทุกคน · การ์ด = ผู้จัดการเท่านั้น) ◂
+import { posCardsForKeys } from "@/lib/pos-board-bridges";
+import { posBoardIdForUnit, posBoardKeys, posBoardSettings, posRoomForUnit, posTeamRoomSettings } from "@/lib/modules/pos/board-settings-shared";
 
 // POS P1.9 / P1.9 U — หน้ากะและลิ้นชักเงิน (ภาพ 07 + เปิดกะ 13A ส่วน A) · ข้อมูลทั้งหน้าโหลดจาก shiftsPageDataAction คำขอเดียว
 //   (รหัสเครื่องอยู่ใน localStorage ของเบราว์เซอร์ ⇒ อ่านฝั่ง client) · คำปฏิเสธเป็นข้อมูล
@@ -55,11 +59,26 @@ export default async function PosShiftsPage({ params, searchParams }: { params: 
     const ms = pending > 0 ? await prisma.membership.findMany({ where: { tenantId }, select: { userId: true, user: { select: { name: true } } }, take: 500 }) : [];
     offline = { enabled, names: Object.fromEntries(ms.flatMap((x) => (x.user.name?.trim() ? [[x.userId, x.user.name.trim()]] : []))) };
   }
+  // POS P3.8U ▸ CD-P38U-6 · CD-P38U-10: การ์ดของ 50 กะล่าสุดของสาขา (ชุดเดียวกับประวัติ) เมื่อ pos.shift.manage ∧ บอร์ดงานเปิด · ไม่มีชื่อคน ◂
+  const boardCfg = posBoardSettings(sys.settings);
+  const roomCfg = posTeamRoomSettings(sys.settings);
+  const sd = boardCfg.rules.shiftDiff;
+  const boardHint = {
+    room: roomCfg.enabled && roomCfg.posts.shiftClose && !!posRoomForUnit(roomCfg, unitId),
+    card: canManage && boardCfg.enabled && sd.enabled && !!posBoardIdForUnit(boardCfg, unitId) ? { minSatang: sd.minAbsSatang, every: sd.everyClose } : null,
+  };
+  let shiftCards: Record<string, { cardNo: number | null; href: string; completed: boolean }> | null = null;
+  if (canManage && boardCfg.enabled) {
+    const recent = await prisma.posShift.findMany({ where: { tenantId, systemId: id, unitId }, orderBy: [{ openedAt: "desc" }, { id: "desc" }], take: 50, select: { id: true } });
+    const byKey = new Map(recent.map((x) => [posBoardKeys.shift(x.id), x.id]));
+    const cards = byKey.size ? await posCardsForKeys(tenantId, [...byKey.keys()]) : [];
+    shiftCards = Object.fromEntries(cards.flatMap((c) => (byKey.has(c.key) ? [[byKey.get(c.key)!, { cardNo: c.cardNo, href: c.href, completed: c.completed }]] : [])));
+  }
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id, await getTranslations("pos"))} />
-      <ShiftsClient systemId={id} units={units} unitId={unitId} canManage={canManage} meName={auth.user.name?.trim() || auth.user.email || "-"} meUserId={auth.user.id} /* POS P3.5U ▸ มติ 5 ◂ */ clockAsk={clockAsk} hours={hours} /* POS P3.5U ▸ มติ 7 ◂ */ offline={offline} /* POS P3.4U ▸ มติ 9 ◂ */ />
+      <ShiftsClient systemId={id} units={units} unitId={unitId} canManage={canManage} meName={auth.user.name?.trim() || auth.user.email || "-"} meUserId={auth.user.id} /* POS P3.5U ▸ มติ 5 ◂ */ clockAsk={clockAsk} hours={hours} /* POS P3.5U ▸ มติ 7 ◂ */ offline={offline} /* POS P3.4U ▸ มติ 9 ◂ */ boardHint={boardHint} shiftCards={shiftCards} /* POS P3.8U ▸ CD-P38U-6 ◂ */ />
     </div>
   );
 }
