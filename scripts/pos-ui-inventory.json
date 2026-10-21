@@ -20875,6 +20875,82 @@
       "oracle": "qc-pos-p3.4",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-draft-po",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "app:ai-open",
+        "note": "มติ 1 · CD-P39U-2: แผงผู้ช่วย AI (ภาพ 08) ปุ่ม \"สร้างใบสั่งซื้อ (ร่าง)\" → เปิดแผงแชท AI (AiDock) พร้อมข้อความตั้งต้น pos.ai.panel.seedDraftPo · ยืนยันใบสั่งซื้อ = การ์ดข้อเสนอเดิมในแชท (pos_draft_po) · ไม่เขียนอะไรจากปุ่มนี้"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-ask",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "app:ai-open",
+        "note": "มติ 1 · CD-P39U-2: ปุ่ม \"ถามต่อ\" → เปิดแผงแชท AI พร้อมข้อความตั้งต้น pos.ai.panel.seedAsk (หัวเรื่อง + บรรทัดสรุป) · ผู้ใช้กดส่งเอง"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-ai-panel",
+        "note": "มติ 1: แผงผู้ช่วย AI โหลดไม่สำเร็จ (INTERNAL/NOT_FOUND) → ลองใหม่ = posAiPanelAction อีกครั้ง"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-settings",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "มติ 1: แผงผู้ช่วย AI ปิดอยู่ (settings.pos.ai.enabled false · pos-reports-ai-off) — เจ้าของร้านเห็นลิงก์ไปแท็บการเชื่อมต่อ SHARK (?tab=shark) · คนอื่นเห็นข้อความอย่างเดียว"
+      },
+      "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

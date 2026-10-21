@@ -6,6 +6,7 @@
 // R6: เรียก posReportOverviewAction "ครั้งเดียว" ต่อการโหลด (Next 16 ส่ง Server Action จาก client ทีละตัว — ห้ามพึ่ง Promise.all ฝั่งจอ)
 //     · เปลี่ยนช่วง/สาขา = หน่วง 300 ms แล้วค่อยยิง · ผลของมุมมองเก่าทิ้งด้วยลำดับคำขอ · ลองใหม่ในการ์ด = only:[ส่วนของการ์ดนั้น]
 // 🔴 บล็อกที่ยังไม่มีข้อมูล (รายชั่วโมง P2.12 · ช่องทาง P2.11 · สมาชิก P1.12 · ผู้ช่วย AI P3 · PDF P2) = ไม่แสดง (ไม่ทำตัวเลขปลอม)
+// POS P3.9U ▸ มติ 1: ผู้ช่วย AI แสดงแล้ว — แผง AiBriefPanel ข้างการ์ดพนักงาน (ภาพ 08 แถวล่าง · 1440 = คู่กัน · ต่ำกว่า xl = เรียงลง) · วันธุรกิจ = `to` ของภาพรวม ◂
 // 🔴 แต่ละส่วนถูกปฏิเสธแยกกัน — การ์ดที่ถูกปฏิเสธแสดงข้อความในการ์ดเอง หน้าไม่ว่าง
 // POS P2.11U ▸ มติ 7: ส่วน "channels" (reportChannels) = การ์ด "ช่องทางการขาย · % ของยอด" ระหว่าง "สินค้าขายดี" กับ "วิธีชำระ" (1440 = แถว 3 คอลัมน์ · 390 = เรียงลง) ·
 //   แถวต่อช่องทาง (ชื่อจาก DTO) = แท่ง (sharePct ของยอดสุทธิหลังหักค่าคอมฯ) + % + ยอด (hover · 390 แสดงในแถว) · หมายเหตุ "ยอดแพลตฟอร์มหักค่าคอมมิชชันแล้วในกำไรขั้นต้น" ◂
@@ -19,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl"; // POS P2.11U ▸ ชื่อช่องทาง builtin ตามภาษาจอ (pos.channel) ◂
 import { channelDisplayName } from "@/components/pos/settings/channel-text"; // POS P2.11U ◂
 import { formatBaht } from "@/lib/ui/money";
+import { AiBriefPanel } from "./AiBriefPanel"; // POS P3.9U ▸ มติ 1 ◂
 import { posReportOverviewAction } from "@/lib/modules/pos/report-actions";
 import type { OverviewBranches, OverviewPart, OverviewSection, ReportOverview } from "@/lib/modules/pos/report-overview";
 import type {
@@ -850,7 +852,11 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
         {channelsCard /* POS P2.11U ▸ มติ 7 ◂ */}
         {payCard}
       </div>
-      {staffCard}
+      {/* POS P3.9U ▸ มติ 1: แถวล่าง = พนักงาน (1.25) + ผู้ช่วย AI (1) แบบภาพ 08 ◂ */}
+      <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:items-start xl:gap-8">
+        <div className="min-w-0 xl:flex-[1.25]">{staffCard}</div>
+        <AiBriefPanel systemId={systemId} date={to} locale={locale} />
+      </div>
     </div>
   );
 }
