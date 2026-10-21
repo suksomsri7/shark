@@ -21686,6 +21686,23 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-manage-here",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "CD-P38U-1: การ์ด KANBAN ของแท็บ shark (ภาพ 10) → ?tab=board&unit= (แท็บบอร์ดงานและห้องทีม) · ไม่มีการ์ด MEETING (total 13)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
