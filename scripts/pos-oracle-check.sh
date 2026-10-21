@@ -91,9 +91,14 @@ if prompt:
         if re.search(r'actions?\.ts|-actions', p) and "qc-pos-p1.6" not in p: add("RED", "O11", "prompt กล่าวถึงไฟล์ *actions*.ts แต่ไม่สั่งรัน qc-pos-p1.6 (บทเรียน gates115)")
         elif "qc-pos-p1.6" in p: add("OK", "O11", "สั่ง qc-pos-p1.6 แล้ว")
         if "export CI" not in p: add("WARN", "O11", "prompt ไม่มีข้อห้าม `export CI`")
+        lane_envs = [env for name, env, sha in env_pins if name in ("LANE_PIN", "LANE_REV")]
         for name, env, sha in env_pins:
             if base and name in ("PIN", "BASE") and not sha.startswith(base[:7]) and env + "=" not in p:
-                add("RED", "O11", f"ค่าเริ่มต้น {name}={sha} ≠ ฐาน {base} และ prompt ไม่ตั้ง {env}= — builder จะเทียบผิดฐาน")
+                # ใบ U ของ suite ที่ merge แล้ว: หมุดใบ (PIN) ต้องคงฐานก่อนใบ S — builder ตั้งเฉพาะหมุดเลน (Pxx_LANE_PIN=) ก็พอ
+                if any(le + "=" in p for le in lane_envs):
+                    add("OK", "O11", f"ค่าเริ่มต้น {name}={sha} คงฐานก่อนใบ S · prompt ตั้งหมุดเลน {', '.join(le for le in lane_envs if le + '=' in p)}= (ใบ U)")
+                else:
+                    add("RED", "O11", f"ค่าเริ่มต้น {name}={sha} ≠ ฐาน {base} และ prompt ไม่ตั้ง {env}= หรือหมุดเลน {lane_envs or '-'} — builder จะเทียบผิดฐาน")
         if "pos-pre-submit" not in p: add("WARN", "O11", "prompt ยังไม่ใช้ scripts/pos-pre-submit.sh (ให้ builder รันชุดมาตรฐานแล้ววางตารางแทนอ่าน log)")
         if base and base[:7] not in p: add("WARN", "O11", f"prompt ไม่กล่าวถึงฐาน {base}")
 for lvl, cid, text in rows:
