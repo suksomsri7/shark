@@ -2991,7 +2991,16 @@
       "managers": "Managers who receive the brief",
       "anomalyInBrief": "Show anomalies in the brief",
       "ownerOnly": "Only the shop owner can change this setting",
-      "invalidManager": "Recipients must be managers of the shop who accepted the invitation"
+      "invalidManager": "Recipients must be managers of the shop who accepted the invitation",
+      "sheetOpen": "Morning brief settings",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "Saved",
+      "hourValue": "{hour}:00",
+      "managersEmpty": "No managers have accepted an invitation yet",
+      "managersMax": "Up to {max} people",
+      "invalidField": "This value is not valid",
+      "saveFailed": "Could not save. Try again."
     },
     "offline": {
       "cardTitle": "Offline",
@@ -4910,6 +4919,18 @@
       "empty": "No morning brief yet",
       "off": "The POS AI assistant is off",
       "proposeOnly": "AI only proposes — every write needs a person to confirm"
+    },
+    "panel": {
+      "analyzedAt": "Analysed at {time}",
+      "draftPo": "Draft purchase order",
+      "ask": "Ask a follow-up",
+      "refused": "You need report access to see the AI assistant's summary. Ask the shop owner for access.",
+      "openSettings": "Turn it on in settings",
+      "loading": "Analysing…",
+      "failed": "Could not load the summary",
+      "retry": "Try again",
+      "seedDraftPo": "Draft a purchase order for the low-stock items in this summary:\n{lines}",
+      "seedAsk": "About this summary ({title}):\n{lines}\nAnalyse it further and suggest what to do next."
     },
     "tools": {
       "denied": "This account cannot see this POS data yet. Ask the shop owner for access.",
