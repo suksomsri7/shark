@@ -1950,6 +1950,9 @@ async function runDb() {
     const ob = ((await P.outboxEvent.findMany({ where: { tenantId: T, createdAt: { gte: RUN_START } } }).catch(() => [])) as Any[]);
     if (!ob.length) p.push("(ตัวควบคุม) ไม่มี outbox");
     for (const e of ob) {
+      // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-B2 PV3): ข้ามเฉพาะ event ที่ type ขึ้นต้น `account.contact.` — โมดูลบัญชีส่งชื่อผู้ติดต่อตามสัญญา webhook
+      //   (contactPayload · fixture AC1 ของ CO1 ก็ปล่อยเอง) · event อื่นทุกชนิดยังสแกนเหมือนเดิม · delete-probe ดู wo-notes §fix1 · ก่อน 45/47 → หลัง ดู wo-notes ◂
+      if (String(e.type ?? "").startsWith("account.contact.")) continue;
       const s = J(e.payload);
       for (const x of secrets) if (s.includes(x)) p.push(`outbox ${e.type} มี ${x.slice(0, 8)}…`);
     }
