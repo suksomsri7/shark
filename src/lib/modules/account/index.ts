@@ -30,7 +30,7 @@ import {
 import { lineAmount, type LineInput } from "./totals";
 import { baht, familyCreditByInvoice } from "./service";
 // POS P3.6 ▸ วางบิล (เครดิตเทอม): ใบแจ้งหนี้ของบิล + ตัวอ่านภาพหนี้/เทอม/สถานะรับชำระ (service.ts · บล็อก POS P3.6) ◂
-import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
+import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, posCreditInvoiceState as posCreditInvoiceStateOf, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
@@ -1685,6 +1685,14 @@ export async function posCreditInvoicePaid(tx: Prisma.TransactionClient, input: 
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return false;
   return posCreditInvoicePaidInTx(tx, input.tenantId, link.systemId, input.refId);
+}
+
+/** POS P3.6 fix2 H3: ใบแจ้งหนี้ของบิลวางบิลในสมุดที่ผูก POS + สถานะ (null = ไม่ผูก/ไม่มีใบ) — void ใช้ตรวจว่ายกเลิกใบได้จริง */
+export async function posCreditInvoiceState(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<{ docId: string; status: string } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  const d = await posCreditInvoiceStateOf(link.systemId, input.refId);
+  return d ? { docId: d.id, status: d.status } : null;
 }
 
 /** POS P3.6 ▸ R9: อายุหนี้ของบริษัท (partyIds) ในสมุดที่ผูก POS — รายงาน "credit" ของ POS (อ่านอย่างเดียว · สูตรเดียวกับ agingReport) · ไม่ผูก = null */

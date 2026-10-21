@@ -5,6 +5,7 @@
 
 import type { PosPayType, Prisma } from "@prisma/client";
 import { applyExternalChannelCommission, applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
+import { posCreditInvoiceState } from "@/lib/modules/account"; // POS P3.6 ▸ fix2 H3 ◂
 import { applyExternalDepositReceipt, applyExternalDepositRefund, posSalePosted } from "@/lib/modules/account"; // POS P2.9b ▸ R3 R8 (ผ่าน facade เท่านั้น) · fix1 มติ 3 ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
@@ -332,11 +333,19 @@ export async function bridgePosSaleVoided(sale: {
   tenantId: string;
   systemId: string;
 }): Promise<{ posted: boolean }> {
-  return reverseExternalSale({
+  const res = await reverseExternalSale({
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
   });
+  // POS P3.6 ▸ fix2 H3: บิลวางบิลที่ใบแจ้งหนี้ยกเลิกไม่ได้ (มีรับชำระเข้ามาหลัง void commit) — JV กลับแล้วแต่ใบยังค้าง/จ่ายแล้ว ⇒ เตือน ops ให้นักบัญชีจัดการ ·
+  //   ไม่โยนให้คิวลองใหม่ (ลองกี่ครั้งก็ยกเลิกไม่ได้) · บิลอื่นไม่มีใบนี้ ⇒ ไม่มีอะไรเกิด ◂
+  if (!res.docVoided) {
+    const inv = await posCreditInvoiceState({ tenantId: sale.tenantId, sourceSystemId: sale.systemId, refId: sale.id });
+    if (inv && inv.status !== "VOIDED")
+      await logOps("WARN", "pos.credit.void_unposted", `บิล POS ${sale.id} (วางบิล) ถูกยกเลิกแต่ใบแจ้งหนี้ยกเลิกไม่ได้ (มีรับชำระแล้ว) — ให้นักบัญชีออกใบลดหนี้/คืนเงินในระบบบัญชี`, { tenantId: sale.tenantId, detail: JSON.stringify({ saleId: sale.id, docId: inv.docId }) }).catch(() => undefined);
+  }
+  return res; // ◂ POS P3.6
 }
 
 // POS P1.8 ▸ ใบคืนเงิน (docType REFUND) → ใบลดหนี้ + กลับรายการตามสัดส่วน (ผ่าน facade · REVIEW #6) ◂

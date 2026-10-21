@@ -7387,6 +7387,14 @@ export async function findPosCreditInvoice(systemId: string, refId: string): Pro
   });
 }
 
+/** fix2 H3: ใบแจ้งหนี้ของบิลวางบิล (ทุกสถานะยกเว้น CANCELLED) + สถานะ — void ของ POS ใช้ตรวจว่ายกเลิกใบได้จริงไหม */
+export async function posCreditInvoiceState(systemId: string, refId: string): Promise<{ id: string; status: string } | null> {
+  return prisma.accountDocument.findFirst({
+    where: { systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } },
+    select: { id: true, status: true },
+  });
+}
+
 /** เทอมของผู้ติดต่อสมุด (ตาม partyId · ผู้ติดต่อเก่าสุดที่ยังไม่เก็บ) + ค่าปริยายของสมุด — 0 ของผู้ติดต่อ = "ไม่ตั้ง" (CD-3) */
 export async function posCreditTermsOfParty(tenantId: string, systemId: string, partyId: string): Promise<{ contactTermDays: number | null; defaultDueDays: number }> {
   const [c, s] = await Promise.all([
