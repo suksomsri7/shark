@@ -176,3 +176,54 @@ PRESUBMIT head=6688d9d7 green=10 red=7 expected-lane-pin=4 unexpected-red=qc-pos
 ### OP — §"แจ้งเจ้าของโมดูล ACCOUNT" (CD-P36-B4 · B5)
 - P3.6 เขียนโค้ดเลนบัญชีเป็นบล็อกเพิ่มล้วน: `src/lib/modules/account/service.ts:5165–5167` (findExternalSaleDoc: ใบแจ้งหนี้ของบิลวางบิลมาก่อน) + `:7286–7476` (บล็อก `POS P3.6 ▸ … ◂`: upsertPosCreditInvoiceDocument (advisory xact lock ต่อ สมุด·บิล) · findPosCreditInvoice · posCreditTermsOfParty · posCreditOpenDocs · posCreditInvoicePaidInTx · posCreditAgingByParty) · `account/index.ts` บล็อก P3.6 (onAccount + ช่อง ON_ACCOUNT ขาย/คืน · facade posCredit*) — facade index.ts แตะ prisma ไม่ได้ (F5) จึงอยู่ service.ts.
 - Follow-up (B5): `pos.sale.paid` สองคิวพร้อมกัน (drain หลัง commit ของผลิตภัณฑ์ ซ้อนกับตัวระบาย) ชน unique ของ JV (P2002) เป็นครั้งคราวในบิลทั่วไป — คิวลองใหม่เอง ไม่มีด่านแดง · P3.6 ลองซ้ำ 1 ครั้งเฉพาะบิลวางบิล (`pos/account-bridge.ts` p36RetryOnceOnUnique) · ทางเลือกของเจ้าของโมดูล: ให้ postExternalSale ถือว่า P2002 ของ idempotencyKey = "ลงแล้ว".
+
+## §fix2 — R1 + hunter rulings CD-P36-F1/F2/F3 · H2–H6 (controller B · 21 Oct · review `pos-P3.6-review.md`)
+Commits: c4467a49 (ORACLE-EDIT CR10) · 7dab72d1 F1 · 1ed7d590 F2 (+ 45b7667f follow-up) · 2ea4dbc1 F3 · dfa25bed H4 · ebbc5f29 H6 · 300b2774 H5 · 64f38e0d H3 · f7ca055a H2.
+- **F1 (High)** — (a) `account/service.ts:7447` posCreditOpenDocs: a credit INVOICE matched by `refType PosSale ∧ refId ∈ saleRefIds` is open whatever its contact · (b) `account/index.ts:1602` posCreditContact resolves by partyId only through `ensureAccountContact` (lock per book+Party, create if missing; a same-taxId contact of another Party ⇒ new contact without taxId; never findOrCreateCustomerContact's taxId fallback); buyer taxId/branch still in the doc snapshot. Oracle ORACLE-EDIT c4467a49 adds **CR10** (`qc-pos-p3.6.mts:1536`): contact C_old (same taxId, other partyId) must not absorb the INVOICE; exposure 400,000. Red-before at b6e9838c: **47/48** ("ใบแจ้งหนี้ผูก C_old · partyId ≠ P8 · exposure P8 0") → after **48/48**.
+- **F2 (W16/W23)** — `account/index.ts:294` applyExternalSale returns `creditInvoice: true` for the credit INVOICE (= ใบแจ้งหนี้/ใบกำกับภาษี of the bill; no separate TAX_INVOICE) · `pos/account-bridge.ts:189` skips the `pos.taxInvoice` WARN for those bills (inside the existing `else if (buyer)` branch — p2.14 P5 anchor kept, 45b7667f). P3.6U handoff: print the full tax invoice from a credit bill (from the INVOICE + buyer snapshot).
+- **F3** — `pos/reports.ts:1790` refund filter `createdAt {gte: r.start, lt: r.end}`.
+- **H2 (Medium)** — `pos/refund.ts:561` (inside the P3.6 refund block) → `pos/credit.ts:218` creditRefundExcess: party advisory lock (same key as the sale) + INVOICE row lock via facade `account/index.ts:1691` posCreditRefundRoom → `account/service.ts:7394` posCreditRefundRoomInTx (remaining = grand − paid − live credit notes; minus prior ON_ACCOUNT refunds not yet drained). Ask > remaining ⇒ new refusal **`CREDIT_REFUND_EXCEEDS_REMAINING`** (`refund-shared.ts` RefundRefusalCode + REFUND_ERROR_KEYS `creditRefundExceedsRemaining` · `refund.ts:68` MSG · `pos.refund.errors.*` th/en · `pos/api/http-errors.ts` 409 state_conflict · POS-API.md regenerated). Deviation: the refund path's refusal type is `RefundRefusalCode`/`REFUND_ERROR_KEYS`/`pos.refund.errors` (not PosSaleErrorCode/register REFUSAL_KEY — refunds never pass through those). No invoice yet (undrained ⇒ unpaid) = existing caps.
+- **H3** — `pos/account-bridge.ts:341` bridgePosSaleVoided: `docVoided` false + credit INVOICE still not VOIDED (`account/index.ts:1698` posCreditInvoiceState → `account/service.ts:7408`) ⇒ `logOps WARN pos.credit.void_unposted` detail `{saleId, docId}`; no throw.
+- **H4** — `pos/credit.ts:204` approverOf: role ∈ {OWNER, MANAGER} and ≠ seller (`service.ts:821` passes `soldByUserId`) · `pos/register.ts:3406` regP36: same gate on the verified manager vs the submitting actor ⇒ PERMISSION_DENIED.
+- **H5** — `pos/staff-commission.ts:116` (same single P3.6 hunk): skip when `crmDealId` OR the sale has a COUNTED `POS_SALE` deal-payment row (`pos/crm-link.ts:209` saleCountedByDeal → new read-only seam reader `crm/pos-seam.ts:106` posSaleDealRows). Interpretation: R12 "COUNTED POS_SALE row" (CrmDealPayment), as in the brief/review. Ordering caveat: a legacy post-commit link that lands after the drain is not seen (follow-up line for CRM).
+- **H6** — `pos/credit.ts:141` exposure reads ON_ACCOUNT bills of the last 90 days only (`CREDIT_EXPOSURE_WINDOW_DAYS`; open INVOICEs of the company contact count at any age) · `pos/crm-link.ts:141` sweeper pages (≤ 40 × 500) in time order and drops bills already linked/counted (seam posSaleDealRows) before filling its 500 batch.
+- Oracle at f7ca055a: forced **48/48 · 48/48** (exit 0 · residue 0 · guard 0 · pump 0) · `--no-db` **4/4** · at 45b7667f forced **48/48** (exit 0 · residue 0).
+- Typecheck: f7ca055a exit 0 (16:28–16:30Z) · **45b7667f exit 0** (17:19:12–17:19:47Z) — the second run is because of the 45b7667f follow-up found by the pre-submit (p2.14 P5).
+- Pre-submit (granted · `--set core,money --also qc-pos-p3.5,qc-pos-p2.9,qc-pos-p2.9b,qc-pos-p2.12,qc-pos-p2.14,qc-hf-tx` · logs `/root/pos-runs/presubmit-shark-pos-b-20261021T163325Z`) at f7ca055a:
+```
+PRESUBMIT-TABLE head=f7ca055a tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+qc-pos-p1.1                  0    180/180      169  
+qc-pos-p1.3                  0    128/128      139  
+qc-pos-p1.6                  0    48/48         40  
+qc-pos-p1.18                 0    81/81         40  
+qc-pos-p2.9                  1    61/62        119  P2.9-L1
+qc-pos-p2.9b                 1    52/53        120  P2.9b-L1
+qc-pos-p2.12                 1    32/33       1051  P2.12-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.14                 1    59/60         79  P2.14-P5
+qc-pos-p3.5                  1    54/55        212  P3.5-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-fu                     1    28/29        142  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-tx                     0    22/22        164  
+qc-hf-fu2                    1    30/31         30  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-restaurant-money          0    6/6           16  
+qc-shop-refund               0    12/12         46  
+qc-hotel-money               0    5/5           29  
+qc-ticket-money              0    6/6           69  
+qc-subscription-money        0    14/14         24  
+qc-account-cpa               0    107/107       22  
+qc-acc-v2-pos-lines          1    65/79         23  PL1.1,PL1.2,PL1.3,PL1.4,PL1.6,PL1.7 … [accepted]
+fitness-noenv                0    53/53         14  
+fitness-qc4                  0    53/53         35  
+fitness-pos                  0    8/8            8  
+gen-check                    0    -              1  
+PRESUBMIT head=f7ca055a green=15 red=8 expected-lane-pin=4 unexpected-red=qc-pos-p2.9,qc-pos-p2.9b,qc-pos-p2.14,qc-acc-v2-pos-lines · VERDICT red (7: qc-pos-p2.9 qc-pos-p2.9b qc-pos-p2.12 qc-pos-p2.14 qc-pos-p3.5 qc-hf-fu qc-hf-fu2)
+```
+- P2.14-P5 (`qc-pos-p2.14.mts:2287` anchor `else if (buyer)`) was caused by 1ed7d590 → fixed 45b7667f → `qc-pos-p2.14` re-run alone at 45b7667f: **60/60**.
+- Remaining reds: contract re-pins `qc-pos-p2.9.mts:377` L1 · `qc-pos-p2.9b.mts:47` L1 (sha 762e073c…) · lane pins `qc-pos-p2.12.mts:425` ST1 · `qc-pos-p3.5.mts:443` ST2 · `qc-hf-fu.mts:591` ST1 · `qc-hf-fu2.mts:472` ST1 · `qc-acc-v2-pos-lines` PL1/PL10 seeded-data set (accepted).
+
+### OP lines (fix2)
+- §"แจ้งเจ้าของโมดูล ACCOUNT": บล็อก P3.6 ใน `account/service.ts` เพิ่ม posCreditRefundRoomInTx (ล็อกใบแจ้งหนี้ · ค้าง = grand − paid − CN) + posCreditInvoiceState · `account/index.ts` facade posCreditRefundRoom/posCreditInvoiceState + posCreditContact ใช้ ensureAccountContact (partyId เท่านั้น) + ธง `creditInvoice` ในผลของ applyExternalSale.
+- §ACCOUNT (H2): คืนบิลวางบิลเกินยอดค้างของใบแจ้งหนี้ (ลูกค้าจ่ายแล้ว) — POS ปฏิเสธ `CREDIT_REFUND_EXCEEDS_REMAINING` · ส่วนที่จ่ายแล้วให้นักบัญชีคืนเงิน/ออกใบลดหนี้ในระบบบัญชี.
+- §ACCOUNT (H3): WARN `pos.credit.void_unposted` = บิล POS ยกเลิกแล้วแต่ใบแจ้งหนี้มีรับชำระ — นักบัญชีออกใบลดหนี้/คืนเงินเอง.
+- W23 (เจ้าของ/นักบัญชี · บันทึกโดยผู้คุม): ใบแจ้งหนี้ของบิลวางบิล = "ใบแจ้งหนี้/ใบกำกับภาษี" (ไม่มี TAX_INVOICE แยก) · พิมพ์ใบกำกับเต็มรูปจากบิลวางบิล = P3.6U.
+- §"CRM": `crm/pos-seam.ts` เพิ่มตัวอ่าน posSaleDealRows (อ่านอย่างเดียว · แถว POS_SALE ทุกระบบ CRM ของร้าน) · follow-up H5: บิลที่ register-ui (ทางเก่า) ผูกดีลหลังคิวค่าคอมฯ พนักงานระบายไปแล้ว ยังได้ทั้งสองค่าคอมฯ — ให้ CRM/P3.6U ตัดสิน (ผูกก่อน commit หรือกลับ ACCRUE ตอนนับ).
