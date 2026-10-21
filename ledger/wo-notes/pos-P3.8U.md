@@ -5,10 +5,10 @@ Card pin `qc-pos-p3.8` stays 42b823e9 (`P38_PIN` never set) · `P38_LANE_PIN=8c0
 
 ## Progress
 - [x] (1) messages th/en — `pos.settings.tabs.board` · `pos.settings.board.*` (+ `.room.*` · `.others.*` · `.errors.*`) · `pos.report.anomaly.toCard.*` · `pos.ai.panel.board` · `pos.shift.{boardCard,boardCardDone,hintTitle,hintRoom,hintCard,hintCardEvery}`
-- [ ] (2) tab `board` + page-server reads + create-board
-- [ ] (3) wrapper `posBoardCardsAction` (CD-P38U-2)
-- [ ] (4) anomaly button/chips + 08 panel link
-- [ ] (5) shifts chip + hint lines
-- [ ] (6) KANBAN card link → `?tab=board`
-- [ ] (7) harness + inventory + sweep row + spec
+- [x] (2) tab `board` + page-server reads + create-board
+- [x] (3) wrapper `posBoardCardsAction` (CD-P38U-2)
+- [x] (4) anomaly button/chips + 08 panel link
+- [x] (5) shifts chip + hint lines
+- [x] (6) KANBAN card link → `?tab=board`
+- [x] (7) harness + inventory + sweep row + spec
 - [ ] (8) merge origin/session/pos → gates
