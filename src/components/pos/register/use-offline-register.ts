@@ -129,10 +129,11 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
   const snapFails = useRef(0);
   const snapNextAt = useRef(0);
   const snapBusy = useRef(false);
-  const fetchSnapshot = useCallback(async () => {
+  /** true = ได้ snapshot ใหม่ · false = ข้าม (กำลังดึงอยู่/ถอยเวลา/ออฟไลน์) หรือถูกปฏิเสธ (fix1 F6: ตัวเรียกที่ขอบ pvu ใช้ตัดสินลองซ้ำ) */
+  const fetchSnapshot = useCallback(async (): Promise<boolean> => {
     const d = dbRef.current;
-    if (!d || !enabled || !deviceId || !canSell || !onlineRef.current || snapBusy.current) return;
-    if (Date.now() < snapNextAt.current) return;
+    if (!d || !enabled || !deviceId || !canSell || !onlineRef.current || snapBusy.current) return false;
+    if (Date.now() < snapNextAt.current) return false;
     snapBusy.current = true;
     try {
       const res = await post(SNAPSHOT_URL, { systemId, unitId, deviceId });
@@ -142,7 +143,7 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
         snapNextAt.current = 0;
         await writeSnapshot(d, { userId, deviceId, fetchedAt: new Date().toISOString(), snapshot: body.snapshot });
         setSnapshot(body.snapshot);
-        return;
+        return true;
       }
       if (body?.code === "OFFLINE_DISABLED" || body?.code === "DEVICE_REVOKED" || body?.code === "DEVICE_NOT_FOUND") {
         await wipeSnapshot(d);
@@ -158,6 +159,7 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
     } finally {
       snapBusy.current = false;
     }
+    return false;
   }, [enabled, deviceId, canSell, systemId, unitId, userId]);
   useEffect(() => {
     if (!db || !enabled || !online || !deviceId || !canSell) return;
@@ -171,8 +173,22 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
     if (!pvu || !enabled) return;
     const at = Date.parse(pvu);
     if (!Number.isFinite(at)) return;
-    const h = setTimeout(() => void fetchSnapshot(), Math.min(Math.max(at - Date.now(), OFFLINE_EDGE_MIN_WAIT_MS), 3_600_000));
-    return () => clearTimeout(h);
+    // fix1 F6: ขอบนี้ถูกข้าม (กำลังดึงอยู่) หรือถูกปฏิเสธ (RATE_LIMITED/ล้ม) = ลองซ้ำ "ครั้งเดียว" ที่ snapNextAt (อย่างน้อย 15 วิ) — ไม่รอรอบ 15 นาที
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let live = true;
+    const h = setTimeout(
+      () =>
+        void fetchSnapshot().then((ok) => {
+          if (ok || !live) return;
+          retry = setTimeout(() => void fetchSnapshot(), Math.max(snapNextAt.current - Date.now(), OFFLINE_EDGE_MIN_WAIT_MS));
+        }),
+      Math.min(Math.max(at - Date.now(), OFFLINE_EDGE_MIN_WAIT_MS), 3_600_000),
+    );
+    return () => {
+      live = false;
+      clearTimeout(h);
+      if (retry) clearTimeout(retry);
+    };
   }, [pvu, enabled, fetchSnapshot]);
 
   // ── วงซิงก์ (มติ 5) ──
