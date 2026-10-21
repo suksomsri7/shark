@@ -17,7 +17,41 @@ Lane pin for gates: `P39_LANE_PIN=26b831d2` (card PIN stays 8bded5a7).
 - [x] (5) A11 verify — S shipped `ReportsClient` A11 group + `GeneralSettings` A11 row (default 3 · A1–A10 untouched); no code change · shot by `reports-anomalies-a11` / `settings-general-anomaly-a11`
 - [x] (6) visual `P39U_WO`/`P39U_PLAN` (10 states) + inventory +13 rows + `ledger/pos-briefs/pos-spec-P3.9-ai-ui.md`
 - [x] (7) merge origin/session/pos fae2250f (87619d0f · ledger only) → pre-submit ×2 → typecheck 0
-/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchpad/notes-body.md
+## Files / components (commits on `wip/pos-p3.9u`)
+| commit | what |
+|---|---|
+| 3c7e3b82 | step 1 — NEW `src/lib/modules/pos/ai-panel-actions.ts` `posAiPanelAction({systemId, date?, locale?})` (CD-P39U-1) · messages th/en `pos.ai.panel.*` (10 keys) + `pos.settings.ai.{sheetOpen,save,cancel,saved,hourValue,managersEmpty,managersMax,invalidField,saveFailed}` |
+| 34cb69ec | step 2 — NEW `reports/AiBriefPanel.tsx` · `ReportsOverview.tsx` bottom row staff + panel (mockup 08) · `reports/page.tsx` refused panel under the page refusal (kind=overview) · inventory +4 |
+| 41b7797d | step 3 — `AiDock.tsx` reads optional `detail.prompt` · `AiChat.tsx` prop `seed` + one effect (prefill, no auto-send) |
+| fbcb65c8 | step 4 — NEW `settings/AiBriefSheet.tsx` (`AiBriefSettings`) · `SharkSettings.tsx` AI branch · `settings/page.tsx` `ai={isOwner, managers}` · inventory +9 |
+| 52a993dc | step 5–6 — `visual-pos.mts` P39U_WO/P39U_PAGES/P39U_PLAN + fixtures · spec `ledger/pos-briefs/pos-spec-P3.9-ai-ui.md` · empty rule |
+| 87619d0f | merge `origin/session/pos` fae2250f (ledger only) |
+| 25d5560e | test(pos) `pos-visual-sweep.json` run row `p3.9u-ai` (placeholder, P3.4U precedent ad806bfa) — `qc-pos-p2.14` V2 59/60 → 60/60 |
+| 447a5d8c | visual harness typing fix (= typechecked head) |
+Inventory: F15.3 rows **+13** (1083 → 1096): reports `pos-reports-ai-{draft-po,ask,retry,settings}` · settings `pos-settings-ai-{switch,open,brief-enabled,hour,email,anomaly,manager-*,save,cancel}`.
+
+## Testids
+Panel `pos-reports-ai-{panel,at,line-<n>,draft-po,ask,propose-only,empty,refused,off,settings,error,retry}` · card/sheet `pos-settings-ai-{switch,switch-error,open,owner-only,sheet,brief-enabled,hour,email,anomaly,manager-<userId>,managers-empty,error,save,cancel}` (non-owner keeps `pos-settings-card-state-ai`).
+
+## Deviations per ruling
+- R1/CD-P39U-1: action returns `{ok, title, lines, sections, anomalyHits, empty, businessDate, generatedAt, canManage}` (additive to `{ok,title,lines,generatedAt}`: `sections`/`anomalyHits` only pick the red dot; lines shown verbatim). Optional `date` = overview's `to` (≤ today, else today) — default view = today as ruled.
+- R1 refused: actors without `pos.report.view` never mount `ReportsClient` ⇒ the page renders the panel in refused mode (no action call) under `pos-report-refusal` on kind=overview; inside `ReportsClient` the refusal comes from the action.
+- R1 title: h2 = `ai.brief.title` "สรุปเช้า POS" (ruling), not the mockup's "ผู้ช่วย AI ของ SHARK".
+- CD-P39U-2: dock seed prefills the input (no auto-send); "สร้างงานในบอร์ด" omitted. fix1 F1: seeds = title + business date + intent (`seedDraftPo {date}` · `seedAsk {title, date}`), no brief lines.
+- R4: header switch reloads `posIntegrationCardsAction` after save so LINKED/OFF follows the saved value; non-owner = unchanged indicator + ownerOnly line; sheet open = OWNER only. `settings.ai.desc` shown under the sheet title.
+- Visual: brief fixture = sales + 1 void (no refund — refund path already in P2.12U fixture on the same tenant); bills kept (day keys) like P2.12U.
+
+## CONTROLLER-DECISION
+- **CD-P39U-B1 (empty rule)** — as built in a081a79a: empty = no line or 0 bills. **Revised by the controller (R1 N1, binding) and built in fix1 c94b61d4**: `empty` = no actionable line (`soldOut` · `stock` · `anomalies` with a rule hit · `proposals`) regardless of bill count; a 0-bill day drops only the ฿0 `sales` line. Owner-ack stays in spec §6.
+- **CD-P39U-B2 (sweep row)**: `pos-visual-sweep.json` placeholder `p3.9u-ai` (test commit 25d5560e) — replace with `p3.9u-th`/`p3.9u-en` after the QC5 round.
+
+## Follow-ups
+- P3.8U: "สร้างงานในบอร์ด" button on the 08 panel → `createAnomalyCardAction` (`src/lib/pos-board-actions.ts`), CD-P39U-2.
+
+## OP lines
+- §"แจ้งเจ้าของ app-shell": `src/components/app-shell/AiDock.tsx` + `AiChat.tsx` — `app:ai-open` accepts optional `detail.prompt` (string ≤ 4000) → chat input prefilled (no auto-send); an event without `detail` clears the seed ⇒ behaviour identical to before (Topbar unchanged). Two marked hunks `// POS P3.9U ▸ CD-P39U-2 ◂`.
+- §"แจ้งเจ้าของ settings/staff": `settings/page.tsx` reads `listStaffAccess` (`@/lib/staff/service`, read-only) for brief recipients (accepted MANAGER, OWNER view only).
+
 ## Gates — pre-submit run 2 (final · 20:35Z · logs /root/pos-runs/presubmit-shark-pos-p11-20261021T203519Z)
 ```
 PRESUBMIT-TABLE head=447a5d8c tree=/root/projects/shark-pos-p11
