@@ -8,14 +8,19 @@
 //   สวิตช์ทุกตัวในไฟล์นี้ = ตัวแสดงสถานะอ่านอย่างเดียว (aria-disabled) — สวิตช์ช่องทางขายที่สลับได้อยู่ใน ChannelsPanel.tsx
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · testid ตัวอักษรตรงบนแท็ก · ลิงก์ ≥ 44px
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react"; // POS P3.4U ▸ + useEffect/useState (สวิตช์ออฟไลน์ live) ◂
 import Link from "next/link";
+import { useRouter } from "next/navigation"; // POS P3.4U ◂
 import { useTranslations } from "next-intl";
 import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/RegisterIcon";
 import { posSettingsHref } from "@/components/pos/settings/settings-tabs";
 import { TabHead } from "./settings-ui";
 // POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) — แทนแถว PLANNED ของ P1.18U ◂
 import { ChannelsPanel, type Storefront } from "./ChannelsPanel";
+// POS P3.4U ▸ มติ 10 · CD-P34U-1: สวิตช์ออฟไลน์ของเจ้าของร้าน + รายการรอซิงก์ (เครื่องนี้ IndexedDB + รอผู้จัดการที่เซิร์ฟเวอร์) ◂
+import { updatePosOfflineEnabledAction, listOfflineRejectedAction } from "@/lib/modules/pos/offline-actions";
+import { countQueuedOnDevice } from "@/components/pos/register/offline-store";
+import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 
 export type { Storefront };
 export type PaySummary = { promptpayMasked: string | null; beamOn: boolean };
@@ -123,9 +128,49 @@ export function PaymentsPanel({ systemId, unitId, pay }: { systemId: string; uni
   );
 }
 
-/** การ์ดออฟไลน์ (ภาพ 10 แถวสุดท้าย) — ทั้งหมด P3.4 · ยังไม่มีคิวออฟไลน์ ⇒ รอซิงก์ 0 */
-export function OfflineCard({ wide = false }: { wide?: boolean }) {
+/**
+ * POS P3.4U ▸ มติ 10 · CD-P34U-1: ค่าจริงของการ์ด — enabled = settings.pos.offline.enabled · isOwner = สลับได้ (ตัวเขียนตรวจ OWNER ซ้ำ) ·
+ * ไม่ส่ง live = การ์ดแบบวันนี้ทุกพิกเซล ◂
+ */
+export type OfflineLive = { systemId: string; unitId: string; enabled: boolean; isOwner: boolean };
+/** การ์ดออฟไลน์ (ภาพ 10 แถวสุดท้าย) — POS P3.4U ▸ CD-P34U-1: ปิดธงเปลี่ยนแค่ 2 จุด (สวิตช์ live ของเจ้าของร้าน · ชิป "เร็ว ๆ นี้") ที่เหลือเหมือนวันนี้ ◂ */
+export function OfflineCard({ wide = false, live = null }: { wide?: boolean; live?: OfflineLive | null }) {
   const t = useTranslations("pos.settings.offline");
+  const router = useRouter();
+  const [on, setOn] = useState(!!live?.enabled);
+  const [busy, setBusy] = useState(false);
+  const [saveErr, setSaveErr] = useState(false);
+  const [pend, setPend] = useState<{ device: number; server: number }>({ device: 0, server: 0 });
+  useEffect(() => setOn(!!live?.enabled), [live?.enabled]);
+  const liveSys = live?.systemId;
+  const liveUnit = live?.unitId;
+  useEffect(() => {
+    if (!liveSys || !liveUnit) return;
+    let alive = true;
+    void (async () => {
+      // มติ 10: รอซิงก์ = บิลในเครื่องนี้ (IndexedDB · ไม่มีฐาน = 0) + บิลรอผู้จัดการของสาขา (ไม่มีสิทธิ์ pos.shift.manage = 0)
+      const device = await countQueuedOnDevice(liveSys, liveUnit, getPosDeviceId()).catch(() => 0);
+      const r = await listOfflineRejectedAction({ systemId: liveSys, unitId: liveUnit, limit: 200 }).catch(() => null);
+      if (alive) setPend({ device, server: r && r.ok ? r.items.length : 0 });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [liveSys, liveUnit]);
+  const toggle = async () => {
+    if (!live || !live.isOwner || busy) return;
+    setBusy(true);
+    setSaveErr(false);
+    try {
+      const r = await updatePosOfflineEnabledAction({ systemId: live.systemId, enabled: !on }).catch(() => null);
+      if (!r || !r.ok) return setSaveErr(true);
+      setOn(r.enabled);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pendTotal = pend.device + pend.server;
   return (
     <div data-testid="pos-settings-card-offline" className={`flex min-w-0 flex-col gap-3 rounded-[12px] border bg-[color:var(--color-surface)] px-[14px] py-3 ${wide ? "md:px-6 md:py-5" : ""}`}>
       {/* POS P1.18U ▸ แก้รอบ 2 V3/V4: ชิป "เร็ว ๆ นี้ · P3.4" ลงบรรทัดของตัวเองใต้ชื่อ (เดิมเบียดจนชื่อตัดเป็น "ออฟ/ไลน์" และทับ "Offline") ◂ */}
@@ -134,13 +179,42 @@ export function OfflineCard({ wide = false }: { wide?: boolean }) {
           <RegisterIcon name="swap" size={14} />
         </Tile>
         <span className={HEAD_TITLE}>{t("cardTitle")}</span>
-        <span data-testid="pos-settings-card-state-offline" role="switch" aria-checked="false" aria-disabled="true" aria-label={t("cardTitle")} title={t("planned")} className={HEAD_SWITCH}>
-          <MiniKnob on={false} />
-        </span>
+        {live ? (
+          /* POS P3.4U ▸ CD-P34U-1 จุดที่ 1: สวิตช์ live — เจ้าของร้านสลับได้ · คนอื่นเห็นสถานะจริง (aria-disabled) ◂ */
+          <button
+            data-testid="pos-settings-offline-switch"
+            type="button"
+            role="switch"
+            aria-checked={on}
+            aria-disabled={!live.isOwner || busy}
+            aria-label={t("cardTitle")}
+            title={live.isOwner ? undefined : t("ownerOnly")}
+            className={`${HEAD_SWITCH} ${live.isOwner ? "" : "cursor-not-allowed"}`}
+            onClick={() => void toggle()}
+          >
+            <MiniKnob on={on} />
+          </button>
+        ) : (
+          <span data-testid="pos-settings-card-state-offline" role="switch" aria-checked="false" aria-disabled="true" aria-label={t("cardTitle")} title={t("planned")} className={HEAD_SWITCH}>
+            <MiniKnob on={false} />
+          </span>
+        )}
       </div>
-      <div data-testid="pos-settings-card-soon-offline" className="-mt-1.5 flex pl-[43px]">
-        <SoonChip phase="P3.4" />
-      </div>
+      {live ? (
+        /* POS P3.4U ▸ CD-P34U-1 จุดที่ 2: ชิป "เร็ว ๆ นี้ · P3.4" → สถานะจริง ◂ */
+        <div data-testid="pos-settings-offline-state" data-state={on ? "on" : "off"} className="-mt-1.5 flex flex-col gap-1 pl-[43px] text-[11.5px] text-[color:var(--color-muted)]">
+          <span className="inline-flex h-6 w-fit items-center whitespace-nowrap rounded-[7px] border px-2">{on ? t("liveOn") : live.isOwner ? t("liveOff") : t("ownerOnly")}</span>
+          {saveErr ? (
+            <span data-testid="pos-settings-offline-error" role="alert" className="text-[color:var(--color-danger)]">
+              {t("saveFailed")}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div data-testid="pos-settings-card-soon-offline" className="-mt-1.5 flex pl-[43px]">
+          <SoonChip phase="P3.4" />
+        </div>
+      )}
       <ul className="list-disc pl-4 text-[12px] leading-[1.6] text-[color:var(--color-muted)]">
         <li>{t("factSell")}</li>
         <li>{t.rich("factTempNo", { b: (c) => <b className="text-[color:var(--color-ink-soft)]">{c}</b>, no: "OFF-C1-0007" })}</li>
@@ -148,8 +222,14 @@ export function OfflineCard({ wide = false }: { wide?: boolean }) {
       </ul>
       <div className="mt-auto flex items-center gap-3 border-t pt-[7px] text-[11.5px] text-[color:var(--color-muted)]">
         {t("pending")}
-        <span data-testid="pos-settings-offline-pending" className="ml-auto text-[17px] font-bold tabular-nums text-[color:var(--color-ink)]">
-          0
+        {live && pendTotal > 0 ? (
+          /* POS P3.4U ▸ มติ 10: เครื่องนี้ + รอผู้จัดการ (0 ทั้งคู่ = ตัวเลข 0 แบบวันนี้) ◂ */
+          <span data-testid="pos-settings-offline-pending-detail" className="ml-auto text-right">
+            {t("pendingDevice", { count: pend.device })} · {t("pendingServer", { count: pend.server })}
+          </span>
+        ) : null}
+        <span data-testid="pos-settings-offline-pending" data-device={pend.device} data-server={pend.server} className={`${live && pendTotal > 0 ? "" : "ml-auto "}text-[17px] font-bold tabular-nums text-[color:var(--color-ink)]`}>
+          {pendTotal}
         </span>
       </div>
     </div>
@@ -176,14 +256,14 @@ export function ChannelsPane({ systemId, unitId, canManage, canAccept, storefron
   );
 }
 
-/** ?tab=offline — มติ 7 */
-export function OfflinePane() {
+/** ?tab=offline — มติ 7 · POS P3.4U ▸ ปิดธง = แบนเนอร์เดิม (ST8-U) · เปิดธง = แบนเนอร์ live ◂ */
+export function OfflinePane({ live = null }: { live?: OfflineLive | null }) {
   const t = useTranslations("pos.settings.offline");
   return (
     <div data-testid="pos-settings-offline" className="flex min-w-0 flex-col gap-6 md:gap-8">
       <TabHead title={t("tabTitle")} desc={t("tabSub")} />
-      <PhaseBanner text={t("banner")} />
-      <OfflineCard wide />
+      <PhaseBanner text={live?.enabled ? t("liveBanner") : t("banner")} />
+      <OfflineCard wide live={live} />
     </div>
   );
 }
