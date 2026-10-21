@@ -59,3 +59,52 @@ Dry plans (iso, `CI=1`): owner 26 shots rc 0 · cashier 17 rc 0 · `LOCALE=en` 1
 `env CI=1 pnpm exec tsx scripts/visual-pos.mts p3.4u --states --user owner --state offline-sale,offline-queue,offline-tenders,offline-sync-back,offline-slip,offline-lock-pin,offline-rejected,offline-close-blocked,settings-offline-live`
 `… --user cashier --state offline-sale,offline-queue,offline-tenders,offline-sync-back,offline-slip,offline-lock-pin`
 `LOCALE=en … --user owner` (same list as owner) · regression: `p1.3 --states --state offline` + `p1.18u --states --state settings-offline` (flag off = today's pixels).
+
+## 6. Gates (QC4 · never export CI)
+- typecheck @91ef77a0 (code = head; later commits ledger/JSON data only): **exit 0 · 0 errors** (iso 8192/10500M · 13:49–13:53Z).
+- pos-pre-submit run 1 @b6ecb66a (13:54–14:54Z · logs `/root/pos-runs/presubmit-shark-pos-p11-20261021T135425Z/`):
+```
+PRESUBMIT-TABLE head=b6ecb66a tree=/root/projects/shark-pos-p11
+suite                        exit pass/total     s  failed
+wo-qc-pos-p3.4-run1          0    51/51        445  
+wo-qc-pos-p3.4-run2          0    51/51         94  
+wo-qc-pos-p3.4-nodb          0    15/15          6  
+qc-pos-p1.1                  0    180/180      177  
+qc-pos-p1.3                  0    128/128      156  
+qc-pos-p1.6                  0    48/48         42  
+qc-pos-p1.9                  0    53/53         22  
+qc-pos-p1.12                 0    72/72         83  
+qc-pos-p1.15                 0    40/40         38  
+qc-pos-p1.16                 0    28/28         28  
+qc-pos-p1.17                 0    40/40          9  
+qc-pos-p1.18                 0    81/81         41  
+qc-pos-p2.1                  0    55/55         49  
+qc-pos-p2.7                  0    42/42         68  
+qc-pos-p2.8                  0    61/61        153  
+qc-pos-p2.9                  0    62/62        168  
+qc-pos-p2.9b                 0    53/53        117  
+qc-pos-p2.10                 1    12/13        191  P2.10-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.11                 0    34/34        208  
+qc-pos-p2.12                 1    32/33        101  P2.12-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.13                 0    54/54        109  
+qc-pos-p2.14                 1    59/60        113  P2.14-V2
+qc-pos-p3.5                  0    55/55         93  
+qc-hf-fu                     1    28/29        182  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-tx                     0    22/22        127  
+qc-hf-fu2                    1    30/31        153  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-restaurant-money          0    6/6          127  
+qc-shop-refund               0    12/12         33  
+qc-hotel-money               0    5/5           77  
+qc-ticket-money              0    6/6           64  
+qc-subscription-money        0    14/14         79  
+qc-account-cpa               0    107/107       85  
+qc-acc-v2-pos-lines          1    65/79         53  PL1.1,PL1.2,PL1.3,PL1.4,PL1.6,PL1.7 … [accepted]
+fitness-noenv                0    53/53         14  
+fitness-qc4                  0    53/53         75  
+fitness-pos                  0    8/8            8  
+gen-check                    0    -              1  
+PRESUBMIT head=b6ecb66a green=31 red=6 expected-lane-pin=4 unexpected-red=qc-pos-p2.14,qc-acc-v2-pos-lines · wo: qc-pos-p3.4-run1=51/51 · qc-pos-p3.4-run2=51/51 · qc-pos-p3.4-nodb=15/15 · VERDICT red (5: qc-pos-p2.10 qc-pos-p2.12 qc-pos-p2.14 qc-hf-fu qc-hf-fu2)
+```
+- Reds: lane pins (expected, controller re-pins at merge) p2.10 ST2 · p2.12 ST1 · hf-fu ST1 · hf-fu2 ST1 · `qc-acc-v2-pos-lines` 65/79 = manifest **accepted** (no acc-v2 seed in QC4, since P1).
+- `qc-pos-p2.14` V2 (unexpected): wo-gated visual constants need a run row in `scripts/pos-visual-sweep.json` → fixed `ad806bfa` (row `p3.4u-offline`); `--no-db` re-check 14/15 — remaining miss `/^p3\.?5u/` is **pre-existing on the base** (P3.5U gate without a sweep row) → CONTROLLER-DECISION B3: add the p3.5u row at the P3.5U visual merge.
+- visual `p3.4u --states --dry` (iso, CI=1): owner 26 · cashier 17 · en 15 — rc 0.
