@@ -228,8 +228,9 @@ export function OfflineCard({ wide = false, live = null }: { wide?: boolean; liv
             {t("pendingDevice", { count: pend.device })} · {t("pendingServer", { count: pend.server })}
           </span>
         ) : null}
+        {/* POS P3.4U ▸ มติ 10: ตัวเลขรอซิงก์จริง (เครื่องนี้ + รอผู้จัดการ) · data-device/data-server · ชิดขวาเมื่อไม่มีรายละเอียด ◂ */}
         <span data-testid="pos-settings-offline-pending" data-device={pend.device} data-server={pend.server} className={`${live && pendTotal > 0 ? "" : "ml-auto "}text-[17px] font-bold tabular-nums text-[color:var(--color-ink)]`}>
-          {pendTotal}
+          {pendTotal /* POS P3.4U ▸ เดิม 0 ตายตัว ◂ */}
         </span>
       </div>
     </div>

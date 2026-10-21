@@ -563,12 +563,13 @@ export function LockScreen(p: {
               ) : (
                 <p className="text-[14px] text-[color:var(--color-muted)]">{t("staff.loading")}</p>
               )
-            ) : staffList.length === 0 ? (
+            ) : staffList.length === 0 /* POS P3.4U ▸ ออฟไลน์ = holder ◂ */ ? (
               <p data-testid="pos-staff-empty" className="text-[14px] text-[color:var(--color-muted)]">
                 {t("staff.empty")}
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
+                {/* POS P3.4U ▸ ออฟไลน์ = holder ◂ */}
                 {staffList.map((s) => {
                   const isSel = phase.kind === "manager" ? manager === s.userId : selected === s.userId;
                   const dim = phase.kind === "manager" ? !isManagerRole(s.role) || !s.hasPin : (!s.hasPin && s.userId !== selected) || !!s.hr?.onLeave; // POS P3.5U ▸ ลาวันนี้ = จาง (ยังเลือกได้) ◂
