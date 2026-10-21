@@ -7387,6 +7387,23 @@ export async function findPosCreditInvoice(systemId: string, refId: string): Pro
   });
 }
 
+/**
+ * fix2 H2: ที่ว่างให้คืนแบบ "วางบิล" ของบิลหนึ่ง — ล็อกใบแจ้งหนี้ (FOR UPDATE ใน tx ของผู้เรียก) แล้วคิด ค้าง = grand − paid − ใบลดหนี้ที่มีผลของครอบครัว ·
+ *   docRefundIds = ใบคืน (refundRefIds) ที่มีเอกสารแล้ว ⇒ ฝั่ง POS หักใบคืนที่ยังไม่ถูกระบายเอง · ไม่มีใบแจ้งหนี้ = null
+ */
+export async function posCreditRefundRoomInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, refId: string, refundRefIds: readonly string[]): Promise<{ remainingSatang: number; docRefundIds: string[] } | null> {
+  const doc = await tx.accountDocument.findFirst({ where: { tenantId, systemId, docType: POS_CREDIT_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } }, select: { id: true } });
+  if (!doc) return null;
+  await lockDocumentRow(tx, tenantId, systemId, doc.id);
+  const row = await tx.accountDocument.findUnique({ where: { id: doc.id }, select: { grandTotal: true, paidTotal: true, status: true } });
+  if (!row) return null;
+  const credit = (await familyCreditByInvoice(tx, systemId, [doc.id])).get(doc.id) ?? 0;
+  const ids = [...new Set(refundRefIds.filter(Boolean))];
+  const withDoc = ids.length ? await tx.accountDocument.findMany({ where: { tenantId, systemId, refType: EXTERNAL_SALE_REF_TYPE, refId: { in: ids } }, select: { refId: true } }) : [];
+  const remainingSatang = row.status === "VOIDED" ? 0 : Math.max(0, row.grandTotal - row.paidTotal - credit);
+  return { remainingSatang, docRefundIds: [...new Set(withDoc.map((d) => d.refId!).filter(Boolean))] };
+}
+
 /** fix2 H3: ใบแจ้งหนี้ของบิลวางบิล (ทุกสถานะยกเว้น CANCELLED) + สถานะ — void ของ POS ใช้ตรวจว่ายกเลิกใบได้จริงไหม */
 export async function posCreditInvoiceState(systemId: string, refId: string): Promise<{ id: string; status: string } | null> {
   return prisma.accountDocument.findFirst({

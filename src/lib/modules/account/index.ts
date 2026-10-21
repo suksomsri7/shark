@@ -30,7 +30,7 @@ import {
 import { lineAmount, type LineInput } from "./totals";
 import { baht, familyCreditByInvoice } from "./service";
 // POS P3.6 ▸ วางบิล (เครดิตเทอม): ใบแจ้งหนี้ของบิล + ตัวอ่านภาพหนี้/เทอม/สถานะรับชำระ (service.ts · บล็อก POS P3.6) ◂
-import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, posCreditInvoiceState as posCreditInvoiceStateOf, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
+import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, posCreditInvoiceState as posCreditInvoiceStateOf, posCreditRefundRoomInTx, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
@@ -1685,6 +1685,13 @@ export async function posCreditInvoicePaid(tx: Prisma.TransactionClient, input: 
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return false;
   return posCreditInvoicePaidInTx(tx, input.tenantId, link.systemId, input.refId);
+}
+
+/** POS P3.6 fix2 H2: ที่ว่างให้คืนแบบวางบิลของบิล (ล็อกใบแจ้งหนี้ใน tx ของผู้เรียก) — null = ไม่ผูก/ยังไม่มีใบแจ้งหนี้ */
+export async function posCreditRefundRoom(tx: Prisma.TransactionClient, input: { tenantId: string; sourceSystemId: string; refId: string; refundRefIds: readonly string[] }): Promise<{ remainingSatang: number; docRefundIds: string[] } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditRefundRoomInTx(tx, input.tenantId, link.systemId, input.refId, input.refundRefIds);
 }
 
 /** POS P3.6 fix2 H3: ใบแจ้งหนี้ของบิลวางบิลในสมุดที่ผูก POS + สถานะ (null = ไม่ผูก/ไม่มีใบ) — void ใช้ตรวจว่ายกเลิกใบได้จริง */

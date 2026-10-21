@@ -70,6 +70,7 @@ export const POS_REFUSAL_HTTP: Record<PosRefusalCode, PosRefusalHttp> = {
   CREDIT_DISABLED: { status: 409, code: "state_conflict", en: "On-account (credit term) sales are turned off for this POS." }, // POS P3.6 ▸ R15 (REST ไม่รับ ON_ACCOUNT — ครบรหัสตาม Record) ◂
   CREDIT_INVOICE_PAID: { status: 409, code: "state_conflict", en: "The invoice of this on-account bill already has a payment. Refund the bill instead of voiding it." }, // POS P3.6 ▸ R8 ◂
   CREDIT_LIMIT_EXCEEDED: { status: 403, code: "forbidden", en: "This bill is over the credit limit of the company. A manager must allow it." }, // POS P3.6 ▸ R6 ◂
+  CREDIT_REFUND_EXCEEDS_REMAINING: { status: 409, code: "state_conflict", en: "The refund is larger than what is still owed on the invoice of this on-account bill." }, // POS P3.6 ▸ fix2 H2 ◂
   CREDIT_NOT_ALLOWED: { status: 403, code: "forbidden", en: "This company has no active on-account credit." }, // POS P3.6 ▸ R4 ◂
   CREDIT_TERM_ZERO: { status: 409, code: "state_conflict", en: "The credit term of this company is 0 days, so it must pay now." }, // POS P3.6 ▸ R4 ◂
   CUSTOMER_INVALID: { status: 422, code: "validation", en: "The company of this bill is not valid for this shop." }, // POS P3.6 ▸ R5 ◂

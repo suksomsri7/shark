@@ -62,6 +62,7 @@ export type RefundRefusalCode =
   | "REASON_REQUIRED"
   | "IDEMPOTENCY_CONFLICT"
   | "VALIDATION"
+  | "CREDIT_REFUND_EXCEEDS_REMAINING" // POS P3.6 ▸ fix2 H2: คืนบิลวางบิลเกินยอดค้างของใบแจ้งหนี้ (รับชำระไปแล้วบางส่วน/ทั้งหมด) ◂
   | "UNKNOWN";
 export type RefundRefusal = { ok: false; code: RefundRefusalCode; message: string };
 
@@ -78,6 +79,7 @@ export const REFUND_ERROR_KEYS: Record<Exclude<RefundRefusalCode, "UNKNOWN"> | "
   REASON_REQUIRED: "reasonRequired",
   IDEMPOTENCY_CONFLICT: "idempotencyConflict",
   VALIDATION: "validation",
+  CREDIT_REFUND_EXCEEDS_REMAINING: "creditRefundExceedsRemaining", // POS P3.6 ▸ fix2 H2 ◂
   HAS_REFUNDS: "hasRefunds",
 };
 

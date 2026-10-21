@@ -9,6 +9,7 @@ import { prisma } from "./db";
 import { evaluate, canAccessUnit } from "@/lib/core/rbac";
 import { writeAudit } from "@/lib/core/audit";
 import { posCreditBook, posCreditExposureParts } from "@/lib/modules/account";
+import { posCreditRefundRoom } from "@/lib/modules/account"; // POS P3.6 fix2 H2 ◂
 import { posCreditSettings } from "./settings-shared";
 import {
   POS_CREDIT_LIMIT_MAX,
@@ -206,6 +207,26 @@ async function approverOf(db: Db, tenantId: string, userId: string, unitId: stri
   if (!m || (m.role !== "OWNER" && m.role !== "MANAGER")) return null;
   const a: RegisterActor = { userId, role: m.role as RegisterActor["role"], unitAccess: Array.isArray(m.unitAccess) ? m.unitAccess.filter((u): u is string => typeof u === "string") : [], permissions: isRecord(m.permissions) ? m.permissions : {} };
   return canAccessUnit(a, unitId) && canManageCredit(a, unitId) ? userId : null;
+}
+
+// ═══════════ fix2 H2 คืนบิลวางบิล ≤ ยอดค้างของใบแจ้งหนี้ ═══════════
+/**
+ * ใน tx ของการคืน (ผู้เรียกล็อกบิลเดิมแล้ว): ล็อกวงเงินของบริษัท (คีย์เดียวกับตอนขาย) → ล็อก + อ่านใบแจ้งหนี้ผ่าน facade →
+ *   ที่ว่าง = ค้างของใบ − ใบคืนวางบิลก่อนหน้าที่ยังไม่มีใบลดหนี้ (ยังไม่ระบาย) · ขอคืนเกิน = { remainingSatang } (ผู้เรียกปฏิเสธ CREDIT_REFUND_EXCEEDS_REMAINING) ·
+ *   ยังไม่มีใบแจ้งหนี้ (ยังไม่ระบาย = ยังรับเงินไม่ได้) / ไม่ผูกสมุด = null (เพดานเดิม Σ คืน ≤ ยอดบิล ใช้อยู่แล้ว) · ส่วนที่เกิน = นักบัญชีคืนในระบบบัญชี
+ */
+export async function creditRefundExcess(
+  tx: Prisma.TransactionClient,
+  s: { tenantId: string; systemId: string; saleId: string; partyId: string | null; askSatang: number },
+): Promise<{ remainingSatang: number } | null> {
+  if (s.partyId) await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${posCreditLockKey(s.tenantId, s.partyId)}))) l`;
+  const prior = await tx.posSale.findMany({ where: { tenantId: s.tenantId, docType: "REFUND", refSaleId: s.saleId }, select: { id: true, payments: { where: { type: "ON_ACCOUNT" }, select: { amountSatang: true } } } });
+  const room = await posCreditRefundRoom(tx, { tenantId: s.tenantId, sourceSystemId: s.systemId, refId: s.saleId, refundRefIds: prior.map((r) => r.id) });
+  if (!room) return null;
+  const drained = new Set(room.docRefundIds);
+  const pending = prior.filter((r) => !drained.has(r.id)).reduce((t, r) => t + r.payments.reduce((u, p) => u + Math.abs(p.amountSatang), 0), 0);
+  const remainingSatang = Math.max(0, room.remainingSatang - pending);
+  return s.askSatang > remainingSatang ? { remainingSatang } : null;
 }
 
 // ═══════════ R14 สถานะเครดิตที่หน้าขาย ═══════════

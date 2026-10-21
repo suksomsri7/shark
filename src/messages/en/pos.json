@@ -1581,6 +1581,7 @@
       "refundEmpty": "Pick at least one line to refund",
       "paymentMismatch": "The refund split does not add up to the refund amount",
       "refundMethodInvalid": "Refunds cannot go to a deposit or a room bill — choose cash, transfer, PromptPay or card",
+      "creditRefundExceedsRemaining": "The refund is larger than what is still owed on the invoice (the customer already paid part of it). Refund up to the amount owed; the accountant refunds the rest in Accounting.",
       "shiftRequired": "Open a shift on this device before refunding cash",
       "reasonRequired": "Give a reason for the refund",
       "idempotencyConflict": "A refund with this key already exists with different lines or amounts — check the earlier refund",

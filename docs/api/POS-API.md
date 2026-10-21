@@ -127,6 +127,7 @@ Under the code above, the POS tells why in `message_th` / `message_en`. This is 
 | `CREDIT_DISABLED` | 409 (state or duplicate conflict) | `state_conflict` | On-account (credit term) sales are turned off for this POS. |
 | `CREDIT_INVOICE_PAID` | 409 (state or duplicate conflict) | `state_conflict` | The invoice of this on-account bill already has a payment. Refund the bill instead of voiding it. |
 | `CREDIT_LIMIT_EXCEEDED` | 403 (refused by a business rule) | `forbidden` | This bill is over the credit limit of the company. A manager must allow it. |
+| `CREDIT_REFUND_EXCEEDS_REMAINING` | 409 (state or duplicate conflict) | `state_conflict` | The refund is larger than what is still owed on the invoice of this on-account bill. |
 | `CREDIT_NOT_ALLOWED` | 403 (refused by a business rule) | `forbidden` | This company has no active on-account credit. |
 | `CREDIT_TERM_ZERO` | 409 (state or duplicate conflict) | `state_conflict` | The credit term of this company is 0 days, so it must pay now. |
 | `CUSTOMER_INVALID` | 422 (a value cannot be accepted) | `validation` | The company of this bill is not valid for this shop. |
