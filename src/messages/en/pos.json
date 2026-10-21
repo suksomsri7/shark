@@ -3131,6 +3131,7 @@
         "hiddenRoom": "A room is set (the shop owner sees its name)",
         "needRoom": "Choose a room before turning this on",
         "stale": "The chosen room was archived or deleted — posts will not arrive, choose a new room",
+        "staleOption": "Previous room (archived or deleted)",
         "noMeeting": "The shop has no team chat system yet",
         "postShiftClose": "Post a summary at shift close",
         "postShowOverShort": "Show the cash over/short in the post",

@@ -5429,7 +5429,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/settings",
-        "note": "เมนูซ้าย (POS_SETTINGS_TABS · ทั้ง 8 แท็บ live ตั้งแต่ P1.18U): general · receipt · payments · devices · staff · shark · channels · offline → ?tab=<key>&unit= · ไม่ส่ง ?tab= = ทั่วไป (มติ Q6)"
+        "note": "เมนูซ้าย (POS_SETTINGS_TABS · ทั้ง 9 แท็บ live ตั้งแต่ P1.18U · board ตั้งแต่ P3.8U): general · receipt · payments · devices · staff · shark · board · channels · offline → ?tab=<key>&unit= · ไม่ส่ง ?tab= = ทั่วไป (มติ Q6)"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -21130,6 +21130,479 @@
         "note": "มติ 4: ปิดแผ่นโดยไม่บันทึก"
       },
       "wo": "P3.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "CD-P38U-4: สวิตช์หลักบอร์ดงาน (แก้ในจอ · บันทึกด้วย pos-settings-board-save) · ยังไม่มีบอร์ดปริยาย/รายสาขา = ปิดกดไม่ได้ + board.needBoard · ผู้ดูอื่น = aria-disabled อ่านอย่างเดียว · tab=board"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-default",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "CD-P38U-4: บอร์ดปริยาย — ตัวเลือก = visibleBoardOptions(เจ้าของ) ในระบบบอร์ดงานที่เปิดอยู่ · ค่าเดิมที่มองไม่เห็น = ตัวเลือกจาง board.hiddenBoard · เจ้าของร้านเท่านั้น (คนอื่นเห็นชื่อ/hiddenBoard เป็นข้อความ)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-unit-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "CD-P38U-4: บอร์ดรายสาขา (สาขาที่ผูก POS · ค่าว่าง = board.useDefault) · ส่ง boardByUnit ทั้งก้อนเมื่อเปลี่ยน · เจ้าของร้านเท่านั้น"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-create",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "createBoardFromTemplateAction",
+        "note": "มติ 1 · CD-P38U-3: เจ้าของร้าน · ยังไม่มีบอร์ดปริยาย · มีระบบ KANBAN → สร้างบอร์ดเปล่า \"งานหน้าร้าน\" (templateId null) → savePosBoardSettingsAction {board:{defaultBoardId}} → router.refresh · สร้างได้แต่บันทึกพลาด = บอร์ดอยู่ในตัวเลือก + board.errors.createSaveFailed",
+        "db": "KanbanBoard + AppSystem(POS).settings.pos.board.defaultBoardId"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-add-system",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/systems",
+        "note": "CD-P38U-3: ร้านไม่มีระบบ KANBAN = board.noKanban + ลิงก์เพิ่มระบบ เฉพาะผู้มี systems.system.create (แบบ SharkSettings)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-rule-assignManager",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R4/R5: มอบการ์ดให้ผู้จัดการคนแรกของสาขา (assignManager)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-rule-shiftDiff",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R4: การ์ด \"ตรวจเงิน\" เมื่อขาด/เกินปิดกะ (rules.shiftDiff.enabled)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-min",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R4: เกณฑ์ขาด/เกิน บาทจำนวนเต็ม ↔ สตางค์ ×100 (rules.shiftDiff.minAbsSatang · ช่วง POS_BOARD_LIMITS — นอกช่วง = VALIDATION ของเซิร์ฟเวอร์ที่ช่องนี้)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-rule-everyClose",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R4: การ์ดทุกครั้งที่ปิดกะ (rules.shiftDiff.everyClose)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-rule-forcedClose",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R4: รวมกะที่ระบบปิดให้ (rules.shiftDiff.forcedClose · ปริยายเปิด)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-rule-soldOut",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R5: ของหมด (86) นานเกินกำหนด → การ์ด (rules.soldOut.enabled)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-hours",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R5: ชั่วโมง 1–168 (rules.soldOut.hours) · นอกช่วง = VALIDATION field board.rules.soldOut.hours (ภาพ settings-board-invalid)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-source-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R5: แหล่งนับ MANUAL/KDS/STOCK (role=checkbox · ≥ 1 — ว่าง = VALIDATION ของเซิร์ฟเวอร์)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-rule-refundNeeded",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R6: ออเดอร์ที่ต้องคืนเงิน → การ์ด (rules.refundNeeded.enabled)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "savePosBoardSettingsAction",
+        "note": "CD-P38U-4: บันทึกการ์ดบอร์ดงาน — ส่งเฉพาะคีย์ที่เปลี่ยน {board:{…}} · ผล = ค่าตั้งเต็มแทนที่ในจอ · ปฏิเสธ = board.errors.<code> ที่ช่องของ field (ไม่มีช่อง = ท้ายการ์ด) · ไม่เปลี่ยน = ปุ่มปิด",
+        "db": "AppSystem(POS).settings.pos.board"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-room-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "CD-P38U-4: สวิตช์หลักห้องทีม · ไม่มีห้องปริยาย/รายสาขา = ปิดกดไม่ได้ + board.room.needRoom · ผู้ดูอื่น = aria-disabled"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-room-default",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "CD-P38U-4/10: ห้องปริยาย — ตัวเลือก listRoomOptions(เจ้าของ) มาถึงจอเฉพาะเจ้าของร้าน · ห้องที่ไม่อยู่ใน liveChannelIds = board.room.stale"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-room-unit-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "CD-P38U-4: ห้องรายสาขา (ค่าว่าง = board.room.useDefault · Z post เท่านั้น — สรุปเช้าเข้าห้องปริยาย R8)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-post-shiftClose",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R7: โพสต์สรุปกะเข้าห้องเมื่อปิดกะ (posts.shiftClose)"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-post-showOverShort",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "W18 · CD-P38U-5: แสดงยอดขาด/เกินในโพสต์ (posts.showOverShort ปริยายเปิด) + บรรทัดช่วย board.room.overShortHelp \"ทุกคนในห้องเห็น… ไม่มีชื่อคน\""
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-post-dailyBrief",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R8: สรุปเช้าในห้องปริยาย (posts.dailyBrief) · ไม่มีห้องปริยาย = ปิด + board.room.briefNeedsDefault"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-brief-hour",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "local-state",
+        "note": "R8: ชั่วโมงส่งสรุปเช้า 0–23 (briefHourBkk) · ไม่มีห้องปริยาย = ปิด"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-room-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "savePosBoardSettingsAction",
+        "note": "CD-P38U-4: บันทึกการ์ดห้องทีม — ส่งเฉพาะคีย์ที่เปลี่ยน {teamRoom:{…}} (enabledByUserId เซิร์ฟเวอร์ตั้งเอง CD-4) · ปฏิเสธ = board.errors.<code> ที่ช่องของ field",
+        "db": "AppSystem(POS).settings.pos.teamRoom"
+      },
+      "wo": "P3.8U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-board-readonly-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[kanbanId]/kanban/settings",
+        "note": "CD-P38U-1: แถวอ่านอย่างเดียว voided (K3.3 cardOnVoidedSale) · approval (K3.3 cardFromApproval) → หน้าตั้งค่าบอร์ดงาน · issue (P1.11 issueBoardId) → ?tab=receipt · เปิด/ปิด + ชื่อบอร์ด (บอร์ดที่ผู้ดูเปิดไม่ได้ = board.hiddenBoard)"
+      },
+      "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
