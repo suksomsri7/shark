@@ -11,7 +11,7 @@ Contract = `ledger/wo-notes/pos-P3-SKEL-oracle.md` names table · brief `pos-bri
 - [x] 6. e-Tax seam — def954d9 · ET1 hash `e538a07652145299acb586d9f5366610d28dcd68adbe3f10e34d58f82538c22e` (controller pins `ET1_GOLDEN_SHA256`)
 - [x] 7. print relay + agent + `escpos-lan` — d5f61160
 - [x] 8. docs + texts + production key rule — commit after d5f61160 · forced QC4 run 18:22Z **41/41** (0 guard hits · residue 0)
-- [ ] 9. gates (pre-submit ×≤2 · typecheck once at final head)
+- [x] 9. gates — pre-submit ×2 (run 1 regression aborted: tree dirtied mid-run by a notes edit · run 2 full) + p1.18 rerun after fix · typecheck once at final head (result in the builder report)
 
 ## Files / hunks (per ruling)
 New files (all under the brief's file list): `pos/secret-box.ts` · `pos/integration-creds.ts` + `integration-creds-actions.ts` · `pos/platform/{types,lineman,grab,marketplace,registry,dispatch}.ts` ·
@@ -51,3 +51,70 @@ Untouched: `lib/payment/beam.ts` · `modules/account/**` · `payment-intent.ts` 
 - 15A: muted line `pos.platform.etax.pending` under the e-mail field (+ optional preview via `etaxPreview` — needs a thin action).
 - 17B: LAN agent card (register → token once `pos.platform.print.tokenOnce` · list · revoke — needs thin actions over `print-relay.ts`) + radio "LAN" (`POS_PRINTER_MODE_LAN`) enabled when an agent with printers exists · reconcile report screen/CSV (needs a thin action).
 - `pos-ui-inventory.json` new testids (F15.3) · visual states th 3 sizes + en 1440 · re-pins at U merge: `qc-hf-fu` ST1 (PayDone) · `qc-pos-p2.12` ST1 (`DeviceSettings.tsx`).
+
+## Gates (step 9)
+- Pre-submit run 1 (head 192839b5, 18:26Z): WO part only — `qc-pos-p3-skel` 41/41 ×2 + `--no-db` 6/6; the regression half refused to start (`ledger/wo-notes/pos-P3-SKEL.md` edited while it ran — builder error, counted as a run).
+- Pre-submit run 2 (head 5c6e54a2, 18:33Z → 19:21Z, logs `/root/pos-runs/presubmit-shark-pos-b-20261021T183345Z`):
+```
+PRESUBMIT-TABLE head=5c6e54a2 tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+wo-qc-pos-p3-skel-run1       0    41/41         45  
+wo-qc-pos-p3-skel-run2       0    41/41         33  
+wo-qc-pos-p3-skel-nodb       0    6/6            6  
+qc-pos-p1.1                  0    180/180      168  
+qc-pos-p1.3                  0    128/128      145  
+qc-pos-p1.6                  0    48/48         47  
+qc-pos-p1.7                  0    33/33         31  
+qc-pos-p1.9                  0    53/53         24  
+qc-pos-p1.9b                 0    22/22         13  
+qc-pos-p1.10                 0    40/40         20  
+qc-pos-p1.11                 0    38/38         48  
+qc-pos-p1.13                 0    33/33         31  
+qc-pos-p1.18                 1    80/81         45  P1.18-ST6
+qc-pos-p2.4                  1    49/50         75  P2.4-ST4
+qc-pos-p2.6                  1    66/67        112  P2.6-L3
+qc-pos-p2.7                  0    42/42         70  
+qc-pos-p2.8                  0    61/61         93  
+qc-pos-p2.9                  0    62/62        116  
+qc-pos-p2.9b                 0    53/53        671  
+qc-pos-p2.10                 0    13/13         27  
+qc-pos-p2.11                 1    33/34         70  P2.11-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.12                 1    32/33         65  P2.12-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.13                 1    53/54         91  P2.13-ST5  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.14                 0    60/60         72  
+qc-pos-p3.5                  1    54/55         44  P3.5-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.4                  1    49/51         84  P3.4-ST1,P3.4-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.9                  1    47/48         47  P3.9-ST4  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.8                  1    32/34         38  P3.8-ST2,P3.8-ST3  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.7                  1    41/42         72  P3.7-ST3  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.6                  0    48/48         63  
+qc-pos-api-skill             0    12/12         17  
+qc-hf-fu                     1    28/29        122  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-pos-page-authz         0    87/87         14  
+qc-hf-tx                     0    22/22         36  
+qc-hf-fu2                    1    30/31         30  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-restaurant-money          0    6/6           15  
+qc-shop-refund               0    12/12         14  
+qc-hotel-money               0    5/5           17  
+qc-ticket-money              0    6/6           11  
+qc-subscription-money        0    14/14         12  
+qc-account-cpa               0    107/107       15  
+qc-acc-v2-pos-lines          1    65/79         11  PL1.1,PL1.2,PL1.3,PL1.4,PL1.6,PL1.7 … [accepted]
+fitness-noenv                0    53/53         14  
+fitness-qc4                  0    53/53         14  
+fitness-pos                  0    8/8           10  
+gen-check                    0    -              1  
+PRESUBMIT head=5c6e54a2 green=32 red=14 expected-lane-pin=10 unexpected-red=qc-pos-p1.18,qc-pos-p2.4,qc-pos-p2.6,qc-acc-v2-pos-lines · wo: qc-pos-p3-skel-run1=41/41 · qc-pos-p3-skel-run2=41/41 · qc-pos-p3-skel-nodb=6/6 · VERDICT red (13: qc-pos-p1.18 qc-pos-p2.4 qc-pos-p2.6 qc-pos-p2.11 qc-pos-p2.12 qc-pos-p2.13 qc-pos-p3.5 qc-pos-p3.4 qc-pos-p3.9 qc-pos-p3.8 qc-pos-p3.7 qc-hf-fu qc-hf-fu2)
+```
+- Unexpected reds, resolved / explained:
+  - `qc-pos-p1.18` ST6 — new codes `AGENT_REVOKED`, `UNAUTHORIZED` (`print-relay.ts` `PrintRelayCode`) had no `errors.<camel>` key ⇒ fixed (`pos.platform.print.errors` th/en, commit after 5c6e54a2) ⇒ direct forced rerun **81/81**.
+  - `qc-pos-p2.4` ST4 (`scripts/qc-pos-p2.4.mts:347`) · `qc-pos-p2.6` L3 (`scripts/qc-pos-p2.6.mts:380`) — `CONTRACT_SHA_BASE = ba68f669…` (post-P3.4) vs `scripts/pos-sale-contract.json` sha 762e073c = the **base 71c49221** file (P3.6 +4 optional keys; CD-RP9 re-pinned only p2.10). File byte-identical to 71c49221 ⇒ **base drift, not this card** — controller re-pin (CD-SKEL-B4).
+  - `qc-acc-v2-pos-lines` — `[accepted]` by the manifest (QC4 has no acc-v2 seed).
+- Expected lane-pin reds (migration / new files — controller re-pins LANE pins at merge):
+  - `qc-hf-fu` ST1 — prisma/ changed vs c3c52ef1 (check `scripts/qc-hf-fu.mts:532–591`)
+  - `qc-hf-fu2` ST1 — prisma/ + new route.ts files + `scope.ts:99` / `bills-shared.ts:191` / `bills.ts:28`, `:582` hunks without an HF-FU2 marker (+22)
+  - `qc-pos-p2.11` ST1 (`:364`) · `qc-pos-p2.12` ST1 (`:421`) · `qc-pos-p2.13` ST5 (`LANE_PIN :350`) — `prisma/migrations/20261218100000_pos_p3skel/migration.sql`, `prisma/schema/pos.prisma`
+  - `qc-pos-p3.5` ST2 — "migration ใหม่ที่ไม่ใช่ของใบนี้: 20261218100000_pos_p3skel" · `qc-pos-p3.9` ST4 — prisma files · `qc-pos-p3.4` ST1 — "migration ใหม่อื่น: 20261218100000_pos_p3skel"
+  - base drift labelled lane-pin by the script (files byte-identical to 71c49221): `qc-pos-p3.4` ST2 (`register.ts` outside the P3.4 block — P3.6 hunk) · `qc-pos-p3.8` ST2 (`outbox-consumers.ts` +28/−10 vs its pin) · `qc-pos-p3.8` ST3 / `qc-pos-p3.7` ST3 (P3.6 migrations + `order.ts`/`refund*` + this card's prisma files)
+- `gen-pos-api-docs --check` (gen-check) exit 0 · fitness ±env 53/53 · fitness-pos 8/8 · money set green · `qc-pos-p1.6` 48/48 (R2 actions).
+- CD-SKEL-B4: re-pin `qc-pos-p2.4` ST4 / `qc-pos-p2.6` L3 `CONTRACT_SHA_BASE` → 762e073c… (P3.6 contract; not this card).
