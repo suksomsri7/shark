@@ -513,7 +513,7 @@
       "why": "same states LOCALE=en · 1440 every page + 390 register (EN_MOBILE_PAGES) · owner 17 + cashier 11 · 21 Oct 2026"
     },
     {
-      "id": "p3.4u-offline",
+      "id": "p3.4u-th",
       "wo": "p3.4u",
       "pages": [
         "register",
@@ -525,12 +525,29 @@
         "cashier"
       ],
       "locales": [
-        "th",
+        "th"
+      ],
+      "states": true,
+      "after": "P3.4U",
+      "why": "P3.4U 9 offline states (offline-sale/queue/tenders/sync-back/slip/lock-pin/rejected · shifts offline-close-blocked · settings-offline-live) · th owner 26 + cashier 17 · QC5 build WAUfKtpjNZPuKuO8XpvsP @77d72a69 + harness fix2 2718a0b9 · vis-p34u2-qc5-20261021T162822Z (58/58) · regression p1.3 offline 3/3 · p1.18u settings-offline 3/3 (vis-p34u-qc5-20261021T161045Z) · 21 Oct 2026"
+    },
+    {
+      "id": "p3.4u-en",
+      "wo": "p3.4u-en",
+      "pages": [
+        "register",
+        "shifts",
+        "settings"
+      ],
+      "users": [
+        "owner"
+      ],
+      "locales": [
         "en"
       ],
       "states": true,
       "after": "P3.4U",
-      "why": "offline 19ง states (P3.4U · fresh browser context each · flag on via updatePosOfflineEnabled, restored): offline-sale/queue/tenders/sync-back/slip/lock-pin · Shifts offline-rejected/close-blocked · settings-offline-live"
+      "why": "same states LOCALE=en · owner 15 · 21 Oct 2026"
     }
   ]
 }
