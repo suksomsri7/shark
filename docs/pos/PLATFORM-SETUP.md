@@ -5,7 +5,7 @@
 
 ## 0. ก่อนวาง credentials ใด ๆ — ตั้งกุญแจเข้ารหัส `POS_CREDENTIALS_KEY`
 
-- ผู้ดูแลระบบตั้ง env `POS_CREDENTIALS_KEY` บน production (Vercel → Settings → Environment Variables) เป็นค่าสุ่มยาว เช่นผลของ `openssl rand -hex 32`
+- ผู้ดูแลระบบตั้ง env `POS_CREDENTIALS_KEY` บน production (Vercel → Settings → Environment Variables) เป็นค่าสุ่มยาวอย่างน้อย 32 ตัวอักษร เช่นผลของ `openssl rand -hex 32` (สั้นกว่านี้ระบบถือว่ายังไม่ตั้ง)
 - ค่าลับทุกช่อง (client secret · partner key · webhook secret · API key) ถูกปิดกล่อง AES-256-GCM ด้วยกุญแจนี้ก่อนลงฐานข้อมูล · หน้าจอแสดงแบบปิดบัง `••••1234`
 - ยังไม่ตั้ง = การ์ดตั้งค่าขึ้น "ยังไม่ตั้งกุญแจ" และบันทึกไม่ได้ (ไม่มีกุญแจสำรอง) · ห้ามใช้ค่าเดียวกับ `CHAT_CREDENTIALS_KEY` หรือ `SESSION_SECRET`
 - เปลี่ยนกุญแจภายหลัง = ต้องวางค่าลับทุกช่องใหม่ (ระบบจะแจ้ง "กุญแจไม่ตรงกับที่ใช้ปิดข้อมูลเดิม")

@@ -10,6 +10,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 
 /** ชื่อ env ของกุญแจ — ตั้งบน prod ก่อนเจ้าของวาง credentials (W4) */
 export const POS_CREDENTIALS_ENV = "POS_CREDENTIALS_KEY";
+/** ความยาวขั้นต่ำของกุญแจ (fix1 H5) — เช่น `openssl rand -hex 32` = 64 ตัว */
+export const POS_CREDENTIALS_KEY_MIN = 32;
 const LABEL = "pos-credentials:";
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -18,7 +20,8 @@ export type SecretBoxDeps = { key?: string | null };
 /** กุญแจดิบของรอบนี้ — deps.key (ฉีด · null = จงใจไม่มี) ก่อน env · ว่าง = null (fix1 F1: ไม่มีกรณีพิเศษของ NODE_ENV) */
 export function posSecretKey(deps?: SecretBoxDeps): string | null {
   const raw = !!deps && Object.prototype.hasOwnProperty.call(deps, "key") ? deps?.key : process.env.POS_CREDENTIALS_KEY;
-  return typeof raw === "string" && raw.trim() !== "" ? raw : null;
+  // fix1 H5: กุญแจสั้นกว่า 32 ตัวอักษร = ถือว่ายังไม่ตั้ง (keyConfigured:false · บันทึกไม่ได้) — กันกุญแจเดาง่าย
+  return typeof raw === "string" && raw.trim().length >= POS_CREDENTIALS_KEY_MIN ? raw : null;
 }
 
 /** ตั้งกุญแจแล้วหรือยัง (ตัวอ่าน/การ์ดตั้งค่าแสดง "ยังไม่ตั้งกุญแจ") */

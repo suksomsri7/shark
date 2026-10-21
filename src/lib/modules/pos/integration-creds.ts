@@ -52,7 +52,7 @@ const MSG: Record<PosIntegrationCode, string> = {
   ADAPTER_PENDING: "ข้อมูลครบแล้ว แต่ตัวเชื่อมจริงยังไม่เปิด (รอสวิตช์ W4)",
   UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
 };
-const KEY_MISSING = "ยังไม่ตั้งกุญแจเข้ารหัส (POS_CREDENTIALS_KEY) — ให้ผู้ดูแลระบบตั้ง env นี้ก่อนวาง credentials";
+const KEY_MISSING = "ยังไม่ตั้งกุญแจเข้ารหัส (POS_CREDENTIALS_KEY อย่างน้อย 32 ตัวอักษร) — ให้ผู้ดูแลระบบตั้ง env นี้ก่อนวาง credentials";
 const KEY_MISMATCH = "กุญแจเข้ารหัส (POS_CREDENTIALS_KEY) ไม่ตรงกับที่ใช้ปิดข้อมูลเดิม — วางค่าลับทุกช่องใหม่อีกครั้ง";
 const MESSAGE_KEY: Record<PosIntegrationCode, string> = {
   NOT_FOUND: "platform.errors.notFound",
