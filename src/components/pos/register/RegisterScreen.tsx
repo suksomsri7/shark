@@ -1901,6 +1901,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (offlineSaleRefusal(sale)) return;
     const totals = offlineCartTotals(off.snapshot, sale);
     if (!totals.ok) return;
+    // fix1 F5: ย้ายเฉพาะเมื่อ Σ วิธีชำระของบิลเดิม == ยอดจาก snapshot (ไม่งั้นสลิปชั่วคราวยอดไม่ตรงเงินที่รับ) — ไม่ตรง = คงสถานะไม่แน่ใจไว้
+    if (sale.payMethods.reduce((t, m) => t + m.amountSatang, 0) !== totals.grandTotalSatang) return;
     movingUnknown.current = true;
     void (async () => {
       try {
