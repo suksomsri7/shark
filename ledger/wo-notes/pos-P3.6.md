@@ -138,3 +138,41 @@ PRESUBMIT head=5e39b5eb green=20 red=18 expected-lane-pin=10 unexpected-red=wo-q
 - §"แจ้งเจ้าของโมดูล ACCOUNT": P3.6 เพิ่มบล็อก `// POS P3.6 ▸ … ◂` (เพิ่มล้วน) ใน `account/index.ts` (applyExternalSale `onAccount?` + ช่อง `ON_ACCOUNT` ทั้งขาย/คืน ⇒ JV Dr 1100 ผู้ติดต่อบริษัท / Cr รายได้+2200 · ใบแจ้งหนี้ INVOICE AWAITING_PAYMENT + dueDate · คืน ⇒ CREDIT_NOTE อ้าง INVOICE · void ⇒ INVOICE VOIDED · facade posCreditBook/posCreditExposureParts/posCreditInvoicePaid/posCreditAging) + บล็อกท้าย `account/service.ts` (upsertPosCreditInvoiceDocument · findPosCreditInvoice · posCreditTermsOfParty · posCreditOpenDocs (CD-9 หักใบลดหนี้) · posCreditInvoicePaidInTx · posCreditAgingByParty) + 3 บรรทัดใน `findExternalSaleDoc` (ใบแจ้งหนี้ของบิลวางบิลมาก่อน) — W16 นักบัญชี: VAT ลงตอนขาย (ค่าปริยาย) หรือ "ใบกำกับตอนรับเงิน" สำหรับบริการ.
 - §"CRM": ไฟล์ใหม่ `crm/pos-seam.ts` (companiesForPos · companiesOfParty · linkPosSaleSystem · onPosSaleRefunded — อ่าน/เรียกผ่านภายใน CRM ไม่มี raw SQL) · `crm/index.ts` ท้ายไฟล์ `export * as posSeam from "./pos-seam"` · `crm/payments.ts` บล็อกเดียว +136 −0 (linkPosSaleIntent = linkSaleToDeal ไม่มี actor · netPosSaleRefund แถว POS_REFUND ติดลบ · intent ใน posIntentCount ของสะพาน pos.sale.paid) · ค่าคอมฯ ดีลผ่าน afterPaymentCounted/afterPaymentsReversed เดิม.
 - W17 (เจ้าของ): แต้มสมาชิกบนบิลออเดอร์ทุกช่องทางรวม PLATFORM (ราคาแพลตฟอร์ม) — ค่าปริยายเปิด (`memberOnBill` true).
+
+## §fix1 — controller rulings CD-P36-B1..B5 (controller B · 21 Oct 15:1xZ · session/pos 36f2a654)
+- **CD-P36-B1** cf886c53 ORACLE-EDIT `scripts/qc-pos-p3.6.mts:1699–1703` DL3: keys = ASCII slugs `dl3-d2` / `dl3-d4-closed` / `dl3-nodeal` (+ RAND via newKey) · Thai labels only in failure text · p3.6 before 45/47 (DL3 PV3) → after 47/47.
+- **CD-P36-B2** 07f20ab0 ORACLE-EDIT `scripts/qc-pos-p3.6.mts:1951–1953` PV3: skip only `type` starting `account.contact.` · rest scanned. **Delete-probe** (uncommitted temporary hunk in `pos/service.ts:1212`: `pos.sale.paid` payload + `probeBuyer: taxInvoice.name`, reverted with `git checkout`): forced run 46/47, PV3 red "outbox pos.sale.paid มี QC36d6vq…" (DL3 green) ⇒ PV3 still catches a company name in a POS event. After revert: 47/47.
+- **CD-P36-B3** bea8357c ORACLE-EDIT `scripts/qc-pos-p3.5.mts:510–514` ST3: `commission` ∈ REPORT_KINDS and `credit` (if present) after it · p3.5 before 53/55 (ST2 ST3) → after 54/55 (ST2 lane pin only). CM6 edits (59228797) unchanged.
+- **CD-P36-B4** accepted — code stays in `account/service.ts`; OP line below.
+- **CD-P36-B5** retry stays narrow (ON_ACCOUNT only); follow-up line below.
+- Merge 6688d9d7 = origin/session/pos 36f2a654 (clean: p3.5u sweep rows, visual-pos fix, hf-fu/p2.10 re-pins).
+- Oracle at 6688d9d7 (QC4 · P36_PIN=b92d5598): forced run1 **47/47** · run2 **47/47** (exit 0 · residue 0 · guard 0 · pump errors 0) · `--no-db` **4/4**.
+- Pre-submit (granted extra run · `--set core --also qc-pos-p3.5,qc-pos-p2.12,qc-pos-p2.14,qc-pos-p2.1,qc-pos-p2.9,qc-pos-p2.9b` · logs `/root/pos-runs/presubmit-shark-pos-b-20261021T151851Z`):
+```
+PRESUBMIT-TABLE head=6688d9d7 tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+qc-pos-p1.1                  0    180/180      311  
+qc-pos-p1.3                  0    128/128      277  
+qc-pos-p1.6                  0    48/48         82  
+qc-pos-p1.18                 0    81/81         63  
+qc-pos-p2.1                  1    54/55         88  P2.1-S8
+qc-pos-p2.9                  1    61/62        115  P2.9-L1
+qc-pos-p2.9b                 1    52/53        156  P2.9b-L1
+qc-pos-p2.12                 1    32/33        110  P2.12-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p2.14                 0    60/60        115  
+qc-pos-p3.5                  1    54/55        158  P3.5-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-fu                     1    28/29        137  HF-FU-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-hf-tx                     0    22/22         48  
+qc-hf-fu2                    1    30/31         39  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+fitness-noenv                0    53/53         13  
+fitness-qc4                  0    53/53         13  
+fitness-pos                  0    8/8            8  
+gen-check                    0    -              1  
+PRESUBMIT head=6688d9d7 green=10 red=7 expected-lane-pin=4 unexpected-red=qc-pos-p2.1,qc-pos-p2.9,qc-pos-p2.9b · VERDICT red (7: qc-pos-p2.1 qc-pos-p2.9 qc-pos-p2.9b qc-pos-p2.12 qc-pos-p3.5 qc-hf-fu qc-hf-fu2)
+```
+- Remaining reds: contract re-pins `qc-pos-p2.1.mts:556` S8 (accepted-sha list) · `qc-pos-p2.9.mts:377` L1 (allowed CreateSaleInput keys) · `qc-pos-p2.9b.mts:47` L1 CONTRACT_SHA → new sha `762e073cd5f80eeeb915835ae6b85e5793956facdfe233f90d65484db04dac55`; lane pins `qc-pos-p2.12.mts:425` ST1 (prisma p36 migrations) · `qc-pos-p3.5.mts:443` ST2 (refund-shared.ts/refund.ts hunks) · `qc-hf-fu.mts:591` ST1 (prisma + pos/service.ts vs c3c52ef1) · `qc-hf-fu2.mts:472` ST1 (prisma · outbox-consumers.ts hunk · contract). Plus the earlier full-set lane pins (p2.7/p2.8/p2.10/p2.11/p2.13 ST5/p3.4/p3.9) not re-run this round.
+- Typecheck: once at the final head (this notes commit) — result in the report.
+
+### OP — §"แจ้งเจ้าของโมดูล ACCOUNT" (CD-P36-B4 · B5)
+- P3.6 เขียนโค้ดเลนบัญชีเป็นบล็อกเพิ่มล้วน: `src/lib/modules/account/service.ts:5165–5167` (findExternalSaleDoc: ใบแจ้งหนี้ของบิลวางบิลมาก่อน) + `:7286–7476` (บล็อก `POS P3.6 ▸ … ◂`: upsertPosCreditInvoiceDocument (advisory xact lock ต่อ สมุด·บิล) · findPosCreditInvoice · posCreditTermsOfParty · posCreditOpenDocs · posCreditInvoicePaidInTx · posCreditAgingByParty) · `account/index.ts` บล็อก P3.6 (onAccount + ช่อง ON_ACCOUNT ขาย/คืน · facade posCredit*) — facade index.ts แตะ prisma ไม่ได้ (F5) จึงอยู่ service.ts.
+- Follow-up (B5): `pos.sale.paid` สองคิวพร้อมกัน (drain หลัง commit ของผลิตภัณฑ์ ซ้อนกับตัวระบาย) ชน unique ของ JV (P2002) เป็นครั้งคราวในบิลทั่วไป — คิวลองใหม่เอง ไม่มีด่านแดง · P3.6 ลองซ้ำ 1 ครั้งเฉพาะบิลวางบิล (`pos/account-bridge.ts` p36RetryOnceOnUnique) · ทางเลือกของเจ้าของโมดูล: ให้ postExternalSale ถือว่า P2002 ของ idempotencyKey = "ลงแล้ว".
