@@ -777,6 +777,84 @@
       },
       "slip": {
         "title": "TEMPORARY RECEIPT — AWAITING FINAL NUMBER"
+      },
+      "since": "Offline since {time}",
+      "sell": "keep selling with cash and transfer",
+      "pending": "{count} bills waiting to sync",
+      "ref": "temporary number {ref}",
+      "keepOpen": "Do not close or refresh this page while offline",
+      "gate": {
+        "disabled": "Offline selling is not turned on for this shop",
+        "deviceInactive": "Cannot sell offline — this device is not registered or was revoked",
+        "noSnapshot": "Cannot sell offline — this device has no price list yet (go online once first)",
+        "clockInvalid": "Cannot sell offline — the device clock is wrong",
+        "snapshotTooOld": "Cannot sell offline — the device price list is older than 24 hours",
+        "pricesExpired": "Cannot sell offline — the device promo prices have ended (go online for new prices)",
+        "queueFull": "Cannot sell offline — 300 bills are already waiting to sync"
+      },
+      "chip": {
+        "points": "Points",
+        "coupon": "Coupon",
+        "card": "Card",
+        "promptpay": "PromptPay"
+      },
+      "chipsNote": "Points / coupons / cards / PromptPay — available when online",
+      "payCash": "Pay cash",
+      "payTransfer": "Transfer",
+      "walkInOnly": "Offline bills are walk-in only — remove the member and coupon first",
+      "cartRefused": "Some items cannot be sold offline (options missing from the device price list · scale labels · items not for sale)",
+      "discountOver": "The discount is above the seller's limit — manager approval is not available offline",
+      "sheet": {
+        "title": "Pay offline",
+        "sub": "Saved on this device, synced when back online",
+        "total": "Total",
+        "cash": "Cash",
+        "transfer": "Transfer",
+        "received": "Received",
+        "exact": "Exact",
+        "change": "Change",
+        "short": "Received amount is below the total",
+        "reference": "Transfer reference (optional)",
+        "confirm": "Save bill {amount}",
+        "cancel": "Cancel",
+        "failed": "Could not save the offline bill — try again"
+      },
+      "done": {
+        "title": "Saved · waiting to sync",
+        "no": "Temporary number",
+        "note": "Temporary receipt — the final receipt number is issued at sync",
+        "printSlip": "Print temporary receipt",
+        "next": "Next bill",
+        "change": "Change",
+        "paidBy": "Paid by"
+      },
+      "badge": "To sync {count}",
+      "badgeParked": "Waiting for manager {count}",
+      "unknownMoved": "The unconfirmed bill moved into the offline queue ({ref}) — it syncs with the same key, no double charge",
+      "bills": {
+        "title": "Offline bills on this device",
+        "empty": "No offline bills on this device",
+        "queued": "Waiting to sync",
+        "parked": "Waiting for manager",
+        "synced": "Final number {no}",
+        "reprint": "Print final receipt",
+        "reprintSlip": "Print temporary receipt",
+        "noVoid": "Void or refund only after the bill has synced",
+        "parkedHint": "A manager reviews this bill on the Shifts page — the device does not resend it",
+        "syncNow": "Sync now",
+        "syncing": "Syncing…",
+        "close": "Close"
+      },
+      "lock": {
+        "note": "Offline — only {name} can unlock with the same PIN · switch staff when back online",
+        "unavailable": "Offline — this device cannot unlock (needs an earlier online unlock here and an unexpired token) · try again when back online",
+        "invalid": "Wrong PIN — {left} tries left",
+        "locked": "Wrong PIN 5 times — locked until back online"
+      },
+      "strip": {
+        "waiting": "Offline bills are waiting to sync — they are sent automatically when connected",
+        "syncing": "Syncing offline bills…",
+        "done": "Offline bills synced — see the final receipt numbers in the list"
       }
     }
   },
@@ -985,6 +1063,25 @@
       "warnNoClockIn": "No clock-in",
       "warnNoClockOut": "No clock-out yet",
       "warnNoEmployee": "Not linked to an HR employee"
+    },
+    "offline": {
+      "title": "Offline bills waiting for a manager",
+      "sub": "Bills sold offline that were not accepted automatically — accept them or discard with a reason",
+      "soldAt": "Sold at {time}",
+      "device": "Device {device}",
+      "sellerClaimed": "Device says seller {name}",
+      "sellerVerified": "Verified seller {name}",
+      "accept": "Accept bill",
+      "discard": "Discard bill",
+      "reason": "Reason for discarding (at least 5 characters)",
+      "reasonInvalid": "Enter a reason of at least 5 characters",
+      "confirmDiscard": "Confirm discard",
+      "cancel": "Cancel",
+      "accepted": "Bill accepted · receipt {no}",
+      "discarded": "Bill discarded",
+      "syncedAfterClose": "Synced after the device closed the shift — check that shift's drawer before accepting",
+      "closeBlocked": "Sync before closing the shift — this device has {count} offline bills waiting to sync",
+      "unknownUser": "Unknown"
     }
   },
   "report": {
@@ -2847,7 +2944,14 @@
       "pending": "Waiting to sync",
       "tabTitle": "Offline and sync",
       "tabSub": "Keep selling when the internet drops, then sync when back online",
-      "banner": "Coming in a later phase · P3.4 — today, if the internet drops the register says so and stops taking payment until it is back online"
+      "banner": "Coming in a later phase · P3.4 — today, if the internet drops the register says so and stops taking payment until it is back online",
+      "liveOn": "Offline selling is on",
+      "liveOff": "Off · the owner can turn it on",
+      "ownerOnly": "Only the shop owner can turn this on or off",
+      "pendingDevice": "On this device {count}",
+      "pendingServer": "Waiting for manager {count}",
+      "saveFailed": "Could not save — try again",
+      "liveBanner": "When the internet drops the register keeps selling with cash and transfer · do not close or refresh the register while offline · bills the system does not accept wait for a manager on the Shifts page"
     }
   },
   "print": {

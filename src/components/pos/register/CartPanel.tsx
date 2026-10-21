@@ -93,6 +93,9 @@ type Props = {
    * ปุ่มหลัก = "ส่งครัว N รายการ" · ปุ่มรอง = "บันทึกไว้ก่อน" · note = บรรทัดเล็กใต้ยอด ◂
    */
   tableMode?: { chip: string; backHref: string; backLabel: string; sendLabel: string; saveLabel: string; note: string; canSend: boolean; busy: boolean; onSend: () => void; onSave: () => void } | null;
+  /** POS P3.4U ▸ มติ 3 (19ง): ขายออฟไลน์ — offlineChips = ชิป "ใช้ได้เมื่อออนไลน์" เหนือยอด · offlinePay = แถว "ชำระเงินสด ฿x · โอน" แทนปุ่มชำระ ◂ */
+  offlineChips?: React.ReactNode;
+  offlinePay?: React.ReactNode;
 };
 
 /** POS P2.4U ▸ มติ 6: เมนูชนิดบิล (ซื้อกลับ = ค่าเริ่ม · ทานที่ร้าน = เลือกโต๊ะ) — ปุ่มชิปคง testid pos-reg-bill-type (ข้อสอบ P1.3) ◂ */
@@ -291,6 +294,7 @@ export function CartPanel(p: Props) {
         )}
       </div>
 
+      {!empty && p.offlineChips /* POS P3.4U ▸ มติ 3 ◂ */}
       {!empty && tt && (
         <div className="shrink-0 border-t px-4 py-2 text-[14px] xl:px-6 xl:py-3 xl:text-[15px] xl:leading-[1.4]">
           <div data-testid="pos-reg-subtotal" className="flex justify-between py-px text-[color:var(--color-ink-soft)] xl:py-1">
@@ -448,7 +452,9 @@ export function CartPanel(p: Props) {
         </div>
       )}
 
-      {!p.tableMode ? (
+      {p.offlinePay ? (
+        p.offlinePay /* POS P3.4U ▸ มติ 3: แถวชำระออฟไลน์ (เงินสด · โอน) ◂ */
+      ) : !p.tableMode ? (
       <button
         data-testid="pos-reg-pay"
         className={`btn btn-primary mx-[14px] mb-3 mt-2.5 shrink-0 justify-between rounded-[18px] px-[22px] font-bold disabled:cursor-not-allowed disabled:border disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-muted)] xl:mx-6 xl:mb-3 xl:mt-3 xl:px-6 ${

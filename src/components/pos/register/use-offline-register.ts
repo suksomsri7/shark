@@ -43,6 +43,8 @@ export type OfflineRegister = {
   parked: number;
   gate: { ok: true } | { ok: false; reason: OfflineSellGateReason };
   lastRef: string | null;
+  /** มีบิลที่เพิ่งได้เลขจริงภายใน 15 นาที (แถบ "ซิงก์แล้ว" ของหน้าขายตอนกลับมาออนไลน์) */
+  recentSync: boolean;
   syncing: boolean;
   enqueue: (build: (ref: string) => OfflineQueueRecord) => Promise<OfflineQueueRecord | null>;
   kick: () => void;
@@ -91,15 +93,16 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
     const d = dbRef.current;
     if (!d) return;
     try {
-      const [snap, q, s, h] = await Promise.all([readSnapshot(d), listQueue(d), listSynced(d), offlineUnlockHolder(d)]);
-      // snapshot ผูกผู้ใช้ session + เครื่อง — ไม่ตรง/ปิดธง = ล้าง (คิวไม่แตะ)
+      const [snap, q, s] = await Promise.all([readSnapshot(d), listQueue(d), listSynced(d)]);
+      // snapshot ผูกผู้ใช้ session + เครื่อง — ไม่ตรง/ปิดธง = ล้าง (คิวไม่แตะ) · ผู้ใช้ session เปลี่ยน (ออกจากระบบแล้วคนอื่นเข้า) = ล้างตัวตรวจ PIN ออฟไลน์ด้วย
       if (snap && (snap.userId !== userId || (deviceId && snap.deviceId !== deviceId) || !enabled)) {
         await wipeSnapshot(d);
+        if (snap.userId !== userId) await forgetOfflineUnlock(d);
         setSnapshot(null);
       } else setSnapshot(snap?.snapshot ?? null);
       setQueue(q);
       setSynced(s);
-      setHolder(h);
+      setHolder(await offlineUnlockHolder(d));
     } catch {
       /* อ่านไม่ได้ = คงค่าเดิม */
     }
@@ -284,5 +287,6 @@ export function useOfflineRegister(o: OfflineRegisterOpts): OfflineRegister {
     [enabled, deviceActive, snapshot, queue.length, nowMs],
   );
   const lastRef = queue.length ? queue[queue.length - 1]!.offlineRef : null;
-  return { ready: !!db, snapshot, queue, synced, queued, parked, gate, lastRef, syncing, enqueue, kick: lead, wipeSecrets, rememberUnlock, tryUnlock, unlockHolder: holder };
+  const recentSync = useMemo(() => nowMs > 0 && synced.some((x) => nowMs - Date.parse(x.syncedAt) < 900_000), [synced, nowMs]);
+  return { ready: !!db, snapshot, queue, synced, queued, parked, gate, lastRef, recentSync, syncing, enqueue, kick: lead, wipeSecrets, rememberUnlock, tryUnlock, unlockHolder: holder };
 }

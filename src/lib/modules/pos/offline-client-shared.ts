@@ -4,7 +4,9 @@
 // ใช้ร่วม: IndexedDB ของเครื่อง (offline-store) · วงซิงก์/ดึงราคา (use-offline-register) · จอขาย/จอล็อก/หน้ากะ/หน้าตั้งค่า
 // 🔴 บริสุทธิ์: ไม่ import prisma / server-only / next/* / node:* / ไฟล์ "use server" · ไม่อ่านนาฬิกาเอง (ผู้เรียกส่ง now) · ไม่สุ่ม
 // 🔴 offline-shared.ts (สัญญาของใบ S) ห้ามแก้ — ตัวช่วยใหม่ของใบ U อยู่ไฟล์นี้เท่านั้น
-import { OFFLINE_ITEM_KEYS, type OfflineQueueItem, type OfflineSellGateReason, type OfflineSnapshot } from "./offline-shared";
+import { OFFLINE_ITEM_KEYS, offlineSlipPayload, type OfflineQueueItem, type OfflineSellGateReason, type OfflineSnapshot } from "./offline-shared";
+import type { PriceCartOk } from "./pricing-shared";
+import type { ReceiptPayload } from "./receipt-render";
 
 // ═══════════════════ ชื่อฐาน + คีย์ต้องห้าม (มติ 2 · R13) ═══════════════════
 /** ฐาน IndexedDB ต่อระบบ POS + สาขา: `shark-pos-off:<systemId>:<unitId>` */
@@ -47,8 +49,12 @@ export type OfflineQueueRecord = OfflineQueueItem & {
   changeSatang: number;
   /** บรรทัดสำหรับพิมพ์สลิปซ้ำ (ชื่อ · จำนวน · ราคา — ไม่มีต้นทุน) */
   slipLines: OfflineSlipLine[];
+  /** ยอดของสลิป (offlineCartTotals บนราคา snapshot) */
+  totals: PriceCartOk;
+  payments: OfflineSlipPayment[];
   cashierName?: string;
 };
+export type OfflineSlipPayment = { type: "CASH" | "TRANSFER"; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string };
 export type OfflineSlipLine = { name: string; qty: number; unitPriceSatang: number; discountSatang: number; lineTotalSatang: number; options: string[]; weightGrams?: number };
 /** บิลที่ซิงก์แล้ว (OK/DUPLICATE) — เก็บเลขจริงไว้พิมพ์ซ้ำ/แสดง "เลขจริง" (ไม่ใช่คิว · ไม่นับในป้ายรอซิงก์) */
 export type OfflineSyncedRecord = { offlineRef: string; idempotencyKey: string; saleId: string | null; receiptNo: string | null; soldAt: string; syncedAt: string; totalSatang: number };
@@ -110,6 +116,13 @@ export function offlineChangeSatang(totalSatang: number, receivedSatang: number)
   if (!Number.isInteger(totalSatang) || !Number.isInteger(receivedSatang) || totalSatang < 0 || receivedSatang < totalSatang) return null;
   return receivedSatang - totalSatang;
 }
+/** "625" / "625.5" / "1,000.25" (บาท) → สตางค์จำนวนเต็ม (ไม่ใช้ทศนิยมลอย) · ผิดรูป/เกิน 9,999,999 บาท = null */
+export function offlineBahtToSatang(input: string): number | null {
+  const v = String(input ?? "").replace(/[,\s]/g, "");
+  const m = /^(\d{1,7})(?:\.(\d{1,2}))?$/.exec(v);
+  if (!m) return null;
+  return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0") || "0");
+}
 /** ปุ่มรับเงินด่วน: ยอดพอดี + ธนบัตรถัดไป (20/50/100/500/1000 บาท) ที่ ≥ ยอด — ไม่ซ้ำ เรียงน้อยไปมาก สูงสุด 4 ปุ่ม */
 export function offlineQuickCash(totalSatang: number): number[] {
   if (!Number.isInteger(totalSatang) || totalSatang <= 0) return [];
@@ -133,4 +146,19 @@ export function offlineSyncedAfterClose(row: { reason: string | null; soldAt: st
 export const OFFLINE_DISCARD_REASON_MIN = 5;
 export function offlineDiscardReasonOk(reason: string): boolean {
   return typeof reason === "string" && reason.trim().length >= OFFLINE_DISCARD_REASON_MIN && reason.trim().length <= 500;
+}
+
+// ═══════════════════ สลิปออฟไลน์ (มติ 4 · R12) ═══════════════════
+/** สลิปของบิลในคิว (ใบรับเงินชั่วคราว — หัว OFFLINE_SLIP_TITLE · ไม่มี QR /r/ · ไม่ใช่ ABB) — พิมพ์ซ้ำได้จากระเบียนเดิม */
+export function offlineSlipOf(rec: OfflineQueueRecord, shop: { name: string; branchName: string }, printLocale: "th" | "en"): ReceiptPayload {
+  return offlineSlipPayload({
+    offlineRef: rec.offlineRef,
+    soldAt: rec.soldAt,
+    shop: { name: shop.name, branchName: shop.branchName, address: "", phone: "" },
+    ...(rec.cashierName ? { cashierName: rec.cashierName } : {}),
+    lines: rec.slipLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, options: l.options, ...(l.weightGrams ? { weightGrams: l.weightGrams } : {}) })),
+    totals: rec.totals,
+    payments: rec.payments.map((p) => ({ ...p })),
+    printLocale,
+  });
 }
