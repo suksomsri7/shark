@@ -96,6 +96,13 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosOfflineSnapshot: unit,
   // POS P3.6 ▸ บัญชีเครดิตลูกค้าองค์กร (ผู้เขียนเดียว pos/credit.ts · กรอง tenantId + systemId ของ POS) ◂
   PosCreditAccount: sys(),
+  // POS P3-SKEL ▸ โครงเชื่อมภายนอก (มติ §10): creds แพลตฟอร์ม/ผู้ให้บริการ (ผู้เขียนเดียว pos/integration-creds.ts) · สลิปโอน (pos/payment-slip.ts) ·
+  //   ตัวช่วยพิมพ์ LAN + งานพิมพ์ (pos/print-relay.ts) — ทุกตารางมี tenantId + systemId + unitId · ทุกคำสั่งกรอง tenantId (+ systemId/unitId ในโค้ด)
+  PosIntegrationCredential: sys(),
+  PosPaymentSlip: sys(),
+  PosPrintAgent: sys(),
+  PosPrintJob: sys(),
+  // ◂ POS P3-SKEL
   // POS P2.6 ▸ 86/ของหมด: ใคร/เมื่อไร/จากไหน ต่อสินค้าต่อสาขา (ผู้เขียน pos/catalog.ts + catalog-legacy.ts · กรอง tenantId + systemId/unitId ในโค้ด) ◂
   PosAvailabilityMark: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)
