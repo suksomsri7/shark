@@ -8,6 +8,9 @@
 //    สาย F ตั้งใจไว้ตั้งแต่ WO-CV7) ⇒ ถ้าแผงนี้ฝังอยู่เฉย ๆ จะไม่มีวันโผล่บนจอแคบ (ภาพ 28 ต้องการให้เห็น)
 //    แก้ด้วย `createPortal` ออกไปที่ `document.body` เป็นแผ่นเลื่อนขึ้นจากขอบล่าง (sheet) เฉพาะตอนจอ < lg
 //    — ไม่แตะโครงเดิมของ context-panel.tsx/inbox-client.tsx เลย (เลี่ยงความเสี่ยงไฟล์ที่ใช้ร่วมกันหลายคน)
+// 🔴 มือถือ (แก้ 21 ต.ค.): sheet เดิมกางค้างที่ขอบล่างตลอดและไม่มีปุ่มปิด ⇒ ทับช่องพิมพ์ ทีมตอบลูกค้าไม่ได้
+//    (ดูเหมือนระบบบังคับให้สมัครสมาชิกก่อน) ⇒ ตอนนี้เริ่มแบบย่อเป็นปุ่มเล็กมุมขวาบน (ใต้หัวห้อง)
+//    กดแล้วค่อยกาง sheet + ฉากหลังมืด แตะฉากหลัง/ปุ่ม x เพื่อปิด — การผูกสมาชิกเป็นทางเลือก ห้ามขวางการตอบ
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -41,6 +44,7 @@ export function ChatMemberPanel({ conversationId, onCreateTask }: { conversation
   const [regFirst, setRegFirst] = useState("");
   const [regPhone, setRegPhone] = useState("");
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false); // มือถือเท่านั้น — เริ่มแบบย่อเสมอ
   const [pending, startTransition] = useTransition();
 
   const load = useCallback(async () => {
@@ -59,6 +63,7 @@ export function ChatMemberPanel({ conversationId, onCreateTask }: { conversation
     setState("loading");
     setActionErr(null);
     setShowRegister(false);
+    setSheetOpen(false);
     void load();
   }, [load]);
 
@@ -108,6 +113,17 @@ export function ChatMemberPanel({ conversationId, onCreateTask }: { conversation
     <div data-testid="chat-member-panel" className="card flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
         <span className="font-semibold">สมาชิก</span>
+        {!isDesktop && (
+          <button
+            type="button"
+            data-testid="chat-member-sheet-close"
+            onClick={() => setSheetOpen(false)}
+            aria-label="ปิดแผงสมาชิก"
+            className="btn btn-ghost grid size-8 place-items-center p-0"
+          >
+            <MemberIcon name="x" size="sm" />
+          </button>
+        )}
       </div>
 
       {state === "loading" && <span style={{ fontSize: 12.5, ...muted }}>กำลังโหลดข้อมูลสมาชิก…</span>}
@@ -146,14 +162,51 @@ export function ChatMemberPanel({ conversationId, onCreateTask }: { conversation
 
   if (isDesktop) return inner;
 
-  // มือถือ (ภาพ 28) — sheet เลื่อนขึ้นจากขอบล่าง ไม่ยึดกับคอลัมน์ขวาที่ถูกซ่อนของ context-panel.tsx
+  // มือถือ (ภาพ 28) — ไม่ยึดกับคอลัมน์ขวาที่ถูกซ่อนของ context-panel.tsx
+  // ย่อ: ปุ่มเล็กมุมขวาบน ใต้หัวห้อง (~50px) — ไม่แตะช่องพิมพ์ที่ขอบล่าง
+  if (!sheetOpen) {
+    const label =
+      state !== "ready" || !data
+        ? "สมาชิก"
+        : data.linked && data.member
+          ? data.member.brief.name
+          : "ยังไม่ผูกสมาชิก";
+    return createPortal(
+      <button
+        type="button"
+        data-testid="chat-member-sheet-open"
+        onClick={() => setSheetOpen(true)}
+        className="fixed right-3 z-30 flex max-w-[60vw] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm"
+        style={{
+          top: "calc(env(safe-area-inset-top, 0px) + 58px)",
+          background: "var(--color-surface, #fff)",
+          borderColor: "var(--color-line)",
+          color: "var(--color-ink)",
+        }}
+      >
+        <MemberIcon name="person" size="sm" />
+        <span className="truncate">{label}</span>
+      </button>,
+      document.body,
+    );
+  }
+
+  // กาง: sheet เลื่อนขึ้นจากขอบล่าง + ฉากหลังมืด (แตะเพื่อปิด)
   return createPortal(
-    <div
-      className="fixed inset-x-0 bottom-0 z-40 max-h-[75vh] overflow-y-auto rounded-t-2xl border-t p-3"
-      style={{ background: "var(--color-surface, #fff)", borderColor: "var(--color-line)" }}
-    >
-      {inner}
-    </div>,
+    <>
+      <div
+        aria-hidden
+        onClick={() => setSheetOpen(false)}
+        className="fixed inset-0 z-40"
+        style={{ background: "rgba(15, 23, 42, 0.35)" }}
+      />
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 max-h-[75vh] overflow-y-auto rounded-t-2xl border-t p-3"
+        style={{ background: "var(--color-surface, #fff)", borderColor: "var(--color-line)" }}
+      >
+        {inner}
+      </div>
+    </>,
     document.body,
   );
 }
