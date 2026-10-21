@@ -29,7 +29,7 @@ type PanelOk = {
   sections: BriefSection[];
   /** มีจุดผิดปกติอย่างน้อย 1 กฎ (บรรทัด anomalies ไม่ใช่ "ไม่พบ") */
   anomalyHits: boolean;
-  /** POS P3.9U ▸ fix1 N1: ไม่มีบรรทัดที่ต้องทำต่อ (86 · ใกล้หมด · จุดผิดปกติที่ถูกจับ · ข้อเสนอ AI) — ไม่ขึ้นกับจำนวนบิล ◂ */
+  /** POS P3.9U ▸ fix2: วันนั้นไม่มีบิล และไม่มีบรรทัดที่ต้องทำต่อ (86 · ใกล้หมด · จุดผิดปกติที่ถูกจับ · ข้อเสนอ AI) ◂ */
   empty: boolean;
   businessDate: string;
   generatedAt: string;
@@ -82,8 +82,8 @@ export async function posAiPanelAction(args: { systemId: string; date?: string; 
       lines: keep.map((x) => x.line),
       sections: keep.map((x) => x.sec),
       anomalyHits,
-      // POS P3.9U ▸ fix1 N1 (CD-P39U-B1 แก้ · มติผู้คุม): "ว่าง" = ไม่มีบรรทัดที่ต้องทำต่อ ไม่ขึ้นกับจำนวนบิล ◂
-      empty: !keep.some((x) => ACTIONABLE.has(x.sec) && (x.sec !== "anomalies" || anomalyHits)),
+      // POS P3.9U ▸ fix2 (CD-P39U-B1 สุดท้าย · มติผู้คุม): "ว่าง" = วันนั้นไม่มีบิล **และ** ไม่มีบรรทัดที่ต้องทำต่อ · มีบิล = แสดงสรุปเสมอ ◂
+      empty: zeroBills && !keep.some((x) => ACTIONABLE.has(x.sec) && (x.sec !== "anomalies" || anomalyHits)),
       businessDate,
       generatedAt: now.toISOString(),
       canManage,

@@ -42,7 +42,7 @@ Panel `pos-reports-ai-{panel,at,line-<n>,draft-po,ask,propose-only,empty,refused
 - Visual: brief fixture = sales + 1 void (no refund — refund path already in P2.12U fixture on the same tenant); bills kept (day keys) like P2.12U.
 
 ## CONTROLLER-DECISION
-- **CD-P39U-B1 (empty rule)** — as built in a081a79a: empty = no line or 0 bills. **Revised by the controller (R1 N1, binding) and built in fix1 c94b61d4**: `empty` = no actionable line (`soldOut` · `stock` · `anomalies` with a rule hit · `proposals`) regardless of bill count; a 0-bill day drops only the ฿0 `sales` line. Owner-ack stays in spec §6.
+- **CD-P39U-B1 (empty rule)** — as built in a081a79a: empty = no line or 0 bills. **Revised by the controller (R1 N1, binding) and built in fix1 c94b61d4**: `empty` = no actionable line (`soldOut` · `stock` · `anomalies` with a rule hit · `proposals`) regardless of bill count; a 0-bill day drops only the ฿0 `sales` line. **Final (fix2)**: `empty` = 0 bills **and** no actionable line; a day with sales always shows the brief. Owner-ack stays in spec §6.
 - **CD-P39U-B2 (sweep row)**: `pos-visual-sweep.json` placeholder `p3.9u-ai` (test commit 25d5560e) — replace with `p3.9u-th`/`p3.9u-en` after the QC5 round.
 
 ## Follow-ups
@@ -118,3 +118,6 @@ Run 1 (87619d0f · /root/pos-runs/presubmit-shark-pos-p11-20261021T195043Z): sam
 | F2 | 259308f4 | notes body pasted (this file) |
 Gates (head 259308f4 = typechecked · dirty 0): `qc-pos-p3.9` forced **48/48** (P39_LANE_PIN=29bad9a4 · SHARK_AI_MOCK=1) · `--no-db` **6/6** · `qc-pos-p1.6` **48/48** · `qc-pos-p1.18` **81/81** (ST7 ✅) · `visual-pos.mts p3.9u --states --dry` (iso · CI=1) th owner 27 · th cashier 3 · en owner 9 · en cashier 1 — rc 0 ×4 · typecheck exit 0 at 259308f4 (21:24–21:28Z). No pre-submit this round (ruling).
 Note: with the revised rule a day **with sales but no actionable line** shows "ยังไม่มีสรุปเช้า" (sales/top/peak lines hidden) — literal reading of "regardless of bill count"; say if sales-only days should show the brief instead.
+
+## Fix round 2 (controller B 21 Oct 21:5xZ) — CD-P39U-B1 final
+- `src/lib/modules/pos/ai-panel-actions.ts:86` `empty: zeroBills && !keep.some(actionable)` — a day with sales shows the brief; 0 bills + actionable = those lines without the ฿0 sales line; 0 bills + nothing actionable = empty. Harness unchanged (brief has bills + A11; empty = 2024-01-02 with 86/low-stock parked and no pending proposals). Spec §1/§6 + notes updated.
