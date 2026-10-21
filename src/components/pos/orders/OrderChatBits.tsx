@@ -86,7 +86,8 @@ export function ChatPayBlock({ d, target, canAccept, canCreate, busy, now }: { d
               {res.duplicated ? t("chatPay.duplicated") : res.sent ? t("chatPay.sent") : t("chatPay.notSent")}
               {res.sent && !res.duplicated && payBy ? ` · ${payBy}` : ""}
             </p>
-            {!res.sent && !res.duplicated && res.statusUrl ? (
+            {/* POS P3.7U ▸ fix1 F2: ส่งไม่สำเร็จ (รวมกรณีซ้ำที่แถวเดิม FAILED/PENDING) = คัดลอกลิงก์ได้เสมอ ◂ */}
+            {!res.sent && res.statusUrl ? (
               <button type="button" data-testid="pos-ord-chatpay-copy" className="btn btn-ghost h-11 self-start rounded-[12px] px-4 text-[13px]" onClick={() => void copy(res.statusUrl)}>
                 <RegisterIcon name={copied ? "check" : "doc"} size={13} />
                 {copied ? t("chatPay.copied") : t("chatPay.copy")}

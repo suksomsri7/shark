@@ -87,6 +87,7 @@ The ledger commit holds this file.
 - Command: `bash scripts/iso.sh bash scripts/qc5.sh … visual-pos.mts p3.7u --user <u> --states --base <qc5>` (+ `LOCALE=en`). This is the controller's command; the builder ran only `--dry`.
 
 ## OP lines
+- §"แจ้งเจ้าของโมดูล Chat" / P3.7 S owner (fix1 F1 · controller B 22 Oct): the "cannot turn a chat switch ON without a LINKED LINE" rule is client-only (UI) today — enforce the LINKED check server-side in `setPosChatSettings` later.
 - **§"แจ้งเจ้าของโมดูล Chat":** the bubble style of bot/system rows (`senderUserId null`, `meta.source "pos"`) in chat rooms belongs to the chat module, not POS (CD-P37U-8).
 - **Controller follow-up:** a delivery-status reader through the chat seam (auto receipt / status send result) → OP §Chat. The card chip is derived from order state.
 - **Owner-ack (derived, no mockup):**
@@ -159,3 +160,6 @@ PRESUBMIT head=30cec653 green=21 red=6 expected-lane-pin=2 unexpected-red=wo-qc-
 - **CD-B-U2 (`qc-pos-p3.7` ST3):** stays W21 red (owner W21 pending). No builder action.
 - **CD-B-U3 (`pos-gates.json`):** the `qc-chat-*` suites are still not in the manifest. They were run by hand once (green). The controller decides whether to add them.
 - **CD-B-U4 (derived layouts, owner-ack in OP):** CD-P37U-2 "turn on blocked / turn off allowed" when not LINKED; awaiting-card placement of the chatpay chip (CD-P37U-5). Accept or require a change.
+
+## Fix round 1 (controller B · 22 Oct 01:0xZ · R1 MERGEABLE)
+- **F2 Low** `OrderChatBits.tsx:89` — copy-link button now shows whenever `!res.sent && res.statusUrl` (also for `duplicated` whose first row FAILED/PENDING). F1 accepted UI-only → OP line above. No other change.
