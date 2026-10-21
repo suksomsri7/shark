@@ -80,7 +80,8 @@ export function AiBriefPanel({ systemId, date, locale, refused = false }: Props)
 
   const ok = view.s === "ok" ? view.v : null;
   const empty = !!ok && ok.empty;
-  const askPrompt = ok ? t("panel.seedAsk", { title: ok.title, lines: ok.lines.join("\n") }) : "";
+  // POS P3.9U ▸ fix1 F1: ข้อความตั้งต้น = หัวเรื่อง + วันธุรกิจ + เจตนาเท่านั้น (ไม่มีตัวเลขยอดขาย/เงินขาดเกิน/จุดผิดปกติ — AI อ่านข้อมูลผ่านเครื่องมือ POS ที่จำกัดสิทธิ์ของตัวเอง) ◂
+  const askPrompt = ok ? t("panel.seedAsk", { title: ok.title, date: ok.businessDate }) : "";
   return (
     <section data-testid="pos-reports-ai-panel" aria-busy={view.s === "loading"} className="card min-w-0 rounded-2xl border-[color:var(--color-accent)] p-6 xl:flex-1">
       <Head title={t("brief.title")} right={ok && at ? <span data-testid="pos-reports-ai-at" className="text-[13px] text-[color:var(--color-muted)]">{t("panel.analyzedAt", { time: at })}</span> : null} />
@@ -113,7 +114,7 @@ export function AiBriefPanel({ systemId, date, locale, refused = false }: Props)
       {ok && (
         <div className="mt-4 flex flex-wrap gap-2">
           {!empty && (
-            <button data-testid="pos-reports-ai-draft-po" type="button" className="btn btn-primary inline-flex min-h-[44px] items-center gap-2 text-sm" onClick={() => openDock(t("panel.seedDraftPo", { lines: ok.lines.join("\n") }))}>
+            <button data-testid="pos-reports-ai-draft-po" type="button" className="btn btn-primary inline-flex min-h-[44px] items-center gap-2 text-sm" onClick={() => openDock(t("panel.seedDraftPo", { date: ok.businessDate }))}>
               <RegisterIcon name="doc" size={15} />
               {t("panel.draftPo")}
             </button>

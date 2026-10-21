@@ -4929,8 +4929,8 @@
       "loading": "Analysing…",
       "failed": "Could not load the summary",
       "retry": "Try again",
-      "seedDraftPo": "Draft a purchase order for the low-stock items in this summary:\n{lines}",
-      "seedAsk": "About this summary ({title}):\n{lines}\nAnalyse it further and suggest what to do next."
+      "seedDraftPo": "Draft a purchase order for the low-stock items as of {date}",
+      "seedAsk": "About {title}: analyse sales for {date} and suggest what to do next"
     },
     "tools": {
       "denied": "This account cannot see this POS data yet. Ask the shop owner for access.",
