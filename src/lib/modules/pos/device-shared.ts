@@ -53,6 +53,12 @@ const bad = (field: string | undefined, message: string): PosFieldRefusal => (fi
 
 const PAPERS: readonly string[] = ["58", "80"];
 const MODES: readonly string[] = ["browser", "escpos-usb", "escpos-bt"];
+// POS P3-SKEL ▸ R13 มติ §10-6: โหมด "escpos-lan" = ส่งไบต์ ESC/POS ผ่านตัวช่วยพิมพ์ LAN (print-relay + tools/pos-print-agent) ·
+//   ค่าใหม่ค่าเดียว (รอยต่อเพิ่มบรรทัดเท่านั้น — ชนิด PosPrinterMode เดิมไม่แก้ · หน้า 17B ใช้ PosPrinterModeAny) · เปิด radio LAN เมื่อมี agent ที่มีเครื่องพิมพ์ (U)
+export const POS_PRINTER_MODE_LAN = "escpos-lan" as const;
+export type PosPrinterModeAny = PosPrinterMode | typeof POS_PRINTER_MODE_LAN;
+(MODES as string[]).push(POS_PRINTER_MODE_LAN);
+// ◂ POS P3-SKEL
 const THAI_TEXT: readonly string[] = ["raster", "tis620"];
 
 /**
