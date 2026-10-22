@@ -6,7 +6,7 @@
   ✅ [H0.6-S8.4] [static] FREEZE: payroll-rules.ts sha256 (F16.2) · computeItem body sha256 · markPaid block sha256 = base
   ✅ [H0.6-S8.5] [static] vs base: crm/commissions.ts · crm-bridges/commissions.ts · outbox-consumers.ts · webhooks/labels.ts each changed, every hunk carries `HR H0.6` · commissions.ts append-only (no line removed)
   ✅ [H0.6-S8.6] [static] reverseRun(ctx, runId, reason?, actor?: PayrollActor) · tenantDb(ctx).$transaction · period advisory lock + FOR UPDATE re-read · reverseEntry(…, tx) (4 args) · emitOutbox hr.payroll.reversed in the body · reverseRunAction passes the actor
-(node:1363694) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1670049) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -57,26 +57,41 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [H0.6-X1.1] reverseRun of R1 from the other tenant's ctx and from the same tenant's other HR system → exact "ไม่พบรอบจ่าย" · R1 untouched
   ✅ [H0.6-X1.3] HR facade adjustmentsByIds(ctx, ids) returns {id, crmCommissionId} rows only for ids of this tenant + system (other tenant's / other system's ids dropped · OQ-6)
 ── S6 races ──
-     X6.1 2033-01: NO NO NO NO NO OK NO NO NO NO
-     X6.1 2033-02: NO NO OK NO NO NO NO NO NO NO
-     X6.1 2033-03: NO NO NO OK NO NO NO NO NO NO
+     X6.1 2033-01: NO OK NO NO NO NO NO NO NO NO
+     X6.1 2033-02: NO OK NO NO NO NO NO NO NO NO
+     X6.1 2033-03: NO NO NO NO NO NO NO NO OK NO
      X6.2 2033-04: NO OK NO NO NO NO NO NO NO NO
-     X6.2 2033-05: NO NO NO NO NO NO OK NO NO NO
-     X6.2 2033-06: OK NO NO NO NO NO NO NO NO NO
-     X6.3 2033-07: OK NO NO NO NO NO NO NO OK NO
-     X6.3 2033-08: NO NO NO OK NO OK NO NO NO NO
-     X6.3 2033-09: NO OK NO NO NO NO NO NO NO OK
-     X6.4 2033-10: NO NO NO NO NO NO NO OK NO NO
-     X6.4 2033-11: NO OK NO NO NO NO NO NO NO NO
-     X6.4 2033-12: OK NO NO NO NO NO NO NO NO NO
+     X6.2 2033-05: OK NO NO NO NO NO NO NO NO NO
+     X6.2 2033-06: NO NO NO NO NO OK NO NO NO NO
+     X6.3 2033-07: OK NO OK NO NO NO NO NO NO NO
+     X6.3 2033-08: NO NO NO NO NO NO OK NO OK NO
+     X6.3 2033-09: NO NO NO NO NO NO OK NO OK NO
+     X6.4 2033-10: NO NO NO NO NO NO OK NO NO NO
+     X6.4 2033-11: NO NO NO NO NO OK NO NO NO NO
+     X6.4 2033-12: NO NO NO NO NO OK NO NO NO NO
   ✅ [H0.6-S6.0] [control] 2 worker PROCESSES (own pool each, 5 lanes each = 10 connections) answered every lane of all 12 rounds behind the GO barrier
   ✅ [H0.6-X6.1] 10 ∥ reverseRun on one run ×3: exactly 1 ok · 9 × exact "รอบนี้กลับรายการไปแล้ว" · 1 reversal entry · 1 hr.payroll.reversed event · adjustments unbound · no throw
   ✅ [H0.6-X6.2] 5 reverseRun ∥ 5 createPayrollRun(same period) ×3: 1 reverse ok · creates refused only with the dup text · ≤1 live run · afterwards the period has exactly one live run (a sequential create when no lane won) that binds every adjustment of the period
   ✅ [H0.6-X6.3] 5 markPaid ∥ 5 reverseRun ×3: 1 reverse ok · final REVERSED · 1 reversal entry · hr.payroll.paid events = markPaid ok count ≤ 1 · 1 reversed event · refusals fixed texts
   ✅ [H0.6-X6.4] 5 approveRun(expect) ∥ 5 reverseRun on a DRAFT ×3: exactly one approve ok and one JV · reverse ok ⇒ REVERSED + 1 reversal · else APPROVED, 0 reversal, every reverse refused with the exact no-JV text · never two JVs
   ✅ [H0.6-S6.5] ledger after everything (qc-payroll-reverse semantics): every REVERSED run's JV is REVERSED with exactly one mirrored reversal · live runs' JVs POSTED, no reversal · ΣDr = ΣCr · one hr.payroll.reversed event per REVERSED run, none for live runs
+── X10/S10 r3: converging commission handlers · create guard · payload hygiene ──
+── S10.5/S10.7/S10.8 create guard ──
+  ✅ [H0.6-S10.5] create guard (R3.2 · F2): period with a legacy REVERSED run that still has 2 bound adjustments (pre-H0.6 data, set in DB) ⇒ createPayrollRun throws PayrollInputError with a fixed Thai text (not the dup text · no id, name or amount · same text twice) · 0 runs created · 0 outbox events · 0 audit rows
+  ✅ [H0.6-S10.7] runbook pre-check SQL (review R2, verbatim) returns exactly the S10.5 legacy run with n = 2 among this tenant's runs · after the rows are unbound it returns none of them
+  ✅ [H0.6-S10.8] after the legacy rows are unbound: createPayrollRun(P) succeeds · binds exactly the 2 rows · totalAdd = OT + COMMISSION once (= the legacy run's) · 7 totals = the legacy run's · Σ items = totals
+── S10.6 payload hygiene ──
+  ✅ [H0.6-S10.6] payload hygiene (R3.3 · F3): own reversed event whose adjustmentIds = [unbound own row, row bound to a PAID run, row bound to a legacy REVERSED run, row bound to a DRAFT run] (all commissions PAID) ⇒ the unbound row's and the DRAFT-bound row's commissions → APPROVED (1 unpaid audit each · ORACLE-EDIT r3, global converging rule) · rows bound to the PAID run and the legacy REVERSED run stay PAID, 0 audits
+── X10.1 F1a mirror ──
+  ✅ [H0.6-X10.1] F1a mirror (R3.1): onPayrollPaid(R1) held on the CrmCommission row lock → reverseRun(R1) + hr.payroll.reversed#R1 delivered → release ⇒ R1 REVERSED · adjustment unbound · commission APPROVED · ≤1 unpaid audit · 0 repaid audits
+── X10.2 F1b ──
+  ✅ [H0.6-X10.2] F1b (R3.1): reversed#R1 handler held → markPaid(R2) + paid#R2 → (handler resumes, its repay write held by a 2nd lock) → reverseRun(R2) + reversed#R2 → release ⇒ R2 REVERSED · adjustment unbound · commission APPROVED · last un-pay audited (unpaid − repaid = 1, unpaid ≤ 2)
+── X10.3 R3 order + replays ──
+  ✅ [H0.6-X10.3] R3 order (hunter P1) still converges: reversed#R1 handler held → markPaid(R2) + paid#R2 → release ⇒ R2 PAID · commission PAID · unpaid = repaid ≤ 1 · then reversed#R1, paid#R1, paid#R2 each delivered ×2 more ⇒ commission row (status + updatedAt) and audit counts unchanged
+── X10.4 20 random rounds ──
+  ✅ [H0.6-X10.4] 20 concurrent rounds, random 0–40 ms offsets, alternating shapes (P9: reversed#R1 ∥ markPaid(R2)+paid#R2 · mirror: paid#R1 ∥ reverseRun(R1)+reversed#R1) ⇒ every round: commission status = (adjustment bound to a PAID run ? PAID : APPROVED) · unpaid ≤ 1 · repaid ≤ 1 · no throw
 RESIDUE tenants=0 rows=0 audit=0 outbox=0
   ✅ [H0.6-Z1] residue: throwaway tenants and every tenantId row (outbox, audit, CRM, account, HR) are gone
 
-===== qc-hr-h0.6 ===== passed 47/47 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h0.6","total":47,"passed":47,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null,"groupCrashes":[]}
+===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null,"groupCrashes":[]}

@@ -297,3 +297,67 @@ Run: forced ×1 on d838fccf (`QC_H06_BASE=d350c26c…`) → `ledger/wo-notes/hr-
 - **All four forced interleavings were deterministic** on base (`blocked`/`queued=true` in the log). Nothing had to be weakened.
 - **⚠ S8.5 conflict, needs a ruling before the builder starts.** S8.5 requires `crm/commissions.ts` to be **append-only** vs base, with every hunk marked `HR H0.6`. `onPayrollPaid` (:1409) sits outside the H0.6 block. Rewriting it in place removes lines and turns S8.5 red. The builder can stay compliant by adding a single marked line at the top of `onPayrollPaid` that delegates to a new function inside the H0.6 block (e.g. `return onPayrollPaidConverging(input); // HR H0.6 r3 ▸ R3.1 ◂`). The old body then becomes dead code but no line is removed. Otherwise S8.5 needs an ORACLE-EDIT. Also check whether `qc-crm-c3.3` hashes or pins `onPayrollPaid`; I did not check this.
 - `createPayrollRun` sits under the `CRM C3.3-fix` comment in `payroll.ts`. `qc-hr-h0.1` S4.3 hashes only the `// CRM C3.3 ▸ ทางเข้าของคอมมิชชัน CRM … ◂` and markPaid blocks, so the guard should not move those hashes. Still, run h0.1/h0.2 hashes in regression.
+
+## r3 build — 22 Oct · builder · from 8480089f (r3 oracle) · rulings R3.1–R3.4 + the R3.3 global converging-rule ruling
+
+### Commits
+`9c65f49e` (wip: R3.1 + R3.2 + literal R3.3 → 49/55, conflict reported) · `101b2852` (global converging rule + ruled S10.6 ORACLE-EDIT) · `e8ce78a7` (delegating line behind `H06_R3_CONVERGING = true as boolean` so the dead old body keeps TS narrowing — typecheck run 1 had 3 TS2322 there) · this notes commit.
+
+### Files → R-items
+- **R3.1 converging handlers — `src/lib/modules/crm/commissions.ts`**
+  - `onPayrollPaid` (:1409): ONE marked line `if (H06_R3_CONVERGING) return onPayrollPaidConverging({ tenantId, systemId, runId }); // HR H0.6 r3 ▸ … ◂` (:1415; the switch is a `boolean` const in the H0.6 block, always on). The old body stays as dead code, so the file is still append-only vs `d350c26c` (0 removed lines; S8.5 green). `qc-crm-c3.3` does not pin `onPayrollPaid` (behaviour only).
+  - `onPayrollReversed` (:2129): checks that the run is REVERSED → candidate pairs from `adjustmentsByIds` → `convergeCommissions(…, "REVERSED_EVENT")`.
+  - `onPayrollPaidConverging` (:2145): run PAID → candidate pairs = `adjustmentsOfRun` items (H4) → `convergeCommissions(…, "PAID_EVENT")`.
+  - `convergeCommissions` (:2167), per chunk of 500, in ONE `tenantDb({tenantId}).$transaction` (maxWait 60 s · timeout 600 s):
+    1. `SELECT … FROM "CrmCommission" … ORDER BY "id" FOR UPDATE` (tagged template; pair rule · `reversedOfId IS NULL` · APPROVED/PAID).
+    2. `adjustmentsByIds(…, { tx })` on the same tx.
+    3. Target (:2196): **PAID** iff bound to a PAID run AND the employee has an item in it. **APPROVED** iff unbound, or bound to a DRAFT/APPROVED run. **Skip** if bound to a REVERSED run (legacy) or to a PAID run without an item.
+    4. Guarded raw UPDATE on the prior status, only for rows not already in their target state. Replays write nothing, so `updatedAt` and audits stay the same (X10.3).
+    5. After commit: `crm.commission.unpaid` for PAID→APPROVED (via `PAYROLL_REVERSED` / `PAYROLL_PAID_RECHECK`) · `crm.commission.repaid` for APPROVED→PAID from the reversed handler. The paid handler's normal APPROVED→PAID writes no audit (unchanged behaviour).
+  - The r2 `changedPairs` re-check (F4) is removed.
+  - Import `tenantDb` (:36, marked).
+- **R3.1 HR side — `src/lib/modules/hr/payroll.ts`**
+  - `adjustmentsByIds(ctx, ids, opts?: { tx })` (:1581): one raw query that binds the HR tenantId + systemId on every table (the caller's tx may be scoped to another system). It returns `hasItem` (the H4 rule). `PayAdjustmentRef` gains `hasItem`.
+  - Line 2: `Prisma` is now a value import (for `Prisma.join`), marked.
+- **R3.2 create guard — `payroll.ts` :595-602** (`createPayrollRun`):
+  - Runs under the period advisory lock, right after the dup check, before `buildRunRows`. If a REVERSED run of the same system + period still has bound `HrPayAdjustment` rows, it throws `PayrollInputError(LEGACY_REVERSED_BOUND_TH)` (:1521).
+  - The text is fixed Thai, differs from the dup text, and carries no id, name or amount. Nothing is written, emitted or audited.
+  - It sits outside the hashed blocks. Hashes after r3: CRM block `33ec8e46…` · markPaid `893a9e4e…` · h0.2 stranded `bf3c0b67…`, all unchanged.
+- **R3.3 — superseded by the controller's global converging rule** (above). The first literal build ("skip anything bound") went 49/55: S3.1/S3.2/X9.1/S3.3/X9.2/S4.3 failed because the same-period DRAFT re-run R2 already binds C1 when `reversed#R1` arrives. Under the global rule a row bound to a later-deleted DRAFT was already APPROVED at event time, which closes the delete-draft hole.
+
+### ORACLE-EDIT (ruled) — `scripts/qc-hr-h0.6.mts` S10.6
+- **Old:** the event payload = [unbound own row, PAID-run row, legacy REVERSED-run row, DRAFT-run row] ⇒ only the unbound row → APPROVED; the 3 bound rows stay PAID, 0 audits.
+- **New:** the unbound row AND the DRAFT-bound row → APPROVED (1 unpaid audit each; the DRAFT row stays bound). The PAID-run and legacy-REVERSED-run rows stay PAID with 0 audits.
+- **Hunk:** `others` without the DRAFT row · `dr = stateOf(Cd, Ad)` asserted `APPROVED · un 1 · re 0 · runId ≠ null` · info / label / registry text. No other oracle change.
+
+### R3.4 runbook / debts
+- **Deploy gate (hard).** On prod, before `migrate deploy`, run the read-only pre-check (PAUSE STOP §R1): `SELECT r."id", r."periodKey", count(a."id") FROM "HrPayrollRun" r JOIN "HrPayAdjustment" a ON a."runId"=r."id" WHERE r."status"='REVERSED' GROUP BY 1,2;`
+  - **0 rows** = go.
+  - **Any row** = STOP: the owner decides first. Until then the R3.2 guard refuses a new run for those periods with a fixed Thai text.
+- **Debt → separate WO:** a one-off for legacy REVERSED runs: unbind their rows and emit `hr.payroll.reversed#<id>` per run, reusing reverseRun's steps. Until then the converging handlers skip rows bound to REVERSED runs.
+- **Debt:** `onPayrollPaid`'s old body is dead code behind the delegating line (kept for S8.5 append-only). Delete it when the CRM owner next edits that block.
+- Earlier debts still stand: R5 audit after commit · R9 testids → H3.4 · payroll.ts :1310 stale comment inside the hashed CRM block.
+
+### Runs (r3, head 101b2852, one at a time, same wrapper, `QC_H06_BASE=d350c26c…` for h0.6)
+| suite | result | failed | residue | exit |
+|---|---|---|---|---|
+| qc-hr-h0.6 forced #1 / #2 (→ `hr-H0.6-green.txt`) / unforced | 55/55 ×3 | – | `RESIDUE tenants=0 rows=0 audit=0 outbox=0` ×3 | 0 |
+| qc-crm-c3.3 | 90/90 | – | – | 0 |
+| qc-payroll-reverse | 14/14 | – | – | 0 |
+| qc-payroll | 19/19 | – | – | 0 |
+| qc-hr-payadjust | 27/27 | – | – | 0 |
+| qc-hr-h0.1 | 67/67 | – | Z1 green | 0 |
+| qc-hr-h0.2 | 58/58 | – | – | 0 |
+| qc-hr-h0.5 | 71/71 | – | `RESIDUE tenants=0` | 0 |
+| qc-hf-hr-privacy | 194/194 | – | – | 0 |
+| qc-approval / qc-approval-wiring | 16/16 · 7/7 | – | – | 0 · 0 |
+| qc-account-cpa | 107/107 | – | – | 0 |
+| seed-hr-qc (alone) | 23/23 | – | – | 0 |
+| fitness.mts env / no env | 42/42 · 42/42 | – | – | 0 · 0 |
+| fitness-hr.mts env / no env | 5/5 · 5/5 | – | – | 0 · 0 |
+| typecheck run 1 (gate opened 09:58Z after a POS build) | 3 × TS2322 in the dead old `onPayrollPaid` body (narrowing lost after an unconditional `return`) | – | – | 2 |
+| typecheck run 2 (head e8ce78a7) | `tsc --noEmit` 0 errors, 39 s | – | – | 0 |
+| qc-hr-h0.6 forced on e8ce78a7 (→ `hr-H0.6-green.txt`) · qc-crm-c3.3 forced on e8ce78a7 | 55/55 · 90/90 | – | 0 | 0 · 0 |
+
+### Temp data / processes (r3)
+- QC4: no residue. No process or unit of mine is running. POS units and `/tmp/shark-gate-pos.lock` were not touched. `ledger/wo-notes/hr-H0.6-control1.txt` (untracked, not mine) was left alone.
