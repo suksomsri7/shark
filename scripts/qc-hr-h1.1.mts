@@ -90,6 +90,8 @@ const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833
 const T_OTHER_BRANCH = "พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ";
 const T_PAYTYPE = "ยังไม่รองรับค่าจ้างรายวัน/รายชั่วโมงในรอบจ่าย — รอ H3.4";
 const T_NO_UNIT_PROMPT = "ยังไม่ระบุสาขาประจำ";
+/** R12.3 (review round 1 · M-2) — run-level money actions need an all-branch viewer */
+const T_RUN_ALL = "รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้";
 
 /** visual-hr SPECS["1.1"] page keys (CONTROLLER-RUN screenshots — registered here, taken by the controller) */
 const VISUAL_KEYS = ["register-branches", "register-branch-manager", "profile-unit"] as const;
@@ -214,6 +216,18 @@ const CHECKS: readonly Def[] = [
   D("X8.2", "X8", "CRITICAL", "GREEN", "[dto] [control] payType never reaches non-payroll viewers (manager-u1 · manager-all · hr.leave.read staff) — not even for the DAILY employee"),
   D("X9.1", "X9", "MAJOR", "RED", "[static] register UI: ui.tsx uses hrScopeOf · \"" + T_NO_UNIT_PROMPT + "\" in th.json or hr UI · a branch testid (…branch…/…unit…) listed in hr-ui-inventory.json"),
   D("X9.2", "X9", "MINOR", "RED", "[static] visual-hr.mts SPECS[\"1.1\"] registers " + VISUAL_KEYS.join(" · ") + " (CONTROLLER-RUN, 3 viewports × owner / manager(branch) / staff)"),
+  // S10 addendum — R12 (review round 1 · C-1 · M-1 · M-2 · m-2 · ruled 22 Oct) · own fixtures in the main tenant · runs last in its own try/catch
+  D("S10.1", "R12.1", "CRITICAL", "RED", "[action] 🔴 C-1: STAFF unitAccess [] (all-branch by D-1) with hr.employee.create edits an employee whose unitId = u1 ⇒ ok · name changed"),
+  D("S10.2", "R12.1", "CRITICAL", "RED", "[action] 🔴 C-1: the same [] STAFF (hr.attendance.clock + hr.employee.create) clocks that employee ⇒ {ok:true} + 1 attendance row · MANAGER [] setPinAction on it ⇒ ok"),
+  D("S10.3", "R12.1", "CRITICAL", "GREEN", "[action] [control] MANAGER [u2] edits the u1 employee ⇒ exactly the out-of-branch text · unchanged"),
+  D("S10.4", "R12.2", "CRITICAL", "RED", "[calendar] 🔴 M-1: getCalendarEvents(MANAGER [u1], March 2031) HR_LEAVE events = {L1 e1 · L4 e4 borrowed in · LB system B u1} — no u2 (L2 · L5) and no null-unit (L3) leave"),
+  D("S10.5", "R12.2", "CRITICAL", "RED", "[ai] 🔴 M-1: upcoming_schedule (MANAGER [u1] member actor, 30 days) names the u1 employee's leave · never the u2 or the null-unit employee"),
+  D("S10.6", "R12.3", "CRITICAL", "RED", "[page] 🔴 M-2: PayrollSection rendered for a payroll viewer [u1] ⇒ no u2 / null-unit employee name (salary forms · adjustments · run items) and not e2's base salary · u1 name present (all-branch render shows e2 — render sanity)"),
+  D("S10.7", "R12.3", "CRITICAL", "RED", "[action] 🔴 M-2: payroll viewer [u1] createPayrollRunAction / approvePayrollRunAction / markPaidAction / reverseRunAction ⇒ \"" + T_RUN_ALL + "\" (no leak) · nothing written (0 runs · status unchanged)"),
+  D("S10.7c", "R12.3", "MAJOR", "GREEN", "[action] [control] all-branch payroll viewer [\"*\"]: createPayrollRunAction ⇒ ok (1 DRAFT) · approvePayrollRunAction(expect) ⇒ APPROVED · markPaidAction ⇒ PAID"),
+  D("S10.8", "R12.4", "CRITICAL", "RED", "[action] 🔴 m-2: owner sets employmentStatus ENDED in the profile form ⇒ active=false · clockAction ⇒ refused (Thai) no row · verifyPin ⇒ wrong-PIN text · requestLeave ⇒ Thai refusal, 0 leaves · next run excludes the employee"),
+  D("S10.8c", "R12.4", "MAJOR", "GREEN", "[action] [control] PROBATION / ACTIVE set in the profile form leave active=true"),
+  D("S10.9", "R12.4", "MAJOR", "RED", "[action] m-2: restoreEmployeeAction on an employee whose status is ENDED (set via the form) ⇒ stays inactive · after the owner sets status ACTIVE in the form, restore ⇒ active"),
   D("Z1", "-", "CRITICAL", "GREEN", "residue: tenants qc-hr-h1.1-* gone · no row of ours in HR/payroll/borrowing/audit/outbox · users/sessions gone · no rate rows"),
 ];
 
@@ -1353,6 +1367,237 @@ async function runDb(): Promise<void> {
     }
     chk("X8.2", res.length === 0, "no payType key", res.join(" ") || "clean");
   }
+
+  // ═══ S10 addendum (R12) — last, in its own try/catch (a crash here never hides S1–X results) ═══
+  try {
+    await runS10({ T, sA, u1, u2, U, E, L });
+  } catch (e) {
+    console.log(`💥 S10: ${(e as Error)?.stack?.split("\n").slice(0, 3).join(" | ") ?? String(e)}`);
+  }
+}
+
+// ═════════════════════════ S10 — R12 review round 1 (C-1 · M-1 · M-2 · m-2) ═════════════════════════
+async function renderHtml(node: Any): Promise<string> {
+  const server = (await import("react-dom/server" as string)) as Any;
+  try {
+    return String(server.renderToStaticMarkup(node));
+  } catch {
+    const st = (await import("react-dom/static" as string)) as Any;
+    const { prelude } = await st.prerenderToNodeStream(node);
+    let html = "";
+    for await (const c of prelude) html += String(c);
+    return html;
+  }
+}
+async function runS10(fx: Any): Promise<void> {
+  const { T, sA, u1, u2, U, E, L } = fx;
+  console.log("── [S10] R12 addendum ──");
+  const ctxA = { tenantId: T, systemId: sA.id };
+  const pathA = `/app/sys/${sA.id}/hr/employees`;
+  const FULL_PAY = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payroll.pay": true, "hr.payroll.reverse": true, "hr.leave.read": true };
+  const W = {
+    stfNone: await mkUser(T, "s10stf", `QC ไม่กำหนดสาขา ${stamp}`, "STAFF", [], { "hr.employee.create": true, "hr.attendance.clock": true }),
+    mgrNone: await mkUser(T, "s10mgr", `QC ผู้จัดการไม่กำหนดสาขา ${stamp}`, "MANAGER", [], {}),
+    mgrU2: await mkUser(T, "s10mgru2", `QC ผู้จัดการสาขาใต้ ${stamp}`, "MANAGER", [u2], {}),
+    payU1: await mkUser(T, "s10payu1", `QC เงินเดือนสาขาเหนือเต็ม ${stamp}`, "STAFF", [u1], FULL_PAY),
+    payAll: await mkUser(T, "s10payall", `QC เงินเดือนทุกสาขาเต็ม ${stamp}`, "STAFF", ["*"], FULL_PAY),
+  };
+  const nameOf = async (id: string) => ((await P.hrEmployee.findUnique({ where: { id }, select: { name: true, active: true } })) as Any) ?? {};
+  const save = (w: Who, systemId: string, emp: string, extra: Record<string, string>) =>
+    inAct(w, `/app/sys/${systemId}/hr/employees`, () => act.saveEmployeeProfileAction(systemId, emp, { status: "idle" }, fd(extra)));
+
+  // ── C-1 ──
+  const n1Name = `พนง-สาขาเหนือ-สิบ ${stamp}`;
+  const n1 = await mkEmp(T, sA.id, n1Name, { unitId: u1 });
+  {
+    const nm = `พนง-สาขาเหนือ-สิบ-แก้ ${stamp}`;
+    names.push(nm);
+    const o = await save(W.stfNone, sA.id, n1, { name: nm });
+    const n = await nameOf(n1);
+    chk("S10.1", okOut(o) && n.name === nm, "ok · renamed", `${okOut(o) ? "ok" : `refused "${short(o.text, 70)}"`} name=${n.name === nm ? "renamed" : "unchanged"}`);
+    if (n.name === nm) await P.hrEmployee.update({ where: { id: n1 }, data: { name: n1Name } });
+  }
+  {
+    const a0 = await P.hrAttendance.count({ where: { employeeId: n1 } });
+    const clk = await inAct(W.stfNone, pathA, () => act.clockAction(fd({ systemId: sA.id, employeeId: n1, kind: "IN" })));
+    const a1 = await P.hrAttendance.count({ where: { employeeId: n1 } });
+    const pin = await inAct(W.mgrNone, pathA, () => act.setPinAction(sA.id, n1, { status: "idle" }, fd({ pin: String(200000 + Math.floor(Math.random() * 700000)) })));
+    chk("S10.2", (clk.value as Any)?.ok === true && a1 === a0 + 1 && okOut(pin), "clock ok +1 row · setPin ok", `clock=${(clk.value as Any)?.ok === true ? "ok" : `"${short(clk.text, 60)}"`} rows+${a1 - a0} setPin=${okOut(pin) ? "ok" : `"${short(pin.text, 60)}"`}`);
+  }
+  {
+    const before = await nameOf(n1);
+    const o = await save(W.mgrU2, sA.id, n1, { name: `แก้จากสาขาใต้ ${stamp}` });
+    names.push(`แก้จากสาขาใต้ ${stamp}`);
+    const after = await nameOf(n1);
+    chk("S10.3", o.text === T_OTHER_BRANCH && after.name === before.name, T_OTHER_BRANCH, `"${short(o.text, 70)}" ${after.name === before.name ? "unchanged" : "CHANGED"}`);
+    if (after.name !== before.name) await P.hrEmployee.update({ where: { id: n1 }, data: { name: before.name } });
+  }
+
+  // ── M-1 calendar + AI ──
+  {
+    const cal = (await import("@/lib/modules/calendar/service" as string)) as Any;
+    const m = { role: U.mgrU1.role, unitAccess: U.mgrU1.unitAccess, permissions: U.mgrU1.permissions };
+    let got: string[] = [];
+    let err = "";
+    try {
+      const ev = (await cal.getCalendarEvents({ tenantId: T, membership: m }, { from: new Date("2031-03-01T00:00:00Z"), to: new Date("2031-04-01T00:00:00Z") })) as Any[];
+      got = ev.filter((x) => x.kind === "HR_LEAVE").map((x) => String(x.id));
+    } catch (e) {
+      err = errText(e);
+    }
+    const lab = new Map(Object.entries(L).map(([k, v]) => [v as string, k]));
+    const want = srt([L.L1, L.L4, L.LB]);
+    chk("S10.4", !err && srt(got) === want, "L1,L4,LB", err ? `THROW ${err}` : got.map((x) => lab.get(x) ?? "?").sort().join(",") || "∅");
+  }
+  {
+    const { thaiDateKey } = (await import("@/lib/ui/date")) as Any;
+    const now = new Date();
+    const d3 = new Date(`${thaiDateKey(new Date(now.getTime() + 3 * 86_400_000))}T00:00:00Z`);
+    for (const e of [E.e1, E.e2, E.e3]) await P.hrLeave.create({ data: { tenantId: T, systemId: sA.id, employeeId: e, type: "PERSONAL", fromDate: d3, toDate: d3, status: "PENDING" } });
+    const tools = (await import("@/lib/ai/tools")) as Any;
+    const mm = await P.membership.findFirst({ where: { tenantId: T, userId: U.mgrU1.id }, select: { role: true, unitAccess: true, permissions: true } });
+    const out = String(await tools.runTool({ tenantId: T, actor: aiActor.aiMemberActor(T, U.mgrU1.id, mm) }, "upcoming_schedule", { days: 30 }));
+    const nm = async (id: string) => (await nameOf(id)).name as string;
+    const r = { u1: out.includes(await nm(E.e1)), u2: out.includes(await nm(E.e2)), none: out.includes(await nm(E.e3)) };
+    chk("S10.5", r.u1 && !r.u2 && !r.none, "u1 name · no u2 · no null-unit", `${short(r)}${/error/.test(out) ? ` out=${short(out, 80)}` : ""}`);
+  }
+
+  // ── M-2 payroll page + run actions ──
+  {
+    const ui = (await import("@/lib/modules/hr/payroll-ui" as string)) as Any;
+    const render = async (w: Who): Promise<string> => {
+      try {
+        return await inScope(w.cookie, `/app/sys/${sA.id}/hr/payroll`, async () => renderHtml(await ui.PayrollSection({ systemId: sA.id })));
+      } catch (e) {
+        return `THROW ${errText(e)}`;
+      }
+    };
+    const money = ((await import("@/lib/ui/money" as string)) as Any).formatBaht;
+    const htU1 = await render(W.payU1);
+    const htAll = await render(W.payAll);
+    const nm = async (id: string) => (await nameOf(id)).name as string;
+    const [n1x, n2x, n3x, n5x] = [await nm(E.e1), await nm(E.e2), await nm(E.e3), await nm(E.e5)];
+    const e2Salary = typeof money === "function" ? String(money(1_800_000)) : "∅";
+    const r = {
+      rendered: !htU1.startsWith("THROW") && htU1.length > 200,
+      u1Name: htU1.includes(n1x),
+      u2Name: htU1.includes(n2x),
+      nullName: htU1.includes(n3x),
+      e5Name: htU1.includes(n5x),
+      e2Salary: htU1.includes(e2Salary),
+      allSeesE2: htAll.includes(n2x),
+    };
+    chk("S10.6", r.rendered && r.u1Name && !r.u2Name && !r.nullName && !r.e5Name && !r.e2Salary && r.allSeesE2, "u1 name only · no u2/null names · no 18,000 · all-branch sees e2", htU1.startsWith("THROW") ? htU1.slice(0, 140) : short(r));
+  }
+  const sP = await sys.createSystem(T, "HR", "ทีมรอบจ่ายสองสาขา");
+  ids.push(sP.id);
+  const ctxP = { tenantId: T, systemId: sP.id };
+  const pathP = `/app/sys/${sP.id}/hr/payroll`;
+  const p1 = await mkEmp(T, sP.id, `พนง-รอบ-เหนือ ${stamp}`, { unitId: u1 });
+  const p2 = await mkEmp(T, sP.id, `พนง-รอบ-ใต้ ${stamp}`, { unitId: u2 });
+  const z1 = await mkEmp(T, sP.id, `พนง-สิ้นสุดในฟอร์ม ${stamp}`, { unitId: u1, linkedUserId: null });
+  const z2 = await mkEmp(T, sP.id, `พนง-ทดลองในฟอร์ม ${stamp}`, { unitId: u1 });
+  for (const [e, b] of [[p1, B(21_000)], [p2, B(19_000)], [z1, B(15_000)], [z2, B(14_000)]] as [string, number][]) await pay.setSalaryProfile(ctxP, { employeeId: e, baseSalarySatang: b, ssoEligible: true });
+  {
+    const runOf = async (periodKey: string) => ((await P.hrPayrollRun.findFirst({ where: { tenantId: T, systemId: sP.id, periodKey }, select: { id: true, status: true, totalNetSatang: true } })) as Any) ?? null;
+    const createF = (periodKey: string, payDate: string) => fd({ systemId: sP.id, periodKey, payDate });
+    const apF = async (r: Any) => fd({ systemId: sP.id, runId: r?.id ?? "∅", expectNet: String(r?.totalNetSatang ?? 0), expectItems: String(r ? await P.hrPayrollItem.count({ where: { runId: r.id } }) : 0) });
+    const pf = (r: Any) => fd({ systemId: sP.id, runId: r?.id ?? "∅" });
+    // control first, on its own period (2030-03): the all-branch viewer runs create → approve → pay through the actions
+    const c2 = await inAct(W.payAll, pathP, () => payAct.createPayrollRunAction(null, createF("2030-03", "2030-03-31")));
+    const rc = await runOf("2030-03");
+    const a2 = await inAct(W.payAll, pathP, async () => payAct.approvePayrollRunAction(await apF(rc)));
+    const stA2 = (await runOf("2030-03"))?.status;
+    const m2 = await inAct(W.payAll, pathP, () => payAct.markPaidAction(pf(rc)));
+    const stM2 = (await runOf("2030-03"))?.status;
+    chk("S10.7c", okOut(c2) && !!rc && okOut(a2) && stA2 === "APPROVED" && !m2.threw && stM2 === "PAID", "create ok · APPROVED · PAID", `create=${okOut(c2) ? "ok" : short(c2.text, 50)} approve=${stA2} (${okOut(a2) ? "ok" : short(a2.text, 40)}) paid=${stM2}`);
+    // refusals of the branch viewer [u1]: create on an empty period · approve / markPaid / reverse on a run prepared by the SERVICE (setup, not the control)
+    const c1 = await inAct(W.payU1, pathP, () => payAct.createPayrollRunAction(null, createF("2030-05", "2030-05-31")));
+    const afterC1 = (await runOf("2030-05")) ? 1 : 0;
+    await pay.createPayrollRun(ctxP, { periodKey: "2030-06", payDate: new Date("2030-06-30T05:00:00Z") });
+    let r6 = await runOf("2030-06");
+    const a1 = await inAct(W.payU1, pathP, async () => payAct.approvePayrollRunAction(await apF(r6)));
+    const stA1 = (await runOf("2030-06"))?.status;
+    if (stA1 === "DRAFT") await pay.approveRun(ctxP, r6.id, { totalNetSatang: r6.totalNetSatang, itemCount: await P.hrPayrollItem.count({ where: { runId: r6.id } }) }, { userId: U.owner.id, isOwner: true });
+    r6 = await runOf("2030-06");
+    const stBeforePay = r6?.status;
+    const m1 = await inAct(W.payU1, pathP, () => payAct.markPaidAction(pf(r6)));
+    const stM1 = (await runOf("2030-06"))?.status;
+    if (stM1 === "APPROVED") await pay.markPaid(ctxP, r6.id);
+    const stBeforeRev = (await runOf("2030-06"))?.status;
+    const rv = await inAct(W.payU1, pathP, () => payAct.reverseRunAction(fd({ systemId: sP.id, runId: r6?.id ?? "∅", reason: "ข้อสอบ" })));
+    const stR = (await runOf("2030-06"))?.status;
+    const texts = { create: c1.text, approve: a1.text, markPaid: m1.text, reverse: rv.text };
+    for (const [k, v] of Object.entries(texts)) refusals[`S10.7.${k}`] = v;
+    const allFixed = Object.values(texts).every((t) => t === T_RUN_ALL);
+    chk(
+      "S10.7",
+      allFixed && afterC1 === 0 && stA1 === "DRAFT" && stBeforePay === "APPROVED" && stM1 === "APPROVED" && stBeforeRev === "PAID" && stR === "PAID",
+      "4 × fixed text · 0 runs · DRAFT · APPROVED · PAID unchanged",
+      `texts=${short(Object.fromEntries(Object.entries(texts).map(([k, v]) => [k, v === T_RUN_ALL ? "fixed" : short(v, 28) || "∅"])), 160)} created=${afterC1} afterApprove=${stA1} afterPay=${stM1} afterReverse=${stR}`,
+    );
+  }
+
+  // ── m-2 ENDED via the profile form ──
+  {
+    let zPin = "";
+    do zPin = String(100000 + Math.floor(Math.random() * 899999));
+    while (zPin === "975310");
+    await hr.setPin(ctxP, z1, zPin);
+    const o = await save(U.owner, sP.id, z1, { name: `พนง-สิ้นสุดในฟอร์ม ${stamp}`, employmentStatus: "ENDED" });
+    const z = await nameOf(z1);
+    const st = await rawCol("HrEmployee", "employmentStatus", z1);
+    const a0 = await P.hrAttendance.count({ where: { employeeId: z1 } });
+    const clk = await inAct(U.owner, pathP, () => act.clockAction(fd({ systemId: sP.id, employeeId: z1, kind: "IN" })));
+    const a1 = await P.hrAttendance.count({ where: { employeeId: z1 } });
+    const vp = (await pinMod.verifyPin({ tenantId: T, pin: zPin, callerKey: `qc-h11-s10:${stamp}` })) as Any;
+    const l0 = await P.hrLeave.count({ where: { employeeId: z1 } });
+    let lt = "";
+    try {
+      await hr.requestLeave(ctxP, { employeeId: z1, actorUserId: U.owner.id, type: "PERSONAL", fromDate: "2031-05-05", toDate: "2031-05-05" });
+      lt = "∅ accepted";
+    } catch (e) {
+      lt = e instanceof Error ? e.message : String(e);
+    }
+    const l1 = await P.hrLeave.count({ where: { employeeId: z1 } });
+    let runItems = "∅";
+    try {
+      const r = await pay.createPayrollRun(ctxP, { periodKey: "2030-04", payDate: new Date("2030-04-30T05:00:00Z") });
+      const it = (await P.hrPayrollItem.findMany({ where: { runId: r.id }, select: { employeeId: true } })) as Any[];
+      runItems = it.some((i) => i.employeeId === z1) ? "includes z1" : `excludes z1 (${it.length})`;
+    } catch (e) {
+      runItems = `THROW ${errText(e).slice(0, 60)}`;
+    }
+    const r = {
+      save: okOut(o),
+      status: st,
+      active: z.active,
+      clock: (clk.value as Any)?.ok === false && isThai(clk.text) && !techLeak(clk.text) && a1 === a0,
+      pin: vp?.ok === false && vp?.reason === WRONG_PIN,
+      leave: l1 === l0 && isThai(lt) && !techLeak(lt) && lt !== "∅ accepted",
+      run: runItems.startsWith("excludes"),
+    };
+    refusals["S10.8.clock"] = clk.text;
+    refusals["S10.8.leave"] = lt === "∅ accepted" ? "" : lt;
+    chk("S10.8", r.save && st === "ENDED" && z.active === false && r.clock && r.pin && r.leave && r.run, "ENDED · inactive · clock/pin/leave refused · excluded", short({ ...r, clockText: short(clk.text, 24), leaveText: short(lt, 24), runItems }, 260));
+    const o2 = await save(U.owner, sP.id, z2, { name: `พนง-ทดลองในฟอร์ม ${stamp}`, employmentStatus: "PROBATION" });
+    const a2 = (await nameOf(z2)).active;
+    const o3 = await save(U.owner, sP.id, z2, { name: `พนง-ทดลองในฟอร์ม ${stamp}`, employmentStatus: "ACTIVE" });
+    const a3 = (await nameOf(z2)).active;
+    chk("S10.8c", okOut(o2) && okOut(o3) && a2 === true && a3 === true, "active stays true ×2", `probation=${okOut(o2) ? "ok" : short(o2.text, 30)}/${a2} active=${okOut(o3) ? "ok" : short(o3.text, 30)}/${a3}`);
+  }
+  {
+    const z3 = await mkEmp(T, sP.id, `พนง-กลับมาไม่ได้ ${stamp}`, { unitId: u1 });
+    await save(U.owner, sP.id, z3, { name: `พนง-กลับมาไม่ได้ ${stamp}`, employmentStatus: "ENDED" });
+    const ended = (await nameOf(z3)).active === false;
+    const r1 = await inAct(U.owner, pathP, () => act.restoreEmployeeAction(fd({ systemId: sP.id, employeeId: z3 })));
+    const afterRestore = (await nameOf(z3)).active;
+    await save(U.owner, sP.id, z3, { name: `พนง-กลับมาไม่ได้ ${stamp}`, employmentStatus: "ACTIVE" });
+    await inAct(U.owner, pathP, () => act.restoreEmployeeAction(fd({ systemId: sP.id, employeeId: z3 })));
+    const finalActive = (await nameOf(z3)).active;
+    if (r1.text) refusals["S10.9"] = r1.text;
+    chk("S10.9", ended && afterRestore === false && finalActive === true, "inactive after ENDED · restore refused · after ACTIVE restore ok", `endedInactive=${ended} afterRestore=${afterRestore} (${short(r1.text, 40) || "no text"}) afterStatusActive+restore=${finalActive}`);
+  }
 }
 
 // ═════════════════════════ cleanup ═════════════════════════
@@ -1440,6 +1685,11 @@ const failed = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id)
 const asBase = [...results.entries()].filter(([id, r]) => (BASE.get(id) === "RED" ? !r.ok : r.ok)).length;
 const offBase = [...results.entries()].filter(([id, r]) => (BASE.get(id) === "RED" ? r.ok : !r.ok)).map(([id]) => `${id}(${BASE.get(id)}→${results.get(id)!.ok ? "pass" : "fail"})`);
 const nRed = CHECKS.filter(([, , , b]) => b === "RED").length;
+{
+  const s10 = [...results.entries()].filter(([id]) => id.startsWith("H1.1-S10."));
+  const s10as = s10.filter(([id, r]) => (BASE.get(id) === "RED" ? !r.ok : r.ok)).length;
+  console.log(`S10-BASE (builder tree ee68d4a5) ${s10as}/${s10.length} as registered · RED ${s10.filter(([id]) => BASE.get(id) === "RED").length} · GREEN ${s10.filter(([id]) => BASE.get(id) === "GREEN").length} (BASE-EXPECTATION below = registry column 4 vs session/hr 9c5aa1ea; S1–X are expected to pass on the builder tree)`);
+}
 console.log(`BASE-EXPECTATION ${asBase}/${results.size} as registered (RED-by-design ${nRed} · GREEN controls ${CHECKS.length - nRed})${offBase.length ? ` · off: ${offBase.join(" ")}` : ""}`);
 console.log(`\n===== ${SUITE} ===== passed ${results.size - failed.length}/${results.size}${FORCE ? " (QC_FORCE)" : ""}${crashed ? " · CRASHED" : ""}`);
 console.log(
