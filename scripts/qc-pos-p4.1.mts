@@ -49,7 +49,7 @@ const CHECKS: readonly Def[] = [
   D("R8", "S", "[§4 R8] ไม่มี testid ผีในข้อสอบ: ทุก testid ที่ qc-pos-* / visual-pos.mts อ้าง (tid(…) · [data-testid=…] · getByTestId) มีในทะเบียน หรือในโค้ด src (หรือ $foreign)"),
   D("R9", "S", "[§4 R9] hiddenFor ⊆ {owner manager cashier public} · ไม่ทับ roles (≠ roles)"),
   D("R10", "S", "[§4 R10 · V4] การ์ดปฏิเสธทุกใบ (refusals ของ pos-visual-sweep.json + data-testid pos-…-refusal/-refused ในโค้ด POS) มีแถวทะเบียน expect ui · state \"refused\""),
-  D("R11", "S", "[§4 R11 · ⚠️6 · มติ 5] แถวที่ไปถึงตัวเขียนเงิน (MONEY_ACTIONS · db ชี้ตารางเงิน) มี safety ∈ money|external|counter · ตัวจับแถวเงินเจอ ≥ 1 แถว"),
+  D("R11", "S", "[§4 R11 · ⚠️6 · มติ 5] แถว mutation/download ที่ไปถึงตัวเขียนเงิน (MONEY_ACTIONS · db ชี้ตารางเงิน) มี safety ∈ money|external|counter · ตัวจับแถวเงินเจอ ≥ 1 แถว"),
   D("R12", "S", "[§4 R12 · มติ 5] safety ถูกค่า (money|external|counter) · แถวภายนอก (พิมพ์ · LINE · Beam · e-Tax · LAN agent · webhook) = external · แถวเลขเอกสาร (ใบกำกับ/ใบลดหนี้/ตัวนับ) = counter|external · ไม่มี safety บนแถว navigate/modal"),
   D("R13", "S", "[§4 R13] ภาษาไทย: ทุกคีย์ข้อความที่ expect.note อ้าง (msg:pos.… · pos.….* · \"คีย์/ข้อความ pos.…\") มีใน src/messages/th"),
   D("R14", "S", "[§4 R14] ภาษาอังกฤษ: คีย์ชุดเดียวกับ R13 มีใน src/messages/en"),
@@ -166,7 +166,7 @@ const MONEY_ACTIONS = [
   "sellGiftCardAction", "reloadGiftCardAction", "transferGiftCardAction", "POST /api/pos/sync",
 ];
 /** R11: ตารางเงินใน expect.db */
-const MONEY_MODELS = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosDepositTxn", "GiftCard", "GiftCardTxn", "PosCashMovement", "PosOfflineSale"];
+const MONEY_MODELS = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosDepositTxn", "GiftCard", "GiftCardTxn", "PosCashMovement"];
 /** R12: ผลภายนอก (พิมพ์ · LINE · Beam · e-Tax · LAN agent · webhook) */
 const EXTERNAL_ACTIONS = ["sendReceiptAction", "reprintReceiptAction", "requestChatPaymentAction", "kitchenSlipPayloadAction"];
 const EXTERNAL_TEXT = /\bBeam\b|\be-?Tax\b|\bwebhook\b|\bLAN\b|print-agent|เครื่องพิมพ์|พิมพ์(ใบ|ซ้ำ|สำเนา|ครัว|บิล)|print\(\)|\bLINE\b(?! MAN)/; // ตัวพิมพ์ตรง (Line ของ PosTableSplit/Part/Line ไม่ใช่ LINE) · LINE MAN = ช่องทาง ไม่ใช่การส่ง
@@ -587,7 +587,7 @@ function r10(inv: Inv, F: Facts): string[] {
   return bad.length ? [`${bad.length}/${F.refusals.length} การ์ดปฏิเสธ: ${bad.join(" · ")}`] : [];
 }
 const isMoneyRow = (r: Any) => {
-  if (["navigate", "modal"].includes(String(r?.expect?.type))) return false;
+  if (!["mutation", "download"].includes(String(r?.expect?.type))) return false; // ui/toast/inline-error ที่พูดถึง action = ไม่ใช่จุดกดที่เขียนเงิน
   const t = rowText(r);
   if (MONEY_ACTIONS.some((a) => (a.includes(" ") ? t.includes(a) : hasWord(t, a)))) return true;
   const db = str(r?.expect?.db);
