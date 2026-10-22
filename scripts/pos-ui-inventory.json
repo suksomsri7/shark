@@ -21265,6 +21265,10 @@
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
         "ใบครัวสถานะใหม่ (NEW) บนบอร์ดสถานีแรก",
         "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ],
+      "viewport": [
+        "desktop",
+        "tablet"
       ]
     },
     {
@@ -21294,6 +21298,10 @@
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
         "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)",
         "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ],
+      "viewport": [
+        "desktop",
+        "tablet"
       ]
     },
     {
@@ -21320,6 +21328,10 @@
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
         "ใบครัวที่ยังไม่พร้อม (NEW/COOKING)",
         "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ],
+      "viewport": [
+        "desktop",
+        "tablet"
       ]
     },
     {
@@ -21334,8 +21346,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
-        "target": "pos-kds-ticket-*",
-        "note": "เสิร์ฟแล้ว (kdsServedAction) · expo = ทุกสถานีของรอบทีละสถานี หยุดที่คำปฏิเสธแรก",
+        "target": "pos-kds-recall",
+        "note": "เสิร์ฟแล้ว (kdsServedAction) · expo = ทุกสถานีของรอบทีละสถานี หยุดที่คำปฏิเสธแรก · ใบหลุดบอร์ดหลังเสิร์ฟ (P2.6-B3) ⇒ ดูแถบเสิร์ฟแล้ววันนี้ pos-kds-recall (นับ servedToday · KdsScreen.tsx:333-348)",
         "db": "RestaurantOrderItem SERVED (kitchenMoveInTx · servedAt)"
       },
       "wo": "P2.6U",
@@ -21349,6 +21361,10 @@
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
         "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)",
         "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ],
+      "viewport": [
+        "desktop",
+        "tablet"
       ]
     },
     {
@@ -21485,6 +21501,9 @@
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
         "ใบที่เสิร์ฟแล้ววันนี้ของสาขา (servedToday.last)",
         "สิทธิ์ restaurant.kds.recall — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ],
+      "opener": [
+        "pos-kds-seg-ready"
       ]
     },
     {
@@ -25817,7 +25836,10 @@
       "system": "POS",
       "query": "",
       "hiddenFor": [],
-      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)",
+      "viewport": [
+        "mobile"
+      ]
     },
     {
       "page": "/q/[linkToken]",
@@ -25836,7 +25858,10 @@
       "system": "POS",
       "query": "",
       "hiddenFor": [],
-      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)",
+      "opener": [
+        "pos-qr-to-checkout"
+      ]
     },
     {
       "page": "/q/[linkToken]",
@@ -25855,7 +25880,10 @@
       "system": "POS",
       "query": "",
       "hiddenFor": [],
-      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)",
+      "opener": [
+        "pos-qr-to-checkout"
+      ]
     },
     {
       "page": "/q/[linkToken]",
@@ -25874,7 +25902,10 @@
       "system": "POS",
       "query": "",
       "hiddenFor": [],
-      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)",
+      "opener": [
+        "pos-qr-to-checkout"
+      ]
     },
     {
       "page": "/q/[linkToken]",
@@ -25922,7 +25953,10 @@
       "viewport": [
         "mobile"
       ],
-      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)",
+      "opener": [
+        "pos-qr-to-checkout"
+      ]
     },
     {
       "page": "/q/o/[orderToken]",
