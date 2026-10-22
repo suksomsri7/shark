@@ -1,8 +1,8 @@
 // HR H1.1 ▸ ขอบเขตสาขาของผู้ดู/ผู้กดในระบบ HR (HQ20 สาขา HR = BusinessUnit · HQ21 ผู้จัดการสาขาเห็น/จัดการเฉพาะสาขาตัวเอง)
 //
 // กติกา (มติผู้คุมงาน H1.1 ข้อ 2–7):
-//   • ผู้ดูทุกสาขา = OWNER หรือสมาชิกภาพที่ unitAccess มี "*" ⇒ เห็นทุกแถว รวมพนักงานที่ยังไม่ระบุสาขา (unitId null)
-//   • อื่น ๆ = เฉพาะสาขาใน unitAccess · unitAccess [] หรือรูปแบบเสีย ⇒ ไม่มีสาขา ⇒ 0 แถว (fail closed · ตรงกับ core canAccessUnit)
+//   • ผู้ดูทุกสาขา = OWNER หรือสมาชิกภาพที่ unitAccess มี "*" (หรือ [] / รูปแบบเสีย) ⇒ เห็นทุกแถว รวมพนักงานที่ยังไม่ระบุสาขา (unitId null)
+//   • อื่น ๆ = เฉพาะสาขาใน unitAccess · unitAccess [] หรือรูปแบบเสีย ⇒ ยังไม่กำหนดสาขา = ทุกสาขา (มติ D-1 แทนมติ 3)
 //   • พนักงานอยู่ในสาขา X เมื่อ สาขาประจำ = X หรือมีแถวยืมตัว (HrEmployeeUnit) ไป X ที่ครอบ "วันนี้" (ทะเบียน/โปรไฟล์/สลิป)
 //   • แถวที่มีวันที่ (ใบลา · ลงเวลา) ⇒ ช่วงยืมตัวต้องครอบวันที่ของแถว (ใบลาใช้ fromDate) — ยืมตัวที่ปิดแล้วยังเห็นแถวในช่วงนั้น
 //   • ข้อมูลเงินไม่ได้มาจากที่นี่ — สาขาเป็นตัวกรองเพิ่ม ไม่เคยขยายสิทธิ์ (canViewPayroll เดิม)
@@ -15,7 +15,7 @@ import { thaiDateKey } from "@/lib/ui/date";
 
 type Ctx = { tenantId: string; systemId: string };
 
-/** "*" = ทุกสาขา · รายการ = เฉพาะสาขาเหล่านี้ ([] = ไม่มีสาขา ⇒ 0 แถว) */
+/** "*" = ทุกสาขา · รายการ = เฉพาะสาขาเหล่านี้ (unitWhere([]) = 0 แถว — hrScopeOf ไม่คืน [] แล้ว แต่ตัวกรองยัง fail closed) */
 export type HrScope = { unitIds: "*" | string[] };
 export const HR_ALL_BRANCHES: HrScope = { unitIds: "*" };
 
@@ -40,7 +40,9 @@ export function hrScopeOf(v: Pick<MembershipCtx, "role"> & { unitAccess: unknown
   if (!v) return { unitIds: [] };
   if (v.role === "OWNER") return HR_ALL_BRANCHES;
   const ua = Array.isArray(v.unitAccess) ? v.unitAccess.filter((u): u is string => typeof u === "string" && u.trim() !== "") : [];
-  if (ua.includes("*")) return HR_ALL_BRANCHES;
+  // HR H1.1 ▸ มติผู้คุมงาน D-1 (แก้มติ 3): unitAccess [] หรือรูปแบบเสีย = ยังไม่กำหนดสาขา = ทุกสาขา (พฤติกรรมเดิมของ HR — deploy แล้วไม่มีใครเสียสิทธิ์)
+  //   จำกัดสาขาเฉพาะเมื่อ unitAccess เป็นรายการสาขาที่ไม่ว่างและไม่มี "*" · เจ้าของจำกัดผู้จัดการได้โดยตั้ง unitAccess ให้ชัด ◂
+  if (ua.includes("*") || ua.length === 0) return HR_ALL_BRANCHES;
   return { unitIds: [...new Set(ua.map((u) => u.trim()))] };
 }
 
