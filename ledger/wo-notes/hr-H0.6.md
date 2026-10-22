@@ -215,3 +215,8 @@ Builder: Claude Opus 5.5 · branch `wip/pos-hr-h0.6` · worktree `/root/projects
 - Outputs kept outside the repo (scratch dir); nothing added to `scripts/`.
 - Processes: none of mine running (`systemctl list-units 'iso-*'` shows only `shark-pos*` units). No POS unit or `/tmp/shark-gate-pos.lock` touched.
 - Owner's caution (22 Oct 02:5xZ) followed: DB suites one at a time; typecheck started only after `free -g` avail ≥ 11 GB and no build/tsc unit; seed run alone.
+
+### ORACLE-EDIT `qc-hr-h0.1` X6.6 (ruled by controller, 22 Oct) — commit `0b0a3423`
+- **Old semantics:** for every run of the tenant (any status): Σ items = run totals · each item's add/deduct = Σ adjustments bound to that run · no bound row without an item · no dangling runId. Written before H0.6 — assumed adjustments stay bound for life.
+- **New semantics:** same, except the per-item add/deduct = Σ bound check is skipped for `status === "REVERSED"` runs (items are a frozen snapshot, H0.6 R2/Q1), and instead a REVERSED run must have **0** rows still bound (H0.6 S1.3 restated tenant-wide). Σ items = totals, orphan and dangling checks still apply to every run. Hunk: `allRuns` select + `status`, `if (r.status !== "REVERSED") { …per-item loop… }`, one `g.push` for "still bound after reverse".
+- Runs after the edit (one at a time, same wrapper): `qc-hr-h0.1` forced → `===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)` exit 0 (Z1 residue green) · `qc-hr-h0.6` forced → 47/47, `RESIDUE tenants=0 rows=0 audit=0 outbox=0`, exit 0. Debt "h0.1 X6.6" above is closed.
