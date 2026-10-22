@@ -1,4 +1,4 @@
-// fitness-hr.mts — ด่าน fitness ของ RUN HR V2 (F16.1–F16.5 · ใบ H0.4 · HR-V2-MASTER-PLAN §6)
+// fitness-hr.mts — ด่าน fitness ของ RUN HR V2 (F16.1–F16.6 · ใบ H0.4 · HR-V2-MASTER-PLAN §6)
 //
 // รันเดี่ยว: `pnpm exec tsx scripts/fitness-hr.mts` (หรือ `pnpm fitness:hr`) — exit 1 เมื่อมีด่าน CRITICAL/MAJOR แดง
 // ผู้คุมงานจะต่อเข้ากับ `scripts/fitness.mts` ตอนตัด rc ผ่าน `runHrFitness(chk, ROOT)` (ใบนี้ห้ามแก้ fitness.mts)
@@ -20,6 +20,9 @@
 //   F16.4 คีย์ใต้ `hr` ใน src/messages/th และ en ตรงกันเป๊ะ · ไม่ว่าง · ค่าไทยไม่ใช่ชื่อคีย์ตัวใหญ่ (^[A-Z_]+$)
 //   F16.5 (เปิดเมื่อมี src/lib/modules/hr/pin.ts — ใบ H0.5) ห้ามแตะ pinCode นอก hr/pin.ts + scripts/hr-backfill-pin-hash.mts
 //         (ไม่สแกน scripts/qc-*.mts — ข้อสอบต้องอ่านคอลัมน์ได้ แต่ห้ามพิมพ์ค่าออกจอเด็ดขาด)
+//   F16.6 (HR H0.7 · MAJOR) ทุกจุดเรียก `requestLeave(` / `cancelLeave(` ใต้ src/** (ยกเว้นตัวนิยามใน hr/service.ts) ต้องส่งคีย์
+//         `actorUserId` ในนิพจน์เรียกเดียวกัน — ทาง "ไม่ส่งผู้กด" (legacy) มีไว้ให้งานภายใน/ข้อสอบรุ่นเก่าเท่านั้น (มติ D-1)
+//         (ไม่สแกน scripts/** — ข้อสอบรุ่นเก่าเรียกแบบไม่ส่งผู้กดโดยตั้งใจ · ตัด F165_EXCLUDE ด้วยแบบเดียวกับ F16.5)
 //
 // ratchet (กลไกเดียวกับ F14): ทุก BASELINE ลดได้อย่างเดียว — ปิดหนี้แล้วแต่ไม่ถอดแถว = แดง · หนี้ใหม่ = แดง
 // 🔴 static ล้วน: อ่านไฟล์อย่างเดียว · ไม่แตะ DB/เน็ต · ไม่ import `@/…` · ไม่ import `src/lib/env` หรือ prisma (X12)
@@ -460,6 +463,43 @@ export function scanPinReaders(ROOT: string): Map<string, { line: number; how: s
 }
 
 // ═══════════════════════════════════════════════════════════════
+// F16.6 — ผู้เรียก requestLeave / cancelLeave ใน src ต้องส่ง actorUserId (HR H0.7 · มติ D-1)
+// ═══════════════════════════════════════════════════════════════
+export const F166_FNS = new Set(["requestLeave", "cancelLeave"]);
+export const F166_DEF_FILE = "src/lib/modules/hr/service.ts";
+export function scanLeaveCallsWithoutActor(ROOT: string): { file: string; line: number; fn: string }[] {
+  const out: { file: string; line: number; fn: string }[] = [];
+  const files = walk(join(ROOT, "src"), (p) => (p.endsWith(".ts") || p.endsWith(".tsx") || p.endsWith(".mts")) && !p.endsWith(".d.ts"));
+  for (const abs of files) {
+    const rel = posix(relative(ROOT, abs));
+    if (F165_EXCLUDE(rel)) continue;
+    const text = readFileSync(abs, "utf8");
+    if (!/\b(requestLeave|cancelLeave)\s*\(/.test(text)) continue;
+    const sf = parse(abs, text);
+    const visit = (n: ts.Node) => {
+      if (ts.isCallExpression(n)) {
+        const callee = n.expression;
+        const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
+        if (F166_FNS.has(name)) {
+          let hasActor = false;
+          const seek = (m: ts.Node) => {
+            if (hasActor) return;
+            if ((ts.isPropertyAssignment(m) || ts.isShorthandPropertyAssignment(m)) && (ts.isIdentifier(m.name) || ts.isStringLiteral(m.name)) && m.name.text === "actorUserId") hasActor = true;
+            else ts.forEachChild(m, seek);
+          };
+          n.arguments.forEach(seek);
+          if (!hasActor) out.push({ file: rel, line: lineAt(sf, n), fn: name });
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+  }
+  // ตัวนิยามใน hr/service.ts ไม่ใช่ CallExpression อยู่แล้ว — ไฟล์นี้ไม่มีผู้เรียกภายใน (ถ้ามีก็ต้องส่ง actorUserId เช่นกัน)
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ตัวรัน
 // ═══════════════════════════════════════════════════════════════
 export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void = console.log) {
@@ -564,6 +604,14 @@ export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void 
     }
     for (const f of F165_BASELINE.keys()) if (!readers.has(f)) problems.push(`F165_BASELINE มี ${f} ที่ไม่แตะ pinCode แล้ว ถอดออก (ratchet)`);
     chk("F16.5", n165, problems.length === 0, problems.length ? `${problems.join(" · ")} · ${qcNote}` : `สะอาด (หนี้เดิม ${F165_BASELINE.size} ไฟล์ตามตัวเลข · ${qcNote})`, "CRITICAL");
+  });
+
+  // ── F16.6 ── HR H0.7 ▸ มติ D-1 ◂
+  log("\n── F16.6: ผู้เรียก requestLeave / cancelLeave ใน src ส่ง actorUserId (H0.7) ──");
+  const n166 = "ทุกจุดเรียก requestLeave( / cancelLeave( ใต้ src/** ส่งคีย์ actorUserId ในนิพจน์เรียกเดียวกัน (ทาง legacy ไม่ส่งผู้กด = งานภายใน/ข้อสอบเก่าเท่านั้น)";
+  guarded(chk, "F16.6", n166, () => {
+    const bad = scanLeaveCallsWithoutActor(ROOT);
+    chk("F16.6", n166, bad.length === 0, bad.length ? bad.map((b) => `${b.file}:${b.line} ${b.fn}( ไม่มี actorUserId`).join(" · ") : "สะอาด", "MAJOR");
   });
 }
 
