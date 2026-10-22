@@ -6038,6 +6038,7 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6061,6 +6062,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -6079,6 +6081,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6090,7 +6093,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6098,6 +6105,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6109,7 +6117,10 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6117,18 +6128,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "updatePosReceiptSettingsAction",
-        "note": "patch header/footer/showPoints/showCashier · ปฏิเสธ VALIDATION+field = pos-settings-field-error ใต้ช่อง · อื่น = pos-settings-error · ผู้อ่านอย่างเดียว (แคชเชียร์) = ปุ่มปิด + pos-settings-readonly"
+        "note": "patch header/footer/showPoints/showCashier · ปฏิเสธ VALIDATION+field = pos-settings-field-error ใต้ช่อง · อื่น = pos-settings-error · ผู้อ่านอย่างเดียว (แคชเชียร์) = ปุ่มปิด + pos-settings-readonly",
+        "db": "AppSystem(POS).settings.pos.receipt (jsonb_set · header/footer/showPoints/showCashier/qrEReceipt)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6136,6 +6153,7 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6147,7 +6165,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6155,6 +6177,7 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6166,7 +6189,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6174,6 +6201,7 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6185,7 +6213,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6193,6 +6225,7 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6204,7 +6237,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6212,6 +6249,7 @@
       "kind": "textarea",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6223,7 +6261,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6231,6 +6273,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6242,7 +6285,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6250,6 +6297,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6261,7 +6309,11 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6269,6 +6321,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6280,14 +6333,19 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-device-regno-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6295,12 +6353,17 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "เลขเครื่อง POS ต่อเครื่อง (posRegNo) แก้ในบรรทัด · blur/Enter = บันทึก · เครื่องที่เพิกถอน = ช่องปิด · แคชเชียร์ไม่เห็นรายการ (devicesHidden)"
+        "note": "เลขเครื่อง POS ต่อเครื่อง (posRegNo) แก้ในบรรทัด · blur/Enter = บันทึก · เครื่องที่เพิกถอน = ช่องปิด · แคชเชียร์ไม่เห็นรายการ (devicesHidden)",
+        "db": "PosDevice posRegNo (updateDeviceAction · device.ts:88)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6308,6 +6371,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6318,14 +6382,19 @@
       },
       "wo": "P1.10U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ],
+      "needs": "POS ผูกสมุดบัญชี (AccountSystemLink)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-retry",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6338,14 +6407,19 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-register",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6358,14 +6432,19 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เบราว์เซอร์นี้ยังไม่ลงทะเบียนเป็นเครื่อง POS และสาขายังไม่ครบเพดาน (DeviceSettings.tsx:382)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-register-name",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6378,34 +6457,47 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-register"
+      ],
+      "needs": "เบราว์เซอร์นี้ยังไม่ลงทะเบียนเป็นเครื่อง POS และสาขายังไม่ครบเพดาน (DeviceSettings.tsx:382)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-register-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-devices",
-        "note": "ปิดกล่อง (Esc ก็ได้)"
+        "target": "pos-device-register-dialog",
+        "note": "ปิดกล่อง (Esc ก็ได้)",
+        "state": "disappears"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-register"
+      ],
+      "needs": "เบราว์เซอร์นี้ยังไม่ลงทะเบียนเป็นเครื่อง POS และสาขายังไม่ครบเพดาน (DeviceSettings.tsx:382)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-register-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6413,39 +6505,26 @@
       "expect": {
         "type": "mutation",
         "target": "registerDeviceAction",
-        "note": "สำเร็จ = โหลดรายการใหม่ + เลือกเครื่องใหม่ · DEVICE_LIMIT/DEVICE_REVOKED/VALIDATION = pos-device-register-error (คีย์ pos.device.errors.*)"
+        "note": "สำเร็จ = โหลดรายการใหม่ + เลือกเครื่องใหม่ · DEVICE_LIMIT/DEVICE_REVOKED/VALIDATION = pos-device-register-error (คีย์ pos.device.errors.*)",
+        "db": "PosDevice create status ACTIVE (deviceCode ของเบราว์เซอร์นี้)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-register"
+      ],
+      "needs": "เบราว์เซอร์นี้ยังไม่ลงทะเบียนเป็นเครื่อง POS และสาขายังไม่ครบเพดาน (DeviceSettings.tsx:382)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-card-*",
       "kind": "button",
       "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "ui",
-        "target": "pos-device-panel",
-        "note": "การ์ดเครื่อง (listDevicesAction.items) → แผงตั้งค่าขวา · เพิกถอนแล้ว = การ์ดจาง + แผงอ่านอย่างเดียว"
-      },
-      "wo": "P1.10U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/settings",
-      "testid": "pos-device-revoked-fold",
-      "kind": "button",
-      "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6453,19 +6532,51 @@
       "expect": {
         "type": "ui",
         "target": "pos-device-card-*",
-        "note": "แถวพับ \"เพิกถอนแล้ว (n)\" (มีเมื่อมีเครื่อง REVOKED) → กาง/พับการ์ดเครื่องที่เพิกถอนแล้ว · ปิดไว้ก่อน (HF-P1CLOSE O7)"
+        "note": "การ์ดเครื่อง (listDevicesAction.items) → แผงตั้งค่าขวา · เพิกถอนแล้ว = การ์ดจาง + แผงอ่านอย่างเดียว",
+        "state": "selected"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-revoked-fold",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-card-*",
+        "note": "แถวพับ \"เพิกถอนแล้ว (n)\" (มีเมื่อมีเครื่อง REVOKED) → กาง/พับการ์ดเครื่องที่เพิกถอนแล้ว · ปิดไว้ก่อน (HF-P1CLOSE O7)",
+        "state": "count"
       },
       "wo": "HF-P1CLOSE",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ REVOKED ของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-name",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6473,19 +6584,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "blur/Enter = patch {id, name}"
+        "note": "blur/Enter = patch {id, name}",
+        "db": "PosDevice name (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-regno",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6493,19 +6610,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "blur/Enter = patch {id, posRegNo} (ว่าง = null)"
+        "note": "blur/Enter = patch {id, posRegNo} (ว่าง = null)",
+        "db": "PosDevice posRegNo (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-paper-58",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6513,19 +6636,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig ทั้งก้อน {…, paper:\"58\"}"
+        "note": "printerConfig ทั้งก้อน {…, paper:\"58\"}",
+        "db": "PosDevice printerConfig.paper 58 (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-paper-80",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6533,19 +6662,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig ทั้งก้อน {…, paper:\"80\"}"
+        "note": "printerConfig ทั้งก้อน {…, paper:\"80\"}",
+        "db": "PosDevice printerConfig.paper 80 (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-mode-bt",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6553,19 +6688,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig.mode = escpos-bt (ชุดค่าของ parsePrinterConfig)"
+        "note": "printerConfig.mode = escpos-bt (ชุดค่าของ parsePrinterConfig)",
+        "db": "PosDevice printerConfig.mode escpos-bt (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-mode-usb",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6573,19 +6714,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig.mode = escpos-usb"
+        "note": "printerConfig.mode = escpos-usb",
+        "db": "PosDevice printerConfig.mode escpos-usb (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-mode-browser",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6593,19 +6740,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig.mode = browser"
+        "note": "printerConfig.mode = browser",
+        "db": "PosDevice printerConfig.mode browser (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-thai-text",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6613,19 +6766,26 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig.thaiText raster (ปริยาย · มติ CD3) | tis620 · แสดงเมื่อ mode ไม่ใช่ browser"
+        "note": "printerConfig.thaiText raster (ปริยาย · มติ CD3) | tis620 · แสดงเมื่อ mode ไม่ใช่ browser",
+        "db": "PosDevice printerConfig.thaiText (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-mode-bt"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-auto-print",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6633,19 +6793,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig.autoPrint"
+        "note": "printerConfig.autoPrint",
+        "db": "PosDevice printerConfig.autoPrint (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-drawer-kick",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6653,19 +6819,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig.drawerKick"
+        "note": "printerConfig.drawerKick",
+        "db": "PosDevice printerConfig.drawerKick (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-copies",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6673,19 +6845,25 @@
       "expect": {
         "type": "mutation",
         "target": "updateDeviceAction",
-        "note": "printerConfig.copies 1 ↔ 2 (พิมพ์สำเนาให้ร้าน)"
+        "note": "printerConfig.copies 1 ↔ 2 (พิมพ์สำเนาให้ร้าน)",
+        "db": "PosDevice printerConfig.copies (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-test-print",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6698,14 +6876,19 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-revoke",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6718,34 +6901,46 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-revoke-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-device-panel",
-        "note": "ปิดกล่อง (Esc ก็ได้)"
+        "target": "pos-device-revoke-dialog",
+        "note": "ปิดกล่อง (Esc ก็ได้)",
+        "state": "disappears"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-revoke"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-revoke-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6753,19 +6948,26 @@
       "expect": {
         "type": "mutation",
         "target": "revokeDeviceAction",
-        "note": "\"เครื่องจะขายไม่ได้อีก กะที่เปิดอยู่ยังปิดได้โดยผู้จัดการ\" → REVOKED · โหลดรายการใหม่"
+        "note": "\"เครื่องจะขายไม่ได้อีก กะที่เปิดอยู่ยังปิดได้โดยผู้จัดการ\" → REVOKED · โหลดรายการใหม่",
+        "db": "PosDevice status REVOKED + revokedAt"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-revoke"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-pair",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6778,14 +6980,19 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่องของเบราว์เซอร์นี้ลงทะเบียนแล้วและตั้งโหมด USB/Bluetooth (DeviceSettings.tsx:540 isMine)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-print-pair-find",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6798,14 +7005,23 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-pair"
+      ],
+      "needs": [
+        "เครื่องของเบราว์เซอร์นี้ลงทะเบียนแล้วและตั้งโหมด USB/Bluetooth (DeviceSettings.tsx:540 isMine)",
+        "เบราว์เซอร์มี WebUSB/Web Bluetooth"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-print-pair-unpair",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -6818,27 +7034,42 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-pair"
+      ],
+      "needs": [
+        "เครื่องของเบราว์เซอร์นี้ลงทะเบียนแล้วและตั้งโหมด USB/Bluetooth (DeviceSettings.tsx:540 isMine)",
+        "จับคู่เครื่องพิมพ์ไว้แล้ว (localStorage)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-print-pair-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-device-panel",
-        "note": "ปิดกล่อง (Esc ก็ได้)"
+        "target": "pos-print-pair",
+        "note": "ปิดกล่อง (Esc ก็ได้)",
+        "state": "disappears"
       },
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-pair"
+      ],
+      "needs": "เครื่องของเบราว์เซอร์นี้ลงทะเบียนแล้วและตั้งโหมด USB/Bluetooth (DeviceSettings.tsx:540 isMine)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6846,6 +7077,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6857,7 +7089,12 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt",
+        "pos-settings-print-sample"
+      ],
+      "needs": "การพิมพ์ล้ม (PrintStatus แสดง pos-print-error · PrintStatus.tsx:42-75)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -6865,6 +7102,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -6876,7 +7114,12 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt",
+        "pos-settings-print-sample"
+      ],
+      "needs": "การพิมพ์ล้ม (PrintStatus แสดง pos-print-error · PrintStatus.tsx:42-75)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -7823,6 +8066,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -7835,7 +8079,11 @@
       "wo": "P1.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -7843,18 +8091,23 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-pay-save",
-        "note": "อายุ QR 5–60 นาที (จำนวนเต็ม) · ผิด = pos-settings-pay-error"
+        "note": "อายุ QR 5–60 นาที (จำนวนเต็ม) · ผิด = pos-settings-pay-error",
+        "state": "changes"
       },
       "wo": "P1.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -7862,18 +8115,27 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-pay-save",
-        "note": "รับเงินผ่าน Beam — ปิดเมื่อแพลตฟอร์มยังไม่มีคีย์ (ชิป \"ยังไม่ตั้งคีย์\") และยังไม่เคยเปิด"
+        "target": "pos-settings-pay-beam",
+        "note": "รับเงินผ่าน Beam — ปิดเมื่อแพลตฟอร์มยังไม่มีคีย์ (ชิป \"ยังไม่ตั้งคีย์\") และยังไม่เคยเปิด",
+        "state": "changes"
       },
       "wo": "P1.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": [
+        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้",
+        "คีย์ Beam ของแพลตฟอร์ม (beamEnabled) หรือ Beam เปิดอยู่แล้ว"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -7881,18 +8143,24 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-pay-save",
-        "note": "manualConfirmRequiresManager — ยืนยันเงินเข้าเองต้องเป็นผู้จัดการ (pos.shift.manage)"
+        "target": "pos-settings-pay-manual",
+        "note": "manualConfirmRequiresManager — ยืนยันเงินเข้าเองต้องเป็นผู้จัดการ (pos.shift.manage)",
+        "state": "changes"
       },
       "wo": "P1.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -7900,6 +8168,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -7911,7 +8180,10 @@
       "wo": "P1.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -10421,6 +10693,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -10432,7 +10705,8 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10440,18 +10714,20 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-register",
-        "note": "ล็อกจออัตโนมัติ 0–60 นาที (จำนวนเต็ม) · ผิด = pos-settings-general-field-error ใต้ช่อง · แคชเชียร์ = ช่องปิด"
+        "note": "ล็อกจออัตโนมัติ 0–60 นาที (จำนวนเต็ม) · ผิด = pos-settings-general-field-error ใต้ช่อง · แคชเชียร์ = ช่องปิด",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10459,18 +10735,20 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-register",
-        "note": "บิลพักหมดอายุ 1–365 วัน · แคชเชียร์ = ช่องปิด"
+        "note": "บิลพักหมดอายุ 1–365 วัน · แคชเชียร์ = ช่องปิด",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10478,18 +10756,21 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-register",
-        "note": "ภาษาใบเสร็จ = ไทย (receiptLocale th · role radio)"
+        "target": "pos-settings-general-receipt-th",
+        "note": "ภาษาใบเสร็จ = ไทย (receiptLocale th · role radio)",
+        "state": "selected"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10497,18 +10778,21 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-register",
-        "note": "ภาษาใบเสร็จ = อังกฤษ (receiptLocale en · role radio)"
+        "target": "pos-settings-general-receipt-en",
+        "note": "ภาษาใบเสร็จ = อังกฤษ (receiptLocale en · role radio)",
+        "state": "selected"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10518,6 +10802,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -10537,18 +10822,21 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-shift",
-        "note": "บังคับเปิดกะก่อนขาย · หน้าขาย (shift.requiredRegister)"
+        "target": "pos-settings-general-shift-required-register",
+        "note": "บังคับเปิดกะก่อนขาย · หน้าขาย (shift.requiredRegister)",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10556,18 +10844,21 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-shift",
-        "note": "บังคับเปิดกะก่อนขาย · บิลจากระบบอื่น (shift.requiredOtherSources)"
+        "target": "pos-settings-general-shift-required-other",
+        "note": "บังคับเปิดกะก่อนขาย · บิลจากระบบอื่น (shift.requiredOtherSources)",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10575,18 +10866,21 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-shift",
-        "note": "ปิดกะแบบไม่เห็นยอด (shift.blindClose)"
+        "target": "pos-settings-general-shift-blind",
+        "note": "ปิดกะแบบไม่เห็นยอด (shift.blindClose)",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10594,18 +10888,20 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-shift",
-        "note": "ผลต่างเกิน ฿N ต้องใส่เหตุผล — กรอกบาท (ทศนิยม 2) → สตางค์ 0–10,000,000"
+        "note": "ผลต่างเกิน ฿N ต้องใส่เหตุผล — กรอกบาท (ทศนิยม 2) → สตางค์ 0–10,000,000",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10613,18 +10909,20 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-shift",
-        "note": "ปิดกะค้างอัตโนมัติหลัง 1–72 ชม."
+        "note": "ปิดกะค้างอัตโนมัติหลัง 1–72 ชม.",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10634,6 +10932,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -10653,18 +10952,20 @@
       "kind": "select",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-reports",
-        "note": "ตัดวันที่ 00:00–06:00 ทีละ 15 นาที (dayCutoffMinutes 0–360 · ค่าที่ตั้งไว้นอกตารางแสดงด้วย) · \"บิลก่อนเวลานี้นับเป็นวันก่อนหน้า\""
+        "note": "ตัดวันที่ 00:00–06:00 ทีละ 15 นาที (dayCutoffMinutes 0–360 · ค่าที่ตั้งไว้นอกตารางแสดงด้วย) · \"บิลก่อนเวลานี้นับเป็นวันก่อนหน้า\"",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10674,6 +10975,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -10693,13 +10995,15 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-stock",
-        "note": "ขายเกินสต็อก = อนุญาต + ตั้งธง (ALLOW_NEGATIVE · สาขาของเมนูซ้าย)"
+        "target": "pos-settings-general-oversell-allow",
+        "note": "ขายเกินสต็อก = อนุญาต + ตั้งธง (ALLOW_NEGATIVE · สาขาของเมนูซ้าย)",
+        "state": "selected"
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -10712,13 +11016,15 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-stock",
-        "note": "ขายเกินสต็อก = ห้ามขาย (BLOCK)"
+        "target": "pos-settings-general-oversell-block",
+        "note": "ขายเกินสต็อก = ห้ามขาย (BLOCK)",
+        "state": "selected"
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -10730,7 +11036,8 @@
       "testid": "pos-settings-general-save-stock",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -10752,58 +11059,78 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-weighed",
-        "note": "อ่านบาร์โค้ดจากเครื่องชั่ง (weighedBarcode.enabled)"
+        "target": "pos-settings-general-weighed-enabled",
+        "note": "อ่านบาร์โค้ดจากเครื่องชั่ง (weighedBarcode.enabled)",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-general-weighed-prefix-*",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-weighed",
-        "note": "คำนำหน้า 20–29 ต่อกฎ (ลำดับแถว) · ซ้ำ = pos-settings-general-field-error (weighedBarcode.rules)"
+        "note": "คำนำหน้า 20–29 ต่อกฎ (ลำดับแถว) · ซ้ำ = pos-settings-general-field-error (weighedBarcode.rules)",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-general-weighed-add"
+      ],
+      "needs": [
+        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้",
+        "กฎบาร์โค้ดสินค้าชั่งที่บันทึกไว้ (weighedBarcode.rules) สำหรับผู้จัดการ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-general-weighed-kind-*-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-weighed",
-        "note": "ชนิดค่าในบาร์โค้ด น้ำหนัก (WEIGHT) | ราคา (PRICE) ต่อกฎ"
+        "target": "pos-settings-general-weighed-kind-*-*",
+        "note": "ชนิดค่าในบาร์โค้ด น้ำหนัก (WEIGHT) | ราคา (PRICE) ต่อกฎ",
+        "state": "selected"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-general-weighed-add"
+      ],
+      "needs": [
+        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้",
+        "กฎบาร์โค้ดสินค้าชั่งที่บันทึกไว้ (weighedBarcode.rules) สำหรับผู้จัดการ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10813,17 +11140,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-weighed",
-        "note": "ลบกฎแถวนั้น (ยังไม่บันทึกจนกด บันทึก)"
+        "target": "pos-settings-general-weighed-prefix-*",
+        "note": "ลบกฎแถวนั้น (ยังไม่บันทึกจนกด บันทึก)",
+        "state": "count"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-general-weighed-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10833,12 +11165,14 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-weighed",
-        "note": "+ เพิ่มกฎ (คำนำหน้าแรกที่ยังว่าง · ครบ 10 = ซ่อน)"
+        "target": "pos-settings-general-weighed-prefix-*",
+        "note": "+ เพิ่มกฎ (คำนำหน้าแรกที่ยังว่าง · ครบ 10 = ซ่อน)",
+        "state": "count"
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -10853,6 +11187,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -10874,6 +11209,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -10894,6 +11230,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -10905,7 +11242,8 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สาขามีเลขพร้อมเพย์ของตัวเอง (promptpayIdByUnit)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -10915,6 +11253,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -10933,7 +11272,8 @@
       "testid": "pos-settings-history-shell-open",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -10953,7 +11293,8 @@
       "testid": "pos-settings-history-open",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -10966,14 +11307,18 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-history-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -10981,19 +11326,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-settings-history",
-        "note": "ปิดลิ้นชัก (Esc / แตะม่าน ด้วย)"
+        "note": "ปิดลิ้นชัก (Esc / แตะม่าน ด้วย)",
+        "state": "disappears"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-history-shell-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-history-more",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11006,14 +11356,19 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-history-shell-open"
+      ],
+      "needs": "ประวัติการเปลี่ยนค่าตั้ง > 20 รายการ (มี nextCursor)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-history-retry",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11026,7 +11381,11 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-history-shell-open"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11036,6 +11395,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -11047,14 +11407,18 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-retry",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11067,7 +11431,11 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11077,24 +11445,29 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-save",
-        "note": "manager (เจ้าของร้านเท่านั้น) · staff — % 0–100 ทศนิยม 2 · ผิด = pos-settings-staff-cap-error"
+        "note": "manager (เจ้าของร้านเท่านั้น) · staff — % 0–100 ทศนิยม 2 · ผิด = pos-settings-staff-cap-error",
+        "state": "changes"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-grants-link",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11106,14 +11479,18 @@
       },
       "wo": "P1.18U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-policy-switch-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11121,19 +11498,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-settings-staff-policies",
-        "note": "สวิตช์แสดงสถานะนโยบาย (อ่านอย่างเดียว · aria-disabled) — [*] = ApprovalPolicy.id · แก้ที่ /app/settings/approval"
+        "note": "สวิตช์แสดงสถานะนโยบาย (อ่านอย่างเดียว · aria-disabled) — [*] = ApprovalPolicy.id · แก้ที่ /app/settings/approval",
+        "state": "disabled"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "นโยบายอนุมัติ (ApprovalPolicy) ของงาน POS"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-policy-link",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11145,14 +11528,18 @@
       },
       "wo": "P1.18U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-pin-open-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11165,14 +11552,18 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-hr-switch",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11186,14 +11577,19 @@
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-pin-key-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11206,14 +11602,19 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-pin-open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-pin-clear",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11226,14 +11627,20 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-pin-open-*",
+        "pos-settings-staff-pin-key-1"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-pin-del",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11246,14 +11653,20 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-pin-open-*",
+        "pos-settings-staff-pin-key-1"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-pin-next",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11262,32 +11675,46 @@
         "type": "mutation",
         "target": "setStaffPinAction",
         "note": "ครั้งแรก = ถัดไป (ยืนยันอีกครั้ง) · ครั้งที่สองตรงกัน = setStaffPinAction → ปิดกล่อง + โหลดรายชื่อใหม่ · ไม่ตรง/WEAK_PIN = pos-settings-staff-pin-message",
-        "db": "PosStaffPin"
+        "db": "PosStaffPin upsert pinHash · setById · failedCount 0"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-pin-open-*",
+        "pos-settings-staff-pin-key-1",
+        "pos-settings-staff-pin-key-3",
+        "pos-settings-staff-pin-key-5",
+        "pos-settings-staff-pin-key-7"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-pin-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff",
-        "note": "ปิดกล่อง PIN (Esc ด้วย)"
+        "target": "pos-settings-staff-pin",
+        "note": "ปิดกล่อง PIN (Esc ด้วย)",
+        "state": "disappears"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-pin-open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11295,6 +11722,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11306,7 +11734,11 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11314,6 +11746,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11325,7 +11758,14 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "POS ผูกสมุดบัญชีอยู่ (การ์ดบัญชี LINKED → กล่องยืนยัน)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11335,6 +11775,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -11346,7 +11787,12 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-account-switch"
+      ],
+      "needs": "POS ผูกสมุดบัญชีอยู่ (การ์ดบัญชี LINKED)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11356,17 +11802,24 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-shark",
-        "note": "ยกเลิก (ไม่ยิง action)"
+        "target": "pos-settings-account-confirm",
+        "note": "ยกเลิก (ไม่ยิง action)",
+        "state": "disappears"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-account-switch"
+      ],
+      "needs": "POS ผูกสมุดบัญชีอยู่ (การ์ดบัญชี LINKED)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11376,6 +11829,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -11385,7 +11839,11 @@
       },
       "wo": "P1.18U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "การเปิดลงบัญชีถูกปฏิเสธ (NOT_FOUND/อื่น) — มีข้อความ pos-settings-account-toast"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11395,6 +11853,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -11405,7 +11864,11 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "การเปิดลงบัญชีถูกปฏิเสธ (NOT_FOUND/อื่น) — มีข้อความ pos-settings-account-toast"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11413,18 +11876,23 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-shark",
-        "note": "ตัวแสดงสถานะของการ์ด (aria-disabled · title \"จัดการที่หน้า…\") — [*] = code ตัวเล็ก (member · point · …) และ offline · สลับไม่ได้จาก POS (CD2)"
+        "note": "ตัวแสดงสถานะของการ์ด (aria-disabled · title \"จัดการที่หน้า…\") — [*] = code ตัวเล็ก (member · point · …) และ offline · สลับไม่ได้จาก POS (CD2)",
+        "state": "disabled"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11432,6 +11900,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11442,14 +11911,19 @@
       },
       "wo": "P1.18U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "การ์ดระบบที่สถานะ OFF/NO_SYSTEM ที่ผู้ใช้จัดการได้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-card-manage-*",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11461,7 +11935,11 @@
       },
       "wo": "P1.18U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "การ์ดระบบที่ LINKED และผู้ใช้จัดการได้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11469,6 +11947,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11480,7 +11959,10 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11488,6 +11970,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11499,7 +11982,10 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11507,6 +11993,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11518,7 +12005,10 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11526,18 +12016,23 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-pay-panel",
-        "note": "สถานะวิธีรับเงิน promptpay · card · transfer (อ่านอย่างเดียว · แก้ที่แท็บวิธีรับเงิน)"
+        "note": "สถานะวิธีรับเงิน promptpay · card · transfer (อ่านอย่างเดียว · แก้ที่แท็บวิธีรับเงิน)",
+        "state": "disabled"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11592,7 +12087,8 @@
       "testid": "pos-settings-staff-pin-key-0",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11605,7 +12101,11 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-pin-open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11613,18 +12113,23 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-card-offline",
-        "note": "การ์ดออฟไลน์: สวิตช์ปิดเสมอ (aria-disabled · P3.4) — ใช้ซ้ำในแท็บออฟไลน์และการซิงก์"
+        "note": "การ์ดออฟไลน์: สวิตช์ปิดเสมอ (aria-disabled · P3.4) — ใช้ซ้ำในแท็บออฟไลน์และการซิงก์",
+        "state": "disabled"
       },
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/close",
@@ -11651,6 +12156,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11662,32 +12168,41 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-toggle-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "saveChannelAction",
-        "note": "สวิตช์ active (ส่ง id + ชื่อเดิม + active) · หน้าร้านล็อก · แคชเชียร์ = ปิด (ไม่มี pos.channel.manage)"
+        "note": "สวิตช์ active (ส่ง id + ชื่อเดิม + active) · หน้าร้านล็อก · แคชเชียร์ = ปิด (ไม่มี pos.channel.manage)",
+        "db": "SalesChannel active"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-connect-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11695,19 +12210,25 @@
       "expect": {
         "type": "mutation",
         "target": "saveChannelAction",
-        "note": "เชื่อมต่อแพลตฟอร์มสำเร็จรูปที่ยังไม่สร้าง (LINEMAN GRAB SHOPEE FOODPANDA) = สร้างด้วยรหัส + ชื่อแบรนด์ · ค่าตั้งต้นของเซิร์ฟเวอร์ · ไม่เปิดลิ้นชัก"
+        "note": "เชื่อมต่อแพลตฟอร์มสำเร็จรูปที่ยังไม่สร้าง (LINEMAN GRAB SHOPEE FOODPANDA) = สร้างด้วยรหัส + ชื่อแบรนด์ · ค่าตั้งต้นของเซิร์ฟเวอร์ · ไม่เปิดลิ้นชัก",
+        "db": "SalesChannel create kind EXTERNAL (code แพลตฟอร์ม)"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels"
+      ],
+      "needs": "แพลตฟอร์มสำเร็จรูปที่ยังไม่สร้างในสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-add",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11720,7 +12241,10 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11728,6 +12252,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11739,7 +12264,11 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels"
+      ],
+      "needs": "ช่องทางขายที่เก็บแล้ว (archivedAt) ของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11747,6 +12276,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -11758,7 +12288,11 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11766,18 +12300,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-channels-panel",
-        "note": "ปิดลิ้นชักช่องทาง (✕) — Esc/แตะม่านทำเหมือนกัน"
+        "target": "pos-channel-drawer",
+        "note": "ปิดลิ้นชักช่องทาง (✕) — Esc/แตะม่านทำเหมือนกัน",
+        "state": "disappears"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -11785,25 +12325,32 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-channels-panel",
-        "note": "ปุ่มปิดท้ายลิ้นชัก (ไม่บันทึก)"
+        "target": "pos-channel-drawer",
+        "note": "ปุ่มปิดท้ายลิ้นชัก (ไม่บันทึก)",
+        "state": "disappears"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-name",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -11814,14 +12361,19 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-code",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11834,32 +12386,43 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-payout-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-channel-example",
-        "note": "การรับเงิน platform | direct | none (none = DIRECT + ค่าคอมฯ 0) · ตัวอย่างสดคิดใหม่"
+        "target": "pos-channel-drawer-payout-*",
+        "note": "การรับเงิน platform | direct | none (none = DIRECT + ค่าคอมฯ 0) · ตัวอย่างสดคิดใหม่",
+        "state": "selected"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-commission",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -11870,14 +12433,20 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add",
+        "pos-channel-drawer-payout-platform"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-fixed",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -11888,32 +12457,45 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add",
+        "pos-channel-drawer-payout-platform"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-vat-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-channel-example",
-        "note": "VAT ค่าคอมฯ 0 % | 7 %"
+        "target": "pos-channel-drawer-vat-*",
+        "note": "VAT ค่าคอมฯ 0 % | 7 %",
+        "state": "selected"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add",
+        "pos-channel-drawer-payout-platform"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-sort",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -11924,14 +12506,19 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-save",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11939,19 +12526,25 @@
       "expect": {
         "type": "mutation",
         "target": "saveChannelAction",
-        "note": "parseChannelInput ก่อน · แก้ = id + ชื่อ + คีย์ที่เปลี่ยน · ปฏิเสธ = บรรทัดแดงที่ช่อง (CHANNEL_CODE_TAKEN · VALIDATION field) หรือแถบบน"
+        "note": "parseChannelInput ก่อน · แก้ = id + ชื่อ + คีย์ที่เปลี่ยน · ปฏิเสธ = บรรทัดแดงที่ช่อง (CHANNEL_CODE_TAKEN · VALIDATION field) หรือแถบบน",
+        "db": "SalesChannel create kind CUSTOM (name · code · payout · commission)"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-archive",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11964,34 +12557,48 @@
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-archive-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-channel-drawer",
-        "note": "ยกเลิกการเก็บ"
+        "target": "pos-channel-drawer-archive-confirm-box",
+        "note": "ยกเลิกการเก็บ",
+        "state": "disappears"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman",
+        "pos-channel-drawer-archive"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-drawer-archive-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -11999,12 +12606,19 @@
       "expect": {
         "type": "mutation",
         "target": "archiveChannelAction",
-        "note": "ยืนยันเก็บช่องทาง (soft) — บิลเก่ายังอ้างอิงได้"
+        "note": "ยืนยันเก็บช่องทาง (soft) — บิลเก่ายังอ้างอิงได้",
+        "db": "SalesChannel archivedAt"
       },
       "wo": "P2.1U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman",
+        "pos-channel-drawer-archive"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -13628,6 +14242,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -13639,7 +14254,10 @@
       "wo": "P2.2U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark"
+      "query": "tab=shark",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -17664,7 +18282,8 @@
       "testid": "pos-device-kds-link",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17675,61 +18294,86 @@
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "tab=devices&unit=[unitId]"
+      "query": "tab=devices&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-kitchen-off",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-device-note",
-        "note": "ใบครัว: ไม่พิมพ์ (printerConfig.kitchenSlip off · updateDeviceAction)"
+        "note": "ใบครัว: ไม่พิมพ์ (printerConfig.kitchenSlip off · updateDeviceAction)",
+        "db": "PosDevice printerConfig.kitchenSlip off (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "tab=devices&unit=[unitId]"
+      "query": "tab=devices&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-kitchen-after",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-device-note",
-        "note": "ใบครัว: พิมพ์หลังขายที่เครื่องนี้ (after-sale)"
+        "note": "ใบครัว: พิมพ์หลังขายที่เครื่องนี้ (after-sale)",
+        "db": "PosDevice printerConfig.kitchenSlip after-sale (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "tab=devices&unit=[unitId]"
+      "query": "tab=devices&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-kitchen-station-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-device-note",
-        "note": "สถานีที่พิมพ์ (kitchenStationIds · ติ๊กครบ = [] ทุกสถานี)"
+        "note": "สถานีที่พิมพ์ (kitchenStationIds · ติ๊กครบ = [] ทุกสถานี)",
+        "db": "PosDevice printerConfig.kitchenStationIds (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "tab=devices&unit=[unitId]"
+      "query": "tab=devices&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-kitchen-after"
+      ],
+      "needs": [
+        "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)",
+        "สถานีครัว (KDS station) ของสาขา"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -18156,6 +18800,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -18167,7 +18812,11 @@
       "wo": "P2.9U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=payments&unit=[unitId]"
+      "query": "tab=payments&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "POS เชื่อมสมุดบัญชีที่มีบัญชีหนี้สิน (posTipLedgersAction)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18177,6 +18826,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -18188,7 +18838,11 @@
       "wo": "P2.9U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=payments&unit=[unitId]"
+      "query": "tab=payments&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "POS เชื่อมสมุดบัญชีที่มีบัญชีหนี้สิน (posTipLedgersAction)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18198,6 +18852,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -18215,7 +18870,11 @@
       "wo": "P2.9U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=payments&unit=[unitId]"
+      "query": "tab=payments&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "POS เชื่อมสมุดบัญชีที่มีบัญชีหนี้สิน (posTipLedgersAction)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -18630,7 +19289,10 @@
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18651,7 +19313,10 @@
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18672,7 +19337,10 @@
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18693,7 +19361,10 @@
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18708,12 +19379,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ใช้ค่ากลาง\" ของสาขาที่ — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)"
+        "note": "\"ใช้ค่ากลาง\" ของสาขาที่ — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)",
+        "target": "pos-set-receipt-branchNo",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt",
+        "pos-set-receipt-branchNo=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18728,12 +19405,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ใช้ค่ากลาง\" ของที่อยู่ — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)"
+        "note": "\"ใช้ค่ากลาง\" ของที่อยู่ — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)",
+        "target": "pos-set-receipt-address",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt",
+        "pos-set-receipt-address=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18748,12 +19431,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ใช้ค่ากลาง\" ของโทร — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)"
+        "note": "\"ใช้ค่ากลาง\" ของโทร — ล้างช่อง (บันทึก = ส่ง null) (มติ 8)",
+        "target": "pos-set-receipt-phone",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt",
+        "pos-set-receipt-phone=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18769,12 +19458,17 @@
       "expect": {
         "type": "mutation",
         "target": "pos-set-receipt-unit-saved",
-        "note": "\"บันทึกข้อมูลสาขา\" → updatePosReceiptUnitSettingsAction (เฉพาะช่องที่เปลี่ยน) → pos-set-receipt-unit-saved · ปฏิเสธตาม field (มติ 8)"
+        "note": "\"บันทึกข้อมูลสาขา\" → updatePosReceiptUnitSettingsAction (เฉพาะช่องที่เปลี่ยน) → pos-set-receipt-unit-saved · ปฏิเสธตาม field (มติ 8)",
+        "db": "AppSystem(POS).settings.pos.receipt.byUnit.<unitId> {taxBranchNo, address, phone}"
       },
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=receipt&unit=[unitId]"
+      "query": "tab=receipt&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-receipt",
+        "pos-set-receipt-phone=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -19827,6 +20521,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -19839,7 +20534,10 @@
       "wo": "P2.9bU",
       "oracle": "",
       "system": "POS",
-      "query": "tab=payments&unit=[unitId]"
+      "query": "tab=payments&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-payments"
+      ]
     },
     {
       "page": "/d",
@@ -19916,7 +20614,8 @@
       "testid": "pos-settings-display-enable",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -19924,19 +20623,25 @@
       "expect": {
         "type": "mutation",
         "target": "enableCustomerDisplayAction",
-        "note": "บล็อก \"จอลูกค้า\" ของเครื่องที่เลือก (ACTIVE) — \"เปิดจอลูกค้า\" / \"ขอรหัสใหม่\" → รหัส 8 ตัว + QR ของ <origin>/d?c=<รหัส> + เวลาเหลือ 10 นาที (pos-settings-display-code) · token เดิมยังใช้ได้จนรหัสใหม่ถูกแลก (P2.10 มติ 13.7)"
+        "note": "บล็อก \"จอลูกค้า\" ของเครื่องที่เลือก (ACTIVE) — \"เปิดจอลูกค้า\" / \"ขอรหัสใหม่\" → รหัส 8 ตัว + QR ของ <origin>/d?c=<รหัส> + เวลาเหลือ 10 นาที (pos-settings-display-code) · token เดิมยังใช้ได้จนรหัสใหม่ถูกแลก (P2.10 มติ 13.7)",
+        "db": "PosCustomerDisplay status ACTIVE + pairCodeHash/pairCodeExpiresAt"
       },
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-display-revoke",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -19949,34 +20654,48 @@
       "wo": "P2.10",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-settings-display-enable"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-display-revoke-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-display",
-        "note": "ปิดกล่อง (Esc ก็ได้)"
+        "target": "pos-settings-display-revoke-dialog",
+        "note": "ปิดกล่อง (Esc ก็ได้)",
+        "state": "disappears"
       },
       "wo": "P2.10",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-settings-display-enable",
+        "pos-settings-display-revoke"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-display-revoke-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -19984,19 +20703,27 @@
       "expect": {
         "type": "mutation",
         "target": "revokeCustomerDisplayAction",
-        "note": "จอ REVOKED · จอที่จับคู่อยู่กลับหน้าใส่รหัสในการโพลถัดไป (DISPLAY_NOT_PAIRED) · สถานะ = ยังไม่ได้จับคู่"
+        "note": "จอ REVOKED · จอที่จับคู่อยู่กลับหน้าใส่รหัสในการโพลถัดไป (DISPLAY_NOT_PAIRED) · สถานะ = ยังไม่ได้จับคู่",
+        "db": "PosCustomerDisplay status REVOKED + revokedAt"
       },
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-settings-display-enable",
+        "pos-settings-display-revoke"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-display-show-points",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -20004,19 +20731,26 @@
       "expect": {
         "type": "mutation",
         "target": "updateCustomerDisplaySettingsAction",
-        "note": "สวิตช์ \"แสดงแต้มสมาชิก\" (ค่าเริ่มเปิด) — ปิด = จอไม่แสดงแต้มสะสม/แต้มที่ได้ (มติ 3 · 13.3)"
+        "note": "สวิตช์ \"แสดงแต้มสมาชิก\" (ค่าเริ่มเปิด) — ปิด = จอไม่แสดงแต้มสะสม/แต้มที่ได้ (มติ 3 · 13.3)",
+        "db": "PosCustomerDisplay showPoints"
       },
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-settings-display-enable"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-display-idle-text",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -20024,19 +20758,26 @@
       "expect": {
         "type": "mutation",
         "target": "updateCustomerDisplaySettingsAction",
-        "note": "ข้อความหน้าพัก ≤ 80 ตัว (ว่าง = \"ยินดีต้อนรับ\") · บันทึกตอนออกจากช่อง/Enter"
+        "note": "ข้อความหน้าพัก ≤ 80 ตัว (ว่าง = \"ยินดีต้อนรับ\") · บันทึกตอนออกจากช่อง/Enter",
+        "db": "PosCustomerDisplay idleText"
       },
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-settings-display-enable"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-display-locale",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -20044,12 +20785,18 @@
       "expect": {
         "type": "mutation",
         "target": "updateCustomerDisplaySettingsAction",
-        "note": "ภาษาบนจอ: ตามใบเสร็จ (null) / ไทย / English"
+        "note": "ภาษาบนจอ: ตามใบเสร็จ (null) / ไทย / English",
+        "db": "PosCustomerDisplay locale"
       },
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-settings-display-enable"
+      ],
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20070,7 +20817,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20091,7 +20842,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "ระบบ POS นี้ยังไม่มีคีย์ API"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20112,7 +20867,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "คีย์ API ของระบบ POS นี้อย่างน้อย 1 อัน"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20133,7 +20892,10 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20154,7 +20916,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": "คีย์ API ที่ยังไม่เพิกถอนของระบบ POS นี้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20175,7 +20941,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20196,7 +20966,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20217,7 +20991,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20238,7 +21016,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20259,7 +21041,11 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20280,7 +21066,12 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create",
+        "pos-settings-api-scope-pick"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20295,13 +21086,18 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-api",
-        "note": "ปิดกล่องสร้าง (แตะม่านก็ปิด — ยกเว้นกำลังส่ง)"
+        "target": "pos-settings-api-dialog",
+        "note": "ปิดกล่องสร้าง (แตะม่านก็ปิด — ยกเว้นกำลังส่ง)",
+        "state": "disappears"
       },
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20317,13 +21113,17 @@
       "expect": {
         "type": "mutation",
         "target": "createPosApiKeyAction",
-        "db": "ApiKey",
+        "db": "ApiKey create (keyHash · prefix · scopesJson · systemId · expiresAt) + AuditLog pos.api.key.create",
         "note": "{systemId, name, bundle, ttlDays, unitIds?} → สำเร็จ = แผงคีย์ดิบครั้งเดียว pos-settings-api-raw · ปฏิเสธ = pos-settings-api-create-error (ข้อความตามรหัส)"
       },
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20338,13 +21138,22 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-api-raw",
-        "note": "คีย์ดิบอ่านอย่างเดียว (โฟกัส = เลือกทั้งหมด) · แสดงครั้งเดียว ไม่เก็บที่ใด"
+        "target": "pos-settings-api-raw-key",
+        "note": "คีย์ดิบอ่านอย่างเดียว (โฟกัส = เลือกทั้งหมด) · แสดงครั้งเดียว ไม่เก็บที่ใด",
+        "state": "unchanged"
       },
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create",
+        "pos-settings-api-name=*",
+        "pos-settings-api-scope-pick",
+        "pos-settings-api-unit-*=on",
+        "pos-settings-api-create-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20365,7 +21174,15 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create",
+        "pos-settings-api-name=*",
+        "pos-settings-api-scope-pick",
+        "pos-settings-api-unit-*=on",
+        "pos-settings-api-create-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20386,7 +21203,15 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-*create",
+        "pos-settings-api-name=*",
+        "pos-settings-api-scope-pick",
+        "pos-settings-api-unit-*=on",
+        "pos-settings-api-create-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20401,13 +21226,19 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-api",
-        "note": "ปิดกล่องยืนยันเพิกถอน (ไม่เปลี่ยนอะไร)"
+        "target": "pos-settings-api-revoke-confirm",
+        "note": "ปิดกล่องยืนยันเพิกถอน (ไม่เปลี่ยนอะไร)",
+        "state": "disappears"
       },
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-row-revoke-*"
+      ],
+      "needs": "คีย์ API ที่ยังไม่เพิกถอนของระบบ POS นี้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20429,7 +21260,12 @@
       "wo": "P2.13",
       "oracle": "",
       "system": "POS",
-      "query": "tab=shark&unit=[unitId]"
+      "query": "tab=shark&unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-api-row-revoke-*"
+      ],
+      "needs": "คีย์ API ที่ยังไม่เพิกถอนของระบบ POS นี้"
     },
     {
       "page": "/developers/pos",
@@ -20573,12 +21409,14 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-general-save-anomaly",
-        "note": "การ์ด \"รายงาน: จุดสังเกตผิดปกติ\" (เฉพาะผู้แก้ค่าทั่วไปได้): เปิดการตรวจ (anomaly.enabled) · ปิด = แถวกฎจาง (มติ 6)"
+        "target": "pos-settings-anomaly-enabled",
+        "note": "การ์ด \"รายงาน: จุดสังเกตผิดปกติ\" (เฉพาะผู้แก้ค่าทั่วไปได้): เปิดการตรวจ (anomaly.enabled) · ปิด = แถวกฎจาง (มติ 6)",
+        "state": "changes"
       },
       "wo": "P2.12U",
       "oracle": "",
@@ -20593,6 +21431,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -20613,6 +21452,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -21467,192 +22307,294 @@
       "testid": "pos-channel-qr-active",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปิด/ปิดรับ = saveChannelAction {id, name, active} (pos.channel.manage)"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปิด/ปิดรับ = saveChannelAction {id, name, active} (pos.channel.manage)",
+        "target": "saveChannelAction",
+        "db": "SalesChannel active"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_table"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-auto",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): รับอัตโนมัติเมื่อเงินเข้า (QR_ORDER) = setChannelOrderSettingsAction {autoAccept} (pos.order.accept)"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): รับอัตโนมัติเมื่อเงินเข้า (QR_ORDER) = setChannelOrderSettingsAction {autoAccept} (pos.order.accept)",
+        "target": "setChannelOrderSettingsAction",
+        "db": "SalesChannel autoAccept"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-prep",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เวลาเตรียม (QR_ORDER) = setChannelOrderSettingsAction {prepMinutes}"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เวลาเตรียม (QR_ORDER) = setChannelOrderSettingsAction {prepMinutes}",
+        "target": "setChannelOrderSettingsAction",
+        "db": "SalesChannel prepMinutes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-pause-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): พักรับ 15/30/60 นาที = setChannelOrderSettingsAction {pausedUntil}"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): พักรับ 15/30/60 นาที = setChannelOrderSettingsAction {pausedUntil}",
+        "target": "pos-channel-qr-paused",
+        "db": "SalesChannel pausedUntil"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-reopen",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปิดรับอีกครั้ง = pausedUntil null"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปิดรับอีกครั้ง = pausedUntil null",
+        "target": "setChannelOrderSettingsAction",
+        "db": "SalesChannel pausedUntil null"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order",
+        "pos-channel-qr-pause-15"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-link-create",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): สร้างลิงก์สั่งล่วงหน้า = createOrderLinkAction (pos.channel.manage · idempotent)"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): สร้างลิงก์สั่งล่วงหน้า = createOrderLinkAction (pos.channel.manage · idempotent)",
+        "target": "pos-channel-qr-link-url",
+        "db": "PosOrderLink create status ACTIVE (token)"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order"
+      ],
+      "needs": "สาขายังไม่มีลิงก์สั่งล่วงหน้า ACTIVE"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-link-copy",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "ui",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): คัดลอก <origin>/q/<token>"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): คัดลอก <origin>/q/<token>",
+        "target": "pos-channel-qr-link-copy",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order",
+        "pos-channel-qr-link-create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-link-rotate",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "ui",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปลี่ยนลิงก์ → กล่องยืนยันในบรรทัด"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เปลี่ยนลิงก์ → กล่องยืนยันในบรรทัด",
+        "target": "pos-channel-qr-link-rotate-box",
+        "state": "appears"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order",
+        "pos-channel-qr-link-create"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-link-rotate-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "ui",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): ยกเลิกการเปลี่ยนลิงก์"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): ยกเลิกการเปลี่ยนลิงก์",
+        "target": "pos-channel-qr-link-rotate-box",
+        "state": "disappears"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order",
+        "pos-channel-qr-link-create",
+        "pos-channel-qr-link-rotate"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-link-rotate-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): ยืนยันเปลี่ยนลิงก์ = rotateOrderLinkAction (ลิงก์/QR เดิมใช้ไม่ได้ทันที)"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): ยืนยันเปลี่ยนลิงก์ = rotateOrderLinkAction (ลิงก์/QR เดิมใช้ไม่ได้ทันที)",
+        "target": "pos-channel-qr-link-url",
+        "db": "PosOrderLink REVOKED (rotatedAt) + create ACTIVE ใหม่"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_order",
+        "pos-channel-qr-link-create",
+        "pos-channel-qr-link-rotate"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-tables",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "navigate",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): QR_TABLE → จอโต๊ะ (พิมพ์ QR ทุกโต๊ะ)"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): QR_TABLE → จอโต๊ะ (พิมพ์ QR ทุกโต๊ะ)",
+        "target": "/app/sys/[id]/pos/tables"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_table"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-qr-products",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "navigate",
-        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เมนูที่ขายทางนี้ = ราคาช่องทาง (P2.2) → หน้าสินค้า"
+        "note": "ลิ้นชักช่องทาง QR_TABLE/QR_ORDER (P2.7U): เมนูที่ขายทางนี้ = ราคาช่องทาง (P2.2) → หน้าสินค้า",
+        "target": "/app/sys/[id]/pos/products"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "tab=channels&unit=[unitId]"
+      "query": "tab=channels&unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-open-qr_table"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -21710,80 +22652,101 @@
       "testid": "pos-settings-staff-gate-early",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-gate-save",
-        "note": "การ์ด \"เข้ากะตามตารางงาน HR\": เข้าก่อนเวลาได้ (นาที · จำนวนเต็ม 0–180 · POS_SCHEDULE_GATE_LIMITS) · ผิด = pos-settings-staff-gate-early-error · ผู้จัดการ = disabled (เจ้าของร้านเท่านั้น)"
+        "note": "การ์ด \"เข้ากะตามตารางงาน HR\": เข้าก่อนเวลาได้ (นาที · จำนวนเต็ม 0–180 · POS_SCHEDULE_GATE_LIMITS) · ผิด = pos-settings-staff-gate-early-error · ผู้จัดการ = disabled (เจ้าของร้านเท่านั้น)",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-gate-late",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-gate-save",
-        "note": "ใช้ต่อหลังเลิกงานได้ (นาที · 0–180) · ผิด = pos-settings-staff-gate-late-error"
+        "note": "ใช้ต่อหลังเลิกงานได้ (นาที · 0–180) · ผิด = pos-settings-staff-gate-late-error",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-gate-ttl",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-gate-save",
-        "note": "ผู้จัดการอนุญาตได้นาน (นาที · 0–720 · 0 = ไม่อนุญาตนอกตาราง) · ผิด = pos-settings-staff-gate-ttl-error"
+        "note": "ผู้จัดการอนุญาตได้นาน (นาที · 0–720 · 0 = ไม่อนุญาตนอกตาราง) · ผิด = pos-settings-staff-gate-ttl-error",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-staff-gate-clock-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-gate-save",
-        "note": "ASK / OFF (radio) = settings.pos.staff.clockOnShift — ถามลงเวลาเข้า-ออกงานหลังเปิด/ปิดกะ (หน้า 07) · ไม่มีระบบ HR = ตัวอ่านคืน OFF เสมอ"
+        "target": "pos-settings-staff-gate-clock-*",
+        "note": "ASK / OFF (radio) = settings.pos.staff.clockOnShift — ถามลงเวลาเข้า-ออกงานหลังเปิด/ปิดกะ (หน้า 07) · ไม่มีระบบ HR = ตัวอ่านคืน OFF เสมอ",
+        "state": "selected"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21793,6 +22756,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -21804,7 +22768,10 @@
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21814,17 +22781,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "การ์ด \"ค่าคอมฯ พนักงานขาย\" (เฉพาะผู้ดูเงินเดือน canViewPayroll — หน้าไม่ส่ง config = ไม่มีการ์ด) · เปิด/ปิดคิดค่าคอมฯ (บันทึกพร้อมการ์ด)"
+        "target": "pos-settings-staff-commission-switch",
+        "note": "การ์ด \"ค่าคอมฯ พนักงานขาย\" (เฉพาะผู้ดูเงินเดือน canViewPayroll — หน้าไม่ส่ง config = ไม่มีการ์ด) · เปิด/ปิดคิดค่าคอมฯ (บันทึกพร้อมการ์ด)",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21834,17 +22806,21 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "อัตราปกติ % (0–50 ทศนิยม 2 ↔ bp 0–5000) · ผิด = pos-settings-staff-commission-field-error"
+        "note": "อัตราปกติ % (0–50 ทศนิยม 2 ↔ bp 0–5000) · ผิด = pos-settings-staff-commission-field-error",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21854,17 +22830,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "บทบาทที่ได้ค่าคอมฯ OWNER/MANAGER/STAFF (aria-pressed · sellerRoles)"
+        "target": "pos-settings-staff-commission-role-*",
+        "note": "บทบาทที่ได้ค่าคอมฯ OWNER/MANAGER/STAFF (aria-pressed · sellerRoles)",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21874,6 +22855,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -21884,7 +22866,10 @@
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21894,6 +22879,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -21904,7 +22890,10 @@
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21914,17 +22903,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "อัตรารายสินค้า % (ชื่อสินค้าจาก registerCatalogAction ≤ 500 · ไม่พบ = \"สินค้านอกรายการขายของสาขานี้\")"
+        "note": "อัตรารายสินค้า % (ชื่อสินค้าจาก registerCatalogAction ≤ 500 · ไม่พบ = \"สินค้านอกรายการขายของสาขานี้\")",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-commission-prod-search=ลาเต้",
+        "pos-settings-staff-commission-prod-add-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21934,17 +22929,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "อัตรารายสินค้า บาทต่อชิ้น"
+        "note": "อัตรารายสินค้า บาทต่อชิ้น",
+        "state": "changes"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-commission-prod-search=ลาเต้",
+        "pos-settings-staff-commission-prod-add-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21954,17 +22955,24 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "เอาแถวอัตรารายสินค้าออก (มีผลเมื่อกดบันทึก)"
+        "target": "pos-settings-staff-commission-prod-bp-*",
+        "note": "เอาแถวอัตรารายสินค้าออก (มีผลเมื่อกดบันทึก)",
+        "state": "count"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-commission-prod-search=ลาเต้",
+        "pos-settings-staff-commission-prod-add-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21974,6 +22982,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -21984,7 +22993,10 @@
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -21994,17 +23006,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
         "target": "pos-settings-staff-commission-prod-bp-*",
-        "note": "เพิ่มแถวอัตรารายสินค้า (ว่าง) ใต้หัว \"อัตราตามสินค้า\""
+        "note": "เพิ่มแถวอัตรารายสินค้า (ว่าง) ใต้หัว \"อัตราตามสินค้า\"",
+        "state": "count"
       },
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff",
+        "pos-settings-staff-commission-prod-search=ลาเต้"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -22014,6 +23032,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22025,7 +23044,10 @@
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -22035,6 +23057,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22046,7 +23069,10 @@
       "wo": "P3.5U",
       "oracle": "qc-pos-p3.5",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/shifts",
@@ -22920,7 +23946,8 @@
       "testid": "pos-settings-offline-switch",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -22932,14 +23959,19 @@
       "wo": "P3.4U",
       "oracle": "qc-pos-p3.4",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-offline"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-offline-state",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -22950,7 +23982,10 @@
       "wo": "P3.4U",
       "oracle": "qc-pos-p3.4",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-offline"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/reports",
@@ -23036,6 +24071,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23047,7 +24083,10 @@
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23057,6 +24096,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23067,7 +24107,10 @@
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23077,17 +24120,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-ai-save",
-        "note": "มติ 4: แผ่นสรุปเช้า — ส่งสรุปเช้าทุกวัน (brief.enabled) · บันทึกเมื่อกดบันทึก"
+        "target": "pos-settings-ai-brief-enabled",
+        "note": "มติ 4: แผ่นสรุปเช้า — ส่งสรุปเช้าทุกวัน (brief.enabled) · บันทึกเมื่อกดบันทึก",
+        "state": "changes"
       },
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-ai-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23097,17 +24146,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-ai-save",
-        "note": "มติ 4: เวลาส่งสรุปเช้า 0–23 น. เวลาไทย (brief.hourBkk · ค่าปริยาย 6)"
+        "note": "มติ 4: เวลาส่งสรุปเช้า 0–23 น. เวลาไทย (brief.hourBkk · ค่าปริยาย 6)",
+        "state": "changes"
       },
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-ai-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23117,17 +24171,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-ai-save",
-        "note": "มติ 4: ส่งทางอีเมลด้วย (brief.email)"
+        "target": "pos-settings-ai-email",
+        "note": "มติ 4: ส่งทางอีเมลด้วย (brief.email)",
+        "state": "changes"
       },
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-ai-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23137,17 +24197,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-ai-save",
-        "note": "มติ 4: แสดงจุดผิดปกติในสรุปเช้า (anomalyInBrief)"
+        "target": "pos-settings-ai-anomaly",
+        "note": "มติ 4: แสดงจุดผิดปกติในสรุปเช้า (anomalyInBrief)",
+        "state": "changes"
       },
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-ai-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23157,17 +24223,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-ai-save",
-        "note": "มติ 4 · CD-P39U-3: ช่องเลือกผู้จัดการที่รับสรุปเช้า (ผู้จัดการที่รับคำเชิญแล้ว จาก listStaffAccess ฝั่งหน้า · ≤ 50 · ครบแล้วช่องที่ยังไม่เลือกถูกปิด)"
+        "note": "มติ 4 · CD-P39U-3: ช่องเลือกผู้จัดการที่รับสรุปเช้า (ผู้จัดการที่รับคำเชิญแล้ว จาก listStaffAccess ฝั่งหน้า · ≤ 50 · ครบแล้วช่องที่ยังไม่เลือกถูกปิด)",
+        "state": "changes"
       },
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-ai-open"
+      ],
+      "needs": "ผู้จัดการ (MANAGER active) ในร้าน"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23177,6 +24249,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23188,7 +24261,11 @@
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-ai-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23198,24 +24275,31 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
         "target": "pos-settings-ai-sheet",
-        "note": "มติ 4: ปิดแผ่นโดยไม่บันทึก"
+        "note": "มติ 4: ปิดแผ่นโดยไม่บันทึก",
+        "state": "disappears"
       },
       "wo": "P3.9U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-ai-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-chat-row-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -23229,7 +24313,14 @@
       "wo": "P3.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ],
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "การ์ดแชท LINKED (LINE OA เชื่อมแล้ว) หรือแถวที่เปิดอยู่"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23239,6 +24330,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23249,7 +24341,10 @@
       "wo": "P3.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23259,17 +24354,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-chat-save",
-        "note": "CD-P37U-2: ช่องติ๊กชนิดสถานะที่แจ้งในแชท 4 ช่อง (accepted · ready · cancelled · paid — ป้าย orders.event.*) · บันทึกเมื่อกดบันทึก"
+        "note": "CD-P37U-2: ช่องติ๊กชนิดสถานะที่แจ้งในแชท 4 ช่อง (accepted · ready · cancelled · paid — ป้าย orders.event.*) · บันทึกเมื่อกดบันทึก",
+        "state": "changes"
       },
       "wo": "P3.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-chat-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23279,17 +24379,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-chat-save",
-        "note": "CD-P37U-2: ชั่วโมงพักบอทเมื่อลูกค้าเรียกพนักงาน (จำนวนเต็ม 1–72 · ค่าแปลก = ตัวเขียนปฏิเสธ VALIDATION field botPauseHours ใต้ช่อง)"
+        "note": "CD-P37U-2: ชั่วโมงพักบอทเมื่อลูกค้าเรียกพนักงาน (จำนวนเต็ม 1–72 · ค่าแปลก = ตัวเขียนปฏิเสธ VALIDATION field botPauseHours ใต้ช่อง)",
+        "state": "changes"
       },
       "wo": "P3.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-chat-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23299,6 +24404,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23310,7 +24416,11 @@
       "wo": "P3.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-chat-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23320,17 +24430,23 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
         "target": "pos-settings-chat-sheet",
-        "note": "CD-P37U-2: ปิดแผ่นโดยไม่บันทึก"
+        "note": "CD-P37U-2: ปิดแผ่นโดยไม่บันทึก",
+        "state": "disappears"
       },
       "wo": "P3.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-chat-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -23378,6 +24494,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -23396,17 +24513,27 @@
       "testid": "pos-settings-board-enabled",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "CD-P38U-4: สวิตช์หลักบอร์ดงาน (แก้ในจอ · บันทึกด้วย pos-settings-board-save) · ยังไม่มีบอร์ดปริยาย/รายสาขา = ปิดกดไม่ได้ + board.needBoard · ผู้ดูอื่น = aria-disabled อ่านอย่างเดียว · tab=board"
+        "target": "pos-settings-board-enabled",
+        "note": "CD-P38U-4: สวิตช์หลักบอร์ดงาน (แก้ในจอ · บันทึกด้วย pos-settings-board-save) · ยังไม่มีบอร์ดปริยาย/รายสาขา = ปิดกดไม่ได้ + board.needBoard · ผู้ดูอื่น = aria-disabled อ่านอย่างเดียว · tab=board",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "ระบบบอร์ดงาน (KANBAN) + บอร์ดปริยาย (หรือบอร์ดที่เลือกได้) — สวิตช์ปิดจนกว่าจะมีบอร์ด (boardResolvable)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23416,17 +24543,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "CD-P38U-4: บอร์ดปริยาย — ตัวเลือก = visibleBoardOptions(เจ้าของ) ในระบบบอร์ดงานที่เปิดอยู่ · ค่าเดิมที่มองไม่เห็น = ตัวเลือกจาง board.hiddenBoard · เจ้าของร้านเท่านั้น (คนอื่นเห็นชื่อ/hiddenBoard เป็นข้อความ)"
+        "note": "CD-P38U-4: บอร์ดปริยาย — ตัวเลือก = visibleBoardOptions(เจ้าของ) ในระบบบอร์ดงานที่เปิดอยู่ · ค่าเดิมที่มองไม่เห็น = ตัวเลือกจาง board.hiddenBoard · เจ้าของร้านเท่านั้น (คนอื่นเห็นชื่อ/hiddenBoard เป็นข้อความ)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "ระบบบอร์ดงาน (KANBAN) ที่มีบอร์ดให้เลือก"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23436,17 +24568,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "CD-P38U-4: บอร์ดรายสาขา (สาขาที่ผูก POS · ค่าว่าง = board.useDefault) · ส่ง boardByUnit ทั้งก้อนเมื่อเปลี่ยน · เจ้าของร้านเท่านั้น"
+        "note": "CD-P38U-4: บอร์ดรายสาขา (สาขาที่ผูก POS · ค่าว่าง = board.useDefault) · ส่ง boardByUnit ทั้งก้อนเมื่อเปลี่ยน · เจ้าของร้านเท่านั้น",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "ระบบบอร์ดงาน (KANBAN) ที่มีบอร์ดให้เลือก"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23456,6 +24593,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23467,14 +24605,19 @@
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "ระบบบอร์ดงาน (KANBAN) ที่ยังไม่ตั้งบอร์ดปริยาย"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-add-system",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -23486,187 +24629,243 @@
       },
       "wo": "P3.8U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "ร้านไม่มีระบบบอร์ดงาน (KANBAN)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-rule-assignManager",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R4/R5: มอบการ์ดให้ผู้จัดการคนแรกของสาขา (assignManager)"
+        "target": "pos-settings-board-rule-assignManager",
+        "note": "R4/R5: มอบการ์ดให้ผู้จัดการคนแรกของสาขา (assignManager)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-rule-shiftDiff",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R4: การ์ด \"ตรวจเงิน\" เมื่อขาด/เกินปิดกะ (rules.shiftDiff.enabled)"
+        "target": "pos-settings-board-rule-shiftDiff",
+        "note": "R4: การ์ด \"ตรวจเงิน\" เมื่อขาด/เกินปิดกะ (rules.shiftDiff.enabled)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-min",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R4: เกณฑ์ขาด/เกิน บาทจำนวนเต็ม ↔ สตางค์ ×100 (rules.shiftDiff.minAbsSatang · ช่วง POS_BOARD_LIMITS — นอกช่วง = VALIDATION ของเซิร์ฟเวอร์ที่ช่องนี้)"
+        "note": "R4: เกณฑ์ขาด/เกิน บาทจำนวนเต็ม ↔ สตางค์ ×100 (rules.shiftDiff.minAbsSatang · ช่วง POS_BOARD_LIMITS — นอกช่วง = VALIDATION ของเซิร์ฟเวอร์ที่ช่องนี้)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-rule-everyClose",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R4: การ์ดทุกครั้งที่ปิดกะ (rules.shiftDiff.everyClose)"
+        "target": "pos-settings-board-rule-everyClose",
+        "note": "R4: การ์ดทุกครั้งที่ปิดกะ (rules.shiftDiff.everyClose)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-rule-forcedClose",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R4: รวมกะที่ระบบปิดให้ (rules.shiftDiff.forcedClose · ปริยายเปิด)"
+        "target": "pos-settings-board-rule-forcedClose",
+        "note": "R4: รวมกะที่ระบบปิดให้ (rules.shiftDiff.forcedClose · ปริยายเปิด)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-rule-soldOut",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R5: ของหมด (86) นานเกินกำหนด → การ์ด (rules.soldOut.enabled)"
+        "target": "pos-settings-board-rule-soldOut",
+        "note": "R5: ของหมด (86) นานเกินกำหนด → การ์ด (rules.soldOut.enabled)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-hours",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R5: ชั่วโมง 1–168 (rules.soldOut.hours) · นอกช่วง = VALIDATION field board.rules.soldOut.hours (ภาพ settings-board-invalid)"
+        "note": "R5: ชั่วโมง 1–168 (rules.soldOut.hours) · นอกช่วง = VALIDATION field board.rules.soldOut.hours (ภาพ settings-board-invalid)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-source-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R5: แหล่งนับ MANUAL/KDS/STOCK (role=checkbox · ≥ 1 — ว่าง = VALIDATION ของเซิร์ฟเวอร์)"
+        "target": "pos-settings-board-source-*",
+        "note": "R5: แหล่งนับ MANUAL/KDS/STOCK (role=checkbox · ≥ 1 — ว่าง = VALIDATION ของเซิร์ฟเวอร์)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-rule-refundNeeded",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R6: ออเดอร์ที่ต้องคืนเงิน → การ์ด (rules.refundNeeded.enabled)"
+        "target": "pos-settings-board-rule-refundNeeded",
+        "note": "R6: ออเดอร์ที่ต้องคืนเงิน → การ์ด (rules.refundNeeded.enabled)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23676,6 +24875,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23687,24 +24887,38 @@
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board",
+        "pos-settings-board-rule-refundNeeded"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-room-enabled",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "CD-P38U-4: สวิตช์หลักห้องทีม · ไม่มีห้องปริยาย/รายสาขา = ปิดกดไม่ได้ + board.room.needRoom · ผู้ดูอื่น = aria-disabled"
+        "target": "pos-settings-board-room-enabled",
+        "note": "CD-P38U-4: สวิตช์หลักห้องทีม · ไม่มีห้องปริยาย/รายสาขา = ปิดกดไม่ได้ + board.room.needRoom · ผู้ดูอื่น = aria-disabled",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "ระบบห้องทีม (MEETING) + ห้องปริยาย — ปิดจนกว่าจะมีห้อง (roomResolvable/defaultRoom)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23714,17 +24928,22 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "CD-P38U-4/10: ห้องปริยาย — ตัวเลือก listRoomOptions(เจ้าของ) มาถึงจอเฉพาะเจ้าของร้าน · ห้องที่ไม่อยู่ใน liveChannelIds = board.room.stale"
+        "note": "CD-P38U-4/10: ห้องปริยาย — ตัวเลือก listRoomOptions(เจ้าของ) มาถึงจอเฉพาะเจ้าของร้าน · ห้องที่ไม่อยู่ใน liveChannelIds = board.room.stale",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "ระบบห้องทีม (MEETING) ที่มีห้องให้เลือก"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23734,97 +24953,131 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "CD-P38U-4: ห้องรายสาขา (ค่าว่าง = board.room.useDefault · Z post เท่านั้น — สรุปเช้าเข้าห้องปริยาย R8)"
+        "note": "CD-P38U-4: ห้องรายสาขา (ค่าว่าง = board.room.useDefault · Z post เท่านั้น — สรุปเช้าเข้าห้องปริยาย R8)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "ระบบห้องทีม (MEETING) ที่มีห้องให้เลือก"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-post-shiftClose",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R7: โพสต์สรุปกะเข้าห้องเมื่อปิดกะ (posts.shiftClose)"
+        "target": "pos-settings-board-post-shiftClose",
+        "note": "R7: โพสต์สรุปกะเข้าห้องเมื่อปิดกะ (posts.shiftClose)",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-post-showOverShort",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "W18 · CD-P38U-5: แสดงยอดขาด/เกินในโพสต์ (posts.showOverShort ปริยายเปิด) + บรรทัดช่วย board.room.overShortHelp \"ทุกคนในห้องเห็น… ไม่มีชื่อคน\""
+        "target": "pos-settings-board-post-showOverShort",
+        "note": "W18 · CD-P38U-5: แสดงยอดขาด/เกินในโพสต์ (posts.showOverShort ปริยายเปิด) + บรรทัดช่วย board.room.overShortHelp \"ทุกคนในห้องเห็น… ไม่มีชื่อคน\"",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-post-dailyBrief",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R8: สรุปเช้าในห้องปริยาย (posts.dailyBrief) · ไม่มีห้องปริยาย = ปิด + board.room.briefNeedsDefault"
+        "target": "pos-settings-board-post-dailyBrief",
+        "note": "R8: สรุปเช้าในห้องปริยาย (posts.dailyBrief) · ไม่มีห้องปริยาย = ปิด + board.room.briefNeedsDefault",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "ห้องทีมปริยาย (teamRoom.defaultRoom)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-brief-hour",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "local-state",
-        "note": "R8: ชั่วโมงส่งสรุปเช้า 0–23 (briefHourBkk) · ไม่มีห้องปริยาย = ปิด"
+        "note": "R8: ชั่วโมงส่งสรุปเช้า 0–23 (briefHourBkk) · ไม่มีห้องปริยาย = ปิด",
+        "state": "changes"
       },
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board"
+      ],
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "ห้องทีมปริยาย (teamRoom.defaultRoom)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23834,6 +25087,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23845,14 +25099,19 @@
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-board",
+        "pos-settings-board-post-shiftClose"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-board-readonly-*",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "navigate",
@@ -23862,7 +25121,11 @@
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-board"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/reports",
@@ -23949,7 +25212,8 @@
       "testid": "pos-settings-board-manage-here",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "expect": {
         "type": "navigate",
@@ -23959,7 +25223,11 @@
       "wo": "P3.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-settings-nav-shark"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23967,6 +25235,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -23979,7 +25248,11 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -23987,6 +25260,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -23999,14 +25273,19 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-edit-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24019,14 +25298,22 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-add",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24039,14 +25326,19 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-search",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24059,14 +25351,20 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-add"
+      ],
+      "needs": "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-found-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24079,14 +25377,24 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-add",
+        "pos-settings-credit-search=*"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บริษัทใน CRM ที่ค้นเจอด้วยคำค้นของตัวกด"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-limit",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24099,14 +25407,23 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-edit-*"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-term",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24119,14 +25436,23 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-edit-*"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-active",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24139,14 +25465,23 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-edit-*"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-note",
       "kind": "textarea",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24159,14 +25494,23 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-edit-*"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-save",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24180,14 +25524,23 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-edit-*"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-credit-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24195,12 +25548,21 @@
       "expect": {
         "type": "ui",
         "target": "pos-settings-credit-form",
-        "note": "CD-P36U-10: ปิดฟอร์มโดยไม่บันทึก"
+        "note": "CD-P36U-10: ปิดฟอร์มโดยไม่บันทึก",
+        "state": "disappears"
       },
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-credit-edit-*"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -24208,6 +25570,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -24220,7 +25583,11 @@
       "wo": "P3.6U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels"
+      ],
+      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -24488,7 +25855,8 @@
       "testid": "pos-channel-creds-retry",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24501,14 +25869,21 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ],
+      "needs": "การโหลดข้อมูลล้ม (ปุ่มลองใหม่แสดงเฉพาะตอน action โหลดปฏิเสธ/โยน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-creds-field-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24521,7 +25896,16 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ],
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -24531,6 +25915,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -24541,7 +25926,16 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ],
+      "needs": [
+        "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด",
+        "ช่อง credentials ที่กรอกไว้แล้ว (filled)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -24551,6 +25945,7 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -24561,7 +25956,17 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman",
+        "pos-channel-creds-clear-*"
+      ],
+      "needs": [
+        "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด",
+        "ช่อง credentials ที่กรอกไว้แล้ว (filled)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -24571,44 +25976,37 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "mutation",
         "target": "pos-channel-creds-status",
-        "note": "ล้างช่อง = saveIntegrationCredentialsAction {fields:{<name>: \"\"}} (เจ้าของร้านเท่านั้น) → มุมมองใหม่"
+        "note": "ล้างช่อง = saveIntegrationCredentialsAction {fields:{<name>: \"\"}} (เจ้าของร้านเท่านั้น) → มุมมองใหม่",
+        "db": "PosIntegrationCredential update (ล้างช่องที่เลือก · status)"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman",
+        "pos-channel-creds-clear-*"
+      ],
+      "needs": [
+        "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด",
+        "ช่อง credentials ที่กรอกไว้แล้ว (filled)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-creds-webhook",
       "kind": "input",
       "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "ui",
-        "target": "pos-channel-creds",
-        "note": "URL webhook (อ่านอย่างเดียว · ไม่ใช่ความลับ) + บรรทัด \"ใช้ได้เมื่อเปิดตัวเชื่อมจริง (W4)\" — PLATFORM เท่านั้น"
-      },
-      "wo": "P3-SKEL U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
-    },
-    {
-      "page": "/app/sys/[id]/pos/settings",
-      "testid": "pos-channel-creds-webhook-copy",
-      "kind": "button",
-      "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24616,12 +26014,45 @@
       "expect": {
         "type": "ui",
         "target": "pos-channel-creds-webhook",
-        "note": "คัดลอก URL webhook (clipboard)"
+        "note": "URL webhook (อ่านอย่างเดียว · ไม่ใช่ความลับ) + บรรทัด \"ใช้ได้เมื่อเปิดตัวเชื่อมจริง (W4)\" — PLATFORM เท่านั้น",
+        "state": "unchanged"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-webhook-copy",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds-webhook-copy",
+        "note": "คัดลอก URL webhook (clipboard)",
+        "state": "changes"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -24631,24 +26062,33 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "mutation",
         "target": "pos-channel-creds-status",
-        "note": "บันทึกเฉพาะช่องที่พิมพ์ (saveIntegrationCredentialsAction · OWNER) · ทุกผลล้างช่องพิมพ์ · คำปฏิเสธ = messageKey ในบรรทัด (NOT_CONFIGURED keyMissing ฯลฯ)"
+        "note": "บันทึกเฉพาะช่องที่พิมพ์ (saveIntegrationCredentialsAction · OWNER) · ทุกผลล้างช่องพิมพ์ · คำปฏิเสธ = messageKey ในบรรทัด (NOT_CONFIGURED keyMissing ฯลฯ)",
+        "db": "PosIntegrationCredential create/update (ค่าลับปิดผนึก · status)"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ],
+      "needs": "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-channel-creds-test",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24661,14 +26101,24 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=channels"
+      "query": "unit=[unitId]&tab=channels",
+      "opener": [
+        "pos-settings-nav-channels",
+        "pos-channel-connect-lineman",
+        "pos-channel-open-lineman"
+      ],
+      "needs": [
+        "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด",
+        "credentials ครบ (status COMPLETE)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-slip-verify-open",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24681,34 +26131,44 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-slip-verify-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-slip-card",
-        "note": "ปิดแผ่นตรวจสลิป"
+        "target": "pos-settings-slip-verify-sheet",
+        "note": "ปิดแผ่นตรวจสลิป",
+        "state": "disappears"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-slip-verify-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-slip-verify-provider",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24721,34 +26181,45 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=payments"
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments",
+        "pos-settings-slip-verify-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-etax-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-card-etax",
-        "note": "ปิดแผ่น e-Tax"
+        "target": "pos-settings-etax-sheet",
+        "note": "ปิดแผ่น e-Tax",
+        "state": "disappears"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=shark"
+      "query": "unit=[unitId]&tab=shark",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-card-etax-apply"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-etax-provider",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24761,14 +26232,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=shark"
+      "query": "unit=[unitId]&tab=shark",
+      "opener": [
+        "pos-settings-nav-shark",
+        "pos-settings-card-etax-apply"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-mode-lan",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24776,19 +26252,28 @@
       "expect": {
         "type": "mutation",
         "target": "pos-device-pair-line",
-        "note": "โหมดแลน (escpos-lan · updateDeviceAction printerConfig.mode) — เปิดเมื่อสาขามีตัวช่วยพิมพ์ 1 ตัวพอดีที่มีเครื่องใบเสร็จ/เครื่องเดียวไม่ระบุงาน · 0 = agentNone · ≥ 2 = agentMany"
+        "note": "โหมดแลน (escpos-lan · updateDeviceAction printerConfig.mode) — เปิดเมื่อสาขามีตัวช่วยพิมพ์ 1 ตัวพอดีที่มีเครื่องใบเสร็จ/เครื่องเดียวไม่ระบุงาน · 0 = agentNone · ≥ 2 = agentMany",
+        "db": "PosDevice printerConfig.mode escpos-lan (updateDeviceAction · device.ts:88)"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": [
+        "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)",
+        "ตัวช่วยพิมพ์ (PosPrintAgent) 1 ตัวของสาขาที่มีเครื่องพิมพ์ใบเสร็จ/ใบครัว"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-kitchen-lan",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24796,19 +26281,29 @@
       "expect": {
         "type": "mutation",
         "target": "pos-device-kitchen",
-        "note": "ใบครัว LAN = ชื่อเรียกของ kitchenSlip \"after-sale\" เมื่อโหมดแลน (owner-ack · ไม่มีคีย์ใหม่) — เปิดเมื่อแลน ∧ ตัวช่วยพิมพ์มีเครื่องใบครัว"
+        "note": "ใบครัว LAN = ชื่อเรียกของ kitchenSlip \"after-sale\" เมื่อโหมดแลน (owner-ack · ไม่มีคีย์ใหม่) — เปิดเมื่อแลน ∧ ตัวช่วยพิมพ์มีเครื่องใบครัว",
+        "db": "PosDevice printerConfig.kitchenSlip after-sale (updateDeviceAction · device.ts:88)"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-mode-lan"
+      ],
+      "needs": [
+        "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)",
+        "ตัวช่วยพิมพ์ (PosPrintAgent) 1 ตัวของสาขาที่มีเครื่องพิมพ์ใบเสร็จ/ใบครัว"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-add",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24821,14 +26316,18 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-register",
       "kind": "form",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24836,19 +26335,25 @@
       "expect": {
         "type": "mutation",
         "target": "pos-device-lan-token",
-        "note": "ฟอร์มลงทะเบียน (ชื่อ 1–60 · เครื่องพิมพ์ 1–8) → registerPrintAgentAction → กล่องโทเคนครั้งเดียว"
+        "note": "ฟอร์มลงทะเบียน (ชื่อ 1–60 · เครื่องพิมพ์ 1–8) → registerPrintAgentAction → กล่องโทเคนครั้งเดียว",
+        "db": "PosPrintAgent create (tokenHash · printers)"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-name",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24861,14 +26366,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-printer-name-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24881,14 +26391,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-printer-host-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24901,14 +26416,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-printer-port-*",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24921,14 +26441,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-printer-target-*",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24941,14 +26466,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-printer-remove-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24961,14 +26491,20 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add",
+        "pos-device-lan-printer-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-printer-add",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24981,14 +26517,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -25001,14 +26542,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-submit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -25016,19 +26562,25 @@
       "expect": {
         "type": "mutation",
         "target": "pos-device-lan-token",
-        "note": "ลงทะเบียนตัวช่วยพิมพ์ (registerPrintAgentAction · pos.device.manage) · คำปฏิเสธ = pos.platform.print.errors.*"
+        "note": "ลงทะเบียนตัวช่วยพิมพ์ (registerPrintAgentAction · pos.device.manage) · คำปฏิเสธ = pos.platform.print.errors.*",
+        "db": "PosPrintAgent create (tokenHash · printers)"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-token-copy",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -25041,14 +26593,23 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add",
+        "pos-device-lan-name=*",
+        "pos-device-lan-printer-name-*=*",
+        "pos-device-lan-printer-host-*=192.168.1.50",
+        "pos-device-lan-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-token-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -25061,14 +26622,23 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-add",
+        "pos-device-lan-name=*",
+        "pos-device-lan-printer-name-*=*",
+        "pos-device-lan-printer-host-*=192.168.1.50",
+        "pos-device-lan-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-revoke-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -25081,14 +26651,19 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "ตัวช่วยพิมพ์ (PosPrintAgent) ที่ยังไม่เพิกถอนของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-revoke-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -25101,14 +26676,20 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-revoke-*"
+      ],
+      "needs": "ตัวช่วยพิมพ์ (PosPrintAgent) ที่ยังไม่เพิกถอนของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-lan-revoke-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -25116,12 +26697,18 @@
       "expect": {
         "type": "mutation",
         "target": "pos-device-lan-card",
-        "note": "เพิกถอน (revokePrintAgentAction) — โทเคนใช้ไม่ได้ทันที"
+        "note": "เพิกถอน (revokePrintAgentAction) — โทเคนใช้ไม่ได้ทันที",
+        "db": "PosPrintAgent revokedAt"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]&tab=devices"
+      "query": "unit=[unitId]&tab=devices",
+      "opener": [
+        "pos-settings-nav-devices",
+        "pos-device-lan-revoke-*"
+      ],
+      "needs": "ตัวช่วยพิมพ์ (PosPrintAgent) ที่ยังไม่เพิกถอนของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/register",
