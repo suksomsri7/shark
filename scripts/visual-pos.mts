@@ -8122,6 +8122,9 @@ const P3SKU = {
   credSkip: "",
   billSkip: "",
   slipId: "",
+  /** fix2: FileAsset.id ของสลิป fixture (ตัวกรอง console 404 ของแผ่นสลิป — ไฟล์นี้ไฟล์เดียว) */
+  slipFileId: "",
+  slipSuppressed: 0,
   saleIds: [] as string[],
   intentIds: [] as string[],
   agentIds: [] as string[],
@@ -8291,6 +8294,7 @@ async function ensureP3skuFixture(): Promise<void> {
         const r = (await at("attachSlip (deps.put stub)", { saleId: sale.saleId, paymentId: pay.id, bytes: bytes.length, amountSatang: 8000 }, () => attachSlip(p3skuCtx(), owner, input, { put: async () => undefined }))) as Any;
         if (!r?.ok) throw new StepError(`attachSlip (sale ${sale.saleId} · payment ${pay.id} · ${bytes.length} B): ${r?.code ?? "?"} ${String(r?.message ?? "").slice(0, 80)}`);
         P3SKU.slipId = r.slip.id;
+        P3SKU.slipFileId = (await prisma.posPaymentSlip.findFirst({ where: { id: r.slip.id, tenantId: T.tenantId }, select: { fileId: true } }))?.fileId ?? "";
         P3SKU.log.push(`บิลโอน ${sale.saleId} + สลิป ${r.slip.id} (UPLOADED · ยอดที่พิมพ์ ฿80 ≠ ฿85)`);
       } catch (e) {
         P3SKU.billSkip = e instanceof Error ? e.message.slice(0, 200) : String(e);
@@ -8370,6 +8374,19 @@ async function cleanupP3sku(): Promise<void> {
       return `ยกเลิกบิลโอน ${n} ใบ (voidSale · สลิปคงเป็นหลักฐาน)`;
     });
   P3SKU.done = false;
+}
+/**
+ * fix2 (ผู้คุม B · รอบ QC5 92e1943a): QC5 ไม่มี slip storage ⇒ ลิงก์ดูสลิปของ fixture ตอบ 404 = console error 1 บรรทัดต่อภาพ (คาดไว้)
+ *   กรองเฉพาะ: สถานะ bills-slip-sheet / bills-slip-reject-invalid · ข้อความ "Failed to load resource … status of 404" · URL = ${BASE}/api/files/<FileAsset ของสลิป fixture>?…
+ *   (ไม่ใช่ /api/files ทั้งหมด · ไฟล์อื่น/สถานะอื่น/รหัสอื่น = ยังนับ)
+ */
+const P3SKU_SLIP_404_STATES: ReadonlySet<string> = new Set(["bills-slip-sheet", "bills-slip-reject-invalid"]);
+function p3skuSuppress(state: StateKey | null, txt: string, url: string): boolean {
+  if (!state || !P3SKU_SLIP_404_STATES.has(state) || !P3SKU.slipFileId) return false;
+  if (!/Failed to load resource: the server responded with a status of 404\b/.test(txt)) return false;
+  if (!url.startsWith(`${BASE}/api/files/${P3SKU.slipFileId}?`)) return false;
+  P3SKU.slipSuppressed += 1;
+  return true;
 }
 async function runP3skuState(page: Any, state: P3skuKey, device: Device): Promise<void> {
   if (P3SKU.error) throw new StepError(`fixture P3-SKEL U: ${P3SKU.error}`);
@@ -8590,6 +8607,7 @@ async function runP3skuState(page: Any, state: P3skuKey, device: Device): Promis
       await clickNow(tid("pos-bills-slip-0"));
       await shown(tid("pos-bills-slip-sheet"), 10_000);
       await shown(tid("pos-bills-slip-image"), 15_000);
+      console.log(`  ℹ️ ${state}: QC5 ไม่มี slip storage — รูปสลิป 404 เป็นที่คาด (กรอง console 404 ของ /api/files/${P3SKU.slipFileId || "?"} เท่านั้น)`);
       await shown(tid("pos-bills-slip-confirm"), 10_000).catch(() => {
         throw new StepError("แผ่นสลิปของเจ้าของร้านไม่มีปุ่มยืนยัน (pos.shift.manage)");
       });
@@ -12400,6 +12418,7 @@ try {
           if (m.type() === "error") {
             const txt = String(m.text());
             if (isP34uState(job.state) && p34uSuppress(txt, String(m.location?.()?.url ?? ""))) return; // POS P3.4U fix2 ▸ ช่วงตัดเน็ตของ harness เท่านั้น ◂
+            if (isP3skuState(job.state) && p3skuSuppress(job.state, txt, String(m.location?.()?.url ?? ""))) return; // POS P3-SKEL U fix2 ▸ 404 ของไฟล์สลิป fixture (QC5 ไม่มี slip storage) เท่านั้น ◂
             const at = /Failed to load resource/.test(txt) ? String(m.location?.()?.url ?? "").replace(BASE, "") : "";
             consoleErrors.push(at ? `${txt.slice(0, 120)} @ ${at.slice(0, 200)}` : txt.slice(0, 160));
           }
