@@ -63,6 +63,10 @@ async function hrTarget(auth: Auth, ctx: Ctx, employeeId: string, day?: Date): P
   if (!t.ok) throw new HrBranchError(t.reason);
   return t.unitId ? { unitId: t.unitId } : {};
 }
+/** HR H1.1 ▸ ข้อความไทยคงที่ของ HrBranchError (ข้อความที่ scope.ts เขียนเอง — ไม่ใช่ข้อความระบบ) · อื่น ๆ = null ⇒ ผู้เรียก throw ต่อ ◂ */
+function branchText(x: unknown): string | null {
+  return x instanceof HrBranchError ? x.message : null;
+}
 /** HR H1.1 ▸ สาขาประจำที่ผู้กดเลือกให้พนักงาน (สร้างใหม่ / ย้าย) — ต้องอยู่ในสาขาของผู้กด · ไม่ระบุ = เฉพาะผู้ดูแลทุกสาขา ◂ */
 async function hrHomeTarget(auth: Auth, ctx: Ctx, unitId: string | null): Promise<{ unitId?: string }> {
   const t = await homeUnitTarget(ctx, hrScopeOf(memberOf(auth)), unitId);
@@ -127,7 +131,7 @@ export async function clockAction(formData: FormData): Promise<ClockActionResult
     const t = await hrTarget(auth, ctx, employeeId, new Date());
     assertHrCan(auth, "hr.attendance.clock", t.unitId);
   } catch (e) {
-    if (e instanceof HrBranchError) return { ok: false, reason: e.message };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! };
     throw e;
   }
   const note = String(formData.get("note") ?? "").trim() || `ลงเวลาแทนโดย ${auth.user.name ?? auth.user.email}`;
@@ -222,7 +226,7 @@ export async function saveEmployeeProfileAction(
       input.unitId = home.unitId ?? null;
     }
   } catch (e) {
-    if (e instanceof HrBranchError) return { status: "error", message: e.message };
+    if (branchText(e)) return { status: "error", message: branchText(e)! };
     throw e;
   }
   // HF-HR-0: ช่องอ่อนไหวผ่านเข้า service เฉพาะผู้ดูเงินเดือน — ตัวกรองกลางอยู่ที่ privacy.ts (oracle เรียกตัวเดียวกัน)
@@ -280,7 +284,7 @@ export async function setPinAction(systemId: string, employeeId: string, _prev: 
     const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
     assertHrCan(auth, "hr.employee.create", t.unitId);
   } catch (e) {
-    if (e instanceof HrBranchError) return { status: "error", message: e.message };
+    if (branchText(e)) return { status: "error", message: branchText(e)! };
     throw e;
   }
   const pin = String(formData.get("pin") ?? "");
@@ -317,7 +321,7 @@ export async function kioskClockAction(systemId: string, _prev: KioskState, form
     const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId, new Date());
     assertHrCan(auth, "hr.attendance.clock", t.unitId);
   } catch (e) {
-    if (e instanceof HrBranchError) return { status: "error", message: e.message };
+    if (branchText(e)) return { status: "error", message: branchText(e)! };
     throw e;
   }
   if (!/^\d{4,6}$/.test(pin.trim())) return { status: "error", message: "ใส่ PIN 4-6 หลัก" };
@@ -455,30 +459,30 @@ export async function bulkDecideLeaveAction(
   const auth = await requireTenant();
   // ทุกสาขา: ด่านคีย์ระดับร้าน — สาขาของแต่ละใบตรวจในลูปด้านล่าง
   assertHrCan(auth, "hr.leave.decide");
-  const leaveIds = formData.getAll("leaveIds").map(String).filter(Boolean);
+  const postedIds = formData.getAll("leaveIds").map(String).filter(Boolean);
   const rawStatus = String(formData.get("status") ?? "");
   if (!systemId) return { status: "error", message: "ไม่พบระบบ" };
   if (rawStatus !== "APPROVED" && rawStatus !== "REJECTED") {
     return { status: "error", message: "การตัดสินไม่ถูกต้อง" };
   }
-  if (leaveIds.length === 0) return { status: "error", message: "กรุณาเลือกอย่างน้อย 1 ใบลา" };
+  if (postedIds.length === 0) return { status: "error", message: "กรุณาเลือกอย่างน้อย 1 ใบลา" };
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   // HR H1.1 ▸ R5: ใบที่อยู่นอกสาขาของผู้กด ⇒ ไม่ตัดสิน · อยู่ในรายการล้มเหลวพร้อมข้อความคงที่ ◂
-  const allowed: string[] = [];
+  const leaveIds: string[] = [];
   const outOfBranch: { id: string; reason: string }[] = [];
-  for (const id of leaveIds) {
+  for (const id of postedIds) {
     const lt = await leaveTargetOf(ctx, id);
     try {
       const t = lt ? await hrTarget(auth, ctx, lt.employeeId, lt.fromDate) : {};
       assertHrCan(auth, "hr.leave.decide", t.unitId);
-      allowed.push(id);
+      leaveIds.push(id);
     } catch (e) {
-      if (!(e instanceof HrBranchError)) throw e;
-      outOfBranch.push({ id, reason: e.message });
+      if (!branchText(e)) throw e;
+      outOfBranch.push({ id, reason: branchText(e)! });
     }
   }
   // HF-HR-0: ปุ่มนี้อยู่บนรายการ "รออนุมัติ" ⇒ ตัดสินเฉพาะใบที่ยังรอ (ไม่ถอนใบที่มีคนอนุมัติไปก่อนแบบเงียบ ๆ)
-  const res = allowed.length ? await bulkDecideLeave(ctx, allowed, rawStatus, auth.active.userId, { from: "PENDING" }) : { done: 0, failed: [] };
+  const res = leaveIds.length ? await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId, { from: "PENDING" }) : { done: 0, failed: [] };
   revalidate(systemId);
   return { status: "done", done: res.done, failed: [...res.failed, ...outOfBranch] };
 }

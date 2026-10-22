@@ -722,7 +722,7 @@
    "testid": "hr-profile-unit",
    "kind": "select",
    "interactive": true,
-   "file": "src/lib/modules/hr/EmployeeProfileForm.tsx",
+   "file": "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx",
    "conditional": "ร้านมี BusinessUnit ≥ 1",
    "roles": [
     "owner",
@@ -743,7 +743,8 @@
    },
    "wo": "H1.1",
    "oracle": "qc-hr-h1.1",
-   "note": "สาขาประจำในโปรไฟล์ (ภาพ profile-unit)"
+   "note": "สาขาประจำในโปรไฟล์ (ภาพ profile-unit)",
+   "via": "<select form={profileFormId(id)}> นอก EmployeeProfileForm (ช่องของฟอร์มเดียวกัน — S-2 ของ qc-hf-hr-privacy ล็อกแท็ก EmployeeProfileForm)"
   },
   {
    "page": "/app/sys/[id]/hr/employees/[employeeId]",

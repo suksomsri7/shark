@@ -42,6 +42,10 @@ function assertHrCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: st
   if (!canViewPayroll(membership)) throw new ForbiddenError({ module: "hr", action });
 }
 
+/** HR H1.1 ▸ ข้อความไทยคงที่ของ HrBranchError (ข้อความที่ scope.ts เขียนเอง — ไม่ใช่ข้อความระบบ) · อื่น ๆ = null ⇒ ผู้เรียก throw ต่อ ◂ */
+function branchText(x: unknown): string | null {
+  return x instanceof HrBranchError ? x.message : null;
+}
 /** HR H1.1 ▸ สาขาของพนักงานเป้าหมาย (ระดับพนักงาน = สาขาประจำ · `day` = รวมยืมตัวที่ครอบวันนั้น) — นอกสาขา = HrBranchError ◂ */
 async function payTarget(auth: Awaited<ReturnType<typeof requireTenant>>, ctx: Ctx, employeeId: string | null, day?: Date): Promise<{ unitId?: string }> {
   const emp = employeeId ? await employeeUnitsOf(ctx, employeeId) : null;
@@ -262,7 +266,7 @@ export async function requestAdjustmentAction(
     const t = await payTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId, new Date());
     assertCan(membershipOf(auth), { module: "hr", action: "hr.payadjust.request", ...(t.unitId ? { unitId: t.unitId } : {}) });
   } catch (e) {
-    if (e instanceof HrBranchError) return { status: "error", message: e.message };
+    if (branchText(e)) return { status: "error", message: branchText(e)! };
     throw e;
   }
   const hours = hoursRaw ? Number(hoursRaw) : undefined;
@@ -309,7 +313,7 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
     const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
     assertHrCan(auth, "hr.payadjust.approve", t.unitId);
   } catch (e) {
-    if (e instanceof HrBranchError) return { ok: false, reason: e.message };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! };
     throw e;
   }
   try {
@@ -348,7 +352,7 @@ export async function cancelAdjustmentAction(formData: FormData): Promise<{ ok: 
     const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
     assertHrCan(auth, "hr.payadjust.approve", t.unitId);
   } catch (e) {
-    if (e instanceof HrBranchError) return { ok: false, reason: e.message };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! };
     throw e;
   }
   try {
@@ -420,7 +424,7 @@ export async function moveStrandedAdjustmentAction(formData: FormData): Promise<
     return res.ok ? { ok: true, reason: `ย้ายไปงวด ${res.movedTo} แล้ว` } : { ok: false, reason: res.reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
-    if (e instanceof HrBranchError) return { ok: false, reason: e.message }; // HR H1.1 ◂
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 ◂
     throw e;
   }
 }

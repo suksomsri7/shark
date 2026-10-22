@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { saveEmployeeProfileAction, type ProfileState } from "./actions";
-import type { EmployeeProfileDto } from "./privacy-shared";
+import { profileFormId, type EmployeeProfileDto } from "./privacy-shared"; // HR H1.1 ▸ profileFormId ◂
 
 // ฟอร์มโปรไฟล์พนักงาน — บันทึกทีเดียวทั้งหน้า + ผลลัพธ์ inline (ไม่ใช้ alert)
 // ช่องอ่อนไหวจะถูก render เฉพาะผู้มีสิทธิ์ (ตัดสินฝั่ง server แล้วส่ง canSeeSensitive มา)
@@ -25,16 +25,10 @@ export default function EmployeeProfileForm({
   systemId,
   emp,
   canSeeSensitive,
-  units = [],
-  allBranches = true,
 }: {
   systemId: string;
   emp: Emp;
   canSeeSensitive: boolean;
-  /** HR H1.1 ▸ สาขาที่ผู้แก้เลือกได้ (กรองตามขอบเขตฝั่ง server แล้ว) · [] = ร้านไม่มีสาขา ⇒ ไม่มีช่องสาขา ◂ */
-  units?: { id: string; name: string }[];
-  /** HR H1.1 ▸ ผู้แก้ดูแลทุกสาขา ⇒ เลือก "ยังไม่ระบุสาขาประจำ" ได้ ◂ */
-  allBranches?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<ProfileState, FormData>(
     async (prev, formData) => saveEmployeeProfileAction(systemId, emp.id, prev, formData),
@@ -42,7 +36,7 @@ export default function EmployeeProfileForm({
   );
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form id={profileFormId(emp.id)} action={formAction} className="flex flex-col gap-5">
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium">ข้อมูลส่วนตัว</legend>
         <div className="grid grid-cols-2 gap-2">
@@ -110,20 +104,7 @@ export default function EmployeeProfileForm({
           <Field label="วันสิ้นสุดงาน (ถ้าลาออกแล้ว)">
             <input name="endDate" type="date" defaultValue={d(emp.endDate)} className="input" />
           </Field>
-          {/* HR H1.1 ▸ R7/R8 สาขาประจำ · สถานะการจ้าง · วันครบทดลองงาน · วันสิ้นสุดสัญญา (ข้อมูลอย่างเดียว — เตือนล่วงหน้า = H2.x) ◂ */}
-          {units.length > 0 && (
-            <Field label="สาขาประจำ">
-              <select name="unitId" data-testid="hr-profile-unit" defaultValue={emp.unitId ?? ""} className="input min-h-11">
-                {(allBranches || !emp.unitId) && <option value="">ยังไม่ระบุสาขาประจำ</option>}
-                {emp.unitId && !units.some((u) => u.id === emp.unitId) && <option value={emp.unitId}>{emp.unitName ?? "สาขาอื่น"}</option>}
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
+          {/* HR H1.1 ▸ R7 สถานะการจ้าง · วันครบทดลองงาน · วันสิ้นสุดสัญญา (ข้อมูลอย่างเดียว — เตือนล่วงหน้า = H2.x) · สาขาประจำอยู่บนหน้า (form=) ◂ */}
           <Field label="สถานะการจ้าง">
             <select name="employmentStatus" data-testid="hr-profile-employment-status" defaultValue={emp.employmentStatus ?? ""} className="input min-h-11">
               <option value="">ไม่ระบุ</option>

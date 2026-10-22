@@ -96,6 +96,9 @@ export type EmployeeProfileDto = {
   bankAccountName?: string | null;
 };
 
+/** HR H1.1 ▸ id ของฟอร์มโปรไฟล์ — ช่อง "สาขาประจำ" อยู่บนหน้า (server) แล้วผูกเข้าฟอร์มด้วย form={…} จึงต้องใช้ id เดียวกัน ◂ */
+export const profileFormId = (employeeId: string) => `hr-profile-form-${employeeId}`;
+
 /** HR H1.1 ▸ แถวยืมตัวไปสาขาอื่น (ไม่อ่อนไหว) — ส่งคู่กับโปรไฟล์ (ไม่อยู่ใน EmployeeProfileDto) ◂ */
 export type EmployeeBorrowingDto = { id: string; unitId: string; unitName: string | null; fromDate: Date; toDate: Date | null };
 

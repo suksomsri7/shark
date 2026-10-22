@@ -9,6 +9,7 @@ import { hrViewerOf, loadEmployeeProfileForViewer } from "@/lib/modules/hr/priva
 import { hrScopeOf, isAllBranches, unitsForScope } from "@/lib/modules/hr/scope"; // HR H1.1 ▸ ตัวเลือกสาขาประจำตามขอบเขตผู้แก้ ◂
 import { addEmployeeDocAction, removeEmployeeDocAction } from "@/lib/modules/hr/actions";
 import EmployeeProfileForm from "@/lib/modules/hr/EmployeeProfileForm";
+import { profileFormId } from "@/lib/modules/hr/privacy-shared"; // HR H1.1 ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -67,7 +68,22 @@ export default async function HrEmployeeProfilePage({
       )}
 
       <Section title="ข้อมูลพนักงาน">
-        <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} units={units} allBranches={isAllBranches(scope)} />
+        {/* HR H1.1 ▸ R8 สาขาประจำ — ช่องของฟอร์มโปรไฟล์ (form={…}) · ตัวเลือก = สาขาในขอบเขตของผู้แก้ · action ตรวจซ้ำจาก DB ◂ */}
+        {units.length > 0 && (
+          <label className={`mb-3 flex flex-col gap-1 text-xs ${muted}`}>
+            สาขาประจำ
+            <select name="unitId" form={profileFormId(emp.id)} data-testid="hr-profile-unit" defaultValue={emp.unitId ?? ""} className="input min-h-11">
+              {(isAllBranches(scope) || !emp.unitId) && <option value="">ยังไม่ระบุสาขาประจำ</option>}
+              {emp.unitId && !units.some((u) => u.id === emp.unitId) && <option value={emp.unitId}>{emp.unitName ?? "สาขาอื่น"}</option>}
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} />
         <p className={`mt-2 text-xs ${muted}`}>
           PIN ลงเวลา: {emp.hasPin ? "ตั้งแล้ว" : "ยังไม่ตั้ง"} (ตั้ง/เปลี่ยนได้ที่หน้าพนักงานทั้งหมด)
         </p>
