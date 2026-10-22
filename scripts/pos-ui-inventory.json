@@ -377,7 +377,8 @@
       "wo": "P1.3",
       "oracle": "P1.3-S1.13",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "หมวดสินค้า (PosCategory) อย่างน้อย 1 หมวดในแคตตาล็อก POS ร้าน QC coffee — seed-pos-qc สร้างหมวดให้ร้าน resto เท่านั้น (:270)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -852,7 +853,13 @@
       "expect": {
         "type": "modal",
         "note": "ใบกำกับเต็มรูป → กล่อง 15A (TaxInvoiceDialog โหมด sale) · ร้านออกไม่ได้ (registerStatus.taxInvoiceEligible false) = จาง + toast เหตุผล",
-        "target": "pos-taxinv-dialog"
+        "target": "pos-taxinv-dialog",
+        "anyOf": [
+          {
+            "type": "toast",
+            "target": "pos-reg-toast"
+          }
+        ]
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -862,7 +869,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view"
-      ]
+      ],
+      "needs": "ร้านออกใบกำกับเต็มรูปได้ (registerStatus.taxInvoiceEligible · POS ผูกสมุดจด VAT)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -3035,9 +3043,8 @@
       "expect": {
         "type": "mutation",
         "target": "action:recallHeldCartAction",
-        "note": "เรียกคืน (ผู้ชนะคนเดียว · ราคาปัจจุบัน) · ตะกร้ามีของ = pos-reg-held-confirm ก่อน · ถูกเรียกไปแล้ว = toast errors.alreadyRecalled",
-        "resultTarget": "pos-reg-toast",
-        "db": "PosHeldCart RECALLED (recalledAt · recalledByUserId · held-cart.ts:580)"
+        "note": "เรียกคืน (ผู้ชนะคนเดียว · ราคาปัจจุบัน) · ตะกร้ามีของ = pos-reg-held-confirm ก่อน · ถูกเรียกไปแล้ว = toast errors.alreadyRecalled · เขียน PosHeldCart RECALLED (recalledAt · recalledByUserId · held-cart.ts:580) (ตารางไม่มี createdAt/updatedAt ที่ตัวกดอ่านได้ ⇒ ยืนยันด้วย oracle P1.5-H3)",
+        "resultTarget": "pos-reg-toast"
       },
       "wo": "P1.5",
       "oracle": "P1.5-H3",
@@ -13140,7 +13147,7 @@
       "expect": {
         "type": "mutation",
         "target": "setPosAccountLinkAction",
-        "note": "\"ปิดการลงบัญชี\" → {enabled:false, confirm:true} → โหลดการ์ดใหม่",
+        "note": "\"ปิดการลงบัญชี\" → {enabled:false, confirm:true} → โหลดการ์ดใหม่ · P4.2: กดท้ายสุดของหน้า/คืนค่า — ปิดการผูกสมุดบัญชี POS ค้าง (ตัวกดคืนแค่ AppSystem.settings · CD-P41-F22)",
         "db": "AccountSystemLink.enabled"
       },
       "wo": "P1.18U",
@@ -23737,7 +23744,8 @@
       "opener": [
         "pos-reg-mobile-deposit-receive",
         "pos-reg-more",
-        "pos-reg-menu-deposit-receive"
+        "pos-reg-menu-deposit-receive",
+        "pos-reg-deprcv-amount=1"
       ],
       "needs": "ค่าตั้งรับมัดจำเปิด (registerPayTendersAction deposit.enabled)"
     },
@@ -25052,7 +25060,7 @@
       "expect": {
         "type": "mutation",
         "target": "revokePosApiKeyAction",
-        "db": "ApiKey.revokedAt",
+        "db": "AuditLog pos.api.key.revoke + ApiKey revokedAt (api-key-actions.ts:175-177 · ApiKey ไม่มี updatedAt ⇒ ตัวกดเห็นจาก AuditLog)",
         "note": "ปุ่มแดง \"เพิกถอนคีย์\" → {systemId, keyId} → โหลดรายการใหม่ (แถว = ชิป \"เพิกถอนแล้ว\" · ไม่มีปุ่มเพิกถอน) · ปฏิเสธ = pos-settings-api-revoke-error"
       },
       "wo": "P2.13",
@@ -27227,8 +27235,7 @@
       "expect": {
         "type": "mutation",
         "target": "posClockAction",
-        "note": "P3.5U มติ 7: แผ่น \"ลงเวลาเข้างาน/ออกงานด้วยไหม\" หลังเปิด/ปิดกะสำเร็จ เมื่อ clockOnShift=ASK + ร้านมีระบบ HR + เครื่องมีโทเคนผู้ขาย → hr.clockSelf ของคนในโทเคน (ต้องเป็นผู้เปิดกะ) · สำเร็จ = ปิดแผ่น + pos-shift-notice \"ลงเวลาแล้ว\" · ALREADY_CLOCKED / NO_EMPLOYEE / PERMISSION_DENIED = pos-shift-clock-message",
-        "db": "HrAttendance clock IN/OUT ผ่าน hr.clockSelf"
+        "note": "P3.5U มติ 7: แผ่น \"ลงเวลาเข้างาน/ออกงานด้วยไหม\" หลังเปิด/ปิดกะสำเร็จ เมื่อ clockOnShift=ASK + ร้านมีระบบ HR + เครื่องมีโทเคนผู้ขาย → hr.clockSelf ของคนในโทเคน (ต้องเป็นผู้เปิดกะ) · สำเร็จ = ปิดแผ่น + pos-shift-notice \"ลงเวลาแล้ว\" · ALREADY_CLOCKED / NO_EMPLOYEE / PERMISSION_DENIED = pos-shift-clock-message · เขียน HrAttendance clock IN/OUT ผ่าน hr.clockSelf (ตารางไม่มี createdAt/updatedAt ที่ตัวกดอ่านได้ ⇒ ยืนยันด้วย oracle P3.5-HC1)"
       },
       "wo": "P3.5U",
       "oracle": "P3.5-HC1",
