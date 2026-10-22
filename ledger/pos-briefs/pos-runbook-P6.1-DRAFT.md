@@ -1,3 +1,4 @@
+> 🧊 FROZEN 22 Oct 2026 (P6.1 prep · ruling P6 §10-2) — superseded by `docs/pos/DEPLOY-RUNBOOK.md`; kept for history, do not edit.
 # P6.1 — production migration runbook (DRAFT · controller · cloud run · 3 Oct 2026)
 
 > Draft collected from POS-RESUME §0.3–§0.9 and the P1.1a/HF review rounds. Not executable until P6.1 is reached and every item is re-verified against the code/migrations of that day. Nothing here authorises touching production — the owner's explicit GO is required for every step on prod.
