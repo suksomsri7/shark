@@ -7,10 +7,12 @@
 //   • ไม่ผ่านด่าน = คืน null ⇒ หน้าเรียก notFound() (404 ไม่ใช่ 403 — ไม่บอกว่ามีข้อมูลอยู่)
 import { tenantDb } from "@/lib/core/db";
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
-import { leaveRowScopeOf, listLeaves, pendingLeaves, type Ctx, type EmployeeProfileInput } from "./service";
+import { leaveListScopeOf, listLeaves, pendingLeaves, type Ctx, type EmployeeProfileInput } from "./service"; // HR H1.1 ▸ leaveListScopeOf (แถว + สาขา) ◂
 import { payslipData } from "./payroll";
 import { hasPin } from "./pin"; // HR H0.5 ▸ ◂
-import type { EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
+import type { EmployeeBorrowingDto, EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
+// HR H1.1 ▸ ขอบเขตสาขา = ตัวกรองเพิ่มบนด่านเดิม (ไม่เคยขยายสิทธิ์ · ไม่ให้สิทธิ์เงินเดือน) ◂
+import { employeeInScope, hrScopeOf, unitNamesOf } from "./scope";
 
 export type HrViewer = MembershipCtx & { userId: string };
 
@@ -44,12 +46,14 @@ export async function loadEmployeeProfileForViewer(
   ctx: Ctx,
   v: HrViewer,
   employeeId: string,
-): Promise<{ profile: EmployeeProfileDto; docs: EmployeeDocDto[]; canSeeSensitive: boolean } | null> {
+): Promise<{ profile: EmployeeProfileDto; docs: EmployeeDocDto[]; canSeeSensitive: boolean; borrowings: EmployeeBorrowingDto[] } | null> {
   const access = hrAccessOf(v);
   if (!access.openProfile || !employeeId) return null;
   const db = tenantDb(ctx);
   const row = await db.hrEmployee.findFirst({ where: { id: employeeId } });
   if (!row) return null;
+  // HR H1.1 ▸ R4: ผู้ดูที่จำกัดสาขา เปิดได้เฉพาะพนักงานในสาขาตัวเอง (สาขาประจำ หรือยืมตัวที่เปิดวันนี้) · ไม่ระบุสาขา = เฉพาะผู้ดูทุกสาขา ◂
+  if (!(await employeeInScope(ctx, hrScopeOf(v), row.id))) return null;
   // สร้างทีละช่องจาก whitelist (privacy-shared) — ห้าม spread แถวดิบ
   const profile: EmployeeProfileDto = {
     id: row.id,
@@ -77,6 +81,12 @@ export async function loadEmployeeProfileForViewer(
     note: row.note,
     active: row.active,
     hasPin: hasPin(row), // HR H0.5 ▸ hash หรือตัวเปล่า (ช่วง rollout) — อ่านคอลัมน์ที่ pin.ts ที่เดียว ◂
+    // HR H1.1 ▸ R7: สาขาประจำ (+ชื่อ) · สถานะการจ้าง · วันครบทดลองงาน/สิ้นสุดสัญญา — ไม่อ่อนไหว ◂
+    unitId: row.unitId,
+    unitName: row.unitId ? ((await unitNamesOf(ctx.tenantId, [row.unitId])).get(row.unitId) ?? null) : null,
+    employmentStatus: row.employmentStatus,
+    probationEndAt: row.probationEndAt,
+    contractEndAt: row.contractEndAt,
   };
   if (access.seeSensitive) {
     profile.nationalId = row.nationalId;
@@ -85,6 +95,8 @@ export async function loadEmployeeProfileForViewer(
     profile.bankName = row.bankName;
     profile.bankAccountNo = row.bankAccountNo;
     profile.bankAccountName = row.bankAccountName;
+    // HR H1.1 ▸ R7: รูปแบบค่าจ้างบอกโครงสร้างเงินเดือน ⇒ เฉพาะผู้ดูเงินเดือน (ไม่มีโปรไฟล์ = null) ◂
+    profile.payType = (await db.hrSalaryProfile.findFirst({ where: { employeeId: row.id }, select: { payType: true } }))?.payType ?? null;
   }
   // เอกสารแนบ (สำเนาบัตร/ทะเบียนบ้าน) = อ่อนไหวทั้งชุด — ไม่มีสิทธิ์ = ไม่โหลดเลย
   const docs: EmployeeDocDto[] = access.seeSensitive
@@ -96,7 +108,16 @@ export async function loadEmployeeProfileForViewer(
         })
       ).map((d) => ({ id: d.id, kind: String(d.kind), title: d.title, url: d.url, note: d.note }))
     : [];
-  return { profile, docs, canSeeSensitive: access.seeSensitive };
+  // HR H1.1 ▸ Q3: แถวยืมตัว (ไม่อ่อนไหว · นอก profile DTO) — ล่าสุดก่อน ≤ 20 แถว ◂
+  const bRows = await db.hrEmployeeUnit.findMany({
+    where: { employeeId: row.id },
+    orderBy: { fromDate: "desc" },
+    take: 20,
+    select: { id: true, unitId: true, fromDate: true, toDate: true },
+  });
+  const bNames = await unitNamesOf(ctx.tenantId, bRows.map((b) => b.unitId));
+  const borrowings: EmployeeBorrowingDto[] = bRows.map((b) => ({ id: b.id, unitId: b.unitId, unitName: bNames.get(b.unitId) ?? null, fromDate: b.fromDate, toDate: b.toDate }));
+  return { profile, docs, canSeeSensitive: access.seeSensitive, borrowings };
 }
 
 /**
@@ -106,6 +127,8 @@ export async function loadEmployeeProfileForViewer(
 export async function loadPayslipForViewer(ctx: Ctx, v: HrViewer, runId: string, employeeId: string) {
   const payrollViewer = canViewPayroll(v);
   if (!runId || !employeeId) return null;
+  // HR H1.1 ▸ R4/มติ 8: ผู้ดูเงินเดือนที่จำกัดสาขา เห็นสลิปเฉพาะพนักงานในสาขาตัวเอง (ตัวกรองเพิ่ม) · สลิปของตัวเอง = ทางเดิม ◂
+  if (payrollViewer && !(await employeeInScope(ctx, hrScopeOf(v), employeeId))) return null;
   if (!payrollViewer) {
     const uid = (v.userId ?? "").trim();
     if (!uid) return null;
@@ -128,7 +151,8 @@ export async function leaveItemsForViewer(
 ): Promise<{ pending: LeaveItemDto[]; history: LeaveItemDto[]; canReadReason: boolean }> {
   const canReadReason = hrAccessOf(v).readLeave;
   // HR H0.7 R10 ▸ ขอบเขตแถว: ผู้อ่าน/ผู้ตัดสินใบลา/OWNER/MANAGER = ทุกแถว · คนอื่น = เฉพาะของตัวเอง (กรองใน where) ◂
-  const scope = leaveRowScopeOf(v, v.userId);
+  // HR H1.1 ▸ + ขอบเขตสาขา (แถวของตัวเองไม่ถูกกรองด้วยสาขา — service.leaveScopeWhere) ◂
+  const scope = leaveListScopeOf(v, v.userId);
   const [pending, history] = await Promise.all([pendingLeaves(ctx, 100, scope), listLeaves(ctx, 100, scope)]);
   // HR H0.7 ▸ R9: ชื่อผู้ยื่นแทน (User เป็นแกน global ⇒ อ่านเฉพาะ id ที่อยู่ในใบลาของระบบนี้) — เฉพาะผู้มี hr.leave.read ◂
   const filerIds = canReadReason ? [...new Set([...pending, ...history].map((l) => l.filedById).filter((x): x is string => !!x))] : [];
@@ -177,6 +201,11 @@ export function employeeProfileInputFromForm(form: FormData, v: HrViewer): Emplo
     emergencyPhone: f("emergencyPhone"),
     emergencyRelation: f("emergencyRelation"),
     note: f("note"),
+    // HR H1.1 ▸ ไม่อ่อนไหว — action ตรวจ unitId กับขอบเขตของผู้กดก่อนส่งเข้า service ◂
+    unitId: f("unitId"),
+    employmentStatus: (f("employmentStatus") || (form.has("employmentStatus") ? null : undefined)) as EmployeeProfileInput["employmentStatus"],
+    probationEndAt: f("probationEndAt"),
+    contractEndAt: f("contractEndAt"),
     ...(canViewPayroll(v)
       ? {
           nationalId: f("nationalId"),

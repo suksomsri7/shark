@@ -47,7 +47,7 @@ export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAd
 //   รูปแบบ ^[A-Za-z0-9:_.-]{1,128}$ หลัง trim — ไม่ส่ง / ไม่ตรง = "PIN ไม่ถูกต้อง" (ไม่แตะ DB) ·
 //   นับก่อนค้นแล้วคืนช่องเมื่อถูก/ถูกปฏิเสธ (เหลือเฉพาะครั้งที่ผิด): ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10/10 นาที
 //   (ครบ 10 = audit hr.pin.locked 1 แถว) + ร้าน hr-verifypin:<tenantId> 120/60 s (ครบ 120 = audit hr.pin.tenant_limited + OpsEvent WARN) ◂ ·
-//   unitId ยังไม่มีผลจนถึง H1.1 · systemId = ตัวกรอง
+//   unitId (HR H1.1 ▸ R9) = สาขาของผู้ถาม: พนักงานต่างสาขา ⇒ "PIN ไม่ถูกต้อง" (นับเหมือนผิด) · ยังไม่ระบุสาขา = ผ่าน ◂ · systemId = ตัวกรอง
 export type { VerifyPinInput, VerifyPinResult, VerifyPinOk, VerifyPinFail } from "./pin";
 export { verifyPin } from "./pin";
 // ◂ HR H0.5
