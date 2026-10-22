@@ -27,10 +27,13 @@ function can(m: MembershipCtx, action: string): boolean {
   }
 }
 
-/** อ่านค่าตั้งผู้ช่วย AI ของระบบ POS (สมาชิกของร้านที่เปิดหน้าตั้งค่าได้) */
+/** อ่านค่าตั้งผู้ช่วย AI ของระบบ POS — ด่านเดียวกับตัวเขียน (OWNER + pos.settings.manage) */
 export async function getPosAiSettingsAction(systemId: string): Promise<Result> {
   try {
     const auth = await requireTenant();
+    // POS P5.2 ▸ CD-P52-F1: การ์ด AI ฝั่ง client โหลดตัวอ่านเฉพาะเจ้าของร้าน (SharkSettings aiOwner · page.tsx aiCard.isOwner) ⇒ ทั้งตัวอ่านใช้ด่านของตัวเขียน
+    //   (ค่าตั้งมี brief.email + managerUserIds) · ไม่ใช่เจ้าของ/ไม่มีคีย์ = PERMISSION_DENIED ก่อนแตะ DB ◂
+    if (auth.active.role !== "OWNER" || !can(posMembership(auth.active), "pos.settings.manage")) return refuse("PERMISSION_DENIED", "เฉพาะเจ้าของร้านเท่านั้นที่ดูค่าตั้งผู้ช่วย AI ได้");
     const sys = await prisma.appSystem.findFirst({ where: { id: String(systemId ?? ""), tenantId: auth.active.tenantId, type: "POS" }, select: { settings: true } });
     if (!sys) return refuse("NOT_FOUND", "ไม่พบระบบขายหน้าร้านนี้");
     return { ok: true, ai: posAiSettings(sys.settings) };
