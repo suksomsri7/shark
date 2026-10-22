@@ -251,3 +251,67 @@ PRESUBMIT head=172df637 green=17 red=4 expected-lane-pin=2 unexpected-red=qc-pos
 logs: /root/pos-runs/presubmit-shark-pos-b-20261022T183629Z
 ```
 Reds: **HF-FU2-ST1** and **P3.4-ST2** = the same lane pins as fix1 (P4.1 UI hunks without the HF-FU2 marker · old branch base without the W21 close). **P3.9-Z2 / P3.6-Z2 (new, not expected)** = the "rows outside the temp shop unchanged" fingerprints moved during the run (AuditLog 3864 → 3990 · AccountJournalEntry 2033 → 1949 · CrmCommission 37 → 8). fix2 changes no src/prisma file and no suite writes those rows; at the same time another lane was running CRM suites on QC4 (`iso-2699017` qc-crm-c3.3 → `iso-2715815` qc-crm-c0.3, `scripts/qc4.sh … with-gate-lock.sh` without the POS lock file). Both were green in fix1's pre-submit (b59eae17). Read as concurrent-writer noise; a re-run when QC4 is quiet should be green — controller call.
+
+## fix3 (builder · account B · 22 Oct 2026 19:32–20:34Z UTC · registry-only round after R1 round 3 BLOCKED 7/103)
+Prompt `ledger/pos-briefs/pos-prompt-accountB-P4.1-FIX3-BUILD.md` · R1 round 3 (third section of `wo-notes/pos-P4.1-review.md`) · per-row tables `p41-r3/result-*.md`.
+
+**Ruling CD-P41-R3 (controller B, recorded as ordered):** after three sampling rounds the residual registry error (≈ 5–7 %) is in classes the P4.2 walker reports deterministically (wrongExpect · dead · hiddenLeak). So fix3 fixes the listed findings + the systemic sweeps (no self-audit sampling this round), R1-lite verifies only fix3's rows and sweeps, then P4.1 merges; what remains is measured by the walker run and fixed in P4.3.
+
+Method: every class swept over the whole registry. 4 read-only research agents, at most 2 at a time (F1 group A = register/tables/orders/kds · F1 group B = settings/sales/shifts/close/reports/products/price-rules/stock · C = F3 fills · D = F4 reveal + F5 counts); the builder did F2, F6 and the named rows itself. Patches applied with the fix2 invariants (`apply3.py`: roles ≠ ∅ · roles ∩ hiddenFor = ∅ · manager claimed · external ⇒ oracle · opener steps = rows on the same page, not self, no dup). `qc-pos-p4.1 --no-db` before and fitness + fitness-pos (iso 3G) after **every** commit — logs `p41-fix3/run-c<N>-*.log`, `fitness-<sha>.log`, `fitness-pos-<sha>.log`. Product code untouched (`git diff 81d69a40 HEAD -- src prisma` = empty). Scratch: `/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchpad/p41-fix3/`.
+
+| SHA | class | rows |
+|---|---|---|
+| 8d36c5b3 | F2 KDS/QR viewport + dynamic hide | 10 |
+| dc2092b4 | F6 NITs + opener-presses-safety class | 16 |
+| 992b9999 | F1 roles vs server permission, any expect.type | 9 |
+| 46308eb5 | F3 fills under the walker's own values | 17 |
+| 14aed7d6 | F4 opener reveal (plain step skipped) | 21 |
+| 66f31e7e | F5 fixture-count needs | 2 |
+| (this) | notes | – |
+Registry vs 81d69a40: 1,242 rows (unchanged) · 73 rows changed · fields: opener 46 · needs 28 · expect 5 · viewport 5 · roles 3 · safety 3. Each commit: fitness 53/53 · fitness-pos 8/8 · `qc-pos-p4.1 --no-db` 16/16.
+
+**Per class**
+- **F1 (CD-P41-F1 extended)** — `python3 …/p41-fix3/perm-table.py` now covers EVERY staff row (notices excluded) whose press or opener calls a server action, regardless of expect.type: mutation rows from the fix1/fix2 research tables, non-mutation rows from `patches/f1-perm-{A,B}.json`; rows without an action are listed in `f1-noaction-{A,B}.txt` (each non-mutation row in exactly one of the two). **1,143 staff rows · 528 call a server action (191 mutation + 337 other: A 113 · B 223, of which 135 only through an opener step) · 615 without · cashier allow 264 / deny 264 · manager allow 487 / owner-only 23 / all-units 17 / deny 1 · F13 disabled-seen 29 · uiGateNeServer 47 · VERDICT green.** Changed: 734 737 738 cashier out of roles (ruling g: UI enabled, server refuses restaurant.session.open / restaurant.order.create, table.ts:259/:344 → :75) · 685 686 1008 1000 505 F13 needs (cashier sees the control disabled; server refuses restaurant.session.move/merge, restaurant.table.rotateQr, pos.order.reject, account link) · 1164 manager needs (opener step pos-channel-creds-save is owner-only, integration-creds.ts:171). New UI gate ≠ server gate (P4.3): 734 737 738.
+- **F2** — 813 814 815 816 viewport [desktop, tablet] (KdsScreen.tsx:309,358 only the `seg` column renders below md; the pressed ticket moves into a hidden column) · 816 target → pos-kds-recall (served leaves the board, P2.6-B3) · 821 opener `pos-kds-seg-ready` (the served strip sits in the READY column, :375; plain step = skipped where it is already visible). Sweep: every conditional-hide class in `src/**` (`seg===col ? flex : hidden` md:flex; QrPreorderApp.tsx:152/157 step-hidden menu/aside; ChartPanel etc. are not POS) + `vp-sweep.py` (elements whose own class is md:hidden/lg:hidden or hidden md:/lg:*, vs row viewport; positive control: 986 found, 9 has its mobile twin): 986 pos-qr-to-checkout viewport [mobile] (lg:hidden; ipad 1024 is lg) · 987 988 989 991 opener `pos-qr-to-checkout` (checkout aside `hidden lg:flex` until step=checkout). Orders (`mobileCol`) and tables/register (matchMedia) targets are toasts/sheets that stay visible — no change.
+- **F3** — named: 450 `pos-member-points-input=100` (burnMinPoints default 100, point/internal.ts:114) · 887 889-893 `pos-reg-paydlg-deposit-search=QCDEP` (=* gives "20" < DEPOSIT_QUERY_MIN 3; no fixture deposit ⇒ 889 ends on its anyOf notfound) + 889 fixture needs like 890 · 803 opener `pos-ord-man-channel=*` + needs CUSTOM channel (CHAT default ⇒ prefill types qc-btn-… into conv/party ⇒ assertCustomerLinks) · 38 `pos-reg-line-discount-*=0` (prefill "20" > cashier cap) · 1031 `pos-settings-staff-gate-early=*` (server no-op when canon equal, settings-general.ts:594). Sweep (`prefill-cand.py` → `prefill-cand.tsv`: 220 submit rows, 153 with prefill candidates; `star-fills.tsv`: 63 `=*` steps): 439/445 `pos-member-register-birthdate=15051990` (prefill types today's date, the mask reads month 26 ⇒ submit returns early) · 898/909 `pos-reg-deprcv-cash=100` (prefill "2" < amount) · 830 `pos-kds-86-search= ` (one space: prefill would type "ลาเต้" into the dialog search and unmount the held toggle; trimmed query = no filter) · 573/574 needs ≥ 1 PosCategory. F18 table (`p41-fix3/f18-table.py`, reads `p41-fix3/fill/`): 189 → filled · 1204 stale `pos-report-unit=*` cleared → no-validation · 857 fills column = registry opener · 38 1031 889 803 439 445 898 909 fills updated · 47/51 value 5 · **258 submit rows · filled 76 · ok-prefilled 35 · no-validation 140 · n/a 7 · fills not in registry opener 0.**
+- **F4** — 52 `pos-reg-bill-discount=click`. Sweep `reveal-cand.tsv` (103 page × plain-step groups, 846 rows): 98 ok (mobile/desktop pairs where the later step is absent on one size must stay plain — cart-view, lock-now, deposit receive, cart-bar-held, qr-to-checkout; query-opened bills/tabs; steps whose later control only exists once the state exists) · changed 560 562 862 864 (`pos-prod-*open-*`/`pos-prod-price-edit` =click: pos-prod-price-* also matches the list price span, view-mode drawer cells are visible) · 407 408 (`pos-taxinv-kind-juristic=click`, taxid visible for both kinds) · 913-923 (`pos-bills-filter-deposit=click`, row menus visible whenever bills exist) · undecided 949-951 → needs (owner: scope-pick skipped because create-submit is always visible; manager has no scope-pick, ApiKeysCard.tsx:369 — one opener cannot serve both; P4.2 optional step).
+- **F5** — 967 needs ≥ 2 PosCategory (QrMenu.tsx:32) · 549 needs ≥ 1 PosCategory (ProductsClient.tsx:318-325). Sweep of every count condition (categories · units · stations · tables/zones · locations · vouchers · gift cards · deposits · slips · keys · agents · archived · closed shifts · revoked devices): every other row under a condition posqc-btn does not meet by default already has needs; conditions met by default noted in agent D's summary (owner ≥ 2 units, built-in channels, member 0899000001, latte, PQC-CF-WATER, staff ≥ 2).
+- **F6** — 445 needs + CD-P41-F22 (fixed phone ⇒ created:false from run 2) · 454 member-attach steps · 294/297/301 db cite device.ts:271 · 1195 target pos-pay-intent-slip-chip (SlipAttach.tsx:205; pos-slip-error only on refusal) · 759 + siblings 753 803 safety counter → **money** (accept/ingest on platform/prepaid creates a PosSale = sale per `$fields.safety`; walker treats counter ≡ money, so no run behaviour changes) · 1068 class swept (`opener step whose row carries safety` + the offline queue): 1055 1067 1068 drop `pos-reg-offline-confirm` · 388 389 drop `pos-discount-over-request` (money, row 386) · 1183 1184 drop `pos-device-lan-submit` (external, row 1182) — each gets needs naming the row it must follow. Not changed: 419 (pos-taxinv-submit on /register only stores the buyer in the cart; counter applies to the drawer path) · 312 313 1054 (external rows themselves, never revealed).
+
+**Could not decide (CD-P41-F*)**
+- **CD-P41-F28 830 one-space fill**: `pos-kds-86-search= ` keeps the prefill out (non-empty) without filtering (trim). Works with the walker as written; a needs/walker rule ("prefill never types into a search box of the same dialog") would be cleaner — P4.2 call.
+- **CD-P41-F29 opener vs persona**: 949-951 (and 1164 for manager) need an optional opener step or one row per persona — P4.2 walker feature; rows carry needs today.
+- **CD-P41-F30 522 pos-channel-open-* for the cashier**: the drawer opens, but for qr_order `getOrderLinkAction` refuses the cashier and the drawer shows the link error; the first matching card is not qr_order on default data — left as is.
+- 753/803 money (not only 759) and 1055/388/389/1183/1184 (beyond 1068) are builder extensions of the named NITs to the same class — confirm.
+
+**Gates at 66f31e7e (fix3 code head; this commit adds notes only)** — `qc-pos-p4.1 --no-db` 16/16 · fitness 53/53 · fitness-pos 8/8 · `qc-pos-p2.14 --no-db` 15/15 · lint `pos-oracle-check … qc-pos-p4.1 --base 6e32c1e2` VERDICT green (red 0 · warn 0) · `perm-table.py` VERDICT green · `f18-table.py` 0 fills outside the opener. Pre-submit once (same command as the BUILD prompt, `/root/pos-runs/presubmit-shark-pos-b-20261022T201558Z`):
+
+```
+PRESUBMIT-TABLE head=66f31e7e tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+wo-qc-pos-p4.1-run1          0    16/16         20  
+wo-qc-pos-p4.1-run2          0    16/16         18  
+wo-qc-pos-p4.1-nodb          0    16/16         19  
+qc-pos-p1.1                  0    180/180      172  
+qc-pos-p1.3                  0    128/128      140  
+qc-pos-p1.6                  0    48/48         42  
+qc-pos-p1.18                 0    81/81         43  
+qc-pos-p2.14                 0    60/60         77  
+qc-pos-p3.5                  0    55/55         45  
+qc-pos-p3.4                  1    50/51         81  P3.4-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.9                  1    47/48         45  P3.9-Z2
+                                  ↳ ❌ [P3.9-Z2] ลายนิ้วมือนอกร้านชั่วคราว (PosSale · AiProposal · AppNotification · PurchaseOrder · AuditLog นับ) เท่าเดิม — expected ลายนิ้วมือเท่าเดิม |
+qc-pos-p3.6                  0    52/52         63  
+qc-pos-p3-skel               0    41/41         32  
+qc-hf-fu                     0    29/29        118  
+qc-pos-p5.2                  0    34/34         80  
+qc-hf-tx                     0    22/22         31  
+qc-hf-fu2                    1    30/31         24  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+fitness-noenv                0    53/53         15  
+fitness-qc4                  0    53/53         17  
+fitness-pos                  0    8/8            9  
+gen-check                    0    -              2  
+PRESUBMIT head=66f31e7e green=18 red=3 expected-lane-pin=2 unexpected-red=qc-pos-p3.9 · wo: qc-pos-p4.1-run1=16/16 · qc-pos-p4.1-run2=16/16 · qc-pos-p4.1-nodb=16/16 · VERDICT red (3: qc-pos-p3.4 qc-pos-p3.9 qc-hf-fu2)
+logs: /root/pos-runs/presubmit-shark-pos-b-20261022T201558Z
+```
+Reds: **HF-FU2-ST1** and **P3.4-ST2** = the expected lane pins (P4.1 UI hunks without the HF-FU2 marker · old branch base without the W21 close). **P3.9-Z2** = the "rows outside the temp shop unchanged" fingerprint moved during the run (PosSale 518 → 523 · AppNotification 2783 → 2816 · AuditLog 3868 → 3929); the fingerprint counts only tenants whose slug is not `posqc-%`, fix3 changes no src/prisma file and writes no DB, and journalctl for 20:15–20:45 shows other lanes' suites on QC4 at the same time (qc-hr-h0.x · qc-approval* · qc-crm-c3.3 · qc-calendar · qc-bulk-ops …) — other lanes on QC4, as the prompt expects. P3.6-Z2 was green this run.
