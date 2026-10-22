@@ -1151,9 +1151,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-total",
+        "target": "pos-reg-line-editor",
         "state": "changes",
-        "note": "จำนวนเต็ม 1–9999 · มีผลเมื่อกดใช้"
+        "note": "จำนวนเต็ม 1–9999 · มีผลเมื่อกดใช้ · พิมพ์ = ค่าในตัวแก้เปลี่ยน (pos-reg-total เปลี่ยนเมื่อกดใช้ pos-reg-editor-apply เท่านั้น · LineEditor.tsx:60-67)"
       },
       "wo": "P1.3",
       "oracle": "",
@@ -1233,9 +1233,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-line-discounts",
-        "state": "appears",
-        "note": "ช่องส่วนลดรายการในตัวแก้ · เกินราคาบรรทัด/เกินเพดาน = pos-reg-editor-error"
+        "target": "pos-reg-line-editor",
+        "state": "changes",
+        "note": "ช่องส่วนลดรายการในตัวแก้ · เกินราคาบรรทัด/เกินเพดาน = pos-reg-editor-error · พิมพ์ = ค่าในตัวแก้เปลี่ยน (pos-reg-line-discounts เปลี่ยนเมื่อกดใช้ pos-reg-editor-apply เท่านั้น · LineEditor.tsx:60-67)"
       },
       "wo": "P1.3",
       "oracle": "",
@@ -22076,9 +22076,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-paydlg-giftcard-result",
         "state": "changes",
-        "note": "เลขบัตรของขวัญ (พิมพ์/สแกน · ≤ 40) · Enter = ค้นบัตร · ไม่ใช่ช่อง PIN"
+        "note": "เลขบัตรของขวัญ (พิมพ์/สแกน · ≤ 40) · Enter = ค้นบัตร · ไม่ใช่ช่อง PIN · พิมพ์ = ค่าในช่องเปลี่ยน (ผล pos-reg-paydlg-giftcard-result ขึ้นหลังกดค้น pos-reg-paydlg-giftcard-lookup · InterimPayDialog.tsx:1922)"
       },
       "wo": "P2.9U",
       "oracle": "",
@@ -27209,8 +27208,7 @@
       "expect": {
         "type": "mutation",
         "target": "syncStaffCommissionNowAction",
-        "note": "ส่งเข้างวดเงินเดือนตอนนี้ (แถว OPEN ของเดือนที่จบแล้ว → hr.requestAdjustment PENDING) · ผล = pos-settings-staff-commission-submit-result \"ส่งแล้ว n แถว · m รายการปรับเงิน · ยังไม่ผูก HR k คน\" (จำนวนเท่านั้น ไม่มียอดเงิน)",
-        "db": "PosStaffCommission.status · HrPayAdjustment"
+        "note": "ส่งเข้างวดเงินเดือนตอนนี้ (แถว OPEN ของเดือนที่จบแล้ว → hr.requestAdjustment PENDING) · ผล = pos-settings-staff-commission-submit-result \"ส่งแล้ว n แถว · m รายการปรับเงิน · ยังไม่ผูก HR k คน\" (จำนวนเท่านั้น ไม่มียอดเงิน) · เขียน PosStaffCommission.status · HrPayAdjustment (PosStaffCommission ไม่มี updatedAt · HrPayAdjustment เกิดเฉพาะแถว OPEN ของเดือนที่จบแล้วในร้านที่มี HR · staff-commission.ts:200-205 ⇒ ยืนยันด้วย oracle P3.5-PY2)"
       },
       "wo": "P3.5U",
       "oracle": "P3.5-PY2",
