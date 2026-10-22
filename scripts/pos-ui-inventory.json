@@ -13436,7 +13436,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/register",
-        "note": "ตัวสลับภาษาแอป TH (แถบบนหน้าขาย md+ และการ์ดภาษาของแอปในแท็บทั่วไป) → setUiLocaleAction {locale:\"th\"} (คุกกี้ LOCALE + lang) → router.refresh()"
+        "note": "ตัวสลับภาษาแอป TH (แถบบนหน้าขาย md+ และการ์ดภาษาของแอปในแท็บทั่วไป) → setUiLocaleAction {locale:\"th\"} (คุกกี้ LOCALE + lang) → router.refresh() · เซลล์ภาษา TH: กดภาษาเดิม = ไม่เปลี่ยน (LocaleChooser.tsx:21) — opener สลับกลับไม่ได้เพราะ 518 ใช้ th=click แล้ว (R3 ห้ามวน · CD-P41-F27)"
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -13445,9 +13445,6 @@
       "viewport": [
         "desktop",
         "tablet"
-      ],
-      "opener": [
-        "pos-locale-switch-en=click"
       ]
     },
     {
