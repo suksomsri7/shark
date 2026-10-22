@@ -1,0 +1,12 @@
+# post-merge sanity session/hr @b640e36c · 2026-10-22T06:35:19Z · load 3.75 3.29 3.22
+prisma generate exit=0 [06:35Z]
+qc-hr-h0.5 exit=0 ===== qc-hr-h0.5 ===== ผ่าน 71/71 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.5","total":71,"passed":71,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE tenants=0 none (สร้าง 3 ร้าน · ผู้ใช้ 2) [06:36Z]
+qc-hr-h0.3 exit=1 ===== qc-hr-h0.3 ===== ผ่าน 34/36 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.3","total":36,"passed":34,"failed":["H0.3-S5.1","H0.3-S5.2"],"findings":[{"id":"H0.3-S5.1","sev":"CRITICAL"},{"id":"H0.3-S5.2","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE none (tenant=สร้างแล้ว users=5) [06:37Z]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [06:40Z]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [06:40Z]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [06:40Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":5,"passed":5,"findings":[]}   [06:40Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":5,"passed":5,"findings":[]}   [06:40Z]
+typecheck start 06:45Z availMB=11073 busy=0
+typecheck exit=0 errors=0 [06:49Z]
+ALLDONE 2026-10-22T06:49:18Z
