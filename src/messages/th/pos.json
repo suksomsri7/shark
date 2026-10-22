@@ -5241,7 +5241,7 @@
       "blockTitle": "สลิปโอน",
       "none": "ยังไม่มีสลิป",
       "pickTarget": "แนบกับการชำระ",
-      "targetLine": "{method} {amount}",
+      "targetLine": "{method} ยอด {amount}",
       "noTarget": "บิลนี้ไม่มีการชำระแบบโอน/พร้อมเพย์",
       "sheetTitle": "สลิปโอน (หลักฐาน)",
       "evidenceOnly": "หลักฐานเท่านั้น — ไม่เปลี่ยนยอดเงินของบิล",
