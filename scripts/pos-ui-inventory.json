@@ -206,9 +206,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "navigate",
-        "target": "/app/sys/[id]/pos/register",
-        "note": "?unit=<สาขาอื่นที่ผู้ใช้เข้าได้> ผ่านเมนู pos-reg-unit-option-* · ผู้ที่เข้าได้สาขาเดียวเห็นชิปเฉย ๆ (span ไม่กดได้)"
+        "type": "ui",
+        "target": "pos-reg-unit-option-*",
+        "state": "appears",
+        "note": "ปุ่มสาขา (units > 1) = เปิดเมนู role=menu รายชื่อสาขาที่เข้าได้ (ไม่ navigate เอง — ลิงก์อยู่ที่ pos-reg-unit-option-*) · 1 สาขา = ป้ายชื่อ <span> testid เดียวกัน กดไม่ได้"
       },
       "wo": "P1.3",
       "oracle": "qc-pos-p1.3",
@@ -229,7 +230,7 @@
       ],
       "expect": {
         "type": "navigate",
-        "target": "/app/sys/[id]/pos/register",
+        "target": "/app/sys/[id]/pos/register?unit=",
         "note": "รายการในเมนูสาขา → ?unit=<id> · เฉพาะสาขาที่ posRegisterView อนุญาต"
       },
       "wo": "P1.3",
@@ -408,7 +409,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
+        "target": "pos-reg-root",
         "state": "changes",
         "note": "เพิ่มลงตะกร้า (กดซ้ำ = +1) · ปิดขาย/ตัวเลือกบังคับ = เตือนที่ pos-reg-toast · ไม่มีราคา: มีสิทธิ์ = pos-reg-open-price-dialog ไม่มี = เตือน · ห้ามสร้าง id pos-reg-product-grid"
       },
@@ -1549,8 +1550,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes"
+        "target": "pos-reg-custom-dialog",
+        "state": "disappears"
       },
       "wo": "P1.3",
       "oracle": "",
@@ -1621,8 +1622,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes",
+        "target": "pos-reg-custom-dialog",
+        "state": "disappears",
         "anyOf": [
           {
             "type": "inline-error",
@@ -1675,8 +1676,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes",
+        "target": "pos-reg-open-price-dialog",
+        "state": "disappears",
         "note": "สินค้ายังไม่ตั้งราคา + มี pos.sale.priceOverride"
       },
       "wo": "P1.3",
@@ -1720,8 +1721,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes",
+        "target": "pos-reg-open-price-dialog",
+        "state": "disappears",
         "anyOf": [
           {
             "type": "inline-error",
@@ -1769,8 +1770,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-cart-empty",
-        "state": "appears",
+        "target": "pos-reg-clear-dialog",
+        "state": "disappears",
         "note": "Esc บนตะกร้าที่มีของ → กล่องนี้ · ยืนยัน = ล้าง + คีย์บิลใหม่"
       },
       "wo": "P1.3",
@@ -2133,8 +2134,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-cart-empty",
-        "state": "appears",
+        "target": "pos-reg-paydlg",
+        "state": "disappears",
         "note": "แสดงเมื่อ IDEMPOTENCY_CONFLICT (มีบิลของคีย์นี้แล้ว) · เริ่มบิลใหม่ = ล้างตะกร้า + คีย์ใหม่ โดยผู้ใช้กดเอง"
       },
       "wo": "P1.3",
@@ -2147,7 +2148,7 @@
         "pos-reg-cart-view",
         "pos-reg-pay"
       ],
-      "needs": "IDEMPOTENCY_CONFLICT (คีย์บิลนี้มีบิลแล้ว)"
+      "needs": "ผลส่งบิลชนคีย์ (IDEMPOTENCY_CONFLICT · กล่อง pos-reg-paydlg-conflict)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2574,8 +2575,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes",
+        "target": "pos-reg-options-dialog",
+        "state": "disappears",
         "note": "Enter = ยืนยัน (เพิ่มลงตะกร้า หรือไปกล่องน้ำหนักเมื่อเป็นสินค้าชั่ง)"
       },
       "wo": "P1.2U",
@@ -2707,8 +2708,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes",
+        "target": "pos-reg-options-dialog",
+        "state": "disappears",
         "anyOf": [
           {
             "type": "inline-error",
@@ -2757,8 +2758,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes",
+        "target": "pos-reg-weigh-dialog",
+        "state": "disappears",
         "note": "น้ำหนักที่กรอก → cartAddWeighed(weightGrams) — เฉพาะผู้มี pos.sale.priceOverride"
       },
       "wo": "P1.2U",
@@ -2803,8 +2804,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "state": "changes"
+        "target": "pos-reg-weigh-dialog",
+        "state": "disappears"
       },
       "wo": "P1.2U",
       "oracle": "qc-pos-p1.2",
@@ -2824,8 +2825,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-cart-empty",
-        "state": "appears",
+        "target": "pos-reg-done",
+        "state": "disappears",
         "note": "ขายบิลถัดไป = ล้างตะกร้า + คีย์ใหม่ + โฟกัสช่องค้นหา"
       },
       "wo": "P1.3",
@@ -2977,8 +2978,10 @@
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
-        "target": "pos-reg-lines",
-        "note": "เรียกคืน (ผู้ชนะคนเดียว · ราคาปัจจุบัน) · ตะกร้ามีของ = pos-reg-held-confirm ก่อน · ถูกเรียกไปแล้ว = toast errors.alreadyRecalled"
+        "target": "action:recallHeldCartAction",
+        "note": "เรียกคืน (ผู้ชนะคนเดียว · ราคาปัจจุบัน) · ตะกร้ามีของ = pos-reg-held-confirm ก่อน · ถูกเรียกไปแล้ว = toast errors.alreadyRecalled",
+        "resultTarget": "pos-reg-toast",
+        "db": "PosHeldCart RECALLED (recalledAt · recalledByUserId · held-cart.ts:580)"
       },
       "wo": "P1.5",
       "oracle": "P1.5-H3",
@@ -3028,9 +3031,10 @@
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
-        "target": "pos-reg-lines",
+        "target": "action:recallHeldCartAction",
         "note": "พักตะกร้าปัจจุบันก่อน แล้วเรียกคืนบิลที่เลือก (มติ 4)",
-        "db": "PosHeldCart HELD (ตะกร้าปัจจุบัน — บิลที่เลือกเปลี่ยนเป็น RECALLED)"
+        "db": "PosHeldCart HELD (ตะกร้าปัจจุบัน — บิลที่เลือกเปลี่ยนเป็น RECALLED)",
+        "resultTarget": "pos-reg-toast"
       },
       "wo": "P1.5",
       "oracle": "",
@@ -4247,7 +4251,8 @@
       "wo": "P1.14U",
       "oracle": "",
       "system": "POS",
-      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา",
+      "query": "tab=history"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4269,7 +4274,8 @@
       "wo": "P1.14U",
       "oracle": "",
       "system": "POS",
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=history"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4289,7 +4295,8 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "query": "tab=history"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4310,7 +4317,8 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "query": "tab=history"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5005,7 +5013,8 @@
       "opener": [
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5031,7 +5040,8 @@
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER",
         "pos-stock-receive-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5057,7 +5067,8 @@
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER",
         "pos-stock-receive-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5083,7 +5094,8 @@
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER",
         "pos-stock-receive-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5109,7 +5121,8 @@
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER",
         "pos-stock-receive-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5139,7 +5152,8 @@
       "viewport": [
         "desktop",
         "tablet"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5168,7 +5182,8 @@
       ],
       "viewport": [
         "mobile"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5194,7 +5209,8 @@
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER",
         "pos-stock-receive-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5220,7 +5236,8 @@
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER",
         "pos-stock-receive-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5246,7 +5263,8 @@
         "pos-stock-tab-receive",
         "pos-stock-receive-search=PQC-CF-WATER",
         "pos-stock-receive-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5269,7 +5287,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-receive"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5294,7 +5313,8 @@
       "opener": [
         "pos-stock-tab-transfer"
       ],
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=transfer"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5319,7 +5339,8 @@
       "opener": [
         "pos-stock-tab-transfer"
       ],
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=transfer"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5346,7 +5367,8 @@
         "pos-stock-transfer-search=PQC-CF-WATER",
         "pos-stock-transfer-search-hit-*=click"
       ],
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=transfer"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5373,7 +5395,8 @@
         "pos-stock-transfer-search=PQC-CF-WATER",
         "pos-stock-transfer-search-hit-*=click"
       ],
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=transfer"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5400,7 +5423,8 @@
         "pos-stock-transfer-search=PQC-CF-WATER",
         "pos-stock-transfer-search-hit-*=click"
       ],
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=transfer"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5426,7 +5450,8 @@
         "pos-stock-tab-adjust",
         "pos-stock-adjust-search=PQC-CF-WATER",
         "pos-stock-adjust-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5450,7 +5475,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-adjust"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5474,7 +5500,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-adjust"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5500,7 +5527,8 @@
         "pos-stock-tab-adjust",
         "pos-stock-adjust-search=PQC-CF-WATER",
         "pos-stock-adjust-search-hit-*=click"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5524,7 +5552,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-adjust"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5548,7 +5577,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-adjust"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5573,7 +5603,8 @@
       "opener": [
         "pos-stock-tab-adjust"
       ],
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5600,7 +5631,8 @@
         "pos-stock-adjust-search=PQC-CF-WATER",
         "pos-stock-adjust-search-hit-*=click",
         "pos-stock-adjust-plus=click"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5623,7 +5655,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-history"
-      ]
+      ],
+      "query": "tab=history"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5648,7 +5681,8 @@
       "opener": [
         "pos-stock-tab-history"
       ],
-      "needs": "รอบนับ OPEN ของสาขา"
+      "needs": "รอบนับ OPEN ของสาขา",
+      "query": "tab=history"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5673,7 +5707,8 @@
       "opener": [
         "pos-stock-tab-history"
       ],
-      "needs": "โหลดรายการรอบไม่สำเร็จ (posStockCountListAction ล้ม)"
+      "needs": "โหลดรายการรอบไม่สำเร็จ (posStockCountListAction ล้ม)",
+      "query": "tab=history"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -5716,7 +5751,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-receive"
-      ]
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5740,7 +5776,8 @@
       "opener": [
         "pos-stock-tab-transfer"
       ],
-      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)",
+      "query": "tab=transfer"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -5763,7 +5800,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-adjust"
-      ]
+      ],
+      "query": "tab=adjust"
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -8058,7 +8096,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "navigate",
-        "target": "/app/sys/[id]/pos/settings",
+        "target": "/app/sys/[id]/pos/settings?tab=devices",
         "note": "แถบล่าง (≥1280) เมื่อเครื่องนี้ยังไม่ลงทะเบียน (heartbeat device null) → ?tab=devices&unit= · ลงทะเบียนแล้ว = pos-reg-status-device (ข้อความ)"
       },
       "wo": "P1.10U",
@@ -9302,7 +9340,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "navigate",
-        "target": "/app/sys/[id]/pos/settings",
+        "target": "/app/sys/[id]/pos/settings?tab=devices",
         "note": "เครื่องยังไม่ลงทะเบียน → ไปแท็บเครื่องและเครื่องพิมพ์ (17B) · ไม่มีแป้น PIN"
       },
       "wo": "P1.15U",
@@ -13062,7 +13100,15 @@
       "expect": {
         "type": "navigate",
         "target": "/app/settings/connections",
-        "note": "การ์ด OFF (ผู้มีสิทธิ์ของระบบนั้น) → manage.href · NO_SYSTEM → /app/settings/systems · \"เปิดใช้\""
+        "note": "การ์ด OFF (ผู้มีสิทธิ์ของระบบนั้น) → manage.href · NO_SYSTEM → /app/settings/systems · \"เปิดใช้\"",
+        "anyOf": [
+          "/app/settings/systems",
+          "/app/sys/[systemId]/account/settings/connections",
+          "/app/sys/[systemId]/crm/settings/integrations",
+          "/app/sys/[systemId]/chat/channels",
+          "/app/sys/[systemId]/kanban/settings",
+          "/app/sys/[systemId]/hr"
+        ]
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -13086,7 +13132,14 @@
       "expect": {
         "type": "navigate",
         "target": "/app/settings/connections",
-        "note": "การ์ด LINKED + manage.canManage → manage.href (\"จัดการ →\")"
+        "note": "การ์ด LINKED + manage.canManage → manage.href (\"จัดการ →\")",
+        "anyOf": [
+          "/app/sys/[systemId]/account/settings/connections",
+          "/app/sys/[systemId]/crm/settings/integrations",
+          "/app/sys/[systemId]/chat/channels",
+          "/app/sys/[systemId]/kanban/settings",
+          "/app/sys/[systemId]/hr"
+        ]
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -15349,7 +15402,7 @@
       "expect": {
         "type": "mutation",
         "note": "สวิตช์เปิดใช้ = savePriceRuleAction ทั้งชุดเดิม + active กลับค่า · ไม่มีสิทธิ์ = ปิด",
-        "target": "savePriceRuleAction",
+        "target": "pos-price-rules",
         "db": "PosPriceRule active สลับ (savePriceRule updateMany) · AuditLog pos.priceRule.updated"
       },
       "wo": "P2.2U",
@@ -27586,9 +27639,10 @@
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-shift-offline-discard-confirm-*",
-        "note": "เหตุผลที่ทิ้ง ≥ 5 ตัวอักษร (offlineDiscardReasonOk) · สั้น = \"ใส่เหตุผลอย่างน้อย 5 ตัวอักษร\""
+        "type": "ui",
+        "target": "pos-shift-offline-reason-*",
+        "state": "changes",
+        "note": "เหตุผลที่ทิ้ง ≥ 5 ตัวอักษร (offlineDiscardReasonOk) · สั้น = \"ใส่เหตุผลอย่างน้อย 5 ตัวอักษร\" · ตัวกรอกเหตุผล (ตรวจความยาวตอนกดยืนยัน OfflineQueueSection.tsx:75)"
       },
       "wo": "P3.4U",
       "oracle": "qc-pos-p3.4",
@@ -28902,7 +28956,10 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[kanbanId]/kanban/settings",
-        "note": "CD-P38U-1: แถวอ่านอย่างเดียว voided (K3.3 cardOnVoidedSale) · approval (K3.3 cardFromApproval) → หน้าตั้งค่าบอร์ดงาน · issue (P1.11 issueBoardId) → ?tab=receipt · เปิด/ปิด + ชื่อบอร์ด (บอร์ดที่ผู้ดูเปิดไม่ได้ = board.hiddenBoard)"
+        "note": "CD-P38U-1: แถวอ่านอย่างเดียว voided (K3.3 cardOnVoidedSale) · approval (K3.3 cardFromApproval) → หน้าตั้งค่าบอร์ดงาน · issue (P1.11 issueBoardId) → ?tab=receipt · เปิด/ปิด + ชื่อบอร์ด (บอร์ดที่ผู้ดูเปิดไม่ได้ = board.hiddenBoard)",
+        "anyOf": [
+          "/app/sys/[id]/pos/settings"
+        ]
       },
       "wo": "P3.8U",
       "oracle": "",
@@ -28955,7 +29012,7 @@
       ],
       "expect": {
         "type": "navigate",
-        "target": "/app/sys/[kanbanId]/kanban/[boardId]",
+        "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
         "note": "CD-P38U-7: แถวที่มีการ์ดแล้ว (posBoardCardsAction ครั้งเดียวตอนโหลด / ผลของปุ่ม) = ชิป \"การ์ด #n\" ลิงก์ไปการ์ด (หน้าบอร์ดงานตรวจสิทธิ์เอง) · ไม่มีชื่อคน"
       },
       "wo": "P3.8U",
@@ -29007,7 +29064,7 @@
       ],
       "expect": {
         "type": "navigate",
-        "target": "/app/sys/[kanbanId]/kanban/[boardId]",
+        "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
         "note": "CD-P38U-6: กะที่ปิดแล้ว — ชิป \"การ์ด #n\" / \"การ์ด #n เสร็จแล้ว\" ของการ์ดตรวจเงิน (posCardsForKeys ฝั่งหน้า · pos.shift.manage ∧ board.enabled · 50 กะล่าสุด) · ไม่มีชื่อคน"
       },
       "wo": "P3.8U",
@@ -29518,8 +29575,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "registerCompanySearchAction",
-        "note": "CD-P36U-3: ค้นชื่อ/เลขผู้เสียภาษี ≥ 2 ตัวอักษร · หน่วง 300ms · ครั้งละคำขอ ผลล่าสุดชนะ · ว่าง = บริษัทล่าสุด (q \"\")"
+        "target": "pos-reg-company-sheet",
+        "note": "CD-P36U-3: ค้นชื่อ/เลขผู้เสียภาษี ≥ 2 ตัวอักษร · หน่วง 300ms · ครั้งละคำขอ ผลล่าสุดชนะ · ว่าง = บริษัทล่าสุด (q \"\")",
+        "state": "changes"
       },
       "wo": "P3.6U",
       "oracle": "",
@@ -29573,8 +29631,9 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "registerDealOptionsAction",
-        "note": "CD-P36U-4 (พอร์ต pos-deal-select): ดีลเปิดของสมาชิก/บริษัทในบิล · ไม่มีคีย์ crm.deal.update หรือไม่มีดีล = ซ่อน · ตัวเลือก ชื่อ · ขั้น (ไม่มีมูลค่า R14) · crmDealId ไปกับ submit · DEAL_INVALID = ล้าง + pos-reg-deal-error"
+        "target": "pos-reg-deal-select",
+        "note": "CD-P36U-4 (พอร์ต pos-deal-select): ดีลเปิดของสมาชิก/บริษัทในบิล · ไม่มีคีย์ crm.deal.update หรือไม่มีดีล = ซ่อน · ตัวเลือก ชื่อ · ขั้น (ไม่มีมูลค่า R14) · crmDealId ไปกับ submit · DEAL_INVALID = ล้าง + pos-reg-deal-error",
+        "state": "changes"
       },
       "wo": "P3.6U",
       "oracle": "",
@@ -31244,7 +31303,7 @@
       ],
       "expect": {
         "type": "mutation",
-        "target": "setItemSalePriceAction",
+        "target": "pos-products-legacy",
         "db": "AccountProduct salePrice (setItemSalePrice · ราคาขายทั้งร้าน)",
         "note": "กล่องพับราคาเดิม · ฟอร์มต่อสินค้า (server action) → redirect ?ok=1 / ?err=… ที่หน้าเดิม · ต้องตั้งราคาได้ทุกสาขา (posCanSetTenantPrice) · POS P4.1 R5"
       },
@@ -31342,7 +31401,7 @@
       ],
       "expect": {
         "type": "mutation",
-        "target": "setItemSalePriceAction",
+        "target": "pos-products-legacy",
         "db": "AccountProduct salePrice (setItemSalePrice · ราคาขายทั้งร้าน)",
         "note": "SubmitButton \"บันทึก\" ของฟอร์มราคาเดิม (ปิดตัวเองระหว่างส่ง · ส่งต่อ data-testid ใน SubmitButton) · POS P4.1 R5"
       },
