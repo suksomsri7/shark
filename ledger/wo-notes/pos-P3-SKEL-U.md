@@ -144,7 +144,15 @@ PRESUBMIT head=a7c7f9e4 green=33 red=5 expected-lane-pin=3 unexpected-red=qc-acc
 - §W19: slip retention is **read-only** in the UI (default 1,825 d · min 90 · file purged, row kept); the writer + legal hold + PDPA-erase precedence are still the owner/accountant's decision · a REJECTED slip's image sha still blocks re-attaching the same picture (S `SLIP_DUPLICATE`; UI shows the existing text).
 - §W20: provider shortlists only (SlipOK / EasySlip · INET / Leceipt) — nothing pre-selected or chosen for the owner · Beam webhook signature format to be verified on the first sandbox call (S OP line, `lib/payment/beam.ts`).
 - §W5: LAN print result is "ส่งเข้าคิวแล้ว" (queued in the relay) — not proven on a real printer/drawer; no job-status reader; agent packaging/install is the owner/admin's.
+- (fix1 F2) QC5 harness rows: the `-complete`/`-draft` fixture seals the LINEMAN/GRAB `PosIntegrationCredential` rows with the harness-only key and keeps them — **when QC5 gets a real `POS_CREDENTIALS_KEY`, delete the harness-sealed rows** (they open as null → ••••; re-sending every secret also re-seals them).
+- (fix1 · S follow-up from R1) `listPrintAgentsAction` / `listPrintAgents` returns printer `host:port` to `pos.sale.create` holders (lan.ts needs the agent + target printer to enqueue) — trimming the reader for sellers (agent id + target capability only) = S follow-up card.
 - Plan rows at merge: P3.1 · P3.2 · P3.3 · P3.10 · P3.11 = "โครง ✅ · สวิตช์รอ W4/W5" (+5).
 
 ## Owner-ack (derived frames)
 creds card + chips · webhook-pending line · slip card + retention read-only · slip attach form + slip sheet · e-Tax sheet · LAN agents card + LAN radio (2×2 mode grid) + kitchen alias (two radios → one stored `kitchenSlip`) · reconcile tab · "ส่งเข้าคิวแล้ว" label.
+
+## Fix round 1 (controller B · R1 MERGEABLE-AFTER-FIXES · on top of 92e1943a)
+- **F1 Medium** `src/app/app/sys/[id]/pos/settings/IntegrationCredsCard.tsx:216-218` — secret inputs `autoComplete="new-password"` + `data-1p-ignore` + `data-lpignore="true"` (text inputs keep `off`) · spec line in `pos-spec-P3-SKEL-ui.md` (creds card row) — 5f735fa0
+- **F3 Low** `scripts/visual-pos.mts:8506-8520` — token masked by an injected CSS overlay (`color: transparent` + `::after` mask text), no `textContent` write into the React-controlled `<code>`; re-checked after `into()` right before the shot (still visible ⇒ StepError, no shot) — 7760e312
+- **F2 Low** + S follow-up (agent reader returns host:port to sellers) — §OP lines above.
+- `--dry` (iso · CI=1) owner **49** · cashier **15** — rc 0 · no typecheck (controller typechecks at merge).
