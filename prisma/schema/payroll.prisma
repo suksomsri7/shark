@@ -52,6 +52,13 @@ model HrPayAdjustment {
   @@index([tenantId])
 }
 
+// HR H1.1 ▸ รูปแบบค่าจ้าง (รายเดือน / รายวัน / รายชั่วโมง) ◂
+enum HrPayType {
+  MONTHLY
+  DAILY
+  HOURLY
+}
+
 model HrSalaryProfile {
   id                    String   @id @default(cuid())
   tenantId              String
@@ -59,6 +66,11 @@ model HrSalaryProfile {
   employeeId            String
   baseSalarySatang      Int // เงินเดือน (MONTHLY v1)
   otHourlyRateSatang    Int? // อัตรา OT ต่อชั่วโมง (ไม่ตั้ง = คิดจากเงินเดือน ÷30 ÷8 ×1.5)
+  // HR H1.1 ▸ รูปแบบค่าจ้าง — MONTHLY = เดิมทุกอย่าง · DAILY ต้องมี dailyRateSatang > 0 · HOURLY ต้องมี hourlyRateSatang > 0
+  //   (บังคับในโค้ด setSalaryProfile) · รอบจ่ายยังคิดเฉพาะ MONTHLY — มี DAILY/HOURLY ที่ยังทำงาน = สร้างรอบไม่ได้จนถึง H3.4 ◂
+  payType               HrPayType @default(MONTHLY)
+  dailyRateSatang       Int?
+  hourlyRateSatang      Int?
   ssoEligible           Boolean  @default(true)
   taxId                 String? // เลขผู้เสียภาษี 13 หลัก
   personalDeductionJson Json     @default("{}") // {spouse:bool, children:int, ssoPaidYearSatang?...}
