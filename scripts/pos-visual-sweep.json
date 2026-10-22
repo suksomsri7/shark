@@ -584,6 +584,44 @@
       "states": true,
       "after": "P3.9U",
       "why": "same states LOCALE=en · owner 9 + cashier 1 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.7u-th",
+      "wo": "p3.7u",
+      "pages": [
+        "settings",
+        "orders",
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.7U",
+      "why": "P3.7U 10 states (settings-chat-card off/on/readonly · settings-chat-sheet + invalid · orders-detail-chat paylink/nolink/sent · orders-chat-card-requested · paydone-line-auto 1440) · th owner 25 + cashier 6 · QC5 build 9mZ5Ha91-Gd8L3TrPS2-Z @86ffc207 · vis-p37u-qc5-20261021T235428Z 42/42 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.7u-en",
+      "wo": "p3.7u-en",
+      "pages": [
+        "settings",
+        "orders",
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.7U",
+      "why": "same states LOCALE=en · owner 9 + cashier 2 · 21 Oct 2026"
     }
   ]
 }
