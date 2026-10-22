@@ -330,3 +330,6 @@
   - **U.3**: ขายบิล uiVersion 1 ได้ `CHANNEL_INVALID` — fixture ของข้อสอบ CRM ใช้ช่องทางที่ POS P2 เลิก/ปิด → แก้ fixture ฝั่งข้อสอบ
 - ค่าเริ่มต้นระหว่างรอ: ไม่แก้สินค้า · `qc-crm-c2.7` ยังไม่เข้า pos-gates จนกว่าจะ triage ใน P3.12 (ชุดอื่นใน Tier 1 เข้าได้เลย)
 
+## แจ้งเจ้าของโมดูล Chat — ORACLE-EDIT รูปแบบสรุปของ `qc-chat-security` (ผู้คุม POS B · 22 ต.ค. 06:1xZ)
+- POS นำ `qc-chat-security` + `-scope` เข้า `pos-gates.json` (P5.2 builder decision 7) · ตัวรันด่าน POS (N6) ต้องการ `JSON_SUMMARY` ที่มี `total` เป็นจำนวนเต็ม — ชุดเดิมพิมพ์แค่ `{passed, findings}` → เพิ่ม `total: passed + findings.length` (CD-P312-O2) ให้ตรงรูปแบบของ `qc-chat-security-scope`/`qc-chat-core-v2` · ความหมายข้อสอบไม่เปลี่ยน · ถ้าเจ้าของ Chat ไม่ต้องการ ให้บอก แล้ว POS จะย้ายชุดนี้ไป NO_JSON_SUITES ของตัวรันแทน
+
