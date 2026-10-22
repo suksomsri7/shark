@@ -700,6 +700,46 @@
       "states": true,
       "after": "P3.6U",
       "why": "same states LOCALE=en · owner 24 + cashier 10 · 22 Oct 2026"
+    },
+    {
+      "id": "p3-skel-u",
+      "wo": "p3-skel-u",
+      "pages": [
+        "settings",
+        "register",
+        "sales",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3-SKEL U",
+      "why": "P3-SKEL U 18 states (10 channel creds draft/complete/keymissing + platform chips · slip card + verify sheet · e-Tax sheet · 17B LAN none/agents/token · 02 intent slip · 02b transfer slip 1440 · 15A e-Tax line · 12 bills slips/sheet/reject-invalid · 08 reconcile owner/denied) · owner 17 + cashier 5 · placeholder until the controller's QC5 round replaces it"
+    },
+    {
+      "id": "p3-skel-u-en",
+      "wo": "p3-skel-u-en",
+      "pages": [
+        "settings",
+        "register",
+        "sales",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3-SKEL U",
+      "why": "same states LOCALE=en (1440 + 390 of register/sales) · placeholder until the controller's QC5 round replaces it"
     }
   ]
 }
