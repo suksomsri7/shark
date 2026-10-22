@@ -25,6 +25,8 @@ export type RateVerdict = {
    * ผู้เรียกที่อยากตอบหัว `X-RateLimit-Remaining` คำนวณเอง = limit − count
    */
   count?: number;
+  // HR H0.5 r4 ▸ R4.1 เริ่มหน้าต่างของแถวที่นับครั้งนี้ — ใช้คืนช่อง (refundRateLimitDb) ให้ตรงหน้าต่างเดิมเท่านั้น · undefined เมื่อ fail-open ◂
+  windowStart?: Date;
 };
 
 /**
@@ -69,11 +71,11 @@ export async function checkRateLimitDb(
 
     const row = rows[0];
     if (!row) return { ok: true }; // ไม่ควรเกิด (RETURNING เสมอ) — ปล่อยผ่านดีกว่าปิดแชท
-    if (row.count <= limit) return { ok: true, count: row.count };
+    if (row.count <= limit) return { ok: true, count: row.count, windowStart: row.windowStart }; // HR H0.5 r4 ▸ R4.1 + windowStart ◂
 
     // เต็มเพดาน — บอกเวลาที่หน้าต่างจะหมดจริงจากแถวใน DB
     const resetAt = row.windowStart.getTime() + windowMs;
-    return { ok: false, count: row.count, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
+    return { ok: false, count: row.count, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)), windowStart: row.windowStart }; // HR H0.5 r4 ▸ R4.1 ◂
   } catch (e) {
     // DB ล่ม/ช้า → ปล่อยผ่าน แต่ **ไม่เงียบต่อเรา** (ปิดเงียบเคยทำให้ไล่หาสาเหตุนาน — storage/service.ts:129)
     void logOps("WARN", "rate-limit-db", "ตัวจำกัดอัตราบน DB ทำงานไม่ได้ — ปล่อยผ่านชั่วคราว", {
@@ -83,36 +85,29 @@ export async function checkRateLimitDb(
   }
 }
 
-// HR H0.5 r3 ▸ R3.1 peek = อ่านถังโดย "ไม่นับ" (verifyPin นับเฉพาะครั้งที่ผิด ⇒ ต้องดูก่อนว่าเต็มหรือยัง)
+// HR H0.5 r4 ▸ R4.1 คืนช่อง (นับก่อน แล้วคืนเมื่อไม่ควรนับ) — แทน peek ของ r3 (peek→นับ เป็นคนละคำสั่ง ⇒ ยิงพร้อมกันทะลุเพดาน · hunt G1)
 /**
- * ดูว่าถัง `key` เต็มเพดานในหน้าต่างปัจจุบันหรือยัง — **อ่านอย่างเดียว** ไม่สร้างแถว ไม่ +1
- * คำสั่งเดียว (SELECT) · หน้าต่างแบบเดียวกับ checkRateLimitDb: windowStart ≤ now − windowMs = หมดอายุแล้ว (นับเป็น 0)
- * เต็ม = count ≥ limit (ครั้งถัดไปที่ checkRateLimitDb นับจะเกินเพดาน) ⇒ `{ ok:false, retryAfterSec }`
- * ยังไม่มีแถว / หมดอายุ ⇒ `{ ok:true, count: 0 }` · DB ล่ม ⇒ ปล่อยผ่าน (fail-open + logOps WARN เหมือน checkRateLimitDb)
+ * ลบ 1 ออกจากถัง `key` ที่ checkRateLimitDb เพิ่งนับให้ — **คำสั่งเดียว** (UPDATE … WHERE) atomic ในตัว
+ * ตรงหน้าต่างเดิมเท่านั้น (`windowStart` = ค่าที่ checkRateLimitDb คืน) ⇒ หน้าต่างรีเซ็ตไปแล้ว = ไม่แตะ (ไม่ลบช่องของหน้าต่างใหม่)
+ * `above` = คืนเฉพาะเมื่อ count > above:
+ *   - ครั้งที่ถูกปฏิเสธ (count เกินเพดาน) ส่ง above = limit ⇒ ไม่มีทางดึงถังต่ำกว่าเพดานเพราะคืนซ้อน
+ *   - ครั้งที่ผ่านแล้วไม่ควรนับ (ถูก / ระบบไม่พร้อม) ส่ง above = 0 (ค่าปริยาย) ⇒ ไม่ติดลบ
+ * DB ล่ม ⇒ เงียบ (ผลคือถังนับเกินจริง 1 = เข้มขึ้น ไม่ใช่รั่ว) + logOps WARN แบบเดียวกับ checkRateLimitDb
  */
-export async function peekRateLimitDb(
-  key: string,
-  opts: { limit: number; windowMs: number },
-  now = Date.now(),
-): Promise<RateVerdict> {
-  const { limit, windowMs } = opts;
+export async function refundRateLimitDb(key: string, windowStart: Date | undefined, opts: { above?: number } = {}): Promise<void> {
+  if (!windowStart) return; // ตอนนับ fail-open (ไม่มีแถว) ⇒ ไม่มีอะไรให้คืน
+  const above = opts.above ?? 0;
   try {
-    const rows = await prisma.$queryRaw<{ count: number; windowStart: Date }[]>`
-      SELECT "count", "windowStart" FROM "ChatRateBucket"
-      WHERE "key" = ${key} AND "windowStart" > ${new Date(now - windowMs)}`;
-    const row = rows[0];
-    if (!row) return { ok: true, count: 0 };
-    if (row.count < limit) return { ok: true, count: row.count };
-    const resetAt = row.windowStart.getTime() + windowMs;
-    return { ok: false, count: row.count, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
+    await prisma.$executeRaw`
+      UPDATE "ChatRateBucket" SET "count" = "count" - 1, "updatedAt" = NOW()
+      WHERE "key" = ${key} AND "windowStart" = ${windowStart} AND "count" > ${above}`;
   } catch (e) {
-    void logOps("WARN", "rate-limit-db", "อ่านถังตัวจำกัดอัตราบน DB ไม่ได้ — ปล่อยผ่านชั่วคราว", {
+    void logOps("WARN", "rate-limit-db", "คืนช่องตัวจำกัดอัตราบน DB ไม่ได้ — ถังนับเกินชั่วคราว", {
       detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
     }).catch(() => {});
-    return { ok: true };
   }
 }
-// ◂ HR H0.5 r3
+// ◂ HR H0.5 r4
 
 /**
  * กวาดแถวที่หมดอายุแล้วทิ้ง — ตารางนี้โตตามจำนวน key ที่เคยเห็น (ip/guest ไม่ซ้ำกันเลย)
