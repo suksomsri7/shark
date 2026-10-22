@@ -3213,9 +3213,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-shift-current",
         "state": "changes",
-        "note": "ข้อความ 'ข้อมูลถึง HH:MM' กดได้ = โหลดข้อมูลหน้าใหม่ (shiftsPageDataAction) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+        "note": "ข้อความ 'ข้อมูลถึง HH:MM' กดได้ = โหลดข้อมูลหน้าใหม่ (shiftsPageDataAction) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า · ไม่มีเป้า: โหลดในนาทีเดียวกันได้การ์ดเหมือนเดิม (เวลา HH:MM · ShiftsClient.tsx:316) ⇒ ตรวจแค่ว่ามีผล (เรียก shiftsPageDataAction)"
       },
       "wo": "P1.9",
       "oracle": "",
@@ -4237,10 +4236,10 @@
       "testid": "pos-stock-unit",
       "kind": "select",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -7865,7 +7864,7 @@
       "expect": {
         "type": "mutation",
         "target": "revokeDeviceAction",
-        "note": "\"เครื่องจะขายไม่ได้อีก กะที่เปิดอยู่ยังปิดได้โดยผู้จัดการ\" → REVOKED · โหลดรายการใหม่",
+        "note": "\"เครื่องจะขายไม่ได้อีก กะที่เปิดอยู่ยังปิดได้โดยผู้จัดการ\" → REVOKED · โหลดรายการใหม่ · P4.2: กดท้ายสุดของหน้า — เครื่องที่เลือกอัตโนมัติคือเครื่องของเบราว์เซอร์นี้เอง (DeviceSettings.tsx:150) ⇒ ตัวกดเพิกถอนเครื่องตัวเอง",
         "db": "PosDevice status REVOKED + revokedAt"
       },
       "wo": "P1.10U",
@@ -11102,7 +11101,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view"
       ],
-      "needs": "สมาชิกในบิลที่มีแต้มของสาขา ≥ ขั้นต่ำ (ระบบแต้มผูกสาขา)"
+      "needs": "สมาชิกในบิลที่มีแต้มของสาขา > 0 (ระบบแต้มผูกสาขา)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -14033,7 +14032,11 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -14054,7 +14057,11 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -14075,7 +14082,11 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -15232,7 +15243,11 @@
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -15253,7 +15268,11 @@
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -15274,7 +15293,11 @@
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -15295,7 +15318,11 @@
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
@@ -19250,7 +19277,7 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "ช่องทาง adapter ไม่ใช่ MANUAL (WEB/CHAT/API) ในราง"
+      "needs": "ช่องทาง adapter ไม่ใช่ MANUAL/NONE (WEB/CHAT/API/QR) ในราง"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -21659,10 +21686,10 @@
         "type": "mutation",
         "target": "pos-device-note",
         "note": "สถานีที่พิมพ์ (kitchenStationIds · ติ๊กครบ = [] ทุกสถานี)",
-        "db": "PosDevice printerConfig.kitchenStationIds (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
+        "db": "PosDevice printerConfig.kitchenStationIds (updateDeviceAction · device-actions.ts:65 → device.ts:236-286 posDevice.updateMany)"
       },
       "wo": "P2.6U",
-      "oracle": "P1.10-G4",
+      "oracle": "",
       "system": "POS",
       "query": "tab=devices&unit=[unitId]",
       "opener": [
@@ -22258,7 +22285,11 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -23571,7 +23602,7 @@
         "type": "mutation",
         "target": "action:registerTakeDepositAction",
         "resultTarget": "pos-reg-deprcv-done",
-        "db": "PosDeposit (คีย์เดิม = มัดจำเดิม)",
+        "db": "PosSale sourceModule POS_DEPOSIT + PosDeposit OPEN + PosDepositTxn RECEIVE (คีย์เดิม = มัดจำเดิม)",
         "note": "ผลไม่แน่ใจ (UNKNOWN/INTERNAL/BUSY/เครือข่าย) = ลองซ้ำด้วยคีย์ + คำขอเดิม"
       },
       "wo": "P2.9bU",
@@ -24107,7 +24138,7 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "รหัสจับคู่ (ตัวใหญ่อัตโนมัติ · I/L → 1 · O → 0 · ปุ่มจับคู่เปิดเมื่อครบ 8 ตัว Crockford)",
+        "note": "รหัสจับคู่ (ตัวใหญ่อัตโนมัติ · I/L/O ถูกตีความเป็น 1/0 ตอนตรวจ/ส่ง normalizePairCode · ปุ่มจับคู่เปิดเมื่อครบ 8 ตัว Crockford)",
         "state": "changes"
       },
       "wo": "P2.10",
@@ -30516,8 +30547,9 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-device-lan-card",
-        "note": "ปิดฟอร์มลงทะเบียน"
+        "target": "pos-device-lan-register",
+        "note": "ปิดฟอร์มลงทะเบียน",
+        "state": "disappears"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
@@ -31147,8 +31179,7 @@
       "system": "POS",
       "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]",
       "opener": [
-        "pos-reports-tab-reconcile",
-        "pos-report-unit=*"
+        "pos-reports-tab-reconcile"
       ]
     },
     {
@@ -31173,8 +31204,7 @@
       "system": "POS",
       "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]",
       "opener": [
-        "pos-reports-tab-reconcile",
-        "pos-report-unit=*"
+        "pos-reports-tab-reconcile"
       ]
     },
     {
