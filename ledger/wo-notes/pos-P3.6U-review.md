@@ -22,3 +22,18 @@
 - F1 Medium (deal cleared on remount) → fix: loaded-flag keyed by member/company. F2 Low → hide chip + deal select offline (same condition as the tile; CD-P36U-3 precision). F3 Low → merge into the existing `pos.credit` object + CS sentinel `pos.credit.qcKeep` (ORACLE-EDIT by the builder, red-before). F4 Low → restore removes an empty `pos.orders` it created. Nit `hasCrm` active-only = optional one-liner.
 - Everything else verified by R1 stands (writer OWNER-only · FOR UPDATE · strict patch · no-op silent · CS1–CS4 · PIN never cached · privacy · S5.17 · keys 47/47).
 - Next: fix1 → R2 (diff-only) → QC5 round (chain-p36u.sh) → merge when green. P5.2 fix1 merges independently after its own R1 (server-only files, no overlap with P3.6U).
+# P3.6U fix1 · R2 (diff-only) · 4ac761b6 → 46098687
+**VERDICT: MERGEABLE** (F1–F4 + nit all fixed as ruled; no unrelated hunks)
+
+## Findings
+- None blocking. Nit: `visual-pos.mts:7984`: a residue `_qcP36uBefore` from an older run that has no `ordersHad` field is treated as "had", so an old `{}` is kept. This is the safe direction and needs no change.
+
+## Verified OK
+- **F1** `DealSelect.tsx:19–45`: the list is stored as `{key: memberId|customerPartyId, ok, opts}` and the loader sets it with the effect's own key, so stale replies are dropped by `live`. The reset effect at `:42–45` returns early when there is no value, no list (mount and before the first reply), `list.key !== key` (the pair changed but its reply hasn't arrived) or `!list.ok` (a failed load, including `.catch`). It clears only when the current pair loaded OK and lacks the deal. A null/null pair gives `ok:true,[]`, which correctly drops a deal with no party. State owner: `dealId` lives in RegisterScreen (`:758`, set only through `onDealChange :768`), so a DealSelect remount doesn't touch it, and the submit still adds `crmDealId` at `:2187` (`creditUi && dealId`).
+- **F2** `RegisterScreen.tsx:2755,2769`: the slot wrapper and the CompanyChip+DealBox block are rendered only under `creditUi && online && !offMode`, the same condition as the tile (`:3039`). Online submit needs `quoteFresh` (`:2158`), and the offline path is `openOfflinePay` (`:1990`). The hidden state comes back on reconnect, and F1 prevents a drop on that remount.
+- **F3** `credit-settings.ts:46–48`: `pos || {credit: (pos.credit if object else {}) || {enabled, requireBuyer}}`. A non-object `pos.credit` or settings becomes `{}`, and only the two keys from `json` (`:41`) are written. The no-op/audit path is untouched (the diff touches only writeCredit). ORACLE-EDIT `qc-pos-p3.6.mts`: the CS setup sets `pos.credit.qcKeep` (`:2026`), and `othersOf` now deletes only `credit.enabled/requireBuyer` (`:2012–2015`), so a whole-object overwrite changes othersOf and fails the explicit "pos.credit.qcKeep หาย" check (`:2045`). This is stricter than before, and red-before 51/52 is plausible.
+- **F4** `visual-pos.mts:7984–8006`: `_qcP36uBefore.ordersHad` is recorded on both the fresh path and the residue path. On restore, if orders was absent before, `#- '{pos,orders}'` runs only when it is exactly `{}` and only after `p36uGuard()`. Restore is reached from `cleanupP36u` (`:8171`), which is called from the signal handler (`:2140`) and finally (`:11877`).
+- **Nit hasCrm**: `active: true` was added in `register/page.tsx:95` and `settings/page.tsx:137`.
+- **Scope**: 8 files. Every hunk belongs to F1–F4, the nit or the ledger notes, and nothing is unrelated.
+
+## Controller (B · 22 Oct 04:0xZ): R2 MERGEABLE → P3.6U merges when the QC5 round (chain-p36u @46098687) is green.
