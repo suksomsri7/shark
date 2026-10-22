@@ -1089,7 +1089,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-cart-line-*"
+        "pos-reg-cart-line-*",
+        "pos-reg-line-discount-*=0"
       ]
     },
     {
@@ -11478,7 +11479,8 @@
         "pos-reg-cart-view",
         "pos-reg-member-pick",
         "pos-member-register-phone=0812345678",
-        "pos-member-register-name=ลูกค้า QC"
+        "pos-member-register-name=ลูกค้า QC",
+        "pos-member-register-birthdate=15051990"
       ],
       "needs": "เบอร์ 0812345678 ซ้ำข้ามรอบ/บทบาท = created:false ผูกคนเดิม ไม่สร้าง Customer ใหม่ (register-member.ts:309-312)"
     },
@@ -11639,7 +11641,8 @@
         "pos-reg-cart-view",
         "pos-reg-member-pick",
         "pos-member-register-phone=0812345678",
-        "pos-member-register-name=ลูกค้า QC"
+        "pos-member-register-name=ลูกค้า QC",
+        "pos-member-register-birthdate=15051990"
       ],
       "needs": "เบอร์ 0812345678 ซ้ำข้ามรอบ/บทบาท = created:false ผูกคนเดิม ไม่สร้าง Customer ใหม่ (register-member.ts:309-312) — รอบที่ 2 เป็นต้นไป created:false ไม่มีแถวใหม่ ⇒ P4.2 ล้าง/สุ่มเบอร์ (CD-P41-F22)"
     },
@@ -11782,7 +11785,8 @@
         "pos-reg-member-pick=click",
         "pos-member-search=0899000001",
         "pos-member-row-*=click",
-        "pos-reg-pay"
+        "pos-reg-pay",
+        "pos-member-points-input=100"
       ],
       "needs": "สมาชิกในบิลที่มีแต้มของสาขา ≥ ขั้นต่ำ (ระบบแต้มผูกสาขา)"
     },
@@ -14828,7 +14832,8 @@
         "pos-prod-category=*",
         "pos-prod-*select-*=on",
         "pos-prod-bulk-open"
-      ]
+      ],
+      "needs": "หมวดสินค้า (PosCategory) ≥ 1 ของร้าน — posqc ไม่มีหมวด ⇒ opener pos-prod-category=* ไม่มีตัวเลือกให้เลือก (มีแค่ \"ทุกหมวด\" value \"\" · ProductsClient.tsx:318-325 · fillEl เลือกเฉพาะ option ที่ไม่ว่าง) ⇒ category null ⇒ ปุ่ม pos-prod-bulk-scope-category disabled={!category} (BulkMarkupDialog.tsx:126) (CD-P41-F3)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -14854,7 +14859,8 @@
         "pos-prod-*select-*=on",
         "pos-prod-bulk-open",
         "pos-prod-bulk-scope-category=click"
-      ]
+      ],
+      "needs": "หมวดสินค้า (PosCategory) ≥ 1 ของร้าน — posqc ไม่มีหมวด ⇒ opener pos-prod-category=* ไม่มีตัวเลือก (ProductsClient.tsx:318-325) ⇒ ขั้น pos-prod-bulk-scope-category=click กดปุ่ม disabled (BulkMarkupDialog.tsx:126) ⇒ scope ค้างค่าเริ่ม \"selected\" (selected.length > 0 · BulkMarkupDialog.tsx:40) ⇒ กด pos-prod-bulk-scope-selected = state ไม่เปลี่ยน (CD-P41-F3)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21018,13 +21024,15 @@
       "safety": "money",
       "opener": [
         "pos-ord-manual",
+        "pos-ord-man-channel=*",
         "pos-ord-man-product-*=click",
         "pos-ord-man-name=ลูกค้า QC",
         "pos-ord-man-ref=*"
       ],
       "needs": [
         "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก",
-        "ช่องทางที่คีย์ออเดอร์ได้ (CHAT ที่เปิดใช้ หรือช่องทางกำหนดเอง)"
+        "ช่องทางที่คีย์ออเดอร์ได้ (CHAT ที่เปิดใช้ หรือช่องทางกำหนดเอง)",
+        "ช่องทางกำหนดเอง (CUSTOM) ที่เปิดใช้ของสาขา — ช่องปริยาย CHAT ทำให้ prefill ใส่ qc-btn-… ลง pos-ord-man-conv/-party ⇒ assertCustomerLinks ปฏิเสธ (order.ts:721-731) · opener pos-ord-man-channel=* เลือกช่องอื่น (CD-P41-F3 fix3)"
       ]
     },
     {
@@ -21728,7 +21736,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-kds-86*"
+        "pos-kds-86*",
+        "pos-kds-86-search= "
       ],
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
@@ -23242,13 +23251,13 @@
         "pos-reg-cart-view",
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
-        "pos-reg-paydlg-deposit-search=*",
+        "pos-reg-paydlg-deposit-search=QCDEP",
         "pos-reg-paydlg-deposit-lookup"
       ],
       "needs": [
         "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
         "แถวมัดจำในรายการแยกจ่ายที่ถูกปฏิเสธ 4 หลักท้ายตอนยืนยัน/โหลดกลับ (r.dep.note wrong|again — ต้องกด pos-reg-paydlg-confirm ซึ่งเป็น counter · ไปไม่ถึงด้วย opener แบบเดียวกับแถว 886)",
-        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener ค้นด้วย =QCDEP (≥ 3 ตัว DEPOSIT_QUERY_MIN InterimPayDialog.tsx:961 · =* ให้ \"20\" สั้นเกิน = pay.depositQueryShort · CD-P41-F3 fix3) — เมื่อ fixture มีมัดจำแล้วเปลี่ยนเป็นชื่อ/เลขใบรับของมัน"
       ]
     },
     {
@@ -23316,9 +23325,12 @@
         "pos-reg-cart-view",
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
-        "pos-reg-paydlg-deposit-search=*"
+        "pos-reg-paydlg-deposit-search=QCDEP"
       ],
-      "needs": "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน"
+      "needs": [
+        "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener ค้นด้วย =QCDEP (≥ 3 ตัว DEPOSIT_QUERY_MIN InterimPayDialog.tsx:961 · =* ให้ \"20\" สั้นเกิน = pay.depositQueryShort · CD-P41-F3 fix3) — เมื่อ fixture มีมัดจำแล้วเปลี่ยนเป็นชื่อ/เลขใบรับของมัน"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -23346,12 +23358,12 @@
         "pos-reg-cart-view",
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
-        "pos-reg-paydlg-deposit-search=*",
+        "pos-reg-paydlg-deposit-search=QCDEP",
         "pos-reg-paydlg-deposit-lookup"
       ],
       "needs": [
         "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
-        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener ค้นด้วย =QCDEP (≥ 3 ตัว DEPOSIT_QUERY_MIN InterimPayDialog.tsx:961 · =* ให้ \"20\" สั้นเกิน = pay.depositQueryShort · CD-P41-F3 fix3) — เมื่อ fixture มีมัดจำแล้วเปลี่ยนเป็นชื่อ/เลขใบรับของมัน"
       ]
     },
     {
@@ -23386,13 +23398,13 @@
         "pos-reg-cart-view",
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
-        "pos-reg-paydlg-deposit-search=*",
+        "pos-reg-paydlg-deposit-search=QCDEP",
         "pos-reg-paydlg-deposit-lookup",
         "pos-reg-paydlg-deposit-row-*=click"
       ],
       "needs": [
         "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
-        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener ค้นด้วย =QCDEP (≥ 3 ตัว DEPOSIT_QUERY_MIN InterimPayDialog.tsx:961 · =* ให้ \"20\" สั้นเกิน = pay.depositQueryShort · CD-P41-F3 fix3) — เมื่อ fixture มีมัดจำแล้วเปลี่ยนเป็นชื่อ/เลขใบรับของมัน"
       ]
     },
     {
@@ -23421,13 +23433,13 @@
         "pos-reg-cart-view",
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
-        "pos-reg-paydlg-deposit-search=*",
+        "pos-reg-paydlg-deposit-search=QCDEP",
         "pos-reg-paydlg-deposit-lookup",
         "pos-reg-paydlg-deposit-row-*=click"
       ],
       "needs": [
         "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled)",
-        "fixture ขาด: PosDeposit status OPEN คงเหลือ > 0 ของสาขา posqc-btn ที่รู้เลขใบรับ/เบอร์ — pos-buttons-fixtures/pos-qc-env ไม่สร้าง · deposit-search=* พิมพ์ '20' (fillValueFor กฎเงิน /deposit/ มาก่อน /search/ · < 3 ตัว ⇒ ไม่ค้น)"
+        "fixture ขาด: PosDeposit status OPEN คงเหลือ > 0 ของสาขา posqc-btn ที่รู้เลขใบรับ/เบอร์ — pos-buttons-fixtures/pos-qc-env ไม่สร้าง · opener ค้นด้วย =QCDEP (≥ 3 ตัว DEPOSIT_QUERY_MIN InterimPayDialog.tsx:961 · =* ให้ \"20\" สั้นเกิน = pay.depositQueryShort · CD-P41-F3 fix3) — เมื่อ fixture มีมัดจำแล้วเปลี่ยนเป็นชื่อ/เลขใบรับของมัน"
       ]
     },
     {
@@ -23462,13 +23474,13 @@
         "pos-reg-cart-view",
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
-        "pos-reg-paydlg-deposit-search=*",
+        "pos-reg-paydlg-deposit-search=QCDEP",
         "pos-reg-paydlg-deposit-lookup",
         "pos-reg-paydlg-deposit-row-*=click"
       ],
       "needs": [
         "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
-        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener ค้นด้วย =QCDEP (≥ 3 ตัว DEPOSIT_QUERY_MIN InterimPayDialog.tsx:961 · =* ให้ \"20\" สั้นเกิน = pay.depositQueryShort · CD-P41-F3 fix3) — เมื่อ fixture มีมัดจำแล้วเปลี่ยนเป็นชื่อ/เลขใบรับของมัน"
       ]
     },
     {
@@ -23600,7 +23612,8 @@
         "pos-reg-more",
         "pos-reg-menu-deposit-receive",
         "pos-reg-deprcv-amount=100",
-        "pos-reg-deprcv-phone=0812345678"
+        "pos-reg-deprcv-phone=0812345678",
+        "pos-reg-deprcv-cash=100"
       ],
       "needs": "ค่าตั้งรับมัดจำเปิด (registerPayTendersAction deposit.enabled)",
       "safety": "counter"
@@ -23938,7 +23951,8 @@
         "pos-reg-more",
         "pos-reg-menu-deposit-receive",
         "pos-reg-deprcv-amount=100",
-        "pos-reg-deprcv-phone=0812345678"
+        "pos-reg-deprcv-phone=0812345678",
+        "pos-reg-deprcv-cash=100"
       ],
       "needs": "ค่าตั้งรับมัดจำเปิด (registerPayTendersAction deposit.enabled)",
       "safety": "counter"
@@ -26959,7 +26973,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-settings-nav-staff"
+        "pos-settings-nav-staff",
+        "pos-settings-staff-gate-early=*"
       ]
     },
     {
