@@ -137,3 +137,33 @@ Registry vs d0c0732e: 1,242 rows (unchanged count) · 407 rows changed · fields
 - **CD-P41-F15 (same-testid static chip for 1-unit users, B3 again)**: 3 pos-reg-unit-switch · 164 pos-stock-unit · 614 pos-price-rule-unit-* — roles + needs kept.
 - **CD-P41-F16 (navigate targets with a query)**: `?card=[cardId]` · `register?unit=` · `settings?tab=devices` — the P4.2 walker URL match must accept a query pattern (existing precedent `/r/[token]?lang=th`).
 - **CD-P41-F17 (PIN screens only a rights-less persona reaches)**: 380-389 discount-over · 393-398 manager-PIN override · 399-401 sales PIN dialogs · 915 deposit PIN back — owner/manager claims end as skippedNeeds; 1107 board-create is the reverse (server lets the manager, UI owner-only).
+
+**Gates at b59eae17 (fix1 code+notes head)** — `qc-pos-p4.1 --no-db` 16/16 · `fitness-pos` 8/8 · fitness 53/53 · `qc-pos-p2.14 --no-db` 15/15 · `qc-pos-p1.18 --no-db` 16/16 · `pos-oracle-check … qc-pos-p4.1 --base 6e32c1e2` VERDICT green (red 0 · warn 0) · `perm-table.py` VERDICT green. Pre-submit once (same command as the BUILD prompt, systemd-run, `/root/pos-runs/presubmit-shark-pos-b-20261022T125737Z`):
+
+```
+PRESUBMIT-TABLE head=b59eae17 tree=/root/projects/shark-pos-b
+suite                        exit pass/total     s  failed
+wo-qc-pos-p4.1-run1          0    16/16         19  
+wo-qc-pos-p4.1-run2          0    16/16         21  
+wo-qc-pos-p4.1-nodb          0    16/16         17  
+qc-pos-p1.1                  0    180/180      185  
+qc-pos-p1.3                  0    128/128      153  
+qc-pos-p1.6                  0    48/48         45  
+qc-pos-p1.18                 0    81/81         47  
+qc-pos-p2.14                 0    60/60         81  
+qc-pos-p3.5                  0    55/55         47  
+qc-pos-p3.4                  1    50/51         86  P3.4-ST2  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+qc-pos-p3.9                  0    48/48         45  
+qc-pos-p3.6                  0    52/52         65  
+qc-pos-p3-skel               0    41/41         33  
+qc-hf-fu                     0    29/29        116  
+qc-pos-p5.2                  0    34/34         76  
+qc-hf-tx                     0    22/22         28  
+qc-hf-fu2                    1    30/31         25  HF-FU2-ST1  ⟵ หมุดเลน (คาดไว้ระหว่างเลน · ผู้คุม re-pin ตอน merge)
+fitness-noenv                0    53/53         16  
+fitness-qc4                  0    53/53         15  
+fitness-pos                  0    8/8           10  
+gen-check                    0    -              2  
+PRESUBMIT head=b59eae17 green=19 red=2 expected-lane-pin=2 unexpected-red=- · wo: qc-pos-p4.1-run1=16/16 · qc-pos-p4.1-run2=16/16 · qc-pos-p4.1-nodb=16/16 · VERDICT red (2: qc-pos-p3.4 qc-hf-fu2)
+```
+Reds: **HF-FU2-ST1** = lane pin (the 23 P4.1 UI hunks of 2f127d04 lack the HF-FU2 marker; fix1 adds none) · **P3.4-ST2** = the old branch base: wip/pos-p4.1 sits on session/pos 554a74d3 (+ oracle 537195ad); the W21 close is on origin/session/pos 8950ccb0, which is not an ancestor of this branch — expected to go green at merge. No unexpected red.
