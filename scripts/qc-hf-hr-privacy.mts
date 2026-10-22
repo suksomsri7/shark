@@ -60,6 +60,7 @@ const priv = (await import(privacyPath as string).catch(() => null)) as PrivacyM
 const shared = (await import("@/lib/modules/hr/privacy-shared" as string).catch(() => null)) as {
   EMPLOYEE_PROFILE_FIELDS?: readonly string[];
   EMPLOYEE_SENSITIVE_FIELDS?: readonly string[];
+  EMPLOYEE_PAYROLL_FIELDS?: readonly string[]; // ORACLE-EDIT H1.1 D-2
 } | null;
 
 type Ctx = { tenantId: string; systemId: string };
