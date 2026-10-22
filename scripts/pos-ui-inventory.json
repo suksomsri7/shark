@@ -507,7 +507,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/products",
-        "note": "สถานะร้านยังไม่มีสินค้า (19ก) · แคชเชียร์เห็นปุ่มด้วย หน้าสินค้าเป็นผู้ตัดสินสิทธิ์"
+        "note": "สถานะร้านยังไม่มีสินค้า (19ก) · แสดงเฉพาะผู้มีสิทธิ์ pos.product.manage (ProductGrid.tsx:60 · page.tsx:122) — แคชเชียร์ไม่เห็น"
       },
       "wo": "P1.3",
       "oracle": "",
@@ -1010,9 +1010,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-scrim",
+        "target": "pos-reg-note-dialog",
         "state": "disappears",
-        "note": "แตะม่านนอกกล่อง = ปิดชั้นบนสุด · ระหว่างส่งบิล/ผลยังไม่แน่ใจ ปิดไม่ได้"
+        "note": "แตะม่านนอกกล่อง = ปิดชั้นบนสุด · ระหว่างส่งบิล/ผลยังไม่แน่ใจ ปิดไม่ได้ · เป้า = กล่องบนสุด (390 มีม่าน 2 ชั้น: แผ่นตะกร้า + หมายเหตุ · pop() ปิดชั้นบน RegisterScreen.tsx:381)"
       },
       "wo": "P1.3",
       "oracle": "",
@@ -9628,8 +9628,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -9733,8 +9732,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-discount-over-dots",
-        "note": "เลือกผู้จัดการ (MANAGER/OWNER ที่มี PIN) ก่อนใส่ PIN"
+        "target": "pos-discount-over-manager",
+        "note": "เลือกผู้จัดการ (MANAGER/OWNER ที่มี PIN) ก่อนใส่ PIN",
+        "state": "selected"
       },
       "wo": "P1.15U",
       "oracle": "",
@@ -10150,8 +10150,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-mgr-pin-dots",
-        "note": "แป้น PIN ผู้จัดการ (21B · หน้าบิลวันนี้): เลือกผู้จัดการ MANAGER/OWNER ที่มี PIN"
+        "target": "pos-mgr-pin-manager",
+        "note": "แป้น PIN ผู้จัดการ (21B · หน้าบิลวันนี้): เลือกผู้จัดการ MANAGER/OWNER ที่มี PIN",
+        "state": "selected"
       },
       "wo": "P1.15U",
       "oracle": "",
@@ -11258,7 +11259,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-member-coupon-line",
-        "note": "✕ ข้างแถวคูปองในยอด = ลบคูปอง · quote ใหม่"
+        "note": "✕ ข้างแถวคูปองในยอด = ลบคูปอง · quote ใหม่",
+        "state": "disappears"
       },
       "wo": "P1.12U",
       "oracle": "",
@@ -11284,7 +11286,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-member-panel",
-        "note": "✕ ปิดแผงสมาชิก (Esc/แตะม่านเหมือนกัน)"
+        "note": "✕ ปิดแผงสมาชิก (Esc/แตะม่านเหมือนกัน)",
+        "state": "disappears"
       },
       "wo": "P1.12U",
       "oracle": "",
@@ -11369,8 +11372,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-member-row-*",
-        "note": "ค้นด้วยเบอร์/ชื่อ/รหัส/บัตร SHARK-MC (หน่วง 250ms) · พบ N รายชื่อ · Enter = ผูกเมื่อเจอคนเดียว"
+        "note": "ค้นด้วยเบอร์/ชื่อ/รหัส/บัตร SHARK-MC (หน่วง 250ms) · พบ N รายชื่อ · Enter = ผูกเมื่อเจอคนเดียว",
+        "state": "changes"
       },
       "wo": "P1.12U",
       "oracle": "P1.12-M1",
@@ -11432,9 +11435,9 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-member-pick"
-      ],
-      "needs": "สมาชิกของร้านที่ค้นเจอ (คำค้นเบอร์/ชื่อของสมาชิก QC)"
+        "pos-reg-member-pick",
+        "pos-member-search=0899000001"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11696,7 +11699,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-coupon-dialog",
-        "note": "ลบคูปองที่ใช้อยู่ + quote ใหม่ · กล่องปิด"
+        "note": "ลบคูปองที่ใช้อยู่ + quote ใหม่ · กล่องปิด",
+        "state": "disappears"
       },
       "wo": "P1.12U",
       "oracle": "",
@@ -11794,7 +11798,10 @@
         "pos-reg-cart-view",
         "pos-reg-pay"
       ],
-      "needs": "สมาชิกในบิลที่มีแต้มของสาขา ≥ ขั้นต่ำ (ระบบแต้มผูกสาขา)"
+      "needs": [
+        "สมาชิกในบิลที่มีแต้มของสาขา ≥ ขั้นต่ำ (ระบบแต้มผูกสาขา)",
+        "ใช้แต้มในบิลแล้ว (ปุ่มยกเลิกแสดงเมื่อ applied · PayBenefits.tsx:136)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11809,7 +11816,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-member-coupon",
-        "note": "✕ / ลบคูปอง ในจอชำระ (คูปองใช้ไม่ได้ = แถวแดง + ปุ่ม ลบคูปอง) · quote ใหม่"
+        "note": "✕ / ลบคูปอง ในจอชำระ (คูปองใช้ไม่ได้ = แถวแดง + ปุ่ม ลบคูปอง) · quote ใหม่",
+        "state": "disappears"
       },
       "wo": "P1.12U",
       "oracle": "",
@@ -11861,8 +11869,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-member-voucher-error",
-        "note": "เลือกว่อชเชอร์ 1 ใบ (แตะซ้ำ = ยกเลิก) · ใช้ไม่ได้ = จาง + เหตุผล · ข้อขัดตอน quote = บรรทัดแดง + ล้างที่เลือก"
+        "note": "เลือกว่อชเชอร์ 1 ใบ (แตะซ้ำ = ยกเลิก) · ใช้ไม่ได้ = จาง + เหตุผล · ข้อขัดตอน quote = บรรทัดแดง + ล้างที่เลือก",
+        "state": "changes"
       },
       "wo": "P1.12U",
       "oracle": "",
@@ -14066,8 +14074,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-paydlg",
-        "note": "ช่อง \"แพลตฟอร์ม\" — มีเฉพาะบิลที่ quote.channel.payout = PLATFORM (บิลพักที่มี channelId · P2.8) · เลือกไว้เต็มยอด ช่องอื่น/แป้น/ทิปปิด (R5)"
+        "target": "pos-reg-paydlg-method-platform",
+        "note": "ช่อง \"แพลตฟอร์ม\" — มีเฉพาะบิลที่ quote.channel.payout = PLATFORM (บิลพักที่มี channelId · P2.8) · เลือกไว้เต็มยอด ช่องอื่น/แป้น/ทิปปิด (R5)",
+        "state": "selected"
       },
       "wo": "P2.1U",
       "oracle": "",
@@ -19117,8 +19126,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-bill-type",
-        "note": "ย้อนกลับ (ไม่ย้ายตะกร้า)"
+        "target": "pos-tbl-billtype-strip",
+        "note": "ย้อนกลับ (ไม่ย้ายตะกร้า)",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
@@ -19179,8 +19189,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-lines",
-        "note": "ปิดแผ่นเลือกโต๊ะ"
+        "target": "pos-tbl-pick",
+        "note": "ปิดแผ่นเลือกโต๊ะ",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
@@ -19313,8 +19324,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-order-send",
-        "note": "ส่งครัวได้ BUSY → ลองอีกครั้ง"
+        "target": "pos-tbl-send-retry",
+        "note": "ส่งครัวได้ BUSY → ลองอีกครั้ง",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
@@ -24750,7 +24762,8 @@
       "query": "tab=shark&unit=[unitId]",
       "opener": [
         "pos-settings-nav-shark",
-        "pos-settings-api-*create"
+        "pos-settings-api-*create",
+        "pos-settings-api-bundle-pos-operate=click"
       ]
     },
     {
@@ -24791,8 +24804,9 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-api-dialog",
-        "note": "ทุกสาขา (ไม่ส่ง unitIds) — แสดงเฉพาะ allUnits true (เจ้าของ / ดูแลทุกสาขา)"
+        "target": "pos-settings-api-units",
+        "state": "disappears",
+        "note": "ทุกสาขา (ไม่ส่ง unitIds) — แสดงเฉพาะ allUnits true (เจ้าของ / ดูแลทุกสาขา) · ค่าปริยายของเจ้าของ = all (ApiKeysCard.tsx:227) ⇒ opener เลือก 'เลือกสาขา' ก่อน แล้วกด 'ทุกสาขา' = รายการสาขา pos-settings-api-units หายไป (:382-391)"
       },
       "wo": "P2.13",
       "oracle": "",
@@ -24800,7 +24814,8 @@
       "query": "tab=shark&unit=[unitId]",
       "opener": [
         "pos-settings-nav-shark",
-        "pos-settings-api-*create"
+        "pos-settings-api-*create",
+        "pos-settings-api-scope-pick=click"
       ]
     },
     {
@@ -26980,8 +26995,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "อัตรารายหมวด % ต่อหมวดจากตัวอ่านแคตตาล็อกเดิม registerCatalogAction (CD-P35U-3) · ว่างทั้ง % และบาท = ไม่มีแถว"
+        "state": "changes",
+        "note": "อัตรารายหมวด % ต่อหมวดจากตัวอ่านแคตตาล็อกเดิม registerCatalogAction (CD-P35U-3) · ว่างทั้ง % และบาท = ไม่มีแถว · กดช่อง = ค่าในช่องเปลี่ยน (บันทึกด้วย pos-settings-staff-commission-save)"
       },
       "wo": "P3.5U",
       "oracle": "",
@@ -26989,7 +27004,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-staff"
-      ]
+      ],
+      "needs": "แคตตาล็อกของสาขาโหลดได้และมีหมวดสินค้า ≥ 1 (StaffHrCards.tsx:481-498 catalog.categories จาก registerCatalogAction — ไม่มีหมวด = ไม่เรนเดอร์ช่อง · fixture coffee ไม่ผูกหมวดให้สินค้า pos-qc-env.mts:279-284)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -27004,8 +27020,8 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-settings-staff-commission-save",
-        "note": "อัตรารายหมวด บาทต่อชิ้น (0–1,000 ↔ fixedSatang 0–100000)"
+        "state": "changes",
+        "note": "อัตรารายหมวด บาทต่อชิ้น (0–1,000 ↔ fixedSatang 0–100000) · กดช่อง = ค่าในช่องเปลี่ยน (บันทึกด้วย pos-settings-staff-commission-save)"
       },
       "wo": "P3.5U",
       "oracle": "",
@@ -27013,7 +27029,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-staff"
-      ]
+      ],
+      "needs": "แคตตาล็อกของสาขาโหลดได้และมีหมวดสินค้า ≥ 1 (StaffHrCards.tsx:481-498 catalog.categories จาก registerCatalogAction — ไม่มีหมวด = ไม่เรนเดอร์ช่อง · fixture coffee ไม่ผูกหมวดให้สินค้า pos-qc-env.mts:279-284)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -27307,7 +27324,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-offline-pay",
-        "note": "ปิดกล่องชำระออฟไลน์ (ระหว่างบันทึก = ปิด)"
+        "note": "ปิดกล่องชำระออฟไลน์ (ระหว่างบันทึก = ปิด)",
+        "state": "disappears"
       },
       "wo": "P3.4U",
       "oracle": "",
@@ -27344,7 +27362,7 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-offline-pay-cash"
+        "pos-reg-offline-pay-transfer"
       ],
       "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)"
     },
@@ -27548,7 +27566,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-offline-bills",
-        "note": "ปิดรายการบิลออฟไลน์"
+        "note": "ปิดรายการบิลออฟไลน์",
+        "state": "disappears"
       },
       "wo": "P3.4U",
       "oracle": "",
@@ -29393,7 +29412,8 @@
       "system": "POS",
       "needs": [
         "บอร์ดงาน POS เปิด",
-        "จุดผิดปกติของวันนี้ (กฎ A1–A10 ถูกจับ) ในสาขาที่เห็น"
+        "จุดผิดปกติของวันนี้ (กฎ A1–A10 ถูกจับ) ในสาขาที่เห็น",
+        "ผู้ช่วย AI ของหน้าขายเปิด (posAiSettings.enabled · ai-panel-actions.ts:68 AI_OFF)"
       ]
     },
     {
@@ -29909,7 +29929,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-company-sheet",
-        "note": "CD-P36U-3: ปิดแผ่นเลือกบริษัทโดยไม่เลือก"
+        "note": "CD-P36U-3: ปิดแผ่นเลือกบริษัทโดยไม่เลือก",
+        "state": "disappears"
       },
       "wo": "P3.6U",
       "oracle": "",
@@ -30031,7 +30052,10 @@
         "pos-reg-cart-view",
         "pos-reg-pay"
       ],
-      "needs": "ค่าตั้งวางบิลเปิด (settings.pos.credit.enabled) + ร้านมี CRM"
+      "needs": [
+        "ค่าตั้งวางบิลเปิด (settings.pos.credit.enabled) + ร้านมี CRM",
+        "บริษัท CRM ที่ผูกบิลแล้ว (เปิดตัวเลือกบริษัทก่อน) — fixture ขาด: ร้าน posqc-coffee ไม่มีระบบ CRM/บริษัท (CD-P41-F24)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -30046,7 +30070,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-credit-over",
-        "note": "CD-P36U-6: ปิดแผ่นเกินวงเงิน (ไม่มีบิล · คีย์เดิม · เลือกวิธีชำระอื่นได้)"
+        "note": "CD-P36U-6: ปิดแผ่นเกินวงเงิน (ไม่มีบิล · คีย์เดิม · เลือกวิธีชำระอื่นได้)",
+        "state": "disappears"
       },
       "wo": "P3.6U",
       "oracle": "",
@@ -31023,8 +31048,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-slip-form",
-        "note": "เลือกแถวชำระที่จะแนบ (มีมากกว่า 1 แถว)"
+        "target": "pos-slip-target-*",
+        "note": "เลือกแถวชำระที่จะแนบ (มีมากกว่า 1 แถว)",
+        "state": "selected"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
@@ -31132,7 +31158,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-slip-form",
-        "note": "ปิดฟอร์มแนบสลิป"
+        "note": "ปิดฟอร์มแนบสลิป",
+        "state": "disappears"
       },
       "wo": "P3-SKEL U",
       "oracle": "",
