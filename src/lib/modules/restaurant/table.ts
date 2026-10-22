@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomBytes } from "crypto"; // POS P5.2 ▸ CD-P52-F4: เดิม randomUUID (หมุน QR) — ใช้ตัวสร้างโทเคนเดียวด้านล่าง ◂
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { Prisma, TableShape, TableStatus } from "@prisma/client";
 import "./scope";
@@ -29,6 +29,13 @@ export async function archiveZone(tenantId: string, unitId: string, id: string) 
 }
 
 // ───────────────────────── Tables ─────────────────────────
+// POS P5.2 ▸ CD-P52-F4 (ruling 5): QR โต๊ะใหม่ = qr_ + base64url ของ randomBytes(16) = 128 บิตจาก crypto (25 ตัว · อยู่ในรูป QR_TABLE_TOKEN_RE [A-Za-z0-9_-]{8,64}) —
+//   ตั้งเองตอนสร้างและตอนหมุน ไม่พึ่ง @default(cuid()) ของ schema (ส่วนสุ่มของ cuid ≈ 41 บิต · schema/คอลัมน์ไม่เปลี่ยน) ·
+//   โทเคนเดิมที่พิมพ์ไว้ใช้ต่อได้ (การหมุน QR ที่พิมพ์แล้วเป็นการตัดสินใจของเจ้าของร้าน — W27) ◂
+export const TABLE_QR_TOKEN_BYTES = 16;
+export function newTableQrToken(): string {
+  return `qr_${randomBytes(TABLE_QR_TOKEN_BYTES).toString("base64url")}`;
+}
 export async function createTable(
   tenantId: string,
   unitId: string,
@@ -43,6 +50,7 @@ export async function createTable(
     data: {
       tenantId,
       unitId,
+      qrToken: newTableQrToken(), // POS P5.2 ▸ CD-P52-F4 ◂
       zoneId: input.zoneId,
       name: input.name,
       seats: input.seats ?? 4,
@@ -72,8 +80,8 @@ export async function archiveTable(tenantId: string, unitId: string, id: string)
 
 export async function rotateQr(tenantId: string, unitId: string, id: string) {
   const db = tenantDb({ tenantId, unitId });
-  // qrToken มี default cuid() ตอน create เท่านั้น — rotate ต้องส่งค่าใหม่เอง (เดาไม่ได้)
-  const fresh = `qr_${randomUUID().replace(/-/g, "")}`;
+  // qrToken ตั้งเองทั้งตอนสร้างและหมุน (เดาไม่ได้) — POS P5.2 ▸ CD-P52-F4: ตัวสร้างเดียว newTableQrToken (128 บิต) ◂
+  const fresh = newTableQrToken();
   const t = await db.restaurantTable.update({ where: { id }, data: { qrToken: fresh } });
   return t.qrToken;
 }

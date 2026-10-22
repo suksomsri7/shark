@@ -11,6 +11,7 @@ import thPos from "@/messages/th/pos.json";
 import enPos from "@/messages/en/pos.json";
 import { tableBill, tableDoor } from "@/lib/modules/pos/qr-order";
 import { isTableQrToken } from "@/lib/modules/pos/qr-order-shared";
+import { posPublicClientIp } from "@/lib/modules/pos/public-rate"; // POS P5.2 ▸ CD-P52-F3 ◂
 import { QrNoticeCard, QrPublicFrame } from "@/components/pos/qr/QrPublicFrame";
 import { QrTableApp } from "@/components/pos/qr/QrTableApp";
 import { placeTableRoundAction, quoteTableCartAction, tableBillAction, tableNotifyPaidAction, tablePollAction, tableServiceRequestAction } from "../../actions";
@@ -27,7 +28,8 @@ export default async function QrTablePage({ params, searchParams }: { params: Pr
   const locale = await qrLocale(lang);
   const t = qrT(locale);
   const text = { th: t("common.th"), en: t("common.en"), language: t("common.language") };
-  const door = await tableDoor(qrToken);
+  const ip = await posPublicClientIp(); // POS P5.2 ▸ CD-P52-F3: per-IP read limit ◂
+  const door = await tableDoor(qrToken, { ip });
   if (!door.ok) {
     return (
       <QrPublicFrame testid="pos-qr-table-page" shop={null} sub="" locale={locale} text={text} data={{ state: "invalid" }}>
@@ -36,7 +38,7 @@ export default async function QrTablePage({ params, searchParams }: { params: Pr
     );
   }
   const v = door.view;
-  const billRes = v.session ? await tableBill(qrToken) : null;
+  const billRes = v.session ? await tableBill(qrToken, { ip }) : null; // POS P5.2 ▸ CD-P52-F3 ◂
   const notice = typeof e === "string" && /^qr\.[a-zA-Z.]+$/.test(e) ? e : null;
   return (
     <QrPublicFrame

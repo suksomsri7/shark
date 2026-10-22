@@ -8,7 +8,7 @@
 //   จอ < 1024 = แท็บ เมนู/สั่งแล้ว/บิล + แถบตะกร้าลอย · ≥ 1024 = เมนูซ้าย + คอลัมน์ขวา (ตะกร้า · สั่งแล้ว · บิล)
 //   🔴 ไม่มีข้อความไทยนอก t() (ST7) · import ค่าได้แค่ *-shared (actions มาทาง props) · ไม่มีการคิดเงิน · ไม่แสดงข้อมูลสมาชิก/พนักงาน/โต๊ะอื่น
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   QR_MAX_QTY,
@@ -22,6 +22,7 @@ import {
   type QrTableRoundInput,
   type QrTableView,
 } from "@/lib/modules/pos/qr-order-shared";
+import type { QrRefusal } from "@/lib/modules/pos/qr-order-shared"; // POS P5.2 ▸ fix3 A2 ◂
 import { QrMenuBoard, type QrPick } from "./QrMenu";
 import { QrCartBar, QrCartBody, QrBottomPanel } from "./QrCart";
 import { QrCodeImage } from "./QrCodeImage";
@@ -61,7 +62,19 @@ export function QrTableApp(p: { token: string; locale: QrLocale; initial: QrTabl
   const { toast, show } = useToast();
   const now = useNow(30_000);
   const msg = useCallback((key: string) => tk(`pos.${key}`), [tk]);
-  const quoteFn = useCallback((lines: unknown) => p.actions.quote(p.token, lines), [p.actions, p.token]);
+  // POS P5.2 ▸ fix3 A2: TOKEN_INVALID (rotated/archived/unlinked table) = stop polling and quoting — a stale tab must not fill the per-IP miss budget ◂
+  const dead = useRef<QrRefusal | null>(null);
+  const [stopped, setStopped] = useState(false);
+  const markDead = useCallback((r: QrRefusal) => {
+    dead.current = r;
+    setStopped(true);
+  }, []);
+  const quoteFn = useCallback(async (lines: unknown) => {
+    if (dead.current) return dead.current;
+    const r = await p.actions.quote(p.token, lines);
+    if (!r.ok && r.code === "TOKEN_INVALID") markDead(r);
+    return r;
+  }, [p.actions, p.token, markDead]);
   const { quote, refusal, quoting } = useQrQuote(cart, quoteFn);
 
   const refreshBill = useCallback(async () => {
@@ -71,6 +84,7 @@ export function QrTableApp(p: { token: string; locale: QrLocale; initial: QrTabl
   const poll = useVisiblePoll(
     async () => {
       const r = await p.actions.poll(p.token, view.ver);
+      if (!r.ok && r.code === "TOKEN_INVALID") return markDead(r); // POS P5.2 ▸ fix3 A2 ◂
       if (r.ok && r.changed) {
         setView(r.view);
         if (r.view.session) await refreshBill();
@@ -78,7 +92,7 @@ export function QrTableApp(p: { token: string; locale: QrLocale; initial: QrTabl
       }
     },
     QR_TABLE_POLL_MS,
-    true,
+    !stopped, // POS P5.2 ▸ fix3 A2 ◂
   );
   useEffect(() => {
     if (p.notice) show(t(p.notice.replace(/^qr\./, "")));

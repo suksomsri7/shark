@@ -514,6 +514,8 @@ export async function createAnomalyCard(ctx: { tenantId: string; systemId: strin
     if (!isBoardSettingsId(tenantId) || !isBoardSettingsId(systemId)) return refuse("NOT_FOUND", "ไม่พบจุดขายนี้");
     const m = membershipOf(actor);
     if (!m) return refuse("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์");
+    // POS P5.2 ▸ CD-P52-F5: ด่านระดับร้านก่อนตรวจแถว — ไม่มี pos.report.view/pos.report.anomaly ที่ใดเลย = PERMISSION_DENIED (ไม่ใช่ VALIDATION) · ด่านต่อสาขาด้านล่างคงเดิม ◂
+    if (!evaluate(m, { module: "pos", action: "pos.report.view" }) || !evaluate(m, { module: "pos", action: "pos.report.anomaly" })) return refuse("PERMISSION_DENIED", "ต้องมีสิทธิ์ดูรายงานจุดผิดปกติของสาขานี้");
     const i: Record<string, unknown> = isRecord(input) ? input : {};
     const unitId = str(i.unitId);
     const rule = str(i.rule);

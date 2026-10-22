@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { publicReceipt } from "@/lib/modules/pos/public-receipt";
 import type { PublicReceiptResult } from "@/lib/modules/pos/receipt-public-shared";
+import { posPublicClientIp, posPublicRateGuard } from "@/lib/modules/pos/public-rate"; // POS P5.2 ▸ CD-P52-F2 ◂
 import { PosPublicReceipt, PosReceiptUnavailable, posReceiptT, type PosReceiptLocale } from "./pos/PosPublicReceipt";
 import { getPublicTaxContext } from "@/lib/modules/account/service";
 import { accountRateGuard, publicClientIp } from "@/lib/modules/account/rate-limit";
@@ -66,14 +67,16 @@ export default async function PublicTaxInvoicePage({
 }) {
   const { token } = await params;
   const { err, issued, requested, lang } = await searchParams;
-  // POS P1.11U ▸ ใบเสร็จออนไลน์ POS (โทเคน 12 ตัว) — ไม่ผ่านเพดาน IP / บริบทของบัญชี
+  // POS P1.11U ▸ ใบเสร็จออนไลน์ POS (โทเคน 12 ตัว) — ไม่ผ่านบริบทของบัญชี · POS P5.2 ▸ CD-P52-F2: เพดานต่อ IP ของ POS เอง (ถัง pos:pub:receiptRead
+  //   60/นาที/IP · public-rate.ts) ก่อนค้นโทเคน — ชน = หน้า "ใบเสร็จยังไม่พร้อม" เหมือนกันทุกโทเคน (หน้า server component ตั้งสถานะ 429 ไม่ได้) ◂
   // F5: โทเคน Crockford ไม่สนตัวพิมพ์ (พิมพ์ลิงก์ด้วยมือ/สแกนแล้วได้ตัวเล็ก) ⇒ ตรวจและค้นด้วยตัวใหญ่
   const posToken = token.toUpperCase();
   if (POS_RECEIPT_TOKEN_RE.test(posToken)) {
     const locale = await posLocale(lang);
     let res: PublicReceiptResult;
     try {
-      res = await publicReceipt(posToken);
+      const posRate = await posPublicRateGuard("receiptRead", await posPublicClientIp()); // POS P5.2 ▸ CD-P52-F2 ◂
+      res = posRate.ok ? await publicReceipt(posToken) : { ok: false, code: "RATE_LIMITED", message: "" };
     } catch {
       res = { ok: false, code: "INTERNAL", message: "" };
     }

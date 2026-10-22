@@ -45,16 +45,18 @@ export function QrOrderStatusApp(p: { token: string; locale: QrLocale; initial: 
   const { toast, show } = useToast();
   const now = useServerNow(v.serverNow, 1000); // POS P2.7U fix1 ▸ F3 ◂
   const phase = orderPhaseOf(v);
+  const [gone, setGone] = useState(false); // POS P5.2 ▸ fix3 A2: TOKEN_INVALID = stop polling (stale tab must not fill the per-IP miss budget) ◂
   const poll = useVisiblePoll(
     async () => {
       const r = await p.actions.status(p.token, ver.current);
+      if (!r.ok && r.code === "TOKEN_INVALID") return setGone(true); // POS P5.2 ▸ fix3 A2 ◂
       if (r.ok) {
         ver.current = r.ver;
         if (r.changed) setV(r.view);
       }
     },
     QR_STATUS_POLL_MS,
-    !TERMINAL.has(phase),
+    !TERMINAL.has(phase) && !gone, // POS P5.2 ▸ fix3 A2 ◂
   );
   useEffect(() => {
     if (p.notice) show(tk(`pos.${p.notice}`));

@@ -1,7 +1,7 @@
 "use server";
 // actions.ts — server actions of the public QR pages (/q/**) · POS P2.7 S
 // No session: the capability is the token in the URL. Every write goes through pos/qr-order (rate limits, refusals, single writers live there).
-// Client IP = first x-forwarded-for hop (same as the /d display actions) — used only for the per-IP submit limit.
+// Client IP = first x-forwarded-for hop (same as the /d display actions) — used for the per-IP submit limit and (POS P5.2 ▸ CD-P52-F3 ◂) the per-IP read limit.
 // Form actions (…FormAction) redirect back to the page with ?e=<messageKey> on refusal so the pages work without client JavaScript.
 
 import { headers } from "next/headers";
@@ -55,10 +55,10 @@ function linesOf(fd: FormData): { productId: string; qty: number; choiceIds?: st
 
 // ── table (/q/t/<qrToken>) ──
 export async function tablePollAction(qrToken: string, sinceVer?: string): Promise<QrTablePollResult> {
-  return tablePoll(qrToken, typeof sinceVer === "string" ? { sinceVer } : {});
+  return tablePoll(qrToken, typeof sinceVer === "string" ? { sinceVer } : {}, { ip: await clientIp() }); // POS P5.2 ▸ CD-P52-F3 ◂
 }
 export async function quoteTableCartAction(qrToken: string, lines: unknown): Promise<QrQuoteResult> {
-  return quoteTableCart(qrToken, { lines });
+  return quoteTableCart(qrToken, { lines }, { ip: await clientIp() }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 export async function placeTableRoundAction(qrToken: string, input: QrTableRoundInput): Promise<QrPlaceRoundResult> {
   return placeTableRound(qrToken, input, { ip: await clientIp() });
@@ -68,7 +68,7 @@ export async function tableServiceRequestAction(qrToken: string, kind: "CALL_STA
 }
 // POS P2.7U ▸ bill of the table for the client island (read-only · same door as the SSR page) ◂
 export async function tableBillAction(qrToken: string): Promise<QrTableBillResult> {
-  return tableBill(qrToken);
+  return tableBill(qrToken, { ip: await clientIp() }); // POS P5.2 ▸ CD-P52-F3 ◂
 }
 export async function tableNotifyPaidAction(qrToken: string): Promise<QrOkResult> {
   return tableNotifyPaid(qrToken, { ip: await clientIp() });
@@ -89,7 +89,7 @@ export async function tableRequestFormAction(qrToken: string, fd: FormData): Pro
 
 // ── pre-order (/q/<linkToken>) ──
 export async function quotePreorderCartAction(linkToken: string, lines: unknown): Promise<QrQuoteResult> {
-  return quotePreorderCart(linkToken, { lines });
+  return quotePreorderCart(linkToken, { lines }, { ip: await clientIp() }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 export async function placePreorderAction(linkToken: string, input: QrPreorderInput): Promise<QrPlacePreorderResult> {
   return placePreorder(linkToken, input, { ip: await clientIp() });
@@ -113,7 +113,7 @@ export async function preorderFormAction(linkToken: string, fd: FormData): Promi
 
 // ── order status (/q/o/<orderToken>) ──
 export async function orderStatusAction(orderToken: string, sinceVer?: string): Promise<QrOrderStatusResult> {
-  return orderStatus(orderToken, typeof sinceVer === "string" ? { sinceVer } : {});
+  return orderStatus(orderToken, typeof sinceVer === "string" ? { sinceVer } : {}, { ip: await clientIp() }); // POS P5.2 ▸ CD-P52-F3 ◂
 }
 export async function claimPaidAction(orderToken: string): Promise<QrOkResult> {
   return claimPaid(orderToken, { ip: await clientIp() });
