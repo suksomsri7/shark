@@ -7927,7 +7927,7 @@ const P36U = {
   memberSkip: "ยังไม่ได้ผูก",
   dealId: "",
   dealSkip: "ยังไม่ได้สร้าง",
-  before: null as null | { credit: { had: boolean; v: unknown }; memberOnBill: { had: boolean; v: unknown } },
+  before: null as null | { credit: { had: boolean; v: unknown }; memberOnBill: { had: boolean; v: unknown }; /** fix1 F4: settings.pos.orders มีอยู่ก่อนรอบไหม */ ordersHad: boolean },
   mgr: false,
   mgrPin: "",
   saleIds: [] as string[],
@@ -7981,23 +7981,29 @@ async function p36uRemember(): Promise<void> {
   const res = p36uRec(pos._qcP36uBefore) ? (pos._qcP36uBefore as Record<string, unknown>) : null;
   const part = (x: unknown) => (p36uRec(x) && x.had === true ? { had: true, v: x.v } : { had: false, v: undefined });
   if (res) {
-    P36U.before = { credit: part(res.credit), memberOnBill: part(res.memberOnBill) };
+    P36U.before = { credit: part(res.credit), memberOnBill: part(res.memberOnBill), ordersHad: res.ordersHad !== false };
     P36U.log.push("กวาดซากค่าตั้งวางบิลของรอบก่อน (คืนจาก _qcP36uBefore)");
   } else {
     const orders = p36uRec(pos.orders) ? pos.orders : null;
     P36U.before = {
       credit: p36uHas(pos, "credit") ? { had: true, v: pos.credit } : { had: false, v: undefined },
       memberOnBill: orders && p36uHas(orders, "memberOnBill") ? { had: true, v: orders.memberOnBill } : { had: false, v: undefined },
+      ordersHad: p36uHas(pos, "orders"),
     };
   }
   const b = P36U.before;
-  await p36uSetKey("_qcP36uBefore", { credit: { had: b.credit.had, v: b.credit.had ? (b.credit.v ?? null) : null }, memberOnBill: { had: b.memberOnBill.had, v: b.memberOnBill.had ? (b.memberOnBill.v ?? null) : null } });
+  await p36uSetKey("_qcP36uBefore", { credit: { had: b.credit.had, v: b.credit.had ? (b.credit.v ?? null) : null }, memberOnBill: { had: b.memberOnBill.had, v: b.memberOnBill.had ? (b.memberOnBill.v ?? null) : null }, ordersHad: b.ordersHad });
 }
 async function p36uRestore(): Promise<string> {
   const b = P36U.before;
   if (!b) return "ค่าตั้งไม่ถูกแตะ";
   await p36uSetKey("credit", b.credit.had ? b.credit.v : undefined);
   await p36uSetKey("memberOnBill", b.memberOnBill.had ? b.memberOnBill.v : undefined);
+  // fix1 F4: pos.orders ไม่มีก่อนรอบ และตอนนี้ว่าง = ลบ {pos,orders} (ไม่ทิ้ง {} ค้าง)
+  if (!b.ordersHad) {
+    await p36uGuard();
+    await prisma.$executeRaw`UPDATE "AppSystem" SET "settings" = "settings" #- '{pos,orders}' WHERE "id" = ${SYS} AND "tenantId" = ${T.tenantId} AND type = 'POS' AND jsonb_typeof("settings"->'pos'->'orders') = 'object' AND "settings"->'pos'->'orders' = '{}'::jsonb`;
+  }
   await p36uSetKey("_qcP36uBefore", undefined);
   P36U.before = null;
   return `คืนค่าตั้งวางบิล (credit ${b.credit.had ? "เดิม" : "ลบ"} · memberOnBill ${b.memberOnBill.had ? "เดิม" : "ลบ"})`;
