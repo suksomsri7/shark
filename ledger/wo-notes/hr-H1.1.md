@@ -74,6 +74,16 @@
 
 ## 7. Screenshots (CONTROLLER-RUN) — `visual-hr.mts 1.1 --dry --user manager-branch` = 2 pages × 3 viewports = 6 shots; owner 6; staff 3.
 
+## 8. Round 2 (after controller rulings · ORACLE-EDITs 1e55819d)
+- All five disputes were accepted. The ORACLE-EDITs (D-1…D-5) were committed by the controller (1e55819d) and the builder did not edit any oracle.
+- **D-1 ruling (brief amendment, binding):** `unitAccess` `[]` or malformed means ยังไม่กำหนดสาขา, which is tenant-wide (`*`) for the HR scope. That is today's behaviour, so nobody loses access at deploy. A branch restriction applies only when `unitAccess` is a non-empty list without `*`. Null-unit employees stay visible only to all-branch viewers (OWNER · `*` · `[]`). Built as one marked hunk in `hrScopeOf` (`src/lib/modules/hr/scope.ts`) in commit 8fd7ccb0. The positive-control hack left no trace; it was reverted earlier and git is clean.
+- Round-2 results (head 8fd7ccb0). Oracle forced ×2 and unforced ×1: 70/70 each, residue none. Regressions:
+  - privacy 194/194 · h0.7 74/74 · h0.3 37/37 · h0.1 67/67
+  - crm-c0.3 88/88 · payroll 19/19 · payadjust 27/27 · roster 24/24 · leave-booking 14/14 · payroll-reverse 14/14 · booking-hours-hr 13/13 · ai-tools 18/18 · ai-proposals 16/16
+  - fitness 42/42 and fitness-hr 7/7 in both modes
+  - Typecheck exit 2. The single error is in the oracle, from the controller's Pr-10 edit: `scripts/qc-hf-hr-privacy.mts(260,125) TS2551`, because the `shared` cast at L60–63 lacks `EMPLOYEE_PAYROLL_FIELDS?: readonly string[]`. That needs an ORACLE-EDIT. Product code has 0 errors.
+- The §5 results and D-1 text below are round 1, kept for history. Round-2 results are in the final report and in `hr-H1.1-green.txt`.
+
 ## 9. Disputes / ORACLE-EDIT requests / decisions
 - **D-1 (BLOCKER-level for prod, ruling 3 vs regressions).** STAFF/MANAGER `unitAccess []` ⇒ 0 scoped rows. `[]` is the repo default for every invited STAFF (`src/lib/staff/service.ts:434`), and the regression fixtures use it: privacy (hrMgr/hrStaff/wild = STAFF []), h0.7 (STAFF []), h0.3 (STAFF [] with hr.employee.create / kiosk). Built exactly per ruling ⇒ those checks go red; positive control proves no other cause. **In prod every STAFF HR user with [] loses all HR rows/edits on deploy** (owner/`*` unaffected). Options: (a) keep ruling 3 → ORACLE-EDIT the fixtures to `["*"]` (privacy L163–187/1068 · h0.7 L420/L434 · h0.3 L370) + a prod step before/at deploy: owners (or a one-off script) set `unitAccess ["*"]` (or real units) for STAFF memberships holding hr.* keys; (b) re-rule `[]` = tenant-wide for HR (legacy) → ORACLE-EDIT qc-hr-h1.1 S3.2 (`mgrNone`/`malformed` ⇒ "*") — then all three suites are green.
 - **D-2 Pr-10 (privacy).** `payType` is a new key for payroll viewers (R7 · S7.4/S7.5) but outside `EMPLOYEE_PROFILE_FIELDS ∪ EMPLOYEE_SENSITIVE_FIELDS` (S7.8 forbids both). Exported `EMPLOYEE_PAYROLL_FIELDS = ["payType"]` — ORACLE-EDIT Pr-10: whitelist += `shared.EMPLOYEE_PAYROLL_FIELDS`.
@@ -81,12 +91,12 @@
 - **D-4 h0.1 S4.2.** `SCHEMA_SHA` freezes `prisma/schema/payroll.prisma`; R1 must edit it. Re-take: `2b36269c76742aa3ebdf52297e6c1b0e3e0767d3a3061bd8de86ba2c30dee188` (same procedure as after H0.6).
 - **D-5 typecheck.** `qc-hr-h1.1.mts:355` `/assertCan\([^;]*unitId/s` → drop `s` (`[^;]` already spans newlines; same fix as H0.7 c5f06fb3).
 - Decisions (controller to confirm): run-level payroll actions stay system-wide (ruling 8) — a branch-scoped payroll viewer with hr.payroll.create/approve can still create/approve/reverse/pay a whole-system run and sees system totals (hunter note) · own rows (linked employee) bypass the branch filter (self-service) · payslip branch filter = employee-level today, not the run period · `employmentStatus` from the form is data only (does not toggle `active`) · new employees get ACTIVE · HrHub counters now use the same scopes as the lists · HR UI has no `src/messages/{th,en}.json` hr keys (only `th/common.json` exists) ⇒ literals in ui.tsx like the rest of the module · verifyPin legacy plain-PIN path upgrades the hash before the unit check (no leak; same reply) · kiosk branch check after the H0.3 gates, setPin branch check before the hr-setpin gate.
-- Debts: borrowing UI (H2.x) · payType in the salary form (H3.4) · en strings · no outbox events added (X9 N-A).
+- Debts: normalising malformed `unitAccess` (a non-array or junk entries, treated as tenant-wide here) belongs in a core WO, since `staff/service.ts` and rbac own it · borrowing UI (H2.x) · payType in the salary form (H3.4) · en strings · no outbox events added (X9 N-A).
 
 ## 10. Prod runbook
 1. Deploy with migration `20261204000000_hr_org_axis` (`migrate deploy`; pre-check SQL in the file header; after: `SELECT count(*) FROM "HrSalaryProfile" WHERE "payType" <> 'MONTHLY'` = 0).
 2. Backfill: `HR_BACKFILL_PROD=1 HR_BACKFILL_ENV_FILE=<prod env> pnpm exec tsx scripts/hr-backfill-units.mts --all` (dry-run, read counts) → same with `--apply` → re-run `--apply` = 0/0 (idempotent).
-3. Resolve D-1 before go-live (memberships with `[]` holding hr.* keys).
+3. (D-1 ruled) No membership change is needed at deploy, because `[]` keeps tenant-wide HR access. **Owners restrict a branch manager by setting `unitAccess` explicitly** (a non-empty list of units, without `*`) in staff settings. From then on, that manager sees and manages only those units plus employees borrowed into them.
 4. Owners of multi-unit tenants assign home units (register prompt "ยังไม่ระบุสาขาประจำ N คน" → profile → สาขาประจำ); until then those employees are visible only to OWNER/`*` and verifyPin treats them tenant-wide (ruling 6).
 
 ## 11. QC4 restored / temp data

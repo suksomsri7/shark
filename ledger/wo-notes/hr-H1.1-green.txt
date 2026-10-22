@@ -1,4 +1,4 @@
-# H1.1 green — builder · head fd1de416 · 2026-10-22T17:38:07Z · QC4
+# H1.1 green — round 2 (after ORACLE-EDITs 1e55819d + D-1 fix 8fd7ccb0) · 2026-10-22T17:59:57Z · QC4
 ## forced run 1 (full output)
 [env] qc-hr-h1.1 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h1.1] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
@@ -13,7 +13,7 @@
   ✅ [H1.1-S9.1] [static] seed-hr-qc.mts writes HrEmployee.unitId from HQC unit and an HrEmployeeUnit row for borrowedTo
   ✅ [H1.1-X9.1] [static] register UI: ui.tsx uses hrScopeOf · "ยังไม่ระบุสาขาประจำ" in th.json or hr UI · a branch testid (…branch…/…unit…) listed in hr-ui-inventory.json
   ✅ [H1.1-X9.2] [static] visual-hr.mts SPECS["1.1"] registers register-branches · register-branch-manager · profile-unit (CONTROLLER-RUN, 3 viewports × owner / manager(branch) / staff)
-(node:2567882) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2584108) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -31,7 +31,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [H1.1-S1.7] [db] partial unique enforced (rolled-back tx): 2nd open borrowing of one employee to the same unit ⇒ 23505 · a closed + an open borrowing ⇒ accepted
 ── [S3] hrScopeOf · unitWhere ──
   ✅ [H1.1-S3.1] [pure] hr/scope.ts exports hrScopeOf + unitWhere · OWNER (unitAccess []) ⇒ "*" · MANAGER ["*"] ⇒ "*" · STAFF ["*"] ⇒ "*"
-  ✅ [H1.1-S3.2] [pure] MANAGER [u1] ⇒ [u1] · STAFF [u1,u2] ⇒ [u1,u2] · MANAGER [] ⇒ [] (no branch ⇒ nothing — not all) · malformed unitAccess ⇒ [] (fail closed)
+  ✅ [H1.1-S3.2] [pure] MANAGER [u1] ⇒ [u1] · STAFF [u1,u2] ⇒ [u1,u2] · MANAGER [] ⇒ * (no unitAccess set = tenant-wide, today's behaviour — ruling 3 amended 22 Oct, D-1) · malformed unitAccess ⇒ * (treated as unset; debt: normalise)
   ✅ [H1.1-S3.3] [db] HrEmployee where unitWhere("*") ⇒ every row of the system incl. the null-unit employee e3
   ✅ [H1.1-S3.4] [db] 🔴 unitWhere([u1]) ⇒ exactly e1 (home u1) + e4 (home u2, borrowed to u1, open) (+ u1 lifecycle rows) · never e2 (u2) · e3 (null) · e5 (borrowing closed)
   ✅ [H1.1-S3.5] [db] unitWhere([u2]) ⇒ e2 + e4 + e5 (home u2) · never e1 / e3 · unitWhere([]) ⇒ no row
@@ -111,3 +111,40 @@ JSON_SUMMARY {"suite":"qc-hr-h1.1","total":70,"passed":70,"failed":[],"findings"
 RESIDUE none (tenants=3 users=9)
 ===== qc-hr-h1.1 ===== passed 70/70
 JSON_SUMMARY {"suite":"qc-hr-h1.1","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":56,"baseGreen":14,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)","H1.1-S1.4(RED→pass)","H1.1-S5.10(RED→pass)","H1.1-S7.8(RED→pass)","H1.1-S9.1(RED→pass)","H1.1-X9.1(RED→pass)","H1.1-X9.2(RED→pass)","H1.1-S1.5(RED→pass)","H1.1-S1.6(RED→pass)","H1.1-S1.7(RED→pass)","H1.1-S3.1(RED→pass)","H1.1-S3.2(RED→pass)","H1.1-S3.3(RED→pass)","H1.1-S3.4(RED→pass)","H1.1-S3.5(RED→pass)","H1.1-S4.1(RED→pass)","H1.1-S4.2(RED→pass)","H1.1-S4.3(RED→pass)","H1.1-S4.4(RED→pass)","H1.1-S4.5(RED→pass)","H1.1-S4.6(RED→pass)","H1.1-S4.7(RED→pass)","H1.1-S4.8(RED→pass)","H1.1-S8.1(RED→pass)","H1.1-S8.3(RED→pass)","H1.1-S8.6(RED→pass)","H1.1-S6.3(RED→pass)","H1.1-S6.4(RED→pass)","H1.1-S1.9(RED→pass)","H1.1-S6.7(RED→pass)","H1.1-S7.1(RED→pass)","H1.1-S7.2(RED→pass)","H1.1-S7.3(RED→pass)","H1.1-S7.4(RED→pass)","H1.1-S7.5(RED→pass)","H1.1-S7.7(RED→pass)","H1.1-S5.2(RED→pass)","H1.1-S5.3(RED→pass)","H1.1-S5.4(RED→pass)","H1.1-S5.5(RED→pass)","H1.1-S5.6(RED→pass)","H1.1-S5.7(RED→pass)","H1.1-S5.8(RED→pass)","H1.1-S5.9(RED→pass)","H1.1-S2.1(RED→pass)","H1.1-S2.2(RED→pass)","H1.1-S2.3(RED→pass)","H1.1-X6.1(RED→pass)","H1.1-S2.4(RED→pass)","H1.1-S2.5(RED→pass)","H1.1-S2.6(RED→pass)","H1.1-S9.2(RED→pass)","H1.1-S9.3(RED→pass)","H1.1-X8.1(RED→pass)"]}
+
+## regression round 2
+qc-hf-hr-privacy exit=0
+===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+ผ่าน 194/194
+qc-hr-h0.7 exit=0
+RESIDUE none (tenants=4 users=39)
+===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE)
+qc-hr-h0.3 exit=0
+RESIDUE none (tenant=สร้างแล้ว users=5)
+===== qc-hr-h0.3 ===== ผ่าน 37/37 (QC_FORCE)
+qc-hr-h0.1 exit=0
+===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+qc-crm-c0.3 exit=0
+qc-payroll exit=0
+===== QC Payroll ไทย =====
+ผ่าน 19/19
+qc-hr-payadjust exit=0
+===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====
+ผ่าน 27/27
+qc-hr-roster exit=0
+===== QC: ทะเบียนพนักงานแหล่งเดียว + ใครรับคิว =====
+ผ่าน 24/24
+qc-hr-leave-booking exit=0
+===== QC: ลาอนุมัติ → ปิดช่องจอง (C-2) =====
+ผ่าน 14/14
+qc-payroll-reverse exit=0
+qc-booking-hours-hr exit=0
+===== QC Booking Hours+HR =====
+ผ่าน 13/13
+qc-ai-tools exit=0
+===== QC AI Tools (Phase 3 v1) =====
+ผ่าน 18/18
+qc-ai-proposals exit=0
+===== QC AI Proposals (Phase 3.5) =====
+ผ่าน 16/16
+qc-crm-c0.3: JSON_SUMMARY total 88 passed 88 · qc-payroll-reverse: PASS 14/14
