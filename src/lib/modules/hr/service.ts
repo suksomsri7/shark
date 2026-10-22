@@ -1,7 +1,7 @@
 import { tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัติการตัดสินใบลา ◂
-import type { HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
+import type { HrAttendanceJudgement, HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂
@@ -959,12 +959,44 @@ const leaveScopeWhere = async (ctx: Ctx, scope?: LeaveListScope): Promise<Prisma
   return "unitIds" in scope ? scopedLeaveWhere(ctx, scope) : {};
 };
 
+// HR H1.2 ▸ R6 — ผู้อ่านเดิมเลือกคอลัมน์ฐานแบบระบุชื่อ (ลำดับเดียวกับที่ Prisma คืนก่อน H1.2) + employee เหมือนเดิม
+//   ⇒ ผลลัพธ์ JSON เท่าเดิมทุกไบต์หลังเพิ่มคอลัมน์ใหม่ (policyId/days/halfDay/hours/attachmentKey · หลักฐานลงเวลา) ·
+//   🔒 ห้ามเติมคอลัมน์ใหม่ (lat/lng/photoKey/attachmentKey …) ลงสองชุดนี้ — ข้อมูลอ่อนไหว (R7) ◂
+const LEAVE_BASE_SELECT = {
+  id: true,
+  tenantId: true,
+  systemId: true,
+  employeeId: true,
+  type: true,
+  fromDate: true,
+  toDate: true,
+  status: true,
+  reason: true,
+  decidedById: true,
+  filedById: true,
+  createdAt: true,
+  employee: true,
+} as const satisfies Prisma.HrLeaveSelect;
+const ATTENDANCE_BASE_SELECT = {
+  id: true,
+  tenantId: true,
+  systemId: true,
+  employeeId: true,
+  kind: true,
+  at: true,
+  note: true,
+  judgement: true,
+  dueMin: true,
+  lateMin: true,
+  employee: true,
+} as const satisfies Prisma.HrAttendanceSelect;
+
 export async function listLeaves(ctx: Ctx, take = 100, scope?: LeaveListScope) {
   const sw = await leaveScopeWhere(ctx, scope);
   if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
     where: { ...sw },
-    include: { employee: true },
+    select: LEAVE_BASE_SELECT, // HR H1.2 ▸ R6 ◂
     orderBy: [{ createdAt: "desc" }],
     take,
   });
@@ -975,7 +1007,7 @@ export async function pendingLeaves(ctx: Ctx, take = 100, scope?: LeaveListScope
   if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
     where: { status: "PENDING", ...sw },
-    include: { employee: true },
+    select: LEAVE_BASE_SELECT, // HR H1.2 ▸ R6 ◂
     orderBy: [{ fromDate: "asc" }, { createdAt: "asc" }],
     take,
   });
@@ -986,7 +1018,7 @@ export async function listAttendance(ctx: Ctx, take = 50, scope?: HrScope) {
   if (sw === null) return [];
   return tenantDb(ctx).hrAttendance.findMany({
     where: sw,
-    include: { employee: true },
+    select: ATTENDANCE_BASE_SELECT, // HR H1.2 ▸ R6 ◂
     orderBy: { at: "desc" },
     take,
   });
@@ -1050,7 +1082,9 @@ export async function setSchedule(ctx: Ctx, employeeId: string, rows: ScheduleRo
   return { ok: true };
 }
 
-export type AttendanceJudgement = "ON_TIME" | "LATE" | "DAY_OFF" | "NO_SCHEDULE";
+// HR H1.2 ▸ ขยายเป็น enum ของ Prisma (เพิ่ม ABSENT / EARLY_OUT ใน migration 20261205000001) — clock() คืน judgement จากแถว
+//   ซึ่งเป็นชนิด enum · ตัวตัดสินวันนี้ (judgeClockIn) ยังคืนแค่ 4 ค่าเดิม (ไม่เปลี่ยนพฤติกรรม) ◂
+export type AttendanceJudgement = HrAttendanceJudgement;
 
 // เวลาไทยคงที่ +7 (ทั้งโปรเจกต์ใช้ค่านี้ ไม่มี DST) — อ่านค่าด้วย getUTC* บนเวลาที่บวกแล้ว
 const BKK_MS = 7 * 3_600_000;
