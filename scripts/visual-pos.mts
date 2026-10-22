@@ -249,6 +249,9 @@ const P36U_PAGES = ["register", "sales", "reports", "settings"] as const satisfi
 // POS P3.8U ▸ CD-P38U-11: wo p3.8u = สถานะบอร์ดงาน/ห้องทีมของใบนี้ (ไม่ส่ง --page = settings + reports + shifts) ◂
 const P38U_WO = /^p3\.?8u/i.test(WO ?? "");
 const P38U_PAGES = ["settings", "reports", "shifts"] as const satisfies readonly PosPage[];
+// POS P3-SKEL U ▸ CD-SKELU-12: wo p3-skel-u = สถานะโครงแพลตฟอร์มของใบนี้ (ไม่ส่ง --page = settings + register + sales + reports) ◂
+const P3SKU_WO = /^p3-?skel-?u/i.test(WO ?? "");
+const P3SKU_PAGES = ["settings", "register", "sales", "reports"] as const satisfies readonly PosPage[];
 // POS P2.7U ▸ มติ 15: wo p2.7 = หน้าสาธารณะ QR (/q/**) + จอ 09 + จอโต๊ะ + ลิ้นชักช่องทาง (ไม่ส่ง --page = qr-public + orders + tables + settings) ◂
 const P27_WO = /^p2\.?7(?![0-9])/i.test(WO ?? "");
 const P27_PAGES = ["qr-public", "orders", "tables", "settings"] as const satisfies readonly PosPage[];
@@ -278,7 +281,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P36U_WO ? [...P36U_PAGES] /* POS P3.6U */ : P37U_WO ? [...P37U_PAGES] /* POS P3.7U */ : P38U_WO ? [...P38U_PAGES] /* POS P3.8U */ : P39U_WO ? [...P39U_PAGES] /* POS P3.9U */ : P34U_WO ? [...P34U_PAGES] /* POS P3.4U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P3SKU_WO ? [...P3SKU_PAGES] /* POS P3-SKEL U */ : P36U_WO ? [...P36U_PAGES] /* POS P3.6U */ : P37U_WO ? [...P37U_PAGES] /* POS P3.7U */ : P38U_WO ? [...P38U_PAGES] /* POS P3.8U */ : P39U_WO ? [...P39U_PAGES] /* POS P3.9U */ : P34U_WO ? [...P34U_PAGES] /* POS P3.4U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -321,7 +324,7 @@ const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const PDF_PROBE = argv.includes("--pdf");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey | P34uKey | P39uKey /* POS P3.9U */ | P37uKey /* POS P3.7U */ | P38uKey /* POS P3.8U */ | P36uKey /* POS P3.6U */; // POS P3.4U ▸ + P34u ◂ // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey | P34uKey | P39uKey /* POS P3.9U */ | P37uKey /* POS P3.7U */ | P38uKey /* POS P3.8U */ | P36uKey /* POS P3.6U */ | P3skuKey /* POS P3-SKEL U */; // POS P3.4U ▸ + P34u ◂ // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -967,6 +970,76 @@ const p36uPath = (k: P36uKey): string => {
   return `/app/sys/${SYS}/pos/register?unit=${u}`;
 };
 // ◂ POS P3.6U
+// ── POS P3-SKEL U ▸ โครงแพลตฟอร์ม (CD-SKELU-12 · wo p3-skel-u · --states · settings/register/sales/reports · 3 ขนาด · th + LOCALE=en 1440 (+390 register/sales) · owner 17 + cashier 5 ต่อภาษา) ◂
+type P3skuKey =
+  | "settings-channel-creds-draft"
+  | "settings-channel-creds-complete"
+  | "settings-channel-creds-keymissing"
+  | "settings-channels-platform-chips"
+  | "settings-slip-card"
+  | "settings-slip-verify-sheet"
+  | "settings-etax-sheet"
+  | "settings-devices-lan-none"
+  | "settings-devices-lan-agents"
+  | "settings-devices-lan-token"
+  | "paydlg-intent-slip"
+  | "paydone-transfer-slip"
+  | "taxinv-etax-line"
+  | "bills-drawer-slips"
+  | "bills-slip-sheet"
+  | "bills-slip-reject-invalid"
+  | "reports-reconcile-owner"
+  | "reports-reconcile-denied";
+const P3SKU_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P3SKU_PLAN: { key: P3skuKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "settings-channel-creds-draft", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "10 ลิ้นชัก LINE MAN (โหมดแก้): การ์ด credentials — แถว DRAFT (client_id + client_secret ของ fixture · restaurant_id/webhookSecret ว่าง) · ช่องลับว่าง placeholder ปิดบัง · URL webhook + \"ใช้ได้เมื่อเปิดตัวเชื่อมจริง (W4)\" · QC5 ไม่มีกุญแจ = ชิป \"ยังไม่ตั้งกุญแจ\"" },
+  { key: "settings-channel-creds-complete", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "ลิ้นชัก Grab: แถว COMPLETE (fixture ครบ 4 ช่อง ผ่าน saveIntegrationCredentials + deps.key) → กด \"ทดสอบการเชื่อม\" → บรรทัด ADAPTER_PENDING (ไม่มีคำว่าเชื่อมแล้ว) · ไม่มีแถว COMPLETE = SKIP" },
+  { key: "settings-channel-creds-keymissing", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "ลิ้นชัก LINE MAN เมื่อเซิร์ฟเวอร์ไม่มี POS_CREDENTIALS_KEY: กรอบ \"ยังไม่ตั้งกุญแจ\" + ช่อง/บันทึกปิด · เซิร์ฟเวอร์มีกุญแจ = SKIP พร้อมเหตุผล" },
+  { key: "settings-channels-platform-chips", page: "settings", devices: P3SKU_D3, users: ["owner", "cashier"], note: "10 แท็บช่องทางขาย: ชิปสถานะ credentials ใต้ชื่อแถว LINE MAN/Grab (pos-channel-conn-*) เฉพาะผู้ถือ pos.channel.manage · แคชเชียร์ = ไม่มีชิป + อ่านอย่างเดียว" },
+  { key: "settings-slip-card", page: "settings", devices: P3SKU_D3, users: ["owner", "cashier"], note: "10 แท็บวิธีรับเงิน: การ์ด \"สลิปโอน\" หลังการ์ด Beam — แนบสลิปใช้งานได้ · อายุเก็บ 1,825 วัน อ่านอย่างเดียว (W19) · ตรวจสลิปอัตโนมัติ รอผู้ให้บริการ + ปุ่มตั้งค่า (แคชเชียร์ไม่มีปุ่ม)" },
+  { key: "settings-slip-verify-sheet", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "แผ่นตรวจสลิปอัตโนมัติ: เลือก SlipOK (harness เลือกเพื่อแสดงการ์ด · ไม่บันทึก) → การ์ด credentials SLIP_VERIFY (api_key ลับ · branch_id)" },
+  { key: "settings-etax-sheet", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "แท็บการเชื่อมต่อ SHARK: แถว e-Tax ปุ่ม \"สมัคร\" live (pos.settings.manage) → แผ่น e-Tax · เลือก INET → การ์ด credentials ETAX (ไม่ส่ง/ไม่ตัวอย่าง)" },
+  { key: "settings-devices-lan-none", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "17B แท็บเครื่อง: การ์ดตัวช่วยพิมพ์ LAN ว่าง + วิทยุแลนปิด + \"ยังไม่มีตัวช่วยพิมพ์ LAN\" · มี agent ที่ไม่ใช่ของ harness = SKIP" },
+  { key: "settings-devices-lan-agents", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "agent posqc-vis-p3sku-agent (192.168.1.50:9100 ใบครัว · 192.168.1.51:9100 ใบเสร็จ · registerPrintAgent) + เครื่องนี้ printerConfig โหมดแลน + ใบครัว after-sale (jsonb ของ harness · _qcP3skuBefore) → วิทยุแลนติ๊ก · วิทยุใบครัว LAN ติ๊ก (ชื่อเรียก)" },
+  { key: "settings-devices-lan-token", page: "settings", devices: P3SKU_D3, users: ["owner"], note: "ฟอร์มลงทะเบียนตัวช่วยพิมพ์ → กดลงทะเบียนจริง 1 ครั้ง → กล่องโทเคนครั้งเดียว (harness ปิดบังโทเคนในภาพ · agent ถูกเพิกถอนตอนเก็บกวาด)" },
+  { key: "paydlg-intent-slip", page: "register", devices: P3SKU_D3, users: ["owner", "cashier"], note: "02 พร้อมเพย์แบบคงที่ (ใบ PENDING) → ปุ่ม \"แนบสลิป\" ข้างยืนยันเอง → ฟอร์มแนบสลิป (รูป · ยอดบนสลิปไม่เติมให้ · เลขอ้างอิง) — ไม่อัป (QC5 ไม่มีที่เก็บไฟล์) · Beam เปิด = SKIP" },
+  { key: "paydone-transfer-slip", page: "register", devices: ["desktop"], users: ["owner"], note: "02 โอนเงิน → ยืนยัน → 02b ปุ่ม \"แนบสลิป\" → ฟอร์มของแถว TRANSFER (slipTargetsAction) · ⚠️ บิลโอนจริง 1 ใบ → voidSale ตอนเก็บกวาด" },
+  { key: "taxinv-etax-line", page: "register", devices: P3SKU_D3, users: ["owner"], note: "15A ใบกำกับเต็มรูป: บรรทัดจาง \"ส่ง e-Tax ทางอีเมล · รอผู้ให้บริการ\" ใต้ช่องอีเมล (ไม่มีช่องติ๊ก) · สมุด QC ไม่ผูก = SKIP" },
+  { key: "bills-drawer-slips", page: "sales", devices: P3SKU_D3, users: ["owner", "cashier"], note: "12 ?bill= บิลโอน fixture (createSale TRANSFER) + สลิป 1 ใบ (attachSlip + deps.put stub · PNG สังเคราะห์ · ยอดที่พิมพ์ ≠ ยอดชำระ) → บล็อกสลิป: ชิปสถานะ + แนบสลิป · แคชเชียร์ไม่มีปุ่มตัดสิน" },
+  { key: "bills-slip-sheet", page: "sales", devices: P3SKU_D3, users: ["owner"], note: "แตะชิปสลิป → แผ่นสลิป: รูป = \"แสดงรูปสลิปไม่ได้\" (ไฟล์ stub) · ยอดบนสลิปไม่ตรงยอดชำระ · ยืนยัน/ปฏิเสธ (เจ้าของร้าน) · คำว่าหลักฐานเท่านั้น" },
+  { key: "bills-slip-reject-invalid", page: "sales", devices: P3SKU_D3, users: ["owner"], note: "แผ่นสลิป → ปฏิเสธ → เหตุผล 2 ตัวอักษร → ยืนยันการปฏิเสธ → ข้อความ \"ระบุเหตุผล 3–200 ตัวอักษร\" (ไม่เรียกเซิร์ฟเวอร์ · ไม่เขียน)" },
+  { key: "reports-reconcile-owner", page: "reports", devices: P3SKU_D3, users: ["owner"], note: "08 แท็บ \"กระทบยอดรับเงิน\" (?kind=reconcile 30 วัน · สาขา QC): การ์ดต่อวัน + แถว + ป้ายผล ของใบขอรับเงินที่มีอยู่ (ว่าง = ข้อความว่าง) · CSV · PDF/settlement ปิดพร้อมเหตุผล" },
+  { key: "reports-reconcile-denied", page: "reports", devices: P3SKU_D3, users: ["cashier"], note: "08 ?kind=reconcile ของแคชเชียร์ (ไม่มี pos.report.view): การ์ดปฏิเสธของรายงานกระทบยอด" },
+];
+const p3skuOn = STATES_ON && tenantKey === "coffee" && P3SKU_WO;
+const P3SKU_KEYS: ReadonlySet<string> = new Set(P3SKU_PLAN.map((s) => s.key));
+const isP3skuState = (k: StateKey | null | undefined): k is P3skuKey => !!k && P3SKU_KEYS.has(k);
+const P3SKU_SALE = { id: "" };
+const p3skuPath = (k: P3skuKey): string => {
+  const u = encodeURIComponent(unitId);
+  const d = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+  const from = new Date(Date.parse(`${d}T00:00:00Z`) - 29 * 86_400_000).toISOString().slice(0, 10);
+  if (k.startsWith("bills-")) return `/app/sys/${SYS}/pos/sales?unit=${u}${P3SKU_SALE.id ? `&bill=${encodeURIComponent(P3SKU_SALE.id)}` : ""}`;
+  if (k.startsWith("reports-")) return `/app/sys/${SYS}/pos/reports?kind=reconcile&from=${from}&to=${d}&unit=${u}`;
+  if (k.startsWith("settings-channel")) return `/app/sys/${SYS}/pos/settings?tab=channels&unit=${u}`;
+  if (k.startsWith("settings-slip")) return `/app/sys/${SYS}/pos/settings?tab=payments&unit=${u}`;
+  if (k === "settings-etax-sheet") return `/app/sys/${SYS}/pos/settings?tab=shark&unit=${u}`;
+  if (k.startsWith("settings-devices")) return `/app/sys/${SYS}/pos/settings?tab=devices&unit=${u}`;
+  return `/app/sys/${SYS}/pos/register?unit=${u}`;
+};
+// fixture ของภาพ (ค่าคงที่ — ใช้ทั้ง --probe ก่อนต่อ DB และ fixture ตอนถ่าย · รายละเอียดที่ ensureP3skuFixture)
+const P3SKU_TAG = "posqc-vis-p3sku";
+/** กุญแจคงที่ของ harness (ไม่ใช่ความลับ — ปิดกล่องค่าปลอม posqc-… เท่านั้น · ≥ 32 ตัว) */
+const P3SKU_KEY = "posqc-vis-p3sku-harness-key-not-a-secret-0001";
+const P3SKU_CREDS = {
+  LINEMAN: { client_id: "posqc-lineman-client", client_secret: "posqc-lineman-secret-0001", restaurant_id: "", webhookSecret: "" },
+  GRAB: { client_id: "posqc-grab-client", client_secret: "posqc-grab-secret-0001", merchant_id: "posqc-grab-merchant", webhookSecret: "posqc-grab-webhook-0001" },
+} as const;
+const P3SKU_PRINTERS = [
+  { name: "เครื่องพิมพ์ครัว", host: "192.168.1.50", port: 9100, target: "kitchen" },
+  { name: "เครื่องพิมพ์ใบเสร็จ", host: "192.168.1.51", port: 9100, target: "receipt" },
+] as const;
+// ◂ POS P3-SKEL U
 // ── POS P3.8U ▸ บอร์ดงาน/ห้องทีม (CD-P38U-11 · wo p3.8u · --states · settings/reports/shifts · 3 ขนาด · LOCALE=en 1440 · owner + cashier) ◂
 type P38uKey =
   | "settings-board-off"
@@ -1286,9 +1359,9 @@ const stockStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
 const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
-const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P36U_WO /* POS P3.6U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
+const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P36U_WO /* POS P3.6U */ && !P3SKU_WO /* POS P3-SKEL U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && !P39U_WO /* POS P3.9U */ && !P37U_WO /* POS P3.7U */ && !P36U_WO /* POS P3.6U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && !P39U_WO /* POS P3.9U */ && !P37U_WO /* POS P3.7U */ && !P36U_WO /* POS P3.6U */ && !P3SKU_WO /* POS P3-SKEL U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
   isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
@@ -1327,6 +1400,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: p213Path(st.key), ...(st.key === "developers-pos" ? { expect: 200 } : {}), file: `${OUT}/${st.key === "developers-pos" ? st.key : `${p}-${st.key.slice(p.length + 1)}`}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+  // POS P3-SKEL U ▸ CD-SKELU-12: wo p3-skel-u + --states = สถานะโครงแพลตฟอร์มของใบนี้ตามหน้า/ผู้ใช้ (paydone = 1440) ◂
+  : p3skuOn
+    ? P3SKU_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p3skuPath(st.key), file: `${OUT}/${p}-${st.key.startsWith(`${p}-`) ? st.key.slice(p.length + 1) : st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
   // POS P3.6U ▸ wo p3.6u + --states = สถานะลูกค้าองค์กร/วางบิลของใบนี้ตามหน้า/ผู้ใช้ (paydone = 1440) ◂
   : p36uOn
@@ -1571,6 +1651,8 @@ if (LIST) {
   for (const st of P35U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("register/sales/reports/settings P3.6U (wo p3.6u --states · owner + cashier):"); // POS P3.6U
   for (const st of P36U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
+  console.log("settings/register/sales/reports P3-SKEL U (wo p3-skel-u --states · owner + cashier):"); // POS P3-SKEL U
+  for (const st of P3SKU_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("settings/orders/register P3.7U (wo p3.7u --states · owner + cashier):"); // POS P3.7U
   for (const st of P37U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("reports/settings P3.9U (wo p3.9u --states · owner + cashier):"); // POS P3.9U
@@ -1583,7 +1665,7 @@ if (LIST) {
   for (const st of P27_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN, P34U_PLAN, P39U_PLAN, P37U_PLAN /* POS P3.7U */, P38U_PLAN /* POS P3.8U */, P36U_PLAN /* POS P3.6U */].flatMap((pl) => pl.map((x) => x.key)); // POS P3.4U ▸ + P34U ◂ // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN, P34U_PLAN, P39U_PLAN, P37U_PLAN /* POS P3.7U */, P38U_PLAN /* POS P3.8U */, P36U_PLAN /* POS P3.6U */, P3SKU_PLAN /* POS P3-SKEL U */].flatMap((pl) => pl.map((x) => x.key)); // POS P3.4U ▸ + P34U ◂ // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1771,6 +1853,17 @@ if (DRY) {
           `กะ fixture 2 กะบนเครื่อง posqc-vis-p35uh-${process.pid} (เลื่อนเวลา) + ลงเวลา HR · บิลแคชเชียร์ 1 ใบ → staffCommissionOnSalePaid · เก็บกวาด: ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ (หลังงานสุดท้าย/finally/สัญญาณ)`,
       );
     }
+    // POS P3-SKEL U ▸ CD-SKELU-12 ◂
+    if (jobs.some((j) => isP3skuState(j.state))) {
+      console.log(`สถานะโครงแพลตฟอร์ม P3-SKEL U (${userKey}${userKey === "cashier" ? " — ไม่มีชิปช่องทาง · การ์ดสลิปอ่านอย่างเดียว · ลิ้นชักบิลไม่มีปุ่มตัดสิน · 08 การ์ดปฏิเสธ" : ""} · context ใหม่ทุกสถานะ):`);
+      for (const st of P3SKU_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(33)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P3-SKEL U: fixture (สาขา ${unitKey} · ร้าน QC coffee เท่านั้น · ด่าน tenantId ${PQC.coffee.tenantId} · ไม่ reseed · ไม่ยิงเครือข่าย) — ช่องทาง LINEMAN/GRAB (saveChannel · find-or-create · เก็บไว้) + credentials ผ่าน saveIntegrationCredentials + deps.key ของ harness ` +
+          "(LINEMAN DRAFT · GRAB COMPLETE · ค่า posqc-… · เก็บไว้) · บิลโอน createSale + สลิป attachSlip(deps.put stub · PNG สังเคราะห์) → voidSale ตอนเก็บกวาด · ใบขอรับเงินของ paydlg-intent-slip → cancelPaymentIntent · " +
+          `agent ${P3SKU_TAG}-agent (registerPrintAgent) + agent ของ -token (กดจริง · โทเคนปิดบังในภาพ) → เพิกถอน + ลบ · เครื่อง ${DEVICE_ID} printerConfig แลนเฉพาะ -agents (_qcP3skuBefore · คืนทุกทาง) · ` +
+          "ไม่กดทดสอบพิมพ์/ส่งงานพิมพ์ · ไม่อัปสลิปผ่าน UI · QC5 ไม่มี POS_CREDENTIALS_KEY = -keymissing รันจริง · pre-flight QC4: `visual-pos.mts p3-skel-u --probe` (อ่านอย่างเดียว)",
+      );
+    }
     // POS P3.6U ▸ CD-P36U-12 ◂
     if (jobs.some((j) => isP36uState(j.state))) {
       console.log(`สถานะลูกค้าองค์กร/วางบิล P3.6U (${userKey}${userKey === "cashier" ? " — ไทล์ไม่มีตัวเลขวงเงิน · แผ่นเกินวงเงิน/PIN ผิด · 08 การ์ดปฏิเสธ · 10 อ่านอย่างเดียว" : ""} · context ใหม่ทุกสถานะ):`);
@@ -1860,6 +1953,100 @@ if (DRY) {
   console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, dry: true, locale: LOCALE_EN ? "en" : "th", states: STATES_ON, pages: pages.length, viewports: viewports.length, shots: plan.length, plan })}`);
   process.exit(0);
 }
+
+// ═══════════════════ POS P3-SKEL U ▸ --probe: pre-flight อ่านอย่างเดียวบน QC4 (LANE-RULES 22 ต.ค. 05:0xZ) — ไม่เขียน ไม่เปิดเบราว์เซอร์ ═══════════════════
+//   ใช้: bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-pos.mts p3-skel-u --probe
+//   ตรวจทุกค่าที่ตัวเขียนของโมดูลตรวจ: ด่านร้าน QC · ชนิด/ผู้ให้บริการ/ชื่อฟิลด์ credentials + สถานะที่คาด · กุญแจ harness · ช่องทาง/เพดาน · ไฟล์สลิป (ชนิด/ขนาด/ไบต์หัว/sha) ·
+//   เป้าหมายสลิป · เครื่องพิมพ์ของ agent (parsePrinters) · พอร์ต · agent ของสาขา · รายงานกระทบยอด (อ่าน) · slipTargets (อ่าน) · อายุเก็บสลิป · PromptPay ของสาขา
+if (P3SKU_WO && argv.includes("--probe")) {
+  const { loadPosQcEnv } = await import("./pos-qc-env.mjs");
+  loadPosQcEnv("visual-pos");
+  const { prisma: db } = await import("@/lib/core/db");
+  const out: [string, boolean, string][] = [];
+  const ok = (k: string, pass: boolean, v: unknown) => out.push([k, pass, typeof v === "string" ? v : JSON.stringify(v)]);
+  try {
+    const sys = await db.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId, type: "POS" }, select: { id: true, settings: true } });
+    ok("guard.tenant", tenantKey === "coffee" && T.tenantId === PQC.coffee.tenantId, { tenantId: T.tenantId, want: PQC.coffee.tenantId, slug: T.slug });
+    ok("guard.posSystem", !!sys, { SYS, unitId });
+    const own = T.users.owner;
+    const mb = await db.membership.findUnique({ where: { id: own.membershipId }, select: { role: true, unitAccess: true, permissions: true } });
+    ok("owner.membership", mb?.role === "OWNER", { membershipId: own.membershipId, role: mb?.role ?? null });
+    const owner = { userId: own.userId, role: String(mb?.role ?? "OWNER"), unitAccess: Array.isArray(mb?.unitAccess) ? (mb!.unitAccess as string[]) : [], permissions: (mb?.permissions ?? {}) as Record<string, unknown> };
+    const ctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+    // credentials
+    const creds = (await import("@/lib/modules/pos/integration-creds")) as Any;
+    for (const [kind, provider] of [["PLATFORM", "LINEMAN"], ["PLATFORM", "GRAB"], ["SLIP_VERIFY", "SLIPOK"], ["ETAX", "INET"]] as const) {
+      const defs = creds.integrationFields(kind, provider) as { name: string; required: boolean; secret: boolean }[] | null;
+      ok(`creds.fields.${kind}.${provider}`, !!defs, defs ? defs.map((f) => `${f.name}${f.required ? "*" : ""}${f.secret ? "(ลับ)" : ""}`).join(",") : null);
+      if (defs && kind === "PLATFORM") {
+        const fx = P3SKU_CREDS[provider as "LINEMAN" | "GRAB"];
+        const unknown = Object.keys(fx).filter((n) => !defs.some((f) => f.name === n));
+        const filled = (f: { name: string }) => ((fx as Record<string, string>)[f.name] ?? "") !== "";
+        const status = defs.filter((f) => f.required).every(filled) ? "COMPLETE" : "DRAFT";
+        ok(`creds.fixture.${provider}`, unknown.length === 0 && status === (provider === "LINEMAN" ? "DRAFT" : "COMPLETE"), { unknown, expectStatus: status, valueMaxOk: Object.values(fx).every((v) => v.length <= 4000 && !/[\u0000-\u001f]/.test(v)) });
+      }
+    }
+    const box = (await import("@/lib/modules/pos/secret-box")) as Any;
+    const key = box.posSecretKey({ key: P3SKU_KEY });
+    const sealed = key ? box.sealPosSecret({ probe: "posqc" }, { key }) : null;
+    ok("creds.harnessKey", !!key && P3SKU_KEY.length >= 32 && box.openPosSecret(sealed, { key })?.probe === "posqc", { length: P3SKU_KEY.length, roundtrip: !!sealed });
+    ok("creds.serverEnvKey(probe process)", true, { POS_CREDENTIALS_KEY: process.env.POS_CREDENTIALS_KEY ? "set" : "unset" });
+    // ช่องทาง
+    const { CHANNEL_LIMIT_PER_UNIT } = await import("@/lib/modules/pos/channel-shared");
+    const chans = await db.salesChannel.findMany({ where: { tenantId: T.tenantId, systemId: SYS, unitId }, select: { id: true, code: true, archivedAt: true, adapter: true } });
+    const have = Object.fromEntries(["LINEMAN", "GRAB"].map((c) => [c, chans.find((x) => x.code === c) ?? null]));
+    const toCreate = Object.values(have).filter((x) => !x).length;
+    ok("channels.platform", Object.values(have).every((x) => !x || !x.archivedAt) && chans.length + toCreate <= CHANNEL_LIMIT_PER_UNIT, { LINEMAN: have.LINEMAN ? `${have.LINEMAN.id} ${have.LINEMAN.adapter}${have.LINEMAN.archivedAt ? " archived" : ""}` : "create", GRAB: have.GRAB ? `${have.GRAB.id} ${have.GRAB.adapter}${have.GRAB.archivedAt ? " archived" : ""}` : "create", count: chans.length, limit: CHANNEL_LIMIT_PER_UNIT });
+    const rows = await db.posIntegrationCredential.findMany({ where: { tenantId: T.tenantId, systemId: SYS, kind: "PLATFORM", provider: { in: ["LINEMAN", "GRAB"] } }, select: { provider: true, status: true, secretNames: true } });
+    ok("creds.rows(existing)", true, rows.map((r) => `${r.provider}:${r.status}:${(r.secretNames ?? []).join("+")}`));
+    // สลิป
+    const slip = (await import("@/lib/modules/pos/payment-slip")) as Any;
+    const png = await p3skuPng(`${P3SKU_TAG}-probe-${process.pid}`);
+    const { createHash } = await import("node:crypto");
+    const sha = createHash("sha256").update(png).digest("hex");
+    const dup = await db.posPaymentSlip.findFirst({ where: { tenantId: T.tenantId, sha256: sha }, select: { id: true } });
+    ok("slip.file", png.length > 0 && png.length <= slip.SLIP_MAX_BYTES && png[0] === 0x89 && png[1] === 0x50 && png[2] === 0x4e && png[3] === 0x47 && !dup, { bytes: png.length, max: slip.SLIP_MAX_BYTES, type: "image/png", shaUnique: !dup });
+    const tref = `QCP3SKU${process.pid}${Date.now() % 100000}`;
+    ok("slip.input", /^[A-Za-z0-9_-]{4,64}$/.test(tref) && Number.isSafeInteger(8000) && `${P3SKU_TAG}-slip-${process.pid}`.length <= 120, { transRef: tref, amountSatang: 8000, perTarget: slip.SLIP_MAX_PER_TARGET, windowH: slip.SLIP_ATTACH_WINDOW_MS / 3_600_000 });
+    ok("slip.retentionDays", true, slip.slipRetentionDaysOf(sys?.settings));
+    const tr = await db.posPayment.findFirst({ where: { tenantId: T.tenantId, unitId, type: "TRANSFER", sale: { systemId: SYS, docType: "SALE" } }, select: { saleId: true }, orderBy: { id: "desc" } });
+    if (tr) {
+      const st = (await import("@/lib/modules/pos/slip-targets")) as Any;
+      const r = await st.slipTargets(ctx, owner, { saleId: tr.saleId });
+      ok("slip.targets(read)", r?.ok === true && r.targets.every((x: Any) => x.type === "TRANSFER" || x.type === "PROMPTPAY"), r?.ok ? { saleId: tr.saleId, targets: r.targets.length, slips: r.slips.length } : r?.code);
+    } else ok("slip.targets(read)", true, "ไม่มีบิลโอนในสาขา QC (fixture สร้างเองตอนถ่าย)");
+    // agent
+    const relay = (await import("@/lib/modules/pos/print-relay")) as Any;
+    const parsed = relay.parsePrinters(P3SKU_PRINTERS.map((p) => ({ ...p })));
+    ok("print.printers", !!parsed && parsed.length === 2, parsed ?? "parsePrinters = null");
+    ok("print.ports", relay.PRINT_PRINTER_PORTS.includes(9100), relay.PRINT_PRINTER_PORTS);
+    ok("print.agentName", `${P3SKU_TAG}-agent`.length <= 60 && `${P3SKU_TAG}-token-${process.pid}-1`.length <= 60, { agent: `${P3SKU_TAG}-agent`, token: `${P3SKU_TAG}-token-${process.pid}-1` });
+    const agents = await db.posPrintAgent.findMany({ where: { tenantId: T.tenantId, systemId: SYS, unitId }, select: { name: true, revokedAt: true } });
+    ok("print.agents(unit)", true, { live: agents.filter((a) => !a.revokedAt).length, harness: agents.filter((a) => a.name.startsWith(P3SKU_TAG)).length, nonHarnessLive: agents.filter((a) => !a.revokedAt && !a.name.startsWith(P3SKU_TAG)).length });
+    // กระทบยอด
+    const rec = (await import("@/lib/modules/pos/payment-reconcile")) as Any;
+    const d = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+    const from = new Date(Date.parse(`${d}T00:00:00Z`) - 29 * 86_400_000).toISOString().slice(0, 10);
+    const rr = await rec.reportIntentReconcile(ctx, owner, { from, to: d });
+    ok("reconcile.read", rr?.ok === true, rr?.ok ? { from, to: d, rows: rr.rows.length, days: rr.days.length, maxDays: rec.RECONCILE_MAX_DAYS } : rr?.code);
+    // พร้อมเพย์ (ใบขอรับเงินแบบคงที่ของ paydlg-intent-slip)
+    const { promptpayIdForUnit } = await import("@/lib/modules/pos/payment-intent-shared");
+    const prof = await db.paymentProfile.findFirst({ where: { tenantId: T.tenantId }, select: { promptpayId: true } }).catch(() => null);
+    ok("intent.promptpay", true, { unit: promptpayIdForUnit(sys?.settings, unitId) ? "set" : "unset", shop: prof?.promptpayId ? "set" : "unset (harness ensureQcPromptPay ตั้งให้ตอนถ่าย)" });
+    // เครื่องของรอบ (DEVICE_ID ลงทะเบียนตอนถ่าย) · ตัวแกะ printerConfig รับ escpos-lan
+    const ds = await import("@/lib/modules/pos/device-shared");
+    const pc = ds.parsePrinterConfig({ mode: "escpos-lan", kitchenSlip: "after-sale", _qcP3skuBefore: { mode: "browser", kitchenSlip: null } });
+    ok("device.printerConfig", pc.ok === true && (pc as Any).config.mode === "escpos-lan" && !("_qcP3skuBefore" in (pc as Any).config), pc.ok ? (pc as Any).config : pc);
+  } catch (e) {
+    ok("probe.error", false, e instanceof Error ? e.message.slice(0, 200) : String(e));
+  }
+  for (const [k, pass, v] of out) console.log(`PROBE ${pass ? "✅" : "❌"} ${k.padEnd(34)} ${v}`);
+  const bad = out.filter((x) => !x[1]).length;
+  console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, probe: true, readOnly: true, checks: out.length, failed: bad })}`);
+  await db.$disconnect().catch(() => undefined);
+  process.exit(bad ? 1 : 0);
+}
+// ◂ POS P3-SKEL U
 
 // ═══════════════════ 3. base: ต้องระบุ · ห้าม 3215 · ต้องต่อได้ ═══════════════════
 if (!BASE_RAW) die("ไม่ได้ระบุเซิร์ฟเวอร์ — ส่ง `--base http://127.0.0.1:<port>` หรือ QC_BASE (ไม่มีค่าปริยาย · ห้ามใช้ :3215 ของ CRM)");
@@ -2141,6 +2328,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P36U.log.length) console.error(`${P36U.ok ? "🧹" : "⚠️"} P3.6U: ${P36U.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P3.6U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P3-SKEL U: คืน printerConfig · เพิกถอน/ลบ agent ของ harness · ยกเลิกใบขอรับเงิน + บิลโอนของภาพ (เหมือน finally)
+      try {
+        await cleanupP3sku();
+        if (P3SKU.log.length) console.error(`${P3SKU.ok ? "🧹" : "⚠️"} P3-SKEL U: ${P3SKU.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P3-SKEL U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P3.7U: คืนค่าตั้งแชท · ปฏิเสธ/ลบออเดอร์ของรอบ · ลบระบบแชทชั่วคราว (เหมือน finally)
       try {
@@ -2734,6 +2928,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   if (isP39uState(state)) return runP39uState(page, state, device); // POS P3.9U
   if (isP37uState(state)) return runP37uState(page, state, device); // POS P3.7U
   if (isP36uState(state)) return runP36uState(page, state, device); // POS P3.6U
+  if (isP3skuState(state)) return runP3skuState(page, state, device); // POS P3-SKEL U
   if (isP38uState(state)) return runP38uState(page, state, device); // POS P3.8U
   if (isP27State(state)) return runP27State(page, state, device); // POS P2.7U
   if (isP213State(state)) return runP213State(page, state); // POS P2.13
@@ -7900,6 +8095,515 @@ async function runP37uState(page: Any, state: P37uKey, device: Device): Promise<
   }
 }
 // ◂ POS P3.7U
+// ═══════════════════ POS P3-SKEL U ▸ โครงแพลตฟอร์ม: การ์ด credentials 10 · สลิป 02/02b/12 · e-Tax 15A/แผ่น · ตัวช่วยพิมพ์ LAN 17B · กระทบยอด 08 (CD-SKELU-1…12) ◂ ═══════════════════
+// fixture (ensureP3skuFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล · ไม่ reseed · ร้าน QC coffee เท่านั้น · ไม่ยิงเครือข่าย):
+//   🔴 ด่านก่อนเขียนทุกครั้ง (p3skuGuard): T.tenantId = PQC.coffee.tenantId (posqc-coffee-tenant · ไม่ใช่ slug) + ระบบ POS ของร้านนี้ + id เป้าหมายเป็นของ fixture เท่านั้น (อื่น = StepError หยุด)
+//   • ช่องทาง LINEMAN + GRAB ของสาขา QC: find-or-create ผ่าน channel.saveChannel (adapter ไม่แตะ) — เก็บไว้
+//   • credentials ผ่าน saveIntegrationCredentials + deps.key (กุญแจคงที่ของ harness ≥ 32 ตัว · ค่า posqc-… ปลอม): LINEMAN = DRAFT (ล้าง restaurant_id/webhookSecret) · GRAB = COMPLETE — เก็บไว้
+//     (เซิร์ฟเวอร์ QC5 ไม่มี POS_CREDENTIALS_KEY ⇒ การ์ดขึ้น "ยังไม่ตั้งกุญแจ" · ช่องลับขึ้น ••••)
+//   • บิลโอน 1 ใบผ่าน service.createSale (TRANSFER · คีย์ต่อ pid) + สลิป 1 ใบผ่าน attachSlip + deps.put stub (PNG สังเคราะห์ไม่มีข้อมูลบุคคล · ยอดที่พิมพ์ ≠ ยอดชำระ)
+//     → เก็บกวาด voidSale (สลิปคงเป็นหลักฐานของบิลที่ยกเลิก) · บิลโอนจาก paydone-transfer-slip (UI จริง) ก็ voidSale
+//   • ใบขอรับเงินพร้อมเพย์แบบคงที่ของ paydlg-intent-slip (UI สร้าง) → cancelPaymentIntent ตอนเก็บกวาด
+//   • agent posqc-vis-p3sku-agent (registerPrintAgent · สร้างก่อนภาพ -agents) + agent ของ -token (กดลงทะเบียนจริง) → เพิกถอน (revokePrintAgent) + ลบแถวของ harness ตอนเก็บกวาด
+//     ซากของรอบที่ถูก kill (ชื่อขึ้นต้น posqc-vis-p3sku-) ถูกกวาดก่อน -none · มี agent อื่นที่ไม่ใช่ของ harness = -none SKIP
+//   • เครื่องนี้ (DEVICE_ID ของ P1.15U) printerConfig = jsonb ของ harness เท่านั้น: โหมด escpos-lan + kitchenSlip after-sale เฉพาะภาพ -agents · ค่าเดิมใน printerConfig._qcP3skuBefore
+//     (ตัวแกะของเซิร์ฟเวอร์ทิ้งคีย์ที่ไม่รู้จัก) · คืนก่อนภาพถัดไป/หลังงานสุดท้าย/finally/สัญญาณ (CD-P39U-4)
+//   • ไม่กดทดสอบพิมพ์ / ส่งงานพิมพ์ · ไม่อัปสลิปผ่าน UI (QC5 ไม่มีที่เก็บไฟล์) · กระทบยอดใช้ใบขอรับเงินที่มีอยู่ 30 วัน (ว่างก็เป็นภาพที่ถูก)
+const P3SKU_REASON = "ภาพ QC P3-SKEL U";
+const P3SKU = {
+  done: false,
+  error: null as string | null,
+  cleaned: false,
+  ok: true,
+  log: [] as string[],
+  channels: {} as Record<string, string>,
+  /** สถานะ credentials ที่ fixture เขียน (DRAFT/COMPLETE) */
+  credStatus: {} as Record<string, string>,
+  credSkip: "",
+  billSkip: "",
+  slipId: "",
+  saleIds: [] as string[],
+  intentIds: [] as string[],
+  agentIds: [] as string[],
+  agentReady: false,
+  lanNoneSkip: "",
+  deviceBefore: false,
+  tokenN: 0,
+};
+const p3skuRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const p3skuCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId });
+/** 🔴 ด่านก่อนเขียน: ร้าน QC coffee (tenantId ตายตัว) + ระบบ POS ของร้านนี้ (อื่น = StepError หยุดทั้งใบ) */
+async function p3skuGuard(): Promise<void> {
+  if (tenantKey !== "coffee" || T.tenantId !== PQC.coffee.tenantId) throw new StepError(`ด่าน P3-SKEL U: tenantId ${T.tenantId} (key ${tenantKey} · slug ${T.slug}) ≠ ${PQC.coffee.tenantId} (ร้าน QC coffee) — ไม่เขียน`);
+  const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId, type: "POS" }, select: { id: true } });
+  if (!sys) throw new StepError(`ด่าน P3-SKEL U: ระบบ ${SYS} ไม่ใช่ POS ของร้าน QC — ไม่เขียน`);
+}
+/** PNG สังเคราะห์ 2×2 (ไม่มีข้อมูลบุคคล) + ข้อความ tEXt ต่อรอบ ⇒ sha256 ไม่ซ้ำ (SLIP_DUPLICATE ของรูปเดิม) */
+async function p3skuPng(seed: string): Promise<Uint8Array> {
+  const { deflateSync } = await import("node:zlib");
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (b: Buffer) => {
+    let c = 0xffffffff;
+    for (const x of b) c = crcTable[(c ^ x) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(2, 0);
+  ihdr.writeUInt32BE(2, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // RGB
+  const raw = Buffer.from([0, 230, 230, 230, 200, 200, 200, 0, 200, 200, 200, 230, 230, 230]);
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("tEXt", Buffer.from(`Comment\0${seed}`, "latin1")),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+  return new Uint8Array(png);
+}
+/** printerConfig ของเครื่องนี้ (DEVICE_ID) — แถวต้องเป็นของร้าน QC + รหัสเครื่องของรอบ */
+async function p3skuDevice(): Promise<{ id: string; cfg: Record<string, unknown> }> {
+  await p3skuGuard();
+  if (!P115.deviceRowId) throw new StepError(`ไม่มีเครื่อง ${DEVICE_ID} ของรอบ (P1.15U ยังไม่ลงทะเบียน)`);
+  const d = await prisma.posDevice.findFirst({ where: { id: P115.deviceRowId, tenantId: T.tenantId, unitId, deviceCode: DEVICE_ID }, select: { id: true, printerConfig: true } });
+  if (!d) throw new StepError(`ด่าน P3-SKEL U: เครื่อง ${P115.deviceRowId} ไม่ใช่ ${DEVICE_ID} ของสาขา QC — ไม่เขียน`);
+  return { id: d.id, cfg: p3skuRec(d.printerConfig) ? (d.printerConfig as Record<string, unknown>) : {} };
+}
+/** โหมดแลน + ใบครัว after-sale ของเครื่องนี้ (จดค่าเดิมใน _qcP3skuBefore ครั้งเดียว) */
+async function p3skuDeviceLan(): Promise<void> {
+  const d = await p3skuDevice();
+  const before = p3skuRec(d.cfg._qcP3skuBefore) ? d.cfg._qcP3skuBefore : { mode: d.cfg.mode ?? null, kitchenSlip: d.cfg.kitchenSlip ?? null };
+  const next = { ...d.cfg, mode: "escpos-lan", kitchenSlip: "after-sale", _qcP3skuBefore: before };
+  await prisma.posDevice.updateMany({ where: { id: d.id, tenantId: T.tenantId, deviceCode: DEVICE_ID }, data: { printerConfig: next } });
+  P3SKU.deviceBefore = true;
+}
+/** คืน printerConfig จาก _qcP3skuBefore (ไม่มี = ไม่ได้แตะ) */
+async function p3skuDeviceRestore(): Promise<string> {
+  if (!P115.deviceRowId) return "เครื่องไม่ถูกแตะ";
+  const d = await p3skuDevice();
+  const b = d.cfg._qcP3skuBefore;
+  if (!p3skuRec(b)) return "เครื่องไม่ถูกแตะ";
+  const next: Record<string, unknown> = { ...d.cfg };
+  delete next._qcP3skuBefore;
+  if (b.mode === null || b.mode === undefined) delete next.mode;
+  else next.mode = b.mode;
+  if (b.kitchenSlip === null || b.kitchenSlip === undefined) delete next.kitchenSlip;
+  else next.kitchenSlip = b.kitchenSlip;
+  await prisma.posDevice.updateMany({ where: { id: d.id, tenantId: T.tenantId, deviceCode: DEVICE_ID }, data: { printerConfig: next as never } });
+  P3SKU.deviceBefore = false;
+  return `คืน printerConfig เครื่อง ${DEVICE_ID} (mode ${String(b.mode ?? "ลบ")} · kitchenSlip ${String(b.kitchenSlip ?? "ลบ")})`;
+}
+/** เพิกถอน + ลบ agent ของ harness (ชื่อขึ้นต้น posqc-vis-p3sku-) ของสาขา QC */
+async function p3skuDropAgents(): Promise<number> {
+  await p3skuGuard();
+  const { revokePrintAgent } = await import("@/lib/modules/pos/print-relay");
+  const owner = await ownerActor();
+  const rows = await prisma.posPrintAgent.findMany({ where: { tenantId: T.tenantId, systemId: SYS, unitId, name: { startsWith: P3SKU_TAG } }, select: { id: true, revokedAt: true } });
+  for (const r of rows) if (!r.revokedAt) await revokePrintAgent(p3skuCtx(), owner, { agentId: r.id });
+  if (rows.length) await prisma.posPrintAgent.deleteMany({ where: { tenantId: T.tenantId, systemId: SYS, unitId, id: { in: rows.map((r) => r.id) }, name: { startsWith: P3SKU_TAG }, revokedAt: { not: null } } });
+  return rows.length;
+}
+async function ensureP3skuFixture(): Promise<void> {
+  if (P3SKU.done || P3SKU.error) return;
+  /** ทุกขั้นของ fixture ห่อชื่อขั้น + ค่าที่ใช้ — ล้ม = StepError "ขั้น (ค่า): เหตุ" (LANE-RULES 22 ต.ค.) */
+  const at = async <R = Any,>(stepName: string, value: unknown, fn: () => Promise<R>): Promise<R> => {
+    try {
+      return await fn();
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      throw new StepError(`${stepName} (${JSON.stringify(value ?? null).slice(0, 90)}): ${why.slice(0, 140)}`);
+    }
+  };
+  try {
+    await at("ด่านร้าน QC", { tenantId: T.tenantId, SYS }, p3skuGuard);
+    const want = (re: RegExp) => jobs.some((j) => isP3skuState(j.state) && re.test(j.state));
+    const owner = await at("เจ้าของร้าน QC", T.users.owner.membershipId, ownerActor);
+    // ── ช่องทาง + credentials ──
+    if (want(/^settings-channel/)) {
+      try {
+        const ch = (await import("@/lib/modules/pos/channel")) as Any;
+        const creds = (await import("@/lib/modules/pos/integration-creds")) as Any;
+        for (const code of ["LINEMAN", "GRAB"] as const) {
+          let row = await prisma.salesChannel.findFirst({ where: { tenantId: T.tenantId, systemId: SYS, unitId, code }, select: { id: true, archivedAt: true } });
+          if (!row) {
+            const name = code === "LINEMAN" ? "LINE MAN" : "Grab";
+            const r = await at(`saveChannel ${code}`, { code, name }, () => ch.saveChannel(p3skuCtx(), owner, { code, name }));
+            if (!r?.ok) throw new StepError(`saveChannel ${code} (${name}): ${r?.code ?? "?"} ${String(r?.message ?? "").slice(0, 80)}`);
+            row = { id: r.channel.id, archivedAt: null };
+            P3SKU.log.push(`สร้างช่องทาง ${code}`);
+          }
+          if (row.archivedAt) throw new StepError(`ช่องทาง ${code} (${row.id}) ถูกเก็บแล้ว — ใช้กับภาพไม่ได้ (กู้คืนในลิ้นชักก่อน)`);
+          const again = await prisma.salesChannel.findFirst({ where: { id: row.id, tenantId: T.tenantId, systemId: SYS, unitId, code }, select: { id: true } });
+          if (!again) throw new StepError(`ด่าน P3-SKEL U: ช่องทาง ${row.id} ไม่ใช่ ${code} ของสาขา QC — ไม่เขียน`);
+          P3SKU.channels[code] = row.id;
+          const input = { kind: "PLATFORM", provider: code, channelId: row.id, fields: P3SKU_CREDS[code] };
+          const v = await at(`saveIntegrationCredentials ${code}`, { kind: "PLATFORM", provider: code, channelId: row.id, fields: Object.keys(P3SKU_CREDS[code]) }, () => creds.saveIntegrationCredentials(p3skuCtx(), owner, input, { key: P3SKU_KEY }));
+          if (!v?.ok) throw new StepError(`saveIntegrationCredentials ${code} (channel ${row.id}): ${v?.code ?? "?"} ${String(v?.messageKey ?? "")}`);
+          P3SKU.credStatus[code] = String(v.status);
+        }
+        P3SKU.log.push(`credentials LINEMAN ${P3SKU.credStatus.LINEMAN} · GRAB ${P3SKU.credStatus.GRAB} (deps.key ของ harness · ค่า posqc-…)`);
+        if (P3SKU.credStatus.LINEMAN !== "DRAFT" || P3SKU.credStatus.GRAB !== "COMPLETE") throw new StepError(`สถานะ credentials ไม่ตรงแผน (LINEMAN ${P3SKU.credStatus.LINEMAN} คาด DRAFT · GRAB ${P3SKU.credStatus.GRAB} คาด COMPLETE)`);
+      } catch (e) {
+        P3SKU.credSkip = e instanceof Error ? e.message.slice(0, 200) : String(e);
+        P3SKU.log.push(`⚠️ ช่องทาง/credentials: ${P3SKU.credSkip}`);
+      }
+    }
+    // ── บิลโอน + สลิป ──
+    if (want(/^bills-/)) {
+      try {
+        const { createSale } = await import("@/lib/modules/pos/service");
+        const { attachSlip } = await import("@/lib/modules/pos/payment-slip");
+        const total = 8500;
+        const sale = (await at("createSale TRANSFER", { total, key: `${FIX.prefix}p3sku-tr-${process.pid}` }, () =>
+          createSale({
+            tenantId: T.tenantId,
+            unitId,
+            systemId: SYS,
+            sourceModule: "POS",
+            shiftId: null,
+            soldByUserId: owner.userId,
+            idempotencyKey: `${FIX.prefix}p3sku-tr-${process.pid}`,
+            lines: [{ name: `ลาเต้เย็น ${BILL_TAG}`, qty: 1, unitPriceSatang: total }],
+            payMethods: [{ type: "TRANSFER", amountSatang: total, reference: "QC-P3SKU" }],
+          } as never),
+        )) as { saleId: string };
+        const own = await prisma.posSale.findFirst({ where: { id: sale.saleId, tenantId: T.tenantId, systemId: SYS, unitId }, select: { id: true } });
+        if (!own) throw new StepError(`ด่าน P3-SKEL U: บิล ${sale.saleId} ไม่ใช่ของสาขา QC — ไม่เขียน`);
+        P3SKU_SALE.id = sale.saleId;
+        P3SKU.saleIds.push(sale.saleId);
+        const pay = await prisma.posPayment.findFirst({ where: { saleId: sale.saleId, tenantId: T.tenantId, type: "TRANSFER" }, select: { id: true } });
+        if (!pay) throw new StepError(`บิล ${sale.saleId}: ไม่มีแถว TRANSFER`);
+        const bytes = await p3skuPng(`${P3SKU_TAG}-${process.pid}-${Date.now()}`);
+        const input = { saleId: sale.saleId, paymentId: pay.id, idempotencyKey: `${P3SKU_TAG}-slip-${process.pid}`, file: { contentType: "image/png", bytes }, amountSatang: 8000, transRef: `QCP3SKU${process.pid}${Date.now() % 100000}` };
+        const r = (await at("attachSlip (deps.put stub)", { saleId: sale.saleId, paymentId: pay.id, bytes: bytes.length, amountSatang: 8000 }, () => attachSlip(p3skuCtx(), owner, input, { put: async () => undefined }))) as Any;
+        if (!r?.ok) throw new StepError(`attachSlip (sale ${sale.saleId} · payment ${pay.id} · ${bytes.length} B): ${r?.code ?? "?"} ${String(r?.message ?? "").slice(0, 80)}`);
+        P3SKU.slipId = r.slip.id;
+        P3SKU.log.push(`บิลโอน ${sale.saleId} + สลิป ${r.slip.id} (UPLOADED · ยอดที่พิมพ์ ฿80 ≠ ฿85)`);
+      } catch (e) {
+        P3SKU.billSkip = e instanceof Error ? e.message.slice(0, 200) : String(e);
+        P3SKU.log.push(`⚠️ บิล/สลิป: ${P3SKU.billSkip}`);
+      }
+    }
+    // ── สมุดบัญชีของ 15A ──
+    if (want(/^taxinv-/)) await prepTaxInvoiceBook();
+    // ── agent: กวาดซากของ harness ก่อน -none · มี agent อื่น = -none SKIP ──
+    if (want(/^settings-devices-lan/)) {
+      const swept = await at("กวาด agent ของ harness", { name: `${P3SKU_TAG}*` }, p3skuDropAgents);
+      if (swept) P3SKU.log.push(`กวาด agent ของ harness ${swept} ตัว`);
+      const others = await prisma.posPrintAgent.count({ where: { tenantId: T.tenantId, systemId: SYS, unitId, revokedAt: null, NOT: { name: { startsWith: P3SKU_TAG } } } });
+      if (others) P3SKU.lanNoneSkip = `สาขา QC มีตัวช่วยพิมพ์ที่ไม่ใช่ของ harness ${others} ตัว`;
+    }
+    P3SKU.done = true;
+  } catch (e) {
+    P3SKU.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+async function prepP3sku(state: P3skuKey): Promise<void> {
+  if (!P3SKU.done) return;
+  try {
+    if (state === "settings-devices-lan-agents") {
+      if (!P3SKU.agentReady) {
+        await p3skuGuard();
+        const { registerPrintAgent } = await import("@/lib/modules/pos/print-relay");
+        const r = await registerPrintAgent(p3skuCtx(), await ownerActor(), { name: `${P3SKU_TAG}-agent`, printers: P3SKU_PRINTERS.map((p) => ({ ...p })) });
+        if (!r.ok) throw new StepError(`registerPrintAgent ${P3SKU_TAG}-agent (${P3SKU_PRINTERS.map((p) => `${p.host}:${p.port} ${p.target}`).join(" · ")}): ${r.code} ${r.message.slice(0, 80)}`);
+        P3SKU.agentIds.push(r.agent.id); // โทเคนทิ้ง (ไม่พิมพ์ · ไม่เก็บ)
+        P3SKU.agentReady = true;
+        P3SKU.log.push(`agent ${r.agent.id} (192.168.1.50 ใบครัว · 192.168.1.51 ใบเสร็จ)`);
+      }
+      await p3skuDeviceLan();
+    } else if (P3SKU.deviceBefore) await p3skuDeviceRestore();
+  } catch (e) {
+    P3SKU.error = `เตรียม ${state}: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
+  }
+}
+async function cleanupP3sku(): Promise<void> {
+  if (P3SKU.cleaned) return;
+  P3SKU.cleaned = true;
+  const step = async (what: string, fn: () => Promise<string>) => {
+    try {
+      P3SKU.log.push(await fn());
+    } catch (e) {
+      P3SKU.ok = false;
+      P3SKU.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  if (P3SKU.deviceBefore || P115.deviceRowId) await step("คืน printerConfig", p3skuDeviceRestore);
+  if (P3SKU.agentIds.length || P3SKU.tokenN)
+    await step("เพิกถอน agent ของ harness", async () => `เพิกถอน + ลบ agent ของ harness ${await p3skuDropAgents()} ตัว`);
+  // ใบขอรับเงินพร้อมเพย์ที่ UI ของรอบนี้สร้างแล้วยัง PENDING (paydlg-intent-slip) → cancelPaymentIntent
+  if (jobs.some((j) => j.state === "paydlg-intent-slip"))
+    await step("ยกเลิกใบขอรับเงินของภาพ", async () => {
+      await p3skuGuard();
+      const { cancelPaymentIntent } = await import("@/lib/modules/pos/payment-intent");
+      const owner = await ownerActor();
+      const rows = await prisma.posPaymentIntent.findMany({ where: { tenantId: T.tenantId, systemId: SYS, unitId, kind: "PROMPTPAY_STATIC", status: "PENDING", deviceId: DEVICE_ID, createdAt: { gte: RUN_STARTED } }, select: { id: true } });
+      let n = 0;
+      for (const r of rows) if ((await cancelPaymentIntent({ ...p3skuCtx(), deviceId: DEVICE_ID }, owner, { intentId: r.id })).ok) n++;
+      return `ยกเลิกใบขอรับเงินของภาพ ${n}/${rows.length} ใบ (cancelPaymentIntent)`;
+    });
+  const ids = [...new Set(P3SKU.saleIds)];
+  if (ids.length)
+    await step("ยกเลิกบิลโอนของภาพ", async () => {
+      const { voidSale } = await import("@/lib/modules/pos/service");
+      const owner = await ownerActor();
+      let n = 0;
+      for (const id of ids) {
+        const s = await prisma.posSale.findFirst({ where: { id, tenantId: T.tenantId, unitId }, select: { status: true } });
+        if (s?.status !== "PAID") continue;
+        await voidSale(T.tenantId, unitId, id, { actorUserId: owner.userId, reason: `ลูกค้ายกเลิก (${P3SKU_REASON})` });
+        n++;
+      }
+      return `ยกเลิกบิลโอน ${n} ใบ (voidSale · สลิปคงเป็นหลักฐาน)`;
+    });
+  P3SKU.done = false;
+}
+async function runP3skuState(page: Any, state: P3skuKey, device: Device): Promise<void> {
+  if (P3SKU.error) throw new StepError(`fixture P3-SKEL U: ${P3SKU.error}`);
+  if (!P3SKU.done) throw new StepError("fixture P3-SKEL U ยังไม่ได้สร้าง");
+  const has = async (sel: string) => !!(await page.$(sel));
+  // ไม่ถือ element handle ข้าม await — รอด้วย selector แล้วทำในหน้าเว็บคำสั่งเดียว (บทเรียน P3.6U)
+  const shown = (sel: string, timeout: number, enabled = false) =>
+    page
+      .waitForFunction(
+        (s: string, en: boolean) => {
+          const e = document.querySelector(s) as HTMLButtonElement | null;
+          return !!e && e.getClientRects().length > 0 && (!en || !e.disabled);
+        },
+        { timeout },
+        sel,
+        enabled,
+      )
+      .catch(() => {
+        throw new StepError(`ไม่พบ ${sel}${enabled ? " ที่กดได้" : ""} ภายใน ${Math.round(timeout / 1000)} วิ`);
+      });
+  const into = async (sel: string, timeout = 20_000) => {
+    await shown(sel, timeout);
+    await page.$eval(sel, (e: Element) => e.scrollIntoView({ block: "center" }));
+    await sleep(300);
+  };
+  const clickNow = async (sel: string, timeout = 15_000) => {
+    await shown(sel, timeout, true);
+    await page.$eval(sel, (e: Element) => {
+      e.scrollIntoView({ block: "center" });
+      (e as HTMLElement).click();
+    });
+    await sleep(300);
+  };
+  const attr = (sel: string, a: string) => page.$eval(sel, (e: Element, n: string) => e.getAttribute(n), a).catch(() => null);
+  /** ลิ้นชักช่องทาง (โหมดแก้) → การ์ด credentials ของแพลตฟอร์มโหลดเสร็จ */
+  const openCreds = async (code: "LINEMAN" | "GRAB") => {
+    if (P3SKU.credSkip) throw new StepError(`SKIP — ${P3SKU.credSkip}`);
+    await clickNow(tid(`pos-channel-open-${code.toLowerCase()}`), 20_000);
+    await shown(tid("pos-channel-drawer"), 10_000);
+    const card = `${tid("pos-channel-creds")}[data-provider="${code}"]`;
+    await shown(card, 20_000).catch(async () => {
+      const st = await attr(tid("pos-channel-creds"), "data-state");
+      throw new StepError(`ลิ้นชัก ${code} ไม่ขึ้นการ์ด credentials (state ${st ?? "ไม่มีการ์ด"} · pos.channel.manage / รหัสช่องทาง ${P3SKU.channels[code] ?? "?"})`);
+    });
+    return card;
+  };
+  switch (state) {
+    case "settings-channel-creds-draft": {
+      const card = await openCreds("LINEMAN");
+      if ((await attr(card, "data-row-status")) !== "DRAFT") throw new StepError(`การ์ด LINE MAN ไม่ใช่ DRAFT (${await attr(card, "data-row-status")})`);
+      await into(`${card} ${tid("pos-channel-creds-field-client_secret")}`);
+      return;
+    }
+    case "settings-channel-creds-complete": {
+      const card = await openCreds("GRAB");
+      if ((await attr(card, "data-row-status")) !== "COMPLETE") throw new StepError(`SKIP — แถว GRAB ไม่ COMPLETE (${await attr(card, "data-row-status")})`);
+      await clickNow(`${card} ${tid("pos-channel-creds-test")}`);
+      await into(`${card} ${tid("pos-channel-creds-result")}`).catch(() => {
+        throw new StepError("กดทดสอบแล้วไม่ขึ้นบรรทัดผล (testIntegrationConnectionAction)");
+      });
+      return;
+    }
+    case "settings-channel-creds-keymissing": {
+      const card = await openCreds("LINEMAN");
+      if ((await attr(card, "data-status")) !== "KEY_MISSING") throw new StepError("SKIP — เซิร์ฟเวอร์มี POS_CREDENTIALS_KEY (การ์ดไม่ขึ้นยังไม่ตั้งกุญแจ) — สถานะนี้ใช้เมื่อไม่มีกุญแจเท่านั้น");
+      await into(`${card} ${tid("pos-channel-creds-key-missing")}`);
+      return;
+    }
+    case "settings-channels-platform-chips": {
+      await shown(tid("pos-channel-list"), 20_000);
+      if (userKey === "owner") {
+        if (P3SKU.credSkip) throw new StepError(`SKIP — ${P3SKU.credSkip}`);
+        await shown(tid("pos-channel-conn-lineman"), 10_000);
+        await into(tid("pos-channel-conn-grab"), 10_000);
+      } else {
+        if (await has('[data-testid^="pos-channel-conn-"]')) throw new StepError("แคชเชียร์ (ไม่มี pos.channel.manage) เห็นชิปสถานะ credentials");
+        await into(tid("pos-channel-readonly"), 10_000);
+      }
+      return;
+    }
+    case "settings-slip-card":
+      await into(tid("pos-settings-slip-card"), 20_000);
+      await shown(tid("pos-settings-slip-retention"), 5_000);
+      if (userKey === "cashier" && (await has(tid("pos-settings-slip-verify-open")))) throw new StepError("แคชเชียร์เห็นปุ่มตั้งค่าตรวจสลิป");
+      if (userKey === "owner") await shown(tid("pos-settings-slip-verify-open"), 5_000);
+      return;
+    case "settings-slip-verify-sheet":
+      await clickNow(tid("pos-settings-slip-verify-open"), 20_000);
+      await shown(tid("pos-settings-slip-verify-sheet"), 10_000);
+      await page.select(tid("pos-settings-slip-verify-provider"), "SLIPOK");
+      await shown(`${tid("pos-settings-slip-verify-sheet")} ${tid("pos-channel-creds")}[data-provider="SLIPOK"]`, 20_000).catch(() => {
+        throw new StepError("เลือก SlipOK แล้วไม่ขึ้นการ์ด credentials SLIP_VERIFY (pos.settings.payment)");
+      });
+      return;
+    case "settings-etax-sheet":
+      await clickNow(tid("pos-settings-card-etax-apply"), 20_000).catch(() => {
+        throw new StepError("ปุ่ม \"สมัคร\" ของแถว e-Tax ยังปิด (pos.settings.manage)");
+      });
+      await shown(tid("pos-settings-etax-sheet"), 10_000);
+      await page.select(tid("pos-settings-etax-provider"), "INET");
+      await shown(`${tid("pos-settings-etax-sheet")} ${tid("pos-channel-creds")}[data-provider="INET"]`, 20_000).catch(() => {
+        throw new StepError("เลือก INET แล้วไม่ขึ้นการ์ด credentials ETAX");
+      });
+      return;
+    case "settings-devices-lan-none":
+      if (P3SKU.lanNoneSkip) throw new StepError(`SKIP — ${P3SKU.lanNoneSkip}`);
+      await shown(tid("pos-device-lan-card"), 20_000);
+      if (await has('[data-testid^="pos-device-lan-agent-"]:not([data-revoked])')) throw new StepError("การ์ดยังมีตัวช่วยพิมพ์ที่ใช้งานอยู่");
+      if (!(await page.$eval(tid("pos-device-mode-lan"), (e: Element) => (e as HTMLButtonElement).disabled).catch(() => false))) throw new StepError("ไม่มีตัวช่วยพิมพ์แต่วิทยุแลนเปิด");
+      await into(tid("pos-device-lan-reason"), 10_000);
+      return;
+    case "settings-devices-lan-agents":
+      await shown(tid("pos-device-lan-agent-0"), 20_000);
+      if ((await attr(tid("pos-device-mode-lan"), "aria-checked")) !== "true") throw new StepError("printerConfig แลนของเครื่องนี้แล้วแต่วิทยุแลนไม่ติ๊ก (เครื่องที่เลือก ≠ DEVICE_ID?)");
+      await shown(tid("pos-device-kitchen-lan"), 10_000, true).catch(() => {
+        throw new StepError("วิทยุใบครัว LAN ไม่เปิด (agent มีเครื่องใบครัว + โหมดแลน)");
+      });
+      if ((await attr(tid("pos-device-kitchen-lan"), "aria-checked")) !== "true") throw new StepError("kitchenSlip after-sale + แลน แต่วิทยุใบครัว LAN ไม่ติ๊ก");
+      await into(tid("pos-device-kitchen-lan"));
+      return;
+    case "settings-devices-lan-token": {
+      await clickNow(tid("pos-device-lan-add"), 20_000);
+      await shown(tid("pos-device-lan-register"), 10_000);
+      const name = `${P3SKU_TAG}-token-${process.pid}-${++P3SKU.tokenN}`;
+      await typeInto(page, tid("pos-device-lan-name"), name);
+      await typeInto(page, tid("pos-device-lan-printer-name-0"), P3SKU_PRINTERS[0].name);
+      await typeInto(page, tid("pos-device-lan-printer-host-0"), P3SKU_PRINTERS[0].host);
+      await page.select(tid("pos-device-lan-printer-target-0"), "kitchen");
+      await clickNow(tid("pos-device-lan-submit"));
+      await shown(tid("pos-device-lan-token"), 15_000).catch(async () => {
+        const err = await page.$eval(tid("pos-device-lan-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+        throw new StepError(`ลงทะเบียนตัวช่วยพิมพ์ "${name}" แล้วไม่ขึ้นกล่องโทเคน${err ? ` (${err})` : ""}`);
+      });
+      // 🔴 โทเคนจริงไม่ลงภาพ: ปิดบังข้อความก่อนถ่าย (agent ถูกเพิกถอน + ลบตอนเก็บกวาด)
+      await page.$eval(`${tid("pos-device-lan-token")} code`, (e: Element) => {
+        e.textContent = "spa_•••••••••••••••• (ปิดบังในภาพ QC)";
+      });
+      await into(tid("pos-device-lan-token"));
+      return;
+    }
+    case "paydlg-intent-slip":
+      await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+      await ensureShift(page);
+      await addCart3(page, device, true);
+      await waitPayReady(page);
+      await clickPay(page, device);
+      await shown(tid("pos-reg-paydlg"), 10_000);
+      await clickNow(tid("pos-reg-paydlg-method-promptpay"));
+      await shown(`${tid("pos-pay-intent")}[data-status="PENDING"]`, 20_000).catch(async () => {
+        const st = await page.$eval(tid("pos-pay-intent"), (e: Element) => `${e.getAttribute("data-status")} ${e.textContent?.slice(0, 120)}`).catch(() => "ไม่มีแผง");
+        throw new StepError(`ใบขอรับเงินไม่ขึ้น PENDING (${st}) — PromptPay ID ของร้าน QC: ${INTENTS.ppNote}`);
+      });
+      if (!(await has(tid("pos-pay-intent-slip")))) throw new StepError("SKIP — ใบขอรับเงินไม่ใช่ PROMPTPAY_STATIC (Beam เปิดอยู่?) — ปุ่มแนบสลิปมีเฉพาะพร้อมเพย์แบบคงที่");
+      await clickNow(tid("pos-pay-intent-slip"));
+      await into(tid("pos-slip-form"), 10_000);
+      return;
+    case "paydone-transfer-slip": {
+      await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+      await ensureShift(page);
+      await addCart3(page, device, true);
+      await waitPayReady(page);
+      await clickPay(page, device);
+      await shown(tid("pos-reg-paydlg"), 10_000);
+      await clickNow(tid("pos-reg-paydlg-method-transfer"));
+      await clickNow(tid("pos-reg-paydlg-confirm"), 15_000);
+      await shown(tid("pos-reg-done"), 25_000).catch(async () => {
+        const err = await page.$eval(tid("pos-reg-paydlg-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+        throw new StepError(`ยืนยันโอนเงินแล้วไม่ขึ้นจอสำเร็จ${err ? ` (${err})` : ""}`);
+      });
+      const s = await prisma.posSale.findFirst({ where: { tenantId: T.tenantId, systemId: SYS, unitId, status: "PAID", createdAt: { gte: RUN_STARTED }, payments: { some: { type: "TRANSFER" } }, NOT: { id: { in: P3SKU.saleIds } } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+      if (s) {
+        P3SKU.saleIds.push(s.id);
+        P3SKU.log.push(`บิลโอนจากจอ ${s.id}`);
+      }
+      await clickNow(tid("pos-reg-done-slip"), 10_000).catch(() => {
+        throw new StepError("จอสำเร็จบิลโอนไม่มีปุ่มแนบสลิป (pos-reg-done-slip)");
+      });
+      await into(tid("pos-slip-form"), 15_000).catch(async () => {
+        const err = await page.$eval(tid("pos-slip-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+        throw new StepError(`กดแนบสลิปแล้วไม่ขึ้นฟอร์ม${err ? ` (${err})` : ""} (slipTargetsAction)`);
+      });
+      return;
+    }
+    case "taxinv-etax-line":
+      if (TAXINV.error) throw new StepError(`SKIP — สมุด QC: ${TAXINV.error}`);
+      await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+      await ensureShift(page);
+      await addCart3(page, device, true);
+      await openCartOnMobile(page, device);
+      await clickNow(tid("pos-reg-tax-invoice"));
+      await shown(tid("pos-taxinv-dialog"), 10_000).catch(async () => {
+        const toast = await page.$eval(tid("pos-reg-toast"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+        throw new StepError(`กล่อง 15A ไม่ขึ้น${toast ? ` (ข้อความ: ${toast})` : ""}`);
+      });
+      await into(tid("pos-taxinv-etax-pending"), 10_000);
+      return;
+    case "bills-drawer-slips":
+    case "bills-slip-sheet":
+    case "bills-slip-reject-invalid":
+      if (P3SKU.billSkip || !P3SKU_SALE.id) throw new StepError(`SKIP — ${P3SKU.billSkip || "ไม่มีบิลโอนของภาพ"}`);
+      await shown(tid("pos-bills-drawer"), 20_000);
+      await into(tid("pos-bills-slips"), 20_000).catch(() => {
+        throw new StepError(`ลิ้นชักบิล ${P3SKU_SALE.id} ไม่มีบล็อกสลิป (bill.slips · slipTargetsAction)`);
+      });
+      await shown(tid("pos-bills-slip-0"), 10_000);
+      if (state === "bills-drawer-slips") {
+        if (userKey === "cashier" && (await has(tid("pos-bills-slip-confirm")))) throw new StepError("แคชเชียร์เห็นปุ่มยืนยันสลิป");
+        return;
+      }
+      await clickNow(tid("pos-bills-slip-0"));
+      await shown(tid("pos-bills-slip-sheet"), 10_000);
+      await shown(tid("pos-bills-slip-image"), 15_000);
+      await shown(tid("pos-bills-slip-confirm"), 10_000).catch(() => {
+        throw new StepError("แผ่นสลิปของเจ้าของร้านไม่มีปุ่มยืนยัน (pos.shift.manage)");
+      });
+      if (state === "bills-slip-sheet") return;
+      await clickNow(tid("pos-bills-slip-reject"));
+      await typeInto(page, tid("pos-bills-slip-reason"), "ab");
+      await clickNow(tid("pos-bills-slip-reject-send"));
+      await into(tid("pos-bills-slip-error"), 10_000).catch(() => {
+        throw new StepError("เหตุผล 2 ตัวอักษรแล้วไม่ขึ้นข้อความในแผ่น");
+      });
+      return;
+    case "reports-reconcile-owner":
+      await shown(`${tid("pos-reports-reconcile")}:not([data-state="loading"])`, 25_000);
+      if ((await attr(tid("pos-reports-reconcile"), "data-state")) !== "ready") throw new StepError(`รายงานกระทบยอดไม่พร้อม (${await attr(tid("pos-reports-reconcile"), "data-state")})`);
+      await into(tid("pos-reports-reconcile"));
+      return;
+    case "reports-reconcile-denied":
+      await into(tid("pos-reports-reconcile-denied"), 20_000);
+      return;
+  }
+}
+// ◂ POS P3-SKEL U
 // ═══════════════════ POS P3.6U ▸ ลูกค้าองค์กร/วางบิล: 01 ชิปบริษัท/แผ่นเลือก/ดีล · 02 ไทล์วางบิล + แผ่นเกินวงเงิน · 02b ครบกำหนด · 12 W23 · 08 ลูกหนี้ · 10 การ์ด (CD-P36U-1…12) ◂ ═══════════════════
 // fixture (ensureP36uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล · ไม่ reseed · ร้าน QC coffee เท่านั้น):
 //   • ระบบ CRM (ผู้คุม 22 ต.ค. 00:4xZ · CD-P36U-12): ใช้ระบบ CRM ที่ active ตัวแรกของร้าน QC · ไม่มี = createSystem(…, "CRM", "ลูกค้าองค์กร (ภาพ QC P3.6U)")
@@ -8013,7 +8717,7 @@ const p36uPosCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId });
 async function ensureP36uFixture(): Promise<void> {
   if (P36U.done || P36U.error) return;
   /** fix3: ทุกขั้นของ fixture ห่อชื่อขั้น + ค่าที่ใช้ — ล้ม = StepError "ขั้น (ค่า): เหตุ" */
-  const at = async <R,>(stepName: string, value: unknown, fn: () => Promise<R>): Promise<R> => {
+  const at = async <R = Any,>(stepName: string, value: unknown, fn: () => Promise<R>): Promise<R> => { // POS P3-SKEL U ▸ typecheck: R = Any เมื่อ fn คืน any (ฐาน e0fb57cf มี TS2571/TS2339 13 จุดที่ :8046–8110 · fix3/fix4 ของ P3.6U ไม่ได้ผ่าน tsc) ◂
     try {
       return await fn();
     } catch (e) {
@@ -11590,11 +12294,11 @@ try {
   }
   // POS P1.15U ▸ หน้าขายล็อกเมื่อไม่มีโทเคนผู้ขาย/เครื่องไม่ลงทะเบียน ⇒ ลงทะเบียนเครื่อง + PIN + โทเคน (+ ข้อมูลของสถานะ 13B/21B) ก่อนเปิด chromium ◂
   // HF-VIS-SHIFTS ▸ + เจ้าของที่มีสถานะหน้ากะนอกจาก shifts-noshift (shiftsSale ขายผ่านหน้าขายของ SHIFTS_DEVICE_ID ⇒ ต้องมี PIN/โทเคน) ◂
-  if (jobs.some((j) => j.page === "register" || j.state === "display-live" /* POS P2.10 */ || (j.page === "tables" && !!j.state) || isPaydoneState(j.state) || (userKey === "owner" && j.page === "shifts" && !!j.state && j.state !== "shifts-noshift"))) { // POS P2.4U ▸ + tables (เช็คบิลต้องมีโทเคนผู้ขาย) ◂
+  if (jobs.some((j) => j.page === "register" || (isP3skuState(j.state) && j.state.startsWith("settings-devices-lan")) /* POS P3-SKEL U ▸ เครื่องของรอบของแท็บเครื่อง ◂ */ || j.state === "display-live" /* POS P2.10 */ || (j.page === "tables" && !!j.state) || isPaydoneState(j.state) || (userKey === "owner" && j.page === "shifts" && !!j.state && j.state !== "shifts-noshift"))) { // POS P2.4U ▸ + tables (เช็คบิลต้องมีโทเคนผู้ขาย) ◂
     await seedP115Once();
     console.log(P115.error ? `  ⚠️ ข้อมูลภาพ P1.15U: ${P115.error}` : `  ข้อมูลภาพ P1.15U: เครื่อง ${DEVICE_ID} · PIN ${Object.keys(P115.pins).join("/")} (ไม่พิมพ์ค่า) · บิลพัก ${P115.heldId || "-"}`);
   }
-  if (jobs.some((j) => j.state && (INTENT_STATES.has(j.state) || (isP37uState(j.state) && j.page === "orders") /* POS P3.7U ▸ ประตู A ต้องมีพร้อมเพย์ ◂ */))) {
+  if (jobs.some((j) => j.state && (INTENT_STATES.has(j.state) || (isP37uState(j.state) && j.page === "orders") /* POS P3.7U ▸ ประตู A ต้องมีพร้อมเพย์ ◂ */ || j.state === "paydlg-intent-slip" /* POS P3-SKEL U ◂ */))) {
     await ensureQcPromptPay(); // POS P1.7U
     console.log(`  PromptPay ของร้าน QC: ${INTENTS.ppNote}`);
   }
@@ -11650,12 +12354,12 @@ try {
         const p = job.page;
         const v = job.v;
         // POS P3.4U ▸ มติ 11: สถานะออฟไลน์ = browser context ใหม่ (IndexedDB/คิวไม่ข้ามสถานะ) — ปิดหลังถ่าย ◂
-        const ctx34 = isP34uState(job.state) || isP37uState(job.state) /* POS P3.7U ▸ CD-P37U-10: context ใหม่ทุกสถานะ ◂ */ || isP36uState(job.state) /* POS P3.6U ▸ CD-P36U-12 ◂ */ || isP38uState(job.state) /* POS P3.8U ▸ CD-P38U-11: context ใหม่ต่อภาพ ◂ */ ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
+        const ctx34 = isP34uState(job.state) || isP37uState(job.state) /* POS P3.7U ▸ CD-P37U-10: context ใหม่ทุกสถานะ ◂ */ || isP36uState(job.state) /* POS P3.6U ▸ CD-P36U-12 ◂ */ || isP3skuState(job.state) /* POS P3-SKEL U ▸ CD-SKELU-12 ◂ */ || isP38uState(job.state) /* POS P3.8U ▸ CD-P38U-11: context ใหม่ต่อภาพ ◂ */ ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
         Object.assign(P34U_NET, { offline: false, suppressed: 0, snapAt: 0 }); // POS P3.4U fix2 ▸ สถานะเครือข่ายต่อภาพ ◂
         const page = ctx34 ? await ctx34.newPage() : await browser.newPage();
         await pinDevice(
           page,
-          isP34uState(job.state) ? DEVICE_ID /* POS P3.4U ▸ เครื่องของกะรอบ (หน้ากะ/ตั้งค่าด้วย) ◂ */ : isP210State(job.state) ? P210_DEV /* POS P2.10 */ : job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[isPaydoneState(job.state) ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
+          isP34uState(job.state) ? DEVICE_ID /* POS P3.4U ▸ เครื่องของกะรอบ (หน้ากะ/ตั้งค่าด้วย) ◂ */ : isP3skuState(job.state) && p === "settings" ? DEVICE_ID /* POS P3-SKEL U ▸ แท็บเครื่องเลือกเครื่องของรอบ ◂ */ : isP210State(job.state) ? P210_DEV /* POS P2.10 */ : job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[isPaydoneState(job.state) ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
         ); // P1.10 U: หน้าตั้งค่าใช้เครื่อง QC 1 (paydone-print = เครื่อง 2 ที่มีกะ) // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         // POS P1.15U ▸ หน้าขาย = โทเคนผู้ขายของเครื่องที่หน้านี้ใช้ (discount-over-sheet = แคชเชียร์ · เพดาน 10%) · ปลดล็อกแถว PIN ที่ lock-pin-locked ตั้งไว้ ◂
@@ -11780,6 +12484,14 @@ try {
           }
           await prepP34u();
         }
+        // POS P3-SKEL U ▸ fixture ก่อนงานแรกของใบนี้ · agent/printerConfig ต่องาน (ด่านก่อนเขียน · พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP3skuState(job.state)) {
+          if (!P3SKU.done && !P3SKU.error) {
+            await ensureP3skuFixture();
+            console.log(P3SKU.error ? `  ⚠️ fixture P3-SKEL U: ${P3SKU.error}` : `  fixture P3-SKEL U: ${P3SKU.log.join(" · ")}`);
+          }
+          await prepP3sku(job.state);
+        }
         // POS P3.6U ▸ fixture ก่อนงานแรกของใบนี้ · ค่าตั้งวางบิลต่องาน (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (isP36uState(job.state)) {
           if (!P36U.done && !P36U.error) {
@@ -11841,7 +12553,7 @@ try {
           await ensureP24uFixture();
           console.log(P24U.error ? `  ⚠️ fixture P2.4U: ${P24U.error}` : `  fixture P2.4U: ${P24U.log.join(" · ")}`);
         }
-        const resp = await page.goto(`${BASE}${isP36uState(job.state) ? p36uPath(job.state) /* POS P3.6U ▸ ?bill= รู้หลังขาย ◂ */ : isP27State(job.state) ? p27Path(job.state) /* POS P2.7U */ : isP26uState(job.state) ? p26uPath(job) /* POS P2.6U */ : job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+        const resp = await page.goto(`${BASE}${isP3skuState(job.state) ? p3skuPath(job.state) /* POS P3-SKEL U ▸ ?bill= รู้หลัง fixture ◂ */ : isP36uState(job.state) ? p36uPath(job.state) /* POS P3.6U ▸ ?bill= รู้หลังขาย ◂ */ : isP27State(job.state) ? p27Path(job.state) /* POS P2.7U */ : isP26uState(job.state) ? p26uPath(job) /* POS P2.6U */ : job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
         let stepError: string | null = null;
@@ -11934,6 +12646,7 @@ try {
         if (isP39uState(job.state) && job === jobs.filter((j) => isP39uState(j.state)).at(-1)) await cleanupP39u(); // POS P3.9U
         if (isP37uState(job.state) && job === jobs.filter((j) => isP37uState(j.state)).at(-1)) await cleanupP37u(); // POS P3.7U
         if (isP36uState(job.state) && job === jobs.filter((j) => isP36uState(j.state)).at(-1)) await cleanupP36u(); // POS P3.6U
+        if (isP3skuState(job.state) && job === jobs.filter((j) => isP3skuState(j.state)).at(-1)) await cleanupP3sku(); // POS P3-SKEL U
         if (isP38uState(job.state) && job === jobs.filter((j) => isP38uState(j.state)).at(-1)) await cleanupP38u(); // POS P3.8U
         if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
         if ((job.state === "table-closed" || job.state === "pre-closed") && P27.pausedNow) await p27Pause(null).catch(() => undefined); // POS P2.7U ▸ คืนพักรับหลังภาพ closed ◂
@@ -11982,6 +12695,9 @@ try {
   await cleanupP36u(); // POS P3.6U (คืนค่าตั้งวางบิล · ยกเลิกบิลวางบิลของภาพ · ลบผู้จัดการของภาพ)
   if (P36U.log.length) console.error(`${P36U.ok ? "🧹" : "⚠️"} P3.6U: ${P36U.log.join(" · ")}`);
   if (!P36U.ok) failures++;
+  await cleanupP3sku(); // POS P3-SKEL U (คืน printerConfig · เพิกถอน/ลบ agent ของ harness · ยกเลิกใบขอรับเงิน + บิลโอนของภาพ)
+  if (P3SKU.log.length) console.error(`${P3SKU.ok ? "🧹" : "⚠️"} P3-SKEL U: ${P3SKU.log.join(" · ")}`);
+  if (!P3SKU.ok) failures++;
   await cleanupP37u(); // POS P3.7U (คืนค่าตั้งแชท · ปฏิเสธ/ลบออเดอร์ของรอบ · ลบระบบแชทชั่วคราว)
   if (P37U.log.length) console.error(`${P37U.ok ? "🧹" : "⚠️"} P3.7U: ${P37U.log.join(" · ")}`);
   if (!P37U.ok) failures++;
