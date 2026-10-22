@@ -155,18 +155,29 @@ RED on the base (8 pass / 50 fail): pass = S2.1 S2.2 X2.1 S5.5 S7.2 S7.3 S8.5 Z1
 0. **Pepper first.** Owner sets `HR_PIN_PEPPER` in Vercel: **non-empty and ≥ 32 chars** (e.g. 64 hex from `openssl rand -hex 32`). A shorter/empty value fails `src/lib/env.ts` schema validation at boot ⇒ **the whole app** fails, not only HR — check the length before saving. **Production and Preview must hold the same value if they share a database** (a row hashed under one pepper never verifies under the other). Never rotate it afterwards without a reset plan (rotation = every PIN invalid). Unset (optional) ⇒ setting/verifying PINs answers "ระบบยังไม่ได้ตั้งค่าความปลอดภัยของ PIN — แจ้งผู้ดูแลระบบ" (kiosk stops) — so step 0 is a hard prerequisite.
 1. **Migration before code.** Apply `20261201000000_hr_pin_hash` with the usual prod `prisma migrate deploy` **and let it finish** — only then promote the new code. (New code selects `pinHash`/`pinSetAt`; serving it before the columns exist = every HR query errors.) The migration alone is additive: old code ignores the new columns.
 2. **Deploy the code.** New code verifies old plain rows through the legacy path (and upgrades them on first use). Up to here rollback = redeploy the old build (plain rows still there; rows upgraded in the meantime would read as "no PIN" in old code — expected to be few).
-3. **Backfill.** Never put `HR_PIN_PEPPER=<value>` on a command line (shell history / `ps`). Load it from the prod env file: `vercel env pull <file> --environment=production` (file outside the repo, `chmod 600`, deleted afterwards), then `HR_BACKFILL_PROD=1 HR_BACKFILL_ENV_FILE=<file> pnpm exec tsx scripts/hr-backfill-pin-hash.mts` (dry-run; the script loads `DATABASE_URL` **and** `HR_PIN_PEPPER` from that file; check the printed host) → send the owner the `duplicates` and `invalid` lists (employee ids + initial; the controller maps ids to names in the app) → same command with `--apply`.
+3. **Backfill.** Never put `HR_PIN_PEPPER=<value>` on a command line (shell history / `ps`). Load it from the prod env file: `vercel env pull <file> --environment=production` (file outside the repo, `chmod 600`, deleted afterwards), then `HR_BACKFILL_PROD=1 HR_BACKFILL_ENV_FILE=<file> pnpm exec tsx scripts/hr-backfill-pin-hash.mts` (dry-run; the script loads `DATABASE_URL` **and** `HR_PIN_PEPPER` from that file; check the printed host). **r3 (R3.3):** with `HR_BACKFILL_PROD=1` the script refuses (exit 1, Thai message naming the variable, nothing written) when `HR_BACKFILL_ENV_FILE` is missing or when `HR_PIN_PEPPER` or `DATABASE_URL` is already set in the shell (`process.loadEnvFile` never overrides an exported value) — run `unset HR_PIN_PEPPER DATABASE_URL` first → send the owner the `duplicates` and `invalid` lists (employee ids + initial; the controller maps ids to names in the app) → same command with `--apply`.
 4. Verify: dry-run again ⇒ every tenant `plain 0`, `changed 0`; SQL `SELECT count(*) FROM "HrEmployee" WHERE "pinCode" IS NOT NULL` = 0.
+- **POS P1.15 (first real caller of `verifyPin`) waits for step 4 = 0 plain rows on prod** (r3 · hunt F4): until then duplicate legacy PINs and the legacy timing difference still exist.
 - **After step 3 the rollout is one-way.** Old code reads `pinCode` only; once the backfill has nulled it, rolling back the code = every kiosk answers "<ชื่อ> ยังไม่มี PIN" for everyone. Rollback after step 3 = fix forward (or re-set every PIN), never redeploy pre-H0.5 code.
 
 ## B3. Who loses what
-- Employees whose plain PIN was shared with another **active** employee of the same tenant (any HR system): their PIN is cleared by the backfill; the owner must set a new one (they appear in the dry-run list). Until the backfill, the kiosk (name chosen on screen) still accepts them; `verifyPin` (POS, tenant-wide) does not.
+- Employees whose plain PIN was shared with another **active** employee of the same tenant (any HR system): their PIN is cleared by the backfill; the owner must set a new one (they appear in the dry-run list). **Corrected r3 (hunt F4):** until the backfill, the kiosk (name chosen on screen) accepts **every** holder of a duplicate legacy plain PIN. `verifyPin` (tenant-wide) refuses them only while all of them are still plain: once one holder has used the kiosk, that holder's row is upgraded to the hash and `verifyPin` then answers ok **for that holder** to anyone typing the shared PIN. Hence P1.15 waits for B2 step 4.
 - An employee reactivated while someone else took their PIN: PIN cleared (`pinCleared:true`, audit `REACTIVATE_DUPLICATE`). The restore form action returns nothing today, so the UI cannot yet show "กลับมาทำงานแล้ว — ต้องตั้ง PIN ใหม่" (decision for the controller: no UI change in scope).
 - Owners lose the ability to read an employee's PIN anywhere (it never was shown in the UI; now it is not even in the DB). Forgotten PIN = set a new one.
 - New: the same PIN cannot be used by two active employees of one tenant (HQ3) — the second gets the D8 text.
 
 ## B4. Limiters / legacy path
-- `verifyPin`: `hr-verifypin:<tenantId>` 120 / 60 s (fixed window, `checkRateLimitDb`, fail-open + logOps WARN). Kiosk (unchanged, H0.3): `hr-kiosk:emp:<t>:<e>` 5 / 60 s, `hr-kiosk:sys:<t>:<s>` 60 / 60 s. setPin action: `hr-setpin:<t>:<u>` 10 / 10 min.
+- **r3 limiter table** (all fixed window on `ChatRateBucket`, fail-open + logOps WARN):
+
+| path | bucket key | limit | counts |
+|---|---|---|---|
+| `verifyPin` tenant | `hr-verifypin:<tenantId>` | 120 / 60 s | failures only (bad format / unknown / inactive / wrong / duplicate plain) |
+| `verifyPin` caller | `hr-verifypin:<tenantId>:<callerKey>` | 10 / 10 min | failures only · reaching 10 ⇒ one audit `hr.pin.locked` (actorType SYSTEM, actor null, `{callerKey, count, windowSec}`) |
+| `verifyPin` refusal | both peeked first (`peekRateLimitDb`, read-only) | either at limit ⇒ `ลองใหม่ในอีก N วินาที` | refused calls consume nothing, write nothing · missing `callerKey` ⇒ `PIN ไม่ถูกต้อง`, no DB |
+| kiosk (H0.3, unchanged) | `hr-kiosk:emp:<t>:<e>` · `hr-kiosk:sys:<t>:<s>` | 5 / 60 s · 60 / 60 s | every call |
+| setPin action (H0.3) | `hr-setpin:<t>:<u>` | 10 / 10 min | every call |
+
+- (pre-r3, superseded) `verifyPin`: `hr-verifypin:<tenantId>` 120 / 60 s counting every call. Kiosk (unchanged, H0.3): `hr-kiosk:emp:<t>:<e>` 5 / 60 s, `hr-kiosk:sys:<t>:<s>` 60 / 60 s. setPin action: `hr-setpin:<t>:<u>` 10 / 10 min.
 - Legacy path = `pinCode` branches in `verifyPin` / `verifyPinForEmployee` (pin.ts). It is dead once step 3 of the runbook shows 0 plain rows on prod; delete it together with the `pinCode` column (later RUN), plus `PinInput.pinCode` alias once `qc-hf-hr-privacy` no longer passes it.
 
 ## B6. ORACLE-EDITs applied (controller pre-approved)
@@ -304,3 +315,59 @@ With these, S4.7 becomes "120 failures from 120 distinct callers ⇒ the 121st c
   3. 04:41Z `58/65` — same
   4. 04:43Z `58/65` (after switching S9 to the raw `verify9` binding) — **saved** as `hr-H0.5-red-r3.txt` · `RESIDUE tenants=0 none` · exit 1
 - No product code edited. No typecheck run: the oracle uses `Any` everywhere it touches new APIs. Note `next build` type-checks `scripts/*.mts`; the builder's typecheck covers it.
+
+## r3 build
+> Builder r3 · 2026-10-22 · controller: Fable · branch `wip/pos-hr-h0.5` from `0bd64e58` (verified) · rulings R3.1–R3.8 applied as written.
+
+### Files → R-items (lines at r3 head)
+| R | file:lines | how |
+|---|---|---|
+| R3.1 | `src/lib/core/rate-limit-db.ts:86-115` | new `peekRateLimitDb(key, opts, now?)`: one `SELECT "count","windowStart" … WHERE key AND windowStart > now−window` · no row / expired ⇒ `{ok:true,count:0}` · `count ≥ limit` ⇒ `{ok:false,retryAfterSec}` · DB error ⇒ fail-open + `logOps WARN` (same as `checkRateLimitDb`) · never creates or increments a row |
+| R3.1 | `src/lib/modules/hr/pin.ts:41-43` (`VERIFY_PIN_CALLER_LIMIT` 10 / 600 000 ms) · `:146-151` (`callerKey: string` required in `VerifyPinInput`) · `:162-217` | `verifyPin`: empty tenant/`callerKey` ⇒ `PIN ไม่ถูกต้อง` before any DB work · peek both buckets in parallel; either full ⇒ `limitedText(max retryAfter)`, nothing consumed · `failed()` (`:192`) consumes both buckets via `checkRateLimitDb` and returns the wrong text — called only on bad format / miss / duplicate plain / lost upgrade race / P2002 · success and `PinNotConfigured` consume nothing · dummy compare kept on the bad-format and miss paths |
+| R3.2 | `pin.ts:192-205` | per-caller consume returning `count === 10` ⇒ one `writeAudit` `hr.pin.locked` (`actorType SYSTEM`, `actorId null`, `targetType "HrVerifyPinCaller"`, no targetId, `after {callerKey, count, windowSec: 600}`). The count comes from the atomic single-statement upsert, so exactly one call per window sees 10; peek-refused calls never reach it |
+| R3.3 | `scripts/hr-backfill-pin-hash.mts:22,51-74` | `HR_BACKFILL_PROD=1`: no `HR_BACKFILL_ENV_FILE` ⇒ exit 1 (Thai, names the variable) · then, before `loadEnvFile`, `HR_PIN_PEPPER` or `DATABASE_URL` already in `process.env` ⇒ exit 1 with a Thai line naming it, nothing loaded or written · no `--dry-run` flag added |
+| R3.4 | `src/lib/modules/hr/actions.ts:53-59` | `createEmployeeAction` no longer reads `pin` (comment only in its place); `createEmployee` keeps `pin` for other callers (S7.4/S7.5 unchanged) |
+| R3.5 | `pin.ts:219-274` | systems listed once (`appSystem` HR active ≤ 50, optional `systemId` filter) · each pass = ONE query `tenantDb({tenantId}).$queryRaw` with explicit `"tenantId" = $t AND "systemId" IN (…) AND "active" = true AND <cond>` (tenantDb can pin only one `systemId` for a system-scoped model; raw on the tenant client is the `payroll.ts:1365` precedent) · hash pass `LIMIT 1`, legacy pass `"pinHash" IS NULL AND "pinCode" = $pin LIMIT 2`, OQ-7 re-check by hash kept · no systems ⇒ no query, miss path · results and texts unchanged |
+| R3.7 | `src/lib/modules/hr/index.ts:41-48` (C-8 comment) | `grep 'verifyPin('` in `src/` + `scripts/`: **no in-repo caller of HR `verifyPin`** (only the re-export; `giftcard/service.ts` and `pages/service.ts` have their own unrelated local `verifyPin`). The kiosk uses `verifyPinForEmployee` (own H0.3 limiters, unchanged). Contract comment documents `callerKey` = user id, else `unit:<unitId>` for P1.15 |
+
+`payroll-rules.ts` untouched. All DB access in `pin.ts` through `tenantDb(...)`.
+
+### ORACLE-EDITs applied (R3.6, pre-approved — only these two)
+```diff
+--- scripts/qc-hr-h0.5.mts (:441-444)
+-const verifyFn: Any = idx?.verifyPin ?? pinMod?.verifyPin ?? null;
++const verifyRaw: Any = idx?.verifyPin ?? pinMod?.verifyPin ?? null;
++// H0.5 r3 ORACLE-EDIT ▸ R3.1 บังคับ callerKey — S1.5/S4/S5 ส่ง callerKey ไม่ซ้ำต่อครั้ง (ไม่มีผู้เรียกคนไหนถึง 10 ผิด · ถังร้านยังนับครบ) ◂
++let autoCaller = 0;
++const verifyFn: Any = verifyRaw && ((a: Any) => verifyRaw({ callerKey: `qc-auto:${process.pid}:${++autoCaller}`, ...a }));
+--- scripts/qc-hr-h0.5.mts S4.7 (:813-814)
+-      … && (bk?.count ?? 0) >= 121,
+-      "… · ถัง count ≥ 121",
++      … && (bk?.count ?? 0) >= 120,
++      "… · ถัง count ≥ 120 (r3: นับเฉพาะครั้งที่ผิด)",
+```
+
+### Results (load 4.0–6.7 · one run at a time · `iso.sh → qc4.sh → with-gate-lock.sh`)
+| suite | final summary line | residue | exit |
+|---|---|---|---|
+| `qc-hr-h0.5` forced #1 | `ผ่าน 65/65 (QC_FORCE)` | `RESIDUE tenants=0 none` | 0 |
+| `qc-hr-h0.5` unforced | `ผ่าน 65/65` | `RESIDUE tenants=0 none` | 0 |
+| `qc-hr-h0.5` forced #2 (saved → `hr-H0.5-green-r3.txt`) | `ผ่าน 65/65 (QC_FORCE)` | `RESIDUE tenants=0 none` | 0 |
+| `qc-hr-h0.3` (forced) | `ผ่าน 36/36` | Z1 ✅ | 0 |
+| `qc-hr-h0.1` (forced) | `passed 67/67` | Z1 ✅ | 0 |
+| `qc-hr-h0.2` (forced) | `ผ่าน 58/58` | Z1 ✅ | 0 |
+| `qc-hf-hr-privacy` (forced) | `JSON_SUMMARY {"total":194,"passed":194,"findings":[]}` | — | 0 |
+| `seed-hr-qc` run 1 / run 2 (alone) | `ผ่าน 22/23` ×2 — only O1 "ร้านอื่นไม่เปลี่ยน": run 1 `posSale` 519→521 · run 2 `posSale` 541→523, `customer` 78→79; `tenant`/`hrEmployee`/`hrPayrollRun` identical both times. POS QC units (`shark-pos*`, `/tmp/shark-gate-pos.lock`) ran without a gap the whole session ⇒ POS writes, not HR. `scripts/hr-expected.json` unchanged | — | 1 / 1 |
+| `fitness` with env (`qc4.sh`) / without (`env -u DATABASE_URL -u DIRECT_URL`) | `JSON_SUMMARY {"total":33,"passed":33,"findings":[]}` ×2 | — | 0 / 0 |
+| `fitness-hr` with env / without | `JSON_SUMMARY {"suite":"fitness-hr","total":5,"passed":5,"findings":[]}` ×2 | — | 0 / 0 |
+| `pnpm typecheck` (`NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10000M`, iso + gate lock, no timeout) — pre-check 05:04Z: MemAvailable 11 626 MB, no `iso-*` build/typecheck/tsc unit | `tsc --noEmit` 0 `error TS` · 156 s | — | 0 |
+
+### Debts (not in r3)
+- Owner alert when a caller locks (`hr.pin.locked` is audit only) — R3.2.
+- F4 timing leak (duplicate-plain path vs miss) and kiosk acceptance of duplicate legacy PINs last until B2 step 4 (0 plain rows); P1.15 gated on it.
+- F4b reactivation audit `hr.pin.clear REACTIVATE_DUPLICATE` has a null actor; D3 restore action drops `pinCleared`.
+- peek and consume are separate statements: calls fired concurrently while a bucket is one short of full can all pass the peek (overshoot ≤ concurrency of that burst; the 10th-failure audit stays exactly one).
+- `seed-hr-qc` O1 needs a re-run in a POS-quiet window (controller).
+
+### Temp data
+None. QC4 residue 0 after every oracle run; scratch logs only in `/tmp/hr-h05-r3-builder/` (no secrets). No unit of mine left running.
