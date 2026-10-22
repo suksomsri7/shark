@@ -166,9 +166,13 @@ const MONEY_ACTIONS = [
   "createPaymentIntentAction", "confirmPaymentIntentManualAction", "cancelPaymentIntentAction",
   "payOrderAction", "acceptOfflineSaleAction", "recordCashMovementAction", "confirmSlipAction",
   "sellGiftCardAction", "reloadGiftCardAction", "transferGiftCardAction", "POST /api/pos/sync",
+  // POS P4.1 fix1 ▸ ORACLE-EDIT มติ CD-P41-F2 (ผู้คุม B 22 ต.ค. 12:30Z): เขียนราคา/กติการาคา/ราคาช่องทาง/รอบราคาเป็นชุด/ราคาขายเดิม AccountProduct/ล้าง-คัดลอกราคา/วงเงินเครดิต = money (เปลี่ยนยอดที่บิลเก็บ · fail-closed) ◂
+  "setChannelPricesAction", "bulkChannelMarkupAction", "copyUnitPricesAction", "savePriceRuleAction", "archivePriceRuleAction",
+  "setItemSalePriceAction", "saveCreditAccountAction",
 ];
 /** R11: ตารางเงินใน expect.db */
-const MONEY_MODELS = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosDepositTxn", "GiftCard", "GiftCardTxn", "PosCashMovement"];
+const MONEY_MODELS = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosDepositTxn", "GiftCard", "GiftCardTxn", "PosCashMovement",
+  "PosProductChannelPrice", "PosPriceRule", "AccountProduct", "PosCreditAccount"]; // POS P4.1 fix1 ▸ ORACLE-EDIT CD-P41-F2: ตารางราคา/กติการาคา/ราคาขายเดิม/วงเงินเครดิต ◂
 /** R12: ผลภายนอก (พิมพ์ · LINE · Beam · e-Tax · LAN agent · webhook) */
 const EXTERNAL_ACTIONS = ["sendReceiptAction", "reprintReceiptAction", "requestChatPaymentAction", "kitchenSlipPayloadAction"];
 const EXTERNAL_TEXT = /\bBeam\b|\be-?Tax\b|\bwebhook\b|\bLAN\b|print-agent|เครื่องพิมพ์|พิมพ์(ใบ|ซ้ำ|สำเนา|ครัว|บิล)|print\(\)|\bLINE\b(?! MAN)/; // ตัวพิมพ์ตรง (Line ของ PosTableSplit/Part/Line ไม่ใช่ LINE) · LINE MAN = ช่องทาง ไม่ใช่การส่ง
