@@ -201,7 +201,7 @@ const CHECKS: readonly Def[] = [
   D("S8.1", "R9", "CRITICAL", "RED", "[pin] 🔴 e2's PIN (home u2) with unitId = u1 ⇒ exactly the wrong-PIN text"),
   D("S8.2", "R9", "CRITICAL", "GREEN", "[pin] [control] e2's PIN with unitId = u2 ⇒ ok e2 · e4's PIN (borrowed to u1, open) with unitId = u1 ⇒ ok e4 · with u2 ⇒ ok"),
   D("S8.3", "R9", "MAJOR", "RED", "[pin] e5's PIN (borrowing to u1 closed) with unitId = u1 ⇒ wrong-PIN text"),
-  D("S8.4", "R9", "MAJOR", "RED", "[pin] e3's PIN (no home unit) with unitId = u1 ⇒ wrong-PIN text (literal reading of R9 — flagged to the controller)"),
+  D("S8.4", "R9", "MAJOR", "GREEN", "[pin] [control] e3's PIN (no home unit) with unitId = u1 ⇒ ok e3 (unassigned employee = tenant-wide · ORACLE-EDIT ruling 6, 22 Oct · reads verifyPin result only)"),
   D("S8.5", "R9", "CRITICAL", "GREEN", "[pin] [control] unitId omitted ⇒ ok for e1 · e2 · e3 · e4 (tenant-wide caller unchanged)"),
   D("S8.6", "R9", "MAJOR", "RED", "[pin] limiter unchanged: the unit-mismatch attempt is counted like a wrong PIN (caller bucket = 1) · a correct attempt leaves its bucket at 0"),
   // S9 seed contract (R10)
@@ -966,7 +966,7 @@ async function runDb(): Promise<void> {
     const d = await vp("e5", u1);
     chk("S8.3", d.s === WRONG_PIN, WRONG_PIN, d.s);
     const e = await vp("e3", u1);
-    chk("S8.4", e.s === WRONG_PIN, WRONG_PIN, e.s);
+    chk("S8.4", e.s === "ok", "ok e3 (no home unit = tenant-wide)", e.s);
     const f = await Promise.all((["e1", "e2", "e3", "e4"] as const).map((k) => vp(k)));
     chk("S8.5", f.every((x) => x.s === "ok"), "ok ×4", f.map((x) => x.s).join(" · "));
     const nOk = await bucket(b.key);
