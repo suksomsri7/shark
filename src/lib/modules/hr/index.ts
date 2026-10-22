@@ -58,3 +58,14 @@ export { verifyPin } from "./pin";
 export type { PayAdjustmentRef } from "./payroll";
 export { adjustmentsByIds } from "./payroll";
 // ◂ HR H0.6
+
+// HR H2.1 ▸ ตารางกะรายวัน — ตัวอ่านของโมดูลอื่น (re-export ล้วน — ตรรกะอยู่ที่ `roster.ts`)
+//   rosterOnDay({ tenantId, date, unitId?, systemId? }) → { hrLinked, entries } = แถวที่ประกาศแล้วของวันนั้น (วันที่กะเริ่ม · เวลาไทย)
+//     ของทุกระบบ HR ในร้าน (หรือระบบที่ระบุ) · ตัดพนักงานที่ไม่ทำงานแล้ว (inactive/ENDED) และใบลา APPROVED ที่ครอบวันนั้น ·
+//     unitId = สาขาของวันนั้นตรงกัน หรือแถวไม่ระบุสาขา · คืน id + เวลาเท่านั้น (ไม่มีชื่อ/ประเภทลา/เหตุผล/เงิน)
+//   rosterAt({ tenantId, at, unitId?, systemId?, toleranceMin? }) → แถวที่ช่วงเวลาครอบ `at` (02:00 ของวัน D+1 เจอกะดึกของวัน D)
+//   🔴 ไม่ประกาศ onShiftToday ที่นี่ — ชื่อนั้นถูกแช่แข็งใน POS-CONTRACTS C-8 v2 (hr/pos-seam*.ts บนสาย POS · มติ Q1) ·
+//      การสลับ seam ของ POS มาอ่านตารางกะ = ก้อนแก้แยกหลังสองสายงานมาบรรจบ
+export type { RosterDayEntry, RosterDayResult } from "./roster";
+export { rosterOnDay, rosterAt } from "./roster";
+// ◂ HR H2.1
