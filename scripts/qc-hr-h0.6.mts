@@ -1007,7 +1007,7 @@ async function runDb(): Promise<void> {
     const jvRev = au[0] ? deepGet({ b: au[0].before, a: au[0].after }, "jvReversed") : undefined;
     const je = je72 ? await P.accountJournalEntry.findUnique({ where: { id: je72 } }) : null;
     const revs = je72 ? await reversalsOf(je72) : [];
-    chk("S7.2", ap2?.ok === true && !!je72 && res2.kind === "OK" && row2?.status === "REVERSED" && (await boundIds(r72)).length === 0 && ((await adjRows([a72]))[0]?.runId ?? "x") === null && ev.length === 1 && au.length === 1 && jvRev === false && je?.status === "POSTED" && revs.length === 0,
+    chk("S7.2", ap2?.ok === true && !!je72 && res2.kind === "OK" && row2?.status === "REVERSED" && (await boundIds(r72)).length === 0 && (await adjRows([a72]))[0]?.runId === null && ev.length === 1 && au.length === 1 && jvRev === false && je?.status === "POSTED" && revs.length === 0,
       "ok · REVERSED · unbound · event · jvReversed:false · JV untouched", `ap=${ap2?.ok} jv=${!!je72} ${rs(res2)} status=${row2?.status} bound=${(await boundIds(r72)).length} events=${ev.length} audits=${au.length} jvReversed=${jvRev} entry=${je?.status} reversals=${revs.length}`);
   }
   });
