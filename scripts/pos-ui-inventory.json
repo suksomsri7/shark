@@ -13139,7 +13139,8 @@
       ],
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
-        "POS ผูกสมุดบัญชีอยู่ (การ์ดบัญชี LINKED → กล่องยืนยัน)"
+        "POS ผูกสมุดบัญชีอยู่ (การ์ดบัญชี LINKED → กล่องยืนยัน)",
+        "สวิตช์บัญชีต้องมีสิทธิ์ตั้งค่าบัญชี (manage.canManage = account.settings.manage · SharkSettings.tsx:208 · setPosAccountLink OWNER/ทุกสาขา pos-integrations.ts:268) — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -17748,7 +17749,8 @@
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
-        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "สิทธิ์ restaurant.session.move — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -17775,7 +17777,8 @@
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
-        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "สิทธิ์ restaurant.session.merge — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -19232,8 +19235,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19312,8 +19314,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19338,8 +19339,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -26159,7 +26159,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "hiddenFor": [],
-      "needs": "ออเดอร์จ่ายก่อนที่รอเงินเข้า (PosOrder PENDING_PAYMENT · ช่องทาง QR_ORDER)"
+      "needs": "ออเดอร์จ่ายก่อนที่รอเงินเข้า (PosOrder PENDING_PAYMENT · ช่องทาง QR_ORDER) · สิทธิ์ pos.order.reject — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -26358,7 +26358,7 @@
         "pos-tbl-card-*",
         "pos-tbl-panel-qr"
       ],
-      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty · สิทธิ์ restaurant.table.rotateQr — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -30432,7 +30432,8 @@
       ],
       "needs": [
         "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด",
-        "credentials ครบ (status COMPLETE)"
+        "credentials ครบ (status COMPLETE)",
+        "credentials PLATFORM ครบจาก fixture — ขั้น pos-channel-creds-save เฉพาะเจ้าของร้าน (integration-creds.ts:171) ⇒ ผู้จัดการไปไม่ถึงด้วย opener (ปุ่มทดสอบเห็นแต่ปิดจนกรอกครบ)"
       ]
     },
     {
