@@ -65,3 +65,71 @@
 - Recommended in the same round: F6 (one line in `createEmployeeAction`).
 - F1/F3/F5 are contract-level; rule on them before POS P1.15 consumes `verifyPin` (they don't block merging H0.5, since nothing calls `verifyPin` yet).
 - If the controller would rather patch the runbook than the script for F2 (`env -i`, or `unset HR_PIN_PEPPER DATABASE_URL DIRECT_URL` before step 3), this becomes ACCEPT WITH NOTES.
+
+## r3 re-check
+> Hunter: Claude Opus 5.5 · 2026-10-22 · `/root/projects/shark-hr-b` · branch `wip/pos-hr-h0.5` @ `9095eaa5` (verified) · r3 diff `0bd64e58..9095eaa5` (5 files).
+> One scratch probe (`.hunt-h05r3/probe.mts`, now deleted), run once via `iso.sh → qc4.sh → with-gate-lock.sh → tsx` on QC4 (`ep-frosty-lab`). Tenants `qc-hunt-h05r3-<ts>` (T: HR systems A+B · T2: one system). Load during the run was 5.1–5.7. The timing medians were tight (IQR ≤ 3 ms) and unknown and inactive came out identical, so I did not repeat the run. Backfill probes ran directly with `env -i` and fake files in `mktemp -d` (port-1 URL, fake 46-char pepper); the dir was deleted afterwards.
+
+### F1 — per-caller bucket · PARTIAL (closed for a server-derived caller key; open when the caller can choose the key, see G1/G3)
+- Sequential: 10 wrong from `u1` ⇒ `wrong×10`, 11th ⇒ `ลองใหม่ในอีก 600 วินาที`, correct PIN from `u1` ⇒ limited, correct PIN from `u2` ⇒ ok (right employee). Buckets `u1=10`, tenant `10`, `u2` no row. 5 more calls from the locked `u1` ⇒ buckets unchanged (10/10), no new audit. **Refused calls consume nothing.**
+- Successes: 30 parallel + 100 sequential correct ⇒ `ok×130`, **0 bucket rows**.
+- Key variants (correct PIN, `u1` locked): `" u1 "`, `"u1\t"`, `"\nu1"`, `"u1 "` ⇒ limited (trim folds them). `"U1"` and `"u1​"` ⇒ ok (separate buckets; harmless for cuid user ids, but relevant if the client picks the key). `""`, `"   "`, `undefined`, `null`, missing property ⇒ `PIN ไม่ถูกต้อง` with no row created. `0` ⇒ key `"0"`.
+- Collisions: the tenant key is `hr-verifypin:<t>` and the caller key is `hr-verifypin:<t>:<k>`. Tenant ids contain no `:`, so no caller key can equal another tenant's key. T full ⇒ the same PIN in T2 ⇒ ok. Kiosk/setpin prefixes (`hr-kiosk:`, `hr-setpin:`) are disjoint.
+- Who passes `callerKey`? Nobody yet (only the re-export). The contract comment (`hr/index.ts:44`) says "user id … else `unit:<unitId>` (or device id)". A session user id is server-side and the client cannot choose it. A unit id or device id usually arrives in the request and can be rotated freely (see G3).
+
+### F2 — backfill prod env precedence · CLOSED
+`HR_BACKFILL_PROD=1`, `--tenant` dry-run, minimal env:
+| case | exit | JSON_SUMMARY | message |
+|---|---|---|---|
+| preset `HR_PIN_PEPPER` (valid-looking) | 1 | no | Thai, names `HR_PIN_PEPPER`, before load |
+| preset `DATABASE_URL` | 1 | no | Thai, names it |
+| preset `HR_PIN_PEPPER=` (empty) / `DATABASE_URL=` (empty) | 1 / 1 | no | refused (`!== undefined`, strict) |
+| no `HR_BACKFILL_ENV_FILE` / set to `""` | 1 / 1 | no | Thai, names it |
+| env file path missing | 1 | no | `ไม่พบ HR_BACKFILL_ENV_FILE` |
+| values only in the file | passes the guard; host `127.0.0.1`, P1001 on the fake URL, tx rolled back | yes | expected |
+| file without the pepper / pepper < 32 chars | 2 / 2 | no | fixed not-configured text, nothing loaded from DB |
+| preset `DIRECT_URL` only | not refused | — | harmless: the runtime client uses `DATABASE_URL` only (`src/lib/core/db.ts:23`) |
+
+### F3 — tenant-wide DoS · MOSTLY CLOSED
+Junk from one sequential caller now stops at 10 and no longer starves anyone. To trip the tenant bucket you now need 120 failures/min from ≥ 12 caller keys, or a single burst (G1). P7: one caller's 200-request burst set the tenant bucket to 199 ⇒ every terminal of the shop refused for 60 s, repeatable once per 10 min.
+
+### F4 — rollout window · NOTES DONE (unchanged by design)
+B2 now gates P1.15 on step 4, and B3 is corrected. The timing tell is still present: duplicate-plain median 42 ms vs miss 51 ms.
+
+### F5 — raw SQL · CLOSED
+`pin.ts:232-238`: a `$queryRaw` tagged template only. `tenantId`, the `Prisma.join(sysIds)` items, the `Prisma.sql` fragments (`pinHash`/`pinCode`) and `LIMIT` are all bound parameters; no string concatenation. `sysIds.length === 0` ⇒ `[]` with no query (an empty `IN ()` cannot occur). `tenantDb().$queryRaw` adds no scope, so the explicit `"tenantId" = $` is the scope, and it is always present. Probes: a T2 system id or a bogus `systemId` from T ⇒ wrong (counted), `systemId=sB` ⇒ ok, `systemId=sA` ⇒ wrong. Miss now costs 51 ms vs 25 ms for a hit (r2: 80 vs 30).
+
+### F6 — createEmployeeAction · CLOSED (read)
+`actions.ts:53-59` no longer reads `pin`. The only other `createEmployee` caller (`ai/proposals.ts:660`) passes no pin. `setPinAction` keeps its 10/10 min bucket.
+
+### Lock audit `hr.pin.locked` · HOLDS
+4 locks in the run ⇒ exactly 4 rows: `u1`, the long key, `burst30`, `burst200`. Bursts of 30 and 200 each produced exactly one row, because only one atomic upsert returns 10. All rows have actorType `SYSTEM`, actorId null, targetId null, keys `callerKey,count,windowSec`, and contain no PIN, no 4–6-digit run and no employee id. Successes never write one (P2: 0 rows). Caveat: `callerKey` is stored verbatim (P5b stored a 200 000-char key; see G2).
+
+### New findings
+#### G1 — MAJOR (blocks P1.15; not H0.5 merge) — peek→consume race: a single burst bypasses both buckets, and the burst size is chosen by the attacker
+- `src/lib/modules/hr/pin.ts:185-206`: `peekRateLimitDb` (read) … lookup … `failed()` → `checkRateLimitDb` (write). Every request in a burst passes the peek before any request consumes.
+- Probe P7, one caller, last guess correct: **30 parallel ⇒ 29 wrong evaluated + 1 ok, caller bucket 29 (limit 10), tenant 29**. **200 parallel ⇒ 199 wrong + 1 ok in 1.4 s, caller bucket 199, tenant 199 (limit 120).** The builder's debt says "overshoot ≤ concurrency of that burst". That is true, but the concurrency is attacker-chosen: a POS user can call a server action with N parallel fetches. A 4-digit sweep is a 10⁴-request burst (≈ 70 s at the 7 ms/req observed). It returns every PIN holder's id and yields **one** audit row. The result is the F1 harvest again, done faster.
+- Smallest fix: reserve atomically, then refund. Consume both buckets first with `checkRateLimitDb` (the r2 order; atomic, so `count > limit` ⇒ refuse). On a **success** (and on `PinNotConfigured`), refund with one statement: `UPDATE "ChatRateBucket" SET "count" = "count" - 1 WHERE "key" = $k AND "windowStart" = $ws AND "count" > 0`, where `$ws` is the windowStart the consume returned. `checkRateLimitDb` would need to expose `windowStart` (or add `refundRateLimitDb(key, windowStart)` next to `peekRateLimitDb`). Failures-only accounting stays the same, overshoot becomes 0, and the count-10 audit is unchanged. A refused call (count > limit) also needs the refund to keep "refused consumes nothing", or the controller can rule that refused calls may count. Oracle: a parallel-burst check (e.g. 50 wrong from one caller with `Promise.all` ⇒ ≤ 10 evaluated).
+
+#### G2 — MINOR — unvalidated `callerKey`: a NUL byte makes the per-caller limiter fail open (and floods `OpsEvent`); huge keys are stored verbatim
+- `pin.ts:180` only trims. Postgres rejects `\u0000` in text ⇒ both `peekRateLimitDb` and `checkRateLimitDb` throw ⇒ fail-open (`rate-limit-db.ts:109-114`, `:77-83`).
+- Probe P5: `callerKey "evil\u0000x"` ⇒ 15 wrong, all evaluated (`wrong×15`). A correct PIN afterwards ⇒ ok, with **0 caller rows and 0 lock audits**. Only the tenant bucket counted (15). The 15 calls wrote **31 `OpsEvent` WARN rows** (`tenantId` null). P5b: a 200 000-char key works as a bucket and lands in `AuditLog.after`.
+- This only matters if the key ever comes from request data. Smallest fix in `verifyPin`: `if (!/^[A-Za-z0-9:_.-]{1,128}$/.test(callerKey)) return wrong;` (no DB). r2 N2 (fail-closed for this path) would also cover it.
+
+#### G3 — contract (controller ruling before P1.15) — caller-chosen keys reduce F1 to the tenant bucket, and the tenant trip is silent
+- Probe P6: 120 wrong, each with a fresh `callerKey` ⇒ `wrong×120` and **0 lock audits**. The 121st call (correct PIN, new key) ⇒ `ลองใหม่ในอีก 54 วินาที`. **0 `OpsEvent`, 0 notifications** for the tenant. With rotating `unit:`/device keys the r2 numbers still hold (full 4-digit sweep ≈ 84 min, first hit ≈ 3 min with 30 holders), and nothing is recorded.
+- Ask: C-8 must state that `callerKey` is a **server-derived authenticated identity** (session user id; for kiosk-less terminals, a server-registered terminal id taken from a signed cookie or the session, never a request field). Add `logOps WARN` plus the deferred owner alert when the tenant bucket first reaches 120 (one per window, the same `count === limit` trick as `hr.pin.locked`).
+
+### Tried and held (r3)
+- Hash-first and legacy paths: a single plain row ⇒ ok, the row is upgraded (pinCode null, pinHash = spec), and ok again via the hash. Duplicate plain ⇒ wrong (counted). An inactive holder ⇒ wrong.
+- Texts unchanged (`PIN ไม่ถูกต้อง` / `ลองใหม่ในอีก N วินาที`). Timing medians (25 interleaved rounds): hit 25 · **miss 51 · inactive 51** (p25/p75 49/52 for both, so parity holds) · duplicate plain 42 (F4) · bad format 17. Bad format no longer looks like a miss in latency, but it was always distinguishable by format alone.
+- `PinNotConfigured` consumes nothing (code read, `pin.ts:213`). Success never touches the buckets (P2).
+
+### Residue / running
+- `cleanup … RESIDUE tenants qc-hunt-h05r3-* = 0 · buckets = 0` (ChatRateBucket rows deleted by `key contains tenantId`, including the long and NUL attempts, which never created rows). Tenant `auditLog`/`opsEvent`/`appSystem`/`hrEmployee` were deleted. The 31 tenant-less `OpsEvent` WARN rows from the NUL probe were deleted by source + time window + error text (31 = 31). No users were created.
+- Scratch dir `.hunt-h05r3/`, the run log and the fake env dir are removed. `git status`: only the controller's 3 untracked `hr-H0.5-control*.txt` remain, plus this note edit (not committed).
+- Nothing of mine is running. I did not touch the `hr-ctl-h05r3-*`, POS `iso-*` units or `/tmp/shark-gate-pos.lock`.
+
+### Verdict: **ACCEPT WITH NOTES** for merging H0.5 (no caller of `verifyPin` exists yet; F2/F5/F6 closed, F1/F3 closed for sequential traffic)
+- **Before POS P1.15 consumes C-8 (required):** G1 (reserve + refund instead of peek + consume, plus an oracle burst check) and the G3 ruling (server-derived `callerKey`, tenant-trip alert). G2 is a one-line validation, best done in the same round.
+- If the controller wants `verifyPin` final before merge, G1 + G2 make a small fix round (`pin.ts` + `rate-limit-db.ts` + one oracle check). In that case this verdict reads FIX ROUND NEEDED (small).

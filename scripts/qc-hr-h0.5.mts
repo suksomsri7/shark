@@ -18,6 +18,9 @@
 // [S9] r3 (มติผู้คุมงาน R3.1–R3.4 · hunt F1/F2/F3/F6): verifyPin ต้องมี callerKey · นับเฉพาะครั้งที่ผิด 2 ถัง
 //      (ร้าน hr-verifypin:<tenantId> 120/60 s + ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 ผิด/10 นาที · peek ก่อน · ถูก = ไม่นับ) ·
 //      audit hr.pin.locked 1 แถวต่อการล็อก · backfill โหมด prod ปฏิเสธ env ที่ตั้งไว้ก่อน · createEmployeeAction ไม่อ่าน pin
+// [S10] r4 (มติผู้คุมงาน R4.1–R4.3 · hunt G1/G2/G3): นับก่อนค้น (atomic 2 ถัง) แล้วคืนช่องเมื่อถูก/ไม่มี pepper/ถูกปฏิเสธ ⇒ ยิงพร้อมกัน
+//      N ครั้งผ่านถึงการเทียบได้ ≤ 10 · callerKey ต้องตรง /^[A-Za-z0-9:_.-]{1,128}$/ (ไม่ตรง = ผิดทันที ไม่แตะ DB) · ถังร้านถึง 120 ครั้งแรก
+//      ของหน้าต่าง ⇒ audit hr.pin.tenant_limited 1 แถว + OpsEvent WARN (tenantId) 1 แถว
 //
 // รัน (VPS เท่านั้น · QC4):
 //   bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h0.5.mts   (บังคับรันบนฐาน)
@@ -115,6 +118,13 @@ const CHECKS: readonly Def[] = [
   D("S9.5", "R3.1", "CRITICAL", "RED", "[verifyPin] ไม่มี callerKey (ไม่ส่ง / ว่าง) แม้ PIN ถูก → { ok:false, reason:\"PIN ไม่ถูกต้อง\" } · ไม่มีแถวถัง hr-verifypin:<tenantId>* เกิดขึ้น"),
   D("S9.6", "R3.3", "CRITICAL", "RED", "[backfill] HR_BACKFILL_PROD=1: ตั้ง HR_PIN_PEPPER ไว้ก่อน / ตั้ง DATABASE_URL ไว้ก่อน / ไม่มี HR_BACKFILL_ENV_FILE → exit 1 · stderr ข้อความไทยระบุชื่อตัวแปร · ไม่มี JSON_SUMMARY · แถว QC4 ไม่เปลี่ยน (ไฟล์ env ปลอม)"),
   D("S9.7", "R3.4", "MAJOR", "RED", "[action] createEmployeeAction ส่ง pin มาด้วย (PIN ว่าง และ PIN ที่คนอื่นถือ) → สร้างพนักงาน · ไม่มี PIN (pinHash/pinCode/pinSetAt null) · ไม่มีข้อความ D8 · pinSet ไม่เป็น true"),
+  // ── r4 (S10) — มติผู้คุมงาน R4.1–R4.3 (hunt G1/G2/G3) ──
+  D("S10.1", "R4.1", "CRITICAL", "RED", "[verifyPin] ผู้เรียกเดียว ผิด 30 ครั้งพร้อมกัน (Promise.all) → ถังผู้เรียก ≤ 10 · ถังร้าน ≤ 10 · limitedText ≥ 20 · ผิด (PIN ไม่ถูกต้อง) ≤ 10 · hr.pin.locked ของผู้เรียกนั้น 1 แถวพอดี (G1)"),
+  D("S10.2", "R4.1", "CRITICAL", "RED", "[verifyPin] ผู้เรียกเดียว ผิด 29 + ถูก 1 พร้อมกัน → ตัวที่ถูกได้ ok (คน A) หรือ limitedText (ไม่ใช่ PIN ไม่ถูกต้อง) · ถังผู้เรียก/ร้าน ≤ 10 · ผิด ≤ 10 · hr.pin.locked = 1 แถวเมื่อถัง = 10 (0 เมื่อ < 10)"),
+  D("S10.3", "R4.1", "MAJOR", "GREEN", "[verifyPin] คืนช่องเมื่อถูก: ผู้เรียกใหม่ PIN ถูก 5 ครั้ง → ok ทั้ง 5 · ถังผู้เรียกไม่มีแถวหรือ 0 · ถังร้านเท่าเดิม (3 จากความผิดก่อนหน้า)"),
+  D("S10.4", "R4.2", "CRITICAL", "RED", "[verifyPin] callerKey รูปแบบผิด (NUL · 129 ตัว · ช่องว่างกลาง · * · / · อักษร unicode · zero-width) แม้ PIN ถูก → \"PIN ไม่ถูกต้อง\" · ไม่มีแถวถัง · ไม่มี OpsEvent ใหม่ · ไม่มี audit ใหม่ · u_01 / unit:abc-1.2 / 128 ตัว PIN ถูก → ok"),
+  D("S10.5", "R4.3", "MAJOR", "RED", "[verifyPin] 12 ผู้เรียก × ผิด 10 (เรียงกัน) → ถังร้าน 120 · ผู้เรียกที่ 13 ผิด → limitedText · hr.pin.tenant_limited 1 แถวพอดี (SYSTEM · count+windowSec · ไม่มี callerKey/PIN/id พนักงาน) + OpsEvent WARN ของร้าน 1 แถว · ผิดอีก 5 ครั้งไม่เพิ่มแถว"),
+  D("S10.6", "R4.1", "MAJOR", "GREEN", "[verifyPin] ต่อจาก S10.5: ถูกปฏิเสธอีก 5 ครั้ง (PIN ถูก ผู้เรียกใหม่) → limitedText ทั้ง 5 · ถังร้านเท่าเดิม (≤ 120) — ครั้งที่ถูกปฏิเสธไม่กินโควตา"),
   D("Z1", "-", "CRITICAL", "GREEN", "คืนสภาพ: ร้าน qc-hr-h0.5-* ถูกลบ · ไม่เหลือแถว HR/audit ของร้าน · ไม่เหลือ ChatRateBucket ของร้าน · ผู้ใช้ชั่วคราวถูกลบ"),
 ];
 
@@ -503,6 +513,7 @@ console.log(`[${SUITE}] hr/pin.ts=${pinMod ? "โหลดได้" : pinImport
 const stamp = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 const SLUG = `${SLUG_PREFIX}${stamp}`;
 const tids: string[] = [];
+const ops10Ids: string[] = []; // H0.5 r4 ▸ S10.4 OpsEvent ไม่มีร้าน (fail-open ของถัง) ที่ข้อสอบนี้ทำให้เกิด — ลบใน cleanup ◂
 const users: string[] = [];
 const ids: string[] = [];
 let T1 = "";
@@ -1239,6 +1250,161 @@ async function runDb(): Promise<void> {
     }
     chk("S9.7", ok97, "ทั้งสองแถวถูกสร้าง · plain=none hash=none setAt=N · ผลไม่มี D8 / pinSet:true", s97);
   }
+
+  // ═══ S10 r4 — มติผู้คุมงาน R4.1–R4.3 (hunt G1/G2/G3) ═══
+  // ใช้ร้าน T1 + ตัวช่วยของ S9 (verify9/V9/bucketOf/tKey/cKey/lockedRows/tag9/one9) · ล้างถัง hr-verifypin:<T1>* ก่อนแต่ละข้อ
+  // เวลาเทียบกับนาฬิกา DB (createdAt = now() ฝั่ง DB) · OpsEvent ที่เกิด: ของร้าน T1 ลบตาม tenantId · fail-open ไม่มีร้าน (S10.4 บนฐาน) เก็บ id ไว้ลบ
+  console.log("── [S10] r4: นับก่อนค้น + คืนช่อง (ยิงพร้อมกัน) · callerKey ต้องตรงรูปแบบ · audit/OpsEvent ตอนถังร้านเต็ม ──");
+  {
+    const ck10 = (tag: string) => `qc10:${tag}:${stamp}`;
+    // เวลา createdAt อาจมาจาก query engine (เครื่องนี้) หรือ DB ⇒ เอาเวลา DB ลบ 2 s เป็นขอบล่าง (ข้อก่อนหน้าไม่สร้างแถวชนิดที่นับ)
+    const dbNow = async (): Promise<Date> => new Date((((await P.$queryRaw`SELECT clock_timestamp() AS n`) as Any[])[0].n as Date).getTime() - 2_000);
+    const nWrong = (rs: Any[]) => rs.filter(isWrong9).length;
+    const nLimited = (rs: Any[]) => rs.filter(isLimited9).length;
+    const auditSince = (action: string, since: Date): Promise<Any[]> =>
+      P.auditLog.findMany({ where: { tenantId: T1, action, createdAt: { gte: since } }, select: { action: true, actorType: true, actorId: true, targetType: true, targetId: true, before: true, after: true }, orderBy: { createdAt: "asc" } });
+    if (!verify9) {
+      failAll(["S10.1", "S10.2", "S10.3", "S10.4", "S10.5", "S10.6"], `facade missing: hr/index.ts ไม่มี verifyPin${pinMod ? "" : ` · ${pinImportErr}`}`);
+    } else {
+      // S10.1 — ผิด 30 ครั้งพร้อมกันจากผู้เรียกเดียว ⇒ ผ่านถึงการเทียบได้ ≤ 10 (ถังที่เขียนก่อนค้นคือประตู)
+      await resetVerifyBucket(T1);
+      const cBurst = ck10("burst");
+      const r101 = (await Promise.all(Array.from({ length: 30 }, () => V9(PINS9.wrong, cBurst)))) as Any[];
+      const bC101 = await bucketOf(cKey(cBurst));
+      const bT101 = await bucketOf(tKey);
+      const l101 = await lockedRows(cBurst);
+      chk(
+        "S10.1",
+        r101.length === 30 && nWrong(r101) + nLimited(r101) === 30 && nWrong(r101) <= 10 && nLimited(r101) >= 20 && (bC101 ?? 0) <= 10 && (bT101 ?? 0) <= 10 && l101.length === 1,
+        "30 ผล = ผิด ≤ 10 + limitedText ≥ 20 · ถังผู้เรียก ≤ 10 · ถังร้าน ≤ 10 · hr.pin.locked 1 แถว",
+        `${tag9(r101)} callerBucket=${bC101 ?? "ไม่มีแถว"} tenantBucket=${bT101 ?? "ไม่มีแถว"} lockedRows=${l101.length}`,
+      );
+      // S10.2 — ผิด 29 + ถูก 1 พร้อมกัน (ตัวที่ถูกอยู่กลางชุด)
+      await resetVerifyBucket(T1);
+      const cMix = ck10("mix");
+      const r102 = (await Promise.all(Array.from({ length: 30 }, (_, i) => V9(i === 15 ? PINS.v4a : PINS9.wrong, cMix)))) as Any[];
+      const good102 = r102[15];
+      const rest102 = r102.filter((_, i) => i !== 15);
+      const bC102 = await bucketOf(cKey(cMix));
+      const bT102 = await bucketOf(tKey);
+      const l102 = await lockedRows(cMix);
+      const lockOk102 = (bC102 ?? 0) >= 10 ? l102.length === 1 : l102.length === 0;
+      chk(
+        "S10.2",
+        (okA9(good102) || isLimited9(good102)) && nWrong(rest102) + nLimited(rest102) === 29 && nWrong(rest102) <= 10 && (bC102 ?? 0) <= 10 && (bT102 ?? 0) <= 10 && lockOk102,
+        "ตัวที่ถูก = ok(คน A) หรือ limitedText · ผิด ≤ 10 · ถังผู้เรียก ≤ 10 · ถังร้าน ≤ 10 · hr.pin.locked = 1 เมื่อถัง = 10 (0 เมื่อ < 10)",
+        `ถูก=${one9(good102)} ผิด29=${tag9(rest102)} callerBucket=${bC102 ?? "ไม่มีแถว"} tenantBucket=${bT102 ?? "ไม่มีแถว"} lockedRows=${l102.length}`,
+      );
+      // S10.3 — คืนช่องเมื่อถูก: ถังร้านมีความผิด 3 ครั้งก่อน · ผู้เรียกใหม่ถูก 5 ครั้ง ⇒ ไม่มีถังผู้เรียก (หรือ 0) · ถังร้านยัง 3
+      await resetVerifyBucket(T1);
+      const cSeed = ck10("seed");
+      const seed103: Any[] = [];
+      for (let i = 0; i < 3; i++) seed103.push(await V9(PINS9.wrong, cSeed));
+      const bT103a = await bucketOf(tKey);
+      const cRef = ck10("refund");
+      const ok103: Any[] = [];
+      for (let i = 0; i < 5; i++) ok103.push(await V9(PINS.v4a, cRef));
+      const bC103 = await bucketOf(cKey(cRef));
+      const bT103b = await bucketOf(tKey);
+      chk(
+        "S10.3",
+        seed103.every(isWrong9) && ok103.every(okA9) && !bC103 && bT103a === 3 && bT103b === 3,
+        "ผิด 3 (ผู้เรียกอื่น) · ถูก 5/5 ok คน A · ถังผู้เรียกไม่มีแถวหรือ 0 · ถังร้าน 3 → 3",
+        `seed=${tag9(seed103)} ok5=${tag9(ok103)} callerBucket=${bC103 ?? "ไม่มีแถว"} tenant ${bT103a ?? "ไม่มีแถว"}→${bT103b ?? "ไม่มีแถว"}`,
+      );
+      // S10.4 — callerKey รูปแบบผิด ⇒ ผิดทันที ไม่แตะ DB (ทั้ง PIN ถูก และ PIN ผิด)
+      await resetVerifyBucket(T1);
+      const BAD104: [string, string][] = [
+        ["nul", "evil\u0000x"],
+        ["len129", "k".repeat(129)],
+        ["space", "a b"],
+        ["star", "a*"],
+        ["slash", "a/b"],
+        ["unicode", "usé"],
+        ["zwsp", "u1​"],
+      ];
+      const t104 = await dbNow();
+      const audit104a = await P.auditLog.count({ where: { tenantId: T1 } });
+      const per104: string[] = [];
+      let all104 = true;
+      for (const [label, key] of BAD104) {
+        const rOk = await V9(PINS.v4a, key);
+        const rBad = await V9(PINS9.wrong, key);
+        const good = isWrong9(rOk) && isWrong9(rBad);
+        if (!good) all104 = false;
+        per104.push(`${label}:${one9(rOk)}/${one9(rBad)}`);
+      }
+      await sleep(300); // logOps ของ fail-open เป็น void (ไม่ await) — รอให้เขียนเสร็จก่อนนับ
+      const nb104 = await P.chatRateBucket.count({ where: { key: { startsWith: tKey } } });
+      const audit104b = await P.auditLog.count({ where: { tenantId: T1 } });
+      const ops104 = (await P.opsEvent.findMany({ where: { createdAt: { gte: t104 }, OR: [{ tenantId: T1 }, { tenantId: null, source: "rate-limit-db" }] }, select: { id: true, tenantId: true } })) as Any[];
+      for (const o of ops104) if (!o.tenantId) ops10Ids.push(o.id as string);
+      const VALID104: [string, string][] = [
+        ["u_01", "u_01"],
+        ["unit", "unit:abc-1.2"],
+        ["len128", "k".repeat(128)],
+      ];
+      const val104: string[] = [];
+      let allValid = true;
+      for (const [label, key] of VALID104) {
+        const r = await V9(PINS.v4a, key);
+        if (!okA9(r)) allValid = false;
+        val104.push(`${label}:${one9(r)}`);
+      }
+      chk(
+        "S10.4",
+        all104 && nb104 === 0 && audit104b === audit104a && ops104.length === 0 && allValid,
+        `รูปแบบผิดทั้ง 7 (PIN ถูก/PIN ผิด) → "${T_WRONG}" · ถัง hr-verifypin:<T1>* = 0 · audit +0 · OpsEvent +0 · รูปแบบถูก 3 ตัว PIN ถูก → ok(คน A)`,
+        `buckets=${nb104} audit+${audit104b - audit104a} opsEvent+${ops104.length} · valid ${val104.join(" ")} · ${per104.join(" ")}`,
+      );
+      // S10.5 — ถังร้านถึง 120 ⇒ audit hr.pin.tenant_limited 1 แถว + OpsEvent WARN ของร้าน 1 แถว (ครั้งเดียวต่อหน้าต่าง)
+      await resetVerifyBucket(T1);
+      const t105 = await dbNow();
+      const tt105 = Date.now();
+      const callers105 = Array.from({ length: 12 }, (_, i) => ck10(`t${i + 1}`));
+      const w105: Any[] = [];
+      for (let round = 0; round < 10; round++) for (const c of callers105) w105.push(await V9(PINS9.wrong, c));
+      const bT105 = await bucketOf(tKey);
+      const c13 = await V9(PINS9.wrong, ck10("t13"));
+      await sleep(300);
+      const tl1 = await auditSince("hr.pin.tenant_limited", t105);
+      const ops1 = (await P.opsEvent.count({ where: { tenantId: T1, level: "WARN", createdAt: { gte: t105 } } })) as number;
+      const more105: Any[] = [];
+      for (let i = 0; i < 5; i++) more105.push(await V9(PINS9.wrong, ck10(`t${14 + i}`)));
+      await sleep(300);
+      const tl2 = await auditSince("hr.pin.tenant_limited", t105);
+      const ops2 = (await P.opsEvent.count({ where: { tenantId: T1, level: "WARN", createdAt: { gte: t105 } } })) as number;
+      const el105 = Date.now() - tt105;
+      const empIds10 = ((await P.hrEmployee.findMany({ where: { tenantId: T1 }, select: { id: true } })) as Any[]).map((e) => e.id as string);
+      const tlPayloadOk = (r: Any) => {
+        const pay = JSON.stringify({ b: r?.before ?? null, a: r?.after ?? null });
+        let s = JSON.stringify(r ?? null);
+        if (empIds10.some((id) => s.includes(id)) || s.includes("qc10:") || s.includes("qc9:") || s.includes("qc-auto:")) return false;
+        s = s.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z?/g, "<ts>");
+        for (const x of [...tids, ...users]) s = s.split(x).join("<id>");
+        const clean = ![...SECRET_PINS].some((p) => s.includes(p)) && !(PEP && s.includes(PEP));
+        return r?.actorType === "SYSTEM" && /"count"\s*:/.test(pay) && /"windowSec"\s*:/.test(pay) && !pay.includes("callerKey") && clean;
+      };
+      chk(
+        "S10.5",
+        w105.length === 120 && w105.every(isWrong9) && bT105 === 120 && isLimited9(c13) && tl1.length === 1 && tlPayloadOk(tl1[0]) && ops1 === 1 && more105.every(isLimited9) && tl2.length === 1 && ops2 === 1 && el105 < 60_000,
+        "ผิด 120 = PIN ไม่ถูกต้อง · ถังร้าน 120 · ผู้เรียกที่ 13 = limitedText · tenant_limited 1 แถว (SYSTEM · count+windowSec · ไม่มี callerKey/PIN/id) · OpsEvent WARN ร้าน 1 · ผิดอีก 5 = limited · ยัง 1/1 · ภายใน 60 s",
+        `w120=${tag9(w105)} tenantBucket=${bT105 ?? "ไม่มีแถว"} c13=${one9(c13)} auditRows=${tl1.length}→${tl2.length} payload=${tl1[0] ? tlPayloadOk(tl1[0]) : "-"} opsWarn=${ops1}→${ops2} more5=${tag9(more105)} ms=${el105}`,
+      );
+      // S10.6 — ต่อจาก S10.5 (หน้าต่างเดิม): ถูกปฏิเสธอีก 5 ครั้ง ⇒ ถังร้านเท่าเดิม
+      const bT106a = await bucketOf(tKey);
+      const r106: Any[] = [];
+      for (let i = 0; i < 5; i++) r106.push(await V9(PINS.v4a, ck10(`r${i + 1}`)));
+      const bT106b = await bucketOf(tKey);
+      chk(
+        "S10.6",
+        r106.every(isLimited9) && bT106a !== null && bT106b === bT106a && (bT106b ?? 0) <= 120,
+        "5/5 limitedText · ถังร้านก่อน = หลัง · ≤ 120",
+        `${tag9(r106)} tenant ${bT106a ?? "ไม่มีแถว"}→${bT106b ?? "ไม่มีแถว"}`,
+      );
+      await resetVerifyBucket(T1);
+    }
+  }
 }
 
 // ═════════════════════════ คืนสภาพ ═════════════════════════
@@ -1269,6 +1435,8 @@ async function cleanup(): Promise<void> {
     }
     await d("tenant", () => P.tenant.delete({ where: { id: tid } }));
   }
+  // H0.5 r4 ▸ S10 OpsEvent ที่ข้อสอบนี้ทำให้เกิด: แถวของร้านชั่วคราว (tenant_limited ของ S4.7/S9.3/S10.5) + แถว fail-open ไม่มีร้านที่เก็บ id ไว้ (S10.4) ◂
+  await d("opsEvent", () => P.opsEvent.deleteMany({ where: { OR: [{ tenantId: { in: tids.length ? tids : ["-"] } }, { id: { in: ops10Ids.length ? ops10Ids : ["-"] } }] } }));
   for (const uid of users) {
     await d("session", () => P.session.deleteMany({ where: { userId: uid } }));
     await d("user", () => P.user.delete({ where: { id: uid } }));
@@ -1305,6 +1473,11 @@ for (const tid of tids) {
       .catch(() => -1000);
   }
   if (nb !== 0) residue.push(`chatRateBucket=${nb}`);
+}
+// H0.5 r4 ▸ S10 residue ของ OpsEvent (พิมพ์แยก ไม่แตะ Z1) ◂
+{
+  const n = await P.opsEvent.count({ where: { OR: [{ tenantId: { in: tids.length ? tids : ["-"] } }, { id: { in: ops10Ids.length ? ops10Ids : ["-"] } }] } }).catch(() => -1);
+  console.log(`RESIDUE10 opsEvent=${n} (ไม่มีร้าน เก็บ id ไว้ ${ops10Ids.length})`);
 }
 const leftUsers = users.length ? await P.user.count({ where: { id: { in: users } } }).catch(() => -1) : 0;
 if (leftUsers !== 0) residue.push(`user=${leftUsers}`);
