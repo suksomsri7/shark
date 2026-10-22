@@ -662,7 +662,7 @@
       "why": "same states LOCALE=en · owner 11 + cashier 1 · 22 Oct 2026"
     },
     {
-      "id": "p3.6u",
+      "id": "p3.6u-th",
       "wo": "p3.6u",
       "pages": [
         "register",
@@ -679,7 +679,7 @@
       ],
       "states": true,
       "after": "P3.6U",
-      "why": "P3.6U 20 states (01 company chip/picker search/member/deal select · 02 on-account owner/cashier/buyer/hidden · over-limit sheet + wrong PIN (cashier) · 02b due chip 1440 · 12 drawer W23 + refund · 08 credit owner/denied · 10 credit card off/on/invalid/readonly + member on order bills) · owner 15 + cashier 6 · placeholder until the controller's QC5 round replaces it"
+      "why": "P3.6U 20 states (register-company-chip/picker-search/picker-member/deal-select · paydlg-onaccount owner/cashier/buyer/hidden · paydlg-credit-over-sheet/wrong-pin · paydone-onaccount-due 1440 · bills-drawer/refund-onaccount · reports-credit owner/denied · settings-credit-card off/on/account-invalid/readonly · settings-orders-member-on-bill) · th owner 43 + cashier 18 · QC5 build a1fjVrrXEB6PNtAeIlP8O @46098687 (harness fix2-4 e6969209: tenant guard · CRM fixture source · uiVersion 2 · no handles across awaits) · vis-p36u-qc5-20261022T052845Z 95/95 · 22 Oct 2026"
     },
     {
       "id": "p3.6u-en",
@@ -699,7 +699,7 @@
       ],
       "states": true,
       "after": "P3.6U",
-      "why": "same states LOCALE=en (1440 + 390 of register/sales) · placeholder until the controller's QC5 round replaces it"
+      "why": "same states LOCALE=en · owner 24 + cashier 10 · 22 Oct 2026"
     }
   ]
 }
