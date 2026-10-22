@@ -11,7 +11,20 @@ import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 import * as party from "@/lib/modules/party";
 // HR H0.5 ▸ PIN (hash · ไม่ซ้ำทั้งร้าน · ทางเก่า) อยู่ที่ pin.ts ที่เดียว — ไฟล์นี้ไม่แตะคอลัมน์ PIN เอง (F16.5) ◂
 import { activateEmployeeKeepingPinUnique, hasPin, PIN_SELECT, pinOfInput, setPin, verifyPinForEmployee, type PinInput } from "./pin";
-export { setPin } from "./pin"; // HR H0.5 ▸ ย้ายไป pin.ts · ผู้เรียกเดิม (actions · seed · oracle) import จากที่นี่ได้ตามเดิม ◂
+// HR H1.1 ▸ ขอบเขตสาขา (ตัวกรองของตัวอ่าน — ไม่ส่ง scope = พฤติกรรมเดิม) ◂
+import {
+  employeeUnitsOf,
+  HR_CREATE_NEEDS_UNIT_TEXT,
+  hrScopeOf,
+  leaveTargetOf,
+  scopedAttendanceWhere,
+  scopedLeaveWhere,
+  unitTargetOf,
+  unitWhere,
+  type HrScope,
+} from "./scope";
+export { setPin } from "./pin";
+export { hrScopeOf, scopedLeaveWhere } from "./scope"; // HR H1.1 R12 ▸ ให้ ai/tools (upcoming_schedule) ใช้ตัวเดียวกับ HR ◂ // HR H0.5 ▸ ย้ายไป pin.ts · ผู้เรียกเดิม (actions · seed · oracle) import จากที่นี่ได้ตามเดิม ◂
 
 // HR (ระบบที่ 17) — service ชั้นประกอบ (systemId-scoped)
 // ⚠️ กติกา availability + ชั่วโมงทำงาน มาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่โหลด DB แล้วเรียกใช้
@@ -30,6 +43,8 @@ export type CreateEmployeeInput = {
   name: string;
   phone?: string | null;
   position?: string | null;
+  /** HR H1.1 ▸ สาขาประจำ (ผู้เรียกตรวจขอบเขตแล้ว — action: homeUnitTarget) · ไม่ส่ง = ยังไม่ระบุสาขา ◂ */
+  unitId?: string | null;
 } & PinInput;
 
 /**
@@ -57,6 +72,9 @@ export async function createEmployee(
       position: input.position?.trim() || null,
       partyId,
       // active = true (default ใน schema)
+      // HR H1.1 ▸ สาขาประจำ + สถานะเริ่มต้น "ประจำ" (ACTIVE) ◂
+      unitId: input.unitId?.trim() || null,
+      employmentStatus: "ACTIVE",
     },
   });
   const pin = pinOfInput(input);
@@ -65,18 +83,19 @@ export async function createEmployee(
   return pr.ok ? { id: e.id, pinSet: true } : { id: e.id, pinSet: false, reason: pr.reason };
 }
 
-export async function listEmployees(ctx: Ctx, take = 200) {
+// HR H1.1 ▸ scope (ไม่บังคับ) = ขอบเขตสาขาของผู้ดู (hr/scope.ts hrScopeOf) — ไม่ส่ง = ทุกแถว (ผู้เรียกภายในเดิม) ◂
+export async function listEmployees(ctx: Ctx, take = 200, scope?: HrScope) {
   return tenantDb(ctx).hrEmployee.findMany({
-    where: { active: true },
+    where: { active: true, ...(scope ? unitWhere(scope) : {}) },
     orderBy: { createdAt: "asc" },
     take,
   });
 }
 
 /** พนักงานที่ถูกลบแล้ว (soft delete) — ยังอยู่ในฐานเพื่อให้ประวัติลงเวลา/ลา/เงินเดือนอ่านได้ */
-export async function listRemovedEmployees(ctx: Ctx, take = 200) {
+export async function listRemovedEmployees(ctx: Ctx, take = 200, scope?: HrScope) {
   return tenantDb(ctx).hrEmployee.findMany({
-    where: { active: false },
+    where: { active: false, ...(scope ? unitWhere(scope) : {}) },
     orderBy: { updatedAt: "desc" },
     take,
   });
@@ -152,6 +171,11 @@ export type EmployeeProfileInput = {
   bankName?: string | null;
   bankAccountNo?: string | null;
   bankAccountName?: string | null;
+  // HR H1.1 ▸ แกนสาขา + สถานะการจ้าง (ไม่อ่อนไหว · แก้ได้ด้วย hr.employee.create · unitId ผู้เรียกตรวจขอบเขตก่อน — homeUnitTarget) ◂
+  unitId?: string | null;
+  employmentStatus?: "PROBATION" | "ACTIVE" | "ENDED" | null;
+  probationEndAt?: string | null;
+  contractEndAt?: string | null;
 };
 
 /** พนักงาน 1 คนพร้อมเอกสารแนบ (ใช้ในหน้าโปรไฟล์) */
@@ -170,6 +194,7 @@ const dateOrNull = (v: string | null | undefined): Date | null | undefined => {
 };
 const strOrNull = (v: string | null | undefined): string | null | undefined =>
   v === undefined ? undefined : v?.trim() || null;
+const EMPLOYMENT_STATUSES = new Set(["PROBATION", "ACTIVE", "ENDED"]); // HR H1.1 ◂
 
 /**
  * บันทึกโปรไฟล์พนักงาน — ส่งมาช่องไหนแก้ช่องนั้น (ช่องที่ไม่ส่ง = ไม่แตะ)
@@ -194,6 +219,12 @@ export async function saveEmployeeProfile(
   if (bd === undefined && input.birthDate !== undefined) return { ok: false, reason: "วันเกิดไม่ถูกต้อง" };
   if (sd === undefined && input.startDate !== undefined) return { ok: false, reason: "วันเริ่มงานไม่ถูกต้อง" };
   if (ed === undefined && input.endDate !== undefined) return { ok: false, reason: "วันสิ้นสุดงานไม่ถูกต้อง" };
+  // HR H1.1 ▸ สถานะการจ้าง + วันครบทดลองงาน/สิ้นสุดสัญญา (ข้อมูลอย่างเดียว — เตือน = H2.x) ◂
+  const pd = dateOrNull(input.probationEndAt);
+  const cd = dateOrNull(input.contractEndAt);
+  if (pd === undefined && input.probationEndAt !== undefined) return { ok: false, reason: "วันครบทดลองงานไม่ถูกต้อง" };
+  if (cd === undefined && input.contractEndAt !== undefined) return { ok: false, reason: "วันสิ้นสุดสัญญาไม่ถูกต้อง" };
+  const status = input.employmentStatus === undefined ? undefined : EMPLOYMENT_STATUSES.has(String(input.employmentStatus)) ? input.employmentStatus : null;
   const startCmp = sd ?? emp.startDate;
   const endCmp = ed ?? emp.endDate;
   if (startCmp && endCmp && endCmp < startCmp) {
@@ -247,6 +278,11 @@ export async function saveEmployeeProfile(
       ...(input.bankName !== undefined ? { bankName: strOrNull(input.bankName) } : {}),
       ...(input.bankAccountNo !== undefined ? { bankAccountNo: strOrNull(input.bankAccountNo) } : {}),
       ...(input.bankAccountName !== undefined ? { bankAccountName: strOrNull(input.bankAccountName) } : {}),
+      // HR H1.1 ▸ ◂
+      ...(input.unitId !== undefined ? { unitId: strOrNull(input.unitId) } : {}),
+      ...(status !== undefined ? { employmentStatus: status } : {}),
+      ...(pd !== undefined ? { probationEndAt: pd } : {}),
+      ...(cd !== undefined ? { contractEndAt: cd } : {}),
       ...(partyId ? { partyId } : {}),
     },
   });
@@ -292,18 +328,67 @@ export async function setEmployeeActive(
   employeeId: string,
   active: boolean,
 ): Promise<{ ok: boolean; reason?: string; name?: string; pinCleared?: boolean }> {
-  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId }, select: { id: true, name: true } });
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId }, select: { id: true, name: true, endDate: true } });
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
   if (!active) {
     // พ้นสภาพ = ออกจากดัชนี PIN (WHERE active) ⇒ PIN ของคนนี้ว่างให้คนอื่นตั้งได้ · hash ยังเก็บไว้ (กลับมาแล้วไม่ชน = ใช้ต่อได้)
-    await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { active } });
+    // HR H1.1 ▸ R7: สถานะ = สิ้นสุด (ENDED) · วันสิ้นสุด = วันนี้ (เวลาไทย) เมื่อยังไม่มี — มีอยู่แล้วคงไว้ ◂
+    await tenantDb(ctx).hrEmployee.updateMany({
+      where: { id: employeeId },
+      data: { active, employmentStatus: "ENDED", ...(emp.endDate ? {} : { endDate: toDbDate(thaiDateKey(new Date())) }) },
+    });
     return { ok: true, name: emp.name };
   }
   // HR H0.5 ▸ R4: กลับมาทำงานแล้ว PIN เดิมชนกับคนที่ตั้งไประหว่างนั้น ⇒ ล้าง PIN ของคนที่กลับมา (ต้องตั้งใหม่) ไม่ล้มทั้งคำสั่ง ◂
   const r = await activateEmployeeKeepingPinUnique(ctx, employeeId);
   if (r.count !== 1) return { ok: false, reason: "ไม่พบพนักงาน" };
+  // HR H1.1 ▸ R7: กลับมาทำงาน = สถานะประจำ (ACTIVE) · วันที่ทั้งหมดคงไว้ ◂
+  await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { employmentStatus: "ACTIVE" } });
   return r.pinCleared ? { ok: true, name: emp.name, pinCleared: true } : { ok: true, name: emp.name };
 }
+
+// ─────────── HR H1.1 ▸ ยืมตัวไปช่วยสาขาอื่น (HrEmployeeUnit) — service เท่านั้นใน H1.1 (หน้าจัดการ = H2.x · Q3) ───────────
+//   ผู้เรียกตรวจสิทธิ์เอง (hr.employee.create + เข้าถึงได้ทั้งสองสาขา หรือทุกสาขา) · สาขาต้องเป็น BusinessUnit ของร้านนี้ ·
+//   ยืมที่ยังเปิดไปสาขาเดียวกันได้แถวเดียว (partial unique ในฐาน = ผู้ตัดสิน · ชนกัน = ข้อความไทยคงที่) ◂
+export const BORROW_TEXT = {
+  notFound: "ไม่พบพนักงาน",
+  unit: "ไม่พบสาขานี้ในร้าน — กรุณาเลือกสาขาใหม่",
+  sameAsHome: "สาขานี้เป็นสาขาประจำของพนักงานอยู่แล้ว",
+  date: "วันที่ยืมตัวไม่ถูกต้อง",
+  open: "พนักงานคนนี้ยืมตัวไปสาขานี้อยู่แล้ว — ปิดรายการเดิมก่อน",
+} as const;
+export async function addEmployeeBorrowing(
+  ctx: Ctx,
+  input: { employeeId: string; unitId: string; fromDate: string; toDate?: string | null; note?: string | null },
+): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId }, select: { id: true, unitId: true } });
+  if (!emp) return { ok: false, reason: BORROW_TEXT.notFound };
+  const unitId = (input.unitId ?? "").trim();
+  const unit = unitId ? await tenantDb({ tenantId: ctx.tenantId }).businessUnit.findFirst({ where: { id: unitId }, select: { id: true } }) : null;
+  if (!unit) return { ok: false, reason: BORROW_TEXT.unit };
+  if (emp.unitId === unitId) return { ok: false, reason: BORROW_TEXT.sameAsHome };
+  const from = dateOrNull(input.fromDate);
+  const to = input.toDate === undefined ? null : dateOrNull(input.toDate);
+  if (!from || to === undefined || (to && to < from)) return { ok: false, reason: BORROW_TEXT.date };
+  try {
+    const row = await tenantDb(ctx).hrEmployeeUnit.create({
+      data: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, unitId, fromDate: from, toDate: to ?? null, note: input.note?.trim() || null },
+      select: { id: true },
+    });
+    return { ok: true, id: row.id };
+  } catch (e) {
+    if ((e as { code?: string })?.code === "P2002") return { ok: false, reason: BORROW_TEXT.open };
+    throw e;
+  }
+}
+/** ปิดการยืมตัว (toDate = วันที่ระบุ หรือวันนี้ตามเวลาไทย) — เฉพาะแถวที่ยังเปิด */
+export async function endEmployeeBorrowing(ctx: Ctx, borrowingId: string, toDate?: string): Promise<{ ok: boolean; reason?: string }> {
+  const to = toDate === undefined ? toDbDate(thaiDateKey(new Date())) : dateOrNull(toDate);
+  if (!to) return { ok: false, reason: BORROW_TEXT.date };
+  const r = await tenantDb(ctx).hrEmployeeUnit.updateMany({ where: { id: borrowingId, toDate: null, fromDate: { lte: to } }, data: { toDate: to } });
+  return r.count === 1 ? { ok: true } : { ok: false, reason: BORROW_TEXT.date };
+}
+// ◂ HR H1.1
 
 // HR H0.3 ▸ หน้าต่างกันแตะซ้ำ (วินาที) ต่อพนักงาน — ดู clock() ◂
 export const CLOCK_DEDUPE_SEC = 60;
@@ -453,9 +538,9 @@ export async function clockWithPin(ctx: Ctx, employeeId: string, pin: string): P
 }
 
 /** รายชื่อสำหรับจอ kiosk — บอกด้วยว่าใครยังไม่ได้ตั้ง PIN (เจ้าของจะรู้ว่าต้องไปตั้ง) */
-export async function kioskRoster(ctx: Ctx) {
+export async function kioskRoster(ctx: Ctx, scope?: HrScope) {
   const emps = await tenantDb(ctx).hrEmployee.findMany({
-    where: { active: true },
+    where: { active: true, ...(scope ? unitWhere(scope) : {}) }, // HR H1.1 ▸ จอ kiosk ของสาขา = เฉพาะคนในสาขา (วันนี้) ◂
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true, position: true, ...PIN_SELECT },
   });
@@ -484,6 +569,7 @@ export class HrLeaveRequestError extends Error {
 }
 export const LEAVE_NO_REQUESTER = "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน";
 export const LEAVE_EMPLOYEE_NOT_FOUND = "ไม่พบพนักงานคนนี้ในระบบพนักงานนี้ — กรุณารีเฟรชหน้าแล้วเลือกใหม่";
+export const LEAVE_EMPLOYEE_ENDED = "พนักงานคนนี้พ้นสภาพแล้ว — ยื่นใบลาใหม่ไม่ได้"; // HR H1.1 R12 ◂
 export const LEAVE_OWNER_AUTO_NOTE = "เจ้าของร้าน — ไม่ต้องผ่านการอนุมัติ";
 const CANCEL_NOT_FOUND = "ไม่พบใบลา หรืออยู่นอกร้านนี้";
 const CANCEL_NOT_MINE = "ยกเลิกได้เฉพาะใบลาที่คุณยื่นเอง";
@@ -506,8 +592,10 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   //   ที่ตัดสินในช่วงระหว่างนั้นไม่เห็นคำขอ จึงตัดสินได้ แล้วคำขอก็ยังถูกสร้าง (สาย PENDING/REJECTED + ใบลา APPROVED) · ลำดับ event เดิม
   //   (hr.leave.submitted ก่อน approval.request.submitted) · ใช้ tx จาก tenantDb (ไม่ลาก prisma ดิบเข้ามา — fitness F5.1) ◂
   // HR H0.7 ▸ R2/R3/R4: พนักงานต้องอยู่ในระบบ HR นี้ (ระบบอื่น/ร้านอื่น = ไม่พบ) · หาผู้ยื่น (user id) · ใบลาของเจ้าของร้าน = อนุมัติทันที
-  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId }, select: { id: true, linkedUserId: true } });
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId }, select: { id: true, linkedUserId: true, active: true } });
   if (!emp) throw new HrLeaveRequestError(LEAVE_EMPLOYEE_NOT_FOUND);
+  // HR H1.1 R12 ▸ R12.4: พนักงานที่พ้นสภาพแล้ว (active=false · เช่นตั้งสถานะ "สิ้นสุด") ยื่นใบลาใหม่ไม่ได้ — ข้อความคงที่ ไม่มีชื่อ ◂
+  if (!emp.active) throw new HrLeaveRequestError(LEAVE_EMPLOYEE_ENDED);
   const legacyCaller = input.actorUserId === undefined; // งานภายใน/ข้อสอบรุ่นเก่า — ดูหมายเหตุที่ RequestLeaveInput
   const actor = typeof input.actorUserId === "string" && input.actorUserId.trim() ? input.actorUserId.trim() : null;
   const requester = emp.linkedUserId ?? actor;
@@ -837,14 +925,42 @@ export function leaveRowScopeOf(m: MembershipCtx | null | undefined, userId: str
   }
   return { linkedUserId: typeof userId === "string" ? userId.trim() : "" }; // "" ⇒ 0 แถว
 }
-const leaveScopeWhere = (scope?: LeaveRowScope): Prisma.HrLeaveWhereInput | null => {
-  if (!scope || "all" in scope) return {};
-  if (!scope.linkedUserId) return null; // ไม่ต้องถาม DB เลย
-  return { employee: { linkedUserId: scope.linkedUserId } };
+// HR H1.1 ▸ ขอบเขตของรายการใบลา = ขอบเขตแถว (H0.7) และ/หรือ ขอบเขตสาขา ({ unitIds } จาก hrScopeOf):
+//   แถวของตัวเอง (linkedUserId) ไม่ผ่านตัวกรองสาขา (ใบลาของตัวเองเห็นเสมอ) · ผู้อ่านทุกแถว + สาขา = เฉพาะสาขา (ยืมตัวครอบ fromDate) ◂
+export type LeaveListScope = LeaveRowScope | HrScope | (LeaveRowScope & HrScope);
+/** HR H1.1 ▸ ขอบเขตแถวใบลา (H0.7) + ขอบเขตสาขา ในก้อนเดียว — ตัวเดียวกับหน้าใบลา (leaveItemsForViewer) และ AI pending_leaves ◂ */
+export function leaveListScopeOf(m: MembershipCtx | null | undefined, userId: string | null | undefined): LeaveListScope {
+  const row = leaveRowScopeOf(m, userId);
+  return m ? { ...row, ...hrScopeOf(m) } : row;
+}
+
+/**
+ * HR H1.1 ▸ ด่านสาขาของผู้เรียกที่ไม่ผ่าน hr/actions (AI proposal/plan): ตัดสินใบลาได้เมื่อพนักงานอยู่ในสาขาของผู้กด ณ วันเริ่มลา ·
+ * คืนข้อความไทยคงที่เมื่อไม่ผ่าน · null = ผ่าน (ไม่พบใบลา = null ⇒ service ตอบตามเดิม) ◂
+ */
+export async function leaveBranchRefusal(ctx: Ctx, m: MembershipCtx, leaveId: string): Promise<string | null> {
+  const lt = await leaveTargetOf(ctx, leaveId);
+  if (!lt) return null;
+  const emp = await employeeUnitsOf(ctx, lt.employeeId);
+  if (!emp) return null;
+  const t = unitTargetOf(hrScopeOf(m), emp, lt.fromDate);
+  return t.ok ? null : t.reason;
+}
+/** HR H1.1 ▸ เพิ่มพนักงานโดยไม่ระบุสาขา (AI) = เฉพาะผู้ดูแลทุกสาขา ◂ */
+export function createWithoutUnitRefusal(m: MembershipCtx): string | null {
+  return hrScopeOf(m).unitIds === "*" ? null : HR_CREATE_NEEDS_UNIT_TEXT;
+}
+const leaveScopeWhere = async (ctx: Ctx, scope?: LeaveListScope): Promise<Prisma.HrLeaveWhereInput | null> => {
+  if (!scope) return {};
+  if ("linkedUserId" in scope) {
+    if (!scope.linkedUserId) return null; // ไม่ต้องถาม DB เลย
+    return { employee: { linkedUserId: scope.linkedUserId } };
+  }
+  return "unitIds" in scope ? scopedLeaveWhere(ctx, scope) : {};
 };
 
-export async function listLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope) {
-  const sw = leaveScopeWhere(scope);
+export async function listLeaves(ctx: Ctx, take = 100, scope?: LeaveListScope) {
+  const sw = await leaveScopeWhere(ctx, scope);
   if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
     where: { ...sw },
@@ -854,8 +970,8 @@ export async function listLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope) {
   });
 }
 
-export async function pendingLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope) {
-  const sw = leaveScopeWhere(scope);
+export async function pendingLeaves(ctx: Ctx, take = 100, scope?: LeaveListScope) {
+  const sw = await leaveScopeWhere(ctx, scope);
   if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
     where: { status: "PENDING", ...sw },
@@ -865,8 +981,11 @@ export async function pendingLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope)
   });
 }
 
-export async function listAttendance(ctx: Ctx, take = 50) {
+export async function listAttendance(ctx: Ctx, take = 50, scope?: HrScope) {
+  const sw = await scopedAttendanceWhere(ctx, scope); // HR H1.1 ▸ ขอบเขตสาขา (ยืมตัวครอบวันที่ของแถว) ◂
+  if (sw === null) return [];
   return tenantDb(ctx).hrAttendance.findMany({
+    where: sw,
     include: { employee: true },
     orderBy: { at: "desc" },
     take,

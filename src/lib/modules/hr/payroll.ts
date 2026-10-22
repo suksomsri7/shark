@@ -6,7 +6,8 @@ import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
 import { logOps } from "@/lib/core/ops"; // HR H0.6 ▸ OQ-8: กลับ JV ล้ม = WARN id + รหัสเท่านั้น ◂
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
-import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest"; // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
+import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest";
+import { scopedEmployeeIds, type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสาขาของตัวอ่านรายการเพิ่ม/หัก ◂ // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
 import {
   ssoContribution,
   monthlyWhtSatang,
@@ -43,9 +44,33 @@ export type SetSalaryProfileInput = {
   ssoEligible?: boolean;
   taxId?: string | null;
   deductions?: WhtDeductions;
+  /** HR H1.1 ▸ รูปแบบค่าจ้าง — ไม่ส่ง = คงของเดิม (โปรไฟล์ใหม่ = MONTHLY) · DAILY ต้องมี dailyRateSatang > 0 · HOURLY ต้องมี hourlyRateSatang > 0 ◂ */
+  payType?: "MONTHLY" | "DAILY" | "HOURLY";
+  dailyRateSatang?: number | null;
+  hourlyRateSatang?: number | null;
 };
 
+// HR H1.1 ▸ R1/R6: ข้อความคงที่ของรูปแบบค่าจ้าง ◂
+const PAY_TYPE_INVALID_TH = "รูปแบบค่าจ้างไม่ถูกต้อง — เลือกรายเดือน รายวัน หรือรายชั่วโมง";
+const DAILY_RATE_TH = "ค่าจ้างรายวันต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0";
+const HOURLY_RATE_TH = "ค่าจ้างรายชั่วโมงต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0";
+export const PAY_TYPE_NOT_SUPPORTED_TH = "ยังไม่รองรับค่าจ้างรายวัน/รายชั่วโมงในรอบจ่าย — รอ H3.4";
+const posInt = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n > 0;
+/** ส่วน payType ของ data (ไม่ส่ง payType = {} ⇒ คงของเดิม) — ผิดกติกา = PayrollInputError (ไม่มีแถวถูกเขียน) */
+function payTypeData(input: SetSalaryProfileInput): { payType?: "MONTHLY" | "DAILY" | "HOURLY"; dailyRateSatang?: number | null; hourlyRateSatang?: number | null } {
+  if (input.payType === undefined) return {};
+  if (input.payType !== "MONTHLY" && input.payType !== "DAILY" && input.payType !== "HOURLY") throw new PayrollInputError(PAY_TYPE_INVALID_TH);
+  if (input.payType === "DAILY" && !posInt(input.dailyRateSatang)) throw new PayrollInputError(DAILY_RATE_TH);
+  if (input.payType === "HOURLY" && !posInt(input.hourlyRateSatang)) throw new PayrollInputError(HOURLY_RATE_TH);
+  return {
+    payType: input.payType,
+    dailyRateSatang: posInt(input.dailyRateSatang) ? input.dailyRateSatang : null,
+    hourlyRateSatang: posInt(input.hourlyRateSatang) ? input.hourlyRateSatang : null,
+  };
+}
+
 export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): Promise<{ id: string }> {
+  const payTypeFields = payTypeData(input); // HR H1.1 ▸ ตรวจก่อนอ่าน/เขียนอะไร ◂
   const deductionJson = {
     spouse: input.deductions?.spouse ?? false,
     children: Math.max(0, input.deductions?.children ?? 0),
@@ -64,6 +89,7 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
         ssoEligible: input.ssoEligible ?? true,
         taxId: input.taxId?.trim() || null,
         personalDeductionJson: deductionJson,
+        ...payTypeFields,
       },
     });
     return { id: existing.id };
@@ -78,6 +104,7 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
       ssoEligible: input.ssoEligible ?? true,
       taxId: input.taxId?.trim() || null,
       personalDeductionJson: deductionJson,
+      ...payTypeFields,
     },
     select: { id: true },
   });
@@ -302,9 +329,12 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
   return { ok: true };
 }
 
-export function listAdjustments(ctx: Ctx, periodKey?: string, take = 200) {
+// HR H1.1 ▸ scope (ไม่บังคับ) = ขอบเขตสาขาของผู้ดู — เฉพาะรายการของพนักงานในสาขา (วันนี้) · ไม่ส่ง = ทุกแถว ◂
+export async function listAdjustments(ctx: Ctx, periodKey?: string, take = 200, scope?: HrScope) {
+  const emps = await scopedEmployeeIds(ctx, scope);
+  if (emps && emps.length === 0) return [];
   return tenantDb(ctx).hrPayAdjustment.findMany({
-    where: { systemId: ctx.systemId, ...(periodKey ? { periodKey } : {}) },
+    where: { systemId: ctx.systemId, ...(periodKey ? { periodKey } : {}), ...(emps ? { employeeId: { in: emps } } : {}) },
     orderBy: [{ createdAt: "desc" }],
     take,
   });
@@ -461,6 +491,13 @@ async function buildRunRows(
   const profiles = allProfiles.filter((p) => member.included.has(p.employeeId));
   if (profiles.length === 0)
     return { items: [], totals: { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0, add: 0, deduct: 0 }, adjustmentIds: [], exclusions: member.exclusions };
+  // HR H1.1 ▸ R6: รอบจ่ายคิดเฉพาะรายเดือน — คนในรอบที่โปรไฟล์เป็น DAILY/HOURLY ⇒ ปฏิเสธทั้งรอบ (ไม่คิดเป็นรายเดือนเงียบ ๆ) จนถึง H3.4 ·
+  //   อ่าน payType ด้วยคำสั่งแยก (ไม่เพิ่มคอลัมน์ใน allProfiles ⇒ แถว/สแนปช็อตของรายเดือนเท่าเดิมทุกไบต์) ◂
+  const nonMonthly = await tx.hrSalaryProfile.findFirst({
+    where: { ...scope, employeeId: { in: profiles.map((p) => p.employeeId) }, payType: { not: "MONTHLY" } },
+    select: { id: true },
+  });
+  if (nonMonthly) throw new PayrollInputError(PAY_TYPE_NOT_SUPPORTED_TH);
   // CRM C3.3-fix H4 ▸ เฉพาะรายการของพนักงานที่ "มีแถวในรอบนี้" (มีโปรไฟล์เงินเดือน) — รายการของคนที่ไม่มีโปรไฟล์ไม่ได้ถูกจ่าย
   //   ผูก runId ให้ = ถือว่าจ่ายแล้วทั้งที่ไม่มีใครได้เงิน (และคอมมิชชัน CRM จะกลายเป็น PAID) ⇒ ปล่อยไว้ให้รอบถัดไป/ตัวกวาด ◂
   const paidEmployees = new Set(profiles.map((p) => p.employeeId));
@@ -880,6 +917,7 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
     }, { maxWait: 20_000, timeout: 60_000 });
   } catch (e) {
     if (e instanceof RunRefusal) return { ok: false, reason: e.message };
+    if (e instanceof PayrollInputError) return { ok: false, reason: e.message }; // HR H1.1 ▸ R6 รอบที่มี DAILY/HOURLY ◂
     throw e;
   }
   if (!res.ok) {

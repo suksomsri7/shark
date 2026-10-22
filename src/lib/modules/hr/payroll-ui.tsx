@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
 import { canViewPayroll } from "@/lib/core/rbac";
+import { hrScopeOf, isAllBranches } from "./scope"; // HR H1.1 R12 ◂
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -83,14 +84,19 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   }
 
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-
+  // HR H1.1 R12 ▸ R12.3 (M-2): ผู้ดูเงินเดือนที่จำกัดสาขาเห็นเฉพาะพนักงานในสาขาตัวเอง (เงินเดือน · การเข้างาน · รายการเพิ่ม/หัก · แถวในรอบ · สลิป)
+  //   รอบจ่ายยังเป็นของทั้งระบบ (ยอดรวมของรอบแสดงตามเดิม) แต่ปุ่มสร้าง/อนุมัติ/จ่าย/กลับรายการเฉพาะผู้ดูแลทุกสาขา (action ปฏิเสธซ้ำ) ◂
+  const scope = hrScopeOf(membership);
+  const allBranches = isAllBranches(scope);
   const [employees, profiles, runs, scheduled, adjustments] = await Promise.all([
-    listEmployees(ctx),
+    listEmployees(ctx, 200, scope),
     listSalaryProfiles(ctx),
     listRuns(ctx),
     employeesWithSchedule(ctx),
-    listAdjustments(ctx),
+    listAdjustments(ctx, undefined, 200, scope),
   ]);
+  const inScope = new Set(employees.map((e) => e.id));
+  const shownItems = (items: (typeof runs)[number]["items"]) => (allBranches ? items : items.filter((it) => inScope.has(it.employeeId)));
   // การเข้างานเดือนนี้ + เดือนก่อน (งวดที่มักจะกำลังจ่าย) — ใช้ประกอบการตัดสินใจ
   // 🔴 ระบบไม่หักเงินอัตโนมัติจากการสาย/ขาด: เป็นนโยบายของร้าน + มีผลทางกฎหมาย ต้องให้คนตัดสิน
   const [byy, bmm] = bkkParts(new Date()).dateStr.split("-").map(Number);
@@ -110,8 +116,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   // H0.2 ▸ R1: คนที่ไม่อยู่ในรอบร่างแต่ละรอบ (ตัดสินด้วยกติกาเดียวกับตอนสร้าง/คำนวณใหม่) · R2: รายการค้างในงวดที่มีรอบแล้ว ◂
   const draftRunPeriods = runs.filter((r) => r.status === "DRAFT").map((r) => r.periodKey);
   const [exclusionsOfDrafts, stranded] = await Promise.all([
-    Promise.all(draftRunPeriods.map(async (periodKey) => ({ periodKey, list: await runExclusions(ctx, periodKey) }))),
-    strandedAdjustments(ctx),
+    Promise.all(draftRunPeriods.map(async (periodKey) => ({ periodKey, list: (await runExclusions(ctx, periodKey)).filter((x) => allBranches || inScope.has(x.employeeId)) }))),
+    strandedAdjustments(ctx).then((xs) => xs.filter((x) => allBranches || inScope.has(x.employeeId))),
   ]);
   const draftRunIds = new Set(runs.filter((r) => r.status === "DRAFT").map((r) => r.id));
 
@@ -262,7 +268,9 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
 
       {/* สร้างรอบจ่าย */}
       <Section title="สร้างรอบจ่ายเงินเดือน">
-        {profiles.length === 0 ? (
+        {!allBranches ? (
+          <p className={`text-xs ${muted}`}>รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้</p>
+        ) : profiles.length === 0 ? (
           <p className={`text-xs ${muted}`}>ตั้งเงินเดือนพนักงานอย่างน้อย 1 คนก่อนสร้างรอบจ่าย</p>
         ) : (
           // H0.2 ▸ R4: ฟอร์มคืนเหตุผลเมื่อสร้างไม่ได้ (งวด/วันที่จ่ายไม่ถูกต้อง · งวดซ้ำ) ◂
@@ -346,7 +354,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
             trailing: (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <StatusChip value={r.status} map={RUN_STATUS_LABEL} tone={runTone(r.status)} />
-                {r.status === "DRAFT" && (
+                {allBranches && r.status === "DRAFT" && (
                   // H0.1 ▸ CR12: ปุ่มอนุมัติ/ดึงข้อมูลใหม่/ลบร่าง อยู่ใน RunRowActions — ส่งตัวเลขที่เห็นในแถวนี้ (ยอดสุทธิ · จำนวนคน · เงินเดือนรวม)
                   //   ไปเป็นช่องซ่อนของการอนุมัติ ⇒ ถ้ามีการคำนวณใหม่ก่อนกดยืนยัน ระบบไม่อนุมัติ และบอกเหตุผลในแถว ◂
                   <RunRowActions
@@ -361,7 +369,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     approveDetail={`จ่ายสุทธิรวม ${formatBaht(r.totalNetSatang)} · ${r.items.length} คน · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ประกันสังคม ${formatBaht(r.totalSsoEmployeeSatang + r.totalSsoEmployerSatang)} · ภาษีหัก ณ ที่จ่าย ${formatBaht(r.totalWhtSatang)} — จะลงบัญชีอัตโนมัติถ้าเปิดระบบบัญชีไว้`}
                   />
                 )}
-                {r.status === "APPROVED" && (
+                {allBranches && r.status === "APPROVED" && (
                   <ConfirmDialog
                     triggerLabel="จ่ายแล้ว"
                     triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
@@ -372,7 +380,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     fields={{ systemId, runId: r.id }}
                   />
                 )}
-                {(r.status === "APPROVED" || r.status === "PAID") && (
+                {allBranches && (r.status === "APPROVED" || r.status === "PAID") && (
                   <ConfirmDialog
                     triggerLabel="กลับรายการ"
                     triggerClassName="rounded-full border px-3 py-1.5 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
@@ -393,10 +401,10 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
 
         {/* ลิงก์สลิปต่อพนักงาน (ต่อรอบ) */}
         {runs.map((r) =>
-          r.items.length === 0 ? null : (
+          shownItems(r.items).length === 0 ? null : (
             <div key={r.id} className="mt-1 flex flex-wrap items-center gap-2">
               <span className={`text-xs ${muted}`}>สลิปงวด {r.periodKey}:</span>
-              {r.items.map((it) => {
+              {shownItems(r.items).map((it) => {
                 // H0.2 ▸ R3: แถวสุทธิติดลบ = ขอบ/ตัวอักษรแดง + "ติดลบ" · R1: เข้า/ออกกลางเดือน = "ต้องตรวจ" ◂
                 const f = flagsOf(it.snapshotJson);
                 const neg = f.includes("NEGATIVE_NET");

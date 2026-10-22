@@ -7,8 +7,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 
 // หน้าย่อย "พนักงาน" ของระบบ HR — รายชื่อพนักงาน + เพิ่มพนักงาน
-export default async function HrEmployeesPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function HrEmployeesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string }> }) {
   const { id } = await params;
+  const { unit } = await searchParams; // HR H1.1 ▸ ชิปกรองสาขา (?unit=<id> | none) ◂
   const auth = await requireTenant();
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId: auth.active.tenantId, type: "HR" } });
   if (!sys) notFound();
@@ -18,7 +19,7 @@ export default async function HrEmployeesPage({ params }: { params: Promise<{ id
     <div className="flex max-w-2xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="พนักงาน — รายชื่อ + เพิ่มพนักงาน" />
       <ModuleTabs items={hrTabs(id)} />
-      <HrEmployeesSection systemId={id} />
+      <HrEmployeesSection systemId={id} unit={typeof unit === "string" ? unit : undefined} />
     </div>
   );
 }

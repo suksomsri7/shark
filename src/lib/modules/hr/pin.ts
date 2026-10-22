@@ -21,6 +21,7 @@ import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { checkRateLimitDb, refundRateLimitDb } from "@/lib/core/rate-limit-db"; // HR H0.5 r4 ▸ R4.1 นับก่อน + คืนช่อง (แทน peek ของ r3) ◂
 import { logOps } from "@/lib/core/ops";
+import { bkkDay } from "./scope"; // HR H1.1 ▸ วันนี้ตามเวลาไทย (รูป @db.Date) ◂
 
 export type PinCtx = { tenantId: string; systemId: string };
 
@@ -152,7 +153,11 @@ export type VerifyPinInput = {
    * ไม่ส่ง / ว่าง = "PIN ไม่ถูกต้อง" ทันที ไม่แตะ DB ไม่สร้างถัง ◂
    */
   callerKey: string;
-  /** รับไว้ตามสัญญา C-8 แต่ยังไม่ใช้จนถึง H1.1 (ผูกพนักงานกับสาขา) */
+  /**
+   * HR H1.1 ▸ R9 สาขาของเครื่องที่ถาม (สัญญา C-8 · POS P3.5) — ระบุ = พนักงานต้องอยู่สาขานี้ (สาขาประจำ หรือยืมตัวที่เปิดวันนี้)
+   * ไม่ตรง ⇒ ข้อความเดียวกับ PIN ผิด + นับเหมือน PIN ผิด (ไม่บอกว่ามีคนนี้อยู่) · พนักงานที่ยังไม่ระบุสาขา = ใช้ได้ทุกสาขา (มติ 6) ·
+   * ไม่ส่ง = พฤติกรรมเดิม (ทั้งร้าน) ◂
+   */
   unitId?: string | null;
   /** ตัวกรองเท่านั้น — ระบุ = หาเฉพาะในระบบ HR นี้ (H0.5 Q2) */
   systemId?: string | null;
@@ -275,7 +280,7 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: 50,
   });
-  type Row = { id: string; systemId: string; linkedUserId: string | null; pinHash: string | null };
+  type Row = { id: string; systemId: string; linkedUserId: string | null; pinHash: string | null; unitId: string | null };
   // HR H0.5 r3 ▸ R3.5 (hunt F5) ครั้งละ 1 คำสั่งครอบทุกระบบ — tenantDb ผูก systemId ได้ทีละค่า (system-scoped) จึงเขียน SQL ผ่าน
   //   tenantDb(...).$queryRaw (แบบ payroll.ts) และใส่ขอบเขตเองครบ: "tenantId" = ร้านนี้ AND "systemId" IN (ระบบ HR ของร้านนี้ที่อ่านมาข้างบน) ◂
   const sysIds = systems.map((s) => s.id);
@@ -283,7 +288,7 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
     sysIds.length === 0
       ? []
       : db.$queryRaw<Row[]>`
-          SELECT "id", "systemId", "linkedUserId", "pinHash" FROM "HrEmployee"
+          SELECT "id", "systemId", "linkedUserId", "pinHash", "unitId" FROM "HrEmployee"
           WHERE "tenantId" = ${tenantId} AND "systemId" IN (${Prisma.join(sysIds)}) AND "active" = true AND ${cond}
           LIMIT ${limit}`;
   // 1) hash ก่อน — partial unique ⇒ คนที่ยังทำงานถือ hash นี้ได้อย่างมากคนเดียวทั้งร้าน ⇒ เจอแล้วจบ (แถวตัวเปล่ากี่แถวก็บังไม่ได้)
@@ -291,8 +296,19 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
     const r = (await findRows(Prisma.sql`"pinHash" = ${hash}`, 1))[0];
     return r && hashEquals(r.pinHash, hash) ? r : null;
   };
-  // HR H0.5 r4 ▸ R4.1 ถูก ⇒ คืนช่องทั้งสองถังก่อนตอบ ◂
-  const okOf = async (r: Row): Promise<VerifyPinOk> => {
+  // HR H1.1 ▸ R9 สาขาของผู้ถาม: สาขาประจำ = unitId · หรือยืมตัวไป unitId ที่ครอบวันนี้ (เวลาไทย) · ยังไม่ระบุสาขา = ผ่าน (มติ 6) ◂
+  const wantUnit = typeof input.unitId === "string" ? input.unitId.trim() : "";
+  const inUnit = async (r: Row): Promise<boolean> => {
+    if (!wantUnit || !r.unitId || r.unitId === wantUnit) return true;
+    const day = bkkDay();
+    const n = await tenantDb({ tenantId, systemId: r.systemId }).hrEmployeeUnit.count({
+      where: { employeeId: r.id, unitId: wantUnit, fromDate: { lte: day }, OR: [{ toDate: null }, { toDate: { gte: day } }] },
+    });
+    return n > 0;
+  };
+  // HR H0.5 r4 ▸ R4.1 ถูก ⇒ คืนช่องทั้งสองถังก่อนตอบ ◂ · HR H1.1 ▸ ต่างสาขา = ผิด (ช่องที่นับไว้ค้าง เหมือน PIN ผิด) ◂
+  const okOf = async (r: Row): Promise<VerifyPinOk | VerifyPinFail> => {
+    if (!(await inUnit(r))) return failed();
     await release();
     return { ok: true, employeeId: r.id, systemId: r.systemId, userId: r.linkedUserId ?? null };
   };

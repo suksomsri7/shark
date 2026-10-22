@@ -551,6 +551,254 @@
    },
    "wo": "H0.7",
    "oracle": "qc-hr-h0.7"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-branch-filter",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูทุกสาขา (OWNER หรือ unitAccess มี *) และร้านมี ≥ 2 สาขา",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-register-branch-filter",
+    "state": "appears"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "แถบชิปกรองสาขา (mockup 02) — ผู้ดูที่จำกัดสาขาไม่มีแถบนี้"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-branch-chip-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เหมือน hr-register-branch-filter · * = all | <unitId> | none",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?unit=*"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "ชิป ทั้งหมด / รายสาขา / ยังไม่ระบุสาขาประจำ (≥ 44 px)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-unit-prompt",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูทุกสาขา · ร้าน ≥ 2 สาขา · มีพนักงานที่ unitId ว่าง (หลัง backfill ร้านหลายสาขา)",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-register-unit-prompt",
+    "state": "appears"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "บรรทัดเตือน 'ยังไม่ระบุสาขาประจำ N คน'"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-unit-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูทุกสาขา · ร้าน ≥ 2 สาขา · * = id พนักงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-register-unit-*",
+    "state": "appears"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "ชื่อสาขาประจำในแถวทะเบียน (หรือ 'ยังไม่ระบุสาขาประจำ')"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-status-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "พนักงานที่มี employmentStatus · * = id พนักงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-register-status-*",
+    "state": "appears"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "ป้าย ทดลองงาน / ประจำ / สิ้นสุด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-create-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ฟอร์มเพิ่มพนักงาน · ร้านมีสาขา หรือผู้ดูจำกัดสาขา",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createEmployeeAction",
+    "db": "HrEmployee.unitId = สาขาที่เลือก (ต้องอยู่ในสาขาของผู้กด · ว่าง = ผู้ดูทุกสาขาเท่านั้น)"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "ตัวเลือกสาขาประจำของพนักงานใหม่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx",
+   "conditional": "ร้านมี BusinessUnit ≥ 1",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveEmployeeProfileAction",
+    "db": "HrEmployee.unitId (ย้ายได้เฉพาะผู้ดูทุกสาขา หรือเข้าสาขาของผู้กด)"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "สาขาประจำในโปรไฟล์ (ภาพ profile-unit)",
+   "via": "<select form={profileFormId(id)}> นอก EmployeeProfileForm (ช่องของฟอร์มเดียวกัน — S-2 ของ qc-hf-hr-privacy ล็อกแท็ก EmployeeProfileForm)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-employment-status",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/EmployeeProfileForm.tsx",
+   "conditional": "ทุกคนที่เปิดโปรไฟล์ได้",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveEmployeeProfileAction",
+    "db": "HrEmployee.employmentStatus"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "สถานะการจ้าง + วันครบทดลองงาน/สิ้นสุดสัญญา (ข้อมูลอย่างเดียว)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-restore-status-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "พนักงานที่ลบแล้วและสถานะ ENDED (แทนปุ่มกู้คืน) · * = id พนักงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "R12.4 — กู้คืนได้หลังเปลี่ยนสถานะการจ้างเป็นทดลองงาน/ประจำที่โปรไฟล์"
   }
  ]
 }

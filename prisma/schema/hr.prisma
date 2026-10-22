@@ -44,12 +44,21 @@ enum HrMaritalStatus {
   OTHER
 }
 
+// ⚠️ HR H1.1 ▸ เลิกใช้เป็น "สถานะ" แล้ว (PROBATION ปนกับประเภทการจ้าง) — สถานะการจ้างย้ายไป HrEmploymentStatus ·
+//   คอลัมน์นี้คงไว้ (ข้อมูลเดิม) · backfill แปลง PROBATION → employmentStatus PROBATION ◂
 enum HrEmploymentType {
   FULL_TIME
   PART_TIME
   CONTRACT
   DAILY
   PROBATION
+}
+
+// HR H1.1 ▸ สถานะการจ้าง (แยกจากประเภท) — ทดลองงาน / ประจำ / สิ้นสุด · null = ข้อมูลก่อน H1.1 ที่ยังไม่ backfill ◂
+enum HrEmploymentStatus {
+  PROBATION
+  ACTIVE
+  ENDED
 }
 
 // ชนิดเอกสารแนบของพนักงาน (13 ส.ค. 2026) — สำเนาบัตร/ทะเบียนบ้าน/สัญญาจ้าง ฯลฯ
@@ -118,14 +127,45 @@ model HrEmployee {
   // WO 3.1 — Party (INTEGRATION-MAP §F.1) — จาก name/phone/email เท่านั้น **ห้ามคัด nationalId/PDPA อื่น**
   partyId           String?
 
+  // HR H1.1 ▸ แกนสาขา (HQ20: สาขา HR = BusinessUnit) — unitId = สาขาประจำ · ไม่มี FK ไป BusinessUnit (ธรรมเนียมรีโป:
+  //   อ้าง unit ข้ามโมดูลเป็น String + index) · null = ยังไม่ระบุสาขา (เห็น/แก้ได้เฉพาะผู้ดูแลทุกสาขา — มติผู้คุมงาน 3)
+  //   employmentStatus = สถานะการจ้าง · probationEndAt / contractEndAt = ข้อมูลอย่างเดียวใน H1.1 (เตือน = H2.x) ◂
+  unitId            String?
+  employmentStatus  HrEmploymentStatus?
+  probationEndAt    DateTime?         @db.Date
+  contractEndAt     DateTime?         @db.Date
+
   attendances HrAttendance[]
   leaves      HrLeave[]
   schedules   HrWorkSchedule[]
   docs        HrEmployeeDoc[]
+  units       HrEmployeeUnit[] // HR H1.1 ▸ ยืมตัวไปสาขาอื่น ◂
 
   @@index([systemId, active])
   @@index([tenantId])
   @@index([partyId])
+  @@index([systemId, unitId])
+  @@index([systemId, employmentStatus])
+}
+
+// HR H1.1 ▸ ยืมตัว / ช่วยงานสาขาอื่น — 1 แถว = ช่วงวันที่พนักงานคนนี้อยู่สาขา unitId (นอกจากสาขาประจำ)
+//   toDate null = ยังเปิดอยู่ · 🔴 partial unique "HrEmployeeUnit_employeeId_unitId_open_key" ("employeeId","unitId") WHERE "toDate" IS NULL
+//   ประกาศเฉพาะใน migration.sql (20261204000000_hr_org_axis · Prisma schema ไม่รองรับ WHERE) — ห้ามใส่ @@unique ของคู่นี้ที่นี่ ·
+//   FK → HrEmployee (ลบพนักงาน = ลบแถวยืมตัว) · ไม่มี FK ไป BusinessUnit (Q1) ◂
+model HrEmployeeUnit {
+  id         String     @id @default(cuid())
+  tenantId   String
+  systemId   String
+  employeeId String
+  employee   HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  unitId     String
+  fromDate   DateTime   @db.Date
+  toDate     DateTime?  @db.Date
+  note       String?
+  createdAt  DateTime   @default(now())
+
+  @@index([systemId, employeeId])
+  @@index([systemId, unitId])
 }
 
 // เอกสารแนบของพนักงาน — เก็บเป็น URL (อัปโหลด Bunny หรือวางลิงก์)

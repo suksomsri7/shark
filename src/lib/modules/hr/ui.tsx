@@ -17,6 +17,7 @@ import {
   employeesWithSchedule,
   kioskRoster,
   bkkParts,
+  leaveListScopeOf, // HR H1.1 ◂
   type Ctx,
 } from "./service";
 import {
@@ -35,6 +36,8 @@ import { hrViewerOf, leaveItemsForViewer } from "./privacy"; // HF-HR-0 (D9) ▸
 import PinField from "./PinField";
 import KioskClock from "./KioskClock";
 import { evaluate } from "@/lib/core/rbac";
+// HR H1.1 ▸ R4/R8 ขอบเขตสาขาของผู้ดู (ทะเบียน · ลงเวลา · ใบลา · kiosk · หน้าภาพรวม) ◂
+import { hrScopeOf, isAllBranches, unitsForScope } from "./scope";
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -51,6 +54,10 @@ const LEAVE_STATUS_LABEL: Record<string, string> = {
 };
 const leaveTone = (v: string): "muted" | "strong" | "danger" =>
   v === "APPROVED" ? "strong" : v === "REJECTED" || v === "CANCELLED" ? "danger" : "muted";
+
+// HR H1.1 ▸ R8 ป้ายสถานะการจ้าง (null = ข้อมูลก่อน backfill ⇒ ไม่แสดงป้าย) ◂
+const EMPLOYMENT_STATUS_LABEL: Record<string, string> = { PROBATION: "ทดลองงาน", ACTIVE: "ประจำ", ENDED: "สิ้นสุด" };
+const employmentTone = (v: string): "muted" | "strong" | "danger" => (v === "ACTIVE" ? "strong" : v === "ENDED" ? "danger" : "muted");
 
 const LEAVE_TYPE_LABEL: Record<string, string> = {
   SICK: "ลาป่วย",
@@ -114,9 +121,10 @@ export async function HrAttendanceSection({ systemId }: { systemId: string }) {
     { module: "hr", action: "hr.employee.create" },
   );
 
+  const scope = hrScopeOf(hrViewerOf(auth)); // HR H1.1 ▸ เฉพาะสาขาของผู้ดู (ทุกสาขา = เหมือนเดิม) ◂
   const [employees, attendance, scheduled] = await Promise.all([
-    listEmployees(ctx),
-    listAttendance(ctx),
+    listEmployees(ctx, 200, scope),
+    listAttendance(ctx, 50, scope),
     employeesWithSchedule(ctx),
   ]);
   // สรุปเดือนนี้ (เวลาไทย) รายคน — ต้องมีตารางก่อน ไม่งั้นไม่มีอะไรให้เทียบ
@@ -240,7 +248,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
 
   // HF-HR-0 (D9): เหตุผลการลา (ลาป่วย = ข้อมูลสุขภาพ) ไปถึงหน้าจอเฉพาะผู้มี hr.leave.read — ตัดสินที่ privacy.ts
   const [employees, { pending, history: leaves }] = await Promise.all([
-    listEmployees(ctx),
+    listEmployees(ctx, 200, hrScopeOf(hrViewerOf(auth))), // HR H1.1 ▸ ตัวเลือก "ยื่นแทน" = เฉพาะสาขาของผู้ดู ◂
     leaveItemsForViewer(ctx, hrViewerOf(auth)),
   ]);
 
@@ -328,14 +336,50 @@ const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const WD_LABEL: Record<number, string> = { 0: "อาทิตย์", 1: "จันทร์", 2: "อังคาร", 3: "พุธ", 4: "พฤหัสบดี", 5: "ศุกร์", 6: "เสาร์" };
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
-export async function HrEmployeesSection({ systemId }: { systemId: string }) {
+// HR H1.1 ▸ R8 (mockup 02): ทะเบียนมีสาขาประจำ + ป้ายสถานะ · ผู้ดูทุกสาขาได้ชิปกรองสาขา (ทั้งหมด / รายสาขา / ยังไม่ระบุ)
+//   ผู้ดูที่จำกัดสาขาไม่มีชิป และเห็นเฉพาะคนในสาขาตัวเอง (+ คนที่ยืมตัวเข้ามา) · `unit` = ค่าชิปจาก ?unit= ("none" = ยังไม่ระบุสาขา) ◂
+export async function HrEmployeesSection({ systemId, unit }: { systemId: string; unit?: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const scope = hrScopeOf(hrViewerOf(auth));
+  const allBranches = isAllBranches(scope);
 
-  const [employees, removed] = await Promise.all([listEmployees(ctx), listRemovedEmployees(ctx)]);
+  const [inScope, removed, units] = await Promise.all([
+    listEmployees(ctx, 200, scope),
+    listRemovedEmployees(ctx, 200, scope),
+    unitsForScope(auth.active.tenantId, scope),
+  ]);
+  const unitName = new Map(units.map((u) => [u.id, u.name]));
+  const showBranches = allBranches && units.length >= 2;
+  const chip = showBranches && unit ? unit : "";
+  const employees = chip ? inScope.filter((e) => (chip === "none" ? !e.unitId : e.unitId === chip)) : inScope;
+  const unassigned = inScope.filter((e) => !e.unitId).length;
+  const chips = showBranches
+    ? [{ key: "", label: "ทั้งหมด" }, ...units.map((u) => ({ key: u.id, label: u.name })), ...(unassigned ? [{ key: "none", label: "ยังไม่ระบุสาขาประจำ" }] : [])]
+    : [];
 
   return (
     <Section title={`พนักงาน (${employees.length})`}>
+      {showBranches && (
+        <nav data-testid="hr-register-branch-filter" aria-label="กรองตามสาขา" className="mb-2 flex flex-wrap gap-2">
+          {chips.map((c) => (
+            <Link
+              key={c.key || "all"}
+              href={c.key ? `/app/sys/${systemId}/hr/employees?unit=${encodeURIComponent(c.key)}` : `/app/sys/${systemId}/hr/employees`}
+              data-testid={`hr-register-branch-chip-${c.key || "all"}`}
+              aria-current={chip === c.key ? "page" : undefined}
+              className={`inline-flex min-h-11 items-center rounded-full border px-3 text-xs ${chip === c.key ? "font-semibold" : muted}`}
+            >
+              {c.label}
+            </Link>
+          ))}
+        </nav>
+      )}
+      {showBranches && unassigned > 0 && (
+        <p data-testid="hr-register-unit-prompt" role="note" className={`mb-2 text-xs ${muted}`}>
+          ยังไม่ระบุสาขาประจำ {unassigned} คน — เปิดข้อมูลเต็มของพนักงานแล้วเลือกสาขาประจำ
+        </p>
+      )}
       {employees.length === 0 && (
         <p className={`text-xs ${muted}`}>
           ยังไม่มีพนักงาน — เพิ่มพนักงานคนแรกเพื่อเริ่มลงเวลา จัดการวันลา และให้รับคิวในระบบจอง
@@ -359,6 +403,17 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
                 <details key={e.id} className="rounded-lg border px-3 py-2">
                   <summary className="cursor-pointer text-sm font-medium">
                     {e.name}
+                    {/* HR H1.1 ▸ สาขาประจำ (ร้านหลายสาขา) + ป้ายสถานะการจ้าง ◂ */}
+                    {showBranches && (
+                      <span data-testid={`hr-register-unit-${e.id}`} className={`ml-2 text-xs font-normal ${muted}`}>
+                        {e.unitId ? (unitName.get(e.unitId) ?? "สาขาอื่น") : "ยังไม่ระบุสาขาประจำ"}
+                      </span>
+                    )}
+                    {e.employmentStatus && (
+                      <span data-testid={`hr-register-status-${e.id}`} className="ml-2">
+                        <StatusChip value={e.employmentStatus} map={EMPLOYMENT_STATUS_LABEL} tone={employmentTone(e.employmentStatus)} />
+                      </span>
+                    )}
                     <span className={`ml-2 text-xs font-normal ${muted}`}>
                       {sch.every((x) => x == null)
                         ? "ยังไม่ตั้งตาราง"
@@ -464,11 +519,22 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
                   <span className="block truncate text-sm">{e.name}</span>
                   {e.position && <span className={`block truncate text-xs ${muted}`}>{e.position}</span>}
                 </span>
-                <form action={restoreEmployeeAction}>
-                  <input type="hidden" name="systemId" value={systemId} />
-                  <input type="hidden" name="employeeId" value={e.id} />
-                  <SubmitButton variant="ghost">กู้คืน</SubmitButton>
-                </form>
+                {/* HR H1.1 R12 ▸ R12.4: สถานะ "สิ้นสุด" กู้คืนตรง ๆ ไม่ได้ — เปลี่ยนสถานะที่โปรไฟล์ก่อน (action ปฏิเสธซ้ำ) ◂ */}
+                {e.employmentStatus === "ENDED" ? (
+                  <Link
+                    href={`/app/sys/${systemId}/hr/employees/${e.id}`}
+                    data-testid={`hr-register-restore-status-${e.id}`}
+                    className={`inline-flex min-h-11 items-center text-xs underline ${muted}`}
+                  >
+                    สถานะสิ้นสุด — เปลี่ยนสถานะที่โปรไฟล์ก่อนกู้คืน
+                  </Link>
+                ) : (
+                  <form action={restoreEmployeeAction}>
+                    <input type="hidden" name="systemId" value={systemId} />
+                    <input type="hidden" name="employeeId" value={e.id} />
+                    <SubmitButton variant="ghost">กู้คืน</SubmitButton>
+                  </form>
+                )}
               </div>
             ))}
           </div>
@@ -477,6 +543,20 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
 
       <form action={createEmployeeAction} className="mt-1 flex flex-wrap items-end gap-2">
         <input type="hidden" name="systemId" value={systemId} />
+        {/* HR H1.1 ▸ สาขาประจำ — ผู้ดูที่จำกัดสาขาเลือกได้เฉพาะสาขาตัวเอง (บังคับ) · ทุกสาขา = ไม่ระบุได้ · action ตรวจซ้ำ ◂ */}
+        {(units.length > 0 || !allBranches) && (
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            สาขาประจำ
+            <select name="unitId" data-testid="hr-register-create-unit" required={!allBranches} defaultValue={allBranches ? "" : (units[0]?.id ?? "")} className="input min-h-11">
+              {allBranches && <option value="">ยังไม่ระบุสาขาประจำ</option>}
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
           ชื่อพนักงาน
           <input name="name" required placeholder="เช่น สมชาย ใจดี" className="input min-w-0" />
@@ -500,7 +580,7 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
 export async function HrKioskSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  const people = await kioskRoster(ctx);
+  const people = await kioskRoster(ctx, hrScopeOf(hrViewerOf(auth))); // HR H1.1 ▸ จอของบัญชีที่จำกัดสาขา = เฉพาะคนในสาขา ◂
   const noPin = people.filter((p) => !p.hasPin);
 
   return (
@@ -525,7 +605,9 @@ export async function HrHub({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [employees, pending] = await Promise.all([listEmployees(ctx), pendingLeaves(ctx)]);
+  // HR H1.1 ▸ การ์ดนับ = ขอบเขตเดียวกับหน้ารายการ (แถว + สาขา) ◂
+  const hv = hrViewerOf(auth);
+  const [employees, pending] = await Promise.all([listEmployees(ctx, 200, hrScopeOf(hv)), pendingLeaves(ctx, 100, leaveListScopeOf(hv, hv.userId))]);
   // CRM C3.6 ▸ ลิงก์ "ทีมขาย" โชว์เฉพาะคนที่เปิดหน้าทีมได้จริง — กติกาต้นฉบับ: `crmCan(actor, "crm.team.manage")` ใน
   //   src/lib/modules/crm/access.ts (+ ด่านของหน้า src/app/app/settings/teams/page.tsx) · ถ้าแก้ที่นั่น ต้องแก้ที่นี่ตาม (หน้านั้น: OWNER หรือคีย์ `crm.team.manage` — คีย์ของเจ้าของร้าน
   //   ที่ MANAGER ไม่ได้โดยปริยาย) · ไม่ import โมดูล CRM (เส้น hr→crm ไม่อยู่ใน ALLOWED_EDGES) ⇒ อ่านจาก membership ตรง ◂

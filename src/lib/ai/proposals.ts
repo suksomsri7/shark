@@ -574,6 +574,10 @@ async function dispatch(
     const system = await resolveSystem(tenantId, "HR");
     if (!system) throw new Error("ยังไม่ได้เปิดระบบพนักงาน");
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
+    // HR H1.1 ▸ R5: ผู้กดที่จำกัดสาขา ตัดสินได้เฉพาะใบลาของพนักงานในสาขาตัวเอง (ณ วันเริ่มลา) — ไม่รู้สิทธิ์ผู้กด = ไม่ทำ ◂
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะตัดสินใบลาได้");
+    const branchNo = await hrSvc.leaveBranchRefusal({ tenantId, systemId: system.id }, m, String(p.leaveId ?? ""));
+    if (branchNo) throw new Error(branchNo);
     await hrSvc.decideLeave({ tenantId, systemId: system.id }, String(p.leaveId ?? ""), decision, userId ?? null); // HF-HR-0 ▸ ผู้กดยืนยัน = ผู้ตัดสิน (กันอนุมัติใบลาของตัวเอง) ◂
     return decision === "APPROVED" ? "อนุมัติใบลาเรียบร้อยแล้ว" : "ไม่อนุมัติใบลาเรียบร้อยแล้ว";
   }
@@ -677,6 +681,10 @@ async function dispatch(
     if (!system) throw new Error("ยังไม่ได้เปิดระบบพนักงาน");
     const name = String(p.name ?? "").trim();
     if (!name) throw new Error("ต้องระบุชื่อพนักงาน");
+    // HR H1.1 ▸ R5: ข้อเสนอนี้ไม่มีสาขา ⇒ เฉพาะผู้ดูแลทุกสาขา (ผู้จัดการสาขาเพิ่มที่หน้าระบบพนักงานโดยเลือกสาขา) ◂
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะเพิ่มพนักงานได้");
+    const branchNo = hrSvc.createWithoutUnitRefusal(m);
+    if (branchNo) throw new Error(branchNo);
     await hrSvc.createEmployee(
       { tenantId, systemId: system.id },
       {

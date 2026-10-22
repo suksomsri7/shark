@@ -25,18 +25,40 @@ import {
   type Ctx,
 } from "./payroll";
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
+// HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
+import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
 
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
-function assertHrCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+// HR H1.1 ▸ unitId = สาขาของพนักงานเป้าหมาย ส่งต่อเข้า assertCan · ไม่ส่ง = ระดับระบบ HR (มีหมายเหตุ "ทุกสาขา" กำกับ) ◂
+function assertHrCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string, unitId?: string) {
   const membership = {
     role: auth.active.role,
-    unitAccess: auth.active.unitAccess as string[],
+    unitAccess: (Array.isArray(auth.active.unitAccess) ? auth.active.unitAccess : []) as string[],
     permissions: auth.active.permissions as Record<string, unknown>,
   };
-  assertCan(membership, { module: "hr", action });
+  assertCan(membership, { module: "hr", action, ...(unitId ? { unitId } : {}) });
   // 🔒 PDPA: ทุก action ที่แตะเงินเดือนต้องผ่านด่านข้อมูลอ่อนไหว (OWNER/hr.payroll.read) — MANAGER ทั่วไปไม่ผ่าน
   if (!canViewPayroll(membership)) throw new ForbiddenError({ module: "hr", action });
+}
+
+/** HR H1.1 ▸ ข้อความไทยคงที่ของ HrBranchError (ข้อความที่ scope.ts เขียนเอง — ไม่ใช่ข้อความระบบ) · อื่น ๆ = null ⇒ ผู้เรียก throw ต่อ ◂ */
+function branchText(x: unknown): string | null {
+  return x instanceof HrBranchError ? x.message : null;
+}
+// HR H1.1 R12 ▸ R12.3 (M-2): รอบจ่าย = ทั้งระบบ HR (HQ20 · มติ 8 = รูปร่างของรอบ) ⇒ สร้าง/อนุมัติ/จ่าย/กลับรายการ/ลบร่าง/คำนวณใหม่
+//   ต้องเป็นผู้ดูแลทุกสาขา (OWNER · "*" · []) · ผู้ดูเงินเดือนที่จำกัดสาขาเป็นรายการ ⇒ ข้อความคงที่ ไม่เขียนอะไร ◂
+const RUN_ALL_BRANCHES_TH = "รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้";
+function assertRunAllBranches(auth: Awaited<ReturnType<typeof requireTenant>>): void {
+  if (!isAllBranches(hrScopeOf({ role: auth.active.role, unitAccess: auth.active.unitAccess }))) throw new HrBranchError(RUN_ALL_BRANCHES_TH);
+}
+/** HR H1.1 ▸ สาขาของพนักงานเป้าหมาย (ระดับพนักงาน = สาขาประจำ · `day` = รวมยืมตัวที่ครอบวันนั้น) — นอกสาขา = HrBranchError ◂ */
+async function payTarget(auth: Awaited<ReturnType<typeof requireTenant>>, ctx: Ctx, employeeId: string | null, day?: Date): Promise<{ unitId?: string }> {
+  const emp = employeeId ? await employeeUnitsOf(ctx, employeeId) : null;
+  if (!emp) return {};
+  const t = unitTargetOf(hrScopeOf({ role: auth.active.role, unitAccess: auth.active.unitAccess }), emp, day);
+  if (!t.ok) throw new HrBranchError(t.reason);
+  return t.unitId ? { unitId: t.unitId } : {};
 }
 
 const revalidate = (systemId: string) => revalidatePath(`/app/sys/${systemId}`);
@@ -44,11 +66,14 @@ const revalidate = (systemId: string) => revalidatePath(`/app/sys/${systemId}`);
 // ── ตั้งเงินเดือนพนักงาน (บาท → สตางค์) ──
 export async function setSalaryProfileAction(formData: FormData) {
   const auth = await requireTenant();
+  // ทุกสาขา: ด่านคีย์ + ด่านเงินเดือนระดับระบบ HR — สาขาประจำของพนักงานตรวจด้วย payTarget ด้านล่าง
   assertHrCan(auth, "hr.payroll.create");
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   const baseBaht = Number(String(formData.get("baseSalaryBaht") ?? "").replace(/,/g, "").trim());
   if (!systemId || !employeeId || !Number.isFinite(baseBaht) || baseBaht < 0) return;
+  const t = await payTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
+  assertHrCan(auth, "hr.payroll.create", t.unitId);
 
   const children = Math.max(0, Math.trunc(Number(formData.get("children") ?? 0)) || 0);
   const spouse = String(formData.get("spouse") ?? "") === "on";
@@ -79,7 +104,9 @@ function payDateFromForm(v: string): Date | null {
 export async function createPayrollRunAction(_prev: { ok: boolean; reason?: string } | null, formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   try {
+    // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const periodKey = String(formData.get("periodKey") ?? "").trim();
     const payDateStr = String(formData.get("payDate") ?? "").trim();
@@ -93,6 +120,7 @@ export async function createPayrollRunAction(_prev: { ok: boolean; reason?: stri
     return { ok: true };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     if (e instanceof PayrollInputError) return { ok: false, reason: e.message };
     throw e;
   }
@@ -131,7 +159,9 @@ const APPROVE_MISSING_EXPECT_TH = "ไม่พบตัวเลขที่ค
 export async function approvePayrollRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   try {
+    // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.approve");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
@@ -164,6 +194,7 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
     return { ok: false, reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     throw e;
   }
 }
@@ -172,7 +203,9 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
 // สิทธิ์ hr.payroll.approve (คนที่อนุมัติได้ = กลับรายการได้) + ด่าน canViewPayroll ใน assertHrCan
 export async function reverseRunAction(formData: FormData) {
   const auth = await requireTenant();
+  // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
   assertHrCan(auth, "hr.payroll.approve");
+  assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
@@ -187,7 +220,9 @@ export async function reverseRunAction(formData: FormData) {
 // ── จ่ายแล้ว ──
 export async function markPaidAction(formData: FormData) {
   const auth = await requireTenant();
+  // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
   assertHrCan(auth, "hr.payroll.pay");
+  assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
@@ -238,6 +273,14 @@ export async function requestAdjustmentAction(
   const hoursRaw = String(formData.get("hours") ?? "").trim();
   const amountRaw = String(formData.get("amountBaht") ?? "").replace(/,/g, "").trim();
   if (!employeeId || !periodKey) return { status: "error", message: "เลือกพนักงานและงวดก่อน" };
+  // HR H1.1 ▸ R5: ยื่นให้ได้เฉพาะพนักงานในสาขาของผู้ยื่น (สาขาประจำ หรือยืมตัวที่เปิดวันนี้) — ตรวจก่อนอ่านอะไรที่ขึ้นกับเงินเดือน ◂
+  try {
+    const t = await payTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId, new Date());
+    assertCan(membershipOf(auth), { module: "hr", action: "hr.payadjust.request", ...(t.unitId ? { unitId: t.unitId } : {}) });
+  } catch (e) {
+    if (branchText(e)) return { status: "error", message: branchText(e)! };
+    throw e;
+  }
   const hours = hoursRaw ? Number(hoursRaw) : undefined;
   // HF-HR-0 ▸ รอบ 5 (R5.2): ผู้ไม่ดูเงินเดือน — ชั่วโมง OT นอกตาราง 0.25 (0.25–744) ⇒ คำปฏิเสธกลาง ก่อนอ่านอะไรที่ขึ้นกับเงินเดือน ◂
   const offGrid = screenOtHoursForViewer(canViewPayroll(membershipOf(auth)), { kind, hours });
@@ -271,11 +314,20 @@ const UNEXPECTED_TH = "ระบบขัดข้องชั่วคราว
 export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   // อนุมัติ = สิทธิ์แตะเงินเดือน (ผ่านด่าน PDPA เหมือน action เงินเดือนอื่น)
+  // ทุกสาขา: ด่านคีย์ระดับระบบ HR — สาขาของเจ้าของรายการตรวจด้วย payTarget ด้านล่าง
   assertHrCan(auth, "hr.payadjust.approve");
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   if (!systemId || !id || (status !== "APPROVED" && status !== "REJECTED")) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  try {
+    const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
+    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
+    assertHrCan(auth, "hr.payadjust.approve", t.unitId);
+  } catch (e) {
+    if (branchText(e)) return { ok: false, reason: branchText(e)! };
+    throw e;
+  }
   try {
     const res = await decideAdjustment({ tenantId: auth.active.tenantId, systemId }, id, status, {
       userId: auth.active.userId,
@@ -302,10 +354,19 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
 
 export async function cancelAdjustmentAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
+  // ทุกสาขา: ด่านคีย์ระดับระบบ HR — สาขาของเจ้าของรายการตรวจด้วย payTarget ด้านล่าง
   assertHrCan(auth, "hr.payadjust.approve");
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
   if (!systemId || !id) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  try {
+    const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
+    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
+    assertHrCan(auth, "hr.payadjust.approve", t.unitId);
+  } catch (e) {
+    if (branchText(e)) return { ok: false, reason: branchText(e)! };
+    throw e;
+  }
   try {
     // HF-HR-0 ▸ รอบ 5c (F1): ส่งผู้ใช้จริง ⇒ service ตรวจ "แถวของตัวเอง" + เขียนประวัติการลบ ◂
     const res = await cancelAdjustment({ tenantId: auth.active.tenantId, systemId }, id, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
@@ -325,7 +386,9 @@ export async function cancelAdjustmentAction(formData: FormData): Promise<{ ok: 
 export async function deleteDraftRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   try {
+    // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
@@ -334,6 +397,7 @@ export async function deleteDraftRunAction(formData: FormData): Promise<{ ok: bo
     return res.ok ? { ok: true } : { ok: false, reason: res.reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     throw e;
   }
 }
@@ -341,7 +405,9 @@ export async function deleteDraftRunAction(formData: FormData): Promise<{ ok: bo
 export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   try {
+    // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
@@ -350,6 +416,7 @@ export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok:
     return res.ok ? { ok: true } : { ok: false, reason: res.reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     throw e;
   }
 }
@@ -360,15 +427,20 @@ export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok:
 export async function moveStrandedAdjustmentAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   try {
+    // ทุกสาขา: ด่านคีย์ระดับระบบ HR — สาขาของเจ้าของรายการตรวจด้วย payTarget ด้านล่าง
     assertHrCan(auth, "hr.payadjust.approve");
     const systemId = String(formData.get("systemId") ?? "");
     const id = String(formData.get("id") ?? "");
     if (!systemId || !id) return { ok: false, reason: BAD_REQUEST_TH };
+    const ctx0: Ctx = { tenantId: auth.active.tenantId, systemId };
+    const t = await payTarget(auth, ctx0, await employeeIdOfAdjustment(ctx0, id), new Date()); // HR H1.1 ▸ ◂
+    assertHrCan(auth, "hr.payadjust.approve", t.unitId);
     const res = await moveStrandedAdjustment({ tenantId: auth.active.tenantId, systemId }, id, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
     revalidatePath(`/app/sys/${systemId}/hr/payroll`);
     return res.ok ? { ok: true, reason: `ย้ายไปงวด ${res.movedTo} แล้ว` } : { ok: false, reason: res.reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 ◂
     throw e;
   }
 }

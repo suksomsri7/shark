@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { saveEmployeeProfileAction, type ProfileState } from "./actions";
-import type { EmployeeProfileDto } from "./privacy-shared";
+import { profileFormId, type EmployeeProfileDto } from "./privacy-shared"; // HR H1.1 ▸ profileFormId ◂
 
 // ฟอร์มโปรไฟล์พนักงาน — บันทึกทีเดียวทั้งหน้า + ผลลัพธ์ inline (ไม่ใช้ alert)
 // ช่องอ่อนไหวจะถูก render เฉพาะผู้มีสิทธิ์ (ตัดสินฝั่ง server แล้วส่ง canSeeSensitive มา)
@@ -36,7 +36,7 @@ export default function EmployeeProfileForm({
   );
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form id={profileFormId(emp.id)} action={formAction} className="flex flex-col gap-5">
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium">ข้อมูลส่วนตัว</legend>
         <div className="grid grid-cols-2 gap-2">
@@ -103,6 +103,21 @@ export default function EmployeeProfileForm({
           </Field>
           <Field label="วันสิ้นสุดงาน (ถ้าลาออกแล้ว)">
             <input name="endDate" type="date" defaultValue={d(emp.endDate)} className="input" />
+          </Field>
+          {/* HR H1.1 ▸ R7 สถานะการจ้าง · วันครบทดลองงาน · วันสิ้นสุดสัญญา (ข้อมูลอย่างเดียว — เตือนล่วงหน้า = H2.x) · สาขาประจำอยู่บนหน้า (form=) ◂ */}
+          <Field label="สถานะการจ้าง">
+            <select name="employmentStatus" data-testid="hr-profile-employment-status" defaultValue={emp.employmentStatus ?? ""} className="input min-h-11">
+              <option value="">ไม่ระบุ</option>
+              <option value="PROBATION">ทดลองงาน</option>
+              <option value="ACTIVE">ประจำ</option>
+              <option value="ENDED">สิ้นสุด</option>
+            </select>
+          </Field>
+          <Field label="วันครบทดลองงาน">
+            <input name="probationEndAt" type="date" defaultValue={d(emp.probationEndAt)} className="input" />
+          </Field>
+          <Field label="วันสิ้นสุดสัญญา">
+            <input name="contractEndAt" type="date" defaultValue={d(emp.contractEndAt)} className="input" />
           </Field>
         </div>
       </fieldset>
