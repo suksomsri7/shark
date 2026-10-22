@@ -25,10 +25,16 @@ export default function EmployeeProfileForm({
   systemId,
   emp,
   canSeeSensitive,
+  units = [],
+  allBranches = true,
 }: {
   systemId: string;
   emp: Emp;
   canSeeSensitive: boolean;
+  /** HR H1.1 ▸ สาขาที่ผู้แก้เลือกได้ (กรองตามขอบเขตฝั่ง server แล้ว) · [] = ร้านไม่มีสาขา ⇒ ไม่มีช่องสาขา ◂ */
+  units?: { id: string; name: string }[];
+  /** HR H1.1 ▸ ผู้แก้ดูแลทุกสาขา ⇒ เลือก "ยังไม่ระบุสาขาประจำ" ได้ ◂ */
+  allBranches?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<ProfileState, FormData>(
     async (prev, formData) => saveEmployeeProfileAction(systemId, emp.id, prev, formData),
@@ -103,6 +109,34 @@ export default function EmployeeProfileForm({
           </Field>
           <Field label="วันสิ้นสุดงาน (ถ้าลาออกแล้ว)">
             <input name="endDate" type="date" defaultValue={d(emp.endDate)} className="input" />
+          </Field>
+          {/* HR H1.1 ▸ R7/R8 สาขาประจำ · สถานะการจ้าง · วันครบทดลองงาน · วันสิ้นสุดสัญญา (ข้อมูลอย่างเดียว — เตือนล่วงหน้า = H2.x) ◂ */}
+          {units.length > 0 && (
+            <Field label="สาขาประจำ">
+              <select name="unitId" data-testid="hr-profile-unit" defaultValue={emp.unitId ?? ""} className="input min-h-11">
+                {(allBranches || !emp.unitId) && <option value="">ยังไม่ระบุสาขาประจำ</option>}
+                {emp.unitId && !units.some((u) => u.id === emp.unitId) && <option value={emp.unitId}>{emp.unitName ?? "สาขาอื่น"}</option>}
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="สถานะการจ้าง">
+            <select name="employmentStatus" data-testid="hr-profile-employment-status" defaultValue={emp.employmentStatus ?? ""} className="input min-h-11">
+              <option value="">ไม่ระบุ</option>
+              <option value="PROBATION">ทดลองงาน</option>
+              <option value="ACTIVE">ประจำ</option>
+              <option value="ENDED">สิ้นสุด</option>
+            </select>
+          </Field>
+          <Field label="วันครบทดลองงาน">
+            <input name="probationEndAt" type="date" defaultValue={d(emp.probationEndAt)} className="input" />
+          </Field>
+          <Field label="วันสิ้นสุดสัญญา">
+            <input name="contractEndAt" type="date" defaultValue={d(emp.contractEndAt)} className="input" />
           </Field>
         </div>
       </fieldset>

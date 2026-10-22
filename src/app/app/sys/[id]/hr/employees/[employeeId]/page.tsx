@@ -6,6 +6,7 @@ import { systemDef } from "@/lib/systems";
 import { hrTabs } from "@/lib/modules/hr/ui";
 // HF-HR-0 (D4): ด่านสิทธิ์ + DTO รายช่อง — ห้ามส่งแถว HrEmployee ดิบให้ client component
 import { hrViewerOf, loadEmployeeProfileForViewer } from "@/lib/modules/hr/privacy";
+import { hrScopeOf, isAllBranches, unitsForScope } from "@/lib/modules/hr/scope"; // HR H1.1 ▸ ตัวเลือกสาขาประจำตามขอบเขตผู้แก้ ◂
 import { addEmployeeDocAction, removeEmployeeDocAction } from "@/lib/modules/hr/actions";
 import EmployeeProfileForm from "@/lib/modules/hr/EmployeeProfileForm";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -48,6 +49,8 @@ export default async function HrEmployeeProfilePage({
   const def = systemDef(sys.type);
   const sensitive = view.canSeeSensitive;
   const muted = "text-[color:var(--color-muted)]";
+  const scope = hrScopeOf(hrViewerOf(auth));
+  const units = await unitsForScope(auth.active.tenantId, scope);
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -64,7 +67,7 @@ export default async function HrEmployeeProfilePage({
       )}
 
       <Section title="ข้อมูลพนักงาน">
-        <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} />
+        <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} units={units} allBranches={isAllBranches(scope)} />
         <p className={`mt-2 text-xs ${muted}`}>
           PIN ลงเวลา: {emp.hasPin ? "ตั้งแล้ว" : "ยังไม่ตั้ง"} (ตั้ง/เปลี่ยนได้ที่หน้าพนักงานทั้งหมด)
         </p>

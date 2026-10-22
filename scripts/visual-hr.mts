@@ -4,7 +4,7 @@
 //   pnpm exec tsx scripts/visual-hr.mts all --dry --user owner                       # พิมพ์ตาราง หน้า × ขนาดจอ (ไม่แตะ DB/เซิร์ฟเวอร์)
 //   bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 \
 //     pnpm exec tsx scripts/visual-hr.mts 0.4 --user staff --base http://127.0.0.1:3226  # ถ่ายจริง (CONTROLLER-RUN)
-//   ผู้ใช้: owner · manager · payroll · staff · kiosk · member · payrollSelf (HQC.users) · ต้อง seed-hr-qc ก่อน (อ่าน scripts/hr-expected.json)
+//   ผู้ใช้: owner · manager · payroll · staff · kiosk · member · payrollSelf · manager-branch (HQC.users) · ต้อง seed-hr-qc ก่อน (อ่าน scripts/hr-expected.json)
 //   ใบ UI หลัง ๆ ลงทะเบียนหน้าของตัวเองใน SPECS["<wo>"] (SPECS["0.4"] = ทุกหน้าของวันนี้)
 //
 // 🔴 CONTROLLER-RUN: เซิร์ฟเวอร์ = `ACC_V2_PORT=3226 bash scripts/acc-v2-serve.sh start` (production build) — builder ส่งแค่ --dry
@@ -53,6 +53,12 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   "0.4": PAGES,
   // HR H0.7 ▸ R5: หน้า "อนุมัติ" → คำขอของฉัน (ปุ่ม hr-leave-cancel-<leaveId>) — เห็นเฉพาะผู้ยื่น (มีใบลา PENDING ในสาย) ◂
   "0.7": [{ key: "approvals-my-requests", path: () => `/app/approvals`, users: ["owner", "manager", "staff"], why: "คำขอของฉัน + ปุ่มยกเลิกใบลา (H0.7)" }],
+  // HR H1.1 ▸ R8 (mockup 02): ทะเบียนสาขา + ชิปกรอง (ผู้ดูทุกสาขา) · ผู้จัดการสาขา (manager-branch = สาขาหัวหิน · ไม่มีชิป) · ช่องสาขาประจำในโปรไฟล์ ◂
+  "1.1": [
+    { key: "register-branches", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "staff"], why: "ทะเบียน: คอลัมน์สาขา + ชิปกรองสาขา + ป้ายสถานะ + ยังไม่ระบุสาขาประจำ (H1.1)" },
+    { key: "register-branch-manager", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["manager-branch"], why: "ทะเบียนของผู้จัดการสาขา: เฉพาะสาขาหัวหิน + เจที่ยืมตัวเข้ามา · ไม่มีชิป (H1.1)" },
+    { key: "profile-unit", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.namfon}`, users: ["owner", "manager-branch"], why: "โปรไฟล์: สาขาประจำ · สถานะการจ้าง · วันครบทดลองงาน/สิ้นสุดสัญญา (H1.1)" },
+  ],
 };
 const VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false, touch: false },
