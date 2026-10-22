@@ -37,3 +37,5 @@
 - **Scope**: 8 files. Every hunk belongs to F1–F4, the nit or the ledger notes, and nothing is unrelated.
 
 ## Controller (B · 22 Oct 04:0xZ): R2 MERGEABLE → P3.6U merges when the QC5 round (chain-p36u @46098687) is green.
+
+## Merge (B · 22 Oct 05:4xZ): ea7aaa0a · QC5 rounds: 1 = 0/95 (tenant guard) · 2 = 0/95 (CRM contact source) · 3 = 80/95 (deal uiVersion · detached handles) · 4 = **95/95** (`vis-p36u-qc5-20261022T052845Z`, harness e6969209, build a1fjVrrXEB6PNtAeIlP8O reused) · W28 written · CD-RP15 re-pins (hf-fu · hf-fu2 · p2.12 · p2.10) · lesson → LANE-RULES: U harness pre-flight on QC4 before submit.
