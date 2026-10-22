@@ -48,6 +48,8 @@ const CHECKS: readonly Def[] = [
   D("R7", "S", "[§4 R7] F15.3a + F15.3b ของ scripts/fitness-pos.mts เขียว (runPosFitness ตัวจริง) · probe: สำเนาทะเบียนที่มีแถวผี + ขาดแถวปุ่มจริง → ทั้งสองแดง"),
   D("R8", "S", "[§4 R8] ไม่มี testid ผีในข้อสอบ: ทุก testid ที่ qc-pos-* / visual-pos.mts อ้าง (tid(…) · [data-testid=…] · getByTestId) มีในทะเบียน หรือในโค้ด src (หรือ $foreign)"),
   D("R9", "S", "[§4 R9] hiddenFor ⊆ {owner manager cashier public} · ไม่ทับ roles (≠ roles)"),
+  // POS P4.1 builder ▸ ORACLE-EDIT มติ W8 (ผู้คุม B 22 ต.ค. 07:3xZ · CD-P42-W8 "W8 ใช่"): ทุกแถวหน้าพนักงานต้องอ้างผู้จัดการ ◂
+  D("R9b", "S", "[W8 · CD-P42-W8] ทุกแถวที่ไม่ใช่หน้าสาธารณะระบุ manager ใน roles หรือ hiddenFor (ตัวกด P4.2 ไม่มีแถว skip no-role-claim ของผู้จัดการ)"),
   D("R10", "S", "[§4 R10 · V4] การ์ดปฏิเสธทุกใบ (refusals ของ pos-visual-sweep.json + data-testid pos-…-refusal/-refused ในโค้ด POS) มีแถวทะเบียน expect ui · state \"refused\""),
   D("R11", "S", "[§4 R11 · ⚠️6 · มติ 5] แถว mutation/download ที่ไปถึงตัวเขียนเงิน (MONEY_ACTIONS · db ชี้ตารางเงิน) มี safety ∈ money|external|counter · ตัวจับแถวเงินเจอ ≥ 1 แถว"),
   D("R12", "S", "[§4 R12 · มติ 5] safety ถูกค่า (money|external|counter) · แถวภายนอก (พิมพ์ · LINE · Beam · e-Tax · LAN agent · webhook) = external · แถวเลขเอกสาร (ใบกำกับ/ใบลดหนี้/ตัวนับ) = counter|external · ไม่มี safety บนแถว navigate/modal"),
@@ -572,6 +574,13 @@ function r9(inv: Inv): string[] {
   }
   return p;
 }
+/** POS P4.1 builder ▸ ORACLE-EDIT มติ W8: แถวหน้าพนักงาน (ไม่ใช่ /r /q /d /developers) ต้องมี manager ใน roles หรือ hiddenFor — หน้าสาธารณะ = roles ["public"] (R4) ไม่นับ ◂ */
+function r9b(inv: Inv): string[] {
+  const staff = rowsOf(inv).filter((r) => !isPublicPage(String(r?.page ?? "")));
+  const bad = staff.filter((r) => !(Array.isArray(r?.roles) && r.roles.includes("manager")) && !(Array.isArray(r?.hiddenFor) && r.hiddenFor.includes("manager")));
+  if (!staff.length) return ["ไม่พบแถวหน้าพนักงานเลย (ตัวตรวจพัง/ทะเบียนหาย)"];
+  return bad.length ? [`${bad.length}/${staff.length} แถวหน้าพนักงานไม่ระบุ manager (roles/hiddenFor) — ต่อหน้า: ${perPage(bad)} — ${bad.slice(0, 8).map(tidOf).join(", ")}`] : [];
+}
 function r10(inv: Inv, F: Facts): string[] {
   if (!F.refusals.length) return ["ไม่พบการ์ดปฏิเสธเลย (ตัวตรวจพัง)"];
   const rows = rowsOf(inv);
@@ -789,6 +798,17 @@ await step("R9", () => {
     if (s) s.hiddenFor = ["nobody"];
   });
   judge("R9", "hiddenFor ⊆ บทบาท · ไม่ทับ roles", r9(INV), r9(pr), `${rowsOf(INV).filter((r) => Array.isArray(r?.hiddenFor) && r.hiddenFor.length).length} แถวมี hiddenFor ถูกต้อง`);
+});
+await step("R9b", () => {
+  const pr = probeInv(INV, (c) => {
+    const r = firstRow(c, (x) => !isPublicPage(String(x?.page ?? "")));
+    if (r) {
+      r.roles = (Array.isArray(r.roles) ? r.roles : []).filter((x: string) => x !== "manager");
+      r.hiddenFor = (Array.isArray(r.hiddenFor) ? r.hiddenFor : []).filter((x: string) => x !== "manager");
+    }
+  });
+  const staff = rowsOf(INV).filter((r) => !isPublicPage(String(r?.page ?? "")));
+  judge("R9b", "ทุกแถวหน้าพนักงานระบุ manager", r9b(INV), r9b(pr), `${staff.length} แถวหน้าพนักงาน · manager ใน roles ${staff.filter((r) => Array.isArray(r?.roles) && r.roles.includes("manager")).length} · ใน hiddenFor ${staff.filter((r) => Array.isArray(r?.hiddenFor) && r.hiddenFor.includes("manager")).length}`);
 });
 await step("R10", () => {
   const F2: Facts = { ...F, refusals: [...F.refusals, "pos-p41-probe-refusal"] };
