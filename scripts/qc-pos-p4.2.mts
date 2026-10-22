@@ -26,7 +26,7 @@ const SUITE = "qc-pos-p4.2";
 const ROOT = process.cwd();
 const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
-// --self-test: เฉพาะ positive control + การพลิก (probe) ของทุกข้อ — ไม่อ่านสรุปจริง (ผล = ข้อสอบพิสูจน์ตัวเองว่าแดงได้) · CD-P42-R13 prompt
+// --self-test: เฉพาะ positive control + การพลิก (probe) ของทุกข้อ — ไม่อ่านสรุปจริง (ผล = ข้อสอบพิสูจน์ตัวเองว่าแดงได้) · prompt P4.2 R2
 const SELF_TEST = process.argv.includes("--self-test");
 const PFX = "P4.2";
 const PIN = process.env.P42_PIN || "bb7b0b2b"; // ฐานของใบ P4.2 rules update (= session/pos ที่ merge ทะเบียน P4.1 1,242 แถว · 22 ต.ค. 21:05Z) — ตัวกดก่อน merge = สรุปเก่า
