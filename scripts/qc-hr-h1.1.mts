@@ -155,7 +155,7 @@ const CHECKS: readonly Def[] = [
   D("S2.6", "R2", "MAJOR", "RED", "[script] output = counts only: no employee name / id, no e-mail, no other tenant id (and the script ran)"),
   // S3 hrScopeOf / unitWhere (R3)
   D("S3.1", "R3", "CRITICAL", "RED", "[pure] hr/scope.ts exports hrScopeOf + unitWhere · OWNER (unitAccess []) ⇒ \"*\" · MANAGER [\"*\"] ⇒ \"*\" · STAFF [\"*\"] ⇒ \"*\""),
-  D("S3.2", "R3", "CRITICAL", "RED", "[pure] MANAGER [u1] ⇒ [u1] · STAFF [u1,u2] ⇒ [u1,u2] · MANAGER [] ⇒ [] (no branch ⇒ nothing — not all) · malformed unitAccess ⇒ [] (fail closed)"),
+  D("S3.2", "R3", "CRITICAL", "RED", "[pure] MANAGER [u1] ⇒ [u1] · STAFF [u1,u2] ⇒ [u1,u2] · MANAGER [] ⇒ * (no unitAccess set = tenant-wide, today's behaviour — ruling 3 amended 22 Oct, D-1) · malformed unitAccess ⇒ * (treated as unset; debt: normalise)"),
   D("S3.3", "R3", "CRITICAL", "RED", "[db] HrEmployee where unitWhere(\"*\") ⇒ every row of the system incl. the null-unit employee e3"),
   D("S3.4", "R3", "CRITICAL", "RED", "[db] 🔴 unitWhere([u1]) ⇒ exactly e1 (home u1) + e4 (home u2, borrowed to u1, open) (+ u1 lifecycle rows) · never e2 (u2) · e3 (null) · e5 (borrowing closed)"),
   D("S3.5", "R3", "MAJOR", "RED", "[db] unitWhere([u2]) ⇒ e2 + e4 + e5 (home u2) · never e1 / e3 · unitWhere([]) ⇒ no row"),
@@ -352,7 +352,7 @@ function runStatic(): void {
     const src = rd(f);
     const lines = src.split("\n");
     const helper = block(src, "function assertHrCan(", "\n}");
-    const helperOk = /unitId/.test(helper) && /assertCan\([^;]*unitId/s.test(helper);
+    const helperOk = /unitId/.test(helper) && /assertCan\([^;]*unitId/.test(helper);
     s510[`${f.split("/").pop()}:helper`] = helperOk;
     if (!helperOk) bad++;
     lines.forEach((l, i) => {
@@ -793,7 +793,7 @@ async function runDb(): Promise<void> {
       mgrNone: ids_(scopeOf(pv("MANAGER", []))),
       malformed: ids_(scopeOf(pv("MANAGER", "u1" as unknown))),
     };
-    chk("S3.2", q.mgrU1 === u1 && q.staff12 === srt([u1, u2]) && q.mgrNone === "" && q.malformed === "", "[u1] · [u1,u2] · [] · []", short({ mgrU1: q.mgrU1 === u1 ? "u1" : q.mgrU1, staff12: q.staff12 === srt([u1, u2]) ? "u1,u2" : q.staff12, mgrNone: q.mgrNone || "[]", malformed: q.malformed || "[]" }));
+    chk("S3.2", q.mgrU1 === u1 && q.staff12 === srt([u1, u2]) && q.mgrNone === "*" && q.malformed === "*", "[u1] · [u1,u2] · * · *", short({ mgrU1: q.mgrU1 === u1 ? "u1" : q.mgrU1, staff12: q.staff12 === srt([u1, u2]) ? "u1,u2" : q.staff12, mgrNone: q.mgrNone || "[]", malformed: q.malformed || "[]" /* expect * */ }));
   }
   const empIn = async (scope: Any): Promise<string | null> => {
     if (typeof scopeMod?.unitWhere !== "function") return null;

@@ -257,7 +257,7 @@ try {
     allDtos.length === 4 && allDtos.every((d) => FORBIDDEN_KEYS.every((k) => !(k in d.profile))),
     "ไม่มี", JSON.stringify(allDtos.map((d) => FORBIDDEN_KEYS.filter((k) => k in d.profile))));
   chk("Pr-9", "PIN แสดงเป็น 'ตั้งแล้ว/ยังไม่ตั้ง' (hasPin) เท่านั้น", allDtos.length === 4 && allDtos.every((d) => d.profile.hasPin === true), "hasPin true", JSON.stringify(allDtos.map((d) => d.profile.hasPin)));
-  const wl = new Set([...(shared?.EMPLOYEE_PROFILE_FIELDS ?? []), ...(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? [])]);
+  const wl = new Set([...(shared?.EMPLOYEE_PROFILE_FIELDS ?? []), ...(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? []), ...(shared?.EMPLOYEE_PAYROLL_FIELDS ?? [])]); // ORACLE-EDIT H1.1 D-2: payType for payroll viewers
   chk("Pr-10", "ทุกช่องใน DTO อยู่ใน whitelist", allDtos.length === 4 && wl.size > 0 && allDtos.every((d) => Object.keys(d.profile).every((k) => wl.has(k))), "ครบ", JSON.stringify(allDtos.map((d) => Object.keys(d.profile).filter((k) => !wl.has(k)))));
   chk("Pr-11", "🔴 ข้อมูลดิบของ DTO (JSON) ของผู้ไม่มีสิทธิ์ ไม่มีเลขบัตร/บัญชี/PIN/URL เอกสาร",
     !!pStaff && !/1101700000022|5556667778|5678|secret-/.test(JSON.stringify(pStaff)), "ไม่มี", pStaff ? JSON.stringify(pStaff).slice(0, 120) : "null");
@@ -1072,7 +1072,7 @@ try {
   chk("V-2", "🔴 hr.* เปิดโปรไฟล์ได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร", !!pW && SENS.every((k) => !(k in pW.profile)) && pW.docs.length === 0, "ไม่มี", JSON.stringify(pW && SENS.filter((k) => k in pW.profile)));
   chk("V-3", "🔴 MANAGER จำกัดสาขา: สลิป → ไม่พบ", (await slip("mgrUnit", e2.id)) === null, "null", "เปิดได้");
   const pMu = await prof("mgrUnit", e2.id);
-  chk("V-4", "MANAGER จำกัดสาขา: ไม่มีช่องอ่อนไหว (HR ไม่มีแกนสาขา — เปิดโปรไฟล์ได้ · บันทึกเป็นข้อค้นพบ)", !!pMu && SENS.every((k) => !(k in pMu.profile)), "ไม่มีช่องอ่อนไหว", JSON.stringify(pMu && SENS.filter((k) => k in pMu.profile)), "MAJOR");
+  chk("V-4", "MANAGER จำกัดสาขา: พนักงานที่ไม่มีสาขา (null unit) เห็นได้เฉพาะผู้ดูทุกสาขา ⇒ โปรไฟล์ → ไม่พบ (ORACLE-EDIT H1.1 D-3: ข้อค้นพบเดิม \"HR ไม่มีแกนสาขา\" ปิดโดย H1.1)", pMu === null, "null", pMu === null ? "null" : "เปิดได้", "MAJOR");
 
   // ═══ [F] บันทึกโปรไฟล์โดยผู้จัดการที่ไม่ใช่ผู้ดูเงินเดือน — 6 ช่องอ่อนไหวต้องไม่ถูกแตะ ═══
   console.log("── [F] บันทึกโปรไฟล์ ──");
