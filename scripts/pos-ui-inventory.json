@@ -8578,13 +8578,14 @@
         "db": "PosReceiptIssue (reportReceiptIssue → tx.posReceiptIssue.create)"
       },
       "wo": "P1.11U",
-      "oracle": "",
+      "oracle": "P1.11-I1",
       "system": "POS",
       "query": "",
       "hiddenFor": [],
       "opener": [
         "pos-rpub-issue-open"
-      ]
+      ],
+      "safety": "external"
     },
     {
       "page": "/r/[token]",
@@ -8642,13 +8643,14 @@
         "db": "PosReceiptIssue (reportReceiptIssue → tx.posReceiptIssue.create)"
       },
       "wo": "P1.11U",
-      "oracle": "",
+      "oracle": "P1.11-I1",
       "system": "POS",
       "query": "",
       "hiddenFor": [],
       "opener": [
         "pos-rpub-issue-open"
-      ]
+      ],
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -30578,13 +30580,14 @@
         "db": "PosPrintAgent create (tokenHash · printers)"
       },
       "wo": "P3-SKEL U",
-      "oracle": "",
+      "oracle": "P3-SKEL-LP1",
       "system": "POS",
       "query": "unit=[unitId]&tab=devices",
       "opener": [
         "pos-settings-nav-devices",
         "pos-device-lan-add"
-      ]
+      ],
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
