@@ -241,3 +241,29 @@ Green on base = 10 (S2.4 · S2.6 · X4.5 · X7.1 · S6.2(N/A) · S6.3 · S7.4 ·
   - Regression, all exit 0: qc-hf-hr-privacy 194/194 · qc-approval-wiring 7/7 · qc-ai-tools 18/18 · qc-ai-proposals 16/16 · qc-hr-h0.3 37/37 · qc-chat-staff-perms 49/49.
   - fitness 42/42 (env + no env) · fitness-hr 6/6 (env + no env).
   - No typecheck (controller).
+
+## B12. R11 addendum (review M1 + m1 + m2/m3)
+- **R11.1 owner-account link guard** (`src/lib/staff/service.ts:410`, one marked hunk inside the `grantStaffAccess` tx, right after the target membership `existing` is read).
+  - Rule: if the target account's membership role is OWNER, and the actor is neither that same user nor an OWNER of the tenant, throw `StaffRuleError`. The whole transaction rolls back: no linkedUserId/linkApprovedById change, no membership change.
+  - The `hr.employee.link` audit is written only after a successful tx, so a refusal writes 0 of them. Per the ruling, no refusal audit.
+  - MANAGER/STAFF accounts link as before. An owner linking their own account, or a co-OWNER linking another owner, still works (S11.4/S11.5).
+- **R11.2 cancel/decide lock.**
+  - `decideLeave` (`hr/service.ts:630`): reads, checks, chain lookup and the guarded updateMany now run inside `tenantDb(ctx).$transaction`, after `pg_advisory_xact_lock(hashtextextended(\`hr-leave:${leaveId}\`, 0))`. The chain lookup now uses `tx` with an explicit tenantId. Texts, checks and order are unchanged; the audit is still written after commit; no events.
+  - A cancelled leave re-read under the lock refuses with the existing Thai texts: `LEAVE_STALE` when a decider is given, otherwise "ใบลานี้ยกเลิกแล้ว — เปลี่ยนผลไม่ได้".
+  - `cancelLeave` (`hr/service.ts:720`): takes the same key first. All reads plus both writes happen in one tx: `approval.cancelRequest(…, { tx })`, then HrLeave → CANCELLED. A decided leave is still refused with the existing text. `isTenantOwner` takes the tx, so no second connection is opened under the lock. Audit after commit.
+  - `approval/service.ts:440` `cancelRequest` gains optional `opts.tx` (marked; no tx = old behaviour) and adds an explicit `tenantId` to the guarded where. Tx opts: `LEAVE_LOCK_TX_OPTS = { maxWait: 20_000, timeout: 60_000 }` (house value from payroll.ts).
+- **R11.3 fitness-hr.**
+  - F16.6 now treats a literal `actorUserId: undefined` (and `void …`) as missing, follows `import { requestLeave as x }` bindings, and pre-filters files on the bare names.
+  - New **F16.7** (MAJOR): reads the CREATE UNIQUE INDEX name from `20261203000000_hr_link_unique_requester/migration.sql`. The name must appear in `prisma/schema/**` (today: the hr.prisma comment) or in a later migration, and no later migration may `DROP INDEX` it.
+  - GREEN on the real tree: 7/7, exit 0 with no env.
+  - RED, each on a throwaway copy in /tmp/h07-b/r11red (deleted; real tree untouched):
+    - `actorUserId: undefined` at `actions.ts:302` ⇒ exit 1, "src/lib/modules/hr/actions.ts:300 requestLeave( ไม่มี actorUserId".
+    - aliased import `requestLeave as fileLeave` in a scratch file ⇒ exit 1, "src/lib/tmpqc/alias.ts:2 requestLeave( ไม่มี actorUserId". The first try stayed green because of the old pre-filter; fixed, then re-proven.
+    - schema comment removed ⇒ exit 1, "HrEmployee_tenantId_linkedUserId_key ไม่ถูกอ้างใน prisma/schema/** หรือ migration ที่ใหม่กว่า".
+    - later migration with `DROP INDEX` ⇒ exit 1, "20261230000000_qc_drop DROP INDEX HrEmployee_tenantId_linkedUserId_key".
+- **Text (add to B3):** R11.1 owner account ⇒ "ผูกบัญชีเจ้าของกิจการได้เฉพาะเจ้าของกิจการเอง — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้".
+- **Results.**
+  - qc-hr-h0.7: forced ×2 = 74/74 exit 0, unforced = 74/74 exit 0, RESIDUE none (tenants=4 users=39).
+  - Regression, all exit 0: qc-hf-hr-privacy 194/194 · qc-approval 16/16 · qc-approval-wiring 7/7 · qc-approval-edit 12/12 · qc-hr-leave-booking 14/14 · qc-chat-staff-perms 49/49 · qc-hr-h0.3 37/37.
+  - fitness 42/42 (env + no env) · fitness-hr 7/7 (env + no env).
+  - No typecheck (controller).

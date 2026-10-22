@@ -1,4 +1,4 @@
-# qc-hr-h0.7 on wip/pos-hr-h0.7 incl. R10 (S9 addendum) · 2026-10-22T14:12:48Z · 67 checks
+# qc-hr-h0.7 on wip/pos-hr-h0.7 incl. R10 + R11 (S9 + S11 addenda) · 2026-10-22T14:38:47Z · 74 checks
 # run 1: forced (QC_FORCE=1) → exit 0
 [env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h0.7] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
@@ -11,7 +11,7 @@
   ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
   ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
   ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
-(node:2212977) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2261363) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 ── [S1] requester = user id · self-binding ──
   ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
   ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
@@ -78,11 +78,19 @@
   ✅ [H0.7-S9.8] [ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text
   ✅ [H0.7-S9.10] [dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows
   ✅ [H0.7-S9.9] [dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows
+── [S11] owner-account link guard · cancel/decide lock (R11) ──
+  ✅ [H0.7-S11.6] [static] cancelLeave AND decideLeave each take pg_advisory_xact_lock (directly or via a service.ts helper) inside a $transaction · same lock key namespace
+  ✅ [H0.7-S11.1] [staff] 🔴 MANAGER links the OWNER's account to a plain employee ⇒ Thai refusal (no internals) · no link / linkApprovedById · owner membership unchanged · no hr.employee.link audit
+  ✅ [H0.7-S11.2] [staff] 🔴 STAFF clerk (settings.staff.write + hr.employee.create) links another OWNER's account ⇒ same refusal · nothing written
+  ✅ [H0.7-S11.3] [service] 🔴 after the S11.1 refusal, a leave filed for that employee (OWNER-only policy) ⇒ PENDING · decidedById null · ApprovalRequest PENDING (bypass closed)
+  ✅ [H0.7-S11.4] [staff+service] OWNER links own account to an employee ⇒ ok · own leave auto-approved (R4: APPROVED · no ApprovalRequest)
+  ✅ [H0.7-S11.5] [staff] co-OWNER (role OWNER) links another OWNER's account ⇒ ok · linked
+  ✅ [H0.7-S11.7] [service] decideLeave ∥ cancelLeave × 5 (staggered) ⇒ every end state consistent: CANCELLED/CANCELLED or decided/decided — never request CANCELLED + leave decided (control: may pass by luck before R11.2)
   ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
-RESIDUE none (tenants=3 users=31)
+RESIDUE none (tenants=4 users=39)
   ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
-===== qc-hr-h0.7 ===== passed 67/67 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
 
 # run 2: forced → exit 0
 [env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
@@ -96,7 +104,7 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings"
   ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
   ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
   ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
-(node:2214186) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2262557) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 ── [S1] requester = user id · self-binding ──
   ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
   ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
@@ -163,11 +171,19 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings"
   ✅ [H0.7-S9.8] [ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text
   ✅ [H0.7-S9.10] [dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows
   ✅ [H0.7-S9.9] [dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows
+── [S11] owner-account link guard · cancel/decide lock (R11) ──
+  ✅ [H0.7-S11.6] [static] cancelLeave AND decideLeave each take pg_advisory_xact_lock (directly or via a service.ts helper) inside a $transaction · same lock key namespace
+  ✅ [H0.7-S11.1] [staff] 🔴 MANAGER links the OWNER's account to a plain employee ⇒ Thai refusal (no internals) · no link / linkApprovedById · owner membership unchanged · no hr.employee.link audit
+  ✅ [H0.7-S11.2] [staff] 🔴 STAFF clerk (settings.staff.write + hr.employee.create) links another OWNER's account ⇒ same refusal · nothing written
+  ✅ [H0.7-S11.3] [service] 🔴 after the S11.1 refusal, a leave filed for that employee (OWNER-only policy) ⇒ PENDING · decidedById null · ApprovalRequest PENDING (bypass closed)
+  ✅ [H0.7-S11.4] [staff+service] OWNER links own account to an employee ⇒ ok · own leave auto-approved (R4: APPROVED · no ApprovalRequest)
+  ✅ [H0.7-S11.5] [staff] co-OWNER (role OWNER) links another OWNER's account ⇒ ok · linked
+  ✅ [H0.7-S11.7] [service] decideLeave ∥ cancelLeave × 5 (staggered) ⇒ every end state consistent: CANCELLED/CANCELLED or decided/decided — never request CANCELLED + leave decided (control: may pass by luck before R11.2)
   ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
-RESIDUE none (tenants=3 users=31)
+RESIDUE none (tenants=4 users=39)
   ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
-===== qc-hr-h0.7 ===== passed 67/67 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
 
 # run 3: unforced → exit 0
 [env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
@@ -181,7 +197,7 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings"
   ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
   ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
   ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
-(node:2215382) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2263420) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 ── [S1] requester = user id · self-binding ──
   ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
   ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
@@ -248,8 +264,16 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings"
   ✅ [H0.7-S9.8] [ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text
   ✅ [H0.7-S9.10] [dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows
   ✅ [H0.7-S9.9] [dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows
+── [S11] owner-account link guard · cancel/decide lock (R11) ──
+  ✅ [H0.7-S11.6] [static] cancelLeave AND decideLeave each take pg_advisory_xact_lock (directly or via a service.ts helper) inside a $transaction · same lock key namespace
+  ✅ [H0.7-S11.1] [staff] 🔴 MANAGER links the OWNER's account to a plain employee ⇒ Thai refusal (no internals) · no link / linkApprovedById · owner membership unchanged · no hr.employee.link audit
+  ✅ [H0.7-S11.2] [staff] 🔴 STAFF clerk (settings.staff.write + hr.employee.create) links another OWNER's account ⇒ same refusal · nothing written
+  ✅ [H0.7-S11.3] [service] 🔴 after the S11.1 refusal, a leave filed for that employee (OWNER-only policy) ⇒ PENDING · decidedById null · ApprovalRequest PENDING (bypass closed)
+  ✅ [H0.7-S11.4] [staff+service] OWNER links own account to an employee ⇒ ok · own leave auto-approved (R4: APPROVED · no ApprovalRequest)
+  ✅ [H0.7-S11.5] [staff] co-OWNER (role OWNER) links another OWNER's account ⇒ ok · linked
+  ✅ [H0.7-S11.7] [service] decideLeave ∥ cancelLeave × 5 (staggered) ⇒ every end state consistent: CANCELLED/CANCELLED or decided/decided — never request CANCELLED + leave decided (control: may pass by luck before R11.2)
   ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
-RESIDUE none (tenants=3 users=31)
+RESIDUE none (tenants=4 users=39)
   ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
-===== qc-hr-h0.7 ===== passed 67/67
-JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[]}
+===== qc-hr-h0.7 ===== passed 74/74
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[]}
