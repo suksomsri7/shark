@@ -150,3 +150,83 @@ Everything else holds or is non-blocking debt:
 - Nothing of mine is running.
 - No product code, oracle or notes were edited. This file is the only file I wrote, and it is uncommitted.
 - Scratch is in `/tmp/hr-hunt-h07/` (probe + log).
+
+---
+
+## Round 2 (R11) — 33d7c549
+Scope: `git diff 67ccb076..33d7c549 -- src scripts/fitness-hr.mts` plus builder notes §B12. Read-only.
+- Probe: `/tmp/hr-hunt-h07/probe2.mts` (log `probe2.log`). It is probe1 with H3 replaced by a 12-round concurrency test.
+- Fitness: `fitness-hr.mts`, static, through `iso.sh` only, no DB.
+- I did not touch `hr-ctl-h07c`.
+
+### Verdict: **MERGE**
+- No blocking findings. M1 and m1 are closed, and m2/m3 are addressed.
+- Typecheck is still pending (controller, COMMON §E).
+- M2 (R4.7 link before salary) remains open, non-blocking debt as ruled in round 1.
+
+### (1) `decideLeave` in one transaction (`hr/service.ts:625-690`)
+- **Inside the tx, in order:** lock → read → stale/allowed/self checks → chain lookup → guarded `updateMany`. Every statement uses `tx`, including the chain lookup (`tx.approvalRequest`).
+- **No second connection while the lock is held.** I grepped the function body: there is no `prisma.`, `tenantDb(` or `approval.` call between the lock and the commit.
+- **Audit:** `writeAudit` is still after commit, with the same payload (`leave`/`from` returned from the tx).
+- **Behaviour unchanged:**
+  - Texts and check order are byte-identical.
+  - Errors thrown inside the callback are rethrown unchanged by `$transaction`, so the `bulkDecideLeave` `instanceof HrLeaveDecisionError` mapping is unchanged.
+  - Still no outbox event.
+- **Chain lookup:** the added explicit `tenantId` is a no-op. `ApprovalRequest` is tenant-scoped only (`scope.ts:175`), so the systemId-bearing `tenantDb(ctx)` tx does not narrow it. The result is the same as the old `tenantDb({tenantId})`.
+- **Deadlock risk: none found.**
+  - The `hr-leave:<id>` key is distinct from `hr:clock:` and `staff-link:`. No other advisory lock is taken inside it.
+  - The only row lock inside is the `ApprovalRequest` row (cancel path).
+  - `approval.decide` locks that row via its guarded claim and never takes `hr-leave:`, so waits run one way only.
+  - The outbox effect writes the leave via a guarded `updateMany` on PENDING, outside any lock. It only runs after the request is APPROVED, and in that case cancel refuses.
+  - Callers (`actions.ts:336`, bulk loop, `proposals.ts:577` dispatch) are not inside another tx, so there is no nested-tx second connection.
+- **Tx options:** `{maxWait 20s, timeout 60s}` is the house value and is fine.
+
+### (2) `cancelRequest(ctx, id, {tx?})` (`approval/service.ts:440`)
+- **Without tx:** identical to before. The explicit `tenantId` duplicates what `tenantDb(ctx)` already injects.
+- **Other callers:** all pass no tx and keep their old behaviour. That is `crm/deals.ts:1626`, `crm/commissions.ts:806/1331/1851/1887`, `crm/portal.ts:1350/1437` and `approval/actions.ts:207`.
+- **With tx:** only `hr/service.ts:759` passes one. That tx is the `tenantDb(hrCtx)` tx, so it is tenant-scoped, and `requestId` was read under the lock.
+
+### (3) R11.1 owner-account guard (`staff/service.ts:410`)
+**Not bypassable:**
+- Another tenant: `existing` is the target's membership in `input.tenantId` (unique `(userId, tenantId)`), and `isTenantOwner` uses the same tenant.
+- `revokeStaffAccess`: unlinks and does not relink.
+- `restoreStaffAccess`: does not link.
+- Bonus: a MANAGER can no longer re-open a **revoked** OWNER membership through grant, because `existing.role === "OWNER"` is refused. A revoked owner is not `isTenantOwner` anyway, since that requires `acceptedAt`.
+
+**Not over-blocking:**
+- An OWNER linking their own account passes (`user.id === actorUserId`), and so does a co-OWNER linking another OWNER.
+- A MANAGER session is a different user, so it cannot act "as the owner". That refusal is intended.
+
+**INFO:**
+- **R2-I1:** the actor role comes from `loadActor`, which runs before the tx. An actor demoted mid-request is a negligible TOCTOU.
+- **R2-I2:** an account linked while STAFF and **later promoted to OWNER** turns that employee's leaves into owner-auto. Promotion needs OWNER (`canAssignRole`), so it is the owner's intent. Note it to the owner.
+
+### (4) Round-1 reproductions re-run on 33d7c549 (probe2.log)
+```
+H1.grant(manager→owner account→X1): ok=false reason=ผูกบัญชีเจ้าของกิจการได้เฉพาะเจ้าของกิจการเอง — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้
+H1.leave(X1 filed by manager): status=PENDING decidedById=null approvalRequests=1      (goes through the chain)
+H1.audits: (none)          H1.availability isOnLeave? false
+H2.grant(clerk→owner account→X2): ok=false (same text) — also after the owner was unlinked
+H3 ×1: cancel:ok,direct:refused,chain:no ⇒ leave=CANCELLED req=CANCELLED
+H3 ×6: cancel:ok,direct:refused ⇒ leave=CANCELLED req=CANCELLED
+H3 ×5: cancel:no,direct:refused,chain:APPROVED ⇒ leave=PENDING req=APPROVED      (effect pending — consistent)
+H3.inconsistent rounds = 0
+H4/H5 unchanged (requester-only · wrong system · empty actor · empty-actor unlinked refused)
+```
+- **M1** is closed.
+- **m1** is closed: in 12 concurrent rounds of cancel, direct decide and chain decide, there was no "request CANCELLED + leave APPROVED".
+- The old manual interleave (a bare core `cancelRequest`, then a direct decide) is still possible through the generic `cancelMyRequestAction` with a leave request id. That is round-1 I6: by design, a direct decide is allowed after the chain is CANCELLED, and it does not go through `cancelLeave`.
+
+### (5) fitness-hr F16.6/F16.7 on the current tree
+- Result: `ผ่าน 7/7` (7/7 passed), exit 0, no env. F16.6 is clean and F16.7 reports "HrEmployee_tenantId_linkedUserId_key อ้างอยู่ · ไม่มี DROP" (referenced, no DROP).
+- **False positives: none.** `src` has 4 non-comment mentions outside the definition file, and the only call sites are `actions.ts:300/319`.
+- **R2-I3 (MINOR, non-blocking):**
+  - F16.7's "referenced" is satisfied by the `hr.prisma` comment alone.
+  - It does not catch `ALTER INDEX … RENAME` or a `DROP INDEX` written with a schema-qualified quoted name in some forms. The Prisma drift form `DROP INDEX "HrEmployee_tenantId_linkedUserId_key";` is caught.
+  - F16.6's name-based property-access match would flag an unrelated `x.cancelLeave(` in another module. That is a conservative false positive, and none exists today.
+
+### Residue / runtime
+- Residue: `[residue] tenants=0 users=0 employees=0 memberships=0` (probe2, own tenant `qc-hunt-h07-<ts>`).
+- My runs, each one iso unit and all finished: probe2 and fitness-hr (static).
+- Nothing of mine is running. I touched no units, no locks and no product code.
+- This section was appended; the round-1 text is kept.
