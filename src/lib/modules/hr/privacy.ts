@@ -7,7 +7,7 @@
 //   • ไม่ผ่านด่าน = คืน null ⇒ หน้าเรียก notFound() (404 ไม่ใช่ 403 — ไม่บอกว่ามีข้อมูลอยู่)
 import { tenantDb } from "@/lib/core/db";
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
-import { listLeaves, pendingLeaves, type Ctx, type EmployeeProfileInput } from "./service";
+import { leaveRowScopeOf, listLeaves, pendingLeaves, type Ctx, type EmployeeProfileInput } from "./service";
 import { payslipData } from "./payroll";
 import { hasPin } from "./pin"; // HR H0.5 ▸ ◂
 import type { EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
@@ -127,7 +127,9 @@ export async function leaveItemsForViewer(
   v: HrViewer,
 ): Promise<{ pending: LeaveItemDto[]; history: LeaveItemDto[]; canReadReason: boolean }> {
   const canReadReason = hrAccessOf(v).readLeave;
-  const [pending, history] = await Promise.all([pendingLeaves(ctx), listLeaves(ctx)]);
+  // HR H0.7 R10 ▸ ขอบเขตแถว: ผู้อ่าน/ผู้ตัดสินใบลา/OWNER/MANAGER = ทุกแถว · คนอื่น = เฉพาะของตัวเอง (กรองใน where) ◂
+  const scope = leaveRowScopeOf(v, v.userId);
+  const [pending, history] = await Promise.all([pendingLeaves(ctx, 100, scope), listLeaves(ctx, 100, scope)]);
   // HR H0.7 ▸ R9: ชื่อผู้ยื่นแทน (User เป็นแกน global ⇒ อ่านเฉพาะ id ที่อยู่ในใบลาของระบบนี้) — เฉพาะผู้มี hr.leave.read ◂
   const filerIds = canReadReason ? [...new Set([...pending, ...history].map((l) => l.filedById).filter((x): x is string => !!x))] : [];
   const filers = filerIds.length

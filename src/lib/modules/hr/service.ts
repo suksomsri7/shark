@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัต
 import type { HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
+import { evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1): จาก name/phone/email เท่านั้น — **ห้ามส่ง nationalId/PDPA อื่น**
 // เรียกผ่าน facade เท่านั้น (F2.2)
@@ -801,17 +802,45 @@ export async function employeesUnavailable(ctx: Ctx, employeeIds: string[], date
 }
 
 // ── reads (สำหรับ UI) ──
-export async function listLeaves(ctx: Ctx, take = 100) {
+// HR H0.7 R10 ▸ ขอบเขตแถวของรายการใบลา (privacy hunt F1/F2):
+//   ผู้ดูที่มี hr.leave.read หรือ hr.leave.decide หรือบทบาท OWNER/MANAGER ⇒ ทุกแถวของระบบ (เหมือนเดิม)
+//   คนอื่นทั้งหมด (STAFF ที่มีแค่ hr.leave.request · hr.employee.create · hr.attendance.clock · hr.payroll.read · ไม่มีคีย์) ⇒ เฉพาะแถวของ
+//   พนักงานที่ผูกกับบัญชีตัวเอง · ไม่ผูก/ไม่รู้ userId ⇒ 0 แถว · ตัวกรองอยู่ใน where ของคิวรี (ไม่กรองหลังดึง — take=100 ไม่ตัดแถวของตัวเอง)
+//   ไม่ส่ง scope = พฤติกรรมเดิม (ผู้เรียกภายใน · การ์ดนับบนหน้าภาพรวม) ◂
+export type LeaveRowScope = { all: true } | { linkedUserId: string };
+export function leaveRowScopeOf(m: MembershipCtx | null | undefined, userId: string | null | undefined): LeaveRowScope {
+  if (m) {
+    const wide =
+      m.role === "OWNER" ||
+      m.role === "MANAGER" ||
+      evaluate(m, { module: "hr", action: "hr.leave.read" }) ||
+      evaluate(m, { module: "hr", action: "hr.leave.decide" });
+    if (wide) return { all: true };
+  }
+  return { linkedUserId: typeof userId === "string" ? userId.trim() : "" }; // "" ⇒ 0 แถว
+}
+const leaveScopeWhere = (scope?: LeaveRowScope): Prisma.HrLeaveWhereInput | null => {
+  if (!scope || "all" in scope) return {};
+  if (!scope.linkedUserId) return null; // ไม่ต้องถาม DB เลย
+  return { employee: { linkedUserId: scope.linkedUserId } };
+};
+
+export async function listLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope) {
+  const sw = leaveScopeWhere(scope);
+  if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
+    where: { ...sw },
     include: { employee: true },
     orderBy: [{ createdAt: "desc" }],
     take,
   });
 }
 
-export async function pendingLeaves(ctx: Ctx, take = 100) {
+export async function pendingLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope) {
+  const sw = leaveScopeWhere(scope);
+  if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
-    where: { status: "PENDING" },
+    where: { status: "PENDING", ...sw },
     include: { employee: true },
     orderBy: [{ fromDate: "asc" }, { createdAt: "asc" }],
     take,
