@@ -438,7 +438,10 @@ const pinMod = (await import("@/lib/modules/hr/pin" as string).catch((e: unknown
 const HR_FIELDS: string[] = (Prisma?.dmmf?.datamodel?.models ?? []).find((m: Any) => m.name === "HrEmployee")?.fields?.map((f: Any) => f.name) ?? [];
 const HAS_HASH = HR_FIELDS.includes("pinHash") && HR_FIELDS.includes("pinSetAt");
 const setPinFn: Any = pinMod?.setPin ?? hr.setPin;
-const verifyFn: Any = idx?.verifyPin ?? pinMod?.verifyPin ?? null;
+const verifyRaw: Any = idx?.verifyPin ?? pinMod?.verifyPin ?? null;
+// H0.5 r3 ORACLE-EDIT ▸ R3.1 บังคับ callerKey — S1.5/S4/S5 ส่ง callerKey ไม่ซ้ำต่อครั้ง (ไม่มีผู้เรียกคนไหนถึง 10 ผิด · ถังร้านยังนับครบ) ◂
+let autoCaller = 0;
+const verifyFn: Any = verifyRaw && ((a: Any) => verifyRaw({ callerKey: `qc-auto:${process.pid}:${++autoCaller}`, ...a }));
 
 // ═════════════════════════ โหมดลูก ═════════════════════════
 if (MODE === "--pepper-worker") {
@@ -807,8 +810,8 @@ async function runDb(): Promise<void> {
     const nLimited = first.filter((r: Any) => typeof r?.reason === "string" && RE_LIMIT.test(r.reason)).length;
     chk(
       "S4.7",
-      nLimited === 0 && first.every(isWrong) && v121?.ok === false && RE_LIMIT.test(String(v121?.reason ?? "")) && (bk?.count ?? 0) >= 121,
-      "120 ครั้งไม่โดนจำกัด · ครั้งที่ 121 (PIN ถูก) ลองใหม่ในอีก N วินาที · ถัง count ≥ 121",
+      nLimited === 0 && first.every(isWrong) && v121?.ok === false && RE_LIMIT.test(String(v121?.reason ?? "")) && (bk?.count ?? 0) >= 120,
+      "120 ครั้งไม่โดนจำกัด · ครั้งที่ 121 (PIN ถูก) ลองใหม่ในอีก N วินาที · ถัง count ≥ 120 (r3: นับเฉพาะครั้งที่ผิด)",
       `limited120=${nLimited} wrong120=${first.filter(isWrong).length} 121=${short(v121, 80)} bucket=${bk?.count ?? "ไม่มีแถว hr-verifypin:<tenantId>"}`,
     );
     await resetVerifyBucket(T1);
