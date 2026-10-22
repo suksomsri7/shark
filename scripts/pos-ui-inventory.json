@@ -257,7 +257,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "nav-drawer",
+        "target": "nav-report-issue",
         "state": "appears",
         "note": "เฉพาะในแอป SHARK (WebView) — ยิง app:drawer-open · เว็บใช้ ☰ ของแถบบน"
       },
@@ -398,7 +398,11 @@
       "wo": "P1.3",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-reg-category-*=click"
+      ],
+      "needs": "หมวดสินค้า (PosCategory) อย่างน้อย 1 หมวดในแคตตาล็อก POS ร้าน QC coffee — seed-pos-qc สร้างหมวดให้ร้าน resto เท่านั้น (:270)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -1178,7 +1182,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-cart-line-*"
+        "pos-reg-cart-line-*",
+        "pos-reg-editor-discount-percent=click"
       ]
     },
     {
@@ -1345,7 +1350,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-bill-discount"
+        "pos-reg-bill-discount",
+        "pos-reg-bill-discount-percent=click"
       ]
     },
     {
@@ -1430,7 +1436,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-value=10"
+        "pos-reg-bill-discount-value=5"
       ]
     },
     {
@@ -1458,7 +1464,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-value=10",
+        "pos-reg-bill-discount-value=5",
         "pos-reg-bill-discount-apply=click",
         "pos-reg-bill-discount-edit=click"
       ]
@@ -1718,7 +1724,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด"
+      "needs": [
+        "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด",
+        "fixture ขาด: ไม่มีสินค้าราคา null (ไม่ใช่ 0 — น้ำเปล่าแจกฟรี PQC-CF-FREE = 0 บาท ไม่เปิดกล่อง)ชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (OpenPriceDialog เปิดจาก pick() RegisterScreen.tsx:1555-1557 · ผู้มี canOverridePrice)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -1771,7 +1780,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด"
+      "needs": [
+        "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด",
+        "fixture ขาด: ไม่มีสินค้าราคา null (ไม่ใช่ 0 — น้ำเปล่าแจกฟรี PQC-CF-FREE = 0 บาท ไม่เปิดกล่อง)ชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (OpenPriceDialog เปิดจาก pick() RegisterScreen.tsx:1555-1557 · ผู้มี canOverridePrice)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2578,7 +2590,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
+      "needs": [
+        "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)",
+        "fixture ขาด: ไม่มีสินค้ามีกลุ่มตัวเลือก/ตัวแปรชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (OptionsDialog เปิดจาก pick() เท่านั้น RegisterScreen.tsx:1553)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2600,7 +2615,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
+      "needs": [
+        "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)",
+        "fixture ขาด: ไม่มีสินค้ามีกลุ่มตัวเลือก/ตัวแปรชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (OptionsDialog เปิดจาก pick() เท่านั้น RegisterScreen.tsx:1553)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2666,7 +2684,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
+      "needs": [
+        "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)",
+        "fixture ขาด: ไม่มีสินค้ามีกลุ่มตัวเลือก/ตัวแปรชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (OptionsDialog เปิดจาก pick() เท่านั้น RegisterScreen.tsx:1553)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2711,7 +2732,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
+      "needs": [
+        "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)",
+        "fixture ขาด: ไม่มีสินค้ามีกลุ่มตัวเลือก/ตัวแปรชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (OptionsDialog เปิดจาก pick() เท่านั้น RegisterScreen.tsx:1553)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2739,7 +2763,10 @@
       "oracle": "P1.2-S2",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
+      "needs": [
+        "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)",
+        "fixture ขาด: ไม่มีสินค้ามีกลุ่มตัวเลือก/ตัวแปรชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (OptionsDialog เปิดจาก pick() เท่านั้น RegisterScreen.tsx:1553)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2760,7 +2787,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
+      "needs": [
+        "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด",
+        "fixture ขาด: ไม่มีสินค้าขายตามน้ำหนัก (soldByWeight ไม่มีตัวเลือก)ชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (WeighDialog เปิดจาก pick() RegisterScreen.tsx:1554)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2809,7 +2839,10 @@
       "oracle": "P1.2-W5",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
+      "needs": [
+        "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด",
+        "fixture ขาด: ไม่มีสินค้าขายตามน้ำหนัก (soldByWeight ไม่มีตัวเลือก)ชื่อตายตัวในร้าน posqc-coffee (pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) findCartProducts:470 รับเฉพาะ basePriceSatang > 0 · scripts/pos-qc-env.mts PQC_COFFEE_ITEMS ไม่มี · qc-pos-p1.2/p2.13 สร้างใน sandbox แล้วลบ) — เพิ่มใน pos-buttons-fixtures แล้วตั้ง opener pos-reg-search=<ชื่อ> → pos-reg-product-*=click (WeighDialog เปิดจาก pick() RegisterScreen.tsx:1554)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -3120,7 +3153,12 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "บิลที่พักซึ่งราคา/สินค้าเปลี่ยนระหว่างพัก (notices ตอนเรียกคืน)"
+      "needs": "บิลที่พักซึ่งราคา/สินค้าเปลี่ยนระหว่างพัก (notices ตอนเรียกคืน)",
+      "opener": [
+        "pos-reg-cart-bar-held",
+        "pos-reg-held-bills",
+        "pos-reg-held-recall-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/shifts",
@@ -4641,7 +4679,7 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-stock-lines",
+        "target": "pos-stock-count",
         "note": "ทั้งหมด · ยังไม่นับ · มีผลต่าง (ซ่อนเมื่อ blind) — กรองในจอ (ไม่เรียกเซิร์ฟเวอร์)",
         "state": "changes"
       },
@@ -5956,7 +5994,8 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "บิลของวันนี้ในสาขานี้ (≥ 1 ใบ) — ตัวเลือกของ select มาจากบิลของวัน"
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -5977,7 +6016,8 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "บิลของวันนี้ในสาขานี้ (≥ 1 ใบ) — ตัวเลือกของ select มาจากบิลของวัน"
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -6336,7 +6376,10 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "hiddenFor": [],
-      "needs": "บิลของวันนี้มากกว่า 10 ใบ (หลายหน้า)"
+      "needs": "บิลของวันนี้มากกว่า 10 ใบ (หลายหน้า)",
+      "opener": [
+        "pos-bills-page-next=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -9702,7 +9745,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply"
       ],
@@ -9735,7 +9778,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
         "pos-discount-over-manager=click"
@@ -9769,7 +9812,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
         "pos-discount-over-manager=click"
@@ -9803,7 +9846,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
         "pos-discount-over-manager=click",
@@ -9838,7 +9881,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
         "pos-discount-over-manager=click",
@@ -9874,7 +9917,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
         "pos-discount-over-manager=click",
@@ -9913,7 +9956,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply"
       ],
@@ -9948,7 +9991,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply"
       ],
@@ -9979,7 +10022,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
         "pos-discount-over-request"
@@ -10014,7 +10057,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-percent",
+        "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
         "pos-discount-over-request"
@@ -10089,7 +10132,11 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "ร้านยังไม่มีใครตั้ง PIN (โหมดไม่มี PIN)"
+      "needs": "ร้านยังไม่มีใครตั้ง PIN (โหมดไม่มี PIN)",
+      "opener": [
+        "pos-lock-now-mobile",
+        "pos-lock-now"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -10747,12 +10794,12 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click",
         "pos-reg-tax-invoice"
       ],
-      "needs": [
-        "ร้านออกใบกำกับเต็มรูปได้ (registerStatus.taxInvoiceEligible · POS ผูกสมุดจด VAT)",
-        "สมาชิกผูกกับบิล (ค้น/สมัครสมาชิกในแผงสมาชิกก่อน)"
-      ]
+      "needs": "ร้านออกใบกำกับเต็มรูปได้ (registerStatus.taxInvoiceEligible · POS ผูกสมุดจด VAT)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11135,9 +11182,11 @@
       "opener": [
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
-        "pos-reg-cart-view"
-      ],
-      "needs": "สมาชิกผูกกับบิล (ค้น/สมัครสมาชิกในแผงสมาชิกก่อน)"
+        "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11161,7 +11210,10 @@
       "opener": [
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
-        "pos-reg-cart-view"
+        "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click"
       ],
       "needs": "สมาชิกในบิลที่มีแต้มของสาขา > 0 (ระบบแต้มผูกสาขา)"
     },
@@ -11187,9 +11239,11 @@
       "opener": [
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
-        "pos-reg-cart-view"
-      ],
-      "needs": "สมาชิกผูกกับบิล (ค้น/สมัครสมาชิกในแผงสมาชิกก่อน)"
+        "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11266,9 +11320,11 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click",
         "pos-member-chip-open"
-      ],
-      "needs": "สมาชิกผูกกับบิล (ค้น/สมัครสมาชิกในแผงสมาชิกก่อน)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11294,12 +11350,12 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click",
         "pos-member-chip-open"
       ],
-      "needs": [
-        "สมาชิกผูกกับบิล (ค้น/สมัครสมาชิกในแผงสมาชิกก่อน)",
-        "รางวัลที่สมาชิกแลกรอรับ (RewardRedemption PENDING)"
-      ]
+      "needs": "รางวัลที่สมาชิกแลกรอรับ (RewardRedemption PENDING)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11706,6 +11762,9 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click",
         "pos-reg-pay"
       ],
       "needs": "สมาชิกในบิลที่มีแต้มของสาขา ≥ ขั้นต่ำ (ระบบแต้มผูกสาขา)"
@@ -13966,7 +14025,8 @@
       },
       "wo": "P2.1U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "needs": "บิลของวันนี้ในสาขานี้ (≥ 1 ใบ) — ตัวเลือกของ select มาจากบิลของวัน"
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -13991,7 +14051,8 @@
       "query": "unit=*",
       "opener": [
         "pos-bills-unit=*"
-      ]
+      ],
+      "needs": "บิลของวันนี้ในสาขาใดสาขาหนึ่งของร้าน (≥ 1 ใบ · โหมดทุกสาขา) — ตัวเลือกของ select มาจากบิลของวัน"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -14629,7 +14690,7 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-prod-bulk-preview",
+        "target": "pos-prod-bulk",
         "note": "ช่องทาง (แพลตฟอร์มสำเร็จรูป + ช่องทางที่ร้านตั้งเอง)",
         "state": "changes"
       },
@@ -14639,7 +14700,7 @@
       "opener": [
         "pos-prod-bulk-open"
       ],
-      "needs": "ช่องทางขายที่ไม่ใช่ BUILTIN (แพลตฟอร์ม/ร้านตั้งเอง) ของขอบเขต"
+      "needs": "ช่องทางขายที่ไม่ใช่ BUILTIN ≥ 2 ช่อง (แพลตฟอร์ม/ร้านตั้งเอง) ของขอบเขต — select ต้องมีตัวเลือกอื่นให้เปลี่ยน"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -14685,6 +14746,7 @@
       "oracle": "",
       "system": "POS",
       "opener": [
+        "pos-prod-category=*",
         "pos-prod-bulk-open",
         "pos-prod-bulk-round-1=click"
       ]
@@ -14710,6 +14772,7 @@
       "oracle": "",
       "system": "POS",
       "opener": [
+        "pos-prod-*select-*=on",
         "pos-prod-bulk-open"
       ]
     },
@@ -14854,7 +14917,7 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-prod-recipe-table",
+        "target": "pos-prod-recipe",
         "note": "ชิปมุมมอง \"สูตรพื้นฐาน\" (expandRecipe ไม่มีตัวเลือก · ต้นทุนจากหน้า)",
         "state": "changes"
       },
@@ -14881,7 +14944,7 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-prod-recipe-table",
+        "target": "pos-prod-recipe",
         "note": "ชิปมุมมองต่อตัวเลือก (\"ขนาด M\") — expandRecipe ฝั่ง client + recipeCostAction ของมุมมองนั้น (จำผล)",
         "state": "changes"
       },
@@ -20231,7 +20294,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-ord-card-*",
-        "pos-ord-prep-edit"
+        "pos-ord-prep-edit",
+        "pos-ord-prep-more=click"
       ],
       "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
     },
@@ -22103,7 +22167,10 @@
         "pos-reg-paydlg-giftcard-number=*",
         "pos-reg-paydlg-giftcard-lookup"
       ],
-      "needs": "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled) + บัตร GC ของร้าน"
+      "needs": [
+        "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled)",
+        "fixture ขาด: GiftCard status ACTIVE balanceSatang > 0 ของร้าน QC coffee ที่รู้เลข GC-xxxxxxxx (+PIN) — pos-buttons-fixtures/pos-qc-env ไม่สร้าง (qc-pos-p2.9 สร้างในร้านของตัวเองแล้วล้าง) · giftcard-number=* พิมพ์ qc-btn-<สุ่ม> ⇒ ไม่พบเสมอ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -22134,7 +22201,10 @@
         "pos-reg-paydlg-giftcard-number=*",
         "pos-reg-paydlg-giftcard-lookup"
       ],
-      "needs": "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled) + บัตร GC ของร้าน"
+      "needs": [
+        "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled) + บัตร GC ของร้าน",
+        "fixture ขาด: บัตรของขวัญ ACTIVE เลขตายตัวของร้าน posqc-coffee — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos สุ่มเลขต่อรอบแล้วระงับ) · opener pos-reg-paydlg-giftcard-number=* พิมพ์ qc-btn-<สุ่ม> (origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) ⇒ ไม่พบเสมอ — เมื่อมีบัตรแล้วเปลี่ยนเป็น =<เลขบัตร>"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -22172,7 +22242,10 @@
         "pos-reg-paydlg-giftcard-lookup",
         "pos-reg-paydlg-giftcard-pin=1234"
       ],
-      "needs": "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled) + บัตร GC ของร้าน"
+      "needs": [
+        "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled) + บัตร GC ของร้าน",
+        "หมายเลขบัตรของขวัญที่ตัวกดรู้ (pos-buttons-fixtures.mts ยังไม่มี GC ⇒ giftcard-number=* พิมพ์สุ่ม = ไม่พบ InterimPayDialog.tsx:1912 · CD-P41-F24 fixture)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -22243,7 +22316,7 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-bills-refund-summary",
+        "target": "pos-bills-refund",
         "state": "changes",
         "note": "P2.9U มติ 8: คืนเข้าบัตร GC-••••1234 (สูงสุด ฿x = ส่วนที่บัตรจ่าย − ที่คืนแล้ว · refundTenderOptionsAction) · บัตรใช้ไม่ได้ = ปิด + เหตุผล · ยอดเกินเพดาน = แบ่งแถว (allocateRefund) · ส่ง GIFT_CARD + giftCardId"
       },
@@ -22270,7 +22343,7 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-bills-refund-summary",
+        "target": "pos-bills-refund",
         "state": "changes",
         "note": "P2.9U มติ 8: เครดิตร้าน · เข้ากระเป๋าสมาชิก (บิลสมาชิกเท่านั้น · แถว STORE_CREDIT เดียว) — แทนชิป เครดิตร้าน ที่ปิดไว้ของ P1.16"
       },
@@ -23122,7 +23195,11 @@
         "pos-reg-paydlg-deposit-search=*",
         "pos-reg-paydlg-deposit-lookup"
       ],
-      "needs": "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน"
+      "needs": [
+        "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
+        "แถวมัดจำในรายการแยกจ่ายที่ถูกปฏิเสธ 4 หลักท้ายตอนยืนยัน/โหลดกลับ (r.dep.note wrong|again — ต้องกด pos-reg-paydlg-confirm ซึ่งเป็น counter · ไปไม่ถึงด้วย opener แบบเดียวกับแถว 886)",
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -23222,7 +23299,10 @@
         "pos-reg-paydlg-deposit-search=*",
         "pos-reg-paydlg-deposit-lookup"
       ],
-      "needs": "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน"
+      "needs": [
+        "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -23257,9 +23337,13 @@
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
         "pos-reg-paydlg-deposit-search=*",
-        "pos-reg-paydlg-deposit-lookup"
+        "pos-reg-paydlg-deposit-lookup",
+        "pos-reg-paydlg-deposit-row-*=click"
       ],
-      "needs": "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน"
+      "needs": [
+        "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -23288,9 +23372,13 @@
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
         "pos-reg-paydlg-deposit-search=*",
-        "pos-reg-paydlg-deposit-lookup"
+        "pos-reg-paydlg-deposit-lookup",
+        "pos-reg-paydlg-deposit-row-*=click"
       ],
-      "needs": "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน"
+      "needs": [
+        "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled)",
+        "fixture ขาด: PosDeposit status OPEN คงเหลือ > 0 ของสาขา posqc-btn ที่รู้เลขใบรับ/เบอร์ — pos-buttons-fixtures/pos-qc-env ไม่สร้าง · deposit-search=* พิมพ์ 'ลาเต้' (fillValueFor /search/) ⇒ ไม่พบเสมอ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -23325,9 +23413,13 @@
         "pos-reg-pay",
         "pos-reg-paydlg-method-deposit",
         "pos-reg-paydlg-deposit-search=*",
-        "pos-reg-paydlg-deposit-lookup"
+        "pos-reg-paydlg-deposit-lookup",
+        "pos-reg-paydlg-deposit-row-*=click"
       ],
-      "needs": "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน"
+      "needs": [
+        "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน",
+        "fixture ขาด: มัดจำ OPEN ของสาขา posqc-btn ชื่อลูกค้า/เลขใบรับตายตัว (≥3 ตัวอักษร · ค้นด้วย receiptNo ตรงตัว หรือ customerName ขึ้นต้น — src/lib/modules/pos/deposit.ts:345-347) — scripts/pos-buttons-fixtures.mts (origin/wip/pos-p4.2-walker) ไม่สร้าง (visual-pos คืนมัดจำของรอบตอนเก็บกวาด) · opener pos-reg-paydlg-deposit-search=* ได้ \"20\" (คำ deposit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) < 3 ตัว ⇒ pay.depositQueryShort ไม่ค้นจริง (InterimPayDialog.tsx:961) — เมื่อมีมัดจำแล้วเปลี่ยนเป็น =<ชื่อ/เลขใบรับ>"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -23595,7 +23687,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-deprcv-change",
+        "target": "pos-reg-deprcv-form",
         "state": "changes",
         "note": "cash / promptpay (ใบขอรับเงิน pi_ แบบจอชำระ · ไม่มีใบ = QR นิ่ง + ยืนยันเองตาม HF-PP) / card (EDC + เลขอ้างอิง · ยืนยันเองตาม HF-PP)"
       },
@@ -28628,7 +28720,8 @@
       "query": "unit=[unitId]",
       "hiddenFor": [],
       "opener": [
-        "pos-settings-nav-board"
+        "pos-settings-nav-board",
+        "pos-settings-board-default=*"
       ],
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
@@ -29005,7 +29098,8 @@
       "query": "unit=[unitId]",
       "hiddenFor": [],
       "opener": [
-        "pos-settings-nav-board"
+        "pos-settings-nav-board",
+        "pos-settings-board-room-default=*"
       ],
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
@@ -29133,7 +29227,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-settings-nav-board"
+        "pos-settings-nav-board",
+        "pos-settings-board-room-default=*"
       ],
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
@@ -29160,7 +29255,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-settings-nav-board"
+        "pos-settings-nav-board",
+        "pos-settings-board-room-default=*"
       ],
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
@@ -29509,7 +29605,7 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บริษัทใน CRM ที่ค้นเจอด้วยคำค้นของตัวกด"
+        "fixture ขาด: ร้าน posqc-coffee ไม่มีระบบ CRM/บริษัท (scripts/pos-qc-env.mts PQC.coffee.systems = POS/INVENTORY/ACCOUNT/MEMBER/POINT) · opener pos-settings-credit-search=* ได้ \"20\" (คำ credit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) — ต้องมีบริษัท CRM ชื่อตายตัวแล้วเปลี่ยนเป็น =<ชื่อบริษัท>"
       ]
     },
     {
