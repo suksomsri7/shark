@@ -799,6 +799,962 @@
    "wo": "H1.1",
    "oracle": "qc-hr-h1.1",
    "note": "R12.4 — กู้คืนได้หลังเปลี่ยนสถานะการจ้างเป็นทดลองงาน/ประจำที่โปรไฟล์"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-page",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "หน้าตั้งค่าแบบย่อ (stub · ไม่อ้างภาพ 08)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-stub-note",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "role=note บอกว่าเป็นหน้าย่อ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-message",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "หลังกดบันทึก (?msg=)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "role=alert ผลการกด (ข้อความไทยคงที่จาก action)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "รายการกะที่ใช้อยู่ (ทั้งร้าน + สาขาในขอบเขต)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "แถวกะ · * = id กะ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-archive-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:archiveShiftAction",
+    "db": "HrShift.active=false"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ปิดใช้กะ · * = id กะ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createShiftAction",
+    "db": "HrShift"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ฟอร์มเพิ่มกะ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-name",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ชื่อกะ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-start",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "เวลาเริ่ม HH:MM"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-end",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "เวลาเลิก HH:MM"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-break",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "พัก (นาที)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "สาขา (ทั้งร้าน = เฉพาะผู้ดูแลทุกสาขา)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-overnight",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ติ๊กข้ามเที่ยงคืน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-shift-add",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createShiftAction",
+    "db": "HrShift"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ปุ่มเพิ่มกะ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "รายการประเภทการลา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "แถวประเภทการลา · * = id"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-archive-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:archiveLeavePolicyAction",
+    "db": "HrLeavePolicy.active=false"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ปิดใช้ประเภทการลา · * = id"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createLeavePolicyAction",
+    "db": "HrLeavePolicy"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ฟอร์มเพิ่มประเภทการลา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-name",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ชื่อประเภท"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-category",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "หมวด (HrLeaveType)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-quota",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "โควตาวัน (ทีละ 0.5 · ว่าง = ไม่จำกัด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "สาขา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-paid",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ได้/ไม่ได้รับค่าจ้าง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-add",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createLeavePolicyAction",
+    "db": "HrLeavePolicy"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ปุ่มเพิ่มประเภทการลา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-year",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ปีของรายการวันหยุด (?year=)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-year-go",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/settings?year=*"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "เปลี่ยนปี"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "วันหยุดของปี"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "แถววันหยุด · * = id"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-delete-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:deleteHolidayAction",
+    "db": "HrHoliday (ลบจริง)"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ลบวันหยุด · * = id"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:upsertHolidayAction",
+    "db": "HrHoliday"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ฟอร์มเพิ่มวันหยุด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-date",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "วันที่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-name",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ชื่อวันหยุด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-kind",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ราชการ / ร้าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-unit",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "สาขา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-holiday-add",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:upsertHolidayAction",
+    "db": "HrHoliday"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "ปุ่มเพิ่มวันหยุด"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "hr-link-settings",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/settings"
+   },
+   "wo": "H1.2",
+   "oracle": "qc-hr-h1.2",
+   "note": "การ์ดลิงก์จากหน้าภาพรวม HR"
   }
  ]
 }

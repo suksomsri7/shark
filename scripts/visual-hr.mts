@@ -59,6 +59,8 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "register-branch-manager", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["manager-branch"], why: "ทะเบียนของผู้จัดการสาขา: เฉพาะสาขาหัวหิน + เจที่ยืมตัวเข้ามา · ไม่มีชิป (H1.1)" },
     { key: "profile-unit", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.namfon}`, users: ["owner", "manager-branch"], why: "โปรไฟล์: สาขาประจำ · สถานะการจ้าง · วันครบทดลองงาน/สิ้นสุดสัญญา (H1.1)" },
   ],
+  // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (กะ · ประเภทการลา · วันหยุด) — ไม่อ้างว่าตรงภาพ 08 · เจ้าของ (ทุกสาขา) + ผู้จัดการสาขา (เห็นทั้งร้าน + หัวหิน) ◂
+  "1.2": [{ key: "settings-stub", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner", "manager-branch"], why: "หน้าตั้งค่าแบบย่อ: กะ 4 · ประเภทการลา 4 · วันหยุด 2 (H1.2)" }],
 };
 const VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false, touch: false },
