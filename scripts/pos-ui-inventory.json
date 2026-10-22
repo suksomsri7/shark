@@ -1093,7 +1093,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-cart-line-*"
+        "pos-reg-cart-line-*",
+        "pos-reg-editor-qty-inc=click"
       ]
     },
     {
@@ -1450,7 +1451,10 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-bill-discount"
+        "pos-reg-bill-discount",
+        "pos-reg-bill-discount-value=10",
+        "pos-reg-bill-discount-apply=click",
+        "pos-reg-bill-discount-edit=click"
       ]
     },
     {
@@ -2170,7 +2174,7 @@
         "pos-reg-cart-view",
         "pos-reg-pay"
       ],
-      "needs": "IDEMPOTENCY_CONFLICT (คีย์บิลนี้มีบิลแล้ว)"
+      "needs": "ผลส่งบิลชนคีย์ (IDEMPOTENCY_CONFLICT · กล่อง pos-reg-paydlg-conflict)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2480,7 +2484,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-note"
+        "pos-reg-note",
+        "pos-reg-note-input=*"
       ]
     },
     {
@@ -2664,7 +2669,10 @@
       "oracle": "qc-pos-p1.2",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
+      "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)",
+      "opener": [
+        "pos-reg-options-qty-inc=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -3360,7 +3368,11 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "กะเปิดของเครื่องนี้ (fixture เปิดกะให้เครื่องของตัวกด)",
-      "safety": "money"
+      "safety": "money",
+      "opener": [
+        "pos-shift-close-coins=100",
+        "pos-shift-close-note=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/shifts",
@@ -4479,9 +4491,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4504,9 +4516,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4529,9 +4541,9 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-menu"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4554,9 +4566,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4578,9 +4590,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4603,9 +4615,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4628,9 +4640,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4678,9 +4690,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4702,9 +4714,9 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-stock-tab-count",
-        "pos-stock-start-submit"
-      ]
+        "pos-stock-tab-count"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4728,10 +4740,10 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-confirm",
         "pos-stock-confirm-uncounted-zero=click"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4755,9 +4767,9 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-confirm"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4781,9 +4793,9 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-confirm"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4807,10 +4819,10 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-menu",
         "pos-stock-count-cancel"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4834,10 +4846,10 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-menu",
         "pos-stock-count-cancel"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4861,11 +4873,11 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-menu",
         "pos-stock-count-cancel",
         "pos-stock-cancel-reason=*"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4889,10 +4901,10 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-confirm",
         "pos-stock-confirm-submit"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4916,10 +4928,10 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
-        "pos-stock-start-submit",
         "pos-stock-count-confirm",
         "pos-stock-confirm-submit"
-      ]
+      ],
+      "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4940,7 +4952,11 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive"
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -4960,7 +4976,11 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive"
+      ],
+      "query": "tab=receive"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
@@ -7837,7 +7857,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-settings-nav-devices"
+        "pos-settings-nav-devices",
+        "pos-device-mode-bt"
       ],
       "needs": "เครื่องของเบราว์เซอร์นี้ลงทะเบียนแล้วและตั้งโหมด USB/Bluetooth (DeviceSettings.tsx:540 isMine)"
     },
@@ -7863,6 +7884,7 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-devices",
+        "pos-device-mode-bt",
         "pos-device-pair"
       ],
       "needs": [
@@ -7892,6 +7914,7 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-devices",
+        "pos-device-mode-bt",
         "pos-device-pair"
       ],
       "needs": [
@@ -7922,6 +7945,7 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-devices",
+        "pos-device-mode-bt",
         "pos-device-pair"
       ],
       "needs": "เครื่องของเบราว์เซอร์นี้ลงทะเบียนแล้วและตั้งโหมด USB/Bluetooth (DeviceSettings.tsx:540 isMine)"
@@ -9357,7 +9381,7 @@
       "opener": [
         "pos-lock-now-mobile",
         "pos-lock-now",
-        "pos-lock-key-*"
+        "pos-lock-key-*=click"
       ]
     },
     {
@@ -9619,7 +9643,7 @@
         "pos-reg-bill-discount-percent",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
-        "pos-discount-over-manager"
+        "pos-discount-over-manager=click"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
@@ -9653,7 +9677,7 @@
         "pos-reg-bill-discount-percent",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
-        "pos-discount-over-manager"
+        "pos-discount-over-manager=click"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
@@ -9687,8 +9711,8 @@
         "pos-reg-bill-discount-percent",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
-        "pos-discount-over-manager",
-        "pos-discount-over-key-*"
+        "pos-discount-over-manager=click",
+        "pos-discount-over-key-*=click"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
@@ -9722,8 +9746,8 @@
         "pos-reg-bill-discount-percent",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
-        "pos-discount-over-manager",
-        "pos-discount-over-key-*"
+        "pos-discount-over-manager=click",
+        "pos-discount-over-key-*=click"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
@@ -9758,7 +9782,7 @@
         "pos-reg-bill-discount-percent",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
-        "pos-discount-over-manager"
+        "pos-discount-over-manager=click"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
@@ -10020,7 +10044,7 @@
         "pos-lock-now-mobile",
         "pos-lock-now",
         "pos-lock-override-open",
-        "pos-mgr-pin-manager"
+        "pos-mgr-pin-manager=click"
       ],
       "needs": [
         "พนักงานนอกตารางงาน HR (OFF_SCHEDULE · ด่านตารางเปิด)",
@@ -10050,7 +10074,7 @@
         "pos-lock-now-mobile",
         "pos-lock-now",
         "pos-lock-override-open",
-        "pos-mgr-pin-manager"
+        "pos-mgr-pin-manager=click"
       ],
       "needs": [
         "พนักงานนอกตารางงาน HR (OFF_SCHEDULE · ด่านตารางเปิด)",
@@ -10080,8 +10104,8 @@
         "pos-lock-now-mobile",
         "pos-lock-now",
         "pos-lock-override-open",
-        "pos-mgr-pin-manager",
-        "pos-mgr-pin-key-*"
+        "pos-mgr-pin-manager=click",
+        "pos-mgr-pin-key-*=click"
       ],
       "needs": [
         "พนักงานนอกตารางงาน HR (OFF_SCHEDULE · ด่านตารางเปิด)",
@@ -10111,8 +10135,8 @@
         "pos-lock-now-mobile",
         "pos-lock-now",
         "pos-lock-override-open",
-        "pos-mgr-pin-manager",
-        "pos-mgr-pin-key-*"
+        "pos-mgr-pin-manager=click",
+        "pos-mgr-pin-key-*=click"
       ],
       "needs": [
         "พนักงานนอกตารางงาน HR (OFF_SCHEDULE · ด่านตารางเปิด)",
@@ -10143,7 +10167,7 @@
         "pos-lock-now-mobile",
         "pos-lock-now",
         "pos-lock-override-open",
-        "pos-mgr-pin-manager"
+        "pos-mgr-pin-manager=click"
       ],
       "needs": [
         "พนักงานนอกตารางงาน HR (OFF_SCHEDULE · ด่านตารางเปิด)",
@@ -11486,7 +11510,8 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-coupon"
+        "pos-reg-coupon",
+        "pos-reg-coupon-input=*"
       ]
     },
     {
@@ -13575,7 +13600,7 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-add",
-        "pos-channel-drawer-payout-platform"
+        "pos-channel-drawer-payout-platform=click"
       ]
     },
     {
@@ -13601,7 +13626,7 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-add",
-        "pos-channel-drawer-payout-platform"
+        "pos-channel-drawer-payout-platform=click"
       ]
     },
     {
@@ -13628,7 +13653,7 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-add",
-        "pos-channel-drawer-payout-platform"
+        "pos-channel-drawer-payout-platform=click"
       ]
     },
     {
@@ -14320,7 +14345,7 @@
       "system": "POS",
       "opener": [
         "pos-prod-*open-*",
-        "pos-prod-price-edit",
+        "pos-prod-price-edit=click",
         "pos-prod-drawer-cell-*-*=*"
       ],
       "safety": "money"
@@ -17696,7 +17721,7 @@
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
         "pos-tbl-split-qty-*",
-        "pos-tbl-split-qty-*-more-*"
+        "pos-tbl-split-qty-*-more-*=click"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -17824,7 +17849,7 @@
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
         "pos-tbl-split-tab-seat",
-        "pos-tbl-split-pick-*"
+        "pos-tbl-split-pick-*=click"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -17856,7 +17881,7 @@
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
         "pos-tbl-split-tab-seat",
-        "pos-tbl-split-pick-*"
+        "pos-tbl-split-pick-*=click"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -17978,8 +18003,8 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-tab-equal",
-        "pos-tbl-split-stepper-more"
+        "pos-tbl-split-tab-equal=on",
+        "pos-tbl-split-stepper-more=click"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -18291,7 +18316,7 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-tab-equal=on",
         "pos-tbl-split-save"
       ],
       "needs": [
@@ -18322,7 +18347,7 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-tab-equal=on",
         "pos-tbl-split-save"
       ],
       "needs": [
@@ -18354,7 +18379,7 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-tab-equal=on",
         "pos-tbl-split-save",
         "pos-tbl-split-cancel"
       ],
@@ -18387,7 +18412,7 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-tab-equal=on",
         "pos-tbl-split-save",
         "pos-tbl-split-cancel"
       ],
@@ -18420,7 +18445,7 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-tab-equal"
+        "pos-tbl-split-tab-equal=on"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -18450,7 +18475,7 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-tab-equal=on",
         "pos-tbl-split-select-*"
       ],
       "needs": [
@@ -18642,7 +18667,7 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-mergeTable",
-        "pos-tbl-merge-pick-*"
+        "pos-tbl-merge-pick-*=click"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -20375,7 +20400,7 @@
       "opener": [
         "pos-ord-manual",
         "pos-ord-man-product-*",
-        "pos-ord-man-line-more-*"
+        "pos-ord-man-line-more-*=click"
       ],
       "needs": "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก"
     },
@@ -20557,7 +20582,7 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-ord-manual",
-        "pos-ord-man-product-*"
+        "pos-ord-man-product-*=click"
       ],
       "needs": [
         "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก",
@@ -20661,7 +20686,7 @@
       "safety": "counter",
       "opener": [
         "pos-ord-manual",
-        "pos-ord-man-product-*"
+        "pos-ord-man-product-*=click"
       ],
       "needs": [
         "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก",
@@ -20759,7 +20784,7 @@
         "tablet"
       ],
       "opener": [
-        "pos-kds-tab-expo"
+        "pos-kds-tab-expo=on"
       ],
       "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
@@ -21549,7 +21574,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-ord-kitchen-max-plus"
+        "pos-ord-kitchen-max-plus=click"
       ],
       "needs": "สาขามีสถานีครัว (kdsKitchenState backlog > 0 · src/components/pos/orders/OrdersRail.tsx:141)"
     },
@@ -21791,7 +21816,8 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-pay",
-        "pos-reg-paydlg-method-giftcard"
+        "pos-reg-paydlg-method-giftcard",
+        "pos-reg-paydlg-giftcard-number=*"
       ],
       "needs": "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled) + บัตร GC ของร้าน"
     },
@@ -22084,7 +22110,8 @@
       "system": "POS",
       "query": "tab=payments&unit=[unitId]",
       "opener": [
-        "pos-settings-nav-payments"
+        "pos-settings-nav-payments",
+        "pos-settings-tip-ledger=*"
       ],
       "needs": "POS เชื่อมสมุดบัญชีที่มีบัญชีหนี้สิน (posTipLedgersAction)"
     },
@@ -22902,7 +22929,8 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-pay",
-        "pos-reg-paydlg-method-deposit"
+        "pos-reg-paydlg-method-deposit",
+        "pos-reg-paydlg-deposit-search=*"
       ],
       "needs": "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled) + มัดจำ OPEN ของร้าน"
     },
@@ -28650,7 +28678,7 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-board",
-        "pos-settings-board-rule-refundNeeded"
+        "pos-settings-board-rule-refundNeeded=click"
       ]
     },
     {
@@ -28859,7 +28887,7 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-board",
-        "pos-settings-board-post-shiftClose"
+        "pos-settings-board-post-shiftClose=click"
       ]
     },
     {
@@ -30077,7 +30105,7 @@
       "query": "unit=[unitId]&tab=devices",
       "opener": [
         "pos-settings-nav-devices",
-        "pos-device-mode-lan"
+        "pos-device-mode-lan=click"
       ],
       "needs": [
         "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)",
