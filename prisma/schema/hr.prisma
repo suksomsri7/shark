@@ -77,6 +77,10 @@ model HrEmployee {
   pinHash      String?
   pinSetAt     DateTime?
   linkedUserId String? // ผูก User ถ้ามีบัญชี
+  // HR H0.7 ▸ 1 บัญชี ↔ พนักงาน 1 คนต่อร้าน = partial unique "HrEmployee_tenantId_linkedUserId_key" (SQL ดิบใน migration
+  //   20261203000000_hr_link_unique_requester — Prisma ประกาศ WHERE ไม่ได้) · linkApprovedById = user ที่ยืนยันการผูกบัญชี
+  //   (ผูกพนักงานที่มีข้อมูลเงินเดือน = ผู้ดูเงินเดือนเท่านั้น) · ถอนสิทธิ์ (revokeStaffAccess) ล้างทั้งสองช่อง ◂
+  linkApprovedById String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -171,6 +175,8 @@ model HrLeave {
   status      HrLeaveStatus @default(PENDING)
   reason      String?
   decidedById String?
+  // HR H0.7 ▸ user ที่ยื่นแทน (ผู้จัดการ/HR) · null = พนักงานยื่นเอง ◂
+  filedById   String?
   createdAt   DateTime      @default(now())
 
   @@index([systemId, status])
