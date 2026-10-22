@@ -7614,7 +7614,7 @@
         "type": "mutation",
         "target": "updateDeviceAction",
         "note": "blur/Enter = patch {id, posRegNo} (ว่าง = null)",
-        "db": "PosDevice posRegNo (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
+        "db": "PosDevice posRegNo (updateDeviceAction · device.ts:271 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -7692,7 +7692,7 @@
         "type": "mutation",
         "target": "updateDeviceAction",
         "note": "printerConfig.mode = escpos-bt (ชุดค่าของ parsePrinterConfig)",
-        "db": "PosDevice printerConfig.mode escpos-bt (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
+        "db": "PosDevice printerConfig.mode escpos-bt (updateDeviceAction · device.ts:271 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -7797,7 +7797,7 @@
         "type": "mutation",
         "target": "updateDeviceAction",
         "note": "printerConfig.autoPrint",
-        "db": "PosDevice printerConfig.autoPrint (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
+        "db": "PosDevice printerConfig.autoPrint (updateDeviceAction · device.ts:271 posDevice.updateMany)"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -10037,12 +10037,12 @@
         "pos-reg-bill-discount",
         "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
-        "pos-reg-bill-discount-apply",
-        "pos-discount-over-request"
+        "pos-reg-bill-discount-apply"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
-        "กติกาอนุมัติ POS_DISCOUNT_OVER ของร้าน (ApprovalPolicy) + คำขอที่รอ (21B)"
+        "กติกาอนุมัติ POS_DISCOUNT_OVER ของร้าน (ApprovalPolicy) + คำขอที่รอ (21B)",
+        "ไปถึงหลังกด pos-discount-over-request (แถว 386 · money: ApprovalRequest PENDING + PosHeldCart) — ตัวเปิดไม่กดปุ่มเงิน (CD-P41-F6 fix3) · P4.2 ตรวจต่อจากแถว 386"
       ]
     },
     {
@@ -10072,12 +10072,12 @@
         "pos-reg-bill-discount",
         "pos-reg-bill-discount-percent=click",
         "pos-reg-bill-discount-value=90",
-        "pos-reg-bill-discount-apply",
-        "pos-discount-over-request"
+        "pos-reg-bill-discount-apply"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
-        "กติกาอนุมัติ POS_DISCOUNT_OVER ของร้าน (ApprovalPolicy) + คำขอที่รอ (21B)"
+        "กติกาอนุมัติ POS_DISCOUNT_OVER ของร้าน (ApprovalPolicy) + คำขอที่รอ (21B)",
+        "ไปถึงหลังกด pos-discount-over-request (แถว 386 · money: ApprovalRequest PENDING + PosHeldCart) — ตัวเปิดไม่กดปุ่มเงิน (CD-P41-F6 fix3) · P4.2 ตรวจต่อจากแถว 386"
       ]
     },
     {
@@ -11641,7 +11641,7 @@
         "pos-member-register-phone=0812345678",
         "pos-member-register-name=ลูกค้า QC"
       ],
-      "needs": "เบอร์ 0812345678 ซ้ำข้ามรอบ/บทบาท = created:false ผูกคนเดิม ไม่สร้าง Customer ใหม่ (register-member.ts:309-312)"
+      "needs": "เบอร์ 0812345678 ซ้ำข้ามรอบ/บทบาท = created:false ผูกคนเดิม ไม่สร้าง Customer ใหม่ (register-member.ts:309-312) — รอบที่ 2 เป็นต้นไป created:false ไม่มีแถวใหม่ ⇒ P4.2 ล้าง/สุ่มเบอร์ (CD-P41-F22)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11893,6 +11893,9 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
+        "pos-reg-member-pick=click",
+        "pos-member-search=0899000001",
+        "pos-member-row-*=click",
         "pos-reg-pay"
       ],
       "needs": "สมาชิกในบิลที่มีว่อชเชอร์ใช้ได้"
@@ -19700,7 +19703,7 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "safety": "counter",
+      "safety": "money",
       "needs": [
         "ออเดอร์สถานะ NEW (ไม่ใช่รอเงินเข้า)",
         "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
@@ -19860,7 +19863,7 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "safety": "counter",
+      "safety": "money",
       "opener": [
         "pos-ord-card-*"
       ],
@@ -21012,7 +21015,7 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "safety": "counter",
+      "safety": "money",
       "opener": [
         "pos-ord-manual",
         "pos-ord-man-product-*=click",
@@ -27576,10 +27579,12 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-offline-pay-cash",
-        "pos-reg-offline-confirm"
+        "pos-reg-offline-pay-cash"
       ],
-      "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)"
+      "needs": [
+        "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)",
+        "ไปถึงหลังกด pos-reg-offline-confirm (แถว 1053 · บันทึกบิลลงคิวออฟไลน์ → ซิงก์เป็น PosSale) — ตัวเปิดไม่กดปุ่มนี้ (CD-P41-F6 fix3) · P4.2 ตรวจต่อจากแถว 1053"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -27871,10 +27876,12 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-offline-pay-cash",
-        "pos-reg-offline-confirm"
+        "pos-reg-offline-pay-cash"
       ],
-      "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)"
+      "needs": [
+        "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)",
+        "ไปถึงหลังกด pos-reg-offline-confirm (แถว 1053 · บันทึกบิลลงคิวออฟไลน์ → ซิงก์เป็น PosSale) — ตัวเปิดไม่กดปุ่มนี้ (CD-P41-F6 fix3) · P4.2 ตรวจต่อจากแถว 1053"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -27899,10 +27906,12 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-offline-pay-cash",
-        "pos-reg-offline-confirm"
+        "pos-reg-offline-pay-cash"
       ],
-      "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)"
+      "needs": [
+        "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)",
+        "ไปถึงหลังกด pos-reg-offline-confirm (แถว 1053 · บันทึกบิลลงคิวออฟไลน์ → ซิงก์เป็น PosSale) — ตัวเปิดไม่กดปุ่มนี้ (CD-P41-F6 fix3) · P4.2 ตรวจต่อจากแถว 1053"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -30922,9 +30931,9 @@
         "pos-device-lan-add",
         "pos-device-lan-name=*",
         "pos-device-lan-printer-name-*=*",
-        "pos-device-lan-printer-host-*=192.168.1.50",
-        "pos-device-lan-submit"
-      ]
+        "pos-device-lan-printer-host-*=192.168.1.50"
+      ],
+      "needs": "ไปถึงหลังกด pos-device-lan-submit (แถว 1182 · external: ลงทะเบียนตัวช่วยพิมพ์ LAN) — ตัวเปิดไม่กดปุ่ม external (CD-P41-F6 fix3)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -30951,9 +30960,9 @@
         "pos-device-lan-add",
         "pos-device-lan-name=*",
         "pos-device-lan-printer-name-*=*",
-        "pos-device-lan-printer-host-*=192.168.1.50",
-        "pos-device-lan-submit"
-      ]
+        "pos-device-lan-printer-host-*=192.168.1.50"
+      ],
+      "needs": "ไปถึงหลังกด pos-device-lan-submit (แถว 1182 · external: ลงทะเบียนตัวช่วยพิมพ์ LAN) — ตัวเปิดไม่กดปุ่ม external (CD-P41-F6 fix3)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -31236,8 +31245,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
-        "target": "pos-slip-error",
-        "note": "attachSlipAction (FormData) → สลิป UPLOADED (หลักฐาน) · คำปฏิเสธ = pos.platform.slip.errors.<camel>",
+        "target": "pos-pay-intent-slip-chip",
+        "note": "attachSlipAction (FormData) → สลิป UPLOADED (หลักฐาน) · คำปฏิเสธ = pos.platform.slip.errors.<camel> · สำเร็จ = ชิปสถานะสลิป pos-pay-intent-slip-chip (SlipAttach.tsx:204-208) · pos-slip-error มีเฉพาะตอนปฏิเสธ",
         "db": "PosPaymentSlip UPLOADED (attachSlipAction)"
       },
       "wo": "P3-SKEL U",
