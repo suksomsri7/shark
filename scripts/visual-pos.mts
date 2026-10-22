@@ -8012,113 +8012,130 @@ async function p36uRestore(): Promise<string> {
 const p36uPosCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId });
 async function ensureP36uFixture(): Promise<void> {
   if (P36U.done || P36U.error) return;
+  /** fix3: ทุกขั้นของ fixture ห่อชื่อขั้น + ค่าที่ใช้ — ล้ม = StepError "ขั้น (ค่า): เหตุ" */
+  const at = async <R,>(stepName: string, value: unknown, fn: () => Promise<R>): Promise<R> => {
+    try {
+      return await fn();
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      throw new StepError(`${stepName} (${JSON.stringify(value ?? null).slice(0, 90)}): ${why.slice(0, 140)}`);
+    }
+  };
   try {
-    await p36uGuard();
+    await at("ด่านร้าน QC", { tenantId: T.tenantId, SYS }, p36uGuard);
     const want = (re: RegExp) => jobs.some((j) => isP36uState(j.state) && re.test(j.state));
-    const owner = await ownerActor();
-    await p36uRemember();
-    // ระบบ CRM ของร้าน QC (active ตัวแรก · ไม่มี = สร้าง · เก็บไว้)
+    const owner = await at("เจ้าของร้าน QC", T.users.owner.membershipId, ownerActor);
+    await at("จดค่าตั้งเดิม", "settings.pos.credit/.orders", p36uRemember);
+    // ระบบ CRM ของร้าน QC (active ตัวแรก · ไม่มี = สร้าง · เก็บไว้) — probe fix3: QC4 ไม่มีระบบ CRM ⇒ ทางสร้าง
     const sysSvc = await import("@/lib/modules/system/service");
     const crmSys = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type: "CRM", active: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true } });
     if (crmSys) P36U.crmSystemId = crmSys.id;
     else {
-      P36U.crmSystemId = (await sysSvc.createSystem(T.tenantId, "CRM", P36U_CRM_NAME)).id;
+      P36U.crmSystemId = (await at("สร้างระบบ CRM", P36U_CRM_NAME, () => sysSvc.createSystem(T.tenantId, "CRM", P36U_CRM_NAME))).id;
       P36U.crmCreated = true;
     }
     P36U.log.push(`ระบบ CRM ${P36U.crmSystemId}${P36U.crmCreated ? ` (สร้าง "${P36U_CRM_NAME}")` : ` (${crmSys?.name ?? ""})`}`);
     const crm = (await import("@/lib/modules/crm")) as Any;
     const cctx = { tenantId: T.tenantId, systemId: P36U.crmSystemId, actorUserId: owner.userId };
-    const coRow = (id: string) => prisma.crmCompany.findFirst({ where: { id, tenantId: T.tenantId }, select: { id: true, partyId: true, name: true, taxId: true } });
+    const coRow = (id: string) => prisma.crmCompany.findFirst({ where: { id, tenantId: T.tenantId }, select: { id: true, partyId: true, name: true, taxId: true, archivedAt: true } });
     for (const k of ["co", "co2"] as const) {
       const spec = P36U_CO[k];
-      let row = await prisma.crmCompany.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, note: spec.tag, archivedAt: null, mergedIntoId: null }, select: { id: true, partyId: true, name: true, taxId: true } });
+      // ฟิลด์ที่ผ่าน probe: name ≤ COMPANY_NAME_MAX · taxId 13 หลักผ่าน taxIdProblem · branchCode "00000" · note = แท็ก (ไม่มี source)
+      let row = await prisma.crmCompany.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, note: spec.tag, archivedAt: null, mergedIntoId: null }, select: { id: true, partyId: true, name: true, taxId: true, archivedAt: true } });
       if (!row) {
-        const r = await crm.companies.createCompany(cctx, owner, { name: spec.name, taxId: spec.taxId, branchCode: "00000", note: spec.tag });
+        const input = { name: spec.name, taxId: spec.taxId, branchCode: "00000", note: spec.tag };
+        const r = await at(`createCompany ${spec.tag}`, input, () => crm.companies.createCompany(cctx, owner, input));
+        if (!r?.created && r?.duplicateArchived) throw new StepError(`createCompany ${spec.tag} (taxId ${spec.taxId}): ชนบริษัทที่เก็บถาวรแล้ว ${r?.duplicateOf} — กู้คืนใน CRM ก่อน`);
         const id = r?.created ? r.company?.id : (r?.duplicateOf ?? r?.company?.id);
         row = id ? await coRow(String(id)) : null;
-        if (!row) throw new StepError(`สร้างบริษัท ${spec.tag} ไม่ได้ (${JSON.stringify(r ?? null).slice(0, 80)})`);
-        P36U.log.push(`บริษัท ${spec.tag} ${r?.created ? "สร้าง" : "ใช้ตัวซ้ำ"}`);
+        if (!row) throw new StepError(`createCompany ${spec.tag} (${JSON.stringify(input).slice(0, 80)}): ไม่ได้แถวบริษัท (${JSON.stringify(r ?? null).slice(0, 80)})`);
+        P36U.log.push(`บริษัท ${spec.tag} ${r?.created ? "สร้าง" : "ใช้ตัวซ้ำ (taxId เดียวกัน)"}`);
       }
-      P36U[k] = row;
+      P36U[k] = { id: row.id, partyId: row.partyId, name: row.name, taxId: row.taxId };
     }
-    // ผู้ติดต่อของสมาชิก QC → -co (ส่วน "บริษัทของสมาชิกนี้") — เบอร์เดียวกับสมาชิก ⇒ Party ของสมาชิก (personParty ของ CRM)
+    // ผู้ติดต่อของสมาชิก QC → -co (probe fix3: Party ของสมาชิกมีเบอร์ 0899000001 · contactPhoneProblem null · ที่มา = ค่าปริยาย "CRM" ของตัวเขียน — ไม่ส่ง sourceKind)
     const C = T as Any;
     const mem = C.member?.phone && C.systems?.MEMBER?.id ? await prisma.customer.findFirst({ where: { tenantId: T.tenantId, memberSystemId: C.systems.MEMBER.id, phone: C.member.phone, status: "ACTIVE" }, select: { id: true, partyId: true, name: true } }) : null;
     let contactId = "";
     if (!mem?.partyId) P36U.memberSkip = "ไม่พบสมาชิก QC/Party ของสมาชิก";
     else {
-      let ct = await prisma.crmContact.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, partyId: mem.partyId }, select: { id: true, partyId: true } });
-      if (!ct) {
-        const r = await crm.contacts.createContact(cctx, owner, { firstName: String(mem.name ?? C.member.name ?? "สมาชิก QC"), phone: C.member.phone, companyId: P36U.co!.id, sourceKind: "MANUAL" });
-        ct = r?.contact?.id ? await prisma.crmContact.findFirst({ where: { id: String(r.contact.id), tenantId: T.tenantId }, select: { id: true, partyId: true } }) : null;
+      let row = await prisma.crmContact.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, partyId: mem.partyId, archivedAt: null, mergedIntoId: null }, select: { id: true, partyId: true } });
+      if (!row) {
+        const input = { firstName: String(mem.name ?? C.member.name ?? "สมาชิก QC"), phone: String(C.member.phone), companyId: P36U.co!.id };
+        const r = await at("createContact (สมาชิก QC)", input, () => crm.contacts.createContact(cctx, owner, input));
+        row = r?.contact?.id ? await prisma.crmContact.findFirst({ where: { id: String(r.contact.id), tenantId: T.tenantId }, select: { id: true, partyId: true } }) : null;
       }
-      if (!ct) P36U.memberSkip = "สร้างผู้ติดต่อ CRM ของสมาชิกไม่ได้";
+      if (!row) P36U.memberSkip = "สร้างผู้ติดต่อ CRM ของสมาชิกไม่ได้";
       else {
-        contactId = ct.id;
-        const link = await prisma.crmCompanyContact.findFirst({ where: { tenantId: T.tenantId, companyId: P36U.co!.id, contactId: ct.id, endedAt: null }, select: { id: true } });
-        if (!link) await crm.companies.addContact(cctx, owner, P36U.co!.id, { contactId: ct.id, isPrimary: true });
-        P36U.memberSkip = ct.partyId === mem.partyId ? "" : "ผู้ติดต่อ CRM ไม่ได้ผูก Party ของสมาชิก QC";
+        contactId = row.id;
+        const link = await prisma.crmCompanyContact.findFirst({ where: { tenantId: T.tenantId, companyId: P36U.co!.id, contactId: row.id, endedAt: null }, select: { id: true } });
+        if (!link) await at("addContact (-co ← สมาชิก)", { companyId: P36U.co!.id, contactId: row.id }, () => crm.companies.addContact(cctx, owner, P36U.co!.id, { contactId: row!.id, isPrimary: true }));
+        P36U.memberSkip = row.partyId === mem.partyId ? "" : `ผู้ติดต่อ CRM ${row.id} ไม่ได้ผูก Party ของสมาชิก QC (${row.partyId} ≠ ${mem.partyId})`;
       }
     }
-    // ดีล OPEN 1 ใบของ -co (ผู้ติดต่อ = ผู้ติดต่อของสมาชิก หรือฝ่ายจัดซื้อของบริษัท)
-    const deal = await prisma.crmDeal.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, title: P36U_DEAL_TITLE, companyId: P36U.co!.id, closedAt: null }, select: { id: true } });
+    // ดีล OPEN 1 ใบของ -co (deals.createDeal ต้องมี pipeline ที่มีขั้น OPEN · ระบบใหม่ไม่มี ⇒ สร้างตามขั้นปริยายของโมดูล DEFAULT_PIPELINE)
+    const deal = await prisma.crmDeal.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, title: P36U_DEAL_TITLE, companyId: P36U.co!.id, kind: "OPEN", archivedAt: null }, select: { id: true } });
     if (deal) P36U.dealId = deal.id;
     else {
       if (!contactId) {
-        const r = await crm.contacts.createContact(cctx, owner, { firstName: `ฝ่ายจัดซื้อ (${P36U_REASON})`, companyId: P36U.co!.id, sourceKind: "MANUAL" });
+        const input = { firstName: `ฝ่ายจัดซื้อ (${P36U_REASON})`, companyId: P36U.co!.id };
+        const r = await at("createContact (ฝ่ายจัดซื้อ -co)", input, () => crm.contacts.createContact(cctx, owner, input));
         contactId = String(r?.contact?.id ?? "");
       }
-      const pls = (await crm.pipelines.listPipelines(cctx, owner)) as Any[];
-      let pl = pls.find((x) => x.isDefault && !x.archivedAt) ?? pls.find((x) => !x.archivedAt) ?? null;
-      if (!pl)
-        pl = await crm.pipelines.createPipeline(cctx, owner, {
-          name: `ขายองค์กร (${P36U_REASON})`,
-          isDefault: true,
-          stages: [
-            { name: "เสนอราคา", kind: "OPEN", probability: 30 },
-            { name: "ชนะ", kind: "WON", probability: 100 },
-            { name: "แพ้", kind: "LOST", probability: 0 },
-          ],
-        });
-      if (!pl?.id || !contactId) P36U.dealSkip = "ไม่มีไปป์ไลน์/ผู้ติดต่อของดีล";
+      const pls = (await at("listPipelines", P36U.crmSystemId, () => crm.pipelines.listPipelines(cctx, owner))) as Any[];
+      const openOf = (x: Any) => !x.archivedAt && Array.isArray(x.stages) && x.stages.some((s: Any) => s.kind === "OPEN");
+      let pl = pls.find((x) => x.isDefault && openOf(x)) ?? pls.find(openOf) ?? null;
+      if (!pl) {
+        const { DEFAULT_PIPELINE } = (await import("@/lib/modules/crm/rules")) as Any;
+        const input = { name: DEFAULT_PIPELINE.name, isDefault: true, stages: DEFAULT_PIPELINE.stages.map((s: Any) => ({ name: s.name, kind: s.kind, probability: s.probability })) };
+        pl = await at("createPipeline (ขั้นปริยายของโมดูล)", input.stages.map((s: Any) => `${s.name}:${s.kind}`), () => crm.pipelines.createPipeline(cctx, owner, input));
+        P36U.log.push(`ไปป์ไลน์ปริยาย ${pl?.id}`);
+      }
+      if (!pl?.id || !contactId) P36U.dealSkip = `ไม่มีไปป์ไลน์ (${pl?.id ?? "-"}) / ผู้ติดต่อ (${contactId || "-"}) ของดีล`;
       else {
-        const d = await crm.deals.createDeal(cctx, owner, { pipelineId: pl.id, title: P36U_DEAL_TITLE, contactId, companyId: P36U.co!.id, valueSatang: 1_250_000 });
+        const input = { pipelineId: pl.id, title: P36U_DEAL_TITLE, contactId, companyId: P36U.co!.id, valueSatang: 1_250_000 };
+        const d = await at("createDeal", input, () => crm.deals.createDeal(cctx, owner, input));
         P36U.dealId = String(d?.id ?? "");
         P36U.log.push(`ดีล ${P36U.dealId}`);
       }
     }
     if (P36U.dealId) P36U.dealSkip = "";
-    // บัญชีเครดิต (ผู้เขียนเดียว saveCreditAccount) — ตรงค่าที่ต้องการแล้ว = ไม่เขียน
+    // บัญชีเครดิต (ผู้เขียนเดียว saveCreditAccount · Party บริษัท kind COMPANY จาก createCompany) — ตรงค่าที่ต้องการแล้ว = ไม่เขียน
     const credit = await import("@/lib/modules/pos/credit");
-    const listed = await credit.listCreditAccounts({ tenantId: T.tenantId, systemId: SYS }, owner);
+    const listed = await at("listCreditAccounts", SYS, () => credit.listCreditAccounts({ tenantId: T.tenantId, systemId: SYS }, owner));
     for (const k of ["co", "co2"] as const) {
       const co = P36U[k]!;
       const spec = P36U_CO[k];
       const cur = listed.ok ? listed.items.find((a) => a.partyId === co.partyId) : null;
       if (cur && cur.limitSatang === spec.limitSatang && cur.termDays === 30 && cur.active) continue;
-      const r = await credit.saveCreditAccount({ tenantId: T.tenantId, systemId: SYS }, owner, { partyId: co.partyId, limitSatang: spec.limitSatang, termDays: 30, active: true, note: null });
-      if (!r.ok) throw new StepError(`saveCreditAccount ${spec.tag}: ${r.code}`);
+      const input = { partyId: co.partyId, limitSatang: spec.limitSatang, termDays: 30, active: true, note: null };
+      const r = await at(`saveCreditAccount ${spec.tag}`, input, () => credit.saveCreditAccount({ tenantId: T.tenantId, systemId: SYS }, owner, input));
+      if (!r.ok) throw new StepError(`saveCreditAccount ${spec.tag} (${JSON.stringify(input)}): ${r.code}`);
       P36U.log.push(`วงเงิน ${spec.tag} ${spec.limitSatang / 100} บาท`);
     }
-    // ผู้จัดการของภาพ + PIN (แผ่นเกินวงเงิน)
+    // ผู้จัดการของภาพ + PIN (แผ่นเกินวงเงิน · setStaffPin: ผู้ตั้ง = เจ้าของ (pos.staff.manage) · เป้าหมายต้องขายที่สาขาได้ = MANAGER [สาขา])
     if (want(/credit-over/)) {
       const { setStaffPin } = await import("@/lib/modules/pos/staff-pin");
       const { randomInt } = await import("node:crypto");
-      await prisma.user.upsert({ where: { id: P36U_MGR.userId }, update: {}, create: { id: P36U_MGR.userId, email: P36U_MGR.email, name: P36U_MGR.name } });
+      await at("User ผู้จัดการของภาพ", P36U_MGR.userId, () => prisma.user.upsert({ where: { id: P36U_MGR.userId }, update: {}, create: { id: P36U_MGR.userId, email: P36U_MGR.email, name: P36U_MGR.name } }));
       P36U.mgr = true;
-      await prisma.membership.upsert({
-        where: { userId_tenantId: { userId: P36U_MGR.userId, tenantId: T.tenantId } },
-        update: { role: "MANAGER", unitAccess: [unitId] },
-        create: { id: P36U_MGR.membershipId, userId: P36U_MGR.userId, tenantId: T.tenantId, role: "MANAGER", unitAccess: [unitId], permissions: {}, acceptedAt: new Date() },
-      });
+      await at("Membership ผู้จัดการของภาพ", { role: "MANAGER", unitAccess: [unitId] }, () =>
+        prisma.membership.upsert({
+          where: { userId_tenantId: { userId: P36U_MGR.userId, tenantId: T.tenantId } },
+          update: { role: "MANAGER", unitAccess: [unitId] },
+          create: { id: P36U_MGR.membershipId, userId: P36U_MGR.userId, tenantId: T.tenantId, role: "MANAGER", unitAccess: [unitId], permissions: {}, acceptedAt: new Date() },
+        }),
+      );
+      let last = "";
       for (let i = 0; i < 6 && !P36U.mgrPin; i++) {
         const pin = String(randomInt(100000, 1000000));
         if (WEAK.has(pin) || Object.values(P115.pins).includes(pin)) continue;
-        const r = await setStaffPin(p36uPosCtx(), owner, { userId: P36U_MGR.userId, pin });
+        const r = await at("setStaffPin ผู้จัดการของภาพ", { unitId, userId: P36U_MGR.userId }, () => setStaffPin(p36uPosCtx(), owner, { userId: P36U_MGR.userId, pin }));
         if (r.ok) P36U.mgrPin = pin;
-        else if (r.code !== "PIN_TAKEN" && r.code !== "WEAK_PIN") throw new StepError(`ตั้ง PIN ผู้จัดการของภาพ: ${r.code}`);
+        else if (r.code !== "PIN_TAKEN" && r.code !== "WEAK_PIN") throw new StepError(`setStaffPin ผู้จัดการของภาพ (สาขา ${unitId}): ${r.code}`);
+        else last = r.code;
       }
-      if (!P36U.mgrPin) throw new StepError("ตั้ง PIN ผู้จัดการของภาพไม่ได้");
+      if (!P36U.mgrPin) throw new StepError(`setStaffPin ผู้จัดการของภาพ (สาขา ${unitId}): ไม่ได้ PIN หลังลอง 6 ครั้ง (${last})`);
       P36U.log.push(`ผู้จัดการของภาพ ${P36U_MGR.name} (PIN ที่สาขา ${unitKey})`);
     }
     if (want(/onaccount-buyer|paydone|^bills-|^reports-/)) {
@@ -8128,7 +8145,7 @@ async function ensureP36uFixture(): Promise<void> {
     if (want(/picker-member/)) await prepMemberFixture();
     P36U.done = true;
   } catch (e) {
-    P36U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+    P36U.error = e instanceof Error ? e.message.slice(0, 260) : String(e);
   }
 }
 async function prepP36u(state: P36uKey): Promise<void> {

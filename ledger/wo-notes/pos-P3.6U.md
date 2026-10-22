@@ -155,3 +155,28 @@ PRESUBMIT head=63747fad green=30 red=6 expected-lane-pin=5 unexpected-red=qc-acc
 - Fix `scripts/visual-pos.mts` `p36uGuard`: `tenantKey !== "coffee" || T.tenantId !== PQC.coffee.tenantId` ⇒ StepError (strict: the fixed QC coffee tenant id `posqc-coffee-tenant`, same identity as the P3.8U guard `T.tenantId.startsWith("posqc-")`, but exact) · message prints tenantId + key + slug · no new imports (PQC already imported) · POS-system check unchanged.
 - Probe (read-only · `iso.sh qc4.sh tsx` · QC4): `PROBE tenantId=posqc-coffee-tenant slug=pos-qc-coffee db.tenant={"id":"posqc-coffee-tenant","slug":"pos-qc-coffee"} POS=posqc-coffee-sys-pos sysFound=true old=false new=true guardPass=true` (temporary script removed, not committed).
 - `visual-pos p3.6u --states --dry` th (CI=1 · iso): owner rc 0 **43** · cashier rc 0 **18**.
+
+## Fix round 3 (controller B · harness only · builder 22 Oct 05:09Z `date -u`)
+- QC5 round 2: every shot failed at `fixture P3.6U: ที่มา "MANUAL" ยังไม่อยู่ในรายการ` — `crm.contacts.createContact` validates `sourceKind` against `CONTACT_SOURCES` (`WALK_IN POS BOOKING LINE_OA LIFF WEB_FORM CHAT REFERRAL IMPORT CRM CAMPAIGN API MARKETPLACE APP OTHER`); "MANUAL" is not one.
+- Pre-flight of every writer the fixture calls (read): `system/service.createSystem(tenantId, "CRM", name)` · `crm.companies.createCompany` (owner `crm.company.create`; name 1–200 · `taxIdProblem` 13-digit checksum · `branchCodeProblem` "00000" · note ≤ max · same taxId+branch in the system ⇒ `created:false, duplicateOf` (archived ⇒ `duplicateArchived`)) · `crm.contacts.createContact` (firstName required · `contactPhoneProblem` · `sourceKind` ∈ CONTACT_SOURCES, omitted ⇒ "CRM" · phone/e-mail duplicate in the system ⇒ existing row · Party resolved by phone) · `crm.companies.addContact` (`crm.company.update`) · `crm.pipelines.listPipelines` / `createPipeline` (`crm.settings.manage`; ≥ 1 OPEN stage) · `crm.deals.createDeal` (pipeline live with an OPEN stage · contact visible, not merged/archived · company visible) · `pos/credit.saveCreditAccount` (`pos.credit.manage` · limit 1…2e9 · term 0…365 · Party kind COMPANY not merged) · `staff-pin.setStaffPin` (actor `pos.staff.manage` at the unit · target must sell at the unit · taken/weak ⇒ `WEAK_PIN`) · `unlockStaffPin`.
+- Probe (temporary `scripts/p36u-fixture-probe.tmp.mts`, deleted · `env -C … ISO_MEM=3G bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx …` · QC4 · read-only, nothing created):
+```
+PROBE tenant: {"id":"posqc-coffee-tenant","slug":"pos-qc-coffee","guard":true}
+PROBE posSystem: {"id":"posqc-coffee-sys-pos","credit":null,"ordersHad":false,"memberOnBill":null,"leftover_qcP36uBefore":false}
+PROBE ownerCrmKeys: {"crm.company.create":true,"crm.company.update":true,"crm.contact.create":true,"crm.deal.create":true,"crm.deal.update":true,"crm.settings.manage":true}
+PROBE ownerPosKeys: {"pos.credit.manage":true,"pos.settings.manage":true,"pos.staff.manage":true,"pos.sale.create":true}
+PROBE crmSystems: none ⇒ harness would createSystem(…, "CRM", "ลูกค้าองค์กร (ภาพ QC P3.6U)")
+PROBE pipelines: new system ⇒ none ⇒ harness creates the module default stages (DEFAULT_PIPELINE)
+PROBE defaultPipelineStages: ["ผู้สนใจใหม่:OPEN","ติดต่อแล้ว:OPEN","เสนอราคา:OPEN","ปิดการขายได้:WON","ไม่สำเร็จ:LOST"]
+PROBE taxId co: {"problem":null,"normalized":"0105559360014","branchProblem":null,"dupInTenant":0}
+PROBE taxId co2: {"problem":null,"normalized":"0105559360022","branchProblem":null,"dupInTenant":0}
+PROBE member: {"id":"cmup7724k007o7pkzt3v8casu","partyId":"cmup7723s007n7pkzhsmmjv31","party":{"kind":"PERSON","phone":"0899000001","mergedIntoId":null},"phoneProblem":null}
+PROBE contactSources: {"default":"CRM (sourceKind omitted)","CRMListed":true,"MANUALListed":false}
+PROBE accountLinkPOS: {"systemId":"posqc-coffee-sys-acc"}
+PROBE creditAccounts: 0
+PROBE mgrUser: null
+PROBE queryShapes: {"deal":0,"contact":0,"link":0,"company":0,"sale":0}
+PROBE companyNameLen: {"co":30,"max":200}
+```
+- Harness changes (`scripts/visual-pos.mts` `ensureP36uFixture`): every step goes through `at(step, value, fn)` ⇒ `StepError "<step> (<value>): <reason>"` · contacts: **no `sourceKind`** (writer default "CRM", probe-confirmed) · companies: `duplicateArchived` ⇒ named StepError · contact lookup excludes archived/merged · deal lookup `kind OPEN ∧ archivedAt null` · pipeline: first default/any pipeline **with an OPEN stage**, else `createPipeline` with the module's own `DEFAULT_PIPELINE` stages (ผู้สนใจใหม่/ติดต่อแล้ว/เสนอราคา OPEN · ปิดการขายได้ WON · ไม่สำเร็จ LOST) · saveCreditAccount / setStaffPin refusals name the input · fix2 guard kept (first step).
+- `visual-pos p3.6u --states --dry` th (CI=1 · iso): owner rc 0 **43** · cashier rc 0 **18**.
