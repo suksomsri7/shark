@@ -21,6 +21,7 @@ import { parsePosIntentSettings, promptpayIdForUnit } from "@/lib/modules/pos/pa
 // POS P2.4U ▸ มติ 1/4/6: แท็บ "โต๊ะ" + ชิปทานที่ร้าน (registerTableMode) · ?table=<session> = หน้าขายผูกโต๊ะ ◂
 import { registerTableMode } from "@/lib/modules/pos/table";
 import { posOfflineEnabled } from "@/lib/modules/pos/offline-shared"; // POS P3.4U ▸ มติ 1 ◂
+import { posChatSettings } from "@/lib/modules/pos/chat-link-shared"; // POS P3.7U ▸ CD-P37U-7: ตัวอ่านบริสุทธิ์ของ settings.pos.chat ◂
 
 // หน้าขาย POS (cashier) — เปิดบิลเก็บเงิน walk-in เงินสด/พร้อมเพย์
 //
@@ -105,6 +106,7 @@ export default async function PosRegisterPage({
         oversellBlock={oversell === "BLOCK"}
         autoLockMinutes={posRegisterAutoLockMinutes(sys.settings)}
         offlineEnabled={posOfflineEnabled(sys.settings)} // POS P3.4U ▸ มติ 1: ปิด (ปริยาย) = จอแบบวันนี้ ◂
+        chatReceiptAuto={posChatSettings(sys.settings).receiptAuto} // POS P3.7U ▸ CD-P37U-7 ◂
         discountCaps={caps}
         payIntent={{
           beamCard: intentSet.beam.enabled && beamEnabled(),

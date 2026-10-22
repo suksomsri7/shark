@@ -18,10 +18,11 @@ import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text";
 import { ChannelChip, PlannedChip } from "./OrderCardView";
 import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, type OrdersChannel } from "./orders-ui";
+import { ChatPayBlock, isChatOrder, MemberTierText, type ChatPayTarget } from "./OrderChatBits"; // POS P3.7U ▸ CD-P37U-4: ลิงก์ชำระในแชท (ประตู A) · CD-P37U-6: ชื่อ/ระดับสมาชิก ◂
 
 export type PanelPerms = { accept: boolean; reject: boolean; create: boolean; voidSale: boolean };
 
-const EVENT_TYPES = new Set(["received", "accepted", "preparing", "ready", "completed", "rejected", "cancelled", "paid", "paid_reverted", "sale_bound", "prep_changed", "refunded", "held", "expired", "customer_paid_claim", "late_payment"]); // POS HF-FU ▸ a: + held (ครัวพักไว้) ◂ · POS P2.7U ▸ + expired · customer_paid_claim · late_payment ◂
+const EVENT_TYPES = new Set(["received", "accepted", "preparing", "ready", "completed", "rejected", "cancelled", "paid", "paid_reverted", "sale_bound", "prep_changed", "refunded", "held", "expired", "customer_paid_claim", "late_payment", "payment_requested" /* POS P3.7U ▸ CD-P37U-5 ◂ */]); // POS HF-FU ▸ a: + held (ครัวพักไว้) ◂ · POS P2.7U ▸ + expired · customer_paid_claim · late_payment ◂
 
 export function OrderPanel(p: {
   detail: OrderDetail | null;
@@ -52,6 +53,8 @@ export function OrderPanel(p: {
   kitchen?: { hasStations: boolean; progress: { done: number; total: number } | null };
   /** POS P2.7U ▸ ออเดอร์จ่ายก่อนที่ลูกค้าแจ้งโอน: ยืนยันรับเงิน (confirmPaymentIntentManual) · null = ยืนยันไม่ได้ (กติกาผู้จัดการ/สิทธิ์) ◂ */
   onConfirmPay?: (() => void) | null;
+  /** POS P3.7U ▸ CD-P37U-4: ส่งลิงก์ชำระในแชท — สาขา/เครื่อง + สาขามีพร้อมเพย์ไหม + โหลดใหม่หลังผล (ไม่ส่ง = ไม่มีบล็อก) ◂ */
+  chatPay?: ChatPayTarget;
 }) {
   const t = useTranslations("pos.orders");
   const tch = useTranslations("pos.channel");
@@ -149,6 +152,8 @@ export function OrderPanel(p: {
           ) : null}
         </div>
       ) : null}
+      {/* POS P3.7U ▸ CD-P37U-4: ออเดอร์แชท (ไม่ใช่แพลตฟอร์ม) ใหม่ที่ยังไม่จ่าย = ปุ่มส่งลิงก์ชำระในแชท + ผล (ไม่ขึ้นกับสวิตช์แชท · CD-P5) ◂ */}
+      {p.chatPay && isChatOrder(d) ? <ChatPayBlock key={d.id} d={d} target={p.chatPay} canAccept={p.perms.accept} canCreate={p.perms.create} busy={p.busy} now={p.now} /> : null}
       {d.prepay?.latePaid ? (
         <p data-testid="pos-ord-panel-late" role="alert" className="border-b px-5 py-3 text-[12.5px] font-bold text-[color:var(--color-danger)]">
           {t("late.banner", { amount: moneyText(d.totalSatang), ref: d.prepay.intentId ?? "-", order: d.ref })}
@@ -237,7 +242,8 @@ export function OrderPanel(p: {
         </p>
         <p className="flex justify-between gap-3">
           <span className="text-[color:var(--color-ink-soft)]">{t("detail.member")}</span>
-          <span className="text-[color:var(--color-muted)]">{d.memberId ? t("detail.isMember") : t("detail.notMember")}</span>
+          {/* POS P3.7U ▸ CD-P37U-6 (UI-13): สมาชิก = ชื่อ · ระดับ (ปฏิเสธ/ยังโหลด = เป็นสมาชิก) ◂ */}
+          {d.memberId && p.chatPay ? <MemberTierText key={`${d.id}:${d.memberId}`} target={p.chatPay} memberId={d.memberId} /> : <span className="text-[color:var(--color-muted)]">{d.memberId ? t("detail.isMember") : t("detail.notMember")}</span>}
         </p>
       </section>
 

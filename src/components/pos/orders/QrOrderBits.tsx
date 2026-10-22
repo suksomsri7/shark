@@ -115,6 +115,13 @@ export function AwaitingPayList(p: {
                     {left > 0 ? t("awaiting.left", { time: mmss(left) }) : t("awaiting.expiring")}
                   </span>
                 ) : null}
+                {/* POS P3.7U ▸ CD-P37U-5: ออเดอร์แชทที่ส่งลิงก์ชำระแล้ว (CHAT ∧ NEW ∧ PENDING_PAYMENT · จากสถานะออเดอร์ — POS ไม่มีตัวอ่านผลส่ง) + ชำระภายใน (หลัง mount) ◂ */}
+                {c.channel.adapter === "CHAT" && c.channel.payout !== "PLATFORM" ? (
+                  <span data-testid={`pos-ord-card-chatpay-${c.ref}`} className="mt-0.5 self-start rounded-[8px] bg-[color:var(--color-accent-soft)] px-2 py-0.5 text-[11.5px] font-bold text-[color:var(--color-accent)]">
+                    {t("chatPay.requested", { amount: moneyText(c.totalSatang) })}
+                    {c.prepay?.payBy && p.now !== null ? ` · ${t("chatPay.payBy", { time: bkkClock(c.prepay.payBy) })}` : ""}
+                  </span>
+                ) : null}
                 {claimed ? (
                   <span data-testid={`pos-ord-claim-${c.ref}`} className="mt-0.5 self-start rounded-[8px] bg-[color:var(--color-accent-soft)] px-2 py-0.5 text-[11.5px] font-bold text-[color:var(--color-accent)]">
                     {t("awaiting.claimed")}

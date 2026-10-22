@@ -31,6 +31,7 @@ import { posOfflineEnabled } from "@/lib/modules/pos/offline-shared"; // POS P3.
 import { receiptUnitOverride } from "@/lib/modules/pos/receipt-settings-shared"; // POS P2.11U ▸ มติ 8 ◂
 import { posClockOnShift, posScheduleGate, posStaffCommission } from "@/lib/modules/pos/settings-shared"; // POS P3.5U ▸ มติ 6 ◂
 import { listStaffAccess } from "@/lib/staff/service"; // POS P3.9U ▸ CD-P39U-3: ตัวอ่านสมาชิกร้านที่มีอยู่ (ผู้จัดการที่รับคำเชิญแล้ว) ◂
+import { posChatSettings } from "@/lib/modules/pos/chat-link-shared"; // POS P3.7U ▸ CD-P37U-2: ตัวอ่านบริสุทธิ์ของ settings.pos.chat ◂
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -111,6 +112,8 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           managers: m.role === "OWNER" ? (await listStaffAccess(tenantId)).filter((r) => r.role === "MANAGER" && r.active).map((r) => ({ userId: r.userId, name: r.name })) : [],
         }
       : null;
+  // POS P3.7U ▸ CD-P37U-2/3: การ์ดแชท แท็บ shark — ค่าตั้งแชทที่บันทึกไว้ (อ่านล้วน · ไม่เขียนตอนโหลด) + เจ้าของร้านไหม (ตัวเขียนตรวจซ้ำ) ◂
+  const chatCard = canRead && tab === "shark" ? { isOwner: m.role === "OWNER", settings: posChatSettings(sys.settings) } : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -135,7 +138,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             <SettingsRefusal message={t("staff.refusal")} />
           )
         ) : tab === "shark" ? (
-          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ />
+          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ chat={chatCard} /* POS P3.7U ◂ */ />
         ) : tab === "channels" ? (
           <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
         ) : tab === "offline" ? (

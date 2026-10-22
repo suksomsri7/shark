@@ -192,6 +192,8 @@ export type RegisterScreenProps = {
   tableMode?: { visible: boolean; tableCount: number } | null;
   /** POS P3.4U ▸ มติ 1: settings.pos.offline.enabled (หน้าเพจส่ง posOfflineEnabled) — ปิด/ไม่ส่ง = จอแบบวันนี้ทุกพิกเซล ◂ */
   offlineEnabled?: boolean;
+  /** POS P3.7U ▸ CD-P37U-7: posChatSettings(sys.settings).receiptAuto — ชิป LINE อัตโนมัติของจอสำเร็จ ◂ */
+  chatReceiptAuto?: boolean;
 };
 
 /** ns "member" = คีย์ใต้ pos.member (P1.12U) · "recipe" = ใต้ pos.recipe (POS P2.3U) · ไม่ระบุ = ใต้ pos.register */
@@ -2996,6 +2998,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             unitId={unitId} // POS P2.6U ▸ มติ 10: "คิว N" ◂
             tipSatang={l.tipSatang ?? 0} // POS P2.9U ▸ มติ 7 ◂
             duplicated={l.result.duplicated} // POS P2.9U ▸ มติ 7: บิลเดิมของคีย์ = 02b ไม่อ่าน payload ใบเสร็จ ◂
+            chatReceiptAuto={!!props.chatReceiptAuto} // POS P3.7U ▸ CD-P37U-7 ◂
           />
         );
       case "options":

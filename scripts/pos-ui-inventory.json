@@ -21133,6 +21133,168 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-chat-row-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "setPosChatSettingsAction",
+        "note": "CD-P37U-2: การ์ดแชท (ภาพ 10 · แท็บ shark) 4 แถว receiptAuto · refundNotice · orderStatus · autoReply — เจ้าของร้าน = สวิตช์จริง แตะ 1 ครั้ง {patch:{[k]: !v}} · ปิดระหว่างรอ · ค่าใหม่จากผลตัวเขียน · การ์ดไม่ LINKED = เปิดไม่ได้ (ปิดได้) · คนอื่น = ตัวแสดงสถานะ aria-disabled + cards.CHAT.ownerOnly · ปฏิเสธ = pos-settings-chat-error",
+        "db": "AppSystem(POS).settings.pos.chat"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-chat-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-chat-sheet",
+        "note": "CD-P37U-2: ปุ่ม \"ตั้งค่าข้อความในแชท\" ใต้การ์ดแชท → แผ่นชนิดสถานะ + ชั่วโมงพักบอท (เจ้าของร้านเท่านั้น)"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-chat-kind-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-chat-save",
+        "note": "CD-P37U-2: ช่องติ๊กชนิดสถานะที่แจ้งในแชท 4 ช่อง (accepted · ready · cancelled · paid — ป้าย orders.event.*) · บันทึกเมื่อกดบันทึก"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-chat-pause",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-chat-save",
+        "note": "CD-P37U-2: ชั่วโมงพักบอทเมื่อลูกค้าเรียกพนักงาน (จำนวนเต็ม 1–72 · ค่าแปลก = ตัวเขียนปฏิเสธ VALIDATION field botPauseHours ใต้ช่อง)"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-chat-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "setPosChatSettingsAction",
+        "note": "CD-P37U-2: บันทึกเฉพาะคีย์ที่เปลี่ยน (statusKinds · botPauseHours) · ปฏิเสธ = ข้อความใต้ช่องตาม field (pos-settings-chat-error) · ไม่เปลี่ยน = ปิดแผ่น",
+        "db": "AppSystem(POS).settings.pos.chat"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-chat-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-chat-sheet",
+        "note": "CD-P37U-2: ปิดแผ่นโดยไม่บันทึก"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-chatpay-send",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "requestChatPaymentAction",
+        "note": "CD-P37U-4 (ภาพ 09): ออเดอร์แชท (ไม่ใช่แพลตฟอร์ม) NEW ที่ยังไม่จ่าย → ส่งลิงก์ชำระในแชท (ประตู A · ไม่ขึ้นกับสวิตช์แชท CD-P5) · ปิด + เหตุผล pos-ord-chatpay-reason เมื่อไม่มีสิทธิ์รับ∧เปิดบิล (needPerm — แคชเชียร์ QC) / ไม่ผูกห้องแชท / สาขาไม่มีพร้อมเพย์ · ผล pos-ord-chatpay-result (ส่งแล้ว+ชำระภายใน · ซ้ำ · ส่งไม่สำเร็จ+คัดลอก · ปฏิเสธ) → โหลดออเดอร์ใหม่ · ไม่ส่งซ้ำอัตโนมัติ",
+        "db": "PosOrder.paymentState PENDING_PAYMENT + PosPaymentIntent + PosOrderEvent payment_requested + ChatMessage(OUT, pos:ordpay)"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-chatpay-copy",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-ord-chatpay-copy",
+        "note": "CD-P37U-4: ผล ok ∧ !sent (ส่งเข้าแชทไม่สำเร็จ) → คัดลอกลิงก์สถานะ/ชำระ (statusUrl) ลงคลิปบอร์ด · ป้ายเปลี่ยนเป็น \"คัดลอกแล้ว\" · ไม่เขียนอะไร"
+      },
+      "wo": "P3.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

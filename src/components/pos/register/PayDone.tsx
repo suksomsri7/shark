@@ -63,6 +63,8 @@ type Props = {
   /** POS P2.9U ▸ มติ 7: ทิปของบิล (บรรทัด "ทิป ฿x" เมื่อ > 0) · duplicated = บิลเดิมของคีย์ (ไม่อ่าน payload — กันสำเนา/audit ของบิลเก่า) ◂ */
   tipSatang?: number;
   duplicated?: boolean;
+  /** POS P3.7U ▸ CD-P37U-7: settings.pos.chat.receiptAuto (หน้าเพจส่ง) — เปิด ∧ บิลมีสมาชิก = ชิป "ส่งใบเสร็จทาง LINE อัตโนมัติ" (ป้ายสถานะ ไม่ใช่ "ส่งแล้ว") ◂ */
+  chatReceiptAuto?: boolean;
 };
 
 /** POS P2.6U ▸ fix1 F2: บิลที่สั่งพิมพ์ใบครัวหลังขายไปแล้ว (ระดับโมดูล — ครั้งเดียวต่อบิล) ◂ */
@@ -76,7 +78,7 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId, tipSatang = 0, duplicated = false }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId, tipSatang = 0, duplicated = false, chatReceiptAuto = false /* POS P3.7U ◂ */ }: Props) {
   const t = useTranslations("pos.register");
   // ── POS P2.9U ▸ มติ 7: แถวบัตรของบิล (เลขปิดบัง · ยอดหลังรายการ) จาก payload ใบเสร็จ — ครั้งเดียวต่อบิล ◂
   const hasCards = payMethods.some((m) => m.type === "GIFT_CARD" || m.type === "STORE_CREDIT" || m.type === "DEPOSIT"); // POS P2.9bU ▸ + มัดจำ ◂
@@ -138,6 +140,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
   const tm = useTranslations("pos.member");
   const tp = useTranslations("pos.print");
   const trc = useTranslations("pos.receipt");
+  const tchat = useTranslations("pos.chat"); // POS P3.7U ▸ CD-P37U-7 ◂
   const [printing, setPrinting] = useState<"receipt" | "copy" | null>(null);
   const [printRes, setPrintRes] = useState<PrintResult | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -311,6 +314,13 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             </div>
           )}
         </div>
+        {/* POS P3.7U ▸ CD-P37U-7: ส่งใบเสร็จทาง LINE อัตโนมัติ (ป้ายสถานะ — คิวส่งทีหลัง · สมาชิกอาจไม่มี LINE) · ปุ่มส่งทาง LINE เดิมยังอยู่ (ส่งซ้ำ = P1.11) ◂ */}
+        {chatReceiptAuto && memberAttached && (
+          <p data-testid="pos-reg-done-line-auto" className="inline-flex items-center gap-1.5 rounded-[9px] border border-dashed px-3 py-1.5 text-[13px] text-[color:var(--color-ink-soft)]">
+            <RegisterIcon name="link" size={13} />
+            {tchat("notify.receipt")}
+          </p>
+        )}
         {kitchenErr && ( // POS P2.6U ▸ fix1 F2: ใบครัวหลังขายพิมพ์ไม่สำเร็จ (ไม่บล็อกจอ) ◂
           <p data-testid="pos-reg-done-kitchen-error" role="status" className="w-full text-left text-[13px] text-[color:var(--color-danger)]">
             {kitchenErr}

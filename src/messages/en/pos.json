@@ -2890,7 +2890,12 @@
           "orderStatus": "Order status in chat",
           "autoReply": "Auto-reply (status · menu · call staff)"
         },
-        "botPauseHours": "Pause the bot after a staff request (hours)"
+        "botPauseHours": "Pause the bot after a staff request (hours)",
+        "allOff": "All off — the shop owner switches them on",
+        "sheetOpen": "Chat message settings",
+        "sheetTitle": "Automatic chat message settings",
+        "save": "Save",
+        "saveFailed": "Could not save — try again"
       },
       "KANBAN": {
         "title": "Task boards",
@@ -4326,7 +4331,8 @@
       "onAcceptKitchenLive": "Send kitchen tickets to each item's station",
       "kitchenSection": "Kitchen tickets",
       "kitchenSent": "Sent to the kitchen: {total, plural, one {# item} other {# items}} · {done} done",
-      "onAcceptPrepaid": "Open a PromptPay bill of {amount} from the customer's payment + send to the kitchen"
+      "onAcceptPrepaid": "Open a PromptPay bill of {amount} from the customer's payment + send to the kitchen",
+      "memberTier": "{name} · {tier} tier"
     },
     "manual": {
       "title": "Key in order",
@@ -4417,7 +4423,8 @@
       "held": "Held by the kitchen (auto-accept waiting)",
       "expired": "Payment time ran out (auto-cancelled)",
       "customer_paid_claim": "Customer says they paid · check the transfer",
-      "late_payment": "Money arrived after the order was closed"
+      "late_payment": "Money arrived after the order was closed",
+      "payment_requested": "Pay link sent in chat"
     },
     "toast": {
       "accepted": "Accepted {ref}",
@@ -4474,6 +4481,10 @@
       "notSent": "Pay link created but the chat message failed — copy the link and send it yourself",
       "duplicated": "The pay link for this order was already sent",
       "payBy": "Pay by {time}",
+      "requested": "Pay link sent · awaiting {amount}",
+      "copy": "Copy pay link",
+      "copied": "Copied",
+      "needPerm": "Needs permission to accept orders and open bills to send a pay link",
       "errors": {
         "noChatLink": "This order is not linked to a chat room — can't send a pay link in chat",
         "promptpayNotConfigured": "This branch has no PromptPay ID yet — set it in payment settings first",
