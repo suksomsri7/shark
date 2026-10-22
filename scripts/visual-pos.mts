@@ -8013,9 +8013,10 @@ const p36uPosCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId });
 async function ensureP36uFixture(): Promise<void> {
   if (P36U.done || P36U.error) return;
   /** fix3: ทุกขั้นของ fixture ห่อชื่อขั้น + ค่าที่ใช้ — ล้ม = StepError "ขั้น (ค่า): เหตุ" */
-  const at = async <R,>(stepName: string, value: unknown, fn: () => Promise<R>): Promise<R> => {
+  // ผู้คุม 22.10: เดิม generic <R> อนุมาน unknown เมื่อ fn คืน any (โมดูล CRM import เป็น Any) → typecheck แดง 13 จุดใน gates124 · คืน Any ตรง ๆ
+  const at = async (stepName: string, value: unknown, fn: () => Promise<unknown> | unknown): Promise<Any> => {
     try {
-      return await fn();
+      return (await fn()) as Any;
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       throw new StepError(`${stepName} (${JSON.stringify(value ?? null).slice(0, 90)}): ${why.slice(0, 140)}`);
@@ -8140,7 +8141,7 @@ async function ensureP36uFixture(): Promise<void> {
     for (const k of ["co", "co2"] as const) {
       const co = P36U[k]!;
       const spec = P36U_CO[k];
-      const cur = listed.ok ? listed.items.find((a) => a.partyId === co.partyId) : null;
+      const cur = listed.ok ? listed.items.find((a: Any) => a.partyId === co.partyId) : null;
       if (cur && cur.limitSatang === spec.limitSatang && cur.termDays === 30 && cur.active) continue;
       const input = { partyId: co.partyId, limitSatang: spec.limitSatang, termDays: 30, active: true, note: null };
       const r = await at(`saveCreditAccount ${spec.tag}`, input, () => credit.saveCreditAccount({ tenantId: T.tenantId, systemId: SYS }, owner, input));
