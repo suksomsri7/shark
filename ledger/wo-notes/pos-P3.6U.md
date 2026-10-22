@@ -149,3 +149,9 @@ PRESUBMIT head=63747fad green=30 red=6 expected-lane-pin=5 unexpected-red=qc-acc
 - **F4 (Low)** `scripts/visual-pos.mts` P36U `p36uRemember`/`p36uRestore` — `_qcP36uBefore.ordersHad`; restore removes `{pos,orders}` when it was absent before the run and is now `{}` · d2069f57.
 - **Nit** `register/page.tsx:95` · `settings/page.tsx` `hasCrm` counts `active: true` CRM systems · 37e514c3.
 - Gates at 37e514c3 (iso.sh · QC4 + POS lock): `qc-pos-p3.6` forced **52/52** (residue 0) · `--no-db` **4/4** · `qc-pos-p1.6` **48/48** · `qc-pos-p1.3` **128/128** · `qc-pos-p1.18` **81/81** · `qc-hf-fu2 --no-db` **22/23** (ST1 = expected lane pin, unchanged) · `pos-oracle-check … --base bfe2c26d` **VERDICT warn** (O3 only, as before) · `visual-pos p3.6u --states --dry` owner th 43 · cashier th 18 · owner en 24 · cashier en 10 (all rc 0) · **typecheck #3** at 37e514c3 03:40:44–03:41:42Z **EXIT 0**.
+
+## Fix round 2 (controller B · harness only · builder 22 Oct 04:56Z `date -u`)
+- QC5 round at 46098687: all 95 shots failed in `p36uGuard` ("ร้าน pos-qc-coffee ไม่ใช่ร้าน QC coffee") — the old predicate checked `T.slug.startsWith("posqc")`, but the QC slug is `pos-qc-coffee` (ids start `posqc-`, slugs `pos-qc-`).
+- Fix `scripts/visual-pos.mts` `p36uGuard`: `tenantKey !== "coffee" || T.tenantId !== PQC.coffee.tenantId` ⇒ StepError (strict: the fixed QC coffee tenant id `posqc-coffee-tenant`, same identity as the P3.8U guard `T.tenantId.startsWith("posqc-")`, but exact) · message prints tenantId + key + slug · no new imports (PQC already imported) · POS-system check unchanged.
+- Probe (read-only · `iso.sh qc4.sh tsx` · QC4): `PROBE tenantId=posqc-coffee-tenant slug=pos-qc-coffee db.tenant={"id":"posqc-coffee-tenant","slug":"pos-qc-coffee"} POS=posqc-coffee-sys-pos sysFound=true old=false new=true guardPass=true` (temporary script removed, not committed).
+- `visual-pos p3.6u --states --dry` th (CI=1 · iso): owner rc 0 **43** · cashier rc 0 **18**.

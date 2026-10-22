@@ -7936,7 +7936,8 @@ const p36uRec = (v: unknown): v is Record<string, unknown> => typeof v === "obje
 const p36uHas = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 /** 🔴 ด่านก่อนเขียนค่าตั้ง: ร้าน QC coffee + ระบบ POS ของร้านนี้ (อื่น = StepError หยุดทั้งใบ) */
 async function p36uGuard(): Promise<void> {
-  if (tenantKey !== "coffee" || !String(T.slug ?? "").startsWith("posqc")) throw new StepError(`ด่าน P3.6U: ร้าน ${T.slug} ไม่ใช่ร้าน QC coffee — ไม่เขียน`);
+  // fix2: ตัวตน = tenantId ตายตัวของร้าน QC coffee (posqc-coffee-tenant · แบบด่าน P3.8U) — slug ของร้าน QC ขึ้นต้น "pos-qc-" ไม่ใช่ "posqc" ◂
+  if (tenantKey !== "coffee" || T.tenantId !== PQC.coffee.tenantId) throw new StepError(`ด่าน P3.6U: tenantId ${T.tenantId} (key ${tenantKey} · slug ${T.slug}) ≠ ${PQC.coffee.tenantId} (ร้าน QC coffee) — ไม่เขียน`);
   const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId, type: "POS" }, select: { id: true } });
   if (!sys) throw new StepError("ด่าน P3.6U: ระบบ POS ไม่ใช่ของร้าน QC — ไม่เขียน");
 }
