@@ -713,7 +713,7 @@ async function runStatic(): Promise<void> {
         if (nonAsync) p.push(`${f.split("/").pop()} ("use server") export ที่ไม่ใช่ async function ${nonAsync}`);
       }
       if (isUseClient(raw)) {
-        const bad = valueImportsOf(raw).filter((m) => /^@\/lib\/modules\/pos\/(?![\w-]+-shared$)/.test(m) || /^@\/lib\/platform\/etax/.test(m));
+        const bad = valueImportsOf(raw).filter((m) => /^@\/lib\/modules\/pos\/(?![\w-]+-(shared|actions)$)/.test(m) || /^@\/lib\/platform\/etax/.test(m)); // ORACLE-EDIT ผู้คุม 22.10 (CD-SKEL-O2: 'use client' import *-actions ถูกต้องตาม S5.17 เช่นเดียวกับ *-shared — เดิมแดงทุกใบ U ที่แตะไฟล์ client)
         if (bad.length) p.push(`${f.split("/").pop()} ('use client') import ${bad[0]}`);
       }
     }
