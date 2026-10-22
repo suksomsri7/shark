@@ -548,7 +548,7 @@
       "mode": "unforced",
       "needs": "acc-v2-seed",
       "accepted": {
-        "reason": "needs a served build — account-api lane runs it before deploy (POS lanes never build/serve; also needs the acc-v2 seed)",
+        "reason": "needs a served build — account-api lane runs it before deploy (POS lanes never build/serve; also needs the acc-v2 seed) · CD-P312-N6b: SKIP (no server) accepted via skipMatch",
         "owner": "account-api (ACCOUNT-API lane)",
         "opRef": "acc-v2-seed account-api ×5",
         "evidence": "QC4 0/9 /root/pos-runs/p214-builder/accv2-20261016T045411Z · gate set p214-close-shark-pos-d-20261016T053356Z · green run = ACCOUNT-API lane with acc-v2-serve.sh",
@@ -563,7 +563,8 @@
           "S1.8",
           "CRASH"
         ],
-        "match": "No element found for selector: [data-testid=\"api-key-name\"]"
+        "match": "No element found for selector: [data-testid=\"api-key-name\"]",
+        "skipMatch": "SKIPPED — ไม่พบเซิร์ฟเวอร์ QC ที่ http://127.0.0.1:3215"
       }
     },
     {
