@@ -44,10 +44,10 @@ type Any = any;
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
-  BTN, DEAD_KNOWN, DEVICES, DISCOUNT_RE, PASS_MATRIX, PERSONA_UNREACHABLE, REGISTRY_GAP_REASONS, SHOTS_DIR, SKIP_REASONS, STAFF, MONEY_MODELS_UNIT, QC_TENANT, SWITCH_RE,
+  BTN, DEAD_KNOWN, DEVICES, DISCOUNT_RE, PASS_MATRIX, PERSONA_UNREACHABLE, REGISTRY_GAP_REASONS, SHOTS_DIR, SKIP_REASONS, STAFF, QC_TENANT, SWITCH_RE,
   assertWritable, cellName, cellRows, classify, cleanupFixtures, countTenant, db, dbHost, dbNow, discountFill, ensureFixtures, estimateSec, expectAlts, f13Users,
   isClipboardRow, isSearchLike, loadP41Rules, localeOfSwitch, modelInfo, navMatches, newCtx, parseStep, planCell, preflight, readRegistry, resetSideEffects,
-  restoreSettingsIfChanged, rowKey, sha16, sideEffectOf, sideEffectRank, summaryFile, writesOf, writtenSince, type ExpectAlt,
+  moneyRowsSince, restoreSettingsIfChanged, rowKey, sha16, sideEffectOf, sideEffectRank, summaryFile, writesOf, writtenSince, type ExpectAlt,
   type Cell, type CellPlan, type Ctx, type DeviceKey, type Locale, type P41Rules, type PlanItem, type Registry, type Row, type SkipReason, type UserKey,
 } from "./pos-buttons-fixtures.mjs";
 
@@ -294,10 +294,12 @@ if (!BASE_RAW) {
     const f13 = f13Users({ roles: ["owner", "manager", "cashier"], needs: "สิทธิ์ pos.channel.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)", expect: { type: "mutation" } });
     if (f13.join(",") !== "cashier") bad.push(`F13 บทบาท = ${f13.join(",")} (คาด cashier)`);
     if (f13Users({ roles: ["owner"], needs: "ไม่มีรหัส", expect: { type: "mutation" } }).length) bad.push("F13 ไม่มีรหัสแต่ได้บทบาท");
+    const f13b = f13Users({ roles: ["owner", "manager", "cashier"], needs: "ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้ — ผู้จัดการและแคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)", expect: { type: "mutation" } });
+    if (f13b.join(",") !== "cashier") bad.push(`F13 ข้อความเอ่ยสองบทบาท = ${f13b.join(",")} (คาด cashier — คำที่ใกล้ที่สุด)`);
     const se = REG.rows.find((r) => r.testid === "pos-device-revoke-confirm");
     if (se && (!sideEffectOf(se) || sideEffectRank(se) !== 9)) bad.push("307 ไม่อยู่ท้ายสุดของช่วงผลข้างเคียง");
     const late = REG.rows.filter((r) => sideEffectOf(r)).length;
-    chk("B9", bad.length === 0, bad.length ? bad.join(" · ") : `กติกาใหม่ ${cases.length + 2}/${cases.length + 2} กรณี (dead-known · needs-persona F17/F12 · hidden-input · F13 เฉพาะบทบาทที่ระบุ) · แถวผลข้างเคียงช่วงท้าย ${late} แถว (307 ท้ายสุด)`);
+    chk("B9", bad.length === 0, bad.length ? bad.join(" · ") : `กติกาใหม่ ${cases.length + 3}/${cases.length + 3} กรณี (dead-known · needs-persona F17/F12 · hidden-input · F13 เฉพาะบทบาทที่ระบุ) · แถวผลข้างเคียงช่วงท้าย ${late} แถว (307 ท้ายสุด)`);
   }
   {
     // CD-P42-R4/R6/R8/R9/R10/R11 ตัวช่วยบริสุทธิ์
@@ -312,6 +314,7 @@ if (!BASE_RAW) {
     t("F16 ค่า [x]", navMatches("/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]", `${H}/app/sys/k/kanban/b/b1?card=c9`) && !navMatches("/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]", `${H}/app/sys/k/kanban/b/b1`));
     t("F16 ค่าว่าง", navMatches("/app/sys/[id]/pos/register?unit=", `${H}/app/sys/s/pos/register?unit=u2`));
     t("F16 path ต่าง", !navMatches("/app/sys/[id]/pos/register", `${H}/app/sys/s/pos/sales`));
+    t("F16 เป้ามี #hash", navMatches("/app/sys/[id]/pos/settings#devices", `${H}/app/sys/s/pos/settings?unit=u#devices`) && !navMatches("/app/sys/[id]/pos/settings#devices", `${H}/app/sys/s/pos/settings#general`));
     const a = parseStep("pos-prod-scope-pick?");
     const b = parseStep("pos-x-amount=5?");
     const c = parseStep("pos-kds-86-search= ");
@@ -328,7 +331,7 @@ if (!BASE_RAW) {
     t("F26 anyOf อ็อบเจกต์+สตริง", al.length === 3 && al[1]!.type === "toast" && al[1]!.target === "pos-b" && al[2]!.type === "modal" && al[2]!.target === "pos-c");
     t("F27 ตัวสลับ", localeOfSwitch("pos-locale-switch-th") === "th" && localeOfSwitch("pos-rpub-lang-en") === "en" && SWITCH_RE.test("pos-reg-unit-option-*") && !SWITCH_RE.test("pos-reg-pay"));
     t("F26 คลิปบอร์ด", isClipboardRow(mkClip("pos-tbl-qr-copy")) && !isClipboardRow(mkClip("pos-reg-pay")));
-    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (6) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 — ผ่านทุกกรณี");
+    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (7) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 — ผ่านทุกกรณี");
   }
   const passed = res.filter((r) => r.ok).length;
   console.log(`\n${passed === res.length ? "✅" : "❌"} ${SUITE} (ด่าน): ${passed}/${res.length}`);
@@ -394,6 +397,10 @@ const PAGES: { path: string; status: number; rows: number; ms: number }[] = [];
 const PRESSED_ONCE = new Set<string>();
 let FATAL = "";
 
+/** PREFILL: แถว press ทั้งหมดของหน้าเดียวกันในแผน (ไม่ขึ้นกับกลุ่ม — กลุ่มช่วงท้ายของ CD-P42-R7 มีแค่แถวผลข้างเคียง) */
+const PAGE_PRESS = new Map<string, PlanItem[]>();
+for (const it of PLAN.items) if (it.action === "press") PAGE_PRESS.set(it.row.page, [...(PAGE_PRESS.get(it.row.page) ?? []), it]);
+const siblingsOf = (it: PlanItem) => PAGE_PRESS.get(it.row.page) ?? [];
 const rec = (it: PlanItem, r: Omit<Result, "key" | "page" | "testid">) => RESULTS.set(it.key, { key: it.key, page: it.row.page, testid: it.row.testid, safety: it.safety, verify: it.verify, oracle: it.row.oracle || undefined, ...r });
 // แถว skip ของแผน (ไม่ต้องเปิดหน้า) ลงผลก่อน
 for (const it of PLAN.items) if (it.action === "skip") rec(it, { class: "skip", reason: it.reason, detail: it.detail });
@@ -796,14 +803,30 @@ async function failShot(page: Any, it: PlanItem): Promise<string> {
 }
 
 // ═════════════════════════ URL ของแถว ═════════════════════════
+/** แถว mutation ต่อหน้า (testid) — ใช้ตัดสินว่าแถว/opener ของหน้าสาธารณะเขียนหรือไม่ */
+const MUTATION_TIDS = new Map<string, string[]>();
+for (const r of REG.rows) if (r.expect?.type === "mutation") MUTATION_TIDS.set(r.page, [...(MUTATION_TIDS.get(r.page) ?? []), r.testid]);
+/** CD-P42-R13: แถวนี้ (หรือขั้น opener ของมัน) เขียนข้อมูล — เงิน/ตัวนับ · expect mutation · ขั้นที่ชี้แถว mutation ของหน้าเดียวกัน */
+function publicWrites(it: PlanItem): boolean {
+  if (it.moneyUnit || it.row.expect.type === "mutation") return true;
+  const muts = MUTATION_TIDS.get(it.row.page) ?? [];
+  return it.opener.some((st) => {
+    const t = parseStep(st).tid;
+    return muts.some((m) => m === t || (t.includes("*") && globRe0(t).test(m)) || (m.includes("*") && globRe0(m).test(t)));
+  });
+}
 function pathOf(it: PlanItem): { path: string | null; missing: string | null } {
   let p = it.row.page.replace("[id]", CTX.sys);
   const tok = (k: string) => CTX.tokens[k] ?? null;
+  let btnTok = false;
   for (const m of p.matchAll(/\[([A-Za-z]+)\]/g)) {
     const v = m[1] === "unitSlug" ? null : tok(m[1]!);
     if (!v) return { path: null, missing: `[${m[1]}]` };
-    // CD-P42-R13: แถวเงินบนหน้าสาธารณะ (เช่น /q pos-qr-place) กดได้เฉพาะโทเคนของสาขา posqc-btn — โทเคนสาขาอื่น = หาค่าไม่ได้ (ไม่กด)
-    if (it.moneyUnit && CTX.tokenUnits[m[1]!] !== BTN.unit.id) return { path: null, missing: `[${m[1]}] ของสาขา ${BTN.unit.id} (แถวเงิน · มติเงิน ⚠️6)` };
+    // CD-P42-R13: แถวที่เขียนบนหน้าสาธารณะ (เงิน · mutation · หรือ opener ผ่านแถว mutation — เช่น /q pos-qr-place · ส่งออเดอร์ · เรียกพนักงาน ·
+    //   ขอใบกำกับ · จับคู่จอ /d) กดได้เฉพาะโทเคนของสาขา posqc-btn — โทเคนสาขาอื่น (สีลม/อารีย์) = หาค่าไม่ได้ (ไม่กด · ไม่เขียนนอกสาขาตัวกด)
+    const pubW = !it.row.page.startsWith(STAFF) && publicWrites(it);
+    if (pubW && CTX.tokenUnits[m[1]!] !== BTN.unit.id) return { path: null, missing: `[${m[1]}] ของสาขา ${BTN.unit.id} (แถวเขียนบนหน้าสาธารณะ · มติเงิน ⚠️6)` };
+    if (pubW) btnTok = true;
     p = p.replace(m[0], encodeURIComponent(v));
   }
   let q = String(it.row.query ?? "");
@@ -811,8 +834,14 @@ function pathOf(it: PlanItem): { path: string | null; missing: string | null } {
     const k = m[1]!;
     const v = k === "unitId" ? BTN.unit.id : k === "date" ? todayBkk() : tok(k);
     if (!v) return { path: null, missing: `[${k}]` };
+    if (k !== "unitId" && k !== "date" && !it.row.page.startsWith(STAFF) && publicWrites(it)) {
+      if (CTX.tokenUnits[k] !== BTN.unit.id) return { path: null, missing: `[${k}] ของสาขา ${BTN.unit.id} (แถวเขียนบนหน้าสาธารณะ)` };
+      btnTok = true;
+    }
     q = q.replace(m[0], encodeURIComponent(v));
   }
+  // หน้าสาธารณะที่เขียนแต่ไม่มีโทเคนบอกสาขา = ไม่รู้ว่าจะลงสาขาไหน → ไม่กด (fail-closed)
+  if (!it.row.page.startsWith(STAFF) && publicWrites(it) && !btnTok) return { path: null, missing: `โทเคนของสาขา ${BTN.unit.id} (หน้าสาธารณะไม่มีตัวแปรบอกสาขา)` };
   const staff = it.row.page.startsWith(STAFF);
   const params = new URLSearchParams(q);
   // CD-P42-W6: หน้าพนักงานทุกหน้าใช้สาขา posqc-btn (ไม่มี unit = เติม · unit อื่น = แทน · "*" = ทุกสาขาตามทะเบียน)
@@ -838,10 +867,13 @@ async function mintCookies(): Promise<Any[]> {
   if (CELL.locale === "en") out.push(https ? { name: "LOCALE", value: "en", url: BASE, path: "/", secure: true } : { name: "LOCALE", value: "en", domain: host, path: "/" });
   return out;
 }
-let cleanedAll = false;
-async function cleanupAll(why: string): Promise<void> {
-  if (cleanedAll) return;
-  cleanedAll = true;
+/** เก็บกวาดครั้งเดียว — ผู้เรียกทุกราย (finally + สัญญาณ) รอ promise เดียวกันจนเสร็จ (สัญญาณกลางทางไม่ตัด closeShift/คืนค่า/ลบ session) */
+let cleanupP: Promise<void> | null = null;
+function cleanupAll(why: string): Promise<void> {
+  cleanupP ??= cleanupOnce(why);
+  return cleanupP;
+}
+async function cleanupOnce(why: string): Promise<void> {
   try {
     await BROWSER?.close();
   } catch {
@@ -991,6 +1023,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
   for (const it of rows) {
     const t1 = Date.now();
     const errsBefore = cErrs.length;
+    const ngRow = nonGet; // คำขอเขียนก่อนแถวนี้ — finally คืนค่าตั้งเมื่อแถวเขียน (ทุกทางออก รวม catch/continue)
     const respBefore = resp.length;
     const notList = it.row.testid.includes("*") ? allNames.filter((n) => n !== it.row.testid && globRe0(it.row.testid).test(n)) : [];
     try {
@@ -1058,7 +1091,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       }
       let prefilled: string[] = [];
       if (it.row.expect.type === "mutation" || it.row.expect.type === "download" || it.row.kind === "form") {
-        prefilled = await prefill(page, it, group, el);
+        prefilled = await prefill(page, it, siblingsOf(it), el); // ช่องพี่น้องทั้งหน้า (กลุ่มช่วงท้ายมีแค่แถวผลข้างเคียง)
         if (prefilled.length) el = (await findVisible(page, it.row.testid, notList, 1500)) ?? el;
       }
       // CD-P42-R3 (CD-P41-F13): บทบาทที่ทะเบียนบอกว่าเห็นแต่ปิดใช้ (ตรวจหลังขั้นทะเบียน + PREFILL — ช่องว่างไม่ทำให้ปิดเอง)
@@ -1109,6 +1142,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       const delBefore = new Map<string, number | null>();
       for (const w of writes) if (w.del) delBefore.set(w.model, await countTenant(w.model));
       const pressedAt = ex.type === "mutation" || it.moneyUnit ? await dbNow() : new Date();
+      const moneyBefore = new Set(it.moneyUnit ? (await moneyRowsSince(pressedAt)).map((x) => `${x.model}:${x.id}`) : []);
       let actErr = "";
       let valueChanged = false;
       try {
@@ -1219,6 +1253,8 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       };
       let ok = true;
       let detail = "";
+      /** ผลหลักล้มแบบที่ anyOf ช่วยไม่ได้ (CD-P42-R8): ตอบ ≥ 400 · แถวเงิน/ตัวนับที่ไม่พบการเขียน/ถูกปฏิเสธ (เงินต้องพิสูจน์การเขียนเสมอ) */
+      let hardFail = false;
       if (VIS.includes(ex.type)) {
         if (!visTids.length) detail = ex.type === "inline-error" ? "inline-error ไม่มีเป้า (อ่อน)" : "";
         else {
@@ -1249,6 +1285,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         const bad = resp.slice(respBefore).filter((r) => r.status >= 400);
         const wrote = nonGet > ngBefore;
         ok = wrote && !bad.length;
+        if (bad.length) hardFail = true;
         let deferred = false;
         if (isField && !wrote && valueChanged) {
           deferred = await el.evaluate((e: Element) => !!e.closest('form, [role="dialog"], dialog, [data-testid$="-form"], [data-testid$="-sheet"], [data-testid$="-dialog"]')).catch(() => false);
@@ -1263,7 +1300,9 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           }
         }
         if (ok && !deferred && it.verify === "db") {
-          let hit = writes.length === 0;
+          // db ที่ไม่มีโมเดลที่รู้จักเลย = ตรวจไม่ได้ ⇒ ไม่ผ่าน (เดิมผ่านเงียบ)
+          let hit = false;
+          if (!writes.length) detail = `db "${ex.db}" ไม่ระบุโมเดลที่รู้จัก (prisma) — ตรวจผลเขียนไม่ได้`;
           for (let t = Date.now() + 5000; !hit && Date.now() < t; ) {
             for (const w of writes) {
               const r = await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null);
@@ -1273,7 +1312,8 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           }
           if (!hit) {
             ok = false;
-            detail = `ไม่พบการเขียนของ ${writes.map((w) => w.model).join(" / ")} หลังกด (db "${ex.db}")`;
+            if (writes.length) detail = `ไม่พบการเขียนของ ${writes.map((w) => w.model).join(" / ")} หลังกด (db "${ex.db}")`;
+            if (!writes.length) hardFail = true;
           }
         } else if (ok && !deferred && it.verify === "oracle") detail = `ผลเขียนยืนยันด้วย oracle ${String(it.row.oracle).slice(0, 40)} (ไม่รันชุด)`;
         const rt = [ex.resultTarget, ex.target].find((x) => !!x && looksLikeTestid(x));
@@ -1282,13 +1322,15 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           detail = `ไม่เห็น ${rt} หลังกด`;
         }
       }
-      // CD-P42-R8: หลักไม่ผ่าน ⇒ anyOf ข้อใดข้อหนึ่งผ่าน = ok (ป้าย/กล่อง · navigate · ui)
-      if (!ok && alts.length > 1) {
+      // CD-P42-R8: หลักไม่ผ่าน ⇒ anyOf ข้อใดข้อหนึ่งผ่าน = ok (ป้าย/กล่อง · navigate · ui) — ไม่ช่วยเมื่อ hardFail · แถวเงิน mutation ต้องพิสูจน์การเขียน
+      if (it.moneyUnit && ex.type === "mutation" && !ok) hardFail = true;
+      if (!ok && !hardFail && alts.length > 1) {
         const v = alts.slice(1).filter((a) => VIS.includes(a.type) && looksLikeTestid(a.target)).map((a) => a.target);
         const hitV = v.length ? await anyVisible(v, 1500) : null;
         if (hitV) {
           ok = true;
-          detail = `anyOf ${hitV} (หลัก: ${detail})`;
+          const refusal = alts.some((a) => a.target === hitV && a.type === "inline-error");
+          detail = `${refusal ? "anyOf-refusal (ปฏิเสธตามที่ทะเบียนอนุญาต)" : "anyOf"} ${hitV} (หลัก: ${detail})`;
         }
         if (!ok && ex.type !== "navigate" && navPaths.length && (await navNow(1500)).ok) {
           ok = true;
@@ -1304,7 +1346,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         }
       }
       // CD-P42-R8 (CD-P41-F26): แถวคัดลอก — คลิปบอร์ดเปลี่ยน = ok · อ่านคลิปบอร์ดไม่ได้ = ข้อความบนหน้า ("คัดลอกแล้ว"/"Copied")
-      if (!ok && clipRow) {
+      if (!ok && !hardFail && clipRow) {
         const after = await clipboardRead(page);
         if (after !== null && after.len > 0 && after.hash !== clipBefore?.hash) {
           ok = true;
@@ -1320,13 +1362,11 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       if (notes.length) detail = `${detail}${detail ? " · " : ""}${notes.join(" · ")}`;
       // ── แถวเงิน: แถวเงินที่เกิดต้องอยู่สาขา posqc-btn ──
       if (it.moneyUnit) {
+        // CD-P42-R13: แถวเงินที่เกิดใหม่หลังกด (createdAt · diff กับ id ก่อนกด · PosPayment ผ่าน saleId) — ไม่ใช่ updatedAt ของแถวเก่า
         const units = new Set<string>();
-        const touched: string[] = [];
-        for (const m of MONEY_MODELS_UNIT) {
-          const r = await writtenSince({ model: m, del: false }, pressedAt, null);
-          if (r.ok) touched.push(m);
-          r.units.forEach((u) => units.add(u));
-        }
+        const fresh = (await moneyRowsSince(pressedAt)).filter((x) => !moneyBefore.has(`${x.model}:${x.id}`));
+        const touched = [...new Set(fresh.map((x) => x.model))];
+        fresh.forEach((x) => units.add(x.unitId));
         MONEY.push({ key: it.key, testid: it.row.testid, units: [...units], models: touched });
         const outside = [...units].filter((u) => u !== BTN.unit.id);
         if (outside.length) {
@@ -1337,20 +1377,23 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       }
       if (ok) rec(it, { class: "ok", detail: detail || undefined, unit: it.moneyUnit ? BTN.unit.id : undefined });
       else rec(it, { class: "wrongExpect", detail, shot: await failShot(page, it), unit: it.moneyUnit ? BTN.unit.id : undefined });
-      // ── สถานะถัดไป ──
-      for (const t of tabs.splice(tabsBefore)) {
-        try {
-          await (await t.page())?.close();
-        } catch {
-          /* ข้าม */
+      // ── สถานะถัดไป (ผลบันทึกแล้ว — ข้อผิดพลาดตรงนี้ไม่ทับผล · ลงหน้าใหม่แทน) ──
+      try {
+        for (const t of tabs.splice(tabsBefore)) {
+          try {
+            await (await t.page())?.close();
+          } catch {
+            /* ข้าม */
+          }
         }
+        if (urlKey(page.url()) !== urlKey(urlBefore) || checkLike) state.dirty = true;
+        else if (isField && ex.type !== "mutation") {
+          /* ค่าในช่องคงสภาพหน้า (PREFILL ใช้ต่อ) */
+        } else if (ok && (ex.type === "modal" || (ex.type === "ui" && (ex.state ?? "appears") === "appears"))) state.openChain.push(it.row.testid);
+        else state.dirty = true;
+      } catch {
+        state.dirty = true;
       }
-      if (urlKey(page.url()) !== urlKey(urlBefore) || checkLike) state.dirty = true;
-      else if (isField && ex.type !== "mutation") {
-        /* ค่าในช่องคงสภาพหน้า (PREFILL ใช้ต่อ) */
-      } else if (ok && (ex.type === "modal" || (ex.type === "ui" && (ex.state ?? "appears") === "appears"))) state.openChain.push(it.row.testid);
-      else state.dirty = true;
-      if (nonGet > ngBefore && (await restoreSettingsIfChanged(CTX, it.key))) state.dirty = true;
 
     } catch (e) {
       rec(it, { class: "error", detail: e instanceof Error ? e.message.slice(0, 200) : String(e), shot: await failShot(page, it).catch(() => "") });
@@ -1366,9 +1409,10 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         // CD-P42-R7 (CD-P41-F22): แถวผลข้างเคียง (ช่วงท้าย) — fixture คืนสิ่งที่คืนได้ในสาขา posqc-btn ทันที + settings
         if (sideEffectOf(it.row) && it.action === "press") {
           for (const x of await resetSideEffects(CTX, it.key)) CTX.restores.push(x);
-          await restoreSettingsIfChanged(CTX, it.key);
           state.dirty = true;
         }
+        // settings.pos · settings ของสาขา · ลิงก์บัญชี — ทุกแถวที่ส่งคำขอเขียน (ok/wrongExpect/dead/error/money-outside)
+        if ((nonGet > ngRow || sideEffectOf(it.row)) && (await restoreSettingsIfChanged(CTX, it.key))) state.dirty = true;
       } catch (e) {
         CTX.restores.push({ label: `${it.key} · คืนค่าหลังแถว`, ok: false, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
       }
@@ -1453,7 +1497,14 @@ try {
   for (const [path, group] of [...groups.entries(), ...lateOrder]) {
     gi++;
     process.stdout.write(`[${gi}/${total}${gi > groups.size ? " ช่วงท้าย" : ""}] `);
-    await runGroup(path, group, cookies);
+    try {
+      await runGroup(path, group, cookies);
+    } catch (e) {
+      // ตั้งหน้าไม่ได้ (context/หน้าใหม่ล้ม) — แถวของกลุ่มที่ยังไม่มีผล = error · กลุ่มถัดไป (รวมช่วงท้ายที่คืนค่า) ยังเดินต่อ
+      const msg = `กลุ่มหน้า ${path.slice(0, 80)} ล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
+      console.error(`  ❌ ${msg}`);
+      for (const it of group) if (!RESULTS.has(it.key)) rec(it, { class: "error", detail: msg });
+    }
   }
 } catch (e) {
   FATAL = e instanceof Error ? e.message.slice(0, 400) : String(e);

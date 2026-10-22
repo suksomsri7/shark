@@ -324,11 +324,14 @@ export const HIDDEN_INPUT_RE = /type=hidden/;
 export function f13Users(row: Pick<Row, "needs" | "expect" | "roles">): UserKey[] {
   if (row.expect?.state === "disabled") return asList(row.roles) as UserKey[];
   const out = new Set<UserKey>();
+  // บทบาทของข้อความ = คำบทบาทที่อยู่ใกล้ "เห็นแต่ปิดใช้"/รหัสที่สุด (ข้อความที่เอ่ยทั้งสองบทบาทไม่ยกเว้นทั้งคู่) · ไม่เอ่ยเลย = ผู้ไม่ใช่เจ้าของ
   const add = (seg: string) => {
-    const c = seg.includes("แคชเชียร์");
-    const m = seg.includes("ผู้จัดการ");
-    if (c || !m) out.add("cashier");
-    if (m || !c) out.add("manager");
+    const c = seg.lastIndexOf("แคชเชียร์");
+    const m = seg.lastIndexOf("ผู้จัดการ");
+    if (c < 0 && m < 0) {
+      out.add("cashier");
+      out.add("manager");
+    } else out.add(c > m ? "cashier" : "manager");
   };
   for (const n of asList(row.needs)) {
     for (let i = n.indexOf("CD-P41-F13"); i >= 0; i = n.indexOf("CD-P41-F13", i + 1)) {
@@ -348,7 +351,7 @@ export function f13Users(row: Pick<Row, "needs" | "expect" | "roles">): UserKey[
 export const SIDE_EFFECT_KEYS: Readonly<Record<string, string>> = {
   [`${STAFF}settings#pos-settings-general-save-stock`]: "476 นโยบายสต็อกของสาขาค้าง BLOCK (BusinessUnit.settings) → คืนค่า settings ของสาขา",
   [`${STAFF}settings#pos-settings-account-confirm-off`]: "506 ปิดการลงบัญชีของ POS (AccountSystemLink) → setPosAccountLink เปิดคืน",
-  [`${STAFF}kds#pos-kds-setup-link`]: "822 หน้าตั้งค่าร้านอาหารสร้างสถานีครัวปริยาย (คงไว้ในสาขา posqc-btn)",
+  [`${STAFF}kds#pos-kds-setup-link`]: "822 หน้าตั้งค่าร้านอาหารสร้างสถานีครัวปริยาย → ลบสถานีที่เกิดในรอบ",
   [`${STAFF}settings#pos-device-revoke-confirm`]: "307 ถอนเครื่องของเบราว์เซอร์นี้ → คืนสถานะ ACTIVE ของเครื่องตัวกด",
   [`${STAFF}settings#pos-channel-drawer-save`]: "537 สร้างช่องทางใหม่ 1 ช่อง/รอบ → ลบช่องทางที่เกิดในรอบ",
   [`${STAFF}settings#pos-channel-creds-webhook`]: "1161 ตัวเปิดเชื่อม LINE MAN = ช่องทางใหม่ → ลบช่องทาง/credentials ที่เกิดในรอบ",
@@ -386,11 +389,18 @@ export function navMatches(target: string, url: string): boolean {
   }
   if (target.startsWith("#")) return u.hash === target;
   if (!target.startsWith("/")) return false;
-  const [tPath, tQueryHash = ""] = target.split("?") as [string, string?];
+  // เป้า = path [?query] [#hash] — แยกด้วย ? และ # (เป้า "/x#y" ไม่มี ? ก็ตรวจ hash ได้)
+  const hi = target.indexOf("#");
+  const tHash = hi >= 0 ? target.slice(hi) : "";
+  const noHash = hi >= 0 ? target.slice(0, hi) : target;
+  const qi = noHash.indexOf("?");
+  const tPath = qi >= 0 ? noHash.slice(0, qi) : noHash;
+  const tq = qi >= 0 ? noHash.slice(qi + 1) : "";
   const ph = /(\[[^\]]+\]|<[^>]+>|\*)/g;
   const pat = tPath.split(ph).map((p) => (/^(\[[^\]]+\]|<[^>]+>|\*)$/.test(p) ? "[^/]+" : p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("");
+  // ส่วนย่อยลึกกว่าเป้ายังนับตรง (พฤติกรรมเดิมของตัวกด P4.2 ที่ทะเบียนตรวจมา เช่น anyOf "/app/sys/[id]" ของแท็บ) — บันทึกเป็น CD
   if (!new RegExp(`^${pat}(?:$|/)`).test(u.pathname)) return false;
-  const tq = tQueryHash.split("#")[0]!;
+  if (tHash && u.hash !== tHash) return false;
   if (!tq) return true;
   for (const [k, v] of new URLSearchParams(tq)) {
     const got = u.searchParams.get(k);
@@ -667,7 +677,7 @@ async function finalSettingsRestore(c: Ctx): Promise<void> {
  * เครื่องที่ถูกถอน (307) → ACTIVE · ตัวช่วยพิมพ์ LAN ที่เกิดในรอบ (1183) → revokePrintAgent · credentials ที่เกิดในรอบ (1161/1164) → ลบ ·
  * ช่องทางที่เกิดในรอบ (537/1161) → ลบ (ติด FK = เก็บ archivedAt) — ไม่แตะสาขาอื่นเด็ดขาด (where unitId = posqc-btn-unit)
  */
-export async function resetSideEffects(c: Ctx, label: string, opts: { channels?: boolean } = {}): Promise<{ label: string; ok: boolean; detail: string }[]> {
+export async function resetSideEffects(c: Ctx, label: string, opts: { channels?: boolean; stations?: boolean } = {}): Promise<{ label: string; ok: boolean; detail: string }[]> {
   const out: { label: string; ok: boolean; detail: string }[] = [];
   if (!c.persona) return out;
   assertWritable(c.T);
@@ -700,6 +710,23 @@ export async function resetSideEffects(c: Ctx, label: string, opts: { channels?:
   await step("credentials", async () => {
     const r = await P.posIntegrationCredential.deleteMany({ where: { ...where, createdAt: { gte: c.runStart } } });
     return r.count ? `ลบ credentials ที่เกิดในรอบ ${r.count} แถว` : null;
+  });
+  // 822 pos-kds-setup-link → หน้าตั้งค่าร้านอาหารเรียก ensureDefaultStations (ครัว · เครื่องดื่ม) — ไม่ลบ = แถว KDS "ยังไม่มีสถานี" พลิกตั้งแต่รอบ 2
+  if (opts.stations !== false) await step("สถานีครัว", async () => {
+    const st: { id: string }[] = await P.kdsStation.findMany({ where: { ...where, createdAt: { gte: c.runStart } }, select: { id: true } });
+    if (!st.length) return null;
+    let del = 0;
+    let arch = 0;
+    for (const x of st) {
+      try {
+        await P.kdsStation.deleteMany({ where: { ...where, id: x.id } });
+        del++;
+      } catch {
+        await P.kdsStation.updateMany({ where: { ...where, id: x.id }, data: { archivedAt: new Date() } });
+        arch++;
+      }
+    }
+    return `สถานีครัวที่เกิดในรอบ: ลบ ${del}${arch ? ` · เก็บ ${arch} (มีเมนู/รายการอ้าง)` : ""}`;
   });
   if (opts.channels !== false) await step("ช่องทาง", async () => {
     const ch: { id: string; code: string }[] = await P.salesChannel.findMany({ where: { ...where, createdAt: { gte: c.runStart } }, select: { id: true, code: true } });
@@ -850,7 +877,7 @@ async function healResidue(c: Ctx): Promise<void> {
     const keep = c.deviceSnap;
     c.deviceSnap = [];
     // ช่องทางเก่าในสาขานี้ไม่ลบย้อนหลัง (อาจเป็นของ fixture/รอบก่อนที่ตั้งใจคง) — ลบเฉพาะที่เกิดในรอบนี้ตอนจบ
-    for (const r of await resetSideEffects(c, "ซากรอบก่อน", { channels: false })) {
+    for (const r of await resetSideEffects(c, "ซากรอบก่อน", { channels: false, stations: false })) {
       c.log.push(`${r.label}: ${r.detail}`);
       if (!r.ok) throw new StepError("กวาดซาก", `${r.label} → ${r.detail}`);
     }
@@ -908,8 +935,17 @@ export async function ensureFixtures(c: Ctx, user: UserKey): Promise<void> {
   await findPublicTokens(c);
 }
 /** finally + สัญญาณ: ปิดกะของตัวกดแบบนับตรงยอด · คืน PIN เดิม · คืน settings.pos ตรงตัว — เรียกซ้ำได้ · ไม่โยน (ผลลง restores) */
-export async function cleanupFixtures(c: Ctx): Promise<void> {
-  if (c.cleaned) return;
+const CLEANUPS = new WeakMap<Ctx, Promise<void>>();
+/** เรียกซ้ำได้ — ทุกผู้เรียกรอ promise เดียวกัน (ไม่คืนทันทีระหว่างที่รอบแรกยังทำอยู่) */
+export function cleanupFixtures(c: Ctx): Promise<void> {
+  let p = CLEANUPS.get(c);
+  if (!p) {
+    p = cleanupFixturesOnce(c);
+    CLEANUPS.set(c, p);
+  }
+  return p;
+}
+async function cleanupFixturesOnce(c: Ctx): Promise<void> {
   c.cleaned = true;
   const P = await db();
   const T = c.T;
@@ -999,6 +1035,33 @@ export async function writtenSince(w: Write, since: Date, before: number | null)
   return { ok: rows.length > 0, units: info.unit ? [...new Set(rows.map((r) => String(r.unitId)))] : [] };
 }
 
+/**
+ * CD-P42-R13 ด่านสาขาของแถวเงิน: แถวเงินที่ "เกิดใหม่" (createdAt · ไม่ใช่ updatedAt — cron/outbox ที่แก้แถวเก่าของสาขาอื่นไม่นับ) ของร้าน QC
+ * ตั้งแต่ since — คืน id ต่อโมเดล + สาขา · PosPayment (ไม่มีเวลา) ไล่จาก saleId ของ PosSale/PosPaymentIntent ที่เกิดใหม่ ·
+ * ผู้เรียก diff กับชุด id ก่อนกด (แถวที่มีอยู่แล้วไม่นับ) — ยังเป็น fail-closed ต่อผู้เขียนพร้อมกัน (มติ 9: ห้ามงาน QC5 อื่นคู่รอบ)
+ */
+export async function moneyRowsSince(since: Date): Promise<{ model: string; id: string; unitId: string }[]> {
+  const P = await db();
+  const out: { model: string; id: string; unitId: string }[] = [];
+  const saleIds = new Set<string>();
+  for (const m of ["PosSale", "PosPaymentIntent", "PosDeposit", "PosCashMovement", "PosShift"]) {
+    const d = P[toCamel(m)];
+    if (!d) continue;
+    const sel = m === "PosPaymentIntent" ? { id: true, unitId: true, saleId: true } : { id: true, unitId: true };
+    const rows: Any[] = await d.findMany({ where: { tenantId: QC_TENANT, createdAt: { gte: since } }, select: sel, take: 200 }).catch(() => []);
+    for (const r of rows) {
+      out.push({ model: m, id: String(r.id), unitId: String(r.unitId) });
+      if (m === "PosSale") saleIds.add(String(r.id));
+      if (m === "PosPaymentIntent" && r.saleId) saleIds.add(String(r.saleId));
+    }
+  }
+  if (saleIds.size) {
+    const pays: Any[] = await P.posPayment.findMany({ where: { tenantId: QC_TENANT, saleId: { in: [...saleIds] } }, select: { id: true, unitId: true }, take: 400 }).catch(() => []);
+    for (const r of pays) out.push({ model: "PosPayment", id: String(r.id), unitId: String(r.unitId) });
+  }
+  return out;
+}
+
 // ═════════════════════════ (3) pre-flight อ่านอย่างเดียว ═════════════════════════
 export type PF = { key: string; state: "ok" | "would-create" | "missing" | "warn" | "block"; value: string };
 /** ประเมินเงื่อนไขของ writer ทุกตัวที่ ensureFixtures จะเรียก — ไม่เขียนอะไรเลย (findFirst/count/findUnique เท่านั้น) */
@@ -1071,6 +1134,9 @@ export async function preflight(T: Any, users: readonly UserKey[] = ["owner", "m
     add("settings-offline", "ok", `settings.pos.offline.enabled=${JSON.stringify(v?.offline?.enabled)} (เปิด = หน้าขายดึง snapshot ตอนโหลด · ตัวกดเว้น ≥ 61 วิต่อเครื่อง)`);
     add("settings-shift-required", "ok", `settings.pos.shift.requiredRegister=${JSON.stringify(v?.shift?.requiredRegister)} (ตัวกดเปิดกะของตัวเองเสมอ)`);
   }
+  // CD-P42-R7: ลิงก์ POS↔บัญชี (506 ปิดการลงบัญชี → fixture เปิดคืนด้วย setPosAccountLink) — อ่านอย่างเดียว
+  const al = await q(() => readAccountLinkOn(T.systems.POS.id));
+  if (al !== "ERR") add("account-link", "ok", al === null ? "AccountSystemLink POS ไม่มี (506 = needs)" : `AccountSystemLink POS ${al ? "เปิด" : "ปิด"} (จำไว้ใน _qcP42Before · ปิดระหว่างรอบ = เปิดคืน)`);
   const prods = await q(() => P.posProduct.count({ where: { tenantId: T.tenantId, systemId: T.systems.POS.id, archivedAt: null, unitId: null, basePriceSatang: { gt: 0 } } }));
   add("cart-products", prods !== "ERR" && Number(prods) > 0 ? "ok" : "block", `สินค้าทุกสาขาราคาบวก ${prods === "ERR" ? "?" : prods} รายการ (ตะกร้าของแถวเงิน)`);
   const memberPhone = T.member?.phone ?? "";
