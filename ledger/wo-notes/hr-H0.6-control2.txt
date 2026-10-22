@@ -1,0 +1,22 @@
+# controller re-run of wip/pos-hr-h0.6 @91a1c2cb · 2026-10-22T10:15:18Z · load 1.51 1.81 2.42
+qc-hr-h0.6 unforced exit=0 ===== qc-hr-h0.6 ===== passed 55/55 JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":false,"missing":[],"crashed":null,"groupCrashes":[]}  · RESIDUE tenants=0 rows=0 audit=0 outbox=0 [10:16Z load 2.61]
+qc-hr-h0.6 forced#1 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null,"groupCrashes":[]}  · RESIDUE tenants=0 rows=0 audit=0 outbox=0 [10:17Z load 1.96]
+qc-hr-h0.6 forced#2 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null,"groupCrashes":[]}  · RESIDUE tenants=0 rows=0 audit=0 outbox=0 [10:19Z load 3.71]
+qc-crm-c3.3 exit=0 JSON_SUMMARY {"total":90,"passed":90,"findings":[]}   [10:28Z load 1.84]
+qc-payroll-reverse exit=0   [10:28Z load 1.84]
+qc-payroll exit=0 ===== QC Payroll ไทย ===== JSON_SUMMARY {"total":19,"passed":19,"findings":[]}   [10:28Z load 1.85]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ ===== JSON_SUMMARY {"total":27,"passed":27,"findings":[]}   [10:28Z load 2.19]
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null}   [10:31Z load 2.99]
+qc-hr-h0.2 exit=0 ===== qc-hr-h0.2 ===== ผ่าน 58/58 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.2","total":58,"passed":58,"failed":[],"skipped":false,"forced":true,"missing":[],"crashed":null}   [10:33Z load 1.47]
+qc-hr-h0.5 exit=0 ===== qc-hr-h0.5 ===== ผ่าน 71/71 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.5","total":71,"passed":71,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE tenants=0 none (สร้าง 3 ร้าน · ผู้ใช้ 2) [10:35Z load 3.83]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [10:37Z load 2.79]
+qc-approval exit=0 ===== QC Approval Engine ===== JSON_SUMMARY {"total":16,"passed":16,"findings":[]}   [10:37Z load 2.65]
+qc-approval-wiring exit=0 ===== QC Approval Wiring ===== JSON_SUMMARY {"total":7,"passed":7,"findings":[]}   [10:37Z load 3.00]
+qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) ===== JSON_SUMMARY {"total":107,"passed":107,"findings":[]}   [10:37Z load 3.14]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [10:37Z load 3.85]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [10:38Z load 4.42]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":5,"passed":5,"findings":[]}   [10:38Z load 5.19]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":5,"passed":5,"findings":[]}   [10:38Z load 5.19]
+typecheck start 10:38Z availMB=11464 busy=0
+typecheck exit=0 errors=0 [10:38Z]
+ALLDONE 2026-10-22T10:38:31Z
