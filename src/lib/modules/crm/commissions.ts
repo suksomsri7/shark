@@ -2152,17 +2152,41 @@ export async function onPayrollReversed(input: { tenantId: string; hrSystemId: s
     }).catch(() => undefined);
   }
   let unpaid = 0;
+  const changedPairs: { id: string; hrPayAdjustmentId: string }[] = [];
   for (let i = 0; i < pairs.length; i += 500) {
+    const chunk = pairs.slice(i, i + 500);
     const changed = await prisma.crmCommission.updateManyAndReturn({
-      where: { tenantId, status: "PAID", reversedOfId: null, OR: pairs.slice(i, i + 500) },
+      where: { tenantId, status: "PAID", reversedOfId: null, OR: chunk },
       data: { status: "APPROVED" },
-      select: { id: true, systemId: true },
+      select: { id: true, systemId: true, hrPayAdjustmentId: true },
     });
     for (const c of changed) {
       await audit({ tenantId, systemId: c.systemId }, "crm.commission.unpaid", "CrmCommission", c.id, { before: { status: "PAID" }, after: { status: "APPROVED", via: "PAYROLL_REVERSED", runId } }, null);
+      if (c.hrPayAdjustmentId) changedPairs.push({ id: c.id, hrPayAdjustmentId: c.hrPayAdjustmentId });
     }
     unpaid += changed.length;
   }
-  return { unpaid };
+  // HR H0.6 r2 ▸ R3 (รีวิว) กันแข่งข้ามโมดูล: เราอ่าน adjustmentsByIds ตอนรอบใหม่ (R2) ยังไม่จ่าย → ระหว่างนั้น markPaid(R2) commit
+  //   แล้ว onPayrollPaid(R2) เปลี่ยน 0 แถว (คอมมิชชันยัง PAID จากรอบเดิม) → เราค่อยถอน PAID→APPROVED ⇒ R2 จ่ายแล้วแต่คอมมิชชันค้าง APPROVED ตลอดไป
+  //   ⇒ หลังถอนเสร็จ อ่านรายการของคู่ที่เพิ่งถอนอีกครั้ง: รายการไหนตอนนี้ผูกกับรอบที่ PAID แล้ว = คืน APPROVED→PAID (กติกาคู่เดิม · reversedOfId IS NULL)
+  //   ใครลงมือทีหลัง (onPayrollPaid หรือขั้นนี้) ก็ได้ผลสุดท้ายเดียวกัน · 1 แถวประวัติ `crm.commission.repaid` ต่อแถวที่เปลี่ยนจริง ◂
+  let repaid = 0;
+  if (changedPairs.length > 0) {
+    const now = await hr.adjustmentsByIds({ tenantId, systemId }, changedPairs.map((p) => p.hrPayAdjustmentId));
+    const paidNow = new Set(now.filter((r) => r.runId && r.runStatus === "PAID").map((r) => r.id));
+    const back = changedPairs.filter((p) => paidNow.has(p.hrPayAdjustmentId));
+    for (let i = 0; i < back.length; i += 500) {
+      const fixed = await prisma.crmCommission.updateManyAndReturn({
+        where: { tenantId, status: "APPROVED", reversedOfId: null, OR: back.slice(i, i + 500) },
+        data: { status: "PAID" },
+        select: { id: true, systemId: true },
+      });
+      for (const c of fixed) {
+        await audit({ tenantId, systemId: c.systemId }, "crm.commission.repaid", "CrmCommission", c.id, { before: { status: "APPROVED" }, after: { status: "PAID", via: "PAYROLL_PAID_DURING_REVERSE", runId } }, null);
+      }
+      repaid += fixed.length;
+    }
+  }
+  return { unpaid: unpaid - repaid };
 }
 // ◂ HR H0.6

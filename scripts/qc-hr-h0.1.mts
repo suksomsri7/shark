@@ -48,7 +48,7 @@ const ACT_FILE = "src/lib/modules/hr/payroll-actions.ts";
 const UI_FILE = "src/lib/modules/hr/payroll-ui.tsx";
 const RULES_FILE = "src/lib/modules/hr/payroll-rules.ts";
 const SCHEMA_FILE = "prisma/schema/payroll.prisma";
-// hashes taken on the base (f85f5455) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
+// hashes taken on the base (f85f5455; SCHEMA_SHA + CRM_BLOCK_SHA re-taken after H0.6, ruled ORACLE-EDITs) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
 const SCHEMA_SHA = "2636c177261f57c1a102fe6d09c6819e9a2fc1aabc649a10cae6a8ef2d361302";
 const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";

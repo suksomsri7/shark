@@ -553,7 +553,7 @@ const crmApprovalEffect: OutboxHandler = async (evt) => {
 //   (crm → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์) · ใช้เป็น **ขั้นแรกที่ retry ได้** (`crmFirst`): `hr.payroll.paid` ที่หายไป =
 //   คอมมิชชันค้าง APPROVED ตลอดกาล ⇒ ล้มชั่วคราวต้องให้คิวส่งใหม่ (ไม่ใช่ WARN แบบของแถม) · ตัวรับ idempotent ทั้งหมด (X4)
 const crmCommissionBridge =
-  (name: "onPayrollPaid" | "onCommissionCreated" | "onCommissionApproved" | "onCommissionReversed"): OutboxHandler =>
+  (name: "onPayrollPaid" | "onCommissionCreated" | "onCommissionApproved" | "onCommissionReversed" | "onPayrollReversed"): OutboxHandler => // HR H0.6 ▸ + onPayrollReversed ◂
   async (evt) => {
     const bridges = await import("@/lib/platform/crm-bridges/commissions");
     await bridges[name](evt);
@@ -1205,7 +1205,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   ตัวรับ = ขั้นแรกที่ retry ได้ (ยื่นอนุมัติ/ส่งเงินเดือน/ปิด PAID ต่อจากที่ค้าง · แจ้ง `commission.status`) แล้วจึง automation + เว็บฮุค
   //   ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่เปลี่ยนอะไร (AUDIT-CLASS X4 — guard สถานะ + ล็อกแถว + partial unique ของ HR)
   "hr.payroll.paid": crmFirst(crmCommissionBridge("onPayrollPaid"), withAutomation(async () => {})),
-  "hr.payroll.reversed": crmFirst(crmCommissionBridge("onPayrollReversed" as never), withAutomation(async () => {})), // HR H0.6 ▸ hr/payroll.ts#reverseRun {runId, periodKey, adjustmentIds} → CRM คืน PAID→APPROVED ครั้งเดียว (ชนิดของชื่อ :556 เป็นของ CRM) ◂
+  "hr.payroll.reversed": crmFirst(crmCommissionBridge("onPayrollReversed"), withAutomation(async () => {})), // HR H0.6 ▸ hr/payroll.ts#reverseRun {runId, periodKey, adjustmentIds} → CRM คืน PAID→APPROVED ครั้งเดียว ◂
   "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
   "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
   "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),

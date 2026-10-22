@@ -141,7 +141,7 @@ export async function requestAdjustment(
   }
   const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId } });
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
-  // H0.2 ▸ R2 (D5): กติกาเดียวกับทาง CRM (มติผู้คุมงาน S4) — งวดที่มีรอบจ่ายแล้ว (ทุกสถานะ รวมร่าง) จะไม่ถูกดึงรายการอีก ⇒ ไม่รับรายการใหม่
+  // H0.2 ▸ R2 (D5): กติกาเดียวกับทาง CRM (มติผู้คุมงาน S4) — งวดที่มีรอบจ่ายที่ยังมีผล (ทุกสถานะยกเว้น REVERSED · รวมร่าง — H0.6) จะไม่ถูกดึงรายการอีก ⇒ ไม่รับรายการใหม่
   //   ข้อความเดียวกับทาง CRM ทุกตัวอักษร · ตรวจก่อนอ่านอะไรที่ขึ้นกับเงินเดือน (อัตรา OT) ⇒ ไม่เป็นช่องเดาเงินเดือน ◂
   {
     const p = input.periodKey.trim();
@@ -587,7 +587,7 @@ export async function createPayrollRun(
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
-    // สองการสร้างรอบของงวดเดียวกันต่อคิวกัน (unique (systemId, periodKey) เป็นด่านสุดท้าย — ล็อกนี้ทำให้ได้ข้อความไทยแทน error ของฐาน)
+    // สองการสร้างรอบของงวดเดียวกันต่อคิวกัน (partial unique (systemId, periodKey) ของรอบที่ยังไม่ REVERSED เป็นด่านสุดท้าย — H0.6 · ล็อกนี้ทำให้ได้ข้อความไทยแทน error ของฐาน)
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:payroll:run:${ctx.systemId}:${periodKey}`}, 0))`;
     // HR H0.6 ▸ R3 (D2b): รอบที่กลับรายการแล้ว (REVERSED) ไม่นับเป็นรอบซ้ำ ⇒ งวดที่กลับรายการแล้วสร้างรอบใหม่ได้ (ข้อความเดิมทุกตัวอักษร) ◂
     const dup = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey, ...liveRunWhere() }, select: { id: true } });
@@ -1093,7 +1093,8 @@ export async function reverseRun(
       idempotencyKey: `hr.payroll.reversed#${id}`,
       payload: { runId: id, periodKey, adjustmentIds },
     });
-    return { ok: true, prevStatus: cur.status, journalEntryId: cur.journalEntryId, reversalEntryId, jvReversed: reversalEntryId !== null, adjustmentIds };
+    // HR H0.6 r2 ▸ R4 (รีวิว): มีระบบบัญชีแต่ reverseEntry คืน {skipped} (JV เดิมไม่ใช่ POSTED และไม่มีรายการกลับชี้มัน) = "ข้าม JV" — คนละกรณีกับ "ไม่มีระบบบัญชี" ◂
+    return { ok: true, prevStatus: cur.status, journalEntryId: cur.journalEntryId, reversalEntryId, jvReversed: reversalEntryId !== null, jvSkipped: !!liveAcct && reversalEntryId === null, adjustmentIds };
   };
   let out: ReverseOutcome;
   try {
@@ -1117,9 +1118,9 @@ export async function reverseRun(
     targetType: "HrPayrollRun",
     targetId: id,
     before: { status: out.prevStatus },
-    after: { status: "REVERSED", runId: id, periodKey, adjustmentCount: out.adjustmentIds.length, journalEntryId: out.journalEntryId, reversalEntryId: out.reversalEntryId, jvReversed: out.jvReversed },
+    after: { status: "REVERSED", runId: id, periodKey, adjustmentCount: out.adjustmentIds.length, journalEntryId: out.journalEntryId, reversalEntryId: out.reversalEntryId, jvReversed: out.jvReversed, jvSkipped: out.jvSkipped },
   });
-  return { ok: true, note: out.jvReversed ? REVERSE_OK : REVERSE_OK_NO_ACCOUNT };
+  return { ok: true, note: out.jvReversed ? REVERSE_OK : out.jvSkipped ? REVERSE_OK_JV_SKIPPED : REVERSE_OK_NO_ACCOUNT };
 }
 
 // ── จ่ายแล้ว (APPROVED→PAID) ──
@@ -1207,7 +1208,7 @@ export type StrandedAdjustment = {
   crmCommissionId: string | null;
 };
 /**
- * R2: รายการ "ค้าง" ของระบบ HR นี้ — ปกติ + CRM · PENDING/APPROVED · ยังไม่เข้ารอบ (`runId IS NULL`) · งวดของมันมีรอบจ่ายแล้ว (ทุกสถานะ)
+ * R2: รายการ "ค้าง" ของระบบ HR นี้ — ปกติ + CRM · PENDING/APPROVED · ยังไม่เข้ารอบ (`runId IS NULL`) · งวดของมันมีรอบจ่ายที่ยังมีผล (ทุกสถานะยกเว้น REVERSED — H0.6)
  * ⇒ createPayrollRun ของงวดนั้นไม่มีวันเกิดซ้ำ จึงจะไม่ถูกจ่ายถ้าไม่มีใครย้าย (CR-H0.2-2: รวมรายการของคนที่ถูกตัดออกจากงวด) ·
  * `strandedCommissionAdjustments` (ของ CRM) ไม่เปลี่ยน
  */
@@ -1509,6 +1510,7 @@ const REVERSE_JV_FAILED = "กลับรายการบัญชีไม�
 const REVERSE_TX_FAILED = "กลับรายการไม่สำเร็จ — รอบจ่ายยังไม่ถูกกลับ กรุณาลองอีกครั้ง";
 const REVERSE_OK = "กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว";
 const REVERSE_OK_NO_ACCOUNT = "กลับรายการเงินเดือนเรียบร้อย — ไม่พบระบบบัญชี จึงไม่ได้ลง JV กลับรายการ (รายการบัญชีเดิมคงอยู่)";
+const REVERSE_OK_JV_SKIPPED = "กลับรายการเงินเดือนเรียบร้อย — รายการบัญชีเดิมไม่อยู่ในสถานะที่ต้องกลับ จึงไม่ได้ลง JV กลับรายการ"; // HR H0.6 r2 ▸ R4 ◂
 // รอคิวล็อกงวดได้ (10 คนกดพร้อมกัน = ต่อคิว) · เพดานกว้างกว่าทางอื่นเพราะกลับ JV อยู่ใน tx เดียวกัน
 const REVERSE_TX_OPTS = { maxWait: 20_000, timeout: 120_000 } as const;
 
@@ -1524,7 +1526,7 @@ const REVERSE_TEXT: Record<ReverseRefusalCode, string> = {
 
 type ReverseOutcome =
   | { ok: false; code: ReverseRefusalCode }
-  | { ok: true; prevStatus: string; journalEntryId: string; reversalEntryId: string | null; jvReversed: boolean; adjustmentIds: string[] };
+  | { ok: true; prevStatus: string; journalEntryId: string; reversalEntryId: string | null; jvReversed: boolean; jvSkipped: boolean; adjustmentIds: string[] };
 
 /** กลับ JV ล้มใน tx — โยนเพื่อย้อนทั้ง tx แล้วแปลงเป็นข้อความคงที่ที่ reverseRun (OQ-8) · เก็บ error เดิมไว้อ่านชื่อ/รหัสเท่านั้น */
 class JvReverseFailed extends Error {
