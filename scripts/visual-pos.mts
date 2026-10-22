@@ -8037,6 +8037,18 @@ async function ensureP36uFixture(): Promise<void> {
     P36U.log.push(`ระบบ CRM ${P36U.crmSystemId}${P36U.crmCreated ? ` (สร้าง "${P36U_CRM_NAME}")` : ` (${crmSys?.name ?? ""})`}`);
     const crm = (await import("@/lib/modules/crm")) as Any;
     const cctx = { tenantId: T.tenantId, systemId: P36U.crmSystemId, actorUserId: owner.userId };
+    // fix4: ดีลบนหน้าขายอ่านผ่าน crm.payments.openDealsForParty ซึ่งคืน [] เมื่อระบบ CRM ไม่ใช่ uiVersion 2 (payments.ts:1251 isV2) —
+    //   ระบบ CRM ที่ harness สร้าง ("ลูกค้าองค์กร (ภาพ QC P3.6U)") ตั้งค่าปริยาย uiVersion 1 ⇒ เปิด v2 ด้วยตัวเขียนของ CRM (setCrmSettingsKey · คีย์อื่นของ settings.crm อยู่ครบ)
+    //   เฉพาะระบบของภาพเท่านั้น · ระบบ CRM จริงของร้านที่ยังเป็น v1 = ไม่แตะ (ดีล SKIP พร้อมเหตุผล)
+    const crmSet = (await import("@/lib/modules/crm/settings")) as Any;
+    const sctx = { tenantId: T.tenantId, systemId: P36U.crmSystemId };
+    const ours = P36U.crmCreated || crmSys?.name === P36U_CRM_NAME;
+    let crmV2 = (await at("getCrmSettings", sctx, () => crmSet.getCrmSettings(sctx))).uiVersion === 2;
+    if (!crmV2 && ours) {
+      await at("setCrmSettingsKey uiVersion 2 (ระบบ CRM ของภาพ)", sctx, () => crmSet.setCrmSettingsKey(sctx, "uiVersion", 2));
+      crmV2 = true;
+      P36U.log.push("ระบบ CRM ของภาพ → uiVersion 2");
+    }
     const coRow = (id: string) => prisma.crmCompany.findFirst({ where: { id, tenantId: T.tenantId }, select: { id: true, partyId: true, name: true, taxId: true, archivedAt: true } });
     for (const k of ["co", "co2"] as const) {
       const spec = P36U_CO[k];
@@ -8100,6 +8112,28 @@ async function ensureP36uFixture(): Promise<void> {
       }
     }
     if (P36U.dealId) P36U.dealSkip = "";
+    // fix4: ตรวจตัวเองด้วยตัวอ่านเดียวกับ registerDealOptionsAction (crm.payments.openDealsForParty · Party ของบริษัท -co) — ไม่เห็น = บอกตัวกรองที่ตัดทิ้ง
+    if (P36U.dealId) {
+      const vis = (await at("openDealsForParty (-co)", { systemId: P36U.crmSystemId, partyId: P36U.co!.partyId }, () => crm.payments.openDealsForParty(sctx, owner, P36U.co!.partyId))) as Any[];
+      if (!vis.some((d) => d.id === P36U.dealId)) {
+        const row = await prisma.crmDeal.findFirst({ where: { id: P36U.dealId, tenantId: T.tenantId }, select: { kind: true, archivedAt: true, companyId: true, systemId: true } });
+        const why = !crmV2
+          ? `ระบบ CRM ${P36U.crmSystemId} uiVersion ≠ 2 (payments.ts:1251 isV2)`
+          : !crm.crmCan(owner, "crm.deal.read")
+            ? "เจ้าของไม่มี crm.deal.read"
+            : !crm.crmCan(owner, "crm.deal.update")
+              ? "เจ้าของไม่มี crm.deal.update (crm-link registerDealOptions)"
+              : !row
+                ? "ไม่พบแถวดีล"
+                : row.kind !== "OPEN" || row.archivedAt
+                  ? `ดีล kind ${row.kind} archived ${!!row.archivedAt}`
+                  : row.companyId !== P36U.co!.id
+                    ? `ดีล companyId ${row.companyId} ≠ -co ${P36U.co!.id}`
+                    : "dealWhere (การมองเห็นของเจ้าของ)";
+        P36U.dealSkip = `deal not visible: ${why}`;
+        P36U.log.push(P36U.dealSkip);
+      } else P36U.log.push("ดีลมองเห็นผ่าน openDealsForParty ✓");
+    }
     // บัญชีเครดิต (ผู้เขียนเดียว saveCreditAccount · Party บริษัท kind COMPANY จาก createCompany) — ตรงค่าที่ต้องการแล้ว = ไม่เขียน
     const credit = await import("@/lib/modules/pos/credit");
     const listed = await at("listCreditAccounts", SYS, () => credit.listCreditAccounts({ tenantId: T.tenantId, systemId: SYS }, owner));
@@ -8215,10 +8249,46 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
   if (P36U.error) throw new StepError(`fixture P3.6U: ${P36U.error}`);
   if (!P36U.done) throw new StepError("fixture P3.6U ยังไม่ได้สร้าง");
   const has = async (sel: string) => !!(await page.$(sel));
+  // fix4: ไม่ถือ element handle ข้าม await — รอด้วย selector แล้วทำในหน้าเว็บคำสั่งเดียว (จอชำระ re-render หลังสถานะวงเงิน/คำปฏิเสธ = handle หลุด)
+  const shown = (sel: string, timeout: number, enabled = false) =>
+    page
+      .waitForFunction(
+        (s: string, en: boolean) => {
+          const e = document.querySelector(s) as HTMLButtonElement | null;
+          return !!e && e.getClientRects().length > 0 && (!en || !e.disabled);
+        },
+        { timeout },
+        sel,
+        enabled,
+      )
+      .catch(() => {
+        throw new StepError(`ไม่พบ ${sel}${enabled ? " ที่กดได้" : ""} ภายใน ${Math.round(timeout / 1000)} วิ`);
+      });
   const into = async (sel: string, timeout = 20_000) => {
-    const el = await visibleEl(page, sel, 0, timeout);
-    await el.evaluate((e: Element) => e.scrollIntoView({ block: "center" }));
-    return el;
+    await shown(sel, timeout);
+    await page.$eval(sel, (e: Element) => e.scrollIntoView({ block: "center" }));
+  };
+  const clickNow = async (sel: string, timeout = 15_000) => {
+    await shown(sel, timeout, true);
+    await page.$eval(sel, (e: Element) => {
+      e.scrollIntoView({ block: "center" });
+      (e as HTMLElement).click();
+    });
+    await sleep(250);
+  };
+  /** ค่าเดิมคงอยู่ ≥ ms (สถานะวงเงินไม่โหลดซ้ำแล้ว) */
+  const settled = async (sel: string, attr: string, want: string, ms = 700, timeout = 20_000) => {
+    const until = Date.now() + timeout;
+    let since = 0;
+    for (;;) {
+      const v = await page.$eval(sel, (e: Element, a: string) => e.getAttribute(a), attr).catch(() => null);
+      if (v === want) {
+        if (!since) since = Date.now();
+        if (Date.now() - since >= ms) return;
+      } else since = 0;
+      if (Date.now() > until) throw new StepError(`${sel} ${attr}=${v} (คาด ${want} นิ่ง ${ms}ms)`);
+      await sleep(120);
+    }
   };
   const coOf = (k: "co" | "co2"): P36uCo => {
     const c = P36U[k];
@@ -8229,7 +8299,7 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
   const openPicker = async () => {
     const sheetOpen = device === "mobile" && (await visibleEl(page, tid("pos-reg-company-pick"), 0, 800).then(() => true).catch(() => false));
     if (!sheetOpen) await openCartOnMobile(page, device);
-    await clickEl(page, tid("pos-reg-company-pick"));
+    await clickNow(tid("pos-reg-company-pick"));
     await visibleEl(page, tid("pos-reg-company-sheet"), 0, 10_000);
   };
   /** เลือกบริษัทด้วยเลขผู้เสียภาษี (แถวเดียว) → ชิป */
@@ -8237,12 +8307,24 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
     const co = coOf(k);
     await openPicker();
     await typeInto(page, tid("pos-reg-company-search"), P36U_CO[k].taxId);
-    await page
-      .waitForFunction((name: string) => (document.querySelector('[data-testid="pos-reg-company-row-0"]')?.textContent ?? "").includes(name), { timeout: 15_000 }, co.name)
-      .catch(() => {
-        throw new StepError(`ค้นเลข ${P36U_CO[k].taxId} แล้วไม่ขึ้นแถว ${co.name} (registerCompanySearchAction · ระบบ CRM ${P36U.crmSystemId})`);
-      });
-    await clickEl(page, tid("pos-reg-company-row-0"));
+    // fix4: ผลค้นเลขภาษี = แถวเดียวของบริษัทนี้ และนิ่ง (รายการ "ล่าสุด" ที่มาก่อนถูกแทนแล้ว — ไม่กดแถวที่กำลังจะหลุด)
+    const one = () =>
+      page.waitForFunction(
+        (name: string) => {
+          const r0 = document.querySelector('[data-testid="pos-reg-company-row-0"]');
+          return !!r0 && (r0.textContent ?? "").includes(name) && !document.querySelector('[data-testid="pos-reg-company-row-1"]');
+        },
+        { timeout: 15_000 },
+        co.name,
+      );
+    await one().catch(() => {
+      throw new StepError(`ค้นเลข ${P36U_CO[k].taxId} แล้วไม่ขึ้นแถวเดียว ${co.name} (registerCompanySearchAction · ระบบ CRM ${P36U.crmSystemId})`);
+    });
+    await sleep(600);
+    await one().catch(() => {
+      throw new StepError(`ผลค้น ${P36U_CO[k].taxId} ไม่นิ่ง`);
+    });
+    await clickNow(tid("pos-reg-company-row-0"));
     await visibleEl(page, tid("pos-reg-company-chip"), 0, 10_000).catch(() => {
       throw new StepError("เลือกบริษัทแล้วไม่ขึ้นชิปบริษัท (pos-reg-company-chip)");
     });
@@ -8261,15 +8343,19 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
     await into(tid("pos-reg-paydlg-method-onaccount"), 10_000).catch(() => {
       throw new StepError("จอชำระไม่มีไทล์วางบิล (เปิดเครดิต · ออนไลน์ · ร้านมี CRM)");
     });
+    // สถานะวงเงินโหลดตั้งแต่เปิดจอ (มีบริษัท) — รอให้นิ่งก่อนตัดสินว่าไทล์ปิดไหม
+    await sleep(500);
     if (await page.$eval(tid("pos-reg-paydlg-method-onaccount"), (e: Element) => (e as HTMLButtonElement).disabled))
       throw new StepError(`SKIP — ไทล์วางบิลถูกปิด: ${await page.$eval(tid("pos-reg-paydlg-onaccount-reason"), (e: Element) => e.textContent?.trim() ?? "").catch(() => "-")} (สมุดบัญชีไม่ผูก POS / ไม่มีเทอม?)`);
-    await clickEl(page, tid("pos-reg-paydlg-method-onaccount"));
+    await clickNow(tid("pos-reg-paydlg-method-onaccount"));
   };
   const waitStatus = async () => {
     await into(`${tid("pos-reg-paydlg-onaccount-status")}[data-state="ok"]`, 20_000).catch(async () => {
       const txt = await page.$eval(tid("pos-reg-paydlg-onaccount-status"), (e: Element) => e.textContent?.trim() ?? "").catch(() => "");
       throw new StepError(`สถานะวงเงินไม่มา (registerCreditStatusAction)${txt ? ` — ${txt.slice(0, 100)}` : ""}`);
     });
+    await settled(tid("pos-reg-paydlg-onaccount-status"), "data-state", "ok"); // fix4: นิ่งก่อนกดยืนยัน
+    await shown(tid("pos-reg-paydlg-confirm"), 10_000, true);
   };
   const base = async () => {
     await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
@@ -8338,7 +8424,7 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
       if (name !== co.name) throw new StepError(`15A ไม่ได้ตั้งต้นจากบริษัท (ชื่อ "${name}")`);
       await typeInto(page, tid("pos-taxinv-taxid"), TAXINV_BUYER.taxId);
       await typeInto(page, tid("pos-taxinv-address"), TAXINV_BUYER.address);
-      await clickEl(page, tid("pos-taxinv-submit"));
+      await clickNow(tid("pos-taxinv-submit"));
       await page.waitForFunction(() => !document.querySelector('[data-testid="pos-taxinv-dialog"]'), { timeout: 8_000 }).catch(async () => {
         const err = await page.$eval(tid("pos-taxinv-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
         throw new StepError(`บันทึก 15A แล้วกล่องไม่ปิด${err ? ` (${err})` : ""}`);
@@ -8364,17 +8450,18 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
       await pickCompany("co2");
       await openOnAccount();
       await waitStatus();
-      await clickEl(page, tid("pos-reg-paydlg-confirm"));
-      await visibleEl(page, tid("pos-reg-credit-over"), 0, 20_000).catch(() => {
+      await clickNow(tid("pos-reg-paydlg-confirm"));
+      await shown(tid("pos-reg-credit-over"), 20_000).catch(() => {
         throw new StepError("ยืนยันวางบิลเกินวงเงินแล้วไม่ขึ้นแผ่น \"เกินวงเงินวางบิล\" (CREDIT_LIMIT_EXCEEDED)");
       });
+      await sleep(400);
       if (userKey === "cashier" && (await has(tid("pos-reg-credit-over-figures")))) throw new StepError("แคชเชียร์เห็นตัวเลขวงเงินในแผ่นเกินวงเงิน (CD-4)");
       if (state === "paydlg-credit-over-sheet") return;
       if (!P36U.mgrPin) throw new StepError("ไม่มี PIN ผู้จัดการของภาพ");
-      await visibleEl(page, tid("pos-mgr-pin-manager"), 0, 15_000).catch(() => {
+      await shown(`${tid("pos-reg-credit-over")} ${tid("pos-mgr-pin-manager")}`, 15_000).catch(() => {
         throw new StepError("แป้นไม่มีรายชื่อผู้จัดการ (listStaffForDeviceAction)");
       });
-      const picked = await page.$$eval(tid("pos-mgr-pin-manager"), (els: Element[], name: string) => {
+      const picked = await page.$$eval(`${tid("pos-reg-credit-over")} ${tid("pos-mgr-pin-manager")}`, (els: Element[], name: string) => {
         const b = els.find((e) => (e.textContent ?? "").includes(name)) as HTMLButtonElement | undefined;
         if (!b) return false;
         b.click();
@@ -8383,7 +8470,7 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
       if (!picked) throw new StepError("แป้นไม่มีผู้จัดการของภาพ");
       await sleep(250);
       const wrong = String((Number(P36U.mgrPin) + 1) % 1_000_000).padStart(6, "0");
-      for (const d of wrong) await clickEl(page, tid(`pos-mgr-pin-key-${d}`));
+      for (const d of wrong) await clickNow(`${tid("pos-reg-credit-over")} ${tid(`pos-mgr-pin-key-${d}`)}`);
       await visibleEl(page, tid("pos-mgr-pin-error"), 0, 20_000).catch(() => {
         throw new StepError("PIN ผิดแล้วไม่ขึ้นข้อความใต้แป้น (PIN_INVALID)");
       });
@@ -8395,7 +8482,7 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
       await pickCompany("co");
       await openOnAccount();
       await waitStatus();
-      await clickEl(page, tid("pos-reg-paydlg-confirm"));
+      await clickNow(tid("pos-reg-paydlg-confirm"));
       await visibleEl(page, tid("pos-reg-done"), 0, 25_000).catch(async () => {
         const err = await page.$eval(tid("pos-reg-paydlg-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
         throw new StepError(`ยืนยันวางบิลแล้วไม่ขึ้นจอสำเร็จ${err ? ` (${err})` : ""}`);
@@ -8425,11 +8512,11 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
         return;
       }
       if (userKey !== "owner") throw new StepError("คืนเงิน = เจ้าของร้าน");
-      await clickEl(page, tid("pos-bills-refund-open"));
+      await clickNow(tid("pos-bills-refund-open"));
       await visibleEl(page, tid("pos-bills-refund-line"), 0, 15_000).catch(() => {
         throw new StepError("หน้าต่างคืนเงินไม่ขึ้นรายการ (pos-bills-refund-line)");
       });
-      await clickEl(page, tid("pos-bills-refund-line"));
+      await clickNow(tid("pos-bills-refund-line"));
       await into(tid("pos-bills-refund-m-onaccount"), 10_000).catch(() => {
         throw new StepError("แผ่นคืนเงินของบิลวางบิลไม่มีชิป \"วางบิล (ลดหนี้)\"");
       });
@@ -8476,9 +8563,9 @@ async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<
     case "settings-credit-account-invalid": {
       const co = coOf("co");
       await into(tid(`pos-settings-credit-edit-${co.partyId}`));
-      await clickEl(page, tid(`pos-settings-credit-edit-${co.partyId}`));
+      await clickNow(tid(`pos-settings-credit-edit-${co.partyId}`));
       await typeInto(page, tid("pos-settings-credit-term"), "400");
-      await clickEl(page, tid("pos-settings-credit-save"));
+      await clickNow(tid("pos-settings-credit-save"));
       await into(tid("pos-settings-credit-error"), 15_000).catch(() => {
         throw new StepError("เทอม 400 วันแล้วไม่ขึ้นข้อความปฏิเสธในฟอร์ม (saveCreditAccount VALIDATION)");
       });
