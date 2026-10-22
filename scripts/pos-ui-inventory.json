@@ -14249,10 +14249,6 @@
       "wo": "P2.2U",
       "oracle": "",
       "system": "POS",
-      "viewport": [
-        "desktop",
-        "tablet"
-      ],
       "needs": "หมวดสินค้า (PosCategory) ≥ 1 ของร้าน — posqc-coffee ไม่มีหมวด ⇒ ตัวเลือกมีแค่ \"ทุกหมวด\" (ProductsClient.tsx:318-325 · CD-P41-F26 select ตัวเลือกเดียว)"
     },
     {
@@ -21304,7 +21300,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-kds-start-*"
+        "pos-kds-start-*=click"
       ],
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
