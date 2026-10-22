@@ -5560,7 +5560,11 @@ async function ensureP24uFixture(): Promise<void> {
     const rv9 = await pt.registerCreateReservation(ctx, actor, { tableId: P24U.tables[9]!, name: "คุณอรทัย (ภาพ QC)", phone: "0812345678", partySize: 6, at: at9, holdFromMinutes: 30 });
     if (!rv9.ok) throw new Error(`registerCreateReservation: ${rv9.code}`);
     P24U.reservations.push(rv9.id);
-    const rvX = await pt.registerCreateReservation(ctx, actor, { tableId: null, name: "คุณสมชาย (ภาพ QC)", partySize: 2, at: new Date(Date.now() + 120 * 60_000).toISOString(), holdFromMinutes: 15 });
+    // POS P3.12 ▸ CD-P312-V2a (ผู้คุม B 22.10 · parity p1.14 22:3x ICT): ใบจองที่ 2 ห้ามข้ามเที่ยงคืน ICT — แผ่น "จองโต๊ะวันนี้" กรองตามวัน ⇒ now+120 นาที หลัง 23:50 ICT ทำให้ pos-tbl-reservation-<id> ไม่โผล่ (flake ตามเวลา) · ใช้ min(now+120, max(now+40, 23:50 ICT)) ◂
+    const ictNow = new Date(Date.now() + 7 * 3_600_000);
+    const endIct = Date.UTC(ictNow.getUTCFullYear(), ictNow.getUTCMonth(), ictNow.getUTCDate(), 23, 50) - 7 * 3_600_000;
+    const atX = new Date(Math.min(Date.now() + 120 * 60_000, Math.max(Date.now() + 40 * 60_000, endIct))).toISOString();
+    const rvX = await pt.registerCreateReservation(ctx, actor, { tableId: null, name: "คุณสมชาย (ภาพ QC)", partySize: 2, at: atX, holdFromMinutes: 15 });
     if (rvX.ok) P24U.reservations.push(rvX.id);
     P24U.done = true;
     P24U.log.push(`สร้าง: โซน 2 · โต๊ะ ${Object.keys(P24U.tables).length} (${p24uName(1)}…) · session ${Object.keys(P24U.sessions).length} · คำขอ ${P24U.requests.length} · จอง ${P24U.reservations.length}`);
