@@ -191,3 +191,114 @@ Lint: `bash scripts/pos-oracle-check.sh /root/projects/shark-pos-b qc-pos-p4.2 -
 - QC4 lacks credit accounts, a kanban board and /q tokens ⇒ those rows skip as `needs`/`needs-fixture` unless QC5 has them (QC5 pre-flight tells).
 - 3 personas use exactly the default 3-device limit of the btn unit.
 - Hydration is detected from console text; overflow per URL once.
+
+## rules update (walker R2 · builder · account B · 22 Oct 2026 21:05–21:45Z UTC)
+Prompt `ledger/pos-briefs/pos-prompt-accountB-P4.2-WALKER-R2.md` · inputs: P4.1 review (R1 ×3) + builder notes fix1/fix2/fix3 (CD-P41-B2 B3 B6 · F12 F13 F15–F18 F22 F26–F29). Tree b · `wip/pos-p4.2-walker` = `origin/wip/pos-p4.2-walker` d2127ce1 + `merge --no-ff bb7b0b2b` (1b118949 · `pos-gates.json` merged with no conflict, all 8 entries kept). Scripts + ledger only · no `src/` · `visual-pos.mts` untouched · only `--list` / `--dry` / gate mode / `--self-test` / read-only QC4 pre-flight ran (no build, no serve, no QC5, no real pass) · every node command via `scripts/iso.sh` ISO_MEM=3G · commits `--no-verify` (fitness run separately via iso).
+
+| SHA | group |
+|---|---|
+| 1b118949 | merge session/pos bb7b0b2b (P3.12 + P4.1 registry 1,242 rows) |
+| 82af5b02 | ORACLE-EDIT qc-pos-p4.1 R3 + `$fields.opener` (R11 optional `?` · R10 `= ` search-noop) |
+| 8ba4bff6 | fixtures: classifier R1 R5 R12 · pure helpers R4 R6 R8–R11 · resets R7 · money R13 |
+| a67af0ed | walker: press rules R1–R11 · side-effect tail phase R7 · gate B8 (R13) B9 B10 |
+| dc33658e | oracle qc-pos-p4.2: new reasons allowed + counted · W11 · `--self-test` · PIN bb7b0b2b |
+| 23fa951b | review fixes (1 read-only reviewer sub-agent, 12 findings: 2 High · 5 Med · 5 Low — all fixed except #8 subpath, see CD-P42-R4) |
+| (this) | notes |
+
+### CD-P42-R1…R13 (fx = `scripts/pos-buttons-fixtures.mts` · w = `scripts/qc-pos-buttons.mts` · lines at 23fa951b)
+- **CD-P42-R1 (B2)** `input[type=hidden]` ⇒ `skip hidden-input`: static when needs says `type=hidden` (fx:234 — 1216/1217) · runtime when the testid exists only as hidden inputs (w:597 `hiddenInput`, used in press/visible paths) or the pressed element is `input:hidden`.
+- **CD-P42-R2 (B3/F15)** press only pressable elements (w:608 `pressInfo`, applied w:1080): button · a[href] · input · select · textarea · summary · form (form/filter rows) · role button|link|switch|checkbox|radio|tab|menuitem(+radio/checkbox)|option · label of a field · self/ancestor/descendant · React click handler (with tabindex, and — decision — also without tabindex, so a handler div is never a false `static`). Not pressable ⇒ `skip static` for manager/cashier (1-unit personas) · owner ⇒ `dead` "not pressable".
+- **CD-P42-R3 (F13)** disabled after registry steps + PREFILL and the needs' CD-P41-F13 clause names this persona ⇒ `skip disabled-expected` (w:1098 · fx:324 `f13Users`: the role word nearest the clause; none named = manager+cashier; owner never; `expect.state disabled` rows stay `visible` = ok). Enabled ⇒ pressed normally (a server refusal is a real wrongExpect).
+- **CD-P42-R4 (F16)** `navMatches` (fx:383, used w:1203): URL query/hash ignored unless the target has one; target query keys must be present (`[x]`/`<x>`/empty = any non-empty · `v*` = prefix · else exact) · target `#hash` must equal. Decision: a deeper sub-path still matches (old walker behaviour the registry was audited against, e.g. tabs anyOf `/app/sys/[id]`) — reviewer #8 asked to anchor; left for the controller.
+- **CD-P42-R5 (F17/F12)** `skip needs-persona` (fx:286 list · applied fx:231, before the visible/notice check): F17 discount-over sheet 380-389 + manager-PIN 393-398 (owner/manager) · sales PIN dialogs 399-401 (owner/manager) · F12 refusal notices 1231-1235 1241 (cashier); only while the row still has needs. 915 not listed (cashier reaches it with a deposit fixture).
+- **CD-P42-R6 (F18)** registry steps (`=value` `=*` `=click` `=on` `= `) run in `reveal` before PREFILL and mark their element (w:667 `markFilled`, WeakSet in the page) · PREFILL skips marked elements (w:763) · walker-typed discount = `discountFill` (fx:425 · w:492, before the qty/count rule: "dis**count**"): % = half the STAFF cap, baht = 1, cap from `posDiscountCaps(settings)` at run time (default 1000 bp, register-shared.ts:37).
+- **CD-P42-R7 (F22)** side-effect rows (fx:351 keys 476 506 822 307 537 1161 1183 + needs/note "press last/กดท้าย/reset/CD-P41-F22" ⇒ also 445) run in a tail phase after every page group, 307 last (w:1483) · after each and at the end `resetSideEffects` (fx:680): walker devices back to ACTIVE · LAN agents of the run revoked (`revokePrintAgent`) · creds of the run deleted · KDS stations of the run deleted (822) · channels of the run deleted (FK ⇒ archived) — `where unitId = posqc-btn-unit` only · `_qcP42Before` now also holds the posqc-btn `BusinessUnit.settings` (476) and the POS↔account link state (506 → `setPosAccountLink` enables back) (fx:563 marker) · restore after every writing row in `finally` (w:1415) · `healResidue` (fx:868) undoes a killed run's devices/agents/creds before start; pre-flight reports posqc-btn residue as warn · Customer-create rows (439/445) get a per-run random phone instead of the fixed 0812345678 (w:685 `freshPhone`).
+- **CD-P42-R8 (F26)** `expectAlts` (fx:437) reads `anyOf` strings and `{type,target,state}` objects; primary first, then any alternative (visible/navigate/ui) — never rescues ≥400, a db naming no known model, or a money/counter mutation (w:1257 `hardFail`); an inline-error rescue is labelled `anyOf-refusal` · enabled select with one option + needs ⇒ `skip needs` (w:532) · checked radio (`aria-checked=true` / `:checked`) ⇒ `skip idle-expected` (w:628) · copy rows: context gets clipboard permissions; primary fails ⇒ clipboard changed (length+hash only, never the text) ⇒ ok; unreadable ⇒ DOM text "คัดลอกแล้ว/Copied" (w:645, w:1349).
+- **CD-P42-R9 (F27)** locale/unit switch already in that state (aria pressed/selected/checked/current · data-state · `<html lang>` = the switch's locale) ⇒ `skip idle-expected` (fx:430 `SWITCH_RE`/`localeOfSwitch`, w:628) · after any locale switch the LOCALE/lang cookies go back to the cell locale (w:656).
+- **CD-P42-R10 (F28)** walker rule `search-noop`: PREFILL never types into search-like fields (fx:417 · w:761); a registry step `<testid>= ` types one character then clears (w:672) — 830 keeps working, the registry can drop the space later.
+- **CD-P42-R11 (F29)** opener step suffixed `?` = optional, skipped without error when absent for the persona (fx:373 `parseStep`, w:706) · ORACLE-EDIT `qc-pos-p4.1.mts:422` R3 strips `?` before the same-page check (delete-probe in gate B10: `<real row>?` green, `<missing>?` red) · `$fields.opener` documents `?` and `= ` (registry line 15, ORACLE-EDIT note) · F15.3b only checks the shape (fitness-pos 8/8). No registry row uses `?` yet (949-951/1164 can, in P4.3).
+- **CD-P42-R12 (B6)** `skip dead-known` before every other rule (fx:272 list, fx:224): legacy pos-pay-button · pos-member-select · pos-catalog-item · pos-reg-member-remove · pos-settings-card-state-offline · pos-kds-legacy-open (844) · pos-sales-unit-all (964).
+- **CD-P42-R13 (money policy)** still true after R12 = 15: gate B8 (w:275) on all 19 cells — 15 R12-detected + 30 `safety external` rows never planned as press (skip:external before reveal) · R11 detects 44 · 487 money/counter presses over the matrix all verify by db/oracle except `register#pos-taxinv-submit` (counter, ui-only on /register — no write to verify: ui + branch check; CD) · none on `unit=*` · no opener passes through an external row · money branch check = rows *created* after the press (diff vs pre-press ids, PosPayment via sale ids — fx:1043) · public pages: any writing row (money · mutation · opener through a mutation row) runs only with a posqc-btn token, tokenless writing pages are not pressed (w:810 · fx:840 tokens record their unit).
+
+### Oracle `qc-pos-p4.2` (12 checks)
+SKIP vocabulary + `STATIC_REASONS`/`DYNAMIC_REASONS` shared from fx · W6 (193): plan skip ⇒ same reason · runtime reasons only on planned press/visible rows · W2 perReason must equal the rows (155) · **W11** (213): disabled-expected only for the persona F13 names · static only manager/cashier · no static/idle-expected on money rows · dead-known only B6 · W9 counts absent/visible external rows as not pressed (the positive control was red on hiddenFor external rows at d2127ce1) · pass bar unchanged (ok = total − skip · dead/wrongExpect/hiddenLeak/error 0 · console/hydration/overflow 0) · PIN default `bb7b0b2b`.
+`--self-test` (positive control + 1–3 flips per check, no summaries read) **12/12** · normal run **2/12 red-before** (W1–W9 W11 red: no summaries · W10 Z1 green) with every probe red as expected (12/12) · `pos-oracle-check … qc-pos-p4.2 --base bb7b0b2b` VERDICT green (red 0 · warn 0) · `… qc-pos-p4.1 --base 6e32c1e2` green · `qc-pos-p4.1 --no-db` 16/16 · `qc-pos-p2.14 --no-db` 15/15 · fitness-pos 8/8 · fitness 53/53 · walker gate 10/10 (B1–B10) · strict single-file tsc of the 3 scripts exit 0.
+
+### `--list` per cell (registry 1,242 rows · hash 7edf45641e6e26ef · total 15,286 = Σ cellRows)
+```
+LIST owner-desktop         1161 · skip 56 · press 1059 · visible 30 · absent 16 · skip: dead-known 7 · external 28 · needs-persona 19 · hidden-input 2
+LIST owner-ipad            1162 · skip 56 · press 1060 · visible 30 · absent 16 · skip: dead-known 7 · external 28 · needs-persona 19 · hidden-input 2
+LIST owner-mobile          1146 · skip 56 · press 1044 · visible 30 · absent 16 · skip: dead-known 7 · external 28 · needs-persona 19 · hidden-input 2
+LIST manager-desktop       1161 · skip 54 · press 957 · absent 120 · visible 30 · skip: dead-known 7 · external 28 · needs-persona 19
+LIST manager-ipad          1162 · skip 54 · press 958 · absent 120 · visible 30 · skip: dead-known 7 · external 28 · needs-persona 19
+LIST manager-mobile        1146 · skip 54 · press 942 · absent 120 · visible 30 · skip: dead-known 7 · external 28 · needs-persona 19
+LIST cashier-desktop       1161 · skip 56 · press 540 · absent 539 · visible 26 · skip: dead-known 7 · external 23 · no-role-claim 20 · needs-persona 6
+LIST cashier-ipad          1162 · skip 56 · press 541 · absent 539 · visible 26 · skip: dead-known 7 · external 23 · no-role-claim 20 · needs-persona 6
+LIST cashier-mobile        1146 · skip 56 · press 533 · absent 531 · visible 26 · skip: dead-known 7 · external 23 · no-role-claim 20 · needs-persona 6
+LIST owner-desktop-en      1161 · skip 56 · press 1059 · visible 30 · absent 16 · skip: dead-known 7 · external 28 · needs-persona 19 · hidden-input 2
+LIST owner-mobile-en        390 · skip 38 · press 337 · visible 14 · absent 1 · skip: dead-known 5 · external 14 · needs-persona 19
+LIST manager-desktop-en    1161 · skip 54 · press 957 · absent 120 · visible 30 · skip: dead-known 7 · external 28 · needs-persona 19
+LIST manager-mobile-en      390 · skip 38 · press 334 · absent 4 · visible 14 · skip: dead-known 5 · external 14 · needs-persona 19
+LIST cashier-desktop-en    1161 · skip 56 · press 540 · absent 539 · visible 26 · skip: dead-known 7 · external 23 · no-role-claim 20 · needs-persona 6
+LIST cashier-mobile-en      390 · skip 25 · press 291 · absent 61 · visible 13 · skip: dead-known 5 · external 14 · no-role-claim 6
+LIST public-desktop          54 · press 52 · skip 2 · skip: external 2
+LIST public-desktop-en       54 · press 52 · skip 2 · skip: external 2
+LIST public-mobile           60 · press 58 · skip 2 · skip: external 2
+LIST public-mobile-en        58 · press 56 · skip 2 · skip: external 2
+```
+Registry gap reasons (missing-target/db/safety) = 0 in every cell.
+
+### `--dry --user owner --device desktop --page all` (head) + time per cell
+```
+═══ qc-pos-buttons --dry (ไม่เปิดเบราว์เซอร์ · ไม่แตะ DB · ไม่ต่อเซิร์ฟเวอร์) ═══
+ทะเบียน 1242 แถว (hash 7edf45641e6e26ef) · กติกา P4.1 ยืมจาก scripts/qc-pos-p4.1.mts (sha e21073121f17f310) · oracle id 1922 · head dc33658e
+ตรวจคีย์ตัวกด (R3 opener/needs/viewport · R9 hiddenFor ของ P4.1): ✅ ถูกรูป · opener 979 · needs 861 · viewport 63 · safety 83
+
+── ตารางผ่าน (มติ 6 · รอบละ 1 ช่อง มติ 9 · ประมาณการ 6 วิ/กด · 3.5 วิ/ตรวจซ่อน · 3 วิ/ตรวจเห็น · +90 วิ/รอบ) ──
+  owner-desktop        แถว  1161 · skip 56 · press 1059 · visible 30 · absent 16 ≈ 1:50 ชม.
+  owner-ipad           แถว  1162 · skip 56 · press 1060 · visible 30 · absent 16 ≈ 1:50 ชม.
+  owner-mobile         แถว  1146 · skip 56 · press 1044 · visible 30 · absent 16 ≈ 1:48 ชม.
+  manager-desktop      แถว  1161 · skip 54 · press 957 · absent 120 · visible 30 ≈ 1:46 ชม.
+  manager-ipad         แถว  1162 · skip 54 · press 958 · absent 120 · visible 30 ≈ 1:46 ชม.
+  manager-mobile       แถว  1146 · skip 54 · press 942 · absent 120 · visible 30 ≈ 1:44 ชม.
+  cashier-desktop      แถว  1161 · skip 56 · press 540 · absent 539 · visible 26 ≈ 1:28 ชม.
+  cashier-ipad         แถว  1162 · skip 56 · press 541 · absent 539 · visible 26 ≈ 1:28 ชม.
+  cashier-mobile       แถว  1146 · skip 56 · press 533 · absent 531 · visible 26 ≈ 1:27 ชม.
+  owner-desktop-en     แถว  1161 · skip 56 · press 1059 · visible 30 · absent 16 ≈ 1:50 ชม.
+  owner-mobile-en      แถว   390 · skip 38 · press 337 · visible 14 · absent 1 ≈ 0:36 ชม.
+  manager-desktop-en   แถว  1161 · skip 54 · press 957 · absent 120 · visible 30 ≈ 1:46 ชม.
+  manager-mobile-en    แถว   390 · skip 38 · press 334 · absent 4 · visible 14 ≈ 0:36 ชม.
+  cashier-desktop-en   แถว  1161 · skip 56 · press 540 · absent 539 · visible 26 ≈ 1:28 ชม.
+  cashier-mobile-en    แถว   390 · skip 25 · press 291 · absent 61 · visible 13 ≈ 0:35 ชม.
+  public-desktop       แถว    54 · press 52 · skip 2                        ≈ 0:07 ชม.
+  public-desktop-en    แถว    54 · press 52 · skip 2                        ≈ 0:07 ชม.
+  public-mobile        แถว    60 · press 58 · skip 2                        ≈ 0:07 ชม.
+  public-mobile-en     แถว    58 · press 56 · skip 2                        ≈ 0:07 ชม.
+  รวม 19 ช่อง ≈ 22:26 ชม. (ช่องโหว่ทะเบียน 0 รายการ · รอบละ 1 ช่อง — แถว needs ที่ fixture ไม่มีจะจบเร็วกว่าประมาณการ)
+
+── แผนช่อง owner-desktop · หน้า all: 1161 แถว · skip 56 · press 1059 · visible 30 · absent 16 ──
+  ⏭️     7 × dead-known — แถวตายที่รู้แล้ว (CD-P41-B6 · ไม่กด · นับไม่ตก จน P4.3 ลบ — CD-P42-R12) · เช่น pos-pay-button, pos-member-select, pos-catalog-item, pos-reg-member-remove
+  ⏭️    28 × external — safety external — ไม่กด ต้องอ้าง oracle (มติ 5 · W3) · เช่น pos-bills-menu-reprint, pos-bills-reprint, pos-settings-print-sample, pos-device-test-print
+  ⏭️    19 × needs-persona — opener/needs ที่บทบาทนี้ทำให้เกิดไม่ได้ (จอ PIN ที่ถึงได้เฉพาะผู้ไม่มีสิทธิ์ · การ์ดปฏิเสธที่ไม่มีผู้ใช้ QC ถึง — CD-P41-F17/F12 · CD-P42-R5) · เช่น pos-discount-over-manager, pos-dis
+```
+Estimate ≈ 22:26 h for 19 cells run one at a time (6 s/press · 3.5 s/absent · 3 s/visible · +90 s/cell); rows ending as needs/needs-fixture finish faster. Cheaper option stays CD-P42-W10 (money/counter presses only in th cells).
+
+### Commands the controller runs on tree d (QC5 · one at a time · never beside a build / qc:all / visual sweep)
+1. Merge `wip/pos-p4.2-walker` into the tree-d line (scripts + ledger only).
+2. Pre-flight (read-only): `bash scripts/iso.sh bash scripts/qc5.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight` — no `block` (posqc-btn residue = warn, healed by the fixture).
+3. Fixtures are made by the pass itself (`ensureFixtures` → find-or-create posqc-btn unit/personas/device/PIN/shift · snapshot `_qcP42Before`); build + serve tree d first (10g chain as for the visual lane).
+4. Smoke: `bash scripts/iso.sh bash scripts/qc5.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-buttons.mts --user owner --device desktop --page register --only 'pos-reg-*' --base http://127.0.0.1:<port>`, then per cell `… --user <owner|manager|cashier|public> --device <desktop|ipad|mobile> --page all --base http://127.0.0.1:<port>` (en: `--locale en`; 19 cells per the table).
+5. Verdict: `bash scripts/iso.sh pnpm exec tsx scripts/qc-pos-p4.2.mts` (or `P42_SUMMARY_DIR=<dir>`); `--self-test` proves the probes.
+
+### Decisions for the controller (CD-P42-R*)
+- **CD-P42-R2a** React click handler without tabindex counts as pressable (strict prompt list = tabindex only) — avoids false `static`; a11y nit, not a walker failure.
+- **CD-P42-R4a** sub-path acceptance kept (reviewer #8) — anchoring would turn tab/anyOf `/app/sys/[id]` rows into wrongExpect; rule it or fix those targets in P4.3.
+- **CD-P42-R7a** resets are walker-owned rows in posqc-btn only; product/catalogue/price edits at system level (shared by all branches, e.g. 564 product save, 575 bulk price, recipe) persist on QC5 — known limit (brief §6 accepts QC5 accumulation); `healResidue` revokes every unrevoked agent / deletes every cred in posqc-btn (walker-owned unit) but never old channels or stations.
+- **CD-P42-R7b** 439/445 random phone overrides a registry value (F22 "ล้าง/สุ่มเบอร์") — the only place a walker value beats a registry fill.
+- **CD-P42-R13a** `register#pos-taxinv-submit` (safety counter, expect ui) has nothing to verify by db — ui + branch check; add an oracle id in P4.3 or drop counter on the /register row.
+- **CD-P42-R13b** public writing rows need a posqc-btn token; QC5 has none for /q/t /q /q/o (and /r only after a staff cell sold in posqc-btn) ⇒ they end as `needs-fixture` until a posqc-btn table/link/order fixture exists (P4.3 or controller seed).
+
+### Known limits
+- Real-pass code still never executed (builders never serve); the review covered control flow / APIs statically. Expect iteration-1 fixes.
+- runGroup leaks its `targetcreated` listener if page setup throws (rows recorded as error, later groups continue).
+- Money branch check is fail-closed against any concurrent QC5 writer in the tenant (ruling 9).
