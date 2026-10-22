@@ -8,8 +8,8 @@
 // 🔴 ไม่มี session/ไม่ import auth: สิทธิ์ = โทเคนใน URL (capability) · โทเคนผิดรูป/ไม่รู้จัก/ถูกเปลี่ยน/ปิด/ร้านอื่น/ประตูอื่น = TOKEN_INVALID รูปเดียวกันทุกกรณี
 // 🔴 อ่าน (เปิดหน้า · โพล · quote) = 0 เขียน (มติ 11 · ข้อบกพร่อง ① ของประตูเดิม) — ยกเว้นหน้าสถานะที่เลยเวลาจ่าย = ปิดออเดอร์ครั้งเดียว (S2 ขี้เกียจ)
 // 🔴 ส่ง (สั่ง · ส่งรอบ · เรียก · แจ้งโอน) = เพดาน DB 10 ครั้ง/นาที/IP + ในหน่วยความจำ 60 ครั้ง/นาที/โทเคน (CD-O6) ·
-//    POS P5.2 ▸ CD-P52-F3: ประตูอ่าน (tableDoor · tablePoll · tableBill · linkDoor · orderStatus) = เพดาน DB ต่อ IP ต่อตระกูลโทเคน (public-rate.ts ·
-//    readGuard) เมื่อผู้เรียกส่ง meta {ip} (หน้า/ action สาธารณะส่งเสมอ) · ถังอัตรา 1 แถวคือการเขียนเดียวของการอ่าน (ข้อมูลร้าน 0 เขียน) ◂
+//    POS P5.2 ▸ fix2 CD-P52-F3b: ทุกประตูผ่าน qrGuard พร้อม meta {ip} (หน้า/ action สาธารณะส่งเสมอ) = ถังพลาดต่อ IP (นับเฉพาะ TOKEN_INVALID · เต็ม = TOKEN_INVALID
+//    ทุกโทเคน) + อ่าน/quote ต่อ (IP, แฮชโทเคน) (public-rate.ts) · ถังอัตราคือการเขียนเดียวของการอ่าน (ข้อมูลร้าน 0 เขียน) ◂
 // 🔴 ราคา = ตัวแก้ราคาเดียวกับหน้าขาย (price.ts ชั้นราคา/ช่องทาง/โปร · ตัวตรวจตัวเลือก regResolveOptions ของ register-shared · priceCart · ค่าบริการ POS
 //    เฉพาะ QR_TABLE · ไม่มีสมาชิก/คูปอง/ส่วนลด) ⇒ ยอดบนมือถือ = ยอดหน้าขายของช่องทางเดียวกัน (PO4) · บิลแขก = registerTableBillPreview ด้วยผู้กระทำ
 //    สังเคราะห์อ่านอย่างเดียว (CD-O1 · ข้อบกพร่อง ② ยอดปัดลงของ billPreview เดิม) — ไม่มี hunk ใน register.ts นอกจาก CD4
@@ -36,7 +36,7 @@ import { promptpayIdForUnit } from "./payment-intent-shared";
 import { verifyChatTag, type VerifiedChatTag } from "./chat-tag"; // POS P3.7 ▸ R8 ประตู B: แท็กห้องแชทบนลิงก์สั่งล่วงหน้า ◂
 import { maskPhone, ORDER_PREP_DEFAULT_MIN, type OrderLineOption } from "./order-shared";
 import { receiptShopHeader } from "./receipt"; // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ (อ่านอย่างเดียว) ◂
-import { posPublicRateGuard, type PosPublicRateFamily } from "./public-rate"; // POS P5.2 ▸ CD-P52-F3 ◂
+import { qrCountMiss, qrHitGuard, qrMissExhausted, type QrHitFamily } from "./public-rate"; // POS P5.2 ▸ CD-P52-F3 · fix2 CD-P52-F3b ◂
 import * as orders from "./order";
 import type { GuestTableView } from "@/lib/modules/restaurant";
 import {
@@ -84,9 +84,27 @@ const isRefusal = (v: unknown): v is { ok: false } => isRecord(v) && v.ok === fa
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 
 /** ขอบของทุกประตู — ขัดข้องที่ไม่คาดคิด = INTERNAL (ไม่มีรายละเอียด) */
-async function qrGuard<T>(name: string, body: () => Promise<T>): Promise<T | QrRefusal> {
+// POS P5.2 ▸ fix2 CD-P52-F3b: ด่านไล่เดาโทเคนที่เดียว — gate.meta {ip} (ไม่มี meta = ผู้เรียกภายใน เช่น chat-link linkDoor = ไม่นับ):
+//   (a) ก่อนตัวประตู: ถังพลาด pos:pub:miss:<ip> เต็ม (อ่านอย่างเดียว) ⇒ TOKEN_INVALID รูปเดียวกับพลาด แม้โทเคนจริง (ไม่มีรหัสใหม่บนทางพลาด)
+//   (b) ผลเป็น TOKEN_INVALID ⇒ นับ 1 พลาด (ก่อน submitGuard ของประตูเขียนด้วย — tableCtx/linkCtx/exists พลาดก็นับ)
+//   (c) ผลอื่น (โทเคนจริง) + gate.family ⇒ นับถัง pos:pub:<family>:<ip>:<sha256(token)[0..16]> · เกินงบ = RATE_LIMITED ◂
+type QrGate = { meta: unknown; token: unknown; family?: QrHitFamily };
+async function qrGuard<T>(name: string, body: () => Promise<T>, gate?: QrGate): Promise<T | QrRefusal> {
   try {
-    return await body();
+    const counted = gate !== undefined && gate.meta !== undefined;
+    const ip = counted ? ipOf(gate.meta) : "";
+    if (counted && (await qrMissExhausted(ip))) return TOKEN_INVALID();
+    const r = await body();
+    if (!counted) return r;
+    if (isRecord(r) && r.ok === false && r.code === "TOKEN_INVALID") {
+      await qrCountMiss(ip);
+      return r;
+    }
+    if (gate.family) {
+      const v = await qrHitGuard(gate.family, ip, gate.token);
+      if (!v.ok) return qrRefuse("RATE_LIMITED", { retryAfterSec: v.retryAfterSec });
+    }
+    return r;
   } catch (e) {
     console.error(`[pos/qr-order] ${name} INTERNAL`, e);
     return qrRefuse("INTERNAL");
@@ -118,15 +136,8 @@ async function submitGuard(token: string, ip: unknown): Promise<QrRefusal | null
   return null;
 }
 const ipOf = (meta: unknown): string => (isRecord(meta) && typeof meta.ip === "string" ? meta.ip : "unknown");
-// POS P5.2 ▸ CD-P52-F3: เพดานอ่านต่อ IP ต่อตระกูลโทเคน (ถัง pos:pub:<family>:<ip> · งบใน public-rate.ts คำนวณจากรอบโพลของ client × 3) —
-//   ตรวจก่อนค้นโทเคน ⇒ ชนเพดาน = RATE_LIMITED เหมือนกันทั้งโทเคนจริง/ไม่มี · โทเคนไม่รู้จักยังได้ TOKEN_INVALID รูปเดิม ·
-//   ไม่มี meta (ผู้เรียกภายใน/สคริปต์) = ไม่นับ — ประตูสาธารณะทุกตัว ((store)/q/** หน้า + actions) ส่ง {ip} เสมอ ◂
+// POS P5.2 ▸ CD-P52-F3 · fix2 CD-P52-F3b: meta ของประตูอ่าน/quote — ไม่ส่ง = ไม่นับ (ผู้เรียกภายใน/สคริปต์) · (store)/q/** ส่ง {ip} เสมอ (ด่านอยู่ใน qrGuard) ◂
 export type QrReadMeta = { ip?: string };
-async function readGuard(family: PosPublicRateFamily, meta: unknown): Promise<QrRefusal | null> {
-  if (meta === undefined) return null;
-  const v = await posPublicRateGuard(family, ipOf(meta));
-  return v.ok ? null : qrRefuse("RATE_LIMITED", { retryAfterSec: v.retryAfterSec });
-}
 
 // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ = หัวใบเสร็จ (ชื่อร้าน · โลโก้ · สาขา · อ่านอย่างเดียว) — อ่านไม่ได้ = ชื่อสาขา (หน้าไม่ล้ม) ◂
 async function shopOf(tenantId: string, systemId: string, unitId: string, unitName: string): Promise<QrShopHeader> {
@@ -311,29 +322,25 @@ async function tableViewOf(t: TableCtx): Promise<QrTableView> {
 /** หน้าโต๊ะ (อ่านอย่างเดียว · ไม่เปิด session — ข้อบกพร่อง ① ปิดแล้ว · TB1) */
 export async function tableDoor(qrToken: string, meta?: QrReadMeta): Promise<QrTableDoorResult> {
   return qrGuard("tableDoor", async (): Promise<QrTableDoorResult> => {
-    const limited = await readGuard("qrTable", meta); // POS P5.2 ▸ CD-P52-F3 ◂
-    if (limited) return limited;
     const t = await tableCtx(qrToken);
     if (!t) return TOKEN_INVALID();
     return { ok: true, view: await tableViewOf(t) };
-  });
+  }, { meta, token: qrToken, family: "qrTable" }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 /** โพลของหน้าโต๊ะ — sinceVer เท่าเดิม = changed:false (ข้อมูลร้าน 0 เขียน · เพดานอ่านต่อ IP เมื่อส่ง meta — POS P5.2 ▸ CD-P52-F3 ◂) */
 export async function tablePoll(qrToken: string, opts: { sinceVer?: string } = {}, meta?: QrReadMeta): Promise<QrTablePollResult> {
   return qrGuard("tablePoll", async (): Promise<QrTablePollResult> => {
-    const limited = await readGuard("qrTable", meta); // POS P5.2 ▸ CD-P52-F3 ◂
-    if (limited) return limited;
     const t = await tableCtx(qrToken);
     if (!t) return TOKEN_INVALID();
     const view = await tableViewOf(t);
     if (isRecord(opts) && typeof opts.sinceVer === "string" && opts.sinceVer === view.ver) return { ok: true, changed: false, ver: view.ver };
     return { ok: true, changed: true, ver: view.ver, view };
-  });
+  }, { meta, token: qrToken, family: "qrTable" }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 /** ยอดของตะกร้าโต๊ะ (ราคา QR_TABLE + ค่าบริการ POS · = quoteRegisterCart ของช่องทางเดียวกัน · PO4) */
-export async function quoteTableCart(qrToken: string, input: { lines: unknown }): Promise<QrQuoteResult> {
+export async function quoteTableCart(qrToken: string, input: { lines: unknown }, meta?: QrReadMeta /* POS P5.2 ▸ fix2 CD-P52-F3b ◂ */): Promise<QrQuoteResult> {
   return qrGuard("quoteTableCart", async (): Promise<QrQuoteResult> => {
     const t = await tableCtx(qrToken);
     if (!t) return TOKEN_INVALID();
@@ -344,7 +351,7 @@ export async function quoteTableCart(qrToken: string, input: { lines: unknown })
     const tt = totalsOf(p.priced, await tableServiceBp(t.u));
     if (!tt.ok) return tt;
     return quoteOut(p.priced, tt, true);
-  });
+  }, { meta, token: qrToken, family: "qrQuote" }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 /**
@@ -428,7 +435,7 @@ export async function placeTableRound(qrToken: string, input: unknown, meta: { i
     if (!p.ok) return p;
     const dedupeKey = parsed.value.guestToken ? `${t.view.table.id}|${parsed.value.guestToken}|${parsed.value.expectedSessionId ?? "-"}|${qrCartHash(parsed.value.lines)}|${parsed.value.note ?? ""}` : null;
     return singleFlight(inflightRounds, dedupeKey, QR_ROUND_DEDUPE_MS, () => sendRound(t, parsed.value, p.priced, dedupeKey)); // POS P2.7 ▸ fix2 R1 F1/H2: single-flight (ตัวเขียนรอบแยกเป็น sendRound) ◂ · POS P2.14 ▸ QR-3 คีย์ถาวรใน DB ◂
-  });
+  }, { meta, token: qrToken }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 // POS P2.7 ▸ fix2 R1 F1/H2: ส่งรอบจริง (ถูกเรียกครั้งเดียวต่อคีย์ของ single-flight) ◂
 // POS P2.14 ▸ QR-3 มติ 9 (Q5): กันรอบซ้ำข้าม instance — ในธุรกรรมของรอบ: pg_advisory_xact_lock(hashtext(คีย์ของรอบ = โต๊ะ|guestToken|session|ตะกร้า|โน้ต)) แล้วค้น
@@ -491,7 +498,7 @@ export async function tableServiceRequest(qrToken: string, input: { kind: "CALL_
     if (kind !== "CALL_STAFF" && kind !== "REQUEST_BILL") return qrRefuse("VALIDATION");
     const r = await (await restaurant()).guestServiceRequestForPos(prisma, { tenantId: t.u.tenantId, unitId: t.u.unitId, tableId: t.view.table.id, type: kind });
     return r.ok ? { ok: true } : qrRefuse(r.code === "NO_TABLE" ? "TOKEN_INVALID" : "NO_SESSION"); // POS P2.7 ▸ fix3 nit (a): qr.errors.noSession ◂
-  });
+  }, { meta, token: qrToken }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 /** ผู้กระทำสังเคราะห์อ่านอย่างเดียวของบิลแขก (CD-O1 · แบบ P2.13): ไม่มีสิทธิ์ขาย · ใช้ได้เฉพาะสาขาของโต๊ะ */
@@ -539,12 +546,10 @@ async function billOf(t: TableCtx): Promise<QrTableBill> {
 /** บิลของโต๊ะบนมือถือ = บิลโต๊ะของหน้าขาย (ช่องทาง QR_TABLE/STORE + ค่าบริการ POS ปัดครึ่งขึ้น · ข้อบกพร่อง ② · TB6) + พร้อมเพย์ของยอดนั้น · แยกบิลเปิด = ซ่อนการจ่าย */
 export async function tableBill(qrToken: string, meta?: QrReadMeta): Promise<QrTableBillResult> {
   return qrGuard("tableBill", async (): Promise<QrTableBillResult> => {
-    const limited = await readGuard("qrTable", meta); // POS P5.2 ▸ CD-P52-F3 ◂
-    if (limited) return limited;
     const t = await tableCtx(qrToken);
     if (!t) return TOKEN_INVALID();
     return { ok: true, bill: await billOf(t) };
-  });
+  }, { meta, token: qrToken, family: "qrTable" }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 /** ลูกค้าแจ้งว่าโอนพร้อมเพย์แล้ว → คำขอ PAY_PROMPTPAY เดิม (แจ้งเตือน "ยืนยันรับเงิน" บนผังโต๊ะ · ยอด = บิลของหน้าขาย) */
@@ -564,7 +569,7 @@ export async function tableNotifyPaid(qrToken: string, meta: { ip: string }): Pr
       note: `ลูกค้าแจ้งชำระพร้อมเพย์ ฿${(bill.totalSatang / 100).toFixed(2)}`,
     });
     return r.ok ? { ok: true } : qrRefuse("VALIDATION");
-  });
+  }, { meta, token: qrToken }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 // ═══════════════════════════ สั่งล่วงหน้าจ่ายก่อน (§1 b) ═══════════════════════════
@@ -580,8 +585,6 @@ async function linkCtx(linkToken: unknown): Promise<LinkCtx | null> {
 /** หน้าสั่งล่วงหน้า (อ่านอย่างเดียว): ชื่อสาขา · เปิด/ปิด (+ เหตุ) · เมนูราคา QR_ORDER · เวลาเตรียมของช่องทาง */
 export async function linkDoor(linkToken: string, deps?: PaymentIntentDeps, meta?: QrReadMeta): Promise<QrLinkDoorResult> {
   return qrGuard("linkDoor", async (): Promise<QrLinkDoorResult> => {
-    const limited = await readGuard("qrLink", meta); // POS P5.2 ▸ CD-P52-F3 ◂
-    if (limited) return limited;
     const l = await linkCtx(linkToken);
     if (!l) return TOKEN_INVALID();
     const [door, cat, shop] = await Promise.all([doorOf(l.u, "QR_ORDER", true, deps), catalogOf(l.u), shopOf(l.u.tenantId, l.u.systemId, l.u.unitId, l.u.unitName)]); // POS P2.7U ▸ + หัวร้าน ◂
@@ -596,11 +599,11 @@ export async function linkDoor(linkToken: string, deps?: PaymentIntentDeps, meta
         prepMinutes: door.channel?.prepMinutes ?? ORDER_PREP_DEFAULT_MIN,
       },
     };
-  });
+  }, { meta, token: linkToken, family: "qrLink" }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 /** ยอดของตะกร้าสั่งล่วงหน้า (ราคา QR_ORDER · ไม่มีค่าบริการ · = quoteRegisterCart ของช่องทางเดียวกัน) */
-export async function quotePreorderCart(linkToken: string, input: { lines: unknown }): Promise<QrQuoteResult> {
+export async function quotePreorderCart(linkToken: string, input: { lines: unknown }, meta?: QrReadMeta /* POS P5.2 ▸ fix2 CD-P52-F3b ◂ */): Promise<QrQuoteResult> {
   return qrGuard("quotePreorderCart", async (): Promise<QrQuoteResult> => {
     const l = await linkCtx(linkToken);
     if (!l) return TOKEN_INVALID();
@@ -611,7 +614,7 @@ export async function quotePreorderCart(linkToken: string, input: { lines: unkno
     const tt = totalsOf(p.priced, 0);
     if (!tt.ok) return tt;
     return quoteOut(p.priced, tt, false);
-  });
+  }, { meta, token: linkToken, family: "qrQuote" }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 const optionSnapshot = (p: Priced): OrderLineOption[] => p.picked.map((o) => ({ choiceId: o.choiceId, groupId: o.groupId, groupName: o.groupName, choiceName: o.name, priceDeltaSatang: o.priceDeltaSatang }));
@@ -633,7 +636,7 @@ export async function placePreorder(linkToken: string, input: unknown, meta: { i
     const chatLink = chatTag === undefined ? null : verifyChatTag(chatTag, { tenantId: l.u.tenantId, linkToken }); // POS P3.7 ▸ R8: แท็กเสีย/หมดอายุ/ร้านอื่น = ไม่ผูก (ไม่ปฏิเสธลูกค้า) · fix2 F1: + nonce ใช้ครั้งเดียว ◂
     // POS P2.7 ▸ fix2 hunter H5: single-flight ต่อ (ลิงก์ · คีย์) รอบทั้งคำขอ — คำขอคีย์เดิมพร้อมกันรอผลเดียวกัน ⇒ Beam charge เดียว ◂
     return singleFlight(inflightPreorders, `${linkToken}|qr:${parsed.value.idempotencyKey}`, QR_PREORDER_FLIGHT_MS, () => submitPreorder(l, parsed.value, deps, chatLink)); // POS P3.7 ▸ + แท็กห้องที่ตรวจแล้ว ◂
-  });
+  }, { meta, token: linkToken }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 const inflightPreorders = new Map<string, { at: number; p: Promise<QrPlacePreorderResult> }>();
 const QR_PREORDER_FLIGHT_MS = 0; // ระหว่างทำเท่านั้น — คำขอซ้ำทีหลังตอบจากคีย์ใน DB (duplicated) ◂
@@ -732,8 +735,6 @@ async function orderOfToken(orderToken: unknown) {
  */
 export async function orderStatus(orderToken: string, opts: { sinceVer?: string } = {}, meta?: QrReadMeta): Promise<QrOrderStatusResult> {
   return qrGuard("orderStatus", async (): Promise<QrOrderStatusResult> => {
-    const limited = await readGuard("qrOrder", meta); // POS P5.2 ▸ CD-P52-F3 ◂
-    if (limited) return limited;
     const o = await orderOfToken(orderToken);
     if (!o) return TOKEN_INVALID();
     const it = o.paymentIntentId ? await prisma.posPaymentIntent.findUnique({ where: { id: o.paymentIntentId }, select: { kind: true, amountSatang: true, qrPayload: true, expiresAt: true, status: true } }) : null;
@@ -774,7 +775,7 @@ export async function orderStatus(orderToken: string, opts: { sinceVer?: string 
       lines: lines.map((l) => ({ name: l.name, qty: l.qty, options: Array.isArray(l.options) ? (l.options as { choiceName?: unknown }[]).flatMap((x) => (typeof x?.choiceName === "string" ? [x.choiceName] : [])) : [], lineTotalSatang: l.lineTotalSatang })),
     };
     return { ok: true, changed: true, ver, view };
-  });
+  }, { meta, token: orderToken, family: "qrOrder" }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 /** ลูกค้ากด "โอนแล้ว" (QR นิ่ง · S3): บันทึก customer_paid_claim เท่านั้น — ไม่มีผลเงิน · ปิดแล้ว/เลยเวลา = PREORDER_EXPIRED */
@@ -790,7 +791,7 @@ export async function claimPaid(orderToken: string, meta: { ip: string }): Promi
     const r = await orders.claimPreorderPaid(o.tenantId, o.id);
     if (!r.ok) return r.reason === "EXPIRED" ? qrRefuse("PREORDER_EXPIRED") : TOKEN_INVALID();
     return { ok: true };
-  });
+  }, { meta, token: orderToken }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 
 // ═══════════════════════════ ประตูเดิม → ประตู POS (มติ 1 · CD7) ═══════════════════════════

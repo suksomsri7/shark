@@ -58,7 +58,7 @@ export async function tablePollAction(qrToken: string, sinceVer?: string): Promi
   return tablePoll(qrToken, typeof sinceVer === "string" ? { sinceVer } : {}, { ip: await clientIp() }); // POS P5.2 ▸ CD-P52-F3 ◂
 }
 export async function quoteTableCartAction(qrToken: string, lines: unknown): Promise<QrQuoteResult> {
-  return quoteTableCart(qrToken, { lines });
+  return quoteTableCart(qrToken, { lines }, { ip: await clientIp() }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 export async function placeTableRoundAction(qrToken: string, input: QrTableRoundInput): Promise<QrPlaceRoundResult> {
   return placeTableRound(qrToken, input, { ip: await clientIp() });
@@ -89,7 +89,7 @@ export async function tableRequestFormAction(qrToken: string, fd: FormData): Pro
 
 // ── pre-order (/q/<linkToken>) ──
 export async function quotePreorderCartAction(linkToken: string, lines: unknown): Promise<QrQuoteResult> {
-  return quotePreorderCart(linkToken, { lines });
+  return quotePreorderCart(linkToken, { lines }, { ip: await clientIp() }); // POS P5.2 ▸ fix2 CD-P52-F3b ◂
 }
 export async function placePreorderAction(linkToken: string, input: QrPreorderInput): Promise<QrPlacePreorderResult> {
   return placePreorder(linkToken, input, { ip: await clientIp() });
