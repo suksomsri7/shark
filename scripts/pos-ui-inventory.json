@@ -4192,6 +4192,7 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -4209,7 +4210,8 @@
       "testid": "pos-stock-unit",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4221,14 +4223,16 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-location",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4236,18 +4240,21 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-root",
-        "note": "\"คลัง: <ที่เก็บ>\" (ภาพ 16) · ค่าเริ่ม = ที่เก็บหลัก · ใช้เป็นค่าเริ่มของเริ่มตรวจนับ / โอนจาก / ปรับที่ · รับของเข้าลงที่เก็บหลักเสมอ (เซิร์ฟเวอร์)"
+        "note": "\"คลัง: <ที่เก็บ>\" (ภาพ 16) · ค่าเริ่ม = ที่เก็บหลัก · ใช้เป็นค่าเริ่มของเริ่มตรวจนับ / โอนจาก / ปรับที่ · รับของเข้าลงที่เก็บหลักเสมอ (เซิร์ฟเวอร์)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-open-inventory",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4266,7 +4273,8 @@
       "testid": "pos-stock-tab-*",
       "kind": "tab",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4274,7 +4282,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-root",
-        "note": "count · receive · transfer · adjust · history → ?tab= (history.replaceState) · ไม่ส่ง tab = มือถือเปิดตรวจนับ / md+ เปิดรับของเข้า (ภาพ 16) · badge pos-stock-tab-count-badge เมื่อมีรอบ OPEN"
+        "note": "count · receive · transfer · adjust · history → ?tab= (history.replaceState) · ไม่ส่ง tab = มือถือเปิดตรวจนับ / md+ เปิดรับของเข้า (ภาพ 16) · badge pos-stock-tab-count-badge เมื่อมีรอบ OPEN",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
@@ -4285,7 +4294,8 @@
       "testid": "pos-stock-start-scope-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4293,18 +4303,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-start",
-        "note": "radio ทั้งหมด (all) / เลือกหมวด (category) → ชิปหมวด pos-stock-start-cat-*"
+        "note": "radio ทั้งหมด (all) / เลือกหมวด (category) → ชิปหมวด pos-stock-start-cat-*",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-scope-category=click"
+      ],
+      "needs": "สาขาไม่มีรอบนับ OPEN ค้าง (จอเริ่มตรวจนับ)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-start-cat-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4312,18 +4329,28 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-start",
-        "note": "เลือกหมวด (1–50 · หมวดสินค้าของคลังสาขา)"
+        "note": "เลือกหมวด (1–50 · หมวดสินค้าของคลังสาขา)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-scope-category"
+      ],
+      "needs": [
+        "สาขาไม่มีรอบนับ OPEN ค้าง (จอเริ่มตรวจนับ)",
+        "หมวดสินค้าในคลังของสาขา (meta.categories)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-start-location",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4331,18 +4358,27 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-start",
-        "note": "ที่เก็บของรอบนับ (ค่าเริ่มจาก pos-stock-location)"
+        "note": "ที่เก็บของรอบนับ (ค่าเริ่มจาก pos-stock-location)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count"
+      ],
+      "needs": [
+        "สาขาไม่มีรอบนับ OPEN ค้าง (จอเริ่มตรวจนับ)",
+        "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-start-blind",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4350,18 +4386,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-start",
-        "note": "นับแบบไม่เห็นยอดระบบ (blind) — คนไม่มี inventory.movement.adjust ไม่เห็นยอดระบบ/ผลต่าง"
+        "note": "นับแบบไม่เห็นยอดระบบ (blind) — คนไม่มี inventory.movement.adjust ไม่เห็นยอดระบบ/ผลต่าง",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count"
+      ],
+      "needs": "สาขาไม่มีรอบนับ OPEN ค้าง (จอเริ่มตรวจนับ)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-start-note",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4369,18 +4411,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-start",
-        "note": "หมายเหตุ ≤ 200"
+        "note": "หมายเหตุ ≤ 200",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count"
+      ],
+      "needs": "สาขาไม่มีรอบนับ OPEN ค้าง (จอเริ่มตรวจนับ)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-start-submit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4388,18 +4436,24 @@
       "expect": {
         "type": "mutation",
         "target": "pos-stock-count",
-        "note": "posStockCountOpenAction → จอนับ pos-stock-count · COUNT_ALREADY_OPEN = เข้ารอบที่เปิดอยู่ (countId ของคำปฏิเสธ) · คำปฏิเสธอื่น = pos-stock-start-error"
+        "note": "posStockCountOpenAction → จอนับ pos-stock-count · COUNT_ALREADY_OPEN = เข้ารอบที่เปิดอยู่ (countId ของคำปฏิเสธ) · คำปฏิเสธอื่น = pos-stock-start-error",
+        "db": "PosStockCount OPEN + PosStockCountLine snapshot (openStockCount)"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count"
+      ],
+      "needs": "สาขาไม่มีรอบนับ OPEN ค้าง (จอเริ่มตรวจนับ)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-count-back",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4407,18 +4461,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-history",
-        "note": "ลูกศรกลับ (ภาพ 05ค) → แท็บประวัติ (รอบยัง OPEN · นับต่อที่ pos-stock-history-resume)"
+        "note": "ลูกศรกลับ (ภาพ 05ค) → แท็บประวัติ (รอบยัง OPEN · นับต่อที่ pos-stock-history-resume)",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-count-menu",
       "kind": "menu",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4426,18 +4486,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-count-cancel",
-        "note": "⋯ → ยกเลิกการนับ (เฉพาะผู้เปิดรอบ หรือมีสิทธิ์ยืนยัน)"
+        "note": "⋯ → ยกเลิกการนับ (เฉพาะผู้เปิดรอบ หรือมีสิทธิ์ยืนยัน)",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-count-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4449,14 +4515,20 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-menu"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-scan",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4464,18 +4536,24 @@
       "expect": {
         "type": "mutation",
         "target": "pos-stock-scan-result",
-        "note": "สแกนหรือค้นหา: พิมพ์ = กรองแถวในจอ · Enter = posStockCountRecordAction {code, mode:ADD} (qty 1 · ป้ายเครื่องชั่ง = ไม่ส่ง qty) → pos-stock-scan-result"
+        "note": "สแกนหรือค้นหา: พิมพ์ = กรองแถวในจอ · Enter = posStockCountRecordAction {code, mode:ADD} (qty 1 · ป้ายเครื่องชั่ง = ไม่ส่ง qty) → pos-stock-scan-result",
+        "db": "PosStockCountEntry mode ADD + PosStockCountLine countedQty (recordStockCount)"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-scan-camera",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4487,14 +4565,19 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-chip-*",
       "kind": "filter",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4502,18 +4585,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-lines",
-        "note": "ทั้งหมด · ยังไม่นับ · มีผลต่าง (ซ่อนเมื่อ blind) — กรองในจอ (ไม่เรียกเซิร์ฟเวอร์)"
+        "note": "ทั้งหมด · ยังไม่นับ · มีผลต่าง (ซ่อนเมื่อ blind) — กรองในจอ (ไม่เรียกเซิร์ฟเวอร์)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-qty-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4521,18 +4610,24 @@
       "expect": {
         "type": "mutation",
         "target": "pos-stock-lines",
-        "note": "ช่องจำนวนต่อแถว (44 px) · ยังไม่นับ = ปุ่ม \"นับ\" → ช่องกรอก · blur/Enter = posStockCountRecordAction {itemId, qty, mode:SET} → แถวใหม่ + get สรุป · คำปฏิเสธ = pos-stock-line-error-*"
+        "note": "ช่องจำนวนต่อแถว (44 px) · ยังไม่นับ = ปุ่ม \"นับ\" → ช่องกรอก · blur/Enter = posStockCountRecordAction {itemId, qty, mode:SET} → แถวใหม่ + get สรุป · คำปฏิเสธ = pos-stock-line-error-*",
+        "db": "PosStockCountEntry mode SET + PosStockCountLine countedQty (recordStockCount)"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-count-retry",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4540,18 +4635,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-count",
-        "note": "โหลดรอบไม่ได้ → ลองอีกครั้ง (posStockCountGetAction)"
+        "note": "โหลดรอบไม่ได้ → ลองอีกครั้ง (posStockCountGetAction)",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count"
+      ],
+      "needs": "โหลดรอบนับไม่สำเร็จ (posStockCountGetAction ล้ม)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-count-pause",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4559,18 +4660,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-history",
-        "note": "พักไว้ก่อน → แท็บประวัติ (รอบยัง OPEN)"
+        "note": "พักไว้ก่อน → แท็บประวัติ (รอบยัง OPEN)",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-count-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4582,14 +4689,19 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-confirm-uncounted-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4597,37 +4709,52 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-confirm-dialog",
-        "note": "รายการที่ไม่นับ: skip = ข้าม (คงยอดเดิม · ค่าเริ่ม) / zero = นับเป็น 0"
+        "note": "รายการที่ไม่นับ: skip = ข้าม (คงยอดเดิม · ค่าเริ่ม) / zero = นับเป็น 0",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-confirm",
+        "pos-stock-confirm-uncounted-zero=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-confirm-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-stock-count",
-        "note": "ปิดกล่องยืนยัน"
+        "target": "pos-stock-confirm-dialog",
+        "note": "ปิดกล่องยืนยัน",
+        "state": "disappears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-confirm"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-confirm-submit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4635,18 +4762,25 @@
       "expect": {
         "type": "mutation",
         "target": "pos-stock-done",
-        "note": "posStockCountConfirmAction {countId, uncounted} → จอผล pos-stock-done (ปรับ n รายการ · มูลค่าผลต่าง) · คำปฏิเสธ = pos-stock-confirm-error"
+        "note": "posStockCountConfirmAction {countId, uncounted} → จอผล pos-stock-done (ปรับ n รายการ · มูลค่าผลต่าง) · คำปฏิเสธ = pos-stock-confirm-error",
+        "db": "PosStockCount CONFIRMED + InvMovement ADJUST ผลต่าง (confirmStockCount) + AuditLog"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-confirm"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-cancel-reason",
       "kind": "textarea",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4654,37 +4788,53 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-cancel-dialog",
-        "note": "เหตุผลยกเลิก 1–200"
+        "note": "เหตุผลยกเลิก 1–200",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-menu",
+        "pos-stock-count-cancel"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-cancel-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-stock-count",
-        "note": "ปิดกล่องยกเลิก"
+        "target": "pos-stock-cancel-dialog",
+        "note": "ปิดกล่องยกเลิก",
+        "state": "disappears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-menu",
+        "pos-stock-count-cancel"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-cancel-submit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4692,18 +4842,27 @@
       "expect": {
         "type": "mutation",
         "target": "pos-stock-start",
-        "note": "posStockCountCancelAction {countId, reason} → การ์ดเริ่มตรวจนับ · คำปฏิเสธ = pos-stock-cancel-error"
+        "note": "posStockCountCancelAction {countId, reason} → การ์ดเริ่มตรวจนับ · คำปฏิเสธ = pos-stock-cancel-error",
+        "db": "PosStockCount CANCELLED (cancelStockCount) + AuditLog"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-menu",
+        "pos-stock-count-cancel",
+        "pos-stock-cancel-reason=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-done-back",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4711,18 +4870,26 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-history",
-        "note": "จอผล → แท็บประวัติ"
+        "note": "จอผล → แท็บประวัติ",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-confirm",
+        "pos-stock-confirm-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-done-new",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4730,18 +4897,26 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-start",
-        "note": "จอผล → การ์ดเริ่มตรวจนับ"
+        "note": "จอผล → การ์ดเริ่มตรวจนับ",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-count",
+        "pos-stock-start-submit",
+        "pos-stock-count-confirm",
+        "pos-stock-confirm-submit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-*-search",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4749,7 +4924,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-*-search-hit-*",
-        "note": "ตัวเลือกสินค้า (receive · transfer · transfer-c · adjust · adjust-c): พิมพ์ ≥ 2 ตัว = posStockItemSearchAction (หน่วง 300 ms) · Enter = รหัสตรงตัวตัวแรก · ไม่พบ = pos-stock-*-search-error"
+        "note": "ตัวเลือกสินค้า (receive · transfer · transfer-c · adjust · adjust-c): พิมพ์ ≥ 2 ตัว = posStockItemSearchAction (หน่วง 300 ms) · Enter = รหัสตรงตัวตัวแรก · ไม่พบ = pos-stock-*-search-error",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
@@ -4760,7 +4936,8 @@
       "testid": "pos-stock-*-search-camera",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4779,25 +4956,33 @@
       "testid": "pos-stock-*-search-hit-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เลือกสินค้า → เพิ่มแถว (รับ/โอน: ซ้ำ = +1) / เลือกสินค้าที่จะปรับ"
+        "note": "เลือกสินค้า → เพิ่มแถว (รับ/โอน: ซ้ำ = +1) / เลือกสินค้าที่จะปรับ",
+        "target": "pos-stock-root",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-qty-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4805,18 +4990,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-receive-rows",
-        "note": "จำนวนรับจริง (≥ 1)"
+        "note": "จำนวนรับจริง (≥ 1)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-cost-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4824,18 +5016,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-receive-rows",
-        "note": "ราคา/หน่วย ฿ (ไม่บังคับ — ว่าง = ต้นทุนเฉลี่ยเดิม)"
+        "note": "ราคา/หน่วย ฿ (ไม่บังคับ — ว่าง = ต้นทุนเฉลี่ยเดิม)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-lot-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4843,18 +5042,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-receive-rows",
-        "note": "เลขล็อต (ไม่บังคับ ≤ 64)"
+        "note": "เลขล็อต (ไม่บังคับ ≤ 64)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-expiry-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4862,18 +5068,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-receive-rows",
-        "note": "วันหมดอายุ (ต้องมีเลขล็อต)"
+        "note": "วันหมดอายุ (ต้องมีเลขล็อต)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-note-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4881,18 +5094,29 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-receive-rows",
-        "note": "หมายเหตุของแถว (md+ ใต้ชื่อสินค้า)"
+        "note": "หมายเหตุของแถว (md+ ใต้ชื่อสินค้า)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ],
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-mnote-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4900,56 +5124,28 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-receive-rows",
-        "note": "หมายเหตุของแถว (มือถือ)"
+        "note": "หมายเหตุของแถว (มือถือ)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ],
+      "viewport": [
+        "mobile"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-remove-*",
       "kind": "button",
       "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "ui",
-        "target": "pos-stock-receive-rows",
-        "note": "เอาแถวออกจากคิว"
-      },
-      "wo": "P1.14U",
-      "oracle": "",
-      "system": "POS"
-    },
-    {
-      "page": "/app/sys/[id]/pos/stock",
-      "testid": "pos-stock-receive-submit",
-      "kind": "button",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "mutation",
-        "target": "pos-stock-history",
-        "note": "รับเข้าคลัง: posStockReceiveAction ทีละแถวตามลำดับ (คีย์ต่อแถว) · สำเร็จ = แถวหาย + ลงประวัติในหน้า · คำปฏิเสธ = pos-stock-receive-error-*"
-      },
-      "wo": "P1.14U",
-      "oracle": "",
-      "system": "POS"
-    },
-    {
-      "page": "/app/sys/[id]/pos/stock",
-      "testid": "pos-stock-receive-clear",
-      "kind": "button",
-      "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4957,18 +5153,77 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-receive-card",
-        "note": "ล้างคิวรับเข้า (ไม่มีร่างฝั่งเซิร์ฟเวอร์)"
+        "note": "เอาแถวออกจากคิว",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-history",
+        "note": "รับเข้าคลัง: posStockReceiveAction ทีละแถวตามลำดับ (คีย์ต่อแถว) · สำเร็จ = แถวหาย + ลงประวัติในหน้า · คำปฏิเสธ = pos-stock-receive-error-*",
+        "db": "InvMovement IN (posReceiveStock → inventory.receive)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-card",
+        "note": "ล้างคิวรับเข้า (ไม่มีร่างฝั่งเซิร์ฟเวอร์)",
+        "state": "changes"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive",
+        "pos-stock-receive-search=PQC-CF-WATER",
+        "pos-stock-receive-search-hit-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-po-link",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4980,14 +5235,18 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-transfer*-from",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -4995,18 +5254,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-transfer*-card",
-        "note": "ต้นทาง (ค่าเริ่ม = pos-stock-location) · -c = การ์ดย่อยคอลัมน์ขวา (xl)"
+        "note": "ต้นทาง (ค่าเริ่ม = pos-stock-location) · -c = การ์ดย่อยคอลัมน์ขวา (xl)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-transfer"
+      ],
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-transfer*-to",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5014,18 +5279,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-transfer*-card",
-        "note": "ปลายทาง (ที่เก็บอื่นของคลังเดียวกัน)"
+        "note": "ปลายทาง (ที่เก็บอื่นของคลังเดียวกัน)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-transfer"
+      ],
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-transfer*-qty-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5033,37 +5304,53 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-transfer*-rows",
-        "note": "จำนวนที่โอน (≥ 1)"
+        "note": "จำนวนที่โอน (≥ 1)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-transfer",
+        "pos-stock-transfer-search=PQC-CF-WATER",
+        "pos-stock-transfer-search-hit-*=click"
+      ],
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-transfer*-remove-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-stock-transfer*-rows",
-        "note": "เอาแถวออก"
+        "target": "pos-stock-transfer*-card",
+        "note": "เอาแถวออก",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-transfer",
+        "pos-stock-transfer-search=PQC-CF-WATER",
+        "pos-stock-transfer-search-hit-*=click"
+      ],
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-transfer*-submit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5071,18 +5358,26 @@
       "expect": {
         "type": "mutation",
         "target": "pos-stock-history",
-        "note": "โอน: posStockTransferAction ทีละแถว (ทันที · ไม่มีรอรับปลายทาง) · คำปฏิเสธ = pos-stock-transfer*-error-* · คลังมีที่เก็บเดียว = การ์ด pos-stock-transfer*-single"
+        "note": "โอน: posStockTransferAction ทีละแถว (ทันที · ไม่มีรอรับปลายทาง) · คำปฏิเสธ = pos-stock-transfer*-error-* · คลังมีที่เก็บเดียว = การ์ด pos-stock-transfer*-single",
+        "db": "InvMovement TRANSFER (posTransferStock → inventory.transfer)"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-transfer",
+        "pos-stock-transfer-search=PQC-CF-WATER",
+        "pos-stock-transfer-search-hit-*=click"
+      ],
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-clear",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5090,18 +5385,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-adjust*-card",
-        "note": "เปลี่ยนสินค้าที่จะปรับ"
+        "note": "เปลี่ยนสินค้าที่จะปรับ",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust",
+        "pos-stock-adjust-search=PQC-CF-WATER",
+        "pos-stock-adjust-search-hit-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-minus",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5109,18 +5411,23 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-adjust*-delta",
-        "note": "delta −1"
+        "note": "delta −1",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-plus",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5128,18 +5435,23 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-adjust*-delta",
-        "note": "delta +1"
+        "note": "delta +1",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-delta",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5147,18 +5459,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-adjust*-item",
-        "note": "จำนวนที่ปรับ ±N (≠ 0) · กล่องสินค้าแสดง คงเหลือรวม → หลังปรับ"
+        "note": "จำนวนที่ปรับ ±N (≠ 0) · กล่องสินค้าแสดง คงเหลือรวม → หลังปรับ",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust",
+        "pos-stock-adjust-search=PQC-CF-WATER",
+        "pos-stock-adjust-search-hit-*=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-reason",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5166,18 +5485,23 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-adjust*-card",
-        "note": "เหตุผล: ของเสีย/หมดอายุ · แตก/เสียหาย · นับผิด · ใช้ภายใน · อื่น ๆ (reason ที่เก็บ = \"<ป้าย> · <ข้อความ>\")"
+        "note": "เหตุผล: ของเสีย/หมดอายุ · แตก/เสียหาย · นับผิด · ใช้ภายใน · อื่น ๆ (reason ที่เก็บ = \"<ป้าย> · <ข้อความ>\")",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-text",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5185,18 +5509,23 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-adjust*-card",
-        "note": "รายละเอียดเพิ่มเติม (รวมกับป้าย ≤ 200)"
+        "note": "รายละเอียดเพิ่มเติม (รวมกับป้าย ≤ 200)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-location",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5204,18 +5533,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-adjust*-card",
-        "note": "ที่เก็บที่ปรับ (ค่าเริ่ม = pos-stock-location)"
+        "note": "ที่เก็บที่ปรับ (ค่าเริ่ม = pos-stock-location)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust"
+      ],
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-submit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5223,18 +5558,26 @@
       "expect": {
         "type": "mutation",
         "target": "pos-stock-history",
-        "note": "บันทึกการปรับ: posStockAdjustAction {itemId, deltaQty, reason, locationId} · ไม่ลงบัญชี (มติ Q2) · สำเร็จ = pos-stock-adjust*-ok + ประวัติ · คำปฏิเสธ = pos-stock-adjust*-error"
+        "note": "บันทึกการปรับ: posStockAdjustAction {itemId, deltaQty, reason, locationId} · ไม่ลงบัญชี (มติ Q2) · สำเร็จ = pos-stock-adjust*-ok + ประวัติ · คำปฏิเสธ = pos-stock-adjust*-error",
+        "db": "InvMovement ADJUST (posAdjustStock → inventory.adjustInTx)"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust",
+        "pos-stock-adjust-search=PQC-CF-WATER",
+        "pos-stock-adjust-search-hit-*=click",
+        "pos-stock-adjust-plus=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-history-all",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5246,14 +5589,18 @@
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-history"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-history-resume",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5261,18 +5608,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-count",
-        "note": "รอบ OPEN → นับต่อ (แท็บตรวจนับ)"
+        "note": "รอบ OPEN → นับต่อ (แท็บตรวจนับ)",
+        "state": "appears"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-history"
+      ],
+      "needs": "รอบนับ OPEN ของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-history-retry",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5280,18 +5633,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-stock-history",
-        "note": "โหลดรายการรอบไม่ได้ → ลองอีกครั้ง (posStockCountListAction)"
+        "note": "โหลดรายการรอบไม่ได้ → ลองอีกครั้ง (posStockCountListAction)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-history"
+      ],
+      "needs": "โหลดรายการรอบไม่สำเร็จ (posStockCountListAction ล้ม)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-products-stock-link",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -5310,54 +5669,70 @@
       "testid": "pos-stock-receive-picker",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "กรอบตัวเลือกสินค้าของการ์ดรับของเข้า (ช่อง/กล้อง/ผล = pos-stock-receive-search*)"
+        "note": "กรอบตัวเลือกสินค้าของการ์ดรับของเข้า (ช่อง/กล้อง/ผล = pos-stock-receive-search*)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-receive"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-transfer*-picker",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "กรอบตัวเลือกสินค้าของการ์ดโอน (ช่อง/กล้อง/ผล = pos-stock-transfer*-search*)"
+        "note": "กรอบตัวเลือกสินค้าของการ์ดโอน (ช่อง/กล้อง/ผล = pos-stock-transfer*-search*)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-transfer"
+      ],
+      "needs": "คลังของสาขามีที่เก็บ ≥ 2 แห่ง (InvLocation)"
     },
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-picker",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "กรอบตัวเลือกสินค้าของการ์ดปรับสต็อก (ช่อง/กล้อง/ผล = pos-stock-adjust*-search*)"
+        "note": "กรอบตัวเลือกสินค้าของการ์ดปรับสต็อก (ช่อง/กล้อง/ผล = pos-stock-adjust*-search*)",
+        "state": "changes"
       },
       "wo": "P1.14U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-stock-tab-adjust"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -7687,7 +8062,8 @@
       ],
       "expect": {
         "type": "navigate",
-        "note": "หน้าใบเสร็จออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน · [token] = PosSale.publicToken 12 ตัว) → ?lang=th"
+        "note": "หน้าใบเสร็จออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน · [token] = PosSale.publicToken 12 ตัว) → ?lang=th",
+        "target": "/r/[token]?lang=th"
       },
       "wo": "P1.11U",
       "oracle": "",
@@ -7704,7 +8080,8 @@
       ],
       "expect": {
         "type": "navigate",
-        "note": "→ ?lang=en (หน้าเดียวกันภาษาอังกฤษ)"
+        "note": "→ ?lang=en (หน้าเดียวกันภาษาอังกฤษ)",
+        "target": "/r/[token]?lang=en"
       },
       "wo": "P1.11U",
       "oracle": "",
@@ -7721,13 +8098,15 @@
       ],
       "expect": {
         "type": "modal",
-        "note": "ขอใบกำกับภาษีเต็มรูป (ปุ่มดำ · actions.taxInvoice = AVAILABLE เท่านั้น) → แผ่นฟอร์ม"
+        "note": "ขอใบกำกับภาษีเต็มรูป (ปุ่มดำ · actions.taxInvoice = AVAILABLE เท่านั้น) → แผ่นฟอร์ม",
+        "target": "pos-rpub-taxinvoice-sheet"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7738,13 +8117,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดแผ่นขอใบกำกับ (Esc ได้)"
+        "note": "ปิดแผ่นขอใบกำกับ (Esc ได้)",
+        "target": "pos-rpub-taxinvoice-sheet",
+        "state": "disappears"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7755,13 +8140,19 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "ส่งฟอร์ม = requestFullTaxInvoiceAction(token, …)"
+        "note": "ส่งฟอร์ม = requestFullTaxInvoiceAction(token, …)",
+        "target": "pos-rpub-taxinvoice-done",
+        "db": "PosTaxInvoiceRequest REQUESTED (requestFullTaxInvoice → tx.posTaxInvoiceRequest.create)"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7772,13 +8163,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ชื่อผู้ซื้อ/บริษัท (บังคับ)"
+        "note": "ชื่อผู้ซื้อ/บริษัท (บังคับ)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7789,13 +8185,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "เลขผู้เสียภาษี 13 หลัก (กรองเหลือตัวเลข)"
+        "note": "เลขผู้เสียภาษี 13 หลัก (กรองเหลือตัวเลข)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7806,13 +8207,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "รหัสสาขา 5 หลัก (ค่าเริ่ม 00000)"
+        "note": "รหัสสาขา 5 หลัก (ค่าเริ่ม 00000)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7823,13 +8229,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ที่อยู่ (บังคับ)"
+        "note": "ที่อยู่ (บังคับ)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7840,13 +8251,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "อีเมล (ไม่บังคับ)"
+        "note": "อีเมล (ไม่บังคับ)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7857,13 +8273,19 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "สำเร็จ = ปุ่มกลายเป็น \"ขอแล้ว · รอร้านออก\" · ปฏิเสธ = ข้อความไทยในแผ่น (pos-rpub-taxinvoice-error)"
+        "note": "สำเร็จ = ปุ่มกลายเป็น \"ขอแล้ว · รอร้านออก\" · ปฏิเสธ = ข้อความไทยในแผ่น (pos-rpub-taxinvoice-error)",
+        "target": "pos-rpub-taxinvoice-done",
+        "db": "PosTaxInvoiceRequest REQUESTED (requestFullTaxInvoice → tx.posTaxInvoiceRequest.create)"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-taxinvoice-open"
+      ],
+      "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
     {
       "page": "/r/[token]",
@@ -7874,13 +8296,16 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ดูแต้มของฉัน (N) — บิลสมาชิกเท่านั้น · กาง/พับ ได้รับ/คงเหลือ (ไม่อ่านเซิร์ฟเวอร์เพิ่ม)"
+        "note": "ดูแต้มของฉัน (N) — บิลสมาชิกเท่านั้น · กาง/พับ ได้รับ/คงเหลือ (ไม่อ่านเซิร์ฟเวอร์เพิ่ม)",
+        "target": "pos-rpub-points",
+        "state": "appears"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "บิลของสมาชิก (มีแต้ม)"
     },
     {
       "page": "/r/[token]",
@@ -7891,13 +8316,15 @@
       ],
       "expect": {
         "type": "modal",
-        "note": "ให้คะแนนร้าน ★★★★★ (actions.review) → แผ่นดาว"
+        "note": "ให้คะแนนร้าน ★★★★★ (actions.review) → แผ่นดาว",
+        "target": "pos-rpub-review-sheet"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "บิลสมาชิกที่ยังไม่ให้คะแนน (actions.review)"
     },
     {
       "page": "/r/[token]",
@@ -7908,13 +8335,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดแผ่นให้คะแนน"
+        "note": "ปิดแผ่นให้คะแนน",
+        "target": "pos-rpub-review-sheet",
+        "state": "disappears"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-review-open"
+      ],
+      "needs": "บิลสมาชิกที่ยังไม่ให้คะแนน (actions.review)"
     },
     {
       "page": "/r/[token]",
@@ -7925,13 +8358,20 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "ส่งฟอร์ม = submitReceiptReviewAction(token, {rating, body?})"
+        "note": "ส่งฟอร์ม = submitReceiptReviewAction(token, {rating, body?})",
+        "target": "pos-rpub-review-done",
+        "db": "MemberReview rating 1–5 (submitReceiptReview → member.submitReviewForRef)"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-review-open",
+        "pos-rpub-review-star-*=click"
+      ],
+      "needs": "บิลสมาชิกที่ยังไม่ให้คะแนน (actions.review)"
     },
     {
       "page": "/r/[token]",
@@ -7942,13 +8382,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ดาว 1–5 (role=radio)"
+        "note": "ดาว 1–5 (role=radio)",
+        "target": "pos-rpub-review-form",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-review-open"
+      ],
+      "needs": "บิลสมาชิกที่ยังไม่ให้คะแนน (actions.review)"
     },
     {
       "page": "/r/[token]",
@@ -7959,13 +8405,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ข้อความ (ไม่บังคับ ≤500)"
+        "note": "ข้อความ (ไม่บังคับ ≤500)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-review-open"
+      ],
+      "needs": "บิลสมาชิกที่ยังไม่ให้คะแนน (actions.review)"
     },
     {
       "page": "/r/[token]",
@@ -7976,13 +8427,20 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "สำเร็จ = \"ขอบคุณสำหรับคะแนนค่ะ\" · ALREADY_REVIEWED/REVIEW_EXPIRED = ข้อความจางแทนปุ่ม · NO_MEMBER = ซ่อน"
+        "note": "สำเร็จ = \"ขอบคุณสำหรับคะแนนค่ะ\" · ALREADY_REVIEWED/REVIEW_EXPIRED = ข้อความจางแทนปุ่ม · NO_MEMBER = ซ่อน",
+        "target": "pos-rpub-review-done",
+        "db": "MemberReview rating 1–5 (submitReceiptReview → member.submitReviewForRef)"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-review-open",
+        "pos-rpub-review-star-*=click"
+      ],
+      "needs": "บิลสมาชิกที่ยังไม่ให้คะแนน (actions.review)"
     },
     {
       "page": "/r/[token]",
@@ -7993,7 +8451,8 @@
       ],
       "expect": {
         "type": "modal",
-        "note": "แจ้งปัญหาบิลนี้ → แผ่นข้อความ"
+        "note": "แจ้งปัญหาบิลนี้ → แผ่นข้อความ",
+        "target": "pos-rpub-issue-sheet"
       },
       "wo": "P1.11U",
       "oracle": "",
@@ -8010,13 +8469,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดแผ่นแจ้งปัญหา"
+        "note": "ปิดแผ่นแจ้งปัญหา",
+        "target": "pos-rpub-issue-sheet",
+        "state": "disappears"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-issue-open"
+      ]
     },
     {
       "page": "/r/[token]",
@@ -8027,13 +8491,18 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "ส่งฟอร์ม = reportReceiptIssueAction(token, {message, contact?})"
+        "note": "ส่งฟอร์ม = reportReceiptIssueAction(token, {message, contact?})",
+        "target": "pos-rpub-issue-sent",
+        "db": "PosReceiptIssue (reportReceiptIssue → tx.posReceiptIssue.create)"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-issue-open"
+      ]
     },
     {
       "page": "/r/[token]",
@@ -8044,13 +8513,17 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ข้อความ (บังคับ ≤500)"
+        "note": "ข้อความ (บังคับ ≤500)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-issue-open"
+      ]
     },
     {
       "page": "/r/[token]",
@@ -8061,13 +8534,17 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ช่องทางติดต่อกลับ (ไม่บังคับ ≤120)"
+        "note": "ช่องทางติดต่อกลับ (ไม่บังคับ ≤120)",
+        "state": "changes"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-issue-open"
+      ]
     },
     {
       "page": "/r/[token]",
@@ -8078,13 +8555,18 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "สำเร็จ = \"ส่งแล้ว เจ้าหน้าที่จะติดต่อกลับ\" (pos-rpub-issue-sent) · RATE_LIMITED = ข้อความในแผ่น"
+        "note": "สำเร็จ = \"ส่งแล้ว เจ้าหน้าที่จะติดต่อกลับ\" (pos-rpub-issue-sent) · RATE_LIMITED = ข้อความในแผ่น",
+        "target": "pos-rpub-issue-sent",
+        "db": "PosReceiptIssue (reportReceiptIssue → tx.posReceiptIssue.create)"
       },
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-rpub-issue-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -13355,7 +13837,8 @@
       "testid": "pos-prod-rules-link",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13374,7 +13857,8 @@
       "testid": "pos-prod-bulk-open",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13393,7 +13877,8 @@
       "testid": "pos-prod-search",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13401,7 +13886,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "ค้นชื่อ/SKU ฝั่ง client"
+        "note": "ค้นชื่อ/SKU ฝั่ง client",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
@@ -13412,7 +13898,8 @@
       "testid": "pos-prod-category",
       "kind": "filter",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13420,7 +13907,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "ตัวกรองหมวด (ขอบเขต bulk \"ทั้งหมวด\")"
+        "note": "ตัวกรองหมวด (ขอบเขต bulk \"ทั้งหมวด\")",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
@@ -13431,7 +13919,8 @@
       "testid": "pos-prod-filter-diff",
       "kind": "filter",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13439,7 +13928,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "ชิป \"ราคาต่างกันตามช่องทาง N\" — สลับแสดงเฉพาะสินค้าที่ราคาต่างกัน (= การ์ด pos-prod-stat-channel-diff)"
+        "note": "ชิป \"ราคาต่างกันตามช่องทาง N\" — สลับแสดงเฉพาะสินค้าที่ราคาต่างกัน (= การ์ด pos-prod-stat-channel-diff)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
@@ -13450,61 +13940,79 @@
       "testid": "pos-prod-select-clear",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ล้างสินค้าที่เลือก (ขอบเขต bulk \"ที่เลือก\")"
+        "note": "ล้างสินค้าที่เลือก (ขอบเขต bulk \"ที่เลือก\")",
+        "target": "pos-prod-select-clear",
+        "state": "disappears"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*select-*=on"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-select-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เลือกสินค้าในตาราง (≤ 500 ต่อ bulk)"
+        "note": "เลือกสินค้าในตาราง (≤ 500 ต่อ bulk)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-cselect-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เลือกสินค้า (การ์ด 390)"
+        "note": "เลือกสินค้า (การ์ด 390)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "mobile"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-open-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13516,14 +14024,19 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-copen-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13535,7 +14048,10 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "mobile"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -13545,11 +14061,14 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "กล่องพับ \"ราคาขายปกติและบริการ (คลังสินค้า)\" — หน้าเดิม (setItemSalePriceAction) ย้ายลงมา · เปิดเองเมื่อมี ?err/?ok"
+        "note": "กล่องพับ \"ราคาขายปกติและบริการ (คลังสินค้า)\" — หน้าเดิม (setItemSalePriceAction) ย้ายลงมา · เปิดเองเมื่อมี ?err/?ok",
+        "target": "pos-products-legacy",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
@@ -13560,25 +14079,32 @@
       "testid": "pos-prod-drawer-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดลิ้นชัก"
+        "note": "ปิดลิ้นชัก",
+        "target": "pos-prod-drawer",
+        "state": "disappears"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-tab-*",
       "kind": "tab",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13586,18 +14112,23 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-drawer",
-        "note": "แท็บ ทั่วไป · ตัวเลือก · สูตรและวัตถุดิบ · ราคาตามช่องทาง · สต็อก — ตัวเลือก/สต็อก ปิด (เร็ว ๆ นี้) · สูตรและวัตถุดิบ เปิดแล้ว (P2.3U)"
+        "note": "แท็บ ทั่วไป · ตัวเลือก · สูตรและวัตถุดิบ · ราคาตามช่องทาง · สต็อก — ตัวเลือก/สต็อก ปิด (เร็ว ๆ นี้) · สูตรและวัตถุดิบ เปิดแล้ว (P2.3U)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-price-edit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13605,11 +14136,15 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-prices",
-        "note": "\"แก้ราคา\" → โหมดแก้ (ช่องเงิน + ไม่ขาย + ใช้ราคาปกติ ต่อช่องทาง)"
+        "note": "\"แก้ราคา\" → โหมดแก้ (ช่องเงิน + ไม่ขาย + ใช้ราคาปกติ ต่อช่องทาง)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -13619,16 +14154,21 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-prod-price-err-*",
-        "note": "ช่องราคาต่อช่องทาง (รหัสช่องทาง) — ผิดรูป = pos-prod-price-err-<code> · ช่องว่าง = ตามราคาปกติ/แถวระดับบน"
+        "type": "ui",
+        "note": "ช่องราคาต่อช่องทาง (รหัสช่องทาง) — ผิดรูป = pos-prod-price-err-<code> · ช่องว่าง = ตามราคาปกติ/แถวระดับบน",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -13638,15 +14178,21 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ไม่ขาย\" ต่อช่องทาง (แถว notSold · ราคา null)"
+        "note": "\"ไม่ขาย\" ต่อช่องทาง (แถว notSold · ราคา null)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -13656,22 +14202,31 @@
         "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ใช้ราคาปกติ\" — ลบแถวของช่องทางนี้ในขอบเขตสาขา"
+        "note": "\"ใช้ราคาปกติ\" — ลบแถวของช่องทางนี้ในขอบเขตสาขา",
+        "target": "pos-prod-drawer-groups",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit",
+        "pos-prod-price-*=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-rule-link-*",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13683,14 +14238,19 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*"
+      ],
+      "needs": "โปรราคากำลังใช้/รอเริ่มที่ครอบสินค้าแรก"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-save",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13698,90 +14258,120 @@
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "บันทึก = setChannelPricesAction แทนทั้งชุด (มติ 9) · ปฏิเสธ = pos-prod-price-error ผ่านคีย์ · สำเร็จ = pos-prod-toast"
+        "note": "บันทึก = setChannelPricesAction แทนทั้งชุด (มติ 9) · ปฏิเสธ = pos-prod-price-error ผ่านคีย์ · สำเร็จ = pos-prod-toast",
+        "db": "PosProductChannelPrice แถว (ช่องทาง, สาขา) create/update/delete แทนทั้งชุด (setChannelPrices) · AuditLog pos.product.channelPrice"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit",
+        "pos-prod-drawer-cell-*-*=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ยกเลิกการแก้ (ไม่บันทึก)"
+        "note": "ยกเลิกการแก้ (ไม่บันทึก)",
+        "target": "pos-prod-price-edit",
+        "state": "appears"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-duplicate",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ทำสำเนา\" — ภาพเท่านั้น ปิดอยู่ (เร็ว ๆ นี้ · Q1)"
+        "note": "\"ทำสำเนา\" — ภาพเท่านั้น ปิดอยู่ (เร็ว ๆ นี้ · Q1)",
+        "state": "disabled"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-archive",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "\"เก็บถาวร\" — ภาพเท่านั้น ปิดอยู่ (เร็ว ๆ นี้ · Q1)"
+        "note": "\"เก็บถาวร\" — ภาพเท่านั้น ปิดอยู่ (เร็ว ๆ นี้ · Q1)",
+        "state": "disabled"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดกล่อง +X%"
+        "note": "ปิดกล่อง +X%",
+        "target": "pos-prod-bulk",
+        "state": "disappears"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-bulk-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-channel",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13789,18 +14379,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-bulk-preview",
-        "note": "ช่องทาง (แพลตฟอร์มสำเร็จรูป + ช่องทางที่ร้านตั้งเอง)"
+        "note": "ช่องทาง (แพลตฟอร์มสำเร็จรูป + ช่องทางที่ร้านตั้งเอง)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-bulk-open"
+      ],
+      "needs": "ช่องทางขายที่ไม่ใช่ BUILTIN (แพลตฟอร์ม/ร้านตั้งเอง) ของขอบเขต"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-pct",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13812,14 +14408,18 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-bulk-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-round-100",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13827,18 +14427,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-bulk-preview",
-        "note": "ปัดเป็นบาท (roundTo 100)"
+        "note": "ปัดเป็นบาท (roundTo 100)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-bulk-open",
+        "pos-prod-bulk-round-1=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-round-1",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13846,54 +14452,74 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-bulk-preview",
-        "note": "ปัดเป็นสตางค์ (roundTo 1)"
+        "note": "ปัดเป็นสตางค์ (roundTo 1)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-bulk-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-scope-category",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ขอบเขต = หมวดที่กรองอยู่ (categoryId)"
+        "note": "ขอบเขต = หมวดที่กรองอยู่ (categoryId)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-category=*",
+        "pos-prod-*select-*=on",
+        "pos-prod-bulk-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-scope-selected",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ขอบเขต = สินค้าที่เลือก (productIds ≤ 500)"
+        "note": "ขอบเขต = สินค้าที่เลือก (productIds ≤ 500)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-category=*",
+        "pos-prod-*select-*=on",
+        "pos-prod-bulk-open",
+        "pos-prod-bulk-scope-category=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-run",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13901,36 +14527,49 @@
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "ตั้งราคา = bulkChannelMarkupAction → แจ้ง \"ตั้งราคาแล้ว N รายการ · ข้าม M รายการ\" (pos-prod-toast) · ปฏิเสธ = pos-prod-bulk-error"
+        "note": "ตั้งราคา = bulkChannelMarkupAction → แจ้ง \"ตั้งราคาแล้ว N รายการ · ข้าม M รายการ\" (pos-prod-toast) · ปฏิเสธ = pos-prod-bulk-error",
+        "db": "PosProductChannelPrice ราคาช่องทาง = ฐาน×(1+bp) create/update (bulkChannelMarkup) · AuditLog pos.product.channelPrice"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-category=*",
+        "pos-prod-bulk-open"
+      ],
+      "needs": "ช่องทางขายที่ไม่ใช่ BUILTIN (แพลตฟอร์ม/ร้านตั้งเอง) ของขอบเขต"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-bulk-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ยกเลิก"
+        "note": "ยกเลิก",
+        "target": "pos-prod-bulk",
+        "state": "disappears"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-bulk-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-variant",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13938,18 +14577,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "แท็บสูตร: ดูสูตรของ สินค้าหลัก / ตัวแปร (ตัวแปรที่สูตรของตัวเองว่าง = สูตรของแม่ อ่านอย่างเดียว · \"สูตรของสินค้าหลัก\")"
+        "note": "แท็บสูตร: ดูสูตรของ สินค้าหลัก / ตัวแปร (ตัวแปรที่สูตรของตัวเองว่าง = สูตรของแม่ อ่านอย่างเดียว · \"สูตรของสินค้าหลัก\")",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe"
+      ],
+      "needs": "สินค้าแรกมีตัวแปร (recipeVariants)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-view-base",
       "kind": "tab",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13957,18 +14603,26 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe-table",
-        "note": "ชิปมุมมอง \"สูตรพื้นฐาน\" (expandRecipe ไม่มีตัวเลือก · ต้นทุนจากหน้า)"
+        "note": "ชิปมุมมอง \"สูตรพื้นฐาน\" (expandRecipe ไม่มีตัวเลือก · ต้นทุนจากหน้า)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-view-*=click"
+      ],
+      "needs": "เมนูแรกมีสูตร + กลุ่มตัวเลือกที่ผูก (ชิปตัวเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-view-*",
       "kind": "tab",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13976,18 +14630,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe-table",
-        "note": "ชิปมุมมองต่อตัวเลือก (\"ขนาด M\") — expandRecipe ฝั่ง client + recipeCostAction ของมุมมองนั้น (จำผล)"
+        "note": "ชิปมุมมองต่อตัวเลือก (\"ขนาด M\") — expandRecipe ฝั่ง client + recipeCostAction ของมุมมองนั้น (จำผล)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe"
+      ],
+      "needs": "เมนูแรกมีสูตร + กลุ่มตัวเลือกที่ผูก (ชิปตัวเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-edit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -13995,18 +14656,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "\"แก้สูตร\" → โหมดแก้ (ตัวเลือกวัตถุดิบ · ปริมาณ · ส่วนต่างตามตัวเลือก · สวิตช์ตัดสต็อกตามสูตร) · เฉพาะ pos.product.manage"
+        "note": "\"แก้สูตร\" → โหมดแก้ (ตัวเลือกวัตถุดิบ · ปริมาณ · ส่วนต่างตามตัวเลือก · สวิตช์ตัดสต็อกตามสูตร) · เฉพาะ pos.product.manage",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-bom-on",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14014,18 +14682,25 @@
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "ป้ายสูตรจากเมนูเดิม (มติ 2 · F4): \"เปิดตัดสต็อกตามสูตร\" → setBomEnabledAction(true) โดยตรง · สำเร็จ = pos-prod-toast · ปฏิเสธ = pos-prod-recipe-error"
+        "note": "ป้ายสูตรจากเมนูเดิม (มติ 2 · F4): \"เปิดตัดสต็อกตามสูตร\" → setBomEnabledAction(true) โดยตรง · สำเร็จ = pos-prod-toast · ปฏิเสธ = pos-prod-recipe-error",
+        "db": "PosProduct bomEnabled true (setBomEnabled)"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe"
+      ],
+      "needs": "เมนูที่มีสูตรจากเมนูเดิมแต่ปิดตัดสต็อก (backfilled)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-bom",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14033,18 +14708,26 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: สวิตช์ \"ตัดสต็อกตามสูตร\" (บันทึกพร้อมสูตร = setBomEnabled ใน tx เดียว)"
+        "note": "โหมดแก้: สวิตช์ \"ตัดสต็อกตามสูตร\" (บันทึกพร้อมสูตร = setBomEnabled ใน tx เดียว)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit"
+      ],
+      "needs": "เมนู (MENU) ที่มีสูตรอย่างน้อย 1 บรรทัด"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-tab-base",
       "kind": "tab",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14052,18 +14735,27 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: แท็บสูตรพื้นฐาน (ปริมาณจำนวนเต็ม ≥ 1)"
+        "note": "โหมดแก้: แท็บสูตรพื้นฐาน (ปริมาณจำนวนเต็ม ≥ 1)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-tab-*=click"
+      ],
+      "needs": "เมนูแรกมีสูตร + กลุ่มตัวเลือกที่ผูก (ชิปตัวเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-tab-*",
       "kind": "tab",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14071,18 +14763,26 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: แท็บต่อตัวเลือก — ส่วนต่างมีเครื่องหมาย (+6 g / −1 ใบ)"
+        "note": "โหมดแก้: แท็บต่อตัวเลือก — ส่วนต่างมีเครื่องหมาย (+6 g / −1 ใบ)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit"
+      ],
+      "needs": "เมนูแรกมีสูตร + กลุ่มตัวเลือกที่ผูก (ชิปตัวเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-search",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14090,18 +14790,26 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: ค้นวัตถุดิบในคลังที่ผูก POS (searchRecipeItemsAction · ชื่อ/SKU/บาร์โค้ด · ไม่รวมบริการ)"
+        "note": "โหมดแก้: ค้นวัตถุดิบในคลังที่ผูก POS (searchRecipeItemsAction · ชื่อ/SKU/บาร์โค้ด · ไม่รวมบริการ)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-pick-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14109,18 +14817,27 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: เพิ่มวัตถุดิบที่ค้นเจอลงแท็บที่เปิด (สูตรพื้นฐาน = 1 · ตัวเลือก = +1)"
+        "note": "โหมดแก้: เพิ่มวัตถุดิบที่ค้นเจอลงแท็บที่เปิด (สูตรพื้นฐาน = 1 · ตัวเลือก = +1)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-search=*"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-qty-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14128,18 +14845,28 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: ปริมาณต่อหน่วยขาย (จำนวนเต็ม 1–1,000,000 · ผิด = ข้อความใต้แถว)"
+        "note": "โหมดแก้: ปริมาณต่อหน่วยขาย (จำนวนเต็ม 1–1,000,000 · ผิด = ข้อความใต้แถว)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-search=*",
+        "pos-prod-recipe-pick-*=click"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-dec-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14147,18 +14874,29 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: ลดปริมาณ 1 (ไม่ต่ำกว่า 1)"
+        "note": "โหมดแก้: ลดปริมาณ 1 (ไม่ต่ำกว่า 1)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-search=*",
+        "pos-prod-recipe-pick-*=click",
+        "pos-prod-recipe-inc-*=click"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-inc-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14166,18 +14904,28 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: เพิ่มปริมาณ 1"
+        "note": "โหมดแก้: เพิ่มปริมาณ 1",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-search=*",
+        "pos-prod-recipe-pick-*=click"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-remove-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14185,18 +14933,28 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้: ลบวัตถุดิบออกจากสูตรพื้นฐาน"
+        "note": "โหมดแก้: ลบวัตถุดิบออกจากสูตรพื้นฐาน",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-search=*",
+        "pos-prod-recipe-pick-*=click"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-delta-*",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14204,18 +14962,29 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้ แท็บตัวเลือก: ส่วนต่าง +/− จำนวนเต็ม ≠ 0"
+        "note": "โหมดแก้ แท็บตัวเลือก: ส่วนต่าง +/− จำนวนเต็ม ≠ 0",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-tab-*=click",
+        "pos-prod-recipe-search=*",
+        "pos-prod-recipe-pick-*=click"
+      ],
+      "needs": "เมนูแรกมีสูตร + กลุ่มตัวเลือกที่ผูก (ชิปตัวเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-delta-remove-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14223,18 +14992,29 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "โหมดแก้ แท็บตัวเลือก: ลบส่วนต่างของวัตถุดิบนี้"
+        "note": "โหมดแก้ แท็บตัวเลือก: ลบส่วนต่างของวัตถุดิบนี้",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-tab-*=click",
+        "pos-prod-recipe-search=*",
+        "pos-prod-recipe-pick-*=click"
+      ],
+      "needs": "เมนูแรกมีสูตร + กลุ่มตัวเลือกที่ผูก (ชิปตัวเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-save",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14242,18 +15022,28 @@
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "\"บันทึกสูตร\" = saveRecipeAction (setRecipe + setRecipeChoiceLines + setBomEnabled ใน tx เดียว · แทนทั้งชุด) · สำเร็จ = pos-prod-toast · ปฏิเสธ = pos-prod-recipe-error"
+        "note": "\"บันทึกสูตร\" = saveRecipeAction (setRecipe + setRecipeChoiceLines + setBomEnabled ใน tx เดียว · แทนทั้งชุด) · สำเร็จ = pos-prod-toast · ปฏิเสธ = pos-prod-recipe-error",
+        "db": "RecipeLine แทนทั้งชุด (setRecipe createMany) · PosRecipeChoiceLine (setRecipeChoiceLines) · PosProduct bomEnabled"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit",
+        "pos-prod-recipe-search=*",
+        "pos-prod-recipe-pick-*=click"
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14261,18 +15051,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-recipe",
-        "note": "ยกเลิกโหมดแก้ (ไม่บันทึก)"
+        "note": "ยกเลิกโหมดแก้ (ไม่บันทึก)",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-recipe",
+        "pos-prod-recipe-edit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
       "testid": "pos-prod-recipe-chip-low",
       "kind": "filter",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14280,7 +15077,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "ชิป \"ใกล้หมด N\" (สต็อก/จำนวนที่ทำได้ตามสูตร 1–5 ในขอบเขตสาขา) — สลับกรองตาราง"
+        "note": "ชิป \"ใกล้หมด N\" (สต็อก/จำนวนที่ทำได้ตามสูตร 1–5 ในขอบเขตสาขา) — สลับกรองตาราง",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
@@ -14291,7 +15089,8 @@
       "testid": "pos-prod-recipe-chip-out",
       "kind": "filter",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14299,7 +15098,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "ชิป \"หมด N\" (ทุกสาขาในขอบเขต ≤ 0) — สลับกรองตาราง"
+        "note": "ชิป \"หมด N\" (ทุกสาขาในขอบเขต ≤ 0) — สลับกรองตาราง",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
@@ -14310,7 +15110,8 @@
       "testid": "pos-prod-recipe-chip-nocost",
       "kind": "filter",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14318,7 +15119,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "ชิป \"ยังไม่ใส่ต้นทุน N\" (แถวมีสูตร · recipeCost costComplete false) — สลับกรองตาราง"
+        "note": "ชิป \"ยังไม่ใส่ต้นทุน N\" (แถวมีสูตร · recipeCost costComplete false) — สลับกรองตาราง",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
@@ -14329,7 +15131,8 @@
       "testid": "pos-prod-recipe-chip-nomargin",
       "kind": "filter",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14337,7 +15140,8 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "ชิป \"กำไรคำนวณไม่ได้ N\" (แถวมีสูตร · marginBp null) — สลับกรองตาราง"
+        "note": "ชิป \"กำไรคำนวณไม่ได้ N\" (แถวมีสูตร · marginBp null) — สลับกรองตาราง",
+        "state": "changes"
       },
       "wo": "P2.3U",
       "oracle": "",
@@ -14348,14 +15152,16 @@
       "testid": "pos-price-rules-module-tabs",
       "kind": "tab",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "navigate",
-        "note": "แท็บโมดูล POS (ป้ายตามภาษาจอ) บนจอโปรราคา"
+        "note": "แท็บโมดูล POS (ป้ายตามภาษาจอ) บนจอโปรราคา",
+        "target": "/app/sys/[id]/pos/*"
       },
       "wo": "P2.2U",
       "oracle": "",
@@ -14366,7 +15172,8 @@
       "testid": "pos-price-rules-back",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14385,7 +15192,8 @@
       "testid": "pos-price-rule-add",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14404,7 +15212,8 @@
       "testid": "pos-price-rules-show-archived",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14412,18 +15221,21 @@
       "expect": {
         "type": "ui",
         "target": "pos-price-rules",
-        "note": "\"แสดงที่เก็บแล้ว (n)\" / ซ่อน"
+        "note": "\"แสดงที่เก็บแล้ว (n)\" / ซ่อน",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "needs": "โปรราคาที่เก็บถาวรแล้ว"
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-open-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14435,399 +15247,510 @@
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "needs": "โปรราคาของระบบ (PosPriceRule)"
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-active-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "mutation",
-        "note": "สวิตช์เปิดใช้ = savePriceRuleAction ทั้งชุดเดิม + active กลับค่า · ไม่มีสิทธิ์ = ปิด"
+        "note": "สวิตช์เปิดใช้ = savePriceRuleAction ทั้งชุดเดิม + active กลับค่า · ไม่มีสิทธิ์ = ปิด",
+        "target": "savePriceRuleAction",
+        "db": "PosPriceRule active สลับ (savePriceRule updateMany) · AuditLog pos.priceRule.updated"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "needs": [
+        "โปรราคาที่ยังไม่เก็บถาวร",
+        "โปรที่ผูกเฉพาะสาขาของผู้ใช้ (ผู้จัดการ: canWriteUnits ต้องสิทธิ์ทุกสาขาในขอบเขตโปร)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-close",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดลิ้นชัก (ไม่บันทึก)"
+        "note": "ปิดลิ้นชัก (ไม่บันทึก)",
+        "target": "pos-price-rule-drawer",
+        "state": "disappears"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ยกเลิก (ไม่บันทึก)"
+        "note": "ยกเลิก (ไม่บันทึก)",
+        "target": "pos-price-rule-drawer",
+        "state": "disappears"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-name",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-price-rule-err-name",
-        "note": "ชื่อโปร 1–60 ตัวอักษร"
+        "type": "ui",
+        "note": "ชื่อโปร 1–60 ตัวอักษร",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-kind-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ชนิด HAPPY_HOUR / PROMO"
+        "note": "ชนิด HAPPY_HOUR / PROMO",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add",
+        "pos-price-rule-kind-PROMO=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-picked-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เอาสินค้าที่เลือกออก (รหัสที่ไม่พบ = \"สินค้าถูกเก็บถาวร\" · F3)"
+        "note": "เอาสินค้าที่เลือกออก (รหัสที่ไม่พบ = \"สินค้าถูกเก็บถาวร\" · F3)",
+        "target": "pos-price-rule-drawer",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-open-*"
+      ],
+      "needs": "โปรราคาที่เลือกสินค้า (productIds) ยังไม่เก็บถาวร"
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-product-search",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ค้นสินค้าในตัวเลือก (60 รายการแรก)"
+        "note": "ค้นสินค้าในตัวเลือก (60 รายการแรก)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-product-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เลือก/เอาออก สินค้าของโปร (≤ 500)"
+        "note": "เลือก/เอาออก สินค้าของโปร (≤ 500)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-category-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เลือก/เอาออก หมวดของโปร (≤ 50)"
+        "note": "เลือก/เอาออก หมวดของโปร (≤ 50)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ],
+      "needs": "หมวดสินค้า POS อย่างน้อย 1 หมวด"
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-channel-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ช่องทางของโปร (ไม่เลือก = ทุกช่องทาง)"
+        "note": "ช่องทางของโปร (ไม่เลือก = ทุกช่องทาง)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-unit-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "สาขาของโปร (ไม่เลือก = ทุกสาขา · ต้องมีสิทธิ์ทุกสาขา) — แสดงเมื่อมี > 1 สาขา"
+        "note": "สาขาของโปร (ไม่เลือก = ทุกสาขา · ต้องมีสิทธิ์ทุกสาขา) — แสดงเมื่อมี > 1 สาขา",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-day-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "วันในสัปดาห์ 0=อา…6=ส (ไม่เลือก = ทุกวัน)"
+        "note": "วันในสัปดาห์ 0=อา…6=ส (ไม่เลือก = ทุกวัน)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-time-from",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-price-rule-err-timeFrom",
-        "note": "เวลาเริ่ม HH:MM เวลาไทย"
+        "type": "ui",
+        "note": "เวลาเริ่ม HH:MM เวลาไทย",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-time-to",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-price-rule-err-timeTo",
-        "note": "เวลาจบ HH:MM (ถึง 23:59 · ไม่ข้ามเที่ยงคืน CD8)"
+        "type": "ui",
+        "note": "เวลาจบ HH:MM (ถึง 23:59 · ไม่ข้ามเที่ยงคืน CD8)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-date-from",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-price-rule-err-startsAt",
-        "note": "วันเริ่ม → startsAt = YYYY-MM-DDT00:00:00+07:00"
+        "type": "ui",
+        "note": "วันเริ่ม → startsAt = YYYY-MM-DDT00:00:00+07:00",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-date-to",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-price-rule-err-endsAt",
-        "note": "วันสุดท้าย (รวมวันนั้น) → endsAt = เที่ยงคืนของวันถัดไป +07:00"
+        "type": "ui",
+        "note": "วันสุดท้าย (รวมวันนั้น) → endsAt = เที่ยงคืนของวันถัดไป +07:00",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-adjust-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "วิธีปรับ PRICE / PERCENT_OFF / AMOUNT_OFF"
+        "note": "วิธีปรับ PRICE / PERCENT_OFF / AMOUNT_OFF",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add",
+        "pos-price-rule-adjust-PERCENT_OFF=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-value",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-price-rule-err-value",
-        "note": "ค่าโปร (บาท หรือ %)"
+        "type": "ui",
+        "note": "ค่าโปร (บาท หรือ %)",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-advanced",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "กล่องพับ \"ลำดับความสำคัญ (ขั้นสูง)\""
+        "note": "กล่องพับ \"ลำดับความสำคัญ (ขั้นสูง)\"",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-priority",
       "kind": "input",
       "roles": [
-        "owner"
-      ],
-      "hiddenFor": [
-        "cashier"
-      ],
-      "expect": {
-        "type": "inline-error",
-        "target": "pos-price-rule-err-priority",
-        "note": "ลำดับความสำคัญ 0–100"
-      },
-      "wo": "P2.2U",
-      "oracle": "",
-      "system": "POS"
-    },
-    {
-      "page": "/app/sys/[id]/pos/products/price-rules",
-      "testid": "pos-price-rule-active",
-      "kind": "toggle",
-      "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เปิดใช้ (ในลิ้นชัก)"
+        "note": "ลำดับความสำคัญ 0–100",
+        "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add",
+        "pos-price-rule-advanced=click"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-active",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เปิดใช้ (ในลิ้นชัก)",
+        "state": "changes"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-save",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14835,18 +15758,30 @@
       "expect": {
         "type": "mutation",
         "target": "pos-price-rule-toast",
-        "note": "บันทึก = savePriceRuleAction (ตรวจ parsePriceRuleInput ก่อน) · VALIDATION{field} = ข้อความใต้ช่อง · PRICE_RULE_LIMIT = pos-price-rule-limit · อื่น = pos-price-rule-error"
+        "note": "บันทึก = savePriceRuleAction (ตรวจ parsePriceRuleInput ก่อน) · VALIDATION{field} = ข้อความใต้ช่อง · PRICE_RULE_LIMIT = pos-price-rule-limit · อื่น = pos-price-rule-error",
+        "db": "PosPriceRule create/update (savePriceRule) · AuditLog pos.priceRule.created"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add",
+        "pos-price-rule-name=*",
+        "pos-price-rule-category-*=click",
+        "pos-price-rule-value=*"
+      ],
+      "needs": [
+        "หมวดสินค้า POS อย่างน้อย 1 หมวด",
+        "โปรที่ผูกเฉพาะสาขาของผู้ใช้ (ผู้จัดการ: canWriteUnits ต้องสิทธิ์ทุกสาขาในขอบเขตโปร)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rule-archive",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14854,11 +15789,19 @@
       "expect": {
         "type": "mutation",
         "target": "pos-price-rule-toast",
-        "note": "เก็บถาวร = archivePriceRuleAction (โปรที่มีอยู่ · ไม่ใช่ที่เก็บแล้ว)"
+        "note": "เก็บถาวร = archivePriceRuleAction (โปรที่มีอยู่ · ไม่ใช่ที่เก็บแล้ว)",
+        "db": "PosPriceRule archivedAt (archivePriceRule updateMany) · AuditLog pos.priceRule.archived"
       },
       "wo": "P2.2U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-open-*"
+      ],
+      "needs": [
+        "โปรราคาที่ยังไม่เก็บถาวร",
+        "โปรที่ผูกเฉพาะสาขาของผู้ใช้ (ผู้จัดการ: canWriteUnits ต้องสิทธิ์ทุกสาขาในขอบเขตโปร)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20577,18 +21520,25 @@
       "testid": "pos-prod-station",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "สถานีครัวของสินค้าที่ไม่ใช่เมนู (setProductStationAction → catalog.updateProduct · pos.product.manage)"
+        "note": "สถานีครัวของสินค้าที่ไม่ใช่เมนู (setProductStationAction → catalog.updateProduct · pos.product.manage)",
+        "db": "PosProduct stationId (setProductStationAction → catalog.updateProduct)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-K4",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-general"
+      ],
+      "needs": "สินค้าแรกไม่ใช่เมนู + สถานีครัว (KdsStation) ของสาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -20596,18 +21546,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "แจ้งหมด/คืนขาย ที่สาขาที่เลือก (setAvailabilityAction source MANUAL)"
+        "note": "แจ้งหมด/คืนขาย ที่สาขาที่เลือก (setAvailabilityAction source MANUAL)",
+        "db": "AuditLog pos.product.availability · PosAvailabilityMark source MANUAL (86 upsert / คืนขายลบ) · PosProduct unavailableUnitIds"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-A3",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-tab-general"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -21053,12 +22009,14 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-table",
-        "note": "\"สาขา: …\" (เดิม pos-prod-branch) — ขอบเขตตาราง/คอลัมน์ \"ราคา <สาขา>\" · ?unit= (history.replaceState) · ทุกสาขา = ค่าเริ่มของเจ้าของ/ผู้ดูแลทุกสาขา · โหมดสาขา (ผู้จัดการ) = เฉพาะสาขาของตัวเอง ไม่มี \"ทุกสาขา\" (มติ 1 6)"
+        "note": "\"สาขา: …\" (เดิม pos-prod-branch) — ขอบเขตตาราง/คอลัมน์ \"ราคา <สาขา>\" · ?unit= (history.replaceState) · ทุกสาขา = ค่าเริ่มของเจ้าของ/ผู้ดูแลทุกสาขา · โหมดสาขา (ผู้จัดการ) = เฉพาะสาขาของตัวเอง ไม่มี \"ทุกสาขา\" (มติ 1 6)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21078,7 +22036,11 @@
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21098,7 +22060,8 @@
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21132,13 +22095,17 @@
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-prod-drawer-err-*",
-        "note": "ช่องราคาของ (ช่องทาง, สาขา) ในกลุ่มสาขาของลิ้นชัก — ว่าง = สืบทอด (placeholder = ค่าที่สืบทอด) · พิมพ์ = แถวของสาขา · ผิดรูป = pos-prod-drawer-err-<unitId>-<code> (มติ 2)"
+        "type": "ui",
+        "note": "ช่องราคาของ (ช่องทาง, สาขา) ในกลุ่มสาขาของลิ้นชัก — ว่าง = สืบทอด (placeholder = ค่าที่สืบทอด) · พิมพ์ = แถวของสาขา · ผิดรูป = pos-prod-drawer-err-<unitId>-<code> (มติ 2)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21153,11 +22120,16 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ไม่ขาย\" ของ (ช่องทาง, สาขา) — แถว notSold ของสาขา (มติ 2)"
+        "note": "\"ไม่ขาย\" ของ (ช่องทาง, สาขา) — แถว notSold ของสาขา (มติ 2)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21172,11 +22144,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "\"ใช้ราคาที่สืบทอด\" — ลบแถว (ช่องทาง, สาขา) เมื่อบันทึก (มติ 2)"
+        "note": "\"ใช้ราคาที่สืบทอด\" — ลบแถว (ช่องทาง, สาขา) เมื่อบันทึก (มติ 2)",
+        "target": "pos-prod-drawer-groups",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-price-edit",
+        "pos-prod-drawer-cell-*-*=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21192,11 +22171,16 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-purgeDead-confirm",
-        "note": "\"ล้างแถวที่เลิกใช้\" ใต้หมายเหตุ pos-prod-deadNote — เฉพาะผู้มีขอบเขตทั้งสินค้า (posCanSetTenantPrice หรือตั้งราคาได้ครบทุกสาขา) → ยืนยัน (มติ 3)"
+        "note": "\"ล้างแถวที่เลิกใช้\" ใต้หมายเหตุ pos-prod-deadNote — เฉพาะผู้มีขอบเขตทั้งสินค้า (posCanSetTenantPrice หรือตั้งราคาได้ครบทุกสาขา) → ยืนยัน (มติ 3)",
+        "state": "appears"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*"
+      ],
+      "needs": "สินค้าที่มีแถวราคาเลิกใช้ (deadRows > 0)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21212,11 +22196,17 @@
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "\"ยืนยันล้าง\" → setChannelPricesAction({…, rows: ชุดปัจจุบัน, purgeDead: true}) → toast \"ล้างแถวที่เลิกใช้แล้ว\" (มติ 3)"
+        "note": "\"ยืนยันล้าง\" → setChannelPricesAction({…, rows: ชุดปัจจุบัน, purgeDead: true}) → toast \"ล้างแถวที่เลิกใช้แล้ว\" (มติ 3)",
+        "db": "PosProductChannelPrice แถวเลิกใช้ถูกลบ (setChannelPrices purgeDead deleteMany) · AuditLog pos.product.channelPrice"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-purgeDead"
+      ],
+      "needs": "สินค้าที่มีแถวราคาเลิกใช้ (deadRows > 0)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21231,11 +22221,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ยกเลิกการล้างแถวที่เลิกใช้ (มติ 3)"
+        "note": "ยกเลิกการล้างแถวที่เลิกใช้ (มติ 3)",
+        "target": "pos-prod-purgeDead-confirm",
+        "state": "disappears"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-*open-*",
+        "pos-prod-purgeDead"
+      ],
+      "needs": "สินค้าที่มีแถวราคาเลิกใช้ (deadRows > 0)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21249,13 +22246,17 @@
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-prod-copy-from-error",
-        "note": "\"จากสาขา\" — สาขาที่เข้าได้ · ปฏิเสธ field fromUnitId (+ PRICE_ROW_DEAD = \"สาขานี้เลิกใช้แล้ว\") แสดงใต้ช่อง (มติ 4)"
+        "type": "ui",
+        "note": "\"จากสาขา\" — สาขาที่เข้าได้ · ปฏิเสธ field fromUnitId (+ PRICE_ROW_DEAD = \"สาขานี้เลิกใช้แล้ว\") แสดงใต้ช่อง (มติ 4)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-copy-open"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21269,13 +22270,17 @@
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-prod-copy-to-error",
-        "note": "\"ไปสาขา\" — ค่าเริ่ม = สาขาที่กรองอยู่ · ต้นทาง = ปลายทาง = แดง · ปฏิเสธ field toUnitId แสดงใต้ช่อง (มติ 4)"
+        "type": "ui",
+        "note": "\"ไปสาขา\" — ค่าเริ่ม = สาขาที่กรองอยู่ · ต้นทาง = ปลายทาง = แดง · ปฏิเสธ field toUnitId แสดงใต้ช่อง (มติ 4)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-copy-open"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21290,11 +22295,16 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "\"เขียนทับราคาที่มีอยู่\" (overwrite · ค่าเริ่มปิด) (มติ 4)"
+        "note": "\"เขียนทับราคาที่มีอยู่\" (overwrite · ค่าเริ่มปิด) (มติ 4)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-copy-open"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21310,11 +22320,16 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-copy-summary",
-        "note": "\"เฉพาะสินค้าที่กรองอยู่\" — เปิด = ส่ง productIds ของรายการที่เห็น · ปิด = ทั้งแคตตาล็อก · สรุป pos-prod-copy-summary (มติ 4)"
+        "note": "\"เฉพาะสินค้าที่กรองอยู่\" — เปิด = ส่ง productIds ของรายการที่เห็น · ปิด = ทั้งแคตตาล็อก · สรุป pos-prod-copy-summary (มติ 4)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-copy-open"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21330,11 +22345,20 @@
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
-        "note": "\"คัดลอก\" → copyUnitPricesAction → toast \"คัดลอกแล้ว {written} · ข้าม {skipped}\" + อ่านหน้าใหม่ · PERMISSION_DENIED = toast (มติ 4)"
+        "note": "\"คัดลอก\" → copyUnitPricesAction → toast \"คัดลอกแล้ว {written} · ข้าม {skipped}\" + อ่านหน้าใหม่ · PERMISSION_DENIED = toast (มติ 4)",
+        "db": "PosProductChannelPrice แถวสาขาปลายทาง create/update (copyUnitPrices) · AuditLog pos.product.channelPrice"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-copy-open",
+        "pos-prod-copy-overwrite=on"
+      ],
+      "needs": [
+        "ผู้ใช้เข้าถึง ≥ 2 สาขา",
+        "สาขาต้นทางมีแถวราคาของตัวเองที่ต่างจากปลายทาง"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21349,11 +22373,17 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดกล่องคัดลอก (ไม่ส่งอะไร)"
+        "note": "ปิดกล่องคัดลอก (ไม่ส่งอะไร)",
+        "target": "pos-prod-copy-dialog",
+        "state": "disappears"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-copy-open"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21368,11 +22398,17 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ปุ่ม × ของกล่องคัดลอก"
+        "note": "ปุ่ม × ของกล่องคัดลอก",
+        "target": "pos-prod-copy-dialog",
+        "state": "disappears"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-copy-open"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21387,11 +22423,16 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ปุ่ม × ของแผ่นเทียบราคาสาขา"
+        "note": "ปุ่ม × ของแผ่นเทียบราคาสาขา",
+        "target": "pos-prod-compare",
+        "state": "disappears"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-compare-open"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21407,11 +22448,16 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-compare",
-        "note": "ชิปเลือกสาขาในแผ่นเทียบ (≥ 1 สาขา) — เปลี่ยน = เรียก unitPriceMatrixAction ใหม่ 1 ครั้ง (มติ 5)"
+        "note": "ชิปเลือกสาขาในแผ่นเทียบ (≥ 1 สาขา) — เปลี่ยน = เรียก unitPriceMatrixAction ใหม่ 1 ครั้ง (มติ 5)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-compare-open"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21427,11 +22473,16 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-compare",
-        "note": "ชิปเลือกช่องทางในแผ่นเทียบ — กรองคอลัมน์ฝั่งจอ (ไม่เรียกซ้ำ) (มติ 5)"
+        "note": "ชิปเลือกช่องทางในแผ่นเทียบ — กรองคอลัมน์ฝั่งจอ (ไม่เรียกซ้ำ) (มติ 5)",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
-      "system": "POS"
+      "system": "POS",
+      "opener": [
+        "pos-prod-compare-open"
+      ],
+      "needs": "ตารางเทียบมีช่องทาง ≥ 2"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -22792,13 +23843,15 @@
       "expect": {
         "type": "mutation",
         "target": "pairDisplayAction",
-        "note": "จอลูกค้า (สาธารณะ ไม่ต้องล็อกอิน · แท็บเล็ตหันหาลูกค้า) — ฟอร์มรหัสจับคู่ 8 ตัว (?c= เติมให้จาก QR ของหน้าตั้งค่าเครื่อง) → แลกเป็นคุกกี้ pos_display (httpOnly) แล้วเปิดจอ"
+        "note": "จอลูกค้า (สาธารณะ ไม่ต้องล็อกอิน · แท็บเล็ตหันหาลูกค้า) — ฟอร์มรหัสจับคู่ 8 ตัว (?c= เติมให้จาก QR ของหน้าตั้งค่าเครื่อง) → แลกเป็นคุกกี้ pos_display (httpOnly) แล้วเปิดจอ",
+        "db": "PosCustomerDisplay tokenHash (pairCustomerDisplay updateMany)"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-PA2",
       "system": "POS",
       "query": "c=[pairCode]",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "รหัสจับคู่จอลูกค้าที่ยังไม่หมดอายุ (enableCustomerDisplay)"
     },
     {
       "page": "/d",
@@ -22809,7 +23862,8 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "รหัสจับคู่ (ตัวใหญ่อัตโนมัติ · I/L → 1 · O → 0 · ปุ่มจับคู่เปิดเมื่อครบ 8 ตัว Crockford)"
+        "note": "รหัสจับคู่ (ตัวใหญ่อัตโนมัติ · I/L → 1 · O → 0 · ปุ่มจับคู่เปิดเมื่อครบ 8 ตัว Crockford)",
+        "state": "changes"
       },
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
@@ -22827,13 +23881,15 @@
       "expect": {
         "type": "mutation",
         "target": "pairDisplayAction",
-        "note": "สำเร็จ = จอหน้าพัก/บิลปัจจุบัน · ผิด/หมดอายุ/ล็อก = \"รหัสจับคู่ไม่ถูกต้องหรือหมดอายุ\" (pos-display-pair-error) · ลองบ่อย = RATE_LIMITED"
+        "note": "สำเร็จ = จอหน้าพัก/บิลปัจจุบัน · ผิด/หมดอายุ/ล็อก = \"รหัสจับคู่ไม่ถูกต้องหรือหมดอายุ\" (pos-display-pair-error) · ลองบ่อย = RATE_LIMITED",
+        "db": "PosCustomerDisplay tokenHash (pairCustomerDisplay updateMany)"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-PA2",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "รหัสจับคู่จอลูกค้าที่ยังไม่หมดอายุ (enableCustomerDisplay)"
     },
     {
       "page": "/d",
@@ -22844,7 +23900,9 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "เต็มจอ (requestFullscreen · ซ่อนเมื่อเต็มจออยู่แล้ว/เบราว์เซอร์ไม่มี)"
+        "note": "เต็มจอ (requestFullscreen · ซ่อนเมื่อเต็มจออยู่แล้ว/เบราว์เซอร์ไม่มี)",
+        "target": "pos-display-fullscreen",
+        "state": "disappears"
       },
       "wo": "P2.10",
       "oracle": "",
@@ -23750,7 +24808,8 @@
       ],
       "expect": {
         "type": "navigate",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลิงก์ภาษา ?lang=th (ใช้ทั้ง 3 หน้า /q/**)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลิงก์ภาษา ?lang=th (ใช้ทั้ง 3 หน้า /q/**)",
+        "target": "/q/t/[qrToken]?lang=th"
       },
       "wo": "P2.7U",
       "oracle": "",
@@ -23767,7 +24826,8 @@
       ],
       "expect": {
         "type": "navigate",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลิงก์ภาษา ?lang=en (ใช้ทั้ง 3 หน้า /q/**)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลิงก์ภาษา ?lang=en (ใช้ทั้ง 3 หน้า /q/**)",
+        "target": "/q/t/[qrToken]?lang=en"
       },
       "wo": "P2.7U",
       "oracle": "",
@@ -23784,7 +24844,8 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ชิปหมวดเมนู → เลื่อนไปหมวด (โต๊ะ + สั่งล่วงหน้า)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ชิปหมวดเมนู → เลื่อนไปหมวด (โต๊ะ + สั่งล่วงหน้า)",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
@@ -23801,13 +24862,16 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · + ที่เมนู: ไม่มีตัวเลือก = ใส่ตะกร้า 1 · มีตัวเลือก = แผ่นเลือก (pos-qr-opt-sheet) · หมด/ประตูปิด = ไม่มีปุ่ม"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · + ที่เมนู: ไม่มีตัวเลือก = ใส่ตะกร้า 1 · มีตัวเลือก = แผ่นเลือก (pos-qr-opt-sheet) · หมด/ประตูปิด = ไม่มีปุ่ม",
+        "target": "pos-qr-table",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "โต๊ะเปิดรับ QR + เมนูพร้อมขาย"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23818,13 +24882,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ฉากหลังแผ่นตัวเลือก → ปิด"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ฉากหลังแผ่นตัวเลือก → ปิด",
+        "target": "pos-qr-opt-sheet",
+        "state": "disappears"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*"
+      ],
+      "needs": "เมนูแรกที่สั่งได้มีตัวเลือก (optionGroups)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23835,13 +24905,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · × ปิดแผ่นตัวเลือก (Esc ได้)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · × ปิดแผ่นตัวเลือก (Esc ได้)",
+        "target": "pos-qr-opt-sheet",
+        "state": "disappears"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*"
+      ],
+      "needs": "เมนูแรกที่สั่งได้มีตัวเลือก (optionGroups)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23852,13 +24928,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ตัวเลือก (radio เมื่อเลือกได้ 1 · checkbox ไม่เกิน max · หมด = ปิด)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ตัวเลือก (radio เมื่อเลือกได้ 1 · checkbox ไม่เกิน max · หมด = ปิด)",
+        "target": "pos-qr-opt-sheet",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*"
+      ],
+      "needs": "เมนูแรกที่สั่งได้มีตัวเลือก (optionGroups)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23869,13 +24951,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมายเหตุถึงครัว ≤ 200"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมายเหตุถึงครัว ≤ 200",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*"
+      ],
+      "needs": "เมนูแรกที่สั่งได้มีตัวเลือก (optionGroups)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23886,13 +24973,20 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลดจำนวนในแผ่นตัวเลือก (≥ 1)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลดจำนวนในแผ่นตัวเลือก (≥ 1)",
+        "target": "pos-qr-opt-sheet",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*",
+        "pos-qr-opt-qty-plus=click"
+      ],
+      "needs": "เมนูแรกที่สั่งได้มีตัวเลือก (optionGroups)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23903,13 +24997,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เพิ่มจำนวนในแผ่นตัวเลือก (≤ 50)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เพิ่มจำนวนในแผ่นตัวเลือก (≤ 50)",
+        "target": "pos-qr-opt-sheet",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*"
+      ],
+      "needs": "เมนูแรกที่สั่งได้มีตัวเลือก (optionGroups)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23920,13 +25020,19 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ใส่ตะกร้า — ปิดจนกว่ากลุ่มบังคับครบ"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ใส่ตะกร้า — ปิดจนกว่ากลุ่มบังคับครบ",
+        "target": "pos-qr-opt-sheet",
+        "state": "disappears"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*"
+      ],
+      "needs": "เมนูแรกที่สั่งได้มีตัวเลือก (optionGroups) ไม่มีกลุ่มบังคับ/เลือกครบ"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23937,13 +25043,21 @@
       ],
       "expect": {
         "type": "modal",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · แถบตะกร้าลอย (จอ < 1024) → แผ่นตะกร้า (pos-qr-cart-sheet)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · แถบตะกร้าลอย (จอ < 1024) → แผ่นตะกร้า (pos-qr-cart-sheet)",
+        "target": "pos-qr-cart-sheet"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*"
+      ],
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "เมนูแรกที่สั่งได้ไม่มีตัวเลือก (+ = ใส่ตะกร้าทันที) · โต๊ะเปิดรับ QR"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23954,13 +25068,23 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ฉากหลังแผ่นตะกร้า → ปิด"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ฉากหลังแผ่นตะกร้า → ปิด",
+        "target": "pos-qr-cart-sheet",
+        "state": "disappears"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*",
+        "pos-qr-cart-bar"
+      ],
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "เมนูแรกที่สั่งได้ไม่มีตัวเลือก (+ = ใส่ตะกร้าทันที) · โต๊ะเปิดรับ QR"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23971,13 +25095,23 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · × ปิดแผ่นตะกร้า"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · × ปิดแผ่นตะกร้า",
+        "target": "pos-qr-cart-sheet",
+        "state": "disappears"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*",
+        "pos-qr-cart-bar"
+      ],
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "เมนูแรกที่สั่งได้ไม่มีตัวเลือก (+ = ใส่ตะกร้าทันที) · โต๊ะเปิดรับ QR"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -23988,13 +25122,20 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลดจำนวนบรรทัดตะกร้า (0 = เอาออก) → quote ใหม่"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ลดจำนวนบรรทัดตะกร้า (0 = เอาออก) → quote ใหม่",
+        "target": "pos-qr-cart",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*",
+        "pos-qr-cart-bar"
+      ],
+      "needs": "เมนูแรกที่สั่งได้ไม่มีตัวเลือก (+ = ใส่ตะกร้าทันที) · โต๊ะเปิดรับ QR"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -24005,13 +25146,20 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เพิ่มจำนวนบรรทัดตะกร้า (≤ 50) → quote ใหม่"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เพิ่มจำนวนบรรทัดตะกร้า (≤ 50) → quote ใหม่",
+        "target": "pos-qr-cart",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*",
+        "pos-qr-cart-bar"
+      ],
+      "needs": "เมนูแรกที่สั่งได้ไม่มีตัวเลือก (+ = ใส่ตะกร้าทันที) · โต๊ะเปิดรับ QR"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -24022,13 +25170,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · แท็บ เมนู / สั่งแล้ว N / บิล (จอ < 1024 · บิล = มี session เท่านั้น)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · แท็บ เมนู / สั่งแล้ว N / บิล (จอ < 1024 · บิล = มี session เท่านั้น)",
+        "target": "pos-qr-table",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "viewport": [
+        "mobile"
+      ]
     },
     {
       "page": "/q/t/[qrToken]",
@@ -24039,13 +25192,20 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ส่งเข้าครัว = placeTableRoundAction(session ที่หน้าเห็น + guestToken ต่อเครื่อง) · SESSION_CHANGED/PRODUCT_UNAVAILABLE = ข้อความในตะกร้า"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ส่งเข้าครัว = placeTableRoundAction(session ที่หน้าเห็น + guestToken ต่อเครื่อง) · SESSION_CHANGED/PRODUCT_UNAVAILABLE = ข้อความในตะกร้า",
+        "target": "pos-qr-sent",
+        "db": "RestaurantOrder รอบแขก + RestaurantOrderItem (guestRoundInTx → roundInTx) · AuditLog รอบ QR"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-item-add-*",
+        "pos-qr-cart-bar"
+      ],
+      "needs": "เมนูแรกที่สั่งได้ไม่มีตัวเลือก (+ = ใส่ตะกร้าทันที) · โต๊ะเปิดรับ QR"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -24056,13 +25216,19 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เรียกพนักงาน (มี session เท่านั้น) → แจ้งเตือนบนผังโต๊ะ"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เรียกพนักงาน (มี session เท่านั้น) → แจ้งเตือนบนผังโต๊ะ",
+        "target": "pos-qr-requested",
+        "db": "RestaurantServiceRequest CALL_STAFF (createServiceRequest)"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-tab-rounds"
+      ],
+      "needs": "โต๊ะที่มีลูกค้า (TableSession เปิด)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -24073,13 +25239,19 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ขอเช็คบิล (มี session เท่านั้น)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ขอเช็คบิล (มี session เท่านั้น)",
+        "target": "pos-qr-requested",
+        "db": "RestaurantServiceRequest REQUEST_BILL (createServiceRequest)"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-tab-rounds"
+      ],
+      "needs": "โต๊ะที่มีลูกค้า (TableSession เปิด)"
     },
     {
       "page": "/q/t/[qrToken]",
@@ -24090,13 +25262,22 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · โอนแล้ว แจ้งร้าน = คำขอ PAY_PROMPTPAY (ยอด = บิลของหน้าขาย) → pos-qr-notified"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · โอนแล้ว แจ้งร้าน = คำขอ PAY_PROMPTPAY (ยอด = บิลของหน้าขาย) → pos-qr-notified",
+        "target": "pos-qr-notified",
+        "db": "RestaurantServiceRequest PAY_PROMPTPAY (tableNotifyPaid → createServiceRequest)"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "opener": [
+        "pos-qr-tab-bill"
+      ],
+      "needs": [
+        "โต๊ะที่มีลูกค้า (TableSession เปิด)",
+        "บิลโต๊ะที่มียอด + พร้อมเพย์ของร้าน"
+      ]
     },
     {
       "page": "/q/[linkToken]",
@@ -24107,13 +25288,16 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ตะกร้า → ขั้นข้อมูลผู้รับ (จอ < 1024)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ตะกร้า → ขั้นข้อมูลผู้รับ (จอ < 1024)",
+        "target": "pos-qr-preorder",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
     },
     {
       "page": "/q/[linkToken]",
@@ -24124,13 +25308,15 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ชื่อผู้รับ (บังคับ ≤ 100)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ชื่อผู้รับ (บังคับ ≤ 100)",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
     },
     {
       "page": "/q/[linkToken]",
@@ -24141,13 +25327,15 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เบอร์ไทย (normalizeThaiPhone · ผิด = pos-qr-co-phone-error) · ใช้ติดต่อเรื่องออเดอร์นี้เท่านั้น"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · เบอร์ไทย (normalizeThaiPhone · ผิด = pos-qr-co-phone-error) · ใช้ติดต่อเรื่องออเดอร์นี้เท่านั้น",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
     },
     {
       "page": "/q/[linkToken]",
@@ -24158,13 +25346,15 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมายเหตุถึงร้าน ≤ 200"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมายเหตุถึงร้าน ≤ 200",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
     },
     {
       "page": "/q/[linkToken]",
@@ -24175,13 +25365,15 @@
       ],
       "expect": {
         "type": "navigate",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · สั่งและจ่าย = placePreorderAction (คีย์ 1 ต่อตะกร้า+ผู้รับ) → /q/o/<orderToken>"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · สั่งและจ่าย = placePreorderAction (คีย์ 1 ต่อตะกร้า+ผู้รับ) → /q/o/<orderToken>",
+        "target": "/q/o/[orderToken]"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
     },
     {
       "page": "/q/[linkToken]",
@@ -24192,13 +25384,18 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · กลับไปเลือกเมนู (จอ < 1024)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · กลับไปเลือกเมนู (จอ < 1024)",
+        "state": "changes"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
     },
     {
       "page": "/q/o/[orderToken]",
@@ -24209,13 +25406,16 @@
       ],
       "expect": {
         "type": "mutation",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · โอนแล้ว (QR นิ่งเท่านั้น) = claimPaidAction — บันทึกอย่างเดียว ไม่มีผลเงิน → แจ้งร้านแล้ว"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · โอนแล้ว (QR นิ่งเท่านั้น) = claimPaidAction — บันทึกอย่างเดียว ไม่มีผลเงิน → แจ้งร้านแล้ว",
+        "target": "pos-qr-order-claimed",
+        "db": "PosOrder customerClaimAt (claimPreorderPaid updateMany) + PosOrderEvent customer_paid_claim"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ออเดอร์ล่วงหน้ารอจ่ายด้วย QR นิ่ง (ยังไม่แจ้งโอน)"
     },
     {
       "page": "/q/o/[orderToken]",
@@ -24226,13 +25426,15 @@
       ],
       "expect": {
         "type": "navigate",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมดเวลาจ่าย (19ค): ลองใหม่ → /q/<ลิงก์ที่ใช้อยู่ของสาขา>"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · หมดเวลาจ่าย (19ค): ลองใหม่ → /q/<ลิงก์ที่ใช้อยู่ของสาขา>",
+        "target": "/q/[linkToken]"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ออเดอร์หมดเวลาจ่าย (มีลิงก์สั่งใหม่ของสาขา)"
     },
     {
       "page": "/q/o/[orderToken]",
@@ -24243,13 +25445,15 @@
       ],
       "expect": {
         "type": "navigate",
-        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ดูใบเสร็จ → /r/<token> (หลังร้านรับ · บิลเกิดแล้ว)"
+        "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · ดูใบเสร็จ → /r/<token> (หลังร้านรับ · บิลเกิดแล้ว)",
+        "target": "/r/[token]"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "ออเดอร์ที่ร้านรับแล้ว (มีใบเสร็จ)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
