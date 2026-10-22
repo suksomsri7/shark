@@ -1,0 +1,2 @@
+oracle exit=0 ===== qc-hr-h0.5 ===== ผ่าน 71/71 (QC_FORCE) RESIDUE10 opsEvent=0 (ไม่มีร้าน เก็บ id ไว้ 0) RESIDUE tenants=0 none (สร้าง 3
+seed exit=1 ===== seed-hr-qc ===== ผ่าน 22/23
