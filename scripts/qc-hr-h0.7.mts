@@ -22,7 +22,10 @@
 //   R9 readers unchanged (signature hash) · leave DTO unchanged except "ยื่นโดย <name>" for managers/HR · R10 fixed Thai texts
 //
 // Groups: S1 requester · S2 owner's own leave · S3 cancel · S4 link 1↔1 + linkApprovedById · S5 data fix · S6 plan steps ·
-//         S7 statics · X6 data-fix replay · X7 link races · X8 privacy · X9 cancel-surface viewer matrix · Z1 residue
+//         S7 statics · X6 data-fix replay · X7 link races · X8 privacy · X9 cancel-surface viewer matrix · S9 leave list row scope · Z1 residue
+//   S9 = R10 addendum (controller ruling 22 Oct 2026 from the leave privacy hunt F1+F2): leaveItemsForViewer + AI pending_leaves show every
+//        row only to hr.leave.read / hr.leave.decide / OWNER / MANAGER-role · everyone else only rows of the employee linked to them (none ⇒ 0) ·
+//        API-key actor ⇒ 0 · filter inside the prisma where (take=100) · DTO keys + reason rule unchanged · system/tenant isolation unchanged
 //
 // SKIP convention (house style of qc-hr-h0.6): while nothing of H0.7 exists (no migration folder · no cancelLeave · no filedById in
 //   hr/service.ts) the suite prints SKIPPED + JSON_SUMMARY {skipped:true} and exits 0 · QC_FORCE=1 (or --force-run) runs everything ·
@@ -143,6 +146,17 @@ const CHECKS: readonly Def[] = [
   D("X9.5", "X9", "CRITICAL", "RED", "[action] … by plain member ⇒ refused · unchanged"),
   D("X9.6", "X9", "CRITICAL", "RED", "[action] … by a member of another tenant ⇒ refused · unchanged"),
   D("X9.7", "X9", "CRITICAL", "RED", "[action] … by A herself (the requester) ⇒ CANCELLED · request CANCELLED"),
+  // S9 leave list row scope (R10 — controller ruling 22 Oct 2026 · privacy hunt F1+F2) · GREEN-base rows = controls that must survive the filter
+  D("S9.1", "R10.1", "CRITICAL", "RED", "[dto] 🔴 leaveItemsForViewer: unlinked plain member ⇒ 0 pending + 0 history · viewer with empty userId ⇒ 0 + 0"),
+  D("S9.2", "R10.1", "CRITICAL", "RED", "[dto] 🔴 linked STAFF A (hr.leave.request only) ⇒ only A's rows (pending + history) · colleague B's SICK row absent in both"),
+  D("S9.3", "R10.1", "MAJOR", "GREEN", "[dto] STAFF with hr.leave.decide (no read, unlinked) ⇒ every row of system A (pending + history) · no reason key"),
+  D("S9.4", "R10.1", "CRITICAL", "RED", "[dto] 🔴 payroll viewer without leave keys, unlinked ⇒ 0 pending + 0 history"),
+  D("S9.5", "R10.4", "MAJOR", "GREEN", "[dto] OWNER · MANAGER role · STAFF hr.leave.read ⇒ every row · keys = id/employeeName/type/fromDate/toDate/status + reason (+ filedBy only on filed-on-behalf rows)"),
+  D("S9.6", "R10.3", "CRITICAL", "RED", "[ai] 🔴 pending_leaves: linked member actor without leave keys ⇒ only own pending rows · unlinked member ⇒ 0 rows (no error)"),
+  D("S9.7", "R10.3", "CRITICAL", "RED", "[ai] 🔴 pending_leaves via general API-key actor (no membership) ⇒ 0 rows · no error · no reason key/text"),
+  D("S9.8", "R10.3", "MAJOR", "GREEN", "[ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text"),
+  D("S9.9", "R10.4", "CRITICAL", "GREEN", "[dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows"),
+  D("S9.10", "R10.1", "CRITICAL", "RED", "[dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows"),
   D("Z1", "-", "CRITICAL", "GREEN", "residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows"),
 ];
 
@@ -980,6 +994,151 @@ async function runDb(): Promise<void> {
   const allOut = outs.join("\n");
   const leakTenant = allOut.includes(t2) || allOut.includes(ro) || allOut.includes(tid);
   chk("S5.5", ran && !hasName(allOut) && !leakTenant, "no names/e-mails/other tenant ids", `ran=${ran} names=${hasName(allOut)} otherTenant=${leakTenant}`);
+
+  // ═══ S9 leave list row scope (R10) — fixtures only inside this suite's tenants ═══
+  try {
+    await runS9({ tid, t2, sA, sB, ctxA, U, E });
+  } catch (e) {
+    console.log(`  💥 S9 harness: ${errText(e)} (unreached S9 checks are marked failed below)`);
+  }
+}
+
+type S9In = { tid: string; t2: string; sA: { id: string }; sB: { id: string }; ctxA: { tenantId: string; systemId: string }; U: Record<string, Who>; E: Record<string, string> };
+async function runS9({ tid, t2, sA, sB, ctxA, U, E }: S9In): Promise<void> {
+  console.log("── [S9] leave list row scope (R10) ──");
+  const REASON9 = `QC-REASON9-${stamp}`;
+  const U9 = {
+    dec: await mkUser(tid, "s9dec", `QC ผู้ตัดสินลา ${stamp}`, "STAFF", { "hr.leave.decide": true }),
+    pay: await mkUser(tid, "s9pay", `QC ผู้ดูเงินเดือนล้วน ${stamp}`, "STAFF", { "hr.payroll.read": true }),
+    self: await mkUser(tid, "s9self", `QC พนักงานไม่มีคีย์ ${stamp}`, "STAFF", {}),
+    far: await mkUser(tid, "s9far", `QC พนักงานระบบซี ${stamp}`, "STAFF", { "hr.leave.request": true }),
+  };
+  const E9self = await mkEmp(tid, sA.id, `พนง-ไม่มีคีย์ ${stamp}`, U9.self.id);
+  // fixtures in system A: A's own pending · colleague B's SICK pending (with reason) · the keyless linked employee's pending · one row in system B
+  const lOwnA = (await hr.requestLeave(ctxA, { employeeId: E.a, actorUserId: U.a.id, type: "PERSONAL", fromDate: "2031-10-06", toDate: "2031-10-06" })).id as string;
+  const lSickB = (await hr.requestLeave(ctxA, { employeeId: E.b, actorUserId: U.b.id, type: "SICK", fromDate: "2031-10-07", toDate: "2031-10-08", reason: REASON9 })).id as string;
+  const lSelf = (await hr.requestLeave(ctxA, { employeeId: E9self, actorUserId: U9.self.id, type: "PERSONAL", fromDate: "2031-10-09", toDate: "2031-10-09" })).id as string;
+  const lSysB = (await P.hrLeave.create({ data: { tenantId: tid, systemId: sB.id, employeeId: E.sysB, type: "SICK", fromDate: new Date("2031-10-10"), toDate: new Date("2031-10-10"), reason: REASON9 } })).id as string;
+
+  // ground truth straight from the DB (system A only)
+  const allA = (await P.hrLeave.findMany({ where: { tenantId: tid, systemId: sA.id }, select: { id: true, status: true, filedById: true, employee: { select: { linkedUserId: true } } } })) as Any[];
+  const pendA = allA.filter((l) => l.status === "PENDING");
+  const filedRow = new Set(allA.filter((l) => !!l.filedById).map((l) => l.id as string));
+  const srt = (a: string[]) => [...a].sort().join(",");
+  const ALL_H = srt(allA.map((l) => l.id));
+  const ALL_P = srt(pendA.map((l) => l.id));
+  const ownOf = (uid: string) => ({ h: srt(allA.filter((l) => l.employee?.linkedUserId === uid).map((l) => l.id)), p: srt(pendA.filter((l) => l.employee?.linkedUserId === uid).map((l) => l.id)) });
+  const sizeNote = `sysA rows=${allA.length} pending=${pendA.length}`;
+
+  const seen: string[] = []; // every id any S9 viewer received (S9.9)
+  const web = async (ctx: { tenantId: string; systemId: string }, v: Any) => {
+    const r = await privacy.leaveItemsForViewer(ctx, v);
+    const p = (r.pending ?? []) as Any[];
+    const h = (r.history ?? []) as Any[];
+    for (const x of [...p, ...h]) seen.push(String(x.id));
+    return { p, h, P: srt(p.map((x) => String(x.id))), H: srt(h.map((x) => String(x.id))), rows: [...p, ...h] };
+  };
+  const vOf = (w: Who, userId = w.id) => ({ ...mOf(w), userId });
+  const hasReasonKey = (rows: Any[]) => rows.some((r) => Object.prototype.hasOwnProperty.call(r ?? {}, "reason"));
+
+  // S9.1 unlinked plain member · empty userId
+  const w1 = await web(ctxA, vOf(U.member));
+  const w1e = await web(ctxA, vOf(U.member, ""));
+  chk("S9.1", w1.p.length === 0 && w1.h.length === 0 && w1e.p.length === 0 && w1e.h.length === 0, "0/0 · empty userId 0/0", `member pending=${w1.p.length} history=${w1.h.length} · emptyUid ${w1e.p.length}/${w1e.h.length} · ${sizeNote} · colleagueSICK=${w1.rows.some((r) => r.id === lSickB)}`);
+
+  // S9.2 linked STAFF A, hr.leave.request only
+  const w2 = await web(ctxA, vOf(U.a));
+  const own2 = ownOf(U.a.id);
+  const sick2 = { p: w2.p.some((r) => r.id === lSickB), h: w2.h.some((r) => r.id === lSickB) };
+  const foreign2 = w2.rows.filter((r) => !own2.h.split(",").includes(String(r.id))).length;
+  chk("S9.2", w2.P === own2.p && w2.H === own2.h && own2.p.includes(lOwnA) && !sick2.p && !sick2.h && foreign2 === 0, "pending = own pending · history = own rows · no SICK of B", `pending=${w2.p.length} (own ${own2.p.split(",").filter(Boolean).length}) history=${w2.h.length} (own ${own2.h.split(",").filter(Boolean).length}) foreignRows=${foreign2} SICK(B) pending=${sick2.p} history=${sick2.h}`);
+
+  // S9.3 STAFF hr.leave.decide, no read, unlinked
+  const w3 = await web(ctxA, vOf(U9.dec));
+  chk("S9.3", w3.P === ALL_P && w3.H === ALL_H && !hasReasonKey(w3.rows), "every row of A · no reason", `pending=${w3.p.length}/${pendA.length} history=${w3.h.length}/${allA.length} reasonKey=${hasReasonKey(w3.rows)}`);
+
+  // S9.4 payroll viewer without leave keys, unlinked
+  const w4 = await web(ctxA, vOf(U9.pay));
+  chk("S9.4", w4.p.length === 0 && w4.h.length === 0, "0/0", `pending=${w4.p.length} history=${w4.h.length} · colleagueSICK=${w4.rows.some((r) => r.id === lSickB)} · ${sizeNote}`);
+
+  // S9.5 read set: OWNER · MANAGER role · STAFF hr.leave.read
+  const BASE = ["employeeName", "fromDate", "id", "status", "toDate", "type"];
+  const keysOk = (r: Any) => {
+    const k = Object.keys(r ?? {}).sort().join(",");
+    const want = [...BASE, "reason"].sort().join(",");
+    const wantF = [...BASE, "reason", "filedBy"].sort().join(",");
+    return k === want || (filedRow.has(String(r?.id)) && k === wantF);
+  };
+  const s95: string[] = [];
+  let ok95 = true;
+  for (const [tag, w] of [["owner", U.owner], ["manager", U.manager], ["hrRead", U.hrKey]] as [string, Who][]) {
+    const r = await web(ctxA, vOf(w));
+    const kOk = r.rows.every(keysOk);
+    const all = r.P === ALL_P && r.H === ALL_H;
+    if (!(all && kOk && r.rows.length > 0)) ok95 = false;
+    s95.push(`${tag}:all=${all}(${r.p.length}/${r.h.length}),keys=${kOk}`);
+  }
+  chk("S9.5", ok95, "every row · keys base+reason (+filedBy on filed rows)", `${s95.join(" ")} · ${sizeNote}`);
+
+  // AI pending_leaves
+  const tools = (await import("@/lib/ai/tools")) as Any;
+  const ai = async (actor: Any) => {
+    const out = String(await tools.runTool({ tenantId: tid, actor }, "pending_leaves", {}));
+    let j: Any = null;
+    try {
+      j = JSON.parse(out);
+    } catch {
+      j = null;
+    }
+    const rows = (Array.isArray(j?.["ใบลารออนุมัติ"]) ? j["ใบลารออนุมัติ"] : []) as Any[];
+    const ids = rows.map((r) => String(r?.["รหัสใบลา"] ?? "")).filter(Boolean);
+    for (const x of ids) seen.push(x);
+    const reason = out.includes(REASON9) || rows.some((r) => Object.keys(r ?? {}).some((k) => k.includes("เหตุผล") || k === "reason"));
+    return { out, err: j ? (j.error ?? null) : "∅json", hasList: Array.isArray(j?.["ใบลารออนุมัติ"]), n: rows.length, ids: srt(ids), reason };
+  };
+  const memActor = async (w: Who) => {
+    const m = await P.membership.findFirst({ where: { tenantId: tid, userId: w.id }, select: { role: true, unitAccess: true, permissions: true } });
+    return aiActor.aiMemberActor(tid, w.id, m);
+  };
+  // S9.6 linked member without leave keys · unlinked member
+  const a6 = await ai(await memActor(U9.self));
+  const a6u = await ai(await memActor(U.member));
+  const own6 = ownOf(U9.self.id).p;
+  chk(
+    "S9.6",
+    a6.err === null && a6.ids === own6 && own6.includes(lSelf) && a6u.err === null && a6u.hasList && a6u.n === 0,
+    "linked: own pending only · unlinked: 0 rows, no error",
+    `linked rows=${a6.n} (own ${own6.split(",").filter(Boolean).length}) err=${a6.err} SICK(B)=${a6.ids.includes(lSickB)} · unlinked rows=${a6u.n} err=${a6u.err}`,
+  );
+  // S9.7 general API key (scope empty · no system) — no membership ⇒ fail closed with an empty list
+  const keyActor = aiActor.aiApiKeyActor({ tenantId: tid, keyId: `qc-h07-s9-${stamp}`, scopes: [], systemId: null });
+  const a7 = await ai(keyActor);
+  chk("S9.7", a7.err === null && a7.hasList && a7.n === 0 && !a7.reason, "0 rows · no error · no reason", `rows=${a7.n} err=${a7.err} list=${a7.hasList} reason=${a7.reason} SICK(B)=${a7.ids.includes(lSickB)}`);
+  // S9.8 hr.leave.read holder
+  const a8 = await ai(await memActor(U.hrKey));
+  chk("S9.8", a8.err === null && a8.ids === ALL_P && !a8.reason, "every pending row of A · no reason", `rows=${a8.n}/${pendA.length} match=${a8.ids === ALL_P} reason=${a8.reason} err=${a8.err}`);
+
+  // S10 fixture: system C of this tenant — linked staff's single own row is the oldest (createdAt) and the latest (fromDate) of 102 rows
+  const sC = await sys.createSystem(tid, "HR", "ทีมงาน C");
+  ids.push(sC.id);
+  const ctxC = { tenantId: tid, systemId: sC.id };
+  const eFar = await mkEmp(tid, sC.id, `พนง-ระบบซี ${stamp}`, U9.far.id);
+  const eMate = await mkEmp(tid, sC.id, `พนง-เพื่อนระบบซี ${stamp}`);
+  const lFar = (await P.hrLeave.create({ data: { tenantId: tid, systemId: sC.id, employeeId: eFar, type: "PERSONAL", fromDate: new Date("2032-12-31"), toDate: new Date("2032-12-31"), createdAt: new Date("2020-01-01T00:00:00.000Z") } })).id as string;
+  await P.hrLeave.createMany({ data: Array.from({ length: 101 }, (_, i) => ({ tenantId: tid, systemId: sC.id, employeeId: eMate, type: "SICK", fromDate: new Date(Date.UTC(2031, 0, 1 + i)), toDate: new Date(Date.UTC(2031, 0, 1 + i)) })) });
+  const nC = await P.hrLeave.count({ where: { tenantId: tid, systemId: sC.id } });
+  const w10 = await web(ctxC, vOf(U9.far));
+  chk(
+    "S9.10",
+    nC >= 102 && w10.P === lFar && w10.H === lFar,
+    "pending = [own] · history = [own] (runtime fixture, 102 rows)",
+    `sysC rows=${nC} pending=${w10.p.length} ownInPending=${w10.p.some((r) => r.id === lFar)} history=${w10.h.length} ownInHistory=${w10.h.some((r) => r.id === lFar)} colleagueRows=${w10.rows.filter((r) => r.id !== lFar).length}`,
+  );
+
+  // S9.9 cross-system / cross-tenant
+  const wOther = await web({ tenantId: t2, systemId: sA.id }, vOf(U.other));
+  const leakB = seen.filter((x) => x === lSysB).length;
+  chk("S9.9", leakB === 0 && wOther.rows.length === 0 && seen.length > 0, "system B row in 0 results · other-tenant ctx 0 rows", `sysB hits=${leakB} of ${seen.length} ids seen · otherTenant rows=${wOther.rows.length}`);
 }
 
 // ═════════════════════════ cleanup ═════════════════════════
