@@ -319,8 +319,15 @@ function runStatic(): void {
     if (!(iPeek >= 0 && iBody > iPeek)) bad.push("qrGuard ไม่ peek ถังพลาดก่อน body");
     if (!/TOKEN_INVALID[\s\S]{0,120}qrCountMiss\(/.test(g)) bad.push("qrGuard ไม่นับพลาดเมื่อผล TOKEN_INVALID");
     if (!/qrHitGuard\(/.test(g)) bad.push("qrGuard ไม่นับอ่านของโทเคนจริง");
+    // ORACLE-EDIT (builder P5.2 fix3 · A1 controller B): + peek ถังอ่านของ (IP, โทเคน) ก่อน body (อ่านอย่างเดียว) — probe: ย้าย peek ไปหลัง body/ลบ → แดง (wo-notes §Fix round 3)
+    const iHitPeek = g.search(/qrHitExhausted\(/);
+    if (!(iHitPeek >= 0 && iBody > iHitPeek)) bad.push("qrGuard ไม่ peek ถังอ่าน (IP, โทเคน) ก่อน body");
+    if (!/findUnique\(/.test(fnBody(pr, "qrHitExhausted"))) bad.push("qrHitExhausted ไม่ใช่การอ่านอย่างเดียว (findUnique)");
     if (!/findUnique\(/.test(fnBody(pr, "qrMissExhausted"))) bad.push("qrMissExhausted ไม่ใช่การอ่านอย่างเดียว (findUnique)");
-    if (!/createHash\("sha256"\)/.test(pr) || !/tokenHash\(token\)/.test(fnBody(pr, "qrHitGuard"))) bad.push("กุญแจ hit ไม่ใช้แฮชโทเคน");
+    // ORACLE-EDIT (fix3): กุญแจ hit อยู่ใน hitKey (ใช้ทั้ง qrHitGuard และ qrHitExhausted) — เดิมตรวจ tokenHash(token) ใน qrHitGuard ตรง ๆ
+    const hitKeyUsesHash = /tokenHash\(token\)/.test(fnBody(pr, "hitKey"));
+    const viaHitKey = (fn: string) => /tokenHash\(token\)|hitKey\(/.test(fnBody(pr, fn));
+    if (!/createHash\("sha256"\)/.test(pr) || !(viaHitKey("qrHitGuard") && (hitKeyUsesHash || /tokenHash\(token\)/.test(fnBody(pr, "qrHitGuard"))))) bad.push("กุญแจ hit ไม่ใช้แฮชโทเคน");
     const READ = ["tableDoor", "tablePoll", "tableBill", "linkDoor", "orderStatus", "quoteTableCart", "quotePreorderCart"];
     const WRITE = ["placeTableRound", "tableServiceRequest", "tableNotifyPaid", "placePreorder", "claimPaid"];
     for (const d of [...READ, ...WRITE]) {
