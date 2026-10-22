@@ -317,7 +317,7 @@ function runStatic(): void {
 
   // S6.1 executePlan → runKind carries the confirmer
   const ep = block(plans, "export async function executePlan(");
-  const call = /runKind\(([^;]*?)\);/s.exec(ep)?.[1] ?? "";
+  const call = /runKind\(([^;]*?)\);/.exec(ep)?.[1] ?? "";
   chk("S6.1", /userId/.test(call), "runKind(… opts.userId …)", call ? `runKind(${short(call, 120)})` : "no runKind call");
 }
 
