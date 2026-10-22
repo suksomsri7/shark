@@ -437,9 +437,10 @@ export async function cancelRequests(ctx: Ctx, requestIds: readonly string[]): P
 }
 
 // ต้นทางยกเลิก entity → PENDING→CANCELLED (สถานะอื่น/ไม่พบ → false)
-export async function cancelRequest(ctx: Ctx, requestId: string): Promise<boolean> {
-  const res = await tenantDb(ctx).approvalRequest.updateMany({
-    where: { id: requestId, status: "PENDING" },
+// HR H0.7 R11 ▸ `tx` = ผู้เรียกยกเลิก entity ในธุรกรรมนี้ (hr cancelLeave · ล็อกต่อใบลา) ⇒ คำขอ + entity เปลี่ยนพร้อมกัน (ไม่ส่ง = เหมือนเดิม) ◂
+export async function cancelRequest(ctx: Ctx, requestId: string, opts: { tx?: Prisma.TransactionClient } = {}): Promise<boolean> {
+  const res = await (opts.tx ? opts.tx.approvalRequest : tenantDb(ctx).approvalRequest).updateMany({
+    where: { id: requestId, tenantId: ctx.tenantId, status: "PENDING" },
     data: { status: "CANCELLED", decidedAt: new Date() },
   });
   return res.count > 0;

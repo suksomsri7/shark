@@ -407,6 +407,12 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       const existing = await tx.membership.findFirst({
         where: { userId: user.id, tenantId: input.tenantId },
       });
+      // HR H0.7 R11 ▸ R11.1 (review M1): บัญชีที่เป็นเจ้าของกิจการ (role OWNER) ผูกกับแถวพนักงานได้โดยเจ้าของคนนั้นเอง หรือ OWNER ของร้านเท่านั้น —
+      //   ไม่งั้นผู้ถือ settings.staff.write ผูกบัญชีเจ้าของเข้ากับพนักงานคนใดก็ได้ แล้วใบลาของพนักงานนั้นเข้าทาง "เจ้าของลาเอง" (R4) ไม่ผ่านการอนุมัติ
+      //   ปฏิเสธ = โยนในธุรกรรม ⇒ ไม่เขียนอะไรเลย (ไม่มี audit ตามมติ) · บัญชี MANAGER/STAFF ผูกได้ตามเดิม ◂
+      if (existing?.role === "OWNER" && user.id !== input.actorUserId && actor.membership.role !== "OWNER") {
+        throw new StaffRuleError("ผูกบัญชีเจ้าของกิจการได้เฉพาะเจ้าของกิจการเอง — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้");
+      }
       let membershipId: string;
       let createdNew = false;
       if (existing) {

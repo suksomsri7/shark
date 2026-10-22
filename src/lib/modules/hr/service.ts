@@ -492,9 +492,9 @@ const CANCEL_STARTED = "ใบลานี้ถึงวันลาแล้�
 const CANCEL_NO_ACTOR = "ระบบไม่ทราบผู้ยกเลิกใบลานี้ — กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง";
 
 /** HR H0.7 ▸ R4: บัญชีนี้เป็นเจ้าของร้าน (OWNER ที่ยังใช้งาน) ไหม — Membership เป็นแกน global ⇒ กำกับ tenantId เอง ◂ */
-async function isTenantOwner(tenantId: string, userId: string | null): Promise<boolean> {
+async function isTenantOwner(tenantId: string, userId: string | null, tx?: Prisma.TransactionClient): Promise<boolean> {
   if (!userId) return false;
-  const m = await tenantDb({ tenantId }).membership.findFirst({
+  const m = await (tx ?? tenantDb({ tenantId })).membership.findFirst({ // HR H0.7 R11 ▸ ใน tx ใช้ tx (ไม่ยืม connection ที่สองใต้ล็อก) ◂
     where: { tenantId, userId, role: "OWNER", acceptedAt: { not: null } },
     select: { id: true },
   });
@@ -609,6 +609,7 @@ export class HrLeaveDecisionError extends Error {
 }
 const LEAVE_STATUS_TH: Record<string, string> = { APPROVED: "อนุมัติแล้ว", REJECTED: "ไม่อนุมัติแล้ว", CANCELLED: "ยกเลิกแล้ว" };
 const LEAVE_STALE = "สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่";
+const LEAVE_LOCK_TX_OPTS = { maxWait: 20_000, timeout: 60_000 } as const; // HR H0.7 R11 ▸ ธุรกรรมใต้ล็อกต่อใบลา (decide/cancel) ◂
 
 export async function decideLeave(
   ctx: Ctx,
@@ -626,7 +627,12 @@ export async function decideLeave(
     throw new HrLeaveDecisionError("ระบบไม่ทราบผู้ตัดสินใบลานี้ จึงยังบันทึกผลไม่ได้ — กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
   }
   const db = tenantDb(ctx);
-  const leave = await db.hrLeave.findFirst({
+  // HR H0.7 R11 ▸ R11.2: อ่าน-ตรวจ-เขียน ใต้ล็อกต่อใบลา (คีย์เดียวกับ cancelLeave) ในธุรกรรมเดียว ⇒ ตัดสินแข่งกับยกเลิกไม่ได้ผลครึ่ง ๆ
+  //   (ใบที่ยกเลิกแล้ว = อ่านซ้ำหลังล็อกเห็น CANCELLED ⇒ ปฏิเสธไทย) · ทุกคำสั่งใน tx ใช้ tx · audit หลัง commit เหมือนเดิม ◂
+  const { leave, from } = await db.$transaction(async (t) => {
+  const tx = t as unknown as Prisma.TransactionClient;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave:${leaveId}`}, 0))`;
+  const leave = await tx.hrLeave.findFirst({
     where: { id: leaveId },
     select: { status: true, decidedById: true, employee: { select: { linkedUserId: true } } },
   });
@@ -643,8 +649,8 @@ export async function decideLeave(
   // HF-HR-0 ▸ รอบ 5b (H2): ใบลาที่มีคำขอในสายอนุมัติ "สถานะใดก็ได้" (รอ · อนุมัติ · ปฏิเสธ) = สายเป็นเจ้าของการตัดสิน — ทางตรงปฏิเสธทุกกรณี
   //   (เดิมดูแค่ รอ/อนุมัติ ⇒ ช่วงระหว่าง "สายตัดสินแล้ว" กับ "effect เขียนใบลา" ทางตรงตัดสินสวนผลของสายได้) ·
   //   ยกเว้นเดียว: CANCELLED (cancelRequest — สายจะไม่ตัดสินและไม่มี effect เขียนใบลาอีก) ⇒ ปล่อยให้ทางตรง ไม่งั้นใบลาค้างถาวร ◂
-  const chains = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findMany({
-    where: { entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
+  const chains = await tx.approvalRequest.findMany({
+    where: { tenantId: ctx.tenantId, entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
     select: { status: true },
     take: 20,
   });
@@ -659,11 +665,13 @@ export async function decideLeave(
     throw new HrLeaveDecisionError("ใบลานี้ตัดสินผ่านสายอนุมัติแล้ว — ผลของใบลามาจากหน้า “อนุมัติ” เท่านั้น (ตัดสินซ้ำทางนี้ไม่ได้) หากต้องเปลี่ยนผล กรุณาติดต่อเจ้าของกิจการ");
   }
   // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
-  const res = await db.hrLeave.updateMany({
+  const res = await tx.hrLeave.updateMany({
     where: { id: leaveId, status: from },
     data: { status, decidedById: decidedById ?? null },
   });
   if (res.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
+  return { leave, from };
+  }, LEAVE_LOCK_TX_OPTS);
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: decidedById ? "USER" : "SYSTEM",
@@ -703,50 +711,60 @@ export async function bulkDecideLeave(
 //   ได้เมื่อ: ใบลายัง PENDING + ผู้กด = ผู้ยื่นในสายอนุมัติ (requestedById · แถวเก่าที่ยังเป็น id พนักงาน = บัญชีที่ผูกกับพนักงานนั้น) ·
 //   ใบที่ไม่มีสาย = บัญชีของพนักงานเอง หรือผู้ยื่นแทน (filedById) · หรือใบลาของเจ้าของร้านที่อนุมัติทันที (R4) ที่ยังไม่ถึงวันลา
 //   (ผู้กด = เจ้าของร้านเจ้าของใบ) · ใบที่สายอนุมัติ/ผู้ตัดสินอนุมัติแล้ว = ยกเลิกเองไม่ได้
-//   คำขอในสาย: ถอนผ่าน approval core (cancelRequest — PENDING→CANCELLED แบบมีเงื่อนไข) ก่อน ⇒ ผู้อนุมัติตัดสินแทรกไม่ได้อีก
-//   แล้วใบลา PENDING→CANCELLED แบบมีเงื่อนไขใน SQL เดียว · audit hr.leave.cancel 1 แถว (ids เท่านั้น) · ไม่มี event ใหม่ (Q-E)
+//   คำขอในสาย: ถอนผ่าน approval core (cancelRequest — PENDING→CANCELLED แบบมีเงื่อนไข) + ใบลา →CANCELLED ในธุรกรรมเดียวใต้ล็อกต่อใบลา (R11) · audit hr.leave.cancel 1 แถว (ids เท่านั้น) · ไม่มี event ใหม่ (Q-E)
 export type CancelLeaveResult = { ok: true } | { ok: false; reason: string };
 export async function cancelLeave(ctx: Ctx, leaveId: string, opts: { actorUserId: string }): Promise<CancelLeaveResult> {
   const actor = typeof opts?.actorUserId === "string" ? opts.actorUserId.trim() : "";
   if (!actor) return { ok: false, reason: CANCEL_NO_ACTOR };
   if (!leaveId) return { ok: false, reason: CANCEL_NOT_FOUND };
-  const db = tenantDb(ctx);
-  const leave = await db.hrLeave.findFirst({
-    where: { id: leaveId },
-    select: { id: true, status: true, decidedById: true, filedById: true, fromDate: true, employeeId: true, employee: { select: { linkedUserId: true } } },
-  });
-  if (!leave) return { ok: false, reason: CANCEL_NOT_FOUND };
-  const chains = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findMany({
-    where: { entityType: "HrLeave", entityId: leaveId },
-    select: { id: true, status: true, requestedById: true },
-    take: 20,
-  });
-  const linked = leave.employee.linkedUserId;
-  let requestId: string | null = null;
-  if (leave.status === "PENDING") {
-    const pendingReq = chains.find((c) => c.status === "PENDING");
-    if (pendingReq) {
-      const mine = pendingReq.requestedById === actor || (pendingReq.requestedById === leave.employeeId && !!linked && linked === actor);
-      if (!mine) return { ok: false, reason: CANCEL_NOT_MINE };
-      requestId = pendingReq.id;
-    } else if (chains.some((c) => c.status === "APPROVED" || c.status === "REJECTED")) {
-      return { ok: false, reason: CANCEL_DECIDED }; // สายตัดสินแล้ว รอ effect เขียนใบลา
-    } else if (!(actor === linked || (!!leave.filedById && actor === leave.filedById))) {
-      return { ok: false, reason: CANCEL_NOT_MINE };
+  // HR H0.7 R11 ▸ R11.2: ล็อกต่อใบลา (คีย์เดียวกับ decideLeave) ก่อนอ่าน · คำขอในสาย + ใบลา เปลี่ยนเป็น CANCELLED ในธุรกรรมเดียว
+  //   (เดิมสองคำสั่งแยก ⇒ ตัดสินแทรกกลางได้ "คำขอ CANCELLED + ใบลาอนุมัติ") · ไม่ผ่านด่าน = คืนเหตุผล (ธุรกรรมไม่เขียนอะไร) ◂
+  type Out = { ok: true; status: string; requestId: string | null } | { ok: false; reason: string };
+  const out: Out = await tenantDb(ctx).$transaction(async (t): Promise<Out> => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave:${leaveId}`}, 0))`;
+    const leave = await tx.hrLeave.findFirst({
+      where: { id: leaveId },
+      select: { id: true, status: true, decidedById: true, filedById: true, fromDate: true, employeeId: true, employee: { select: { linkedUserId: true } } },
+    });
+    if (!leave) return { ok: false, reason: CANCEL_NOT_FOUND };
+    const chains = await tx.approvalRequest.findMany({
+      where: { tenantId: ctx.tenantId, entityType: "HrLeave", entityId: leaveId },
+      select: { id: true, status: true, requestedById: true },
+      take: 20,
+    });
+    const linked = leave.employee.linkedUserId;
+    const ownsAny = linked === actor || chains.some((c) => c.requestedById === actor);
+    let requestId: string | null = null;
+    if (leave.status === "PENDING") {
+      const pendingReq = chains.find((c) => c.status === "PENDING");
+      if (pendingReq) {
+        const mine = pendingReq.requestedById === actor || (pendingReq.requestedById === leave.employeeId && !!linked && linked === actor);
+        if (!mine) return { ok: false, reason: CANCEL_NOT_MINE };
+        requestId = pendingReq.id;
+      } else if (chains.some((c) => c.status === "APPROVED" || c.status === "REJECTED")) {
+        return { ok: false, reason: CANCEL_DECIDED }; // สายตัดสินแล้ว รอ effect เขียนใบลา
+      } else if (!(actor === linked || (!!leave.filedById && actor === leave.filedById))) {
+        return { ok: false, reason: CANCEL_NOT_MINE };
+      }
+    } else if (leave.status === "APPROVED") {
+      const ownerAuto = chains.length === 0 && leave.decidedById === null && !!linked && linked === actor && (await isTenantOwner(ctx.tenantId, actor, tx));
+      if (!ownerAuto) return { ok: false, reason: ownsAny ? CANCEL_DECIDED : CANCEL_NOT_MINE };
+      const todayTh = toDbDate(thaiDateKey(new Date())); // วันไทยวันนี้ในรูปเดียวกับคอลัมน์ @db.Date
+      if (!(leave.fromDate.getTime() > todayTh.getTime())) return { ok: false, reason: CANCEL_STARTED };
+    } else {
+      return { ok: false, reason: ownsAny ? `ใบลานี้${LEAVE_STATUS_TH[leave.status] ?? "ตัดสินแล้ว"}` : CANCEL_NOT_MINE };
     }
-    if (requestId && !(await approval.cancelRequest({ tenantId: ctx.tenantId }, requestId))) {
-      return { ok: false, reason: CANCEL_DECIDED }; // ผู้อนุมัติตัดสินไปก่อนหน้านี้นิดเดียว
-    }
-  } else if (leave.status === "APPROVED") {
-    const ownerAuto = chains.length === 0 && leave.decidedById === null && !!linked && linked === actor && (await isTenantOwner(ctx.tenantId, actor));
-    if (!ownerAuto) return { ok: false, reason: linked === actor || chains.some((c) => c.requestedById === actor) ? CANCEL_DECIDED : CANCEL_NOT_MINE };
-    const todayTh = toDbDate(thaiDateKey(new Date())); // วันไทยวันนี้ในรูปเดียวกับคอลัมน์ @db.Date
-    if (!(leave.fromDate.getTime() > todayTh.getTime())) return { ok: false, reason: CANCEL_STARTED };
-  } else {
-    return { ok: false, reason: linked === actor || chains.some((c) => c.requestedById === actor) ? `ใบลานี้${LEAVE_STATUS_TH[leave.status] ?? "ตัดสินแล้ว"}` : CANCEL_NOT_MINE };
-  }
-  const res = await db.hrLeave.updateMany({ where: { id: leaveId, status: leave.status }, data: { status: "CANCELLED" } });
-  if (res.count === 0) return { ok: false, reason: LEAVE_STALE };
+    // คำขอในสาย: ถอนผ่าน approval core (PENDING→CANCELLED แบบมีเงื่อนไข) ใน tx นี้ — ผู้อนุมัติตัดสินไปก่อนแล้ว ⇒ ไม่เขียนอะไร
+    if (requestId && !(await approval.cancelRequest({ tenantId: ctx.tenantId }, requestId, { tx }))) return { ok: false, reason: CANCEL_DECIDED };
+    const res = await tx.hrLeave.updateMany({ where: { id: leaveId, status: leave.status }, data: { status: "CANCELLED" } });
+    if (res.count === 0) throw new HrLeaveRequestError(LEAVE_STALE); // ย้อนการถอนคำขอด้วย (ไม่ควรเกิดใต้ล็อก)
+    return { ok: true, status: leave.status, requestId };
+  }, LEAVE_LOCK_TX_OPTS).catch((e: unknown) => {
+    if (e instanceof HrLeaveRequestError) return { ok: false as const, reason: e.message };
+    throw e;
+  });
+  if (!out.ok) return { ok: false, reason: out.reason };
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: "USER",
@@ -754,8 +772,8 @@ export async function cancelLeave(ctx: Ctx, leaveId: string, opts: { actorUserId
     action: "hr.leave.cancel",
     targetType: "HrLeave",
     targetId: leaveId,
-    before: { status: leave.status },
-    after: { status: "CANCELLED", requestId, cancelledById: actor },
+    before: { status: out.status },
+    after: { status: "CANCELLED", requestId: out.requestId, cancelledById: actor },
   });
   return { ok: true };
 }
