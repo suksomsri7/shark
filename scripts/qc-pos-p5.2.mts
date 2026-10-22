@@ -11,7 +11,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const SUITE = "qc-pos-p5.2";
@@ -34,7 +34,7 @@ const CHECKS: readonly Def[] = [
   D("M4", "S", "รูปตาราง: เรียงตาม surface ไม่ซ้ำ · kind ถูก · ครบ 9 บทบาท ค่าในชุด · ไม่มี ? บนแถว action/page", "rows[*].roles"),
   D("M5", "S", "ตารางตรงกับตัวสร้าง (pos-authz-matrix-gen --check) — โค้ดเปลี่ยนแต่ไม่ regenerate = แดง", "$generator"),
   D("P1", "S", "[ruling 5 · static] โทเคนสาธารณะจาก crypto ≥ 60 บิต: ใบเสร็จ 12×5 · ออเดอร์ 12×5 · ลิงก์ 16×5 · จอ 32 ไบต์ · intent 12 ไบต์ · ตัวช่วยพิมพ์ 32 ไบต์ · ไม่มี Math.random", "(store)/r · /q/o · /q · /d · beam webhook · print-agent"),
-  D("P2", "S", "[ruling 5 · static] QR โต๊ะ (RestaurantTable.qrToken) ≥ 60 บิตตั้งแต่สร้าง — @default(cuid()) = ส่วนสุ่ม < 60 บิต", "src/app/(store)/q/t/[qrToken]/page.tsx"),
+  D("P2", "S", "[ruling 5 · static · ORACLE-EDIT CD-P52-F4] QR โต๊ะ (RestaurantTable.qrToken) ≥ 60 บิตตั้งแต่สร้าง: ทุกจุดสร้างตั้ง qrToken จากตัวสร้าง randomBytes ของ crypto (≥ 60 บิต) · rotateQr ใช้ตัวสร้างเดียวกัน (schema @default(cuid()) คงไว้ — ไม่ถูกใช้)", "src/app/(store)/q/t/[qrToken]/page.tsx"),
   D("P3", "S", "[static] โทเคนผิดรูป = ปฏิเสธก่อนแตะ DB (saleForToken · tableCtx · linkCtx · orderOfToken · rowOfToken · agentOf)", "public rows"),
   D("P4", "P", "[db] 404 ไม่ใช่ 403: โทเคนผิดรูป = โทเคนรูปถูกแต่ไม่มี (รหัสเดียวกัน) · QR โต๊ะจริงของ resto = สาขาของ resto เท่านั้น (ผูกโทเคน)", "(store)/r · /q/t · /q · /q/o"),
   D("P5", "S", "[ruling 5 · static] เพดานต่อ IP บนแขนงใบเสร็จ POS: หน้า /r/<token> แขนง POS + publicReceiptAction + แจ้งปัญหา/ขอใบกำกับ/รีวิว", "src/app/(store)/r/[token]/page.tsx · pos-receipt-actions.ts#*"),
@@ -239,17 +239,34 @@ function runStatic(): void {
     const bad = specs.filter((s) => !judgeEntropy(s));
     chk("P1", bad.length === 0, "ทุกตัว ≥ 60 บิตจาก crypto", specs.map((s) => `${s.name.split(" (")[0]} ${entropyBits(s)}b`).join(" · ") + (bad.length ? ` · ต่ำกว่า: ${bad.map((s) => s.name).join(", ")}` : ""));
   }
-  // P2
+  // P2 — ORACLE-EDIT (builder P5.2 fix1 · CD-P52-F4 controller B): schema @default(cuid()) คงไว้ตามมติ (ไม่แตะ prisma/คอลัมน์) ⇒ ตัดสินที่ "เส้นทางโค้ดที่สร้าง/หมุนโทเคน":
+  //   ทุก restaurantTable.create* ใต้ src/lib ต้องตั้ง qrToken: <ตัวสร้าง>() · ตัวสร้างนั้น (ใน restaurant/table.ts) = randomBytes(N) ของ crypto ไม่มี Math.random · N×8 ≥ 60 บิต (ruling 5) ·
+  //   rotateQr ใช้ตัวสร้างเดียวกัน — เดิม: ok = !cuidDefault || (ทุกจุดสร้างตั้ง qrToken && judgeEntropy(cuid 41 บิต)) ซึ่งแดงตลอดเมื่อ schema คง cuid()
+  //   probe (จดใน wo-notes pos-P5.2.md): randomBytes(7) = 56 บิต → แดง · ลบ qrToken ออกจาก createTable → แดง · Math.random ในตัวสร้าง → แดง
   {
     const schema = [rd("prisma/schema/restaurant.prisma")].join("\n");
     const line = /^\s*qrToken\s+String[^\n]*/m.exec(schema)?.[0] ?? "";
-    const cuidDefault = /@default\(cuid\(\)\)/.test(line);
-    // ตัวสร้างแถวโต๊ะที่ตั้ง qrToken เอง (แข็งแรง) — ถ้าทุกจุดสร้างตั้งค่าเอง ค่าปริยาย cuid ไม่ถูกใช้
-    const creators = ["src/lib/modules/restaurant/table.ts", "src/lib/modules/restaurant/pos-qr.ts"].map((f) => [f, stripComments(rd(f))] as const);
+    const libFiles = (function walkLib(dir: string): string[] {
+      const out: string[] = [];
+      for (const n of readdirSync(join(ROOT, dir)).sort()) {
+        const rel = `${dir}/${n}`;
+        if (statSync(join(ROOT, rel)).isDirectory()) out.push(...walkLib(rel));
+        else if (/\.tsx?$/.test(n)) out.push(rel);
+      }
+      return out;
+    })("src/lib");
+    const creators = libFiles.map((f) => [f, stripComments(rd(f))] as const).filter(([, t]) => /restaurantTable\.create(?:Many)?\(/.test(t));
     const createsWithoutToken = creators.filter(([, t]) => /restaurantTable\.create(?:Many)?\(\{\s*data:\s*\{(?![^}]*qrToken)/.test(t)).map(([f]) => f);
-    const spec: TokenSpec = { name: "RestaurantTable.qrToken @default(cuid())", len: 8, bitsPerUnit: Math.log2(36), csprng: true }; // cuid v1: ส่วนสุ่ม 8 ตัว base36 ≈ 41 บิต (เวลา/ตัวนับ/ลายนิ้วมือเดาได้)
-    const ok = !cuidDefault || (createsWithoutToken.length === 0 && judgeEntropy(spec));
-    chk("P2", ok, "QR โต๊ะใหม่ ≥ 60 บิต (ไม่พึ่ง cuid())", `schema: ${line.trim().slice(0, 90)} · ส่วนสุ่มของ cuid ≈ ${entropyBits(spec).toFixed(1)} บิต · จุดสร้างที่ไม่ตั้ง qrToken: ${createsWithoutToken.join(", ") || "ไม่พบ"} · หลังหมุน = qr_<uuid32> (122 บิต)`);
+    const tbl = stripComments(rd("src/lib/modules/restaurant/table.ts"));
+    const gens = [...new Set(creators.flatMap(([, t]) => [...t.matchAll(/qrToken:\s*(\w+)\(\)/g)].map((m) => m[1]!)))];
+    const genName = gens.length === 1 ? gens[0]! : "";
+    const genBody = genName ? fnBody(tbl, genName) : "";
+    const lenRef = /randomBytes\((\w+)\)/.exec(genBody)?.[1] ?? "";
+    const bytes = /^\d+$/.test(lenRef) ? Number(lenRef) : Number(new RegExp(`\\b${lenRef || "\\$none"}\\s*=\\s*(\\d+)`).exec(tbl)?.[1] ?? 0);
+    const spec: TokenSpec = { name: `RestaurantTable.qrToken ${genName || "?"}()`, len: bytes, bitsPerUnit: 8, csprng: !!genBody && /randomBytes\(/.test(genBody) && /from\s+["'](?:node:)?crypto["']/.test(rd("src/lib/modules/restaurant/table.ts")) && !/Math\.random/.test(genBody) };
+    const rotateUses = !!genName && new RegExp(`\\b${genName}\\s*\\(`).test(fnBody(tbl, "rotateQr"));
+    const ok = creators.length > 0 && createsWithoutToken.length === 0 && !!genName && judgeEntropy(spec) && rotateUses;
+    chk("P2", ok, "QR โต๊ะใหม่/หมุน ≥ 60 บิตจาก crypto (ไม่พึ่ง cuid())", `schema: ${line.trim().slice(0, 70)} · จุดสร้าง ${creators.map(([f]) => f.replace(/^src\/lib\/modules\//, "")).join(", ") || "ไม่พบ"} · ไม่ตั้ง qrToken: ${createsWithoutToken.join(", ") || "0"} · ตัวสร้าง ${genName || `ไม่พบ/หลายตัว (${gens.join(",")})`} randomBytes(${bytes}) = ${entropyBits(spec)} บิต · rotateQr ใช้ตัวสร้างเดียวกัน ${rotateUses}`);
   }
   // P3
   {
