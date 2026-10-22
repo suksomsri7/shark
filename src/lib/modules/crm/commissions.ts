@@ -2138,7 +2138,7 @@ export async function onPayrollReversed(input: { tenantId: string; hrSystemId: s
   // ผู้สมัคร = คู่ (คอมมิชชัน ↔ รายการ) ของ id ใน event · สถานะจริงตัดสินใต้ล็อกใน convergeCommissions
   const pairs = (await hr.adjustmentsByIds({ tenantId, systemId }, ids)).flatMap((r) => (r.crmCommissionId ? [{ id: r.crmCommissionId, hrPayAdjustmentId: r.id }] : []));
   const out = await convergeCommissions(tenantId, systemId, runId, pairs, "REVERSED_EVENT");
-  return { unpaid: out.unpaid };
+  return { unpaid: out.unpaid - out.repaid }; // r4 ▸ R3-6: สุทธิ (ถอน − คืน) ◂
 }
 
 // HR H0.6 r3 ▸ R3.1 (ล่า F1a/F1b · F4) — ตัวรับ `hr.payroll.paid` ที่ล็อกก่อนอ่าน: ผู้สมัคร = รายการของรอบ (กติกา H4 ของ adjustmentsOfRun) ◂
@@ -2165,7 +2165,9 @@ async function onPayrollPaidConverging(input: { tenantId: string; systemId: stri
 type ConvergeMode = "PAID_EVENT" | "REVERSED_EVENT";
 // สวิตช์ของบรรทัดส่งต่อใน onPayrollPaid (คงไฟล์แบบต่อท้ายอย่างเดียว · ชนิด boolean ⇒ ตัวเดิมยังผ่าน type narrowing) — เปิดถาวร
 const H06_R3_CONVERGING = true as boolean;
-const CONVERGE_TX_OPTS = { maxWait: 60_000, timeout: 600_000 };
+// r4 ▸ R4.1: เพดาน tx สั้นกว่า maxDuration 60 s ของ route cron ของคิว (tx ห้ามอยู่นานกว่าฟังก์ชันแล้วถือล็อกแถวค้าง) ·
+//   ตัวรับ idempotent (เขียนเฉพาะแถวที่ยังไม่อยู่ในสถานะเป้าหมาย) ⇒ หมดเวลา = คิวลองใหม่หนึ่งครั้ง ไม่มีผลเสีย ◂
+const CONVERGE_TX_OPTS = { maxWait: 10_000, timeout: 30_000 };
 async function convergeCommissions(
   tenantId: string,
   hrSystemId: string,
@@ -2178,7 +2180,9 @@ async function convergeCommissions(
   const ids = [...want.keys()].sort();
   if (ids.length === 0) return { paid: 0, unpaid: 0, repaid: 0 };
   const hr = await hrFacade();
-  const changes: { id: string; systemId: string; to: "PAID" | "APPROVED" }[] = [];
+  let paid = 0;
+  let unpaid = 0;
+  let repaid = 0;
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = ids.slice(i, i + 500);
     const part = await tenantDb({ tenantId }).$transaction(async (t) => {
@@ -2205,20 +2209,17 @@ async function convergeCommissions(
       }
       return done;
     }, CONVERGE_TX_OPTS);
-    changes.push(...part);
-  }
-  let paid = 0;
-  let unpaid = 0;
-  let repaid = 0;
-  for (const c of changes) {
-    if (c.to === "APPROVED") {
-      unpaid += 1;
-      await audit({ tenantId, systemId: c.systemId }, "crm.commission.unpaid", "CrmCommission", c.id, { before: { status: "PAID" }, after: { status: "APPROVED", via: mode === "REVERSED_EVENT" ? "PAYROLL_REVERSED" : "PAYROLL_PAID_RECHECK", runId } }, null);
-    } else {
-      paid += 1;
-      if (mode === "REVERSED_EVENT") {
-        repaid += 1;
-        await audit({ tenantId, systemId: c.systemId }, "crm.commission.repaid", "CrmCommission", c.id, { before: { status: "APPROVED" }, after: { status: "PAID", via: "PAYROLL_PAID_DURING_REVERSE", runId } }, null);
+    // r4 ▸ R4.2: ลงประวัติของก้อนนี้ทันทีหลัง commit ของก้อนนี้ (ก้อนหลังล้ม ประวัติของก้อนก่อนไม่หาย) · เฉพาะแถวที่เปลี่ยนจริง ◂
+    for (const c of part) {
+      if (c.to === "APPROVED") {
+        unpaid += 1;
+        await audit({ tenantId, systemId: c.systemId }, "crm.commission.unpaid", "CrmCommission", c.id, { before: { status: "PAID" }, after: { status: "APPROVED", via: mode === "REVERSED_EVENT" ? "PAYROLL_REVERSED" : "PAYROLL_PAID_RECHECK", runId } }, null);
+      } else {
+        paid += 1;
+        if (mode === "REVERSED_EVENT") {
+          repaid += 1;
+          await audit({ tenantId, systemId: c.systemId }, "crm.commission.repaid", "CrmCommission", c.id, { before: { status: "APPROVED" }, after: { status: "PAID", via: "PAYROLL_PAID_DURING_REVERSE", runId } }, null);
+        }
       }
     }
   }
