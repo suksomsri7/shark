@@ -169,12 +169,15 @@ const MONEY_ACTIONS = [
   // POS P4.1 fix1 ▸ ORACLE-EDIT มติ CD-P41-F2 (ผู้คุม B 22 ต.ค. 12:30Z): เขียนราคา/กติการาคา/ราคาช่องทาง/รอบราคาเป็นชุด/ราคาขายเดิม AccountProduct/ล้าง-คัดลอกราคา/วงเงินเครดิต = money (เปลี่ยนยอดที่บิลเก็บ · fail-closed) ◂
   "setChannelPricesAction", "bulkChannelMarkupAction", "copyUnitPricesAction", "savePriceRuleAction", "archivePriceRuleAction",
   "setItemSalePriceAction", "saveCreditAccountAction",
+  // POS P4.1 fix2 ▸ ORACLE-EDIT มติ CD-P41-F20 (ผู้คุม B 22 ต.ค. 13:36Z): ค่าตั้งที่เปลี่ยนยอดที่บิลเก็บ/ค่าตอบแทนพนักงาน = money (เพดานส่วนลด · ค่าคอม · สวิตช์เครดิต · พร้อมเพย์ปลายทาง · fail-closed) — ตัวเขียนที่ใช้ร่วมกับค่าตั้งอื่น (updatePosGeneralSettingsAction/updatePosPaymentSettingsAction/saveChannelAction) ไม่ใส่: แถว 482 857 924 537 = money ตามมติ ไม่ใช่ตามตัวจับ ◂
+  "updatePosDiscountCapsAction", "updatePosStaffCommissionAction", "updatePosCreditSettingsAction", "updatePosUnitPromptpayAction",
 ];
 /** R11: ตารางเงินใน expect.db */
 const MONEY_MODELS = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosDepositTxn", "GiftCard", "GiftCardTxn", "PosCashMovement",
   "PosProductChannelPrice", "PosPriceRule", "AccountProduct", "PosCreditAccount"]; // POS P4.1 fix1 ▸ ORACLE-EDIT CD-P41-F2: ตารางราคา/กติการาคา/ราคาขายเดิม/วงเงินเครดิต ◂
 /** R12: ผลภายนอก (พิมพ์ · LINE · Beam · e-Tax · LAN agent · webhook) */
-const EXTERNAL_ACTIONS = ["sendReceiptAction", "reprintReceiptAction", "requestChatPaymentAction", "kitchenSlipPayloadAction"];
+const EXTERNAL_ACTIONS = ["sendReceiptAction", "reprintReceiptAction", "requestChatPaymentAction", "kitchenSlipPayloadAction",
+  "reportReceiptIssueAction", "registerPrintAgentAction"]; // POS P4.1 fix2 ▸ ORACLE-EDIT มติ CD-P41-F19: outbox pos.receipt.issue_reported → ตอบรับ LINE (pos-receipt-bridges.ts:64-70) · ลงทะเบียน LAN print agent ◂
 const EXTERNAL_TEXT = /\bBeam\b|\be-?Tax\b|\bwebhook\b|\bLAN\b|print-agent|เครื่องพิมพ์|พิมพ์(ใบ|ซ้ำ|สำเนา|ครัว|บิล)|print\(\)|\bLINE\b(?! MAN)/; // ตัวพิมพ์ตรง (Line ของ PosTableSplit/Part/Line ไม่ใช่ LINE) · LINE MAN = ช่องทาง ไม่ใช่การส่ง
 /** แถวตั้งค่า (เก็บค่า printerConfig/settings) ไม่ใช่ผลภายนอก แม้ข้อความพูดถึงเครื่องพิมพ์/Beam */
 const CONFIG_ROW = /\bupdateDeviceAction\b|printerConfig|\b(update|save|set)\w*Settings?\w*Action\b/;
