@@ -26,6 +26,9 @@
 //   S9 = R10 addendum (controller ruling 22 Oct 2026 from the leave privacy hunt F1+F2): leaveItemsForViewer + AI pending_leaves show every
 //        row only to hr.leave.read / hr.leave.decide / OWNER / MANAGER-role · everyone else only rows of the employee linked to them (none ⇒ 0) ·
 //        API-key actor ⇒ 0 · filter inside the prisma where (take=100) · DTO keys + reason rule unchanged · system/tenant isolation unchanged
+//   S11 = R11 addendum (controller ruling after review M1 + m1): only the owner user or an OWNER-role actor may link an OWNER account to an
+//        employee (else fixed Thai refusal, nothing written ⇒ that employee's leave stays in the chain) · cancelLeave + decideLeave share a
+//        per-leave pg_advisory_xact_lock inside one tenantDb transaction (consistent end state under a race) · own tenant `-own`
 //
 // SKIP convention (house style of qc-hr-h0.6): while nothing of H0.7 exists (no migration folder · no cancelLeave · no filedById in
 //   hr/service.ts) the suite prints SKIPPED + JSON_SUMMARY {skipped:true} and exits 0 · QC_FORCE=1 (or --force-run) runs everything ·
@@ -157,6 +160,14 @@ const CHECKS: readonly Def[] = [
   D("S9.8", "R10.3", "MAJOR", "GREEN", "[ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text"),
   D("S9.9", "R10.4", "CRITICAL", "GREEN", "[dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows"),
   D("S9.10", "R10.1", "CRITICAL", "RED", "[dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows"),
+  // S11 owner-account link guard + cancel/decide lock (R11 — controller ruling after the H0.7 review M1 + m1)
+  D("S11.1", "R11.1", "CRITICAL", "RED", "[staff] 🔴 MANAGER links the OWNER's account to a plain employee ⇒ Thai refusal (no internals) · no link / linkApprovedById · owner membership unchanged · no hr.employee.link audit"),
+  D("S11.2", "R11.1", "CRITICAL", "RED", "[staff] 🔴 STAFF clerk (settings.staff.write + hr.employee.create) links another OWNER's account ⇒ same refusal · nothing written"),
+  D("S11.3", "R11.1", "CRITICAL", "RED", "[service] 🔴 after the S11.1 refusal, a leave filed for that employee (OWNER-only policy) ⇒ PENDING · decidedById null · ApprovalRequest PENDING (bypass closed)"),
+  D("S11.4", "R11.1", "CRITICAL", "GREEN", "[staff+service] OWNER links own account to an employee ⇒ ok · own leave auto-approved (R4: APPROVED · no ApprovalRequest)"),
+  D("S11.5", "R11.1", "MAJOR", "GREEN", "[staff] co-OWNER (role OWNER) links another OWNER's account ⇒ ok · linked"),
+  D("S11.6", "R11.2", "MAJOR", "RED", "[static] cancelLeave AND decideLeave each take pg_advisory_xact_lock (directly or via a service.ts helper) inside a $transaction · same lock key namespace"),
+  D("S11.7", "R11.2", "MAJOR", "GREEN", "[service] decideLeave ∥ cancelLeave × 5 (staggered) ⇒ every end state consistent: CANCELLED/CANCELLED or decided/decided — never request CANCELLED + leave decided (control: may pass by luck before R11.2)"),
   D("Z1", "-", "CRITICAL", "GREEN", "residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows"),
 ];
 
@@ -1001,6 +1012,156 @@ async function runDb(): Promise<void> {
   } catch (e) {
     console.log(`  💥 S9 harness: ${errText(e)} (unreached S9 checks are marked failed below)`);
   }
+
+  // ═══ S11 owner-account link guard + cancel/decide lock (R11) — own tenant `-own` ═══
+  try {
+    await runS11();
+  } catch (e) {
+    console.log(`  💥 S11 harness: ${errText(e)} (unreached S11 checks are marked failed below)`);
+  }
+}
+
+async function runS11(): Promise<void> {
+  console.log("── [S11] owner-account link guard · cancel/decide lock (R11) ──");
+  // S11.6 static first (never depends on fixtures)
+  const svc = rd(SERVICE_FILE);
+  const fnBlock = (name: string) => block(svc, `export async function ${name}(`);
+  const lockHelpers: string[] = [];
+  for (const m of svc.matchAll(/(?:^|\n)(?:export )?(?:async )?function (\w+)\(|(?:^|\n)(?:export )?const (\w+)\s*=\s*(?:async\s*)?\(/g)) {
+    const name = (m[1] ?? m[2])!;
+    const i = m.index ?? 0;
+    const j = svc.indexOf("\n}", i);
+    const body = svc.slice(i, j < 0 ? undefined : j);
+    if (body.includes("pg_advisory_xact_lock") && !["cancelLeave", "decideLeave"].includes(name)) lockHelpers.push(name);
+  }
+  // key namespace = the hashtextextended(…, 0) argument with interpolated ids removed (`hr-leave:${id}` · 'hr-leave:' || ${id} ⇒ "hr-leave:")
+  const lockKey = (src: string): string[] =>
+    [...src.matchAll(/pg_advisory_xact_lock\(\s*hashtextextended\(([^)]*?),\s*0\s*\)/g)].map((m) => m[1]!.replace(/\$\{[^{}`]*\}/g, "").replace(/[\s`'"$\{\}|]/g, ""));
+  const lockInfo = (name: string) => {
+    const b = fnBlock(name);
+    const direct = b.includes("pg_advisory_xact_lock");
+    const viaHelper = lockHelpers.filter((h) => new RegExp(`\\b${h}\\(`).test(b));
+    const keys = direct ? lockKey(b) : viaHelper.flatMap((h) => lockKey(block(svc, `function ${h}(`, "\n}")));
+    return { exists: !!b, tx: /\$transaction\(/.test(b), lock: direct || viaHelper.length > 0, via: direct ? "direct" : viaHelper.join("+") || "none", keys };
+  };
+  const c6 = lockInfo("cancelLeave");
+  const d6 = lockInfo("decideLeave");
+  const sameNs = c6.keys.length > 0 && c6.keys.some((k) => d6.keys.includes(k));
+  chk("S11.6", c6.exists && d6.exists && c6.tx && d6.tx && c6.lock && d6.lock && sameNs, "both: $transaction + advisory lock · shared key", `cancelLeave tx=${c6.tx} lock=${c6.via} keys=${c6.keys.join("|") || "∅"} · decideLeave tx=${d6.tx} lock=${d6.via} keys=${d6.keys.join("|") || "∅"} · helpers=${lockHelpers.join(",") || "none"}`);
+
+  // fixtures: tenant -own · HR system · OWNER-only leave policy · owners O1..O5 · MANAGER · clerk · staff S
+  const tO = await newTenant("-own", "QC HR H0.7 ผูกบัญชีเจ้าของ");
+  const sO = await sys.createSystem(tO, "HR", "ทีมเจ้าของ");
+  ids.push(sO.id);
+  const ctxO = { tenantId: tO, systemId: sO.id };
+  await approval.createPolicy({ tenantId: tO }, { name: "QC สายลา owner", entityType: "HrLeave", systemId: sO.id, steps: [{ order: 1, approverRole: "OWNER" }] });
+  const O = {
+    o1: await mkUser(tO, "s11o1", `QC เจ้าของหนึ่ง ${stamp}`, "OWNER", {}),
+    o2: await mkUser(tO, "s11o2", `QC เจ้าของสอง ${stamp}`, "OWNER", {}),
+    o3: await mkUser(tO, "s11o3", `QC เจ้าของสาม ${stamp}`, "OWNER", {}),
+    o4: await mkUser(tO, "s11o4", `QC เจ้าของสี่ ${stamp}`, "OWNER", {}),
+    o5: await mkUser(tO, "s11o5", `QC เจ้าของห้า ${stamp}`, "OWNER", {}),
+    mgr: await mkUser(tO, "s11mgr", `QC ผู้จัดการร้านเจ้าของ ${stamp}`, "MANAGER", {}),
+    clerk: await mkUser(tO, "s11clerk", `QC เสมียน ${stamp}`, "STAFF", { "settings.staff.write": true, "hr.employee.create": true }),
+    s: await mkUser(tO, "s11s", `QC พนักงานแข่ง ${stamp}`, "STAFF", { "hr.leave.request": true }),
+  };
+  const X1 = await mkEmp(tO, sO.id, `พนง-เอ็กซ์หนึ่ง ${stamp}`);
+  const X2 = await mkEmp(tO, sO.id, `พนง-เอ็กซ์สอง ${stamp}`);
+  const X4 = await mkEmp(tO, sO.id, `พนง-เจ้าของผูกเอง ${stamp}`);
+  const X5 = await mkEmp(tO, sO.id, `พนง-เจ้าของร่วมผูก ${stamp}`);
+  const XS = await mkEmp(tO, sO.id, `พนง-แข่งยกเลิก ${stamp}`, O.s.id);
+  const grantO = (actor: Who, employeeId: string, email: string) =>
+    staff.grantStaffAccess({ tenantId: tO, actorUserId: actor.id, employeeId, email }).catch((e: unknown) => ({ ok: false, reason: `THROW ${errText(e)}` }));
+  const linkO = async (id: string) => ({ u: (await P.hrEmployee.findUnique({ where: { id }, select: { linkedUserId: true } }))?.linkedUserId ?? null, by: await rawCol("HrEmployee", "linkApprovedById", id) });
+  const memSnap = async (uid: string) => short(await P.membership.findFirst({ where: { tenantId: tO, userId: uid }, select: { id: true, role: true, acceptedAt: true, permissions: true, unitAccess: true } }), 400);
+  const linkAudits = async (employeeId: string) => (await P.auditLog.count({ where: { tenantId: tO, action: "hr.employee.link", targetId: employeeId } })) as number;
+
+  const refusedClean = async (tag: string, actor: Who, target: Who, emp: string) => {
+    const m0 = await memSnap(target.id);
+    const g = (await grantO(actor, emp, target.email)) as Any;
+    const k = await linkO(emp);
+    const m1 = await memSnap(target.id);
+    const au = await linkAudits(emp);
+    const txt = String(g?.reason ?? "");
+    const ok = g?.ok === false && isThai(txt) && !techLeak(txt) && k.u === null && (k.by === null || k.by === "∅col") && m0 === m1 && au === 0;
+    return { ok, note: `${tag}: ok=${g?.ok} "${short(txt, 70)}" linked=${k.u === target.id ? "OWNER-ACCOUNT" : k.u} by=${k.by === actor.id ? "actor" : k.by} membershipSame=${m0 === m1} linkAudits=${au}` };
+  };
+  // S11.1 MANAGER → owner O2's account → X1
+  const r1 = await refusedClean("manager→O2", O.mgr, O.o2, X1);
+  chk("S11.1", r1.ok, "Thai refusal · nothing written", r1.note);
+  // S11.2 clerk → owner O3's account → X2
+  const r2 = await refusedClean("clerk→O3", O.clerk, O.o3, X2);
+  chk("S11.2", r2.ok, "Thai refusal · nothing written", r2.note);
+
+  // S11.3 bypass closed: leave for X1 filed by the manager stays in the chain
+  let t3 = "";
+  let l3: Any = null;
+  try {
+    const r = await hr.requestLeave(ctxO, { employeeId: X1, actorUserId: O.mgr.id, type: "PERSONAL", fromDate: "2031-11-03", toDate: "2031-11-03" });
+    l3 = await P.hrLeave.findUnique({ where: { id: r.id }, select: { id: true, status: true, decidedById: true } });
+  } catch (e) {
+    t3 = e instanceof Error ? e.message : String(e);
+  }
+  const q3 = l3 ? await reqOf(tO, l3.id) : null;
+  const auto3 = l3 ? await P.auditLog.count({ where: { tenantId: tO, action: "hr.leave.owner_auto", targetId: l3.id } }) : 0;
+  chk(
+    "S11.3",
+    !!l3 && l3.status === "PENDING" && l3.decidedById === null && q3?.status === "PENDING" && auto3 === 0,
+    "leave PENDING · decidedById null · request PENDING · no owner_auto",
+    l3 ? `leave=${l3.status} decidedById=${l3.decidedById ?? null} request=${q3 ? q3.status : "none"} owner_auto=${auto3} · X1 linked=${(await linkO(X1)).u ? "yes" : "no"}` : `requestLeave threw "${short(t3, 80)}"`,
+  );
+
+  // S11.4 owner links own account · own leave auto-approved (R4)
+  const g4 = (await grantO(O.o1, X4, O.o1.email)) as Any;
+  const k4 = await linkO(X4);
+  let l4: Any = null;
+  let t4 = "";
+  try {
+    const r = await hr.requestLeave(ctxO, { employeeId: X4, actorUserId: O.o1.id, type: "PERSONAL", fromDate: "2031-11-10", toDate: "2031-11-10" });
+    l4 = await P.hrLeave.findUnique({ where: { id: r.id }, select: { id: true, status: true, decidedById: true } });
+  } catch (e) {
+    t4 = e instanceof Error ? e.message : String(e);
+  }
+  const q4 = l4 ? await reqOf(tO, l4.id) : null;
+  chk(
+    "S11.4",
+    g4?.ok === true && k4.u === O.o1.id && l4?.status === "APPROVED" && l4?.decidedById === null && !q4,
+    "ok · linked · own leave APPROVED · no request",
+    `grant ok=${g4?.ok} "${short(g4?.reason ?? "", 50)}" linked=${k4.u === O.o1.id ? "O1" : k4.u} leave=${l4 ? `${l4.status}/${l4.decidedById ?? null}` : `threw "${short(t4, 50)}"`} request=${q4 ? q4.status : "none"}`,
+  );
+
+  // S11.5 co-OWNER O4 links owner O5's account → X5
+  const g5 = (await grantO(O.o4, X5, O.o5.email)) as Any;
+  const k5 = await linkO(X5);
+  chk("S11.5", g5?.ok === true && k5.u === O.o5.id, "ok · linked to O5", `ok=${g5?.ok} "${short(g5?.reason ?? "", 60)}" linked=${k5.u === O.o5.id ? "O5" : k5.u}`);
+
+  // S11.7 race decideLeave ∥ cancelLeave (staggered decide start)
+  const reps: string[] = [];
+  let bad7 = 0;
+  for (const [i, delay] of [0, 5, 15, 30, 60].entries()) {
+    const day = `2031-12-${String(1 + i).padStart(2, "0")}`;
+    const r = await hr.requestLeave(ctxO, { employeeId: XS, actorUserId: O.s.id, type: "PERSONAL", fromDate: day, toDate: day });
+    const q = await reqOf(tO, r.id);
+    const [cr, dr] = await Promise.all([
+      cancelSvc(tO, sO.id, r.id, O.s.id),
+      (async () => {
+        await sleep(delay);
+        try {
+          await hr.decideLeave(ctxO, r.id, "APPROVED", O.mgr.id);
+          return "decided";
+        } catch (e) {
+          return e instanceof Error && e.name === "HrLeaveDecisionError" ? "refused" : `err:${errText(e).slice(0, 40)}`;
+        }
+      })(),
+    ]);
+    const l = (await P.hrLeave.findUnique({ where: { id: r.id }, select: { status: true } }))?.status;
+    const qs = q ? (await P.approvalRequest.findUnique({ where: { id: q.id }, select: { status: true } }))?.status : "∅";
+    const decided = (x: unknown) => x === "APPROVED" || x === "REJECTED";
+    const consistent = (l === "CANCELLED" && qs === "CANCELLED") || (decided(l) && decided(qs));
+    if (!consistent) bad7++;
+    reps.push(`r${i}(+${delay}ms):cancel=${cr.absent ? "∅" : cr.ok} decide=${dr} ⇒ ${l}/${qs}`);
+  }
+  chk("S11.7", bad7 === 0, "5/5 consistent", `${5 - bad7}/5 consistent · ${reps.join(" · ")}`);
 }
 
 type S9In = { tid: string; t2: string; sA: { id: string }; sB: { id: string }; ctxA: { tenantId: string; systemId: string }; U: Record<string, Who>; E: Record<string, string> };
