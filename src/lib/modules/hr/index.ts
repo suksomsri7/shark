@@ -40,8 +40,10 @@ export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAd
 
 // HR H0.5 ▸ contract C-8 — "PIN นี้เป็นของพนักงานคนไหนในร้าน" (re-export ล้วน — ตรรกะอยู่ที่ `pin.ts`)
 //   ผู้เรียกที่รออยู่: POS P1.15 (ยืนยันพนักงานหน้าเครื่อง / อนุมัติ void) · HR เป็นเจ้าของ PIN (review ruling #3 — ไม่มี PosStaffPin)
-//   verifyPin({ tenantId, pin, unitId?, systemId? }) → { ok:true, employeeId, systemId, userId } | { ok:false, reason } — คืน id เท่านั้น ·
-//   ถังจำกัด hr-verifypin:<tenantId> 120 ครั้ง/60 วินาที · unitId ยังไม่มีผลจนถึง H1.1 · systemId = ตัวกรอง
+//   verifyPin({ tenantId, pin, callerKey, unitId?, systemId? }) → { ok:true, employeeId, systemId, userId } | { ok:false, reason } — คืน id เท่านั้น ·
+//   HR H0.5 r3 ▸ callerKey บังคับ (user id เมื่อมีผู้ใช้ · ไม่มี = `unit:<unitId>`) — ไม่ส่ง = "PIN ไม่ถูกต้อง" ·
+//   นับเฉพาะครั้งที่ผิด: ร้าน hr-verifypin:<tenantId> 120/60 s + ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10/10 นาที (ครบ 10 = audit hr.pin.locked) ◂ ·
+//   unitId ยังไม่มีผลจนถึง H1.1 · systemId = ตัวกรอง
 export type { VerifyPinInput, VerifyPinResult, VerifyPinOk, VerifyPinFail } from "./pin";
 export { verifyPin } from "./pin";
 // ◂ HR H0.5

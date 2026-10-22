@@ -83,6 +83,37 @@ export async function checkRateLimitDb(
   }
 }
 
+// HR H0.5 r3 ▸ R3.1 peek = อ่านถังโดย "ไม่นับ" (verifyPin นับเฉพาะครั้งที่ผิด ⇒ ต้องดูก่อนว่าเต็มหรือยัง)
+/**
+ * ดูว่าถัง `key` เต็มเพดานในหน้าต่างปัจจุบันหรือยัง — **อ่านอย่างเดียว** ไม่สร้างแถว ไม่ +1
+ * คำสั่งเดียว (SELECT) · หน้าต่างแบบเดียวกับ checkRateLimitDb: windowStart ≤ now − windowMs = หมดอายุแล้ว (นับเป็น 0)
+ * เต็ม = count ≥ limit (ครั้งถัดไปที่ checkRateLimitDb นับจะเกินเพดาน) ⇒ `{ ok:false, retryAfterSec }`
+ * ยังไม่มีแถว / หมดอายุ ⇒ `{ ok:true, count: 0 }` · DB ล่ม ⇒ ปล่อยผ่าน (fail-open + logOps WARN เหมือน checkRateLimitDb)
+ */
+export async function peekRateLimitDb(
+  key: string,
+  opts: { limit: number; windowMs: number },
+  now = Date.now(),
+): Promise<RateVerdict> {
+  const { limit, windowMs } = opts;
+  try {
+    const rows = await prisma.$queryRaw<{ count: number; windowStart: Date }[]>`
+      SELECT "count", "windowStart" FROM "ChatRateBucket"
+      WHERE "key" = ${key} AND "windowStart" > ${new Date(now - windowMs)}`;
+    const row = rows[0];
+    if (!row) return { ok: true, count: 0 };
+    if (row.count < limit) return { ok: true, count: row.count };
+    const resetAt = row.windowStart.getTime() + windowMs;
+    return { ok: false, count: row.count, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
+  } catch (e) {
+    void logOps("WARN", "rate-limit-db", "อ่านถังตัวจำกัดอัตราบน DB ไม่ได้ — ปล่อยผ่านชั่วคราว", {
+      detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+    }).catch(() => {});
+    return { ok: true };
+  }
+}
+// ◂ HR H0.5 r3
+
 /**
  * กวาดแถวที่หมดอายุแล้วทิ้ง — ตารางนี้โตตามจำนวน key ที่เคยเห็น (ip/guest ไม่ซ้ำกันเลย)
  * ต่อเข้า cron รายวันแล้วที่ `platform/cron.ts` (`rateBucketsSwept`)

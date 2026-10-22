@@ -54,7 +54,8 @@ export async function createEmployeeAction(formData: FormData) {
     name,
     phone: String(formData.get("phone") ?? "").trim() || null,
     position: String(formData.get("position") ?? "").trim() || null,
-    pin: String(formData.get("pin") ?? "").trim() || null, // HR H0.5 ▸ ชื่อช่องใหม่ (createEmployee hash ผ่าน setPin) ◂
+    // HR H0.5 r3 ▸ R3.4 (hunt F6) ไม่รับ pin จากฟอร์มสร้างพนักงานแล้ว — ฟอร์มไม่มีช่องนี้ และถ้ารับไว้จะเป็นช่องถาม "PIN นี้มีคนใช้ไหม"
+    //   ที่ไม่ผ่านตัวจำกัด hr-setpin · ตั้ง PIN ทำที่ setPinAction เท่านั้น (มีถัง 10/10 นาที) ◂
   });
   revalidate(systemId);
 }

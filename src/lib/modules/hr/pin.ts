@@ -19,7 +19,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
-import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { checkRateLimitDb, peekRateLimitDb } from "@/lib/core/rate-limit-db"; // HR H0.5 r3 ▸ peek = อ่านถังโดยไม่นับ ◂
 import { logOps } from "@/lib/core/ops";
 
 export type PinCtx = { tenantId: string; systemId: string };
@@ -38,6 +38,9 @@ const limitedText = (sec: number | undefined) => `ลองใหม่ในอ
 const PIN_RE = /^\d{4,6}$/;
 /** ถังจำกัดของ verifyPin ต่อร้าน (เพิ่มจากตัวจำกัดของผู้เรียก เช่น kiosk 5/60 s ต่อคน · 60/60 s ต่อระบบ) */
 export const VERIFY_PIN_LIMIT = { limit: 120, windowMs: 60_000 } as const;
+// HR H0.5 r3 ▸ R3.1 ถังต่อผู้เรียก (hr-verifypin:<tenantId>:<callerKey>) — ผิด 10 ครั้ง / 10 นาที = ล็อกผู้เรียกนั้น (hunt F1/F3)
+//   ทั้งสองถังนับ "เฉพาะครั้งที่ผิด" — ยืนยันถูกไม่กินโควตา (คนใส่ PIN ถูกทั้งวันไม่โดนล็อก · ขยะของเครื่องหนึ่งไม่ทำให้ PIN ถูกของทั้งร้านใช้ไม่ได้) ◂
+export const VERIFY_PIN_CALLER_LIMIT = { limit: 10, windowMs: 10 * 60_000 } as const;
 
 /** ไม่ได้ตั้ง HR_PIN_PEPPER — ผู้ใช้เห็นแค่ข้อความคงที่ ไม่เห็น stack */
 export class PinNotConfiguredError extends Error {
@@ -142,6 +145,11 @@ export async function setPin(
 export type VerifyPinInput = {
   tenantId: string;
   pin: string;
+  /**
+   * HR H0.5 r3 ▸ R3.1 ผู้เรียก (บังคับ) — ถังจำกัดต่อผู้เรียก: user id เมื่อมีผู้ใช้ · ไม่มีผู้ใช้ = `unit:<unitId>` (หรือ id เครื่อง)
+   * ไม่ส่ง / ว่าง = "PIN ไม่ถูกต้อง" ทันที ไม่แตะ DB ไม่สร้างถัง ◂
+   */
+  callerKey: string;
   /** รับไว้ตามสัญญา C-8 แต่ยังไม่ใช้จนถึง H1.1 (ผูกพนักงานกับสาขา) */
   unitId?: string | null;
   /** ตัวกรองเท่านั้น — ระบุ = หาเฉพาะในระบบ HR นี้ (H0.5 Q2) */
@@ -154,8 +162,13 @@ export type VerifyPinResult = VerifyPinOk | VerifyPinFail;
 /**
  * contract C-8 — "PIN นี้เป็นของพนักงานคนไหนในร้าน" (POS P1.15 เรียกผ่าน hr/index.ts)
  * คืน id เท่านั้น (ไม่มีชื่อ/ตำแหน่ง/hash) · ผิด / รูปแบบผิด / คนพ้นสภาพ / อีกร้าน = ข้อความเดียว "PIN ไม่ถูกต้อง"
- * จำกัด 120 ครั้ง/60 วินาที ต่อร้าน (ถัง hr-verifypin:<tenantId> · ตัวจำกัดล่ม = ปล่อยผ่าน เหมือน H0.3)
- * ลำดับ: หาด้วย hash ก่อน (findFirst ต่อระบบ) · ไม่เจอเท่านั้นจึงลองทางเก่า
+ * HR H0.5 r3 ▸ R3.1–R3.2 ตัวจำกัด 2 ถัง นับเฉพาะครั้งที่ผิด (ตัวจำกัดล่ม = ปล่อยผ่าน เหมือน H0.3):
+ *   ร้าน hr-verifypin:<tenantId> 120 / 60 s · ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 / 10 นาที
+ *   1) ไม่มี callerKey ⇒ ผิดทันที (ไม่แตะ DB)  2) peek ทั้งสองถังก่อนค้น — ถังใดเต็ม ⇒ "ลองใหม่ในอีก N วินาที" ไม่นับเพิ่ม
+ *   3) ค้น · ผิดเท่านั้น (รูปแบบผิด / ไม่เจอ / พ้นสภาพ / ไม่ตรง) จึงนับทั้งสองถัง · ถูก = ไม่นับ
+ *   4) ครั้งที่ผิดที่ทำให้ถังผู้เรียกถึงเพดานพอดี (ครั้งที่ 10) ⇒ audit hr.pin.locked 1 แถว (ไม่มี PIN / id พนักงาน)
+ *   ช่องว่างที่รู้: peek กับนับเป็นคนละคำสั่ง ⇒ คำขอที่ยิงพร้อมกันตอนถังใกล้เต็มผ่าน peek ไปได้พร้อมกัน (เกินเพดานได้ไม่เกินจำนวนที่ยิงพร้อมกัน) ◂
+ * ลำดับ: หาด้วย hash ก่อน · ไม่เจอเท่านั้นจึงลองทางเก่า (HR H0.5 r3 ▸ R3.5 ครั้งละ 1 คำสั่งครอบทุกระบบ HR ของร้าน ไม่ใช่ 1 คำสั่งต่อระบบ ◂)
  * ทางเก่า: แถว pinCode ตรง (ยังไม่มี hash) **แถวเดียว** ในร้าน ⇒ ยืนยัน + อัปเกรดเป็น hash · ตรงหลายแถว = ไม่ยืนยัน (ต้องตั้งใหม่)
  * เฉพาะระบบ HR ที่ active (≤ 50) — ระบบที่ปิดแล้ว พนักงานในนั้นยืนยันระดับร้านไม่ได้ (kiosk ยังเป็นต่อระบบ ไม่กระทบ)
  */
@@ -163,77 +176,99 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
   const wrong: VerifyPinFail = { ok: false, reason: PIN_TEXT.wrong };
   const tenantId = String(input?.tenantId ?? "");
   if (!tenantId) return wrong;
-  const gate = await checkRateLimitDb(`hr-verifypin:${tenantId}`, VERIFY_PIN_LIMIT);
-  if (!gate.ok) return { ok: false, reason: limitedText(gate.retryAfterSec) };
+  // HR H0.5 r3 ▸ R3.1 ไม่มีผู้เรียก = ผิดทันที — ไม่ peek ไม่นับ ไม่สร้างแถวถัง ◂
+  const callerKey = String(input?.callerKey ?? "").trim();
+  if (!callerKey) return wrong;
+  const tenantKey = `hr-verifypin:${tenantId}`;
+  const callerBucket = `${tenantKey}:${callerKey}`;
+  // HR H0.5 r3 ▸ R3.1 ดูถังทั้งสองก่อน (อ่านอย่างเดียว) — เต็มถังใดถังหนึ่ง = ปฏิเสธโดยไม่นับเพิ่ม · บอกเวลาที่นานกว่า ◂
+  const [peekT, peekC] = await Promise.all([peekRateLimitDb(tenantKey, VERIFY_PIN_LIMIT), peekRateLimitDb(callerBucket, VERIFY_PIN_CALLER_LIMIT)]);
+  if (!peekT.ok || !peekC.ok) {
+    const sec = Math.max(peekT.ok ? 0 : (peekT.retryAfterSec ?? 0), peekC.ok ? 0 : (peekC.retryAfterSec ?? 0));
+    return { ok: false, reason: limitedText(sec || undefined) };
+  }
+  // HR H0.5 r3 ▸ R3.1–R3.2 ผิดเท่านั้นจึงนับ (2 ถังพร้อมกัน) · ถังผู้เรียกถึงเพดานพอดี (= ครั้งที่ 10) ⇒ audit hr.pin.locked แถวเดียว
+  //   (นับเป็นคำสั่งเดียว atomic ⇒ ค่า count = 10 ได้คำขอเดียวต่อหน้าต่าง) · payload = callerKey + ตัวเลข — ไม่มี PIN / hash / id พนักงาน ◂
+  const failed = async (): Promise<VerifyPinFail> => {
+    const [, c] = await Promise.all([checkRateLimitDb(tenantKey, VERIFY_PIN_LIMIT), checkRateLimitDb(callerBucket, VERIFY_PIN_CALLER_LIMIT)]);
+    if (c.count === VERIFY_PIN_CALLER_LIMIT.limit) {
+      await writeAudit({
+        tenantId,
+        actorType: "SYSTEM",
+        actorId: null,
+        action: "hr.pin.locked",
+        targetType: "HrVerifyPinCaller",
+        after: { callerKey, count: c.count, windowSec: VERIFY_PIN_CALLER_LIMIT.windowMs / 1000 },
+      });
+    }
+    return wrong;
+  };
   const pin = String(input?.pin ?? "").trim();
   if (!PIN_RE.test(pin)) {
     hashEquals(null, DUMMY_HASH.toString("hex"));
-    return wrong;
+    return failed();
   }
   let hash: string;
   try {
     hash = hashPin(tenantId, pin);
   } catch (e) {
-    if (e instanceof PinNotConfiguredError) return { ok: false, reason: PIN_TEXT.notConfigured };
+    if (e instanceof PinNotConfiguredError) return { ok: false, reason: PIN_TEXT.notConfigured }; // ระบบยังไม่พร้อม ไม่ใช่ความผิดของผู้เรียก ⇒ ไม่นับ
     throw e;
   }
 
-  // HrEmployee เป็น system-scoped ⇒ ไล่ระบบ HR ของร้านก่อน แล้ว query ผูก systemId (แบบ employeeOfUser — ห้าม prisma ดิบ · F5.1)
+  // HrEmployee เป็น system-scoped ⇒ ไล่ระบบ HR ของร้านก่อน (แบบ employeeOfUser — ห้าม prisma ดิบ · F5.1)
   // เฉพาะระบบ HR ที่ยังเปิดอยู่ (active) · สูงสุด 50 ระบบ (แบบ payroll.ts payrollEmployeeOfUser) — ระบบที่ปิดแล้ว = พนักงานในนั้นยืนยันระดับร้านไม่ได้
-  const systems = await tenantDb({ tenantId }).appSystem.findMany({
+  const db = tenantDb({ tenantId });
+  const systems = await db.appSystem.findMany({
     where: { tenantId, type: "HR", active: true, ...(input.systemId ? { id: input.systemId } : {}) },
     select: { id: true },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: 50,
   });
   type Row = { id: string; systemId: string; linkedUserId: string | null; pinHash: string | null };
-  const sel = { id: true, systemId: true, linkedUserId: true, pinHash: true } as const;
+  // HR H0.5 r3 ▸ R3.5 (hunt F5) ครั้งละ 1 คำสั่งครอบทุกระบบ — tenantDb ผูก systemId ได้ทีละค่า (system-scoped) จึงเขียน SQL ผ่าน
+  //   tenantDb(...).$queryRaw (แบบ payroll.ts) และใส่ขอบเขตเองครบ: "tenantId" = ร้านนี้ AND "systemId" IN (ระบบ HR ของร้านนี้ที่อ่านมาข้างบน) ◂
+  const sysIds = systems.map((s) => s.id);
+  const findRows = async (cond: Prisma.Sql, limit: number): Promise<Row[]> =>
+    sysIds.length === 0
+      ? []
+      : db.$queryRaw<Row[]>`
+          SELECT "id", "systemId", "linkedUserId", "pinHash" FROM "HrEmployee"
+          WHERE "tenantId" = ${tenantId} AND "systemId" IN (${Prisma.join(sysIds)}) AND "active" = true AND ${cond}
+          LIMIT ${limit}`;
   // 1) hash ก่อน — partial unique ⇒ คนที่ยังทำงานถือ hash นี้ได้อย่างมากคนเดียวทั้งร้าน ⇒ เจอแล้วจบ (แถวตัวเปล่ากี่แถวก็บังไม่ได้)
   const byHash = async (): Promise<Row | null> => {
-    for (const s of systems) {
-      const r: Row | null = await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findFirst({ where: { active: true, pinHash: hash }, select: sel });
-      if (r && hashEquals(r.pinHash, hash)) return r;
-    }
-    return null;
+    const r = (await findRows(Prisma.sql`"pinHash" = ${hash}`, 1))[0];
+    return r && hashEquals(r.pinHash, hash) ? r : null;
   };
   const okOf = (r: Row): VerifyPinOk => ({ ok: true, employeeId: r.id, systemId: r.systemId, userId: r.linkedUserId ?? null });
   const hit = await byHash();
   if (hit) return okOf(hit);
 
   // ── ทางเก่า (HQ4) ── ไม่เจอด้วย hash เท่านั้น: แถวตัวเปล่า (ยังไม่มี hash) ที่ตรง — อ่านแค่ 2 แถว (≥ 2 = ไม่ยืนยันอยู่แล้ว)
-  const plain: Row[] = [];
-  for (const s of systems) {
-    if (plain.length >= 2) break;
-    plain.push(
-      ...((await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findMany({
-        where: { active: true, pinHash: null, pinCode: pin },
-        select: sel,
-        take: 2,
-      })) as Row[]),
-    );
-  }
+  const plain = await findRows(Prisma.sql`"pinHash" IS NULL AND "pinCode" = ${pin}`, 2);
   if (plain.length === 0) {
     // อีกคำขออาจเพิ่งอัปเกรดแถวตัวเปล่าแถวเดียวนี้เป็น hash ระหว่างสองคำสั่งข้างบน ⇒ ตรวจด้วย hash ซ้ำหนึ่งครั้ง (OQ-7) · ไม่เจอเลย = เทียบกับ dummy
     const again = await byHash();
     if (again) return okOf(again);
     hashEquals(null, hash);
-    return wrong;
+    return failed();
   }
-  if (plain.length !== 1) return wrong; // ≥2 = PIN ตัวเปล่าซ้ำในร้าน ⇒ ไม่ยืนยันใครเลย (backfill ล้างให้ตั้งใหม่)
+  if (plain.length !== 1) return failed(); // ≥2 = PIN ตัวเปล่าซ้ำในร้าน ⇒ ไม่ยืนยันใครเลย (backfill ล้างให้ตั้งใหม่)
   const one = plain[0]!;
-  const db = tenantDb({ tenantId, systemId: one.systemId });
+  const sdb = tenantDb({ tenantId, systemId: one.systemId });
   try {
-    const up = await db.hrEmployee.updateMany({
+    const up = await sdb.hrEmployee.updateMany({
       where: { id: one.id, pinCode: pin, active: true },
       data: { pinHash: hash, pinSetAt: new Date(), pinCode: null },
     });
     if (up.count !== 1) {
       // อีกคำขอเพิ่งอัปเกรดแถวนี้ไปก่อน ⇒ ตรวจซ้ำด้วย hash (ไม่ใช่ปฏิเสธ)
-      const again = await db.hrEmployee.findFirst({ where: { id: one.id, active: true, pinHash: hash }, select: { pinHash: true } });
-      if (!again || !hashEquals(again.pinHash, hash)) return wrong;
+      const again = await sdb.hrEmployee.findFirst({ where: { id: one.id, active: true, pinHash: hash }, select: { pinHash: true } });
+      if (!again || !hashEquals(again.pinHash, hash)) return failed();
     }
   } catch (e) {
-    if (isUniqueViolation(e)) return wrong; // คนที่ยังทำงานอีกคนถือ PIN นี้เป็น hash แล้ว ⇒ ไม่ยืนยันแถวตัวเปล่า
+    if (isUniqueViolation(e)) return failed(); // คนที่ยังทำงานอีกคนถือ PIN นี้เป็น hash แล้ว ⇒ ไม่ยืนยันแถวตัวเปล่า
     throw e;
   }
   return okOf(one);

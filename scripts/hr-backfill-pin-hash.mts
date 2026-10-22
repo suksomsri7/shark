@@ -19,6 +19,7 @@
 // env
 //   ค่าปริยาย: acc-v2-env.loadQcEnv() (.env.qc · env ที่ export มาก่อนชนะ — ใต้ scripts/qc4.sh = QC4) · ด่าน prod ของ loadQcEnv ทำงานเสมอ
 //   prod (runbook ของผู้คุมงาน — ไม่มี --prod-ack): HR_BACKFILL_PROD=1 HR_BACKFILL_ENV_FILE=<ไฟล์ env ของ prod> pnpm exec tsx scripts/hr-backfill-pin-hash.mts [--apply]
+//     ต้องมี HR_BACKFILL_ENV_FILE · มี HR_PIN_PEPPER / DATABASE_URL ใน shell มาก่อน = หยุด exit 1 ก่อนโหลดไฟล์ (r3 · R3.3)
 //     สคริปต์พิมพ์ host ก่อนเสมอ · host เป็น ep-royal-night (production) โดยไม่มี HR_BACKFILL_PROD=1 = หยุด (exit 3)
 //   ไม่มี HR_PIN_PEPPER (≥ 32 ตัว) = exit 2 ข้อความคงที่ — 🔴 pepper ต้องเป็นค่าเดียวกับที่ deploy ใช้ ไม่งั้น PIN ทุกคนยืนยันไม่ผ่าน
 // 🔴 ห้ามพิมพ์ PIN · hash · pepper · ชื่อเต็มพนักงาน
@@ -49,14 +50,25 @@ if (unknown.length) {
 const PROD = process.env.HR_BACKFILL_PROD === "1";
 if (PROD) {
   const f = process.env.HR_BACKFILL_ENV_FILE ?? "";
-  if (f) {
-    const p = resolve(process.cwd(), f);
-    if (!existsSync(p)) {
-      console.error(`❌ ${SCRIPT}: ไม่พบ HR_BACKFILL_ENV_FILE`);
+  // HR H0.5 r3 ▸ R3.3 (hunt F2) โหมด prod ต้องมีไฟล์ env เสมอ และห้ามมีค่าใน shell มาก่อน —
+  //   process.loadEnvFile ไม่ทับตัวแปรที่ export ไว้แล้ว ⇒ pepper/URL เก่าใน shell จะชนะไฟล์ prod เงียบ ๆ
+  //   (hash ทั้งร้านด้วย pepper ผิด + ลบตัวเปล่า = PIN ทุกคนใช้ไม่ได้ ย้อนไม่ได้) ⇒ หยุดก่อนโหลดไฟล์ ไม่เขียนอะไร ◂
+  if (!f) {
+    console.error(`❌ ${SCRIPT}: HR_BACKFILL_PROD=1 ต้องตั้ง HR_BACKFILL_ENV_FILE=<ไฟล์ env ของ prod> ด้วย`);
+    process.exit(1);
+  }
+  for (const v of ["HR_PIN_PEPPER", "DATABASE_URL"]) {
+    if (process.env[v] !== undefined) {
+      console.error(`❌ ${SCRIPT}: มี ${v} ตั้งไว้ใน shell อยู่แล้ว — ค่านี้จะชนะไฟล์ HR_BACKFILL_ENV_FILE · unset ${v} แล้วรันใหม่ (ไม่ได้เขียนอะไร)`);
       process.exit(1);
     }
-    process.loadEnvFile(p);
   }
+  const p = resolve(process.cwd(), f);
+  if (!existsSync(p)) {
+    console.error(`❌ ${SCRIPT}: ไม่พบ HR_BACKFILL_ENV_FILE`);
+    process.exit(1);
+  }
+  process.loadEnvFile(p);
   if (!process.env.DATABASE_URL) {
     console.error(`❌ ${SCRIPT}: HR_BACKFILL_PROD=1 แต่ไม่มี DATABASE_URL (ตั้ง HR_BACKFILL_ENV_FILE)`);
     process.exit(1);
