@@ -70,6 +70,7 @@ const CHECKS: readonly Def[] = [
   D("S4.7", "D13a", "MAJOR", "GREEN", "[action] ทางตรง IN แล้ว OUT ภายใน 60 s → บันทึกทั้งคู่ (ผู้จัดการแก้ได้)"),
   D("S4.8", "C.8", "MAJOR", "GREEN", "[service] process ลูก: pool ถูกจับไว้ 9/10 เส้น → clockWithPin ยังเสร็จใน 3 s และ commit จริง (ทุกคำสั่งในธุรกรรมใช้ tx client)"),
   D("S4.9", "D13a", "MAJOR", "RED", "[static] clock: tenantDb(ctx).$transaction + pg_advisory_xact_lock(hashtextextended('hr:clock:…')) · CLOCK_DEDUPE_SEC = 60"),
+  D("S5.0", "D14", "CRITICAL", "GREEN", "[ai] ด่านผู้กระทำ (CRM v2 actorProblem): pending_leaves โดยไม่ส่ง actor → ปฏิเสธด้วยข้อความตายตัว \"ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้\""),
   D("S5.1", "D14", "CRITICAL", "RED", "[ai] pending_leaves: ทุกแถวมี รหัสใบลา = id ของใบลาที่รอ · ไม่มีเหตุผลการลา (คีย์/ข้อความ)"),
   D("S5.2", "D14", "CRITICAL", "RED", "[ai] ป้อน รหัสใบลา จาก pending_leaves ให้ hr_decide_leave → ข้อเสนอ (AiProposal) ของใบนั้น · summary มีชื่อพนักงาน"),
   D("S6.1", "R7", "CRITICAL", "GREEN", "[static] clockInDetail + judgeClockIn ไม่เปลี่ยน (sha256 เทียบฐาน afcb9bc3)"),
@@ -255,6 +256,8 @@ const sys = (await import("@/lib/modules/system/service")) as Any;
 const hr = (await import("@/lib/modules/hr/service")) as Any;
 const act = (await import("@/lib/modules/hr/actions" as string)) as Any;
 const tools = (await import("@/lib/ai/tools")) as Any;
+const aiActor = (await import("@/lib/ai/actor")) as Any;
+const convOwner = (await import("@/lib/ai/conversation-owner")) as Any;
 const coreHash = (await import("@/lib/core/hash" as string)) as Any;
 
 const fd = (o: Record<string, string>) => {
@@ -646,7 +649,20 @@ async function runDb(): Promise<void> {
   const eL = await mkEmp(sA.id, eLname);
   const l1 = (await hr.requestLeave(ctxA, { employeeId: eL, type: "SICK", fromDate: "2027-03-01", toDate: "2027-03-02", reason: REASON })).id as string;
   const l2 = (await hr.requestLeave(ctxA, { employeeId: eL, type: "PERSONAL", fromDate: "2027-04-05", toDate: "2027-04-05", reason: REASON })).id as string;
-  const out1 = String(await tools.runTool({ tenantId: tid }, "pending_leaves", {}));
+  // CRM v2 (C5.5-G1) ▸ runTool ต้องมี ctx.actor (src/lib/ai/actor.ts actorProblem + tool-access.ts toolVerdict) —
+  //   สร้างแบบเดียวกับ production (src/lib/ai/actions.ts convCtxOf: aiMemberActor(tenantId, userId, แถว Membership)) ด้วยผู้จัดการของร้านชั่วคราว ◂
+  const NO_ACTOR = "ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้";
+  const out0 = String(await tools.runTool({ tenantId: tid }, "pending_leaves", {}));
+  let err0: unknown = null;
+  try {
+    err0 = JSON.parse(out0)?.error ?? null;
+  } catch {
+    err0 = null;
+  }
+  chk("S5.0", err0 === NO_ACTOR && !out0.includes("รหัสใบลา"), `{error: "${NO_ACTOR}"}`, short(out0, 140));
+  const mgrM = await P.membership.findFirst({ where: { tenantId: tid, userId: U.manager.id }, select: { role: true, unitAccess: true, permissions: true } });
+  const actor = aiActor.aiMemberActor(tid, U.manager.id, mgrM);
+  const out1 = String(await tools.runTool({ tenantId: tid, actor }, "pending_leaves", {}));
   let rows1: Any[] = [];
   try {
     rows1 = (JSON.parse(out1)?.["ใบลารออนุมัติ"] ?? []) as Any[];
@@ -661,9 +677,11 @@ async function runDb(): Promise<void> {
     "รหัสใบลา = [l1,l2] · ไม่มีเหตุผล",
     `rows=${rows1.length} ids=${got.length}/${2} match=${JSON.stringify(got) === JSON.stringify([l1, l2].sort())} reasonText=${out1.includes(REASON)} reasonKey=${reasonKey} · ${short(out1, 140)}`,
   );
-  const conv = await P.aiConversation.create({ data: { tenantId: tid, title: "qc h0.3" } });
+  // CRM v2 (C5.5-G2) ▸ ห้องต้องเป็นของผู้กระทำ: รหัสห้องออกด้วย newConversationId (src/lib/ai/conversation-owner.ts) แบบ production —
+  //   ห้อง cuid ล้วน = "ห้องเดิม" ผู้จัดการมองไม่เห็น ⇒ ตัวห่อใน tools.ts ทิ้ง conversationId ⇒ "ต้องอยู่ในบทสนทนาก่อน…" ◂
+  const conv = await P.aiConversation.create({ data: { id: convOwner.newConversationId({ tenantId: tid, actor }), tenantId: tid, title: "qc h0.3" } });
   const fed = rows1[0]?.["รหัสใบลา"];
-  const out2 = String(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "hr_decide_leave", { leaveId: fed, decision: "APPROVED" }));
+  const out2 = String(await tools.runTool({ tenantId: tid, actor, conversationId: conv.id }, "hr_decide_leave", { leaveId: fed, decision: "APPROVED" }));
   let j2: Any = {};
   try {
     j2 = JSON.parse(out2);
