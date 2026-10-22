@@ -21,4 +21,4 @@
 ## Controller (B · 22 Oct 03:2xZ): MERGEABLE-AFTER-FIXES accepted → fix round 1 (builder p11)
 - F1 Medium (deal cleared on remount) → fix: loaded-flag keyed by member/company. F2 Low → hide chip + deal select offline (same condition as the tile; CD-P36U-3 precision). F3 Low → merge into the existing `pos.credit` object + CS sentinel `pos.credit.qcKeep` (ORACLE-EDIT by the builder, red-before). F4 Low → restore removes an empty `pos.orders` it created. Nit `hasCrm` active-only = optional one-liner.
 - Everything else verified by R1 stands (writer OWNER-only · FOR UPDATE · strict patch · no-op silent · CS1–CS4 · PIN never cached · privacy · S5.17 · keys 47/47).
-- Next: fix1 → R2 (diff-only) → QC5 round (chain-p36u.sh) → merge second after P5.2? No — P3.6U merges when its round is green; P5.2 fix1 merges after its own R1 (server-only files, no overlap with P3.6U except none).
+- Next: fix1 → R2 (diff-only) → QC5 round (chain-p36u.sh) → merge when green. P5.2 fix1 merges independently after its own R1 (server-only files, no overlap with P3.6U).
