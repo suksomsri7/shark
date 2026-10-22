@@ -8,6 +8,8 @@
 //   copy:true = ประทับ "สำเนา" (ปกติจอใช้ค่าจาก payload.copy ที่เซิร์ฟเวอร์ตัดสิน — กฎ 30 นาที)
 // 🔴 browser พิมพ์ใบเดียวเสมอ (หน้าต่างพิมพ์ของระบบเลือกจำนวนเองได้) · ลิ้นชักเปิดได้เฉพาะ ESC/POS (เบราว์เซอร์สั่งลิ้นชักไม่ได้)
 import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
+import { POS_PRINTER_MODE_LAN, type PosPrinterModeAny } from "@/lib/modules/pos/device-shared"; // POS P3-SKEL U ▸ CD-SKELU-9 ◂
+import { sendLan, type LanCtx } from "./lan"; // POS P3-SKEL U ▸ CD-SKELU-9 ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import type { ReceiptPayload } from "@/lib/modules/pos/receipt-render";
 import { bluetoothSupported, writeBluetooth } from "./bluetooth";
@@ -18,9 +20,10 @@ import { pairingMatches, readPairing } from "./pairing";
 import { refusePrint, type PrintResult, type PrintTransport } from "./types";
 import { usbSupported, writeUsb } from "./usb";
 
-export type PrintOptions = { copy?: boolean; locale: "th" | "en"; deviceCode?: string; kickDrawer?: boolean };
+export type PrintOptions = { copy?: boolean; locale: "th" | "en"; deviceCode?: string; kickDrawer?: boolean; /** POS P3-SKEL U ▸ CD-SKELU-9: สาขาของงาน (โหมด escpos-lan · ไม่ส่ง = NO_DEVICE via lan → จอเสนอพิมพ์ผ่านระบบ) ◂ */ lan?: LanCtx };
 
-export const transportOf = (mode: PosPrinterConfig["mode"]): PrintTransport => (mode === "escpos-usb" ? "usb" : mode === "escpos-bt" ? "bluetooth" : "browser");
+// POS P3-SKEL U ▸ CD-SKELU-9: โหมด escpos-lan = "lan" (ค่าอื่นเหมือนเดิมทุกตัว) ◂
+export const transportOf = (mode: PosPrinterConfig["mode"] | PosPrinterModeAny): PrintTransport => (mode === "escpos-usb" ? "usb" : mode === "escpos-bt" ? "bluetooth" : mode === POS_PRINTER_MODE_LAN ? "lan" : "browser");
 
 /** เบราว์เซอร์นี้มี API ของวิธีพิมพ์นี้ไหม (browser = มีเสมอ) */
 export function transportSupported(mode: PosPrinterConfig["mode"]): boolean {
@@ -59,6 +62,8 @@ export async function printReceipt(payload: ReceiptPayload, cfg: PosPrinterConfi
     } catch (e) {
       return refusePrint(e instanceof CanvasUnavailableError ? "UNSUPPORTED" : "WRITE_FAILED", via);
     }
+    // POS P3-SKEL U ▸ CD-SKELU-9: escpos-lan = ไบต์ชุดเดียวกับ USB/BT → คิวตัวช่วยพิมพ์ (ผล = ส่งเข้าคิวแล้ว · ไม่ใช่พิมพ์แล้ว — W5) ◂
+    if (via === "lan") return await sendLan([bytes], "receipt", opts?.lan, opts?.deviceCode ?? getPosDeviceId());
     return await send(cfg, opts?.deviceCode, bytes);
   } catch {
     return refusePrint("WRITE_FAILED", via);

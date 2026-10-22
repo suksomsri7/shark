@@ -55,6 +55,7 @@ import { slipRetentionDaysOf } from "@/lib/modules/pos/payment-slip";
 import { SLIP_VERIFY_PROVIDERS } from "@/lib/modules/pos/slip-verify";
 import { ETAX_PROVIDERS } from "@/lib/platform/etax/provider";
 import { SlipSettingsCard } from "./SlipSettingsCard";
+import { listPrintAgents, PRINT_PRINTER_PORTS } from "@/lib/modules/pos/print-relay";
 // ◂ POS P3-SKEL U
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
@@ -209,6 +210,9 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   // POS P3-SKEL U ▸ CD-SKELU-5/8: ผู้ให้บริการจากทะเบียน (รหัส + ชื่อแบรนด์ · ไม่เลือกให้ — W20) · อายุเก็บสลิป (อ่านอย่างเดียว · W19) ◂
   const slipVerifyOptions = Object.values(SLIP_VERIFY_PROVIDERS).map((p) => ({ code: p.code, label: p.label }));
   const etaxOptions = Object.values(ETAX_PROVIDERS).map((p) => ({ code: p.code, label: p.label }));
+  // POS P3-SKEL U ▸ CD-SKELU-9: แท็บเครื่อง — ตัวช่วยพิมพ์ของสาขา (ไม่มีโทเคน/แฮช) อ่านครั้งเดียวต่อการเปิดจอ ◂
+  const lanRead = canRead && canManageDevices && tab === "devices" ? await listPrintAgents({ tenantId, systemId: id, unitId }, posActor) : null;
+  const lanProps = lanRead && lanRead.ok === true ? { agents: lanRead.agents, ports: [...PRINT_PRINTER_PORTS] } : null;
   const etaxRow = canRead && tab === "shark" ? { canManage: evaluate(m, { module: "pos", action: "pos.settings.manage", unitId }), isOwner: m.role === "OWNER", providers: etaxOptions } : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
@@ -273,7 +277,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
         ) : tab === "receipt" ? (
           <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} branch={receiptBranch} /* POS P2.11U ▸ มติ 8 ◂ */ />
         ) : canManageDevices ? (
-          <DeviceSettings systemId={id} unitId={unitId} shopName={sys.name} />
+          <DeviceSettings systemId={id} unitId={unitId} shopName={sys.name} lan={lanProps} /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */ />
         ) : (
           <SettingsRefusal message={t("devicesRefusal")} />
         )}

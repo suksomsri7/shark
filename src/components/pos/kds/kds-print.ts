@@ -15,6 +15,7 @@ import { spliceRaster } from "@/components/pos/print/raster";
 import { CanvasUnavailableError, rasterizeSlot } from "@/components/pos/print/canvas-raster";
 import { transportOf, transportSupported } from "@/components/pos/print/printReceipt";
 import { refusePrint, type PrintResult } from "@/components/pos/print/types";
+import { sendLan, type LanCtx } from "@/components/pos/print/lan"; // POS P3-SKEL U ▸ CD-SKELU-9 ◂
 
 /** ค่าพิมพ์ปริยายเมื่อเครื่องนี้ไม่ได้ลงทะเบียน (เบราว์เซอร์ · 80 มม.) */
 export const KDS_PRINT_FALLBACK: Pick<PosPrinterConfig, "mode" | "paper" | "thaiText"> = { mode: "browser", paper: "80", thaiText: "raster" };
@@ -33,13 +34,26 @@ export function joinSlipHtml(docs: readonly string[]): string {
 }
 
 /** พิมพ์ใบครัวชุดหนึ่งที่เครื่องนี้ (ไม่โยน) */
-export async function printKitchenSlips(slips: readonly KitchenSlip[], cfg: Pick<PosPrinterConfig, "mode" | "paper" | "thaiText"> | null, locale: "th" | "en"): Promise<PrintResult> {
+export async function printKitchenSlips(slips: readonly KitchenSlip[], cfg: Pick<PosPrinterConfig, "mode" | "paper" | "thaiText"> | null, locale: "th" | "en", lan?: LanCtx /* POS P3-SKEL U ▸ CD-SKELU-9: สาขาของงาน (โหมด escpos-lan) ◂ */): Promise<PrintResult> {
   const c = cfg ?? KDS_PRINT_FALLBACK;
   const via = transportOf(c.mode);
   try {
     if (!slips.length) return { ok: true, via };
     if (via === "browser") return await printHtml(joinSlipHtml(slips.map((s) => renderKitchenSlipHtml(s, { paper: c.paper, locale: s.printLocale ?? locale }))));
     if (!transportSupported(c.mode)) return refusePrint("UNSUPPORTED", via);
+    // POS P3-SKEL U ▸ CD-SKELU-9: escpos-lan = ไบต์ชุดเดียวกับ USB/BT ต่อใบ → คิวตัวช่วยพิมพ์ (target kitchen) · ไม่ต้องจับคู่ในเบราว์เซอร์ ◂
+    if (via === "lan") {
+      const chunks: Uint8Array[] = [];
+      for (const s of slips) {
+        try {
+          const r = renderKitchenSlipEscPos(s, { paper: c.paper, thaiText: c.thaiText === "tis620" ? "tis620" : "raster", cut: true, locale: s.printLocale ?? locale });
+          chunks.push(c.thaiText !== "tis620" && r.rasterSlots.length ? spliceRaster(r.bytes, r.rasterSlots, r.rasterSlots.map((x) => rasterizeSlot(x))) : r.bytes);
+        } catch (e) {
+          return refusePrint(e instanceof CanvasUnavailableError ? "UNSUPPORTED" : "WRITE_FAILED", via);
+        }
+      }
+      return await sendLan(chunks, "kitchen", lan, getPosDeviceId());
+    }
     const p = readPairing(getPosDeviceId());
     if (!p || !pairingMatches(p, c.mode)) return refusePrint("NO_DEVICE", via);
     for (const s of slips) {

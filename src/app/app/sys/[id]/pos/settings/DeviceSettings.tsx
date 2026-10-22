@@ -31,8 +31,13 @@ import { Chip, InlineNote, SwitchKnob, TabHead } from "./settings-ui";
 import QRCode from "qrcode";
 import { customerDisplayStatusAction, enableCustomerDisplayAction, revokeCustomerDisplayAction, updateCustomerDisplaySettingsAction } from "@/lib/modules/pos/display-actions";
 import { DISPLAY_IDLE_TEXT_MAX, displayErrorKey, type CustomerDisplayStatusView, type DisplayLocale } from "@/lib/modules/pos/display-shared";
+// POS P3-SKEL U ▸ CD-SKELU-9: การ์ดตัวช่วยพิมพ์ LAN + โหมด escpos-lan + วิทยุใบครัว LAN (ชื่อเรียกเดิม · สถานะจาก lanStateOf กติกาเดียวกับทางพิมพ์) ◂
+import { POS_PRINTER_MODE_LAN } from "@/lib/modules/pos/device-shared";
+import type { PrintAgentView } from "@/lib/modules/pos/print-relay";
+import { lanStateOf } from "@/components/pos/print/lan";
+import { LanAgentsCard } from "./LanAgentsCard";
 
-type Props = { systemId: string; unitId: string; shopName: string };
+type Props = { systemId: string; unitId: string; shopName: string; /** POS P3-SKEL U ▸ CD-SKELU-9: ตัวช่วยพิมพ์ของสาขา (หน้าเพจอ่าน listPrintAgents) + พอร์ตที่รับ ◂ */ lan?: { agents: PrintAgentView[]; ports: readonly number[] } | null };
 type ListOk = { items: PosDeviceListItem[]; limit: number; activeCount: number };
 
 const ERROR_KEY: Record<string, string> = {
@@ -86,9 +91,14 @@ function DialogBox({ testid, labelledBy, onClose, children }: { testid: string; 
   );
 }
 
-export function DeviceSettings({ systemId, unitId, shopName }: Props) {
+export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P3-SKEL U ◂ */ }: Props) {
   const t = useTranslations("pos.settings");
   const td = useTranslations("pos.device");
+  // POS P3-SKEL U ▸ CD-SKELU-9: รายการตัวช่วยพิมพ์ (โหลดครั้งเดียวจากหน้าเพจ · ลงทะเบียน/เพิกถอนแก้ในที่) ◂
+  const tpl = useTranslations("pos.platform");
+  const [lanAgents, setLanAgents] = useState<PrintAgentView[]>(lan?.agents ?? []);
+  const lanReceipt = lanStateOf(lanAgents, "receipt");
+  const lanKitchen = lanStateOf(lanAgents, "kitchen");
   const tr = useTranslations("pos.settings.receipt");
   const locale: "th" | "en" = useLocale().startsWith("en") ? "en" : "th";
   const [list, setList] = useState<ListOk | null>(null);
@@ -247,7 +257,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
     });
     setBusy(true);
     try {
-      setPrintRes(await printReceipt(p, forceBrowser ? { ...sel.printerConfig, mode: "browser" } : sel.printerConfig, { locale, deviceCode: sel.deviceCode, kickDrawer: false }));
+      setPrintRes(await printReceipt(p, forceBrowser ? { ...sel.printerConfig, mode: "browser" } : sel.printerConfig, { locale, deviceCode: sel.deviceCode, kickDrawer: false, lan: { systemId, unitId } /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */ }));
     } finally {
       setBusy(false);
     }
@@ -281,8 +291,12 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
       {node}
     </div>
   );
+  // POS P3-SKEL U ▸ CD-SKELU-9: เครื่องที่เลือกพิมพ์ผ่านแลน (escpos-lan · ชนิดเดิมไม่มีค่านี้ ⇒ เทียบเป็นสตริง) ◂
+  const isLan = !!sel && (sel.printerConfig.mode as string) === POS_PRINTER_MODE_LAN;
+  const lanReason = lanReceipt.state === "none" ? tpl("print.agentNone") : lanReceipt.state === "many" ? tpl("print.agentMany") : lanReceipt.state === "noPrinter" ? tpl("print.agentNoPrinter") : null;
   const pairLine = () => {
     if (!sel) return null;
+    if (isLan) return lanReceipt.state === "ok" ? tpl("print.viaAgent", { name: lanReceipt.agent.name, printer: `${lanReceipt.printer.host}:${lanReceipt.printer.port}` }) : lanReason; // POS P3-SKEL U ◂
     if (sel.printerConfig.mode === "browser") return td("browserModeHint");
     if (!isMine) return td("pairOnThatDevice");
     return pairingMatches(pairing, sel.printerConfig.mode) && pairing ? td("pairedLine", { name: pairing.productName }) : td("notPaired");
@@ -340,7 +354,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
           <span className="flex flex-wrap gap-2">
             <Chip>
               <RegisterIcon name="print" size={13} />
-              {td(MODE_CHIP[d.printerConfig.mode])} · {d.printerConfig.paper === "58" ? td("paper58") : td("paper80")}
+              {(d.printerConfig.mode as string) === POS_PRINTER_MODE_LAN ? tpl("print.modeLanChip") : td(MODE_CHIP[d.printerConfig.mode]) /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */} · {d.printerConfig.paper === "58" ? td("paper58") : td("paper80")}
               {d.deviceCode === thisCode && pairingMatches(pairing, d.printerConfig.mode) ? <RegisterIcon name="check" size={12} /> : null}
             </Chip>
             <Chip tone={d.printerConfig.drawerKick ? "plain" : "muted"}>
@@ -417,6 +431,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
               {showRevoked && revokedItems.map(deviceCard)}
             </div>
           )}
+          {lan ? <LanAgentsCard systemId={systemId} unitId={unitId} agents={lanAgents} onAgents={setLanAgents} ports={lan.ports} /> /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */ : null}
         </div>
 
         <div data-testid="pos-device-panel" className="flex min-w-0 flex-col rounded-[18px] border bg-[color:var(--color-surface)] px-5 py-5 md:px-7 md:py-6 lg:w-[400px] lg:shrink-0 xl:w-[430px]">
@@ -488,7 +503,8 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
 
                   <div className="flex flex-col gap-2 border-t pt-5">
                     <span className="text-[13px] font-bold text-[color:var(--color-ink-soft)]">{td("mode")}</span>
-                    <div role="radiogroup" aria-label={td("mode")} className="flex gap-1 rounded-[13px] border bg-[color:var(--color-surface-2)] p-1">
+                    {/* POS P3-SKEL U ▸ CD-SKELU-9: 4 ตัวเลือก (+ แลน) = ตาราง 2×2 (แถวเดียว 4 ปุ่มล้นกรอบ 400px/390) ◂ */}
+                    <div role="radiogroup" aria-label={td("mode")} className="grid grid-cols-2 gap-1 rounded-[13px] border bg-[color:var(--color-surface-2)] p-1">
                       <button data-testid="pos-device-mode-bt" type="button" role="radio" aria-checked={sel.printerConfig.mode === "escpos-bt"} disabled={busy} className={`${seg(sel.printerConfig.mode === "escpos-bt")} flex-1`} onClick={() => cfg("mode", "escpos-bt")}>
                         {td("modeOptBt")}
                       </button>
@@ -498,12 +514,30 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                       <button data-testid="pos-device-mode-browser" type="button" role="radio" aria-checked={sel.printerConfig.mode === "browser"} disabled={busy} className={`${seg(sel.printerConfig.mode === "browser")} flex-1`} onClick={() => cfg("mode", "browser")}>
                         {td("modeOptBrowser")}
                       </button>
+                      {/* POS P3-SKEL U ▸ CD-SKELU-9: แลน (escpos-lan) — เปิดเมื่อสาขามีตัวช่วยพิมพ์ 1 ตัวพอดีที่มีเครื่องพิมพ์ใบเสร็จ (หรือเครื่องเดียวไม่ระบุงาน) ◂ */}
+                      <button
+                        data-testid="pos-device-mode-lan"
+                        type="button"
+                        role="radio"
+                        aria-checked={isLan}
+                        disabled={busy || (!isLan && lanReceipt.state !== "ok")}
+                        title={lanReason ?? undefined}
+                        className={`${seg(isLan)} flex-1`}
+                        onClick={() => cfg("mode", POS_PRINTER_MODE_LAN as unknown as PosPrinterConfig["mode"])}
+                      >
+                        {tpl("print.modeLan")}
+                      </button>
                     </div>
+                    {!isLan && lanReason ? (
+                      <small data-testid="pos-device-lan-reason" className="text-[12.5px] text-[color:var(--color-muted)]">
+                        {lanReason}
+                      </small>
+                    ) : null}
                     <span className="flex flex-wrap items-center gap-2">
                       <span data-testid="pos-device-pair-line" className="min-w-0 flex-1 text-[13.5px] text-[color:var(--color-muted)]">
                         {pairLine()}
                       </span>
-                      {isMine && sel.printerConfig.mode !== "browser" && (
+                      {isMine && sel.printerConfig.mode !== "browser" && !isLan /* POS P3-SKEL U ▸ แลนไม่ต้องจับคู่ในเบราว์เซอร์ ◂ */ && (
                         <button data-testid="pos-device-pair" type="button" className="btn btn-ghost h-11 rounded-[11px] px-4 text-[14px]" onClick={() => setPairOpen(true)}>
                           {td("pair")}
                         </button>
@@ -562,15 +596,26 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                             <RadioDot on={ks.mode === "off"} />
                             <span className={`min-w-0 flex-1 ${ks.mode === "off" ? "font-bold" : ""}`}>{td("kitchen.off")}</span>
                           </button>
-                          <button data-testid="pos-device-kitchen-after" type="button" role="radio" aria-checked={ks.mode === "after-sale"} disabled={busy} className="flex min-h-12 items-center gap-3 px-4 text-left text-[15px] disabled:opacity-60" onClick={() => cfg("kitchenSlip", "after-sale")}>
-                            <RadioDot on={ks.mode === "after-sale"} />
-                            <span className={`min-w-0 flex-1 ${ks.mode === "after-sale" ? "font-bold" : ""}`}>{td("kitchen.afterSale")}</span>
+                          {/* POS P3-SKEL U ▸ CD-SKELU-9: วิทยุใบครัว 2 ตัว → ค่าเดียว kitchenSlip "after-sale" (ไม่มีคีย์ใหม่) — "หลังขาย" ติ๊กเมื่อโหมด ≠ แลน · "LAN" ติ๊กเมื่อแลน ∧ after-sale (owner-ack) ◂ */}
+                          <button data-testid="pos-device-kitchen-after" type="button" role="radio" aria-checked={ks.mode === "after-sale" && !isLan} disabled={busy} className="flex min-h-12 items-center gap-3 px-4 text-left text-[15px] disabled:opacity-60" onClick={() => cfg("kitchenSlip", "after-sale")}>
+                            <RadioDot on={ks.mode === "after-sale" && !isLan} />
+                            <span className={`min-w-0 flex-1 ${ks.mode === "after-sale" && !isLan ? "font-bold" : ""}`}>{td("kitchen.afterSale")}</span>
                           </button>
-                          <span data-testid="pos-device-kitchen-lan" role="radio" aria-checked={false} aria-disabled="true" title={td("kitchen.lanSoon")} className="flex min-h-12 items-center gap-3 px-4 text-[15px] text-[color:var(--color-muted)]">
-                            <RadioDot on={false} />
-                            <span className="min-w-0 flex-1">{td("kitchen.lan")}</span>
-                            <span className="shrink-0 whitespace-nowrap rounded-[6px] border px-1.5 text-[11px] leading-[18px]">{td("kitchen.planned")}</span>
-                          </span>
+                          <button
+                            data-testid="pos-device-kitchen-lan"
+                            type="button"
+                            role="radio"
+                            aria-checked={isLan && ks.mode === "after-sale"}
+                            disabled={busy || !isLan || lanKitchen.state !== "ok"}
+                            title={isLan && lanKitchen.state === "ok" ? undefined : tpl("print.kitchenLanOff")}
+                            className="flex min-h-12 items-center gap-3 px-4 text-left text-[15px] disabled:text-[color:var(--color-muted)] disabled:opacity-60"
+                            onClick={() => cfg("kitchenSlip", "after-sale")}
+                          >
+                            <RadioDot on={isLan && ks.mode === "after-sale"} />
+                            <span className={`min-w-0 flex-1 ${isLan && ks.mode === "after-sale" ? "font-bold" : ""}`}>
+                              {lanKitchen.state === "ok" ? tpl("print.kitchenLan", { printer: `${lanKitchen.printer.host}:${lanKitchen.printer.port}` }) : td("kitchen.lan")}
+                            </span>
+                          </button>
                         </div>
                         {ks.mode === "after-sale" && (
                           <div className="flex flex-col gap-1">

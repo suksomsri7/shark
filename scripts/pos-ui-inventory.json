@@ -22598,6 +22598,366 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&tab=shark"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-mode-lan",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-pair-line",
+        "note": "โหมดแลน (escpos-lan · updateDeviceAction printerConfig.mode) — เปิดเมื่อสาขามีตัวช่วยพิมพ์ 1 ตัวพอดีที่มีเครื่องใบเสร็จ/เครื่องเดียวไม่ระบุงาน · 0 = agentNone · ≥ 2 = agentMany"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-kitchen-lan",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-kitchen",
+        "note": "ใบครัว LAN = ชื่อเรียกของ kitchenSlip \"after-sale\" เมื่อโหมดแลน (owner-ack · ไม่มีคีย์ใหม่) — เปิดเมื่อแลน ∧ ตัวช่วยพิมพ์มีเครื่องใบครัว"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "เปิดฟอร์มลงทะเบียนตัวช่วยพิมพ์"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-register",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-lan-token",
+        "note": "ฟอร์มลงทะเบียน (ชื่อ 1–60 · เครื่องพิมพ์ 1–8) → registerPrintAgentAction → กล่องโทเคนครั้งเดียว"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ชื่อตัวช่วยพิมพ์ 1–60"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-name-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ชื่อเครื่องพิมพ์ ≤ 40"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-host-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ที่อยู่ IPv4/ชื่อเครื่องในวงแลน (ไม่รับ 169.254/16 · เซิร์ฟเวอร์ตรวจซ้ำ)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-port-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "พอร์ตจาก PRINT_PRINTER_PORTS (9100–9102 · 515)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-target-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "งานที่พิมพ์ ใบครัว/ใบเสร็จ/ไม่ระบุ (ไม่ซ้ำต่อ agent)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ลบเครื่องพิมพ์ในฟอร์ม (เหลือ ≥ 1)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "เพิ่มเครื่องพิมพ์ในฟอร์ม (≤ 8)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "ปิดฟอร์มลงทะเบียน"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-lan-token",
+        "note": "ลงทะเบียนตัวช่วยพิมพ์ (registerPrintAgentAction · pos.device.manage) · คำปฏิเสธ = pos.platform.print.errors.*"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-token-copy",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-token",
+        "note": "คัดลอกโทเคน (แสดงครั้งเดียว · ไม่ log)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-token-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "ปิดกล่องโทเคน = ล้างโทเคนจาก state"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-revoke-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "เพิกถอนตัวช่วยพิมพ์ → ยืนยันในบรรทัด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-revoke-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "ยกเลิกการเพิกถอน"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-revoke-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-lan-card",
+        "note": "เพิกถอน (revokePrintAgentAction) — โทเคนใช้ไม่ได้ทันที"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
