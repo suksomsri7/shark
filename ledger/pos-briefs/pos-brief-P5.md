@@ -160,3 +160,11 @@ Counter +1 per card (3).
 - Rulings 5 and 6 **confirmed** (no token format change unless entropy < 60 bits · rate limits where missing · replay test now, nonce/timestamp with the real adapters).
 - Rulings 2, 7, 8, 9 (severity bar · perf tenant · budgets · index steps) are confirmed as drafted but apply when P5.1/P5.3 open.
 
+
+### §10 addendum 2 — controller B (22 Oct 08:4xZ) on P5.3 oracle/seed (`wip/pos-p5.3-oracle` b8d4ad23 · CD-P53-O1…O12)
+- O1: the gated barcode number stays the **end-to-end scan on the register ≤ 100 ms**; if it is red in two consecutive QC5 runs the answer is a product fix (client-first match from the loaded catalogue, server call only on a miss) in a P5.3 fix round — not a budget re-ruling.
+- O2 accepted: all perf measuring on QC5 (seed + oracle refuse QC4 unless `PERF_ALLOW_QC4=1`); this replaces ruling 7's "server on QC4".
+- O3 accepted (200-line bill through the real register UI; never drain the outbox in-process).
+- O4 accepted for the first run (5,000 products · 50 categories · 3 price rules · 1 member); bills/members/option groups for reports, bills list and shift Z = **P5.3b** second run before P5 closes.
+- O8 accepted (print preview timing and 390-wide overflow are the walker's/parity's job).
+- Controller run order on tree d (QC5) after the P3-SKEL U round: `--preflight` → seed → build + serve → oracle run 1 → run 2 → `--drop`.

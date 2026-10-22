@@ -55,7 +55,7 @@ export default async function PosReportsPage({
   // POS P1.18U ▸ มติ 10c: "วันนี้" = วันธุรกิจตามเวลาตัดวันของระบบ (posBusinessToday · deviation 9 ของ P1.18 S) ◂
   const today = await posBusinessToday({ tenantId, systemId: id });
   const kindRaw = one(sp.kind);
-  const kind = isReportKind(kindRaw) ? kindRaw : "overview";
+  const kind = isReportKind(kindRaw) ? kindRaw : kindRaw === "reconcile" ? ("reconcile" as const) : "overview"; // POS P3-SKEL U ▸ CD-SKELU-10: ?kind=reconcile (ไม่ใช่ ReportKind) ◂
   const fromRaw = one(sp.from);
   const toRaw = one(sp.to);
   const to = isDate(toRaw) ? toRaw : today;
@@ -67,7 +67,12 @@ export default async function PosReportsPage({
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id, await getTranslations("pos"))} data-testid="pos-report-module-tabs" />
-      {allowed.length === 0 && kind === "credit" ? (
+      {allowed.length === 0 && kind === "reconcile" ? (
+        // POS P3-SKEL U ▸ CD-SKELU-10: ?kind=reconcile โดยไม่มีสิทธิ์รายงานที่สาขาใด = การ์ดปฏิเสธของรายงานกระทบยอด (ไม่เรียกเซิร์ฟเวอร์) ◂
+        <div role="alert" className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-reconcile-denied">
+          {t("reconcile.denied")}
+        </div>
+      ) : allowed.length === 0 && kind === "credit" ? (
         // POS P3.6U ▸ CD-P36U-9: ?kind=credit โดยไม่มีสิทธิ์รายงาน = การ์ดปฏิเสธของรายงานลูกหนี้ (ไม่เรียกเซิร์ฟเวอร์) ◂
         <div role="alert" className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-credit-denied">
           {t("credit.denied")}

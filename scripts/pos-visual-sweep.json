@@ -700,6 +700,46 @@
       "states": true,
       "after": "P3.6U",
       "why": "same states LOCALE=en · owner 24 + cashier 10 · 22 Oct 2026"
+    },
+    {
+      "id": "p3-skel-u-th",
+      "wo": "p3-skel-u",
+      "pages": [
+        "settings",
+        "register",
+        "sales",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3-SKEL U",
+      "why": "P3-SKEL U 22 states (settings-channel-creds draft/complete/keymissing · settings-channels-platform-chips · settings-slip-card · settings-slip-verify-sheet · settings-etax-sheet · settings-devices-lan none/agents/token · paydlg-intent-slip · paydone-transfer-slip 1440 · taxinv-etax-line · bills-drawer-slips · bills-slip-sheet · bills-slip-reject-invalid · reports-reconcile owner/denied) · th owner 49 + cashier 15 · QC5 build Vu6j07QrT3WCiJnRhoiWh @92e1943a (fix1 attribute-only + harness fix2 60d24d0a reused it) · vis-skelu-qc5-20261022T094757Z 93/93 · slip image 404 on QC5 (no slip storage) whitelisted for the fixture file only · 22 Oct 2026"
+    },
+    {
+      "id": "p3-skel-u-en",
+      "wo": "p3-skel-u-en",
+      "pages": [
+        "settings",
+        "register",
+        "sales",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3-SKEL U",
+      "why": "same states LOCALE=en · owner 22 + cashier 7 · 22 Oct 2026"
     }
   ]
 }

@@ -47,6 +47,16 @@ import { visibleBoardOptions } from "@/lib/modules/kanban/links";
 import { getIntegrations } from "@/lib/modules/kanban/integrations";
 import { listRoomOptions, liveChannelIds } from "@/lib/modules/meeting";
 // ◂ POS P3.8U
+// POS P3-SKEL U ▸ CD-SKELU-2: ตัวอ่านฝั่งหน้า — สถานะ credentials ของช่องทางแพลตฟอร์ม (≤ 5 ต่อสาขา · เฉพาะผู้ถือ pos.channel.manage) ◂
+import { readIntegrationCredentials } from "@/lib/modules/pos/integration-creds";
+import { PLATFORM_PROVIDERS } from "@/lib/modules/pos/platform/types";
+import type { PlatformConn, PlatformInfo } from "./ChannelsPanel";
+import { slipRetentionDaysOf } from "@/lib/modules/pos/payment-slip";
+import { SLIP_VERIFY_PROVIDERS } from "@/lib/modules/pos/slip-verify";
+import { ETAX_PROVIDERS } from "@/lib/platform/etax/provider";
+import { SlipSettingsCard } from "./SlipSettingsCard";
+import { listPrintAgents, PRINT_PRINTER_PORTS } from "@/lib/modules/pos/print-relay";
+// ◂ POS P3-SKEL U
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -183,6 +193,27 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           };
         })()
       : null;
+  // POS P3-SKEL U ▸ CD-SKELU-2/4: แท็บช่องทางขาย — ชิปสถานะ credentials ของช่องทางแพลตฟอร์ม (อ่านแบบปิดบัง · ไม่เขียนอะไร · ไม่มีค่าลับในผล) ◂
+  const posActor = { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions };
+  const platformInfo: PlatformInfo | null =
+    canRead && tab === "channels" && canManageChannels
+      ? await (async () => {
+          const chans = await prisma.salesChannel.findMany({ where: { tenantId, systemId: id, unitId, code: { in: [...PLATFORM_PROVIDERS] }, archivedAt: null }, select: { id: true, code: true }, orderBy: { code: "asc" }, take: 5 });
+          const statuses: Record<string, PlatformConn> = {};
+          for (const c of chans) {
+            const r = await readIntegrationCredentials({ tenantId, systemId: id, unitId }, posActor, { kind: "PLATFORM", provider: c.code, channelId: c.id });
+            if (r.ok === true) statuses[c.id] = !r.keyConfigured ? "keyMissing" : r.status === "COMPLETE" ? "complete" : "awaitingCreds";
+          }
+          return { codes: [...PLATFORM_PROVIDERS], isOwner: m.role === "OWNER", statuses };
+        })()
+      : null;
+  // POS P3-SKEL U ▸ CD-SKELU-5/8: ผู้ให้บริการจากทะเบียน (รหัส + ชื่อแบรนด์ · ไม่เลือกให้ — W20) · อายุเก็บสลิป (อ่านอย่างเดียว · W19) ◂
+  const slipVerifyOptions = Object.values(SLIP_VERIFY_PROVIDERS).map((p) => ({ code: p.code, label: p.label }));
+  const etaxOptions = Object.values(ETAX_PROVIDERS).map((p) => ({ code: p.code, label: p.label }));
+  // POS P3-SKEL U ▸ CD-SKELU-9: แท็บเครื่อง — ตัวช่วยพิมพ์ของสาขา (ไม่มีโทเคน/แฮช) อ่านครั้งเดียวต่อการเปิดจอ ◂
+  const lanRead = canRead && canManageDevices && tab === "devices" ? await listPrintAgents({ tenantId, systemId: id, unitId }, posActor) : null;
+  const lanProps = lanRead && lanRead.ok === true ? { agents: lanRead.agents, ports: [...PRINT_PRINTER_PORTS] } : null;
+  const etaxRow = canRead && tab === "shark" ? { canManage: evaluate(m, { module: "pos", action: "pos.settings.manage", unitId }), isOwner: m.role === "OWNER", providers: etaxOptions } : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -207,12 +238,12 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             <SettingsRefusal message={t("staff.refusal")} />
           )
         ) : tab === "shark" ? (
-          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ chat={chatCard} /* POS P3.7U ◂ */ />
+          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ chat={chatCard} /* POS P3.7U ◂ */ etax={etaxRow} /* POS P3-SKEL U ▸ CD-SKELU-8 ◂ */ />
         ) : tab === "board" && boardTab ? (
           <BoardSettings key={unitId} systemId={id} data={boardTab} /* POS P3.8U ▸ CD-P38U-1 ◂ */ />
         ) : tab === "channels" ? (
           <>
-            <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
+            <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} platform={platformInfo} /* POS P3-SKEL U ▸ CD-SKELU-4 ◂ */ />
             {/* POS P3.6U ▸ CD-P36U-10 (W17): สมาชิกบนบิลออเดอร์ — เจ้าของร้านสลับได้ · คนอื่นเห็นสถานะ ◂ */}
             <OrderMemberCard systemId={id} isOwner={m.role === "OWNER"} initial={posOrderMemberOnBill(sys.settings)} />
           </>
@@ -232,11 +263,21 @@ export default async function PosSettingsPage({ params, searchParams }: { params
                 <CreditSettingsCard systemId={id} unitId={unitId} isOwner={m.role === "OWNER"} initial={creditCard.credit} canManage={creditCard.canManageCredit} hasCrm={creditCard.hasCrm} accounts={creditCard.accounts} names={creditCard.names} />
               ) : null
             } /* POS P3.6U ▸ CD-P36U-1 ◂ */
+            slipCard={
+              <SlipSettingsCard
+                systemId={id}
+                unitId={unitId}
+                retentionDays={slipRetentionDaysOf(sys.settings)}
+                canVerify={evaluate(m, { module: "pos", action: "pos.settings.payment", unitId })}
+                isOwner={m.role === "OWNER"}
+                providers={slipVerifyOptions}
+              />
+            } /* POS P3-SKEL U ▸ CD-SKELU-5 ◂ */
           />
         ) : tab === "receipt" ? (
           <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} branch={receiptBranch} /* POS P2.11U ▸ มติ 8 ◂ */ />
         ) : canManageDevices ? (
-          <DeviceSettings systemId={id} unitId={unitId} shopName={sys.name} />
+          <DeviceSettings systemId={id} unitId={unitId} shopName={sys.name} lan={lanProps} /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */ />
         ) : (
           <SettingsRefusal message={t("devicesRefusal")} />
         )}

@@ -514,6 +514,10 @@ export function TaxInvoiceDialog(p: Props) {
                     setErrKey(null);
                   }}
                 />
+                {/* POS P3-SKEL U ▸ CD-SKELU-8: บรรทัดจาง "ส่ง e-Tax ทางอีเมล · รอผู้ให้บริการ" (ไม่มีช่องติ๊ก · ไม่ส่ง) ◂ */}
+                <p data-testid="pos-taxinv-etax-pending" className="text-[12px] text-[color:var(--color-muted)]">
+                  {tp("platform.etax.pending")}
+                </p>
               </div>
             </div>
 

@@ -43,10 +43,16 @@ function Knob({ on, dim }: { on: boolean; dim?: boolean }) {
   );
 }
 
-type Props = { systemId: string; unitId: string; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept (ค่าตั้งรับออเดอร์ในลิ้นชัก QR) ◂ */ canAccept?: boolean; storefront: Storefront; wide?: boolean };
+type Props = { systemId: string; unitId: string; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept (ค่าตั้งรับออเดอร์ในลิ้นชัก QR) ◂ */ canAccept?: boolean; storefront: Storefront; wide?: boolean; /** POS P3-SKEL U ▸ CD-SKELU-4 ◂ */ platform?: PlatformInfo | null };
+// POS P3-SKEL U ▸ CD-SKELU-4: สถานะ credentials ของช่องทางแพลตฟอร์ม (หน้าเพจอ่านผ่าน readIntegrationCredentials · เฉพาะผู้ถือ pos.channel.manage) ·
+//   ชิปใต้ชื่อแถว (testid pos-channel-conn-<code> — pos-channel-status-<code> เป็นชิปใช้งาน/ปิดอยู่เดิม) · "เชื่อมแล้ว/รอยืนยันบัญชี" สงวนไว้ให้ ready:true (ไม่แสดง) ◂
+export type PlatformConn = "awaitingCreds" | "complete" | "keyMissing";
+export type PlatformInfo = { codes: readonly string[]; isOwner: boolean; statuses: Record<string, PlatformConn> };
+const CONN_KEY: Record<PlatformConn, string> = { awaitingCreds: "status.awaitingCreds", complete: "status.complete", keyMissing: "status.keyMissingShort" };
 
-export function ChannelsPanel({ systemId, unitId, canManage, canAccept = false, storefront, wide = false }: Props) {
+export function ChannelsPanel({ systemId, unitId, canManage, canAccept = false, storefront, wide = false, platform = null /* POS P3-SKEL U ◂ */ }: Props) {
   const t = useTranslations("pos.channel") as ChannelT;
+  const tpl = useTranslations("pos.platform"); // POS P3-SKEL U ▸ CD-SKELU-4 ◂
   const tr = useTranslations("pos.register");
   const [items, setItems] = useState<ChannelItem[] | null>(null);
   const [loadErr, setLoadErr] = useState(false);
@@ -159,6 +165,16 @@ export function ChannelsPanel({ systemId, unitId, canManage, canAccept = false, 
             <span className="min-w-0 flex-1">
               <b className="block truncate text-[13px] font-semibold">{name}</b>
               <span className="block truncate text-[11.5px] text-[color:var(--color-muted)]">{sub(c)}</span>
+              {/* POS P3-SKEL U ▸ CD-SKELU-4: ชิปสถานะ credentials (ผู้ถือ pos.channel.manage เท่านั้น · MANUAL ยังเป็นทางทำงาน) ◂ */}
+              {platform?.statuses[c.id] && !c.archived ? (
+                <span
+                  data-testid={`pos-channel-conn-${code}`}
+                  data-conn={platform.statuses[c.id]}
+                  className={`mt-1 inline-flex h-6 max-w-full items-center truncate rounded-[7px] border px-2 text-[11px] ${platform.statuses[c.id] === "keyMissing" ? "border-[color:var(--color-danger)] text-[color:var(--color-danger)]" : "text-[color:var(--color-ink-soft)]"}`}
+                >
+                  {tpl(CONN_KEY[platform.statuses[c.id]!])}
+                </span>
+              ) : null}
             </span>
           </button>
           <span className="flex shrink-0 items-center gap-2 md:gap-3">
@@ -317,6 +333,7 @@ export function ChannelsPanel({ systemId, unitId, canManage, canAccept = false, 
           takenCodes={codes}
           atLimit={atLimit}
           onClose={() => setDrawer(null)}
+          platform={platform ? { codes: platform.codes, isOwner: platform.isOwner } : null} // POS P3-SKEL U ▸ CD-SKELU-4 ◂
           onSaved={(c) => {
             upsert(c);
             setSaved(c.id);

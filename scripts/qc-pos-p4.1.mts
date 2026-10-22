@@ -48,6 +48,8 @@ const CHECKS: readonly Def[] = [
   D("R7", "S", "[§4 R7] F15.3a + F15.3b ของ scripts/fitness-pos.mts เขียว (runPosFitness ตัวจริง) · probe: สำเนาทะเบียนที่มีแถวผี + ขาดแถวปุ่มจริง → ทั้งสองแดง"),
   D("R8", "S", "[§4 R8] ไม่มี testid ผีในข้อสอบ: ทุก testid ที่ qc-pos-* / visual-pos.mts อ้าง (tid(…) · [data-testid=…] · getByTestId) มีในทะเบียน หรือในโค้ด src (หรือ $foreign)"),
   D("R9", "S", "[§4 R9] hiddenFor ⊆ {owner manager cashier public} · ไม่ทับ roles (≠ roles)"),
+  // POS P4.1 builder ▸ ORACLE-EDIT มติ W8 (ผู้คุม B 22 ต.ค. 07:3xZ · CD-P42-W8 "W8 ใช่"): ทุกแถวหน้าพนักงานต้องอ้างผู้จัดการ ◂
+  D("R9b", "S", "[W8 · CD-P42-W8] ทุกแถวที่ไม่ใช่หน้าสาธารณะระบุ manager ใน roles หรือ hiddenFor (ตัวกด P4.2 ไม่มีแถว skip no-role-claim ของผู้จัดการ)"),
   D("R10", "S", "[§4 R10 · V4] การ์ดปฏิเสธทุกใบ (refusals ของ pos-visual-sweep.json + data-testid pos-…-refusal/-refused ในโค้ด POS) มีแถวทะเบียน expect ui · state \"refused\""),
   D("R11", "S", "[§4 R11 · ⚠️6 · มติ 5] แถว mutation/download ที่ไปถึงตัวเขียนเงิน (MONEY_ACTIONS · db ชี้ตารางเงิน) มี safety ∈ money|external|counter · ตัวจับแถวเงินเจอ ≥ 1 แถว"),
   D("R12", "S", "[§4 R12 · มติ 5] safety ถูกค่า (money|external|counter) · แถวภายนอก (พิมพ์ · LINE · Beam · e-Tax · LAN agent · webhook) = external · แถวเลขเอกสาร (ใบกำกับ/ใบลดหนี้/ตัวนับ) = counter|external · ไม่มี safety บนแถว navigate/modal"),
@@ -164,11 +166,18 @@ const MONEY_ACTIONS = [
   "createPaymentIntentAction", "confirmPaymentIntentManualAction", "cancelPaymentIntentAction",
   "payOrderAction", "acceptOfflineSaleAction", "recordCashMovementAction", "confirmSlipAction",
   "sellGiftCardAction", "reloadGiftCardAction", "transferGiftCardAction", "POST /api/pos/sync",
+  // POS P4.1 fix1 ▸ ORACLE-EDIT มติ CD-P41-F2 (ผู้คุม B 22 ต.ค. 12:30Z): เขียนราคา/กติการาคา/ราคาช่องทาง/รอบราคาเป็นชุด/ราคาขายเดิม AccountProduct/ล้าง-คัดลอกราคา/วงเงินเครดิต = money (เปลี่ยนยอดที่บิลเก็บ · fail-closed) ◂
+  "setChannelPricesAction", "bulkChannelMarkupAction", "copyUnitPricesAction", "savePriceRuleAction", "archivePriceRuleAction",
+  "setItemSalePriceAction", "saveCreditAccountAction",
+  // POS P4.1 fix2 ▸ ORACLE-EDIT มติ CD-P41-F20 (ผู้คุม B 22 ต.ค. 13:36Z): ค่าตั้งที่เปลี่ยนยอดที่บิลเก็บ/ค่าตอบแทนพนักงาน = money (เพดานส่วนลด · ค่าคอม · สวิตช์เครดิต · พร้อมเพย์ปลายทาง · fail-closed) — ตัวเขียนที่ใช้ร่วมกับค่าตั้งอื่น (updatePosGeneralSettingsAction/updatePosPaymentSettingsAction/saveChannelAction) ไม่ใส่: แถว 482 857 924 537 = money ตามมติ ไม่ใช่ตามตัวจับ ◂
+  "updatePosDiscountCapsAction", "updatePosStaffCommissionAction", "updatePosCreditSettingsAction", "updatePosUnitPromptpayAction",
 ];
 /** R11: ตารางเงินใน expect.db */
-const MONEY_MODELS = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosDepositTxn", "GiftCard", "GiftCardTxn", "PosCashMovement"];
+const MONEY_MODELS = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosDepositTxn", "GiftCard", "GiftCardTxn", "PosCashMovement",
+  "PosProductChannelPrice", "PosPriceRule", "AccountProduct", "PosCreditAccount"]; // POS P4.1 fix1 ▸ ORACLE-EDIT CD-P41-F2: ตารางราคา/กติการาคา/ราคาขายเดิม/วงเงินเครดิต ◂
 /** R12: ผลภายนอก (พิมพ์ · LINE · Beam · e-Tax · LAN agent · webhook) */
-const EXTERNAL_ACTIONS = ["sendReceiptAction", "reprintReceiptAction", "requestChatPaymentAction", "kitchenSlipPayloadAction"];
+const EXTERNAL_ACTIONS = ["sendReceiptAction", "reprintReceiptAction", "requestChatPaymentAction", "kitchenSlipPayloadAction",
+  "reportReceiptIssueAction", "registerPrintAgentAction"]; // POS P4.1 fix2 ▸ ORACLE-EDIT มติ CD-P41-F19: outbox pos.receipt.issue_reported → ตอบรับ LINE (pos-receipt-bridges.ts:64-70) · ลงทะเบียน LAN print agent ◂
 const EXTERNAL_TEXT = /\bBeam\b|\be-?Tax\b|\bwebhook\b|\bLAN\b|print-agent|เครื่องพิมพ์|พิมพ์(ใบ|ซ้ำ|สำเนา|ครัว|บิล)|print\(\)|\bLINE\b(?! MAN)/; // ตัวพิมพ์ตรง (Line ของ PosTableSplit/Part/Line ไม่ใช่ LINE) · LINE MAN = ช่องทาง ไม่ใช่การส่ง
 /** แถวตั้งค่า (เก็บค่า printerConfig/settings) ไม่ใช่ผลภายนอก แม้ข้อความพูดถึงเครื่องพิมพ์/Beam */
 const CONFIG_ROW = /\bupdateDeviceAction\b|printerConfig|\b(update|save|set)\w*Settings?\w*Action\b/;
@@ -572,6 +581,13 @@ function r9(inv: Inv): string[] {
   }
   return p;
 }
+/** POS P4.1 builder ▸ ORACLE-EDIT มติ W8: แถวหน้าพนักงาน (ไม่ใช่ /r /q /d /developers) ต้องมี manager ใน roles หรือ hiddenFor — หน้าสาธารณะ = roles ["public"] (R4) ไม่นับ ◂ */
+function r9b(inv: Inv): string[] {
+  const staff = rowsOf(inv).filter((r) => !isPublicPage(String(r?.page ?? "")));
+  const bad = staff.filter((r) => !(Array.isArray(r?.roles) && r.roles.includes("manager")) && !(Array.isArray(r?.hiddenFor) && r.hiddenFor.includes("manager")));
+  if (!staff.length) return ["ไม่พบแถวหน้าพนักงานเลย (ตัวตรวจพัง/ทะเบียนหาย)"];
+  return bad.length ? [`${bad.length}/${staff.length} แถวหน้าพนักงานไม่ระบุ manager (roles/hiddenFor) — ต่อหน้า: ${perPage(bad)} — ${bad.slice(0, 8).map(tidOf).join(", ")}`] : [];
+}
 function r10(inv: Inv, F: Facts): string[] {
   if (!F.refusals.length) return ["ไม่พบการ์ดปฏิเสธเลย (ตัวตรวจพัง)"];
   const rows = rowsOf(inv);
@@ -789,6 +805,17 @@ await step("R9", () => {
     if (s) s.hiddenFor = ["nobody"];
   });
   judge("R9", "hiddenFor ⊆ บทบาท · ไม่ทับ roles", r9(INV), r9(pr), `${rowsOf(INV).filter((r) => Array.isArray(r?.hiddenFor) && r.hiddenFor.length).length} แถวมี hiddenFor ถูกต้อง`);
+});
+await step("R9b", () => {
+  const pr = probeInv(INV, (c) => {
+    const r = firstRow(c, (x) => !isPublicPage(String(x?.page ?? "")));
+    if (r) {
+      r.roles = (Array.isArray(r.roles) ? r.roles : []).filter((x: string) => x !== "manager");
+      r.hiddenFor = (Array.isArray(r.hiddenFor) ? r.hiddenFor : []).filter((x: string) => x !== "manager");
+    }
+  });
+  const staff = rowsOf(INV).filter((r) => !isPublicPage(String(r?.page ?? "")));
+  judge("R9b", "ทุกแถวหน้าพนักงานระบุ manager", r9b(INV), r9b(pr), `${staff.length} แถวหน้าพนักงาน · manager ใน roles ${staff.filter((r) => Array.isArray(r?.roles) && r.roles.includes("manager")).length} · ใน hiddenFor ${staff.filter((r) => Array.isArray(r?.hiddenFor) && r.hiddenFor.includes("manager")).length}`);
 });
 await step("R10", () => {
   const F2: Facts = { ...F, refusals: [...F.refusals, "pos-p41-probe-refusal"] };

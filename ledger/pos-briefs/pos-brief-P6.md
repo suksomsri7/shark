@@ -150,3 +150,17 @@ Counter +1 each (2) ⇒ the run ends at 55/55 under the P3.12 §10.9 counting ru
 7. Docs: `14-pos.md` rewritten as V2 (the old spec moved to an appendix "v1 design notes"); `sds/modules/pos.md` regenerated AS-BUILT V2 from code (models · events · facade · permissions). `(confirmed · controller B …)`
 8. Skills: only `shark-pos-api` (tracked) is updated + synced; other modules' skills are untouched (the owner's lanes). `(confirmed · controller B …)`
 9. The final HANDOVER doubles as the evidence pack index (CRM §10 + POS §10); owner-only items are marked and do not block the counter. `(confirmed · controller B …)`
+
+### §10 addendum — controller B (22 Oct 07:3xZ): rulings 1–9 **confirmed as drafted**. Owner questions → **W31** (rehearsal of the migration order on a Neon branch copied from prod = real customer data on a throw-away branch; default: allowed only if the branch is deleted the same day and nothing is exported; otherwise rehearse on QC4 only) · **W32** (who runs the production deploy: default = the owner, following `docs/pos/DEPLOY-RUNBOOK.md`; the controller never pushes main or deploys). Order: P6.1 **prep** (runbook rewrite + `verify-prod-pos.mts` + `--self-test` on QC4) may start now as a light lane; the rehearsal and the PR body wait for P3.12/P4/P5 to close.
+
+### §10 addendum 2 — controller B (22 Oct 08:0xZ) on the P6.1 prep findings (`wip/pos-p6.1-prep` 603877ea · notes CD-P61-P1…P10)
+- P1 (5 in-migration indexes on existing tables, 2 inside one-transaction files): do NOT edit applied migrations. Runbook gets a pre-step "owner-run read-only row counts (`verify-prod-pos.mts --counts`)"; if `PosSale`/`RestaurantOrder`/`GiftCard` exceed the threshold the runbook states (100k rows), the owner creates those indexes by hand with CONCURRENTLY under the same name **before** `migrate deploy` and the migration's `CREATE INDEX` must be made idempotent in a NEW migration-safe way = documented as a manual step only (Prisma will not skip it) → **W33** asks the owner for the counts now.
+- P2 (4 files without `lock_timeout`): bound at the session level via the deploy connection URL option (`?options=-c%20lock_timeout%3D5s`) in the runbook command + pre-flight; no migration edits.
+- P3: yes — the rehearsal branch host is added to the allowlist in a same-day commit and removed after.
+- P4 (15 hand-made indexes not in `prisma/schema`): follow-up S card "schema parity" before P6 close (add `@@index` declarations so `migrate diff` stops proposing drops); runbook notes the risk until then.
+- P5: device-key env name = `POS_DEVICE_KEY` (P5.2 D1c fix round uses it; unset ⇒ pairing refused).
+- P6: **W34** — the owner confirms the minute crontab runs on the prod VPS (else `pos.staffCommission.payroll` / `pos.slip.purge` never fire); runbook has a verification step.
+- P7: accepted — drop the `qc-prisma.sh`/`ep-frosty-lab` merge item.
+- P8: the two prod writer scripts (`backfillWebPrices` CLI · P1.9 `shift.required.register=false` data step) = P6.1 execution work (builder, dry-run + prod guard + R1) after P3.12/P4/P5 close.
+- P9: negative stock stays WARN; rollout not blocked; owner sees it in the verify report.
+- P10: brief counts corrected here: **12** existing tables altered · **5** enum-value migrations · prod host comes from `PROD_HOST_MARK` in `qc-env-guard.mts`, not `prodmig.cjs`.

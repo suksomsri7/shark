@@ -264,6 +264,8 @@ const at = (o: unknown, path: string): unknown => path.split(".").reduce<unknown
 // ── git (หมุด = 72669941 · ฐานของใบ P3.7) ──
 const BASE_REV = "72669941";
 const P37_PIN = process.env.P37_PIN || "42b823e9"; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.7 CD-B5): หมุดของเลน (ฐานของผู้สร้าง S)
+const LANE_PIN = process.env.P37_LANE_PIN || "137aa93a"; // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · หมุดเลนหลังปิด P3 = ฐานที่ยอมรับเพิ่ม (ท้าย bases()) · old: ไม่มี LANE_PIN (ฐาน = 72669941 / P37_PIN เท่านั้น) · revert: env P37_LANE_PIN=42b823e9 or remove LANE_PIN)
+//   probe 22.10: บรรทัดไม่ marked ท้าย outbox-consumers.ts → ST3 แดง · คอมเมนต์ท้าย prisma/schema/pos.prisma → ST3 แดง "prisma/ เปลี่ยน" (wo-notes/pos-P3.12.md §probe)
 function gitBuf(args: string[]): Buffer | null {
   try {
     return execFileSync("git", ["-C", ROOT, ...args], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 });
@@ -287,11 +289,14 @@ function bases(): string[] {
   };
   add(gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`]));
   add(gitStr(["rev-parse", "--verify", "-q", `${P37_PIN}^{commit}`])); // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.7 CD-B5): เดิมฐานร่วม HEAD กับ session/pos (ท้องถิ่น + origin) — ตัดทิ้ง ใช้หมุดคงที่
+  add(gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])); // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: ไม่มีบรรทัดนี้ · revert: env P37_LANE_PIN=42b823e9 or delete the line)
   basesCache = out;
   return out;
 }
 /** ฐานที่ใกล้ที่สุด (หมุด P37_PIN ถ้ามี ไม่งั้น 72669941) — ใช้หา "ไฟล์ที่ใบนี้เปลี่ยน" (ORACLE-EDIT P3.7 CD-B5) */
-const nearBase = (): string => bases()[bases().length - 1] ?? BASE_REV;
+// ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: bases()[bases().length - 1] ?? BASE_REV · revert: env P37_LANE_PIN=42b823e9 or restore the old line) — LANE_PIN ถ้ามีจริง › P37_PIN › BASE_REV
+const revOk = (r: string): string | null => gitStr(["rev-parse", "--verify", "-q", `${r}^{commit}`])?.trim() || null;
+const nearBase = (): string => revOk(LANE_PIN) ?? revOk(P37_PIN) ?? BASE_REV;
 const showAt = (path: string, rev = BASE_REV): string | null => gitStr(["show", `${rev}:${path}`]);
 /** ไฟล์ตรงฐานใดฐานหนึ่งทุกไบต์ — null = ตรง · ไม่งั้นเหตุผล */
 function sameAsBase(path: string): string | null {
@@ -594,7 +599,8 @@ async function runStatic(): Promise<void> {
     const perBase = bases().map((rev) => ({ rev, v: hunkViolations(rev) }));
     const best = perBase.sort((a, b) => a.v.length - b.v.length)[0];
     if (best && best.v.length) p.push(...best.v.map((x) => `[${best.rev.slice(0, 8)}] ${x}`));
-    chk("ST3", p.length === 0, `หมุดเทียบ ${BASE_REV} (หรือหมุดเลน ${P37_PIN}) ครบ`, P8(p) || "ครบ (ตรงฐาน/รอยต่อเท่านั้น)");
+    chk("ST3", p.length === 0, `หมุดเทียบ ${BASE_REV} (หรือหมุดเลน ${P37_PIN} / ${LANE_PIN}) ครบ`, // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: (หรือหมุดเลน ${P37_PIN}) · revert: restore)
+      P8(p) || "ครบ (ตรงฐาน/รอยต่อเท่านั้น)");
   });
   /** ข้อผิดของรอยต่อใน outbox-consumers.ts · chat/index.ts · order.ts เทียบฐาน rev */
   function hunkViolations(rev: string): string[] {

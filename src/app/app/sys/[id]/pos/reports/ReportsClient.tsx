@@ -25,6 +25,7 @@ import { DATE_OVERLAY_INPUT, DateOverlay, openDatePicker } from "@/components/po
 import { formatBaht } from "@/lib/ui/money";
 import { posReportAction, posReportCsvAction } from "@/lib/modules/pos/report-actions";
 import { bkkHm, Icon, prevRangeOf, rangeLabel, ReportsOverview } from "./ReportsOverview";
+import { ReconcileView } from "./ReconcileView"; // POS P3-SKEL U ▸ CD-SKELU-10: แท็บกระทบยอดรับเงิน ◂
 import { channelDisplayName } from "@/components/pos/settings/channel-text"; // POS P2.11U ◂
 // POS P3.8U ▸ CD-P38U-7: ปุ่ม "สร้างงานในบอร์ด" + ชิปการ์ดของแถวจุดผิดปกติ (กุญแจ posBoardKeys.anomaly · ตัวอ่านชิป posBoardCardsAction) ◂
 import { createAnomalyCardAction } from "@/lib/pos-board-actions";
@@ -64,7 +65,7 @@ import type {
 
 type Unit = { id: string; name: string };
 /** R4 — "overview" = แดชบอร์ดภาพ 08 (ไม่ใช่ชนิดรายงานของเซิร์ฟเวอร์ · CSV ของภาพรวม = daily) */
-export type ViewKind = ReportKind | "overview";
+export type ViewKind = ReportKind | "overview" | "reconcile"; // POS P3-SKEL U ▸ CD-SKELU-10: + reconcile (ไม่ใช่ ReportKind · แขนงของตัวเอง) ◂
 type View = { kind: ViewKind; from: string; to: string; unitId: string };
 type Props = {
   systemId: string;
@@ -92,7 +93,7 @@ type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
 /** ลำดับแท็บตามสเปก: overview (R4) · daily · products · staff · payments · margin · shifts · tax */
 const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels"]; // POS P2.11U ▸ มติ 7: + channels ◂
 /** POS P2.12U ▸ แท็บใหม่ (ต่อท้าย · testid pos-reports-tab-<kind>) ◂ */
-type NewKind = "branches" | "hourly" | "anomalies" | "commission" | "credit"; // POS P3.5U ▸ + commission ◂ · POS P3.6U ▸ + credit ◂
+type NewKind = "branches" | "hourly" | "anomalies" | "commission" | "credit" | "reconcile"; // POS P3.5U ▸ + commission ◂ · POS P3.6U ▸ + credit ◂ · POS P3-SKEL U ▸ + reconcile ◂
 /** ไอคอนจากภาพ 08 (ปฏิทิน · ร้าน · ส่งออก) */
 const I_CAL = ["M6 5h12a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 18 21H6a2.5 2.5 0 0 1-2.5-2.5v-11A2.5 2.5 0 0 1 6 5Z", "M3.5 10h17M8 3v4M16 3v4"] as const;
 const I_SHOP = ["M4 9V4h16v5", "M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z", "M9.5 13h5"] as const;
@@ -812,6 +813,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
   const rangeError = baseRangeError ?? (view.kind === "hourly" && hourlyTooLong ? "hourly.tooLong" : null);
   // POS P3.5U ▸ มติ 8: ไม่ใช่ผู้ดูเงินเดือน + ?kind=commission = การ์ดปฏิเสธ (ไม่เรียกเซิร์ฟเวอร์) ◂
   const commissionDenied = view.kind === "commission" && !canPayroll;
+  const reconcile = view.kind === "reconcile"; // POS P3-SKEL U ▸ CD-SKELU-10: ตารางกลาง/CSV/PDF ของหัวหน้าไม่ใช้ (ReconcileView โหลดเอง) ◂
   // ภาพรวมไม่ใช่ชนิดของเซิร์ฟเวอร์ ⇒ CSV ของภาพรวม = daily (R4 §2)
   const target = useCallback((v: View) => ({ systemId, kind: (v.kind === "overview" ? "daily" : v.kind) as ReportKind, from: v.from, to: v.to, ...(v.unitId ? { unitId: v.unitId } : {}) }), [systemId]);
   const [ovGeneratedAt, setOvGeneratedAt] = useState<string | null>(null);
@@ -850,7 +852,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
     } catch {
       /* URL เป็นแค่ความสะดวก — พังไม่กระทบรายงาน */
     }
-    if (rangeError || view.kind === "overview" || commissionDenied) {
+    if (rangeError || view.kind === "overview" || commissionDenied || view.kind === "reconcile" /* POS P3-SKEL U ◂ */) {
       // ภาพรวมโหลดการ์ดของตัวเอง (ReportsOverview) — ตารางชนิดเดียวไม่ต้องเรียก
       seq.current++;
       setReport(null);
@@ -861,7 +863,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
   }, [view, rangeError, load, commissionDenied]);
 
   const downloadCsv = async () => {
-    if (csvBusy || rangeError || commissionDenied) return;
+    if (csvBusy || rangeError || commissionDenied || reconcile /* POS P3-SKEL U ◂ */) return;
     setCsvBusy(true);
     setCsvErrorCode(null);
     try {
@@ -893,12 +895,12 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
   const shownError = rangeError ? t(rangeError) : errorCode ? t(refusalKey(errorCode)) : null;
   const overview = view.kind === "overview";
   // POS P2.12U ▸ แท็บใหม่ที่ผู้ใช้นี้เห็น ◂
-  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly", ...(canAnomaly ? (["anomalies"] as const) : []), ...(canPayroll ? (["commission"] as const) : []), ...(creditOn ? (["credit"] as const) : [])]; // POS P3.5U ▸ + commission ◂ · POS P3.6U ▸ + credit (เปิดวางบิล) ◂
+  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly", ...(canAnomaly ? (["anomalies"] as const) : []), ...(canPayroll ? (["commission"] as const) : []), ...(creditOn ? (["credit"] as const) : []), "reconcile" /* POS P3-SKEL U ▸ CD-SKELU-10: ผู้ถือ pos.report.view (ทุกคนที่เห็นจอนี้) ◂ */]; // POS P3.5U ▸ + commission ◂ · POS P3.6U ▸ + credit (เปิดวางบิล) ◂
   const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
   const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
   const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[8.75rem]";
   // POS P2.12U ▸ มติ 1: PDF = หน้าพิมพ์ pos/reports/print ในแท็บใหม่ ด้วยตัวกรองเดียวกับจอ (ภาพรวม = เอกสารสรุปหลายส่วน) · ช่วงผิด = ปุ่มปิด ◂
-  const pdfHref = rangeError || commissionDenied
+  const pdfHref = rangeError || commissionDenied || reconcile /* POS P3-SKEL U ◂ */
     ? null
     : `/app/sys/${systemId}/pos/reports/print?${new URLSearchParams({ kind: view.kind, from: view.from, to: view.to, ...(view.unitId ? { unit: view.unitId } : {}), locale: locale.startsWith("en") ? "en" : "th" }).toString()}`;
   const infoText = prev ? `${ovGeneratedAt ? `${t("overview.upToDate", { time: bkkHm(ovGeneratedAt, locale) })} · ` : ""}${t("overview.compare", { range: rangeLabel(prev.from, prev.to, locale) })}` : "";
@@ -909,7 +911,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
       {/* R6 V4: ปุ่ม CSV อยู่แถวเดียวกับชื่อเสมอ (ภาพ 08) — ≥ xl ทุกอย่างแถวเดียว ข้อความสถานะตัดท้าย (title = เต็ม) · < xl ตัวกรอง + สถานะลงแถวถัดไป */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3" data-testid="pos-report-header">
         <h2 className="order-1 text-2xl font-bold tracking-tight">{overview ? t("overview.title") : t("title")}</h2>
-        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost order-2 ml-auto min-h-[44px] shrink-0 whitespace-nowrap text-sm xl:order-3" disabled={csvBusy || !!rangeError || commissionDenied || (!overview && loading)} onClick={() => void downloadCsv()}>
+        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost order-2 ml-auto min-h-[44px] shrink-0 whitespace-nowrap text-sm xl:order-3" disabled={csvBusy || !!rangeError || commissionDenied || reconcile /* POS P3-SKEL U ◂ */ || (!overview && loading)} onClick={() => void downloadCsv()}>
           <Icon d={I_OUT} className="h-[18px] w-[18px]" />
           {csvBusy ? t("downloading") : t("overview.exportCsv")}
         </button>
@@ -1011,7 +1013,10 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
         </div>
       )}
 
-      {overview ? (
+      {reconcile ? (
+        // POS P3-SKEL U ▸ CD-SKELU-10: ทีละสาขา — ร้านสาขาเดียวใช้สาขานั้น · ทุกสาขา = ให้เลือก ◂
+        <ReconcileView systemId={systemId} unitId={view.unitId || (units.length === 1 ? units[0]!.id : "")} from={view.from} to={view.to} maxDays={maxDays} />
+      ) : overview ? (
         rangeError ? (
           <div role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-error">
             {t(rangeError)}

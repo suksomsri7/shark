@@ -25,6 +25,7 @@ import { InlineNote, TabHead } from "./settings-ui";
 import { CARD_HEAD, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type OfflineLive, type PaySummary, type Storefront } from "./shark-ui"; // POS P3.4U ▸ + OfflineLive ◂
 import { ChannelsPanel } from "./ChannelsPanel"; // POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) ◂
 import { ApiKeysCard } from "./ApiKeysCard"; // POS P2.13 ▸ การ์ดคีย์ API (U-lite §7) ◂
+import { EtaxProviderSheet as EtaxProviderView, type EtaxProviderOption } from "./EtaxProviderSheet"; // POS P3-SKEL U ▸ CD-SKELU-8 ◂
 // POS P3.9U ▸ มติ 4: การ์ด AI — สวิตช์จริงของเจ้าของร้าน (updatePosAiSettingsAction {enabled}) + แผ่นตั้งค่าสรุปเช้า · คนอื่นอ่านอย่างเดียว + settings.ai.ownerOnly ◂
 import { getPosAiSettingsAction, updatePosAiSettingsAction } from "@/lib/modules/pos/ai-settings-actions";
 import type { PosAiSettings } from "@/lib/modules/pos/settings-shared";
@@ -55,7 +56,7 @@ const ADD_SYSTEM_HREF = "/app/settings/systems";
 /** ชื่อการ์ดที่เป็นชื่อเฉพาะ (ไม่แปล) */
 const PROPER_TITLE: Partial<Record<PosIntegrationCard["code"], string>> = { CRM: "CRM" };
 
-type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAcceptOrders?: boolean; /** POS P3.4U ▸ มติ 10: การ์ดออฟไลน์ live ◂ */ offline?: OfflineLive | null; /** POS P3.9U ▸ มติ 4 · CD-P39U-3: เจ้าของร้าน + ผู้จัดการที่รับคำเชิญแล้ว (ตัวเลือกผู้รับสรุปเช้า) ◂ */ ai?: { isOwner: boolean; managers: AiManagerOption[] } | null; /** POS P3.7U ▸ CD-P37U-2: ค่าตั้งแชท (settings.pos.chat) + เจ้าของร้านไหม ◂ */ chat?: { isOwner: boolean; settings: PosChatSettings } | null };
+type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAcceptOrders?: boolean; /** POS P3.4U ▸ มติ 10: การ์ดออฟไลน์ live ◂ */ offline?: OfflineLive | null; /** POS P3.9U ▸ มติ 4 · CD-P39U-3: เจ้าของร้าน + ผู้จัดการที่รับคำเชิญแล้ว (ตัวเลือกผู้รับสรุปเช้า) ◂ */ ai?: { isOwner: boolean; managers: AiManagerOption[] } | null; /** POS P3.7U ▸ CD-P37U-2: ค่าตั้งแชท (settings.pos.chat) + เจ้าของร้านไหม ◂ */ chat?: { isOwner: boolean; settings: PosChatSettings } | null; /** POS P3-SKEL U ▸ CD-SKELU-8: แถว e-Tax — ผู้ถือ pos.settings.manage เปิดแผ่นผู้ให้บริการได้ ◂ */ etax?: { canManage: boolean; isOwner: boolean; providers: EtaxProviderOption[] } | null };
 
 function relTime(iso: string, locale: string): string {
   const at = new Date(iso);
@@ -85,7 +86,8 @@ function IconTile({ icon, accent }: { icon: RegisterIconName; accent?: boolean }
   );
 }
 
-export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false, canAcceptOrders = false, offline = null /* POS P3.4U ◂ */, ai = null /* POS P3.9U ◂ */, chat = null /* POS P3.7U ◂ */ }: Props) {
+export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false, canAcceptOrders = false, offline = null /* POS P3.4U ◂ */, ai = null /* POS P3.9U ◂ */, chat = null /* POS P3.7U ◂ */, etax = null /* POS P3-SKEL U ◂ */ }: Props) {
+  const [etaxOpen, setEtaxOpen] = useState(false); // POS P3-SKEL U ▸ CD-SKELU-8 ◂
   const t = useTranslations("pos.settings");
   const tk = useTranslations("pos.settings.shark");
   const tc = useTranslations("pos.settings.cards");
@@ -389,7 +391,8 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
           <span className="shrink-0 whitespace-nowrap text-[color:var(--color-muted)]">{tk("etax")}</span>
           <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
             <span className="inline-flex h-6 items-center rounded-[7px] border px-2 text-[11.5px] text-[color:var(--color-muted)]">{tk("etaxChip")}</span>
-            <button data-testid="pos-settings-card-etax-apply" type="button" disabled title={tk("etaxSoon")} className="btn btn-ghost h-11 rounded-[9px] px-2.5 text-[12px] disabled:opacity-50">
+            {/* POS P3-SKEL U ▸ CD-SKELU-8: "สมัคร" live สำหรับผู้ถือ pos.settings.manage → แผ่นผู้ให้บริการ e-Tax · อื่น = ปิดเหมือนเดิม ◂ */}
+            <button data-testid="pos-settings-card-etax-apply" type="button" disabled={!etax?.canManage} title={etax?.canManage ? undefined : tk("etaxSoon")} className="btn btn-ghost h-11 rounded-[9px] px-2.5 text-[12px] disabled:opacity-50" onClick={() => setEtaxOpen(true)}>
               {tk("etaxApply")}
             </button>
           </span>
@@ -444,6 +447,7 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
           }}
         />
       )}
+      {etaxOpen && etax?.canManage ? <EtaxProviderView systemId={systemId} unitId={unitId} isOwner={etax.isOwner} providers={etax.providers} onClose={() => setEtaxOpen(false)} /> /* POS P3-SKEL U ▸ CD-SKELU-8 ◂ */ : null}
       {confirmOff && (
         <RegisterDialog onDismiss={() => !accBusy && setConfirmOff(false)} locked={accBusy}>
           <div data-testid="pos-settings-account-confirm" className={REG_DIALOG_PANEL} role="alertdialog" aria-modal="true" aria-label={tk("accountOffTitle")}>

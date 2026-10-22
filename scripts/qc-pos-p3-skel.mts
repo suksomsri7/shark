@@ -87,7 +87,7 @@ const CHECKS: readonly Def[] = [
   // ── RC กระทบยอด (R9) ──
   D("RC1", "-", "[R9] reportIntentReconcile(ctx A, MANAGER, {from D1, to D2}) → days ต่อ (วันไทย, kind) {webhookPaid manualPaid lateWebhook paidNotConsumed consumed amountSatang} ตรงตัว · rows 4 ใบ (PAID/CONSUMED เท่านั้น · สาขา A เท่านั้น) flag W OK · M NEEDS_CHECK · L LATE · N REFUND_NEEDED · receiptNo ของ W = บิล · CASHIER → PERMISSION_DENIED · ช่วงกลับหัว → VALIDATION · ร้าน T2 ไม่เห็นแถวของ T"),
   D("RC2", "X2", "[R9] reportIntentReconcileCsv → {ok, csv, filename *.csv} · หัวตรงตัว date,intentId,kind,status,confirmedVia,lateWebhook,amountSatang,receiptNo,beamChargeId,slipStatus,flag · 4 แถวข้อมูล · ไม่มีชื่อ/เบอร์ลูกค้า"),
-  D("RC3", "X5", "[R9 §10-9] importBeamSettlement(OWNER, {csv}) → NOT_CONFIGURED · ใบขอรับเงินของร้านไม่เปลี่ยน · fact [\"promptpayReconcile\", false, \"P3.10\"] ยังเดิม"),
+  D("RC3", "X5", "[R9 §10-9] importBeamSettlement(OWNER, {csv}) → NOT_CONFIGURED · ใบขอรับเงินของร้านไม่เปลี่ยน · fact [\"promptpayReconcile\", false, \"W4\"] ยังเดิม (CD-P312-K1 · เดิม \"P3.10\")"),
   // ── ET e-Tax (R11 R12) ──
   D("ET1", "P", "[R11] normalizeEtaxDocument: เอกสารตัวอย่าง → ok · เลขภาษีผิด/ net+vat ≠ grand / Σ บรรทัด ≠ grand / typeCode แปลก / ไม่มีผู้ขาย → VALIDATION ไม่ throw · renderEtaxXml: <?xml … UTF-8 · ราก TaxInvoice_CrossIndustryInvoice · ExchangedDocument ID/TypeCode 388/IssueDateTime · ผู้ขาย/ผู้ซื้อ (escape & < >) · ไทย UTF-8 ไม่ใช้ &# · บรรทัด 2 · GrandTotalAmount 170.00 · TaxTotalAmount 11.12 · TaxBasisTotalAmount 158.88 · กำหนดได้ (2 ครั้งเท่ากัน) · ยอดเปลี่ยน → ผลเปลี่ยน · แฮชตรึง (ORACLE-EDIT หลังเขียวแรก)"),
   D("ET2", "X3", "[R11] etaxPreview: บิลไม่มี taxInvoiceDocId → NOT_ELIGIBLE · มีใบกำกับแต่ไม่มีอีเมล → NOT_ELIGIBLE · มีใบกำกับ + อีเมล → {ok:true, xml (เลขผู้ซื้อ · ยอดบิล), provider null, state NOT_CONFIGURED} · CASHIER → PERMISSION_DENIED · ร้าน T2 → ปฏิเสธ"),
@@ -263,7 +263,7 @@ function flatKeys(o: unknown, pre = "", out = new Map<string, string>()): Map<st
 //   LANE_PIN = หมุดเลน — ข้อ "ไฟล์ห้ามแตะ / ตรงฐาน / ไม่มี hunk นอกรอยต่อ" (ST1 REST · ST3 หมุด · account/** · รอยต่อ · schema เพิ่มอย่างเดียว) ·
 //   หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4) · 72669941 (ฐานออกแบบเดิม) ไม่มีข้อใดต้องใช้ ⇒ ตัดออก ◂
 const PIN = process.env.PSK_PIN || "959b257a"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · merge P3-SKEL 80314e00: หมุดใบ = ฐานก่อน merge 71c49221 → 959b257a) · ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1 · override ด้วย PSK_PIN) ◂
-const LANE_PIN = process.env.PSK_LANE_PIN || "2d0acc1b"; // ORACLE-EDIT ผู้คุม 22.10 (CD-RP12b · merge P3.7U · re-pin 85c366dd → 2d0acc1b) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP11 · merge P3.9U · re-pin 80314e00 → 85c366dd) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · หมุดเลน = merge commit) · // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดเลนแยกจากหมุดใบ · override ด้วย PSK_LANE_PIN) ◂
+const LANE_PIN = process.env.PSK_LANE_PIN || "50019b25"; // ORACLE-EDIT ผู้คุม 22.10 (CD-RP17 · merge P3-SKEL U · re-pin 2d0acc1b → 50019b25) · ORACLE-EDIT ผู้คุม 22.10 (CD-RP12b · merge P3.7U · re-pin 85c366dd → 2d0acc1b) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP11 · merge P3.9U · re-pin 80314e00 → 85c366dd) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · หมุดเลน = merge commit) · // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: หมุดเลนแยกจากหมุดใบ · override ด้วย PSK_LANE_PIN) ◂
 const BASE_REV = LANE_PIN; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: ชื่อเดิมคงไว้ให้ข้อความ chk · = หมุดเลน) ◂
 function gitBuf(args: string[]): Buffer | null {
   try {
@@ -459,7 +459,7 @@ const CSV_HEADER = "date,intentId,kind,status,confirmedVia,lateWebhook,amountSat
 const SLIP_RETENTION_DEFAULT_D = 1825;
 const SLIP_RETENTION_MIN_D = 90;
 const PRINT_MAX_BYTES = 256 * 1024;
-const PROMPTPAY_FACT = '["promptpayReconcile", false, "P3.10"]';
+const PROMPTPAY_FACT = '["promptpayReconcile", false, "W4"]'; // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-K1 · ป้ายเฟสปิดแล้ว P3 → "P4+" · promptpayReconcile → "W4" · old '["promptpayReconcile", false, "P3.10"]' · fact ยังคง false ตาม §10-9 · revert: คืนตัวอักษรเดิมพร้อมคืนป้ายใน src/lib/pos-integrations.ts)
 const TEXT_AWAIT_TH = "รอ credentials จากเจ้าของ";
 const TEXT_NOKEY_TH = "ยังไม่ตั้งกุญแจ";
 /** ไฟล์ที่ต้องมี + export (ST2) */

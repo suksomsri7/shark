@@ -71,6 +71,7 @@ total = len(man.get("suites", [])) + len(man.get("commands", []))
 # POS HF-FU2 ▸ fix2 N6: ชุดข้อสอบที่จริงไม่พิมพ์ JSON_SUMMARY (exit 0 ได้โดยไม่มีสรุป) — นอกจากนี้ทุก suite ที่ exit 0 ต้องมีสรุปบรรทัดเดียว ◂
 NO_JSON_SUITES = ["qc-restaurant", "qc-nav-functions", "qc-payroll-reverse"]  # POS HF-FU2 ▸ ctl 17 ต.ค.: + qc-payroll-reverse (HR suite พิมพ์แต่สรุปข้อความ · gates114) ◂
 suite_mode = {s["suite"]: s.get("mode") for s in man.get("suites", [])}  # POS HF-FU2 ▸ fix2 N6: kind=suite + mode ◂
+accepted_skip = []  # POS P3.12 ▸ CD-P312-N6b ◂
 rows = []
 for line in open(os.path.join(out, "SUMMARY.txt")).read().splitlines():
     parts = line.split()
@@ -232,6 +233,10 @@ for name, rc in rows:
                 bad6 = "suite exit 0 ไม่มี JSON_SUMMARY"
         elif not isinstance(j6, dict):
             bad6 = "JSON_SUMMARY อ่านไม่ได้"
+        elif j6.get("skipped") is True and isinstance((acc.get(name) or {}).get("skipMatch"), str) and acc[name]["skipMatch"] in "\n".join(L):
+            # POS P3.12 ▸ CD-P312-N6b (ผู้คุม B 22.10): ชุด unforced ที่ SKIP เพราะต้องมีเซิร์ฟเวอร์/ของนอก QC4 (คลาส NEEDS-SERVER) — ยอมรับได้เมื่อแมนิเฟสต์มี accepted.skipMatch และสตริงนั้นอยู่ใน log · ชุดอื่นที่ skipped:true ยังแดงตามเดิม ◂
+            print(f"ACCEPTED {name} 0 — skip: {acc[name].get('reason', '')[:120]}")
+            accepted_skip.append(name)
         else:
             t6, p6 = j6.get("total"), j6.get("passed")
             isint = lambda v: isinstance(v, int) and not isinstance(v, bool)
