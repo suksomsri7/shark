@@ -86,7 +86,7 @@ const CHECKS: readonly Def[] = [
   D("S1.4", "R3", "CRITICAL", "RED", "[action] 🔴 staff A posts employeeId of staff B ⇒ ignored: no leave of B · the new leave is A's own (filedById null)"),
   D("S1.5", "R3", "MAJOR", "RED", "[action] member with hr.leave.request but no employee ⇒ fixed Thai refusal · 0 leaves"),
   D("S1.6", "R3", "CRITICAL", "RED", "[action] 🔴 manager posts employeeId of another tenant / another HR system ⇒ Thai not-found text · 0 leaves"),
-  D("S1.7", "R2", "MAJOR", "RED", "[service] requestLeave for unlinked C without actorUserId ⇒ \"" + T_NO_REQUESTER + "\" · 0 leaves"),
+  D("S1.7", "R2", "MAJOR", "RED", "[service] requestLeave for unlinked C with actorUserId:null (session-less caller) ⇒ \"" + T_NO_REQUESTER + "\" · 0 leaves"),
   D("S1.8", "R3", "MAJOR", "RED", "[action] STAFF holding hr.leave.decide files for C ⇒ allowed · requestedById = filedById = that user"),
   // S2 owner's own leave (R4)
   D("S2.1", "R4", "CRITICAL", "RED", "[action] owner files own leave ⇒ APPROVED · decidedById null · no ApprovalRequest"),
@@ -557,7 +557,7 @@ async function runDb(): Promise<void> {
   const before17 = (await leavesOf(E.c)).length;
   let t17 = "";
   try {
-    await hr.requestLeave(ctxA, { employeeId: E.c, type: "SICK", fromDate: "2031-02-10", toDate: "2031-02-10" });
+    await hr.requestLeave(ctxA, { employeeId: E.c, actorUserId: null, type: "SICK", fromDate: "2031-02-10", toDate: "2031-02-10" });
     t17 = "∅ no refusal";
   } catch (e) {
     t17 = e instanceof Error ? e.message : String(e);
