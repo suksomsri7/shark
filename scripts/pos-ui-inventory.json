@@ -4,14 +4,18 @@
   "$fields": {
     "page": "path เต็มของ route ตามโฟลเดอร์จริง เช่น \"/app/sys/[id]/pos/register\" (ห้ามใส่คำอธิบายต่อท้าย)",
     "testid": "ค่า data-testid ตรงตัวในโค้ด · ชื่อที่สร้างจากตัวแปรเขียนเป็นแพตเทิร์นลงท้าย * (ตัวอักษรที่ไม่ใช่ * ≥ 4)",
-    "kind": "button | link | menu | tab | toggle | drag | form | filter | input | textarea | select (ความหมายเดียวกับทะเบียน CRM)",
-    "roles": "บทบาทที่ต้องเห็นและกดได้: owner · cashier (ผู้ใช้ QC จาก scripts/pos-qc-env.mts) · ใบหลังเพิ่ม manager ได้",
-    "hiddenFor": "บทบาทที่ต้องไม่เห็น element นี้",
-    "expect": "สิ่งที่ต้องเกิดเมื่อกด { type, target, … } — type เดียวกับทะเบียน CRM: modal · navigate · mutation · download · toast · inline-error · ui",
+    "kind": "button | link | menu | tab | toggle | drag | form | filter | input | textarea | select (ความหมายเดียวกับทะเบียน CRM) · notice = การ์ด/ป้ายที่ไม่กด แต่ตัวกดต้องตรวจว่าเห็น/ไม่เห็นตามบทบาท (การ์ดปฏิเสธ · P4.1 R10 · CD-P41-O9)",
+    "roles": "บทบาทที่ต้องเห็นและกดได้: owner · manager · cashier (ผู้ใช้ QC จาก scripts/pos-qc-env.mts) · public = ผู้ไม่ล็อกอิน — แถวหน้า /r/[token] · /q/** · /d · /developers/** ใช้ [\"public\"] อย่างเดียว · หน้าพนักงานห้ามใช้ public (P4 §10 มติ 2 · qc-pos-p4.1 R4)",
+    "hiddenFor": "บทบาทที่ต้องไม่เห็น element นี้ (ชุดเดียวกับ roles · ห้ามทับ roles — qc-pos-p4.1 R9)",
+    "expect": "สิ่งที่ต้องเกิดเมื่อกด { type, target, … } — type เดียวกับทะเบียน CRM: modal · navigate · mutation · download · toast · inline-error · ui · target ห้ามว่าง เว้นแต่ type ui พร้อม state (R1) · ui.state: appears | disappears | changes | unchanged | disabled | refused (refused = การ์ดปฏิเสธของหน้า · R10) · mutation ต้องมี db = \"<Model ใน prisma/schema> <ฟิลด์/สถานะ>\" เช่น \"PosSale PAID + PosPayment\" หรือ oracle ที่ระบุ id ข้อสอบ DB (R2)",
     "wo": "ใบที่สร้าง element นี้ (ของเดิมก่อน RUN POS ใส่ใบเดิมที่สร้าง เช่น \"M2.8\" / \"Wave1-B\")",
-    "oracle": "id ข้อสอบที่กดจริง (ว่างได้จนกว่า P4.2 จะเขียนตัวกด)",
+    "oracle": "id ข้อสอบที่กด/ตรวจผลจริง เช่น \"P2.6-C3\" หรือ \"qc-pos-p2.6#P2.6-C3\" (ต้องเป็น id ใน --list ของ qc-pos-* · ไม่ใช่กลุ่ม S/P) — แถว mutation ที่ไม่มี db ต้องมี (qc-pos-p4.1 R2) · แถว safety external ต้องมี (ตัวกด P4.2 ไม่กด · W3)",
     "system": "ประเภทระบบของ [id] = POS เสมอในทะเบียนนี้",
-    "query": "(ไม่บังคับ) query ที่ต้องต่อท้าย URL เช่น \"unit=[unitId]\""
+    "query": "(ไม่บังคับ) query ที่ต้องต่อท้าย URL เช่น \"unit=[unitId]\"",
+    "opener": "(ไม่บังคับ · P4.2) ตัวที่ต้องกดก่อนจึงจะเห็นคอนโทรลนี้ — string หรือ string[] ตามลำดับ · แต่ละขั้นเป็น testid ของแถวในทะเบียนบนหน้าเดียวกัน (แพตเทิร์น * ได้) · \"<testid>=<ค่า>\" = เลือก/พิมพ์ค่านั้น (\"=*\" ค่าใดก็ได้ · \"=on\"/\"=off\" · \"=click\") · ห้ามชี้ตัวเอง ห้ามซ้ำ ห้ามวน (แบบเดียวกับ $fields.opener ของ crm-ui-inventory.json · qc-pos-p4.1 R3)",
+    "needs": "(ไม่บังคับ · P4.2) ข้อมูลที่ fixture มาตรฐานอาจไม่มี — ข้อความ (≥ 4 ตัว) หรือ array เช่น \"กะเปิดของเครื่องนี้\" · \"บิล PAID ที่มีสมาชิก\" · ไม่มีข้อมูล = skippedNeeds (ไม่นับ total ไม่ใช่ dead) · ห้ามใช้ซ่อนปุ่มที่ควรมีอยู่แล้ว (R3)",
+    "viewport": "(ไม่บังคับ · P4.2) จอที่คอนโทรลนี้มีอยู่ เมื่อไม่ได้มีทุกจอ: \"desktop\" (1440×900) · \"tablet\" (1024×768) · \"mobile\" (390×844) หรือ array ไม่ซ้ำ — ไม่ใส่ = ทุกจอ · ครบ 3 = ห้ามใส่ (R3)",
+    "safety": "(บังคับบนแถวเงิน/ภายนอก/เลขเอกสาร · P4 §10 มติ 5) money = เขียนเงิน/มูลค่าสะสม (ขาย · ชำระ · ยกเลิก · คืนเงิน · มัดจำ · บัตรของขวัญ · เงินเข้าออกลิ้นชัก · ใบขอรับเงิน) — กดเฉพาะสาขา posqc-btn ของตัวกด · counter = ใช้เลขเอกสาร (ใบเสร็จ · ใบกำกับ · ใบลดหนี้) — กดจริงไม่เกิน 1 ครั้งต่อรอบ · external = ส่งออกนอกระบบ (พิมพ์ · LINE · อีเมล · Beam · e-Tax · LAN agent · webhook) — ไม่กด ต้องมี oracle · ห้ามใส่บนแถว navigate/modal (R11 R12)"
   },
   "$foreign": {
     "$doc": "testid ที่อยู่ในไฟล์ POS แต่เป็นของทะเบียนอื่น (ปุ่มของ CRM ที่อาศัยหน้าขาย POS · CRM_HOSTED_CONTROLS ใน fitness.mts) — F15.3 ไม่นับเป็นของ POS · ถ้ากดได้ต้องมีแถวในทะเบียนเจ้าของ · ห้ามมีแถวซ้ำในทะเบียนนี้",
@@ -112,6 +116,21 @@
         "byTag": {
           "ModuleTabs": 1
         }
+      }
+    ]
+  },
+  "$legacyOut": {
+    "$doc": "ไฟล์ที่อยู่นอกขอบเขต P4 (P4 §10 มติ 3 · W29 ค่าปริยาย: เก็บหน้าขายเดิมไว้ ใช้เมื่อปิดธง settings.pos.registerV2) — หนี้ใน baselineDebt ของไฟล์เหล่านี้คงเป็นหนี้ที่บันทึกไว้ · qc-pos-p4.1 R5 ไม่นับ · ถ้าเจ้าของตอบ W29 \"เลิกใช้\" = ลบไฟล์ที่ P6 แล้วลบรายการนี้",
+    "items": [
+      {
+        "file": "src/lib/modules/pos/register-ui.tsx",
+        "untestid": 22,
+        "why": "W29 · หน้าขายเดิม (ธง registerV2 ปิด) · qc-crm-c2.7 อ่านไฟล์นี้"
+      },
+      {
+        "file": "src/lib/modules/pos/register-legacy-page.tsx",
+        "untestid": 5,
+        "why": "W29 · โครงหน้าขายเดิมที่ย้ายมาจาก register/page.tsx ใน P1.3"
       }
     ]
   },
@@ -23349,5 +23368,5 @@
       "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
     }
   ],
-  "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
+  "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · public (P4 §10 มติ 2 · public = หน้า /r /q /d /developers เท่านั้น) · kind/expect.type ชุดเดียวกับทะเบียน CRM + kind notice (F15.3b ตรวจ)"
 }
