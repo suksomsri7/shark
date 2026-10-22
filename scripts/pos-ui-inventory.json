@@ -15,7 +15,7 @@
     "opener": "(ไม่บังคับ · P4.2) ตัวที่ต้องกดก่อนจึงจะเห็นคอนโทรลนี้ — string หรือ string[] ตามลำดับ · แต่ละขั้นเป็น testid ของแถวในทะเบียนบนหน้าเดียวกัน (แพตเทิร์น * ได้) · \"<testid>=<ค่า>\" = เลือก/พิมพ์ค่านั้น (\"=*\" ค่าใดก็ได้ · \"=on\"/\"=off\" · \"=click\") · ห้ามชี้ตัวเอง ห้ามซ้ำ ห้ามวน (แบบเดียวกับ $fields.opener ของ crm-ui-inventory.json · qc-pos-p4.1 R3)",
     "needs": "(ไม่บังคับ · P4.2) ข้อมูลที่ fixture มาตรฐานอาจไม่มี — ข้อความ (≥ 4 ตัว) หรือ array เช่น \"กะเปิดของเครื่องนี้\" · \"บิล PAID ที่มีสมาชิก\" · ไม่มีข้อมูล = skippedNeeds (ไม่นับ total ไม่ใช่ dead) · ห้ามใช้ซ่อนปุ่มที่ควรมีอยู่แล้ว (R3)",
     "viewport": "(ไม่บังคับ · P4.2) จอที่คอนโทรลนี้มีอยู่ เมื่อไม่ได้มีทุกจอ: \"desktop\" (1440×900) · \"tablet\" (1024×768) · \"mobile\" (390×844) หรือ array ไม่ซ้ำ — ไม่ใส่ = ทุกจอ · ครบ 3 = ห้ามใส่ (R3)",
-    "safety": "(บังคับบนแถวเงิน/ภายนอก/เลขเอกสาร · P4 §10 มติ 5) money = เขียนเงิน/มูลค่าสะสม (ขาย · ชำระ · ยกเลิก · คืนเงิน · มัดจำ · บัตรของขวัญ · เงินเข้าออกลิ้นชัก · ใบขอรับเงิน) หรือเปลี่ยนยอดที่บิลเก็บ (ราคาช่องทาง · กติการาคา · รอบราคาเป็นชุด · ล้าง/คัดลอกราคา · ราคาขายเดิม AccountProduct · วงเงินเครดิต · PIN ผู้จัดการที่ส่งบิลซ้ำ — CD-P41-F2 fail-closed) — กดเฉพาะสาขา posqc-btn ของตัวกด · counter = ใช้เลขเอกสาร (ใบเสร็จ · ใบกำกับ · ใบลดหนี้) — กดจริงไม่เกิน 1 ครั้งต่อรอบ · external = ส่งออกนอกระบบ (พิมพ์ · LINE · อีเมล · Beam · e-Tax · LAN agent · webhook) — ไม่กด ต้องมี oracle · ห้ามใส่บนแถว navigate/modal (R11 R12)"
+    "safety": "(บังคับบนแถวเงิน/ภายนอก/เลขเอกสาร · P4 §10 มติ 5) money = เขียนเงิน/มูลค่าสะสม (ขาย · ชำระ · ยกเลิก · คืนเงิน · มัดจำ · บัตรของขวัญ · เงินเข้าออกลิ้นชัก · ใบขอรับเงิน) หรือเปลี่ยนยอดที่บิลเก็บ (ราคาช่องทาง · กติการาคา · รอบราคาเป็นชุด · ล้าง/คัดลอกราคา · ราคาขายเดิม AccountProduct · วงเงินเครดิต · PIN ผู้จัดการที่ส่งบิลซ้ำ — CD-P41-F2 fail-closed) หรือค่าตั้งที่เปลี่ยนยอดที่บิลเก็บ/ค่าตอบแทนพนักงาน (เพดานส่วนลด · ค่าคอมมิชชันพนักงาน · สวิตช์วางบิล/เครดิต · กติกาทิป · สวิตช์รับมัดจำ · บาร์โค้ดชั่งแบบราคา · พร้อมเพย์ปลายทางของสาขา · ค่าคอมของช่องทาง — CD-P41-F20 fail-closed) — กดเฉพาะสาขา posqc-btn ของตัวกด · counter = ใช้เลขเอกสาร (ใบเสร็จ · ใบกำกับ · ใบลดหนี้) — กดจริงไม่เกิน 1 ครั้งต่อรอบ · external = ส่งออกนอกระบบ (พิมพ์ · LINE · อีเมล · Beam · e-Tax · LAN agent · webhook) — ไม่กด ต้องมี oracle · ห้ามใส่บนแถว navigate/modal (R11 R12)"
   },
   "$foreign": {
     "$doc": "testid ที่อยู่ในไฟล์ POS แต่เป็นของทะเบียนอื่น (ปุ่มของ CRM ที่อาศัยหน้าขาย POS · CRM_HOSTED_CONTROLS ใน fitness.mts) — F15.3 ไม่นับเป็นของ POS · ถ้ากดได้ต้องมีแถวในทะเบียนเจ้าของ · ห้ามมีแถวซ้ำในทะเบียนนี้",
@@ -12400,7 +12400,8 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12444,7 +12445,8 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สาขามีเลขพร้อมเพย์ของตัวเอง (promptpayIdByUnit)"
+      "needs": "สาขามีเลขพร้อมเพย์ของตัวเอง (promptpayIdByUnit)",
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12466,7 +12468,8 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12611,7 +12614,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-staff"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -13769,7 +13773,8 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-add"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -22264,7 +22269,8 @@
         "pos-settings-nav-payments",
         "pos-settings-tip-ledger=*"
       ],
-      "needs": "POS เชื่อมสมุดบัญชีที่มีบัญชีหนี้สิน (posTipLedgersAction)"
+      "needs": "POS เชื่อมสมุดบัญชีที่มีบัญชีหนี้สิน (posTipLedgersAction)",
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -24109,7 +24115,8 @@
       "query": "tab=payments&unit=[unitId]",
       "opener": [
         "pos-settings-nav-payments"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/d",
@@ -26955,7 +26962,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-staff"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -29248,7 +29256,8 @@
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
         "สิทธิ์ เจ้าของร้าน/pos.credit.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -29276,7 +29285,8 @@
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
         "สิทธิ์ เจ้าของร้าน/pos.credit.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -29590,7 +29600,8 @@
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
         "สิทธิ์ เจ้าของร้าน/pos.credit.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/register",
