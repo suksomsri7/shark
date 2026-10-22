@@ -31,6 +31,11 @@
 // อัตรา     snapshot ออฟไลน์ 1 ใบ/เครื่อง/60 วิ (ไม่แตะกฎ): ธง offline เปิด ⇒ เว้น ≥ 61 วิระหว่างโหลดหน้าขายของเครื่องเดียวกัน
 // ผลลัพธ์   .qc-shots/pos/buttons/summary-<user>-<device>[-en].json + JSON_SUMMARY {total ok dead wrongExpect hiddenLeak skip error perReason …} ·
 //           ภาพเฉพาะแถวที่ไม่ ok: .qc-shots/pos/buttons/<page>/<testid>-<user>-<device>[-en].png
+// กติกา R2 (ผู้คุม B 22 ต.ค. 21:05Z · โน้ต "## rules update" CD-P42-R1…R13): R1 input[type=hidden] = hidden-input · R2 กดเฉพาะ element ที่กดได้
+//           (span/ชิปนิ่งของผู้ใช้ 1 สาขา = static) · R3 F13 ปิดใช้ = disabled-expected · R4 navigate ไม่สน query/hash เว้นเป้ามี query ·
+//           R5 F17/F12 = needs-persona · R6 ขั้นทะเบียนกรอกก่อน PREFILL · PREFILL ไม่ทับ + ส่วนลด ≤ เพดานแคชเชียร์ · R7 แถวผลข้างเคียงช่วงท้าย + คืนค่า ·
+//           R8 anyOf อ็อบเจกต์ · select ตัวเลือกเดียว + needs = needs · radio เลือกอยู่ = idle-expected · คลิปบอร์ด → ข้อความบนหน้า · R9 สลับภาษา/สาขา
+//           ที่เป็นอยู่ = idle-expected · R10 search-noop · R11 ขั้น "?" ไม่บังคับ · R12 B6 = dead-known · R13 นโยบายเงิน (ด่าน B8)
 // 🔴 ห้ามแก้ scripts/visual-pos.mts (หมุด ⚠️5) — ตัวช่วยที่ต้องใช้คัดลอกมาเป็นของไฟล์นี้ · fixture ทั้งหมดอยู่ใน pos-buttons-fixtures.mts
 // 🔴 รอบจริง: QC5 เท่านั้น (host ep-fragrant-thunder) · ต้องอยู่ใต้ with-gate-lock (SHARK_GATE_LOCK_MARKER) · pre-flight มีข้อขวาง = ไม่เริ่ม ·
 //    ไม่ต่อเครือข่ายนอกเซิร์ฟเวอร์ QC (globalThis.fetch ถูกครอบ) · session ที่ mint ลบเสมอ (finally + สัญญาณ) · โปรไฟล์ chromium ลบเสมอ
@@ -39,9 +44,10 @@ type Any = any;
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
-  BTN, DEVICES, PASS_MATRIX, REGISTRY_GAP_REASONS, SHOTS_DIR, SKIP_REASONS, STAFF, MONEY_MODELS_UNIT, QC_TENANT,
-  assertWritable, cellName, cellRows, classify, cleanupFixtures, countTenant, db, dbHost, dbNow, ensureFixtures, estimateSec, loadP41Rules, modelInfo,
-  newCtx, planCell, preflight, readRegistry, restoreSettingsIfChanged, rowKey, sha16, summaryFile, writesOf, writtenSince,
+  BTN, DEAD_KNOWN, DEVICES, DISCOUNT_RE, PASS_MATRIX, PERSONA_UNREACHABLE, REGISTRY_GAP_REASONS, SHOTS_DIR, SKIP_REASONS, STAFF, MONEY_MODELS_UNIT, QC_TENANT, SWITCH_RE,
+  assertWritable, cellName, cellRows, classify, cleanupFixtures, countTenant, db, dbHost, dbNow, discountFill, ensureFixtures, estimateSec, expectAlts, f13Users,
+  isClipboardRow, isSearchLike, loadP41Rules, localeOfSwitch, modelInfo, navMatches, newCtx, parseStep, planCell, preflight, readRegistry, resetSideEffects,
+  restoreSettingsIfChanged, rowKey, sha16, sideEffectOf, sideEffectRank, summaryFile, writesOf, writtenSince, type ExpectAlt,
   type Cell, type CellPlan, type Ctx, type DeviceKey, type Locale, type P41Rules, type PlanItem, type Registry, type Row, type SkipReason, type UserKey,
 } from "./pos-buttons-fixtures.mjs";
 
@@ -125,7 +131,8 @@ if (DRY) {
     sum += s;
     console.log(`  ${cellName(p.cell).padEnd(20)} แถว ${String(p.total).padStart(5)} · ${Object.entries(p.byAction).map(([k, v]) => `${k} ${v}`).join(" · ").padEnd(40)} ≈ ${fmtMin(s)} ชม.`);
   }
-  console.log(`  รวม ${all.length} ช่อง ≈ ${fmtMin(sum)} ชม. (วันนี้ — แถวที่ skip เพราะทะเบียนยังไม่เติมจะกลายเป็น press หลังผู้สร้าง P4.1 ⇒ เวลาเพิ่ม)`);
+  const gapAll = all.reduce((a, pl) => a + REGISTRY_GAP_REASONS.reduce((b, r) => b + (pl.perReason[r] ?? 0), 0), 0);
+  console.log(`  รวม ${all.length} ช่อง ≈ ${fmtMin(sum)} ชม. (ช่องโหว่ทะเบียน ${gapAll} รายการ · รอบละ 1 ช่อง — แถว needs ที่ fixture ไม่มีจะจบเร็วกว่าประมาณการ)`);
   for (const p of ps) {
     console.log(`\n── แผนช่อง ${cellName(p.cell)} · หน้า ${PAGE}${ONLY ? ` · only ${ONLY}` : ""}: ${p.total} แถว · ${Object.entries(p.byAction).map(([k, v]) => `${k} ${v}`).join(" · ")} ──`);
     const byReason = new Map<string, PlanItem[]>();
@@ -135,6 +142,12 @@ if (DRY) {
     console.log(`  💰 money/counter ที่จะกด (สาขา ${BTN.unit.id} · ครั้งเดียวต่อรอบ): ${money.length}${money.length ? ` — ${money.slice(0, 8).map((x) => x.row.testid).join(", ")}` : ""}`);
     const ext = p.items.filter((it) => it.reason === "external");
     console.log(`  🛡️ external (ไม่กด · อ้าง oracle): ${ext.length}${ext.length ? ` — ${ext.slice(0, 6).map((x) => `${x.row.testid} (${x.detail})`).join(", ")}` : ""}`);
+    // CD-P42-R1…R13 ในช่องนี้ (แผน + สิ่งที่ตัวกดจะตัดสินตอนรัน)
+    const pr = p.items.filter((x) => x.action === "press");
+    const opSteps = pr.flatMap((x) => x.opener.map(parseStep));
+    console.log(`  🧩 กติกา P4.2 R2: dead-known ${p.perReason["dead-known"] ?? 0} (B6 ${Object.keys(DEAD_KNOWN).length} แถว) · needs-persona ${p.perReason["needs-persona"] ?? 0} (F17/F12 ${PERSONA_UNREACHABLE.reduce((a, g) => a + g.testids.length, 0)} testid) · hidden-input ${p.perReason["hidden-input"] ?? 0} · ` +
+      `F13 ปิดใช้ได้ (${p.cell.user}) ${pr.filter((x) => f13Users(x.row).includes(p.cell.user)).length} · ผลข้างเคียงช่วงท้าย ${pr.filter((x) => sideEffectOf(x.row)).length}${pr.some((x) => x.row.testid === "pos-device-revoke-confirm") ? " (307 ท้ายสุด)" : ""} · ` +
+      `ขั้นไม่บังคับ "?" ${opSteps.filter((x) => x.optional).length} · search-noop "= " ${opSteps.filter((x) => x.val === " ").length} · anyOf ${pr.filter((x) => expectAlts(x.row.expect).length > 1).length} · คลิปบอร์ด ${pr.filter((x) => isClipboardRow(x.row)).length} · ตัวสลับ ${pr.filter((x) => SWITCH_RE.test(x.row.testid)).length}`);
     const byPage = new Map<string, number>();
     for (const it of p.items) byPage.set(it.row.page.replace(STAFF, ""), (byPage.get(it.row.page.replace(STAFF, "")) ?? 0) + 1);
     console.log(`  หน้า: ${[...byPage.entries()].map(([k, v]) => `${k} ${v}`).join(" · ")}`);
@@ -155,6 +168,7 @@ if (DRY) {
 
 // ═════════════════════════ โหมดด่าน (ไม่มี --base): ตรวจแผนแบบสถิต — CD-P42-W2 ═════════════════════════
 if (!BASE_RAW) {
+  const mkClip = (testid: string): Row => ({ page: `${STAFF}tables`, testid, kind: "button", roles: ["owner"], expect: { type: "ui" } });
   const res: { id: string; ok: boolean; detail: string }[] = [];
   const chk = (id: string, ok: boolean, detail: string) => {
     res.push({ id, ok, detail });
@@ -229,6 +243,92 @@ if (!BASE_RAW) {
   {
     const gaps = all.reduce((a, pl) => a + REGISTRY_GAP_REASONS.reduce((b, r) => b + (pl.perReason[r] ?? 0), 0), 0);
     chk("B7", true, `ข้อมูล (ไม่ตัดสิน): ช่องโหว่ทะเบียน ${gaps} รายการทุกช่อง (missing-target/db/safety · รอผู้สร้าง P4.1) — ข้อสอบ qc-pos-p4.2 W8 เป็นตัวตัดสิน`);
+  }
+  {
+    // CD-P42-R13 นโยบายเงิน (brief P4 §4 ⚠️6) บนทะเบียนเต็ม: แถวภายนอก (safety หรือตัวจับ R12) ไม่ถูกวางกดในช่องใด · แถวเงิน/ตัวนับที่วางกด
+    // ตรวจผลด้วย db/oracle · ไม่อยู่บนหน้าที่ query unit=* (ต้องลงสาขา posqc-btn) · ไม่มี opener ที่กดแถว external ก่อนถึงคอนโทรล
+    const bad: string[] = [];
+    const ext12 = REG.rows.filter((r) => RULES.isExternalRow(r)).length;
+    const mon11 = REG.rows.filter((r) => RULES.isMoneyRow(r)).length;
+    const extOwn = REG.rows.filter((r) => r.safety === "external").length;
+    const safetyOf = new Map(REG.rows.map((r) => [rowKey(r), r.safety ?? ""]));
+    let moneyPress = 0;
+    const uiMoney = new Set<string>();
+    for (const pl of all)
+      for (const it of pl.items) {
+        if (it.action === "press" && (it.safety === "external" || RULES.isExternalRow(it.row))) bad.push(`${cellName(pl.cell)} ${it.key} external วางกด`);
+        if (it.action === "press" && it.moneyUnit) {
+          moneyPress++;
+          // แถว mutation ต้องมี db/oracle (ตัวจำแนก = missing-db ถ้าไม่มี) · แถวเงินที่ไม่ใช่ mutation (ไม่มีการเขียนให้ตรวจ — เช่น pos-taxinv-submit
+          // หน้าขายที่แค่เก็บผู้ซื้อในตะกร้า) = ตรวจ ui + ด่านแถวเงินหลังกดว่าลงสาขา posqc-btn (บันทึก · ไม่ตก) — CD-P42-R13
+          if (it.row.expect.type === "mutation" && it.verify !== "db" && it.verify !== "oracle") bad.push(`${cellName(pl.cell)} ${it.key} ${it.safety} ไม่มี db/oracle (verify ${it.verify})`);
+          else if (it.verify !== "db" && it.verify !== "oracle") uiMoney.add(it.key);
+          if (/(^|&)unit=\*/.test(String(it.row.query ?? ""))) bad.push(`${cellName(pl.cell)} ${it.key} ${it.safety} บนหน้า unit=*`);
+        }
+        if (it.action === "press")
+          for (const st of it.opener) {
+            const t = parseStep(st).tid;
+            const hit = REG.rows.find((r) => r.page === it.row.page && r.testid !== it.row.testid && (r.testid === t || (t.includes("*") && RULES.globRe(t).test(r.testid))) && safetyOf.get(rowKey(r)) === "external");
+            if (hit) bad.push(`${cellName(pl.cell)} ${it.key} opener ${st} = แถว external ${hit.testid}`);
+          }
+      }
+    chk("B8", bad.length === 0, bad.length ? `นโยบายเงินไม่ครบ: ${[...new Set(bad)].slice(0, 6).join(" · ")}` : `ตัวจับ R12 ${ext12} แถว + safety external ${extOwn} แถว ไม่ถูกวางกดใน ${all.length} ช่อง (skip:external ก่อน reveal) · ตัวจับ R11 ${mon11} แถว · แถวเงิน/ตัวนับที่วางกด ${moneyPress} รายการทุกช่อง ตรวจด้วย db/oracle (แถว mutation) · ไม่ใช่ mutation ${uiMoney.size} แถว = ui + ด่านสาขาหลังกด (${[...uiMoney].map((k) => k.replace(STAFF, "")).join(", ") || "-"}) · สาขา posqc-btn (ไม่มี unit=*) · ไม่มี opener ผ่านแถว external (CD-P42-R13)`);
+  }
+  {
+    // CD-P42-R1/R3/R5/R7/R12 ตัวจำแนกของกติกาใหม่ (แถวสังเคราะห์)
+    const bad: string[] = [];
+    const mk = (x: Partial<Row>): Row => ({ page: `${STAFF}register`, testid: "pos-p42-probe", kind: "button", roles: ["owner", "manager", "cashier"], hiddenFor: [], expect: { type: "ui", target: "pos-reg-lines", state: "changes" }, ...x });
+    const got = (r: Row, user: UserKey) => {
+      const it = classify(r, 0, { user, device: "desktop", locale: "th" }, RULES, ORACLE_IDS);
+      return it.action === "skip" ? `skip:${it.reason}` : it.action;
+    };
+    const cases: [string, Row, UserKey, string][] = [
+      ["B6 dead-known", mk({ testid: "pos-pay-button" }), "owner", "skip:dead-known"],
+      ["F17 owner", mk({ testid: "pos-discount-over-request", needs: "ผู้ขายที่มีเพดานส่วนลด" }), "owner", "skip:needs-persona"],
+      ["F17 cashier ยังกด", mk({ testid: "pos-discount-over-cancel", needs: "ผู้ขายที่มีเพดานส่วนลด" }), "cashier", "press"],
+      ["F12 cashier", mk({ page: `${STAFF}stock`, testid: "pos-stock-count-refusal", kind: "notice", roles: ["cashier"], hiddenFor: ["owner", "manager"], needs: "บทบาท QC ไม่มีชุดนี้", expect: { type: "ui", state: "refused" } }), "cashier", "skip:needs-persona"],
+      ["F12 ไม่มี needs", mk({ page: `${STAFF}stock`, testid: "pos-stock-count-refusal", kind: "notice", roles: ["cashier"], hiddenFor: ["owner", "manager"], expect: { type: "ui", state: "refused" } }), "cashier", "visible"],
+      ["B2 hidden", mk({ kind: "input", needs: "ช่องซ่อน type=hidden — ตัวกดไม่กด" }), "owner", "skip:hidden-input"],
+    ];
+    for (const [n, r, u, want] of cases) if (got(r, u) !== want) bad.push(`${n}: ${got(r, u)} (คาด ${want})`);
+    const f13 = f13Users({ roles: ["owner", "manager", "cashier"], needs: "สิทธิ์ pos.channel.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)", expect: { type: "mutation" } });
+    if (f13.join(",") !== "cashier") bad.push(`F13 บทบาท = ${f13.join(",")} (คาด cashier)`);
+    if (f13Users({ roles: ["owner"], needs: "ไม่มีรหัส", expect: { type: "mutation" } }).length) bad.push("F13 ไม่มีรหัสแต่ได้บทบาท");
+    const se = REG.rows.find((r) => r.testid === "pos-device-revoke-confirm");
+    if (se && (!sideEffectOf(se) || sideEffectRank(se) !== 9)) bad.push("307 ไม่อยู่ท้ายสุดของช่วงผลข้างเคียง");
+    const late = REG.rows.filter((r) => sideEffectOf(r)).length;
+    chk("B9", bad.length === 0, bad.length ? bad.join(" · ") : `กติกาใหม่ ${cases.length + 2}/${cases.length + 2} กรณี (dead-known · needs-persona F17/F12 · hidden-input · F13 เฉพาะบทบาทที่ระบุ) · แถวผลข้างเคียงช่วงท้าย ${late} แถว (307 ท้ายสุด)`);
+  }
+  {
+    // CD-P42-R4/R6/R8/R9/R10/R11 ตัวช่วยบริสุทธิ์
+    const bad: string[] = [];
+    const t = (n: string, ok: boolean) => {
+      if (!ok) bad.push(n);
+    };
+    const H = "http://127.0.0.1:3299";
+    t("F16 query ของ URL ไม่สน", navMatches("/app/sys/[id]/pos/register", `${H}/app/sys/s1/pos/register?unit=u1#x`));
+    t("F16 เป้ามี query ตรง", navMatches("/app/sys/[id]/pos/settings?tab=devices", `${H}/app/sys/s1/pos/settings?unit=u1&tab=devices`));
+    t("F16 เป้ามี query ไม่ตรง", !navMatches("/app/sys/[id]/pos/settings?tab=devices", `${H}/app/sys/s1/pos/settings?tab=general`));
+    t("F16 ค่า [x]", navMatches("/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]", `${H}/app/sys/k/kanban/b/b1?card=c9`) && !navMatches("/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]", `${H}/app/sys/k/kanban/b/b1`));
+    t("F16 ค่าว่าง", navMatches("/app/sys/[id]/pos/register?unit=", `${H}/app/sys/s/pos/register?unit=u2`));
+    t("F16 path ต่าง", !navMatches("/app/sys/[id]/pos/register", `${H}/app/sys/s/pos/sales`));
+    const a = parseStep("pos-prod-scope-pick?");
+    const b = parseStep("pos-x-amount=5?");
+    const c = parseStep("pos-kds-86-search= ");
+    {
+      // ORACLE-EDIT CD-P42-R11 ของ qc-pos-p4.1 R3 (ตัวจริงที่ยืมมา): "<แถวจริง>?" ผ่าน · "<ไม่มีจริง>?" ยังแดง (probe ลบ)
+      const rowOf = (testid: string, opener?: string[]) => ({ page: `${STAFF}tables`, testid, kind: "button", roles: ["owner", "manager", "cashier"], hiddenFor: [], expect: { type: "ui", target: "pos-tbl-grid", state: "changes" }, ...(opener ? { opener } : {}) });
+      const inv = (op: string) => ({ ...REG.json, rows: [rowOf("pos-p42-a"), rowOf("pos-p42-b", [op])] });
+      t("F29 R3 ของ P4.1", RULES.r3(inv("pos-p42-a?")).length === 0 && RULES.r3(inv("pos-p42-zz?")).length > 0 && RULES.r3(inv("pos-p42-a=5?")).length === 0);
+    }
+    t("F29 ขั้นไม่บังคับ", a.optional && a.tid === "pos-prod-scope-pick" && a.val === null && b.optional && b.tid === "pos-x-amount" && b.val === "5" && !c.optional && c.val === " ");
+    t("F18 เพดานส่วนลด", discountFill("pos-reg-line-discount-1", 1000) === "1" && discountFill("pos-reg-bill-discount-percent", 1000) === "5" && discountFill("pos-reg-line-discount-1", 0) === "0" && Number(discountFill("pos-x-discount-pct", 1000)) * 100 <= 1000);
+    t("F28 ช่องค้นหา", isSearchLike("pos-kds-86-search") && isSearchLike("pos-x", "search") && !isSearchLike("pos-reg-deprcv-amount"));
+    const al = expectAlts({ type: "modal", target: "pos-a", anyOf: [{ type: "toast", target: "pos-b" }, "pos-c"] });
+    t("F26 anyOf อ็อบเจกต์+สตริง", al.length === 3 && al[1]!.type === "toast" && al[1]!.target === "pos-b" && al[2]!.type === "modal" && al[2]!.target === "pos-c");
+    t("F27 ตัวสลับ", localeOfSwitch("pos-locale-switch-th") === "th" && localeOfSwitch("pos-rpub-lang-en") === "en" && SWITCH_RE.test("pos-reg-unit-option-*") && !SWITCH_RE.test("pos-reg-pay"));
+    t("F26 คลิปบอร์ด", isClipboardRow(mkClip("pos-tbl-qr-copy")) && !isClipboardRow(mkClip("pos-reg-pay")));
+    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (6) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 — ผ่านทุกกรณี");
   }
   const passed = res.filter((r) => r.ok).length;
   console.log(`\n${passed === res.length ? "✅" : "❌"} ${SUITE} (ด่าน): ${passed}/${res.length}`);
@@ -381,6 +481,8 @@ function fillValueFor(testid: string, type: string): string {
   if (/branch/.test(t)) return "00000";
   if (/pin/.test(t)) return CTX.pin || "135790";
   if (/barcode|ean/.test(t)) return "8850999000015";
+  // CD-P42-R6: ส่วนลดที่ตัวกดพิมพ์เอง ไม่เกินเพดานแคชเชียร์ (register-shared.ts · ก่อนกฎ pct/qty — "discount" มีคำว่า count)
+  if (DISCOUNT_RE.test(t)) return discountFill(t, CTX.staffDiscountCapBp);
   if (type === "url" || /url$|website/.test(t)) return `https://qc-btn-${u}.example.com`;
   if (type === "time") return "09:00";
   if (type === "date" || /date|from$|to$/.test(t)) return todayBkk();
@@ -389,7 +491,7 @@ function fillValueFor(testid: string, type: string): string {
   if (type === "color") return "#123456";
   if (/(pct|percent|rate|bp)$/.test(t)) return "10";
   if (/(qty|count|seats|party|minutes|hours|days|limit|max|min)/.test(t) || type === "number" || type === "range") return "2";
-  if (/(price|amount|satang|float|cash|tender|discount|deposit|credit|value|total|baht)/.test(t)) return "20";
+  if (/(price|amount|satang|float|cash|tender|deposit|credit|value|total|baht)/.test(t)) return "20";
   if (/(search|query|-q$|find)/.test(t)) return "ลาเต้";
   if (/(reason|note|memo|comment)/.test(t)) return `qc-btn-${u} เหตุผลทดสอบ`;
   return `qc-btn-${u}`;
@@ -419,7 +521,9 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
       await sleep(200);
     }
     const cand = opts.find((o) => !o.selected && !o.disabled && o.value !== "") ?? opts.find((o) => !o.selected && !o.disabled);
-    if (cand) await el.select(cand.value);
+    // CD-P42-R8 (CD-P41-F26): select ที่เปิดใช้แต่มีตัวเลือกเดียว — ไม่มีอะไรให้เปลี่ยน (แถวมี needs = skippedNeeds ไม่ใช่ dead)
+    if (!cand) return { before, after: before, skipped: "one-option" };
+    await el.select(cand.value);
   } else if (meta.tag === "input" && meta.type === "file") return { before, after: before, skipped: "file" };
   else if (meta.tag === "input" && ["checkbox", "radio"].includes(meta.type)) await clickEl(page, el);
   else if (meta.tag === "input" && ["date", "time", "datetime-local", "month", "color", "range", "number"].includes(meta.type)) {
@@ -454,24 +558,7 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
   await sleep(150);
   return { before, after: await snap() };
 }
-function navMatches(target: string, url: string): boolean {
-  if (target.startsWith("#")) {
-    try {
-      return new URL(url).hash === target;
-    } catch {
-      return false;
-    }
-  }
-  if (!target.startsWith("/")) return false;
-  const pat = target.split("?")[0]!.split(/(\[[^\]]+\]|<[^>]+>|\*)/g).map((p) => (/^(\[[^\]]+\]|<[^>]+>|\*)$/.test(p) ? "[^/]+" : p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("");
-  let path = url;
-  try {
-    path = new URL(url).pathname;
-  } catch {
-    /* url เป็น path อยู่แล้ว */
-  }
-  return new RegExp(`^${pat}(?:$|/|\\?)`).test(path);
-}
+// navMatches = pos-buttons-fixtures.mts (CD-P42-R4: query/hash ของ URL ไม่สน เว้นแต่เป้ามี query · ด่าน B10 ทดสอบ)
 const urlKey = (u: string) => {
   try {
     const x = new URL(u);
@@ -499,20 +586,105 @@ async function uiSnapshot(page: Any, testid: string): Promise<string | null> {
 async function countVisible(page: Any, testid: string): Promise<number> {
   return page.evaluate((sel: string) => Array.from(document.querySelectorAll(sel)).filter((e) => (e as HTMLElement).getClientRects().length > 0).length, selOf(testid)).catch(() => -1);
 }
-const splitOpener = (o: string): { tid: string; val: string | null } => {
-  const i = o.indexOf("=");
-  return i < 0 ? { tid: o, val: null } : { tid: o.slice(0, i), val: o.slice(i + 1) };
-};
-type PageState = { openChain: string[]; dirty: boolean };
+/** CD-P42-R1: testid นี้เป็น input[type=hidden] (มองไม่เห็นเสมอ) */
+async function hiddenInput(page: Any, testid: string): Promise<boolean> {
+  return page.evaluate((sel: string) => {
+    const all = Array.from(document.querySelectorAll(sel));
+    return all.length > 0 && all.every((e) => e.tagName === "INPUT" && (e.getAttribute("type") ?? "").toLowerCase() === "hidden");
+  }, selOf(testid)).catch(() => false);
+}
+/**
+ * CD-P42-R2 (CD-P41-B3/F15): element ที่กดได้ = button · a[href] · input · select · textarea · summary · form (แถว form/filter) ·
+ * [role=button|link|switch|checkbox|radio|tab|menuitem(+radio/checkbox)|option] · label ของช่อง · [tabindex] ที่มีตัวจับคลิก —
+ * ตัวเอง/บรรพบุรุษ/ลูก (การ์ดที่มีปุ่มข้างใน) · ตัวจับคลิกของ React (onClick/onPointerDown…) ที่ไม่มี tabindex ก็นับ (กัน static ปลอม · บันทึกไว้)
+ */
+async function pressInfo(el: Any): Promise<{ ok: boolean; what: string }> {
+  return el
+    .evaluate((e: Any) => {
+      const PRESS = "button, a[href], input, select, textarea, summary, [role=button], [role=link], [role=switch], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=menuitemradio], [role=menuitemcheckbox], [role=option]";
+      const tag = e.tagName.toLowerCase();
+      const what = `<${tag}${e.getAttribute("role") ? ` role=${e.getAttribute("role")}` : ""}>`;
+      const handler = (x: Any) => {
+        const k = Object.keys(x).find((n) => n.startsWith("__reactProps$"));
+        const p = k ? x[k] : null;
+        return !!p && ["onClick", "onMouseDown", "onPointerDown", "onPointerUp", "onTouchStart", "onKeyDown"].some((h) => typeof p[h] === "function");
+      };
+      if (tag === "form" || e.matches(PRESS) || e.closest(PRESS)) return { ok: true, what };
+      if (tag === "label" && (e.control || e.querySelector("input,select,textarea"))) return { ok: true, what };
+      if (e.querySelector(PRESS)) return { ok: true, what: `${what} มีคอนโทรลข้างใน` };
+      if (handler(e)) return { ok: true, what: `${what}${e.hasAttribute("tabindex") ? " tabindex" : " ไม่มี tabindex"} + ตัวจับคลิก` };
+      return { ok: false, what };
+    })
+    .catch(() => ({ ok: true, what: "?" }));
+}
+/** CD-P42-R8 radio ที่เลือกอยู่แล้ว · R9 ตัวสลับภาษา/สาขาที่อยู่ในสถานะนั้นแล้ว → ข้อความ (ว่าง = ไม่ idle) */
+async function idleState(el: Any, testid: string): Promise<string> {
+  return el
+    .evaluate((e: Any, sw: boolean, loc: string | null) => {
+      const tag = e.tagName.toLowerCase();
+      const type = (e.getAttribute("type") ?? "").toLowerCase();
+      const role = e.getAttribute("role") ?? "";
+      if ((tag === "input" && type === "radio" && e.checked) || (["radio", "menuitemradio"].includes(role) && e.getAttribute("aria-checked") === "true")) return "radio เลือกอยู่แล้ว (aria-checked=true · CD-P41-F26)";
+      if (!sw) return "";
+      const cur = ["aria-pressed", "aria-selected", "aria-checked"].some((a) => e.getAttribute(a) === "true") || (e.hasAttribute("aria-current") && e.getAttribute("aria-current") !== "false") || ["active", "on", "checked"].includes(e.getAttribute("data-state") ?? "");
+      if (cur) return "ตัวสลับอยู่ในสถานะนี้แล้ว (aria · CD-P41-F27)";
+      if (loc && (document.documentElement.lang || "").toLowerCase().startsWith(loc)) return `ภาษาปัจจุบัน = ${loc} (CD-P41-F27)`;
+      return "";
+    }, SWITCH_RE.test(testid), localeOfSwitch(testid))
+    .catch(() => "");
+}
+const isDisabled = (el: Any): Promise<boolean> => el.evaluate((e: Any) => !!e.disabled || e.getAttribute("aria-disabled") === "true").catch(() => false);
+/** CD-P42-R8: คลิปบอร์ด (สิทธิ์ clipboard-read ของ context) — คืนความยาว + hash เท่านั้น (โทเคน/คีย์ห้ามลง log) · อ่านไม่ได้ = null */
+async function clipboardRead(page: Any): Promise<{ len: number; hash: string } | null> {
+  const t: string | null = await page.evaluate(async () => {
+    try {
+      return await navigator.clipboard.readText();
+    } catch {
+      return null;
+    }
+  }).catch(() => null);
+  return t === null ? null : { len: t.length, hash: sha16(t) };
+}
+/** CD-P42-R9: ตัวสลับภาษาตั้งคุกกี้ LOCALE/lang — คืนเป็นภาษาของช่องหลังกด (แถวถัดไปของช่องเห็นภาษาเดิม) */
+async function resetLocale(page: Any): Promise<void> {
+  const https = BASE.startsWith("https:");
+  const host = new URL(BASE).hostname;
+  const mk = (name: string) => (https ? { name, value: CELL.locale, url: BASE, path: "/", secure: true } : { name, value: CELL.locale, domain: host, path: "/" });
+  await page.setCookie(mk("LOCALE"), mk("lang")).catch(() => {});
+}
+/** CD-P42-R11: ขั้น opener (ลงท้าย "?" = ไม่บังคับ) — parseStep ของ pos-buttons-fixtures.mts */
+const splitOpener = (o: string) => parseStep(o);
+type PageState = { openChain: string[]; dirty: boolean; notes: string[] };
 const isPrefix = (a: string[], b: string[]) => a.length <= b.length && a.every((x, i) => x === b[i]);
-/** ไล่ opener (เฉพาะขั้นที่ยังต้องกด) แล้วหาคอนโทรลของแถว — แบบเดียวกับ C4.2 */
+/** CD-P42-R6: ช่องที่ขั้นทะเบียนกรอกแล้ว (=ค่า · =* · search-noop) — PREFILL ไม่แตะ (ไม่ว่าค่าจะว่างหรือไม่) */
+const markFilled = (el: Any) => el.evaluate((e: Element) => {
+  const w = window as Any;
+  (w.__qcFilled ??= new WeakSet()).add(e);
+}).catch(() => {});
+/** CD-P42-R10 (CD-P41-F28) search-noop: พิมพ์อักษรที่ไม่มีผล 1 ตัวแล้วลบ (ค่าท้าย = "" · ทะเบียนเลิกใช้ "= " ได้ภายหลัง) */
+async function searchNoop(page: Any, el: Any): Promise<void> {
+  await el.evaluate((e: HTMLElement) => e.focus()).catch(() => {});
+  await page.keyboard.type("a", { delay: 5 });
+  await sleep(120);
+  await page.keyboard.press("Backspace");
+  await el.evaluate((e: HTMLInputElement) => {
+    if (e.value !== "") {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(e, "");
+      e.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }).catch(() => {});
+}
+/** CD-P42-R7 (CD-P41-F22): เบอร์ที่ทะเบียนตรึงไว้ทำให้ Customer created:false ตั้งแต่รอบ 2 — แถวที่ db ระบุ Customer ⇒ สุ่มเบอร์ต่อรอบ */
+const freshPhone = (it: PlanItem, tid: string, val: string) =>
+  it.row.expect.type === "mutation" && /^Customer\b/.test(String(it.row.expect.db ?? "")) && /phone/.test(tid) && /^0\d{8,9}$/.test(val) ? `08${randomDigits(8)}` : val;
+/** ไล่ opener (เฉพาะขั้นที่ยังต้องกด) แล้วหาคอนโทรลของแถว — แบบเดียวกับ C4.2 · ขั้นทะเบียนกรอกก่อน PREFILL เสมอ (CD-P42-R6) */
 async function reveal(page: Any, path: string, it: PlanItem, state: PageState, hidden: boolean, notList: string[]): Promise<{ el: Any | null; reason: string }> {
   const chain = it.opener;
   const pendingValue = chain.slice(state.openChain.length).some((o) => splitOpener(o).val !== null);
   let el = await findVisible(page, it.row.testid, notList, 0);
   if (el && !pendingValue) return { el, reason: "" };
   for (let i = state.openChain.length; i < chain.length; i++) {
-    const { tid, val } = splitOpener(chain[i]!);
+    const { tid, val, optional } = splitOpener(chain[i]!);
     let later = false;
     if (val === null) {
       for (const t of chain.slice(i + 1)) if (await findVisible(page, splitOpener(t).tid, [], 0)) later = true;
@@ -522,22 +694,39 @@ async function reveal(page: Any, path: string, it: PlanItem, state: PageState, h
       state.openChain.push(chain[i]!);
       continue;
     }
-    const op = await findVisible(page, tid, [], el ? 600 : hidden ? 1500 : 3500);
-    if (!op) return { el: null, reason: `ตัวเปิด ${chain[i]} หาไม่พบ (ลำดับ ${chain.join(" → ")})` };
+    const op = await findVisible(page, tid, [], optional || el ? 600 : hidden ? 1500 : 3500);
+    if (!op) {
+      // CD-P42-R11 (CD-P41-F29): ขั้น "…?" ไม่มีสำหรับบทบาทนี้ = ข้ามโดยไม่ผิด
+      if (optional) {
+        state.openChain.push(chain[i]!);
+        state.notes.push(`ข้ามขั้นไม่บังคับ ${tid}`);
+        continue;
+      }
+      return { el: null, reason: `ตัวเปิด ${chain[i]} หาไม่พบ (ลำดับ ${chain.join(" → ")})` };
+    }
     if (val === null || val === "click") await clickEl(page, op).catch(() => {});
     else if (val === "on" || val === "off") {
       const on: boolean = await op.evaluate((e: HTMLInputElement) => (e.tagName === "INPUT" ? e.checked : e.getAttribute("aria-checked") === "true" || e.getAttribute("aria-selected") === "true")).catch(() => false);
       if (on !== (val === "on")) await clickEl(page, op).catch(() => {});
-    } else if (val === "*") await fillEl(page, op, tid).catch(() => {});
-    else {
+    } else if (val === "*") {
+      await fillEl(page, op, tid).catch(() => {});
+      await markFilled(op);
+    } else if (val === " ") {
+      await searchNoop(page, op);
+      await markFilled(op);
+      state.notes.push(`search-noop ${tid}`);
+    } else {
+      const v = freshPhone(it, tid, val);
+      if (v !== val) state.notes.push(`สุ่มเบอร์ ${tid} (CD-P41-F22)`);
       const tag: string = await op.evaluate((e: Element) => e.tagName.toLowerCase()).catch(() => "");
-      if (tag === "select") await op.select(val).catch(() => {});
+      if (tag === "select") await op.select(v).catch(() => {});
       else
-        await op.evaluate((e: HTMLInputElement, v: string) => {
-          Object.getOwnPropertyDescriptor(e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(e, v);
+        await op.evaluate((e: HTMLInputElement, x: string) => {
+          Object.getOwnPropertyDescriptor(e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(e, x);
           e.dispatchEvent(new Event("input", { bubbles: true }));
           e.dispatchEvent(new Event("change", { bubbles: true }));
-        }, val).catch(() => {});
+        }, v).catch(() => {});
+      await markFilled(op);
     }
     await settle(page, 3000);
     await sleep(250);
@@ -560,7 +749,11 @@ async function prefill(page: Any, it: PlanItem, group: PlanItem[], el: Any): Pro
     if (!se) continue;
     const inside = await box.evaluate((c: Element, x: Element) => c.contains(x), se).catch(() => false);
     if (!inside) continue;
+    // CD-P42-R10 search-noop: PREFILL ไม่พิมพ์ลงช่องค้นหา (พิมพ์แล้วกรองรายการ/ถอดคอนโทรลที่จะกดออก — CD-P41-F28)
+    const stype: string = await se.evaluate((x: Element) => (x.getAttribute("type") ?? "").toLowerCase()).catch(() => "");
+    if (isSearchLike(s.row.testid, stype)) continue;
     const empty = await se.evaluate((x: Any) => {
+      if ((window as Any).__qcFilled?.has?.(x)) return false; // CD-P42-R6: ขั้นทะเบียนกรอกแล้ว — PREFILL ไม่ทับ
       const tag = x.tagName.toLowerCase();
       const type = (x.getAttribute("type") ?? "").toLowerCase();
       if (tag === "input" && (type === "radio" || type === "file")) return false;
@@ -609,6 +802,8 @@ function pathOf(it: PlanItem): { path: string | null; missing: string | null } {
   for (const m of p.matchAll(/\[([A-Za-z]+)\]/g)) {
     const v = m[1] === "unitSlug" ? null : tok(m[1]!);
     if (!v) return { path: null, missing: `[${m[1]}]` };
+    // CD-P42-R13: แถวเงินบนหน้าสาธารณะ (เช่น /q pos-qr-place) กดได้เฉพาะโทเคนของสาขา posqc-btn — โทเคนสาขาอื่น = หาค่าไม่ได้ (ไม่กด)
+    if (it.moneyUnit && CTX.tokenUnits[m[1]!] !== BTN.unit.id) return { path: null, missing: `[${m[1]}] ของสาขา ${BTN.unit.id} (แถวเงิน · มติเงิน ⚠️6)` };
     p = p.replace(m[0], encodeURIComponent(v));
   }
   let q = String(it.row.query ?? "");
@@ -775,7 +970,9 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
   } catch {
     /* ดาวน์โหลดตัดสินจาก response */
   }
-  const state: PageState = { openChain: [], dirty: true };
+  const state: PageState = { openChain: [], dirty: true, notes: [] };
+  // CD-P42-R8: แถวคัดลอกใช้ navigator.clipboard ได้จริงใน headless (ไม่ได้ = ตกไปข้อความบนหน้า)
+  await ctxB.overridePermissions?.(BASE, ["clipboard-read", "clipboard-write", "clipboard-sanitized-write"]).catch(() => {});
   let navStatus = 0;
   const load = async () => {
     await snapGate(path);
@@ -787,7 +984,8 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
   };
   const ovfSeen = new Set<string>();
   // ลำดับ: ทะเบียน · แถว needs ท้าย · แถวเงิน/ตัวนับท้ายสุด (บิลที่เกิดไม่กวนแถวอื่น)
-  const rank = (it: PlanItem) => (it.moneyUnit ? 2 : it.needs ? 1 : 0);
+  // CD-P42-R7: แถวผลข้างเคียงมาในกลุ่มช่วงท้ายของตัวเอง — ถอนเครื่องตัวเองท้ายสุด
+  const rank = (it: PlanItem) => (sideEffectOf(it.row) ? 10 + sideEffectRank(it.row) : it.moneyUnit ? 2 : it.needs ? 1 : 0);
   const rows = [...group].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
   const allNames = REG.rows.filter((r) => r.page === group[0]!.row.page).map((r) => r.testid);
   for (const it of rows) {
@@ -799,14 +997,17 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       if (state.dirty || urlKey(page.url()) !== urlKey(`${BASE}${path}`) || !isPrefix(state.openChain, it.opener)) await load();
       if (it.action === "absent") {
         const rv = await reveal(page, path, it, state, navStatus >= 400, notList);
+        state.notes.splice(0);
         if (rv.el) rec(it, { class: "hiddenLeak", detail: "อยู่ใน hiddenFor แต่มองเห็นได้", shot: await failShot(page, it) });
         else rec(it, { class: "ok", detail: `ไม่เห็น (hiddenFor${navStatus >= 400 ? ` · หน้า HTTP ${navStatus}` : ""})` });
         continue;
       }
       if (it.action === "visible") {
         const rv = await reveal(page, path, it, state, false, notList);
+        state.notes.splice(0);
         if (!rv.el) {
-          if (it.needs) rec(it, { class: "skip", reason: "needs", detail: rv.reason });
+          if (await hiddenInput(page, it.row.testid)) rec(it, { class: "skip", reason: "hidden-input", detail: "input[type=hidden] (CD-P42-R1)" });
+          else if (it.needs) rec(it, { class: "skip", reason: "needs", detail: rv.reason });
           else rec(it, { class: "dead", detail: rv.reason, shot: await failShot(page, it) });
           continue;
         }
@@ -834,25 +1035,50 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         }
       }
       const rv = await reveal(page, path, it, state, false, notList);
+      const notes = state.notes.splice(0);
       if (!rv.el) {
-        if (it.needs) rec(it, { class: "skip", reason: "needs", detail: rv.reason });
+        if (await hiddenInput(page, it.row.testid)) rec(it, { class: "skip", reason: "hidden-input", detail: "input[type=hidden] (CD-P42-R1)" });
+        else if (it.needs) rec(it, { class: "skip", reason: "needs", detail: rv.reason });
         else rec(it, { class: "dead", detail: `${rv.reason}${navStatus >= 400 ? ` · หน้า HTTP ${navStatus}` : ""}`, shot: await failShot(page, it) });
         continue;
       }
       let el = rv.el;
+      // CD-P42-R2 (B3/F15): กดเฉพาะ element ที่กดได้ — span/ชิปนิ่ง testid เดียวกันของผู้ใช้ 1 สาขา = static (ไม่ใช่ dead)
+      const pi = await pressInfo(el);
+      if (!pi.ok) {
+        if (CELL.user === "manager" || CELL.user === "cashier") rec(it, { class: "skip", reason: "static", detail: `${pi.what} ไม่ใช่ element ที่กดได้ (ผู้ใช้ 1 สาขา · CD-P41-B3)` });
+        else rec(it, { class: "dead", detail: `${pi.what} ไม่ใช่ element ที่กดได้ (CD-P42-R2)`, shot: await failShot(page, it) });
+        continue;
+      }
+      // CD-P42-R8 (radio aria-checked) · R9 (สลับภาษา/สาขาไปที่เป็นอยู่) = idle-expected
+      const idle = await idleState(el, it.row.testid);
+      if (idle) {
+        rec(it, { class: "skip", reason: "idle-expected", detail: idle });
+        continue;
+      }
       let prefilled: string[] = [];
       if (it.row.expect.type === "mutation" || it.row.expect.type === "download" || it.row.kind === "form") {
         prefilled = await prefill(page, it, group, el);
         if (prefilled.length) el = (await findVisible(page, it.row.testid, notList, 1500)) ?? el;
+      }
+      // CD-P42-R3 (CD-P41-F13): บทบาทที่ทะเบียนบอกว่าเห็นแต่ปิดใช้ (ตรวจหลังขั้นทะเบียน + PREFILL — ช่องว่างไม่ทำให้ปิดเอง)
+      if ((await isDisabled(el)) && f13Users(it.row).includes(CELL.user as UserKey)) {
+        rec(it, { class: "skip", reason: "disabled-expected", detail: `${CELL.user} เห็นแต่ปิดใช้ (CD-P41-F13)` });
+        continue;
       }
       const tag: string = await el.evaluate((e: Element) => `${e.tagName.toLowerCase()}:${(e.getAttribute("type") ?? "").toLowerCase()}`).catch(() => "");
       if (tag === "input:file") {
         rec(it, { class: "skip", reason: "file-upload", detail: "input[type=file]" });
         continue;
       }
+      if (tag === "input:hidden") {
+        rec(it, { class: "skip", reason: "hidden-input", detail: "input[type=hidden] (CD-P42-R1)" });
+        continue;
+      }
       const isField = /^(input|textarea|select):/.test(tag);
       const checkLike = /^input:(checkbox|radio)$/.test(tag) || ["switch", "checkbox", "radio"].includes(await el.evaluate((e: Element) => e.getAttribute("role") ?? "").catch(() => ""));
       const ex = it.row.expect;
+      const alts = expectAlts(ex); // CD-P42-R8: anyOf สตริง/อ็อบเจกต์
       await page.evaluate(() => {
         const w = window as Any;
         w.__qcMut = 0;
@@ -870,9 +1096,14 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       const dlBefore = DL.length;
       const alertsBefore = new Set(ex.type === "mutation" ? await alertsNow(page) : []);
       const uiT = ex.type === "ui" && ex.target && looksLikeTestid(ex.target) ? ex.target : "";
-      const uiBefore = uiT ? await uiSnapshot(page, uiT) : null;
-      const visBefore = uiT ? !!(await findVisible(page, uiT, [], 0)) : false;
-      const countBefore = uiT && ex.state === "count" ? await countVisible(page, uiT) : -1;
+      // ภาพก่อนกดของเป้า ui ทุกตัว (หลัก + anyOf) — ตัดสิน changes/unchanged/count
+      const uiBefore = new Map<string, { snap: string | null; vis: boolean; count: number }>();
+      for (const a of alts) {
+        if (a.type !== "ui" || !looksLikeTestid(a.target) || uiBefore.has(a.target)) continue;
+        uiBefore.set(a.target, { snap: await uiSnapshot(page, a.target), vis: !!(await findVisible(page, a.target, [], 0)), count: a.state === "count" ? await countVisible(page, a.target) : -1 });
+      }
+      const clipRow = isClipboardRow(it.row);
+      const clipBefore = clipRow ? await clipboardRead(page) : null;
       const models = await modelInfo();
       const writes = ex.type === "mutation" && it.verify === "db" ? writesOf(ex.db, new Set(models.keys())) : [];
       const delBefore = new Map<string, number | null>();
@@ -886,6 +1117,12 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           const r = await fillEl(page, el, it.row.testid);
           if (r.skipped === "file") {
             rec(it, { class: "skip", reason: "file-upload", detail: "input[type=file]" });
+            continue;
+          }
+          if (r.skipped === "one-option") {
+            // CD-P42-R8 (CD-P41-F26): select เปิดใช้ที่มีตัวเลือกเดียว + needs = skippedNeeds (ไม่ใช่ dead)
+            if (it.needs) rec(it, { class: "skip", reason: "needs", detail: "select มีตัวเลือกเดียว (needs · CD-P41-F26)" });
+            else rec(it, { class: "dead", detail: "select มีตัวเลือกเดียว — ไม่มีค่าให้เปลี่ยน", shot: await failShot(page, it) });
             continue;
           }
           valueChanged = r.before !== r.after;
@@ -908,86 +1145,95 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         }
       }
       if (dead) {
-        const dis: boolean = await el.evaluate((e: Any) => !!e.disabled || e.getAttribute("aria-disabled") === "true").catch(() => false);
+        const dis = await isDisabled(el);
         if (it.needs && dis) rec(it, { class: "skip", reason: "needs", detail: "คอนโทรลมีแต่ disabled (needs)" });
         else rec(it, { class: actErr ? "error" : "dead", detail: actErr || `ไม่มี DOM mutation/navigation/network ภายใน 3 วิ${dis ? " · disabled ตอนกด" : ""}${prefilled.length ? ` · prefill ${prefilled.join(",")}` : ""}`, shot: await failShot(page, it) });
         state.dirty = true;
         continue;
       }
-      // ── คาด ──
-      let ok = true;
-      let detail = "";
-      const cands = [ex.target, ...(ex.anyOf ?? [])].filter((x): x is string => !!x);
-      if (ex.type === "modal" || ex.type === "toast" || ex.type === "inline-error") {
-        const tids = cands.filter(looksLikeTestid);
-        if (!tids.length) detail = ex.type === "inline-error" ? "inline-error ไม่มีเป้า (อ่อน)" : "";
-        else {
-          let found = false;
-          for (let t = Date.now() + 6000; !found && Date.now() < t; ) {
-            for (const c of tids) if (await findVisible(page, c, [], 0)) found = true;
-            if (!found) await sleep(200);
-          }
-          ok = found;
-          detail = found ? "" : `ไม่เห็น ${tids.join(" | ")} ภายใน 6 วิ`;
+      // ── คาด (หลัก แล้ว anyOf — CD-P42-R8) ──
+      const VIS = ["modal", "toast", "inline-error"];
+      const visTids = alts.filter((a) => VIS.includes(a.type) && looksLikeTestid(a.target)).map((a) => a.target);
+      const navPaths = alts.filter((a) => a.type === "navigate" && (a.target.startsWith("/") || a.target.startsWith("#"))).map((a) => a.target);
+      const anyVisible = async (tids: string[], ms: number): Promise<string | null> => {
+        for (let t = Date.now() + ms; ; ) {
+          for (const c of tids) if (await findVisible(page, c, [], 0)) return c;
+          if (Date.now() >= t) return null;
+          await sleep(200);
         }
-      } else if (ex.type === "navigate") {
-        const paths = cands.filter((c) => c.startsWith("/") || c.startsWith("#"));
-        if (!paths.length) {
-          ok = false;
-          detail = `target ไม่ใช่ path (${cands.join(" | ")})`;
-        } else {
-          ok = false;
-          for (let i = 0; i < 40 && !ok; i++) {
-            const urls = [page.url(), ...tabs.slice(tabsBefore).map((t: Any) => String(t.url?.() ?? ""))];
-            ok = urls.some((u) => paths.some((t) => navMatches(t, u)));
-            if (!ok) await sleep(200);
-          }
-          const navBad = resp.slice(respBefore).filter((r) => r.nav && r.status >= 400);
-          if (ok && navBad.length) {
-            ok = false;
-            detail = `ปลายทางตอบ HTTP ${navBad[0]!.status}`;
-          } else if (!ok) detail = `url=${urlKey(page.url())} ไม่ตรง ${paths.join(" | ")}`;
+      };
+      const navNow = async (ms: number): Promise<{ ok: boolean; detail: string }> => {
+        let hit = false;
+        for (let i = 0; i < Math.max(1, Math.round(ms / 200)) && !hit; i++) {
+          const urls = [page.url(), ...tabs.slice(tabsBefore).map((t: Any) => String(t.url?.() ?? ""))];
+          hit = urls.some((u) => navPaths.some((t) => navMatches(t, u))); // CD-P42-R4
+          if (!hit) await sleep(200);
         }
-      } else if (ex.type === "ui") {
-        if (!uiT) detail = isField ? "ค่าในช่องเปลี่ยน" : "มีผล (ไม่ตาย)";
-        else if (ex.state === "disappears") {
+        const navBad = resp.slice(respBefore).filter((r) => r.nav && r.status >= 400);
+        if (hit && navBad.length) return { ok: false, detail: `ปลายทางตอบ HTTP ${navBad[0]!.status}` };
+        return { ok: hit, detail: hit ? "" : `url=${urlKey(page.url())} ไม่ตรง ${navPaths.join(" | ")}` };
+      };
+      const uiNow = async (a: ExpectAlt): Promise<{ ok: boolean; detail: string }> => {
+        const tg = looksLikeTestid(a.target) ? a.target : "";
+        const b = uiBefore.get(tg) ?? { snap: null, vis: false, count: -1 };
+        if (!tg) return { ok: true, detail: isField ? "ค่าในช่องเปลี่ยน" : "มีผล (ไม่ตาย)" };
+        if (a.state === "disappears") {
           let gone = false;
           for (let i = 0; i < 20 && !gone; i++) {
-            gone = !(await findVisible(page, uiT, [], 0));
+            gone = !(await findVisible(page, tg, [], 0));
             if (!gone) await sleep(150);
           }
-          ok = gone;
-          detail = gone ? "" : `${uiT} ยังเห็นอยู่`;
-        } else if (ex.state === "selected") {
-          const s = await findVisible(page, uiT, [], 3000);
-          ok = !!s && (await s.evaluate((e: Element) => ["aria-selected", "aria-pressed", "aria-checked"].some((a) => e.getAttribute(a) === "true") || (e.hasAttribute("aria-current") && e.getAttribute("aria-current") !== "false")).catch(() => false));
-          detail = ok ? "" : `${uiT} ไม่ประกาศสถานะเลือก`;
-        } else if (ex.state === "count") {
-          let after = countBefore;
-          for (let i = 0; i < 20 && after === countBefore; i++) {
+          return { ok: gone, detail: gone ? "" : `${tg} ยังเห็นอยู่` };
+        }
+        if (a.state === "selected") {
+          const s = await findVisible(page, tg, [], 3000);
+          const ok = !!s && (await s.evaluate((e: Element) => ["aria-selected", "aria-pressed", "aria-checked"].some((x) => e.getAttribute(x) === "true") || (e.hasAttribute("aria-current") && e.getAttribute("aria-current") !== "false")).catch(() => false));
+          return { ok, detail: ok ? "" : `${tg} ไม่ประกาศสถานะเลือก` };
+        }
+        if (a.state === "count") {
+          let after = b.count;
+          for (let i = 0; i < 20 && after === b.count; i++) {
             await sleep(200);
-            after = await countVisible(page, uiT);
+            after = await countVisible(page, tg);
           }
-          ok = after >= 0 && after !== countBefore;
-          detail = ok ? "" : `จำนวน ${uiT} ไม่เปลี่ยน (${countBefore} → ${after})`;
-        } else if (ex.state === "unchanged") {
+          const ok = after >= 0 && after !== b.count;
+          return { ok, detail: ok ? "" : `จำนวน ${tg} ไม่เปลี่ยน (${b.count} → ${after})` };
+        }
+        if (a.state === "unchanged") {
           await sleep(800);
-          const after = await uiSnapshot(page, uiT);
-          ok = after === uiBefore;
-          detail = ok ? "" : `${uiT} เปลี่ยน (คาดไม่เปลี่ยน)`;
-        } else if (ex.state === "changes" || visBefore) {
+          const ok = (await uiSnapshot(page, tg)) === b.snap;
+          return { ok, detail: ok ? "" : `${tg} เปลี่ยน (คาดไม่เปลี่ยน)` };
+        }
+        if (a.state === "changes" || b.vis) {
           let after: string | null = null;
           for (let i = 0; i < 20; i++) {
-            after = await uiSnapshot(page, uiT);
-            if (after !== null && after !== uiBefore) break;
+            after = await uiSnapshot(page, tg);
+            if (after !== null && after !== b.snap) break;
             await sleep(200);
           }
-          ok = after !== null && after !== uiBefore;
-          detail = ok ? "" : `${uiT} ไม่เปลี่ยนภายใน 4 วิ`;
-        } else {
-          ok = !!(await findVisible(page, uiT, [], 5000));
-          detail = ok ? "" : `ไม่เห็น ${uiT}`;
+          const ok = after !== null && after !== b.snap;
+          return { ok, detail: ok ? "" : `${tg} ไม่เปลี่ยนภายใน 4 วิ` };
         }
+        const ok = !!(await findVisible(page, tg, [], 5000));
+        return { ok, detail: ok ? "" : `ไม่เห็น ${tg}` };
+      };
+      let ok = true;
+      let detail = "";
+      if (VIS.includes(ex.type)) {
+        if (!visTids.length) detail = ex.type === "inline-error" ? "inline-error ไม่มีเป้า (อ่อน)" : "";
+        else {
+          const hit = await anyVisible(visTids, 6000);
+          ok = !!hit;
+          detail = hit ? (hit !== ex.target ? `anyOf ${hit}` : "") : `ไม่เห็น ${visTids.join(" | ")} ภายใน 6 วิ`;
+        }
+      } else if (ex.type === "navigate") {
+        if (!navPaths.length) {
+          ok = false;
+          detail = `target ไม่ใช่ path (${alts.map((a) => a.target).join(" | ")})`;
+        } else ({ ok, detail } = await navNow(8000));
+      } else if (ex.type === "ui") {
+        if (!uiT) detail = isField ? "ค่าในช่องเปลี่ยน" : "มีผล (ไม่ตาย)";
+        else ({ ok, detail } = await uiNow(alts[0]!));
       } else if (ex.type === "download") {
         await settle(page, 6000);
         let dl = DL.slice(dlBefore);
@@ -1018,11 +1264,9 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         }
         if (ok && !deferred && it.verify === "db") {
           let hit = writes.length === 0;
-          const units = new Set<string>();
           for (let t = Date.now() + 5000; !hit && Date.now() < t; ) {
             for (const w of writes) {
               const r = await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null);
-              r.units.forEach((u) => units.add(u));
               if (r.ok) hit = true;
             }
             if (!hit) await sleep(400);
@@ -1038,6 +1282,42 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           detail = `ไม่เห็น ${rt} หลังกด`;
         }
       }
+      // CD-P42-R8: หลักไม่ผ่าน ⇒ anyOf ข้อใดข้อหนึ่งผ่าน = ok (ป้าย/กล่อง · navigate · ui)
+      if (!ok && alts.length > 1) {
+        const v = alts.slice(1).filter((a) => VIS.includes(a.type) && looksLikeTestid(a.target)).map((a) => a.target);
+        const hitV = v.length ? await anyVisible(v, 1500) : null;
+        if (hitV) {
+          ok = true;
+          detail = `anyOf ${hitV} (หลัก: ${detail})`;
+        }
+        if (!ok && ex.type !== "navigate" && navPaths.length && (await navNow(1500)).ok) {
+          ok = true;
+          detail = `anyOf navigate (หลัก: ${detail})`;
+        }
+        for (const a of alts.slice(1)) {
+          if (ok || a.type !== "ui") continue;
+          const r = await uiNow(a);
+          if (r.ok) {
+            ok = true;
+            detail = `anyOf ui ${a.target}${a.state ? ` ${a.state}` : ""} (หลัก: ${detail})`;
+          }
+        }
+      }
+      // CD-P42-R8 (CD-P41-F26): แถวคัดลอก — คลิปบอร์ดเปลี่ยน = ok · อ่านคลิปบอร์ดไม่ได้ = ข้อความบนหน้า ("คัดลอกแล้ว"/"Copied")
+      if (!ok && clipRow) {
+        const after = await clipboardRead(page);
+        if (after !== null && after.len > 0 && after.hash !== clipBefore?.hash) {
+          ok = true;
+          detail = `คลิปบอร์ดได้ข้อความ ${after.len} ตัว (ไม่บันทึกเนื้อหา) · หลัก: ${detail}`;
+        } else if (after === null) {
+          const said: string = await el.evaluate((e: Element) => `${e.textContent ?? ""} ${e.getAttribute("aria-label") ?? ""} ${document.querySelector('[role="status"],[data-testid$="-toast"]')?.textContent ?? ""}`).catch(() => "");
+          if (/คัดลอกแล้ว|copied/i.test(said)) {
+            ok = true;
+            detail = `อ่านคลิปบอร์ดไม่ได้ — ข้อความบนหน้า "คัดลอกแล้ว" · หลัก: ${detail}`;
+          }
+        }
+      }
+      if (notes.length) detail = `${detail}${detail ? " · " : ""}${notes.join(" · ")}`;
       // ── แถวเงิน: แถวเงินที่เกิดต้องอยู่สาขา posqc-btn ──
       if (it.moneyUnit) {
         const units = new Set<string>();
@@ -1071,10 +1351,27 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       } else if (ok && (ex.type === "modal" || (ex.type === "ui" && (ex.state ?? "appears") === "appears"))) state.openChain.push(it.row.testid);
       else state.dirty = true;
       if (nonGet > ngBefore && (await restoreSettingsIfChanged(CTX, it.key))) state.dirty = true;
+
     } catch (e) {
       rec(it, { class: "error", detail: e instanceof Error ? e.message.slice(0, 200) : String(e), shot: await failShot(page, it).catch(() => "") });
       state.dirty = true;
     } finally {
+      // คืนค่าหลังแถว (ทุกทางออก — ok/dead/skip/error) · ไม่โยน
+      try {
+        // CD-P42-R9: ตัวสลับภาษาตั้งคุกกี้ของทั้ง context — คืนภาษาของช่อง
+        if (localeOfSwitch(it.row.testid)) {
+          await resetLocale(page);
+          state.dirty = true;
+        }
+        // CD-P42-R7 (CD-P41-F22): แถวผลข้างเคียง (ช่วงท้าย) — fixture คืนสิ่งที่คืนได้ในสาขา posqc-btn ทันที + settings
+        if (sideEffectOf(it.row) && it.action === "press") {
+          for (const x of await resetSideEffects(CTX, it.key)) CTX.restores.push(x);
+          await restoreSettingsIfChanged(CTX, it.key);
+          state.dirty = true;
+        }
+      } catch (e) {
+        CTX.restores.push({ label: `${it.key} · คืนค่าหลังแถว`, ok: false, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+      }
       const r = RESULTS.get(it.key);
       if (r) r.ms = Date.now() - t1;
       const errs = cErrs.slice(errsBefore);
@@ -1138,6 +1435,8 @@ try {
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string)) as Any;
   BROWSER = await pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE[0]}`] });
   const groups = new Map<string, PlanItem[]>();
+  // CD-P42-R7 (CD-P41-F22): แถวผลข้างเคียง (กดจริง) = ช่วงท้ายของรอบ หลังทุกหน้า · fixture คืนค่าหลังแต่ละแถว
+  const late = new Map<string, PlanItem[]>();
   for (const it of PLAN.items) {
     if (it.action === "skip") continue;
     const { path, missing } = pathOf(it);
@@ -1145,12 +1444,15 @@ try {
       rec(it, { class: "skip", reason: "needs-fixture", detail: `หาค่า ${missing} ไม่ได้` });
       continue;
     }
-    groups.set(path, [...(groups.get(path) ?? []), it]);
+    const g = it.action === "press" && sideEffectOf(it.row) ? late : groups;
+    g.set(path, [...(g.get(path) ?? []), it]);
   }
+  const lateOrder = [...late.entries()].sort((a, b) => Math.max(...a[1].map((x) => sideEffectRank(x.row))) - Math.max(...b[1].map((x) => sideEffectRank(x.row))));
+  const total = groups.size + lateOrder.length;
   let gi = 0;
-  for (const [path, group] of groups) {
+  for (const [path, group] of [...groups.entries(), ...lateOrder]) {
     gi++;
-    process.stdout.write(`[${gi}/${groups.size}] `);
+    process.stdout.write(`[${gi}/${total}${gi > groups.size ? " ช่วงท้าย" : ""}] `);
     await runGroup(path, group, cookies);
   }
 } catch (e) {
