@@ -62,6 +62,7 @@ import { CHANNEL_PRESET_BRAND, channelDisplayName, channelRateText } from "@/com
 import { isChannelBuiltinCode } from "@/lib/modules/pos/channel-shared"; // POS P2.12U ◂
 import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
 import { DepositRefund } from "./DepositRefund"; // POS P2.9bU ▸ มติ 7: คืนมัดจำคงเหลือ (ลิ้นชักใบรับเงินมัดจำ) ◂
+import { BillSlips } from "./BillSlips"; // POS P3-SKEL U ▸ CD-SKELU-6 (c) · CD-SKELU-7: บล็อกสลิปโอนของลิ้นชัก ◂
 /** POS P2.9bU ▸ มติ 7: sourceModule ของใบรับเงินมัดจำ + ใบคืนมัดจำ (deposit.ts POS_DEPOSIT_SOURCE) ◂ */
 const DEPOSIT_SOURCE = "POS_DEPOSIT";
 
@@ -83,6 +84,8 @@ type Props = {
   initialBillUnitId?: string | null;
   /** POS P2.14 ▸ UI-4: แสดงต้นทุน/กำไรต่อบรรทัดในลิ้นชัก (pos.report.view) ◂ */
   canSeeCost?: boolean;
+  /** POS P3-SKEL U ▸ CD-SKELU-7: สาขาที่ผู้ใช้ยืนยัน/ปฏิเสธสลิปได้ (pos.shift.manage) + ขนาดไฟล์สลิปสูงสุด (SLIP_MAX_BYTES จากหน้าเพจ) ◂ */
+  slip?: { manageUnits: string[]; maxBytes: number };
 };
 /** P1.13U: เหตุผลที่ปฏิเสธคำขอใบกำกับ (มติ 4 — แผ่นเหตุผล ≤200 · เซิร์ฟเวอร์รับ ≤500) */
 const TAX_REJECT_MAX = 200;
@@ -144,7 +147,7 @@ function BillDialog({ labelledBy, testid, wide, onClose, children }: { labelledB
   );
 }
 
-export function BillsClient({ systemId, units, unitId: listUnitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice: canIssueOne = false, initialBillId = null, taxInvoiceUnits = [], initialBillUnitId = null, canSeeCost = false /* POS P2.14 ▸ UI-4 ◂ */ }: Props) {
+export function BillsClient({ systemId, units, unitId: listUnitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice: canIssueOne = false, initialBillId = null, taxInvoiceUnits = [], initialBillUnitId = null, canSeeCost = false /* POS P2.14 ▸ UI-4 ◂ */, slip /* POS P3-SKEL U ◂ */ }: Props) {
   // POS P2.12U ▸ มติ 7: listUnitId = สาขาของรายการ (หรือ "*") · unitId = สาขาของงานในลิ้นชัก (โหมดทุกสาขา = สาขาของบิลที่เปิด) ◂
   const allMode = listUnitId === BILLS_ALL_UNITS;
   const [rowUnit, setRowUnit] = useState<string | null>(allMode ? initialBillUnitId : null);
@@ -582,7 +585,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
       }
       const dev = await thisDevicePrinter(systemId, unitId);
       const lc = locale.startsWith("en") ? "en" : "th";
-      let res = await printReceipt(r.payload, dev.config, { locale: lc, deviceCode: dev.deviceCode, kickDrawer: false });
+      let res = await printReceipt(r.payload, dev.config, { locale: lc, deviceCode: dev.deviceCode, kickDrawer: false, lan: { systemId, unitId } /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */ });
       if (!res.ok && res.via !== "browser" && (res.code === "UNSUPPORTED" || res.code === "NO_DEVICE")) res = await printReceipt(r.payload, { ...dev.config, mode: "browser" }, { locale: lc, kickDrawer: false });
       if (!res.ok) {
         setDrawerErr(tp(printErrorKey(res.code)));
@@ -1616,6 +1619,20 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                   </div>
                 ))}
               </section>
+              {/* POS P3-SKEL U ▸ CD-SKELU-6 (c) · CD-SKELU-7: สลิปโอน (หลักฐาน) — ชิปสถานะ · แผ่นดู/ยืนยัน/ปฏิเสธ · แนบสลิปของแถวโอน/พร้อมเพย์ ◂ */}
+              {slip ? (
+                <BillSlips
+                  key={bill.id}
+                  systemId={systemId}
+                  unitId={unitId}
+                  saleId={bill.id}
+                  slips={bill.slips ?? []}
+                  canAttach={bill.status !== "VOIDED" && bill.payments.some((x) => x.type === "TRANSFER" || x.type === "PROMPTPAY")}
+                  canManageShift={slip.manageUnits.includes(unitId)}
+                  maxBytes={slip.maxBytes}
+                  onChanged={() => void loadDetail(bill.id)}
+                />
+              ) : null}
               {/* สมาชิก · บัญชี · ใบกำกับ */}
               {bill.member || bill.accounting || bill.receiptKind === "TAX_INVOICE_ABB" || bill.taxInvoice.status !== "NONE" ? (
                 <section className="flex flex-col gap-1 border-b px-5 py-3 text-[13px]">

@@ -22958,6 +22958,315 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-slip",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "ใบขอรับเงิน PROMPTPAY_STATIC ที่ PENDING: เปิดฟอร์มแนบสลิป (เป้าหมาย = intentId) ข้างปุ่มยืนยันเอง · STORAGE_NOT_CONFIGURED = ปิดพร้อมเหตุผลหลังครั้งแรก · ไม่ยืนยันเงินเข้า"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-done-slip",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "จอสำเร็จบิลที่มีแถวโอนเงิน: slipTargetsAction → ฟอร์มแนบสลิปของแถว TRANSFER · นับถอยหลังหยุดระหว่างเปิด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-target-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "เลือกแถวชำระที่จะแนบ (มีมากกว่า 1 แถว)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-file",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "รูปสลิป jpeg/png/webp (capture กล้องหลัง) · ตรวจชนิด/ขนาดฝั่งจอ · คีย์รายการใหม่ต่อการเลือก"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-amount",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "ยอดบนสลิป (บาท ↔ สตางค์ · ไม่เติมให้ — H1)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-ref",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "เลขอ้างอิงบนสลิป (transRef 4–64 · ซ้ำในร้าน = SLIP_DUPLICATE)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "ปิดฟอร์มแนบสลิป"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-send",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-slip-error",
+        "note": "attachSlipAction (FormData) → สลิป UPLOADED (หลักฐาน) · คำปฏิเสธ = pos.platform.slip.errors.<camel>"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-slip-sheet",
+        "note": "ชิปสลิปของบิล (สถานะเท่านั้น) → แผ่นดูสลิป"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-attach",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "แนบสลิปให้แถว TRANSFER/PROMPTPAY ของบิล (paymentId จาก slipTargetsAction · เกิน 24 ชม. ต้อง pos.sale.manage)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slips",
+        "note": "ปิดแผ่นสลิป (ลิงก์รูปชั่วคราวถูกทิ้ง)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-bills-slip-sheet-status",
+        "note": "ยืนยันสลิป (confirmSlipAction · pos.shift.manage · ไม่ใช่ผู้แนบ — SLIP_SELF_CONFIRM เว้นเจ้าของร้าน) · หลักฐานเท่านั้น"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reject",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slip-reason",
+        "note": "เริ่มปฏิเสธสลิป → ช่องเหตุผล"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slip-sheet",
+        "note": "เหตุผลที่ปฏิเสธ 3–200 (สั้นกว่า 3 = ข้อความในแผ่น ไม่เรียกเซิร์ฟเวอร์)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reject-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slip-sheet",
+        "note": "ยกเลิกการปฏิเสธ"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reject-send",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-bills-slip-sheet-status",
+        "note": "ปฏิเสธสลิป (rejectSlipAction + เหตุผล) · SLIP_INVALID_STATE = ข้อความ + โหลดลิ้นชักใหม่"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

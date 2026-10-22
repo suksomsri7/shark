@@ -34,6 +34,7 @@ import type { KitchenSlip } from "@/lib/modules/pos/kds-shared"; // POS P2.6U �
 import { printKitchenSlips } from "@/components/pos/kds/kds-print"; // POS P2.6U ▸ fix1 F2 ◂
 import { RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
+import { SlipDoneBlock } from "./SlipAttach"; // POS P3-SKEL U ▸ CD-SKELU-6 (b): แนบสลิปของแถวโอนเงิน ◂
 
 const AUTO_SECONDS = 5;
 const PAY_LABEL: Record<RegisterPayType, string> = { CASH: "pay.cash", PROMPTPAY: "pay.promptpay", TRANSFER: "pay.transfer", CARD: "pay.card", PLATFORM: "pay.platform", GIFT_CARD: "pay.giftCard", STORE_CREDIT: "pay.storeCredit", DEPOSIT: "pay.deposit" }; // POS P2.1 ▸ PLATFORM ◂ · POS P2.9 ▸ STORE_CREDIT ◂ · POS P2.9b ▸ DEPOSIT ◂
@@ -111,7 +112,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
       if (r && r.ok === true) slips.push(...r.slips);
     }
     if (!slips.length) return;
-    const res = await printKitchenSlips(slips, printer.config, locale);
+    const res = await printKitchenSlips(slips, printer.config, locale, { systemId, unitId } /* POS P3-SKEL U ▸ CD-SKELU-9: โหมดแลน ◂ */);
     if (!res.ok) setKitchenErr(t("done.kitchenPrintFailed", { reason: tp(`errors.${res.code}`) }));
   };
   useEffect(() => {
@@ -165,7 +166,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
       const cfg = forceBrowser ? { ...printer.config, mode: "browser" as const } : printer.config;
       // F1: ลิ้นชักเฉพาะใบต้นฉบับใบแรกของบิล (ไม่ใช่สำเนาตามกฎ 30 นาที) — สำเนา/พิมพ์ซ้ำ = false เสมอ
       const kickDrawer = original && cfg.drawerKick && !r.payload.copy;
-      const res = await printReceipt(r.payload, cfg, { locale, deviceCode: printer.deviceCode, kickDrawer });
+      const res = await printReceipt(r.payload, cfg, { locale, deviceCode: printer.deviceCode, kickDrawer, ...(unitId ? { lan: { systemId, unitId } } : {}) /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */ });
       if (res.ok && original) {
         printedOriginal.add(saleId);
         setPrinted(true);
@@ -209,7 +210,8 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
   };
   const failed = !!loadErr || (!!printRes && !printRes.ok);
   // P1.11U: นับถอยหลังหยุดระหว่างแผ่นอีเมลเปิด/กำลังส่ง (กลับมานับต่อเมื่อปิด)
-  const auto = changeSatang === 0 && !failed && !printing && !emailOpen && !sendBusy;
+  const [slipOpen, setSlipOpen] = useState(false); // POS P3-SKEL U ▸ CD-SKELU-6 (b): ฟอร์มสลิปเปิด = หยุดนับถอยหลัง ◂
+  const auto = changeSatang === 0 && !failed && !printing && !emailOpen && !sendBusy && !slipOpen /* POS P3-SKEL U ◂ */;
   const [left, setLeft] = useState(AUTO_SECONDS);
   const nextRef = useRef(onNext);
   nextRef.current = onNext;
@@ -404,6 +406,8 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             {auto && <span className="font-normal opacity-70">{t("done.auto", { sec: Math.max(left, 0) })}</span>}
           </button>
         </div>
+        {/* POS P3-SKEL U ▸ CD-SKELU-6 (b): บิลที่มีแถวโอนเงินเท่านั้น — เป้าหมายจาก slipTargetsAction · หลักฐาน ไม่มีผลเงิน ◂ */}
+        {unitId && saleId && !duplicated && payMethods.some((m) => m.type === "TRANSFER") ? <SlipDoneBlock systemId={systemId} unitId={unitId} saleId={saleId} onHold={setSlipOpen} /> : null}
         {emailOpen && (
           <form
             data-testid="pos-receipt-send-paydone-email-form"

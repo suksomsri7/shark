@@ -12,6 +12,7 @@ import { posAccountSystemId } from "@/lib/modules/account";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { BillsClient } from "./BillsClient";
+import { SLIP_MAX_BYTES } from "@/lib/modules/pos/payment-slip"; // POS P3-SKEL U ▸ CD-SKELU-7: ขนาดไฟล์สลิปเป็นค่าจากหน้าเพจ (ไม่ import ค่าในไฟล์ client) ◂
 
 // POS P1.16 U — หน้า "บิลวันนี้" (ภาพ 12 · route เดิม /pos/sales · มติ CD1 แทนหน้าประวัติบิลเดิม)
 //   ข้อมูลทั้งหน้าโหลดจาก billsPageDataAction คำขอเดียว (client) · หน้านี้เลือกสาขาที่เข้าได้ + บอกว่าร้านเคยมีบิลไหม (ข้อความว่าง)
@@ -69,6 +70,7 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
           initialBillId={allMode && !initialBillUnitId ? null : billParam} // POS P2.8U ▸ ?bill= ◂ · POS P2.12U ▸ ทุกสาขา: ต้องรู้สาขาของบิล ◂
           taxInvoiceUnits={taxInvoiceUnits}
           initialBillUnitId={initialBillUnitId}
+          slip={{ manageUnits: units.filter((u) => evaluate(m, { module: "pos", action: "pos.shift.manage", unitId: u.id })).map((u) => u.id), maxBytes: SLIP_MAX_BYTES }} // POS P3-SKEL U ▸ CD-SKELU-7 ◂
           canSeeCost={allMode ? units.some((u) => evaluate(m, { module: "pos", action: "pos.report.view", unitId: u.id })) : evaluate(m, { module: "pos", action: "pos.report.view", unitId })} // POS P2.14 ▸ UI-4: ต้นทุน/กำไรต่อบรรทัด = ผู้ดูรายงานได้ ◂
         />
       ) : (
