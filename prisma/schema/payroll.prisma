@@ -46,10 +46,19 @@ model HrPayAdjustment {
   // 🔴 partial unique ("crmCommissionId") WHERE "crmCommissionId" IS NOT NULL — ประกาศเฉพาะใน migration.sql
   //    (Prisma schema ไม่รองรับ WHERE · ห้ามใส่ @unique ที่นี่ ไม่งั้น migrate diff จะสร้าง unique เต็มซ้ำ)
   crmCommissionId String?
+  // HR H1.3 ▸ แหล่งที่มาของรายการ (ยอดขาย POS · คำขอ OT · กฎมาสาย/ขาดงาน · เบิกของ) — ว่างได้ทั้งคู่ ไม่มีค่าปริยาย ไม่ backfill
+  //   🔴 partial unique "HrPayAdjustment_tenant_source_key" ("tenantId","sourceType","sourceRef") WHERE "sourceRef" IS NOT NULL +
+  //      CHECK sourceRef ⇒ sourceType + CHECK ห้ามมีทั้ง crmCommissionId และ sourceRef — ประกาศเฉพาะใน migration.sql
+  //      (20261206000000_hr_money_law_model · Prisma ไม่รองรับ WHERE/CHECK) · ห้ามใส่ @unique ที่ sourceRef
+  //   1 แหล่ง = 1 แถวตลอดไป (แถว REJECTED ยังจอง sourceRef — ยื่นใหม่ = sourceRef ใหม่) · แถว CRM ยังใช้ crmCommissionId อย่างเดียว
+  //   กติกาผู้อ่าน (H2.9+): แหล่งของรายการ = sourceType ?? (crmCommissionId ? CRM_COMMISSION : MANUAL) ◂
+  sourceType    HrPaySource?
+  sourceRef     String?
 
   @@index([systemId, periodKey, status])
   @@index([systemId, employeeId])
   @@index([tenantId])
+  @@index([systemId, sourceType]) // HR H1.3 ◂
 }
 
 // HR H1.1 ▸ รูปแบบค่าจ้าง (รายเดือน / รายวัน / รายชั่วโมง) ◂
@@ -101,6 +110,16 @@ model HrPayrollRun {
   // HR H0.6 ▸ กลับรายการ (reverseRun): เวลา + ผู้กด (null = ทางระบบ/สคริปต์) — รอบที่กลับก่อน H0.6 = null ทั้งคู่ ◂
   reversedAt             DateTime?
   reversedById           String?
+  // HR H1.3 ▸ รุ่นเครื่องคิดเงินเดือน (รอบเดิม = 1 = ของที่คิดมันจริง · ห้ามคิดใหม่ด้วยรุ่นอื่น) · สมุดบัญชีที่ลง (H3.7) ·
+  //   ผู้สร้าง/ผู้อนุมัติ + เวลา (maker-checker H3.4) · กุญแจไฟล์ธนาคาร (ที่เก็บส่วนตัว H3.5) · ไฟล์ยื่นภาษี/ประกันสังคม (H3.6)
+  //   H1.3 ยังไม่มีใครเขียน/อ่าน — CHECK "engineVersion" >= 1 อยู่ใน migration.sql ◂
+  engineVersion          Int              @default(1)
+  accountSystemId        String?
+  createdById            String?
+  approvedById           String?
+  approvedAt             DateTime?
+  bankFileKey            String?
+  filingJson             Json?
 
   items HrPayrollItem[]
 
@@ -128,7 +147,102 @@ model HrPayrollItem {
   addSatang         Int          @default(0) // รวมรายการเพิ่มของคนนี้ในงวด
   deductSatang      Int          @default(0) // รวมรายการหักของคนนี้ในงวด
   snapshotJson      Json         @default("{}") // freeze สูตร/ลดหย่อน/รายการเพิ่ม-หัก ณ วันคำนวณ
+  // HR H1.3 ▸ ยอดสะสมทั้งปี (H3.3) · id แถว HrLawTable ที่ใช้คิด (ว่าง = ค่าคงที่ของเครื่องรุ่น 1) — H1.3 ยังไม่มีใครเขียน/อ่าน ◂
+  ytdJson           Json?
+  lawRowIds         String[]     @default([])
 
   @@unique([runId, employeeId])
   @@index([tenantId, systemId])
+}
+
+// HR H1.3 ▸ ตารางกฎหมายเงินเดือน (ประกันสังคม · ขั้นภาษี · ค่าลดหย่อน · OT · ค่าแรงขั้นต่ำ) — ตารางเดียวของทั้ง SHARK (ไม่ผูกร้าน)
+//   ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น (scripts/hr-seed-law-draft.mts = 4 แถว DRAFT จากค่าคงที่ของ payroll-rules.ts)
+//   json = จำนวนเต็มล้วน (สตางค์ + basis point) · ห้ามแก้แถวเดิม (เปลี่ยนค่า = แถวใหม่ + supersedesId · แถวเก่า RETIRED)
+//   🔴 raw ใน migration.sql: ACTIVE ได้แถวเดียวต่อ (kind, effectiveFrom) + CHECK ACTIVE ต้องมีผู้รับรอง (approvedAt + id/ชื่อ) ◂
+enum HrLawKind {
+  SSO
+  TAX_BRACKET
+  DEDUCTION
+  OT
+  MIN_WAGE
+}
+
+enum HrLawStatus {
+  DRAFT // รอนักบัญชี/เจ้าของแพลตฟอร์มรับรอง — เครื่องยังไม่ใช้
+  ACTIVE
+  RETIRED // ถูกแทนด้วยแถวใหม่ (ไม่ลบ)
+}
+
+model HrLawTable {
+  id             String      @id @default(cuid())
+  createdAt      DateTime    @default(now())
+  kind           HrLawKind
+  effectiveFrom  DateTime    @db.Date // แถว v1 = 1970-01-01 (ค่าที่เครื่องรุ่น 1 ใช้มาตลอด) · วันจริงตั้งตอนเปิดใช้
+  json           Json
+  status         HrLawStatus @default(DRAFT)
+  sourceKey      String      @unique // กุญแจกันซ้ำของสคริปต์ เช่น "v1:SSO"
+  note           String?
+  approvedById   String? // ผู้รับรอง = เจ้าของแพลตฟอร์ม (ไม่ใช่ผู้ใช้ของร้าน)
+  approvedByName String? // ชื่อนักบัญชีผู้รับรอง (HQ23)
+  approvedAt     DateTime?
+  supersedesId   String? // แถวที่ถูกแทน (ไม่มี FK)
+
+  @@index([kind, effectiveFrom])
+}
+
+// HR H1.3 ▸ ชนิดของนาทีทำงานต่อวัน (H3.1 สร้าง · H3.2 ใช้แยก 1.5/2/3 เท่า) ◂
+enum HrWorkEntryKind {
+  WORK
+  OT_WORKDAY
+  HOLIDAY_WORK
+  OT_HOLIDAY
+  HOLIDAY_PAID
+  LEAVE_PAID
+  LEAVE_UNPAID
+  ABSENT
+  LATE
+  EARLY_OUT
+}
+
+// HR H1.3 ▸ แหล่งที่มาของรายการเพิ่ม/หัก (HrPayAdjustment.sourceType) — ค่าใหม่ทีหลัง = migration ALTER TYPE ของมันเอง ◂
+enum HrPaySource {
+  MANUAL
+  CRM_COMMISSION
+  POS_SALE_LINE
+  OT_REQUEST
+  LATE_RULE
+  ABSENT_RULE
+  INVENTORY_ISSUE
+}
+
+// HR H1.3 ▸ นาทีทำงานต่อวันต่อชนิด (snapshot ที่รอบจ่ายใช้) — H3.1 เขียน · H1.3 ว่าง
+//   id ต้นทาง (ตารางงาน · ลงเวลา · ใบลา · OT · วันหยุด) = สตริงเปล่า ไม่มี FK (แก้/ลบต้นทางแล้ว snapshot ยังอยู่ — Q8)
+//   runId = รอบจ่ายที่ใช้แถวนี้แล้ว (แช่แข็ง) · CHECK minutes 0..1440 อยู่ใน migration.sql ◂
+model HrWorkEntry {
+  id              String          @id @default(cuid())
+  tenantId        String
+  systemId        String
+  createdAt       DateTime        @default(now())
+  employeeId      String
+  employee        HrEmployee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime        @db.Date // วันตามเวลาไทย
+  kind            HrWorkEntryKind
+  minutes         Int
+  periodKey       String
+  unitId          String?
+  rosterEntryId   String?
+  attendanceInId  String?
+  attendanceOutId String?
+  leaveId         String?
+  otRequestId     String?
+  holidayId       String?
+  runId           String?
+  computedAt      DateTime
+  note            String?
+
+  @@unique([employeeId, date, kind])
+  @@index([tenantId])
+  @@index([systemId, periodKey])
+  @@index([systemId, employeeId, date])
+  @@index([runId])
 }
