@@ -8503,11 +8503,19 @@ async function runP3skuState(page: Any, state: P3skuKey, device: Device): Promis
         const err = await page.$eval(tid("pos-device-lan-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
         throw new StepError(`ลงทะเบียนตัวช่วยพิมพ์ "${name}" แล้วไม่ขึ้นกล่องโทเคน${err ? ` (${err})` : ""}`);
       });
-      // 🔴 โทเคนจริงไม่ลงภาพ: ปิดบังข้อความก่อนถ่าย (agent ถูกเพิกถอน + ลบตอนเก็บกวาด)
-      await page.$eval(`${tid("pos-device-lan-token")} code`, (e: Element) => {
-        e.textContent = "spa_•••••••••••••••• (ปิดบังในภาพ QC)";
+      // 🔴 โทเคนจริงไม่ลงภาพ (fix1 F3): ปิดด้วย CSS overlay ที่ React วาดทับไม่ได้ (ไม่แก้ textContent ของ <code> ที่ React คุม) ·
+      //   ตรวจซ้ำหลัง into() ก่อนถ่าย — ยังมองเห็นโทเคน = StepError (ไม่ถ่าย) · agent ถูกเพิกถอน + ลบตอนเก็บกวาด
+      await page.addStyleTag({
+        content: `${tid("pos-device-lan-token")} code{color:transparent!important;text-shadow:none!important;position:relative}${tid("pos-device-lan-token")} code::after{content:"spa_•••••••••••••••• (ปิดบังในภาพ QC)";color:var(--color-ink);position:absolute;left:12px;top:8px}`,
       });
       await into(tid("pos-device-lan-token"));
+      const masked = await page
+        .$eval(`${tid("pos-device-lan-token")} code`, (e: Element) => {
+          const c = getComputedStyle(e).color.replace(/\s/g, "");
+          return c === "transparent" || c === "rgba(0,0,0,0)";
+        })
+        .catch(() => false);
+      if (!masked) throw new StepError("โทเคนตัวช่วยพิมพ์ยังมองเห็นก่อนถ่าย (CSS ปิดบังไม่ติด) — ไม่ถ่ายภาพนี้");
       return;
     }
     case "paydlg-intent-slip":
