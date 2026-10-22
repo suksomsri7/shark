@@ -81,7 +81,7 @@ export default async function PosShiftsPage({ params, searchParams }: { params: 
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
-      <ModuleTabs items={posTabs(id, await getTranslations("pos"))} />
+      <ModuleTabs items={posTabs(id, await getTranslations("pos"))} data-testid="pos-shift-module-tabs" /* POS P4.1 ▸ R5 ◂ */ />
       <ShiftsClient systemId={id} units={units} unitId={unitId} canManage={canManage} meName={auth.user.name?.trim() || auth.user.email || "-"} meUserId={auth.user.id} /* POS P3.5U ▸ มติ 5 ◂ */ clockAsk={clockAsk} hours={hours} /* POS P3.5U ▸ มติ 7 ◂ */ offline={offline} /* POS P3.4U ▸ มติ 9 ◂ */ boardHint={boardHint} shiftCards={shiftCards} /* POS P3.8U ▸ CD-P38U-6 ◂ */ />
     </div>
   );

@@ -63,6 +63,7 @@ export function CloseDayTools({
             onChange={(e) => setCounted(e.target.value)}
             placeholder={t("countedPlaceholder")}
             className="input min-h-[44px]"
+            data-testid="pos-close-counted" /* POS P4.1 ▸ R5 ◂ */
           />
         </label>
         {diffSatang !== null && (
@@ -87,6 +88,7 @@ export function CloseDayTools({
         onClick={download}
         disabled={busy}
         className="btn btn-ghost min-h-[44px] text-sm disabled:opacity-60"
+        data-testid="pos-close-csv" /* POS P4.1 ▸ R5 ◂ */
       >
         {busy ? t("preparing") : t("downloadCsv")}
       </button>

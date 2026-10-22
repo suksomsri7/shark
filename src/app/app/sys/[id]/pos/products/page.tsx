@@ -62,7 +62,7 @@ export default async function PosProductsPage({
   const head = (actions?: ReactNode) => (
     <>
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} actions={actions} />
-      <ModuleTabs items={tabs} />
+      <ModuleTabs items={tabs} data-testid="pos-products-module-tabs" /* POS P4.1 ▸ R5 ◂ */ />
     </>
   );
   if (!canPrice && !branchMode)
@@ -122,11 +122,13 @@ export default async function PosProductsPage({
         </p>
         {!inventorySystemId ? (
           <EmptyState
+            data-testid="pos-products-legacy-services-connect" /* POS P4.1 ▸ R5 ◂ */
             text={t("servicesNoInventory")}
             action={{ href: `/app/sys/${id}`, label: t("servicesConnect") }}
           />
         ) : services.length === 0 ? (
           <EmptyState
+            data-testid="pos-products-legacy-services-add" /* POS P4.1 ▸ R5 ◂ */
             text={t("servicesEmpty")}
             action={{ href: `/app/sys/${inventorySystemId}/inventory/services`, label: t("servicesAdd") }}
           />
@@ -143,7 +145,7 @@ export default async function PosProductsPage({
                 <MoneyText satang={sv.priceSatang} />
               </div>
             ))}
-            <Link href={`/app/sys/${inventorySystemId}/inventory/services`} className="text-xs underline">
+            <Link href={`/app/sys/${inventorySystemId}/inventory/services`} className="text-xs underline" data-testid="pos-products-legacy-services-edit" /* POS P4.1 ▸ R5 ◂ */>
               {t("servicesEditLink")}
             </Link>
           </div>
@@ -152,11 +154,13 @@ export default async function PosProductsPage({
 
       {!inventorySystemId ? (
         <EmptyState
+          data-testid="pos-products-legacy-items-connect" /* POS P4.1 ▸ R5 ◂ */
           text={t("itemsNoInventory")}
           action={{ href: `/app/sys/${id}`, label: t("itemsConnect") }}
         />
       ) : items.length === 0 ? (
         <EmptyState
+          data-testid="pos-products-legacy-items-add" /* POS P4.1 ▸ R5 ◂ */
           text={t("itemsEmpty")}
           action={{ href: `/app/sys/${inventorySystemId}`, label: t("itemsAdd") }}
         />
@@ -165,7 +169,7 @@ export default async function PosProductsPage({
           {!accountSystemId && (
             <p className="rounded-xl border border-dashed p-2.5 text-xs text-[color:var(--color-muted)]">
               {t("needAccount")}{" "}
-              <Link href="/app/settings/systems" className="text-[color:var(--color-accent)] underline">
+              <Link href="/app/settings/systems" className="text-[color:var(--color-accent)] underline" data-testid="pos-products-legacy-need-account" /* POS P4.1 ▸ R5 ◂ */>
                 {t("needAccountLink")}
               </Link>
             </p>
@@ -180,9 +184,10 @@ export default async function PosProductsPage({
                   key={it.id}
                   action={setItemSalePriceAction}
                   className="flex flex-wrap items-end gap-2 rounded-lg border px-3 py-2 text-sm"
+                  data-testid="pos-products-legacy-price-form" /* POS P4.1 ▸ R5 ◂ */
                 >
-                  <input type="hidden" name="systemId" value={id} />
-                  <input type="hidden" name="itemId" value={it.id} />
+                  <input type="hidden" name="systemId" value={id} data-testid="pos-products-legacy-price-system" /* POS P4.1 ▸ R5 ◂ */ />
+                  <input type="hidden" name="itemId" value={it.id} data-testid="pos-products-legacy-price-item" /* POS P4.1 ▸ R5 ◂ */ />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-medium">{it.name}</span>
                     <span className="text-xs text-[color:var(--color-muted)]">
@@ -201,9 +206,10 @@ export default async function PosProductsPage({
                       defaultValue={it.salePriceSatang != null ? String(it.salePriceSatang / 100) : ""}
                       placeholder="0.00"
                       className="input w-28"
+                      data-testid="pos-products-legacy-price-input" /* POS P4.1 ▸ R5 ◂ */
                     />
                   </label>
-                  <SubmitButton variant="ghost">{t("save")}</SubmitButton>
+                  <SubmitButton variant="ghost" data-testid="pos-products-legacy-price-save" /* POS P4.1 ▸ R5 ◂ */>{t("save")}</SubmitButton>
                 </form>
               ))}
             </div>

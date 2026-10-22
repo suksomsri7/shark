@@ -64,15 +64,16 @@ export default async function PosCloseDayPage({
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs
         items={posTabs(id, tPos)}
+        data-testid="pos-close-module-tabs" /* POS P4.1 ▸ R5 ◂ */
       />
 
       {/* เลือกวัน */}
-      <form method="get" className="flex items-end gap-2">
+      <form method="get" className="flex items-end gap-2" data-testid="pos-close-date-form" /* POS P4.1 ▸ R5 ◂ */>
         <label className="flex flex-1 flex-col gap-1 text-sm">
           <span className="text-[color:var(--color-muted)]">{t("pickDate")}</span>
           <CloseDateField value={businessDate} max={today} label={t("pickDate")} />
         </label>
-        <button type="submit" className="btn btn-ghost min-h-[44px] text-sm">
+        <button type="submit" className="btn btn-ghost min-h-[44px] text-sm" data-testid="pos-close-date-view" /* POS P4.1 ▸ R5 ◂ */>
           {t("view")}
         </button>
       </form>

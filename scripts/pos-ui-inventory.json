@@ -66,56 +66,38 @@
       },
       {
         "file": "src/app/app/sys/[id]/pos/sales/page.tsx",
-        "untestid": 1,
-        "closes": "P1.16 / P4.1",
-        "note": "แท็บโมดูล",
-        "byTag": {
-          "ModuleTabs": 1
-        }
+        "untestid": 0,
+        "closes": "P4.1 (ปิดแล้ว)",
+        "note": "ปิดแล้วใน P4.1 (R5): ใส่ data-testid 1 จุด + แถวทะเบียน (ก่อนหน้า: แท็บโมดูล)",
+        "byTag": {}
       },
       {
         "file": "src/app/app/sys/[id]/pos/products/page.tsx",
-        "untestid": 12,
-        "closes": "P1.1b–P1.2 / P4.1",
-        "note": "แท็บโมดูล · EmptyState action ×4 · ลิงก์ · ฟอร์มตั้งราคา (input ×3 · SubmitButton)",
-        "byTag": {
-          "ModuleTabs": 1,
-          "EmptyState": 4,
-          "Link": 2,
-          "form": 1,
-          "input": 3,
-          "SubmitButton": 1
-        }
+        "untestid": 0,
+        "closes": "P4.1 (ปิดแล้ว)",
+        "note": "ปิดแล้วใน P4.1 (R5): ใส่ data-testid 12 จุด + แถวทะเบียน (ก่อนหน้า: แท็บโมดูล · EmptyState action ×4 · ลิงก์ · ฟอร์มตั้งราคา (input ×3 · SubmitButton))",
+        "byTag": {}
       },
       {
         "file": "src/app/app/sys/[id]/pos/close/page.tsx",
-        "untestid": 3,
-        "closes": "P1.9 / P4.1",
-        "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · button) — ช่องวันที่ย้ายไป CloseDateField (pos-close-date · P1.18U)",
-        "byTag": {
-          "ModuleTabs": 1,
-          "form": 1,
-          "button": 1
-        }
+        "untestid": 0,
+        "closes": "P4.1 (ปิดแล้ว)",
+        "note": "ปิดแล้วใน P4.1 (R5): ใส่ data-testid 3 จุด + แถวทะเบียน (ก่อนหน้า: แท็บโมดูล · ฟอร์มเลือกวัน (form · button) — ช่องวันที่ย้ายไป CloseDateField (pos-close-date · P1.18U))",
+        "byTag": {}
       },
       {
         "file": "src/app/app/sys/[id]/pos/close/CloseDayTools.tsx",
-        "untestid": 2,
-        "closes": "P1.9 / P4.1",
-        "note": "ช่องกรอกเงินนับจริง · ปุ่มดาวน์โหลด CSV",
-        "byTag": {
-          "input": 1,
-          "button": 1
-        }
+        "untestid": 0,
+        "closes": "P4.1 (ปิดแล้ว)",
+        "note": "ปิดแล้วใน P4.1 (R5): ใส่ data-testid 2 จุด + แถวทะเบียน (ก่อนหน้า: ช่องกรอกเงินนับจริง · ปุ่มดาวน์โหลด CSV)",
+        "byTag": {}
       },
       {
         "file": "src/app/app/sys/[id]/pos/shifts/page.tsx",
-        "untestid": 1,
-        "closes": "P4.1",
-        "note": "แท็บโมดูล (ModuleTabs แบบเดียวกับ sales/close)",
-        "byTag": {
-          "ModuleTabs": 1
-        }
+        "untestid": 0,
+        "closes": "P4.1 (ปิดแล้ว)",
+        "note": "ปิดแล้วใน P4.1 (R5): ใส่ data-testid 1 จุด + แถวทะเบียน (ก่อนหน้า: แท็บโมดูล (ModuleTabs แบบเดียวกับ sales/close))",
+        "byTag": {}
       }
     ]
   },
@@ -23366,6 +23348,435 @@
       "oracle": "",
       "system": "POS",
       "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "แท็บโมดูล (posTabs) · สินค้า = แท็บปัจจุบัน · มีทั้งหน้าปกติ/โหมดสาขา และการ์ดปฏิเสธ pos-products-refusal (head() ชุดเดียว) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-services-connect",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]",
+        "note": "กล่องพับราคาเดิม · บริการ: POS ยังไม่ผูกคลัง → EmptyState action \"เชื่อมระบบ\" (ลิงก์ส่งต่อ data-testid ใน EmptyState) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "POS ที่ยังไม่ผูกระบบคลัง (inventorySystemId ว่าง)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-services-add",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/inventory/services",
+        "note": "กล่องพับราคาเดิม · ผูกคลังแล้วแต่ยังไม่มีบริการ → EmptyState action \"เพิ่มบริการ\" ไปหน้าบริการของระบบคลัง · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "ระบบคลังที่ยังไม่มีบริการ"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-services-edit",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/inventory/services",
+        "note": "กล่องพับราคาเดิม · มีบริการ → ลิงก์ \"แก้บริการ\" ไปหน้าบริการของระบบคลัง (อ่านอย่างเดียวที่นี่) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "ระบบคลังที่มีบริการ ≥ 1"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-items-connect",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]",
+        "note": "กล่องพับราคาเดิม · สินค้า: POS ยังไม่ผูกคลัง → EmptyState action \"เชื่อมระบบ\" · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "POS ที่ยังไม่ผูกระบบคลัง (inventorySystemId ว่าง)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-items-add",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]",
+        "note": "กล่องพับราคาเดิม · ผูกคลังแล้วแต่ไม่มีสินค้า → EmptyState action \"เพิ่มสินค้า\" ไปหน้าระบบคลัง · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "ระบบคลังที่ยังไม่มีสินค้า"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-need-account",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/systems",
+        "note": "กล่องพับราคาเดิม · มีสินค้าแต่ POS ยังไม่ผูกระบบบัญชี → ลิงก์ไปหน้าเชื่อมระบบ · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "POS ที่มีสินค้าแต่ยังไม่ผูกระบบบัญชี (accountSystemId ว่าง)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-price-form",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "setItemSalePriceAction",
+        "db": "AccountProduct salePrice (setItemSalePrice · ราคาขายทั้งร้าน)",
+        "note": "กล่องพับราคาเดิม · ฟอร์มต่อสินค้า (server action) → redirect ?ok=1 / ?err=… ที่หน้าเดิม · ต้องตั้งราคาได้ทุกสาขา (posCanSetTenantPrice) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-price-system",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "state": "unchanged",
+        "target": "pos-products-legacy-price-form",
+        "note": "ช่องซ่อน type=hidden (systemId) ของฟอร์มราคาเดิม — ไม่มีให้กด/กรอก · มี testid เพื่อปิดหนี้ F15.3 (POS P4.1 R5) · CD-P41-B2"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "ช่องซ่อน type=hidden — ตัวกดไม่กด (ค่าไปกับฟอร์ม pos-products-legacy-price-form)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-price-item",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "state": "unchanged",
+        "target": "pos-products-legacy-price-form",
+        "note": "ช่องซ่อน type=hidden (itemId) ของฟอร์มราคาเดิม — ไม่มีให้กด/กรอก · มี testid เพื่อปิดหนี้ F15.3 (POS P4.1 R5) · CD-P41-B2"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ],
+      "needs": "ช่องซ่อน type=hidden — ตัวกดไม่กด (ค่าไปกับฟอร์ม pos-products-legacy-price-form)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-price-input",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "state": "changes",
+        "note": "ราคาขาย (บาท · ทศนิยม 2) ต่อสินค้าในคลัง · ค่าเดิม = AccountProduct.salePrice · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-price-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "setItemSalePriceAction",
+        "db": "AccountProduct salePrice (setItemSalePrice · ราคาขายทั้งร้าน)",
+        "note": "SubmitButton \"บันทึก\" ของฟอร์มราคาเดิม (ปิดตัวเองระหว่างส่ง · ส่งต่อ data-testid ใน SubmitButton) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-products-legacy-toggle"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/close",
+      "testid": "pos-close-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "แท็บโมดูล (posTabs) · ปิดวัน · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/close",
+      "testid": "pos-close-date-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/close",
+        "note": "ฟอร์ม GET เลือกวัน (name=date จาก pos-close-date) → หน้าเดิม ?date=… · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/close",
+      "testid": "pos-close-date-view",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/close",
+        "note": "ปุ่ม \"ดู\" ส่งฟอร์มเลือกวัน (GET) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/close",
+      "testid": "pos-close-counted",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "state": "changes",
+        "note": "กระทบยอดเงินสด: เงินนับจริง (บาท) → บรรทัดส่วนต่าง เกิน/ขาด เทียบเงินสดที่ควรมี (คำนวณฝั่ง client · ไม่บันทึก) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/close",
+      "testid": "pos-close-csv",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "download",
+        "target": "exportDaySalesCsvAction",
+        "note": "ดาวน์โหลด CSV ยอดขายของวันที่เลือก (exportDaySalesCsvAction → Blob text/csv · a.download) · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "แท็บโมดูล (posTabs) · บิล = แท็บปัจจุบัน · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "แท็บโมดูล (posTabs) · กะ = แท็บปัจจุบัน · แคชเชียร์ QC เห็นแท็บ + การ์ดปฏิเสธ pos-shift-refusal · POS P4.1 R5"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · public (P4 §10 มติ 2 · public = หน้า /r /q /d /developers เท่านั้น) · kind/expect.type ชุดเดียวกับทะเบียน CRM + kind notice (F15.3b ตรวจ)"
