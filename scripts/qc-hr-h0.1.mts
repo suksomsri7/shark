@@ -48,11 +48,11 @@ const ACT_FILE = "src/lib/modules/hr/payroll-actions.ts";
 const UI_FILE = "src/lib/modules/hr/payroll-ui.tsx";
 const RULES_FILE = "src/lib/modules/hr/payroll-rules.ts";
 const SCHEMA_FILE = "prisma/schema/payroll.prisma";
-// hashes taken on the base (f85f5455) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
+// hashes taken on the base (f85f5455; SCHEMA_SHA + CRM_BLOCK_SHA re-taken after H0.6, ruled ORACLE-EDITs) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
-const SCHEMA_SHA = "7f9ab537951e8b58ad127ad9fed3014ae0ea013ee2cea35bc226533295f5f8a7";
+const SCHEMA_SHA = "2636c177261f57c1a102fe6d09c6819e9a2fc1aabc649a10cae6a8ef2d361302";
 const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
-const CRM_BLOCK_SHA = "fcc215391da90dccc285f4f8fdcca41568a1a722c1273a353136d7af5be774b4";
+const CRM_BLOCK_SHA = "33ec8e46af7dd084ac1b1460167736a662bcc80bddc97db6ca1a22fb4c403869";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
 
 // ═════════════════════════ registry (id · X-group · title) ═════════════════════════
@@ -885,7 +885,7 @@ async function runDb(): Promise<void> {
   });
   chk("X6.5", b65.length === 0, "3/3 rounds: rows APPROVED, in run or unbound, sums match", b65.join(" · "));
   // X6.6 global invariant over the whole tenant
-  const allRuns = await P.hrPayrollRun.findMany({ where: { tenantId: T }, select: { id: true } });
+  const allRuns = await P.hrPayrollRun.findMany({ where: { tenantId: T }, select: { id: true, status: true } });
   const runIds = new Set(allRuns.map((r: Any) => r.id));
   const boundAll = await P.hrPayAdjustment.findMany({ where: { tenantId: T, runId: { not: null } } });
   const dangling = boundAll.filter((a: Any) => !runIds.has(a.runId));
@@ -895,12 +895,15 @@ async function runDb(): Promise<void> {
     if (!so3.ok) g.push(`Σ ${r.id.slice(-6)} ${so3.bad.join(",")}`);
     const items = await itemsOf(r.id);
     const mine = boundAll.filter((a: Any) => a.runId === r.id);
-    for (const it of items) {
-      const m = mine.filter((a: Any) => a.employeeId === it.employeeId);
-      const add = m.filter((a: Any) => ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
-      const ded = m.filter((a: Any) => !ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
-      if (it.addSatang !== add || it.deductSatang !== ded) g.push(`item ${r.id.slice(-6)}/${it.employeeId.slice(-6)} add ${it.addSatang}/${add} ded ${it.deductSatang}/${ded}`);
+    if (r.status !== "REVERSED") {
+      for (const it of items) {
+        const m = mine.filter((a: Any) => a.employeeId === it.employeeId);
+        const add = m.filter((a: Any) => ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
+        const ded = m.filter((a: Any) => !ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
+        if (it.addSatang !== add || it.deductSatang !== ded) g.push(`item ${r.id.slice(-6)}/${it.employeeId.slice(-6)} add ${it.addSatang}/${add} ded ${it.deductSatang}/${ded}`);
+      }
     }
+    if (r.status === "REVERSED" && mine.length) g.push(`run ${r.id.slice(-6)}: ${mine.length} row(s) still bound after reverse`);
     const emps = new Set(items.map((i: Any) => i.employeeId));
     const orphan = mine.filter((a: Any) => !emps.has(a.employeeId));
     if (orphan.length) g.push(`run ${r.id.slice(-6)}: ${orphan.length} bound row(s) without an item`);

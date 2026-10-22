@@ -125,7 +125,7 @@ const SIG_STRANDED = "export async function strandedCommissionAdjustments(tenant
 const BASE_HASH = {
   computeItem: "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13",
   rules: "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7",
-  stranded: "6c6332f004f79ab22c42ebfd28492bfbd79c7e502fd51de56dda198fa64a7698",
+  stranded: "bf3c0b6749e36f8dda0c42a0d28fcc495276a96e7d66dfec9442ca71d8ffacf6",
 };
 function staticHashes() {
   const p = rd(PAYROLL);

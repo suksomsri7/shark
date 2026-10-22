@@ -33,6 +33,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { tenantDb } from "@/lib/core/db"; // HR H0.6 r3 ▸ R3.1 tx ของตัวรับ hr.payroll.paid / .reversed ◂
 import { crmCan, crmForbiddenMessage } from "./access";
 import { crmCapFor } from "./key-caps"; // CRM C3.8 ▸ เพดานของคีย์ = ของผู้สร้างคีย์ ◂
 import { dealWhere } from "./where";
@@ -1411,6 +1412,7 @@ export async function onPayrollPaid(input: { tenantId: string; hrSystemId: strin
   const systemId = str(input?.hrSystemId);
   const runId = str(input?.runId);
   if (!tenantId || !systemId || !runId) return { paid: 0 };
+  if (H06_R3_CONVERGING) return onPayrollPaidConverging({ tenantId, systemId, runId }); // HR H0.6 r3 ▸ R3.1 ล็อกแถวก่อนอ่านสถานะ HR (ตัวรับคู่กับ onPayrollReversed) — ตัวเดิมด้านล่างไม่ถูกเรียกแล้ว ◂
   const hr = await hrFacade();
   const run = await hr.adjustmentsOfRun({ tenantId, systemId }, runId);
   if (run.status !== "PAID" || run.items.length === 0) return { paid: 0 };
@@ -2116,3 +2118,111 @@ async function toDtos(ctx: Scope, rows: CrmCommission[]): Promise<CommissionDto[
     };
   });
 }
+
+// HR H0.6 ▸ `hr.payroll.reversed {runId, periodKey, adjustmentIds}` (ยิงใน tx ของ `hr.reverseRun` · id ล้วน) — รอบจ่ายที่กลับรายการแล้ว
+//   ⇒ คอมมิชชัน PAID ของรายการที่ถูกปลดจากรอบนั้น กลับเป็น APPROVED (ยังไม่ได้จ่ายจริง) แล้วรอบใหม่ของงวดเดิมจ่ายให้อีกครั้ง (`onPayrollPaid`)
+//   กติกาคู่เดียวกับ onPayrollPaid: { id = HrPayAdjustment.crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL ·
+//   รายการอ่านผ่าน HR facade `adjustmentsByIds` (ผูกร้าน + ระบบ HR ของ event) · รอบต้องเป็น REVERSED จริง (event ปลอม/ข้ามร้าน = 0 แถว)
+//   r3 (R3.1 · R3.3 ตามมติกติการวม): ตัดสินใต้ล็อกแถวใน convergeCommissions — ยังไม่ผูกรอบ / ผูกรอบร่างหรืออนุมัติ = APPROVED ·
+//   ผูกรอบที่จ่ายแล้ว = คง/คืน PAID · ผูกรอบ REVERSED เก่า = ข้ามเงียบ ๆ · เขียนเฉพาะแถวที่เปลี่ยนจริง ⇒ ส่งซ้ำ/พร้อมกัน = 0 แถว 0 ประวัติ ·
+//   แถวถอนคืน (REVERSED · ใบ C3.3) ไม่ถูกแตะ — DEDUCTION ของมันถูก HR ปลดและเข้ารอบใหม่เองเหมือนรายการอื่น (R5)
+export async function onPayrollReversed(input: { tenantId: string; hrSystemId: string | null; runId: string | null; adjustmentIds?: unknown }): Promise<{ unpaid: number }> {
+  const tenantId = str(input?.tenantId);
+  const systemId = str(input?.hrSystemId);
+  const runId = str(input?.runId);
+  const ids = Array.isArray(input?.adjustmentIds) ? [...new Set(input.adjustmentIds.map(str).filter((x): x is string => !!x))] : [];
+  if (!tenantId || !systemId || !runId || ids.length === 0) return { unpaid: 0 };
+  const hr = await hrFacade();
+  const run = await hr.adjustmentsOfRun({ tenantId, systemId }, runId);
+  if (run.status !== "REVERSED") return { unpaid: 0 };
+  // ผู้สมัคร = คู่ (คอมมิชชัน ↔ รายการ) ของ id ใน event · สถานะจริงตัดสินใต้ล็อกใน convergeCommissions
+  const pairs = (await hr.adjustmentsByIds({ tenantId, systemId }, ids)).flatMap((r) => (r.crmCommissionId ? [{ id: r.crmCommissionId, hrPayAdjustmentId: r.id }] : []));
+  const out = await convergeCommissions(tenantId, systemId, runId, pairs, "REVERSED_EVENT");
+  return { unpaid: out.unpaid - out.repaid }; // r4 ▸ R3-6: สุทธิ (ถอน − คืน) ◂
+}
+
+// HR H0.6 r3 ▸ R3.1 (ล่า F1a/F1b · F4) — ตัวรับ `hr.payroll.paid` ที่ล็อกก่อนอ่าน: ผู้สมัคร = รายการของรอบ (กติกา H4 ของ adjustmentsOfRun) ◂
+async function onPayrollPaidConverging(input: { tenantId: string; systemId: string; runId: string }): Promise<{ paid: number }> {
+  const hr = await hrFacade();
+  const run = await hr.adjustmentsOfRun({ tenantId: input.tenantId, systemId: input.systemId }, input.runId);
+  if (run.status !== "PAID" || run.items.length === 0) return { paid: 0 };
+  const pairs = run.items.map((it) => ({ id: it.crmCommissionId, hrPayAdjustmentId: it.id }));
+  const out = await convergeCommissions(input.tenantId, input.systemId, input.runId, pairs, "PAID_EVENT");
+  return { paid: out.paid };
+}
+
+// HR H0.6 r3 ▸ R3.1 · R3.3 — ตัวรับสองตัว (paid / reversed) ใช้ทางเดียวกัน ⇒ ใครลงมือทีหลังก็ได้ผลเดียวกัน (converge):
+//   ทีละ 500 แถวใน tx เดียว: (1) `SELECT … FOR UPDATE` แถวคอมมิชชัน (เรียงตาม id — ไม่ deadlock กันเอง) → (2) อ่านสถานะ HR ด้วย
+//   `adjustmentsByIds` บน tx เดียวกัน (หลังได้ล็อก — เห็นสิ่งที่ markPaid / reverseRun commit ไปก่อนแล้ว) → (3) เป้าหมาย:
+//   • รายการผูกรอบที่ **PAID** และพนักงานมีแถวในรอบนั้น ⇒ PAID
+//   • รายการ **ยังไม่ผูกรอบ** (runId null) หรือผูกรอบที่ **ยังไม่จ่าย** (ร่าง / อนุมัติ — เช่นรอบใหม่ของงวดเดิม) ⇒ APPROVED (ยังไม่ได้จ่ายจริง ·
+//     รอบนั้นจ่ายเมื่อไร ตัวรับ paid ปิด PAID ให้ · ร่างถูกลบ = ค่ายังจริงอยู่แล้ว)
+//   • ผูกรอบ **REVERSED** (ข้อมูลเก่าก่อน H0.6 ที่ยังไม่ถูกปลด) ⇒ ไม่แตะ ไม่ลงประวัติ (ตัวกันของ createPayrollRun + ใบแยกจัดการ)
+//   มติผู้คุมงาน r3 (กติการวม): คอมมิชชัน PAID ได้ก็ต่อเมื่อมีรอบที่ PAID ถืออยู่เท่านั้น — นอกนั้น APPROVED ตามจริง
+//   (4) เขียนเฉพาะแถวที่ยังไม่อยู่ในสถานะเป้าหมาย (guard สถานะเดิม · ส่งซ้ำ = 0 แถว ไม่เขียนเลย) → ประวัติหลัง commit เฉพาะแถวที่เปลี่ยนจริง:
+//   PAID→APPROVED = `crm.commission.unpaid` · APPROVED→PAID จากตัวรับ reversed = `crm.commission.repaid` (ทางปกติของ paid ไม่ลงประวัติ — เหมือนเดิม)
+//   กติกาคู่: { id = crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL · แถวถอนคืน (REVERSED) ไม่ถูกแตะ ◂
+type ConvergeMode = "PAID_EVENT" | "REVERSED_EVENT";
+// สวิตช์ของบรรทัดส่งต่อใน onPayrollPaid (คงไฟล์แบบต่อท้ายอย่างเดียว · ชนิด boolean ⇒ ตัวเดิมยังผ่าน type narrowing) — เปิดถาวร
+const H06_R3_CONVERGING = true as boolean;
+// r4 ▸ R4.1: เพดาน tx สั้นกว่า maxDuration 60 s ของ route cron ของคิว (tx ห้ามอยู่นานกว่าฟังก์ชันแล้วถือล็อกแถวค้าง) ·
+//   ตัวรับ idempotent (เขียนเฉพาะแถวที่ยังไม่อยู่ในสถานะเป้าหมาย) ⇒ หมดเวลา = คิวลองใหม่หนึ่งครั้ง ไม่มีผลเสีย ◂
+const CONVERGE_TX_OPTS = { maxWait: 10_000, timeout: 30_000 };
+async function convergeCommissions(
+  tenantId: string,
+  hrSystemId: string,
+  runId: string,
+  pairs: { id: string; hrPayAdjustmentId: string }[],
+  mode: ConvergeMode,
+): Promise<{ paid: number; unpaid: number; repaid: number }> {
+  const want = new Map<string, string>();
+  for (const p of pairs) if (p.id && p.hrPayAdjustmentId && !want.has(p.id)) want.set(p.id, p.hrPayAdjustmentId);
+  const ids = [...want.keys()].sort();
+  if (ids.length === 0) return { paid: 0, unpaid: 0, repaid: 0 };
+  const hr = await hrFacade();
+  let paid = 0;
+  let unpaid = 0;
+  let repaid = 0;
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const part = await tenantDb({ tenantId }).$transaction(async (t) => {
+      const tx = t as unknown as Tx;
+      const locked = await tx.$queryRaw<{ id: string; systemId: string; status: string; hrPayAdjustmentId: string | null }[]>`
+        SELECT "id", "systemId", "status"::text AS "status", "hrPayAdjustmentId" FROM "CrmCommission"
+        WHERE "tenantId" = ${tenantId} AND "id" IN (${Prisma.join(chunk)}) AND "reversedOfId" IS NULL
+          AND "status" IN ('APPROVED'::"CrmCommissionStatus", 'PAID'::"CrmCommissionStatus")
+        ORDER BY "id" FOR UPDATE`;
+      const rows = locked.filter((r) => !!r.hrPayAdjustmentId && want.get(r.id) === r.hrPayAdjustmentId);
+      if (rows.length === 0) return [];
+      const adj = new Map((await hr.adjustmentsByIds({ tenantId, systemId: hrSystemId }, rows.map((r) => r.hrPayAdjustmentId as string), { tx })).map((a) => [a.id, a]));
+      const done: { id: string; systemId: string; to: "PAID" | "APPROVED" }[] = [];
+      for (const r of rows) {
+        const a = adj.get(r.hrPayAdjustmentId as string);
+        if (!a || a.crmCommissionId !== r.id) continue;
+        const target: "PAID" | "APPROVED" | null =
+          a.runId === null || a.runStatus === "DRAFT" || a.runStatus === "APPROVED" ? "APPROVED" : a.runStatus === "PAID" && a.hasItem ? "PAID" : null;
+        if (!target || target === r.status) continue;
+        const n = await tx.$executeRaw`
+          UPDATE "CrmCommission" SET "status" = ${target}::"CrmCommissionStatus"
+          WHERE "id" = ${r.id} AND "tenantId" = ${tenantId} AND "status" = ${r.status}::"CrmCommissionStatus" AND "reversedOfId" IS NULL`;
+        if (n === 1) done.push({ id: r.id, systemId: r.systemId, to: target });
+      }
+      return done;
+    }, CONVERGE_TX_OPTS);
+    // r4 ▸ R4.2: ลงประวัติของก้อนนี้ทันทีหลัง commit ของก้อนนี้ (ก้อนหลังล้ม ประวัติของก้อนก่อนไม่หาย) · เฉพาะแถวที่เปลี่ยนจริง ◂
+    for (const c of part) {
+      if (c.to === "APPROVED") {
+        unpaid += 1;
+        await audit({ tenantId, systemId: c.systemId }, "crm.commission.unpaid", "CrmCommission", c.id, { before: { status: "PAID" }, after: { status: "APPROVED", via: mode === "REVERSED_EVENT" ? "PAYROLL_REVERSED" : "PAYROLL_PAID_RECHECK", runId } }, null);
+      } else {
+        paid += 1;
+        if (mode === "REVERSED_EVENT") {
+          repaid += 1;
+          await audit({ tenantId, systemId: c.systemId }, "crm.commission.repaid", "CrmCommission", c.id, { before: { status: "APPROVED" }, after: { status: "PAID", via: "PAYROLL_PAID_DURING_REVERSE", runId } }, null);
+        }
+      }
+    }
+  }
+  return { paid, unpaid, repaid };
+}
+// ◂ HR H0.6

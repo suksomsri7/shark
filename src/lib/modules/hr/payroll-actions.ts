@@ -178,15 +178,9 @@ export async function reverseRunAction(formData: FormData) {
   if (!systemId || !runId) return;
   const reason = String(formData.get("reason") ?? "").trim() || undefined;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  const res = await reverseRun(ctx, runId, reason);
-  await writeAudit({
-    tenantId: auth.active.tenantId,
-    actorId: auth.user.id,
-    action: "hr.payroll.reverse",
-    targetType: "HrPayrollRun",
-    targetId: runId,
-    after: { ok: res.ok, note: res.note, reason: reason ?? null },
-  });
+  // HR H0.6 ▸ R2 · OQ-5: ผู้กด (actor) ส่งเข้า service — reverseRun ลงประวัติเอง (สำเร็จ `hr.payroll.reverse` · ปฏิเสธ `hr.payroll.reverse.refused`)
+  //   ⇒ ไม่ลง audit ซ้ำที่ชั้น action (เดิมกดครั้งเดียวได้ 2 แถว) · สิทธิ์เดิม hr.payroll.approve + canViewPayroll (ไม่เปลี่ยน) ◂
+  await reverseRun(ctx, runId, reason, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
   revalidate(systemId);
 }
 

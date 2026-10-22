@@ -86,10 +86,17 @@ model HrPayrollRun {
   journalEntryId         String? // AccountJournalEntry ที่ลงบัญชี (approve แล้ว)
   note                   String?
   createdAt              DateTime         @default(now())
+  // HR H0.6 ▸ กลับรายการ (reverseRun): เวลา + ผู้กด (null = ทางระบบ/สคริปต์) — รอบที่กลับก่อน H0.6 = null ทั้งคู่ ◂
+  reversedAt             DateTime?
+  reversedById           String?
 
   items HrPayrollItem[]
 
-  @@unique([systemId, periodKey])
+  // HR H0.6 ▸ 1 งวด = 1 รอบที่ "ยังมีผล" (สถานะ ≠ REVERSED) — รอบที่กลับรายการแล้วไม่จองงวด ⇒ สร้างรอบใหม่ของงวดเดิมได้
+  // 🔴 partial unique "HrPayrollRun_systemId_periodKey_live_key" ("systemId","periodKey") WHERE "status" <> 'REVERSED'
+  //    ประกาศเฉพาะใน migration.sql (20261202000000_hr_payroll_run_live_unique · Prisma schema ไม่รองรับ WHERE) —
+  //    ห้ามใส่ unique เต็มของคู่ systemId+periodKey กลับมา ไม่งั้น migrate diff จะสร้าง unique เต็มซ้ำ (แบบเดียวกับ crm_v2_c / H0.5) ◂
+  @@index([systemId, periodKey])
   @@index([tenantId, status])
 }
 

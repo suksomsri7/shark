@@ -1,10 +1,11 @@
 // crm-bridges/commissions.ts — สะพานของ "คอมมิชชัน → เงินเดือน" (ใบ C3.3 · RESOLUTIONS R-D: ใบนี้เป็นเจ้าของไฟล์นี้ไฟล์เดียว)
 //
-// ตัวรับ 4 ตัว (ผูกใน `src/lib/outbox-consumers.ts` บล็อก `// CRM C3.3 ▸` เป็น "ขั้นแรกที่ retry ได้"):
+// ตัวรับ 5 ตัว (ผูกใน `src/lib/outbox-consumers.ts` บล็อก `// CRM C3.3 ▸` เป็น "ขั้นแรกที่ retry ได้") — HR H0.6 ▸ ตัวที่ 5 = onPayrollReversed ◂:
 //   • onPayrollPaid       ← `hr.payroll.paid {runId, periodKey}` (ยิงใน tx ของ `hr.markPaid`) → คอมมิชชันของรายการในรอบนั้น = PAID
 //   • onCommissionCreated ← `crm.commission.created` → ยื่นอนุมัติ/ส่งเงินเดือนต่อ (สำรองกรณีโพรเซสตายหลัง commit ของ onPaid/onWon)
 //   • onCommissionApproved← `crm.commission.approved` → ส่งเงินเดือน (สำรอง) + แจ้งพนักงานเจ้าของรายการ (`commission.status`)
 //   • onCommissionReversed← `crm.commission.reversed` → หักคืนในเงินเดือน (สำรอง) + แจ้งพนักงานเจ้าของรายการ
+//   • onPayrollReversed   ← `hr.payroll.reversed {runId, periodKey, adjustmentIds}` (ยิงใน tx ของ `hr.reverseRun`) → คอมมิชชัน PAID ของรายการที่ถูกปลด = APPROVED ครั้งเดียว (HR H0.6)
 //
 // กติกาของโฟลเดอร์ (หัว `core.ts`) ที่ใช้ที่นี่:
 //  1. **ร้านเดียวเท่านั้น** (AUDIT-CLASS X1) — ทุก id ใน payload ถูกค้นด้วย `tenantId` ของ event (บริการเป็นคนค้น) · ของร้านอื่น = ไม่ทำอะไร
@@ -69,4 +70,14 @@ export async function onCommissionReversed(evt: BridgeEvent): Promise<void> {
   if (!(await crmGate(evt.tenantId, str(p.systemId) ?? evt.systemId))) return;
   await guarded(evt, "หักคืนคอมมิชชันในเงินเดือน", () => crm.commissions.advanceById({ tenantId: evt.tenantId, commissionId: str(p.commissionId) }));
   await notifyOwner(evt);
+}
+
+// HR H0.6 ▸ `hr.payroll.reversed {runId, periodKey, adjustmentIds}` (ยิงใน tx ของ `hr.reverseRun`) → คอมมิชชัน PAID ของรายการที่ถูกปลดจากรอบ
+//   กลับเป็น APPROVED ครั้งเดียว (`crm.commissions.onPayrollReversed`) · อ่านประตูแต่ไม่ให้ประตูกลืน (ถอนสถานะของที่มีอยู่แล้ว แบบ onPayrollPaid) ◂
+export async function onPayrollReversed(evt: BridgeEvent): Promise<void> {
+  const p = payloadOf(evt.payload);
+  if ((await crmGates(evt.tenantId)).length === 0) return;
+  await guarded(evt, "คืนสถานะคอมมิชชันของรอบจ่ายที่กลับรายการ", () =>
+    crm.commissions.onPayrollReversed({ tenantId: evt.tenantId, hrSystemId: str(evt.systemId), runId: str(p.runId), adjustmentIds: Array.isArray(p.adjustmentIds) ? p.adjustmentIds : [] }),
+  );
 }

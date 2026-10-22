@@ -1,0 +1,2 @@
+oracle @39725d3c exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) RESIDUE tenants=0 rows=0 audit=0 outbox=0
+c3.3 exit=0 JSON_SUMMARY {"total":90,"passed":90,"findings":[]}
