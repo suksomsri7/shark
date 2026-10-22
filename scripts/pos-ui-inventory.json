@@ -212,7 +212,7 @@
         "note": "ปุ่มสาขา (units > 1) = เปิดเมนู role=menu รายชื่อสาขาที่เข้าได้ (ไม่ navigate เอง — ลิงก์อยู่ที่ pos-reg-unit-option-*) · 1 สาขา = ป้ายชื่อ <span> testid เดียวกัน กดไม่ได้"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
@@ -286,7 +286,7 @@
         "note": "บิลวันนี้→/pos/sales · กะ→/pos/close · สินค้า→/pos/products · รายงาน→/pos/reports (HF-P1CLOSE O1) · ตั้งค่า→/pos/settings · โต๊ะ = ลิงก์ /pos/tables เมื่อสาขามีโหมดโต๊ะ (P2.4U มติ 1 · ไม่มี = เร็ว ๆ นี้) · ออเดอร์ออนไลน์ = ลิงก์ /pos/orders + ป้ายนับออเดอร์ใหม่ pos-reg-tab-orders-badge (P2.8U มติ 1 · ดึงทุก 10 วิ) · หน้าขาย = แท็บปัจจุบัน"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -311,7 +311,7 @@
         "note": "ค้นชื่อ/SKU/บาร์โค้ดฝั่งเซิร์ฟเวอร์ (หน่วง 200ms) · Enter = เพิ่มเมื่อผลเหลือตัวเดียวหรือ SKU/บาร์โค้ดตรงตัว (registerScanAction) · F2 โฟกัส"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "P1.3-S1.9",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -331,7 +331,7 @@
         "note": "ต้องมี pos.sale.priceOverride (มติ Q8) · แคชเชียร์เห็นปุ่มจาง (aria-disabled) แตะแล้วขึ้นเหตุผล errors.needPriceOverride ที่ pos-reg-toast"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -351,7 +351,7 @@
         "note": "เร็ว ๆ นี้ — P1.4 ต่อกล้อง (มือถืออยู่หัวจอ · ≥768 อยู่แถวค้นหา)"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "P1.4-C2",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -372,7 +372,7 @@
         "note": "รวม pos-reg-category-all · registerCatalogAction({categoryId})"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "P1.3-S1.13",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -414,7 +414,7 @@
         "note": "เพิ่มลงตะกร้า (กดซ้ำ = +1) · ปิดขาย/ตัวเลือกบังคับ = เตือนที่ pos-reg-toast · ไม่มีราคา: มีสิทธิ์ = pos-reg-open-price-dialog ไม่มี = เตือน · ห้ามสร้าง id pos-reg-product-grid"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -524,7 +524,7 @@
         "note": "P2.4U มติ 6: สาขามีโหมดโต๊ะ (registerTableMode visible + มีโต๊ะ) = เมนู ซื้อกลับ / ทานที่ร้าน (pos-reg-billtype-*) · สาขาไม่มีโต๊ะ = เร็ว ๆ นี้ (toast เดิม) · หน้าขายผูกโต๊ะ = ซ่อน"
       },
       "wo": "P1.3 · P2.4U",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -550,7 +550,7 @@
         "note": "P1.5: กล่องตั้งป้าย (ไม่บังคับ) แล้วพัก · ตะกร้าว่าง/กำลังส่ง = ปุ่มปิด · F8 = พักทันทีไม่ถามป้าย"
       },
       "wo": "P1.3 · P1.5",
-      "oracle": "qc-pos-p1.5",
+      "oracle": "P1.5-S3",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -575,7 +575,7 @@
         "note": "P1.5: ลิ้นชักบิลที่พักของสาขา (ภาพ 14B) · ป้ายจำนวน pos-reg-held-count"
       },
       "wo": "P1.3 · P1.5",
-      "oracle": "qc-pos-p1.5",
+      "oracle": "P1.5-S3",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -623,7 +623,7 @@
         "note": "P1.12U: แถว + เพิ่มสมาชิก เปิดแผงสมาชิก 14A (สาขาไม่มีระบบสมาชิก = ไม่มีแถว)"
       },
       "wo": "P1.3 · P1.12U",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -649,7 +649,7 @@
         "note": "แสดงเฉพาะเมื่อบิลมีสมาชิก — P1.3 ใส่สมาชิกไม่ได้ จึงไม่เคยแสดง (โค้ดเตรียมไว้)"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ไม่มีทางแสดงในหน้าขายใหม่ (memberSlot ส่งเสมอ — ใช้ pos-member-chip-detach)"
@@ -670,7 +670,7 @@
         "note": "แตะชื่อ/ยอดของบรรทัด → ตัวแก้ (โฟกัสช่องส่วนลด)"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -695,7 +695,7 @@
         "note": "กล่องจำนวน 44×44 → ตัวแก้ (โฟกัสจำนวน)"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -774,7 +774,7 @@
         "note": "ลิงก์ 'แก้' ในแถวส่วนลดท้ายบิล"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -798,7 +798,7 @@
         "target": "pos-reg-bill-discount-dialog"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -848,7 +848,7 @@
         "target": "pos-taxinv-dialog"
       },
       "wo": "P1.13U",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -873,7 +873,7 @@
         "note": "F4 ให้ผลเดียวกัน · ปิดเมื่อตะกร้าว่าง/ยอดจากเซิร์ฟเวอร์ยังไม่มาหรือล้ม/ออฟไลน์/ไม่มีสิทธิ์ขาย/กำลังส่งบิล"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -898,7 +898,7 @@
         "note": "มือถือ (<768) แตะแถบ (ยกเว้นปุ่มชำระ) = เปิดแผ่นตะกร้า"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -1222,7 +1222,7 @@
         "note": "ช่องส่วนลดรายการในตัวแก้ · เกินราคาบรรทัด/เกินเพดาน = pos-reg-editor-error"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -1249,7 +1249,7 @@
         "note": "ไม่มีกล่องยืนยันซ้ำ (มติ Q27)"
       },
       "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -1500,7 +1500,7 @@
         "note": "แถวคูปองในกล่องส่วนลดท้ายบิล → กล่องใส่โค้ดคูปองจริง (P1.12U มติ 8)"
       },
       "wo": "P1.3 · P1.12U",
-      "oracle": "qc-pos-p1.3",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -1819,7 +1819,7 @@
         "note": "บาร์โค้ดตรงหลายสินค้า → กล่องเลือก · แตะแถว = ใส่ตะกร้า (สแกนซ้ำ +1)"
       },
       "wo": "P1.4",
-      "oracle": "qc-pos-p1.4",
+      "oracle": "P1.4-S4",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "บาร์โค้ดที่ตรงหลายสินค้า (สแกน/Enter)"
@@ -1841,7 +1841,7 @@
         "note": "ปิดกล่องเลือกโดยไม่เพิ่มสินค้า"
       },
       "wo": "P1.4",
-      "oracle": "qc-pos-p1.4",
+      "oracle": "P1.4-S4",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "บาร์โค้ดที่ตรงหลายสินค้า (สแกน/Enter)"
@@ -1863,7 +1863,7 @@
         "note": "ปิดแผ่นกล้อง · หยุดกล้องทุก track"
       },
       "wo": "P1.4",
-      "oracle": "qc-pos-p1.4",
+      "oracle": "P1.4-C2",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -1888,7 +1888,7 @@
         "note": "สแกนไม่พบ → ปุ่มใน toast เฉพาะผู้มีสิทธิ์ราคาเปิด (pos.sale.priceOverride)"
       },
       "wo": "P1.4",
-      "oracle": "qc-pos-p1.4",
+      "oracle": "P1.4-S3",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สแกน/Enter บาร์โค้ดที่ไม่พบ (toast offerCustom)"
@@ -2558,7 +2558,7 @@
         "state": "disappears"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
@@ -2580,7 +2580,7 @@
         "note": "Enter = ยืนยัน (เพิ่มลงตะกร้า หรือไปกล่องน้ำหนักเมื่อเป็นสินค้าชั่ง)"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
@@ -2602,7 +2602,7 @@
         "note": "ตัวแปร (แถว PosProduct ลูก) — ต้องเลือก 1 เมื่อสินค้ามีตัวแปร"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "P1.2-S2",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
@@ -2624,7 +2624,7 @@
         "note": "ชิปตัวเลือก (+ส่วนต่าง) · maxSelect 1 = แทนตัวเดิม · หมด (86) = กดไม่ได้"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "P1.2-S2",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
@@ -2646,7 +2646,7 @@
         "note": "หมายเหตุรายการ (≤500) — มีหมายเหตุ = บรรทัดใหม่"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
@@ -2667,7 +2667,7 @@
         "state": "changes"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)",
@@ -2691,7 +2691,7 @@
         "state": "changes"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
@@ -2719,7 +2719,7 @@
         "note": "ยังไม่ครบ minSelect / ยังไม่เลือกตัวแปร = ข้อความใต้กล่อง · ครบ = cartAddProduct(…, choiceIds)"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "P1.2-S2",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าที่มีตัวเลือก/ตัวแปรในกริด (optionGroupCount/variantCount > 0)"
@@ -2740,7 +2740,7 @@
         "state": "disappears"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
@@ -2763,7 +2763,7 @@
         "note": "น้ำหนักที่กรอก → cartAddWeighed(weightGrams) — เฉพาะผู้มี pos.sale.priceOverride"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
@@ -2786,7 +2786,7 @@
         "note": "กรัม 1–99,999"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "P1.2-W5",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
@@ -2808,7 +2808,7 @@
         "state": "disappears"
       },
       "wo": "P1.2U",
-      "oracle": "qc-pos-p1.2",
+      "oracle": "P1.2-W5",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
@@ -2879,7 +2879,7 @@
         "db": "PosHeldCart HELD (holdRegisterCartAction · held-cart.ts:214)"
       },
       "wo": "P1.5",
-      "oracle": "qc-pos-p1.5",
+      "oracle": "P1.5-H1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3116,7 +3116,7 @@
         "note": "?unit=<สาขาที่เข้าได้> · แสดงเมื่อเข้าได้มากกว่า 1 สาขา · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -3138,7 +3138,7 @@
         "note": "ชื่อเครื่อง ≤40 (ไม่บังคับ) · เติมจากกะก่อนของเครื่องนี้ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3164,7 +3164,7 @@
         "note": "ช่อง 'รวม' เงินตั้งต้น (บาท) · กรอกนับแยกแบงก์แล้ว = อ่านอย่างเดียว แสดงยอดรวมของแบงก์ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-O4",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3191,7 +3191,7 @@
         "db": "PosShift OPEN (openShiftAction · เงินทอนตั้งต้น · shift.ts posShift.create)"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-O1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3218,7 +3218,7 @@
         "note": "ข้อความ 'ข้อมูลถึง HH:MM' กดได้ = โหลดข้อมูลหน้าใหม่ (shiftsPageDataAction) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "กะเปิดของเครื่องนี้ (fixture เปิดกะให้เครื่องของตัวกด)"
@@ -3241,7 +3241,7 @@
         "note": "จำนวนเงินเข้า/ออก (บาท) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-M2",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3267,7 +3267,7 @@
         "note": "เหตุผล 1–200 ตัว · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-M2",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3293,7 +3293,7 @@
         "note": "เลือกชนิด 'นำเงินเข้า' (radio) — บันทึกด้วย pos-shift-move-submit · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-M1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3319,7 +3319,7 @@
         "note": "เลือกชนิด 'นำเงินออก' (radio) — เกินเงินที่ควรมี = errors.drawerInsufficient ตอนบันทึก · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-M1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3344,7 +3344,7 @@
         "state": "changes"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-C2",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "กะเปิดของเครื่องนี้ (fixture เปิดกะให้เครื่องของตัวกด)"
@@ -3368,7 +3368,7 @@
         "db": "PosShift CLOSED + Z (closeShiftAction · เงินนับจริง/ส่วนต่าง · shift.ts posShift.update)"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "P1.9-C1",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "กะเปิดของเครื่องนี้ (fixture เปิดกะให้เครื่องของตัวกด)",
@@ -3396,7 +3396,7 @@
         "note": "ในรายการ 'ดูทั้งหมด' · zReportAction ของกะที่ปิดแล้ว (Z แช่แข็ง) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3421,7 +3421,7 @@
         "note": "เฉพาะกะ FORCE_CLOSED ที่ยังไม่นับย้อนหลัง + สิทธิ์ pos.shift.manage (R13) · แคชเชียร์ operate ไม่เห็นปุ่ม"
       },
       "wo": "P1.9b",
-      "oracle": "qc-pos-p1.9b",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3447,7 +3447,7 @@
         "note": "เงินที่นับได้ย้อนหลัง (บาท)"
       },
       "wo": "P1.9b",
-      "oracle": "qc-pos-p1.9b",
+      "oracle": "P1.9b-RC8",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3474,7 +3474,7 @@
         "note": "เหตุผล/หมายเหตุ (บังคับ 1–200 ตัวอักษร · R9)"
       },
       "wo": "P1.9b",
-      "oracle": "qc-pos-p1.9b",
+      "oracle": "P1.9b-RC8",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3502,7 +3502,7 @@
         "db": "PosShiftRecount (นับย้อนหลังของกะ FORCE_CLOSED · shift.ts posShiftRecount.create)"
       },
       "wo": "P1.9b",
-      "oracle": "qc-pos-p1.9b",
+      "oracle": "P1.9b-RC1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3530,7 +3530,7 @@
         "note": "ปิดกล่องโดยไม่บันทึก"
       },
       "wo": "P1.9b",
-      "oracle": "qc-pos-p1.9b",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -3976,7 +3976,7 @@
         "note": "การ์ด 'เปิดกะก่อนเริ่มขาย' บนหน้าขาย (แสดงเมื่อจุดขายบังคับกะและเครื่องยังไม่มีกะ)"
       },
       "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "จุดขายบังคับกะ + เครื่องนี้ยังไม่มีกะเปิด"
@@ -11060,7 +11060,7 @@
         "note": "การ์ดสมาชิก (01): แตะชื่อ/วงกลม = แผงสมาชิกแบบมีสมาชิกแล้ว (รางวัลรอรับ · เปลี่ยนคน)"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11086,7 +11086,7 @@
         "note": "ปุ่ม ใช้แต้ม = เปิดจอชำระโฟกัสช่องแต้ม · ซ่อนเมื่อไม่มีระบบแต้มหรือแต้ม 0"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11112,7 +11112,7 @@
         "note": "ถอด = ล้างสมาชิก + สิทธิ์ที่เลือก (คูปองคงไว้) · quote ใหม่"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11138,7 +11138,7 @@
         "note": "✕ ข้างแถวคูปองในยอด = ลบคูปอง · quote ใหม่"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11164,7 +11164,7 @@
         "note": "✕ ปิดแผงสมาชิก (Esc/แตะม่านเหมือนกัน)"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11190,7 +11190,7 @@
         "note": "ถอดในโหมดมีสมาชิกแล้ว = ล้างสมาชิก + สิทธิ์ที่เลือก (คูปองคงไว้) · แผงอยู่ต่อเพื่อเลือกคนใหม่"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11218,7 +11218,7 @@
         "db": "RewardRedemption FULFILLED + AuditLog pos.member.reward_fulfilled"
       },
       "wo": "P1.12U",
-      "oracle": "P1.12-R1",
+      "oracle": "P1.12-W1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11248,7 +11248,7 @@
         "note": "ค้นด้วยเบอร์/ชื่อ/รหัส/บัตร SHARK-MC (หน่วง 250ms) · พบ N รายชื่อ · Enter = ผูกเมื่อเจอคนเดียว"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "P1.12-M1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11274,7 +11274,7 @@
         "note": "สแกน QR สมาชิก = กล้อง (P1.4) · รหัสที่อ่านได้ไปทางค้นสมาชิก · เจอคนเดียว = ผูก + ปิด"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11300,7 +11300,7 @@
         "note": "แตะแถว = ผูกสมาชิกกับบิล + ปิดแผง + ข้อความชื่อ · ถูกระงับ = แตะไม่ได้"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11354,7 +11354,7 @@
         "state": "changes"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11380,7 +11380,7 @@
         "state": "changes"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11406,7 +11406,7 @@
         "note": "วันเกิด วว / ดด / ปปปป (ไม่บังคับ · พ.ศ. แปลงให้) · ผิด = วันเกิดไม่ถูกต้อง ไม่ส่ง"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "P1.12-B5",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11432,7 +11432,7 @@
         "state": "changes"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11459,7 +11459,7 @@
         "target": "pos-member-register"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11512,7 +11512,7 @@
         "note": "โค้ดคูปอง (ตัวพิมพ์ใหญ่ · ตัดช่องว่าง) · Enter = ใช้คูปอง"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11540,7 +11540,7 @@
         "state": "changes"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "P1.12-V5",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11568,7 +11568,7 @@
         "note": "ลบคูปองที่ใช้อยู่ + quote ใหม่ · กล่องปิด"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11596,7 +11596,7 @@
         "note": "จำนวนแต้ม (ตัวเลข) · Enter = ใช้ส่วนลด · ตัวอย่าง ลด ฿x = แต้ม × อัตรา"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11624,7 +11624,7 @@
         "state": "changes"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11651,7 +11651,7 @@
         "note": "ยกเลิกแต้มที่ใช้ + quote ใหม่"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11678,7 +11678,7 @@
         "note": "✕ / ลบคูปอง ในจอชำระ (คูปองใช้ไม่ได้ = แถวแดง + ปุ่ม ลบคูปอง) · quote ใหม่"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11705,7 +11705,7 @@
         "note": "ใส่คูปอง (ยังไม่มีโค้ด) → กล่องคูปอง"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11731,7 +11731,7 @@
         "note": "เลือกว่อชเชอร์ 1 ใบ (แตะซ้ำ = ยกเลิก) · ใช้ไม่ได้ = จาง + เหตุผล · ข้อขัดตอน quote = บรรทัดแดง + ล้างที่เลือก"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11758,7 +11758,7 @@
         "note": "P2.9U: registerPayTendersAction.giftCard.enabled ⇒ แผงบัตรของขวัญ · ปิด = \"ยังไม่เปิดใช้\" · โต๊ะ/ออเดอร์ (ไม่ส่ง tenders) = เร็ว ๆ นี้ แบบเดิม"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11785,7 +11785,7 @@
         "note": "P2.9bU มติ 1: เปิดเมื่อ registerPayTendersAction().deposit.enabled ⇒ แผงมัดจำ · ปิด = \"ยังไม่เปิดใช้\" · โต๊ะ/ออเดอร์ (ไม่ส่ง tenders) = เร็ว ๆ นี้ แบบเดิม"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11813,7 +11813,7 @@
         "state": "disabled"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11840,7 +11840,7 @@
         "note": "P2.9U: สมาชิกในบิล + เครดิตร้าน > 0 (benefits.giftCards SC-••••) ⇒ แถวเครดิตร้าน (ไม่มี PIN · แถวเดียว) · ปิด = \"ไม่มีสมาชิก\"/\"ไม่มีเครดิต\""
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -11868,7 +11868,7 @@
         "state": "changes"
       },
       "wo": "P1.12U",
-      "oracle": "qc-pos-p1.12",
+      "oracle": "P1.12-V5",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -12767,7 +12767,7 @@
         "db": "AppSystem(POS).settings.pos.staff.scheduleGate.enabled"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -20762,7 +20762,7 @@
         "note": "‹ กลับภาพรวม POS (มติ 2)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -20783,7 +20783,7 @@
         "state": "appears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
@@ -20804,7 +20804,7 @@
         "note": "เลือกสาขา → จอครัวของสาขานั้น"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -20829,7 +20829,7 @@
         "state": "appears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -20857,7 +20857,7 @@
         "state": "changes"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -20882,7 +20882,7 @@
         "state": "changes"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -20906,7 +20906,7 @@
         "db": "RestaurantSetting.kitchenPaused (setKitchenPause)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-T5",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": [
@@ -20953,7 +20953,7 @@
         "state": "appears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": [
@@ -20977,7 +20977,7 @@
         "db": "RestaurantOrderItem COOKING (kitchenMoveInTx)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-B1",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": [
@@ -21001,7 +21001,7 @@
         "db": "RestaurantOrderItem READY (kitchenMoveInTx · บรรทัด)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-B2",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21028,7 +21028,7 @@
         "db": "RestaurantOrderItem READY (kitchenMoveInTx)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-B3",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": [
@@ -21052,7 +21052,7 @@
         "db": "RestaurantOrderItem SERVED (kitchenMoveInTx · servedAt)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-B3",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21080,7 +21080,7 @@
         "state": "appears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": [
@@ -21104,7 +21104,7 @@
         "db": "RestaurantOrder.isRush + RestaurantOrderItem.isRush (kitchenRushInTx)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-B8",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21160,7 +21160,7 @@
         "state": "changes"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21187,7 +21187,7 @@
         "db": "RestaurantOrderItem COOKING (kitchenMoveInTx · ดึงกลับ)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-B6",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": [
@@ -21210,7 +21210,7 @@
         "note": "สาขายังไม่มีสถานีครัว → หน้าตั้งค่าร้านอาหาร"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สาขายังไม่มีสถานีครัว (posqc-btn-unit ตามค่าเริ่ม = มี)"
@@ -21231,7 +21231,7 @@
         "note": "แจ้งของหมด → แผ่นขวา 420"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -21256,7 +21256,7 @@
         "note": "390: ค้าง N · หมด M › → แผ่นเดียวกัน"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -21281,7 +21281,7 @@
         "state": "disappears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -21310,7 +21310,7 @@
         "state": "appears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21335,7 +21335,7 @@
         "state": "disappears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21359,7 +21359,7 @@
         "state": "changes"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21384,7 +21384,7 @@
         "state": "changes"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21409,7 +21409,7 @@
         "db": "AuditLog pos.product.availability + PosAvailabilityMark source KDS (upsert/ลบ)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-A1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21437,7 +21437,7 @@
         "db": "AuditLog pos.product.availability + PosAvailabilityMark ถูกลบ"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-A2",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21464,7 +21464,7 @@
         "note": "⋯ ท้ายแถบโหมด → เมนู (จอครัว)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -21488,7 +21488,7 @@
         "note": "จอครัว (มติ 1)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21516,7 +21516,7 @@
         "note": "หน้าเครื่อง → เปิดจอครัว (มติ 1)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "tab=devices&unit=[unitId]",
       "opener": [
@@ -21541,7 +21541,7 @@
         "db": "PosDevice printerConfig.kitchenSlip off (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P1.10-G4",
       "system": "POS",
       "query": "tab=devices&unit=[unitId]",
       "opener": [
@@ -21567,7 +21567,7 @@
         "db": "PosDevice printerConfig.kitchenSlip after-sale (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P1.10-G4",
       "system": "POS",
       "query": "tab=devices&unit=[unitId]",
       "opener": [
@@ -21593,7 +21593,7 @@
         "db": "PosDevice printerConfig.kitchenStationIds (updateDeviceAction · device.ts:63-88 posDevice.updateMany)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P1.10-G4",
       "system": "POS",
       "query": "tab=devices&unit=[unitId]",
       "opener": [
@@ -21623,7 +21623,7 @@
         "db": "RestaurantSetting.autoAcceptMaxOpen + AuditLog pos.kds.autoAcceptMax"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-O4",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21649,7 +21649,7 @@
         "db": "RestaurantSetting.autoAcceptMaxOpen + AuditLog pos.kds.autoAcceptMax"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-O4",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "สาขามีสถานีครัว (kdsKitchenState backlog > 0 · src/components/pos/orders/OrdersRail.tsx:141)"
@@ -21672,7 +21672,7 @@
         "db": "RestaurantSetting.autoAcceptMaxOpen = null + AuditLog pos.kds.autoAcceptMax"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-O4",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -21753,7 +21753,7 @@
         "state": "appears"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "viewport": [
@@ -21777,7 +21777,7 @@
         "note": "จอครัวเดิม → แถบ \"เปิดจอครัวใหม่\" (เฉพาะสาขาที่ POS เปิดหน้าขายใหม่)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "",
       "system": "POS",
       "query": ""
     },
@@ -24042,7 +24042,7 @@
         "state": "changes"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-PA2",
       "system": "POS",
       "query": "",
       "hiddenFor": []
@@ -24104,7 +24104,7 @@
         "db": "PosCustomerDisplay status ACTIVE + pairCodeHash/pairCodeExpiresAt"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-PA1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -24184,7 +24184,7 @@
         "db": "PosCustomerDisplay status REVOKED + revokedAt"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-PA3",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -24212,7 +24212,7 @@
         "db": "PosCustomerDisplay showPoints"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-CT2",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -24239,7 +24239,7 @@
         "db": "PosCustomerDisplay idleText"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-CT1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -24266,7 +24266,7 @@
         "db": "PosCustomerDisplay locale"
       },
       "wo": "P2.10",
-      "oracle": "qc-pos-p2.10",
+      "oracle": "P2.10-CT1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26404,7 +26404,7 @@
         "note": "หลัง PIN ถูกแต่นอกตารางงาน HR (OFF_SCHEDULE {reason, window}) — ข้อความ lock.schedule.<reason> + ปุ่ม \"ให้ผู้จัดการอนุญาต\" (แสดงเสมอ · CD-P35U-2) → แผ่น ManagerPinPad · PIN ของพนักงานค้างใน ref จนแผ่นปิด/สำเร็จ (CD-P35U-1)"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26429,7 +26429,7 @@
         "note": "ปิดแผ่นผู้จัดการอนุญาต = ทิ้ง PIN ของพนักงานที่ค้างไว้ (ต้องใส่ PIN ใหม่) · อนุญาตสำเร็จ = verifyStaffPinAction + managerUserId/managerPin → โทเคน overrideTtlMin · PIN ผู้จัดการผิด = pos-mgr-pin-error (PIN_INVALID/PIN_LOCKED) · ไม่ใช่ผู้จัดการ = PERMISSION_DENIED · ร้านปิดการอนุญาต = overrideDisabled"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26456,7 +26456,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26481,7 +26481,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26506,7 +26506,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26532,7 +26532,7 @@
         "state": "selected"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26558,7 +26558,7 @@
         "db": "AppSystem(POS).settings.pos.staff"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26583,7 +26583,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26607,7 +26607,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26632,7 +26632,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26656,7 +26656,7 @@
         "note": "อัตรารายหมวด % ต่อหมวดจากตัวอ่านแคตตาล็อกเดิม registerCatalogAction (CD-P35U-3) · ว่างทั้ง % และบาท = ไม่มีแถว"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26680,7 +26680,7 @@
         "note": "อัตรารายหมวด บาทต่อชิ้น (0–1,000 ↔ fixedSatang 0–100000)"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26704,7 +26704,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26730,7 +26730,7 @@
         "state": "changes"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26757,7 +26757,7 @@
         "state": "count"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26783,7 +26783,7 @@
         "note": "ค้นหาสินค้าเพื่อเพิ่มแถวอัตรา — กรองแคตตาล็อกที่โหลดแล้ว · เกิน 500 รายการ = registerCatalogAction {q} · ไม่พบ = \"ไม่พบสินค้า\""
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26808,7 +26808,7 @@
         "state": "count"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26834,7 +26834,7 @@
         "db": "AppSystem(POS).settings.pos.staffCommission"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26859,7 +26859,7 @@
         "db": "PosStaffCommission.status · HrPayAdjustment"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "P3.5-PY2",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26885,7 +26885,7 @@
         "db": "HrAttendance clock IN/OUT ผ่าน hr.clockSelf"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "P3.5-HC1",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ร้านมีระบบ HR + clockOnShift ASK + โทเคนพนักงานของเครื่อง (แผ่นถามลงเวลาหลังเปิด/ปิดกะ)"
@@ -26908,7 +26908,7 @@
         "state": "disappears"
       },
       "wo": "P3.5U",
-      "oracle": "qc-pos-p3.5",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ร้านมีระบบ HR + clockOnShift ASK + โทเคนพนักงานของเครื่อง (แผ่นถามลงเวลาหลังเปิด/ปิดกะ)"
@@ -26929,7 +26929,7 @@
         "note": "19ง (ธงออฟไลน์เปิด + ออฟไลน์): \"ชำระเงินสด ฿x\" แทนปุ่มชำระ — ยอดจาก snapshot (offlineCartTotals) · ปิดเมื่อด่านขายออฟไลน์ไม่ผ่าน/ไม่ใช่ลูกค้าทั่วไป/ส่วนลดเกินสิทธิ์ · F4 = ปุ่มนี้"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26955,7 +26955,7 @@
         "note": "19ง: \"โอน\" → กล่องชำระออฟไลน์แบบโอน (เลขอ้างอิงไม่บังคับ · ไม่มีรูปสลิป)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -26981,7 +26981,7 @@
         "note": "ปิดกล่องชำระออฟไลน์ (ระหว่างบันทึก = ปิด)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27008,7 +27008,7 @@
         "note": "ตัวเลือกวิธีชำระในกล่อง: cash · transfer (radio)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27035,7 +27035,7 @@
         "note": "รับเงิน (บาท · ว่าง = พอดี) → เงินทอน · รับไม่ครบ = \"รับเงินยังไม่ครบยอด\" + ปุ่มบันทึกปิด"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27062,7 +27062,7 @@
         "note": "ปุ่มรับเงินด่วน (พอดี + ธนบัตรถัดไป · สูงสุด 4)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27089,7 +27089,7 @@
         "note": "เลขอ้างอิงการโอน (ไม่บังคับ · ≤ 60 ตัวอักษร)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27117,7 +27117,7 @@
         "state": "appears"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27173,7 +27173,7 @@
         "note": "ขายบิลถัดไป (จอหลังบันทึกปิดด้วยปุ่มนี้เท่านั้น)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27201,7 +27201,7 @@
         "note": "ป้าย \"รอซิงก์ n\" (คิว queued ในเครื่องเท่านั้น · + \"รอผู้จัดการ m\") บนแถบออฟไลน์/แถบซิงก์ → รายการบิลออฟไลน์ของเครื่อง"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ธงขายออฟไลน์เปิด + บิลออฟไลน์ในคิวของเครื่อง (IndexedDB)"
@@ -27222,7 +27222,7 @@
         "note": "ปิดรายการบิลออฟไลน์"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27325,7 +27325,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แถบ 19ง \"ออฟไลน์ตั้งแต่ HH:MM · ขายต่อได้ด้วยเงินสดและโอน · รอซิงก์ n บิล · เลขชั่วคราว OFF-…\" + \"อย่าปิดหรือรีเฟรชหน้านี้ขณะออฟไลน์\" (ธงปิด = แถบเดิม pos-reg-offline-banner)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)"
@@ -27346,7 +27346,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): เหตุที่ขายออฟไลน์ไม่ได้ (offlineSellGate: ไม่มีราคา/เกิน 24 ชม./โปรหมดช่วง/คิวครบ 300/นาฬิกา/เครื่อง)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "P3.4-Q6",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)"
@@ -27367,7 +27367,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): กล่องชิป 19ง เหนือยอด + \"ใช้ได้เมื่อออนไลน์\""
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)",
@@ -27393,7 +27393,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): ชิปจาง aria-disabled points · coupon · card · promptpay (แบบ pos-settings-card-state-offline)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)",
@@ -27419,7 +27419,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): ออนไลน์ + มีคิว/เพิ่งซิงก์ (15 นาที) — data-state waiting · syncing · done"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ธงขายออฟไลน์เปิด + บิลออฟไลน์ในคิวของเครื่อง (IndexedDB)"
@@ -27441,7 +27441,7 @@
         "state": "appears"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27468,7 +27468,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): จอ \"บันทึกแล้ว · รอซิงก์\" + เลขชั่วคราว + เงินทอน (ปิดด้วยปุ่มเท่านั้น)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27496,7 +27496,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): เลขชั่วคราว OFF-<code>-<seq>"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27524,7 +27524,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): รายการบิลออฟไลน์ของเครื่อง (รอซิงก์ · รอผู้จัดการอ่านอย่างเดียว · ได้เลขจริง)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27548,7 +27548,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แถวบิลตามเลข OFF (data-status queued · parked · synced)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27572,7 +27572,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): จอล็อกออฟไลน์ (ธงเปิด) — data-state holder (\"ปลดล็อกได้เฉพาะ <ชื่อ>\") · locked (ผิด 5 ครั้ง) · unavailable (ไม่มีตัวตรวจ) · ไม่สลับพนักงาน/ไม่มีทางผู้จัดการ (มติ 7)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27599,7 +27599,7 @@
         "db": "PosOfflineSale.status ACCEPTED_BY_MANAGER + PosSale"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "P3.4-SY17",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "บิลออฟไลน์รอผู้จัดการของสาขานี้ (REJECTED · listOfflineRejectedAction)",
@@ -27622,7 +27622,7 @@
         "note": "CD-P34U-4: ทิ้งบิล → ช่องเหตุผล + ยืนยัน/ยกเลิก"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "บิลออฟไลน์รอผู้จัดการของสาขานี้ (REJECTED · listOfflineRejectedAction)"
@@ -27645,7 +27645,7 @@
         "note": "เหตุผลที่ทิ้ง ≥ 5 ตัวอักษร (offlineDiscardReasonOk) · สั้น = \"ใส่เหตุผลอย่างน้อย 5 ตัวอักษร\" · ตัวกรอกเหตุผล (ตรวจความยาวตอนกดยืนยัน OfflineQueueSection.tsx:75)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "P3.4-SY17",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27671,7 +27671,7 @@
         "db": "PosOfflineSale.status DISCARDED"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "P3.4-SY17",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27696,7 +27696,7 @@
         "note": "ยกเลิกการทิ้ง (ปิดช่องเหตุผล)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27721,7 +27721,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): การ์ด \"บิลออฟไลน์รอผู้จัดการ\" (ผู้จัดการเท่านั้น · ธงปิด + ไม่มีแถว = ไม่วาด)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "บิลออฟไลน์เปิดใช้ (settings) หรือมีแถวรอผู้จัดการ"
@@ -27743,7 +27743,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แถว: เลข OFF · เวลาขาย (หลัง mount) · เหตุผล · ผู้ขายที่เครื่องอ้าง vs ที่ตรวจแล้ว · ยอด · N10 \"ซิงก์หลังเครื่องปิดกะ\""
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "บิลออฟไลน์รอผู้จัดการของสาขานี้ (REJECTED · listOfflineRejectedAction)"
@@ -27765,7 +27765,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): มติ 6 \"ซิงก์ก่อนปิดกะ — เครื่องนี้มีบิลออฟไลน์รอซิงก์ n บิล\" + ปุ่มปิดกะปิด (คิว queued ใน IndexedDB ของเครื่องนี้)"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "บิลออฟไลน์ค้างซิงก์ในเครื่องนี้ (IndexedDB)"
@@ -27786,7 +27786,7 @@
         "db": "AppSystem(POS).settings.pos.offline.enabled"
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -27810,7 +27810,7 @@
         "note": "แสดงอย่างเดียว (ไม่มีตัวกด) — แถวตาม qc-pos-p3.4 ST7 (testid ใหม่ offline|sync ต้องมีแถว · CD-P34U-B1): แทนชิป \"เร็ว ๆ นี้ · P3.4\" — \"เปิดขายออฟไลน์อยู่\" / \"ปิดอยู่ · เจ้าของร้านเปิดได้\" / \"เจ้าของร้านเท่านั้น…\""
       },
       "wo": "P3.4U",
-      "oracle": "qc-pos-p3.4",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
