@@ -316,7 +316,13 @@ export async function kioskClockAction(systemId: string, _prev: KioskState, form
   const employeeId = String(formData.get("employeeId") ?? "");
   const pin = String(formData.get("pin") ?? "");
   if (!employeeId) return { status: "error", message: "เลือกชื่อของคุณก่อน" };
-  // HR H1.1 ▸ จอ kiosk ของบัญชีที่จำกัดสาขา ลงเวลาได้เฉพาะคนในสาขา (สาขาประจำ หรือยืมตัวที่เปิดวันนี้) ◂
+  if (!/^\d{4,6}$/.test(pin.trim())) return { status: "error", message: "ใส่ PIN 4-6 หลัก" };
+  const tenantId = auth.active.tenantId;
+  const gateEmp = await checkRateLimitDb(`hr-kiosk:emp:${tenantId}:${employeeId}`, { limit: 5, windowMs: 60_000 });
+  if (!gateEmp.ok) return { status: "error", message: `ลองใหม่ในอีก ${gateEmp.retryAfterSec ?? 60} วินาที` };
+  const gateSys = await checkRateLimitDb(`hr-kiosk:sys:${tenantId}:${systemId}`, { limit: 60, windowMs: 60_000 });
+  if (!gateSys.ok) return { status: "error", message: `ลองใหม่ในอีก ${gateSys.retryAfterSec ?? 60} วินาที` };
+  // HR H1.1 ▸ จอ kiosk ของบัญชีที่จำกัดสาขา ลงเวลาได้เฉพาะคนในสาขา (สาขาประจำ หรือยืมตัวที่เปิดวันนี้) · ตรวจหลังตัวจำกัด (ทุกครั้งนับเหมือนเดิม) ◂
   try {
     const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId, new Date());
     assertHrCan(auth, "hr.attendance.clock", t.unitId);
@@ -324,12 +330,6 @@ export async function kioskClockAction(systemId: string, _prev: KioskState, form
     if (branchText(e)) return { status: "error", message: branchText(e)! };
     throw e;
   }
-  if (!/^\d{4,6}$/.test(pin.trim())) return { status: "error", message: "ใส่ PIN 4-6 หลัก" };
-  const tenantId = auth.active.tenantId;
-  const gateEmp = await checkRateLimitDb(`hr-kiosk:emp:${tenantId}:${employeeId}`, { limit: 5, windowMs: 60_000 });
-  if (!gateEmp.ok) return { status: "error", message: `ลองใหม่ในอีก ${gateEmp.retryAfterSec ?? 60} วินาที` };
-  const gateSys = await checkRateLimitDb(`hr-kiosk:sys:${tenantId}:${systemId}`, { limit: 60, windowMs: 60_000 });
-  if (!gateSys.ok) return { status: "error", message: `ลองใหม่ในอีก ${gateSys.retryAfterSec ?? 60} วินาที` };
 
   const res = await clockWithPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin);
   if (!res.ok) return { status: "error", message: res.reason };
