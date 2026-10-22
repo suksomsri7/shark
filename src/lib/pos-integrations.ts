@@ -51,7 +51,7 @@ type Actor = { userId: string; role: string; unitAccess?: string[]; permissions?
 const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, string | null])[]> = {
   MEMBER: [["memberLookup", true, null], ["memberSpend", true, null], ["memberSignup", true, null]],
   POINT: [["pointRate", true, null], ["pointRedeem", true, null], ["pointVoidReverse", true, null]],
-  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P4+"], ["couponUnitLimit", true, null]], // POS P2.14 ▸ DOC-1 มติ 8: voucher เป็นวิธีจ่าย = P3 (P2.9 ส่งบัตรของขวัญ/เครดิตร้าน · voucher ยังเป็นส่วนลด) ◂
+  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P4+"], ["couponUnitLimit", true, null]], // POS P2.14 ▸ DOC-1 มติ 8: voucher เป็นวิธีจ่าย = P3 (P2.9 ส่งบัตรของขวัญ/เครดิตร้าน · voucher ยังเป็นส่วนลด) (CD-P312-K1 → "P4+") ◂
   REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", true, null]], // POS P2.10 ▸ จอลูกค้าแสดง "ใกล้ได้รางวัล" บนแถบสแตมป์ (เหลือ ≤ 2 ดวง) ◂
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", true, null], ["promptpayReconcile", false, "W4"]], // POS P2.14 ▸ DOC-1: ค่าคอมฯ แพลตฟอร์มลง JV ตั้งแต่ P2.1 S ◂
   // POS P2.3U ▸ มติ 8: ตัดตามสูตร BOM ใช้งานจริงแล้ว (P2.3 S ตัด + P2.3U จอ 06 ตั้งสูตร/สวิตช์) ◂
@@ -61,7 +61,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", true, null]], // POS P3.7 ▸ R11: บอทตอบสถานะออเดอร์ (ตามกฎ) live ◂
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", true, null], ["shiftCloseCashCheck", true, null]], // POS P3.8 ▸ R11 มติ 9: การ์ดของหมดนาน/ผลต่างกะ + ตรวจเงินปิดกะ มีจริงแล้ว (เดิม false "P3.8") ◂
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P4+"]],
-  BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P4+"], ["advanceBookingBill", false, "P4+"]], // POS P2.14 ▸ DOC-1: โต๊ะจองบนผังมีจริงตั้งแต่ P2.4 · คิว/บิลจองล่วงหน้า = P3 ◂
+  BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P4+"], ["advanceBookingBill", false, "P4+"]], // POS P2.14 ▸ DOC-1: โต๊ะจองบนผังมีจริงตั้งแต่ P2.4 · คิว/บิลจองล่วงหน้า = P3 (CD-P312-K1 → "P4+") ◂
   AI: [["shiftDaySummary", true, null], ["purchaseSuggestion", true, null], ["anomalyDetection", true, null]], // POS P3.9 ▸ R10: สรุปเช้า · ร่าง PO · จุดผิดปกติในสรุป (ความสามารถมีแล้ว — การ์ด LINKED เมื่อ settings.pos.ai.enabled) ◂
 };
 /** การ์ดที่ยังไม่มีสาย POS ↔ ระบบนั้นเลย (P1) — PLANNED พร้อมเฟส (ร้านไม่มีระบบนั้น = NO_SYSTEM · AI ไม่ใช่ SystemType = PLANNED เสมอ) */

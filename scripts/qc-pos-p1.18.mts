@@ -310,15 +310,15 @@ type Fact = readonly [string, boolean, string | null];
 const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   MEMBER: [["memberLookup", true, null], ["memberSpend", true, null], ["memberSignup", true, null]],
   POINT: [["pointRate", true, null], ["pointRedeem", true, null], ["pointVoidReverse", true, null]],
-  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P4+"], ["couponUnitLimit", true, null]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: voucherPayment "P3" — เดิม "P2.9"
+  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P4+"], ["couponUnitLimit", true, null]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: voucherPayment "P3" — เดิม "P2.9" (CD-P312-K1 → "P4+")
   REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", true, null]], // ORACLE-EDIT P2.10 (15 Oct 2026 · brief §10 ruling 10, pre-approved): rewardNearCustomerDisplay live — was ["rewardNearCustomerDisplay", false, "P2.10"]
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", true, null], ["promptpayReconcile", false, "W4"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: platformCommission live — เดิม false "P2.1"
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P4+"]], // ORACLE-EDIT P2.3U (มติ 8 ผู้คุม): bomDeduct live — เดิม ["bomDeduct", false, "P2.3"]
   HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P3.5 R14): HR facts live — เดิม [false "P3.5"] ×3
-  CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P4+"], ["corporateCredit", true, null]], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.6 I12): corporateCredit live (วางบิล/เครดิตเทอม) · bigBillDeal คง false phase "P3.x" (มติ 7 · CD-7) — เดิม [false "P3.6"] ×2
+  CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P4+"], ["corporateCredit", true, null]], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.6 I12): corporateCredit live (วางบิล/เครดิตเทอม) · bigBillDeal คง false phase "P3.x" (มติ 7 · CD-7) — เดิม [false "P3.6"] ×2 (CD-P312-K1 → "P4+")
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", true, null]], // ORACLE-EDIT P2.8 (มติ 5): พนักงานคีย์ออเดอร์จากแชท · ORACLE-EDIT P3.7 (pre-approved · CD-P37a): orderStatusBot live — เดิม ["orderStatusBot", false, "P3.7"]
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", true, null], ["shiftCloseCashCheck", true, null]], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 I12): KANBAN facts live (มติ 9) — เดิม [false "P3.8"] ×2
-  MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P4+"]],
+  MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P4+"]], // CD-P312-K1 → "P4+"
   BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P4+"], ["advanceBookingBill", false, "P4+"]], // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8: เดิม [false "P2.4"] [false "P2.4"] [false "P2.7"]
   AI: [["shiftDaySummary", true, null], ["purchaseSuggestion", true, null], ["anomalyDetection", true, null]], // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R10): AI facts live — เดิม [false "P3.9"] ×3
 };
@@ -1476,7 +1476,7 @@ async function runDb() {
   {
     const p: string[] = [];
     const r = await cards("OWNER");
-    for (const [code, state, phase] of [["BOOKING", "PLANNED", "P4+"], ["AI", "OFF", null], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) { // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R10): AI = OFF เมื่อ settings.pos.ai.enabled ปิด (ปริยาย) — เดิม ["AI", "PLANNED", "P3.9"] · // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3"
+    for (const [code, state, phase] of [["BOOKING", "PLANNED", "P4+"], ["AI", "OFF", null], ["MARKETING", "NO_SYSTEM", null], ["CHAT", "NO_SYSTEM", null]] as [string, string, string | null][]) { // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 R10): AI = OFF เมื่อ settings.pos.ai.enabled ปิด (ปริยาย) — เดิม ["AI", "PLANNED", "P3.9"] · // ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 DOC-1) มติ 8 (D16): BOOKING "P3" (CD-P312-K1 → "P4+")
       const c = cardOf(r, code);
       if (c?.state !== state) p.push(`${code} ${short(c?.state, 12)} (คาด ${state})`);
       if (c && (c.scope !== null || c.target !== null || c.manage !== null || c.lastActivityAt !== null)) p.push(`${code} scope/target/manage/lastActivity ไม่ใช่ null`);
