@@ -8187,7 +8187,7 @@ async function p3skuDeviceLan(): Promise<void> {
   const d = await p3skuDevice();
   const before = p3skuRec(d.cfg._qcP3skuBefore) ? d.cfg._qcP3skuBefore : { mode: d.cfg.mode ?? null, kitchenSlip: d.cfg.kitchenSlip ?? null };
   const next = { ...d.cfg, mode: "escpos-lan", kitchenSlip: "after-sale", _qcP3skuBefore: before };
-  await prisma.posDevice.updateMany({ where: { id: d.id, tenantId: T.tenantId, deviceCode: DEVICE_ID }, data: { printerConfig: next } });
+  await prisma.posDevice.updateMany({ where: { id: d.id, tenantId: T.tenantId, deviceCode: DEVICE_ID }, data: { printerConfig: next as never } });
   P3SKU.deviceBefore = true;
 }
 /** คืน printerConfig จาก _qcP3skuBefore (ไม่มี = ไม่ได้แตะ) */
