@@ -161,5 +161,5 @@ PRESUBMIT head=30cec653 green=21 red=6 expected-lane-pin=2 unexpected-red=wo-qc-
 - **CD-B-U3 (`pos-gates.json`):** the `qc-chat-*` suites are still not in the manifest. They were run by hand once (green). The controller decides whether to add them.
 - **CD-B-U4 (derived layouts, owner-ack in OP):** CD-P37U-2 "turn on blocked / turn off allowed" when not LINKED; awaiting-card placement of the chatpay chip (CD-P37U-5). Accept or require a change.
 
-## Fix round 1 (controller B · 22 Oct 01:0xZ · R1 MERGEABLE)
+## Fix round 1 (controller B · 21 Oct 23:0xZ · R1 MERGEABLE)
 - **F2 Low** `OrderChatBits.tsx:89` — copy-link button now shows whenever `!res.sent && res.statusUrl` (also for `duplicated` whose first row FAILED/PENDING). F1 accepted UI-only → OP line above. No other change.
