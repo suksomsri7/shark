@@ -16,7 +16,7 @@
 // [S7] kiosk (clockWithPin → verifyPinForEmployee) · createEmployee({ pin }) · พ้นสภาพแล้วกลับมาทำงานโดน PIN ซ้ำ = ล้าง PIN (pinCleared)
 // [S8] static: ไม่มี pinCode/pinHash นอก hr/pin.ts (กระจก F16.5) · index.ts export verifyPin · migration · env.ts · DTO มีแค่ hasPin
 // [S9] r3 (มติผู้คุมงาน R3.1–R3.4 · hunt F1/F2/F3/F6): verifyPin ต้องมี callerKey · นับเฉพาะครั้งที่ผิด 2 ถัง
-//      (ร้าน hr-verifypin:<tenantId> 120/60 s + ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 ผิด/10 นาที · peek ก่อน · ถูก = ไม่นับ) ·
+//      (ร้าน hr-verifypin:<tenantId> 120/60 s + ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 ผิด/10 นาที · นับก่อนค้น แล้วคืนช่องเมื่อถูก/ถูกปฏิเสธ ⇒ เหลือเฉพาะครั้งที่ผิด) ·
 //      audit hr.pin.locked 1 แถวต่อการล็อก · backfill โหมด prod ปฏิเสธ env ที่ตั้งไว้ก่อน · createEmployeeAction ไม่อ่าน pin
 // [S10] r4 (มติผู้คุมงาน R4.1–R4.3 · hunt G1/G2/G3): นับก่อนค้น (atomic 2 ถัง) แล้วคืนช่องเมื่อถูก/ไม่มี pepper/ถูกปฏิเสธ ⇒ ยิงพร้อมกัน
 //      N ครั้งผ่านถึงการเทียบได้ ≤ 10 · callerKey ต้องตรง /^[A-Za-z0-9:_.-]{1,128}$/ (ไม่ตรง = ผิดทันที ไม่แตะ DB) · ถังร้านถึง 120 ครั้งแรก
@@ -1253,7 +1253,7 @@ async function runDb(): Promise<void> {
 
   // ═══ S10 r4 — มติผู้คุมงาน R4.1–R4.3 (hunt G1/G2/G3) ═══
   // ใช้ร้าน T1 + ตัวช่วยของ S9 (verify9/V9/bucketOf/tKey/cKey/lockedRows/tag9/one9) · ล้างถัง hr-verifypin:<T1>* ก่อนแต่ละข้อ
-  // เวลาเทียบกับนาฬิกา DB (createdAt = now() ฝั่ง DB) · OpsEvent ที่เกิด: ของร้าน T1 ลบตาม tenantId · fail-open ไม่มีร้าน (S10.4 บนฐาน) เก็บ id ไว้ลบ
+  // OpsEvent ที่เกิด: ของร้าน T1 ลบตาม tenantId · fail-open ไม่มีร้าน (S10.4 บนฐาน) เก็บ id ไว้ลบ
   console.log("── [S10] r4: นับก่อนค้น + คืนช่อง (ยิงพร้อมกัน) · callerKey ต้องตรงรูปแบบ · audit/OpsEvent ตอนถังร้านเต็ม ──");
   {
     const ck10 = (tag: string) => `qc10:${tag}:${stamp}`;

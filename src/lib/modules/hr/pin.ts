@@ -168,7 +168,7 @@ export type VerifyPinResult = VerifyPinOk | VerifyPinFail;
  *   ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 / 10 นาที · ร้าน hr-verifypin:<tenantId> 120 / 60 s
  *   1) callerKey ว่าง / ไม่ตรง CALLER_KEY_RE ⇒ ผิดทันที (ไม่แตะ DB ไม่มีถัง ไม่มี OpsEvent ไม่มี audit)
  *   2) นับถังผู้เรียกก่อน แล้วถังร้าน (ลำดับตายตัว · แต่ละถัง = คำสั่ง atomic เดียว) — ถังใดเกินเพดาน ⇒ คืนช่องที่เพิ่งนับ
- *      (ถังที่ปฏิเสธ: คืนเฉพาะเมื่อ count > เพดาน · ถังผู้เรียกที่ผ่านไปแล้ว: count > 0) แล้วตอบ "ลองใหม่ในอีก N วินาที"
+ *      (ทุกการคืน = count − 1 เมื่อ count > 0 ในหน้าต่างเดิม · HR H0.5 r5 ▸ R1 ไม่มีเงื่อนไขเพดานแล้ว ◂) แล้วตอบ "ลองใหม่ในอีก N วินาที"
  *      ⇒ ยิงพร้อมกันกี่ครั้งก็ผ่านถึงการเทียบได้ไม่เกินเพดาน (hunt G1) และครั้งที่ถูกปฏิเสธไม่กินโควตา
  *   3) ผ่านทั้งสองถังเท่านั้นจึงค้น · ถูก / ระบบไม่มี pepper ⇒ คืนช่องทั้งสองถัง (count > 0) ⇒ ทั้งสองถังนับเฉพาะครั้งที่ผิด
  *   4) ครั้งที่ผิดที่ถังผู้เรียกนับได้เท่าเพดานพอดี (10) และยังไม่มี hr.pin.locked ของ callerKey นี้ตั้งแต่ต้นหน้าต่าง ⇒ audit 1 แถว
@@ -189,16 +189,20 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
   if (!CALLER_KEY_RE.test(callerKey)) return wrong;
   const tenantKey = `hr-verifypin:${tenantId}`;
   const callerBucket = `${tenantKey}:${callerKey}`;
-  // HR H0.5 r4 ▸ R4.1 นับก่อนค้น: ผู้เรียกก่อน แล้วร้าน · ถังที่ปฏิเสธคืนช่องของตัวเอง (count > เพดาน) + คืนช่องผู้เรียกที่ผ่านไปแล้ว ◂
+  // HR H0.5 r4 ▸ R4.1 นับก่อนค้น: ผู้เรียกก่อน แล้วร้าน · ถังที่ปฏิเสธคืนช่องของตัวเอง + คืนช่องผู้เรียกที่ผ่านไปแล้ว ◂
+  // HR H0.5 r5 ▸ R1 (ผู้ตรวจ) คืนทุกครั้งแบบไม่มีเงื่อนไขเพดาน (count > 0 เท่านั้น) — เดิมใช้ count > เพดาน ทำให้เกิด "ช่องผี":
+  //   ผู้เรียกผิดค้าง 9 · S (ถูก) นับ → 10 · R นับ → 11 ถูกปฏิเสธ · S คืน 11→10 · R คืนไม่ได้ (10 > 10 เป็นเท็จ)
+  //   ⇒ ล็อกทั้งหน้าต่างทั้งที่ผิดแค่ 9 และไม่มี hr.pin.locked (ถังร้านเหมือนกัน ⇒ เต็มเงียบ)
+  //   แต่ละครั้งที่นับได้คืนครั้งเดียวพอดี + ผูกกับ windowStart เดิม ⇒ count ไม่มีทางต่ำกว่าช่องของครั้งที่ผิดที่ยังค้างจริง ◂
   const vC = await checkRateLimitDb(callerBucket, VERIFY_PIN_CALLER_LIMIT);
   if (!vC.ok) {
-    await refundRateLimitDb(callerBucket, vC.windowStart, { above: VERIFY_PIN_CALLER_LIMIT.limit });
+    await refundRateLimitDb(callerBucket, vC.windowStart);
     return { ok: false, reason: limitedText(vC.retryAfterSec) };
   }
   const vT = await checkRateLimitDb(tenantKey, VERIFY_PIN_LIMIT);
   if (!vT.ok) {
     await Promise.all([
-      refundRateLimitDb(tenantKey, vT.windowStart, { above: VERIFY_PIN_LIMIT.limit }),
+      refundRateLimitDb(tenantKey, vT.windowStart),
       refundRateLimitDb(callerBucket, vC.windowStart),
     ]);
     return { ok: false, reason: limitedText(vT.retryAfterSec) };

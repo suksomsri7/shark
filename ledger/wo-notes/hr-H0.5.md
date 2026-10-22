@@ -459,3 +459,23 @@ Why the audits are decided only on the failure path: correct PINs that arrive to
 
 ### Temp data
 None. QC4 residue 0 after every oracle run. The scratch oracle copy and the clock probe were deleted right after their single runs. Logs are in `/tmp/hr-h05-r4-builder/` (no secrets). No unit of mine is left running.
+
+## r5 (reviewer R1 + R5 · `hr-H0.5-review-r4.md`)
+> Builder · 2026-10-22 · started after `hr-ctl-*` was empty (polled every 2 min, ~10 min).
+- **R1 (ruled, applied):** `pin.ts` refused-call refunds no longer pass `{ above: limit }`. The option is removed from `refundRateLimitDb`, which now always uses `count > 0` within the same `windowStart`. Why: with `count > limit` a refund can be lost. Example: the caller holds 9 wrong; S (correct PIN) counts → 10; R counts → 11 and is refused; S refunds 11 → 10; R's refund sees `10 > 10` false. That leaves a phantom slot: the caller is locked for the window with only 9 wrong and no `hr.pin.locked` row. The tenant ceiling had the same flaw, which meant a silent tenant trip. Now every consume gets exactly one refund, tied to its window, so the count can never fall below the wrong slots actually held. Thai comments are updated in `pin.ts` (r5 marker in the count-first block and the doc comment) and in `rate-limit-db.ts`.
+- **R5 (approved, comments only):** the `scripts/qc-hr-h0.5.mts` `[S9]` header line now describes count-first + refund instead of "peek ก่อน". The S10 block's DB-clock sentence is removed (OE1 uses baseline deltas). No check logic changed.
+
+### Results r5 (one at a time · `iso.sh → qc4.sh → with-gate-lock.sh` · load 2.3–4.8)
+| suite | result | residue | exit |
+|---|---|---|---|
+| `qc-hr-h0.5` forced #1 / unforced / forced #2 (saved → `hr-H0.5-green-r5.txt`; 0 NUL, 0 fixture PINs) | `ผ่าน 71/71 (QC_FORCE)` / `ผ่าน 71/71` / `ผ่าน 71/71 (QC_FORCE)` | `RESIDUE tenants=0 none` · `RESIDUE10 opsEvent=0` ×3 | 0 / 0 / 0 |
+| `qc-hr-h0.3` forced | `ผ่าน 36/36` | Z1 ✅ | 0 |
+| `qc-hf-hr-privacy` forced | `194/194` | — | 0 |
+| `fitness` with env / without | `33/33` ×2 | — | 0 / 0 |
+| `fitness-hr` with env / without | `5/5` ×2 | — | 0 / 0 |
+| `pnpm typecheck` (8192 heap, `ISO_MEM=10000M`, iso + gate lock). Pre-check 06:28Z: MemAvailable 11 310 MB; no build/typecheck/tsc unit (only POS `qc-pos-p2.4`) | 0 `error TS` · 165 s | — | 0 |
+
+### Debts added (reviewer notes, not fixed)
+- **R2:** a DB error during lookup (`appSystem.findMany`, `findRows`, the legacy-upgrade `throw e`) keeps both slots without the audit check. This is on the strict side. Optional fix: `try { … } catch (e) { await release(); throw e; }` around the lookup.
+- **R3:** audit dedupe is check-then-write, not atomic. Overlapping `auditedSince` lookups after a refund-reorder can write 2 rows. The audit is informational, so this is acceptable. Together with the converse case (a lock row is written, then the count returns to 9), these are the remaining S10.2 flake sources.
+- **R4:** refund matching relies on an exact `windowStart` round trip (timestamp(3), session TimeZone UTC). If that breaks, refunds match nothing and the limiter fails strict. Note for anyone who changes the column type.

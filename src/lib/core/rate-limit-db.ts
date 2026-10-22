@@ -89,18 +89,16 @@ export async function checkRateLimitDb(
 /**
  * ลบ 1 ออกจากถัง `key` ที่ checkRateLimitDb เพิ่งนับให้ — **คำสั่งเดียว** (UPDATE … WHERE) atomic ในตัว
  * ตรงหน้าต่างเดิมเท่านั้น (`windowStart` = ค่าที่ checkRateLimitDb คืน) ⇒ หน้าต่างรีเซ็ตไปแล้ว = ไม่แตะ (ไม่ลบช่องของหน้าต่างใหม่)
- * `above` = คืนเฉพาะเมื่อ count > above:
- *   - ครั้งที่ถูกปฏิเสธ (count เกินเพดาน) ส่ง above = limit ⇒ ไม่มีทางดึงถังต่ำกว่าเพดานเพราะคืนซ้อน
- *   - ครั้งที่ผ่านแล้วไม่ควรนับ (ถูก / ระบบไม่พร้อม) ส่ง above = 0 (ค่าปริยาย) ⇒ ไม่ติดลบ
+ * คืนเมื่อ count > 0 เท่านั้น (ไม่ติดลบ) · ผู้เรียกต้องคืน "ครั้งเดียวต่อการนับหนึ่งครั้ง" ทั้งครั้งที่ถูกปฏิเสธและครั้งที่ไม่ควรนับ
+ *   HR H0.5 r5 ▸ R1 (ผู้ตรวจ) ตัดตัวเลือก above (คืนเฉพาะเมื่อ count > เพดาน) ออก — การคืนของคำขออื่นที่มาก่อนทำให้ช่องค้างถาวร (ช่องผี) ◂
  * DB ล่ม ⇒ เงียบ (ผลคือถังนับเกินจริง 1 = เข้มขึ้น ไม่ใช่รั่ว) + logOps WARN แบบเดียวกับ checkRateLimitDb
  */
-export async function refundRateLimitDb(key: string, windowStart: Date | undefined, opts: { above?: number } = {}): Promise<void> {
+export async function refundRateLimitDb(key: string, windowStart: Date | undefined): Promise<void> {
   if (!windowStart) return; // ตอนนับ fail-open (ไม่มีแถว) ⇒ ไม่มีอะไรให้คืน
-  const above = opts.above ?? 0;
   try {
     await prisma.$executeRaw`
       UPDATE "ChatRateBucket" SET "count" = "count" - 1, "updatedAt" = NOW()
-      WHERE "key" = ${key} AND "windowStart" = ${windowStart} AND "count" > ${above}`;
+      WHERE "key" = ${key} AND "windowStart" = ${windowStart} AND "count" > 0`;
   } catch (e) {
     void logOps("WARN", "rate-limit-db", "คืนช่องตัวจำกัดอัตราบน DB ไม่ได้ — ถังนับเกินชั่วคราว", {
       detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
