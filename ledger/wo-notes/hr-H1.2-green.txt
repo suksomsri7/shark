@@ -137,3 +137,22 @@ DONE
 qc-crm-c3.3 JSON_SUMMARY total 90 passed 90 · qc-crm-c0.3 total 88 passed 88 · qc-kanban-k3.3 14/15 = K3.3-S9.2 needs .qc-shots/kanban/3.3 screenshots (absent in this worktree, environmental, exit 0)
 fitness 42/42 with env + without env · fitness-hr 7/7 with env + without env · seed counts md5 4f028646… identical ×3
 typecheck exit 2 — 13 errors, all in scripts/qc-hr-h1.2.mts (L1515 race typing, L1818 tail narrowing) · product code 0 errors · tsbuildinfo 18:34 → 19:35 UTC
+
+## R13 fix round (head before commit 17867bd2 + R13 working tree)
+h12-f1 rc=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"fa
+h12-f2 rc=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"fa
+h12-unforced rc=0 ===== qc-hr-h1.2 ===== passed 73/73
+qc-nav-functions rc=0 
+qc-hr-roster rc=0 ผ่าน 24/24 JSON_SUMMARY {"total":24,"passed":24,"findings":[]} 
+qc-hr-leave-booking rc=0 ผ่าน 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
+qc-hr-payadjust rc=0 ผ่าน 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
+qc-payroll-reverse rc=0 
+qc-booking-hours-hr rc=0 ผ่าน 13/13 JSON_SUMMARY {"total":13,"passed":13,"findings":[]} 
+qc-ai-proposals rc=0 ผ่าน 16/16 JSON_SUMMARY {"total":16,"passed":16,"findings":[]} 
+qc-hr-h1.1 rc=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81
+qc-hf-hr-privacy rc=0 ผ่าน 194/194 JSON_SUMMARY {"total":194,"passed":194,"findings":[]} 
+qc-calendar rc=0 ผ่าน 9/9 JSON_SUMMARY {"total":9,"passed":9,"findings":[]} 
+DONE
+qc-nav-functions: ✅ ผ่านทั้งหมด — 11 เช็ก · qc-payroll-reverse: ✅ PASS — 14/14 · RESIDUE none ×3
+fitness 42/42 with env + without · fitness-hr 7/7 with env + without
+typecheck exit 0 · 0 errors (MemAvailable 10246 MB, no build/tsc unit) · tsbuildinfo → 20:12 UTC

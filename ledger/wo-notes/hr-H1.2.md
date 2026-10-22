@@ -93,9 +93,27 @@
 | hub card label/desc are Thai literals (rest of HrHub too) | module convention | H2.2 |
 | no update/edit form on the stub page (actions + services exist) | stub scope | H2.2/H2.7/H2.8 |
 | `T_SHIFT_USED` text unused | roster writer = H2.1 (ruling 11) | H2.1 |
+| (F5) `rosterDayOf` tie-break = window starting closest to `at`; with tolerance a 05:50 OUT after a 22–06 night resolves to the 06:00 morning entry — H2.4 must pass the punch kind / prefer the window `at` is strictly inside | pure helper unused at runtime in H1.2 | H2.4 |
+| (F5) two encodings of a midnight-ending shift (`endMin 1440, crossesMidnight false` ≡ `endMin 0, crossesMidnight true`, same window) | both valid per R4 | H2.1 normalises on write |
+| (F5) roster unique `(employeeId,date,shiftId)` allows two overlapping different shifts the same day | split shifts intended | H2.1 overlap / ≥1-day-off rule check |
+| (F5) raw `lower(name)` uniques do no Unicode normalisation / whitespace collapse (sara-am U+0E33 vs U+0E4D+U+0E32, inner double spaces) | expression index only | H2.2 (normalise names on write) |
+| (F5) F16.1 SENSITIVE_FIELDS `lat`/`lng` are generic names — a future HR client file touching BusinessUnit location will trip it | Q5 ruling | H2.4 (qualify or baseline) |
+| (F5) PDPA `exportTenantData` (`platform/pdpa.ts:35`) dumps every `sys()` table incl. the 8 new ones (and GPS/photo from H2.4) — pre-existing (pinHash/nationalId already exported) | outside H1.2 | HQ27 / H2.4 |
+| (F5) no FK on `HrShiftSwapRequest.requesterEmployeeId/targetEmployeeId/toEntryId`, `HrTimeCorrection.rosterEntryId/resultAttendanceId`, `HrOtRequest.rosterEntryId` (R1) — writers must check in-system | R1 as ruled | H2.x writers |
+
+## R13. Fix round (review `shark-hr-c/ledger/wo-notes/hr-H1.2-review.md` · base 17867bd2 = 4bca1281 + oracle types-only ORACLE-EDIT)
+| R | fix | where |
+|---|---|---|
+| R13.1 (F1) | HR sidebar children += `{ href: `${s}/hr/settings`, label: "ตั้งค่า" }` (one marked line; page stays guarded) ⇒ qc-nav-functions S5 green · qc-hr-roster NM-3 still green | `src/app/app/layout.tsx` |
+| R13.2 (F2) | `targetUnitRefusal(ctx, scope, unitId, tx?)` — the 3 in-transaction callers (updateShift, updateLeavePolicy, upsertHoliday update) pass `tx` and query `tx.businessUnit` (tenantId in the where); out-of-tx callers keep `tenantDb` | `hr/settings.ts` |
+| R13.3 (F3) | redirect carries a short code (`ok` · `s.<SETTINGS_TEXT key>` · `t.<TIME_RULE_TEXT key>` · `u.notFound`; unknown reason ⇒ `s.failed`); page renders only from that allowlist, unknown code ⇒ nothing | `settings/page.tsx` |
+| R13.4 | `leaveDaysBetween` refuses ranges > 366 calendar days: `"ใบลาหนึ่งใบยาวได้ไม่เกิน 366 วัน"` (`TIME_RULE_TEXT.leaveTooLong`) · vectors: 2030-01-01..2030-12-31 ⇒ "365.0" · 2028-01-01..2028-12-31 ⇒ "366.0" · 2030-01-01..2031-01-01 ⇒ "366.0" · 2026-01-01..2029-12-31 ⇒ refusal (was "1461.0") · S2.10 vectors unchanged | `hr/time-rules.ts` |
+| R13.5 (F4) | runbook: >200k branch also ships the HrAttendance FK `NOT VALID` + `VALIDATE CONSTRAINT` in the third migration | §6 below |
+| F5 | recorded as debts | §10 |
+- R13 results: qc-hr-h1.2 forced ×2 + unforced 73/73 (residue none) · qc-nav-functions 11/11 · qc-hr-roster 24/24 (NM-3 green) · qc-hr-leave-booking 14/14 · qc-hr-payadjust 27/27 · qc-payroll-reverse 14/14 · qc-booking-hours-hr 13/13 · qc-ai-proposals 16/16 · qc-hr-h1.1 81/81 · qc-hf-hr-privacy 194/194 · qc-calendar 9/9 · fitness 42/42 + fitness-hr 7/7 both modes · typecheck exit 0 (0 errors).
 
 ## 6. Prod runbook (brief §6, confirmed)
-1. Read-only pre-checks on prod: `_prisma_migrations` has 1201–1204 finished · `SELECT count(*) FROM "HrAttendance"` — **> 200 000 ⇒ stop**, move `HrAttendance_rosterEntryId_idx` to a third migration `20261205000002_…` with `CREATE INDEX CONCURRENTLY` (no tx), shipped after A/B · no type named HrRosterSource…HrHalfDay · enum HrAttendanceJudgement has no ABSENT/EARLY_OUT (B is idempotent anyway).
+1. Read-only pre-checks on prod: `_prisma_migrations` has 1201–1204 finished · `SELECT count(*) FROM "HrAttendance"` — **> 200 000 ⇒ stop**, move `HrAttendance_rosterEntryId_idx` to a third migration `20261205000002_…` with `CREATE INDEX CONCURRENTLY` (no tx), shipped after A/B · **(R13.5)** in that same branch, A adds the HrAttendance FK as `ALTER TABLE "HrAttendance" ADD CONSTRAINT "HrAttendance_rosterEntryId_fkey" … ON DELETE SET NULL ON UPDATE CASCADE NOT VALID` (no full-table scan under SHARE ROW EXCLUSIVE, clock writes not blocked) and the third migration runs `ALTER TABLE "HrAttendance" VALIDATE CONSTRAINT "HrAttendance_rosterEntryId_fkey";` (SHARE UPDATE EXCLUSIVE — writes continue) · no type named HrRosterSource…HrHalfDay · enum HrAttendanceJudgement has no ABSENT/EARLY_OUT (B is idempotent anyway).
 2. `migrate deploy` applies A then B (separate transactions), then the code deploys in the same Vercel build. Old code never reads the new columns; R6 selects are explicit.
 3. Post-checks: HrAttendance / HrLeave row counts unchanged · 8 new tables empty · judgement 6 labels.
 4. Rollback: code rollback safe; schema rollback not planned (additive; enum values cannot be dropped — accepted).
