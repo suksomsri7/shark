@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { ReportsClient } from "./ReportsClient";
 import { AiBriefPanel } from "./AiBriefPanel"; // POS P3.9U ▸ มติ 1 ◂
+import { posBoardSettings } from "@/lib/modules/pos/board-settings-shared"; // POS P3.8U ▸ CD-P38U-7/8: บอร์ดงานเปิดไหม (ตัวอ่านบริสุทธิ์) ◂
 
 // POS P1.17 U — หน้ารายงาน 7 ชุด (ภาพ 08 บางส่วน) · ข้อมูลทั้งหมดผ่าน report-actions (คำปฏิเสธเป็นข้อมูล)
 // 🔴 สิทธิ์/ขอบเขตจริงตัดสินใน reports.ts (pos.report.view ต่อสาขา) — หน้านี้แค่เลือกสาขาที่เข้าได้ + บอกจอว่าดูได้ไหม
@@ -88,6 +89,7 @@ export default async function PosReportsPage({
           discountFlagBp={anomaly.enabled ? anomaly.rules.A3.bp : null}
           canPayroll={canViewPayroll(m)} // POS P3.5U ▸ มติ 8 ◂
           creditOn={posCreditSettings(sys.settings).enabled} // POS P3.6U ▸ CD-P36U-9 ◂
+          boardOn={posBoardSettings(sys.settings).enabled} // POS P3.8U ▸ CD-P38U-7/8 ◂
         />
       )}
       {/* POS P3.9U ▸ มติ 1: ภาพรวม + ไม่มี pos.report.view ที่สาขาใดเลย = แผงผู้ช่วย AI สถานะปฏิเสธใต้การ์ดปฏิเสธของหน้า (ไม่ยิง action · ไม่มีตัวเลข) ◂ */}

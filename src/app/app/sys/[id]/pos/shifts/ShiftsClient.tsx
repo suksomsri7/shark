@@ -67,6 +67,10 @@ type Props = {
   hours?: Record<string, ShiftHours> | null;
   /** POS P3.4U ▸ มติ 9: ผู้จัดการ (pos.shift.manage) เท่านั้น — enabled = ธงออฟไลน์ · names = ชื่อผู้ใช้ของร้าน (ผู้ขายที่อ้าง/ที่ตรวจ) · null = ไม่มีการ์ด ◂ */
   offline?: { enabled: boolean; names: Record<string, string> } | null;
+  /** POS P3.8U ▸ CD-P38U-6: บรรทัด "เมื่อปิดกะ" (room = ห้องทีมจะได้โพสต์ · card = ผู้จัดการเท่านั้น เกณฑ์/ทุกครั้ง) · ไม่ส่ง/ปิด = ไม่มีบรรทัด ◂ */
+  boardHint?: { room: boolean; card: { minSatang: number; every: boolean } | null } | null;
+  /** POS P3.8U ▸ CD-P38U-6: การ์ดตรวจเงินต่อกะ (shiftId → การ์ด) — ผู้จัดการ ∧ บอร์ดงานเปิด · null = ไม่มีชิป ◂ */
+  shiftCards?: Record<string, { cardNo: number | null; href: string; completed: boolean }> | null;
 };
 type PageData = Awaited<ReturnType<typeof shiftsPageDataAction>>;
 type PageOk = Extract<PageData, { ok: true }>;
@@ -175,7 +179,7 @@ function Dialog({ labelledBy, testid, wide, children }: { labelledBy: string; te
   );
 }
 
-export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUserId, clockAsk = false, hours = null, offline = null /* POS P3.4U ◂ */ }: Props) {
+export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUserId, clockAsk = false, hours = null, offline = null /* POS P3.4U ◂ */, boardHint = null, shiftCards = null /* POS P3.8U ◂ */ }: Props) {
   const t = useTranslations("pos.shift") as T;
   const te = useTranslations("pos.register");
   const tc = useTranslations("common");
@@ -185,6 +189,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
   const [data, setData] = useState<PageData | null>(null);
   const [online, setOnline] = useState(true);
   const [viewZ, setViewZ] = useState<ShiftReport | null>(null);
+  const [closedNow, setClosedNow] = useState<string | null>(null); // POS P3.8U ▸ CD-P38U-6: กะที่เพิ่งปิดในจอนี้ (บรรทัด "เมื่อปิดกะ" บนรายงาน Z) ◂
   const [viewRecount, setViewRecount] = useState<RecountView | null>(null);
   const [showX, setShowX] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -421,6 +426,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
         return false;
       }
       setViewZ(r.report);
+      setClosedNow(shift.id); // POS P3.8U ▸ CD-P38U-6 ◂
       setViewRecount(null);
       setShowX(false);
       setCountDen(emptyDen());
@@ -784,6 +790,15 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
     );
   };
   const coinsSatang = bahtToSatang(countCoins, true);
+  // POS P3.8U ▸ CD-P38U-6: "เมื่อปิดกะ" — สิ่งที่จะเกิดหลังปิด (คิวส่งทีหลัง ⇒ ไม่มีคำว่า "…แล้ว") · ไม่มีอะไรเปิด = ไม่มีบรรทัด · ไม่ถามผล ◂
+  const boardHintBlock =
+    boardHint && (boardHint.room || boardHint.card) ? (
+      <div data-testid="pos-shift-board-hint" className="flex flex-col gap-1 rounded-xl border border-dashed px-4 py-3 text-[12.5px] text-[color:var(--color-muted)]">
+        <b className="text-[12.5px] font-semibold text-[color:var(--color-ink-soft)]">{t("hintTitle")}</b>
+        {boardHint.room ? <span data-testid="pos-shift-board-hint-room">{t("hintRoom")}</span> : null}
+        {boardHint.card ? <span data-testid="pos-shift-board-hint-card">{boardHint.card.every ? t("hintCardEvery") : t("hintCard", { amount: money(boardHint.card.minSatang) })}</span> : null}
+      </div>
+    ) : null;
   const closeCard = shift ? (
     <section className={`${CARD} flex flex-col gap-5`} data-testid="pos-shift-close">
       <div className="flex flex-col gap-1 @2xl:flex-row @2xl:items-center @2xl:justify-between">
@@ -851,6 +866,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
           ) : null}
         </div>
       </div>
+      {boardHintBlock /* POS P3.8U ▸ CD-P38U-6 ◂ */}
       <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-center @2xl:justify-between">
         <div className="flex flex-wrap gap-3">
           <button data-testid="pos-shift-close-submit" type="button" className="btn btn-primary h-12 rounded-[12px] px-6" disabled={busy || !countCalc || closeBlocked /* POS P3.4U ▸ มติ 6 ◂ */} onClick={doClose}>
@@ -912,6 +928,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
         </div>
       </div>
       <Report r={viewZ} t={t} />
+      {closedNow && viewZ.shiftId === closedNow ? boardHintBlock : null /* POS P3.8U ▸ CD-P38U-6 ◂ */}
       {viewRecount && <RecountBlock recount={viewRecount} byName={nameOfRecount(viewRecount)} t={t} locale={locale} />}
     </section>
   ) : null;
@@ -919,6 +936,13 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
   // ═══════════ ขวา: กะที่ปิดแล้ว (Z) ═══════════
   const closedRow = (h: ShiftsPageItem, full: boolean) => {
     const os = h.overShortSatang;
+    // POS P3.8U ▸ CD-P38U-6 · CD-P38U-10: ชิปการ์ดตรวจเงิน "การ์ด #n" / "…เสร็จแล้ว" → การ์ด (หน้าบอร์ดงานตรวจสิทธิ์เอง) · ไม่มีชื่อผู้รับ/ผู้สร้าง ◂
+    const bc = shiftCards?.[h.id];
+    const boardChip = bc ? (
+      <a data-testid={`pos-shift-board-chip-${h.id}`} href={bc.href} className="inline-flex min-h-11 items-center rounded-[9px] px-2 text-[12.5px] font-semibold text-[color:var(--color-accent)] hover:underline">
+        {bc.completed ? t("boardCardDone", { n: bc.cardNo ?? 0 }) : t("boardCard", { n: bc.cardNo ?? 0 })}
+      </a>
+    ) : null;
     const body = (
       <>
         <b className="w-12 shrink-0 pt-0.5 text-[13px] tabular-nums">{t("zHash", { no: h.zNumber ?? 0 })}</b>
@@ -962,12 +986,14 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
           >
             {body}
           </button>
+          {boardChip ? <div className="-mt-2 flex justify-end pb-1">{boardChip}</div> : null /* POS P3.8U ▸ CD-P38U-6 ◂ */}
         </li>
       );
     return (
       <li key={h.id} className="flex flex-col gap-2 border-b py-3 last:border-0">
         <div className="flex items-start gap-3">{body}</div>
         <span className="flex justify-end gap-2">
+          {boardChip /* POS P3.8U ▸ CD-P38U-6 ◂ */}
           {h.status === "FORCE_CLOSED" && h.recount === null && canManage ? (
             <button data-testid={`pos-shift-recount-${h.zNumber ?? h.id}`} type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy} onClick={() => openRecount(h)}>
               {t("recount.action")}

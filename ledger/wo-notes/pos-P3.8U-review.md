@@ -25,3 +25,5 @@ No blocker or medium. 3 LOW/INFO items for the controller to note at merge (none
 - F3 INFO accepted (two tenant-scoped prisma reads in the wrapper · "#0" when cardNo is null · repeated 50-shift findMany on shifts/page.tsx) — cosmetic; the "#0" chip goes into the P3.12 parity sweep list.
 - CD-P38U-B1 (wrapper at `src/lib/pos-board-ui-actions.ts`) and B2 (harness writes `settings.pos.ai.enabled` with exact restore) confirmed. `qc-pos-p1.6` does not scan `src/lib/*-actions.ts`; R1 verified R2 by hand — controller follow-up: extend p1.6's scanned set to `src/lib/pos-board-actions.ts` + `pos-board-ui-actions.ts` as an ORACLE-EDIT at P3.12 (not now: the builder tree is closed).
 - Next: QC5 visual round on tree d at 2676f5f6 (owner th 32 · cashier th 3 · owner en 11 · cashier en 1) → merge second (visual-pos.mts / pos.json keep-both) → W26 → re-pins.
+
+## Merge (B · 22 Oct 01:0xZ): 5eabd360 · QC5 round 2 47/47 (`vis-p38u-qc5-20261022T003509Z` after harness fix1 a0c808aa creates the KANBAN/MEETING QC systems) · W26 written · CD-RP13 re-pins · CD-SKEL-O3 (p3-skel ST3 flags only imports added since the lane pin)

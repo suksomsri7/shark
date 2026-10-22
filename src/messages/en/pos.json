@@ -1139,7 +1139,13 @@
       "closeBlocked": "Sync before closing the shift — this device has {count} offline bills waiting to sync",
       "unknownUser": "Unknown",
       "empty": "No offline bills waiting for a manager"
-    }
+    },
+    "boardCard": "Card #{n}",
+    "boardCardDone": "Card #{n} done",
+    "hintTitle": "When the shift closes",
+    "hintRoom": "The shift summary will be posted to the team room",
+    "hintCard": "An over/short of {amount} or more creates a “Cash check” card on the board for the manager",
+    "hintCardEvery": "A “Cash check” card is created on the board for the manager at every shift close"
   },
   "report": {
     "title": "Sales reports",
@@ -1445,7 +1451,20 @@
       "groupCount": "{n, plural, one {# finding} other {# findings}}",
       "wholeRange": "Whole range",
       "unnamed": "No name",
-      "viewBill": "View bill"
+      "viewBill": "View bill",
+      "toCard": {
+        "create": "Create a board task",
+        "creating": "Creating…",
+        "created": "Card #{n} created",
+        "exists": "Card #{n} already exists",
+        "chip": "Card #{n}",
+        "chipDone": "Card #{n} done",
+        "oneDay": "Pick a single day to create a card",
+        "denied": "You need to be an editor of this task board",
+        "noBoard": "The register has no task board set up",
+        "stale": "This row has changed — reload the report",
+        "failed": "Could not create the card"
+      }
     },
     "print": {
       "button": "Print / PDF",
@@ -2217,7 +2236,8 @@
       "staff": "Staff & permissions",
       "shark": "SHARK connections",
       "channels": "External sales channels",
-      "offline": "Offline & sync"
+      "offline": "Offline & sync",
+      "board": "Task boards & team room"
     },
     "errors": {
       "notFound": "This point of sale was not found",
@@ -3090,6 +3110,95 @@
       "save": "Save limit",
       "empty": "No company has a credit limit yet",
       "noPermission": "Only users who can manage credit customers"
+    },
+    "board": {
+      "title": "Task boards & team room",
+      "desc": "Open task cards from register events and post shift summaries to the team chat room — everything stays off until the shop owner turns it on",
+      "ownerOnly": "Only the shop owner can change this section — you see it read-only",
+      "sectionBoard": "Task board",
+      "sectionRoom": "Team room",
+      "sectionOthers": "Task cards set up elsewhere",
+      "enabled": "Open task cards from the register",
+      "enabledHint": "Shift cash differences · long sold-outs · orders that need a refund → cards on the board",
+      "default": "Default board",
+      "defaultHint": "Cards of every branch go to this board unless the branch has its own",
+      "noBoardOption": "— No board chosen —",
+      "unitBoard": "Board for {unit}",
+      "useDefault": "Use the default board",
+      "hiddenBoard": "A board you cannot open",
+      "noneSet": "Not set",
+      "assignManager": "Assign cards to the branch manager",
+      "assignManagerHint": "The branch's first manager owns the card · no manager = unassigned",
+      "ruleShiftDiff": "Cash over/short at shift close → “Cash check” card",
+      "ruleShiftDiffHint": "For the manager to check, due at noon the next day",
+      "min": "Over/short threshold",
+      "unitBaht": "THB",
+      "everyClose": "Create a card at every shift close (ignore the threshold)",
+      "forcedClose": "Include shifts the system closed (cash not counted)",
+      "ruleSoldOut": "Item sold out (86) longer than allowed → card",
+      "ruleSoldOutHint": "Back on sale = the card moves to the done column, or gets the comment “Back on sale”",
+      "hours": "Sold out longer than",
+      "unitHours": "hours",
+      "sources": "Count from",
+      "source": {
+        "MANUAL": "Marked by hand",
+        "KDS": "Kitchen screen",
+        "STOCK": "Out of stock"
+      },
+      "ruleRefundNeeded": "Orders that need a refund → card",
+      "ruleRefundNeededHint": "Paid orders that were rejected or expired and are not refunded yet",
+      "create": "Create board “Store tasks”",
+      "createHint": "A new blank board in the shop's task board system, set as the default board",
+      "creating": "Creating board…",
+      "newBoardName": "Store tasks",
+      "noKanban": "The shop has no task board system yet",
+      "addSystem": "Add system",
+      "needBoard": "Choose a board before turning this on",
+      "manageHere": "Register task board settings",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "errors": {
+        "VALIDATION": "This value cannot be used — check the allowed range or choose again",
+        "PERMISSION_DENIED": "Only the shop owner can save this",
+        "NOT_FOUND": "This register was not found — reload the page",
+        "UNKNOWN": "Could not save — try again",
+        "createFailed": "Could not create the board — try again",
+        "createSaveFailed": "The board was created but could not be set as the default — pick it in the list and save"
+      },
+      "others": {
+        "voided": "Voided bill → review card",
+        "approval": "Approval request → card",
+        "issue": "Customer reports a receipt issue → card",
+        "on": "On",
+        "off": "Off",
+        "boardName": "Board {name}",
+        "manageKanban": "Set up in task boards",
+        "manageReceipt": "Set up in the receipt tab"
+      },
+      "room": {
+        "enabled": "Post to the team room",
+        "enabledHint": "Posted by the system · no staff names in posts",
+        "default": "Default room",
+        "defaultHint": "Shift summaries of every branch go to this room unless the branch has its own",
+        "noRoomOption": "— No room chosen —",
+        "unitRoom": "Room for {unit}",
+        "useDefault": "Use the default room",
+        "hiddenRoom": "A room is set (the shop owner sees its name)",
+        "needRoom": "Choose a room before turning this on",
+        "stale": "The chosen room was archived or deleted — posts will not arrive, choose a new room",
+        "staleOption": "Previous room (archived or deleted)",
+        "noMeeting": "The shop has no team chat system yet",
+        "postShiftClose": "Post a summary at shift close",
+        "postShowOverShort": "Show the cash over/short in the post",
+        "overShortHelp": "Everyone in the room sees the over/short amount — no names",
+        "postDailyBrief": "Morning brief in the default room",
+        "postDailyBriefHint": "Sales · bills · top products · sold-outs · open shifts (no per-person anomalies)",
+        "briefHour": "Morning brief time",
+        "hourValue": "{h}:00",
+        "briefNeedsDefault": "Set a default room first — the morning brief goes to the default room only",
+        "allOff": "The team room is off — nothing is posted to any room"
+      }
     }
   },
   "print": {
@@ -4992,7 +5101,8 @@
       "failed": "Could not load the summary",
       "retry": "Try again",
       "seedDraftPo": "Draft a purchase order for the low-stock items as of {date}",
-      "seedAsk": "About {title}: analyse sales for {date} and suggest what to do next"
+      "seedAsk": "About {title}: analyse sales for {date} and suggest what to do next",
+      "board": "Create a board task"
     },
     "tools": {
       "denied": "This account cannot see this POS data yet. Ask the shop owner for access.",
