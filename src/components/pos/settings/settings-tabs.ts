@@ -3,7 +3,7 @@
 // ลำดับ = ลำดับเมนูในภาพ 17A: ทั่วไป · ใบเสร็จและภาษี · วิธีรับเงิน · เครื่องและเครื่องพิมพ์ · พนักงานและสิทธิ์ · การเชื่อมต่อ SHARK · ช่องทางขายภายนอก · ออฟไลน์และการซิงก์
 import type { RegisterIconName } from "@/components/pos/register/RegisterIcon";
 
-export type PosSettingsTabKey = "general" | "receipt" | "payments" | "devices" | "staff" | "shark" | "channels" | "offline";
+export type PosSettingsTabKey = "general" | "receipt" | "payments" | "devices" | "staff" | "shark" | "board" /* POS P3.8U ▸ CD-P38U-1 ◂ */ | "channels" | "offline";
 export type PosSettingsTab = {
   key: PosSettingsTabKey;
   /** คีย์ข้อความใต้ pos.settings.tabs */
@@ -22,6 +22,7 @@ export const POS_SETTINGS_TABS: readonly PosSettingsTab[] = [
   { key: "devices", msg: "devices", icon: "print", live: true, owner: "P1.10U" },
   { key: "staff", msg: "staff", icon: "users", live: true, owner: "P1.18U" },
   { key: "shark", msg: "shark", icon: "link", live: true, owner: "P1.18U" },
+  { key: "board", msg: "board", icon: "grid", live: true, owner: "P3.8U" }, // POS P3.8U ▸ CD-P38U-1: แท็บ "บอร์ดงานและห้องทีม" ต่อจาก shark (8 → 9 แท็บ) ◂
   { key: "channels", msg: "channels", icon: "truck", live: true, owner: "P1.18U" },
   { key: "offline", msg: "offline", icon: "swap", live: true, owner: "P1.18U" },
 ];

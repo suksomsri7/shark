@@ -34,9 +34,11 @@ type Props = {
   locale: string;
   /** หน้ารู้แล้วว่าผู้ใช้ดูรายงานไม่ได้ที่สาขาใดเลย (การ์ดปฏิเสธของหน้า) — ไม่ยิง action */
   refused?: boolean;
+  /** POS P3.8U ▸ CD-P38U-8: บอร์ดงานเปิด ∧ ผู้ใช้มีสิทธิ์จุดผิดปกติ (ReportsClient คำนวณจากหน้า) — ปุ่ม "สร้างงานในบอร์ด" เมื่อมีจุดผิดปกติที่ถูกจับ ◂ */
+  board?: boolean;
 };
 
-export function AiBriefPanel({ systemId, date, locale, refused = false }: Props) {
+export function AiBriefPanel({ systemId, date, locale, refused = false, board = false /* POS P3.8U ◂ */ }: Props) {
   const t = useTranslations("pos.ai");
   const [view, setView] = useState<View>(refused ? { s: "refused" } : { s: "loading" });
   const [at, setAt] = useState<string | null>(null);
@@ -123,6 +125,17 @@ export function AiBriefPanel({ systemId, date, locale, refused = false }: Props)
             <RegisterIcon name="spark" size={15} />
             {t("panel.ask")}
           </button>
+          {/* POS P3.8U ▸ CD-P38U-8: แผงไม่มีแถว ⇒ ลิงก์ไปแท็บจุดผิดปกติของวันธุรกิจนั้น (สร้างการ์ดทีละแถวที่นั่น) · แสดงเมื่อ anomalyHits ∧ board ◂ */}
+          {board && ok.anomalyHits ? (
+            <a
+              data-testid="pos-reports-ai-board"
+              href={`/app/sys/${systemId}/pos/reports?${new URLSearchParams({ kind: "anomalies", from: ok.businessDate, to: ok.businessDate }).toString()}`}
+              className="btn btn-ghost inline-flex min-h-[44px] items-center gap-2 text-sm"
+            >
+              <RegisterIcon name="grid" size={15} />
+              {t("panel.board")}
+            </a>
+          ) : null}
         </div>
       )}
       <div className="mt-3 inline-block rounded-[8px] border border-dashed px-[9px] py-1.5 text-[12px] text-[color:var(--color-muted)]" data-testid="pos-reports-ai-propose-only">

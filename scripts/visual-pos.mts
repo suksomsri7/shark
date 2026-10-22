@@ -189,6 +189,8 @@
 //   orders-detail-chat-nolink · orders-detail-chat-sent · orders-chat-card-requested · paydone-line-auto (1440 · ⚠️ ขายจริง 1 บิลผูกสมาชิก QC) — ตารางใน P37U_PLAN · fixture/เก็บกวาดใน
 //   ensureP37uFixture/prepP37u/cleanupP37u (settings.pos.chat = jsonb ของ harness · ค่าเดิมใน settings.pos._qcP37uBefore · ระบบแชทชั่วคราว + WEBCHAT (ส่ง no-op) · ออเดอร์ผ่าน ingestOrder ·
 //   ด่าน LINE CONNECTED = 0 ก่อนสถานะที่เปิดสวิตช์ · ไม่มีข้อความ LINE จริงออกจากรอบนี้) · สถานะเดิม settings-shark/orders-mixed ไม่แตะ ◂
+// POS P3.8U ▸ CD-P38U-11: wo p3.8u + --states = แท็บบอร์ดงานและห้องทีม (off · on · readonly · invalid · room-stale · ลิงก์การ์ด KANBAN) · แถวจุดผิดปกติ (ปุ่ม · กดจริง · ชิป) ·
+//   แผง AI ปุ่มบอร์ด · หน้ากะ (ชิปการ์ด · บรรทัด "เมื่อปิดกะ") — ตาราง P38U_PLAN · fixture/ด่าน/เก็บกวาดใน ensureP38uFixture/prepP38u/cleanupP38u ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -236,6 +238,9 @@ const P39U_PAGES = ["reports", "settings"] as const satisfies readonly PosPage[]
 // POS P3.7U ▸ CD-P37U: wo p3.7u = สถานะแชทของใบนี้ (ไม่ส่ง --page = settings + orders + register) ◂
 const P37U_WO = /^p3\.?7u/i.test(WO ?? "");
 const P37U_PAGES = ["settings", "orders", "register"] as const satisfies readonly PosPage[];
+// POS P3.8U ▸ CD-P38U-11: wo p3.8u = สถานะบอร์ดงาน/ห้องทีมของใบนี้ (ไม่ส่ง --page = settings + reports + shifts) ◂
+const P38U_WO = /^p3\.?8u/i.test(WO ?? "");
+const P38U_PAGES = ["settings", "reports", "shifts"] as const satisfies readonly PosPage[];
 // POS P2.7U ▸ มติ 15: wo p2.7 = หน้าสาธารณะ QR (/q/**) + จอ 09 + จอโต๊ะ + ลิ้นชักช่องทาง (ไม่ส่ง --page = qr-public + orders + tables + settings) ◂
 const P27_WO = /^p2\.?7(?![0-9])/i.test(WO ?? "");
 const P27_PAGES = ["qr-public", "orders", "tables", "settings"] as const satisfies readonly PosPage[];
@@ -265,7 +270,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P37U_WO ? [...P37U_PAGES] /* POS P3.7U */ : P39U_WO ? [...P39U_PAGES] /* POS P3.9U */ : P34U_WO ? [...P34U_PAGES] /* POS P3.4U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P37U_WO ? [...P37U_PAGES] /* POS P3.7U */ : P38U_WO ? [...P38U_PAGES] /* POS P3.8U */ : P39U_WO ? [...P39U_PAGES] /* POS P3.9U */ : P34U_WO ? [...P34U_PAGES] /* POS P3.4U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -308,7 +313,7 @@ const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const PDF_PROBE = argv.includes("--pdf");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey | P34uKey | P39uKey /* POS P3.9U */ | P37uKey /* POS P3.7U */; // POS P3.4U ▸ + P34u ◂ // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey | P34uKey | P39uKey /* POS P3.9U */ | P37uKey /* POS P3.7U */ | P38uKey /* POS P3.8U */; // POS P3.4U ▸ + P34u ◂ // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -884,6 +889,57 @@ const p39uPath = (k: P39uKey): string => {
   }
 };
 // ◂ POS P3.9U
+// ── POS P3.8U ▸ บอร์ดงาน/ห้องทีม (CD-P38U-11 · wo p3.8u · --states · settings/reports/shifts · 3 ขนาด · LOCALE=en 1440 · owner + cashier) ◂
+type P38uKey =
+  | "settings-board-off"
+  | "settings-board-on"
+  | "settings-board-readonly"
+  | "settings-board-invalid"
+  | "settings-board-room-stale"
+  | "settings-shark-kanban-link"
+  | "reports-anomalies-card-button"
+  | "reports-anomalies-card-pressed"
+  | "reports-anomalies-card-chip"
+  | "reports-ai-panel-board"
+  | "shifts-closed-board-chip"
+  | "shifts-close-board-hint";
+const P38U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P38U_PLAN: { key: P38uKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "settings-board-off", page: "settings", devices: P38U_D3, users: ["owner"], note: "แท็บบอร์ดงานและห้องทีม ทุกอย่างปิด: สวิตช์หลักปิดกดไม่ได้ + \"เลือกบอร์ดก่อน\" · ปุ่มสร้างบอร์ด \"งานหน้าร้าน\" (ไม่กด) · กรอบประห้องทีมปิดอยู่ (W18) · แถว K3.3/P1.11 อ่านอย่างเดียว" },
+  { key: "settings-board-on", page: "settings", devices: P38U_D3, users: ["owner"], note: "บอร์ด fixture posqc-vis-p38u เปิด (ปริยาย + รายสาขานี้ · ขาด/เกิน + ของหมดเปิด) · ห้องทีม posqc-vis-p38u เปิด + โพสต์ปิดกะ + แสดงขาด/เกิน (บรรทัดช่วย W18) · แถวรายสาขา · แถว K3.3/P1.11" },
+  { key: "settings-board-readonly", page: "settings", devices: P38U_D3, users: ["cashier"], note: "แคชเชียร์: ค่าตั้งเดียวกับ on แบบอ่านอย่างเดียว (สวิตช์ aria-disabled · ชื่อบอร์ดเฉพาะที่เห็น · ห้อง = ข้อความไม่มีชื่อ) + \"เจ้าของร้านเท่านั้น…\" · ไม่มีตัวเลือก/ปุ่มบันทึก" },
+  { key: "settings-board-invalid", page: "settings", devices: P38U_D3, users: ["owner"], note: "บอร์ดเปิด · ห้องทีมปิด (posts ปิด) → กรอกชั่วโมงของหมด 0 → บันทึก → VALIDATION ที่ช่อง board.rules.soldOut.hours (ไม่มีการเขียน)" },
+  { key: "settings-board-room-stale", page: "settings", devices: P38U_D3, users: ["owner"], note: "ห้องปริยาย = ห้อง fixture ที่เก็บถาวร posqc-vis-p38u-arch → ตัวเลือกจาง \"ห้องเดิม (ถูกเก็บ…)\" + คำเตือน board.room.stale (ห้องทีมปิด)" },
+  { key: "settings-shark-kanban-link", page: "settings", devices: P38U_D3, users: ["owner"], note: "แท็บการเชื่อมต่อ SHARK: การ์ด KANBAN (ภาพ 10) ลิงก์ \"ตั้งค่าบอร์ดงานของหน้าขาย\" → ?tab=board" },
+  { key: "reports-anomalies-card-button", page: "reports", devices: P38U_D3, users: ["owner"], note: "แท็บจุดผิดปกติวันนี้ (บอร์ดเปิด): กลุ่ม A11 (fixture 4 แถว) ปุ่ม \"สร้างงานในบอร์ด\" ต่อแถว · แถวที่มีการ์ดแล้ว = ชิป" },
+  { key: "reports-anomalies-card-pressed", page: "reports", devices: ["desktop", "mobile"], users: ["owner"], note: "กดปุ่มจริง 1 ครั้งบนแถว A11 ที่ยังไม่มีการ์ด (บอร์ด fixture) → ชิป \"สร้างการ์ด #n แล้ว\" · ไม่มีแถวว่าง = SKIP (กุญแจรายวัน · 1440 + 390 th + 1440 en = 3 แถวว่าง)" },
+  { key: "reports-anomalies-card-chip", page: "reports", devices: P38U_D3, users: ["owner"], note: "แถว A11 (สาขานี้ · ผู้อนุมัติเจ้าของ) มีการ์ด fixture แล้ว → ชิป \"การ์ด #n\" ลิงก์ไปการ์ด (ไม่มีชื่อคน)" },
+  { key: "reports-ai-panel-board", page: "reports", devices: P38U_D3, users: ["owner"], note: "08 ภาพรวมวันนี้: แผงผู้ช่วย AI (เปิดชั่วคราว) มีจุดผิดปกติ A11 → ปุ่ม \"สร้างงานในบอร์ด\" (ลิงก์ ?kind=anomalies&from=&to=วันนั้น)" },
+  { key: "shifts-closed-board-chip", page: "shifts", devices: P38U_D3, users: ["owner"], note: "กะที่ปิดแล้วของสาขา: ชิป \"การ์ด #n\" ของกะปิดล่าสุด (การ์ด fixture pos-shift:<id> บนบอร์ด fixture) · ไม่มีชื่อผู้รับ" },
+  { key: "shifts-close-board-hint", page: "shifts", devices: P38U_D3, users: ["owner"], note: "กะเปิดของเครื่อง posqc-vis-p38u-shift: การ์ดปิดกะมีกรอบ \"เมื่อปิดกะ\" — สรุปกะเข้าห้องทีม + การ์ดตรวจเงินเมื่อขาด/เกิน ≥ ฿100 (ไม่กดปิดกะ)" },
+];
+const p38uOn = STATES_ON && tenantKey === "coffee" && P38U_WO;
+const P38U_KEYS: ReadonlySet<string> = new Set(P38U_PLAN.map((s) => s.key));
+const isP38uState = (k: StateKey | null | undefined): k is P38uKey => !!k && P38U_KEYS.has(k);
+const p38uDay = () => new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+// ชื่อ fixture (ใช้ในบรรทัด --dry ด้วย — ประกาศก่อน) · บอร์ด/ห้อง/เครื่องเก็บไว้ข้ามรอบ
+const P38U_BOARD_NAME = "posqc-vis-p38u";
+const P38U_ROOM_NAME = "posqc-vis-p38u";
+const P38U_ROOM_ARCH_NAME = "posqc-vis-p38u-arch";
+const P38U_SHIFT_DEV = "posqc-vis-p38u-shift";
+const P38U_REASON = "ภาพ QC P3.8U";
+const P38U_KANBAN_SYS_NAME = "บอร์ดงาน (ภาพ QC P3.8U)"; // POS P3.8U ▸ fix1: ระบบของภาพเมื่อร้าน QC ไม่มีระบบที่เปิดอยู่ (เก็บไว้) ◂
+const P38U_MEETING_SYS_NAME = "ห้องทีม (ภาพ QC P3.8U)";
+const p38uPath = (k: P38uKey): string => {
+  const u = encodeURIComponent(unitId);
+  const d = p38uDay();
+  if (k === "settings-shark-kanban-link") return `/app/sys/${SYS}/pos/settings?tab=shark&unit=${u}`;
+  if (k.startsWith("settings-")) return `/app/sys/${SYS}/pos/settings?tab=board&unit=${u}`;
+  if (k === "reports-ai-panel-board") return `/app/sys/${SYS}/pos/reports?kind=overview&from=${d}&to=${d}`;
+  if (k.startsWith("reports-")) return `/app/sys/${SYS}/pos/reports?kind=anomalies&from=${d}&to=${d}`;
+  return `/app/sys/${SYS}/pos/shifts?unit=${u}`;
+};
+// ◂ POS P3.8U
 // ── POS P2.12U ▸ รายงาน 08 + บิล 12 + การ์ดเกณฑ์ (มติ 8 · wo p2.12u · --states · 3 ขนาด · หน้าพิมพ์ 1440 + สื่อ print · th + LOCALE=en · owner + cashier) ◂
 type P212uKey = "reports-hourly" | "reports-branches-tab" | "reports-anomalies" | "reports-anomalies-empty" | "reports-staff-flag" | "reports-pdf-button" | "reports-print-overview" | "reports-print-channels" | "settings-general-anomaly" | "bills-all-branches" | "bills-drawer-channel-refund";
 const P212U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
@@ -1201,6 +1257,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: p37uPath(st.key), file: `${OUT}/${p}-${st.key.startsWith(`${p}-`) ? st.key.slice(p.length + 1) : st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
+  // POS P3.8U ▸ CD-P38U-11: wo p3.8u + --states = สถานะบอร์ดงาน/ห้องทีมของใบนี้ตามหน้า/ผู้ใช้ ◂
+  : p38uOn
+    ? P38U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p38uPath(st.key), file: `${OUT}/${p}-${st.key.startsWith(`${p}-`) ? st.key.slice(p.length + 1) : st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
   // POS P3.9U ▸ มติ 6: wo p3.9u + --states = สถานะผู้ช่วย AI ของใบนี้ตามหน้า/ผู้ใช้ ◂
   : p39uOn
     ? P39U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
@@ -1425,13 +1488,15 @@ if (LIST) {
   for (const st of P37U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("reports/settings P3.9U (wo p3.9u --states · owner + cashier):"); // POS P3.9U
   for (const st of P39U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
+  console.log("settings/reports/shifts P3.8U (wo p3.8u --states · owner + cashier):"); // POS P3.8U
+  for (const st of P38U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("settings P2.13 (wo p2.13 --states · owner + manager):"); // POS P2.13
   for (const st of P213_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("qr-public/orders/tables/settings P2.7U (wo p2.7 --states · เจ้าของ):"); // POS P2.7U
   for (const st of P27_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN, P34U_PLAN, P39U_PLAN, P37U_PLAN /* POS P3.7U */].flatMap((pl) => pl.map((x) => x.key)); // POS P3.4U ▸ + P34U ◂ // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN, P34U_PLAN, P39U_PLAN, P37U_PLAN /* POS P3.7U */, P38U_PLAN /* POS P3.8U */].flatMap((pl) => pl.map((x) => x.key)); // POS P3.4U ▸ + P34U ◂ // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1638,6 +1703,19 @@ if (DRY) {
         `  P3.9U: fixture (สาขา ${unitKey}) — บิลวันนี้ 3 ใบ + ยกเลิก 1 ใบ (createSale/voidSale คีย์ต่อวัน posqc-vis-p39u-<n>-<วันที่> · ไม่ลบ แบบ P2.12U) · ` +
           "settings.pos.ai ผ่าน jsonb ของ harness (CD-P39U-4 · ค่าเดิมเก็บใน _qcP39uBefore · ปิด = off states · เปิด = ที่เหลือ · คืนค่าเดิมหลังงานสุดท้าย/finally/สัญญาณ) · " +
           "audit pos.staff.schedule_override ×3 ผ่าน writeAudit (CD-P39U-5 · เหตุผล \"ภาพ QC P3.9U <pid>\" · ลบตอนเก็บกวาด) · ผู้จัดการชั่วคราวของภาพ (Membership MANAGER ลบตอนเก็บกวาด · invalid = ลดเป็น STAFF ชั่วคราวก่อนกดบันทึก) · fix1 N1: brief ใช้ A11 ×3 เป็นบรรทัดที่ต้องทำต่อ · empty พัก 86 ของระบบ + จุดสั่งซื้อของสินค้าใกล้หมดชั่วคราว (เก็บใน _qcP39uBefore.park · คืนหลังภาพ/finally/สัญญาณ)",
+      );
+    }
+    // POS P3.8U ▸ CD-P38U-11 ◂
+    if (jobs.some((j) => isP38uState(j.state))) {
+      console.log(`สถานะบอร์ดงาน/ห้องทีม P3.8U (${userKey}${userKey === "cashier" ? " — settings-board-readonly = อ่านอย่างเดียว" : ""}):`);
+      for (const st of P38U_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(31)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P3.8U: fixture (ร้าน QC coffee · สาขา ${unitKey} · ไม่ reseed) — บอร์ด ${P38U_BOARD_NAME} (kanban/service.createBoard ในระบบ KANBAN แรก · หา/สร้าง · เก็บไว้) · ` +
+          `ห้อง ${P38U_ROOM_NAME} + ${P38U_ROOM_ARCH_NAME} (เก็บถาวร · meeting/service · หา/สร้าง · เก็บไว้) · ไม่มีระบบที่เปิดอยู่ = สร้าง "${P38U_KANBAN_SYS_NAME}" / "${P38U_MEETING_SYS_NAME}" (system/service.createSystem · เก็บไว้ · สร้างไม่ได้ = SKIP) · ` +
+          "settings.pos.board/teamRoom (+ ai.enabled ของ reports-ai-panel-board) = jsonb ของ harness · ค่าเดิมใน settings.pos._qcP38uBefore · คืนหลังงานสุดท้าย/finally/สัญญาณ · " +
+          "🔴 ด่านก่อนเขียนทุกครั้ง: id บอร์ด/ห้อง = ของ fixture เท่านั้น (ไม่ใช่ = ยกเลิก) · ไม่ปิดกะ · ไม่เรียก sweepPosBoard/onShiftClosed · ไม่กดบันทึกขณะ posts.* เปิด · " +
+          `audit A11 4 แถว×3 (เหตุผล "${P38U_REASON} <pid>" · ลบตอนเก็บกวาด) · การ์ดชิป createCardFromExternal (pos-shift:<กะปิดล่าสุด> · pos-anomaly:A11:…:<เจ้าของ> · เก็บไว้) · ` +
+          `กะเปิดของเครื่อง ${P38U_SHIFT_DEV} (openShift เจ้าของ ฿0 · ไม่ปิด · ใกล้ปิดอัตโนมัติ = SKIP)`,
       );
     }
     // POS P2.7U ▸ มติ 15 ◂
@@ -1964,6 +2042,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P37U.log.length) console.error(`${P37U.ok ? "🧹" : "⚠️"} P3.7U: ${P37U.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P3.7U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P3.8U: คืนค่าตั้งบอร์ดงาน/ห้องทีม/ผู้ช่วย AI · ลบ audit A11 ของภาพ (เหมือน finally · บอร์ด/ห้อง/การ์ด/กะของ fixture คงอยู่)
+      try {
+        await cleanupP38u();
+        if (P38U.log.length) console.error(`${P38U.ok ? "🧹" : "⚠️"} P3.8U: ${P38U.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P3.8U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P3.9U: คืนค่าตั้งผู้ช่วย AI · ลบ audit ของภาพ · ลบผู้จัดการชั่วคราว (เหมือน finally)
       try {
@@ -2542,6 +2627,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   if (isP34uState(state)) return runP34uState(page, state, device); // POS P3.4U
   if (isP39uState(state)) return runP39uState(page, state, device); // POS P3.9U
   if (isP37uState(state)) return runP37uState(page, state, device); // POS P3.7U
+  if (isP38uState(state)) return runP38uState(page, state, device); // POS P3.8U
   if (isP27State(state)) return runP27State(page, state, device); // POS P2.7U
   if (isP213State(state)) return runP213State(page, state); // POS P2.13
   if (isP210State(state)) return runP210State(page, state, device); // POS P2.10
@@ -6672,6 +6758,371 @@ async function runP212uState(page: Any, state: P212uKey, _device: Device): Promi
     }
   }
 }
+// ═══════════════════ POS P3.8U ▸ บอร์ดงาน/ห้องทีม: แท็บ board · ปุ่ม/ชิปจุดผิดปกติ · แผง AI · ชิป/บรรทัดหน้ากะ (CD-P38U-11) ◂ ═══════════════════
+// fixture (ensureP38uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล · ร้าน QC coffee เท่านั้น · ไม่ reseed · ไม่ขอ snapshot):
+//   • บอร์ด posqc-vis-p38u (kanban/service.createBoard ในระบบ KANBAN แรกที่เปิดอยู่ · หาก่อนสร้าง · เก็บไว้) · ห้อง posqc-vis-p38u + posqc-vis-p38u-arch (เก็บถาวร)
+//     (meeting/service.createChannel/archiveChannel ในระบบ MEETING แรก · หาก่อนสร้าง · เก็บไว้) — fix1: ไม่มีระบบที่เปิดอยู่ = สร้างระบบของภาพ (createSystem · เก็บไว้) ·
+//     สร้างไม่ได้ = สถานะที่ใช้ "SKIP — เหตุผล" (harness ไม่มีช่องข้าม ⇒ ขึ้นเป็นขั้นตอนตกขึ้นต้น SKIP)
+//   • settings.pos.board / teamRoom (+ ai.enabled เฉพาะภาพแผง AI) = jsonb ของ harness · ค่าเดิมเก็บใน settings.pos._qcP38uBefore ก่อนแก้ (ซากรอบที่ถูก kill = คืนจากคีย์นี้) ·
+//     คืนใน cleanupP38u (หลังงานสุดท้าย/finally/สัญญาณ)
+//   • 🔴 ด่าน: ก่อนเขียนทุกครั้ง id บอร์ด/ห้องในค่าตั้งต้องเป็นของ fixture ของร้าน QC เท่านั้น — ไม่ใช่ = StepError + ยกเลิกทั้งใบ
+//   • 🔴 ไม่ปิดกะ · ไม่เรียก sweepPosBoard/onShiftClosed · ไม่กดบันทึกขณะ posts.* เปิด
+//   • A11 4 แถว (สาขา × ผู้อนุมัติ เจ้าของ/แคชเชียร์ · audit pos.staff.schedule_override ×3 ต่อแถว · after.unitId · เหตุผล "ภาพ QC P3.8U" · ลบตอนเก็บกวาด แบบ CD-P39U-5)
+//   • การ์ดชิป: createCardFromExternal บนบอร์ด fixture (ระบบ · sourceKey pos-shift:<กะปิดล่าสุดของสาขา> + pos-anomaly:A11:<สาขา>:<วัน>:<เจ้าของ>) — เก็บไว้ (sourceKey กันซ้ำ) · มีการ์ดแล้ว = ใช้ของเดิม
+//   • กะเปิดของภาพบรรทัด "เมื่อปิดกะ": เครื่อง posqc-vis-p38u-shift (openShift เจ้าของ · เงินตั้งต้น 0 · ไม่มี = เปิด · มี = ใช้ต่อ · ใกล้ถูกปิดอัตโนมัติ = SKIP) — ไม่ปิด
+type P38uRoom = { meetingSystemId: string; channelId: string };
+type P38uHad = { had: boolean; v: unknown };
+const P38U = {
+  done: false,
+  error: null as string | null,
+  ok: true,
+  log: [] as string[],
+  cleaned: false,
+  before: null as null | { board: P38uHad; teamRoom: P38uHad; ai: P38uHad },
+  kanbanSys: null as string | null,
+  meetingSys: null as string | null,
+  boardId: null as string | null,
+  room: null as P38uRoom | null,
+  roomArch: null as P38uRoom | null,
+  audits: false,
+  chipShiftId: null as string | null,
+  chipAnomaly: false,
+  skip: {} as Partial<Record<P38uKey, string>>,
+  cfg: null as null | { board: Record<string, unknown>; teamRoom: Record<string, unknown> },
+};
+const P38U_BOARD_STATES: readonly P38uKey[] = ["settings-board-on", "settings-board-readonly", "settings-board-invalid", "settings-board-room-stale", "reports-anomalies-card-button", "reports-anomalies-card-pressed", "reports-anomalies-card-chip", "reports-ai-panel-board", "shifts-closed-board-chip", "shifts-close-board-hint"];
+const p38uRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const p38uSkip = (ks: readonly P38uKey[], why: string) => {
+  for (const k of ks) if (!P38U.skip[k]) P38U.skip[k] = why;
+};
+async function p38uReadPos(): Promise<Record<string, unknown>> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
+  const pos = p38uRec(sys?.settings) ? (sys!.settings as Record<string, unknown>).pos : undefined;
+  return p38uRec(pos) ? pos : {};
+}
+const p38uHad = (pos: Record<string, unknown>, k: string): P38uHad => (Object.prototype.hasOwnProperty.call(pos, k) ? { had: true, v: pos[k] } : { had: false, v: undefined });
+/** เขียน settings.pos.<key> ทั้งก้อน (undefined = ลบคีย์) — แตะเฉพาะคีย์นั้นของ AppSystem ของร้าน QC */
+async function p38uWrite(key: "board" | "teamRoom" | "ai" | "_qcP38uBefore", v: unknown): Promise<void> {
+  const path = `{pos,${key}}`;
+  if (v === undefined) {
+    await prisma.$executeRaw`UPDATE "AppSystem" SET "settings" = "settings" #- ${path}::text[] WHERE "id" = ${SYS} AND "tenantId" = ${T.tenantId} AND jsonb_typeof("settings"->'pos') = 'object'`;
+    return;
+  }
+  const json = JSON.stringify(v);
+  await prisma.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{pos}',
+        CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END, true),
+      ${path}::text[], ${json}::jsonb, true)
+    WHERE "id" = ${SYS} AND "tenantId" = ${T.tenantId}`;
+}
+/** ครั้งแรก: จำค่าเดิม (หรือคืนจากซาก _qcP38uBefore ของรอบที่ถูก kill) แล้วเขียนคีย์จำไว้ก่อนแก้อะไร */
+async function p38uRemember(): Promise<void> {
+  if (P38U.before) return;
+  const pos = await p38uReadPos();
+  const res = p38uRec(pos._qcP38uBefore) ? (pos._qcP38uBefore as Record<string, unknown>) : null;
+  const fromRes = (k: "board" | "teamRoom" | "ai"): P38uHad => {
+    const x = res && p38uRec(res[k]) ? (res[k] as Record<string, unknown>) : null;
+    return x && x.had === true ? { had: true, v: x.v } : { had: false, v: undefined };
+  };
+  P38U.before = res ? { board: fromRes("board"), teamRoom: fromRes("teamRoom"), ai: fromRes("ai") } : { board: p38uHad(pos, "board"), teamRoom: p38uHad(pos, "teamRoom"), ai: p38uHad(pos, "ai") };
+  if (res) P38U.log.push("กวาดซากค่าตั้งบอร์ดงาน/ห้องทีมของรอบก่อน (คืนจาก _qcP38uBefore)");
+  const enc = (h: P38uHad) => ({ had: h.had, v: h.had ? (h.v ?? null) : null });
+  await p38uWrite("_qcP38uBefore", { board: enc(P38U.before.board), teamRoom: enc(P38U.before.teamRoom), ai: enc(P38U.before.ai) });
+}
+/** 🔴 ด่าน CD-P38U-11: id บอร์ด/ห้องทุกตัวในค่าที่จะเขียน = ของ fixture ของร้าน QC เท่านั้น */
+function p38uGuard(board: Record<string, unknown>, room: Record<string, unknown>): void {
+  if (tenantKey !== "coffee" || !T.tenantId.startsWith("posqc-")) throw new StepError("ด่าน P3.8U: ไม่ใช่ร้าน QC coffee");
+  const byUnit = p38uRec(board.boardByUnit) ? Object.values(board.boardByUnit) : [];
+  for (const id of [board.defaultBoardId, ...byUnit]) if (id !== null && id !== undefined && (!P38U.boardId || id !== P38U.boardId)) throw new StepError(`ด่าน P3.8U: บอร์ด ${String(id)} ไม่ใช่บอร์ด fixture`);
+  const okRoom = (r: unknown) => p38uRec(r) && [P38U.room, P38U.roomArch].some((f) => !!f && f.meetingSystemId === r.meetingSystemId && f.channelId === r.channelId);
+  const roomByUnit = p38uRec(room.roomByUnit) ? Object.values(room.roomByUnit) : [];
+  for (const r of [room.defaultRoom, ...roomByUnit]) if (r !== null && r !== undefined && !okRoom(r)) throw new StepError(`ด่าน P3.8U: ห้อง ${JSON.stringify(r)} ไม่ใช่ห้อง fixture`);
+}
+const p38uBoardCfg = (on: boolean): Record<string, unknown> => ({
+  enabled: on,
+  defaultBoardId: on ? P38U.boardId : null,
+  boardByUnit: on && P38U.boardId ? { [unitId]: P38U.boardId } : {},
+  assignManager: true,
+  rules: { shiftDiff: { enabled: on, minAbsSatang: 10_000, everyClose: false, forcedClose: true }, soldOut: { enabled: on, hours: 4, sources: ["MANUAL", "KDS", "STOCK"] }, refundNeeded: { enabled: false } },
+});
+const p38uRoomCfg = (mode: "off" | "on" | "stale"): Record<string, unknown> => ({
+  enabled: mode === "on",
+  defaultRoom: mode === "on" ? P38U.room : mode === "stale" ? P38U.roomArch : null,
+  roomByUnit: {},
+  posts: { shiftClose: mode === "on", showOverShort: true, dailyBrief: false },
+  briefHourBkk: 7,
+  enabledByUserId: mode === "on" ? T.users.owner.userId : null,
+});
+async function p38uCard(key: string, title: string): Promise<string> {
+  const { posCardsForKeys } = await import("@/lib/pos-board-bridges");
+  const have = await posCardsForKeys(T.tenantId, [key]);
+  if (have.length) return `การ์ด #${have[0]!.cardNo ?? "?"} มีอยู่แล้ว (${key.split(":")[0]})`;
+  if (!P38U.boardId || !P38U.kanbanSys) throw new StepError("ไม่มีบอร์ด fixture");
+  const { createCardFromExternal } = await import("@/lib/modules/kanban/links");
+  const c = await createCardFromExternal({ tenantId: T.tenantId, systemId: P38U.kanbanSys, actorUserId: null }, { boardId: P38U.boardId, title, sourceType: "AUTOMATION" as never, sourceKey: key });
+  return `การ์ด #${c.cardNo ?? "?"} ${c.created ? "สร้างใหม่" : "มีอยู่แล้ว"} (${key.split(":")[0]})`;
+}
+async function ensureP38uFixture(): Promise<void> {
+  if (P38U.done || P38U.error) return;
+  try {
+    const want = (...ks: P38uKey[]) => ks.some((k) => jobs.some((j) => j.state === k));
+    const owner = await ownerActor();
+    const day = p38uDay();
+    // POS P3.8U ▸ fix1: ร้าน QC ไม่มีระบบ KANBAN/MEETING ที่เปิดอยู่ (QC5) ⇒ หา/สร้างระบบของภาพผ่าน system/service.createSystem แบบระบบ COUPON ของ QC —
+    //   มีระบบที่เปิดอยู่ = ใช้ของเดิม (ตัวแรกตาม createdAt แบบหน้าตั้งค่า) · ไม่มี = ระบบชื่อคงที่ของภาพ (เก็บไว้ · รอบหลังใช้ซ้ำ · ไม่ reseed) · ด่านร้าน QC ก่อนสร้าง ◂
+    const sysFor = async (type: "KANBAN" | "MEETING", name: string): Promise<{ id: string } | null> => {
+      const active = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type, active: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
+      if (active) return active;
+      const mine = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type, name }, select: { id: true, active: true } });
+      if (mine) {
+        if (!mine.active) p38uSkip(type === "KANBAN" ? P38U_BOARD_STATES : ["settings-board-room-stale", "shifts-close-board-hint"], `ระบบ ${type} "${name}" ของภาพถูกปิดใช้งาน (harness ไม่เปิดคืน)`);
+        return mine.active ? { id: mine.id } : null;
+      }
+      p38uGuard({}, {}); // ด่านร้าน QC coffee ก่อนสร้าง
+      try {
+        const { createSystem } = await import("@/lib/modules/system/service");
+        const c = await createSystem(T.tenantId, type, name);
+        P38U.log.push(`สร้างระบบ ${type} "${name}"`);
+        return { id: c.id };
+      } catch (e) {
+        p38uSkip(type === "KANBAN" ? P38U_BOARD_STATES : ["settings-board-room-stale", "shifts-close-board-hint"], `สร้างระบบ ${type} "${name}" ไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+        return null;
+      }
+    };
+    const kan = await sysFor("KANBAN", P38U_KANBAN_SYS_NAME);
+    const meet = await sysFor("MEETING", P38U_MEETING_SYS_NAME);
+    // ระบบแชททีมใหม่ = ห้อง #general + เจ้าของเป็นสมาชิก แบบเปิดหน้าแชทครั้งแรก (meeting/service.ensureWorkspace)
+    if (meet) await (await import("@/lib/modules/meeting/service")).ensureWorkspace(T.tenantId, meet.id, owner.userId);
+    P38U.kanbanSys = kan?.id ?? null;
+    P38U.meetingSys = meet?.id ?? null;
+    if (kan) {
+      const had = await prisma.kanbanBoard.findFirst({ where: { tenantId: T.tenantId, systemId: kan.id, name: P38U_BOARD_NAME, status: "ACTIVE" }, select: { id: true } });
+      if (had) P38U.boardId = had.id;
+      else {
+        const { createBoard } = await import("@/lib/modules/kanban/service");
+        P38U.boardId = (await createBoard({ tenantId: T.tenantId, systemId: kan.id, name: P38U_BOARD_NAME, visibility: "TENANT" as never, createdById: owner.userId })).id;
+        P38U.log.push(`สร้างบอร์ด ${P38U_BOARD_NAME}`);
+      }
+    } else p38uSkip(P38U_BOARD_STATES, "ไม่มีระบบ KANBAN ที่ใช้ได้ (บอร์ด fixture สร้างไม่ได้)");
+    if (meet) {
+      const { createChannel, archiveChannel } = await import("@/lib/modules/meeting/service");
+      const find = (name: string) => prisma.meetingChannel.findFirst({ where: { tenantId: T.tenantId, systemId: meet.id, name }, select: { id: true, archivedAt: true } });
+      const make = async (name: string) => {
+        const c = await createChannel({ tenantId: T.tenantId, systemId: meet.id, name, kind: "PUBLIC" as never, createdByUserId: owner.userId });
+        if (!c.ok) throw new StepError(`สร้างห้อง ${name}: ${c.reason}`);
+        P38U.log.push(`สร้างห้อง ${name}`);
+        return { id: c.id, archivedAt: null as Date | null };
+      };
+      const r = (await find(P38U_ROOM_NAME)) ?? (await make(P38U_ROOM_NAME));
+      if (r.archivedAt) p38uSkip(["settings-board-on", "settings-board-readonly", "shifts-close-board-hint"], `ห้อง fixture ${P38U_ROOM_NAME} ถูกเก็บถาวร (harness ไม่คืนห้อง)`);
+      else P38U.room = { meetingSystemId: meet.id, channelId: r.id };
+      const a = (await find(P38U_ROOM_ARCH_NAME)) ?? (await make(P38U_ROOM_ARCH_NAME));
+      if (!a.archivedAt) {
+        const ar = await archiveChannel(meet.id, a.id);
+        if (!ar.ok) throw new StepError(`เก็บถาวรห้อง ${P38U_ROOM_ARCH_NAME}: ${ar.reason ?? "?"}`);
+      }
+      P38U.roomArch = { meetingSystemId: meet.id, channelId: a.id };
+    } else p38uSkip(["settings-board-room-stale", "shifts-close-board-hint"], "ไม่มีระบบ MEETING ที่ใช้ได้ (ห้อง fixture สร้างไม่ได้)");
+    // A11 4 แถว (สาขา × ผู้อนุมัติ) — แถว (สาขานี้ · เจ้าของ) = ชิป · ที่เหลือ = แถวว่างของปุ่ม/การกด
+    if (want("reports-anomalies-card-button", "reports-anomalies-card-pressed", "reports-anomalies-card-chip", "reports-ai-panel-board")) {
+      const { writeAudit } = await import("@/lib/core/audit");
+      const old = await prisma.auditLog.deleteMany({ where: { tenantId: T.tenantId, action: "pos.staff.schedule_override", after: { path: ["reason"], string_starts_with: P38U_REASON } } });
+      if (old.count) P38U.log.push(`กวาดซาก audit A11 ${old.count} แถว`);
+      P38U.audits = true;
+      const unitIds = [unitId, ...Object.values(T.units as Record<string, { id: string }>).map((u) => u.id).filter((u) => u !== unitId)];
+      for (const u of unitIds)
+        for (const actorId of [T.users.owner.userId, T.users.cashier.userId])
+          for (let n = 1; n <= 3; n++)
+            await writeAudit({ tenantId: T.tenantId, actorId, action: "pos.staff.schedule_override", targetType: "BusinessUnit", targetId: u, after: { userId: T.users.cashier.userId, byUserId: actorId, reason: `${P38U_REASON} ${process.pid} #${n}`, unitId: u } });
+      P38U.log.push(`audit A11 ${unitIds.length * 2} แถว × 3`);
+      if (want("reports-anomalies-card-chip", "reports-anomalies-card-pressed") && P38U.boardId) {
+        const { reportAnomalies } = await import("@/lib/modules/pos/reports");
+        const { posBoardKeys } = await import("@/lib/modules/pos/board-settings-shared");
+        const rep = await reportAnomalies({ tenantId: T.tenantId, systemId: SYS }, owner, { from: day, to: day });
+        const row = rep.ok ? rep.report.rows.find((x) => x.rule === "A11" && x.unitId === unitId && x.userId === T.users.owner.userId) : undefined;
+        if (!row) p38uSkip(["reports-anomalies-card-chip"], `ไม่พบแถว A11 ของ fixture วันที่ ${day} (วันธุรกิจ ≠ วันปฏิทิน?)`);
+        else {
+          P38U.log.push(await p38uCard(posBoardKeys.anomaly(row.rule, row.unitId, row.businessDate ?? day, row.refId ?? row.userId ?? "unit"), `${P38U_REASON} · A11`));
+          P38U.chipAnomaly = true;
+        }
+      }
+    }
+    if (want("shifts-closed-board-chip") && P38U.boardId) {
+      const { posBoardKeys } = await import("@/lib/modules/pos/board-settings-shared");
+      const recent = await prisma.posShift.findMany({ where: { tenantId: T.tenantId, systemId: SYS, unitId }, orderBy: [{ openedAt: "desc" }, { id: "desc" }], take: 50, select: { id: true, status: true, zNumber: true } });
+      const closed = recent.find((x) => x.status !== "OPEN" && x.zNumber !== null);
+      if (!closed) p38uSkip(["shifts-closed-board-chip"], "สาขานี้ไม่มีกะที่ปิดแล้วใน 50 กะล่าสุด (harness ไม่ปิดกะ)");
+      else {
+        P38U.log.push(await p38uCard(posBoardKeys.shift(closed.id), `${P38U_REASON} · Z${closed.zNumber}`));
+        P38U.chipShiftId = closed.id;
+      }
+    }
+    // กะเปิดของเครื่อง fixture — ก่อนแก้ค่าตั้งใด ๆ (ค่าเดิมของร้าน) · ไม่ปิด · ใกล้ถูกปิดอัตโนมัติ = SKIP (เปิดหน้าจะทำให้ระบบปิดกะ)
+    if (want("shifts-close-board-hint")) {
+      const { openShift, parseShiftSettings } = await import("@/lib/modules/pos/shift");
+      const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId }, select: { settings: true } });
+      const hours = parseShiftSettings(sys?.settings).forceCloseAfterHours;
+      const open = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, deviceId: P38U_SHIFT_DEV, status: "OPEN" }, select: { id: true, openedAt: true, systemId: true } });
+      if (open && (open.systemId !== SYS || open.openedAt.getTime() + hours * 3_600_000 - 3_600_000 < Date.now()))
+        p38uSkip(["shifts-close-board-hint"], `กะเปิดของเครื่อง ${P38U_SHIFT_DEV} เปิดเมื่อ ${open.openedAt.toISOString()} ใกล้ถูกปิดอัตโนมัติ (${hours} ชม.) — harness ไม่ปิดกะ · ผู้คุมปิดกะนี้เองที่หน้ากะ`);
+      else if (open) P38U.log.push(`ใช้กะเปิดเดิมของเครื่อง ${P38U_SHIFT_DEV}`);
+      else {
+        const r = await openShift({ tenantId: T.tenantId, systemId: SYS, unitId }, owner, { deviceId: P38U_SHIFT_DEV, deviceLabel: P38U_REASON, floatSatang: 0 });
+        if (!r.ok) p38uSkip(["shifts-close-board-hint"], `เปิดกะของเครื่อง ${P38U_SHIFT_DEV} ไม่ได้: ${r.code}`);
+        else P38U.log.push(`เปิดกะเครื่อง ${P38U_SHIFT_DEV} (เงินตั้งต้น 0 · ไม่ปิด)`);
+      }
+    }
+    P38U.done = true;
+  } catch (e) {
+    P38U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** ต่องาน: ค่าตั้งบอร์ด/ห้องตามสถานะ (ผ่านด่านก่อนเขียน) · ผู้ช่วย AI เปิดเฉพาะ reports-ai-panel-board · ด่านพัง = ยกเลิกทั้งใบ */
+async function prepP38u(state: P38uKey): Promise<void> {
+  if (!P38U.done || P38U.skip[state]) return;
+  try {
+    await p38uRemember();
+    const board = p38uBoardCfg(state !== "settings-board-off" && !!P38U.boardId);
+    const roomMode = (state === "settings-board-on" || state === "settings-board-readonly" || state === "shifts-close-board-hint") && P38U.room ? "on" : state === "settings-board-room-stale" && P38U.roomArch ? "stale" : "off";
+    const teamRoom = p38uRoomCfg(roomMode);
+    p38uGuard(board, teamRoom);
+    await p38uWrite("board", board);
+    await p38uWrite("teamRoom", teamRoom);
+    P38U.cfg = { board, teamRoom };
+    const b = P38U.before!.ai;
+    if (state === "reports-ai-panel-board") await p38uWrite("ai", { ...(p38uRec(b.v) ? b.v : {}), enabled: true });
+    else if (jobs.some((j) => j.state === "reports-ai-panel-board")) await p38uWrite("ai", b.had ? b.v : undefined);
+  } catch (e) {
+    P38U.error = `เตรียม ${state}: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
+  }
+}
+/** หลังงาน P3.8U สุดท้าย / finally / สัญญาณ — เรียกซ้ำได้ · ไม่โยน (บอร์ด/ห้อง/การ์ด/กะของ fixture คงอยู่) */
+async function cleanupP38u(): Promise<void> {
+  if (P38U.cleaned) return;
+  P38U.cleaned = true;
+  const step = async (what: string, fn: () => Promise<string>) => {
+    try {
+      P38U.log.push(await fn());
+    } catch (e) {
+      P38U.ok = false;
+      P38U.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  if (P38U.before) {
+    const b = P38U.before;
+    await step("คืนค่าตั้งบอร์ดงาน/ห้องทีม", async () => {
+      await p38uWrite("board", b.board.had ? b.board.v : undefined);
+      await p38uWrite("teamRoom", b.teamRoom.had ? b.teamRoom.v : undefined);
+      await p38uWrite("ai", b.ai.had ? b.ai.v : undefined);
+      await p38uWrite("_qcP38uBefore", undefined);
+      return "คืนค่าตั้งบอร์ดงาน/ห้องทีม/ผู้ช่วย AI เดิม";
+    });
+  }
+  if (P38U.audits)
+    await step("ลบ audit A11", async () => `ลบ audit A11 ${(await prisma.auditLog.deleteMany({ where: { tenantId: T.tenantId, action: "pos.staff.schedule_override", after: { path: ["reason"], string_starts_with: P38U_REASON } } })).count} แถว`);
+}
+async function runP38uState(page: Any, state: P38uKey, _device: Device): Promise<void> {
+  if (P38U.error) throw new StepError(`fixture P3.8U: ${P38U.error}`);
+  if (!P38U.done) throw new StepError("fixture P3.8U ยังไม่ได้สร้าง");
+  const sk = P38U.skip[state];
+  if (sk) throw new StepError(`SKIP — ${sk}`);
+  const into = async (sel: string, block: "start" | "center" = "center") => {
+    const el = await visibleEl(page, sel, 0, 20_000);
+    await el.evaluate((e: Element, b: string) => e.scrollIntoView({ block: b as "start" | "center" }), block);
+    return el;
+  };
+  const has = async (sel: string) => !!(await page.$(sel));
+  const need = async (sel: string, why: string) => {
+    await visibleEl(page, sel, 0, 20_000).catch(() => {
+      throw new StepError(why);
+    });
+  };
+  switch (state) {
+    case "settings-board-off":
+      await into(tid("pos-settings-board-board"), "start");
+      if (P38U.kanbanSys) await need(tid("pos-settings-board-create"), "ไม่มีปุ่มสร้างบอร์ด (pos-settings-board-create)");
+      else await need(tid("pos-settings-board-no-kanban"), "ไม่มีข้อความร้านยังไม่มีระบบบอร์ดงาน");
+      if (!(await has(tid("pos-settings-board-all-off")))) throw new StepError("ไม่มีกรอบประห้องทีมปิดอยู่ (pos-settings-board-all-off)");
+      if (!(await has(tid("pos-settings-board-need-board")))) throw new StepError("สวิตช์หลักไม่บอกเหตุผล board.needBoard");
+      return;
+    case "settings-board-on":
+      await into(tid("pos-settings-board-board"), "start");
+      await page.waitForFunction(() => document.querySelector('[data-testid="pos-settings-board-enabled"]')?.getAttribute("aria-checked") === "true", { timeout: 10_000 }).catch(() => {
+        throw new StepError("สวิตช์หลักบอร์ดงานไม่ได้เปิด (aria-checked)");
+      });
+      await need(tid(`pos-settings-board-unit-${unitId}`), "ไม่มีตัวเลือกบอร์ดรายสาขา");
+      if (P38U.kanbanSys) await need(tid("pos-settings-board-readonly-voided"), "ไม่มีแถวอ่านอย่างเดียว K3.3 (pos-settings-board-readonly-voided)");
+      return;
+    case "settings-board-readonly":
+      await into(tid("pos-settings-board-tab"), "start");
+      await need(tid("pos-settings-board-owner-only"), "ผู้ดูที่ไม่ใช่เจ้าของไม่เห็นข้อความเจ้าของร้านเท่านั้น");
+      for (const id of ["pos-settings-board-save", "pos-settings-board-room-save", "pos-settings-board-default", "pos-settings-board-room-default", "pos-settings-board-create"]) if (await has(tid(id))) throw new StepError(`ผู้ดูที่ไม่ใช่เจ้าของเห็น ${id}`);
+      return;
+    case "settings-board-invalid": {
+      // 🔴 ด่าน CD-P38U-11: ไม่กดบันทึกขณะห้องทีมเปิดหรือ posts ที่ส่งโพสต์ (shiftClose/dailyBrief) เปิด
+      const posts = P38U.cfg && p38uRec(P38U.cfg.teamRoom.posts) ? (P38U.cfg.teamRoom.posts as Record<string, unknown>) : {};
+      if (!P38U.cfg || P38U.cfg.teamRoom.enabled === true || posts.shiftClose === true || posts.dailyBrief === true) throw new StepError("ด่าน P3.8U: ไม่กดบันทึกขณะ posts.* เปิด");
+      await into(tid("pos-settings-board-hours"));
+      await typeInto(page, tid("pos-settings-board-hours"), "0");
+      await clickEl(page, tid("pos-settings-board-save"));
+      await need('[data-testid="pos-settings-board-error"][data-field="board.rules.soldOut.hours"]', "บันทึกชั่วโมง 0 แล้วไม่มีข้อความปฏิเสธที่ช่อง (field board.rules.soldOut.hours)");
+      await into('[data-testid="pos-settings-board-error"][data-field="board.rules.soldOut.hours"]');
+      return;
+    }
+    case "settings-board-room-stale":
+      await into(tid("pos-settings-board-room"), "start");
+      await need(tid("pos-settings-board-stale"), "ห้องที่เก็บถาวรไม่ขึ้นคำเตือน board.room.stale");
+      return;
+    case "settings-shark-kanban-link":
+      await into(tid("pos-settings-card-kanban"));
+      await need(tid("pos-settings-board-manage-here"), "การ์ด KANBAN ไม่มีลิงก์ไปแท็บบอร์ดงาน (pos-settings-board-manage-here)");
+      return;
+    case "reports-anomalies-card-button":
+      await into(tid("pos-reports-anomaly-group-A11"), "start").catch(() => {
+        throw new StepError("แท็บจุดผิดปกติไม่มีกลุ่ม A11 (fixture)");
+      });
+      await need('[data-testid="pos-reports-anomaly-group-A11"] button[data-testid^="pos-reports-anomaly-card-"]', "แถว A11 ไม่มีปุ่มสร้างงานในบอร์ด");
+      return;
+    case "reports-anomalies-card-chip":
+      await into(tid("pos-reports-anomaly-group-A11"), "start");
+      await need('[data-testid="pos-reports-anomaly-group-A11"] [data-testid^="pos-reports-anomaly-card-chip-"]', "แถว A11 ของ fixture ไม่ขึ้นชิปการ์ด (posBoardCardsAction)");
+      return;
+    case "reports-anomalies-card-pressed": {
+      await into(tid("pos-reports-anomaly-group-A11"), "start");
+      if (P38U.chipAnomaly) await need('[data-testid="pos-reports-anomaly-group-A11"] [data-testid^="pos-reports-anomaly-card-chip-"]', "ชิปของแถว fixture ไม่ขึ้น — ยังไม่กด (ผลอ่านชิปยังไม่กลับ)");
+      else await sleep(1500);
+      const btns = await page.$$('[data-testid="pos-reports-anomaly-group-A11"] button[data-testid^="pos-reports-anomaly-card-"]:not([disabled])');
+      if (!btns.length) throw new StepError("SKIP — ไม่มีแถว A11 ที่ยังไม่มีการ์ด (กุญแจรายวัน · กดครบแล้ววันนี้)");
+      const id = String(await btns[0].evaluate((e: Element) => e.getAttribute("data-testid")));
+      const n = id.slice("pos-reports-anomaly-card-".length);
+      await btns[0].evaluate((e: Element) => e.scrollIntoView({ block: "center" }));
+      await btns[0].click();
+      await page.waitForFunction((x: string) => !!document.querySelector(`[data-testid="pos-reports-anomaly-card-chip-${x}"],[data-testid="pos-reports-anomaly-card-done-${x}"],[data-testid="pos-reports-anomaly-card-reason-${x}"]`), { timeout: 20_000 }, n).catch(() => {
+        throw new StepError(`กดปุ่มแถว ${n} แล้วไม่มีผล (ชิป/เหตุผล)`);
+      });
+      if (await has(tid(`pos-reports-anomaly-card-reason-${n}`))) throw new StepError(`กดแล้วถูกปฏิเสธ: ${String(await page.$eval(tid(`pos-reports-anomaly-card-reason-${n}`), (e: Element) => e.textContent ?? ""))}`);
+      return;
+    }
+    case "reports-ai-panel-board":
+      await into(tid("pos-reports-ai-panel"));
+      await need(tid("pos-reports-ai-board"), "แผงผู้ช่วย AI ไม่มีปุ่มสร้างงานในบอร์ด (anomalyHits ∧ boardOn)");
+      return;
+    case "shifts-closed-board-chip":
+      await into(tid(`pos-shift-board-chip-${P38U.chipShiftId ?? "?"}`)).catch(() => {
+        throw new StepError("กะที่ปิดแล้วของ fixture ไม่ขึ้นชิปการ์ด (pos-shift-board-chip-*)");
+      });
+      return;
+    case "shifts-close-board-hint":
+      await into(tid("pos-shift-close"), "start").catch(() => {
+        throw new StepError(`ไม่เห็นการ์ดปิดกะของเครื่อง ${P38U_SHIFT_DEV}`);
+      });
+      await into(tid("pos-shift-board-hint"));
+      for (const id of ["pos-shift-board-hint-room", "pos-shift-board-hint-card"]) if (!(await has(tid(id)))) throw new StepError(`บรรทัด "เมื่อปิดกะ" ไม่มี ${id}`);
+      return;
+  }
+}
 // ═══════════════════ POS P3.9U ▸ ผู้ช่วย AI: แผง 08 · A11 · การ์ด AI 10 + แผ่นสรุปเช้า (มติ 1 4 6 · CD-P39U-4/5) ◂ ═══════════════════
 // fixture (ensureP39uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
 //   • brief: บิลวันนี้ 3 ใบ + 1 ใบที่ยกเลิกโดยเจ้าของ (createSale/voidSale · คีย์ต่อวัน · ไม่ลบ แบบ P2.12U) — composeBrief มีบรรทัดยอดขาย/ขายดี/ชั่วโมงขายดี
@@ -10412,7 +10863,7 @@ try {
         const p = job.page;
         const v = job.v;
         // POS P3.4U ▸ มติ 11: สถานะออฟไลน์ = browser context ใหม่ (IndexedDB/คิวไม่ข้ามสถานะ) — ปิดหลังถ่าย ◂
-        const ctx34 = isP34uState(job.state) || isP37uState(job.state) /* POS P3.7U ▸ CD-P37U-10: context ใหม่ทุกสถานะ ◂ */ ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
+        const ctx34 = isP34uState(job.state) || isP37uState(job.state) /* POS P3.7U ▸ CD-P37U-10: context ใหม่ทุกสถานะ ◂ */ || isP38uState(job.state) /* POS P3.8U ▸ CD-P38U-11: context ใหม่ต่อภาพ ◂ */ ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
         Object.assign(P34U_NET, { offline: false, suppressed: 0, snapAt: 0 }); // POS P3.4U fix2 ▸ สถานะเครือข่ายต่อภาพ ◂
         const page = ctx34 ? await ctx34.newPage() : await browser.newPage();
         await pinDevice(
@@ -10558,6 +11009,15 @@ try {
           }
           await prepP39u(job.state);
         }
+        // POS P3.8U ▸ fixture ก่อนงานแรกของใบนี้ · ค่าตั้งบอร์ด/ห้องต่องาน (ด่านก่อนเขียน · พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP38uState(job.state)) {
+          if (!P38U.done && !P38U.error) {
+            await ensureP38uFixture();
+            console.log(P38U.error ? `  ⚠️ fixture P3.8U: ${P38U.error}` : `  fixture P3.8U: ${P38U.log.join(" · ")}`);
+          }
+          await prepP38u(job.state);
+          if (job.state === "shifts-close-board-hint") await pinDevice(page, P38U_SHIFT_DEV); // เครื่องที่มีกะเปิดของ fixture (สคริปต์หลังสุดชนะ)
+        }
         // POS P2.11U ▸ fixture หลายสาขาก่อนงานแรกของใบนี้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (isP211uState(job.state) && !P211U.done && !P211U.error) {
           await ensureP211uFixture();
@@ -10678,6 +11138,7 @@ try {
         if (isP34uState(job.state) && job === jobs.filter((j) => isP34uState(j.state)).at(-1)) await cleanupP34u(); // POS P3.4U
         if (isP39uState(job.state) && job === jobs.filter((j) => isP39uState(j.state)).at(-1)) await cleanupP39u(); // POS P3.9U
         if (isP37uState(job.state) && job === jobs.filter((j) => isP37uState(j.state)).at(-1)) await cleanupP37u(); // POS P3.7U
+        if (isP38uState(job.state) && job === jobs.filter((j) => isP38uState(j.state)).at(-1)) await cleanupP38u(); // POS P3.8U
         if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
         if ((job.state === "table-closed" || job.state === "pre-closed") && P27.pausedNow) await p27Pause(null).catch(() => undefined); // POS P2.7U ▸ คืนพักรับหลังภาพ closed ◂
         if (isP27State(job.state) && job === jobs.filter((j) => isP27State(j.state)).at(-1)) await cleanupP27(); // POS P2.7U
@@ -10726,6 +11187,9 @@ try {
   if (P37U.log.length) console.error(`${P37U.ok ? "🧹" : "⚠️"} P3.7U: ${P37U.log.join(" · ")}`);
   if (!P37U.ok) failures++;
   await cleanupP39u(); // POS P3.9U (คืนค่าตั้งผู้ช่วย AI · ลบ audit ของภาพ · ลบผู้จัดการชั่วคราว)
+  await cleanupP38u(); // POS P3.8U (คืนค่าตั้งบอร์ดงาน/ห้องทีม/ผู้ช่วย AI · ลบ audit A11 ของภาพ)
+  if (P38U.log.length) console.error(`${P38U.ok ? "🧹" : "⚠️"} P3.8U: ${P38U.log.join(" · ")}`);
+  if (!P38U.ok) failures++;
   if (P39U.log.length) console.error(`${P39U.ok ? "🧹" : "⚠️"} P3.9U: ${P39U.log.join(" · ")}`);
   if (!P39U.ok) failures++;
   await cleanupP35u(); // POS P3.5U (ก่อนเพิกถอนเครื่อง — ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ)

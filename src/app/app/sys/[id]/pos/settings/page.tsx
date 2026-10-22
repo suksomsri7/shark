@@ -32,6 +32,15 @@ import { receiptUnitOverride } from "@/lib/modules/pos/receipt-settings-shared";
 import { posClockOnShift, posScheduleGate, posStaffCommission } from "@/lib/modules/pos/settings-shared"; // POS P3.5U ▸ มติ 6 ◂
 import { listStaffAccess } from "@/lib/staff/service"; // POS P3.9U ▸ CD-P39U-3: ตัวอ่านสมาชิกร้านที่มีอยู่ (ผู้จัดการที่รับคำเชิญแล้ว) ◂
 import { posChatSettings } from "@/lib/modules/pos/chat-link-shared"; // POS P3.7U ▸ CD-P37U-2: ตัวอ่านบริสุทธิ์ของ settings.pos.chat ◂
+// POS P3.8U ▸ CD-P38U-1 · CD-P38U-10: แท็บ "บอร์ดงานและห้องทีม" — ค่าตั้งจากตัวอ่านบริสุทธิ์ · ชื่อบอร์ดจาก visibleBoardOptions ของผู้ดู ·
+//   ตัวเลือกห้อง (listRoomOptions) เจ้าของร้านเท่านั้น · ห้องที่ยังใช้อยู่ = liveChannelIds (id ล้วน) · K3.3 getIntegrations + P1.11 issueBoardId อ่านอย่างเดียว ◂
+import { BoardSettings } from "./BoardSettings";
+import { posBoardSettings, posTeamRoomSettings, type PosRoomRef } from "@/lib/modules/pos/board-settings-shared";
+import { receiptSettingsOf } from "@/lib/modules/pos/receipt-settings";
+import { visibleBoardOptions } from "@/lib/modules/kanban/links";
+import { getIntegrations } from "@/lib/modules/kanban/integrations";
+import { listRoomOptions, liveChannelIds } from "@/lib/modules/meeting";
+// ◂ POS P3.8U
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -114,6 +123,43 @@ export default async function PosSettingsPage({ params, searchParams }: { params
       : null;
   // POS P3.7U ▸ CD-P37U-2/3: การ์ดแชท แท็บ shark — ค่าตั้งแชทที่บันทึกไว้ (อ่านล้วน · ไม่เขียนตอนโหลด) + เจ้าของร้านไหม (ตัวเขียนตรวจซ้ำ) ◂
   const chatCard = canRead && tab === "shark" ? { isOwner: m.role === "OWNER", settings: posChatSettings(sys.settings) } : null;
+  // POS P3.8U ▸ CD-P38U-1 · CD-P38U-10: ข้อมูลแท็บบอร์ดงาน — อ่านอย่างเดียว ไม่เขียนอะไรตอนโหลด · ชื่อคนไม่ถูกส่ง ·
+  //   ตัวเลือกบอร์ด = บอร์ดที่เจ้าของเห็นในระบบบอร์ดงานที่เปิดอยู่ (≤ 200) · ผู้ดูอื่นได้ชื่อเฉพาะบอร์ดที่ตัวเองเห็น (อื่น = hiddenBoard) · ไม่มีตัวเลือกห้อง ◂
+  const boardTab =
+    canRead && tab === "board"
+      ? await (async () => {
+          const isOwner = m.role === "OWNER";
+          const board = posBoardSettings(sys.settings);
+          const teamRoom = posTeamRoomSettings(sys.settings);
+          const kanbanIds = (await prisma.appSystem.findMany({ where: { tenantId, type: "KANBAN", active: true }, orderBy: { createdAt: "asc" }, select: { id: true } })).map((x) => x.id);
+          const meetingSys = await prisma.appSystem.findFirst({ where: { tenantId, type: "MEETING", active: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
+          const visible = await visibleBoardOptions(tenantId, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions });
+          const kanbanSystemId = kanbanIds[0] ?? null;
+          const integ = kanbanSystemId ? await getIntegrations(tenantId, kanbanSystemId) : null;
+          const refs = [teamRoom.defaultRoom, ...Object.values(teamRoom.roomByUnit)].filter((r): r is PosRoomRef => !!r);
+          const liveRooms = refs.length ? await liveChannelIds(tenantId, refs.map((r) => r.channelId)) : [];
+          const rooms = isOwner ? await listRoomOptions(tenantId, auth.user.id) : null;
+          const multiMeeting = !!rooms && new Set(rooms.map((o) => o.meetingSystemId)).size > 1;
+          return {
+            isOwner,
+            board,
+            teamRoom,
+            units,
+            boardNames: Object.fromEntries(visible.map((b) => [b.id, b.name])),
+            boardOptions: isOwner ? visible.filter((b) => kanbanIds.includes(b.systemId)).map((b) => ({ id: b.id, name: b.name })) : null,
+            roomOptions: rooms ? rooms.map((o) => ({ meetingSystemId: o.meetingSystemId, channelId: o.channelId, label: multiMeeting ? `${o.systemName} · ${o.channelName}` : o.channelName })) : null,
+            liveRooms,
+            kanbanSystemId,
+            meetingSystemId: meetingSys?.id ?? null,
+            others: {
+              voided: integ ? { enabled: integ.cardOnVoidedSale.enabled, boardId: integ.cardOnVoidedSale.boardId } : null,
+              approval: integ ? { enabled: integ.cardFromApproval.enabled, boardId: integ.cardFromApproval.boardId } : null,
+              issueBoardId: receiptSettingsOf(sys.settings).issueBoardId ?? null,
+            },
+            canAddSystem,
+          };
+        })()
+      : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -139,6 +185,8 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           )
         ) : tab === "shark" ? (
           <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ chat={chatCard} /* POS P3.7U ◂ */ />
+        ) : tab === "board" && boardTab ? (
+          <BoardSettings key={unitId} systemId={id} data={boardTab} /* POS P3.8U ▸ CD-P38U-1 ◂ */ />
         ) : tab === "channels" ? (
           <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
         ) : tab === "offline" ? (

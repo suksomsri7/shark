@@ -286,6 +286,12 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
         {c.code === "AI" && <div className="inline-block self-start rounded-[8px] border border-dashed px-[9px] py-1.5 text-[11.5px] text-[color:var(--color-muted)]">{tc("AI.note")}</div>}
         {/* POS P3.7U ▸ CD-P37U-2/3: แถวสวิตช์ 4 ตัว + โควตา + ปิดทั้งหมด + ปุ่มแผ่น (เจ้าของร้าน) / เจ้าของร้านเท่านั้น (คนอื่น) — ไม่ LINKED = เปิดไม่ได้ ◂ */}
         {c.code === "CHAT" && chat && <ChatSettingsRows systemId={systemId} linked={c.state === "LINKED"} isOwner={chat.isOwner} initial={chat.settings} />}
+        {/* POS P3.8U ▸ CD-P38U-1: การ์ด KANBAN (ภาพ 10 "ของหมด/ผลต่างกะ → การ์ดงาน") → แท็บ "บอร์ดงานและห้องทีม" ของหน้าขาย ◂ */}
+        {c.code === "KANBAN" && (
+          <Link data-testid="pos-settings-board-manage-here" href={posSettingsHref(systemId, "board", unitId)} className="inline-flex min-h-11 self-start items-center text-[12.5px] font-bold text-[color:var(--color-accent)]">
+            {t("board.manageHere")}
+          </Link>
+        )}
         {/* POS P3.9U ▸ มติ 4: เจ้าของร้าน = ปุ่มแผ่นตั้งค่าสรุปเช้า · คนอื่น = ข้อความเจ้าของร้านเท่านั้น · คำปฏิเสธของสวิตช์ใต้การ์ด ◂ */}
         {c.code === "AI" &&
           (aiOwner ? (

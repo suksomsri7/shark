@@ -622,6 +622,44 @@
       "states": true,
       "after": "P3.7U",
       "why": "same states LOCALE=en · owner 9 + cashier 2 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.8u-th",
+      "wo": "p3.8u",
+      "pages": [
+        "settings",
+        "reports",
+        "shifts"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.8U",
+      "why": "P3.8U 12 states (settings-board off/on/readonly(cashier)/invalid/room-stale · settings-shark-kanban-link · reports-anomalies-card button/pressed/chip · reports-ai-panel-board · shifts-closed-board-chip · shifts-close-board-hint) · th owner 32 + cashier 3 · QC5 build XlCNo5277bEtWc1ZWQdM- @2676f5f6 (harness fix1 a0c808aa creates the KANBAN/MEETING QC systems) · vis-p38u-qc5-20261022T003509Z 47/47 · 22 Oct 2026"
+    },
+    {
+      "id": "p3.8u-en",
+      "wo": "p3.8u-en",
+      "pages": [
+        "settings",
+        "reports",
+        "shifts"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.8U",
+      "why": "same states LOCALE=en · owner 11 + cashier 1 · 22 Oct 2026"
     }
   ]
 }
