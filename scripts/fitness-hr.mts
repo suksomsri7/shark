@@ -4,7 +4,7 @@
 // ผู้คุมงานจะต่อเข้ากับ `scripts/fitness.mts` ตอนตัด rc ผ่าน `runHrFitness(chk, ROOT)` (ใบนี้ห้ามแก้ fitness.mts)
 //
 //   F16.1 ไฟล์ "use client" ใต้ src/lib/modules/hr/** · src/app/app/sys/[id]/payroll/** และ src/app/app/**/hr/**
-//         ห้ามแตะชื่อช่องอ่อนไหว (pinCode · pinHash · nationalId · bankAccountNo · ssoNumber · houseRegAddress) —
+//         ห้ามแตะชื่อช่องอ่อนไหว (pinCode · pinHash · nationalId · bankAccountNo · ssoNumber · houseRegAddress · H1.2: lat · lng · photoKey · attachmentKey) —
 //         ตรวจทั้ง import (ชื่อ · type ที่ประกาศช่องเหล่านี้ · type ของโมเดล Prisma ที่มีช่องเหล่านี้ · `import [type] * as X`
 //         แล้วอ้าง `X.T` แบบ QualifiedName · `Prisma.HrEmployee…` ) และการอ่านช่อง (`x.f` · `x["f"]` · `{ f } =`)
 //         ยกเว้นช่องที่ DTO ใน privacy-shared.ts ประกาศไว้ และไฟล์นั้น import DTO นั้นจริง —
@@ -85,7 +85,8 @@ function guarded(chk: HrChk, id: string, name: string, fn: () => void) {
 // ═══════════════════════════════════════════════════════════════
 // F16.1 — ไฟล์ client ไม่แตะช่องอ่อนไหวของพนักงาน
 // ═══════════════════════════════════════════════════════════════
-export const SENSITIVE_FIELDS = ["pinCode", "pinHash", "nationalId", "bankAccountNo", "ssoNumber", "houseRegAddress"] as const;
+// HR H1.2 ▸ Q5: + พิกัด/รูปของการลงเวลา (HrAttendance.lat/lng/photoKey — HQ27) + ใบรับรองแพทย์ (HrLeave.attachmentKey = ข้อมูลสุขภาพ) ◂
+export const SENSITIVE_FIELDS = ["pinCode", "pinHash", "nationalId", "bankAccountNo", "ssoNumber", "houseRegAddress", "lat", "lng", "photoKey", "attachmentKey"] as const;
 const SENSITIVE = new Set<string>(SENSITIVE_FIELDS);
 /** ไฟล์ DTO ที่อนุญาต (whitelist ของ HF-HR-0) — ช่องที่ DTO ในไฟล์นี้ประกาศ = อ่านได้ในไฟล์ client ที่ import DTO นั้น */
 export const PRIVACY_SHARED = "src/lib/modules/hr/privacy-shared.ts";
@@ -544,7 +545,7 @@ export function checkLinkUniqueIndex(ROOT: string): { name: string; problems: st
 // ═══════════════════════════════════════════════════════════════
 export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void = console.log) {
   // ── F16.1 ──
-  log("\n── F16.1: ไฟล์ \"use client\" ของ HR ไม่แตะช่องอ่อนไหว (pinCode · pinHash · nationalId · bankAccountNo · ssoNumber · houseRegAddress) ──");
+  log("\n── F16.1: ไฟล์ \"use client\" ของ HR ไม่แตะช่องอ่อนไหว (pinCode · pinHash · nationalId · bankAccountNo · ssoNumber · houseRegAddress · lat · lng · photoKey · attachmentKey) ──");
   const n161 = "ไฟล์ \"use client\" ใต้ hr/** + sys/[id]/payroll/** ไม่ import/อ่านช่องอ่อนไหว (ยกเว้น DTO ของ privacy-shared.ts · pinCode/pinHash ไม่มีข้อยกเว้น)";
   guarded(chk, "F16.1", n161, () => {
     const files = discoverF161Files(ROOT);
