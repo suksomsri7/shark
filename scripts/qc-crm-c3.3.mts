@@ -380,7 +380,7 @@ try {
       per.every((x) => x.count === 1 && x.consumer) && blocks, "4 × (1 label · consumer)", `${per.map((x) => `${x.ev}:${x.count}/${x.consumer}`).join(" ")} block=${blocks}${ABSENT}`);
   }
   {
-    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => d > C30_MIG && !c51IndexOnly(d) && (/crm/i.test(d) || /crmCommission|HrPayAdjustment/.test(read(join(MIG_DIR, d, "migration.sql"))))) : [];
+    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => d > C30_MIG && !c51IndexOnly(d) && (/crm/i.test(d) || /(DROP|RENAME|ALTER)\s+(COLUMN|INDEX)?\s*"?[A-Za-z_]*crmCommissionId/i.test(read(join(MIG_DIR, d, "migration.sql"))))) : []; // ORACLE-EDIT H1.3 D-2 (controller): additive HR columns on HrPayAdjustment (sourceType/sourceRef, ruled H1.3 R1) are not a C3.3 migration — only a DROP/RENAME/ALTER of crmCommissionId or its index counts
     const hrIdx = read(HR_INDEX);
     const hrPure = hrIdx.length > 0 && !/from\s+["'](@\/lib\/core\/db|@prisma\/client)["']|new\s+PrismaClient/.test(hrIdx); // imports only — its header comment mentions PrismaClient
     const job = /name:\s*["']crm\.commissions\.payroll["']/.test(read(JOBS_FILE));

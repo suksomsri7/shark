@@ -211,6 +211,10 @@ model HrEmployee {
   timeCorrections  HrTimeCorrection[]
   otRequests       HrOtRequest[]
   leaveBalanceTxns HrLeaveBalanceTxn[]
+  // HR H1.3 ▸ นาทีทำงาน (payroll.prisma) · บันทึก/ประเมิน · งานรับเข้า-ออก ◂
+  workEntries      HrWorkEntry[]
+  reviewNotes      HrReviewNote[]
+  onboardingTasks  HrOnboardingTask[]
 
   @@index([systemId, active])
   @@index([tenantId])
@@ -552,4 +556,62 @@ model HrHoliday {
 
   @@index([tenantId])
   @@index([systemId, date])
+}
+
+// HR H1.3 ▸ บันทึก/ตักเตือน/ประเมินพนักงาน (ข้อมูล HR อ่อนไหว — body/score ห้ามออก DTO จนกว่า H4.4 มีกติกา) · H1.3 ยังไม่มีใครเขียน/อ่าน
+//   CHECK score 1..5 (หรือว่าง) อยู่ใน migration.sql ◂
+enum HrReviewNoteKind {
+  NOTE
+  VERBAL_WARNING
+  WRITTEN_WARNING
+  REVIEW
+}
+
+model HrReviewNote {
+  id                String           @id @default(cuid())
+  tenantId          String
+  systemId          String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  employeeId        String
+  employee          HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind              HrReviewNoteKind
+  title             String
+  body              String
+  periodLabel       String? // เช่น "2026-Q4"
+  score             Int?
+  authorUserId      String?
+  visibleToEmployee Boolean          @default(false)
+  acknowledgedAt    DateTime?
+
+  @@index([tenantId])
+  @@index([systemId, employeeId, createdAt])
+}
+
+// HR H1.3 ▸ รายการงานรับเข้า/ออกจากงาน (H4.4 ทำหน้าจอ + สะท้อนไปการ์ด kanban ผ่าน kanbanCardId ไม่มี FK)
+//   🔴 partial unique (employeeId, kind, templateKey) WHERE templateKey IS NOT NULL อยู่ใน migration.sql (แม่แบบใช้ได้ครั้งเดียว) ◂
+enum HrOnboardingKind {
+  ONBOARDING
+  OFFBOARDING
+}
+
+model HrOnboardingTask {
+  id           String           @id @default(cuid())
+  tenantId     String
+  systemId     String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  employeeId   String
+  employee     HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind         HrOnboardingKind
+  title        String
+  sortOrder    Int              @default(0)
+  dueDate      DateTime?        @db.Date
+  doneAt       DateTime?
+  doneById     String?
+  templateKey  String?
+  kanbanCardId String?
+
+  @@index([tenantId])
+  @@index([systemId, employeeId, kind])
 }

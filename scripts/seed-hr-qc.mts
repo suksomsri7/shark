@@ -388,6 +388,21 @@ try {
     `${tlShifts.length} · ${tlPolicies} · ${tlHolidays.length} · ${tlZero}`,
   );
 
+  // ═══════════════════ 9c. HR H1.3 ▸ เงินและกฎหมาย (R9) — seed ไม่เขียน 4 ตารางใหม่ · อ่านอย่างเดียว ◂ ═══════════════════
+  // รอบที่จ่ายแล้ว = engineVersion 1 (ค่าปริยายของคอลัมน์) · นาทีทำงาน/บันทึก/งานรับเข้า-ออก ของร้าน = 0 แถว (H3.1 / H4.4)
+  // แถวกฎหมาย v1:* = ตารางกลางของทั้ง SHARK — ลงด้วย `scripts/hr-seed-law-draft.mts --apply` (ไม่ใช่ seed นี้) ⇒ seed แค่นับ
+  const { LAW_V1_ROWS } = (await import("./hr-seed-law-draft.mts" as string)) as { LAW_V1_ROWS: readonly unknown[] };
+  const mlZero = (await P.hrWorkEntry.count({ where: { tenantId } })) + (await P.hrReviewNote.count({ where: { tenantId } })) + (await P.hrOnboardingTask.count({ where: { tenantId } }));
+  const lawV1 = (await P.hrLawTable.findMany({ where: { sourceKey: { startsWith: "v1:" } }, select: { status: true } })) as Any[];
+  const lawV1Draft = lawV1.filter((x) => x.status === "DRAFT").length;
+  q.chk(
+    "ML1",
+    `เงิน/กฎหมาย (H1.3): รอบจ่าย engineVersion 1 · นาทีทำงาน/บันทึก/งานรับเข้า-ออก 0 · แถวกฎหมาย v1 = ${LAW_V1_ROWS.length} DRAFT (จาก hr-seed-law-draft --apply)`,
+    run.engineVersion === 1 && mlZero === 0 && lawV1.length === LAW_V1_ROWS.length && lawV1Draft === LAW_V1_ROWS.length,
+    `1 · 0 · ${LAW_V1_ROWS.length}/${LAW_V1_ROWS.length}`,
+    `${run.engineVersion} · ${mlZero} · ${lawV1.length}/${lawV1Draft}`,
+  );
+
   // ═══════════════════ 10. ผลรวม + ร้านอื่นไม่เปลี่ยน + ไฟล์เฉลย ═══════════════════
   const counts = await countsOf(tenantId, tables);
   counts["User(qc emails)"] = await P.user.count({ where: { email: { in: HQC_EMAILS } } });
@@ -428,6 +443,8 @@ try {
       policies: TL.policies,
       holidays: TL.holidays.map((h) => ({ date: `${year}-${h.monthDay}`, name: h.name, kind: h.kind, unit: h.unit, presetYear: h.preset ? year : null })),
     },
+    // HR H1.3 ▸ เงินและกฎหมาย — engineVersion ของรอบที่จ่ายแล้ว · จำนวนแถวกฎหมาย v1:* (ตารางกลาง ไม่ใช่ของร้าน) ◂
+    moneyLaw: { "HrPayrollRun.engineVersion": run.engineVersion, "HrLawTable.v1": lawV1.length },
     counts,
   };
   writeFileSync(HQC.expectedPath, JSON.stringify(expected, null, 2) + "\n");

@@ -133,6 +133,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrLeavePolicy: sys(),
   HrLeaveBalanceTxn: sys(),
   HrHoliday: sys(),
+  // HR H1.3 ▸ นาทีทำงาน · บันทึก/ประเมิน · งานรับเข้า-ออก — มี systemId ของระบบ HR ◂
+  HrWorkEntry: sys(),
+  HrReviewNote: sys(),
+  HrOnboardingTask: sys(),
   Page: unit,
   PageWidget: tenant,
   PageMember: tenant,
@@ -189,6 +193,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrPayrollRun: sys(),
   HrPayrollItem: sys(),
   HrPayAdjustment: sys(),
+  // HR H1.3 ▸ ตารางกฎหมายเงินเดือนกลางของทั้ง SHARK (ไม่มี tenantId/systemId) ◂
+  HrLawTable: g("กฎหมายแรงงาน/ภาษีระดับประเทศ — SHARK ดูแล ร้านอ่านอย่างเดียว · เขียนผ่านสคริปต์/หลังบ้านเท่านั้น"),
   // Subscription (WO-0027) + Procurement (WO-0028)
   MemberPlan: sys(),
   MemberSubscription: sys(),
