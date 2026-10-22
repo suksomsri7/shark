@@ -713,7 +713,9 @@ async function runStatic(): Promise<void> {
         if (nonAsync) p.push(`${f.split("/").pop()} ("use server") export ที่ไม่ใช่ async function ${nonAsync}`);
       }
       if (isUseClient(raw)) {
-        const bad = valueImportsOf(raw).filter((m) => /^@\/lib\/modules\/pos\/(?![\w-]+-(shared|actions)$)/.test(m) || /^@\/lib\/platform\/etax/.test(m)); // ORACLE-EDIT ผู้คุม 22.10 (CD-SKEL-O2: 'use client' import *-actions ถูกต้องตาม S5.17 เช่นเดียวกับ *-shared — เดิมแดงทุกใบ U ที่แตะไฟล์ client)
+        // ORACLE-EDIT ผู้คุม 22.10 (CD-SKEL-O3: ตรวจเฉพาะ import ที่เพิ่มใหม่หลังหมุดเลน — import เดิมของไฟล์ที่ใบหลังแค่แตะ (เช่น ShiftsClient → device-id) ไม่ใช่ของใบนี้ · ไฟล์ใหม่ = ตรวจทุก import) ◂
+        const prevImports = new Set(valueImportsOf(gitStr(["show", `${LANE_PIN}:${f}`]) ?? ""));
+        const bad = valueImportsOf(raw).filter((m) => !prevImports.has(m)).filter((m) => /^@\/lib\/modules\/pos\/(?![\w-]+-(shared|actions)$)/.test(m) || /^@\/lib\/platform\/etax/.test(m)); // ORACLE-EDIT ผู้คุม 22.10 (CD-SKEL-O2: 'use client' import *-actions ถูกต้องตาม S5.17 เช่นเดียวกับ *-shared — เดิมแดงทุกใบ U ที่แตะไฟล์ client)
         if (bad.length) p.push(`${f.split("/").pop()} ('use client') import ${bad[0]}`);
       }
     }
