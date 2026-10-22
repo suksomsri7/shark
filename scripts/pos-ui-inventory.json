@@ -21728,6 +21728,26 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-m-onaccount",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-refund",
+        "note": "CD-P36U-8: แผ่นคืนเงินของบิลวางบิล — ชิปเดียว \"วางบิล (ลดหนี้)\" (วิธีอื่นซ่อน) · แถวคืน [{ON_ACCOUNT, ยอดร่าง}] · CREDIT_REFUND_EXCEEDS_REMAINING = refund.errors.creditRefundExceedsRemaining"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

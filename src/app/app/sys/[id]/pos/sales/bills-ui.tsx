@@ -80,7 +80,7 @@ export function BillChannelPill({ row, t, ts, tc }: { row: Pick<BillRow, "source
 }
 
 /** วิธีชำระ "CASH+PROMPTPAY" → "เงินสด + พร้อมเพย์" · เงินสดนอกกะ = ป้ายของมันเอง */
-const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R1 ◂
+const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT", "ON_ACCOUNT"]); // POS P2.9 ▸ R1 ◂ · POS P3.6U ▸ CD-P36U-8: + ON_ACCOUNT (shift.method) ◂
 /** POS P2.1U ▸ มติ 3: PLATFORM = "แพลตฟอร์ม" (คำสั้นของหน้าบิล pos.bills.channel.platformPay — ส่ง t ของ pos.bills) ◂ */
 export const methodLabel = (m: string, ts: T, t?: T) => (m === "PLATFORM" && t ? t("channel.platformPay") : METHOD_KEYS.has(m) ? ts(`method.${m}`) : m);
 export function payText(row: Pick<BillRow, "payMethods" | "offShiftCash">, t: T, ts: T): string {
