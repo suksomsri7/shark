@@ -36,7 +36,7 @@ export type Row = {
   kind: string;
   roles: string[];
   hiddenFor?: string[];
-  expect: { type: string; target?: string; state?: string; db?: string; anyOf?: string[]; resultTarget?: string; note?: string };
+  expect: { type: string; target?: string; state?: string; db?: string; anyOf?: (string | { type?: string; target?: string; state?: string })[]; resultTarget?: string; note?: string };
   wo?: string;
   oracle?: string;
   system?: string;
@@ -170,6 +170,13 @@ export const SKIP_REASONS = {
   needs: "row.needs — ข้อมูลตั้งต้นไม่มีในชุด fixture (คอนโทรลไม่ขึ้น/ใช้ไม่ได้)",
   "needs-fixture": "ตัวแปรในหน้า/คิวรีหาค่าจริงไม่ได้ (โทเคนหน้าสาธารณะ · โต๊ะ · รหัสจับคู่ …)",
   "file-upload": "input[type=file] — อัปโหลดขึ้นที่เก็บไฟล์จริง (ไม่กด)",
+  // ── P4.2 rules update (ผู้คุม B 22 ต.ค. 21:05Z · CD-P42-R1…R13) — นับใน perReason ทุกตัว · ไม่ทำให้ตก (เกณฑ์ผ่านเดิม) ──
+  "hidden-input": "input[type=hidden] — ไม่มีอะไรให้กด/มองเห็น (CD-P41-B2 · CD-P42-R1)",
+  static: "testid เดียวกันเป็น span/ชิปนิ่งสำหรับผู้ใช้ 1 สาขา — ไม่ใช่ element ที่กดได้ (CD-P41-B3/F15 · CD-P42-R2)",
+  "disabled-expected": "ผู้ใช้ในบทบาทเห็นคอนโทรลแต่ปิดใช้ ตามที่ทะเบียนบอก (needs อ้าง CD-P41-F13 หรือ expect disabled · CD-P42-R3)",
+  "needs-persona": "opener/needs ที่บทบาทนี้ทำให้เกิดไม่ได้ (จอ PIN ที่ถึงได้เฉพาะผู้ไม่มีสิทธิ์ · การ์ดปฏิเสธที่ไม่มีผู้ใช้ QC ถึง — CD-P41-F17/F12 · CD-P42-R5)",
+  "idle-expected": "กดแล้วไม่มีผลเพราะอยู่ในสถานะนั้นแล้ว (radio aria-checked · สลับภาษา/สาขาไปที่เป็นอยู่ — CD-P41-F26/F27 · CD-P42-R8/R9)",
+  "dead-known": "แถวตายที่รู้แล้ว (CD-P41-B6 · ไม่กด · นับไม่ตก จน P4.3 ลบ — CD-P42-R12)",
 } as const;
 export type SkipReason = keyof typeof SKIP_REASONS;
 /** เหตุผลที่เป็น "ช่องโหว่ทะเบียน" — ข้อสอบ W8 ต้องเป็น 0 (ผู้สร้าง P4.1 เติมแล้ว) */
@@ -213,10 +220,18 @@ export function classify(row: Row, idx: number, cell: Cell, rules: P41Rules, ora
   const detected: PlanItem["safety"] = rules.isExternalRow(row) ? "external" : rules.isCounterRow(row) ? "counter" : rules.isMoneyRow(row) ? "money" : null;
   base.safety = own ?? detected;
   base.moneyUnit = base.safety === "money" || base.safety === "counter";
+  // CD-P42-R12: แถวตายที่รู้แล้ว (B6) — ก่อนทุกกติกา (ไม่เปิดหน้า ไม่กด) · นับเป็น skip dead-known
+  const dk = DEAD_KNOWN[base.key];
+  if (dk) return skip("dead-known", dk);
   if (!rules.isPublicPage(row.page) && !row.page.startsWith(STAFF)) return skip("not-pos-page", row.page);
   const isHidden = hidden.includes(cell.user);
   if (!isHidden && !roles.includes(cell.user)) return skip("no-role-claim", `roles ${roles.join(",") || "-"} · hiddenFor ${hidden.join(",") || "-"}`);
   if (isHidden) return { ...base, action: "absent" };
+  // CD-P42-R5: บทบาทนี้ทำให้ opener/needs เกิดไม่ได้ (F17 จอ PIN · F12 การ์ดปฏิเสธ) — ก่อนตรวจเห็น (การ์ด F12 เป็น notice)
+  const pu = personaUnreachable(row, cell.user);
+  if (pu) return skip("needs-persona", pu);
+  // CD-P42-R1: ช่องซ่อนที่ทะเบียนประกาศ (needs "type=hidden") — ตัวกดยังจับ input[type=hidden] ตอนรันด้วย (เหตุผลเดียวกัน)
+  if (HIDDEN_INPUT_RE.test(base.needs ?? "")) return skip("hidden-input", "needs ประกาศ type=hidden");
   // การ์ด/ป้ายที่ไม่กด: notice · ui refused · ui disabled = ตรวจว่าเห็น (และ disabled) เท่านั้น
   if (row.kind === "notice" || (ex.type === "ui" && (ex.state === "refused" || ex.state === "disabled"))) return { ...base, action: "visible" };
   if (!own && detected) return skip("missing-safety", `ตัวจับ P4.1 = ${detected}`);
@@ -252,6 +267,178 @@ export function planCell(reg: Registry, cell: Cell, rules: P41Rules, oracleIds: 
   }
   return { cell, items, total: items.length, byAction, perReason };
 }
+// ═════════════════════════ P4.2 rules update (CD-P42-R1…R13 · บริสุทธิ์ — ตัวกด/ด่าน/ข้อสอบใช้ร่วม) ═════════════════════════
+/** CD-P42-R12 (B6 ของโน้ต P4.1 fix1 · CD-P41-B6 + แถว 844/964 ของรอบตรวจ): แถวตายที่รู้แล้ว — dead-known จน P4.3 ลบแถว */
+export const DEAD_KNOWN: Readonly<Record<string, string>> = {
+  [`${STAFF}register#pos-pay-button`]: "CD-P41-B6 · testid มีแค่หน้าขายเดิม register-ui.tsx (W29)",
+  [`${STAFF}register#pos-member-select`]: "CD-P41-B6 · testid มีแค่หน้าขายเดิม register-ui.tsx (W29)",
+  [`${STAFF}register#pos-catalog-item`]: "CD-P41-B6 · testid มีแค่หน้าขายเดิม register-ui.tsx (W29)",
+  [`${STAFF}register#pos-reg-member-remove`]: "CD-P41-B6 · CartPanel ไม่ใช้ทางสำรองนี้ (memberSlot ส่งเสมอ)",
+  [`${STAFF}settings#pos-settings-card-state-offline`]: "CD-P41-B6 · หน้า settings ส่ง offlineLive เสมอ",
+  ["/app/u/[unitSlug]/restaurant/kds#pos-kds-legacy-open"]: "CD-P41-B6 · จอครัวเดิม redirect ก่อนแถบ (แถว 844)",
+  [`${STAFF}sales#pos-sales-unit-all`]: "CD-P41-B6 · เป็น <option> ของ pos-bills-unit (แถว 964 · ถึงได้ด้วยขั้น pos-bills-unit=*)",
+};
+/**
+ * CD-P42-R5 (CD-P41-F17 · F12): แถวที่บทบาทนี้ทำให้ opener/needs เกิดไม่ได้ — ใช้เมื่อแถวยังมี needs (ทะเบียนยังบอกว่ามีเงื่อนไข) ·
+ * F17: จอ PIN ที่ถึงได้เฉพาะผู้ไม่มีสิทธิ์ (เจ้าของ/ผู้จัดการ เพดานส่วนลด 10000 · ไม่ติดด่านตาราง HR · ตัวกดใส่โทเคนพนักงานเสมอ · มีสิทธิ์ยกเลิกบิล) ·
+ * F12: การ์ดปฏิเสธที่ไม่มีผู้ใช้ QC คนใดถึง (แคชเชียร์ได้การ์ดปฏิเสธทั้งหน้า หรือผ่านด่าน)
+ */
+export const PERSONA_UNREACHABLE: readonly { page: string; testids: readonly string[]; users: readonly UserKey[]; why: string }[] = [
+  {
+    page: `${STAFF}register`,
+    testids: ["pos-discount-over-manager", "pos-discount-over-key-*", "pos-discount-over-key-0", "pos-discount-over-key-del", "pos-discount-over-clear", "pos-discount-over-pin-apply", "pos-discount-over-request", "pos-discount-over-cancel", "pos-approval-wait-close", "pos-approval-wait-cancel"],
+    users: ["owner", "manager"],
+    why: "CD-P41-F17 · จอส่วนลดเกินเพดาน: เจ้าของ/ผู้จัดการเพดานปริยาย 10000 bp (register-shared.ts POS_DISCOUNT_CAPS_DEFAULT) — ส่วนลด 90% ไม่เกิน",
+  },
+  {
+    page: `${STAFF}register`,
+    testids: ["pos-mgr-pin-manager", "pos-mgr-pin-key-*", "pos-mgr-pin-key-0", "pos-mgr-pin-key-del", "pos-mgr-pin-clear", "pos-mgr-pin-submit"],
+    users: ["owner", "manager"],
+    why: "CD-P41-F17 · จอ PIN ผู้จัดการ (OFF_SCHEDULE) ขึ้นเฉพาะพนักงานที่ติดด่านตาราง HR",
+  },
+  {
+    page: `${STAFF}sales`,
+    testids: ["pos-bills-need-pin-close", "pos-bills-need-pin-link", "pos-bills-mgr-pin-close"],
+    users: ["owner", "manager"],
+    why: "CD-P41-F17 · จอ PIN ของบิล: ตัวกดใส่โทเคนพนักงานเสมอ · เจ้าของ/ผู้จัดการมีสิทธิ์ยกเลิกบิล",
+  },
+  {
+    page: "*",
+    testids: ["pos-stock-count-refusal", "pos-stock-*-refusal", "pos-tables-refusal", "pos-orders-refusal", "pos-kds-refusal", "pos-shift-x-refusal"],
+    users: ["cashier"],
+    why: "CD-P41-F12 · การ์ดปฏิเสธที่ไม่มีผู้ใช้ QC ถึง (แคชเชียร์ได้การ์ดปฏิเสธทั้งหน้า หรือผ่านด่านของสาขาตัวเอง)",
+  },
+];
+export function personaUnreachable(row: Row, user: UserKey): string | null {
+  if (!asList(row.needs).length) return null;
+  for (const g of PERSONA_UNREACHABLE) if ((g.page === "*" || g.page === row.page) && g.users.includes(user) && g.testids.includes(row.testid)) return g.why;
+  return null;
+}
+/** CD-P42-R1: needs ที่ประกาศช่องซ่อน */
+export const HIDDEN_INPUT_RE = /type=hidden/;
+/**
+ * CD-P42-R3 (CD-P41-F13): บทบาทที่ทะเบียนบอกว่า "เห็นแต่ปิดใช้" — ข้อความ needs ที่อ้าง CD-P41-F13 ระบุบทบาท (แคชเชียร์ → cashier ·
+ * ผู้จัดการ → manager · ไม่ระบุ = ผู้ไม่ใช่เจ้าของ) · expect.state disabled = ทุกบทบาทใน roles · เจ้าของไม่ได้รับข้อยกเว้นจาก F13 เด็ดขาด
+ * (กันข้อกังวลของ CD-P41-F13: needs ด้านสิทธิ์ต้องไม่ทำให้ regression ของเจ้าของ/ผู้จัดการผ่านแบบ skip)
+ */
+export function f13Users(row: Pick<Row, "needs" | "expect" | "roles">): UserKey[] {
+  if (row.expect?.state === "disabled") return asList(row.roles) as UserKey[];
+  const out = new Set<UserKey>();
+  const add = (seg: string) => {
+    const c = seg.includes("แคชเชียร์");
+    const m = seg.includes("ผู้จัดการ");
+    if (c || !m) out.add("cashier");
+    if (m || !c) out.add("manager");
+  };
+  for (const n of asList(row.needs)) {
+    for (let i = n.indexOf("CD-P41-F13"); i >= 0; i = n.indexOf("CD-P41-F13", i + 1)) {
+      // ข้อความของ F13 = ช่วงหลัง "—" ตัวสุดท้ายก่อนรหัส ("— แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)")
+      const head = n.slice(0, i);
+      const seg = head.slice(Math.max(head.lastIndexOf("—"), i - 160, 0));
+      add(seg);
+    }
+  }
+  return [...out];
+}
+/**
+ * CD-P42-R7 (CD-P41-F22): กดที่ทิ้งผลข้างเคียงต่อแถวอื่น/รอบหน้า — ย้ายไปท้ายรอบ (หลังทุกหน้า) แล้ว fixture คืนค่าที่คืนได้ ·
+ * แถวตาม fix2 (476 506 822 307 537 1161 1183) + แถวที่ needs/note บอก "press last"/"กดท้าย"/"reset"/CD-P41-F22 ·
+ * pos-device-revoke-confirm (307 · ถอนเครื่องของเบราว์เซอร์นี้เอง) = ลำดับสุดท้ายเสมอ
+ */
+export const SIDE_EFFECT_KEYS: Readonly<Record<string, string>> = {
+  [`${STAFF}settings#pos-settings-general-save-stock`]: "476 นโยบายสต็อกของสาขาค้าง BLOCK (BusinessUnit.settings) → คืนค่า settings ของสาขา",
+  [`${STAFF}settings#pos-settings-account-confirm-off`]: "506 ปิดการลงบัญชีของ POS (AccountSystemLink) → setPosAccountLink เปิดคืน",
+  [`${STAFF}kds#pos-kds-setup-link`]: "822 หน้าตั้งค่าร้านอาหารสร้างสถานีครัวปริยาย (คงไว้ในสาขา posqc-btn)",
+  [`${STAFF}settings#pos-device-revoke-confirm`]: "307 ถอนเครื่องของเบราว์เซอร์นี้ → คืนสถานะ ACTIVE ของเครื่องตัวกด",
+  [`${STAFF}settings#pos-channel-drawer-save`]: "537 สร้างช่องทางใหม่ 1 ช่อง/รอบ → ลบช่องทางที่เกิดในรอบ",
+  [`${STAFF}settings#pos-channel-creds-webhook`]: "1161 ตัวเปิดเชื่อม LINE MAN = ช่องทางใหม่ → ลบช่องทาง/credentials ที่เกิดในรอบ",
+  [`${STAFF}settings#pos-device-lan-token-copy`]: "1183 ตัวช่วยพิมพ์ LAN → ถอน (revokePrintAgent) ตัวที่เกิดในรอบ",
+};
+export const SIDE_EFFECT_TEXT_RE = /press last|กดท้าย|\breset\b|รีเซ็ต|CD-P41-F22/i;
+export function sideEffectOf(row: Row): string | null {
+  const k = SIDE_EFFECT_KEYS[rowKey(row)];
+  if (k) return k;
+  const t = `${asList(row.needs).join(" ")} ${row.expect?.note ?? ""}`;
+  return SIDE_EFFECT_TEXT_RE.test(t) ? `needs/note: ${(SIDE_EFFECT_TEXT_RE.exec(t) ?? [""])[0]}` : null;
+}
+/** ลำดับในช่วงท้าย: ถอนเครื่องตัวเองท้ายสุด */
+export const sideEffectRank = (row: Row) => (row.testid === "pos-device-revoke-confirm" ? 9 : 1);
+/**
+ * CD-P42-R11 (CD-P41-F29): ขั้น opener — "<testid>" · "<testid>=<ค่า>" ("=*" · "=on"/"=off" · "=click") · ลงท้าย "?" = ขั้นไม่บังคับ
+ * (บทบาทนี้ไม่มี element นั้น ⇒ ข้ามโดยไม่ผิด) · ค่าที่ลงท้าย ? จริงใช้ไม่ได้ · ค่า " " (ช่องว่าง 1 ตัว) = search-noop (CD-P42-R10)
+ */
+export function parseStep(s: string): { raw: string; tid: string; val: string | null; optional: boolean } {
+  const optional = s.endsWith("?");
+  const body = optional ? s.slice(0, -1) : s;
+  const i = body.indexOf("=");
+  return { raw: s, tid: (i < 0 ? body : body.slice(0, i)).trim(), val: i < 0 ? null : body.slice(i + 1), optional };
+}
+/**
+ * CD-P42-R4 (CD-P41-F16): URL ตรงเป้า navigate — path ตามแพตเทิร์น ([x] <x> * = 1 ส่วน) · query/hash ของ URL ไม่สน
+ * เว้นแต่เป้ามี query เอง: ทุกคีย์ของเป้าต้องมีใน URL (ค่า [x]/<x>/ว่าง = ค่าใดก็ได้ที่ไม่ว่าง · ลงท้าย * = ขึ้นต้น · อื่น ๆ = ตรงตัว) · เป้า "#x" = hash ตรง
+ */
+export function navMatches(target: string, url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url, "http://x.invalid");
+  } catch {
+    return false;
+  }
+  if (target.startsWith("#")) return u.hash === target;
+  if (!target.startsWith("/")) return false;
+  const [tPath, tQueryHash = ""] = target.split("?") as [string, string?];
+  const ph = /(\[[^\]]+\]|<[^>]+>|\*)/g;
+  const pat = tPath.split(ph).map((p) => (/^(\[[^\]]+\]|<[^>]+>|\*)$/.test(p) ? "[^/]+" : p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("");
+  if (!new RegExp(`^${pat}(?:$|/)`).test(u.pathname)) return false;
+  const tq = tQueryHash.split("#")[0]!;
+  if (!tq) return true;
+  for (const [k, v] of new URLSearchParams(tq)) {
+    const got = u.searchParams.get(k);
+    if (got === null) return false;
+    if (!v || /^(\[[^\]]+\]|<[^>]+>)$/.test(v)) {
+      if (!got) return false;
+    } else if (v.endsWith("*")) {
+      if (!got.startsWith(v.slice(0, -1))) return false;
+    } else if (got !== v) return false;
+  }
+  return true;
+}
+/** CD-P42-R10 (CD-P41-F28): ช่องค้นหา — PREFILL ไม่พิมพ์ลง (search-noop) · ขั้น "=<ช่องว่าง>" ของทะเบียน = พิมพ์ 1 ตัวแล้วลบ */
+export const SEARCH_RE = /(search|query|-q$|find|lookup)/;
+export const isSearchLike = (testid: string, type = "") => type === "search" || SEARCH_RE.test(testid.toLowerCase());
+/**
+ * CD-P42-R6 (CD-P41-F18): ค่าส่วนลดที่ตัวกดพิมพ์เอง (PREFILL / "=*") ต้องไม่เกินเพดานแคชเชียร์ (register-shared.ts
+ * REGISTER_STAFF_MAX_DISCOUNT_BP = 1000 bp · อ่านค่าจริงจาก settings.pos.discount ตอนรัน) — % = ครึ่งเพดาน · บาท = 1 (สินค้าตะกร้า ≥ ฿10)
+ */
+export const DISCOUNT_RE = /discount/;
+export const STAFF_DISCOUNT_CAP_BP_DEFAULT = 1000;
+export function discountFill(testid: string, capBp: number): string {
+  if (capBp < 200) return "0";
+  return /(pct|percent)/.test(testid.toLowerCase()) ? String(Math.max(1, Math.floor(capBp / 200))) : "1";
+}
+/** CD-P42-R9 (CD-P41-F27): ตัวสลับภาษา/สาขา — กดตอนอยู่ในสถานะนั้นแล้ว = idle-expected */
+export const SWITCH_RE = /(-locale-|-lang-|unit-option-|unit-switch$|-unit$)/;
+export const localeOfSwitch = (testid: string): "th" | "en" | null => {
+  const m = /-(locale|lang)-(?:switch-)?(th|en)$/.exec(testid);
+  return m ? (m[2] as "th" | "en") : null;
+};
+/** CD-P42-R8 (CD-P41-F26): expect.anyOf — สตริง (เป้าแบบเดียวกับ type หลัก) หรืออ็อบเจกต์ {type, target, state?} — ผ่านเมื่อข้อใดข้อหนึ่งผ่าน */
+export type ExpectAlt = { type: string; target: string; state?: string };
+export function expectAlts(ex: Row["expect"]): ExpectAlt[] {
+  const out: ExpectAlt[] = [{ type: ex.type, target: String(ex.target ?? ""), state: ex.state }];
+  for (const a of (Array.isArray(ex.anyOf) ? ex.anyOf : []) as unknown[]) {
+    if (typeof a === "string" && a) out.push({ type: ex.type, target: a, state: ex.state });
+    else if (a && typeof a === "object" && typeof (a as Any).target === "string") out.push({ type: String((a as Any).type ?? ex.type), target: (a as Any).target, state: typeof (a as Any).state === "string" ? (a as Any).state : undefined });
+  }
+  return out;
+}
+/** CD-P42-R8: แถวคัดลอกลงคลิปบอร์ด — ตรวจด้วย navigator.clipboard (สิทธิ์ของ context) · อ่านไม่ได้ = ข้อความบนหน้า */
+export const isClipboardRow = (row: Row) => /-copy(-|$)/.test(row.testid) || /clipboard|คัดลอก/.test(String(row.expect?.note ?? ""));
+/** เหตุผลที่ "ตัวกดตัดสินตอนรัน" ได้เท่านั้น (แผน = press/visible) — ข้อสอบ W6/W11 */
+export const DYNAMIC_REASONS: readonly SkipReason[] = ["needs", "needs-fixture", "file-upload", "once-per-run", "static", "disabled-expected", "idle-expected", "hidden-input"];
+/** เหตุผลที่ตัวจำแนก (สถิต) เท่านั้นตัดสิน — สรุปต้องตรงแผน */
+export const STATIC_REASONS: readonly SkipReason[] = ["no-role-claim", "not-pos-page", "missing-target", "missing-db", "missing-safety", "external", "dead-known", "needs-persona", "hidden-input"];
+
 /** ค่าประมาณเวลา/แถว (วินาที) ตามการกระทำ — โหลดหน้าใหม่ 3–4 วิ + กด/รอผล (CRM run6 ≈ 4.4 วิ/แถว) */
 export const SEC_PER = { press: 6, absent: 3.5, visible: 3, skip: 0 } as const;
 export const estimateSec = (p: CellPlan) => Math.round(p.items.reduce((a, it) => a + SEC_PER[it.action], 0) + 90 /* fixture + เบราว์เซอร์ + เก็บกวาด */);
@@ -292,7 +479,19 @@ export type Ctx = {
   log: string[];
   cartProductIds: string[];
   tokens: Record<string, string | null>;
+  /** CD-P42-R13: สาขาของโทเคนหน้าสาธารณะ (แถวเงินหน้าสาธารณะกดได้เฉพาะโทเคนของสาขา posqc-btn) */
+  tokenUnits: Record<string, string | null>;
   cleaned: boolean;
+  // ── CD-P42-R7 (CD-P41-F22): สิ่งที่ fixture คืนค่าได้นอก settings.pos ──
+  runStart: Date;
+  /** BusinessUnit.settings ของสาขา posqc-btn ก่อนรอบ (476 นโยบายสต็อก) — เก็บใน marker ด้วย (กู้หลังถูก kill) */
+  unitSnap: { v: Any } | null;
+  /** AccountSystemLink ของ POS เปิดอยู่ก่อนรอบ (506) — null = ไม่เคยเชื่อม */
+  accountLinkOn: boolean | null;
+  /** เครื่อง ACTIVE ของสาขา posqc-btn ก่อนรอบ (307 ถอนเครื่องตัวเอง) */
+  deviceSnap: string[];
+  /** เพดานส่วนลด STAFF (bp) จาก settings.pos.discount — ค่าที่ตัวกดพิมพ์เองไม่เกินนี้ (CD-P42-R6) */
+  staffDiscountCapBp: number;
 };
 let PRISMA: Any = null;
 export async function db(): Promise<Any> {
@@ -350,8 +549,41 @@ async function writePos(sys: string, v: Any): Promise<void> {
 const stable = (v: unknown) => JSON.stringify(v ?? null, (_k, x) => (isRecObj(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
 const withoutMarker = (v: Any) => (isRecObj(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== "_qcP42Before")) : v);
 
-/** จำ settings.pos ทั้งก้อน (หรือคืนจากซาก _qcP42Before ของรอบที่ถูก kill) แล้วเขียนคีย์จำไว้ก่อนกดอะไร */
-export async function rememberSettings(c: Ctx): Promise<void> {
+/** marker ใน settings.pos._qcP42Before — {had, v} ของ settings.pos + (CD-P42-R7) settings ของสาขา posqc-btn + สถานะลิงก์บัญชี (กู้หลังถูก kill) */
+const markerOf = (c: Ctx) => ({
+  had: c.settingsSnap!.had,
+  v: c.settingsSnap!.had ? (c.settingsSnap!.v ?? null) : null,
+  ...(c.unitSnap ? { unit: c.unitSnap.v } : {}),
+  ...(c.accountLinkOn !== null ? { accountLinkOn: c.accountLinkOn } : {}),
+});
+const writeMarked = (c: Ctx) => writePos(c.sys, { ...(isRecObj(c.settingsSnap!.v) ? c.settingsSnap!.v : {}), _qcP42Before: markerOf(c) });
+// ── CD-P42-R7: settings ของสาขา posqc-btn (BusinessUnit.settings — 476 นโยบายสต็อก) ──
+async function readUnitSettings(): Promise<Any | undefined> {
+  const P = await db();
+  const u = await P.businessUnit.findFirst({ where: { id: BTN.unit.id, tenantId: QC_TENANT }, select: { settings: true } });
+  return u ? (u.settings ?? {}) : undefined;
+}
+async function writeUnitSettings(v: Any): Promise<void> {
+  const P = await db();
+  await P.businessUnit.updateMany({ where: { id: BTN.unit.id, tenantId: QC_TENANT }, data: { settings: v ?? {} } });
+}
+// ── CD-P42-R7: ลิงก์ POS↔บัญชี (AccountSystemLink · 506 ปิดการลงบัญชี) — คืนด้วย writer ของโมดูล setPosAccountLink ──
+async function readAccountLinkOn(sys: string): Promise<boolean | null> {
+  const P = await db();
+  const links: { enabled: boolean; archivedAt: Date | null }[] = await P.$queryRaw`SELECT enabled, "archivedAt" FROM "AccountSystemLink" WHERE "tenantId" = ${QC_TENANT} AND "linkedKind" = 'POS' AND "linkedId" = ${sys}`;
+  return links.length ? links.some((l) => l.enabled && !l.archivedAt) : null;
+}
+async function enableAccountLink(c: Ctx): Promise<string> {
+  const pi = (await import("@/lib/pos-integrations" as string)) as Any;
+  const owner = await actorOfMembership(c.T.users.owner.membershipId, c.T.users.owner.userId);
+  const r = await pi.setPosAccountLink({ tenantId: QC_TENANT, systemId: c.sys }, owner, { enabled: true });
+  if (!r?.ok) throw new StepError("setPosAccountLink", `enabled:true → ${r?.code ?? "?"}`);
+  return r.changed ? "เปิดการลงบัญชีคืน (setPosAccountLink)" : "การลงบัญชีเปิดอยู่แล้ว";
+}
+
+/** จำ settings.pos ทั้งก้อน (หรือคืนจากซาก _qcP42Before ของรอบที่ถูก kill) แล้วเขียนคีย์จำไว้ก่อนกดอะไร ·
+ *  CD-P42-R7: จำ settings ของสาขา posqc-btn + สถานะลิงก์บัญชีด้วย (ซากของรอบก่อน = คืนก่อน) */
+export async function rememberSettings(c: Ctx, withUnit = false): Promise<void> {
   if (c.settingsSnap) return;
   assertWritable(c.T);
   const cur = await readPos(c.sys);
@@ -360,28 +592,132 @@ export async function rememberSettings(c: Ctx): Promise<void> {
     c.settingsSnap = { had: res.had === true, v: res.had === true ? res.v : undefined };
     c.log.push("กวาดซากค่าตั้งของรอบก่อน (คืนจาก settings.pos._qcP42Before)");
     await writePos(c.sys, c.settingsSnap.had ? c.settingsSnap.v : undefined);
+    if (res.unit !== undefined && (await readUnitSettings()) !== undefined) {
+      await writeUnitSettings(res.unit);
+      c.log.push("คืน settings ของสาขา posqc-btn จากซาก");
+    }
+    if (res.accountLinkOn === true && (await readAccountLinkOn(c.sys)) === false) c.log.push(`ซากลิงก์บัญชี: ${await enableAccountLink(c)}`);
   } else c.settingsSnap = { had: cur.had, v: withoutMarker(cur.v) };
-  const marker = { had: c.settingsSnap.had, v: c.settingsSnap.had ? (c.settingsSnap.v ?? null) : null };
-  await writePos(c.sys, { ...(isRecObj(c.settingsSnap.v) ? c.settingsSnap.v : {}), _qcP42Before: marker });
+  c.accountLinkOn = await readAccountLinkOn(c.sys);
+  if (withUnit) {
+    const u = await readUnitSettings();
+    c.unitSnap = u === undefined ? null : { v: u };
+  }
+  await writeMarked(c);
 }
-/** หลังแถวที่เขียน: settings.pos (ไม่นับ marker) ≠ ที่จำไว้ ⇒ คืนตรงตัว (marker คงอยู่จนจบรอบ) — คืน true เมื่อคืนค่า */
+/** สาขา posqc-btn เพิ่งสร้าง (หลัง rememberSettings) — จำ settings ของมันตอนนี้ */
+async function rememberUnitSettings(c: Ctx): Promise<void> {
+  if (c.unitSnap || !c.settingsSnap) return;
+  const u = await readUnitSettings();
+  if (u === undefined) return;
+  c.unitSnap = { v: u };
+  await writeMarked(c);
+}
+/** หลังแถวที่เขียน: settings.pos (ไม่นับ marker) · settings ของสาขา posqc-btn · ลิงก์บัญชี ≠ ที่จำไว้ ⇒ คืนตรงตัว (marker คงอยู่จนจบรอบ) — คืน true เมื่อคืนค่า */
 export async function restoreSettingsIfChanged(c: Ctx, label: string): Promise<boolean> {
   if (!c.settingsSnap) return false;
+  let did = false;
   const cur = await readPos(c.sys);
-  if (stable(withoutMarker(cur.v)) === stable(c.settingsSnap.v)) return false;
-  const marker = { had: c.settingsSnap.had, v: c.settingsSnap.had ? (c.settingsSnap.v ?? null) : null };
-  await writePos(c.sys, { ...(isRecObj(c.settingsSnap.v) ? c.settingsSnap.v : {}), _qcP42Before: marker });
-  const after = await readPos(c.sys);
-  const ok = stable(withoutMarker(after.v)) === stable(c.settingsSnap.v);
-  c.restores.push({ label, ok, detail: ok ? "settings.pos คืนค่าตรงตัว" : "คืนค่าแล้วยังไม่ตรง" });
-  return true;
+  if (stable(withoutMarker(cur.v)) !== stable(c.settingsSnap.v)) {
+    await writeMarked(c);
+    const after = await readPos(c.sys);
+    const ok = stable(withoutMarker(after.v)) === stable(c.settingsSnap.v);
+    c.restores.push({ label, ok, detail: ok ? "settings.pos คืนค่าตรงตัว" : "คืนค่าแล้วยังไม่ตรง" });
+    did = true;
+  }
+  if (c.unitSnap) {
+    const u = await readUnitSettings();
+    if (u !== undefined && stable(u) !== stable(c.unitSnap.v)) {
+      await writeUnitSettings(c.unitSnap.v);
+      const ok = stable(await readUnitSettings()) === stable(c.unitSnap.v);
+      c.restores.push({ label: `${label} · สาขา`, ok, detail: ok ? "BusinessUnit.settings ของ posqc-btn คืนค่าตรงตัว" : "settings ของสาขาคืนแล้วยังไม่ตรง" });
+      did = true;
+    }
+  }
+  if (c.accountLinkOn === true && (await readAccountLinkOn(c.sys)) === false) {
+    try {
+      const d = await enableAccountLink(c);
+      c.restores.push({ label: `${label} · ลิงก์บัญชี`, ok: (await readAccountLinkOn(c.sys)) === true, detail: d });
+    } catch (e) {
+      c.restores.push({ label: `${label} · ลิงก์บัญชี`, ok: false, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+    did = true;
+  }
+  return did;
 }
 async function finalSettingsRestore(c: Ctx): Promise<void> {
   if (!c.settingsSnap) return;
+  if (c.unitSnap) {
+    const u = await readUnitSettings();
+    if (u !== undefined && stable(u) !== stable(c.unitSnap.v)) await writeUnitSettings(c.unitSnap.v);
+    const ok = stable(await readUnitSettings()) === stable(c.unitSnap.v);
+    c.restores.push({ label: "จบรอบ · สาขา", ok, detail: ok ? "BusinessUnit.settings ของ posqc-btn = ก่อนรอบ" : "settings ของสาขาไม่ตรงก่อนรอบ" });
+  }
+  if (c.accountLinkOn === true && (await readAccountLinkOn(c.sys)) === false) {
+    const d = await enableAccountLink(c).catch((e: unknown) => `ล้ม: ${e instanceof Error ? e.message : e}`);
+    c.restores.push({ label: "จบรอบ · ลิงก์บัญชี", ok: (await readAccountLinkOn(c.sys)) === true, detail: d });
+  }
   await writePos(c.sys, c.settingsSnap.had ? c.settingsSnap.v : undefined);
   const after = await readPos(c.sys);
   const ok = after.had === c.settingsSnap.had && stable(after.v) === stable(c.settingsSnap.v);
   c.restores.push({ label: "จบรอบ", ok, detail: ok ? "settings.pos = ก่อนรอบ (ลบ _qcP42Before)" : "settings.pos ไม่ตรงก่อนรอบ" });
+}
+/**
+ * CD-P42-R7 (CD-P41-F22): หลังแถวผลข้างเคียง + จบรอบ — คืนสิ่งที่รอบนี้สร้าง/เปลี่ยนในสาขา posqc-btn (ของตัวกดเอง · W30):
+ * เครื่องที่ถูกถอน (307) → ACTIVE · ตัวช่วยพิมพ์ LAN ที่เกิดในรอบ (1183) → revokePrintAgent · credentials ที่เกิดในรอบ (1161/1164) → ลบ ·
+ * ช่องทางที่เกิดในรอบ (537/1161) → ลบ (ติด FK = เก็บ archivedAt) — ไม่แตะสาขาอื่นเด็ดขาด (where unitId = posqc-btn-unit)
+ */
+export async function resetSideEffects(c: Ctx, label: string, opts: { channels?: boolean } = {}): Promise<{ label: string; ok: boolean; detail: string }[]> {
+  const out: { label: string; ok: boolean; detail: string }[] = [];
+  if (!c.persona) return out;
+  assertWritable(c.T);
+  const P = await db();
+  const where = { tenantId: QC_TENANT, unitId: BTN.unit.id };
+  const step = async (l: string, f: () => Promise<string | null>) => {
+    try {
+      const d = await f();
+      if (d) out.push({ label: `${label} · ${l}`, ok: true, detail: d });
+    } catch (e) {
+      out.push({ label: `${label} · ${l}`, ok: false, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  };
+  await step("เครื่อง", async () => {
+    if (!c.deviceSnap.length) return null;
+    const r = await P.posDevice.updateMany({ where: { ...where, id: { in: c.deviceSnap }, status: "REVOKED" }, data: { status: "ACTIVE", revokedAt: null } });
+    return r.count ? `คืนเครื่อง ACTIVE ${r.count} เครื่อง (ถูกถอนระหว่างรอบ)` : null;
+  });
+  await step("ตัวช่วยพิมพ์ LAN", async () => {
+    const agents: { id: string; systemId: string }[] = await P.posPrintAgent.findMany({ where: { ...where, revokedAt: null, createdAt: { gte: c.runStart } }, select: { id: true, systemId: true } });
+    if (!agents.length) return null;
+    const pr = (await import("@/lib/modules/pos/print-relay" as string)) as Any;
+    const owner = await actorOfMembership(c.T.users.owner.membershipId, c.T.users.owner.userId);
+    for (const a of agents) {
+      const r = await pr.revokePrintAgent({ tenantId: QC_TENANT, systemId: a.systemId, unitId: BTN.unit.id }, owner, { agentId: a.id });
+      if (!r?.ok) throw new StepError("revokePrintAgent", `${a.id} → ${r?.code ?? "?"}`);
+    }
+    return `ถอนตัวช่วยพิมพ์ ${agents.length} ตัว`;
+  });
+  await step("credentials", async () => {
+    const r = await P.posIntegrationCredential.deleteMany({ where: { ...where, createdAt: { gte: c.runStart } } });
+    return r.count ? `ลบ credentials ที่เกิดในรอบ ${r.count} แถว` : null;
+  });
+  if (opts.channels !== false) await step("ช่องทาง", async () => {
+    const ch: { id: string; code: string }[] = await P.salesChannel.findMany({ where: { ...where, createdAt: { gte: c.runStart } }, select: { id: true, code: true } });
+    if (!ch.length) return null;
+    let del = 0;
+    let arch = 0;
+    for (const x of ch) {
+      try {
+        await P.salesChannel.deleteMany({ where: { ...where, id: x.id } });
+        del++;
+      } catch {
+        await P.salesChannel.updateMany({ where: { ...where, id: x.id }, data: { archivedAt: new Date(), active: false } });
+        arch++;
+      }
+    }
+    return `ช่องทางที่เกิดในรอบ: ลบ ${del}${arch ? ` · เก็บ ${arch} (มีแถวอ้าง)` : ""}`;
+  });
+  return out;
 }
 
 /** หา-หรือ-สร้างของถาวรของตัวกด (สาขา · ลิงก์ระบบ · ผู้ใช้ตัวกด) — W30 คงไว้ · ทุกขั้นบอกค่าที่ใช้ */
@@ -472,18 +808,56 @@ async function findCartProducts(c: Ctx): Promise<void> {
   const named = pref.map((n) => rows.find((r) => r.name === n && okRow(r))).filter(Boolean) as Any[];
   c.cartProductIds = [...named, ...rows.filter((r) => okRow(r) && !named.includes(r))].slice(0, 3).map((r) => r.id);
 }
-/** โทเคนของหน้าสาธารณะ (อ่านอย่างเดียว · ไม่สร้าง) — ไม่มี = แถวของหน้านั้น skip(needs-fixture) */
+/** โทเคนของหน้าสาธารณะ (อ่านอย่างเดียว · ไม่สร้าง) — ไม่มี = แถวของหน้านั้น skip(needs-fixture) ·
+ *  CD-P42-R13: เลือกของสาขา posqc-btn ก่อน แล้วจดสาขาของโทเคน (แถวเงินหน้าสาธารณะกดได้เฉพาะโทเคนของสาขานี้) */
 async function findPublicTokens(c: Ctx): Promise<void> {
   const P = await db();
-  const pick = async (label: string, f: () => Promise<string | null>) => {
-    c.tokens[label] = await f().catch(() => null);
+  const pick = async (label: string, f: (unitId?: string) => Promise<{ v: string | null; unitId: string | null } | null>) => {
+    const r = await f(BTN.unit.id).catch(() => null) ?? await f().catch(() => null);
+    c.tokens[label] = r?.v ?? null;
+    c.tokenUnits[label] = r?.v ? (r.unitId ?? null) : null;
   };
-  const sale = (unitId?: string) => P.posSale.findFirst({ where: { tenantId: QC_TENANT, ...(unitId ? { unitId } : {}), publicToken: { not: null }, status: "PAID", docType: "SALE" }, orderBy: { createdAt: "desc" }, select: { publicToken: true } });
-  await pick("token", async () => ((await sale(BTN.unit.id)) ?? (await sale()))?.publicToken ?? null);
-  await pick("qrToken", async () => (await P.restaurantTable.findFirst({ where: { tenantId: QC_TENANT, archivedAt: null, status: "ACTIVE" }, orderBy: { name: "asc" }, select: { qrToken: true } }))?.qrToken ?? null);
-  await pick("linkToken", async () => (await P.posOrderLink.findFirst({ where: { tenantId: QC_TENANT, status: "ACTIVE" }, orderBy: { createdAt: "desc" }, select: { token: true } }))?.token ?? null);
-  await pick("orderToken", async () => (await P.posOrder.findFirst({ where: { tenantId: QC_TENANT, publicToken: { not: null } }, orderBy: { receivedAt: "desc" }, select: { publicToken: true } }))?.publicToken ?? null);
-  await pick("saleId", async () => (await P.posSale.findFirst({ where: { tenantId: QC_TENANT, unitId: BTN.unit.id, status: "PAID", docType: "SALE" }, orderBy: { createdAt: "desc" }, select: { id: true } }))?.id ?? null);
+  const u = (unitId?: string) => (unitId ? { unitId } : {});
+  await pick("token", async (unitId) => {
+    const x = await P.posSale.findFirst({ where: { tenantId: QC_TENANT, ...u(unitId), publicToken: { not: null }, status: "PAID", docType: "SALE" }, orderBy: { createdAt: "desc" }, select: { publicToken: true, unitId: true } });
+    return x ? { v: x.publicToken, unitId: x.unitId } : null;
+  });
+  await pick("qrToken", async (unitId) => {
+    const x = await P.restaurantTable.findFirst({ where: { tenantId: QC_TENANT, ...u(unitId), archivedAt: null, status: "ACTIVE" }, orderBy: { name: "asc" }, select: { qrToken: true, unitId: true } });
+    return x ? { v: x.qrToken, unitId: x.unitId } : null;
+  });
+  await pick("linkToken", async (unitId) => {
+    const x = await P.posOrderLink.findFirst({ where: { tenantId: QC_TENANT, ...u(unitId), status: "ACTIVE" }, orderBy: { createdAt: "desc" }, select: { token: true, unitId: true } });
+    return x ? { v: x.token, unitId: x.unitId } : null;
+  });
+  await pick("orderToken", async (unitId) => {
+    const x = await P.posOrder.findFirst({ where: { tenantId: QC_TENANT, ...u(unitId), publicToken: { not: null } }, orderBy: { receivedAt: "desc" }, select: { publicToken: true, unitId: true } });
+    return x ? { v: x.publicToken, unitId: x.unitId } : null;
+  });
+  c.tokens.saleId = (await P.posSale.findFirst({ where: { tenantId: QC_TENANT, unitId: BTN.unit.id, status: "PAID", docType: "SALE" }, orderBy: { createdAt: "desc" }, select: { id: true } }).catch(() => null))?.id ?? null;
+  c.tokenUnits.saleId = c.tokens.saleId ? BTN.unit.id : null;
+}
+/** CD-P42-R7: ซากของรอบที่ถูก kill ในสาขา posqc-btn (ของตัวกดเอง) — เครื่องตัวกดที่ถูกถอน · ตัวช่วยพิมพ์ที่ยังไม่ถอน · credentials — คืนก่อนเริ่ม */
+async function healResidue(c: Ctx): Promise<void> {
+  const P = await db();
+  const where = { tenantId: QC_TENANT, unitId: BTN.unit.id };
+  const codes = USERS.filter((x) => x !== "public").map((x) => BTN.device(x));
+  const d = await P.posDevice.updateMany({ where: { ...where, deviceCode: { in: codes }, status: "REVOKED" }, data: { status: "ACTIVE", revokedAt: null } });
+  if (d.count) c.log.push(`ซาก: คืนเครื่องตัวกด ACTIVE ${d.count}`);
+  const saved = c.runStart;
+  c.runStart = new Date(0);
+  try {
+    const keep = c.deviceSnap;
+    c.deviceSnap = [];
+    // ช่องทางเก่าในสาขานี้ไม่ลบย้อนหลัง (อาจเป็นของ fixture/รอบก่อนที่ตั้งใจคง) — ลบเฉพาะที่เกิดในรอบนี้ตอนจบ
+    for (const r of await resetSideEffects(c, "ซากรอบก่อน", { channels: false })) {
+      c.log.push(`${r.label}: ${r.detail}`);
+      if (!r.ok) throw new StepError("กวาดซาก", `${r.label} → ${r.detail}`);
+    }
+    c.deviceSnap = keep;
+  } finally {
+    c.runStart = saved;
+  }
 }
 export function newCtx(T: Any, user: UserKey): Ctx {
   return {
@@ -504,19 +878,32 @@ export function newCtx(T: Any, user: UserKey): Ctx {
     log: [],
     cartProductIds: [],
     tokens: {},
+    tokenUnits: {},
     cleaned: false,
+    runStart: new Date(),
+    unitSnap: null,
+    accountLinkOn: null,
+    deviceSnap: [],
+    staffDiscountCapBp: STAFF_DISCOUNT_CAP_BP_DEFAULT,
   };
 }
 /** ตั้ง fixture ทั้งชุดก่อนเปิดเบราว์เซอร์ (QC5 เท่านั้น) — ล้ม = StepError (ตัวกดหยุด · เก็บกวาดสิ่งที่ทำไปแล้ว) */
 export async function ensureFixtures(c: Ctx, user: UserKey): Promise<void> {
   assertWritable(c.T);
-  await rememberSettings(c);
+  await rememberSettings(c, user !== "public");
   if (user !== "public") {
     // หน้าสาธารณะไม่ใช้สาขา/เครื่อง/กะ — public เขียนเฉพาะ marker ของค่าตั้ง
     await ensureUnitAndLinks(c);
+    await rememberUnitSettings(c); // CD-P42-R7: สาขาอาจเพิ่งสร้าง
+    await healResidue(c);
     if (user === "manager" || user === "cashier") await ensurePersona(c, user);
     await ensureDeviceShift(c);
     await findCartProducts(c);
+    const P = await db();
+    c.deviceSnap = (await P.posDevice.findMany({ where: { tenantId: QC_TENANT, unitId: BTN.unit.id, status: "ACTIVE" }, select: { id: true } })).map((d: { id: string }) => d.id);
+    // CD-P42-R6: เพดานส่วนลด STAFF จริงของร้าน (ค่าที่ตัวกดพิมพ์เองไม่เกินนี้)
+    const rs = (await import("@/lib/modules/pos/register-shared" as string)) as Any;
+    c.staffDiscountCapBp = Number(rs.posDiscountCaps((await readPos(c.sys)).raw)?.STAFF ?? STAFF_DISCOUNT_CAP_BP_DEFAULT);
   }
   await findPublicTokens(c);
 }
@@ -533,6 +920,12 @@ export async function cleanupFixtures(c: Ctx): Promise<void> {
       c.restores.push({ label, ok: false, detail: e instanceof Error ? e.message.slice(0, 200) : String(e) });
     }
   };
+  // CD-P42-R7: คืนผลข้างเคียงในสาขา posqc-btn ก่อน (เครื่องที่ถูกถอนต้อง ACTIVE ก่อนปิดกะ)
+  try {
+    for (const r of await resetSideEffects(c, "จบรอบ")) c.restores.push(r);
+  } catch (e) {
+    c.restores.push({ label: "จบรอบ · ผลข้างเคียง", ok: false, detail: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+  }
   if (c.shiftId)
     await step("ปิดกะของตัวกด", async () => {
       const sh = (await import("@/lib/modules/pos/shift" as string)) as Any;
@@ -661,7 +1054,8 @@ export async function preflight(T: Any, users: readonly UserKey[] = ["owner", "m
     const codeOk = /^[A-Za-z0-9_-]{8,64}$/.test(code);
     const d = await q(() => P.posDevice.findFirst({ where: { unitId: BTN.unit.id, deviceCode: code }, select: { id: true, status: true, tenantId: true } }));
     const exists = d && d !== "ERR";
-    add(`device-${u}`, !codeOk || (exists && (d as Any).status === "REVOKED") ? "block" : exists ? "ok" : Number(active === "ERR" ? 0 : active) >= limit ? "block" : "would-create", `${code} ${exists ? `status ${(d as Any).status}` : `registerDevice (ACTIVE ${active === "ERR" ? "?" : active}/${limit} ของสาขา)`}${codeOk ? "" : " · รหัสผิดรูป"}`);
+    // CD-P42-R7: เครื่องตัวกดที่ถูกถอน (ซาก 307 ของรอบที่ถูก kill) = fixture คืน ACTIVE ก่อนเริ่ม (warn ไม่ขวาง)
+    add(`device-${u}`, !codeOk ? "block" : exists && (d as Any).status === "REVOKED" ? "warn" : exists ? "ok" : Number(active === "ERR" ? 0 : active) >= limit ? "block" : "would-create", `${code} ${exists ? `status ${(d as Any).status}${(d as Any).status === "REVOKED" ? " (ซาก — fixture คืน ACTIVE)" : ""}` : `registerDevice (ACTIVE ${active === "ERR" ? "?" : active}/${limit} ของสาขา)`}${codeOk ? "" : " · รหัสผิดรูป"}`);
     const pers = personaOf(T, u)!;
     const pin = await q(() => P.posStaffPin.findUnique({ where: { unitId_userId: { unitId: BTN.unit.id, userId: pers.userId } }, select: { id: true, lockedUntil: true } }));
     add(`pin-${u}`, pin && pin !== "ERR" ? "ok" : "would-create", pin && pin !== "ERR" ? `มีแถว PIN (จำแล้วคืนค่าใน finally) lockedUntil ${(pin as Any).lockedUntil ?? "-"}` : `setStaffPin ${pers.userId} (owner actor · สุ่ม 6 หลัก · ไม่พิมพ์ค่า)`);
@@ -697,14 +1091,20 @@ export async function preflight(T: Any, users: readonly UserKey[] = ["owner", "m
     add(`public-${k}`, n !== "ERR" && Number(n) > 0 ? "ok" : "missing", `${n === "ERR" ? "?" : n} แถว (อ่านอย่างเดียว · ไม่มี = skip(needs-fixture))`);
   }
   // ภายนอก: กดแถว external ไม่เกิดอยู่แล้ว แต่ผลข้างเคียงผ่าน outbox ของแถวปกติ (ขาย → ส่ง LINE/webhook) ต้องปิด
-  const ext: [string, () => Promise<number>][] = [
-    ["WebhookEndpoint active", () => P.webhookEndpoint.count({ where: { tenantId: T.tenantId, active: true } })],
-    ["PosPrintAgent not revoked", () => P.posPrintAgent.count({ where: { tenantId: T.tenantId, revokedAt: null } })],
-    ["PosIntegrationCredential COMPLETE", () => P.posIntegrationCredential.count({ where: { tenantId: T.tenantId, status: "COMPLETE" } })],
+  // CD-P42-R7: นับนอกสาขา posqc-btn (ของจริงของร้าน = ขวาง) · ในสาขา posqc-btn = ซากของตัวกดเอง (fixture ถอน/ลบก่อนเริ่ม = warn)
+  const notBtn = { unitId: { not: BTN.unit.id } };
+  const ext: [string, () => Promise<number>, (() => Promise<number>) | null][] = [
+    ["WebhookEndpoint active", () => P.webhookEndpoint.count({ where: { tenantId: T.tenantId, active: true } }), null],
+    ["PosPrintAgent not revoked", () => P.posPrintAgent.count({ where: { tenantId: T.tenantId, revokedAt: null, ...notBtn } }), () => P.posPrintAgent.count({ where: { tenantId: T.tenantId, revokedAt: null, unitId: BTN.unit.id } })],
+    ["PosIntegrationCredential COMPLETE", () => P.posIntegrationCredential.count({ where: { tenantId: T.tenantId, status: "COMPLETE", ...notBtn } }), () => P.posIntegrationCredential.count({ where: { tenantId: T.tenantId, status: "COMPLETE", unitId: BTN.unit.id } })],
   ];
-  for (const [k, f] of ext) {
+  for (const [k, f, fb] of ext) {
     const n = await q(f);
-    add(`external-${k}`, n === "ERR" ? "warn" : Number(n) > 0 ? "block" : "ok", `${n === "ERR" ? "?" : n} (> 0 = ตัวกดไม่เริ่ม — ปิดก่อน)`);
+    add(`external-${k}`, n === "ERR" ? "warn" : Number(n) > 0 ? "block" : "ok", `${n === "ERR" ? "?" : n}${fb ? " นอกสาขา posqc-btn" : ""} (> 0 = ตัวกดไม่เริ่ม — ปิดก่อน)`);
+    if (fb) {
+      const m = await q(fb);
+      if (m !== "ERR" && Number(m) > 0) add(`residue-${k}`, "warn", `${m} ในสาขา ${BTN.unit.id} (ซากของตัวกด — fixture ถอน/ลบก่อนเริ่ม · CD-P42-R7)`);
+    }
   }
   return out;
 }
