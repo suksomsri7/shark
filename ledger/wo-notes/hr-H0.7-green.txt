@@ -1,0 +1,222 @@
+# qc-hr-h0.7 on wip/pos-hr-h0.7 (code = fa007b53, identical working tree at run time) · 2026-10-22T12:26:54Z
+# run 1: bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h0.7.mts  → exit 1 (56/57 · only S1.7 — builder dispute D-1, see hr-H0.7.md §9)
+[env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h0.7] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+── [S7/S6] statics ──
+  ✅ [H0.7-S7.1] [static] migration prisma/migrations/20261203000000_hr_link_unique_requester = exactly 3 statements (2 ADD COLUMN TEXT + partial unique index)
+  ✅ [H0.7-S7.2] [static] hr.prisma: HrEmployee.linkApprovedById String? · HrLeave.filedById String?
+  ✅ [H0.7-S7.4] [static] payroll-rules.ts byte-identical (sha256 of base)
+  ✅ [H0.7-S7.5] [static] reader signatures unchanged (employeeOfUser · isOnLeave · payrollEmployeeOfUser · activeLinkedUserIds) + still exported by hr/index.ts
+  ✅ [H0.7-S7.6] [static] cancelLeave + cancelLeaveAction exist · no raw e.message in requestLeave / cancelLeave / their actions
+  ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
+  ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
+  ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
+(node:1920744) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+── [S1] requester = user id · self-binding ──
+  ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
+  ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
+  ✅ [H0.7-S1.3] [action] manager files for staff C (unlinked) ⇒ requestedById = manager · filedById = manager
+  ✅ [H0.7-S1.4] [action] 🔴 staff A posts employeeId of staff B ⇒ ignored: no leave of B · the new leave is A's own (filedById null)
+  ✅ [H0.7-S1.5] [action] member with hr.leave.request but no employee ⇒ fixed Thai refusal · 0 leaves
+  ✅ [H0.7-S1.6] [action] 🔴 manager posts employeeId of another tenant / another HR system ⇒ Thai not-found text · 0 leaves
+  ❌ [H0.7-S1.7] [service] requestLeave for unlinked C without actorUserId ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves — expected ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน | actual "∅ no refusal" Δleaves=1
+  ✅ [H0.7-S1.8] [action] STAFF holding hr.leave.decide files for C ⇒ allowed · requestedById = filedById = that user
+── [S2] owner's own leave ──
+  ✅ [H0.7-S2.1] [action] owner files own leave ⇒ APPROVED · decidedById null · no ApprovalRequest
+  ✅ [H0.7-S2.2] [db] exactly one audit hr.leave.owner_auto for it · payload carries leaveId (ids only)
+  ✅ [H0.7-S2.3] [service] availability: isOnLeave(owner, a day inside) = true · isAvailable(owner employee) = false
+  ✅ [H0.7-S2.4] [action+service] manager's own leave stays PENDING in the chain · decideLeave / approval.decide by the manager ⇒ existing self-decision texts
+  ✅ [H0.7-S2.5] [action] manager files on behalf of the owner ⇒ same auto path (APPROVED · no request) · filedById = manager
+  ✅ [H0.7-S2.6] [service] no OWNER self-approval: a (legacy) PENDING leave of the owner decided by the owner ⇒ self-decision text · unchanged
+── [S3] cancel my leave ──
+  ✅ [H0.7-S3.1] [service] staff A cancels own PENDING leave ⇒ HrLeave CANCELLED · ApprovalRequest CANCELLED (core) · one audit hr.leave.cancel
+  ✅ [H0.7-S3.2] [service] 🔴 staff B cancels A's PENDING leave ⇒ Thai refusal · leave + request unchanged
+  ✅ [H0.7-S3.3] [service] A cannot cancel a chain-APPROVED leave ⇒ refusal · stays APPROVED / request APPROVED
+  ✅ [H0.7-S3.4] [service] owner cancels own future owner-auto leave ⇒ CANCELLED · own past owner-auto leave ⇒ refused, stays APPROVED
+── [S4] link 1↔1 + linkApprovedById ──
+  ✅ [H0.7-S4.1] [staff] payroll viewer links user X → employee P (salary profile) ⇒ ok · linkedUserId = X · linkApprovedById = viewer
+  ✅ [H0.7-S4.2] [staff] 🔴 manager (no hr.payroll.read) links an employee with salary profile ⇒ "พนักงานคนนี้มีข้อมูลเงินเดือน — ให้ผู้ดูแลเงินเดือนเป็นคนผูกบัญชี" · no link
+  ✅ [H0.7-S4.3] [staff] manager links user Y → employee Q (no salary profile) ⇒ ok · linkApprovedById = manager
+  ✅ [H0.7-S4.4] [staff+db] 🔴 X → second employee R ⇒ Thai refusal without P's name · DB probe (raw updateMany in a rolled-back tx) fails with unique violation
+  ✅ [H0.7-X4.5] [staff] two concurrent links of ONE account to TWO employees × 3 rounds ⇒ exactly one ok each round · 1 employee linked
+  ✅ [H0.7-S4.6] [staff] unlink (revokeStaffAccess — ORACLE-EDIT Q-C) clears linkedUserId AND linkApprovedById · audit hr.employee.link unlinked
+  ✅ [H0.7-S4.7] [db] audit hr.employee.link {employeeId, userId, approvedById} for S4.1 — ids only
+  ✅ [H0.7-S4.8] [db] QC4 has partial unique index HrEmployee_tenantId_linkedUserId_key (UNIQUE · WHERE linkedUserId IS NOT NULL)
+  ✅ [H0.7-X7.1] [staff] two different accounts → ONE employee concurrently × 3 ⇒ exactly one ok · employee linked to the winner
+  ✅ [H0.7-X7.2] [db] 🔴 bypass race: raw UPDATEs on 2 connections linking one user to 2 employees × 3 ⇒ exactly one commits
+── [S6] plan steps ──
+  ✅ [H0.7-S6.3] [plan] forged plan with hr_decide_leave ⇒ FAILED · R5.4 text · leave unchanged · createPlan refuses it
+  ✅ [H0.7-S6.2] [plan] leave-request kind in a plan (only if such a kind exists) confirmed by A ⇒ A's leave · requestedById = A · filedById null (N/A when no kind)
+── [X8] privacy ──
+  ✅ [H0.7-X8.1] [db] audits hr.leave.owner_auto · hr.leave.cancel · hr.employee.link exist and carry no names / e-mails
+  ✅ [H0.7-X8.2] [texts] refusals (S1.5 S1.6 S3.2 S4.2 S4.4) are Thai, carry no other person's name, no error internals
+  ✅ [H0.7-X8.3] [dto] leaveItemsForViewer: staff keys unchanged and no filer name · manager sees "ยื่นโดย <manager name>" on S1.3's leave
+── [X9] cancelLeaveAction viewer matrix ──
+  ✅ [H0.7-X9.1] [action] cancelLeaveAction by OWNER on A's PENDING leave ⇒ refused · unchanged
+  ✅ [H0.7-X9.2] [action] … by payroll viewer ⇒ refused · unchanged
+  ✅ [H0.7-X9.3] [action] … by manager without payroll ⇒ refused · unchanged
+  ✅ [H0.7-X9.4] [action] … by staff with HR keys (request/read/decide) ⇒ refused · unchanged
+  ✅ [H0.7-X9.5] [action] … by plain member ⇒ refused · unchanged
+  ✅ [H0.7-X9.6] [action] … by a member of another tenant ⇒ refused · unchanged
+  ✅ [H0.7-X9.7] [action] … by A herself (the requester) ⇒ CANCELLED · request CANCELLED
+── [S5/X6] data fix script ──
+  ✅ [H0.7-S5.1] [script] dry-run (--tenant) changes nothing · reports 2 fixable / 1 without linked user (that row's id listed)
+  ✅ [H0.7-S5.2] [script] --apply ⇒ the 2 rows get the linked user id · the unlinked row untouched and listed
+  ✅ [H0.7-S5.3] [script] second --apply ⇒ 0 rows changed (state identical)
+  ✅ [H0.7-S5.4] [script] other tenant's legacy row untouched (and the script ran)
+  ✅ [H0.7-X6.1] [script] replay: dry-run after apply reports 0 fixable (1 unlinked) · no change
+  ✅ [H0.7-X6.2] [script] two parallel --apply on 2 fresh legacy rows ⇒ both exit 0 · each row fixed once
+  ✅ [H0.7-S5.5] [script] output carries no names / e-mails / other tenant ids (and the script ran)
+  ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
+RESIDUE none (tenants=3 users=27)
+  ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
+===== qc-hr-h0.7 ===== passed 56/57 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"],"findings":[{"id":"H0.7-S1.7","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+
+# run 2: same command (forced) → exit 1
+[env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h0.7] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+── [S7/S6] statics ──
+  ✅ [H0.7-S7.1] [static] migration prisma/migrations/20261203000000_hr_link_unique_requester = exactly 3 statements (2 ADD COLUMN TEXT + partial unique index)
+  ✅ [H0.7-S7.2] [static] hr.prisma: HrEmployee.linkApprovedById String? · HrLeave.filedById String?
+  ✅ [H0.7-S7.4] [static] payroll-rules.ts byte-identical (sha256 of base)
+  ✅ [H0.7-S7.5] [static] reader signatures unchanged (employeeOfUser · isOnLeave · payrollEmployeeOfUser · activeLinkedUserIds) + still exported by hr/index.ts
+  ✅ [H0.7-S7.6] [static] cancelLeave + cancelLeaveAction exist · no raw e.message in requestLeave / cancelLeave / their actions
+  ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
+  ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
+  ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
+(node:1989904) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+── [S1] requester = user id · self-binding ──
+  ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
+  ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
+  ✅ [H0.7-S1.3] [action] manager files for staff C (unlinked) ⇒ requestedById = manager · filedById = manager
+  ✅ [H0.7-S1.4] [action] 🔴 staff A posts employeeId of staff B ⇒ ignored: no leave of B · the new leave is A's own (filedById null)
+  ✅ [H0.7-S1.5] [action] member with hr.leave.request but no employee ⇒ fixed Thai refusal · 0 leaves
+  ✅ [H0.7-S1.6] [action] 🔴 manager posts employeeId of another tenant / another HR system ⇒ Thai not-found text · 0 leaves
+  ❌ [H0.7-S1.7] [service] requestLeave for unlinked C without actorUserId ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves — expected ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน | actual "∅ no refusal" Δleaves=1
+  ✅ [H0.7-S1.8] [action] STAFF holding hr.leave.decide files for C ⇒ allowed · requestedById = filedById = that user
+── [S2] owner's own leave ──
+  ✅ [H0.7-S2.1] [action] owner files own leave ⇒ APPROVED · decidedById null · no ApprovalRequest
+  ✅ [H0.7-S2.2] [db] exactly one audit hr.leave.owner_auto for it · payload carries leaveId (ids only)
+  ✅ [H0.7-S2.3] [service] availability: isOnLeave(owner, a day inside) = true · isAvailable(owner employee) = false
+  ✅ [H0.7-S2.4] [action+service] manager's own leave stays PENDING in the chain · decideLeave / approval.decide by the manager ⇒ existing self-decision texts
+  ✅ [H0.7-S2.5] [action] manager files on behalf of the owner ⇒ same auto path (APPROVED · no request) · filedById = manager
+  ✅ [H0.7-S2.6] [service] no OWNER self-approval: a (legacy) PENDING leave of the owner decided by the owner ⇒ self-decision text · unchanged
+── [S3] cancel my leave ──
+  ✅ [H0.7-S3.1] [service] staff A cancels own PENDING leave ⇒ HrLeave CANCELLED · ApprovalRequest CANCELLED (core) · one audit hr.leave.cancel
+  ✅ [H0.7-S3.2] [service] 🔴 staff B cancels A's PENDING leave ⇒ Thai refusal · leave + request unchanged
+  ✅ [H0.7-S3.3] [service] A cannot cancel a chain-APPROVED leave ⇒ refusal · stays APPROVED / request APPROVED
+  ✅ [H0.7-S3.4] [service] owner cancels own future owner-auto leave ⇒ CANCELLED · own past owner-auto leave ⇒ refused, stays APPROVED
+── [S4] link 1↔1 + linkApprovedById ──
+  ✅ [H0.7-S4.1] [staff] payroll viewer links user X → employee P (salary profile) ⇒ ok · linkedUserId = X · linkApprovedById = viewer
+  ✅ [H0.7-S4.2] [staff] 🔴 manager (no hr.payroll.read) links an employee with salary profile ⇒ "พนักงานคนนี้มีข้อมูลเงินเดือน — ให้ผู้ดูแลเงินเดือนเป็นคนผูกบัญชี" · no link
+  ✅ [H0.7-S4.3] [staff] manager links user Y → employee Q (no salary profile) ⇒ ok · linkApprovedById = manager
+  ✅ [H0.7-S4.4] [staff+db] 🔴 X → second employee R ⇒ Thai refusal without P's name · DB probe (raw updateMany in a rolled-back tx) fails with unique violation
+  ✅ [H0.7-X4.5] [staff] two concurrent links of ONE account to TWO employees × 3 rounds ⇒ exactly one ok each round · 1 employee linked
+  ✅ [H0.7-S4.6] [staff] unlink (revokeStaffAccess — ORACLE-EDIT Q-C) clears linkedUserId AND linkApprovedById · audit hr.employee.link unlinked
+  ✅ [H0.7-S4.7] [db] audit hr.employee.link {employeeId, userId, approvedById} for S4.1 — ids only
+  ✅ [H0.7-S4.8] [db] QC4 has partial unique index HrEmployee_tenantId_linkedUserId_key (UNIQUE · WHERE linkedUserId IS NOT NULL)
+  ✅ [H0.7-X7.1] [staff] two different accounts → ONE employee concurrently × 3 ⇒ exactly one ok · employee linked to the winner
+  ✅ [H0.7-X7.2] [db] 🔴 bypass race: raw UPDATEs on 2 connections linking one user to 2 employees × 3 ⇒ exactly one commits
+── [S6] plan steps ──
+  ✅ [H0.7-S6.3] [plan] forged plan with hr_decide_leave ⇒ FAILED · R5.4 text · leave unchanged · createPlan refuses it
+  ✅ [H0.7-S6.2] [plan] leave-request kind in a plan (only if such a kind exists) confirmed by A ⇒ A's leave · requestedById = A · filedById null (N/A when no kind)
+── [X8] privacy ──
+  ✅ [H0.7-X8.1] [db] audits hr.leave.owner_auto · hr.leave.cancel · hr.employee.link exist and carry no names / e-mails
+  ✅ [H0.7-X8.2] [texts] refusals (S1.5 S1.6 S3.2 S4.2 S4.4) are Thai, carry no other person's name, no error internals
+  ✅ [H0.7-X8.3] [dto] leaveItemsForViewer: staff keys unchanged and no filer name · manager sees "ยื่นโดย <manager name>" on S1.3's leave
+── [X9] cancelLeaveAction viewer matrix ──
+  ✅ [H0.7-X9.1] [action] cancelLeaveAction by OWNER on A's PENDING leave ⇒ refused · unchanged
+  ✅ [H0.7-X9.2] [action] … by payroll viewer ⇒ refused · unchanged
+  ✅ [H0.7-X9.3] [action] … by manager without payroll ⇒ refused · unchanged
+  ✅ [H0.7-X9.4] [action] … by staff with HR keys (request/read/decide) ⇒ refused · unchanged
+  ✅ [H0.7-X9.5] [action] … by plain member ⇒ refused · unchanged
+  ✅ [H0.7-X9.6] [action] … by a member of another tenant ⇒ refused · unchanged
+  ✅ [H0.7-X9.7] [action] … by A herself (the requester) ⇒ CANCELLED · request CANCELLED
+── [S5/X6] data fix script ──
+  ✅ [H0.7-S5.1] [script] dry-run (--tenant) changes nothing · reports 2 fixable / 1 without linked user (that row's id listed)
+  ✅ [H0.7-S5.2] [script] --apply ⇒ the 2 rows get the linked user id · the unlinked row untouched and listed
+  ✅ [H0.7-S5.3] [script] second --apply ⇒ 0 rows changed (state identical)
+  ✅ [H0.7-S5.4] [script] other tenant's legacy row untouched (and the script ran)
+  ✅ [H0.7-X6.1] [script] replay: dry-run after apply reports 0 fixable (1 unlinked) · no change
+  ✅ [H0.7-X6.2] [script] two parallel --apply on 2 fresh legacy rows ⇒ both exit 0 · each row fixed once
+  ✅ [H0.7-S5.5] [script] output carries no names / e-mails / other tenant ids (and the script ran)
+  ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
+RESIDUE none (tenants=3 users=27)
+  ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
+===== qc-hr-h0.7 ===== passed 56/57 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"],"findings":[{"id":"H0.7-S1.7","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+
+# run 3: unforced (no QC_FORCE) → exit 1
+[env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h0.7] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+── [S7/S6] statics ──
+  ✅ [H0.7-S7.1] [static] migration prisma/migrations/20261203000000_hr_link_unique_requester = exactly 3 statements (2 ADD COLUMN TEXT + partial unique index)
+  ✅ [H0.7-S7.2] [static] hr.prisma: HrEmployee.linkApprovedById String? · HrLeave.filedById String?
+  ✅ [H0.7-S7.4] [static] payroll-rules.ts byte-identical (sha256 of base)
+  ✅ [H0.7-S7.5] [static] reader signatures unchanged (employeeOfUser · isOnLeave · payrollEmployeeOfUser · activeLinkedUserIds) + still exported by hr/index.ts
+  ✅ [H0.7-S7.6] [static] cancelLeave + cancelLeaveAction exist · no raw e.message in requestLeave / cancelLeave / their actions
+  ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
+  ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
+  ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
+(node:1991350) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+── [S1] requester = user id · self-binding ──
+  ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
+  ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
+  ✅ [H0.7-S1.3] [action] manager files for staff C (unlinked) ⇒ requestedById = manager · filedById = manager
+  ✅ [H0.7-S1.4] [action] 🔴 staff A posts employeeId of staff B ⇒ ignored: no leave of B · the new leave is A's own (filedById null)
+  ✅ [H0.7-S1.5] [action] member with hr.leave.request but no employee ⇒ fixed Thai refusal · 0 leaves
+  ✅ [H0.7-S1.6] [action] 🔴 manager posts employeeId of another tenant / another HR system ⇒ Thai not-found text · 0 leaves
+  ❌ [H0.7-S1.7] [service] requestLeave for unlinked C without actorUserId ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves — expected ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน | actual "∅ no refusal" Δleaves=1
+  ✅ [H0.7-S1.8] [action] STAFF holding hr.leave.decide files for C ⇒ allowed · requestedById = filedById = that user
+── [S2] owner's own leave ──
+  ✅ [H0.7-S2.1] [action] owner files own leave ⇒ APPROVED · decidedById null · no ApprovalRequest
+  ✅ [H0.7-S2.2] [db] exactly one audit hr.leave.owner_auto for it · payload carries leaveId (ids only)
+  ✅ [H0.7-S2.3] [service] availability: isOnLeave(owner, a day inside) = true · isAvailable(owner employee) = false
+  ✅ [H0.7-S2.4] [action+service] manager's own leave stays PENDING in the chain · decideLeave / approval.decide by the manager ⇒ existing self-decision texts
+  ✅ [H0.7-S2.5] [action] manager files on behalf of the owner ⇒ same auto path (APPROVED · no request) · filedById = manager
+  ✅ [H0.7-S2.6] [service] no OWNER self-approval: a (legacy) PENDING leave of the owner decided by the owner ⇒ self-decision text · unchanged
+── [S3] cancel my leave ──
+  ✅ [H0.7-S3.1] [service] staff A cancels own PENDING leave ⇒ HrLeave CANCELLED · ApprovalRequest CANCELLED (core) · one audit hr.leave.cancel
+  ✅ [H0.7-S3.2] [service] 🔴 staff B cancels A's PENDING leave ⇒ Thai refusal · leave + request unchanged
+  ✅ [H0.7-S3.3] [service] A cannot cancel a chain-APPROVED leave ⇒ refusal · stays APPROVED / request APPROVED
+  ✅ [H0.7-S3.4] [service] owner cancels own future owner-auto leave ⇒ CANCELLED · own past owner-auto leave ⇒ refused, stays APPROVED
+── [S4] link 1↔1 + linkApprovedById ──
+  ✅ [H0.7-S4.1] [staff] payroll viewer links user X → employee P (salary profile) ⇒ ok · linkedUserId = X · linkApprovedById = viewer
+  ✅ [H0.7-S4.2] [staff] 🔴 manager (no hr.payroll.read) links an employee with salary profile ⇒ "พนักงานคนนี้มีข้อมูลเงินเดือน — ให้ผู้ดูแลเงินเดือนเป็นคนผูกบัญชี" · no link
+  ✅ [H0.7-S4.3] [staff] manager links user Y → employee Q (no salary profile) ⇒ ok · linkApprovedById = manager
+  ✅ [H0.7-S4.4] [staff+db] 🔴 X → second employee R ⇒ Thai refusal without P's name · DB probe (raw updateMany in a rolled-back tx) fails with unique violation
+  ✅ [H0.7-X4.5] [staff] two concurrent links of ONE account to TWO employees × 3 rounds ⇒ exactly one ok each round · 1 employee linked
+  ✅ [H0.7-S4.6] [staff] unlink (revokeStaffAccess — ORACLE-EDIT Q-C) clears linkedUserId AND linkApprovedById · audit hr.employee.link unlinked
+  ✅ [H0.7-S4.7] [db] audit hr.employee.link {employeeId, userId, approvedById} for S4.1 — ids only
+  ✅ [H0.7-S4.8] [db] QC4 has partial unique index HrEmployee_tenantId_linkedUserId_key (UNIQUE · WHERE linkedUserId IS NOT NULL)
+  ✅ [H0.7-X7.1] [staff] two different accounts → ONE employee concurrently × 3 ⇒ exactly one ok · employee linked to the winner
+  ✅ [H0.7-X7.2] [db] 🔴 bypass race: raw UPDATEs on 2 connections linking one user to 2 employees × 3 ⇒ exactly one commits
+── [S6] plan steps ──
+  ✅ [H0.7-S6.3] [plan] forged plan with hr_decide_leave ⇒ FAILED · R5.4 text · leave unchanged · createPlan refuses it
+  ✅ [H0.7-S6.2] [plan] leave-request kind in a plan (only if such a kind exists) confirmed by A ⇒ A's leave · requestedById = A · filedById null (N/A when no kind)
+── [X8] privacy ──
+  ✅ [H0.7-X8.1] [db] audits hr.leave.owner_auto · hr.leave.cancel · hr.employee.link exist and carry no names / e-mails
+  ✅ [H0.7-X8.2] [texts] refusals (S1.5 S1.6 S3.2 S4.2 S4.4) are Thai, carry no other person's name, no error internals
+  ✅ [H0.7-X8.3] [dto] leaveItemsForViewer: staff keys unchanged and no filer name · manager sees "ยื่นโดย <manager name>" on S1.3's leave
+── [X9] cancelLeaveAction viewer matrix ──
+  ✅ [H0.7-X9.1] [action] cancelLeaveAction by OWNER on A's PENDING leave ⇒ refused · unchanged
+  ✅ [H0.7-X9.2] [action] … by payroll viewer ⇒ refused · unchanged
+  ✅ [H0.7-X9.3] [action] … by manager without payroll ⇒ refused · unchanged
+  ✅ [H0.7-X9.4] [action] … by staff with HR keys (request/read/decide) ⇒ refused · unchanged
+  ✅ [H0.7-X9.5] [action] … by plain member ⇒ refused · unchanged
+  ✅ [H0.7-X9.6] [action] … by a member of another tenant ⇒ refused · unchanged
+  ✅ [H0.7-X9.7] [action] … by A herself (the requester) ⇒ CANCELLED · request CANCELLED
+── [S5/X6] data fix script ──
+  ✅ [H0.7-S5.1] [script] dry-run (--tenant) changes nothing · reports 2 fixable / 1 without linked user (that row's id listed)
+  ✅ [H0.7-S5.2] [script] --apply ⇒ the 2 rows get the linked user id · the unlinked row untouched and listed
+  ✅ [H0.7-S5.3] [script] second --apply ⇒ 0 rows changed (state identical)
+  ✅ [H0.7-S5.4] [script] other tenant's legacy row untouched (and the script ran)
+  ✅ [H0.7-X6.1] [script] replay: dry-run after apply reports 0 fixable (1 unlinked) · no change
+  ✅ [H0.7-X6.2] [script] two parallel --apply on 2 fresh legacy rows ⇒ both exit 0 · each row fixed once
+  ✅ [H0.7-S5.5] [script] output carries no names / e-mails / other tenant ids (and the script ran)
+  ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
+RESIDUE none (tenants=3 users=27)
+  ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
+===== qc-hr-h0.7 ===== passed 56/57
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"],"findings":[{"id":"H0.7-S1.7","sev":"MAJOR"}],"skipped":false,"forced":false,"crashed":false,"missing":[]}

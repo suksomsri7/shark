@@ -1,8 +1,8 @@
 # WO H0.7 — Hotfix residuals: leave requester = user id (+ data fix) · owner's own leave · cancel my leave · `linkedUserId` 1↔1 + `linkApprovedById` · plan steps carry the confirmer · self-binding of `requestLeaveAction`
 
-> RUN "HR V2" · worktree `/root/projects/shark-hr-b` · branch `wip/pos-hr-h0.7-oracle` cut from `session/hr` @392bf457 (brief) ⊇ 527c155f · 22 Oct 2026 · controller: Fable · oracle writer: Opus (this file §0–§1, §4, §9, §11 oracle part) · builder: tbd
+> RUN "HR V2" · worktree `/root/projects/shark-hr-b` · branch `wip/pos-hr-h0.7-oracle` cut from `session/hr` @392bf457 (brief) ⊇ 527c155f · 22 Oct 2026 · controller: Fable · oracle writer: Opus (this file §0–§1, §4, §9, §11 oracle part) · builder: Opus (sections B0–B11 below, branch `wip/pos-hr-h0.7`)
 > Contract: brief `ledger/hr-briefs/hr-brief-H0.7.md` (§1 facts · §2 R1–R10 · §3 oracle · §6 Q1–Q3) + `hr-brief-COMMON.md` · HF-HR-0 rounds 4–5 (R4.1a · R4.3 · R4.7 · R5.4)
-> Oracle: `scripts/qc-hr-h0.7.mts` (57 checks incl. Z1 · commit `test(hr): H0.7 oracle …` · **edited after commit: no**) · red run `ledger/wo-notes/hr-H0.7-red.txt` · green run `hr-H0.7-green.txt` (builder)
+> Oracle: `scripts/qc-hr-h0.7.mts` (57 checks incl. Z1 · commit `test(hr): H0.7 oracle …` 564a5900 · **edited after commit: yes — ORACLE-EDIT S4.6 (pre-approved, see B9)**) · red run `ledger/wo-notes/hr-H0.7-red.txt` · green run `hr-H0.7-green.txt` (builder)
 > DB: **QC4 only** — `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h0.7.mts`
 
 ## 0. Checkpoint
@@ -103,3 +103,119 @@ Green on base = 10 (S2.4 · S2.6 · X4.5 · X7.1 · S6.2(N/A) · S6.3 · S7.4 ·
 - `finally` sweeps every tenant-scoped table of the 3 tenants (2 passes) + users by id and by e-mail prefix `qc-hr-h0.7-<stamp>-` + sessions + ChatRateBucket keys containing our ids; residue line checks HrLeave/HrEmployee/HrSalaryProfile/ApprovalRequest/ApprovalPolicy/AuditLog/OutboxEvent/AiPlan/AiConversation/Membership/AppSystem per tenant, users, sessions, tenants by prefix, rate rows.
 - Base run: `RESIDUE none (tenants=3 users=27)` · Z1 ✅. **Temp data left: none.**
 - Commands run (oracle writer): `bash scripts/iso.sh pnpm exec prisma generate` · forced run (exit 1, 10/57) · unforced run (exit 0, SKIPPED) — each through `iso.sh` + `qc4.sh` + `with-gate-lock.sh`, foreground, one at a time.
+
+
+---
+# BUILDER (wip/pos-hr-h0.7 · cut from origin/wip/pos-hr-h0.7-oracle 564a5900)
+
+## B0. Checkpoint
+- done: migration (QC4 applied) · R2–R10 · ORACLE-EDIT S4.6 · oracle forced ×2 + unforced ×1 = 56/57 (S1.7 = dispute D-1) · regression + seed + fitness both modes all green · notes · green file
+- next (controller): rule D-1 (S1.7) · CONTROLLER-RUN screenshots `visual-hr.mts 0.7` · reviewer + privacy hunter
+- typecheck: NOT run — gate never opened in 90 min (B5)
+
+## B1. Files → R-items (lines on the branch head)
+| file | what | R | hot file? |
+|---|---|---|---|
+| `prisma/schema/hr.prisma` | `HrEmployee.linkApprovedById String?` (+ comment on the partial unique) · `HrLeave.filedById String?` | R1 | — (Mig WO) |
+| `prisma/migrations/20261203000000_hr_link_unique_requester/migration.sql` | exactly 3 statements: 2× `ADD COLUMN … TEXT` + `CREATE UNIQUE INDEX "HrEmployee_tenantId_linkedUserId_key" … WHERE "linkedUserId" IS NOT NULL` (pre-check SQL in the header comment) | R1 | — |
+| `src/lib/modules/hr/service.ts` :465-501 | `RequestLeaveInput.actorUserId?` · `HrLeaveRequestError` · fixed texts · `isTenantOwner` | R2 R4 R10 | — |
+| `src/lib/modules/hr/service.ts` :503-590 | `requestLeave`: employee must be in this HR system (else `LEAVE_EMPLOYEE_NOT_FOUND`) · requester = `linkedUserId ?? actor` · explicit empty actor + unlinked ⇒ `LEAVE_NO_REQUESTER` · `filedById` · owner's own leave ⇒ APPROVED, `decidedById` null, no ApprovalRequest, no outbox, audit `hr.leave.owner_auto` {leaveId, employeeId, status, filedById, note "เจ้าของร้าน — ไม่ต้องผ่านการอนุมัติ"} (Q-A) · chain `requestedById = requester ?? employeeId` (legacy only, D-1) | R2 R4 | — |
+| `src/lib/modules/hr/service.ts` :701-761 | `cancelLeave(ctx, leaveId, { actorUserId })` → `{ok:true}`/`{ok:false,reason}`: PENDING + requester (or legacy employee-id requester's linked user; no chain = linked user or filer) ⇒ `approval.cancelRequest` (core, guarded PENDING→CANCELLED) first, then leave PENDING→CANCELLED guarded · owner-auto APPROVED (no chain, decidedById null, actor = linked OWNER) only when `fromDate` > Bangkok today (`thaiDateKey`) · audit `hr.leave.cancel` {status, requestId, cancelledById} | R5 | — |
+| `src/lib/modules/hr/actions.ts` :270-322 | `requestLeaveAction`: STAFF without `hr.employee.create`/`hr.leave.decide` never reads `employeeId` → `employeeOfUser` (none ⇒ Thai refusal, thrown `HrLeaveRequestError`) · others may post an id (service checks system) · always passes `actorUserId` · new `cancelLeaveAction(formData)` (tenant from session, refusal thrown as Thai `HrLeaveRequestError`) | R3 R5 | — |
+| `src/lib/modules/hr/privacy.ts` :129-146 · `privacy-shared.ts` :93 | `LeaveItemDto.filedBy?` = "ยื่นโดย <User.name>" only for `hr.leave.read` viewers and only on filed-on-behalf leaves · staff keys unchanged | R9 | — |
+| `src/lib/modules/hr/ui.tsx` :313 | history line shows `filedBy` when present | R9 | — |
+| `src/app/app/approvals/page.tsx` :4, :78-95 | "คำขอของฉัน": PENDING HrLeave rows → ConfirmDialog → `cancelLeaveAction` (fields systemId + leaveId) · wrapper `data-testid=hr-leave-cancel-<leaveId>` · trigger `btn-sm min-h-11` (44 px) · other entity types keep `cancelMyRequestAction` | R5 | — |
+| `scripts/hr-ui-inventory.json` | +3 rows `hr-leave-cancel-*` (display) · `-*-trigger` (button) · `-*-sheet` (form → action:cancelLeaveAction) | R5 | — |
+| `src/lib/staff/service.ts` :26, :401, :440-446, :466-474, :589-622 | R6 text (Q-B) · `linkApprovedById: actor` in the guarded link updateMany (DB index = final judge; P2002 ⇒ existing retry ⇒ `otherLink` Thai text) · audit `hr.employee.link` {employeeId, userId, approvedById} · `revokeStaffAccess` one marked hunk: tx clears `linkedUserId`+`linkApprovedById` of the target's rows + membership revoke · audit `{employeeId, userId, approvedById:null, unlinked:true}` per employee (also for an already-revoked membership still linked) | R6 | — |
+| `src/lib/ai/plans.ts` :140-142 | `runKind(…, \`plan-…\`, opts?.userId ?? null)` — existing 6th positional (Q-D) · PLAN_HUMAN_ONLY untouched | R7 | yes (marked) |
+| `scripts/hr-fix-approval-requester.mts` | new · R8 | R8 | — |
+| `scripts/visual-hr.mts` | `SPECS["0.7"]` = `/app/approvals` for owner/manager/staff | X10 | — |
+| `scripts/qc-hr-h0.7.mts` | ORACLE-EDIT S4.6 (B9) | — | — |
+- `ai/proposals.ts` not touched (no new kind; Q-D) · `approval/service.ts` not touched (existing `cancelRequest`) · `payroll-rules.ts` untouched (S7.4) · no outbox event added (Q-E).
+
+## B2. Migration + QC4
+- `prisma migrate diff --from-schema <base prisma/schema> --to-schema prisma/schema --script` = the 2 `ADD COLUMN` statements (index is raw SQL by design) — read ✓.
+- QC4 `_prisma_migrations` checked first: every local `202611*/202612*` folder present except ours; QC4 also has POS folders this branch lacks (2026120x–1219 pos_*) — expected, untouched.
+- pre-check on QC4 (`… GROUP BY "tenantId","linkedUserId" HAVING count(*)>1`) = **0 rows** · columns absent before.
+- applied: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec prisma migrate deploy` → "Applying migration `20261203000000_hr_link_unique_requester`" · exit 0. S4.8/S7.3 green afterwards.
+- `bash scripts/iso.sh pnpm exec prisma generate` (own node_modules).
+
+## B3. Texts (Q-F — fixed Thai, no names, no internals)
+| where | text |
+|---|---|
+| R2 no requester | ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน |
+| R3 STAFF without employee row | บัญชีของคุณยังไม่ได้ผูกกับรายชื่อพนักงาน — ให้ผู้จัดการยื่นใบลาแทน หรือขอให้ผู้ดูแลผูกบัญชีก่อน |
+| R3 employee not in this HR system / tenant | ไม่พบพนักงานคนนี้ในระบบพนักงานนี้ — กรุณารีเฟรชหน้าแล้วเลือกใหม่ |
+| R4 audit note (payload only, Q-A) | เจ้าของร้าน — ไม่ต้องผ่านการอนุมัติ |
+| R5 not found | ไม่พบใบลา หรืออยู่นอกร้านนี้ |
+| R5 not the requester | ยกเลิกได้เฉพาะใบลาที่คุณยื่นเอง |
+| R5 decided | ใบลานี้ตัดสินแล้ว — ยกเลิกเองไม่ได้ หากต้องเปลี่ยน กรุณาติดต่อหัวหน้าหรือเจ้าของกิจการ |
+| R5 owner-auto already started | ใบลานี้ถึงวันลาแล้ว — ยกเลิกย้อนหลังไม่ได้ |
+| R5 no actor | ระบบไม่ทราบผู้ยกเลิกใบลานี้ — กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง |
+| R5 REJECTED/CANCELLED (own) | ใบลานี้ไม่อนุมัติแล้ว / ใบลานี้ยกเลิกแล้ว |
+| R5 stale | สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่ (existing) |
+| cancel form incomplete | ข้อมูลใบลาไม่ครบ กรุณาเปิดหน้าใหม่แล้วลองอีกครั้ง |
+| R6 salary profile (Q-B, replaces HF-HR-0 text) | พนักงานคนนี้มีข้อมูลเงินเดือน — ให้ผู้ดูแลเงินเดือนเป็นคนผูกบัญชี |
+| R6 1↔1 | existing HF-HR-0 text "บัญชีนี้ผูกกับพนักงานอีกคนในกิจการนี้อยู่แล้ว (1 บัญชีผูกได้กับพนักงาน 1 คน) — กรุณาใช้อีเมลอื่น" (no names) |
+| UI | ปุ่ม "ยกเลิกใบลา" · "ยกเลิกใบลานี้?" · "ใบลาจะถูกยกเลิกและออกจากสายอนุมัติ — ถ้ายังต้องลา ให้ยื่นใบใหม่" · "ยืนยันยกเลิกใบลา" (inline like the rest of `/app/approvals`, which has no `messages` keys) |
+
+## B4. Results (exit codes)
+| suite | exit | summary |
+|---|---|---|
+| qc-hr-h0.7 forced #1 | 1 | passed 56/57 (QC_FORCE) · ❌ S1.7 only · RESIDUE none |
+| qc-hr-h0.7 forced #2 | 1 | passed 56/57 (QC_FORCE) · ❌ S1.7 only · RESIDUE none |
+| qc-hr-h0.7 unforced | 1 | passed 56/57 · ❌ S1.7 only · RESIDUE none (no longer SKIPs — H0.7 present) |
+| qc-hr-leave-booking | 0 | 14/14 |
+| qc-approval | 0 | 16/16 |
+| qc-approval-wiring | 0 | 7/7 |
+| qc-approval-edit | 0 | 12/12 |
+| qc-hf-hr-privacy | 0 | 194/194 |
+| qc-hr-h0.3 | 0 | 37/37 |
+| qc-hr-h0.1 | 0 | 67/67 |
+| qc-hr-h0.2 | 0 | 58/58 |
+| qc-hr-h0.5 | 0 | 71/71 |
+| qc-hr-h0.6 (QC_H06_BASE=d350c26c…) | 0 | 55/55 |
+| qc-crm-c3.3 | 0 | 90/90 |
+| qc-crm-c0.3 | 0 | 88/88 |
+| seed-hr-qc (alone) | 0 | 23/23 |
+| extra: qc-ai-proposals · qc-ai-tools · qc-hr · qc-hr-attendance · qc-chat-staff-perms | 0 ×5 | 16/16 · 18/18 · 9/9 · 31/31 · 49/49 |
+| fitness (qc4 env / no env) | 0 / 0 | 42/42 · 42/42 |
+| fitness-hr (qc4 env / no env) | 0 / 0 | 5/5 · 5/5 |
+- pre-commit hook (fitness) passed on every commit (no `--no-verify`).
+
+## B5. Typecheck
+- **NOT RUN.** Gate (`free -g` available ≥ 11 GB AND no `iso-*` build/typecheck/tsc unit) checked every 5 min for 90 min (12:24–13:49Z): available 8–10 GB throughout (once 4 GB with one heavy POS unit at 13:04) ⇒ never open ⇒ stopped per the controller's rule. 0 typecheck runs used (budget 2 left). Command for the controller: `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10000M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`.
+- Type risk notes for that run: `prisma generate` done (new columns typed) · `requestLeaveAction` still `Promise<void>` (form action) · `cancelLeaveAction(formData): Promise<void>` matches ConfirmDialog `action` · `RequestLeaveInput.actorUserId` optional ⇒ scripts/*.mts callers unaffected.
+
+## B6. Visual (X10)
+- `scripts/visual-hr.mts` gets `SPECS["0.7"]` (`/app/approvals`, owner/manager/staff). Builder ran `--dry` for the 3 users ⇒ 9 shots planned: `.qc-shots/hr/0.7/approvals-my-requests-{owner,manager,staff}-{1440x900,1024x768,390x844}.png`.
+- Real shots are **CONTROLLER-RUN** (visual-hr header + COMMON §A.8: builders never build/serve). Note: the cancel button only renders for a user with a PENDING leave in an approval chain; HQC seed has no HrLeave policy ⇒ the controller needs a pending chain leave of the shot user (e.g. create a policy + file a leave) or the shots show the empty "คำขอของฉัน" state.
+
+## B7. Prod runbook
+1. Read-only pre-check on prod: `SELECT "tenantId","linkedUserId",count(*) FROM "HrEmployee" WHERE "linkedUserId" IS NOT NULL GROUP BY 1,2 HAVING count(*)>1` → must be 0 rows (HQ29 said 0 on 5 Oct). Non-zero ⇒ stop, owner decides which link stays.
+2. `prisma migrate deploy` (Vercel build runs it before `next build`). Migration is additive + safe with old code.
+3. Deploy code.
+4. Data fix dry-run: `HR_FIX_PROD=1 HR_FIX_ENV_FILE=<prod env file> pnpm exec tsx scripts/hr-fix-approval-requester.mts` (DATABASE_URL must NOT be set in the shell) → counts per tenant + ids of rows whose employee is unlinked.
+5. `… --apply` → second `--apply` must report 0 changed. Unlinked rows stay (listed by request id) — fixed automatically only after the employee is linked and the script is re-run.
+
+## B8. Decisions / debts for the controller
+- **D-1 (dispute · S1.7 red).** R2 + S1.7 want `requestLeave(ctx, {employeeId: <unlinked>, …})` **without** `actorUserId` to be refused. The same call shape (unlinked employee + active HrLeave policy + no actor) is used by the regression oracles the controller listed as must-stay-green: `qc-hf-hr-privacy` (`mkLeave(e2.id …)` in D-8/C-1/A-*/SC-4/AD-1/PL5, `eF2` in F2) and `qc-approval-wiring` AW-2.1–2.3 — they would crash/red (privacy far below 194). No input distinguishes the two. Implemented the HF-HR-0 R4.2 precedent: `actorUserId` **absent** = internal/legacy caller (old behaviour, requester = linked user, else employee id); **present but empty** = refused with the R2 text; every `src` caller passes the real user id (only `requestLeaveAction` reaches `requestLeave`). Requested **ORACLE-EDIT S1.7** (`scripts/qc-hr-h0.7.mts:560`): `await hr.requestLeave(ctxA, { employeeId: E.c, actorUserId: null, type: "SICK", fromDate: "2031-02-10", toDate: "2031-02-10" });` — reason: absent-vs-empty is the house convention (decideLeave R4.2) and is the only way to keep qc-hf-hr-privacy 194/194 + qc-approval-wiring green. Alternative (strict): keep S1.7 and ORACLE-EDIT `qc-hf-hr-privacy` mkLeave/F2 + `qc-approval-wiring` to pass an actor, then flip one line (`legacyCaller`) in requestLeave.
+- Owner's own leave: owner = linked user has an accepted OWNER membership of the tenant (fake user ids in old oracles ⇒ not owner ⇒ chain as before; privacy SC-5/SC-6/AD-3 unchanged).
+- Owner-auto leaves are not in "คำขอของฉัน" (no ApprovalRequest) ⇒ the owner cancels them only through `cancelLeave` (no UI button yet) — debt, small UI WO.
+- `revokeStaffAccess` now unlinks; `restoreStaffAccess` does **not** relink (re-grant needed) — intended (exposure), mention to owner.
+- `requestLeaveAction` / `cancelLeaveAction` refusals are thrown Thai `HrLeaveRequestError` (same pattern as `decideLeaveAction`); form actions show the route error boundary — inline feedback would need useActionState (not in scope).
+- The leave form on the HR page still shows the employee select to everyone; for STAFF the posted value is ignored (server-side) — UI could hide it (debt).
+- R7 changes behaviour for every plan kind that reads `userId` (kanban/member/CRM kinds now get the confirmer instead of null) — intended by C8; qc-ai-proposals/tools green.
+- No outbox events (Q-E).
+- Observation from the oracle writer (staff sees all leaves of the system in `leaveItemsForViewer`) unchanged.
+
+## B9. ORACLE-EDITs applied
+- **S4.6** (pre-approved, Q-C): old = search exported `/unlink/i` function in staff/hr service, call `fn({tenantId, actorUserId, employeeId})`, assert both columns null · new = `staff.revokeStaffAccess({ tenantId, actorUserId: U.viewer.id, membershipId: g43.membershipId })`, assert both columns null **and** an `hr.employee.link` audit `{employeeId: EQ, userId: Y, approvedById: null, unlinked: true}`; registry title updated accordingly. Commit fa007b53.
+- requested, not applied: **S1.7** (D-1 above).
+
+## B10. Who gains / loses access
+- loses: STAFF can no longer file leave for another employee; a manager without `hr.payroll.read` can no longer link an account to an employee with a salary profile (already refused since HF-HR-0, new text); a revoked account loses its employee link (payslip-self access).
+- gains: requester sees own leave requests in "คำขอของฉัน" and can cancel PENDING ones; the owner's own leave needs no approval; managers/HR see "ยื่นโดย <name>".
+
+## B11. Residue
+- every oracle run: `RESIDUE none (tenants=3 users=27)` · Z1 ✅ · QC4 schema now has the H0.7 migration (additive) · seed-hr-qc re-run 23/23 · temp script `scripts/.h07-precheck.mts` deleted (never committed) · nothing of mine running.
