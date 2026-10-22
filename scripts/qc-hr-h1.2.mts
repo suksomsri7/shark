@@ -1512,7 +1512,7 @@ async function runDb(): Promise<void> {
 
   // ═══ S4 uniques under race ═══
   console.log("── [S4] uniques under race (10-way × 3) ──");
-  const race = async (n: number, f: (i: number) => Promise<string>) => Promise.all(Array.from({ length: n }, (_, i) => f(i)));
+  const race = async <R,>(n: number, f: (i: number) => Promise<R>): Promise<R[]> => Promise.all(Array.from({ length: n }, (_, i) => f(i)));
   const tally = (rs: string[]) => {
     const m: Record<string, number> = {};
     for (const r of rs) m[r] = (m[r] ?? 0) + 1;
@@ -1815,7 +1815,7 @@ async function runDb(): Promise<void> {
 }
 
 // S7.5 / S7.6 are evaluated after cleanup (S7.5 needs the HR_DELETE_ORDER pass · S7.6 the whole run)
-let tail: { T: string; qcSnap: () => Promise<string>; qcBefore: string; eXSame: boolean } | null = null;
+let tail = null as { T: string; qcSnap: () => Promise<string>; qcBefore: string; eXSame: boolean } | null;
 
 // ═════════════════════════ cleanup ═════════════════════════
 const NEW_DELETE_ORDER = ["HrShiftSwapRequest", "HrTimeCorrection", "HrOtRequest", "HrLeaveBalanceTxn", "HrRosterEntry", "HrShift", "HrHoliday", "HrLeavePolicy"];
