@@ -1478,7 +1478,7 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-bill-discount",
+        "pos-reg-bill-discount=click",
         "pos-reg-bill-discount-value=5",
         "pos-reg-bill-discount-apply=click",
         "pos-reg-bill-discount-edit=click"
@@ -10583,7 +10583,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-tax-invoice",
-        "pos-taxinv-kind-juristic",
+        "pos-taxinv-kind-juristic=click",
         "pos-taxinv-taxid=0105559012342"
       ],
       "needs": "ร้านออกใบกำกับเต็มรูปได้ (registerStatus.taxInvoiceEligible · POS ผูกสมุดจด VAT)"
@@ -10613,7 +10613,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-tax-invoice",
-        "pos-taxinv-kind-juristic",
+        "pos-taxinv-kind-juristic=click",
         "pos-taxinv-taxid=0105559012342",
         "pos-taxinv-dbd"
       ],
@@ -14510,8 +14510,8 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-prod-*open-*",
-        "pos-prod-price-edit"
+        "pos-prod-*open-*=click",
+        "pos-prod-price-edit=click"
       ]
     },
     {
@@ -14559,8 +14559,8 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-prod-*open-*",
-        "pos-prod-price-edit",
+        "pos-prod-*open-*=click",
+        "pos-prod-price-edit=click",
         "pos-prod-price-*=*"
       ]
     },
@@ -22615,7 +22615,7 @@
       "system": "POS",
       "opener": [
         "pos-prod-*open-*",
-        "pos-prod-price-edit"
+        "pos-prod-price-edit=click"
       ]
     },
     {
@@ -22664,7 +22664,7 @@
       "system": "POS",
       "opener": [
         "pos-prod-*open-*",
-        "pos-prod-price-edit",
+        "pos-prod-price-edit=click",
         "pos-prod-drawer-cell-*-*=*"
       ]
     },
@@ -24055,7 +24055,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu"
       ],
       "needs": "ใบรับเงินมัดจำ (POS_DEPOSIT) ของวันนี้ที่ยังมีคงเหลือ (OPEN)"
@@ -24081,7 +24081,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24109,7 +24109,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24136,7 +24136,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24169,7 +24169,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit",
         "pos-bills-refund-deposit-last4=5678"
@@ -24197,7 +24197,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24224,7 +24224,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24251,7 +24251,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24278,7 +24278,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24306,7 +24306,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit"
       ],
@@ -24343,7 +24343,7 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-bills-filter-deposit",
+        "pos-bills-filter-deposit=click",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit",
         "pos-bills-refund-deposit-reason=ลูกค้ายกเลิกงาน QC"
@@ -25004,7 +25004,8 @@
         "pos-settings-api-scope-pick",
         "pos-settings-api-unit-*=on",
         "pos-settings-api-create-submit"
-      ]
+      ],
+      "needs": "เจ้าของ: ขั้น plain pos-settings-api-scope-pick ถูกข้ามเพราะ pos-settings-api-create-submit เห็นตลอด · ผู้จัดการไม่มีปุ่มนี้ (ApiKeysCard.tsx:369 allUnits) ⇒ =click ใช้ไม่ได้กับผู้จัดการ — opener เดียวใช้ไม่ได้ทั้งสองบทบาท (CD-P41-F4 fix3 · P4.2 ขั้นทางเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -25033,7 +25034,8 @@
         "pos-settings-api-scope-pick",
         "pos-settings-api-unit-*=on",
         "pos-settings-api-create-submit"
-      ]
+      ],
+      "needs": "เจ้าของ: ขั้น plain pos-settings-api-scope-pick ถูกข้ามเพราะ pos-settings-api-create-submit เห็นตลอด · ผู้จัดการไม่มีปุ่มนี้ (ApiKeysCard.tsx:369 allUnits) ⇒ =click ใช้ไม่ได้กับผู้จัดการ — opener เดียวใช้ไม่ได้ทั้งสองบทบาท (CD-P41-F4 fix3 · P4.2 ขั้นทางเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -25062,7 +25064,8 @@
         "pos-settings-api-scope-pick",
         "pos-settings-api-unit-*=on",
         "pos-settings-api-create-submit"
-      ]
+      ],
+      "needs": "เจ้าของ: ขั้น plain pos-settings-api-scope-pick ถูกข้ามเพราะ pos-settings-api-create-submit เห็นตลอด · ผู้จัดการไม่มีปุ่มนี้ (ApiKeysCard.tsx:369 allUnits) ⇒ =click ใช้ไม่ได้กับผู้จัดการ — opener เดียวใช้ไม่ได้ทั้งสองบทบาท (CD-P41-F4 fix3 · P4.2 ขั้นทางเลือก)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
