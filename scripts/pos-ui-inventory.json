@@ -149,7 +149,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "หน้าขายเดิม (settings.pos.registerV2 ไม่ใช่ true) — W29 นอกขอบเขต"
+      "needs": "หน้าขายเดิม (settings.pos.registerV2 ไม่ใช่ true) — W29 นอกขอบเขต",
+      "opener": [
+        "pos-catalog-item=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -1315,7 +1318,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-bill-discount"
+        "pos-reg-bill-discount",
+        "pos-reg-bill-discount-value=10"
       ]
     },
     {
@@ -1425,7 +1429,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-bill-discount"
+        "pos-reg-bill-discount",
+        "pos-reg-bill-discount-value=10"
       ]
     },
     {
@@ -1558,7 +1563,9 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-reg-custom-item"
+        "pos-reg-custom-item",
+        "pos-reg-custom-name=รายการพิเศษ QC",
+        "pos-reg-custom-price=20"
       ]
     },
     {
@@ -1636,7 +1643,9 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-reg-custom-item"
+        "pos-reg-custom-item",
+        "pos-reg-custom-name=รายการพิเศษ QC",
+        "pos-reg-custom-price=20"
       ]
     },
     {
@@ -1684,7 +1693,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด"
+      "needs": "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด",
+      "opener": [
+        "pos-reg-open-price-input=20"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -1734,7 +1746,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด"
+      "needs": "สินค้ายังไม่ตั้งราคา (priceSatang null) ในกริด",
+      "opener": [
+        "pos-reg-open-price-input=20"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -1945,7 +1960,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-pay"
+        "pos-reg-pay",
+        "pos-reg-paydlg-quick-exact=click"
       ],
       "safety": "counter"
     },
@@ -2088,7 +2104,8 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-pay"
+        "pos-reg-pay",
+        "pos-reg-paydlg-quick-exact=click"
       ],
       "safety": "counter"
     },
@@ -2766,7 +2783,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
+      "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด",
+      "opener": [
+        "pos-reg-weigh-grams=250"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -2811,7 +2831,10 @@
       "oracle": "P1.2-W5",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด"
+      "needs": "สินค้าขายตามน้ำหนัก (soldByWeight) ในกริด",
+      "opener": [
+        "pos-reg-weigh-grams=250"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -3506,7 +3529,9 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-shift-closed-all",
-        "pos-shift-recount-*"
+        "pos-shift-recount-*",
+        "pos-shift-recount-counted=100",
+        "pos-shift-recount-note=นับเงินย้อนหลัง QC"
       ],
       "needs": "กะที่ถูกปิดบังคับ (FORCE_CLOSED) ที่ยังไม่นับย้อนหลัง",
       "safety": "money"
@@ -3582,7 +3607,9 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-shift-move-open"
+        "pos-shift-move-open",
+        "pos-shift-move-amount=20",
+        "pos-shift-move-reason=ทอนเงิน QC"
       ],
       "needs": "กะเปิดของเครื่องนี้ (fixture เปิดกะให้เครื่องของตัวกด)",
       "safety": "money"
@@ -4800,6 +4827,8 @@
       "system": "POS",
       "opener": [
         "pos-stock-tab-count",
+        "pos-stock-qty-*=click",
+        "pos-stock-qty-*=5",
         "pos-stock-count-confirm"
       ],
       "needs": "รอบนับ OPEN ของสาขา (เปิดโดย pos-stock-start-submit หรือค้างอยู่แล้ว)"
@@ -6559,7 +6588,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-bills-*-menu",
-        "pos-bills-void-open"
+        "pos-bills-void-open",
+        "pos-bills-void-reason=ลูกค้ายกเลิกบิล QC"
       ],
       "needs": "บิลล่าสุดของวันนี้ PAID ในกะที่ยังเปิด ยังไม่คืนเงิน (can.void)",
       "safety": "money"
@@ -6883,7 +6913,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-bills-*-menu",
-        "pos-bills-refund-open"
+        "pos-bills-refund-open",
+        "pos-bills-refund-line=click"
       ],
       "needs": "ผลคืนเงินไม่แน่ชัด (refundSaleAction ตอบ UNKNOWN)",
       "safety": "counter"
@@ -6938,9 +6969,10 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-bills-*-menu",
-        "pos-bills-refund-open"
+        "pos-bills-refund-open",
+        "pos-bills-refund-line=click"
       ],
-      "needs": "บิลล่าสุดของวันนี้ PAID ที่ยังคืนได้ (can.refund)",
+      "needs": "บิลล่าสุดของวันนี้ PAID ที่ยังคืนได้ (can.refund) · บรรทัดแรกของบิลยังคืนได้ (refundableQty>0 — บรรทัดที่คืนครบแล้ว = ช่องติ๊ก disabled) · จ่ายเงินสด/พร้อมเพย์/โอน (ไม่ใช่บัตรของขวัญ)",
       "safety": "counter"
     },
     {
@@ -8232,7 +8264,10 @@
       "query": "",
       "hiddenFor": [],
       "opener": [
-        "pos-rpub-taxinvoice-open"
+        "pos-rpub-taxinvoice-open",
+        "pos-rpub-taxinvoice-name=บริษัท คิวซี จำกัด",
+        "pos-rpub-taxinvoice-taxid=0105555123450",
+        "pos-rpub-taxinvoice-address=1 ถนนสุขุมวิท กรุงเทพฯ 10110"
       ],
       "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
@@ -8365,7 +8400,10 @@
       "query": "",
       "hiddenFor": [],
       "opener": [
-        "pos-rpub-taxinvoice-open"
+        "pos-rpub-taxinvoice-open",
+        "pos-rpub-taxinvoice-name=บริษัท คิวซี จำกัด",
+        "pos-rpub-taxinvoice-taxid=0105555123450",
+        "pos-rpub-taxinvoice-address=1 ถนนสุขุมวิท กรุงเทพฯ 10110"
       ],
       "needs": "บิลที่ยังขอใบกำกับได้ (taxInvoice AVAILABLE)"
     },
@@ -8583,7 +8621,8 @@
       "query": "",
       "hiddenFor": [],
       "opener": [
-        "pos-rpub-issue-open"
+        "pos-rpub-issue-open",
+        "pos-rpub-issue-message=ยอดในใบเสร็จไม่ตรง ทดสอบ QC"
       ],
       "safety": "external"
     },
@@ -8648,7 +8687,8 @@
       "query": "",
       "hiddenFor": [],
       "opener": [
-        "pos-rpub-issue-open"
+        "pos-rpub-issue-open",
+        "pos-rpub-issue-message=ยอดในใบเสร็จไม่ตรง ทดสอบ QC"
       ],
       "safety": "external"
     },
@@ -8774,7 +8814,8 @@
       "hiddenFor": [],
       "opener": [
         "pos-bills-*-menu",
-        "pos-receipt-send-email"
+        "pos-receipt-send-email",
+        "pos-receipt-send-email-input=qc@example.com"
       ],
       "needs": "บิลล่าสุดของวันนี้ที่ไม่ถูกยกเลิก",
       "safety": "external"
@@ -8826,7 +8867,8 @@
       "hiddenFor": [],
       "opener": [
         "pos-bills-*-menu",
-        "pos-receipt-send-email"
+        "pos-receipt-send-email",
+        "pos-receipt-send-email-input=qc@example.com"
       ],
       "needs": "บิลล่าสุดของวันนี้ที่ไม่ถูกยกเลิก",
       "safety": "external"
@@ -8900,7 +8942,8 @@
       "query": "unit=[unitId]",
       "hiddenFor": [],
       "opener": [
-        "pos-receipt-send-paydone-email"
+        "pos-receipt-send-paydone-email",
+        "pos-receipt-send-paydone-email-input=qc-receipt@example.com"
       ],
       "needs": "จอสำเร็จหลังชำระบิลจริง (PayDone 02b · ต้องขาย 1 บิลก่อน)",
       "safety": "external"
@@ -8975,7 +9018,8 @@
       "query": "unit=[unitId]",
       "hiddenFor": [],
       "opener": [
-        "pos-receipt-send-paydone-email"
+        "pos-receipt-send-paydone-email",
+        "pos-receipt-send-paydone-email-input=qc-receipt@example.com"
       ],
       "needs": "จอสำเร็จหลังชำระบิลจริง (PayDone 02b · ต้องขาย 1 บิลก่อน)",
       "safety": "external"
@@ -9288,7 +9332,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-pay-intent-overpaid",
-      "kind": "form",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -9502,9 +9546,13 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-lock-now-mobile",
-        "pos-lock-now"
+        "pos-lock-now",
+        "pos-lock-key-1=click",
+        "pos-lock-key-2=click",
+        "pos-lock-key-3=click",
+        "pos-lock-key-4=click"
       ],
-      "needs": "PIN 4–5 หลักของพนักงาน (กดแป้นซ้ำหลายครั้ง — opener ซ้ำไม่ได้)"
+      "needs": "PIN ที่ตัวกดรู้ไม่ได้ (สุ่มต่อรอบ) — กด 1-2-3-4 = PIN ผิด ⇒ PosStaffPin.failedCount +1 (ล็อกที่ 5 ครั้ง/15 นาที · staff-pin.ts)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -9829,7 +9877,11 @@
         "pos-reg-bill-discount-percent",
         "pos-reg-bill-discount-value=90",
         "pos-reg-bill-discount-apply",
-        "pos-discount-over-manager=click"
+        "pos-discount-over-manager=click",
+        "pos-discount-over-key-1=click",
+        "pos-discount-over-key-2=click",
+        "pos-discount-over-key-3=click",
+        "pos-discount-over-key-4=click"
       ],
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
@@ -10354,7 +10406,10 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-tax-invoice"
+        "pos-reg-tax-invoice",
+        "pos-taxinv-taxid=0105559012342",
+        "pos-taxinv-name=บริษัท คิวซี จำกัด",
+        "pos-taxinv-address=1 ถนนสุขุมวิท กรุงเทพฯ 10110"
       ],
       "needs": "ร้านออกใบกำกับเต็มรูปได้ (registerStatus.taxInvoiceEligible · POS ผูกสมุดจด VAT)"
     },
@@ -10943,7 +10998,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-bills-*-menu",
-        "pos-taxinv-request-reject"
+        "pos-taxinv-request-reject",
+        "pos-taxinv-reject-reason=ข้อมูลผู้ซื้อไม่ครบ QC"
       ],
       "needs": "บิลล่าสุดของวันนี้มีคำขอใบกำกับจากลูกค้า (REQUESTED)"
     },
@@ -11023,7 +11079,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-bills-*-menu",
-        "pos-taxinv-request-reject"
+        "pos-taxinv-request-reject",
+        "pos-taxinv-reject-reason=ข้อมูลผู้ซื้อไม่ครบ QC"
       ],
       "needs": "บิลล่าสุดของวันนี้มีคำขอใบกำกับจากลูกค้า (REQUESTED)"
     },
@@ -11051,7 +11108,10 @@
         "pos-bills-*-menu",
         "pos-taxinv-request-issue"
       ],
-      "needs": "บิลล่าสุดของวันนี้มีคำขอใบกำกับจากลูกค้า (REQUESTED)"
+      "needs": [
+        "บิลล่าสุดของวันนี้มีคำขอใบกำกับจากลูกค้า (REQUESTED)",
+        "ป้ายขึ้นเมื่อพิมพ์เลขผู้เสียภาษีให้ต่างจากคำขอ (BillsClient → TaxInvoiceDialog.tsx:322) — ช่อง pos-taxinv-taxid มีแถวเดียวบน /register (testid ไม่ซ้ำ · F15.3b) ⇒ ขั้นกรอกบน /sales ใส่ไม่ได้ (CD-P41-F23)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11344,8 +11404,11 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-member-pick"
-      ]
+        "pos-reg-member-pick",
+        "pos-member-register-phone=0812345678",
+        "pos-member-register-name=ลูกค้า QC"
+      ],
+      "needs": "เบอร์ 0812345678 ซ้ำข้ามรอบ/บทบาท = created:false ผูกคนเดิม ไม่สร้าง Customer ใหม่ (register-member.ts:309-312)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11502,8 +11565,11 @@
         "pos-reg-search=อเมริกาโน่เย็น",
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
-        "pos-reg-member-pick"
-      ]
+        "pos-reg-member-pick",
+        "pos-member-register-phone=0812345678",
+        "pos-member-register-name=ลูกค้า QC"
+      ],
+      "needs": "เบอร์ 0812345678 ซ้ำข้ามรอบ/บทบาท = created:false ผูกคนเดิม ไม่สร้าง Customer ใหม่ (register-member.ts:309-312)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -11885,7 +11951,8 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-coupon"
+        "pos-reg-coupon",
+        "pos-reg-coupon-input=QCTEST10"
       ]
     },
     {
@@ -12015,7 +12082,10 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-general-held-days=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12145,7 +12215,10 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-general-shift-overshort=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12188,7 +12261,10 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-general-day-cutoff=*"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12254,7 +12330,11 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-general-oversell-block=click"
+      ],
+      "needs": "นโยบายสต็อกของสาขาเป็น ALLOW_NEGATIVE ก่อนกด (ปริยาย) — กดแล้วค้าง BLOCK: ผู้คุมตั้งกลับ ALLOW_NEGATIVE หลังรัน (BLOCK ห้ามขายสินค้าติดลบในหน้าขาย)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12401,7 +12481,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "safety": "money"
+      "safety": "money",
+      "opener": [
+        "pos-settings-general-weighed-enabled=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12469,7 +12552,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "safety": "money"
+      "safety": "money",
+      "opener": [
+        "pos-settings-general-promptpay-input=0812345678"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12613,7 +12699,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-settings-nav-staff"
+        "pos-settings-nav-staff",
+        "pos-settings-staff-cap-*=*"
       ],
       "safety": "money"
     },
@@ -12836,7 +12923,7 @@
       "opener": [
         "pos-settings-nav-staff",
         "pos-settings-staff-pin-open-*",
-        "pos-settings-staff-pin-key-1"
+        "pos-settings-staff-pin-key-1=click"
       ]
     },
     {
@@ -12862,7 +12949,7 @@
       "opener": [
         "pos-settings-nav-staff",
         "pos-settings-staff-pin-open-*",
-        "pos-settings-staff-pin-key-1"
+        "pos-settings-staff-pin-key-1=click"
       ]
     },
     {
@@ -12877,10 +12964,10 @@
         "cashier"
       ],
       "expect": {
-        "type": "mutation",
-        "target": "setStaffPinAction",
-        "note": "ครั้งแรก = ถัดไป (ยืนยันอีกครั้ง) · ครั้งที่สองตรงกัน = setStaffPinAction → ปิดกล่อง + โหลดรายชื่อใหม่ · ไม่ตรง/WEAK_PIN = pos-settings-staff-pin-message",
-        "db": "PosStaffPin upsert pinHash · setById · failedCount 0"
+        "type": "ui",
+        "target": "pos-settings-staff-pin-dots",
+        "state": "changes",
+        "note": "ครั้งแรก = ถัดไป (ยืนยันอีกครั้ง: เก็บ PIN แรก + ล้างจุด) · ครั้งที่สองตรงกัน = setStaffPinAction → ปิดกล่อง + โหลดรายชื่อใหม่ (ต้องกดแป้นซ้ำ + ถัดไปอีกครั้ง — opener ทำไม่ได้: ห้ามชี้ตัวเอง/ห้ามซ้ำ) · ไม่ตรง/WEAK_PIN = pos-settings-staff-pin-message"
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -12889,10 +12976,10 @@
       "opener": [
         "pos-settings-nav-staff",
         "pos-settings-staff-pin-open-*",
-        "pos-settings-staff-pin-key-1",
-        "pos-settings-staff-pin-key-3",
-        "pos-settings-staff-pin-key-5",
-        "pos-settings-staff-pin-key-7"
+        "pos-settings-staff-pin-key-1=click",
+        "pos-settings-staff-pin-key-3=click",
+        "pos-settings-staff-pin-key-5=click",
+        "pos-settings-staff-pin-key-7=click"
       ]
     },
     {
@@ -13772,9 +13859,12 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-channels",
-        "pos-channel-add"
+        "pos-channel-add",
+        "pos-channel-drawer-name=ช่องทาง QC",
+        "pos-channel-drawer-code=*"
       ],
-      "safety": "money"
+      "safety": "money",
+      "needs": "สาขายังไม่ครบ CHANNEL_LIMIT_PER_UNIT ช่องทาง (นับรวมที่เก็บแล้ว · ChannelsPanel.tsx:95 — ทุกรอบสร้างช่องทางใหม่ 1 ช่อง)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -16919,7 +17009,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-tbl-card-*",
-        "pos-tbl-item-*"
+        "pos-tbl-item-*",
+        "pos-tbl-cancel-reason=ลูกค้าเปลี่ยนใจ QC"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -17058,7 +17149,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-tbl-reservations",
-        "pos-tbl-reservation-add"
+        "pos-tbl-reservation-add",
+        "pos-tbl-reservation-name=คุณคิวซี"
       ],
       "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
@@ -17265,7 +17357,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-tbl-reservations",
-        "pos-tbl-reservation-add"
+        "pos-tbl-reservation-add",
+        "pos-tbl-reservation-name=คุณคิวซี"
       ],
       "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
@@ -18255,7 +18348,8 @@
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-splitBill",
-        "pos-tbl-split-member-*"
+        "pos-tbl-split-member-*",
+        "pos-tbl-split-member-q=0899000001"
       ],
       "needs": [
         "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
@@ -20055,7 +20149,8 @@
       "safety": "money",
       "opener": [
         "pos-ord-card-*",
-        "pos-ord-cancel"
+        "pos-ord-cancel",
+        "pos-ord-cancel-reason=ลูกค้ายกเลิก QC"
       ],
       "needs": "ออเดอร์ที่รับแล้ว (ACCEPTED..READY · ไม่ใช่เว็บร้านชำระแล้ว) เป็นการ์ดแรก"
     },
@@ -20827,7 +20922,9 @@
       "safety": "counter",
       "opener": [
         "pos-ord-manual",
-        "pos-ord-man-product-*=click"
+        "pos-ord-man-product-*=click",
+        "pos-ord-man-name=ลูกค้า QC",
+        "pos-ord-man-ref=*"
       ],
       "needs": [
         "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก",
@@ -22072,7 +22169,8 @@
         "pos-reg-pay",
         "pos-reg-paydlg-method-giftcard",
         "pos-reg-paydlg-giftcard-number=*",
-        "pos-reg-paydlg-giftcard-lookup"
+        "pos-reg-paydlg-giftcard-lookup",
+        "pos-reg-paydlg-giftcard-pin=1234"
       ],
       "needs": "บัตรของขวัญเปิดใช้ (registerPayTendersAction giftCard.enabled) + บัตร GC ของร้าน"
     },
@@ -22803,9 +22901,9 @@
         "manager"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-set-receipt-branchNo-error",
-        "note": "\"สาขาที่\" 5 หลัก (placeholder = branchCode ของสมุด/00000) · ผิดรูป = pos-set-receipt-branchNo-error ในบรรทัด · บันทึกปิด (มติ 8)"
+        "type": "ui",
+        "note": "\"สาขาที่\" 5 หลัก (placeholder = branchCode ของสมุด/00000) · ผิดรูป = pos-set-receipt-branchNo-error ในบรรทัด + บันทึกปิด (มติ 8) · walker พิมพ์ \"00000\" (fillValueFor /branch/) = ค่าถูก ⇒ ไม่มี error ⇒ ตรวจแค่ค่าเปลี่ยน",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
@@ -22827,9 +22925,9 @@
         "manager"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-set-receipt-address-error",
-        "note": "\"ที่อยู่\" ของสาขา (≤ 200 · placeholder = หัวใบของระบบ/สมุด) · ปฏิเสธ field address ใต้ช่อง (มติ 8)"
+        "type": "ui",
+        "note": "\"ที่อยู่\" ของสาขา (≤ 200 · placeholder = หัวใบของระบบ/สมุด) · pos-set-receipt-address-error มาจากเซิร์ฟเวอร์ตอนกดบันทึกสาขาเท่านั้น (มติ 8) · กดช่อง = ค่าเปลี่ยน",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
@@ -22851,9 +22949,9 @@
         "manager"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-set-receipt-phone-error",
-        "note": "\"โทร\" ของสาขา (≤ 30 · placeholder = หัวใบของระบบ/สมุด) · ปฏิเสธ field phone ใต้ช่อง (มติ 8)"
+        "type": "ui",
+        "note": "\"โทร\" ของสาขา (≤ 30 · placeholder = หัวใบของระบบ/สมุด) · pos-set-receipt-phone-error มาจากเซิร์ฟเวอร์ตอนกดบันทึกสาขาเท่านั้น (มติ 8) · กดช่อง = ค่าเปลี่ยน",
+        "state": "changes"
       },
       "wo": "P2.11U",
       "oracle": "",
@@ -23358,7 +23456,9 @@
       "opener": [
         "pos-reg-mobile-deposit-receive",
         "pos-reg-more",
-        "pos-reg-menu-deposit-receive"
+        "pos-reg-menu-deposit-receive",
+        "pos-reg-deprcv-amount=100",
+        "pos-reg-deprcv-phone=0812345678"
       ],
       "needs": "ค่าตั้งรับมัดจำเปิด (registerPayTendersAction deposit.enabled)",
       "safety": "counter"
@@ -23693,7 +23793,9 @@
       "opener": [
         "pos-reg-mobile-deposit-receive",
         "pos-reg-more",
-        "pos-reg-menu-deposit-receive"
+        "pos-reg-menu-deposit-receive",
+        "pos-reg-deprcv-amount=100",
+        "pos-reg-deprcv-phone=0812345678"
       ],
       "needs": "ค่าตั้งรับมัดจำเปิด (registerPayTendersAction deposit.enabled)",
       "safety": "counter"
@@ -23913,9 +24015,9 @@
         "pos-bills-filter-deposit",
         "pos-bills-*-menu",
         "pos-bills-refund-deposit",
-        "pos-bills-refund-deposit-last4=*"
+        "pos-bills-refund-deposit-last4=5678"
       ],
-      "needs": "มัดจำที่ต้องยืนยันเบอร์ 4 หลักท้าย (ยอดซ่อน)"
+      "needs": "มัดจำ walk-in ที่บันทึกเบอร์ (ต้องยืนยันเบอร์ 4 หลักท้าย · ยอดซ่อน) · เบอร์ของ fixture ลงท้าย 5678 (เลขผิด = ข้อความเตือน และเซิร์ฟเวอร์นับครั้งผิด)"
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -24086,9 +24188,10 @@
       "opener": [
         "pos-bills-filter-deposit",
         "pos-bills-*-menu",
-        "pos-bills-refund-deposit"
+        "pos-bills-refund-deposit",
+        "pos-bills-refund-deposit-reason=ลูกค้ายกเลิกงาน QC"
       ],
-      "needs": "ใบรับเงินมัดจำ (POS_DEPOSIT) ของวันนี้ที่ยังมีคงเหลือ (OPEN)",
+      "needs": "ใบรับเงินมัดจำ (POS_DEPOSIT) ของวันนี้ที่ยังมีคงเหลือ (OPEN) และเห็นยอดทันที (มัดจำสมาชิก หรือ walk-in ที่ไม่บันทึกเบอร์ — มัดจำที่บันทึกเบอร์ = ยอดซ่อนจนยืนยัน 4 หลัก ⇒ ปุ่มยืนยัน disabled)",
       "safety": "counter"
     },
     {
@@ -24172,9 +24275,9 @@
       "wo": "P2.10",
       "oracle": "P2.10-PA2",
       "system": "POS",
-      "query": "",
+      "query": "c=[pairCode]",
       "hiddenFor": [],
-      "needs": "รหัสจับคู่จอลูกค้าที่ยังไม่หมดอายุ (enableCustomerDisplay)"
+      "needs": "รหัสจับคู่จอลูกค้าที่ยังไม่หมดอายุ (enableCustomerDisplay) · ส่งทาง ?c=[pairCode] (รหัสครั้งเดียว ต่อรอบ — walker ยังไม่มี token [pairCode] ⇒ skip needs-fixture จนกว่าจะเติม)"
     },
     {
       "page": "/d",
@@ -24708,8 +24811,10 @@
       "query": "tab=shark&unit=[unitId]",
       "opener": [
         "pos-settings-nav-shark",
-        "pos-settings-api-*create"
-      ]
+        "pos-settings-api-*create",
+        "pos-settings-api-name=QC key"
+      ],
+      "needs": "ผู้จัดการ (ไม่ใช่ทุกสาขา) ต้องติ๊กสาขาใน pos-settings-api-unit-* ก่อนกด (scope บังคับ pick ApiKeysCard.tsx:227,241) — opener ร่วมทำไม่ได้: เจ้าของ scope=all ไม่มีรายการสาขา (unit-*=on หาไม่พบ) และ scope-pick แบบ plain ถูกข้ามเมื่อปุ่มส่งเห็นอยู่แล้ว"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -25035,9 +25140,9 @@
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "pos-settings-general-field-error",
-        "note": "เกณฑ์ต่อกฎ <A1…A10>-<count|satang|bp> (ครั้ง/จำนวน · บาท → สตางค์ · % → bp) ช่วง POS_ANOMALY_LIMITS · ผิดช่วง/ปฏิเสธ field anomaly.rules.A#.<ช่อง> = ข้อความใต้แถวของกฎ (มติ 6)"
+        "type": "ui",
+        "note": "เกณฑ์ต่อกฎ <A1…A10>-<count|satang|bp> (ครั้ง/จำนวน · บาท → สตางค์ · % → bp) ช่วง POS_ANOMALY_LIMITS · ผิดช่วง/ปฏิเสธ = pos-settings-general-field-error ใต้แถวของกฎ เมื่อกดบันทึก (มติ 6) · กดช่อง = ค่าเปลี่ยน",
+        "state": "changes"
       },
       "wo": "P2.12U",
       "oracle": "",
@@ -25064,7 +25169,10 @@
       "wo": "P2.12U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-anomaly-enabled=click"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -25663,7 +25771,12 @@
       "query": "",
       "hiddenFor": [],
       "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)",
-      "safety": "money"
+      "safety": "money",
+      "opener": [
+        "pos-qr-to-checkout",
+        "pos-qr-co-name=คุณคิวซี",
+        "pos-qr-co-phone=0812345678"
+      ]
     },
     {
       "page": "/q/[linkToken]",
@@ -27551,7 +27664,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-pay",
-      "kind": "form",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27560,9 +27673,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-reg-offline-done",
-        "note": "กล่องชำระออฟไลน์ (เงินสด/โอน) — ส่งแล้วเขียนคิวของเครื่อง (IndexedDB)",
-        "state": "appears"
+        "target": "pos-reg-offline-confirm",
+        "note": "กล่องชำระออฟไลน์ (เงินสด/โอน) — แสดงอย่างเดียว · บันทึกด้วย pos-reg-offline-confirm (เขียนคิวของเครื่อง IndexedDB)"
       },
       "wo": "P3.4U",
       "oracle": "",
@@ -27799,7 +27911,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
-        "pos-shift-offline-discard-*"
+        "pos-shift-offline-discard-*",
+        "pos-shift-offline-reason-*=บิลซ้ำกับบิลจริง ทิ้ง QC"
       ],
       "needs": "บิลออฟไลน์รอผู้จัดการของสาขานี้ (REJECTED · listOfflineRejectedAction)"
     },
@@ -28230,7 +28343,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-shark",
-        "pos-settings-ai-open"
+        "pos-settings-ai-open",
+        "pos-settings-ai-hour=*"
       ]
     },
     {
@@ -28385,7 +28499,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-shark",
-        "pos-settings-chat-open"
+        "pos-settings-chat-open",
+        "pos-settings-chat-pause=*"
       ]
     },
     {
@@ -30101,7 +30216,8 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-connect-lineman",
-        "pos-channel-open-lineman"
+        "pos-channel-open-lineman",
+        "pos-channel-creds-field-client_secret=qc-secret-001"
       ],
       "needs": "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด"
     },
@@ -30128,7 +30244,12 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-connect-lineman",
-        "pos-channel-open-lineman"
+        "pos-channel-open-lineman",
+        "pos-channel-creds-field-client_id=qc-client-001",
+        "pos-channel-creds-field-client_secret=qc-secret-001",
+        "pos-channel-creds-field-restaurant_id=qc-rest-001",
+        "pos-channel-creds-field-webhookSecret=qc-whsec-001",
+        "pos-channel-creds-save=click"
       ],
       "needs": [
         "กุญแจเข้ารหัส credentials ของ POS ตั้งไว้ (posSecretKeyConfigured) — ไม่มี = ช่องปิด",
@@ -30367,7 +30488,10 @@
       "query": "unit=[unitId]&tab=devices",
       "opener": [
         "pos-settings-nav-devices",
-        "pos-device-lan-add"
+        "pos-device-lan-add",
+        "pos-device-lan-name=QC Agent",
+        "pos-device-lan-printer-name-*=ครัว",
+        "pos-device-lan-printer-host-*=192.168.1.50"
       ],
       "safety": "external"
     },
@@ -30596,7 +30720,10 @@
       "query": "unit=[unitId]&tab=devices",
       "opener": [
         "pos-settings-nav-devices",
-        "pos-device-lan-add"
+        "pos-device-lan-add",
+        "pos-device-lan-name=QC Agent",
+        "pos-device-lan-printer-name-*=ครัว",
+        "pos-device-lan-printer-host-*=192.168.1.50"
       ],
       "safety": "external"
     },
@@ -31168,7 +31295,8 @@
       "opener": [
         "pos-bills-*-menu",
         "pos-bills-slip-*",
-        "pos-bills-slip-reject"
+        "pos-bills-slip-reject",
+        "pos-bills-slip-reason=สลิปไม่ตรงยอด QC"
       ],
       "needs": "บิลล่าสุดของวันนี้มีสลิปสถานะ UPLOADED ที่ผู้อื่นแนบ (SLIP_SELF_CONFIRM ห้ามผู้จัดการยืนยันของตัวเอง)"
     },
