@@ -164,6 +164,7 @@ export function IntegrationCredsCard({ systemId, unitId, kind, provider, channel
       data-kind={view.kind}
       data-provider={view.provider}
       data-status={keyMissing ? "KEY_MISSING" : view.status}
+      data-row-status={view.status}
       className="flex min-w-0 flex-col gap-3 rounded-[12px] border px-3.5 py-3.5"
     >
       <div className="flex flex-wrap items-center gap-2">

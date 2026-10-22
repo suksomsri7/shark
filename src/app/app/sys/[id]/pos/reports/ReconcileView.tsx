@@ -122,7 +122,7 @@ export function ReconcileView({ systemId, unitId, from, to, maxDays }: Props) {
   let n = -1;
 
   return (
-    <section data-testid="pos-reports-reconcile" data-state={loading ? "loading" : code ? "error" : "ready"} aria-busy={loading} className={card}>
+    <section data-testid="pos-reports-reconcile" data-state={code ? "error" : loading || !data ? "loading" : "ready"} aria-busy={loading} className={card}>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 text-base font-semibold">{t("title")}</h2>
         <button data-testid="pos-reports-reconcile-csv" type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={csvBusy || loading || !!code} onClick={() => void csv()}>
