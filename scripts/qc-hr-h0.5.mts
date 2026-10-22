@@ -1257,12 +1257,15 @@ async function runDb(): Promise<void> {
   console.log("── [S10] r4: นับก่อนค้น + คืนช่อง (ยิงพร้อมกัน) · callerKey ต้องตรงรูปแบบ · audit/OpsEvent ตอนถังร้านเต็ม ──");
   {
     const ck10 = (tag: string) => `qc10:${tag}:${stamp}`;
-    // เวลา createdAt อาจมาจาก query engine (เครื่องนี้) หรือ DB ⇒ เอาเวลา DB ลบ 2 s เป็นขอบล่าง (ข้อก่อนหน้าไม่สร้างแถวชนิดที่นับ)
-    const dbNow = async (): Promise<Date> => new Date((((await P.$queryRaw`SELECT clock_timestamp() AS n`) as Any[])[0].n as Date).getTime() - 2_000);
+    const countOps10 = (): Promise<number> => P.opsEvent.count({ where: { tenantId: T1 } });
+    const countWarn10 = (): Promise<number> => P.opsEvent.count({ where: { tenantId: T1, level: "WARN" } });
+    // H0.5 r4 ORACLE-EDIT OE1 (ruled) ▸ S10.4/S10.5 นับเป็นผลต่างจากค่าฐาน (ไม่ใช้ขอบเวลา dbNow − 2 s) — S9.3 ทำถังร้าน T1 เต็มตามกติกา R4.4
+    //   (tenant_limited + OpsEvent WARN) ⇒ แถวของ S9.3 อยู่ในค่าฐาน ไม่ถูกนับเป็นของ S10 ◂
     const nWrong = (rs: Any[]) => rs.filter(isWrong9).length;
     const nLimited = (rs: Any[]) => rs.filter(isLimited9).length;
-    const auditSince = (action: string, since: Date): Promise<Any[]> =>
-      P.auditLog.findMany({ where: { tenantId: T1, action, createdAt: { gte: since } }, select: { action: true, actorType: true, actorId: true, targetType: true, targetId: true, before: true, after: true }, orderBy: { createdAt: "asc" } });
+    const auditAll = (action: string): Promise<Any[]> =>
+      P.auditLog.findMany({ where: { tenantId: T1, action }, select: { action: true, actorType: true, actorId: true, targetType: true, targetId: true, before: true, after: true }, orderBy: { createdAt: "asc" } });
+    const base10 = { ops: await countOps10(), audit: (await auditAll("hr.pin.tenant_limited")).length, warn: await countWarn10() };
     if (!verify9) {
       failAll(["S10.1", "S10.2", "S10.3", "S10.4", "S10.5", "S10.6"], `facade missing: hr/index.ts ไม่มี verifyPin${pinMod ? "" : ` · ${pinImportErr}`}`);
     } else {
@@ -1323,7 +1326,8 @@ async function runDb(): Promise<void> {
         ["unicode", "usé"],
         ["zwsp", "u1​"],
       ];
-      const t104 = await dbNow();
+      const ops104a = await countOps10();
+      const nul104a = new Set((((await P.opsEvent.findMany({ where: { tenantId: null, source: "rate-limit-db" }, select: { id: true } })) as Any[]).map((o) => o.id as string)));
       const audit104a = await P.auditLog.count({ where: { tenantId: T1 } });
       const per104: string[] = [];
       let all104 = true;
@@ -1337,8 +1341,9 @@ async function runDb(): Promise<void> {
       await sleep(300); // logOps ของ fail-open เป็น void (ไม่ await) — รอให้เขียนเสร็จก่อนนับ
       const nb104 = await P.chatRateBucket.count({ where: { key: { startsWith: tKey } } });
       const audit104b = await P.auditLog.count({ where: { tenantId: T1 } });
-      const ops104 = (await P.opsEvent.findMany({ where: { createdAt: { gte: t104 }, OR: [{ tenantId: T1 }, { tenantId: null, source: "rate-limit-db" }] }, select: { id: true, tenantId: true } })) as Any[];
-      for (const o of ops104) if (!o.tenantId) ops10Ids.push(o.id as string);
+      const nul104 = ((await P.opsEvent.findMany({ where: { tenantId: null, source: "rate-limit-db" }, select: { id: true } })) as Any[]).filter((o) => !nul104a.has(o.id as string));
+      for (const o of nul104) ops10Ids.push(o.id as string);
+      const ops104n = (await countOps10()) - base10.ops + nul104.length; // ค่าฐาน = ก่อน S10.1 (S10.1–S10.3 ไม่ทำถังร้านเต็ม) · ops104a ใช้แสดงผลเท่านั้น
       const VALID104: [string, string][] = [
         ["u_01", "u_01"],
         ["unit", "unit:abc-1.2"],
@@ -1353,13 +1358,12 @@ async function runDb(): Promise<void> {
       }
       chk(
         "S10.4",
-        all104 && nb104 === 0 && audit104b === audit104a && ops104.length === 0 && allValid,
+        all104 && nb104 === 0 && audit104b === audit104a && ops104n === 0 && allValid,
         `รูปแบบผิดทั้ง 7 (PIN ถูก/PIN ผิด) → "${T_WRONG}" · ถัง hr-verifypin:<T1>* = 0 · audit +0 · OpsEvent +0 · รูปแบบถูก 3 ตัว PIN ถูก → ok(คน A)`,
-        `buckets=${nb104} audit+${audit104b - audit104a} opsEvent+${ops104.length} · valid ${val104.join(" ")} · ${per104.join(" ")}`,
+        `buckets=${nb104} audit+${audit104b - audit104a} opsEvent+${ops104n} (ร้าน T1 ก่อน S10.4 +${ops104a - base10.ops} · ไม่มีร้าน ${nul104.length}) · valid ${val104.join(" ")} · ${per104.join(" ")}`,
       );
       // S10.5 — ถังร้านถึง 120 ⇒ audit hr.pin.tenant_limited 1 แถว + OpsEvent WARN ของร้าน 1 แถว (ครั้งเดียวต่อหน้าต่าง)
       await resetVerifyBucket(T1);
-      const t105 = await dbNow();
       const tt105 = Date.now();
       const callers105 = Array.from({ length: 12 }, (_, i) => ck10(`t${i + 1}`));
       const w105: Any[] = [];
@@ -1367,13 +1371,13 @@ async function runDb(): Promise<void> {
       const bT105 = await bucketOf(tKey);
       const c13 = await V9(PINS9.wrong, ck10("t13"));
       await sleep(300);
-      const tl1 = await auditSince("hr.pin.tenant_limited", t105);
-      const ops1 = (await P.opsEvent.count({ where: { tenantId: T1, level: "WARN", createdAt: { gte: t105 } } })) as number;
+      const tl1 = (await auditAll("hr.pin.tenant_limited")).slice(base10.audit);
+      const ops1 = (await countWarn10()) - base10.warn;
       const more105: Any[] = [];
       for (let i = 0; i < 5; i++) more105.push(await V9(PINS9.wrong, ck10(`t${14 + i}`)));
       await sleep(300);
-      const tl2 = await auditSince("hr.pin.tenant_limited", t105);
-      const ops2 = (await P.opsEvent.count({ where: { tenantId: T1, level: "WARN", createdAt: { gte: t105 } } })) as number;
+      const tl2 = (await auditAll("hr.pin.tenant_limited")).slice(base10.audit);
+      const ops2 = (await countWarn10()) - base10.warn;
       const el105 = Date.now() - tt105;
       const empIds10 = ((await P.hrEmployee.findMany({ where: { tenantId: T1 }, select: { id: true } })) as Any[]).map((e) => e.id as string);
       const tlPayloadOk = (r: Any) => {

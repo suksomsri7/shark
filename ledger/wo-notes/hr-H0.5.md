@@ -406,3 +406,12 @@ Totals on base: `ผ่าน 67/71 (QC_FORCE)` · S1–S9 + Z1 green · `RESIDU
   1. `67/71` with the same 4 reds. The S10.4 actual was cut at 400 chars, so the counts were moved to the front.
   2. `67/71`, **saved** as `hr-H0.5-red-r4.txt` · `RESIDUE tenants=0 none` · `RESIDUE10 opsEvent=0` · exit 1
 - No product code edited. No typecheck run (S10 uses `Any`).
+
+## r4 ORACLE-EDIT OE1 (controller-ruled · builder r4)
+> Ruled by the controller after the builder's report (requested as a one-line `sleep(2_100)`; ruled instead as a baseline delta, no sleep). Scope: S10 block of `scripts/qc-hr-h0.5.mts` only.
+- **Reason:** on an r4 build, S9.3 trips the T1 ceiling, which R4.4 requires. It writes 1 `hr.pin.tenant_limited` audit plus 1 OpsEvent WARN with `tenantId = T1`. S10.1–S10.4 finish in < 2 s, so the old `dbNow() − 2 s` bound still covered S9.3's rows. Result: S10.4 `opsEvent+1` and S10.5 `auditRows=2→2 opsWarn=2→2` (forced #1 on `11b12a53`, 69/71). Builder diagnostics show S10 itself wrote exactly one row (`qc10:t12`, count 120). App↔DB skew was −15 ms, so skew was not the cause.
+- **old → new:**
+  - `dbNow()` (DB clock − 2 s) and `auditSince(action, since)` → `auditAll(action)` (tenant + action, no createdAt), plus `countOps10()` (OpsEvent `tenantId = T1`) and `countWarn10()` (same, `level = WARN`). `base10 = { ops, audit, warn }` is captured once before S10.1.
+  - S10.4: `opsEvent.findMany({ createdAt ≥ t104, OR [T1, tenant-less rate-limit-db] }).length === 0` → `(countOps10() − base10.ops) + <new tenant-less rate-limit-db ids> === 0`. The new tenant-less ids are the set difference against an id snapshot taken before the S10.4 loop. They are still pushed to `ops10Ids` for cleanup.
+  - S10.5: `auditSince(…, t105).length === 1` / `WARN count since t105 === 1` → `auditAll(…).slice(base10.audit).length === 1` / `countWarn10() − base10.warn === 1`, both after c13 and again after the 5 extra failures. The payload check runs on the new row. `t105` was removed.
+- Nothing else in the oracle changed.
