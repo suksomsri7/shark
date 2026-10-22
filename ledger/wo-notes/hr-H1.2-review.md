@@ -101,3 +101,27 @@ The schema, migrations, privacy, payroll freeze and unit scope are all sound. On
 - QC4: no probe was run, so no rows were created.
 - Temp files exist only under `/tmp/hr-hunt-h12/` (vec.mts, base/ and head/ schema copies, a stub prisma.config.ts, a node_modules symlink, diff output). They hold no secrets and nothing reads `.env`.
 - Nothing of mine is running.
+
+## Round 2 (R13): bb85108b
+
+> I re-read `git diff 17867bd2..bb85108b`: 8a1be849 holds the fixes and bb85108b the notes. Read-only.
+> Run by me, none of them touching the DB:
+> - `scripts/qc-nav-functions.mts`
+> - pure vectors `/tmp/hr-hunt-h12/vec2.mts`
+>
+> No DB suite was run, no unit was touched, and no QC4 probe was needed.
+
+### Verdict: **MERGE**
+
+| item | result |
+|---|---|
+| F1 (sidebar) | Fixed. `layout.tsx` has +1 line and no other change: `{ href: \`${s}/hr/settings\`, label: "ตั้งค่า" }`, marked `HR H1.2 R13 ▸ … ◂`. `qc-nav-functions` gives `✅ ผ่านทั้งหมด — 11 เช็ก`. |
+| F2 (tx client) | Fixed. `targetUnitRefusal(ctx, scope, unitId, tx?)` (`settings.ts:101-109`) uses `tx.businessUnit.findFirst` with `tenantId` explicit in the where. All 3 in-tx callers pass `tx` (`:308`, `:502`, `:630`). The bodies of the 9 `$transaction`s contain no other `tenantDb(` call. The two remaining uses (`:107` non-tx branch, `:671` `settingsRowUnit`) are outside any tx. |
+| F3 (`?msg=`) | Fixed. `back()` redirects with a code only (`ok`, `s.*`, `t.*`, `u.notFound`; any unmapped reason becomes `s.failed`). The page renders only `t("saved")` or `MSG_TEXTS[code]` via an own-property check, and an unknown code renders nothing. No text from the URL reaches the DOM. |
+| R13.4 (cap) | Fixed. The `addDays(from,365) < to` check refuses with `"ใบลาหนึ่งใบยาวได้ไม่เกิน 366 วัน"`. 2026-01-01..2029-12-31 is now refused (was "1461.0"). 2028-01-01..12-31 (leap) = "366.0". 2026-01-01..2027-01-01 = "366.0". 367-day ranges are refused, leap or not. S2.10 vectors are unchanged: 3 days "3.0", AM "0.5", one excluded day "2.0", from > to refused. |
+| F4 / F5 (notes) | Present. Runbook §6 carries the `NOT VALID` FK + `VALIDATE CONSTRAINT` step in the >200k branch. §10 carries the F5 debts: rosterDayOf tie-break, two shift encodings, overlapping roster entries, no name normalisation, generic F16.1 `lat`/`lng`, PDPA export, no-FK id columns. |
+| Other behaviour | None changed. The diff touches only layout (1 line), the settings page message path, settings.ts (unit check) and time-rules.ts (1 text + 1 guard). Schema, migrations, service.ts, actions and fitness-hr are unchanged. |
+
+**INFO** (does not block merge): `settings-actions` `NO_SYSTEM_TEXT` ("ไม่พบระบบพนักงานนี้") is not in the allowlist, so the page now shows it as "บันทึกไม่สำเร็จ — กรุณาลองใหม่". This text is reachable only with a forged `systemId` and is acceptable for a stub. If the exact wording should show, add a `"a.noSystem"` entry.
+
+**Residue:** none on QC4. My temp files exist only under `/tmp/hr-hunt-h12/`. Nothing of mine is running.
