@@ -2751,7 +2751,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
       }
       memberSlot={
         // POS P3.6U ▸ CD-P36U-1/3/4: ชิปบริษัท + เลือกดีล ใต้การ์ดสมาชิก (ร้านที่มี CRM · ไม่ใช่โหมดโต๊ะ) ◂
-        (memberEnabled && !tableOn) || creditUi ? (
+        // POS P3.6U fix1 F2 (CD-P36U-3): ชิปบริษัท/ดีล = เงื่อนไขเดียวกับไทล์วางบิล (ออนไลน์ · ไม่ใช่โหมดออฟไลน์) ◂
+        (memberEnabled && !tableOn) || (creditUi && online && !offMode) ? (
           <div className="flex flex-col gap-2">
             {memberEnabled && !tableOn ? (
               <MemberChip
@@ -2765,7 +2766,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 onDetach={detachMember}
               />
             ) : null}
-            {creditUi && (
+            {creditUi && online && !offMode && (
               <>
                 <CompanyChip
                   company={company}
