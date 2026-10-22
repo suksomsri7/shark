@@ -7534,9 +7534,9 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-device-card-*",
-        "note": "การ์ดเครื่อง (listDevicesAction.items) → แผงตั้งค่าขวา · เพิกถอนแล้ว = การ์ดจาง + แผงอ่านอย่างเดียว",
-        "state": "selected"
+        "target": "pos-device-panel",
+        "note": "การ์ดเครื่อง (listDevicesAction.items) → แผงตั้งค่าขวา · เพิกถอนแล้ว = การ์ดจาง + แผงอ่านอย่างเดียว · หลายเครื่อง (ตัวกดลงทะเบียน 1 เครื่องต่อบทบาท): หลังกด pattern หาได้การ์ดอื่นที่ไม่ถูกเลือก ⇒ ตรวจแผงรายละเอียดแทน (DeviceSettings.tsx:310-318,437)",
+        "state": "changes"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -14771,7 +14771,7 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-prod-category=*",
+        "pos-prod-*select-*=on",
         "pos-prod-bulk-open",
         "pos-prod-bulk-round-1=click"
       ]
@@ -14873,7 +14873,7 @@
       "oracle": "",
       "system": "POS",
       "opener": [
-        "pos-prod-category=*",
+        "pos-prod-*select-*=on",
         "pos-prod-bulk-open"
       ],
       "needs": "ช่องทางขายที่ไม่ใช่ BUILTIN (แพลตฟอร์ม/ร้านตั้งเอง) ของขอบเขต",
@@ -21500,13 +21500,13 @@
       "expect": {
         "type": "navigate",
         "target": "/app/u/[unitSlug]/restaurant/setup",
-        "note": "สาขายังไม่มีสถานีครัว → หน้าตั้งค่าร้านอาหาร"
+        "note": "สาขายังไม่มีสถานีครัว → หน้าตั้งค่าร้านอาหาร · หน้าตั้งค่าเรียก ensureDefaultStations ทุกครั้งที่โหลด (restaurant/setup/page.tsx:32) ⇒ กดแล้ว posqc-btn มีสถานีครัว — แถวครัว 807-843 ที่ถือว่า \"ยังไม่มี\" เปลี่ยนตั้งแต่รอบถัดไป (CD-P41-F22 · P4.2 กดท้ายสุด/คืนค่า)"
       },
       "wo": "P2.6U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "สาขายังไม่มีสถานีครัว (posqc-btn-unit ตามค่าเริ่ม = มี)"
+      "needs": "สาขายังไม่มีสถานีครัว (posqc-btn-unit ตามค่าเริ่มยังไม่มี = แสดงลิงก์ · KdsScreen.tsx:443-466)"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
