@@ -864,6 +864,20 @@
       }
     },
     "credit": {
+      "buyerRequired": "Add the tax-invoice buyer before charging on account",
+      "buyerMismatch": "The buyer's tax ID does not match the bill company — check again",
+      "overLimitSelf": "The approver must be a manager or owner who is not the seller of this bill",
+      "overLimitFigures": "Limit {limit} · owed {exposure}",
+      "clear": "Remove company",
+      "recent": "Recent companies",
+      "searchMin": "Type at least 2 characters",
+      "taxId": "Tax ID {taxId}",
+      "headOffice": "Head office",
+      "branchNo": "Branch {code}",
+      "loading": "Loading…",
+      "statusLoading": "Checking credit…",
+      "fullDue": "Charge the full {amount} on account · no payment now",
+      "pickFirst": "Choose a company first",
       "title": "On account (credit terms)",
       "tile": "On account",
       "company": "Bill company",
@@ -1462,6 +1476,7 @@
       }
     },
     "credit": {
+      "denied": "Only users who can view reports see corporate receivables",
       "title": "Corporate receivables",
       "company": "Company",
       "bills": "Bills",
@@ -1986,6 +2001,7 @@
       "clear": "Clear filters"
     },
     "drawer": {
+      "creditInvoice": "Invoice / tax invoice",
       "title": "Bill details",
       "close": "Close",
       "shiftNo": "Shift #{no}",
@@ -2053,6 +2069,8 @@
       "otherText": "Enter a reason",
       "method": "Refund with",
       "m": {
+        "onAccount": "On account (credit note)",
+        "onAccountSub": "Reduce the invoice balance",
         "cash": "Cash",
         "cashSub": "from shift #{no} drawer",
         "cashNoShift": "from the drawer (open a shift on this device)",
@@ -2171,6 +2189,13 @@
     }
   },
   "settings": {
+    "orders": {
+      "title": "Order bills",
+      "memberOnBill": "Attach the member to order bills",
+      "memberOnBillHelp": "Orders with a member earn points on every channel, including platform-priced bills — attach only, no member tier discount",
+      "ownerOnly": "Only the owner can turn this on or off",
+      "failed": "Could not save — try again"
+    },
     "desc": "Point of sale settings — receipts, tax, devices and printers",
     "menuTitle": "POS settings",
     "unit": "Branch",
@@ -3026,6 +3051,32 @@
       "liveBanner": "When the internet drops the register keeps selling with cash and transfer · do not close or refresh the register while offline · bills the system does not accept wait for a manager on the Shifts page"
     },
     "credit": {
+      "ownerOnly": "Only the owner can turn this on or off",
+      "allOff": "Off — the register has no on-account option yet",
+      "unknownCompany": "Company not found in CRM",
+      "searchDenied": "Cannot search companies — you need sales access at this branch",
+      "termZeroHint": "0 days = no on-account sales (pay now)",
+      "noCrm": "This shop has no CRM yet — add CRM to choose companies",
+      "accounts": "Companies with a credit limit",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "search": "Search company name or tax ID",
+      "limitUnit": "baht",
+      "limitRange": "Whole baht 1 – {max}",
+      "termValue": "{days} days",
+      "termRange": "Blank = accounting contact terms · 0 – {max} days",
+      "inactive": "Inactive",
+      "noteRange": "Up to {max} characters",
+      "saved": "Saved",
+      "loading": "Loading…",
+      "errors": {
+        "PERMISSION_DENIED": "This account cannot manage credit customers yet",
+        "VALIDATION": "Some values are not valid — check the limit, terms and note",
+        "NOT_FOUND": "This point of sale was not found",
+        "CUSTOMER_INVALID": "This company cannot be used — choose another company",
+        "INTERNAL": "Something went wrong — try again",
+        "UNKNOWN": "Something went wrong — try again"
+      },
       "title": "Credit customers (on account)",
       "desc": "Let companies with a credit limit buy on account — invoices are issued and collected in accounting",
       "enabled": "Enable on-account sales",
