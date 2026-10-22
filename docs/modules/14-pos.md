@@ -1,6 +1,7 @@
 # โมดูล 14 — POS (ขายหน้าร้าน) · scope = **unit**
 
 > **P2 as-built: see HANDOVER-P2** (16 ต.ค. 2569 · POS P2.14 ruling 7) — สเปกนี้เขียนก่อนสร้าง POS ใหม่ · ของที่สร้างจริงถึงปิดเฟส 2 สรุปในเอกสารส่งมอบเฟส 2 ของ POS (ไฟล์ HANDOVER POS-P2 ในโฟลเดอร์ ledger) · REST ที่สร้างจริง = `docs/api/POS-API.md` · ฉบับปรับเต็ม (V2) + SDS AS-BUILT = P6.2
+> **P3 as-built: see HANDOVER-P3** (22 ต.ค. 2569 · POS P3.12) — ของที่สร้างจริงถึงปิดเฟส 3 สรุปใน `ledger/HANDOVER-2026-10-22-POS-P3.md` (§1 ใบงาน · §2 ข้อสอบไขว้ · §3 parity · §4 triage)
 
 > 🔄 REVISED หลัง QC — สอดคล้อง RESOLUTIONS.md D1,D2,D3,D4,D5,D6,D7,D8,D9,D12,D17 (2026-07-11)
 > ยึด `_CONVENTIONS.md` + `BLUEPRINT.md` + `BLUEPRINT_BUSINESS_UNITS.md`
