@@ -92,7 +92,7 @@ export default async function PosRegisterPage({
     const intentSet = parsePosIntentSettings(sys.settings);
     // POS P3.6U ▸ CD-P36U-2 (b): ค่าตั้งวางบิล + ร้านมีระบบ CRM (ชิปบริษัท/ดีล) + ผู้ใช้ถือ pos.credit.manage ที่สาขา (ตัวเลขวงเงินตัดสินที่เซิร์ฟเวอร์เสมอ) ◂
     const creditSet = posCreditSettings(sys.settings);
-    const hasCrm = (await prisma.appSystem.count({ where: { tenantId, type: "CRM" } })) > 0;
+    const hasCrm = (await prisma.appSystem.count({ where: { tenantId, type: "CRM", active: true } })) > 0;
     return (
       <RegisterScreen
         key={`${active.id}:${tableSessionId ?? ""}`} // POS P2.4U ▸ สลับโต๊ะ/ขายปกติ = จอใหม่ ◂

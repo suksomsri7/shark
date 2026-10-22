@@ -134,7 +134,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const creditCard =
     canRead && tab === "payments"
       ? await (async () => {
-          const hasCrm = (await prisma.appSystem.count({ where: { tenantId, type: "CRM" } })) > 0;
+          const hasCrm = (await prisma.appSystem.count({ where: { tenantId, type: "CRM", active: true } })) > 0;
           const canManageCredit = evaluate(m, { module: "pos", action: "pos.credit.manage" });
           const listed = canManageCredit && hasCrm ? await listCreditAccounts({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role as "OWNER" | "MANAGER" | "STAFF", unitAccess: m.unitAccess, permissions: m.permissions }) : null;
           const accounts = listed && listed.ok ? listed.items : null;
