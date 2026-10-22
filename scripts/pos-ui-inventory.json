@@ -21295,6 +21295,267 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosCreditSettingsAction",
+        "note": "CD-P36U-10: แท็บวิธีรับเงิน · สวิตช์เปิดการวางบิล (settings.pos.credit.enabled) · เจ้าของร้านบันทึกทันที สถานะจากผลตัวเขียน · คนอื่น aria-disabled + pos-settings-credit-owner-only",
+        "db": "AppSystem.settings.pos.credit (jsonb_set) + AuditLog pos.settings.updated"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-require-buyer",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosCreditSettingsAction",
+        "note": "CD-P36U-10: บังคับผู้ซื้อใบกำกับของบิลวางบิล (settings.pos.credit.requireBuyer) · เจ้าของร้านเท่านั้น",
+        "db": "AppSystem.settings.pos.credit"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-edit-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-form",
+        "note": "CD-P36U-10: แก้บัญชีเครดิตในแถว (ผู้ถือ pos.credit.manage) — เปิดฟอร์มวงเงิน/เทอม/ใช้งาน/หมายเหตุ"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-search",
+        "note": "CD-P36U-10: เพิ่มบริษัท = ช่องค้นบริษัท (registerCompanySearchAction ด้วยสาขาของหน้า) · ไม่มี CRM = ซ่อน (pos-settings-credit-no-crm)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-search",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "registerCompanySearchAction",
+        "note": "CD-P36U-10: ค้นบริษัท ≥ 2 ตัวอักษร · หน่วง 300ms · คำตอบเก่าทิ้ง · ปฏิเสธ = settings.credit.searchDenied"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-found-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-form",
+        "note": "CD-P36U-10: เลือกบริษัทจากผลค้น (ชื่อ · เลขภาษี) → ฟอร์มบัญชีใหม่ (มีบัญชีแล้ว = ฟอร์มแก้)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-limit",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-form",
+        "note": "CD-P36U-10: วงเงินบาทเต็ม (≥ 1 · ×100 ≤ POS_CREDIT_LIMIT_MAX) — รูปผิด = VALIDATION ในฟอร์ม"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-term",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-form",
+        "note": "CD-P36U-10: เทอม (วัน) ว่าง = null (ตามสมุดบัญชี) · 0 = termZeroHint · ช่วงจริงตัดสินที่เซิร์ฟเวอร์ (400 ⇒ VALIDATION)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-active",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-form",
+        "note": "CD-P36U-10: ใช้งาน/ปิดใช้ของบัญชีเครดิต (ค่าในฟอร์ม · บันทึกด้วยปุ่มบันทึก)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-note",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-form",
+        "note": "CD-P36U-10: หมายเหตุภายใน ≤ POS_CREDIT_NOTE_MAX (ไม่ออกหน้าขาย · ไม่ลง audit)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "saveCreditAccountAction",
+        "note": "CD-P36U-10: บันทึกบัญชีเครดิต → ผลแทนแถว + pos-settings-credit-saved · ปฏิเสธ = pos-settings-credit-error (settings.credit.errors.<code>)",
+        "db": "PosCreditAccount upsert (credit.ts ผู้เขียนเดียว) + AuditLog pos.credit.account_updated"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-form",
+        "note": "CD-P36U-10: ปิดฟอร์มโดยไม่บันทึก"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-order-member-switch",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosCreditSettingsAction",
+        "note": "CD-P36U-10 (W17): แท็บช่องทางขาย · สมาชิกบนบิลออเดอร์ (settings.pos.orders.memberOnBill · ปริยายเปิด) · เจ้าของร้านเท่านั้น · คนอื่น aria-disabled + owner-only",
+        "db": "AppSystem.settings.pos.orders.memberOnBill (jsonb_set · คีย์อื่นของ orders คงเดิม)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -32,6 +32,12 @@ import { receiptUnitOverride } from "@/lib/modules/pos/receipt-settings-shared";
 import { posClockOnShift, posScheduleGate, posStaffCommission } from "@/lib/modules/pos/settings-shared"; // POS P3.5U ▸ มติ 6 ◂
 import { listStaffAccess } from "@/lib/staff/service"; // POS P3.9U ▸ CD-P39U-3: ตัวอ่านสมาชิกร้านที่มีอยู่ (ผู้จัดการที่รับคำเชิญแล้ว) ◂
 import { posChatSettings } from "@/lib/modules/pos/chat-link-shared"; // POS P3.7U ▸ CD-P37U-2: ตัวอ่านบริสุทธิ์ของ settings.pos.chat ◂
+// POS P3.6U ▸ CD-P36U-2 (b) · CD-P36U-10: การ์ดลูกค้าเครดิต (แท็บวิธีรับเงิน) + สมาชิกบนบิลออเดอร์ (แท็บช่องทางขาย) — ตัวอ่านบริสุทธิ์ + ตัวอ่านบัญชีเครดิต/ชื่อบริษัท (หลังด่านของหน้า) ◂
+import { posCreditSettings, posOrderMemberOnBill } from "@/lib/modules/pos/settings-shared";
+import { listCreditAccounts } from "@/lib/modules/pos/credit";
+import { companyOptionsByPartyIds } from "@/lib/modules/pos/crm-link";
+import { CreditSettingsCard } from "./CreditSettingsCard";
+import { OrderMemberCard } from "./OrderMemberCard";
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -114,6 +120,23 @@ export default async function PosSettingsPage({ params, searchParams }: { params
       : null;
   // POS P3.7U ▸ CD-P37U-2/3: การ์ดแชท แท็บ shark — ค่าตั้งแชทที่บันทึกไว้ (อ่านล้วน · ไม่เขียนตอนโหลด) + เจ้าของร้านไหม (ตัวเขียนตรวจซ้ำ) ◂
   const chatCard = canRead && tab === "shark" ? { isOwner: m.role === "OWNER", settings: posChatSettings(sys.settings) } : null;
+  // POS P3.6U ▸ CD-P36U-2 (b): แท็บวิธีรับเงิน — ค่าตั้งวางบิล (ตัวอ่านบริสุทธิ์ · ไม่เขียนตอนโหลด) · ร้านมี CRM ไหม · บัญชีเครดิตเฉพาะผู้ถือ pos.credit.manage
+  //   (listCreditAccounts ตรวจสิทธิ์ซ้ำ) · ชื่อบริษัททีละ 20 ผ่าน crm-link (ประตูเดียวของ POS ไป CRM) ◂
+  const creditCard =
+    canRead && tab === "payments"
+      ? await (async () => {
+          const hasCrm = (await prisma.appSystem.count({ where: { tenantId, type: "CRM" } })) > 0;
+          const canManageCredit = evaluate(m, { module: "pos", action: "pos.credit.manage" });
+          const listed = canManageCredit && hasCrm ? await listCreditAccounts({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role as "OWNER" | "MANAGER" | "STAFF", unitAccess: m.unitAccess, permissions: m.permissions }) : null;
+          const accounts = listed && listed.ok ? listed.items : null;
+          const ids = [...new Set((accounts ?? []).map((a) => a.partyId))];
+          const names: Record<string, { partyId: string; name: string; taxId: string | null; branchCode: string | null }> = {};
+          for (let i = 0; i < ids.length; i += 20) {
+            for (const c of await companyOptionsByPartyIds({ tenantId, systemId: id, partyIds: ids.slice(i, i + 20) })) names[c.partyId] = { partyId: c.partyId, name: c.name, taxId: c.taxId, branchCode: c.branchCode };
+          }
+          return { hasCrm, canManageCredit, accounts, names, credit: posCreditSettings(sys.settings) };
+        })()
+      : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -140,7 +163,11 @@ export default async function PosSettingsPage({ params, searchParams }: { params
         ) : tab === "shark" ? (
           <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ chat={chatCard} /* POS P3.7U ◂ */ />
         ) : tab === "channels" ? (
-          <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
+          <>
+            <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
+            {/* POS P3.6U ▸ CD-P36U-10 (W17): สมาชิกบนบิลออเดอร์ — เจ้าของร้านสลับได้ · คนอื่นเห็นสถานะ ◂ */}
+            <OrderMemberCard systemId={id} isOwner={m.role === "OWNER"} initial={posOrderMemberOnBill(sys.settings)} />
+          </>
         ) : tab === "offline" ? (
           <OfflinePane key={unitId} live={offlineLive} /* POS P3.4U ◂ */ />
         ) : tab === "payments" ? (
@@ -152,6 +179,11 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             promptpayId={canEditReceipt ? ppId : maskPromptPayId(ppId)}
             promptpayLink="/app/settings/payment"
             isOwner={m.role === "OWNER"} /* POS P2.14 ▸ UI-10: สวิตช์ทิป/มัดจำ = เจ้าของร้านเท่านั้น (ตัวเก็บยอมเฉพาะ OWNER) ◂ */
+            creditCard={
+              creditCard ? (
+                <CreditSettingsCard systemId={id} unitId={unitId} isOwner={m.role === "OWNER"} initial={creditCard.credit} canManage={creditCard.canManageCredit} hasCrm={creditCard.hasCrm} accounts={creditCard.accounts} names={creditCard.names} />
+              ) : null
+            } /* POS P3.6U ▸ CD-P36U-1 ◂ */
           />
         ) : tab === "receipt" ? (
           <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} branch={receiptBranch} /* POS P2.11U ▸ มติ 8 ◂ */ />
