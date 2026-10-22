@@ -51,6 +51,10 @@ import { listRoomOptions, liveChannelIds } from "@/lib/modules/meeting";
 import { readIntegrationCredentials } from "@/lib/modules/pos/integration-creds";
 import { PLATFORM_PROVIDERS } from "@/lib/modules/pos/platform/types";
 import type { PlatformConn, PlatformInfo } from "./ChannelsPanel";
+import { slipRetentionDaysOf } from "@/lib/modules/pos/payment-slip";
+import { SLIP_VERIFY_PROVIDERS } from "@/lib/modules/pos/slip-verify";
+import { ETAX_PROVIDERS } from "@/lib/platform/etax/provider";
+import { SlipSettingsCard } from "./SlipSettingsCard";
 // ◂ POS P3-SKEL U
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
@@ -202,6 +206,10 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           return { codes: [...PLATFORM_PROVIDERS], isOwner: m.role === "OWNER", statuses };
         })()
       : null;
+  // POS P3-SKEL U ▸ CD-SKELU-5/8: ผู้ให้บริการจากทะเบียน (รหัส + ชื่อแบรนด์ · ไม่เลือกให้ — W20) · อายุเก็บสลิป (อ่านอย่างเดียว · W19) ◂
+  const slipVerifyOptions = Object.values(SLIP_VERIFY_PROVIDERS).map((p) => ({ code: p.code, label: p.label }));
+  const etaxOptions = Object.values(ETAX_PROVIDERS).map((p) => ({ code: p.code, label: p.label }));
+  const etaxRow = canRead && tab === "shark" ? { canManage: evaluate(m, { module: "pos", action: "pos.settings.manage", unitId }), isOwner: m.role === "OWNER", providers: etaxOptions } : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -226,7 +234,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             <SettingsRefusal message={t("staff.refusal")} />
           )
         ) : tab === "shark" ? (
-          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ chat={chatCard} /* POS P3.7U ◂ */ />
+          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} canAcceptOrders={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} offline={offlineLive} /* POS P3.4U ◂ */ ai={aiCard} /* POS P3.9U ◂ */ chat={chatCard} /* POS P3.7U ◂ */ etax={etaxRow} /* POS P3-SKEL U ▸ CD-SKELU-8 ◂ */ />
         ) : tab === "board" && boardTab ? (
           <BoardSettings key={unitId} systemId={id} data={boardTab} /* POS P3.8U ▸ CD-P38U-1 ◂ */ />
         ) : tab === "channels" ? (
@@ -251,6 +259,16 @@ export default async function PosSettingsPage({ params, searchParams }: { params
                 <CreditSettingsCard systemId={id} unitId={unitId} isOwner={m.role === "OWNER"} initial={creditCard.credit} canManage={creditCard.canManageCredit} hasCrm={creditCard.hasCrm} accounts={creditCard.accounts} names={creditCard.names} />
               ) : null
             } /* POS P3.6U ▸ CD-P36U-1 ◂ */
+            slipCard={
+              <SlipSettingsCard
+                systemId={id}
+                unitId={unitId}
+                retentionDays={slipRetentionDaysOf(sys.settings)}
+                canVerify={evaluate(m, { module: "pos", action: "pos.settings.payment", unitId })}
+                isOwner={m.role === "OWNER"}
+                providers={slipVerifyOptions}
+              />
+            } /* POS P3-SKEL U ▸ CD-SKELU-5 ◂ */
           />
         ) : tab === "receipt" ? (
           <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} branch={receiptBranch} /* POS P2.11U ▸ มติ 8 ◂ */ />

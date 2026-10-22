@@ -22498,6 +22498,106 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-slip-verify-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-slip-verify-sheet",
+        "note": "\"ตรวจสลิปอัตโนมัติ · รอผู้ให้บริการ\" → แผ่นเลือกผู้ให้บริการ (ผู้ถือ pos.settings.payment · แคชเชียร์ไม่เห็นปุ่ม)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-slip-verify-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-slip-card",
+        "note": "ปิดแผ่นตรวจสลิป"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-slip-verify-provider",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ผู้ให้บริการตรวจสลิป SLIPOK/EASYSLIP (ไม่เลือกให้ · W20) → การ์ด credentials SLIP_VERIFY"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-etax-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-card-etax",
+        "note": "ปิดแผ่น e-Tax"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=shark"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-etax-provider",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ผู้ให้บริการ e-Tax INET/LECEIPT (ไม่เลือกให้ · W20) → การ์ด credentials ETAX · ไม่มีตัวอย่าง/ส่ง (OUT)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=shark"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

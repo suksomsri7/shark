@@ -30,6 +30,8 @@ type Props = {
   isOwner?: boolean;
   /** POS P3.6U ▸ CD-P36U-1: การ์ด "ลูกค้าเครดิต (วางบิล)" (หน้าเพจประกอบ — ต่อท้ายการ์ดมัดจำ) ◂ */
   creditCard?: ReactNode;
+  /** POS P3-SKEL U ▸ CD-SKELU-5: การ์ด "สลิปโอน" (หน้าเพจประกอบ — ต่อท้ายการ์ด Beam) ◂ */
+  slipCard?: ReactNode;
 };
 const ERROR_KEY: Record<string, string> = {
   NOT_FOUND: "errors.notFound",
@@ -38,7 +40,7 @@ const ERROR_KEY: Record<string, string> = {
   UNKNOWN: "errors.unknown",
 };
 
-export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, promptpayId, promptpayLink, isOwner = false /* POS P2.14 ▸ UI-10 ◂ */, creditCard /* POS P3.6U ▸ CD-P36U-1 ◂ */ }: Props) {
+export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, promptpayId, promptpayLink, isOwner = false /* POS P2.14 ▸ UI-10 ◂ */, creditCard /* POS P3.6U ▸ CD-P36U-1 ◂ */, slipCard /* POS P3-SKEL U ▸ CD-SKELU-5 ◂ */ }: Props) {
   const t = useTranslations("pos.settings");
   const tp = useTranslations("pos.settings.payments");
   const [saved, setSaved] = useState<PosIntentSettings>(initial);
@@ -196,6 +198,7 @@ export function PaymentSettings({ systemId, canEdit, initial, beamConfigured, pr
               </button>,
             )}
           </SettingsCard>
+          {slipCard /* POS P3-SKEL U ▸ CD-SKELU-5: การ์ดสลิปโอน ต่อท้ายการ์ด Beam ◂ */}
 
           <SettingsCard testid="pos-settings-pay-manual-card">
             <CardHead icon="users" title={tp("manualCard")} />
