@@ -32,6 +32,21 @@
 //       verifyAgainstFrozen(): returns true or { ok: true, … } (sync or async) · false / { ok: false } / throw = fail
 //   json shapes = brief R3 verbatim (integers only — satang + basis points).
 //
+// S1.6 RAW SQL — the forms the static regexes accept (ruling §10.10: builder copies them verbatim; matching is case-insensitive, double quotes
+//   and whitespace are ignored, a space before "(" after the table name is allowed, constraint/index names are free unless given here,
+//   an optional enum cast after the 'ACTIVE' literal is allowed, and the outer parentheses shown as (( … )) may be single):
+//   CREATE UNIQUE INDEX "HrPayAdjustment_tenant_source_key" ON "HrPayAdjustment"("tenantId", "sourceType", "sourceRef") WHERE "sourceRef" IS NOT NULL;
+//   ALTER TABLE "HrPayAdjustment" ADD CONSTRAINT "<name>" CHECK ("sourceRef" IS NULL OR "sourceType" IS NOT NULL);
+//   ALTER TABLE "HrPayAdjustment" ADD CONSTRAINT "<name>" CHECK ("crmCommissionId" IS NULL OR "sourceRef" IS NULL);
+//   CREATE UNIQUE INDEX "<name>" ON "HrLawTable"("kind", "effectiveFrom") WHERE "status" = 'ACTIVE';
+//   ALTER TABLE "HrLawTable" ADD CONSTRAINT "<name>" CHECK ("status" <> 'ACTIVE' OR ("approvedAt" IS NOT NULL AND ("approvedById" IS NOT NULL OR "approvedByName" IS NOT NULL)));
+//   CREATE UNIQUE INDEX "<name>" ON "HrOnboardingTask"("employeeId", "kind", "templateKey") WHERE "templateKey" IS NOT NULL;
+//   ALTER TABLE "HrWorkEntry" ADD CONSTRAINT "<name>" CHECK ("minutes" >= 0 AND "minutes" <= 1440);      (or: CHECK ("minutes" BETWEEN 0 AND 1440))
+//   ALTER TABLE "HrReviewNote" ADD CONSTRAINT "<name>" CHECK ("score" IS NULL OR ("score" >= 1 AND "score" <= 5));
+//                                                 (or: CHECK ("score" >= 1 AND "score" <= 5) · CHECK ("score" BETWEEN 1 AND 5))
+//   ALTER TABLE "HrPayrollRun" ADD CONSTRAINT "<name>" CHECK ("engineVersion" >= 1);
+//   S1.4: "lawRowIds" TEXT[] DEFAULT ARRAY[]::TEXT[]  (Prisma's own scalar-list output — nullable, no NOT NULL)
+//
 // Groups: S1 migration/schema · S2 law seed = frozen constants · S3 source idempotency + CRM coexistence · S4 work entry / onboarding ·
 //         S5 frozen digests + freezes · S6 privacy / no new surface · S7 seed/expected (read-only) · X1 replay · X2 isolation · X7 no today ·
 //         X8 no ACCOUNT · X12 no env · Z1 residue
@@ -138,7 +153,7 @@ const TABLES: Record<string, readonly Col[]> = {
 };
 const NEW_TABLES = Object.keys(TABLES);
 const RUN_NEW: readonly Col[] = [["engineVersion", "int", false, "1"], ["accountSystemId", "text", true], ["createdById", "text", true], ["approvedById", "text", true], ["approvedAt", "ts", true], ["bankFileKey", "text", true], ["filingJson", "json", true]];
-const ITEM_NEW: readonly Col[] = [["ytdJson", "json", true], ["lawRowIds", "textarr", false, "ARRAY"]];
+const ITEM_NEW: readonly Col[] = [["ytdJson", "json", true], ["lawRowIds", "textarr", true, "ARRAY"]];
 const ADJ_NEW: readonly Col[] = [["sourceType", "E:HrPaySource", true], ["sourceRef", "text", true]];
 const ADJ_BASE = ["id", "tenantId", "systemId", "employeeId", "periodKey", "kind", "amountSatang", "hours", "rateSatang", "note", "status", "requestedById", "decidedById", "decidedAt", "runId", "createdAt", "crmCommissionId"];
 const RUN_BASE = ["id", "tenantId", "systemId", "periodKey", "payDate", "status", "totalGrossSatang", "totalSsoEmployeeSatang", "totalSsoEmployerSatang", "totalWhtSatang", "totalNetSatang", "totalAddSatang", "totalDeductSatang", "journalEntryId", "note", "createdAt", "reversedAt", "reversedById"];
@@ -191,7 +206,7 @@ const CHECKS: readonly Def[] = [
   D("S1.1", "R1", "CRITICAL", "RED", "[static] " + MIG_DIR + " exists · sorts after every 20261205* (H1.2) folder · additive (no DROP · RENAME · ALTER COLUMN … TYPE · ALTER TYPE) · exactly 6 CREATE TYPE with the exact labels in order"),
   D("S1.2", "R1", "CRITICAL", "RED", "[static] 4 CREATE TABLE (HrLawTable · HrWorkEntry · HrReviewNote · HrOnboardingTask) with the R1 columns / SQL types / NOT NULL · HrLawTable has no tenantId / systemId (Q1 global)"),
   D("S1.3", "R1", "CRITICAL", "RED", "[static] HrPayrollRun +7 columns (engineVersion INTEGER NOT NULL DEFAULT 1 · accountSystemId · createdById · approvedById · approvedAt · bankFileKey · filingJson JSONB) · only engineVersion has a DEFAULT"),
-  D("S1.4", "R1", "MAJOR", "RED", "[static] HrPayrollItem +2: ytdJson JSONB nullable · lawRowIds TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]"),
+  D("S1.4", "R1", "MAJOR", "RED", "[static] HrPayrollItem +2: ytdJson JSONB nullable · lawRowIds TEXT[] DEFAULT ARRAY[]::TEXT[] (Prisma scalar-list form, nullable, no NOT NULL — ruling §10.1)"),
   D("S1.5", "R1", "CRITICAL", "RED", "[static] HrPayAdjustment +2 nullable, no DEFAULT: sourceType \"HrPaySource\" · sourceRef TEXT"),
   D("S1.6", "R1", "CRITICAL", "RED", "[static+db] raw SQL: HrPayAdjustment_tenant_source_key (tenantId,sourceType,sourceRef) WHERE sourceRef IS NOT NULL · CHECK sourceRef⇒sourceType · CHECK not crmCommissionId∧sourceRef · law ACTIVE partial unique (kind,effectiveFrom) · ACTIVE-needs-signoff CHECK · onboarding (employeeId,kind,templateKey) WHERE templateKey IS NOT NULL · CHECKs minutes 0..1440 · score 1..5 · engineVersion ≥ 1 (score 0/6 and engineVersion 0 ⇒ 23514, rolled back)"),
   D("S1.7", "R1", "MAJOR", "RED", "[static] schema: 4 models + fields as R1 · HrPayrollRun/HrPayrollItem/HrPayAdjustment new fields · crmCommissionId block (comment + field) byte-identical · no @unique on sourceRef · reader-rule comment `sourceType ?? (crmCommissionId ? CRM_COMMISSION : MANUAL)`"),
@@ -619,8 +634,8 @@ function runStatic(): void {
   {
     const a = alterOf("HrPayrollItem");
     const yt = colDefOk(a, ITEM_NEW[0]!);
-    const lr = /"lawRowIds" TEXT\[\] NOT NULL DEFAULT ARRAY\[\]::TEXT\[\]/.test(a);
-    chk("S1.4", yt && lr, "ytdJson JSONB · lawRowIds TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]", a ? `ytdJson=${yt} lawRowIds=${lr} (${short(a.match(/"lawRowIds"[^,;]*/)?.[0] ?? "∅", 80)})` : "∅ ALTER TABLE \"HrPayrollItem\"");
+    const lr = /"lawRowIds" TEXT\[\] DEFAULT ARRAY\[\]::TEXT\[\](?=\s*[,;])/.test(a) && !/"lawRowIds" [^,;]*NOT NULL/.test(a);
+    chk("S1.4", yt && lr, "ytdJson JSONB · lawRowIds TEXT[] DEFAULT ARRAY[]::TEXT[] (nullable)", a ? `ytdJson=${yt} lawRowIds=${lr} (${short(a.match(/"lawRowIds"[^,;]*/)?.[0] ?? "∅", 80)})` : "∅ ALTER TABLE \"HrPayrollItem\"");
   }
   // S1.5
   {
