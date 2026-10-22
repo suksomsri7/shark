@@ -6,7 +6,7 @@
   ✅ [H0.6-S8.4] [static] FREEZE: payroll-rules.ts sha256 (F16.2) · computeItem body sha256 · markPaid block sha256 = base
   ✅ [H0.6-S8.5] [static] vs base: crm/commissions.ts · crm-bridges/commissions.ts · outbox-consumers.ts · webhooks/labels.ts each changed, every hunk carries `HR H0.6` · commissions.ts append-only (no line removed)
   ✅ [H0.6-S8.6] [static] reverseRun(ctx, runId, reason?, actor?: PayrollActor) · tenantDb(ctx).$transaction · period advisory lock + FOR UPDATE re-read · reverseEntry(…, tx) (4 args) · emitOutbox hr.payroll.reversed in the body · reverseRunAction passes the actor
-(node:821050) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1363694) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -57,17 +57,17 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [H0.6-X1.1] reverseRun of R1 from the other tenant's ctx and from the same tenant's other HR system → exact "ไม่พบรอบจ่าย" · R1 untouched
   ✅ [H0.6-X1.3] HR facade adjustmentsByIds(ctx, ids) returns {id, crmCommissionId} rows only for ids of this tenant + system (other tenant's / other system's ids dropped · OQ-6)
 ── S6 races ──
-     X6.1 2033-01: OK NO NO NO NO NO NO NO NO NO
-     X6.1 2033-02: NO NO NO NO NO OK NO NO NO NO
-     X6.1 2033-03: NO NO NO NO NO OK NO NO NO NO
-     X6.2 2033-04: NO NO OK NO NO NO NO NO NO NO
+     X6.1 2033-01: NO NO NO NO NO OK NO NO NO NO
+     X6.1 2033-02: NO NO OK NO NO NO NO NO NO NO
+     X6.1 2033-03: NO NO NO OK NO NO NO NO NO NO
+     X6.2 2033-04: NO OK NO NO NO NO NO NO NO NO
      X6.2 2033-05: NO NO NO NO NO NO OK NO NO NO
-     X6.2 2033-06: NO OK NO NO NO NO NO NO NO NO
-     X6.3 2033-07: NO NO NO OK NO NO OK NO NO NO
-     X6.3 2033-08: NO NO OK NO NO OK NO NO NO NO
-     X6.3 2033-09: OK NO NO NO NO NO NO NO NO OK
+     X6.2 2033-06: OK NO NO NO NO NO NO NO NO NO
+     X6.3 2033-07: OK NO NO NO NO NO NO NO OK NO
+     X6.3 2033-08: NO NO NO OK NO OK NO NO NO NO
+     X6.3 2033-09: NO OK NO NO NO NO NO NO NO OK
      X6.4 2033-10: NO NO NO NO NO NO NO OK NO NO
-     X6.4 2033-11: NO NO NO NO NO NO OK NO NO NO
+     X6.4 2033-11: NO OK NO NO NO NO NO NO NO NO
      X6.4 2033-12: OK NO NO NO NO NO NO NO NO NO
   ✅ [H0.6-S6.0] [control] 2 worker PROCESSES (own pool each, 5 lanes each = 10 connections) answered every lane of all 12 rounds behind the GO barrier
   ✅ [H0.6-X6.1] 10 ∥ reverseRun on one run ×3: exactly 1 ok · 9 × exact "รอบนี้กลับรายการไปแล้ว" · 1 reversal entry · 1 hr.payroll.reversed event · adjustments unbound · no throw
