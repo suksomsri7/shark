@@ -51,3 +51,19 @@ Migration (QC4 via `qc4.sh`; `_prisma_migrations` check; backfill dry-run on QC4
 
 ## 6. Questions (controller answers)
 Q1 FK to BusinessUnit? → follow the repo convention for cross-module unit refs (grep `unitId` in `src/lib/modules/*/` prisma files: if they declare a relation, do the same; else plain String with index). Q2 Borrowed employee's leave approval chain? → unchanged (H2.7). Q3 Who may create borrowings in H1.1? → `hr.employee.create` holders with access to BOTH units (or all-branch); UI for borrowings = H2.x (H1.1 ships the service + a row in the profile DTO only).
+
+## Controller rulings on oracle flags (oracle da2fdc11 · 70 checks · 22 Oct)
+Binding for the H1.1 builder. Numbers follow the oracle writer's flag list.
+1. Reader API = the oracle's shape: optional trailing `scope` on `listEmployees(ctx,take,scope)`, `listLeaves`, `pendingLeaves`, `listAttendance`, `listAdjustments(ctx,periodKey,take,scope)`; viewer loaders and AI `pending_leaves` apply `hrScopeOf` internally. The "one DB helper" of R3 is `unitWhere` in `hr/scope.ts`.
+2. `unitWhere` targets HrEmployee (home unit OR an HrEmployeeUnit borrowing open today); dated rows (leave/attendance/payslip) go through the employee relation.
+3. All-branch viewer = OWNER, or any membership whose `unitAccess` contains `*`. MANAGER/STAFF with `[]` or malformed unitAccess = no unit ⇒ 0 scoped rows (matches core `canAccessUnit`, rbac.ts:22). Null-unit employees are visible only to all-branch viewers. Owners must assign units after backfill — runbook item.
+4. Employee-level edits are governed by the home unit; dated rows by the unit the employee is in on that date (borrowing). Moving an employee's home unit via the profile form is allowed only by an all-branch viewer or into the actor's own unit.
+5. Null-unit targets: Thai refusal, no leak, text free; out-of-branch text exact as the oracle fixes it.
+6. **ORACLE-EDIT S8.4 (ruled):** verifyPin for an employee with no home unit while `unitId` is passed ⇒ allowed (unassigned employee = tenant-wide), audit unchanged. Reason: multi-unit tenants keep null units after backfill; POS P3.5 must keep working until the owner assigns units.
+7. Dated rows inside an expired borrowing window stay visible to the borrowing branch. Rows spanning a boundary: not tested, builder uses the row's fromDate.
+8. Payroll run items/totals remain per HR system (HQ20); branch scope applies to payslips only. Branch totals = H3.x.
+9. Seed keeps MONTHLY pay types (no DAILY/HOURLY on `qc-hr-v2`); S9 checks units/borrowing/statuses only.
+10. Screenshot page keys `register-branches`, `register-branch-manager`, `profile-unit`; add one HQC user `manager-branch` with `unitAccess [<u1>]` to the seed.
+11. Field names as the oracle fixes them (`unitId`, `employmentStatus`, `probationEndAt`, `contractEndAt`, `payType`, `dailyRateSatang`, `hourlyRateSatang`); all-branch call sites carry a comment containing "ทุกสาขา".
+12. Backfill: `--tenant <slug|id>` required unless `--all`; never overwrites an existing unitId; prints `{tenant, assigned, skipped}` per tenant; dry-run default, `--apply` to write.
+13. `HrEmployeeUnit.employeeId` has an FK to HrEmployee with `onDelete: Cascade`; no FK to BusinessUnit (Q1); `HrEmployeeUnit: sys()` in `core/scope.ts`.
