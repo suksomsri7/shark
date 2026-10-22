@@ -96,10 +96,15 @@ function scopeRefusal(scope: HrScope, unitId: string | null): string | null {
   return scope.unitIds.includes(unitId) ? null : SETTINGS_TEXT.otherUnit;
 }
 /** สาขาปลายทางของการเขียน: อยู่ในขอบเขต + เป็นสาขาของร้านนี้จริง */
-async function targetUnitRefusal(ctx: Ctx, scope: HrScope, unitId: string | null): Promise<string | null> {
+// HR H1.2 R13 ▸ R13.2 (COMMON §C.8): เรียกระหว่าง $transaction ต้องส่ง tx เข้ามา — ห้ามเปิด client ที่สองตอน tx ค้างอยู่
+//   (pool 1 ⇒ รอตัวเองจน timeout) · นอก tx ใช้ tenantDb ตามเดิม · ใส่ tenantId ในเงื่อนไขเองเสมอ ◂
+async function targetUnitRefusal(ctx: Ctx, scope: HrScope, unitId: string | null, tx?: Prisma.TransactionClient): Promise<string | null> {
   const r = scopeRefusal(scope, unitId);
   if (r || unitId === null) return r;
-  const u = await tenantDb({ tenantId: ctx.tenantId }).businessUnit.findFirst({ where: { id: unitId }, select: { id: true } });
+  const where = { id: unitId, tenantId: ctx.tenantId };
+  const u = tx
+    ? await tx.businessUnit.findFirst({ where, select: { id: true } })
+    : await tenantDb({ tenantId: ctx.tenantId }).businessUnit.findFirst({ where, select: { id: true } });
   return u ? null : HR_UNIT_NOT_FOUND_TEXT;
 }
 function gate(v: SettingsViewer): string | null {
@@ -300,7 +305,7 @@ export async function updateShift(ctx: Ctx, v: SettingsViewer, id: string, patch
       if (own) throw new SettingsRefusal(own);
       const unitId = patch && has(patch, "unitId") ? cleanUnit(patch.unitId) : row.unitId;
       if (unitId !== row.unitId) {
-        const ur = await targetUnitRefusal(ctx, scope, unitId);
+        const ur = await targetUnitRefusal(ctx, scope, unitId, tx); // HR H1.2 R13 ▸ tx client ◂
         if (ur) throw new SettingsRefusal(ur);
       }
       const data = shiftData(patch ?? {}, row);
@@ -494,7 +499,7 @@ export async function updateLeavePolicy(ctx: Ctx, v: SettingsViewer, id: string,
       if (own) throw new SettingsRefusal(own);
       const unitId = patch && has(patch, "unitId") ? cleanUnit(patch.unitId) : row.unitId;
       if (unitId !== row.unitId) {
-        const ur = await targetUnitRefusal(ctx, scope, unitId);
+        const ur = await targetUnitRefusal(ctx, scope, unitId, tx); // HR H1.2 R13 ▸ tx client ◂
         if (ur) throw new SettingsRefusal(ur);
       }
       const data = policyData(patch ?? {}, policyBase(row));
@@ -622,7 +627,7 @@ export async function upsertHoliday(ctx: Ctx, v: SettingsViewer, input: HolidayI
       if (own) throw new SettingsRefusal(own);
       const unitId = has(input, "unitId") ? cleanUnit(input.unitId) : row.unitId;
       if (unitId !== row.unitId) {
-        const ur = await targetUnitRefusal(ctx, scope, unitId);
+        const ur = await targetUnitRefusal(ctx, scope, unitId, tx); // HR H1.2 R13 ▸ tx client ◂
         if (ur) throw new SettingsRefusal(ur);
       }
       const data = holidayData(input, { date: row.date, name: row.name, kind: row.kind, presetYear: row.presetYear, shopOpen: row.shopOpen, note: row.note });

@@ -8,7 +8,9 @@ import { hrTabs } from "@/lib/modules/hr/ui";
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 // HR H1.2 ▸ ตัวกันของหน้า (F16.3) = ขอบเขตสาขาจาก hr/scope — รายการ/ตัวเลือกสาขาตามขอบเขตของผู้ดู ◂
 import { hrScopeOf, isAllBranches, unitsForScope } from "@/lib/modules/hr/scope";
-import { canManageHrSettings, listHolidays, listLeavePolicies, listShifts } from "@/lib/modules/hr/settings";
+import { canManageHrSettings, listHolidays, listLeavePolicies, listShifts, SETTINGS_TEXT } from "@/lib/modules/hr/settings";
+import { TIME_RULE_TEXT } from "@/lib/modules/hr/time-rules";
+import { HR_UNIT_NOT_FOUND_TEXT } from "@/lib/modules/hr/scope";
 import {
   archiveLeavePolicyAction,
   archiveShiftAction,
@@ -22,15 +24,24 @@ import { Section } from "@/components/ui/Section";
 import { ModuleTabs } from "@/components/module-tabs";
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
-//   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = ข้อความไทยคงที่จาก action (?msg=) ◂
+//   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
 const CATEGORIES = ["SICK", "PERSONAL", "VACATION", "OTHER"] as const;
 const KINDS = ["PUBLIC", "SHOP"] as const;
 const hm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
-/** กลับหน้าเดิมพร้อมผลการกด (redirect โยนเพื่อจบ action) */
-function back(path: string, year: number, saved: string, r: { ok: true; id: string } | { ok: false; reason: string }): never {
-  redirect(`${path}?year=${year}&msg=${encodeURIComponent(r.ok ? saved : r.reason)}`);
+// HR H1.2 R13 ▸ R13.3: ผลการกดส่งทาง URL เป็น "รหัสสั้น" เท่านั้น แล้วแปลงกลับจากรายการข้อความคงที่ (allowlist) —
+//   ไม่แสดงข้อความอิสระจาก ?msg= · รหัสที่ไม่รู้จัก = ไม่แสดงอะไร · ข้อความที่ไม่อยู่ในรายการ = "บันทึกไม่สำเร็จ" ◂
+const MSG_TEXTS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(SETTINGS_TEXT).map(([k, v]) => [`s.${k}`, v])),
+  ...Object.fromEntries(Object.entries(TIME_RULE_TEXT).map(([k, v]) => [`t.${k}`, v])),
+  "u.notFound": HR_UNIT_NOT_FOUND_TEXT,
+};
+const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
+/** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
+function back(path: string, year: number, r: { ok: true; id: string } | { ok: false; reason: string }): never {
+  const code = r.ok ? "ok" : (MSG_CODE_OF.get(r.reason) ?? "s.failed");
+  redirect(`${path}?year=${year}&msg=${encodeURIComponent(code)}`);
 }
 
 export default async function HrSettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ year?: string; msg?: string }> }) {
@@ -52,33 +63,33 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const all = isAllBranches(scope);
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
   const path = `/app/sys/${id}/hr/settings`;
-  const msg = typeof sp.msg === "string" ? sp.msg.slice(0, 120) : "";
+  const code = typeof sp.msg === "string" ? sp.msg : "";
+  const msg = code === "ok" ? t("saved") : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""; // HR H1.2 R13 ▸ allowlist ◂
 
-  // ผลของ action → กลับหน้าเดิมพร้อมข้อความ (ข้อความไทยคงที่ ไม่มีชื่อ/id) · closure จับเฉพาะค่าพื้นฐาน (สตริง/ตัวเลข)
-  const saved = t("saved");
+  // ผลของ action → กลับหน้าเดิมพร้อมรหัสผล (R13.3) · closure จับเฉพาะค่าพื้นฐาน (สตริง/ตัวเลข)
   const onCreateShift = async (fd: FormData) => {
     "use server";
-    back(path, year, saved, await createShiftAction(fd));
+    back(path, year, await createShiftAction(fd));
   };
   const onArchiveShift = async (fd: FormData) => {
     "use server";
-    back(path, year, saved, await archiveShiftAction(fd));
+    back(path, year, await archiveShiftAction(fd));
   };
   const onCreatePolicy = async (fd: FormData) => {
     "use server";
-    back(path, year, saved, await createLeavePolicyAction(fd));
+    back(path, year, await createLeavePolicyAction(fd));
   };
   const onArchivePolicy = async (fd: FormData) => {
     "use server";
-    back(path, year, saved, await archiveLeavePolicyAction(fd));
+    back(path, year, await archiveLeavePolicyAction(fd));
   };
   const onAddHoliday = async (fd: FormData) => {
     "use server";
-    back(path, year, saved, await upsertHolidayAction(fd));
+    back(path, year, await upsertHolidayAction(fd));
   };
   const onDeleteHoliday = async (fd: FormData) => {
     "use server";
-    back(path, year, saved, await deleteHolidayAction(fd));
+    back(path, year, await deleteHolidayAction(fd));
   };
 
   const unitSelect = (testid: string) => (

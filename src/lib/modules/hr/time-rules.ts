@@ -21,6 +21,7 @@ export const TIME_RULE_TEXT = {
   badInstant: "เวลาไม่ถูกต้อง",
   leaveRange: "วันเริ่มลาต้องไม่หลังวันสิ้นสุด",
   halfDayRange: "ลาครึ่งวันได้ครั้งละ 1 วัน",
+  leaveTooLong: "ใบลาหนึ่งใบยาวได้ไม่เกิน 366 วัน", // HR H1.2 R13 ▸ R13.4 (Decimal(4,1)) ◂
 } as const;
 
 export class TimeRuleError extends Error {
@@ -134,6 +135,8 @@ export function leaveDaysBetween(from: string, to: string, opts: { halfDay?: "AM
   parseDay(from);
   parseDay(to);
   if (from > to) throw new TimeRuleError(TIME_RULE_TEXT.leaveRange);
+  // HR H1.2 R13 ▸ R13.4: จำนวนวันเก็บใน Decimal(4,1) (สูงสุด 999.9) — ช่วงเกิน 366 วันตามปฏิทิน = ปฏิเสธ ◂
+  if (addDays(from, 365) < to) throw new TimeRuleError(TIME_RULE_TEXT.leaveTooLong);
   const excluded = opts.excluded ?? new Set<string>();
   if (opts.halfDay) {
     if (from !== to) throw new TimeRuleError(TIME_RULE_TEXT.halfDayRange);
