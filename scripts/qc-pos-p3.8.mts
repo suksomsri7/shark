@@ -191,6 +191,10 @@ const BRIEF_READY = (BRIEF_FILE && BRIEF_WIRED) || process.env.P38_R8 === "1";
 
 /** ฐานเทียบ: P38_PIN > หมุดคงที่ 42b823e9 (ฐานของผู้สร้าง) · หมุดของ brief (BRIEF_PIN 72669941) เก็บไว้เป็นหมายเหตุเท่านั้น */
 const BASE = process.env.P38_PIN || "42b823e9"; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B2): หมุดคงที่ — เดิม P38_PIN › หมุดจากสาขา session › BRIEF_PIN (qc-pos-p2.14 K3)
+// ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: ไม่มี LANE_PIN — ST2/ST3 เทียบ BASE อย่างเดียว · revert: env P38_LANE_PIN=42b823e9 or remove LANE_PIN + firstOk):
+//   ST2/ST3 เทียบ BASE ก่อน · มีปัญหา ⇒ เทียบ LANE_PIN ซ้ำด้วยกฎเดิมทุกข้อ · ผ่านเมื่อฐานใดฐานหนึ่งสะอาด (แบบ firstOk ของ qc-pos-p3.4) · ไม่ผ่านทั้งคู่ = รายงานปัญหาเทียบ BASE
+const LANE_PIN = process.env.P38_LANE_PIN || "137aa93a";
+//   probe 22.10: บรรทัดไม่ marked ท้าย outbox-consumers.ts → ST2 แดง (+29/−10) · คอมเมนต์ท้าย prisma/schema/pos.prisma → ST3 แดง (wo-notes/pos-P3.12.md §probe)
 
 // ═════════════════════════ 1. ข้อสถิต ═════════════════════════
 const stNotes: Record<string, string[]> = {};
@@ -240,7 +244,7 @@ function runStatic(): void {
     stNotes.ST1 = p;
   }
   // ST2 การลงทะเบียน consumer + cron
-  {
+  const st2 = (BASE: string): string[] => { // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: บล็อก { … stNotes.ST2 = p } เทียบ BASE ส่วนกลาง)
     const p: string[] = [];
     const now = rd(F.outbox);
     const lines = now.split("\n");
@@ -262,8 +266,10 @@ function runStatic(): void {
       const diff = gitStr(["diff", "-U0", BASE, "--", F.outbox]) ?? "";
       const add = diff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++"));
       const del = diff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
-      if (add.length !== 1 || del.length !== 1 || !add.every((l) => l.includes('"pos.shift.closed"')) || !del.every((l) => l.includes('"pos.shift.closed"')))
-        p.push(`diff outbox-consumers = +${add.length}/−${del.length} (คาด +1/−1 บรรทัด pos.shift.closed)`);
+      // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: คาด +1/−1 เสมอ · revert: ลบ carried): rev ที่มีบรรทัด pos.shift.closed ของ P3.8 อยู่แล้ว (หมุดเลนหลัง merge) ⇒ คาด +0/−0 (ห้ามแตะอะไรเพิ่มหลังหมุด) · BASE ก่อน P3.8 ⇒ คาด +1/−1 เหมือนเดิม
+      const carried = base.split("\n").filter((l) => /"pos\.shift\.closed"\s*:/.test(l) && /P3\.8/.test(l) && /onShiftClosed/.test(l)).length === 1;
+      if (carried ? add.length + del.length !== 0 : add.length !== 1 || del.length !== 1 || !add.every((l) => l.includes('"pos.shift.closed"')) || !del.every((l) => l.includes('"pos.shift.closed"')))
+        p.push(`diff outbox-consumers = +${add.length}/−${del.length} (คาด ${carried ? "+0/−0 เทียบหมุดเลนที่มีบรรทัด P3.8 แล้ว" : "+1/−1 บรรทัด pos.shift.closed"})`);
     }
     const cron = stripComments(rd(F.cron));
     const rawCron = rd(F.cron);
@@ -272,10 +278,10 @@ function runStatic(): void {
     const cdiff = gitStr(["diff", "-U0", BASE, "--", F.cron]) ?? "";
     const cdel = cdiff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
     if (cdel.length) p.push(`cron hourly ลบ/แก้บรรทัดเดิม ${cdel.length} บรรทัด (ต้องเพิ่มอย่างเดียว)`);
-    stNotes.ST2 = p;
-  }
+    return p;
+  };
   // ST3 ไฟล์ห้ามแตะ
-  {
+  const st3 = (BASE: string): string[] => { // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: บล็อก { … stNotes.ST3 = p } เทียบ BASE ส่วนกลาง)
     const p: string[] = [];
     const paths = [
       "prisma",
@@ -296,8 +302,26 @@ function runStatic(): void {
     else for (const f of out.split("\n").filter(Boolean)) if (!(f === SO3_FILE && so3HunkOnly())) p.push(`แตะ ${f}`); // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B5 · CD-P38-B1 export addSystemCardComment)
     const untracked = gitStr(["ls-files", "--others", "--exclude-standard", "--", "prisma"]) ?? "";
     for (const f of untracked.split("\n").filter(Boolean)) p.push(`ไฟล์ใหม่ ${f}`);
-    stNotes.ST3 = p;
-  }
+    return p;
+  };
+  // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · firstOk: BASE ก่อน › LANE_PIN · บันทึกฐานที่ผ่านใน stNotes["STn.base"] (ไม่ใช่ปัญหา))
+  const laneOk = !!gitStr(["rev-parse", "--verify", "-q", `${LANE_PIN}^{commit}`])?.trim();
+  const firstOk = (id: string, fn: (rev: string) => string[]): void => {
+    const r0 = fn(BASE);
+    if (!r0.length) {
+      stNotes[`${id}.base`] = [`ผ่านเทียบ BASE ${BASE}`];
+      stNotes[id] = r0;
+      return;
+    }
+    if (laneOk && LANE_PIN !== BASE && !fn(LANE_PIN).length) {
+      stNotes[`${id}.base`] = [`ผ่านเทียบหมุดเลน ${LANE_PIN} (BASE ${BASE}: ${r0.length} ข้อ — W21)`];
+      stNotes[id] = [];
+      return;
+    }
+    stNotes[id] = r0;
+  };
+  firstOk("ST2", st2);
+  firstOk("ST3", st3);
 }
 // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B5 · CD-P38-B1 export addSystemCardComment): ข้อยกเว้นแคบที่สุดของ ST3 —
 //   src/lib/modules/kanban/integrations.ts ผ่านได้เฉพาะเมื่อ diff เทียบ BASE เป็นบรรทัดเพิ่มล้วน (ไม่มีบรรทัด "-" นอกหัว) และทุกบรรทัดเพิ่มที่ไม่ว่าง
@@ -325,7 +349,7 @@ function so3HunkOnly(): boolean {
 function finishStatic(): void {
   for (const id of ["ST1", "ST2", "ST3"]) {
     const p = stNotes[id] ?? ["ไม่ได้ตรวจ"];
-    chk(id, p.length === 0, "ตามตารางชื่อ", joinP(p));
+    chk(id, p.length === 0, "ตามตารางชื่อ", joinP(p, (stNotes[`${id}.base`] ?? ["ครบ"]).join(" "))); // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: joinP(p) · revert: restore)
   }
 }
 
