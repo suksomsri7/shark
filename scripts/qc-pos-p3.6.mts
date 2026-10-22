@@ -116,6 +116,12 @@ const CHECKS: readonly Def[] = [
   // ── Z คืนสภาพ ──
   D("Z1", "-", "QC4 คืนสภาพ: ร้านชั่วคราว (+ -t2) 0 แถวทุกตารางที่มี tenantId (PosSale/Payment · PosCreditAccount · AccountDocument/Payment/JV · CrmDealPayment · CrmCommission · OutboxEvent · AuditLog …) + Tenant + User ของรอบ"),
   D("Z2", "-", "ลายนิ้วมือนอกร้านชั่วคราว (แถวที่มีก่อนรอบ · id:status ของ PosSale AccountDocument AccountJournalEntry CrmDealPayment CrmCommission PosCreditAccount) เท่าเดิม"),
+  // ORACLE-EDIT ผู้สร้าง P3.6U (B) 22 ต.ค. (CD-P36U-2: ตัวเขียนเดียวของ settings.pos.credit + settings.pos.orders.memberOnBill = pos/credit-settings.ts ·
+  //   updatePosCreditSettings(ctx{tenantId, systemId}, actor, patch{credit?: {enabled?, requireBuyer?}, memberOnBill?}) · เจ้าของร้านเท่านั้น · ไม่ใช่ข้อยกเว้น (ข้อใหม่ล้วน — ไม่มี probe ลบ)) ◂
+  D("CS1", "X5", "[CD-P36U-2] OWNER updatePosCreditSettings {credit {enabled false, requireBuyer false}, memberOnBill false} → ok + ผล = ตัวอ่าน · DB posCreditSettings/posOrderMemberOnBill ตรง · คีย์อื่นของ settings (รวม pos.orders.* อื่น) ไบต์เท่าเดิม · audit pos.settings.updated {section credit} ค่าเป็นจริง/เท็จล้วน · ตั้งคืน → ok"),
+  D("CS2", "X3", "[CD-P36U-2] MANAGER (ถือ pos.credit.manage) · STAFF → PERMISSION_DENIED · settings ไม่เปลี่ยน · ไม่มี audit เพิ่ม"),
+  D("CS3", "X4", "[CD-P36U-2] แพตช์ขยะ: คีย์แปลกบนสุด · credit.x · credit.enabled ไม่ใช่ boolean · memberOnBill ไม่ใช่ boolean · credit ไม่ใช่ออบเจกต์ · แพตช์ว่าง/ไม่ใช่ออบเจกต์ → VALIDATION + field (ยกเว้นไม่ใช่ออบเจกต์) · settings ไม่เปลี่ยน"),
+  D("CS4", "X1", "[CD-P36U-2] แพตช์ที่ไม่เปลี่ยนอะไร (ค่าปัจจุบัน) → ok · ไม่เขียน (settings + updatedAt เท่าเดิม) · ไม่มี audit"),
 ];
 
 if (LIST) {
@@ -731,6 +737,7 @@ const seam = ex(F.seam) ? await tryImport("@/lib/modules/crm/pos-seam") : null;
 const crmLink = ex(F.crmLink) ? await tryImport("@/lib/modules/pos/crm-link") : null;
 const creditMod = ex(F.credit) ? await tryImport("@/lib/modules/pos/credit") : null;
 const creditShared = ex(F.creditShared) ? await tryImport("@/lib/modules/pos/credit-shared") : null;
+const creditSettingsMod = ex(`${POS_DIR}/credit-settings.ts`) ? await tryImport("@/lib/modules/pos/credit-settings") : null; // ORACLE-EDIT ผู้สร้าง P3.6U (B) 22 ต.ค. (CD-P36U-2) ◂
 const setShared = await tryImport("@/lib/modules/pos/settings-shared");
 const regFacade = await tryImport("@/lib/modules/pos/register");
 const refundMod = await tryImport("@/lib/modules/pos/refund");
@@ -1989,6 +1996,114 @@ async function runDb() {
       for (const x of secrets) if (s.includes(x)) p.push(`outbox ${e.type} มี ${x.slice(0, 8)}…`);
     }
     chk("PV3", p.length === 0, "ไม่มีชื่อ/เบอร์/อีเมล", NO() + joinP([...new Set(p)]));
+  });
+  // ════════ CS1–CS4 ตัวเขียนค่าตั้งวางบิล/สมาชิกบนบิลออเดอร์ (ORACLE-EDIT ผู้สร้าง P3.6U (B) 22 ต.ค. · CD-P36U-2) ◂ ════════
+  const csMissing = creditSettingsMod ? "" : "pos/credit-settings.ts ยังไม่มี · ";
+  const sysRow = async (): Promise<{ settings: Any; updatedAt: number }> => {
+    const r = await P.appSystem.findUnique({ where: { id: S.POS ?? "-" }, select: { settings: true, updatedAt: true } });
+    return { settings: r?.settings ?? null, updatedAt: r?.updatedAt ? new Date(r.updatedAt).getTime() : -1 };
+  };
+  const canonCs = (v: unknown): string => (Array.isArray(v) ? `[${v.map(canonCs).join(",")}]` : isRecord(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonCs(v[k])}`).join(",")}}` : JSON.stringify(v ?? null));
+  /** settings โดยตัด pos.credit + pos.orders.memberOnBill ออก (ที่เหลือต้องไบต์เท่าเดิม) */
+  const othersOf = (st: Any): string => {
+    const c = isRecord(st) ? JSON.parse(JSON.stringify(st)) : {};
+    if (isRecord(c.pos)) {
+      // ORACLE-EDIT ผู้สร้าง P3.6U (B) 22 ต.ค. fix1 F3: ตัดเฉพาะ 2 คีย์ของตัวเขียนใต้ pos.credit (คีย์อื่นใต้ pos.credit เช่น qcKeep ต้องอยู่ครบ) ◂
+      if (isRecord(c.pos.credit)) {
+        delete c.pos.credit.enabled;
+        delete c.pos.credit.requireBuyer;
+      }
+      if (isRecord(c.pos.orders)) delete c.pos.orders.memberOnBill;
+    }
+    return canonCs(c);
+  };
+  const csAudits = async (): Promise<Any[]> => (await P.auditLog.findMany({ where: { tenantId: T, action: "pos.settings.updated" }, orderBy: { createdAt: "asc" } }).catch(() => [])) as Any[];
+  const csCall = (k: string, patch: unknown) => call(creditSettingsMod, "updatePosCreditSettings", pctx(), A(k), patch);
+  const leavesBool = (v: unknown): boolean => (isRecord(v) ? Object.entries(v).every(([k, x]) => (k === "section" ? x === "credit" : leavesBool(x))) : typeof v === "boolean");
+  if (!fx) {
+    await step("CS ค่าตั้งตั้งต้น", () =>
+      patchPos((pos) => {
+        pos.credit = { ...CREDIT_ON, qcKeep: `keep-${RAND}` }; // ORACLE-EDIT ผู้สร้าง P3.6U (B) 22 ต.ค. fix1 F3: sentinel ใต้ pos.credit ◂
+        pos.orders = { ...(isRecord(pos.orders) ? pos.orders : {}), memberOnBill: true, qcKeep: `keep-${RAND}` };
+        pos.qcSentinel = { a: 1, b: [RAND, 2] };
+      }),
+    );
+  }
+  await blk("CS1", async () => {
+    const p: string[] = [];
+    const b0 = await sysRow();
+    const a0 = (await csAudits()).length;
+    const r = await csCall("OWNER", { credit: { enabled: false, requireBuyer: false }, memberOnBill: false });
+    if (r?.ok !== true) p.push(`OWNER → ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
+    else if (canonCs(r.credit) !== canonCs({ enabled: false, requireBuyer: false }) || r.memberOnBill !== false) p.push(`ผล ${short({ credit: r.credit, memberOnBill: r.memberOnBill }, 80)}`);
+    const b1 = await sysRow();
+    const cs = callSync(setShared, "posCreditSettings", b1.settings);
+    const mob = callSync(setShared, "posOrderMemberOnBill", b1.settings);
+    if (canonCs(cs) !== canonCs({ enabled: false, requireBuyer: false }) || mob !== false) p.push(`DB credit ${short(cs, 60)} memberOnBill ${short(mob, 10)}`);
+    if (othersOf(b0.settings) !== othersOf(b1.settings)) p.push(`คีย์อื่นเปลี่ยน ${short(othersOf(b1.settings), 120)}`);
+    if (!(isRecord(b1.settings?.pos?.orders) && b1.settings.pos.orders.qcKeep === `keep-${RAND}`)) p.push("pos.orders.qcKeep หาย");
+    if (!(isRecord(b1.settings?.pos?.credit) && b1.settings.pos.credit.qcKeep === `keep-${RAND}`)) p.push("pos.credit.qcKeep หาย"); // ORACLE-EDIT fix1 F3 ◂
+    const au = (await csAudits()).slice(a0);
+    const mine = au.filter((a) => isRecord(a.after) && a.after.section === "credit");
+    if (mine.length !== 1) p.push(`audit section credit ${mine.length} (คาด 1)`);
+    else if (!leavesBool(mine[0].after) || !leavesBool(mine[0].before ?? {})) p.push(`audit ไม่ใช่ boolean ล้วน ${short(mine[0].after, 80)}`);
+    const back = await csCall("OWNER", { credit: { enabled: true, requireBuyer: true }, memberOnBill: true });
+    const b2 = await sysRow();
+    if (back?.ok !== true || canonCs(callSync(setShared, "posCreditSettings", b2.settings)) !== canonCs(CREDIT_ON) || callSync(setShared, "posOrderMemberOnBill", b2.settings) !== true) p.push(`ตั้งคืน → ${codeOf(back)}`);
+    if (othersOf(b0.settings) !== othersOf(b2.settings)) p.push("คีย์อื่นเปลี่ยนหลังตั้งคืน");
+    chk("CS1", p.length === 0, "ok · ตัวอ่านตรง · คีย์อื่นเท่าเดิม · audit boolean", FXB(csMissing + joinP(p)));
+  });
+  await blk("CS2", async () => {
+    const p: string[] = [];
+    const b0 = await sysRow();
+    const a0 = (await csAudits()).length;
+    for (const k of ["MGR", "CASH"]) {
+      const r = await csCall(k, { credit: { enabled: false }, memberOnBill: false });
+      if (!refused(r, "PERMISSION_DENIED")) p.push(`${k} → ${codeOf(r)}`);
+    }
+    const b1 = await sysRow();
+    if (canonCs(b0.settings) !== canonCs(b1.settings)) p.push("settings เปลี่ยน");
+    if ((await csAudits()).length !== a0) p.push("มี audit เพิ่ม");
+    chk("CS2", p.length === 0, "PERMISSION_DENIED · ไม่เขียน", FXB(csMissing + joinP(p)));
+  });
+  await blk("CS3", async () => {
+    const p: string[] = [];
+    const b0 = await sysRow();
+    const a0 = (await csAudits()).length;
+    const cases: [unknown, string | null][] = [
+      [{ foo: true }, "foo"],
+      [{ credit: { x: true } }, "credit.x"],
+      [{ credit: { enabled: "yes" } }, "credit.enabled"],
+      [{ credit: { requireBuyer: 1 } }, "credit.requireBuyer"],
+      [{ memberOnBill: 1 }, "memberOnBill"],
+      [{ credit: true }, "credit"],
+      [{}, null],
+      ["junk", null],
+    ];
+    for (const [patch, field] of cases) {
+      const r = await csCall("OWNER", patch);
+      if (!refused(r, "VALIDATION")) p.push(`${short(patch, 40)} → ${codeOf(r)}`);
+      else if (field && r.field !== field) p.push(`${short(patch, 40)} field ${short(r.field, 30)} (คาด ${field})`);
+    }
+    const b1 = await sysRow();
+    if (canonCs(b0.settings) !== canonCs(b1.settings)) p.push("settings เปลี่ยน");
+    if ((await csAudits()).length !== a0) p.push("มี audit เพิ่ม");
+    chk("CS3", p.length === 0, "VALIDATION + field · ไม่เขียน", FXB(csMissing + joinP(p)));
+  });
+  await blk("CS4", async () => {
+    const p: string[] = [];
+    const b0 = await sysRow();
+    const a0 = (await csAudits()).length;
+    await sleep(30);
+    const r = await csCall("OWNER", { credit: { enabled: true, requireBuyer: true }, memberOnBill: true });
+    if (r?.ok !== true) p.push(`no-op → ${codeOf(r)}`);
+    else if (canonCs(r.credit) !== canonCs(CREDIT_ON) || r.memberOnBill !== true) p.push(`ผล ${short({ credit: r.credit, memberOnBill: r.memberOnBill }, 80)}`);
+    const r2 = await csCall("OWNER", { credit: {} });
+    if (r2?.ok !== true) p.push(`credit {} → ${codeOf(r2)}`);
+    const b1 = await sysRow();
+    if (canonCs(b0.settings) !== canonCs(b1.settings) || b0.updatedAt !== b1.updatedAt) p.push(`เขียน (updatedAt ${b0.updatedAt}→${b1.updatedAt})`);
+    if ((await csAudits()).length !== a0) p.push("มี audit เพิ่ม");
+    chk("CS4", p.length === 0, "ok · ไม่เขียน · ไม่มี audit", FXB(csMissing + joinP(p)));
   });
   if (pumpErr.length) console.log(`  ⚠️  pump errors ${pumpErr.length}: ${[...new Set(pumpErr)].slice(0, 5).join(" | ")}`);
   if (notes.length) console.log(`  ⚠️  fixture notes ${notes.length}: ${notes.slice(0, 8).join(" | ")}`);

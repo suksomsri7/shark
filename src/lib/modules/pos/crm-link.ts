@@ -210,3 +210,21 @@ export async function saleCountedByDeal(tenantId: string, saleId: string): Promi
   if (!isId(tenantId) || !isId(saleId)) return false;
   return (await crm.posSeam.posSaleDealRows({ tenantId, saleIds: [saleId] })).some((x) => x.status === "COUNTED");
 }
+
+// POS P3.6U ▸ CD-P36U-2 (ผู้คุม B 22 ต.ค.): ชื่อบริษัทของแถวบัญชีเครดิตในหน้าตั้งค่า — ห่อ companiesForPos ด้วย partyIds (≤ 20 ต่อครั้ง) ·
+//   ไม่มีด่านสิทธิ์ในตัว (หน้าเพจเรียกหลังตรวจ pos.credit.manage ของตัวเองแล้วเท่านั้น) · ระบบ POS ต้องเป็นของร้านนี้ · แถว = ชื่อ/เลขภาษี/สาขา (R14) ◂
+export async function companyOptionsByPartyIds(input: { tenantId: string; systemId: string; partyIds: readonly string[] }): Promise<CompanyOption[]> {
+  try {
+    if (!isRecord(input) || !isId(input.tenantId) || !isId(input.systemId) || !Array.isArray(input.partyIds)) return [];
+    const ids = [...new Set(input.partyIds.filter(isId))].slice(0, 20);
+    if (!ids.length) return [];
+    const sys = await prisma.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId, type: "POS" }, select: { id: true } });
+    if (!sys) return [];
+    const rows = await crm.posSeam.companiesForPos({ tenantId: input.tenantId, partyIds: ids, limit: 20 });
+    return rows.map(only);
+  } catch (e) {
+    console.error("[pos/crm-link] companyOptionsByPartyIds", e);
+    return [];
+  }
+}
+// ◂ POS P3.6U

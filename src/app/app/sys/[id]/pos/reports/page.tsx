@@ -8,7 +8,7 @@ import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
 import { ANOMALY_PERMISSION, HOURLY_MAX_DAYS, isReportKind, REPORT_MAX_DAYS, REPORT_PERMISSION } from "@/lib/modules/pos/reports"; // POS P2.12U ▸ + HOURLY_MAX_DAYS ANOMALY_PERMISSION ◂
-import { posAnomalyThresholds, posDayCutoffMinutes } from "@/lib/modules/pos/settings-shared"; // POS P2.12U ▸ มติ 2 4 5 ◂
+import { posAnomalyThresholds, posCreditSettings, posDayCutoffMinutes } from "@/lib/modules/pos/settings-shared"; // POS P2.12U ▸ มติ 2 4 5 ◂ · POS P3.6U ▸ + posCreditSettings (แท็บลูกหนี้) ◂
 import { posBusinessToday } from "@/lib/modules/pos/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -67,7 +67,12 @@ export default async function PosReportsPage({
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id, await getTranslations("pos"))} data-testid="pos-report-module-tabs" />
-      {allowed.length === 0 ? (
+      {allowed.length === 0 && kind === "credit" ? (
+        // POS P3.6U ▸ CD-P36U-9: ?kind=credit โดยไม่มีสิทธิ์รายงาน = การ์ดปฏิเสธของรายงานลูกหนี้ (ไม่เรียกเซิร์ฟเวอร์) ◂
+        <div role="alert" className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-credit-denied">
+          {t("credit.denied")}
+        </div>
+      ) : allowed.length === 0 ? (
         <div role="alert" className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-report-refusal">
           {kind === "commission" ? t("commission.denied") /* POS P3.5U ▸ มติ 8: ?kind=commission ไม่มีสิทธิ์รายงาน = ข้อความของรายงานค่าคอมฯ ◂ */ : t("errors.permissionDenied")}
         </div>
@@ -83,6 +88,7 @@ export default async function PosReportsPage({
           canAnomaly={canAnomaly}
           discountFlagBp={anomaly.enabled ? anomaly.rules.A3.bp : null}
           canPayroll={canViewPayroll(m)} // POS P3.5U ▸ มติ 8 ◂
+          creditOn={posCreditSettings(sys.settings).enabled} // POS P3.6U ▸ CD-P36U-9 ◂
           boardOn={posBoardSettings(sys.settings).enabled} // POS P3.8U ▸ CD-P38U-7/8 ◂
         />
       )}

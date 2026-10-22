@@ -298,6 +298,8 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
 
   const ok: PageOk | null = data && data.ok ? data : null;
   const bill: Detail | null = detail && detail.ok ? detail.bill : null;
+  // POS P3.6U ▸ CD-P36U-8 (W23): บิลวางบิล — แถวบัญชี = ใบแจ้งหนี้/ใบกำกับภาษี (เอกสารเดียว) · ไม่มีแถวขอ/ออกใบเต็มรูปของ P1.13 ◂
+  const billCredit = !!bill && bill.payments.some((x) => (x.type as string) === "ON_ACCOUNT");
   // POS P2.2U ▸ มติ 6 (R11): หมายเหตุราคาของบรรทัด — ช่องทาง "ราคา LINE MAN" · สาขา "ราคาสาขา (ปกติ ฿75)" · โปร "โปรราคา · บ่ายชิล (ปกติ ฿75)" ·
   //   ราคาปกติ/ราคาเปิด/กำหนดเอง/ชั่ง/บิลเดิม (null) = ไม่มีหมายเหตุ · ใบเสร็จไม่เปลี่ยน (CD9) ◂
   const priceNote = (l: Detail["lines"][number]): string | null => {
@@ -553,6 +555,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
         setWait({ requestId: r.requestId, kind: "void", saleId: bill.id, void: { reason, key: voidKey } });
       } else if (r.code === "STAFF_TOKEN_INVALID") tokenDead(); // F8
       else if (r.code === "NO_PERMISSION" && pinShop) setMgrPin({ kind: "void" }); // F8: ผู้จัดการอนุญาตด้วย PIN ที่เครื่องนี้
+      else if ((r.code as string) === "CREDIT_INVOICE_PAID") setVoidErr(trg("errors.creditInvoicePaid")); // POS P3.6U ▸ CD-P36U-8: ใบแจ้งหนี้รับชำระแล้ว = ยกเลิกไม่ได้ ◂
       else setVoidErr(errKey(r.code) !== "unknown" ? te(errKey(r.code)) : posErr(r.code));
     } catch {
       setVoidErr(te("unknown"));
@@ -850,9 +853,11 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
           ? { kind: "GIFT_CARD", giftCardId: rfCardId }
           : { kind: "CASHLIKE", type: payTypeOf() as "CASH" | "PROMPTPAY" | "TRANSFER" | "CARD" };
   const rfAlloc = allocateRefund(draft.total, rfPick, rfOpts);
+  // POS P3.6U ▸ CD-P36U-8: บิลวางบิล = คืนแถวเดียว ON_ACCOUNT เต็มยอดร่าง (ลดหนี้ในใบแจ้งหนี้) — ไม่ผ่าน allocateRefund · เซิร์ฟเวอร์ตัดสินเพดาน (CREDIT_REFUND_EXCEEDS_REMAINING) ◂
+  const rfCredit = (rf?.payments ?? []).some((x) => (x.type as string) === "ON_ACCOUNT");
   const rfTender = !!rfOpts && (rfOpts.cards.length > 0 || rfOpts.cashLikeCapSatang !== null);
   /** ส่วนของบัตรที่ใช้ไม่ได้คืนเป็นเงิน (walk-in) ⇒ ต้องมีเหตุผลเป็นข้อความ (refund.ts REASON_REQUIRED) */
-  const rfNeedReason = rfAlloc.cardShareToCash > 0;
+  const rfNeedReason = !rfCredit /* POS P3.6U ◂ */ && rfAlloc.cardShareToCash > 0;
   const rfCardText = (id: string | undefined) => rfOpts?.cards.find((c) => c.giftCardId === id)?.numberMasked ?? "";
   const rfRowText = (r: { type: string; amountSatang: number; giftCardId?: string }) =>
     `${r.type === "GIFT_CARD" ? t("refund.tender.toCard", { card: rfCardText(r.giftCardId) }) : r.type === "STORE_CREDIT" ? t("refund.m.storeCredit") : methodLabel(r.type, ts, t)} ${money(r.amountSatang)}`;
@@ -867,7 +872,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
       return;
     }
     // POS P2.9U ▸ มติ 8: ยอดเกินเพดานของทุกวิธีที่คืนได้ = ไม่ส่ง ◂
-    if (rfAlloc.uncovered > 0) {
+    if (!rfCredit /* POS P3.6U ◂ */ && rfAlloc.uncovered > 0) {
       setRfErr(t("refund.tender.uncovered", { amount: money(rfAlloc.uncovered) }));
       return;
     }
@@ -885,12 +890,14 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
         saleId: rf.sale.id,
         lines: draft.lines.map((l) => ({ lineId: l.lineId, qty: l.qty, restock: l.restock })),
         // POS P2.9U ▸ มติ 8: แถวตาม allocateRefund (บิลไม่มีแถวบัตร = แถวเดียวของชิปเดิม) · GIFT_CARD ส่ง giftCardId เสมอ · STORE_CREDIT แถวเดียว ◂
-        payMethods: rfAlloc.rows.map((x) => ({
-          type: x.type,
-          amountSatang: x.amountSatang,
-          reference: x.type === type && x.type !== "CASH" ? reference : null,
-          ...(x.type === "GIFT_CARD" && x.giftCardId ? { giftCardId: x.giftCardId } : {}),
-        })),
+        payMethods: rfCredit
+          ? [{ type: "ON_ACCOUNT" as RefundPayType, amountSatang: draft.total, reference: null }] // POS P3.6U ▸ CD-P36U-8 ◂
+          : rfAlloc.rows.map((x) => ({
+              type: x.type,
+              amountSatang: x.amountSatang,
+              reference: x.type === type && x.type !== "CASH" ? reference : null,
+              ...(x.type === "GIFT_CARD" && x.giftCardId ? { giftCardId: x.giftCardId } : {}),
+            })),
         reasonCode: rfReason,
         reason: rfReasonText.trim() || null,
         ...(dev ? { deviceId: dev } : {}),
@@ -1628,7 +1635,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                   {bill.accounting ? (
                     <div className="flex min-h-[32px] items-center gap-2.5">
                       <BillIcon name="book" className="text-[color:var(--color-muted)]" />
-                      <span>{t("drawer.posted")} ·</span>
+                      {billCredit ? <span data-testid="pos-bills-credit-invoice">{t("drawer.creditInvoice")} ·</span> : <span>{t("drawer.posted")} ·</span> /* POS P3.6U ▸ CD-P36U-8 ◂ */}
                       {accountSystemId ? (
                         <Link data-testid="pos-bills-accounting-link" href={`/app/sys/${accountSystemId}/account/print/${bill.accounting.docId}`} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
                           {bill.accounting.docNo ?? "—"}
@@ -1639,7 +1646,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                     </div>
                   ) : null}
                   {/* POS P1.13U ▸ ใบกำกับ: ออกเต็มรูปแล้ว = แทนแถว ABB · ยังไม่ออก = ABB + "ขอใบเต็มรูป" · ลูกค้าขอ = ออก/ปฏิเสธ ◂ */}
-                  {bill.taxInvoice.status === "ISSUED" ? (
+                  {billCredit ? null /* POS P3.6U ▸ CD-P36U-8: บิลวางบิลไม่มีใบกำกับแยก (W23) ◂ */ : bill.taxInvoice.status === "ISSUED" ? (
                     <div data-testid="pos-taxinv-bill-issued" className="flex min-h-[32px] items-center gap-2.5">
                       <BillIcon name="doc" className="text-[color:var(--color-muted)]" />
                       <span className="min-w-0 truncate">
@@ -1666,7 +1673,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                       ) : null}
                     </div>
                   ) : null}
-                  {bill.taxInvoice.status === "REQUESTED" ? (
+                  {!billCredit /* POS P3.6U ◂ */ && bill.taxInvoice.status === "REQUESTED" ? (
                     <div data-testid="pos-taxinv-bill-requested" className="flex flex-wrap items-center gap-x-2.5 gap-y-1 py-1">
                       <BillIcon name="mail" className="text-[color:var(--color-muted)]" />
                       <span className="min-w-0 flex-1">
@@ -2108,7 +2115,15 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[12px] font-bold text-[color:var(--color-ink-soft)]">{t("refund.method")}</span>
                   {/* POS P2.1U ▸ F4: บิลจ่ายผ่านแพลตฟอร์ม — แพลตฟอร์มคืนลูกค้า ⇒ วิธีคืนมีทางเดียว (refund.ts R9 รับเฉพาะ PLATFORM ทั้งหมด) ◂ */}
-                  {(rf.payments ?? []).some((x) => x.type === "PLATFORM") ? (
+                  {rfCredit ? (
+                    // POS P3.6U ▸ CD-P36U-8: บิลวางบิล — ชิปเดียว "วางบิล (ลดหนี้)" (วิธีอื่นซ่อน) ◂
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                      <button type="button" data-testid="pos-bills-refund-m-onaccount" aria-pressed="true" className="flex min-h-[52px] flex-col items-center justify-center rounded-xl border border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] px-2 text-center text-[13px] font-semibold leading-tight shadow-[inset_0_0_0_1px_var(--color-ink)]">
+                        {t("refund.m.onAccount")}
+                        <small className="text-[11px] font-normal text-[color:var(--color-muted)]">{t("refund.m.onAccountSub")}</small>
+                      </button>
+                    </div>
+                  ) : (rf.payments ?? []).some((x) => x.type === "PLATFORM") ? (
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                       <button type="button" data-testid="pos-bills-refund-method-platform" aria-pressed={rfMethod === "PLATFORM"} onClick={() => setRfMethod("PLATFORM")} className="flex min-h-[52px] flex-col items-center justify-center rounded-xl border border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] px-2 text-center text-[13px] font-semibold leading-tight shadow-[inset_0_0_0_1px_var(--color-ink)]">
                         {t("refund.m.platform")}
@@ -2211,7 +2226,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                   </div>
                   )}
                   {/* POS P2.9U ▸ มติ 8: ยอดแบ่งหลายวิธี (ชิปที่เลือกถึงเพดาน) · ส่วนบัตรใช้ไม่ได้เป็นเงิน = ต้องมีเหตุผล ◂ */}
-                  {rfTender && rfAlloc.rows.length > 1 ? (
+                  {!rfCredit /* POS P3.6U ◂ */ && rfTender && rfAlloc.rows.length > 1 ? (
                     <span data-testid="pos-bills-refund-split" className="text-[12px] text-[color:var(--color-ink-soft)]">
                       {t("refund.tender.split", { rows: rfAlloc.rows.map(rfRowText).join(" \u00b7 ") })}
                     </span>
@@ -2221,7 +2236,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                       {t("refund.tender.cardToCash", { amount: money(rfAlloc.cardShareToCash) })}
                     </span>
                   ) : null}
-                  {rfAlloc.uncovered > 0 ? (
+                  {!rfCredit /* POS P3.6U ◂ */ && rfAlloc.uncovered > 0 ? (
                     <span data-testid="pos-bills-refund-uncovered" className="text-[12px] font-semibold text-[color:var(--color-danger)]">
                       {t("refund.tender.uncovered", { amount: money(rfAlloc.uncovered) })}
                     </span>
@@ -2231,7 +2246,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                       {rfCashErr}
                     </span>
                   ) : null}
-                  {rfMethod !== "CASH" && rfMethod !== "GIFT_CARD" && rfMethod !== "STORE_CREDIT" ? (
+                  {!rfCredit /* POS P3.6U ◂ */ && rfMethod !== "CASH" && rfMethod !== "GIFT_CARD" && rfMethod !== "STORE_CREDIT" ? (
                     <input
                       type="text"
                       data-testid="pos-bills-refund-reference"

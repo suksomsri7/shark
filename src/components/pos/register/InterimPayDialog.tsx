@@ -42,7 +42,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl"; // POS P3.6U ▸ + useLocale (วันครบกำหนด) ◂
 import { PromptPayQr } from "@/components/PromptPayQr";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import { formatBaht } from "@/lib/ui/money";
@@ -75,6 +75,10 @@ import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
 import { PayIntentPanel, usePayIntent, type IntentTarget, type PayIntentSetup } from "./PayIntentPanel";
 import { HEAD_OFFICE_BRANCH_CODE, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
 import type { DisplayPayIn } from "@/lib/modules/pos/display-shared"; // POS P2.10 ▸ จอลูกค้า ◂
+// POS P3.6U ▸ CD-P36U-5: ไทล์ "วางบิล (เครดิตเทอม)" — สถานะวงเงินจากเซิร์ฟเวอร์ (ไม่คิดวงเงินฝั่งจอ) · ชนิดวิธีจ่ายกว้าง (ON_ACCOUNT) เฉพาะไฟล์นี้ ◂
+import { registerCreditStatusAction } from "@/lib/modules/pos/credit-actions";
+import type { RegisterCreditStatus } from "@/lib/modules/pos/credit-shared";
+import type { REGISTER_PAY_TYPES } from "@/lib/modules/pos/register-shared";
 
 export type PayPhase = "form" | "sending" | "unknown" | "conflict";
 export type PayError = { /** POS HF-FU2 ▸ DEP-1: ใบมัดจำที่คำปฏิเสธ DEPOSIT_* ระบุ (register.ts) ◂ */ depositId?: string; code: string; key: string; values?: Record<string, string | number>; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือ ◂ */ giftCardRow?: number; attemptsLeft?: number };
@@ -173,7 +177,27 @@ type Props = {
   /** POS P2.9bU ▸ มติ 2a: สมาชิกในบิล (Customer.id) — แผงมัดจำแสดงมัดจำของสมาชิกนี้ก่อน (registerDepositLookup {memberId}) · ไม่ส่ง = ค้นอย่างเดียว ◂ */
   memberId?: string | null;
   onDisplayPay?: (v: DisplayPayIn | null) => void; // POS P2.10 ▸ จอลูกค้า (มติ 5): ยอด/วิธี/รอบ/ใบขอรับเงินของกล่องนี้ → หน้าขาย (ไม่ส่ง = ไม่มีจอ) ◂
+  /**
+   * POS P3.6U ▸ CD-P36U-5: ไทล์ "วางบิล (เครดิตเทอม)" — ไม่ส่ง/null = ไม่มีไทล์ (ปิดเครดิต · ออฟไลน์ · โต๊ะ · ร้านไม่มี CRM) ·
+   * company = บริษัทของบิล (null = ไทล์บอก "เลือกบริษัท" แล้วเปิดแผ่นเลือก) · buyer = ผู้ซื้อใบกำกับที่ตั้งไว้ · onStatus = สถานะล่าสุด (วันครบกำหนดของจอสำเร็จ) ◂
+   */
+  onAccount?: {
+    systemId: string;
+    unitId: string;
+    company: { partyId: string; name: string; taxId: string | null } | null;
+    requireBuyer: boolean;
+    buyer: TaxInvoiceBuyerInput | null;
+    onPickCompany: () => void;
+    onNeedBuyer: () => void;
+    onStatus: (s: RegisterCreditStatus | null) => void;
+  } | null;
 };
+/** POS P3.6U ▸ ชนิดวิธีจ่ายของเซิร์ฟเวอร์ (รวม ON_ACCOUNT — RegisterPayType ของจอยังไม่รวม) · แถววางบิล = แถวเดียวเต็มยอด ◂ */
+type AnyPayType = (typeof REGISTER_PAY_TYPES)[number];
+const onAccountRow = (amountSatang: number): RegisterPayMethod => ({ type: "ON_ACCOUNT" satisfies AnyPayType, amountSatang }) as unknown as RegisterPayMethod;
+type AcctLook = null | { state: "loading" } | { state: "ok"; s: RegisterCreditStatus } | { state: "error"; key: string };
+const ddmmyyyy = (ymd: string, locale: string) =>
+  new Intl.DateTimeFormat(locale.startsWith("en") ? "en-GB" : "th-TH", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }).format(new Date(`${ymd}T12:00:00Z`));
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
 type PayRow = {
@@ -367,10 +391,69 @@ export function PayDialog(p: Props) {
   const gcPinMissing = gcRows.some((r) => (pinsRef.current.get(r.id) ?? "").length < GIFT_CARD_PIN_MIN);
   /** POS P2.9bU ▸ มติ 3: แถวมัดจำที่ต้องมี 4 หลักท้ายแต่ยังไม่มี (ใส่ใหม่หลังปฏิเสธ/โหลดกลับ) ⇒ ยืนยันไม่ได้ ◂ */
   const depLast4Missing = depRows.some((r) => !!r.dep?.needsLast4 && (last4Ref.current.get(r.id) ?? "").length !== DEP_LAST4);
+  // ── POS P3.6U ▸ CD-P36U-5: วางบิล (เครดิตเทอม) — แถวเดียวเต็มยอด · ไม่มีทิป/แยกจ่าย/เงินรับ · สถานะวงเงินจากเซิร์ฟเวอร์ (ครั้งละคำขอ · ผลล่าสุดชนะ) ──
+  const oa = p.onAccount ?? null;
+  const locale = useLocale();
+  const [acct, setAcct] = useState(false);
+  const [acctSt, setAcctSt] = useState<AcctLook>(null);
+  const oaParty = oa?.company?.partyId ?? null;
+  const oaRef = useRef(oa);
+  oaRef.current = oa;
+  const dueRef = useRef(p.dueSatang);
+  dueRef.current = p.dueSatang;
+  const acctBusy = useRef(false);
+  const acctAgain = useRef(false);
+  const loadAcct = async () => {
+    const o = oaRef.current;
+    const party = o?.company?.partyId;
+    if (!o || !party) return;
+    if (acctBusy.current) {
+      acctAgain.current = true;
+      return;
+    }
+    acctBusy.current = true;
+    try {
+      const r = await registerCreditStatusAction({ systemId: o.systemId, unitId: o.unitId, customerPartyId: party, amountSatang: Math.max(0, dueRef.current) });
+      if (!acctAgain.current && oaRef.current?.company?.partyId === party) {
+        setAcctSt(r.ok ? { state: "ok", s: r } : { state: "error", key: r.code === "CUSTOMER_INVALID" ? "credit.errors.customerInvalid" : refusalMessageKey(r.code) });
+        o.onStatus(r.ok ? r : null);
+      }
+    } catch {
+      if (!acctAgain.current) setAcctSt({ state: "error", key: "errors.unknown" });
+    } finally {
+      acctBusy.current = false;
+      if (acctAgain.current) {
+        acctAgain.current = false;
+        void loadAcct();
+      }
+    }
+  };
+  useEffect(() => {
+    if (!oa || !oaParty) {
+      setAcctSt(null);
+      return;
+    }
+    setAcctSt((s) => (s?.state === "ok" ? s : { state: "loading" }));
+    const h = setTimeout(() => void loadAcct(), 250);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = บริษัท/ยอด/การมีไทล์
+  }, [!!oa, oaParty, p.dueSatang]);
+  const acctNotAllowed = acctSt?.state === "ok" && acctSt.s.enabled && !acctSt.s.allowed;
+  const acctHidden = acctSt?.state === "ok" && !acctSt.s.enabled;
+  // ไม่มีไทล์/บริษัทหลุด/สถานะไม่อนุญาต ⇒ ออกจากโหมดวางบิล
+  useEffect(() => {
+    if (acct && (!oa || !oaParty || acctNotAllowed || acctHidden)) setAcct(false);
+  }, [acct, oa, oaParty, acctNotAllowed, acctHidden]);
+  const buyerTax = (oa?.buyer?.taxId ?? "").replace(/\D/g, "");
+  const coTax = (oa?.company?.taxId ?? "").replace(/\D/g, "");
+  const acctMismatch = acct && !!buyerTax && !!coTax && buyerTax !== coTax;
+  const acctOk =
+    acct && !busy && p.itemCount > 0 && !p.quotePending && !p.quoteError && !platformOn && !!oa?.company && acctSt?.state === "ok" && acctSt.s.enabled && acctSt.s.allowed && (!oa.requireBuyer || !!oa.buyer) && rows.every((r) => r.via === undefined);
+  // ◂
   // มติ 6: ทิปจ่ายจากแถวเงินจริงเท่านั้น (CASH/PROMPTPAY/TRANSFER/CARD) · รอบสุดท้ายที่เป็นเงินจริงนับด้วย
   const cashLikeRows = rows.filter((r) => REGISTER_CASH_LIKE_PAY.has(r.type)).reduce((t, r) => t + r.amountSatang, 0);
   const cashLikeNow = REGISTER_CASH_LIKE_PAY.has(method) && remaining > 0 ? remaining : 0;
-  const tipAllowed = p.tipEnabled && !platformOn && (cashLikeRows > 0 || REGISTER_CASH_LIKE_PAY.has(method));
+  const tipAllowed = !acct /* POS P3.6U ▸ วางบิล = ไม่มีทิป ◂ */ && p.tipEnabled && !platformOn && (cashLikeRows > 0 || REGISTER_CASH_LIKE_PAY.has(method));
   const tipFundOk = tip === 0 || tip <= cashLikeRows + cashLikeNow;
   // ◂
 
@@ -429,9 +512,9 @@ export function PayDialog(p: Props) {
   // POS HF-PP ▸ fix 1 F1: บัตรทาง EDC (Beam บัตรปิด/CARD_UNAVAILABLE) = ยืนยันรับเงินเอง — ค่าตั้ง manualConfirmRequiresManager และผู้ใช้ไม่มี
   //   pos.shift.manage ⇒ ยืนยัน/แยกจ่าย/F4 ไม่ได้ (ก่อนรูดบัตรลูกค้า) · คำใบ้ชุดเดียวกับปุ่มยืนยันเองของ QR (pay.intent.managerOnly) ◂
   const edcManagerOnly = method === "CARD" && !intentMode && ((!!p.intent?.manualRequiresManager && !p.intent?.canManageShift) || (!p.intent && !!p.manualManagerOnly)); // POS P2.8U ▸ fix 1 F1: + manualManagerOnly ◂
-  const canConfirm =
+  const canConfirm = acct /* POS P3.6U ▸ CD-P36U-5: วางบิล = เงื่อนไขของมันเอง ◂ */ ? acctOk :
     ready && !presetBlocked && !edcManagerOnly && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid) && !gcPinMissing && !depLast4Missing && tipFundOk; // POS P2.9U ▸ PIN ครบ · ทิปจากเงินจริง ◂ · POS P2.9bU ▸ 4 หลักท้ายครบ ◂
-  const canSplit = ready && !presetBlocked && !edcManagerOnly && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
+  const canSplit = !acct /* POS P3.6U ◂ */ && ready && !presetBlocked && !edcManagerOnly && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
   /** F3b: เงินเข้าเกินยอดบิล (ยอดบิลลดลงหลังมีแถวที่เงินเข้าแล้ว) — ยืนยันไม่ได้ · ต้องคืนเงินเอง */
   const overPaid = remaining < 0 && rows.some((r) => r.via !== undefined);
   /** F3b: มีเงินเข้าแล้วในกล่องนี้ (ใบปัจจุบัน PAID หรือแถวที่มาจากใบ) ⇒ ปิดกล่องไม่ได้ (ยกเว้นเงินเกินยอด — ต้องออกไปคืนเงิน) */
@@ -495,6 +578,7 @@ export function PayDialog(p: Props) {
       return;
     }
     if (piLocked && m !== method) return flash("pay.intent.locked"); // มติ 2: ใบที่เงินเข้าแล้วเปลี่ยนวิธีไม่ได้
+    setAcct(false); // POS P3.6U ▸ เลือกวิธีอื่น = ออกจากวางบิล ◂
     setMethod(m);
     setEntry(m === "CASH" ? "" : null);
     setReference("");
@@ -1108,9 +1192,33 @@ export function PayDialog(p: Props) {
     setEntry(method === "CASH" ? "" : null);
   };
 
+  // ── POS P3.6U ▸ CD-P36U-5: แตะไทล์วางบิล — ไม่มีบริษัท = เปิดแผ่นเลือกบริษัท · เลือก = แถวเดียวเต็มยอด (ล้างแถวแยก · ปิดทิป) · ต้องมีผู้ซื้อ = เปิดกล่องใบกำกับ ◂
+  const pickOnAccount = () => {
+    if (!oa || busy || platformOn || p.lockedMethod || moneyIn || piLocked) return;
+    if (!oa.company) return oa.onPickCompany();
+    if (acctNotAllowed || acctHidden) return;
+    setRows([]);
+    setTipOn(false);
+    setTipText("");
+    setPadTip(false);
+    if (gc.look || gc.pinLen) {
+      setGcPin("");
+      setGc(GC_EMPTY);
+    }
+    if (dp.sel || dp.look || dp.forRow !== null) {
+      setDepLast4("");
+      setDp(DP_EMPTY);
+    }
+    setMethod("CASH");
+    setEntry("");
+    setReference("");
+    setAcct(true);
+    if (oa.requireBuyer && !oa.buyer) oa.onNeedBuyer();
+  };
   // ── ยืนยัน: แถวที่แยกไว้ + รอบสุดท้าย (ถ้ายังมีคงเหลือ) → payMethods · เงินรับของแถวเงินสด → cashReceivedSatang ──
   const confirm = () => {
     if (!canConfirm) return;
+    if (acct) return p.onConfirm({ payMethods: [onAccountRow(p.dueSatang)], tipSatang: 0 }); // POS P3.6U ▸ CD-P36U-5: แถวเดียวเต็มยอด ◂
     sentStripped.current = false; // POS P2.9bU ◂
     if (zero) return p.onConfirm({ payMethods: [], tipSatang: 0 });
     const final: PayRow[] =
@@ -1527,9 +1635,9 @@ export function PayDialog(p: Props) {
                         <button
                           key={m.type}
                           data-testid={`pos-reg-paydlg-method-${m.type.toLowerCase()}`}
-                          className={tile(method === m.type && !off)}
+                          className={tile(!acct /* POS P3.6U ◂ */ && method === m.type && !off)}
                           type="button"
-                          aria-pressed={method === m.type}
+                          aria-pressed={!acct && method === m.type}
                           disabled={off}
                           onClick={() => pickMethod(m.type)}
                         >
@@ -1609,6 +1717,31 @@ export function PayDialog(p: Props) {
                           </button>
                         );
                       })()}
+                      {oa && !platformOn && !p.lockedMethod && !acctHidden && (() => {
+                        // POS P3.6U ▸ CD-P36U-5: ไทล์วางบิล — ไม่มีบริษัท = เหตุผล "เลือกบริษัท" (แตะ = เปิดแผ่นเลือก) · ไม่อนุญาต = ปิด + เหตุผล ◂
+                        const off = busy || moneyIn || acctNotAllowed;
+                        const why = !oa.company ? t("credit.pickCompany") : acctNotAllowed ? t("credit.errors.notAllowed") : null;
+                        return (
+                          <button
+                            data-testid="pos-reg-paydlg-method-onaccount"
+                            className={tile(acct && !off)}
+                            type="button"
+                            aria-pressed={acct}
+                            aria-disabled={off || !oa.company}
+                            disabled={busy || moneyIn || acctNotAllowed}
+                            onClick={pickOnAccount}
+                          >
+                            <span>{t("credit.tile")}</span>
+                            {why ? (
+                              <small data-testid="pos-reg-paydlg-onaccount-reason" className="text-[12.5px] font-normal text-[color:var(--color-muted)]">
+                                {why}
+                              </small>
+                            ) : (
+                              <small className="truncate text-[12.5px] font-normal text-[color:var(--color-muted)]">{oa.company?.name}</small>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                   ) : (
                   <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:mt-4 xl:gap-4" role="group" aria-label={tm("pay.tiles.title")}>
@@ -1639,8 +1772,42 @@ export function PayDialog(p: Props) {
               )}
             </div>
 
+            {/* POS P3.6U ▸ CD-P36U-5: วางบิล — คอลัมน์ขวา = สถานะวงเงิน (ทุกคนเห็นพอ/ไม่พอ · เทอม · ครบกำหนด · คงเหลือเฉพาะเมื่อเซิร์ฟเวอร์ส่งมา) ◂ */}
+            {showForm && !zero && acct && oa && (
+              <div className="flex flex-col gap-3 px-5 pb-4 md:w-[400px] md:shrink-0 md:overflow-y-auto md:bg-[color:var(--color-surface-2)] md:px-[22px] md:py-[18px] lg:w-[470px]">
+                <h3 className="text-[16px] font-bold">{t("credit.title")}</h3>
+                <p className="text-[14px] text-[color:var(--color-ink-soft)]">{t("credit.fullDue", { amount: moneyText(p.dueSatang) })}</p>
+                <p className="text-[13px] text-[color:var(--color-muted)]">{oa.company?.name}</p>
+                <div data-testid="pos-reg-paydlg-onaccount-status" data-state={acctSt?.state ?? "loading"} data-sufficient={acctSt?.state === "ok" ? String(acctSt.s.sufficient) : undefined} data-remaining={acctSt?.state === "ok" && acctSt.s.remainingSatang !== undefined ? "1" : undefined} role="status" className="flex flex-col gap-1.5 rounded-[14px] border bg-[color:var(--color-surface)] p-4 text-[14px]">
+                  {acctSt?.state === "ok" ? (
+                    <>
+                      <b className={acctSt.s.sufficient ? "text-[color:var(--color-ink)]" : "text-[color:var(--color-danger)]"}>{t(acctSt.s.sufficient ? "credit.sufficient" : "credit.insufficient")}</b>
+                      {acctSt.s.termDays !== null && <span>{t("credit.termDays", { days: acctSt.s.termDays })}</span>}
+                      {acctSt.s.dueDate && <span>{t("credit.dueDate", { date: ddmmyyyy(acctSt.s.dueDate, locale) })}</span>}
+                      {acctSt.s.remainingSatang !== undefined && <span className="tabular-nums">{t("credit.remaining", { amount: moneyText(acctSt.s.remainingSatang) })}</span>}
+                    </>
+                  ) : acctSt?.state === "error" ? (
+                    <span role="alert" className="font-semibold text-[color:var(--color-danger)]">
+                      {t(acctSt.key)}
+                    </span>
+                  ) : (
+                    <span className="text-[color:var(--color-muted)]">{t("credit.statusLoading")}</span>
+                  )}
+                </div>
+                {oa.requireBuyer && !oa.buyer && (
+                  <p data-testid="pos-reg-paydlg-onaccount-reason" className="text-[13px] font-semibold text-[color:var(--color-danger)]">
+                    {t("credit.buyerRequired")}
+                  </p>
+                )}
+                {acctMismatch && (
+                  <p data-testid="pos-reg-paydlg-onaccount-buyer-mismatch" role="status" className="text-[13px] font-semibold text-[color:var(--color-note-ink)]">
+                    {t("credit.buyerMismatch")}
+                  </p>
+                )}
+              </div>
+            )}
             {/* ── คอลัมน์ขวา (มือถือ: ต่อท้ายคอลัมน์ซ้าย · ไม่มีแป้นตัวเลข) ── */}
-            {showForm && !zero && (
+            {showForm && !zero && !acct /* POS P3.6U ◂ */ && (
               <div
                 className={`flex flex-col px-5 pb-4 md:w-[400px] md:shrink-0 md:overflow-y-auto md:bg-[color:var(--color-surface-2)] md:px-[22px] lg:w-[470px] ${
                   // P1.7U แก้รอบ 2: มีแผง QR ⇒ ระยะ/แป้นกระชับ ให้แผง + ช่องจำนวน + แป้น 4 แถว + ปุ่มด่วน พอดีกล่องที่ 1440×900 และ 1024×768

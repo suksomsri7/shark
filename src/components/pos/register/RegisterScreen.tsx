@@ -138,6 +138,13 @@ import { LockScreen, type LockMode } from "./LockScreen";
 import { ApprovalWaitDialog, type ApprovalPinResult } from "./ApprovalWaitDialog";
 // ชื่อลงท้าย Sheet = ตัวสแกนปุ่ม (F15.3) นับเป็นคอมโพเนนต์กดได้ ⇒ ชื่อแฝงตอนวาง (ปุ่มข้างในมี testid ครบ)
 import { DiscountOverSheet as DiscountOverBox } from "./DiscountOverSheet";
+// POS P3.6U ▸ CD-P36U-1/3/4/6/7: ชิปบริษัท · แผ่นเลือกบริษัท · เลือกดีล · แผ่นเกินวงเงิน (วางบิล) ◂
+import { CompanyChip, type BillCompany } from "./CompanyChip";
+import { CompanyPickerSheet as CompanyPickerBox } from "./CompanyPickerSheet";
+import { DealSelect as DealBox } from "./DealSelect";
+import { CreditOverSheet as CreditOverBox } from "./CreditOverSheet";
+import type { ManagerPinResult } from "./ManagerPinPad";
+import type { RegisterCreditStatus } from "@/lib/modules/pos/credit-shared";
 // POS P3.4U ▸ ขายออฟไลน์ 19ง (มติ 2–7): ชั้น IndexedDB/วงซิงก์ · ชิ้นจอ · ตัวช่วยบริสุทธิ์ (offline-shared = สัญญาใบ S) ◂
 import { useOfflineRegister } from "./use-offline-register";
 import type { OfflineUnlockResult } from "./offline-pin";
@@ -194,6 +201,8 @@ export type RegisterScreenProps = {
   offlineEnabled?: boolean;
   /** POS P3.7U ▸ CD-P37U-7: posChatSettings(sys.settings).receiptAuto — ชิป LINE อัตโนมัติของจอสำเร็จ ◂ */
   chatReceiptAuto?: boolean;
+  /** POS P3.6U ▸ CD-P36U-2 (b): posCreditSettings ของระบบ + ร้านมีระบบ CRM (ชิปบริษัท/ดีล/ไทล์วางบิล) + ผู้ใช้ถือ pos.credit.manage ที่สาขา — ไม่ส่ง = ไม่มี UI วางบิล ◂ */
+  credit?: { enabled: boolean; requireBuyer: boolean; hasCrm: boolean; canManage: boolean };
 };
 
 /** ns "member" = คีย์ใต้ pos.member (P1.12U) · "recipe" = ใต้ pos.recipe (POS P2.3U) · ไม่ระบุ = ใต้ pos.register */
@@ -214,7 +223,7 @@ type Layer =
   | { kind: "pay"; focusPoints?: boolean }
   | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; tipSatang?: number; memberAttached?: boolean; taxInvoice?: boolean } // POS P2.9U ▸ tipSatang (02b "ทิป ฿x") · payMethods ไม่มี PIN ◂
   // POS P1.13U: กล่องใบกำกับเต็มรูป (15A) · errorKey = คำปฏิเสธจาก submit (คีย์ใต้ pos) ที่ทำให้เปิดซ้ำ
-  | { kind: "taxInvoice"; errorKey?: string }
+  | { kind: "taxInvoice"; errorKey?: string; /** POS P3.6U ▸ CD-P36U-5: ผู้ซื้อตั้งต้นจากบริษัทของบิล (เปิดจากไทล์วางบิล) ◂ */ prefill?: TaxInvoiceBuyerInput }
   | { kind: "note" }
   // P1.2 U: กล่องตัวเลือก/ตัวแปร (weighedBarcode = มาจากป้ายเครื่องชั่งที่สแกน) · กล่องน้ำหนัก (options = ที่เลือกมาก่อน)
   | { kind: "options"; product: RegisterProduct; weighedBarcode?: string; anchor?: PickAnchor }
@@ -239,7 +248,10 @@ type Layer =
   // POS P3.4U ▸ มติ 3–5: กล่องชำระออฟไลน์ · จอหลังบันทึก (เลข OFF + สลิป · ปิดด้วยปุ่มเท่านั้น) · รายการบิลออฟไลน์ของเครื่อง ◂
   | { kind: "offlinePay"; tender: "CASH" | "TRANSFER" }
   | { kind: "offlineDone"; rec: OfflineQueueRecord }
-  | { kind: "offlineBills" };
+  | { kind: "offlineBills" }
+  // POS P3.6U ▸ CD-P36U-3/6: แผ่นเลือกบริษัท · แผ่นเกินวงเงินวางบิล (ตัวเลขเฉพาะเมื่อคำปฏิเสธพกมา — CD-4) ◂
+  | { kind: "company" }
+  | { kind: "creditOver"; limitSatang?: number; exposureSatang?: number };
 /**
  * POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานของบิลนี้: pin = PIN ผู้จัดการที่เครื่อง (ส่งพร้อม submit · heldCartId = บิลส่วนลดที่พักรอ) ·
  * approved = เรียกคืนบิลพักที่อนุมัติแล้ว (quote ด้วยเพดานที่อนุมัติ · ใช้ได้เฉพาะตะกร้าเดิมทุกไบต์ — inputJson) ◂
@@ -738,6 +750,35 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // fix รอบ 1 F5: มีสิทธิ์เกินเพดาน = เพดานบนจอขยายเท่าที่อนุญาต (ไม่ปลดเพดาน) · เกินกว่านั้น = แผ่นส่วนลดเกินสิทธิ์อีกครั้ง
   const localCap = discAuth && sellerCap !== null ? Math.max(sellerCap, discAuth.bp) : sellerCap;
 
+  // ═══════ POS P3.6U ▸ CD-P36U-3/4/5/6/7: บริษัทของบิล · ดีล · วางบิล (เครดิตเทอม) ◂ ═══════
+  //   บริษัท/ดีลอยู่ในสถานะของจอเท่านั้น (ไม่ไปกับบิลพัก — held-cart.ts ไม่แตะ · owner-ack) · ล้างเมื่อบิลใหม่/พัก/เรียกคืน (resetBill) และเมื่อล็อกจอ
+  const creditUi = !!props.credit?.hasCrm && !tableOn;
+  const [company, setCompany] = useState<BillCompany | null>(null);
+  const [companyErr, setCompanyErr] = useState<string | null>(null);
+  const [dealId, setDealId] = useState<string | null>(null);
+  const [dealErr, setDealErr] = useState<string | null>(null);
+  /** สถานะวงเงินล่าสุดที่จอชำระอ่าน — วันครบกำหนดของจอสำเร็จ (ผล submit ไม่มี dueDate · เซิร์ฟเวอร์คิดจาก paidAt ด้วยกติกาวันไทยเดียวกัน · owner-ack) */
+  const creditStatusRef = useRef<RegisterCreditStatus | null>(null);
+  const [creditDone, setCreditDone] = useState<{ name: string; dueDate: string | null } | null>(null);
+  const [creditOverBusy, setCreditOverBusy] = useState(false);
+  /** คำขอที่ถูกปฏิเสธ CREDIT_LIMIT_EXCEEDED (ไม่มี PIN) — ส่งซ้ำด้วยคีย์บิลเดิม + creditOverride */
+  const creditOverSale = useRef<RegisterSubmitInput | null>(null);
+  /** รหัสผลของ send ครั้งล่าสุด ("OK" · รหัสปฏิเสธ · "UNKNOWN") — แผ่นเกินวงเงินอ่านต่อหลัง await send() */
+  const lastSendCode = useRef("");
+  const onDealChange = useCallback((id: string | null) => {
+    setDealId(id);
+    setDealErr(null);
+  }, []);
+  useEffect(() => {
+    if (!locked) return;
+    setCompany(null);
+    setCompanyErr(null);
+    setDealId(null);
+    setDealErr(null);
+    creditStatusRef.current = null;
+  }, [locked]);
+  // ◂ POS P3.6U
+
   // ═══════ การส่งบิล ═══════
   const [idemKey, setIdemKey] = useState(newKey);
   const [payPhase, setPayPhase] = useState<PayPhase>("form");
@@ -756,9 +797,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
     try {
       // POS P1.15U ▸ fix รอบ 1 F3: PIN ผู้จัดการห้ามลง storage (อ่านได้จากเครื่อง) — สำเนาที่เก็บไม่มี managerPin/managerUserId ·
       //   โหลดกลับแล้วลองซ้ำ = บิลเดิมถ้าบันทึกแล้ว · ไม่งั้นได้ DISCOUNT_EXCEEDS_LIMIT ชัด ๆ (ไม่มีบิล) แล้วใส่ PIN ใหม่ · staffToken อยู่ใน sessionStorage อยู่แล้ว ◂
-      const { managerPin: _pin, managerUserId: _mgr, ...kept } = sale;
+      const { managerPin: _pin, managerUserId: _mgr, creditOverride: _co /* POS P3.6U ▸ CD-P36U-6: PIN อนุญาตเกินวงเงินห้ามลง storage ◂ */, ...kept } = sale;
       void _pin;
       void _mgr;
+      void _co;
       // POS P2.9U ▸ มติ 3 (H6): PIN บัตรของขวัญห้ามลง storage — แถว GIFT_CARD เก็บ number อย่างเดียว (โหลดกลับ = บิลเดิม หรือขอ PIN ใหม่) ◂
       // POS P2.9bU ▸ มติ 3: phoneLast4 ของแถว DEPOSIT ห้ามลง storage เช่นกัน — stripPayPins ตัดทิ้ง (โหลดกลับ = บิลเดิม หรือ DEPOSIT_NOT_OWNER ⇒ ใส่ 4 หลักอีกครั้ง) ◂
       const stored = { ...kept, payMethods: stripPayPins(kept.payMethods) };
@@ -1800,6 +1842,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setConflict(null);
     setDiscAuth(null); // POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานเป็นของบิลนี้เท่านั้น ◂
     setDiscErr(null);
+    // POS P3.6U ▸ CD-P36U-3: บริษัท/ดีล/สถานะวงเงินเป็นของบิลนี้เท่านั้น (บิลใหม่ · ล้างบิล · พักบิล · เรียกคืน) ◂
+    setCompany(null);
+    setCompanyErr(null);
+    setDealId(null);
+    setDealErr(null);
+    creditStatusRef.current = null;
+    creditOverSale.current = null;
+    setCreditDone(null);
   };
 
   // ═══════ POS P3.4U ▸ ชำระออฟไลน์ (มติ 3 4): กล่องเงินสด/โอน → คิวของเครื่อง (เลข OFF ใน transaction เดียว) → จอเลข OFF + สลิป ═══════
@@ -1970,18 +2020,25 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (lockedRef.current && !opts?.restore) return;
     sendingRef.current = true;
     // POS P2.9U ▸ มติ 3: คำขอค้างในหน่วยความจำ (ลองซ้ำ) ก็ไม่เก็บ PIN — ลองซ้ำคีย์ที่บันทึกแล้ว = บิลเดิม · ยังไม่บันทึก = VALIDATION ⇒ ขอ PIN ใหม่ ◂
-    pendingSubmit.current = { ...sale, payMethods: stripPayPins(sale.payMethods) };
+    // POS P3.6U ▸ CD-P36U-6: คำขอค้าง (ลองซ้ำ) ไม่เก็บ PIN อนุญาตเกินวงเงิน — ยังไม่บันทึก = CREDIT_LIMIT_EXCEEDED ⇒ แผ่น PIN อีกครั้ง ◂
+    const { creditOverride: _co, ...noOverride } = sale;
+    void _co;
+    lastSendCode.current = "";
+    pendingSubmit.current = { ...noOverride, payMethods: stripPayPins(sale.payMethods) };
     savePending(sale, "sending");
     setPayPhase("sending");
     setPayError(null);
     try {
       const r = await submitRegisterSaleAction({ systemId, unitId, sale, deviceId: getPosDeviceId() });
       synced();
+      lastSendCode.current = r.ok ? "OK" : r.code; // POS P3.6U ◂
       if (r.ok) {
+        // POS P3.6U ▸ CD-P36U-7: บิลวางบิล ⇒ ชิป "ครบกำหนด" ของจอสำเร็จ (บริษัท + วันครบกำหนดจากสถานะล่าสุด) ◂
+        if (sale.payMethods.some((m) => (m.type as string) === "ON_ACCOUNT")) setCreditDone({ name: company?.name ?? "", dueDate: creditStatusRef.current?.dueDate ?? null });
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
-        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet" && l.kind !== "member" && l.kind !== "coupon"), { kind: "done", result: r, payMethods: stripPayPins(sale.payMethods), tipSatang: sale.tipSatang ?? 0, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet" && l.kind !== "member" && l.kind !== "coupon" && l.kind !== "creditOver" /* POS P3.6U ◂ */), { kind: "done", result: r, payMethods: stripPayPins(sale.payMethods), tipSatang: sale.tipSatang ?? 0, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
         void refreshStatus();
         return;
       }
@@ -2033,6 +2090,23 @@ export function RegisterScreen(props: RegisterScreenProps) {
         if (sale.memberId) void refreshBenefits(sale.memberId, JSON.stringify(cartToQuoteInput(cartRef.current, { choices: false })));
         return;
       }
+      // POS P3.6U ▸ CD-P36U-3/4/6: บริษัทผิด = ถอดชิป + ข้อความ · ดีลผิด = ล้างตัวเลือก + ข้อความ (ไม่มีบิล · คีย์เดิม) ·
+      //   เกินวงเงิน = แผ่น PIN ผู้จัดการ (ไม่มีการ์ดผิดพลาด) · คำตอบของ PIN อนุญาตเกินวงเงิน = ข้อความที่แป้น (ไม่ใช่การ์ด) ◂
+      if (r.code === "CUSTOMER_INVALID" && sale.customerPartyId) {
+        setCompany(null);
+        setCompanyErr("credit.errors.customerInvalid");
+      }
+      if (r.code === "DEAL_INVALID" && sale.crmDealId) {
+        setDealId(null);
+        setDealErr("deal.errors.invalid");
+      }
+      if (r.code === "CREDIT_LIMIT_EXCEEDED") {
+        const fig = r as { limitSatang?: number; exposureSatang?: number };
+        creditOverSale.current = { ...noOverride };
+        setLayers((s) => [...s.filter((l) => l.kind !== "creditOver"), { kind: "creditOver", ...(fig.limitSatang !== undefined ? { limitSatang: fig.limitSatang } : {}), ...(fig.exposureSatang !== undefined ? { exposureSatang: fig.exposureSatang } : {}) }]);
+        return;
+      }
+      if (sale.creditOverride && (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "PERMISSION_DENIED")) return;
       // POS HF-PP ▸ fix 1: ด่านผู้จัดการของพร้อมเพย์/บัตรที่ไม่มีใบขอรับเงิน = ข้อความเฉพาะ (refusal.manualConfirmManager) ◂
       setPayError({ code: r.code, ...(submitRefusalMessageKey(r) === "refusal.manualConfirmManager" ? { key: "refusal.manualConfirmManager" } : errorFor(r.code)), ...payErrorPinMeta(r) }); // POS P2.14 ▸ UI-9 ◂
       if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
@@ -2073,6 +2147,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         setCartVer((v) => v + 1); // quote ใหม่
       }
     } catch {
+      lastSendCode.current = "UNKNOWN"; // POS P3.6U ◂
       savePending(sale, "unknown");
       setPayPhase("unknown"); // เครือข่ายล้ม/หมดเวลา — ไม่รู้ว่าบันทึกแล้วหรือยัง
     } finally {
@@ -2107,6 +2182,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
       sale.taxInvoice = taxInv.buyer;
       if (taxInv.remember && cart.memberId) sale.rememberBuyer = true;
     }
+    // POS P3.6U ▸ CD-P36U-3/4: บริษัท + ดีลของบิล (ตัวตัดสินจริง = เซิร์ฟเวอร์ · CUSTOMER_INVALID / DEAL_INVALID ไม่มีบิล) ◂
+    if (creditUi && company) sale.customerPartyId = company.partyId;
+    if (creditUi && dealId) sale.crmDealId = dealId;
+    setCompanyErr(null);
+    setDealErr(null);
     // POS P1.15U ▸ มติ 2: ผู้ขาย = คนในโทเคน (ส่งทุกบิล · ลองซ้ำส่งชุดเดิมทั้งก้อน) ◂
     const st = staffRef.current;
     // POS P1.15U ▸ มติ 4–5: ส่วนลดเกินเพดาน — PIN ผู้จัดการ (managerPin + managerUserId · heldCartId ของบิลที่พักรอ) · บิลพักที่อนุมัติแล้ว (heldCartId) ◂
@@ -2286,6 +2366,42 @@ export function RegisterScreen(props: RegisterScreenProps) {
       return;
     }
     push({ kind: "taxInvoice" });
+  };
+  // ═══════ POS P3.6U ▸ CD-P36U-3/5/6: เปิดแผ่นเลือกบริษัท · กล่องใบกำกับตั้งต้นจากบริษัท (requireBuyer) · PIN อนุญาตเกินวงเงิน ◂ ═══════
+  const openCompany = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "company")) return;
+    push({ kind: "company" });
+  };
+  const openBuyerFromCompany = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "taxInvoice")) return;
+    if (!taxEligible) {
+      showToast({ key: "errors.taxInvoiceNotEligible" });
+      return;
+    }
+    const c = company;
+    push(c ? { kind: "taxInvoice", prefill: { kind: "JURISTIC", name: c.name, taxId: c.taxId ?? "", branchCode: c.branchCode, address: "", source: "MANUAL" } } : { kind: "taxInvoice" });
+  };
+  /** PIN ผู้จัดการ ⇒ ส่งคำขอเดิม (คีย์บิลเดิมทุกไบต์) + creditOverride · ผลกลับไปที่แป้น (PIN ผิด/ไม่ใช่ผู้อนุญาต) หรือปิดแผ่น (สำเร็จ/ปฏิเสธอื่น/ไม่แน่ใจ) */
+  const creditOverPin = async (managerUserId: string, managerPin: string): Promise<ManagerPinResult> => {
+    const base = creditOverSale.current;
+    if (!base || sendingRef.current) return { ok: false, code: "BUSY" };
+    setCreditOverBusy(true);
+    lastSendCode.current = "";
+    try {
+      await send({ ...base, creditOverride: { managerUserId, managerPin } });
+    } finally {
+      setCreditOverBusy(false);
+    }
+    const c = lastSendCode.current;
+    if (c === "OK") {
+      creditOverSale.current = null;
+      return { ok: true };
+    }
+    if (c === "PIN_INVALID" || c === "PIN_LOCKED" || c === "PIN_THROTTLED" || c === "PERMISSION_DENIED" || c === "CREDIT_LIMIT_EXCEEDED") return { ok: false, code: c };
+    if (c === "") return { ok: false, code: "UNKNOWN" };
+    creditOverSale.current = null;
+    setLayers((s) => s.filter((l) => l.kind !== "creditOver"));
+    return { ok: true };
   };
 
   // ═══════ POS P1.15U ▸ ส่วนลดเกินสิทธิ์ (มติ 4) + รอผู้จัดการอนุมัติ 21B (มติ 5) ═══════
@@ -2634,17 +2750,38 @@ export function RegisterScreen(props: RegisterScreenProps) {
           : null
       }
       memberSlot={
-        memberEnabled && !tableOn ? (
-          <MemberChip
-            member={cart.memberId ? ((memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) ?? placeholderMember(cart.memberId)) : null}
-            ready={memberReady}
-            points={memberReady ? (benefits?.points?.balance ?? null) : null}
-            frozen={frozen}
-            onPick={openMember}
-            onOpen={openMember}
-            onUsePoints={openPayPoints}
-            onDetach={detachMember}
-          />
+        // POS P3.6U ▸ CD-P36U-1/3/4: ชิปบริษัท + เลือกดีล ใต้การ์ดสมาชิก (ร้านที่มี CRM · ไม่ใช่โหมดโต๊ะ) ◂
+        // POS P3.6U fix1 F2 (CD-P36U-3): ชิปบริษัท/ดีล = เงื่อนไขเดียวกับไทล์วางบิล (ออนไลน์ · ไม่ใช่โหมดออฟไลน์) ◂
+        (memberEnabled && !tableOn) || (creditUi && online && !offMode) ? (
+          <div className="flex flex-col gap-2">
+            {memberEnabled && !tableOn ? (
+              <MemberChip
+                member={cart.memberId ? ((memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) ?? placeholderMember(cart.memberId)) : null}
+                ready={memberReady}
+                points={memberReady ? (benefits?.points?.balance ?? null) : null}
+                frozen={frozen}
+                onPick={openMember}
+                onOpen={openMember}
+                onUsePoints={openPayPoints}
+                onDetach={detachMember}
+              />
+            ) : null}
+            {creditUi && online && !offMode && (
+              <>
+                <CompanyChip
+                  company={company}
+                  frozen={frozen}
+                  error={companyErr}
+                  onPick={openCompany}
+                  onClear={() => {
+                    setCompany(null);
+                    setCompanyErr(null);
+                  }}
+                />
+                <DealBox systemId={systemId} unitId={unitId} memberId={cart.memberId ?? null} customerPartyId={company?.partyId ?? null} value={dealId} frozen={frozen} error={dealErr} onDeal={onDealChange} />
+              </>
+            )}
+          </div>
         ) : null
       }
       member={{
@@ -2736,6 +2873,41 @@ export function RegisterScreen(props: RegisterScreenProps) {
             allowPin={!!l.heldCartId}
             onDone={(v) => approvalDone(v, l.heldCartId)}
             onClose={pop}
+          />
+        );
+      // POS P3.6U ▸ CD-P36U-3/6: แผ่นเลือกบริษัท · แผ่นเกินวงเงินวางบิล ◂
+      case "company":
+        return (
+          <CompanyPickerBox
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            memberId={cart.memberId ?? null}
+            selectedPartyId={company?.partyId ?? null}
+            onPick={(c) => {
+              setCompany(c);
+              setCompanyErr(null);
+              setLayers((s) => s.filter((x) => x.kind !== "company"));
+            }}
+            onClose={() => setLayers((s) => s.filter((x) => x.kind !== "company"))}
+          />
+        );
+      case "creditOver":
+        return (
+          <CreditOverBox
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            deviceId={deviceId}
+            limitSatang={l.limitSatang}
+            exposureSatang={l.exposureSatang}
+            busy={creditOverBusy}
+            onPin={creditOverPin}
+            onClose={() => {
+              if (creditOverBusy) return;
+              creditOverSale.current = null;
+              setLayers((s) => s.filter((x) => x.kind !== "creditOver"));
+            }}
           />
         );
       case "custom":
@@ -2862,6 +3034,23 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 if (payError?.code === "TAX_ID_INVALID" || payError?.code === "NOT_ELIGIBLE") setPayError(null);
               },
             }}
+            // POS P3.6U ▸ CD-P36U-5: ไทล์วางบิล — เปิดเครดิต ∧ ร้านมี CRM ∧ ไม่ใช่โต๊ะ ∧ ออนไลน์ (บิลแพลตฟอร์มจอชำระซ่อนเอง) ◂
+            onAccount={
+              props.credit?.enabled && creditUi && online && !offMode
+                ? {
+                    systemId,
+                    unitId,
+                    company: company ? { partyId: company.partyId, name: company.name, taxId: company.taxId } : null,
+                    requireBuyer: props.credit.requireBuyer,
+                    buyer: taxInv?.buyer ?? null,
+                    onPickCompany: openCompany,
+                    onNeedBuyer: openBuyerFromCompany,
+                    onStatus: (st) => {
+                      creditStatusRef.current = st;
+                    },
+                  }
+                : null
+            }
           />
         );
       case "taxInvoice":
@@ -2872,7 +3061,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             systemId={systemId}
             unitId={unitId}
             chip={quoteFresh ? moneyText(quoteFresh.grandTotalSatang) : null}
-            initial={taxInv?.buyer ?? null}
+            initial={taxInv?.buyer ?? l.prefill ?? null /* POS P3.6U ▸ CD-P36U-5 ◂ */}
             memberId={cart.memberId ?? null}
             initialRemember={taxInv?.remember ?? false}
             dbdOff={dbdOff}
@@ -2999,6 +3188,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             tipSatang={l.tipSatang ?? 0} // POS P2.9U ▸ มติ 7 ◂
             duplicated={l.result.duplicated} // POS P2.9U ▸ มติ 7: บิลเดิมของคีย์ = 02b ไม่อ่าน payload ใบเสร็จ ◂
             chatReceiptAuto={!!props.chatReceiptAuto} // POS P3.7U ▸ CD-P37U-7 ◂
+            creditDue={creditDone} // POS P3.6U ▸ CD-P36U-7 ◂
           />
         );
       case "options":

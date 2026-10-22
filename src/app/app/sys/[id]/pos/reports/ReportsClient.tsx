@@ -35,6 +35,8 @@ import type {
   ChannelRow, // POS P2.11U ◂
   CommissionRow, // POS P3.5U ◂
   CommissionTotals, // POS P3.5U ◂
+  CreditRow, // POS P3.6U ◂
+  CreditTotals, // POS P3.6U ◂
   ChannelTotals, // POS P2.11U ◂
   AnomalyRow, // POS P2.12U ◂
   AnomalyTotals, // POS P2.12U ◂
@@ -79,6 +81,8 @@ type Props = {
   discountFlagBp: number | null;
   /** POS P3.5U ▸ มติ 8: ผู้ดูเงินเดือน (canViewPayroll ฝั่งหน้า) — ไม่มี = ไม่มีแท็บค่าคอมฯ ◂ */
   canPayroll?: boolean;
+  /** POS P3.6U ▸ CD-P36U-9: เปิดวางบิล (posCreditSettings.enabled) — แท็บ "ลูกหนี้ลูกค้าองค์กร" · ?kind=credit ใช้ได้เสมอ ◂ */
+  creditOn?: boolean;
   /** POS P3.8U ▸ CD-P38U-7/8: บอร์ดงานของหน้าขายเปิด (posBoardSettings(sys.settings).enabled ฝั่งหน้า) — ปิด = ไม่มีปุ่ม/ชิปการ์ด ◂ */
   boardOn?: boolean;
 };
@@ -88,7 +92,7 @@ type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
 /** ลำดับแท็บตามสเปก: overview (R4) · daily · products · staff · payments · margin · shifts · tax */
 const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "payments", "margin", "shifts", "tax", "channels"]; // POS P2.11U ▸ มติ 7: + channels ◂
 /** POS P2.12U ▸ แท็บใหม่ (ต่อท้าย · testid pos-reports-tab-<kind>) ◂ */
-type NewKind = "branches" | "hourly" | "anomalies" | "commission"; // POS P3.5U ▸ + commission ◂
+type NewKind = "branches" | "hourly" | "anomalies" | "commission" | "credit"; // POS P3.5U ▸ + commission ◂ · POS P3.6U ▸ + credit ◂
 /** ไอคอนจากภาพ 08 (ปฏิทิน · ร้าน · ส่งออก) */
 const I_CAL = ["M6 5h12a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 18 21H6a2.5 2.5 0 0 1-2.5-2.5v-11A2.5 2.5 0 0 1 6 5Z", "M3.5 10h17M8 3v4M16 3v4"] as const;
 const I_SHOP = ["M4 9V4h16v5", "M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z", "M9.5 13h5"] as const;
@@ -100,7 +104,7 @@ const spanDays = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - 
 /** รหัสปฏิเสธ → คีย์ใต้ pos.report (INTERNAL/อื่น ๆ = unknown) */
 const REFUSAL_KEY: Record<string, string> = { VALIDATION: "errors.validation", NOT_FOUND: "errors.notFound", PERMISSION_DENIED: "errors.permissionDenied" };
 const refusalKey = (code: string) => (Object.prototype.hasOwnProperty.call(REFUSAL_KEY, code) ? REFUSAL_KEY[code]! : "errors.unknown");
-const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT"]); // POS P2.9 ▸ R1 ◂
+const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "GIFT_CARD", "STORE_CREDIT", "ON_ACCOUNT"]); // POS P2.9 ▸ R1 ◂ · POS P3.6U ▸ + ON_ACCOUNT (pos.shift.method) ◂
 /** เวลาไทยสั้น ๆ (วัน/เดือน ชม:นาที) */
 const bkkTime = (iso: string | null, locale: string) =>
   iso ? new Intl.DateTimeFormat(locale.startsWith("en") ? "en-GB" : "th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "—";
@@ -639,6 +643,34 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId, boardOn = fal
         </div>
       );
     }
+    // POS P3.6U ▸ CD-P36U-9: ลูกหนี้ลูกค้าองค์กร — ชื่อ = สำเนาผู้ซื้อจากเซิร์ฟเวอร์ (ไม่ลิงก์ไป CRM/บัญชี) · ครบกำหนดเก่าสุดจัดรูปฝั่งจอ ◂
+    case "credit": {
+      const x = rep as Report<"credit", CreditRow, CreditTotals>;
+      if (x.rows.length === 0) return <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-empty">{t("credit.empty")}</p>;
+      const cc = (k: string) => t(`credit.${k}`);
+      const cols: Col<CreditRow>[] = [
+        { key: "company", header: cc("company"), cell: (r) => r.name },
+        { key: "bills", header: cc("bills"), num: true, cell: (r) => r.bills },
+        { key: "credit", header: cc("credit"), num: true, cell: (r) => M(r.creditSatang) },
+        { key: "refunded", header: cc("refunded"), num: true, cell: (r) => M(r.refundedSatang) },
+        { key: "outstanding", header: cc("outstanding"), num: true, cell: (r) => <b>{M(r.outstandingSatang)}</b> },
+        { key: "overdue", header: cc("overdue"), num: true, cell: (r) => (r.overdueSatang > 0 ? <span className="text-[color:var(--color-danger)]">{M(r.overdueSatang)}</span> : M(r.overdueSatang)) },
+        { key: "oldestDue", header: cc("oldestDue"), cell: (r) => <span className="whitespace-nowrap tabular-nums">{r.oldestDueDate ? dayDate(r.oldestDueDate, locale) : "—"}</span> },
+      ];
+      const tt = x.totals;
+      return (
+        <div className="flex flex-col gap-2" data-testid="pos-reports-credit">
+          <Table
+            testId="pos-report-table"
+            cols={cols}
+            rows={x.rows}
+            rowKey={(r) => r.partyId}
+            minWidth={880}
+            total={[t("total"), tt.bills, M(tt.creditSatang), M(tt.refundedSatang), M(tt.outstandingSatang), M(tt.overdueSatang), ""]}
+          />
+        </div>
+      );
+    }
     // POS P2.11U ▸ มติ 7 ◂
     case "channels": {
       const x = rep as Report<"channels", ChannelRow, ChannelTotals>;
@@ -761,7 +793,7 @@ function ReportBody({ rep, t, tc, locale, cutoffMinutes, systemId, boardOn = fal
 }
 
 // ═══════════ จอหลัก ═══════════
-export function ReportsClient({ systemId, units, initial, today, maxDays, hourlyMaxDays, cutoffMinutes, canAnomaly, discountFlagBp, canPayroll = false, boardOn = false /* POS P3.8U ◂ */ }: Props) {
+export function ReportsClient({ systemId, units, initial, today, maxDays, hourlyMaxDays, cutoffMinutes, canAnomaly, discountFlagBp, canPayroll = false, creditOn = false /* POS P3.6U ◂ */, boardOn = false /* POS P3.8U ◂ */ }: Props) {
   const t = useTranslations("pos.report");
   const tc = useTranslations("pos.shift"); // ป้ายวิธีชำระ + สถานะกะ (ใช้ร่วมกับจอกะ)
   const [view, setView] = useState<View>(initial);
@@ -861,7 +893,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
   const shownError = rangeError ? t(rangeError) : errorCode ? t(refusalKey(errorCode)) : null;
   const overview = view.kind === "overview";
   // POS P2.12U ▸ แท็บใหม่ที่ผู้ใช้นี้เห็น ◂
-  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly", ...(canAnomaly ? (["anomalies"] as const) : []), ...(canPayroll ? (["commission"] as const) : [])]; // POS P3.5U ▸ + commission ◂
+  const newKinds: NewKind[] = [...(units.length > 1 ? (["branches"] as const) : []), "hourly", ...(canAnomaly ? (["anomalies"] as const) : []), ...(canPayroll ? (["commission"] as const) : []), ...(creditOn ? (["credit"] as const) : [])]; // POS P3.5U ▸ + commission ◂ · POS P3.6U ▸ + credit (เปิดวางบิล) ◂
   const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
   const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
   const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[8.75rem]";
@@ -1017,6 +1049,11 @@ export function ReportsClient({ systemId, units, initial, today, maxDays, hourly
             // POS P3.5U ▸ มติ 8: ไม่ใช่ผู้ดูเงินเดือน = การ์ดปฏิเสธของรายงานนี้ ◂
             <div role="alert" className="rounded-xl border p-3 text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-commission-denied">
               {t("commission.denied")}
+            </div>
+          ) : !rangeError && view.kind === "credit" && errorCode === "PERMISSION_DENIED" ? (
+            // POS P3.6U ▸ CD-P36U-9: ไม่มีสิทธิ์รายงานลูกหนี้ = การ์ดปฏิเสธของรายงานนี้ ◂
+            <div role="alert" className="rounded-xl border p-3 text-sm text-[color:var(--color-muted)]" data-testid="pos-reports-credit-denied">
+              {t("credit.denied")}
             </div>
           ) : !rangeError && view.kind === "anomalies" && errorCode === "PERMISSION_DENIED" ? (
             // POS P2.12U ▸ มติ 4: ไม่มี pos.report.anomaly = การ์ดปฏิเสธของรายงานนี้ (ไม่มีปุ่มลองใหม่ — ลองซ้ำก็ได้ผลเดิม) ◂
