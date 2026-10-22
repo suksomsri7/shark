@@ -14252,7 +14252,8 @@
       "viewport": [
         "desktop",
         "tablet"
-      ]
+      ],
+      "needs": "หมวดสินค้า (PosCategory) ≥ 1 ของร้าน — posqc-coffee ไม่มีหมวด ⇒ ตัวเลือกมีแค่ \"ทุกหมวด\" (ProductsClient.tsx:318-325 · CD-P41-F26 select ตัวเลือกเดียว)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -25410,7 +25411,8 @@
       "oracle": "",
       "system": "POS",
       "query": "",
-      "hiddenFor": []
+      "hiddenFor": [],
+      "needs": "เมนู QR ≥ 2 หมวด (PosCategory) — posqc-coffee ไม่มีหมวด ⇒ ไม่มีชิป (QrMenu.tsx:32)"
     },
     {
       "page": "/q/t/[qrToken]",
