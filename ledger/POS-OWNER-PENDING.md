@@ -396,6 +396,8 @@
 - (P3.8U follow-ups · pos-P3.8U.md:73) (ย่อ) แถวผิดปกติแบบช่วงหลายวันที่ `businessDate` เป็น null (A7/A11) สร้างการ์ดไม่ได้ · ลิงก์การ์ด 86/คืนเงินบนจอ POS (CD-P38U-9) ยังไม่มี · ชุดข้อสอบ kanban (`qc-kanban-k3.3`) ไม่อยู่ใน `pos-gates.json` (CONTROLLER-RUN ถ้าต้องการ)
 - (P3.8 R1 N4 · pos-P3.8-review.md:7) (ย่อ) Low (controller รับเป็นส่วนเบี่ยงเบน CD-P38-R4): `links.createCardFromExternal` ถือ advisory lock ต่อคีย์ค้างระหว่างส่ง push/อีเมลถึงผู้รับมอบหมาย และในรายการ import ที่ POS ใช้ได้ไม่มีประตู `notify:false` — เจ้าของ Kanban อาจเพิ่มตัวเลือกไม่แจ้งเตือน/แจ้งหลัง commit ภายหลัง
 
+- (P3.12 · qc:all QC7 22 ต.ค. · CD-P312-Q1) §"แจ้งเจ้าของ Kanban": `qc-kanban-k1.15` S3.2/S3.4 + `qc-kanban-k2.12` S3.4/S4.4 แดงบน branch สำเนา QC4 — `gen-kanban-api-docs --check` บอก docs/api/KANBAN-API.md + skill endpoints.md ไม่ตรงทะเบียน op (ไฟล์ ts.md 0 ไบต์) และภาพ `.qc-shots/kanban/2.12` ไม่มีในทรี · ไม่เกี่ยวโค้ด POS · log `/root/pos-runs/qcall-p11-20261022T115901Z/` + `/tmp/claude-0/qc-all/qc-kanban-k1.15.log`
+
 ## แจ้งเจ้าของโมดูล Meeting (P3 · คัดลอกโดยผู้คุม B 22 ต.ค. 06:20Z) — เฉพาะบรรทัดที่ไม่อยู่ในหัวข้อ P3.8 S (17 ต.ค.)
 - (P3.8U · pos-P3.8U.md:70) §"แจ้งเจ้าของโมดูล Meeting": room names from `listRoomOptions(tenant, owner)` go to the OWNER only; stale rooms detected with `liveChannelIds` (ids only, no names). Harness fixture rooms `posqc-vis-p38u` / `posqc-vis-p38u-arch` via `service.createChannel` / `archiveChannel` (QC tenant only).
 - (P3.8U follow-ups · pos-P3.8U.md:73) (ย่อ) ยังไม่มี reader ผลการโพสต์/ถูกปฏิเสธของห้องทีมผ่าน seam ของ Meeting (POS รู้แค่ว่าโพสต์แล้ว/ห้องถูกปฏิเสธ → ย้อน tx + WARN `pos.board`)

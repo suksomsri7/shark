@@ -106,5 +106,25 @@ red before 11/22 (X1 X2 V2 V3 H4 K1 K2 K3 O2 O3 O4) → after **5/22** (X1 X2 V2
 - K2 P3.4 sources: `pos-P3.4.md:19 :22 :40` + diffs `566eb646` (permissions.ts +1 · scopes.ts +1) · `bc974982` (kds.ts +1) · `1be86fee` (p2.13 BUNDLE_SPEC).
 - Not done (not in this prompt): F-P3-69 SKEL-U §OP lines · F-P3-70/71 ORACLE-EDITs · ProductPanel "P2.3".
 
-## §qcall
-⟨controller⟩ เติมหลังรัน QC7
+
+## §qcall — qc:all ทั้งรีโปบน QC7 (CONTROLLER-RUN ครั้งเดียว · P3.12 X1/X2 · เขียนโดยผู้คุม B 22 ต.ค. 15:31Z)
+- head: `d7ec3fcf` (ทรี p11 detach · session/pos หลัง 554a74d3/137aa93a · ผลิตภัณฑ์เท่ากับ P3-close ยกเว้นป้าย facts ของ builder S ที่ merge ทีหลัง)
+- branch: `wo-pos-qc7` (Neon `br-flat-union-ao35ppr9` · host `ep-holy-star-ao20tu7n` · แตกจาก QC4 `br-solitary-credit-ao716g17` 11:0xZ ผ่าน API · ไม่ใช่ QC4/QC5)
+- run: `/root/pos-runs/qcall-p11-20261022T115901Z/` (probe อ่านอย่างเดียว 40 tenant → `pnpm qc:all` 11:59–13:58Z · ISO_MEM 6G · ล็อก `/tmp/shark-gate-qcall.lock` · log ต่อชุด `/tmp/claude-0/qc-all/`)
+- result: 283/429 (แดง 146 อธิบายครบทุกชุดตามตารางด้านล่าง · QC6 16 ต.ค. = 288/420)
+
+| class | count | ref |
+|---|---|---|
+| QC4-ONLY | 47 | HANDOVER-P2 §2 :55 (ด่าน "เขียนได้เฉพาะ QC4" ของ qc-pos-*/qc-hf-* · by design · วัดด้วย gate set บน QC4 แทน) |
+| ACCV2-SEED | 38 | HANDOVER-P2 §2 :55 (seed-acc-v2-qc ล้มที่ self-check · acc-v2 + account-api · เจ้าของบัญชี V2) |
+| SCHEMA-DRIFT | 1 | HANDOVER-P2 §2 :55 (`migrate-status` 2/3 — branch คัดลอกจาก QC4 มี migration ค้างของเลนอื่น) |
+| CRM-RAWSQL-S9 | 0 | HANDOVER-P2 §2 :55 (รอบนี้ 0 — acc-v2-security ล้มที่ seed ก่อนถึง S9 จึงนับใน ACCV2-SEED) |
+| SEED-EMPTY | 55 | HANDOVER-P2 §2 :55 (crm/member seed บน DB ที่ไม่มีข้อมูลของตน · crm 19 + member 36) |
+| NEEDS-SERVER | 1 | HANDOVER-P2 §2 :55 (kanban-k2.3 15/17 ต้องมีเซิร์ฟเวอร์) |
+| ACCEPTED | 2 | pos-gates.json accepted (account-api-ai-external CRASH slice · ai-skill ไม่มีระบบบัญชีใน seed) |
+| KANBAN-DOCS-STALE | 2 | **CD-P312-Q1** (ใหม่รอบนี้): kanban-k1.15 S3.2/S3.4 + kanban-k2.12 S3.4/S4.4 = เอกสาร API/skill Kanban ไม่ตรงทะเบียน op + ภาพ .qc-shots/kanban/2.12 ไม่มีในทรี — ของเลน Kanban ไม่เกี่ยว POS → แจ้งเจ้าของโมดูล Kanban (OP) · ไม่เข้า pos-gates |
+
+รายชื่อต่อคลาส: **QC4-ONLY** hf-fu, hf-fu2, hf-o23, hf-tx, pos-api-skill, pos-p0.2, … (+41) · **ACCV2-SEED** acc-v2-attachments, acc-v2-coa, acc-v2-contact-merge, acc-v2-contact-modal, acc-v2-contact-profile, acc-v2-contacts, … (+32) · **SCHEMA-DRIFT** migrate-status · **SEED-EMPTY** crm-buttons, crm-c0.2, crm-c1.1, crm-c1.11, crm-c1.2b, crm-c1.3, … (+49) · **NEEDS-SERVER** kanban-k2.3 · **ACCEPTED** account-api-ai-external, account-api-ai-skill · **KANBAN-DOCS-STALE** kanban-k1.15, kanban-k2.12
+
+- ลบ QC7 แล้ว 15:31Z: `DELETE /branches/br-flat-union-ao35ppr9` (HTTP 200 · เหลือ 6 branch: production · wo-pos-qc4 · wo-pos-qc5 · wo-acc-v2-qc · wo-crm-qc2 · wo-crm-qc3) + ลบ `.env.qc7` ทรี p11 · wrapper/driver อยู่สคราตช์ `ctl/qc7.sh`, `ctl/qcall-p11.sh` (ไม่ commit)
+

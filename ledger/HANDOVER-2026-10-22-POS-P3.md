@@ -8,7 +8,7 @@
 3. **ทรี** (สำรวจ 10:3xZ · ทุกทรี dirty 0): ผู้คุม `shark-pos` = `session/pos` 137aa93a (node_modules bind จาก p11) · b = `wip/pos-p4.1` 3857aa03 (**builder P4.1 กำลังทำ** · ยังไม่ push) · c = detached 25f505b7 (gates126 กำลังรัน) · d = detached 60d24d0a (build + ภาพ · chain parity P3.12 รอคิวหลัง gates126 — `POS-RESUME.md:2089`) · e = `wip/pos-p3-skel-oracle` 5d3a84af (node_modules bind จาก shark-crm · ห้าม install) · f = `wip/pos-p3.12` (ไฟล์นี้ · node_modules bind **ro** จาก p11 · ห้าม generate) · p11 = `wip/pos-p3-skel-u` 60d24d0a (own node_modules · แชร์ให้ผู้คุมและ f) · 🔴 หลังรีบูต bind mount หายทุกตัว → remount ก่อน (memory `reference_shark_pos_bind_mounts_lost_on_reboot`)
 4. **QC4** = Neon `wo-pos-qc4` (host ep-frosty-lab · branch id `br-solitary-credit-ao716g17` · `POS-RESUME.md:2089`): ข้อสอบ DB ทุกใบ + ด่านเต็ม · migration P3 ครบ 6 ไฟล์ (`20261217100000_pos_p35_staff_commission` · `20261217110000_pos_p34_offline` · `20261218100000_pos_p3skel` · `20261218100100_pos_p3skel_slip_hash` · `20261219100000_pos_p36_credit_enum` · `20261219100100_pos_p36_credit`) · ทุกชุดใช้ร้านชั่วคราวของตัวเองแล้วลบ · ห้าม reseed · ยังไม่ได้รัน `seed-pos-perf.mts` (P5.3 · `POS-RESUME.md:2086`)
 5. **QC5** = Neon `wo-pos-qc5` (host ep-fragrant-thunder): เลนภาพเท่านั้น · migration ครบถึง P3-SKEL (deploy จากทรี d ที่ tip · `POS-RESUME.md:2039`) · **ของที่ harness สร้างทิ้งไว้ถาวร (ห้ามลบ · รอบหลังใช้ซ้ำแบบ find-or-create)**: ระบบ COUPON (harness เดิม) · CRM "ลูกค้าองค์กร (ภาพ QC P3.6U)" uiVersion 2 + บริษัท/ดีล/บัญชีเครดิต (`POS-RESUME.md:2059`, `:2073`) · KANBAN "บอร์ดงาน (ภาพ QC P3.8U)" + MEETING "ห้องทีม (ภาพ QC P3.8U)" (`POS-RESUME.md:2053`) · แถว `PosIntegrationCredential` LINEMAN/GRAB ปิดด้วยคีย์ของ harness (F-P3-66) · บิลรายวัน `posqc-vis-*` · tenant coffee เดิมมีแค่ MEMBER POINT POS COUPON ACCOUNT INVENTORY (`POS-RESUME.md:2053`) · ไม่มี slip storage (รูปสลิป 404 — `POS-RESUME.md:2087`)
-6. **QC7** (qc:all ของ P3.12) = ⟨controller⟩ ชื่อ branch/host/ผล · แผน: แตกจาก QC4 หลัง build ทรี d จบ · บนทรี p11 · ล็อก `/tmp/shark-gate-qcall.lock` · ลบ branch วันเดียวกัน (`POS-RESUME.md:2089` · brief §4(a))
+6. **QC7** (qc:all ของ P3.12) = Neon `wo-pos-qc7` `br-flat-union-ao35ppr9` host `ep-holy-star-ao20tu7n` · ผล **283/429** (แดง 146 อธิบายครบ 8 คลาส · `wo-notes/pos-P3.12.md` §qcall) · ลบแล้ว 22 ต.ค. 15:32Z · แผน: แตกจาก QC4 หลัง build ทรี d จบ · บนทรี p11 · ล็อก `/tmp/shark-gate-qcall.lock` · ลบ branch วันเดียวกัน (`POS-RESUME.md:2089` · brief §4(a))
 7. **ล็อก**: POS `/tmp/shark-gate-pos.lock` (QC4 ผ่าน `qc4.sh` + `with-gate-lock.sh`) · typecheck `/tmp/pos-gate.lock` · qc:all `/tmp/shark-gate-qcall.lock` · ⛔ ห้าม `export CI` (with-gate-lock ข้าม flock)
 8. **เลน**: เพดาน **3 เลนรวมทุกชนิด** (เจ้าของสั่ง 21 ต.ค. 23:4xZ · `POS-RESUME.md:2049`) · build ทรี d (12G+) ห้ามซ้อน typecheck/build/qc:all · ตอนร่าง = gates126→chain parity · builder P4.1 (b) · writer P3.12 (f)
 9. **เครื่อง**: 4 vCPU · RAM 15G · swap 12G (`/swapfile` 4G + `/swapfile2` 8G ใน fstab · `POS-RESUME.md:2048`) · build ภาพ = `build-d-inner-10g.sh` (heap 10240 · ISO_MEM 13500M · รอ RAM ว่าง ≥ 12 GB) · ทุกคำสั่ง node หนักผ่าน `scripts/iso.sh` (cgroup เซสชัน 5G)
@@ -43,19 +43,19 @@ SHA = merge บน `session/pos` (วงเล็บ = head ของ wip = pare
 
 **Tier 2 (qc:all เท่านั้น)**: `qc-crm-c1.3/c1.5/c3.5` · `qc-kanban-k3.2/k3.3` · `qc-member-m1.9/m2.3/m3.2/m3.3/m3.5/m3.7` · `qc-acc-v2-products` + ทั้งรีโป
 
-**qc:all QC7 (CONTROLLER-RUN · ครั้งเดียว · หลัง build ทรี d)** — ⟨controller⟩ เติมจาก `ledger/wo-notes/pos-P3.12.md` §qcall (สัญญาของ `qc-pos-p3.12` X1/X2 · CD-P312-O3):
-- head: ⟨controller⟩ · branch: ⟨controller⟩ (แตกจาก QC4 `br-solitary-credit-ao716g17`) · run `/root/pos-runs/⟨controller⟩` · result: ⟨controller⟩ passed/total · ลบ QC7: ⟨controller⟩
+**qc:all QC7 (CONTROLLER-RUN · ครั้งเดียว · หลัง build ทรี d)** — เติมแล้ว (ผู้คุม B 15:32Z) จาก `ledger/wo-notes/pos-P3.12.md` §qcall (สัญญาของ `qc-pos-p3.12` X1/X2 · CD-P312-O3):
+- head: `d7ec3fcf` · branch: `wo-pos-qc7` (`br-flat-union-ao35ppr9` · host `ep-holy-star-ao20tu7n` · แตกจาก QC4 `br-solitary-credit-ao716g17`) · run `/root/pos-runs/qcall-p11-20261022T115901Z` (11:59–13:58Z) · result: **283/429** passed/total · ลบ QC7: ✅ 15:32Z (HTTP 200 · เหลือ 6 branch · `.env.qc7` ลบ)
 - คลาสแดง (คีย์ตาม HANDOVER-P2 §2 :55 — คลาสใหม่ต้องมี CD-*):
 
 | class | count | ref |
 |---|---|---|
-| QC4-ONLY (ด่าน "เขียนได้เฉพาะ QC4" ของ qc-pos-*/qc-hf-* · by design) | ⟨controller⟩ | HANDOVER-P2 §2 :55 |
-| ACCV2-SEED (seed บัญชี V2 self-check · acc-v2 + account-api) | ⟨controller⟩ | HANDOVER-P2 §2 :55 |
-| SCHEMA-DRIFT (acc-v2-schema/migrate-status) | ⟨controller⟩ | HANDOVER-P2 §2 :55 |
-| CRM-RAWSQL-S9 (acc-v2-security S9) | ⟨controller⟩ | HANDOVER-P2 §2 :55 |
-| SEED-EMPTY (crm/member seed บน DB ว่าง) | ⟨controller⟩ | HANDOVER-P2 §2 :55 |
-| NEEDS-SERVER (kanban-k2.3 ฯลฯ) | ⟨controller⟩ | HANDOVER-P2 §2 :55 |
-| ACCEPTED (account-api-ai-external/ai-skill) | ⟨controller⟩ | HANDOVER-P2 §2 :55 |
+| QC4-ONLY (ด่าน "เขียนได้เฉพาะ QC4" ของ qc-pos-*/qc-hf-* · by design) | 47 (pos 43 + hf 4 — เพิ่มจาก 36 ของ QC6 ตามใบ P3) | HANDOVER-P2 §2 :55 |
+| ACCV2-SEED (seed บัญชี V2 self-check · acc-v2 + account-api) | 38 (acc-v2 + account-api ยกเว้น ai ×2) | HANDOVER-P2 §2 :55 |
+| SCHEMA-DRIFT (acc-v2-schema/migrate-status) | 1 (`migrate-status` 2/3) | HANDOVER-P2 §2 :55 |
+| CRM-RAWSQL-S9 (acc-v2-security S9) | 0 (acc-v2-security ล้มที่ seed ก่อน → นับใน ACCV2-SEED) | HANDOVER-P2 §2 :55 |
+| SEED-EMPTY (crm/member seed บน DB ว่าง) | 55 (crm 19 + member 36) | HANDOVER-P2 §2 :55 |
+| NEEDS-SERVER (kanban-k2.3 ฯลฯ) | 1 (kanban-k2.3 15/17) · +คลาสใหม่ **KANBAN-DOCS-STALE 2** (k1.15 · k2.12 · CD-P312-Q1 → OP §Kanban) | HANDOVER-P2 §2 :55 |
+| ACCEPTED (account-api-ai-external/ai-skill) | 2 (ai-external CRASH · ai-skill no account system) | HANDOVER-P2 §2 :55 |
 
 **ด่านเต็ม POS ระหว่าง P3 ปลาย (QC4 · `/root/pos-runs/<run>/SUMMARY.txt`)** — แบบแผน VERDICT: "แดง = W21 ×3 (`qc-pos-p3.4` ST2 · `qc-pos-p3.7` ST3 · `qc-pos-p3.8` ST2+ST3) + account server (`qc-account-api-settings` SKIPPED · เซิร์ฟเวอร์ ACCOUNT :3215)" + noise ที่ระบุ
 
