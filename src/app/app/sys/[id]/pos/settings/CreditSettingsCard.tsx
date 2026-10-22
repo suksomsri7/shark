@@ -60,7 +60,7 @@ export function CreditSettingsCard(p: {
     setBusy(key);
     setSwErr(null);
     try {
-      const r = await updatePosCreditSettingsAction({ systemId: p.systemId, patch: { credit: { [key]: !cs[key] } } });
+      const r = await updatePosCreditSettingsAction({ systemId: p.systemId, patch: { credit: key === "enabled" ? { enabled: !cs.enabled } : { requireBuyer: !cs.requireBuyer } } });
       if (r.ok) setCs(r.credit);
       else setSwErr(r.code === "PERMISSION_DENIED" ? "credit.ownerOnly" : errKey(r.code));
     } catch {

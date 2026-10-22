@@ -1635,9 +1635,9 @@ export function PayDialog(p: Props) {
                         <button
                           key={m.type}
                           data-testid={`pos-reg-paydlg-method-${m.type.toLowerCase()}`}
-                          className={tile(method === m.type && !off)}
+                          className={tile(!acct /* POS P3.6U ◂ */ && method === m.type && !off)}
                           type="button"
-                          aria-pressed={method === m.type}
+                          aria-pressed={!acct && method === m.type}
                           disabled={off}
                           onClick={() => pickMethod(m.type)}
                         >
