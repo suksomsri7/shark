@@ -227,17 +227,27 @@ export async function verifyAgainstFrozen(): Promise<{ ok: boolean; staticOk: bo
 // ═══════════════════ main (เฉพาะเมื่อรันไฟล์นี้ตรง ๆ) ═══════════════════
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  const APPLY = argv.includes("--apply");
-  const pi = argv.indexOf("--key-prefix");
-  const PREFIX = pi >= 0 ? (argv[pi + 1] ?? "") : "v1";
-  if (pi >= 0 && !/^[A-Za-z0-9._-]{1,80}$/.test(PREFIX)) {
-    console.error(`❌ ${SCRIPT}: --key-prefix ต้องตามด้วยชื่อ (ตัวอักษร/ตัวเลข/. _ - ไม่เกิน 80 ตัว)`);
-    return 1;
-  }
-  const unknown = argv.filter((a, i) => a !== "--apply" && a !== "--key-prefix" && !(pi >= 0 && i === pi + 1));
-  if (unknown.length) {
-    console.error(`❌ ${SCRIPT}: ไม่รู้จัก ${unknown.join(" ")} (มีแค่ --apply · --key-prefix <p>)`);
-    return 1;
+  // HR H1.3 review F5 ▸ อาร์กิวเมนต์ผิด/ไม่รู้จัก = บอกวิธีใช้ + exit 2 ก่อนต่อฐานใด ๆ ◂
+  const usage = (why: string) => {
+    console.error(`❌ ${SCRIPT}: ${why}\n   วิธีใช้: pnpm exec tsx scripts/hr-seed-law-draft.mts [--apply] [--key-prefix <ชื่อ>]   (ชื่อ = ตัวอักษร/ตัวเลข/. _ - ไม่เกิน 80 ตัว · ปริยาย v1)`);
+    return 2;
+  };
+  let APPLY = false;
+  let PREFIX = "v1";
+  let seenPrefix = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--apply") {
+      if (APPLY) return usage("ใส่ --apply ซ้ำ");
+      APPLY = true;
+    } else if (a === "--key-prefix") {
+      if (seenPrefix) return usage("ใส่ --key-prefix ซ้ำ");
+      seenPrefix = true;
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith("-") || !/^[A-Za-z0-9._-]{1,80}$/.test(v)) return usage("--key-prefix ต้องตามด้วยชื่อที่ถูกต้อง");
+      PREFIX = v;
+      i++;
+    } else return usage(`ไม่รู้จัก ${a}`);
   }
 
   // 1) ตรวจกับค่าคงที่ก่อน (ไม่ต่อฐาน)

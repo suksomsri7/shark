@@ -1,4 +1,4 @@
-// fitness-hr.mts — ด่าน fitness ของ RUN HR V2 (F16.1–F16.7 · ใบ H0.4 · HR-V2-MASTER-PLAN §6)
+// fitness-hr.mts — ด่าน fitness ของ RUN HR V2 (F16.1–F16.7 · F16.9 · ใบ H0.4 · HR-V2-MASTER-PLAN §6)
 //
 // รันเดี่ยว: `pnpm exec tsx scripts/fitness-hr.mts` (หรือ `pnpm fitness:hr`) — exit 1 เมื่อมีด่าน CRITICAL/MAJOR แดง
 // ผู้คุมงานจะต่อเข้ากับ `scripts/fitness.mts` ตอนตัด rc ผ่าน `runHrFitness(chk, ROOT)` (ใบนี้ห้ามแก้ fitness.mts)
@@ -26,6 +26,9 @@
 //         HR H0.7 R11 ▸ `actorUserId: undefined` (ตัวอักษรตรง ๆ) = ไม่ส่ง · ตาม import ที่ตั้งชื่อใหม่ (`import { requestLeave as x }`) ◂
 //   F16.7 (HR H0.7 R11 · MAJOR) ชื่อ partial unique ใน prisma/migrations/20261203000000_hr_link_unique_requester/migration.sql ต้องถูกอ้างใน
 //         prisma/schema/** (@@unique/@@index/คอมเมนต์) หรือ migration ที่ใหม่กว่า · migration ที่ใหม่กว่าห้าม DROP มัน
+//   F16.9 (HR H1.3 review F1 · MAJOR) ห้ามเขียน HrLawTable (create/createMany/update/updateMany/upsert/delete/deleteMany ·
+//         $executeRaw ที่อ้าง "HrLawTable" · SQL INSERT/UPDATE/DELETE ของ "HrLawTable") ใต้ src/lib/modules/** · src/app/** · src/lib/ai/**
+//         — ตารางกลาง tenantDb ปล่อยผ่าน ⇒ เขียนได้เฉพาะหลังบ้าน (src/lib/platform/**) หรือ scripts/hr-seed-law-draft.mts จนกว่า H3.3
 //
 // ratchet (กลไกเดียวกับ F14): ทุก BASELINE ลดได้อย่างเดียว — ปิดหนี้แล้วแต่ไม่ถอดแถว = แดง · หนี้ใหม่ = แดง
 // 🔴 static ล้วน: อ่านไฟล์อย่างเดียว · ไม่แตะ DB/เน็ต · ไม่ import `@/…` · ไม่ import `src/lib/env` หรือ prisma (X12)
@@ -542,6 +545,28 @@ export function checkLinkUniqueIndex(ROOT: string): { name: string; problems: st
 }
 
 // ═══════════════════════════════════════════════════════════════
+// F16.9 — HR H1.3 ▸ ห้ามเขียนตารางกฎหมายกลาง (HrLawTable) จากโค้ดร้าน · เขียนได้เฉพาะหลังบ้าน/สคริปต์ ◂
+// ═══════════════════════════════════════════════════════════════
+export const F169_ROOTS = ["src/lib/modules", "src/app", "src/lib/ai"];
+const F169_DELEGATE = /\bhrLawTable\s*\??\.\s*(create|createMany|createManyAndReturn|update|updateMany|updateManyAndReturn|upsert|delete|deleteMany)\b/g;
+const F169_SQL = /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:"?public"?\.)?"?HrLawTable"?/gi;
+const F169_EXEC = /\$executeRaw(?:Unsafe)?\b[\s\S]{0,600}?HrLawTable/g;
+export function scanLawTableWriters(ROOT: string): { file: string; line: number; how: string }[] {
+  const out: { file: string; line: number; how: string }[] = [];
+  for (const r of F169_ROOTS) {
+    for (const abs of walk(join(ROOT, r), (p) => /\.(ts|tsx|mts)$/.test(p))) {
+      const src = readFileSync(abs, "utf8").replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+      const rel = abs.slice(ROOT.length + 1);
+      for (const re of [F169_DELEGATE, F169_SQL, F169_EXEC]) {
+        re.lastIndex = 0;
+        for (let m = re.exec(src); m; m = re.exec(src)) out.push({ file: rel, line: src.slice(0, m.index).split("\n").length, how: m[0].replace(/\s+/g, " ").slice(0, 40) });
+      }
+    }
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ตัวรัน
 // ═══════════════════════════════════════════════════════════════
 export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void = console.log) {
@@ -662,6 +687,14 @@ export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void 
   guarded(chk, "F16.7", n167, () => {
     const r = checkLinkUniqueIndex(ROOT);
     chk("F16.7", n167, r.problems.length === 0, r.problems.length ? r.problems.join(" · ") : `${r.name} อ้างอยู่ · ไม่มี DROP`, "MAJOR");
+  });
+
+  // ── F16.9 ── HR H1.3 review F1 ◂
+  log("\n── F16.9: ไม่มีโค้ดร้านเขียน HrLawTable (ตารางกลาง — หลังบ้าน/สคริปต์เท่านั้น · H1.3) ──");
+  const n169 = `ไม่มีการเขียน HrLawTable ใต้ ${F169_ROOTS.join(" · ")} (ที่เขียนได้: src/lib/platform/** · scripts/hr-seed-law-draft.mts)`;
+  guarded(chk, "F16.9", n169, () => {
+    const hits = scanLawTableWriters(ROOT);
+    chk("F16.9", n169, hits.length === 0, hits.length ? hits.slice(0, 8).map((h) => `${h.file}:${h.line} ${h.how}`).join(" · ") : "สะอาด", "MAJOR");
   });
 }
 

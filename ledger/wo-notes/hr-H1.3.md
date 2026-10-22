@@ -77,6 +77,8 @@
 3. Post-checks: run/item/adjustment counts unchanged · 4 new tables empty · every run engineVersion 1 · no HrLawTable row yet.
 4. Law seed (owner-pending): `HR_SEED_LAW_PROD=1 HR_SEED_LAW_ENV_FILE=<prod env file> pnpm exec tsx scripts/hr-seed-law-draft.mts` (dry-run) → read: `AST=ตรง · … ต่าง 0`, digest 0ed9de8c…, `จะสร้าง 4 · … ไม่ตรง 0` → **owner GO** → same with `--apply` → expect `created 4 · unchanged 0 · mismatched 0`; re-run = `created 0 · unchanged 4`. Expect 4 DRAFT rows, 0 ACTIVE.
 5. Rollback: code rollback safe; schema rollback not planned (additive).
+6. (review F4) Deploy **off-peak**, not on a payday: the migration takes ACCESS EXCLUSIVE locks on HrPayAdjustment / HrPayrollRun / HrPayrollItem (ADD COLUMN + ADD CONSTRAINT CHECK scans the table) — short on today's sizes, but payroll writes queue behind it.
+7. (review F6) On a fresh QC/dev database run `hr-seed-law-draft.mts --apply` **before** `seed-hr-qc` — check ML1 expects the 4 global `v1:*` DRAFT rows and is red without them.
 
 ## 9. Disputes / decisions
 - **D-1 ORACLE-EDIT `qc-hr-h0.1` S4.2** — `SCHEMA_SHA` freezes `prisma/schema/payroll.prisma`; R1 must edit it (brief §2 R1). New hash: `686b1910df915a45f292cdf5d178e0446288736da55577d415748d902d875397` (same procedure as H0.6 / H1.1 D-4). rules / computeItem hashes still equal.
@@ -91,3 +93,15 @@
 
 ## 11. QC4 restored / temp data
 - oracle residue none ×4 · law rows `qc-h1.3-*` swept by the oracle · QC4 keeps the migration + the 4 global `v1:*` DRAFT rows (by design, S7.4) · seed re-run last (qc-hr-v2 rebuilt) · nothing of this lane running.
+
+## R12. Review follow-ups (review `shark-hr-c/ledger/wo-notes/hr-H1.3-review.md` · verdict MERGE · controller ORACLE-EDITs D-1/D-2 at eddba717)
+| finding | what | owner / status |
+|---|---|---|
+| F1 | HrLawTable is global and `tenantDb` passes global models through ⇒ "platform owner signs off" is convention only | **now:** fitness-hr **F16.9** (MAJOR) — no `hrLawTable` create/createMany/update/updateMany/upsert/delete/deleteMany, no `$executeRaw…HrLawTable`, no SQL INSERT/UPDATE/DELETE of "HrLawTable" under src/lib/modules/** · src/app/** · src/lib/ai/** (writes allowed: src/lib/platform/** · scripts/hr-seed-law-draft.mts) · **H3.3:** writes through platformDb only |
+| F2 | one-link CHECK (`crmCommissionId` xor `sourceRef`) does not tie `sourceType` to the link (a CRM row could carry `sourceType = POS_SALE_LINE` with no sourceRef) | H2.9 (first sourceType writer — tighten the CHECK / reader rule there) |
+| F3 | `qc-crm-c3.3` S0.4 tripwire scope (fixed by the controller's ORACLE-EDIT D-2: only DROP/RENAME/ALTER of crmCommissionId) | CRM owner |
+| F4 | runbook: deploy off-peak | done — §6 step 6 |
+| F5 | `hr-seed-law-draft.mts` accepted a `--key-prefix` value starting with `--` | **fixed:** unknown flag, duplicate flag, missing/`-`-leading/invalid `--key-prefix` value ⇒ usage message + exit 2, before verify and before any DB connection (evidence: `--bogus` · `--key-prefix --apply` · `--key-prefix` · `--apply --apply` · `x` → exit 2 each, no "DB host" line) |
+| F6 | fresh QC: ML1 needs the law seed first | done — §6 step 7 |
+| F7 | HrWorkEntry / HrReviewNote / HrOnboardingTask cascade-delete with the employee (retention of work-time snapshots and HR records after an employee row is deleted) | H3.1 (work entries frozen by a run) / H4.4 (notes, onboarding retention) |
+- F16.9 evidence: real tree `bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness-hr.mts` ⇒ exit 0 · `✅ [F16.9] … สะอาด` · 8/8. RED control on a throwaway copy (/tmp, deleted) with a scratch `db.hrLawTable.update(…)` + `$executeRawUnsafe(\`UPDATE "HrLawTable" …\`)` appended to src/lib/modules/hr/payroll-digest.ts ⇒ exit 1 · `❌ [F16.9] … payroll-digest.ts:49 hrLawTable.update · … UPDATE "HrLawTable" · … $executeRawUnsafe(…)` · 7/8. Real tree never edited for the RED test. No DB suite / typecheck run in this round (controller unit hr-ctl-h13 owns them).
