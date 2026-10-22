@@ -1,0 +1,15 @@
+# post-merge sanity session/hr @13a0601b · 2026-10-22T19:07:54Z · load 1.75 2.55 3.23
+prisma generate exit=0 [19:08Z]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":64,"baseGreen":17,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)" · RESIDUE none (tenants=3 users=14) [19:08Z]
+qc-hr-h0.7 exit=0 ===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE none (tenants=4 users=39) [19:09Z]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [19:11Z]
+qc-payroll exit=0 ===== QC Payroll ไทย ===== JSON_SUMMARY {"total":19,"passed":19,"findings":[]}   [19:11Z]
+qc-calendar exit=0 ===== QC Calendar ===== JSON_SUMMARY {"total":9,"passed":9,"findings":[]}   [19:11Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 26/26 JSON_SUMMARY {"suite":"seed-hr-qc","total":26,"passed":26,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":17,"BusinessUnit":2,"HrAttend  [19:12Z]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [19:12Z]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [19:12Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [19:12Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [19:12Z]
+typecheck start 19:12Z availMB=10076 busy=0
+typecheck exit=0 errors=0 [19:16Z]
+ALLDONE 2026-10-22T19:16:34Z
