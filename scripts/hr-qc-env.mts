@@ -50,7 +50,8 @@ export async function loadHrQcEnv(label: string): Promise<{ host: string }> {
 // ═══════════════════ 2. ชื่อตารางจริงที่ HR/payroll ใช้วันนี้ ═══════════════════
 // ตรวจกับ prisma/schema/hr.prisma + payroll.prisma (+ ตารางร่วมที่ HR เขียนถึง) ณ session/hr d43bdcb8 (8 ต.ค. 2569)
 // key = delegate ของ Prisma (camelCase) · `tenantId` = ตารางมีคอลัมน์ tenantId (seed ลบด้วยคอลัมน์นี้ได้)
-// 🔴 ตารางของใบหลัง (HrSalaryProfile.payType · HrShift · HrRoster · HrLeaveBalance · HrLawValue …) **ยังไม่มีจริง** — ห้ามเติมจนกว่า migration ลง
+// 🔴 ตารางของใบหลัง (HrShift · HrRoster · HrLeaveBalance · HrLawValue …) **ยังไม่มีจริง** — ห้ามเติมจนกว่า migration ลง
+//    (HR H1.1 ▸ HrEmployee.unitId/employmentStatus · HrEmployeeUnit · HrSalaryProfile.payType ลงแล้ว — migration 20261204000000_hr_org_axis ◂)
 export const HR_TABLES = {
   // ── prisma/schema/hr.prisma ──
   hrEmployee: { model: "HrEmployee", file: "hr.prisma", tenantId: true, role: "ทะเบียนพนักงาน (PIN · linkedUserId · ช่องอ่อนไหว PDPA)" },
@@ -58,6 +59,7 @@ export const HR_TABLES = {
   hrAttendance: { model: "HrAttendance", file: "hr.prisma", tenantId: true, role: "ลงเวลาเข้า/ออก + คำตัดสินสาย (snapshot)" },
   hrLeave: { model: "HrLeave", file: "hr.prisma", tenantId: true, role: "ใบลา (PENDING/APPROVED/REJECTED/CANCELLED)" },
   hrWorkSchedule: { model: "HrWorkSchedule", file: "hr.prisma", tenantId: true, role: "ตารางงานรายวันในสัปดาห์" },
+  hrEmployeeUnit: { model: "HrEmployeeUnit", file: "hr.prisma", tenantId: true, role: "ยืมตัวไปช่วยสาขาอื่น (HR H1.1)" },
   // ── prisma/schema/payroll.prisma ──
   hrSalaryProfile: { model: "HrSalaryProfile", file: "payroll.prisma", tenantId: true, role: "โปรไฟล์เงินเดือน (รายเดือนเท่านั้นวันนี้)" },
   hrPayAdjustment: { model: "HrPayAdjustment", file: "payroll.prisma", tenantId: true, role: "รายการเพิ่ม/หัก (OT · BONUS · DEDUCTION · COMMISSION …)" },
@@ -89,7 +91,7 @@ export const HR_DELETE_ORDER = [
   // payroll
   "hrPayrollItem", "hrPayAdjustment", "hrPayrollRun", "hrSalaryProfile",
   // hr
-  "hrEmployeeDoc", "hrAttendance", "hrLeave", "hrWorkSchedule",
+  "hrEmployeeDoc", "hrAttendance", "hrLeave", "hrWorkSchedule", "hrEmployeeUnit",
   // สายอนุมัติ / ประวัติ / คิว / แจ้งเตือน
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
   "auditLog", "outboxEvent", "appNotification", "automationRun", "automationRule",
@@ -105,19 +107,19 @@ export const HR_DELETE_ORDER = [
 export type HqcUnit = "huahin" | "suanphueng";
 export type HqcPayType = "MONTHLY" | "DAILY" | "HOURLY";
 export type HqcShift = "morning" | "afternoon" | "closing";
-export type HqcUserKey = "owner" | "manager" | "payroll" | "staff" | "kiosk" | "member" | "payrollSelf";
+export type HqcUserKey = "owner" | "manager" | "payroll" | "staff" | "kiosk" | "member" | "payrollSelf" | "manager-branch";
 export type HqcEmployee = {
   key: string;
   name: string;
   code: string;
   position: string;
   department: string;
-  /** สาขาประจำ (สตริงกุญแจ) — **ยังไม่เขียนลง DB** (HrEmployee.unitId มาใน H1.1 · ใช้ backfill) */
+  /** สาขาประจำ (สตริงกุญแจ) — HR H1.1 ▸ seed เขียนลง HrEmployee.unitId (สาขาตาม slug ของ HQC.units) ◂ */
   unit: HqcUnit;
-  /** ยืมตัวไปช่วยสาขาอื่น (ข้อมูลภาพ 02) — H1.1/H2.x */
+  /** ยืมตัวไปช่วยสาขาอื่น (ข้อมูลภาพ 02) — HR H1.1 ▸ seed สร้าง HrEmployeeUnit ที่ยังเปิด (ตั้งแต่วันเริ่มงาน) ◂ */
   borrowedTo?: HqcUnit;
   employmentType: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "DAILY" | "PROBATION";
-  /** ประเภทค่าจ้างที่ตั้งใจ (H1.1) — วันนี้ seed โปรไฟล์รายเดือนทุกคน (`baseSalarySatang`) */
+  /** ประเภทค่าจ้างที่ตั้งใจ — seed ยังตั้งโปรไฟล์รายเดือนทุกคน (`baseSalarySatang` · มติผู้คุมงาน H1.1 ข้อ 9: รอบจ่าย DAILY/HOURLY = H3.4) */
   payType: HqcPayType;
   /** อัตรารายวัน/รายชั่วโมงที่ตั้งใจ (สตางค์) สำหรับ H1.1 · null = รายเดือน */
   rateSatang: number | null;
@@ -212,7 +214,9 @@ export const HQC = {
     kiosk: { email: "hr-qc-kiosk@shark.local", name: "แท็บเล็ตหน้าร้าน (QC HR)", role: "STAFF", keys: { "hr.attendance.clock": true } },
     member: { email: "hr-qc-member@shark.local", name: "สมาชิกในร้าน (QC HR)", role: "STAFF", keys: {} },
     payrollSelf: { email: "hr-qc-payroll-self@shark.local", name: "ก้อย ฝ่ายบุคคล (QC HR)", role: "STAFF", keys: PAYROLL_KEYS },
-  } as Record<HqcUserKey, { email: string; name: string; role: "OWNER" | "MANAGER" | "STAFF"; keys: Record<string, boolean> }>,
+    // HR H1.1 ▸ มติผู้คุมงานข้อ 10: ผู้จัดการสาขา (unitAccess = [สาขาหัวหิน]) — ภาพ register-branch-manager · ไม่ผูกพนักงาน ◂
+    "manager-branch": { email: "hr-qc-manager-branch@shark.local", name: "ผู้จัดการสาขาหัวหิน (QC HR)", role: "MANAGER", keys: {}, units: ["huahin"] },
+  } as Record<HqcUserKey, { email: string; name: string; role: "OWNER" | "MANAGER" | "STAFF"; keys: Record<string, boolean>; units?: readonly HqcUnit[] }>,
   payroll: {
     /** รอบที่จ่ายแล้ว = เดือนที่แล้ว (offset −1) · วันจ่าย = วันสุดท้ายของงวด */
     paidRunMonthOffset: -1,

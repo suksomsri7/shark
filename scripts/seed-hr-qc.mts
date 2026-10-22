@@ -157,11 +157,13 @@ try {
   const ctx = { tenantId, systemId: hrSys.id as string };
   console.log(`🏢 ร้าน "${HQC.tenantName}" ${tenantId} · HR ${hrSys.id} · บัญชี ${accSys.id}`);
 
-  // ═══════════════════ 3. ผู้ใช้ 7 คน (6 บทบาทของ brief + payrollSelf) ═══════════════════
+  // ═══════════════════ 3. ผู้ใช้ 8 คน (6 บทบาทของ brief + payrollSelf + manager-branch · HR H1.1 มติ 10) ═══════════════════
   const users: Record<string, { userId: string; membershipId: string }> = {};
   for (const [key, u] of Object.entries(HQC.users)) {
     const row = await P.user.create({ data: { email: u.email, name: u.name } });
-    const m = await P.membership.create({ data: { userId: row.id, tenantId, role: u.role, unitAccess: ["*"], permissions: u.keys, acceptedAt: new Date() } });
+    // HR H1.1 ▸ ผู้ใช้ที่มี `units` (manager-branch) = จำกัดสาขา · ที่เหลือ ["*"] ตามเดิม ◂
+    const unitAccess = u.units ? u.units.map((k) => units[k]!) : ["*"];
+    const m = await P.membership.create({ data: { userId: row.id, tenantId, role: u.role, unitAccess, permissions: u.keys, acceptedAt: new Date() } });
     users[key] = { userId: row.id, membershipId: m.id };
   }
   const uid = (k: HqcUserKey) => users[k]!.userId;
@@ -174,9 +176,11 @@ try {
   const noteText = (e: HqcEmployee): string | null =>
     e.note === "probationEnds+14" ? `ทดลองงานครบ ${thaiShort(addDays(D.today, 14))}` : e.note === "contractEndsEndOfThisMonth" ? `สัญญาพาร์ทไทม์ถึง ${thaiShort(D.endOfThisMonth)}` : null;
   for (const e of HQC.employees) {
-    const { id } = await hr.createEmployee(ctx, { name: e.name, position: e.position });
+    // HR H1.1 ▸ R10: สาขาประจำจาก HQC unit · สถานะการจ้าง (ทดลองงาน/ประจำ · ผู้ลาออก = ENDED ผ่าน setEmployeeActive) ◂
+    const { id } = await hr.createEmployee(ctx, { name: e.name, position: e.position, unitId: units[e.unit] });
     emp[e.key] = id;
     const r = await hr.saveEmployeeProfile(ctx, id, {
+      employmentStatus: e.employmentType === "PROBATION" ? "PROBATION" : "ACTIVE",
       code: e.code,
       nickname: e.name,
       department: e.department,
@@ -197,6 +201,11 @@ try {
       if (!pr?.ok) throw new Error(`setPin ${e.key}: ${pr?.reason}`);
     }
     if (!e.active) await hr.setEmployeeActive(ctx, id, false);
+    // HR H1.1 ▸ R10: ยืมตัว (borrowedTo) = แถว HrEmployeeUnit ที่ยังเปิด ตั้งแต่วันเริ่มงาน (ผ่าน service) ◂
+    if (e.borrowedTo) {
+      const br = await hr.addEmployeeBorrowing(ctx, { employeeId: id, unitId: units[e.borrowedTo]!, fromDate: D.startOf(e), note: `ช่วยงาน${HQC.units[e.borrowedTo].name}` });
+      if (!br?.ok) throw new Error(`addEmployeeBorrowing ${e.key}: ${br?.reason}`);
+    }
   }
   // ผูกบัญชีผู้ใช้ (ทางจริง grantStaffAccess · ผู้ทำ = เจ้าของ)
   for (const e of HQC.employees.filter((x) => x.linkedUser)) {
@@ -221,6 +230,18 @@ try {
     (Object.keys(HQC.users) as HqcUserKey[]).map((u) => `${u}: ${linkedTo(u)}`).join(" · "),
     "CRITICAL",
   );
+  // HR H1.1 ▸ R10: สาขาประจำ · ยืมตัว · สถานะการจ้าง ตรง HQC ◂
+  const orgRows = (await P.hrEmployee.findMany({ where: { tenantId }, select: { id: true, unitId: true, employmentStatus: true } })) as Any[];
+  const orgById = new Map(orgRows.map((r) => [r.id, r]));
+  const unitBad = HQC.employees.filter((e) => (orgById.get(emp[e.key]) as Any)?.unitId !== units[e.unit]).map((e) => e.key);
+  q.chk("U1", "สาขาประจำ (HrEmployee.unitId) ตรง HQC unit ทั้ง 14 คน", unitBad.length === 0, "0 คนที่ไม่ตรง", unitBad.join(",") || "0", "CRITICAL");
+  const borrowRows = (await P.hrEmployeeUnit.findMany({ where: { tenantId, toDate: null }, select: { employeeId: true, unitId: true } })) as Any[];
+  const wantBorrow = HQC.employees.filter((e) => e.borrowedTo).map((e) => `${e.key}>${e.borrowedTo}`).sort().join(",");
+  const gotBorrow = borrowRows.map((b) => `${Object.keys(emp).find((k) => emp[k] === b.employeeId)}>${Object.keys(units).find((k) => units[k] === b.unitId)}`).sort().join(",");
+  q.chk("U2", "ยืมตัวที่ยังเปิด = borrowedTo ของ HQC (เจ → หัวหิน)", wantBorrow === gotBorrow, wantBorrow, gotBorrow || "-", "CRITICAL");
+  const statusOf = (e: HqcEmployee) => (!e.active ? "ENDED" : e.employmentType === "PROBATION" ? "PROBATION" : "ACTIVE");
+  const statusBad = HQC.employees.filter((e) => (orgById.get(emp[e.key]) as Any)?.employmentStatus !== statusOf(e)).map((e) => e.key);
+  q.chk("U3", "สถานะการจ้าง: ลาออก = ENDED · ทดลองงาน = PROBATION · ที่เหลือ ACTIVE", statusBad.length === 0, "0 คนที่ไม่ตรง", statusBad.join(",") || "0");
   const fai = byId.get(emp.fai) as Any;
   q.chk("E3", "ผู้ลาออก: active=false · endDate = วันสุดท้ายของเดือนก่อนงวดที่จ่าย", fai?.active === false && fai?.endDate?.toISOString().slice(0, 10) === D.leaverEnd, `false · ${D.leaverEnd}`, `${fai?.active} · ${fai?.endDate?.toISOString().slice(0, 10)}`);
   const om = byId.get(emp.om) as Any;
@@ -344,6 +365,10 @@ try {
     tenant: { id: tenantId, slug: HQC.tenantSlug, name: HQC.tenantName },
     systems: { HR: hrSys.id, ACCOUNT: accSys.id },
     units,
+    // HR H1.1 ▸ สาขาประจำ/ยืมตัว/สถานะต่อคน (กุญแจ HQC — ไม่มี id ⇒ เท่ากันทุกรอบ) ◂
+    org: Object.fromEntries(
+      HQC.employees.map((e) => [e.key, { unit: e.unit, ...(e.borrowedTo ? { borrowedTo: e.borrowedTo } : {}), status: statusOf(e) }]),
+    ),
     users: Object.fromEntries(Object.entries(users).map(([k, v]) => [k, { ...v, email: HQC.users[k as HqcUserKey].email }])),
     employees: emp,
     links,
