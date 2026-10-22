@@ -276,6 +276,78 @@
       "mode": "unforced"
     },
     {
+      "suite": "qc-chat-core-v2",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-chat-v2-context",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-meeting-invite",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-inventory",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-inventory-item",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-inventory-account",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-tools",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-tools2",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-skills",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-plan",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-proposals",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-phase-a",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-phase-b1",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-schedule",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-ai-proactive",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-money-mapping",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-catalog-services",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-booking-edit-schedule",
+      "mode": "unforced"
+    },
+    {
       "suite": "qc-hf-reports-authz",
       "mode": "unforced"
     },
