@@ -155,6 +155,8 @@ export async function updatePosReceiptUnitSettings(ctx: Ctx, actor: PosReceiptSe
     if (!ctxOk(ctx)) return refuse("NOT_FOUND");
     const m = membership(actor);
     if (!m) return refuse("PERMISSION_DENIED");
+    // POS P5.2 ▸ fix2 item 2 (CD-P52-F5): ด่านระดับร้าน (ไม่ส่ง unitId = ระดับร้าน · core/rbac evaluate) ก่อนตรวจรูป input/unitId — unitId ผิดรูปจากคนไม่มีสิทธิ์ = PERMISSION_DENIED ◂
+    if (!evaluate(m, { module: "pos", action: "pos.device.manage" })) return refuse("PERMISSION_DENIED");
     if (!isRecord(input)) return refuse("VALIDATION");
     const unitId = input.unitId;
     if (typeof unitId !== "string" || !unitId || unitId.length > 200 || /[\u0000-\u001F]/.test(unitId)) return refuse("VALIDATION", "เลือกสาขาให้ถูกต้อง", "unitId");
