@@ -208,6 +208,10 @@
       "mode": "forced"
     },
     {
+      "suite": "qc-pos-p4.1",
+      "mode": "unforced"
+    },
+    {
       "suite": "qc-pos-account",
       "mode": "unforced"
     },
