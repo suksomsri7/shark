@@ -106,7 +106,7 @@ const CHECKS: readonly Def[] = [
   D("S4.3", "R6", "MAJOR", "RED", "[staff] manager links user Y → employee Q (no salary profile) ⇒ ok · linkApprovedById = manager"),
   D("S4.4", "R6", "CRITICAL", "RED", "[staff+db] 🔴 X → second employee R ⇒ Thai refusal without P's name · DB probe (raw updateMany in a rolled-back tx) fails with unique violation"),
   D("X4.5", "R6", "CRITICAL", "GREEN", "[staff] two concurrent links of ONE account to TWO employees × 3 rounds ⇒ exactly one ok each round · 1 employee linked"),
-  D("S4.6", "R6", "MAJOR", "RED", "[staff] unlink (exported unlink function) clears linkedUserId AND linkApprovedById"),
+  D("S4.6", "R6", "MAJOR", "RED", "[staff] unlink (revokeStaffAccess — ORACLE-EDIT Q-C) clears linkedUserId AND linkApprovedById · audit hr.employee.link unlinked"),
   D("S4.7", "R6", "MAJOR", "RED", "[db] audit hr.employee.link {employeeId, userId, approvedById} for S4.1 — ids only"),
   D("S4.8", "R1", "CRITICAL", "RED", "[db] QC4 has partial unique index HrEmployee_tenantId_linkedUserId_key (UNIQUE · WHERE linkedUserId IS NOT NULL)"),
   // S5 data fix (R8)
@@ -746,18 +746,23 @@ async function runDb(): Promise<void> {
   chk("X4.5", x45ok, "each round ok=1 linked=1", x45.join(" "));
 
   // S4.6 unlink
-  const unlinkName = Object.keys(staff).find((k) => /unlink/i.test(k) && typeof staff[k] === "function") ?? Object.keys(hr).find((k) => /unlink/i.test(k) && typeof hr[k] === "function");
-  let u46 = "∅ no exported unlink function (staff/service · hr/service)";
+  // ORACLE-EDIT H0.7 S4.6 (pre-approved by the controller · Q-C): no new unlink function — revokeStaffAccess (staff/service.ts) clears
+  //   linkedUserId + linkApprovedById in its tx and writes hr.employee.link {…, approvedById: null, unlinked: true}; called with its real
+  //   signature { tenantId, actorUserId, membershipId } (membership of Y from S4.3's grant) instead of searching for an /unlink/i export
+  const unlinkName = typeof staff.revokeStaffAccess === "function" ? "revokeStaffAccess" : undefined;
+  let u46 = "∅ revokeStaffAccess (staff/service)";
+  const mid46 = String((g43 as Any)?.membershipId ?? "");
   if (unlinkName) {
-    const fn = staff[unlinkName] ?? hr[unlinkName];
     try {
-      u46 = short(await fn({ tenantId: tid, actorUserId: U.viewer.id, employeeId: EQ }), 80);
+      u46 = short(await staff.revokeStaffAccess({ tenantId: tid, actorUserId: U.viewer.id, membershipId: mid46 }), 80);
     } catch (e) {
       u46 = `THROW ${errText(e)}`;
     }
   }
   const k46 = await linkOf(EQ);
-  chk("S4.6", !!unlinkName && k43.u === Y.id && k46.u === null && k46.by === null, "linkedUserId null · linkApprovedById null", `fn=${unlinkName ?? "none"} → ${u46} · after u=${k46.u ? "set" : "null"} by=${k46.by}`);
+  const au46 = (await P.auditLog.findMany({ where: { tenantId: tid, action: "hr.employee.link", targetId: EQ }, select: { after: true } })) as Any[];
+  const hit46 = au46.map((a) => (a.after ?? {}) as Any).find((p) => p.unlinked === true && p.employeeId === EQ && p.userId === Y.id && p.approvedById === null);
+  chk("S4.6", !!unlinkName && !!mid46 && k43.u === Y.id && k46.u === null && k46.by === null && !!hit46, "linkedUserId null · linkApprovedById null · audit unlinked", `fn=${unlinkName ?? "none"} → ${u46} · after u=${k46.u ? "set" : "null"} by=${k46.by} audit=${hit46 ? "unlinked" : "none"}`);
 
   const au47 = await P.auditLog.findMany({ where: { tenantId: tid, action: "hr.employee.link" }, select: { after: true, before: true } });
   const hit47 = au47.map((a: Any) => (a.after ?? {}) as Any).find((p: Any) => p.employeeId === EP);
