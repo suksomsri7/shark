@@ -9989,9 +9989,9 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "ui",
-        "target": "pos-settings-card-receipt",
-        "note": "\"สมัคร\" e-Tax — ปิดเสมอ (รอผู้ให้บริการ · P3.11)"
+        "type": "modal",
+        "target": "pos-settings-etax-sheet",
+        "note": "\"สมัคร\" e-Tax — POS P3-SKEL U (CD-SKELU-8): live สำหรับผู้ถือ pos.settings.manage → แผ่นผู้ให้บริการ (INET/Leceipt · ไม่เลือกให้ · W20) + การ์ด credentials ETAX · อื่น = ปิด (รอผู้ให้บริการ)"
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -22318,6 +22318,1035 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "โหลดการ์ด credentials ไม่สำเร็จ → อ่านซ้ำ (readIntegrationCredentialsAction)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-field-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ช่องตามชื่อฟิลด์ของผู้ให้บริการ (ป้าย pos.platform.fields.<name>) · ค่าลับ = password ว่างเสมอ placeholder = ค่าปิดบัง · ไม่ใช่เจ้าของ/ไม่มีกุญแจ = ปิด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-clear-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ล้างช่องที่กรอกแล้ว → กล่องยืนยันในบรรทัด (เจ้าของร้าน · มีกุญแจ)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-cancel-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ยกเลิกการล้างช่อง"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-confirm-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-channel-creds-status",
+        "note": "ล้างช่อง = saveIntegrationCredentialsAction {fields:{<name>: \"\"}} (เจ้าของร้านเท่านั้น) → มุมมองใหม่"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-webhook",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "URL webhook (อ่านอย่างเดียว · ไม่ใช่ความลับ) + บรรทัด \"ใช้ได้เมื่อเปิดตัวเชื่อมจริง (W4)\" — PLATFORM เท่านั้น"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-webhook-copy",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds-webhook",
+        "note": "คัดลอก URL webhook (clipboard)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-channel-creds-status",
+        "note": "บันทึกเฉพาะช่องที่พิมพ์ (saveIntegrationCredentialsAction · OWNER) · ทุกผลล้างช่องพิมพ์ · คำปฏิเสธ = messageKey ในบรรทัด (NOT_CONFIGURED keyMissing ฯลฯ)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-test",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-channel-creds-result",
+        "note": "ทดสอบการเชื่อม — ปิดจนกว่า COMPLETE · ผล = คำปฏิเสธเสมอ NOT_CONFIGURED/ADAPTER_PENDING (ไม่เคย \"เชื่อมแล้ว\")"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-slip-verify-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-slip-verify-sheet",
+        "note": "\"ตรวจสลิปอัตโนมัติ · รอผู้ให้บริการ\" → แผ่นเลือกผู้ให้บริการ (ผู้ถือ pos.settings.payment · แคชเชียร์ไม่เห็นปุ่ม)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-slip-verify-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-slip-card",
+        "note": "ปิดแผ่นตรวจสลิป"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-slip-verify-provider",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ผู้ให้บริการตรวจสลิป SLIPOK/EASYSLIP (ไม่เลือกให้ · W20) → การ์ด credentials SLIP_VERIFY"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-etax-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-card-etax",
+        "note": "ปิดแผ่น e-Tax"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=shark"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-etax-provider",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ผู้ให้บริการ e-Tax INET/LECEIPT (ไม่เลือกให้ · W20) → การ์ด credentials ETAX · ไม่มีตัวอย่าง/ส่ง (OUT)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=shark"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-mode-lan",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-pair-line",
+        "note": "โหมดแลน (escpos-lan · updateDeviceAction printerConfig.mode) — เปิดเมื่อสาขามีตัวช่วยพิมพ์ 1 ตัวพอดีที่มีเครื่องใบเสร็จ/เครื่องเดียวไม่ระบุงาน · 0 = agentNone · ≥ 2 = agentMany"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-kitchen-lan",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-kitchen",
+        "note": "ใบครัว LAN = ชื่อเรียกของ kitchenSlip \"after-sale\" เมื่อโหมดแลน (owner-ack · ไม่มีคีย์ใหม่) — เปิดเมื่อแลน ∧ ตัวช่วยพิมพ์มีเครื่องใบครัว"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "เปิดฟอร์มลงทะเบียนตัวช่วยพิมพ์"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-register",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-lan-token",
+        "note": "ฟอร์มลงทะเบียน (ชื่อ 1–60 · เครื่องพิมพ์ 1–8) → registerPrintAgentAction → กล่องโทเคนครั้งเดียว"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ชื่อตัวช่วยพิมพ์ 1–60"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-name-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ชื่อเครื่องพิมพ์ ≤ 40"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-host-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ที่อยู่ IPv4/ชื่อเครื่องในวงแลน (ไม่รับ 169.254/16 · เซิร์ฟเวอร์ตรวจซ้ำ)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-port-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "พอร์ตจาก PRINT_PRINTER_PORTS (9100–9102 · 515)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-target-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "งานที่พิมพ์ ใบครัว/ใบเสร็จ/ไม่ระบุ (ไม่ซ้ำต่อ agent)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "ลบเครื่องพิมพ์ในฟอร์ม (เหลือ ≥ 1)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-printer-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-register",
+        "note": "เพิ่มเครื่องพิมพ์ในฟอร์ม (≤ 8)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "ปิดฟอร์มลงทะเบียน"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-lan-token",
+        "note": "ลงทะเบียนตัวช่วยพิมพ์ (registerPrintAgentAction · pos.device.manage) · คำปฏิเสธ = pos.platform.print.errors.*"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-token-copy",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-token",
+        "note": "คัดลอกโทเคน (แสดงครั้งเดียว · ไม่ log)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-token-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "ปิดกล่องโทเคน = ล้างโทเคนจาก state"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-revoke-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "เพิกถอนตัวช่วยพิมพ์ → ยืนยันในบรรทัด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-revoke-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-lan-card",
+        "note": "ยกเลิกการเพิกถอน"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-lan-revoke-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-device-lan-card",
+        "note": "เพิกถอน (revokePrintAgentAction) — โทเคนใช้ไม่ได้ทันที"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=devices"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-slip",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "ใบขอรับเงิน PROMPTPAY_STATIC ที่ PENDING: เปิดฟอร์มแนบสลิป (เป้าหมาย = intentId) ข้างปุ่มยืนยันเอง · STORAGE_NOT_CONFIGURED = ปิดพร้อมเหตุผลหลังครั้งแรก · ไม่ยืนยันเงินเข้า"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-done-slip",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "จอสำเร็จบิลที่มีแถวโอนเงิน: slipTargetsAction → ฟอร์มแนบสลิปของแถว TRANSFER · นับถอยหลังหยุดระหว่างเปิด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-target-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "เลือกแถวชำระที่จะแนบ (มีมากกว่า 1 แถว)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-file",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "รูปสลิป jpeg/png/webp (capture กล้องหลัง) · ตรวจชนิด/ขนาดฝั่งจอ · คีย์รายการใหม่ต่อการเลือก"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-amount",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "ยอดบนสลิป (บาท ↔ สตางค์ · ไม่เติมให้ — H1)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-ref",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "เลขอ้างอิงบนสลิป (transRef 4–64 · ซ้ำในร้าน = SLIP_DUPLICATE)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "ปิดฟอร์มแนบสลิป"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-slip-send",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-slip-error",
+        "note": "attachSlipAction (FormData) → สลิป UPLOADED (หลักฐาน) · คำปฏิเสธ = pos.platform.slip.errors.<camel>"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-slip-sheet",
+        "note": "ชิปสลิปของบิล (สถานะเท่านั้น) → แผ่นดูสลิป"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-attach",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-slip-form",
+        "note": "แนบสลิปให้แถว TRANSFER/PROMPTPAY ของบิล (paymentId จาก slipTargetsAction · เกิน 24 ชม. ต้อง pos.sale.manage)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slips",
+        "note": "ปิดแผ่นสลิป (ลิงก์รูปชั่วคราวถูกทิ้ง)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-bills-slip-sheet-status",
+        "note": "ยืนยันสลิป (confirmSlipAction · pos.shift.manage · ไม่ใช่ผู้แนบ — SLIP_SELF_CONFIRM เว้นเจ้าของร้าน) · หลักฐานเท่านั้น"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reject",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slip-reason",
+        "note": "เริ่มปฏิเสธสลิป → ช่องเหตุผล"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slip-sheet",
+        "note": "เหตุผลที่ปฏิเสธ 3–200 (สั้นกว่า 3 = ข้อความในแผ่น ไม่เรียกเซิร์ฟเวอร์)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reject-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-slip-sheet",
+        "note": "ยกเลิกการปฏิเสธ"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-slip-reject-send",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-bills-slip-sheet-status",
+        "note": "ปฏิเสธสลิป (rejectSlipAction + เหตุผล) · SLIP_INVALID_STATE = ข้อความ + โหลดลิ้นชักใหม่"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-csv",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "download",
+        "target": "pos-reports-reconcile",
+        "note": "CSV กระทบยอด (reconcileCsvAction · หัวตรึง · BOM) → ดาวน์โหลด Blob"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-pdf",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-reconcile",
+        "note": "PDF ปิดเสมอพร้อมเหตุผล reconcile.noPdf"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-settlement",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-reconcile",
+        "note": "นำเข้า settlement ของ Beam ปิดเสมอ (รอไฟล์ตัวอย่าง W4)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-reconcile",
+        "note": "โหลดรายงานกระทบยอดซ้ำหลังผิดพลาด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

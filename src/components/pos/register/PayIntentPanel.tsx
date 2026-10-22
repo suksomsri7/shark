@@ -28,6 +28,7 @@ import {
 import { intentRefusalMessageKey, type PaymentIntentMethod, type PaymentIntentView } from "@/lib/modules/pos/payment-intent-shared";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { RegisterIcon } from "./RegisterIcon";
+import { SlipIntentAttach } from "./SlipAttach"; // POS P3-SKEL U ▸ CD-SKELU-6 (a): แนบสลิปของใบขอรับเงินพร้อมเพย์แบบคงที่ ◂
 
 /** สิ่งที่หน้าเพจ/RegisterScreen ส่งให้กล่องชำระ (สิทธิ์อ่านจากหน้าเพจ — ไม่เดา) */
 export type PayIntentSetup = {
@@ -436,6 +437,8 @@ export function PayIntentPanel({
               {h.confirming ? t("manualBusy") : t("manual")}
             </button>
             {!manualAllowed && <small className="text-[12px] text-[color:var(--color-muted)]">{t("managerOnly")}</small>}
+            {/* POS P3-SKEL U ▸ CD-SKELU-6 (a): สลิปผูกใบขอรับเงินที่ยัง PENDING (ไม่ใช่แถวชำระ) — หลักฐานข้างปุ่มยืนยันเอง · ไม่ยืนยันเงินเข้าเอง ◂ */}
+            {it.kind === "PROMPTPAY_STATIC" ? <SlipIntentAttach systemId={setup.systemId} unitId={setup.unitId} intentId={it.id} amountSatang={it.amountSatang} /> : null}
           </div>
         )}
         {h.secondsLeft !== null && (
