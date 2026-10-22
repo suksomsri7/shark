@@ -1,0 +1,745 @@
+// pos-buttons-fixtures.mts — POS RUN ใบ P4.2 (ตัวกดทุกปุ่ม · ผู้เขียนตัวกด บัญชี B · 22 ต.ค. 2026)
+//   โมดูลคู่ของ scripts/qc-pos-buttons.mts (ตัวกด) และ scripts/qc-pos-p4.2.mts (ข้อสอบสรุปผล) — 3 ชั้น:
+//   (1) ทะเบียน + กติกา (บริสุทธิ์ · ไม่แตะ DB · ไม่ import "@/…"): อ่าน scripts/pos-ui-inventory.json · กติกาแถวของ P4.1
+//       ถูก "ยืม" จาก scripts/qc-pos-p4.1.mts ตรง ๆ (CD-P42-W1: ข้อสอบ P4.1 ไม่ export ⇒ ดึงประกาศตามชื่อจากซอร์ส → transpile →
+//       ประเมินในขอบเขตปิด · ดึงไม่ได้ = ตัวกดไม่วางแผนเลย (fail-closed) — ไม่เขียนกติกาซ้ำ) · ตารางผ่าน (pass matrix · มติ 6) ·
+//       ตัวจำแนกแถว (press / absent / visible / skip(เหตุผล)) ที่ตัวกดและข้อสอบใช้ร่วมกัน
+//   (2) fixture บน QC5 (มติ 5 · W30): สาขาเฉพาะของตัวกด `posqc-btn-unit` ในร้าน coffee (หา-หรือ-สร้าง · คงไว้) ผูกระบบของร้าน ·
+//       ผู้ใช้ตัวกด (ผู้จัดการ/แคชเชียร์ของสาขานี้ · หา-หรือ-สร้าง · คงไว้) · เครื่องของตัวกด (registerDevice) · PIN (setStaffPin · แถวเดิมคืนค่า) ·
+//       โทเคนผู้ขาย (issueStaffToken) · กะของตัวกด (openShift → closeShift นับตรงยอด ทุกรอบ) · ค่าตั้ง settings.pos ของระบบ POS
+//       จำทั้งก้อนไว้ใน settings.pos._qcP42Before แล้วคืนค่าตรงตัวหลังทุกแถวที่เขียน + finally + สัญญาณ (แบบ P3.9U/P3.8U)
+//       🔴 ด่านร้าน QC = `T.tenantId === "posqc-coffee-tenant"` (ค่าคงที่ · ไม่ใช่ slug/prefix — บทเรียน 22 ต.ค. 05:0xZ)
+//       🔴 ทุกขั้นที่ล้มโยน StepError บอกขั้น + ค่าที่ใช้ · ไม่สร้างระบบ/ข้อมูลถาวรบน QC4 เด็ดขาด (writer ทุกตัวถามด่าน QC5 ก่อน)
+//   (3) pre-flight อ่านอย่างเดียว (`--preflight`): ประเมินเงื่อนไขของ writer ทุกตัวที่ fixture จะเรียก แล้วพิมพ์ทีละบรรทัด (PF …) —
+//       รันบน QC4 ได้ (อ่านอย่างเดียว · ผ่าน qc4.sh + ล็อก POS) ก่อนส่งงาน · บน QC5 ก่อนรอบจริงของผู้คุม
+//
+// ใช้ (ผู้เขียนตัวกด — อ่านอย่างเดียว):
+//   bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight
+// ผู้คุม (QC5 ก่อนรอบจริง): bash scripts/iso.sh bash scripts/qc5.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+import { createHash, randomInt } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import ts from "typescript";
+
+// ═════════════════════════ (1) ทะเบียน + กติกา (บริสุทธิ์) ═════════════════════════
+export const REGISTRY_PATH = "scripts/pos-ui-inventory.json";
+export const P41_ORACLE = "scripts/qc-pos-p4.1.mts";
+export const SHOTS_DIR = ".qc-shots/pos/buttons";
+export const QC_TENANT = "posqc-coffee-tenant";
+export const STAFF = "/app/sys/[id]/pos/";
+
+export type Row = {
+  page: string;
+  testid: string;
+  kind: string;
+  roles: string[];
+  hiddenFor?: string[];
+  expect: { type: string; target?: string; state?: string; db?: string; anyOf?: string[]; resultTarget?: string; note?: string };
+  wo?: string;
+  oracle?: string;
+  system?: string;
+  query?: string;
+  opener?: string | string[];
+  needs?: string | string[];
+  viewport?: string | string[];
+  safety?: string;
+};
+export type Registry = { raw: string; hash: string; json: Any; rows: Row[] };
+export const sha16 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
+export const rowKey = (r: Pick<Row, "page" | "testid">) => `${r.page}#${r.testid}`;
+
+export function readRegistry(root: string, rel = REGISTRY_PATH): Registry {
+  const raw = readFileSync(join(root, rel), "utf8");
+  const json = JSON.parse(raw) as Any;
+  const rows = Array.isArray(json?.rows) ? (json.rows as Row[]) : [];
+  if (!rows.length) throw new StepError("อ่านทะเบียน", `${rel} ไม่มี rows`);
+  return { raw, hash: sha16(raw), json, rows };
+}
+
+/** ชื่อประกาศที่ยืมจากข้อสอบ P4.1 (ลำดับตามไฟล์ · ชื่อหาย = fail-closed) — CD-P42-W1 */
+const P41_NAMES = [
+  "isRec", "str", "escRe", "globRe", "matchesAny",
+  "ROLE_UNIVERSE", "SAFETY", "VIEWPORTS", "NEW_FIELDS", "LEGACY_OUT", "isPublicPage", "STAFF",
+  "MONEY_ACTIONS", "MONEY_MODELS", "EXTERNAL_ACTIONS", "EXTERNAL_TEXT", "CONFIG_ROW", "COUNTER_ACTIONS", "COUNTER_TEXT", "REFUSAL_ID",
+  "readDbCheckIds", "rowsOf", "tidOf", "rowText", "hasWord", "pageShort", "r3", "r9", "isMoneyRow", "isExternalRow", "isCounterRow",
+] as const;
+export type P41Rules = {
+  isPublicPage: (p: string) => boolean;
+  globRe: (g: string) => RegExp;
+  matchesAny: (id: string, list: readonly string[]) => boolean;
+  SAFETY: string[];
+  VIEWPORTS: string[];
+  ROLE_UNIVERSE: string[];
+  isMoneyRow: (r: Any) => boolean;
+  isExternalRow: (r: Any) => boolean;
+  isCounterRow: (r: Any) => boolean;
+  r3: (inv: Any) => string[];
+  r9: (inv: Any) => string[];
+  readDbCheckIds: () => { ids: Set<string>; suites: number };
+  /** sha ของซอร์สข้อสอบ P4.1 ที่ยืมมา (บันทึกลงสรุป) */
+  sourceHash: string;
+};
+/** ตัดประกาศระดับบนสุดตามชื่อ: บรรทัดเริ่ม → บรรทัดถัดไปที่ย่อหน้า/ว่าง/ปิดวงเล็บ (ไฟล์ P4.1 เขียนแบบนี้ทุกประกาศ) */
+export function extractDecl(src: string, name: string): string {
+  const lines = src.split("\n");
+  const re = new RegExp(`^(?:export\\s+)?(?:const|let|function|async function)\\s+${name}\\b`);
+  const i = lines.findIndex((l) => re.test(l));
+  if (i < 0) throw new StepError("ยืมกติกา P4.1", `ไม่พบประกาศ ${name} ใน ${P41_ORACLE}`);
+  const out = [lines[i]!];
+  for (let j = i + 1; j < lines.length; j++) {
+    const l = lines[j]!;
+    if (l === "" || /^[\s}\])]/.test(l)) out.push(l);
+    else break;
+  }
+  return out.join("\n");
+}
+export function loadP41Rules(root: string): P41Rules {
+  const src = readFileSync(join(root, P41_ORACLE), "utf8");
+  const code = P41_NAMES.map((n) => extractDecl(src, n)).join("\n");
+  const js = ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, removeComments: false } }).outputText;
+  const rd = (p: string) => (existsSync(join(root, p)) ? readFileSync(join(root, p), "utf8") : "");
+  // ขอบเขตปิด: ตัวแปรที่ประกาศที่ยืมอ้างถึง (ROOT · SUITE · rd · readdirSync · join) ส่งเข้าไปตรง ๆ — ไม่มี global อื่น
+  const fn = new Function("ROOT", "SUITE", "rd", "readdirSync", "join", `"use strict";\n${js}\nreturn { ${P41_NAMES.join(", ")} };`) as (...a: unknown[]) => Any;
+  const m = fn(root, "qc-pos-p4.1", rd, readdirSync, join);
+  // ตัวพิสูจน์ว่ายืมมาครบและทำงาน (ไม่ผ่าน = โยน — ตัวกดไม่วางแผน)
+  const probes: [string, boolean][] = [
+    ["isPublicPage(/r/x)", m.isPublicPage("/r/[token]") === true && m.isPublicPage(`${STAFF}register`) === false],
+    ["SAFETY", Array.isArray(m.SAFETY) && m.SAFETY.includes("money") && m.SAFETY.includes("external") && m.SAFETY.includes("counter")],
+    ["VIEWPORTS", Array.isArray(m.VIEWPORTS) && m.VIEWPORTS.join(",") === "desktop,tablet,mobile"],
+    ["isMoneyRow", m.isMoneyRow({ expect: { type: "mutation", target: "action:submitRegisterSaleAction" } }) === true && m.isMoneyRow({ expect: { type: "ui" } }) === false],
+    ["isExternalRow", m.isExternalRow({ expect: { type: "mutation", target: "action:sendReceiptAction" } }) === true],
+    ["isCounterRow", m.isCounterRow({ expect: { type: "mutation", target: "action:issueFullTaxInvoiceAction" } }) === true],
+    ["r3", Array.isArray(m.r3({ $fields: {}, rows: [] })) && m.r3({ $fields: {}, rows: [] }).length > 0],
+    ["r9", Array.isArray(m.r9({ rows: [{ testid: "x", roles: ["owner"], hiddenFor: ["owner"] }] })) && m.r9({ rows: [{ testid: "x", roles: ["owner"], hiddenFor: ["owner"] }] }).length > 0],
+  ];
+  const bad = probes.filter(([, ok]) => !ok).map(([n]) => n);
+  if (bad.length) throw new StepError("ยืมกติกา P4.1", `ตัวพิสูจน์ไม่ผ่าน: ${bad.join(", ")}`);
+  return { ...m, sourceHash: sha16(src) } as P41Rules;
+}
+
+// ── ตารางผ่าน (pass matrix) · มติ 6 · มติ 9 (รอบละ 1 ช่อง) ──
+export const USERS = ["owner", "manager", "cashier", "public"] as const;
+export type UserKey = (typeof USERS)[number];
+export const DEVICES = {
+  desktop: { w: 1440, h: 900, reg: "desktop", isMobile: false, hasTouch: false },
+  ipad: { w: 1024, h: 768, reg: "tablet", isMobile: false, hasTouch: true },
+  mobile: { w: 390, h: 844, reg: "mobile", isMobile: true, hasTouch: true },
+} as const;
+export type DeviceKey = keyof typeof DEVICES;
+export type Locale = "th" | "en";
+export type Cell = { user: UserKey; device: DeviceKey; locale: Locale };
+export const cellName = (c: Cell) => `${c.user}-${c.device}${c.locale === "en" ? "-en" : ""}`;
+export const summaryFile = (c: Cell) => `${SHOTS_DIR}/summary-${cellName(c)}.json`;
+/** EN_MOBILE_PAGES ของ visual-pos (register · sales · receipt-public · display · qr-public) ในรูป page ของทะเบียน */
+export const isEnMobilePage = (page: string) => page === `${STAFF}register` || page === `${STAFF}sales` || page.startsWith("/r/") || page === "/d" || page.startsWith("/q/");
+/**
+ * ตารางผ่าน 19 ช่อง (CD-P42-W3): th = staff × 3 ขนาด · en = staff × 1440 + staff × 390 (เฉพาะหน้า EN_MOBILE) ·
+ * public = 1440 + 390 ทั้ง th/en (en 390 เฉพาะหน้า EN_MOBILE — /developers/pos ไม่อยู่) — ไม่มี ipad ของ public (มติ 6)
+ */
+export const PASS_MATRIX: readonly Cell[] = [
+  ...(["owner", "manager", "cashier"] as const).flatMap((u) => (["desktop", "ipad", "mobile"] as const).map((d) => ({ user: u, device: d, locale: "th" as const }))),
+  ...(["owner", "manager", "cashier"] as const).flatMap((u) => (["desktop", "mobile"] as const).map((d) => ({ user: u, device: d, locale: "en" as const }))),
+  ...(["desktop", "mobile"] as const).flatMap((d) => (["th", "en"] as const).map((l) => ({ user: "public" as const, device: d, locale: l }))),
+];
+const asList = (v: unknown): string[] => (typeof v === "string" ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+/** แถวของช่อง: หน้าตามชนิดผู้ใช้ (public ↔ หน้าสาธารณะ) · en 390 = หน้า EN_MOBILE · viewport ของแถวไม่ครอบจอนี้ = ทะเบียนไม่อ้าง (ไม่อยู่ในช่อง) */
+export function cellRows(rows: readonly Row[], cell: Cell, rules: Pick<P41Rules, "isPublicPage">): Row[] {
+  const reg = DEVICES[cell.device].reg;
+  return rows.filter((r) => {
+    const pub = rules.isPublicPage(String(r.page));
+    if ((cell.user === "public") !== pub) return false;
+    if (cell.locale === "en" && cell.device === "mobile" && !isEnMobilePage(r.page)) return false;
+    const vp = asList(r.viewport);
+    if (vp.length && !vp.includes(reg)) return false;
+    return true;
+  });
+}
+
+// ── ตัวจำแนกแถว (บริสุทธิ์) ──
+/** เหตุผลที่ข้ามได้ (ข้อสอบ W6 ตรวจว่าเหตุผลทุกตัว ⊆ ชุดนี้) */
+export const SKIP_REASONS = {
+  "no-role-claim": "บทบาทนี้ไม่อยู่ทั้งใน roles และ hiddenFor — ทะเบียนไม่อ้างอะไร",
+  "not-pos-page": "หน้าไม่ใช่ของ POS (หน้าครัวเดิม /app/u/[unitSlug]/restaurant/kds · หมายเหตุ P4.1)",
+  "missing-target": "ทะเบียนยังไม่มี expect.target (R1 ของ P4.1 — รอผู้สร้าง P4.1)",
+  "missing-db": "แถว mutation ยังไม่มี db ที่ถูกรูปหรือ oracle id (R2 ของ P4.1 — รอผู้สร้าง P4.1)",
+  "missing-safety": "ตัวจับแถวเงิน/ภายนอก/เลขเอกสารของ P4.1 จับได้แต่แถวไม่มี safety (R11/R12) — ไม่กด (fail-closed)",
+  external: "safety external — ไม่กด ต้องอ้าง oracle (มติ 5 · W3)",
+  "once-per-run": "แถว money/counter กดจริงแล้วในรอบนี้ (มติ 5: ครั้งเดียวต่อรอบ)",
+  needs: "row.needs — ข้อมูลตั้งต้นไม่มีในชุด fixture (คอนโทรลไม่ขึ้น/ใช้ไม่ได้)",
+  "needs-fixture": "ตัวแปรในหน้า/คิวรีหาค่าจริงไม่ได้ (โทเคนหน้าสาธารณะ · โต๊ะ · รหัสจับคู่ …)",
+  "file-upload": "input[type=file] — อัปโหลดขึ้นที่เก็บไฟล์จริง (ไม่กด)",
+} as const;
+export type SkipReason = keyof typeof SKIP_REASONS;
+/** เหตุผลที่เป็น "ช่องโหว่ทะเบียน" — ข้อสอบ W8 ต้องเป็น 0 (ผู้สร้าง P4.1 เติมแล้ว) */
+export const REGISTRY_GAP_REASONS: readonly SkipReason[] = ["missing-target", "missing-db", "missing-safety"];
+export type PlanAction = "press" | "absent" | "visible" | "skip";
+export type PlanItem = {
+  key: string;
+  row: Row;
+  idx: number;
+  action: PlanAction;
+  reason?: SkipReason;
+  detail?: string;
+  /** safety ที่ตัวกดใช้ (ของแถว หรือ "money"/"external"/"counter" ที่ตัวจับ P4.1 พบเมื่อแถวไม่มี) */
+  safety: "money" | "external" | "counter" | null;
+  /** money/counter = กดในสาขา posqc-btn เท่านั้น ครั้งเดียวต่อรอบ */
+  moneyUnit: boolean;
+  /** แถว mutation ตรวจผลด้วย: db (อ่าน prisma) · oracle (id ที่มีจริง) · ui (resultTarget/target) */
+  verify: "db" | "oracle" | "ui" | "-";
+  opener: string[];
+  needs: string | null;
+};
+const isTestidLike = (s: string) => /^[a-z][a-z0-9*-]*$/.test(s) && s.includes("-");
+export function oracleIdOk(o: unknown, ids: Set<string>): string | null {
+  const t = String(o ?? "").split(/[\s,#·|;]+/).find((x) => ids.has(x));
+  return t ?? null;
+}
+function dbOk(db: unknown): boolean {
+  const s = String(db ?? "").trim();
+  const m = /^([A-Z][A-Za-z0-9]+)(\([^)]*\))?([\s\S]*)$/.exec(s);
+  return !!m && !!m[3]!.replace(/^[\s.:=]+/, "").trim();
+}
+/** จำแนกแถวของช่อง → การกระทำ (ไม่มี DB · ไม่มีเบราว์เซอร์ — ใช้ใน --list/--dry/ด่าน และรอบจริง) */
+export function classify(row: Row, idx: number, cell: Cell, rules: P41Rules, oracleIds: Set<string>): PlanItem {
+  const base: PlanItem = { key: rowKey(row), row, idx, action: "press", safety: null, moneyUnit: false, verify: "-", opener: asList(row.opener), needs: asList(row.needs).join(" · ") || null };
+  const skip = (reason: SkipReason, detail = ""): PlanItem => ({ ...base, action: "skip", reason, detail });
+  const roles = asList(row.roles);
+  const hidden = asList(row.hiddenFor);
+  const ex = row.expect ?? { type: "" };
+  // safety (ของแถว · หรือตัวจับของ P4.1 เมื่อแถวไม่มี — fail-closed)
+  const own = rules.SAFETY.includes(String(row.safety ?? "")) ? (row.safety as PlanItem["safety"]) : null;
+  const detected: PlanItem["safety"] = rules.isExternalRow(row) ? "external" : rules.isCounterRow(row) ? "counter" : rules.isMoneyRow(row) ? "money" : null;
+  base.safety = own ?? detected;
+  base.moneyUnit = base.safety === "money" || base.safety === "counter";
+  if (!rules.isPublicPage(row.page) && !row.page.startsWith(STAFF)) return skip("not-pos-page", row.page);
+  const isHidden = hidden.includes(cell.user);
+  if (!isHidden && !roles.includes(cell.user)) return skip("no-role-claim", `roles ${roles.join(",") || "-"} · hiddenFor ${hidden.join(",") || "-"}`);
+  if (isHidden) return { ...base, action: "absent" };
+  // การ์ด/ป้ายที่ไม่กด: notice · ui refused · ui disabled = ตรวจว่าเห็น (และ disabled) เท่านั้น
+  if (row.kind === "notice" || (ex.type === "ui" && (ex.state === "refused" || ex.state === "disabled"))) return { ...base, action: "visible" };
+  if (!own && detected) return skip("missing-safety", `ตัวจับ P4.1 = ${detected}`);
+  if (base.safety === "external") {
+    const o = oracleIdOk(row.oracle, oracleIds);
+    return skip("external", o ? `oracle ${o}` : `ไม่มี oracle id ที่มีจริง (${row.oracle || "-"})`);
+  }
+  const target = String(ex.target ?? "");
+  if (!target && !(ex.type === "ui" && ex.state) && !(ex.anyOf ?? []).length) {
+    // ช่องกรอก/สวิตช์ ui ที่ไม่มีเป้า = ตรวจว่าค่าเปลี่ยน (ไม่ตาย) ได้ · ที่เหลือ (navigate/modal/toast/mutation/download) ต้องมีเป้า
+    if (!(ex.type === "ui" && ["input", "textarea", "select", "toggle"].includes(row.kind))) return skip("missing-target", `${ex.type} ไม่มี target`);
+  }
+  if (ex.type === "mutation") {
+    if (dbOk(ex.db)) base.verify = "db";
+    else if (oracleIdOk(row.oracle, oracleIds)) base.verify = "oracle";
+    else return skip("missing-db", `db "${ex.db ?? "-"}" · oracle "${row.oracle || "-"}"`);
+  } else if (ex.type === "ui" || ex.type === "modal" || ex.type === "toast" || ex.type === "inline-error") base.verify = "ui";
+  return base;
+}
+export type CellPlan = { cell: Cell; items: PlanItem[]; total: number; byAction: Record<string, number>; perReason: Record<string, number> };
+export function planCell(reg: Registry, cell: Cell, rules: P41Rules, oracleIds: Set<string>, filter?: (r: Row) => boolean): CellPlan {
+  const items: PlanItem[] = [];
+  reg.rows.forEach((r, i) => {
+    if (!cellRows([r], cell, rules).length) return;
+    if (filter && !filter(r)) return;
+    items.push(classify(r, i, cell, rules, oracleIds));
+  });
+  const byAction: Record<string, number> = {};
+  const perReason: Record<string, number> = {};
+  for (const it of items) {
+    byAction[it.action] = (byAction[it.action] ?? 0) + 1;
+    if (it.reason) perReason[it.reason] = (perReason[it.reason] ?? 0) + 1;
+  }
+  return { cell, items, total: items.length, byAction, perReason };
+}
+/** ค่าประมาณเวลา/แถว (วินาที) ตามการกระทำ — โหลดหน้าใหม่ 3–4 วิ + กด/รอผล (CRM run6 ≈ 4.4 วิ/แถว) */
+export const SEC_PER = { press: 6, absent: 3.5, visible: 3, skip: 0 } as const;
+export const estimateSec = (p: CellPlan) => Math.round(p.items.reduce((a, it) => a + SEC_PER[it.action], 0) + 90 /* fixture + เบราว์เซอร์ + เก็บกวาด */);
+
+// ═════════════════════════ (2) fixture บน QC5 ═════════════════════════
+/** ขั้นที่ล้ม — บอกขั้น + ค่าที่ใช้เสมอ (บทเรียน 22 ต.ค. 05:0xZ) */
+export class StepError extends Error {
+  constructor(public step: string, public value: string) {
+    super(`[${step}] ${value}`);
+  }
+}
+export const BTN = {
+  unit: { id: "posqc-btn-unit", slug: "pos-qc-btn", name: "สาขาตัวกด (QC P4.2)", type: "SHOP" },
+  /** ผู้ใช้ของตัวกด — ผู้จัดการ/แคชเชียร์ที่เข้าได้เฉพาะสาขา posqc-btn (เจ้าของ = เจ้าของร้าน QC เดิม · units *) — CD-P42-W4 */
+  manager: { userId: "posqc-btn-user-manager", membershipId: "posqc-btn-mb-manager", email: "pos-qc-btn-manager@shark.local", name: "ผู้จัดการสาขาตัวกด (QC P4.2)", role: "MANAGER" },
+  cashier: { userId: "posqc-btn-user-cashier", membershipId: "posqc-btn-mb-cashier", email: "pos-qc-btn-cashier@shark.local", name: "แคชเชียร์สาขาตัวกด (QC P4.2)", role: "STAFF" },
+  device: (user: string) => `posqc-btn-dev-${user}`,
+  ua: "qc-pos-buttons",
+  floatSatang: 100_000,
+} as const;
+export const QC5_HOST_MARK = "ep-fragrant-thunder";
+export const QC4_HOST_MARK = "ep-frosty-lab";
+export type Ctx = {
+  T: Any; // PQC.coffee
+  sys: string;
+  unitId: string;
+  systems: Record<string, string>;
+  persona: { userId: string; membershipId: string; email: string; name: string; role: string } | null;
+  deviceCode: string;
+  deviceRowId: string;
+  pin: string;
+  staffJson: string;
+  shiftId: string;
+  shiftOpenedHere: boolean;
+  pinRestore: { userId: string; row: Any | null }[];
+  settingsSnap: { had: boolean; v: Any } | null;
+  restores: { label: string; ok: boolean; detail: string }[];
+  log: string[];
+  cartProductIds: string[];
+  tokens: Record<string, string | null>;
+  cleaned: boolean;
+};
+let PRISMA: Any = null;
+export async function db(): Promise<Any> {
+  if (!PRISMA) PRISMA = ((await import("@/lib/core/db" as string)) as Any).prisma;
+  return PRISMA;
+}
+const env = (k: string) => process.env[k] ?? "";
+export const dbHost = (): string => {
+  try {
+    return new URL(env("DATABASE_URL")).hostname;
+  } catch {
+    return "?";
+  }
+};
+/** 🔴 writer ทุกตัวเรียกก่อนเขียน: QC5 เท่านั้น · ร้าน QC ตรงค่าคงที่ */
+export function assertWritable(T: Any): void {
+  if (T?.tenantId !== QC_TENANT) throw new StepError("ด่านร้าน QC", `T.tenantId=${String(T?.tenantId)} ≠ ${QC_TENANT}`);
+  const d = env("DATABASE_URL");
+  const dd = env("DIRECT_URL");
+  if (!d.includes(QC5_HOST_MARK) || (dd && !dd.includes(QC5_HOST_MARK))) throw new StepError("ด่านฐาน", `DATABASE_URL/DIRECT_URL host ${dbHost()} ไม่ใช่ QC5 (${QC5_HOST_MARK}) — fixture เขียนได้บน QC5 เท่านั้น (QC4 = ฐานข้อสอบ)`);
+}
+const isRecObj = (v: unknown): v is Record<string, Any> => !!v && typeof v === "object" && !Array.isArray(v);
+async function actorOfMembership(membershipId: string, userId: string): Promise<{ userId: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown> }> {
+  const P = await db();
+  const mb = await P.membership.findUnique({ where: { id: membershipId }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!mb) throw new StepError("actor", `ไม่พบ membership ${membershipId}`);
+  return {
+    userId,
+    role: mb.role,
+    unitAccess: Array.isArray(mb.unitAccess) ? (mb.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [],
+    permissions: isRecObj(mb.permissions) ? mb.permissions : {},
+  };
+}
+export function personaOf(T: Any, user: UserKey): Ctx["persona"] {
+  if (user === "public") return null;
+  if (user === "owner") return { ...T.users.owner };
+  return { ...(user === "manager" ? BTN.manager : BTN.cashier) };
+}
+async function readPos(sys: string): Promise<{ had: boolean; v: Any; raw: Any }> {
+  const P = await db();
+  const s = await P.appSystem.findFirst({ where: { id: sys, tenantId: QC_TENANT }, select: { settings: true } });
+  const st = isRecObj(s?.settings) ? s!.settings : {};
+  return { had: Object.prototype.hasOwnProperty.call(st, "pos"), v: st.pos, raw: st };
+}
+/** เขียน settings.pos ทั้งก้อน (undefined = ลบคีย์) — แตะเฉพาะคีย์ pos ของ AppSystem POS ของร้าน QC */
+async function writePos(sys: string, v: Any): Promise<void> {
+  const P = await db();
+  if (v === undefined) {
+    await P.$executeRaw`UPDATE "AppSystem" SET "settings" = "settings" - 'pos' WHERE "id" = ${sys} AND "tenantId" = ${QC_TENANT} AND jsonb_typeof("settings") = 'object'`;
+    return;
+  }
+  const json = JSON.stringify(v);
+  await P.$executeRaw`UPDATE "AppSystem" SET "settings" = jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{pos}', ${json}::jsonb, true) WHERE "id" = ${sys} AND "tenantId" = ${QC_TENANT}`;
+}
+const stable = (v: unknown) => JSON.stringify(v ?? null, (_k, x) => (isRecObj(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+const withoutMarker = (v: Any) => (isRecObj(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== "_qcP42Before")) : v);
+
+/** จำ settings.pos ทั้งก้อน (หรือคืนจากซาก _qcP42Before ของรอบที่ถูก kill) แล้วเขียนคีย์จำไว้ก่อนกดอะไร */
+export async function rememberSettings(c: Ctx): Promise<void> {
+  if (c.settingsSnap) return;
+  assertWritable(c.T);
+  const cur = await readPos(c.sys);
+  const res = isRecObj(cur.v) && isRecObj(cur.v._qcP42Before) ? (cur.v._qcP42Before as Any) : null;
+  if (res) {
+    c.settingsSnap = { had: res.had === true, v: res.had === true ? res.v : undefined };
+    c.log.push("กวาดซากค่าตั้งของรอบก่อน (คืนจาก settings.pos._qcP42Before)");
+    await writePos(c.sys, c.settingsSnap.had ? c.settingsSnap.v : undefined);
+  } else c.settingsSnap = { had: cur.had, v: withoutMarker(cur.v) };
+  const marker = { had: c.settingsSnap.had, v: c.settingsSnap.had ? (c.settingsSnap.v ?? null) : null };
+  await writePos(c.sys, { ...(isRecObj(c.settingsSnap.v) ? c.settingsSnap.v : {}), _qcP42Before: marker });
+}
+/** หลังแถวที่เขียน: settings.pos (ไม่นับ marker) ≠ ที่จำไว้ ⇒ คืนตรงตัว (marker คงอยู่จนจบรอบ) — คืน true เมื่อคืนค่า */
+export async function restoreSettingsIfChanged(c: Ctx, label: string): Promise<boolean> {
+  if (!c.settingsSnap) return false;
+  const cur = await readPos(c.sys);
+  if (stable(withoutMarker(cur.v)) === stable(c.settingsSnap.v)) return false;
+  const marker = { had: c.settingsSnap.had, v: c.settingsSnap.had ? (c.settingsSnap.v ?? null) : null };
+  await writePos(c.sys, { ...(isRecObj(c.settingsSnap.v) ? c.settingsSnap.v : {}), _qcP42Before: marker });
+  const after = await readPos(c.sys);
+  const ok = stable(withoutMarker(after.v)) === stable(c.settingsSnap.v);
+  c.restores.push({ label, ok, detail: ok ? "settings.pos คืนค่าตรงตัว" : "คืนค่าแล้วยังไม่ตรง" });
+  return true;
+}
+async function finalSettingsRestore(c: Ctx): Promise<void> {
+  if (!c.settingsSnap) return;
+  await writePos(c.sys, c.settingsSnap.had ? c.settingsSnap.v : undefined);
+  const after = await readPos(c.sys);
+  const ok = after.had === c.settingsSnap.had && stable(after.v) === stable(c.settingsSnap.v);
+  c.restores.push({ label: "จบรอบ", ok, detail: ok ? "settings.pos = ก่อนรอบ (ลบ _qcP42Before)" : "settings.pos ไม่ตรงก่อนรอบ" });
+}
+
+/** หา-หรือ-สร้างของถาวรของตัวกด (สาขา · ลิงก์ระบบ · ผู้ใช้ตัวกด) — W30 คงไว้ · ทุกขั้นบอกค่าที่ใช้ */
+async function ensureUnitAndLinks(c: Ctx): Promise<void> {
+  const P = await db();
+  const T = c.T;
+  const u = await P.businessUnit.findFirst({ where: { id: BTN.unit.id }, select: { id: true, tenantId: true } });
+  if (u && u.tenantId !== T.tenantId) throw new StepError("สาขา posqc-btn", `id ${BTN.unit.id} เป็นของร้าน ${u.tenantId}`);
+  if (!u) {
+    const slugTaken = await P.businessUnit.findFirst({ where: { tenantId: T.tenantId, slug: BTN.unit.slug }, select: { id: true } });
+    if (slugTaken) throw new StepError("สาขา posqc-btn", `slug ${BTN.unit.slug} ถูกใช้โดย ${slugTaken.id}`);
+    // ไม่มี writer ของสาขาในโมดูล — แบบเดียวกับ visual-pos (สาขาแคตตาล็อกว่าง P1.18U) · CD-P42-W5
+    await P.businessUnit.create({ data: { id: BTN.unit.id, tenantId: T.tenantId, type: BTN.unit.type, name: BTN.unit.name, slug: BTN.unit.slug } });
+    c.log.push(`สร้างสาขา ${BTN.unit.id}`);
+  }
+  const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
+  for (const [type, id] of Object.entries(c.systems)) {
+    const link = await P.appSystemUnit.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, type }, select: { systemId: true } });
+    if (link?.systemId === id) continue;
+    const sys = await P.appSystem.findFirst({ where: { id, tenantId: T.tenantId }, select: { id: true } });
+    if (!sys) throw new StepError(`ผูกระบบ ${type}`, `ไม่พบ AppSystem ${id}`);
+    await sysSvc.linkUnit(T.tenantId, id, BTN.unit.id);
+    c.log.push(`ผูก ${type} ${id} → ${BTN.unit.id}`);
+  }
+}
+async function ensurePersona(c: Ctx, key: "manager" | "cashier"): Promise<void> {
+  const P = await db();
+  const T = c.T;
+  const p = BTN[key];
+  const byEmail = await P.user.findUnique({ where: { email: p.email }, select: { id: true } });
+  if (byEmail && byEmail.id !== p.userId) throw new StepError(`ผู้ใช้ตัวกด ${key}`, `อีเมล ${p.email} เป็นของ ${byEmail.id}`);
+  await P.user.upsert({ where: { id: p.userId }, update: {}, create: { id: p.userId, email: p.email, name: p.name } });
+  // สิทธิ์ = ของผู้ใช้ QC เดิมในบทบาทเดียวกัน (แคชเชียร์ = membership แคชเชียร์ของร้าน · ผู้จัดการ = {} แบบผู้จัดการภาพ P2.11U)
+  let permissions: Record<string, unknown> = {};
+  if (key === "cashier") {
+    const seed = await P.membership.findUnique({ where: { id: T.users.cashier.membershipId }, select: { permissions: true } });
+    if (!seed) throw new StepError("ผู้ใช้ตัวกด cashier", `ไม่พบ membership แคชเชียร์ QC ${T.users.cashier.membershipId}`);
+    permissions = isRecObj(seed.permissions) ? seed.permissions : {};
+  }
+  await P.membership.upsert({
+    where: { userId_tenantId: { userId: p.userId, tenantId: T.tenantId } },
+    update: { role: p.role, unitAccess: [BTN.unit.id], permissions, acceptedAt: new Date() },
+    create: { id: p.membershipId, userId: p.userId, tenantId: T.tenantId, role: p.role, unitAccess: [BTN.unit.id], permissions, acceptedAt: new Date() },
+  });
+}
+/** เครื่อง + PIN + โทเคนผู้ขาย + กะ ของผู้ใช้รอบนี้ บนสาขา posqc-btn */
+async function ensureDeviceShift(c: Ctx): Promise<void> {
+  const P = await db();
+  const T = c.T;
+  const owner = await actorOfMembership(T.users.owner.membershipId, T.users.owner.userId);
+  const ctx = { tenantId: T.tenantId, systemId: c.sys, unitId: BTN.unit.id };
+  const dev = (await import("@/lib/modules/pos/device" as string)) as Any;
+  const rg = await dev.registerDevice(ctx, owner, { name: `เครื่องตัวกด ${c.persona?.userId ?? "public"}`.slice(0, 60), deviceCode: c.deviceCode });
+  if (!rg.ok) throw new StepError("registerDevice", `${c.deviceCode} → ${rg.code}`);
+  c.deviceRowId = rg.device.id;
+  if (!c.persona) return;
+  const pinSvc = (await import("@/lib/modules/pos/staff-pin" as string)) as Any;
+  const a = await actorOfMembership(c.persona.membershipId, c.persona.userId);
+  const prev = await P.posStaffPin.findUnique({ where: { unitId_userId: { unitId: BTN.unit.id, userId: a.userId } }, select: { pinHash: true, failedCount: true, lockedUntil: true, setById: true } });
+  c.pinRestore.push({ userId: a.userId, row: prev });
+  let last = "";
+  for (let i = 0; i < 8 && !c.pin; i++) {
+    const pin = String(randomInt(100000, 1000000));
+    const r = await pinSvc.setStaffPin(ctx, owner, { userId: a.userId, pin });
+    if (r.ok) c.pin = pin;
+    else last = r.code;
+    if (!r.ok && r.code !== "WEAK_PIN") break;
+  }
+  if (!c.pin) throw new StepError("setStaffPin", `${a.userId} @ ${BTN.unit.id} → ${last || "?"}`);
+  const t = await pinSvc.issueStaffToken({ tenantId: T.tenantId, systemId: c.sys, unitId: BTN.unit.id, deviceId: c.deviceCode }, { unitId: BTN.unit.id, deviceId: c.deviceCode, userId: a.userId });
+  c.staffJson = JSON.stringify({ userId: a.userId, name: c.persona.name, role: a.role, staffToken: t.staffToken, expiresAt: t.expiresAt });
+  const sh = (await import("@/lib/modules/pos/shift" as string)) as Any;
+  const open = await P.posShift.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, deviceId: c.deviceCode, status: "OPEN" }, select: { id: true } });
+  if (open) c.shiftId = open.id;
+  else {
+    const r = await sh.openShift(ctx, owner, { deviceId: c.deviceCode, deviceLabel: "ตัวกด P4.2", floatSatang: BTN.floatSatang });
+    if (!r.ok) throw new StepError("openShift", `${c.deviceCode} float ${BTN.floatSatang} → ${r.code}`);
+    c.shiftId = r.shift.id;
+    c.shiftOpenedHere = true;
+  }
+}
+/** สินค้าสำหรับตะกร้า (มติ 5 "cart fixtures"): สินค้าของระบบ POS ทุกสาขา ราคาบวก ไม่ปิดขายที่สาขา posqc-btn — ชื่อตายตัวของ seed ก่อน */
+async function findCartProducts(c: Ctx): Promise<void> {
+  const P = await db();
+  const rows: Any[] = await P.posProduct.findMany({ where: { tenantId: QC_TENANT, systemId: c.sys, archivedAt: null, unitId: null }, select: { id: true, name: true, basePriceSatang: true, unavailableUnitIds: true }, take: 400 });
+  const okRow = (r: Any) => Number(r.basePriceSatang ?? 0) > 0 && !(r.unavailableUnitIds ?? []).includes(BTN.unit.id);
+  const pref = ["อเมริกาโน่เย็น", "ลาเต้ร้อน"];
+  const named = pref.map((n) => rows.find((r) => r.name === n && okRow(r))).filter(Boolean) as Any[];
+  c.cartProductIds = [...named, ...rows.filter((r) => okRow(r) && !named.includes(r))].slice(0, 3).map((r) => r.id);
+}
+/** โทเคนของหน้าสาธารณะ (อ่านอย่างเดียว · ไม่สร้าง) — ไม่มี = แถวของหน้านั้น skip(needs-fixture) */
+async function findPublicTokens(c: Ctx): Promise<void> {
+  const P = await db();
+  const pick = async (label: string, f: () => Promise<string | null>) => {
+    c.tokens[label] = await f().catch(() => null);
+  };
+  const sale = (unitId?: string) => P.posSale.findFirst({ where: { tenantId: QC_TENANT, ...(unitId ? { unitId } : {}), publicToken: { not: null }, status: "PAID", docType: "SALE" }, orderBy: { createdAt: "desc" }, select: { publicToken: true } });
+  await pick("token", async () => ((await sale(BTN.unit.id)) ?? (await sale()))?.publicToken ?? null);
+  await pick("qrToken", async () => (await P.restaurantTable.findFirst({ where: { tenantId: QC_TENANT, archivedAt: null, status: "ACTIVE" }, orderBy: { name: "asc" }, select: { qrToken: true } }))?.qrToken ?? null);
+  await pick("linkToken", async () => (await P.posOrderLink.findFirst({ where: { tenantId: QC_TENANT, status: "ACTIVE" }, orderBy: { createdAt: "desc" }, select: { token: true } }))?.token ?? null);
+  await pick("orderToken", async () => (await P.posOrder.findFirst({ where: { tenantId: QC_TENANT, publicToken: { not: null } }, orderBy: { receivedAt: "desc" }, select: { publicToken: true } }))?.publicToken ?? null);
+  await pick("saleId", async () => (await P.posSale.findFirst({ where: { tenantId: QC_TENANT, unitId: BTN.unit.id, status: "PAID", docType: "SALE" }, orderBy: { createdAt: "desc" }, select: { id: true } }))?.id ?? null);
+}
+export function newCtx(T: Any, user: UserKey): Ctx {
+  return {
+    T,
+    sys: T.systems.POS.id,
+    unitId: BTN.unit.id,
+    systems: Object.fromEntries(Object.entries(T.systems as Record<string, { id: string }>).map(([k, v]) => [k, v.id])),
+    persona: personaOf(T, user),
+    deviceCode: BTN.device(user),
+    deviceRowId: "",
+    pin: "",
+    staffJson: "",
+    shiftId: "",
+    shiftOpenedHere: false,
+    pinRestore: [],
+    settingsSnap: null,
+    restores: [],
+    log: [],
+    cartProductIds: [],
+    tokens: {},
+    cleaned: false,
+  };
+}
+/** ตั้ง fixture ทั้งชุดก่อนเปิดเบราว์เซอร์ (QC5 เท่านั้น) — ล้ม = StepError (ตัวกดหยุด · เก็บกวาดสิ่งที่ทำไปแล้ว) */
+export async function ensureFixtures(c: Ctx, user: UserKey): Promise<void> {
+  assertWritable(c.T);
+  await rememberSettings(c);
+  if (user !== "public") {
+    // หน้าสาธารณะไม่ใช้สาขา/เครื่อง/กะ — public เขียนเฉพาะ marker ของค่าตั้ง
+    await ensureUnitAndLinks(c);
+    if (user === "manager" || user === "cashier") await ensurePersona(c, user);
+    await ensureDeviceShift(c);
+    await findCartProducts(c);
+  }
+  await findPublicTokens(c);
+}
+/** finally + สัญญาณ: ปิดกะของตัวกดแบบนับตรงยอด · คืน PIN เดิม · คืน settings.pos ตรงตัว — เรียกซ้ำได้ · ไม่โยน (ผลลง restores) */
+export async function cleanupFixtures(c: Ctx): Promise<void> {
+  if (c.cleaned) return;
+  c.cleaned = true;
+  const P = await db();
+  const T = c.T;
+  const step = async (label: string, f: () => Promise<string>) => {
+    try {
+      c.restores.push({ label, ok: true, detail: await f() });
+    } catch (e) {
+      c.restores.push({ label, ok: false, detail: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+    }
+  };
+  if (c.shiftId)
+    await step("ปิดกะของตัวกด", async () => {
+      const sh = (await import("@/lib/modules/pos/shift" as string)) as Any;
+      const row = await P.posShift.findFirst({ where: { id: c.shiftId, tenantId: T.tenantId } });
+      if (!row) throw new StepError("closeShift", `ไม่พบกะ ${c.shiftId}`);
+      if (row.status !== "OPEN") return `กะ ${c.shiftId} สถานะ ${row.status} อยู่แล้ว`;
+      const expected = (await sh.computeReport(P, row)).expectedCashSatang;
+      const owner = await actorOfMembership(T.users.owner.membershipId, T.users.owner.userId);
+      const r = await sh.closeShift({ tenantId: T.tenantId, systemId: c.sys, unitId: BTN.unit.id }, owner, { shiftId: c.shiftId, countedCashSatang: expected, idempotencyKey: `posqc-btn-close-${c.shiftId}` });
+      if (!r.ok) throw new StepError("closeShift", `${c.shiftId} counted ${expected} → ${r.code}`);
+      return `ปิดกะ ${c.shiftId} (นับ = ยอดคาด ${expected})`;
+    });
+  for (const pr of c.pinRestore)
+    await step(`คืน PIN ${pr.userId}`, async () => {
+      if (!pr.row) return "ไม่มีแถวเดิม — คงแถวของตัวกด (สาขา posqc-btn · W30 คงไว้)";
+      await P.posStaffPin.update({ where: { unitId_userId: { unitId: BTN.unit.id, userId: pr.userId } }, data: pr.row });
+      return "คืนแถวเดิม";
+    });
+  await step("คืน settings.pos", async () => {
+    await finalSettingsRestore(c);
+    return "ดูแถวจบรอบ";
+  });
+}
+
+// ═════════════════════════ ตรวจผล DB ของแถว mutation (อ่านอย่างเดียว) ═════════════════════════
+/** ตารางที่มี unitId — แถว money/counter ต้องลงสาขา posqc-btn (ข้อสอบ W7) */
+export const MONEY_MODELS_UNIT = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosCashMovement", "PosShift"];
+type Write = { model: string; del: boolean };
+/** db = "PosSale PAID + PosPayment · AuditLog pos.x" → โมเดลที่ต้องถูกเขียน (≤ 3 ตัวแรก) */
+export function writesOf(dbText: string | undefined, models: Set<string>): Write[] {
+  const out: Write[] = [];
+  for (const seg of String(dbText ?? "").split(/ · |\s\+\s|, |;/).map((x) => x.trim()).filter(Boolean)) {
+    const m = /^([A-Z][A-Za-z0-9]+)\b/.exec(seg);
+    if (!m || !models.has(m[1]!) || out.some((w) => w.model === m[1])) continue;
+    if (/ไม่เปลี่ยน|ไม่เพิ่ม|ไม่เขียน|ไม่ลบ/.test(seg)) continue;
+    out.push({ model: m[1]!, del: /ถูกลบ|ลบแถว|ลบแล้ว|\bdeleted\b/.test(seg) });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+const toCamel = (m: string) => m.charAt(0).toLowerCase() + m.slice(1);
+let DMMF: Map<string, { created: boolean; updated: boolean; tenant: boolean; unit: boolean }> | null = null;
+export async function modelInfo(): Promise<Map<string, { created: boolean; updated: boolean; tenant: boolean; unit: boolean }>> {
+  if (DMMF) return DMMF;
+  const { Prisma } = (await import("@prisma/client" as string)) as Any;
+  const ms = (Prisma?.dmmf?.datamodel?.models ?? []) as { name: string; fields: { name: string }[] }[];
+  DMMF = new Map(ms.map((m) => [m.name, { created: m.fields.some((f) => f.name === "createdAt"), updated: m.fields.some((f) => f.name === "updatedAt"), tenant: m.fields.some((f) => f.name === "tenantId"), unit: m.fields.some((f) => f.name === "unitId") }]));
+  return DMMF;
+}
+export async function dbNow(): Promise<Date> {
+  const P = await db();
+  return P.$queryRawUnsafe(`SELECT now() AS t`).then((r: Any) => new Date(new Date(r[0].t).getTime() - 500)).catch(() => new Date(Date.now() - 5_000));
+}
+export async function countTenant(model: string): Promise<number | null> {
+  const P = await db();
+  return P[toCamel(model)]?.count({ where: { tenantId: QC_TENANT } }).catch(() => null) ?? null;
+}
+/** ผลเขียนหลังกด: แถวของร้าน QC ที่ createdAt/updatedAt ≥ since (ลบ = จำนวนลด) · คืนสาขาของแถวที่เขียน (ตารางที่มี unitId) */
+export async function writtenSince(w: Write, since: Date, before: number | null): Promise<{ ok: boolean; units: string[] }> {
+  const P = await db();
+  const info = (await modelInfo()).get(w.model);
+  const d = P[toCamel(w.model)];
+  if (!d || !info?.tenant) return { ok: false, units: [] };
+  if (w.del) {
+    const n = await d.count({ where: { tenantId: QC_TENANT } }).catch(() => null);
+    return { ok: before !== null && n !== null && n < before, units: [] };
+  }
+  const OR = [...(info.updated ? [{ updatedAt: { gte: since } }] : []), ...(info.created ? [{ createdAt: { gte: since } }] : [])];
+  if (!OR.length) return { ok: false, units: [] };
+  const rows: Any[] = await d.findMany({ where: { tenantId: QC_TENANT, OR }, select: info.unit ? { id: true, unitId: true } : { id: true }, take: 20 }).catch(() => []);
+  return { ok: rows.length > 0, units: info.unit ? [...new Set(rows.map((r) => String(r.unitId)))] : [] };
+}
+
+// ═════════════════════════ (3) pre-flight อ่านอย่างเดียว ═════════════════════════
+export type PF = { key: string; state: "ok" | "would-create" | "missing" | "warn" | "block"; value: string };
+/** ประเมินเงื่อนไขของ writer ทุกตัวที่ ensureFixtures จะเรียก — ไม่เขียนอะไรเลย (findFirst/count/findUnique เท่านั้น) */
+export async function preflight(T: Any, users: readonly UserKey[] = ["owner", "manager", "cashier", "public"]): Promise<PF[]> {
+  const P = await db();
+  const out: PF[] = [];
+  const add = (key: string, state: PF["state"], value: string) => out.push({ key, state, value });
+  const q = async <X,>(f: () => Promise<X>): Promise<X | "ERR"> => f().catch((e: unknown) => {
+    add("read-error", "block", e instanceof Error ? e.message.slice(0, 140) : String(e));
+    return "ERR" as const;
+  });
+  add("db-host", dbHost().includes(QC5_HOST_MARK) ? "ok" : dbHost().includes(QC4_HOST_MARK) ? "warn" : "block", `${dbHost()} (${dbHost().includes(QC5_HOST_MARK) ? "QC5 — fixture เขียนได้" : dbHost().includes(QC4_HOST_MARK) ? "QC4 — อ่านอย่างเดียว · fixture จะปฏิเสธการเขียน" : "ไม่ใช่ QC4/QC5"})`);
+  add("tenant-guard", T?.tenantId === QC_TENANT ? "ok" : "block", `T.tenantId=${T?.tenantId} (ค่าคงที่ ${QC_TENANT})`);
+  const tenant = await q(() => P.tenant.findUnique({ where: { id: T.tenantId }, select: { id: true, slug: true, limits: true } }));
+  add("tenant-row", tenant && tenant !== "ERR" ? "ok" : "block", tenant && tenant !== "ERR" ? `${(tenant as Any).id} slug ${(tenant as Any).slug}` : "ไม่มีแถวร้าน QC (seed-pos-qc ยังไม่ลง)");
+  for (const [type, s] of Object.entries(T.systems as Record<string, { id: string }>)) {
+    const row = await q(() => P.appSystem.findFirst({ where: { id: s.id, tenantId: T.tenantId }, select: { id: true, type: true } }));
+    add(`system-${type}`, row && row !== "ERR" && (row as Any).type === type ? "ok" : "block", `${s.id} ${row && row !== "ERR" ? `type ${(row as Any).type}` : "ไม่มี"} (linkUnit ต้องมีระบบ)`);
+  }
+  const ownerMb = await q(() => P.membership.findUnique({ where: { id: T.users.owner.membershipId }, select: { role: true, unitAccess: true, userId: true } }));
+  add("owner-membership", ownerMb && ownerMb !== "ERR" && (ownerMb as Any).role === "OWNER" ? "ok" : "block", ownerMb && ownerMb !== "ERR" ? `role ${(ownerMb as Any).role} unitAccess ${JSON.stringify((ownerMb as Any).unitAccess)} (registerDevice/setStaffPin/openShift/closeShift actor)` : "ไม่มี");
+  const cashMb = await q(() => P.membership.findUnique({ where: { id: T.users.cashier.membershipId }, select: { role: true, permissions: true } }));
+  add("cashier-permissions-source", cashMb && cashMb !== "ERR" ? "ok" : "block", cashMb && cashMb !== "ERR" ? `role ${(cashMb as Any).role} permissions ${JSON.stringify((cashMb as Any).permissions)} (สำเนาให้แคชเชียร์ตัวกด)` : "ไม่มี membership แคชเชียร์ QC");
+  const unit = await q(() => P.businessUnit.findFirst({ where: { id: BTN.unit.id }, select: { id: true, tenantId: true, slug: true, status: true } }));
+  if (unit && unit !== "ERR") add("btn-unit", (unit as Any).tenantId === T.tenantId ? "ok" : "block", `${BTN.unit.id} tenant ${(unit as Any).tenantId} slug ${(unit as Any).slug} status ${(unit as Any).status}`);
+  else {
+    const slug = await q(() => P.businessUnit.findFirst({ where: { tenantId: T.tenantId, slug: BTN.unit.slug }, select: { id: true } }));
+    add("btn-unit", slug && slug !== "ERR" ? "block" : "would-create", slug && slug !== "ERR" ? `slug ${BTN.unit.slug} ถูกใช้โดย ${(slug as Any).id}` : `${BTN.unit.id} slug ${BTN.unit.slug} type ${BTN.unit.type} (prisma.businessUnit.create · CD-P42-W5)`);
+  }
+  for (const [type, s] of Object.entries(T.systems as Record<string, { id: string }>)) {
+    const link = await q(() => P.appSystemUnit.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, type }, select: { systemId: true } }));
+    add(`link-${type}`, link && link !== "ERR" && (link as Any).systemId === s.id ? "ok" : "would-create", link && link !== "ERR" ? `ผูกอยู่กับ ${(link as Any).systemId}${(link as Any).systemId === s.id ? "" : ` → linkUnit ${s.id}`}` : `linkUnit(${T.tenantId}, ${s.id}, ${BTN.unit.id})`);
+  }
+  for (const k of ["manager", "cashier"] as const) {
+    if (!users.includes(k)) continue;
+    const p = BTN[k];
+    const byEmail = await q(() => P.user.findUnique({ where: { email: p.email }, select: { id: true } }));
+    const byId = await q(() => P.user.findUnique({ where: { id: p.userId }, select: { id: true, email: true } }));
+    const clash = byEmail && byEmail !== "ERR" && (byEmail as Any).id !== p.userId;
+    add(`persona-${k}-user`, clash ? "block" : byId && byId !== "ERR" ? "ok" : "would-create", clash ? `อีเมล ${p.email} เป็นของ ${(byEmail as Any).id}` : `${p.userId} ${p.email}${byId && byId !== "ERR" ? "" : " (user.upsert)"}`);
+    const mb = await q(() => P.membership.findFirst({ where: { userId: p.userId, tenantId: T.tenantId }, select: { id: true, role: true, unitAccess: true } }));
+    add(`persona-${k}-membership`, mb && mb !== "ERR" ? "ok" : "would-create", mb && mb !== "ERR" ? `${(mb as Any).id} role ${(mb as Any).role} unitAccess ${JSON.stringify((mb as Any).unitAccess)} (upsert คืนเป็น ${p.role} [${BTN.unit.id}])` : `membership.upsert ${p.membershipId} ${p.role} unitAccess [${BTN.unit.id}]`);
+  }
+  const limit = (() => {
+    const l = (tenant && tenant !== "ERR" ? (tenant as Any).limits : null) as Any;
+    const n = Number(l?.posDevices);
+    return Number.isInteger(n) && n >= 1 && n <= 1000 ? n : 3;
+  })();
+  const active = await q(() => P.posDevice.count({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, status: "ACTIVE" } }));
+  for (const u of users) {
+    if (u === "public") continue; // หน้าสาธารณะไม่ใช้เครื่อง/PIN/กะ
+    const code = BTN.device(u);
+    const codeOk = /^[A-Za-z0-9_-]{8,64}$/.test(code);
+    const d = await q(() => P.posDevice.findFirst({ where: { unitId: BTN.unit.id, deviceCode: code }, select: { id: true, status: true, tenantId: true } }));
+    const exists = d && d !== "ERR";
+    add(`device-${u}`, !codeOk || (exists && (d as Any).status === "REVOKED") ? "block" : exists ? "ok" : Number(active === "ERR" ? 0 : active) >= limit ? "block" : "would-create", `${code} ${exists ? `status ${(d as Any).status}` : `registerDevice (ACTIVE ${active === "ERR" ? "?" : active}/${limit} ของสาขา)`}${codeOk ? "" : " · รหัสผิดรูป"}`);
+    const pers = personaOf(T, u)!;
+    const pin = await q(() => P.posStaffPin.findUnique({ where: { unitId_userId: { unitId: BTN.unit.id, userId: pers.userId } }, select: { id: true, lockedUntil: true } }));
+    add(`pin-${u}`, pin && pin !== "ERR" ? "ok" : "would-create", pin && pin !== "ERR" ? `มีแถว PIN (จำแล้วคืนค่าใน finally) lockedUntil ${(pin as Any).lockedUntil ?? "-"}` : `setStaffPin ${pers.userId} (owner actor · สุ่ม 6 หลัก · ไม่พิมพ์ค่า)`);
+    const sh = await q(() => P.posShift.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, deviceId: code, status: "OPEN" }, select: { id: true, openedAt: true } }));
+    add(`shift-${u}`, sh && sh !== "ERR" ? "warn" : "would-create", sh && sh !== "ERR" ? `กะ OPEN ค้าง ${(sh as Any).id} (${(sh as Any).openedAt?.toISOString?.()}) — ตัวกดรับต่อแล้วปิดตอนจบ` : `openShift float ${BTN.floatSatang} → closeShift นับตรงยอดตอนจบ`);
+  }
+  add("session-secret", env("SESSION_SECRET") ? "ok" : "block", env("SESSION_SECRET") ? "มี (issueStaffToken · ไม่พิมพ์ค่า) — ต้องตรงกับของเซิร์ฟเวอร์ QC" : "ไม่มี SESSION_SECRET — ออกโทเคนผู้ขายไม่ได้");
+  const pos = await q(() => readPos(T.systems.POS.id));
+  if (pos !== "ERR") {
+    const v = isRecObj((pos as Any).v) ? (pos as Any).v : {};
+    add("settings-residue", isRecObj(v._qcP42Before) ? "warn" : "ok", isRecObj(v._qcP42Before) ? "มีซาก _qcP42Before — รอบหน้าจะคืนค่าจากซากก่อน" : "ไม่มีซาก _qcP42Before");
+    add("settings-registerV2", v.registerV2 === true ? "ok" : "warn", `settings.pos.registerV2=${JSON.stringify(v.registerV2)} (ปิด = หน้าขายเดิม W29 · แถวหน้าขายใหม่จะไม่ขึ้น)`);
+    add("settings-offline", "ok", `settings.pos.offline.enabled=${JSON.stringify(v?.offline?.enabled)} (เปิด = หน้าขายดึง snapshot ตอนโหลด · ตัวกดเว้น ≥ 61 วิต่อเครื่อง)`);
+    add("settings-shift-required", "ok", `settings.pos.shift.requiredRegister=${JSON.stringify(v?.shift?.requiredRegister)} (ตัวกดเปิดกะของตัวเองเสมอ)`);
+  }
+  const prods = await q(() => P.posProduct.count({ where: { tenantId: T.tenantId, systemId: T.systems.POS.id, archivedAt: null, unitId: null, basePriceSatang: { gt: 0 } } }));
+  add("cart-products", prods !== "ERR" && Number(prods) > 0 ? "ok" : "block", `สินค้าทุกสาขาราคาบวก ${prods === "ERR" ? "?" : prods} รายการ (ตะกร้าของแถวเงิน)`);
+  const memberPhone = T.member?.phone ?? "";
+  const cust = await q(() => P.customer.count({ where: { tenantId: T.tenantId, phone: memberPhone } }));
+  add("member", cust !== "ERR" && Number(cust) > 0 ? "ok" : "missing", `สมาชิก QC โทร ${memberPhone}: ${cust === "ERR" ? "?" : cust} แถว (แถวสมาชิก = needs เมื่อไม่มี)`);
+  const credit = await q(() => P.posCreditAccount.count({ where: { tenantId: T.tenantId } }));
+  add("credit-accounts", credit !== "ERR" && Number(credit) > 0 ? "ok" : "missing", `PosCreditAccount ${credit === "ERR" ? "?" : credit} แถว (บิลเครดิต/บริษัท = needs เมื่อไม่มี)`);
+  const board = await q(() => P.kanbanBoard.count({ where: { tenantId: T.tenantId, archivedAt: null } }));
+  add("kanban-board", board !== "ERR" && Number(board) > 0 ? "ok" : "missing", `KanbanBoard ของร้าน ${board === "ERR" ? "?" : board} (การ์ดบอร์ด = needs เมื่อไม่มี)`);
+  const tokens: [string, () => Promise<number>][] = [
+    ["token(/r)", () => P.posSale.count({ where: { tenantId: T.tenantId, publicToken: { not: null }, status: "PAID" } })],
+    ["qrToken(/q/t)", () => P.restaurantTable.count({ where: { tenantId: T.tenantId, archivedAt: null } })],
+    ["linkToken(/q)", () => P.posOrderLink.count({ where: { tenantId: T.tenantId, status: "ACTIVE" } })],
+    ["orderToken(/q/o)", () => P.posOrder.count({ where: { tenantId: T.tenantId, publicToken: { not: null } } })],
+  ];
+  for (const [k, f] of tokens) {
+    const n = await q(f);
+    add(`public-${k}`, n !== "ERR" && Number(n) > 0 ? "ok" : "missing", `${n === "ERR" ? "?" : n} แถว (อ่านอย่างเดียว · ไม่มี = skip(needs-fixture))`);
+  }
+  // ภายนอก: กดแถว external ไม่เกิดอยู่แล้ว แต่ผลข้างเคียงผ่าน outbox ของแถวปกติ (ขาย → ส่ง LINE/webhook) ต้องปิด
+  const ext: [string, () => Promise<number>][] = [
+    ["WebhookEndpoint active", () => P.webhookEndpoint.count({ where: { tenantId: T.tenantId, active: true } })],
+    ["PosPrintAgent not revoked", () => P.posPrintAgent.count({ where: { tenantId: T.tenantId, revokedAt: null } })],
+    ["PosIntegrationCredential COMPLETE", () => P.posIntegrationCredential.count({ where: { tenantId: T.tenantId, status: "COMPLETE" } })],
+  ];
+  for (const [k, f] of ext) {
+    const n = await q(f);
+    add(`external-${k}`, n === "ERR" ? "warn" : Number(n) > 0 ? "block" : "ok", `${n === "ERR" ? "?" : n} (> 0 = ตัวกดไม่เริ่ม — ปิดก่อน)`);
+  }
+  return out;
+}
+
+// ═════════════════════════ CLI: --preflight ═════════════════════════
+const isMain = (() => {
+  try {
+    return !!process.argv[1] && /pos-buttons-fixtures\.mts$/.test(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
+  const argv = process.argv.slice(2);
+  if (!argv.includes("--preflight")) {
+    console.log("ใช้: … pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight [--user owner|manager|cashier|public]  (อ่านอย่างเดียว)");
+    process.exit(2);
+  }
+  const { loadPosQcEnv, PQC } = (await import("./pos-qc-env.mjs" as string)) as Any;
+  loadPosQcEnv("pos-buttons-fixtures --preflight"); // QC4 = ปกติ · QC5 = POS_QC_ALLOW_HOST จาก qc5.sh · prod/QC1–3 = ตาย
+  const T = PQC.coffee;
+  const u = argv.includes("--user") ? (argv[argv.indexOf("--user") + 1] as UserKey) : null;
+  let rows: PF[] = [];
+  let fatal = "";
+  try {
+    rows = await preflight(T, u ? [u] : USERS);
+  } catch (e) {
+    fatal = e instanceof Error ? e.message : String(e);
+  }
+  for (const r of rows) console.log(`PF ${r.state.padEnd(12)} ${r.key.padEnd(34)} ${r.value}`);
+  const by: Record<string, number> = {};
+  for (const r of rows) by[r.state] = (by[r.state] ?? 0) + 1;
+  const blocks = rows.filter((r) => r.state === "block" && r.key !== "db-host").length;
+  console.log(`\n${fatal ? `❌ ${fatal}` : blocks ? `🔴 pre-flight: ${blocks} ข้อขวาง` : "🟢 pre-flight: ไม่มีข้อขวาง"} · ${Object.entries(by).map(([k, v]) => `${k} ${v}`).join(" · ")} · ไม่มีการเขียน`);
+  console.log(`JSON_SUMMARY ${JSON.stringify({ suite: "pos-buttons-fixtures", mode: "preflight", host: dbHost(), total: rows.length, passed: rows.length - blocks, blocks, byState: by, fatal: fatal || null })}`);
+  await (await db()).$disconnect().catch(() => {});
+  process.exit(fatal || blocks ? 1 : 0);
+}
