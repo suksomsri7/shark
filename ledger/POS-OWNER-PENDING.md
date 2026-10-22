@@ -320,3 +320,12 @@
 
 ## แจ้งเจ้าของโมดูล Meeting (P3.8 S · 17 ต.ค.)
 - POS root `src/lib/pos-board-bridges.ts` consumes `postSystemMessage(…, tx)` (author `system:pos`) and `listRoomOptions` from `@/lib/modules/meeting` (index) only. Dedupe = AuditLog `pos.teamroom.posted` (targetType `PosTeamRoomPost`, targetId `pos-room:z:<shiftId>` / `pos-room:brief:<posSystemId>:<channelId>:<date>`) written in the same tx under an advisory lock; refused room ⇒ rollback (no flag) + ops WARN `pos.board` once per day; no new outbox event.
+
+## แจ้งเจ้าของโมดูล CRM — ข้อสอบ `qc-crm-c2.7` แดงบน QC4 หลัง P3 (ผู้คุม B · 22 ต.ค. 04:5xZ · เตรียม P3.12)
+- รันทดลองชุดไขว้ Tier 1 ก่อนเข้า pos-gates: ทุกชุดเขียว (chat-core-v2 47 · chat-v2-context 53 · meeting-invite 22 · inventory 12/11/23 · money-mapping 5 · catalog-services 35 · booking-edit-schedule 26 · ai-* 9 ชุด 104 ข้อ) ยกเว้น **`qc-crm-c2.7` 74/79** (log `/root/pos-runs/trial-cross-2-20261022T042149Z/qc-crm-c2.7.log`):
+  - **S7.3 CRITICAL**: C29/R-C.1 ของ CRM ห้ามมีคอลัมน์ดีลบน PosSale/AccountDocument — แต่ POS P3.6 S เพิ่ม `crmDealId` บน PosSale (มติ P3.6 §10 ข้อ 4/R14: ดีลผูกบิลเพื่อ materialize) → ขัดกับสัญญา CRM C2.7 ต้องให้เจ้าของ CRM + ผู้คุม POS ตัดสินใน P3.12 (ทางเลือก: ย้ายลิงก์ไป `CrmDealPayment` ตาม C29 หรือแก้ข้อสอบ CRM ให้รับคอลัมน์นี้เป็น nullable link ที่เขียนโดย POS เท่านั้น)
+  - **S7.5 / S7.6 CRITICAL**: รูป consumer chain `pos.sale.paid`/`pos.sale.voided` เปลี่ยน (`withAutomation(compose(compose(…)))` · voided=false) และ compose-contract probe ได้ `MISSING_FUNCTION` = ฟังก์ชันที่ข้อสอบ CRM import ย้าย/เปลี่ยนชื่อหลัง P2/P3 (outbox-consumers.ts) → ต้องตรวจว่าขั้น CRM ยังอยู่ท้ายสายทั้ง paid/voided และแก้ import ของข้อสอบ
+  - **S9.2**: การคืนเงินดีลเมื่อ `pos.sale.voided`/`account.payment.voided` หลังปิดสะพาน — ตรวจซ้ำหลัง S7.x
+  - **U.3**: ขายบิล uiVersion 1 ได้ `CHANNEL_INVALID` — fixture ของข้อสอบ CRM ใช้ช่องทางที่ POS P2 เลิก/ปิด → แก้ fixture ฝั่งข้อสอบ
+- ค่าเริ่มต้นระหว่างรอ: ไม่แก้สินค้า · `qc-crm-c2.7` ยังไม่เข้า pos-gates จนกว่าจะ triage ใน P3.12 (ชุดอื่นใน Tier 1 เข้าได้เลย)
+
