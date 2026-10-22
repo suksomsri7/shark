@@ -65,6 +65,8 @@ type Props = {
   duplicated?: boolean;
   /** POS P3.7U ▸ CD-P37U-7: settings.pos.chat.receiptAuto (หน้าเพจส่ง) — เปิด ∧ บิลมีสมาชิก = ชิป "ส่งใบเสร็จทาง LINE อัตโนมัติ" (ป้ายสถานะ ไม่ใช่ "ส่งแล้ว") ◂ */
   chatReceiptAuto?: boolean;
+  /** POS P3.6U ▸ CD-P36U-7: บิลวางบิล — ชิป "บริษัท · ครบกำหนด {date}" (วันจากสถานะวงเงินล่าสุดของจอชำระ · ผล submit ไม่มี dueDate · owner-ack) ◂ */
+  creditDue?: { name: string; dueDate: string | null } | null;
 };
 
 /** POS P2.6U ▸ fix1 F2: บิลที่สั่งพิมพ์ใบครัวหลังขายไปแล้ว (ระดับโมดูล — ครั้งเดียวต่อบิล) ◂ */
@@ -78,7 +80,7 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId, tipSatang = 0, duplicated = false, chatReceiptAuto = false /* POS P3.7U ◂ */ }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId, tipSatang = 0, duplicated = false, chatReceiptAuto = false /* POS P3.7U ◂ */, creditDue = null /* POS P3.6U ◂ */ }: Props) {
   const t = useTranslations("pos.register");
   // ── POS P2.9U ▸ มติ 7: แถวบัตรของบิล (เลขปิดบัง · ยอดหลังรายการ) จาก payload ใบเสร็จ — ครั้งเดียวต่อบิล ◂
   const hasCards = payMethods.some((m) => m.type === "GIFT_CARD" || m.type === "STORE_CREDIT" || m.type === "DEPOSIT"); // POS P2.9bU ▸ + มัดจำ ◂
@@ -219,13 +221,13 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
   useEffect(() => {
     if (auto && left <= 0) nextRef.current();
   }, [auto, left]);
-  const paidBy = payMethods.map((m) => `${t(PAY_LABEL[m.type])} ${moneyText(m.amountSatang)}`).join(" · ");
+  const paidBy = payMethods.map((m) => `${t((m.type as string) === "ON_ACCOUNT" ? "credit.tile" /* POS P3.6U ▸ CD-P36U-7 ◂ */ : PAY_LABEL[m.type])} ${moneyText(m.amountSatang)}`).join(" · ");
   // POS P2.9U ▸ มติ 7: บรรทัดวิธีชำระ (บิลที่มีบัตร/ทิป) — payload มาแล้วใช้แถวของบิลจริง · ยังไม่มา = แถวที่ส่ง (ยังไม่มีเลขปิดบัง) ◂
   const payLines: string[] =
     hasCards || tipSatang > 0
       ? [
           ...((cardPays ?? payMethods) as (ReceiptPayment | RegisterPayMethod)[]).map((m) => {
-            const label = Object.prototype.hasOwnProperty.call(PAY_LABEL, m.type) ? t(PAY_LABEL[m.type as RegisterPayType]) : String(m.type);
+            const label = Object.prototype.hasOwnProperty.call(PAY_LABEL, m.type) ? t(PAY_LABEL[m.type as RegisterPayType]) : (m.type as string) === "ON_ACCOUNT" ? t("credit.tile") /* POS P3.6U ◂ */ : String(m.type);
             const c = "card" in m ? m.card : undefined;
             const dep = "deposit" in m ? m.deposit : undefined; // POS P2.9bU ▸ มติ 6 ◂
             return c
@@ -252,6 +254,19 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
           <RegisterIcon name="check" size={26} strokeWidth={2.4} />
         </span>
         <h2 className="text-[26px] font-bold tracking-[-0.02em] tabular-nums md:text-[30px]">{t("done.paid", { amount: moneyText(totalSatang) })}</h2>
+        {creditDue && (
+          // POS P3.6U ▸ CD-P36U-7: ชิปครบกำหนดของบิลวางบิล (วันที่จัดรูปฝั่งจอหลัง mount — จอนี้เปิดหลังกดยืนยันเสมอ) ◂
+          <span data-testid="pos-reg-done-due" className="-mt-2 inline-flex max-w-full items-center gap-2 truncate rounded-full border px-3.5 py-1.5 text-[13.5px] font-semibold md:-mt-4">
+            {[
+              creditDue.name,
+              creditDue.dueDate
+                ? t("credit.dueDate", { date: new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "th-TH", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }).format(new Date(`${creditDue.dueDate}T12:00:00Z`)) })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" \u00b7 ")}
+          </span>
+        )}
         <div className="flex w-full overflow-hidden rounded-[12px] border text-left max-md:flex-col md:w-auto">
           <div className={cell}>
             <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("pay.change")}</span>
