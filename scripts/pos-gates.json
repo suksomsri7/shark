@@ -264,6 +264,10 @@
       "mode": "unforced"
     },
     {
+      "suite": "qc-pos-p5.2",
+      "mode": "unforced"
+    },
+    {
       "suite": "qc-hf-reports-authz",
       "mode": "unforced"
     },
