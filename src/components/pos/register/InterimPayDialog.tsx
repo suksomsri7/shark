@@ -1778,7 +1778,7 @@ export function PayDialog(p: Props) {
                 <h3 className="text-[16px] font-bold">{t("credit.title")}</h3>
                 <p className="text-[14px] text-[color:var(--color-ink-soft)]">{t("credit.fullDue", { amount: moneyText(p.dueSatang) })}</p>
                 <p className="text-[13px] text-[color:var(--color-muted)]">{oa.company?.name}</p>
-                <div data-testid="pos-reg-paydlg-onaccount-status" role="status" className="flex flex-col gap-1.5 rounded-[14px] border bg-[color:var(--color-surface)] p-4 text-[14px]">
+                <div data-testid="pos-reg-paydlg-onaccount-status" data-state={acctSt?.state ?? "loading"} data-sufficient={acctSt?.state === "ok" ? String(acctSt.s.sufficient) : undefined} data-remaining={acctSt?.state === "ok" && acctSt.s.remainingSatang !== undefined ? "1" : undefined} role="status" className="flex flex-col gap-1.5 rounded-[14px] border bg-[color:var(--color-surface)] p-4 text-[14px]">
                   {acctSt?.state === "ok" ? (
                     <>
                       <b className={acctSt.s.sufficient ? "text-[color:var(--color-ink)]" : "text-[color:var(--color-danger)]"}>{t(acctSt.s.sufficient ? "credit.sufficient" : "credit.insufficient")}</b>
