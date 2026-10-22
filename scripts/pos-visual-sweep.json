@@ -622,6 +622,46 @@
       "states": true,
       "after": "P3.7U",
       "why": "same states LOCALE=en · owner 9 + cashier 2 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.6u",
+      "wo": "p3.6u",
+      "pages": [
+        "register",
+        "sales",
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.6U",
+      "why": "P3.6U 20 states (01 company chip/picker search/member/deal select · 02 on-account owner/cashier/buyer/hidden · over-limit sheet + wrong PIN (cashier) · 02b due chip 1440 · 12 drawer W23 + refund · 08 credit owner/denied · 10 credit card off/on/invalid/readonly + member on order bills) · owner 15 + cashier 6 · placeholder until the controller's QC5 round replaces it"
+    },
+    {
+      "id": "p3.6u-en",
+      "wo": "p3.6u-en",
+      "pages": [
+        "register",
+        "sales",
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.6U",
+      "why": "same states LOCALE=en (1440 + 390 of register/sales) · placeholder until the controller's QC5 round replaces it"
     }
   ]
 }
