@@ -9,6 +9,7 @@ import { tenantDb } from "@/lib/core/db";
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { listLeaves, pendingLeaves, type Ctx, type EmployeeProfileInput } from "./service";
 import { payslipData } from "./payroll";
+import { hasPin } from "./pin"; // HR H0.5 ▸ ◂
 import type { EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
 
 export type HrViewer = MembershipCtx & { userId: string };
@@ -75,7 +76,7 @@ export async function loadEmployeeProfileForViewer(
     emergencyRelation: row.emergencyRelation,
     note: row.note,
     active: row.active,
-    hasPin: !!row.pinCode,
+    hasPin: hasPin(row), // HR H0.5 ▸ hash หรือตัวเปล่า (ช่วง rollout) — อ่านคอลัมน์ที่ pin.ts ที่เดียว ◂
   };
   if (access.seeSensitive) {
     profile.nationalId = row.nationalId;

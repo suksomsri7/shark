@@ -26,6 +26,8 @@ export type RateVerdict = {
    * ผู้เรียกที่อยากตอบหัว `X-RateLimit-Remaining` คำนวณเอง = limit − count
    */
   count?: number;
+  // HR H0.5 r4 ▸ R4.1 เริ่มหน้าต่างของแถวที่นับครั้งนี้ — ใช้คืนช่อง (refundRateLimitDb) ให้ตรงหน้าต่างเดิมเท่านั้น · undefined เมื่อ fail-open ◂
+  windowStart?: Date;
 };
 
 /**
@@ -70,11 +72,11 @@ export async function checkRateLimitDb(
 
     const row = rows[0];
     if (!row) return { ok: true }; // ไม่ควรเกิด (RETURNING เสมอ) — ปล่อยผ่านดีกว่าปิดแชท
-    if (row.count <= limit) return { ok: true, count: row.count };
+    if (row.count <= limit) return { ok: true, count: row.count, windowStart: row.windowStart }; // HR H0.5 r4 ▸ R4.1 + windowStart ◂
 
     // เต็มเพดาน — บอกเวลาที่หน้าต่างจะหมดจริงจากแถวใน DB
     const resetAt = row.windowStart.getTime() + windowMs;
-    return { ok: false, count: row.count, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
+    return { ok: false, count: row.count, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)), windowStart: row.windowStart }; // HR H0.5 r4 ▸ R4.1 ◂
   } catch (e) {
     // DB ล่ม/ช้า → ปล่อยผ่าน แต่ **ไม่เงียบต่อเรา** (ปิดเงียบเคยทำให้ไล่หาสาเหตุนาน — storage/service.ts:129)
     void logOps("WARN", "rate-limit-db", "ตัวจำกัดอัตราบน DB ทำงานไม่ได้ — ปล่อยผ่านชั่วคราว", {
@@ -83,6 +85,28 @@ export async function checkRateLimitDb(
     return { ok: true };
   }
 }
+
+// HR H0.5 r4 ▸ R4.1 คืนช่อง (นับก่อน แล้วคืนเมื่อไม่ควรนับ) — แทน peek ของ r3 (peek→นับ เป็นคนละคำสั่ง ⇒ ยิงพร้อมกันทะลุเพดาน · hunt G1)
+/**
+ * ลบ 1 ออกจากถัง `key` ที่ checkRateLimitDb เพิ่งนับให้ — **คำสั่งเดียว** (UPDATE … WHERE) atomic ในตัว
+ * ตรงหน้าต่างเดิมเท่านั้น (`windowStart` = ค่าที่ checkRateLimitDb คืน) ⇒ หน้าต่างรีเซ็ตไปแล้ว = ไม่แตะ (ไม่ลบช่องของหน้าต่างใหม่)
+ * คืนเมื่อ count > 0 เท่านั้น (ไม่ติดลบ) · ผู้เรียกต้องคืน "ครั้งเดียวต่อการนับหนึ่งครั้ง" ทั้งครั้งที่ถูกปฏิเสธและครั้งที่ไม่ควรนับ
+ *   HR H0.5 r5 ▸ R1 (ผู้ตรวจ) ตัดตัวเลือก above (คืนเฉพาะเมื่อ count > เพดาน) ออก — การคืนของคำขออื่นที่มาก่อนทำให้ช่องค้างถาวร (ช่องผี) ◂
+ * DB ล่ม ⇒ เงียบ (ผลคือถังนับเกินจริง 1 = เข้มขึ้น ไม่ใช่รั่ว) + logOps WARN แบบเดียวกับ checkRateLimitDb
+ */
+export async function refundRateLimitDb(key: string, windowStart: Date | undefined): Promise<void> {
+  if (!windowStart) return; // ตอนนับ fail-open (ไม่มีแถว) ⇒ ไม่มีอะไรให้คืน
+  try {
+    await prisma.$executeRaw`
+      UPDATE "ChatRateBucket" SET "count" = "count" - 1, "updatedAt" = NOW()
+      WHERE "key" = ${key} AND "windowStart" = ${windowStart} AND "count" > 0`;
+  } catch (e) {
+    void logOps("WARN", "rate-limit-db", "คืนช่องตัวจำกัดอัตราบน DB ไม่ได้ — ถังนับเกินชั่วคราว", {
+      detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+    }).catch(() => {});
+  }
+}
+// ◂ HR H0.5 r4
 
 /**
  * C5.1-fix — CTE ของถังเดียว (`<name> AS (INSERT … ON CONFLICT … RETURNING "count", "windowStart")`) — ตรรกะเดียวกับ checkRateLimitDb

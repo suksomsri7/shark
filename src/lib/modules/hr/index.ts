@@ -37,8 +37,24 @@ export { payrollEmployeeOfUser, payrollRunPeriods, adjustmentOfCommission, adjus
 //   รายการค้าง (PENDING/APPROVED) ในงวดที่มีรอบแล้ว
 export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAdjustments, moveCommissionAdjustmentPeriod } from "./payroll";
 // ◂ CRM C3.3
+
+// HR H0.5 ▸ contract C-8 — "PIN นี้เป็นของพนักงานคนไหนในร้าน" (re-export ล้วน — ตรรกะอยู่ที่ `pin.ts`)
+//   ผู้เรียกที่รออยู่: POS P1.15 (ยืนยันพนักงานหน้าเครื่อง / อนุมัติ void) · HR เป็นเจ้าของ PIN (review ruling #3 — ไม่มี PosStaffPin)
+//   verifyPin({ tenantId, pin, callerKey, unitId?, systemId? }) → { ok:true, employeeId, systemId, userId } | { ok:false, reason } — คืน id เท่านั้น ·
+//   HR H0.5 r4 ▸ R4.5 callerKey บังคับ และ "เซิร์ฟเวอร์เป็นคนได้มาจากตัวตนที่ยืนยันแล้ว" เท่านั้น — user id จาก session
+//   หรือ id เครื่องที่ลงทะเบียนไว้ฝั่งเซิร์ฟเวอร์ (อ่านจาก session / cookie ที่เซ็นแล้ว) · 🔴 ห้ามรับจากช่องใดของคำขอ (form / body / query / header)
+//   เพราะผู้เรียกที่เลือกคีย์เองได้จะหมุนคีย์หนีถังต่อผู้เรียกจนเหลือแค่ถังร้าน (hunt G3) ·
+//   รูปแบบ ^[A-Za-z0-9:_.-]{1,128}$ หลัง trim — ไม่ส่ง / ไม่ตรง = "PIN ไม่ถูกต้อง" (ไม่แตะ DB) ·
+//   นับก่อนค้นแล้วคืนช่องเมื่อถูก/ถูกปฏิเสธ (เหลือเฉพาะครั้งที่ผิด): ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10/10 นาที
+//   (ครบ 10 = audit hr.pin.locked 1 แถว) + ร้าน hr-verifypin:<tenantId> 120/60 s (ครบ 120 = audit hr.pin.tenant_limited + OpsEvent WARN) ◂ ·
+//   unitId ยังไม่มีผลจนถึง H1.1 · systemId = ตัวกรอง
+export type { VerifyPinInput, VerifyPinResult, VerifyPinOk, VerifyPinFail } from "./pin";
+export { verifyPin } from "./pin";
+// ◂ HR H0.5
+
 // HR H0.6 ▸ กลับรายการรอบจ่าย → CRM (re-export ล้วน — ตรรกะอยู่ที่ `payroll.ts` บล็อก H0.6)
 //   adjustmentsByIds = รายการเพิ่ม/หักตาม id (ผูกร้าน + ระบบ HR · `runStatus` ของรอบที่ผูกอยู่) — ผู้บริโภค `hr.payroll.reversed`
 //   (`crm/commissions.ts#onPayrollReversed`: คอมมิชชัน PAID → APPROVED ครั้งเดียว ข้ามรายการที่เข้ารอบที่จ่ายแล้วอีกรอบ) ◂
 export type { PayAdjustmentRef } from "./payroll";
 export { adjustmentsByIds } from "./payroll";
+// ◂ HR H0.6

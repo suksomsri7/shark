@@ -54,7 +54,8 @@ export async function createEmployeeAction(formData: FormData) {
     name,
     phone: String(formData.get("phone") ?? "").trim() || null,
     position: String(formData.get("position") ?? "").trim() || null,
-    pinCode: String(formData.get("pinCode") ?? "").trim() || null,
+    // HR H0.5 r3 ▸ R3.4 (hunt F6) ไม่รับ pin จากฟอร์มสร้างพนักงานแล้ว — ฟอร์มไม่มีช่องนี้ และถ้ารับไว้จะเป็นช่องถาม "PIN นี้มีคนใช้ไหม"
+    //   ที่ไม่ผ่านตัวจำกัด hr-setpin · ตั้ง PIN ทำที่ setPinAction เท่านั้น (มีถัง 10/10 นาที) ◂
   });
   revalidate(systemId);
 }
@@ -202,7 +203,7 @@ export async function setPinAction(systemId: string, employeeId: string, _prev: 
   // HR H0.3 ▸ D8 (ชั่วคราวก่อน H0.5): ข้อความ "PIN นี้ใช้ไม่ได้" ยังบอกได้ว่ามีคนใช้ PIN นั้น ⇒ จำกัด 10 ครั้ง/10 นาที ต่อผู้กด (ถังบน DB) ◂
   const gate = await checkRateLimitDb(`hr-setpin:${auth.active.tenantId}:${auth.user.id}`, { limit: 10, windowMs: 10 * 60_000 });
   if (!gate.ok) return { status: "error", message: `ตั้ง PIN บ่อยเกินไป ลองใหม่ในอีก ${gate.retryAfterSec ?? 60} วินาที` };
-  const res = await setPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin);
+  const res = await setPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin, { actorId: auth.user.id }); // HR H0.5 ▸ audit hr.pin.set/clear มีผู้กด ◂
   if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
   return { status: "ok", message: pin.trim() ? "ตั้ง PIN แล้ว" : "ปิดการลงเวลาเองของคนนี้แล้ว" };
