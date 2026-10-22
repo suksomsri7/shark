@@ -68,9 +68,22 @@ export async function qrMissExhausted(ip: unknown, now = Date.now()): Promise<bo
 export async function qrCountMiss(ip: unknown): Promise<void> {
   await checkRateLimitDb(missKey(ip), { limit: QR_MISS_PER_IP_PER_MIN, windowMs: MIN });
 }
+const hitKey = (family: QrHitFamily, ip: unknown, token: unknown): string => `pos:pub:${family}:${ipKey(ip)}:${tokenHash(token)}`;
+/** POS P5.2 ▸ fix3 A1: อ่านอย่างเดียว (ไม่นับ) ก่อนตัวประตู — ถังอ่านของ (IP, โทเคน) เต็มแล้ว = retryAfterSec · ไม่เต็ม/DB ล่ม = null ·
+ *  ถังนี้เติมได้จากโทเคนจริงเท่านั้น ⇒ ไม่เปิดช่องรู้ว่าโทเคนมีจริง ◂ */
+export async function qrHitExhausted(family: QrHitFamily, ip: unknown, token: unknown, now = Date.now()): Promise<number | null> {
+  try {
+    const spec = QR_HIT_RATE[family];
+    const row = await prisma.chatRateBucket.findUnique({ where: { key: hitKey(family, ip, token) }, select: { count: true, windowStart: true } });
+    if (!row || row.windowStart.getTime() <= now - spec.windowMs || row.count < spec.limit) return null;
+    return Math.max(1, Math.ceil((row.windowStart.getTime() + spec.windowMs - now) / 1000));
+  } catch {
+    return null;
+  }
+}
 /** นับ 1 อ่านที่โทเคนจริงในถัง `pos:pub:<family>:<ip>:<sha256(token)[0..16]>` · เกินงบ = { ok:false, retryAfterSec } */
 export async function qrHitGuard(family: QrHitFamily, ip: unknown, token: unknown): Promise<PosPublicRateVerdict> {
-  const v = await checkRateLimitDb(`pos:pub:${family}:${ipKey(ip)}:${tokenHash(token)}`, QR_HIT_RATE[family]);
+  const v = await checkRateLimitDb(hitKey(family, ip, token), QR_HIT_RATE[family]);
   return v.ok ? { ok: true } : { ok: false, retryAfterSec: v.retryAfterSec ?? 60 };
 }
 

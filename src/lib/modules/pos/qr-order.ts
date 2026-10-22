@@ -36,7 +36,7 @@ import { promptpayIdForUnit } from "./payment-intent-shared";
 import { verifyChatTag, type VerifiedChatTag } from "./chat-tag"; // POS P3.7 ▸ R8 ประตู B: แท็กห้องแชทบนลิงก์สั่งล่วงหน้า ◂
 import { maskPhone, ORDER_PREP_DEFAULT_MIN, type OrderLineOption } from "./order-shared";
 import { receiptShopHeader } from "./receipt"; // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ (อ่านอย่างเดียว) ◂
-import { qrCountMiss, qrHitGuard, qrMissExhausted, type QrHitFamily } from "./public-rate"; // POS P5.2 ▸ CD-P52-F3 · fix2 CD-P52-F3b ◂
+import { qrCountMiss, qrHitExhausted, qrHitGuard, qrMissExhausted, type QrHitFamily } from "./public-rate"; // POS P5.2 ▸ CD-P52-F3 · fix2 CD-P52-F3b ◂
 import * as orders from "./order";
 import type { GuestTableView } from "@/lib/modules/restaurant";
 import {
@@ -88,12 +88,17 @@ const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() 
 //   (a) ก่อนตัวประตู: ถังพลาด pos:pub:miss:<ip> เต็ม (อ่านอย่างเดียว) ⇒ TOKEN_INVALID รูปเดียวกับพลาด แม้โทเคนจริง (ไม่มีรหัสใหม่บนทางพลาด)
 //   (b) ผลเป็น TOKEN_INVALID ⇒ นับ 1 พลาด (ก่อน submitGuard ของประตูเขียนด้วย — tableCtx/linkCtx/exists พลาดก็นับ)
 //   (c) ผลอื่น (โทเคนจริง) + gate.family ⇒ นับถัง pos:pub:<family>:<ip>:<sha256(token)[0..16]> · เกินงบ = RATE_LIMITED ◂
+// POS P5.2 ▸ fix3 A1: + peek ถังอ่านของ (IP, โทเคน) ก่อน body (อ่านอย่างเดียว) — เต็มแล้ว = RATE_LIMITED ทันที (ถล่มโทเคนจริงไม่จ่าย DB ของประตู) · นับหลัง body คงเดิม ◂
 type QrGate = { meta: unknown; token: unknown; family?: QrHitFamily };
 async function qrGuard<T>(name: string, body: () => Promise<T>, gate?: QrGate): Promise<T | QrRefusal> {
   try {
     const counted = gate !== undefined && gate.meta !== undefined;
     const ip = counted ? ipOf(gate.meta) : "";
     if (counted && (await qrMissExhausted(ip))) return TOKEN_INVALID();
+    if (counted && gate.family) {
+      const wait = await qrHitExhausted(gate.family, ip, gate.token); // POS P5.2 ▸ fix3 A1 ◂
+      if (wait !== null) return qrRefuse("RATE_LIMITED", { retryAfterSec: wait });
+    }
     const r = await body();
     if (!counted) return r;
     if (isRecord(r) && r.ok === false && r.code === "TOKEN_INVALID") {
