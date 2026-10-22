@@ -1,0 +1,84 @@
+[env] qc-hr-h0.5 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h0.5] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h0.5] pepper present
+⚠️  QC_FORCE=1 — ข้ามด่าน SKIP ทั้งที่ยังขาด: ยังไม่มี src/lib/modules/hr/pin.ts · ยังไม่มี scripts/hr-backfill-pin-hash.mts · ยังไม่มี prisma/migrations/20261201000000_hr_pin_hash/migration.sql (คาด: แดงตามเหตุผล ไม่ crash)
+[qc-hr-h0.5] hr/pin.ts=module absent: hr/pin.ts · facade verifyPin=ไม่มี · Prisma HrEmployee.pinHash=ไม่มี · setPin จาก hr/service (ของเดิม)
+  ❌ [H0.5-S4.9] [static] hr/pin.ts ใช้ crypto timingSafeEqual + เทียบกับ dummy ตอนไม่เจอ (ตัวแปรชื่อมี dummy) — expected timingSafeEqual( ≥1 · ตัวแปร *dummy* | actual ไม่มี src/lib/modules/hr/pin.ts
+  ❌ [H0.5-S6.1] [static] scripts/hr-backfill-pin-hash.mts มี · ใช้ loadQcEnv · กัน ep-royal-night เว้น HR_BACKFILL_PROD=1 · มี --apply / --tenant — expected exists·loadQcEnv·prodGuard·--apply·--tenant | actual {"exists":false,"loadQcEnv":false,"prodGuard":false,"apply":false,"tenant":false}
+  ❌ [H0.5-S8.1] [static] ไม่มี pinCode (src/** ทั้งหมด) / pinHash (hr · หน้า hr|kiosk|payroll · ai) นอก hr/pin.ts + seed-review-shop สะอาด (AST แบบ F16.5) — expected 0 จุดนอก src/lib/modules/hr/pin.ts · src/lib/modules/hr/pin.ts มีจริง | actual 5 ไฟล์: src/lib/modules/hr/actions.ts:57(pinCode),57(pinCode) · src/lib/modules/hr/privacy.ts:78(pinCode) · src/lib/modules/hr/service.ts:46(pinCode),46(pinCode),398(pinCode),403(pinCode),439(pinCode),440(pinCode),457(pinCode),459(pinCode) · src/lib/modules/hr/ui.tsx:434(pinCode) · scripts/seed-review-shop.mts:42(pinCode),43(pinCode),44(pinCode),45(pinCode)
+  ❌ [H0.5-S8.2] [static] hr/index.ts re-export verifyPin + ชนิดผลลัพธ์จาก ./pin พร้อมความเห็น C-8 · ยังไม่มี DB — expected {verifyPin,resultType,c8,noDb}=true | actual {"verifyPin":false,"resultType":false,"c8":false,"noDb":true}
+  ❌ [H0.5-S8.3] [static] migration 20261201000000_hr_pin_hash: ADD COLUMN pinHash/pinSetAt + partial unique · ไม่มี DROP · ความเห็นไทย · hr.prisma มี pinHash/pinSetAt และยังมี pinCode — expected ทุกช่อง true | actual {"file":false,"addHash":false,"addSetAt":false,"index":false,"noDrop":true,"thaiComment":false,"schemaHash":false,"schemaSetAt":false,"schemaKeepsCode":true}
+  ❌ [H0.5-S8.4] [static] env.ts: HR_PIN_PEPPER: z.string().min(32).optional() บรรทัดมีเครื่องหมาย HR H0.5 ▸ · export hasPinPepper — expected {schema,marked,hasPinPepper}=true | actual {"schema":false,"marked":false,"hasPinPepper":false}
+  ✅ [H0.5-S8.5] [static] privacy-shared.ts มี hasPin และไม่มี pinCode/pinHash ใน AST
+  ❌ [H0.5-S8.6] [static] fitness-hr F165_BASELINE ว่าง · scanPinReaders() ว่าง · hr/pin.ts มีจริง — expected baseline=0 scan=0 pin.ts=true | actual baseline=5 scan=5 (src/lib/modules/hr/actions.ts,src/lib/modules/hr/privacy.ts,src/lib/modules/hr/service.ts,src/lib/modules/hr/ui.tsx,scripts/seed-review-shop.mts) pin.ts=false
+  ❌ [H0.5-S8.7] [static] hr/pin.ts: createHmac sha256 · ข้อความคงที่ (ไม่ได้ตั้งค่า / PIN ไม่ถูกต้อง / D8) · ไม่คืน e.message · ไม่มี console.* — expected ทุกช่อง true | actual {"exists":false,"hmac":false,"noconfText":false,"wrongText":false,"d8Text":false,"noErrMessage":true,"noConsole":true}
+(node:2188519) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── [S1] hashPin + pepper ──
+  ❌ [H0.5-S1.1] [hash] hashPin: คนละร้าน PIN เดียวกัน = hash ต่างกัน · ค่าเดิม = hash เดิม · hex 64 ตัวพิมพ์เล็ก — expected ถูกตรวจ | actual module absent: hr/pin.ts
+  ❌ [H0.5-S1.2] [hash] hashPin = HMAC-SHA256(key = HR_PIN_PEPPER, msg = tenantId + U+001F + pin) เป๊ะ (POS/backfill ต้องได้ค่าเดียวกัน) — expected ถูกตรวจ | actual module absent: hr/pin.ts
+  ❌ [H0.5-S1.3] [hash] process ลูกที่ pepper ต่าง → hash ต่างจากของแม่ (และตรงสูตรกับ pepper ของตัวเอง) — expected ถูกตรวจ | actual module absent: hr/pin.ts
+  ❌ [H0.5-S1.4] [hash] process ลูกที่ไม่มี HR_PIN_PEPPER → hashPin โยน PinNotConfiguredError ข้อความไทยคงที่ — expected ถูกตรวจ | actual module absent: hr/pin.ts
+  ❌ [H0.5-S1.5] [hash] ไม่มี pepper → setPin/verifyPin ปฏิเสธด้วยข้อความเดียวกัน · แถวไม่มี PIN ตัวเปล่าหรือ hash — expected ถูกตรวจ | actual module absent: hr/pin.ts
+── [S2] setPin (hr/service ของเดิม) ──
+  ✅ [H0.5-S2.1] [setPin] PIN 4 / 5 / 6 หลัก → ok ทั้งสาม
+  ✅ [H0.5-S2.2] [setPin] "123" / "1234567" / "12a4" → "PIN ต้องเป็นตัวเลข 4-6 หลัก" ทั้งสาม
+  ❌ [H0.5-S2.3] [setPin] 🔴 หลังตั้ง: pinHash = hash ตามสูตร · pinSetAt มีค่า · pinCode = null — expected hash=match plain=none setAt=Y | actual active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S2.4] [setPin] PIN ว่าง → ok · pinHash / pinSetAt / pinCode = null ทั้งสาม — expected ok · plain=none hash=none setAt=N | actual {"ok":true} · active=true plain=none hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S2.5] [setPin] พนักงานพ้นสภาพ → "ไม่พบพนักงาน" · ไม่มี PIN — expected "ไม่พบพนักงาน" · ไม่มี PIN | actual {"ok":true} · active=false plain=SET hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ✅ [H0.5-X2.1] [setPin] ctx ระบบ A + พนักงานของระบบ B (ร้านเดียวกัน) → "ไม่พบพนักงาน" · ไม่มี PIN
+  ❌ [H0.5-S2.6] [audit] มี hr.pin.set และ hr.pin.clear ของพนักงานนั้น · ไม่มีตัวเลข PIN และ hash ใน before/after — expected set ≥1 · clear ≥1 · ไม่มี PIN/hash | actual set=0 clear=0 clean=true
+── [S3] PIN ไม่ซ้ำทั้งร้าน ──
+  ❌ [H0.5-S3.1] [unique] 🔴 PIN เดียวกัน 2 คน คนละระบบ HR ร้านเดียวกัน → คนที่สองได้ข้อความ D8 เป๊ะ · ไม่มี hash — expected คนแรก ok (hash) · คนที่สอง D8 ไม่มี PIN | actual [{"ok":true},{"ok":true}] · A active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a · B active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S3.4] [unique] คนพ้นสภาพปล่อย PIN → คนที่ยังทำงานตั้ง PIN เดียวกันได้ (hash ตามสูตร) — expected ok · พ้นสภาพ · ok (hash) | actual [{"ok":true},{"ok":true,"name":"ปล่อยPIN 1791436179228d5yf"},{"ok":true}] · active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S3.5] [unique] อีกร้านใช้ PIN เดียวกันได้ (hash ของร้านนั้น) — expected ok · hash ของร้านนั้น | actual {"ok":true} · active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S3.6] [db] pg_indexes: HrEmployee_tenantId_pinHash_active_key UNIQUE (tenantId, pinHash) WHERE active = true AND pinHash IS NOT NULL · ตัวเดียวที่แตะ pinHash — expected 1 index HrEmployee_tenantId_pinHash_active_key UNIQUE (tenantId,pinHash) WHERE active AND pinHash IS NOT NULL | actual ไม่มี index ที่แตะ pinHash
+── [S4] verifyPin (facade C-8) ──
+  ❌ [H0.5-S4.1] [verifyPin] PIN ถูก → { ok, employeeId, systemId, userId } เท่านั้น · userId = ผู้ใช้ที่ผูกไว้ — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-S4.2] [verifyPin] พนักงานอีกระบบ HR ที่ไม่ผูกผู้ใช้ → ok · systemId ของระบบนั้น · userId = null — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-S4.3] [verifyPin] PIN ผิด → { ok:false, reason:"PIN ไม่ถูกต้อง" } เท่านั้น — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-S4.4] [verifyPin] รูปแบบผิด ("12" · "abcd" · 7 หลัก · ว่าง) → ข้อความเดียวกับ PIN ผิด — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-S4.5] [verifyPin] เจ้าของ PIN พ้นสภาพ → ไม่ยืนยัน — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-X2.2] [verifyPin] PIN ของอีกร้าน → ไม่ยืนยันในร้านนี้ (และยืนยันได้ในร้านของมัน) — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-S4.6] [verifyPin] systemId เป็นตัวกรอง (ระบบอื่น = ไม่ยืนยัน · ระบบตัวเอง = ok) · unitId รับแล้วไม่สนใจ — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-S4.7] [verifyPin] ครั้งที่ 121 ใน 60 s ของร้านเดียว → "ลองใหม่ในอีก N วินาที" (PIN ถูกก็ไม่ผ่าน) · ถัง ChatRateBucket hr-verifypin:<tenantId> — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+  ❌ [H0.5-S4.8] [verifyPin] ทุกผลที่คืนไม่มี PIN · hash · ชื่อพนักงาน — expected ถูกตรวจ | actual facade missing: hr/index.ts ไม่มี verifyPin · module absent: hr/pin.ts
+── [S5] ทางเก่า (pinCode ตัวเปล่า → อัปเกรด) ──
+  ❌ [H0.5-S5.1] [legacy] แถวมีแต่ pinCode (ตัวเปล่า) → verifyPin ok · employeeId ถูกคน — expected ถูกตรวจ | actual facade missing: verifyPin ไม่มี · module absent: hr/pin.ts
+  ❌ [H0.5-S5.2] [legacy] หลังยืนยัน: pinHash ตามสูตร · pinSetAt มีค่า · pinCode = null (อัปเกรดในที่) — expected ถูกตรวจ | actual facade missing: verifyPin ไม่มี · module absent: hr/pin.ts
+  ❌ [H0.5-S5.3] [legacy] ยืนยันครั้งที่ 2 (ทาง hash) → ok คนเดิม — expected ถูกตรวจ | actual facade missing: verifyPin ไม่มี · module absent: hr/pin.ts
+  ❌ [H0.5-S5.4] [legacy] 🔴 PIN ตัวเปล่าซ้ำ 2 แถวในร้าน → ไม่ยืนยัน · ทั้งสองแถวไม่ถูกแตะ — expected ถูกตรวจ | actual facade missing: verifyPin ไม่มี · module absent: hr/pin.ts
+  ❌ [H0.5-S5.7] [legacy] verifyPin พร้อมกัน 10 ครั้งบนแถวตัวเปล่า → ok ทั้ง 10 (คนเดียวกัน) · จบที่ hash ตามสูตร pinCode = null — expected ถูกตรวจ | actual facade missing: verifyPin ไม่มี · module absent: hr/pin.ts
+  ✅ [H0.5-S5.5] [roster] kioskRoster: hasPin จริงทั้งแถว PIN ตัวเปล่าและแถว hash · เท็จเมื่อไม่มี PIN · คีย์ = id/name/position/hasPin เท่านั้น
+  ❌ [H0.5-S5.6] [hasPin] hasPin(row) = !!pinHash || !!pinCode — expected hasPin() | actual module absent: hr/pin.ts
+── [S3] ผลแข่ง setPin 10 ทาง × 3 รอบ ──
+  ❌ [H0.5-S3.2] [race] 🔴 setPin PIN เดียวกัน 10 คนพร้อมกัน (2 process × 5 · connection แยก) × 3 รอบ → สำเร็จ 1 ต่อรอบ · ที่เหลือ D8 — expected ทุกรอบ: 10 คำขอ · ok 1 · D8 9 · ตรงเวลา | actual r0: n=10 ok=10 d8=0 · r1: n=10 ok=10 d8=0 · r2: n=10 ok=10 d8=0 · pids/process=5/5
+  ❌ [H0.5-S3.3] [race] DB หลังแข่ง: ต่อรอบมี hash นั้น 1 แถว · ไม่มี PIN ตัวเปล่า — expected ทุกรอบ hash=1 plain=0 | actual r0: hash=0 plain=10 · r1: hash=0 plain=10 · r2: hash=0 plain=10
+── [S6] scripts/hr-backfill-pin-hash.mts ──
+  ❌ [H0.5-S6.2] [backfill] dry-run exit 0 · JSON_SUMMARY ของร้าน = plain 4 · duplicates 2 · hashed 1 · toUpdate 2 (inactive 1) · changed 0 — expected ถูกตรวจ | actual script missing: scripts/hr-backfill-pin-hash.mts
+  ❌ [H0.5-S6.3] [backfill] dry-run ไม่เขียนอะไร (6 แถวเหมือนก่อนรันทุกช่อง) — expected ถูกตรวจ | actual script missing: scripts/hr-backfill-pin-hash.mts
+  ❌ [H0.5-S6.4] [backfill] --apply exit 0 · changed 4 · ตัวเดี่ยว+พ้นสภาพ = hash ตามสูตร pinCode null · ซ้ำ = pinCode null pinHash null · แถว hash เดิมไม่เปลี่ยน · ไม่มี PIN ไม่เปลี่ยน — expected ถูกตรวจ | actual script missing: scripts/hr-backfill-pin-hash.mts
+  ❌ [H0.5-S6.5] [backfill] audit hr.pin.backfill ของร้านนั้นพร้อมตัวเลข · ไม่มี PIN/hash — expected ถูกตรวจ | actual script missing: scripts/hr-backfill-pin-hash.mts
+  ❌ [H0.5-S6.6] [backfill] --apply ครั้งที่ 2 → exit 0 · changed 0 · ไม่มีแถวเปลี่ยน — expected ถูกตรวจ | actual script missing: scripts/hr-backfill-pin-hash.mts
+  ❌ [H0.5-S6.7] [backfill] output ทั้ง 3 รอบไม่มี PIN ของ fixture · hash · pepper · ชื่อเต็ม · dry-run ระบุ id ของแถวซ้ำ — expected ถูกตรวจ | actual script missing: scripts/hr-backfill-pin-hash.mts
+── [S7] kiosk · createEmployee · กลับมาทำงาน ──
+  ❌ [H0.5-S7.1] [kiosk] clockWithPin PIN ถูกบนแถวที่เป็น hash (pinCode null) → IN 1 แถว · มี verifyPinForEmployee — expected แถว hash (plain none) · ok IN · 1 แถว · verifyPinForEmployee มี | actual active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a · {"ok":true,"employeeName":"kioskHash 1791436179228d5yf","kind":"IN","at":"2026-10-08T05:10 · 1 แถว · vpfe=undefined
+  ✅ [H0.5-S7.2] [kiosk] clockWithPin PIN ผิด → "PIN ไม่ถูกต้อง" · ไม่มีแถวเพิ่ม
+  ✅ [H0.5-S7.3] [kiosk] พนักงานไม่มี PIN → "<ชื่อ> ยังไม่มี PIN — ให้เจ้าของตั้งที่หน้าพนักงาน" (ข้อความเดิม)
+  ❌ [H0.5-S7.4] [create] createEmployee({ pin }) → hash ตามสูตร · pinCode null — expected สร้างแล้ว · hash=match plain=none | actual {"id":"cmuz2vye7001oo7kzgao0uxvk"} · active=true plain=none hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S7.5] [create] createEmployee PIN ซ้ำ → สร้างพนักงานได้ · pinSet:false + ข้อความ D8 · ไม่มี PIN — expected สร้างแล้ว · pinSet:false · D8 · ไม่มี PIN | actual {"id":"cmuz2vyf6001qo7kzeinufhvw"} · active=true plain=none hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S7.6] [reactivate] A พ้นสภาพ → ตั้ง PIN เดิมของ A ให้ B (อีกระบบ) ได้ — expected A ok · A พ้น · B ok (hash) | actual [{"ok":true},{"ok":true,"name":"กลับมาA 1791436179228d5yf"},{"ok":true}] · B active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S7.7] [reactivate] 🔴 A กลับมาทำงาน → ok · pinCleared:true · A active · pinHash/pinSetAt null · B ยังถือ PIN — expected ok · pinCleared:true · A active ไม่มี PIN · B ยังถือ | actual {"ok":true,"name":"กลับมาA 1791436179228d5yf"} · A active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a · B active=true plain=SET(=pin) hash=n/a(ไม่มีคอลัมน์) setAt=n/a
+  ❌ [H0.5-S7.8] [reactivate] audit hr.pin.clear ของ A มีเหตุผล REACTIVATE_DUPLICATE — expected hr.pin.clear มี REACTIVATE_DUPLICATE · ไม่มี PIN/hash | actual rows=0 reason=false
+RESIDUE tenants=0 none (สร้าง 3 ร้าน · ผู้ใช้ 1)
+  ✅ [H0.5-Z1] คืนสภาพ: ร้าน qc-hr-h0.5-* ถูกลบ · ไม่เหลือแถว HR/audit ของร้าน · ไม่เหลือ ChatRateBucket ของร้าน · ผู้ใช้ชั่วคราวถูกลบ
+
+===== qc-hr-h0.5 ===== ผ่าน 8/58 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.5","total":58,"passed":8,"failed":["H0.5-S4.9","H0.5-S6.1","H0.5-S8.1","H0.5-S8.2","H0.5-S8.3","H0.5-S8.4","H0.5-S8.6","H0.5-S8.7","H0.5-S1.1","H0.5-S1.2","H0.5-S1.3","H0.5-S1.4","H0.5-S1.5","H0.5-S2.3","H0.5-S2.4","H0.5-S2.5","H0.5-S2.6","H0.5-S3.1","H0.5-S3.4","H0.5-S3.5","H0.5-S3.6","H0.5-S4.1","H0.5-S4.2","H0.5-S4.3","H0.5-S4.4","H0.5-S4.5","H0.5-X2.2","H0.5-S4.6","H0.5-S4.7","H0.5-S4.8","H0.5-S5.1","H0.5-S5.2","H0.5-S5.3","H0.5-S5.4","H0.5-S5.7","H0.5-S5.6","H0.5-S3.2","H0.5-S3.3","H0.5-S6.2","H0.5-S6.3","H0.5-S6.4","H0.5-S6.5","H0.5-S6.6","H0.5-S6.7","H0.5-S7.1","H0.5-S7.4","H0.5-S7.5","H0.5-S7.6","H0.5-S7.7","H0.5-S7.8"],"findings":[{"id":"H0.5-S4.9","sev":"MAJOR"},{"id":"H0.5-S6.1","sev":"MAJOR"},{"id":"H0.5-S8.1","sev":"CRITICAL"},{"id":"H0.5-S8.2","sev":"MAJOR"},{"id":"H0.5-S8.3","sev":"CRITICAL"},{"id":"H0.5-S8.4","sev":"MAJOR"},{"id":"H0.5-S8.6","sev":"MAJOR"},{"id":"H0.5-S8.7","sev":"MAJOR"},{"id":"H0.5-S1.1","sev":"CRITICAL"},{"id":"H0.5-S1.2","sev":"CRITICAL"},{"id":"H0.5-S1.3","sev":"MAJOR"},{"id":"H0.5-S1.4","sev":"CRITICAL"},{"id":"H0.5-S1.5","sev":"CRITICAL"},{"id":"H0.5-S2.3","sev":"CRITICAL"},{"id":"H0.5-S2.4","sev":"MAJOR"},{"id":"H0.5-S2.5","sev":"MAJOR"},{"id":"H0.5-S2.6","sev":"MAJOR"},{"id":"H0.5-S3.1","sev":"CRITICAL"},{"id":"H0.5-S3.4","sev":"MAJOR"},{"id":"H0.5-S3.5","sev":"MAJOR"},{"id":"H0.5-S3.6","sev":"CRITICAL"},{"id":"H0.5-S4.1","sev":"CRITICAL"},{"id":"H0.5-S4.2","sev":"MAJOR"},{"id":"H0.5-S4.3","sev":"CRITICAL"},{"id":"H0.5-S4.4","sev":"MAJOR"},{"id":"H0.5-S4.5","sev":"CRITICAL"},{"id":"H0.5-X2.2","sev":"CRITICAL"},{"id":"H0.5-S4.6","sev":"MAJOR"},{"id":"H0.5-S4.7","sev":"CRITICAL"},{"id":"H0.5-S4.8","sev":"CRITICAL"},{"id":"H0.5-S5.1","sev":"CRITICAL"},{"id":"H0.5-S5.2","sev":"CRITICAL"},{"id":"H0.5-S5.3","sev":"MAJOR"},{"id":"H0.5-S5.4","sev":"CRITICAL"},{"id":"H0.5-S5.7","sev":"MAJOR"},{"id":"H0.5-S5.6","sev":"MAJOR"},{"id":"H0.5-S3.2","sev":"CRITICAL"},{"id":"H0.5-S3.3","sev":"CRITICAL"},{"id":"H0.5-S6.2","sev":"CRITICAL"},{"id":"H0.5-S6.3","sev":"CRITICAL"},{"id":"H0.5-S6.4","sev":"CRITICAL"},{"id":"H0.5-S6.5","sev":"MAJOR"},{"id":"H0.5-S6.6","sev":"CRITICAL"},{"id":"H0.5-S6.7","sev":"CRITICAL"},{"id":"H0.5-S7.1","sev":"CRITICAL"},{"id":"H0.5-S7.4","sev":"CRITICAL"},{"id":"H0.5-S7.5","sev":"MAJOR"},{"id":"H0.5-S7.6","sev":"MAJOR"},{"id":"H0.5-S7.7","sev":"CRITICAL"},{"id":"H0.5-S7.8","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":["ยังไม่มี src/lib/modules/hr/pin.ts","ยังไม่มี scripts/hr-backfill-pin-hash.mts","ยังไม่มี prisma/migrations/20261201000000_hr_pin_hash/migration.sql"]}

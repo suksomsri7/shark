@@ -550,16 +550,18 @@ async function runDb(): Promise<void> {
   const eP = await mkEmp(sA.id, `ตั้งPIN ${stamp}`);
   const sp: Any[] = [];
   for (let i = 1; i <= 11; i++) sp.push(await setPinCall(U.hrAdmin, sA.id, eP, String(80000 + i)));
-  const pin11 = (await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true } }))?.pinCode;
+  // ORACLE-EDIT H0.5 (ผู้คุมงานอนุมัติ): หลัง H0.5 setPin เก็บเป็น hash — ตรวจว่าแถวเป็น hash (64 hex) และ pinCode = null แทนการอ่านตัวเปล่า
+  const hashed = (r: Any) => r?.pinCode === null && /^[0-9a-f]{64}$/.test(String(r?.pinHash ?? "")) ? "hashed" : "not-hashed";
+  const pin11 = hashed(await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true, pinHash: true } }));
   chk(
     "S3.1",
-    sp.slice(0, 10).every((r) => r?.status === "ok") && sp[10]?.status === "error" && pin11 === "80010",
-    "10× ok · ครั้งที่ 11 error · PIN 80010",
+    sp.slice(0, 10).every((r) => r?.status === "ok") && sp[10]?.status === "error" && pin11 === "hashed",
+    "10× ok · ครั้งที่ 11 error · PIN เป็น hash (pinCode null)",
     `${sp.map((r) => r?.status).join(",")} · 11=${short(sp[10]?.message, 60)} · pin=${pin11}`,
   );
   const sp2 = await setPinCall(U.owner, sA.id, eP, "80012");
-  const pin12 = (await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true } }))?.pinCode;
-  chk("S3.2", sp2?.status === "ok" && pin12 === "80012", "ok · PIN 80012", `${short(sp2, 80)} · pin=${pin12}`);
+  const pin12 = hashed(await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true, pinHash: true } }));
+  chk("S3.2", sp2?.status === "ok" && pin12 === "hashed", "ok · PIN เป็น hash (pinCode null)", `${short(sp2, 80)} · pin=${pin12}`);
   const bPin = await bucket(`hr-setpin:${tid}:${U.hrAdmin.id}`);
   chk("S3.3", (bPin?.count ?? 0) >= 10, "count ≥ 10", `count=${bPin?.count ?? "ไม่มีแถว"}`);
 

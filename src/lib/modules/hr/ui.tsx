@@ -28,6 +28,7 @@ import {
   removeEmployeeAction,
   restoreEmployeeAction,
 } from "./actions";
+import { hasPin } from "./pin"; // HR H0.5 ▸ ไม่อ่านคอลัมน์ PIN เอง (F16.5) ◂
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import BulkLeaveApprovals from "./BulkLeaveApprovals";
 import { hrViewerOf, leaveItemsForViewer } from "./privacy"; // HF-HR-0 (D9) ▸ เหตุผลการลาเฉพาะ hr.leave.read ◂
@@ -431,7 +432,7 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
                   </form>
                   {/* PIN ลงเวลาเอง — ให้พนักงานกดเองที่จอ kiosk แทนเจ้าของกดให้ทุกครั้ง */}
                   <div className="mt-2 border-t pt-2">
-                    <PinField systemId={systemId} employeeId={e.id} hasPin={!!e.pinCode} />
+                    <PinField systemId={systemId} employeeId={e.id} hasPin={hasPin(e)} />
                   </div>
                   {/* ลบ = soft delete · ประวัติลงเวลา/ลา/เงินเดือน และนัดเก่ายังอยู่ครบ */}
                   <div className="mt-2 border-t pt-2">
