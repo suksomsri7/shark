@@ -824,7 +824,8 @@ function runStatic(): void {
       files = [`git:${errText(e).slice(0, 60)}`];
     }
     const ok = (f: string) =>
-      f.startsWith(`${MIG_DIR}/`) || /^prisma\/schema\/[\w.-]+\.prisma$/.test(f) || [SEED_LAW, CORE_SCOPE, HQC_ENV, FITNESS_HR, SEED_FILE, EXPECTED, THIS_FILE].includes(f) || f.startsWith("ledger/");
+      f.startsWith(`${MIG_DIR}/`) || /^prisma\/schema\/[\w.-]+\.prisma$/.test(f) || [SEED_LAW, CORE_SCOPE, HQC_ENV, FITNESS_HR, SEED_FILE, EXPECTED, THIS_FILE].includes(f) || f.startsWith("ledger/") ||
+      /^scripts\/qc-[\w.-]+\.mts$/.test(f); // ORACLE-EDIT H1.3 (controller): other oracles may carry controller-ruled ORACLE-EDITs (SCHEMA_SHA re-take, C3.3 S0.4 scope)
     const extra = [...new Set(files)].filter((f) => !ok(f));
     chk("S6.5", extra.length === 0, "⊆ R1/R3/R8/R9 files + oracle + ledger", extra.slice(0, 10).join(",") || `ok (${new Set(files).size} files vs ${baseRef().slice(0, 8)})`);
   }
