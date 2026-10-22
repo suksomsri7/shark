@@ -331,7 +331,13 @@
       "expect": {
         "type": "modal",
         "target": "pos-reg-custom-dialog",
-        "note": "ต้องมี pos.sale.priceOverride (มติ Q8) · แคชเชียร์เห็นปุ่มจาง (aria-disabled) แตะแล้วขึ้นเหตุผล errors.needPriceOverride ที่ pos-reg-toast"
+        "note": "ต้องมี pos.sale.priceOverride (มติ Q8) · แคชเชียร์เห็นปุ่มจาง (aria-disabled) แตะแล้วขึ้นเหตุผล errors.needPriceOverride ที่ pos-reg-toast",
+        "anyOf": [
+          {
+            "type": "toast",
+            "target": "pos-reg-toast"
+          }
+        ]
       },
       "wo": "P1.3",
       "oracle": "",
@@ -1332,7 +1338,7 @@
         "pos-reg-product-*=click",
         "pos-reg-cart-view",
         "pos-reg-bill-discount",
-        "pos-reg-bill-discount-value=10"
+        "pos-reg-bill-discount-value=5"
       ]
     },
     {
@@ -13439,6 +13445,9 @@
       "viewport": [
         "desktop",
         "tablet"
+      ],
+      "opener": [
+        "pos-locale-switch-en=click"
       ]
     },
     {
@@ -13463,6 +13472,9 @@
       "viewport": [
         "desktop",
         "tablet"
+      ],
+      "opener": [
+        "pos-locale-switch-th=click"
       ]
     },
     {
@@ -15398,7 +15410,8 @@
         "pos-prod-*open-*",
         "pos-prod-tab-recipe",
         "pos-prod-recipe-edit"
-      ]
+      ],
+      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -23395,7 +23408,7 @@
       ],
       "needs": [
         "ค่าตั้งมัดจำเปิด (registerPayTendersAction deposit.enabled)",
-        "fixture ขาด: PosDeposit status OPEN คงเหลือ > 0 ของสาขา posqc-btn ที่รู้เลขใบรับ/เบอร์ — pos-buttons-fixtures/pos-qc-env ไม่สร้าง · deposit-search=* พิมพ์ 'ลาเต้' (fillValueFor /search/) ⇒ ไม่พบเสมอ"
+        "fixture ขาด: PosDeposit status OPEN คงเหลือ > 0 ของสาขา posqc-btn ที่รู้เลขใบรับ/เบอร์ — pos-buttons-fixtures/pos-qc-env ไม่สร้าง · deposit-search=* พิมพ์ '20' (fillValueFor กฎเงิน /deposit/ มาก่อน /search/ · < 3 ตัว ⇒ ไม่ค้น)"
       ]
     },
     {
@@ -31447,7 +31460,7 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]",
+      "query": "kind=reconcile&unit=[unitId]",
       "opener": [
         "pos-reports-tab-reconcile"
       ]
@@ -31472,7 +31485,7 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]",
+      "query": "kind=reconcile&unit=[unitId]",
       "opener": [
         "pos-reports-tab-reconcile"
       ]
@@ -31497,7 +31510,7 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]",
+      "query": "kind=reconcile&unit=[unitId]",
       "opener": [
         "pos-reports-tab-reconcile",
         "pos-report-unit=*"
@@ -31522,7 +31535,7 @@
       "wo": "P3-SKEL U",
       "oracle": "",
       "system": "POS",
-      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]",
+      "query": "kind=reconcile&unit=[unitId]",
       "opener": [
         "pos-reports-tab-reconcile",
         "pos-report-unit=*"
