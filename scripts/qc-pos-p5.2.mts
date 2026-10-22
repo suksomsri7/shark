@@ -38,7 +38,8 @@ const CHECKS: readonly Def[] = [
   D("P3", "S", "[static] โทเคนผิดรูป = ปฏิเสธก่อนแตะ DB (saleForToken · tableCtx · linkCtx · orderOfToken · rowOfToken · agentOf)", "public rows"),
   D("P4", "P", "[db] 404 ไม่ใช่ 403: โทเคนผิดรูป = โทเคนรูปถูกแต่ไม่มี (รหัสเดียวกัน) · QR โต๊ะจริงของ resto = สาขาของ resto เท่านั้น (ผูกโทเคน)", "(store)/r · /q/t · /q · /q/o"),
   D("P5", "S", "[ruling 5 · static] เพดานต่อ IP บนแขนงใบเสร็จ POS: หน้า /r/<token> แขนง POS + publicReceiptAction + แจ้งปัญหา/ขอใบกำกับ/รีวิว", "src/app/(store)/r/[token]/page.tsx · pos-receipt-actions.ts#*"),
-  D("P6", "S", "[ruling 5 · static] เพดานกันไล่เดาโทเคนบนประตูอ่านของ /q (tableDoor · tablePoll · tableBill · linkDoor · orderStatus)", "src/app/(store)/q/actions.ts#* · /q pages"),
+  D("P6", "S", "[ruling 5 · static · ORACLE-EDIT CD-P52-F3b] กันไล่เดาโทเคนของ /q ที่ qrGuard: peek ถังพลาดต่อ IP ก่อน body · TOKEN_INVALID = นับพลาด · โทเคนจริง = ถังต่อ (IP, แฮชโทเคน) · 12 ประตูส่ง gate · ทุกจุดเรียกใต้ (store)/q ส่ง {ip}", "src/app/(store)/q/actions.ts#* · /q pages"),
+  D("P9", "P", "[db · self-test CD-P52-F3b] linkDoor โทเคนจริง: IP เดียวอ่านครบงบ → ครั้งถัดไป RATE_LIMITED · IP ที่สองยังอ่านได้ · IP เดิมอ่านโทเคนที่สองได้ (ต่อโทเคน) · พลาดครบงบจาก IP หนึ่ง → โทเคนจริงจาก IP นั้น = TOKEN_INVALID · ไม่มี meta = ไม่นับ", "src/lib/modules/pos/qr-order.ts#qrGuard"),
   D("P7", "P", "[db · PDPA] ใบเสร็จสาธารณะไม่มีข้อมูลสมาชิก: ไม่มี id/ชื่อ/เบอร์/อีเมลของสมาชิก ไม่มี memberId/tenantId/unitId (บิลสมาชิกของ coffee · อ่านอย่างเดียว)", "src/app/(store)/r/[token]/pos-receipt-actions.ts#publicReceiptAction"),
   D("P8", "S", "[static] action สาธารณะรับแค่โทเคน + ข้อมูลที่ลูกค้ากรอก (ไม่มีพารามิเตอร์ tenantId/unitId/systemId/saleId)", "kind public · (store)/**/actions.ts"),
   D("R1", "R", "[db] CASHIER (pos.sale.create ที่สาขา A) × ทุกแถว action ที่ CASHIER=deny → ปฏิเสธ (ไม่ ok · ไม่ throw)", "rows[kind=action, CASHIER=deny]"),
@@ -303,13 +304,63 @@ function runStatic(): void {
     const missing = mods.filter(([, t]) => !RATE.test(stripComments(t))).map(([n]) => n);
     chk("P5", !!posBranch && missing.length === 0, "ทุกทางเข้ามีเพดานต่อ IP", missing.length ? `ไม่มีเพดาน: ${missing.join(" · ")} (แขนงบัญชีมี accountRateGuard publicToken/publicSubmit)` : "ครบ 5 ทาง");
   }
-  // P6
+  // P6 — ORACLE-EDIT (builder P5.2 fix2 · CD-P52-F3b controller B): เดิม = "ทุกประตูอ่านมีคำเรียกเพดาน (RATE regex) ในตัวฟังก์ชัน" (fix1 นับต่อ IP ทุกครั้งที่สำเร็จ) →
+  //   ตัดสิน 3 ส่วน: (1) qrGuard: peek ถังพลาด (qrMissExhausted) ก่อน body · ผล TOKEN_INVALID ⇒ qrCountMiss · โทเคนจริง ⇒ qrHitGuard ·
+  //   (2) ประตู /q ทั้ง 12 (อ่าน 5 + quote 2 + เขียน 5) ส่ง gate {meta, token} ให้ qrGuard · อ่าน/quote มี family · กุญแจ hit ใช้แฮชโทเคน (ไม่ใช่โทเคนดิบ) ·
+  //   (3) ทุกจุดเรียกประตูเหล่านี้ใต้ src/app/(store)/q/** ส่ง meta ที่มี ip (grep + จับวงเล็บ) · พฤติกรรมจริง = P9 (DB)
+  //   probe (จดใน wo-notes pos-P5.2.md §Fix round 2): โค้ด fix1 (fb82257c) → แดง · ลบ meta ที่จุดเรียกเดียวใน (store)/q → แดง
   {
-    const RATE = /checkRateLimit(?:Db)?\(|submitGuard\(|readGuard\(|rateGuard\(|RateGuard/;
     const qr = rd("src/lib/modules/pos/qr-order.ts");
-    const doors = ["tableDoor", "tablePoll", "tableBill", "linkDoor", "orderStatus"];
-    const missing = doors.filter((d) => !RATE.test(stripComments(fnBody(qr, d))));
-    chk("P6", missing.length === 0, "ประตูอ่านทุกตัวมีเพดานกันไล่เดา", missing.length ? `ไม่มีเพดาน: ${missing.join(" · ")} (เขียน = submitGuard ต่อโทเคน+IP มีแล้ว)` : "ครบ 5 ประตู");
+    const pr = stripComments(rd("src/lib/modules/pos/public-rate.ts"));
+    const bad: string[] = [];
+    const g = stripComments(fnBody(qr, "qrGuard"));
+    const iPeek = g.search(/qrMissExhausted\(/);
+    const iBody = g.search(/await body\(\)/);
+    if (!(iPeek >= 0 && iBody > iPeek)) bad.push("qrGuard ไม่ peek ถังพลาดก่อน body");
+    if (!/TOKEN_INVALID[\s\S]{0,120}qrCountMiss\(/.test(g)) bad.push("qrGuard ไม่นับพลาดเมื่อผล TOKEN_INVALID");
+    if (!/qrHitGuard\(/.test(g)) bad.push("qrGuard ไม่นับอ่านของโทเคนจริง");
+    if (!/findUnique\(/.test(fnBody(pr, "qrMissExhausted"))) bad.push("qrMissExhausted ไม่ใช่การอ่านอย่างเดียว (findUnique)");
+    if (!/createHash\("sha256"\)/.test(pr) || !/tokenHash\(token\)/.test(fnBody(pr, "qrHitGuard"))) bad.push("กุญแจ hit ไม่ใช้แฮชโทเคน");
+    const READ = ["tableDoor", "tablePoll", "tableBill", "linkDoor", "orderStatus", "quoteTableCart", "quotePreorderCart"];
+    const WRITE = ["placeTableRound", "tableServiceRequest", "tableNotifyPaid", "placePreorder", "claimPaid"];
+    for (const d of [...READ, ...WRITE]) {
+      const b = stripComments(fnBody(qr, d));
+      if (!b) bad.push(`${d}: ไม่พบ`);
+      else if (!/\}\s*,\s*\{\s*meta\b[^}]*\btoken:/.test(b)) bad.push(`${d}: ไม่ส่ง gate {meta, token} ให้ qrGuard`);
+      else if (READ.includes(d) && !/\{\s*meta\b[^}]*\bfamily:\s*"qr\w+"/.test(b)) bad.push(`${d}: ไม่มี family`);
+    }
+    // (3) จุดเรียกใต้ (store)/q
+    const walkQ = (dir: string): string[] => {
+      const out: string[] = [];
+      if (!existsSync(join(ROOT, dir))) return out;
+      for (const n of readdirSync(join(ROOT, dir)).sort()) {
+        const rel = `${dir}/${n}`;
+        if (statSync(join(ROOT, rel)).isDirectory()) out.push(...walkQ(rel));
+        else if (/\.tsx?$/.test(n)) out.push(rel);
+      }
+      return out;
+    };
+    let sites = 0;
+    for (const f of walkQ("src/app/(store)/q")) {
+      const t = stripComments(rd(f).replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ""))); // คงบรรทัด (เลขบรรทัดในรายงานตรงไฟล์)
+      for (const d of [...READ, ...WRITE]) {
+        for (const m of t.matchAll(new RegExp(`\\b${d}\\s*\\(`, "g"))) {
+          const before = t.slice(Math.max(0, m.index! - 20), m.index!);
+          if (/function\s+$/.test(before)) continue;
+          let depth = 0;
+          let j = m.index! + m[0].length - 1;
+          for (; j < t.length; j++) {
+            if (t[j] === "(") depth++;
+            else if (t[j] === ")" && --depth === 0) break;
+          }
+          const args = t.slice(m.index! + m[0].length, j);
+          sites++;
+          if (!/\bip\b/.test(args)) bad.push(`${f.replace("src/app/(store)/q/", "q/")}:${t.slice(0, m.index!).split("\n").length} ${d}(…) ไม่ส่ง meta {ip}`);
+        }
+      }
+    }
+    if (sites === 0) bad.push("ไม่พบจุดเรียกใต้ (store)/q");
+    chk("P6", bad.length === 0, "qrGuard นับพลาดต่อ IP + อ่านต่อ (IP, แฮชโทเคน) · 12 ประตูส่ง gate · ทุกจุดเรียกใต้ (store)/q ส่ง {ip}", bad.length ? bad.slice(0, 8).join(" · ") + (bad.length > 8 ? ` …(+${bad.length - 8})` : "") : `qrGuard ครบ (a)(b)(c) · 12 ประตู · ${sites} จุดเรียกส่ง ip`);
   }
   // P8
   {
@@ -448,6 +499,8 @@ const coreHash = await tryImport("@/lib/core/hash");
 const akSvc = await tryImport("@/lib/api-keys/service");
 const scopesMod = await tryImport("@/lib/api-keys/scopes");
 const pubReceipt = await tryImport("@/lib/modules/pos/public-receipt");
+const orderMod = await tryImport("@/lib/modules/pos/order"); // P9 (ORACLE-EDIT fix2 · CD-P52-F3b)
+const pubRate = await tryImport("@/lib/modules/pos/public-rate"); // P9 งบจริงของโค้ด (ไม่มี = ค่าตามมติ 30/30)
 const qrOrder = await tryImport("@/lib/modules/pos/qr-order");
 const relay = await tryImport("@/lib/modules/pos/print-relay");
 
@@ -837,6 +890,47 @@ async function runDb(): Promise<void> {
     chk("P4", ok, "รหัสเดียวกัน TOKEN_NOT_FOUND/TOKEN_INVALID · QR ผูกสาขา", out.join(" · "));
   }
 
+  // P9 self-test กันไล่เดา /q (ORACLE-EDIT builder P5.2 fix2 · CD-P52-F3b) — ลิงก์สั่งล่วงหน้าจริง 2 ลิงก์ของร้านชั่วคราว A (สาขา A1 · A2) ·
+  //   IP ของรอบ = qc-p52-<RAND>-ip* (ถังถูกลบใน finally · Z1 นับ) · ตัวควบคุมบวก = อ่านครั้งแรกต้อง ok
+  {
+    const out: string[] = [];
+    let ok = !!orderMod && !!qrOrder;
+    const owner = { userId: PER.OWNER!.userId, role: "OWNER", unitAccess: ["*"], permissions: {} };
+    const l1 = ok ? await orderMod.createOrderLink({ tenantId: TA, systemId: F.POS_A, unitId: F.A1 }, owner, {}).catch(() => null) : null;
+    const l2 = ok ? await orderMod.createOrderLink({ tenantId: TA, systemId: F.POS_A, unitId: F.A2 }, owner, {}).catch(() => null) : null;
+    const L1 = String(l1?.link?.token ?? "");
+    const L2 = String(l2?.link?.token ?? "");
+    if (!L1 || !L2) {
+      ok = false;
+      out.push(`สร้างลิงก์ไม่ได้ (${l1?.code ?? "-"}/${l2?.code ?? "-"})`);
+    } else {
+      const N = Number(pubRate?.QR_HIT_RATE?.qrLink?.limit ?? 30);
+      const MISS = Number(pubRate?.QR_MISS_PER_IP_PER_MIN ?? 30);
+      const ip = (x: string) => `qc-p52-${RAND}-ip${x}`;
+      const door = async (tok: string, who?: string): Promise<string> => {
+        const r = await (who === undefined ? qrOrder.linkDoor(tok) : qrOrder.linkDoor(tok, undefined, { ip: ip(who) })).catch((e: Error) => ({ ok: false, code: `THROW:${e.message.slice(0, 30)}` }));
+        return r?.ok === true ? "ok" : String(r?.code ?? "?");
+      };
+      const seqA: string[] = [];
+      for (let i = 0; i < N + 1; i++) seqA.push(await door(L1, "A"));
+      const firstN = seqA.slice(0, N).every((c) => c === "ok");
+      const limited = seqA[N] === "RATE_LIMITED";
+      const otherIp = await door(L1, "B");
+      const otherTok = await door(L2, "A");
+      const noMeta = await door(L1);
+      ok &&= firstN && limited && otherIp === "ok" && otherTok === "ok" && noMeta === "ok";
+      out.push(`IP A × ลิงก์ 1: ${N} ครั้งแรก ${firstN ? "ok" : seqA.slice(0, N).filter((c) => c !== "ok").slice(0, 3).join(",")} · ครั้งที่ ${N + 1} = ${seqA[N]} · IP B = ${otherIp} · IP A × ลิงก์ 2 = ${otherTok} · ไม่มี meta = ${noMeta}`);
+      const misses: string[] = [];
+      for (let i = 0; i < MISS; i++) misses.push(await door(`ZZZZZZZZZZZZ${String(i).padStart(4, "0")}`, "M"));
+      const allMiss = misses.every((c) => c === "TOKEN_INVALID");
+      const realFromM = await door(L2, "M");
+      const realFromB = await door(L2, "B");
+      ok &&= allMiss && realFromM === "TOKEN_INVALID" && realFromB === "ok";
+      out.push(`IP M พลาด ${MISS} ครั้ง ${allMiss ? "TOKEN_INVALID ทั้งหมด" : misses.slice(0, 3).join(",")} → ลิงก์จริงจาก IP M = ${realFromM} · จาก IP B = ${realFromB}`);
+    }
+    chk("P9", ok, "งบต่อ (IP, โทเคน) · IP อื่น/โทเคนอื่นไม่โดน · พลาดครบ = โทเคนจริงก็ TOKEN_INVALID · ไม่มี meta ไม่นับ", out.join(" · "));
+  }
+
   // P7 PII ใบเสร็จ (coffee อ่านอย่างเดียว)
   {
     const s = await P.posSale.findFirst({ where: { tenantId: PQC.coffee.tenantId, memberId: { not: null }, publicToken: { not: null }, docType: "SALE" }, orderBy: { createdAt: "desc" }, select: { id: true, publicToken: true, memberId: true, tenantId: true, unitId: true } });
@@ -987,7 +1081,8 @@ try {
       console.log(`  ลบร้านชั่วคราว ${slug}: ${w.tables} ตาราง · ค้าง ${JSON.stringify(w.left)} · Tenant ${w.tenantLeft}${w.err ? ` · ${w.err}` : ""}`);
     }
     for (const kid of keyIds) await P.$executeRawUnsafe(`DELETE FROM "ChatRateBucket" WHERE key LIKE $1`, `%:api:%:${kid}`).catch(() => 0);
-    bucketsLeft = 0;
+    await P.$executeRawUnsafe(`DELETE FROM "ChatRateBucket" WHERE key LIKE $1`, `pos:pub:%:qc-p52-${RAND}-%`).catch(() => 0); // P9 (fix2)
+    bucketsLeft = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "ChatRateBucket" WHERE key LIKE $1`, `pos:pub:%:qc-p52-${RAND}-%`).catch(() => [{ n: -1 }])) as Any[])[0]?.n ?? -1); // P9 (fix2)
     for (const kid of keyIds) bucketsLeft += Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "ChatRateBucket" WHERE key LIKE $1`, `%:api:%:${kid}`).catch(() => [{ n: -1 }])) as Any[])[0]?.n ?? -1);
     usersLeft = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "User" WHERE email LIKE $1`, `posqc-p52-${RAND}%`)) as Any[])[0]?.n ?? -1);
   } catch (e) {
