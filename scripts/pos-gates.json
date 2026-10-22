@@ -10,6 +10,16 @@
     "dry": "--dry prints one line 'PLAN <name> <forced|unforced|command>' per entry in manifest order and runs nothing",
     "rules": "never export CI (with-gate-lock.sh skips flock when CI is set) · unset CI VERCEL at the top · QC4 only via qc4.sh · POS lock /tmp/shark-gate-pos.lock · typecheck on /tmp/pos-gate.lock · absolute paths (systemd-run does not inherit cwd)"
   },
+  "$pending": [
+    {
+      "suite": "qc-crm-c2.7",
+      "state": "pending-triage",
+      "reason": "trial run on QC4 74/79 (S7.3 CRITICAL PosSale.crmDealId vs CRM C29 · S7.5/S7.6 consumer-chain/compose import MISSING_FUNCTION · S9.2 · U.3 CHANNEL_INVALID fixture) — not admitted to Tier 1 until the CRM owner rules on S7.3; fixture/import edits of the CRM oracle only with that consent (prep §(e) ruling 2)",
+      "triage": "F-P3-09 · F-P3-38",
+      "opRef": "ข้อสอบ `qc-crm-c2.7` แดงบน QC4 หลัง P3",
+      "trial": "/root/pos-runs/trial-cross-2-20261022T042149Z (POS-RESUME.md:2069)"
+    }
+  ],
   "suites": [
     {
       "suite": "qc-pos-p0.2",
@@ -206,6 +216,11 @@
     {
       "suite": "qc-pos-p3-skel",
       "mode": "forced"
+    },
+    {
+      "suite": "qc-pos-p3.12",
+      "mode": "unforced",
+      "why": "P3 phase close (brief P3.12 §4): static only — gate set · qc:all record · parity · HANDOVER-P3 · docs · oracle health · lane-pin freeze"
     },
     {
       "suite": "qc-pos-account",
