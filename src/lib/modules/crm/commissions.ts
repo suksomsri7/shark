@@ -33,6 +33,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { tenantDb } from "@/lib/core/db"; // HR H0.6 r3 ▸ R3.1 tx ของตัวรับ hr.payroll.paid / .reversed ◂
 import { crmCan, crmForbiddenMessage } from "./access";
 import { crmCapFor } from "./key-caps"; // CRM C3.8 ▸ เพดานของคีย์ = ของผู้สร้างคีย์ ◂
 import { dealWhere } from "./where";
@@ -1411,6 +1412,7 @@ export async function onPayrollPaid(input: { tenantId: string; hrSystemId: strin
   const systemId = str(input?.hrSystemId);
   const runId = str(input?.runId);
   if (!tenantId || !systemId || !runId) return { paid: 0 };
+  return onPayrollPaidConverging({ tenantId, systemId, runId }); // HR H0.6 r3 ▸ R3.1 ล็อกแถวก่อนอ่านสถานะ HR (ตัวรับคู่กับ onPayrollReversed) — ตัวเดิมด้านล่างไม่ถูกเรียกแล้ว ◂
   const hr = await hrFacade();
   const run = await hr.adjustmentsOfRun({ tenantId, systemId }, runId);
   if (run.status !== "PAID" || run.items.length === 0) return { paid: 0 };
@@ -2121,9 +2123,8 @@ async function toDtos(ctx: Scope, rows: CrmCommission[]): Promise<CommissionDto[
 //   ⇒ คอมมิชชัน PAID ของรายการที่ถูกปลดจากรอบนั้น กลับเป็น APPROVED (ยังไม่ได้จ่ายจริง) แล้วรอบใหม่ของงวดเดิมจ่ายให้อีกครั้ง (`onPayrollPaid`)
 //   กติกาคู่เดียวกับ onPayrollPaid: { id = HrPayAdjustment.crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL ·
 //   รายการอ่านผ่าน HR facade `adjustmentsByIds` (ผูกร้าน + ระบบ HR ของ event) · รอบต้องเป็น REVERSED จริง (event ปลอม/ข้ามร้าน = 0 แถว)
-//   OQ-3 (ตัวกันส่งซ้ำ): ข้ามรายการที่ตอนนี้ผูกกับรอบที่ **จ่ายแล้ว (PAID)** — event ที่มาช้าหลังรอบใหม่จ่ายแล้ว ห้ามถอน PAID ของรอบใหม่
-//   (รายการที่ยังไม่เข้ารอบ หรือเข้ารอบร่าง/อนุมัติแล้วแต่ยังไม่จ่าย = ถอนเป็น APPROVED · รอบนั้นจ่ายเมื่อไร onPayrollPaid ปิด PAID ให้) ·
-//   UPDATE … RETURNING ทีละ 500 ⇒ แถวที่เปลี่ยนจริงเท่านั้นได้ประวัติ `crm.commission.unpaid` (ส่งซ้ำ/พร้อมกัน = 0 แถว 0 ประวัติ) ·
+//   r3 (R3.1 · R3.3): ตัดสินใต้ล็อกแถวใน convergeCommissions — ถอนเป็น APPROVED เฉพาะรายการที่ **ยังไม่ผูกรอบ** · ผูกรอบที่จ่ายแล้ว = คง/คืน PAID ·
+//   ผูกรอบอื่น (ร่าง / อนุมัติ / REVERSED เก่า) = ข้ามเงียบ ๆ · เขียนเฉพาะแถวที่เปลี่ยนจริง ⇒ ส่งซ้ำ/พร้อมกัน = 0 แถว 0 ประวัติ ·
 //   แถวถอนคืน (REVERSED · ใบ C3.3) ไม่ถูกแตะ — DEDUCTION ของมันถูก HR ปลดและเข้ารอบใหม่เองเหมือนรายการอื่น (R5)
 export async function onPayrollReversed(input: { tenantId: string; hrSystemId: string | null; runId: string | null; adjustmentIds?: unknown }): Promise<{ unpaid: number }> {
   const tenantId = str(input?.tenantId);
@@ -2134,59 +2135,88 @@ export async function onPayrollReversed(input: { tenantId: string; hrSystemId: s
   const hr = await hrFacade();
   const run = await hr.adjustmentsOfRun({ tenantId, systemId }, runId);
   if (run.status !== "REVERSED") return { unpaid: 0 };
-  const rows = await hr.adjustmentsByIds({ tenantId, systemId }, ids);
-  const pairs: { id: string; hrPayAdjustmentId: string }[] = [];
-  const skipped: string[] = [];
-  for (const r of rows) {
-    if (!r.crmCommissionId) continue;
-    if (r.runId && r.runStatus === "PAID") {
-      skipped.push(r.id);
-      continue;
-    }
-    pairs.push({ id: r.crmCommissionId, hrPayAdjustmentId: r.id });
+  // ผู้สมัคร = คู่ (คอมมิชชัน ↔ รายการ) ของ id ใน event · สถานะจริงตัดสินใต้ล็อกใน convergeCommissions
+  const pairs = (await hr.adjustmentsByIds({ tenantId, systemId }, ids)).flatMap((r) => (r.crmCommissionId ? [{ id: r.crmCommissionId, hrPayAdjustmentId: r.id }] : []));
+  const out = await convergeCommissions(tenantId, systemId, runId, pairs, "REVERSED_EVENT");
+  return { unpaid: out.unpaid };
+}
+
+// HR H0.6 r3 ▸ R3.1 (ล่า F1a/F1b · F4) — ตัวรับ `hr.payroll.paid` ที่ล็อกก่อนอ่าน: ผู้สมัคร = รายการของรอบ (กติกา H4 ของ adjustmentsOfRun) ◂
+async function onPayrollPaidConverging(input: { tenantId: string; systemId: string; runId: string }): Promise<{ paid: number }> {
+  const hr = await hrFacade();
+  const run = await hr.adjustmentsOfRun({ tenantId: input.tenantId, systemId: input.systemId }, input.runId);
+  if (run.status !== "PAID" || run.items.length === 0) return { paid: 0 };
+  const pairs = run.items.map((it) => ({ id: it.crmCommissionId, hrPayAdjustmentId: it.id }));
+  const out = await convergeCommissions(input.tenantId, input.systemId, input.runId, pairs, "PAID_EVENT");
+  return { paid: out.paid };
+}
+
+// HR H0.6 r3 ▸ R3.1 · R3.3 — ตัวรับสองตัว (paid / reversed) ใช้ทางเดียวกัน ⇒ ใครลงมือทีหลังก็ได้ผลเดียวกัน (converge):
+//   ทีละ 500 แถวใน tx เดียว: (1) `SELECT … FOR UPDATE` แถวคอมมิชชัน (เรียงตาม id — ไม่ deadlock กันเอง) → (2) อ่านสถานะ HR ด้วย
+//   `adjustmentsByIds` บน tx เดียวกัน (หลังได้ล็อก — เห็นสิ่งที่ markPaid / reverseRun commit ไปก่อนแล้ว) → (3) เป้าหมาย:
+//   • รายการผูกรอบที่ **PAID** และพนักงานมีแถวในรอบนั้น ⇒ PAID
+//   • รายการ **ยังไม่ผูกรอบ** (runId null) ⇒ APPROVED (ยังไม่ได้จ่ายจริง)
+//   • ผูกรอบอื่นที่ยังไม่จ่าย (ร่าง / อนุมัติ / REVERSED เก่าก่อน H0.6) ⇒ ไม่แตะ ไม่ลงประวัติ (R3.3 — รอบนั้นจัดการเองเมื่อจ่าย/ถูกปลด)
+//   (4) เขียนเฉพาะแถวที่ยังไม่อยู่ในสถานะเป้าหมาย (guard สถานะเดิม · ส่งซ้ำ = 0 แถว ไม่เขียนเลย) → ประวัติหลัง commit เฉพาะแถวที่เปลี่ยนจริง:
+//   PAID→APPROVED = `crm.commission.unpaid` · APPROVED→PAID จากตัวรับ reversed = `crm.commission.repaid` (ทางปกติของ paid ไม่ลงประวัติ — เหมือนเดิม)
+//   กติกาคู่: { id = crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL · แถวถอนคืน (REVERSED) ไม่ถูกแตะ ◂
+type ConvergeMode = "PAID_EVENT" | "REVERSED_EVENT";
+const CONVERGE_TX_OPTS = { maxWait: 60_000, timeout: 600_000 };
+async function convergeCommissions(
+  tenantId: string,
+  hrSystemId: string,
+  runId: string,
+  pairs: { id: string; hrPayAdjustmentId: string }[],
+  mode: ConvergeMode,
+): Promise<{ paid: number; unpaid: number; repaid: number }> {
+  const want = new Map<string, string>();
+  for (const p of pairs) if (p.id && p.hrPayAdjustmentId && !want.has(p.id)) want.set(p.id, p.hrPayAdjustmentId);
+  const ids = [...want.keys()].sort();
+  if (ids.length === 0) return { paid: 0, unpaid: 0, repaid: 0 };
+  const hr = await hrFacade();
+  const changes: { id: string; systemId: string; to: "PAID" | "APPROVED" }[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const part = await tenantDb({ tenantId }).$transaction(async (t) => {
+      const tx = t as unknown as Tx;
+      const locked = await tx.$queryRaw<{ id: string; systemId: string; status: string; hrPayAdjustmentId: string | null }[]>`
+        SELECT "id", "systemId", "status"::text AS "status", "hrPayAdjustmentId" FROM "CrmCommission"
+        WHERE "tenantId" = ${tenantId} AND "id" IN (${Prisma.join(chunk)}) AND "reversedOfId" IS NULL
+          AND "status" IN ('APPROVED'::"CrmCommissionStatus", 'PAID'::"CrmCommissionStatus")
+        ORDER BY "id" FOR UPDATE`;
+      const rows = locked.filter((r) => !!r.hrPayAdjustmentId && want.get(r.id) === r.hrPayAdjustmentId);
+      if (rows.length === 0) return [];
+      const adj = new Map((await hr.adjustmentsByIds({ tenantId, systemId: hrSystemId }, rows.map((r) => r.hrPayAdjustmentId as string), { tx })).map((a) => [a.id, a]));
+      const done: { id: string; systemId: string; to: "PAID" | "APPROVED" }[] = [];
+      for (const r of rows) {
+        const a = adj.get(r.hrPayAdjustmentId as string);
+        if (!a || a.crmCommissionId !== r.id) continue;
+        const target: "PAID" | "APPROVED" | null = a.runId === null ? "APPROVED" : a.runStatus === "PAID" && a.hasItem ? "PAID" : null;
+        if (!target || target === r.status) continue;
+        const n = await tx.$executeRaw`
+          UPDATE "CrmCommission" SET "status" = ${target}::"CrmCommissionStatus"
+          WHERE "id" = ${r.id} AND "tenantId" = ${tenantId} AND "status" = ${r.status}::"CrmCommissionStatus" AND "reversedOfId" IS NULL`;
+        if (n === 1) done.push({ id: r.id, systemId: r.systemId, to: target });
+      }
+      return done;
+    }, CONVERGE_TX_OPTS);
+    changes.push(...part);
   }
-  if (skipped.length > 0) {
-    await logOps("WARN", "crm", "คอมมิชชัน: event กลับรายการรอบจ่ายมาหลังรายการเข้ารอบใหม่ที่จ่ายแล้ว — ไม่ถอนสถานะจ่าย", {
-      tenantId,
-      detail: `hrSystemId=${systemId} runId=${runId} skipped=${skipped.length} adjustmentIds=${skipped.slice(0, 20).join(",")}`,
-    }).catch(() => undefined);
-  }
+  let paid = 0;
   let unpaid = 0;
-  const changedPairs: { id: string; hrPayAdjustmentId: string }[] = [];
-  for (let i = 0; i < pairs.length; i += 500) {
-    const chunk = pairs.slice(i, i + 500);
-    const changed = await prisma.crmCommission.updateManyAndReturn({
-      where: { tenantId, status: "PAID", reversedOfId: null, OR: chunk },
-      data: { status: "APPROVED" },
-      select: { id: true, systemId: true, hrPayAdjustmentId: true },
-    });
-    for (const c of changed) {
-      await audit({ tenantId, systemId: c.systemId }, "crm.commission.unpaid", "CrmCommission", c.id, { before: { status: "PAID" }, after: { status: "APPROVED", via: "PAYROLL_REVERSED", runId } }, null);
-      if (c.hrPayAdjustmentId) changedPairs.push({ id: c.id, hrPayAdjustmentId: c.hrPayAdjustmentId });
-    }
-    unpaid += changed.length;
-  }
-  // HR H0.6 r2 ▸ R3 (รีวิว) กันแข่งข้ามโมดูล: เราอ่าน adjustmentsByIds ตอนรอบใหม่ (R2) ยังไม่จ่าย → ระหว่างนั้น markPaid(R2) commit
-  //   แล้ว onPayrollPaid(R2) เปลี่ยน 0 แถว (คอมมิชชันยัง PAID จากรอบเดิม) → เราค่อยถอน PAID→APPROVED ⇒ R2 จ่ายแล้วแต่คอมมิชชันค้าง APPROVED ตลอดไป
-  //   ⇒ หลังถอนเสร็จ อ่านรายการของคู่ที่เพิ่งถอนอีกครั้ง: รายการไหนตอนนี้ผูกกับรอบที่ PAID แล้ว = คืน APPROVED→PAID (กติกาคู่เดิม · reversedOfId IS NULL)
-  //   ใครลงมือทีหลัง (onPayrollPaid หรือขั้นนี้) ก็ได้ผลสุดท้ายเดียวกัน · 1 แถวประวัติ `crm.commission.repaid` ต่อแถวที่เปลี่ยนจริง ◂
   let repaid = 0;
-  if (changedPairs.length > 0) {
-    const now = await hr.adjustmentsByIds({ tenantId, systemId }, changedPairs.map((p) => p.hrPayAdjustmentId));
-    const paidNow = new Set(now.filter((r) => r.runId && r.runStatus === "PAID").map((r) => r.id));
-    const back = changedPairs.filter((p) => paidNow.has(p.hrPayAdjustmentId));
-    for (let i = 0; i < back.length; i += 500) {
-      const fixed = await prisma.crmCommission.updateManyAndReturn({
-        where: { tenantId, status: "APPROVED", reversedOfId: null, OR: back.slice(i, i + 500) },
-        data: { status: "PAID" },
-        select: { id: true, systemId: true },
-      });
-      for (const c of fixed) {
+  for (const c of changes) {
+    if (c.to === "APPROVED") {
+      unpaid += 1;
+      await audit({ tenantId, systemId: c.systemId }, "crm.commission.unpaid", "CrmCommission", c.id, { before: { status: "PAID" }, after: { status: "APPROVED", via: mode === "REVERSED_EVENT" ? "PAYROLL_REVERSED" : "PAYROLL_PAID_RECHECK", runId } }, null);
+    } else {
+      paid += 1;
+      if (mode === "REVERSED_EVENT") {
+        repaid += 1;
         await audit({ tenantId, systemId: c.systemId }, "crm.commission.repaid", "CrmCommission", c.id, { before: { status: "APPROVED" }, after: { status: "PAID", via: "PAYROLL_PAID_DURING_REVERSE", runId } }, null);
       }
-      repaid += fixed.length;
     }
   }
-  return { unpaid: unpaid - repaid };
+  return { paid, unpaid, repaid };
 }
 // ◂ HR H0.6

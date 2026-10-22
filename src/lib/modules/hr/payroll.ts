@@ -1,5 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client"; // HR H0.6 r3 ▸ ค่า (Prisma.join) ไม่ใช่แค่ type ◂
 // CRM C3.3 ▸ `hr.payroll.paid` ยิงใน tx เดียวกับการปิดรอบ (markPaid) ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
@@ -592,6 +592,14 @@ export async function createPayrollRun(
     // HR H0.6 ▸ R3 (D2b): รอบที่กลับรายการแล้ว (REVERSED) ไม่นับเป็นรอบซ้ำ ⇒ งวดที่กลับรายการแล้วสร้างรอบใหม่ได้ (ข้อความเดิมทุกตัวอักษร) ◂
     const dup = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey, ...liveRunWhere() }, select: { id: true } });
     if (dup) throw new PayrollInputError(`มีรอบจ่ายงวด ${periodKey} อยู่แล้ว — ลบหรือเลือกงวดอื่น`);
+    // HR H0.6 r3 ▸ R3.2 (ล่า F2): รอบ REVERSED ของงวดนี้ที่ยังผูกรายการเพิ่ม/หักอยู่ (ข้อมูลก่อน H0.6 — reverseRun เดิมไม่ปลด) ⇒ ห้ามสร้าง
+    //   ไม่งั้นรอบใหม่ข้ามรายการเหล่านั้นเงียบ ๆ (buildRunRows ดึงเฉพาะ runId IS NULL) · ตรวจใต้ล็อกงวด ก่อนเขียนอะไร · ข้อความคงที่ (ไม่มี id/ชื่อ/ยอด) ◂
+    const legacy = await tx.$queryRaw<{ n: number }[]>`
+      SELECT 1 AS "n" FROM "HrPayAdjustment" a JOIN "HrPayrollRun" r ON r."id" = a."runId"
+      WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND r."periodKey" = ${periodKey} AND r."status" = 'REVERSED'::"PayrollRunStatus"
+        AND a."tenantId" = ${ctx.tenantId} AND a."systemId" = ${ctx.systemId}
+      LIMIT 1`;
+    if (legacy.length > 0) throw new PayrollInputError(LEGACY_REVERSED_BOUND_TH);
 
     // H0.1 ▸ R1: แถว + ยอดรวม + รายการที่ล็อกไว้ มาจาก buildRunRows (ตัวเดียวกับ recomputeDraftRun) — ผลลัพธ์เท่าเดิมทุกไบต์ ◂
     const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, periodKey);
@@ -1510,6 +1518,7 @@ const REVERSE_JV_FAILED = "กลับรายการบัญชีไม�
 const REVERSE_TX_FAILED = "กลับรายการไม่สำเร็จ — รอบจ่ายยังไม่ถูกกลับ กรุณาลองอีกครั้ง";
 const REVERSE_OK = "กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว";
 const REVERSE_OK_NO_ACCOUNT = "กลับรายการเงินเดือนเรียบร้อย — ไม่พบระบบบัญชี จึงไม่ได้ลง JV กลับรายการ (รายการบัญชีเดิมคงอยู่)";
+const LEGACY_REVERSED_BOUND_TH = "งวดนี้มีรอบจ่ายที่กลับรายการไว้ก่อนหน้า และยังมีรายการเพิ่ม/หักผูกอยู่ — ยังสร้างรอบใหม่ไม่ได้ กรุณาติดต่อผู้ดูแลระบบให้ปลดรายการก่อน"; // HR H0.6 r3 ▸ R3.2 ◂
 const REVERSE_OK_JV_SKIPPED = "กลับรายการเงินเดือนเรียบร้อย — รายการบัญชีเดิมไม่อยู่ในสถานะที่ต้องกลับ จึงไม่ได้ลง JV กลับรายการ"; // HR H0.6 r2 ▸ R4 ◂
 // รอคิวล็อกงวดได้ (10 คนกดพร้อมกัน = ต่อคิว) · เพดานกว้างกว่าทางอื่นเพราะกลับ JV อยู่ใน tx เดียวกัน
 const REVERSE_TX_OPTS = { maxWait: 20_000, timeout: 120_000 } as const;
@@ -1563,32 +1572,33 @@ async function reverseRefused(ctx: Ctx, actor: PayrollActor | undefined, runId: 
   return { ok: false, note: REVERSE_TEXT[code], code };
 }
 
-export type PayAdjustmentRef = { id: string; runId: string | null; runStatus: string | null; crmCommissionId: string | null; status: string };
+export type PayAdjustmentRef = { id: string; runId: string | null; runStatus: string | null; crmCommissionId: string | null; status: string; hasItem: boolean };
 /**
  * R4 · OQ-6 — รายการเพิ่ม/หักตาม id (ผู้บริโภค `hr.payroll.reversed` ของ CRM) · ผูกร้าน + ระบบ HR (tenantDb) · id ของร้าน/ระบบอื่น = หายไปเงียบ ๆ ·
  * อ่านทีละ 500 · `runStatus` = สถานะของรอบที่รายการผูกอยู่ตอนนี้ (null = ยังไม่เข้ารอบ) — ให้ CRM ข้ามรายการที่เข้ารอบที่ **จ่ายแล้ว**
  * อีกรอบ (event กลับรายการที่มาช้า ห้ามถอนสถานะ PAID ของรอบใหม่ — OQ-3)
  */
-export async function adjustmentsByIds(ctx: Ctx, ids: string[]): Promise<PayAdjustmentRef[]> {
+export async function adjustmentsByIds(ctx: Ctx, ids: string[], opts: { tx?: unknown } = {}): Promise<PayAdjustmentRef[]> {
   if (!ctx?.tenantId || !ctx?.systemId || !Array.isArray(ids)) return [];
   const list = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 64))].sort();
   if (list.length === 0) return [];
-  const db = tenantDb(ctx);
-  const rows: { id: string; runId: string | null; crmCommissionId: string | null; status: string }[] = [];
+  // HR H0.6 r3 ▸ R3.1: ผู้เรียกส่ง tx ของตัวเองได้ (CRM อ่านสถานะ HR ใต้ล็อกแถวคอมมิชชันใน tx เดียวกัน — ไม่เปิด connection ที่สอง) ·
+  //   SQL ผูก tenantId + systemId ของ HR เองทุกตาราง (tx ของผู้เรียกอาจมีขอบเขตของระบบอื่น) · hasItem = กติกา H4 ของ adjustmentsOfRun
+  //   (รายการนับว่า "จ่ายในรอบนั้น" เมื่อพนักงานมีแถวในรอบนั้น) ◂
+  const db = (opts.tx as Prisma.TransactionClient | undefined) ?? tenantDb(ctx);
+  const rows: PayAdjustmentRef[] = [];
   for (let i = 0; i < list.length; i += 500) {
-    const part = await db.hrPayAdjustment.findMany({
-      where: { systemId: ctx.systemId, id: { in: list.slice(i, i + 500) } },
-      select: { id: true, runId: true, crmCommissionId: true, status: true },
-      orderBy: { id: "asc" },
-    });
-    rows.push(...part.map((r) => ({ ...r, status: String(r.status) })));
+    const part = await db.$queryRaw<{ id: string; runId: string | null; crmCommissionId: string | null; status: string; runStatus: string | null; hasItem: boolean }[]>`
+      SELECT a."id", a."runId", a."crmCommissionId", a."status"::text AS "status", r."status"::text AS "runStatus",
+        (a."runId" IS NOT NULL AND EXISTS (
+          SELECT 1 FROM "HrPayrollItem" it
+          WHERE it."tenantId" = a."tenantId" AND it."systemId" = a."systemId" AND it."runId" = a."runId" AND it."employeeId" = a."employeeId")) AS "hasItem"
+      FROM "HrPayAdjustment" a
+      LEFT JOIN "HrPayrollRun" r ON r."id" = a."runId" AND r."tenantId" = a."tenantId" AND r."systemId" = a."systemId"
+      WHERE a."tenantId" = ${ctx.tenantId} AND a."systemId" = ${ctx.systemId} AND a."id" IN (${Prisma.join(list.slice(i, i + 500))})
+      ORDER BY a."id"`;
+    rows.push(...part.map((r) => ({ id: r.id, runId: r.runId, runStatus: r.runId ? r.runStatus : null, crmCommissionId: r.crmCommissionId, status: r.status, hasItem: r.hasItem === true })));
   }
-  const runIds = [...new Set(rows.flatMap((r) => (r.runId ? [r.runId] : [])))];
-  const runStatus = new Map<string, string>();
-  for (let i = 0; i < runIds.length; i += 500) {
-    const runs = await db.hrPayrollRun.findMany({ where: { systemId: ctx.systemId, id: { in: runIds.slice(i, i + 500) } }, select: { id: true, status: true } });
-    for (const r of runs) runStatus.set(r.id, String(r.status));
-  }
-  return rows.map((r) => ({ ...r, runStatus: r.runId ? (runStatus.get(r.runId) ?? null) : null }));
+  return rows;
 }
 // ◂ HR H0.6
