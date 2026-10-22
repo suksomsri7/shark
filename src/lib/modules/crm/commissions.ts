@@ -1412,7 +1412,7 @@ export async function onPayrollPaid(input: { tenantId: string; hrSystemId: strin
   const systemId = str(input?.hrSystemId);
   const runId = str(input?.runId);
   if (!tenantId || !systemId || !runId) return { paid: 0 };
-  return onPayrollPaidConverging({ tenantId, systemId, runId }); // HR H0.6 r3 ▸ R3.1 ล็อกแถวก่อนอ่านสถานะ HR (ตัวรับคู่กับ onPayrollReversed) — ตัวเดิมด้านล่างไม่ถูกเรียกแล้ว ◂
+  if (H06_R3_CONVERGING) return onPayrollPaidConverging({ tenantId, systemId, runId }); // HR H0.6 r3 ▸ R3.1 ล็อกแถวก่อนอ่านสถานะ HR (ตัวรับคู่กับ onPayrollReversed) — ตัวเดิมด้านล่างไม่ถูกเรียกแล้ว ◂
   const hr = await hrFacade();
   const run = await hr.adjustmentsOfRun({ tenantId, systemId }, runId);
   if (run.status !== "PAID" || run.items.length === 0) return { paid: 0 };
@@ -2163,6 +2163,8 @@ async function onPayrollPaidConverging(input: { tenantId: string; systemId: stri
 //   PAID→APPROVED = `crm.commission.unpaid` · APPROVED→PAID จากตัวรับ reversed = `crm.commission.repaid` (ทางปกติของ paid ไม่ลงประวัติ — เหมือนเดิม)
 //   กติกาคู่: { id = crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL · แถวถอนคืน (REVERSED) ไม่ถูกแตะ ◂
 type ConvergeMode = "PAID_EVENT" | "REVERSED_EVENT";
+// สวิตช์ของบรรทัดส่งต่อใน onPayrollPaid (คงไฟล์แบบต่อท้ายอย่างเดียว · ชนิด boolean ⇒ ตัวเดิมยังผ่าน type narrowing) — เปิดถาวร
+const H06_R3_CONVERGING = true as boolean;
 const CONVERGE_TX_OPTS = { maxWait: 60_000, timeout: 600_000 };
 async function convergeCommissions(
   tenantId: string,
