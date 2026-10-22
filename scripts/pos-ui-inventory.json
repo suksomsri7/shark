@@ -221,11 +221,12 @@
       "testid": "pos-reg-unit-option-*",
       "kind": "link",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "manager",
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/register",
@@ -238,7 +239,7 @@
       "opener": [
         "pos-reg-unit-switch"
       ],
-      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
+      "needs": "POS ผูก ≥ 2 สาขาที่ผู้ใช้เข้าถึง (เจ้าของ = ทุกสาขา · ผู้จัดการ/แคชเชียร์ QC เข้าได้ 1 สาขา ⇒ ไม่มีเมนู)"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -490,10 +491,11 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/products",
@@ -2740,10 +2742,11 @@
       "kind": "form",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-reg-lines",
@@ -2762,10 +2765,11 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-reg-weigh-estimate",
@@ -2784,10 +2788,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-reg-lines",
@@ -5830,8 +5835,7 @@
       "testid": "pos-bills-unit",
       "kind": "select",
       "roles": [
-        "owner",
-        "cashier"
+        "owner"
       ],
       "expect": {
         "type": "navigate",
@@ -5843,7 +5847,8 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "hiddenFor": [
-        "manager"
+        "manager",
+        "cashier"
       ]
     },
     {
@@ -6978,8 +6983,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -9092,8 +9096,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -10154,10 +10157,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "note": "ปิดข้อความ \"ใส่ PIN ที่หน้าขายก่อน\"",
@@ -10180,10 +10184,11 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/register",
@@ -10205,10 +10210,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "note": "ปิดแป้น PIN ผู้จัดการ (NO_PERMISSION ของยกเลิก/คืนเงิน)",
@@ -10749,7 +10755,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "modal",
         "note": "ขอใบเต็มรูป (บิล ABB ยังไม่ออก) → 15A โหมดออกทีหลัง · ผู้ที่ไม่มีสิทธิ์ pos.taxinvoice.issue ไม่เห็น",
@@ -10772,7 +10780,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "modal",
         "note": "ออกใบกำกับจากคำขอของลูกค้า → 15A เติมข้อมูลคำขอ",
@@ -10795,7 +10805,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "modal",
         "note": "ปฏิเสธคำขอ → แผ่นเหตุผล",
@@ -10818,7 +10830,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "note": "ปิดแผ่นปฏิเสธ",
@@ -10843,7 +10857,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "note": "ส่งฟอร์ม = rejectTaxInvoiceRequestAction",
@@ -10868,7 +10884,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "note": "เหตุผล ≤200 (บังคับ)",
@@ -10892,7 +10910,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "note": "ยกเลิก",
@@ -10917,7 +10937,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "note": "ยืนยันปฏิเสธ → toast + รีเฟรชลิ้นชัก · ปฏิเสธ = ข้อความในแผ่น",
@@ -10942,7 +10964,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "pos-taxinv-taxid",
@@ -12113,7 +12137,8 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สิทธิ์ pos.settings.manage ที่สาขา (canEdit.unitStock · settings-overview.ts:60) — แคชเชียร์เห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12134,7 +12159,8 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สิทธิ์ pos.settings.manage ที่สาขา (canEdit.unitStock · settings-overview.ts:60) — แคชเชียร์เห็นแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -12186,11 +12212,10 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "note": "คำนำหน้า 20–29 ต่อกฎ (ลำดับแถว) · ซ้ำ = pos-settings-general-field-error (weighedBarcode.rules)",
@@ -12204,8 +12229,8 @@
         "pos-settings-general-weighed-add"
       ],
       "needs": [
-        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้",
-        "กฎบาร์โค้ดสินค้าชั่งที่บันทึกไว้ (weighedBarcode.rules) สำหรับผู้จัดการ"
+        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ/แคชเชียร์เห็นแต่ปิดใช้",
+        "กฎบาร์โค้ดสินค้าชั่งที่บันทึกไว้ (weighedBarcode.rules) สำหรับผู้จัดการ/แคชเชียร์ (ปุ่มเพิ่มกฎ = เจ้าของเท่านั้น)"
       ]
     },
     {
@@ -12214,11 +12239,10 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-general-weighed-kind-*-*",
@@ -12233,8 +12257,8 @@
         "pos-settings-general-weighed-add"
       ],
       "needs": [
-        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้",
-        "กฎบาร์โค้ดสินค้าชั่งที่บันทึกไว้ (weighedBarcode.rules) สำหรับผู้จัดการ"
+        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEdit.general = pos.settings.manage ทุกสาขา) — ผู้จัดการ/แคชเชียร์เห็นแต่ปิดใช้",
+        "กฎบาร์โค้ดสินค้าชั่งที่บันทึกไว้ (weighedBarcode.rules) สำหรับผู้จัดการ/แคชเชียร์ (ปุ่มเพิ่มกฎ = เจ้าของเท่านั้น)"
       ]
     },
     {
@@ -13005,10 +13029,11 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/settings/connections",
@@ -13090,7 +13115,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-shark"
-      ]
+      ],
+      "needs": "สิทธิ์ pos.settings.manage ที่สาขา (etax.canManage · page.tsx:216) — แคชเชียร์เห็นปุ่มแต่ปิดใช้"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -13458,7 +13484,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-channel-drawer",
@@ -13506,7 +13534,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-channel-drawer-payout-*",
@@ -13530,7 +13560,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-channel-example",
@@ -13554,7 +13586,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-channel-example",
@@ -13578,7 +13612,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-channel-drawer-vat-*",
@@ -13603,7 +13639,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-channel-drawer",
@@ -13751,11 +13789,11 @@
       "testid": "pos-bills-channel-code-filter",
       "kind": "filter",
       "roles": [
-        "owner",
-        "cashier"
+        "owner"
       ],
       "hiddenFor": [
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "ui",
@@ -14710,7 +14748,10 @@
         "pos-prod-*open-*",
         "pos-prod-tab-recipe"
       ],
-      "needs": "เมนูที่มีสูตรจากเมนูเดิมแต่ปิดตัดสต็อก (backfilled)"
+      "needs": [
+        "เมนูที่มีสูตรจากเมนูเดิมแต่ปิดตัดสต็อก (backfilled)",
+        "ผู้จัดการสาขา: สินค้าที่ผูกสาขาของตน (PosProduct.unitId) — สินค้าทั้งร้าน (unitId null) ต้องมีสิทธิ์ทุกสาขาที่ผูก (catalog.ts:370-386 rowWriteVerdict) · UI ไม่ซ่อน = CD-P41-F11"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -15053,7 +15094,10 @@
         "pos-prod-recipe-search=*",
         "pos-prod-recipe-pick-*=click"
       ],
-      "needs": "สินค้าแรกรองรับสูตร (recipeCapable)"
+      "needs": [
+        "สินค้าแรกรองรับสูตร (recipeCapable)",
+        "ผู้จัดการสาขา: สินค้าที่ผูกสาขาของตน (PosProduct.unitId) — สินค้าทั้งร้าน (unitId null) ต้องมีสิทธิ์ทุกสาขาที่ผูก (catalog.ts:370-386 rowWriteVerdict) · UI ไม่ซ่อน = CD-P41-F11"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -15171,11 +15215,10 @@
       "kind": "tab",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "note": "แท็บโมดูล POS (ป้ายตามภาษาจอ) บนจอโปรราคา",
@@ -15191,11 +15234,10 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/products",
@@ -15970,8 +16012,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16148,8 +16189,7 @@
       "kind": "menu",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16234,8 +16274,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16262,8 +16301,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16657,8 +16695,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16745,8 +16782,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16805,8 +16841,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16886,8 +16921,7 @@
       "kind": "form",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17094,8 +17128,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17120,8 +17153,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17177,8 +17209,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17264,8 +17295,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17293,8 +17323,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17318,8 +17347,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17505,10 +17533,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "modal",
         "target": "pos-tbl-merge-sheet",
@@ -18528,10 +18557,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-merge-sheet",
@@ -18557,10 +18587,11 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-merge-summary",
@@ -18587,10 +18618,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:registerMergeTablesAction",
@@ -18624,10 +18656,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-move-confirm",
@@ -18654,10 +18687,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:registerMoveTableAction",
@@ -18690,10 +18724,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-merge-confirm-dialog",
@@ -18716,10 +18751,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:registerMergeTablesAction",
@@ -19732,7 +19768,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-ord-reject-reason-*",
@@ -19756,7 +19794,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-ord-reject-sheet",
@@ -19780,7 +19820,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
@@ -19804,7 +19846,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-ord-cancel-sheet",
@@ -19829,7 +19873,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
@@ -19855,7 +19901,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-ord-prep-value",
@@ -19880,7 +19928,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-ord-prep-value",
@@ -19905,7 +19955,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-ord-accept",
@@ -21377,7 +21429,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/kds",
@@ -21399,7 +21453,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-device-note",
@@ -21423,7 +21479,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-device-note",
@@ -21447,7 +21505,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-device-note",
@@ -21475,7 +21535,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-kitchen-max",
@@ -21499,7 +21561,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-kitchen-max",
@@ -21520,7 +21584,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-kitchen-max",
@@ -21544,7 +21610,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
@@ -21559,7 +21627,10 @@
         "pos-prod-*open-*",
         "pos-prod-tab-general"
       ],
-      "needs": "สินค้าแรกไม่ใช่เมนู + สถานีครัว (KdsStation) ของสาขา"
+      "needs": [
+        "สินค้าแรกไม่ใช่เมนู + สถานีครัว (KdsStation) ของสาขา",
+        "ผู้จัดการสาขา: สินค้าที่ผูกสาขาของตน (PosProduct.unitId) — สินค้าทั้งร้าน (unitId null) ต้องมีสิทธิ์ทุกสาขาที่ผูก (catalog.ts:370-386 rowWriteVerdict) · UI ไม่ซ่อน = CD-P41-F11"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -21567,10 +21638,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-prod-toast",
@@ -22068,10 +22140,10 @@
       "testid": "pos-prod-copy-open",
       "kind": "button",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22261,10 +22333,10 @@
       "testid": "pos-prod-copy-from",
       "kind": "select",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22285,10 +22357,10 @@
       "testid": "pos-prod-copy-to",
       "kind": "select",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22309,10 +22381,10 @@
       "testid": "pos-prod-copy-overwrite",
       "kind": "toggle",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22333,10 +22405,10 @@
       "testid": "pos-prod-copy-onlyFiltered",
       "kind": "toggle",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22358,10 +22430,10 @@
       "testid": "pos-prod-copy-run",
       "kind": "button",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22388,10 +22460,10 @@
       "testid": "pos-prod-copy-cancel",
       "kind": "button",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -22413,10 +22485,10 @@
       "testid": "pos-prod-copy-close",
       "kind": "button",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "cashier"
       ],
       "expect": {
@@ -23572,11 +23644,12 @@
       "testid": "pos-bills-refund-deposit-pin-back",
       "kind": "button",
       "roles": [
-        "owner",
-        "manager",
         "cashier"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
       "expect": {
         "type": "ui",
         "target": "pos-bills-refund-deposit-reason",
@@ -23742,8 +23815,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -23798,8 +23870,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -24590,7 +24661,10 @@
         "pos-settings-nav-shark",
         "pos-settings-api-row-revoke-*"
       ],
-      "needs": "คีย์ API ที่ยังไม่เพิกถอนของระบบ POS นี้"
+      "needs": [
+        "คีย์ API ที่ยังไม่เพิกถอนของระบบ POS นี้",
+        "ผู้จัดการ: คีย์ที่ผูกเฉพาะสาขาของผู้ใช้ (คีย์ทุกสาขา = PERMISSION_DENIED · api-key-actions.ts:174)"
+      ]
     },
     {
       "page": "/developers/pos",
@@ -25828,8 +25902,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "expect": {
         "type": "ui",
@@ -25841,7 +25914,9 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-panel-qr",
@@ -25855,8 +25930,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "expect": {
         "type": "mutation",
@@ -25868,7 +25942,9 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "opener": [
         "pos-tbl-card-*",
         "pos-tbl-panel-qr",
@@ -26091,7 +26167,9 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=channels&unit=[unitId]",
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order",
@@ -26116,7 +26194,9 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=channels&unit=[unitId]",
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order",
@@ -26141,7 +26221,9 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=channels&unit=[unitId]",
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order",
@@ -26167,7 +26249,9 @@
       "oracle": "",
       "system": "POS",
       "query": "tab=channels&unit=[unitId]",
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order",
@@ -26181,7 +26265,8 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "navigate",
@@ -26204,7 +26289,8 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "navigate",
@@ -27586,10 +27672,11 @@
       "kind": "notice",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-shift-close-submit",
@@ -27631,7 +27718,8 @@
       "kind": "notice",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -27969,9 +28057,7 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [
-        "cashier"
-      ],
+      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "setPosChatSettingsAction",
@@ -28122,8 +28208,7 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -28197,7 +28282,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "ui",
@@ -28324,11 +28410,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-rule-assignManager",
@@ -28350,11 +28435,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-rule-shiftDiff",
@@ -28376,11 +28460,10 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "note": "R4: เกณฑ์ขาด/เกิน บาทจำนวนเต็ม ↔ สตางค์ ×100 (rules.shiftDiff.minAbsSatang · ช่วง POS_BOARD_LIMITS — นอกช่วง = VALIDATION ของเซิร์ฟเวอร์ที่ช่องนี้)",
@@ -28401,11 +28484,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-rule-everyClose",
@@ -28427,11 +28509,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-rule-forcedClose",
@@ -28453,11 +28534,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-rule-soldOut",
@@ -28479,11 +28559,10 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "note": "R5: ชั่วโมง 1–168 (rules.soldOut.hours) · นอกช่วง = VALIDATION field board.rules.soldOut.hours (ภาพ settings-board-invalid)",
@@ -28504,11 +28583,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-source-*",
@@ -28530,11 +28608,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-rule-refundNeeded",
@@ -28582,7 +28659,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "ui",
@@ -28659,11 +28737,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-post-shiftClose",
@@ -28685,11 +28762,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-post-showOverShort",
@@ -28711,11 +28787,10 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-settings-board-post-dailyBrief",
@@ -28740,11 +28815,10 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "note": "R8: ชั่วโมงส่งสรุปเช้า 0–23 (briefHourBkk) · ไม่มีห้องปริยาย = ปิด",
@@ -28794,7 +28868,8 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "navigate",
@@ -28919,7 +28994,8 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "navigate",
@@ -28941,8 +29017,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -28966,8 +29041,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -29277,8 +29351,7 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
-        "cashier"
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
