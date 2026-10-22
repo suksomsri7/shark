@@ -41,7 +41,7 @@ import { execFileSync } from "node:child_process";
 import {
   BTN, DEVICES, PASS_MATRIX, REGISTRY_GAP_REASONS, SHOTS_DIR, SKIP_REASONS, STAFF, MONEY_MODELS_UNIT, QC_TENANT,
   assertWritable, cellName, cellRows, classify, cleanupFixtures, countTenant, db, dbHost, dbNow, ensureFixtures, estimateSec, loadP41Rules, modelInfo,
-  newCtx, planCell, preflight, readRegistry, restoreSettingsIfChanged, rowKey, summaryFile, writesOf, writtenSince,
+  newCtx, planCell, preflight, readRegistry, restoreSettingsIfChanged, rowKey, sha16, summaryFile, writesOf, writtenSince,
   type Cell, type CellPlan, type Ctx, type DeviceKey, type Locale, type P41Rules, type PlanItem, type Registry, type Row, type SkipReason, type UserKey,
 } from "./pos-buttons-fixtures.mjs";
 
@@ -1106,6 +1106,7 @@ function writeSummary(): void {
   for (const r of rows) if (r.class === "skip") perReason[r.reason ?? "?"] = (perReason[r.reason ?? "?"] ?? 0) + 1;
   const S = {
     suite: SUITE, at: new Date().toISOString(), head: HEAD, base: BASE, dbHost: dbHost(), registryHash: REG.hash, p41Sha: RULES.sourceHash,
+    oracleIdsHash: sha16([...ORACLE_IDS].sort().join(",")),
     cell: CELL, page: PAGE, only: ONLY, unit: BTN.unit.id, deviceCode: CTX.deviceCode,
     total: rows.length, ok: n("ok"), dead: n("dead"), wrongExpect: n("wrongExpect"), hiddenLeak: n("hiddenLeak"), skip: n("skip"), error: n("error"), perReason,
     consoleErrors: CONSOLE, hydration: HYDRATION, overflow: OVERFLOW, http5xx: HTTP, moneyPresses: MONEY, restores: CTX.restores, fixtureLog: CTX.log,
