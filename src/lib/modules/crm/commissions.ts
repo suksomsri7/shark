@@ -2123,8 +2123,8 @@ async function toDtos(ctx: Scope, rows: CrmCommission[]): Promise<CommissionDto[
 //   ⇒ คอมมิชชัน PAID ของรายการที่ถูกปลดจากรอบนั้น กลับเป็น APPROVED (ยังไม่ได้จ่ายจริง) แล้วรอบใหม่ของงวดเดิมจ่ายให้อีกครั้ง (`onPayrollPaid`)
 //   กติกาคู่เดียวกับ onPayrollPaid: { id = HrPayAdjustment.crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL ·
 //   รายการอ่านผ่าน HR facade `adjustmentsByIds` (ผูกร้าน + ระบบ HR ของ event) · รอบต้องเป็น REVERSED จริง (event ปลอม/ข้ามร้าน = 0 แถว)
-//   r3 (R3.1 · R3.3): ตัดสินใต้ล็อกแถวใน convergeCommissions — ถอนเป็น APPROVED เฉพาะรายการที่ **ยังไม่ผูกรอบ** · ผูกรอบที่จ่ายแล้ว = คง/คืน PAID ·
-//   ผูกรอบอื่น (ร่าง / อนุมัติ / REVERSED เก่า) = ข้ามเงียบ ๆ · เขียนเฉพาะแถวที่เปลี่ยนจริง ⇒ ส่งซ้ำ/พร้อมกัน = 0 แถว 0 ประวัติ ·
+//   r3 (R3.1 · R3.3 ตามมติกติการวม): ตัดสินใต้ล็อกแถวใน convergeCommissions — ยังไม่ผูกรอบ / ผูกรอบร่างหรืออนุมัติ = APPROVED ·
+//   ผูกรอบที่จ่ายแล้ว = คง/คืน PAID · ผูกรอบ REVERSED เก่า = ข้ามเงียบ ๆ · เขียนเฉพาะแถวที่เปลี่ยนจริง ⇒ ส่งซ้ำ/พร้อมกัน = 0 แถว 0 ประวัติ ·
 //   แถวถอนคืน (REVERSED · ใบ C3.3) ไม่ถูกแตะ — DEDUCTION ของมันถูก HR ปลดและเข้ารอบใหม่เองเหมือนรายการอื่น (R5)
 export async function onPayrollReversed(input: { tenantId: string; hrSystemId: string | null; runId: string | null; adjustmentIds?: unknown }): Promise<{ unpaid: number }> {
   const tenantId = str(input?.tenantId);
@@ -2155,8 +2155,10 @@ async function onPayrollPaidConverging(input: { tenantId: string; systemId: stri
 //   ทีละ 500 แถวใน tx เดียว: (1) `SELECT … FOR UPDATE` แถวคอมมิชชัน (เรียงตาม id — ไม่ deadlock กันเอง) → (2) อ่านสถานะ HR ด้วย
 //   `adjustmentsByIds` บน tx เดียวกัน (หลังได้ล็อก — เห็นสิ่งที่ markPaid / reverseRun commit ไปก่อนแล้ว) → (3) เป้าหมาย:
 //   • รายการผูกรอบที่ **PAID** และพนักงานมีแถวในรอบนั้น ⇒ PAID
-//   • รายการ **ยังไม่ผูกรอบ** (runId null) ⇒ APPROVED (ยังไม่ได้จ่ายจริง)
-//   • ผูกรอบอื่นที่ยังไม่จ่าย (ร่าง / อนุมัติ / REVERSED เก่าก่อน H0.6) ⇒ ไม่แตะ ไม่ลงประวัติ (R3.3 — รอบนั้นจัดการเองเมื่อจ่าย/ถูกปลด)
+//   • รายการ **ยังไม่ผูกรอบ** (runId null) หรือผูกรอบที่ **ยังไม่จ่าย** (ร่าง / อนุมัติ — เช่นรอบใหม่ของงวดเดิม) ⇒ APPROVED (ยังไม่ได้จ่ายจริง ·
+//     รอบนั้นจ่ายเมื่อไร ตัวรับ paid ปิด PAID ให้ · ร่างถูกลบ = ค่ายังจริงอยู่แล้ว)
+//   • ผูกรอบ **REVERSED** (ข้อมูลเก่าก่อน H0.6 ที่ยังไม่ถูกปลด) ⇒ ไม่แตะ ไม่ลงประวัติ (ตัวกันของ createPayrollRun + ใบแยกจัดการ)
+//   มติผู้คุมงาน r3 (กติการวม): คอมมิชชัน PAID ได้ก็ต่อเมื่อมีรอบที่ PAID ถืออยู่เท่านั้น — นอกนั้น APPROVED ตามจริง
 //   (4) เขียนเฉพาะแถวที่ยังไม่อยู่ในสถานะเป้าหมาย (guard สถานะเดิม · ส่งซ้ำ = 0 แถว ไม่เขียนเลย) → ประวัติหลัง commit เฉพาะแถวที่เปลี่ยนจริง:
 //   PAID→APPROVED = `crm.commission.unpaid` · APPROVED→PAID จากตัวรับ reversed = `crm.commission.repaid` (ทางปกติของ paid ไม่ลงประวัติ — เหมือนเดิม)
 //   กติกาคู่: { id = crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL · แถวถอนคืน (REVERSED) ไม่ถูกแตะ ◂
@@ -2191,7 +2193,8 @@ async function convergeCommissions(
       for (const r of rows) {
         const a = adj.get(r.hrPayAdjustmentId as string);
         if (!a || a.crmCommissionId !== r.id) continue;
-        const target: "PAID" | "APPROVED" | null = a.runId === null ? "APPROVED" : a.runStatus === "PAID" && a.hasItem ? "PAID" : null;
+        const target: "PAID" | "APPROVED" | null =
+          a.runId === null || a.runStatus === "DRAFT" || a.runStatus === "APPROVED" ? "APPROVED" : a.runStatus === "PAID" && a.hasItem ? "PAID" : null;
         if (!target || target === r.status) continue;
         const n = await tx.$executeRaw`
           UPDATE "CrmCommission" SET "status" = ${target}::"CrmCommissionStatus"

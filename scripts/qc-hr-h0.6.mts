@@ -136,7 +136,7 @@ const CHECKS: readonly Def[] = [
   D("X10.3", "X10", "CRITICAL", "R3 order (hunter P1) still converges: reversed#R1 handler held → markPaid(R2) + paid#R2 → release ⇒ R2 PAID · commission PAID · unpaid = repaid ≤ 1 · then reversed#R1, paid#R1, paid#R2 each delivered ×2 more ⇒ commission row (status + updatedAt) and audit counts unchanged"),
   D("X10.4", "X10", "MAJOR", "20 concurrent rounds, random 0–40 ms offsets, alternating shapes (P9: reversed#R1 ∥ markPaid(R2)+paid#R2 · mirror: paid#R1 ∥ reverseRun(R1)+reversed#R1) ⇒ every round: commission status = (adjustment bound to a PAID run ? PAID : APPROVED) · unpaid ≤ 1 · repaid ≤ 1 · no throw"),
   D("S10.5", "-", "CRITICAL", "create guard (R3.2 · F2): period with a legacy REVERSED run that still has 2 bound adjustments (pre-H0.6 data, set in DB) ⇒ createPayrollRun throws PayrollInputError with a fixed Thai text (not the dup text · no id, name or amount · same text twice) · 0 runs created · 0 outbox events · 0 audit rows"),
-  D("S10.6", "-", "MAJOR", "payload hygiene (R3.3 · F3): own reversed event whose adjustmentIds = [unbound own row, row bound to a PAID run, row bound to a legacy REVERSED run, row bound to a DRAFT run] (all commissions PAID) ⇒ only the unbound row's commission → APPROVED (1 unpaid audit) · the 3 bound rows' commissions stay PAID, 0 audits"),
+  D("S10.6", "-", "MAJOR", "payload hygiene (R3.3 · F3): own reversed event whose adjustmentIds = [unbound own row, row bound to a PAID run, row bound to a legacy REVERSED run, row bound to a DRAFT run] (all commissions PAID) ⇒ the unbound row's and the DRAFT-bound row's commissions → APPROVED (1 unpaid audit each · ORACLE-EDIT r3, global converging rule) · rows bound to the PAID run and the legacy REVERSED run stay PAID, 0 audits"),
   D("S10.7", "-", "MAJOR", "runbook pre-check SQL (review R2, verbatim) returns exactly the S10.5 legacy run with n = 2 among this tenant's runs · after the rows are unbound it returns none of them"),
   D("S10.8", "-", "CRITICAL", "after the legacy rows are unbound: createPayrollRun(P) succeeds · binds exactly the 2 rows · totalAdd = OT + COMMISSION once (= the legacy run's) · 7 totals = the legacy run's · Σ items = totals"),
   D("Z1", "-", "MAJOR", "residue: throwaway tenants and every tenantId row (outbox, audit, CRM, account, HR) are gone"),
@@ -1458,7 +1458,7 @@ async function runDb(): Promise<void> {
       const Ad = await linkCommission(cHP, Cd, eP, pd, B(1_000));
       const Rd = await mkRun(cHP, pd); // DRAFT binds Ad
       await P.crmCommission.update({ where: { id: Cd }, data: { status: "PAID" } }); // forced: commission PAID while its row sits in a DRAFT run
-      const others = [[s.C, s.A, "PAID run"], [q.C, q.A, "legacy REVERSED run"], [Cd, Ad, "DRAFT run"]] as const;
+      const others = [[s.C, s.A, "PAID run"], [q.C, q.A, "legacy REVERSED run"]] as const; // ORACLE-EDIT r3 (controller: global converging rule) — DRAFT-bound row judged below
       const snap = async () => stable(await Promise.all(others.map(async ([c, a]) => ({ c: await stateOf(c, a), bound: (await adjRows([a]))[0]?.runId ?? null }))));
       const before = await snap();
       const ev = (await evOf(T3, `hr.payroll.reversed#${r.R1}`))[0];
@@ -1466,14 +1466,16 @@ async function runDb(): Promise<void> {
       const dl = await deliver({ ...ev, payload: { ...ev.payload, adjustmentIds: [r.A, s.A, q.A, Ad] } });
       const after = await snap();
       const own = await stateOf(r.C, r.A);
+      const dr = await stateOf(Cd, Ad); // ORACLE-EDIT r3: DRAFT-bound (not yet paid) ⇒ APPROVED · 1 unpaid audit · stays bound
       const per = await Promise.all(others.map(async ([c, a, what]) => `${what}: ${stTxt(await stateOf(c, a))}`));
       ok = dl.ok && own.status === "APPROVED" && own.un === 1 && own.re === 0 && own.runId === null && before === after
-        && (await Promise.all(others.map(async ([c, a]) => (await stateOf(c, a)).status === "PAID"))).every(Boolean) && Rd.length > 0;
-      info = `deliver=${dl.ok ? "ok" : dl.err} · own unbound: ${stTxt(own)} · ${per.join(" · ")} · bound rows unchanged=${before === after}`;
+        && (await Promise.all(others.map(async ([c, a]) => (await stateOf(c, a)).status === "PAID"))).every(Boolean) && Rd.length > 0
+        && dr.status === "APPROVED" && dr.un === 1 && dr.re === 0 && dr.runId !== null;
+      info = `deliver=${dl.ok ? "ok" : dl.err} · own unbound: ${stTxt(own)} · DRAFT run: ${stTxt(dr)} · ${per.join(" · ")} · bound rows unchanged=${before === after}`;
     } catch (e) {
       info = `crash ${errText(e)}`;
     }
-    chk("S10.6", ok, "only the unbound row un-paid (1 audit) · rows bound to PAID / legacy REVERSED / DRAFT runs untouched", info);
+    chk("S10.6", ok, "unbound + DRAFT-bound rows un-paid (1 audit each) · rows bound to PAID / legacy REVERSED runs untouched", info);
   }
 
   // ── X10.1 F1a mirror ──
