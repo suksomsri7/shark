@@ -9989,9 +9989,9 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "ui",
-        "target": "pos-settings-card-receipt",
-        "note": "\"สมัคร\" e-Tax — ปิดเสมอ (รอผู้ให้บริการ · P3.11)"
+        "type": "modal",
+        "target": "pos-settings-etax-sheet",
+        "note": "\"สมัคร\" e-Tax — POS P3-SKEL U (CD-SKELU-8): live สำหรับผู้ถือ pos.settings.manage → แผ่นผู้ให้บริการ (INET/Leceipt · ไม่เลือกให้ · W20) + การ์ด credentials ETAX · อื่น = ปิด (รอผู้ให้บริการ)"
       },
       "wo": "P1.18U",
       "oracle": "",
@@ -22318,6 +22318,186 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "โหลดการ์ด credentials ไม่สำเร็จ → อ่านซ้ำ (readIntegrationCredentialsAction)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-field-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ช่องตามชื่อฟิลด์ของผู้ให้บริการ (ป้าย pos.platform.fields.<name>) · ค่าลับ = password ว่างเสมอ placeholder = ค่าปิดบัง · ไม่ใช่เจ้าของ/ไม่มีกุญแจ = ปิด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-clear-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ล้างช่องที่กรอกแล้ว → กล่องยืนยันในบรรทัด (เจ้าของร้าน · มีกุญแจ)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-cancel-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "ยกเลิกการล้างช่อง"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-confirm-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-channel-creds-status",
+        "note": "ล้างช่อง = saveIntegrationCredentialsAction {fields:{<name>: \"\"}} (เจ้าของร้านเท่านั้น) → มุมมองใหม่"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-webhook",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds",
+        "note": "URL webhook (อ่านอย่างเดียว · ไม่ใช่ความลับ) + บรรทัด \"ใช้ได้เมื่อเปิดตัวเชื่อมจริง (W4)\" — PLATFORM เท่านั้น"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-webhook-copy",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-creds-webhook",
+        "note": "คัดลอก URL webhook (clipboard)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-channel-creds-status",
+        "note": "บันทึกเฉพาะช่องที่พิมพ์ (saveIntegrationCredentialsAction · OWNER) · ทุกผลล้างช่องพิมพ์ · คำปฏิเสธ = messageKey ในบรรทัด (NOT_CONFIGURED keyMissing ฯลฯ)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-creds-test",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-channel-creds-result",
+        "note": "ทดสอบการเชื่อม — ปิดจนกว่า COMPLETE · ผล = คำปฏิเสธเสมอ NOT_CONFIGURED/ADAPTER_PENDING (ไม่เคย \"เชื่อมแล้ว\")"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=channels"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

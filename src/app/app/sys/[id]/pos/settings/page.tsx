@@ -47,6 +47,11 @@ import { visibleBoardOptions } from "@/lib/modules/kanban/links";
 import { getIntegrations } from "@/lib/modules/kanban/integrations";
 import { listRoomOptions, liveChannelIds } from "@/lib/modules/meeting";
 // ◂ POS P3.8U
+// POS P3-SKEL U ▸ CD-SKELU-2: ตัวอ่านฝั่งหน้า — สถานะ credentials ของช่องทางแพลตฟอร์ม (≤ 5 ต่อสาขา · เฉพาะผู้ถือ pos.channel.manage) ◂
+import { readIntegrationCredentials } from "@/lib/modules/pos/integration-creds";
+import { PLATFORM_PROVIDERS } from "@/lib/modules/pos/platform/types";
+import type { PlatformConn, PlatformInfo } from "./ChannelsPanel";
+// ◂ POS P3-SKEL U
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -183,6 +188,20 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           };
         })()
       : null;
+  // POS P3-SKEL U ▸ CD-SKELU-2/4: แท็บช่องทางขาย — ชิปสถานะ credentials ของช่องทางแพลตฟอร์ม (อ่านแบบปิดบัง · ไม่เขียนอะไร · ไม่มีค่าลับในผล) ◂
+  const posActor = { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions };
+  const platformInfo: PlatformInfo | null =
+    canRead && tab === "channels" && canManageChannels
+      ? await (async () => {
+          const chans = await prisma.salesChannel.findMany({ where: { tenantId, systemId: id, unitId, code: { in: [...PLATFORM_PROVIDERS] }, archivedAt: null }, select: { id: true, code: true }, orderBy: { code: "asc" }, take: 5 });
+          const statuses: Record<string, PlatformConn> = {};
+          for (const c of chans) {
+            const r = await readIntegrationCredentials({ tenantId, systemId: id, unitId }, posActor, { kind: "PLATFORM", provider: c.code, channelId: c.id });
+            if (r.ok === true) statuses[c.id] = !r.keyConfigured ? "keyMissing" : r.status === "COMPLETE" ? "complete" : "awaitingCreds";
+          }
+          return { codes: [...PLATFORM_PROVIDERS], isOwner: m.role === "OWNER", statuses };
+        })()
+      : null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -212,7 +231,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           <BoardSettings key={unitId} systemId={id} data={boardTab} /* POS P3.8U ▸ CD-P38U-1 ◂ */ />
         ) : tab === "channels" ? (
           <>
-            <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} />
+            <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} canAccept={canAcceptOrders} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} platform={platformInfo} /* POS P3-SKEL U ▸ CD-SKELU-4 ◂ */ />
             {/* POS P3.6U ▸ CD-P36U-10 (W17): สมาชิกบนบิลออเดอร์ — เจ้าของร้านสลับได้ · คนอื่นเห็นสถานะ ◂ */}
             <OrderMemberCard systemId={id} isOwner={m.role === "OWNER"} initial={posOrderMemberOnBill(sys.settings)} />
           </>

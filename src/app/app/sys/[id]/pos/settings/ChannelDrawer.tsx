@@ -34,6 +34,7 @@ import {
 import { moneyText, refusalMessageKey } from "@/lib/modules/pos/register-shared";
 import { CHANNEL_PRESET_BRAND, channelDisplayName, type ChannelT } from "@/components/pos/settings/channel-text";
 import { QrChannelBlock as QrChannelSection } from "./QrChannelBlock"; // POS P2.7U ▸ ลิ้นชัก QR_TABLE / QR_ORDER ◂
+import { IntegrationCredsCard } from "./IntegrationCredsCard"; // POS P3-SKEL U ▸ CD-SKELU-4: การ์ด credentials ของช่องทางแพลตฟอร์ม ◂
 
 export type ChannelDrawerMode = { kind: "edit"; item: ChannelItem } | { kind: "create" };
 type PayoutChoice = "PLATFORM" | "DIRECT" | "NONE";
@@ -69,9 +70,11 @@ type Props = {
   atLimit: boolean;
   onClose: () => void;
   onSaved: (c: ChannelItem) => void;
+  /** POS P3-SKEL U ▸ CD-SKELU-4: รหัสแพลตฟอร์ม (PLATFORM_PROVIDERS จากหน้าเพจ) + เจ้าของร้านไหม — ไม่ส่ง = ไม่มีส่วน credentials ◂ */
+  platform?: { codes: readonly string[]; isOwner: boolean } | null;
 };
 
-export function ChannelDrawer({ systemId, unitId, mode, canManage, canAccept = false, takenCodes, atLimit, onClose, onSaved }: Props) {
+export function ChannelDrawer({ systemId, unitId, mode, canManage, canAccept = false, takenCodes, atLimit, onClose, onSaved, platform = null /* POS P3-SKEL U ◂ */ }: Props) {
   const t = useTranslations("pos.channel") as ChannelT;
   const tr = useTranslations("pos.register") as RT;
   const item = mode.kind === "edit" ? mode.item : null;
@@ -447,6 +450,10 @@ export function ChannelDrawer({ systemId, unitId, mode, canManage, canAccept = f
 
           {/* POS P2.7U ▸ ช่องทางพื้นฐาน QR_TABLE / QR_ORDER: เปิดรับ · รับอัตโนมัติ · เวลาเตรียม · พักรับ · ลิงก์สั่งล่วงหน้า ◂ */}
           {item && isBuiltin && !item.archived && (item.code === "QR_TABLE" || item.code === "QR_ORDER") ? <QrChannelSection systemId={systemId} unitId={unitId} item={item} canManage={canManage} canAccept={canAccept} /* POS P2.7U fix1 ▸ F6 ◂ */ onSaved={() => undefined} /> : null}
+          {/* POS P3-SKEL U ▸ CD-SKELU-4: ช่องทางแพลตฟอร์ม (โหมดแก้) = การ์ด credentials + URL webhook · adapter ไม่เปลี่ยน (สวิตช์ W4) · ช่องทางใหม่เห็นหลังบันทึกครั้งแรก ◂ */}
+          {item && !item.archived && canManage && platform && platform.codes.includes(item.code) ? (
+            <IntegrationCredsCard systemId={systemId} unitId={unitId} kind="PLATFORM" provider={item.code} channelId={item.id} isOwner={platform.isOwner} />
+          ) : null}
           <div data-testid="pos-channel-example" className="flex flex-col gap-1 rounded-[12px] border border-dashed px-3.5 py-3 text-[13px]">
             <span className="text-[12px] font-semibold text-[color:var(--color-muted)]">{t("drawer.exampleTitle")}</span>
             <span className="tabular-nums text-[color:var(--color-ink-soft)]">

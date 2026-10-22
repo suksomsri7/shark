@@ -16,7 +16,7 @@ import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/R
 import { posSettingsHref } from "@/components/pos/settings/settings-tabs";
 import { TabHead } from "./settings-ui";
 // POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) — แทนแถว PLANNED ของ P1.18U ◂
-import { ChannelsPanel, type Storefront } from "./ChannelsPanel";
+import { ChannelsPanel, type PlatformInfo, type Storefront } from "./ChannelsPanel"; // POS P3-SKEL U ▸ + PlatformInfo ◂
 // POS P3.4U ▸ มติ 10 · CD-P34U-1: สวิตช์ออฟไลน์ของเจ้าของร้าน + รายการรอซิงก์ (เครื่องนี้ IndexedDB + รอผู้จัดการที่เซิร์ฟเวอร์) ◂
 import { updatePosOfflineEnabledAction, listOfflineRejectedAction } from "@/lib/modules/pos/offline-actions";
 import { countQueuedOnDevice } from "@/components/pos/register/offline-store";
@@ -247,12 +247,12 @@ function PhaseBanner({ text }: { text: string }) {
 }
 
 /** ?tab=channels — มติ 7 · POS P2.1U ▸ มติ 1: แผงช่องทางขายจริงเต็มความกว้าง (แบนเนอร์ "เปิดใช้ในเฟสถัดไป" ออกแล้ว — ออฟไลน์ยังมีแบนเนอร์) ◂ */
-export function ChannelsPane({ systemId, unitId, canManage, canAccept, storefront }: { systemId: string; unitId: string; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAccept?: boolean; storefront: Storefront }) {
+export function ChannelsPane({ systemId, unitId, canManage, canAccept, storefront, platform = null /* POS P3-SKEL U ▸ CD-SKELU-4 ◂ */ }: { systemId: string; unitId: string; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAccept?: boolean; storefront: Storefront; platform?: PlatformInfo | null }) {
   const t = useTranslations("pos.settings.channels");
   return (
     <div data-testid="pos-settings-channels" className="flex min-w-0 flex-col gap-6 md:gap-8">
       <TabHead title={t("tabTitle")} desc={t("tabSub")} />
-      <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManage} canAccept={canAccept} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} wide />
+      <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManage} canAccept={canAccept} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} wide platform={platform} /* POS P3-SKEL U ◂ */ />
     </div>
   );
 }
