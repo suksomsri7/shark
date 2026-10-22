@@ -558,9 +558,13 @@ const CRM_INVENTORY = "scripts/crm-ui-inventory.json";
 /** ไฟล์ยึด (มีจริงวันนี้ — ต้องถูกค้นเจอเสมอ ไม่งั้นตัวค้นหาพัง) */
 const POS_ANCHOR_FILES = ["src/lib/modules/pos/register-ui.tsx", "src/app/app/sys/[id]/pos/register/page.tsx"];
 const MIN_PATTERN_CHARS = 4;
-const ROW_KINDS = new Set(["button", "link", "menu", "tab", "toggle", "drag", "form", "filter", "input", "textarea", "select"]);
-const ROW_ROLES = new Set(["owner", "manager", "cashier"]);
+const ROW_KINDS = new Set(["button", "link", "menu", "tab", "toggle", "drag", "form", "filter", "input", "textarea", "select", "notice"]); // POS P4.1 ▸ CD-P41-O9: notice = การ์ดปฏิเสธ/ป้ายที่ไม่กด (R10 · expect ui state "refused") ◂
+const ROW_ROLES = new Set(["owner", "manager", "cashier", "public"]); // POS P4.1 ▸ P4 §10 มติ 2 (ผู้คุม B): บทบาท public = ผู้ไม่ล็อกอินบนหน้า /r /q /d /developers ◂
 const EXPECT_TYPES = new Set(["modal", "navigate", "mutation", "download", "toast", "inline-error", "ui"]);
+// POS P4.1 ▸ P4 §10 มติ 2 (ผู้คุม B): คีย์ของตัวกด P4.2 — F15.3b รับเมื่อถูกรูป (ความหมายละเอียด = qc-pos-p4.1 R3/R11/R12)
+const ROW_SAFETY = new Set(["money", "external", "counter"]);
+const ROW_VIEWPORTS = new Set(["desktop", "tablet", "mobile"]);
+const strOrList = (v: unknown) => (typeof v === "string" && !!v.trim()) || (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && !!x.trim())); // ◂
 
 /**
  * ไฟล์ UI ของ POS (ตามแบบแผน path ไม่ใช่แค่โฟลเดอร์ชื่อ pos):
@@ -854,6 +858,11 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
           if (o.hiddenFor !== undefined && (!Array.isArray(o.hiddenFor) || o.hiddenFor.some((x) => !ROW_ROLES.has(String(x))))) why.push("hiddenFor นอกชุดบทบาท");
           const ex = obj(o.expect);
           if (o.expect !== undefined && (!ex || !EXPECT_TYPES.has(String(ex.type)))) why.push(`expect.type ต้องอยู่ใน ${[...EXPECT_TYPES].join("/")}`);
+          // POS P4.1 ▸ P4 §10 มติ 2: opener · needs · viewport · safety (ไม่บังคับ — มีแล้วต้องถูกรูป)
+          if (o.opener !== undefined && !strOrList(o.opener)) why.push("opener ต้องเป็น string หรือ string[] ไม่ว่าง");
+          if (o.needs !== undefined && !strOrList(o.needs)) why.push("needs ต้องเป็น string หรือ string[] ไม่ว่าง");
+          if (o.viewport !== undefined && (!strOrList(o.viewport) || [o.viewport].flat().some((x) => !ROW_VIEWPORTS.has(String(x))))) why.push(`viewport ต้องอยู่ใน ${[...ROW_VIEWPORTS].join("/")}`);
+          if (o.safety !== undefined && !ROW_SAFETY.has(String(o.safety))) why.push(`safety ต้องอยู่ใน ${[...ROW_SAFETY].join("/")}`); // ◂
         }
         if (why.length) bad.push(`#${i} ${str(o?.testid) ?? "?"}: ${why.join(", ")}`);
       });
@@ -862,7 +871,8 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
       const foreignIds2 = new Set(inv.foreign.map((f) => f.testid));
       const own2 = found.filter((f) => !foreignIds2.has(f.id));
       const codeExact = new Set(own2.map((f) => f.id).filter((id) => !id.includes("*")));
-      const codePatterns = own2.map((f) => f.id).filter((id) => id.includes("*")).map((id) => ({ id, re: globRe(id) }));
+      // POS P4.1 ▸ CD-P41-O8: แพตเทิร์นในโค้ดที่ตัวอักษรจริง < MIN_PATTERN_CHARS (`${PREFIX}${id}` → "*") กลืนทุกชื่อ = ตัวจับแถวผีดับทั้งด่าน — ไม่นับ ◂
+      const codePatterns = own2.map((f) => f.id).filter((id) => id.includes("*") && id.replace(/\*/g, "").length >= MIN_PATTERN_CHARS).map((id) => ({ id, re: globRe(id) }));
       const inCode = (id: string) => (id.includes("*") ? codePatterns.some((c) => c.re.test(id) || globRe(id).test(c.id)) : codeExact.has(id) || codePatterns.some((c) => c.re.test(id)));
       const ghosts = ids.filter((id) => !degenerate.includes(id) && !foreignIds2.has(id) && !inCode(id));
       const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))];
