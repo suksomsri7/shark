@@ -415,3 +415,47 @@ Totals on base: `ผ่าน 67/71 (QC_FORCE)` · S1–S9 + Z1 green · `RESIDU
   - S10.4: `opsEvent.findMany({ createdAt ≥ t104, OR [T1, tenant-less rate-limit-db] }).length === 0` → `(countOps10() − base10.ops) + <new tenant-less rate-limit-db ids> === 0`. The new tenant-less ids are the set difference against an id snapshot taken before the S10.4 loop. They are still pushed to `ops10Ids` for cleanup.
   - S10.5: `auditSince(…, t105).length === 1` / `WARN count since t105 === 1` → `auditAll(…).slice(base10.audit).length === 1` / `countWarn10() − base10.warn === 1`, both after c13 and again after the 5 extra failures. The payload check runs on the new row. `t105` was removed.
 - Nothing else in the oracle changed.
+
+## r4 build
+> Builder r4 · 2026-10-22 · controller: Fable · branch `wip/pos-hr-h0.5` from `23c1e57e` (verified) · rulings R4.1–R4.6 applied as written · ORACLE-EDIT OE1 as ruled (section above). The controller confirmed one design choice: both audits are decided on the failure path only.
+
+### Files → R-items (lines at r4 head)
+| R | file:lines | how |
+|---|---|---|
+| R4.1 | `src/lib/core/rate-limit-db.ts:28,74,78` | `RateVerdict.windowStart?` (additive). Returned on accept and on refuse; `undefined` when the limiter fails open |
+| R4.1 | `rate-limit-db.ts:88-110` | `refundRateLimitDb(key, windowStart, { above = 0 })`: one statement `UPDATE "ChatRateBucket" SET count = count − 1 WHERE key AND "windowStart" = $ws AND count > $above`. No `windowStart` ⇒ no-op. DB error ⇒ silent, plus the same `logOps WARN rate-limit-db` as `checkRateLimitDb`. `peekRateLimitDb` removed (no callers left) |
+| R4.1 | `src/lib/modules/hr/pin.ts:192-209` | Consume the caller bucket, then the tenant bucket (fixed order). Caller refused ⇒ refund the caller slot with `above: 10` ⇒ `limitedText`. Tenant refused ⇒ refund the tenant slot with `above: 120` and the caller slot with `above: 0`, in parallel ⇒ `limitedText`. `release()` refunds both with `above: 0`. Lookup runs only when both buckets accept |
+| R4.1 | `pin.ts:257-263` (`PinNotConfigured`, any hash error) · `:290-296` (`okOf`: every success path) | `release()` before returning. A bad PIN format still counts as a failure (r3 behaviour) |
+| R4.2 | `pin.ts:44-45,187-189` | `CALLER_KEY_RE = /^[A-Za-z0-9:_.-]{1,128}$/` after `trim()`. No match ⇒ `PIN ไม่ถูกต้อง` before any DB call |
+| R4.3 | `pin.ts:211-233` | `auditedSince()` = one `tenantDb().auditLog.findFirst` (action, `createdAt ≥ windowStart`, plus `after.callerKey` for locks). In `failed()`: caller count == 10 and no row yet ⇒ one `hr.pin.locked` (payload unchanged) |
+| R4.4 | `pin.ts:234-245` | In `failed()`: tenant count == 120 and no `hr.pin.tenant_limited` since `windowStart` ⇒ one audit (SYSTEM, `targetType HrVerifyPinTenant`, `after {count, windowSec: 60}`) and one `logOps("WARN", "hr-verifypin", <Thai>, { tenantId })`. Refused calls write nothing |
+| R4.5 | `src/lib/modules/hr/index.ts` (C-8 comment) · `ledger/hr-briefs/hr-brief-H0.5.md` (C-8 seam line) | `callerKey` is derived on the server from an authenticated identity: the session user id, or a server-registered terminal id from the session or a signed cookie. Never from a request field. The comment also gives the format and the limiter summary |
+| R4.6 | — | No other product changes. `payroll-rules.ts` untouched |
+
+Why the audits are decided only on the failure path: correct PINs that arrive together can briefly push a count to 10 or 120 while their slots are still held. A check at consume time would write a false lock row. Remaining race (not seen in runs): in S10.2, if the correct call is among the first 10 accepted and its refund lands after every refused call has finished, the caller ends at 9 with 1 lock row. Calls are issued in index order, so the call at index 15 is normally refused.
+
+### Results (one at a time · `iso.sh → qc4.sh → with-gate-lock.sh`)
+| suite | final summary line | residue | exit |
+|---|---|---|---|
+| `qc-hr-h0.5` forced, before OE1 (`11b12a53`) | `ผ่าน 69/71`. S10.4 / S10.5 red because S9.3's rows fell inside the window (OE1) | 0 / `RESIDUE10 opsEvent=0` | 1 |
+| `qc-hr-h0.5` forced #1 (after OE1) | `ผ่าน 71/71 (QC_FORCE)` | `RESIDUE tenants=0 none` · `RESIDUE10 opsEvent=0` | 0 |
+| `qc-hr-h0.5` unforced | `ผ่าน 71/71` | same | 0 |
+| `qc-hr-h0.5` forced #2 (saved → `hr-H0.5-green-r4.txt`; 0 NUL, 0 fixture PINs) | `ผ่าน 71/71 (QC_FORCE)` | same | 0 |
+| `qc-hr-h0.3` forced | `ผ่าน 36/36` | Z1 ✅ | 0 |
+| `qc-hr-h0.1` forced | `passed 67/67` | Z1 ✅ | 0 |
+| `qc-hr-h0.2` forced | `ผ่าน 58/58` | Z1 ✅ | 0 |
+| `qc-hf-hr-privacy` forced | `JSON_SUMMARY {"total":194,"passed":194,"findings":[]}` | — | 0 |
+| `seed-hr-qc` run 1 / re-run | `ผ่าน 22/23` ×2. Only O1 failed. Run 1: `tenant` 36→38, `hrEmployee` 36→39, `hrPayrollRun` 2→3, while POS lane `shark-pos-c` ran `qc-crm-c3.3` on QC4. Re-run (after that unit ended): `tenant` 34→35, the rest identical, while `shark-pos-c` ran `qc-account-api-ai-skill`. Both times POS writes, not HR | — | 1 / 1 |
+| `fitness` with env (`qc4.sh`) / without (`env -u DATABASE_URL -u DIRECT_URL`) | `JSON_SUMMARY {"total":33,"passed":33,"findings":[]}` ×2 | — | 0 / 0 |
+| `fitness-hr` with env / without | `JSON_SUMMARY {"suite":"fitness-hr","total":5,"passed":5,"findings":[]}` ×2 | — | 0 / 0 |
+| `pnpm typecheck` (`NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10000M`, iso + gate lock, no timeout). Pre-check 06:00Z: MemAvailable 11 706 MB; no `iso-*` build/typecheck/tsc unit (only a POS QC script unit) | `tsc --noEmit`, 0 `error TS`, 165 s | — | 0 |
+
+### Debts (not in r4)
+- No owner notification on a caller lock (`hr.pin.locked`) or a tenant limit (`hr.pin.tenant_limited`): audit and OpsEvent only.
+- The F4 timing tell (duplicate-plain path vs miss) remains until backfill B2 step 4 (0 plain rows). P1.15 stays gated on it.
+- F4b reactivation audit `hr.pin.clear REACTIVATE_DUPLICATE` still has a null actor.
+- The S10.2 refund-ordering race described above.
+- `seed-hr-qc` O1 needs a POS-quiet window (controller).
+
+### Temp data
+None. QC4 residue 0 after every oracle run. The scratch oracle copy and the clock probe were deleted right after their single runs. Logs are in `/tmp/hr-h05-r4-builder/` (no secrets). No unit of mine is left running.
