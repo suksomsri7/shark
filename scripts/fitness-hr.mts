@@ -1,4 +1,4 @@
-// fitness-hr.mts — ด่าน fitness ของ RUN HR V2 (F16.1–F16.6 · ใบ H0.4 · HR-V2-MASTER-PLAN §6)
+// fitness-hr.mts — ด่าน fitness ของ RUN HR V2 (F16.1–F16.7 · ใบ H0.4 · HR-V2-MASTER-PLAN §6)
 //
 // รันเดี่ยว: `pnpm exec tsx scripts/fitness-hr.mts` (หรือ `pnpm fitness:hr`) — exit 1 เมื่อมีด่าน CRITICAL/MAJOR แดง
 // ผู้คุมงานจะต่อเข้ากับ `scripts/fitness.mts` ตอนตัด rc ผ่าน `runHrFitness(chk, ROOT)` (ใบนี้ห้ามแก้ fitness.mts)
@@ -23,6 +23,9 @@
 //   F16.6 (HR H0.7 · MAJOR) ทุกจุดเรียก `requestLeave(` / `cancelLeave(` ใต้ src/** (ยกเว้นตัวนิยามใน hr/service.ts) ต้องส่งคีย์
 //         `actorUserId` ในนิพจน์เรียกเดียวกัน — ทาง "ไม่ส่งผู้กด" (legacy) มีไว้ให้งานภายใน/ข้อสอบรุ่นเก่าเท่านั้น (มติ D-1)
 //         (ไม่สแกน scripts/** — ข้อสอบรุ่นเก่าเรียกแบบไม่ส่งผู้กดโดยตั้งใจ · ตัด F165_EXCLUDE ด้วยแบบเดียวกับ F16.5)
+//         HR H0.7 R11 ▸ `actorUserId: undefined` (ตัวอักษรตรง ๆ) = ไม่ส่ง · ตาม import ที่ตั้งชื่อใหม่ (`import { requestLeave as x }`) ◂
+//   F16.7 (HR H0.7 R11 · MAJOR) ชื่อ partial unique ใน prisma/migrations/20261203000000_hr_link_unique_requester/migration.sql ต้องถูกอ้างใน
+//         prisma/schema/** (@@unique/@@index/คอมเมนต์) หรือ migration ที่ใหม่กว่า · migration ที่ใหม่กว่าห้าม DROP มัน
 //
 // ratchet (กลไกเดียวกับ F14): ทุก BASELINE ลดได้อย่างเดียว — ปิดหนี้แล้วแต่ไม่ถอดแถว = แดง · หนี้ใหม่ = แดง
 // 🔴 static ล้วน: อ่านไฟล์อย่างเดียว · ไม่แตะ DB/เน็ต · ไม่ import `@/…` · ไม่ import `src/lib/env` หรือ prisma (X12)
@@ -474,17 +477,29 @@ export function scanLeaveCallsWithoutActor(ROOT: string): { file: string; line: 
     const rel = posix(relative(ROOT, abs));
     if (F165_EXCLUDE(rel)) continue;
     const text = readFileSync(abs, "utf8");
-    if (!/\b(requestLeave|cancelLeave)\s*\(/.test(text)) continue;
+    if (!/\b(requestLeave|cancelLeave)\b/.test(text)) continue; // HR H0.7 R11 ▸ รวมไฟล์ที่ import แบบตั้งชื่อใหม่ ◂
     const sf = parse(abs, text);
+    // HR H0.7 R11 ▸ ชื่อท้องถิ่นของ import ที่ตั้งชื่อใหม่ (`import { requestLeave as fileLeave }`) — ชื่อเดิมยังนับเสมอ ◂
+    const local = new Map<string, string>([...F166_FNS].map((f) => [f, f]));
+    sf.forEachChild((st) => {
+      if (!ts.isImportDeclaration(st) || !st.importClause?.namedBindings || !ts.isNamedImports(st.importClause.namedBindings)) return;
+      for (const el of st.importClause.namedBindings.elements) {
+        const orig = (el.propertyName ?? el.name).text;
+        if (F166_FNS.has(orig)) local.set(el.name.text, orig);
+      }
+    });
     const visit = (n: ts.Node) => {
       if (ts.isCallExpression(n)) {
         const callee = n.expression;
-        const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
+        const name = ts.isIdentifier(callee) ? (local.get(callee.text) ?? "") : ts.isPropertyAccessExpression(callee) && F166_FNS.has(callee.name.text) ? callee.name.text : "";
         if (F166_FNS.has(name)) {
           let hasActor = false;
           const seek = (m: ts.Node) => {
             if (hasActor) return;
-            if ((ts.isPropertyAssignment(m) || ts.isShorthandPropertyAssignment(m)) && (ts.isIdentifier(m.name) || ts.isStringLiteral(m.name)) && m.name.text === "actorUserId") hasActor = true;
+            if (ts.isPropertyAssignment(m) && (ts.isIdentifier(m.name) || ts.isStringLiteral(m.name)) && m.name.text === "actorUserId") {
+              // HR H0.7 R11 ▸ `actorUserId: undefined` = ไม่ส่งผู้กด (ทาง legacy) ⇒ ไม่นับ ◂
+              if (!(ts.isIdentifier(m.initializer) && m.initializer.text === "undefined") && m.initializer.kind !== ts.SyntaxKind.VoidExpression) hasActor = true;
+            } else if (ts.isShorthandPropertyAssignment(m) && m.name.text === "actorUserId") hasActor = true;
             else ts.forEachChild(m, seek);
           };
           n.arguments.forEach(seek);
@@ -497,6 +512,31 @@ export function scanLeaveCallsWithoutActor(ROOT: string): { file: string; line: 
   }
   // ตัวนิยามใน hr/service.ts ไม่ใช่ CallExpression อยู่แล้ว — ไฟล์นี้ไม่มีผู้เรียกภายใน (ถ้ามีก็ต้องส่ง actorUserId เช่นกัน)
   return out;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// F16.7 — partial unique ของ H0.7 (1 บัญชี ↔ พนักงาน 1 คน) ต้องยังถูกอ้างและไม่มีใคร DROP (HR H0.7 R11)
+// ═══════════════════════════════════════════════════════════════
+export const F167_MIGRATION = "20261203000000_hr_link_unique_requester";
+export function checkLinkUniqueIndex(ROOT: string): { name: string; problems: string[] } {
+  const problems: string[] = [];
+  const migDir = join(ROOT, "prisma", "migrations");
+  const sqlPath = join(migDir, F167_MIGRATION, "migration.sql");
+  if (!existsSync(sqlPath)) return { name: "", problems: [`ไม่พบ prisma/migrations/${F167_MIGRATION}/migration.sql`] };
+  const name = /CREATE\s+UNIQUE\s+INDEX\s+"([^"]+)"/i.exec(readFileSync(sqlPath, "utf8"))?.[1] ?? "";
+  if (!name) return { name, problems: [`${F167_MIGRATION}: ไม่มี CREATE UNIQUE INDEX`] };
+  const later = readdirSync(migDir)
+    .filter((d) => d > F167_MIGRATION && existsSync(join(migDir, d, "migration.sql")))
+    .sort();
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let referenced = walk(join(ROOT, "prisma", "schema"), (p) => p.endsWith(".prisma")).some((f) => readFileSync(f, "utf8").includes(name));
+  for (const d of later) {
+    const sql = readFileSync(join(migDir, d, "migration.sql"), "utf8");
+    if (new RegExp(`DROP\\s+INDEX\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+EXISTS\\s+)?(?:"?public"?\\.)?"?${esc}"?`, "i").test(sql)) problems.push(`${d} DROP INDEX ${name}`);
+    if (sql.includes(name)) referenced = true;
+  }
+  if (!referenced) problems.push(`${name} ไม่ถูกอ้างใน prisma/schema/** หรือ migration ที่ใหม่กว่า`);
+  return { name, problems };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -612,6 +652,14 @@ export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void 
   guarded(chk, "F16.6", n166, () => {
     const bad = scanLeaveCallsWithoutActor(ROOT);
     chk("F16.6", n166, bad.length === 0, bad.length ? bad.map((b) => `${b.file}:${b.line} ${b.fn}( ไม่มี actorUserId`).join(" · ") : "สะอาด", "MAJOR");
+  });
+
+  // ── F16.7 ── HR H0.7 R11 ◂
+  log("\n── F16.7: partial unique HrEmployee_tenantId_linkedUserId_key ยังอยู่ (H0.7) ──");
+  const n167 = `ชื่อ partial unique จาก ${F167_MIGRATION} ถูกอ้างใน prisma/schema หรือ migration ใหม่กว่า · ไม่มี migration ใหม่กว่า DROP`;
+  guarded(chk, "F16.7", n167, () => {
+    const r = checkLinkUniqueIndex(ROOT);
+    chk("F16.7", n167, r.problems.length === 0, r.problems.length ? r.problems.join(" · ") : `${r.name} อ้างอยู่ · ไม่มี DROP`, "MAJOR");
   });
 }
 
