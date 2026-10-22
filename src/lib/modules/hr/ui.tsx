@@ -519,11 +519,22 @@ export async function HrEmployeesSection({ systemId, unit }: { systemId: string;
                   <span className="block truncate text-sm">{e.name}</span>
                   {e.position && <span className={`block truncate text-xs ${muted}`}>{e.position}</span>}
                 </span>
-                <form action={restoreEmployeeAction}>
-                  <input type="hidden" name="systemId" value={systemId} />
-                  <input type="hidden" name="employeeId" value={e.id} />
-                  <SubmitButton variant="ghost">กู้คืน</SubmitButton>
-                </form>
+                {/* HR H1.1 R12 ▸ R12.4: สถานะ "สิ้นสุด" กู้คืนตรง ๆ ไม่ได้ — เปลี่ยนสถานะที่โปรไฟล์ก่อน (action ปฏิเสธซ้ำ) ◂ */}
+                {e.employmentStatus === "ENDED" ? (
+                  <Link
+                    href={`/app/sys/${systemId}/hr/employees/${e.id}`}
+                    data-testid={`hr-register-restore-status-${e.id}`}
+                    className={`inline-flex min-h-11 items-center text-xs underline ${muted}`}
+                  >
+                    สถานะสิ้นสุด — เปลี่ยนสถานะที่โปรไฟล์ก่อนกู้คืน
+                  </Link>
+                ) : (
+                  <form action={restoreEmployeeAction}>
+                    <input type="hidden" name="systemId" value={systemId} />
+                    <input type="hidden" name="employeeId" value={e.id} />
+                    <SubmitButton variant="ghost">กู้คืน</SubmitButton>
+                  </form>
+                )}
               </div>
             ))}
           </div>

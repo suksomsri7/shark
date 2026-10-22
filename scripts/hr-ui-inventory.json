@@ -773,6 +773,32 @@
    "wo": "H1.1",
    "oracle": "qc-hr-h1.1",
    "note": "สถานะการจ้าง + วันครบทดลองงาน/สิ้นสุดสัญญา (ข้อมูลอย่างเดียว)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-register-restore-status-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "พนักงานที่ลบแล้วและสถานะ ENDED (แทนปุ่มกู้คืน) · * = id พนักงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*"
+   },
+   "wo": "H1.1",
+   "oracle": "qc-hr-h1.1",
+   "note": "R12.4 — กู้คืนได้หลังเปลี่ยนสถานะการจ้างเป็นทดลองงาน/ประจำที่โปรไฟล์"
   }
  ]
 }

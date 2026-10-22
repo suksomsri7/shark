@@ -12,7 +12,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
-import { leaveListScopeOf, pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂ · HR H1.1 ▸ + ขอบเขตสาขา ◂
+import { hrScopeOf, leaveListScopeOf, pendingLeaves as hrPendingLeaves, scopedLeaveWhere } from "@/lib/modules/hr/service"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂ · HR H1.1 ▸ + ขอบเขตสาขา (R12: upcoming_schedule) ◂
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
 import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/service";
 import { getCustomerPoints } from "@/lib/modules/point/service";
@@ -2071,6 +2071,21 @@ const upcomingSchedule: AiTool = {
     //   ความหมายเดียวกัน (unitWhere) · วันลาต้องมี `hr.leave.read` เพิ่ม (calendar/service ตัวเดียวกัน) — ไม่มี = ไม่ดึงเลย ◂
     const lm = aiActorMembership(ctx.actor);
     const seesLeaves = ctx.actor.kind === "apiKey" || (!!lm && membershipCan(lm, { module: "hr", action: "hr.leave.read" }));
+    // HR H1.1 R12 ▸ R12.2 (M-1): วันลาตามขอบเขตสาขาของผู้ถาม — ต่อระบบ HR: scopedLeaveWhere(hrScopeOf(m)) (ทุกสาขา = ไม่กรอง · คีย์ API = ไม่กรอง) ◂
+    const leaveScope = lm ? hrScopeOf(lm) : null;
+    const leaveBranch =
+      seesLeaves && leaveScope && leaveScope.unitIds !== "*"
+        ? {
+            OR: (
+              await Promise.all(
+                (await prisma.appSystem.findMany({ where: { tenantId: ctx.tenantId, type: "HR" }, select: { id: true }, take: 50 })).map(async (s) => {
+                  const w = await scopedLeaveWhere({ tenantId: ctx.tenantId, systemId: s.id }, leaveScope);
+                  return w ? { AND: [{ systemId: s.id }, w] } : null;
+                }),
+              )
+            ).filter((x) => x !== null),
+          }
+        : {};
     const [appts, stays, leaves] = await Promise.all([
       prisma.appointment.findMany({
         where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
@@ -2086,7 +2101,7 @@ const upcomingSchedule: AiTool = {
       }),
       seesLeaves
         ? prisma.hrLeave.findMany({
-            where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { gte: from, lt: to } },
+            where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { gte: from, lt: to }, ...leaveBranch },
             orderBy: { fromDate: "asc" },
             take: 50,
             include: { employee: { select: { name: true } } },

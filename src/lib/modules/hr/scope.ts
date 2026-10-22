@@ -139,7 +139,9 @@ export type UnitTarget = { ok: true; unitId?: string } | { ok: false; reason: st
  *   ทุกสาขา ⇒ ผ่าน (unitId = สาขาประจำถ้ามี) · ยังไม่ระบุสาขา ⇒ เฉพาะผู้ดูแลทุกสาขา (มติ 3/5)
  */
 export function unitTargetOf(scope: HrScope, emp: EmployeeUnits, day?: Date): UnitTarget {
-  if (scope.unitIds === "*") return emp.unitId ? { ok: true, unitId: emp.unitId } : { ok: true };
+  // HR H1.1 R12 ▸ R12.1 (C-1): ผู้ดูทุกสาขา (OWNER · "*" · [] · รูปแบบเสีย) ไม่ส่ง unitId เข้า assertCan — core canAccessUnit รู้จักแค่ "*"/id
+  //   ถ้าส่งไป ผู้ใช้ [] (ค่าปริยายของ STAFF) จะถูกปฏิเสธทุกการเขียนของพนักงานที่มีสาขา ◂
+  if (scope.unitIds === "*") return { ok: true };
   const ids = scope.unitIds;
   if (emp.unitId && ids.includes(emp.unitId)) return { ok: true, unitId: emp.unitId };
   if (day) {

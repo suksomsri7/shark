@@ -129,14 +129,26 @@ export async function getCalendarEvents(
   // พนักงานทั่วไปที่เปิดปฏิทินจะไม่เห็นวันลาของเพื่อนร่วมงาน
   const canReadHrLeave = evaluate(membership, { module: "hr", action: "hr.leave.read" });
   const hrSystemIds = canReadHrLeave ? await listHrSystemIds(tenantId) : [];
+  // HR H1.1 R12 ▸ R12.2 (M-1): ขอบเขตสาขาของผู้ดู = กติกาเดียวกับ hr/scope.ts hrScopeOf + scopedLeaveWhere (OWNER · "*" · [] · รูปแบบเสีย = ทุกสาขา ·
+  //   รายการสาขา = สาขาประจำในรายการ หรือยืมตัวที่ครอบวันเริ่มลา) — เขียนซ้ำในบล็อกนี้เพราะ fitness F2 ไม่มีเส้น calendar→hr
+  //   (ถ้าผู้คุมงานอนุมัติเส้นนี้ ให้แทนด้วย scopedLeaveWhere ของ hr) ◂
+  const leaveUa = Array.isArray(membership.unitAccess) ? membership.unitAccess.filter((u) => typeof u === "string" && u.trim() !== "") : [];
+  const leaveUnits = membership.role === "OWNER" || leaveUa.length === 0 || leaveUa.includes("*") ? null : leaveUa;
   for (const systemId of hrSystemIds) {
     const db = tenantDb({ tenantId, systemId });
     try {
+      const borrows = leaveUnits
+        ? await db.hrEmployeeUnit.findMany({ where: { unitId: { in: leaveUnits } }, select: { employeeId: true, fromDate: true, toDate: true }, take: 5000 })
+        : [];
+      const branch = leaveUnits
+        ? { OR: [{ employee: { unitId: { in: leaveUnits } } }, ...borrows.map((b) => ({ employeeId: b.employeeId, fromDate: { gte: b.fromDate, ...(b.toDate ? { lte: b.toDate } : {}) } }))] }
+        : {};
       const leaves = await db.hrLeave.findMany({
         where: {
           status: { in: ["PENDING", "APPROVED"] },
           fromDate: { lt: to },
           toDate: { gt: from },
+          ...branch,
         },
         include: { employee: { select: { name: true } } },
       });

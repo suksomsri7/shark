@@ -23,7 +23,8 @@ import {
   unitWhere,
   type HrScope,
 } from "./scope";
-export { setPin } from "./pin"; // HR H0.5 ▸ ย้ายไป pin.ts · ผู้เรียกเดิม (actions · seed · oracle) import จากที่นี่ได้ตามเดิม ◂
+export { setPin } from "./pin";
+export { hrScopeOf, scopedLeaveWhere } from "./scope"; // HR H1.1 R12 ▸ ให้ ai/tools (upcoming_schedule) ใช้ตัวเดียวกับ HR ◂ // HR H0.5 ▸ ย้ายไป pin.ts · ผู้เรียกเดิม (actions · seed · oracle) import จากที่นี่ได้ตามเดิม ◂
 
 // HR (ระบบที่ 17) — service ชั้นประกอบ (systemId-scoped)
 // ⚠️ กติกา availability + ชั่วโมงทำงาน มาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่โหลด DB แล้วเรียกใช้
@@ -568,6 +569,7 @@ export class HrLeaveRequestError extends Error {
 }
 export const LEAVE_NO_REQUESTER = "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน";
 export const LEAVE_EMPLOYEE_NOT_FOUND = "ไม่พบพนักงานคนนี้ในระบบพนักงานนี้ — กรุณารีเฟรชหน้าแล้วเลือกใหม่";
+export const LEAVE_EMPLOYEE_ENDED = "พนักงานคนนี้พ้นสภาพแล้ว — ยื่นใบลาใหม่ไม่ได้"; // HR H1.1 R12 ◂
 export const LEAVE_OWNER_AUTO_NOTE = "เจ้าของร้าน — ไม่ต้องผ่านการอนุมัติ";
 const CANCEL_NOT_FOUND = "ไม่พบใบลา หรืออยู่นอกร้านนี้";
 const CANCEL_NOT_MINE = "ยกเลิกได้เฉพาะใบลาที่คุณยื่นเอง";
@@ -590,8 +592,10 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   //   ที่ตัดสินในช่วงระหว่างนั้นไม่เห็นคำขอ จึงตัดสินได้ แล้วคำขอก็ยังถูกสร้าง (สาย PENDING/REJECTED + ใบลา APPROVED) · ลำดับ event เดิม
   //   (hr.leave.submitted ก่อน approval.request.submitted) · ใช้ tx จาก tenantDb (ไม่ลาก prisma ดิบเข้ามา — fitness F5.1) ◂
   // HR H0.7 ▸ R2/R3/R4: พนักงานต้องอยู่ในระบบ HR นี้ (ระบบอื่น/ร้านอื่น = ไม่พบ) · หาผู้ยื่น (user id) · ใบลาของเจ้าของร้าน = อนุมัติทันที
-  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId }, select: { id: true, linkedUserId: true } });
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId }, select: { id: true, linkedUserId: true, active: true } });
   if (!emp) throw new HrLeaveRequestError(LEAVE_EMPLOYEE_NOT_FOUND);
+  // HR H1.1 R12 ▸ R12.4: พนักงานที่พ้นสภาพแล้ว (active=false · เช่นตั้งสถานะ "สิ้นสุด") ยื่นใบลาใหม่ไม่ได้ — ข้อความคงที่ ไม่มีชื่อ ◂
+  if (!emp.active) throw new HrLeaveRequestError(LEAVE_EMPLOYEE_ENDED);
   const legacyCaller = input.actorUserId === undefined; // งานภายใน/ข้อสอบรุ่นเก่า — ดูหมายเหตุที่ RequestLeaveInput
   const actor = typeof input.actorUserId === "string" && input.actorUserId.trim() ? input.actorUserId.trim() : null;
   const requester = emp.linkedUserId ?? actor;

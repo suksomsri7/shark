@@ -15,6 +15,7 @@ import {
   bulkDecideLeave,
   cancelLeave, // HR H0.7 ▸ R5 ◂
   employeeOfUser, // HR H0.7 ▸ R3 ◂
+  getEmployee, // HR H1.1 R12 ◂
   HrLeaveRequestError, // HR H0.7 ◂
   removeEmployeeDoc,
   requestLeave,
@@ -33,6 +34,7 @@ import {
   homeUnitTarget,
   HrBranchError,
   hrScopeOf,
+  isAllBranches, // HR H1.1 R12 ◂
   leaveTargetOf,
   unitTargetOf,
 } from "./scope";
@@ -68,11 +70,17 @@ function branchText(x: unknown): string | null {
   return x instanceof HrBranchError ? x.message : null;
 }
 /** HR H1.1 ▸ สาขาประจำที่ผู้กดเลือกให้พนักงาน (สร้างใหม่ / ย้าย) — ต้องอยู่ในสาขาของผู้กด · ไม่ระบุ = เฉพาะผู้ดูแลทุกสาขา ◂ */
-async function hrHomeTarget(auth: Auth, ctx: Ctx, unitId: string | null): Promise<{ unitId?: string }> {
-  const t = await homeUnitTarget(ctx, hrScopeOf(memberOf(auth)), unitId);
+// HR H1.1 R12 ▸ R12.1: unitId = ค่าที่เก็บลงแถว · checkUnit = ค่าที่ส่งเข้า assertCan (เฉพาะผู้ที่จำกัดสาขาเป็นรายการ — ทุกสาขาไม่ส่ง) ◂
+async function hrHomeTarget(auth: Auth, ctx: Ctx, unitId: string | null): Promise<{ unitId?: string; checkUnit?: string }> {
+  const scope = hrScopeOf(memberOf(auth));
+  const t = await homeUnitTarget(ctx, scope, unitId);
   if (!t.ok) throw new HrBranchError(t.reason);
-  return t.unitId ? { unitId: t.unitId } : {};
+  if (!t.unitId) return {};
+  return isAllBranches(scope) ? { unitId: t.unitId } : { unitId: t.unitId, checkUnit: t.unitId };
 }
+
+// HR H1.1 R12 ▸ ข้อความคงที่ (ไม่มีชื่อ) ◂
+const RESTORE_ENDED_TEXT = "พนักงานคนนี้มีสถานะสิ้นสุดการจ้าง — เปลี่ยนสถานะที่หน้าโปรไฟล์ก่อนจึงจะกู้คืนได้";
 
 const KINDS = new Set<HrAttendanceKind>(["IN", "OUT"]);
 const LEAVE_TYPES = new Set<HrLeaveType>(["SICK", "PERSONAL", "VACATION", "OTHER"]);
@@ -90,7 +98,7 @@ export async function createEmployeeAction(formData: FormData) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   // HR H1.1 ▸ R5: สาขาประจำต้องอยู่ในสาขาของผู้กด (ไม่ระบุ = ผู้ดูแลทุกสาขาเท่านั้น) · นอกสาขา = HrBranchError ข้อความไทยคงที่ ◂
   const home = await hrHomeTarget(auth, ctx, String(formData.get("unitId") ?? ""));
-  assertHrCan(auth, "hr.employee.create", home.unitId);
+  assertHrCan(auth, "hr.employee.create", home.checkUnit);
   await createEmployee(ctx, {
     unitId: home.unitId ?? null,
     name,
@@ -188,6 +196,8 @@ export async function restoreEmployeeAction(formData: FormData) {
   if (!systemId || !employeeId) return;
   const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
   assertHrCan(auth, "hr.employee.create", t.unitId);
+  // HR H1.1 R12 ▸ R12.4: สถานะยังเป็น "สิ้นสุด" ⇒ ไม่กู้คืน (เปลี่ยนสถานะที่โปรไฟล์ก่อน) · ทางนี้ทางเดียว — service คงเดิม (S7.3) ◂
+  if ((await getEmployee({ tenantId: auth.active.tenantId, systemId }, employeeId))?.employmentStatus === "ENDED") throw new HrBranchError(RESTORE_ENDED_TEXT);
   await setEmployeeActive({ tenantId: auth.active.tenantId, systemId }, employeeId, true);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
 }
@@ -222,7 +232,7 @@ export async function saveEmployeeProfileAction(
     assertHrCan(auth, "hr.employee.create", t.unitId);
     if (input.unitId !== undefined) {
       const home = await hrHomeTarget(auth, ctx, input.unitId);
-      assertHrCan(auth, "hr.employee.create", home.unitId);
+      assertHrCan(auth, "hr.employee.create", home.checkUnit);
       input.unitId = home.unitId ?? null;
     }
   } catch (e) {
@@ -232,6 +242,12 @@ export async function saveEmployeeProfileAction(
   // HF-HR-0: ช่องอ่อนไหวผ่านเข้า service เฉพาะผู้ดูเงินเดือน — ตัวกรองกลางอยู่ที่ privacy.ts (oracle เรียกตัวเดียวกัน)
   const res = await saveEmployeeProfile(ctx, employeeId, input);
   if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
+  // HR H1.1 R12 ▸ R12.4 (m-2): สถานะ "สิ้นสุด" = พ้นสภาพ ⇒ ปิดการใช้งานผ่านทางเดิม (setEmployeeActive(false): ลงเวลา/PIN/ใบลาใหม่ไม่ได้ ·
+  //   ไม่เข้ารอบจ่ายใหม่ · endDate = วันนี้ถ้ายังไม่มี) · ทดลองงาน/ประจำ ไม่แตะ active ◂
+  if (input.employmentStatus === "ENDED") {
+    const cur = await getEmployee(ctx, employeeId);
+    if (cur?.active) await setEmployeeActive(ctx, employeeId, false);
+  }
   revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
   return { status: "ok", message: "บันทึกแล้ว" };

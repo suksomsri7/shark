@@ -26,7 +26,7 @@ import {
 } from "./payroll";
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
 // HR H1.1 ▸ R5 ขอบเขตสาขา — สาขาของพนักงานเป้าหมายอ่านจาก DB · รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8) ◂
-import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, unitTargetOf } from "./scope";
+import { employeeIdOfAdjustment, employeeUnitsOf, HrBranchError, hrScopeOf, isAllBranches, unitTargetOf } from "./scope";
 
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
@@ -45,6 +45,12 @@ function assertHrCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: st
 /** HR H1.1 ▸ ข้อความไทยคงที่ของ HrBranchError (ข้อความที่ scope.ts เขียนเอง — ไม่ใช่ข้อความระบบ) · อื่น ๆ = null ⇒ ผู้เรียก throw ต่อ ◂ */
 function branchText(x: unknown): string | null {
   return x instanceof HrBranchError ? x.message : null;
+}
+// HR H1.1 R12 ▸ R12.3 (M-2): รอบจ่าย = ทั้งระบบ HR (HQ20 · มติ 8 = รูปร่างของรอบ) ⇒ สร้าง/อนุมัติ/จ่าย/กลับรายการ/ลบร่าง/คำนวณใหม่
+//   ต้องเป็นผู้ดูแลทุกสาขา (OWNER · "*" · []) · ผู้ดูเงินเดือนที่จำกัดสาขาเป็นรายการ ⇒ ข้อความคงที่ ไม่เขียนอะไร ◂
+const RUN_ALL_BRANCHES_TH = "รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้";
+function assertRunAllBranches(auth: Awaited<ReturnType<typeof requireTenant>>): void {
+  if (!isAllBranches(hrScopeOf({ role: auth.active.role, unitAccess: auth.active.unitAccess }))) throw new HrBranchError(RUN_ALL_BRANCHES_TH);
 }
 /** HR H1.1 ▸ สาขาของพนักงานเป้าหมาย (ระดับพนักงาน = สาขาประจำ · `day` = รวมยืมตัวที่ครอบวันนั้น) — นอกสาขา = HrBranchError ◂ */
 async function payTarget(auth: Awaited<ReturnType<typeof requireTenant>>, ctx: Ctx, employeeId: string | null, day?: Date): Promise<{ unitId?: string }> {
@@ -100,6 +106,7 @@ export async function createPayrollRunAction(_prev: { ok: boolean; reason?: stri
   try {
     // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const periodKey = String(formData.get("periodKey") ?? "").trim();
     const payDateStr = String(formData.get("payDate") ?? "").trim();
@@ -113,6 +120,7 @@ export async function createPayrollRunAction(_prev: { ok: boolean; reason?: stri
     return { ok: true };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     if (e instanceof PayrollInputError) return { ok: false, reason: e.message };
     throw e;
   }
@@ -153,6 +161,7 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
   try {
     // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.approve");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
@@ -185,6 +194,7 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
     return { ok: false, reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     throw e;
   }
 }
@@ -195,6 +205,7 @@ export async function reverseRunAction(formData: FormData) {
   const auth = await requireTenant();
   // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
   assertHrCan(auth, "hr.payroll.approve");
+  assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
@@ -211,6 +222,7 @@ export async function markPaidAction(formData: FormData) {
   const auth = await requireTenant();
   // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
   assertHrCan(auth, "hr.payroll.pay");
+  assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
@@ -376,6 +388,7 @@ export async function deleteDraftRunAction(formData: FormData): Promise<{ ok: bo
   try {
     // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
@@ -384,6 +397,7 @@ export async function deleteDraftRunAction(formData: FormData): Promise<{ ok: bo
     return res.ok ? { ok: true } : { ok: false, reason: res.reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     throw e;
   }
 }
@@ -393,6 +407,7 @@ export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok:
   try {
     // ทุกสาขา: รอบจ่ายเป็นของทั้งระบบ HR (HQ20 · มติ 8)
     assertHrCan(auth, "hr.payroll.create");
+    assertRunAllBranches(auth); // HR H1.1 R12 ▸ R12.3 รอบจ่ายครอบคลุมทุกสาขา ◂
     const systemId = String(formData.get("systemId") ?? "");
     const runId = String(formData.get("runId") ?? "");
     if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
@@ -401,6 +416,7 @@ export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok:
     return res.ok ? { ok: true } : { ok: false, reason: res.reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (branchText(e)) return { ok: false, reason: branchText(e)! }; // HR H1.1 R12 ◂
     throw e;
   }
 }
