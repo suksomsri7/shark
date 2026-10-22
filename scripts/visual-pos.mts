@@ -1361,7 +1361,7 @@ const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
 const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P36U_WO /* POS P3.6U */ && !P3SKU_WO /* POS P3-SKEL U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && !P39U_WO /* POS P3.9U */ && !P37U_WO /* POS P3.7U */ && !P36U_WO /* POS P3.6U */ && !P3SKU_WO /* POS P3-SKEL U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && !P39U_WO /* POS P3.9U */ && !P37U_WO /* POS P3.7U */ && !P36U_WO /* POS P3.6U */ && !P3SKU_WO /* POS P3-SKEL U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO) || /^p2\.?6u/i.test(WO) /* POS P3.12 ▸ CD-P312-V2c (ผู้คุม B 22.10 · parity p2.6u): settings-device-kitchen-slip ต้องมีเครื่อง QC ของหน้าตั้งค่า แม้รันทั้ง wo โดยไม่สั่ง --pages settings ◂ */);
 const settingsPath = (st: SettingsStateKey) =>
   isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
@@ -1545,7 +1545,7 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
       )
     // POS P2.4U ▸ มติ 11: หน้าโต๊ะ (--states) · หน้าขายของ wo p2.4u = สถานะโหมดโต๊ะ/ชิปชนิดบิลเท่านั้น ◂
     : p24uOn && p === "tables"
-    ? P24U_TABLES_PLAN.flatMap((st): Job[] =>
+    ? P24U_TABLES_PLAN.filter((st) => st.key !== "tables-empty" || userKey === "owner") /* POS P3.12 ▸ CD-P312-V2b (ผู้คุม B 22.10 · parity p2.4u/p2.6u cashier): สถานะ "ยังไม่มีโต๊ะ" ถ่ายที่สาขาอารีย์ = เจ้าของเท่านั้น (P24U_EMPTY_UNIT) — แคชเชียร์ผูกสีลมที่มี fixture โต๊ะ ⇒ ไม่มีสถานะนี้ ◂ */.flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: `/app/sys/${SYS}/pos/tables?unit=${encodeURIComponent(st.key === "tables-empty" ? P24U_EMPTY_UNIT : unitId)}`, file: `${OUT}/${p}-${st.key.replace(/^tables-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
