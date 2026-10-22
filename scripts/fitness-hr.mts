@@ -86,7 +86,8 @@ function guarded(chk: HrChk, id: string, name: string, fn: () => void) {
 // F16.1 — ไฟล์ client ไม่แตะช่องอ่อนไหวของพนักงาน
 // ═══════════════════════════════════════════════════════════════
 // HR H1.2 ▸ Q5: + พิกัด/รูปของการลงเวลา (HrAttendance.lat/lng/photoKey — HQ27) + ใบรับรองแพทย์ (HrLeave.attachmentKey = ข้อมูลสุขภาพ) ◂
-export const SENSITIVE_FIELDS = ["pinCode", "pinHash", "nationalId", "bankAccountNo", "ssoNumber", "houseRegAddress", "lat", "lng", "photoKey", "attachmentKey"] as const;
+// HR H1.3 ▸ Q12: + ยอดสะสมภาษี/ประกันสังคมทั้งปี (HrPayrollItem.ytdJson) + ไฟล์ยื่น/ไฟล์ธนาคาร (HrPayrollRun.filingJson/bankFileKey) ◂
+export const SENSITIVE_FIELDS = ["pinCode", "pinHash", "nationalId", "bankAccountNo", "ssoNumber", "houseRegAddress", "lat", "lng", "photoKey", "attachmentKey", "ytdJson", "filingJson", "bankFileKey"] as const;
 const SENSITIVE = new Set<string>(SENSITIVE_FIELDS);
 /** ไฟล์ DTO ที่อนุญาต (whitelist ของ HF-HR-0) — ช่องที่ DTO ในไฟล์นี้ประกาศ = อ่านได้ในไฟล์ client ที่ import DTO นั้น */
 export const PRIVACY_SHARED = "src/lib/modules/hr/privacy-shared.ts";

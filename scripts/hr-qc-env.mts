@@ -50,7 +50,7 @@ export async function loadHrQcEnv(label: string): Promise<{ host: string }> {
 // ═══════════════════ 2. ชื่อตารางจริงที่ HR/payroll ใช้วันนี้ ═══════════════════
 // ตรวจกับ prisma/schema/hr.prisma + payroll.prisma (+ ตารางร่วมที่ HR เขียนถึง) ณ session/hr d43bdcb8 (8 ต.ค. 2569)
 // key = delegate ของ Prisma (camelCase) · `tenantId` = ตารางมีคอลัมน์ tenantId (seed ลบด้วยคอลัมน์นี้ได้)
-// 🔴 ตารางของใบหลัง (HrLawValue …) **ยังไม่มีจริง** — ห้ามเติมจนกว่า migration ลง (HR H1.2 ▸ ตารางเวลา/การลา 8 ตัวลงแล้ว ◂)
+// 🔴 ตารางของใบหลัง **ยังไม่มีจริง** — ห้ามเติมจนกว่า migration ลง (HR H1.2 ▸ ตารางเวลา/การลา 8 ตัวลงแล้ว ◂ · HR H1.3 ▸ เงิน/กฎหมาย 4 ตัวลงแล้ว ◂)
 //    (HR H1.1 ▸ HrEmployee.unitId/employmentStatus · HrEmployeeUnit · HrSalaryProfile.payType ลงแล้ว — migration 20261204000000_hr_org_axis ◂)
 export const HR_TABLES = {
   // ── prisma/schema/hr.prisma ──
@@ -74,6 +74,11 @@ export const HR_TABLES = {
   hrPayAdjustment: { model: "HrPayAdjustment", file: "payroll.prisma", tenantId: true, role: "รายการเพิ่ม/หัก (OT · BONUS · DEDUCTION · COMMISSION …)" },
   hrPayrollRun: { model: "HrPayrollRun", file: "payroll.prisma", tenantId: true, role: "รอบจ่าย (DRAFT/APPROVED/PAID/REVERSED · journalEntryId)" },
   hrPayrollItem: { model: "HrPayrollItem", file: "payroll.prisma", tenantId: true, role: "แถวพนักงานในรอบจ่าย" },
+  // HR H1.3 ▸ เงินและกฎหมาย (migration 20261206000000_hr_money_law_model) — seed ไม่เขียน 4 ตารางนี้ ◂
+  hrWorkEntry: { model: "HrWorkEntry", file: "payroll.prisma", tenantId: true, role: "นาทีทำงานต่อวันต่อชนิด (H3.1 เขียน · ว่างใน H1.3) (HR H1.3)" },
+  hrReviewNote: { model: "HrReviewNote", file: "hr.prisma", tenantId: true, role: "บันทึก/ตักเตือน/ประเมิน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
+  hrOnboardingTask: { model: "HrOnboardingTask", file: "hr.prisma", tenantId: true, role: "งานรับเข้า/ออกจากงาน (H4.4 · ว่างใน H1.3) (HR H1.3)" },
+  hrLawTable: { model: "HrLawTable", file: "payroll.prisma", tenantId: false, role: "ตารางกฎหมายกลางของทั้ง SHARK — ไม่ลบตามร้าน · แถว v1:* จาก hr-seed-law-draft (HR H1.3)" },
   // ── ตารางร่วมที่ HR เขียนถึง ──
   approvalPolicy: { model: "ApprovalPolicy", file: "approval.prisma", tenantId: true, role: "สายอนุมัติ (entityType HrLeave)" },
   approvalStep: { model: "ApprovalStep", file: "approval.prisma", tenantId: true, role: "ขั้นของสายอนุมัติ" },
@@ -104,6 +109,8 @@ export const HR_DELETE_ORDER = [
   "hrShiftSwapRequest", "hrTimeCorrection", "hrOtRequest", "hrLeaveBalanceTxn", "hrRosterEntry",
   "hrEmployeeDoc", "hrAttendance", "hrLeave", "hrWorkSchedule", "hrEmployeeUnit",
   "hrShift", "hrLeavePolicy", "hrHoliday",
+  // HR H1.3 ▸ ลูกของพนักงาน (ก่อน hrEmployee) · hrLawTable ไม่อยู่ในลำดับนี้ (ตารางกลาง ไม่มี tenantId) ◂
+  "hrWorkEntry", "hrReviewNote", "hrOnboardingTask",
   // สายอนุมัติ / ประวัติ / คิว / แจ้งเตือน
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
   "auditLog", "outboxEvent", "appNotification", "automationRun", "automationRule",
