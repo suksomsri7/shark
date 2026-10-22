@@ -48,6 +48,7 @@ const pay = (await import("@/lib/modules/hr/payroll" as string)) as Any;
 const digest = (await import("@/lib/modules/hr/payroll-digest" as string)) as Any;
 const gl = (await import("@/lib/modules/account/gl" as string)) as Any;
 const staff = (await import("@/lib/staff/service" as string)) as Any;
+const settings = (await import("@/lib/modules/hr/settings" as string)) as Any; // HR H1.2 ▸ กะ / ประเภทการลา / วันหยุด ผ่าน service ◂
 
 const q = makeChecker(SUITE);
 const t0 = Date.now();
@@ -353,6 +354,40 @@ try {
   const lp = leaves.find((x: Any) => x.id === lvP.id);
   q.chk("L1", "ใบลา 2 ใบ: แพร APPROVED (ผู้จัดการตัดสิน) · มิ้นท์ PENDING", leaves.length === 2 && la?.status === "APPROVED" && la?.decidedById === uid(L.decider) && lp?.status === "PENDING", "APPROVED/manager · PENDING", `${la?.status}/${la?.decidedById === uid(L.decider) ? "manager" : la?.decidedById} · ${lp?.status}`);
 
+  // ═══════════════════ 9b. HR H1.2 ▸ ตั้งค่าเวลาและการลา (R11) — ผ่าน hr/settings ในนามเจ้าของ ◂ ═══════════════════
+  // 4 กะ (3 กะเดิมของ HQC.shifts ทั้งร้าน + กะดึกข้ามเที่ยงคืน) · 4 ประเภทการลา = ค่าตั้งต้นรอเจ้าของยืนยัน (HQ12) · 2 วันหยุด
+  // 🔴 ไม่สร้างตารางงาน / สมุดวันลา / คำขอแลกกะ-แก้เวลา-OT (ของ H2.x)
+  const TL = HQC.timeLeave;
+  const ownerViewer = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: uid("owner") };
+  const settingsOk = (what: string, r: Any) => {
+    if (!r?.ok) throw new Error(`settings ${what}: ${r?.reason}`);
+  };
+  for (const row of TL.shiftRows) {
+    const s = HQC.shifts[row.shift as keyof typeof HQC.shifts];
+    settingsOk(`shift ${row.shift}`, await settings.createShift(ctx, ownerViewer, { unitId: null, name: row.name, startMin: s.startMin, endMin: s.endMin, graceMin: s.graceMin, breakMin: 0, crossesMidnight: false, colour: row.colour, sortOrder: row.sortOrder }));
+  }
+  const N = TL.nightShift;
+  settingsOk("shift night", await settings.createShift(ctx, ownerViewer, { unitId: null, name: N.name, startMin: N.startMin, endMin: N.endMin, graceMin: N.graceMin, breakMin: 0, crossesMidnight: true, colour: N.colour, sortOrder: N.sortOrder }));
+  for (const pol of TL.policies) settingsOk(`policy ${pol.category}`, await settings.createLeavePolicy(ctx, ownerViewer, { unitId: null, ...pol })); // ค่าตั้งต้นรอเจ้าของยืนยัน (HQ12)
+  const year = Number(D.today.slice(0, 4));
+  for (const h of TL.holidays) {
+    settingsOk(`holiday ${h.kind}`, await settings.upsertHoliday(ctx, ownerViewer, { unitId: h.unit ? units[h.unit] : null, date: `${year}-${h.monthDay}`, name: h.name, kind: h.kind, presetYear: h.preset ? year : null, shopOpen: false }));
+  }
+  const tlShifts = (await P.hrShift.findMany({ where: { tenantId }, select: { unitId: true, crossesMidnight: true, colour: true } })) as Any[];
+  const tlPolicies = await P.hrLeavePolicy.count({ where: { tenantId } });
+  const tlHolidays = (await P.hrHoliday.findMany({ where: { tenantId }, select: { kind: true, unitId: true, presetYear: true } })) as Any[];
+  const tlZero = (await P.hrRosterEntry.count({ where: { tenantId } })) + (await P.hrLeaveBalanceTxn.count({ where: { tenantId } })) + (await P.hrShiftSwapRequest.count({ where: { tenantId } })) + (await P.hrTimeCorrection.count({ where: { tenantId } })) + (await P.hrOtRequest.count({ where: { tenantId } }));
+  q.chk(
+    "TL1",
+    `ตั้งค่าเวลา/การลา (H1.2): กะ 4 (ทั้งร้าน · ข้ามเที่ยงคืน 1) · ประเภทการลา 4 (${TL.hq12Note}) · วันหยุด 2 (ราชการ presetYear + ร้านเฉพาะหัวหิน) · ตารางงาน/สมุด/คำขอ 0`,
+    tlShifts.length === 4 && tlShifts.every((x) => x.unitId === null) && tlShifts.filter((x) => x.crossesMidnight).length === 1 &&
+      tlPolicies === 4 &&
+      tlHolidays.length === 2 && tlHolidays.some((x) => x.kind === "PUBLIC" && x.presetYear === year && x.unitId === null) && tlHolidays.some((x) => x.kind === "SHOP" && x.unitId === units.huahin) &&
+      tlZero === 0,
+    "4 · 4 · 2 · 0",
+    `${tlShifts.length} · ${tlPolicies} · ${tlHolidays.length} · ${tlZero}`,
+  );
+
   // ═══════════════════ 10. ผลรวม + ร้านอื่นไม่เปลี่ยน + ไฟล์เฉลย ═══════════════════
   const counts = await countsOf(tenantId, tables);
   counts["User(qc emails)"] = await P.user.count({ where: { email: { in: HQC_EMAILS } } });
@@ -386,6 +421,13 @@ try {
     adjustments: adjIds,
     leaves: { approved: lvA.id, pending: lvP.id },
     attendanceRows: clockRows,
+    // HR H1.2 ▸ ตั้งค่าเวลาและการลา (ชื่อ/ค่า — ไม่มี id ⇒ เท่ากันทุกรอบของวันเดียวกัน) · จำนวนแถวอยู่ใน counts.HrShift/HrLeavePolicy/HrHoliday ◂
+    timeLeave: {
+      note: TL.hq12Note,
+      shifts: [...TL.shiftRows.map((r) => ({ name: r.name, ...HQC.shifts[r.shift as keyof typeof HQC.shifts], colour: r.colour, crossesMidnight: false, unit: null })), { name: N.name, startMin: N.startMin, endMin: N.endMin, graceMin: N.graceMin, colour: N.colour, crossesMidnight: true, unit: null }],
+      policies: TL.policies,
+      holidays: TL.holidays.map((h) => ({ date: `${year}-${h.monthDay}`, name: h.name, kind: h.kind, unit: h.unit, presetYear: h.preset ? year : null })),
+    },
     counts,
   };
   writeFileSync(HQC.expectedPath, JSON.stringify(expected, null, 2) + "\n");

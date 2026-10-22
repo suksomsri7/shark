@@ -22,11 +22,77 @@ enum HrAttendanceKind {
 // ผลตัดสินการเข้างาน (13 ส.ค. 2026) — snapshot ณ วินาทีที่กดเข้างาน ไม่คิดสดตอนอ่าน
 // เหตุผล: ตารางแก้ทีหลังต้องไม่ย้อนไปเปลี่ยนคำตัดสินของวันที่ผ่านมาแล้ว (บทเรียนเดียวกับ Appointment.priceSatang)
 // NO_SCHEDULE = ยังไม่ตั้งตาราง → ไม่ใช่ความผิดพนักงาน ห้ามนับเป็นสาย
+// HR H1.2 ▸ ABSENT (ขาดงาน) / EARLY_OUT (ออกก่อนเวลา) เพิ่มด้วย migration แยก 20261205000001_hr_judgement_enums
+//   (ALTER TYPE … ADD VALUE ใช้ในธุรกรรมเดียวกับที่เพิ่มไม่ได้) · H1.2 ยังไม่มีแถวไหนใช้ — ผู้ตัดสิน = H2.5 ◂
 enum HrAttendanceJudgement {
   ON_TIME
   LATE
   DAY_OFF
   NO_SCHEDULE
+  ABSENT
+  EARLY_OUT
+}
+
+// ── HR H1.2 ▸ เวลาและการลา (โมเดลอย่างเดียว — เครื่องยนต์ = H2.x) ◂ ──
+// ที่มาของตารางงาน: แม่แบบรายสัปดาห์ / จัดมือ / AI เสนอ
+enum HrRosterSource {
+  TEMPLATE
+  MANUAL
+  AI
+}
+
+// ที่มาของการลงเวลา (null = ก่อน H2.4 — clock() ยังไม่เขียนช่องนี้ · มติ Q7)
+enum HrClockSource {
+  KIOSK
+  MANAGER
+  MOBILE
+  CORRECTION
+  POS
+  IMPORT
+}
+
+// สถานะคำขอทั่วไป (แก้เวลา / OT)
+enum HrRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// สถานะคำขอแลกกะ — AWAITING_PEER = รอเพื่อนร่วมงานตอบก่อน แล้วจึง PENDING รอผู้จัดการ
+enum HrSwapStatus {
+  AWAITING_PEER
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// OT ก่อนเข้างาน / หลังเลิกงาน (HQ10 — ช่วงเวลา N ชม. อยู่ในการตั้งค่า H2.9)
+enum HrOtTiming {
+  BEFORE
+  AFTER
+}
+
+// ชนิดรายการสมุดวันลา — GRANT/CARRY/ADJUST เป็นบวก · USE/EXPIRE เป็นลบ · ยกเลิกใบลาที่อนุมัติแล้ว = ADJUST (use-revert:<leaveId>)
+enum HrLeaveTxnKind {
+  GRANT
+  USE
+  CARRY
+  EXPIRE
+  ADJUST
+}
+
+// วันหยุดราชการ / วันหยุดของร้าน
+enum HrHolidayKind {
+  PUBLIC
+  SHOP
+}
+
+// ลาครึ่งวันเช้า / บ่าย
+enum HrHalfDay {
+  AM
+  PM
 }
 
 // เพศ / สถานะสมรส / ประเภทการจ้าง — ใช้ enum เพื่อให้รายงานนับได้ (ไม่ใช่ข้อความพิมพ์อิสระ)
@@ -140,6 +206,11 @@ model HrEmployee {
   schedules   HrWorkSchedule[]
   docs        HrEmployeeDoc[]
   units       HrEmployeeUnit[] // HR H1.1 ▸ ยืมตัวไปสาขาอื่น ◂
+  // HR H1.2 ▸ ตารางงาน / คำขอแก้เวลา / OT / สมุดวันลา ◂
+  rosterEntries    HrRosterEntry[]
+  timeCorrections  HrTimeCorrection[]
+  otRequests       HrOtRequest[]
+  leaveBalanceTxns HrLeaveBalanceTxn[]
 
   @@index([systemId, active])
   @@index([tenantId])
@@ -199,8 +270,20 @@ model HrAttendance {
   judgement  HrAttendanceJudgement?
   dueMin     Int? // ควรเข้ากี่โมง (นาทีจากเที่ยงคืนเวลาไทย) ณ วันนั้น
   lateMin    Int? // สายกี่นาที (นับจาก dueMin ไม่รวมเวลาผ่อนผัน) · 0 = ไม่สาย
+  // HR H1.2 ▸ หลักฐานการลงเวลา — ทุกช่องว่างได้ ไม่มีค่าปริยาย (แถวเดิม = null) · H1.2 ยังไม่มีใครเขียน/อ่าน
+  //   🔒 lat/lng/accuracyM/photoKey/deviceId = ข้อมูลอ่อนไหว (GPS/รูป — HQ27) ห้ามออก DTO/หน้า/AI/outbox · deviceId = สตริงทึบ ไม่มี FK (Q9) ◂
+  rosterEntryId String?
+  rosterEntry   HrRosterEntry?  @relation(fields: [rosterEntryId], references: [id], onDelete: SetNull)
+  source        HrClockSource?
+  lat           Decimal?        @db.Decimal(9, 6)
+  lng           Decimal?        @db.Decimal(9, 6)
+  accuracyM     Int?
+  photoKey      String?
+  deviceId      String?
+  corrections   HrTimeCorrection[]
 
   @@index([systemId, employeeId, at])
+  @@index([rosterEntryId])
 }
 
 model HrLeave {
@@ -218,6 +301,15 @@ model HrLeave {
   // HR H0.7 ▸ user ที่ยื่นแทน (ผู้จัดการ/HR) · null = พนักงานยื่นเอง ◂
   filedById   String?
   createdAt   DateTime      @default(now())
+  // HR H1.2 ▸ ประเภทการลาของร้าน + จำนวนวัน/ครึ่งวัน/ชั่วโมง + ใบรับรองแพทย์ — ว่างได้ทุกช่อง (ใบลาเดิม days = null → H2.7 ตัดสิน)
+  //   ผู้ยื่น = filedById ?? employee.linkedUserId (มติ Q1 — ไม่มีคอลัมน์ผู้ยื่นแยก) · 🔒 attachmentKey = ข้อมูลสุขภาพ ◂
+  policyId      String?
+  policy        HrLeavePolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  days          Decimal?       @db.Decimal(4, 1)
+  halfDay       HrHalfDay?
+  hours         Decimal?       @db.Decimal(4, 1)
+  attachmentKey String?
+  balanceTxns   HrLeaveBalanceTxn[]
 
   @@index([systemId, status])
   @@index([systemId, employeeId, fromDate])
@@ -244,4 +336,220 @@ model HrWorkSchedule {
 
   @@unique([employeeId, weekday])
   @@index([systemId, employeeId])
+}
+
+// ════════ HR H1.2 ▸ เวลาและการลา (8 ตาราง) — unique ที่มีนิพจน์/เงื่อนไข อยู่ใน migration.sql เท่านั้น ◂ ════════
+
+// กะของร้าน — unitId null = ใช้ทุกสาขา · crossesMidnight = เลิกกะวันถัดไป (endMin < startMin)
+//   🔴 unique "ชื่อกะที่ยังใช้อยู่ ไม่ซ้ำต่อระบบ+สาขา" = (systemId, COALESCE(unitId,''), lower(name)) WHERE active (SQL ดิบ)
+//   ปิดใช้ (active false) แทนการลบ — ตารางงานอ้างกะด้วย FK Restrict
+model HrShift {
+  id              String          @id @default(cuid())
+  tenantId        String
+  systemId        String
+  unitId          String?
+  name            String
+  code            String?
+  startMin        Int
+  endMin          Int
+  breakMin        Int             @default(0)
+  graceMin        Int             @default(15)
+  crossesMidnight Boolean         @default(false)
+  colour          String? // คีย์สีของธีม (shift-1…) ไม่ใช่ hex
+  active          Boolean         @default(true)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  entries         HrRosterEntry[]
+
+  @@index([tenantId])
+  @@index([systemId, unitId, active])
+}
+
+// ตารางงานรายวัน — date = วันตามปฏิทินไทยที่กะ "เริ่ม" · เวลาคัดลอกจากกะตอนเขียน (snapshot — แก้กะทีหลังไม่ย้อนแก้ประวัติ · Q6)
+//   ไม่มีแถว = วันหยุด · unitId = สาขาที่ทำงานวันนั้น (ยืมตัว)
+model HrRosterEntry {
+  id              String               @id @default(cuid())
+  tenantId        String
+  systemId        String
+  employeeId      String
+  employee        HrEmployee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime             @db.Date
+  shiftId         String
+  shift           HrShift              @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  unitId          String?
+  startMin        Int
+  endMin          Int
+  breakMin        Int
+  crossesMidnight Boolean
+  published       Boolean              @default(false)
+  publishedAt     DateTime?
+  source          HrRosterSource       @default(MANUAL)
+  note            String?
+  createdById     String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  attendances     HrAttendance[]
+  swapRequests    HrShiftSwapRequest[]
+
+  @@unique([employeeId, date, shiftId])
+  @@index([tenantId])
+  @@index([systemId, date])
+  @@index([systemId, unitId, date])
+}
+
+// คำขอแลก/ยกกะ — toEntryId null = ยกให้ · 🔴 "คำขอที่ยังเปิดได้ 1 ใบต่อแถวตาราง" = partial unique (fromEntryId)
+//   WHERE status IN ('AWAITING_PEER','PENDING') (SQL ดิบ) · requestedByUserId = user ที่กดยื่น (ตัวเอง/ยื่นแทน)
+model HrShiftSwapRequest {
+  id                  String        @id @default(cuid())
+  tenantId            String
+  systemId            String
+  requesterEmployeeId String
+  fromEntryId         String
+  fromEntry           HrRosterEntry @relation(fields: [fromEntryId], references: [id], onDelete: Cascade)
+  targetEmployeeId    String?
+  toEntryId           String?
+  status              HrSwapStatus  @default(AWAITING_PEER)
+  reason              String?
+  requestedByUserId   String?
+  peerDecidedAt       DateTime?
+  decidedById         String?
+  decidedAt           DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([systemId, status])
+}
+
+// คำขอแก้เวลา — attendanceId null = ลืมกด · 🔴 partial unique 2 ตัว (SQL ดิบ): ใบรอ 1 ใบต่อ attendanceId ·
+//   ใบรอ 1 ใบต่อ (employeeId, rosterEntryId, kind) · evidenceJson = id ปิดกะ POS เท่านั้น (H2.6)
+model HrTimeCorrection {
+  id                 String           @id @default(cuid())
+  tenantId           String
+  systemId           String
+  employeeId         String
+  employee           HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  attendanceId       String?
+  attendance         HrAttendance?    @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+  rosterEntryId      String?
+  kind               HrAttendanceKind
+  proposedAt         DateTime
+  originalAt         DateTime?
+  reason             String
+  status             HrRequestStatus  @default(PENDING)
+  requestedByUserId  String?
+  decidedById        String?
+  decidedAt          DateTime?
+  resultAttendanceId String?
+  evidenceJson       Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([tenantId])
+  @@index([systemId, status])
+}
+
+// คำขอ OT — date = วันไทยที่ OT เริ่ม · multiplierBp = ตัวคูณ ณ ตอนอนุมัติ (ค่าตามกฎหมายมาจาก HrLawTable H1.3 ไม่ใช่โค้ด)
+//   🔴 partial unique "OT ที่ยังมีผล ไม่ซ้ำเวลาเริ่ม" = (employeeId, startAt) WHERE status IN ('PENDING','APPROVED') (SQL ดิบ)
+model HrOtRequest {
+  id                String          @id @default(cuid())
+  tenantId          String
+  systemId          String
+  employeeId        String
+  employee          HrEmployee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  rosterEntryId     String?
+  date              DateTime        @db.Date
+  startAt           DateTime
+  endAt             DateTime
+  minutes           Int
+  timing            HrOtTiming
+  reason            String?
+  status            HrRequestStatus @default(PENDING)
+  requestedByUserId String?
+  decidedById       String?
+  decidedAt         DateTime?
+  multiplierBp      Int?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([systemId, status])
+  @@index([systemId, employeeId, date])
+}
+
+// ประเภทการลาของร้าน (มติ review #10 — ไม่ใช่โมเดลชื่อ HrLeaveType) · category = enum HrLeaveType เดิม (หมวดตามกฎหมาย)
+//   quotaDays null = ไม่จำกัดโควตา · 🔴 unique (systemId, COALESCE(unitId,''), lower(name)) WHERE active (SQL ดิบ)
+model HrLeavePolicy {
+  id                   String              @id @default(cuid())
+  tenantId             String
+  systemId             String
+  unitId               String?
+  category             HrLeaveType
+  name                 String
+  paid                 Boolean             @default(true)
+  quotaDays            Decimal?            @db.Decimal(4, 1)
+  minServiceDays       Int                 @default(0)
+  firstYearProrata     Boolean             @default(false)
+  carryMaxDays         Decimal             @default(0) @db.Decimal(4, 1)
+  carryExpiresMonthDay String? // "MM-DD"
+  allowHalfDay         Boolean             @default(true)
+  allowHours           Boolean             @default(false)
+  attachmentAfterDays  Int?
+  yearStartMonth       Int                 @default(1)
+  active               Boolean             @default(true)
+  sortOrder            Int                 @default(0)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  leaves               HrLeave[]
+  balanceTxns          HrLeaveBalanceTxn[]
+
+  @@index([tenantId])
+  @@index([systemId, category])
+}
+
+// สมุดวันลา (ledger — เขียนเพิ่มอย่างเดียว ไม่แก้แถว) · ยอดคงเหลือ = ผลรวม days · sourceKey = กันเขียนซ้ำ
+//   (grant:<emp>:<policy>:<ปี> · use:<leaveId> · use-revert:<leaveId>) · H1.2 ไม่มีผู้เขียน (นอกจาก oracle fixture)
+model HrLeaveBalanceTxn {
+  id            String         @id @default(cuid())
+  tenantId      String
+  systemId      String
+  employeeId    String
+  employee      HrEmployee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  policyId      String
+  policy        HrLeavePolicy  @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  kind          HrLeaveTxnKind
+  days          Decimal        @db.Decimal(4, 1)
+  leaveYear     Int
+  effectiveDate DateTime       @db.Date
+  leaveId       String?
+  leave         HrLeave?       @relation(fields: [leaveId], references: [id], onDelete: SetNull)
+  sourceKey     String
+  note          String?
+  createdById   String?
+  createdAt     DateTime       @default(now())
+
+  @@unique([systemId, sourceKey])
+  @@index([tenantId])
+  @@index([systemId, employeeId, policyId, leaveYear])
+}
+
+// วันหยุด — unitId null = ทั้งร้าน · แถวทั้งร้าน + แถวสาขาวันเดียวกันมีได้ทั้งคู่ (ลำดับความสำคัญ = H2.8)
+//   presetYear ไม่ว่าง = มาจากชุดวันหยุดของ SHARK (H2.8) · 🔴 unique (systemId, date, COALESCE(unitId,'')) (SQL ดิบ)
+model HrHoliday {
+  id         String        @id @default(cuid())
+  tenantId   String
+  systemId   String
+  unitId     String?
+  date       DateTime      @db.Date
+  name       String
+  kind       HrHolidayKind
+  presetYear Int?
+  shopOpen   Boolean       @default(false)
+  note       String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([systemId, date])
 }

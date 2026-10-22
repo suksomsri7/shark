@@ -124,6 +124,15 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrWorkSchedule: sys(),
   HrEmployeeDoc: sys(),
   HrEmployeeUnit: sys(), // HR H1.1 ▸ ยืมตัวไปสาขาอื่น (มี systemId ของระบบ HR) ◂
+  // HR H1.2 ▸ เวลาและการลา — ทุกตารางมี systemId ของระบบ HR ◂
+  HrShift: sys(),
+  HrRosterEntry: sys(),
+  HrShiftSwapRequest: sys(),
+  HrTimeCorrection: sys(),
+  HrOtRequest: sys(),
+  HrLeavePolicy: sys(),
+  HrLeaveBalanceTxn: sys(),
+  HrHoliday: sys(),
   Page: unit,
   PageWidget: tenant,
   PageMember: tenant,

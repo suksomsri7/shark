@@ -38,6 +38,7 @@ import KioskClock from "./KioskClock";
 import { evaluate } from "@/lib/core/rbac";
 // HR H1.1 ▸ R4/R8 ขอบเขตสาขาของผู้ดู (ทะเบียน · ลงเวลา · ใบลา · kiosk · หน้าภาพรวม) ◂
 import { hrScopeOf, isAllBranches, unitsForScope } from "./scope";
+import { canManageHrSettings } from "./settings"; // HR H1.2 ▸ ลิงก์หน้าตั้งค่า (เฉพาะผู้ตั้งค่าได้) ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -74,6 +75,9 @@ const JUDGEMENT_LABEL: Record<string, string> = {
   LATE: "สาย",
   DAY_OFF: "วันหยุดของคนนี้",
   NO_SCHEDULE: "ยังไม่ตั้งตาราง",
+  // HR H1.2 ▸ ค่าใหม่ของ enum (ยังไม่มีแถวใช้ — ผู้ตัดสิน = H2.5) ◂
+  ABSENT: "ขาดงาน",
+  EARLY_OUT: "ออกก่อนเวลา",
 };
 const judgementTone = (v: string): "muted" | "strong" | "danger" =>
   v === "LATE" ? "danger" : v === "ON_TIME" ? "strong" : "muted";
@@ -625,6 +629,8 @@ export async function HrHub({ systemId }: { systemId: string }) {
     { href: `/app/sys/${systemId}/hr/employees`, label: "พนักงาน", value: `${employees.length} คน`, desc: "รายชื่อ + เพิ่มพนักงาน" },
     { href: `/app/sys/${systemId}/hr/payroll`, label: "เงินเดือน", desc: "โปรไฟล์ + รอบจ่าย + สลิป" },
   ];
+  // HR H1.2 ▸ R9 หน้าตั้งค่า (กะ · ประเภทการลา · วันหยุด) — OWNER หรือ hr.employee.create ◂
+  const canSettings = canManageHrSettings(hv);
 
   return (
     <div className="flex flex-col gap-5">
@@ -643,6 +649,16 @@ export async function HrHub({ systemId }: { systemId: string }) {
             <span className={`text-xs ${muted}`}>{c.desc}</span>
           </Link>
         ))}
+        {canSettings && (
+          <Link
+            href={`/app/sys/${systemId}/hr/settings`}
+            data-testid="hr-link-settings"
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <span className="text-sm font-medium">ตั้งค่า</span>
+            <span className={`text-xs ${muted}`}>กะ · ประเภทการลา · วันหยุด</span>
+          </Link>
+        )}
         {canManageSalesTeams && (
           // CRM C3.6 ▸ R-A: HR ลิงก์ไป "ทีมขาย" ของ core (`/app/settings/teams`) — ไม่มีหน้าทีมชุดที่สองใน HR ◂
           <Link

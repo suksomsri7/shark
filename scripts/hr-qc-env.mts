@@ -50,7 +50,7 @@ export async function loadHrQcEnv(label: string): Promise<{ host: string }> {
 // ═══════════════════ 2. ชื่อตารางจริงที่ HR/payroll ใช้วันนี้ ═══════════════════
 // ตรวจกับ prisma/schema/hr.prisma + payroll.prisma (+ ตารางร่วมที่ HR เขียนถึง) ณ session/hr d43bdcb8 (8 ต.ค. 2569)
 // key = delegate ของ Prisma (camelCase) · `tenantId` = ตารางมีคอลัมน์ tenantId (seed ลบด้วยคอลัมน์นี้ได้)
-// 🔴 ตารางของใบหลัง (HrShift · HrRoster · HrLeaveBalance · HrLawValue …) **ยังไม่มีจริง** — ห้ามเติมจนกว่า migration ลง
+// 🔴 ตารางของใบหลัง (HrLawValue …) **ยังไม่มีจริง** — ห้ามเติมจนกว่า migration ลง (HR H1.2 ▸ ตารางเวลา/การลา 8 ตัวลงแล้ว ◂)
 //    (HR H1.1 ▸ HrEmployee.unitId/employmentStatus · HrEmployeeUnit · HrSalaryProfile.payType ลงแล้ว — migration 20261204000000_hr_org_axis ◂)
 export const HR_TABLES = {
   // ── prisma/schema/hr.prisma ──
@@ -60,6 +60,15 @@ export const HR_TABLES = {
   hrLeave: { model: "HrLeave", file: "hr.prisma", tenantId: true, role: "ใบลา (PENDING/APPROVED/REJECTED/CANCELLED)" },
   hrWorkSchedule: { model: "HrWorkSchedule", file: "hr.prisma", tenantId: true, role: "ตารางงานรายวันในสัปดาห์" },
   hrEmployeeUnit: { model: "HrEmployeeUnit", file: "hr.prisma", tenantId: true, role: "ยืมตัวไปช่วยสาขาอื่น (HR H1.1)" },
+  // HR H1.2 ▸ เวลาและการลา (migration 20261205000000_hr_time_leave_model) ◂
+  hrShift: { model: "HrShift", file: "hr.prisma", tenantId: true, role: "กะของร้าน (ทั้งร้าน/รายสาขา · ข้ามเที่ยงคืนได้) (HR H1.2)" },
+  hrRosterEntry: { model: "HrRosterEntry", file: "hr.prisma", tenantId: true, role: "ตารางงานรายวัน (snapshot เวลากะ) (HR H1.2)" },
+  hrShiftSwapRequest: { model: "HrShiftSwapRequest", file: "hr.prisma", tenantId: true, role: "คำขอแลก/ยกกะ (HR H1.2)" },
+  hrTimeCorrection: { model: "HrTimeCorrection", file: "hr.prisma", tenantId: true, role: "คำขอแก้เวลา (HR H1.2)" },
+  hrOtRequest: { model: "HrOtRequest", file: "hr.prisma", tenantId: true, role: "คำขอ OT (HR H1.2)" },
+  hrLeavePolicy: { model: "HrLeavePolicy", file: "hr.prisma", tenantId: true, role: "ประเภทการลาของร้าน (category = HrLeaveType) (HR H1.2)" },
+  hrLeaveBalanceTxn: { model: "HrLeaveBalanceTxn", file: "hr.prisma", tenantId: true, role: "สมุดวันลา (ledger · sourceKey กันซ้ำ) (HR H1.2)" },
+  hrHoliday: { model: "HrHoliday", file: "hr.prisma", tenantId: true, role: "วันหยุด (ทั้งร้าน/รายสาขา) (HR H1.2)" },
   // ── prisma/schema/payroll.prisma ──
   hrSalaryProfile: { model: "HrSalaryProfile", file: "payroll.prisma", tenantId: true, role: "โปรไฟล์เงินเดือน (รายเดือนเท่านั้นวันนี้)" },
   hrPayAdjustment: { model: "HrPayAdjustment", file: "payroll.prisma", tenantId: true, role: "รายการเพิ่ม/หัก (OT · BONUS · DEDUCTION · COMMISSION …)" },
@@ -91,7 +100,10 @@ export const HR_DELETE_ORDER = [
   // payroll
   "hrPayrollItem", "hrPayAdjustment", "hrPayrollRun", "hrSalaryProfile",
   // hr
+  // HR H1.2 ▸ ลูกก่อนแม่: คำขอ/สมุดวันลา → ตารางงาน → (ลงเวลา/ใบลา) → กะ/ประเภทการลา/วันหยุด ◂
+  "hrShiftSwapRequest", "hrTimeCorrection", "hrOtRequest", "hrLeaveBalanceTxn", "hrRosterEntry",
   "hrEmployeeDoc", "hrAttendance", "hrLeave", "hrWorkSchedule", "hrEmployeeUnit",
+  "hrShift", "hrLeavePolicy", "hrHoliday",
   // สายอนุมัติ / ประวัติ / คิว / แจ้งเตือน
   "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
   "auditLog", "outboxEvent", "appNotification", "automationRun", "automationRule",
@@ -179,6 +191,29 @@ export const HQC = {
     morning: { startMin: 7 * 60, endMin: 15 * 60, graceMin: 15 },
     afternoon: { startMin: 12 * 60, endMin: 20 * 60, graceMin: 15 },
     closing: { startMin: 15 * 60, endMin: 23 * 60, graceMin: 15 },
+  },
+  // HR H1.2 ▸ R11 ตั้งค่าเวลาและการลา (seed เขียนผ่าน hr/settings ในนามเจ้าของ) — ไม่มีตารางงาน/สมุดวันลา/คำขอ (H2.x seed เอง)
+  //   shiftRows = HQC.shifts 3 กะเดิมเป็นแถว HrShift ทั้งร้าน (สี shift-1..3) + กะดึก QC 22:00–06:00 ข้ามเที่ยงคืน (ไม่มีใครถูกจัด)
+  //   policies = ค่าแนะนำของ HQ12 — 🔴 ค่าตั้งต้นรอเจ้าของยืนยัน (HQ12) · holidays = ราชการ 1 วัน (presetYear) + วันหยุดร้านเฉพาะสาขาหัวหิน ◂
+  timeLeave: {
+    hq12Note: "ค่าตั้งต้นรอเจ้าของยืนยัน (HQ12)",
+    shiftRows: [
+      { shift: "morning", name: "กะเช้า", colour: "shift-1", sortOrder: 1 },
+      { shift: "afternoon", name: "กะบ่าย", colour: "shift-2", sortOrder: 2 },
+      { shift: "closing", name: "กะปิดร้าน", colour: "shift-3", sortOrder: 3 },
+    ],
+    nightShift: { name: "กะดึก (QC ข้ามเที่ยงคืน)", startMin: 22 * 60, endMin: 6 * 60, graceMin: 15, colour: "shift-4", sortOrder: 4 },
+    policies: [
+      { category: "SICK", name: "ลาป่วย", paid: true, quotaDays: 30, attachmentAfterDays: 3, sortOrder: 1 },
+      { category: "PERSONAL", name: "ลากิจ", paid: true, quotaDays: 3, sortOrder: 2 },
+      { category: "VACATION", name: "ลาพักร้อน", paid: true, quotaDays: 6, minServiceDays: 365, carryMaxDays: 6, carryExpiresMonthDay: "03-31", sortOrder: 3 },
+      { category: "OTHER", name: "ลาไม่รับค่าจ้าง", paid: false, quotaDays: null, sortOrder: 4 },
+    ],
+    /** monthDay ของปีปัจจุบัน (เวลาไทย) · unit null = ทั้งร้าน */
+    holidays: [
+      { kind: "PUBLIC", name: "วันสงกรานต์", monthDay: "04-13", unit: null, preset: true },
+      { kind: "SHOP", name: "วันหยุดประจำปีสาขาหัวหิน", monthDay: "06-15", unit: "huahin", preset: false },
+    ],
   },
   employees: [
     // ── 9 คนจากภาพ 02/06 (ชื่อ · ตำแหน่ง · เงินเดือน) ──

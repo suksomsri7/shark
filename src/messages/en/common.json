@@ -22,5 +22,63 @@
     "loading": "Loading...",
     "save": "Save",
     "cancel": "Cancel"
+  },
+  "hr": {
+    "settings": {
+      "title": "Time and leave settings",
+      "desc": "Shifts · leave types · holidays (interim page — the full page comes in a later work order)",
+      "stubNote": "This is a basic settings page. Rosters, leave balances and the public-holiday preset come in later work orders.",
+      "saved": "Saved",
+      "shopWide": "Whole shop",
+      "unit": "Branch",
+      "shifts": {
+        "title": "Shifts",
+        "empty": "No shifts yet",
+        "name": "Shift name",
+        "start": "Start",
+        "end": "End",
+        "break": "Break (min)",
+        "grace": "Grace (min)",
+        "crossesMidnight": "Crosses midnight",
+        "overnight": "Ends next day",
+        "add": "Add shift",
+        "archive": "Archive"
+      },
+      "policies": {
+        "title": "Leave types",
+        "empty": "No leave types yet",
+        "name": "Type name",
+        "category": "Category",
+        "quotaDays": "Quota (days/year)",
+        "noQuota": "No limit",
+        "paid": "Paid",
+        "unpaid": "Unpaid",
+        "add": "Add leave type",
+        "archive": "Archive"
+      },
+      "holidays": {
+        "title": "Holidays",
+        "empty": "No holidays this year",
+        "year": "Year",
+        "date": "Date",
+        "name": "Holiday name",
+        "kind": "Kind",
+        "add": "Add holiday",
+        "delete": "Delete",
+        "shopOpen": "Shop open"
+      },
+      "kinds": {
+        "PUBLIC": "Public holiday",
+        "SHOP": "Shop holiday"
+      },
+      "categories": {
+        "SICK": "Sick leave",
+        "PERSONAL": "Personal leave",
+        "VACATION": "Vacation",
+        "OTHER": "Other"
+      },
+      "hubLink": "Settings",
+      "hubDesc": "Shifts · leave types · holidays"
+    }
   }
 }
