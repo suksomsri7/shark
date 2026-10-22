@@ -137,7 +137,9 @@ export async function executePlan(
     if (failed) break; // step ที่เหลือคง PENDING (ไม่รันต่อ)
     try {
       const idx = steps.indexOf(st);
-      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`);
+      // HR H0.7 ▸ R7: ส่งผู้กดยืนยันแผน (opts.userId) ให้ทุกขั้น — ใช้ช่อง userId ตัวที่ 6 ของ runKind ที่มีอยู่แล้ว (K3.5 · Q-D) ·
+      //   hr_decide_leave / approval_decide ยังถูกกันไว้ข้างบน (PLAN_HUMAN_ONLY · R5.4) ◂
+      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`, opts?.userId ?? null);
       st.status = "DONE";
       st.note = note;
       results.push({ summary: st.summary, ok: true, note });

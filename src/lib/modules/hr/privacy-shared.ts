@@ -91,4 +91,5 @@ export type LeaveItemDto = {
   toDate: Date;
   status: string;
   reason?: string | null;
+  filedBy?: string; // HR H0.7 ▸ R9: "ยื่นโดย <ชื่อ>" เฉพาะผู้มี hr.leave.read (ผู้จัดการ/HR) และเฉพาะใบที่มีคนยื่นแทน ◂
 };

@@ -51,6 +51,8 @@ const PAGES: readonly PageSpec[] = [
 /** ชุดหน้าต่อใบงาน — ใบ UI หลัง ๆ เพิ่มของตัวเอง (เช่น SPECS["2.5"] = [หน้าลงเวลาใหม่]) */
 const SPECS: Record<string, readonly PageSpec[]> = {
   "0.4": PAGES,
+  // HR H0.7 ▸ R5: หน้า "อนุมัติ" → คำขอของฉัน (ปุ่ม hr-leave-cancel-<leaveId>) — เห็นเฉพาะผู้ยื่น (มีใบลา PENDING ในสาย) ◂
+  "0.7": [{ key: "approvals-my-requests", path: () => `/app/approvals`, users: ["owner", "manager", "staff"], why: "คำขอของฉัน + ปุ่มยกเลิกใบลา (H0.7)" }],
 };
 const VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false, touch: false },

@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัต
 import type { HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
+import { evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1): จาก name/phone/email เท่านั้น — **ห้ามส่ง nationalId/PDPA อื่น**
 // เรียกผ่าน facade เท่านั้น (F2.2)
@@ -468,12 +469,79 @@ export type RequestLeaveInput = {
   fromDate: string | Date; // "YYYY-MM-DD" หรือ Date สำเร็จรูป
   toDate: string | Date;
   reason?: string | null;
+  // HR H0.7 ▸ R2: user ที่กดยื่น (ทางหน้าจอ/AI ส่ง user id จริงเสมอ) — ผู้ยื่นในสายอนุมัติ = บัญชีที่ผูกกับพนักงาน ?? คนนี้ ·
+  //   ส่งมาแต่ว่าง (null/"") + พนักงานไม่ผูกบัญชี = ไม่มีผู้ยื่น ⇒ ปฏิเสธ · ไม่ส่งช่องนี้เลย (undefined) = งานภายใน/ข้อสอบรุ่นเก่า คงพฤติกรรมเดิม
+  //   (แบบเดียวกับ decidedById ของ decideLeave — HF-HR-0 R4.2) · ผู้กดไม่ใช่บัญชีของพนักงาน ⇒ filedById = ผู้กด ("ยื่นโดย") ◂
+  actorUserId?: string | null;
 };
+
+// HR H0.7 ▸ ข้อความคงที่ของการยื่น/ยกเลิกใบลา (ไม่มีชื่อคนอื่น · ไม่มีข้อความระบบ) — action โยนต่อได้ตรง ๆ (instanceof) ◂
+export class HrLeaveRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HrLeaveRequestError";
+  }
+}
+export const LEAVE_NO_REQUESTER = "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน";
+export const LEAVE_EMPLOYEE_NOT_FOUND = "ไม่พบพนักงานคนนี้ในระบบพนักงานนี้ — กรุณารีเฟรชหน้าแล้วเลือกใหม่";
+export const LEAVE_OWNER_AUTO_NOTE = "เจ้าของร้าน — ไม่ต้องผ่านการอนุมัติ";
+const CANCEL_NOT_FOUND = "ไม่พบใบลา หรืออยู่นอกร้านนี้";
+const CANCEL_NOT_MINE = "ยกเลิกได้เฉพาะใบลาที่คุณยื่นเอง";
+const CANCEL_DECIDED = "ใบลานี้ตัดสินแล้ว — ยกเลิกเองไม่ได้ หากต้องเปลี่ยน กรุณาติดต่อหัวหน้าหรือเจ้าของกิจการ";
+const CANCEL_STARTED = "ใบลานี้ถึงวันลาแล้ว — ยกเลิกย้อนหลังไม่ได้";
+const CANCEL_NO_ACTOR = "ระบบไม่ทราบผู้ยกเลิกใบลานี้ — กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง";
+
+/** HR H0.7 ▸ R4: บัญชีนี้เป็นเจ้าของร้าน (OWNER ที่ยังใช้งาน) ไหม — Membership เป็นแกน global ⇒ กำกับ tenantId เอง ◂ */
+async function isTenantOwner(tenantId: string, userId: string | null, tx?: Prisma.TransactionClient): Promise<boolean> {
+  if (!userId) return false;
+  const m = await (tx ?? tenantDb({ tenantId })).membership.findFirst({ // HR H0.7 R11 ▸ ใน tx ใช้ tx (ไม่ยืม connection ที่สองใต้ล็อก) ◂
+    where: { tenantId, userId, role: "OWNER", acceptedAt: { not: null } },
+    select: { id: true },
+  });
+  return !!m;
+}
 
 export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<{ id: string }> {
   // HF-HR-0 ▸ รอบ 5c (F2): ใบลา + event + คำขอในสายอนุมัติ (ถ้ามีสาย) เกิดใน **ธุรกรรมเดียว** — เดิมเป็นคนละคำสั่ง ⇒ ทางตรง (decideLeave)
   //   ที่ตัดสินในช่วงระหว่างนั้นไม่เห็นคำขอ จึงตัดสินได้ แล้วคำขอก็ยังถูกสร้าง (สาย PENDING/REJECTED + ใบลา APPROVED) · ลำดับ event เดิม
   //   (hr.leave.submitted ก่อน approval.request.submitted) · ใช้ tx จาก tenantDb (ไม่ลาก prisma ดิบเข้ามา — fitness F5.1) ◂
+  // HR H0.7 ▸ R2/R3/R4: พนักงานต้องอยู่ในระบบ HR นี้ (ระบบอื่น/ร้านอื่น = ไม่พบ) · หาผู้ยื่น (user id) · ใบลาของเจ้าของร้าน = อนุมัติทันที
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId }, select: { id: true, linkedUserId: true } });
+  if (!emp) throw new HrLeaveRequestError(LEAVE_EMPLOYEE_NOT_FOUND);
+  const legacyCaller = input.actorUserId === undefined; // งานภายใน/ข้อสอบรุ่นเก่า — ดูหมายเหตุที่ RequestLeaveInput
+  const actor = typeof input.actorUserId === "string" && input.actorUserId.trim() ? input.actorUserId.trim() : null;
+  const requester = emp.linkedUserId ?? actor;
+  if (!requester && !legacyCaller) throw new HrLeaveRequestError(LEAVE_NO_REQUESTER);
+  const filedById = actor && actor !== emp.linkedUserId ? actor : null;
+  if (await isTenantOwner(ctx.tenantId, emp.linkedUserId)) {
+    // R4 (HQ18/O16-c): ใบลาของเจ้าของร้าน ไม่เข้าสายอนุมัติ · ไม่มีผู้ตัดสิน (decidedById null) · ไม่มี event ใหม่ (Q-E) · audit 1 แถว
+    //   availability เหมือนใบที่อนุมัติแล้วทุกประการ (rules นับ APPROVED) · ไม่มีทาง "เจ้าของอนุมัติใบของตัวเอง" (R4.1a คงอยู่ใน decideLeave)
+    const l = await tenantDb(ctx).hrLeave.create({
+      data: {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        employeeId: emp.id,
+        type: input.type,
+        fromDate: toDbDate(input.fromDate),
+        toDate: toDbDate(input.toDate),
+        reason: input.reason?.trim() || null,
+        status: "APPROVED",
+        decidedById: null,
+        filedById,
+      },
+    });
+    await writeAudit({
+      tenantId: ctx.tenantId,
+      actorType: actor ? "USER" : "SYSTEM",
+      actorId: actor,
+      action: "hr.leave.owner_auto",
+      targetType: "HrLeave",
+      targetId: l.id,
+      after: { leaveId: l.id, employeeId: emp.id, status: "APPROVED", filedById, note: LEAVE_OWNER_AUTO_NOTE },
+    });
+    return { id: l.id };
+  }
+  // ◂ HR H0.7
   const policy = await approval.resolvePolicy({ tenantId: ctx.tenantId }, { entityType: "HrLeave", systemId: ctx.systemId });
   return tenantDb(ctx).$transaction(async (t) => {
   const tx = t as unknown as Prisma.TransactionClient;
@@ -486,6 +554,7 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
       fromDate: toDbDate(input.fromDate),
       toDate: toDbDate(input.toDate),
       reason: input.reason?.trim() || null,
+      filedById, // HR H0.7 ▸ ผู้ยื่นแทน (null = พนักงานยื่นเอง) ◂
       // status = PENDING (default ใน schema)
     },
   });
@@ -515,7 +584,8 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   if (policy) {
     await approval.submitForApproval(
       { tenantId: ctx.tenantId },
-      { entityType: "HrLeave", entityId: l.id, systemId: ctx.systemId, requestedById: input.employeeId },
+      // HR H0.7 ▸ R2: ผู้ยื่น = user id (เดิมเป็น id พนักงาน ⇒ ไม่ขึ้นใน "คำขอของฉัน") · ผู้เรียกรุ่นเก่าที่ไม่บอกผู้กด + พนักงานไม่ผูกบัญชี = ค่าเดิม ◂
+      { entityType: "HrLeave", entityId: l.id, systemId: ctx.systemId, requestedById: requester ?? input.employeeId },
       { tx },
     );
   }
@@ -539,6 +609,7 @@ export class HrLeaveDecisionError extends Error {
 }
 const LEAVE_STATUS_TH: Record<string, string> = { APPROVED: "อนุมัติแล้ว", REJECTED: "ไม่อนุมัติแล้ว", CANCELLED: "ยกเลิกแล้ว" };
 const LEAVE_STALE = "สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่";
+const LEAVE_LOCK_TX_OPTS = { maxWait: 20_000, timeout: 60_000 } as const; // HR H0.7 R11 ▸ ธุรกรรมใต้ล็อกต่อใบลา (decide/cancel) ◂
 
 export async function decideLeave(
   ctx: Ctx,
@@ -556,7 +627,12 @@ export async function decideLeave(
     throw new HrLeaveDecisionError("ระบบไม่ทราบผู้ตัดสินใบลานี้ จึงยังบันทึกผลไม่ได้ — กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
   }
   const db = tenantDb(ctx);
-  const leave = await db.hrLeave.findFirst({
+  // HR H0.7 R11 ▸ R11.2: อ่าน-ตรวจ-เขียน ใต้ล็อกต่อใบลา (คีย์เดียวกับ cancelLeave) ในธุรกรรมเดียว ⇒ ตัดสินแข่งกับยกเลิกไม่ได้ผลครึ่ง ๆ
+  //   (ใบที่ยกเลิกแล้ว = อ่านซ้ำหลังล็อกเห็น CANCELLED ⇒ ปฏิเสธไทย) · ทุกคำสั่งใน tx ใช้ tx · audit หลัง commit เหมือนเดิม ◂
+  const { leave, from } = await db.$transaction(async (t) => {
+  const tx = t as unknown as Prisma.TransactionClient;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave:${leaveId}`}, 0))`;
+  const leave = await tx.hrLeave.findFirst({
     where: { id: leaveId },
     select: { status: true, decidedById: true, employee: { select: { linkedUserId: true } } },
   });
@@ -573,8 +649,8 @@ export async function decideLeave(
   // HF-HR-0 ▸ รอบ 5b (H2): ใบลาที่มีคำขอในสายอนุมัติ "สถานะใดก็ได้" (รอ · อนุมัติ · ปฏิเสธ) = สายเป็นเจ้าของการตัดสิน — ทางตรงปฏิเสธทุกกรณี
   //   (เดิมดูแค่ รอ/อนุมัติ ⇒ ช่วงระหว่าง "สายตัดสินแล้ว" กับ "effect เขียนใบลา" ทางตรงตัดสินสวนผลของสายได้) ·
   //   ยกเว้นเดียว: CANCELLED (cancelRequest — สายจะไม่ตัดสินและไม่มี effect เขียนใบลาอีก) ⇒ ปล่อยให้ทางตรง ไม่งั้นใบลาค้างถาวร ◂
-  const chains = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findMany({
-    where: { entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
+  const chains = await tx.approvalRequest.findMany({
+    where: { tenantId: ctx.tenantId, entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
     select: { status: true },
     take: 20,
   });
@@ -589,11 +665,13 @@ export async function decideLeave(
     throw new HrLeaveDecisionError("ใบลานี้ตัดสินผ่านสายอนุมัติแล้ว — ผลของใบลามาจากหน้า “อนุมัติ” เท่านั้น (ตัดสินซ้ำทางนี้ไม่ได้) หากต้องเปลี่ยนผล กรุณาติดต่อเจ้าของกิจการ");
   }
   // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
-  const res = await db.hrLeave.updateMany({
+  const res = await tx.hrLeave.updateMany({
     where: { id: leaveId, status: from },
     data: { status, decidedById: decidedById ?? null },
   });
   if (res.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
+  return { leave, from };
+  }, LEAVE_LOCK_TX_OPTS);
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: decidedById ? "USER" : "SYSTEM",
@@ -628,6 +706,78 @@ export async function bulkDecideLeave(
   }
   return result;
 }
+
+// HR H0.7 ▸ R5 (HQ18/O16-b): ผู้ยื่นยกเลิกใบลาของตัวเอง
+//   ได้เมื่อ: ใบลายัง PENDING + ผู้กด = ผู้ยื่นในสายอนุมัติ (requestedById · แถวเก่าที่ยังเป็น id พนักงาน = บัญชีที่ผูกกับพนักงานนั้น) ·
+//   ใบที่ไม่มีสาย = บัญชีของพนักงานเอง หรือผู้ยื่นแทน (filedById) · หรือใบลาของเจ้าของร้านที่อนุมัติทันที (R4) ที่ยังไม่ถึงวันลา
+//   (ผู้กด = เจ้าของร้านเจ้าของใบ) · ใบที่สายอนุมัติ/ผู้ตัดสินอนุมัติแล้ว = ยกเลิกเองไม่ได้
+//   คำขอในสาย: ถอนผ่าน approval core (cancelRequest — PENDING→CANCELLED แบบมีเงื่อนไข) + ใบลา →CANCELLED ในธุรกรรมเดียวใต้ล็อกต่อใบลา (R11) · audit hr.leave.cancel 1 แถว (ids เท่านั้น) · ไม่มี event ใหม่ (Q-E)
+export type CancelLeaveResult = { ok: true } | { ok: false; reason: string };
+export async function cancelLeave(ctx: Ctx, leaveId: string, opts: { actorUserId: string }): Promise<CancelLeaveResult> {
+  const actor = typeof opts?.actorUserId === "string" ? opts.actorUserId.trim() : "";
+  if (!actor) return { ok: false, reason: CANCEL_NO_ACTOR };
+  if (!leaveId) return { ok: false, reason: CANCEL_NOT_FOUND };
+  // HR H0.7 R11 ▸ R11.2: ล็อกต่อใบลา (คีย์เดียวกับ decideLeave) ก่อนอ่าน · คำขอในสาย + ใบลา เปลี่ยนเป็น CANCELLED ในธุรกรรมเดียว
+  //   (เดิมสองคำสั่งแยก ⇒ ตัดสินแทรกกลางได้ "คำขอ CANCELLED + ใบลาอนุมัติ") · ไม่ผ่านด่าน = คืนเหตุผล (ธุรกรรมไม่เขียนอะไร) ◂
+  type Out = { ok: true; status: string; requestId: string | null } | { ok: false; reason: string };
+  const out: Out = await tenantDb(ctx).$transaction(async (t): Promise<Out> => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave:${leaveId}`}, 0))`;
+    const leave = await tx.hrLeave.findFirst({
+      where: { id: leaveId },
+      select: { id: true, status: true, decidedById: true, filedById: true, fromDate: true, employeeId: true, employee: { select: { linkedUserId: true } } },
+    });
+    if (!leave) return { ok: false, reason: CANCEL_NOT_FOUND };
+    const chains = await tx.approvalRequest.findMany({
+      where: { tenantId: ctx.tenantId, entityType: "HrLeave", entityId: leaveId },
+      select: { id: true, status: true, requestedById: true },
+      take: 20,
+    });
+    const linked = leave.employee.linkedUserId;
+    const ownsAny = linked === actor || chains.some((c) => c.requestedById === actor);
+    let requestId: string | null = null;
+    if (leave.status === "PENDING") {
+      const pendingReq = chains.find((c) => c.status === "PENDING");
+      if (pendingReq) {
+        const mine = pendingReq.requestedById === actor || (pendingReq.requestedById === leave.employeeId && !!linked && linked === actor);
+        if (!mine) return { ok: false, reason: CANCEL_NOT_MINE };
+        requestId = pendingReq.id;
+      } else if (chains.some((c) => c.status === "APPROVED" || c.status === "REJECTED")) {
+        return { ok: false, reason: CANCEL_DECIDED }; // สายตัดสินแล้ว รอ effect เขียนใบลา
+      } else if (!(actor === linked || (!!leave.filedById && actor === leave.filedById))) {
+        return { ok: false, reason: CANCEL_NOT_MINE };
+      }
+    } else if (leave.status === "APPROVED") {
+      const ownerAuto = chains.length === 0 && leave.decidedById === null && !!linked && linked === actor && (await isTenantOwner(ctx.tenantId, actor, tx));
+      if (!ownerAuto) return { ok: false, reason: ownsAny ? CANCEL_DECIDED : CANCEL_NOT_MINE };
+      const todayTh = toDbDate(thaiDateKey(new Date())); // วันไทยวันนี้ในรูปเดียวกับคอลัมน์ @db.Date
+      if (!(leave.fromDate.getTime() > todayTh.getTime())) return { ok: false, reason: CANCEL_STARTED };
+    } else {
+      return { ok: false, reason: ownsAny ? `ใบลานี้${LEAVE_STATUS_TH[leave.status] ?? "ตัดสินแล้ว"}` : CANCEL_NOT_MINE };
+    }
+    // คำขอในสาย: ถอนผ่าน approval core (PENDING→CANCELLED แบบมีเงื่อนไข) ใน tx นี้ — ผู้อนุมัติตัดสินไปก่อนแล้ว ⇒ ไม่เขียนอะไร
+    if (requestId && !(await approval.cancelRequest({ tenantId: ctx.tenantId }, requestId, { tx }))) return { ok: false, reason: CANCEL_DECIDED };
+    const res = await tx.hrLeave.updateMany({ where: { id: leaveId, status: leave.status }, data: { status: "CANCELLED" } });
+    if (res.count === 0) throw new HrLeaveRequestError(LEAVE_STALE); // ย้อนการถอนคำขอด้วย (ไม่ควรเกิดใต้ล็อก)
+    return { ok: true, status: leave.status, requestId };
+  }, LEAVE_LOCK_TX_OPTS).catch((e: unknown) => {
+    if (e instanceof HrLeaveRequestError) return { ok: false as const, reason: e.message };
+    throw e;
+  });
+  if (!out.ok) return { ok: false, reason: out.reason };
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: "USER",
+    actorId: actor,
+    action: "hr.leave.cancel",
+    targetType: "HrLeave",
+    targetId: leaveId,
+    before: { status: out.status },
+    after: { status: "CANCELLED", requestId: out.requestId, cancelledById: actor },
+  });
+  return { ok: true };
+}
+// ◂ HR H0.7
 
 // ── availability (contract C-2) ──
 // โหลดใบลาของพนักงาน แล้วให้ rules ตัดสิน — rules นับเฉพาะ APPROVED (PENDING ไม่ทำให้ไม่ว่าง)
@@ -670,17 +820,45 @@ export async function employeesUnavailable(ctx: Ctx, employeeIds: string[], date
 }
 
 // ── reads (สำหรับ UI) ──
-export async function listLeaves(ctx: Ctx, take = 100) {
+// HR H0.7 R10 ▸ ขอบเขตแถวของรายการใบลา (privacy hunt F1/F2):
+//   ผู้ดูที่มี hr.leave.read หรือ hr.leave.decide หรือบทบาท OWNER/MANAGER ⇒ ทุกแถวของระบบ (เหมือนเดิม)
+//   คนอื่นทั้งหมด (STAFF ที่มีแค่ hr.leave.request · hr.employee.create · hr.attendance.clock · hr.payroll.read · ไม่มีคีย์) ⇒ เฉพาะแถวของ
+//   พนักงานที่ผูกกับบัญชีตัวเอง · ไม่ผูก/ไม่รู้ userId ⇒ 0 แถว · ตัวกรองอยู่ใน where ของคิวรี (ไม่กรองหลังดึง — take=100 ไม่ตัดแถวของตัวเอง)
+//   ไม่ส่ง scope = พฤติกรรมเดิม (ผู้เรียกภายใน · การ์ดนับบนหน้าภาพรวม) ◂
+export type LeaveRowScope = { all: true } | { linkedUserId: string };
+export function leaveRowScopeOf(m: MembershipCtx | null | undefined, userId: string | null | undefined): LeaveRowScope {
+  if (m) {
+    const wide =
+      m.role === "OWNER" ||
+      m.role === "MANAGER" ||
+      evaluate(m, { module: "hr", action: "hr.leave.read" }) ||
+      evaluate(m, { module: "hr", action: "hr.leave.decide" });
+    if (wide) return { all: true };
+  }
+  return { linkedUserId: typeof userId === "string" ? userId.trim() : "" }; // "" ⇒ 0 แถว
+}
+const leaveScopeWhere = (scope?: LeaveRowScope): Prisma.HrLeaveWhereInput | null => {
+  if (!scope || "all" in scope) return {};
+  if (!scope.linkedUserId) return null; // ไม่ต้องถาม DB เลย
+  return { employee: { linkedUserId: scope.linkedUserId } };
+};
+
+export async function listLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope) {
+  const sw = leaveScopeWhere(scope);
+  if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
+    where: { ...sw },
     include: { employee: true },
     orderBy: [{ createdAt: "desc" }],
     take,
   });
 }
 
-export async function pendingLeaves(ctx: Ctx, take = 100) {
+export async function pendingLeaves(ctx: Ctx, take = 100, scope?: LeaveRowScope) {
+  const sw = leaveScopeWhere(scope);
+  if (sw === null) return [];
   return tenantDb(ctx).hrLeave.findMany({
-    where: { status: "PENDING" },
+    where: { status: "PENDING", ...sw },
     include: { employee: true },
     orderBy: [{ fromDate: "asc" }, { createdAt: "asc" }],
     take,

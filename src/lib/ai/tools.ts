@@ -12,7 +12,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
-import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
+import { leaveRowScopeOf, pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
 import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/service";
 import { getCustomerPoints } from "@/lib/modules/point/service";
@@ -230,7 +230,10 @@ const pendingLeaves: AiTool = {
     const hr = await findSystem(ctx.tenantId, "HR");
     if (!hr) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบพนักงาน (HR)" });
 
-    const leaves = await hrPendingLeaves({ tenantId: ctx.tenantId, systemId: hr.id });
+    // HR H0.7 R10 ▸ R10.3: ขอบเขตแถวตามสมาชิกภาพของผู้ถาม (กติกาเดียวกับหน้าใบลา) — คีย์ API/ผู้ถามที่ไม่มีสมาชิกภาพ ⇒ 0 แถว
+    //   (fail closed · ไม่ error) · ผู้ถามที่มีสมาชิกภาพแต่ไม่ใช่ผู้อ่าน/ผู้ตัดสิน ⇒ เฉพาะใบลาของพนักงานที่ผูกกับบัญชีตัวเอง ◂
+    const am = aiActorMembership(ctx.actor);
+    const leaves = am ? await hrPendingLeaves({ tenantId: ctx.tenantId, systemId: hr.id }, 100, leaveRowScopeOf(am, aiActorUserId(ctx.actor))) : [];
     return JSON.stringify({
       ใบลารออนุมัติ: leaves.map((l) => ({
         พนักงาน: l.employee?.name ?? "ไม่ทราบชื่อ",

@@ -1,6 +1,7 @@
 import { requireTenant } from "@/lib/core/context";
 import { listPending, listMyRequests } from "@/lib/modules/approval/service";
 import { cancelMyRequestAction } from "@/lib/modules/approval/actions";
+import { cancelLeaveAction } from "@/lib/modules/hr/actions"; // HR H0.7 ▸ R5 ยกเลิกใบลาของตัวเอง (ใบลา + คำขอพร้อมกัน) ◂
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
@@ -74,7 +75,23 @@ export default async function ApprovalsPage() {
                     {r.createdAt.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}
                   </div>
                 </div>
-                {r.status === "PENDING" && (
+                {/* HR H0.7 ▸ R5: คำขอที่เป็นใบลา → ยกเลิกทั้งใบลา + คำขอผ่าน cancelLeaveAction (เดิมยกเลิกแค่คำขอ ใบลาค้าง "รออนุมัติ") ◂ */}
+                {r.status === "PENDING" && r.entityType === "HrLeave" && r.systemId && (
+                  <div className="flex shrink-0 items-center gap-2" data-testid={`hr-leave-cancel-${r.entityId}`}>
+                    <ConfirmDialog
+                      triggerLabel="ยกเลิกใบลา"
+                      triggerClassName="btn-sm min-h-11"
+                      title="ยกเลิกใบลานี้?"
+                      detail="ใบลาจะถูกยกเลิกและออกจากสายอนุมัติ — ถ้ายังต้องลา ให้ยื่นใบใหม่"
+                      confirmLabel="ยืนยันยกเลิกใบลา"
+                      danger
+                      action={cancelLeaveAction}
+                      fields={{ systemId: r.systemId, leaveId: r.entityId }}
+                      testId={`hr-leave-cancel-${r.entityId}`}
+                    />
+                  </div>
+                )}
+                {r.status === "PENDING" && r.entityType !== "HrLeave" && (
                   <div className="flex shrink-0 items-center gap-2">
                     <ConfirmDialog
                       triggerLabel="ยกเลิกคำขอ"

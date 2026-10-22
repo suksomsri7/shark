@@ -23,6 +23,7 @@
 
 import type { Membership, Prisma, Role, User } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
+import { writeAudit } from "@/lib/core/audit"; // HR H0.7 ▸ audit hr.employee.link ◂
 import {
   canAssignRole,
   canGrantPermission,
@@ -397,7 +398,8 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       }
       const hasSalary = await tx.hrSalaryProfile.count({ where: { tenantId: input.tenantId, employeeId: employee.id } });
       if (hasSalary > 0 && !canViewPayroll(actor.ctx)) {
-        throw new StaffRuleError("พนักงานคนนี้มีข้อมูลเงินเดือน — การผูกบัญชีต้องทำโดยเจ้าของกิจการหรือผู้มีสิทธิ์ดูเงินเดือน");
+        // HR H0.7 ▸ R6 (R4.7 "ผูกก่อนเงินเดือน"): ข้อความใหม่ตามมติ (Q-B) ◂
+        throw new StaffRuleError("พนักงานคนนี้มีข้อมูลเงินเดือน — ให้ผู้ดูแลเงินเดือนเป็นคนผูกบัญชี");
       }
       // ◂ HF-HR-0
 
@@ -405,6 +407,12 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       const existing = await tx.membership.findFirst({
         where: { userId: user.id, tenantId: input.tenantId },
       });
+      // HR H0.7 R11 ▸ R11.1 (review M1): บัญชีที่เป็นเจ้าของกิจการ (role OWNER) ผูกกับแถวพนักงานได้โดยเจ้าของคนนั้นเอง หรือ OWNER ของร้านเท่านั้น —
+      //   ไม่งั้นผู้ถือ settings.staff.write ผูกบัญชีเจ้าของเข้ากับพนักงานคนใดก็ได้ แล้วใบลาของพนักงานนั้นเข้าทาง "เจ้าของลาเอง" (R4) ไม่ผ่านการอนุมัติ
+      //   ปฏิเสธ = โยนในธุรกรรม ⇒ ไม่เขียนอะไรเลย (ไม่มี audit ตามมติ) · บัญชี MANAGER/STAFF ผูกได้ตามเดิม ◂
+      if (existing?.role === "OWNER" && user.id !== input.actorUserId && actor.membership.role !== "OWNER") {
+        throw new StaffRuleError("ผูกบัญชีเจ้าของกิจการได้เฉพาะเจ้าของกิจการเอง — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้");
+      }
       let membershipId: string;
       let createdNew = false;
       if (existing) {
@@ -435,9 +443,11 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       // 4) ปิดหนี้ G7 — ผูกทะเบียนพนักงานเข้ากับบัญชีที่ล็อกอินได้
       // HF-HR-0 ▸ รอบ 4 (R4.3): ผูกแบบมีเงื่อนไขในคำสั่งเดียว (ยังว่าง หรือเป็นบัญชีเดิม) — ให้สิทธิ์พร้อมกัน 2 บัญชีได้ผลทางเดียว
       //   ทางที่แพ้ได้ 0 แถว ⇒ โยน ⇒ ธุรกรรมทั้งก้อน (รวมสมาชิกภาพที่เพิ่งสร้าง) ถูกย้อน ◂
+      // HR H0.7 ▸ R6: linkApprovedById = ผู้ยืนยันการผูก · DB เป็นผู้ตัดสินสุดท้ายของ 1 บัญชี ↔ พนักงาน 1 คน
+      //   (partial unique HrEmployee_tenantId_linkedUserId_key — ชน = P2002 ⇒ ลองใหม่ 1 ครั้งข้างล่าง แล้วด่าน otherLink ตอบข้อความไทย) ◂
       const linked = await tx.hrEmployee.updateMany({
         where: { id: employee.id, tenantId: input.tenantId, OR: [{ linkedUserId: null }, { linkedUserId: user.id }] },
-        data: { linkedUserId: user.id },
+        data: { linkedUserId: user.id, linkApprovedById: input.actorUserId },
       });
       if (linked.count !== 1) {
         throw new StaffRuleError(`“${employee.name}” เพิ่งถูกผูกกับบัญชีผู้ใช้อื่น — กรุณารีเฟรชหน้าแล้วตรวจอีกครั้ง`);
@@ -458,6 +468,15 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       action: "membership.access.grant",
       targetId: out.membershipId,
       after: { email, employeeId: input.employeeId, role: "STAFF", createdNew: out.createdNew },
+    });
+    // HR H0.7 ▸ R6: ประวัติการผูกบัญชี — id เท่านั้น (ไม่มีชื่อ/อีเมล) ◂
+    await writeAudit({
+      tenantId: input.tenantId,
+      actorId: input.actorUserId,
+      action: "hr.employee.link",
+      targetType: "HrEmployee",
+      targetId: input.employeeId,
+      after: { employeeId: input.employeeId, userId: out.userId, approvedById: input.actorUserId },
     });
 
     return { ok: true, userId: out.userId, membershipId: out.membershipId };
@@ -573,12 +592,40 @@ export async function revokeStaffAccess(input: RevokeStaffAccessInput): Promise<
   if (target.role === "OWNER" && (await countOtherActiveOwners(input.tenantId, target.userId)) === 0) {
     return fail(LAST_OWNER_REASON);
   }
-  if (target.acceptedAt == null) return { ok: true, membershipId: target.id }; // ถอนไปแล้ว
-
-  await prisma.membership.updateMany({
-    where: { id: target.id, tenantId: input.tenantId },
-    data: { acceptedAt: null },
+  // HR H0.7 ▸ R6 (Q-C): ถอนสิทธิ์ = เลิกผูกบัญชีกับแถวพนักงานด้วย (ล้าง linkedUserId + linkApprovedById ในธุรกรรมเดียวกับการถอน) —
+  //   บัญชีที่ถูกถอนต้องไม่เหลือสิทธิ์ "ตัวพนักงานเอง" (สลิปเงินเดือน) · เปิดสิทธิ์คืน (restore) ไม่ผูกคืนเอง — ต้องให้สิทธิ์ (ผูก) ใหม่
+  //   ถอนไปแล้วแต่ยังผูกค้าง (แถวเก่า) ⇒ ล้างการผูกได้ · audit hr.employee.link {unlinked:true} ต่อแถวพนักงาน (id เท่านั้น) ◂
+  const unlinked = await prisma.$transaction(async (tx) => {
+    const rows = await tx.hrEmployee.findMany({
+      where: { tenantId: input.tenantId, linkedUserId: target.userId },
+      select: { id: true },
+    });
+    if (rows.length > 0) {
+      await tx.hrEmployee.updateMany({
+        where: { tenantId: input.tenantId, linkedUserId: target.userId },
+        data: { linkedUserId: null, linkApprovedById: null },
+      });
+    }
+    if (target.acceptedAt != null) {
+      await tx.membership.updateMany({
+        where: { id: target.id, tenantId: input.tenantId },
+        data: { acceptedAt: null },
+      });
+    }
+    return rows.map((r) => r.id);
   });
+  for (const employeeId of unlinked) {
+    await writeAudit({
+      tenantId: input.tenantId,
+      actorId: input.actorUserId,
+      action: "hr.employee.link",
+      targetType: "HrEmployee",
+      targetId: employeeId,
+      after: { employeeId, userId: target.userId, approvedById: null, unlinked: true },
+    });
+  }
+  if (target.acceptedAt == null) return { ok: true, membershipId: target.id }; // ถอนไปแล้ว
+  // ◂ HR H0.7
 
   await writeStaffAudit({
     tenantId: input.tenantId,
