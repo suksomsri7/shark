@@ -6964,7 +6964,7 @@
         "note": "17A พิมพ์ตัวอย่าง: payload ตัวอย่างจากฟอร์ม (copy:true · เลข \"ตัวอย่าง\") → printReceipt ตามค่าตั้งเครื่องนี้ (heartbeat) · ไม่ลงทะเบียน = พิมพ์ผ่านเบราว์เซอร์ 80 มม."
       },
       "wo": "P1.10U",
-      "oracle": "",
+      "oracle": "P1.10-P1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -7724,7 +7724,7 @@
         "note": "พิมพ์ใบทดสอบผ่านวิธีพิมพ์ของเครื่องที่เลือก (printReceipt) · ปฏิเสธ = pos-print-error"
       },
       "wo": "P1.10U",
-      "oracle": "",
+      "oracle": "P1.10-P1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -7938,7 +7938,7 @@
         "note": "แสดงในกล่องคำปฏิเสธ pos-print-error · พิมพ์ซ้ำด้วยวิธีเดิม · โมดูลพิมพ์ src/components/pos/print/PrintStatus.tsx (ใช้ใน 17A/17B · PayDone · หน้ากะ)"
       },
       "wo": "P1.10U",
-      "oracle": "",
+      "oracle": "P1.10-P1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -7964,7 +7964,7 @@
         "note": "ทางสำรองเมื่อ UNSUPPORTED/NO_DEVICE ของ USB/Bluetooth (iOS Safari) → พิมพ์ผ่านเบราว์เซอร์ · โมดูลพิมพ์ src/components/pos/print/PrintStatus.tsx (ใช้ใน 17A/17B · PayDone · หน้ากะ)"
       },
       "wo": "P1.10U",
-      "oracle": "",
+      "oracle": "P1.10-P1",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
@@ -24678,7 +24678,7 @@
         "state": "unchanged"
       },
       "wo": "P2.12U",
-      "oracle": "",
+      "oracle": "P2.12-PD3",
       "system": "POS",
       "query": "kind=daily&from=[date]&to=[date]&noprint=1",
       "safety": "external"
@@ -30044,7 +30044,7 @@
         "db": "PosPrintAgent create (tokenHash · printers)"
       },
       "wo": "P3-SKEL U",
-      "oracle": "",
+      "oracle": "P3-SKEL-LP1",
       "system": "POS",
       "query": "unit=[unitId]&tab=devices",
       "opener": [
