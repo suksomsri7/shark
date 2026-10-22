@@ -189,6 +189,11 @@
 //   orders-detail-chat-nolink · orders-detail-chat-sent · orders-chat-card-requested · paydone-line-auto (1440 · ⚠️ ขายจริง 1 บิลผูกสมาชิก QC) — ตารางใน P37U_PLAN · fixture/เก็บกวาดใน
 //   ensureP37uFixture/prepP37u/cleanupP37u (settings.pos.chat = jsonb ของ harness · ค่าเดิมใน settings.pos._qcP37uBefore · ระบบแชทชั่วคราว + WEBCHAT (ส่ง no-op) · ออเดอร์ผ่าน ingestOrder ·
 //   ด่าน LINE CONNECTED = 0 ก่อนสถานะที่เปิดสวิตช์ · ไม่มีข้อความ LINE จริงออกจากรอบนี้) · สถานะเดิม settings-shark/orders-mixed ไม่แตะ ◂
+// POS P3.6U ▸ ลูกค้าองค์กร/วางบิล 01/02/02b/12/08/10 (CD-P36U-1…12 · wo p3.6u · --states · ไม่ส่ง --page = register + sales + reports + settings · 3 ขนาด · th + LOCALE=en 1440
+//   (+390 ของ register/sales ตาม EN_MOBILE_PAGES) · owner 15 + cashier 6 ต่อภาษา · context ใหม่ทุกสถานะ · ไม่ reseed · ร้าน coffee เท่านั้น) — ตารางใน P36U_PLAN · fixture/เก็บกวาดใน
+//   ensureP36uFixture/prepP36u/cleanupP36u (ระบบ CRM ของร้าน QC: ใช้ตัวที่มี/สร้าง "ลูกค้าองค์กร (ภาพ QC P3.6U)" แล้วเก็บไว้ · บริษัท -co/-co2 + ดีล + ผู้ติดต่อสมาชิกผ่านตัวเขียน CRM ·
+//   วงเงินผ่าน saveCreditAccount · settings.pos.credit/.orders.memberOnBill = jsonb ของ harness (ค่าเดิมใน _qcP36uBefore · ด่านร้าน QC ก่อนเขียน) · ผู้จัดการ + PIN ของภาพ ·
+//   ⚠️ paydone-onaccount-due ขายจริง 1 บิลวางบิล → voidSale ตอนเก็บกวาด) ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -236,6 +241,9 @@ const P39U_PAGES = ["reports", "settings"] as const satisfies readonly PosPage[]
 // POS P3.7U ▸ CD-P37U: wo p3.7u = สถานะแชทของใบนี้ (ไม่ส่ง --page = settings + orders + register) ◂
 const P37U_WO = /^p3\.?7u/i.test(WO ?? "");
 const P37U_PAGES = ["settings", "orders", "register"] as const satisfies readonly PosPage[];
+// POS P3.6U ▸ CD-P36U-12: wo p3.6u = สถานะลูกค้าองค์กร/วางบิลของใบนี้ (ไม่ส่ง --page = register + sales + reports + settings) ◂
+const P36U_WO = /^p3\.?6u/i.test(WO ?? "");
+const P36U_PAGES = ["register", "sales", "reports", "settings"] as const satisfies readonly PosPage[];
 // POS P2.7U ▸ มติ 15: wo p2.7 = หน้าสาธารณะ QR (/q/**) + จอ 09 + จอโต๊ะ + ลิ้นชักช่องทาง (ไม่ส่ง --page = qr-public + orders + tables + settings) ◂
 const P27_WO = /^p2\.?7(?![0-9])/i.test(WO ?? "");
 const P27_PAGES = ["qr-public", "orders", "tables", "settings"] as const satisfies readonly PosPage[];
@@ -265,7 +273,7 @@ const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 // POS P2.9bU ▸ wo p2.9bu ไม่ส่ง --page = หน้าขาย/บิล/ตั้งค่า (สถานะมัดจำ) ◂
 const P29BU_WO = /^p2\.?9bu/i.test(WO ?? "");
-const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P37U_WO ? [...P37U_PAGES] /* POS P3.7U */ : P39U_WO ? [...P39U_PAGES] /* POS P3.9U */ : P34U_WO ? [...P34U_PAGES] /* POS P3.4U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
+const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : P27_WO ? [...P27_PAGES] /* POS P2.7U */ : P213_WO ? ["settings"] /* POS P2.13 */ : P210_WO ? ["settings", "display"] /* POS P2.10 */ : P211U_WO ? [...P211U_PAGES] : P212U_WO ? [...P212U_PAGES] /* POS P2.12U */ : P36U_WO ? [...P36U_PAGES] /* POS P3.6U */ : P37U_WO ? [...P37U_PAGES] /* POS P3.7U */ : P39U_WO ? [...P39U_PAGES] /* POS P3.9U */ : P34U_WO ? [...P34U_PAGES] /* POS P3.4U */ : P35U_WO ? [...P35U_PAGES] /* POS P3.5U */ : P29BU_WO ? ["register", "sales", "settings"] : [...POS_PAGES]; // POS P2.11U ◂ · POS P2.9bU ◂
 /**
  * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
  * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
@@ -308,7 +316,7 @@ const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const PDF_PROBE = argv.includes("--pdf");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"] | (typeof POS_DISPLAY_VIEWPORTS)[number]["name"]; // POS P2.10 ▸ + display/ipad-land ◂
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey | P34uKey | P39uKey /* POS P3.9U */ | P37uKey /* POS P3.7U */; // POS P3.4U ▸ + P34u ◂ // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey | P29buKey | P25uTablesKey | P25uRegKey | P211uKey | P212uKey | P210Key | P213Key | P27Key | P35uKey | P34uKey | P39uKey /* POS P3.9U */ | P37uKey /* POS P3.7U */ | P36uKey /* POS P3.6U */; // POS P3.4U ▸ + P34u ◂ // POS P3.5U ▸ + P35u ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212u ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ · POS P2.11U ▸ + P211u ◂ · POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂ · POS P2.5U ▸ + P25u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -884,6 +892,76 @@ const p39uPath = (k: P39uKey): string => {
   }
 };
 // ◂ POS P3.9U
+// ── POS P3.6U ▸ ลูกค้าองค์กร/วางบิล (CD-P36U-1…12 · wo p3.6u · --states · 3 ขนาด · th + LOCALE=en 1440 (+390 register/sales) · owner 15 + cashier 6) ◂
+type P36uKey =
+  | "register-company-chip"
+  | "register-company-picker-search"
+  | "register-company-picker-member"
+  | "register-deal-select"
+  | "paydlg-onaccount-owner"
+  | "paydlg-onaccount-cashier"
+  | "paydlg-onaccount-buyer"
+  | "paydlg-onaccount-hidden"
+  | "paydlg-credit-over-sheet"
+  | "paydlg-credit-over-wrong-pin"
+  | "paydone-onaccount-due"
+  | "bills-drawer-onaccount"
+  | "bills-refund-onaccount"
+  | "reports-credit-owner"
+  | "reports-credit-denied"
+  | "settings-credit-card-off"
+  | "settings-credit-card-on"
+  | "settings-credit-account-invalid"
+  | "settings-credit-readonly"
+  | "settings-orders-member-on-bill";
+const P36U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
+const P36U_PLAN: { key: P36uKey; page: PosPage; devices: readonly Device[]; users: readonly UserKey[]; note: string }[] = [
+  { key: "register-company-chip", page: "register", devices: P36U_D3, users: ["owner", "cashier"], note: "01 ตะกร้า 2 บรรทัด + เลือกบริษัท -co (ค้นเลขผู้เสียภาษี) → ชิปบริษัท ชื่อ · เลขภาษี · สำนักงานใหญ่ + \"ถอดบริษัท\" · แคชเชียร์ไม่มีตัวเลือกดีล (ไม่มี crm.deal.update)" },
+  { key: "register-company-picker-search", page: "register", devices: P36U_D3, users: ["owner"], note: "แผ่นเลือกบริษัท: ค้น \"ภาพคิวซี\" → แถว -co / -co2 (ชื่อ · เลขภาษี · สาขาเท่านั้น)" },
+  { key: "register-company-picker-member", page: "register", devices: P36U_D3, users: ["owner"], note: "ผูกสมาชิก QC → แผ่นเลือกบริษัท: ส่วน \"บริษัทของสมาชิกนี้\" = -co (ผู้ติดต่อ CRM ของสมาชิก) + บริษัทล่าสุด" },
+  { key: "register-deal-select", page: "register", devices: P36U_D3, users: ["owner"], note: "เลือก -co → ตัวเลือกดีล \"ชื่อดีล · ขั้น\" (ไม่มีมูลค่าดีล) → เลือกดีล OPEN ของภาพ" },
+  { key: "paydlg-onaccount-owner", page: "register", devices: P36U_D3, users: ["owner"], note: "02 ไทล์วางบิล (requireBuyer ปิด) → แถวเดียวเต็มยอด · สถานะ: วงเงินพอ · เทอม 30 วัน · ครบกำหนด · วงเงินคงเหลือ (ผู้ถือ pos.credit.manage)" },
+  { key: "paydlg-onaccount-cashier", page: "register", devices: P36U_D3, users: ["cashier"], note: "02 ไทล์วางบิลของแคชเชียร์: วงเงินพอ · เทอม · ครบกำหนด — ไม่มีตัวเลขวงเงิน (CD-4)" },
+  { key: "paydlg-onaccount-buyer", page: "register", devices: P36U_D3, users: ["owner"], note: "requireBuyer เปิด: แตะไทล์ → 15A ตั้งต้นจากบริษัท (นิติบุคคล · ชื่อ · เลขภาษี · สาขา) → แก้เลขภาษีเป็นเลขอื่น + ที่อยู่ → บันทึก → คำเตือนเลขภาษีไม่ตรงบริษัท" },
+  { key: "paydlg-onaccount-hidden", page: "register", devices: P36U_D3, users: ["owner"], note: "ปิดวางบิล (settings.pos.credit.enabled false) — จอชำระไม่มีไทล์วางบิล (มีชิปบริษัทในตะกร้า)" },
+  { key: "paydlg-credit-over-sheet", page: "register", devices: P36U_D3, users: ["cashier"], note: "-co2 วงเงิน ฿1: ไทล์ → วงเงินไม่พอ → ยืนยัน → แผ่น \"เกินวงเงินวางบิล\" + แป้น PIN ผู้จัดการ (ไม่มีตัวเลขวงเงินของแคชเชียร์) · ไม่มีบิล" },
+  { key: "paydlg-credit-over-wrong-pin", page: "register", devices: P36U_D3, users: ["cashier"], note: "แผ่นเกินวงเงิน → เลือกผู้จัดการของภาพ → PIN ผิด 6 หลัก → ส่งซ้ำคีย์เดิม + creditOverride → PIN_INVALID ใต้แป้น (failedCount ล้างด้วย unlockStaffPin)" },
+  { key: "paydone-onaccount-due", page: "register", devices: ["desktop"], users: ["owner"], note: "⚠️ ขายจริง 1 บิลวางบิลของ -co (กดยืนยัน) → 02b \"วางบิล (เครดิตเทอม)\" + ชิป \"บริษัท · ครบกำหนด <วัน>\" (วันจากสถานะวงเงินล่าสุด · owner-ack) · บิลนี้ใช้ต่อในภาพบิล · voidSale ตอนเก็บกวาด" },
+  { key: "bills-drawer-onaccount", page: "sales", devices: P36U_D3, users: ["owner"], note: "12 ?bill= บิลวางบิล: วิธีชำระ \"วางบิล (เครดิตเทอม)\" · แถวบัญชี \"ใบแจ้งหนี้/ใบกำกับภาษี\" + ลิงก์เอกสาร (W23) · ไม่มีแถวขอ/ออกใบเต็มรูป" },
+  { key: "bills-refund-onaccount", page: "sales", devices: P36U_D3, users: ["owner"], note: "12 คืนเงินบิลวางบิล: เลือก 1 บรรทัด → ชิปเดียว \"วางบิล (ลดหนี้)\" (วิธีอื่นซ่อน) — ไม่กดยืนยัน" },
+  { key: "reports-credit-owner", page: "reports", devices: P36U_D3, users: ["owner"], note: "08 แท็บ \"ลูกหนี้ลูกค้าองค์กร\" (?kind=credit 30 วัน): บริษัท · บิล · ยอดวางบิล · คืน · ค้าง · เกินกำหนด · ครบกำหนดเก่าสุด (หรือข้อความว่าง)" },
+  { key: "reports-credit-denied", page: "reports", devices: P36U_D3, users: ["cashier"], note: "08 ?kind=credit ของแคชเชียร์: การ์ดปฏิเสธของรายงานลูกหนี้ (ไม่เรียกเซิร์ฟเวอร์เมื่อไม่มี pos.report.view)" },
+  { key: "settings-credit-card-off", page: "settings", devices: P36U_D3, users: ["owner"], note: "10 แท็บวิธีรับเงิน → การ์ด \"ลูกค้าเครดิต (วางบิล)\" ปิด: สวิตช์ aria-checked=false + กรอบเส้นประ \"ปิดอยู่\" · บัญชีเครดิต -co/-co2" },
+  { key: "settings-credit-card-on", page: "settings", devices: P36U_D3, users: ["owner"], note: "การ์ดลูกค้าเครดิตเปิด (requireBuyer เปิด) + แถวบัญชี -co ฿500,000 · -co2 ฿1 · เทอม 30 วัน · ใช้งาน · ปุ่มแก้/เพิ่มบริษัท" },
+  { key: "settings-credit-account-invalid", page: "settings", devices: P36U_D3, users: ["owner"], note: "แก้แถว -co → เทอม 400 วัน → บันทึก → ข้อความปฏิเสธในฟอร์ม (VALIDATION ของ saveCreditAccount · ไม่เขียน)" },
+  { key: "settings-credit-readonly", page: "settings", devices: P36U_D3, users: ["cashier"], note: "การ์ดลูกค้าเครดิตของแคชเชียร์: สวิตช์แสดงสถานะ (aria-disabled) + \"เจ้าของร้านเท่านั้น\" + ไม่มีสิทธิ์ตั้งวงเงิน (ไม่มีแถวบัญชี)" },
+  { key: "settings-orders-member-on-bill", page: "settings", devices: P36U_D3, users: ["owner"], note: "10 แท็บช่องทางขาย → การ์ด \"บิลออเดอร์\": สวิตช์แนบสมาชิกกับบิลออเดอร์ (เปิด · ปริยาย) + บรรทัดช่วย W17" },
+];
+const p36uOn = STATES_ON && tenantKey === "coffee" && P36U_WO;
+/** บิลวางบิลของภาพ (paydone-onaccount-due → ภาพบิล ?bill=) — ประกาศก่อน jobsPlanned (p36uPath ถูกเรียกตอนวางแผน) */
+const P36U_SALE = { id: "" };
+const P36U_TAG = "posqc-vis-p36u";
+const P36U_CRM_NAME = "ลูกค้าองค์กร (ภาพ QC P3.6U)";
+const P36U_CO = {
+  co: { tag: `${P36U_TAG}-co`, name: "บริษัท ภาพคิวซี เทรดดิ้ง จำกัด", taxId: "0105559360014", limitSatang: 50_000_000 },
+  co2: { tag: `${P36U_TAG}-co2`, name: "บริษัท ภาพคิวซี วงเงินน้อย จำกัด", taxId: "0105559360022", limitSatang: 100 },
+} as const;
+const P36U_DEAL_TITLE = `สั่งกาแฟประจำเดือน (${P36U_TAG}-deal)`;
+const P36U_MGR = { userId: "posqc-coffee-user-p36u-mgr", membershipId: "posqc-coffee-mb-p36u-mgr", email: "pos-qc-coffee-p36u-mgr@shark.local", name: "ผู้จัดการ (ภาพ QC P3.6U)" } as const;
+const P36U_REASON = "ภาพ QC P3.6U";
+const P36U_KEYS: ReadonlySet<string> = new Set(P36U_PLAN.map((s) => s.key));
+const isP36uState = (k: StateKey | null | undefined): k is P36uKey => !!k && P36U_KEYS.has(k);
+const p36uPath = (k: P36uKey): string => {
+  const u = encodeURIComponent(unitId);
+  const d = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+  const from = new Date(Date.parse(`${d}T00:00:00Z`) - 29 * 86_400_000).toISOString().slice(0, 10);
+  if (k.startsWith("bills-")) return `/app/sys/${SYS}/pos/sales?unit=${u}${P36U_SALE.id ? `&bill=${encodeURIComponent(P36U_SALE.id)}` : ""}`;
+  if (k.startsWith("reports-")) return `/app/sys/${SYS}/pos/reports?kind=credit&from=${from}&to=${d}`;
+  if (k === "settings-orders-member-on-bill") return `/app/sys/${SYS}/pos/settings?tab=channels&unit=${u}`;
+  if (k.startsWith("settings-")) return `/app/sys/${SYS}/pos/settings?tab=payments&unit=${u}`;
+  return `/app/sys/${SYS}/pos/register?unit=${u}`;
+};
+// ◂ POS P3.6U
 // ── POS P2.12U ▸ รายงาน 08 + บิล 12 + การ์ดเกณฑ์ (มติ 8 · wo p2.12u · --states · 3 ขนาด · หน้าพิมพ์ 1440 + สื่อ print · th + LOCALE=en · owner + cashier) ◂
 type P212uKey = "reports-hourly" | "reports-branches-tab" | "reports-anomalies" | "reports-anomalies-empty" | "reports-staff-flag" | "reports-pdf-button" | "reports-print-overview" | "reports-print-channels" | "settings-general-anomaly" | "bills-all-branches" | "bills-drawer-channel-refund";
 const P212U_D3: readonly Device[] = ["desktop", "ipad", "mobile"];
@@ -1152,9 +1230,9 @@ const stockStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
 const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
-const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
+const billsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P36U_WO /* POS P3.6U */ && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && !P39U_WO /* POS P3.9U */ && !P37U_WO /* POS P3.7U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && !P212U_WO /* POS P2.12U */ && !P213_WO /* POS P2.13 */ && !P35U_WO /* POS P3.5U */ && !P34U_WO /* POS P3.4U */ && !P39U_WO /* POS P3.9U */ && !P37U_WO /* POS P3.7U */ && !P36U_WO /* POS P3.6U */ && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
   isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
@@ -1193,6 +1271,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: p213Path(st.key), ...(st.key === "developers-pos" ? { expect: 200 } : {}), file: `${OUT}/${st.key === "developers-pos" ? st.key : `${p}-${st.key.slice(p.length + 1)}`}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+  // POS P3.6U ▸ wo p3.6u + --states = สถานะลูกค้าองค์กร/วางบิลของใบนี้ตามหน้า/ผู้ใช้ (paydone = 1440) ◂
+  : p36uOn
+    ? P36U_PLAN.filter((st) => st.page === p && st.users.includes(userKey)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p36uPath(st.key), file: `${OUT}/${p}-${st.key.startsWith(`${p}-`) ? st.key.slice(p.length + 1) : st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
   // POS P3.7U ▸ wo p3.7u + --states = สถานะแชทของใบนี้ตามหน้า/ผู้ใช้ (paydone = 1440) ◂
   : p37uOn
@@ -1421,6 +1506,8 @@ if (LIST) {
   for (const st of P34U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("register/shifts/settings/reports P3.5U (wo p3.5u --states · owner + cashier):"); // POS P3.5U
   for (const st of P35U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
+  console.log("register/sales/reports/settings P3.6U (wo p3.6u --states · owner + cashier):"); // POS P3.6U
+  for (const st of P36U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("settings/orders/register P3.7U (wo p3.7u --states · owner + cashier):"); // POS P3.7U
   for (const st of P37U_PLAN) row(st.key, st.devices, `${st.page} · [${st.users.join("/")}] ${st.note}`);
   console.log("reports/settings P3.9U (wo p3.9u --states · owner + cashier):"); // POS P3.9U
@@ -1431,7 +1518,7 @@ if (LIST) {
   for (const st of P27_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN, P34U_PLAN, P39U_PLAN, P37U_PLAN /* POS P3.7U */].flatMap((pl) => pl.map((x) => x.key)); // POS P3.4U ▸ + P34U ◂ // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN, P29BU_PLAN, P25U_TABLES_PLAN, P25U_REG_PLAN, P211U_PLAN, P212U_PLAN, P210_PLAN, P213_PLAN, P27_PLAN, P35U_PLAN, P34U_PLAN, P39U_PLAN, P37U_PLAN /* POS P3.7U */, P36U_PLAN /* POS P3.6U */].flatMap((pl) => pl.map((x) => x.key)); // POS P3.4U ▸ + P34U ◂ // POS P3.5U ▸ + P35U ◂ // POS P2.7U ▸ + P27 ◂ // POS P2.12U ▸ + P212U ◂ · POS P2.13 ▸ + P213 ◂ · POS P2.10 ▸ + P210 ◂ // POS P2.9bU ▸ + P29BU ◂ // POS P2.11U ▸ + P211U ◂ // POS P2.9U ▸ + P29U ◂ · POS P2.5U ▸ + P25U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -1617,6 +1704,18 @@ if (DRY) {
         `  P3.5U: fixture (สาขา ${unitKey}) — ระบบ HR ชั่วคราว "ทีมงาน (ภาพ QC P3.5U <pid>)" (system/service.createSystem) + พนักงาน 2 คนผูกเจ้าของ/แคชเชียร์ QC (hr.createEmployee + linkedUserId) · ` +
           `ตารางวันนี้ตามเวลาไทยจริง (in/out/leave ต่อสถานะ · setSchedule/requestLeave/decideLeave) · ด่านตารางงานเปิด 30/30/240 + ASK + ค่าคอมฯ 2% (updatePosStaffSettings/updatePosStaffCommission · คืนค่าเดิม) · ` +
           `กะ fixture 2 กะบนเครื่อง posqc-vis-p35uh-${process.pid} (เลื่อนเวลา) + ลงเวลา HR · บิลแคชเชียร์ 1 ใบ → staffCommissionOnSalePaid · เก็บกวาด: ปิดกะ · คืนค่าตั้ง · ลบแถวค่าคอมฯ · ลบระบบ HR ของรอบ (หลังงานสุดท้าย/finally/สัญญาณ)`,
+      );
+    }
+    // POS P3.6U ▸ CD-P36U-12 ◂
+    if (jobs.some((j) => isP36uState(j.state))) {
+      console.log(`สถานะลูกค้าองค์กร/วางบิล P3.6U (${userKey}${userKey === "cashier" ? " — ไทล์ไม่มีตัวเลขวงเงิน · แผ่นเกินวงเงิน/PIN ผิด · 08 การ์ดปฏิเสธ · 10 อ่านอย่างเดียว" : ""} · context ใหม่ทุกสถานะ):`);
+      for (const st of P36U_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(31)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P3.6U: fixture (สาขา ${unitKey} · ร้าน QC coffee เท่านั้น · ไม่ reseed) — ระบบ CRM ของร้าน (active ตัวแรก · ไม่มี = สร้าง "${P36U_CRM_NAME}" เก็บไว้) · ` +
+          `บริษัท ${P36U_CO.co.tag} / ${P36U_CO.co2.tag} + ผู้ติดต่อสมาชิก QC ผูก -co + ดีล OPEN "${P36U_DEAL_TITLE}" ผ่านตัวเขียน CRM (find-or-create · เก็บไว้) · ` +
+          "วงเงินผ่าน saveCreditAccount (-co ฿500,000 · -co2 ฿1 · เทอม 30) · settings.pos.credit / .orders.memberOnBill = jsonb ของ harness (ค่าเดิมใน _qcP36uBefore · ด่านร้าน QC ก่อนเขียน · คืนหลังงานสุดท้าย/finally/สัญญาณ) · " +
+          `ผู้จัดการของภาพ ${P36U_MGR.userId} + PIN (setStaffPin · PIN ผิด = unlockStaffPin · ลบตอนเก็บกวาด) · ⚠️ paydone-onaccount-due = บิลวางบิลจริง 1 ใบ → ภาพบิล → voidSale ตอนเก็บกวาด · ` +
+          "ไม่มีระบบ CRM/สมุดบัญชี/สมาชิก = สถานะนั้น SKIP พร้อมเหตุผล",
       );
     }
     // POS P3.7U ▸ CD-P37U-10 ◂
@@ -1957,6 +2056,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P34U.log.length) console.error(`${P34U.ok ? "🧹" : "⚠️"} P3.4U: ${P34U.log.join(" · ")}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P3.4U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P3.6U: คืนค่าตั้งวางบิล · ยกเลิกบิลวางบิลของภาพ · ลบผู้จัดการของภาพ (เหมือน finally)
+      try {
+        await cleanupP36u();
+        if (P36U.log.length) console.error(`${P36U.ok ? "🧹" : "⚠️"} P3.6U: ${P36U.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P3.6U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P3.7U: คืนค่าตั้งแชท · ปฏิเสธ/ลบออเดอร์ของรอบ · ลบระบบแชทชั่วคราว (เหมือน finally)
       try {
@@ -2542,6 +2648,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   if (isP34uState(state)) return runP34uState(page, state, device); // POS P3.4U
   if (isP39uState(state)) return runP39uState(page, state, device); // POS P3.9U
   if (isP37uState(state)) return runP37uState(page, state, device); // POS P3.7U
+  if (isP36uState(state)) return runP36uState(page, state, device); // POS P3.6U
   if (isP27State(state)) return runP27State(page, state, device); // POS P2.7U
   if (isP213State(state)) return runP213State(page, state); // POS P2.13
   if (isP210State(state)) return runP210State(page, state, device); // POS P2.10
@@ -7342,6 +7449,575 @@ async function runP37uState(page: Any, state: P37uKey, device: Device): Promise<
   }
 }
 // ◂ POS P3.7U
+// ═══════════════════ POS P3.6U ▸ ลูกค้าองค์กร/วางบิล: 01 ชิปบริษัท/แผ่นเลือก/ดีล · 02 ไทล์วางบิล + แผ่นเกินวงเงิน · 02b ครบกำหนด · 12 W23 · 08 ลูกหนี้ · 10 การ์ด (CD-P36U-1…12) ◂ ═══════════════════
+// fixture (ensureP36uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล · ไม่ reseed · ร้าน QC coffee เท่านั้น):
+//   • ระบบ CRM (ผู้คุม 22 ต.ค. 00:4xZ · CD-P36U-12): ใช้ระบบ CRM ที่ active ตัวแรกของร้าน QC · ไม่มี = createSystem(…, "CRM", "ลูกค้าองค์กร (ภาพ QC P3.6U)")
+//     (แบบระบบคูปองของ P1.12U) — เก็บไว้ใช้ซ้ำ ไม่ลบตอนเก็บกวาด
+//   • บริษัท 2 แห่ง (หมายเหตุ posqc-vis-p36u-co / -co2) + ผู้ติดต่อของสมาชิก QC (เบอร์เดียวกัน ⇒ Party ของสมาชิก) ผูก -co + ดีล OPEN 1 ใบ (หัวเรื่อง posqc-vis-p36u-deal)
+//     ผ่านตัวเขียนของโมดูล CRM (companies.createCompany · contacts.createContact · companies.addContact · pipelines · deals.createDeal) — find-or-create · เก็บไว้
+//   • บัญชีเครดิตผ่าน saveCreditAccount (ผู้เขียนเดียว): -co วงเงิน ฿500,000 · -co2 วงเงิน ฿1 (เกินวงเงิน) · เทอม 30 วัน · เก็บไว้
+//   • settings.pos.credit / settings.pos.orders.memberOnBill = jsonb ของ harness เท่านั้น (แบบ CD-P39U-4) — ค่าเดิมใน settings.pos._qcP36uBefore
+//     (ซากรอบที่ถูก kill = คืนจากคีย์นี้) · คืนหลังงานสุดท้าย/finally/สัญญาณ · 🔴 ด่านก่อนเขียนทุกครั้ง: ระบบ = POS ของร้าน QC และแตะเฉพาะคีย์เหล่านี้ (อื่น = StepError หยุด)
+//   • ผู้จัดการของภาพ posqc-coffee-user-p36u-mgr (Membership MANAGER + PIN ผ่าน setStaffPin · แบบ P39U_MGR) — PIN ผิดของภาพ = ล้างด้วย unlockStaffPin ·
+//     เก็บกวาด = ลบแถว PIN + Membership
+//   • paydone-onaccount-due กดยืนยันจริง 1 ครั้ง (บิล ON_ACCOUNT ของ -co) — บิลนี้ใช้ต่อในภาพบิล · เก็บกวาด = voidSale (แบบ P2.12U)
+type P36uCo = { id: string; partyId: string; name: string; taxId: string | null };
+const P36U = {
+  done: false,
+  error: null as string | null,
+  cleaned: false,
+  ok: true,
+  log: [] as string[],
+  crmSystemId: "",
+  crmCreated: false,
+  co: null as P36uCo | null,
+  co2: null as P36uCo | null,
+  /** เหตุที่ส่วนบริษัทของสมาชิกใช้ไม่ได้ (ว่าง = ผูกแล้ว) */
+  memberSkip: "ยังไม่ได้ผูก",
+  dealId: "",
+  dealSkip: "ยังไม่ได้สร้าง",
+  before: null as null | { credit: { had: boolean; v: unknown }; memberOnBill: { had: boolean; v: unknown } },
+  mgr: false,
+  mgrPin: "",
+  saleIds: [] as string[],
+};
+const p36uRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const p36uHas = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+/** 🔴 ด่านก่อนเขียนค่าตั้ง: ร้าน QC coffee + ระบบ POS ของร้านนี้ (อื่น = StepError หยุดทั้งใบ) */
+async function p36uGuard(): Promise<void> {
+  if (tenantKey !== "coffee" || !String(T.slug ?? "").startsWith("posqc")) throw new StepError(`ด่าน P3.6U: ร้าน ${T.slug} ไม่ใช่ร้าน QC coffee — ไม่เขียน`);
+  const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId, type: "POS" }, select: { id: true } });
+  if (!sys) throw new StepError("ด่าน P3.6U: ระบบ POS ไม่ใช่ของร้าน QC — ไม่เขียน");
+}
+async function p36uReadPos(): Promise<Record<string, unknown>> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: SYS, tenantId: T.tenantId, type: "POS" }, select: { settings: true } });
+  const pos = p36uRec(sys?.settings) ? (sys!.settings as Record<string, unknown>).pos : undefined;
+  return p36uRec(pos) ? pos : {};
+}
+/** เขียน/ลบคีย์ของ harness ใต้ settings.pos — แตะเฉพาะ {pos,credit} · {pos,orders,memberOnBill} · {pos,_qcP36uBefore} (undefined = ลบ) */
+async function p36uSetKey(key: "credit" | "memberOnBill" | "_qcP36uBefore", v: unknown): Promise<void> {
+  await p36uGuard();
+  const path = key === "credit" ? "{pos,credit}" : key === "memberOnBill" ? "{pos,orders,memberOnBill}" : "{pos,_qcP36uBefore}";
+  if (v === undefined) {
+    await prisma.$executeRaw`UPDATE "AppSystem" SET "settings" = "settings" #- ${path}::text[] WHERE "id" = ${SYS} AND "tenantId" = ${T.tenantId} AND type = 'POS' AND jsonb_typeof("settings"->'pos') = 'object'`;
+    return;
+  }
+  const json = JSON.stringify(v);
+  if (key === "memberOnBill") {
+    await prisma.$executeRaw`
+      UPDATE "AppSystem"
+      SET "settings" = jsonb_set(
+        jsonb_set(
+          jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{pos}',
+            CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END, true),
+          '{pos,orders}', CASE WHEN jsonb_typeof("settings"->'pos'->'orders') = 'object' THEN "settings"->'pos'->'orders' ELSE '{}'::jsonb END, true),
+        ${path}::text[], ${json}::jsonb, true)
+      WHERE "id" = ${SYS} AND "tenantId" = ${T.tenantId} AND type = 'POS'`;
+    return;
+  }
+  await prisma.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{pos}',
+        CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END, true),
+      ${path}::text[], ${json}::jsonb, true)
+    WHERE "id" = ${SYS} AND "tenantId" = ${T.tenantId} AND type = 'POS'`;
+}
+/** จดค่าเดิมครั้งเดียว (ซากของรอบที่ถูก kill = คืนจาก _qcP36uBefore) */
+async function p36uRemember(): Promise<void> {
+  if (P36U.before) return;
+  const pos = await p36uReadPos();
+  const res = p36uRec(pos._qcP36uBefore) ? (pos._qcP36uBefore as Record<string, unknown>) : null;
+  const part = (x: unknown) => (p36uRec(x) && x.had === true ? { had: true, v: x.v } : { had: false, v: undefined });
+  if (res) {
+    P36U.before = { credit: part(res.credit), memberOnBill: part(res.memberOnBill) };
+    P36U.log.push("กวาดซากค่าตั้งวางบิลของรอบก่อน (คืนจาก _qcP36uBefore)");
+  } else {
+    const orders = p36uRec(pos.orders) ? pos.orders : null;
+    P36U.before = {
+      credit: p36uHas(pos, "credit") ? { had: true, v: pos.credit } : { had: false, v: undefined },
+      memberOnBill: orders && p36uHas(orders, "memberOnBill") ? { had: true, v: orders.memberOnBill } : { had: false, v: undefined },
+    };
+  }
+  const b = P36U.before;
+  await p36uSetKey("_qcP36uBefore", { credit: { had: b.credit.had, v: b.credit.had ? (b.credit.v ?? null) : null }, memberOnBill: { had: b.memberOnBill.had, v: b.memberOnBill.had ? (b.memberOnBill.v ?? null) : null } });
+}
+async function p36uRestore(): Promise<string> {
+  const b = P36U.before;
+  if (!b) return "ค่าตั้งไม่ถูกแตะ";
+  await p36uSetKey("credit", b.credit.had ? b.credit.v : undefined);
+  await p36uSetKey("memberOnBill", b.memberOnBill.had ? b.memberOnBill.v : undefined);
+  await p36uSetKey("_qcP36uBefore", undefined);
+  P36U.before = null;
+  return `คืนค่าตั้งวางบิล (credit ${b.credit.had ? "เดิม" : "ลบ"} · memberOnBill ${b.memberOnBill.had ? "เดิม" : "ลบ"})`;
+}
+const p36uPosCtx = () => ({ tenantId: T.tenantId, systemId: SYS, unitId });
+async function ensureP36uFixture(): Promise<void> {
+  if (P36U.done || P36U.error) return;
+  try {
+    await p36uGuard();
+    const want = (re: RegExp) => jobs.some((j) => isP36uState(j.state) && re.test(j.state));
+    const owner = await ownerActor();
+    await p36uRemember();
+    // ระบบ CRM ของร้าน QC (active ตัวแรก · ไม่มี = สร้าง · เก็บไว้)
+    const sysSvc = await import("@/lib/modules/system/service");
+    const crmSys = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type: "CRM", active: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true } });
+    if (crmSys) P36U.crmSystemId = crmSys.id;
+    else {
+      P36U.crmSystemId = (await sysSvc.createSystem(T.tenantId, "CRM", P36U_CRM_NAME)).id;
+      P36U.crmCreated = true;
+    }
+    P36U.log.push(`ระบบ CRM ${P36U.crmSystemId}${P36U.crmCreated ? ` (สร้าง "${P36U_CRM_NAME}")` : ` (${crmSys?.name ?? ""})`}`);
+    const crm = (await import("@/lib/modules/crm")) as Any;
+    const cctx = { tenantId: T.tenantId, systemId: P36U.crmSystemId, actorUserId: owner.userId };
+    const coRow = (id: string) => prisma.crmCompany.findFirst({ where: { id, tenantId: T.tenantId }, select: { id: true, partyId: true, name: true, taxId: true } });
+    for (const k of ["co", "co2"] as const) {
+      const spec = P36U_CO[k];
+      let row = await prisma.crmCompany.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, note: spec.tag, archivedAt: null, mergedIntoId: null }, select: { id: true, partyId: true, name: true, taxId: true } });
+      if (!row) {
+        const r = await crm.companies.createCompany(cctx, owner, { name: spec.name, taxId: spec.taxId, branchCode: "00000", note: spec.tag });
+        const id = r?.created ? r.company?.id : (r?.duplicateOf ?? r?.company?.id);
+        row = id ? await coRow(String(id)) : null;
+        if (!row) throw new StepError(`สร้างบริษัท ${spec.tag} ไม่ได้ (${JSON.stringify(r ?? null).slice(0, 80)})`);
+        P36U.log.push(`บริษัท ${spec.tag} ${r?.created ? "สร้าง" : "ใช้ตัวซ้ำ"}`);
+      }
+      P36U[k] = row;
+    }
+    // ผู้ติดต่อของสมาชิก QC → -co (ส่วน "บริษัทของสมาชิกนี้") — เบอร์เดียวกับสมาชิก ⇒ Party ของสมาชิก (personParty ของ CRM)
+    const C = T as Any;
+    const mem = C.member?.phone && C.systems?.MEMBER?.id ? await prisma.customer.findFirst({ where: { tenantId: T.tenantId, memberSystemId: C.systems.MEMBER.id, phone: C.member.phone, status: "ACTIVE" }, select: { id: true, partyId: true, name: true } }) : null;
+    let contactId = "";
+    if (!mem?.partyId) P36U.memberSkip = "ไม่พบสมาชิก QC/Party ของสมาชิก";
+    else {
+      let ct = await prisma.crmContact.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, partyId: mem.partyId }, select: { id: true, partyId: true } });
+      if (!ct) {
+        const r = await crm.contacts.createContact(cctx, owner, { firstName: String(mem.name ?? C.member.name ?? "สมาชิก QC"), phone: C.member.phone, companyId: P36U.co!.id, sourceKind: "MANUAL" });
+        ct = r?.contact?.id ? await prisma.crmContact.findFirst({ where: { id: String(r.contact.id), tenantId: T.tenantId }, select: { id: true, partyId: true } }) : null;
+      }
+      if (!ct) P36U.memberSkip = "สร้างผู้ติดต่อ CRM ของสมาชิกไม่ได้";
+      else {
+        contactId = ct.id;
+        const link = await prisma.crmCompanyContact.findFirst({ where: { tenantId: T.tenantId, companyId: P36U.co!.id, contactId: ct.id, endedAt: null }, select: { id: true } });
+        if (!link) await crm.companies.addContact(cctx, owner, P36U.co!.id, { contactId: ct.id, isPrimary: true });
+        P36U.memberSkip = ct.partyId === mem.partyId ? "" : "ผู้ติดต่อ CRM ไม่ได้ผูก Party ของสมาชิก QC";
+      }
+    }
+    // ดีล OPEN 1 ใบของ -co (ผู้ติดต่อ = ผู้ติดต่อของสมาชิก หรือฝ่ายจัดซื้อของบริษัท)
+    const deal = await prisma.crmDeal.findFirst({ where: { tenantId: T.tenantId, systemId: P36U.crmSystemId, title: P36U_DEAL_TITLE, companyId: P36U.co!.id, closedAt: null }, select: { id: true } });
+    if (deal) P36U.dealId = deal.id;
+    else {
+      if (!contactId) {
+        const r = await crm.contacts.createContact(cctx, owner, { firstName: `ฝ่ายจัดซื้อ (${P36U_REASON})`, companyId: P36U.co!.id, sourceKind: "MANUAL" });
+        contactId = String(r?.contact?.id ?? "");
+      }
+      const pls = (await crm.pipelines.listPipelines(cctx, owner)) as Any[];
+      let pl = pls.find((x) => x.isDefault && !x.archivedAt) ?? pls.find((x) => !x.archivedAt) ?? null;
+      if (!pl)
+        pl = await crm.pipelines.createPipeline(cctx, owner, {
+          name: `ขายองค์กร (${P36U_REASON})`,
+          isDefault: true,
+          stages: [
+            { name: "เสนอราคา", kind: "OPEN", probability: 30 },
+            { name: "ชนะ", kind: "WON", probability: 100 },
+            { name: "แพ้", kind: "LOST", probability: 0 },
+          ],
+        });
+      if (!pl?.id || !contactId) P36U.dealSkip = "ไม่มีไปป์ไลน์/ผู้ติดต่อของดีล";
+      else {
+        const d = await crm.deals.createDeal(cctx, owner, { pipelineId: pl.id, title: P36U_DEAL_TITLE, contactId, companyId: P36U.co!.id, valueSatang: 1_250_000 });
+        P36U.dealId = String(d?.id ?? "");
+        P36U.log.push(`ดีล ${P36U.dealId}`);
+      }
+    }
+    if (P36U.dealId) P36U.dealSkip = "";
+    // บัญชีเครดิต (ผู้เขียนเดียว saveCreditAccount) — ตรงค่าที่ต้องการแล้ว = ไม่เขียน
+    const credit = await import("@/lib/modules/pos/credit");
+    const listed = await credit.listCreditAccounts({ tenantId: T.tenantId, systemId: SYS }, owner);
+    for (const k of ["co", "co2"] as const) {
+      const co = P36U[k]!;
+      const spec = P36U_CO[k];
+      const cur = listed.ok ? listed.items.find((a) => a.partyId === co.partyId) : null;
+      if (cur && cur.limitSatang === spec.limitSatang && cur.termDays === 30 && cur.active) continue;
+      const r = await credit.saveCreditAccount({ tenantId: T.tenantId, systemId: SYS }, owner, { partyId: co.partyId, limitSatang: spec.limitSatang, termDays: 30, active: true, note: null });
+      if (!r.ok) throw new StepError(`saveCreditAccount ${spec.tag}: ${r.code}`);
+      P36U.log.push(`วงเงิน ${spec.tag} ${spec.limitSatang / 100} บาท`);
+    }
+    // ผู้จัดการของภาพ + PIN (แผ่นเกินวงเงิน)
+    if (want(/credit-over/)) {
+      const { setStaffPin } = await import("@/lib/modules/pos/staff-pin");
+      const { randomInt } = await import("node:crypto");
+      await prisma.user.upsert({ where: { id: P36U_MGR.userId }, update: {}, create: { id: P36U_MGR.userId, email: P36U_MGR.email, name: P36U_MGR.name } });
+      P36U.mgr = true;
+      await prisma.membership.upsert({
+        where: { userId_tenantId: { userId: P36U_MGR.userId, tenantId: T.tenantId } },
+        update: { role: "MANAGER", unitAccess: [unitId] },
+        create: { id: P36U_MGR.membershipId, userId: P36U_MGR.userId, tenantId: T.tenantId, role: "MANAGER", unitAccess: [unitId], permissions: {}, acceptedAt: new Date() },
+      });
+      for (let i = 0; i < 6 && !P36U.mgrPin; i++) {
+        const pin = String(randomInt(100000, 1000000));
+        if (WEAK.has(pin) || Object.values(P115.pins).includes(pin)) continue;
+        const r = await setStaffPin(p36uPosCtx(), owner, { userId: P36U_MGR.userId, pin });
+        if (r.ok) P36U.mgrPin = pin;
+        else if (r.code !== "PIN_TAKEN" && r.code !== "WEAK_PIN") throw new StepError(`ตั้ง PIN ผู้จัดการของภาพ: ${r.code}`);
+      }
+      if (!P36U.mgrPin) throw new StepError("ตั้ง PIN ผู้จัดการของภาพไม่ได้");
+      P36U.log.push(`ผู้จัดการของภาพ ${P36U_MGR.name} (PIN ที่สาขา ${unitKey})`);
+    }
+    if (want(/onaccount-buyer|paydone|^bills-|^reports-/)) {
+      await prepTaxInvoiceBook();
+      if (TAXINV.error) P36U.log.push(`สมุด QC: ${TAXINV.error}`);
+    }
+    if (want(/picker-member/)) await prepMemberFixture();
+    P36U.done = true;
+  } catch (e) {
+    P36U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+async function prepP36u(state: P36uKey): Promise<void> {
+  if (!P36U.done) return;
+  try {
+    const off = state === "paydlg-onaccount-hidden" || state === "settings-credit-card-off";
+    const buyer = state === "paydlg-onaccount-buyer" || state.startsWith("settings-");
+    await p36uSetKey("credit", { enabled: !off, requireBuyer: off || buyer });
+    if (state === "settings-orders-member-on-bill") await p36uSetKey("memberOnBill", true);
+    if (P36U.mgr && /credit-over/.test(state)) {
+      const { unlockStaffPin } = await import("@/lib/modules/pos/staff-pin");
+      await unlockStaffPin(p36uPosCtx(), await ownerActor(), { userId: P36U_MGR.userId });
+    }
+    if ((state.startsWith("bills-") || state.startsWith("reports-")) && P36U.co) {
+      if (!P36U_SALE.id) {
+        const s = await prisma.posSale.findFirst({ where: { tenantId: T.tenantId, systemId: SYS, unitId, customerPartyId: P36U.co.partyId, status: "PAID", createdAt: { gte: new Date(Date.now() - 20 * 3_600_000) }, payments: { some: { type: "ON_ACCOUNT" } } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+        if (s) P36U_SALE.id = s.id;
+      }
+      try {
+        const { drainAll } = await import("@/lib/outbox-consumers");
+        await drainAll(); // ใบแจ้งหนี้ของบิลวางบิล (ลิ้นชัก W23 · รายงานลูกหนี้)
+      } catch {
+        /* เซิร์ฟเวอร์ QC ระบายเองภายหลัง */
+      }
+    }
+  } catch (e) {
+    P36U.error = `เตรียม ${state}: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
+  }
+}
+async function cleanupP36u(): Promise<void> {
+  if (P36U.cleaned) return;
+  P36U.cleaned = true;
+  const step = async (what: string, fn: () => Promise<string>) => {
+    try {
+      P36U.log.push(await fn());
+    } catch (e) {
+      P36U.ok = false;
+      P36U.log.push(`${what} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  if (P36U.before) await step("คืนค่าตั้งวางบิล", p36uRestore);
+  const ids = [...new Set(P36U.saleIds)];
+  if (ids.length)
+    await step("ยกเลิกบิลวางบิลของภาพ", async () => {
+      const { voidSale } = await import("@/lib/modules/pos/service");
+      const owner = await ownerActor();
+      let n = 0;
+      for (const id of ids) {
+        const s = await prisma.posSale.findFirst({ where: { id, tenantId: T.tenantId }, select: { status: true } });
+        if (s?.status !== "PAID") continue;
+        await voidSale(T.tenantId, unitId, id, { actorUserId: owner.userId, reason: `ลูกค้าองค์กรยกเลิก (${P36U_REASON})` });
+        n++;
+      }
+      return `ยกเลิกบิลวางบิล ${n} ใบ (voidSale)`;
+    });
+  if (P36U.mgr)
+    await step("ลบผู้จัดการของภาพ", async () => {
+      const { unlockStaffPin } = await import("@/lib/modules/pos/staff-pin");
+      await unlockStaffPin(p36uPosCtx(), await ownerActor(), { userId: P36U_MGR.userId }).catch(() => undefined);
+      const pins = await prisma.posStaffPin.deleteMany({ where: { tenantId: T.tenantId, userId: P36U_MGR.userId } });
+      const mb = await prisma.membership.deleteMany({ where: { userId: P36U_MGR.userId, tenantId: T.tenantId } });
+      return `ลบแถว PIN ${pins.count} · Membership ${mb.count} ของผู้จัดการภาพ`;
+    });
+  P36U.done = false;
+}
+async function runP36uState(page: Any, state: P36uKey, device: Device): Promise<void> {
+  if (P36U.error) throw new StepError(`fixture P3.6U: ${P36U.error}`);
+  if (!P36U.done) throw new StepError("fixture P3.6U ยังไม่ได้สร้าง");
+  const has = async (sel: string) => !!(await page.$(sel));
+  const into = async (sel: string, timeout = 20_000) => {
+    const el = await visibleEl(page, sel, 0, timeout);
+    await el.evaluate((e: Element) => e.scrollIntoView({ block: "center" }));
+    return el;
+  };
+  const coOf = (k: "co" | "co2"): P36uCo => {
+    const c = P36U[k];
+    if (!c) throw new StepError(`SKIP — ไม่มีบริษัท ${P36U_CO[k].tag} ของภาพ`);
+    return c;
+  };
+  /** แผ่นเลือกบริษัท (มือถือ = เปิดแผ่นตะกร้าก่อน) */
+  const openPicker = async () => {
+    const sheetOpen = device === "mobile" && (await visibleEl(page, tid("pos-reg-company-pick"), 0, 800).then(() => true).catch(() => false));
+    if (!sheetOpen) await openCartOnMobile(page, device);
+    await clickEl(page, tid("pos-reg-company-pick"));
+    await visibleEl(page, tid("pos-reg-company-sheet"), 0, 10_000);
+  };
+  /** เลือกบริษัทด้วยเลขผู้เสียภาษี (แถวเดียว) → ชิป */
+  const pickCompany = async (k: "co" | "co2") => {
+    const co = coOf(k);
+    await openPicker();
+    await typeInto(page, tid("pos-reg-company-search"), P36U_CO[k].taxId);
+    await page
+      .waitForFunction((name: string) => (document.querySelector('[data-testid="pos-reg-company-row-0"]')?.textContent ?? "").includes(name), { timeout: 15_000 }, co.name)
+      .catch(() => {
+        throw new StepError(`ค้นเลข ${P36U_CO[k].taxId} แล้วไม่ขึ้นแถว ${co.name} (registerCompanySearchAction · ระบบ CRM ${P36U.crmSystemId})`);
+      });
+    await clickEl(page, tid("pos-reg-company-row-0"));
+    await visibleEl(page, tid("pos-reg-company-chip"), 0, 10_000).catch(() => {
+      throw new StepError("เลือกบริษัทแล้วไม่ขึ้นชิปบริษัท (pos-reg-company-chip)");
+    });
+  };
+  const closeCartSheet = async () => {
+    if (device !== "mobile") return;
+    await page.keyboard.press("Escape");
+    await sleep(300);
+  };
+  /** จอชำระ → ไทล์วางบิล → สถานะวงเงินจากเซิร์ฟเวอร์ */
+  const openOnAccount = async () => {
+    await closeCartSheet();
+    await waitPayReady(page);
+    await clickPay(page, device);
+    await visibleEl(page, tid("pos-reg-paydlg"), 0, 10_000);
+    await into(tid("pos-reg-paydlg-method-onaccount"), 10_000).catch(() => {
+      throw new StepError("จอชำระไม่มีไทล์วางบิล (เปิดเครดิต · ออนไลน์ · ร้านมี CRM)");
+    });
+    if (await page.$eval(tid("pos-reg-paydlg-method-onaccount"), (e: Element) => (e as HTMLButtonElement).disabled))
+      throw new StepError(`SKIP — ไทล์วางบิลถูกปิด: ${await page.$eval(tid("pos-reg-paydlg-onaccount-reason"), (e: Element) => e.textContent?.trim() ?? "").catch(() => "-")} (สมุดบัญชีไม่ผูก POS / ไม่มีเทอม?)`);
+    await clickEl(page, tid("pos-reg-paydlg-method-onaccount"));
+  };
+  const waitStatus = async () => {
+    await into(`${tid("pos-reg-paydlg-onaccount-status")}[data-state="ok"]`, 20_000).catch(async () => {
+      const txt = await page.$eval(tid("pos-reg-paydlg-onaccount-status"), (e: Element) => e.textContent?.trim() ?? "").catch(() => "");
+      throw new StepError(`สถานะวงเงินไม่มา (registerCreditStatusAction)${txt ? ` — ${txt.slice(0, 100)}` : ""}`);
+    });
+  };
+  const base = async () => {
+    await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+    await ensureShift(page);
+    await addCart3(page, device, true);
+  };
+  switch (state) {
+    case "register-company-chip":
+      await base();
+      await pickCompany("co");
+      if (userKey === "cashier" && (await has(tid("pos-reg-deal-select")))) throw new StepError("แคชเชียร์ (ไม่มี crm.deal.update) เห็นตัวเลือกดีล");
+      return;
+    case "register-company-picker-search":
+      await base();
+      await openPicker();
+      await typeInto(page, tid("pos-reg-company-search"), "ภาพคิวซี");
+      await page.waitForFunction(() => !!document.querySelector('[data-testid="pos-reg-company-row-1"]'), { timeout: 15_000 }).catch(() => {
+        throw new StepError("ค้น \"ภาพคิวซี\" แล้วไม่ขึ้นบริษัทของภาพ 2 แถว");
+      });
+      return;
+    case "register-company-picker-member":
+      if (P36U.memberSkip) throw new StepError(`SKIP — ${P36U.memberSkip}`);
+      if (MEMBERX.error) throw new StepError(`SKIP — สมาชิก QC: ${MEMBERX.error}`);
+      await base();
+      await attachQcMember(page, device, false);
+      await openPicker();
+      await page
+        .waitForFunction((name: string) => (document.querySelector('[data-testid="pos-reg-company-member"]')?.textContent ?? "").includes(name), { timeout: 15_000 }, coOf("co").name)
+        .catch(() => {
+          throw new StepError("ส่วน \"บริษัทของสมาชิกนี้\" ไม่ขึ้นบริษัท -co (registerMemberCompaniesAction)");
+        });
+      return;
+    case "register-deal-select":
+      if (P36U.dealSkip) throw new StepError(`SKIP — ${P36U.dealSkip}`);
+      await base();
+      await pickCompany("co");
+      await into(tid("pos-reg-deal-select"), 15_000).catch(() => {
+        throw new StepError("ไม่มีตัวเลือกดีล (registerDealOptionsAction · ดีล OPEN ของ -co)");
+      });
+      await page.select(tid("pos-reg-deal-select"), P36U.dealId).catch(() => {
+        throw new StepError("ตัวเลือกดีลไม่มีดีลของภาพ");
+      });
+      return;
+    case "paydlg-onaccount-owner":
+    case "paydlg-onaccount-cashier": {
+      await base();
+      await pickCompany("co");
+      await openOnAccount();
+      await waitStatus();
+      const rem = await page.$eval(tid("pos-reg-paydlg-onaccount-status"), (e: Element) => e.getAttribute("data-remaining"));
+      if (state === "paydlg-onaccount-owner" && rem !== "1") throw new StepError("เจ้าของร้าน (pos.credit.manage) ไม่เห็นวงเงินคงเหลือ");
+      if (state === "paydlg-onaccount-cashier" && rem) throw new StepError("แคชเชียร์เห็นวงเงินคงเหลือ (CD-4: ตัวเลขเฉพาะผู้ถือ pos.credit.manage)");
+      return;
+    }
+    case "paydlg-onaccount-buyer": {
+      if (TAXINV.error) throw new StepError(`SKIP — สมุด QC: ${TAXINV.error}`);
+      const co = coOf("co");
+      await base();
+      await pickCompany("co");
+      await openOnAccount();
+      await visibleEl(page, tid("pos-taxinv-dialog"), 0, 10_000).catch(async () => {
+        const toast = await page.$eval(tid("pos-reg-toast"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+        throw new StepError(`requireBuyer: กล่อง 15A ไม่เปิด${toast ? ` (ข้อความ: ${toast})` : ""}`);
+      });
+      const name = await page.$eval(tid("pos-taxinv-name"), (e: Element) => (e as HTMLInputElement).value).catch(() => "");
+      if (name !== co.name) throw new StepError(`15A ไม่ได้ตั้งต้นจากบริษัท (ชื่อ "${name}")`);
+      await typeInto(page, tid("pos-taxinv-taxid"), TAXINV_BUYER.taxId);
+      await typeInto(page, tid("pos-taxinv-address"), TAXINV_BUYER.address);
+      await clickEl(page, tid("pos-taxinv-submit"));
+      await page.waitForFunction(() => !document.querySelector('[data-testid="pos-taxinv-dialog"]'), { timeout: 8_000 }).catch(async () => {
+        const err = await page.$eval(tid("pos-taxinv-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+        throw new StepError(`บันทึก 15A แล้วกล่องไม่ปิด${err ? ` (${err})` : ""}`);
+      });
+      await into(tid("pos-reg-paydlg-onaccount-buyer-mismatch"), 10_000).catch(() => {
+        throw new StepError("ผู้ซื้อเลขภาษีต่างจากบริษัทแล้วไม่ขึ้นคำเตือน (credit.buyerMismatch)");
+      });
+      return;
+    }
+    case "paydlg-onaccount-hidden":
+      await base();
+      await pickCompany("co");
+      await closeCartSheet();
+      await waitPayReady(page);
+      await clickPay(page, device);
+      await visibleEl(page, tid("pos-reg-paydlg"), 0, 10_000);
+      await sleep(800);
+      if (await has(tid("pos-reg-paydlg-method-onaccount"))) throw new StepError("ปิดวางบิลแล้วยังมีไทล์วางบิล");
+      return;
+    case "paydlg-credit-over-sheet":
+    case "paydlg-credit-over-wrong-pin": {
+      await base();
+      await pickCompany("co2");
+      await openOnAccount();
+      await waitStatus();
+      await clickEl(page, tid("pos-reg-paydlg-confirm"));
+      await visibleEl(page, tid("pos-reg-credit-over"), 0, 20_000).catch(() => {
+        throw new StepError("ยืนยันวางบิลเกินวงเงินแล้วไม่ขึ้นแผ่น \"เกินวงเงินวางบิล\" (CREDIT_LIMIT_EXCEEDED)");
+      });
+      if (userKey === "cashier" && (await has(tid("pos-reg-credit-over-figures")))) throw new StepError("แคชเชียร์เห็นตัวเลขวงเงินในแผ่นเกินวงเงิน (CD-4)");
+      if (state === "paydlg-credit-over-sheet") return;
+      if (!P36U.mgrPin) throw new StepError("ไม่มี PIN ผู้จัดการของภาพ");
+      await visibleEl(page, tid("pos-mgr-pin-manager"), 0, 15_000).catch(() => {
+        throw new StepError("แป้นไม่มีรายชื่อผู้จัดการ (listStaffForDeviceAction)");
+      });
+      const picked = await page.$$eval(tid("pos-mgr-pin-manager"), (els: Element[], name: string) => {
+        const b = els.find((e) => (e.textContent ?? "").includes(name)) as HTMLButtonElement | undefined;
+        if (!b) return false;
+        b.click();
+        return true;
+      }, P36U_MGR.name);
+      if (!picked) throw new StepError("แป้นไม่มีผู้จัดการของภาพ");
+      await sleep(250);
+      const wrong = String((Number(P36U.mgrPin) + 1) % 1_000_000).padStart(6, "0");
+      for (const d of wrong) await clickEl(page, tid(`pos-mgr-pin-key-${d}`));
+      await visibleEl(page, tid("pos-mgr-pin-error"), 0, 20_000).catch(() => {
+        throw new StepError("PIN ผิดแล้วไม่ขึ้นข้อความใต้แป้น (PIN_INVALID)");
+      });
+      return;
+    }
+    case "paydone-onaccount-due": {
+      const co = coOf("co");
+      await base();
+      await pickCompany("co");
+      await openOnAccount();
+      await waitStatus();
+      await clickEl(page, tid("pos-reg-paydlg-confirm"));
+      await visibleEl(page, tid("pos-reg-done"), 0, 25_000).catch(async () => {
+        const err = await page.$eval(tid("pos-reg-paydlg-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+        throw new StepError(`ยืนยันวางบิลแล้วไม่ขึ้นจอสำเร็จ${err ? ` (${err})` : ""}`);
+      });
+      const s = await prisma.posSale.findFirst({ where: { tenantId: T.tenantId, systemId: SYS, unitId, customerPartyId: co.partyId, status: "PAID", createdAt: { gte: RUN_STARTED } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+      if (s) {
+        P36U.saleIds.push(s.id);
+        P36U_SALE.id = s.id;
+        P36U.log.push(`บิลวางบิล ${s.id} (-co)`);
+      }
+      await visibleEl(page, tid("pos-reg-done-due"), 0, 10_000).catch(() => {
+        throw new StepError("จอสำเร็จไม่มีชิปครบกำหนด (pos-reg-done-due)");
+      });
+      return;
+    }
+    case "bills-drawer-onaccount":
+    case "bills-refund-onaccount": {
+      if (!P36U_SALE.id) throw new StepError("SKIP — ไม่มีบิลวางบิลของวันนี้ (paydone-onaccount-due ยังไม่ได้ถ่ายในรอบนี้)");
+      await visibleEl(page, tid("pos-bills-drawer"), 0, 20_000).catch(() => {
+        throw new StepError("?bill= ไม่เปิดลิ้นชักบิลวางบิล");
+      });
+      if (state === "bills-drawer-onaccount") {
+        await into(tid("pos-bills-credit-invoice"), 15_000).catch(() => {
+          throw new StepError("SKIP — ลิ้นชักไม่มีแถวใบแจ้งหนี้ (บิลยังไม่ลงบัญชี / POS ไม่ผูกสมุด)");
+        });
+        if (await has(tid("pos-taxinv-request-full"))) throw new StepError("บิลวางบิลยังมีปุ่มขอใบเต็มรูป (W23)");
+        return;
+      }
+      if (userKey !== "owner") throw new StepError("คืนเงิน = เจ้าของร้าน");
+      await clickEl(page, tid("pos-bills-refund-open"));
+      await visibleEl(page, tid("pos-bills-refund-line"), 0, 15_000).catch(() => {
+        throw new StepError("หน้าต่างคืนเงินไม่ขึ้นรายการ (pos-bills-refund-line)");
+      });
+      await clickEl(page, tid("pos-bills-refund-line"));
+      await into(tid("pos-bills-refund-m-onaccount"), 10_000).catch(() => {
+        throw new StepError("แผ่นคืนเงินของบิลวางบิลไม่มีชิป \"วางบิล (ลดหนี้)\"");
+      });
+      if (await has(tid("pos-bills-refund-method-cash"))) throw new StepError("บิลวางบิลยังมีชิปคืนเงินสด");
+      return;
+    }
+    case "reports-credit-owner":
+      await visibleEl(page, tid("pos-reports-tab-credit"), 0, 20_000).catch(() => {
+        throw new StepError("ไม่มีแท็บลูกหนี้ลูกค้าองค์กร (creditOn)");
+      });
+      await page.waitForFunction(() => !!document.querySelector('[data-testid="pos-reports-credit"],[data-testid="pos-report-empty"]'), { timeout: 20_000 }).catch(() => {
+        throw new StepError("รายงานลูกหนี้ไม่โหลด (posReportAction kind=credit)");
+      });
+      if (await has(tid("pos-reports-credit-denied"))) throw new StepError("เจ้าของร้านได้การ์ดปฏิเสธ");
+      return;
+    case "reports-credit-denied":
+      await visibleEl(page, tid("pos-reports-credit-denied"), 0, 20_000).catch(() => {
+        throw new StepError("แคชเชียร์ไม่ได้การ์ดปฏิเสธของรายงานลูกหนี้");
+      });
+      return;
+    case "settings-credit-card-off":
+    case "settings-credit-card-on":
+    case "settings-credit-readonly": {
+      await into(tid("pos-settings-credit-card"));
+      const on = await page.$eval(tid("pos-settings-credit-enabled"), (e: Element) => e.getAttribute("aria-checked"));
+      if (state === "settings-credit-card-off") {
+        if (on !== "false") throw new StepError(`สวิตช์วางบิล aria-checked=${on} (คาด false)`);
+        if (!(await has(tid("pos-settings-credit-all-off")))) throw new StepError("ปิดวางบิลแล้วไม่มีกรอบเส้นประ allOff");
+        return;
+      }
+      if (on !== "true") throw new StepError(`สวิตช์วางบิล aria-checked=${on} (คาด true)`);
+      if (state === "settings-credit-readonly") {
+        if (!(await has(tid("pos-settings-credit-owner-only")))) throw new StepError("แคชเชียร์ไม่เห็น \"เจ้าของร้านเท่านั้น\"");
+        if (!(await has(tid("pos-settings-credit-no-permission")))) throw new StepError("แคชเชียร์ไม่เห็นข้อความไม่มีสิทธิ์ตั้งวงเงิน");
+        if ((await page.$eval(tid("pos-settings-credit-enabled"), (e: Element) => e.getAttribute("aria-disabled"))) !== "true") throw new StepError("สวิตช์ของแคชเชียร์ไม่ aria-disabled");
+        return;
+      }
+      for (const k of ["co", "co2"] as const) {
+        const c = P36U[k];
+        if (c && !(await has(tid(`pos-settings-credit-row-${c.partyId}`)))) throw new StepError(`ไม่มีแถวบัญชีเครดิตของ ${P36U_CO[k].tag}${(await has(tid("pos-settings-credit-no-crm"))) ? " (การ์ดบอกไม่มี CRM)" : ""}`);
+      }
+      return;
+    }
+    case "settings-credit-account-invalid": {
+      const co = coOf("co");
+      await into(tid(`pos-settings-credit-edit-${co.partyId}`));
+      await clickEl(page, tid(`pos-settings-credit-edit-${co.partyId}`));
+      await typeInto(page, tid("pos-settings-credit-term"), "400");
+      await clickEl(page, tid("pos-settings-credit-save"));
+      await into(tid("pos-settings-credit-error"), 15_000).catch(() => {
+        throw new StepError("เทอม 400 วันแล้วไม่ขึ้นข้อความปฏิเสธในฟอร์ม (saveCreditAccount VALIDATION)");
+      });
+      return;
+    }
+    case "settings-orders-member-on-bill": {
+      await into(tid("pos-settings-order-member"));
+      const on = await page.$eval(tid("pos-settings-order-member-switch"), (e: Element) => e.getAttribute("aria-checked"));
+      if (on !== "true") throw new StepError(`สวิตช์สมาชิกบนบิลออเดอร์ aria-checked=${on} (คาด true)`);
+      return;
+    }
+  }
+}
+// ◂ POS P3.6U
 
 // ═══════════════════ POS P3.5U ▸ HR: ชิปตารางงาน 13B · ผู้จัดการอนุญาตนอกเวลา · รายชื่อ 13A · 17C · ลงเวลา/ชั่วโมง 07 · ค่าคอมฯ 08 (มติ 10) ═══════════════════
 // fixture (ensureP35uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล):
@@ -10412,7 +11088,7 @@ try {
         const p = job.page;
         const v = job.v;
         // POS P3.4U ▸ มติ 11: สถานะออฟไลน์ = browser context ใหม่ (IndexedDB/คิวไม่ข้ามสถานะ) — ปิดหลังถ่าย ◂
-        const ctx34 = isP34uState(job.state) || isP37uState(job.state) /* POS P3.7U ▸ CD-P37U-10: context ใหม่ทุกสถานะ ◂ */ ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
+        const ctx34 = isP34uState(job.state) || isP37uState(job.state) /* POS P3.7U ▸ CD-P37U-10: context ใหม่ทุกสถานะ ◂ */ || isP36uState(job.state) /* POS P3.6U ▸ CD-P36U-12 ◂ */ ? (typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext()) : null;
         Object.assign(P34U_NET, { offline: false, suppressed: 0, snapAt: 0 }); // POS P3.4U fix2 ▸ สถานะเครือข่ายต่อภาพ ◂
         const page = ctx34 ? await ctx34.newPage() : await browser.newPage();
         await pinDevice(
@@ -10542,6 +11218,14 @@ try {
           }
           await prepP34u();
         }
+        // POS P3.6U ▸ fixture ก่อนงานแรกของใบนี้ · ค่าตั้งวางบิลต่องาน (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (isP36uState(job.state)) {
+          if (!P36U.done && !P36U.error) {
+            await ensureP36uFixture();
+            console.log(P36U.error ? `  ⚠️ fixture P3.6U: ${P36U.error}` : `  fixture P3.6U: ${P36U.log.join(" · ")}`);
+          }
+          await prepP36u(job.state);
+        }
         // POS P3.7U ▸ fixture ก่อนงานแรกของใบนี้ · ค่าตั้งแชท/ออเดอร์ต่องาน (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (isP37uState(job.state)) {
           if (!P37U.done && !P37U.error) {
@@ -10586,7 +11270,7 @@ try {
           await ensureP24uFixture();
           console.log(P24U.error ? `  ⚠️ fixture P2.4U: ${P24U.error}` : `  fixture P2.4U: ${P24U.log.join(" · ")}`);
         }
-        const resp = await page.goto(`${BASE}${isP27State(job.state) ? p27Path(job.state) /* POS P2.7U */ : isP26uState(job.state) ? p26uPath(job) /* POS P2.6U */ : job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+        const resp = await page.goto(`${BASE}${isP36uState(job.state) ? p36uPath(job.state) /* POS P3.6U ▸ ?bill= รู้หลังขาย ◂ */ : isP27State(job.state) ? p27Path(job.state) /* POS P2.7U */ : isP26uState(job.state) ? p26uPath(job) /* POS P2.6U */ : job.state === "register-table-mode" ? p24uRegTablePath() : p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
         let stepError: string | null = null;
@@ -10678,6 +11362,7 @@ try {
         if (isP34uState(job.state) && job === jobs.filter((j) => isP34uState(j.state)).at(-1)) await cleanupP34u(); // POS P3.4U
         if (isP39uState(job.state) && job === jobs.filter((j) => isP39uState(j.state)).at(-1)) await cleanupP39u(); // POS P3.9U
         if (isP37uState(job.state) && job === jobs.filter((j) => isP37uState(j.state)).at(-1)) await cleanupP37u(); // POS P3.7U
+        if (isP36uState(job.state) && job === jobs.filter((j) => isP36uState(j.state)).at(-1)) await cleanupP36u(); // POS P3.6U
         if (isP210State(job.state) && job === jobs.filter((j) => isP210State(j.state)).at(-1)) await cleanupP210(); // POS P2.10
         if ((job.state === "table-closed" || job.state === "pre-closed") && P27.pausedNow) await p27Pause(null).catch(() => undefined); // POS P2.7U ▸ คืนพักรับหลังภาพ closed ◂
         if (isP27State(job.state) && job === jobs.filter((j) => isP27State(j.state)).at(-1)) await cleanupP27(); // POS P2.7U
@@ -10722,6 +11407,9 @@ try {
   await cleanupP34u(); // POS P3.4U (ก่อนปิดกะ/เพิกถอนเครื่อง — ทิ้งแถวคิวผู้จัดการ · คืนธงออฟไลน์ · ลบ snapshot ของเครื่องรอบนี้)
   if (P34U.log.length) console.error(`${P34U.ok ? "🧹" : "⚠️"} P3.4U: ${P34U.log.join(" · ")}`);
   if (!P34U.ok) failures++;
+  await cleanupP36u(); // POS P3.6U (คืนค่าตั้งวางบิล · ยกเลิกบิลวางบิลของภาพ · ลบผู้จัดการของภาพ)
+  if (P36U.log.length) console.error(`${P36U.ok ? "🧹" : "⚠️"} P3.6U: ${P36U.log.join(" · ")}`);
+  if (!P36U.ok) failures++;
   await cleanupP37u(); // POS P3.7U (คืนค่าตั้งแชท · ปฏิเสธ/ลบออเดอร์ของรอบ · ลบระบบแชทชั่วคราว)
   if (P37U.log.length) console.error(`${P37U.ok ? "🧹" : "⚠️"} P3.7U: ${P37U.log.join(" · ")}`);
   if (!P37U.ok) failures++;
