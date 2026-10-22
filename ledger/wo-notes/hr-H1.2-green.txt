@@ -1,0 +1,139 @@
+# H1.2 green — branch wip/pos-hr-h1.2 (head before notes ae0d1141) · 22 Oct 2026 · QC4
+
+## qc-hr-h1.2 forced run 1 (full)
+[env] qc-hr-h1.2 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h1.2] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h1.2] modules: time-rules=loaded · settings=loaded · settings-actions=loaded · hr/scope=loaded
+── [S1/S2/S5/S6/S7] statics ──
+  ✅ [H1.2-S1.1] [static] migration A prisma/migrations/20261205000000_hr_time_leave_model exists · additive (no DROP · ALTER COLUMN · RENAME · ALTER TYPE) · 8 CREATE TYPE with the exact labels
+  ✅ [H1.2-S1.2] [static] migration A: 8 CREATE TABLE with the R1 columns / types / nullability / defaults (DECIMAL(4,1) days · quotaDays · carryMaxDays · hours)
+  ✅ [H1.2-S1.3] [static] HrAttendance +7 nullable columns without DEFAULT (lat/lng DECIMAL(9,6)) · FK rosterEntryId → HrRosterEntry ON DELETE SET NULL · index (rosterEntryId)
+  ✅ [H1.2-S1.4] [static] HrLeave +5 nullable columns (days/hours DECIMAL(4,1)) · FK policyId → HrLeavePolicy ON DELETE SET NULL · no requestedByUserId (Q1 ruled)
+  ✅ [H1.2-S1.5] [static] uniques: shift (systemId, COALESCE(unitId,''), lower(name)) WHERE active · roster (employeeId,date,shiftId) · swap (fromEntryId) open · correction ×2 · OT (employeeId,startAt) live · policy name · holiday (systemId,date,COALESCE(unitId,'')) · balance (systemId,sourceKey)
+  ✅ [H1.2-S1.6] [static] migration B prisma/migrations/20261205000001_hr_judgement_enums = exactly ADD VALUE IF NOT EXISTS 'ABSENT' + 'EARLY_OUT' · sorts after A · A has no ADD VALUE
+  ✅ [H1.2-S1.7] [static] schema: 8 models with the R1 fields/types · 8 enums · HrAttendanceJudgement 6 values in order · HrAttendance/HrLeave new fields · HrLeave.type still HrLeaveType · HrWorkSchedule block byte-identical
+  ✅ [H1.2-S1.8] [static] core/scope.ts registers the 8 models as sys() · hr-qc-env.mts HR_TABLES has the 8 models
+  ✅ [H1.2-S2.11] [static] time-rules.ts never reads the clock (no Date.now · no argument-less new Date())
+  ✅ [H1.2-S2.12] [static] settings.ts imports shiftWindow from ./time-rules and calls it (one validation rule)
+  ✅ [H1.2-S5.8] [static] payroll-rules.ts sha 75a66c0c… · payroll.ts unchanged vs the merge-base with origin/session/hr (or QC_H12_BASE)
+  ✅ [H1.2-S6.2] [static] privacy-shared.ts: no H1.2 key · EMPLOYEE_SENSITIVE_FIELDS still the 6 keys · LeaveItemDto keys ⊆ base ∪ {filedBy}
+  ✅ [H1.2-S6.4] [static] no code under hr/** · app/**/hr/** · ai/** · outbox-consumers.ts reads lat|lng|accuracyM|photoKey|deviceId|attachmentKey
+  ✅ [H1.2-S6.5] [static] ai/tools.ts (~2084 · ~2393) and calendar/service.ts (~135) map named leave fields (no spread / return of the row)
+  ✅ [H1.2-S7.1] [static] seed-hr-qc.mts writes HrShift (one crossesMidnight) · HrLeavePolicy ("รอเจ้าของยืนยัน") · HrHoliday · no roster / txn / request rows
+[qc-hr-h1.2] schema probe: HrShift=true HrRosterEntry=true HrShiftSwapRequest=true HrTimeCorrection=true HrOtRequest=true HrLeavePolicy=true HrLeaveBalanceTxn=true HrHoliday=true · HrEmployee.unitId(H1.1)=true
+── [S2] time-rules vectors (pure) ──
+  ✅ [H1.2-S2.1] [pure] time-rules.ts exports the 8 helpers · imports nothing from prisma / core/db / ./service
+  ✅ [H1.2-S2.2] [pure] bkkDayKey 16:59:59Z → 10-21 · 17:00Z → 10-22 · leap 02-29 · year end 2027-01-01 · bkkMidnight / addDays (leap-safe) vectors
+  ✅ [H1.2-S2.3] [pure] 500 instants 2026–2030 incl. other zones' DST dates: bkkDayKey = bkkParts().dateStr · bkkMidnight exactly −07:00 · days exactly 24 h
+  ✅ [H1.2-S2.4] [pure] shiftWindow day shift 07:00–15:00 ⇒ 00:00Z–08:00Z same day
+  ✅ [H1.2-S2.5] [pure] overnight 22:00–06:00: 10-31 ⇒ 15:00Z–23:00Z (ends BKK 11-01) · 01-31 → 02-01 · 12-31 → 01-01 · 2028-02-28 → 02-29
+  ✅ [H1.2-S2.6] [pure] shiftWindow refuses start = end · minutes < 0 / > 1439 · crossesMidnight ≠ (endMin < startMin) · endMin 1440 with crossesMidnight · accepts endMin 1440 without
+  ✅ [H1.2-S2.7] [pure] paidMinutes 480−60 = 420 · break ≥ length ⇒ 0 · overnight 22–06 no break = 480
+  ✅ [H1.2-S2.8] [pure] overlapMinutes: disjoint 0 · touching 0 · contained 60 · partial 60 · overnight vs next-day morning 0 · overnight vs early morning 60
+  ✅ [H1.2-S2.9] [pure] rosterDayOf: 02:00 BKK 11-01 inside the 10-31 night window ⇒ 10-31 (D13b) · between windows ⇒ null
+  ✅ [H1.2-S2.10] [pure] leaveDaysBetween 3 days ⇒ "3.0" · AM half ⇒ "0.5" · one excluded holiday ⇒ "2.0" · from > to ⇒ refusal
+── [S1] QC4 catalogue ──
+  ✅ [H1.2-S1.9] [db] QC4 columns / types / nullability exact for the 8 tables + the 12 new HrAttendance/HrLeave columns
+  ✅ [H1.2-S1.10] [db] enum HrAttendanceJudgement labels = ON_TIME,LATE,DAY_OFF,NO_SCHEDULE,ABSENT,EARLY_OUT (in order) · 8 new enums with the exact labels
+  ✅ [H1.2-S1.11] [db] [control] additive: every base column of HrAttendance (10) and HrLeave (11 + H0.7 filedById) still exists
+  ✅ [H1.2-S1.12] [db] FK delete actions via pg_constraint: 11 FKs Cascade / Restrict / SetNull as declared
+── [S5] frozen digests (system D) ──
+  ℹ S5.1 digest=8436a89981a0146a04c8954c6b0a49752eb7cb9c0661df9927bc356bd8fe46c9
+  ✅ [H1.2-S5.1] [digest] listAttendance(ctxD, 50) JSON (ids → labels) = FROZEN
+  ℹ S5.2 digest=f43008cba9f7bfae26638ae985e4c11565803988943cf3cf2f3921de10b8a62d
+  ✅ [H1.2-S5.2] [digest] listLeaves(ctxD, 100) + pendingLeaves(ctxD, 100) JSON = FROZEN
+  ℹ S5.3 digest=54ef63446a674b6108da0bf977e2b50aab14cfd40252f18c94c0d4eb0f2798b1
+  ✅ [H1.2-S5.3] [digest] leaveItemsForViewer owner / manager-u1 / staff-u1 (linked D01) = FROZEN
+  ℹ S5.4 digest=9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3
+  ✅ [H1.2-S5.4] [digest] monthlyAttendance 2030-03 per employee (D01–D03) = FROZEN
+  ℹ S5.5 digest=840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643
+  ✅ [H1.2-S5.5] [digest] employeesUnavailable ×2 dates · isOnLeave(staff-u1) ×2 instants · kioskRoster = FROZEN
+  ℹ S5.6 MONTHLY fixture computed: digest=72166a3e2a2ebb6a37405a105f7db540b946fda05fe020639bbe79a60b87e5c8 totals=10725000:195000:195000:100000:10430000:475000:100000 flags=M01=-,M02=-,M03=-,M04=PARTIAL_MONTH
+  ✅ [H1.2-S5.6] [digest] MONTHLY payroll fixture items + 7 totals + flags = the H1.1 frozen digest 72166a3e…
+  ✅ [H1.2-S5.7] [db] every S5 HrAttendance/HrLeave row has all 12 new columns present and null · a new clock() + requestLeave() also writes null
+── [S6] privacy ──
+  ✅ [H1.2-S6.1] [dto] matrix owner · payroll · manager-u1 · hr.leave.read · plain member · self · other tenant: profile + leave-item key lists = base (+ H0.7/H1.1 additions) · no H1.2 key
+── [S3] settings CRUD + unit scope ──
+  ✅ [H1.2-S3.1] [service] owner createShift shop-wide + u1 + u2 ⇒ 3 rows with the given unitId / times / colour
+  ✅ [H1.2-S3.2] [service] overnight 22:00–06:00 stored crossesMidnight true · start = end ⇒ "เวลาเริ่มกับเวลาเลิกกะต้องไม่เท่ากัน" · mismatching flag ⇒ refused · 0 rows
+  ✅ [H1.2-S3.3] [service] 🔴 listShifts(scope manager-u1) ⇒ every active shop-wide + u1 row · never a u2 row
+  ✅ [H1.2-S3.4] [service] 🔴 manager-u1 createShift on u2 ⇒ "รายการนี้เป็นของสาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ" · on shop-wide ⇒ refused · 0 rows · on u1 ⇒ ok
+  ✅ [H1.2-S3.5] [service] archiveShift of a shift used by a roster entry ⇒ active false · entry intact · hard DELETE ⇒ 23001 (FK Restrict)
+  ✅ [H1.2-S3.6] [service] duplicate active name same unit (incl. case) ⇒ "มีกะชื่อนี้อยู่แล้วในสาขานี้" · same name other unit ok · archived + new same name ok
+  ✅ [H1.2-S3.7] [service] policy category outside HrLeaveType ⇒ refused · quotaDays 6.5 ok · 6.25 refused · carryMaxDays > quotaDays refused · duplicate ⇒ "มีประเภทการลาชื่อนี้อยู่แล้ว"
+  ✅ [H1.2-S3.8] [service] 🔴 policy unit scope: manager-u1 list ⇒ shop-wide + u1 only · create on u2 ⇒ out-of-branch text · shop-wide refused · u1 ok
+  ✅ [H1.2-S3.9] [service] upsertHoliday shop-wide + u1 same date ⇒ 2 rows · 2nd shop-wide same date ⇒ "มีวันหยุดวันนี้อยู่แล้ว" · manager-u1 on u2 ⇒ out-of-branch text
+  ✅ [H1.2-S3.10] [service] listHolidays({year 2031}) = Bangkok-year bounds: 2031-01-01 + 2031-12-31 in · 2030-12-31 + 2032-01-01 out · deleteHoliday hard-deletes
+  ✅ [H1.2-S3.11] [action] plain member + staff-u1 createShiftAction ⇒ refused (Thai, no fixture data) · 0 rows · owner createShiftAction ⇒ row
+  ✅ [H1.2-S3.12] [db] audit: one hr.settings.<entity>.<op> row per successful S3 write · before/after carry ids only (no names)
+  ✅ [H1.2-S6.6] [dto] settings lists carry no employee data (no employee* key · no employee name in the JSON)
+── [S4] uniques under race (10-way × 3) ──
+  ✅ [H1.2-S4.1] [race] roster (employeeId,date,shiftId) 10-way × 3 rounds ⇒ exactly 1 row · 9 × 23505 per round
+  ✅ [H1.2-S4.2] [race] holiday shop-wide (systemId,date,COALESCE(unitId,'')) 10-way × 3 ⇒ 1 row per round
+  ✅ [H1.2-S4.3] [race] createShift same active name 10-way × 3 (service path) ⇒ 1 row per round · losers get "มีกะชื่อนี้อยู่แล้วในสาขานี้"
+  ✅ [H1.2-S4.4] [race] createLeavePolicy same name 10-way × 3 ⇒ 1 row per round · losers get "มีประเภทการลาชื่อนี้อยู่แล้ว"
+  ✅ [H1.2-S4.5] [race] HrLeaveBalanceTxn (systemId,sourceKey) 10-way × 3 ⇒ 1 row per round
+  ✅ [H1.2-S4.6] [race] swap open per fromEntryId 10-way × 3 ⇒ 1 · CANCELLED + new open ⇒ accepted
+  ✅ [H1.2-S4.7] [race] OT live (employeeId,startAt) 10-way × 3 ⇒ 1 · REJECTED + new ⇒ accepted
+  ✅ [H1.2-S4.8] [race] correction PENDING per attendanceId 10-way × 3 ⇒ 1
+  ✅ [H1.2-X1.1] [db] idempotency: the same sourceKey inserted twice sequentially ⇒ 1 row (2nd = 23505)
+── [X] isolation · matrix · fitness ──
+  ✅ [H1.2-X2.1] [service] other tenant's shift / policy / holiday ids from our ctx ⇒ refused / not found · rows unchanged
+  ✅ [H1.2-X2.2] [service] sys2's shift from system A's ctx ⇒ archive/update refused · never in system A lists (flag: no roster-entry writer in H1.2)
+  ✅ [H1.2-X2.3] [service] 🔴 manager-u1 never reads a u2 policy / holiday / shift through any list (years 2030–2032)
+  ✅ [H1.2-X3.1] [action] matrix 8 settings actions × {member, staff-u1, manager-u1@u2} refused + unchanged · × {manager-u1@u1, owner, manager-all} ok
+  ✅ [H1.2-X7.1] [static+run] oracle never uses today: fixture date literals ≥ 2030 (pure vectors excepted) · today's date absent from every S5 payload
+  ✅ [H1.2-X8.1] [run] HR with no ACCOUNT/POS system (main tenant) ran every S3 path green
+  ✅ [H1.2-X12.1] [run] fitness-hr.mts runs without env (no DATABASE_URL) ⇒ exit 0
+  ✅ [H1.2-S6.3] [static] fitness-hr F16.1 SENSITIVE_FIELDS ⊇ lat · lng · photoKey · attachmentKey · fitness-hr exit 0
+── [S7] seed / expected (read-only qc-hr-v2) ──
+  ✅ [H1.2-S7.2] [db read] seeded qc-hr-v2: 4 shifts (3 shop-wide = HQC.shifts + colours shift-1..3 · night 22–06) · 4 policies (HQ12 defaults) · 2 holidays (PUBLIC presetYear · SHOP huahin)
+  ℹ S7.3 qc-hr-v2 attendance = 120|OUT:-=60,IN:LATE=1,IN:ON_TIME=59
+  ✅ [H1.2-S7.3] [db read] seeded qc-hr-v2 attendance: 120 rows (= hr-expected.json) · judgement distribution = FROZEN
+  ✅ [H1.2-S7.4] [db read] hr-expected.json counts include HrShift 4 · HrLeavePolicy 4 · HrHoliday 2 · every Hr* count = live (roster/txn/request tables 0)
+  ✅ [H1.2-S7.5] [static+db] HR_DELETE_ORDER lists the 8 delegates children-first · applying it to our main tenant leaves 0 rows in the 8 tables
+  ✅ [H1.2-S7.6] [db read] other tenants untouched: seeded qc-hr-v2 row counts (HR + payroll + new settings tables + audit/outbox) identical before/after · other-tenant fixture employee unchanged
+RESIDUE none (tenants=2 users=8)
+  ✅ [H1.2-Z1] residue: tenants qc-hr-h1.2-* gone · no row of ours in the 8 new tables + HR/payroll/audit/outbox · users/sessions gone
+BASE-EXPECTATION 17/73 as registered (RED-by-design 56 · GREEN controls 17) · off: H1.2-S1.1(RED→pass) H1.2-S1.2(RED→pass) H1.2-S1.3(RED→pass) H1.2-S1.4(RED→pass) H1.2-S1.5(RED→pass) H1.2-S1.6(RED→pass) H1.2-S1.7(RED→pass) H1.2-S1.8(RED→pass) H1.2-S2.11(RED→pass) H1.2-S2.12(RED→pass) H1.2-S7.1(RED→pass) H1.2-S2.1(RED→pass) H1.2-S2.2(RED→pass) H1.2-S2.3(RED→pass) H1.2-S2.4(RED→pass) H1.2-S2.5(RED→pass) H1.2-S2.6(RED→pass) H1.2-S2.7(RED→pass) H1.2-S2.8(RED→pass) H1.2-S2.9(RED→pass) H1.2-S2.10(RED→pass) H1.2-S1.9(RED→pass) H1.2-S1.10(RED→pass) H1.2-S1.12(RED→pass) H1.2-S5.7(RED→pass) H1.2-S3.1(RED→pass) H1.2-S3.2(RED→pass) H1.2-S3.3(RED→pass) H1.2-S3.4(RED→pass) H1.2-S3.5(RED→pass) H1.2-S3.6(RED→pass) H1.2-S3.7(RED→pass) H1.2-S3.8(RED→pass) H1.2-S3.9(RED→pass) H1.2-S3.10(RED→pass) H1.2-S3.11(RED→pass) H1.2-S3.12(RED→pass) H1.2-S6.6(RED→pass) H1.2-S4.1(RED→pass) H1.2-S4.2(RED→pass) H1.2-S4.3(RED→pass) H1.2-S4.4(RED→pass) H1.2-S4.5(RED→pass) H1.2-S4.6(RED→pass) H1.2-S4.7(RED→pass) H1.2-S4.8(RED→pass) H1.2-X1.1(RED→pass) H1.2-X2.1(RED→pass) H1.2-X2.2(RED→pass) H1.2-X2.3(RED→pass) H1.2-X3.1(RED→pass) H1.2-X8.1(RED→pass) H1.2-S6.3(RED→pass) H1.2-S7.2(RED→pass) H1.2-S7.4(RED→pass) H1.2-S7.5(RED→pass)
+===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"baseGreen":17,"offBase":["H1.2-S1.1(RED→pass)","H1.2-S1.2(RED→pass)","H1.2-S1.3(RED→pass)","H1.2-S1.4(RED→pass)","H1.2-S1.5(RED→pass)","H1.2-S1.6(RED→pass)","H1.2-S1.7(RED→pass)","H1.2-S1.8(RED→pass)","H1.2-S2.11(RED→pass)","H1.2-S2.12(RED→pass)","H1.2-S7.1(RED→pass)","H1.2-S2.1(RED→pass)","H1.2-S2.2(RED→pass)","H1.2-S2.3(RED→pass)","H1.2-S2.4(RED→pass)","H1.2-S2.5(RED→pass)","H1.2-S2.6(RED→pass)","H1.2-S2.7(RED→pass)","H1.2-S2.8(RED→pass)","H1.2-S2.9(RED→pass)","H1.2-S2.10(RED→pass)","H1.2-S1.9(RED→pass)","H1.2-S1.10(RED→pass)","H1.2-S1.12(RED→pass)","H1.2-S5.7(RED→pass)","H1.2-S3.1(RED→pass)","H1.2-S3.2(RED→pass)","H1.2-S3.3(RED→pass)","H1.2-S3.4(RED→pass)","H1.2-S3.5(RED→pass)","H1.2-S3.6(RED→pass)","H1.2-S3.7(RED→pass)","H1.2-S3.8(RED→pass)","H1.2-S3.9(RED→pass)","H1.2-S3.10(RED→pass)","H1.2-S3.11(RED→pass)","H1.2-S3.12(RED→pass)","H1.2-S6.6(RED→pass)","H1.2-S4.1(RED→pass)","H1.2-S4.2(RED→pass)","H1.2-S4.3(RED→pass)","H1.2-S4.4(RED→pass)","H1.2-S4.5(RED→pass)","H1.2-S4.6(RED→pass)","H1.2-S4.7(RED→pass)","H1.2-S4.8(RED→pass)","H1.2-X1.1(RED→pass)","H1.2-X2.1(RED→pass)","H1.2-X2.2(RED→pass)","H1.2-X2.3(RED→pass)","H1.2-X3.1(RED→pass)","H1.2-X8.1(RED→pass)","H1.2-S6.3(RED→pass)","H1.2-S7.2(RED→pass)","H1.2-S7.4(RED→pass)","H1.2-S7.5(RED→pass)"]}
+
+## forced run 2 / unforced run tails
+h12-unforced.txt:RESIDUE none (tenants=2 users=8)
+h12-unforced.txt:BASE-EXPECTATION 17/73 as registered (RED-by-design 56 · GREEN controls 17) · off: H1.2-S1.1(RED→pass) H1.2-S1.2(RED→pass) H1.2-S1.3(RED→pass) H1.2-S1.4(RED→pass) H1.2-S1.5(RED→pass) H1.2-S1.6(RED→pass) H1.2-S1.7(RED→pass) H1.2-S1.8(RED→pass) H1.2-S2.11(RED→pass) H1.2-S2.12(RED→pass) H1.2-S7.1(RED→pass) H1.2-S2.1(RED→pass) H1.2-S2.2(RED→pass) H1.2-S2.3(RED→pass) H1.2-S2.4(RED→pass) H1.2-S2.5(RED→pass) H1.2-S2.6(RED→pass) H1.2-S2.7(RED→pass) H1.2-S2.8(RED→pass) H1.2-S2.9(RED→pass) H1.2-S2.10(RED→pass) H1.2-S1.9(RED→pass) H1.2-S1.10(RED→pass) H1.2-S1.12(RED→pass) H1.2-S5.7(RED→pass) H1.2-S3.1(RED→pass) H1.2-S3.2(RED→pass) H1.2-S3.3(RED→pass) H1.2-S3.4(RED→pass) H1.2-S3.5(RED→pass) H1.2-S3.6(RED→pass) H1.2-S3.7(RED→pass) H1.2-S3.8(RED→pass) H1.2-S3.9(RED→pass) H1.2-S3.10(RED→pass) H1.2-S3.11(RED→pass) H1.2-S3.12(RED→pass) H1.2-S6.6(RED→pass) H1.2-S4.1(RED→pass) H1.2-S4.2(RED→pass) H1.2-S4.3(RED→pass) H1.2-S4.4(RED→pass) H1.2-S4.5(RED→pass) H1.2-S4.6(RED→pass) H1.2-S4.7(RED→pass) H1.2-S4.8(RED→pass) H1.2-X1.1(RED→pass) H1.2-X2.1(RED→pass) H1.2-X2.2(RED→pass) H1.2-X2.3(RED→pass) H1.2-X3.1(RED→pass) H1.2-X8.1(RED→pass) H1.2-S6.3(RED→pass) H1.2-S7.2(RED→pass) H1.2-S7.4(RED→pass) H1.2-S7.5(RED→pass)
+h12-unforced.txt:===== qc-hr-h1.2 ===== passed 73/73
+h12-unforced.txt:JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":56,"baseGreen":17,"offBase":["H1.2-S1.1(RED→pass)","H1.2-S1.2(RED→pass)","H1.2-S1.3(RED→pass)","H1.2-S1.4(RED→pass)","H1.2-S1.5(RED→pass)","H1.2-S1.6(RED→pass)","H1.2-S1.7(RED→pass)","H1.2-S1.8(RED→pass)","H1.2-S2.11(RED→pass)","H1.2-S2.12(RED→pass)","H1.2-S7.1(RED→pass)","H1.2-S2.1(RED→pass)","H1.2-S2.2(RED→pass)","H1.2-S2.3(RED→pass)","H1.2-S2.4(RED→pass)","H1.2-S2.5(RED→pass)","H1.2-S2.6(RED→pass)","H1.2-S2.7(RED→pass)","H1.2-S2.8(RED→pass)","H1.2-S2.9(RED→pass)","H1.2-S2.10(RED→pass)","H1.2-S1.9(RED→pass)","H1.2-S1.10(RED→pass)","H1.2-S1.12(RED→pass)","H1.2-S5.7(RED→pass)","H1.2-S3.1(RED→pass)","H1.2-S3.2(RED→pass)","H1.2-S3.3(RED→pass)","H1.2-S3.4(RED→pass)","H1.2-S3.5(RED→pass)","H1.2-S3.6(RED→pass)","H1.2-S3.7(RED→pass)","H1.2-S3.8(RED→pass)","H1.2-S3.9(RED→pass)","H1.2-S3.10(RED→pass)","H1.2-S3.11(RED→pass)","H1.2-S3.12(RED→pass)","H1.2-S6.6(RED→pass)","H1.2-S4.1(RED→pass)","H1.2-S4.2(RED→pass)","H1.2-S4.3(RED→pass)","H1.2-S4.4(RED→pass)","H1.2-S4.5(RED→pass)","H1.2-S4.6(RED→pass)","H1.2-S4.7(RED→pass)","H1.2-S4.8(RED→pass)","H1.2-X1.1(RED→pass)","H1.2-X2.1(RED→pass)","H1.2-X2.2(RED→pass)","H1.2-X2.3(RED→pass)","H1.2-X3.1(RED→pass)","H1.2-X8.1(RED→pass)","H1.2-S6.3(RED→pass)","H1.2-S7.2(RED→pass)","H1.2-S7.4(RED→pass)","H1.2-S7.5(RED→pass)"]}
+h12-forced2.txt:RESIDUE none (tenants=2 users=8)
+h12-forced2.txt:BASE-EXPECTATION 17/73 as registered (RED-by-design 56 · GREEN controls 17) · off: H1.2-S1.1(RED→pass) H1.2-S1.2(RED→pass) H1.2-S1.3(RED→pass) H1.2-S1.4(RED→pass) H1.2-S1.5(RED→pass) H1.2-S1.6(RED→pass) H1.2-S1.7(RED→pass) H1.2-S1.8(RED→pass) H1.2-S2.11(RED→pass) H1.2-S2.12(RED→pass) H1.2-S7.1(RED→pass) H1.2-S2.1(RED→pass) H1.2-S2.2(RED→pass) H1.2-S2.3(RED→pass) H1.2-S2.4(RED→pass) H1.2-S2.5(RED→pass) H1.2-S2.6(RED→pass) H1.2-S2.7(RED→pass) H1.2-S2.8(RED→pass) H1.2-S2.9(RED→pass) H1.2-S2.10(RED→pass) H1.2-S1.9(RED→pass) H1.2-S1.10(RED→pass) H1.2-S1.12(RED→pass) H1.2-S5.7(RED→pass) H1.2-S3.1(RED→pass) H1.2-S3.2(RED→pass) H1.2-S3.3(RED→pass) H1.2-S3.4(RED→pass) H1.2-S3.5(RED→pass) H1.2-S3.6(RED→pass) H1.2-S3.7(RED→pass) H1.2-S3.8(RED→pass) H1.2-S3.9(RED→pass) H1.2-S3.10(RED→pass) H1.2-S3.11(RED→pass) H1.2-S3.12(RED→pass) H1.2-S6.6(RED→pass) H1.2-S4.1(RED→pass) H1.2-S4.2(RED→pass) H1.2-S4.3(RED→pass) H1.2-S4.4(RED→pass) H1.2-S4.5(RED→pass) H1.2-S4.6(RED→pass) H1.2-S4.7(RED→pass) H1.2-S4.8(RED→pass) H1.2-X1.1(RED→pass) H1.2-X2.1(RED→pass) H1.2-X2.2(RED→pass) H1.2-X2.3(RED→pass) H1.2-X3.1(RED→pass) H1.2-X8.1(RED→pass) H1.2-S6.3(RED→pass) H1.2-S7.2(RED→pass) H1.2-S7.4(RED→pass) H1.2-S7.5(RED→pass)
+h12-forced2.txt:===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE)
+h12-forced2.txt:JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"baseGreen":17,"offBase":["H1.2-S1.1(RED→pass)","H1.2-S1.2(RED→pass)","H1.2-S1.3(RED→pass)","H1.2-S1.4(RED→pass)","H1.2-S1.5(RED→pass)","H1.2-S1.6(RED→pass)","H1.2-S1.7(RED→pass)","H1.2-S1.8(RED→pass)","H1.2-S2.11(RED→pass)","H1.2-S2.12(RED→pass)","H1.2-S7.1(RED→pass)","H1.2-S2.1(RED→pass)","H1.2-S2.2(RED→pass)","H1.2-S2.3(RED→pass)","H1.2-S2.4(RED→pass)","H1.2-S2.5(RED→pass)","H1.2-S2.6(RED→pass)","H1.2-S2.7(RED→pass)","H1.2-S2.8(RED→pass)","H1.2-S2.9(RED→pass)","H1.2-S2.10(RED→pass)","H1.2-S1.9(RED→pass)","H1.2-S1.10(RED→pass)","H1.2-S1.12(RED→pass)","H1.2-S5.7(RED→pass)","H1.2-S3.1(RED→pass)","H1.2-S3.2(RED→pass)","H1.2-S3.3(RED→pass)","H1.2-S3.4(RED→pass)","H1.2-S3.5(RED→pass)","H1.2-S3.6(RED→pass)","H1.2-S3.7(RED→pass)","H1.2-S3.8(RED→pass)","H1.2-S3.9(RED→pass)","H1.2-S3.10(RED→pass)","H1.2-S3.11(RED→pass)","H1.2-S3.12(RED→pass)","H1.2-S6.6(RED→pass)","H1.2-S4.1(RED→pass)","H1.2-S4.2(RED→pass)","H1.2-S4.3(RED→pass)","H1.2-S4.4(RED→pass)","H1.2-S4.5(RED→pass)","H1.2-S4.6(RED→pass)","H1.2-S4.7(RED→pass)","H1.2-S4.8(RED→pass)","H1.2-X1.1(RED→pass)","H1.2-X2.1(RED→pass)","H1.2-X2.2(RED→pass)","H1.2-X2.3(RED→pass)","H1.2-X3.1(RED→pass)","H1.2-X8.1(RED→pass)","H1.2-S6.3(RED→pass)","H1.2-S7.2(RED→pass)","H1.2-S7.4(RED→pass)","H1.2-S7.5(RED→pass)"]}
+
+## regression summary (exit · final line)
+seed2 rc=0 ===== seed-hr-qc ===== ผ่าน 27/27
+h12-forced2 rc=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE)
+h12-unforced rc=0 ===== qc-hr-h1.2 ===== passed 73/73
+qc-hr-h1.1 rc=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h0.7 rc=0 ===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE)
+qc-hf-hr-privacy rc=0 ผ่าน 194/194
+qc-hr-h0.1 rc=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+qc-hr-h0.2 rc=0 ===== qc-hr-h0.2 ===== ผ่าน 58/58 (QC_FORCE)
+qc-hr-h0.3 rc=0 ===== qc-hr-h0.3 ===== ผ่าน 37/37 (QC_FORCE)
+qc-hr-h0.5 rc=0 ===== qc-hr-h0.5 ===== ผ่าน 71/71 (QC_FORCE)
+qc-hr-h0.6 rc=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE)
+qc-crm-c3.3 rc=0 
+qc-crm-c0.3 rc=0 
+qc-calendar rc=0 ผ่าน 9/9
+qc-approval-wiring rc=0 ผ่าน 7/7
+qc-bulk-ops rc=0 ผ่าน 13/13
+qc-kanban-k3.3 rc=0 ผ่าน 14/15
+qc-ai-tools rc=0 ผ่าน 18/18
+qc-hr-attendance rc=0 ผ่าน 31/31
+qc-hr rc=0 ผ่าน 9/9
+qc-payroll rc=0 ผ่าน 19/19
+seed3 rc=0 ===== seed-hr-qc ===== ผ่าน 27/27
+seed4 rc=0 ===== seed-hr-qc ===== ผ่าน 27/27
+DONE
+qc-crm-c3.3 JSON_SUMMARY total 90 passed 90 · qc-crm-c0.3 total 88 passed 88 · qc-kanban-k3.3 14/15 = K3.3-S9.2 needs .qc-shots/kanban/3.3 screenshots (absent in this worktree, environmental, exit 0)
+fitness 42/42 with env + without env · fitness-hr 7/7 with env + without env · seed counts md5 4f028646… identical ×3
+typecheck exit 2 — 13 errors, all in scripts/qc-hr-h1.2.mts (L1515 race typing, L1818 tail narrowing) · product code 0 errors · tsbuildinfo 18:34 → 19:35 UTC
