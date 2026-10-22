@@ -116,6 +116,18 @@
       }
     ]
   },
+  "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · public (P4 §10 มติ 2 · public = หน้า /r /q /d /developers เท่านั้น) · kind/expect.type ชุดเดียวกับทะเบียน CRM + kind notice (F15.3b ตรวจ)",
+  "$mockupGaps": {
+    "$doc": "R6 (qc-pos-p4.1): ส่วนต่างที่ mockup (ledger/design-pos/NN.body.html) มีคอนโทรลมากกว่าแถวทะเบียนของหน้าที่แมป ต่อถัง buttons/links/inputs — gap = ส่วนต่างตรงตัว · ต้องมีเหตุผล · ส่วนต่างหาย = ลบรายการ (ค้าง = แดง)",
+    "items": [
+      {
+        "mockup": "08-reports",
+        "bucket": "inputs",
+        "gap": 1,
+        "reason": "mockup มีช่องกรอก 2 ช่อง (ตัวเลือกวัน \"วันนี้ 30 ก.ย.\" + ตัวเลือกสาขา) — สาขา = pos-report-unit (select · ถัง inputs) แต่ช่องวันที่ของจริงเป็น pos-report-from / pos-report-to ที่ทะเบียนจัดเป็น kind filter (ถัง buttons ของ R6) จึงไม่นับในถัง inputs · ไม่มีคอนโทรลขาด"
+      }
+    ]
+  },
   "rows": [
     {
       "page": "/app/sys/[id]/pos/register",
@@ -6325,8 +6337,7 @@
       "testid": "pos-rpub-lang-th",
       "kind": "link",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "navigate",
@@ -6335,15 +6346,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-lang-en",
       "kind": "link",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "navigate",
@@ -6352,15 +6363,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-open",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "modal",
@@ -6369,15 +6380,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-close",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6386,15 +6397,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-form",
       "kind": "form",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -6403,15 +6414,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-name",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6420,15 +6431,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-taxid",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6437,15 +6448,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-branch",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6454,15 +6465,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-address",
       "kind": "textarea",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6471,15 +6482,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-email",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6488,15 +6499,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-taxinvoice-submit",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -6505,15 +6516,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-points-toggle",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6522,15 +6533,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-review-open",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "modal",
@@ -6539,15 +6550,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-review-close",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6556,15 +6567,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-review-form",
       "kind": "form",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -6573,15 +6584,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-review-star-*",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6590,15 +6601,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-review-body",
       "kind": "textarea",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6607,15 +6618,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-review-submit",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -6624,15 +6635,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-issue-open",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "modal",
@@ -6641,15 +6652,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-issue-close",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6658,15 +6669,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-issue-form",
       "kind": "form",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -6675,15 +6686,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-issue-message",
       "kind": "textarea",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6692,15 +6703,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-issue-contact",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -6709,15 +6720,15 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/r/[token]",
       "testid": "pos-rpub-issue-submit",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -6726,7 +6737,8 @@
       "wo": "P1.11U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/app/sys/[id]/pos/sales",
@@ -17932,8 +17944,7 @@
       "testid": "pos-display-pair",
       "kind": "form",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -17943,15 +17954,15 @@
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": "c=[pairCode]"
+      "query": "c=[pairCode]",
+      "hiddenFor": []
     },
     {
       "page": "/d",
       "testid": "pos-display-pair-code",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -17960,15 +17971,15 @@
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/d",
       "testid": "pos-display-pair-submit",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -17978,15 +17989,15 @@
       "wo": "P2.10",
       "oracle": "qc-pos-p2.10",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/d",
       "testid": "pos-display-fullscreen",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -17995,7 +18006,8 @@
       "wo": "P2.10",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -18522,9 +18534,7 @@
       "testid": "developers-pos-md",
       "kind": "link",
       "roles": [
-        "owner",
-        "manager",
-        "cashier"
+        "public"
       ],
       "hiddenFor": [],
       "expect": {
@@ -18542,9 +18552,7 @@
       "testid": "developers-pos-openapi",
       "kind": "link",
       "roles": [
-        "owner",
-        "manager",
-        "cashier"
+        "public"
       ],
       "hiddenFor": [],
       "expect": {
@@ -18741,8 +18749,7 @@
       "testid": "pos-qr-lang-th",
       "kind": "link",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "navigate",
@@ -18751,15 +18758,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-lang-en",
       "kind": "link",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "navigate",
@@ -18768,15 +18775,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-cat-*",
       "kind": "link",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18785,15 +18792,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-item-add-*",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18802,15 +18809,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-opt-backdrop",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18819,15 +18826,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-opt-close",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18836,15 +18843,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-choice-*",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18853,15 +18860,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-opt-note",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18870,15 +18877,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-opt-qty-minus",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18887,15 +18894,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-opt-qty-plus",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18904,15 +18911,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-opt-add",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18921,15 +18928,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-cart-bar",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "modal",
@@ -18938,15 +18945,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-sheet-backdrop",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18955,15 +18962,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-sheet-close",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18972,15 +18979,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-cart-qty-*-minus",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -18989,15 +18996,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-cart-qty-*-plus",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -19006,15 +19013,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-tab-*",
       "kind": "tab",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -19023,15 +19030,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-send",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -19040,15 +19047,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-call-staff",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -19057,15 +19064,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-request-bill",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -19074,15 +19081,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/t/[qrToken]",
       "testid": "pos-qr-notify-paid",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -19091,15 +19098,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/[linkToken]",
       "testid": "pos-qr-to-checkout",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -19108,15 +19115,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/[linkToken]",
       "testid": "pos-qr-co-name",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -19125,15 +19132,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/[linkToken]",
       "testid": "pos-qr-co-phone",
       "kind": "input",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -19142,15 +19149,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/[linkToken]",
       "testid": "pos-qr-co-note",
       "kind": "textarea",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -19159,15 +19166,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/[linkToken]",
       "testid": "pos-qr-place",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "navigate",
@@ -19176,15 +19183,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/[linkToken]",
       "testid": "pos-qr-co-back",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "ui",
@@ -19193,15 +19200,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/o/[orderToken]",
       "testid": "pos-qr-claim",
       "kind": "button",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "mutation",
@@ -19210,15 +19217,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/o/[orderToken]",
       "testid": "pos-qr-order-again",
       "kind": "link",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "navigate",
@@ -19227,15 +19234,15 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/q/o/[orderToken]",
       "testid": "pos-qr-order-receipt",
       "kind": "link",
       "roles": [
-        "owner",
-        "cashier"
+        "public"
       ],
       "expect": {
         "type": "navigate",
@@ -19244,7 +19251,8 @@
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": ""
+      "query": "",
+      "hiddenFor": []
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -23777,7 +23785,336 @@
       "wo": "P4.1",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-refusal",
+        "state": "refused",
+        "note": "ไม่มี pos.report.view ที่สาขาใด (แคชเชียร์ QC) — ภาพรวม/ตาราง · ?kind=commission ใช้ข้อความค่าคอมฯ · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-ai-refused",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-ai-refused",
+        "state": "refused",
+        "note": "แผงผู้ช่วย AI สถานะปฏิเสธใต้การ์ดปฏิเสธของหน้า (ภาพรวม + ไม่มี pos.report.view) — ไม่ยิง action · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports/print",
+      "testid": "pos-report-print-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-print-refusal",
+        "state": "refused",
+        "note": "หน้าพิมพ์รายงาน: ไม่มี pos.report.view (PERMISSION_DENIED) / kind ผิด (VALIDATION) / ตัวอ่านปฏิเสธ — มีปุ่มกลับ pos-report-print-back · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=daily&from=[date]&to=[date]&noprint=1"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-refusal",
+        "state": "refused",
+        "note": "stockCountMeta ไม่ผ่าน (แคชเชียร์ QC ไม่มีสิทธิ์คลัง/ตรวจนับ) — data-code = เหตุผล · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-count-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-count-refusal",
+        "state": "refused",
+        "note": "การ์ดตรวจนับ: meta.can.count = false · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "needs": "ผู้ใช้ที่อ่านคลังได้ (stockCountMeta ok) แต่ไม่มีสิทธิ์ของการ์ดนี้ — บทบาท QC ไม่มีชุดนี้ (แคชเชียร์ได้การ์ดปฏิเสธทั้งหน้า pos-stock-refusal)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-*-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-*-refusal",
+        "state": "refused",
+        "note": "การ์ดรับเข้า/โอน/ปรับ (Denied kind receive|transfer|adjust|adjust-c) ไม่มีสิทธิ์ของการ์ด · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "needs": "ผู้ใช้ที่อ่านคลังได้ (stockCountMeta ok) แต่ไม่มีสิทธิ์ของการ์ดนี้ — บทบาท QC ไม่มีชุดนี้ (แคชเชียร์ได้การ์ดปฏิเสธทั้งหน้า pos-stock-refusal)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/tables",
+      "testid": "pos-tables-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-tables-refusal",
+        "state": "refused",
+        "note": "posRegisterView ok:false (ไม่มี pos.sale.create ที่สาขา / ขอสาขาที่เข้าไม่ได้) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้ที่ไม่มี pos.sale.create/read ที่สาขาที่ขอ (หรือ ?unit= สาขาของ POS นี้ที่เข้าไม่ได้) — บทบาท QC ทุกคนมีสิทธิ์ที่สาขาของตน"
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-orders-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-orders-refusal",
+        "state": "refused",
+        "note": "posOrdersView ok:false (ไม่มี pos.sale.read/create ที่สาขา / ขอสาขาที่เข้าไม่ได้) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้ที่ไม่มี pos.sale.create/read ที่สาขาที่ขอ (หรือ ?unit= สาขาของ POS นี้ที่เข้าไม่ได้) — บทบาท QC ทุกคนมีสิทธิ์ที่สาขาของตน"
+    },
+    {
+      "page": "/app/sys/[id]/pos/kds",
+      "testid": "pos-kds-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-kds-refusal",
+        "state": "refused",
+        "note": "posKdsView ok:false (ไม่มี restaurant.kds.advance / pos.sale.read/create ที่สาขา / ขอสาขาที่เข้าไม่ได้) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้ที่ไม่มี pos.sale.create/read ที่สาขาที่ขอ (หรือ ?unit= สาขาของ POS นี้ที่เข้าไม่ได้) — บทบาท QC ทุกคนมีสิทธิ์ที่สาขาของตน"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-products-refusal",
+        "state": "refused",
+        "note": "ตั้งราคาทั้งร้านไม่ได้และไม่มีสาขาที่ตั้งราคาได้ (!canPrice && !branchMode) — ผู้จัดการสาขา = โหมดสาขา (ไม่ใช่การ์ดนี้) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rules-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-price-rules-refusal",
+        "state": "refused",
+        "note": "ไม่มี pos.product.manage ที่สาขา → ไม่โหลดข้อมูล (หน้า 200) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-refusal",
+        "state": "refused",
+        "note": "SettingsRefusal: แท็บพนักงาน (ไม่มี pos.settings.manage ที่สาขา) · แท็บเครื่อง (ไม่มี pos.device.manage) · ทั้งหน้า (!canRead) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=staff&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-api-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-api-refusal",
+        "state": "refused",
+        "note": "การ์ดคีย์ API (แท็บ shark): listPosApiKeysAction ปฏิเสธ PERMISSION_DENIED (ไม่มี pos.settings.manage) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-refusal",
+        "state": "refused",
+        "note": "ข้อมูลกะ ok:false (แคชเชียร์ QC ไม่มี pos.shift.operate/manage) — data-code = เหตุผล · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-x-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-x-refusal",
+        "state": "refused",
+        "note": "ใต้หัวข้อ X: ตัวอ่าน X ปฏิเสธ (ok.x.ok false) · การ์ดปฏิเสธ (role=alert · ไม่กด) · P4.1 R10"
+      },
+      "wo": "P4.1",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้ที่เปิดหน้ากะได้แต่ตัวอ่าน X ปฏิเสธ — บทบาท QC ไม่มีชุดนี้ (แคชเชียร์ได้การ์ดปฏิเสธทั้งหน้า pos-shift-refusal)"
     }
-  ],
-  "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · public (P4 §10 มติ 2 · public = หน้า /r /q /d /developers เท่านั้น) · kind/expect.type ชุดเดียวกับทะเบียน CRM + kind notice (F15.3b ตรวจ)"
+  ]
 }
