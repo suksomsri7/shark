@@ -47,20 +47,21 @@ type UnitCtx = { tenantId: string; systemId: string; unitId: string };
 type Actor = { userId: string; role: string; unitAccess?: string[]; permissions?: Record<string, unknown> };
 
 /** §6 ตาราง facts ต่อการ์ด (ลำดับ = บรรทัดในภาพ 10) — [key, live วันนี้, phase ของที่ยังไม่มี] */
+// POS P3.12 ▸ CD-P312-K1: ป้ายเฟสปิดแล้ว P3 → "P4+" · promptpayReconcile → W4 (รอเจ้าของ) ◂
 const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, string | null])[]> = {
   MEMBER: [["memberLookup", true, null], ["memberSpend", true, null], ["memberSignup", true, null]],
   POINT: [["pointRate", true, null], ["pointRedeem", true, null], ["pointVoidReverse", true, null]],
-  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P3"], ["couponUnitLimit", true, null]], // POS P2.14 ▸ DOC-1 มติ 8: voucher เป็นวิธีจ่าย = P3 (P2.9 ส่งบัตรของขวัญ/เครดิตร้าน · voucher ยังเป็นส่วนลด) ◂
+  COUPON: [["couponCode", true, null], ["voucherPayment", false, "P4+"], ["couponUnitLimit", true, null]], // POS P2.14 ▸ DOC-1 มติ 8: voucher เป็นวิธีจ่าย = P3 (P2.9 ส่งบัตรของขวัญ/เครดิตร้าน · voucher ยังเป็นส่วนลด) ◂
   REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", true, null]], // POS P2.10 ▸ จอลูกค้าแสดง "ใกล้ได้รางวัล" บนแถบสแตมป์ (เหลือ ≤ 2 ดวง) ◂
-  ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", true, null], ["promptpayReconcile", false, "P3.10"]], // POS P2.14 ▸ DOC-1: ค่าคอมฯ แพลตฟอร์มลง JV ตั้งแต่ P2.1 S ◂
+  ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", true, null], ["promptpayReconcile", false, "W4"]], // POS P2.14 ▸ DOC-1: ค่าคอมฯ แพลตฟอร์มลง JV ตั้งแต่ P2.1 S ◂
   // POS P2.3U ▸ มติ 8: ตัดตามสูตร BOM ใช้งานจริงแล้ว (P2.3 S ตัด + P2.3U จอ 06 ตั้งสูตร/สวิตช์) ◂
-  INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
+  INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P4+"]],
   HR: [["shiftPinSchedule", true, null], ["salesCommission", true, null], ["leaveHidesShift", true, null]], // POS P3.5 ▸ R14: ด่านตารางงาน · ค่าคอมฯ → เงินเดือน · ลา = ปลดล็อกไม่ได้ (C-8 v2) — เดิม false "P3.5" ◂
-  CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.x"], ["corporateCredit", true, null]], // POS P3.6 ▸ ลูกค้าองค์กร/วางบิล (เครดิตเทอม) = มีแล้ว · บิลใหญ่ → ดีล = ระบบอัตโนมัติของ CRM ภายหลัง (มติ 7 · CD-7) ◂
+  CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P4+"], ["corporateCredit", true, null]], // POS P3.6 ▸ ลูกค้าองค์กร/วางบิล (เครดิตเทอม) = มีแล้ว · บิลใหญ่ → ดีล = ระบบอัตโนมัติของ CRM ภายหลัง (มติ 7 · CD-7) ◂
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", true, null]], // POS P3.7 ▸ R11: บอทตอบสถานะออเดอร์ (ตามกฎ) live ◂
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", true, null], ["shiftCloseCashCheck", true, null]], // POS P3.8 ▸ R11 มติ 9: การ์ดของหมดนาน/ผลต่างกะ + ตรวจเงินปิดกะ มีจริงแล้ว (เดิม false "P3.8") ◂
-  MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
-  BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P3"], ["advanceBookingBill", false, "P3"]], // POS P2.14 ▸ DOC-1: โต๊ะจองบนผังมีจริงตั้งแต่ P2.4 · คิว/บิลจองล่วงหน้า = P3 ◂
+  MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P4+"]],
+  BOOKING: [["tableReservationsOnMap", true, null], ["callQueueFromTable", false, "P4+"], ["advanceBookingBill", false, "P4+"]], // POS P2.14 ▸ DOC-1: โต๊ะจองบนผังมีจริงตั้งแต่ P2.4 · คิว/บิลจองล่วงหน้า = P3 ◂
   AI: [["shiftDaySummary", true, null], ["purchaseSuggestion", true, null], ["anomalyDetection", true, null]], // POS P3.9 ▸ R10: สรุปเช้า · ร่าง PO · จุดผิดปกติในสรุป (ความสามารถมีแล้ว — การ์ด LINKED เมื่อ settings.pos.ai.enabled) ◂
 };
 /** การ์ดที่ยังไม่มีสาย POS ↔ ระบบนั้นเลย (P1) — PLANNED พร้อมเฟส (ร้านไม่มีระบบนั้น = NO_SYSTEM · AI ไม่ใช่ SystemType = PLANNED เสมอ) */
