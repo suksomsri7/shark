@@ -21556,6 +21556,178 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&tab=channels"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-company-pick",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-company-sheet",
+        "note": "CD-P36U-3: ตะกร้า (ร้านที่มี CRM · ไม่ใช่โหมดโต๊ะ) · ยังไม่มีบริษัท = \"เลือกบริษัท\" → แผ่นเลือกบริษัท"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-company-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-company-sheet",
+        "note": "CD-P36U-3: แตะชิปบริษัท (ชื่อ · เลขภาษี · สาขา) = เปิดแผ่นเลือกเพื่อเปลี่ยนบริษัท"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-company-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-company-pick",
+        "note": "CD-P36U-3: ถอดบริษัทออกจากบิล (สถานะจอเท่านั้น · ไม่เขียนอะไร)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-company-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-company-sheet",
+        "note": "CD-P36U-3: ปิดแผ่นเลือกบริษัทโดยไม่เลือก"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-company-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "registerCompanySearchAction",
+        "note": "CD-P36U-3: ค้นชื่อ/เลขผู้เสียภาษี ≥ 2 ตัวอักษร · หน่วง 300ms · ครั้งละคำขอ ผลล่าสุดชนะ · ว่าง = บริษัทล่าสุด (q \"\")"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-company-row-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-company-chip",
+        "note": "CD-P36U-3: เลือกบริษัท (บริษัทของสมาชิก pos-reg-company-member ก่อน แล้วผลค้น/ล่าสุด) → ชิปบริษัท · customerPartyId ไปกับ submit"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-deal-select",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "registerDealOptionsAction",
+        "note": "CD-P36U-4 (พอร์ต pos-deal-select): ดีลเปิดของสมาชิก/บริษัทในบิล · ไม่มีคีย์ crm.deal.update หรือไม่มีดีล = ซ่อน · ตัวเลือก ชื่อ · ขั้น (ไม่มีมูลค่า R14) · crmDealId ไปกับ submit · DEAL_INVALID = ล้าง + pos-reg-deal-error"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-onaccount",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-onaccount-status",
+        "note": "CD-P36U-5 (02): ไทล์ \"วางบิล (เครดิตเทอม)\" — เปิดเครดิต ∧ ออนไลน์ ∧ ไม่ใช่บิลแพลตฟอร์ม · ไม่มีบริษัท = เหตุผล credit.pickCompany แล้วเปิดแผ่นเลือก · allowed:false = ปิด + credit.errors.notAllowed · enabled:false = ซ่อน · เลือก = แถวเดียวเต็มยอด (ไม่มีทิป/แยกจ่าย) · requireBuyer ไม่มีผู้ซื้อ = เปิด 15A ตั้งต้นจากบริษัท"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-credit-over-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-credit-over",
+        "note": "CD-P36U-6: ปิดแผ่นเกินวงเงิน (ไม่มีบิล · คีย์เดิม · เลือกวิธีชำระอื่นได้)"
+      },
+      "wo": "P3.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

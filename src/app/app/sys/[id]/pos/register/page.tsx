@@ -22,6 +22,7 @@ import { parsePosIntentSettings, promptpayIdForUnit } from "@/lib/modules/pos/pa
 import { registerTableMode } from "@/lib/modules/pos/table";
 import { posOfflineEnabled } from "@/lib/modules/pos/offline-shared"; // POS P3.4U ▸ มติ 1 ◂
 import { posChatSettings } from "@/lib/modules/pos/chat-link-shared"; // POS P3.7U ▸ CD-P37U-7: ตัวอ่านบริสุทธิ์ของ settings.pos.chat ◂
+import { posCreditSettings } from "@/lib/modules/pos/settings-shared"; // POS P3.6U ▸ CD-P36U-2 (b): ตัวอ่านบริสุทธิ์ของ settings.pos.credit ◂
 
 // หน้าขาย POS (cashier) — เปิดบิลเก็บเงิน walk-in เงินสด/พร้อมเพย์
 //
@@ -89,6 +90,9 @@ export default async function PosRegisterPage({
     const unitPp = promptpayIdForUnit(sys.settings, active.id);
     const ppId = unitPp && isValidPromptPayId(unitPp) ? unitPp : profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
     const intentSet = parsePosIntentSettings(sys.settings);
+    // POS P3.6U ▸ CD-P36U-2 (b): ค่าตั้งวางบิล + ร้านมีระบบ CRM (ชิปบริษัท/ดีล) + ผู้ใช้ถือ pos.credit.manage ที่สาขา (ตัวเลขวงเงินตัดสินที่เซิร์ฟเวอร์เสมอ) ◂
+    const creditSet = posCreditSettings(sys.settings);
+    const hasCrm = (await prisma.appSystem.count({ where: { tenantId, type: "CRM" } })) > 0;
     return (
       <RegisterScreen
         key={`${active.id}:${tableSessionId ?? ""}`} // POS P2.4U ▸ สลับโต๊ะ/ขายปกติ = จอใหม่ ◂
@@ -107,6 +111,7 @@ export default async function PosRegisterPage({
         autoLockMinutes={posRegisterAutoLockMinutes(sys.settings)}
         offlineEnabled={posOfflineEnabled(sys.settings)} // POS P3.4U ▸ มติ 1: ปิด (ปริยาย) = จอแบบวันนี้ ◂
         chatReceiptAuto={posChatSettings(sys.settings).receiptAuto} // POS P3.7U ▸ CD-P37U-7 ◂
+        credit={{ ...creditSet, hasCrm, canManage: evaluate(posMembership(auth.active), { module: "pos", action: "pos.credit.manage", unitId: active.id }) }} // POS P3.6U ▸ CD-P36U-2 (b) ◂
         discountCaps={caps}
         payIntent={{
           beamCard: intentSet.beam.enabled && beamEnabled(),
