@@ -1,0 +1,14 @@
+# Prompt — P4.1 **fix3** builder (registry-only · after R1 round 3 BLOCKED 7/103). Controller (account B, 22 Oct 19:31Z). Tree **/root/projects/shark-pos-b** · `wip/pos-p4.1` @ 81d69a40 (clean). Same hard rules as fix1/fix2 prompts. Registry + exam + notes only. **No self-audit sampling this round** (ruling CD-P41-R3 below) — but every class below must be swept across the whole registry, not just the listed rows.
+
+Read: round-3 report (third section of `ledger/wo-notes/pos-P4.1-review.md` in the controller tree) + per-row tables `/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchpad/p41-r3/result-*.md`.
+
+**Ruling CD-P41-R3 (controller B)**: after three sampling rounds the residual registry error (≈ 5–7 %) is in classes the P4.2 walker reports deterministically (wrongExpect · dead · hiddenLeak). So: fix3 fixes the listed findings + the systemic sweeps, R1-lite verifies only fix3's rows and sweeps, then P4.1 merges; what remains is measured by the walker run and fixed in P4.3. Record this ruling in the notes.
+
+Fix (with a whole-registry sweep per class):
+1. **F1 class** — rows of ANY expect.type (not only mutation) whose press calls a server action: derive the permission and drop refused personas from roles (734 737 738 + sweep). Extend `perm-table.py` to cover every row whose target/action resolves to a server action, regardless of expect.type; paste the new counts.
+2. **F2 KDS viewport** — 813 815 816 (+814 sibling): viewport [desktop, tablet]; 816 target → `pos-kds-recall` or drop; sweep any other row whose target moves into a column hidden below md (KdsScreen seg logic) or similar dynamic-hide patterns.
+3. **F3 fills** — 450 (`pos-member-points-input=<n ≥ burnMin>`), 889 (needs text + 3+ char fill when fixture exists), 803 (opener `pos-ord-man-channel=*` + needs CUSTOM channel fixture, or needs text), 38 (`pos-reg-line-discount-*=0` under cashier cap), 1031 (gate fill), 189 bucket, 1204 stale fill, 857 fills column; sweep: every row whose walker prefill (fillValueFor money-word rule) would exceed a cashier cap or miss a min-length — list and fix.
+4. **F4 opener** — 52 `pos-reg-bill-discount=click`; sweep rows where a later opener step is always visible so the earlier plain step is skipped (reveal rule :518).
+5. **F5 needs** — 967 + 549 category needs text; sweep public/menu rows that depend on PosCategory ≥ 2 or other fixture counts.
+6. NITs: 445 F22 note · 454 member-attach steps · 1068 opener must not press offline-confirm on a notice row · 294/297/301 db line refs → :271 · 759 counter · 1195 target.
+Gates: `qc-pos-p4.1 --no-db` 16/16 · fitness (iso) per commit · fitness-pos 8/8 · `qc-pos-p2.14 --no-db` · lint green · one pre-submit at the final head (expected reds: hf-fu2 ST1 · p3.4 ST2 old base; Z2 reds = other lanes on QC4 — say so if they appear). Notes "## fix3": per-class counts + the ruling. Report ≤ 30 lines. Push `wip/pos-p4.1`.
