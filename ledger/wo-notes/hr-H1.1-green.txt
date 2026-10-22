@@ -1,4 +1,4 @@
-# H1.1 green — round 2 (after ORACLE-EDITs 1e55819d + D-1 fix 8fd7ccb0) · 2026-10-22T17:59:57Z · QC4
+# H1.1 green — R12 round (oracle addendum S10 be2ae0e9 · builder 5c03a42a) · 2026-10-22T18:34:44Z · QC4
 ## forced run 1 (full output)
 [env] qc-hr-h1.1 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h1.1] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
@@ -13,7 +13,7 @@
   ✅ [H1.1-S9.1] [static] seed-hr-qc.mts writes HrEmployee.unitId from HQC unit and an HrEmployeeUnit row for borrowedTo
   ✅ [H1.1-X9.1] [static] register UI: ui.tsx uses hrScopeOf · "ยังไม่ระบุสาขาประจำ" in th.json or hr UI · a branch testid (…branch…/…unit…) listed in hr-ui-inventory.json
   ✅ [H1.1-X9.2] [static] visual-hr.mts SPECS["1.1"] registers register-branches · register-branch-manager · profile-unit (CONTROLLER-RUN, 3 viewports × owner / manager(branch) / staff)
-(node:2584108) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2647857) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -94,57 +94,83 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [H1.1-X2.1] [control] isolation: other-tenant ctx with our systemId ⇒ 0 employees / leaves / attendance · system B's employee never in any system-A result (every viewer, every scope)
   ✅ [H1.1-X8.1] [texts] refusals of S5 (≥3) are Thai · carry no employee/unit name, no id, no error internals
   ✅ [H1.1-X8.2] [dto] [control] payType never reaches non-payroll viewers (manager-u1 · manager-all · hr.leave.read staff) — not even for the DAILY employee
-RESIDUE none (tenants=3 users=9)
+── [S10] R12 addendum ──
+  ✅ [H1.1-S10.1] [action] 🔴 C-1: STAFF unitAccess [] (all-branch by D-1) with hr.employee.create edits an employee whose unitId = u1 ⇒ ok · name changed
+  ✅ [H1.1-S10.2] [action] 🔴 C-1: the same [] STAFF (hr.attendance.clock + hr.employee.create) clocks that employee ⇒ {ok:true} + 1 attendance row · MANAGER [] setPinAction on it ⇒ ok
+  ✅ [H1.1-S10.3] [action] [control] MANAGER [u2] edits the u1 employee ⇒ exactly the out-of-branch text · unchanged
+  ✅ [H1.1-S10.4] [calendar] 🔴 M-1: getCalendarEvents(MANAGER [u1], March 2031) HR_LEAVE events = {L1 e1 · L4 e4 borrowed in · LB system B u1} — no u2 (L2 · L5) and no null-unit (L3) leave
+  ✅ [H1.1-S10.5] [ai] 🔴 M-1: upcoming_schedule (MANAGER [u1] member actor, 30 days) names the u1 employee's leave · never the u2 or the null-unit employee
+  ✅ [H1.1-S10.6] [page] 🔴 M-2: PayrollSection rendered for a payroll viewer [u1] ⇒ no u2 / null-unit employee name (salary forms · adjustments · run items) and not e2's base salary · u1 name present (all-branch render shows e2 — render sanity)
+  ✅ [H1.1-S10.7c] [action] [control] all-branch payroll viewer ["*"]: createPayrollRunAction ⇒ ok (1 DRAFT) · approvePayrollRunAction(expect) ⇒ APPROVED · markPaidAction ⇒ PAID
+  ✅ [H1.1-S10.7] [action] 🔴 M-2: payroll viewer [u1] createPayrollRunAction / approvePayrollRunAction / markPaidAction / reverseRunAction ⇒ "รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้" (no leak) · nothing written (0 runs · status unchanged)
+  ✅ [H1.1-S10.8] [action] 🔴 m-2: owner sets employmentStatus ENDED in the profile form ⇒ active=false · clockAction ⇒ refused (Thai) no row · verifyPin ⇒ wrong-PIN text · requestLeave ⇒ Thai refusal, 0 leaves · next run excludes the employee
+  ✅ [H1.1-S10.8c] [action] [control] PROBATION / ACTIVE set in the profile form leave active=true
+  ✅ [H1.1-S10.9] [action] m-2: restoreEmployeeAction on an employee whose status is ENDED (set via the form) ⇒ stays inactive · after the owner sets status ACTIVE in the form, restore ⇒ active
+RESIDUE none (tenants=3 users=14)
   ✅ [H1.1-Z1] residue: tenants qc-hr-h1.1-* gone · no row of ours in HR/payroll/borrowing/audit/outbox · users/sessions gone · no rate rows
-BASE-EXPECTATION 14/70 as registered (RED-by-design 56 · GREEN controls 14) · off: H1.1-S1.1(RED→pass) H1.1-S1.2(RED→pass) H1.1-S1.3(RED→pass) H1.1-S1.4(RED→pass) H1.1-S5.10(RED→pass) H1.1-S7.8(RED→pass) H1.1-S9.1(RED→pass) H1.1-X9.1(RED→pass) H1.1-X9.2(RED→pass) H1.1-S1.5(RED→pass) H1.1-S1.6(RED→pass) H1.1-S1.7(RED→pass) H1.1-S3.1(RED→pass) H1.1-S3.2(RED→pass) H1.1-S3.3(RED→pass) H1.1-S3.4(RED→pass) H1.1-S3.5(RED→pass) H1.1-S4.1(RED→pass) H1.1-S4.2(RED→pass) H1.1-S4.3(RED→pass) H1.1-S4.4(RED→pass) H1.1-S4.5(RED→pass) H1.1-S4.6(RED→pass) H1.1-S4.7(RED→pass) H1.1-S4.8(RED→pass) H1.1-S8.1(RED→pass) H1.1-S8.3(RED→pass) H1.1-S8.6(RED→pass) H1.1-S6.3(RED→pass) H1.1-S6.4(RED→pass) H1.1-S1.9(RED→pass) H1.1-S6.7(RED→pass) H1.1-S7.1(RED→pass) H1.1-S7.2(RED→pass) H1.1-S7.3(RED→pass) H1.1-S7.4(RED→pass) H1.1-S7.5(RED→pass) H1.1-S7.7(RED→pass) H1.1-S5.2(RED→pass) H1.1-S5.3(RED→pass) H1.1-S5.4(RED→pass) H1.1-S5.5(RED→pass) H1.1-S5.6(RED→pass) H1.1-S5.7(RED→pass) H1.1-S5.8(RED→pass) H1.1-S5.9(RED→pass) H1.1-S2.1(RED→pass) H1.1-S2.2(RED→pass) H1.1-S2.3(RED→pass) H1.1-X6.1(RED→pass) H1.1-S2.4(RED→pass) H1.1-S2.5(RED→pass) H1.1-S2.6(RED→pass) H1.1-S9.2(RED→pass) H1.1-S9.3(RED→pass) H1.1-X8.1(RED→pass)
+S10-BASE (builder tree ee68d4a5) 3/11 as registered · RED 8 · GREEN 3 (BASE-EXPECTATION below = registry column 4 vs session/hr 9c5aa1ea; S1–X are expected to pass on the builder tree)
+BASE-EXPECTATION 17/81 as registered (RED-by-design 64 · GREEN controls 17) · off: H1.1-S1.1(RED→pass) H1.1-S1.2(RED→pass) H1.1-S1.3(RED→pass) H1.1-S1.4(RED→pass) H1.1-S5.10(RED→pass) H1.1-S7.8(RED→pass) H1.1-S9.1(RED→pass) H1.1-X9.1(RED→pass) H1.1-X9.2(RED→pass) H1.1-S1.5(RED→pass) H1.1-S1.6(RED→pass) H1.1-S1.7(RED→pass) H1.1-S3.1(RED→pass) H1.1-S3.2(RED→pass) H1.1-S3.3(RED→pass) H1.1-S3.4(RED→pass) H1.1-S3.5(RED→pass) H1.1-S4.1(RED→pass) H1.1-S4.2(RED→pass) H1.1-S4.3(RED→pass) H1.1-S4.4(RED→pass) H1.1-S4.5(RED→pass) H1.1-S4.6(RED→pass) H1.1-S4.7(RED→pass) H1.1-S4.8(RED→pass) H1.1-S8.1(RED→pass) H1.1-S8.3(RED→pass) H1.1-S8.6(RED→pass) H1.1-S6.3(RED→pass) H1.1-S6.4(RED→pass) H1.1-S1.9(RED→pass) H1.1-S6.7(RED→pass) H1.1-S7.1(RED→pass) H1.1-S7.2(RED→pass) H1.1-S7.3(RED→pass) H1.1-S7.4(RED→pass) H1.1-S7.5(RED→pass) H1.1-S7.7(RED→pass) H1.1-S5.2(RED→pass) H1.1-S5.3(RED→pass) H1.1-S5.4(RED→pass) H1.1-S5.5(RED→pass) H1.1-S5.6(RED→pass) H1.1-S5.7(RED→pass) H1.1-S5.8(RED→pass) H1.1-S5.9(RED→pass) H1.1-S2.1(RED→pass) H1.1-S2.2(RED→pass) H1.1-S2.3(RED→pass) H1.1-X6.1(RED→pass) H1.1-S2.4(RED→pass) H1.1-S2.5(RED→pass) H1.1-S2.6(RED→pass) H1.1-S9.2(RED→pass) H1.1-S9.3(RED→pass) H1.1-X8.1(RED→pass) H1.1-S10.1(RED→pass) H1.1-S10.2(RED→pass) H1.1-S10.4(RED→pass) H1.1-S10.5(RED→pass) H1.1-S10.6(RED→pass) H1.1-S10.7(RED→pass) H1.1-S10.8(RED→pass) H1.1-S10.9(RED→pass)
 
-===== qc-hr-h1.1 ===== passed 70/70 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h1.1","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"baseGreen":14,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)","H1.1-S1.4(RED→pass)","H1.1-S5.10(RED→pass)","H1.1-S7.8(RED→pass)","H1.1-S9.1(RED→pass)","H1.1-X9.1(RED→pass)","H1.1-X9.2(RED→pass)","H1.1-S1.5(RED→pass)","H1.1-S1.6(RED→pass)","H1.1-S1.7(RED→pass)","H1.1-S3.1(RED→pass)","H1.1-S3.2(RED→pass)","H1.1-S3.3(RED→pass)","H1.1-S3.4(RED→pass)","H1.1-S3.5(RED→pass)","H1.1-S4.1(RED→pass)","H1.1-S4.2(RED→pass)","H1.1-S4.3(RED→pass)","H1.1-S4.4(RED→pass)","H1.1-S4.5(RED→pass)","H1.1-S4.6(RED→pass)","H1.1-S4.7(RED→pass)","H1.1-S4.8(RED→pass)","H1.1-S8.1(RED→pass)","H1.1-S8.3(RED→pass)","H1.1-S8.6(RED→pass)","H1.1-S6.3(RED→pass)","H1.1-S6.4(RED→pass)","H1.1-S1.9(RED→pass)","H1.1-S6.7(RED→pass)","H1.1-S7.1(RED→pass)","H1.1-S7.2(RED→pass)","H1.1-S7.3(RED→pass)","H1.1-S7.4(RED→pass)","H1.1-S7.5(RED→pass)","H1.1-S7.7(RED→pass)","H1.1-S5.2(RED→pass)","H1.1-S5.3(RED→pass)","H1.1-S5.4(RED→pass)","H1.1-S5.5(RED→pass)","H1.1-S5.6(RED→pass)","H1.1-S5.7(RED→pass)","H1.1-S5.8(RED→pass)","H1.1-S5.9(RED→pass)","H1.1-S2.1(RED→pass)","H1.1-S2.2(RED→pass)","H1.1-S2.3(RED→pass)","H1.1-X6.1(RED→pass)","H1.1-S2.4(RED→pass)","H1.1-S2.5(RED→pass)","H1.1-S2.6(RED→pass)","H1.1-S9.2(RED→pass)","H1.1-S9.3(RED→pass)","H1.1-X8.1(RED→pass)"]}
+===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":64,"baseGreen":17,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)","H1.1-S1.4(RED→pass)","H1.1-S5.10(RED→pass)","H1.1-S7.8(RED→pass)","H1.1-S9.1(RED→pass)","H1.1-X9.1(RED→pass)","H1.1-X9.2(RED→pass)","H1.1-S1.5(RED→pass)","H1.1-S1.6(RED→pass)","H1.1-S1.7(RED→pass)","H1.1-S3.1(RED→pass)","H1.1-S3.2(RED→pass)","H1.1-S3.3(RED→pass)","H1.1-S3.4(RED→pass)","H1.1-S3.5(RED→pass)","H1.1-S4.1(RED→pass)","H1.1-S4.2(RED→pass)","H1.1-S4.3(RED→pass)","H1.1-S4.4(RED→pass)","H1.1-S4.5(RED→pass)","H1.1-S4.6(RED→pass)","H1.1-S4.7(RED→pass)","H1.1-S4.8(RED→pass)","H1.1-S8.1(RED→pass)","H1.1-S8.3(RED→pass)","H1.1-S8.6(RED→pass)","H1.1-S6.3(RED→pass)","H1.1-S6.4(RED→pass)","H1.1-S1.9(RED→pass)","H1.1-S6.7(RED→pass)","H1.1-S7.1(RED→pass)","H1.1-S7.2(RED→pass)","H1.1-S7.3(RED→pass)","H1.1-S7.4(RED→pass)","H1.1-S7.5(RED→pass)","H1.1-S7.7(RED→pass)","H1.1-S5.2(RED→pass)","H1.1-S5.3(RED→pass)","H1.1-S5.4(RED→pass)","H1.1-S5.5(RED→pass)","H1.1-S5.6(RED→pass)","H1.1-S5.7(RED→pass)","H1.1-S5.8(RED→pass)","H1.1-S5.9(RED→pass)","H1.1-S2.1(RED→pass)","H1.1-S2.2(RED→pass)","H1.1-S2.3(RED→pass)","H1.1-X6.1(RED→pass)","H1.1-S2.4(RED→pass)","H1.1-S2.5(RED→pass)","H1.1-S2.6(RED→pass)","H1.1-S9.2(RED→pass)","H1.1-S9.3(RED→pass)","H1.1-X8.1(RED→pass)","H1.1-S10.1(RED→pass)","H1.1-S10.2(RED→pass)","H1.1-S10.4(RED→pass)","H1.1-S10.5(RED→pass)","H1.1-S10.6(RED→pass)","H1.1-S10.7(RED→pass)","H1.1-S10.8(RED→pass)","H1.1-S10.9(RED→pass)"]}
 
-## forced run 2 (summary)
-RESIDUE none (tenants=3 users=9)
-BASE-EXPECTATION 14/70 as registered (RED-by-design 56 · GREEN controls 14) · off: H1.1-S1.1(RED→pass) H1.1-S1.2(RED→pass) H1.1-S1.3(RED→pass) H1.1-S1.4(RED→pass) H1.1-S5.10(RED→pass) H1.1-S7.8(RED→pass) H1.1-S9.1(RED→pass) H1.1-X9.1(RED→pass) H1.1-X9.2(RED→pass) H1.1-S1.5(RED→pass) H1.1-S1.6(RED→pass) H1.1-S1.7(RED→pass) H1.1-S3.1(RED→pass) H1.1-S3.2(RED→pass) H1.1-S3.3(RED→pass) H1.1-S3.4(RED→pass) H1.1-S3.5(RED→pass) H1.1-S4.1(RED→pass) H1.1-S4.2(RED→pass) H1.1-S4.3(RED→pass) H1.1-S4.4(RED→pass) H1.1-S4.5(RED→pass) H1.1-S4.6(RED→pass) H1.1-S4.7(RED→pass) H1.1-S4.8(RED→pass) H1.1-S8.1(RED→pass) H1.1-S8.3(RED→pass) H1.1-S8.6(RED→pass) H1.1-S6.3(RED→pass) H1.1-S6.4(RED→pass) H1.1-S1.9(RED→pass) H1.1-S6.7(RED→pass) H1.1-S7.1(RED→pass) H1.1-S7.2(RED→pass) H1.1-S7.3(RED→pass) H1.1-S7.4(RED→pass) H1.1-S7.5(RED→pass) H1.1-S7.7(RED→pass) H1.1-S5.2(RED→pass) H1.1-S5.3(RED→pass) H1.1-S5.4(RED→pass) H1.1-S5.5(RED→pass) H1.1-S5.6(RED→pass) H1.1-S5.7(RED→pass) H1.1-S5.8(RED→pass) H1.1-S5.9(RED→pass) H1.1-S2.1(RED→pass) H1.1-S2.2(RED→pass) H1.1-S2.3(RED→pass) H1.1-X6.1(RED→pass) H1.1-S2.4(RED→pass) H1.1-S2.5(RED→pass) H1.1-S2.6(RED→pass) H1.1-S9.2(RED→pass) H1.1-S9.3(RED→pass) H1.1-X8.1(RED→pass)
-===== qc-hr-h1.1 ===== passed 70/70 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h1.1","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"baseGreen":14,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)","H1.1-S1.4(RED→pass)","H1.1-S5.10(RED→pass)","H1.1-S7.8(RED→pass)","H1.1-S9.1(RED→pass)","H1.1-X9.1(RED→pass)","H1.1-X9.2(RED→pass)","H1.1-S1.5(RED→pass)","H1.1-S1.6(RED→pass)","H1.1-S1.7(RED→pass)","H1.1-S3.1(RED→pass)","H1.1-S3.2(RED→pass)","H1.1-S3.3(RED→pass)","H1.1-S3.4(RED→pass)","H1.1-S3.5(RED→pass)","H1.1-S4.1(RED→pass)","H1.1-S4.2(RED→pass)","H1.1-S4.3(RED→pass)","H1.1-S4.4(RED→pass)","H1.1-S4.5(RED→pass)","H1.1-S4.6(RED→pass)","H1.1-S4.7(RED→pass)","H1.1-S4.8(RED→pass)","H1.1-S8.1(RED→pass)","H1.1-S8.3(RED→pass)","H1.1-S8.6(RED→pass)","H1.1-S6.3(RED→pass)","H1.1-S6.4(RED→pass)","H1.1-S1.9(RED→pass)","H1.1-S6.7(RED→pass)","H1.1-S7.1(RED→pass)","H1.1-S7.2(RED→pass)","H1.1-S7.3(RED→pass)","H1.1-S7.4(RED→pass)","H1.1-S7.5(RED→pass)","H1.1-S7.7(RED→pass)","H1.1-S5.2(RED→pass)","H1.1-S5.3(RED→pass)","H1.1-S5.4(RED→pass)","H1.1-S5.5(RED→pass)","H1.1-S5.6(RED→pass)","H1.1-S5.7(RED→pass)","H1.1-S5.8(RED→pass)","H1.1-S5.9(RED→pass)","H1.1-S2.1(RED→pass)","H1.1-S2.2(RED→pass)","H1.1-S2.3(RED→pass)","H1.1-X6.1(RED→pass)","H1.1-S2.4(RED→pass)","H1.1-S2.5(RED→pass)","H1.1-S2.6(RED→pass)","H1.1-S9.2(RED→pass)","H1.1-S9.3(RED→pass)","H1.1-X8.1(RED→pass)"]}
-
-## unforced run (summary)
-RESIDUE none (tenants=3 users=9)
-===== qc-hr-h1.1 ===== passed 70/70
-JSON_SUMMARY {"suite":"qc-hr-h1.1","total":70,"passed":70,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":56,"baseGreen":14,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)","H1.1-S1.4(RED→pass)","H1.1-S5.10(RED→pass)","H1.1-S7.8(RED→pass)","H1.1-S9.1(RED→pass)","H1.1-X9.1(RED→pass)","H1.1-X9.2(RED→pass)","H1.1-S1.5(RED→pass)","H1.1-S1.6(RED→pass)","H1.1-S1.7(RED→pass)","H1.1-S3.1(RED→pass)","H1.1-S3.2(RED→pass)","H1.1-S3.3(RED→pass)","H1.1-S3.4(RED→pass)","H1.1-S3.5(RED→pass)","H1.1-S4.1(RED→pass)","H1.1-S4.2(RED→pass)","H1.1-S4.3(RED→pass)","H1.1-S4.4(RED→pass)","H1.1-S4.5(RED→pass)","H1.1-S4.6(RED→pass)","H1.1-S4.7(RED→pass)","H1.1-S4.8(RED→pass)","H1.1-S8.1(RED→pass)","H1.1-S8.3(RED→pass)","H1.1-S8.6(RED→pass)","H1.1-S6.3(RED→pass)","H1.1-S6.4(RED→pass)","H1.1-S1.9(RED→pass)","H1.1-S6.7(RED→pass)","H1.1-S7.1(RED→pass)","H1.1-S7.2(RED→pass)","H1.1-S7.3(RED→pass)","H1.1-S7.4(RED→pass)","H1.1-S7.5(RED→pass)","H1.1-S7.7(RED→pass)","H1.1-S5.2(RED→pass)","H1.1-S5.3(RED→pass)","H1.1-S5.4(RED→pass)","H1.1-S5.5(RED→pass)","H1.1-S5.6(RED→pass)","H1.1-S5.7(RED→pass)","H1.1-S5.8(RED→pass)","H1.1-S5.9(RED→pass)","H1.1-S2.1(RED→pass)","H1.1-S2.2(RED→pass)","H1.1-S2.3(RED→pass)","H1.1-X6.1(RED→pass)","H1.1-S2.4(RED→pass)","H1.1-S2.5(RED→pass)","H1.1-S2.6(RED→pass)","H1.1-S9.2(RED→pass)","H1.1-S9.3(RED→pass)","H1.1-X8.1(RED→pass)"]}
-
-## regression round 2
+## forced run 2 + unforced + regression
+forced2 exit=0
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+unforced exit=0
+RESIDUE none (tenants=3 users=14)
+===== qc-hr-h1.1 ===== passed 81/81
 qc-hf-hr-privacy exit=0
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
 ผ่าน 194/194
+JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
 qc-hr-h0.7 exit=0
 RESIDUE none (tenants=4 users=39)
 ===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
 qc-hr-h0.3 exit=0
 RESIDUE none (tenant=สร้างแล้ว users=5)
 ===== qc-hr-h0.3 ===== ผ่าน 37/37 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
 qc-hr-h0.1 exit=0
 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
-qc-crm-c0.3 exit=0
+JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null}
 qc-payroll exit=0
 ===== QC Payroll ไทย =====
 ผ่าน 19/19
+JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
 qc-hr-payadjust exit=0
 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====
 ผ่าน 27/27
-qc-hr-roster exit=0
-===== QC: ทะเบียนพนักงานแหล่งเดียว + ใครรับคิว =====
-ผ่าน 24/24
-qc-hr-leave-booking exit=0
-===== QC: ลาอนุมัติ → ปิดช่องจอง (C-2) =====
-ผ่าน 14/14
+JSON_SUMMARY {"total":27,"passed":27,"findings":[]}
 qc-payroll-reverse exit=0
-qc-booking-hours-hr exit=0
-===== QC Booking Hours+HR =====
-ผ่าน 13/13
+✅ PASS — 14/14
+qc-calendar exit=0
+===== QC Calendar =====
+ผ่าน 9/9
+JSON_SUMMARY {"total":9,"passed":9,"findings":[]}
 qc-ai-tools exit=0
 ===== QC AI Tools (Phase 3 v1) =====
 ผ่าน 18/18
+JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
 qc-ai-proposals exit=0
 ===== QC AI Proposals (Phase 3.5) =====
 ผ่าน 16/16
-qc-crm-c0.3: JSON_SUMMARY total 88 passed 88 · qc-payroll-reverse: PASS 14/14
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+qc-hr-attendance exit=0
+===== QC: สาย/ขาดงาน (HR attendance) =====
+ผ่าน 31/31
+JSON_SUMMARY {"total":31,"passed":31,"findings":[]}
+qc-hr exit=0
+===== QC HR =====
+ผ่าน 9/9
+JSON_SUMMARY {"total":9,"passed":9,"findings":[]}
+qc-approval-wiring exit=0
+===== QC Approval Wiring =====
+ผ่าน 7/7
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+seed-hr-qc exit=0
+===== seed-hr-qc ===== ผ่าน 26/26
+JSON_SUMMARY {"suite":"seed-hr-qc","total":26,"passed":26,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapp
+typecheck: exit 0 · 0 errors · fitness 42/42 + fitness-hr 7/7 both modes

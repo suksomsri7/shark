@@ -84,6 +84,35 @@
   - Typecheck exit 2. The single error is in the oracle, from the controller's Pr-10 edit: `scripts/qc-hf-hr-privacy.mts(260,125) TS2551`, because the `shared` cast at L60–63 lacks `EMPLOYEE_PAYROLL_FIELDS?: readonly string[]`. That needs an ORACLE-EDIT. Product code has 0 errors.
 - The §5 results and D-1 text below are round 1, kept for history. Round-2 results are in the final report and in `hr-H1.1-green.txt`.
 
+## 9a. R12 — review round 1 fixes (brief R12 · oracle addendum S10 be2ae0e9 · builder 5c03a42a)
+| R | fix | where |
+|---|---|---|
+| R12.1 (C-1) | `unitTargetOf` returns no `unitId` for an all-branch scope (OWNER · `*` · `[]` · malformed), so `assertCan` never sees a unit for them. `hrHomeTarget` splits the stored `unitId` from `checkUnit`, the value passed to assertCan only for explicit lists. Explicit lists still forward the unit, so S5.10 stays green. | `hr/scope.ts` · `hr/actions.ts` |
+| R12.2 (M-1) | The calendar leave loader scopes per HR system: home unit ∈ list, or a borrowing that covers `fromDate`. It is one hunk. The rule is **mirrored inline** (D-6) because fitness F2 has no `calendar→hr` edge. AI `upcoming_schedule` uses `scopedLeaveWhere(hrScopeOf(m))` per HR system, via a re-export in `hr/service.ts`. | `calendar/service.ts` · `ai/tools.ts` |
+| R12.3 (M-2) | `PayrollSection` scopes `listEmployees`, `listAdjustments`, run-item slip links, draft exclusions and stranded rows to the viewer. Run totals are unchanged (ruling 8 = run shape). Run buttons and the create form are hidden for branch viewers. `assertRunAllBranches` refuses create / approve / markPaid / reverse, plus deleteDraft and recompute (D-7), before anything is written. payroll.ts is untouched. | `hr/payroll-ui.tsx` · `hr/payroll-actions.ts` |
+| R12.4 (m-2) | When the profile action saves ENDED on an active employee it calls `setEmployeeActive(false)`, today's path: no clock, no verifyPin, excluded from new runs, endDate = today if empty. PROBATION/ACTIVE leave `active` alone. `requestLeave` refuses inactive employees. `restoreEmployeeAction` refuses while the status is ENDED; the register shows a profile link instead of กู้คืน (`hr-register-restore-status-*` + inventory row). The service stays free (S7.3). | `hr/actions.ts` · `hr/service.ts` · `hr/ui.tsx` |
+
+Results (head 5c03a42a):
+- Oracle forced ×2 and unforced ×1: 81/81 each, residue none.
+- Regressions: privacy 194/194 · h0.7 74/74 · h0.3 37/37 · h0.1 67/67 · payroll 19/19 · payadjust 27/27 · payroll-reverse 14/14 · calendar 9/9 · ai-tools 18/18 · ai-proposals 16/16 · hr-attendance 31/31 · qc-hr 9/9 · approval-wiring 7/7 · seed 26/26.
+- fitness 42/42 and fitness-hr 7/7 in both modes.
+- Typecheck exit 0 with 0 errors (MemAvailable 10376 MB, no build/tsc unit).
+
+Refusal texts added:
+| where | text |
+|---|---|
+| run create/approve/markPaid/reverse/deleteDraft/recompute by a branch-restricted payroll viewer (+ payroll page note) | รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้ |
+| requestLeave for an inactive employee | พนักงานคนนี้พ้นสภาพแล้ว — ยื่นใบลาใหม่ไม่ได้ |
+| restore while status ENDED | พนักงานคนนี้มีสถานะสิ้นสุดการจ้าง — เปลี่ยนสถานะที่หน้าโปรไฟล์ก่อนจึงจะกู้คืนได้ |
+| clock / verifyPin after ENDED | existing texts (ไม่พบพนักงาน · PIN ไม่ถูกต้อง) |
+
+Decisions for the controller:
+- **D-6.** The calendar mirrors `hrScopeOf` + `scopedLeaveWhere` instead of importing them, because F2's ALLOWED_EDGES has no `calendar→hr`. If you approve that edge, replace the mirrored block with the hr helpers.
+- **D-7.** deleteDraft and recompute are gated like the four named run actions, for consistency with "run-level money actions".
+- **D-8.** R7 (removal ⇒ ENDED) combined with R12.4 (no restore while ENDED) means every removed employee must have their status changed in the profile before restore. The register shows a link instead of the button.
+
+Runbook addition: run-level money actions (create, approve, mark paid, reverse, delete draft, recompute) need an all-branch viewer (OWNER, `*` or unset `[]`). A payroll viewer whose `unitAccess` lists specific units can view their branch only.
+
 ## 9. Disputes / ORACLE-EDIT requests / decisions
 - **D-1 (BLOCKER-level for prod, ruling 3 vs regressions).** STAFF/MANAGER `unitAccess []` ⇒ 0 scoped rows. `[]` is the repo default for every invited STAFF (`src/lib/staff/service.ts:434`), and the regression fixtures use it: privacy (hrMgr/hrStaff/wild = STAFF []), h0.7 (STAFF []), h0.3 (STAFF [] with hr.employee.create / kiosk). Built exactly per ruling ⇒ those checks go red; positive control proves no other cause. **In prod every STAFF HR user with [] loses all HR rows/edits on deploy** (owner/`*` unaffected). Options: (a) keep ruling 3 → ORACLE-EDIT the fixtures to `["*"]` (privacy L163–187/1068 · h0.7 L420/L434 · h0.3 L370) + a prod step before/at deploy: owners (or a one-off script) set `unitAccess ["*"]` (or real units) for STAFF memberships holding hr.* keys; (b) re-rule `[]` = tenant-wide for HR (legacy) → ORACLE-EDIT qc-hr-h1.1 S3.2 (`mgrNone`/`malformed` ⇒ "*") — then all three suites are green.
 - **D-2 Pr-10 (privacy).** `payType` is a new key for payroll viewers (R7 · S7.4/S7.5) but outside `EMPLOYEE_PROFILE_FIELDS ∪ EMPLOYEE_SENSITIVE_FIELDS` (S7.8 forbids both). Exported `EMPLOYEE_PAYROLL_FIELDS = ["payType"]` — ORACLE-EDIT Pr-10: whitelist += `shared.EMPLOYEE_PAYROLL_FIELDS`.
