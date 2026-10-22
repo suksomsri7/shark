@@ -36,7 +36,7 @@ async function lockPos(tx: Prisma.TransactionClient, ctx: Ctx): Promise<boolean>
   const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
   return locked.length > 0;
 }
-/** settings.pos.credit = ค่าใหม่ทั้งก้อน (2 คีย์ของตัวอ่าน) — คีย์อื่นใต้ settings/pos ไม่ถูกแตะ */
+/** settings.pos.credit.{enabled, requireBuyer} = ค่าใหม่ — รวมเข้าออบเจกต์เดิม (คีย์อื่นใต้ pos.credit / pos / settings ไม่ถูกแตะ · fix1 F3) · credit ไม่ใช่ออบเจกต์ = เริ่มออบเจกต์ใหม่ */
 async function writeCredit(tx: Prisma.TransactionClient, ctx: Ctx, credit: PosCreditSettings): Promise<void> {
   const json = JSON.stringify({ enabled: credit.enabled, requireBuyer: credit.requireBuyer });
   await tx.$executeRaw`
@@ -44,7 +44,8 @@ async function writeCredit(tx: Prisma.TransactionClient, ctx: Ctx, credit: PosCr
     SET "settings" = jsonb_set(
       CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
       '{pos}',
-      (CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END) || jsonb_build_object('credit', ${json}::jsonb),
+      (CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END) ||
+        jsonb_build_object('credit', (CASE WHEN jsonb_typeof("settings"->'pos'->'credit') = 'object' THEN "settings"->'pos'->'credit' ELSE '{}'::jsonb END) || ${json}::jsonb),
       true),
       "updatedAt" = now()
     WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS'`;
