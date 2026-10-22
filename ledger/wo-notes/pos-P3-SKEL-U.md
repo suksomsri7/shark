@@ -156,3 +156,9 @@ creds card + chips · webhook-pending line · slip card + retention read-only ·
 - **F3 Low** `scripts/visual-pos.mts:8506-8520` — token masked by an injected CSS overlay (`color: transparent` + `::after` mask text), no `textContent` write into the React-controlled `<code>`; re-checked after `into()` right before the shot (still visible ⇒ StepError, no shot) — 7760e312
 - **F2 Low** + S follow-up (agent reader returns host:port to sellers) — §OP lines above.
 - `--dry` (iso · CI=1) owner **49** · cashier **15** — rc 0 · no typecheck (controller typechecks at merge).
+
+## Fix round 2 (controller B · harness only · QC5 round at 92e1943a = 83/93 — 10 fails = bills-slip-sheet / bills-slip-reject-invalid console 404)
+- `scripts/visual-pos.mts:8378-8391` `p3skuSuppress` + hook `:12421` (console listener) + fixture `:8297` stores `P3SKU.slipFileId` (FileAsset of the fixture slip) + reason line `:8610` "QC5 ไม่มี slip storage — รูปสลิป 404 เป็นที่คาด" — 9084e1e8
+- Predicate (all must hold): state ∈ {bills-slip-sheet, bills-slip-reject-invalid} ∧ `P3SKU.slipFileId` set ∧ text matches `/Failed to load resource: the server responded with a status of 404\b/` ∧ `m.location().url` startsWith `${BASE}/api/files/${P3SKU.slipFileId}?`. Other files / states / codes still count; the 4xx stays recorded in httpErrors.
+- Product unchanged: `SlipSheet.tsx` already swaps the `<img>` for "แสดงรูปสลิปไม่ได้" on `onError` (no broken-image icon). P3.12 parity note: a distinct "ไม่พบไฟล์" for a missing file (vs. load error) could be added there.
+- `--dry` owner **49** rc 0 · no typecheck (controller at merge).
