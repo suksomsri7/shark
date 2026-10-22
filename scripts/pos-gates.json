@@ -265,7 +265,7 @@
     },
     {
       "suite": "qc-pos-p5.2",
-      "mode": "unforced"
+      "mode": "forced"
     },
     {
       "suite": "qc-chat-security",
