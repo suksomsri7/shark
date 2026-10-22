@@ -23267,6 +23267,86 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]&bill=[saleId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-csv",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "download",
+        "target": "pos-reports-reconcile",
+        "note": "CSV กระทบยอด (reconcileCsvAction · หัวตรึง · BOM) → ดาวน์โหลด Blob"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-pdf",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-reconcile",
+        "note": "PDF ปิดเสมอพร้อมเหตุผล reconcile.noPdf"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-settlement",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-reconcile",
+        "note": "นำเข้า settlement ของ Beam ปิดเสมอ (รอไฟล์ตัวอย่าง W4)"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-reports-reconcile-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reports-reconcile",
+        "note": "โหลดรายงานกระทบยอดซ้ำหลังผิดพลาด"
+      },
+      "wo": "P3-SKEL U",
+      "oracle": "",
+      "system": "POS",
+      "query": "kind=reconcile&from=[from]&to=[to]&unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
