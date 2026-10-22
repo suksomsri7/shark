@@ -13,6 +13,9 @@ import {
   createEmployee,
   decideLeave,
   bulkDecideLeave,
+  cancelLeave, // HR H0.7 ▸ R5 ◂
+  employeeOfUser, // HR H0.7 ▸ R3 ◂
+  HrLeaveRequestError, // HR H0.7 ◂
   removeEmployeeDoc,
   requestLeave,
   saveEmployeeProfile,
@@ -264,25 +267,59 @@ export async function kioskClockAction(systemId: string, _prev: KioskState, form
 }
 
 // ── ขอลา (สถานะเริ่มต้น = รออนุมัติ) ──
+// HR H0.7 ▸ R3 (HQ19 ค่าเริ่มต้น · COMMON §C.7): พนักงานทั่วไป (ไม่มี hr.employee.create และไม่มี hr.leave.decide) ยื่นได้เฉพาะของตัวเอง —
+//   ไม่เชื่อ employeeId จากฟอร์ม ใช้ employeeOfUser() (ไม่มีแถวพนักงานที่ผูกบัญชี = ข้อความไทยคงที่) ·
+//   ผู้จัดการ/เจ้าของ/ผู้ถือคีย์ข้างต้น ยื่นแทนพนักงานของระบบนี้ได้ (ระบบอื่น/ร้านอื่น = ไม่พบ — ตรวจใน requestLeave) + "ยื่นโดย" (filedById)
+//   ผู้กด (auth user id) ส่งเข้า requestLeave เสมอ ⇒ ผู้ยื่นในสายอนุมัติ = user id (R2) · ปฏิเสธ = โยน HrLeaveRequestError (ข้อความไทย) ◂
+const LEAVE_NO_EMPLOYEE = "บัญชีของคุณยังไม่ได้ผูกกับรายชื่อพนักงาน — ให้ผู้จัดการยื่นใบลาแทน หรือขอให้ผู้ดูแลผูกบัญชีก่อน";
 export async function requestLeaveAction(formData: FormData) {
   const auth = await requireTenant();
   assertHrCan(auth, "hr.leave.request");
-  const systemId = String(formData.get("systemId") ?? "");
-  const employeeId = String(formData.get("employeeId") ?? "");
+  const member = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  const onBehalf =
+    evaluate(member, { module: "hr", action: "hr.employee.create" }) || evaluate(member, { module: "hr", action: "hr.leave.decide" });
+  let systemId = String(formData.get("systemId") ?? "");
+  const posted = onBehalf ? String(formData.get("employeeId") ?? "").trim() : ""; // พนักงานทั่วไป: ไม่อ่านช่องนี้เลย
   const rawType = String(formData.get("type") ?? "PERSONAL");
   const type = (LEAVE_TYPES.has(rawType as HrLeaveType) ? rawType : "PERSONAL") as HrLeaveType;
   const fromDate = String(formData.get("fromDate") ?? "").trim();
   const toDate = String(formData.get("toDate") ?? "").trim();
-  if (!systemId || !employeeId || !fromDate || !toDate) return;
+  if (!systemId || !fromDate || !toDate) return;
+  let employeeId = posted;
+  if (!employeeId) {
+    const own = await employeeOfUser(auth.active.tenantId, auth.active.userId);
+    if (!own) throw new HrLeaveRequestError(LEAVE_NO_EMPLOYEE);
+    employeeId = own.employeeId;
+    systemId = own.systemId; // ใบลาอยู่ในระบบ HR ของแถวพนักงานตัวเอง
+  }
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await requestLeave(ctx, {
     employeeId,
+    actorUserId: auth.active.userId,
     type,
     fromDate,
     toDate,
     reason: String(formData.get("reason") ?? "").trim() || null,
   });
   revalidate(systemId);
+}
+
+// HR H0.7 ▸ R5: ผู้ยื่นยกเลิกใบลาของตัวเอง (ปุ่มในหน้า "อนุมัติ" → คำขอของฉัน) — ตัวกันอยู่ใน cancelLeave (ผู้ยื่นเท่านั้น · ยังรอ ·
+//   ใบของเจ้าของร้านที่ยังไม่ถึงวันลา) · ร้าน = ร้านที่ล็อกอินอยู่ · ไม่ผ่าน = โยนข้อความไทยคงที่ (ไม่ส่งข้อความระบบ) ◂
+const CANCEL_FORM_INVALID = "ข้อมูลใบลาไม่ครบ กรุณาเปิดหน้าใหม่แล้วลองอีกครั้ง";
+export async function cancelLeaveAction(formData: FormData): Promise<void> {
+  const auth = await requireTenant();
+  const systemId = String(formData.get("systemId") ?? "");
+  const leaveId = String(formData.get("leaveId") ?? "");
+  if (!systemId || !leaveId) throw new HrLeaveRequestError(CANCEL_FORM_INVALID);
+  const res = await cancelLeave({ tenantId: auth.active.tenantId, systemId }, leaveId, { actorUserId: auth.active.userId });
+  if (!res.ok) throw new HrLeaveRequestError(res.reason);
+  revalidate(systemId);
+  revalidatePath("/app/approvals");
 }
 
 // ── อนุมัติ/ปฏิเสธการลา — availability เปลี่ยนเฉพาะเมื่ออนุมัติ (C-2) ──

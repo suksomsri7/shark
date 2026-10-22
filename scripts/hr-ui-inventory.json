@@ -471,6 +471,86 @@
    },
    "wo": "H0.2",
    "oracle": "qc-hr-h0.2"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-leave-cancel-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/approvals/page.tsx",
+   "conditional": "เฉพาะคำขอของฉันที่เป็นใบลา (entityType HrLeave) และยัง PENDING",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-leave-cancel-*",
+    "state": "appears"
+   },
+   "wo": "H0.7",
+   "oracle": "qc-hr-h0.7",
+   "note": "กล่องปุ่มยกเลิกใบลา (* = id ใบลา) — แสดงเฉพาะผู้ยื่นเพราะรายการ 'คำขอของฉัน' กรอง requestedById = ผู้ใช้"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-leave-cancel-*-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog testId={`hr-leave-cancel-${r.entityId}`} → `${testId}-trigger`",
+   "conditional": "เฉพาะคำขอของฉันที่เป็นใบลา (entityType HrLeave) และยัง PENDING",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "modal",
+    "target": "hr-leave-cancel-*-sheet"
+   },
+   "wo": "H0.7",
+   "oracle": "qc-hr-h0.7"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-leave-cancel-*-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog → `${testId}-sheet` (ฟอร์มยืนยัน action={cancelLeaveAction} · ช่องซ่อน systemId + leaveId)",
+   "conditional": "เฉพาะคำขอของฉันที่เป็นใบลา (entityType HrLeave) และยัง PENDING",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:cancelLeaveAction",
+    "db": "HrLeave.status → CANCELLED · ApprovalRequest.status → CANCELLED · AuditLog hr.leave.cancel"
+   },
+   "wo": "H0.7",
+   "oracle": "qc-hr-h0.7"
   }
  ]
 }

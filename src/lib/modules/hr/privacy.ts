@@ -128,6 +128,11 @@ export async function leaveItemsForViewer(
 ): Promise<{ pending: LeaveItemDto[]; history: LeaveItemDto[]; canReadReason: boolean }> {
   const canReadReason = hrAccessOf(v).readLeave;
   const [pending, history] = await Promise.all([pendingLeaves(ctx), listLeaves(ctx)]);
+  // HR H0.7 ▸ R9: ชื่อผู้ยื่นแทน (User เป็นแกน global ⇒ อ่านเฉพาะ id ที่อยู่ในใบลาของระบบนี้) — เฉพาะผู้มี hr.leave.read ◂
+  const filerIds = canReadReason ? [...new Set([...pending, ...history].map((l) => l.filedById).filter((x): x is string => !!x))] : [];
+  const filers = filerIds.length
+    ? new Map((await tenantDb({ tenantId: ctx.tenantId }).user.findMany({ where: { id: { in: filerIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
+    : new Map<string, string | null>();
   const toItem = (l: (typeof history)[number]): LeaveItemDto => ({
     id: l.id,
     employeeName: l.employee.name,
@@ -136,6 +141,7 @@ export async function leaveItemsForViewer(
     toDate: l.toDate,
     status: String(l.status),
     ...(canReadReason ? { reason: l.reason } : {}),
+    ...(canReadReason && l.filedById ? { filedBy: `ยื่นโดย ${filers.get(l.filedById) || "ผู้ใช้ในร้าน"}` } : {}),
   });
   return { pending: pending.map(toItem), history: history.map(toItem), canReadReason };
 }

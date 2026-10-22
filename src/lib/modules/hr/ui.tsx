@@ -310,7 +310,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
           items={leaves.map((l) => ({
             key: l.id,
             primary: `${l.employeeName} · ${LEAVE_TYPE_LABEL[l.type] ?? l.type}`,
-            secondary: dateRange(l.fromDate, l.toDate),
+            secondary: [dateRange(l.fromDate, l.toDate), l.filedBy].filter(Boolean).join(" · "), // HR H0.7 ▸ "ยื่นโดย" เฉพาะผู้จัดการ/HR (privacy.ts) ◂
             trailing: (
               <StatusChip value={l.status} map={LEAVE_STATUS_LABEL} tone={leaveTone(l.status)} />
             ),
