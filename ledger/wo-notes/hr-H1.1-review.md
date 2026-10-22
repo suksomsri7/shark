@@ -140,3 +140,84 @@ One CRITICAL finding blocks the merge: the D-1 amendment is only half-built and 
 - **DB:** 0 rows written, none read. probe1 is pure.
 - **Files:** `/tmp/hr-hunt-h11/probe1.mts` is my scratch file and was left in place. I wrote only this review file. Nothing was committed and no product code, oracle or notes were edited.
 - **Running:** nothing of mine is running. No units were started or stopped, and the gate lock was used only for the single probe run and then released.
+
+## Round 2 (R12) — 6d8a466d
+
+> Diff `ee68d4a5..6d8a466d`. Commits: be2ae0e9 (oracle S10 addendum), 5c03a42a (fixes), 6d8a466d (notes).
+> Builder notes §9a, D-6…D-8, read. The `### R12` block is not in this tree's copy of `hr-brief-H1.1.md`, so I took the rulings from the coordinator message and notes D-6/D-7/D-8.
+> Probe: `/tmp/hr-hunt-h11/probe2.mts`. It is pure (no DB reads or writes) and was run through `iso.sh → qc4.sh → with-gate-lock.sh`.
+
+### Verdict: **MERGE**
+
+All round-1 blocking findings (C-1, M-1, M-2) and m-2 are fixed. I found no new CRITICAL, MAJOR or MINOR issue; only the INFO notes below remain.
+
+### (1) C-1: fixed
+- **Code:** `scope.ts:142`. `unitTargetOf` now returns `{ok:true}` with no `unitId` for an all-branch scope. `hrHomeTarget` (actions.ts:103-110) is split into `unitId` (stored) and `checkUnit` (passed to `assertCan`, explicit lists only).
+- **probe2, writes now allowed:**
+  - Covered: STAFF `[]` (keys employee.create, attendance.clock, leave.decide, payroll.create, payadjust.approve) and MANAGER `[]`, against employees in u1, u2 and null.
+  - Result: every one of those actions passes. That covers edit, remove, restore, profile, docs, setPin, schedule, clock and kiosk (same `hrTarget`), decide and bulk-decide, salary, and adjustments request/decide/cancel/move (same `payTarget`).
+- **probe2, writes still refused:**
+  - MANAGER `[u1]` and STAFF `[u1]`: a u2 employee is refused with `พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ`. A null-unit employee is refused with `พนักงานคนนี้ยังไม่ระบุสาขาประจำ — ผู้ดูแลทุกสาขาเป็นผู้จัดการ`.
+  - Neither text contains a unit id (`leaksId:false`).
+  - A u1 employee is allowed, and `unitId` is still forwarded to `assertCan` for an explicit list.
+- **(5) The split stores the right unit:**
+  - The stored `unitId` comes only from `hrHomeTarget().unitId` (create at actions.ts:123-125, profile move at :241-242), which always carries the validated unit.
+  - `hrTarget` and `payTarget` results are used only for checks and never stored.
+  - `leaveBranchRefusal` (service.ts:946) uses only `.ok`.
+  - So an all-branch actor's create or move still stores the chosen unit, now without passing it to `assertCan`.
+
+### (2) M-1: fixed
+- **Calendar** (calendar/service.ts, one R12 hunk):
+  - OWNER, `[]`, malformed or `*` gives no filter, the same as before.
+  - A list filters to home unit ∈ list, OR a borrowing (`hrEmployeeUnit` per system, take 5000) whose window covers the leave's `fromDate`.
+  - Null-unit employees are excluded, because `unitId in [...]` never matches null.
+- **AI `upcoming_schedule`** (tools.ts hunk):
+  - Uses `scopedLeaveWhere(hrScopeOf(lm))` per HR system, OR-ed with `systemId`.
+  - With no HR systems the result is `OR: []`, which returns nothing (fail closed).
+  - An `apiKey` actor and all-branch viewers are unchanged.
+- **D-6 inline copy vs `hrScopeOf` + `scopedLeaveWhere`:**
+  - probe2 compared 3 roles × 12 `unitAccess` shapes: `[]`, `*`, `u1`, `u1,u2`, a duplicate, the string `"u1"`, `null`, `[123]`, `[" "]`, `[" u1"]`, `["u1","*"]`, `[" *"]`.
+  - They are identical except for whitespace-padded entries. `hrScopeOf` trims, so `" u1"` becomes `u1`; the calendar does not trim, so `" u1"` matches nothing.
+  - The calendar is therefore never wider than HR, only narrower, and only for malformed padded ids (fail closed). INFO R2-I1.
+  - The borrowing window logic (`fromDate gte b.fromDate`, `lte b.toDate` when closed) is identical.
+
+### (3) M-2: fixed
+- **Payroll page** (`payroll-ui.tsx`):
+  - Scoped: `listEmployees` (which drives the salary forms and attendance), `listAdjustments(…, scope)`, run-item slip links, draft exclusions and stranded rows. Run totals stay system-wide (ruling 8).
+  - Hidden for a branch viewer: the create form and the approve, paid and reverse buttons.
+- **Run actions:** `assertRunAllBranches` is called right after the key check, before the form is parsed or the DB is touched. It covers create, approve, reverse, markPaid, deleteDraft and recompute (D-7).
+  - probe2: `[u1]` is refused; OWNER, `[]` and `*` are allowed.
+  - Refusal text: `รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้`. It is fixed and carries no names or ids.
+  - create, approve, deleteDraft and recompute return it as `{ok:false}`. reverse and markPaid are void actions without a try, so it is thrown as `HrBranchError` (an error boundary, still with no write). Their buttons are hidden anyway. INFO R2-I2.
+- **Frozen files:** `payroll.ts`, `payroll-rules.ts`, `pin.ts` and `privacy.ts` have no diff in R12. `payroll-rules.ts` sha256 is still `75a66c0c…`.
+
+### (4) m-2: fixed
+- Saving the profile with status ENDED on an active employee calls `setEmployeeActive(false)`, which sets `active=false`, status ENDED, and `endDate` = today if empty. It runs after the branch gate and outside the save tx. INFO R2-I3: the save and the deactivation are two statements; a crash between them leaves status ENDED with `active=true`, and the next save repairs it.
+- An inactive employee:
+  - cannot clock: `clock(…requireActive:true)` is used by both `clockAction` and kiosk `clockWithPin`
+  - cannot pass verifyPin: the SQL filters `"active" = true`
+  - cannot file leave: `requestLeave` now refuses `!emp.active` with `พนักงานคนนี้พ้นสภาพแล้ว — ยื่นใบลาใหม่ไม่ได้`. This is the shared service, so the AI and approval paths are covered too.
+- Restore while ENDED is refused in `restoreEmployeeAction` (fixed text). The register shows a link to the profile instead of the button (D-8).
+- The two-step flow works:
+  1. The profile loader has no `active` filter, so an inactive employee's profile opens.
+  2. The owner saves status ACTIVE or PROBATION; this does not touch `active`.
+  3. Restore then works, and `setEmployeeActive(true)` sets ACTIVE.
+- INFO R2-I4: between steps 2 and 3 the row reads `active=false` with status ACTIVE (cosmetic). Under R7 every removed employee is ENDED, so every restore is now two steps. That is accepted by D-8.
+
+### (6) Hot files
+- `calendar/service.ts`: only the leave-scope hunk inside the HR leave loop.
+- `ai/tools.ts`: only the import line (`hrScopeOf`, `scopedLeaveWhere` via the `hr/service` re-export, an existing ai→hr edge) and the `upcoming_schedule` block (`leaveBranch` and the spread into `where`).
+- Nothing else in either file changed.
+- `service.ts`: the re-export line moved the old H0.5 comment onto the same line (cosmetic).
+
+### Round 2 INFO (none blocks)
+- **R2-I1:** the calendar copy does not trim `unitAccess` entries, so it is narrower than HR for whitespace-padded ids (fail closed). Replace it with the hr helpers if the `calendar→hr` edge is approved.
+- **R2-I2:** reverse and markPaid surface the branch refusal as a thrown `HrBranchError`. No write happens and the buttons are hidden.
+- **R2-I3:** the ENDED save and `setEmployeeActive(false)` are not in one tx.
+- **R2-I4:** an intermediate `active=false` + ACTIVE state exists during the two-step restore.
+- **Unchanged from round 1:** m-1 (payslip filter uses "today") and m-3 (dated rows follow the current home unit) are still open as recorded.
+
+### Residue / running (round 2)
+- **DB:** 0 rows. probe2 is pure.
+- **Files:** `/tmp/hr-hunt-h11/probe2.mts` is my scratch file and was left in place. Only this section was appended to this file; nothing was committed or edited elsewhere.
+- **Running:** nothing of mine is running. `hr-ctl-h11b` was not touched.
