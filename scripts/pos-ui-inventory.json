@@ -14265,18 +14265,24 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-floor",
-        "note": "แท็บโซน \"ทุกโซน (N)\" (มีมากกว่า 1 โซน) — กริดแสดงทุกโต๊ะ"
+        "target": "pos-tbl-zone-all",
+        "note": "แท็บโซน \"ทุกโซน (N)\" (มีมากกว่า 1 โซน) — กริดแสดงทุกโต๊ะ",
+        "state": "selected"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โซนที่มีโต๊ะ ≥ 2 โซน"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14284,18 +14290,24 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-floor",
-        "note": "แท็บโซน \"ในร้าน (12)\" — กริดเฉพาะโต๊ะของโซน (zones ของ registerTablesAction)"
+        "note": "แท็บโซน \"ในร้าน (12)\" — กริดเฉพาะโต๊ะของโซน (zones ของ registerTablesAction)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โซนที่มีโต๊ะ ≥ 2 โซน"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14303,6 +14315,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14314,7 +14327,8 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14322,18 +14336,21 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-panel",
-        "note": "การ์ดโต๊ะ pos-tbl-card-<ชื่อ> → เลือกโต๊ะ (แผงขวา · iPad แผ่นขวา · มือถือเต็มจอ) · P2.5U มติ 8: ชิป \"แยกบิล 2/4\" · ลากด้วยเมาส์ (draggable · ไม่มีลากด้วยนิ้ว · มีคีย์ restaurant.session.move|merge) วางบนโต๊ะว่าง = ยืนยันย้าย (pos-tbl-move-confirm) · วางบนโต๊ะที่มีลูกค้า = ยืนยันรวม (pos-tbl-merge-confirm-dialog)"
+        "note": "การ์ดโต๊ะ pos-tbl-card-<ชื่อ> → เลือกโต๊ะ (แผงขวา · iPad แผ่นขวา · มือถือเต็มจอ) · P2.5U มติ 8: ชิป \"แยกบิล 2/4\" · ลากด้วยเมาส์ (draggable · ไม่มีลากด้วยนิ้ว · มีคีย์ restaurant.session.move|merge) วางบนโต๊ะว่าง = ยืนยันย้าย (pos-tbl-move-confirm) · วางบนโต๊ะที่มีลูกค้า = ยืนยันรวม (pos-tbl-merge-confirm-dialog)",
+        "state": "appears"
       },
       "wo": "P2.4U · P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14341,6 +14358,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14352,7 +14370,11 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะว่าง (FREE)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14360,18 +14382,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "ทางลัด \"เก็บแล้ว\" ของโต๊ะต้องเก็บ = registerClearTableAction → toast เก็บโต๊ะแล้ว"
+        "note": "ทางลัด \"เก็บแล้ว\" ของโต๊ะต้องเก็บ = registerClearTableAction → toast เก็บโต๊ะแล้ว",
+        "db": "RestaurantTable.dirtySince = null (clearTableForPos)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะต้องเก็บ (NEEDS_CLEARING · dirtySince)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14379,6 +14407,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14390,7 +14419,11 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะสถานะจองไว้ (RESERVED)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14398,25 +14431,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-floor",
-        "note": "โหลดผังไม่สำเร็จ → ลองอีกครั้ง"
+        "target": "pos-tbl-retry",
+        "note": "โหลดผังไม่สำเร็จ → ลองอีกครั้ง",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "โหลดผังโต๊ะไม่สำเร็จ (registerTablesAction ล้ม)"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
       "testid": "pos-tbl-empty-setup",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -14429,7 +14466,8 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สาขายังไม่มีโต๊ะ (posqc-btn-unit ตามค่าเริ่มมีแล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14437,18 +14475,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-menu-close",
-        "note": "\"⋯\" ของแผงโต๊ะที่มีลูกค้า → เมนู ปิดโต๊ะ / ผูกสมาชิก / ถอดสมาชิก"
+        "note": "\"⋯\" ของแผงโต๊ะที่มีลูกค้า → เมนู ปิดโต๊ะ / ผูกสมาชิก / ถอดสมาชิก",
+        "state": "appears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14456,6 +14503,7 @@
       "kind": "menu",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14467,7 +14515,15 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-more"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14475,6 +14531,7 @@
       "kind": "menu",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14486,7 +14543,16 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-more"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "สาขาเปิดระบบสมาชิก (registerStatus.memberEnabled)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14494,18 +14560,29 @@
       "kind": "menu",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "⋯ ถอดสมาชิก (โต๊ะผูกสมาชิกอยู่) = registerLinkTableMemberAction(memberId null)"
+        "note": "⋯ ถอดสมาชิก (โต๊ะผูกสมาชิกอยู่) = registerLinkTableMemberAction(memberId null)",
+        "db": "TableSession.memberId = null (setTableSessionMemberForPos)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-more"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "โต๊ะที่ผูกสมาชิกอยู่ (TableSession.memberId)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14513,18 +14590,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-floor",
-        "note": "ปิดแผง (iPad/มือถือ · มือถือ = ย้อนกลับของเบราว์เซอร์)"
+        "target": "pos-tbl-panel",
+        "note": "ปิดแผง (iPad/มือถือ · มือถือ = ย้อนกลับของเบราว์เซอร์)",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "tablet",
+        "mobile"
+      ],
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14532,6 +14619,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14543,7 +14631,14 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การ์ดแรกบนผังเป็นโต๊ะไม่มีลูกค้า (ว่าง/จองไว้/ต้องเก็บ)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14551,18 +14646,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "โต๊ะจองไว้ → พาลูกค้านั่ง = registerSeatReservationAction (มีลูกค้าอยู่ = tables.errors.occupied)"
+        "note": "โต๊ะจองไว้ → พาลูกค้านั่ง = registerSeatReservationAction (มีลูกค้าอยู่ = tables.errors.occupied)",
+        "db": "TableSession OPEN (openTableSessionInTx) + RestaurantReservation SEATED"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การ์ดแรกบนผังเป็นโต๊ะจองไว้ (RESERVED) ที่ยังไม่มีลูกค้า"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14570,18 +14674,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "โต๊ะต้องเก็บ → เก็บโต๊ะ = registerClearTableAction"
+        "note": "โต๊ะต้องเก็บ → เก็บโต๊ะ = registerClearTableAction",
+        "db": "RestaurantTable.dirtySince = null (clearTableForPos)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การ์ดแรกบนผังเป็นโต๊ะต้องเก็บ (NEEDS_CLEARING)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14589,6 +14702,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14600,7 +14714,14 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การ์ดแรกบนผังเป็นโต๊ะจองไว้ (RESERVED)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14608,6 +14729,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14619,7 +14741,15 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวที่ยังไม่จ่าย/ไม่เสิร์ฟ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14627,18 +14757,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-rounds",
-        "note": "แถว \"เสิร์ฟแล้วอีก N รายการ\" → กางรายการที่ยุบ"
+        "note": "แถว \"เสิร์ฟแล้วอีก N รายการ\" → กางรายการที่ยุบ",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รอบที่เสิร์ฟแล้วแต่ยังไม่จ่าย > 3 รายการ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14646,6 +14786,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14657,7 +14798,15 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "โต๊ะที่มีรอบร่างยังไม่ส่งครัว (HeldCart ของโต๊ะ)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14665,6 +14814,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14676,7 +14826,14 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14684,18 +14841,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "modal",
-        "target": "pos-tbl-checkout",
+        "target": "pos-reg-paydlg",
         "note": "เช็คบิล ฿x → จอชำระเดิมด้วย quote ของโต๊ะ (มติ 5) · ปิดเมื่อมีเหตุผลใต้ปุ่ม (สิทธิ์/กะ/PIN/ออฟไลน์) · P2.5U มติ 1: แผนแยกบิลเปิดอยู่ (data-split=open) = \"ชำระทีละใบ · เหลือ ฿y\" → แผงแยกบิล pos-tbl-split-modal"
       },
       "wo": "P2.4U · P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14703,6 +14869,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14714,7 +14881,15 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "บังคับเปิดกะ + เครื่องนี้ยังไม่เปิดกะ (registerStatus.shiftRequired)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14722,6 +14897,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14733,7 +14909,15 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "เครื่องมี PIN พนักงานแต่ยังไม่ปลดล็อก (ไม่มี staff session)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14741,6 +14925,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14752,7 +14937,16 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-checkout-open"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14760,6 +14954,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -14771,7 +14966,16 @@
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-checkout-open"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14779,18 +14983,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "modal",
-        "target": "pos-discount-over",
+        "target": "pos-discount-over-sheet",
         "note": "ส่วนลดเกินเพดาน → PIN ผู้จัดการเท่านั้น (ไม่มีพักรออนุมัติสำหรับบิลโต๊ะ)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-checkout-open"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)",
+        "ส่วนลดท้ายบิลเกินเพดานของผู้ใช้ (DISCOUNT_EXCEEDS_LIMIT)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14798,18 +15013,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-open-guests",
-        "note": "กล่องเปิดโต๊ะ: ลดจำนวนลูกค้า"
+        "note": "กล่องเปิดโต๊ะ: ลดจำนวนลูกค้า",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-open-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะว่าง (FREE) ที่นั่ง ≥ 2"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14817,18 +15041,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-open-guests",
-        "note": "กล่องเปิดโต๊ะ: เพิ่มจำนวนลูกค้า"
+        "note": "กล่องเปิดโต๊ะ: เพิ่มจำนวนลูกค้า",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-open-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะว่าง (FREE)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14836,18 +15069,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "เปิดโต๊ะ = registerOpenTableAction({tableId, guestCount})"
+        "note": "เปิดโต๊ะ = registerOpenTableAction({tableId, guestCount})",
+        "db": "TableSession OPEN (openTableSessionInTx · guestCount)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-open-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะว่าง (FREE)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14855,18 +15097,29 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-cancel-dialog",
-        "note": "เหตุผลการยกเลิก (บังคับ ≤ 200)"
+        "note": "เหตุผลการยกเลิก (บังคับ ≤ 200)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-item-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวที่ยังไม่จ่าย/ไม่เสิร์ฟ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14874,18 +15127,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-panel",
-        "note": "ย้อนกลับ (ไม่ยกเลิก)"
+        "target": "pos-tbl-cancel-dialog",
+        "note": "ย้อนกลับ (ไม่ยกเลิก)",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-item-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวที่ยังไม่จ่าย/ไม่เสิร์ฟ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14893,18 +15157,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "ยืนยันยกเลิก = registerCancelTableItemAction · ปฏิเสธตามกติกาเดิม = เหตุผลภาษาไทยในกล่อง"
+        "note": "ยืนยันยกเลิก = registerCancelTableItemAction · ปฏิเสธตามกติกาเดิม = เหตุผลภาษาไทยในกล่อง",
+        "db": "RestaurantOrderItem CANCELLED (kdsStatus · cancelReason · cancelledAt)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-item-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวที่ยังไม่จ่าย/ไม่เสิร์ฟ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14912,18 +15187,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-panel",
-        "note": "ย้อนกลับ (ไม่ปิดโต๊ะ)"
+        "target": "pos-tbl-close-dialog",
+        "note": "ย้อนกลับ (ไม่ปิดโต๊ะ)",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-more",
+        "pos-tbl-menu-close"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14931,18 +15217,30 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "ปิดโต๊ะ = registerCloseTableAction (ค้างจ่าย = errors.tableHasUnpaid · BUSY = กดอีกครั้ง)"
+        "note": "ปิดโต๊ะ = registerCloseTableAction (ค้างจ่าย = errors.tableHasUnpaid · BUSY = กดอีกครั้ง)",
+        "db": "TableSession CLOSED|CANCELLED (closedAt) + RestaurantTable.dirtySince"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-more",
+        "pos-tbl-menu-close"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "โต๊ะนั้นไม่มีรายการค้างจ่าย (ไม่งั้น TABLE_HAS_UNPAID)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14950,18 +15248,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservation-form",
-        "note": "\"+ จอง\" → ฟอร์มจอง"
+        "note": "\"+ จอง\" → ฟอร์มจอง",
+        "state": "appears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14969,18 +15273,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-floor",
-        "note": "ปิดแผ่นจอง"
+        "target": "pos-tbl-reservations-sheet",
+        "note": "ปิดแผ่นจอง",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -14988,18 +15298,25 @@
       "kind": "form",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "ฟอร์มจอง → registerCreateReservationAction"
+        "note": "ฟอร์มจอง → registerCreateReservationAction",
+        "db": "RestaurantReservation BOOKED (createReservationForPos)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15007,18 +15324,25 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservation-form",
-        "note": "ชื่อผู้จอง (บังคับ)"
+        "note": "ชื่อผู้จอง (บังคับ)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15026,18 +15350,25 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservation-form",
-        "note": "เบอร์โทร (ไม่บังคับ)"
+        "note": "เบอร์โทร (ไม่บังคับ)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15045,18 +15376,25 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservation-form",
-        "note": "จำนวนคน"
+        "note": "จำนวนคน",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15064,18 +15402,25 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservation-form",
-        "note": "เวลาจอง (datetime-local · เวลาไทย)"
+        "note": "เวลาจอง (datetime-local · เวลาไทย)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15083,18 +15428,25 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservation-form",
-        "note": "กันโต๊ะก่อน (นาที · ค่าเริ่ม 15)"
+        "note": "กันโต๊ะก่อน (นาที · ค่าเริ่ม 15)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15102,18 +15454,25 @@
       "kind": "select",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservation-form",
-        "note": "โต๊ะ (ไม่บังคับ)"
+        "note": "โต๊ะ (ไม่บังคับ)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15121,18 +15480,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-reservations-sheet",
-        "note": "ย้อนกลับจากฟอร์ม"
+        "target": "pos-tbl-reservation-form",
+        "note": "ย้อนกลับจากฟอร์ม",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15140,18 +15506,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "บันทึกการจอง"
+        "note": "บันทึกการจอง",
+        "db": "RestaurantReservation BOOKED (createReservationForPos)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-add"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15159,18 +15532,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "นั่งโต๊ะ = registerSeatReservationAction (ไม่มีโต๊ะ = เลือกโต๊ะก่อน · โต๊ะมีลูกค้า = tables.errors.occupied)"
+        "note": "นั่งโต๊ะ = registerSeatReservationAction (ไม่มีโต๊ะ = เลือกโต๊ะก่อน · โต๊ะมีลูกค้า = tables.errors.occupied)",
+        "db": "TableSession OPEN (openTableSessionInTx) + RestaurantReservation SEATED"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การจองวันนี้ที่ยังรอ (RestaurantReservation BOOKED) ที่ระบุโต๊ะ และโต๊ะนั้นว่าง"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15178,18 +15560,28 @@
       "kind": "select",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-reservations-sheet",
-        "note": "เลือกโต๊ะที่จะนั่ง (การจองที่ยังไม่ระบุโต๊ะ)"
+        "note": "เลือกโต๊ะที่จะนั่ง (การจองที่ยังไม่ระบุโต๊ะ)",
+        "state": "changes"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-seat-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การจองวันนี้ที่ยังรอ (RestaurantReservation BOOKED) ที่ไม่ระบุโต๊ะ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15197,18 +15589,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "นั่งโต๊ะที่เลือก"
+        "note": "นั่งโต๊ะที่เลือก",
+        "db": "TableSession OPEN (openTableSessionInTx) + RestaurantReservation SEATED"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-seat-*",
+        "pos-tbl-reservation-seat-table-*=*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การจองวันนี้ที่ยังรอ (RestaurantReservation BOOKED) ที่ไม่ระบุโต๊ะ + โต๊ะว่าง"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15216,18 +15619,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-reservations-sheet",
-        "note": "ยกเลิกการจอง → ถามก่อน"
+        "target": "pos-tbl-reservation-keep-*",
+        "note": "ยกเลิกการจอง → ถามก่อน",
+        "state": "appears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การจองวันนี้ที่ยังรอ (RestaurantReservation BOOKED)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15235,18 +15647,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-reservations-sheet",
-        "note": "ไม่ยกเลิก"
+        "target": "pos-tbl-reservation-keep-*",
+        "note": "ไม่ยกเลิก",
+        "state": "disappears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-cancel-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การจองวันนี้ที่ยังรอ (RestaurantReservation BOOKED)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15254,18 +15676,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "ยืนยันยกเลิกการจอง = registerCancelReservationAction"
+        "note": "ยืนยันยกเลิกการจอง = registerCancelReservationAction",
+        "db": "RestaurantReservation CANCELLED (cancelReservationForPos)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-reservations",
+        "pos-tbl-reservation-cancel-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "การจองวันนี้ที่ยังรอ (RestaurantReservation BOOKED)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15273,18 +15705,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "CALL_STAFF รอ → รับทราบ (registerAckTableRequestAction)"
+        "note": "CALL_STAFF รอ → รับทราบ (registerAckTableRequestAction)",
+        "db": "RestaurantServiceRequest ACKED (ackedAt)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "คำขอเรียกพนักงานจากโต๊ะ (RestaurantServiceRequest CALL_STAFF PENDING)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15292,18 +15730,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-tbl-toast",
-        "note": "CALL_STAFF รับทราบแล้ว → เสร็จแล้ว (registerDoneTableRequestAction)"
+        "note": "CALL_STAFF รับทราบแล้ว → เสร็จแล้ว (registerDoneTableRequestAction)",
+        "db": "RestaurantServiceRequest DONE (doneAt)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-alert-ack-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "คำขอเรียกพนักงานจากโต๊ะ (RestaurantServiceRequest CALL_STAFF PENDING/ACKED)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15311,18 +15758,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-panel",
-        "note": "REQUEST_BILL → เปิดโต๊ะ (เลือกโต๊ะนั้น)"
+        "note": "REQUEST_BILL → เปิดโต๊ะ (เลือกโต๊ะนั้น)",
+        "state": "appears"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "คำขอเช็คบิลจากโต๊ะ (REQUEST_BILL) ของ session ที่ยังเปิด"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15330,18 +15783,23 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "modal",
-        "target": "pos-tbl-checkout",
+        "target": "pos-reg-paydlg",
         "note": "PAY_PROMPTPAY → ยืนยันรับเงิน = จอเช็คบิลของโต๊ะ เลือกพร้อมเพย์ไว้ (QR นิ่ง · ยืนยันเอง)"
       },
       "wo": "P2.4U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "คำขอแจ้งจ่ายพร้อมเพย์จากโต๊ะ (PAY_PROMPTPAY) + เช็คบิลได้ (ไม่มี checkoutBlock)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15349,6 +15807,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15360,7 +15819,14 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15368,6 +15834,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15379,7 +15846,14 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15387,6 +15861,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15398,7 +15873,15 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15406,6 +15889,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15417,7 +15901,15 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15425,6 +15917,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15436,7 +15929,11 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "ย้ายโต๊ะแล้วโต๊ะปลายทางมีลูกค้าก่อน (TABLE_BUSY — แข่งกับเครื่องอื่น)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15444,18 +15941,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-panel",
-        "note": "ปิดแผงแยกบิล (Esc ได้ · แตะม่านไม่ปิด)"
+        "target": "pos-tbl-split-modal",
+        "note": "ปิดแผงแยกบิล (Esc ได้ · แตะม่านไม่ปิด)",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15463,18 +15971,29 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-modal",
-        "note": "แท็บ รายรายการ (items) · หารเท่า (equal) · ตามที่นั่ง (seat) — ล็อก = ปิด (มติ 6)"
+        "note": "แท็บ รายรายการ (items) · หารเท่า (equal) · ตามที่นั่ง (seat) — ล็อก = ปิด (มติ 6)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15482,18 +16001,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-card-*",
-        "note": "แตะครั้งเดียว = ทั้งรายการไปบิล n (ตามที่นั่ง: part-0 = กลางโต๊ะ) · พรีวิวด้วย allocateTableSplit (มติ 2/4)"
+        "note": "แตะครั้งเดียว = ทั้งรายการไปบิล n (ตามที่นั่ง: part-0 = กลางโต๊ะ) · พรีวิวด้วย allocateTableSplit (มติ 2/4)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15501,6 +16031,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15512,7 +16043,17 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)",
+        "รายการบนโต๊ะที่จำนวน > 1"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15520,18 +16061,32 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-qty-dialog",
-        "note": "ลดจำนวนของรายการในบิล/ที่นั่ง n"
+        "note": "ลดจำนวนของรายการในบิล/ที่นั่ง n",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-qty-*",
+        "pos-tbl-split-qty-*-more-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)",
+        "รายการบนโต๊ะที่จำนวน > 1"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15539,18 +16094,31 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-qty-dialog",
-        "note": "เพิ่มจำนวนของรายการในบิล/ที่นั่ง n (ไม่เกินที่เหลือ)"
+        "note": "เพิ่มจำนวนของรายการในบิล/ที่นั่ง n (ไม่เกินที่เหลือ)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-qty-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)",
+        "รายการบนโต๊ะที่จำนวน > 1"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15558,18 +16126,31 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-split-modal",
-        "note": "ปิดป๊อปโอเวอร์แบ่งจำนวน"
+        "target": "pos-tbl-split-qty-dialog",
+        "note": "ปิดป๊อปโอเวอร์แบ่งจำนวน",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-qty-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)",
+        "รายการบนโต๊ะที่จำนวน > 1"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15577,18 +16158,30 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-seat-*",
-        "note": "ตามที่นั่ง: แตะรายการ แล้วแตะชิปที่นั่ง (มติ 4)"
+        "note": "ตามที่นั่ง: แตะรายการ แล้วแตะชิปที่นั่ง (มติ 4)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-seat"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15596,18 +16189,31 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-seat-rows",
-        "note": "ชิปที่นั่ง 1…N · กลางโต๊ะ (seat-shared) — วางรายการที่เลือก"
+        "note": "ชิปที่นั่ง 1…N · กลางโต๊ะ (seat-shared) — วางรายการที่เลือก",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-seat",
+        "pos-tbl-split-pick-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15615,18 +16221,31 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-seatrow-shared",
-        "note": "ชิปกลางโต๊ะ — รายการที่เลือกหารทุกที่นั่ง (มติ 4)"
+        "note": "ชิปกลางโต๊ะ — รายการที่เลือกหารทุกที่นั่ง (มติ 4)",
+        "state": "appears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-seat",
+        "pos-tbl-split-pick-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15634,18 +16253,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-card-*",
-        "note": "เลือกบิล (กำลังชำระ) — ปุ่มหลัก \"ชำระบิล n\" ตามบิลที่เลือก"
+        "note": "เลือกบิล (กำลังชำระ) — ปุ่มหลัก \"ชำระบิล n\" ตามบิลที่เลือก",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15653,18 +16283,30 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-modal",
-        "note": "ลบบิลที่ว่าง (เหลืออย่างน้อย 2)"
+        "note": "ลบบิลที่ว่าง (เหลืออย่างน้อย 2)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-addPart"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15672,18 +16314,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-card-*",
-        "note": "+ เพิ่มบิล (≤ 20 · รายรายการ)"
+        "note": "+ เพิ่มบิล (≤ 20 · รายรายการ)",
+        "state": "count"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15691,18 +16344,31 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-modal",
-        "note": "หารเท่า/ตามที่นั่ง: − N คน (≥ 2)"
+        "note": "หารเท่า/ตามที่นั่ง: − N คน (≥ 2)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-stepper-more"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15710,18 +16376,30 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-modal",
-        "note": "หารเท่า/ตามที่นั่ง: + N คน (≤ 20)"
+        "note": "หารเท่า/ตามที่นั่ง: + N คน (≤ 20)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15729,6 +16407,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15740,7 +16419,16 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15748,18 +16436,30 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-split-modal",
-        "note": "ปิดตัวเลือกสมาชิก"
+        "target": "pos-tbl-split-member-dialog",
+        "note": "ปิดตัวเลือกสมาชิก",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-member-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15767,18 +16467,31 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-split-card-*",
-        "note": "เลือกสมาชิกของโต๊ะให้บิลนี้"
+        "target": "pos-tbl-split-member-dialog",
+        "note": "เลือกสมาชิกของโต๊ะให้บิลนี้",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-member-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)",
+        "โต๊ะที่ผูกสมาชิกอยู่ (TableSession.memberId)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15786,18 +16499,30 @@
       "kind": "form",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-member-dialog",
-        "note": "ฟอร์มค้นสมาชิก (Enter = ค้น)"
+        "note": "ฟอร์มค้นสมาชิก (Enter = ค้น)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-member-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15805,18 +16530,30 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-member-dialog",
-        "note": "เบอร์โทร/รหัสสมาชิก/ชื่อ"
+        "note": "เบอร์โทร/รหัสสมาชิก/ชื่อ",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-member-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15824,18 +16561,31 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-split-member-dialog",
-        "note": "ค้นสมาชิก (registerMemberLookupAction)"
+        "note": "ค้นสมาชิก (registerMemberLookupAction)",
+        "state": "changes"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-member-*",
+        "pos-tbl-split-member-q=0899000001"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15843,18 +16593,33 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-split-card-*",
-        "note": "เลือกสมาชิกจากผลค้น (ระงับ = ปิด)"
+        "target": "pos-tbl-split-member-dialog",
+        "note": "เลือกสมาชิกจากผลค้น (ระงับ = ปิด)",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-member-*",
+        "pos-tbl-split-member-q=0899000001",
+        "pos-tbl-split-member-search"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)",
+        "สมาชิก QC โทร 0899000001 (สาขาเปิดระบบสมาชิก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15862,18 +16627,30 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-split-card-*",
-        "note": "บิลนี้ไม่มีสมาชิก"
+        "target": "pos-tbl-split-member-dialog",
+        "note": "บิลนี้ไม่มีสมาชิก",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-member-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15881,6 +16658,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15892,7 +16670,18 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-save"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15900,6 +16689,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15911,7 +16701,18 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-save"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15919,18 +16720,32 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-split-modal",
-        "note": "กลับ (ไม่ยกเลิก)"
+        "target": "pos-tbl-split-cancel-dialog",
+        "note": "กลับ (ไม่ยกเลิก)",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-save",
+        "pos-tbl-split-cancel"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15938,19 +16753,32 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:registerCancelSplitAction",
-        "db": "PosTableSplit CANCELLED",
+        "db": "PosTableSplit CANCELLED (cancelledAt · version+1) + AuditLog pos.table.split.cancel",
         "note": "ยืนยันยกเลิกแผน · ปฏิเสธ = toast + โหลดแผนใหม่ (มติ 5)"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-save",
+        "pos-tbl-split-cancel"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15958,19 +16786,30 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:registerSplitTableAction",
-        "db": "PosTableSplit/Part/Line",
+        "db": "PosTableSplit OPEN + PosTableSplitPart + PosTableSplitLine (registerSplitTable)",
         "note": "ชำระทีละใบ = บันทึกแผน (สร้าง: expectedItemsHash ของ quote ทั้งโต๊ะ · แทน: splitId + expectedVersion) แล้วค้างแผงไว้ · ยังมีรายการไม่ระบุบิล = ปิด"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15978,6 +16817,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -15989,7 +16829,18 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-splitBill",
+        "pos-tbl-split-tab-equal",
+        "pos-tbl-split-select-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -15997,18 +16848,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-panel",
-        "note": "ปิดตัวอย่างใบรายการ"
+        "target": "pos-tbl-prebill-preview",
+        "note": "ปิดตัวอย่างใบรายการ",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-printList"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16016,6 +16878,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -16026,9 +16889,19 @@
         "note": "พิมพ์ (ครั้งแรก = payload ของตัวอย่าง · ครั้งต่อไปเรียกใหม่ 1 ครั้งต่อการพิมพ์) · เครื่องพิมพ์ใบเสร็จของเครื่อง/เบราว์เซอร์"
       },
       "wo": "P2.5U",
-      "oracle": "",
+      "oracle": "P2.5-B1",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "external",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-printList"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16036,6 +16909,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -16046,9 +16920,19 @@
         "note": "พิมพ์สำเนา (copy:true · หัว \"สำเนา\")"
       },
       "wo": "P2.5U",
-      "oracle": "",
+      "oracle": "P2.5-B2",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "external",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-printList"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "รายการส่งครัวแล้วที่ยังไม่จ่ายบนโต๊ะนั้น (RestaurantOrderItem saleId null)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16056,18 +16940,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-panel",
-        "note": "ปิดแผ่นรวมโต๊ะ"
+        "target": "pos-tbl-merge-sheet",
+        "note": "ปิดแผ่นรวมโต๊ะ",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-mergeTable"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16075,18 +16969,29 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-tbl-merge-summary",
-        "note": "เลือก/เลิกเลือกโต๊ะที่มีลูกค้า (1–5) — สรุป \"รวม A2 + B1 เข้า A1 · N คน · ฿x\""
+        "note": "เลือก/เลิกเลือกโต๊ะที่มีลูกค้า (1–5) — สรุป \"รวม A2 + B1 เข้า A1 · N คน · ฿x\"",
+        "state": "appears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-mergeTable"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "โต๊ะที่มีลูกค้า ≥ 2 โต๊ะ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16094,13 +16999,14 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:registerMergeTablesAction",
-        "db": "TableSession MERGED",
+        "db": "TableSession MERGED (mergedIntoId · closedAt) + RestaurantOrder.sessionId",
         "anyOf": [
           {
             "type": "toast",
@@ -16112,7 +17018,17 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-mergeTable",
+        "pos-tbl-merge-pick-*"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "โต๊ะที่มีลูกค้า ≥ 2 โต๊ะ"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16120,18 +17036,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-floor",
-        "note": "ยกเลิกการย้าย"
+        "target": "pos-tbl-move-confirm",
+        "note": "ยกเลิกการย้าย",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-moveTable"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "ยืนยันย้ายมาจากลากการ์ด (เมาส์) หรือแตะโต๊ะจองไว้ในแผ่นย้าย pos-tbl-pick-* ซึ่งไม่มีแถวทะเบียน — ตัวกดเปิดเองไม่ได้"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16139,6 +17066,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -16157,7 +17085,16 @@
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-moveTable"
+      ],
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า: การ์ดแรกบนผังต้องมี TableSession OPEN (ตัวกดเลือกการ์ดแรก)",
+        "ยืนยันย้ายมาจากลากการ์ด (เมาส์) หรือแตะโต๊ะจองไว้ในแผ่นย้าย pos-tbl-pick-* ซึ่งไม่มีแถวทะเบียน — ตัวกดเปิดเองไม่ได้"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16165,18 +17102,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-tbl-floor",
-        "note": "ยกเลิกการรวม (จากการลาก)"
+        "target": "pos-tbl-merge-confirm-dialog",
+        "note": "ยกเลิกการรวม (จากการลาก)",
+        "state": "disappears"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า ≥ 2 โต๊ะ",
+        "ลากโต๊ะที่มีลูกค้าไปวางบนโต๊ะที่มีลูกค้า (HTML5 drag ด้วยเมาส์ src/components/pos/tables/TablesScreen.tsx:777 — ตัวกดไม่ลาก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -16184,19 +17128,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:registerMergeTablesAction",
-        "db": "TableSession MERGED",
+        "db": "TableSession MERGED (mergedIntoId · closedAt) + RestaurantOrder.sessionId",
         "note": "ยืนยันรวม (ลากโต๊ะที่มีลูกค้าไปวางบนอีกโต๊ะ)"
       },
       "wo": "P2.5U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+        "โต๊ะที่มีลูกค้า ≥ 2 โต๊ะ",
+        "ลากโต๊ะที่มีลูกค้าไปวางบนโต๊ะที่มีลูกค้า (HTML5 drag ด้วยเมาส์ src/components/pos/tables/TablesScreen.tsx:777 — ตัวกดไม่ลาก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -16499,18 +17449,24 @@
       "kind": "filter",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-col-*",
-        "note": "ราง: ทุกช่องทาง N (counts ของเซิร์ฟเวอร์) — ล้างตัวกรองช่องทาง"
+        "target": "pos-ord-ch-all",
+        "note": "ราง: ทุกช่องทาง N (counts ของเซิร์ฟเวอร์) — ล้างตัวกรองช่องทาง",
+        "state": "selected"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16518,18 +17474,25 @@
       "kind": "filter",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-col-*",
-        "note": "ราง: แถวช่องทาง pos-ord-ch-<รหัส> + ตัวนับ counts.byChannel · ชิปปิดรับถึง hh:mm — กรองการ์ดตามช่องทาง (หน้าร้าน/QR ซ่อน · หน้าร้าน QR = pos-ord-ch-qr-table (P2.7U) · สั่งออนไลน์ (QR) = pos-ord-ch-QR_ORDER)"
+        "target": "pos-ord-rail",
+        "note": "ราง: แถวช่องทาง pos-ord-ch-<รหัส> + ตัวนับ counts.byChannel · ชิปปิดรับถึง hh:mm — กรองการ์ดตามช่องทาง (หน้าร้าน/QR ซ่อน · หน้าร้าน QR = pos-ord-ch-qr-table (P2.7U) · สั่งออนไลน์ (QR) = pos-ord-ch-QR_ORDER)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ],
+      "needs": "ช่องทางในราง (SalesChannel ที่ไม่ใช่หน้าร้าน/QR โต๊ะ)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16537,25 +17500,30 @@
       "kind": "filter",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-col-*",
-        "note": "จอ < 1024: ตัวเลือกช่องทางแทนราง"
+        "note": "จอ < 1024: ตัวเลือกช่องทางแทนราง",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "mobile"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-auto-*",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -16563,19 +17531,22 @@
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "สวิตช์รับอัตโนมัติต่อช่องทางที่ adapter ไม่ใช่ MANUAL → setChannelOrderSettingsAction({autoAccept}) · ต้องมี pos.order.accept"
+        "note": "สวิตช์รับอัตโนมัติต่อช่องทางที่ adapter ไม่ใช่ MANUAL → setChannelOrderSettingsAction({autoAccept}) · ต้องมี pos.order.accept",
+        "db": "SalesChannel.autoAccept + AuditLog pos.order.settings"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ช่องทาง adapter ไม่ใช่ MANUAL (WEB/CHAT/API) ในราง"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-prep-default",
       "kind": "select",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -16583,19 +17554,22 @@
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "เวลาเตรียมมาตรฐาน 10/15/20/30/45/60 → prepMinutes ของช่องทางที่เลือกในราง (ทุกช่องทาง = ทุกแถว)"
+        "note": "เวลาเตรียมมาตรฐาน 10/15/20/30/45/60 → prepMinutes ของช่องทางที่เลือกในราง (ทุกช่องทาง = ทุกแถว)",
+        "db": "SalesChannel.prepMinutes + AuditLog pos.order.settings"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ช่องทางออนไลน์ที่เปิดใช้ (SalesChannel adapter WEB/CHAT/API)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-pause",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -16608,14 +17582,16 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ช่องทางออนไลน์ที่เปิดใช้ (SalesChannel adapter WEB/CHAT/API)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-pause-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -16623,19 +17599,25 @@
       "expect": {
         "type": "mutation",
         "target": "pos-ord-paused-*",
-        "note": "15/30/60 นาที / จนกว่าจะเปิดเอง (now+24ชม.) → pausedUntil · แบนเนอร์ปิดรับบนกระดาน"
+        "note": "15/30/60 นาที / จนกว่าจะเปิดเอง (now+24ชม.) → pausedUntil · แบนเนอร์ปิดรับบนกระดาน",
+        "db": "SalesChannel.pausedUntil + AuditLog pos.order.settings"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-pause"
+      ],
+      "needs": "ช่องทางออนไลน์ที่เปิดใช้ (SalesChannel adapter WEB/CHAT/API)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-reopen-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -16643,12 +17625,18 @@
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "แบนเนอร์ \"ปิดรับถึง hh:mm\" → เปิดรับ = pausedUntil null"
+        "note": "แบนเนอร์ \"ปิดรับถึง hh:mm\" → เปิดรับ = pausedUntil null",
+        "db": "SalesChannel.pausedUntil = null + AuditLog pos.order.settings"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-pause",
+        "pos-ord-pause-*"
+      ],
+      "needs": "ช่องทางออนไลน์ที่เปิดใช้ (SalesChannel adapter WEB/CHAT/API)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16656,13 +17644,15 @@
       "kind": "toggle",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-sound",
-        "note": "เสียงเตือนออเดอร์ใหม่ เปิด/ปิด (localStorage ต่อเครื่อง · ปริยายปิด) — เปิด = เสียง + \"(N)\" หน้าชื่อแท็บเมื่อมีออเดอร์ใหม่ระหว่างรอบดึง"
+        "note": "เสียงเตือนออเดอร์ใหม่ เปิด/ปิด (localStorage ต่อเครื่อง · ปริยายปิด) — เปิด = เสียง + \"(N)\" หน้าชื่อแท็บเมื่อมีออเดอร์ใหม่ระหว่างรอบดึง",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
@@ -16675,6 +17665,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -16694,18 +17685,21 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-col-*",
-        "note": "โหลดรายการไม่สำเร็จ → ลองอีกครั้ง"
+        "target": "pos-ord-retry",
+        "note": "โหลดรายการไม่สำเร็จ → ลองอีกครั้ง",
+        "state": "disappears"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "โหลดรายการออเดอร์ไม่สำเร็จ (listOrdersAction ล้ม)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16713,18 +17707,24 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-col-*",
-        "note": "มือถือ: แถบสลับคอลัมน์ ใหม่/กำลังเตรียม/พร้อม/เสร็จวันนี้ (ทีละคอลัมน์)"
+        "note": "มือถือ: แถบสลับคอลัมน์ ใหม่/กำลังเตรียม/พร้อม/เสร็จวันนี้ (ทีละคอลัมน์)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "ออเดอร์วันนี้บนกระดาน (PosOrder ของสาขา)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16732,43 +17732,51 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-panel",
-        "note": "การ์ดออเดอร์ pos-ord-card-<ref> → เลือก (ขอบ accent) + แผงรายละเอียด (≥1280 คอลัมน์ขวา · iPad แผ่นขวา · มือถือเต็มจอ)"
+        "note": "การ์ดออเดอร์ pos-ord-card-<ref> → เลือก (ขอบ accent) + แผงรายละเอียด (≥1280 คอลัมน์ขวา · iPad แผ่นขวา · มือถือเต็มจอ)",
+        "state": "appears"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ออเดอร์วันนี้บนกระดาน (PosOrder ของสาขา)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-card-accept-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "การ์ดใหม่: รับออเดอร์ (เวลาเตรียมของช่องทาง) — แคชเชียร์ไม่มี pos.order.accept = ปุ่มปิด + tooltip"
+        "note": "การ์ดใหม่: รับออเดอร์ (เวลาเตรียมของช่องทาง) — แคชเชียร์ไม่มี pos.order.accept = ปุ่มปิด + tooltip",
+        "db": "PosOrder ACCEPTED (acceptedAt · prepMinutes) + PosOrderEvent accepted + PosSale PLATFORM/PREPAID (เฉพาะช่องทางแพลตฟอร์ม/จ่ายก่อน)"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "counter",
+      "needs": "ออเดอร์สถานะ NEW (ไม่ใช่รอเงินเข้า)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-card-reject-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16779,25 +17787,32 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ออเดอร์สถานะ NEW (ไม่ใช่เว็บร้านที่ชำระแล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-card-handover-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "การ์ดพร้อม: ส่งมอบแล้ว (บิลถูกยกเลิก = orders.errors.saleVoided + เปิดแผงเสนอยกเลิกออเดอร์)"
+        "note": "การ์ดพร้อม: ส่งมอบแล้ว (บิลถูกยกเลิก = orders.errors.saleVoided + เปิดแผงเสนอยกเลิกออเดอร์)",
+        "db": "PosOrder HANDED (handedAt · closedAt) + PosOrderEvent"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-coltab-ready"
+      ],
+      "needs": "ออเดอร์สถานะ READY ที่ชำระแล้ว (PLATFORM_PAID/PAID)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16805,18 +17820,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-panel",
-        "note": "แถวคอลัมน์เสร็จวันนี้ (เลข · ช่องทาง · เวลา · ฿) → แผงรายละเอียด"
+        "note": "แถวคอลัมน์เสร็จวันนี้ (เลข · ช่องทาง · เวลา · ฿) → แผงรายละเอียด",
+        "state": "appears"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-coltab-done"
+      ],
+      "needs": "ออเดอร์ที่เสร็จวันนี้ (HANDED/ปิดแล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16824,18 +17845,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-panel",
-        "note": "ปิดแผง (iPad/มือถือ · Esc ได้)"
+        "note": "ปิดแผง (iPad/มือถือ · Esc ได้)",
+        "state": "disappears"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "tablet",
+        "mobile"
+      ],
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์วันนี้บนกระดาน (PosOrder ของสาขา)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16843,43 +17874,60 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-panel",
-        "note": "โหลดรายละเอียดไม่สำเร็จ → ลองอีกครั้ง"
+        "note": "โหลดรายละเอียดไม่สำเร็จ → ลองอีกครั้ง",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": [
+        "ออเดอร์วันนี้บนกระดาน (PosOrder ของสาขา)",
+        "โหลดรายละเอียดออเดอร์ไม่สำเร็จ (getOrderAction ล้ม)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-accept",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "แผง: รับออเดอร์ · เตรียม N นาที (acceptOrderAction + prepMinutes) — แพลตฟอร์ม = เปิดบิลทันที"
+        "note": "แผง: รับออเดอร์ · เตรียม N นาที (acceptOrderAction + prepMinutes) — แพลตฟอร์ม = เปิดบิลทันที",
+        "db": "PosOrder ACCEPTED (acceptedAt · prepMinutes) + PosOrderEvent accepted + PosSale PLATFORM/PREPAID (เฉพาะช่องทางแพลตฟอร์ม/จ่ายก่อน)"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "counter",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-prep-edit",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16890,14 +17938,19 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-prep-change",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16908,14 +17961,19 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์สถานะ ACCEPTED/PREPARING เป็นการ์ดแรกบนกระดาน"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-reject",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -16926,61 +17984,83 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-start",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "รับแล้ว → เริ่มเตรียม (markPreparingAction)"
+        "note": "รับแล้ว → เริ่มเตรียม (markPreparingAction)",
+        "db": "PosOrder PREPARING + PosOrderEvent preparing"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์สถานะ ACCEPTED เป็นการ์ดแรกบนกระดาน"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-ready",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "กำลังเตรียม → พร้อมแล้ว (markReadyAction)"
+        "note": "กำลังเตรียม → พร้อมแล้ว (markReadyAction)",
+        "db": "PosOrder READY (readyAt) + PosOrderEvent ready"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์สถานะ PREPARING เป็นการ์ดแรกบนกระดาน"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-handover",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "พร้อม → ส่งมอบแล้ว (handOverAction · บิลถูกยกเลิก = ข้อความ saleVoided + ปุ่มยกเลิกออเดอร์เด่น)"
+        "note": "พร้อม → ส่งมอบแล้ว (handOverAction · บิลถูกยกเลิก = ข้อความ saleVoided + ปุ่มยกเลิกออเดอร์เด่น)",
+        "db": "PosOrder HANDED (handedAt · closedAt) + PosOrderEvent"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์สถานะ READY ที่ชำระแล้วเป็นการ์ดแรกบนกระดาน"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -16988,6 +18068,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -16999,14 +18080,19 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์ร้านเก็บเงินเองที่รับแล้วยังไม่จ่าย (UNPAID/PAY_ON_PICKUP) เป็นการ์ดแรก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-cancel",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -17017,7 +18103,11 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์ที่รับแล้ว (ACCEPTED..READY · ไม่ใช่เว็บร้านชำระแล้ว) เป็นการ์ดแรก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17025,6 +18115,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -17039,151 +18130,209 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์ที่มีบิลแล้ว (PosOrder.saleId) เป็นการ์ดแรก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-reject-reason-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-reject-sheet",
-        "note": "เหตุผลปฏิเสธ ORDER_REJECT_REASONS (ของหมด · ใกล้ปิดร้าน · ออเดอร์เยอะเกิน · อื่น ๆ)"
+        "target": "pos-ord-reject-reason-*",
+        "note": "เหตุผลปฏิเสธ ORDER_REJECT_REASONS (ของหมด · ใกล้ปิดร้าน · ออเดอร์เยอะเกิน · อื่น ๆ)",
+        "state": "selected"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-reject-*"
+      ],
+      "needs": "ออเดอร์สถานะ NEW (ไม่ใช่เว็บร้านที่ชำระแล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-reject-note",
       "kind": "textarea",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-reject-sheet",
-        "note": "หมายเหตุการปฏิเสธ (≤ REGISTER_NOTE_MAX)"
+        "note": "หมายเหตุการปฏิเสธ (≤ REGISTER_NOTE_MAX)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-reject-*"
+      ],
+      "needs": "ออเดอร์สถานะ NEW (ไม่ใช่เว็บร้านที่ชำระแล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-reject-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "ยืนยันปฏิเสธ → rejectOrderAction (เว็บร้าน = ยกเลิก ShopOrder ผ่าน consumer)"
+        "note": "ยืนยันปฏิเสธ → rejectOrderAction (เว็บร้าน = ยกเลิก ShopOrder ผ่าน consumer)",
+        "db": "PosOrder REJECTED (rejectReason · closedAt) + PosOrderEvent rejected"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-reject-*"
+      ],
+      "needs": "ออเดอร์สถานะ NEW (ไม่ใช่เว็บร้านที่ชำระแล้ว)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-cancel-reason",
       "kind": "textarea",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-cancel-sheet",
-        "note": "เหตุผลยกเลิก (บังคับ)"
+        "note": "เหตุผลยกเลิก (บังคับ)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*",
+        "pos-ord-cancel"
+      ],
+      "needs": "ออเดอร์ที่รับแล้ว (ACCEPTED..READY · ไม่ใช่เว็บร้านชำระแล้ว) เป็นการ์ดแรก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-cancel-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "ยืนยันยกเลิก → cancelOrderAction (คีย์ต่อการเปิดแผ่น · PENDING_APPROVAL = toast รอผู้จัดการอนุมัติ)"
+        "note": "ยืนยันยกเลิก → cancelOrderAction (คีย์ต่อการเปิดแผ่น · PENDING_APPROVAL = toast รอผู้จัดการอนุมัติ)",
+        "db": "PosOrder CANCELLED (closedAt) + PosOrderEvent cancelled + PosSale VOIDED (เมื่อออเดอร์มีบิล)"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "money",
+      "opener": [
+        "pos-ord-card-*",
+        "pos-ord-cancel"
+      ],
+      "needs": "ออเดอร์ที่รับแล้ว (ACCEPTED..READY · ไม่ใช่เว็บร้านชำระแล้ว) เป็นการ์ดแรก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-prep-less",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-prep-value",
-        "note": "−5 นาที (≥ 1)"
+        "note": "−5 นาที (≥ 1)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*",
+        "pos-ord-prep-edit"
+      ],
+      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-prep-more",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-prep-value",
-        "note": "+5 นาที (≤ 180)"
+        "note": "+5 นาที (≤ 180)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*",
+        "pos-ord-prep-edit"
+      ],
+      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-prep-confirm",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-accept",
-        "note": "ใช้เวลานี้: ออเดอร์ใหม่ = ปุ่มรับแสดงเวลาใหม่ · รับแล้ว = setPrepMinutesAction"
+        "note": "ใช้เวลานี้: ออเดอร์ใหม่ = ปุ่มรับแสดงเวลาใหม่ · รับแล้ว = setPrepMinutesAction",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*",
+        "pos-ord-prep-edit"
+      ],
+      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17191,18 +18340,23 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ปิดแผ่นคีย์ออเดอร์ (คีย์ใหม่เมื่อเปิดครั้งถัดไป)"
+        "note": "ปิดแผ่นคีย์ออเดอร์ (คีย์ใหม่เมื่อเปิดครั้งถัดไป)",
+        "state": "disappears"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17210,18 +18364,24 @@
       "kind": "select",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ช่องทาง: MANUAL / CHAT / กำหนดเอง (ไม่มีหน้าร้าน/QR/เว็บร้าน) · ราคาตามช่องทางที่เลือก"
+        "note": "ช่องทาง: MANUAL / CHAT / กำหนดเอง (ไม่มีหน้าร้าน/QR/เว็บร้าน) · ราคาตามช่องทางที่เลือก",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": "ช่องทางที่คีย์ออเดอร์ได้ ≥ 2 ช่อง"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17229,18 +18389,23 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "เลขออเดอร์แพลตฟอร์ม (บังคับเมื่อช่องทางกำหนดเอง · ≤ 40)"
+        "note": "เลขออเดอร์แพลตฟอร์ม (บังคับเมื่อช่องทางกำหนดเอง · ≤ 40)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17248,18 +18413,23 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ชื่อลูกค้า (บังคับ)"
+        "note": "ชื่อลูกค้า (บังคับ)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17267,18 +18437,23 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "เบอร์ลูกค้า (ไม่บังคับ · แสดงแบบปิดบนการ์ด)"
+        "note": "เบอร์ลูกค้า (ไม่บังคับ · แสดงแบบปิดบนการ์ด)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17286,18 +18461,23 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-manual-sheet",
-        "note": "วิธีรับ: รับที่ร้าน / ส่ง (+ ที่อยู่)"
+        "target": "pos-ord-man-ful-*",
+        "note": "วิธีรับ: รับที่ร้าน / ส่ง (+ ที่อยู่)",
+        "state": "selected"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17305,18 +18485,24 @@
       "kind": "textarea",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ที่อยู่ส่ง (บังคับเมื่อส่ง)"
+        "note": "ที่อยู่ส่ง (บังคับเมื่อส่ง)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-ful-DELIVERY"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17324,18 +18510,24 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "แชท: รหัสห้องแชท (ไม่บังคับ · ตรวจในร้านที่เซิร์ฟเวอร์)"
+        "note": "แชท: รหัสห้องแชท (ไม่บังคับ · ตรวจในร้านที่เซิร์ฟเวอร์)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": "ช่องทาง CHAT เป็นช่องทางที่เลือกในแผ่นคีย์ (isChat src/components/pos/orders/ManualOrderEntry.tsx:137)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17343,18 +18535,24 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "แชท: รหัสผู้ติดต่อ party (ไม่บังคับ)"
+        "note": "แชท: รหัสผู้ติดต่อ party (ไม่บังคับ)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": "ช่องทาง CHAT เป็นช่องทางที่เลือกในแผ่นคีย์ (isChat src/components/pos/orders/ManualOrderEntry.tsx:137)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17362,18 +18560,24 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "แชท: ค้นสมาชิก (Enter = ค้น)"
+        "note": "แชท: ค้นสมาชิก (Enter = ค้น)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": "ช่องทาง CHAT เป็นช่องทางที่เลือกในแผ่นคีย์ (isChat src/components/pos/orders/ManualOrderEntry.tsx:137)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17381,18 +18585,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ค้นสมาชิก → registerMemberLookupAction"
+        "note": "ค้นสมาชิก → registerMemberLookupAction",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-member-q=0899000001"
+      ],
+      "needs": "ช่องทาง CHAT เป็นช่องทางที่เลือกในแผ่นคีย์ (isChat src/components/pos/orders/ManualOrderEntry.tsx:137)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17400,18 +18611,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ผลค้นสมาชิก pos-ord-man-member-<id> → ผูกสมาชิกกับออเดอร์"
+        "note": "ผลค้นสมาชิก pos-ord-man-member-<id> → ผูกสมาชิกกับออเดอร์",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-member-q=0899000001",
+        "pos-ord-man-member-search"
+      ],
+      "needs": [
+        "ช่องทาง CHAT เป็นช่องทางที่เลือกในแผ่นคีย์ (isChat src/components/pos/orders/ManualOrderEntry.tsx:137)",
+        "สมาชิก QC โทร 0899000001"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17419,18 +18641,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "เอาสมาชิกออก"
+        "note": "เอาสมาชิกออก",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": [
+        "ช่องทาง CHAT เป็นช่องทางที่เลือกในแผ่นคีย์ (isChat src/components/pos/orders/ManualOrderEntry.tsx:137)",
+        "สมาชิกที่ผูกกับออเดอร์ในแผ่นคีย์แล้ว"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17438,18 +18669,23 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ค้นสินค้าในแคตตาล็อกของหน้าขาย"
+        "note": "ค้นสินค้าในแคตตาล็อกของหน้าขาย",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17457,18 +18693,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-man-lines",
-        "note": "เพิ่มสินค้า (มีตัวเลือก/ตัวแปร = OptionsDialog เดิมของหน้าขาย)"
+        "note": "เพิ่มสินค้า (มีตัวเลือก/ตัวแปร = OptionsDialog เดิมของหน้าขาย)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17476,18 +18718,26 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-man-lines",
-        "note": "จำนวน −1"
+        "note": "จำนวน −1",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-product-*",
+        "pos-ord-man-line-more-*"
+      ],
+      "needs": "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17495,18 +18745,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-man-lines",
-        "note": "จำนวน +1"
+        "note": "จำนวน +1",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-product-*"
+      ],
+      "needs": "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17514,25 +18771,33 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-man-lines",
-        "note": "ลบบรรทัด"
+        "note": "ลบบรรทัด",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-product-*"
+      ],
+      "needs": "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-man-custom",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -17540,19 +18805,24 @@
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "รายการกำหนดเอง (pos.sale.priceOverride เท่านั้น)"
+        "note": "รายการกำหนดเอง (pos.sale.priceOverride เท่านั้น)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-man-custom-name",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -17560,19 +18830,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ชื่อรายการกำหนดเอง"
+        "note": "ชื่อรายการกำหนดเอง",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-custom"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-man-custom-price",
       "kind": "input",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -17580,19 +18856,25 @@
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "ราคารายการกำหนดเอง (บาท)"
+        "note": "ราคารายการกำหนดเอง (บาท)",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-custom"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-man-custom-add",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -17600,12 +18882,19 @@
       "expect": {
         "type": "ui",
         "target": "pos-ord-man-lines",
-        "note": "เพิ่มรายการกำหนดเอง"
+        "note": "เพิ่มรายการกำหนดเอง",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-custom",
+        "pos-ord-man-custom-name=รายการ QC",
+        "pos-ord-man-custom-price=25"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17613,6 +18902,7 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -17624,7 +18914,15 @@
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-product-*"
+      ],
+      "needs": [
+        "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก",
+        "ช่องทางที่คีย์ออเดอร์ได้ (CHAT ที่เปิดใช้ หรือช่องทางกำหนดเอง)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17632,18 +18930,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-manual-sheet",
-        "note": "สถานะเริ่ม (MANUAL): รับแล้ว (ปริยาย) / ออเดอร์ใหม่"
+        "target": "pos-ord-man-start-*",
+        "note": "สถานะเริ่ม (MANUAL): รับแล้ว (ปริยาย) / ออเดอร์ใหม่",
+        "state": "selected"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": "ช่องทางที่คีย์ออเดอร์ได้ (CHAT ที่เปิดใช้ หรือช่องทางกำหนดเอง)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17651,18 +18955,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-ord-manual-sheet",
-        "note": "การชำระ (ช่องทางร้านเก็บเอง): รอชำระ / จ่ายตอนรับ"
+        "target": "pos-ord-man-pay-*",
+        "note": "การชำระ (ช่องทางร้านเก็บเอง): รอชำระ / จ่ายตอนรับ",
+        "state": "selected"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ],
+      "needs": "ช่องทางที่คีย์ได้แบบร้านเก็บเงินเอง (payout DIRECT)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17670,18 +18980,23 @@
       "kind": "textarea",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-ord-manual-sheet",
-        "note": "หมายเหตุลูกค้า"
+        "note": "หมายเหตุลูกค้า",
+        "state": "changes"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-manual"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -17689,18 +19004,29 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "บันทึกออเดอร์ → ingestOrderAction (idempotencyKey ต่อการเปิดแผ่น · PRODUCT_UNAVAILABLE/CHANNEL_NOT_SOLD + lineIndex = ไฮไลต์บรรทัด · IDEMPOTENCY_CONFLICT = แจ้ง)"
+        "note": "บันทึกออเดอร์ → ingestOrderAction (idempotencyKey ต่อการเปิดแผ่น · PRODUCT_UNAVAILABLE/CHANNEL_NOT_SOLD + lineIndex = ไฮไลต์บรรทัด · IDEMPOTENCY_CONFLICT = แจ้ง)",
+        "db": "PosOrder NEW|ACCEPTED (ingestOrder) + PosOrderEvent received + PosSale PLATFORM (ช่องทางแพลตฟอร์มที่เริ่มรับแล้ว)"
       },
       "wo": "P2.8U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "counter",
+      "opener": [
+        "pos-ord-manual",
+        "pos-ord-man-product-*"
+      ],
+      "needs": [
+        "สินค้าที่ขายได้ในแคตตาล็อกของสาขาที่ไม่มีตัวเลือก",
+        "ช่องทางที่คีย์ออเดอร์ได้ (CHAT ที่เปิดใช้ หรือช่องทางกำหนดเอง)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17708,6 +19034,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -17727,18 +19054,21 @@
       "kind": "menu",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-unit-option-*",
-        "note": "ชิปสาขา — หลายสาขา = เมนูเลือกสาขา (ลิงก์ ?unit=)"
+        "note": "ชิปสาขา — หลายสาขา = เมนูเลือกสาขา (ลิงก์ ?unit=)",
+        "state": "appears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17746,6 +19076,7 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -17757,7 +19088,11 @@
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-unit"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17765,18 +19100,28 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-board",
-        "note": "แท็บสถานี pos-kds-tab-<stationId> (ตัวนับ openCount) + pos-kds-tab-expo (รวมเสิร์ฟ) → kdsBoardAction ของสถานี/expo · ?station="
+        "note": "แท็บสถานี pos-kds-tab-<stationId> (ตัวนับ openCount) + pos-kds-tab-expo (รวมเสิร์ฟ) → kdsBoardAction ของสถานี/expo · ?station=",
+        "state": "appears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ],
+      "opener": [
+        "pos-kds-tab-expo"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17784,18 +19129,23 @@
       "kind": "select",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-kds-board",
-        "note": "390: ตัวเลือกสถานี/expo แทนแท็บ"
+        "note": "390: ตัวเลือกสถานี/expo แทนแท็บ",
+        "state": "changes"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17803,36 +19153,48 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-kds-col-*",
-        "note": "390: แถบสลับคอลัมน์ ใหม่/กำลังทำ/พร้อม (pos-kds-seg-new|cooking|ready)"
+        "target": "pos-kds-board",
+        "note": "390: แถบสลับคอลัมน์ ใหม่/กำลังทำ/พร้อม (pos-kds-seg-new|cooking|ready)",
+        "state": "changes"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-pause",
       "kind": "toggle",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-paused-banner",
-        "note": "หยุดรับออเดอร์ครัว = kitchenPauseAction เดิมของร้านอาหาร (restaurant.kitchen.pause · ไม่มีสิทธิ์ = ปิด + tooltip) → ป้ายพักครัว"
+        "note": "หยุดรับออเดอร์ครัว = kitchenPauseAction เดิมของร้านอาหาร (restaurant.kitchen.pause · ไม่มีสิทธิ์ = ปิด + tooltip) → ป้ายพักครัว",
+        "db": "RestaurantSetting.kitchenPaused (setKitchenPause)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ครัวยังไม่ได้พัก (RestaurantSetting.kitchenPaused false)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17840,18 +19202,21 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "ui",
+        "type": "toast",
         "target": "pos-kds-toast",
         "note": "พิมพ์ใบครัว: ใบที่เลือก ไม่งั้นทุกใบในคอลัมน์ใหม่ (kitchenSlipPayloadAction → ทางพิมพ์ P1.10)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-P1",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "external",
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17859,90 +19224,126 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-menu-*",
-        "note": "ตั๋ว pos-kds-ticket-<orderId> — กดค้าง/คลิกขวา = เมนูของใบ"
+        "note": "ตั๋ว pos-kds-ticket-<orderId> — กดค้าง/คลิกขวา = เมนูของใบ",
+        "state": "appears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-start-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-ticket-*",
-        "note": "แตะใบใหม่ = เริ่มทำ (kdsStartAction · restaurant.kds.advance · แคชเชียร์ = ปิด + tooltip)"
+        "note": "แตะใบใหม่ = เริ่มทำ (kdsStartAction · restaurant.kds.advance · แคชเชียร์ = ปิด + tooltip)",
+        "db": "RestaurantOrderItem COOKING (kitchenMoveInTx)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวสถานะใหม่ (NEW) บนบอร์ดสถานีแรก"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-line-*",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-ticket-*",
-        "note": "แตะบรรทัดของใบกำลังทำ = เสร็จบรรทัดนั้น (kdsLineDoneAction) · เสร็จแล้ว = ขีดฆ่า"
+        "note": "แตะบรรทัดของใบกำลังทำ = เสร็จบรรทัดนั้น (kdsLineDoneAction) · เสร็จแล้ว = ขีดฆ่า",
+        "db": "RestaurantOrderItem READY (kitchenMoveInTx · บรรทัด)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-start-*"
+      ],
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-done",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-ticket-*",
-        "note": "เสร็จทั้งใบ (kdsTicketDoneAction) · เลยเป้า = ปุ่มทึบ"
+        "note": "เสร็จทั้งใบ (kdsTicketDoneAction) · เลยเป้า = ปุ่มทึบ",
+        "db": "RestaurantOrderItem READY (kitchenMoveInTx)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวที่ยังไม่พร้อม (NEW/COOKING)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-served",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-ticket-*",
-        "note": "เสิร์ฟแล้ว (kdsServedAction) · expo = ทุกสถานีของรอบทีละสถานี หยุดที่คำปฏิเสธแรก"
+        "note": "เสิร์ฟแล้ว (kdsServedAction) · expo = ทุกสถานีของรอบทีละสถานี หยุดที่คำปฏิเสธแรก",
+        "db": "RestaurantOrderItem SERVED (kitchenMoveInTx · servedAt)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-done"
+      ],
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17950,36 +19351,51 @@
       "kind": "menu",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-menu-*",
-        "note": "⋯ ของใบ → เมนู เร่ง · พิมพ์ใบนี้ · เลือกใบนี้"
+        "note": "⋯ ของใบ → เมนู เร่ง · พิมพ์ใบนี้ · เลือกใบนี้",
+        "state": "appears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-rush",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-rush-chip-*",
-        "note": "เร่ง/ยกเลิกเร่ง (kdsRushAction · restaurant.order.rush)"
+        "note": "เร่ง/ยกเลิกเร่ง (kdsRushAction · restaurant.order.rush)",
+        "db": "RestaurantOrder.isRush + RestaurantOrderItem.isRush (kitchenRushInTx)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-more-*"
+      ],
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวที่ยังไม่พร้อม (NEW/COOKING) และยังไม่เร่ง"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -17987,18 +19403,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "ui",
+        "type": "toast",
         "target": "pos-kds-toast",
         "note": "พิมพ์ใบนี้ (ใบที่เริ่มแล้ว/เคยพิมพ์ = พิมพ์ซ้ำ)"
       },
       "wo": "P2.6U",
-      "oracle": "qc-pos-p2.6",
+      "oracle": "P2.6-P1",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "external",
+      "opener": [
+        "pos-kds-more-*"
+      ],
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18006,43 +19431,59 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-kds-print",
-        "note": "เลือกใบนี้ให้ปุ่มพิมพ์ใบครัว (กรอบสีเน้น)"
+        "target": "pos-kds-ticket-*",
+        "note": "เลือกใบนี้ให้ปุ่มพิมพ์ใบครัว (กรอบสีเน้น)",
+        "state": "changes"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-more-*"
+      ],
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-recall",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-toast",
-        "note": "แถบเสิร์ฟแล้ววันนี้ → ดึงใบล่าสุดกลับ (kdsRecallAction · restaurant.kds.recall · อื่น = ปิด)"
+        "note": "แถบเสิร์ฟแล้ววันนี้ → ดึงใบล่าสุดกลับ (kdsRecallAction · restaurant.kds.recall · อื่น = ปิด)",
+        "db": "RestaurantOrderItem COOKING (kitchenMoveInTx · ดึงกลับ)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "ใบที่เสิร์ฟแล้ววันนี้ของสาขา (servedToday.last)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-setup-link",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -18053,7 +19494,8 @@
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สาขายังไม่มีสถานีครัว (posqc-btn-unit ตามค่าเริ่ม = มี)"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18061,6 +19503,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -18072,7 +19515,12 @@
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18080,6 +19528,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -18091,7 +19540,11 @@
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "mobile"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18099,18 +19552,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-86-sheet",
-        "note": "แตะนอกแผ่น = ปิด"
+        "note": "แตะนอกแผ่น = ปิด",
+        "state": "disappears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ],
+      "opener": [
+        "pos-kds-86*"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18118,18 +19581,24 @@
       "kind": "form",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-86-sheet",
-        "note": "แผ่นแจ้งของหมด (ค้นหาเมนูของสาขา · หมด/คืนขาย · รายการที่หมด · หมายเหตุ)"
+        "note": "แผ่นแจ้งของหมด (ค้นหาเมนูของสาขา · หมด/คืนขาย · รายการที่หมด · หมายเหตุ)",
+        "state": "appears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-86*"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18137,18 +19606,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-86-sheet",
-        "note": "ปิดแผ่น"
+        "note": "ปิดแผ่น",
+        "state": "disappears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-86*"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18156,18 +19631,23 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-kds-86-item-*",
-        "note": "ค้นหาเมนู (กรองฝั่ง client)"
+        "note": "ค้นหาเมนู (กรองฝั่ง client)",
+        "state": "changes"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-86*"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18175,18 +19655,24 @@
       "kind": "input",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-86-sheet",
-        "note": "หมายเหตุของการแจ้ง (≤ 200)"
+        "note": "หมายเหตุของการแจ้ง (≤ 200)",
+        "state": "changes"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-86*"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18194,18 +19680,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-toast",
-        "note": "หมด/คืนขาย ของเมนู (setAvailabilityAction source KDS)"
+        "note": "หมด/คืนขาย ของเมนู (setAvailabilityAction source KDS)",
+        "db": "AuditLog pos.product.availability + PosAvailabilityMark source KDS (upsert/ลบ)"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-86*"
+      ],
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "เมนูที่ส่งเข้าสถานีครัวของสาขา (kdsKitchenProducts)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/kds",
@@ -18213,18 +19708,27 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-kds-toast",
-        "note": "คืนขายจากรายการที่หมดอยู่"
+        "note": "คืนขายจากรายการที่หมดอยู่",
+        "db": "AuditLog pos.product.availability + PosAvailabilityMark ถูกลบ"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-kds-86*"
+      ],
+      "needs": [
+        "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
+        "สินค้าที่แจ้งหมดอยู่ของสาขา (PosAvailabilityMark/เมนูหมด)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -18380,54 +19884,69 @@
       "testid": "pos-ord-kitchen-max-minus",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-kitchen-max",
-        "note": "ลดเพดานครัวค้าง (kdsSetAutoAcceptMaxAction · 1 → ปิด)"
+        "note": "ลดเพดานครัวค้าง (kdsSetAutoAcceptMaxAction · 1 → ปิด)",
+        "db": "RestaurantSetting.autoAcceptMaxOpen + AuditLog pos.kds.autoAcceptMax"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-kitchen-max-plus"
+      ],
+      "needs": "สาขามีสถานีครัว (kdsKitchenState backlog > 0 · src/components/pos/orders/OrdersRail.tsx:141)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-kitchen-max-plus",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-kitchen-max",
-        "note": "เพิ่มเพดานครัวค้าง (ปิด → 8 · ≤ 99)"
+        "note": "เพิ่มเพดานครัวค้าง (ปิด → 8 · ≤ 99)",
+        "db": "RestaurantSetting.autoAcceptMaxOpen + AuditLog pos.kds.autoAcceptMax"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "สาขามีสถานีครัว (kdsKitchenState backlog > 0 · src/components/pos/orders/OrdersRail.tsx:141)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-kitchen-max-off",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "pos-ord-kitchen-max",
-        "note": "ปิดการพักรับอัตโนมัติตามคิวครัว (null)"
+        "note": "ปิดการพักรับอัตโนมัติตามคิวครัว (null)",
+        "db": "RestaurantSetting.autoAcceptMaxOpen = null + AuditLog pos.kds.autoAcceptMax"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-kitchen-max-plus"
+      ],
+      "needs": "สาขามีสถานีครัว (kdsKitchenState backlog > 0 · src/components/pos/orders/OrdersRail.tsx:141)"
     },
     {
       "page": "/app/sys/[id]/pos/products",
@@ -18472,25 +19991,33 @@
       "kind": "tab",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-kds-expo",
-        "note": "รวมเสิร์ฟ (Expo) = ตั๋ว READY ทุกสถานีรวมตามรอบ"
+        "note": "รวมเสิร์ฟ (Expo) = ตั๋ว READY ทุกสถานีรวมตามรอบ",
+        "state": "appears"
       },
       "wo": "P2.6U",
       "oracle": "qc-pos-p2.6",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "viewport": [
+        "desktop",
+        "tablet"
+      ],
+      "needs": "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit"
     },
     {
       "page": "/app/u/[unitSlug]/restaurant/kds",
       "testid": "pos-kds-legacy-open",
       "kind": "link",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [],
       "expect": {
@@ -22002,16 +23529,24 @@
       "kind": "filter",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ราง: หน้าร้าน QR N = รอบที่แขกสั่งผ่าน QR โต๊ะวันนี้ (qrTableRoundsAction) — กรองกระดานเหลือการ์ดรอบ QR (เดิมชิปเร็ว ๆ นี้)"
+        "note": "ราง: หน้าร้าน QR N = รอบที่แขกสั่งผ่าน QR โต๊ะวันนี้ (qrTableRoundsAction) — กรองกระดานเหลือการ์ดรอบ QR (เดิมชิปเร็ว ๆ นี้)",
+        "state": "selected",
+        "target": "pos-ord-ch-qr-table"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "viewport": [
+        "desktop",
+        "tablet"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -22019,16 +23554,23 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "navigate",
-        "note": "การ์ดรอบ QR โต๊ะ \"QR โต๊ะ B2 · #18 · ครัวกำลังทำ 0/2 · เก็บเงินรวมกับบิลโต๊ะ\" → /pos/tables?unit=&open=<session> (เปิดแผงโต๊ะ)"
+        "note": "การ์ดรอบ QR โต๊ะ \"QR โต๊ะ B2 · #18 · ครัวกำลังทำ 0/2 · เก็บเงินรวมกับบิลโต๊ะ\" → /pos/tables?unit=&open=<session> (เปิดแผงโต๊ะ)",
+        "target": "/app/sys/[id]/pos/tables"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-ord-coltab-preparing"
+      ],
+      "needs": "รอบที่แขกสั่งผ่าน QR โต๊ะวันนี้ (qrTableRoundsAction)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -22036,16 +23578,23 @@
       "kind": "link",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "navigate",
-        "note": "แถวเสร็จวันนี้ของรอบ QR โต๊ะ (เสิร์ฟครบ) → หน้าโต๊ะ"
+        "note": "แถวเสร็จวันนี้ของรอบ QR โต๊ะ (เสิร์ฟครบ) → หน้าโต๊ะ",
+        "target": "/app/sys/[id]/pos/tables"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-ord-coltab-done"
+      ],
+      "needs": "รอบที่แขกสั่งผ่าน QR โต๊ะวันนี้ (qrTableRoundsAction) ที่เสิร์ฟครบ"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -22053,16 +23602,21 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "รอชำระ: แถวออเดอร์จ่ายก่อนที่เงินยังไม่เข้า (นับถอยหลังถึงหมดเวลาจ่าย) → เลือก/เปิดแผง"
+        "note": "รอชำระ: แถวออเดอร์จ่ายก่อนที่เงินยังไม่เข้า (นับถอยหลังถึงหมดเวลาจ่าย) → เลือก/เปิดแผง",
+        "state": "appears",
+        "target": "pos-ord-panel"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "needs": "ออเดอร์จ่ายก่อนที่รอเงินเข้า (PosOrder PENDING_PAYMENT · ช่องทาง QR_ORDER)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -22070,16 +23624,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "mutation",
-        "note": "รอชำระ: ลูกค้าแจ้งโอนแล้ว → ยืนยันรับเงิน = confirmPaymentIntentManualAction (กติกาผู้จัดการเดิม · ปิดเมื่อไม่มีสิทธิ์) → PREPAID"
+        "note": "รอชำระ: ลูกค้าแจ้งโอนแล้ว → ยืนยันรับเงิน = confirmPaymentIntentManualAction (กติกาผู้จัดการเดิม · ปิดเมื่อไม่มีสิทธิ์) → PREPAID",
+        "target": "pos-ord-toast",
+        "db": "PosPaymentIntent PAID (markPaidCore) + AuditLog pos.payment.manual_confirm"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "safety": "money",
+      "needs": [
+        "ออเดอร์จ่ายก่อนที่รอเงินเข้า (PosOrder PENDING_PAYMENT · ช่องทาง QR_ORDER)",
+        "ลูกค้าแจ้งโอนแล้ว (customerClaimAt)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -22087,16 +23650,20 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "modal",
-        "note": "รอชำระ: ยกเลิก → แผ่นเหตุผลปฏิเสธ (rejectOrderAction · ใบขอรับเงินถูกยกเลิกในธุรกรรมเดียวกัน)"
+        "note": "รอชำระ: ยกเลิก → แผ่นเหตุผลปฏิเสธ (rejectOrderAction · ใบขอรับเงินถูกยกเลิกในธุรกรรมเดียวกัน)",
+        "target": "pos-ord-reject-sheet"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "needs": "ออเดอร์จ่ายก่อนที่รอเงินเข้า (PosOrder PENDING_PAYMENT · ช่องทาง QR_ORDER)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -22104,16 +23671,21 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "แบนเนอร์เงินเข้าหลังหมดเวลา (S5) → เปิดแผงของออเดอร์นั้น"
+        "note": "แบนเนอร์เงินเข้าหลังหมดเวลา (S5) → เปิดแผงของออเดอร์นั้น",
+        "state": "appears",
+        "target": "pos-ord-panel"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "needs": "เงินเข้าหลังหมดเวลาจ่าย (prepay.latePaid)"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -22121,16 +23693,28 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "mutation",
-        "note": "แผง: ออเดอร์รอเงินเข้าที่ลูกค้าแจ้งโอน → ยืนยันรับเงิน ฿x (confirmPaymentIntentManualAction)"
+        "note": "แผง: ออเดอร์รอเงินเข้าที่ลูกค้าแจ้งโอน → ยืนยันรับเงิน ฿x (confirmPaymentIntentManualAction)",
+        "target": "pos-ord-toast",
+        "db": "PosPaymentIntent PAID (markPaidCore) + AuditLog pos.payment.manual_confirm"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "safety": "money",
+      "opener": [
+        "pos-ord-await-card-*"
+      ],
+      "needs": [
+        "ออเดอร์จ่ายก่อนที่รอเงินเข้า (PosOrder PENDING_PAYMENT · ช่องทาง QR_ORDER)",
+        "ลูกค้าแจ้งโอนแล้ว (customerClaimAt)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22138,16 +23722,23 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "modal",
-        "note": "แผงโต๊ะ: QR ของโต๊ะ → กล่อง QR (qrTablesAction · ภาพ QR + ลิงก์ /q/t/<qrToken>)"
+        "note": "แผงโต๊ะ: QR ของโต๊ะ → กล่อง QR (qrTablesAction · ภาพ QR + ลิงก์ /q/t/<qrToken>)",
+        "target": "pos-tbl-qr-dialog"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-card-*"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22155,16 +23746,20 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "modal",
-        "note": "แถบบนผัง: พิมพ์ QR ทุกโต๊ะ → แผ่น A4 3 คอลัมน์ (ชื่อร้าน · ชื่อโต๊ะ · QR)"
+        "note": "แถบบนผัง: พิมพ์ QR ทุกโต๊ะ → แผ่น A4 3 คอลัมน์ (ชื่อร้าน · ชื่อโต๊ะ · QR)",
+        "target": "pos-tbl-qr-sheet"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22172,16 +23767,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดกล่อง QR ของโต๊ะ"
+        "note": "ปิดกล่อง QR ของโต๊ะ",
+        "state": "disappears",
+        "target": "pos-tbl-qr-dialog"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-qr"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22189,16 +23793,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "คัดลอกลิงก์ <origin>/q/t/<qrToken>"
+        "note": "คัดลอกลิงก์ <origin>/q/t/<qrToken>",
+        "state": "changes",
+        "target": "pos-tbl-qr-copy"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-qr"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22206,16 +23819,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "modal",
-        "note": "พิมพ์ QR โต๊ะนี้ → แผ่นพิมพ์ (ช่องเดียว)"
+        "note": "พิมพ์ QR โต๊ะนี้ → แผ่นพิมพ์ (ช่องเดียว)",
+        "target": "pos-tbl-qr-sheet"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-qr"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22223,16 +23844,25 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "เปลี่ยน QR → กล่องยืนยันในกล่องเดิม (ปิด + คำอธิบายเมื่อไม่มี restaurant.table.rotateQr)"
+        "note": "เปลี่ยน QR → กล่องยืนยันในกล่องเดิม (ปิด + คำอธิบายเมื่อไม่มี restaurant.table.rotateQr)",
+        "state": "appears",
+        "target": "pos-tbl-qr-rotate-box"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-qr"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22240,16 +23870,26 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ยกเลิกการเปลี่ยน QR"
+        "note": "ยกเลิกการเปลี่ยน QR",
+        "state": "disappears",
+        "target": "pos-tbl-qr-rotate-box"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-qr",
+        "pos-tbl-qr-rotate"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22257,16 +23897,26 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "mutation",
-        "note": "ยืนยันเปลี่ยน QR = rotateTableQrAction (restaurant.table.rotateQr · QR เดิมใช้ไม่ได้ทันที) → toast + ภาพ QR ใหม่"
+        "note": "ยืนยันเปลี่ยน QR = rotateTableQrAction (restaurant.table.rotateQr · QR เดิมใช้ไม่ได้ทันที) → toast + ภาพ QR ใหม่",
+        "target": "pos-tbl-toast",
+        "db": "RestaurantTable.qrToken (rotateTableQrForPos) + AuditLog restaurant.table.rotateQr"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-card-*",
+        "pos-tbl-panel-qr",
+        "pos-tbl-qr-rotate"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22274,16 +23924,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "แผ่นพิมพ์ QR: พิมพ์ (window.print · CSS @page A4)"
+        "note": "แผ่นพิมพ์ QR: พิมพ์ (window.print · CSS @page A4)",
+        "state": "unchanged",
+        "target": "pos-tbl-qr-sheet"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-print-qr"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -22291,16 +23949,24 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "expect": {
         "type": "ui",
-        "note": "ปิดแผ่นพิมพ์ QR"
+        "note": "ปิดแผ่นพิมพ์ QR",
+        "state": "disappears",
+        "target": "pos-tbl-qr-sheet"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "hiddenFor": [],
+      "opener": [
+        "pos-tbl-print-qr"
+      ],
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -24454,6 +26120,7 @@
       "kind": "button",
       "roles": [
         "owner",
+        "manager",
         "cashier"
       ],
       "hiddenFor": [],
@@ -24464,16 +26131,22 @@
         "db": "PosOrder.paymentState PENDING_PAYMENT + PosPaymentIntent + PosOrderEvent payment_requested + ChatMessage(OUT, pos:ordpay)"
       },
       "wo": "P3.7U",
-      "oracle": "",
+      "oracle": "P3.7-CO1",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "safety": "external",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": "ออเดอร์แชท (CHAT · ไม่ใช่แพลตฟอร์ม) NEW ยังไม่จ่ายเป็นการ์ดแรก ผูกห้องแชท + สาขามีพร้อมเพย์"
     },
     {
       "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-chatpay-copy",
       "kind": "button",
       "roles": [
-        "owner"
+        "owner",
+        "manager"
       ],
       "hiddenFor": [
         "cashier"
@@ -24481,12 +26154,20 @@
       "expect": {
         "type": "ui",
         "target": "pos-ord-chatpay-copy",
-        "note": "CD-P37U-4: ผล ok ∧ !sent (ส่งเข้าแชทไม่สำเร็จ) → คัดลอกลิงก์สถานะ/ชำระ (statusUrl) ลงคลิปบอร์ด · ป้ายเปลี่ยนเป็น \"คัดลอกแล้ว\" · ไม่เขียนอะไร"
+        "note": "CD-P37U-4: ผล ok ∧ !sent (ส่งเข้าแชทไม่สำเร็จ) → คัดลอกลิงก์สถานะ/ชำระ (statusUrl) ลงคลิปบอร์ด · ป้ายเปลี่ยนเป็น \"คัดลอกแล้ว\" · ไม่เขียนอะไร",
+        "state": "changes"
       },
       "wo": "P3.7U",
       "oracle": "",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": [
+        "ออเดอร์แชท (CHAT · ไม่ใช่แพลตฟอร์ม) NEW ยังไม่จ่ายเป็นการ์ดแรก ผูกห้องแชท + สาขามีพร้อมเพย์",
+        "ผลส่งลิงก์ชำระที่ส่งเข้าแชทไม่สำเร็จ (กดส่งลิงก์ก่อน — ตัวกดไม่กดแถวภายนอก)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
