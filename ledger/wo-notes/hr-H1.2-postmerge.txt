@@ -1,0 +1,17 @@
+# post-merge sanity session/hr @c7753731 · 2026-10-22T20:40:07Z · load 5.92 4.08 3.82
+prisma generate exit=0 [20:40Z]
+qc-hr-h1.2 exit=1 ===== qc-hr-h1.2 ===== passed 71/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":71,"failed":["H1.2-S7.2","H1.2-S7.4"],"findings":[{"id":"H1.2-S7.2","sev":"MAJOR"},{"id":"H1.2-S7.4","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"baseGree · RESIDUE none (tenants=2 users=8) [20:40Z]
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.1","total":81,"passed":81,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":64,"baseGreen":17,"offBase":["H1.1-S1.1(RED→pass)","H1.1-S1.2(RED→pass)","H1.1-S1.3(RED→pass)" · RESIDUE none (tenants=3 users=14) [20:40Z]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [20:43Z]
+qc-payroll exit=0 ===== QC Payroll ไทย ===== JSON_SUMMARY {"total":19,"passed":19,"findings":[]}   [20:43Z]
+qc-nav-functions exit=0   [20:43Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 27/27 JSON_SUMMARY {"suite":"seed-hr-qc","total":27,"passed":27,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":27,"BusinessUnit":2,"HrAttend  [20:44Z]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [20:44Z]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [20:44Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [20:44Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [20:44Z]
+typecheck start 20:44Z availMB=9788 busy=0
+typecheck exit=0 errors=0 [20:48Z]
+ALLDONE 2026-10-22T20:48:12Z
+qc-hr-h1.2 RERUN (after seed refreshed hr-expected.json) exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"baseGreen":17,"offBase":["H1.2-S1.1(RED→pass)","H1.2-S1.2(RED→pass)","H1.2-S1.3(RED→pass)" · RESIDUE none (tenants=2 users=8) [20:49Z]
+RERUNDONE
