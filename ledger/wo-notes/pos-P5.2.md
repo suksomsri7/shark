@@ -99,3 +99,31 @@ PRESUBMIT head=d02e5a39 green=19 red=3 expected-lane-pin=2 unexpected-red=qc-pos
 
 ## Visual states for the controller (no UI change in this round)
 None required (server-only; the limited paths reuse existing cards `pos-qr-invalid` / `PosReceiptUnavailable`). Optional spot check: `/q/t/<token>` and `/r/<token>` still render normally.
+
+## Fix round 2 (controller B: R1 = MERGEABLE-AFTER-FIXES · ruling CD-P52-F3b) — 22 Oct 03:2xZ–04:0xZ
+Commits on top of fb82257c: be1de206 (item 1 fix) · 951b313c (item 2 fix) · 021496c8 (test ORACLE-EDIT P6 + new P9) · this notes commit.
+
+### Item 1 (F1+F2 High · CD-P52-F3b) — `/q` guessing guard in one place
+- `src/lib/modules/pos/qr-order.ts:87–112` `qrGuard(name, body, gate?: {meta, token, family?})`: no meta = internal caller = uncounted (`chat-link.ts:277 linkDoor(token)` unchanged). (a) `:96` peek miss bucket (read-only) before the body → full ⇒ `TOKEN_INVALID()` (the miss shape, valid tokens too); (b) `:99–101` result TOKEN_INVALID ⇒ `qrCountMiss` (write doors included: tableCtx/linkCtx/exists misses at placeTableRound/tableServiceRequest/tableNotifyPaid/placePreorder/claimPaid now count before submitGuard is reached); (c) `:103–106` valid token + family ⇒ `qrHitGuard` per (ip, sha256(token)[0..16]) ⇒ RATE_LIMITED.
+- All 12 doors pass the gate at their closing `}, { meta, token, family? })` (reads tableDoor/tablePoll/tableBill/linkDoor/orderStatus + quotes with family; writes without — submitGuard keeps per-token + per-IP submit limits). `quoteTableCart` `:343` / `quotePreorderCart` `:606` gained `meta?`; `(store)/q/actions.ts:61,92` pass `{ip}`.
+- Removed fix1's per-IP success counting: `readGuard` + the 5 `readGuard` calls in the doors; `POS_PUBLIC_RATE` qrTable/qrOrder/qrLink rows (receipt rows stay — F2 is per IP by ruling).
+- `src/lib/modules/pos/public-rate.ts:40–75`: `QR_MISS_PER_IP_PER_MIN` · `QR_HIT_RATE` · `qrMissExhausted` (`prisma.chatRateBucket.findUnique`, fail-open) · `qrCountMiss` · `qrHitGuard` (key hashes the token — ChatRateBucket rows live 24 h).
+- **Final budgets**: misses **30/min per IP** (full ⇒ every token from that IP = TOKEN_INVALID until the window ends) · per (ip, token) per minute: **qrTable 54** (3 × (8 polls + 8 bills + 2)) · **qrOrder 39** (3 × (12 + 1)) · **qrLink 30** · **qrQuote 90** (3 × 30 cart edits/min; useQrQuote fires 250 ms after the last edit) · receipts unchanged (receiptRead 60/IP · receiptSubmit 30/IP).
+- Shared-IP item 4 of fix1 is resolved by keying hits on (ip, token): guests on one Wi-Fi each read their own table/order token.
+
+### Item 2 (F4 Low)
+- `src/lib/modules/pos/receipt-settings.ts:158–159`: tenant-level `evaluate(m, {module:"pos", action:"pos.device.manage"})` (no unitId = tenant level) before the input/unitId shape check (was `:160` VALIDATION first). Per-unit gate still right after the shape check (`:164`).
+
+### Item 3 (F3 legacy `/s/[t]/[u]/restaurant/t/[qrToken]`) — **not included**, left for the hunters
+- Reason: routing `legacyTableQrRedirect` (`qr-order.ts:~800`) through the miss counter is small, but it does not close the oracle — when the redirect returns null the page falls through to the legacy `resolveTableSession` (restaurant module, page `:28`), which answers valid/invalid itself (and opens a session) with no limit. Closing it means limiting the legacy restaurant door = D11 / out-of-scope legacy module, not a ≤ 10-line change.
+
+### ORACLE-EDIT (021496c8)
+- P6 (static) now judges: qrGuard peek-before-body + miss count on TOKEN_INVALID + hit count via qrHitGuard · findUnique peek · hashed hit key · gate on all 12 doors (family on reads/quotes) · every call of those doors under `src/app/(store)/q/**` passes a meta with `ip` (paren-matched grep; 20 call sites).
+- P9 (new, DB self-test): two real order links of temp tenant A; IP A reads link 1 `QR_HIT_RATE.qrLink` (30) times ok, 31st = RATE_LIMITED; IP B on link 1 = ok; IP A on link 2 = ok; no meta = ok; 30 misses from IP M → link 2 from IP M = TOKEN_INVALID, from IP B = ok. Buckets `pos:pub:%:qc-p52-<RAND>-%` deleted in finally, counted in Z1.
+- **Red-before / probes**: new oracle on fix1 product code (qr-order.ts · public-rate.ts · (store)/q/actions.ts from fb82257c, temporarily, then `git checkout`) → **32/34, failed P6 + P9** (P9: "IP A × ลิงก์ 2 = RATE_LIMITED · ลิงก์จริงจาก IP M = RATE_LIMITED"). Static probe: drop `{ip}` from one call site → P6 ❌ "q/actions.ts … quoteTableCart(…) ไม่ส่ง meta {ip}".
+
+### Gates (head 021496c8 code)
+- `qc-pos-p5.2` forced **34/34** (03:37–03:43Z · guardHits 0 · residue 0) · `--no-db` **17/17**
+- qc-pos-p1.6 48/48 · qc-pos-p1.3 128/128 · qc-pos-p2.7 42/42 · qc-pos-p2.13 54/54 · qc-hf-pos-page-authz 87/87 · qc-pos-p1.18 81/81 · qc-chat-security 38/38 · qc-chat-security-scope 20/20 (all exit 0)
+- `pos-oracle-check.sh … qc-pos-p5.2 --base 2fb1fe8e` → VERDICT green (red 0 · warn 0)
+- Typecheck (2nd of this card, 03:55–03:58Z): `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` → **exit 0 · 0 errors**
