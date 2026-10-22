@@ -246,3 +246,61 @@ r2 results (load 36–56, one run at a time, same commands as B5; logs in the bu
 | `qc-hr-h0.3` | `ผ่าน 33/36` · `RESIDUE none` — S2.4 `allowed=6` (child's 3rd try ok), S4.3 `late=true` ×2 (1 row, all IN), S4.8 `TIMEOUT 3s` `ms 3105` `final ok` — same three timing reds as r1 | 1 |
 | `pnpm typecheck` (`timeout -k 10 5400`, COMMON form) | not completed: started 20:21Z, gate lock acquired ~20:34Z, killed by timeout at 21:51Z | 124 |
 Full typecheck still owed (CONTROLLER, quiet machine). The orphaned `tsc --noEmit` of that run was left running (instruction: do not stop running processes).
+
+## r3 oracle (S9)
+> Oracle writer r3 · 2026-10-22 · Claude Opus 5.5 · controller: Fable · branch `wip/pos-hr-h0.5` @ `1517ad7f` (verified) · input: `ledger/wo-notes/hr-H0.5-hunt.md` F1/F2/F3/F6 + controller rulings R3.1–R3.4 (R3.5 builder-only, no check).
+> Additive block in `scripts/qc-hr-h0.5.mts`: 7 `D(...)` rows before Z1 + the S9 block at the end of `runDb()` + `PINS9` (added to `SECRET_PINS`, so scrubbed). S1–S8 and Z1 untouched. The only edits outside S9: (a) `node:fs` import line gains `mkdtempSync/writeFileSync/rmSync` + `node:os` `tmpdir`; (b) a top-level `globalThis.AsyncLocalStorage ??= …` before the first product import. S9.7 needs (b) because Next binds its storage when its first module loads, and without it the action throws `Invariant: AsyncLocalStorage accessed in runtime where it is not available`. Same technique as `qc-hr-h0.3`. It doesn't change S1–S8 (proved: 58/58 still green).
+> S9 reuses tenant T1 (sA/sB, E4a holds `PINS.v4a`) and T3, so Z1's "3 tenants" stays true. `resetVerifyBucket(T1)` (prefix `hr-verifypin:<T1>`, which covers the per-caller keys) runs before every sub-check. Cleanup is the existing one: buckets `key contains tenantId`, membership by tenant, plus session + user for the temporary OWNER. S9 calls the facade through its own raw binding `verify9` (not `verifyFn`), so that the S4/S5 ORACLE-EDIT below cannot hide the "no callerKey" call of S9.5.
+
+| id | rule | sev | base (1517ad7f) | RED reason on base (actual) |
+|---|---|---|---|---|
+| S9.1 | R3.1 per-caller 10 wrong / 10 min · F3 | CRITICAL | RED | `A×10={"wrong":10} A#11=wrong A(ถูก)=ok` · no row `hr-verifypin:<T1>:<A>` · B ok. No per-caller bucket exists yet |
+| S9.2 | R3.1 failure-only (success consumes nothing) | CRITICAL | RED | 130 correct calls in 0.9 s ⇒ `{"ok":120,"limited":10}`, tenant bucket = 130. Successes are counted |
+| S9.3 | R3.1 tenant bucket counts failures across callers; ceiling refuses a correct PIN with `limitedText` | CRITICAL | RED | 10 correct + 12×10 wrong ⇒ `w120={"wrong":110,"limited":10}`, tenant bucket 130. The 10 successes ate 10 slots. (`c13`/`fresh` = limited is already correct) |
+| S9.4 | R3.2 one `hr.pin.locked` per lock, payload `callerKey`+`count`, no PIN / 4–6-digit run / employee id | MAJOR | RED | `rows=0` after S9.1 and after the 12th wrong call. No lock audit |
+| S9.5 | R3.1 missing / empty `callerKey` ⇒ wrong text, no DB bucket | CRITICAL | RED | correct PIN without `callerKey` ⇒ `ok(คน A)` both times, 1 bucket row created |
+| S9.6 | R3.3 backfill prod env guard (3 cases, fake env file in `mkdtemp`, minimal child env, `node_modules/.bin/tsx`) | CRITICAL | RED | (a) shell `HR_PIN_PEPPER` preset ⇒ script ran on, exit 1 from `P1001` on the fake URL, `JSON_SUMMARY` printed, no Thai refusal naming the variable. (b) `DATABASE_URL` preset ⇒ same. (c) no `HR_BACKFILL_ENV_FILE` ⇒ already exit 1 with Thai text naming it (green part). QC4 rows of T3 unchanged |
+| S9.7 | R3.4 `createEmployeeAction` ignores posted `pin` | MAJOR | RED | real action in the Next request scope as a temporary OWNER: a free PIN ⇒ `hash=match setAt=Y` (pin read and hashed). A taken PIN ⇒ no PIN, no D8 in the result (void), which is already the target |
+
+Totals on base: `ผ่าน 58/65 (QC_FORCE)` · `RESIDUE tenants=0 none (สร้าง 3 ร้าน · ผู้ใช้ 2)` · Z1 ✅ · exit 1. Output in `ledger/wo-notes/hr-H0.5-red-r3.txt`. S3.2 was green in this run (load 4.4).
+
+### What the checks pin down (for the builder)
+- Bucket keys exactly `hr-verifypin:<tenantId>` and `hr-verifypin:<tenantId>:<callerKey>` (S9.1 reads the per-caller row and needs `count ≥ 10` after 10 wrong. S9.3 reads the tenant row and needs exactly `120` after 120 failures, with 10 successes before them).
+- A success leaves **no** counted row: S9.2 accepts "no row" or `count 0` for both buckets. A peek must not create a row.
+- The 11th wrong call **and** a correct PIN from the locked caller are refused with `limitedText`. A correct PIN from another caller of the same tenant passes.
+- S9.4 counts audit rows whose JSON contains the caller key. It then strips the caller key, tenant/user ids and ISO timestamps, and requires that no `\d{4,6}` run, fixture PIN or employee id of the tenant remain. So `windowSec: 600` is fine, `windowMs: 600000` is not.
+- S9.6 refusal = exit 1 **and** a stderr line that contains both Thai text and the variable name, **and** no `JSON_SUMMARY`. The guard must fire before the file is loaded, even with a valid-looking (≥ 32 chars) preset pepper.
+- S9.7: the action's return value (void today) must not contain the D8 text or `pinSet:true`. `hr.createEmployee(ctx, { pin })` (service) still hashes (S7.4/S7.5 unchanged).
+
+### Rulings I could not encode as written / deviations
+1. **S9.6 `--dry-run`:** the script has no such flag (dry-run is the default) and refuses unknown args with exit 1 *before* the env block. Passing `--dry-run` would make every case exit 1 for the wrong reason. So the oracle runs `node_modules/.bin/tsx scripts/hr-backfill-pin-hash.mts --tenant <T3>` (default = dry-run). If the controller wants `--dry-run` accepted as an alias, that is a builder change plus an ORACLE-EDIT.
+2. **S9.6 child env:** minimal (`PATH HOME TMPDIR HR_BACKFILL_PROD=1` + the case variable). The parent's QC4 URL and real pepper never reach the child. The fake file holds `DATABASE_URL`/`DIRECT_URL=postgresql://qcfake:qcfake@127.0.0.1:1/…` and a fake 44-char pepper. Port 1 means the base can't reach any DB, so "QC4 row counts unchanged" holds trivially on the base. The check stays meaningful for a green build that misbehaves.
+3. **S9.6 case (c)** (no env file, nothing preset) is already correct on the base (exit 1, Thai text naming `HR_BACKFILL_ENV_FILE`). It is kept as a regression guard. The RED comes from (a) and (b).
+4. **R3.2 "first time a bucket trips"**: the check is agnostic on whether the row is written at the 10th failure or at the first refused call. Either gives exactly 1 row after S9.1, and the 12th call must not add one.
+5. **Whether a refused call consumes the tenant bucket** is not ruled. S9.3 reads the tenant count *before* the refused calls, so both readings pass.
+
+### 🔴 ORACLE-EDIT needed for a green r3 build (S1–S8 conflict with R3.1 — controller to rule; not applied, as instructed)
+R3.1 makes `callerKey` required, and missing ⇒ `wrong`. Every `verifyFn(...)` call in S1.5 (pepper worker), S4.x, X2.2 and S5.x passes no `callerKey`. On a correct r3 build these go RED: S1.5 (expects the not-configured text), S4.1, S4.2, S4.6, S4.7, X2.2, S5.1–S5.3, S5.7. Separately, S4.7 needs a bucket count `≥ 121`; with failure-only counting and a refused call that does not consume, the count is 120. Proposed exact hunks:
+```diff
+-const verifyFn: Any = idx?.verifyPin ?? pinMod?.verifyPin ?? null;
++const verifyRaw: Any = idx?.verifyPin ?? pinMod?.verifyPin ?? null;
++// H0.5 r3 ORACLE-EDIT ▸ R3.1 บังคับ callerKey — S1.5/S4/S5 ส่ง callerKey ไม่ซ้ำต่อครั้ง (ไม่มีผู้เรียกคนไหนถึง 10 ผิด · ถังร้านยังนับครบ) ◂
++let autoCaller = 0;
++const verifyFn: Any = verifyRaw && ((a: Any) => verifyRaw({ callerKey: `qc-auto:${process.pid}:${++autoCaller}`, ...a }));
+```
+```diff
+-      nLimited === 0 && first.every(isWrong) && v121?.ok === false && RE_LIMIT.test(String(v121?.reason ?? "")) && (bk?.count ?? 0) >= 121,
+-      "120 ครั้งไม่โดนจำกัด · ครั้งที่ 121 (PIN ถูก) ลองใหม่ในอีก N วินาที · ถัง count ≥ 121",
++      nLimited === 0 && first.every(isWrong) && v121?.ok === false && RE_LIMIT.test(String(v121?.reason ?? "")) && (bk?.count ?? 0) >= 120,
++      "120 ครั้งไม่โดนจำกัด · ครั้งที่ 121 (PIN ถูก) ลองใหม่ในอีก N วินาที · ถัง count ≥ 120 (r3: นับเฉพาะครั้งที่ผิด)",
+```
+With these, S4.7 becomes "120 failures from 120 distinct callers ⇒ the 121st call (correct PIN, new caller) is refused by the tenant ceiling", consistent with S9.3. S9 is unaffected (raw `verify9`). The base stays green on S1–S8 (the wrapper only adds a key the base ignores, and 130 ≥ 120).
+
+### Commands run (r3 oracle writer)
+- `node_modules/.bin/tsx scripts/qc-hr-h0.5.mts --list` (syntax / registry: 65 checks) ×4
+- `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h0.5.mts` foreground, one at a time, load 3.1–5.8 (`/proc/loadavg`) — 4 runs:
+  1. 04:37Z `58/65` — S9.7 harness error (AsyncLocalStorage invariant) ⇒ fixed (top-level `globalThis.AsyncLocalStorage`)
+  2. 04:39Z `58/65` — all S9 red for the right reason; S9.6 `rowsSame` cut by the 400-char actual limit ⇒ moved to the front
+  3. 04:41Z `58/65` — same
+  4. 04:43Z `58/65` (after switching S9 to the raw `verify9` binding) — **saved** as `hr-H0.5-red-r3.txt` · `RESIDUE tenants=0 none` · exit 1
+- No product code edited. No typecheck run: the oracle uses `Any` everywhere it touches new APIs. Note `next build` type-checks `scripts/*.mts`; the builder's typecheck covers it.

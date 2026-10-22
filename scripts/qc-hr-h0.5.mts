@@ -15,6 +15,9 @@
 // [S6] scripts/hr-backfill-pin-hash.mts --tenant <id> [--apply] (child process ผ่าน scripts/qc4.sh) · dry-run ไม่เขียน · apply ครั้งที่ 2 = 0
 // [S7] kiosk (clockWithPin → verifyPinForEmployee) · createEmployee({ pin }) · พ้นสภาพแล้วกลับมาทำงานโดน PIN ซ้ำ = ล้าง PIN (pinCleared)
 // [S8] static: ไม่มี pinCode/pinHash นอก hr/pin.ts (กระจก F16.5) · index.ts export verifyPin · migration · env.ts · DTO มีแค่ hasPin
+// [S9] r3 (มติผู้คุมงาน R3.1–R3.4 · hunt F1/F2/F3/F6): verifyPin ต้องมี callerKey · นับเฉพาะครั้งที่ผิด 2 ถัง
+//      (ร้าน hr-verifypin:<tenantId> 120/60 s + ผู้เรียก hr-verifypin:<tenantId>:<callerKey> 10 ผิด/10 นาที · peek ก่อน · ถูก = ไม่นับ) ·
+//      audit hr.pin.locked 1 แถวต่อการล็อก · backfill โหมด prod ปฏิเสธ env ที่ตั้งไว้ก่อน · createEmployeeAction ไม่อ่าน pin
 //
 // รัน (VPS เท่านั้น · QC4):
 //   bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h0.5.mts   (บังคับรันบนฐาน)
@@ -25,7 +28,8 @@
 //     ของร้าน — ลบ audit ก่อนร้าน เพราะ AuditLog.tenant = SetNull) · Z1 + บรรทัด RESIDUE tenants=<n>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, mkdtempSync, writeFileSync, rmSync } from "node:fs"; // H0.5 r3 ▸ S9.6 ไฟล์ env ปลอมชั่วคราว ◂
+import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
@@ -103,6 +107,14 @@ const CHECKS: readonly Def[] = [
   D("S8.5", "R7", "CRITICAL", "GREEN", "[static] privacy-shared.ts มี hasPin และไม่มี pinCode/pinHash ใน AST"),
   D("S8.6", "F16.5", "MAJOR", "RED", "[static] fitness-hr F165_BASELINE ว่าง · scanPinReaders() ว่าง · hr/pin.ts มีจริง"),
   D("S8.7", "R7", "MAJOR", "RED", "[static] hr/pin.ts: createHmac sha256 · ข้อความคงที่ (ไม่ได้ตั้งค่า / PIN ไม่ถูกต้อง / D8) · ไม่คืน e.message · ไม่มี console.*"),
+  // ── r3 (S9) — มติผู้คุมงาน R3.1–R3.4 ──
+  D("S9.1", "R3.1", "CRITICAL", "RED", "[verifyPin] ผู้เรียก A ผิด 10 ครั้ง → ครั้งที่ 11 (ผิด) และ PIN ถูกของ A = \"ลองใหม่ในอีก N วินาที\" · ถัง hr-verifypin:<tenantId>:<callerKey> · ผู้เรียก B (ร้านเดียวกัน) PIN ถูก ณ ตอนนั้น → ok (F3)"),
+  D("S9.2", "R3.1", "CRITICAL", "RED", "[verifyPin] นับเฉพาะครั้งที่ผิด: ผู้เรียกเดียว PIN ถูก 130 ครั้งใน 60 s → ok ทั้งหมด · ไม่มีถังของร้าน/ผู้เรียกถูกนับ"),
+  D("S9.3", "R3.1", "CRITICAL", "RED", "[verifyPin] ถังร้านนับความผิดข้ามผู้เรียก: ถูก 10 (ไม่นับ) + 12 ผู้เรียก × ผิด 10 = ผิดทั้ง 120 · ถังร้าน = 120 · ผู้เรียกที่ 13 ผิดครั้งแรก และผู้เรียกใหม่ PIN ถูก → ข้อความ limitedText (ไม่ใช่ PIN ไม่ถูกต้อง)"),
+  D("S9.4", "R3.2", "MAJOR", "RED", "[audit] หลัง S9.1 มี hr.pin.locked ของผู้เรียก A ในร้านนั้น 1 แถวพอดี · มี callerKey + count · ไม่มี PIN / เลข 4–6 หลัก / id พนักงาน · ผิดครั้งที่ 12 แล้วยัง 1 แถว"),
+  D("S9.5", "R3.1", "CRITICAL", "RED", "[verifyPin] ไม่มี callerKey (ไม่ส่ง / ว่าง) แม้ PIN ถูก → { ok:false, reason:\"PIN ไม่ถูกต้อง\" } · ไม่มีแถวถัง hr-verifypin:<tenantId>* เกิดขึ้น"),
+  D("S9.6", "R3.3", "CRITICAL", "RED", "[backfill] HR_BACKFILL_PROD=1: ตั้ง HR_PIN_PEPPER ไว้ก่อน / ตั้ง DATABASE_URL ไว้ก่อน / ไม่มี HR_BACKFILL_ENV_FILE → exit 1 · stderr ข้อความไทยระบุชื่อตัวแปร · ไม่มี JSON_SUMMARY · แถว QC4 ไม่เปลี่ยน (ไฟล์ env ปลอม)"),
+  D("S9.7", "R3.4", "MAJOR", "RED", "[action] createEmployeeAction ส่ง pin มาด้วย (PIN ว่าง และ PIN ที่คนอื่นถือ) → สร้างพนักงาน · ไม่มี PIN (pinHash/pinCode/pinSetAt null) · ไม่มีข้อความ D8 · pinSet ไม่เป็น true"),
   D("Z1", "-", "CRITICAL", "GREEN", "คืนสภาพ: ร้าน qc-hr-h0.5-* ถูกลบ · ไม่เหลือแถว HR/audit ของร้าน · ไม่เหลือ ChatRateBucket ของร้าน · ผู้ใช้ชั่วคราวถูกลบ"),
 ];
 
@@ -133,6 +145,9 @@ const PINS = {
   k71: "157301", k7w: "157309", c72: "157302", re: "2468",
 } as const;
 const SECRET_PINS = new Set<string>(Object.values(PINS).flatMap((v) => (Array.isArray(v) ? v : [v as string])));
+// H0.5 r3 ▸ PIN ของ S9 (ห้ามพิมพ์เหมือนกัน) ◂
+const PINS9 = { wrong: "835297", createFree: "157303" } as const;
+for (const p of Object.values(PINS9)) SECRET_PINS.add(p);
 const PEPPER = process.env.HR_PIN_PEPPER ?? "";
 const specHash = (tenantId: string, pin: string, pepper = PEPPER) => createHmac("sha256", pepper).update(`${tenantId}\u001f${pin}`).digest("hex");
 
@@ -403,6 +418,12 @@ if (!WORKER) {
 const PEP = process.env.HR_PIN_PEPPER ?? "";
 const spec = (tenantId: string, pin: string) => specHash(tenantId, pin, PEP);
 
+// H0.5 r3 ▸ S9.7 เรียก server action ใน Next request scope จำลอง — AsyncLocalStorage ต้องอยู่บน globalThis ก่อนโมดูล next ตัวแรกโหลด
+//   (ไม่งั้น next ใช้ตัวปลอมที่โยน "Invariant: AsyncLocalStorage accessed in runtime where it is not available") · ไม่กระทบ S1–S8 ◂
+{
+  const { AsyncLocalStorage } = await import("node:async_hooks");
+  (globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
+}
 const { prisma } = (await import("@/lib/core/db")) as Any;
 const P = prisma as Any;
 const { Prisma } = (await import("@prisma/client")) as Any;
@@ -984,6 +1005,237 @@ async function runDb(): Promise<void> {
   );
   const a7 = auditOf(await audits(T1, ["hr.pin.clear"]), A7, "hr.pin.clear");
   chk("S7.8", a7.some((r) => JSON.stringify([r.before, r.after]).includes("REACTIVATE_DUPLICATE")) && auditClean(a7, [PINS.re], [spec(T1, PINS.re)]), "hr.pin.clear มี REACTIVATE_DUPLICATE · ไม่มี PIN/hash", `rows=${a7.length} reason=${a7.some((r) => JSON.stringify([r.before, r.after]).includes("REACTIVATE_DUPLICATE"))}`);
+
+  // ═══ S9 r3 — มติผู้คุมงาน R3.1–R3.4 (hunt F1/F2/F3/F6) ═══
+  // ใช้ร้าน T1 ต่อ (Z1 นับ 3 ร้าน) · ล้างถัง hr-verifypin:<T1>* ก่อนแต่ละข้อ · ถังผู้เรียกมี tenantId ใน key ⇒ cleanup เดิมลบให้ (key contains tid)
+  console.log("── [S9] r3: ตัวจำกัด 2 ถังนับเฉพาะครั้งที่ผิด · audit ล็อก · backfill env · createEmployeeAction ไม่รับ pin ──");
+  const ck = (tag: string) => `qc9:${tag}:${stamp}`;
+  // ตัวจริงจาก facade โดยตรง (ไม่ผ่านตัวห่อใด ๆ ของ S1–S8) — S9.5 ต้องเห็นการเรียกที่ "ไม่มี callerKey" จริง
+  const verify9: Any = idx?.verifyPin ?? pinMod?.verifyPin ?? null;
+  const V9 = async (pin: string, callerKey?: string, extra: Any = {}): Promise<Any> =>
+    (await safe(() => verify9({ tenantId: T1, pin, ...(callerKey === undefined ? {} : { callerKey }), ...extra }))) as Any;
+  const isWrong9 = (r: Any) => r?.ok === false && r?.reason === T_WRONG;
+  const isLimited9 = (r: Any) => r?.ok === false && RE_LIMIT.test(String(r?.reason ?? ""));
+  const okA9 = (r: Any) => r?.ok === true && r.employeeId === E4a;
+  const one9 = (r: Any) => (isThrow(r) ? `THROW ${String(r.THROW).slice(0, 80)}` : okA9(r) ? "ok(คน A)" : r?.ok === true ? "ok(คนอื่น)" : isLimited9(r) ? "limited" : isWrong9(r) ? "wrong" : short(r, 60));
+  const bucketOf = async (key: string): Promise<number | null> => ((await P.chatRateBucket.findUnique({ where: { key }, select: { count: true } })) as Any)?.count ?? null;
+  const tKey = `hr-verifypin:${T1}`;
+  const cKey = (c: string) => `hr-verifypin:${T1}:${c}`;
+  const tag9 = (rs: Any[]) => {
+    const o: Record<string, number> = {};
+    for (const r of rs) {
+      const k = isThrow(r) ? "THROW" : r?.ok === true ? "ok" : isLimited9(r) ? "limited" : isWrong9(r) ? "wrong" : `other`;
+      o[k] = (o[k] ?? 0) + 1;
+    }
+    return JSON.stringify(o);
+  };
+  const lockedRows = async (c: string): Promise<Any[]> =>
+    ((await P.auditLog.findMany({ where: { tenantId: T1, action: "hr.pin.locked" }, select: { action: true, actorId: true, targetType: true, targetId: true, before: true, after: true }, orderBy: { createdAt: "asc" } })) as Any[]).filter((r) =>
+      JSON.stringify(r).includes(c),
+    );
+
+  // S9.6 — process ลูก 3 ตัว (ไฟล์ env ปลอม · env ขั้นต่ำ ไม่มี URL จริง) เริ่มก่อน เพื่อไม่ต้องรอ tsx บูตทีละตัว
+  const S96_PEPPER_FAKE = "qc-fake-pepper-not-a-secret-0000000000000000"; // ≥ 32 ตัว — ถ้ายาวไม่ถึง ฐานจะหยุดที่ exit 2 (ผิดเหตุผล)
+  const S96_URL_FAKE = "postgresql://qcfake:qcfake@127.0.0.1:1/qcfake?connect_timeout=2"; // พอร์ต 1 = ต่อไม่ได้ทันที · ไม่มีวันถึง QC4/prod
+  let tmp9 = "";
+  const s96Before = { emp: await P.hrEmployee.count({ where: { tenantId: T3 } }), plain: await P.hrEmployee.count({ where: { tenantId: T3, NOT: { pinCode: null } } }), audit: await P.auditLog.count({ where: { tenantId: T3 } }) };
+  const runBackfillEnv = (env: Record<string, string>): Promise<{ code: number | null; out: string; err: string }> =>
+    new Promise((res) => {
+      const c = spawn(join(ROOT, "node_modules/.bin/tsx"), [BACKFILL_FILE, "--tenant", T3], { cwd: ROOT, env: env as NodeJS.ProcessEnv });
+      let o = "";
+      let er = "";
+      const kill = setTimeout(() => c.kill("SIGKILL"), 240_000);
+      c.stdout.on("data", (d) => (o += String(d)));
+      c.stderr.on("data", (d) => (er += String(d)));
+      c.on("error", (e) => res({ code: -1, out: o, err: `spawn error ${errText(e)}` }));
+      c.on("close", (code) => {
+        clearTimeout(kill);
+        res({ code, out: o, err: er });
+      });
+    });
+  let s96P: Promise<{ code: number | null; out: string; err: string }[]> = Promise.resolve([]);
+  try {
+    tmp9 = mkdtempSync(join(tmpdir(), "qc-hr-h05-s96-"));
+    const envFile = join(tmp9, "fake.env");
+    writeFileSync(envFile, `# ค่าปลอมของข้อสอบ qc-hr-h0.5 S9.6 — ไม่ใช่ความลับ\nDATABASE_URL=${S96_URL_FAKE}\nDIRECT_URL=${S96_URL_FAKE}\nHR_PIN_PEPPER=${S96_PEPPER_FAKE}\n`, { mode: 0o600 });
+    // env ขั้นต่ำ — ไม่ส่ง env ของแม่ (มี DATABASE_URL ของ QC4 / pepper จริง) ให้ลูก
+    const base9: Record<string, string> = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/root", TMPDIR: tmpdir(), HR_BACKFILL_PROD: "1" };
+    s96P = Promise.all([
+      runBackfillEnv({ ...base9, HR_BACKFILL_ENV_FILE: envFile, HR_PIN_PEPPER: "qc-preset-pepper-from-shell-not-a-secret-000" }),
+      runBackfillEnv({ ...base9, HR_BACKFILL_ENV_FILE: envFile, DATABASE_URL: "postgresql://qcpreset:qcpreset@127.0.0.1:1/qcpreset?connect_timeout=2" }),
+      runBackfillEnv({ ...base9 }),
+    ]);
+  } catch (e) {
+    s96P = Promise.resolve([{ code: -2, out: "", err: `setup ${errText(e)}` }]);
+  }
+
+  if (!verify9) {
+    failAll(["S9.1", "S9.2", "S9.3", "S9.4", "S9.5"], `facade missing: hr/index.ts ไม่มี verifyPin${pinMod ? "" : ` · ${pinImportErr}`}`);
+  } else {
+    // S9.1 — ผู้เรียก A ผิด 10 → ครั้งที่ 11 ถูกปฏิเสธ · B ยังผ่าน
+    await resetVerifyBucket(T1);
+    const cA = ck("A");
+    const cB = ck("B");
+    const a10: Any[] = [];
+    for (let i = 0; i < 10; i++) a10.push(await V9(PINS9.wrong, cA));
+    const a11 = await V9(PINS9.wrong, cA);
+    const aOk = await V9(PINS.v4a, cA);
+    const bOk = await V9(PINS.v4a, cB);
+    const bkA = await bucketOf(cKey(cA));
+    chk(
+      "S9.1",
+      a10.every(isWrong9) && isLimited9(a11) && isLimited9(aOk) && okA9(bOk) && (bkA ?? 0) >= 10,
+      "A: ผิด 10 = PIN ไม่ถูกต้อง · ครั้งที่ 11 + PIN ถูกของ A = ลองใหม่ในอีก N วินาที · B PIN ถูก = ok · ถังผู้เรียก A ≥ 10",
+      `A×10=${tag9(a10)} A#11=${one9(a11)} A(ถูก)=${one9(aOk)} B(ถูก)=${one9(bOk)} bucket(${"hr-verifypin:<T1>:<A>"})=${bkA ?? "ไม่มีแถว"} tenant=${(await bucketOf(tKey)) ?? "ไม่มีแถว"}`,
+    );
+    // S9.4 — audit hr.pin.locked 1 แถวต่อการล็อก
+    const l1 = await lockedRows(cA);
+    const a12 = await V9(PINS9.wrong, cA);
+    const l2 = await lockedRows(cA);
+    const empIds = ((await P.hrEmployee.findMany({ where: { tenantId: T1 }, select: { id: true } })) as Any[]).map((e) => e.id as string);
+    const payloadOk = (r: Any) => {
+      const pay = JSON.stringify({ b: r.before ?? null, a: r.after ?? null });
+      return pay.includes("callerKey") && pay.includes(cA) && /"count"\s*:/.test(pay);
+    };
+    const cleanRow = (r: Any) => {
+      let s = JSON.stringify(r);
+      if (empIds.some((id) => s.includes(id))) return false;
+      s = s.split(cA).join("<ck>");
+      s = s.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z?/g, "<ts>"); // เวลาแบบ ISO ไม่นับเป็นเลข PIN
+      for (const x of [...tids, ...users]) s = s.split(x).join("<id>");
+      return ![...SECRET_PINS].some((p) => s.includes(p)) && !/(^|\D)\d{4,6}(\D|$)/.test(s) && !(PEP && s.includes(PEP));
+    };
+    chk(
+      "S9.4",
+      l1.length === 1 && payloadOk(l1[0]) && cleanRow(l1[0]) && isLimited9(a12) && l2.length === 1,
+      "หลัง S9.1: 1 แถว · มี callerKey (= A) + count · ไม่มี PIN/เลข 4–6 หลัก/id พนักงาน · ผิดครั้งที่ 12 (ถูกปฏิเสธ) แล้วยัง 1 แถว",
+      `rows=${l1.length} payload=${l1[0] ? payloadOk(l1[0]) : "-"} clean=${l1[0] ? cleanRow(l1[0]) : "-"} A#12=${one9(a12)} rowsAfter12=${l2.length}`,
+    );
+    // S9.2 — ถูก 130 ครั้ง ผู้เรียกเดียว ใน 60 s → ok ทั้งหมด · ไม่นับ
+    await resetVerifyBucket(T1);
+    const cS = ck("S");
+    const t92 = Date.now();
+    const s130: Any[] = [];
+    for (let b = 0; b < 130; b += 10) s130.push(...(await Promise.all(Array.from({ length: 10 }, () => V9(PINS.v4a, cS)))));
+    const el92 = Date.now() - t92;
+    const bT92 = await bucketOf(tKey);
+    const bC92 = await bucketOf(cKey(cS));
+    chk(
+      "S9.2",
+      s130.length === 130 && s130.every(okA9) && !bT92 && !bC92 && el92 < 60_000,
+      "130/130 ok คน A · ถังร้าน/ผู้เรียก ไม่มีแถวหรือ 0 · ภายใน 60 s",
+      `${tag9(s130)} ms=${el92} tenantBucket=${bT92 ?? "ไม่มีแถว"} callerBucket=${bC92 ?? "ไม่มีแถว"}`,
+    );
+    // S9.3 — ถังร้านนับความผิดข้ามผู้เรียก
+    await resetVerifyBucket(T1);
+    const t93 = Date.now();
+    const pre10: Any[] = [];
+    for (let i = 0; i < 10; i++) pre10.push(await V9(PINS.v4a, ck("pre")));
+    const callers = Array.from({ length: 12 }, (_, i) => ck(`c${i + 1}`));
+    const w120: Any[] = [];
+    for (let round = 0; round < 10; round++) w120.push(...(await Promise.all(callers.map((c) => V9(PINS9.wrong, c)))));
+    const bT93 = await bucketOf(tKey);
+    const c13 = await V9(PINS9.wrong, ck("c13"));
+    const fresh = await V9(PINS.v4a, ck("fresh"));
+    const el93 = Date.now() - t93;
+    chk(
+      "S9.3",
+      pre10.every(okA9) && w120.length === 120 && w120.every(isWrong9) && bT93 === 120 && isLimited9(c13) && isLimited9(fresh) && el93 < 60_000,
+      "ถูก 10 ok · ผิด 120 = PIN ไม่ถูกต้องทั้งหมด · ถังร้าน 120 · ผู้เรียกที่ 13 (ผิด) + ผู้เรียกใหม่ (ถูก) = ลองใหม่ในอีก N วินาที · ภายใน 60 s",
+      `pre10=${tag9(pre10)} w120=${tag9(w120)} tenantBucket=${bT93 ?? "ไม่มีแถว"} c13=${one9(c13)} fresh=${one9(fresh)} ms=${el93}`,
+    );
+    // S9.5 — ไม่มี callerKey = ผิดทันที ไม่แตะ DB ถัง
+    await resetVerifyBucket(T1);
+    const n1 = await V9(PINS.v4a);
+    const n2 = await V9(PINS.v4a, "");
+    const nb = await P.chatRateBucket.count({ where: { key: { startsWith: tKey } } });
+    chk(
+      "S9.5",
+      isWrong9(n1) && isWrong9(n2) && keysOf(n1) === "ok,reason" && nb === 0,
+      `ไม่ส่ง / ว่าง → { ok:false, reason:"${T_WRONG}" } · ถัง hr-verifypin:<T1>* = 0 แถว`,
+      `none=${one9(n1)} empty=${one9(n2)} keys=${keysOf(n1)} buckets=${nb}`,
+    );
+    await resetVerifyBucket(T1);
+  }
+
+  // S9.6 — ผล backfill env guard
+  try {
+    const rs = await s96P;
+    const s96After = { emp: await P.hrEmployee.count({ where: { tenantId: T3 } }), plain: await P.hrEmployee.count({ where: { tenantId: T3, NOT: { pinCode: null } } }), audit: await P.auditLog.count({ where: { tenantId: T3 } }) };
+    const thaiWith = (s: string, v: string) => s.split("\n").some((l) => l.includes(v) && /[฀-๿]/.test(l));
+    const NAMES96 = ["HR_PIN_PEPPER", "DATABASE_URL", "HR_BACKFILL_ENV_FILE"];
+    const per = NAMES96.map((v, i) => {
+      const r = rs[i];
+      if (!r) return { v, ok: false, d: "ไม่มีผล" };
+      const ok = r.code === 1 && thaiWith(r.err, v) && !r.out.includes("JSON_SUMMARY");
+      const tail = scrub((r.err || r.out).replace(/\s+/g, " ")).replace(/postgres\S*/g, "<url>").slice(-60);
+      return { v, ok, d: `exit=${r.code} thai+${v}=${thaiWith(r.err, v)} summary=${r.out.includes("JSON_SUMMARY")} · ${tail}` };
+    });
+    const same = JSON.stringify(s96Before) === JSON.stringify(s96After);
+    chk(
+      "S9.6",
+      per.every((x) => x.ok) && same,
+      "3 กรณี: exit 1 · stderr ไทยระบุตัวแปร · ไม่มี JSON_SUMMARY · แถว QC4 ของร้าน backfill ไม่เปลี่ยน",
+      `rowsSame=${same} · ${per.map((x) => `[${x.v}] ${x.d}`).join(" | ")}`,
+    );
+  } finally {
+    if (tmp9) {
+      try {
+        rmSync(tmp9, { recursive: true, force: true }); // ลบเฉพาะโฟลเดอร์ที่ข้อสอบสร้าง
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  // S9.7 — createEmployeeAction ตัวจริงใน Next request scope (เทคนิค qc-hr-h0.3) · OWNER ชั่วคราว
+  {
+    let s97 = "";
+    let ok97 = false;
+    try {
+      const nextWork = (await import("next/dist/server/app-render/work-async-storage.external.js" as string)) as Any;
+      const nextWorkUnit = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string)) as Any;
+      const nextCookies = (await import("next/dist/server/web/spec-extension/cookies.js" as string)) as Any;
+      const coreHash = (await import("@/lib/core/hash" as string)) as Any;
+      const act = (await import("@/lib/modules/hr/actions" as string)) as Any;
+      const inScope = async <T,>(cookie: string, pathname: string, fn: () => Promise<T>): Promise<T> => {
+        const req = new Request(`http://qc.local${pathname}`, { headers: { cookie, "user-agent": SUITE, "x-forwarded-for": "203.0.113.150" } });
+        const jar = new nextCookies.RequestCookies(req.headers);
+        const workStore = { route: pathname, page: `${pathname}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+        const unit = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname, search: "" } };
+        return nextWork.workAsyncStorage.run(workStore, () => nextWorkUnit.workUnitAsyncStorage.run(unit, fn));
+      };
+      const ow = await P.user.create({ data: { email: `${SLUG}-owner9@qc.invalid`, name: `QC เจ้าของ S9 ${stamp}` } });
+      users.push(ow.id);
+      await P.membership.create({ data: { userId: ow.id, tenantId: T1, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+      const token = coreHash.randomToken(32) as string;
+      const DAY = 86_400_000;
+      await P.session.create({ data: { userId: ow.id, tokenHash: coreHash.sha256(token), idleExpiresAt: new Date(Date.now() + 30 * DAY), expiresAt: new Date(Date.now() + 90 * DAY) } });
+      const cookie = `shark_session=${token}; __Host-shark_session=${token}; shark_tenant=${T1}`;
+      const post = (name: string, pin: string) => {
+        const f = new FormData();
+        for (const [k, v] of Object.entries({ systemId: sA, name, phone: "", position: "", pin })) f.set(k, v);
+        return safe(() => inScope(cookie, `/app/sys/${sA}/hr/employees`, () => act.createEmployeeAction(f)));
+      };
+      const nmFree = `S9สร้างPINว่าง ${stamp}`;
+      const nmDup = `S9สร้างPINซ้ำ ${stamp}`;
+      const rFree = (await post(nmFree, PINS9.createFree)) as Any;
+      const rDup = (await post(nmDup, PINS.v4a)) as Any; // PIN ที่ E4a (ยังทำงาน) ถืออยู่
+      const rowOf = async (name: string) => {
+        const r = (await P.hrEmployee.findFirst({ where: { tenantId: T1, name }, select: { id: true, active: true } })) as Any;
+        if (r?.id) ids.push(r.id);
+        return r?.id ? { id: r.id as string, s: await st(r.id) } : null;
+      };
+      const eFree = await rowOf(nmFree);
+      const eDup = await rowOf(nmDup);
+      const resOk = (r: Any) => !isThrow(r) && !JSON.stringify(r ?? null).includes(T_D8) && (r ?? {}).pinSet !== true;
+      ok97 = !!eFree && !!eDup && eFree.s.active === true && eDup.s.active === true && noPinStrict(eFree.s) && noPinStrict(eDup.s) && resOk(rFree) && resOk(rDup);
+      s97 = `free: ${eFree ? desc(eFree.s, T1, PINS9.createFree) : "ไม่มีแถว"} res=${short(rFree ?? "void", 80)} · dup: ${eDup ? desc(eDup.s, T1, PINS.v4a) : "ไม่มีแถว"} res=${short(rDup ?? "void", 80)}`;
+    } catch (e) {
+      s97 = `harness: ${errText(e)}`;
+    }
+    chk("S9.7", ok97, "ทั้งสองแถวถูกสร้าง · plain=none hash=none setAt=N · ผลไม่มี D8 / pinSet:true", s97);
+  }
 }
 
 // ═════════════════════════ คืนสภาพ ═════════════════════════
