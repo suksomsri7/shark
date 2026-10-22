@@ -158,6 +158,8 @@ export async function updatePosReceiptUnitSettings(ctx: Ctx, actor: PosReceiptSe
     if (!isRecord(input)) return refuse("VALIDATION");
     const unitId = input.unitId;
     if (typeof unitId !== "string" || !unitId || unitId.length > 200 || /[\u0000-\u001F]/.test(unitId)) return refuse("VALIDATION", "เลือกสาขาให้ถูกต้อง", "unitId");
+    // POS P5.2 ▸ CD-P52-F5: ด่านสิทธิ์ที่สาขาก่อนตรวจ patch/สาขาผูก — คนไม่มีสิทธิ์ได้ PERMISSION_DENIED ไม่ใช่ VALIDATION (บรรทัดเดิมด้านล่างคงไว้) ◂
+    if (!evaluate(m, { module: "pos", action: "pos.device.manage", unitId })) return refuse("PERMISSION_DENIED");
     const pre = mergeReceiptUnitPatch({ taxBranchNo: null, address: null, phone: null }, input.patch);
     if (!pre.ok) return refuse("VALIDATION", pre.message, pre.field);
     const sys0 = await loadPos(prisma, ctx);

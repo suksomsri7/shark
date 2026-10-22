@@ -103,7 +103,8 @@ export async function posSettingsHistoryAction(args: { systemId: string; cursor?
 export async function updatePosUnitPromptpayAction(args: { systemId: string; unitId: string; promptpayId: string | null }): Promise<PosUnitPromptpayResult> {
   try {
     const s = await session();
-    if (!gate(s.m, ["pos.settings.payment", "pos.settings.manage"])) return { ok: false, code: "SETTINGS_SECTION_LOCKED", message: "เลขพร้อมเพย์เป็นปลายทางเงิน — เจ้าของร้านเท่านั้นที่ตั้งได้" };
+    // POS P5.2 ▸ CD-P52-F5: ไม่มีคีย์ตั้งค่า = PERMISSION_DENIED (เดิม SETTINGS_SECTION_LOCKED บอกสถานะล็อกแก่คนไม่มีสิทธิ์) · ผู้มีคีย์ที่ไม่ใช่เจ้าของยังได้ SECTION_LOCKED จากตัวเขียน ◂
+    if (!gate(s.m, ["pos.settings.payment", "pos.settings.manage"])) return DENIED;
     return await updatePosUnitPromptpay({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, {
       unitId: str(args?.unitId),
       // F4: ส่งค่าตามที่ได้รับ (ไม่แปลงเป็น null) — ค่าไม่ใช่ string ⇒ ตัวเขียนตอบ VALIDATION · null ที่ส่งมาตรง ๆ เท่านั้นที่ลบเลขของสาขา
