@@ -107,7 +107,7 @@ const CHECKS: readonly Def[] = [
   // ── U จอ ──
   D("U1", "U", "[U13 UI-8] saleNeedsKitchen: บิลสินค้าปลีกล้วน → false · บิลเมนูที่มีสถานี → true · kdsQueueNoAction คืน kitchen · PayDone แสดง kitchenNoTicket เฉพาะเมื่อ kitchen"),
   // ── K เอกสาร/เครื่องมือ ──
-  D("K1", "K", "[D14 DOC-1 มติ 8] facts การ์ด 10: platformCommission true · tableReservationsOnMap true · callQueueFromTable/voucherPayment/advanceBookingBill false \"P3\" · ไม่มี fact false ที่ติดป้ายใบที่ปิดแล้ว (แถว P2 ✅ ใน POS-MASTER-PLAN = P2.1–P2.13)"),
+  D("K1", "K", "[D14 DOC-1 มติ 8] facts การ์ด 10: platformCommission true · tableReservationsOnMap true · callQueueFromTable/voucherPayment/advanceBookingBill false \"P4+\" (CD-P312-K1 · เดิม \"P3\") · ไม่มี fact false ที่ติดป้ายใบที่ปิดแล้ว (แถว P2 ✅ ใน POS-MASTER-PLAN = P2.1–P2.13)"),
   D("K2", "K", "[D15 DOC-2 มติ 4] git ls-files skills/shark-pos-api/{SKILL.md, references/recipes.md, references/endpoints.md} · gen-pos-api-docs/qc-pos-p2.13/qc-pos-api-skill อ่านทางนี้ (ไม่อ่าน .claude/skills/shark-pos-api) · scripts/sync-skills.sh (สองบ้าน · เทียบไบต์)"),
   D("K3", "K", "[D16 TL-1 มติ 3] ไม่มี qc-* ใช้ merge-base กับ origin/session/pos (allow-list ว่างหลังชุด re-pin) — SKIP-with-reason จนชุด re-pin ท้ายใบลง"),
   // ── G ด่าน ──
@@ -396,9 +396,10 @@ const P2_HF = ["HF-TX", "HF-PP", "HF-PP2", "HF-GC", "HF-GC2", "HF-FU"];
 const FACTS_WANT: Record<string, [boolean, string | null]> = {
   platformCommission: [true, null],
   tableReservationsOnMap: [true, null],
-  callQueueFromTable: [false, "P3"],
-  voucherPayment: [false, "P3"],
-  advanceBookingBill: [false, "P3"],
+  // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-K1 · ป้ายเฟสปิดแล้ว P3 → "P4+" · promptpayReconcile → "W4" · old [false, "P3"] ×3 · revert: คืนตัวอักษรเดิมพร้อมคืนป้ายใน src/lib/pos-integrations.ts)
+  callQueueFromTable: [false, "P4+"],
+  voucherPayment: [false, "P4+"],
+  advanceBookingBill: [false, "P4+"],
 };
 const API10_KEYS = ["subtotalSatang", "lineDiscountSatang", "billDiscountSatang", "couponSatang", "tierSatang", "serviceChargeSatang", "vatSatang", "grandTotalSatang", "tipSatang", "refundedSatang"];
 const API10_LEGACY = ["subtotal", "lineDiscount", "billDiscount", "coupon", "tier", "serviceCharge", "grandTotal", "tip", "refunded"];
