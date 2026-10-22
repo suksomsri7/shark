@@ -1,0 +1,15 @@
+# post-merge sanity session/hr @323a01e5 · 2026-10-22T16:41:42Z · load 3.93 3.28 2.65
+prisma generate exit=0 [16:41Z]
+qc-hr-h0.7 exit=0 ===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE none (tenants=4 users=39) [16:42Z]
+qc-hr-h0.5 exit=0 ===== qc-hr-h0.5 ===== ผ่าน 71/71 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.5","total":71,"passed":71,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE tenants=0 none (สร้าง 3 ร้าน · ผู้ใช้ 2) [16:43Z]
+qc-hr-h0.3 exit=0 ===== qc-hr-h0.3 ===== ผ่าน 37/37 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE none (tenant=สร้างแล้ว users=5) [16:44Z]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [16:47Z]
+qc-approval-wiring exit=0 ===== QC Approval Wiring ===== JSON_SUMMARY {"total":7,"passed":7,"findings":[]}   [16:47Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 23/23 JSON_SUMMARY {"suite":"seed-hr-qc","total":23,"passed":23,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":17,"BusinessUnit":2,"HrAttend  [16:47Z]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [16:47Z]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [16:47Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [16:47Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [16:48Z]
+typecheck start 16:48Z availMB=9932 busy=0
+typecheck exit=0 errors=0 [16:51Z]
+ALLDONE 2026-10-22T16:51:30Z
