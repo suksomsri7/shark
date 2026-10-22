@@ -213,7 +213,9 @@ export function IntegrationCredsCard({ systemId, unitId, kind, provider, channel
                     data-secret="1"
                     className={inputCls}
                     type="password"
-                    autoComplete="off"
+                    autoComplete="new-password" /* fix1 F1: "off" ถูกเบราว์เซอร์ละเลยบน password — กันเติมรหัสผ่าน SHARK ของเจ้าของเข้าช่องลับ + ไม่เสนอเก็บค่าลับ ◂ */
+                    data-1p-ignore=""
+                    data-lpignore="true"
                     spellCheck={false}
                     value={v ?? ""}
                     placeholder={f.filled ? f.masked : ""}
