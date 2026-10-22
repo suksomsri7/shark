@@ -1206,6 +1206,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่เปลี่ยนอะไร (AUDIT-CLASS X4 — guard สถานะ + ล็อกแถว + partial unique ของ HR)
   "hr.payroll.paid": crmFirst(crmCommissionBridge("onPayrollPaid"), withAutomation(async () => {})),
   "hr.payroll.reversed": crmFirst(crmCommissionBridge("onPayrollReversed"), withAutomation(async () => {})), // HR H0.6 ▸ hr/payroll.ts#reverseRun {runId, periodKey, adjustmentIds} → CRM คืน PAID→APPROVED ครั้งเดียว ◂
+  // HR H2.1 ▸ เผยแพร่ตารางกะ (ยิงใน tx เดียวกับการพลิก published ของ hr/roster.ts#publishRoster · key `hr.roster.published#<publishId>` ·
+  //   payload id/ช่วงวันล้วน) — ยังไม่มีผลข้างเคียง (แจ้งพนักงาน = H2.10) ⇒ no-op ปิด event เป็น DONE + จุดให้ automation/เว็บฮุค · ส่งซ้ำได้ ◂
+  "hr.roster.published": withAutomation(async () => {}),
   "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
   "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
   "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),

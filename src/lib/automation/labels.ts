@@ -39,6 +39,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //    ขาดไป = event ค้าง PENDING ตลอดกาล แล้วคิวทั้งระบบตันตามไปด้วย (บทเรียน 30 ส.ค. 2026)
   //    รายการนี้ถูก spread ต่อเข้า `WEBHOOK_EVENTS` ⇒ ประกาศที่นี่ที่เดียวได้ทั้งกฎอัตโนมัติและเว็บฮุค
   { value: "hr.leave.submitted", label: "เมื่อพนักงานยื่นใบลา" },
+  // HR H2.1 ▸ ยิงจาก `hr/roster.ts#publishRoster` ใน tx เดียวกับการเผยแพร่ · consumer no-op ใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
+  { value: "hr.roster.published", label: "เมื่อเผยแพร่ตารางกะ (HR)" },
   // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
   // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว
   // 🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ตัวนั้นล้างแคชธีมของอินสแตนซ์ที่ระบายคิว)
