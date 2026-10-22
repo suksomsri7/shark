@@ -12,7 +12,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
-import { leaveRowScopeOf, pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂
+import { leaveListScopeOf, pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service"; // HR H0.7 R10 ▸ ขอบเขตแถวใบลา ◂ · HR H1.1 ▸ + ขอบเขตสาขา ◂
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
 import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/service";
 import { getCustomerPoints } from "@/lib/modules/point/service";
@@ -233,7 +233,8 @@ const pendingLeaves: AiTool = {
     // HR H0.7 R10 ▸ R10.3: ขอบเขตแถวตามสมาชิกภาพของผู้ถาม (กติกาเดียวกับหน้าใบลา) — คีย์ API/ผู้ถามที่ไม่มีสมาชิกภาพ ⇒ 0 แถว
     //   (fail closed · ไม่ error) · ผู้ถามที่มีสมาชิกภาพแต่ไม่ใช่ผู้อ่าน/ผู้ตัดสิน ⇒ เฉพาะใบลาของพนักงานที่ผูกกับบัญชีตัวเอง ◂
     const am = aiActorMembership(ctx.actor);
-    const leaves = am ? await hrPendingLeaves({ tenantId: ctx.tenantId, systemId: hr.id }, 100, leaveRowScopeOf(am, aiActorUserId(ctx.actor))) : [];
+    // HR H1.1 ▸ R4: + ขอบเขตสาขาของผู้ถาม (ผู้จัดการสาขาเห็นเฉพาะสาขาตัวเอง + คนที่ยืมตัวเข้ามา) ◂
+    const leaves = am ? await hrPendingLeaves({ tenantId: ctx.tenantId, systemId: hr.id }, 100, leaveListScopeOf(am, aiActorUserId(ctx.actor))) : [];
     return JSON.stringify({
       ใบลารออนุมัติ: leaves.map((l) => ({
         พนักงาน: l.employee?.name ?? "ไม่ทราบชื่อ",
