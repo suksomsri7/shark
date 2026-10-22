@@ -885,7 +885,7 @@ async function runDb(): Promise<void> {
   });
   chk("X6.5", b65.length === 0, "3/3 rounds: rows APPROVED, in run or unbound, sums match", b65.join(" · "));
   // X6.6 global invariant over the whole tenant
-  const allRuns = await P.hrPayrollRun.findMany({ where: { tenantId: T }, select: { id: true } });
+  const allRuns = await P.hrPayrollRun.findMany({ where: { tenantId: T }, select: { id: true, status: true } });
   const runIds = new Set(allRuns.map((r: Any) => r.id));
   const boundAll = await P.hrPayAdjustment.findMany({ where: { tenantId: T, runId: { not: null } } });
   const dangling = boundAll.filter((a: Any) => !runIds.has(a.runId));
@@ -895,12 +895,15 @@ async function runDb(): Promise<void> {
     if (!so3.ok) g.push(`Σ ${r.id.slice(-6)} ${so3.bad.join(",")}`);
     const items = await itemsOf(r.id);
     const mine = boundAll.filter((a: Any) => a.runId === r.id);
-    for (const it of items) {
-      const m = mine.filter((a: Any) => a.employeeId === it.employeeId);
-      const add = m.filter((a: Any) => ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
-      const ded = m.filter((a: Any) => !ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
-      if (it.addSatang !== add || it.deductSatang !== ded) g.push(`item ${r.id.slice(-6)}/${it.employeeId.slice(-6)} add ${it.addSatang}/${add} ded ${it.deductSatang}/${ded}`);
+    if (r.status !== "REVERSED") {
+      for (const it of items) {
+        const m = mine.filter((a: Any) => a.employeeId === it.employeeId);
+        const add = m.filter((a: Any) => ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
+        const ded = m.filter((a: Any) => !ADD_KINDS.has(a.kind)).reduce((s: number, a: Any) => s + a.amountSatang, 0);
+        if (it.addSatang !== add || it.deductSatang !== ded) g.push(`item ${r.id.slice(-6)}/${it.employeeId.slice(-6)} add ${it.addSatang}/${add} ded ${it.deductSatang}/${ded}`);
+      }
     }
+    if (r.status === "REVERSED" && mine.length) g.push(`run ${r.id.slice(-6)}: ${mine.length} row(s) still bound after reverse`);
     const emps = new Set(items.map((i: Any) => i.employeeId));
     const orphan = mine.filter((a: Any) => !emps.has(a.employeeId));
     if (orphan.length) g.push(`run ${r.id.slice(-6)}: ${orphan.length} bound row(s) without an item`);
