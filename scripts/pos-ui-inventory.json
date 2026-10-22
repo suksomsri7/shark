@@ -7041,7 +7041,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -7057,7 +7058,10 @@
       "opener": [
         "pos-settings-nav-receipt"
       ],
-      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
+      "needs": [
+        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้",
+        "สิทธิ์ pos.device.manage ทุกสาขา — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -9158,7 +9162,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -9174,7 +9179,10 @@
       "opener": [
         "pos-settings-nav-payments"
       ],
-      "needs": "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้"
+      "needs": [
+        "ผู้ใช้เข้าถึงทุกสาขาที่ผูก POS (canEditReceipt = pos.device.manage ทุกสาขา) — ผู้จัดการ 1 สาขาเห็นแต่ปิดใช้",
+        "สิทธิ์ pos.device.manage ทุกสาขา — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -13389,7 +13397,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -13404,7 +13413,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-channels"
-      ]
+      ],
+      "needs": "สิทธิ์ pos.channel.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -19456,7 +19466,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19470,7 +19481,10 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "safety": "counter",
-      "needs": "ออเดอร์สถานะ NEW (ไม่ใช่รอเงินเข้า)"
+      "needs": [
+        "ออเดอร์สถานะ NEW (ไม่ใช่รอเงินเข้า)",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19478,7 +19492,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19490,7 +19505,10 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "ออเดอร์สถานะ NEW (ไม่ใช่เว็บร้านที่ชำระแล้ว)"
+      "needs": [
+        "ออเดอร์สถานะ NEW (ไม่ใช่เว็บร้านที่ชำระแล้ว)",
+        "สิทธิ์ pos.order.reject — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19498,7 +19516,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19514,7 +19533,10 @@
       "opener": [
         "pos-ord-coltab-ready"
       ],
-      "needs": "ออเดอร์สถานะ READY ที่ชำระแล้ว (PLATFORM_PAID/PAID)"
+      "needs": [
+        "ออเดอร์สถานะ READY ที่ชำระแล้ว (PLATFORM_PAID/PAID)",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19604,7 +19626,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19621,7 +19644,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
+      "needs": [
+        "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19629,7 +19655,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19644,7 +19671,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
+      "needs": [
+        "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19652,7 +19682,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19667,7 +19698,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์สถานะ ACCEPTED/PREPARING เป็นการ์ดแรกบนกระดาน"
+      "needs": [
+        "ออเดอร์สถานะ ACCEPTED/PREPARING เป็นการ์ดแรกบนกระดาน",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19675,7 +19709,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19690,7 +19725,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)"
+      "needs": [
+        "ออเดอร์สถานะ NEW เป็นการ์ดแรกบนกระดาน (ไม่ใช่รอเงินเข้า)",
+        "สิทธิ์ pos.order.reject — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19698,7 +19736,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19714,7 +19753,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์สถานะ ACCEPTED เป็นการ์ดแรกบนกระดาน"
+      "needs": [
+        "ออเดอร์สถานะ ACCEPTED เป็นการ์ดแรกบนกระดาน",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19722,7 +19764,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19738,7 +19781,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์สถานะ PREPARING เป็นการ์ดแรกบนกระดาน"
+      "needs": [
+        "ออเดอร์สถานะ PREPARING เป็นการ์ดแรกบนกระดาน",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19746,7 +19792,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19762,7 +19809,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์สถานะ READY ที่ชำระแล้วเป็นการ์ดแรกบนกระดาน"
+      "needs": [
+        "ออเดอร์สถานะ READY ที่ชำระแล้วเป็นการ์ดแรกบนกระดาน",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -19794,7 +19844,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -19809,7 +19860,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์ที่รับแล้ว (ACCEPTED..READY · ไม่ใช่เว็บร้านชำระแล้ว) เป็นการ์ดแรก"
+      "needs": [
+        "ออเดอร์ที่รับแล้ว (ACCEPTED..READY · ไม่ใช่เว็บร้านชำระแล้ว) เป็นการ์ดแรก",
+        "สิทธิ์ pos.order.reject — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -20896,7 +20950,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -20911,7 +20966,8 @@
       "query": "unit=[unitId]",
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
-        "ครัวยังไม่ได้พัก (RestaurantSetting.kitchenPaused false)"
+        "ครัวยังไม่ได้พัก (RestaurantSetting.kitchenPaused false)",
+        "สิทธิ์ restaurant.kitchen.pause — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -20967,7 +21023,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -20982,7 +21039,8 @@
       "query": "unit=[unitId]",
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
-        "ใบครัวสถานะใหม่ (NEW) บนบอร์ดสถานีแรก"
+        "ใบครัวสถานะใหม่ (NEW) บนบอร์ดสถานีแรก",
+        "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -20991,7 +21049,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -21009,7 +21068,8 @@
       ],
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
-        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)",
+        "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -21018,7 +21078,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -21033,7 +21094,8 @@
       "query": "unit=[unitId]",
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
-        "ใบครัวที่ยังไม่พร้อม (NEW/COOKING)"
+        "ใบครัวที่ยังไม่พร้อม (NEW/COOKING)",
+        "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -21042,7 +21104,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -21060,7 +21123,8 @@
       ],
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
-        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)"
+        "ใบครัวบนบอร์ดสถานีแรก (รอบที่ส่งครัวแล้ว)",
+        "สิทธิ์ restaurant.kds.advance — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -21094,7 +21158,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -21112,7 +21177,8 @@
       ],
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
-        "ใบครัวที่ยังไม่พร้อม (NEW/COOKING) และยังไม่เร่ง"
+        "ใบครัวที่ยังไม่พร้อม (NEW/COOKING) และยังไม่เร่ง",
+        "สิทธิ์ restaurant.order.rush — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -21177,7 +21243,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -21192,7 +21259,8 @@
       "query": "unit=[unitId]",
       "needs": [
         "สาขามีสถานีครัว (KdsStation) — posqc-btn-unit ยังไม่มี = การ์ด pos-kds-empty-unit",
-        "ใบที่เสิร์ฟแล้ววันนี้ของสาขา (servedToday.last)"
+        "ใบที่เสิร์ฟแล้ววันนี้ของสาขา (servedToday.last)",
+        "สิทธิ์ restaurant.kds.recall — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -21201,7 +21269,8 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -26090,7 +26159,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "mutation",
@@ -26106,7 +26176,8 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_table"
-      ]
+      ],
+      "needs": "สิทธิ์ pos.channel.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -26114,7 +26185,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "mutation",
@@ -26130,7 +26202,8 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order"
-      ]
+      ],
+      "needs": "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -26138,7 +26211,8 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "mutation",
@@ -26154,7 +26228,8 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order"
-      ]
+      ],
+      "needs": "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -26162,7 +26237,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "mutation",
@@ -26178,7 +26254,8 @@
       "opener": [
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order"
-      ]
+      ],
+      "needs": "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -26186,7 +26263,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "mutation",
@@ -26203,7 +26281,8 @@
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order",
         "pos-channel-qr-pause-15"
-      ]
+      ],
+      "needs": "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -26211,7 +26290,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "expect": {
         "type": "mutation",
@@ -26228,7 +26308,10 @@
         "pos-settings-nav-channels",
         "pos-channel-open-qr_order"
       ],
-      "needs": "สาขายังไม่มีลิงก์สั่งล่วงหน้า ACTIVE"
+      "needs": [
+        "สาขายังไม่มีลิงก์สั่งล่วงหน้า ACTIVE",
+        "สิทธิ์ pos.channel.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -27776,7 +27859,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -27792,7 +27876,10 @@
       "opener": [
         "pos-settings-nav-offline"
       ],
-      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "สิทธิ์ เจ้าของร้าน/pos.settings.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -28137,7 +28224,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -28155,7 +28243,8 @@
       ],
       "needs": [
         "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
-        "การ์ดแชท LINKED (LINE OA เชื่อมแล้ว) หรือแถวที่เปิดอยู่"
+        "การ์ดแชท LINKED (LINE OA เชื่อมแล้ว) หรือแถวที่เปิดอยู่",
+        "สิทธิ์ เจ้าของร้าน/pos.settings.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
       ]
     },
     {
@@ -28290,7 +28379,8 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -28307,7 +28397,10 @@
       "opener": [
         "pos-ord-card-*"
       ],
-      "needs": "ออเดอร์แชท (CHAT · ไม่ใช่แพลตฟอร์ม) NEW ยังไม่จ่ายเป็นการ์ดแรก ผูกห้องแชท + สาขามีพร้อมเพย์"
+      "needs": [
+        "ออเดอร์แชท (CHAT · ไม่ใช่แพลตฟอร์ม) NEW ยังไม่จ่ายเป็นการ์ดแรก ผูกห้องแชท + สาขามีพร้อมเพย์",
+        "สิทธิ์ pos.order.accept — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/orders",
@@ -29102,7 +29195,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -29118,7 +29212,10 @@
       "opener": [
         "pos-settings-nav-payments"
       ],
-      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "สิทธิ์ เจ้าของร้าน/pos.credit.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -29126,7 +29223,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -29142,7 +29240,10 @@
       "opener": [
         "pos-settings-nav-payments"
       ],
-      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "สิทธิ์ เจ้าของร้าน/pos.credit.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -29436,7 +29537,8 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager"
+        "manager",
+        "cashier"
       ],
       "hiddenFor": [],
       "expect": {
@@ -29452,7 +29554,10 @@
       "opener": [
         "pos-settings-nav-channels"
       ],
-      "needs": "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)"
+      "needs": [
+        "เจ้าของร้าน (OWNER) — ผู้จัดการเห็นแต่ปิดใช้ (isOwner)",
+        "สิทธิ์ เจ้าของร้าน/pos.credit.manage — แคชเชียร์ QC เห็นแต่ปิดใช้ (disabled · CD-P41-F13)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/register",
