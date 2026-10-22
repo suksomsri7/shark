@@ -2008,7 +2008,11 @@ async function runDb() {
   const othersOf = (st: Any): string => {
     const c = isRecord(st) ? JSON.parse(JSON.stringify(st)) : {};
     if (isRecord(c.pos)) {
-      delete c.pos.credit;
+      // ORACLE-EDIT ผู้สร้าง P3.6U (B) 22 ต.ค. fix1 F3: ตัดเฉพาะ 2 คีย์ของตัวเขียนใต้ pos.credit (คีย์อื่นใต้ pos.credit เช่น qcKeep ต้องอยู่ครบ) ◂
+      if (isRecord(c.pos.credit)) {
+        delete c.pos.credit.enabled;
+        delete c.pos.credit.requireBuyer;
+      }
       if (isRecord(c.pos.orders)) delete c.pos.orders.memberOnBill;
     }
     return canonCs(c);
@@ -2019,7 +2023,7 @@ async function runDb() {
   if (!fx) {
     await step("CS ค่าตั้งตั้งต้น", () =>
       patchPos((pos) => {
-        pos.credit = { ...CREDIT_ON };
+        pos.credit = { ...CREDIT_ON, qcKeep: `keep-${RAND}` }; // ORACLE-EDIT ผู้สร้าง P3.6U (B) 22 ต.ค. fix1 F3: sentinel ใต้ pos.credit ◂
         pos.orders = { ...(isRecord(pos.orders) ? pos.orders : {}), memberOnBill: true, qcKeep: `keep-${RAND}` };
         pos.qcSentinel = { a: 1, b: [RAND, 2] };
       }),
@@ -2038,6 +2042,7 @@ async function runDb() {
     if (canonCs(cs) !== canonCs({ enabled: false, requireBuyer: false }) || mob !== false) p.push(`DB credit ${short(cs, 60)} memberOnBill ${short(mob, 10)}`);
     if (othersOf(b0.settings) !== othersOf(b1.settings)) p.push(`คีย์อื่นเปลี่ยน ${short(othersOf(b1.settings), 120)}`);
     if (!(isRecord(b1.settings?.pos?.orders) && b1.settings.pos.orders.qcKeep === `keep-${RAND}`)) p.push("pos.orders.qcKeep หาย");
+    if (!(isRecord(b1.settings?.pos?.credit) && b1.settings.pos.credit.qcKeep === `keep-${RAND}`)) p.push("pos.credit.qcKeep หาย"); // ORACLE-EDIT fix1 F3 ◂
     const au = (await csAudits()).slice(a0);
     const mine = au.filter((a) => isRecord(a.after) && a.after.section === "credit");
     if (mine.length !== 1) p.push(`audit section credit ${mine.length} (คาด 1)`);
