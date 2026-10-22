@@ -886,6 +886,8 @@ const P38U_ROOM_NAME = "posqc-vis-p38u";
 const P38U_ROOM_ARCH_NAME = "posqc-vis-p38u-arch";
 const P38U_SHIFT_DEV = "posqc-vis-p38u-shift";
 const P38U_REASON = "ภาพ QC P3.8U";
+const P38U_KANBAN_SYS_NAME = "บอร์ดงาน (ภาพ QC P3.8U)"; // POS P3.8U ▸ fix1: ระบบของภาพเมื่อร้าน QC ไม่มีระบบที่เปิดอยู่ (เก็บไว้) ◂
+const P38U_MEETING_SYS_NAME = "ห้องทีม (ภาพ QC P3.8U)";
 const p38uPath = (k: P38uKey): string => {
   const u = encodeURIComponent(unitId);
   const d = p38uDay();
@@ -1647,7 +1649,7 @@ if (DRY) {
       for (const st of P38U_PLAN.filter((x) => x.users.includes(userKey))) console.log(`  · ${st.key.padEnd(31)} ${st.page.padEnd(9)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       console.log(
         `  P3.8U: fixture (ร้าน QC coffee · สาขา ${unitKey} · ไม่ reseed) — บอร์ด ${P38U_BOARD_NAME} (kanban/service.createBoard ในระบบ KANBAN แรก · หา/สร้าง · เก็บไว้) · ` +
-          `ห้อง ${P38U_ROOM_NAME} + ${P38U_ROOM_ARCH_NAME} (เก็บถาวร · meeting/service · หา/สร้าง · เก็บไว้) · ไม่มีระบบ = SKIP พร้อมเหตุผล · ` +
+          `ห้อง ${P38U_ROOM_NAME} + ${P38U_ROOM_ARCH_NAME} (เก็บถาวร · meeting/service · หา/สร้าง · เก็บไว้) · ไม่มีระบบที่เปิดอยู่ = สร้าง "${P38U_KANBAN_SYS_NAME}" / "${P38U_MEETING_SYS_NAME}" (system/service.createSystem · เก็บไว้ · สร้างไม่ได้ = SKIP) · ` +
           "settings.pos.board/teamRoom (+ ai.enabled ของ reports-ai-panel-board) = jsonb ของ harness · ค่าเดิมใน settings.pos._qcP38uBefore · คืนหลังงานสุดท้าย/finally/สัญญาณ · " +
           "🔴 ด่านก่อนเขียนทุกครั้ง: id บอร์ด/ห้อง = ของ fixture เท่านั้น (ไม่ใช่ = ยกเลิก) · ไม่ปิดกะ · ไม่เรียก sweepPosBoard/onShiftClosed · ไม่กดบันทึกขณะ posts.* เปิด · " +
           `audit A11 4 แถว×3 (เหตุผล "${P38U_REASON} <pid>" · ลบตอนเก็บกวาด) · การ์ดชิป createCardFromExternal (pos-shift:<กะปิดล่าสุด> · pos-anomaly:A11:…:<เจ้าของ> · เก็บไว้) · ` +
@@ -6689,7 +6691,8 @@ async function runP212uState(page: Any, state: P212uKey, _device: Device): Promi
 // ═══════════════════ POS P3.8U ▸ บอร์ดงาน/ห้องทีม: แท็บ board · ปุ่ม/ชิปจุดผิดปกติ · แผง AI · ชิป/บรรทัดหน้ากะ (CD-P38U-11) ◂ ═══════════════════
 // fixture (ensureP38uFixture · ก่อนงานแรกของใบนี้ · พังไม่โยน — สถานะตกพร้อมเหตุผล · ร้าน QC coffee เท่านั้น · ไม่ reseed · ไม่ขอ snapshot):
 //   • บอร์ด posqc-vis-p38u (kanban/service.createBoard ในระบบ KANBAN แรกที่เปิดอยู่ · หาก่อนสร้าง · เก็บไว้) · ห้อง posqc-vis-p38u + posqc-vis-p38u-arch (เก็บถาวร)
-//     (meeting/service.createChannel/archiveChannel ในระบบ MEETING แรก · หาก่อนสร้าง · เก็บไว้) — ระบบไม่มี = สถานะที่ใช้ "SKIP — เหตุผล" (harness ไม่มีช่องข้าม ⇒ ขึ้นเป็นขั้นตอนตกขึ้นต้น SKIP)
+//     (meeting/service.createChannel/archiveChannel ในระบบ MEETING แรก · หาก่อนสร้าง · เก็บไว้) — fix1: ไม่มีระบบที่เปิดอยู่ = สร้างระบบของภาพ (createSystem · เก็บไว้) ·
+//     สร้างไม่ได้ = สถานะที่ใช้ "SKIP — เหตุผล" (harness ไม่มีช่องข้าม ⇒ ขึ้นเป็นขั้นตอนตกขึ้นต้น SKIP)
 //   • settings.pos.board / teamRoom (+ ai.enabled เฉพาะภาพแผง AI) = jsonb ของ harness · ค่าเดิมเก็บใน settings.pos._qcP38uBefore ก่อนแก้ (ซากรอบที่ถูก kill = คืนจากคีย์นี้) ·
 //     คืนใน cleanupP38u (หลังงานสุดท้าย/finally/สัญญาณ)
 //   • 🔴 ด่าน: ก่อนเขียนทุกครั้ง id บอร์ด/ห้องในค่าตั้งต้องเป็นของ fixture ของร้าน QC เท่านั้น — ไม่ใช่ = StepError + ยกเลิกทั้งใบ
@@ -6797,8 +6800,31 @@ async function ensureP38uFixture(): Promise<void> {
     const want = (...ks: P38uKey[]) => ks.some((k) => jobs.some((j) => j.state === k));
     const owner = await ownerActor();
     const day = p38uDay();
-    const kan = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type: "KANBAN", active: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
-    const meet = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type: "MEETING", active: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    // POS P3.8U ▸ fix1: ร้าน QC ไม่มีระบบ KANBAN/MEETING ที่เปิดอยู่ (QC5) ⇒ หา/สร้างระบบของภาพผ่าน system/service.createSystem แบบระบบ COUPON ของ QC —
+    //   มีระบบที่เปิดอยู่ = ใช้ของเดิม (ตัวแรกตาม createdAt แบบหน้าตั้งค่า) · ไม่มี = ระบบชื่อคงที่ของภาพ (เก็บไว้ · รอบหลังใช้ซ้ำ · ไม่ reseed) · ด่านร้าน QC ก่อนสร้าง ◂
+    const sysFor = async (type: "KANBAN" | "MEETING", name: string): Promise<{ id: string } | null> => {
+      const active = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type, active: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
+      if (active) return active;
+      const mine = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type, name }, select: { id: true, active: true } });
+      if (mine) {
+        if (!mine.active) p38uSkip(type === "KANBAN" ? P38U_BOARD_STATES : ["settings-board-room-stale", "shifts-close-board-hint"], `ระบบ ${type} "${name}" ของภาพถูกปิดใช้งาน (harness ไม่เปิดคืน)`);
+        return mine.active ? { id: mine.id } : null;
+      }
+      p38uGuard({}, {}); // ด่านร้าน QC coffee ก่อนสร้าง
+      try {
+        const { createSystem } = await import("@/lib/modules/system/service");
+        const c = await createSystem(T.tenantId, type, name);
+        P38U.log.push(`สร้างระบบ ${type} "${name}"`);
+        return { id: c.id };
+      } catch (e) {
+        p38uSkip(type === "KANBAN" ? P38U_BOARD_STATES : ["settings-board-room-stale", "shifts-close-board-hint"], `สร้างระบบ ${type} "${name}" ไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+        return null;
+      }
+    };
+    const kan = await sysFor("KANBAN", P38U_KANBAN_SYS_NAME);
+    const meet = await sysFor("MEETING", P38U_MEETING_SYS_NAME);
+    // ระบบแชททีมใหม่ = ห้อง #general + เจ้าของเป็นสมาชิก แบบเปิดหน้าแชทครั้งแรก (meeting/service.ensureWorkspace)
+    if (meet) await (await import("@/lib/modules/meeting/service")).ensureWorkspace(T.tenantId, meet.id, owner.userId);
     P38U.kanbanSys = kan?.id ?? null;
     P38U.meetingSys = meet?.id ?? null;
     if (kan) {
@@ -6809,7 +6835,7 @@ async function ensureP38uFixture(): Promise<void> {
         P38U.boardId = (await createBoard({ tenantId: T.tenantId, systemId: kan.id, name: P38U_BOARD_NAME, visibility: "TENANT" as never, createdById: owner.userId })).id;
         P38U.log.push(`สร้างบอร์ด ${P38U_BOARD_NAME}`);
       }
-    } else p38uSkip(P38U_BOARD_STATES, "ร้าน QC ไม่มีระบบ KANBAN ที่เปิดอยู่ (บอร์ด fixture สร้างไม่ได้)");
+    } else p38uSkip(P38U_BOARD_STATES, "ไม่มีระบบ KANBAN ที่ใช้ได้ (บอร์ด fixture สร้างไม่ได้)");
     if (meet) {
       const { createChannel, archiveChannel } = await import("@/lib/modules/meeting/service");
       const find = (name: string) => prisma.meetingChannel.findFirst({ where: { tenantId: T.tenantId, systemId: meet.id, name }, select: { id: true, archivedAt: true } });
@@ -6828,7 +6854,7 @@ async function ensureP38uFixture(): Promise<void> {
         if (!ar.ok) throw new StepError(`เก็บถาวรห้อง ${P38U_ROOM_ARCH_NAME}: ${ar.reason ?? "?"}`);
       }
       P38U.roomArch = { meetingSystemId: meet.id, channelId: a.id };
-    } else p38uSkip(["settings-board-room-stale", "shifts-close-board-hint"], "ร้าน QC ไม่มีระบบ MEETING ที่เปิดอยู่ (ห้อง fixture สร้างไม่ได้)");
+    } else p38uSkip(["settings-board-room-stale", "shifts-close-board-hint"], "ไม่มีระบบ MEETING ที่ใช้ได้ (ห้อง fixture สร้างไม่ได้)");
     // A11 4 แถว (สาขา × ผู้อนุมัติ) — แถว (สาขานี้ · เจ้าของ) = ชิป · ที่เหลือ = แถวว่างของปุ่ม/การกด
     if (want("reports-anomalies-card-button", "reports-anomalies-card-pressed", "reports-anomalies-card-chip", "reports-ai-panel-board")) {
       const { writeAudit } = await import("@/lib/core/audit");
