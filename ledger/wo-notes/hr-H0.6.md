@@ -361,3 +361,21 @@ Run: forced ×1 on d838fccf (`QC_H06_BASE=d350c26c…`) → `ledger/wo-notes/hr-
 
 ### Temp data / processes (r3)
 - QC4: no residue. No process or unit of mine is running. POS units and `/tmp/shark-gate-pos.lock` were not touched. `ledger/wo-notes/hr-H0.6-control1.txt` (untracked, not mine) was left alone.
+
+## r4 — 22 Oct · r3 review `ledger/wo-notes/hr-H0.6-review-r3.md` (ACCEPT WITH NOTES) · commit `ceacf7e8`
+- **R4.1:** `CONVERGE_TX_OPTS` (`crm/commissions.ts`) changed `{maxWait 60 s, timeout 600 s}` → `{maxWait 10_000, timeout 30_000}`. The outbox cron route has `maxDuration = 60`, and the handler is idempotent, so a timeout costs one retry. Thai comment added. Chunk size stays 500.
+- **R4.2:** each chunk's `.unpaid` / `.repaid` audits are now written right after that chunk's tx commits, instead of after all chunks. Audits are still only for changed rows.
+- **R3-6:** `onPayrollReversed` returns `{ unpaid: unpaid − repaid }` (net).
+- No other changes and no oracle edits. File still append-only vs `d350c26c` (0 removed lines).
+- Started after the controller's `hr-ctl-*` units had finished (10:39Z).
+
+| suite | result | residue | exit |
+|---|---|---|---|
+| qc-hr-h0.6 forced ×2 (#2 → `hr-H0.6-green.txt`) + unforced, `QC_H06_BASE=d350c26c…` | 55/55 ×3 | `RESIDUE tenants=0 rows=0 audit=0 outbox=0` ×3 | 0 |
+| qc-crm-c3.3 | 90/90 | – | 0 |
+| qc-payroll-reverse | 14/14 | – | 0 |
+| fitness.mts env / no env | 42/42 · 42/42 | – | 0 · 0 |
+| fitness-hr.mts env / no env | 5/5 · 5/5 | – | 0 · 0 |
+| typecheck (gate 11 GB, no build unit) | `tsc --noEmit` 0 errors, 53 s | – | 0 |
+
+Processes: none of mine running · QC4 residue 0.
