@@ -163,3 +163,32 @@ Final summary line, forced #2:
 
 - Fitness: `scripts/fitness.mts` 33/33 with env (qc4.sh) and with `env -u DATABASE_URL`.
 - Typecheck (1 attempt, machine lock): exit 2, single error = OE-3 in the oracle file; no error in product code.
+
+## AI harness (CRM v2 actor gate)
+
+Base `origin/session/hr` a25ca6f9 (contains 1dc4bdb1 CRM v2 merge). Branch `wip/pos-hr-h0.3-ai`. Oracle-only change; no product code touched.
+
+### Product path verdict: WORKS (harness was stale, not the product)
+- `src/lib/ai/tools.ts:2512` `runTool` → `actorProblem(ctx)` (`src/lib/ai/actor.ts:126`, fixed text "ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้") → `toolVerdict` (`src/lib/ai/tool-access.ts:216`).
+- HR tools are hand tools, not module-registry tools (so `moduleToolQuery` is not involved): `pending_leaves: OPEN` (`tool-access.ts:81`) · `hr_decide_leave` → kind `hr_decide_leave` (`tool-access.ts:109`) → access `{hr, hr.leave.decide}` (`src/lib/ai/proposals.ts:146`).
+- Production chat: actor = `aiMemberActor(tenantId, user.id, auth.active)` (`src/lib/ai/actions.ts:97` convCtxOf · same in `src/lib/mobile/guard.ts:32`); `src/lib/ai/service.ts:176` offers tools via `toolsOfferedTo(ctx.actor, …)`, `:196` creates the room with `newConversationId(ctx)`, `:298` calls `runTool({tenantId, actor, conversationId})`.
+- Pure probe (`aiMemberActor` + `toolVerdict` + `toolsOfferedTo`, no DB): OWNER and MANAGER → both tools ok and offered; STAFF (no keys) → `pending_leaves` ok, `hr_decide_leave` denied "ต้องมีสิทธิ์ hr.leave.decide"; no actor → the fixed refusal text.
+- Second stale point found on run 1 (36/37, S5.2 "ต้องอยู่ในบทสนทนาก่อนจึงจะเสนอการกระทำได้"): CRM C5.5-G2 room ownership. `guarded` wrapper (`tools.ts:2405`) drops `conversationId` when the actor cannot see the room; a plain-cuid room = "legacy room" visible to OWNER only. Production rooms are always `newConversationId` (`u~<userId>~…`), so this is also harness-only.
+- Observation (not a finding of this WO): `pending_leaves` is OPEN, so any STAFF member using the assistant sees pending leave rows (name/type/dates/รหัสใบลา, no reason) — same as the web hr/leave gate per the G1 map comment.
+
+### Hunk (`scripts/qc-hr-h0.3.mts`)
+- imports `@/lib/ai/actor` + `@/lib/ai/conversation-owner`.
+- new S5.0 (CRITICAL, GREEN base): `runTool({tenantId}, "pending_leaves")` without actor → `{error}` exactly the fixed text and no `รหัสใบลา`.
+- S5.1/S5.2: actor = `aiMemberActor(tid, U.manager.id, <Membership row of the temp manager>)` (as convCtxOf); conversation id = `newConversationId({tenantId, actor})`; both `runTool` calls pass `actor`. Check meanings unchanged.
+
+### Runs (QC4 via iso.sh + qc4.sh + with-gate-lock.sh)
+| run | result | residue |
+|---|---|---|
+| forced #1 (before room fix) | 36/37 · S5.2 (G2 room) | Z1 ✅ |
+| forced #2 | 37/37 | Z1 ✅ |
+| forced #3 | 37/37 (`hr-H0.3-green-ai.txt`) | Z1 ✅ |
+| unforced (1st attempt) | client `timeout` 590 s hit while waiting on the qc4 gate lock; unit ran to completion detached, output lost | probe: 0 tenants/users `qc-hr-h0.3-*` |
+| unforced | 37/37 · `skipped:false` | Z1 ✅ |
+| qc-hf-hr-privacy | 194/194 | – |
+| fitness (qc4 env / no DB env) | 42/42 / 42/42 | – |
+| fitness-hr (qc4 env / no DB env) | 5/5 / 5/5 | – |
