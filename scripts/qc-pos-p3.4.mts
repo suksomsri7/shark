@@ -235,7 +235,7 @@ const BASE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`]
 const SIB_REV = process.env.P34_SIB || "688fc3ed"; // CD-RP9 21.10: คง 688fc3ed (ST2 staff-pin ต้องเทียบ rev ก่อน P3.4 merge) — migration/schema ใหม่ของใบหลัง ดูที่ LANE_REV ใน ST1
 const SIB_OK = !!gitStr(["rev-parse", "--verify", "-q", `${SIB_REV}^{commit}`])?.trim();
 // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · หมุดเลนที่ 3 = product tip หลัง merge P3.8 ซึ่งแตะ outbox-consumers.ts · ST2 ยอมรับไบต์เท่ากับ rev ใดก็ได้ใน revsHot)
-const LANE_REV = process.env.P34_LANE || "9cfa81bb"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · re-pin bafdf89f → 9cfa81bb) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · re-pin b2458030 → bafdf89f) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP8 · re-pin 02b67f91 → b2458030) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91)
+const LANE_REV = process.env.P34_LANE || "137aa93a"; // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old 9cfa81bb · revert: env P34_LANE=9cfa81bb or restore the literal) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · re-pin bafdf89f → 9cfa81bb) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · re-pin b2458030 → bafdf89f) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP8 · re-pin 02b67f91 → b2458030) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91)
 const LANE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${LANE_REV}^{commit}`])?.trim();
 /** บรรทัดในบล็อก // POS P3.4 ▸ … ◂ (บรรทัดเดียวหรือหลายบรรทัด) */
 function markedLines(src: string): { lines: Set<number>; blocks: number; text: string } {
@@ -319,6 +319,15 @@ const markedStrip = (src: string) => {
   const m = markedLines(src);
   return src.split("\n").filter((_, i) => !m.lines.has(i)).join("\n");
 };
+// ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · ownHunks · old: onlyMarked(showAt(rv, f), rd(f)) ทุก rv · revert: env P34_LANE=9cfa81bb or restore the literal + ใช้ showAt ตรงใน ST2 register/service):
+//   rev ที่มีบล็อก POS P3.4 อยู่แล้ว (หมุดเลนหลัง merge P3.4) — บรรทัดในบล็อกของใบนี้ที่ rev นั้นไม่ใช่ "บรรทัดฐาน" ⇒ ตัดออกจากฐานก่อนเทียบ subsequence
+//   แต่ข้อความบล็อก POS P3.4 ทั้งหมดต้องเท่ากับของ rev ทุกตัวอักษร (แก้บล็อกหลังหมุด = แดง) · rev ก่อน P3.4 (72669941 · 688fc3ed) ไม่มีบล็อก ⇒ เหมือนเดิมทุกไบต์
+//   probe: บรรทัดไม่ marked เพิ่ม 1 บรรทัดใน register.ts → แดง "แก้นอกบล็อก" · แก้ 1 ตัวอักษรในบล็อก P3.4 ของ service.ts → แดง "บล็อก POS P3.4 ต่างจาก" (wo-notes/pos-P3.12.md)
+function laneView(base: string, head: string, name: string): { base: string; q: string[] } {
+  const mb = markedLines(base);
+  if (!mb.blocks) return { base, q: [] };
+  return { base: markedStrip(base), q: mb.text === markedLines(head).text ? [] : [`${name} บล็อก POS P3.4 ต่างจาก rev ที่มีบล็อกแล้ว (หมุดเลน)`] };
+}
 const POS_DIR = "src/lib/modules/pos";
 const F = {
   shared: `${POS_DIR}/offline-shared.ts`,
@@ -597,7 +606,9 @@ async function runStatic(): Promise<void> {
     for (const f of [F.register, F.service]) {
       p.push(...firstOk((rv) => {
         const q: string[] = [];
-        const r = onlyMarked(showAt(rv, f) ?? "", rd(f));
+        const lv = laneView(showAt(rv, f) ?? "", rd(f), f.split("/").pop() ?? f); // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · ownHunks · old: onlyMarked(showAt(rv, f) ?? "", rd(f)))
+        q.push(...lv.q);
+        const r = onlyMarked(lv.base, rd(f));
         if (r.blocks < 1) q.push(`${f.split("/").pop()} ไม่มีบล็อก POS P3.4`);
         if (r.added.length) q.push(`${f.split("/").pop()} แก้นอกบล็อก ${r.added.length}: ${r.added.slice(0, 2).join(" | ")}`);
         if (r.dropped > 8) q.push(`${f.split("/").pop()} บรรทัดฐานหาย ${r.dropped}`);
