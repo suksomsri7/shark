@@ -220,3 +220,24 @@ Green on base = 10 (S2.4 · S2.6 · X4.5 · X7.1 · S6.2(N/A) · S6.3 · S7.4 ·
 
 ## B11. Residue
 - every oracle run: `RESIDUE none (tenants=3 users=27)` · Z1 ✅ · QC4 schema now has the H0.7 migration (additive) · seed-hr-qc re-run 23/23 · temp script `scripts/.h07-precheck.mts` deleted (never committed) · nothing of mine running.
+
+## B10 (R10 addendum · numbered after B11 because B10/B11 already existed). Leave list row scope (privacy hunt F1 + F2)
+- **Rule (R10.1 · R10.5).** `leaveRowScopeOf(m, userId)` in `src/lib/modules/hr/service.ts:805-826` (pure; uses `core/rbac` `evaluate`). It returns `{all:true}` when `m.role` is OWNER or MANAGER, or when `evaluate` grants `hr.leave.read` or `hr.leave.decide` (this is today's `reason` set widened by decide). Every other viewer gets `{linkedUserId: <userId>}`, which covers STAFF with only `hr.leave.request` / `hr.employee.create` / `hr.attendance.clock` / `hr.payroll.read`, or no key at all. An empty or missing userId gives `""`, which means 0 rows. The `reason` key still follows `hr.leave.read` only (`hrAccessOf().readLeave`), so a decide-only holder sees every row but no reason (S9.3).
+- **Query filter (R10.1/R10.2).** `listLeaves(ctx, take = 100, scope?)` (:828) and `pendingLeaves(ctx, take = 100, scope?)` (:839) map the scope to a Prisma `where`:
+  - all → `{}`;
+  - own → `{ employee: { linkedUserId } }` inside the same `findMany` as `status`/`take`, so `take=100` can never cut off the viewer's own row (S9.10 builds 102 rows; the own row is the oldest);
+  - `""` → `[]` without a query.
+  - No scope = old behaviour (HrHub pending **count** card `ui.tsx:528`, internal callers).
+- **Web (R10.1).** `privacy.ts:130-132` `leaveItemsForViewer` passes `leaveRowScopeOf(v, v.userId)` to both lists. DTO keys are unchanged (R10.4): base 6, plus `reason` for the read set, plus `filedBy` only on filed-on-behalf rows for the read set.
+- **AI (R10.3).** `ai/tools.ts:233-236` `pending_leaves` reads `aiActorMembership(ctx.actor)`.
+  - No membership (general API key) ⇒ `[]`. Output is still `{ใบลารออนุมัติ: []}` with no error. This is the fail-closed ruling, not the hunter's "wide" suggestion.
+  - A member actor gets `leaveRowScopeOf(membership, aiActorUserId(actor))`.
+  - The genuine system actor (scheduled-task, STAFF audience, no user) gets 0 rows.
+  - Shape unchanged; still no reason.
+  - `tool-access.ts` (OPEN) untouched; the row scope is the gate.
+- Untouched: calendar, upcoming_schedule, kanban gates, tenant/system isolation (`tenantDb(ctx)`), and the HrHub count. Hunks marked `HR H0.7 R10 ▸ … ◂`.
+- **Results.**
+  - qc-hr-h0.7: forced ×2 = 67/67 exit 0, unforced = 67/67 exit 0, RESIDUE none (tenants=3 users=31).
+  - Regression, all exit 0: qc-hf-hr-privacy 194/194 · qc-approval-wiring 7/7 · qc-ai-tools 18/18 · qc-ai-proposals 16/16 · qc-hr-h0.3 37/37 · qc-chat-staff-perms 49/49.
+  - fitness 42/42 (env + no env) · fitness-hr 6/6 (env + no env).
+  - No typecheck (controller).

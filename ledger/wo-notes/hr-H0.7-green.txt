@@ -1,5 +1,5 @@
-# qc-hr-h0.7 on wip/pos-hr-h0.7 (code = fa007b53, identical working tree at run time) · 2026-10-22T12:26:54Z
-# run 1: bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h0.7.mts  → exit 1 (56/57 · only S1.7 — builder dispute D-1, see hr-H0.7.md §9)
+# qc-hr-h0.7 on wip/pos-hr-h0.7 incl. R10 (S9 addendum) · 2026-10-22T14:12:48Z · 67 checks
+# run 1: forced (QC_FORCE=1) → exit 0
 [env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h0.7] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
 ── [S7/S6] statics ──
@@ -11,7 +11,7 @@
   ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
   ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
   ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
-(node:1920744) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2212977) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 ── [S1] requester = user id · self-binding ──
   ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
   ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
@@ -19,7 +19,7 @@
   ✅ [H0.7-S1.4] [action] 🔴 staff A posts employeeId of staff B ⇒ ignored: no leave of B · the new leave is A's own (filedById null)
   ✅ [H0.7-S1.5] [action] member with hr.leave.request but no employee ⇒ fixed Thai refusal · 0 leaves
   ✅ [H0.7-S1.6] [action] 🔴 manager posts employeeId of another tenant / another HR system ⇒ Thai not-found text · 0 leaves
-  ❌ [H0.7-S1.7] [service] requestLeave for unlinked C without actorUserId ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves — expected ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน | actual "∅ no refusal" Δleaves=1
+  ✅ [H0.7-S1.7] [service] requestLeave for unlinked C with actorUserId:null (session-less caller) ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves
   ✅ [H0.7-S1.8] [action] STAFF holding hr.leave.decide files for C ⇒ allowed · requestedById = filedById = that user
 ── [S2] owner's own leave ──
   ✅ [H0.7-S2.1] [action] owner files own leave ⇒ APPROVED · decidedById null · no ApprovalRequest
@@ -67,13 +67,24 @@
   ✅ [H0.7-X6.1] [script] replay: dry-run after apply reports 0 fixable (1 unlinked) · no change
   ✅ [H0.7-X6.2] [script] two parallel --apply on 2 fresh legacy rows ⇒ both exit 0 · each row fixed once
   ✅ [H0.7-S5.5] [script] output carries no names / e-mails / other tenant ids (and the script ran)
+── [S9] leave list row scope (R10) ──
+  ✅ [H0.7-S9.1] [dto] 🔴 leaveItemsForViewer: unlinked plain member ⇒ 0 pending + 0 history · viewer with empty userId ⇒ 0 + 0
+  ✅ [H0.7-S9.2] [dto] 🔴 linked STAFF A (hr.leave.request only) ⇒ only A's rows (pending + history) · colleague B's SICK row absent in both
+  ✅ [H0.7-S9.3] [dto] STAFF with hr.leave.decide (no read, unlinked) ⇒ every row of system A (pending + history) · no reason key
+  ✅ [H0.7-S9.4] [dto] 🔴 payroll viewer without leave keys, unlinked ⇒ 0 pending + 0 history
+  ✅ [H0.7-S9.5] [dto] OWNER · MANAGER role · STAFF hr.leave.read ⇒ every row · keys = id/employeeName/type/fromDate/toDate/status + reason (+ filedBy only on filed-on-behalf rows)
+  ✅ [H0.7-S9.6] [ai] 🔴 pending_leaves: linked member actor without leave keys ⇒ only own pending rows · unlinked member ⇒ 0 rows (no error)
+  ✅ [H0.7-S9.7] [ai] 🔴 pending_leaves via general API-key actor (no membership) ⇒ 0 rows · no error · no reason key/text
+  ✅ [H0.7-S9.8] [ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text
+  ✅ [H0.7-S9.10] [dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows
+  ✅ [H0.7-S9.9] [dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows
   ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
-RESIDUE none (tenants=3 users=27)
+RESIDUE none (tenants=3 users=31)
   ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
-===== qc-hr-h0.7 ===== passed 56/57 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"],"findings":[{"id":"H0.7-S1.7","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+===== qc-hr-h0.7 ===== passed 67/67 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
 
-# run 2: same command (forced) → exit 1
+# run 2: forced → exit 0
 [env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h0.7] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
 ── [S7/S6] statics ──
@@ -85,7 +96,7 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"]
   ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
   ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
   ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
-(node:1989904) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2214186) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 ── [S1] requester = user id · self-binding ──
   ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
   ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
@@ -93,7 +104,7 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"]
   ✅ [H0.7-S1.4] [action] 🔴 staff A posts employeeId of staff B ⇒ ignored: no leave of B · the new leave is A's own (filedById null)
   ✅ [H0.7-S1.5] [action] member with hr.leave.request but no employee ⇒ fixed Thai refusal · 0 leaves
   ✅ [H0.7-S1.6] [action] 🔴 manager posts employeeId of another tenant / another HR system ⇒ Thai not-found text · 0 leaves
-  ❌ [H0.7-S1.7] [service] requestLeave for unlinked C without actorUserId ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves — expected ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน | actual "∅ no refusal" Δleaves=1
+  ✅ [H0.7-S1.7] [service] requestLeave for unlinked C with actorUserId:null (session-less caller) ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves
   ✅ [H0.7-S1.8] [action] STAFF holding hr.leave.decide files for C ⇒ allowed · requestedById = filedById = that user
 ── [S2] owner's own leave ──
   ✅ [H0.7-S2.1] [action] owner files own leave ⇒ APPROVED · decidedById null · no ApprovalRequest
@@ -141,13 +152,24 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"]
   ✅ [H0.7-X6.1] [script] replay: dry-run after apply reports 0 fixable (1 unlinked) · no change
   ✅ [H0.7-X6.2] [script] two parallel --apply on 2 fresh legacy rows ⇒ both exit 0 · each row fixed once
   ✅ [H0.7-S5.5] [script] output carries no names / e-mails / other tenant ids (and the script ran)
+── [S9] leave list row scope (R10) ──
+  ✅ [H0.7-S9.1] [dto] 🔴 leaveItemsForViewer: unlinked plain member ⇒ 0 pending + 0 history · viewer with empty userId ⇒ 0 + 0
+  ✅ [H0.7-S9.2] [dto] 🔴 linked STAFF A (hr.leave.request only) ⇒ only A's rows (pending + history) · colleague B's SICK row absent in both
+  ✅ [H0.7-S9.3] [dto] STAFF with hr.leave.decide (no read, unlinked) ⇒ every row of system A (pending + history) · no reason key
+  ✅ [H0.7-S9.4] [dto] 🔴 payroll viewer without leave keys, unlinked ⇒ 0 pending + 0 history
+  ✅ [H0.7-S9.5] [dto] OWNER · MANAGER role · STAFF hr.leave.read ⇒ every row · keys = id/employeeName/type/fromDate/toDate/status + reason (+ filedBy only on filed-on-behalf rows)
+  ✅ [H0.7-S9.6] [ai] 🔴 pending_leaves: linked member actor without leave keys ⇒ only own pending rows · unlinked member ⇒ 0 rows (no error)
+  ✅ [H0.7-S9.7] [ai] 🔴 pending_leaves via general API-key actor (no membership) ⇒ 0 rows · no error · no reason key/text
+  ✅ [H0.7-S9.8] [ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text
+  ✅ [H0.7-S9.10] [dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows
+  ✅ [H0.7-S9.9] [dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows
   ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
-RESIDUE none (tenants=3 users=27)
+RESIDUE none (tenants=3 users=31)
   ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
-===== qc-hr-h0.7 ===== passed 56/57 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"],"findings":[{"id":"H0.7-S1.7","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[]}
+===== qc-hr-h0.7 ===== passed 67/67 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}
 
-# run 3: unforced (no QC_FORCE) → exit 1
+# run 3: unforced → exit 0
 [env] qc-hr-h0.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h0.7] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
 ── [S7/S6] statics ──
@@ -159,7 +181,7 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"]
   ✅ [H0.7-S7.7] [static] "my requests" UI wires cancelLeaveAction with a data-testid (…cancel…) listed in hr-ui-inventory.json
   ✅ [H0.7-S7.8] [static] plans.ts still blocks hr_decide_leave + approval_decide (PLAN_HUMAN_ONLY)
   ✅ [H0.7-S6.1] [static] executePlan passes the confirmer (opts.userId) to runKind
-(node:1991350) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2215382) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 ── [S1] requester = user id · self-binding ──
   ✅ [H0.7-S1.1] [action] staff A files own leave (no employeeId posted) ⇒ 1 leave of A · ApprovalRequest.requestedById = user A · filedById null
   ✅ [H0.7-S1.2] [core] approval listMyRequests(user A) contains that request
@@ -167,7 +189,7 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"]
   ✅ [H0.7-S1.4] [action] 🔴 staff A posts employeeId of staff B ⇒ ignored: no leave of B · the new leave is A's own (filedById null)
   ✅ [H0.7-S1.5] [action] member with hr.leave.request but no employee ⇒ fixed Thai refusal · 0 leaves
   ✅ [H0.7-S1.6] [action] 🔴 manager posts employeeId of another tenant / another HR system ⇒ Thai not-found text · 0 leaves
-  ❌ [H0.7-S1.7] [service] requestLeave for unlinked C without actorUserId ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves — expected ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน | actual "∅ no refusal" Δleaves=1
+  ✅ [H0.7-S1.7] [service] requestLeave for unlinked C with actorUserId:null (session-less caller) ⇒ "ใบลานี้ยังไม่มีบัญชีผู้ยื่น — ให้ผู้จัดการยื่นแทน" · 0 leaves
   ✅ [H0.7-S1.8] [action] STAFF holding hr.leave.decide files for C ⇒ allowed · requestedById = filedById = that user
 ── [S2] owner's own leave ──
   ✅ [H0.7-S2.1] [action] owner files own leave ⇒ APPROVED · decidedById null · no ApprovalRequest
@@ -215,8 +237,19 @@ JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"]
   ✅ [H0.7-X6.1] [script] replay: dry-run after apply reports 0 fixable (1 unlinked) · no change
   ✅ [H0.7-X6.2] [script] two parallel --apply on 2 fresh legacy rows ⇒ both exit 0 · each row fixed once
   ✅ [H0.7-S5.5] [script] output carries no names / e-mails / other tenant ids (and the script ran)
+── [S9] leave list row scope (R10) ──
+  ✅ [H0.7-S9.1] [dto] 🔴 leaveItemsForViewer: unlinked plain member ⇒ 0 pending + 0 history · viewer with empty userId ⇒ 0 + 0
+  ✅ [H0.7-S9.2] [dto] 🔴 linked STAFF A (hr.leave.request only) ⇒ only A's rows (pending + history) · colleague B's SICK row absent in both
+  ✅ [H0.7-S9.3] [dto] STAFF with hr.leave.decide (no read, unlinked) ⇒ every row of system A (pending + history) · no reason key
+  ✅ [H0.7-S9.4] [dto] 🔴 payroll viewer without leave keys, unlinked ⇒ 0 pending + 0 history
+  ✅ [H0.7-S9.5] [dto] OWNER · MANAGER role · STAFF hr.leave.read ⇒ every row · keys = id/employeeName/type/fromDate/toDate/status + reason (+ filedBy only on filed-on-behalf rows)
+  ✅ [H0.7-S9.6] [ai] 🔴 pending_leaves: linked member actor without leave keys ⇒ only own pending rows · unlinked member ⇒ 0 rows (no error)
+  ✅ [H0.7-S9.7] [ai] 🔴 pending_leaves via general API-key actor (no membership) ⇒ 0 rows · no error · no reason key/text
+  ✅ [H0.7-S9.8] [ai] pending_leaves by member actor with hr.leave.read ⇒ every pending row of system A · no reason key/text
+  ✅ [H0.7-S9.10] [dto] filter in the query (take=100): linked staff's single own row, oldest of ≥101 rows of its system, is returned (pending + history) · no colleague rows
+  ✅ [H0.7-S9.9] [dto+ai] cross-system: system B's leave in 0 results of every S9 viewer (web + AI) · other-tenant ctx with A's systemId ⇒ 0 rows
   ✅ [H0.7-S7.3] [db] QC4 columns HrEmployee.linkApprovedById + HrLeave.filedById exist (text, nullable)
-RESIDUE none (tenants=3 users=27)
+RESIDUE none (tenants=3 users=31)
   ✅ [H0.7-Z1] residue: tenants qc-hr-h0.7-* gone · no HrLeave/HrEmployee/ApprovalRequest/AuditLog/OutboxEvent/AiPlan of ours · users/sessions gone · no rate rows
-===== qc-hr-h0.7 ===== passed 56/57
-JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":56,"failed":["H0.7-S1.7"],"findings":[{"id":"H0.7-S1.7","sev":"MAJOR"}],"skipped":false,"forced":false,"crashed":false,"missing":[]}
+===== qc-hr-h0.7 ===== passed 67/67
+JSON_SUMMARY {"suite":"qc-hr-h0.7","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[]}
