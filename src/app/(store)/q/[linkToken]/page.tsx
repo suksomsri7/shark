@@ -10,6 +10,7 @@ import thPos from "@/messages/th/pos.json";
 import enPos from "@/messages/en/pos.json";
 import { linkDoor } from "@/lib/modules/pos/qr-order";
 import { isLinkToken } from "@/lib/modules/pos/qr-order-shared";
+import { posPublicClientIp } from "@/lib/modules/pos/public-rate"; // POS P5.2 ▸ CD-P52-F3 ◂
 import { QrNoticeCard, QrPublicFrame } from "@/components/pos/qr/QrPublicFrame";
 import { QrPreorderApp } from "@/components/pos/qr/QrPreorderApp";
 import { placePreorderAction, placeTaggedPreorderAction, quotePreorderCartAction } from "../actions"; // POS P3.7 ▸ + placeTaggedPreorderAction ◂
@@ -27,7 +28,7 @@ export default async function QrPreorderPage({ params, searchParams }: { params:
   const locale = await qrLocale(lang);
   const t = qrT(locale);
   const text = { th: t("common.th"), en: t("common.en"), language: t("common.language") };
-  const door = await linkDoor(linkToken);
+  const door = await linkDoor(linkToken, undefined, { ip: await posPublicClientIp() }); // POS P5.2 ▸ CD-P52-F3: per-IP read limit ◂
   if (!door.ok) {
     return (
       <QrPublicFrame testid="pos-qr-preorder-page" shop={null} sub="" locale={locale} text={text} data={{ state: "invalid" }}>

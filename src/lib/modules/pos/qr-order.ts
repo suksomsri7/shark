@@ -7,7 +7,9 @@
 //    ออเดอร์ = order.ts · ใบขอรับเงิน = payment-intent.ts · รอบ/session/คำขอ = โมดูลร้านอาหารผ่าน `import("@/lib/modules/restaurant")` · ตัวนับเมนู event = catalog-legacy
 // 🔴 ไม่มี session/ไม่ import auth: สิทธิ์ = โทเคนใน URL (capability) · โทเคนผิดรูป/ไม่รู้จัก/ถูกเปลี่ยน/ปิด/ร้านอื่น/ประตูอื่น = TOKEN_INVALID รูปเดียวกันทุกกรณี
 // 🔴 อ่าน (เปิดหน้า · โพล · quote) = 0 เขียน (มติ 11 · ข้อบกพร่อง ① ของประตูเดิม) — ยกเว้นหน้าสถานะที่เลยเวลาจ่าย = ปิดออเดอร์ครั้งเดียว (S2 ขี้เกียจ)
-// 🔴 ส่ง (สั่ง · ส่งรอบ · เรียก · แจ้งโอน) = เพดาน DB 10 ครั้ง/นาที/IP + ในหน่วยความจำ 60 ครั้ง/นาที/โทเคน (CD-O6) · ไม่มีเพดานกับการอ่าน
+// 🔴 ส่ง (สั่ง · ส่งรอบ · เรียก · แจ้งโอน) = เพดาน DB 10 ครั้ง/นาที/IP + ในหน่วยความจำ 60 ครั้ง/นาที/โทเคน (CD-O6) ·
+//    POS P5.2 ▸ CD-P52-F3: ประตูอ่าน (tableDoor · tablePoll · tableBill · linkDoor · orderStatus) = เพดาน DB ต่อ IP ต่อตระกูลโทเคน (public-rate.ts ·
+//    readGuard) เมื่อผู้เรียกส่ง meta {ip} (หน้า/ action สาธารณะส่งเสมอ) · ถังอัตรา 1 แถวคือการเขียนเดียวของการอ่าน (ข้อมูลร้าน 0 เขียน) ◂
 // 🔴 ราคา = ตัวแก้ราคาเดียวกับหน้าขาย (price.ts ชั้นราคา/ช่องทาง/โปร · ตัวตรวจตัวเลือก regResolveOptions ของ register-shared · priceCart · ค่าบริการ POS
 //    เฉพาะ QR_TABLE · ไม่มีสมาชิก/คูปอง/ส่วนลด) ⇒ ยอดบนมือถือ = ยอดหน้าขายของช่องทางเดียวกัน (PO4) · บิลแขก = registerTableBillPreview ด้วยผู้กระทำ
 //    สังเคราะห์อ่านอย่างเดียว (CD-O1 · ข้อบกพร่อง ② ยอดปัดลงของ billPreview เดิม) — ไม่มี hunk ใน register.ts นอกจาก CD4
@@ -34,6 +36,7 @@ import { promptpayIdForUnit } from "./payment-intent-shared";
 import { verifyChatTag, type VerifiedChatTag } from "./chat-tag"; // POS P3.7 ▸ R8 ประตู B: แท็กห้องแชทบนลิงก์สั่งล่วงหน้า ◂
 import { maskPhone, ORDER_PREP_DEFAULT_MIN, type OrderLineOption } from "./order-shared";
 import { receiptShopHeader } from "./receipt"; // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ (อ่านอย่างเดียว) ◂
+import { posPublicRateGuard, type PosPublicRateFamily } from "./public-rate"; // POS P5.2 ▸ CD-P52-F3 ◂
 import * as orders from "./order";
 import type { GuestTableView } from "@/lib/modules/restaurant";
 import {
@@ -115,6 +118,15 @@ async function submitGuard(token: string, ip: unknown): Promise<QrRefusal | null
   return null;
 }
 const ipOf = (meta: unknown): string => (isRecord(meta) && typeof meta.ip === "string" ? meta.ip : "unknown");
+// POS P5.2 ▸ CD-P52-F3: เพดานอ่านต่อ IP ต่อตระกูลโทเคน (ถัง pos:pub:<family>:<ip> · งบใน public-rate.ts คำนวณจากรอบโพลของ client × 3) —
+//   ตรวจก่อนค้นโทเคน ⇒ ชนเพดาน = RATE_LIMITED เหมือนกันทั้งโทเคนจริง/ไม่มี · โทเคนไม่รู้จักยังได้ TOKEN_INVALID รูปเดิม ·
+//   ไม่มี meta (ผู้เรียกภายใน/สคริปต์) = ไม่นับ — ประตูสาธารณะทุกตัว ((store)/q/** หน้า + actions) ส่ง {ip} เสมอ ◂
+export type QrReadMeta = { ip?: string };
+async function readGuard(family: PosPublicRateFamily, meta: unknown): Promise<QrRefusal | null> {
+  if (meta === undefined) return null;
+  const v = await posPublicRateGuard(family, ipOf(meta));
+  return v.ok ? null : qrRefuse("RATE_LIMITED", { retryAfterSec: v.retryAfterSec });
+}
 
 // POS P2.7U ▸ หัวร้านของหน้าสาธารณะ = หัวใบเสร็จ (ชื่อร้าน · โลโก้ · สาขา · อ่านอย่างเดียว) — อ่านไม่ได้ = ชื่อสาขา (หน้าไม่ล้ม) ◂
 async function shopOf(tenantId: string, systemId: string, unitId: string, unitName: string): Promise<QrShopHeader> {
@@ -297,17 +309,21 @@ async function tableViewOf(t: TableCtx): Promise<QrTableView> {
 }
 
 /** หน้าโต๊ะ (อ่านอย่างเดียว · ไม่เปิด session — ข้อบกพร่อง ① ปิดแล้ว · TB1) */
-export async function tableDoor(qrToken: string): Promise<QrTableDoorResult> {
+export async function tableDoor(qrToken: string, meta?: QrReadMeta): Promise<QrTableDoorResult> {
   return qrGuard("tableDoor", async (): Promise<QrTableDoorResult> => {
+    const limited = await readGuard("qrTable", meta); // POS P5.2 ▸ CD-P52-F3 ◂
+    if (limited) return limited;
     const t = await tableCtx(qrToken);
     if (!t) return TOKEN_INVALID();
     return { ok: true, view: await tableViewOf(t) };
   });
 }
 
-/** โพลของหน้าโต๊ะ — sinceVer เท่าเดิม = changed:false (0 เขียน · ไม่มีเพดาน) */
-export async function tablePoll(qrToken: string, opts: { sinceVer?: string } = {}): Promise<QrTablePollResult> {
+/** โพลของหน้าโต๊ะ — sinceVer เท่าเดิม = changed:false (ข้อมูลร้าน 0 เขียน · เพดานอ่านต่อ IP เมื่อส่ง meta — POS P5.2 ▸ CD-P52-F3 ◂) */
+export async function tablePoll(qrToken: string, opts: { sinceVer?: string } = {}, meta?: QrReadMeta): Promise<QrTablePollResult> {
   return qrGuard("tablePoll", async (): Promise<QrTablePollResult> => {
+    const limited = await readGuard("qrTable", meta); // POS P5.2 ▸ CD-P52-F3 ◂
+    if (limited) return limited;
     const t = await tableCtx(qrToken);
     if (!t) return TOKEN_INVALID();
     const view = await tableViewOf(t);
@@ -521,8 +537,10 @@ async function billOf(t: TableCtx): Promise<QrTableBill> {
 }
 
 /** บิลของโต๊ะบนมือถือ = บิลโต๊ะของหน้าขาย (ช่องทาง QR_TABLE/STORE + ค่าบริการ POS ปัดครึ่งขึ้น · ข้อบกพร่อง ② · TB6) + พร้อมเพย์ของยอดนั้น · แยกบิลเปิด = ซ่อนการจ่าย */
-export async function tableBill(qrToken: string): Promise<QrTableBillResult> {
+export async function tableBill(qrToken: string, meta?: QrReadMeta): Promise<QrTableBillResult> {
   return qrGuard("tableBill", async (): Promise<QrTableBillResult> => {
+    const limited = await readGuard("qrTable", meta); // POS P5.2 ▸ CD-P52-F3 ◂
+    if (limited) return limited;
     const t = await tableCtx(qrToken);
     if (!t) return TOKEN_INVALID();
     return { ok: true, bill: await billOf(t) };
@@ -560,8 +578,10 @@ async function linkCtx(linkToken: unknown): Promise<LinkCtx | null> {
 }
 
 /** หน้าสั่งล่วงหน้า (อ่านอย่างเดียว): ชื่อสาขา · เปิด/ปิด (+ เหตุ) · เมนูราคา QR_ORDER · เวลาเตรียมของช่องทาง */
-export async function linkDoor(linkToken: string, deps?: PaymentIntentDeps): Promise<QrLinkDoorResult> {
+export async function linkDoor(linkToken: string, deps?: PaymentIntentDeps, meta?: QrReadMeta): Promise<QrLinkDoorResult> {
   return qrGuard("linkDoor", async (): Promise<QrLinkDoorResult> => {
+    const limited = await readGuard("qrLink", meta); // POS P5.2 ▸ CD-P52-F3 ◂
+    if (limited) return limited;
     const l = await linkCtx(linkToken);
     if (!l) return TOKEN_INVALID();
     const [door, cat, shop] = await Promise.all([doorOf(l.u, "QR_ORDER", true, deps), catalogOf(l.u), shopOf(l.u.tenantId, l.u.systemId, l.u.unitId, l.u.unitName)]); // POS P2.7U ▸ + หัวร้าน ◂
@@ -710,8 +730,10 @@ async function orderOfToken(orderToken: unknown) {
  * หน้าสถานะของลูกค้า (โพล 5 วิ · sinceVer จาก version + สถานะ + สถานะใบ = changed:false ไม่เขียน): รหัส · สถานะ · ยอด · QR ของใบเดียวกัน (ยอด/หมดเวลาเดียว · มติ 3) ·
  * ใบเสร็จออนไลน์หลังร้านรับ · เบอร์แบบปิดบัง · เวลารับโดยประมาณ · เหตุที่ปิด · รอคืนเงิน
  */
-export async function orderStatus(orderToken: string, opts: { sinceVer?: string } = {}): Promise<QrOrderStatusResult> {
+export async function orderStatus(orderToken: string, opts: { sinceVer?: string } = {}, meta?: QrReadMeta): Promise<QrOrderStatusResult> {
   return qrGuard("orderStatus", async (): Promise<QrOrderStatusResult> => {
+    const limited = await readGuard("qrOrder", meta); // POS P5.2 ▸ CD-P52-F3 ◂
+    if (limited) return limited;
     const o = await orderOfToken(orderToken);
     if (!o) return TOKEN_INVALID();
     const it = o.paymentIntentId ? await prisma.posPaymentIntent.findUnique({ where: { id: o.paymentIntentId }, select: { kind: true, amountSatang: true, qrPayload: true, expiresAt: true, status: true } }) : null;

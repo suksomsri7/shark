@@ -10,6 +10,7 @@ import thPos from "@/messages/th/pos.json";
 import enPos from "@/messages/en/pos.json";
 import { orderStatus } from "@/lib/modules/pos/qr-order";
 import { isOrderToken } from "@/lib/modules/pos/qr-order-shared";
+import { posPublicClientIp } from "@/lib/modules/pos/public-rate"; // POS P5.2 ▸ CD-P52-F3 ◂
 import { QrNoticeCard, QrPublicFrame } from "@/components/pos/qr/QrPublicFrame";
 import { QrOrderStatusApp } from "@/components/pos/qr/QrOrderStatusApp";
 import { claimPaidAction, orderStatusAction } from "../../actions";
@@ -26,7 +27,7 @@ export default async function QrOrderStatusPage({ params, searchParams }: { para
   const locale = await qrLocale(lang);
   const t = qrT(locale);
   const text = { th: t("common.th"), en: t("common.en"), language: t("common.language") };
-  const r = await orderStatus(orderToken, {});
+  const r = await orderStatus(orderToken, {}, { ip: await posPublicClientIp() }); // POS P5.2 ▸ CD-P52-F3: per-IP read limit ◂
   if (!r.ok) {
     return (
       <QrPublicFrame testid="pos-qr-order-page" shop={null} sub="" locale={locale} text={text} data={{ state: "invalid" }}>
