@@ -481,7 +481,11 @@ function runPure() {
     `การ์ด@${iGuard} ตัวนับ@${iCounter} · ผู้เรียก ${total4} จุด/${Object.keys(found).length} ไฟล์${diff.length ? ` · ต่าง: ${diff.join(", ")}` : ""}`);
 
   // R2 ไฟล์ action ของ POS ทั้งหมด
-  const actFiles = walk("src/lib/modules/pos").filter((f) => /actions?\.tsx?$/.test(f) || /-actions\.tsx?$/.test(f));
+  // ORACLE-EDIT ผู้คุม 22.10 (CD-P312-O1 ทำล่วงหน้า): รวมไฟล์ action ของ POS ที่อยู่นอก modules/pos เพราะกฎทิศทาง (p3.8 ST1 ห้าม modules/pos import pos-board-*) — src/lib/pos-board-actions.ts · pos-board-ui-actions.ts · pos-integrations-actions.ts (+ไฟล์ pos-*actions*.ts ที่เพิ่มภายหลัง) ◂
+  const actFiles = [
+    ...walk("src/lib/modules/pos").filter((f) => /actions?\.tsx?$/.test(f) || /-actions\.tsx?$/.test(f)),
+    ...walk("src/lib").filter((f) => /^src\/lib\/pos-[\w-]*actions[\w-]*\.tsx?$/.test(f)),
+  ];
   const p22: string[] = [];
   let hasSettingsAction = false;
   for (const f of actFiles) {
