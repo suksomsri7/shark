@@ -3167,10 +3167,11 @@
         "cashier"
       ],
       "expect": {
-        "type": "ui",
+        "type": "mutation",
         "target": "pos-shift-current",
         "state": "appears",
-        "note": "openShiftAction ของเครื่องนี้ (deviceId ใน localStorage) + floatDetail เมื่อนับแยกแบงก์ · มีกะอยู่แล้ว = รับกะนั้น · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+        "note": "openShiftAction ของเครื่องนี้ (deviceId ใน localStorage) + floatDetail เมื่อนับแยกแบงก์ · มีกะอยู่แล้ว = รับกะนั้น · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า",
+        "db": "PosShift OPEN (openShiftAction · เงินทอนตั้งต้น · shift.ts posShift.create)"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -3179,7 +3180,8 @@
       "opener": [
         "pos-shift-open-start"
       ],
-      "needs": "เครื่องนี้ยังไม่มีกะเปิด (กล่องเปิดกะ)"
+      "needs": "เครื่องนี้ยังไม่มีกะเปิด (กล่องเปิดกะ)",
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/shifts",
@@ -3342,16 +3344,18 @@
         "cashier"
       ],
       "expect": {
-        "type": "ui",
+        "type": "mutation",
         "target": "pos-shift-z",
         "state": "appears",
-        "note": "closeShiftAction (countedCashSatang = รวมแบงก์+เหรียญ · countDetail) → แผง Z + ปุ่มเปิดกะใหม่ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+        "note": "closeShiftAction (countedCashSatang = รวมแบงก์+เหรียญ · countDetail) → แผง Z + ปุ่มเปิดกะใหม่ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า",
+        "db": "PosShift CLOSED + Z (closeShiftAction · เงินนับจริง/ส่วนต่าง · shift.ts posShift.update)"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "กะเปิดของเครื่องนี้ (fixture เปิดกะให้เครื่องของตัวกด)"
+      "needs": "กะเปิดของเครื่องนี้ (fixture เปิดกะให้เครื่องของตัวกด)",
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/shifts",
@@ -3470,10 +3474,11 @@
         "cashier"
       ],
       "expect": {
-        "type": "ui",
+        "type": "mutation",
         "target": "pos-shift-z",
         "state": "appears",
-        "note": "recountShiftAction → ปิดกล่อง · Z ของกะนั้น + บล็อก pos-shift-recount · ปฏิเสธ = ข้อความใน pos-shift-recount-error (ไม่ load ซ้ำ)"
+        "note": "recountShiftAction → ปิดกล่อง · Z ของกะนั้น + บล็อก pos-shift-recount · ปฏิเสธ = ข้อความใน pos-shift-recount-error (ไม่ load ซ้ำ)",
+        "db": "PosShiftRecount (นับย้อนหลังของกะ FORCE_CLOSED · shift.ts posShiftRecount.create)"
       },
       "wo": "P1.9b",
       "oracle": "qc-pos-p1.9b",
@@ -3483,7 +3488,8 @@
         "pos-shift-closed-all",
         "pos-shift-recount-*"
       ],
-      "needs": "กะที่ถูกปิดบังคับ (FORCE_CLOSED) ที่ยังไม่นับย้อนหลัง"
+      "needs": "กะที่ถูกปิดบังคับ (FORCE_CLOSED) ที่ยังไม่นับย้อนหลัง",
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/shifts",
@@ -3788,7 +3794,7 @@
     {
       "page": "/app/sys/[id]/pos/shifts",
       "testid": "pos-shift-close-blind",
-      "kind": "toggle",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -5667,7 +5673,7 @@
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-receive-picker",
-      "kind": "input",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -5690,7 +5696,7 @@
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-transfer*-picker",
-      "kind": "input",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -5714,7 +5720,7 @@
     {
       "page": "/app/sys/[id]/pos/stock",
       "testid": "pos-stock-adjust*-picker",
-      "kind": "input",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -6963,7 +6969,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-receipt"
-      ]
+      ],
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -7723,7 +7730,8 @@
       "opener": [
         "pos-settings-nav-devices"
       ],
-      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)"
+      "needs": "เครื่อง POS สถานะ ACTIVE ของสาขา (เลือกอัตโนมัติ DeviceSettings.tsx:149-156)",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -7937,7 +7945,8 @@
         "pos-settings-nav-receipt",
         "pos-settings-print-sample"
       ],
-      "needs": "การพิมพ์ล้ม (PrintStatus แสดง pos-print-error · PrintStatus.tsx:42-75)"
+      "needs": "การพิมพ์ล้ม (PrintStatus แสดง pos-print-error · PrintStatus.tsx:42-75)",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -7962,7 +7971,8 @@
         "pos-settings-nav-receipt",
         "pos-settings-print-sample"
       ],
-      "needs": "การพิมพ์ล้ม (PrintStatus แสดง pos-print-error · PrintStatus.tsx:42-75)"
+      "needs": "การพิมพ์ล้ม (PrintStatus แสดง pos-print-error · PrintStatus.tsx:42-75)",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -7983,7 +7993,8 @@
       "oracle": "P1.10-P1",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "จอสำเร็จหลังชำระบิลจริง (PayDone 02b · ต้องขาย 1 บิลก่อน)"
+      "needs": "จอสำเร็จหลังชำระบิลจริง (PayDone 02b · ต้องขาย 1 บิลก่อน)",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -8004,7 +8015,8 @@
       "oracle": "P1.10-P6",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "จอสำเร็จหลังชำระบิลจริง (PayDone 02b · ต้องขาย 1 บิลก่อน)"
+      "needs": "จอสำเร็จหลังชำระบิลจริง (PayDone 02b · ต้องขาย 1 บิลก่อน)",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -8051,7 +8063,8 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "เครื่องพิมพ์ของเครื่องนี้จับคู่แล้ว + เปิดลิ้นชักอัตโนมัติ (drawerKick)"
+      "needs": "เครื่องพิมพ์ของเครื่องนี้จับคู่แล้ว + เปิดลิ้นชักอัตโนมัติ (drawerKick)",
+      "safety": "external"
     },
     {
       "page": "/r/[token]",
@@ -9781,7 +9794,8 @@
       "needs": [
         "ผู้ขายที่มีเพดานส่วนลด (แคชเชียร์ · เจ้าของ/ผู้จัดการค่าปริยายไม่จำกัด) — ส่วนลด 90% เกินเพดาน",
         "กติกาอนุมัติ POS_DISCOUNT_OVER ของร้าน (ApprovalPolicy)"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -10664,7 +10678,8 @@
         "pos-taxinv-name=*",
         "pos-taxinv-address=*"
       ],
-      "needs": "ร้านออกใบกำกับเต็มรูปได้ (registerStatus.taxInvoiceEligible · POS ผูกสมุดจด VAT)"
+      "needs": "ร้านออกใบกำกับเต็มรูปได้ (registerStatus.taxInvoiceEligible · POS ผูกสมุดจด VAT)",
+      "safety": "counter"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -10921,7 +10936,7 @@
     {
       "page": "/app/sys/[id]/pos/sales",
       "testid": "pos-taxinv-request-changed",
-      "kind": "input",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -13199,7 +13214,7 @@
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-card-state-offline",
-      "kind": "toggle",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -13218,7 +13233,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-shark"
-      ]
+      ],
+      "needs": "การ์ดสถานะออฟไลน์แบบไม่มีค่า live — หน้า settings ส่ง offlineLive เสมอ (page.tsx) จึงไม่ขึ้น · CD-P41-B6"
     },
     {
       "page": "/app/sys/[id]/pos/close",
@@ -13226,11 +13242,10 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "note": "เลือกวัน (ฟอร์ม GET name=date) — ป้ายวันที่ตามภาษาจอ (DateOverlay) + ช่องวันที่ของเบราว์เซอร์ซ้อนโปร่งใส · ค่าเริ่ม = วันธุรกิจตามเวลาตัดวัน (posBusinessToday)",
@@ -21145,7 +21160,7 @@
     {
       "page": "/app/sys/[id]/pos/kds",
       "testid": "pos-kds-86-sheet",
-      "kind": "form",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -23443,7 +23458,8 @@
       "needs": [
         "ค่าตั้งรับมัดจำเปิด (registerPayTendersAction deposit.enabled)",
         "มัดจำที่เพิ่งรับสำเร็จ (จอสำเร็จรับมัดจำ)"
-      ]
+      ],
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -24630,11 +24646,10 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager"
-      ],
-      "hiddenFor": [
+        "manager",
         "cashier"
       ],
+      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/reports",
@@ -24665,7 +24680,8 @@
       "wo": "P2.12U",
       "oracle": "",
       "system": "POS",
-      "query": "kind=daily&from=[date]&to=[date]&noprint=1"
+      "query": "kind=daily&from=[date]&to=[date]&noprint=1",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/reports",
@@ -25364,16 +25380,18 @@
         "public"
       ],
       "expect": {
-        "type": "navigate",
+        "type": "mutation",
         "note": "หน้าสาธารณะ QR (ไม่ต้องล็อกอิน · โทเคนใน URL) · สั่งและจ่าย = placePreorderAction (คีย์ 1 ต่อตะกร้า+ผู้รับ) → /q/o/<orderToken>",
-        "target": "/q/o/[orderToken]"
+        "target": "/q/o/[orderToken]",
+        "db": "PosOrder create (placePreorder → ingestPreorderInTx · order.ts posOrder.create) + PosPaymentIntent (prepareOrderIntent)"
       },
       "wo": "P2.7U",
       "oracle": "",
       "system": "POS",
       "query": "",
       "hiddenFor": [],
-      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)"
+      "needs": "ตะกร้าสั่งล่วงหน้าที่มีสินค้า (หน้านี้ไม่มีแถว pos-qr-item-add-* ในทะเบียน ⇒ ตัวเปิดสร้างตะกร้าไม่ได้)",
+      "safety": "money"
     },
     {
       "page": "/q/[linkToken]",
@@ -25873,7 +25891,8 @@
       "opener": [
         "pos-tbl-print-qr"
       ],
-      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty"
+      "needs": "สาขามีโต๊ะ (RestaurantTable ACTIVE) — posqc-btn-unit ของตัวกดยังไม่มีโต๊ะ = หน้าว่าง pos-tbl-empty",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/tables",
@@ -26670,7 +26689,8 @@
       "query": "unit=[unitId]",
       "opener": [
         "pos-settings-nav-staff"
-      ]
+      ],
+      "safety": "money"
     },
     {
       "page": "/app/sys/[id]/pos/shifts",
@@ -26959,7 +26979,8 @@
         "pos-reg-offline-pay-cash",
         "pos-reg-offline-confirm"
       ],
-      "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)"
+      "needs": "ธงขายออฟไลน์เปิด (settings.pos.offline.enabled) + เครื่องออฟไลน์ (navigator.onLine false)",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -27082,7 +27103,8 @@
       "opener": [
         "pos-reg-offline-badge"
       ],
-      "needs": "ธงขายออฟไลน์เปิด + บิลออฟไลน์ในคิวของเครื่อง (IndexedDB)"
+      "needs": "ธงขายออฟไลน์เปิด + บิลออฟไลน์ในคิวของเครื่อง (IndexedDB)",
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/register",
@@ -27109,12 +27131,13 @@
       "needs": [
         "ธงขายออฟไลน์เปิด + บิลออฟไลน์ในคิวของเครื่อง (IndexedDB)",
         "บิลออฟไลน์ที่ซิงก์แล้ว (saleId) + ออนไลน์"
-      ]
+      ],
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-live-banner",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27135,7 +27158,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-gate",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27156,7 +27179,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-chips",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27182,7 +27205,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-chip-*",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27208,7 +27231,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-sync-strip",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27257,7 +27280,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-done",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27285,7 +27308,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-done-no",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27313,7 +27336,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-bills",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27337,7 +27360,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-offline-bill-*",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27361,7 +27384,7 @@
     {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-lock-offline-note",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27508,7 +27531,7 @@
     {
       "page": "/app/sys/[id]/pos/shifts",
       "testid": "pos-shift-offline-queue",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -27530,7 +27553,7 @@
     {
       "page": "/app/sys/[id]/pos/shifts",
       "testid": "pos-shift-offline-row-*",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -27552,7 +27575,7 @@
     {
       "page": "/app/sys/[id]/pos/shifts",
       "testid": "pos-shift-close-offline-blocked",
-      "kind": "button",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager",
@@ -27597,7 +27620,7 @@
     {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-offline-state",
-      "kind": "toggle",
+      "kind": "notice",
       "roles": [
         "owner",
         "manager"
@@ -30027,7 +30050,8 @@
       "opener": [
         "pos-settings-nav-devices",
         "pos-device-lan-add"
-      ]
+      ],
+      "safety": "external"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
