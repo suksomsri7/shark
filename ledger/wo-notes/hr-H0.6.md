@@ -165,3 +165,53 @@ Builder: Claude Opus 5.5 · branch `wip/pos-hr-h0.6` · worktree `/root/projects
 ### Temp data / processes
 - QC4: only the migration (intended, shared). Oracle run 1 residue 0. No temp scripts left in `scripts/`.
 - Processes: my two `iso-*` units in `/root/projects/shark-hr` (oracle run 2 + typecheck run 2, both still waiting on locks) were stopped with `systemctl stop`; nothing of mine is running.
+
+## RESUME 22 Oct (builder, branch `wip/pos-hr-h0.6`, from 1083a96f)
+
+### Done
+- Controller rulings applied: (a) S7.2 ORACLE-EDIT · (b) replay guard "skip adjustments bound to a PAID run" accepted as is · (c) two hash ORACLE-EDITs · (d) consumer line `"onPayrollReversed" as never` left for the reviewer. Commit `ae397e24` (pre-commit fitness passed, no `--no-verify`).
+- ORACLE-EDITs (only these three hunks):
+  - `scripts/qc-hr-h0.6.mts:1010` S7.2: `((await adjRows([a72]))[0]?.runId ?? "x") === null` → `(await adjRows([a72]))[0]?.runId === null`
+  - `scripts/qc-hr-h0.1.mts:55` S4.3 `CRM_BLOCK_SHA` `fcc215391da90dccc285f4f8fdcca41568a1a722c1273a353136d7af5be774b4` → `33ec8e46af7dd084ac1b1460167736a662bcc80bddc97db6ca1a22fb4c403869` (markPaid block hash `893a9e4e…` unchanged = still correct)
+  - `scripts/qc-hr-h0.2.mts:128` S5.3 `BASE_HASH.stranded` `6c6332f004f79ab22c42ebfd28492bfbd79c7e502fd51de56dda198fa64a7698` → `bf3c0b6749e36f8dda0c42a0d28fcc495276a96e7d66dfec9442ca71d8ffacf6` (signature `SIG_STRANDED` unchanged, still matches)
+- No product code changed in this session.
+
+### Runs completed (final lines + exit codes) — all via `iso.sh qc4.sh with-gate-lock.sh`, one at a time
+| suite | mode | result | failed | residue | exit |
+|---|---|---|---|---|---|
+| qc-hr-h0.6 | forced #1 | 47/47 | – | `RESIDUE tenants=0 rows=0 audit=0 outbox=0` | 0 |
+| qc-hr-h0.6 | forced #2 (→ `hr-H0.6-green.txt`) | 47/47 | – | same, 0 | 0 |
+| qc-hr-h0.6 | unforced | 47/47 (not skipped) | – | same, 0 | 0 |
+| qc-payroll-reverse | forced | 14/14 | – | – | 0 |
+| qc-crm-c3.3 | forced | 90/90 | – | – | 0 |
+| qc-hr-h0.1 | forced | **66/67** | **H0.1-X6.6** (see below) | Z1 green | 1 |
+| qc-hr-h0.2 | forced | 58/58 | – | – | 0 |
+| qc-hr-payadjust | forced | 27/27 | – | – | 0 |
+| qc-payroll | forced | 19/19 | – | – | 0 |
+| qc-hf-hr-privacy | forced | 194/194 | – | – | 0 |
+| qc-approval | forced | 16/16 | – | – | 0 |
+| qc-approval-wiring | forced | 7/7 | – | – | 0 |
+| qc-account-cpa | forced | 107/107 | – | – | 0 |
+| seed-hr-qc | run 1 | 22/23 | O1 (see below) | – | 1 |
+| fitness.mts | env (qc4) / no env | 42/42 · 42/42 | – | – | 0 · 0 |
+| fitness-hr.mts | env (qc4) / no env | 5/5 · 5/5 | – | – | 0 · 0 |
+| `pnpm typecheck` (§A.9, heap 8192 / ISO_MEM 10000M, run 1 of 2) | – | `tsc --noEmit` 0 errors, 213 s | – | – | 0 |
+
+- **H0.1-X6.6 — new red, caused by the H0.6 contract, ORACLE-EDIT REQUEST (not fixed in code).** `qc-hr-h0.1` reverses `runA` at line 521 (S1.6) and its global invariant X6.6 (lines 887-908) then requires, for *every* run including REVERSED ones, "item add/deduct = Σ adjustments bound to that run". H0.6 R2.5 (unbind on reverse, `qc-hr-h0.6` S1.3) + R2/Q1 (items kept, S1.6) make this impossible for a REVERSED run: actual `item 4znccb/o39avx add 150000/0 · item 4znccb/0yfs73 ded 50000/0` = the reversed runA with a1/a2 unbound. No code change can satisfy both oracles. Green on the base 103fde95 (= 5fe98f44 code). Requested hunk (line 888): `where: { tenantId: T }` → `where: { tenantId: T, status: { not: "REVERSED" } }` for `allRuns` — but then `dangling` would flag nothing new (reversed runs have no bound rows after H0.6), so the minimal alternative is: keep `allRuns` for `runIds`/`dangling`, and skip the per-item sum loop for `r.status === "REVERSED"` (select `status` too). Controller to rule.
+- **seed-hr-qc O1** — "other tenants unchanged" counts `posSale` across all non-seed tenants: before 534 → after 565 while POS suites (`qc-pos-p2.9b`, `qc-hf-tx`, `qc-subscription-money` from `shark-pos*`) were writing QC4 concurrently. Not HR code (the seed touches only `qc-hr-v2`; tenant/hrEmployee/hrPayrollRun/customer counts unchanged). Re-run alone after POS QC4 units drained: see below.
+- **seed-hr-qc re-run** (alone, 04:15Z, after waiting up to 60 min for POS QC4 units to drain): **23/23**, findings [] , exit 0 ⇒ O1 in run 1 was the concurrent POS writes, not a red.
+
+### Debts to log at merge
+| item | status | owner |
+|---|---|---|
+| `qc-hr-h0.1` X6.6 vs H0.6 R2.5/Q1 | ORACLE-EDIT requested (above); red until ruled | controller |
+| consumer line `crmCommissionBridge("onPayrollReversed" as never)` (`outbox-consumers.ts:1208`) | tolerated by controller ruling (d) | reviewer |
+| `seed-hr-qc` O1 counts `posSale` across all tenants ⇒ flaky while POS lanes write QC4 | pre-existing oracle design; re-run alone is green | HR RUN backlog |
+| prod order for migration `20261202000000_hr_payroll_run_live_unique` | code first, then `migrate deploy` outside pay-day hours (see PAUSE STOP §R1) | merge/deploy |
+| typecheck | done (run 1 of 2, exit 0) | – |
+
+### Temp data / processes
+- QC4: no residue (every oracle run `RESIDUE tenants=0 rows=0 audit=0 outbox=0`; h0.1 Z1 green; seed re-creates only `qc-hr-v2`).
+- Outputs kept outside the repo (scratch dir); nothing added to `scripts/`.
+- Processes: none of mine running (`systemctl list-units 'iso-*'` shows only `shark-pos*` units). No POS unit or `/tmp/shark-gate-pos.lock` touched.
+- Owner's caution (22 Oct 02:5xZ) followed: DB suites one at a time; typecheck started only after `free -g` avail ≥ 11 GB and no build/tsc unit; seed run alone.
