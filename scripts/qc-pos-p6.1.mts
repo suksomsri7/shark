@@ -383,7 +383,7 @@ try {
     else if (!line) p.push("โน้ตไม่มี JSON_SUMMARY ของ verify-prod-pos --self-test");
     else {
       if (!/"fail":0[,}]/.test(line)) p.push("self-test มี FAIL");
-      const head = /head=([0-9a-f]{7,40})/.exec(n.slice(Math.max(0, n.indexOf(line) - 800), n.indexOf(line) + line.length))?.[1];
+      const head = /head=([0-9a-f]{7,40})/.exec(n.slice(Math.max(0, n.indexOf(line) - 4000), n.indexOf(line) + line.length + 400))?.[1];
       if (!head) p.push("ไม่มี head=<sha> กำกับผล self-test");
       else if (!gitOk("cat-file", "-e", `${head}^{commit}`) || git("rev-list", `${REV || "HEAD"}..${head}`).trim() !== "") p.push(`head ${head} ไม่ใช่ ancestor ของ ${REV || "HEAD"}`);
     }
