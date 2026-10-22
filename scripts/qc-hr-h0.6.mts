@@ -21,6 +21,8 @@
 //
 // Groups: S0 fixture control · S1 reverse happy path · X8 payload · S2 period freed · S3 CRM un-pay · X9 replay · S4 clawback (R5) ·
 //         S5 guards + texts · X1 cross-scope · S6/X6 races + ledger · S7 no ACCOUNT system (X8 default) · S8 static · Z1 residue.
+//         r3 (controller rulings R3.1–R3.3): S10.5/S10.7/S10.8 create guard for legacy REVERSED runs · S10.6 payload hygiene ·
+//         X10.1–X10.4 converging commission handlers (forced orderings via a CrmCommission row-lock blocker) — own tenant `-r3`.
 //
 // SKIP convention (house style of qc-hr-h0.1): while the H0.6 migration / onPayrollReversed / adjustmentsByIds are absent the suite prints
 //   SKIPPED + JSON_SUMMARY {skipped:true} and exits 0 · `QC_FORCE=1` (or `--force-run`) runs everything anyway — on the base every check
@@ -128,6 +130,15 @@ const CHECKS: readonly Def[] = [
   D("S8.4", "-", "CRITICAL", "[static] FREEZE: payroll-rules.ts sha256 (F16.2) · computeItem body sha256 · markPaid block sha256 = base"),
   D("S8.5", "-", "MAJOR", "[static] vs base: crm/commissions.ts · crm-bridges/commissions.ts · outbox-consumers.ts · webhooks/labels.ts each changed, every hunk carries `HR H0.6` · commissions.ts append-only (no line removed)"),
   D("S8.6", "-", "MAJOR", "[static] reverseRun(ctx, runId, reason?, actor?: PayrollActor) · tenantDb(ctx).$transaction · period advisory lock + FOR UPDATE re-read · reverseEntry(…, tx) (4 args) · emitOutbox hr.payroll.reversed in the body · reverseRunAction passes the actor"),
+  // ── r3 (controller rulings R3.1–R3.3 · hunter F1a/F1b/F2/F3/F4) — own tenant `-r3`, own HR systems, forced orderings via a row-lock blocker ──
+  D("X10.1", "X10", "MAJOR", "F1a mirror (R3.1): onPayrollPaid(R1) held on the CrmCommission row lock → reverseRun(R1) + hr.payroll.reversed#R1 delivered → release ⇒ R1 REVERSED · adjustment unbound · commission APPROVED · ≤1 unpaid audit · 0 repaid audits"),
+  D("X10.2", "X10", "MAJOR", "F1b (R3.1): reversed#R1 handler held → markPaid(R2) + paid#R2 → (handler resumes, its repay write held by a 2nd lock) → reverseRun(R2) + reversed#R2 → release ⇒ R2 REVERSED · adjustment unbound · commission APPROVED · last un-pay audited (unpaid − repaid = 1, unpaid ≤ 2)"),
+  D("X10.3", "X10", "CRITICAL", "R3 order (hunter P1) still converges: reversed#R1 handler held → markPaid(R2) + paid#R2 → release ⇒ R2 PAID · commission PAID · unpaid = repaid ≤ 1 · then reversed#R1, paid#R1, paid#R2 each delivered ×2 more ⇒ commission row (status + updatedAt) and audit counts unchanged"),
+  D("X10.4", "X10", "MAJOR", "20 concurrent rounds, random 0–40 ms offsets, alternating shapes (P9: reversed#R1 ∥ markPaid(R2)+paid#R2 · mirror: paid#R1 ∥ reverseRun(R1)+reversed#R1) ⇒ every round: commission status = (adjustment bound to a PAID run ? PAID : APPROVED) · unpaid ≤ 1 · repaid ≤ 1 · no throw"),
+  D("S10.5", "-", "CRITICAL", "create guard (R3.2 · F2): period with a legacy REVERSED run that still has 2 bound adjustments (pre-H0.6 data, set in DB) ⇒ createPayrollRun throws PayrollInputError with a fixed Thai text (not the dup text · no id, name or amount · same text twice) · 0 runs created · 0 outbox events · 0 audit rows"),
+  D("S10.6", "-", "MAJOR", "payload hygiene (R3.3 · F3): own reversed event whose adjustmentIds = [unbound own row, row bound to a PAID run, row bound to a legacy REVERSED run, row bound to a DRAFT run] (all commissions PAID) ⇒ only the unbound row's commission → APPROVED (1 unpaid audit) · the 3 bound rows' commissions stay PAID, 0 audits"),
+  D("S10.7", "-", "MAJOR", "runbook pre-check SQL (review R2, verbatim) returns exactly the S10.5 legacy run with n = 2 among this tenant's runs · after the rows are unbound it returns none of them"),
+  D("S10.8", "-", "CRITICAL", "after the legacy rows are unbound: createPayrollRun(P) succeeds · binds exactly the 2 rows · totalAdd = OT + COMMISSION once (= the legacy run's) · 7 totals = the legacy run's · Σ items = totals"),
   D("Z1", "-", "MAJOR", "residue: throwaway tenants and every tenantId row (outbox, audit, CRM, account, HR) are gone"),
 ];
 
@@ -1204,6 +1215,448 @@ async function runDb(): Promise<void> {
     const cr = lines.reduce((s, l) => s + Number(l.credit), 0);
     if (dr !== cr) bad.push(`ΣDr ${dr} ≠ ΣCr ${cr}`);
     chk("S6.5", runs.length > 0 && bad.length === 0, "every run consistent · ΣDr = ΣCr", `${runs.length} runs · ${bad.slice(0, 8).join(" · ")}${bad.length > 8 ? ` …+${bad.length - 8}` : ""}`);
+  }
+  });
+
+  // ───────── r3 · S10 / X10 (controller rulings R3.1–R3.3 · hunter F1a/F1b/F2/F3/F4) ─────────
+  //   own tenant `<slug>-r3` (ACCOUNT + CRM + 4 HR systems) · forced orderings with the hunter's technique: a side transaction holds
+  //   `SELECT … FOR UPDATE` on the CrmCommission row, we poll pg_blocking_pids (transitively) until the handler under test waits on it,
+  //   run the competing real calls, then release. Every wait is "settled OR blocked" so the same script drives the base (read-then-write
+  //   handlers, which never wait on some steps) and a converging build (lock-then-read handlers, which wait on every step).
+  await group("X10", async () => {
+  console.log("── X10/S10 r3: converging commission handlers · create guard · payload hygiene ──");
+  const t3 = await P.tenant.create({ data: { name: "QC HR H0.6 r3", slug: `${SLUG}-r3` } });
+  TENANTS.push(t3.id);
+  const T3 = t3.id as string;
+  const ACC3 = (await sys.createSystem(T3, "ACCOUNT", "บัญชี")).id as string;
+  await GL.ensureAccounting({ tenantId: T3, systemId: ACC3 });
+  const CRM3 = (await sys.createSystem(T3, "CRM", "CRM r3")).id as string;
+  await P.$executeRawUnsafe(
+    `UPDATE "AppSystem" SET "settings" = jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{crm}', $1::jsonb, true) WHERE "id" = $2`,
+    JSON.stringify({ uiVersion: 2, bridgesEnabled: true, commission: { basis: "PAID", approvalRequired: false, payrollLink: true } }), CRM3);
+  const cHM: Ctx = { tenantId: T3, systemId: (await sys.createSystem(T3, "HR", "HR r3 ลำดับ")).id as string };
+  const cHL: Ctx = { tenantId: T3, systemId: (await sys.createSystem(T3, "HR", "HR r3 วนซ้ำ")).id as string };
+  const cHG: Ctx = { tenantId: T3, systemId: (await sys.createSystem(T3, "HR", "HR r3 ข้อมูลเก่า")).id as string };
+  const cHP: Ctx = { tenantId: T3, systemId: (await sys.createSystem(T3, "HR", "HR r3 payload")).id as string };
+  const eM = await emp(cHM, "สมปอง ลำดับสลับ", 24_000);
+  const eL = await emp(cHL, "สมคิด วนซ้ำ", 21_000);
+  const NAME_G = "สมศรี ข้อมูลเก่า";
+  const eG = await emp(cHG, NAME_G, 19_000);
+  const eP = await emp(cHP, "สมพร ตรวจรายการ", 23_000);
+  let pSeq = 0;
+  const p3 = () => nextP("2036-01", pSeq++);
+  const mkC3 = async (label: string, amount: number, period: string): Promise<string> => {
+    AMOUNTS.push(amount);
+    return (await P.crmCommission.create({
+      data: { tenantId: T3, systemId: CRM3, dealId: `${SLUG}-r3-deal-${label}`, ruleId: `${SLUG}-r3-rule`, userId: `qc-h06-r3-sales-${rand}`, amountSatang: BigInt(amount), basisSatang: BigInt(amount * 10),
+        basis: "PAID", status: "APPROVED", periodKey: period, refType: "DEAL_PAYMENT", refId: `${SLUG}-r3-pay-${label}#c1`, decidedAt: new Date() },
+    })).id as string;
+  };
+  const deliverOk = async (key: string) => {
+    const d = await deliverKey(T3, key);
+    if (d.n !== 1 || !d.out.every((o) => o.ok)) throw new Error(`deliver ${key}: n=${d.n} ${d.out.map((o) => o.err).join("|")}`);
+  };
+  const rev3 = async (ctx: Ctx, runId: string) => {
+    const r = await reverse(ctx, runId, "ข้อสอบ r3");
+    if (r.kind !== "OK") throw new Error(`fixture: reverseRun ${rs(r)}`);
+  };
+  const approveOk = async (ctx: Ctx, runId: string) => {
+    const a = await approve(ctx, runId);
+    if (!a?.ok) throw new Error(`fixture: approveRun ${short(a)}`);
+  };
+  const markPaidOk = async (ctx: Ctx, runId: string) => {
+    const m = await PAY.markPaid(ctx, runId);
+    if (!m?.ok) throw new Error(`fixture: markPaid ${short(m)}`);
+  };
+  /** period with one commission C ↔ adjustment A · R1 created → approved → paid → paid#R1 delivered (C PAID) */
+  const paidStory = async (ctx: Ctx, e: string, label: string, amount = B(2_000)) => {
+    const p = p3();
+    const C = await mkC3(label, amount, p);
+    const A = await linkCommission(ctx, C, e, p, amount);
+    const R1 = await mkRun(ctx, p);
+    await approveOk(ctx, R1);
+    await markPaidOk(ctx, R1);
+    await deliverOk(`hr.payroll.paid#${R1}`);
+    if ((await comm(C))?.status !== "PAID") throw new Error(`fixture: ${label} commission not PAID after paid#R1`);
+    return { p, C, A, R1 };
+  };
+  // ── lock helpers ──
+  type Blk = { pid: number; locked: Promise<void>; release: () => Promise<void> };
+  const blocker = async (commissionId: string): Promise<Blk> => {
+    let rel!: () => void;
+    const gate = new Promise<void>((r) => (rel = r));
+    let gotPid!: (n: number) => void;
+    const pidP = new Promise<number>((r) => (gotPid = r));
+    let gotLock!: () => void;
+    const locked = new Promise<void>((r) => (gotLock = r));
+    const txP = P.$transaction(async (tx: Any) => {
+      const rows = (await tx.$queryRawUnsafe(`SELECT pg_backend_pid()::int AS pid`)) as Any[];
+      gotPid(Number(rows[0].pid));
+      await tx.$queryRawUnsafe(`SELECT "id" FROM "CrmCommission" WHERE "id" = $1 FOR UPDATE`, commissionId);
+      gotLock();
+      await gate;
+    }, { maxWait: 60_000, timeout: 600_000 });
+    txP.catch((e: unknown) => {
+      console.log(`  (r3 blocker tx error ${errText(e)})`);
+      gotPid(-1);
+      gotLock();
+    });
+    const pid = await pidP;
+    if (pid < 0) throw new Error("blocker transaction failed");
+    return { pid, locked, release: async () => { rel(); await txP.catch(() => undefined); } };
+  };
+  /** sessions waiting (directly or behind another waiter) on root's locks */
+  const lockTree = async (root: number): Promise<number[]> => {
+    const rows = (await P.$queryRawUnsafe(`SELECT pid::int AS pid, pg_blocking_pids(pid)::int[] AS b FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0`)) as Any[];
+    const edges = rows.map((r) => ({ pid: Number(r.pid), b: ((r.b ?? []) as Any[]).map(Number) }));
+    const tree = new Set<number>([root]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const e of edges) if (!tree.has(e.pid) && e.b.some((x) => tree.has(x))) {
+        tree.add(e.pid);
+        grew = true;
+      }
+    }
+    tree.delete(root);
+    return [...tree];
+  };
+  type Pend = { p: Promise<string>; done: boolean; v: string };
+  const track = (pr: Promise<unknown>): Pend => {
+    const o: Pend = { p: Promise.resolve(""), done: false, v: "" };
+    o.p = pr.then(() => "ok", (e) => `ERR ${errText(e)}`).then((v) => {
+      o.done = true;
+      o.v = v;
+      return v;
+    });
+    return o;
+  };
+  const fire = (key: string): Pend => track(deliverOk(key));
+  /** until every pending call settled ("settled") OR ≥ n sessions wait on root ("blocked") */
+  const settleOrBlock = async (ps: Pend[], root: number, n: number, ms = 30_000): Promise<string> => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (ps.every((x) => x.done)) return "settled";
+      if ((await lockTree(root)).length >= n) return "blocked";
+      await sleep(100);
+    }
+    return "timeout";
+  };
+  const finish = async (ps: Pend[], ms = 120_000): Promise<string[]> => {
+    const t0 = Date.now();
+    while (!ps.every((x) => x.done) && Date.now() - t0 < ms) await sleep(100);
+    return ps.map((x) => (x.done ? x.v : "PENDING"));
+  };
+  const withTimeout = async <V,>(p: Promise<V>, ms: number): Promise<V | "timeout"> => Promise.race([p, sleep(ms).then(() => "timeout" as const)]);
+  const repaidN = (id: string) => P.auditLog.count({ where: { tenantId: T3, action: "crm.commission.repaid", targetId: id } }) as Promise<number>;
+  const stateOf = async (C: string, A: string) => {
+    const c = (await comm(C)) as Any;
+    const a = (await adjRows([A]))[0];
+    const run = a?.runId ? await runRow(a.runId) : null;
+    return {
+      status: String(c?.status), updatedAt: c?.updatedAt ? new Date(c.updatedAt).toISOString() : null, runId: (a?.runId ?? null) as string | null, runStatus: (run?.status ?? null) as string | null,
+      un: (await unpaidAudits(T3, C)).length, re: await repaidN(C), expect: run?.status === "PAID" ? "PAID" : "APPROVED",
+    };
+  };
+  const stTxt = (s: Any) => `C=${s.status} adj.runId=${s.runId ? `${s.runStatus}` : "null"} unpaid=${s.un} repaid=${s.re}`;
+
+  // ── S10.5 · S10.7 · S10.8 — legacy REVERSED run with bound rows (pre-H0.6 data) ──
+  {
+    console.log("── S10.5/S10.7/S10.8 create guard ──");
+    // review R2 pre-check, verbatim (trailing `;` dropped for the driver) · global on QC4 ⇒ judged on this tenant's runs only
+    const PRE_CHECK_SQL = `SELECT r."id", r."periodKey", count(a."id") FROM "HrPayrollRun" r JOIN "HrPayAdjustment" a ON a."runId" = r."id" WHERE r."status" = 'REVERSED' GROUP BY 1,2`;
+    const preCheck = async () => {
+      const mine = new Set(((await P.hrPayrollRun.findMany({ where: { tenantId: T3 }, select: { id: true } })) as Any[]).map((r) => r.id as string));
+      return ((await P.$queryRawUnsafe(PRE_CHECK_SQL)) as Any[]).filter((r) => mine.has(String(r.id))).map((r) => ({ id: String(r.id), periodKey: String(r.periodKey), n: Number(r.count) }));
+    };
+    type Cr = { kind: "OK" | "THROW"; id?: string; name?: string; msg: string };
+    const tryCreate = async (p: string): Promise<Cr> => {
+      try {
+        const r = await PAY.createPayrollRun(cHG, { periodKey: p, payDate: payDateOf(p) });
+        return { kind: "OK", id: r?.id, msg: "" };
+      } catch (e) {
+        return { kind: "THROW", name: (e as Any)?.name, msg: e instanceof Error ? e.message : String(e) };
+      }
+    };
+    const s105 = { ok: false, info: "not reached" };
+    const s107 = { ok: false, info: "not reached" };
+    const s108 = { ok: false, info: "not reached" };
+    try {
+      const p = p3();
+      const aOT = await adjApproved(cHG, eG, p, "OT", B(1_200));
+      const C = await mkC3("s105", B(3_000), p);
+      const aCOM = await linkCommission(cHG, C, eG, p, B(3_000));
+      const R0 = await mkRun(cHG, p);
+      await approveOk(cHG, R0);
+      await markPaidOk(cHG, R0);
+      await deliverOk(`hr.payroll.paid#${R0}`);
+      const r0 = await runRow(R0);
+      // the pre-H0.6 reverseRun (d350c26c): status REVERSED + JV reversed — nothing unbound, no event
+      await P.hrPayrollRun.updateMany({ where: { id: R0, status: { in: ["APPROVED", "PAID"] } }, data: { status: "REVERSED" } });
+      await GL.reverseEntry({ tenantId: T3, systemId: ACC3 }, r0.journalEntryId, "กลับรายการแบบเดิม (ข้อสอบ r3)");
+      const legacyBound = await boundIds(R0);
+      if (!sameIds(legacyBound, [aOT, aCOM])) throw new Error(`fixture: legacy run binds ${legacyBound.length}`);
+      const pre1 = await preCheck();
+      // S10.5
+      const count3 = async () => ({
+        runs: (await P.hrPayrollRun.count({ where: { systemId: cHG.systemId, periodKey: p } })) as number,
+        ev: (await P.outboxEvent.count({ where: { tenantId: T3 } })) as number,
+        au: (await P.auditLog.count({ where: { tenantId: T3 } })) as number,
+      });
+      const before = await count3();
+      const c1 = await tryCreate(p);
+      const c2 = c1.kind === "THROW" ? await tryCreate(p) : null;
+      const after = await count3();
+      const forbidden = [eG, aOT, aCOM, R0, C, T3, cHG.systemId, NAME_G, String(B(1_200)), String(B(3_000)), String(B(4_200)), "1,200", "3,000", "4,200", String(r0?.totalNetSatang)];
+      const leaks = c1.kind === "THROW" ? forbidden.filter((f) => f && c1.msg.includes(f)) : [];
+      s105.ok = c1.kind === "THROW" && c1.name === "PayrollInputError" && THAI.test(c1.msg) && c1.msg !== T_DUP(p) && leaks.length === 0 && c2?.kind === "THROW" && c2.msg === c1.msg
+        && after.runs === before.runs && after.ev === before.ev && after.au === before.au;
+      s105.info = `create#1=${c1.kind}${c1.name ? `/${c1.name}` : ""}${c1.msg ? `:${c1.msg.slice(0, 120)}` : c1.id ? ` (run created, binds ${(await boundIds(c1.id)).length}, totalAdd ${(await runRow(c1.id))?.totalAddSatang} vs legacy ${r0?.totalAddSatang})` : ""} · create#2 same=${c2 ? c2.msg === c1.msg : "-"} · leaks=${leaks.length} · runs ${before.runs}→${after.runs} · outbox ${before.ev}→${after.ev} · audit ${before.au}→${after.au}`;
+      // base: the unguarded create made a live DRAFT that binds 0 rows — drop it so S10.7/S10.8 judge the unbind path on their own
+      if (c1.kind === "OK" && c1.id) {
+        const dd = await call(PAY.deleteDraftRun, cHG, c1.id, ACTOR);
+        s105.info += ` · base cleanup deleteDraftRun=${rs(dd)}`;
+      }
+      // S10.7 + unbind (the R3.4 one-off script does this + emits — a separate WO)
+      const unb = await P.hrPayAdjustment.updateMany({ where: { tenantId: T3, systemId: cHG.systemId, runId: R0 }, data: { runId: null } });
+      const pre2 = await preCheck();
+      s107.ok = pre1.length === 1 && pre1[0]?.id === R0 && pre1[0]?.n === 2 && pre1[0]?.periodKey === p && unb.count === 2 && pre2.length === 0;
+      s107.info = `before=${short(pre1.map((r) => ({ legacy: r.id === R0, n: r.n })))} · unbound=${unb.count} · after=${short(pre2.map((r) => ({ legacy: r.id === R0, n: r.n })))}`;
+      // S10.8
+      const c3 = await tryCreate(p);
+      if (c3.kind === "OK" && c3.id) {
+        const r3 = await runRow(c3.id);
+        const b3 = await boundIds(c3.id);
+        const it = (await P.hrPayrollItem.findMany({ where: { runId: c3.id } })) as Any[];
+        const sum = (k: string) => it.reduce((a, x) => a + Number(x[k]), 0);
+        const add = Number(r3?.totalAddSatang);
+        s108.ok = sameIds(b3, [aOT, aCOM]) && add === B(4_200) && Number(r0?.totalAddSatang) === B(4_200) && totalsOf(r3) === totalsOf(r0)
+          && sum("addSatang") === add && sum("netSatang") === Number(r3?.totalNetSatang) && sum("grossSatang") === Number(r3?.totalGrossSatang) && r3?.status === "DRAFT";
+        s108.info = `binds=${b3.length} (both=${sameIds(b3, [aOT, aCOM])}) totalAdd=${add} legacy=${r0?.totalAddSatang} totals=legacy ${totalsOf(r3) === totalsOf(r0)} Σitems add/net/gross=${sum("addSatang")}/${sum("netSatang")}/${sum("grossSatang")} status=${r3?.status}`;
+      } else s108.info = `create=${c3.kind}/${c3.name}:${c3.msg.slice(0, 140)}`;
+    } catch (e) {
+      const m = `crash ${errText(e)}`;
+      for (const x of [s105, s107, s108]) if (x.info === "not reached") x.info = m;
+    }
+    chk("S10.5", s105.ok, "PayrollInputError · fixed Thai text (≠ dup text, no id/name/amount, same twice) · 0 runs · 0 events · 0 audit", s105.info);
+    chk("S10.7", s107.ok, "pre-check = [legacy run, n 2] · after unbind = []", s107.info);
+    chk("S10.8", s108.ok, "binds both · totalAdd 420000 once · totals = legacy · Σitems = totals", s108.info);
+  }
+
+  // ── S10.6 payload hygiene ──
+  {
+    console.log("── S10.6 payload hygiene ──");
+    let ok = false;
+    let info = "";
+    try {
+      const r = await paidStory(cHP, eP, "s106r"); // own run: reversed, its event NOT yet delivered (C still PAID, A unbound)
+      await rev3(cHP, r.R1);
+      const s = await paidStory(cHP, eP, "s106s"); // bound to a PAID run
+      const q = await paidStory(cHP, eP, "s106q"); // legacy: run REVERSED in DB, row still bound
+      await P.hrPayrollRun.updateMany({ where: { id: q.R1 }, data: { status: "REVERSED" } });
+      const pd = p3();
+      const Cd = await mkC3("s106d", B(1_000), pd);
+      const Ad = await linkCommission(cHP, Cd, eP, pd, B(1_000));
+      const Rd = await mkRun(cHP, pd); // DRAFT binds Ad
+      await P.crmCommission.update({ where: { id: Cd }, data: { status: "PAID" } }); // forced: commission PAID while its row sits in a DRAFT run
+      const others = [[s.C, s.A, "PAID run"], [q.C, q.A, "legacy REVERSED run"], [Cd, Ad, "DRAFT run"]] as const;
+      const snap = async () => stable(await Promise.all(others.map(async ([c, a]) => ({ c: await stateOf(c, a), bound: (await adjRows([a]))[0]?.runId ?? null }))));
+      const before = await snap();
+      const ev = (await evOf(T3, `hr.payroll.reversed#${r.R1}`))[0];
+      if (!ev) throw new Error("fixture: no reversed event for the own run");
+      const dl = await deliver({ ...ev, payload: { ...ev.payload, adjustmentIds: [r.A, s.A, q.A, Ad] } });
+      const after = await snap();
+      const own = await stateOf(r.C, r.A);
+      const per = await Promise.all(others.map(async ([c, a, what]) => `${what}: ${stTxt(await stateOf(c, a))}`));
+      ok = dl.ok && own.status === "APPROVED" && own.un === 1 && own.re === 0 && own.runId === null && before === after
+        && (await Promise.all(others.map(async ([c, a]) => (await stateOf(c, a)).status === "PAID"))).every(Boolean) && Rd.length > 0;
+      info = `deliver=${dl.ok ? "ok" : dl.err} · own unbound: ${stTxt(own)} · ${per.join(" · ")} · bound rows unchanged=${before === after}`;
+    } catch (e) {
+      info = `crash ${errText(e)}`;
+    }
+    chk("S10.6", ok, "only the unbound row un-paid (1 audit) · rows bound to PAID / legacy REVERSED / DRAFT runs untouched", info);
+  }
+
+  // ── X10.1 F1a mirror ──
+  {
+    console.log("── X10.1 F1a mirror ──");
+    let ok = false;
+    let info = "";
+    const blks: Blk[] = [];
+    try {
+      const p = p3();
+      const C = await mkC3("x101", B(2_000), p);
+      const A = await linkCommission(cHM, C, eM, p, B(2_000));
+      const R1 = await mkRun(cHM, p);
+      await approveOk(cHM, R1);
+      await markPaidOk(cHM, R1);
+      const b = await blocker(C);
+      blks.push(b);
+      await b.locked;
+      const hPaid = fire(`hr.payroll.paid#${R1}`); // reads R1 PAID (base) / waits for the row (converging) — its write is held
+      const w1 = await settleOrBlock([hPaid], b.pid, 1);
+      const rv = await reverse(cHM, R1, "ข้อสอบ r3");
+      const hRev = fire(`hr.payroll.reversed#${R1}`);
+      const w2 = await settleOrBlock([hRev], b.pid, 2);
+      await b.release();
+      const fin = await finish([hPaid, hRev]);
+      const st = await stateOf(C, A);
+      const r1 = await runRow(R1);
+      ok = w1 === "blocked" && rv.kind === "OK" && fin.every((v) => v === "ok") && r1?.status === "REVERSED" && st.runId === null && st.status === "APPROVED" && st.un <= 1 && st.re === 0;
+      info = `paid#R1 handler=${w1} reverse=${rs(rv).slice(0, 40)} reversed#R1 handler=${w2} → release · handlers=${fin.join("/")} · R1=${r1?.status} ${stTxt(st)}`;
+    } catch (e) {
+      info = `crash ${errText(e)}`;
+    } finally {
+      for (const b of blks) await b.release();
+    }
+    chk("X10.1", ok, "R1 REVERSED · adj unbound · C APPROVED · unpaid ≤ 1 · repaid 0", info);
+  }
+
+  // ── X10.2 F1b (R3 re-pay path vs reverse of R2) ──
+  {
+    console.log("── X10.2 F1b ──");
+    let ok = false;
+    let info = "";
+    const blks: Blk[] = [];
+    try {
+      const s = await paidStory(cHM, eM, "x102");
+      await rev3(cHM, s.R1);
+      const R2 = await mkRun(cHM, s.p);
+      await approveOk(cHM, R2);
+      const b1 = await blocker(s.C);
+      blks.push(b1);
+      await b1.locked;
+      const h1 = fire(`hr.payroll.reversed#${s.R1}`);
+      const w1 = await settleOrBlock([h1], b1.pid, 1);
+      await markPaidOk(cHM, R2);
+      const h2 = fire(`hr.payroll.paid#${R2}`); // base: 0 rows (C still PAID) · converging: waits for the row
+      const w2 = await settleOrBlock([h2], b1.pid, 2);
+      const b2 = await blocker(s.C); // queues behind b1 and the waiting handlers
+      blks.push(b2);
+      let queued = false;
+      for (const t0 = Date.now(); Date.now() - t0 < 30_000 && !queued;) {
+        queued = (await lockTree(b1.pid)).includes(b2.pid);
+        if (!queued) await sleep(100);
+      }
+      await b1.release(); // base: the handler's un-pay commits, b2 takes the row, the handler re-reads (R2 PAID) and its re-pay write waits on b2
+      const got2 = await withTimeout(b2.locked, 60_000);
+      const w4 = await settleOrBlock([h1, h2], b2.pid, 1);
+      const cMid = (await comm(s.C))?.status;
+      const rv2 = await reverse(cHM, R2, "ข้อสอบ r3");
+      const n0 = (await lockTree(b2.pid)).length;
+      const h3 = fire(`hr.payroll.reversed#${R2}`);
+      const w5 = await settleOrBlock([h3], b2.pid, n0 + 1);
+      await b2.release();
+      const fin = await finish([h1, h2, h3]);
+      const st = await stateOf(s.C, s.A);
+      const r2 = await runRow(R2);
+      ok = w1 === "blocked" && rv2.kind === "OK" && fin.every((v) => v === "ok") && r2?.status === "REVERSED" && st.runId === null && st.status === "APPROVED" && st.un - st.re === 1 && st.un <= 2;
+      info = `reversed#R1 handler=${w1} · markPaid(R2) · paid#R2=${w2} · 2nd lock queued=${queued} took=${got2 === "timeout" ? "timeout" : "yes"} · after release#1 handlers=${w4} C@mid=${cMid} · reverse(R2)=${rs(rv2).slice(0, 40)} · reversed#R2=${w5} → release · handlers=${fin.join("/")} · R2=${r2?.status} ${stTxt(st)}`;
+    } catch (e) {
+      info = `crash ${errText(e)}`;
+    } finally {
+      for (const b of blks) await b.release();
+    }
+    chk("X10.2", ok, "R2 REVERSED · adj unbound · C APPROVED · unpaid − repaid = 1 · unpaid ≤ 2", info);
+  }
+
+  // ── X10.3 R3 order (hunter P1) + replays ──
+  {
+    console.log("── X10.3 R3 order + replays ──");
+    let ok = false;
+    let info = "";
+    const blks: Blk[] = [];
+    try {
+      const s = await paidStory(cHM, eM, "x103");
+      await rev3(cHM, s.R1);
+      const R2 = await mkRun(cHM, s.p);
+      await approveOk(cHM, R2);
+      const b = await blocker(s.C);
+      blks.push(b);
+      await b.locked;
+      const h1 = fire(`hr.payroll.reversed#${s.R1}`);
+      const w1 = await settleOrBlock([h1], b.pid, 1);
+      await markPaidOk(cHM, R2);
+      const h2 = fire(`hr.payroll.paid#${R2}`);
+      const w2 = await settleOrBlock([h2], b.pid, 2);
+      await b.release();
+      const fin = await finish([h1, h2]);
+      const st = await stateOf(s.C, s.A);
+      const r2 = await runRow(R2);
+      const conv = w1 === "blocked" && fin.every((v) => v === "ok") && r2?.status === "PAID" && st.runStatus === "PAID" && st.status === "PAID" && st.un === st.re && st.un <= 1;
+      const snap0 = stable({ status: st.status, updatedAt: st.updatedAt, un: st.un, re: st.re });
+      const rep: string[] = [];
+      for (let k = 0; k < 2; k += 1) for (const key of [`hr.payroll.reversed#${s.R1}`, `hr.payroll.paid#${s.R1}`, `hr.payroll.paid#${R2}`]) {
+        try {
+          await deliverOk(key);
+        } catch (e) {
+          rep.push(errText(e).slice(0, 80));
+        }
+      }
+      const st2 = await stateOf(s.C, s.A);
+      const snap1 = stable({ status: st2.status, updatedAt: st2.updatedAt, un: st2.un, re: st2.re });
+      ok = conv && rep.length === 0 && snap0 === snap1;
+      info = `reversed#R1 handler=${w1} · markPaid(R2) · paid#R2=${w2} → release · handlers=${fin.join("/")} · R2=${r2?.status} ${stTxt(st)} · replays×2 errors=${rep.join("|") || "-"} unchanged=${snap0 === snap1}${snap0 === snap1 ? "" : ` (${stTxt(st2)})`}`;
+    } catch (e) {
+      info = `crash ${errText(e)}`;
+    } finally {
+      for (const b of blks) await b.release();
+    }
+    chk("X10.3", ok, "R2 PAID · C PAID · unpaid = repaid ≤ 1 · replays change nothing", info);
+  }
+
+  // ── X10.4 random concurrent rounds ──
+  {
+    console.log("── X10.4 20 random rounds ──");
+    const bad: string[] = [];
+    let n = 0;
+    const tally = { p9: 0, mirror: 0, repaid: 0 };
+    for (let i = 0; i < 20; i += 1) {
+      const d1 = Math.floor(Math.random() * 41);
+      const d2 = Math.floor(Math.random() * 41);
+      try {
+        let C = "";
+        let A = "";
+        let hs: string[] = [];
+        const shape = i % 2 === 0 ? "p9" : "mirror";
+        if (shape === "p9") {
+          const s = await paidStory(cHL, eL, `x104-${i}`);
+          await rev3(cHL, s.R1);
+          const R2 = await mkRun(cHL, s.p);
+          await approveOk(cHL, R2);
+          C = s.C;
+          A = s.A;
+          hs = await Promise.all([
+            sleep(d1).then(() => deliverOk(`hr.payroll.reversed#${s.R1}`)).then(() => "ok", (e) => `ERR ${errText(e)}`),
+            sleep(d2).then(async () => {
+              await markPaidOk(cHL, R2);
+              await deliverOk(`hr.payroll.paid#${R2}`);
+            }).then(() => "ok", (e) => `ERR ${errText(e)}`),
+          ]);
+        } else {
+          const p = p3();
+          C = await mkC3(`x104-${i}`, B(1_500), p);
+          A = await linkCommission(cHL, C, eL, p, B(1_500));
+          const R1 = await mkRun(cHL, p);
+          await approveOk(cHL, R1);
+          await markPaidOk(cHL, R1);
+          hs = await Promise.all([
+            sleep(d1).then(() => deliverOk(`hr.payroll.paid#${R1}`)).then(() => "ok", (e) => `ERR ${errText(e)}`),
+            sleep(d2).then(async () => {
+              await rev3(cHL, R1);
+              await deliverOk(`hr.payroll.reversed#${R1}`);
+            }).then(() => "ok", (e) => `ERR ${errText(e)}`),
+          ]);
+        }
+        tally[shape] += 1;
+        const st = await stateOf(C, A);
+        if (st.re > 0) tally.repaid += 1;
+        n += 1;
+        if (!(hs.every((h) => h === "ok") && st.status === st.expect && st.un <= 1 && st.re <= 1)) bad.push(`#${i} ${shape} d=${d1}/${d2} h=${hs.map((h) => h.slice(0, 60)).join("/")} expect=${st.expect} ${stTxt(st)}`);
+      } catch (e) {
+        bad.push(`#${i} crash ${errText(e).slice(0, 120)}`);
+      }
+    }
+    chk("X10.4", n === 20 && bad.length === 0, "20/20 rounds: C = (bound run PAID ? PAID : APPROVED) · unpaid ≤ 1 · repaid ≤ 1", `${n}/20 rounds (p9 ${tally.p9} · mirror ${tally.mirror} · repaid path ${tally.repaid}) · bad: ${bad.slice(0, 5).join(" | ") || "-"}${bad.length > 5 ? ` …+${bad.length - 5}` : ""}`);
   }
   });
 }
