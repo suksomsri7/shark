@@ -99,14 +99,20 @@ export type SaleCustomerForBridge = {
  * POS P1.6 — ทิปอยู่ในเงินที่รับ (Σจ่าย = ยอดบิล + ทิป) แต่ไม่ใช่รายได้: หักทิปออกจากแถวจ่ายจากท้ายขึ้นมา ⇒ ขา Dr = ยอดบิลเป๊ะ
  * (การลงบัญชีพักทิปเป็นหนี้สินพนักงาน = งานต่อ · ดูโน้ต P1.6 คำถามเปิด) · ไม่มีทิป = แถวเดิมทุกตัว
  */
-function withoutTip<T extends { amountSatang: number }>(payments: T[], tip: number): T[] {
+// POS P5.1 ▸ MA10 (F10): ทิปจ่ายได้จากแถวเงินจริงเท่านั้น (ชุดเดียวกับ TIP_FUNDING_TYPES ของ createSale · มติ 7) ⇒ ตัดทิปจากแถวเหล่านี้ก่อน (จากท้ายขึ้นมา) ·
+//   แถวบัตรของขวัญ/เครดิตร้าน/มัดจำ/ลงห้อง/แพลตฟอร์ม/วางบิล = ยอดจริงของแถวนั้นเสมอ · ยังเหลือทิป (บิลเก่าก่อนกติกา) = ตัดจากแถวอื่นแบบเดิม (JV ลงตัวที่ยอดบิล) ◂
+const TIP_CUT_TYPES: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
+function withoutTip<T extends { amountSatang: number; type?: string }>(payments: T[], tip: number): T[] {
   if (tip <= 0) return payments;
   const out = payments.map((p) => ({ ...p }));
   let rest = tip;
-  for (let i = out.length - 1; i >= 0 && rest > 0; i--) {
-    const cut = Math.min(rest, out[i].amountSatang);
-    out[i].amountSatang -= cut;
-    rest -= cut;
+  for (const cashOnly of [true, false]) {
+    for (let i = out.length - 1; i >= 0 && rest > 0; i--) {
+      if (cashOnly !== TIP_CUT_TYPES.has(String(out[i].type ?? ""))) continue;
+      const cut = Math.min(rest, out[i].amountSatang);
+      out[i].amountSatang -= cut;
+      rest -= cut;
+    }
   }
   return out.filter((p) => p.amountSatang > 0);
 }
