@@ -1,0 +1,38 @@
+# P5.1 FIX batch B — builder (account B · 23 Oct 2026 · tree p11 · branch `wip/pos-p5.1-fix-b`)
+Base: `origin/session/pos` 8c7ccad9 (oracle + batch A/C/D merged). Scope: MA2 MA4 MA5 MA6 MA7 + MA1b (R1 (4) register quote mirror) + R1 F2 (restaurant negative option price).
+Constraints kept: no migration · no `prisma/` · no contract JSON · no new error code · **no new `createSale(` call site** (U4/L2/HT6.4 unchanged — p1.6 48/48 · p2.4 50/50 · hf-tx 22/22) · every hunk marked `POS P5.1 ▸ MAn ◂` · OP lines per module owner in `POS-OWNER-PENDING.md` (last section).
+
+## 1. Check → commit → change
+| check | commit | change |
+|---|---|---|
+| MA6 | 8b1a9a02 | `member/subscription.ts subscribe`: ACTIVE check + plan + create inside `tenantDb(ctx).$transaction` under `pg_advisory_xact_lock(hashtext(tenant:subscription-active:system:customer))` · same error order/texts · createSale stays outside the tx |
+| MA5 + MA7 ticket | 02d21531 | `ticket/service.ts markPaid`: createSale throws and `saleStatusByKey(ticket-sale-<id>)` = null ⇒ PAID → PENDING (conditional) then rethrow (clinic pattern) · after createSale re-read the order; not PAID ⇒ `voidSale` (a concurrent void = tolerated) |
+| MA7 shop/clinic | d41745b0 | `shop confirmOrderPaid`: bind posSaleId only `WHERE status = PAID` (same tx as webSaleBound + shop.order.paid) · 0 rows ⇒ void bill, `{ok:false}`, no event, no stock cut · `clinic billVisit`: bind only `WHERE status = BILLED` · 0 rows ⇒ void, `{ok:false}` |
+| MA2 MA4 (+MA5 hotel) | 61453bf2 · 5aab7fe7 · 950ba711 | `pos/deposit.ts`: **moduleTakeDeposit** (one tx: module's own createSale call site with `callerTx(tx)` → receipt `sourceModule POS_DEPOSIT` + PosDeposit + RECEIVE + audit SYSTEM · afterSaleCommitted · P2002/P2034/P2028 retry ×3 · keyed receipt not PAID ⇒ `<key>-r<n>` (pattern restaurant/order.ts) · a pre-P5.1 PAID deposit bill on the key = kept as is) · **moduleDepositForBill** (OPEN deposit of the receipt, same unit ⇒ `{refSaleId, min(remaining, bill)}` else null = old full-cash path) · **moduleRefundDeposit** (refund the remaining with the receipt's real-money type or TRANSFER · shift via `resolveApiRefundShift` · key `dep-ref:mod:<receiptId>`) · `registerRefundDeposit` tx body moved **verbatim** into `refundDepositInTx` (only `sc.actor.userId` → `requestedByUserId`, `actorType` param; `git diff -w` = +36 −19) · hotel/rental/booking `recordDeposit` → moduleTakeDeposit (pay type as passed, default `DEPOSIT` row ⇒ GL channel TRANSFER as before) · final bills (`hotel checkOut`, `rental returnAsset`, `actions/booking setStatusAction DONE`) pay `{DEPOSIT, refSaleId}` + rest CASH · booking DONE re-click: bill on `booking-sale-<id>` exists ⇒ no createSale (the deposit is used, a new payload would conflict) · `booking refundDeposit`: refund receipt (CN) **before** clearing flags (claim also `depositSaleId = <receipt>`), DEPOSIT_CLOSED ⇒ "มัดจำนี้ถูกใช้กับบิลหรือคืนไปแล้ว", legacy bill ⇒ old void path · `hotel checkOut`: createSale throws, no bill ⇒ CHECKED_OUT → CHECKED_IN + room CLEANING → OCCUPIED |
+| MA1b | eb4884fe | `register.ts` quote: memberCap = max(0, grand − serviceCharge) (= service.ts:1144 `beforeMember − serviceCharge`) · excess cut from tier (first TIER line) · still over ⇒ `BENEFITS_EXCEED_TOTAL` (createSale: VALIDATION) ⇒ screen total = createSale total |
+| R1 F2 | 7ddcb1c3 | `restaurant/order.ts resolveLines`: basePrice + Σ option deltas < 0 ⇒ `BAD_OPTIONS` "ราคาต่อชิ้นรวมตัวเลือกต้องไม่ติดลบ — แก้ราคาตัวเลือกในเมนูก่อน" at order time (V2 priceCart rule) · ITEM_UNAVAILABLE keeps precedence · menu save not checked (a negative delta is valid when the base covers it) |
+
+## 2. Results (QC4 · ISO_MEM 3G · POS gate lock · logs `scratchpad/p51-fix-b/reg-950ba711-b/`)
+| suite | result |
+|---|---|
+| qc-pos-p5.1 run 1 / run 2 @950ba711 | **15/15 · 15/15** (residue 0 · guardHits 0 · pumpErrors 0) · `--no-db` 2/2 · (dirty run @8b1a9a02 also 15/15) |
+| qc-pos-p1.6 (actions) · p3.6 · hf-tx · p2.4 (L2 registry) | 48/48 · 52/52 · 22/22 · 50/50 |
+| qc-money-mapping · qc-account-cpa | 5/5 · 107/107 (findings 0) |
+| module money/regression | hotel-money 5/5 · hotel-refund · ticket-money · ticket-cancel · subscription-money · subscription · rental · rental-refund · rental-race · booking-race · shop · shop-refund · clinic · clinic-refund · restaurant-money · restaurant-pay · restaurant-void · restaurant — **all green** |
+| qc-pos-p2.9b | **51/53 — L3 + A6 red = conflict with ruling มติ 7 / CD7** (§3) |
+| qc-booking-deposit | **red BD-3.4 4.1 4.2 5.2 5.4 6.2 = the legacy F2 accounting** (§3) |
+| qc-pos-p2.10 --no-db | 1/2 — ST2 lane pin only (`register.ts` hunk +11 −1) |
+| qc-hf-fu --no-db · qc-hf-fu2 --no-db | ST1 lane pins only (restaurant/ · pos/deposit.ts · pos/register.ts changed vs base; hunks without HF-FU2 tag) |
+| pre-submit core | see §4 |
+
+## 3. Oracle conflicts — controller ORACLE-EDIT needed (builder did not edit oracles)
+- **qc-pos-p2.9b L3** pins "legacy deposit paths byte-identical to base (booking recordDeposit/refundDeposit · hotel recordDeposit/checkOut · rental recordRentalDeposit)" and **A6** asserts the legacy JV of `booking.recordDeposit` (bill BOOKING, Dr 2110 50,000 / Cr revenue 46,729 + Cr 2200 3,271, no PosDeposit). That *is* hunt F2 (deposit booked as revenue twice); MA2 + this brief require the opposite. Actual now: bill POS_DEPOSIT · row `DEPOSIT:-` · JV {1010 +50,000 · 2110 −46,729 · 2200 −3,271} + PosDeposit. Proposed: ORACLE-EDIT L3 → re-pin to this head (or drop the 5 functions) and A6 → assert the POS_DEPOSIT receipt (Cr 2110 base + Cr 2200, no 4xxx, PosDeposit + RECEIVE).
+- **qc-booking-deposit** (Wave3-A legacy oracle): BD-3.4/4.2 "Dr 2110 = 50,000 on the deposit bill" (now Cr 2110) · BD-4.1 counts deposit bills of sourceModule BOOKING (now POS_DEPOSIT → 0) · BD-5.2/5.4/6.2 expect refund = **void** (POS_DEPOSIT receipts cannot be voided — `service.ts:1578`; refund = CN, receipt REFUNDED, outbox `pos.sale.refunded`). Proposed ORACLE-EDIT: deposit = receipt POS_DEPOSIT with Cr 2110; refund ⇒ receipt REFUNDED + 2110 net 0 + one CN; re-refund ok:false.
+- qc-hotel-public / qc-rental-public not touched (L3 also pins them); not run here.
+
+## 4. Notes / behaviour changes the module owners should know (also as OP lines)
+- After `refundStay` (hotel) / rental refund the final bill is voided ⇒ `depositSaleVoided` restores the deposit to OPEN (a liability refundable at the register/deposit screen) — before, the deposit bill stayed as revenue.
+- Module deposits appear in the register deposit lookup (customerName = guest/customer name, member deposits only usable by that member). A walk-in module deposit could be applied at the register; the final module bill then pays cash in full (moduleDepositForBill = null).
+- Old data: deposits taken before this change (no PosDeposit) keep the old path (final bill full cash, booking refund = void).
+- Not done (out of scope): subscription createSale failure still leaves an ACTIVE row without a bill (pre-existing); shop `refundOrder` restocks lines that were never cut when it races confirm (pre-existing, OP line).
+- **Typecheck not run**: strict tsc of the 11 touched files OOMs at a 2.9 G heap (`tsc1.log`, whole import graph); full typecheck at merge (controller). Types self-reviewed (callback client = `Prisma.TransactionClient`, `PosPayType` for module pay type, union narrowing in refund results).
