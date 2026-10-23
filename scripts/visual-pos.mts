@@ -9443,8 +9443,9 @@ async function ensureP35uFixture(): Promise<void> {
         await prisma.posShift.update({ where: { id: o.shift.id }, data: { openedAt: new Date(Date.now() - fromMin * 60_000), closedAt: new Date(Date.now() - toMin * 60_000) } });
         return o.shift.id;
       };
-      P35U.warnShift = await mk(300, 240, "warn");
-      P35U.hoursShift = await mk(180, 60, "hours");
+      // POS P3.12 ▸ CD-P312-V2d (ผู้คุม B 23.10 · parity p3.5u): หน้า กะ ขอชั่วโมง HR เฉพาะ 50 กะล่าสุดตาม openedAt (shifts/page.tsx take 50) — ใน sweep เต็มมี pass อื่นเปิดกะ >50 ครั้งใน 3 ชม. ⇒ กะ fixture ที่ปิด now−60/−240 นาที หลุดจาก 50 กะ · ระยะเวลาเท่าเดิม (60/120 นาที) แต่ปิดที่ now−1 นาที ◂
+      P35U.warnShift = await mk(61, 1, "warn");
+      P35U.hoursShift = await mk(121, 1, "hours");
       const inA = await hr.clock(p35uHrCtx(), { employeeId: P35U.emp.owner, kind: "IN", note: "ภาพ QC P3.5U" });
       const outA = await hr.clock(p35uHrCtx(), { employeeId: P35U.emp.owner, kind: "OUT", note: "ภาพ QC P3.5U" });
       await prisma.hrAttendance.update({ where: { id: inA.id }, data: { at: new Date(Date.now() - 175 * 60_000) } });
