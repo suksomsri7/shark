@@ -39,8 +39,12 @@ const CHECKS: readonly Def[] = [
   D("ST2", "-", "-", "-", "[no-db · self-test] ตัวตัดสินทุกข้อ: ตัวอย่างที่ถูก = เขียว · ตัวเลขบั๊กของ hunter = แดง (แดงของรอบ DB ไม่ใช่ฮาร์เนสพัง)"),
   D("MA1", "F1", "HIGH", "A", "[F1] สมาชิก (ระดับ 95%) + ส่วนลดท้ายบิล 10,000 + ค่าบริการ 9,000 บนบรรทัด 100,000 → ยอดรับ 4,000 · คืนครบทั้งบิลได้ และ ยอดคืน ≤ ยอดที่รับ (hunter: คืน 9,000 vs รับ 4,000) — หรือบิลถูกปฏิเสธตั้งแต่ขาย"),
   D("MA2", "F2", "HIGH", "B", "[F2] มัดจำ 50,000 + บิลปิดของราคา 200,000 (โรงแรม · เช่า · จองคิว action) → Σ ยอดบิลรายได้ (ไม่นับใบรับมัดจำ POS_DEPOSIT) = 200,000 · GL รายได้ (4xxx) = 186,916 · VAT 2200 = 13,084 (hunter: 250,000 / 16,355)"),
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7 · R1 ของชุด B F2): MA2b = probe PB ◂
+  D("MA2b", "R1-F2", "LOW-MED", "B", "[R1 F2] ค่าห้อง/ค่าเช่า 30,000 · มัดจำ 50,000 (บิลปิดจ่ายจากมัดจำ) → refundStay / refundRental ⇒ บิลปิด VOIDED + ใบคืน CN ของใบรับ 1 ใบ = 50,000 (20,000 ที่เหลือ + 30,000 ที่ void คืนสภาพ) · มัดจำคงเหลือ 0 REFUNDED (R1: มัดจำกลับ OPEN 50,000 · ลูกค้าไม่ได้เงินคืน)"),
   D("MA3", "F3", "MED", "C", "[F3] registerSaleAction (หน้าขายเดิม): แคชเชียร์ STAFF (pos.sale.create เท่านั้น) ขายสินค้าราคา 12,000 ที่ 100 → error ไม่มีบิล · หน้าขายใหม่เปิด (registerV2) → action เดิมปฏิเสธ ไม่มีบิล · ตัวควบคุม: OWNER ราคาแคตตาล็อก (V2 ปิด) = ok"),
   D("MA4", "F4", "MED", "B", "[F4] จองคิว: รับมัดจำ → คืนมัดจำ (void) → รับมัดจำอีกครั้ง → ถ้าขึ้นว่าจ่ายแล้ว (depositPaidAt) ต้องมีบิล PAID ของมัดจำ = 50,000 (hunter: ชี้บิล VOIDED · เงิน 0 บนสมุด)"),
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7 · R1 ของชุด B F1): MA4b = probe PA ◂
+  D("MA4b", "R1-F1", "MED", "B", "[R1 F1] จองคิว: รับมัดจำ 50,000 → (ตัวควบคุม: รับซ้ำ = no-op ใบเดิม) → ใช้ 10,000 กับบิล → คืนมัดจำ (CN 40,000) → รับอีกครั้ง ⇒ ใบรับใหม่ PAID 50,000 · นัดขึ้นจ่ายแล้วชี้ใบใหม่ (มัดจำ OPEN) · มัดจำเดิม REFUNDED (R1: ได้ใบเดิมกลับ · มัดจำ 0)"),
   D("MA5", "F5", "MED", "B", "[F5] createSale ล้ม (SHIFT_REQUIRED: otherSources บังคับกะ ไม่มีกะเปิด) ระหว่าง ticket.markPaid / hotel.checkOut → ปลดบังคับกะแล้วลองซ้ำ → ต้องได้บิล PAID ของคีย์ ticket-sale-<id> / hotel-sale-<id> (hunter: สถานะ commit ไปแล้ว ลองซ้ำ = ไม่มีบิลตลอดไป)"),
   D("MA6", "F6", "MED", "B", "[F6] subscribe แพ็กเกจ 30,000 พร้อมกันจาก 2 โปรเซส (ลูกค้า 5 คน · คนละคู่แข่ง) → ทุกคน ACTIVE 1 แถว · บิล PAID 1 ใบ = 30,000 (hunter: 2 ACTIVE + 2 บิล = 60,000)"),
   D("MA7", "F7", "LOW-MED", "B", "[F7] ticket: คืนเงิน (cancelOrder) แทรกระหว่าง claim PAID กับ createSale (ถือล็อก advisory ของคีย์ ticket-sale-<id>) → ห้ามมีบิล PAID บนออเดอร์ที่ไม่ใช่ PAID"),
@@ -58,6 +62,8 @@ const NOT_WRITTEN: readonly { finding: string; why: string }[] = [
   { finding: "F14", why: "INFO (ไม่มี severity): สลิปเก็บยอดของ client (payment-slip.ts:163/:223 → F15) · samePayload ไม่ดูส่วนลดท้ายบิล/คูปอง (service.ts:549) · ABB ก่อน claim (tax-invoice.ts:151/:164 · ops WARN N2) — บันทึกในโน้ต ไม่เขียนข้อ" },
 ];
 const MA_IDS = CHECKS.filter((c) => /^P5\.1-MA\d+$/.test(c.id)).map((c) => c.id);
+/** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7): ข้อจาก R1 ของชุด B (ไม่นับใน MA1–MA11 ↔ F1–F11) ◂ */
+const R1_IDS = ["P5.1-MA2b", "P5.1-MA4b"];
 
 if (LIST) {
   console.log(`${SUITE} · PIN ${PIN} · LANE_PIN ${LANE_PIN} · ${CHECKS.length} ข้อ`);
@@ -112,6 +118,22 @@ const V = {
     }
     const ok = x.cases.length > 0 && x.cases.every((c) => c.revenueGrand === c.price && c.posted && c.glIncome === c.base && c.glVat === c.vat);
     return { ok, expected: "ทุกกรณี: Σ บิลรายได้ = ราคา · GL รายได้ = ฐานของราคา · VAT = VAT ของราคา", actual: joinP(p, "ไม่มีกรณี") };
+  },
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7): ตัวตัดสิน MA2b MA4b (R1 ของชุด B) ◂
+  /** R1 F2 — ต่อกรณี: refund ok · บิลปิด VOIDED · ใบคืน CN ของใบรับ (จำนวน · ยอด) · มัดจำคงเหลือ/สถานะหลังระบายคิว */
+  MA2b(x: { cases: { name: string; refundOk: boolean; refundNote?: string; voided: boolean; cnCount: number; cnSatang: number; left: number; depStatus: string | null; deposit: number }[] }): Verdict {
+    const good = (c: { refundOk: boolean; voided: boolean; cnCount: number; cnSatang: number; left: number; depStatus: string | null; deposit: number }) => c.refundOk && c.voided && c.cnCount === 1 && c.cnSatang === c.deposit && c.left === 0 && c.depStatus === "REFUNDED";
+    const ok = x.cases.length > 0 && x.cases.every(good);
+    return { ok, expected: "ทุกกรณี: คืนเงิน ok · บิลปิด VOIDED · CN 1 ใบ = มัดจำทั้งหมด · คงเหลือ 0 REFUNDED", actual: joinP(x.cases.map((c) => `${c.name}: คืน ${c.refundOk ? "ok" : `ไม่สำเร็จ ${c.refundNote ?? ""}`} · บิล ${c.voided ? "VOIDED" : "ไม่ VOIDED"} · CN ${c.cnCount} ใบ ${c.cnSatang}/${c.deposit} · คงเหลือ ${c.left} ${c.depStatus ?? "-"}${good(c) ? " ✓" : " ✗"}`)) };
+  },
+  /** R1 F1 — ตัวควบคุม (รับซ้ำ = no-op ใบเดิม) · หลังใช้บางส่วน → คืน → รับใหม่ */
+  MA4b(x: { ctlNoop: boolean; ctlSame: boolean; newReceipt: boolean; newStatus: string | null; newAmount: number; paidAt: boolean; linkedNew: boolean; linkedStatus: string | null; oldStatus: string | null; deposit: number }): Verdict {
+    const ok = x.ctlNoop && x.ctlSame && x.newReceipt && x.newStatus === "PAID" && x.newAmount === x.deposit && x.paidAt && x.linkedNew && x.linkedStatus === "OPEN" && x.oldStatus === "REFUNDED";
+    return {
+      ok,
+      expected: `ตัวควบคุม no-op ใบเดิม · รับใหม่ = ใบรับใหม่ PAID ${x.deposit} · นัดชี้ใบใหม่ (OPEN) · มัดจำเดิม REFUNDED`,
+      actual: `ตัวควบคุม ${x.ctlNoop ? "noop" : "ไม่ noop"}/${x.ctlSame ? "ใบเดิม" : "ใบอื่น"} · รับใหม่ ${x.newReceipt ? "ใบใหม่" : "ใบเดิม"} ${x.newStatus ?? "-"} ${x.newAmount} · นัด ${x.paidAt ? "จ่ายแล้ว" : "ยังไม่จ่าย"} ชี้${x.linkedNew ? "ใบใหม่" : "ใบเดิม"} มัดจำ ${x.linkedStatus ?? "-"} · มัดจำเดิม ${x.oldStatus ?? "-"}`,
+    };
   },
   /** F3 — a: STAFF ราคาต่ำกว่าแคตตาล็อก (V2 ปิด) · b: V2 เปิด · ctl: OWNER ราคาแคตตาล็อก (V2 ปิด) */
   // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b · R1 F1): + c = STAFF ราคาแคตตาล็อก 12,000 + ส่วนลดท้ายบิล 11,900 (เกินเพดาน STAFF) → error ไม่มีบิล · ไม่ส่ง c = ไม่ตัดสินข้อ c (self-test เดิม) ◂
@@ -177,6 +199,15 @@ const SELF_SAMPLES: Record<string, [() => Verdict, () => Verdict]> = {
     () => V.MA2({ cases: [{ name: "hotel", price: 200_000, base: 186_916, vat: 13_084, revenueGrand: 200_000, glIncome: 186_916, glVat: 13_084, posted: true }] }),
     () => V.MA2({ cases: [{ name: "hotel", price: 200_000, base: 186_916, vat: 13_084, revenueGrand: 250_000, glIncome: 233_645, glVat: 16_355, posted: true }] }),
   ],
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7): ถูก / ตัวเลขของ R1 probe PB · PA ◂
+  MA2b: [
+    () => V.MA2b({ cases: [{ name: "hotel", refundOk: true, voided: true, cnCount: 1, cnSatang: 50_000, left: 0, depStatus: "REFUNDED", deposit: 50_000 }] }),
+    () => V.MA2b({ cases: [{ name: "hotel", refundOk: true, voided: true, cnCount: 0, cnSatang: 0, left: 50_000, depStatus: "OPEN", deposit: 50_000 }] }),
+  ],
+  MA4b: [
+    () => V.MA4b({ ctlNoop: true, ctlSame: true, newReceipt: true, newStatus: "PAID", newAmount: 50_000, paidAt: true, linkedNew: true, linkedStatus: "OPEN", oldStatus: "REFUNDED", deposit: 50_000 }),
+    () => V.MA4b({ ctlNoop: true, ctlSame: true, newReceipt: false, newStatus: "PAID", newAmount: 50_000, paidAt: true, linkedNew: false, linkedStatus: "REFUNDED", oldStatus: "REFUNDED", deposit: 50_000 }),
+  ],
   MA3: [() => V.MA3({ ctl: "ok", a: "error", aBill: 0, b: "error", bBill: 0, c: "error", cBill: 0 }), () => V.MA3({ ctl: "ok", a: "error", aBill: 0, b: "error", bBill: 0, c: "ok", cBill: 1 })], // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b): ตัวอย่างบั๊ก = ช่องส่วนลดท้ายบิล (R1 F1) ◂
   MA4: [() => V.MA4({ paidAt: true, saleStatus: "PAID", paidDeposit: 50_000, deposit: 50_000 }), () => V.MA4({ paidAt: true, saleStatus: "VOIDED", paidDeposit: 0, deposit: 50_000 })],
   MA5: [
@@ -195,7 +226,7 @@ const SELF_SAMPLES: Record<string, [() => Verdict, () => Verdict]> = {
 };
 function runSelfTest(): string[] {
   const p: string[] = [];
-  for (const id of MA_IDS) {
+  for (const id of [...MA_IDS, ...R1_IDS]) { // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7): + MA2b MA4b ◂
     const k = id.replace("P5.1-", "");
     const s = SELF_SAMPLES[k];
     if (!s) {
@@ -222,6 +253,7 @@ function runRegistry(): string[] {
   for (const f of ["F12", "F13", "F14"]) if (!NOT_WRITTEN.some((n) => n.finding === f && n.why.length > 20)) p.push(`${f} ไม่มีเหตุผล`);
   for (const z of ["P5.1-Z1", "P5.1-Z2"]) if (!ids.includes(z)) p.push(`ไม่มี ${z}`);
   if (MA_IDS.length !== 11) p.push(`ข้อ MA ${MA_IDS.length} (คาด 11)`);
+  for (const r of R1_IDS) if (!CHECKS.some((c) => c.id === r && /^R1-F\d$/.test(c.finding) && c.batch === "B")) p.push(`ไม่มี ${r} (CD-P51-O7)`); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7) ◂
   return p;
 }
 
@@ -232,7 +264,7 @@ if (SELFTEST || NODB) {
     const reg = runRegistry();
     chk("ST1", reg.length === 0, "ทะเบียนครบ", joinP(reg));
   }
-  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length} ข้อพลิกได้ครบ`));
+  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length + R1_IDS.length} ข้อพลิกได้ครบ`));
   const failedN = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id);
   console.log(`\n===== ${SUITE} (${NODB ? "--no-db" : "--self-test"}) ===== ผ่าน ${results.size - failedN.length}/${results.size}`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, mode: NODB ? "no-db" : "self-test", total: results.size, passed: results.size - failedN.length, failed: failedN, skipped: false, registered: CHECKS.length, pin: PIN })}`);
@@ -750,6 +782,44 @@ async function runDb(): Promise<void> {
     chk("MA2", v.ok, v.expected, v.actual);
   });
 
+  // ════════ MA2b (R1 F2 · ชุด B · ORACLE-EDIT ผู้คุม 23.10 CD-P51-O7) คืนเงินทั้งรายการ = คืนมัดจำด้วย ════════
+  await blk("MA2b", async () => {
+    if (fx) return void chk("MA2b", false, "fixture", FXB(""));
+    const caseOf = async (name: string, receiptId: string | null, finalKey: string, r: Any, deposit: number): Promise<Any> => {
+      await pump();
+      const fin = await saleByKey(finalKey);
+      const cns = receiptId ? ((await P.posSale.findMany({ where: { tenantId: T, docType: "REFUND", refSaleId: receiptId } }).catch(() => [])) as Any[]) : [];
+      const d: Any = receiptId ? await P.posDeposit.findUnique({ where: { receiptSaleId: receiptId } }).catch(() => null) : null;
+      return { name, refundOk: r?.ok === true, refundNote: short(r?.reason ?? r?.message ?? "", 60), voided: fin?.status === "VOIDED", cnCount: cns.length, cnSatang: cns.reduce((t, x) => t + Number(x.grandTotalSatang), 0), left: d ? d.amountSatang - d.usedSatang - d.refundedSatang : -1, depStatus: d?.status ?? null, deposit };
+    };
+    const cases: Any[] = [];
+    const h = await step("MA2b โรงแรม", async () => {
+      const rt = await hotelMod.createRoomType({ tenantId: T, unitId: U.H, name: `ห้อง MA2b ${RAND}`, capacity: 2, baseRateSatang: 15_000, depositSatang: 50_000 });
+      const room = must("createRoom", await hotelMod.createRoom({ tenantId: T, unitId: U.H, roomTypeId: rt.id, number: "202" }));
+      const rv = must("createReservation", await hotelMod.createReservation({ tenantId: T, unitId: U.H, roomTypeId: rt.id, checkInDate: TODAY, checkOutDate: addDays(TODAY, 2), guestName: `แขก MA2b ${RAND}`, guestPhone: `0821${rnd(6)}` }));
+      const d = must("recordDeposit", await call(hotelMod, "recordDeposit", T, U.H, rv.id));
+      must("checkIn", await call(hotelMod, "checkIn", T, U.H, rv.id, room.id));
+      must("checkOut", await call(hotelMod, "checkOut", T, U.H, rv.id));
+      const r = await call(hotelMod, "refundStay", T, U.H, rv.id);
+      return caseOf("โรงแรม", d.saleId ?? null, `hotel-sale-${rv.id}`, r, 50_000);
+    });
+    if (h) cases.push(h);
+    const rr = await step("MA2b เช่า", async () => {
+      const ctxR = { tenantId: T, unitId: U.R };
+      const as = await rentalMod.createAsset(ctxR, { name: `ของเช่า MA2b ${RAND}`, dailyRateSatang: 15_000, depositSatang: 50_000 });
+      const start = new Date();
+      const bk = await rentalMod.createBooking(ctxR, { assetId: as.id, customerName: `ผู้เช่า MA2b ${RAND}`, customerPhone: `0822${rnd(6)}`, startDate: start, endDate: new Date(start.getTime() + 2 * 86_400_000) });
+      const d = must("recordRentalDeposit", await call(rentalMod, "recordRentalDeposit", ctxR, bk.id));
+      await call(rentalMod, "pickUp", ctxR, bk.id);
+      must("returnAsset", await call(rentalMod, "returnAsset", ctxR, bk.id, {}));
+      const r = await call(rentalMod, "refundRental", ctxR, bk.id);
+      return caseOf("เช่า", d.saleId ?? null, `rental-${bk.id}`, r, 50_000);
+    });
+    if (rr) cases.push(rr);
+    const v = V.MA2b({ cases });
+    chk("MA2b", cases.length === 2 && v.ok, v.expected, `${cases.length === 2 ? "" : `fixture: ${cases.length}/2 กรณี · `}${v.actual}`);
+  });
+
   // ════════ MA3 (F3 · ชุด C) action เดิม registerSaleAction ════════
   await blk("MA3", async () => {
     if (fx || !PROD.id || !posAct?.registerSaleAction) return void chk("MA3", false, "fixture", FXB(`สินค้า ${PROD.id ? "ok" : "-"} · action ${posAct?.registerSaleAction ? "ok" : "-"}`));
@@ -796,6 +866,27 @@ async function runDb(): Promise<void> {
     const fixtureOk = r1?.ok === true && r2?.ok === true;
     const v = V.MA4({ paidAt: !!row?.depositPaidAt, saleStatus: sale?.status ?? null, paidDeposit, deposit: 50_000 });
     chk("MA4", fixtureOk && v.ok, v.expected, `${fixtureOk ? "" : "fixture: "}รับ ${codeOf(r1)} → คืน ${codeOf(r2)} → รับอีก ${codeOf(r3)}${r3?.noop ? " (noop)" : ""} · ${v.actual}`);
+  });
+
+  // ════════ MA4b (R1 F1 · ชุด B · ORACLE-EDIT ผู้คุม 23.10 CD-P51-O7) ใช้บางส่วน → คืน → รับใหม่ ════════
+  await blk("MA4b", async () => {
+    if (fx) return void chk("MA4b", false, "fixture", FXB(""));
+    const ctxB = { tenantId: T, unitId: U.B4 };
+    const svc = await P.bookingService.create({ data: { tenantId: T, unitId: U.B4, name: `บริการ MA4b ${RAND}`, durationMin: 60, priceSatang: 200_000, depositSatang: 50_000 } });
+    const stf = await P.bookingStaff.create({ data: { tenantId: T, unitId: U.B4, name: `ช่าง MA4b ${RAND}` } });
+    const ap = must("createAppointment", await bookingMod.createAppointment({ tenantId: T, unitId: U.B4, serviceId: svc.id, staffId: stf.id, dateStr: addDays(TODAY, 2), startMin: 720, customerName: `ลูกค้า MA4b ${RAND}`, customerPhone: `0823${rnd(6)}` }));
+    const r1 = must("recordDeposit", await call(bookingMod, "recordDeposit", ctxB, ap.id));
+    const R0 = String(r1.saleId ?? "");
+    const ctl = await call(bookingMod, "recordDeposit", ctxB, ap.id); // ตัวควบคุม: รับซ้ำโดยไม่มีการคืน = no-op ใบเดิม
+    must("ใช้มัดจำ 10,000", await call(posSvc, "createSale", { tenantId: T, unitId: U.B4, systemId: S.POS, idempotencyKey: newKey("ma4b"), lines: [{ name: `ใช้มัดจำ MA4b ${RAND}`, qty: 1, unitPriceSatang: 10_000 }], payMethods: [{ type: "DEPOSIT", amountSatang: 10_000, refSaleId: R0 }] }));
+    const r2 = must("refundDeposit", await call(bookingMod, "refundDeposit", ctxB, ap.id));
+    const r3 = await call(bookingMod, "recordDeposit", ctxB, ap.id);
+    const row = await P.appointment.findUnique({ where: { id: ap.id } });
+    const nsale = r3?.saleId ? await P.posSale.findUnique({ where: { id: String(r3.saleId) } }) : null;
+    const linked: Any = row?.depositSaleId ? await P.posDeposit.findUnique({ where: { receiptSaleId: row.depositSaleId } }).catch(() => null) : null;
+    const old: Any = R0 ? await P.posDeposit.findUnique({ where: { receiptSaleId: R0 } }).catch(() => null) : null;
+    const v = V.MA4b({ ctlNoop: ctl?.noop === true, ctlSame: String(ctl?.saleId ?? "") === R0, newReceipt: !!r3?.saleId && String(r3.saleId) !== R0, newStatus: nsale?.status ?? null, newAmount: Number(nsale?.grandTotalSatang ?? 0), paidAt: !!row?.depositPaidAt, linkedNew: !!row?.depositSaleId && row.depositSaleId !== R0 && row.depositSaleId === String(r3?.saleId ?? ""), linkedStatus: linked?.status ?? null, oldStatus: old?.status ?? null, deposit: 50_000 });
+    chk("MA4b", v.ok, v.expected, `รับ ${codeOf(r1)} → ซ้ำ ${codeOf(ctl)}${ctl?.noop ? " (noop)" : ""} → ใช้ 10,000 → คืน ${codeOf(r2)} → รับอีก ${codeOf(r3)} · ${v.actual}`);
   });
 
   // ════════ MA5 (F5 · ชุด B) createSale ล้มหลัง commit สถานะ → ไม่มีบิลตลอดไป ════════
@@ -1078,7 +1169,7 @@ try {
   const reg = runRegistry();
   chk("ST1", reg.length === 0, "ทะเบียนครบ", joinP(reg));
   const st = runSelfTest();
-  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length} ข้อพลิกได้ครบ`));
+  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length + R1_IDS.length} ข้อพลิกได้ครบ`));
   await runDb();
 } catch (e) {
   crashed = (e as Error)?.stack?.split("\n").slice(0, 3).join(" | ") ?? String(e);
