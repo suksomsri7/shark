@@ -1,6 +1,7 @@
 // QC — Booking deposit (WO Wave3-A): ร้านรับมัดจำกัน no-show + ลงบัญชี DEPOSIT (Dr 2110) · Fable oracle, Builder ห้ามแตะ
 // ORACLE-EDIT CD-P51-O6 (POS P5.1 batch B · 23 Oct) — deposits are POS_DEPOSIT receipts; refund = credit note
 //   (BD-3.4 4.1 4.2 5.2 5.4 6.2 · เดิม: บิล BOOKING Dr 2110 / Cr รายได้ = hunt M-A F2 · คืน = void) ◂
+// ORACLE-EDIT CD-P51-O9 (POS P5.1 fix batch C · 23 Oct) — module receipts carry the real pay method (TRANSFER default): BD-3.2 ◂
 // ⚠️ standalone-typesafe: dynamic import + wide cast เท่านั้น (ไม่ผูก type ตอน compile)
 //
 // สัญญา src/lib/modules/booking/service.ts:
@@ -71,7 +72,8 @@ try {
   const apptAfter = await prisma.appointment.findUnique({ where: { id: apptId } });
   const dep2110 = await acctSide("2110");
   chk("BD-3.1", "recordDeposit ok + มี saleId", rd.ok === true && !!saleId, "true+saleId", JSON.stringify(rd).slice(0, 60));
-  chk("BD-3.2", "posSale สถานะ PAID + payment type DEPOSIT amount=50000", sale?.status === "PAID" && sale?.payments?.some((p: any) => p.type === "DEPOSIT" && p.amountSatang === DEP), "PAID+DEPOSIT", `${sale?.status}/${sale?.payments?.map((p: any) => p.type).join(",")}`);
+  // ORACLE-EDIT CD-P51-O9 (POS P5.1 fix batch C · 23 Oct): ใบรับจ่ายด้วยวิธีจริง — ฟอร์มไม่มีช่องวิธีรับ = TRANSFER (เดิม DEPOSIT) ◂
+  chk("BD-3.2", "[CD-P51-O9] posSale สถานะ PAID + payment type TRANSFER amount=50000", sale?.status === "PAID" && sale?.payments?.some((p: any) => p.type === "TRANSFER" && p.amountSatang === DEP), "PAID+TRANSFER", `${sale?.status}/${sale?.payments?.map((p: any) => p.type).join(",")}`);
   chk("BD-3.3", "depositPaidAt ตั้ง + depositSaleId ผูกบิล", !!apptAfter?.depositPaidAt && apptAfter?.depositSaleId === saleId, "paidAt+saleId", `${!!apptAfter?.depositPaidAt}/${apptAfter?.depositSaleId === saleId}`);
   // ORACLE-EDIT CD-P51-O6: ใบรับ POS_DEPOSIT = Dr เงิน 50000 / Cr 2110 ฐาน 46729 + Cr 2200 VAT 3271 (VAT 7% รวมใน 50000) · ไม่มี Dr 2110 ◂
   const DEP_BASE = 46_729, DEP_VAT = 3_271;
