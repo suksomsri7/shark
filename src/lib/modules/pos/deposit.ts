@@ -594,7 +594,8 @@ export type ModuleDepositInput = {
   /** คีย์ฐานของโมดูล (เช่น booking-deposit-<id>) · ใบรับของคีย์ที่ไม่ใช่ PAID แล้ว (คืนเงิน/ยกเลิก) ⇒ เลื่อนเป็น <คีย์>-r1, -r2 … */
   keyBase: string;
   amountSatang: number;
-  /** วิธีรับของโมดูล — CASH/PROMPTPAY/TRANSFER/CARD หรือค่าเดิม "DEPOSIT" (แถวไม่อ้างใบ · ไม่ใช่เงินสด · GL = ช่องทาง TRANSFER ของ depositChannel) ตามที่ส่ง · อื่น = DEPOSIT */
+  /** POS P5.1 ▸ MA14 (R1 F4 · CD-P51-O9): วิธีรับจริงของฟอร์มโมดูล — CASH/PROMPTPAY/TRANSFER/CARD · ไม่ส่ง/อื่น (รวม "DEPOSIT") = TRANSFER (ฟอร์มโมดูลไม่มีช่องวิธีรับ) ·
+   *  ห้าม DEPOSIT สำหรับเงินเข้า (DEPOSIT = "ใช้มัดจำ" เท่านั้น — สรุปวันนับซ้อน/ไม่ตรง 1010) · GL เดิม (depositChannel TRANSFER → 1010) ◂ */
   payType?: PosPayType;
   customerId?: string | null;
   customerName?: string | null;
@@ -605,7 +606,7 @@ export type ModuleDepositInput = {
 export type ModuleDepositResult = { saleId: string; depositId: string | null; duplicated: boolean };
 
 export async function moduleTakeDeposit(input: ModuleDepositInput, sell: ModuleDepositSell): Promise<ModuleDepositResult> {
-  const payType: PosPayType = input.payType && ((DEPOSIT_PAY_TYPES as readonly string[]).includes(input.payType) || input.payType === "DEPOSIT") ? input.payType : "DEPOSIT";
+  const payType: PosPayType = input.payType && (DEPOSIT_PAY_TYPES as readonly string[]).includes(input.payType) ? input.payType : "TRANSFER"; // POS P5.1 ▸ MA14 (CD-P51-O9): ค่าปริยาย TRANSFER (เดิม DEPOSIT) ◂
   for (let round = 0; round <= 20; round++) {
     const key = round === 0 ? input.keyBase : `${input.keyBase}-r${round}`;
     const st = await saleStatusByKey(input.tenantId, key);

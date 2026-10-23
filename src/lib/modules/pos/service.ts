@@ -1866,8 +1866,12 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
       })
     : [];
   const refundSet = new Set(refundsAll.map((s) => s.id));
+  // POS P5.1 ▸ MA14 (R1 F4 · CD-P51-O9): แถว DEPOSIT ไม่อ้างใบบนใบรับ/ใบคืนมัดจำ (ใบรับโมดูลก่อน O9) = เงินเข้าจริง ⇒ นับเป็น TRANSFER
+  //   (ช่องทาง GL เดียวกับ account-bridge depositChannel → 1010) · บรรทัด DEPOSIT = มัดจำที่ใช้บนบิลปิดเท่านั้น ◂
+  const depDocIds = new Set([...depReceipts, ...depRefunds].map((s) => s.id));
   const agg = new Map<PosPayType, { amountSatang: number; count: number; refundCount: number; refundSatang: number }>();
-  for (const p of payments) {
+  for (const p0 of payments) {
+    const p = p0.type === "DEPOSIT" && !p0.refSaleId && depDocIds.has(p0.saleId) ? { ...p0, type: "TRANSFER" as PosPayType } : p0; // POS P5.1 ▸ MA14 ◂
     const cur = agg.get(p.type) ?? { amountSatang: 0, count: 0, refundCount: 0, refundSatang: 0 };
     if (refundSet.has(p.saleId)) {
       cur.amountSatang -= p.amountSatang;

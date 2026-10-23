@@ -429,7 +429,7 @@ export async function promptpayForRentalDeposit(
 export async function recordRentalDeposit(
   ctx: RentalCtx,
   bookingId: string,
-  payMethod: PosPayType = "DEPOSIT",
+  payMethod: PosPayType = "TRANSFER", // POS P5.1 ▸ MA14 (R1 F4 · CD-P51-O9): วิธีรับจริง · ฟอร์มไม่มีช่องวิธีรับ = TRANSFER (เดิม "DEPOSIT") ◂
 ): Promise<{ ok: boolean; reason?: string; saleId?: string; noop?: boolean }> {
   const db = tenantDb(ctx);
   const bk = await db.rentalBooking.findFirst({ where: { id: bookingId } });
@@ -445,7 +445,7 @@ export async function recordRentalDeposit(
   const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
   if (posSystemId) {
     // POS P5.1 ▸ MA2 (F2): มัดจำ = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 · ไม่ใช่รายได้) + PosDeposit ผ่าน pos/deposit.moduleTakeDeposit ·
-    //   createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับคงเดิม (ค่าปริยาย "DEPOSIT" · GL ช่องทาง TRANSFER) · คืนของจ่ายมัดจำเป็นแถว DEPOSIT อ้างใบรับ ◂
+    //   createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับจริง (CD-P51-O9 · ค่าปริยาย TRANSFER · GL 1010) · คืนของจ่ายมัดจำเป็นแถว DEPOSIT อ้างใบรับ ◂
     const posDeposit = await import("@/lib/modules/pos/deposit");
     const sale = await posDeposit.moduleTakeDeposit(
       { tenantId: ctx.tenantId, unitId: ctx.unitId, systemId: posSystemId, keyBase: `rental-deposit-${bookingId}`, amountSatang: amount, payType: payMethod, customerName: bk.customerName, note: `มัดจำเช่า ${bk.customerName}`, createdBy: "module:rental" },
