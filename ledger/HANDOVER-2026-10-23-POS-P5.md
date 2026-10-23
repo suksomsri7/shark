@@ -33,3 +33,14 @@ F-P3-69 · F-P3-06 · MA10 snapshot ledger id · shop `refundOrder` restock แ�
 3. ลำดับถัดไป: P4.3 (fix จาก triage + registry/harness fixes · รัน cell ที่แตะซ้ำ) → P5.3 perf (brief ใน MASTER-PLAN · ต้อง build ทรี d) → P6.1 rehearsal + PR (⛔ ห้าม push main · PR เท่านั้น · deploy = เจ้าของ W32 + W40) → P6.2 docs/HANDOVER 100% + สรุปใหญ่ครั้งเดียว
 4. เครื่องมือ: `scripts/pos-repin-lane.sh` · `pos-oracle-check.sh` · `pos-pre-submit.sh` · `pos-gates-all.sh` (manifest 129 ชุด) · `pos-authz-matrix-gen.mts --write/--check` · chain scripts ใน scratchpad B `/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchpad/ctl/` (คัดลอกไว้ `/root/pos-runs/ctl-scripts-2026-10-23/` ⟨B⟩)
 5. tg: `/usr/local/bin/tg "📊 POS · NN% (x/y) · …"` หลังทุก merge
+
+## §6 ถ้า B ถูกตัดโควตากลางทาง (เจ้าของแจ้ง 98% ≈14:5xZ) — A ทำต่อจากจุดนี้ได้ทันที
+สถานะที่แน่นอน ณ เขียน: tip `session/pos` = ledger บน **0fc0151b** (push แล้ว) · กิ่ง `wip/pos-p5.2-fix-de-dev` **c139bb41** (push แล้ว · โค้ด c27ea9cc · p5.2 54/54 ×2 · tsc 0 บนกิ่ง) · R1 security รอบ 2 กำลังตรวจกิ่งนี้ (รายงานจะอยู่ `/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchpad/p52-r1-dedev/REPORT2.md` ถ้าเขียนได้ · ถ้าไม่มี = ถือว่าไม่มีผล R1-2 → A เปิด R1 รอบ 2 เอง ด้วยข้อความเดียวกับ `POS-RESUME.md` บรรทัด "R1 security รอบ 2")
+ขั้น merge P5.2 (ทำเหมือน batch C ทุกประการ · ดู RESUME บรรทัด CD-RP23):
+1. `git -C /root/projects/shark-pos fetch -q origin wip/pos-p5.2-fix-de-dev && git -C /root/projects/shark-pos merge --no-ff --no-edit origin/wip/pos-p5.2-fix-de-dev` (conflict คาดเฉพาะ `ledger/POS-OWNER-PENDING.md` = เก็บทั้งสองก้อน)
+2. p2.7: เพิ่มบรรทัด `add(gitBuf(["rev-parse","--verify","-q","<mergeSHA>^{commit}"])…)` ใต้บรรทัด 6b1f84a5 ใน `scripts/qc-pos-p2.7.mts` (คอมเมนต์ ORACLE-EDIT CD-RP24)
+3. `bash scripts/pos-repin-lane.sh /root/projects/shark-pos <mergeSHA> "P5.2 D+E+device merge CD-RP24" qc-pos-p2.8 qc-pos-p2.11 qc-pos-p3.9:LANE_PIN qc-hf-fu qc-hf-fu2 qc-pos-p2.12 qc-pos-p3-skel:LANE_PIN qc-pos-p3.5:LANE_PIN qc-pos-p3.6:LANE_PIN qc-pos-p3.7:LANE_PIN` · regen matrix `pos-authz-matrix-gen.mts --write` แล้ว `--check`
+4. static: รัน `--no-db` ของ 15 ชุดนั้น + p5.2 p5.1 p2.9b p3.12 p3.4 (แม่แบบ `/root/pos-runs/ctl-scripts-2026-10-23/static-rp23.sh` แก้ชื่อ out dir + รายการ) → เขียวทั้งหมด → commit `test(pos): ORACLE-EDIT CD-RP24 …`
+5. p2.10: `pos-repin-lane.sh … <RP24 sha> "… CD-RP24b p2.10 last" qc-pos-p2.10` → `qc-pos-p2.10 --no-db` 2/2 → commit
+6. ด่านทรี c: แม่แบบ `/root/pos-runs/ctl-scripts-2026-10-23/tc-p51c-*.sh` (แก้ sha + out dir) = prisma generate → strict tsc (heap 8192 · ISO 10500M · flock /tmp/pos-gate.lock · รอ RAM ≥9G) → p2.14 → p1.6 → p5.1 → p5.2 (คาด **54/54** · F4/F11 pendingOwner) → เขียว ⇒ `git push -u origin session/pos` → tg `📊 POS · 93% (51/55) · P5.2 ปิดแถว` → ติ๊ก P5.2 ใน MASTER-PLAN
+7. แล้วต่อ §5 ข้อ 2–3 (P4.3 triage → fix · P5.3 · P6)
