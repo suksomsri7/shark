@@ -732,7 +732,7 @@ async function runStatic() {
   //      ผ่าน ORACLE-EDIT ที่ผู้คุมงานเห็นเท่านั้น — ห้ามเปลี่ยนเป็น "diff กับ merge-base" (merge-base ของ session/pos ไม่มี hotfix ⇒ แดงหลอก)
   const LEGACY_SHA: Record<string, string> = {
     [LEGACY_UI]: "d661c7edf2abc93a35632e02b3dcc4fae9a6c1739739efa350ce451eafb66cfb", // ORACLE-EDIT MAIN-MERGE (ผู้คุม 10 ต.ค.) ▸ main HF-O23 3a93a773 ◂
-    [LEGACY_ACTIONS]: "e076ca3d82198583c0aedc0ccad8e57563d0b3606d44526c80fe9640aa563d14", // ORACLE-EDIT MAIN-MERGE ▸ main HF-O23 3a93a773 + R2 70ab5b86 ◂
+    [LEGACY_ACTIONS]: "ccd87cfc5fd9d57ec2017dc0fb8fe06bf34783549a9635a129c2bdb509f4a8d3", // ORACLE-EDIT ผู้คุม B 23.10 (CD-P51-O4/O4b · P5.1 MA3: legacy action กัน V2 + assertLegacySaleAllowed + manual-confirm + เพดานส่วนลดผู้ขาย · old e076ca3d) · ORACLE-EDIT MAIN-MERGE ▸ main HF-O23 3a93a773 + R2 70ab5b86 ◂
   };
   const shaOf = (p: string) => (existsSync(join(ROOT, p)) ? createHash("sha256").update(readFileSync(join(ROOT, p))).digest("hex") : "absent");
   const shaBad = Object.entries(LEGACY_SHA).filter(([p, h]) => shaOf(p) !== h).map(([p]) => `${p}=${shaOf(p).slice(0, 12)}`);
