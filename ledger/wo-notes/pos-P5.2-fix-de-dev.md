@@ -7,11 +7,11 @@ Scratch/logs: `/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchp
 ## Commits (check ↔ commit ↔ red-before / green-after)
 | check | commit | red-before | green-after |
 |---|---|---|---|
-| D11 | 50a17ef7 | base 9e2a219c (= fix-abcf R1 head 7940c779 record, 48/53): 15/15 not POS_LINKED · A1 rows changed | @50a17ef7 `p52-after-d11.log` 49/53: "ไม่ POS_LINKED 0/15 · แถว A1 เปลี่ยน 0 · บวก A3 เขียนได้ 13/15" (archiveCategory/resetDailyStock refused/EMPTY on A3 = fixture, threshold ≥ 12) |
-| H6b | ab69e650 | @50a17ef7: "saveCreditAccountAction ✗ ok · posTipLedgersAction ✗ ok · บัญชีเครดิต 0→1" (the other 6 refused) | @0de07d33 `p52-after-dev.log`: MANAGER[A1] 8/8 refused · values unchanged · MANAGER_ALL ×4 ok · OWNER tip ok |
-| D1 | 0de07d33 | @50a17ef7: "OWNER จับคู่ P2/P3 ok แต่ ไม่มีคุกกี้เครื่อง" | QC4 (no key): OWNER P2/P3 = DEVICE_KEY_UNSET, no row · cashier PERMISSION_DENIED · no creds key in device/shift files |
-| D2 | 0de07d33 | @50a17ef7: "อ้างเครื่อง Y จาก client → เปิดกะได้" | QC4: claim Y → DEVICE_NOT_PAIRED · positive skipped (key unset) |
-| D3 | 0de07d33 | @50a17ef7: "อ้างเครื่องของกะ Z จาก client → อ่าน X ได้" | QC4: claim Z → PERMISSION_DENIED · positive skipped (key unset) |
+| D11 | abbd7d1a | base 9e2a219c (= fix-abcf R1 head 7940c779 record, 48/53): 15/15 not POS_LINKED · A1 rows changed | @abbd7d1a `p52-after-d11.log` 49/53: "ไม่ POS_LINKED 0/15 · แถว A1 เปลี่ยน 0 · บวก A3 เขียนได้ 13/15" (archiveCategory/resetDailyStock refused/EMPTY on A3 = fixture, threshold ≥ 12) |
+| H6b | 75dec657 | @abbd7d1a: "saveCreditAccountAction ✗ ok · posTipLedgersAction ✗ ok · บัญชีเครดิต 0→1" (the other 6 refused) | @0de07d33 `p52-after-dev.log`: MANAGER[A1] 8/8 refused · values unchanged · MANAGER_ALL ×4 ok · OWNER tip ok |
+| D1 | 0de07d33 | @abbd7d1a: "OWNER จับคู่ P2/P3 ok แต่ ไม่มีคุกกี้เครื่อง" | QC4 (no key): OWNER P2/P3 = DEVICE_KEY_UNSET, no row · cashier PERMISSION_DENIED · no creds key in device/shift files |
+| D2 | 0de07d33 | @abbd7d1a: "อ้างเครื่อง Y จาก client → เปิดกะได้" | QC4: claim Y → DEVICE_NOT_PAIRED · positive skipped (key unset) |
+| D3 | 0de07d33 | @abbd7d1a: "อ้างเครื่องของกะ Z จาก client → อ่าน X ได้" | QC4: claim Z → PERMISSION_DENIED · positive skipped (key unset) |
 
 D1/D2/D3 are one commit: one ruling (CD-P52-O2-3) and D2/D3's positive controls replay the D1 cookie.
 
