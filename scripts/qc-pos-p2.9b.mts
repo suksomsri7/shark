@@ -43,6 +43,8 @@ const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของใบ (session/pos e7b05787 · โค้ด 9ada96ef) — ข้อ L เทียบกับตัวนี้ */
 const BASE_REV = "e7b05787";
+/** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): หมุด L3 ของมัดจำโมดูล (5 ฟังก์ชัน + qc-booking-deposit) = head P5.1 batch B (มัดจำโมดูล = POS_DEPOSIT · P5.1 MA2 แทนมติ 7) ◂ */
+const L3_PIN = process.env.P29B_L3_PIN || "2b377f5a";
 /** sha256 ของ scripts/pos-sale-contract.json (มติ 2 CD2-A = ไม่เปลี่ยน · ค่าเดียวกับ qc-pos-p2.4 ST4 / p2.5 / p2.6 L3) */
 const CONTRACT_SHA = "762e073cd5f80eeeb915835ae6b85e5793956facdfe233f90d65484db04dac55"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · contract +4 optional keys P3.6 · ba68f669 → 762e073c) · ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.9b L1): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 
@@ -113,7 +115,7 @@ const CHECKS: readonly Def[] = [
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[§7 มติ 2] scripts/pos-sale-contract.json sha256 = 72afb258… (CD2-A ไม่เปลี่ยนสัญญา)"),
   D("L2", "PAR", "[§7 มติ 11 HF-TX] ผู้เรียก createSale( ใน src ต่อไฟล์ = ฐาน e7b05787 (ใบรับผ่าน regCreateSale)"),
-  D("L3", "PAR", "[มติ 7] ทางมัดจำเดิม: booking recordDeposit/refundDeposit · hotel recordDeposit/checkOut · rental recordRentalDeposit ตรงฐานทุกไบต์ (ตัดคอมเมนต์) · qc-booking-deposit/qc-hotel-public/qc-rental-public ไม่ถูกแก้"),
+  D("L3", "PAR", "[มติ 7 → CD-P51-O6] มัดจำโมดูล = POS_DEPOSIT (CD-P51-O6) · หมุด = head P5.1 batch B: booking recordDeposit/refundDeposit · hotel recordDeposit/checkOut · rental recordRentalDeposit + qc-booking-deposit ตรงหมุดทุกไบต์ (ตัดคอมเมนต์) · qc-hotel-public/qc-rental-public ไม่ถูกแก้ (ฐาน)"), // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6) ◂
   D("L4", "PAR", "[§7] บิลไม่มีมัดจำเหมือนเดิม: เงินสด 300 + บัตร 325 → JV Dr 1000 300 · Dr 2110 325 · Cr 4000/2200 ของ 625 · vatSatang = VAT(ยอด) · บิลเงินสดล้วน vat + JV เดิม · ไม่มี PosDepositTxn"),
   // ── Z คืนสภาพ ──
   D("Z1", "-", "QC4 คืนสภาพ: ร้านชั่วคราว (+ -t2) เหลือ 0 แถวทุกตารางที่มี tenantId (รวม PosDeposit/PosDepositTxn) + Tenant ถูกลบ"),
@@ -291,7 +293,9 @@ const LEGACY_FNS: [string, string][] = [
   [F.hotel, "checkOut"],
   [F.rental, "recordRentalDeposit"],
 ];
-const LEGACY_SUITES = ["scripts/qc-booking-deposit.mts", "scripts/qc-hotel-public.mts", "scripts/qc-rental-public.mts"];
+// ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): qc-booking-deposit ย้ายไปหมุด L3_PIN (แก้ตาม MA2) · qc-hotel-public / qc-rental-public คง "ไม่ถูกแก้" เทียบ BASE_REV ◂
+const LEGACY_SUITES = ["scripts/qc-hotel-public.mts", "scripts/qc-rental-public.mts"];
+const L3_PIN_SUITES = ["scripts/qc-booking-deposit.mts"];
 const srcOf = (f: string) => stripComments(rd(f));
 const STATIC_IDS = ["ST1", "ST2", "ST3", "ST4", "ST5", "L1", "L2", "L3"].map((x) => `P2.9b-${x}`);
 const skipReasons: string[] = [];
@@ -492,10 +496,10 @@ function runStatic(): void {
     const p: string[] = [];
     const norm = (s: string) => stripComments(s).replace(/\s+/g, " ").trim();
     for (const [f, fn] of LEGACY_FNS) {
-      const b = gitBuf(["show", `${BASE_REV}:${f}`]);
+      const b = gitBuf(["show", `${L3_PIN}:${f}`]); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): เทียบหมุด L3_PIN (เดิม BASE_REV) ◂
       const was = b ? norm(fnBody(b.toString("utf8"), fn)) : "";
       const now = norm(fnBody(rd(f), fn));
-      if (!was) p.push(`อ่าน ${fn} ที่ ${BASE_REV} ไม่ได้`);
+      if (!was) p.push(`อ่าน ${fn} ที่ ${L3_PIN} ไม่ได้`);
       else if (was !== now) p.push(`${f.replace("src/lib/modules/", "")}#${fn} เปลี่ยน`);
     }
     for (const f of LEGACY_SUITES) {
@@ -503,7 +507,12 @@ function runStatic(): void {
       if (!b) p.push(`อ่าน ${f} ที่ ${BASE_REV} ไม่ได้`);
       else if (b.toString("utf8") !== rd(f)) p.push(`${f} ถูกแก้`);
     }
-    chk("L3", p.length === 0, "ทางเดิม 5 ฟังก์ชัน + ข้อสอบเดิม 3 ไฟล์ ตรงฐาน", joinP(p));
+    for (const f of L3_PIN_SUITES) {
+      const b = gitBuf(["show", `${L3_PIN}:${f}`]);
+      if (!b) p.push(`อ่าน ${f} ที่ ${L3_PIN} ไม่ได้`);
+      else if (b.toString("utf8") !== rd(f)) p.push(`${f} ต่างจากหมุด ${L3_PIN}`);
+    }
+    chk("L3", p.length === 0, `มัดจำโมดูล 5 ฟังก์ชัน + qc-booking-deposit ตรงหมุด ${L3_PIN} · qc-hotel-public/qc-rental-public ตรงฐาน (CD-P51-O6)`, joinP(p));
   }
 }
 
