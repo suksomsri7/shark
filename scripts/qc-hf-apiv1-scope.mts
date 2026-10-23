@@ -265,6 +265,13 @@ try {
     toRes(await toolRun.POST(new Request(`http://x/api/v1/ai/tools/${name}`, { method: "POST", headers: { ...hdr(key, extra), "content-type": "application/json" }, body: JSON.stringify({ args }) }), { params: Promise.resolve({ name }) }));
   const GENERAL = ["sales_summary", "financial_summary", "remember_fact", "kb_auto_save", "chat_unread_conversations"];
   const toolNamesIn = (r: Res) => ((r.body.tools as { function?: { name?: string } }[] | undefined) ?? []).map((t) => t.function?.name ?? "");
+  // ORACLE-EDIT CD-P52-O3-4 (consequence of CD-P52-O2-2): ตัวคุมบวกของสกิล sales = คีย์ POS (pos-read ⊇ pos.report.view · ไม่ผูกระบบ)
+  const posReadKey = await mk(A.ctx, "pos-read", { scopes: scopesMod.expandBundles(["pos-read"]) });
+  const PL = await listSkills(posReadKey.rawKey);
+  const plIds = ((PL.body.skills as { id: string }[] | undefined) ?? []).map((s) => s.id);
+  const PS = await oneSkill(posReadKey.rawKey, "sales");
+  const posReadOk = PL.status === 200 && plIds.includes("sales") && PS.status === 200 && ["sales_summary", "sales_by_day"].every((n) => toolNamesIn(PS).includes(n));
+  const posReadNote = `คีย์ pos-read: /skills ${PL.status} sales=${plIds.includes("sales")} · /skills/sales ${PS.status} ${toolNamesIn(PS).filter((n) => n === "sales_summary" || n === "sales_by_day").join(",") || "-"}`;
   // ตัวคุมฝั่งบวก: คีย์รุ่นเดิม (และที่หมุนแล้ว)
   for (const k of [{ label: "รุ่นเดิม", key: legacy.rawKey }, { label: "รุ่นเดิมที่หมุนแล้ว", key: rotated.rawKey }]) {
     const L = await listSkills(k.key);
@@ -279,7 +286,10 @@ try {
     const CORE_FOR_GENERAL_KEY = ["list_systems", "ask_clarify", "propose_plan", "open_system", "kb_search", "list_memories"];
     const core = ((L.body.core as { tools?: string[] })?.tools ?? []).slice().sort();
     const coreOk = JSON.stringify(core) === JSON.stringify(CORE_FOR_GENERAL_KEY.slice().sort());
-    chk(`HF-12.1.${k.label}`, `AI /skills คีย์${k.label} → มีสกิล sales/knowledge · ไม่มี memory · core = 6 ตัวตามรายการตายตัว (G1)`, L.status === 200 && ["sales", "knowledge"].every((i) => ids.includes(i)) && !ids.includes("memory") && coreOk, "ครบ", `${L.status} skills=${ids.join(",")} core=${core.join(",")}`);
+    // ORACLE-EDIT CD-P52-O3-4 (consequence of CD-P52-O2-2): คีย์กลางไม่มีเครื่องมือใดในสกิล sales แล้ว (POS ต้องใช้คีย์ POS · record_expense/financial_summary อยู่หลัง G1)
+    //   ⇒ /skills/sales = 404 และ /skills ไม่มี sales สำหรับคีย์กลาง · before: skills ⊇ sales/knowledge · after: knowledge มี · sales/memory ไม่มี ·
+    //   ตัวคุมบวก: คีย์ pos-read (pos.report.view) ยังเห็น sales พร้อม sales_summary + sales_by_day (posReadKey ข้างบน)
+    chk(`HF-12.1.${k.label}`, `AI /skills คีย์${k.label} → มีสกิล knowledge · ไม่มี sales/memory (CD-P52-O3-4) · core = 6 ตัวตามรายการตายตัว (G1) · บวก: คีย์ pos-read เห็น sales`, L.status === 200 && ids.includes("knowledge") && !ids.includes("sales") && !ids.includes("memory") && coreOk && posReadOk, "ครบ", `${L.status} skills=${ids.join(",")} core=${core.join(",")} · ${posReadNote}`);
     // ORACLE-EDIT (CD-P52-O2-2 · POS P5.2 fix C + R1 F1 CD-P52-O3-1 · ผู้คุม 23 ต.ค.) — ledger/wo-notes/pos-P5.2-fix-abcf-review.md F1
     //   คีย์กลาง (scopes [] · ไม่ผูกระบบ) × เครื่องมือของ POS = ปฏิเสธที่ประตู `/api/v1/ai/*` (เดิม CD-7 ให้อ่าน sales_summary/sales_by_day ทุกสาขา)
     //   before: HF-12.2 /skills/sales = 200 ⊇ sales_summary + sales_by_day · HF-12.3 tools/sales_summary = 200 ทำงาน
