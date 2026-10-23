@@ -307,7 +307,19 @@ export async function billVisit(
     throw e;
   }
 
-  await db.clinicVisit.updateMany({ where: { id: visitId }, data: { posSaleId: sale.saleId } });
+  // POS P5.1 ▸ MA7 (F7): คืนเงินแทรกระหว่าง claim กับ createSale (refundVisit ยังไม่เห็น posSaleId) ⇒ ผูกบิลเฉพาะ visit ที่ยัง BILLED ·
+  //   ไม่ใช่ BILLED แล้ว = void บิลนี้ ⇒ {ok:false} ◂
+  const bound = await db.clinicVisit.updateMany({ where: { id: visitId, status: "BILLED" }, data: { posSaleId: sale.saleId } });
+  if (bound.count === 0) {
+    if (sale.status !== "VOIDED") {
+      try {
+        await pos.voidSale(ctx.tenantId, ctx.unitId, sale.saleId);
+      } catch (e) {
+        if ((await pos.saleStatusByKey(ctx.tenantId, `clinic-${visitId}`)) !== "VOIDED") throw e;
+      }
+    }
+    return { ok: false };
+  }
 
   return { ok: true, posSaleId: sale.saleId };
 }

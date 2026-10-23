@@ -1,4 +1,5 @@
 import { prisma, tenantDb } from "@/lib/core/db";
+import { callerTx } from "@/lib/core/caller-tx"; // POS P5.1 ▸ MA2: ใบรับมัดจำในธุรกรรมของ moduleTakeDeposit ◂
 import { registerScopes } from "@/lib/core/scope";
 import * as pos from "@/lib/modules/pos/service";
 import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "เช็คเอาท์แล้ว" ใน tx เดียวกับสถานะ ◂
@@ -438,7 +439,7 @@ export async function checkOut(
         payload: { reservationId, unitId, partyId: rv.partyId, nights: rv.nights, totalSatang: rv.totalSatang },
       });
       // ◂ CRM C2.9
-      return { totalSatang: rv.totalSatang, nights: rv.nights, customerId: rv.customerId };
+      return { totalSatang: rv.totalSatang, nights: rv.nights, customerId: rv.customerId, depositSaleId: rv.depositSaleId, roomId: rv.roomId }; // POS P5.1 ▸ MA2 MA5: + ใบรับมัดจำ · ห้อง (คืน claim) ◂
     });
 
     // เช็คเอาท์แล้ว → เก็บค่าห้องเข้าบัญชีผ่าน POS (idempotent ด้วย reservationId)
@@ -449,20 +450,37 @@ export async function checkOut(
         systemForUnit(tenantId, unitId, "POINT"),
       ]);
       if (posSystemId) {
-        await pos.createSale({
-          tenantId,
-          unitId,
-          systemId: posSystemId,
-          pointSystemId: pointSystemId ?? undefined,
-          memberId: billing.customerId ?? undefined,
-          sourceModule: "HOTEL",
-          sourceId: reservationId,
-          idempotencyKey: `hotel-sale-${reservationId}`,
-          lines: [
-            { name: `ค่าห้อง ${billing.nights} คืน`, qty: 1, unitPriceSatang: billing.totalSatang },
-          ],
-          payMethods: [{ type: "CASH", amountSatang: billing.totalSatang }],
-        });
+        // POS P5.1 ▸ MA2 (F2): มัดจำที่รับเป็นใบรับ (POS_DEPOSIT) จ่ายเป็นแถว DEPOSIT อ้างใบรับ + ส่วนที่เหลือเงินสด ⇒ Σ รายได้ = ค่าห้อง · VAT ครั้งเดียว ·
+        //   มัดจำแบบเดิม (ก่อน P5.1 · ไม่มี PosDeposit) = คิดเต็มเงินสดแบบเดิม ◂
+        const dep = await (await import("@/lib/modules/pos/deposit")).moduleDepositForBill(tenantId, unitId, billing.depositSaleId, billing.totalSatang);
+        try {
+          await pos.createSale({
+            tenantId,
+            unitId,
+            systemId: posSystemId,
+            pointSystemId: pointSystemId ?? undefined,
+            memberId: billing.customerId ?? undefined,
+            sourceModule: "HOTEL",
+            sourceId: reservationId,
+            idempotencyKey: `hotel-sale-${reservationId}`,
+            lines: [
+              { name: `ค่าห้อง ${billing.nights} คืน`, qty: 1, unitPriceSatang: billing.totalSatang },
+            ],
+            payMethods: dep
+              ? [{ type: "DEPOSIT", amountSatang: dep.satang, refSaleId: dep.refSaleId }, ...(billing.totalSatang > dep.satang ? [{ type: "CASH" as const, amountSatang: billing.totalSatang - dep.satang }] : [])]
+              : [{ type: "CASH", amountSatang: billing.totalSatang }],
+          });
+        } catch (e) {
+          // POS P5.1 ▸ MA5 (F5): createSale ล้ม (เช่น SHIFT_REQUIRED) และไม่มีบิลของคีย์นี้จริง ⇒ คืนเช็คเอาท์ (CHECKED_OUT → CHECKED_IN · ห้องกลับ OCCUPIED)
+          //   แบบคลินิก/เช่า ให้ลองซ้ำได้ · event hotel.checked_out ที่ยิงแล้วคงอยู่ (คีย์เดิม · ลองซ้ำไม่ยิงซ้ำ) ◂
+          if ((await pos.saleStatusByKey(tenantId, `hotel-sale-${reservationId}`)) === null) {
+            await prisma.$transaction(async (tx) => {
+              const back = await tx.hotelReservation.updateMany({ where: { id: reservationId, tenantId, unitId, status: "CHECKED_OUT" }, data: { status: "CHECKED_IN", checkedOutAt: null } });
+              if (back.count > 0 && billing.roomId) await tx.hotelRoom.updateMany({ where: { id: billing.roomId, tenantId, unitId, status: "CLEANING" }, data: { status: "OCCUPIED" } });
+            });
+          }
+          throw e;
+        }
       }
     }
     return { ok: true };
@@ -544,6 +562,10 @@ export async function refundStay(
 
   // 2) กลับเส้นเงิน — void posSale (คืนบัญชี+แต้ม) นอก tx (voidSale เปิด tx เอง, idempotent)
   await pos.voidSale(tenantId, unitId, sale.id);
+  // POS P5.1 ▸ MA2b (R1 F2 · CD-P51-O7): มัดจำที่เป็นใบรับ POS_DEPOSIT — คืนสภาพส่วนที่บิลนี้ใช้ แล้วคืนเงินมัดจำคงเหลือทั้งหมด (ใบคืน CN ของใบรับ)
+  //   ⇒ "คืนเงินแล้ว" = ลูกค้าได้มัดจำคืนด้วย (เดิม: มัดจำกลับเป็น OPEN ค้างไว้ที่หน้าขาย) · มัดจำแบบเดิม/ไม่มีใบรับ = ไม่ทำอะไร ◂
+  const dep = await (await import("@/lib/modules/pos/deposit")).moduleRefundDepositAfterVoid({ tenantId, unitId, receiptSaleId: rv.depositSaleId, voidedSaleId: sale.id, reason: "คืนเงินการจองห้องพัก", actorId: "module:hotel" });
+  if (dep.ok === false) return { ok: false, reason: `ยกเลิกบิลค่าห้องแล้ว แต่คืนมัดจำไม่สำเร็จ (${dep.message}) — คืนมัดจำที่หน้าขาย` };
   return { ok: true, saleVoided: true };
 }
 
@@ -711,16 +733,26 @@ export async function recordDeposit(
   let saleId: string | null = null;
   const posSystemId = await systemForUnit(tenantId, unitId, "POS");
   if (posSystemId) {
-    const sale = await pos.createSale({
-      tenantId,
-      unitId,
-      systemId: posSystemId,
-      sourceModule: "HOTEL",
-      sourceId: reservationId,
-      idempotencyKey: `hotel-deposit-${reservationId}`,
-      lines: [{ name: `มัดจำห้อง ${rv.code}`, qty: 1, unitPriceSatang: amount }],
-      payMethods: [{ type: payMethod, amountSatang: amount }],
-    });
+    // POS P5.1 ▸ MA2 (F2): มัดจำ = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 · ไม่ใช่รายได้) + PosDeposit ผ่าน pos/deposit.moduleTakeDeposit ·
+    //   createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับคงเดิม (ค่าปริยาย "DEPOSIT" · GL ช่องทาง TRANSFER) · เช็คเอาท์จ่ายมัดจำเป็นแถว DEPOSIT อ้างใบรับ ◂
+    const posDeposit = await import("@/lib/modules/pos/deposit");
+    const sale = await posDeposit.moduleTakeDeposit(
+      { tenantId, unitId, systemId: posSystemId, keyBase: `hotel-deposit-${reservationId}`, amountSatang: amount, payType: payMethod, customerId: rv.customerId ?? null, customerName: rv.guestName ?? null, note: `มัดจำห้อง ${rv.code}`, createdBy: "module:hotel" },
+      (tx, k) =>
+        pos.createSale(
+          {
+            tenantId,
+            unitId,
+            systemId: posSystemId,
+            sourceModule: k.sourceModule,
+            sourceId: k.sourceId,
+            idempotencyKey: k.idempotencyKey,
+            lines: [{ name: `มัดจำห้อง ${rv.code}`, qty: 1, unitPriceSatang: amount }],
+            payMethods: [{ type: k.payType, amountSatang: amount }],
+          },
+          callerTx(tx),
+        ),
+    );
     saleId = sale.saleId;
   }
 

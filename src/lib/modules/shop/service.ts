@@ -320,8 +320,11 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   // 🔴 AUDIT M12: event นี้ทำให้ลูกค้าได้ของมีค่า (สมาชิกใหม่ · แต้มของออเดอร์) ⇒ ต้องเขียนใน transaction
   //    เดียวกับการเปลี่ยนสถานะฝั่งออเดอร์ (ผูกบิล POS เข้าออเดอร์ = ขั้นที่ปิดงานจริง · core/outbox.ts:69-72)
   //    ของเดิมยิงหลังอัปเดตแบบแยกคำสั่ง: โปรเซสตายคั่นกลาง = เก็บเงินแล้วแต่ลูกค้าไม่เคยได้แต้ม
-  await prisma.$transaction(async (tx) => {
-    await tx.shopOrder.updateMany({ where: { id: orderId, tenantId: ctx.tenantId }, data: { posSaleId: sale.saleId } });
+  // POS P5.1 ▸ MA7 (F7): คืนเงินแทรกระหว่าง claim กับ createSale (refundOrder ยังไม่เห็น posSaleId) ⇒ ผูกบิลเฉพาะออเดอร์ที่ยัง PAID ·
+  //   ไม่ใช่ PAID แล้ว = void บิลนี้ ไม่ผูก ไม่ยิง event ไม่ตัดสต็อก ⇒ {ok:false} ◂
+  const bound = await prisma.$transaction(async (tx) => {
+    const b = await tx.shopOrder.updateMany({ where: { id: orderId, tenantId: ctx.tenantId, status: "PAID" }, data: { posSaleId: sale.saleId } });
+    if (b.count === 0) return false;
     await orders.webSaleBoundInTx(tx, orderId, sale.saleId, { tenantId: ctx.tenantId }); // POS P2.8 ▸ fix รอบ 3 (H1): ผูกบิล ECOM กับออเดอร์ในจอ POS ในธุรกรรมเดียวกัน ◂
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
@@ -340,7 +343,18 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
         channel: "SHOP",
       },
     });
+    return true;
   });
+  if (!bound) {
+    if (sale.status !== "VOIDED") {
+      try {
+        await pos.voidSale(ctx.tenantId, ctx.unitId, sale.saleId);
+      } catch (e) {
+        if ((await pos.saleStatusByKey(ctx.tenantId, `ecom-${orderId}`)) !== "VOIDED") throw e;
+      }
+    }
+    return { ok: false };
+  }
 
   // 4) ตัดสต็อก — เฉพาะ line ที่ product ผูก invItemId · ไม่มีระบบ INVENTORY/ไม่ผูก → ข้ามเงียบ
   const invSystems = await listSystems(ctx.tenantId, "INVENTORY");

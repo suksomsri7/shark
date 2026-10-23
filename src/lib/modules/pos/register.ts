@@ -1696,7 +1696,17 @@ async function regPrice(
     member = await rm.registerMemberQuote(gate, saleWalletCart(walletLines, s.unitId, cart.couponCode ?? null), { voucherId: cart.memberChoices?.voucherId ?? null, points: cart.memberChoices?.points ?? 0 });
     conflicts.push(...member.memberConflicts);
   }
-  const memberDiscount = member?.memberDiscountSatang ?? 0;
+  let memberDiscount = member?.memberDiscountSatang ?? 0;
+  // POS P5.1 ▸ MA1b (R1 (4) · ตาม service.ts MA1): สิทธิ์สมาชิกไม่กินค่าบริการ — เพดาน = ยอดก่อนสิทธิ์ − ค่าบริการ · ส่วนเกินตัดจากส่วนลดระดับก่อน
+  //   (บรรทัด TIER แรก) · ยังเกิน (ว่อชเชอร์/แต้ม/บัตรกำนัล) = BENEFITS_EXCEED_TOTAL ⇒ ยอดบนจอ = ยอดที่ createSale ตัดจริง ◂
+  const memberCap = Math.max(0, r.grandTotalSatang - r.serviceChargeSatang);
+  if (member && memberDiscount > memberCap) {
+    const excess = memberDiscount - memberCap;
+    if (excess > member.tierDiscountSatang) return regRefuse("BENEFITS_EXCEED_TOTAL");
+    const tierAt = member.memberLines.findIndex((l) => l.kind === "TIER");
+    member = { ...member, tierDiscountSatang: member.tierDiscountSatang - excess, memberDiscountSatang: memberCap, memberLines: member.memberLines.map((l, i) => (i === tierAt ? { ...l, discountSatang: Math.max(0, l.discountSatang - excess) } : l)) };
+    memberDiscount = memberCap;
+  }
   const grand = r.grandTotalSatang - memberDiscount;
   if (grand < 0) return regRefuse("BENEFITS_EXCEED_TOTAL");
   // VAT ของยอดหลังสิทธิ์สมาชิก = สูตรของ createSale (splitIncludedVat บนยอดสุทธิ) · ไม่มีสมาชิก = ค่าของ priceCart เดิมทุกบาท

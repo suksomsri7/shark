@@ -43,6 +43,8 @@ const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของใบ (session/pos e7b05787 · โค้ด 9ada96ef) — ข้อ L เทียบกับตัวนี้ */
 const BASE_REV = "e7b05787";
+/** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): หมุด L3 ของมัดจำโมดูล (5 ฟังก์ชัน + qc-booking-deposit) = head P5.1 batch B (มัดจำโมดูล = POS_DEPOSIT · P5.1 MA2 แทนมติ 7) ◂ */
+const L3_PIN = process.env.P29B_L3_PIN || "c82ee447"; // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6b): 2b377f5a → c82ee447 (+ qc-hotel-public / qc-rental-public) ◂
 /** sha256 ของ scripts/pos-sale-contract.json (มติ 2 CD2-A = ไม่เปลี่ยน · ค่าเดียวกับ qc-pos-p2.4 ST4 / p2.5 / p2.6 L3) */
 const CONTRACT_SHA = "762e073cd5f80eeeb915835ae6b85e5793956facdfe233f90d65484db04dac55"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · contract +4 optional keys P3.6 · ba68f669 → 762e073c) · ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.9b L1): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 
@@ -69,7 +71,7 @@ const CHECKS: readonly Def[] = [
   D("A3", "X4", "[R4 R5 มติ 1] ใช้บางส่วน 500 แล้ว 570 → VAT ของ APPLY 32.71 + 37.29 = 70 พอดี (ใบหลังรับเศษ) · vat ของสองบิล = VAT(ยอด) − VAT ของ APPLY · JV ทั้งสองตรงสตางค์ · มัดจำ USED"),
   D("A4", "X4", "[R3 R5] สาขา C (สมุดไม่จด VAT): ใบรับ vat 0 · JV Dr 1010 / Cr 2110 1,000 · บิลใช้ vat 0 JV Dr 2110 / Cr 4000 · สาขา D (POS ไม่ผูกสมุด): รับ + ใช้ได้ ไม่มี JV"),
   D("A5", "X4", "[มติ 3] เอกสาร: ใบรับ = DEPOSIT_RECEIPT grandTotal 1,070 vat 70 · บิลที่ใช้มัดจำ (A2) depositDeducted 1,070 + vatAmount สุทธิ 70"),
-  D("A6", "PAR", "[มติ 7 CD7] ทางเดิม booking.recordDeposit → บิล BOOKING แถว DEPOSIT ไม่อ้างใบ · JV Dr 2110 500 · Cr รายได้ฐาน + Cr 2200 VAT · ไม่มีเงินสด · ไม่มี PosDeposit/PosDepositTxn"),
+  D("A6", "PAR", "[CD-P51-O6 แทนมติ 7 CD7] booking.recordDeposit → ใบรับ POS_DEPOSIT แถว DEPOSIT ไม่อ้างใบ · JV Dr 1010 500 / Cr 2110 ฐาน 467.29 / Cr 2200 VAT 32.71 · ไม่มีบรรทัด 4xxx · มี PosDeposit + PosDepositTxn RECEIVE"), // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6 · P5.1 MA2 แทนมติ 7 CD7) ◂
   // ── P ใช้มัดจำ ──
   D("P1", "X4", "[R4 มติ 2] หน้าขาย {DEPOSIT, depositId} + เงินสด → PAID · PosPayment DEPOSIT refSaleId = ใบรับ · APPLY คีย์ dep-apply-<saleId>-<depositId> paymentId = แถวจ่าย · used + 1,070 · USED"),
   D("P2", "X4", "[R4 มติ 4] สองมัดจำ + บัตรของขวัญ + เงินสดในบิลเดียว → Σ จ่ายตรง · APPLY 2 · USE 1 · vat = VAT(ยอด) − Σ VAT APPLY"),
@@ -113,7 +115,7 @@ const CHECKS: readonly Def[] = [
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[§7 มติ 2] scripts/pos-sale-contract.json sha256 = 72afb258… (CD2-A ไม่เปลี่ยนสัญญา)"),
   D("L2", "PAR", "[§7 มติ 11 HF-TX] ผู้เรียก createSale( ใน src ต่อไฟล์ = ฐาน e7b05787 (ใบรับผ่าน regCreateSale)"),
-  D("L3", "PAR", "[มติ 7] ทางมัดจำเดิม: booking recordDeposit/refundDeposit · hotel recordDeposit/checkOut · rental recordRentalDeposit ตรงฐานทุกไบต์ (ตัดคอมเมนต์) · qc-booking-deposit/qc-hotel-public/qc-rental-public ไม่ถูกแก้"),
+  D("L3", "PAR", "[มติ 7 → CD-P51-O6/O6b] มัดจำโมดูล = POS_DEPOSIT (CD-P51-O6/O6b) · หมุด 5 ฟังก์ชัน + 3 ข้อสอบ = P29B_L3_PIN: booking recordDeposit/refundDeposit · hotel recordDeposit/checkOut · rental recordRentalDeposit (ตัดคอมเมนต์) + qc-booking-deposit/qc-hotel-public/qc-rental-public ตรงหมุดทุกไบต์"), // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6 · O6b) ◂
   D("L4", "PAR", "[§7] บิลไม่มีมัดจำเหมือนเดิม: เงินสด 300 + บัตร 325 → JV Dr 1000 300 · Dr 2110 325 · Cr 4000/2200 ของ 625 · vatSatang = VAT(ยอด) · บิลเงินสดล้วน vat + JV เดิม · ไม่มี PosDepositTxn"),
   // ── Z คืนสภาพ ──
   D("Z1", "-", "QC4 คืนสภาพ: ร้านชั่วคราว (+ -t2) เหลือ 0 แถวทุกตารางที่มี tenantId (รวม PosDeposit/PosDepositTxn) + Tenant ถูกลบ"),
@@ -291,7 +293,9 @@ const LEGACY_FNS: [string, string][] = [
   [F.hotel, "checkOut"],
   [F.rental, "recordRentalDeposit"],
 ];
-const LEGACY_SUITES = ["scripts/qc-booking-deposit.mts", "scripts/qc-hotel-public.mts", "scripts/qc-rental-public.mts"];
+// ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6 · O6b): ข้อสอบมัดจำเดิมทั้ง 3 ไฟล์ย้ายไปหมุด L3_PIN (แก้ตาม MA2) · กลุ่ม "ไม่ถูกแก้เทียบ BASE_REV" ว่าง ◂
+const LEGACY_SUITES: string[] = [];
+const L3_PIN_SUITES = ["scripts/qc-booking-deposit.mts", "scripts/qc-hotel-public.mts", "scripts/qc-rental-public.mts"];
 const srcOf = (f: string) => stripComments(rd(f));
 const STATIC_IDS = ["ST1", "ST2", "ST3", "ST4", "ST5", "L1", "L2", "L3"].map((x) => `P2.9b-${x}`);
 const skipReasons: string[] = [];
@@ -492,10 +496,10 @@ function runStatic(): void {
     const p: string[] = [];
     const norm = (s: string) => stripComments(s).replace(/\s+/g, " ").trim();
     for (const [f, fn] of LEGACY_FNS) {
-      const b = gitBuf(["show", `${BASE_REV}:${f}`]);
+      const b = gitBuf(["show", `${L3_PIN}:${f}`]); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): เทียบหมุด L3_PIN (เดิม BASE_REV) ◂
       const was = b ? norm(fnBody(b.toString("utf8"), fn)) : "";
       const now = norm(fnBody(rd(f), fn));
-      if (!was) p.push(`อ่าน ${fn} ที่ ${BASE_REV} ไม่ได้`);
+      if (!was) p.push(`อ่าน ${fn} ที่ ${L3_PIN} ไม่ได้`);
       else if (was !== now) p.push(`${f.replace("src/lib/modules/", "")}#${fn} เปลี่ยน`);
     }
     for (const f of LEGACY_SUITES) {
@@ -503,7 +507,12 @@ function runStatic(): void {
       if (!b) p.push(`อ่าน ${f} ที่ ${BASE_REV} ไม่ได้`);
       else if (b.toString("utf8") !== rd(f)) p.push(`${f} ถูกแก้`);
     }
-    chk("L3", p.length === 0, "ทางเดิม 5 ฟังก์ชัน + ข้อสอบเดิม 3 ไฟล์ ตรงฐาน", joinP(p));
+    for (const f of L3_PIN_SUITES) {
+      const b = gitBuf(["show", `${L3_PIN}:${f}`]);
+      if (!b) p.push(`อ่าน ${f} ที่ ${L3_PIN} ไม่ได้`);
+      else if (b.toString("utf8") !== rd(f)) p.push(`${f} ต่างจากหมุด ${L3_PIN}`);
+    }
+    chk("L3", p.length === 0, `มัดจำโมดูล 5 ฟังก์ชัน + 3 ข้อสอบ ตรงหมุด ${L3_PIN} (CD-P51-O6/O6b)`, joinP(p));
   }
 }
 
@@ -1112,16 +1121,18 @@ async function runDb() {
         const sid = String(rdp.saleId);
         const s = await saleRow(sid);
         const pays = await paysOf(sid);
-        if (s?.sourceModule !== "BOOKING" || pays.length !== 1 || pays[0].type !== "DEPOSIT" || pays[0].refSaleId) p.push(`บิล ${s?.sourceModule} แถว ${short(pays.map((x) => `${x.type}:${x.refSaleId ?? "-"}`))}`);
+        // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6 · P5.1 MA2 แทนมติ 7 CD7): มัดจำโมดูล = ใบรับ POS_DEPOSIT (Cr 2110 ฐาน + Cr 2200 · ไม่มีรายได้) + PosDeposit + RECEIVE
+        //   (เดิม: บิล BOOKING · JV Dr 2110 / Cr รายได้ = hunt M-A F2 รายได้ซ้ำ) ◂
+        if (s?.sourceModule !== "POS_DEPOSIT" || pays.length !== 1 || pays[0].type !== "DEPOSIT" || pays[0].refSaleId) p.push(`บิล ${s?.sourceModule} แถว ${short(pays.map((x) => `${x.type}:${x.refSaleId ?? "-"}`))}`);
         const net = netByCode(await jvOf("PosSale", [sid]));
         const v = split(50_000);
-        const rev = (net["4000"] ?? 0) + (net["4030"] ?? 0);
-        if (net["2110"] !== 50_000 || net["2200"] !== -v.vatSatang || rev !== -v.baseSatang || net["1000"]) p.push(`JV ${short(net)} (คาด Dr 2110 50000 · Cr 2200 ${v.vatSatang} · Cr รายได้ ${v.baseSatang})`);
-        if (COL.dep && (await q(`SELECT id FROM "PosDeposit" WHERE "receiptSaleId" = $1`, sid)).length) p.push("มี PosDeposit ของบิลเดิม");
-        if (COL.txn && (await saleTxns(sid)).length) p.push("มี PosDepositTxn ของบิลเดิม");
+        const has4 = Object.entries(net).some(([c, x]) => c.startsWith("4") && x !== 0);
+        if (net["1010"] !== 50_000 || net["2110"] !== -v.baseSatang || net["2200"] !== -v.vatSatang || has4 || net["1000"]) p.push(`JV ${short(net)} (คาด Dr 1010 50000 · Cr 2110 ${v.baseSatang} · Cr 2200 ${v.vatSatang} · ไม่มี 4xxx)`);
+        if (COL.dep && !(await q(`SELECT id FROM "PosDeposit" WHERE "receiptSaleId" = $1`, sid)).length) p.push("ไม่มี PosDeposit ของใบรับ");
+        if (COL.txn && !(await saleTxns(sid)).some((t: Any) => String(t.type) === "RECEIVE")) p.push("ไม่มี PosDepositTxn RECEIVE ของใบรับ");
       }
     }
-    chk("A6", p.length === 0, "ทางเดิม Dr 2110 / Cr รายได้ + VAT · ไม่มีมัดจำใหม่", FXB(joinP(p)));
+    chk("A6", p.length === 0, "ใบรับ POS_DEPOSIT · Dr 1010 / Cr 2110 + 2200 · ไม่มี 4xxx · PosDeposit + RECEIVE (CD-P51-O6)", FXB(joinP(p)));
   }
 
   // ════════ R5 ตัวอ่าน ════════
