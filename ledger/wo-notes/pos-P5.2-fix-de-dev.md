@@ -134,3 +134,54 @@ Base a786a9df (product 87d0bdbf). Same rules (QC4 · qc4.sh · POS gate lock · 
 | fitness noenv / qc4 / pos · gen-check | 53 · 53 · 8 · ✅ |
 | strict tsc | 0 errors @e52bcd1a |
 | pre-submit `--wo qc-pos-p5.2 --set core` | green 12 · red 2 = expected lane pins HF-FU-ST1 · HF-FU2-ST1 · unexpected none |
+
+## R1 round 1b (controller ruling CD-P52-O4b · 23 Oct 13:1xZ–) — final round
+Base fcf5eecf (product e52bcd1a). Commits: **af57b311** ORACLE-EDIT (qc-pos-p5.2 D4 groups + D2 close-shift override · qc-pos-p3.6 CR4) · **1ab99b10** item 2 · **c81988ad** item 1 · **c27ea9cc** cookie verify: canonical base64url only (pre-submit run1 at c81988ad had a flaky D2 "tampered cookie → opened": the tamper flips the last char, and 115/2000 random MACs decode to the same bytes when only padding bits change; 0/2000 pass the new canonical check). Red-before = af57b311's oracle run on product e52bcd1a (files checked out from e52bcd1a into the tree, then restored; `o4b-redbefore.log` 52/54, `o4b-redbefore-p36.log`).
+
+| item | red-before | green-after |
+|---|---|---|
+| 1 device scope everywhere (D4 groups) | no cookie + claim Z: deposit → VALIDATION · payment intent → PROMPTPAY_NOT_CONFIGURED · order key-in → VALIDATION · staff PIN → **ok** (token for Z) — none stopped at the device | all four bind groups → DEVICE_NOT_PAIRED without a cookie, pass the device gate with cookie P4 (staff PIN ok, token bound to P4) · tables (strip) never DEVICE_NOT_PAIRED |
+| 2 close shift without cookie (D2) | STAFF → DEVICE_NOT_PAIRED · MANAGER ok but **audit Δ0** | STAFF → DEVICE_NOT_PAIRED · MANAGER ok + `pos.shift.close.override` Δ1, `source: "manager-override"`, actor = manager (skipped on an idempotent replay) |
+| 3 p3.6 CR4 | @e52bcd1a with the old oracle: 51/52 (single-unit manager save → PERMISSION_DENIED) | 52/52: manager `["*"]` save ok · manager with every unit enumerated → PERMISSION_DENIED, account unchanged |
+
+### Action table (every action that read a client deviceId · after c81988ad)
+| file · action | client deviceId was used for | now |
+|---|---|---|
+| deposit-actions · registerTakeDepositAction | shift of the deposit (resolveRegisterShift) + revoke check | **bind** |
+| deposit-actions · registerDepositLookupAction · registerRefundDepositAction | (lookup: none) · refund: shift of the cash-out | strip (refund outside a shift without a cookie, as for sale refunds) |
+| payment-intent-actions · createPaymentIntentAction | intent.deviceId (input must equal ctx) + revoke check | **bind** · input.deviceId replaced by the cookie device (unit without devices: input code as before) |
+| payment-intent-actions · confirmPaymentIntentManualAction | device of the confirmer (revoke) | **bind** |
+| payment-intent-actions · cancel / status / updatePosIntentSettings | not used | strip |
+| order-actions · ingestOrderAction · acceptOrderAction · payOrderAction | shift of the order bill (deviceShift) | **bind** (+ DEVICE_NOT_PAIRED in OrderRefusalCode) |
+| order-actions · reject / preparing / ready / handOver / cancel / prep / settings / list / get | void/cancel actor ctx only | strip |
+| staff-pin-actions · verifyStaffPinAction | device the staff token is bound to | **bind** · token bound to the cookie device (unit without devices: payload code) |
+| staff-pin-actions · set / setOwn / unlock / listStaffForDevice | revoke check · staff list for the device | strip |
+| table-actions (16) · table-split-actions (6) · table-ui-actions (2) | priced rounds / manager PIN revoke check / bill preview | strip |
+| qr-staff-actions (7) · kds-actions (17) | ctx only | strip |
+| bills-actions · voidSaleAction | void ctx (drawer of the device) | strip |
+| pos-approval-actions · cancelPosApprovalAction | staff token device | strip (cookie device) |
+| chat-link-actions · requestChatPaymentAction | payment request ctx | strip |
+| hr-link-actions · posClockAction | clock by staff token at the device | strip (cookie device; no cookie = token refused) |
+| shift-actions · zReport / recount / list / offShift | not used (scopeOf) | client deviceId dropped |
+| shift-actions · close | — | bind; unpaired only with pos.shift.manage at the unit + override audit (item 2) |
+| `/api/pos/sync` (route) | device of the offline bills (token, shift, revokedAt) | cookie device ACTIVE **or revoked** (facade keeps the revokedAt ≤ soldAt rule, P3.4 CD-12) · no cookie + registered devices = 409 DEVICE_NOT_PAIRED · unit without devices = body code |
+| display-actions · enable / revoke / update customer display | **target** PosDevice id chosen by a manager (pos.device.manage), not "this device" | unchanged (object id, not identity) |
+
+Unit with no registered devices: nothing to impersonate and no shift can be opened (D2), so the payload code is only accepted for intents, staff PIN and offline sync there.
+
+### Verification (product c81988ad 13:4xZ–14:2xZ · final c27ea9cc 14:3xZ)
+| suite | result |
+|---|---|
+| qc-pos-p5.2 @c27ea9cc ×2 | **54/54 ×2** · F4/F11 pendingOwner · deviceKey in-process · residue 0 (pre-submit @c81988ad: run1 53/54 D2 flake above · run2 54/54 · `--no-db` 22/22) |
+| p3.6 | **52/52** (CR4 green) |
+| p1.6 · p1.1 · p1.3 · p1.18 · hf-tx (pre-submit) | 48 · 180 · 128 · 81 · 22 |
+| p2.4 · p2.8 · p1.7 · p2.9b · p2.7 · p2.5 · p1.5 · p1.8 | 50 · 61 · 33 · 53 · 42 · 49 · 21 · 49 — green (tables · orders · intents · deposits) |
+| p1.9 · p1.10 (also ×1 @c27ea9cc) · p1.11 · p1.12 · p1.15 · p2.13 · p2.6 · p2.9 · p2.14 · p4.1 | 53 · 40 · 38 · 72 · 40 · 54 · 67 · 62 · 60 · 16 — green |
+| lane-pin reds (files of this branch vs other cards' pins — re-pin at merge) | p3.9 ST4 · p2.10 ST2 (`--no-db`) · p2.11 ST4 · p2.12 ST1 · p3.7 ST3 (refund-actions + older held-cart/refund hunks) · p3.4 ST2 (staff-pin.ts/register.ts hunks of P3.5 / fix B, not this round) · HF-FU-ST1 · HF-FU2-ST1 |
+| qc-pos-p5.1 | 10/15 — MA2 MA4 MA5 MA6 MA7: P5.1 fix batches B/C are not in this branch's base (9e2a219c; merged later in session/pos 6b1f84a5); no POS money-core file of those checks touched here — re-run after merge |
+| matrix `--check` | ✅ 400 rows (@c27ea9cc) |
+| fitness noenv / qc4 / pos · gen-check | 53 · 53 · 8 · ✅ |
+| strict tsc | 0 errors @c81988ad and @c27ea9cc |
+| pos-pre-submit `--wo qc-pos-p5.2 --set core` @c81988ad | green 11 · lane pins 2 · run1 D2 flake → fixed by c27ea9cc (p5.2 ×2 re-run green there) |
+
+Rule note: one helper command this round started with a no-op `cd /dev/null` (it failed; no directory change). No other `cd`.
