@@ -729,7 +729,7 @@ export async function recordDeposit(
   const posSystemId = await systemForUnit(tenantId, unitId, "POS");
   if (posSystemId) {
     // POS P5.1 ▸ MA2 (F2): มัดจำ = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 · ไม่ใช่รายได้) + PosDeposit ผ่าน pos/deposit.moduleTakeDeposit ·
-    //   createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับเดิม "DEPOSIT" = TRANSFER · เช็คเอาท์จ่ายมัดจำเป็นแถว DEPOSIT อ้างใบรับ ◂
+    //   createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับคงเดิม (ค่าปริยาย "DEPOSIT" · GL ช่องทาง TRANSFER) · เช็คเอาท์จ่ายมัดจำเป็นแถว DEPOSIT อ้างใบรับ ◂
     const posDeposit = await import("@/lib/modules/pos/deposit");
     const sale = await posDeposit.moduleTakeDeposit(
       { tenantId, unitId, systemId: posSystemId, keyBase: `hotel-deposit-${reservationId}`, amountSatang: amount, payType: payMethod, customerId: rv.customerId ?? null, customerName: rv.guestName ?? null, note: `มัดจำห้อง ${rv.code}`, createdBy: "module:hotel" },

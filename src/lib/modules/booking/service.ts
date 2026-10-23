@@ -817,7 +817,7 @@ export async function recordDeposit(
   const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
   if (posSystemId) {
     // POS P5.1 ▸ MA2 MA4 (F2 F4): มัดจำ = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 · ไม่ใช่รายได้ · บรรทัดไม่ผูก serviceId) + PosDeposit ผ่าน
-    //   pos/deposit.moduleTakeDeposit — createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับเดิม "DEPOSIT" = TRANSFER ·
+    //   pos/deposit.moduleTakeDeposit — createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับคงเดิม (ค่าปริยาย "DEPOSIT" · GL ช่องทาง TRANSFER) ·
     //   ใบรับของคีย์ถูกคืนแล้ว (ไม่ใช่ PAID) ⇒ รับใหม่ใช้คีย์ booking-deposit-<id>-r<n> (เดิม: ได้บิล VOIDED กลับมา · มัดจำ 0 บนสมุด) ◂
     const posDeposit = await import("@/lib/modules/pos/deposit");
     const sale = await posDeposit.moduleTakeDeposit(

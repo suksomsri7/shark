@@ -9,7 +9,7 @@
 // 🔴 คำปฏิเสธคืนเป็นข้อมูล {ok:false, code, message} · ข้อผิดพลาดที่ไม่คาดคิด = INTERNAL · เงินเป็นสตางค์ · ไม่มีเบอร์เต็มเก็บ/ส่งออก
 
 import { randomUUID } from "node:crypto";
-import type { PosDeposit, Prisma } from "@prisma/client";
+import type { PosDeposit, PosPayType, Prisma } from "@prisma/client"; // POS P5.1 ▸ MA2 PosPayType ◂
 import { evaluate } from "@/lib/core/rbac";
 import { emitOutbox } from "@/lib/core/outbox";
 import { callerTx } from "@/lib/core/caller-tx";
@@ -586,7 +586,7 @@ async function refundDepositInTx(tx: Tx, a: RefundDepositTxArgs) {
 //    บิลปิด (เช็คเอาท์/คืนของ/มาใช้บริการ) จ่ายมัดจำเป็นแถว {DEPOSIT, refSaleId = ใบรับ} + ส่วนที่เหลือ ⇒ Σ รายได้ = ราคา · VAT ครั้งเดียว
 // 🔴 ไม่มีจุดเรียก createSale ใหม่: โมดูลส่งฟังก์ชันที่เรียก createSale จุดเดิมของตัวเอง (client = callerTx(tx) · ทะเบียน U4/L2 คงเดิม)
 // 🔴 ไม่ผ่าน RBAC/ค่าตั้งของหน้าขาย (pos.deposit.enabled): สิทธิ์ตรวจที่ action ของโมดูลแล้ว · กะ = กติกา "ทางอื่น" ของ createSale
-export type ModuleDepositSell = (client: Tx, p: { idempotencyKey: string; sourceModule: typeof POS_DEPOSIT_SOURCE; sourceId: string; payType: DepositPayType }) => Promise<{ saleId: string; status?: string }>;
+export type ModuleDepositSell = (client: Tx, p: { idempotencyKey: string; sourceModule: typeof POS_DEPOSIT_SOURCE; sourceId: string; payType: PosPayType }) => Promise<{ saleId: string; status?: string }>;
 export type ModuleDepositInput = {
   tenantId: string;
   unitId: string;
@@ -594,8 +594,8 @@ export type ModuleDepositInput = {
   /** คีย์ฐานของโมดูล (เช่น booking-deposit-<id>) · ใบรับของคีย์ที่ไม่ใช่ PAID แล้ว (คืนเงิน/ยกเลิก) ⇒ เลื่อนเป็น <คีย์>-r1, -r2 … */
   keyBase: string;
   amountSatang: number;
-  /** วิธีรับของโมดูล — เงินจริง (CASH/PROMPTPAY/TRANSFER/CARD) ตามที่ส่ง · ค่าเดิม "DEPOSIT" (ไม่รู้วิธี) = TRANSFER (ช่องทาง GL เดิมของ depositChannel) */
-  payType?: string;
+  /** วิธีรับของโมดูล — CASH/PROMPTPAY/TRANSFER/CARD หรือค่าเดิม "DEPOSIT" (แถวไม่อ้างใบ · ไม่ใช่เงินสด · GL = ช่องทาง TRANSFER ของ depositChannel) ตามที่ส่ง · อื่น = DEPOSIT */
+  payType?: PosPayType;
   customerId?: string | null;
   customerName?: string | null;
   note?: string | null;
@@ -605,7 +605,7 @@ export type ModuleDepositInput = {
 export type ModuleDepositResult = { saleId: string; depositId: string | null; duplicated: boolean };
 
 export async function moduleTakeDeposit(input: ModuleDepositInput, sell: ModuleDepositSell): Promise<ModuleDepositResult> {
-  const payType: DepositPayType = (DEPOSIT_PAY_TYPES as readonly string[]).includes(input.payType ?? "") ? (input.payType as DepositPayType) : "TRANSFER";
+  const payType: PosPayType = input.payType && ((DEPOSIT_PAY_TYPES as readonly string[]).includes(input.payType) || input.payType === "DEPOSIT") ? input.payType : "DEPOSIT";
   for (let round = 0; round <= 20; round++) {
     const key = round === 0 ? input.keyBase : `${input.keyBase}-r${round}`;
     const st = await saleStatusByKey(input.tenantId, key);
