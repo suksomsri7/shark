@@ -11,6 +11,7 @@
 //     F6 ไม่มี POS_DEVICE_KEY ใน env ⇒ สุ่มกุญแจในโปรเซสของรอบนี้ (ไม่พิมพ์ ไม่เขียนไฟล์) + D1 ข้อย่อยกุญแจไม่ตั้ง (ล้างในโปรเซสชั่วคราว) ·
 //     F3 D1 นับ audit pos.device.pair +1 ต่อการจับคู่ (รวมจับคู่ซ้ำ) · F5 H6b MANAGER ระบุทุกสาขา ≠ "*" ⇒ ทิป/เครดิต ปฏิเสธ · MANAGER("*") ⇒ ได้ ·
 //     F7 (ข้อ F7 เดิม) ขายผ่านคุกกี้เครื่อง F7 ที่จับคู่ในรอบ (ทางขายไม่เชื่อ deviceId ของ client แล้ว)
+//   ORACLE-EDIT (CD-P52-O4b): D4 + กลุ่ม มัดจำ · ขอรับเงิน · คีย์ออเดอร์ · PIN ผู้ขาย (bind) · โต๊ะ (strip) · D2 + ปิดกะไม่มีคุกกี้ (STAFF ปฏิเสธ · MANAGER override + audit)
 //       P52_PIN = ฐานของข้อสอบ (ค่าเริ่มต้น 2fb1fe8e) · P52_LANE_PIN = หมุดเลน (ไม่มีข้อ diff — พิมพ์ไว้เท่านั้น)
 // DB: QC4 เท่านั้น · ร้านชั่วคราว posqc-p52-<rand> (A: 2 สาขา) + posqc-p52-<rand>-b (B: ร้านอื่น) ลบทั้งร้านใน finally ·
 //     ร้าน QC resto/coffee อ่านอย่างเดียว (T3 · P4 · P7) + ลายนิ้วมือก่อน/หลัง (Z2) · ไม่ reseed · ไม่มีเครือข่าย (fetch = ตัวกั้น 503)
@@ -1794,6 +1795,22 @@ async function runDb2(): Promise<void> {
       pos = good.r?.ok === true ? `ok ${String(good.r?.shift?.deviceId ?? "") === DEV.P2 ? "ผูก P2" : "ผูกผิด"}` : codeOf2(good.o);
       if (!(good.r?.ok === true && String(good.r?.shift?.deviceId ?? "") === DEV.P2)) p.push(`บวก (คุกกี้จริง) → ${pos}`);
     } else if (!pairRefusedKey) p.push("ไม่มีคุกกี้จาก D1 — ตัวควบคุมบวกไม่ได้รัน");
+    // ORACLE-EDIT (CD-P52-O4b ข้อ 2): ปิดกะโดยไม่มีคุกกี้ — STAFF (กะ ไม่มี manage) ⇒ DEVICE_NOT_PAIRED · MANAGER (pos.shift.manage ที่สาขา) ⇒ ok + audit pos.shift.close.override source manager-override
+    {
+      const shY = idOf(await svc(shiftMod, "openShift", ctxU2(uA1, DEV.Y), actorOf2("OWNER"), { deviceId: DEV.Y, floatSatang: 0 }));
+      if (!shY) p.push("fixture กะ Y (ปิดกะ) ไม่ได้");
+      else {
+        const close = (per: string, k: string) => callAct(f, "closeShiftAction", PER[per]!, [{ systemId: A_SYS(), unitId: uA1, close: { shiftId: shY, countedCashSatang: 0, idempotencyKey: `p52-${RAND}-d2close-${k}` } }]);
+        const c1 = await close("OPERATOR", "op");
+        if (String(c1.r?.code ?? c1.o.code) !== "DEVICE_NOT_PAIRED") p.push(`STAFF ปิดกะไม่มีคุกกี้ → ${c1.r?.ok === true ? "ok" : codeOf2(c1.o)} (ต้อง DEVICE_NOT_PAIRED)`);
+        const au0 = Number(await P.auditLog.count({ where: { tenantId: TA, action: "pos.shift.close.override", targetId: shY } }));
+        const c2 = await close("MANAGER", "mgr");
+        const au = (await P.auditLog.findMany({ where: { tenantId: TA, action: "pos.shift.close.override", targetId: shY }, select: { after: true, actorId: true } })) as Any[];
+        if (c2.r?.ok !== true) p.push(`MANAGER ปิดกะไม่มีคุกกี้ → ${codeOf2(c2.o)} ${short2(c2.r?.message ?? "", 50)}`);
+        if (au.length - au0 !== 1 || au[au.length - 1]?.after?.source !== "manager-override" || au[au.length - 1]?.actorId !== PER.MANAGER!.userId) p.push(`audit ปิดกะ override Δ${au.length - au0} source ${au[au.length - 1]?.after?.source ?? "-"}`);
+        pos += ` · ปิดกะ: STAFF ${String(c1.r?.code ?? (c1.r?.ok ? "ok" : c1.o.code))} · MANAGER ${c2.r?.ok === true ? "ok" : codeOf2(c2.o)} audit Δ${au.length - au0}`;
+      }
+    }
     chk("D2", p.length === 0, "อ้างจาก client/คุกกี้ปลอม = ไม่ผูก · คุกกี้จริง = เปิดได้", `${p.join(" · ") || "ครบ"} · อ้าง Y → ${forged.r?.ok === true ? `ok (เครื่อง ${String(forged.r?.shift?.deviceId ?? "").slice(-6)})` : codeOf2(forged.o)} · บวก ${pos}`);
   }
   {
@@ -1891,6 +1908,33 @@ async function runDb2(): Promise<void> {
       if (String(r2.r?.code) !== "DEVICE_REVOKED") p.push(`เงินเข้า/ออกด้วยคุกกี้เครื่องเพิกถอน → ${r2.r?.ok === true ? "ok" : codeOf2(r2.o)}`);
       if (String(r3.r?.code) !== "DEVICE_NOT_PAIRED") p.push(`เงินเข้า/ออก ไม่ส่ง deviceId + ไม่มีคุกกี้ → ${r3.r?.ok === true ? "ok" : codeOf2(r3.o)} (ต้อง DEVICE_NOT_PAIRED)`);
       out.push(`เพิกถอน: ขาย ${r1.r?.ok === true ? "ok" : r1.r?.code} · เงิน ${r2.r?.ok === true ? "ok" : r2.r?.code} · เงินไม่มีเครื่อง ${r3.r?.ok === true ? "ok" : r3.r?.code}`);
+    }
+    // ORACLE-EDIT (CD-P52-O4b ข้อ 1): ทุกกลุ่ม action ที่เคยรับ deviceId จาก client — ผูกกะ/เครื่อง (bind) = ไม่มีคุกกี้ ⇒ DEVICE_NOT_PAIRED · คุกกี้ P4 ⇒ ผ่านด่านเครื่อง ·
+    //   ไม่ผูก (strip) = ทิ้ง deviceId เงียบ ๆ (ไม่มี DEVICE_NOT_PAIRED)
+    {
+      const g: string[] = [];
+      const NP = (r: { r: Any; o: Outcome }) => String(r.r?.code ?? r.o.code) === "DEVICE_NOT_PAIRED";
+      const grp: [string, string, string, Record<string, unknown>, boolean][] = [
+        ["มัดจำ", "src/lib/modules/pos/deposit-actions.ts", "registerTakeDepositAction", { input: { amountSatang: 5000, customerName: `P52 D4 ${RAND}`, payMethods: [{ type: "CASH", amountSatang: 5000 }], idempotencyKey: `p52-${RAND}-d4dep` } }, true],
+        ["ขอรับเงิน", "src/lib/modules/pos/payment-intent-actions.ts", "createPaymentIntentAction", { input: { method: "PROMPTPAY", amountSatang: 4300, idempotencyKey: `p52-${RAND}-d4pi`, deviceId: DEV.Z } }, true],
+        ["คีย์ออเดอร์", "src/lib/modules/pos/order-actions.ts", "ingestOrderAction", { input: { lines: [{ name: `P52 D4 ${RAND}`, qty: 1, unitPriceSatang: 1000 }] } }, true],
+        ["PIN ผู้ขาย", "src/lib/modules/pos/staff-pin-actions.ts", "verifyStaffPinAction", { userId: PER.SELLER!.userId, pin: "836104" }, true],
+        ["โต๊ะ (strip)", "src/lib/modules/pos/table-actions.ts", "registerTablesAction", {}, false],
+      ];
+      for (const [label, file, fn, extra, binds] of grp) {
+        const a0 = await callAct(file, fn, PER.OWNER!, [{ ...T, deviceId: DEV.Z, ...extra }]);
+        const a1 = c4 ? await callAct(file, fn, PER.OWNER!, [{ ...T, deviceId: DEV.Z, ...extra }], { cookie: c4 }) : null;
+        if (binds && !NP(a0)) g.push(`${label}: ไม่มีคุกกี้ → ${a0.r?.ok === true ? "ok" : codeOf2(a0.o)} (ต้อง DEVICE_NOT_PAIRED)`);
+        if (!binds && NP(a0)) g.push(`${label}: ไม่ผูกเครื่องแต่ได้ DEVICE_NOT_PAIRED`);
+        if (a1 && NP(a1)) g.push(`${label}: คุกกี้ P4 → DEVICE_NOT_PAIRED`);
+        if (label === "PIN ผู้ขาย" && a1 && a1.r?.ok !== true) g.push(`PIN ผู้ขาย + คุกกี้ P4 → ${codeOf2(a1.o)} (ต้อง ok)`);
+        out.push(`${label} ${a0.r?.ok === true ? "ok" : String(a0.r?.code ?? a0.o.code)}/${a1 ? (a1.r?.ok === true ? "ok" : String(a1.r?.code ?? a1.o.code)) : "-"}`);
+      }
+      // ขอรับเงินด้วยคุกกี้ P4 + input.deviceId Z ⇒ ใบผูกเครื่อง P4 (ไม่ใช่ Z)
+      const pi = await P.posPaymentIntent.findFirst({ where: { tenantId: TA, idempotencyKey: `p52-${RAND}-d4pi` }, select: { deviceId: true } }).catch(() => null);
+      if (pi && pi.deviceId !== DEV.P4) g.push(`ใบขอรับเงินผูกเครื่อง ${String(pi.deviceId).slice(-6)} (ต้อง P4)`);
+      out.push(`ใบขอรับเงิน ${pi ? (pi.deviceId === DEV.P4 ? "ผูก P4" : "ผูกผิด") : "ไม่มีแถว"}`);
+      p.push(...g);
     }
     chk("D4", p.length === 0, "ไม่มีคุกกี้ + อ้าง Z = ไม่ผูกกะ Z ทุกทาง · คุกกี้ P4 = ผูก P4 (token/PIN) · เพิกถอน = DEVICE_REVOKED · ไม่มีเครื่อง = DEVICE_NOT_PAIRED", `${p.join(" · ") || "ครบ"} · ไม่มีคุกกี้: ${out.join(" · ")}${fxNote()}`);
   }

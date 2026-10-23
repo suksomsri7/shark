@@ -66,7 +66,7 @@ const CHECKS: readonly Def[] = [
   D("CR1", "X4", "[R5 R6 Q6] createSale ON_ACCOUNT ฿4,000 ของ P1 (+ crmDealId D3 + ผู้ซื้อ) → PAID · PosPayment ON_ACCOUNT แถวเดียว = ยอด · customerPartyId/crmDealId บนบิล · creditTerms {termDays 30 (ผู้ติดต่อสมุด), dueDate = วันไทยของ paidAt + 30, limitSatang 1,000,000, exposureSatang 0} · creditDueDate บริสุทธิ์ (17:30Z = วันถัดไปของไทย)"),
   D("CR2", "-", "[R4 Q6 มติ 6] ลำดับเทอม: P2 termDays 15 → +15 · P4 (ไม่มีเทอม · ไม่มีผู้ติดต่อสมุด) → ค่าปริยายสมุด 45 · P4 หลังระบาย (ผู้ติดต่อถูกสร้าง creditTermDays 0) → ยัง 45 (CD-3) · P6 termDays 0 → CREDIT_TERM_ZERO ไม่มีบิล"),
   D("CR3", "X2", "[R5] ON_ACCOUNT ไม่มี customerPartyId · Party บุคคล (M1) · Party ของร้าน T2 · id มั่ว → CUSTOMER_INVALID · บิลเงินสดที่ customerPartyId เป็นบุคคล → CUSTOMER_INVALID · ไม่มีบิล/คีย์/outbox เพิ่ม"),
-  D("CR4", "X3", "[R4 R6] P3 (ไม่มีบัญชีเครดิต) · P7 (active false) → CREDIT_NOT_ALLOWED · saveCreditAccount: แคชเชียร์ → PERMISSION_DENIED · ผู้จัดการ (ปริยาย pos.credit.manage) → ok · limit 0 / termDays 366 → VALIDATION · audit pos.credit.account_updated มีครบ"),
+  D("CR4", "X3", "[R4 R6 · ORACLE-EDIT CD-P52-O4b] P3 (ไม่มีบัญชีเครดิต) · P7 (active false) → CREDIT_NOT_ALLOWED · saveCreditAccount: แคชเชียร์ → PERMISSION_DENIED · ผู้จัดการ \"*\" → ok · ผู้จัดการระบุทุกสาขา → PERMISSION_DENIED · limit 0 / termDays 366 → VALIDATION · audit pos.credit.account_updated มีครบ"),
   D("CR5", "X4", "[R6] ON_ACCOUNT ผสมเงินสด · ไม่เต็มยอด · มีทิป · มี cashTendered · sourceModule POS_DEPOSIT · ไม่มีผู้ซื้อเมื่อ requireBuyer → ปฏิเสธทุกทาง ไม่มีบิล · ตัวควบคุม: requireBuyer false → ไม่มีผู้ซื้อผ่าน"),
   D("CR6", "-", "[R3 มติ 9] posCreditSettings(undefined/{}) = {enabled false, requireBuyer true} · ค่าเพี้ยน → ปริยาย · ปิด → createSale + register ON_ACCOUNT = CREDIT_DISABLED ไม่มีบิล · registerCreditStatus.enabled false · เปิดคืน"),
   D("CR7", "X4", "[R6] วงเงิน: P1 ฿7,000 หลังบิล ฿4,000 ระบายแล้ว → CREDIT_LIMIT_EXCEEDED {limitSatang 1,000,000 · exposureSatang 400,000} ทั้ง createSale และ register (ผู้จัดการ) · ไม่มีบิล"),
@@ -899,6 +899,9 @@ async function runDb() {
       for (const [k, tid, role, ua, perms] of [
         ["OWNER", T, "OWNER", ["*"], {}],
         ["MGR", T, "MANAGER", [U.A!], {}],
+        // ORACLE-EDIT (CD-P52-O4b ข้อ 3 · มติ CD-P52-O4 F5): บัญชีเครดิต = OWNER หรือ MANAGER ที่ unitAccess = "*" ตรงตัวเท่านั้น — MGRSTAR ตัวควบคุมบวก · MGRALL ระบุทุกสาขา (ไม่ใช่ "*") = ปฏิเสธ
+        ["MGRSTAR", T, "MANAGER", ["*"], {}],
+        ["MGRALL", T, "MANAGER", Object.values(U), {}],
         ["CASH", T, "STAFF", [U.A!], { "pos.sale.create": true }],
         ["SALES1", T, "STAFF", [U.A!], SALES_PERMS],
         ["NOPERM", T, "STAFF", [U.A!], {}],
@@ -1370,8 +1373,14 @@ async function runDb() {
     if ((await counts()) !== c0) p.push("มีบิลเพิ่ม");
     const sc = await call(creditMod, "saveCreditAccount", pctx(), A("CASH"), { partyId: PP("CO7"), limitSatang: 9_999_900, termDays: null, active: true });
     if (!refused(sc, "PERMISSION_DENIED")) p.push(`แคชเชียร์ save → ${codeOf(sc)}`);
-    const sm = await call(creditMod, "saveCreditAccount", pctx(), A("MGR"), { partyId: PP("CO7"), limitSatang: 1_000_000, termDays: null, active: false, note: `ผู้จัดการแก้ ${RAND}` });
-    if (sm?.ok !== true) p.push(`ผู้จัดการ save → ${codeOf(sm)} ${short(sm?.message ?? "", 50)}`);
+    // ORACLE-EDIT (CD-P52-O4b ข้อ 3): ตัวบวก = ผู้จัดการ "*" (MGRSTAR) · ตัวลบใหม่ = ผู้จัดการที่ระบุครบทุกสาขา (MGRALL) → PERMISSION_DENIED + บัญชีไม่เปลี่ยน
+    const before7 = dbHas.creditTable ? J(((await P.$queryRawUnsafe(`SELECT "limitSatang", "active", "note" FROM "PosCreditAccount" WHERE "systemId" = $1 AND "partyId" = $2`, S.POS, PP("CO7")).catch(() => [])) as Any[])[0] ?? null) : "";
+    const sa = await call(creditMod, "saveCreditAccount", pctx(), A("MGRALL"), { partyId: PP("CO7"), limitSatang: 2_000_000, termDays: null, active: false, note: `ผู้จัดการทุกสาขา ${RAND}` });
+    if (!refused(sa, "PERMISSION_DENIED")) p.push(`ผู้จัดการระบุทุกสาขา (ไม่ใช่ "*") save → ${codeOf(sa)}`);
+    const after7 = dbHas.creditTable ? J(((await P.$queryRawUnsafe(`SELECT "limitSatang", "active", "note" FROM "PosCreditAccount" WHERE "systemId" = $1 AND "partyId" = $2`, S.POS, PP("CO7")).catch(() => [])) as Any[])[0] ?? null) : "";
+    if (before7 !== after7) p.push("ผู้จัดการระบุทุกสาขา แก้บัญชีเครดิตได้");
+    const sm = await call(creditMod, "saveCreditAccount", pctx(), A("MGRSTAR"), { partyId: PP("CO7"), limitSatang: 1_000_000, termDays: null, active: false, note: `ผู้จัดการแก้ ${RAND}` });
+    if (sm?.ok !== true) p.push(`ผู้จัดการ "*" save → ${codeOf(sm)} ${short(sm?.message ?? "", 50)}`);
     const v1 = await call(creditMod, "saveCreditAccount", pctx(), A("OWNER"), { partyId: PP("CO5"), limitSatang: 0, termDays: 7 });
     const v2 = await call(creditMod, "saveCreditAccount", pctx(), A("OWNER"), { partyId: PP("CO5"), limitSatang: 1_000_000, termDays: 366 });
     if (!refused(v1, "VALIDATION") || !refused(v2, "VALIDATION")) p.push(`limit 0 / termDays 366 → ${codeOf(v1)}/${codeOf(v2)}`);
