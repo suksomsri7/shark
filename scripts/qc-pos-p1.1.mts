@@ -3231,7 +3231,10 @@ try {
         };
         const readsErr = (f: string) => {
           const t = read(f);
-          return /\berr\b[^;]*=\s*await searchParams|\{[^}]*\berr\b[^}]*\}\s*=\s*(await\s+)?searchParams|\{[^}]*\berr\b[^}]*\}\s*=\s*sp\b/.test(t) && /\{err\s*&&/.test(t);
+          // ORACLE-EDIT ผู้คุม A 23.10 (CD-P51-O11 · gates129 S2.R2.6 แดงหลัง P5.1 batch C CD-P51-O10): booking/page.tsx อ่าน err แบบ `const sp = searchParams ? await searchParams : undefined; const err = typeof sp?.err === "string" ? … : ""`
+          //   และแสดงด้วย `{err ? (…) : null}` — อ่านและแสดงจริง (ตรวจด้วยตา) แต่ regex เดิมรับเฉพาะ destructuring + `{err &&` ⇒ รับรูป sp?.err + `{err ?` เพิ่ม · probe: ตัดบล็อก {err ? …} ออกจากหน้า → แดง · revert: ลบ viaSp และ `|\?` ◂
+          const viaSp = /\bsp\s*=\s*searchParams\s*\?\s*await searchParams\b/.test(t) && /\berr\b[^;]*=[^;]*\bsp\?\.err\b/.test(t);
+          return (/\berr\b[^;]*=\s*await searchParams|\{[^}]*\berr\b[^}]*\}\s*=\s*(await\s+)?searchParams|\{[^}]*\berr\b[^}]*\}\s*=\s*sp\b/.test(t) || viaSp) && /\{err\s*(&&|\?)/.test(t);
         };
         const bad6: string[] = []; let n6 = 0;
         for (const f of ACT) {
