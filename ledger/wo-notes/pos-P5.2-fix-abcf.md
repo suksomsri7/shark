@@ -37,3 +37,23 @@ Scratch/logs: `/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchp
 4. Strict typecheck: `tsc` on the touched files OOMs at the 3G cap (the program pulls ~700 src files); full `pnpm typecheck` (ISO_MEM 10500M) = CONTROLLER-RUN. Fitness ✅ (pre-commit ×6, noenv/qc4/pos in pre-submit).
 5. Stale notes in generator OVERRIDES (oracle file): unitPriceMatrix "🔴 F9 … ไม่ตรวจคีย์ POS" and tools route "วันนี้ SCOPELESS_LEGACY…" still describe the old code.
 6. TL9 of qc-pos-p3.9 still pins module-level CD-7 (`posToolAllowedForScopes(sales_summary, [])` = true, runTool with a general-key actor reads); only the HTTP door is closed. If the controller wants it closed in `pos/api/tools.ts` too, TL9 needs an ORACLE-EDIT first.
+
+## R1 follow-up (builder · 23 Oct 08:19–09:24Z · base 78fadc72 → head 919ad114)
+Brief `pos-prompt-accountB-P5.2-FIX-R1F-BUILD.md` · R1 report copied to `ledger/wo-notes/pos-P5.2-fix-abcf-review.md` (48fa66b9). Every suite ran through iso.sh at ISO_MEM 3G with qc4.sh and the POS gate lock, one at a time, in temp tenants only. Exceptions: strict tsc ran at heap 8192 / ISO_MEM 10500M under `flock /tmp/pos-gate.lock` as the brief and the manifest say, and pos-pre-submit hardcodes ISO_MEM 5G.
+
+| item | commit | result |
+|---|---|---|
+| ORACLE-EDIT CD-P52-O2-2 · HF-12.2/12.3 | e4f14951 | red-before at 78fadc72+edit: 139/143. HF-12.2 manifest = `pos_draft_po`. HF-12.3 `pos_create_sale` = 403 tool-scope, not pos_scope_required |
+| F1 CD-P52-O3-1 `isPosHandTool` (pos/api/tools.ts) → `isPosScopedTool` | f87cc9c5 | green-after: HF-12.2/12.3 ×2 green. **New red: HF-12.1 ×2** (see open item A) → 141/143 · p2.13 54/54 · p3.9 47/48 (only ST4 lane pin · TL7 green) |
+| ORACLE-EDIT CD-P52-O3-2 · X4b (+ fixture fixes) | 1e149a1c · cc5bbc49 · 144a1dff | red-before @144a1dff: 47/53. X4b red: "stripped decider → ok (bill made) · positive → DISCOUNT_EXCEEDS_LIMIT (approval already consumed)" |
+| F2 CD-P52-O3-2 `deciderMayAct` → pos-approval.ts · `approvedDiscountOf(…, unitId)` (register s.unitId · held-cart recall s.ctx.unitId) | 23d963e2 | green-after: X4b "stripped → DISCOUNT_EXCEEDS_LIMIT · restored → ok ฿170 audit 1 (via approval · byUserId decider · requestId)" · 48/53 |
+| F5 analyst early return when no accepted OWNER (WARN `ai.weekly.no_owner`, no LLM call or charge) + `orderBy` (createdAt, userId) | 31467ec7 | qc-ai-analyst **6/9** (AN-2.1, AN-2.2, AN-3.3; see open item B) |
+| F6 matrix notes (unitPriceMatrix · tools route) + `--write` | 919ad114 | `--check` ✅ · 398 rows · only these 2 rows' notes changed |
+| F3 / F4 | — | no code (rulings CD-P52-O3-3 / keep) |
+
+Final head 919ad114 (QC4 · 08:43–09:24Z): qc-pos-p5.2 48/53 ×2 (red H6b D1 D2 D3 D11 only · F4/F11 pendingOwner · X4b green) · `--no-db` 22/22 (M1–M5 green) · qc-hf-apiv1-scope 141/143 (HF-12.1 ×2) · p2.13 54/54 · p3.9 47/48 (ST4) · qc-approval 16/16 · qc-ai-analyst 6/9 · p1.15 40/40 · matrix `--check` ✅ · p2.10 `--no-db` 1/2 (ST2 lane pin: held-cart.ts, register.ts, qc-hf-apiv1-scope.mts, qc-pos-p5.2.mts) · fitness qc4 / pos ✅ · strict tsc 0 errors · pre-submit `--wo qc-pos-p5.2 --set core`: p1.1 180 · p1.3 128 · p1.6 48 · p1.18 81 · hf-tx 22 · fitness 53/53/8 · gen-check ✅ · lane-pin HF-FU-ST1 / HF-FU2-ST1 · VERDICT red only on the 5 known p5.2 reds. No `*actions*.ts` touched, but p1.6 still ran in pre-submit (48/48).
+
+### Open items (R1 follow-up)
+A. **HF-12.1 (legacy + rotated)** now fails: `/skills` for a general key no longer lists `sales`. This follows directly from CD-P52-O2-2 + F1. `sales` holds 13 POS tools + record_expense + financial_summary. G1 blocks the last two for every API key, so with no POS tools the skill is empty. `/skills/sales` then answers 404 and `/skills` drops it. HF-12.2 accepts 200 or 404. HF-12.1 still expects `sales`, which conflicts with "Nothing else in that suite moves". Proposed ORACLE-EDIT (not applied, outside my authority): HF-12.1 expects `knowledge` present, `memory` and `sales` absent, and core = 6.
+B. **qc-ai-analyst AN-2.2** now fails too. The no-OWNER fixture (decision 2) means F5 returns before the model, so no prompt is captured. "7/9 with the same two" cannot hold together with F5. Fix: give the fixture an OWNER membership (ORACLE-EDIT) or revert 31467ec7.
+C. Lane-pin reds to re-pin at merge: P3.9-ST4, P2.10-ST2, HF-FU-ST1, HF-FU2-ST1 (plus P2.7-ST3, P2.8-ST6, P2.11-ST4 from R1).
