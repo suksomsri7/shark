@@ -11,10 +11,12 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { setAvailability, updateProduct, CatalogError } from "./catalog"; // POS P2.6U ▸ + updateProduct (มติ 9b · สถานีของสินค้าที่ไม่ใช่เมนู) ◂
+import { kdsSetKitchenPause } from "./kds"; // POS P5.2 ▸ D11 ◂
 import { kdsBoard, kdsLineDone, kdsRecall, kdsRush, kdsServed, kdsSetAutoAcceptMax, kdsStart, kdsTicketDone, kitchenProgress, kitchenSlipPayload, kitchenStateForUnit, kdsKitchenProducts, kdsStations, roundOfSale, saleNeedsKitchen } from "./kds"; // POS P2.6U ▸ + kitchenStateForUnit · roundOfSale · kdsKitchenProducts · kdsStations ◂
 import type {
   KdsActionResult,
   KdsAutoAcceptResult,
+  KdsKitchenPauseResult, // POS P5.2 ▸ D11 ◂
   KdsBoardResult,
   KdsKitchenProductsResult,
   KdsRefusal,
@@ -192,6 +194,18 @@ export async function kdsSetAutoAcceptMaxAction(args: Target & { maxOpen: number
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("kdsSetAutoAcceptMaxAction", e);
+  }
+}
+
+/** POS P5.2 ▸ D11 (ruling 4): พักครัว / เลิกพัก จากจอครัวของ POS (คีย์ restaurant.kitchen.pause ที่สาขานี้) — kitchenPauseAction ของหน้าร้านอาหารเดิมปิดบนสาขาที่ผูก POS ◂ */
+export async function kdsKitchenPauseAction(args: Target & { paused: boolean; note?: string | null }): Promise<KdsKitchenPauseResult> {
+  try {
+    const s = await sessionScope(args, "pause");
+    if ("ok" in s) return s;
+    return await kdsSetKitchenPause(s.ctx, s.actor, { paused: args?.paused, ...(args?.note !== undefined ? { note: args.note } : {}) });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("kdsKitchenPauseAction", e);
   }
 }
 

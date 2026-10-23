@@ -68,6 +68,16 @@ export async function kitchenSetAutoAcceptMaxInTx(tx: Tx, s: Scope, maxOpen: num
   });
 }
 
+// POS P5.2 ▸ D11 (ruling 4): พักครัว/เลิกพักจากจอครัวของ POS — kitchenPauseAction ของหน้าร้านอาหารเดิมปิดบนสาขาที่ผูก POS (POS_LINKED) ·
+//   upsert คอลัมน์พักครัวของแถวค่าตั้งสาขา (คอลัมน์เดียวกับ menu.setKitchenPause) ◂
+export async function kitchenSetPauseInTx(tx: Tx, s: Scope, paused: boolean, note: string | null): Promise<void> {
+  await tx.restaurantSetting.upsert({
+    where: { unitId: s.unitId },
+    create: { tenantId: s.tenantId, unitId: s.unitId, kitchenPaused: paused, kitchenPausedNote: note },
+    update: { kitchenPaused: paused, kitchenPausedNote: note },
+  });
+}
+
 // ═══════════ สร้างรอบครัว (R3 R4 · CD 2 3 · มติ 3 4) ═══════════
 
 export type KitchenRoundLine = {

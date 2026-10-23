@@ -47,6 +47,7 @@ async function ctx(unitSlug: string, action: string) {
 // ───────────────────────── Settings ─────────────────────────
 export async function updateSettingAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.setting.update");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const num = (k: string) => {
     const v = formData.get(k);
     return v === null || v === "" ? undefined : Number(v);
@@ -72,6 +73,7 @@ export async function updateSettingAction(unitSlug: string, formData: FormData) 
 
 export async function kitchenPauseAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kitchen.pause");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const paused = formData.get("paused") === "true";
   const note = String(formData.get("note") ?? "") || undefined;
   await menu.setKitchenPause(tenantId, unitId, paused, note);
@@ -83,6 +85,7 @@ export async function kitchenPauseAction(unitSlug: string, formData: FormData) {
 // ───────────────────────── Stations ─────────────────────────
 export async function createStationAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.station.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const name = String(formData.get("name") ?? "").trim();
   if (name) await menu.createStation(tenantId, unitId, name);
   revalidatePath(`${base(unitSlug)}/setup`);
@@ -91,6 +94,7 @@ export async function createStationAction(unitSlug: string, formData: FormData) 
 // ───────────────────────── Categories ─────────────────────────
 export async function createCategoryAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.category.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const name = String(formData.get("name") ?? "").trim();
   const nameEn = String(formData.get("nameEn") ?? "").trim() || undefined;
   if (name) await menu.createCategory(tenantId, unitId, { name, nameEn }, userId);
@@ -100,6 +104,7 @@ export async function createCategoryAction(unitSlug: string, formData: FormData)
 
 export async function archiveCategoryAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.category.archive");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   await menu.archiveCategory(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   revalidatePath(`${base(unitSlug)}/menu`);
 }
@@ -107,6 +112,7 @@ export async function archiveCategoryAction(unitSlug: string, formData: FormData
 // ───────────────────────── Option groups ─────────────────────────
 export async function createOptionGroupAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.optionGroup.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const name = String(formData.get("name") ?? "").trim();
   const minSelect = Number(formData.get("minSelect") ?? 0) || 0;
   const maxSelect = Number(formData.get("maxSelect") ?? 1) || 1;
@@ -129,12 +135,14 @@ export async function createOptionGroupAction(unitSlug: string, formData: FormDa
 
 export async function archiveOptionGroupAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.optionGroup.archive");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   await menu.archiveOptionGroup(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/menu/options`);
 }
 
 export async function setChoiceStockAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.choice.setStock");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   await menu.setChoiceStock(tenantId, unitId, String(formData.get("id") ?? ""), formData.get("out") === "true");
   revalidatePath(`${base(unitSlug)}/menu/options`);
 }
@@ -183,6 +191,7 @@ export async function createItemAction(unitSlug: string, formData: FormData) {
 
 export async function setItemStockAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.setStock");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const id = String(formData.get("id") ?? "");
   const data: { isOutOfStock?: boolean; stockQty?: number | null } = {};
   if (formData.has("isOutOfStock")) data.isOutOfStock = formData.get("isOutOfStock") === "true";
@@ -212,6 +221,7 @@ export async function duplicateItemAction(unitSlug: string, formData: FormData) 
 
 export async function archiveItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.archive");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   try {
     await menu.archiveItem(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   } catch (e) {
@@ -224,6 +234,7 @@ export async function archiveItemAction(unitSlug: string, formData: FormData) {
 
 export async function resetDailyStockAction(unitSlug: string) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.resetStock");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   await menu.resetDailyStock(tenantId, unitId);
   revalidatePath(`${base(unitSlug)}/menu/stock`);
 }
@@ -231,6 +242,7 @@ export async function resetDailyStockAction(unitSlug: string) {
 // ───────────────────────── Zones / Tables ─────────────────────────
 export async function createZoneAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.zone.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const name = String(formData.get("name") ?? "").trim();
   if (name) await table.createZone(tenantId, unitId, name);
   revalidatePath(`${base(unitSlug)}/setup`);
@@ -238,12 +250,14 @@ export async function createZoneAction(unitSlug: string, formData: FormData) {
 
 export async function archiveZoneAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.zone.archive");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   await table.archiveZone(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/setup`);
 }
 
 export async function createTableAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.create");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   const zoneId = String(formData.get("zoneId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const seats = Number(formData.get("seats") ?? 4) || 4;
@@ -253,6 +267,7 @@ export async function createTableAction(unitSlug: string, formData: FormData) {
 
 export async function archiveTableAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.archive");
+  if (await posLinkedUnit(tenantId, unitId)) redirect(`${base(unitSlug)}?err=POS_LINKED`); // POS P5.2 ▸ D11 (ruling 4 · F5): ตัวเขียนตั้งค่า/เมนู/โต๊ะเดิม — สาขาที่ผูก POS ทำที่ POS (ด่านสาขา = ctx → evaluate(…, unitId)) ◂
   await table.archiveTable(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/setup`);
 }

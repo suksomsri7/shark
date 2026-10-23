@@ -193,6 +193,9 @@ export type KitchenSlip = {
 export type KitchenSlipResult = { ok: true; slips: KitchenSlip[] } | KdsRefusal;
 export type KitchenProgressResult = { ok: true; progress: { orderId: string; done: number; total: number }[] } | KdsRefusal;
 export type KdsAutoAcceptResult = { ok: true; maxOpen: number | null } | KdsRefusal;
+/** POS P5.2 ▸ D11: พักครัวจากจอครัวของ POS ◂ */
+export type KdsKitchenPauseResult = { ok: true; paused: boolean } | KdsRefusal;
+export const KDS_PAUSE_NOTE_MAX = 200;
 export type KitchenBacklogRow = { stationId: string; open: number };
 export type TicketForSaleResult = { ok: true; orderId: string | null; created: boolean; reason?: string };
 export type HealResult = { ok: true; healed: number };

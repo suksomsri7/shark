@@ -30,7 +30,7 @@ import { heartbeatAction } from "@/lib/modules/pos/device-actions";
 import { registerStatusAction } from "@/lib/modules/pos/register-actions";
 import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
-import { kitchenPauseAction } from "@/lib/actions/restaurant";
+import { kdsKitchenPauseAction } from "@/lib/modules/pos/kds-actions"; // POS P5.2 ▸ D11: kitchenPauseAction เดิมปิดบนสาขาที่ผูก POS ⇒ จอครัวพักผ่าน POS ◂
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { KdsTopBar } from "./KdsTopBar";
 import { KdsChannelChip, KdsTicketCard, useSourceText } from "./KdsTicketCard";
@@ -278,10 +278,10 @@ export function KdsScreen(p: KdsScreenProps) {
     if (!p.unitSlug) return;
     setPausing(true);
     try {
-      const fd = new FormData();
-      fd.set("paused", on ? "true" : "false");
-      await kitchenPauseAction(p.unitSlug, fd);
-      showToast({ text: on ? t("pausedOn") : t("pausedOff") });
+      // POS P5.2 ▸ D11: kdsKitchenPauseAction (คืนคำปฏิเสธเป็นข้อมูล) แทน kitchenPauseAction ของหน้าร้านอาหาร ◂
+      const r = await kdsKitchenPauseAction({ ...target, paused: on });
+      if (r.ok) showToast({ text: on ? t("pausedOn") : t("pausedOff") });
+      else showToast({ text: refusalText(r), tone: "danger" });
     } catch {
       showToast({ text: t("errors.permissionDenied"), tone: "danger" });
     } finally {
