@@ -79,3 +79,13 @@ Suites at 0430b249 (QC4 · iso 3G · qc4.sh · POS gate lock · sequential):
 | member suites of the manifest (m2.6 m2.7 m2.8 m1.7 · unforced) | 0/1 each = the manifest's accepted setup crash on QC4 ("reading 'role'" · member seed ≠ member-expected.json) — no QC4 member suite exercises purchase points; MA12c/MA13b cover the forfeit side |
 | p2.10 --no-db | 1/2 ST2 lane pin only (service.ts +5 −1 · oracle files CONTROLLER-DECISION) |
 | fitness (iso) · fitness-pos · authz matrix `--check` | 53/53 · 8/8 · ok |
+
+## 8. R1 round 2 (controller ruling **CD-P51-O10b** · 23 Oct · last round of batch C)
+Red-before = oracle e6703383 on product 41f3faa0 src (`logs/redbefore-o10b/`) · green-after = 12ef86f4 (`logs/final-o10b-12ef86f4/`).
+| fix | commit | change | red-before | green-after |
+|---|---|---|---|---|
+| F10a void audit | 12ef86f4 | `moduleUnforfeitDeposit({…, actorUserId})` ⇒ `voidSale(…, {actorUserId, reason: "นัดออกจาก NO_SHOW", source: "booking"})` (VoidSaleAudit.source widened to `"API" \| "booking"`) · `setAppointmentStatus(…, opts.actorUserId)` from `setStatusAction` (auth.user.id) / AI (userId) · fallback `module:booking` | MA12e audit void `0:-:-:-` | ✅ 1 row · actor = user who clicked · reason · source booking |
+| F10b register bill | 12ef86f4 | auto-void only `sourceModule BOOKING` forfeit bills · POS (register) forfeit bill ⇒ `{ok:false}` "บิลริบมัดจำ #… ริบที่เคาน์เตอร์แล้ว — ให้ผู้จัดการยกเลิกบิลที่ POS ก่อน" | MA12g: CONFIRMED passed · bill VOIDED · deposit OPEN | ✅ refused · appointment NO_SHOW · bill PAID · deposit USED |
+| F11 AI | 12ef86f4 | `ai/proposals.ts cancel_appointment`: `{ok:false}` ⇒ throw the service message (no "ยกเลิกนัดหมายเรียบร้อยแล้ว") | (static) | p3.9 DB rows green |
+Oracle (ORACLE-EDIT CD-P51-O10b · e6703383): MA12e CONFIRMED through `setStatusAction` + void-audit assertion · + MA12g (`RC-F10`) · registry finding regex `RC-F\d+`.
+Suites at 12ef86f4: qc-pos-p5.1 **28/28 ×2** (residue 0) · qc-booking-deposit 18/18 · qc-pos-p1.6 48/48 · qc-pos-p3.9 47/48 — **ST4** = `pos/service.ts` differs from its pin (red since 161ca81b's day-report hunk; this round adds the `VoidSaleAudit.source` union · same class as p2.10 ST2 · controller re-pin) · fitness (iso) 53/53 · authz matrix `--check` ok · qc-pos-p2.10 --no-db 1/2 ST2 lane pin only.
