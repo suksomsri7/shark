@@ -8,7 +8,8 @@
 // 🔴 สิทธิ์: ตัวอ่านรายงาน (pos.report.view ต่อสาขา) + อ่านคลังได้ (`canReadInventory`) · ไม่ผ่าน = คำปฏิเสธ ไม่ใช่ "ไม่มีอะไรต้องสั่ง"
 // 🔴 ร่าง PO = DRAFT เท่านั้นผ่าน facade คลัง (`createPo` · inventory/index.ts) — การสั่งจริง/สายอนุมัติอยู่ที่หน้าคลัง
 
-import { canReadInventory, evaluate, type MembershipCtx } from "@/lib/core/rbac";
+import { canGrantUnitAccess, canReadInventory, evaluate, type MembershipCtx } from "@/lib/core/rbac";
+import type { Prisma } from "@prisma/client";
 import { createPo } from "@/lib/modules/inventory";
 import { prisma } from "./db";
 import { bkkBusinessDate, reportProducts, type ReportRefusal } from "./reports";
@@ -46,10 +47,22 @@ const refuse = (code: ReportRefusal["code"], message: string): ReportRefusal => 
 
 type Ctx = { tenantId: string; systemId: string; unitId?: string | null };
 
-/** สินค้าคลังที่ผูกสินค้า POS ของระบบนี้ (สาขาที่ระบุ + สินค้าทุกสาขา) — ไม่เก็บถาวร · เฉพาะ PRODUCT */
-async function linkedItems(ctx: Ctx) {
+/**
+ * POS P5.2 ▸ fix F (F10b): ไม่ระบุสาขา ⇒ สินค้าเฉพาะสาขาเห็นได้เฉพาะสาขาที่ผู้ถามดูรายงานได้ (pos.report.view ต่อสาขาที่ผูกระบบนี้) ·
+ * ผู้กระทำทุกสาขา (OWNER / unitAccess ["*"]) = ไม่กรอง (เดิม) · ระบุสาขา = สาขานั้น (ผ่านด่าน pos.report.view ของผู้เรียกแล้ว) ◂
+ */
+async function unitFilterOf(ctx: Ctx, m: MembershipCtx): Promise<Prisma.PosProductWhereInput> {
+  if (ctx.unitId) return { OR: [{ unitId: null }, { unitId: ctx.unitId }] };
+  if (canGrantUnitAccess(m, ["*"])) return {};
+  const links = await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
+  const readable = links.map((l) => l.unitId).filter((unitId) => evaluate(m, { module: "pos", action: "pos.report.view", unitId }));
+  return { OR: [{ unitId: null }, { unitId: { in: readable } }] };
+}
+
+/** สินค้าคลังที่ผูกสินค้า POS ของระบบนี้ (สาขาที่ระบุ/สาขาที่ผู้ถามดูได้ + สินค้าทุกสาขา) — ไม่เก็บถาวร · เฉพาะ PRODUCT */
+async function linkedItems(ctx: Ctx, m: MembershipCtx) {
   const prods = await prisma.posProduct.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null, invItemId: { not: null }, ...(ctx.unitId ? { OR: [{ unitId: null }, { unitId: ctx.unitId }] } : {}) },
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null, invItemId: { not: null }, ...(await unitFilterOf(ctx, m)) },
     select: { invItemId: true },
   });
   const ids = [...new Set(prods.map((p) => p.invItemId).filter((x): x is string => !!x))];
@@ -70,7 +83,7 @@ export async function posStockRisks(ctx: Ctx, actor: RegisterActor): Promise<Sto
     const links = await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
     if (!links.some((l) => evaluate(memOf(actor), { module: "pos", action: "pos.report.view", unitId: l.unitId }))) return null;
   }
-  const items = await linkedItems(ctx);
+  const items = await linkedItems(ctx, memOf(actor));
   return items
     .filter((i) => i.reorderPoint > 0 && i.onHand <= i.reorderPoint)
     .sort((a, b) => a.onHand - a.reorderPoint - (b.onHand - b.reorderPoint) || (a.id < b.id ? -1 : 1))
@@ -101,7 +114,7 @@ export async function purchaseSuggestions(ctx: Ctx, actor: RegisterActor, opts: 
       sold.set(p.invItemId!, (sold.get(p.invItemId!) ?? 0) + (byProduct.get(p.id) ?? 0));
     }
   }
-  const items = await linkedItems(ctx);
+  const items = await linkedItems(ctx, memOf(actor));
   const picked = items
     .map((i) => {
       const s = Math.max(0, sold.get(i.id) ?? 0);

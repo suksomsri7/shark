@@ -9,7 +9,7 @@
 
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertCan, evaluate } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { CatalogError, bulkChannelMarkup, setChannelPrices, type CatalogCtx, type CatalogErrorCode } from "./catalog";
 import { copyUnitPrices, unitPriceMatrix, type UnitPriceMatrix } from "./catalog"; // POS P2.11 ▸ คัดลอก/เทียบราคาสาขา ◂
@@ -25,14 +25,21 @@ function refusalOf(where: string, e: unknown): PriceActionRefusal {
 }
 
 /** session → CatalogCtx · ด่านแรกระดับบทบาท (pos.product.setPrice) — ขอบเขตต่อแถวตรวจซ้ำใน catalog.ts กับ DB */
+const PRICE_READ_ACTIONS = ["pos.sale.read", "pos.sale.create", "pos.product.manage", "pos.product.setPrice"] as const; // POS P5.2 ▸ fix F (F9) ◂
 async function sessionCtx(args: unknown, readOnly = false): Promise<CatalogCtx | PriceActionRefusal> {
   const auth = await requireTenant();
   const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
   const systemId = typeof a.systemId === "string" ? a.systemId : "";
   if (!systemId) return { ok: false, code: "NOT_FOUND", message: "ไม่พบรายการนี้ในระบบขาย" };
-  // POS P2.11 ▸ ตัวอ่าน (เทียบราคาสาขา) ไม่ผูกคีย์สิทธิ์ — สมาชิกของร้าน + สาขาที่เข้าได้ ตัดสินใน catalog.ts ◂
-  if (readOnly) return { tenantId: auth.active.tenantId, systemId, actorUserId: auth.user.id };
   const m = posMembership(auth.active);
+  // POS P2.11 ▸ ตัวอ่าน (เทียบราคาสาขา) — สาขาที่เข้าได้ ตัดสินใน catalog.ts ◂
+  // POS P5.2 ▸ fix F (F9): ต้องมีคีย์ POS ที่เห็นราคาอยู่แล้ว (ขาย/ดูบิล/จัดการสินค้า/ตั้งราคา) · ระดับบทบาท (MANAGER ผ่าน) — สมาชิกที่ไม่มีคีย์ POS = ปฏิเสธ ◂
+  if (readOnly) {
+    if (!PRICE_READ_ACTIONS.some((action) => evaluate(m, { module: "pos", action }))) {
+      return { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์ดูราคาในระบบขาย — ขอสิทธิ์จากเจ้าของร้าน" };
+    }
+    return { tenantId: auth.active.tenantId, systemId, actorUserId: auth.user.id };
+  }
   try {
     // ระดับบทบาท (ไม่ระบุสาขา): MANAGER ผ่าน · STAFF ต้องมี pos.product.setPrice — ขอบเขตสาขาต่อแถวตัดสินใน catalog.ts
     assertCan(m, { module: "pos", action: "pos.product.setPrice" });

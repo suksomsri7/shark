@@ -161,9 +161,18 @@ export async function weeklyAnalysis(
   );
 
   // บันทึกเป็นแจ้งเตือนในร้าน — ใส่ tenantId ตรง ๆ
-  await prisma.appNotification.create({
-    data: { tenantId: ctx.tenantId, title: "รายงานธุรกิจประจำสัปดาห์", body: text },
+  // POS P5.2 ▸ fix F (F10a): รายงานมียอดขายทุกสาขา (+ คลัง/HR) ⇒ แจ้งเฉพาะเจ้าของร้าน (OWNER ที่ตอบรับแล้ว) รายคน —
+  //   เดิม recipientUserId ว่าง = ทุกคนในร้านเห็น (ผู้จัดการ/พนักงานสาขาเดียวเห็นยอดทุกสาขา) ◂
+  const owners = await prisma.membership.findMany({
+    where: { tenantId: ctx.tenantId, role: "OWNER", acceptedAt: { not: null } },
+    select: { userId: true },
+    take: 50,
   });
+  if (owners.length) {
+    await prisma.appNotification.createMany({
+      data: owners.map((o) => ({ tenantId: ctx.tenantId, recipientUserId: o.userId, title: "รายงานธุรกิจประจำสัปดาห์", body: text })),
+    });
+  }
   return text;
 }
 

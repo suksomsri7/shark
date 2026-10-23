@@ -3335,7 +3335,11 @@ async function regDiscountOver(
   if (c.via === "approved") return { ok: true, priced: c.priced, override: { byUserId: c.approved.deciderId, discountBp, claimRequestId: c.approved.requestId } };
   if (c.via === "pin") {
     // CD4: PIN ชนะคำขอที่รอของบิลพักนี้ (ถ้ามี) · fix รอบ 1 F8: audit pin_override ทุกครั้งที่ใช้ PIN (requestId null เมื่อไม่มีคำขอ) — ผลข้างเคียงของ submit เท่านั้น
-    const cancelledRequestId = req.heldCartId !== null ? await cancelOpenPosRequest(s.tenantId, "POS_DISCOUNT_OVER", req.heldCartId) : null;
+    // POS P5.2 ▸ fix F (F7): ยกเลิกคำขอที่รอเฉพาะเมื่อบิลพักเป็นของสาขานี้ (ร้าน · ระบบ · สาขาของคำขอขาย) — heldCartId ของสาขาอื่น = ไม่แตะคำขอของสาขานั้น ◂
+    const heldHere =
+      req.heldCartId !== null &&
+      !!(await db.posHeldCart.findFirst({ where: { id: req.heldCartId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, select: { id: true } }));
+    const cancelledRequestId = heldHere && req.heldCartId !== null ? await cancelOpenPosRequest(s.tenantId, "POS_DISCOUNT_OVER", req.heldCartId) : null;
     return { ok: true, priced: c.priced, override: { byUserId: c.manager.userId, discountBp, viaPin: true, cancelledRequestId } };
   }
   // ③ (fix รอบ 1 F5) ส่งซ้ำด้วยคีย์เดิม = คำขอ/บิลพักเดิม (ไม่พักใหม่ ไม่ยื่นใหม่)
