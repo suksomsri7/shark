@@ -69,7 +69,7 @@ const CHECKS: readonly Def[] = [
   D("A3", "X4", "[R4 R5 มติ 1] ใช้บางส่วน 500 แล้ว 570 → VAT ของ APPLY 32.71 + 37.29 = 70 พอดี (ใบหลังรับเศษ) · vat ของสองบิล = VAT(ยอด) − VAT ของ APPLY · JV ทั้งสองตรงสตางค์ · มัดจำ USED"),
   D("A4", "X4", "[R3 R5] สาขา C (สมุดไม่จด VAT): ใบรับ vat 0 · JV Dr 1010 / Cr 2110 1,000 · บิลใช้ vat 0 JV Dr 2110 / Cr 4000 · สาขา D (POS ไม่ผูกสมุด): รับ + ใช้ได้ ไม่มี JV"),
   D("A5", "X4", "[มติ 3] เอกสาร: ใบรับ = DEPOSIT_RECEIPT grandTotal 1,070 vat 70 · บิลที่ใช้มัดจำ (A2) depositDeducted 1,070 + vatAmount สุทธิ 70"),
-  D("A6", "PAR", "[มติ 7 CD7] ทางเดิม booking.recordDeposit → บิล BOOKING แถว DEPOSIT ไม่อ้างใบ · JV Dr 2110 500 · Cr รายได้ฐาน + Cr 2200 VAT · ไม่มีเงินสด · ไม่มี PosDeposit/PosDepositTxn"),
+  D("A6", "PAR", "[CD-P51-O6 แทนมติ 7 CD7] booking.recordDeposit → ใบรับ POS_DEPOSIT แถว DEPOSIT ไม่อ้างใบ · JV Dr 1010 500 / Cr 2110 ฐาน 467.29 / Cr 2200 VAT 32.71 · ไม่มีบรรทัด 4xxx · มี PosDeposit + PosDepositTxn RECEIVE"), // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6 · P5.1 MA2 แทนมติ 7 CD7) ◂
   // ── P ใช้มัดจำ ──
   D("P1", "X4", "[R4 มติ 2] หน้าขาย {DEPOSIT, depositId} + เงินสด → PAID · PosPayment DEPOSIT refSaleId = ใบรับ · APPLY คีย์ dep-apply-<saleId>-<depositId> paymentId = แถวจ่าย · used + 1,070 · USED"),
   D("P2", "X4", "[R4 มติ 4] สองมัดจำ + บัตรของขวัญ + เงินสดในบิลเดียว → Σ จ่ายตรง · APPLY 2 · USE 1 · vat = VAT(ยอด) − Σ VAT APPLY"),
@@ -1112,16 +1112,18 @@ async function runDb() {
         const sid = String(rdp.saleId);
         const s = await saleRow(sid);
         const pays = await paysOf(sid);
-        if (s?.sourceModule !== "BOOKING" || pays.length !== 1 || pays[0].type !== "DEPOSIT" || pays[0].refSaleId) p.push(`บิล ${s?.sourceModule} แถว ${short(pays.map((x) => `${x.type}:${x.refSaleId ?? "-"}`))}`);
+        // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6 · P5.1 MA2 แทนมติ 7 CD7): มัดจำโมดูล = ใบรับ POS_DEPOSIT (Cr 2110 ฐาน + Cr 2200 · ไม่มีรายได้) + PosDeposit + RECEIVE
+        //   (เดิม: บิล BOOKING · JV Dr 2110 / Cr รายได้ = hunt M-A F2 รายได้ซ้ำ) ◂
+        if (s?.sourceModule !== "POS_DEPOSIT" || pays.length !== 1 || pays[0].type !== "DEPOSIT" || pays[0].refSaleId) p.push(`บิล ${s?.sourceModule} แถว ${short(pays.map((x) => `${x.type}:${x.refSaleId ?? "-"}`))}`);
         const net = netByCode(await jvOf("PosSale", [sid]));
         const v = split(50_000);
-        const rev = (net["4000"] ?? 0) + (net["4030"] ?? 0);
-        if (net["2110"] !== 50_000 || net["2200"] !== -v.vatSatang || rev !== -v.baseSatang || net["1000"]) p.push(`JV ${short(net)} (คาด Dr 2110 50000 · Cr 2200 ${v.vatSatang} · Cr รายได้ ${v.baseSatang})`);
-        if (COL.dep && (await q(`SELECT id FROM "PosDeposit" WHERE "receiptSaleId" = $1`, sid)).length) p.push("มี PosDeposit ของบิลเดิม");
-        if (COL.txn && (await saleTxns(sid)).length) p.push("มี PosDepositTxn ของบิลเดิม");
+        const has4 = Object.entries(net).some(([c, x]) => c.startsWith("4") && x !== 0);
+        if (net["1010"] !== 50_000 || net["2110"] !== -v.baseSatang || net["2200"] !== -v.vatSatang || has4 || net["1000"]) p.push(`JV ${short(net)} (คาด Dr 1010 50000 · Cr 2110 ${v.baseSatang} · Cr 2200 ${v.vatSatang} · ไม่มี 4xxx)`);
+        if (COL.dep && !(await q(`SELECT id FROM "PosDeposit" WHERE "receiptSaleId" = $1`, sid)).length) p.push("ไม่มี PosDeposit ของใบรับ");
+        if (COL.txn && !(await saleTxns(sid)).some((t: Any) => String(t.type) === "RECEIVE")) p.push("ไม่มี PosDepositTxn RECEIVE ของใบรับ");
       }
     }
-    chk("A6", p.length === 0, "ทางเดิม Dr 2110 / Cr รายได้ + VAT · ไม่มีมัดจำใหม่", FXB(joinP(p)));
+    chk("A6", p.length === 0, "ใบรับ POS_DEPOSIT · Dr 1010 / Cr 2110 + 2200 · ไม่มี 4xxx · PosDeposit + RECEIVE (CD-P51-O6)", FXB(joinP(p)));
   }
 
   // ════════ R5 ตัวอ่าน ════════

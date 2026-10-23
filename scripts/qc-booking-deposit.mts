@@ -1,4 +1,6 @@
 // QC — Booking deposit (WO Wave3-A): ร้านรับมัดจำกัน no-show + ลงบัญชี DEPOSIT (Dr 2110) · Fable oracle, Builder ห้ามแตะ
+// ORACLE-EDIT CD-P51-O6 (POS P5.1 batch B · 23 Oct) — deposits are POS_DEPOSIT receipts; refund = credit note
+//   (BD-3.4 4.1 4.2 5.2 5.4 6.2 · เดิม: บิล BOOKING Dr 2110 / Cr รายได้ = hunt M-A F2 · คืน = void) ◂
 // ⚠️ standalone-typesafe: dynamic import + wide cast เท่านั้น (ไม่ผูก type ตอน compile)
 //
 // สัญญา src/lib/modules/booking/service.ts:
@@ -71,15 +73,19 @@ try {
   chk("BD-3.1", "recordDeposit ok + มี saleId", rd.ok === true && !!saleId, "true+saleId", JSON.stringify(rd).slice(0, 60));
   chk("BD-3.2", "posSale สถานะ PAID + payment type DEPOSIT amount=50000", sale?.status === "PAID" && sale?.payments?.some((p: any) => p.type === "DEPOSIT" && p.amountSatang === DEP), "PAID+DEPOSIT", `${sale?.status}/${sale?.payments?.map((p: any) => p.type).join(",")}`);
   chk("BD-3.3", "depositPaidAt ตั้ง + depositSaleId ผูกบิล", !!apptAfter?.depositPaidAt && apptAfter?.depositSaleId === saleId, "paidAt+saleId", `${!!apptAfter?.depositPaidAt}/${apptAfter?.depositSaleId === saleId}`);
-  chk("BD-3.4", "บัญชี Dr 2110 เงินมัดจำรับ = 50000 (มัดจำลงถูกช่อง)", dep2110.dr === DEP, String(DEP), `dr=${dep2110.dr}`);
+  // ORACLE-EDIT CD-P51-O6: ใบรับ POS_DEPOSIT = Dr เงิน 50000 / Cr 2110 ฐาน 46729 + Cr 2200 VAT 3271 (VAT 7% รวมใน 50000) · ไม่มี Dr 2110 ◂
+  const DEP_BASE = 46_729, DEP_VAT = 3_271;
+  const dep2200 = await acctSide("2200");
+  chk("BD-3.4", "[CD-P51-O6] ใบรับมัดจำ: Cr 2110 ฐาน 46729 + Cr 2200 VAT 3271 (= 50000 · ไม่มี Dr 2110)", dep2110.cr === DEP_BASE && dep2110.dr === 0 && dep2200.cr === DEP_VAT, `cr2110=${DEP_BASE}+cr2200=${DEP_VAT}`, `dr2110=${dep2110.dr} cr2110=${dep2110.cr} cr2200=${dep2200.cr}`);
 
   // ── BD-4: idempotent recordDeposit (กดซ้ำไม่เบิ้ล) ──
   const rd2 = await svc.recordDeposit(ctx, apptId);
   await wiring.drainAll();
-  const depSaleCount = await prisma.posSale.count({ where: { tenantId: tid, sourceModule: "BOOKING", sourceId: apptId, status: "PAID" } });
+  const depSaleCount = await prisma.posSale.count({ where: { tenantId: tid, sourceModule: "POS_DEPOSIT", docType: "SALE", status: "PAID" } }); // ORACLE-EDIT CD-P51-O6: นับใบรับ POS_DEPOSIT (เดิม BOOKING) ◂
   const dep2110b = await acctSide("2110");
-  chk("BD-4.1", "recordDeposit ซ้ำ → no-op (ไม่ error) + บิล DEPOSIT ยัง 1 ใบ", rd2.ok === true && depSaleCount === 1, "1", `${rd2.ok}/${depSaleCount}`);
-  chk("BD-4.2", "Dr 2110 ไม่เบิ้ล (ยัง 50000)", dep2110b.dr === DEP, String(DEP), `dr=${dep2110b.dr}`);
+  const dep2200b = await acctSide("2200");
+  chk("BD-4.1", "[CD-P51-O6] recordDeposit ซ้ำ → no-op (ไม่ error) + ใบรับ POS_DEPOSIT ยัง 1 ใบ", rd2.ok === true && rd2.noop === true && depSaleCount === 1, "noop+1", `${rd2.ok}/${rd2.noop}/${depSaleCount}`);
+  chk("BD-4.2", "[CD-P51-O6] Cr 2110/2200 ไม่เบิ้ล (ยัง 46729 + 3271)", dep2110b.cr === DEP_BASE && dep2110b.dr === 0 && dep2200b.cr === DEP_VAT, `cr2110=${DEP_BASE}+cr2200=${DEP_VAT}`, `dr2110=${dep2110b.dr} cr2110=${dep2110b.cr} cr2200=${dep2200b.cr}`);
 
   // ── BD-5: refundDeposit → VOIDED + Dr 2110 net=0 ──
   const rf = await svc.refundDeposit(ctx, apptId);
@@ -88,15 +94,17 @@ try {
   const apptRf = await prisma.appointment.findUnique({ where: { id: apptId } });
   const dep2110c = await acctSide("2110");
   chk("BD-5.1", "refundDeposit ok", rf.ok === true, "true", JSON.stringify(rf));
-  chk("BD-5.2", "posSale → VOIDED + depositPaidAt เคลียร์ (null)", saleRf?.status === "VOIDED" && apptRf?.depositPaidAt === null, "VOIDED+null", `${saleRf?.status}/${apptRf?.depositPaidAt}`);
+  chk("BD-5.2", "[CD-P51-O6] ใบรับ → REFUNDED (ใบลดหนี้) + depositPaidAt เคลียร์ (null)", saleRf?.status === "REFUNDED" && apptRf?.depositPaidAt === null, "REFUNDED+null", `${saleRf?.status}/${apptRf?.depositPaidAt}`);
   chk("BD-5.3", "บัญชี Dr 2110 net=0 (กลับรายการครบ)", dep2110c.net === 0, "0", `net=${dep2110c.net}`);
-  chk("BD-5.4", "outbox pos.sale.voided ≥1", (await prisma.outboxEvent.count({ where: { tenantId: tid, type: "pos.sale.voided" } })) >= 1, "≥1", "?");
+  const refundedEvts = await prisma.outboxEvent.count({ where: { tenantId: tid, type: "pos.sale.refunded" } }); // ORACLE-EDIT CD-P51-O6: คืน = ใบลดหนี้ (เดิม pos.sale.voided) ◂
+  chk("BD-5.4", "[CD-P51-O6] outbox pos.sale.refunded ≥1", refundedEvts >= 1, "≥1", String(refundedEvts));
 
   // ── BD-6: idempotent refund (คืนซ้ำไม่เบิ้ล) ──
   const rf2 = await svc.refundDeposit(ctx, apptId);
-  const voidCount = await prisma.posSale.count({ where: { tenantId: tid, sourceModule: "BOOKING", sourceId: apptId, status: "VOIDED" } });
+  const cnCount = await prisma.posSale.count({ where: { tenantId: tid, docType: "REFUND", refSaleId: saleId } }); // ORACLE-EDIT CD-P51-O6: ใบลดหนี้ของใบรับ (เดิม: บิล VOIDED) ◂
+  const saleRf2 = await prisma.posSale.findUnique({ where: { id: saleId } });
   chk("BD-6.1", "refundDeposit ซ้ำ → ok:false (ไม่ทำซ้ำ)", rf2.ok === false, "false", JSON.stringify(rf2));
-  chk("BD-6.2", "บิล VOIDED ยัง 1 (ไม่ void ซ้ำ)", voidCount === 1, "1", String(voidCount));
+  chk("BD-6.2", "[CD-P51-O6] ใบลดหนี้ยัง 1 ใบ + ใบรับยัง REFUNDED (ไม่คืนซ้ำ)", cnCount === 1 && saleRf2?.status === "REFUNDED", "1+REFUNDED", `${cnCount}/${saleRf2?.status}`);
 
   // ── BD-7: ไม่ผูก POS → recordDeposit ได้ ไม่ error (standalone) ──
   const unit2 = await prisma.businessUnit.create({ data: { tenantId: tid, type: "BOOKING", name: "สาขาไม่มี POS", slug: `nopos-${Date.now()}` } });
