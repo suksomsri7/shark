@@ -105,9 +105,11 @@ function judgeM1(scanned: string[], rows: MRow[]): { unlisted: string[]; stale: 
 type Outcome = { kind: "ok" | "refused" | "redirect" | "throw" | "timeout" | "missing"; code: string; text: string };
 const LEGACY = "src/lib/actions/pos.ts";
 /** ปฏิเสธจริงไหม: ok:false · redirect · (ไฟล์เดิม) ForbiddenError · ผลว่าง (array/สตริงว่าง) */
+// ORACLE-EDIT (P5.2 oracle2): แถวใหม่ของโมดูลเดิมที่ปฏิเสธด้วย throw (assertCan → ForbiddenError · requireUnit → notFound) — กติกาเดียวกับ LEGACY
+const THROWS_FORBIDDEN = new Set([LEGACY, "src/lib/modules/approval/actions.ts", "src/lib/modules/inventory/actions.ts", "src/lib/actions/restaurant.ts"]);
 function judgeDenied(o: Outcome, surface: string): boolean {
   if (o.kind === "refused" || o.kind === "redirect") return true;
-  if (o.kind === "throw" && surface.startsWith(LEGACY) && /Forbidden|ไม่มีสิทธิ์|NEXT_NOT_FOUND/.test(o.code + o.text)) return true;
+  if (o.kind === "throw" && THROWS_FORBIDDEN.has(surface.split("#")[0]!) && /Forbidden|ไม่มีสิทธิ์|NEXT_NOT_FOUND|NEXT_HTTP_ERROR_FALLBACK;404/.test(o.code + o.text)) return true;
   return false;
 }
 const DENY_CODE = /PERMISSION|FORBIDDEN|DENIED|NO_PERMISSION|NOT_FOUND|UNAUTHORIZED|NOT_ALLOWED|redirect|Forbidden/;
@@ -139,7 +141,8 @@ function runStatic(): void {
   // M2
   {
     const bad: string[] = [];
-    const MARK = /assert\w*Can|dispatch\(|evaluate\(|canAccessUnit|gate\(|[sS]cope\w*\(|session\w*\(|run\(|requireTenant|getAuth|View\(|posCanSetTenantPrice|is\w+Token\(|_RE\.test|[tT]oken|cookies\(\)|DISPLAY_COOKIE|authorization|verifyWebhook|isCronAuthorized|checkRateLimit|POS_SCOPES|handlePlatformInbound|ackPrintJob|legacyTableQrRedirect|status: 405|role|canViewPayroll|NEED|["'](?:pos|restaurant|inventory|api)\.[a-zA-Z]+\.[a-zA-Z]+["']/;
+    // ORACLE-EDIT (P5.2 oracle2): + authenticateApiRequest (AI tools/skills) · assertInventory\w* (ด่านอ่านคลัง) — แถวใหม่ของชุดสแกน
+    const MARK = /assert\w*Can|assertInventory\w*\(|authenticateApiRequest\(|dispatch\(|evaluate\(|canAccessUnit|gate\(|[sS]cope\w*\(|session\w*\(|run\(|requireTenant|getAuth|View\(|posCanSetTenantPrice|is\w+Token\(|_RE\.test|[tT]oken|cookies\(\)|DISPLAY_COOKIE|authorization|verifyWebhook|isCronAuthorized|checkRateLimit|POS_SCOPES|handlePlatformInbound|ackPrintJob|legacyTableQrRedirect|status: 405|role|canViewPayroll|NEED|["'](?:pos|restaurant|inventory|api)\.[a-zA-Z]+\.[a-zA-Z]+["']/;
     for (const r of ROWS) {
       const m = /^(.*):(\d+)$/.exec(r.evidence ?? "");
       if (!m) {
@@ -587,6 +590,8 @@ let TA = "";
 let TB = "";
 const keyIds: string[] = [];
 const F: Record<string, string> = {}; // ids
+/** unitId → slug (แถว call "unit" · ORACLE-EDIT P5.2 oracle2) */
+const SLUG_OF: Record<string, string> = {};
 const SENT = { recA1: `P52A1R${RAND}`, recA2: `P52A2R${RAND}`, recB1: `P52B1R${RAND}`, lineA1: `P52LINEA1${RAND}`, lineA2: `P52LINEA2${RAND}`, lineB1: `P52LINEB1${RAND}`, unitA1: `P52 สาขา A1 ${RAND}`, unitA2: `P52 สาขา A2 ${RAND}`, unitB1: `P52 ร้านบี ${RAND}` };
 type Persona = { key: string; userId: string; cookie: string; tenantId: string; role: string; unitAccess: string[]; perms: Record<string, boolean> };
 const PER: Record<string, Persona> = {};
@@ -615,6 +620,7 @@ async function setup(): Promise<void> {
   const uA2 = await P.businessUnit.create({ data: { tenantId: TA, type: "SHOP", name: SENT.unitA2, slug: `p52-a2-${RAND}` } });
   const uB1 = await P.businessUnit.create({ data: { tenantId: TB, type: "SHOP", name: SENT.unitB1, slug: `p52-b1-${RAND}` } });
   Object.assign(F, { A1: uA1.id, A2: uA2.id, B1: uB1.id });
+  Object.assign(SLUG_OF, { [uA1.id]: uA1.slug, [uA2.id]: uA2.slug, [uB1.id]: uB1.slug });
   const posA = await sysSvc.createSystem(TA, "POS", `POS P5.2 A ${RAND}`);
   const posB = await sysSvc.createSystem(TB, "POS", `POS P5.2 B ${RAND}`);
   for (const s of [posA.id, posB.id]) await P.appSystem.update({ where: { id: s }, data: { settings: { pos: { registerV2: true } } } }).catch(() => {});
@@ -663,6 +669,12 @@ async function invoke(row: MRow, persona: Persona | null, t: { systemId: string;
   const build = (): unknown[] => {
     if (row.call === "none") return [];
     if (row.call === "pos") return [t.systemId, {}];
+    // ORACLE-EDIT (P5.2 oracle2): action ของหน้าเดิม (unitSlug, formData) — slug ของสาขาจริง (ไม่มี = "" → notFound)
+    if (row.call === "unit") {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(a)) if (typeof v === "string") fd.set(k, v);
+      return [SLUG_OF[t.unitId] ?? "", fd];
+    }
     if (row.call === "form") {
       const fd = new FormData();
       for (const [k, v] of Object.entries(a)) if (typeof v === "string") fd.set(k, v);

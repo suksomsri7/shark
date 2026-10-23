@@ -181,12 +181,18 @@ function actionsOf(code: string, cat: Set<string>, imported: Map<string, string>
 }
 function callStyle(sig: string): string {
   if (!sig) return "none";
+  // ORACLE-EDIT (P5.2 oracle2): action ของหน้าเดิม (unitSlug, formData?) — ตัวยิงส่ง slug ของสาขาจริง + FormData (เดิมไม่มีแถวแบบนี้)
+  if (/^unitSlug\s*:\s*string\b/.test(sig)) return "unit";
   if (/^\w+\s*:\s*FormData/.test(sig)) return "form";
   if (/^\w+\s*:\s*string\s*,/.test(sig) || /^\w+\s*:\s*string$/.test(sig)) return /token|Token|chatTag|code/.test(sig.split(":")[0]!) ? "token" : "pos";
   return "obj";
 }
 
 // ── สแกน ──
+// ORACLE-EDIT (P5.2 oracle2 · hunter L1 "matrix diff" + blind spot 9): surface นอกโฟลเดอร์ POS ที่อ่าน/เขียนข้อมูล POS
+export const EXTRA_ACTION_FILES = ["src/lib/modules/approval/actions.ts", "src/lib/modules/inventory/actions.ts", "src/lib/actions/restaurant.ts"];
+export const EXTRA_ROUTE_PREFIXES = ["src/app/api/v1/ai/tools/", "src/app/api/v1/ai/skills/", "src/app/developers/pos.md/"];
+export const EXTRA_PAGES = ["src/app/app/approvals/page.tsx"];
 export type Scanned = { surface: string; kind: Row["kind"]; file: string; line: number; extra?: Partial<Row> };
 export function scanSurfaces(root: string): Scanned[] {
   const cat = permissionCatalog(root);
@@ -194,6 +200,8 @@ export function scanSurfaces(root: string): Scanned[] {
   // page
   for (const f of walk(root, "src/app/app/sys/[id]/pos").filter((p) => p.endsWith("/page.tsx"))) out.push({ surface: f, kind: "page", file: f, line: 1 });
   if (existsSync(join(root, "src/app/app/sys/[id]/page.tsx"))) out.push({ surface: "src/app/app/sys/[id]/page.tsx", kind: "page", file: "src/app/app/sys/[id]/page.tsx", line: 1 });
+  // ORACLE-EDIT (P5.2 oracle2 · hunter L1 matrix diff): หน้ากลาง /app/approvals แสดง/ตัดสินคำขอ POS_* (F1) — เดิมอยู่ $outOfScope
+  for (const f of EXTRA_PAGES) if (existsSync(join(root, f))) out.push({ surface: f, kind: "page", file: f, line: 1 });
   // public pages
   for (const f of [...walk(root, "src/app/(store)"), ...walk(root, "src/app/developers")].filter((p) => p.endsWith("/page.tsx"))) {
     if (IMPORTS_POS.test(rd(root, f)) || f === "src/app/developers/pos/page.tsx") out.push({ surface: f, kind: "public", file: f, line: 1 });
@@ -203,6 +211,7 @@ export function scanSurfaces(root: string): Scanned[] {
     ...walk(root, "src/lib/modules/pos").filter((p) => /\.tsx?$/.test(p)),
     ...readdirSync(join(root, "src/lib")).filter((n) => /^pos-.*\.ts$/.test(n)).sort().map((n) => `src/lib/${n}`),
     "src/lib/actions/pos.ts",
+    ...EXTRA_ACTION_FILES, // ORACLE-EDIT (P5.2 oracle2): approval (F1) · inventory (F4) · restaurant เดิม (D11/F5) — เดิม $outOfScope
     ...walk(root, "src/app/(store)").filter((p) => /\.tsx?$/.test(p) && !p.endsWith("page.tsx") && !p.endsWith("route.ts")),
   ];
   for (const f of [...new Set(actionFiles)]) {
@@ -216,7 +225,8 @@ export function scanSurfaces(root: string): Scanned[] {
   const routes = walk(root, "src/app").filter((p) => p.endsWith("/route.ts"));
   for (const f of routes) {
     const code = rd(root, f);
-    const posDir = f.startsWith("src/app/api/pos/") || f.startsWith("src/app/api/v1/pos/");
+    // ORACLE-EDIT (P5.2 oracle2): + AI tools/skills (F3/K3 — เครื่องมือขายของ POS) · developers/pos.md (OVERRIDE เดิมไม่ถูกสแกน)
+    const posDir = f.startsWith("src/app/api/pos/") || f.startsWith("src/app/api/v1/pos/") || EXTRA_ROUTE_PREFIXES.some((x) => f.startsWith(x));
     if (!posDir && !IMPORTS_POS.test(code)) continue;
     for (const m of code.matchAll(/^export\s+(?:async\s+function\s+|const\s+)(GET|POST|PATCH|PUT|DELETE)\b/gm)) {
       out.push({ surface: `${f}#${m[1]}`, kind: "api", file: f, line: lineOf(code, m.index!) });
@@ -280,7 +290,7 @@ export const OVERRIDES: Record<string, Partial<Omit<Row, "roles">> & { roles?: P
   "src/app/(store)/q/t/[qrToken]/page.tsx": { tenantScope: "token: RestaurantTable.qrToken — ใหม่/หมุน = newTableQrToken qr_+base64url(16 ไบต์) 128 บิต · โทเคนเก่า (cuid / qr_<uuid32>) ใช้ต่อได้", notes: "CD-P52-F4 (P5.2-P2) · เพดานอ่าน qrTable 54/นาที/IP (CD-P52-F3) · รูปหลวม [A-Za-z0-9_-]{8,64} · หมุน QR ที่พิมพ์แล้ว = W27 (เจ้าของ)" }, // ORACLE-EDIT (builder P5.2 fix1 · CD-P52-F4/F3): เดิม "🔴 cuid() ส่วนสุ่ม < 60 บิต …"
   "src/app/(store)/d/page.tsx": { roles: R({ DEVICE: "token" }), tenantScope: "token: คุกกี้ pos_display (32 ไบต์ · tokenHash)", notes: "จับคู่ด้วยรหัสสั้น + เพดาน 10/นาที/IP (display.ts)" },
   "src/app/developers/pos/page.tsx": { roles: R({ ANON: "allow" }), tenantScope: "ไม่มีข้อมูลร้าน (คู่มือคงที่)", notes: "เอกสารสาธารณะ" },
-  "src/app/(store)/s/[tenantSlug]/[unitSlug]/restaurant/t/[qrToken]/page.tsx": { tenantScope: "slug ร้าน/สาขา + qrToken", notes: "สาขาที่ผูก POS = redirect /q/t/<qrToken> (legacyTableQrRedirect) · ไม่ผูก = หน้าเดิม (LEG)" },
+  "src/app/(store)/s/[tenantSlug]/[unitSlug]/restaurant/t/[qrToken]/page.tsx": { tenantScope: "slug ร้าน/สาขา + qrToken", notes: "สาขาที่ผูก POS = redirect /q/t/<qrToken> (legacyTableQrRedirect) · ไม่ผูก = หน้าเดิม (LEG) · 🔴 F8 (ORACLE-EDIT P5.2 oracle2): โทเคนที่ไม่มีบนสาขาที่ผูก POS = หน้าเดิม (ตัวทายโทเคน · resolveTableSession) — มติ: ผูก POS ⇒ redirect เสมอไม่ค้น (P5.2-F8)" },
   // ─ route ─
   "src/app/api/v1/pos/[...path]/route.ts#GET": { roles: R({ API_KEY: "scope" }), tenantScope: "key: ApiKey.tenantId · systemId ของคีย์ / X-Shark-System · ตัวกรองสาขา pos.filter.unit", notes: "ประตูเดียว dispatch (qc-pos-p2.13 AU1–AU9)" },
   "src/app/api/v1/pos/[...path]/route.ts#POST": { roles: R({ API_KEY: "scope" }), tenantScope: "key: ApiKey.tenantId · systemId ของคีย์ / X-Shark-System · ตัวกรองสาขา pos.filter.unit", notes: "ประตูเดียว dispatch + Idempotency-Key (qc-pos-p2.13 ID1–ID5)" },
@@ -288,7 +298,7 @@ export const OVERRIDES: Record<string, Partial<Omit<Row, "roles">> & { roles?: P
   "src/app/api/v1/pos/[...path]/route.ts#PUT": { roles: R({ API_KEY: "scope" }), tenantScope: "key", notes: "ประตูเดียว dispatch" },
   "src/app/api/v1/pos/[...path]/route.ts#DELETE": { roles: R({ API_KEY: "scope" }), tenantScope: "key", notes: "ประตูเดียว dispatch" },
   "src/app/api/v1/pos/openapi.json/route.ts#GET": { kind: "public", roles: R({ ANON: "allow" }), tenantScope: "ไม่มีข้อมูลร้าน", notes: "สเปกสาธารณะ" },
-  "src/app/developers/pos.md/route.ts#GET": { kind: "public", roles: R({ ANON: "allow" }), tenantScope: "ไม่มีข้อมูลร้าน", notes: "คู่มือสาธารณะ" },
+  "src/app/developers/pos.md/route.ts#GET": { kind: "public", roles: R({ ANON: "allow" }), tenantScope: "ไม่มีข้อมูลร้าน", notes: "คู่มือสาธารณะ (ORACLE-EDIT P5.2 oracle2: เพิ่มในชุดสแกน — เดิม OVERRIDE ตายเพราะ route ไม่ import POS)" },
   "src/app/api/payment/beam/webhook/route.ts#POST": { kind: "public", roles: R({ ANON: "token", DEVICE: "n/a" }), tenantScope: "signature: hex HMAC-SHA256(raw, BEAM_WEBHOOK_SECRET) · ร้านจาก intent (referenceId pos-<pi_id>)", notes: "timingSafeEqual · ซ้ำ = idempotent (P5.2-S3 · qc-pos-p1.7 W2 ระดับฟังก์ชัน)" },
   "src/app/api/pos/platform/[provider]/[channelId]/route.ts#POST": { kind: "public", roles: R({ ANON: "token" }), tenantScope: "signature: x-shark-signature hex HMAC(raw, webhookSecret ของช่องทาง) · ร้านจากช่องทาง", notes: "โครง: ถูก = 503 ADAPTER_PENDING ไม่เขียน · ไม่มี timestamp/nonce (H6 · ruling 6 = adapter จริง)" },
   "src/app/api/pos/platform/[provider]/[channelId]/route.ts#GET": { kind: "public", roles: R({ ANON: "deny" }), tenantScope: "—", notes: "405" },
@@ -309,7 +319,6 @@ export const OVERRIDES: Record<string, Partial<Omit<Row, "roles">> & { roles?: P
   "src/lib/modules/pos/receipt-settings-actions.ts#updatePosReceiptUnitSettingsAction": { roles: R({ CASHIER: "deny", STAFF_NOPERM: "deny" }), perm: ["pos.device.manage"], notes: "ด่านในโมดูล receipt-settings.ts:169 evaluate pos.device.manage ที่สาขา · taxBranchNo = ทุกสาขา (:171)" },
   "src/lib/modules/pos/recipe-actions.ts#recipeCostAction": { roles: R({ CASHIER: "allow", STAFF_NOPERM: "deny" }), perm: ["pos.product.manage", "pos.report.view", "pos.sale.create"], notes: "ด่านในโมดูล recipe.ts:114 (sale.create | product.manage | report.view) · ต้นทุนเฉพาะ manage/report.view" },
   "src/lib/modules/pos/register-actions.ts#retryPendingStockCutsAction": { roles: R({ CASHIER: "deny", STAFF_NOPERM: "deny" }), perm: ["pos.settings.manage"], notes: "ด่านในโมดูล service.ts:1481 pos.settings.manage ที่สาขา" },
-  "src/lib/modules/pos/settings-actions.ts#updatePosStaffCommissionAction": { roles: R({ MANAGER: "deny", CASHIER: "deny", STAFF_NOPERM: "deny" }), perm: ["hr.payroll.read"], notes: "ด่านในโมดูล settings-general.ts:613 canViewPayroll (OWNER หรือ hr.payroll.read)" },
   "src/lib/modules/pos/hr-link-actions.ts#syncStaffCommissionNowAction": { roles: R({ MANAGER: "deny", CASHIER: "deny", STAFF_NOPERM: "deny" }), perm: ["hr.payroll.read"], unitScoped: false, notes: "canViewPayroll (hr-link-actions.ts:61) · ทั้งร้าน" },
   "src/lib/modules/pos/ai-settings-actions.ts#updatePosAiSettingsAction": { roles: R({ MANAGER: "deny" }), notes: "เฉพาะ OWNER (ai-settings-actions.ts:49)" },
   "src/lib/modules/pos/credit-settings-actions.ts#updatePosCreditSettingsAction": { roles: R({ MANAGER: "deny", CASHIER: "deny", STAFF_NOPERM: "deny" }), perm: ["pos.credit.manage"], notes: "P3.6U CD-P36U-2: เฉพาะ OWNER — โมดูล credit-settings.ts:83 ตรวจ m.role === OWNER ใต้ FOR UPDATE · action ตรวจ pos.credit.manage ก่อน (:30) · เขียนแค่ settings.pos.credit.{enabled,requireBuyer} + orders.memberOnBill (controller override 22.10 หลัง merge P3.6U)" },
@@ -322,10 +331,53 @@ export const OVERRIDES: Record<string, Partial<Omit<Row, "roles">> & { roles?: P
   "src/lib/modules/pos/refund-actions.ts#refundSaleAction": { roles: R({ CASHIER: "cond" }), notes: "pos.sale.refund · แคชเชียร์ได้เฉพาะมี managerPin (refund.ts ตรวจ PIN + สิทธิ์ผู้จัดการ)" },
   "src/lib/modules/pos/bills-actions.ts#voidSaleAction": { roles: R({ CASHIER: "cond" }), notes: "pos.sale.void · แคชเชียร์ต้องมี PIN ผู้จัดการ/คำขออนุมัติ" },
   "src/lib/modules/pos/shift-actions.ts#openShiftAction": { notes: "🟡 D1c: deviceId จาก client (shift-actions.ts:77–79) · ruling 4 เลื่อนไปรอบแก้" },
-  "src/lib/modules/pos/staff-pin-actions.ts#setStaffPinAction": { roles: R({ CASHIER: "deny" }), notes: "PIN ของคนอื่นต้อง pos.staff.manage (staff-pin.ts) — action ผ่านด่าน pos.sale.create ก่อน" },
-  "src/lib/modules/pos/staff-pin-actions.ts#unlockStaffPinAction": { roles: R({ CASHIER: "deny" }), notes: "ปลดล็อก PIN คนอื่นต้อง pos.staff.manage (staff-pin.ts)" },
+  // ORACLE-EDIT (P5.2 oracle2 · ruling F2 PIN rank): MANAGER = cond (เป้าหมาย ≠ ตัวเอง ⇒ canAssignRole(ผู้ทำ, เป้าหมาย) · เป้าหมาย OWNER ได้เฉพาะ OWNER) — P5.2-X5
+  "src/lib/modules/pos/staff-pin-actions.ts#setStaffPinAction": { roles: R({ CASHIER: "deny", MANAGER: "cond" }), notes: "PIN ของคนอื่นต้อง pos.staff.manage (staff-pin.ts) — action ผ่านด่าน pos.sale.create ก่อน · F2 rank: ตั้ง PIN ของบทบาทสูงกว่า/OWNER ไม่ได้ (P5.2-X5)" },
+  "src/lib/modules/pos/staff-pin-actions.ts#unlockStaffPinAction": { roles: R({ CASHIER: "deny", MANAGER: "cond" }), notes: "ปลดล็อก PIN คนอื่นต้อง pos.staff.manage (staff-pin.ts) · F2 rank: ปลดล็อกบทบาทสูงกว่า/OWNER ไม่ได้ (P5.2-X5)" },
   "src/lib/actions/pos.ts#exportDaySalesCsvAction": { notes: "เดิม: throw ForbiddenError (ไม่อยู่ในชุด R2 ของ p1.6) · page-authz C-9" },
   "src/lib/actions/pos.ts#setItemSalePriceAction": { roles: R({ CASHIER: "deny", MANAGER: "cond" }), notes: "posCanSetTenantPrice ทุกสาขา (page-authz P-8) · throw ForbiddenError" },
+  // ═══ ORACLE-EDIT (P5.2 oracle2 · hunter L1 F1–F11 + controller rulings 23 ต.ค.) ═══
+  // ─ H6 class: MANAGER = cond (สิทธิ์ครบทุกสาขาที่ผูก POS นี้ — canOnAllLinkedUnits / canManageAllLinkedUnits) · ผู้จัดการสาขาเดียว = ปฏิเสธ (P5.2-H6b) ─
+  "src/lib/modules/pos/settings-actions.ts#updatePosGeneralSettingsAction": { roles: R({ MANAGER: "cond" }), notes: "H6: canOnAllLinkedUnits (settings-general.ts:306) · ผู้จัดการสาขาเดียว = PERMISSION_DENIED (P5.2-H6b)" },
+  "src/lib/modules/pos/settings-actions.ts#updatePosDiscountCapsAction": { roles: R({ MANAGER: "cond" }), notes: "H6: canOnAllLinkedUnits (settings-general.ts:341) (P5.2-H6b)" },
+  "src/lib/modules/pos/settings-actions.ts#updatePosStaffSettingsAction": { roles: R({ MANAGER: "cond" }), notes: "H6 (มติ: cond) · โค้ดเข้มกว่า = OWNER เท่านั้น (settings-general.ts:563) (P5.2-H6b)" },
+  "src/lib/modules/pos/offline-actions.ts#updatePosOfflineEnabledAction": { roles: R({ MANAGER: "cond" }), notes: "H6 (มติ: cond) · โค้ดเข้มกว่า = OWNER เท่านั้น SETTINGS_SECTION_LOCKED (settings-general.ts:668) (P5.2-H6b)" },
+  "src/lib/pos-integrations-actions.ts#setPosAccountLinkAction": { roles: R({ MANAGER: "cond" }), notes: "H6: OWNER หรือ account.settings.manage + canOnAllLinkedUnits (pos-integrations.ts:269) (P5.2-H6b)" },
+  "src/lib/modules/pos/receipt-settings-actions.ts#updatePosReceiptSettingsAction": { roles: R({ MANAGER: "cond" }), notes: "H6: canManageAllLinkedUnits (receipt-settings.ts:95) (P5.2-H6b)" },
+  "src/lib/modules/pos/credit-actions.ts#saveCreditAccountAction": { roles: R({ MANAGER: "cond" }), notes: "🔴 F6 (H6 class): วันนี้ด่านระดับร้าน can(pos.credit.manage) (credit-actions.ts:51 · credit.ts:90) ⇒ ผู้จัดการสาขาเดียวผ่าน — มติ: ครบทุกสาขา (canManageAllLinkedUnits แบบ payment-settings.ts:217) (P5.2-H6b)" },
+  "src/lib/modules/pos/tip-ledger-actions.ts#posTipLedgersAction": { roles: R({ MANAGER: "deny" }), notes: "🔴 F6 มติ: สมุดทิป = OWNER เท่านั้น · วันนี้ assertCan pos.settings.payment ระดับร้าน (tip-ledger-actions.ts:19) ⇒ MANAGER ผ่าน (P5.2-H6b)" },
+  "src/lib/modules/pos/catalog-price-actions.ts#unitPriceMatrixAction": { notes: "🔴 F9: sessionCtx(args, true) ไม่ตรวจคีย์ POS (catalog-price-actions.ts:133) — มติ: ต้องมี pos.sale.read|create|product.manage · คงแถว STAFF_NOPERM=deny (P5.2-F9)" },
+  "src/lib/modules/pos/settings-actions.ts#updatePosStaffCommissionAction": { roles: R({ MANAGER: "deny", CASHIER: "deny", STAFF_NOPERM: "deny" }), perm: ["hr.payroll.read"], notes: "ด่านในโมดูล canViewPayroll (settings-general.ts:613) · 🟡 F11/W38 (รอเจ้าของ): เขียนเงินด้วยคีย์อ่าน hr.payroll.read (P5.2-F11 accepted-pending-owner)" },
+  // ─ หน้ากลาง/action ของสายอนุมัติ (F1: ผู้จัดการสาขาเดียวตัดสินคำขอ POS_* ของสาขาอื่น) ─
+  "src/app/app/approvals/page.tsx": { roles: R({ MANAGER: "cond", CASHIER: "allow", STAFF_NOPERM: "allow", OTHER_UNIT: "deny" }), perm: ["approval.request.decide"], tenantScope: "session · listPending({tenantId}) · posApprovalCards(tenantId)", notes: "🔴 F1: listPending ไม่กรองสาขา (approval/service.ts:403) ⇒ ผู้จัดการ A1 เห็นคำขอ/เลขบิลของ A2 · ทุกคนเห็น 'คำขอของฉัน' (P5.2-X4)" },
+  "src/lib/modules/approval/actions.ts#decideAction": { roles: R({ MANAGER: "cond" }), notes: "🔴 F1: canDecideStep ไม่ดู req.unitId (approval/service.ts:236) ⇒ MANAGER ตัดสินคำขอ POS_* ของสาขาอื่น — มติ: เฉพาะสาขาที่คุม (P5.2-X4) · throw ForbiddenError" },
+  "src/lib/modules/approval/actions.ts#bulkDecideAction": { roles: R({ MANAGER: "cond" }), notes: "🔴 F1: ทางเดียวกับ decideAction (bulkDecide) (P5.2-X4) · throw ForbiddenError" },
+  "src/lib/modules/approval/actions.ts#cancelMyRequestAction": { roles: R({ CASHIER: "cond", STAFF_NOPERM: "cond" }), notes: "ยกเลิกได้เฉพาะคำขอที่ตัวเองยื่น + ยัง PENDING (approval/actions.ts:200)" },
+  "src/lib/modules/approval/actions.ts#createPolicyAction": { perm: ["approval.policy.create"], notes: "ตั้งกฎ (assertCan approval.policy.create) · throw ForbiddenError" },
+  // ─ AI ภายนอก (F3: คีย์กลางเรียกเครื่องมือขายของ POS เห็นทุกสาขา) ─
+  "src/app/api/v1/ai/tools/[name]/route.ts#POST": { roles: R({ OWNER: "n/a", MANAGER: "n/a", CASHIER: "n/a", STAFF_NOPERM: "n/a", OTHER_UNIT: "deny", OTHER_TENANT: "deny", ANON: "deny", API_KEY: "scope" }), tenantScope: "key: ApiKey.tenantId (ไม่รับจาก body)", notes: "🔴 F3 มติ: คีย์กลาง (scope ว่าง) × เครื่องมือ POS = 403 · วันนี้ SCOPELESS_LEGACY sales_summary/sales_by_day → pos.report.view ทุกสาขา (pos/api/tools.ts:129) (P5.2-K3)" },
+  "src/app/api/v1/ai/skills/route.ts#GET": { roles: R({ OWNER: "n/a", MANAGER: "n/a", CASHIER: "n/a", STAFF_NOPERM: "n/a", OTHER_UNIT: "n/a", OTHER_TENANT: "deny", ANON: "deny", API_KEY: "scope" }), tenantScope: "key: ApiKey.tenantId", notes: "รายชื่อสกิล/เครื่องมือที่คีย์ใช้ได้ (ไม่มีข้อมูลขาย)" },
+  "src/app/api/v1/ai/skills/[id]/route.ts#GET": { roles: R({ OWNER: "n/a", MANAGER: "n/a", CASHIER: "n/a", STAFF_NOPERM: "n/a", OTHER_UNIT: "n/a", OTHER_TENANT: "deny", ANON: "deny", API_KEY: "scope" }), tenantScope: "key: ApiKey.tenantId", notes: "คู่มือสกิล 1 ตัว (ไม่มีข้อมูลขาย)" },
+  "src/lib/modules/inventory/actions.ts#createItemAction": { notes: "🟡 F4/W37 (รอเจ้าของ): ด่านระดับร้าน assertInventoryCan (ไม่มี unitId) → resync แถว PosProduct ทุกสาขา (catalog-legacy.ts:453–473) ไม่ผ่าน rowWriteVerdict (P5.2-F4 accepted-pending-owner) · throw ForbiddenError" },
+  "src/lib/modules/inventory/actions.ts#updateItemAction": { notes: "🟡 F4/W37 (รอเจ้าของ): ด่านระดับร้าน assertInventoryCan (ไม่มี unitId) → resync แถว PosProduct ทุกสาขา (catalog-legacy.ts:453–473) ไม่ผ่าน rowWriteVerdict (P5.2-F4 accepted-pending-owner) · throw ForbiddenError" },
+  "src/lib/modules/inventory/actions.ts#archiveItemAction": { notes: "🟡 F4/W37 (รอเจ้าของ): ด่านระดับร้าน assertInventoryCan (ไม่มี unitId) → resync แถว PosProduct ทุกสาขา (catalog-legacy.ts:453–473) ไม่ผ่าน rowWriteVerdict (P5.2-F4 accepted-pending-owner) · throw ForbiddenError" },
+  "src/lib/modules/inventory/actions.ts#createServiceAction": { notes: "🟡 F4/W37 (รอเจ้าของ): ด่านระดับร้าน assertInventoryCan (ไม่มี unitId) → resync แถว PosProduct ทุกสาขา (catalog-legacy.ts:453–473) ไม่ผ่าน rowWriteVerdict (P5.2-F4 accepted-pending-owner) · throw ForbiddenError" },
+  "src/lib/modules/inventory/actions.ts#updateServiceAction": { notes: "🟡 F4/W37 (รอเจ้าของ): ด่านระดับร้าน assertInventoryCan (ไม่มี unitId) → resync แถว PosProduct ทุกสาขา (catalog-legacy.ts:453–473) ไม่ผ่าน rowWriteVerdict (P5.2-F4 accepted-pending-owner) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#updateSettingAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#kitchenPauseAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#createStationAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#createCategoryAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#archiveCategoryAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#createOptionGroupAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#archiveOptionGroupAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#setChoiceStockAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#setItemStockAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#archiveItemAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#resetDailyStockAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#createZoneAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#archiveZoneAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#createTableAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
+  "src/lib/actions/restaurant.ts#archiveTableAction": { roles: R({ OWNER: "cond", MANAGER: "cond" }), notes: "🔴 D11/F5: สาขาที่ผูก POS ⇒ 409 POS_LINKED (แบบ LEG · ruling 4) · วันนี้ไม่มี posLinkedUnit (restaurant.ts) — สาขาไม่ผูก POS = หน้าเดิม (P5.2-D11) · throw ForbiddenError" },
 };
 
 // ── สร้างแถว ──
@@ -353,10 +405,10 @@ function evidenceFor(root: string, s: Scanned): string {
     return 0;
   };
   let n = 0;
-  if (s.kind === "page") n = find(/View\(|Scope\(|posCanSetTenantPrice|canAccessUnit\(/, 0, 2000);
+  if (s.kind === "page") n = find(/View\(|Scope\(|posCanSetTenantPrice|canAccessUnit\(/, 0, 2000) || find(/requireTenant\(/, 0, 2000); // ORACLE-EDIT (P5.2 oracle2): หน้ากลาง approvals
   else if (s.kind === "public" && s.file.endsWith("page.tsx")) n = find(/is\w+Token\(|_RE\.test\(|DISPLAY_COOKIE\)|legacyTableQrRedirect\(/, 0, 2000) || find(/export default/, 0, 2000);
   else if (s.surface.startsWith("rest:")) n = find(/^\s*action:\s*POS_SCOPES\.\w+/, from, 30);
-  else if (s.file.endsWith("route.ts")) n = find(/authorization|getAuth\(|isCronAuthorized\(|verifyWebhook\(|handlePlatformInbound\(|ackPrintJob\(|claimPrintJobs\(|dispatch|posLinkedLegacyDoor\(|checkRateLimit\(|status: 405/, from, 60);
+  else if (s.file.endsWith("route.ts")) n = find(/authorization|getAuth\(|isCronAuthorized\(|verifyWebhook\(|handlePlatformInbound\(|ackPrintJob\(|claimPrintJobs\(|dispatch|posLinkedLegacyDoor\(|checkRateLimit\(|status: 405|authenticateApiRequest\(/, from, 60); // ORACLE-EDIT (P5.2 oracle2): + authenticateApiRequest (AI tools/skills)
   if (!n) n = s.line;
   return `${s.file}:${n}`;
 }
@@ -445,11 +497,11 @@ export function buildMatrix(root: string): { header: Record<string, unknown>; ro
       DEVICE: "โทเคนเครื่อง/จอลูกค้า/ตัวช่วยพิมพ์/ลับ cron",
     },
     $values: "allow · deny · cond (มีเงื่อนไข: PIN ผู้จัดการ/โหมดสาขา/ของตัวเอง) · token · scope · n/a · ? (อนุมานไม่ได้ — hunter อ่าน)",
-    $scan: "page: src/app/app/sys/[id]/pos/**/page.tsx + sys/[id]/page.tsx · public: page.tsx ใต้ (store)/developers ที่ import POS · action: export async function ของไฟล์ \"use server\" ใต้ src/lib/modules/pos/** · src/lib/pos-*.ts · src/lib/actions/pos.ts · (store)/** · api: route.ts ใต้ api/pos · api/v1/pos · route ใดที่ import POS · rest: definePosOp ใน pos/api/ops",
+    $scan: "page: src/app/app/sys/[id]/pos/**/page.tsx + sys/[id]/page.tsx · public: page.tsx ใต้ (store)/developers ที่ import POS · action: export async function ของไฟล์ \"use server\" ใต้ src/lib/modules/pos/** · src/lib/pos-*.ts · src/lib/actions/pos.ts · (store)/** · api: route.ts ใต้ api/pos · api/v1/pos · route ใดที่ import POS · rest: definePosOp ใน pos/api/ops · + P5.2 oracle2: approval/actions.ts · inventory/actions.ts · actions/restaurant.ts · api/v1/ai/tools|skills · developers/pos.md · app/approvals",
     $outOfScope: [
-      "src/app/app/u/[unitSlug]/restaurant/** · booking · src/app/app/approvals — หน้าของโมดูลเดิม เรียก POS เป็นทางผ่าน (ประตู LEG ของ P2.14 / D11 = lens ของ hunter L1)",
+      "src/app/app/u/[unitSlug]/restaurant/** · booking — หน้าของโมดูลเดิม เรียก POS เป็นทางผ่าน (ตัวเขียนอยู่ใน src/lib/actions/restaurant.ts ซึ่งสแกนแล้ว — P5.2 oracle2)",
       "src/app/(store)/r/[token]/actions.ts — แขนงใบกำกับของบัญชี (ไม่ import POS · accountRateGuard publicSubmit)",
-      "src/lib/actions/restaurant.ts · booking.ts · modules/giftcard — action ของโมดูลอื่นที่เรียก createSale (สัญญา pos-sale-contract.json)",
+      "src/lib/actions/booking.ts · modules/giftcard — action ของโมดูลอื่นที่เรียก createSale (สัญญา pos-sale-contract.json)",
     ],
   };
   rows.sort((a, b) => (a.surface < b.surface ? -1 : a.surface > b.surface ? 1 : 0));
