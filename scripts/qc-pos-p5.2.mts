@@ -24,7 +24,8 @@ const NODB = process.argv.includes("--no-db");
 const SELFTEST = process.argv.includes("--self-test"); // ORACLE-EDIT (P5.2 oracle2)
 const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของข้อสอบ (session/pos ตอนเขียน) — env override */
-const PIN = process.env.P52_PIN || "2fb1fe8e";
+// ORACLE-EDIT (P5.2 oracle2): ฐาน = session/pos c067c628 (ตอนเขียนส่วนขยาย · เดิม 2fb1fe8e) — ข้อสอบนี้ไม่มีข้อ diff เทียบหมุด (พิมพ์อย่างเดียว)
+const PIN = process.env.P52_PIN || "c067c628";
 /** หมุดเลน (ข้อสอบนี้ไม่มีข้อ diff เทียบหมุด — พิมพ์ไว้ให้ผู้คุม) */
 const LANE_PIN = process.env.P52_LANE_PIN || PIN;
 
