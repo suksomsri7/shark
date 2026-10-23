@@ -78,8 +78,7 @@ export type ShiftRefusalCode =
   // P1.10 (R2) — เครื่องที่ถูกเพิกถอนเปิดกะไม่ได้
   | "DEVICE_REVOKED"
   // P1.15 (R3) — โทเคนผู้ขายผิด/หมดอายุ/เครื่องอื่น/ถูกถอดสิทธิ์
-  | "STAFF_TOKEN_INVALID"
-  | "DEVICE_NOT_PAIRED"; // POS P5.2 ▸ D2/D3 (CD-P52-O2-3): เบราว์เซอร์นี้ไม่มีคุกกี้เครื่องที่จับคู่ไว้ (หรือรหัสเครื่องไม่ตรงคุกกี้) ◂
+  | "STAFF_TOKEN_INVALID";
 export type ShiftRefusal = { ok: false; code: ShiftRefusalCode; message: string; shiftId?: string; recountId?: string };
 
 export type ShiftView = {
@@ -170,7 +169,6 @@ const MSG: Record<ShiftRefusalCode, string> = {
   ALREADY_RECOUNTED: "กะนี้ถูกนับย้อนหลังไปแล้ว — นับได้ครั้งเดียว",
   DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — เปิดกะหรือนำเงินเข้า/ออกลิ้นชักไม่ได้ ติดต่อผู้จัดการ",
   STAFF_TOKEN_INVALID: "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง",
-  DEVICE_NOT_PAIRED: "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อนเปิดกะ", // POS P5.2 ▸ D2 ◂
 };
 const refuse = (code: ShiftRefusalCode, message?: string, extra?: { shiftId?: string; recountId?: string }): ShiftRefusal => ({ ok: false, code, message: message ?? MSG[code], ...(extra ?? {}) });
 const isRefusal = (v: unknown): v is ShiftRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;

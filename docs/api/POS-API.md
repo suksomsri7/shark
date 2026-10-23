@@ -140,8 +140,10 @@ Under the code above, the POS tells why in `message_th` / `message_en`. This is 
 | `DEPOSIT_LOCKED` | 409 (state or duplicate conflict) | `state_conflict` | The deposit is locked after too many wrong attempts. |
 | `DEPOSIT_NOT_FOUND` | 404 (not found / not in this POS system) | `not_found` | The deposit was not found in this branch. |
 | `DEPOSIT_NOT_OWNER` | 409 (state or duplicate conflict) | `state_conflict` | The deposit does not belong to the customer of this bill. |
+| `DEVICE_KEY_UNSET` | 503 (busy, nothing written) | `upstream_unavailable` | Device pairing is not configured on this server yet. |
 | `DEVICE_LIMIT` | 409 (state or duplicate conflict) | `state_conflict` | This branch reached the maximum number of registered devices. |
 | `DEVICE_NOT_FOUND` | 404 (not found / not in this POS system) | `not_found` | The device was not found in this branch. |
+| `DEVICE_NOT_PAIRED` | 409 (state or duplicate conflict) | `state_conflict` | This browser is not paired with a register of this branch. |
 | `DEVICE_REVOKED` | 409 (state or duplicate conflict) | `state_conflict` | The device was revoked and cannot be used. |
 | `DISCOUNT_EXCEEDS_LIMIT` | 403 (refused by a business rule) | `forbidden` | The discount is larger than this seller is allowed to give. |
 | `DRAWER_INSUFFICIENT` | 409 (state or duplicate conflict) | `state_conflict` | There is not enough cash in the drawer. |

@@ -44,6 +44,7 @@ const MSG: Record<PosDeviceRefusalCode, string> = {
   DEVICE_NOT_FOUND: "ไม่พบเครื่องนี้ในสาขานี้",
   INTERNAL: "ระบบทะเบียนเครื่องขัดข้องชั่วคราว — ลองอีกครั้ง",
   DEVICE_KEY_UNSET: "ยังไม่ตั้งกุญแจจับคู่เครื่อง — ผู้ดูแลระบบต้องตั้งกุญแจก่อนจึงจะจับคู่เครื่องขายได้", // POS P5.2 ▸ D1 ◂
+  DEVICE_NOT_PAIRED: "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อนเปิดกะ", // POS P5.2 ▸ D2 ◂
 };
 const refuse = (code: PosDeviceRefusalCode, message?: string, field?: string): PosDeviceRefusal =>
   field ? { ok: false, code, message: message ?? MSG[code], field } : { ok: false, code, message: message ?? MSG[code] };

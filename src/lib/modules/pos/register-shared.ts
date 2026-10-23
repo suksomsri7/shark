@@ -992,7 +992,6 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   DEVICE_REVOKED: "errors.deviceRevoked",
   DEVICE_LIMIT: "errors.deviceLimit",
   DEVICE_NOT_FOUND: "errors.deviceNotFound",
-  DEVICE_NOT_PAIRED: "errors.deviceNotPaired", // POS P5.2 ▸ D2 ◂
   // POS P1.7 ▸ ใบขอรับเงินในบิล ◂
   INTENT_NOT_FOUND: "errors.intentNotFound",
   INTENT_NOT_PAID: "errors.intentNotPaid",

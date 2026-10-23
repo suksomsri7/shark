@@ -97,7 +97,9 @@ async function pairedScope(s: { ctx: RegisterCtx; actor: RegisterActor }): Promi
   void _client;
   return { ctx: { ...rest, ...(dev ? { deviceId: dev.deviceCode } : {}) } as RegisterCtx, actor: s.actor };
 }
-const NOT_PAIRED = (): ShiftRefusal => refusal("DEVICE_NOT_PAIRED", "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อนเปิดกะ");
+// รหัสปฏิเสธอยู่ในชุดของทะเบียนเครื่อง (device-shared.ts) — shift.ts ไบต์เท่าหมุด (P3.6 ST4) จึงไม่เพิ่มรหัสในชุดของกะ
+type NotPaired = { ok: false; code: "DEVICE_NOT_PAIRED"; message: string };
+const NOT_PAIRED = (message = "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อนเปิดกะ"): NotPaired => ({ ok: false, code: "DEVICE_NOT_PAIRED", message });
 // ◂ POS P5.2
 
 function touch(systemId: string): void {
@@ -109,7 +111,7 @@ function touch(systemId: string): void {
 }
 
 /** เปิดกะของเครื่องนี้ (S4) */
-export async function openShiftAction(args: Target & { shift: OpenShiftInput }): Promise<OpenShiftResult> {
+export async function openShiftAction(args: Target & { shift: OpenShiftInput }): Promise<OpenShiftResult | NotPaired> { // POS P5.2 ▸ + NotPaired ◂
   const auth = await session("openShiftAction");
   if ("ok" in auth) return auth;
   try {
@@ -122,7 +124,7 @@ export async function openShiftAction(args: Target & { shift: OpenShiftInput }):
     const input: unknown = args?.shift;
     if (!input || typeof input !== "object" || Array.isArray(input)) return refusal("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง — ยังไม่ได้บันทึกอะไร");
     const claimed = (input as { deviceId?: unknown }).deviceId;
-    if (claimed !== undefined && claimed !== dev) return refusal("DEVICE_NOT_PAIRED", "รหัสเครื่องไม่ตรงกับเครื่องที่จับคู่ไว้บนเบราว์เซอร์นี้ — เปิดกะไม่ได้");
+    if (claimed !== undefined && claimed !== dev) return NOT_PAIRED("รหัสเครื่องไม่ตรงกับเครื่องที่จับคู่ไว้บนเบราว์เซอร์นี้ — เปิดกะไม่ได้");
     const r = await openShift(s.ctx, s.actor, { ...(input as OpenShiftInput), deviceId: dev });
     if (r.ok) touch(s.ctx.systemId);
     return r;
@@ -132,7 +134,7 @@ export async function openShiftAction(args: Target & { shift: OpenShiftInput }):
 }
 
 /** กะ OPEN ของเครื่องนี้ (null = ยังไม่เปิด) */
-export async function currentShiftAction(args: Target & { deviceId: string }): Promise<CurrentShiftResult> {
+export async function currentShiftAction(args: Target & { deviceId: string }): Promise<CurrentShiftResult | NotPaired> { // POS P5.2 ▸ + NotPaired ◂
   const auth = await session("currentShiftAction");
   if ("ok" in auth) return auth;
   try {

@@ -236,7 +236,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
   const [recountKeyShift, setRecountKeyShift] = useState<string | null>(null);
 
   const base = { systemId, unitId, ...(deviceId ? { deviceId } : {}) };
-  const fail = useCallback((r: { code: string }) => setError(te(refusalMessageKey(r.code))), [te]);
+  // POS P5.2 ▸ D2: DEVICE_NOT_PAIRED (เบราว์เซอร์นี้ไม่มีคุกกี้เครื่อง) = คีย์ของจอกะเอง (register-shared ตรึงโดย P3.9 ST4) ◂
+  const fail = useCallback((r: { code: string }) => setError(te(r.code === "DEVICE_NOT_PAIRED" ? "errors.deviceNotPaired" : refusalMessageKey(r.code))), [te]);
 
   const load = useCallback(
     async (dev: string | undefined) => {

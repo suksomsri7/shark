@@ -113,7 +113,7 @@ export function kitchenSlipSettings(cfg: Pick<PosPrinterConfig, "kitchenSlip" | 
 }
 
 // ═══════════ ทะเบียนเครื่อง (R2) — รูปผลลัพธ์ ═══════════
-export type PosDeviceRefusalCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "DEVICE_REVOKED" | "DEVICE_LIMIT" | "DEVICE_NOT_FOUND" | "INTERNAL" | "DEVICE_KEY_UNSET"; // POS P5.2 ▸ + DEVICE_KEY_UNSET (CD-P52-O2-3) ◂
+export type PosDeviceRefusalCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "DEVICE_REVOKED" | "DEVICE_LIMIT" | "DEVICE_NOT_FOUND" | "INTERNAL" | "DEVICE_KEY_UNSET" | "DEVICE_NOT_PAIRED"; // POS P5.2 ▸ + DEVICE_KEY_UNSET · DEVICE_NOT_PAIRED (CD-P52-O2-3 · กะอ่านเครื่องจากคุกกี้) ◂
 export type PosDeviceRefusal = { ok: false; code: PosDeviceRefusalCode; message: string; field?: string };
 
 export type PosDeviceView = {
