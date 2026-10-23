@@ -633,7 +633,17 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   } else if (sale.vatSatang > 0 && full) {
     vat = Math.min(grand, Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0)));
   } else if (sale.vatSatang > 0) {
-    vat = splitIncludedVat(grand, await posVatRateBp(tx, s.tenantId, s.systemId)).vatSatang;
+    // POS P5.1 ▸ MA9 (F9): ใบคืนบางส่วน = min(ส่วนของอัตราบิลเดิม, VAT ที่เหลือของบิล) — อัตรา POS วันนี้ยังถอด VAT บิลเดิมได้ตรง = อัตราเดิม (ทางเดิมทุกไบต์) ·
+    //   อัตราเปลี่ยนหลังขาย = ส่วนตามสัดส่วน ปัดครึ่งขึ้น(VAT บิล × ยอดใบนี้ / ยอดบิล) (สูตรเดียวกับทางมัดจำด้านบน) ◂
+    const left = Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0));
+    const rateNow = await posVatRateBp(tx, s.tenantId, s.systemId);
+    const share =
+      splitIncludedVat(sale.grandTotalSatang, rateNow).vatSatang === sale.vatSatang
+        ? splitIncludedVat(grand, rateNow).vatSatang
+        : sale.grandTotalSatang > 0
+          ? Number((BigInt(2) * BigInt(sale.vatSatang) * BigInt(grand) + BigInt(sale.grandTotalSatang)) / (BigInt(2) * BigInt(sale.grandTotalSatang)))
+          : 0;
+    vat = Math.min(grand, left, share);
   }
 
   // ── เลขใบคืน (R4 · O2): ตัวนับใหม่ต่อสาขา/ชนิด/เดือน — INSERT … ON CONFLICT ⇒ คืนพร้อมกันหลายใบบนแถวใหม่ไม่ชน unique ──
