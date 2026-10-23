@@ -122,7 +122,7 @@ export async function registerForfeitDepositAction(args: Target & { input: Regis
   const auth = await session("registerForfeitDepositAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s = await sessionScope(auth, args); // POS P5.2 ▸ merge CD-RP24 (ผู้คุม): sessionScope เป็น async ตั้งแต่ batch D+E+device (คุกกี้เครื่อง) ◂
     if ("ok" in s) return s;
     return await registerForfeitDeposit(s.ctx, s.actor, args?.input as RegisterForfeitDepositInput);
   } catch (e) {
