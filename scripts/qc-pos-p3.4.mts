@@ -235,7 +235,7 @@ const BASE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`]
 const SIB_REV = process.env.P34_SIB || "688fc3ed"; // CD-RP9 21.10: คง 688fc3ed (ST2 staff-pin ต้องเทียบ rev ก่อน P3.4 merge) — migration/schema ใหม่ของใบหลัง ดูที่ LANE_REV ใน ST1
 const SIB_OK = !!gitStr(["rev-parse", "--verify", "-q", `${SIB_REV}^{commit}`])?.trim();
 // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · หมุดเลนที่ 3 = product tip หลัง merge P3.8 ซึ่งแตะ outbox-consumers.ts · ST2 ยอมรับไบต์เท่ากับ rev ใดก็ได้ใน revsHot)
-const LANE_REV = process.env.P34_LANE || "98f60761"; // ORACLE-EDIT ผู้คุม 23.10 (P5.2 D+E+device merge CD-RP24 (staff-pin.ts เปลี่ยนตั้งแต่ P5.2 fix B) · re-pin 6668b832 → 98f60761) · ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin 137aa93a → 6668b832) · ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old 9cfa81bb · revert: p3.4 = `git revert 679851de` (laneView ownHunks — env P34_LANE=9cfa81bb เพียงย้ายหมุด ไม่คืนแดงเดิม · R1 F2)) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · re-pin bafdf89f → 9cfa81bb) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · re-pin b2458030 → bafdf89f) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP8 · re-pin 02b67f91 → b2458030) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91)
+const LANE_REV = process.env.P34_LANE || "98f60761"; // ORACLE-EDIT ผู้คุม A 23.10 (CD-RP24c: ST2 สาขา LANE ของ staff-pin ใช้ laneView — หมุดคง 98f60761) · ORACLE-EDIT ผู้คุม 23.10 (P5.2 D+E+device merge CD-RP24 (staff-pin.ts เปลี่ยนตั้งแต่ P5.2 fix B) · re-pin 6668b832 → 98f60761) · ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin 137aa93a → 6668b832) · ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old 9cfa81bb · revert: p3.4 = `git revert 679851de` (laneView ownHunks — env P34_LANE=9cfa81bb เพียงย้ายหมุด ไม่คืนแดงเดิม · R1 F2)) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP10 · re-pin bafdf89f → 9cfa81bb) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · re-pin b2458030 → bafdf89f) · ORACLE-EDIT ผู้คุม 21.10 (CD-RP8 · re-pin 02b67f91 → b2458030) · ORACLE-EDIT ผู้คุม 17.10 (CD-RP5 · re-pin a2c9a4c7 → 02b67f91)
 const LANE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${LANE_REV}^{commit}`])?.trim();
 /** บรรทัดในบล็อก // POS P3.4 ▸ … ◂ (บรรทัดเดียวหรือหลายบรรทัด) */
 function markedLines(src: string): { lines: Set<number>; blocks: number; text: string } {
@@ -591,14 +591,23 @@ async function runStatic(): Promise<void> {
     }));
     p.push(...firstOk((rv) => {
       const q: string[] = [];
-      const spB = showAt(rv, F.staffPin) ?? "";
+      const spB0 = showAt(rv, F.staffPin) ?? "";
       const spH = rd(F.staffPin);
+      // ORACLE-EDIT ผู้คุม A 23.10 (CD-RP24c · ดีบัก firstOk ST2 หลัง CD-RP24): rev หมุดเลนที่มีบล็อก POS P3.4 อยู่แล้ว (98f60761) ถูกเทียบแบบไม่ตัดบล็อกออกจากฐาน
+      //   ⇒ onlyMarked นับ 34 บรรทัดของบล็อกเป็น "บรรทัดฐานหาย" (>3) และสาขา LANE ใน firstOk ไม่มีทางผ่านแม้ไฟล์ตรงทุกไบต์ — ใช้ laneView เหมือน register/service
+      //   (ตัดบรรทัดบล็อกออกจากฐานก่อนเทียบ subsequence · ข้อความบล็อกต้องเท่ากับ rev ทุกตัวอักษร · งบลบ 0 บนเส้นหมุด · ฐานเดิม 72669941/688fc3ed ไม่มีบล็อก = กติกาเดิมทุกไบต์)
+      //   และ verifyStaffPin เทียบแบบสมมาตร (ตัดบล็อกทั้งสองฝั่ง) · probe: แก้ 1 ตัวอักษรในบล็อกของ staff-pin.ts → แดง "บล็อก POS P3.4 ต่างจาก" · เพิ่ม 1 บรรทัดนอกบล็อก → แดง "แก้นอกบล็อก"
+      //   revert: spB = spB0 · ตัด laneView · vb = fnBody(stripCode(spB0), …) · งบ 3 คงที่ ◂
+      const lv = laneView(spB0, spH, "staff-pin.ts");
+      q.push(...lv.q);
+      const spB = lv.base;
       const sp = onlyMarked(spB, spH);
       if (sp.blocks !== 1) q.push(`staff-pin.ts บล็อก POS P3.4 ${sp.blocks} (คาด 1)`);
       if (sp.blocks && !/\bat\b/.test(sp.text)) q.push("บล็อก P3.4 ของ staff-pin.ts ไม่มีตัวเลือก at");
       if (sp.added.length) q.push(`staff-pin.ts แก้นอกบล็อก: ${sp.added.slice(0, 2).join(" | ")}`);
-      if (sp.dropped > 3) q.push(`staff-pin.ts บรรทัดฐานหาย ${sp.dropped}`);
-      const vb = fnBody(stripCode(spB), "verifyStaffPin");
+      const spDropBudget = lv.base !== spB0 ? 0 : 3; // CD-RP24c: บนเส้นหมุดเลน งบลบ 0 (เหมือน R1 F1 ของ register/service)
+      if (sp.dropped > spDropBudget) q.push(`staff-pin.ts บรรทัดฐานหาย ${sp.dropped} (งบ ${spDropBudget})`);
+      const vb = fnBody(stripCode(markedStrip(spB0)), "verifyStaffPin"); // CD-RP24c: สมมาตรกับ vh
       const vh = fnBody(stripCode(markedStrip(spH)), "verifyStaffPin");
       if (!vb || vb.replace(/\s+/g, "") !== vh.replace(/\s+/g, "")) q.push("verifyStaffPin ถูกแตะ (มติ 12)");
       return q;
