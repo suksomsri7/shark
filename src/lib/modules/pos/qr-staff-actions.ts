@@ -15,6 +15,7 @@ import { registerRotateTableQr } from "./table";
 import { qrTableRounds, qrTableTokens } from "./qr-staff";
 import type { QrOrderLinkResult, QrTableRoundsResult, QrTablesResult } from "./qr-staff-shared";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
+import { cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
 type Refusal = { ok: false; code: string; message: string; messageKey?: string };
@@ -41,7 +42,7 @@ async function sessionScope(args: unknown): Promise<{ ctx: RegisterCtx; actor: R
     }
   });
   if (!allowed) return { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้าน" };
-  const deviceId = typeof a.deviceId === "string" && a.deviceId ? a.deviceId : undefined;
+  const deviceId = await cookieDeviceId({ tenantId: auth.active.tenantId, unitId: unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts) · deviceId ของ client ถูกทิ้ง ◂
   return { ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId ? { deviceId } : {}) }, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
 }
 async function run<T>(where: string, args: unknown, body: (ctx: RegisterCtx, actor: RegisterActor) => Promise<T>): Promise<T | Refusal> {

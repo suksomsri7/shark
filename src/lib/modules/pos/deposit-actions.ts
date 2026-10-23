@@ -24,6 +24,7 @@ import {
   type RegisterTakeDepositResult,
 } from "./deposit";
 import type { RegisterActor, RegisterCtx, RegisterRefusal } from "./register-shared";
+import { bindCtxDevice, cookieDeviceId, type DeviceBindRefusal } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 
 type Session = Awaited<ReturnType<typeof requireTenant>>;
 /** deviceId (ไม่บังคับ) = รหัสเครื่องจาก localStorage — deposit.ts ตรวจรูปแบบ (ผิด = VALIDATION) · กะของเครื่อง */
@@ -48,7 +49,7 @@ async function session(where: string): Promise<Session | RegisterRefusal> {
  * session → ขอบเขต + ผู้ใช้ (ด่านเดียวกับ register-actions.ts sessionScope): เข้าสาขาไม่ได้ = NOT_FOUND ·
  * ไม่มี pos.sale.create ที่สาขา = PERMISSION_DENIED — deposit.ts ตรวจซ้ำ (registerScopeCheck · REG_SELL_PERMS) และสิทธิ์คืนเงินเอง
  */
-function sessionScope(auth: Session, args: unknown): { ctx: RegisterCtx; actor: RegisterActor } | RegisterRefusal {
+async function sessionScope(auth: Session, args: unknown): Promise<{ ctx: RegisterCtx; actor: RegisterActor } | RegisterRefusal> {
   const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
   const systemId = typeof a.systemId === "string" ? a.systemId : "";
   const unitId = typeof a.unitId === "string" ? a.unitId : "";
@@ -60,7 +61,7 @@ function sessionScope(auth: Session, args: unknown): { ctx: RegisterCtx; actor: 
   } catch {
     return refusal("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์ขาย — ขอให้เจ้าของร้านเพิ่มสิทธิ์");
   }
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  const deviceId = await cookieDeviceId({ tenantId: auth.active.tenantId, unitId: unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts) · deviceId ของ client ถูกทิ้ง ◂
   return {
     ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) },
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
@@ -68,12 +69,15 @@ function sessionScope(auth: Session, args: unknown): { ctx: RegisterCtx; actor: 
 }
 
 /** R2 — รับมัดจำที่หน้าขาย (แผ่น deposit-receive) · input ส่งต่อทั้งก้อน (deposit.ts ตรวจทุกช่อง) */
-export async function registerTakeDepositAction(args: Target & { input: RegisterTakeDepositInput }): Promise<RegisterTakeDepositResult> {
+export async function registerTakeDepositAction(args: Target & { input: RegisterTakeDepositInput }): Promise<RegisterTakeDepositResult | DeviceBindRefusal> {
   const auth = await session("registerTakeDepositAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
-    if ("ok" in s) return s;
+    const s0 = await sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const sb = await bindCtxDevice(s0.ctx); // POS P5.2 ▸ CD-P52-O4b: งานนี้ผูกกะ/เครื่อง — ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED · เพิกถอน = DEVICE_REVOKED ◂
+    if (!sb.ok) return sb;
+    const s = { ...s0, ctx: sb.ctx };
     return await registerTakeDeposit(s.ctx, s.actor, args?.input as RegisterTakeDepositInput);
   } catch (e) {
     return unexpected("registerTakeDepositAction", e);
@@ -85,7 +89,7 @@ export async function registerDepositLookupAction(args: Target & { query?: strin
   const auth = await session("registerDepositLookupAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s = await sessionScope(auth, args);
     if ("ok" in s) return s;
     const input: { query?: string; phoneLast4?: string; memberId?: string } = {};
     if (typeof args?.query === "string") input.query = args.query;
@@ -102,7 +106,7 @@ export async function registerRefundDepositAction(args: Target & { input: Regist
   const auth = await session("registerRefundDepositAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s = await sessionScope(auth, args);
     if ("ok" in s) return s;
     return await registerRefundDeposit(s.ctx, s.actor, args?.input as RegisterRefundDepositInput);
   } catch (e) {

@@ -8,6 +8,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit, canViewPayroll } from "@/lib/core/rbac";
 import { posMembership } from "./access";
+import { cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 import { posClockForShift, type PosClockResult } from "./hr-link";
 import type { RegisterRefusal } from "./register-shared";
 
@@ -40,7 +41,7 @@ export async function posClockAction(args: { systemId: string; unitId: string; d
     } catch {
       return refusal("PERMISSION_DENIED", "บัญชีของเครื่องนี้ยังไม่มีสิทธิ์ขายที่สาขานี้");
     }
-    const deviceId = typeof a.deviceId === "string" ? a.deviceId : "";
+    const deviceId = (await cookieDeviceId({ tenantId: auth.active.tenantId, unitId })) ?? ""; // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts · strip) · deviceId ของ client ถูกทิ้ง ◂
     return await posClockForShift(
       { tenantId: auth.active.tenantId, systemId, unitId, deviceId },
       { kind: a.kind as "IN" | "OUT", deviceId, staffToken: typeof a.staffToken === "string" ? a.staffToken : "", shiftId: typeof a.shiftId === "string" ? a.shiftId : "" },

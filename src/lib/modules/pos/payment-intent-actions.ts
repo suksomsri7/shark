@@ -10,6 +10,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
+import { bindCtxDevice, cookieDeviceId, type DeviceBindRefusal } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 import { cancelPaymentIntent, confirmPaymentIntentManual, createPaymentIntent, paymentIntentStatus } from "./payment-intent";
 import { updatePosIntentSettings } from "./payment-settings";
 import type {
@@ -54,7 +55,7 @@ async function scoped(where: string, args: unknown): Promise<Scoped | PaymentInt
   } catch {
     return { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์ขาย — ขอให้เจ้าของร้านเพิ่มสิทธิ์" };
   }
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  const deviceId = await cookieDeviceId({ tenantId: auth.active.tenantId, unitId: unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts) · deviceId ของ client ถูกทิ้ง ◂
   return {
     ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) },
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
@@ -62,20 +63,28 @@ async function scoped(where: string, args: unknown): Promise<Scoped | PaymentInt
 }
 
 /** สร้างใบขอรับเงิน (QR พร้อมเพย์ล็อกยอด / Beam / บัตร) — คีย์ = ตะกร้า + วิธี + ยอด (CD3) */
-export async function createPaymentIntentAction(args: Target & { input: CreatePaymentIntentInput }): Promise<CreatePaymentIntentResult> {
-  const s = await scoped("createPaymentIntentAction", args);
-  if ("ok" in s) return s;
+export async function createPaymentIntentAction(args: Target & { input: CreatePaymentIntentInput }): Promise<CreatePaymentIntentResult | DeviceBindRefusal> {
+  const s0 = await scoped("createPaymentIntentAction", args);
+  if ("ok" in s0) return s0;
+  const sb = await bindCtxDevice(s0.ctx); // POS P5.2 ▸ CD-P52-O4b: งานนี้ผูกกะ/เครื่อง — ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED · เพิกถอน = DEVICE_REVOKED ◂
+  if (!sb.ok) return sb;
+  const s = { ...s0, ctx: sb.ctx };
   try {
-    return await createPaymentIntent(s.ctx, s.actor, args?.input);
+    // POS P5.2 ▸ CD-P52-O4b: เครื่องของใบขอรับเงิน = เครื่องของคุกกี้ (input.deviceId ของ client ถูกแทน) · สาขาที่ไม่มีเครื่องลงทะเบียนเลย = รหัสใน input ตามเดิม (ไม่มีเครื่อง/กะให้สวมรอย) ◂
+    const inp = s.ctx.deviceId && args?.input && typeof args.input === "object" ? { ...args.input, deviceId: s.ctx.deviceId } : args?.input;
+    return await createPaymentIntent(s.ctx, s.actor, inp);
   } catch (e) {
     return internal("createPaymentIntentAction", e);
   }
 }
 
 /** แคชเชียร์ยืนยันเองเมื่อเห็นเงินเข้า (มี audit) */
-export async function confirmPaymentIntentManualAction(args: Target & { intentId: string }): Promise<PaymentIntentActionResult> {
-  const s = await scoped("confirmPaymentIntentManualAction", args);
-  if ("ok" in s) return s;
+export async function confirmPaymentIntentManualAction(args: Target & { intentId: string }): Promise<PaymentIntentActionResult | DeviceBindRefusal> {
+  const s0 = await scoped("confirmPaymentIntentManualAction", args);
+  if ("ok" in s0) return s0;
+  const sb = await bindCtxDevice(s0.ctx); // POS P5.2 ▸ CD-P52-O4b: งานนี้ผูกกะ/เครื่อง — ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED · เพิกถอน = DEVICE_REVOKED ◂
+  if (!sb.ok) return sb;
+  const s = { ...s0, ctx: sb.ctx };
   try {
     return await confirmPaymentIntentManual(s.ctx, s.actor, { intentId: args?.intentId });
   } catch (e) {

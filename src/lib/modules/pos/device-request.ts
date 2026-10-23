@@ -29,3 +29,20 @@ export async function requestDevice(scope: { tenantId: string; unitId: string },
   if (mode === "bind" && b.unitHasDevices) return notPaired();
   return { ok: true };
 }
+
+/** POS P5.2 ▸ CD-P52-O4b: โหมด strip แบบไม่ปฏิเสธ — เครื่อง ACTIVE ของคุกกี้ หรือไม่มีเครื่อง (deviceId ของ client ถูกทิ้ง · เพิกถอน = ไม่มีเครื่อง) ◂ */
+export async function cookieDeviceId(scope: { tenantId: string; unitId: string }): Promise<string | undefined> {
+  if (!scope.tenantId || !scope.unitId) return undefined;
+  const d = await requestDevice(scope, "strip");
+  return d.ok ? d.deviceId : undefined;
+}
+/** POS P5.2 ▸ CD-P52-O4b: คำปฏิเสธของโหมด bind ที่ผู้เรียกคืนตรง ๆ (lineIndex/field ว่าง — จอที่อ่านช่องเหล่านี้ใช้ชนิดเดิมได้) ◂ */
+export type DeviceBindRefusal = (DeviceNotPaired | DeviceRevokedRefusal) & { lineIndex?: undefined; field?: undefined };
+/** POS P5.2 ▸ CD-P52-O4b: โหมด bind บน ctx ที่มีอยู่ — แทน ctx.deviceId ด้วยเครื่องของคุกกี้ หรือคืนคำปฏิเสธ ◂ */
+export async function bindCtxDevice<C extends { tenantId: string; unitId: string; deviceId?: string }>(ctx: C): Promise<{ ok: true; ctx: C } | DeviceBindRefusal> {
+  const d = await requestDevice({ tenantId: ctx.tenantId, unitId: ctx.unitId }, "bind");
+  if (!d.ok) return d;
+  const { deviceId: _client, ...rest } = ctx;
+  void _client;
+  return { ok: true, ctx: { ...rest, ...(d.deviceId ? { deviceId: d.deviceId } : {}) } as C };
+}

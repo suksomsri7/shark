@@ -140,7 +140,7 @@ export type IngestInput = {
 /** รหัสปฏิเสธของออเดอร์ = ชุดของหน้าขาย + 5 รหัสใหม่ (R11)
  *  🔴 ไม่เพิ่มเข้า RegisterRefusalCode: register.ts มี REG_MESSAGE: Record<RegisterRefusalCode, string> (ครบทุกรหัส) และ register.ts ห้ามแตะใน P2.8 (มติ 3)
  *     — ข้อเสนอ ORACLE-EDIT ST2 อยู่ใน ledger/wo-notes/pos-P2.8.md · ข้อความจอ = refusalMessageKey (register-shared) ครบทั้ง 5 รหัสแล้ว */
-export type OrderRefusalCode = RegisterRefusalCode | "ORDER_NOT_FOUND" | "ORDER_STATE_INVALID" | "ORDER_STATE_CHANGED" | "ORDER_UNPAID" | "CHANNEL_PAUSED";
+export type OrderRefusalCode = RegisterRefusalCode | "ORDER_NOT_FOUND" | "ORDER_STATE_INVALID" | "ORDER_STATE_CHANGED" | "ORDER_UNPAID" | "CHANNEL_PAUSED" | "DEVICE_NOT_PAIRED"; // POS P5.2 ▸ CD-P52-O4b: + DEVICE_NOT_PAIRED (รับ/คีย์/ชำระออเดอร์ผูกเครื่องจากคุกกี้) ◂
 /** messageKey = คีย์ข้อความเฉพาะกรณีใต้ `pos` (เช่น orders.errors.webPaid) — จอใช้แทน refusalMessageKey(code) เมื่อมี (P2.8 fix รอบ 2 F1 F4) */
 export type OrderRefusal = { ok: false; code: OrderRefusalCode; message: string; lineIndex?: number; order?: OrderCard; requestId?: string; messageKey?: string };
 /** ออเดอร์เว็บร้านที่ชำระแล้ว — ปฏิเสธ/ยกเลิกที่จอ POS ไม่ได้ (คืนเงิน/ยกเลิกที่หน้าเว็บร้าน · รีวิว F1) */

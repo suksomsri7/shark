@@ -13,6 +13,7 @@ import { prisma } from "./db";
 import { registerProductsByIds, registerScopeFor } from "./register";
 import { RESERVATION_HOLD_MAX_MINUTES } from "./table-shared";
 import type { RegisterActor, RegisterCtx, RegisterProduct, RegisterRefusal } from "./register-shared";
+import { cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 
 type Session = Awaited<ReturnType<typeof requireTenant>>;
 type Target = { systemId: string; unitId: string; deviceId?: string };
@@ -34,7 +35,7 @@ async function session(where: string): Promise<Session | RegisterRefusal> {
   }
 }
 /** session → ctx + actor · เข้าสาขาไม่ได้ = NOT_FOUND · ไม่มีสิทธิ์ใดใน perms ที่สาขานี้ = PERMISSION_DENIED (ตรวจซ้ำใน register.ts) */
-function sessionScope(auth: Session, args: unknown, perms: readonly string[]): { ctx: RegisterCtx; actor: RegisterActor } | RegisterRefusal {
+async function sessionScope(auth: Session, args: unknown, perms: readonly string[]): Promise<{ ctx: RegisterCtx; actor: RegisterActor } | RegisterRefusal> {
   const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
   const systemId = typeof a.systemId === "string" ? a.systemId : "";
   const unitId = typeof a.unitId === "string" ? a.unitId : "";
@@ -52,7 +53,7 @@ function sessionScope(auth: Session, args: unknown, perms: readonly string[]): {
     }
   }
   if (!allowed) return refusal("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์ใช้หน้าขาย — ขอให้เจ้าของร้านเพิ่มสิทธิ์");
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  const deviceId = await cookieDeviceId({ tenantId: auth.active.tenantId, unitId: unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts) · deviceId ของ client ถูกทิ้ง ◂
   return { ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) }, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
 }
 
@@ -61,7 +62,7 @@ export async function registerProductsByIdsAction(args: Target & { ids: string[]
   const auth = await session("registerProductsByIdsAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args, ["pos.sale.create"]);
+    const s = await sessionScope(auth, args, ["pos.sale.create"]);
     if ("ok" in s) return s;
     const ids = Array.isArray(args?.ids) ? args.ids.filter((x): x is string => typeof x === "string") : [];
     return { ok: true, products: await registerProductsByIds(s.ctx, s.actor, ids) };
@@ -75,7 +76,7 @@ export async function registerReservationsTodayAction(args: Target): Promise<{ o
   const auth = await session("registerReservationsTodayAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args, ["pos.sale.create", "pos.sale.read"]);
+    const s = await sessionScope(auth, args, ["pos.sale.create", "pos.sale.read"]);
     if ("ok" in s) return s;
     const sc = await registerScopeFor(s.ctx, s.actor, ["pos.sale.create", "pos.sale.read"], prisma);
     if (!sc.ok) return sc;

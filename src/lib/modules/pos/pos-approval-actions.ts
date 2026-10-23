@@ -6,6 +6,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
+import { cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 import { cancelPosApprovalRequest, posApprovalView } from "./pos-approval";
 import { staffActorFromToken } from "./staff-pin";
 import type { PosApprovalViewResult, RegisterRefusal } from "./register-shared";
@@ -60,7 +61,7 @@ export async function cancelPosApprovalAction(args: Target & { requestId: string
     if (!requestId) return refuse("VALIDATION", "ไม่ระบุคำขอ");
     let actor: Actor = s.actor;
     if (typeof args?.staffToken === "string") {
-      const ta = await staffActorFromToken({ tenantId: s.tenantId, unitId: s.unitId, deviceId: args.deviceId }, args.staffToken);
+      const ta = await staffActorFromToken({ tenantId: s.tenantId, unitId: s.unitId, deviceId: await cookieDeviceId({ tenantId: s.tenantId, unitId: s.unitId }) }, args.staffToken); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts · strip) · deviceId ของ client ถูกทิ้ง ◂
       if (!ta) return refuse("STAFF_TOKEN_INVALID", "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง");
       actor = ta;
     }

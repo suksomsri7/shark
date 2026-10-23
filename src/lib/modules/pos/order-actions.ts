@@ -35,6 +35,7 @@ import type {
   PayOrderResult,
 } from "./order-shared";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
+import { bindCtxDevice, cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
 
@@ -69,7 +70,7 @@ async function sessionScope(args: unknown, need: keyof typeof NEED): Promise<{ c
     }
   });
   if (!allowed) return { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้าน" };
-  const deviceId = typeof a.deviceId === "string" && a.deviceId ? a.deviceId : undefined;
+  const deviceId = await cookieDeviceId({ tenantId: auth.active.tenantId, unitId: unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts) · deviceId ของ client ถูกทิ้ง ◂
   return {
     ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId ? { deviceId } : {}) },
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
@@ -79,8 +80,11 @@ async function sessionScope(args: unknown, need: keyof typeof NEED): Promise<{ c
 /** คีย์ออเดอร์ (จอ "+ คีย์ออเดอร์" · MANUAL/CHAT/ช่องทางกำหนดเอง) — input ตามตัวแกะ parseIngestInput */
 export async function ingestOrderAction(args: Target & { input: unknown }): Promise<IngestOrderResult> {
   try {
-    const s = await sessionScope(args, "create");
-    if ("ok" in s) return s;
+    const s0 = await sessionScope(args, "create");
+    if ("ok" in s0) return s0;
+    const sb = await bindCtxDevice(s0.ctx); // POS P5.2 ▸ CD-P52-O4b: งานนี้ผูกกะ/เครื่อง — ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED · เพิกถอน = DEVICE_REVOKED ◂
+    if (!sb.ok) return sb;
+    const s = { ...s0, ctx: sb.ctx };
     return await ingestOrder(s.ctx, s.actor, args?.input);
   } catch (e) {
     unstable_rethrow(e);
@@ -91,8 +95,11 @@ export async function ingestOrderAction(args: Target & { input: unknown }): Prom
 /** รับออเดอร์ (+ เวลาเตรียม) — ช่องทาง PLATFORM เปิดบิลทันที */
 export async function acceptOrderAction(args: Target & { id: string; prepMinutes?: number }): Promise<OrderActionResult> {
   try {
-    const s = await sessionScope(args, "accept");
-    if ("ok" in s) return s;
+    const s0 = await sessionScope(args, "accept");
+    if ("ok" in s0) return s0;
+    const sb = await bindCtxDevice(s0.ctx); // POS P5.2 ▸ CD-P52-O4b: งานนี้ผูกกะ/เครื่อง — ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED · เพิกถอน = DEVICE_REVOKED ◂
+    if (!sb.ok) return sb;
+    const s = { ...s0, ctx: sb.ctx };
     return await acceptOrder(s.ctx, s.actor, { id: args?.id, ...(args?.prepMinutes !== undefined ? { prepMinutes: args.prepMinutes } : {}) });
   } catch (e) {
     unstable_rethrow(e);
@@ -165,8 +172,11 @@ export async function payOrderAction(
   args: Target & { id: string; idempotencyKey: string; payMethods: { type: string; amountSatang: number; reference?: string }[]; cashReceivedSatang?: number },
 ): Promise<PayOrderResult> {
   try {
-    const s = await sessionScope(args, "create");
-    if ("ok" in s) return s;
+    const s0 = await sessionScope(args, "create");
+    if ("ok" in s0) return s0;
+    const sb = await bindCtxDevice(s0.ctx); // POS P5.2 ▸ CD-P52-O4b: งานนี้ผูกกะ/เครื่อง — ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED · เพิกถอน = DEVICE_REVOKED ◂
+    if (!sb.ok) return sb;
+    const s = { ...s0, ctx: sb.ctx };
     return await payOrder(s.ctx, s.actor, {
       id: args?.id,
       idempotencyKey: args?.idempotencyKey,

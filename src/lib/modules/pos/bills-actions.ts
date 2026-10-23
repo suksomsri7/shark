@@ -12,6 +12,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { posMembership } from "./access";
+import { cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 import { billDetail, billsPageData, voidSaleByActor } from "./bills";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import type { BillDetailResult, BillsPageDataResult, BillsPageQuery, BillsRefusal, VoidSaleActionResult } from "./bills-shared";
@@ -97,7 +98,8 @@ export async function voidSaleAction(args: {
     const s = fromSession(auth, args);
     const pin = typeof args?.managerPin === "string" ? args.managerPin : null;
     if (!canAny(s.m, pin !== null ? ["pos.sale.void", "pos.sale.create"] : ["pos.sale.void"])) return { ok: false, code: "NO_PERMISSION", message: "บัญชีนี้ยังไม่มีสิทธิ์ยกเลิกบิล — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ" };
-    const ctx = typeof args?.deviceId === "string" ? { ...s.ctx, deviceId: args.deviceId } : s.ctx;
+    const dev = await cookieDeviceId({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts · strip) · deviceId ของ client ถูกทิ้ง ◂
+    const ctx = dev ? { ...s.ctx, deviceId: dev } : s.ctx;
     const res = await voidSaleByActor(ctx, s.actor, {
       unitId: s.ctx.unitId,
       saleId: typeof args?.saleId === "string" ? args.saleId : "",

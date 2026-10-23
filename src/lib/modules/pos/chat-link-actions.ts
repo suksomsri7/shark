@@ -8,6 +8,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
+import { cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 import { posChatSettingsOf, setPosChatSettings, type PosChatSettingsResult } from "./chat-link";
 
 async function session() {
@@ -64,7 +65,8 @@ export async function requestChatPaymentAction(args: { systemId: string; unitId:
   try {
     const s = await session();
     if (!can(s.m, ["pos.order.accept"])) return DENIED;
-    const ctx = { tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId), ...(args?.deviceId ? { deviceId: str(args.deviceId) } : {}) };
+    const dev = await cookieDeviceId({ tenantId: s.tenantId, unitId: str(args?.unitId) }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts · strip) · deviceId ของ client ถูกทิ้ง ◂
+    const ctx = { tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId), ...(dev ? { deviceId: dev } : {}) };
     const root = await import("@/lib/pos-chat-bridges");
     return await root.requestChatPayment(ctx, s.actor, { orderId: str(args?.orderId) });
   } catch (e) {

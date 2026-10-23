@@ -11,6 +11,7 @@ import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { listStaffForDevice, setOwnStaffPin, setStaffPin, unlockStaffPin, verifyStaffPin, type StaffPinCtx } from "./staff-pin";
 import type { ListStaffForDeviceResult, RegisterActor, RegisterRefusal, StaffPinOk, VerifyStaffPinOk } from "./register-shared";
+import { bindCtxDevice, cookieDeviceId, type DeviceBindRefusal } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
 type Session = Awaited<ReturnType<typeof requireTenant>>;
@@ -37,7 +38,7 @@ async function scoped(where: string, args: unknown): Promise<{ ctx: StaffPinCtx;
   } catch {
     return refusal("PERMISSION_DENIED", "บัญชีของเครื่องนี้ยังไม่มีสิทธิ์ขายที่สาขานี้");
   }
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  const deviceId = await cookieDeviceId({ tenantId: auth.active.tenantId, unitId: unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts) · deviceId ของ client ถูกทิ้ง ◂
   return {
     ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) },
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
@@ -72,13 +73,16 @@ export async function setOwnStaffPinAction(args: Target & { pin: string }): Prom
 }
 
 /** ใส่ PIN ที่เครื่อง → โทเคนผู้ขาย (userId = คนที่แตะในรายชื่อ ถ้ามี) */
-export async function verifyStaffPinAction(args: Target & { deviceId: string; pin: string; userId?: string | null; managerUserId?: string | null; managerPin?: string | null }): Promise<VerifyStaffPinOk | RegisterRefusal> {
+export async function verifyStaffPinAction(args: Target & { deviceId: string; pin: string; userId?: string | null; managerUserId?: string | null; managerPin?: string | null }): Promise<VerifyStaffPinOk | RegisterRefusal | DeviceBindRefusal> {
   try {
-    const s = await scoped("verifyStaffPinAction", args);
-    if ("ok" in s) return s;
+    const s0 = await scoped("verifyStaffPinAction", args);
+    if ("ok" in s0) return s0;
+    const sb = await bindCtxDevice(s0.ctx); // POS P5.2 ▸ CD-P52-O4b: งานนี้ผูกกะ/เครื่อง — ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED · เพิกถอน = DEVICE_REVOKED ◂
+    if (!sb.ok) return sb;
+    const s = { ...s0, ctx: sb.ctx };
     // POS P3.5 ▸ R4 มติ 4: override นอกตารางงานด้วย PIN ผู้จัดการ (คีย์ตรงตัว · ไม่ส่ง = ทางเดิม) ◂
     const override = typeof args?.managerUserId === "string" && args.managerUserId ? { managerUserId: args.managerUserId, managerPin: typeof args?.managerPin === "string" ? args.managerPin : "" } : {};
-    return await verifyStaffPin(s.ctx, { unitId: s.ctx.unitId, deviceId: typeof args?.deviceId === "string" ? args.deviceId : "", pin: args?.pin, userId: typeof args?.userId === "string" ? args.userId : null, ...override });
+    return await verifyStaffPin(s.ctx, { unitId: s.ctx.unitId, deviceId: s.ctx.deviceId ?? (typeof args?.deviceId === "string" ? args.deviceId : "") /* POS P5.2 ▸ CD-P52-O4b: โทเคนผูกเครื่องของคุกกี้ · รหัสใน payload ใช้ได้เฉพาะสาขาที่ไม่มีเครื่องลงทะเบียนเลย (bind ผ่านมาโดยไม่มีเครื่อง = ไม่มีเครื่องให้สวมรอย) ◂ */, pin: args?.pin, userId: typeof args?.userId === "string" ? args.userId : null, ...override });
   } catch (e) {
     return unexpected("verifyStaffPinAction", e);
   }
