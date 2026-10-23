@@ -362,6 +362,7 @@ function baseRevs(): string[] {
   add(gitBuf(["rev-parse", "--verify", "-q", "bafdf89f^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 qc-pos-p2.7 ST1/ST3 · lane-pin + bafdf89f = tip หลัง merge P3.6 S: PosSale +3 คอลัมน์เครดิต · register.ts บล็อก P3.6)
   add(gitBuf(["rev-parse", "--verify", "-q", "c4584062^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 23.10 (CD-RP21 qc-pos-p2.7 ST1/ST3 · lane-pin + c4584062 = tip หลัง merge P5.2 fix A+B+C+F: register.ts F7 ยกเลิกข้ามสาขา + approvedDiscountOf(unitId) R1 F2)
   add(gitBuf(["rev-parse", "--verify", "-q", "e9b765b4^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 23.10 (CD-RP22 qc-pos-p2.7 ST1/ST3 · lane-pin + e9b765b4 = tip หลัง merge P5.1 batch B: restaurant/order.ts resolveLines ราคาติดลบ (R1 F2) · register.ts MA1b quote mirror)
+  add(gitBuf(["rev-parse", "--verify", "-q", "6b1f84a5^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 23.10 (CD-RP23 qc-pos-p2.7 ST1/ST3 · lane-pin + 6b1f84a5 = tip หลัง merge P5.1 batch C: ริบมัดจำ no-show · ใบรับโมดูล TRANSFER · รายงานกะ)
   baseRevsCache = out;
   return out;
 }
