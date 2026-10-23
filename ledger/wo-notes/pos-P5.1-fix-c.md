@@ -51,3 +51,31 @@ Runner note: pre-submit + gates-all were run from scratchpad copies with ISO_MEM
 
 ## 6. Not done / not verified
 - Strict tsc (controller). No UI/visual run of the new sheet. `qc-pos-p5.2` DB (R1 fires every action row; new row CASHIER=deny) not run — other lane's suite; matrix `--check` green.
+
+## 7. R1 round 1 (R1 of batch C · controller ruling **CD-P51-O10** · 23 Oct)
+Red-before = oracle 2fbcebbd on product c683f5e9 src (`logs/redbefore-o10/`) + R1 probes `scratchpad/p51-fix-c-r1/logs/probe-c*.log` · green-after = 0430b249 (`logs/final-o10-0430b249/`).
+| fix | commit | change | red-before | green-after |
+|---|---|---|---|---|
+| F1 HIGH tier discount | bd5a1b08 | forfeit sell input `memberAttachOnly: true` when the deposit has a member (createSale skips tier/benefits) | MA12c: NO_SHOW "ริบมัดจำไม่สำเร็จ" · 0 bills · OPEN 50,000 · MA13b: INTERNAL (probe Q2: PAYMENT_MISMATCH 50,000 ≠ 45,000) | ✅ MA12c / MA13b: 1 bill 50,000 · discount 0 · deposit 0 USED |
+| F2 MED member effects | fa77a9c5 | `member-bridges.ts loadSale` ⇒ null for `dep-forfeit:` bills (paid/void/refund paths: points · totalSpent · PURCHASE timeline · first purchase · tier eval · campaign · referral) · `stamp autoStampFromSaleEvent` skips them | probe Q1: pointEarned 20 · EARN 20 · totalSpent 0 → 50,000 · PURCHASE row | ✅ MA12c / MA13b: points 0 · totalSpent +0 · timeline 0 |
+| F3 MED voided key | bd5a1b08 | `forfeitKeyOf`: PAID/REFUNDED bill on the key = dup · VOIDED ⇒ `dep-forfeit:<id>-r<n>` · voided mid-tx ⇒ retry | MA12d: re-forfeit = old VOIDED bill · deposit OPEN 50,000 (= probe Q4) | ✅ new bill PAID · deposit 0 USED |
+| F4 MED leave NO_SHOW | bd5a1b08 | `setAppointmentStatus`: previous NO_SHOW → any other status ⇒ `moduleUnforfeitDeposit` (PAID + unrefunded forfeit bill ⇒ `voidSale` + `depositSaleVoided` now) before the status update · void refused / refunded ⇒ status unchanged + message naming the bill (`{ok:false, unforfeit}`) | MA12e: bill PAID · deposit USED 0 · DONE [CASH 200,000] · Σ revenue 250,000 | ✅ bill VOIDED · OPEN 50,000 · DONE [DEPOSIT 50,000 + CASH 150,000] · Σ 200,000 |
+| F5 surfacing | bd5a1b08 | `setStatusAction`: `{ok:false}` ⇒ `logOps WARN pos.deposit.forfeit_failed` (forfeit failures) + redirect `?err=` · booking page shows the reason card (`booking-status-error`) · `PAYMENT_MISMATCH` ⇒ VALIDATION message (not INTERNAL) · DEPOSIT_CLOSED = no failure | MA12f: no redirect · 0 OpsEvent (probe Q2/Q7: silent / INTERNAL) | ✅ redirect `?err=` · OpsEvent WARN ≥ 1 · deposit OPEN |
+| F6 commission | b979a6f2 | `staff-commission accrualRows` returns [] for `dep-forfeit:` bills | MA13 ACCRUE 2,500 (= probe Q6) | ✅ ACCRUE 0 |
+| F7 button | 0430b249 (+ lookup `canForfeit` in bd5a1b08) | lookup row `canForfeit` = module deposit ∧ `pos.sale.manage`; button rendered only then · UI inventory 7 rows roles owner/manager · `hiddenFor: ["cashier"]` | (static) button shown to every role | ✅ fitness F15.3a green · matrix `--check` ok |
+| F8(b) reports | fa23e6c7 | `shift.ts computeReport` + `reports.ts reportPayments`: no-ref DEPOSIT row on a POS_DEPOSIT receipt/CN ⇒ TRANSFER (same rule as `closeDaySummary`) | MA14b: shift T0/D50,000 · day T50,000/D0 · payments T0/D50,000 | ✅ all three T50,000/D0 |
+| F9 other branch | (oracle) | MA13 + manager of branch A on branch H | NOT_FOUND (control · already denied) | ✅ NOT_FOUND |
+| F8(a)(c) | ledger | OP lines only (W41 = controller) | — | — |
+Oracle (ORACLE-EDIT CD-P51-O10 · 2fbcebbd): + MA12c MA12d MA12e MA12f MA13b MA14b (`C2_IDS`, finding `RC-Fn`) · MA13 + other-branch manager + commission ACCRUE · fixture: BOOKING units BM (MEMBER + new POINT system) / BZ, MGR manager, tier VIP 10 % (lazy). `P29B_L3_PIN` unchanged (e3b5b815 — pinned functions/suites not touched this round).
+Design notes: (1) refunded forfeit bill (refundedSatang > 0) ⇒ leaving NO_SHOW is refused (no auto void of a partly refunded bill). (2) The status-refusal path (void refused) is not exercised by an oracle row (needs a closed-shift forfeit bill); covered by reasoning + the `{ok:false}` branch. (3) Commits group F1/F3/F4/F5 because they share `deposit.ts` hunks.
+Suites at 0430b249 (QC4 · iso 3G · qc4.sh · POS gate lock · sequential):
+| suite | result |
+|---|---|
+| qc-pos-p5.1 ×2 | **27/27 · 27/27** (guardHits 0 · pumpErrors 0 · residue 0) · `--no-db` 2/2 |
+| p2.9b · booking-deposit · hotel-public · rental-public | 53/53 · 18/18 · 15/15 · 16/16 |
+| p1.6 · hf-tx · money-mapping · account-cpa | 48/48 · 22/22 · 5/5 · 107/107 |
+| p1.9 · p1.9b · closeday (unforced) | 53/53 · 22/22 · 22/22 |
+| p3.6 · p3.5 (extra · commission) | 51/52 **ST4** · 54/55 **ST2** — file pin "shift.ts byte-equal to pin" (R2 S5.12 / มติ 11): F8(b) changes `computeReport` as ruled ⇒ needs a controller re-pin/ORACLE-EDIT (all DB rows green) |
+| member suites of the manifest (m2.6 m2.7 m2.8 m1.7 · unforced) | 0/1 each = the manifest's accepted setup crash on QC4 ("reading 'role'" · member seed ≠ member-expected.json) — no QC4 member suite exercises purchase points; MA12c/MA13b cover the forfeit side |
+| p2.10 --no-db | 1/2 ST2 lane pin only (service.ts +5 −1 · oracle files CONTROLLER-DECISION) |
+| fitness (iso) · fitness-pos · authz matrix `--check` | 53/53 · 8/8 · ok |
