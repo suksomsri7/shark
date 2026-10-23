@@ -99,6 +99,10 @@ async function resolveLines(
         opt.push({ choiceId: ch.id, groupSnapshot: g.name, choiceSnapshot: ch.name, priceDelta: ch.priceDelta });
       }
     }
+    // POS P5.1 ▸ R1 F2 (MA8): ราคาต่อหน่วยรวมตัวเลือกติดลบ = ปฏิเสธตอนสั่ง (กติกาเดียวกับ priceCart ของหน้าขาย V2) — เดิมสั่งได้แล้วเช็คบิลไม่ผ่าน (createSale MA8) ◂
+    if (item.basePrice + optionsTotal < 0 && !unavailable.includes(c.menuItemId)) {
+      return { ok: false, err: { code: "BAD_OPTIONS", reason: "ราคาต่อชิ้นรวมตัวเลือกต้องไม่ติดลบ — แก้ราคาตัวเลือกในเมนูก่อน" }, index: ci };
+    }
 
     lines.push({
       menuItemId: item.id,
