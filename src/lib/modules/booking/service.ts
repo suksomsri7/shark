@@ -1,7 +1,7 @@
 import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { callerTx } from "@/lib/core/caller-tx"; // POS P5.1 ▸ MA2: ใบรับมัดจำในธุรกรรมของ moduleTakeDeposit ◂
-import type { AppointmentStatus, PosPayType } from "@prisma/client";
+import type { AppointmentStatus, PosPayType, Prisma } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import * as pos from "@/lib/modules/pos/service";
@@ -768,6 +768,41 @@ export async function setAppointmentStatus(
       });
     }
   });
+  // POS P5.1 ▸ MA12 (R1 F3 · CD-P51-O8a · ค่าปริยายระหว่าง W39 ยังเปิด): ไม่มาตามนัด = ริบมัดจำที่ยัง OPEN อัตโนมัติ หลัง commit สถานะ ·
+  //   CANCELLED ไม่ริบ (O8b — มัดจำ OPEN ให้คนตัดสินที่หน้าบิล) · ล้ม = มัดจำยัง OPEN (log · ริบ/คืนที่หน้าบิลได้) · กดซ้ำ = คีย์เดิม ไม่มีบิลที่สอง ◂
+  if (status === "NO_SHOW") return forfeitNoShowDeposit(tenantId, unitId, appointmentId);
+  return null;
+}
+
+// POS P5.1 ▸ MA12 (R1 F3 · CD-P51-O8a): จุดเรียก createSale จุดเดียวของไฟล์นี้ (ทะเบียน U4/HT6.4/L2 = 1) — ใบรับมัดจำ (recordDeposit) กับ
+//   บิลริบมัดจำ (NO_SHOW) ใช้ร่วมกัน · client = callerTx(tx) ของธุรกรรมใน pos/deposit (HT6.1) ◂
+function bookingTxSale(tx: Prisma.TransactionClient, input: Parameters<typeof pos.createSale>[0]) {
+  return pos.createSale(input, callerTx(tx));
+}
+
+/**
+ * POS P5.1 ▸ MA12 (CD-P51-O8a): บิล "มัดจำริบ — ไม่มาตามนัด" (pos/deposit.moduleForfeitDeposit · ยอด = คงเหลือ · จ่ายด้วยแถว DEPOSIT อ้างใบรับ ⇒ รายได้ ·
+ * มัดจำ USED · audit pos.deposit.forfeit) · ไม่มีมัดจำ/มัดจำแบบเดิม (ไม่มี PosDeposit)/ปิดแล้ว = ไม่ทำอะไร · ไม่โยนเข้าหาผู้เรียก ◂
+ */
+async function forfeitNoShowDeposit(tenantId: string, unitId: string, appointmentId: string): Promise<{ forfeited: boolean; saleId?: string; reason?: string }> {
+  const appt = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { status: true, depositPaidAt: true, depositSaleId: true } });
+  if (!appt || appt.status !== "NO_SHOW" || !appt.depositPaidAt || !appt.depositSaleId) return { forfeited: false };
+  const posSystemId = await systemForUnit(tenantId, unitId, "POS");
+  if (!posSystemId) return { forfeited: false };
+  try {
+    const r = await (await import("@/lib/modules/pos/deposit")).moduleForfeitDeposit(
+      { tenantId, unitId, receiptSaleId: appt.depositSaleId, reason: "ไม่มาตามนัด", actorId: "module:booking" },
+      (tx, p) => bookingTxSale(tx, { tenantId, unitId, systemId: posSystemId, sourceModule: "BOOKING", sourceId: appointmentId, ...p }),
+    );
+    if (r.ok === false) {
+      if (r.code !== "DEPOSIT_CLOSED") console.error(`[booking] ริบมัดจำนัด ${appointmentId} ไม่สำเร็จ: ${r.code}`);
+      return { forfeited: false, reason: r.message };
+    }
+    return "legacy" in r ? { forfeited: false } : { forfeited: true, saleId: r.saleId };
+  } catch (e) {
+    console.error(`[booking] ริบมัดจำนัด ${appointmentId} ล้ม`, e);
+    return { forfeited: false, reason: "ริบมัดจำไม่สำเร็จ — ริบหรือคืนมัดจำที่หน้าบิล" };
+  }
 }
 
 // ── มัดจำ (WO Wave3-A: กัน no-show) ─────────────────────────────
@@ -824,19 +859,17 @@ export async function recordDeposit(
     const sale = await posDeposit.moduleTakeDeposit(
       { tenantId: ctx.tenantId, unitId: ctx.unitId, systemId: posSystemId, keyBase: `booking-deposit-${appointmentId}`, amountSatang: amount, payType: payMethod, customerId: appt.customerId ?? null, customerName: appt.customerName ?? null, note: `มัดจำ ${appt.service.name}`, createdBy: "module:booking" },
       (tx, k) =>
-        pos.createSale(
-          {
-            tenantId: ctx.tenantId,
-            unitId: ctx.unitId,
-            systemId: posSystemId,
-            sourceModule: k.sourceModule,
-            sourceId: k.sourceId,
-            idempotencyKey: k.idempotencyKey,
-            lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount }],
-            payMethods: [{ type: k.payType, amountSatang: amount }],
-          },
-          callerTx(tx),
-        ),
+        bookingTxSale(tx, {
+          // POS P5.1 ▸ MA12: จุดเรียกเดิมย้ายเข้า bookingTxSale (ใช้ร่วมกับบิลริบ) · payload เดิมทุกช่อง ◂
+          tenantId: ctx.tenantId,
+          unitId: ctx.unitId,
+          systemId: posSystemId,
+          sourceModule: k.sourceModule,
+          sourceId: k.sourceId,
+          idempotencyKey: k.idempotencyKey,
+          lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount }],
+          payMethods: [{ type: k.payType, amountSatang: amount }],
+        }),
     );
     saleId = sale.saleId;
   }

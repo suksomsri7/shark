@@ -326,7 +326,7 @@ async function sameTake(db: Db, d: DepositRow, s: RegisterCtx, amount: number, c
 
 // ═══════════════════════ R9 ค้นมัดจำ (จอชำระ) ═══════════════════════
 // POS P2.9b ▸ fix1 มติ 6 (hunt D5): remainingSatang/amountSatang = null เมื่อยังไม่ยืนยันผู้ถือ (ค้นด้วยชื่อ/เบอร์ · มัดจำ walk-in ที่มีเบอร์แต่ไม่ส่ง/ส่ง 4 หลักผิด) ◂
-export type RegisterDepositLookupRow = Pick<DepositView, "id" | "receiptNo" | "customerName" | "phoneMasked" | "status" | "expiresAt"> & { remainingSatang: number | null; amountSatang: number | null; memberLinked: boolean; needsPhoneLast4: boolean };
+export type RegisterDepositLookupRow = Pick<DepositView, "id" | "receiptNo" | "customerName" | "phoneMasked" | "status" | "expiresAt"> & { remainingSatang: number | null; amountSatang: number | null; memberLinked: boolean; needsPhoneLast4: boolean; fromModule: boolean }; // POS P5.1 ▸ MA13 fromModule = มัดจำของการจอง (ริบได้ที่หน้าบิล · CD-P51-O8c) ◂
 export type RegisterDepositLookupResult = { ok: true; deposits: RegisterDepositLookupRow[] } | RegisterRefusal;
 const LOOKUP_MAX = 20;
 /**
@@ -364,7 +364,7 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
         const needsPhoneLast4 = !d.customerId && !!d.phoneLast4;
         // POS P2.9b ▸ fix2 มติ 1 (R2 F1): ค้นด้วยสมาชิก = เห็นยอดเฉพาะมัดจำของสมาชิกนั้น/ที่ถูกรวมเข้า (ไม่ใช่มัดจำของสมาชิกอื่นที่ชื่อตรงคำค้น) ◂
         const holder = (q && d.receiptNo === q && (!needsPhoneLast4 || phoneOk.has(d.id))) || (!!d.customerId && family.includes(d.customerId));
-        return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: holder ? v.remainingSatang : null, status: v.status, expiresAt: v.expiresAt, amountSatang: holder ? v.amountSatang : null, memberLinked: !!d.customerId, needsPhoneLast4 };
+        return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: holder ? v.remainingSatang : null, status: v.status, expiresAt: v.expiresAt, amountSatang: holder ? v.amountSatang : null, memberLinked: !!d.customerId, needsPhoneLast4, fromModule: d.idempotencyKey.startsWith(MODULE_DEPOSIT_KEY) }; // POS P5.1 ▸ MA13 ◂
       }),
     };
   });
@@ -751,6 +751,147 @@ export async function moduleRefundDepositAfterVoid(input: { tenantId: string; un
   return r.ok ? { ...r, refundSatang: r.duplicated ? 0 : left } : r;
 }
 // ◂ POS P5.1 MA2 MA4
+
+// ═══════════════════════ POS P5.1 ▸ MA12 MA13 (R1 F3 · CD-P51-O8) ริบมัดจำ ═══════════════════════
+// 🔴 CD-P51-O8 (ค่าปริยายระหว่าง W39 ยังเปิด): ริบ = บิล "มัดจำริบ — ไม่มาตามนัด" บรรทัดเดียว (ไม่ผูกสินค้า · ยอด = คงเหลือ · VAT ตามค่าตั้งของบิล)
+//    จ่ายด้วยแถว {DEPOSIT, refSaleId = ใบรับ} ⇒ createSale ตัดมัดจำ (APPLY · VAT ที่รับไว้ปล่อยครบ) ⇒ มัดจำ USED · รายได้รับรู้ครั้งเดียว · ไม่มีแถวเงินสด
+//    ผ่าน createSale จุดเดิมของผู้เรียก (จองคิว = จุดเดียวของ booking/service.ts · หน้าขาย = regCreateSale) — ไม่มีจุดเรียกใหม่ (HT6.1 · HT6.4)
+//    คีย์ dep-forfeit:<depositId> ⇒ ริบซ้ำ/สองทาง (NO_SHOW + หน้าขาย) = บิลเดียว · audit pos.deposit.forfeit (targetType PosDeposit · เหตุผล · ผู้ทำ)
+//    (b) ยกเลิก (จองคิว CANCELLED · โรงแรม cancelReservation · เช่า cancelBooking) ไม่เรียกที่นี่ = มัดจำ OPEN ให้คนตัดสินที่หน้าขาย (คืนหรือริบ)
+//    (d) มัดจำแบบเดิม (ก่อน MA2 · ไม่มี PosDeposit) = ไม่พบ ⇒ ไม่แตะ
+export const FORFEIT_LINE_NAME = "มัดจำริบ — ไม่มาตามนัด";
+const KEY_FORFEIT = "dep-forfeit:";
+/** คีย์ PosDeposit ของมัดจำโมดูล (moduleTakeDeposit) — หน้าขายริบได้เฉพาะมัดจำชนิดนี้ (O8c) */
+const MODULE_DEPOSIT_KEY = `${KEY_DEPOSIT}mod:`;
+const FORFEIT_PERMISSION = "pos.sale.manage";
+export type DepositForfeitSellInput = {
+  idempotencyKey: string;
+  lines: { name: string; qty: number; unitPriceSatang: number }[];
+  payMethods: { type: "DEPOSIT"; amountSatang: number; refSaleId: string }[];
+  memberId?: string;
+  note?: string;
+};
+/** ผู้เรียกส่งฟังก์ชันที่เรียก createSale จุดเดิมของตัวเองด้วย client = callerTx(tx) (แบบ ModuleDepositSell) */
+export type DepositForfeitSell = (client: Tx, p: DepositForfeitSellInput) => Promise<{ saleId: string; status?: string }>;
+export type DepositForfeitResult = { ok: true; saleId: string; satang: number; deposit: DepositView; duplicated?: boolean } | { ok: false; code: RegisterRefusalCode; message: string };
+
+async function forfeitDeposit(
+  a: { tenantId: string; unitId: string; depositId: string; reason: string; note?: string; actorType: "USER" | "SYSTEM"; actorId: string; source: string },
+  sell: DepositForfeitSell,
+): Promise<DepositForfeitResult> {
+  const key = KEY_FORFEIT + a.depositId;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const d = await prisma.posDeposit.findFirst({ where: { id: a.depositId, tenantId: a.tenantId, unitId: a.unitId } });
+    if (!d) return { ok: false, code: "DEPOSIT_NOT_FOUND", message: MSG.NOT_FOUND };
+    const prior = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: a.tenantId, idempotencyKey: key } }, select: { id: true, grandTotalSatang: true } });
+    if (prior) return { ok: true, saleId: prior.id, satang: prior.grandTotalSatang, deposit: viewOf(d), duplicated: true };
+    const remaining = d.amountSatang - d.usedSatang - d.refundedSatang;
+    if (d.status !== "OPEN" || remaining <= 0) return { ok: false, code: "DEPOSIT_CLOSED", message: MSG.CLOSED };
+    const lines = [{ name: FORFEIT_LINE_NAME, qty: 1, unitPriceSatang: remaining }];
+    try {
+      const out = await prisma.$transaction(
+        async (tx) => {
+          // ริบพร้อมกันสองทาง (NO_SHOW ∥ หน้าขาย) = เรียงคิวที่คีย์ · คนที่สองเห็นบิลของคนแรก (ไม่เขียน audit ซ้ำ)
+          await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${a.tenantId}::text || ':' || ${key}::text))) l`;
+          const again = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: a.tenantId, idempotencyKey: key } }, select: { id: true, grandTotalSatang: true } });
+          if (again) return { kind: "dup" as const, saleId: again.id, satang: again.grandTotalSatang };
+          // ล็อก/ตัดมัดจำอยู่ในธุรกรรมของบิล (createSale · ลำดับล็อกเดียวกับทุกบิล) — คงเหลือเปลี่ยน = DEPOSIT_EXCEEDS ⇒ อ่านใหม่
+          const r = await sell(tx, {
+            idempotencyKey: key,
+            lines,
+            payMethods: [{ type: "DEPOSIT", amountSatang: remaining, refSaleId: d.receiptSaleId }],
+            ...(d.customerId ? { memberId: d.customerId } : {}), // มัดจำของสมาชิกใช้ได้เฉพาะบิลของสมาชิกนั้น (มติ 4)
+            ...(a.note ? { note: a.note } : {}),
+          });
+          if (r.status !== undefined && r.status !== "PAID") throw new DepositAbort(refuse("VALIDATION", "บิลริบมัดจำไม่สำเร็จ — ลองอีกครั้ง"));
+          await tx.auditLog.create({
+            data: {
+              tenantId: a.tenantId,
+              unitId: a.unitId,
+              actorType: a.actorType,
+              actorId: a.actorId,
+              action: "pos.deposit.forfeit",
+              targetType: "PosDeposit",
+              targetId: d.id,
+              after: { saleId: r.saleId, receiptSaleId: d.receiptSaleId, depositReceiptNo: d.receiptNo, satang: remaining, reason: a.reason, source: a.source } as Prisma.InputJsonValue,
+            },
+          });
+          return { kind: "new" as const, saleId: r.saleId, satang: remaining };
+        },
+        { timeout: 20_000, maxWait: 15_000 },
+      );
+      if (out.kind === "new") await afterSaleCommitted({ tenantId: a.tenantId, unitId: a.unitId, lines }, out.saleId);
+      const dep = await prisma.posDeposit.findUniqueOrThrow({ where: { id: d.id } });
+      return { ok: true, saleId: out.saleId, satang: out.satang, deposit: viewOf(dep), ...(out.kind === "dup" ? { duplicated: true } : {}) };
+    } catch (e) {
+      if (e instanceof DepositAbort) return { ok: false, code: e.refusal.code, message: e.refusal.message ?? e.refusal.code };
+      if (e instanceof PosSaleError) {
+        if (e.code === "DEPOSIT_EXCEEDS") continue; // มีบิลใช้มัดจำแทรกระหว่างอ่านกับตัด ⇒ อ่านคงเหลือใหม่
+        return { ok: false, code: e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, message: e.message };
+      }
+      const code = (e as { code?: unknown } | null)?.code;
+      if (code === "P2002" || code === "P2034" || code === "P2028") continue;
+      throw e;
+    }
+  }
+  return { ok: false, code: "BUSY", message: "ระบบไม่ว่าง — ลองอีกครั้ง" };
+}
+
+/**
+ * O8a — ริบมัดจำของโมดูล (จองคิว NO_SHOW): ใบรับไม่มี PosDeposit (มัดจำแบบเดิม/standalone) = {legacy} ไม่ทำอะไร ·
+ * ปิดแล้ว (ใช้/คืน) = DEPOSIT_CLOSED · ไม่ผ่าน RBAC ของหน้าขาย (สิทธิ์ตรวจที่ action ของโมดูลแล้ว) · audit actorType SYSTEM
+ */
+export async function moduleForfeitDeposit(
+  input: { tenantId: string; unitId: string; receiptSaleId: string | null | undefined; reason: string; actorId: string },
+  sell: DepositForfeitSell,
+): Promise<DepositForfeitResult | { ok: true; legacy: true }> {
+  if (!input.receiptSaleId) return { ok: true, legacy: true };
+  const d = await prisma.posDeposit.findUnique({ where: { receiptSaleId: input.receiptSaleId }, select: { id: true, tenantId: true, unitId: true } });
+  if (!d || d.tenantId !== input.tenantId) return { ok: true, legacy: true };
+  if (d.unitId !== input.unitId) return { ok: false, code: "DEPOSIT_NOT_FOUND", message: MSG.NOT_FOUND };
+  return forfeitDeposit({ tenantId: input.tenantId, unitId: input.unitId, depositId: d.id, reason: input.reason, actorType: "SYSTEM", actorId: input.actorId, source: input.actorId }, sell);
+}
+
+export type RegisterForfeitDepositInput = { depositId: string; reason: string };
+export type RegisterForfeitDepositResult = { ok: true; sale: { id: string; receiptNo: string | null; grandTotalSatang: number }; deposit: DepositView; duplicated?: boolean } | RegisterRefusal;
+/**
+ * O8c — หน้าขาย "ริบมัดจำ" ของมัดจำโมดูลที่ OPEN (ยกเลิกจอง/ไม่มา · คนตัดสิน): pos.sale.manage ที่สาขา · เหตุผลบังคับ (REASON_REQUIRED) ·
+ * มัดจำที่รับหน้าขาย (ไม่ใช่ของโมดูล) = VALIDATION · บิลผ่าน regCreateSale (จุดเรียกเดิมของหน้าขาย · sourceModule POS · sourceId = มัดจำ) ·
+ * กะของเครื่อง (ถ้ามี) ผูกกับบิล · ไม่มีเงินเข้าออก ⇒ ไม่บังคับกะ
+ */
+export async function registerForfeitDeposit(ctx: RegisterCtx, actor: RegisterActor, input: RegisterForfeitDepositInput, client?: Db): Promise<RegisterForfeitDepositResult> {
+  return guard("registerForfeitDeposit", async (): Promise<RegisterForfeitDepositResult> => {
+    const db = client ?? prisma;
+    const sc = await registerScopeCheck(ctx, actor, db);
+    if (sc.ok === false) return sc;
+    const s = sc.ctx;
+    if (!evaluate(sc.actor, { module: "pos", action: FORFEIT_PERMISSION, unitId: s.unitId })) return refuse("PERMISSION_DENIED", "ริบมัดจำได้เฉพาะผู้จัดการ (สิทธิ์ pos.sale.manage)");
+    if (!isRecord(input)) return refuse("VALIDATION");
+    const reason = cleanText(input.reason, 200);
+    if (reason === false) return refuse("VALIDATION", "เหตุผลยาวได้ไม่เกิน 200 ตัวอักษร");
+    if (!reason) return refuse("REASON_REQUIRED", "ระบุเหตุผลการริบมัดจำ");
+    if (!isId(input.depositId)) return refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND);
+    const d = await db.posDeposit.findFirst({ where: { id: input.depositId, tenantId: s.tenantId, unitId: s.unitId }, select: { id: true, idempotencyKey: true } });
+    if (!d) return refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND);
+    if (!d.idempotencyKey.startsWith(MODULE_DEPOSIT_KEY)) return refuse("VALIDATION", "ริบได้เฉพาะมัดจำของการจอง (จองคิว · โรงแรม · เช่า) — มัดจำที่รับหน้าขายให้คืนเงินหรือใช้กับบิล");
+    const deviceRaw = isRecord(ctx) ? ctx.deviceId : undefined;
+    if (deviceRaw !== undefined && deviceRaw !== null && !isShiftDeviceId(deviceRaw)) return refuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
+    const shift = await resolveRegisterShift(db, s, typeof deviceRaw === "string" ? deviceRaw : undefined);
+    const shiftId = shift.ok ? shift.shiftId : null;
+    const r = await forfeitDeposit(
+      { tenantId: s.tenantId, unitId: s.unitId, depositId: d.id, reason, note: reason, actorType: "USER", actorId: sc.actor.userId, source: "register" },
+      (tx, p) =>
+        regCreateSale(
+          { tenantId: s.tenantId, unitId: s.unitId, systemId: s.systemId, sourceModule: "POS", sourceId: d.id, ...p, ...(shiftId ? { shiftId } : {}), soldByUserId: sc.actor.userId },
+          callerTx(tx),
+        ),
+    );
+    if (r.ok === false) return refuse(r.code, r.message);
+    const sale = await db.posSale.findFirst({ where: { id: r.saleId, tenantId: s.tenantId }, select: { id: true, receiptNo: true, grandTotalSatang: true } });
+    return { ok: true as const, sale: { id: r.saleId, receiptNo: sale?.receiptNo ?? null, grandTotalSatang: sale?.grandTotalSatang ?? r.satang }, deposit: r.deposit, ...(r.duplicated ? { duplicated: true } : {}) };
+  });
+}
+// ◂ POS P5.1 MA12 MA13
 
 // ═══════════════════════ R6 คืนสภาพเมื่อบิลที่ใช้มัดจำถูก void ═══════════════════════
 /**
