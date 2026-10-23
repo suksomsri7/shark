@@ -816,16 +816,27 @@ export async function recordDeposit(
   let saleId: string | null = null;
   const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
   if (posSystemId) {
-    const sale = await pos.createSale({
-      tenantId: ctx.tenantId,
-      unitId: ctx.unitId,
-      systemId: posSystemId,
-      sourceModule: "BOOKING",
-      sourceId: appointmentId,
-      idempotencyKey: `booking-deposit-${appointmentId}`,
-      lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount, serviceId: appt.serviceId }],
-      payMethods: [{ type: payMethod, amountSatang: amount }],
-    });
+    // POS P5.1 ▸ MA2 MA4 (F2 F4): มัดจำ = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 · ไม่ใช่รายได้ · บรรทัดไม่ผูก serviceId) + PosDeposit ผ่าน
+    //   pos/deposit.moduleTakeDeposit — createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับเดิม "DEPOSIT" = TRANSFER ·
+    //   ใบรับของคีย์ถูกคืนแล้ว (ไม่ใช่ PAID) ⇒ รับใหม่ใช้คีย์ booking-deposit-<id>-r<n> (เดิม: ได้บิล VOIDED กลับมา · มัดจำ 0 บนสมุด) ◂
+    const posDeposit = await import("@/lib/modules/pos/deposit");
+    const sale = await posDeposit.moduleTakeDeposit(
+      { tenantId: ctx.tenantId, unitId: ctx.unitId, systemId: posSystemId, keyBase: `booking-deposit-${appointmentId}`, amountSatang: amount, payType: payMethod, customerId: appt.customerId ?? null, customerName: appt.customerName ?? null, note: `มัดจำ ${appt.service.name}`, createdBy: "module:booking" },
+      (client, k) =>
+        pos.createSale(
+          {
+            tenantId: ctx.tenantId,
+            unitId: ctx.unitId,
+            systemId: posSystemId,
+            sourceModule: k.sourceModule,
+            sourceId: k.sourceId,
+            idempotencyKey: k.idempotencyKey,
+            lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount }],
+            payMethods: [{ type: k.payType, amountSatang: amount }],
+          },
+          client,
+        ),
+    );
     saleId = sale.saleId;
   }
 
@@ -855,12 +866,22 @@ export async function refundDeposit(
   if (!appt.depositPaidAt) return { ok: false, reason: "นัดนี้ยังไม่ได้รับมัดจำ" };
   const saleId = appt.depositSaleId; // จับไว้ก่อน claim (จะถูกเคลียร์)
 
+  // POS P5.1 ▸ MA4 (F4): มัดจำที่เป็นใบรับ POS_DEPOSIT (void ไม่ได้) = คืนเงินคงเหลือผ่าน pos/deposit.moduleRefundDeposit (ใบคืน CN · ใบรับ REFUNDED)
+  //   ก่อนเคลียร์ flag — คืนไม่สำเร็จ (ใช้กับบิลแล้ว/กะ) = ไม่แตะนัด · คีย์ผูกใบรับ (ลองซ้ำ = ใบคืนเดิม) · มัดจำแบบเดิม (legacy) = void ทางเดิมด้านล่าง ◂
+  let legacy = true;
+  if (saleId) {
+    const r = await (await import("@/lib/modules/pos/deposit")).moduleRefundDeposit({ tenantId: ctx.tenantId, unitId: ctx.unitId, receiptSaleId: saleId, reason: "คืนมัดจำนัดหมาย", actorId: "module:booking" });
+    if (r.ok === false) return { ok: false, reason: r.code === "DEPOSIT_CLOSED" ? "มัดจำนี้ถูกใช้กับบิลหรือคืนไปแล้ว" : r.message };
+    legacy = r.legacy;
+  }
+
   // claim อะตอมมิก: เคลียร์ depositPaidAt เฉพาะแถวที่ยังจ่ายอยู่ (กันคืนซ้ำ)
   const claim = await db.appointment.updateMany({
-    where: { id: appointmentId, depositPaidAt: { not: null } },
+    where: { id: appointmentId, depositPaidAt: { not: null }, depositSaleId: saleId }, // POS P5.1 ▸ MA4: + ใบรับที่คืนไป (กันเคลียร์มัดจำที่รับใหม่) ◂
     data: { depositPaidAt: null, depositSaleId: null },
   });
   if (claim.count === 0) return { ok: false, reason: "มัดจำนี้ถูกคืนไปแล้ว" };
+  if (!legacy) return { ok: true };
 
   // กลับเส้นเงิน — void PosSale (เฉพาะบิลที่ยัง PAID) · voidSale เปิด tx เอง (ไม่ nested)
   if (saleId) {

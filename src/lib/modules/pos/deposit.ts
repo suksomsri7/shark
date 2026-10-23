@@ -18,11 +18,11 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
 import { regCreateSale, registerRefuse, registerScopeCheck } from "./register";
 import { REGISTER_MANUAL_METHODS, REGISTER_MANUAL_MANAGER_MESSAGE, type RegisterActor, type RegisterCtx, type RegisterRefusal, type RegisterRefusalCode } from "./register-shared";
-import { afterSaleCommitted, depositVatLeft, POS_DEPOSIT_SOURCE, PosSaleError } from "./service";
+import { afterSaleCommitted, depositVatLeft, POS_DEPOSIT_SOURCE, PosSaleError, saleStatusByKey } from "./service"; // POS P5.1 ▸ MA4 saleStatusByKey ◂
 import { parsePosPaymentSettings } from "./payment-settings";
 import { isPaymentIntentId, parsePosIntentSettings } from "./payment-intent-shared";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
-import { isShiftDeviceId, resolveRegisterShift } from "./shift";
+import { isShiftDeviceId, resolveApiRefundShift, resolveRegisterShift } from "./shift"; // POS P5.1 ▸ MA4 resolveApiRefundShift ◂
 import { posDeviceRevoked } from "./device";
 import { maskPhone } from "./order-shared";
 import { checkDepositPhone, maskDepositPhone } from "./deposit-links"; // POS P2.9b ▸ fix2 มติ 3 ◂
@@ -450,104 +450,7 @@ export async function registerRefundDeposit(ctx: RegisterCtx, actor: RegisterAct
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const out = await db.$transaction(
-          async (tx) => {
-            await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${s.tenantId}::text || ':' || ${key}::text))) l`;
-            const dup = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: s.tenantId, idempotencyKey: key } }, include: { payments: true } });
-            if (dup) {
-              const d0 = await tx.posDeposit.findFirst({ where: { id: depositId, tenantId: s.tenantId, unitId: s.unitId } });
-              if (!d0 || dup.docType !== "REFUND" || dup.refSaleId !== d0.receiptSaleId || payBag(dup.payments) !== payBag(pays)) throw new DepositAbort(refuse("IDEMPOTENCY_CONFLICT", MSG.CONFLICT));
-              return { kind: "dup" as const, dup, dep: d0 };
-            }
-            // ล็อกแถวมัดจำ (ใช้มัดจำ ∥ คืนเงิน = คนเดียวชนะ · CHECK used + refunded ≤ amount)
-            const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosDeposit" WHERE id = ${depositId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} ORDER BY id FOR UPDATE`;
-            if (!locked.length) throw new DepositAbort(refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND));
-            const d = await tx.posDeposit.findUniqueOrThrow({ where: { id: depositId } });
-            const remaining = d.amountSatang - d.usedSatang - d.refundedSatang;
-            if (d.status !== "OPEN" || remaining <= 0) throw new DepositAbort(refuse("DEPOSIT_CLOSED", MSG.CLOSED));
-            if (pays.reduce((t, p) => t + p.amountSatang, 0) !== remaining) throw new DepositAbort(refuse("VALIDATION", MSG.REFUND_ALL));
-            const vatOut = (await depositVatLeft(tx, [d.id])).get(d.id) ?? 0;
-            const vat = Math.min(remaining, Math.max(0, d.vatSatang - vatOut));
-            const receipt = await tx.posSale.findFirst({ where: { id: d.receiptSaleId, tenantId: s.tenantId }, include: { lines: { orderBy: { id: "asc" } } } });
-            if (!receipt) throw new DepositAbort(refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND));
-            // เลขใบคืน CN… ตัวนับของใบคืน (PosDocCounter · แบบ refund.ts) — ใบเสร็จขายไม่ขยับ
-            const period = bkkPeriod();
-            const ctr = await tx.$queryRaw<{ seq: number }[]>`
-              INSERT INTO "PosDocCounter" ("id", "tenantId", "unitId", "docType", "period", "seq")
-              VALUES (${randomUUID()}, ${s.tenantId}, ${s.unitId}, 'REFUND'::"PosSaleDocType", ${period}, 1)
-              ON CONFLICT ("unitId", "docType", "period") DO UPDATE SET "seq" = "PosDocCounter"."seq" + 1
-              RETURNING "seq"`;
-            const receiptNo = `${refundPrefixOf(sys?.settings)}${period}-${String(Number(ctr[0]!.seq)).padStart(4, "0")}`;
-            const line = receipt.lines[0];
-            const refund = await tx.posSale.create({
-              data: {
-                tenantId: s.tenantId,
-                unitId: s.unitId,
-                systemId: s.systemId,
-                memberId: null,
-                sourceModule: POS_DEPOSIT_SOURCE,
-                sourceId: null,
-                idempotencyKey: key,
-                receiptNo,
-                publicToken: newReceiptToken(),
-                status: "PAID",
-                docType: "REFUND",
-                refSaleId: receipt.id,
-                reasonCode: "OTHER",
-                subtotalSatang: remaining,
-                discountSatang: 0,
-                vatSatang: vat,
-                grandTotalSatang: remaining,
-                serviceChargeSatang: 0,
-                tipSatang: 0,
-                note: reason,
-                paidAt: new Date(),
-                shiftId,
-                soldByUserId: sc.actor.userId,
-              },
-            });
-            await tx.posSaleLine.create({
-              data: { tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, name: `คืน${line?.name ?? "มัดจำ"}`.slice(0, 200), qty: 1, unitPriceSatang: remaining, discountSatang: 0, lineTotalSatang: remaining, refLineId: line?.id ?? null, restock: false },
-            });
-            await tx.posPayment.createMany({ data: pays.map((p) => ({ tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, type: p.type, amountSatang: p.amountSatang, reference: p.reference ?? null })) });
-            // ใบรับ: ยอดคืนสะสม · คืนครบทั้งใบ (ยังไม่เคยใช้) = REFUNDED แบบบิลที่คืนครบ (บิลที่ใช้ไปบางส่วนยัง PAID)
-            const rcpt = await tx.posSale.update({ where: { id: receipt.id }, data: { refundedSatang: { increment: remaining } }, select: { refundedSatang: true, grandTotalSatang: true } });
-            if (rcpt.refundedSatang >= rcpt.grandTotalSatang) await tx.posSale.update({ where: { id: receipt.id }, data: { status: "REFUNDED" } });
-            const n = await tx.$executeRaw`
-              UPDATE "PosDeposit" SET "refundedSatang" = "refundedSatang" + ${remaining}, status = 'REFUNDED'::"PosDepositStatus", "updatedAt" = now()
-              WHERE id = ${d.id} AND status = 'OPEN' AND "amountSatang" - "usedSatang" - "refundedSatang" = ${remaining}`;
-            if (n !== 1) throw new DepositAbort(refuse("DEPOSIT_CLOSED", MSG.CLOSED));
-            await tx.posDepositTxn.create({ data: { tenantId: s.tenantId, depositId: d.id, type: "REFUND", satang: remaining, vatSatang: vat, saleId: refund.id, idempotencyKey: `dep-refund-${refund.id}` } });
-            await emitOutbox(tx, {
-              tenantId: s.tenantId,
-              type: "pos.sale.refunded",
-              idempotencyKey: `PosSale#${refund.id}#REFUNDED`,
-              payload: {
-                saleId: receipt.id,
-                refundSaleId: refund.id,
-                sourceModule: POS_DEPOSIT_SOURCE,
-                full: true,
-                depositId: d.id,
-                lines: line ? [{ refLineId: line.id, qty: 1, amountSatang: remaining, restock: false, itemId: null }] : [],
-                payMethods: pays.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
-              },
-              systemId: s.systemId,
-              unitId: s.unitId,
-            });
-            await tx.auditLog.create({
-              data: {
-                tenantId: s.tenantId,
-                unitId: s.unitId,
-                actorType: "USER",
-                actorId: auditActorId,
-                action: "pos.deposit.refund",
-                targetType: "PosSale",
-                targetId: refund.id,
-                after: { depositId: d.id, receiptNo, depositReceiptNo: d.receiptNo, grandTotalSatang: remaining, vatSatang: vat, reason, payMethods: pays.map((p) => ({ type: p.type, amountSatang: p.amountSatang })), ...(auditActorId !== sc.actor.userId ? { via: "pin_override", requestedByUserId: sc.actor.userId } : {}) } as Prisma.InputJsonValue,
-              },
-            });
-            const dep = await tx.posDeposit.findUniqueOrThrow({ where: { id: d.id } });
-            return { kind: "new" as const, refund, dep };
-          },
+          async (tx) => refundDepositInTx(tx, { s, depositId, pays, reason, key, shiftId, sys, requestedByUserId: sc.actor.userId, auditActorId, actorType: "USER" }), // POS P5.1 ▸ MA4: เนื้อธุรกรรมเดิมย้ายไป refundDepositInTx ◂
           { timeout: 20_000, maxWait: 15_000 },
         );
         if (out.kind === "dup") return { ok: true as const, refund: { id: out.dup.id, receiptNo: out.dup.receiptNo, grandTotalSatang: out.dup.grandTotalSatang, vatSatang: out.dup.vatSatang }, deposit: viewOf(out.dep), duplicated: true };
@@ -563,6 +466,269 @@ export async function registerRefundDeposit(ctx: RegisterCtx, actor: RegisterAct
     return refuse("BUSY");
   });
 }
+
+// POS P5.1 ▸ MA4 (F4): ธุรกรรมคืนเงินมัดจำ (ทั้งคงเหลือ) แยกออกจาก registerRefundDeposit ทั้งก้อน (เนื้อเดิมทุกบรรทัด) ⇒ หน้าขาย (R8) และ
+//   moduleRefundDeposit (คืนมัดจำของโมดูลจองคิว) ใช้ทางเดียวกัน · requestedByUserId = ผู้ทำรายการ (soldByUserId) · actorType ของ audit ◂
+type RefundDepositTxArgs = {
+  s: { tenantId: string; unitId: string; systemId: string };
+  depositId: string;
+  pays: DepositPayMethod[];
+  reason: string;
+  key: string;
+  shiftId: string | null;
+  sys: { settings: unknown } | null;
+  requestedByUserId: string;
+  auditActorId: string;
+  actorType: "USER" | "SYSTEM";
+};
+async function refundDepositInTx(tx: Tx, a: RefundDepositTxArgs) {
+  const { s, depositId, pays, reason, key, shiftId, sys, requestedByUserId, auditActorId, actorType } = a;
+  await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${s.tenantId}::text || ':' || ${key}::text))) l`;
+  const dup = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: s.tenantId, idempotencyKey: key } }, include: { payments: true } });
+  if (dup) {
+    const d0 = await tx.posDeposit.findFirst({ where: { id: depositId, tenantId: s.tenantId, unitId: s.unitId } });
+    if (!d0 || dup.docType !== "REFUND" || dup.refSaleId !== d0.receiptSaleId || payBag(dup.payments) !== payBag(pays)) throw new DepositAbort(refuse("IDEMPOTENCY_CONFLICT", MSG.CONFLICT));
+    return { kind: "dup" as const, dup, dep: d0 };
+  }
+  // ล็อกแถวมัดจำ (ใช้มัดจำ ∥ คืนเงิน = คนเดียวชนะ · CHECK used + refunded ≤ amount)
+  const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosDeposit" WHERE id = ${depositId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} ORDER BY id FOR UPDATE`;
+  if (!locked.length) throw new DepositAbort(refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND));
+  const d = await tx.posDeposit.findUniqueOrThrow({ where: { id: depositId } });
+  const remaining = d.amountSatang - d.usedSatang - d.refundedSatang;
+  if (d.status !== "OPEN" || remaining <= 0) throw new DepositAbort(refuse("DEPOSIT_CLOSED", MSG.CLOSED));
+  if (pays.reduce((t, p) => t + p.amountSatang, 0) !== remaining) throw new DepositAbort(refuse("VALIDATION", MSG.REFUND_ALL));
+  const vatOut = (await depositVatLeft(tx, [d.id])).get(d.id) ?? 0;
+  const vat = Math.min(remaining, Math.max(0, d.vatSatang - vatOut));
+  const receipt = await tx.posSale.findFirst({ where: { id: d.receiptSaleId, tenantId: s.tenantId }, include: { lines: { orderBy: { id: "asc" } } } });
+  if (!receipt) throw new DepositAbort(refuse("DEPOSIT_NOT_FOUND", MSG.NOT_FOUND));
+  // เลขใบคืน CN… ตัวนับของใบคืน (PosDocCounter · แบบ refund.ts) — ใบเสร็จขายไม่ขยับ
+  const period = bkkPeriod();
+  const ctr = await tx.$queryRaw<{ seq: number }[]>`
+    INSERT INTO "PosDocCounter" ("id", "tenantId", "unitId", "docType", "period", "seq")
+    VALUES (${randomUUID()}, ${s.tenantId}, ${s.unitId}, 'REFUND'::"PosSaleDocType", ${period}, 1)
+    ON CONFLICT ("unitId", "docType", "period") DO UPDATE SET "seq" = "PosDocCounter"."seq" + 1
+    RETURNING "seq"`;
+  const receiptNo = `${refundPrefixOf(sys?.settings)}${period}-${String(Number(ctr[0]!.seq)).padStart(4, "0")}`;
+  const line = receipt.lines[0];
+  const refund = await tx.posSale.create({
+    data: {
+      tenantId: s.tenantId,
+      unitId: s.unitId,
+      systemId: s.systemId,
+      memberId: null,
+      sourceModule: POS_DEPOSIT_SOURCE,
+      sourceId: null,
+      idempotencyKey: key,
+      receiptNo,
+      publicToken: newReceiptToken(),
+      status: "PAID",
+      docType: "REFUND",
+      refSaleId: receipt.id,
+      reasonCode: "OTHER",
+      subtotalSatang: remaining,
+      discountSatang: 0,
+      vatSatang: vat,
+      grandTotalSatang: remaining,
+      serviceChargeSatang: 0,
+      tipSatang: 0,
+      note: reason,
+      paidAt: new Date(),
+      shiftId,
+      soldByUserId: requestedByUserId,
+    },
+  });
+  await tx.posSaleLine.create({
+    data: { tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, name: `คืน${line?.name ?? "มัดจำ"}`.slice(0, 200), qty: 1, unitPriceSatang: remaining, discountSatang: 0, lineTotalSatang: remaining, refLineId: line?.id ?? null, restock: false },
+  });
+  await tx.posPayment.createMany({ data: pays.map((p) => ({ tenantId: s.tenantId, unitId: s.unitId, saleId: refund.id, type: p.type, amountSatang: p.amountSatang, reference: p.reference ?? null })) });
+  // ใบรับ: ยอดคืนสะสม · คืนครบทั้งใบ (ยังไม่เคยใช้) = REFUNDED แบบบิลที่คืนครบ (บิลที่ใช้ไปบางส่วนยัง PAID)
+  const rcpt = await tx.posSale.update({ where: { id: receipt.id }, data: { refundedSatang: { increment: remaining } }, select: { refundedSatang: true, grandTotalSatang: true } });
+  if (rcpt.refundedSatang >= rcpt.grandTotalSatang) await tx.posSale.update({ where: { id: receipt.id }, data: { status: "REFUNDED" } });
+  const n = await tx.$executeRaw`
+    UPDATE "PosDeposit" SET "refundedSatang" = "refundedSatang" + ${remaining}, status = 'REFUNDED'::"PosDepositStatus", "updatedAt" = now()
+    WHERE id = ${d.id} AND status = 'OPEN' AND "amountSatang" - "usedSatang" - "refundedSatang" = ${remaining}`;
+  if (n !== 1) throw new DepositAbort(refuse("DEPOSIT_CLOSED", MSG.CLOSED));
+  await tx.posDepositTxn.create({ data: { tenantId: s.tenantId, depositId: d.id, type: "REFUND", satang: remaining, vatSatang: vat, saleId: refund.id, idempotencyKey: `dep-refund-${refund.id}` } });
+  await emitOutbox(tx, {
+    tenantId: s.tenantId,
+    type: "pos.sale.refunded",
+    idempotencyKey: `PosSale#${refund.id}#REFUNDED`,
+    payload: {
+      saleId: receipt.id,
+      refundSaleId: refund.id,
+      sourceModule: POS_DEPOSIT_SOURCE,
+      full: true,
+      depositId: d.id,
+      lines: line ? [{ refLineId: line.id, qty: 1, amountSatang: remaining, restock: false, itemId: null }] : [],
+      payMethods: pays.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+    },
+    systemId: s.systemId,
+    unitId: s.unitId,
+  });
+  await tx.auditLog.create({
+    data: {
+      tenantId: s.tenantId,
+      unitId: s.unitId,
+      actorType,
+      actorId: auditActorId,
+      action: "pos.deposit.refund",
+      targetType: "PosSale",
+      targetId: refund.id,
+      after: { depositId: d.id, receiptNo, depositReceiptNo: d.receiptNo, grandTotalSatang: remaining, vatSatang: vat, reason, payMethods: pays.map((p) => ({ type: p.type, amountSatang: p.amountSatang })), ...(auditActorId !== requestedByUserId ? { via: "pin_override", requestedByUserId: requestedByUserId } : {}) } as Prisma.InputJsonValue,
+    },
+  });
+  const dep = await tx.posDeposit.findUniqueOrThrow({ where: { id: d.id } });
+  return { kind: "new" as const, refund, dep };
+}
+
+// ═══════════════════════ POS P5.1 ▸ MA2 MA4 (F2 F4) มัดจำของโมดูล (จองคิว · โรงแรม · เช่า) ═══════════════════════
+// 🔴 มัดจำของโมดูล = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 + VAT ตอนรับ · ไม่ใช่รายได้) + PosDeposit + RECEIVE ในธุรกรรมเดียว ·
+//    บิลปิด (เช็คเอาท์/คืนของ/มาใช้บริการ) จ่ายมัดจำเป็นแถว {DEPOSIT, refSaleId = ใบรับ} + ส่วนที่เหลือ ⇒ Σ รายได้ = ราคา · VAT ครั้งเดียว
+// 🔴 ไม่มีจุดเรียก createSale ใหม่: โมดูลส่งฟังก์ชันที่เรียก createSale จุดเดิมของตัวเอง (client = callerTx(tx) · ทะเบียน U4/L2 คงเดิม)
+// 🔴 ไม่ผ่าน RBAC/ค่าตั้งของหน้าขาย (pos.deposit.enabled): สิทธิ์ตรวจที่ action ของโมดูลแล้ว · กะ = กติกา "ทางอื่น" ของ createSale
+export type ModuleDepositSell = (client: Tx, p: { idempotencyKey: string; sourceModule: typeof POS_DEPOSIT_SOURCE; sourceId: string; payType: DepositPayType }) => Promise<{ saleId: string; status?: string }>;
+export type ModuleDepositInput = {
+  tenantId: string;
+  unitId: string;
+  systemId: string;
+  /** คีย์ฐานของโมดูล (เช่น booking-deposit-<id>) · ใบรับของคีย์ที่ไม่ใช่ PAID แล้ว (คืนเงิน/ยกเลิก) ⇒ เลื่อนเป็น <คีย์>-r1, -r2 … */
+  keyBase: string;
+  amountSatang: number;
+  /** วิธีรับของโมดูล — เงินจริง (CASH/PROMPTPAY/TRANSFER/CARD) ตามที่ส่ง · ค่าเดิม "DEPOSIT" (ไม่รู้วิธี) = TRANSFER (ช่องทาง GL เดิมของ depositChannel) */
+  payType?: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  note?: string | null;
+  /** ผู้สร้างในแถว PosDeposit/audit (เช่น "module:hotel") */
+  createdBy: string;
+};
+export type ModuleDepositResult = { saleId: string; depositId: string | null; duplicated: boolean };
+
+export async function moduleTakeDeposit(input: ModuleDepositInput, sell: ModuleDepositSell): Promise<ModuleDepositResult> {
+  const payType: DepositPayType = (DEPOSIT_PAY_TYPES as readonly string[]).includes(input.payType ?? "") ? (input.payType as DepositPayType) : "TRANSFER";
+  for (let round = 0; round <= 20; round++) {
+    const key = round === 0 ? input.keyBase : `${input.keyBase}-r${round}`;
+    const st = await saleStatusByKey(input.tenantId, key);
+    if (st !== null && st !== "PAID") continue;
+    if (st === "PAID") {
+      // บิลมัดจำแบบเดิม (ก่อน P5.1 · ไม่ใช่ใบรับ) ของคีย์นี้ = มัดจำเดิม (ไม่ออกใบรับซ้อน · บิลปิดคิดราคาเต็มแบบเดิม)
+      const old = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: key } }, select: { id: true, sourceModule: true } });
+      if (old && old.sourceModule !== POS_DEPOSIT_SOURCE) return { saleId: old.id, depositId: null, duplicated: true };
+    }
+    let stale = false;
+    for (let attempt = 0; attempt < 3 && !stale; attempt++) {
+      try {
+        const out = await prisma.$transaction(
+          async (tx) => {
+            const depositId = `dep${randomUUID().replace(/-/g, "")}`;
+            const r = await sell(callerTx(tx), { idempotencyKey: key, sourceModule: POS_DEPOSIT_SOURCE, sourceId: depositId, payType });
+            if (r.status !== undefined && r.status !== "PAID") return { kind: "stale" as const };
+            const prior = await tx.posDeposit.findUnique({ where: { receiptSaleId: r.saleId }, select: { id: true } });
+            if (prior) return { kind: "dup" as const, saleId: r.saleId, depositId: prior.id };
+            const sale = await tx.posSale.findUnique({ where: { id: r.saleId }, select: { vatSatang: true, receiptNo: true } });
+            const dep = await tx.posDeposit.create({
+              data: {
+                id: depositId,
+                tenantId: input.tenantId,
+                systemId: input.systemId,
+                unitId: input.unitId,
+                customerId: input.customerId ?? null,
+                customerName: input.customerName ?? null,
+                amountSatang: input.amountSatang,
+                vatSatang: sale?.vatSatang ?? 0,
+                receiptSaleId: r.saleId,
+                receiptNo: sale?.receiptNo ?? null,
+                note: input.note ?? null,
+                idempotencyKey: `${KEY_DEPOSIT}mod:${key}`,
+                createdByUserId: input.createdBy,
+              },
+            });
+            await tx.posDepositTxn.create({
+              data: { tenantId: input.tenantId, depositId, type: "RECEIVE", satang: input.amountSatang, vatSatang: dep.vatSatang, saleId: r.saleId, idempotencyKey: `dep-receive-${depositId}` },
+            });
+            await tx.auditLog.create({
+              data: {
+                tenantId: input.tenantId,
+                unitId: input.unitId,
+                actorType: "SYSTEM",
+                actorId: input.createdBy,
+                action: "pos.deposit.receive",
+                targetType: "PosDeposit",
+                targetId: depositId,
+                after: { receiptSaleId: r.saleId, receiptNo: dep.receiptNo, amountSatang: dep.amountSatang, vatSatang: dep.vatSatang, member: !!dep.customerId, source: input.createdBy, payMethods: [{ type: payType, amountSatang: input.amountSatang }] },
+              },
+            });
+            return { kind: "new" as const, saleId: r.saleId, depositId };
+          },
+          { timeout: 20_000, maxWait: 15_000 },
+        );
+        if (out.kind === "stale") {
+          stale = true;
+          continue;
+        }
+        if (out.kind === "new") await afterSaleCommitted({ tenantId: input.tenantId, unitId: input.unitId, lines: [] }, out.saleId);
+        return { saleId: out.saleId, depositId: out.depositId, duplicated: out.kind === "dup" };
+      } catch (e) {
+        const code = (e as { code?: unknown } | null)?.code;
+        if (code === "P2002" || code === "P2034" || code === "P2028") continue; // ตัวนับใบเสร็จเดือนใหม่ชน/ธุรกรรมชน = rollback ทั้งก้อน ลองใหม่ (คีย์กันซ้ำ)
+        throw e;
+      }
+    }
+    if (!stale) throw new Error("ระบบไม่ว่าง — ลองรับมัดจำอีกครั้ง");
+  }
+  throw new PosSaleError("VALIDATION", "มัดจำของรายการนี้ถูกคืน/ยกเลิกซ้ำหลายครั้งเกินไป — ติดต่อผู้ดูแลระบบ");
+}
+
+/** บิลปิดของโมดูล: แถวมัดจำที่ใช้ได้ของใบรับ (OPEN · สาขาเดียวกัน) = min(คงเหลือ, ยอดบิล) · ไม่มีใบรับ (มัดจำแบบเดิม/standalone) หรือปิดแล้ว = null (คิดเต็มแบบเดิม) */
+export async function moduleDepositForBill(tenantId: string, unitId: string, receiptSaleId: string | null | undefined, billSatang: number): Promise<{ refSaleId: string; satang: number } | null> {
+  if (!receiptSaleId || billSatang <= 0) return null;
+  const d = await prisma.posDeposit.findUnique({ where: { receiptSaleId }, select: { tenantId: true, unitId: true, status: true, amountSatang: true, usedSatang: true, refundedSatang: true } });
+  if (!d || d.tenantId !== tenantId || d.unitId !== unitId || d.status !== "OPEN") return null;
+  const satang = Math.min(d.amountSatang - d.usedSatang - d.refundedSatang, billSatang);
+  return satang > 0 ? { refSaleId: receiptSaleId, satang } : null;
+}
+
+export type ModuleRefundDepositResult = { ok: true; refundSaleId: string | null; legacy: boolean; duplicated?: boolean } | { ok: false; code: string; message: string };
+/**
+ * คืนเงินมัดจำของโมดูล (ทั้งคงเหลือ · วิธีเดียวกับตอนรับ) ผ่านธุรกรรมเดียวกับหน้าขาย (refundDepositInTx: ใบคืน CN + REFUND txn + ใบรับ REFUNDED) ·
+ * ไม่มี PosDeposit ของใบรับ = มัดจำแบบเดิม ⇒ {legacy: true} ให้ผู้เรียก void ตามทางเดิม · คีย์ผูกใบรับ (ลองซ้ำ = ใบคืนเดิม)
+ */
+export async function moduleRefundDeposit(input: { tenantId: string; unitId: string; receiptSaleId: string; reason: string; actorId: string }): Promise<ModuleRefundDepositResult> {
+  const d = await prisma.posDeposit.findUnique({ where: { receiptSaleId: input.receiptSaleId } });
+  if (!d || d.tenantId !== input.tenantId) return { ok: true, refundSaleId: null, legacy: true };
+  if (d.unitId !== input.unitId) return { ok: false, code: "DEPOSIT_NOT_FOUND", message: MSG.NOT_FOUND };
+  const key = `${KEY_REFUND}mod:${input.receiptSaleId}`;
+  const prior = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: key } }, select: { id: true } });
+  if (prior) return { ok: true, refundSaleId: prior.id, legacy: false, duplicated: true };
+  const remaining = d.amountSatang - d.usedSatang - d.refundedSatang;
+  if (d.status !== "OPEN" || remaining <= 0) return { ok: false, code: "DEPOSIT_CLOSED", message: MSG.CLOSED };
+  const receiptPays = await prisma.posPayment.findMany({ where: { tenantId: input.tenantId, saleId: d.receiptSaleId }, select: { type: true }, orderBy: { amountSatang: "desc" } });
+  const t = receiptPays.find((p) => (DEPOSIT_PAY_TYPES as readonly string[]).includes(p.type))?.type;
+  const pays: DepositPayMethod[] = [{ type: (t as DepositPayType | undefined) ?? "TRANSFER", amountSatang: remaining }];
+  const s = { tenantId: d.tenantId, unitId: d.unitId, systemId: d.systemId };
+  const receipt = await prisma.posSale.findFirst({ where: { id: d.receiptSaleId, tenantId: s.tenantId }, select: { shiftId: true } });
+  const sh = await resolveApiRefundShift(prisma, s, receipt?.shiftId ?? null);
+  if (pays[0]!.type === "CASH" && sh.required && !sh.shiftId) return { ok: false, code: "SHIFT_REQUIRED", message: "ต้องเปิดกะก่อนคืนเงินสด" };
+  const sys = await prisma.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
+  const reason = (input.reason.trim() || "คืนมัดจำ").slice(0, 200);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const out = await prisma.$transaction(
+        async (tx) => refundDepositInTx(tx, { s, depositId: d.id, pays, reason, key, shiftId: sh.shiftId, sys, requestedByUserId: input.actorId, auditActorId: input.actorId, actorType: "SYSTEM" }),
+        { timeout: 20_000, maxWait: 15_000 },
+      );
+      if (out.kind === "new") scheduleDrain();
+      return { ok: true, refundSaleId: out.kind === "dup" ? out.dup.id : out.refund.id, legacy: false, ...(out.kind === "dup" ? { duplicated: true } : {}) };
+    } catch (e) {
+      if (e instanceof DepositAbort) return { ok: false, code: e.refusal.code, message: e.refusal.message ?? e.refusal.code };
+      const code = (e as { code?: unknown } | null)?.code;
+      if (code === "P2002" || code === "P2034" || code === "P2028") continue;
+      throw e;
+    }
+  }
+  return { ok: false, code: "BUSY", message: "ระบบไม่ว่าง — ลองอีกครั้ง" };
+}
+// ◂ POS P5.1 MA2 MA4
 
 // ═══════════════════════ R6 คืนสภาพเมื่อบิลที่ใช้มัดจำถูก void ═══════════════════════
 /**

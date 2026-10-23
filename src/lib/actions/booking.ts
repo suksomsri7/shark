@@ -139,7 +139,11 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
       //   เขียนตรงที่นี่อีก = แถวซ้ำ 2 บรรทัดต่อการมา 1 ครั้ง
     }
     if (spent > 0 && posSystemId) {
-      await pos.createSale({
+      // POS P5.1 ▸ MA2 (F2): มัดจำที่รับเป็นใบรับ (POS_DEPOSIT) จ่ายเป็นแถว DEPOSIT อ้างใบรับ + ส่วนที่เหลือเงินสด ⇒ Σ รายได้ = ราคา · VAT ครั้งเดียว ·
+      //   มัดจำแบบเดิม (ก่อน P5.1 · ไม่มี PosDeposit) = คิดเต็มเงินสดแบบเดิม ·
+      //   กด DONE ซ้ำ: บิลของคีย์มีแล้ว = ไม่ส่งซ้ำ (มัดจำถูกใช้ไปแล้ว ⇒ payload ใหม่จะไม่ตรงบิลเดิม) — เดิม createSale คืนบิลเดิมเหมือนกัน ◂
+      const dep = await (await import("@/lib/modules/pos/deposit")).moduleDepositForBill(ctx.tenantId, ctx.unitId, appt.depositPaidAt ? appt.depositSaleId : null, spent);
+      if ((await pos.saleStatusByKey(ctx.tenantId, `booking-sale-${appt.id}`)) === null) await pos.createSale({
         tenantId: ctx.tenantId,
         unitId: ctx.unitId,
         systemId: posSystemId,
@@ -150,7 +154,9 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
         idempotencyKey: `booking-sale-${appt.id}`,
         // ผูก serviceId → รายงานแยก "บริการ" ได้ตรงกับที่ขายผ่านหน้าขาย (ไม่งั้นนัดจะไปกอง "รายการอื่น")
         lines: [{ name: appt.service.name, qty: 1, unitPriceSatang: spent, serviceId: appt.serviceId }],
-        payMethods: [{ type: "CASH", amountSatang: spent }],
+        payMethods: dep
+          ? [{ type: "DEPOSIT", amountSatang: dep.satang, refSaleId: dep.refSaleId }, ...(spent > dep.satang ? [{ type: "CASH" as const, amountSatang: spent - dep.satang }] : [])]
+          : [{ type: "CASH", amountSatang: spent }],
       });
     }
   }
