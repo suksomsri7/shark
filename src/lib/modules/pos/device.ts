@@ -386,4 +386,9 @@ export async function pairedDevice(scope: { tenantId: string; unitId: string }, 
 export async function recordDevicePairing(ctx: { tenantId: string; unitId: string }, actor: { userId: string }, device: { id: string; deviceCode: string }): Promise<void> {
   await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.device.pair", targetType: "PosDevice", targetId: device.id, after: { deviceId: device.id, deviceCode: device.deviceCode, unitId: ctx.unitId, userId: actor.userId } });
 }
+// POS P5.2 ▸ CD-P52-O4b ข้อ 2: ปิดกะจากเบราว์เซอร์ที่ไม่ได้จับคู่ โดยผู้ถือ pos.shift.manage ที่สาขา (ข้อยกเว้นที่รับแล้ว) — audit แยกจาก audit ปิดกะของ shift.ts
+//   (shift.ts ไบต์เท่าหมุด P3.6 ST4) · after.source = "manager-override" ◂
+export async function recordShiftCloseOverride(ctx: { tenantId: string; unitId: string }, actor: { userId: string }, shiftId: string): Promise<void> {
+  await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.shift.close.override", targetType: "PosShift", targetId: shiftId, after: { shiftId, unitId: ctx.unitId, userId: actor.userId, source: "manager-override" } });
+}
 // ◂ POS P5.2

@@ -37,6 +37,7 @@ import {
   type ShiftsPageData,
 } from "./shift";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
+import { recordShiftCloseOverride } from "./device"; // POS P5.2 ▸ CD-P52-O4b ข้อ 2 ◂
 import { notPaired, requestDevice, type DeviceNotPaired, type DeviceRevokedRefusal } from "./device-request"; // POS P5.2 ▸ D2/D3 · CD-P52-O4 F1 ◂
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
@@ -75,9 +76,9 @@ function scopeOf(auth: Session, args: unknown): { ctx: RegisterCtx; actor: Regis
     }
   });
   if (!allowed) return refusal("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์จัดการกะ — ขอสิทธิ์จากเจ้าของร้าน");
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  // POS P5.2 ▸ CD-P52-O4b: deviceId ของ client ไม่เข้า ctx (Z · นับย้อน · ประวัติ · เงินนอกกะ ไม่ใช้เครื่อง) — คำสั่งที่ใช้เครื่องเติมจากคุกกี้ (pairedScope/boundScope) ◂
   return {
-    ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) },
+    ctx: { tenantId: auth.active.tenantId, systemId, unitId },
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
   };
 }
@@ -99,13 +100,14 @@ async function pairedScope(s: Scoped): Promise<Scoped> {
   return withDevice(s, d.ok ? d.deviceId : undefined);
 }
 /** เขียน: bind (ดูหัวบล็อก) · manageMayUnpair = ผู้ถือ pos.shift.manage ไม่ต้องมีคุกกี้ */
-async function boundScope(s: Scoped, manageMayUnpair = false): Promise<Scoped | DeviceNotPaired | DeviceRevokedRefusal> {
+async function boundScope(s: Scoped, manageMayUnpair = false): Promise<(Scoped & { managerOverride?: true }) | DeviceNotPaired | DeviceRevokedRefusal> {
   const d = await requestDevice({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId }, "bind");
   if (d.ok) return withDevice(s, d.deviceId);
   if (d.code === "DEVICE_NOT_PAIRED" && manageMayUnpair) {
     try {
+      // CD-P52-O4b ข้อ 2 (รับข้อยกเว้น): ผู้ถือ pos.shift.manage ที่สาขาของกะ (ctx.unitId · shift.ts ค้นกะในสาขานี้เท่านั้น) ปิดจากเครื่องที่ไม่ได้จับคู่ได้ + audit source manager-override
       assertCan(s.actor, { module: "pos", action: "pos.shift.manage", unitId: s.ctx.unitId });
-      return withDevice(s, undefined);
+      return { ...withDevice(s, undefined), managerOverride: true };
     } catch {
       return d;
     }
@@ -186,6 +188,7 @@ export async function closeShiftAction(args: Target & { close: CloseShiftInput }
     const s = await boundScope(s0, true); // POS P5.2 ▸ CD-P52-O4 F1: เครื่องจากคุกกี้ · เพิกถอน = DEVICE_REVOKED · ไม่จับคู่ได้เฉพาะผู้ถือ pos.shift.manage ◂
     if ("ok" in s) return s;
     const r = await closeShift(s.ctx, s.actor, args.close);
+    if (r.ok && s.managerOverride && !r.duplicated) await recordShiftCloseOverride(s.ctx, s.actor, r.shift.id); // POS P5.2 ▸ CD-P52-O4b ข้อ 2 ◂
     if (r.ok) touch(s.ctx.systemId);
     return r;
   } catch (e) {
