@@ -357,17 +357,33 @@ export async function heartbeat(ctx: RegisterCtx, actor: RegisterActor, input: {
   });
 }
 
-// POS P5.2 ▸ D1–D3 (CD-P52-O2-3 · §10.4 D1c): เครื่องที่ยืนอยู่จากคุกกี้ลงนาม — claim ต้องตรงร้าน + สาขา และแถว PosDevice (id + รหัส) ยัง ACTIVE ·
-//   ไม่ผ่าน/เพิกถอนแล้ว/กุญแจเปลี่ยน = null (ไม่โยน) · ผู้เรียก = shift-actions / device-actions (อ่านคุกกี้จากคำขอ) ◂
-export async function pairedDevice(scope: { tenantId: string; unitId: string }, cookieValue: string | undefined | null, client?: Db): Promise<{ id: string; deviceCode: string } | null> {
+// POS P5.2 ▸ D1–D4 (CD-P52-O2-2 สัญญา D1 ใน oracle2 · CD-P52-O2-3 กุญแจแยก · CD-P52-O4 F1 · §10.4 D1c): เครื่องที่ยืนอยู่จากคุกกี้ลงนาม —
+//   claim ต้องตรงร้าน + สาขา และแถว PosDevice (id + รหัส) ของสาขานี้ · ACTIVE = paired · REVOKED = revoked (ผู้เรียกปฏิเสธ DEVICE_REVOKED — ข้ามไม่ได้) ·
+//   ไม่มี/ผิด/กุญแจเปลี่ยน/หมดอายุ = none + unitHasDevices (สาขามีเครื่อง ACTIVE ไหม — ไม่มีเลย = ทางเดิมไม่มีเครื่อง) · ไม่โยน ◂
+export type PosDeviceBinding = { kind: "paired"; id: string; deviceCode: string } | { kind: "revoked"; id: string; deviceCode: string } | { kind: "none"; unitHasDevices: boolean };
+export async function deviceBinding(scope: { tenantId: string; unitId: string }, cookieValue: string | undefined | null, client?: Db): Promise<PosDeviceBinding> {
+  const db = client ?? prisma;
   try {
     const claim = verifyPosDeviceCookie(cookieValue);
-    if (!claim || claim.tenantId !== scope.tenantId || claim.unitId !== scope.unitId) return null;
-    const row = await (client ?? prisma).posDevice.findFirst({ where: { id: claim.deviceId, tenantId: scope.tenantId, unitId: scope.unitId, deviceCode: claim.deviceCode, status: "ACTIVE" }, select: { id: true, deviceCode: true } });
-    return row ?? null;
+    if (claim && claim.tenantId === scope.tenantId && claim.unitId === scope.unitId) {
+      const row = await db.posDevice.findFirst({ where: { id: claim.deviceId, tenantId: scope.tenantId, unitId: scope.unitId, deviceCode: claim.deviceCode }, select: { id: true, deviceCode: true, status: true } });
+      if (row) return { kind: row.status === "ACTIVE" ? "paired" : "revoked", id: row.id, deviceCode: row.deviceCode };
+    }
+    const n = await db.posDevice.count({ where: { tenantId: scope.tenantId, unitId: scope.unitId, status: "ACTIVE" } });
+    return { kind: "none", unitHasDevices: n > 0 };
   } catch (e) {
-    console.error("[pos/device] pairedDevice", e);
-    return null;
+    console.error("[pos/device] deviceBinding", e);
+    return { kind: "none", unitHasDevices: true }; // ล้ม = ปิด (ถือว่าสาขามีเครื่อง ⇒ ทางผูกเครื่องปฏิเสธ)
   }
+}
+/** เครื่อง ACTIVE ของคุกกี้ (null = ไม่มี/เพิกถอน) — ตัวอ่านของหน้าเครื่องขาย */
+export async function pairedDevice(scope: { tenantId: string; unitId: string }, cookieValue: string | undefined | null, client?: Db): Promise<{ id: string; deviceCode: string } | null> {
+  const b = await deviceBinding(scope, cookieValue, client);
+  return b.kind === "paired" ? { id: b.id, deviceCode: b.deviceCode } : null;
+}
+
+// POS P5.2 ▸ CD-P52-O4 F3: ทุกครั้งที่ออกคุกกี้เครื่อง (ลงทะเบียนใหม่ หรือจับคู่ซ้ำเครื่อง ACTIVE) = AuditLog pos.device.pair { deviceId, unitId, userId } ◂
+export async function recordDevicePairing(ctx: { tenantId: string; unitId: string }, actor: { userId: string }, device: { id: string; deviceCode: string }): Promise<void> {
+  await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.device.pair", targetType: "PosDevice", targetId: device.id, after: { deviceId: device.id, deviceCode: device.deviceCode, unitId: ctx.unitId, userId: actor.userId } });
 }
 // ◂ POS P5.2

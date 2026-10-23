@@ -12,7 +12,7 @@ import { secureCookies } from "@/lib/env"; // POS P5.2 ▸ D1 ◂
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { heartbeat, listDevices, pairedDevice, registerDevice, revokeDevice, updateDevice } from "./device"; // POS P5.2 ▸ + pairedDevice ◂
+import { heartbeat, listDevices, pairedDevice, recordDevicePairing, registerDevice, revokeDevice, updateDevice } from "./device"; // POS P5.2 ▸ + pairedDevice · recordDevicePairing (CD-P52-O4 F3) ◂
 import { POS_DEVICE_COOKIE, POS_DEVICE_COOKIE_MAX_AGE_S, posDeviceKeyConfigured, signPosDeviceCookie } from "./device-cookie"; // POS P5.2 ▸ D1 ◂
 import type {
   DevicePairingResult, // POS P5.2 ▸ D1 ◂
@@ -58,7 +58,7 @@ export async function registerDeviceAction(args: Target & RegisterDeviceInput): 
   try {
     const s = await sessionScope(args, "pos.device.manage");
     if ("ok" in s) return s;
-    // POS P5.2 ▸ D1 (CD-P52-O2-3): จับคู่ = ลงทะเบียน + คุกกี้เครื่องลงนามด้วยกุญแจแยก POS_DEVICE_KEY (device-cookie.ts) ·
+    // POS P5.2 ▸ D1 (CD-P52-O2-2 สัญญา D1 · CD-P52-O2-3 กุญแจแยก): จับคู่ = ลงทะเบียน + คุกกี้เครื่องลงนามด้วยกุญแจแยก POS_DEVICE_KEY (device-cookie.ts) ·
     //   ยังไม่ตั้งกุญแจ = ปฏิเสธ DEVICE_KEY_UNSET ก่อนสร้างแถว (การ์ด "ยังไม่ตั้งกุญแจ") · ผู้ถือ pos.device.manage ที่สาขาเท่านั้น (แคชเชียร์ = PERMISSION_DENIED) ·
     //   ลงทะเบียนรหัสเดิมที่ ACTIVE = จับคู่เบราว์เซอร์นี้ใหม่ (ได้คุกกี้ใหม่) ◂
     if (!posDeviceKeyConfigured()) return refusal("DEVICE_KEY_UNSET", "ยังไม่ตั้งกุญแจจับคู่เครื่อง — ผู้ดูแลระบบต้องตั้งกุญแจก่อนจึงจะจับคู่เครื่องขายได้");
@@ -66,6 +66,7 @@ export async function registerDeviceAction(args: Target & RegisterDeviceInput): 
     if (r.ok) {
       const value = signPosDeviceCookie({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId, deviceId: r.device.id, deviceCode: r.device.deviceCode, iat: Math.floor(Date.now() / 1000) });
       (await cookies()).set(POS_DEVICE_COOKIE, value, { httpOnly: true, secure: secureCookies, sameSite: "strict", path: "/", maxAge: POS_DEVICE_COOKIE_MAX_AGE_S });
+      await recordDevicePairing(s.ctx, s.actor, r.device); // CD-P52-O4 F3: audit ทุกครั้งที่ออกคุกกี้ (รวมจับคู่ซ้ำ)
     }
     return r; // ◂ POS P5.2
   } catch (e) {

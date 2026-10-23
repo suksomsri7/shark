@@ -16,6 +16,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
+import { requestDevice, type DeviceNotPaired, type DeviceRevokedRefusal } from "./device-request"; // POS P5.2 ▸ CD-P52-O4 F1 ◂
 import { registerCatalog, registerScan, quoteRegisterCart, quoteRegisterCartOverride, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
 import { registerFulfilReward, registerMemberBenefits, registerMemberLookup, registerQuickMember } from "./register-member"; // POS P1.12 ◂
@@ -71,8 +72,21 @@ function sessionScope(auth: Session, args: unknown): { ctx: RegisterCtx; actor: 
   } catch {
     return refusal("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์ขาย — ขอให้เจ้าของร้านเพิ่มสิทธิ์");
   }
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
-  return { ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) }, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
+  // POS P5.2 ▸ CD-P52-O4 F1 (ต่อ D2 · CD-P52-O2-2 · CD-P52-O2-3): deviceId ของ client ไม่เข้า ctx อีกแล้ว — เครื่องมาจากคุกกี้เท่านั้น (deviceScope) ◂
+  return { ctx: { tenantId: auth.active.tenantId, systemId, unitId }, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
+}
+
+/**
+ * POS P5.2 ▸ CD-P52-O4 F1: ทางขายผูกเครื่องจากคุกกี้เครื่องลงนาม (device-request.ts · โหมด bind) — คำสั่งที่ผูกกะ/ลิ้นชัก/โทเคนผู้ขาย/PIN ผู้จัดการกับเครื่อง
+ * (ขาย · คิดราคาแบบ override · สถานะหน้าขาย · พัก/เรียกคืน/ทิ้งบิลพัก): คุกกี้ = เครื่องนั้น · เพิกถอน = DEVICE_REVOKED ·
+ * ไม่มีคุกกี้ + สาขามีเครื่อง ACTIVE = DEVICE_NOT_PAIRED · สาขาไม่มีเครื่องเลย = ทางเดิมไม่มีเครื่อง ◂
+ */
+/** DEVICE_NOT_PAIRED / DEVICE_REVOKED ของ device-request (register.ts ไม่แตะ) + lineIndex ว่าง — จอที่อ่าน r.lineIndex ใช้ชนิดเดิมได้ */
+type RegDeviceRefusal = (DeviceNotPaired | DeviceRevokedRefusal) & { lineIndex?: undefined };
+async function deviceScope(s: { ctx: RegisterCtx; actor: RegisterActor }): Promise<{ ctx: RegisterCtx; actor: RegisterActor } | RegDeviceRefusal> {
+  const d = await requestDevice({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId }, "bind");
+  if (!d.ok) return d;
+  return { ctx: { ...s.ctx, ...(d.deviceId ? { deviceId: d.deviceId } : {}) }, actor: s.actor };
 }
 
 function unexpected(where: string, e: unknown): RegisterRefusal {
@@ -125,11 +139,13 @@ export async function quoteRegisterCartAction(args: Target & { cart: RegisterQuo
  * POS P1.12U fix รอบ 1 (F1): quote ของตะกร้าที่มีสิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) — ด่านเดียวกับ quoteRegisterCartAction ·
  * ส่งต่อเฉพาะคีย์ของ RegisterQuoteOverrideInput (systemId/unitId/deviceId เป็นของ ctx) · อ่านอย่างเดียว
  */
-export async function quoteRegisterCartOverrideAction(args: Target & RegisterQuoteOverrideInput): Promise<RegisterQuoteResult> {
+export async function quoteRegisterCartOverrideAction(args: Target & RegisterQuoteOverrideInput): Promise<RegisterQuoteResult | RegDeviceRefusal> {
   const auth = await session("quoteRegisterCartOverrideAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s0 = sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await deviceScope(s0); // POS P5.2 ▸ CD-P52-O4 F1 ◂
     if ("ok" in s) return s;
     const a = (args ?? {}) as Partial<RegisterQuoteOverrideInput>;
     const input: Record<string, unknown> = { cart: a.cart };
@@ -141,11 +157,13 @@ export async function quoteRegisterCartOverrideAction(args: Target & RegisterQuo
 }
 
 /** ส่งบิล — `sale` = ผลของ cartToSubmitInput (เก็บไว้ส่งตัวเดิมทุกครั้งที่ลองซ้ำ) */
-export async function submitRegisterSaleAction(args: Target & { sale: RegisterSubmitInput }): Promise<RegisterSubmitResult> {
+export async function submitRegisterSaleAction(args: Target & { sale: RegisterSubmitInput }): Promise<RegisterSubmitResult | RegDeviceRefusal> {
   const auth = await session("submitRegisterSaleAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s0 = sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await deviceScope(s0); // POS P5.2 ▸ CD-P52-O4 F1 ◂
     if ("ok" in s) return s;
     const r = await submitRegisterSale(s.ctx, s.actor, args.sale);
     if (r.ok) {
@@ -191,11 +209,13 @@ export async function registerProductOptionsAction(args: Target & { productId: s
 }
 
 /** แถบสถานะ (สาขา · ผู้ขาย · รอตัดสต็อก) */
-export async function registerStatusAction(args: Target): Promise<RegisterStatusResult> {
+export async function registerStatusAction(args: Target): Promise<RegisterStatusResult | RegDeviceRefusal> {
   const auth = await session("registerStatusAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s0 = sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await deviceScope(s0); // POS P5.2 ▸ CD-P52-O4 F1 ◂
     if ("ok" in s) return s;
     return await registerStatus(s.ctx, s.actor);
   } catch (e) {
@@ -206,11 +226,13 @@ export async function registerStatusAction(args: Target): Promise<RegisterStatus
 // ═══════ POS P1.5 — พักบิล / เรียกคืน (held-cart.ts) · ปฏิเสธคืนเป็นข้อมูล ไม่ throw ═══════
 
 /** พักตะกร้าปัจจุบัน — `cart` = ผลของ cartToQuoteInput (ไม่มีคีย์บิล) · label ไม่บังคับ (≤ 60 ตัวอักษร) */
-export async function holdRegisterCartAction(args: Target & { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null }): Promise<HoldRegisterCartResult> {
+export async function holdRegisterCartAction(args: Target & { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null }): Promise<HoldRegisterCartResult | RegDeviceRefusal> {
   const auth = await session("holdRegisterCartAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s0 = sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await deviceScope(s0); // POS P5.2 ▸ CD-P52-O4 F1 ◂
     if ("ok" in s) return s;
     // POS P1.15 ▸ R3: staffToken = ผู้ขายบนเครื่อง (held-cart ตรวจ · ผิด = STAFF_TOKEN_INVALID) ◂
     return await holdRegisterCart(s.ctx, s.actor, { cart: args.cart, label: args.label ?? null, ...(typeof args?.staffToken === "string" ? { staffToken: args.staffToken } : {}) });
@@ -233,11 +255,13 @@ export async function listHeldCartsAction(args: Target): Promise<ListHeldCartsRe
 }
 
 /** เรียกคืน (ผู้ชนะคนเดียว) — ได้ตะกร้า + quote ราคาปัจจุบัน + notices · จอต้อง resetBill() ก่อนวางตะกร้า (คีย์บิลใหม่) */
-export async function recallHeldCartAction(args: Target & { id: string; staffToken?: string | null }): Promise<RecallHeldCartResult> {
+export async function recallHeldCartAction(args: Target & { id: string; staffToken?: string | null }): Promise<RecallHeldCartResult | RegDeviceRefusal> {
   const auth = await session("recallHeldCartAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s0 = sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await deviceScope(s0); // POS P5.2 ▸ CD-P52-O4 F1 ◂
     if ("ok" in s) return s;
     return await recallHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "", ...(typeof args?.staffToken === "string" ? { staffToken: args.staffToken } : {}) });
   } catch (e) {
@@ -246,11 +270,13 @@ export async function recallHeldCartAction(args: Target & { id: string; staffTok
 }
 
 /** ทิ้งบิลที่พัก (สิทธิ์เดียวกับล้างบิล · บันทึก audit) */
-export async function discardHeldCartAction(args: Target & { id: string }): Promise<DiscardHeldCartResult> {
+export async function discardHeldCartAction(args: Target & { id: string }): Promise<DiscardHeldCartResult | RegDeviceRefusal> {
   const auth = await session("discardHeldCartAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s0 = sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await deviceScope(s0); // POS P5.2 ▸ CD-P52-O4 F1 ◂
     if ("ok" in s) return s;
     return await discardHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "" });
   } catch (e) {
