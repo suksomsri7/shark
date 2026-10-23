@@ -69,7 +69,7 @@ const CHECKS: readonly Def[] = [
   D("X3", "X", "[db · F-blind 1–5] A1 × วัตถุ A2 ทุกชนิด (บิล · โต๊ะ · ออเดอร์ · กะ · บิลพัก · คำขออนุมัติ · เครื่อง · intent · สลิป): MANAGER[A1] unitId A1 / ไม่ส่ง unitId + STAFF คีย์ POS ครบ[A1] → ไม่เห็น A2 (เลขบิล · รายการ · ยอดรวม · ลูกค้า · เครื่อง · โต๊ะ · บิลพัก · สลิป) · แถว A2 ไม่เปลี่ยน · ตัวควบคุมบวก", "rows[unitScoped, OTHER_UNIT=deny]"),
   D("X4", "X", "[db · F1 HIGH] คำขอ POS_VOID/POS_REFUND/POS_DISCOUNT_OVER ของ A2: listPending ของ MANAGER[A1] ไม่มี · decideAction(APPROVED)/bulkDecideAction(REJECTED) ของ MANAGER[A1] ไม่สำเร็จ · คำขอยัง PENDING · บิล A2 ยัง PAID · ตัวควบคุมบวก MANAGER[A2]", "src/lib/modules/approval/actions.ts#decideAction · #bulkDecideAction · src/app/app/approvals/page.tsx"),
   // ORACLE-EDIT (CD-P52-O3-2 · R1 F2 · ผู้คุม 23 ต.ค. · ledger/wo-notes/pos-P5.2-fix-abcf-review.md F2): ยึดส่วนลดที่อนุมัติ ณ ตอนขาย ต้องตรวจสิทธิ์สดของผู้ตัดสินเหมือนตัวรับคิว
-  D("X4b", "X", "[db · R1 F2 · CD-P52-O3-2] ผู้ตัดสินเสียสิทธิ์หลังอนุมัติ: แคชเชียร์ A2 ลด 15% → คำขอ POS_DISCOUNT_OVER · MANAGER[A2] อนุมัติ → บิลพักผูกคำขอ · ย้ายสิทธิ์สาขาของผู้ตัดสินไป A1 → submit {heldCartId} = DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · ตัวควบคุมบวก คืนสิทธิ์ A2 → ผ่าน via approved (audit pos.discount.override requestId + byUserId ผู้ตัดสิน)", "src/lib/modules/pos/pos-approval.ts#approvedDiscountOf · register.ts regResolveOverrideCap"),
+  D("X4b", "X", "[db · R1 F2 · CD-P52-O3-2] ผู้ตัดสินเสียสิทธิ์หลังอนุมัติ: ผู้ขาย A2 (STAFF เพดาน 10%) ลด 15% → คำขอ POS_DISCOUNT_OVER · MANAGER[A2] อนุมัติ → บิลพักผูกคำขอ · ย้ายสิทธิ์สาขาของผู้ตัดสินไป A1 → submit {heldCartId} = DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · ตัวควบคุมบวก คืนสิทธิ์ A2 → ผ่าน via approved (audit pos.discount.override requestId + byUserId ผู้ตัดสิน)", "src/lib/modules/pos/pos-approval.ts#approvedDiscountOf · register.ts regResolveOverrideCap"),
   D("X5", "R", "[db · F2] ลำดับชั้น PIN: MANAGER[A1] ตั้ง/ปลดล็อก PIN ของ OWNER · lead (STAFF + pos.staff.manage) ตั้ง/ปลดล็อก PIN ของ MANAGER → PERMISSION_DENIED + แถว PIN เดิม · ตัวควบคุมบวก ตั้ง PIN แคชเชียร์ได้", "src/lib/modules/pos/staff-pin-actions.ts#setStaffPinAction · #unlockStaffPinAction"),
   D("K3", "K", "[db · F3] คีย์กลาง (scope ว่าง) × POST /api/v1/ai/tools/sales_summary · sales_by_day → 403 · ตัวควบคุมบวก คีย์ pos-read = 200", "src/app/api/v1/ai/tools/[name]/route.ts#POST"),
   D("D1", "D", "[db · §10.4 D1c] จับคู่เครื่อง: แคชเชียร์ registerDeviceAction → ปฏิเสธ · OWNER → ได้คุกกี้เครื่องที่ลงนาม (ไม่ใช่รหัสเครื่องเปล่า) หรือปฏิเสธเพราะยังไม่ตั้งกุญแจ (ไม่มีแถว) · ไฟล์เครื่อง/กะไม่ใช้ CHAT_/POS_CREDENTIALS_KEY", "src/lib/modules/pos/device-actions.ts#registerDeviceAction"),
@@ -1500,6 +1500,8 @@ async function runDb2(): Promise<void> {
     const p: string[] = [];
     const regMod = await tryImport("@/lib/modules/pos/register");
     const consMod = await tryImport("@/lib/modules/pos/pos-approval-consumer");
+    // ผู้ขาย A2 ที่ตั้งราคาเองได้ (บรรทัดกำหนดเอง) — แคชเชียร์ A2 ไม่มี pos.sale.priceOverride (รอบแรก = PERMISSION_DENIED ก่อนถึงส่วนลด)
+    if (!PER.SELLER_A2) await step2("ผู้ขาย A2 (X4b)", async () => mkUser(TA, SLUG_A, "SELLER_A2", "STAFF", [uA2], { "pos.sale.create": true, "pos.sale.priceOverride": true, "pos.shift.operate": true }));
     let n = 0;
     const input = (heldCartId?: string) => ({
       lines: [{ name: `P52 X4b ${RAND}`, qty: 1, unitPriceSatang: 20000 }], billDiscount: { type: "PERCENT", value: 1500 }, idempotencyKey: `p52-${RAND}-x4b-${++n}`,
@@ -1507,7 +1509,7 @@ async function runDb2(): Promise<void> {
     });
     const sellX = async (held?: string) => {
       const inp = input(held);
-      const r = await svc(regMod, "submitRegisterSale", ctxU2(uA2, DEV.A2), actorOf2("CASHIER_A2"), inp);
+      const r = await svc(regMod, "submitRegisterSale", ctxU2(uA2, DEV.A2), actorOf2("SELLER_A2"), inp);
       const sale = await P.posSale.findFirst({ where: { tenantId: TA, idempotencyKey: inp.idempotencyKey }, select: { id: true } }).catch(() => null);
       return { r, saleId: String(sale?.id ?? "") };
     };
