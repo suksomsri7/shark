@@ -35,6 +35,8 @@ F-P3-69 · F-P3-06 · MA10 snapshot ledger id · shop `refundOrder` restock แ�
 5. tg: `/usr/local/bin/tg "📊 POS · NN% (x/y) · …"` หลังทุก merge
 
 ## §6 ถ้า B ถูกตัดโควตากลางทาง (เจ้าของแจ้ง 98% ≈14:5xZ) — A ทำต่อจากจุดนี้ได้ทันที
+**อัปเดต 15:2xZ: ขั้น 1–5 ทำแล้วในทรีผู้คุม (local · ยังไม่ push)**: merge D+E+device = `98f60761` → CD-RP24 `4aa4da6e` → CD-RP24b **`1aeb127a`** (+ ledger) · static 17 ชุดเขียว 16 · **p3.4 ST2 แดงที่ทราบ** (ดู RESUME 15:1xZ · ไม่ใช่จาก merge นี้ · LANE_REV ย้ายแล้วยังแดง → A ดีบัก firstOk/ORACLE-EDIT CD-RP24c) · ด่านทรี c กำลังรัน `tc-p52b-20261023T151748Z` (unit pos-tc-p52b-*) → ถ้า SUMMARY.txt มี `tsc 0 errors 0` · p2.14 60/60 · p1.6 48/48 · p5.1 28/28 · **p5.2 54/54** ⇒ `git -C /root/projects/shark-pos push -u origin session/pos` → tg 93% (51/55) → ติ๊ก P5.2 ใน MASTER-PLAN · ถ้าไม่ครบ/ไม่มีไฟล์ = รันแม่แบบ tc ใหม่ที่ 1aeb127a
+(ขั้นตอนเดิมด้านล่างคงไว้เป็นอ้างอิง)
 สถานะที่แน่นอน ณ เขียน: tip `session/pos` = ledger บน **0fc0151b** (push แล้ว) · กิ่ง `wip/pos-p5.2-fix-de-dev` **c139bb41** (push แล้ว · โค้ด c27ea9cc · p5.2 54/54 ×2 · tsc 0 บนกิ่ง) · R1 security รอบ 2 กำลังตรวจกิ่งนี้ (รายงานจะอยู่ `/tmp/claude-0/-root/9878a238-0754-5958-805a-a0391fccc617/scratchpad/p52-r1-dedev/REPORT2.md` ถ้าเขียนได้ · ถ้าไม่มี = ถือว่าไม่มีผล R1-2 → A เปิด R1 รอบ 2 เอง ด้วยข้อความเดียวกับ `POS-RESUME.md` บรรทัด "R1 security รอบ 2")
 ขั้น merge P5.2 (ทำเหมือน batch C ทุกประการ · ดู RESUME บรรทัด CD-RP23):
 1. `git -C /root/projects/shark-pos fetch -q origin wip/pos-p5.2-fix-de-dev && git -C /root/projects/shark-pos merge --no-ff --no-edit origin/wip/pos-p5.2-fix-de-dev` (conflict คาดเฉพาะ `ledger/POS-OWNER-PENDING.md` = เก็บทั้งสองก้อน)
