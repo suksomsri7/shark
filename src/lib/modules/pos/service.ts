@@ -253,6 +253,20 @@ const isNonNegInt = (v: unknown): v is number => typeof v === "number" && Number
 function validateSaleInput(input: CreateSaleInput): void {
   const bad = (m: string) => new PosSaleError("VALIDATION", m);
   if (input.note !== undefined && input.note !== null && (typeof input.note !== "string" || input.note.length > MAX_NOTE)) throw bad(`หมายเหตุบิลยาวเกิน ${MAX_NOTE} ตัวอักษร`);
+  // POS P5.1 ▸ MA8 (F8 · CD-P51-O5): ค่าพื้นฐานของบิลทุกผู้เรียก — จำนวนเต็ม ≥ 1 · ราคาต่อหน่วยไม่ติดลบ · 0 ≤ ส่วนลดบรรทัด ≤ ราคารวมบรรทัด ·
+  //   0 ≤ ส่วนลดท้ายบิล ≤ Σ ยอดบรรทัด · แถวชำระไม่ติดลบ (ใบคืนสร้างโดย refund.ts ไม่ผ่าน createSale — ไม่อยู่ในกติกานี้) ◂
+  if (!Array.isArray(input.lines)) throw bad("ไม่มีรายการสินค้า");
+  let linesSum = 0;
+  for (const l of input.lines) {
+    if (!l || !Number.isInteger(l.qty) || l.qty < 1) throw bad("จำนวนสินค้าต้องเป็นจำนวนเต็มตั้งแต่ 1");
+    if (!isNonNegInt(l.unitPriceSatang)) throw bad("ราคาต่อหน่วยต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
+    const gross = l.unitPriceSatang * l.qty;
+    const lineDiscount = l.discountSatang ?? 0;
+    if (!isNonNegInt(lineDiscount) || lineDiscount > gross) throw bad("ส่วนลดของรายการต้องไม่ติดลบและไม่เกินราคาของรายการ");
+    linesSum += gross - lineDiscount;
+  }
+  const billDiscount = input.billDiscountSatang ?? 0;
+  if (!isNonNegInt(billDiscount) || billDiscount > linesSum) throw bad("ส่วนลดท้ายบิลต้องไม่ติดลบและไม่เกินยอดรวมของรายการ");
   for (const l of input.lines) {
     if (l.note !== undefined && l.note !== null && (typeof l.note !== "string" || l.note.length > MAX_NOTE)) throw bad(`หมายเหตุรายการยาวเกิน ${MAX_NOTE} ตัวอักษร`);
     // POS P1.2: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม)
@@ -290,6 +304,7 @@ function validateSaleInput(input: CreateSaleInput): void {
   if (input.payMethods.length > MAX_PAY_METHODS) throw new PosSaleError("SPLIT_INVALID", `แบ่งจ่ายได้ไม่เกิน ${MAX_PAY_METHODS} รายการ`);
   for (const p of input.payMethods) {
     if (!Number.isInteger(p.amountSatang)) throw bad("ยอดชำระต้องเป็นจำนวนเต็มสตางค์");
+    if (p.amountSatang < 0) throw bad("ยอดชำระแต่ละรายการต้องไม่ติดลบ"); // POS P5.1 ▸ MA8 ◂
     if (p.reference !== undefined && p.reference !== null && (typeof p.reference !== "string" || p.reference.length > MAX_REFERENCE)) throw bad(`เลขอ้างอิงยาวเกิน ${MAX_REFERENCE} ตัวอักษร`);
     if (p.cashTenderedSatang === undefined || p.cashTenderedSatang === null) continue;
     if (p.type !== "CASH") throw bad("เงินที่รับมาใส่ได้เฉพาะรายการเงินสด");
@@ -934,6 +949,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     const vatRateBp = await posVatRateBp(tx, input.tenantId, input.systemId);
     const paidSum = input.payMethods.reduce((s, p) => s + p.amountSatang, 0) - tip;
     const beforeMember = subtotal - billDiscount - couponDiscount + serviceCharge;
+    if (beforeMember < 0) throw new PosSaleError("VALIDATION", "ยอดบิลติดลบ — ส่วนลดรวมมากกว่ายอดของรายการ"); // POS P5.1 ▸ MA8 grand ≥ 0 ◂
 
     // ── ระบบสมาชิกของบิลนี้ (M2.8) ──
     // ไม่มี memberId = ไม่ยิง query เพิ่มแม้แต่ครั้งเดียว ⇒ บิล walk-in เดินเส้นทางเดิมทุกประการ
@@ -1123,6 +1139,17 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       }
     }
 
+    // POS P5.1 ▸ MA1 (F1 · CD-P51-O3 b): สิทธิ์สมาชิกไม่กินค่าบริการ — สิทธิ์รวม ≤ ยอดก่อนสิทธิ์ − ค่าบริการ (ตะกร้าของกระเป๋าไม่รู้ส่วนลดท้ายบิล/คูปอง) ·
+    //   ส่วนเกินตัดจากส่วนลดระดับก่อน (อัตโนมัติ · ไม่มีของที่ถูกใช้ไป) · ยังเกิน (ว่อชเชอร์/แต้ม/บัตรกำนัล) = ปฏิเสธทั้งบิล (rollback ทั้ง tx) ◂
+    const memberCap = Math.max(0, beforeMember - serviceCharge);
+    if (memberDiscount > memberCap) {
+      const excess = memberDiscount - memberCap;
+      if (excess > tierDiscountSatang) throw new PosSaleError("VALIDATION", "ส่วนลดรวมมากกว่ายอดบิล — ลดส่วนลดหรือสิทธิ์ที่เลือกก่อน");
+      tierDiscountSatang -= excess;
+      memberDiscount = memberCap;
+      const tierLine = memberBenefits?.lines.find((l) => l.kind === "TIER");
+      if (tierLine) tierLine.discountSatang = Math.max(0, tierLine.discountSatang - excess);
+    }
     const grandTotal = beforeMember - memberDiscount;
     if (paidSum !== grandTotal) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${grandTotal}`);

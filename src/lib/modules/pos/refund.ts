@@ -19,7 +19,7 @@ import { splitIncludedVat } from "@/lib/money/vat";
 import { posVatRateBp } from "./service";
 import { isShiftDeviceId, parseShiftSettings, resolveApiRefundShift, resolveRegisterShift } from "./shift"; // POS P2.13 ▸ + resolveApiRefundShift (CD5) ◂
 import type { RegisterActor, RegisterCtx } from "./register-shared";
-import { lineNets, refundLineAmount, refundServiceCharge } from "./refund-math";
+import { lineNets, refundLineAmount, refundServiceCharge, serviceChargeNet } from "./refund-math";
 import { channelRefundShare } from "./channel-shared"; // POS P2.1 ▸ R9 ส่วนแบ่งค่าคอมฯ ของใบคืน ◂
 // POS P1.11 ▸ R1: ใบคืนก็มีโทเคน (เปิดแล้วพาไปหน้าบิลต้นทาง) ◂
 import { newReceiptToken } from "./receipt-token";
@@ -587,8 +587,17 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
     return refundLineAmount(netOf.get(l.id)!, l.qty, prior.qty.get(l.id) ?? 0, prior.amt.get(l.id) ?? 0, r.qty);
   });
   const linesSum = amounts.reduce((a, b) => a + b, 0);
-  const sc = refundServiceCharge(sale.serviceChargeSatang, linesSum, netTotal, prior.sc, full);
+  // POS P5.1 ▸ MA1 (F1 · CD-P51-O3 a): ค่าบริการที่คืนได้ = ค่าบริการสุทธิ (หักส่วนลดระดับบิลที่เกิน Σ บรรทัด) — บิลปกติ = ค่าบริการเต็มเหมือนเดิม ◂
+  const scNet = serviceChargeNet(
+    sale.lines.map((l) => l.lineTotalSatang),
+    sale.serviceChargeSatang,
+    sale.grandTotalSatang,
+  );
+  const sc = refundServiceCharge(scNet, linesSum, netTotal, prior.sc, full);
   const grand = linesSum + sc;
+  // POS P5.1 ▸ MA1 (F1 · CD-P51-O3 c): ยอดคืนรวมไม่เกินยอดที่รับจริง (ยอดบิล − Σ ใบคืนก่อนหน้า) ◂
+  const refundable = Math.max(0, sale.grandTotalSatang - prior.docs.reduce((t, d) => t + d.grandTotalSatang, 0));
+  if (grand > refundable) return refuse("REFUND_EXCEEDS", `ยอดคืน ${grand} เกินยอดที่ยังคืนได้ของบิล ${refundable} (สตางค์)`);
   if (x.payMethods.length === 0 && grand !== 0) return refuse("VALIDATION", "ระบุวิธีคืนเงิน");
   const paySum = x.payMethods.reduce((t, p) => t + p.amountSatang, 0);
   if (paySum !== grand) return refuse("PAYMENT_MISMATCH", `ยอดเงินที่คืน ${paySum} ไม่เท่ากับยอดคืน ${grand} (สตางค์)`);
@@ -624,7 +633,17 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   } else if (sale.vatSatang > 0 && full) {
     vat = Math.min(grand, Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0)));
   } else if (sale.vatSatang > 0) {
-    vat = splitIncludedVat(grand, await posVatRateBp(tx, s.tenantId, s.systemId)).vatSatang;
+    // POS P5.1 ▸ MA9 (F9): ใบคืนบางส่วน = min(ส่วนของอัตราบิลเดิม, VAT ที่เหลือของบิล) — อัตรา POS วันนี้ยังถอด VAT บิลเดิมได้ตรง = อัตราเดิม (ทางเดิมทุกไบต์) ·
+    //   อัตราเปลี่ยนหลังขาย = ส่วนตามสัดส่วน ปัดครึ่งขึ้น(VAT บิล × ยอดใบนี้ / ยอดบิล) (สูตรเดียวกับทางมัดจำด้านบน) ◂
+    const left = Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0));
+    const rateNow = await posVatRateBp(tx, s.tenantId, s.systemId);
+    const share =
+      splitIncludedVat(sale.grandTotalSatang, rateNow).vatSatang === sale.vatSatang
+        ? splitIncludedVat(grand, rateNow).vatSatang
+        : sale.grandTotalSatang > 0
+          ? Number((BigInt(2) * BigInt(sale.vatSatang) * BigInt(grand) + BigInt(sale.grandTotalSatang)) / (BigInt(2) * BigInt(sale.grandTotalSatang)))
+          : 0;
+    vat = Math.min(grand, left, share);
   }
 
   // ── เลขใบคืน (R4 · O2): ตัวนับใหม่ต่อสาขา/ชนิด/เดือน — INSERT … ON CONFLICT ⇒ คืนพร้อมกันหลายใบบนแถวใหม่ไม่ชน unique ──
