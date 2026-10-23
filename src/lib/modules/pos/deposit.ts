@@ -878,20 +878,22 @@ export async function moduleForfeitDeposit(
  * (depositSaleVoided · คีย์ dep-restore-<apply> ⇒ คิวที่ตามมาไม่มีผล) ⇒ มัดจำ OPEN ใช้กับบิล DONE ได้ · void ไม่ได้ (กะปิด/สิทธิ์) หรือมีการคืนเงินแล้ว
  * = {ok:false} พร้อมเลขบิลริบ — ผู้เรียกปฏิเสธการเปลี่ยนสถานะ (ห้ามออกจาก NO_SHOW เงียบ ๆ โดยบิลยังอยู่) · ไม่มีบิลริบ/มัดจำแบบเดิม = ok ◂
  */
-export async function moduleUnforfeitDeposit(input: { tenantId: string; unitId: string; receiptSaleId: string | null | undefined }): Promise<{ ok: true; voidedSaleId: string | null } | { ok: false; code: string; message: string }> {
+export async function moduleUnforfeitDeposit(input: { tenantId: string; unitId: string; receiptSaleId: string | null | undefined; actorUserId: string }): Promise<{ ok: true; voidedSaleId: string | null } | { ok: false; code: string; message: string }> {
   if (!input.receiptSaleId) return { ok: true, voidedSaleId: null };
   const d = await prisma.posDeposit.findUnique({ where: { receiptSaleId: input.receiptSaleId }, select: { id: true, tenantId: true } });
   if (!d || d.tenantId !== input.tenantId) return { ok: true, voidedSaleId: null };
   const bill = await prisma.posSale.findFirst({
     where: { tenantId: input.tenantId, idempotencyKey: { startsWith: KEY_FORFEIT + d.id }, docType: "SALE", status: "PAID" },
     orderBy: { createdAt: "desc" },
-    select: { id: true, unitId: true, receiptNo: true, refundedSatang: true },
+    select: { id: true, unitId: true, receiptNo: true, refundedSatang: true, sourceModule: true },
   });
   if (!bill) return { ok: true, voidedSaleId: null };
   const no = bill.receiptNo ?? bill.id;
+  // POS P5.1 ▸ RC F10b (CD-P51-O10b): void อัตโนมัติเฉพาะบิลริบของโมดูลจอง (BOOKING) · บิลที่ผู้จัดการริบที่หน้าขาย (POS) = ปฏิเสธการเปลี่ยนสถานะ ◂
+  if (bill.sourceModule !== "BOOKING") return { ok: false, code: "FORFEITED_AT_REGISTER", message: `บิลริบมัดจำ #${no} ริบที่เคาน์เตอร์แล้ว — ให้ผู้จัดการยกเลิกบิลที่ POS ก่อน` };
   if (bill.refundedSatang > 0) return { ok: false, code: "HAS_REFUNDS", message: `บิลริบมัดจำ #${no} มีการคืนเงินแล้ว — ยกเลิกบิลริบไม่ได้ จัดการที่หน้าบิลก่อนเปลี่ยนสถานะนัด` };
   try {
-    await voidSale(input.tenantId, bill.unitId, bill.id);
+    await voidSale(input.tenantId, bill.unitId, bill.id, { actorUserId: input.actorUserId, reason: "นัดออกจาก NO_SHOW", source: "booking" }); // POS P5.1 ▸ RC F10a: void มี audit (P3.9 R4) ◂
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, code: e instanceof PosSaleError ? e.code : "VOID_REFUSED", message: `ยกเลิกบิลริบมัดจำ #${no} ไม่ได้ (${msg.slice(0, 120)}) — ยกเลิกบิลริบที่หน้าบิลก่อนเปลี่ยนสถานะนัด` };

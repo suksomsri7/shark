@@ -1565,7 +1565,7 @@ export type VoidSaleAudit = {
   requestId?: string | null;
   requestedByUserId?: string;
   /** POS P2.14 ▸ API-9: ที่มาของคำสั่งยกเลิก — "API" = REST /api/v1/pos (ลง after.source) · ไม่ส่ง = หน้าจอ/ผู้เรียกเดิม (VoidSaleAudit ไม่อยู่ในสัญญา F15.2) ◂ */
-  source?: "API";
+  source?: "API" | "booking"; // POS P5.1 ▸ RC F10 (CD-P51-O10b): "booking" = นัดออกจาก NO_SHOW (moduleUnforfeitDeposit) ◂
 };
 
 // void: กลับรายการ (คืนแต้ม + สถานะ)

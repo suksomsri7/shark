@@ -724,6 +724,7 @@ export async function setAppointmentStatus(
   unitId: string,
   appointmentId: string,
   status: AppointmentStatus,
+  opts?: { actorUserId?: string | null }, // POS P5.1 ▸ RC F10a (CD-P51-O10b): ผู้สั่ง (ลง audit ของ void บิลริบ) ◂
 ) {
   // 🔴 AUDIT M12: event ที่ทำให้ลูกค้า "ได้ของ" (ตราจากการมาตามนัด · แต้มโบนัส CHECKIN · journey · voucher)
   //    ต้องเขียนใน transaction เดียวกับการเปลี่ยนสถานะ (กติกา core/outbox.ts:69-72)
@@ -734,7 +735,7 @@ export async function setAppointmentStatus(
   //   void ไม่ได้ = ไม่เปลี่ยนสถานะ + เหตุผลที่ระบุเลขบิลริบ (ไม่ออกจาก NO_SHOW เงียบ ๆ โดยบิลยังอยู่) ◂
   const before = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { status: true, depositSaleId: true } });
   if (before?.status === "NO_SHOW" && status !== "NO_SHOW" && before.depositSaleId) {
-    const u = await (await import("@/lib/modules/pos/deposit")).moduleUnforfeitDeposit({ tenantId, unitId, receiptSaleId: before.depositSaleId });
+    const u = await (await import("@/lib/modules/pos/deposit")).moduleUnforfeitDeposit({ tenantId, unitId, receiptSaleId: before.depositSaleId, actorUserId: opts?.actorUserId || "module:booking" });
     if (u.ok === false) return { ok: false as const, reason: u.message, unforfeit: true };
   }
   await prisma.$transaction(async (tx) => {
