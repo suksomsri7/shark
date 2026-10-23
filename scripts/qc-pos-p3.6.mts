@@ -50,7 +50,7 @@ const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของเลน (มติ 10 12): ต้นไม้ที่ข้อสอบนี้เขียนเทียบ — ST1 สัญญา · ST4 ไฟล์ห้ามแตะ */
 const PIN = process.env.P36_PIN || "54913c60"; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-RP9 · merge P3.6 f6ae3054: หมุดใบ = ฐานก่อน merge 72669941 → 54913c60) ◂
-const LANE_PIN = process.env.P36_LANE_PIN || "f6ae3054"; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-RP9 · หมุดเลน = merge commit) · // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: หมุดเลนแยกจากหมุดใบ — ข้อ "ไฟล์ห้ามแตะ" (ST4) เทียบ LANE_PIN · หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4 17 ต.ค.) ◂
+const LANE_PIN = process.env.P36_LANE_PIN || "6668b832"; // ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin f6ae3054 → 6668b832) · ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-RP9 · หมุดเลน = merge commit) · // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: หมุดเลนแยกจากหมุดใบ — ข้อ "ไฟล์ห้ามแตะ" (ST4) เทียบ LANE_PIN · หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4 17 ต.ค.) ◂
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · X1 idempotency/เล่นซ้ำ · X2 ข้ามขอบเขต/ความเป็นส่วนตัว · X3 สิทธิ์ · X4 เงิน · X5 ผลข้างเคียงครบทุกทาง · "-" เชิงหน้าที่

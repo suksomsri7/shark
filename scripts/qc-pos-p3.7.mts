@@ -264,7 +264,7 @@ const at = (o: unknown, path: string): unknown => path.split(".").reduce<unknown
 // ── git (หมุด = 72669941 · ฐานของใบ P3.7) ──
 const BASE_REV = "72669941";
 const P37_PIN = process.env.P37_PIN || "42b823e9"; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.7 CD-B5): หมุดของเลน (ฐานของผู้สร้าง S)
-const LANE_PIN = process.env.P37_LANE_PIN || "137aa93a"; // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · หมุดเลนหลังปิด P3 = ฐานที่ยอมรับเพิ่ม (ท้าย bases()) · old: ไม่มี LANE_PIN (ฐาน = 72669941 / P37_PIN เท่านั้น) · revert: env P37_LANE_PIN=42b823e9 or remove LANE_PIN)
+const LANE_PIN = process.env.P37_LANE_PIN || "6668b832"; // ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin 137aa93a → 6668b832) · ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · หมุดเลนหลังปิด P3 = ฐานที่ยอมรับเพิ่ม (ท้าย bases()) · old: ไม่มี LANE_PIN (ฐาน = 72669941 / P37_PIN เท่านั้น) · revert: env P37_LANE_PIN=42b823e9 or remove LANE_PIN)
 //   probe 22.10: บรรทัดไม่ marked ท้าย outbox-consumers.ts → ST3 แดง · คอมเมนต์ท้าย prisma/schema/pos.prisma → ST3 แดง "prisma/ เปลี่ยน" (wo-notes/pos-P3.12.md §probe)
 function gitBuf(args: string[]): Buffer | null {
   try {
