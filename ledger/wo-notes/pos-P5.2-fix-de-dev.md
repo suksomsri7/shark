@@ -91,3 +91,46 @@ Side suites at 0de07d33 (before the follow-up) found P2.13-ST6 · P3.6-ST4 · P3
 2. Residuals 1–4 above (sale path still trusts the client deviceId; one cookie per browser; currentShiftAction refuses without a cookie; no key rotation) — for R1/hunter to rule.
 3. KDS pause moved to a new POS action (deviation above) — R1 to confirm.
 4. Lane-pin re-pin at merge: HF-FU-ST1 · HF-FU2-ST1 (plus the ones listed in pos-P5.2-fix-abcf.md item C if still open).
+
+## R1 round 1 (controller ruling CD-P52-O4 · 23 Oct 12:0xZ–) — R1 report `scratchpad/p52-r1-dedev/REPORT.md` (MERGEABLE-AFTER-FIXES)
+Base a786a9df (product 87d0bdbf). Same rules (QC4 · qc4.sh · POS gate lock · iso 3G · one DB suite at a time · temp tenants only). Red-before = oracle edit dc3405aa on product 87d0bdbf (`o4-redbefore.log` 51/54); green-after = `o4-green1.log` @e52bcd1a 54/54.
+
+| item | commit | red-before (dc3405aa + product 87d0bdbf) | green-after |
+|---|---|---|---|
+| ORACLE-EDIT (D4 · F6 · F3 · F5 · F7 cookie) | dc3405aa | — (`--no-db` 22/22 · `--self-test` 8/8 · registered 56) | — |
+| F1 D4 sale path | b4c05ec9 | no cookie + claim Z: sale / staffToken Z / manager PIN → ok **bound to shift Z** (bills on Z 0→3) · status returns shift Z · cookie P4 + claim Z → bound to Z · staffToken P4 on cookie P4 → STAFF_TOKEN_INVALID · staffToken Z on cookie P4 → ok · sale with a revoked device's cookie → ok · cash movement without deviceId/cookie → ok | no cookie: sale / staffToken Z / PIN / status → DEVICE_NOT_PAIRED · cookie P4: sale bound to P4 · token P4 ok · token Z STAFF_TOKEN_INVALID · PIN ok (bound P4) · revoked cookie: sale + cash DEVICE_REVOKED · cash without device → DEVICE_NOT_PAIRED |
+| F2 matrix | e52bcd1a | rows CASHIER=allow (kdsKitchenPause · kdsSetAutoAcceptMax) · intent MANAGER=allow | CASHIER=deny, perm restaurant.kitchen.pause (now probed by R1/R2) · intent MANAGER=cond · `--check` ✅ 400 rows · M1–M5 green |
+| F3 pairing audit | b4c05ec9 | D1: audit pos.device.pair Δ0 for P2, P3 and re-pair | Δ+1 each (re-pair of ACTIVE P2: new cookie, +1 audit, no new row) |
+| F4 refund device | b4c05ec9 | refund took `refund.deviceId` from localStorage while the label used currentShiftAction | refund-actions drops the client deviceId; refund and label both use the cookie device (strip mode: no cookie = refund outside a shift, as before when no device was sent) · p1.8 49/49 |
+| F5 credit/tip "*" | 549c0964 | H6b: MANAGER_ALL (A1+A2 enumerated) saveCreditAccount ok (account changed) · tip ledger ok | MANAGER_ALL denied ×2 (no change) · MANAGER("*") ok ×2 · settings writers keep all-linked-units (MANAGER_ALL ok ×3) |
+| F6 in-process key | dc3405aa | QC4 runs skipped every positive control ("ข้าม (กุญแจไม่ตั้ง)") | `deviceKey: in-process` in JSON_SUMMARY · D1 cookie 241 chars · D2/D3/D4 positives run · key-unset sub-case → DEVICE_KEY_UNSET, no row, no cookie |
+| F7 iat max age · F8 citations | 350bae83 | iat unchecked | verify rejects iat older than 400 days or > 5 min ahead · no `__Host-` (http QC/dev) · comments cite CD-P52-O2-2 + CD-P52-O2-3 |
+
+### Binding rules after F1 (device-request.ts)
+- `bind`: cookie ACTIVE = that device · cookie of a revoked device = DEVICE_REVOKED · no/invalid cookie + the unit has ACTIVE devices = DEVICE_NOT_PAIRED · unit with no devices at all = legacy no-device path.
+- `strip`: same, except no cookie = no device (no refusal).
+- register-actions: the client deviceId never enters ctx. quote override, submit, status, hold, recall and discard use `bind`. Catalog, scan and member lookups never had a device.
+- shift-actions: open = bind + device required (D2) · cash movement = bind · close = bind, unpaired allowed only with pos.shift.manage (managers close a revoked device's shift from the shifts page) · X / current / page data = strip.
+- refund-actions: strip, client `refund.deviceId` dropped.
+- shift.ts, register.ts, register-ui.tsx not touched. New codes go back through `RegDeviceRefusal` / `NotPaired` shapes; REFUSAL_KEY DEVICE_NOT_PAIRED → errors.deviceNotPaired.
+
+### Open items (round 1)
+1. **qc-pos-p3.6 CR4 red (F5 consequence, needs an ORACLE-EDIT ruling)**: CR4 expects "ผู้จัดการ (ปริยาย pos.credit.manage) → ok" for its MGR fixture `unitAccess [U.A]`. That manager covered every linked unit, so it passed the all-linked-units gate; under F5 only OWNER / MANAGER "*" pass ⇒ PERMISSION_DENIED. Not edited (not my oracle). Proposed edit: MGR fixture `["*"]`, or expect PERMISSION_DENIED + add a "*" control.
+2. Lane-pin reds caused by F1 touching `register-actions.ts` / `refund-actions.ts` / `register-shared.ts`: P3.9-ST4 · P2.10-ST2 (`--no-db`) · HF-FU-ST1 · HF-FU2-ST1 — re-pin at merge.
+3. Still open (not in F1's list): `table-actions` · `deposit-actions` · `payment-intent-actions` · `order-actions` · `staff-pin-actions` (staff token issue) still read a client deviceId; the offline sync route was not reviewed. Same class as F1 — for the hunter/controller.
+
+### Verification @e52bcd1a (12:36–13:2xZ)
+| suite | result |
+|---|---|
+| qc-pos-p5.2 (pre-submit run1 / run2 · + o4-green1) | **54/54 ×3** (D4 green) · F4/F11 pendingOwner · deviceKey in-process · guardHits 0 · residue 0 · `--no-db` 22/22 |
+| p1.6 · p1.1 · p1.3 · p1.18 · hf-tx (pre-submit) | 48 · 180 · 128 · 81 · 22 — all green |
+| p2.4 · p2.8 · p1.7 (hf-pp/pp2) | 50 · 61 · 33 — green |
+| p1.9 · p1.9b · p1.10 · p1.11 · p1.12 | 53 · 22 · 40 · 38 · 72 — green |
+| p1.15 · p2.13 · p1.8 (refund) · p1.5 (held carts) · p2.6 · p2.9 · p4.1 | 40 · 54 · 49 · 21 · 67 · 62 · 16 — green |
+| p3.9 | 47/48 — ST4 lane pin (register-actions / refund-actions / register-shared) |
+| p3.6 | 51/52 — **CR4** (open item 1, F5 consequence) |
+| p2.10 `--no-db` | 1/2 — ST2 lane pin |
+| matrix `--check` | ✅ 400 rows |
+| fitness noenv / qc4 / pos · gen-check | 53 · 53 · 8 · ✅ |
+| strict tsc | 0 errors @e52bcd1a |
+| pre-submit `--wo qc-pos-p5.2 --set core` | green 12 · red 2 = expected lane pins HF-FU-ST1 · HF-FU2-ST1 · unexpected none |
