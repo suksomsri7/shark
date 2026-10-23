@@ -51,6 +51,11 @@ const CHECKS: readonly Def[] = [
   D("MA8", "F8", "LOW", "A", "[F8] createSale ตรง: qty 0 · ราคาติดลบ · ส่วนลดบรรทัด > ราคา · ส่วนลดท้ายบิล > ยอดบรรทัด · แถวชำระติดลบ (CASH −100 + TRANSFER 200) → ปฏิเสธทุกกรณี ไม่มีบิล"),
   D("MA9", "F9", "LOW", "D", "[F9] บิล 4 × 100,000 ที่ VAT 7% (26,168) → อัตรา POS เปลี่ยนเป็น 10% → คืนบางส่วน 1+1+1 หน่วย: VAT ใบคืนแต่ละใบ = ส่วนของอัตราบิลเดิม (6,542 ±1) · Σ VAT ใบคืน ≤ VAT บิล (hunter: 9,091 ×3 = 27,273 > 26,168)"),
   D("MA10", "F10", "LOW", "D", "[F10] บิล 15,000 + ทิป 1,000: [CASH 11,000 · GIFT_CARD 5,000] · ไม่มีบัญชีพักทิปตอนระบาย → JV Dr 2110 = 5,000 (ยอดบัตรจริง) · Dr 1000 = 10,000 (hunter: ตัดทิปจากแถวบัตร ⇒ 2110 = 4,000 · 1000 = 11,000)"),
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8 · O9 · R1 ของชุด B F3 F4 · fix batch C): MA12 MA12b MA13 MA14 ◂
+  D("MA12", "R1-F3", "MED", "C", "[R1 F3 · CD-P51-O8a] จองคิว NO_SHOW (setStatusAction) ที่มีมัดจำ 50,000 ⇒ บิล \"มัดจำริบ — ไม่มาตามนัด\" 1 ใบ PAID 50,000 จ่ายด้วยแถว DEPOSIT อ้างใบรับ (ไม่มีเงินสด) · GL รายได้ 46,729 · VAT 2200 สุทธิ 3,271 (ครั้งเดียว) · 2110 สุทธิ 0 · มัดจำคงเหลือ 0 USED · audit pos.deposit.forfeit · NO_SHOW ซ้ำ = ไม่มีบิลที่สอง (R1: มัดจำ OPEN ตลอดไป · ไม่มีรายได้)"),
+  D("MA12b", "R1-F3", "MED", "C", "[R1 F3 · CD-P51-O8b · ตัวควบคุมบวก] ยกเลิก (จองคิว CANCELLED · โรงแรม cancelReservation · เช่า cancelBooking) ⇒ มัดจำยัง OPEN 50,000 · ไม่มีบิลริบ (คนตัดสินที่หน้าขาย: คืนหรือริบ)"),
+  D("MA13", "R1-F3", "MED", "C", "[R1 F3 · CD-P51-O8c] หน้าขาย registerForfeitDeposit ของมัดจำโมดูลที่ OPEN (โรงแรมยกเลิก): แคชเชียร์ไม่มี pos.sale.manage = PERMISSION_DENIED ไม่มีบิล · ผู้จัดการไม่ใส่เหตุผล = REASON_REQUIRED · ผู้จัดการ + เหตุผล = บิลริบ 50,000 · มัดจำ 0 USED · audit เก็บเหตุผล + ผู้ทำ · ริบซ้ำ = ไม่มีบิลที่สอง"),
+  D("MA14", "R1-F4", "LOW", "C", "[R1 F4 · CD-P51-O9] ใบรับมัดจำของโมดูลจ่ายด้วยวิธีจริง (ค่าปริยาย TRANSFER · ไม่ใช่ DEPOSIT) · สรุปวัน: DEPOSIT = Σ แถว DEPOSIT อ้างใบรับบนบิลปิดเท่านั้น · TRANSFER = Σ แถว TRANSFER · probe GL: Dr 1010 ของใบรับโมดูล = Σ แถว TRANSFER ของใบรับ (R1: ใบรับลงแถว DEPOSIT ⇒ บรรทัด DEPOSIT ≈ 2× มัดจำ ไม่ตรง 1010)"),
   D("MA11", "F11", "LOW", "D", "[F11] ตัวรับ pos.sale.paid ของบิลเดียวกันทำงานพร้อมกันจาก 2 โปรเซส (×3 บิล) → ไม่มีโปรเซสใดโยน (P2002 ของคีย์ JV = ลงแล้ว) · JV PAID 1 ต่อบิล"),
   D("Z1", "-", "-", "-", "QC4 คืนสภาพ: ร้านชั่วคราว 0 แถวทุกตารางที่มี tenantId (PosSale/Payment · JV/เอกสาร · Hotel/Rental/Booking/Ticket · MemberSubscription · GiftCard · OutboxEvent · AuditLog …) + Tenant + User/Session ของรอบ"),
   D("Z2", "-", "-", "-", "ลายนิ้วมือนอกร้านชั่วคราว (แถวที่มีก่อนรอบ · id:status ของ PosSale AccountDocument AccountJournalEntry MemberSubscription HotelReservation TicketOrder Appointment GiftCard) เท่าเดิม"),
@@ -61,9 +66,12 @@ const NOT_WRITTEN: readonly { finding: string; why: string }[] = [
   { finding: "F13", why: "ไม่ยืนยันเป็นบั๊ก: คีย์ออฟไลน์ = คีย์บิลออนไลน์ที่ commit แล้ว → DUPLICATE บิลเดิม (register.ts:2609-2610 · offline-sync.ts:521) = มติ P3.4 R4/R5 (กู้บิล unknown) — ข้อสอบ SY14 · ต่าง payload = REJECTED IDEMPOTENCY_CONFLICT อยู่แล้ว (SY22c)" },
   { finding: "F14", why: "INFO (ไม่มี severity): สลิปเก็บยอดของ client (payment-slip.ts:163/:223 → F15) · samePayload ไม่ดูส่วนลดท้ายบิล/คูปอง (service.ts:549) · ABB ก่อน claim (tax-invoice.ts:151/:164 · ops WARN N2) — บันทึกในโน้ต ไม่เขียนข้อ" },
 ];
-const MA_IDS = CHECKS.filter((c) => /^P5\.1-MA\d+$/.test(c.id)).map((c) => c.id);
+// ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8/O9): MA_IDS = MA1–MA11 (↔ F1–F11) เท่านั้น — MA12–MA14 อยู่ใน C_IDS ◂
+const MA_IDS = CHECKS.filter((c) => /^P5\.1-MA(\d+)$/.test(c.id) && Number(/\d+$/.exec(c.id)![0]) <= 11).map((c) => c.id);
 /** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7): ข้อจาก R1 ของชุด B (ไม่นับใน MA1–MA11 ↔ F1–F11) ◂ */
 const R1_IDS = ["P5.1-MA2b", "P5.1-MA4b"];
+/** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8/O9 · fix batch C): ข้อของ R1 ชุด B F3 (ริบมัดจำ) + F4 (วิธีรับของใบรับโมดูล) ◂ */
+const C_IDS = ["P5.1-MA12", "P5.1-MA12b", "P5.1-MA13", "P5.1-MA14"];
 
 if (LIST) {
   console.log(`${SUITE} · PIN ${PIN} · LANE_PIN ${LANE_PIN} · ${CHECKS.length} ข้อ`);
@@ -133,6 +141,44 @@ const V = {
       ok,
       expected: `ตัวควบคุม no-op ใบเดิม · รับใหม่ = ใบรับใหม่ PAID ${x.deposit} · นัดชี้ใบใหม่ (OPEN) · มัดจำเดิม REFUNDED`,
       actual: `ตัวควบคุม ${x.ctlNoop ? "noop" : "ไม่ noop"}/${x.ctlSame ? "ใบเดิม" : "ใบอื่น"} · รับใหม่ ${x.newReceipt ? "ใบใหม่" : "ใบเดิม"} ${x.newStatus ?? "-"} ${x.newAmount} · นัด ${x.paidAt ? "จ่ายแล้ว" : "ยังไม่จ่าย"} ชี้${x.linkedNew ? "ใบใหม่" : "ใบเดิม"} มัดจำ ${x.linkedStatus ?? "-"} · มัดจำเดิม ${x.oldStatus ?? "-"}`,
+    };
+  },
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8/O9): ตัวตัดสิน MA12 MA12b MA13 MA14 ◂
+  /** R1 F3 (O8a) — บิลริบของ NO_SHOW: จำนวน/สถานะ/ยอด/ชื่อบรรทัด/แถวจ่าย · GL · มัดจำ · audit · NO_SHOW ซ้ำ */
+  MA12(x: { bills: number; status: string | null; grand: number; lineName: string | null; pays: string[]; glIncome: number; net2200: number; net2110: number; left: number; depStatus: string | null; audits: number; billsAfterRepeat: number; deposit: number; base: number; vat: number }): Verdict {
+    const ok =
+      x.bills === 1 && x.status === "PAID" && x.grand === x.deposit && x.lineName === "มัดจำริบ — ไม่มาตามนัด" && x.pays.join(",") === `DEPOSIT:${x.deposit}` &&
+      x.glIncome === x.base && x.net2200 === x.vat && x.net2110 === 0 && x.left === 0 && x.depStatus === "USED" && x.audits === 1 && x.billsAfterRepeat === 1;
+    return {
+      ok,
+      expected: `บิลริบ 1 ใบ PAID ${x.deposit} "มัดจำริบ — ไม่มาตามนัด" · แถว DEPOSIT:${x.deposit} เท่านั้น · GL รายได้ ${x.base} · 2200 สุทธิ ${x.vat} · 2110 สุทธิ 0 · มัดจำ 0 USED · audit 1 · NO_SHOW ซ้ำ = 1 ใบ`,
+      actual: `บิลริบ ${x.bills} ใบ ${x.status ?? "-"} ${x.grand} "${x.lineName ?? "-"}" · แถว [${x.pays.join(",")}] · GL รายได้ ${x.glIncome} · 2200 สุทธิ ${x.net2200} · 2110 สุทธิ ${x.net2110} · มัดจำ ${x.left} ${x.depStatus ?? "-"} · audit ${x.audits} · หลังซ้ำ ${x.billsAfterRepeat} ใบ`,
+    };
+  },
+  /** R1 F3 (O8b) — ตัวควบคุมบวก: ยกเลิกแล้วมัดจำยัง OPEN เต็ม · ไม่มีบิลริบ */
+  MA12b(x: { cases: { name: string; cancelOk: boolean; depStatus: string | null; left: number; forfeitBills: number; deposit: number }[] }): Verdict {
+    const good = (c: { cancelOk: boolean; depStatus: string | null; left: number; forfeitBills: number; deposit: number }) => c.cancelOk && c.depStatus === "OPEN" && c.left === c.deposit && c.forfeitBills === 0;
+    const ok = x.cases.length === 3 && x.cases.every(good);
+    return { ok, expected: "3 กรณี: ยกเลิก ok · มัดจำ OPEN เต็มยอด · ไม่มีบิลริบ", actual: joinP(x.cases.map((c) => `${c.name}: ยกเลิก ${c.cancelOk ? "ok" : "ไม่สำเร็จ"} · มัดจำ ${c.depStatus ?? "-"} ${c.left}/${c.deposit} · บิลริบ ${c.forfeitBills}${good(c) ? " ✓" : " ✗"}`), "ไม่มีกรณี") };
+  },
+  /** R1 F3 (O8c) — หน้าขาย ริบมัดจำ: สิทธิ์ · เหตุผลบังคับ · ผล · audit · ซ้ำ */
+  MA13(x: { cashier: string; cashierBills: number; noReason: string; noReasonBills: number; mgr: string; mgrBills: number; grand: number; left: number; depStatus: string | null; auditReason: string | null; reason: string; auditActorOk: boolean; againBills: number; deposit: number }): Verdict {
+    const ok =
+      x.cashier === "PERMISSION_DENIED" && x.cashierBills === 0 && x.noReason === "REASON_REQUIRED" && x.noReasonBills === 0 && x.mgr === "ok" && x.mgrBills === 1 &&
+      x.grand === x.deposit && x.left === 0 && x.depStatus === "USED" && x.auditReason === x.reason && x.auditActorOk && x.againBills === 1;
+    return {
+      ok,
+      expected: `แคชเชียร์ PERMISSION_DENIED บิล 0 · ผู้จัดการไม่มีเหตุผล REASON_REQUIRED บิล 0 · ผู้จัดการ ok บิล 1 = ${x.deposit} · มัดจำ 0 USED · audit เหตุผล "${x.reason}" + ผู้จัดการ · ซ้ำ = 1 ใบ`,
+      actual: `แคชเชียร์ ${x.cashier} บิล ${x.cashierBills} · ไม่มีเหตุผล ${x.noReason} บิล ${x.noReasonBills} · ผู้จัดการ ${x.mgr} บิล ${x.mgrBills} ยอด ${x.grand} · มัดจำ ${x.left} ${x.depStatus ?? "-"} · audit "${x.auditReason ?? "-"}" ผู้ทำ ${x.auditActorOk ? "ตรง" : "ไม่ตรง"} · ซ้ำ ${x.againBills} ใบ`,
+    };
+  },
+  /** R1 F4 (O9) — วิธีรับของใบรับโมดูล · สรุปวัน DEPOSIT/TRANSFER · probe GL 1010 */
+  MA14(x: { receiptPays: string[]; moduleDepRows: number; reportDeposit: number; expectDeposit: number; reportTransfer: number; expectTransfer: number; jv1010: number; receiptTransfer: number }): Verdict {
+    const ok = x.receiptPays.join(",") === "TRANSFER" && x.moduleDepRows === 0 && x.reportDeposit === x.expectDeposit && x.reportTransfer === x.expectTransfer && x.receiptTransfer > 0 && x.jv1010 === x.receiptTransfer;
+    return {
+      ok,
+      expected: `ใบรับโมดูลใหม่ = แถว TRANSFER · ใบรับโมดูลทั้งร้านไม่มีแถว DEPOSIT · สรุปวัน DEPOSIT = ${x.expectDeposit} (บิลปิด) · TRANSFER = ${x.expectTransfer} · Dr 1010 ใบรับโมดูล = Σ TRANSFER ใบรับ`,
+      actual: `ใบรับใหม่ [${x.receiptPays.join(",")}] · แถว DEPOSIT บนใบรับโมดูล ${x.moduleDepRows} · สรุปวัน DEPOSIT ${x.reportDeposit} (บิลปิด ${x.expectDeposit}) · TRANSFER ${x.reportTransfer}/${x.expectTransfer} · Dr 1010 ใบรับโมดูล ${x.jv1010} / TRANSFER ใบรับ ${x.receiptTransfer}`,
     };
   },
   /** F3 — a: STAFF ราคาต่ำกว่าแคตตาล็อก (V2 ปิด) · b: V2 เปิด · ctl: OWNER ราคาแคตตาล็อก (V2 ปิด) */
@@ -208,6 +254,23 @@ const SELF_SAMPLES: Record<string, [() => Verdict, () => Verdict]> = {
     () => V.MA4b({ ctlNoop: true, ctlSame: true, newReceipt: true, newStatus: "PAID", newAmount: 50_000, paidAt: true, linkedNew: true, linkedStatus: "OPEN", oldStatus: "REFUNDED", deposit: 50_000 }),
     () => V.MA4b({ ctlNoop: true, ctlSame: true, newReceipt: false, newStatus: "PAID", newAmount: 50_000, paidAt: true, linkedNew: false, linkedStatus: "REFUNDED", oldStatus: "REFUNDED", deposit: 50_000 }),
   ],
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8/O9): ถูก / ตัวเลขของ R1 F3 F4 ◂
+  MA12: [
+    () => V.MA12({ bills: 1, status: "PAID", grand: 50_000, lineName: "มัดจำริบ — ไม่มาตามนัด", pays: ["DEPOSIT:50000"], glIncome: 46_729, net2200: 3_271, net2110: 0, left: 0, depStatus: "USED", audits: 1, billsAfterRepeat: 1, deposit: 50_000, base: 46_729, vat: 3_271 }),
+    () => V.MA12({ bills: 0, status: null, grand: 0, lineName: null, pays: [], glIncome: 0, net2200: 3_271, net2110: 46_729, left: 50_000, depStatus: "OPEN", audits: 0, billsAfterRepeat: 0, deposit: 50_000, base: 46_729, vat: 3_271 }),
+  ],
+  MA12b: [
+    () => V.MA12b({ cases: ["booking", "hotel", "rental"].map((name) => ({ name, cancelOk: true, depStatus: "OPEN", left: 50_000, forfeitBills: 0, deposit: 50_000 })) }),
+    () => V.MA12b({ cases: ["booking", "hotel", "rental"].map((name) => ({ name, cancelOk: true, depStatus: "USED", left: 0, forfeitBills: 1, deposit: 50_000 })) }),
+  ],
+  MA13: [
+    () => V.MA13({ cashier: "PERMISSION_DENIED", cashierBills: 0, noReason: "REASON_REQUIRED", noReasonBills: 0, mgr: "ok", mgrBills: 1, grand: 50_000, left: 0, depStatus: "USED", auditReason: "r", reason: "r", auditActorOk: true, againBills: 1, deposit: 50_000 }),
+    () => V.MA13({ cashier: "MISSING:registerForfeitDeposit", cashierBills: 0, noReason: "MISSING:registerForfeitDeposit", noReasonBills: 0, mgr: "MISSING:registerForfeitDeposit", mgrBills: 0, grand: 0, left: 50_000, depStatus: "OPEN", auditReason: null, reason: "r", auditActorOk: false, againBills: 0, deposit: 50_000 }),
+  ],
+  MA14: [
+    () => V.MA14({ receiptPays: ["TRANSFER"], moduleDepRows: 0, reportDeposit: 210_000, expectDeposit: 210_000, reportTransfer: 50_000, expectTransfer: 50_000, jv1010: 50_000, receiptTransfer: 50_000 }),
+    () => V.MA14({ receiptPays: ["DEPOSIT"], moduleDepRows: 8, reportDeposit: 610_000, expectDeposit: 210_000, reportTransfer: 0, expectTransfer: 0, jv1010: 50_000, receiptTransfer: 0 }),
+  ],
   MA3: [() => V.MA3({ ctl: "ok", a: "error", aBill: 0, b: "error", bBill: 0, c: "error", cBill: 0 }), () => V.MA3({ ctl: "ok", a: "error", aBill: 0, b: "error", bBill: 0, c: "ok", cBill: 1 })], // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b): ตัวอย่างบั๊ก = ช่องส่วนลดท้ายบิล (R1 F1) ◂
   MA4: [() => V.MA4({ paidAt: true, saleStatus: "PAID", paidDeposit: 50_000, deposit: 50_000 }), () => V.MA4({ paidAt: true, saleStatus: "VOIDED", paidDeposit: 0, deposit: 50_000 })],
   MA5: [
@@ -226,7 +289,7 @@ const SELF_SAMPLES: Record<string, [() => Verdict, () => Verdict]> = {
 };
 function runSelfTest(): string[] {
   const p: string[] = [];
-  for (const id of [...MA_IDS, ...R1_IDS]) { // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7): + MA2b MA4b ◂
+  for (const id of [...MA_IDS, ...R1_IDS, ...C_IDS]) { // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7): + MA2b MA4b · (CD-P51-O8/O9): + MA12 MA12b MA13 MA14 ◂
     const k = id.replace("P5.1-", "");
     const s = SELF_SAMPLES[k];
     if (!s) {
@@ -254,6 +317,7 @@ function runRegistry(): string[] {
   for (const z of ["P5.1-Z1", "P5.1-Z2"]) if (!ids.includes(z)) p.push(`ไม่มี ${z}`);
   if (MA_IDS.length !== 11) p.push(`ข้อ MA ${MA_IDS.length} (คาด 11)`);
   for (const r of R1_IDS) if (!CHECKS.some((c) => c.id === r && /^R1-F\d$/.test(c.finding) && c.batch === "B")) p.push(`ไม่มี ${r} (CD-P51-O7)`); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7) ◂
+  for (const r of C_IDS) if (!CHECKS.some((c) => c.id === r && /^R1-F[34]$/.test(c.finding) && c.batch === "C")) p.push(`ไม่มี ${r} (CD-P51-O8/O9)`); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8/O9) ◂
   return p;
 }
 
@@ -264,7 +328,7 @@ if (SELFTEST || NODB) {
     const reg = runRegistry();
     chk("ST1", reg.length === 0, "ทะเบียนครบ", joinP(reg));
   }
-  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length + R1_IDS.length} ข้อพลิกได้ครบ`));
+  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length + R1_IDS.length + C_IDS.length} ข้อพลิกได้ครบ`));
   const failedN = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id);
   console.log(`\n===== ${SUITE} (${NODB ? "--no-db" : "--self-test"}) ===== ผ่าน ${results.size - failedN.length}/${results.size}`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, mode: NODB ? "no-db" : "self-test", total: results.size, passed: results.size - failedN.length, failed: failedN, skipped: false, registered: CHECKS.length, pin: PIN })}`);
@@ -493,6 +557,7 @@ const OBX = await tryImport("@/lib/outbox-consumers");
 const CONS: Any = OBX?.consumers ?? {};
 const posAct = await tryImport("@/lib/actions/pos");
 const bookingAct = await tryImport("@/lib/actions/booking");
+const depositMod = await tryImport("@/lib/modules/pos/deposit"); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8c): registerForfeitDeposit ◂
 
 // ── Next request scope (เทคนิคเดียวกับ qc-hf-o23 / qc-crm-c3.5) — ให้ requireTenant()/requireUnit() อ่านคุกกี้ได้ในโปรเซส ·
 //    globalThis.AsyncLocalStorage ตั้งไว้ก่อน import ใด ๆ (ส่วน 3) — ไม่งั้นโมดูลของ Next ที่ถูกดึงมาก่อนจะโยน Invariant ◂
@@ -603,6 +668,7 @@ async function runDb(): Promise<void> {
       for (const [k, role, ua, perms] of [
         ["OWNER", "OWNER", ["*"], {}],
         ["CASH", "STAFF", [U.A!], { "pos.sale.create": true }],
+        ["MGR", "MANAGER", ["*"], {}], // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8c): ผู้จัดการของ MA13 ◂
       ] as const) {
         const u = await P.user.create({ data: { email: `${T_SLUG}-${k.toLowerCase()}@qc.invalid`, name: `${k} คิวซี${RAND}` } });
         await P.membership.create({ data: { userId: u.id, tenantId: T, role, unitAccess: [...ua], permissions: perms, acceptedAt: new Date() } });
@@ -889,6 +955,159 @@ async function runDb(): Promise<void> {
     chk("MA4b", v.ok, v.expected, `รับ ${codeOf(r1)} → ซ้ำ ${codeOf(ctl)}${ctl?.noop ? " (noop)" : ""} → ใช้ 10,000 → คืน ${codeOf(r2)} → รับอีก ${codeOf(r3)} · ${v.actual}`);
   });
 
+  // ════════ ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8 · R1 ของชุด B F3 · fix batch C) ตัวช่วยของ MA12 MA12b MA13 MA14 ════════
+  /** บิลขายที่จ่ายด้วยแถว DEPOSIT อ้างใบรับนี้ (บิลริบ/บิลปิด) */
+  const forfeitBillsOf = async (receiptId: string): Promise<Any[]> => {
+    if (!receiptId) return [];
+    const pays = (await P.posPayment.findMany({ where: { tenantId: T, type: "DEPOSIT", refSaleId: receiptId }, select: { saleId: true } }).catch(() => [])) as Any[];
+    const ids = [...new Set(pays.map((p: Any) => String(p.saleId)))];
+    return ids.length ? ((await P.posSale.findMany({ where: { tenantId: T, id: { in: ids }, docType: "SALE" }, include: { lines: true, payments: true } }).catch(() => [])) as Any[]) : [];
+  };
+  const depOf = async (receiptId: string): Promise<Any> => (receiptId ? P.posDeposit.findUnique({ where: { receiptSaleId: receiptId } }).catch(() => null) : null);
+  const leftOf = (d: Any): number => (d ? Number(d.amountSatang) - Number(d.usedSatang) - Number(d.refundedSatang) : -1);
+  const bookingAppt = async (label: string, startMin: number): Promise<Any> => {
+    const svc = await P.bookingService.create({ data: { tenantId: T, unitId: U.B, name: `บริการ ${label} ${RAND}`, durationMin: 60, priceSatang: 200_000, depositSatang: 50_000 } });
+    const stf = await P.bookingStaff.create({ data: { tenantId: T, unitId: U.B, name: `ช่าง ${label} ${RAND}` } });
+    return must("createAppointment", await bookingMod.createAppointment({ tenantId: T, unitId: U.B, serviceId: svc.id, staffId: stf.id, dateStr: addDays(TODAY, 3), startMin, customerName: `ลูกค้า ${label} ${RAND}`, customerPhone: `0831${rnd(6)}` }));
+  };
+  /** ปุ่มสถานะบนจอจริง (setStatusAction · คุกกี้ OWNER) */
+  const setStatusVia = async (apId: string, status: string): Promise<string> => {
+    const fd = new FormData();
+    fd.set("id", apId);
+    fd.set("status", status);
+    try {
+      await inScope(US.OWNER!.cookie, `/app/u/${SLUG.B}/booking`, () => bookingAct.setStatusAction(SLUG.B, fd));
+      return "ok";
+    } catch (e) {
+      return `โยน ${String((e as Error)?.message ?? e).slice(0, 60)}`;
+    }
+  };
+  const hotelDeposit = async (label: string, roomNo: string, fromDay: number): Promise<{ rvId: string; receiptId: string }> => {
+    const rt = await hotelMod.createRoomType({ tenantId: T, unitId: U.H, name: `ห้อง ${label} ${RAND}`, capacity: 2, baseRateSatang: 100_000, depositSatang: 50_000 });
+    must("createRoom", await hotelMod.createRoom({ tenantId: T, unitId: U.H, roomTypeId: rt.id, number: roomNo }));
+    const rv = must("createReservation", await hotelMod.createReservation({ tenantId: T, unitId: U.H, roomTypeId: rt.id, checkInDate: addDays(TODAY, fromDay), checkOutDate: addDays(TODAY, fromDay + 2), guestName: `แขก ${label} ${RAND}`, guestPhone: `0832${rnd(6)}` }));
+    const d = must("recordDeposit", await call(hotelMod, "recordDeposit", T, U.H, rv.id));
+    return { rvId: String(rv.id), receiptId: String(d.saleId ?? "") };
+  };
+
+  // ════════ MA12 (R1 F3 · ชุด C · CD-P51-O8a) จองคิว NO_SHOW ⇒ ริบมัดจำเป็นรายได้ ════════
+  await blk("MA12", async () => {
+    if (fx) return void chk("MA12", false, "fixture", FXB(""));
+    const ap = await bookingAppt("MA12", 600);
+    must("recordDeposit", await call(bookingMod, "recordDeposit", { tenantId: T, unitId: U.B }, ap.id));
+    const R = String((await P.appointment.findUnique({ where: { id: ap.id } }))?.depositSaleId ?? "");
+    const act = await setStatusVia(ap.id, "NO_SHOW");
+    await pump();
+    const bills = await forfeitBillsOf(R);
+    const b: Any = bills[0] ?? null;
+    const jvF = b ? await jvLines([String(b.id)]) : [];
+    const jvAll = await jvLines([R, ...(b ? [String(b.id)] : [])]);
+    const d = await depOf(R);
+    const audits = d ? Number(await P.auditLog.count({ where: { tenantId: T, action: "pos.deposit.forfeit", targetId: d.id } }).catch(() => -1)) : 0;
+    const again = await call(bookingMod, "setAppointmentStatus", T, U.B, ap.id, "NO_SHOW"); // NO_SHOW ซ้ำ (บริการตรง) = ไม่มีบิลที่สอง
+    await pump();
+    const after = await forfeitBillsOf(R);
+    const sp = split(50_000);
+    const v = V.MA12({
+      bills: bills.length,
+      status: b?.status ?? null,
+      grand: Number(b?.grandTotalSatang ?? 0),
+      lineName: b ? (b.lines?.length === 1 ? String(b.lines[0].name) : `${b.lines?.length ?? 0} บรรทัด`) : null,
+      pays: ((b?.payments ?? []) as Any[]).map((p: Any) => `${p.type}:${p.amountSatang}`),
+      glIncome: netCr(jvF, (c) => c.startsWith("4")),
+      net2200: netCr(jvAll, (c) => c === "2200"),
+      net2110: netCr(jvAll, (c) => c === "2110"),
+      left: leftOf(d),
+      depStatus: d?.status ?? null,
+      audits,
+      billsAfterRepeat: after.length,
+      deposit: 50_000,
+      base: sp.baseSatang,
+      vat: sp.vatSatang,
+    });
+    chk("MA12", !!R && v.ok, v.expected, `${R ? "" : "fixture: ไม่มีใบรับ · "}action NO_SHOW ${act} · ซ้ำ ${codeOf(again)} · ${v.actual}`);
+  });
+
+  // ════════ MA12b (R1 F3 · ชุด C · CD-P51-O8b · ตัวควบคุมบวก) ยกเลิก ⇒ มัดจำยัง OPEN ════════
+  await blk("MA12b", async () => {
+    if (fx) return void chk("MA12b", false, "fixture", FXB(""));
+    const caseOf = async (name: string, receiptId: string, cancelOk: boolean): Promise<Any> => {
+      await pump();
+      const d = await depOf(receiptId);
+      return { name, cancelOk: cancelOk && !!receiptId, depStatus: d?.status ?? null, left: leftOf(d), forfeitBills: (await forfeitBillsOf(receiptId)).length, deposit: 50_000 };
+    };
+    const cases: Any[] = [];
+    const b = await step("MA12b จองคิว", async () => {
+      const ap = await bookingAppt("MA12b", 660);
+      must("recordDeposit", await call(bookingMod, "recordDeposit", { tenantId: T, unitId: U.B }, ap.id));
+      const act = await setStatusVia(ap.id, "CANCELLED");
+      const row = await P.appointment.findUnique({ where: { id: ap.id } });
+      return caseOf("จองคิว", String(row?.depositSaleId ?? ""), act === "ok" && row?.status === "CANCELLED");
+    });
+    if (b) cases.push(b);
+    const h = await step("MA12b โรงแรม", async () => {
+      const x = await hotelDeposit("MA12b", "212", 5);
+      const c = await call(hotelMod, "cancelReservation", T, U.H, x.rvId, `ลูกค้ายกเลิก MA12b ${RAND}`);
+      return caseOf("โรงแรม", x.receiptId, c?.ok === true);
+    });
+    if (h) cases.push(h);
+    const rr = await step("MA12b เช่า", async () => {
+      const ctxR = { tenantId: T, unitId: U.R };
+      const as = await rentalMod.createAsset(ctxR, { name: `ของเช่า MA12b ${RAND}`, dailyRateSatang: 100_000, depositSatang: 50_000 });
+      const start = new Date(Date.now() + 5 * 86_400_000);
+      const bk = await rentalMod.createBooking(ctxR, { assetId: as.id, customerName: `ผู้เช่า MA12b ${RAND}`, customerPhone: `0833${rnd(6)}`, startDate: start, endDate: new Date(start.getTime() + 2 * 86_400_000) });
+      const d = must("recordRentalDeposit", await call(rentalMod, "recordRentalDeposit", ctxR, bk.id));
+      const c = await call(rentalMod, "cancelBooking", ctxR, bk.id);
+      return caseOf("เช่า", String(d.saleId ?? ""), c === true);
+    });
+    if (rr) cases.push(rr);
+    const v = V.MA12b({ cases });
+    chk("MA12b", v.ok, v.expected, `${cases.length === 3 ? "" : `fixture: ${cases.length}/3 กรณี · `}${v.actual}`);
+  });
+
+  // ════════ MA13 (R1 F3 · ชุด C · CD-P51-O8c) หน้าขาย "ริบมัดจำ" ของมัดจำโมดูลที่ OPEN ════════
+  await blk("MA13", async () => {
+    if (fx) return void chk("MA13", false, "fixture", FXB(""));
+    const x = await hotelDeposit("MA13", "213", 8);
+    must("cancelReservation", await call(hotelMod, "cancelReservation", T, U.H, x.rvId, `ลูกค้ายกเลิก MA13 ${RAND}`));
+    const R = x.receiptId;
+    const dep0 = await depOf(R);
+    const depositId = String(dep0?.id ?? "none");
+    const ctxH = { tenantId: T, systemId: S.POS, unitId: U.H };
+    const cashier = { userId: uid("CASH"), role: "STAFF", unitAccess: [U.H], permissions: { "pos.sale.create": true } };
+    const mgr = { userId: uid("MGR"), role: "MANAGER", unitAccess: [U.H], permissions: {} };
+    const reason = `ลูกค้ายกเลิกกระชั้นชิด MA13 ${RAND}`;
+    const nb = async () => (await forfeitBillsOf(R)).length;
+    const a = await call(depositMod, "registerForfeitDeposit", ctxH, cashier, { depositId, reason, idempotencyKey: newKey("ma13a") });
+    const aB = await nb();
+    const b = await call(depositMod, "registerForfeitDeposit", ctxH, mgr, { depositId, reason: "   ", idempotencyKey: newKey("ma13b") });
+    const bB = await nb();
+    const c = await call(depositMod, "registerForfeitDeposit", ctxH, mgr, { depositId, reason, idempotencyKey: newKey("ma13c") });
+    await pump();
+    const bills = await forfeitBillsOf(R);
+    const d = await depOf(R);
+    const au: Any = d ? await P.auditLog.findFirst({ where: { tenantId: T, action: "pos.deposit.forfeit", targetId: d.id } }).catch(() => null) : null;
+    const again = await call(depositMod, "registerForfeitDeposit", ctxH, mgr, { depositId, reason, idempotencyKey: newKey("ma13d") });
+    const againB = await nb();
+    const v = V.MA13({
+      cashier: codeOf(a),
+      cashierBills: aB,
+      noReason: codeOf(b),
+      noReasonBills: bB,
+      mgr: codeOf(c),
+      mgrBills: bills.length,
+      grand: Number(bills[0]?.grandTotalSatang ?? 0),
+      left: leftOf(d),
+      depStatus: d?.status ?? null,
+      auditReason: au?.after && typeof au.after === "object" ? String((au.after as Any).reason ?? "") : null,
+      reason,
+      auditActorOk: !!au && au.actorId === uid("MGR"),
+      againBills: againB,
+      deposit: 50_000,
+    });
+    chk("MA13", !!dep0 && v.ok, v.expected, `${dep0 ? `มัดจำ ${dep0.status} ${leftOf(dep0)}` : "fixture: ไม่มีมัดจำ"} · ซ้ำ ${codeOf(again)} · ${v.actual}`);
+  });
+
   // ════════ MA5 (F5 · ชุด B) createSale ล้มหลัง commit สถานะ → ไม่มีบิลตลอดไป ════════
   await blk("MA5", async () => {
     if (fx) return void chk("MA5", false, "fixture", FXB(""));
@@ -1100,6 +1319,34 @@ async function runDb(): Promise<void> {
     const v = V.MA9({ saleVat, partials });
     chk("MA9", docs.length === 3 && saleVat === split(400_000, 700).vatSatang && v.ok, v.expected, `บิล VAT ${saleVat} (คาด ${split(400_000, 700).vatSatang}) · ใบคืน ${notes.join(",")} · ${v.actual}`);
   });
+
+  // ════════ MA14 (R1 F4 · ชุด C · ORACLE-EDIT ผู้คุม 23.10 CD-P51-O9) วิธีรับของใบรับโมดูล + สรุปวัน + probe GL 1010 ════════
+  await blk("MA14", async () => {
+    if (fx) return void chk("MA14", false, "fixture", FXB(""));
+    const ap = await bookingAppt("MA14", 720);
+    const r = must("recordDeposit", await call(bookingMod, "recordDeposit", { tenantId: T, unitId: U.B }, ap.id));
+    const R = String(r.saleId ?? "");
+    await pump();
+    const receiptPays = ((await P.posPayment.findMany({ where: { tenantId: T, saleId: R } }).catch(() => [])) as Any[]).map((p: Any) => String(p.type));
+    // ใบรับของโมดูลทั้งร้าน (PosDeposit ของโมดูล = คีย์ dep:mod:…) — ทุกข้อของรอบนี้
+    const modIds = ((await P.posDeposit.findMany({ where: { tenantId: T, idempotencyKey: { startsWith: "dep:mod:" } }, select: { receiptSaleId: true } }).catch(() => [])) as Any[]).map((x: Any) => String(x.receiptSaleId));
+    const modPays = modIds.length ? ((await P.posPayment.findMany({ where: { tenantId: T, saleId: { in: modIds } } }).catch(() => [])) as Any[]) : [];
+    const receiptTransfer = modPays.filter((p: Any) => p.type === "TRANSFER").reduce((t: number, p: Any) => t + Number(p.amountSatang), 0);
+    const jv1010 = netDr(await jvLines(modIds), "1010");
+    // สรุปวัน vs แถวชำระจริง (บิลของรอบนี้ทั้งหมดเกิดวันนี้)
+    const cd = await call(posSvc, "closeDaySummary", { tenantId: T, systemId: S.POS });
+    const by = (t: string): number => Number(((cd?.byMethod ?? []) as Any[]).find((m: Any) => m.type === t)?.amountSatang ?? 0);
+    const rows = (await P.posPayment.findMany({ where: { tenantId: T, type: { in: ["DEPOSIT", "TRANSFER"] } }, include: { sale: { select: { docType: true, status: true, sourceModule: true, systemId: true } } } }).catch(() => [])) as Any[];
+    const mine = rows.filter((p: Any) => p.sale?.systemId === S.POS);
+    const sumOf = (pred: (p: Any) => boolean): number => mine.filter(pred).reduce((t: number, p: Any) => t + Number(p.amountSatang), 0);
+    const finalSale = (p: Any) => p.sale?.docType === "SALE" && p.sale?.status !== "VOIDED" && p.sale?.sourceModule !== "POS_DEPOSIT";
+    const anySale = (p: Any) => p.sale?.docType === "SALE" && p.sale?.status !== "VOIDED";
+    const refundDoc = (p: Any) => p.sale?.docType === "REFUND";
+    const expectDeposit = sumOf((p) => p.type === "DEPOSIT" && finalSale(p)) - sumOf((p) => p.type === "DEPOSIT" && refundDoc(p));
+    const expectTransfer = sumOf((p) => p.type === "TRANSFER" && anySale(p)) - sumOf((p) => p.type === "TRANSFER" && refundDoc(p));
+    const v = V.MA14({ receiptPays, moduleDepRows: modPays.filter((p: Any) => p.type === "DEPOSIT").length, reportDeposit: by("DEPOSIT"), expectDeposit, reportTransfer: by("TRANSFER"), expectTransfer, jv1010, receiptTransfer });
+    chk("MA14", !!R && cd?.ok !== false && v.ok, v.expected, `${R ? "" : "fixture: ไม่มีใบรับ · "}ใบรับโมดูล ${modIds.length} ใบ · สรุปวัน ${cd?.ok === false ? codeOf(cd) : "ok"} · ${v.actual}`);
+  });
 }
 
 // ═════════════════════════ 7. คืนสภาพ ═════════════════════════
@@ -1169,7 +1416,7 @@ try {
   const reg = runRegistry();
   chk("ST1", reg.length === 0, "ทะเบียนครบ", joinP(reg));
   const st = runSelfTest();
-  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length + R1_IDS.length} ข้อพลิกได้ครบ`));
+  chk("ST2", st.length === 0, "ถูก = เขียว · บั๊ก = แดง ทุกข้อ", joinP(st, `${MA_IDS.length + R1_IDS.length + C_IDS.length} ข้อพลิกได้ครบ`));
   await runDb();
 } catch (e) {
   crashed = (e as Error)?.stack?.split("\n").slice(0, 3).join(" | ") ?? String(e);
