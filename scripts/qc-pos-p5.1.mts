@@ -42,7 +42,7 @@ const CHECKS: readonly Def[] = [
   D("MA3", "F3", "MED", "C", "[F3] registerSaleAction (หน้าขายเดิม): แคชเชียร์ STAFF (pos.sale.create เท่านั้น) ขายสินค้าราคา 12,000 ที่ 100 → error ไม่มีบิล · หน้าขายใหม่เปิด (registerV2) → action เดิมปฏิเสธ ไม่มีบิล · ตัวควบคุม: OWNER ราคาแคตตาล็อก (V2 ปิด) = ok"),
   D("MA4", "F4", "MED", "B", "[F4] จองคิว: รับมัดจำ → คืนมัดจำ (void) → รับมัดจำอีกครั้ง → ถ้าขึ้นว่าจ่ายแล้ว (depositPaidAt) ต้องมีบิล PAID ของมัดจำ = 50,000 (hunter: ชี้บิล VOIDED · เงิน 0 บนสมุด)"),
   D("MA5", "F5", "MED", "B", "[F5] createSale ล้ม (SHIFT_REQUIRED: otherSources บังคับกะ ไม่มีกะเปิด) ระหว่าง ticket.markPaid / hotel.checkOut → ปลดบังคับกะแล้วลองซ้ำ → ต้องได้บิล PAID ของคีย์ ticket-sale-<id> / hotel-sale-<id> (hunter: สถานะ commit ไปแล้ว ลองซ้ำ = ไม่มีบิลตลอดไป)"),
-  D("MA6", "F6", "MED", "B", "[F6] subscribe แพ็กเกจ 30,000 พร้อมกันจาก 2 โปรเซส (ลูกค้าเดียวกัน) → ACTIVE 1 แถว · บิล PAID 1 ใบ = 30,000 (hunter: 2 ACTIVE + 2 บิล = 60,000)"),
+  D("MA6", "F6", "MED", "B", "[F6] subscribe แพ็กเกจ 30,000 พร้อมกันจาก 2 โปรเซส (ลูกค้า 5 คน · คนละคู่แข่ง) → ทุกคน ACTIVE 1 แถว · บิล PAID 1 ใบ = 30,000 (hunter: 2 ACTIVE + 2 บิล = 60,000)"),
   D("MA7", "F7", "LOW-MED", "B", "[F7] ticket: คืนเงิน (cancelOrder) แทรกระหว่าง claim PAID กับ createSale (ถือล็อก advisory ของคีย์ ticket-sale-<id>) → ห้ามมีบิล PAID บนออเดอร์ที่ไม่ใช่ PAID"),
   D("MA8", "F8", "LOW", "A", "[F8] createSale ตรง: qty 0 · ราคาติดลบ · ส่วนลดบรรทัด > ราคา · ส่วนลดท้ายบิล > ยอดบรรทัด · แถวชำระติดลบ (CASH −100 + TRANSFER 200) → ปฏิเสธทุกกรณี ไม่มีบิล"),
   D("MA9", "F9", "LOW", "D", "[F9] บิล 4 × 100,000 ที่ VAT 7% (26,168) → อัตรา POS เปลี่ยนเป็น 10% → คืนบางส่วน 1+1+1 หน่วย: VAT ใบคืนแต่ละใบ = ส่วนของอัตราบิลเดิม (6,542 ±1) · Σ VAT ใบคืน ≤ VAT บิล (hunter: 9,091 ×3 = 27,273 > 26,168)"),
@@ -129,9 +129,15 @@ const V = {
     return { ok, expected: "ครั้งแรกล้ม SHIFT_REQUIRED · ลองซ้ำหลังปลดกะ = บิล PAID ของคีย์", actual: joinP(x.cases.map((c) => `${c.name}: ครั้งแรก ${c.firstFailed ? c.firstCode : "ไม่ล้ม (fixture)"} · ลองซ้ำ ${c.retry} · บิล ${c.bill ?? "ไม่มี"}`)) };
   },
   /** F6 — สองโปรเซส: ACTIVE · บิล PAID · Σ เงิน */
-  MA6(x: { active: number; bills: number; satang: number; price: number; codes: string[] }): Verdict {
-    const ok = x.active === 1 && x.bills === 1 && x.satang === x.price;
-    return { ok, expected: `ACTIVE 1 · บิล PAID 1 · Σ ${x.price}`, actual: `ACTIVE ${x.active} · บิล PAID ${x.bills} · Σ ${x.satang} · ผลสองโปรเซส ${x.codes.join(" | ")}` };
+  MA6(x: { price: number; customers: { active: number; bills: number; satang: number }[]; codes: string[] }): Verdict {
+    const good = (c: { active: number; bills: number; satang: number }) => c.active === 1 && c.bills === 1 && c.satang === x.price;
+    const ok = x.customers.length > 0 && x.customers.every(good);
+    const bad = x.customers.filter((c) => !good(c));
+    return {
+      ok,
+      expected: `ลูกค้าทุกคน: ACTIVE 1 · บิล PAID 1 · Σ ${x.price}`,
+      actual: `${x.customers.length} คน · ผิด ${bad.length} คน [${x.customers.map((c) => `${c.active}/${c.bills}/${c.satang}`).join(" ")}] (ACTIVE/บิล/Σ) · ผลสองโปรเซส ${x.codes.slice(0, 4).join(" | ")}`,
+    };
   },
   /** F7 — สถานะออเดอร์หลังคืน · สถานะบิลของคีย์ */
   MA7(x: { orderStatus: string; bill: string | null; cancelled: boolean }): Verdict {
@@ -175,7 +181,10 @@ const SELF_SAMPLES: Record<string, [() => Verdict, () => Verdict]> = {
     () => V.MA5({ cases: [{ name: "ticket", firstFailed: true, firstCode: "SHIFT_REQUIRED", retry: "ok", bill: "PAID" }] }),
     () => V.MA5({ cases: [{ name: "ticket", firstFailed: true, firstCode: "SHIFT_REQUIRED", retry: "undefined", bill: null }] }),
   ],
-  MA6: [() => V.MA6({ active: 1, bills: 1, satang: 30_000, price: 30_000, codes: ["ok", "THROW"] }), () => V.MA6({ active: 2, bills: 2, satang: 60_000, price: 30_000, codes: ["ok", "ok"] })],
+  MA6: [
+    () => V.MA6({ price: 30_000, customers: [{ active: 1, bills: 1, satang: 30_000 }, { active: 1, bills: 1, satang: 30_000 }], codes: ["ok", "THROW"] }),
+    () => V.MA6({ price: 30_000, customers: [{ active: 1, bills: 1, satang: 30_000 }, { active: 2, bills: 2, satang: 60_000 }], codes: ["ok", "ok"] }),
+  ],
   MA7: [() => V.MA7({ orderStatus: "CANCELLED", bill: "VOIDED", cancelled: true }), () => V.MA7({ orderStatus: "CANCELLED", bill: "PAID", cancelled: true })],
   MA8: [() => V.MA8({ cases: [{ name: "qty0", code: "VALIDATION", bill: false }] }), () => V.MA8({ cases: [{ name: "qty0", code: "ok", bill: true }] })],
   MA9: [() => V.MA9({ saleVat: 26_168, partials: [{ grand: 100_000, vat: 6_542, expect: 6_542 }, { grand: 100_000, vat: 6_542, expect: 6_542 }, { grand: 100_000, vat: 6_542, expect: 6_542 }] }), () => V.MA9({ saleVat: 26_168, partials: [{ grand: 100_000, vat: 9_091, expect: 6_542 }, { grand: 100_000, vat: 9_091, expect: 6_542 }, { grand: 100_000, vat: 9_091, expect: 6_542 }] })],
@@ -323,7 +332,10 @@ if (CHILD) {
     setTimeout(resolve, 120_000);
   });
   let result: Any;
-  if (task === "sub") result = await call(subMod, "subscribe", arg.ctx, arg.input);
+  if (task === "sub") {
+    const items = await Promise.all((Array.isArray(arg.inputs) ? arg.inputs : []).map((input: Any) => call(subMod, "subscribe", arg.ctx, input)));
+    result = { ok: items.every((x: Any) => x?.ok !== false), items };
+  }
   else if (task === "paid") {
     const h = obx?.consumers?.["pos.sale.paid"];
     if (typeof h !== "function") result = { ok: false, code: "MISSING:consumer" };
@@ -619,7 +631,7 @@ async function runDb(): Promise<void> {
   // ─── สินค้า · สมาชิก (ระดับ) · บัตรของขวัญ ───
   const PROD = { name: `ของราคา 120 บาท ${RAND}`, price: 12_000, id: "" };
   let M1 = "";
-  let M2 = "";
+  const M2S: string[] = [];
   const ctxM: Any = { tenantId: T, systemId: S.MEM, actorUserId: uid("OWNER") };
   const gctx: Any = { tenantId: T, systemId: S.MEM, posSystemId: S.POS, actorUserId: uid("OWNER") };
   let GC: { id: string; number: string; pin: string } | null = null;
@@ -636,9 +648,11 @@ async function runDb(): Promise<void> {
       M1 = String(r1?.customerId ?? "");
       if (!M1) throw new Error(`createMember M1 ${short(r1, 80)}`);
       await tierMod.applyTierChange(ctxM, M1, vip.id, "MANUAL", { qc: TAG }, { byUserId: uid("OWNER") });
-      const r2 = await memMod.createMember(ctxM, A("OWNER"), { phone: `0897${rnd(6)}`, name: `สมาชิกแพ็กเกจ ${RAND}`, source: "WALK_IN", homeUnitId: U.A });
-      M2 = String(r2?.customerId ?? "");
-      if (!M2) throw new Error(`createMember M2 ${short(r2, 80)}`);
+      for (let i = 0; i < 5; i++) {
+        const r2 = await memMod.createMember(ctxM, A("OWNER"), { phone: `0897${rnd(6)}`, name: `สมาชิกแพ็กเกจ ${i + 1} ${RAND}`, source: "WALK_IN", homeUnitId: U.A });
+        if (!r2?.customerId) throw new Error(`createMember M2-${i} ${short(r2, 80)}`);
+        M2S.push(String(r2.customerId));
+      }
     });
     await step("บัตรของขวัญ", async () => {
       await gcMod.setSettings(gctx, A("OWNER"), { enabled: true, accountingLink: true });
@@ -648,7 +662,7 @@ async function runDb(): Promise<void> {
     });
     await pump();
   }
-  console.log(`   ร้าน ${T ? "ok" : "-"} · สาขา ${Object.keys(U).join(",")} · สินค้า ${PROD.id ? "ok" : "-"} · สมาชิก M1 ${M1 ? "ok" : "-"} M2 ${M2 ? "ok" : "-"} · บัตร ${GC ? "ok" : "-"}`);
+  console.log(`   ร้าน ${T ? "ok" : "-"} · สาขา ${Object.keys(U).join(",")} · สินค้า ${PROD.id ? "ok" : "-"} · สมาชิก M1 ${M1 ? "ok" : "-"} M2 ×${M2S.length} · บัตร ${GC ? "ok" : "-"}`);
 
   // ════════ MA1 (F1 · ชุด A) สิทธิ์สมาชิกกินค่าบริการ → คืนเกินที่รับ ════════
   await blk("MA1", async () => {
@@ -820,14 +834,20 @@ async function runDb(): Promise<void> {
 
   // ════════ MA6 (F6 · ชุด B) subscribe ซ้อนจากสองโปรเซส ════════
   await blk("MA6", async () => {
-    if (fx || !M2) return void chk("MA6", false, "fixture", FXB("ไม่มีสมาชิก M2"));
+    if (fx || M2S.length !== 5) return void chk("MA6", false, "fixture", FXB(`สมาชิก M2 ×${M2S.length} (คาด 5)`));
     const ctxS = { tenantId: T, systemId: S.MEM };
     const plan = await subMod.createPlan(ctxS, { name: `แพ็กเกจ MA6 ${RAND}`, priceSatang: 30_000, periodDays: 30 });
-    const arg = { ctx: ctxS, input: { customerId: M2, planId: plan.id } };
+    // ลูกค้า 5 คน · สองโปรเซสสมัครทุกคนพร้อมกัน ⇒ คู่แข่ง 5 คู่ต่อรอบ (คู่เดียวแพ้ race ได้ — run 1 ของ 23 ต.ค. เขียวโดยบังเอิญ)
+    const arg = { ctx: ctxS, inputs: M2S.map((customerId) => ({ customerId, planId: plan.id })) };
     const { results: rs, note } = await twinChildren("sub", [arg, arg]);
-    const active = Number(await P.memberSubscription.count({ where: { tenantId: T, customerId: M2, status: "ACTIVE" } }).catch(() => -1));
-    const bills = ((await P.posSale.findMany({ where: { tenantId: T, memberId: M2, sourceModule: "MEMBER", docType: "SALE", status: "PAID" } }).catch(() => [])) as Any[]).filter((b) => String(b.idempotencyKey).startsWith("subscription-"));
-    const v = V.MA6({ active, bills: bills.length, satang: bills.reduce((t, b) => t + Number(b.grandTotalSatang), 0), price: 30_000, codes: rs.map((r) => (r ? `${codeOf(r)}${r?.message ? ` ${String(r.message).slice(0, 40)}` : ""}` : "ไม่มีผล")) });
+    const customers: { active: number; bills: number; satang: number }[] = [];
+    for (const cid of M2S) {
+      const active = Number(await P.memberSubscription.count({ where: { tenantId: T, customerId: cid, status: "ACTIVE" } }).catch(() => -1));
+      const bills = ((await P.posSale.findMany({ where: { tenantId: T, memberId: cid, sourceModule: "MEMBER", docType: "SALE", status: "PAID" } }).catch(() => [])) as Any[]).filter((b) => String(b.idempotencyKey).startsWith("subscription-"));
+      customers.push({ active, bills: bills.length, satang: bills.reduce((t, b) => t + Number(b.grandTotalSatang), 0) });
+    }
+    const codes = rs.flatMap((r) => (Array.isArray(r?.items) ? r.items : [r])).map((r: Any) => (r ? `${codeOf(r)}${r?.message ? ` ${String(r.message).slice(0, 30)}` : ""}` : "ไม่มีผล"));
+    const v = V.MA6({ price: 30_000, customers, codes });
     chk("MA6", v.ok && !note, v.expected, `${v.actual}${note ? ` · (ฮาร์เนส) ${note}` : ""}`);
   });
 
