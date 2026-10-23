@@ -10,6 +10,7 @@ import { kanbanToolScope } from "@/lib/ai/kanban-ops";
 import { memberToolScope } from "@/lib/modules/member/api/tools";
 import { crmApi } from "@/lib/modules/crm";
 import { posToolScope } from "@/lib/modules/pos/api/tools"; // POS P5.2 ▸ fix C (K3 · CD-P52-O2-2) ◂
+import { isPosFilterScope } from "@/lib/api-keys/scopes"; // POS P5.2 ▸ fix C ◂
 
 type KeyShape = { scopes: readonly string[]; systemId: string | null; scopesMalformed?: boolean };
 
@@ -30,16 +31,22 @@ export function isPosScopedTool(toolName: string): boolean {
 }
 
 /**
- * POS P5.2 ▸ fix C (K3 · CD-P52-O2-2): เครื่องมือของ POS ต้องใช้คีย์ที่มี scope ของ POS — คีย์ที่ไม่มี scope เลย (คีย์กลาง · scope เสีย)
- * = ปฏิเสธที่ประตู `/api/v1/ai/*` (เดิม CD-7 ให้คีย์กลางอ่าน sales_summary/sales_by_day ด้วย pos.report.view ทุกสาขา) ◂
+ * POS P5.2 ▸ fix C (K3 · CD-P52-O2-2): คีย์กลาง (scope ว่าง ไม่ผูกระบบ) × เครื่องมือของ POS = ปฏิเสธที่ประตู `/api/v1/ai/*`
+ * (เดิม CD-7 ให้คีย์กลางอ่าน sales_summary/sales_by_day ด้วย pos.report.view ทุกสาขา) · tools/[name] ตอบ 403 pos_scope_required ◂
  */
 export function posToolNeedsPosKey(toolName: string, key: KeyShape): boolean {
-  return isPosScopedTool(toolName) && (key.scopes.length === 0 || key.scopesMalformed === true);
+  return isPosScopedTool(toolName) && isGeneralApiKey(key);
+}
+/** คีย์ที่มี scope ของ POS จริง (ไม่นับตัวกรองสาขา `pos.filter.unit:*`) · scope เสีย = ไม่มี */
+function keyHasPosScope(key: KeyShape): boolean {
+  return key.scopesMalformed !== true && key.scopes.some((s) => s.startsWith("pos.") && !isPosFilterScope(s));
 }
 
 /** ด่านเพิ่มจาก scope เดิม: เครื่องมือนอกโมดูล = คีย์กลางเท่านั้น (เครื่องมือของโมดูล = ผ่านด่านนี้เสมอ) */
 export function generalToolGate(toolName: string, key: KeyShape): boolean {
-  if (posToolNeedsPosKey(toolName, key)) return false; // POS P5.2 ▸ fix C (สารบัญ skills ไม่โฆษณา · tools/[name] ตอบ 403 ของตัวเองก่อนถึงนี่) ◂
+  // POS P5.2 ▸ fix C: เครื่องมือของ POS = คีย์ที่มี scope ของ POS เท่านั้น (scope ของเครื่องมือตัดสินต่อที่ toolAllowedForApiKey) ·
+  //   คีย์กลาง = ไม่ผ่าน (สารบัญไม่โฆษณา · tools/[name] ตอบ pos_scope_required ก่อนถึงนี่) · คีย์ของโมดูลอื่น = key_not_general เหมือนเดิม ◂
+  if (isPosScopedTool(toolName)) return keyHasPosScope(key);
   return isModuleScopedTool(toolName) || isGeneralApiKey(key);
 }
 // ◂ HF-APIV1
