@@ -17,7 +17,7 @@ import { createHash, createHmac, randomBytes, scrypt, scryptSync, timingSafeEqua
 import { promisify } from "node:util";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
-import { canAccessUnit, evaluate } from "@/lib/core/rbac";
+import { canAccessUnit, canAssignRole, evaluate } from "@/lib/core/rbac";
 import { prisma } from "./db";
 import { isPosDeviceCode, posDeviceRevoked } from "./device";
 import {
@@ -86,6 +86,12 @@ function actorOf(a: unknown): RegisterActor | null {
   if (!isRecord(a.permissions)) return null;
   return { userId: a.userId, role: a.role, unitAccess: [...(a.unitAccess as string[])], permissions: a.permissions };
 }
+/**
+ * POS P5.2 ▸ fix B (F2 · X5): ลำดับชั้นของ PIN คนอื่น — ตั้ง/ปลดล็อกได้เฉพาะบทบาทที่ไม่สูงกว่าตัวเอง (rbac.canAssignRole) ·
+ * PIN ของ OWNER = OWNER เท่านั้น (MANAGER/หัวหน้ากะ STAFF+pos.staff.manage ยึดตัวตนผู้มีอำนาจกว่าผ่าน PIN ผู้จัดการไม่ได้) ◂
+ */
+const pinRankOk = (a: RegisterActor, target: RegisterActor) =>
+  canAssignRole(a.role, target.role) && (target.role !== "OWNER" || a.role === "OWNER");
 const canSellAt = (a: RegisterActor, unitId: string) => canAccessUnit(a, unitId) && evaluate(a, { module: "pos", action: STAFF_PERMISSION, unitId });
 
 /** ขอบเขต: ระบบ POS ที่เปิดใช้ของร้านนี้ · สาขาผูกระบบนี้ · สาขาไม่เก็บถาวร — อื่น = NOT_FOUND */
@@ -169,6 +175,7 @@ export async function setStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input:
     if (WEAK_PINS.has(pin)) return refuse("WEAK_PIN");
     const target = self ? a : await posMemberActor(s.tenantId, userId, db);
     if (!target || !canSellAt(target, s.unitId)) return refuse("NOT_FOUND", "พนักงานคนนี้ยังขายที่สาขานี้ไม่ได้ — ให้สิทธิ์ขายก่อนตั้ง PIN");
+    if (!self && !pinRankOk(a, target)) return refuse("PERMISSION_DENIED", "ตั้ง PIN ให้ผู้ที่มีบทบาทสูงกว่าคุณไม่ได้"); // POS P5.2 ▸ fix B ◂
     // CD1 + R2: PIN ซ้ำในสาขาเดียวกันไม่ได้ (เทียบกับทุกแถวของสาขายกเว้นแถวของคนนี้เอง) — ข้อความไม่บอกว่าเป็นของใคร
     // POS P1.18 ▸ K2 (มติ 1 · ทางสำรอง): คงความไม่ซ้ำต่อสาขา (จอ PIN แบบไม่ระบุคนต้องจับได้ไม่เกิน 1 แถว) แต่ปฏิเสธด้วย
     //   {code, message} เดียวกับ PIN อ่อนทุกตัวอักษร ⇒ แยกไม่ออกว่ามีคนใช้ PIN นี้อยู่ (ไม่คืน PIN_TAKEN แล้ว) ◂
@@ -564,6 +571,12 @@ export async function unlockStaffPin(ctx: StaffPinCtx, actor: RegisterActor, inp
     if (!isRecord(input) || !isId(input.userId)) return refuse("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง");
     const row = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: s.unitId, userId: input.userId } }, select: { id: true, tenantId: true, failedCount: true, lockedUntil: true } });
     if (!row || row.tenantId !== s.tenantId) return refuse("NOT_FOUND", "พนักงานคนนี้ยังไม่ได้ตั้ง PIN ที่สาขานี้");
+    // POS P5.2 ▸ fix B (F2): ปลดล็อกคนอื่น = ลำดับชั้นเดียวกับตั้ง PIN · ไม่ใช่สมาชิกแล้ว = NOT_FOUND (ปิดไว้ก่อน) ◂
+    if (input.userId !== a.userId) {
+      const target = await posMemberActor(s.tenantId, input.userId, db);
+      if (!target) return refuse("NOT_FOUND", "พนักงานคนนี้ยังไม่ได้ตั้ง PIN ที่สาขานี้");
+      if (!pinRankOk(a, target)) return refuse("PERMISSION_DENIED", "ปลดล็อก PIN ของผู้ที่มีบทบาทสูงกว่าคุณไม่ได้");
+    }
     await db.posStaffPin.updateMany({ where: { id: row.id }, data: { failedCount: 0, lockedUntil: null } });
     await writeAudit({ tenantId: s.tenantId, actorId: a.userId, action: "pos.staff.pin_unlocked", targetType: "PosStaffPin", targetId: row.id, before: { failedCount: row.failedCount, lockedUntil: row.lockedUntil?.toISOString() ?? null }, after: { userId: input.userId, failedCount: 0 } });
     return { ok: true };
