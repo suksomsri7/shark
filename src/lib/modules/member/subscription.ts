@@ -81,29 +81,35 @@ export type SubscribeInput = { customerId: string; planId: string; startAt?: Dat
 export async function subscribe(ctx: Ctx, input: SubscribeInput): Promise<{ id: string }> {
   const db = tenantDb(ctx);
 
-  const active = await db.memberSubscription.findFirst({
-    where: { customerId: input.customerId, status: "ACTIVE" },
-  });
-  if (active) throw new Error("ลูกค้ารายนี้มีแพ็กเกจที่ยังใช้งานอยู่ ไม่สามารถสมัครซ้อนได้");
-
-  const plan = await db.memberPlan.findFirst({ where: { id: input.planId } });
-  if (!plan) throw new Error("ไม่พบแพ็กเกจที่เลือก");
-
-  const startAt = input.startAt ?? new Date();
-  const endAt = new Date(startAt.getTime() + plan.periodDays * MS_PER_DAY);
-
   // 1) สร้าง subscription ก่อน (ไม่มี tx เปิดค้าง) — createSale เปิด tx ของตัวเอง จึงเรียกหลังได้ ไม่ nested
-  const sub = await db.memberSubscription.create({
-    data: {
-      tenantId: ctx.tenantId,
-      systemId: ctx.systemId,
-      customerId: input.customerId,
-      planId: input.planId,
-      status: "ACTIVE",
-      startAt,
-      endAt,
-    },
+  // POS P5.1 ▸ MA6 (F6): ตรวจ ACTIVE + สร้าง ใต้ advisory lock ต่อ (ร้าน, ระบบ, ลูกค้า) ในธุรกรรมเดียว ⇒ กดสองครั้ง/สองเครื่องพร้อมกัน = 1 แพ็กเกจ 1 บิล
+  //   (ผู้มาทีหลังรอล็อก แล้วเห็นแถว ACTIVE ที่ commit แล้ว ⇒ โยนข้อความเดิม) · createSale ยังอยู่นอก tx เหมือนเดิม ◂
+  const sub = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${ctx.tenantId}::text || ':subscription-active:' || ${ctx.systemId}::text || ':' || ${input.customerId}::text))) l`;
+    const active = await tx.memberSubscription.findFirst({
+      where: { customerId: input.customerId, status: "ACTIVE" },
+    });
+    if (active) throw new Error("ลูกค้ารายนี้มีแพ็กเกจที่ยังใช้งานอยู่ ไม่สามารถสมัครซ้อนได้");
+
+    const plan = await tx.memberPlan.findFirst({ where: { id: input.planId } });
+    if (!plan) throw new Error("ไม่พบแพ็กเกจที่เลือก");
+
+    const startAt = input.startAt ?? new Date();
+    const endAt = new Date(startAt.getTime() + plan.periodDays * MS_PER_DAY);
+    const row = await tx.memberSubscription.create({
+      data: {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        customerId: input.customerId,
+        planId: input.planId,
+        status: "ACTIVE",
+        startAt,
+        endAt,
+      },
+    });
+    return { ...row, plan };
   });
+  const plan = sub.plan;
 
   // 2) เส้นเงิน C-2 — เก็บค่าสมาชิกผ่าน POS (idempotent ต่อ `subscription-<id>`) ถ้ามีราคา + ผูก POS
   //    ไม่ผูก POS = standalone → ข้าม (สมัครได้ ไม่ error) · ฟรี (ราคา 0) → ไม่ออกบิล
