@@ -68,6 +68,8 @@ const CHECKS: readonly Def[] = [
   // ═══ ORACLE-EDIT (P5.2 oracle2 · hunter L1 F1–F11 · มติผู้คุม 23 ต.ค.) ═══
   D("X3", "X", "[db · F-blind 1–5] A1 × วัตถุ A2 ทุกชนิด (บิล · โต๊ะ · ออเดอร์ · กะ · บิลพัก · คำขออนุมัติ · เครื่อง · intent · สลิป): MANAGER[A1] unitId A1 / ไม่ส่ง unitId + STAFF คีย์ POS ครบ[A1] → ไม่เห็น A2 (เลขบิล · รายการ · ยอดรวม · ลูกค้า · เครื่อง · โต๊ะ · บิลพัก · สลิป) · แถว A2 ไม่เปลี่ยน · ตัวควบคุมบวก", "rows[unitScoped, OTHER_UNIT=deny]"),
   D("X4", "X", "[db · F1 HIGH] คำขอ POS_VOID/POS_REFUND/POS_DISCOUNT_OVER ของ A2: listPending ของ MANAGER[A1] ไม่มี · decideAction(APPROVED)/bulkDecideAction(REJECTED) ของ MANAGER[A1] ไม่สำเร็จ · คำขอยัง PENDING · บิล A2 ยัง PAID · ตัวควบคุมบวก MANAGER[A2]", "src/lib/modules/approval/actions.ts#decideAction · #bulkDecideAction · src/app/app/approvals/page.tsx"),
+  // ORACLE-EDIT (CD-P52-O3-2 · R1 F2 · ผู้คุม 23 ต.ค. · ledger/wo-notes/pos-P5.2-fix-abcf-review.md F2): ยึดส่วนลดที่อนุมัติ ณ ตอนขาย ต้องตรวจสิทธิ์สดของผู้ตัดสินเหมือนตัวรับคิว
+  D("X4b", "X", "[db · R1 F2 · CD-P52-O3-2] ผู้ตัดสินเสียสิทธิ์หลังอนุมัติ: แคชเชียร์ A2 ลด 15% → คำขอ POS_DISCOUNT_OVER · MANAGER[A2] อนุมัติ → บิลพักผูกคำขอ · ย้ายสิทธิ์สาขาของผู้ตัดสินไป A1 → submit {heldCartId} = DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · ตัวควบคุมบวก คืนสิทธิ์ A2 → ผ่าน via approved (audit pos.discount.override requestId + byUserId ผู้ตัดสิน)", "src/lib/modules/pos/pos-approval.ts#approvedDiscountOf · register.ts regResolveOverrideCap"),
   D("X5", "R", "[db · F2] ลำดับชั้น PIN: MANAGER[A1] ตั้ง/ปลดล็อก PIN ของ OWNER · lead (STAFF + pos.staff.manage) ตั้ง/ปลดล็อก PIN ของ MANAGER → PERMISSION_DENIED + แถว PIN เดิม · ตัวควบคุมบวก ตั้ง PIN แคชเชียร์ได้", "src/lib/modules/pos/staff-pin-actions.ts#setStaffPinAction · #unlockStaffPinAction"),
   D("K3", "K", "[db · F3] คีย์กลาง (scope ว่าง) × POST /api/v1/ai/tools/sales_summary · sales_by_day → 403 · ตัวควบคุมบวก คีย์ pos-read = 200", "src/app/api/v1/ai/tools/[name]/route.ts#POST"),
   D("D1", "D", "[db · §10.4 D1c] จับคู่เครื่อง: แคชเชียร์ registerDeviceAction → ปฏิเสธ · OWNER → ได้คุกกี้เครื่องที่ลงนาม (ไม่ใช่รหัสเครื่องเปล่า) หรือปฏิเสธเพราะยังไม่ตั้งกุญแจ (ไม่มีแถว) · ไฟล์เครื่อง/กะไม่ใช้ CHAT_/POS_CREDENTIALS_KEY", "src/lib/modules/pos/device-actions.ts#registerDeviceAction"),
@@ -1491,6 +1493,58 @@ async function runDb2(): Promise<void> {
       if (Number(d3.r?.done ?? 0) !== 1) p.push(`ตัวควบคุมบวก MANAGER[A2] ปฏิเสธ → ${pos2}`);
     }
     chk("X4", p.length === 0, "A1 ไม่เห็น/ตัดสินคำขอ A2 ไม่ได้ · PENDING · บิล PAID · บวกผ่าน", `${p.join(" · ") || "ครบ"} · decide ${codeOf2(d1.o)} ${short2(d1.r, 50)} · bulk ${short2(d2.r, 50)} · บวก A2 ${pos2}${fxNote()}`);
+  }
+
+  // ── X4b (ORACLE-EDIT CD-P52-O3-2 · R1 F2): ผู้ตัดสินเสียสิทธิ์สาขาหลังอนุมัติ → ยึดส่วนลดที่อนุมัติไม่ได้ (มติ 5: เหมือน "ไม่ได้อนุมัติ") ──
+  {
+    const p: string[] = [];
+    const regMod = await tryImport("@/lib/modules/pos/register");
+    const consMod = await tryImport("@/lib/modules/pos/pos-approval-consumer");
+    let n = 0;
+    const input = (heldCartId?: string) => ({
+      lines: [{ name: `P52 X4b ${RAND}`, qty: 1, unitPriceSatang: 20000 }], billDiscount: { type: "PERCENT", value: 1500 }, idempotencyKey: `p52-${RAND}-x4b-${++n}`,
+      expectedGrandTotalSatang: 17000, payMethods: [{ type: "CASH", amountSatang: 17000 }], cashReceivedSatang: 17000, ...(heldCartId ? { heldCartId } : {}),
+    });
+    const sellX = async (held?: string) => {
+      const inp = input(held);
+      const r = await svc(regMod, "submitRegisterSale", ctxU2(uA2, DEV.A2), actorOf2("CASHIER_A2"), inp);
+      const sale = await P.posSale.findFirst({ where: { tenantId: TA, idempotencyKey: inp.idempotencyKey }, select: { id: true } }).catch(() => null);
+      return { r, saleId: String(sale?.id ?? "") };
+    };
+    const a = await sellX();
+    const rq = a.r?.code === "APPROVAL_REQUIRED" && typeof a.r.requestId === "string" ? a.r.requestId : "";
+    const held = rq && typeof a.r.heldCartId === "string" ? a.r.heldCartId : "";
+    if (!rq || !held) p.push(`ขออนุมัติ 15% → ${a.r?.ok === true ? "ok" : a.r?.code} ${short2(a.r?.message ?? "", 50)}`);
+    const mgr = PER.MANAGER_A2;
+    const d = rq && mgr ? await svc(approvalSvc, "decide", actorOf2("MANAGER_A2"), { tenantId: TA }, rq, { decision: "APPROVED", note: "P52 X4b" }) : null;
+    if (rq && d?.ok !== true) p.push(`MANAGER[A2] อนุมัติ → ${short2(d, 60)}`);
+    // ตัวรับคิว (ชั้นที่ผูกบิลพัก) เรียกตรง — event จริงถูกเล่นซ้ำได้ (idempotent)
+    if (rq && typeof consMod?.onPosApprovalDecided === "function") {
+      await consMod.onPosApprovalDecided({ id: `p52-x4b-${RAND}`, tenantId: TA, type: "approval.request.approved", payload: { requestId: rq, entityType: "POS_DISCOUNT_OVER" }, systemId: A_SYS(), unitId: uA2 });
+    } else if (rq) p.push("ไม่มี onPosApprovalDecided");
+    const armed = held ? await P.posHeldCart.findUnique({ where: { id: held }, select: { approvedRequestId: true } }) : null;
+    if (rq && armed?.approvedRequestId !== rq) p.push(`บิลพักไม่ผูกคำขอ (${armed?.approvedRequestId ?? "null"})`);
+    const mem = mgr ? await P.membership.findFirst({ where: { tenantId: TA, userId: mgr.userId }, select: { id: true, unitAccess: true } }) : null;
+    let neg = "ข้าม";
+    let pos2 = "ข้าม";
+    if (rq && held && mem && armed?.approvedRequestId === rq) {
+      try {
+        await P.membership.update({ where: { id: mem.id }, data: { unitAccess: [uA1] } }); // ย้ายผู้ตัดสินไปสาขา A1 หลังอนุมัติ
+        const x = await sellX(held);
+        neg = x.r?.ok === true ? `ok บิล ${x.saleId ? "มี" : "?"}` : String(x.r?.code);
+        if (x.r?.code !== "DISCOUNT_EXCEEDS_LIMIT") p.push(`ผู้ตัดสินเสียสิทธิ์ → ${neg} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
+        if (x.saleId) p.push("มีบิลจากส่วนลดของผู้ตัดสินที่เสียสิทธิ์");
+      } finally {
+        await P.membership.update({ where: { id: mem.id }, data: { unitAccess: mem.unitAccess } });
+      }
+      // ตัวควบคุมบวก: ผู้ตัดสินยังมีสิทธิ์ (คืนสาขา A2) → คำขอเดิมใช้ได้ via approved
+      const ok = await sellX(held);
+      const au = ok.saleId ? ((await P.auditLog.findMany({ where: { tenantId: TA, action: "pos.discount.override", targetId: ok.saleId }, select: { actorId: true, after: true } })) as Any[]) : [];
+      pos2 = ok.r?.ok === true ? `ok ฿${(Number(ok.r.grandTotalSatang ?? 0) / 100).toFixed(0)} audit ${au.length}` : String(ok.r?.code);
+      if (ok.r?.ok !== true || ok.r.grandTotalSatang !== 17000) p.push(`ตัวควบคุมบวก → ${pos2} ${short2(ok.r?.message ?? "", 50)}`);
+      else if (au.length !== 1 || au[0].actorId !== mgr!.userId || au[0].after?.requestId !== rq || au[0].after?.via !== "approval") p.push(`audit override ${au.length} ${short2(au[0]?.after, 80)}`);
+    } else if (!mem) p.push("ไม่มี Membership ของ MANAGER[A2]");
+    chk("X4b", p.length === 0, "เสียสิทธิ์ = DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · คืนสิทธิ์ = ผ่าน via approved", `${p.join(" · ") || "ครบ"} · เสียสิทธิ์ → ${neg} · บวก → ${pos2}${fxNote()}`);
   }
 
   // ── F7 ข้ามสาขา: PIN ผู้จัดการ A1 + heldCartId ของ A2 ──
