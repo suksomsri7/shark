@@ -39,9 +39,15 @@ Ruling: มติ 7 / CD7 of P2.9b was a P2.9b scope rule; hunt M-A F2 + oracle 
 | BD-6.2 | 2nd refund ok:false · exactly 1 credit note (docType REFUND, refSaleId = receipt) · receipt still REFUNDED | 0/VOIDED | ✅ · suite **18/18** |
 Also green after: qc-pos-p5.1 15/15 · fitness (iso) 53/53. qc-pos-p2.10 --no-db 1/2 — ST2 lane pin only (`register.ts` hunk +11 −1 · `qc-pos-p2.9b.mts` edited, CONTROLLER-DECISION).
 
-**Not edited — red only from MA2 semantics (controller rules separately):**
-- qc-hotel-public 13/15: **HP-4.3** expects Dr 2110 = 50,000 on the deposit bill → actual dr 0 (receipt credits 2110) · **HP-4.4** expects 1 PAID bill `sourceModule HOTEL, sourceId <reservation>` + Dr 2110 50,000 after a repeat → actual 0/0 (the receipt is sourceModule POS_DEPOSIT, sourceId = PosDeposit.id).
-- qc-rental-public 14/16: **RP-4.3** / **RP-4.4** — same shape for RENTAL (`dr 0` · `0/0`).
+**CD-P51-O6b (23 Oct · commits c82ee447 + c2c34bd8)** — the four hotel/rental-public reds were the same MA2 semantics ⇒ ORACLE-EDIT; p2.9b L3 now pins all 3 deposit suites + 5 functions to `P29B_L3_PIN` default **c82ee447** (group "not modified vs BASE_REV" empty). Red-before = product `src/` of 8c7ccad9 (`reg-c2c34bd8-redbefore-o6b/`) · green-after = c2c34bd8 (`reg-c2c34bd8-o6b/`).
+| check | edit | red-before | green-after |
+|---|---|---|---|
+| HP-4.3 | one receipt POS_DEPOSIT, sourceId = PosDeposit.id, PAID · Cr 2110 46,729 + Cr 2200 3,271 · no Dr 2110 · no 4xxx line | HOTEL/PAID/no PosDeposit · dr2110 50,000 · cr2200 3,271 · 4xxx 1 | ✅ 15/15 |
+| HP-4.4 | repeat ok · exactly 1 PAID POS_DEPOSIT receipt · Cr 2110/2200 unchanged | 0 · dr2110 50,000 | ✅ |
+| RP-4.3 | same as HP-4.3 for rental | RENTAL/PAID/no PosDeposit · dr2110 50,000 · 4xxx 1 | ✅ 16/16 |
+| RP-4.4 | same as HP-4.4 for rental | 0 · dr2110 50,000 | ✅ |
+Final-bill assertions of both suites untouched.
+All at c2c34bd8: qc-hotel-public 15/15 · qc-rental-public 16/16 · qc-pos-p2.9b 53/53 · qc-booking-deposit 18/18 · qc-pos-p5.1 15/15 · fitness (iso) 53/53 · qc-pos-p2.10 --no-db 1/2 = ST2 lane pin only (register.ts hunk · qc-pos-p2.9b.mts CONTROLLER-DECISION).
 
 ## 4. Notes / behaviour changes the module owners should know (also as OP lines)
 - After `refundStay` (hotel) / rental refund the final bill is voided ⇒ `depositSaleVoided` restores the deposit to OPEN (a liability refundable at the register/deposit screen) — before, the deposit bill stayed as revenue.
