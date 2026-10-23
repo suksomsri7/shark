@@ -1,4 +1,4 @@
-// device-cookie.ts — POS P5.2 fix device (CD-P52-O2-3 · §10.4 D1c · D1/D2/D3): คุกกี้เครื่องขายที่ลงนาม
+// device-cookie.ts — POS P5.2 fix device (CD-P52-O2-2 สัญญา D1 ของ oracle2 · CD-P52-O2-3 กุญแจแยก POS_DEVICE_KEY · CD-P52-O4 · §10.4 D1c · D1–D4): คุกกี้เครื่องขายที่ลงนาม
 //
 // จับคู่ = registerDeviceAction เดิม (ผู้ถือ pos.device.manage ที่สาขานั้น — แคชเชียร์จับคู่ไม่ได้) ตั้งคุกกี้นี้บนเบราว์เซอร์ที่ลงทะเบียน ·
 //   เปิดกะ/รายงาน X/ข้อมูลหน้ากะ อ่าน "เครื่องที่ยืนอยู่" จากคุกกี้นี้เท่านั้น (deviceId จาก client ไม่ถูกเชื่อ — D2/D3)
@@ -6,7 +6,8 @@
 // กุญแจ = env POS_DEVICE_KEY (แยกจากกุญแจอื่นทั้งหมดตามมติ — ไม่ใช้กุญแจของแชท/credentials/session) ·
 //   กุญแจ HMAC จริง = SHA-256("pos-device-cookie:v1:" + ค่า env) (ป้ายแยกโดเมน)
 // 🔴 ไม่มีกุญแจสำรอง (ทั้ง dev และ production): env ว่าง/สั้นกว่า 32 ตัว = ยังไม่ตั้ง ⇒ จับคู่ไม่ได้ (การ์ด "ยังไม่ตั้งกุญแจ") · คุกกี้ทุกใบใช้ไม่ได้
-// 🔴 verify ไม่โยนทุกกรณี — ผิดรูป/ลายเซ็นผิด/กุญแจเปลี่ยน = null · เทียบลายเซ็นแบบ timing-safe
+// 🔴 verify ไม่โยนทุกกรณี — ผิดรูป/ลายเซ็นผิด/กุญแจเปลี่ยน/iat เกิน 400 วัน หรือล้ำอนาคต > 5 นาที = null (CD-P52-O4 F7) · เทียบลายเซ็นแบบ timing-safe
+// 🔴 ไม่ใช้ prefix __Host- (QC/dev รันบน http — CD-P52-O4 F7)
 // 🔴 ไฟล์นี้ไม่แตะ DB/next — ตรวจแถว PosDevice (ACTIVE · ร้าน · สาขา · รหัส) อยู่ที่ device.ts pairedDeviceCode · อ่าน/ตั้งคุกกี้อยู่ใน action
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
@@ -18,6 +19,8 @@ export const POS_DEVICE_KEY_MIN = 32;
 export const POS_DEVICE_COOKIE = "shark_pos_device";
 /** อายุคุกกี้ = 400 วัน (เพดานของเบราว์เซอร์) — เครื่องที่ถูกเพิกถอนใช้คุกกี้ไม่ได้ทันที (แถวต้อง ACTIVE) */
 export const POS_DEVICE_COOKIE_MAX_AGE_S = 400 * 86_400;
+/** iat ล้ำนาฬิกาเซิร์ฟเวอร์ได้ไม่เกิน 5 นาที (CD-P52-O4 F7) */
+export const POS_DEVICE_IAT_SKEW_S = 300;
 const LABEL = "pos-device-cookie:v1:";
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -47,7 +50,7 @@ export function signPosDeviceCookie(claim: PosDeviceClaim, deps?: PosDeviceKeyDe
 }
 
 /** ตรวจ — สำเร็จ = claim · อย่างอื่นทั้งหมด (ไม่มีกุญแจ · ผิดรูป · ถูกแก้ · กุญแจเปลี่ยน) = null · ไม่โยน */
-export function verifyPosDeviceCookie(value: unknown, deps?: PosDeviceKeyDeps): PosDeviceClaim | null {
+export function verifyPosDeviceCookie(value: unknown, deps?: PosDeviceKeyDeps, nowMs: number = Date.now()): PosDeviceClaim | null {
   try {
     const key = posDeviceKey(deps);
     if (!key || typeof value !== "string" || value.length > 1024) return null;
@@ -61,6 +64,8 @@ export function verifyPosDeviceCookie(value: unknown, deps?: PosDeviceKeyDeps): 
     const r = o as Record<string, unknown>;
     if (r.v !== 1 || typeof r.t !== "string" || !ID.test(r.t) || typeof r.u !== "string" || !ID.test(r.u) || typeof r.d !== "string" || !ID.test(r.d)) return null;
     if (typeof r.c !== "string" || !CODE.test(r.c) || typeof r.iat !== "number" || !Number.isInteger(r.iat)) return null;
+    const nowS = Math.floor(nowMs / 1000);
+    if (r.iat > nowS + POS_DEVICE_IAT_SKEW_S || nowS - r.iat > POS_DEVICE_COOKIE_MAX_AGE_S) return null; // POS P5.2 ▸ CD-P52-O4 F7 ◂
     return { tenantId: r.t, unitId: r.u, deviceId: r.d, deviceCode: r.c, iat: r.iat };
   } catch {
     return null;
