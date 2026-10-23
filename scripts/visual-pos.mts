@@ -9444,13 +9444,14 @@ async function ensureP35uFixture(): Promise<void> {
         return o.shift.id;
       };
       // POS P3.12 ▸ CD-P312-V2d (ผู้คุม B 23.10 · parity p3.5u): หน้า กะ ขอชั่วโมง HR เฉพาะ 50 กะล่าสุดตาม openedAt (shifts/page.tsx take 50) — ใน sweep เต็มมี pass อื่นเปิดกะ >50 ครั้งใน 3 ชม. ⇒ กะ fixture ที่ปิด now−60/−240 นาที หลุดจาก 50 กะ · ระยะเวลาเท่าเดิม (60/120 นาที) แต่ปิดที่ now−1 นาที ◂
-      P35U.warnShift = await mk(61, 1, "warn");
+      // V2d fix2 (23.10 04:4xZ): คงเรขาคณิตเดิม — กะเตือนต้องเปิดก่อนการลงเวลา IN (NO_CLOCK_IN ดูที่ เปิด+15) · กะชั่วโมงครอบ IN/OUT · ทั้งคู่เลื่อนมาใกล้ now เพื่ออยู่ใน 50 กะล่าสุด ◂
+      P35U.warnShift = await mk(181, 121, "warn");
       P35U.hoursShift = await mk(121, 1, "hours");
       const inA = await hr.clock(p35uHrCtx(), { employeeId: P35U.emp.owner, kind: "IN", note: "ภาพ QC P3.5U" });
       const outA = await hr.clock(p35uHrCtx(), { employeeId: P35U.emp.owner, kind: "OUT", note: "ภาพ QC P3.5U" });
-      await prisma.hrAttendance.update({ where: { id: inA.id }, data: { at: new Date(Date.now() - 175 * 60_000) } });
-      await prisma.hrAttendance.update({ where: { id: outA.id }, data: { at: new Date(Date.now() - 65 * 60_000) } });
-      P35U.log.push(`กะเตือน ${P35U.warnShift} (−5:00…−4:00 · ไม่มีลงเวลา) · กะชั่วโมง ${P35U.hoursShift} (−3:00…−1:00 · IN −2:55 · OUT −1:05)`);
+      await prisma.hrAttendance.update({ where: { id: inA.id }, data: { at: new Date(Date.now() - 116 * 60_000) } }); // V2d fix2: IN −1:56 ◂
+      await prisma.hrAttendance.update({ where: { id: outA.id }, data: { at: new Date(Date.now() - 6 * 60_000) } }); // V2d fix2: OUT −0:06 ◂
+      P35U.log.push(`กะเตือน ${P35U.warnShift} (−3:01…−2:01 · ไม่มีลงเวลา) · กะชั่วโมง ${P35U.hoursShift} (−2:01…−0:01 · IN −1:56 · OUT −0:06)`);
     }
     // ค่าคอมฯ 08
     if (want("08-report-commission-owner")) {
