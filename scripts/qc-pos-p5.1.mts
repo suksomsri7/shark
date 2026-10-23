@@ -114,9 +114,11 @@ const V = {
     return { ok, expected: "ทุกกรณี: Σ บิลรายได้ = ราคา · GL รายได้ = ฐานของราคา · VAT = VAT ของราคา", actual: joinP(p, "ไม่มีกรณี") };
   },
   /** F3 — a: STAFF ราคาต่ำกว่าแคตตาล็อก (V2 ปิด) · b: V2 เปิด · ctl: OWNER ราคาแคตตาล็อก (V2 ปิด) */
-  MA3(x: { ctl: string; a: string; aBill: number; b: string; bBill: number }): Verdict {
-    const ok = x.ctl === "ok" && x.a === "error" && x.aBill === 0 && x.b === "error" && x.bBill === 0;
-    return { ok, expected: "ตัวควบคุม ok · STAFF ราคาต่ำ = error ไม่มีบิล · V2 เปิด = error ไม่มีบิล", actual: `ตัวควบคุม ${x.ctl} · STAFF ราคา 100 แทน 12,000 → ${x.a} บิล ${x.aBill} · V2 เปิด → ${x.b} บิล ${x.bBill}` };
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b · R1 F1): + c = STAFF ราคาแคตตาล็อก 12,000 + ส่วนลดท้ายบิล 11,900 (เกินเพดาน STAFF) → error ไม่มีบิล · ไม่ส่ง c = ไม่ตัดสินข้อ c (self-test เดิม) ◂
+  MA3(x: { ctl: string; a: string; aBill: number; b: string; bBill: number; c?: string; cBill?: number }): Verdict {
+    const cOk = x.c === undefined || (x.c === "error" && x.cBill === 0);
+    const ok = x.ctl === "ok" && x.a === "error" && x.aBill === 0 && x.b === "error" && x.bBill === 0 && cOk;
+    return { ok, expected: "ตัวควบคุม ok · STAFF ราคาต่ำ = error ไม่มีบิล · V2 เปิด = error ไม่มีบิล · STAFF ส่วนลดท้ายบิลเกินเพดาน = error ไม่มีบิล", actual: `ตัวควบคุม ${x.ctl} · STAFF ราคา 100 แทน 12,000 → ${x.a} บิล ${x.aBill} · V2 เปิด → ${x.b} บิล ${x.bBill}${x.c === undefined ? "" : ` · STAFF ลดท้ายบิล 11,900 → ${x.c} บิล ${x.cBill}`}` };
   },
   /** F4 — หลังรับ→คืน→รับ: depositPaidAt · สถานะบิลที่ depositSaleId ชี้ · Σ บิลมัดจำ PAID */
   MA4(x: { paidAt: boolean; saleStatus: string | null; paidDeposit: number; deposit: number }): Verdict {
@@ -175,7 +177,7 @@ const SELF_SAMPLES: Record<string, [() => Verdict, () => Verdict]> = {
     () => V.MA2({ cases: [{ name: "hotel", price: 200_000, base: 186_916, vat: 13_084, revenueGrand: 200_000, glIncome: 186_916, glVat: 13_084, posted: true }] }),
     () => V.MA2({ cases: [{ name: "hotel", price: 200_000, base: 186_916, vat: 13_084, revenueGrand: 250_000, glIncome: 233_645, glVat: 16_355, posted: true }] }),
   ],
-  MA3: [() => V.MA3({ ctl: "ok", a: "error", aBill: 0, b: "error", bBill: 0 }), () => V.MA3({ ctl: "ok", a: "ok", aBill: 1, b: "ok", bBill: 1 })],
+  MA3: [() => V.MA3({ ctl: "ok", a: "error", aBill: 0, b: "error", bBill: 0, c: "error", cBill: 0 }), () => V.MA3({ ctl: "ok", a: "error", aBill: 0, b: "error", bBill: 0, c: "ok", cBill: 1 })], // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b): ตัวอย่างบั๊ก = ช่องส่วนลดท้ายบิล (R1 F1) ◂
   MA4: [() => V.MA4({ paidAt: true, saleStatus: "PAID", paidDeposit: 50_000, deposit: 50_000 }), () => V.MA4({ paidAt: true, saleStatus: "VOIDED", paidDeposit: 0, deposit: 50_000 })],
   MA5: [
     () => V.MA5({ cases: [{ name: "ticket", firstFailed: true, firstCode: "SHIFT_REQUIRED", retry: "ok", bill: "PAID" }] }),
@@ -751,12 +753,12 @@ async function runDb(): Promise<void> {
   // ════════ MA3 (F3 · ชุด C) action เดิม registerSaleAction ════════
   await blk("MA3", async () => {
     if (fx || !PROD.id || !posAct?.registerSaleAction) return void chk("MA3", false, "fixture", FXB(`สินค้า ${PROD.id ? "ok" : "-"} · action ${posAct?.registerSaleAction ? "ok" : "-"}`));
-    const sell = async (who: string, unitPrice: number): Promise<{ status: string; bill: number; msg: string }> => {
+    const sell = async (who: string, unitPrice: number, billDiscountSatang = 0): Promise<{ status: string; bill: number; msg: string }> => { // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b): + ส่วนลดท้ายบิล ◂
       const key = newKey("ma3");
       let res: Any;
       try {
         res = await inScope(US[who]!.cookie, `/app/sys/${S.POS}/pos/register`, () =>
-          posAct.registerSaleAction({ systemId: S.POS, unitId: U.A, lines: [{ name: PROD.name, qty: 1, unitPriceSatang: unitPrice }], payType: "CASH", cashReceivedSatang: unitPrice, idempotencyKey: key }),
+          posAct.registerSaleAction({ systemId: S.POS, unitId: U.A, lines: [{ name: PROD.name, qty: 1, unitPriceSatang: unitPrice }], ...(billDiscountSatang ? { billDiscountSatang } : {}), payType: "CASH", cashReceivedSatang: unitPrice - billDiscountSatang, idempotencyKey: key }),
         );
       } catch (e) {
         res = { status: "error", message: `โยน ${String((e as Error)?.message ?? e).slice(0, 80)}` };
@@ -766,6 +768,7 @@ async function runDb(): Promise<void> {
     };
     const ctl = await sell("OWNER", PROD.price);
     const a = await sell("CASH", 100);
+    const c = await sell("CASH", PROD.price, PROD.price - 100); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b): ราคาแคตตาล็อก + ส่วนลดท้ายบิล 11,900 ⇒ บิล 100 ◂
     await patchPos((pos) => void (pos.registerV2 = true));
     let b: { status: string; bill: number; msg: string };
     try {
@@ -773,8 +776,8 @@ async function runDb(): Promise<void> {
     } finally {
       await patchPos((pos) => void (pos.registerV2 = false));
     }
-    const v = V.MA3({ ctl: ctl.status, a: a.status, aBill: a.bill, b: b.status, bBill: b.bill });
-    chk("MA3", v.ok, v.expected, `${v.actual} · (${ctl.msg} | ${a.msg} | ${b.msg})`);
+    const v = V.MA3({ ctl: ctl.status, a: a.status, aBill: a.bill, b: b.status, bBill: b.bill, c: c.status, cBill: c.bill }); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O4b) ◂
+    chk("MA3", v.ok, v.expected, `${v.actual} · (${ctl.msg} | ${a.msg} | ${b.msg} | ${c.msg})`);
   });
 
   // ════════ MA4 (F4 · ชุด B) รับมัดจำซ้ำหลังคืน = บิล VOIDED ════════
