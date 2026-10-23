@@ -360,6 +360,7 @@ function baseRevs(): string[] {
   add(gitBuf(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`])?.toString("utf8"));
   add(gitBuf(["rev-parse", "--verify", "-q", "0617d17b^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.7 ST1/ST3 · lane-pin 05975437 → 0617d17b = merge P3.4 S หลัง P3.5 S) · ORACLE-EDIT ผู้คุม 16 ต.ค. (P2.14 lane-pin · มติ 3 · TL-1 · CD-B1 re-pin → merge 05975437): หมุดคงที่ 05975437 (ฐานของ P2.14 = first parent ของ merge) แทนฐานร่วมกับสาขาต้นทาง
   add(gitBuf(["rev-parse", "--verify", "-q", "bafdf89f^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 qc-pos-p2.7 ST1/ST3 · lane-pin + bafdf89f = tip หลัง merge P3.6 S: PosSale +3 คอลัมน์เครดิต · register.ts บล็อก P3.6)
+  add(gitBuf(["rev-parse", "--verify", "-q", "c4584062^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 23.10 (CD-RP21 qc-pos-p2.7 ST1/ST3 · lane-pin + c4584062 = tip หลัง merge P5.2 fix A+B+C+F: register.ts F7 ยกเลิกข้ามสาขา + approvedDiscountOf(unitId) R1 F2)
   baseRevsCache = out;
   return out;
 }
