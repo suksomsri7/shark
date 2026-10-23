@@ -13,3 +13,11 @@
 **Suites:** p5.1 21/21 · p2.9b 53/53 · booking-deposit 18/18 · hotel-public 15/15 · rental-public 16/16 · p1.6 48/48 · hf-tx 22/22 · money-mapping 5/5 · account-cpa 107/107 · p3.6 52/52 · p1.9 53/53 · p1.9b 22/22 · closeday 22/22 · p5.2 --no-db 22/22.
 **Not verified:** strict tsc · forfeit sheet UI · DONE e2e via the Next action · shift close with a bound module receipt · hotel/rental member deposits (F1 by reasoning) · e-Tax for forfeit bills.
 **Controller ruling CD-P51-O10 (23 Oct):** F1 F2 F3 F5 F6 F7 F8(b) fixed in batch C round 1 · F4 = leaving NO_SHOW voids the forfeit bill (refuse the status change if the void is refused) · F8(a)/(c) = OP + W41 · F9 = new oracle rows (tier member · void→re-forfeit · other-branch manager · MA14 legacy row · 3 reports agree).
+
+## R1 round 2 (41f3faa0 · controller copy) — MERGEABLE-AFTER-FIXES (F10 only · F11 follow-up)
+F1–F8 closed with probes Q1–Q14 (tier member forfeits full · hotel member deposit at register no points · bridges skip dep-forfeit incl. stamps, normal sale still earns · NO_SHOW→CONFIRMED voids + restores · only writer = setAppointmentStatus (callers: booking action · AI proposals.ts:967) · day report reconciles · race ×3 one outcome · new rows non-trivial · L3 pin valid). F3 void→re-forfeit confirmed by MA12d only.
+- **F10 LOW-MED** `moduleUnforfeitDeposit` voids without VoidSaleAudit (P3.9 R4 rule) and voids register-made forfeit bills too (Q10). Fix: audit payload from the action · auto-void only BOOKING forfeit bills, refuse for POS ones.
+- **F11 LOW** `ai/proposals.ts:967` ignores `{ok:false}` → "ยกเลิกนัดหมายเรียบร้อยแล้ว" on a refusal.
+- INFO: unforfeit voids before the status tx; failure ⇒ deposit OPEN + NO_SHOW kept; re-NO_SHOW re-forfeits `-r1`.
+Suites: p5.1 27/27 · p2.9b 53 · deposit suites green · p1.6 · hf-tx · money-mapping · cpa 107 · p1.9/p1.9b/closeday · p3.6 51/52 (ST4 shift.ts pin) · p3.5 54/55 (ST2 pin) · p5.2 --no-db 22/22.
+**Ruling CD-P51-O10b:** F10 + F11 fixed in the last round (MA12e audit assertion · MA12g register forfeit ⇒ status change refused) → controller diff read → merge.
