@@ -296,6 +296,11 @@
       "mode": "unforced"
     },
     {
+      "suite": "qc-pos-p4.3",
+      "mode": "unforced",
+      "why": "P4.3 oracle (red-before, walker phase A P1–P4 + R10 + P3.12 backlog F-P3-10/16/17/18/19/21/22): no SKIP gate — S1 S2 S6 S7 S8 D2–D6 red until the P4.3 product builder lands (ledger/wo-notes/pos-P4.3-oracle.md)"
+    },
+    {
       "suite": "qc-chat-security",
       "mode": "unforced"
     },
