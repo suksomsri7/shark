@@ -13,6 +13,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { evaluate } from "@/lib/core/rbac";
 import { cancelRequest, lastDecisionOf, requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
 import { prisma } from "./db";
+import { posMemberActor } from "./staff-pin"; // POS P5.2 ▸ R1 F2 (CD-P52-O3-2): deciderMayAct ย้ายมาที่นี่ (ตัวรับคิว + ตอนยึดส่วนลด ใช้ตัวเดียวกัน) ◂
 import { POS_APPROVAL_WAIT_MS, type PosApprovalView, type PosApprovalWaitStatus } from "./register-shared";
 
 export const POS_APPROVAL_KINDS = ["POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER"] as const;
@@ -169,10 +170,22 @@ export async function releasePosApprovalClaim(tenantId: string, requestId: strin
  * ส่วนลดที่อนุมัติแล้วของบิลพักนี้ (ยังไม่ถูกใช้): คำขอ APPROVED · snapshot ยังไม่มี outcome (หรือถูกยึดด้วยคีย์นี้เอง — ส่งซ้ำพร้อมกัน) ·
  * คืน discountBp ที่อนุมัติ + ผู้ตัดสิน · อื่น = null (มติ 5: ใช้แล้ว/ไม่ได้อนุมัติ ⇒ DISCOUNT_EXCEEDS_LIMIT ไม่ยื่นใหม่)
  */
+// POS P5.2 ▸ fix A (F1 · ชั้นที่สองหลัง approval/service canDecideStep): ผู้ตัดสินต้องมีสิทธิ์ของรายการนั้นที่สาขาของคำขอ ณ ตอนทำ
+//   (สิทธิ์สดจาก Membership ที่ตอบรับแล้ว) — ยกเลิกบิล = pos.sale.void · คืนเงิน = pos.sale.refund · ส่วนลดเกินสิทธิ์ = pos.sale.manage ·
+//   R1 F2 (CD-P52-O3-2): ย้ายจาก pos-approval-consumer.ts มาที่นี่ — ตัวรับคิว (ก่อนทำรายการ/ผูกบิลพัก) และ approvedDiscountOf (ตอนยึดส่วนลดขณะขาย) ใช้ตัวเดียวกัน ◂
+const DECIDER_ACTION: Record<string, string> = { POS_VOID: "pos.sale.void", POS_REFUND: "pos.sale.refund", POS_DISCOUNT_OVER: "pos.sale.manage" };
+export async function deciderMayAct(tenantId: string, deciderId: string, kind: string, unitId: string): Promise<boolean> {
+  const action = DECIDER_ACTION[kind];
+  if (!action) return false;
+  const m = await posMemberActor(tenantId, deciderId);
+  return !!m && evaluate(m, { module: "pos", action, unitId });
+}
+
 export async function approvedDiscountOf(
   tenantId: string,
   approvedRequestId: string | null,
   saleKey: string,
+  unitId: string, // POS P5.2 ▸ R1 F2 (CD-P52-O3-2): สาขาของคำขอขาย — ผู้ตัดสินต้องยังมีสิทธิ์ที่นี่ ◂
 ): Promise<{ requestId: string; discountBp: number; discountSatang: number; cartHash: string; deciderId: string } | null> {
   if (!approvedRequestId) return null;
   const snap = await posApprovalPayload(tenantId, approvedRequestId);
@@ -186,6 +199,9 @@ export async function approvedDiscountOf(
   const deciderId = await posApprovalDecider(tenantId, approvedRequestId);
   if (typeof bp !== "number" || !Number.isInteger(bp) || bp < 0 || !deciderId) return null;
   if (typeof satang !== "number" || !Number.isInteger(satang) || satang < 0 || typeof cartHash !== "string" || !cartHash) return null; // snapshot ก่อน fix รอบ 1 = ใช้ไม่ได้
+  // POS P5.2 ▸ R1 F2 (CD-P52-O3-2): ผู้ตัดสินที่เสียสิทธิ์ pos.sale.manage ของสาขานี้หลังอนุมัติ (ย้ายสาขา/ถอดสิทธิ์/ออกจากร้าน) = เหมือนไม่ได้อนุมัติ
+  //   ⇒ null ⇒ register ตกไป DISCOUNT_EXCEEDS_LIMIT / PIN ผู้จัดการ (มติ 5) · ตรวจซ้ำแบบเดียวกับตัวรับคิว ◂
+  if (!(await deciderMayAct(tenantId, deciderId, "POS_DISCOUNT_OVER", unitId))) return null;
   return { requestId: approvedRequestId, discountBp: bp, discountSatang: satang, cartHash, deciderId };
 }
 

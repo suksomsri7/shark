@@ -3287,7 +3287,7 @@ async function regResolveOverrideCap(
       where: { id: auth.heldCartId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId },
       select: { approvedRequestId: true, status: true, heldByUserId: true },
     });
-    const ap = held && held.status !== "DISCARDED" ? await approvedDiscountOf(s.tenantId, held.approvedRequestId, auth.idempotencyKey) : null;
+    const ap = held && held.status !== "DISCARDED" ? await approvedDiscountOf(s.tenantId, held.approvedRequestId, auth.idempotencyKey, s.unitId) : null; // POS P5.2 ▸ R1 F2 (CD-P52-O3-2): ผู้ตัดสินยังมีสิทธิ์ที่สาขานี้ ◂
     if (held && ap) {
       const mine = held.heldByUserId === s.actor.userId || evaluate(s.actor, { module: "pos", action: "pos.sale.manage", unitId: s.unitId });
       if (!mine || ap.cartHash !== regCartHash(free)) return regRefuse("APPROVAL_MISMATCH");

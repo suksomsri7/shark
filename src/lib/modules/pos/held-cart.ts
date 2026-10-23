@@ -524,7 +524,7 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     const held = Array.isArray(j?.heldUnitPrices) ? (j.heldUnitPrices as unknown[]) : [];
 
     // POS P1.15U ▸ มติ 5: ส่วนลดที่อนุมัติแล้ว (ยังไม่ถูกใช้) ⇒ quote ด้วยเพดานที่อนุมัติ + คืน approvedRequestId (จอส่ง heldCartId ตอนชำระ) ◂
-    const ap = row.approvedRequestId ? await approvedDiscountOf(s.ctx.tenantId, row.approvedRequestId, "") : null;
+    const ap = row.approvedRequestId ? await approvedDiscountOf(s.ctx.tenantId, row.approvedRequestId, "", s.ctx.unitId) : null; // POS P5.2 ▸ R1 F2 (CD-P52-O3-2) ◂
     const quote = ap ? await quoteRegisterCartWithCap(s.ctx, s.actor, cart, ap.discountBp >= 10_000 ? null : ap.discountBp, db) : await quoteRegisterCart(s.ctx, s.actor, cart, db);
     const notices: HeldCartNotice[] = [];
     // ราคาปัจจุบันต่อบรรทัดสินค้าแคตตาล็อก (ไม่ใช่ราคาเปิด) — quote ทั้งบิลผ่าน = ใช้เลย · ไม่ผ่าน = ถามทีละบรรทัดที่เหลือ
