@@ -23,7 +23,7 @@ Constraints kept: no migration · no `prisma/` · no contract JSON · no new err
 | qc-booking-deposit | **red BD-3.4 4.1 4.2 5.2 5.4 6.2 = the legacy F2 accounting** (§3) |
 | qc-pos-p2.10 --no-db | 1/2 — ST2 lane pin only (`register.ts` hunk +11 −1) |
 | qc-hf-fu --no-db · qc-hf-fu2 --no-db | ST1 lane pins only (restaurant/ · pos/deposit.ts · pos/register.ts changed vs base; hunks without HF-FU2 tag) |
-| pre-submit core | see §4 |
+| pre-submit core @09d567a3 (`presubmit-09d567a3`) | wo run1/run2 15/15 · nodb 2/2 · p1.1 180/180 · p1.3 128/128 · p1.6 48/48 · p1.18 81/81 · hf-tx 22/22 · fitness ±env 53/53 · fitness-pos 8/8 · gen-check ok · hf-fu 28/29 + hf-fu2 30/31 = ST1 lane pins only (unexpected red: none) |
 
 ## 3. Oracle conflicts — controller ORACLE-EDIT needed (builder did not edit oracles)
 - **qc-pos-p2.9b L3** pins "legacy deposit paths byte-identical to base (booking recordDeposit/refundDeposit · hotel recordDeposit/checkOut · rental recordRentalDeposit)" and **A6** asserts the legacy JV of `booking.recordDeposit` (bill BOOKING, Dr 2110 50,000 / Cr revenue 46,729 + Cr 2200 3,271, no PosDeposit). That *is* hunt F2 (deposit booked as revenue twice); MA2 + this brief require the opposite. Actual now: bill POS_DEPOSIT · row `DEPOSIT:-` · JV {1010 +50,000 · 2110 −46,729 · 2200 −3,271} + PosDeposit. Proposed: ORACLE-EDIT L3 → re-pin to this head (or drop the 5 functions) and A6 → assert the POS_DEPOSIT receipt (Cr 2110 base + Cr 2200, no 4xxx, PosDeposit + RECEIVE).
