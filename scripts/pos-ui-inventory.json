@@ -535,7 +535,13 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-billtype",
-        "note": "P2.4U มติ 6: สาขามีโหมดโต๊ะ (registerTableMode visible + มีโต๊ะ) = เมนู ซื้อกลับ / ทานที่ร้าน (pos-reg-billtype-*) · สาขาไม่มีโต๊ะ = เร็ว ๆ นี้ (toast เดิม) · หน้าขายผูกโต๊ะ = ซ่อน"
+        "note": "P2.4U มติ 6: สาขามีโหมดโต๊ะ (registerTableMode visible + มีโต๊ะ) = เมนู ซื้อกลับ / ทานที่ร้าน (pos-reg-billtype-*) · สาขาไม่มีโต๊ะ = เร็ว ๆ นี้ (toast เดิม) · หน้าขายผูกโต๊ะ = ซ่อน",
+        "anyOf": [
+          {
+            "type": "toast",
+            "target": "pos-reg-toast"
+          }
+        ]
       },
       "wo": "P1.3 · P2.4U",
       "oracle": "",
@@ -5945,7 +5951,7 @@
       "query": "unit=[unitId]",
       "hiddenFor": [],
       "opener": [
-        "pos-bills-date-prev=click"
+        "pos-bills-date=2026-10-01"
       ]
     },
     {
@@ -6381,9 +6387,9 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "ปุ่มเลขหน้า (ปัจจุบัน ± 1 · หัว/ท้าย)",
-        "state": "changes",
-        "target": "pos-bills-list"
+        "target": "pos-bills-page-*",
+        "state": "selected",
+        "note": "ปุ่มเลขหน้า · หน้าปัจจุบัน aria-current=page (BillsClient.tsx:1412)"
       },
       "wo": "P1.16",
       "oracle": "",
@@ -7561,9 +7567,9 @@
       ],
       "expect": {
         "type": "ui",
-        "target": "pos-device-panel",
-        "note": "การ์ดเครื่อง (listDevicesAction.items) → แผงตั้งค่าขวา · เพิกถอนแล้ว = การ์ดจาง + แผงอ่านอย่างเดียว · หลายเครื่อง (ตัวกดลงทะเบียน 1 เครื่องต่อบทบาท): หลังกด pattern หาได้การ์ดอื่นที่ไม่ถูกเลือก ⇒ ตรวจแผงรายละเอียดแทน (DeviceSettings.tsx:310-318,437)",
-        "state": "changes"
+        "target": "pos-device-card-*",
+        "state": "selected",
+        "note": "การ์ดเครื่อง aria-pressed (DeviceSettings.tsx:342) · เครื่องเดียว = เลือกอยู่แล้ว"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -8244,7 +8250,7 @@
         "state": "appears"
       },
       "wo": "P1.10U",
-      "oracle": "",
+      "oracle": "P1.10-E2",
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "เครื่องพิมพ์ของเครื่องนี้จับคู่แล้ว + เปิดลิ้นชักอัตโนมัติ (drawerKick)",
@@ -9621,7 +9627,13 @@
         "type": "mutation",
         "target": "verifyStaffPinAction",
         "note": "ยืนยัน PIN 4–5 หลัก (6 หลักส่งเองเมื่อครบ) · ผิด = ข้อความแดง · ล็อก = ปุ่มผู้จัดการปลดล็อก",
-        "db": "AuditLog pos.staff.pin_verified (staff-pin.ts:528 — PIN ผิดเขียน PosStaffPin.failedCount แทน)"
+        "db": "AuditLog pos.staff.pin_verified (staff-pin.ts:528 — PIN ผิดเขียน PosStaffPin.failedCount แทน)",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-lock-message"
+          }
+        ]
       },
       "wo": "P1.15U",
       "oracle": "",
@@ -25191,7 +25203,8 @@
         "type": "mutation",
         "target": "createPosApiKeyAction",
         "db": "ApiKey create (keyHash · prefix · scopesJson · systemId · expiresAt) + AuditLog pos.api.key.create",
-        "note": "{systemId, name, bundle, ttlDays, unitIds?} → สำเร็จ = แผงคีย์ดิบครั้งเดียว pos-settings-api-raw · ปฏิเสธ = pos-settings-api-create-error (ข้อความตามรหัส)"
+        "note": "{systemId, name, bundle, ttlDays, unitIds?} → สำเร็จ = แผงคีย์ดิบครั้งเดียว pos-settings-api-raw · ปฏิเสธ = pos-settings-api-create-error (ข้อความตามรหัส)",
+        "resultTarget": "pos-settings-api-raw"
       },
       "wo": "P2.13",
       "oracle": "",
@@ -25200,7 +25213,8 @@
       "opener": [
         "pos-settings-nav-shark",
         "pos-settings-api-*create",
-        "pos-settings-api-name=QC key"
+        "pos-settings-api-name=QC key",
+        "pos-settings-api-unit-*=on?"
       ],
       "needs": "ผู้จัดการ (ไม่ใช่ทุกสาขา) ต้องติ๊กสาขาใน pos-settings-api-unit-* ก่อนกด (scope บังคับ pick ApiKeysCard.tsx:227,241) — opener ร่วมทำไม่ได้: เจ้าของ scope=all ไม่มีรายการสาขา (unit-*=on หาไม่พบ) และ scope-pick แบบ plain ถูกข้ามเมื่อปุ่มส่งเห็นอยู่แล้ว"
     },
@@ -26678,7 +26692,7 @@
         "target": "pos-tbl-qr-sheet"
       },
       "wo": "P2.7U",
-      "oracle": "",
+      "oracle": "P4.3-S5",
       "system": "POS",
       "query": "unit=[unitId]",
       "hiddenFor": [],
@@ -30614,9 +30628,9 @@
       "query": "unit=[unitId]&tab=channels",
       "opener": [
         "pos-settings-nav-channels",
-        "pos-channel-connect-lineman",
         "pos-channel-open-lineman"
-      ]
+      ],
+      "needs": "ช่องทาง LINE MAN สร้างแล้ว (ปุ่ม preset connect ChannelsPanel.tsx:240 มีเฉพาะตอนยังไม่สร้าง — สร้างโดยแถว pos-channel-creds-webhook ช่วงท้าย/fixture)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
