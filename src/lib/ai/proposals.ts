@@ -964,7 +964,9 @@ async function dispatch(
       select: { unitId: true },
     });
     if (!appt) throw new Error("ไม่พบนัดหมายนี้");
-    await bookingSvc.setAppointmentStatus(tenantId, appt.unitId, appointmentId, "CANCELLED");
+    // POS P5.1 ▸ RC F11 (CD-P51-O10b): ถูกปฏิเสธ (เช่น บิลริบมัดจำยกเลิกไม่ได้) = โยนข้อความของ service — ไม่รายงานว่ายกเลิกแล้ว ◂
+    const st = await bookingSvc.setAppointmentStatus(tenantId, appt.unitId, appointmentId, "CANCELLED", { actorUserId: userId ?? null });
+    if (st.ok === false) throw new Error(st.reason);
     return "ยกเลิกนัดหมายเรียบร้อยแล้ว";
   }
 

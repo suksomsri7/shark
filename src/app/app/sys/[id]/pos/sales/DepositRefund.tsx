@@ -5,17 +5,20 @@
 //   แผ่น: ยอดคืน = คงเหลือทั้งหมด (CD5 · อ่านอย่างเดียว) · วิธีคืน = เงินจริงเท่านั้น (เงินสด / พร้อมเพย์โอนเอง / โอน — ไม่มี pi_) · เหตุผลบังคับ ·
 //   registerRefundDepositAction → "คืนมัดจำ #CN… ฿y" แล้วโหลดหน้าใหม่ · ไม่มี pos.sale.refund = แป้น PIN ผู้จัดการ (ทางเดียวกับหน้าต่างคืนเงิน P1.8 ของหน้านี้ — ManagerPinPad)
 //   คิวอนุมัติ (POS_REFUND) ไม่ต่อกับมัดจำ (deviation 4 ของ S — งานตามหลัง)
+// POS P5.1 ▸ MA13 (R1 F3 · CD-P51-O8c): มัดจำของการจอง (fromModule) ที่ OPEN มีปุ่ม "ริบมัดจำ" ข้างปุ่มคืน (ต่อยอดลิ้นชักนี้ ไม่ทำจอใหม่) —
+//   แผ่นริบ: ยอด = คงเหลือทั้งหมด (อ่านอย่างเดียว) · เหตุผลบังคับ · registerForfeitDepositAction (pos.sale.manage · ไม่มีสิทธิ์ = ข้อความ ไม่มี PIN) ◂
+//   POS P5.1 ▸ RC F7 (CD-P51-O10): ปุ่มแสดงเมื่อ lookup ตอบ canForfeit (มัดจำโมดูล + ผู้ใช้มี pos.sale.manage) — แคชเชียร์ไม่เห็นปุ่ม ◂
 // 🔴 ข้อความจากคีย์ pos.* เท่านั้น · 4 หลักท้ายอยู่ใน ref/ช่อง password แบบไม่ควบคุม (ไม่ลง storage/URL/data-*) · ไม่มีข้อความไทยนอกคอมเมนต์ (ST7)
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { registerDepositLookupAction, registerRefundDepositAction } from "@/lib/modules/pos/deposit-actions";
+import { registerDepositLookupAction, registerForfeitDepositAction, registerRefundDepositAction } from "@/lib/modules/pos/deposit-actions"; // POS P5.1 ▸ MA13 ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { refusalMessageKey } from "@/lib/modules/pos/register-shared";
 import { ManagerPinPad, type ManagerPinResult } from "@/components/pos/register/ManagerPinPad";
 import { BillIcon, money, type T } from "./bills-ui";
 
-type Info = { id: string; status: string; remainingSatang: number | null; needsPhoneLast4: boolean };
+type Info = { id: string; status: string; remainingSatang: number | null; needsPhoneLast4: boolean; fromModule: boolean; canForfeit: boolean }; // POS P5.1 ▸ MA13 fromModule · RC F7 canForfeit ◂
 type RefundMethod = "CASH" | "PROMPTPAY" | "TRANSFER";
 // POS P2.9bU ▸ fix1 มติ 7 (R1 F7): ป้ายกลางของมัดจำ (ไม่อ้าง "PromptPay เดิม"/"บัญชีที่โอนมา" ของการคืนบิลขาย P1.8) ◂
 const METHODS: { m: RefundMethod; label: string }[] = [
@@ -34,11 +37,12 @@ export function DepositRefund({ systemId, unitId, receiptNo, onRefunded }: { sys
   const trg = useTranslations("pos.register") as T;
   const [info, setInfo] = useState<Info | null>(null);
   const [open, setOpen] = useState(false);
+  const [forfeitOpen, setForfeitOpen] = useState(false); // POS P5.1 ▸ MA13 ◂
   const load = useCallback(
     async (last4?: string): Promise<Info | null> => {
       const r = await registerDepositLookupAction({ systemId, unitId, query: receiptNo, ...(last4 ? { phoneLast4: last4 } : {}) }).catch(() => null);
       const d = r && r.ok ? (r.deposits.find((x) => x.receiptNo === receiptNo) ?? null) : null;
-      return d ? { id: d.id, status: d.status, remainingSatang: d.remainingSatang, needsPhoneLast4: d.needsPhoneLast4 } : null;
+      return d ? { id: d.id, status: d.status, remainingSatang: d.remainingSatang, needsPhoneLast4: d.needsPhoneLast4, fromModule: d.fromModule === true, canForfeit: d.canForfeit === true } : null;
     },
     [systemId, unitId, receiptNo],
   );
@@ -57,6 +61,28 @@ export function DepositRefund({ systemId, unitId, receiptNo, onRefunded }: { sys
       <button type="button" data-testid="pos-bills-refund-deposit" className="btn btn-primary h-12 rounded-[12px] px-3 leading-tight" onClick={() => setOpen(true)}>
         {info.remainingSatang !== null ? t("deposit.refundOpen", { amount: money(info.remainingSatang) }) : t("deposit.refundOpenNoAmount")}
       </button>
+      {info.canForfeit && info.remainingSatang !== null && info.remainingSatang > 0 ? ( /* POS P5.1 ▸ RC F7 (CD-P51-O10): ซ่อนเมื่อไม่มี pos.sale.manage ◂ */
+        <button type="button" data-testid="pos-bills-forfeit-deposit" className="btn btn-ghost h-12 rounded-[12px] px-3 leading-tight text-[color:var(--color-danger)]" onClick={() => setForfeitOpen(true)}>
+          {t("deposit.forfeitOpen")}
+        </button>
+      ) : null}
+      {forfeitOpen && info.remainingSatang !== null ? (
+        <ForfeitDepositDialog
+          systemId={systemId}
+          unitId={unitId}
+          receiptNo={receiptNo}
+          depositId={info.id}
+          remaining={info.remainingSatang}
+          onClose={() => setForfeitOpen(false)}
+          onDone={(text) => {
+            setForfeitOpen(false);
+            setInfo(null);
+            onRefunded(text);
+          }}
+          t={t}
+          trg={trg}
+        />
+      ) : null}
       {open ? (
         <RefundDepositDialog
           systemId={systemId}
@@ -325,6 +351,135 @@ function RefundDepositDialog({
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// POS P5.1 ▸ MA13 (R1 F3 · CD-P51-O8c): แผ่นริบมัดจำ — ยอด = คงเหลือทั้งหมด · เหตุผลบังคับ · ผลไม่แน่ใจ = ลองซ้ำคำขอเดิม (เซิร์ฟเวอร์ใช้คีย์ต่อมัดจำ ⇒ บิลเดียว) ◂
+function ForfeitDepositDialog({
+  systemId,
+  unitId,
+  receiptNo,
+  depositId,
+  remaining,
+  onClose,
+  onDone,
+  t,
+  trg,
+}: {
+  systemId: string;
+  unitId: string;
+  receiptNo: string;
+  depositId: string;
+  remaining: number;
+  onClose: () => void;
+  onDone: (text: string) => void;
+  t: T;
+  trg: T;
+}) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [unsure, setUnsure] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onClose]);
+  const send = async () => {
+    if (busy || !reason.trim()) return;
+    setBusy(true);
+    setErr(null);
+    setUnsure(false);
+    try {
+      const deviceId = getPosDeviceId();
+      const r = await registerForfeitDepositAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), input: { depositId, reason: reason.trim() } });
+      if (r.ok) {
+        onDone(t("deposit.forfeitDone", { no: r.sale.receiptNo ?? "-", amount: money(r.sale.grandTotalSatang) }));
+        return;
+      }
+      if (UNSURE.has(r.code)) setUnsure(true);
+      else if (r.code === "PERMISSION_DENIED") setErr("deposit.forfeitNoPermission");
+      else if (r.code === "DEPOSIT_CLOSED") setErr("deposit.refundClosed");
+      else setErr(`reg:${refusalMessageKey(r.code)}`);
+    } catch {
+      setUnsure(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const errText = err ? (err.startsWith("reg:") ? trg(err.slice(4)) : t(err)) : null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 sm:items-start sm:p-4 sm:pt-[8vh]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-bills-forfeit-deposit-title"
+        data-testid="pos-bills-forfeit-deposit-sheet"
+        className="flex max-h-full w-full flex-col overflow-y-auto bg-[color:var(--color-surface)] shadow-lg sm:max-h-[86vh] sm:max-w-[520px] sm:rounded-2xl"
+      >
+        <div className="flex items-start gap-3 border-b px-5 pb-3 pt-4">
+          <div className="min-w-0 flex-1">
+            <h2 id="pos-bills-forfeit-deposit-title" className="text-[17px] font-bold">
+              {t("deposit.forfeitTitle")}
+            </h2>
+            <span className="text-[12px] tabular-nums text-[color:var(--color-muted)]">{`${t("deposit.receiptTitle")} · ${receiptNo}`}</span>
+          </div>
+          <button type="button" data-testid="pos-bills-forfeit-deposit-close" aria-label={t("drawer.close")} disabled={busy} className="-mr-2 grid h-11 w-11 shrink-0 place-items-center rounded-lg hover:bg-[color:var(--color-surface-2)]" onClick={onClose}>
+            <BillIcon name="x" />
+          </button>
+        </div>
+        <div className="flex flex-col gap-4 px-5 py-4 text-[13px]">
+          <p data-testid="pos-bills-forfeit-deposit-note" className="text-[13px] text-[color:var(--color-ink-soft)]">
+            {t("deposit.forfeitNote", { amount: money(remaining) })}
+          </p>
+          <label className="flex flex-col gap-1.5">
+            <span className="font-bold">{t("deposit.forfeitAmount")}</span>
+            <input data-testid="pos-bills-forfeit-deposit-amount" className="input h-12 rounded-[12px] text-[18px] font-bold tabular-nums" readOnly value={money(remaining)} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="font-bold">{t("deposit.refundReason")}</span>
+            <textarea
+              data-testid="pos-bills-forfeit-deposit-reason"
+              className="input min-h-[72px] rounded-[12px] py-2 text-[14px]"
+              maxLength={REASON_MAX}
+              placeholder={t("deposit.forfeitReasonPlaceholder")}
+              value={reason}
+              disabled={busy}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+          {errText ? (
+            <span data-testid="pos-bills-forfeit-deposit-error" role="alert" className="text-[13px] font-semibold text-[color:var(--color-danger)]">
+              {errText}
+            </span>
+          ) : null}
+          {unsure ? (
+            <div className="flex flex-wrap items-center gap-3 text-[13px] text-[color:var(--color-danger)]" role="alert">
+              <span>{trg("errors.unknownResult")}</span>
+              <button type="button" data-testid="pos-bills-forfeit-deposit-retry" className="btn btn-ghost min-h-[44px]" disabled={busy} onClick={() => void send()}>
+                {trg("pay.retry")}
+              </button>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-3">
+            <button type="button" data-testid="pos-bills-forfeit-deposit-cancel" className="btn btn-ghost h-12 rounded-[12px] px-5" disabled={busy} onClick={onClose}>
+              {t("refund.cancel")}
+            </button>
+            <button
+              type="button"
+              data-testid="pos-bills-forfeit-deposit-submit"
+              className="btn btn-primary h-12 rounded-[12px] px-6 disabled:opacity-50"
+              disabled={busy || unsure || !reason.trim()}
+              onClick={() => void send()}
+            >
+              {busy ? t("deposit.forfeitSending") : t("deposit.forfeitConfirm", { amount: money(remaining) })}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

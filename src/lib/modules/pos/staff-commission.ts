@@ -54,7 +54,7 @@ async function reconcileSale(tenantId: string, saleId: string, accrue: boolean):
     await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${"pos.staffcomm.sale:"}::text || ${tenantId}::text || ':' || ${saleId}::text))) l`;
     const sale = await tx.posSale.findFirst({
       where: { id: saleId, tenantId },
-      select: { id: true, tenantId: true, systemId: true, unitId: true, docType: true, status: true, sourceModule: true, giftCardId: true, soldByUserId: true, serviceChargeSatang: true, grandTotalSatang: true, paidAt: true, createdAt: true, updatedAt: true },
+      select: { id: true, tenantId: true, systemId: true, unitId: true, docType: true, status: true, sourceModule: true, giftCardId: true, soldByUserId: true, serviceChargeSatang: true, grandTotalSatang: true, paidAt: true, createdAt: true, updatedAt: true, idempotencyKey: true }, // POS P5.1 ▸ RC F6 idempotencyKey ◂
     });
     if (!sale || sale.docType !== "SALE") return;
     let accruals = await tx.posStaffCommission.findMany({ where: { tenantId, saleId, kind: "ACCRUE" }, orderBy: [{ lineId: "asc" }] });
@@ -105,10 +105,11 @@ async function reconcileSale(tenantId: string, saleId: string, accrue: boolean):
   }, TX_OPTS);
 }
 
-type SaleForAccrual = { id: string; tenantId: string; systemId: string; unitId: string; status: string; sourceModule: string; giftCardId: string | null; soldByUserId: string | null; serviceChargeSatang: number; grandTotalSatang: number; paidAt: Date | null; createdAt: Date };
+type SaleForAccrual = { id: string; tenantId: string; systemId: string; unitId: string; status: string; sourceModule: string; giftCardId: string | null; soldByUserId: string | null; serviceChargeSatang: number; grandTotalSatang: number; paidAt: Date | null; createdAt: Date; idempotencyKey?: string | null }; // POS P5.1 ▸ RC F6 ◂
 /** R7 — แถว ACCRUE ของบิล (ว่าง = บิลนี้ไม่มีสิทธิ์ได้ค่าคอมฯ) · อัตรา = ค่าตั้ง ณ ตอนลงสมุด (สำเนาลงทุกแถว) · บทบาท = membership ปัจจุบันของผู้ขาย */
 async function accrualRows(tx: Tx, sale: SaleForAccrual): Promise<RowInput[]> {
   if (EXCLUDED_SOURCES.has(sale.sourceModule) || sale.giftCardId || !sale.soldByUserId) return [];
+  if (sale.idempotencyKey?.startsWith("dep-forfeit:")) return []; // POS P5.1 ▸ RC F6 (CD-P51-O10): บิลริบมัดจำไม่ใช่การขายของพนักงาน ⇒ ไม่ลงค่าคอมฯ ◂
   const sys = await tx.appSystem.findFirst({ where: { id: sale.systemId, tenantId: sale.tenantId, type: "POS" }, select: { settings: true } });
   const cfg = posStaffCommission(sys?.settings);
   if (!cfg.enabled) return [];

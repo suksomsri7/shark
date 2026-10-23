@@ -24349,6 +24349,211 @@
       "safety": "counter"
     },
     {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-forfeit-deposit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-forfeit-deposit-sheet",
+        "note": "POS P5.1 ▸ MA13 (CD-P51-O8c · RC F7 CD-P51-O10): ลิ้นชักใบรับมัดจำของการจอง: \"ริบมัดจำ\" ข้างปุ่มคืน — แสดงเมื่อ lookup ตอบ canForfeit (pos.sale.manage) · แคชเชียร์ไม่เห็นปุ่ม"
+      },
+      "wo": "P5.1",
+      "oracle": "qc-pos-p5.1 MA13",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-filter-deposit=click",
+        "pos-bills-*-menu"
+      ],
+      "needs": "ใบรับเงินมัดจำของการจอง (มัดจำโมดูล: จองคิว/โรงแรม/เช่า · POS_DEPOSIT) ที่ยังมีคงเหลือ (OPEN) — เช่น การจองที่ถูกยกเลิก (CD-P51-O8b)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-forfeit-deposit-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-forfeit-deposit-sheet",
+        "state": "disappears",
+        "note": "ปิดแผ่นริบมัดจำ"
+      },
+      "wo": "P5.1",
+      "oracle": "qc-pos-p5.1 MA13",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-filter-deposit=click",
+        "pos-bills-*-menu",
+        "pos-bills-forfeit-deposit"
+      ],
+      "needs": "ใบรับเงินมัดจำของการจอง (มัดจำโมดูล: จองคิว/โรงแรม/เช่า · POS_DEPOSIT) ที่ยังมีคงเหลือ (OPEN) — เช่น การจองที่ถูกยกเลิก (CD-P51-O8b)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-forfeit-deposit-amount",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-forfeit-deposit-amount",
+        "state": "unchanged",
+        "note": "ยอดริบ = คงเหลือทั้งหมด (อ่านอย่างเดียว)"
+      },
+      "wo": "P5.1",
+      "oracle": "qc-pos-p5.1 MA13",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-filter-deposit=click",
+        "pos-bills-*-menu",
+        "pos-bills-forfeit-deposit"
+      ],
+      "needs": "ใบรับเงินมัดจำของการจอง (มัดจำโมดูล: จองคิว/โรงแรม/เช่า · POS_DEPOSIT) ที่ยังมีคงเหลือ (OPEN) — เช่น การจองที่ถูกยกเลิก (CD-P51-O8b)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-forfeit-deposit-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-forfeit-deposit-submit",
+        "state": "changes",
+        "note": "เหตุผล (บังคับ · ≤ 200) — ว่าง = ยืนยันไม่ได้ (เซิร์ฟเวอร์ REASON_REQUIRED)"
+      },
+      "wo": "P5.1",
+      "oracle": "qc-pos-p5.1 MA13",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-filter-deposit=click",
+        "pos-bills-*-menu",
+        "pos-bills-forfeit-deposit"
+      ],
+      "needs": "ใบรับเงินมัดจำของการจอง (มัดจำโมดูล: จองคิว/โรงแรม/เช่า · POS_DEPOSIT) ที่ยังมีคงเหลือ (OPEN) — เช่น การจองที่ถูกยกเลิก (CD-P51-O8b)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-forfeit-deposit-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerForfeitDepositAction",
+        "resultTarget": "pos-bills-toast",
+        "db": "PosSale SALE \"มัดจำริบ — ไม่มาตามนัด\" (แถว DEPOSIT อ้างใบรับ) + PosDeposit USED",
+        "note": "ผลไม่แน่ใจ = ลองซ้ำคำขอเดิม (คีย์ dep-forfeit:<มัดจำ> ⇒ บิลเดียว)"
+      },
+      "wo": "P5.1",
+      "oracle": "qc-pos-p5.1 MA13",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-filter-deposit=click",
+        "pos-bills-*-menu",
+        "pos-bills-forfeit-deposit"
+      ],
+      "needs": "ผลริบมัดจำไม่แน่ชัด (UNKNOWN/INTERNAL/BUSY)",
+      "safety": "counter"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-forfeit-deposit-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-forfeit-deposit-sheet",
+        "state": "disappears",
+        "note": "ยกเลิก (ไม่ริบ)"
+      },
+      "wo": "P5.1",
+      "oracle": "qc-pos-p5.1 MA13",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-filter-deposit=click",
+        "pos-bills-*-menu",
+        "pos-bills-forfeit-deposit"
+      ],
+      "needs": "ใบรับเงินมัดจำของการจอง (มัดจำโมดูล: จองคิว/โรงแรม/เช่า · POS_DEPOSIT) ที่ยังมีคงเหลือ (OPEN) — เช่น การจองที่ถูกยกเลิก (CD-P51-O8b)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-forfeit-deposit-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerForfeitDepositAction",
+        "resultTarget": "pos-bills-toast",
+        "db": "PosSale SALE \"มัดจำริบ — ไม่มาตามนัด\" (แถว DEPOSIT อ้างใบรับ) + PosDepositTxn APPLY + PosDeposit USED + AuditLog pos.deposit.forfeit",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-bills-forfeit-deposit-error"
+          }
+        ],
+        "note": "ยืนยันริบ ฿y → toast \"ริบมัดจำแล้ว · บิล #… ฿y\" + โหลดใหม่ · REASON_REQUIRED / DEPOSIT_CLOSED = ข้อความในแผ่น"
+      },
+      "wo": "P5.1",
+      "oracle": "qc-pos-p5.1 MA13",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-filter-deposit=click",
+        "pos-bills-*-menu",
+        "pos-bills-forfeit-deposit",
+        "pos-bills-forfeit-deposit-reason=ลูกค้ายกเลิกกระชั้นชิด QC"
+      ],
+      "needs": "ใบรับเงินมัดจำของการจอง (มัดจำโมดูล: จองคิว/โรงแรม/เช่า · POS_DEPOSIT) ที่ยังมีคงเหลือ (OPEN) — เช่น การจองที่ถูกยกเลิก (CD-P51-O8b)",
+      "safety": "counter"
+    },
+    {
       "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-deposit-enabled",
       "kind": "toggle",

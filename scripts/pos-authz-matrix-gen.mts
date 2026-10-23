@@ -268,6 +268,8 @@ function coveredByOf(token: string, suites: [string, string[]][]): string {
 const R = (o: Partial<Row["roles"]>) => o;
 const SESSION_DENY = { OTHER_TENANT: "deny", ANON: "deny", API_KEY: "n/a", DEVICE: "n/a" };
 export const OVERRIDES: Record<string, Partial<Omit<Row, "roles">> & { roles?: Partial<Row["roles"]> }> = {
+  // POS P5.1 ▸ MA13 (R1 F3 · CD-P51-O8c · fix batch C): ริบมัดจำ = pos.sale.manage ใน deposit.ts (แคชเชียร์ pos.sale.create อย่างเดียว = PERMISSION_DENIED · ไม่มีทาง PIN) ◂
+  "src/lib/modules/pos/deposit-actions.ts#registerForfeitDepositAction": { roles: R({ CASHIER: "deny" }), perm: ["pos.sale.create", "pos.sale.manage"], notes: "sessionScope pos.sale.create → registerForfeitDeposit evaluate pos.sale.manage (deposit.ts) · มัดจำโมดูลเท่านั้น · เหตุผลบังคับ (CD-P51-O8c)" },
   // ─ หน้าแอป (ด่าน = access.ts deciders · qc-hf-pos-page-authz) ─
   "src/app/app/sys/[id]/page.tsx": { roles: R({ CASHIER: "allow", STAFF_NOPERM: "deny", OTHER_UNIT: "deny" }), perm: ["pos.sale.create"], tenantScope: "session · appSystem.findFirst({id, tenantId})", notes: "PosContent แสดงเฉพาะ posSalesScope ≠ null · ยอดกรองสาขาตาม scope (page-authz O-1/O-2)" },
   "src/app/app/sys/[id]/pos/close/page.tsx": { roles: R({ CASHIER: "allow", STAFF_NOPERM: "deny", OTHER_UNIT: "deny" }), perm: ["pos.sale.create"], notes: "posSalesScope → notFound · closeDay* ส่ง unitIds (page-authz C-8)" },

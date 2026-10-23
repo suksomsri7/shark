@@ -15,9 +15,12 @@ import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import {
   registerDepositLookup,
+  registerForfeitDeposit, // POS P5.1 ▸ MA13 (CD-P51-O8c) ◂
   registerRefundDeposit,
   registerTakeDeposit,
   type RegisterDepositLookupResult,
+  type RegisterForfeitDepositInput,
+  type RegisterForfeitDepositResult,
   type RegisterRefundDepositInput,
   type RegisterRefundDepositResult,
   type RegisterTakeDepositInput,
@@ -107,5 +110,18 @@ export async function registerRefundDepositAction(args: Target & { input: Regist
     return await registerRefundDeposit(s.ctx, s.actor, args?.input as RegisterRefundDepositInput);
   } catch (e) {
     return unexpected("registerRefundDepositAction", e);
+  }
+}
+
+/** POS P5.1 ▸ MA13 (R1 F3 · CD-P51-O8c): ริบมัดจำของการจองที่ OPEN (หน้าบิล) — pos.sale.manage + เหตุผลบังคับ (ตรวจใน deposit.ts · ไม่มีทาง PIN) ◂ */
+export async function registerForfeitDepositAction(args: Target & { input: RegisterForfeitDepositInput }): Promise<RegisterForfeitDepositResult> {
+  const auth = await session("registerForfeitDepositAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerForfeitDeposit(s.ctx, s.actor, args?.input as RegisterForfeitDepositInput);
+  } catch (e) {
+    return unexpected("registerForfeitDepositAction", e);
   }
 }

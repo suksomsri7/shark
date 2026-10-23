@@ -336,19 +336,23 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
   const pays = live.length
     ? await db.posPayment.findMany({
         where: { tenantId: r.tenantId, saleId: { in: live.map((x) => x.id) } },
-        select: { type: true, amountSatang: true, tenderedSatang: true, changeSatang: true },
+        select: { type: true, amountSatang: true, tenderedSatang: true, changeSatang: true, saleId: true, refSaleId: true }, // POS P5.1 ▸ RC F8b saleId refSaleId ◂
       })
     : [];
+  // POS P5.1 ▸ RC F8b (CD-P51-O10): แถว DEPOSIT ไม่อ้างใบบนใบรับ/ใบคืนมัดจำ (ใบรับโมดูลก่อน O9) = เงินเข้าจริง ⇒ TRANSFER (เหมือนสรุปวัน closeDaySummary · GL 1010) ◂
+  const depDocIds = new Set(docs.filter((x) => x.sourceModule === "POS_DEPOSIT").map((x) => x.id));
+  const payType = (p: { type: string; saleId: string; refSaleId: string | null }) => (p.type === "DEPOSIT" && !p.refSaleId && depDocIds.has(p.saleId) ? "TRANSFER" : p.type);
   const moves = await db.posCashMovement.findMany({ where: { tenantId: r.tenantId, shiftId: r.id }, select: { kind: true, amountSatang: true } });
   const by = new Map<string, { count: number; amount: number }>();
   let cashSales = 0;
   let tendered = 0;
   let change = 0;
   for (const p of pays) {
-    const b = by.get(p.type) ?? { count: 0, amount: 0 };
+    const t = payType(p); // POS P5.1 ▸ RC F8b ◂
+    const b = by.get(t) ?? { count: 0, amount: 0 };
     b.count += 1;
     b.amount += p.amountSatang;
-    by.set(p.type, b);
+    by.set(t, b);
     if (p.type === "CASH") {
       cashSales += p.amountSatang;
       tendered += p.tenderedSatang ?? p.amountSatang;
@@ -358,15 +362,16 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
   const cashIn = moves.filter((m) => m.kind === "IN").reduce((t, m) => t + m.amountSatang, 0);
   const cashOut = moves.filter((m) => m.kind === "OUT").reduce((t, m) => t + m.amountSatang, 0);
   const rpays = refundDocs.length
-    ? await db.posPayment.findMany({ where: { tenantId: r.tenantId, saleId: { in: refundDocs.map((x) => x.id) } }, select: { type: true, amountSatang: true } })
+    ? await db.posPayment.findMany({ where: { tenantId: r.tenantId, saleId: { in: refundDocs.map((x) => x.id) } }, select: { type: true, amountSatang: true, saleId: true, refSaleId: true } }) // POS P5.1 ▸ RC F8b ◂
     : [];
   const rby = new Map<string, { count: number; amount: number }>();
   for (const p of rpays) {
-    const b = rby.get(p.type) ?? { count: 0, amount: 0 };
+    const t = payType(p); // POS P5.1 ▸ RC F8b ◂
+    const b = rby.get(t) ?? { count: 0, amount: 0 };
     b.count += 1;
     b.amount += p.amountSatang;
-    rby.set(p.type, b);
-    if (!by.has(p.type)) by.set(p.type, { count: 0, amount: 0 });
+    rby.set(t, b);
+    if (!by.has(t)) by.set(t, { count: 0, amount: 0 });
   }
   const refunds = rby.get("CASH")?.amount ?? 0;
   const types = [...by.keys()].sort((a, b) => (METHOD_ORDER.indexOf(a) + 1 || 99) - (METHOD_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b));

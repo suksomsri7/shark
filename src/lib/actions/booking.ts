@@ -13,6 +13,7 @@ import { CatalogError } from "@/lib/modules/pos";
 import * as booking from "@/lib/modules/booking/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { scheduleDrain } from "@/lib/outbox-consumers";
+import { logOps } from "@/lib/core/ops"; // POS P5.1 ▸ RC F5 (CD-P51-O10) ◂
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -121,7 +122,14 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
   // M3.7 — เปลี่ยนสถานะผ่าน service จุดเดียว (`setAppointmentStatus` ยิง booking.completed / booking.no_show)
   //   🔴 เดิม action อัปเดตแถวตรง ⇒ event ไม่เคยเกิดจากปุ่มบนจอ: สแตมป์ "จองที่มาจริง" (M2.3) · journey
   //      "จองแล้วไม่มา" (M3.3) · ไทม์ไลน์ มา/ไม่มา + แต้ม CHECKIN + ขอรีวิว (M3.7) ทำงานเฉพาะในข้อสอบ
-  await booking.setAppointmentStatus(ctx.tenantId, ctx.unitId, id, parsed.data);
+  const st = await booking.setAppointmentStatus(ctx.tenantId, ctx.unitId, id, parsed.data, { actorUserId: auth.user.id }); // POS P5.1 ▸ RC F10a ◂
+  // POS P5.1 ▸ RC F4 F5 (CD-P51-O10): ไม่ได้เปลี่ยนสถานะ (void บิลริบไม่ได้) / ริบมัดจำไม่สำเร็จ ⇒ จอจองแสดงเหตุผล (?err=) · ริบล้ม = logOps WARN ◂
+  if (st.ok === false) {
+    if (!("unforfeit" in st)) await logOps("WARN", "pos.deposit.forfeit_failed", `ริบมัดจำนัด ${id} ไม่สำเร็จ`, { tenantId: ctx.tenantId, detail: st.reason });
+    scheduleDrain();
+    revalidatePath(`/app/u/${unitSlug}/booking`);
+    redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(st.reason.slice(0, 300))}`);
+  }
   const appt = await db.appointment.findFirst({ where: { id }, include: { service: true } });
   if (!appt) return;
   // มาใช้บริการจริง → ระบบที่ "เชื่อมไว้" ทำงานตามนั้น (member/pos/point เป็นการเชื่อมแบบเลือกได้)

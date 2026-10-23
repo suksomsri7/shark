@@ -81,7 +81,8 @@ try {
   const sale = saleId ? await prisma.posSale.findUnique({ where: { id: saleId }, include: { payments: true } }) : null;
   const bkAfter = await prisma.rentalBooking.findUnique({ where: { id: bkId } });
   const dep2110 = await acctSide("2110");
-  chk("RP-4.1", "recordRentalDeposit ok + saleId + PAID + DEPOSIT amount=50000", rd.ok === true && sale?.status === "PAID" && sale?.payments?.some((p: any) => p.type === "DEPOSIT" && p.amountSatang === DEP), "PAID+DEPOSIT", `${rd.ok}/${sale?.status}`);
+  // ORACLE-EDIT CD-P51-O9 (POS P5.1 fix batch C · 23 Oct): ใบรับจ่ายด้วยวิธีจริง — ฟอร์มไม่มีช่องวิธีรับ = TRANSFER (เดิม DEPOSIT) ◂
+  chk("RP-4.1", "[CD-P51-O9] recordRentalDeposit ok + saleId + PAID + TRANSFER amount=50000", rd.ok === true && sale?.status === "PAID" && sale?.payments?.some((p: any) => p.type === "TRANSFER" && p.amountSatang === DEP), "PAID+TRANSFER", `${rd.ok}/${sale?.status}`);
   chk("RP-4.2", "depositPaidAt ตั้ง + depositSaleId ผูกบิล", !!bkAfter?.depositPaidAt && bkAfter?.depositSaleId === saleId, "paidAt+saleId", `${!!bkAfter?.depositPaidAt}/${bkAfter?.depositSaleId === saleId}`);
   // ORACLE-EDIT CD-P51-O6b (POS P5.1 batch B · 23 Oct): มัดจำ = ใบรับ POS_DEPOSIT 1 ใบ (sourceId = PosDeposit.id) PAID ·
   //   JV Cr 2110 ฐาน 46729 + Cr 2200 VAT 3271 (= 50000 · VAT 7% รวม) · ไม่มี Dr 2110 · ไม่มีบรรทัด 4xxx (เดิม: บิล RENTAL Dr 2110 / Cr รายได้ = hunt M-A F2) ◂

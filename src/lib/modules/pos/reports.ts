@@ -802,13 +802,16 @@ export async function reportPayments(ctx: ReportCtx, actor: RegisterActor, input
     // P1.8 ▸ เงินคืนหักจากวิธีของมัน (amount สุทธิ) · count/billCount/tendered/change = ฝั่งรับเดิม ◂
     const refunds = refundsOf(all);
     const refundIds = new Set(refunds.map((x) => x.id));
+    const depDocIds = new Set([...paid, ...refunds].filter((x) => x.sourceModule === "POS_DEPOSIT").map((x) => x.id)); // POS P5.1 ▸ RC F8b ◂
     const agg = new Map<string, { count: number; bills: Set<string>; amount: number; tendered: number; change: number; rCount: number; rAmount: number }>();
     for (const ids of chunks([...paid, ...refunds].map((x) => x.id))) {
       const pays = await db.posPayment.findMany({
         where: { tenantId: s.tenantId, saleId: { in: ids } },
-        select: { saleId: true, type: true, amountSatang: true, tenderedSatang: true, changeSatang: true },
+        select: { saleId: true, type: true, amountSatang: true, tenderedSatang: true, changeSatang: true, refSaleId: true }, // POS P5.1 ▸ RC F8b refSaleId ◂
       });
-      for (const x of pays) {
+      for (const x0 of pays) {
+        // POS P5.1 ▸ RC F8b (CD-P51-O10): แถว DEPOSIT ไม่อ้างใบบนใบรับ/ใบคืนมัดจำ (ใบรับโมดูลก่อน O9) = TRANSFER (เหมือนสรุปวัน · รายงานกะ · GL 1010) ◂
+        const x = x0.type === "DEPOSIT" && !x0.refSaleId && depDocIds.has(x0.saleId) ? { ...x0, type: "TRANSFER" as typeof x0.type } : x0;
         const a = agg.get(x.type) ?? { count: 0, bills: new Set<string>(), amount: 0, tendered: 0, change: 0, rCount: 0, rAmount: 0 };
         if (refundIds.has(x.saleId)) {
           a.amount -= x.amountSatang;

@@ -2241,7 +2241,16 @@
       "refundManagerPin": "A manager PIN is needed to refund",
       "refundNoShift": "Open a shift on this device to refund in cash",
       "refundClosed": "This deposit is used up or already refunded",
-      "refundChanged": "The deposit balance changed — check the new amount and confirm again"
+      "refundChanged": "The deposit balance changed — check the new amount and confirm again",
+      "forfeitOpen": "Forfeit deposit",
+      "forfeitTitle": "Forfeit the deposit as income",
+      "forfeitNote": "The remaining {amount} becomes shop income (a \"forfeited deposit\" bill) and can no longer be refunded — use it when the customer did not show up or cancelled under the forfeit terms",
+      "forfeitAmount": "Amount forfeited (whole remaining balance)",
+      "forfeitReasonPlaceholder": "e.g. cancelled at short notice / did not show up",
+      "forfeitConfirm": "Confirm forfeit {amount}",
+      "forfeitSending": "Forfeiting…",
+      "forfeitDone": "Deposit forfeited · bill #{no} {amount}",
+      "forfeitNoPermission": "Only a manager can forfeit a deposit (bill management permission)"
     },
     "unitAll": "All branches",
     "dayNote": "Bill day = calendar day (the report day cut-off is not used here)",
