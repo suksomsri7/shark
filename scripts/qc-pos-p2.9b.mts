@@ -44,7 +44,7 @@ const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของใบ (session/pos e7b05787 · โค้ด 9ada96ef) — ข้อ L เทียบกับตัวนี้ */
 const BASE_REV = "e7b05787";
 /** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): หมุด L3 ของมัดจำโมดูล (5 ฟังก์ชัน + qc-booking-deposit) = head P5.1 batch B (มัดจำโมดูล = POS_DEPOSIT · P5.1 MA2 แทนมติ 7) ◂ */
-const L3_PIN = process.env.P29B_L3_PIN || "c82ee447"; // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6b): 2b377f5a → c82ee447 (+ qc-hotel-public / qc-rental-public) ◂
+const L3_PIN = process.env.P29B_L3_PIN || "e3b5b815"; // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6b): 2b377f5a → c82ee447 (+ qc-hotel-public / qc-rental-public) · (CD-P51-O8/O9 · fix batch C): c82ee447 → e3b5b815 (recordDeposit ค่าปริยาย TRANSFER · bookingTxSale · BD-3.2/HP-4.1/RP-4.1) ◂
 /** sha256 ของ scripts/pos-sale-contract.json (มติ 2 CD2-A = ไม่เปลี่ยน · ค่าเดียวกับ qc-pos-p2.4 ST4 / p2.5 / p2.6 L3) */
 const CONTRACT_SHA = "762e073cd5f80eeeb915835ae6b85e5793956facdfe233f90d65484db04dac55"; // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 · contract +4 optional keys P3.6 · ba68f669 → 762e073c) · ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p2.9b L1): sha สัญญาหลัง P3.4 S (0617d17b · +CreateSaleInput.offline) — เดิม 72afb258e9c0dc46c4d5ea2346835b6a56afda551038325d14ed9e12910546ad
 
