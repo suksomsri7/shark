@@ -12,6 +12,7 @@ import { Prisma, type PosDevice, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { prisma } from "./db";
+import { verifyPosDeviceCookie } from "./device-cookie"; // POS P5.2 ▸ D1–D3 ◂
 import {
   parsePrinterConfig,
   POS_DEVICE_CODE_RE,
@@ -42,6 +43,7 @@ const MSG: Record<PosDeviceRefusalCode, string> = {
   DEVICE_LIMIT: "ลงทะเบียนเครื่องครบจำนวนที่แพ็กเกจให้แล้ว — เพิกถอนเครื่องที่ไม่ใช้ก่อน",
   DEVICE_NOT_FOUND: "ไม่พบเครื่องนี้ในสาขานี้",
   INTERNAL: "ระบบทะเบียนเครื่องขัดข้องชั่วคราว — ลองอีกครั้ง",
+  DEVICE_KEY_UNSET: "ยังไม่ตั้งกุญแจจับคู่เครื่อง — ผู้ดูแลระบบต้องตั้งกุญแจก่อนจึงจะจับคู่เครื่องขายได้", // POS P5.2 ▸ D1 ◂
 };
 const refuse = (code: PosDeviceRefusalCode, message?: string, field?: string): PosDeviceRefusal =>
   field ? { ok: false, code, message: message ?? MSG[code], field } : { ok: false, code, message: message ?? MSG[code] };
@@ -353,3 +355,18 @@ export async function heartbeat(ctx: RegisterCtx, actor: RegisterActor, input: {
     return { ok: true, registered: true, written: t.written, device: posDeviceView(t.row) };
   });
 }
+
+// POS P5.2 ▸ D1–D3 (CD-P52-O2-3 · §10.4 D1c): เครื่องที่ยืนอยู่จากคุกกี้ลงนาม — claim ต้องตรงร้าน + สาขา และแถว PosDevice (id + รหัส) ยัง ACTIVE ·
+//   ไม่ผ่าน/เพิกถอนแล้ว/กุญแจเปลี่ยน = null (ไม่โยน) · ผู้เรียก = shift-actions / device-actions (อ่านคุกกี้จากคำขอ) ◂
+export async function pairedDevice(scope: { tenantId: string; unitId: string }, cookieValue: string | undefined | null, client?: Db): Promise<{ id: string; deviceCode: string } | null> {
+  try {
+    const claim = verifyPosDeviceCookie(cookieValue);
+    if (!claim || claim.tenantId !== scope.tenantId || claim.unitId !== scope.unitId) return null;
+    const row = await (client ?? prisma).posDevice.findFirst({ where: { id: claim.deviceId, tenantId: scope.tenantId, unitId: scope.unitId, deviceCode: claim.deviceCode, status: "ACTIVE" }, select: { id: true, deviceCode: true } });
+    return row ?? null;
+  } catch (e) {
+    console.error("[pos/device] pairedDevice", e);
+    return null;
+  }
+}
+// ◂ POS P5.2

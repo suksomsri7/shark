@@ -113,7 +113,7 @@ export function kitchenSlipSettings(cfg: Pick<PosPrinterConfig, "kitchenSlip" | 
 }
 
 // ═══════════ ทะเบียนเครื่อง (R2) — รูปผลลัพธ์ ═══════════
-export type PosDeviceRefusalCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "DEVICE_REVOKED" | "DEVICE_LIMIT" | "DEVICE_NOT_FOUND" | "INTERNAL";
+export type PosDeviceRefusalCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "DEVICE_REVOKED" | "DEVICE_LIMIT" | "DEVICE_NOT_FOUND" | "INTERNAL" | "DEVICE_KEY_UNSET"; // POS P5.2 ▸ + DEVICE_KEY_UNSET (CD-P52-O2-3) ◂
 export type PosDeviceRefusal = { ok: false; code: PosDeviceRefusalCode; message: string; field?: string };
 
 export type PosDeviceView = {
@@ -139,6 +139,8 @@ export type PosDeviceListItem = PosDeviceView & {
 export type RegisterDeviceInput = { name: string; deviceCode: string };
 export type UpdateDeviceInput = { id: string; name?: string; posRegNo?: string | null; printerConfig?: unknown };
 export type PosDeviceResult = { ok: true; device: PosDeviceView } | PosDeviceRefusal;
+/** POS P5.2 ▸ D1 (CD-P52-O2-3): สถานะจับคู่ของเบราว์เซอร์นี้ — keyConfigured = ตั้ง POS_DEVICE_KEY แล้ว · pairedDeviceId = เครื่องของคุกกี้ (ACTIVE · สาขานี้) ◂ */
+export type DevicePairingResult = { ok: true; keyConfigured: boolean; pairedDeviceId: string | null } | PosDeviceRefusal;
 export type ListDevicesResult = { ok: true; items: PosDeviceListItem[]; limit: number; activeCount: number } | PosDeviceRefusal;
 /** heartbeat: device = แถวของรหัสนี้ที่สาขานี้ (null = ยังไม่ลงทะเบียน — ขายต่อได้ ไม่สร้างแถว) · หน้าขายใช้ printerConfig จากที่นี่ */
 export type HeartbeatResult = { ok: true; registered: boolean; written: boolean; device: PosDeviceView | null } | PosDeviceRefusal;

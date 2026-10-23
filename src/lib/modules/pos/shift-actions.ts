@@ -7,6 +7,7 @@
 
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
+import { cookies } from "next/headers"; // POS P5.2 ▸ D2/D3 ◂
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
@@ -37,6 +38,8 @@ import {
   type ShiftsPageData,
 } from "./shift";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
+import { pairedDevice } from "./device"; // POS P5.2 ▸ D2/D3 ◂
+import { POS_DEVICE_COOKIE } from "./device-cookie"; // POS P5.2 ▸ D2/D3 ◂
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
 type Session = Awaited<ReturnType<typeof requireTenant>>;
@@ -80,6 +83,23 @@ function scopeOf(auth: Session, args: unknown): { ctx: RegisterCtx; actor: Regis
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
   };
 }
+// POS P5.2 ▸ D2/D3 (CD-P52-O2-3 · §10.4 D1c): "เครื่องที่ยืนอยู่" = คุกกี้เครื่องลงนามที่ registerDeviceAction ตั้งไว้เท่านั้น —
+//   deviceId จาก client ไม่ถูกเชื่อ (เปิดกะผูกเครื่องจากคุกกี้ · รายงาน X ข้อยกเว้น "เครื่องของกะ" ใช้คุกกี้ · ข้อมูลหน้ากะ/กะปัจจุบันของเครื่องนี้ใช้คุกกี้) ·
+//   ไม่มีคุกกี้/ผิด/เพิกถอนแล้ว = ctx ไม่มี deviceId · คำสั่งอื่นของกะ (เงินเข้า/ออก · ปิด · Z · นับย้อน) ใช้ deviceId ของ client เพื่อ "ปฏิเสธ" เท่านั้น (เครื่องเพิกถอน) — ไม่ให้สิทธิ์เพิ่ม ◂
+async function pairedScope(s: { ctx: RegisterCtx; actor: RegisterActor }): Promise<{ ctx: RegisterCtx; actor: RegisterActor }> {
+  let dev: { id: string; deviceCode: string } | null = null;
+  try {
+    dev = await pairedDevice({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId }, (await cookies()).get(POS_DEVICE_COOKIE)?.value);
+  } catch (e) {
+    console.error("[pos/shift-actions] pairedScope", e);
+  }
+  const { deviceId: _client, ...rest } = s.ctx as RegisterCtx & { deviceId?: string };
+  void _client;
+  return { ctx: { ...rest, ...(dev ? { deviceId: dev.deviceCode } : {}) } as RegisterCtx, actor: s.actor };
+}
+const NOT_PAIRED = (): ShiftRefusal => refusal("DEVICE_NOT_PAIRED", "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อนเปิดกะ");
+// ◂ POS P5.2
+
 function touch(systemId: string): void {
   try {
     revalidatePath(`/app/sys/${systemId}/pos/shifts`);
@@ -93,9 +113,17 @@ export async function openShiftAction(args: Target & { shift: OpenShiftInput }):
   const auth = await session("openShiftAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
-    const r = await openShift(s.ctx, s.actor, args.shift);
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    // POS P5.2 ▸ D2: ผูกเครื่องจากคุกกี้เท่านั้น — ไม่มีคุกกี้ = DEVICE_NOT_PAIRED · รหัสเครื่องใน payload ไม่ตรงคุกกี้ = ปฏิเสธ (ไม่เปิดบนเครื่องที่อ้าง) ◂
+    const s = await pairedScope(s0);
+    const dev = s.ctx.deviceId;
+    if (!dev) return NOT_PAIRED();
+    const input: unknown = args?.shift;
+    if (!input || typeof input !== "object" || Array.isArray(input)) return refusal("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง — ยังไม่ได้บันทึกอะไร");
+    const claimed = (input as { deviceId?: unknown }).deviceId;
+    if (claimed !== undefined && claimed !== dev) return refusal("DEVICE_NOT_PAIRED", "รหัสเครื่องไม่ตรงกับเครื่องที่จับคู่ไว้บนเบราว์เซอร์นี้ — เปิดกะไม่ได้");
+    const r = await openShift(s.ctx, s.actor, { ...(input as OpenShiftInput), deviceId: dev });
     if (r.ok) touch(s.ctx.systemId);
     return r;
   } catch (e) {
@@ -108,9 +136,11 @@ export async function currentShiftAction(args: Target & { deviceId: string }): P
   const auth = await session("currentShiftAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
-    return await currentShift(s.ctx, s.actor, { deviceId: args.deviceId });
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await pairedScope(s0); // POS P5.2 ▸ D2/D3: เครื่องนี้ = คุกกี้ ◂
+    if (!s.ctx.deviceId) return NOT_PAIRED();
+    return await currentShift(s.ctx, s.actor, { deviceId: s.ctx.deviceId });
   } catch (e) {
     return unexpected("currentShiftAction", e);
   }
@@ -121,8 +151,9 @@ export async function xReportAction(args: Target & { shiftId: string }): Promise
   const auth = await session("xReportAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await pairedScope(s0); // POS P5.2 ▸ D3: ข้อยกเว้น "เครื่องของกะ" ของ STAFF ไม่มี manage = คุกกี้เท่านั้น (ไม่มีคุกกี้ = กะของตัวเองเท่านั้น) ◂
     return await xReport(s.ctx, s.actor, { shiftId: args.shiftId });
   } catch (e) {
     return unexpected("xReportAction", e);
@@ -216,8 +247,9 @@ export async function shiftsPageDataAction(args: Target): Promise<ShiftsPageData
   const auth = await session("shiftsPageDataAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await pairedScope(s0); // POS P5.2 ▸ D3: กะ/X ของ "เครื่องนี้" บนหน้ากะ = คุกกี้ ◂
     return await shiftsPageData(s.ctx, s.actor, s.ctx.deviceId !== undefined ? { deviceId: s.ctx.deviceId } : {});
   } catch (e) {
     return unexpected("shiftsPageDataAction", e);

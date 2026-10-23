@@ -7444,6 +7444,32 @@
     },
     {
       "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-pair-this",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:registerDeviceAction",
+        "db": "PosDevice เดิม (ไม่สร้างแถวใหม่) · คุกกี้ shark_pos_device ใหม่",
+        "note": "POS P5.2 D1 (CD-P52-O2-3): จับคู่เบราว์เซอร์นี้กับเครื่องที่ลงทะเบียนไว้แล้ว (ชื่อเดิม · รหัส getPosDeviceId) · สำเร็จ = pos-device-note \"จับคู่กับเบราว์เซอร์นี้แล้ว\" · ไม่ตั้งกุญแจ = ไม่แสดงปุ่ม (pos-device-key-unset)"
+      },
+      "wo": "P5.2",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-devices"
+      ],
+      "needs": "เบราว์เซอร์นี้ลงทะเบียนเป็นเครื่อง ACTIVE แล้วแต่ไม่มีคุกกี้เครื่องของสาขานี้ และตั้ง POS_DEVICE_KEY แล้ว (DeviceSettings.tsx needsPair)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-register-name",
       "kind": "input",
       "roles": [
