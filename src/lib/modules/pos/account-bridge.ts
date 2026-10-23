@@ -170,7 +170,7 @@ export async function bridgePosSalePaid(
   // POS P3.6 ▸ R5 R7: ผู้ติดต่อของบิล = บริษัท (customerPartyId) ก่อนสมาชิก · บิลวางบิล = onAccount {partyId, dueDate, termDays} จาก creditTerms ◂
   const p36Credit = sale.customerPartyId && pays.some((p) => p.type === "ON_ACCOUNT") ? creditTermsOf(sale.creditTerms) : null;
   const p36Customer = sale.customerPartyId ? { partyId: sale.customerPartyId, name: buyer?.name ?? null } : null;
-  const res = await p36RetryOnceOnUnique(!!p36Credit, () => applyExternalSale({ // POS P3.6 ▸ บิลวางบิล: ชน unique (คิวสองตัวลง JV/ผู้ติดต่อพร้อมกัน) = ลองซ้ำ 1 ครั้ง (ทุกขั้น idempotent) · บิลอื่นเดิมทุกไบต์ ◂
+  const res = await p36RetryOnceOnUnique(true, () => applyExternalSale({ // POS P5.1 ▸ MA11 (F11): ลองซ้ำ 1 ครั้งเมื่อชน unique ทุกบิล (เดิมเฉพาะบิลวางบิล) — ผู้ชนะ commit JV PosSale#<id>#PAID แล้ว ⇒ รอบสองเห็น "ลงแล้ว" ◂ // POS P3.6 ▸ บิลวางบิล: ชน unique (คิวสองตัวลง JV/ผู้ติดต่อพร้อมกัน) = ลองซ้ำ 1 ครั้ง (ทุกขั้น idempotent) · บิลอื่นเดิมทุกไบต์ ◂
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
