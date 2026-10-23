@@ -7,6 +7,7 @@
 //   คิวอนุมัติ (POS_REFUND) ไม่ต่อกับมัดจำ (deviation 4 ของ S — งานตามหลัง)
 // POS P5.1 ▸ MA13 (R1 F3 · CD-P51-O8c): มัดจำของการจอง (fromModule) ที่ OPEN มีปุ่ม "ริบมัดจำ" ข้างปุ่มคืน (ต่อยอดลิ้นชักนี้ ไม่ทำจอใหม่) —
 //   แผ่นริบ: ยอด = คงเหลือทั้งหมด (อ่านอย่างเดียว) · เหตุผลบังคับ · registerForfeitDepositAction (pos.sale.manage · ไม่มีสิทธิ์ = ข้อความ ไม่มี PIN) ◂
+//   POS P5.1 ▸ RC F7 (CD-P51-O10): ปุ่มแสดงเมื่อ lookup ตอบ canForfeit (มัดจำโมดูล + ผู้ใช้มี pos.sale.manage) — แคชเชียร์ไม่เห็นปุ่ม ◂
 // 🔴 ข้อความจากคีย์ pos.* เท่านั้น · 4 หลักท้ายอยู่ใน ref/ช่อง password แบบไม่ควบคุม (ไม่ลง storage/URL/data-*) · ไม่มีข้อความไทยนอกคอมเมนต์ (ST7)
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,7 +18,7 @@ import { refusalMessageKey } from "@/lib/modules/pos/register-shared";
 import { ManagerPinPad, type ManagerPinResult } from "@/components/pos/register/ManagerPinPad";
 import { BillIcon, money, type T } from "./bills-ui";
 
-type Info = { id: string; status: string; remainingSatang: number | null; needsPhoneLast4: boolean; fromModule: boolean }; // POS P5.1 ▸ MA13 fromModule ◂
+type Info = { id: string; status: string; remainingSatang: number | null; needsPhoneLast4: boolean; fromModule: boolean; canForfeit: boolean }; // POS P5.1 ▸ MA13 fromModule · RC F7 canForfeit ◂
 type RefundMethod = "CASH" | "PROMPTPAY" | "TRANSFER";
 // POS P2.9bU ▸ fix1 มติ 7 (R1 F7): ป้ายกลางของมัดจำ (ไม่อ้าง "PromptPay เดิม"/"บัญชีที่โอนมา" ของการคืนบิลขาย P1.8) ◂
 const METHODS: { m: RefundMethod; label: string }[] = [
@@ -41,7 +42,7 @@ export function DepositRefund({ systemId, unitId, receiptNo, onRefunded }: { sys
     async (last4?: string): Promise<Info | null> => {
       const r = await registerDepositLookupAction({ systemId, unitId, query: receiptNo, ...(last4 ? { phoneLast4: last4 } : {}) }).catch(() => null);
       const d = r && r.ok ? (r.deposits.find((x) => x.receiptNo === receiptNo) ?? null) : null;
-      return d ? { id: d.id, status: d.status, remainingSatang: d.remainingSatang, needsPhoneLast4: d.needsPhoneLast4, fromModule: d.fromModule === true } : null;
+      return d ? { id: d.id, status: d.status, remainingSatang: d.remainingSatang, needsPhoneLast4: d.needsPhoneLast4, fromModule: d.fromModule === true, canForfeit: d.canForfeit === true } : null;
     },
     [systemId, unitId, receiptNo],
   );
@@ -60,7 +61,7 @@ export function DepositRefund({ systemId, unitId, receiptNo, onRefunded }: { sys
       <button type="button" data-testid="pos-bills-refund-deposit" className="btn btn-primary h-12 rounded-[12px] px-3 leading-tight" onClick={() => setOpen(true)}>
         {info.remainingSatang !== null ? t("deposit.refundOpen", { amount: money(info.remainingSatang) }) : t("deposit.refundOpenNoAmount")}
       </button>
-      {info.fromModule && info.remainingSatang !== null && info.remainingSatang > 0 ? (
+      {info.canForfeit && info.remainingSatang !== null && info.remainingSatang > 0 ? ( /* POS P5.1 ▸ RC F7 (CD-P51-O10): ซ่อนเมื่อไม่มี pos.sale.manage ◂ */
         <button type="button" data-testid="pos-bills-forfeit-deposit" className="btn btn-ghost h-12 rounded-[12px] px-3 leading-tight text-[color:var(--color-danger)]" onClick={() => setForfeitOpen(true)}>
           {t("deposit.forfeitOpen")}
         </button>

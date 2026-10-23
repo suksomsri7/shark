@@ -24354,14 +24354,15 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "modal",
         "target": "pos-bills-forfeit-deposit-sheet",
-        "note": "POS P5.1 ▸ MA13 (CD-P51-O8c): ลิ้นชักใบรับมัดจำของการจอง: \"ริบมัดจำ\" ข้างปุ่มคืน — แคชเชียร์เปิดได้แต่ยืนยันแล้วได้ข้อความไม่มีสิทธิ์ (pos.sale.manage)"
+        "note": "POS P5.1 ▸ MA13 (CD-P51-O8c · RC F7 CD-P51-O10): ลิ้นชักใบรับมัดจำของการจอง: \"ริบมัดจำ\" ข้างปุ่มคืน — แสดงเมื่อ lookup ตอบ canForfeit (pos.sale.manage) · แคชเชียร์ไม่เห็นปุ่ม"
       },
       "wo": "P5.1",
       "oracle": "qc-pos-p5.1 MA13",
@@ -24379,10 +24380,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-bills-forfeit-deposit-sheet",
@@ -24406,10 +24408,11 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-bills-forfeit-deposit-amount",
@@ -24433,10 +24436,11 @@
       "kind": "textarea",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-bills-forfeit-deposit-submit",
@@ -24462,7 +24466,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "action:registerForfeitDepositAction",
@@ -24488,10 +24494,11 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-bills-forfeit-deposit-sheet",
@@ -24517,7 +24524,9 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "expect": {
         "type": "mutation",
         "target": "action:registerForfeitDepositAction",
@@ -24529,7 +24538,7 @@
             "target": "pos-bills-forfeit-deposit-error"
           }
         ],
-        "note": "ยืนยันริบ ฿y → toast \"ริบมัดจำแล้ว · บิล #… ฿y\" + โหลดใหม่ · PERMISSION_DENIED (แคชเชียร์) / REASON_REQUIRED / DEPOSIT_CLOSED = ข้อความในแผ่น"
+        "note": "ยืนยันริบ ฿y → toast \"ริบมัดจำแล้ว · บิล #… ฿y\" + โหลดใหม่ · REASON_REQUIRED / DEPOSIT_CLOSED = ข้อความในแผ่น"
       },
       "wo": "P5.1",
       "oracle": "qc-pos-p5.1 MA13",
