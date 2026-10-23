@@ -8,7 +8,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { posTipLedgers } from "./tip-ledger";
+import { posTipLedgersFor } from "./tip-ledger"; // POS P5.2 ▸ H6b: ด่านทุกสาขาอยู่ที่ตัวอ่าน ◂
 import type { PosTipLedgersResult } from "./tip-ledger-shared";
 
 export async function posTipLedgersAction(args: { systemId: string }): Promise<PosTipLedgersResult> {
@@ -20,7 +20,7 @@ export async function posTipLedgersAction(args: { systemId: string }): Promise<P
     } catch {
       return { ok: false, code: "PERMISSION_DENIED", message: "เฉพาะเจ้าของร้านเท่านั้นที่ตั้งค่าการชำระเงินได้" };
     }
-    return await posTipLedgers({ tenantId: auth.active.tenantId, systemId: typeof args?.systemId === "string" ? args.systemId : "" });
+    return await posTipLedgersFor({ tenantId: auth.active.tenantId, systemId: typeof args?.systemId === "string" ? args.systemId : "" }, m); // POS P5.2 ▸ H6b ◂
   } catch (e) {
     unstable_rethrow(e);
     console.error("[pos/tip-ledger-actions] posTipLedgersAction", e);

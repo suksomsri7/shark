@@ -19,7 +19,7 @@ import { PrintStatus } from "@/components/pos/print/PrintStatus";
 import { printReceipt } from "@/components/pos/print/printReceipt";
 import { samplePayload } from "@/components/pos/print/sample-payload";
 import type { PrinterPairing, PrintResult } from "@/components/pos/print/types";
-import { listDevicesAction, registerDeviceAction, revokeDeviceAction, updateDeviceAction } from "@/lib/modules/pos/device-actions";
+import { devicePairingAction, listDevicesAction, registerDeviceAction, revokeDeviceAction, updateDeviceAction } from "@/lib/modules/pos/device-actions"; // POS P5.2 ▸ + devicePairingAction (D1) ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { POS_DEVICE_NAME_MAX, POS_REG_NO_MAX, type PosDeviceListItem, type PosPrinterConfig } from "@/lib/modules/pos/device-shared";
 // POS P2.6U ▸ มติ 9e (ภาพ 17B): ใบครัวของเครื่อง (kitchenSlipSettings · ตัวเขียน = updateDeviceAction เดิม) + สถานีจาก kdsStationsAction (fix1 F3) · ลิงก์จอครัว (มติ 1) ◂
@@ -47,6 +47,7 @@ const ERROR_KEY: Record<string, string> = {
   DEVICE_REVOKED: "deviceRevoked",
   DEVICE_LIMIT: "deviceLimit",
   DEVICE_NOT_FOUND: "deviceNotFound",
+  DEVICE_KEY_UNSET: "deviceKeyUnset", // POS P5.2 ▸ D1 ◂
   INTERNAL: "internal",
 };
 const errKey = (code: string | undefined) => `errors.${ERROR_KEY[code ?? "INTERNAL"] ?? "internal"}`;
@@ -117,6 +118,8 @@ export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P
   const [regNoDraft, setRegNoDraft] = useState("");
   const [pairing, setPairing] = useState<PrinterPairing | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
+  // POS P5.2 ▸ D1 (CD-P52-O2-3): กุญแจคุกกี้เครื่องตั้งแล้วไหม + เบราว์เซอร์นี้จับคู่กับเครื่องไหน (null = ยังไม่รู้) ◂
+  const [pairState, setPairState] = useState<{ keyConfigured: boolean; pairedDeviceId: string | null } | null>(null);
   const [printRes, setPrintRes] = useState<PrintResult | null>(null);
   // POS P2.6U ▸ มติ 9e: สถานีครัวของสาขา (สำหรับช่องติ๊กใบครัว) — อ่านไม่ได้/ไม่มีครัว = [] ◂
   const [kStations, setKStations] = useState<{ id: string; name: string; nameEn: string | null }[] | null>(null);
@@ -139,6 +142,10 @@ export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P
         return;
       }
       setList({ items: r.items, limit: r.limit, activeCount: r.activeCount });
+      // POS P5.2 ▸ D1: สถานะจับคู่ (อ่านไม่ได้ = ไม่แสดงการ์ด/ปุ่มจับคู่) ◂
+      void devicePairingAction({ systemId, unitId })
+        .then((p) => setPairState(p && p.ok ? { keyConfigured: p.keyConfigured, pairedDeviceId: p.pairedDeviceId } : null))
+        .catch(() => setPairState(null));
       const code = getPosDeviceId();
       setThisCode(code);
       setPairing(readPairing(code));
@@ -170,6 +177,8 @@ export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P
 
   const mine = list?.items.find((d) => d.deviceCode === thisCode) ?? null;
   const atLimit = !!list && list.activeCount >= list.limit;
+  // POS P5.2 ▸ D1: เครื่องนี้ลงทะเบียนแล้วแต่เบราว์เซอร์นี้ยังไม่มีคุกกี้ของมัน (เช่น ลงก่อนมีการจับคู่) ⇒ ปุ่มจับคู่เบราว์เซอร์นี้ (registerDeviceAction รหัสเดิม) ◂
+  const needsPair = !!mine && mine.status === "ACTIVE" && !!pairState && pairState.keyConfigured && pairState.pairedDeviceId !== mine.id;
 
   const replace = (d: PosDeviceListItem) => setList((l) => (l ? { ...l, items: l.items.map((x) => (x.id === d.id ? d : x)) } : l));
 
@@ -197,6 +206,24 @@ export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P
     setRegName(td("registerNameDefault", { n: (list?.activeCount ?? 0) + 1 }));
     setRegErr(null);
     setRegOpen(true);
+  };
+  // POS P5.2 ▸ D1: จับคู่เบราว์เซอร์นี้กับเครื่องที่ลงทะเบียนไว้แล้ว (ชื่อเดิม · ได้คุกกี้เครื่องใหม่) ◂
+  const pairThis = async () => {
+    if (!mine || !thisCode || busy) return;
+    setBusy(true);
+    setErr(null);
+    setNote(null);
+    try {
+      const r = await registerDeviceAction({ systemId, unitId, name: mine.name, deviceCode: thisCode });
+      if (r.ok) {
+        setNote(td("pairedHere"));
+        await load(r.device.id);
+      } else setErr(td(errKey(r.code)));
+    } catch {
+      setErr(td("errors.internal"));
+    } finally {
+      setBusy(false);
+    }
   };
   const submitRegister = async () => {
     const name = regName.trim();
@@ -375,17 +402,29 @@ export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P
         <Link data-testid="pos-device-kds-link" href={`/app/sys/${systemId}/pos/kds?unit=${encodeURIComponent(unitId)}`} className="btn btn-ghost h-11 gap-2 rounded-[11px] px-4 text-[14px] font-semibold">
           {td("kitchen.openKds")}
         </Link>
-        <button
-          data-testid="pos-device-register"
-          type="button"
-          className="btn btn-primary h-11 gap-2 rounded-[11px] px-4 text-[14px] font-semibold disabled:opacity-50"
-          disabled={!!mine || atLimit || busy || !thisCode}
-          onClick={openRegister}
-        >
-          <RegisterIcon name={mine ? "check" : "plus"} size={15} />
-          {mine ? (mine.status === "ACTIVE" ? td("alreadyRegistered") : td("revokedChip")) : td("register")}
-        </button>
+        {needsPair ? (
+          <button data-testid="pos-device-pair-this" type="button" className="btn btn-primary h-11 gap-2 rounded-[11px] px-4 text-[14px] font-semibold disabled:opacity-50" disabled={busy} onClick={() => void pairThis()}>
+            <RegisterIcon name="plus" size={15} />
+            {td("pairThis")}
+          </button>
+        ) : (
+          <button
+            data-testid="pos-device-register"
+            type="button"
+            className="btn btn-primary h-11 gap-2 rounded-[11px] px-4 text-[14px] font-semibold disabled:opacity-50"
+            disabled={!!mine || atLimit || busy || !thisCode}
+            onClick={openRegister}
+          >
+            <RegisterIcon name={mine ? "check" : "plus"} size={15} />
+            {mine ? (mine.status === "ACTIVE" ? td("alreadyRegistered") : td("revokedChip")) : td("register")}
+          </button>
+        )}
       </TabHead>
+      {pairState && !pairState.keyConfigured && (
+        <InlineNote tone="error" testid="pos-device-key-unset">
+          {td("keyUnset")}
+        </InlineNote>
+      )}
       {!mine && atLimit && (
         <InlineNote tone="error" testid="pos-device-limit">
           {td("limitReached", { limit: list.limit })}

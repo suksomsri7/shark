@@ -7,6 +7,9 @@
 import { getAuth } from "@/lib/core/context";
 import { posMembership } from "@/lib/modules/pos/access";
 import { syncOfflineSales } from "@/lib/modules/pos/offline-sync";
+import { cookies } from "next/headers"; // POS P5.2 ▸ CD-P52-O4b ◂
+import { deviceBinding } from "@/lib/modules/pos/device"; // POS P5.2 ▸ CD-P52-O4b ◂
+import { POS_DEVICE_COOKIE } from "@/lib/modules/pos/device-cookie"; // POS P5.2 ▸ CD-P52-O4b ◂
 
 const STATUS: Readonly<Record<string, number>> = {
   NOT_FOUND: 404,
@@ -49,8 +52,21 @@ export async function POST(req: Request): Promise<Response> {
   const b = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
   const systemId = typeof b.systemId === "string" ? b.systemId : "";
   const unitId = typeof b.unitId === "string" ? b.unitId : "";
-  const deviceId = typeof b.deviceId === "string" ? b.deviceId : "";
-  if (!systemId || !unitId || !deviceId) return json(422, { ok: false, code: "VALIDATION", message: "ต้องระบุระบบ สาขา และเครื่อง" });
+  const claimed = typeof b.deviceId === "string" ? b.deviceId : "";
+  if (!systemId || !unitId) return json(422, { ok: false, code: "VALIDATION", message: "ต้องระบุระบบ สาขา และเครื่อง" });
+  // POS P5.2 ▸ CD-P52-O4b (ต่อ D2/D4 · CD-P52-O2-2 · CD-P52-O2-3): เครื่องของบิลออฟไลน์ = คุกกี้เครื่องลงนาม — ACTIVE หรือเพิกถอนแล้ว
+  //   (เพิกถอน = facade ตัดสินจาก revokedAt เทียบเวลาขาย · CD-12 P3.4) · ไม่มีคุกกี้ + สาขามีเครื่องลงทะเบียน = 409 DEVICE_NOT_PAIRED ·
+  //   สาขาที่ไม่มีเครื่องลงทะเบียนเลย = รหัสใน body (ไม่มีเครื่อง/กะให้สวมรอย — เปิดกะต้องจับคู่ก่อน) ◂
+  let cookieValue: string | undefined;
+  try {
+    cookieValue = (await cookies()).get(POS_DEVICE_COOKIE)?.value;
+  } catch {
+    cookieValue = undefined;
+  }
+  const bound = await deviceBinding({ tenantId: auth.active.tenantId, unitId }, cookieValue);
+  if (bound.kind === "none" && bound.unitHasDevices) return json(409, { ok: false, code: "DEVICE_NOT_PAIRED", message: "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อน" });
+  const deviceId = bound.kind === "none" ? claimed : bound.deviceCode;
+  if (!deviceId) return json(422, { ok: false, code: "VALIDATION", message: "ต้องระบุระบบ สาขา และเครื่อง" });
   const m = posMembership(auth.active);
   const r = await syncOfflineSales(
     { tenantId: auth.active.tenantId, systemId, unitId, deviceId },

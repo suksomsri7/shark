@@ -50,6 +50,8 @@ import {
   type KdsKitchenProduct, // P2.6U ▸ fix1 F1 ◂
   type KdsKitchenProductsResult, // P2.6U ▸ fix1 F1 ◂
   type KdsStationsResult, // P2.6U ▸ fix1 F3 ◂
+  type KdsKitchenPauseResult, // POS P5.2 ▸ D11 ◂
+  KDS_PAUSE_NOTE_MAX, // POS P5.2 ▸ D11 ◂
 } from "./kds-shared";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 
@@ -772,6 +774,32 @@ export async function kdsSetAutoAcceptMax(ctx: RegisterCtx, actor: RegisterActor
     return { ok: true, maxOpen };
   });
 }
+
+// POS P5.2 ▸ D11 (ruling 4): พักครัว/เลิกพักจากจอครัวของ POS (คีย์ restaurant.kitchen.pause ที่สาขานี้ · kscope ตรวจ membership กับ DB) —
+//   แทน kitchenPauseAction ของหน้าร้านอาหารเดิมที่ตอนนี้ปิดบนสาขาที่ผูก POS · เลิกพัก ⇒ กวาดออเดอร์ที่ครัวพักไว้ (HF-FU a · ล้ม = WARN) ◂
+export async function kdsSetKitchenPause(ctx: RegisterCtx, actor: RegisterActor, input: { paused: boolean; note?: string | null }): Promise<KdsKitchenPauseResult> {
+  return guard("kdsSetKitchenPause", async (): Promise<KdsKitchenPauseResult> => {
+    const s = await kscope(ctx, actor, "pause");
+    if (isRefusal(s)) return s;
+    if (!isRecord(input) || typeof input.paused !== "boolean") return refuse("VALIDATION");
+    const rawNote = input.note;
+    if (!(rawNote === undefined || rawNote === null || (typeof rawNote === "string" && rawNote.length <= KDS_PAUSE_NOTE_MAX))) return refuse("VALIDATION");
+    const paused = input.paused;
+    const note = paused && typeof rawNote === "string" && rawNote.trim() ? rawNote.trim() : null;
+    const R = await restaurant();
+    await prisma.$transaction((tx) => R.kitchenSetPauseInTx(tx, s, paused, note));
+    await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.kds.kitchenPause", targetType: "BusinessUnit", targetId: s.unitId, after: { unitId: s.unitId, paused } });
+    if (!paused) {
+      try {
+        await (await import("./order")).releaseHeldOrders(s.tenantId, s.unitId, { limit: 20 });
+      } catch (e) {
+        console.warn("[pos/kds] releaseHeldOrders ล้ม (เลิกพักครัวแล้ว)", e);
+      }
+    }
+    return { ok: true, paused };
+  });
+}
+// ◂ POS P5.2
 
 // ═══════════ ตัวรับคิว (R10 R11 R12 · CD 10 18) — composition root (outbox-consumers.ts) เรียก · ทุกตัว idempotent ═══════════
 

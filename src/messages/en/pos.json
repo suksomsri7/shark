@@ -514,7 +514,8 @@
       "creditTermZero": "This company's credit term is 0 days — it cannot be billed on account; take payment now",
       "creditLimitExceeded": "This amount is over the company's credit limit — ask a manager to approve with a PIN or choose another payment method",
       "creditInvoicePaid": "The invoice of this bill has already been paid — the bill cannot be voided; use a refund instead",
-      "dealInvalid": "This deal cannot be linked to this bill — pick another deal or sell without a deal"
+      "dealInvalid": "This deal cannot be linked to this bill — pick another deal or sell without a deal",
+      "deviceNotPaired": "This register is not paired with the branch — ask a manager to pair it in Settings › Devices before opening a shift"
     },
     "refusal": {
       "manualConfirmManager": "This shop lets only managers confirm money received — ask a manager to confirm this PromptPay/card payment, or take cash"
@@ -1850,7 +1851,8 @@
       "deviceRevoked": "This device has been revoked and cannot be edited",
       "deviceLimit": "All devices allowed by your plan are registered — revoke an unused one first",
       "deviceNotFound": "This device was not found in this branch",
-      "internal": "Something went wrong — try again"
+      "internal": "Something went wrong — try again",
+      "deviceKeyUnset": "The device pairing key is not set — an administrator must set it before registers can be paired and shifts opened"
     },
     "kitchen": {
       "openKds": "Open kitchen display",
@@ -1863,7 +1865,10 @@
       "stations": "Stations to print",
       "stationsHint": "All ticked = print every station",
       "noStations": "This branch has no kitchen stations yet"
-    }
+    },
+    "keyUnset": "The device pairing key (POS_DEVICE_KEY) is not set — devices cannot be paired and shifts cannot be opened until an administrator sets it",
+    "pairThis": "Pair this browser",
+    "pairedHere": "Paired with this browser"
   },
   "receipt": {
     "title": "Receipt",

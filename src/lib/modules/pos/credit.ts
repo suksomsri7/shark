@@ -88,6 +88,9 @@ export async function saveCreditAccount(ctx: { tenantId: string; systemId: strin
     if (!isRecord(ctx) || !isId(ctx.tenantId) || !(await posSystemOk(prisma, ctx.tenantId, ctx.systemId))) return refuse("NOT_FOUND");
     const actor = actorOf(actorRaw);
     if (!canManageCredit(actor)) return refuse("PERMISSION_DENIED");
+    // POS P5.2 ▸ H6b + CD-P52-O4 F5 (มติ): บัญชีเครดิตใช้ทั้งระบบ POS ⇒ OWNER หรือ MANAGER ที่ unitAccess = "*" ตรงตัวเท่านั้น —
+    //   ผู้จัดการสาขาเดียว และผู้จัดการที่ระบุครบทุกสาขา (ไม่ใช่ "*") = PERMISSION_DENIED ◂
+    if (!(actor!.role === "OWNER" || (actor!.role === "MANAGER" && actor!.unitAccess.includes("*")))) return refuse("PERMISSION_DENIED");
     if (!isRecord(input)) return refuse("VALIDATION");
     const limit = input.limitSatang;
     const term = input.termDays === undefined ? null : input.termDays;

@@ -37,6 +37,8 @@ import {
   type ShiftsPageData,
 } from "./shift";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
+import { recordShiftCloseOverride } from "./device"; // POS P5.2 ▸ CD-P52-O4b ข้อ 2 ◂
+import { notPaired, requestDevice, type DeviceNotPaired, type DeviceRevokedRefusal } from "./device-request"; // POS P5.2 ▸ D2/D3 · CD-P52-O4 F1 ◂
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
 type Session = Awaited<ReturnType<typeof requireTenant>>;
@@ -74,12 +76,46 @@ function scopeOf(auth: Session, args: unknown): { ctx: RegisterCtx; actor: Regis
     }
   });
   if (!allowed) return refusal("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์จัดการกะ — ขอสิทธิ์จากเจ้าของร้าน");
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  // POS P5.2 ▸ CD-P52-O4b: deviceId ของ client ไม่เข้า ctx (Z · นับย้อน · ประวัติ · เงินนอกกะ ไม่ใช้เครื่อง) — คำสั่งที่ใช้เครื่องเติมจากคุกกี้ (pairedScope/boundScope) ◂
   return {
-    ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) },
+    ctx: { tenantId: auth.active.tenantId, systemId, unitId },
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
   };
 }
+// POS P5.2 ▸ D2/D3 + CD-P52-O4 F1 (CD-P52-O2-2 สัญญา D1 · CD-P52-O2-3 กุญแจแยก · §10.4 D1c): "เครื่องที่ยืนอยู่" = คุกกี้เครื่องลงนามเท่านั้น (device-request.ts) —
+//   deviceId จาก client ไม่ถูกเชื่อในทุกคำสั่งของกะ · เปิดกะ = ต้องมีคุกกี้ (D2) · X/กะปัจจุบัน/หน้ากะ = เครื่องของคุกกี้ (D3) ·
+//   เงินเข้า/ออก = bind (เพิกถอน = DEVICE_REVOKED · ไม่มีคุกกี้ + สาขามีเครื่อง = DEVICE_NOT_PAIRED — ไม่ส่ง deviceId ก็ข้ามการตรวจเพิกถอนไม่ได้) ·
+//   ปิดกะ = bind แต่ผู้ถือ pos.shift.manage ที่สาขาปิดจากเครื่องที่ไม่ได้จับคู่ได้ (ผู้จัดการปิดกะค้างของเครื่องที่ถูกเพิกถอนที่หน้ากะ) ◂
+type Scoped = { ctx: RegisterCtx; actor: RegisterActor };
+type NotPaired = DeviceNotPaired;
+const NOT_PAIRED = notPaired;
+function withDevice(s: Scoped, deviceId: string | undefined): Scoped {
+  const { deviceId: _client, ...rest } = s.ctx as RegisterCtx & { deviceId?: string };
+  void _client;
+  return { ctx: { ...rest, ...(deviceId ? { deviceId } : {}) } as RegisterCtx, actor: s.actor };
+}
+/** อ่านอย่างเดียว: เครื่องของคุกกี้ (เพิกถอน/ไม่มี = ไม่มีเครื่อง) */
+async function pairedScope(s: Scoped): Promise<Scoped> {
+  const d = await requestDevice({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId }, "strip");
+  return withDevice(s, d.ok ? d.deviceId : undefined);
+}
+/** เขียน: bind (ดูหัวบล็อก) · manageMayUnpair = ผู้ถือ pos.shift.manage ไม่ต้องมีคุกกี้ */
+async function boundScope(s: Scoped, manageMayUnpair = false): Promise<(Scoped & { managerOverride?: true }) | DeviceNotPaired | DeviceRevokedRefusal> {
+  const d = await requestDevice({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId }, "bind");
+  if (d.ok) return withDevice(s, d.deviceId);
+  if (d.code === "DEVICE_NOT_PAIRED" && manageMayUnpair) {
+    try {
+      // CD-P52-O4b ข้อ 2 (รับข้อยกเว้น): ผู้ถือ pos.shift.manage ที่สาขาของกะ (ctx.unitId · shift.ts ค้นกะในสาขานี้เท่านั้น) ปิดจากเครื่องที่ไม่ได้จับคู่ได้ + audit source manager-override
+      assertCan(s.actor, { module: "pos", action: "pos.shift.manage", unitId: s.ctx.unitId });
+      return { ...withDevice(s, undefined), managerOverride: true };
+    } catch {
+      return d;
+    }
+  }
+  return d;
+}
+// ◂ POS P5.2
+
 function touch(systemId: string): void {
   try {
     revalidatePath(`/app/sys/${systemId}/pos/shifts`);
@@ -89,13 +125,23 @@ function touch(systemId: string): void {
 }
 
 /** เปิดกะของเครื่องนี้ (S4) */
-export async function openShiftAction(args: Target & { shift: OpenShiftInput }): Promise<OpenShiftResult> {
+export async function openShiftAction(args: Target & { shift: OpenShiftInput }): Promise<OpenShiftResult | NotPaired | DeviceRevokedRefusal> { // POS P5.2 ▸ + NotPaired · DeviceRevoked ◂
   const auth = await session("openShiftAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
-    const r = await openShift(s.ctx, s.actor, args.shift);
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    // POS P5.2 ▸ D2: ผูกเครื่องจากคุกกี้เท่านั้น — ไม่มีคุกกี้ = DEVICE_NOT_PAIRED · รหัสเครื่องใน payload ไม่ตรงคุกกี้ = ปฏิเสธ (ไม่เปิดบนเครื่องที่อ้าง) ◂
+    const sb = await boundScope(s0);
+    if ("ok" in sb) return sb;
+    const s = sb;
+    const dev = s.ctx.deviceId;
+    if (!dev) return NOT_PAIRED(); // สาขายังไม่มีเครื่อง = เปิดกะไม่ได้จนกว่าจะจับคู่ (D2)
+    const input: unknown = args?.shift;
+    if (!input || typeof input !== "object" || Array.isArray(input)) return refusal("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง — ยังไม่ได้บันทึกอะไร");
+    const claimed = (input as { deviceId?: unknown }).deviceId;
+    if (claimed !== undefined && claimed !== dev) return NOT_PAIRED("รหัสเครื่องไม่ตรงกับเครื่องที่จับคู่ไว้บนเบราว์เซอร์นี้ — เปิดกะไม่ได้");
+    const r = await openShift(s.ctx, s.actor, { ...(input as OpenShiftInput), deviceId: dev });
     if (r.ok) touch(s.ctx.systemId);
     return r;
   } catch (e) {
@@ -104,13 +150,15 @@ export async function openShiftAction(args: Target & { shift: OpenShiftInput }):
 }
 
 /** กะ OPEN ของเครื่องนี้ (null = ยังไม่เปิด) */
-export async function currentShiftAction(args: Target & { deviceId: string }): Promise<CurrentShiftResult> {
+export async function currentShiftAction(args: Target & { deviceId: string }): Promise<CurrentShiftResult | NotPaired> { // POS P5.2 ▸ + NotPaired ◂
   const auth = await session("currentShiftAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
-    return await currentShift(s.ctx, s.actor, { deviceId: args.deviceId });
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await pairedScope(s0); // POS P5.2 ▸ D2/D3: เครื่องนี้ = คุกกี้ ◂
+    if (!s.ctx.deviceId) return NOT_PAIRED();
+    return await currentShift(s.ctx, s.actor, { deviceId: s.ctx.deviceId });
   } catch (e) {
     return unexpected("currentShiftAction", e);
   }
@@ -121,8 +169,9 @@ export async function xReportAction(args: Target & { shiftId: string }): Promise
   const auth = await session("xReportAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await pairedScope(s0); // POS P5.2 ▸ D3: ข้อยกเว้น "เครื่องของกะ" ของ STAFF ไม่มี manage = คุกกี้เท่านั้น (ไม่มีคุกกี้ = กะของตัวเองเท่านั้น) ◂
     return await xReport(s.ctx, s.actor, { shiftId: args.shiftId });
   } catch (e) {
     return unexpected("xReportAction", e);
@@ -130,13 +179,16 @@ export async function xReportAction(args: Target & { shiftId: string }): Promise
 }
 
 /** ปิดกะ + Z (S10) */
-export async function closeShiftAction(args: Target & { close: CloseShiftInput }): Promise<CloseShiftResult> {
+export async function closeShiftAction(args: Target & { close: CloseShiftInput }): Promise<CloseShiftResult | NotPaired | DeviceRevokedRefusal> { // POS P5.2 ▸ CD-P52-O4 F1 ◂
   const auth = await session("closeShiftAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await boundScope(s0, true); // POS P5.2 ▸ CD-P52-O4 F1: เครื่องจากคุกกี้ · เพิกถอน = DEVICE_REVOKED · ไม่จับคู่ได้เฉพาะผู้ถือ pos.shift.manage ◂
     if ("ok" in s) return s;
     const r = await closeShift(s.ctx, s.actor, args.close);
+    if (r.ok && s.managerOverride && !r.duplicated) await recordShiftCloseOverride(s.ctx, s.actor, r.shift.id); // POS P5.2 ▸ CD-P52-O4b ข้อ 2 ◂
     if (r.ok) touch(s.ctx.systemId);
     return r;
   } catch (e) {
@@ -158,11 +210,13 @@ export async function zReportAction(args: Target & { shiftId: string }): Promise
 }
 
 /** เงินเข้า/ออกลิ้นชัก (S8) */
-export async function recordCashMovementAction(args: Target & { movement: CashMovementInput }): Promise<CashMovementResult> {
+export async function recordCashMovementAction(args: Target & { movement: CashMovementInput }): Promise<CashMovementResult | NotPaired | DeviceRevokedRefusal> { // POS P5.2 ▸ CD-P52-O4 F1 ◂
   const auth = await session("recordCashMovementAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await boundScope(s0); // POS P5.2 ▸ CD-P52-O4 F1: ตรวจเพิกถอนจากเครื่องของคุกกี้ · ไม่ส่ง deviceId ก็ข้ามไม่ได้ ◂
     if ("ok" in s) return s;
     return await recordCashMovement(s.ctx, s.actor, args.movement);
   } catch (e) {
@@ -216,8 +270,9 @@ export async function shiftsPageDataAction(args: Target): Promise<ShiftsPageData
   const auth = await session("shiftsPageDataAction");
   if ("ok" in auth) return auth;
   try {
-    const s = scopeOf(auth, args);
-    if ("ok" in s) return s;
+    const s0 = scopeOf(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await pairedScope(s0); // POS P5.2 ▸ D3: กะ/X ของ "เครื่องนี้" บนหน้ากะ = คุกกี้ ◂
     return await shiftsPageData(s.ctx, s.actor, s.ctx.deviceId !== undefined ? { deviceId: s.ctx.deviceId } : {});
   } catch (e) {
     return unexpected("shiftsPageDataAction", e);

@@ -7,6 +7,11 @@
 //       --self-test = เฉพาะ probe กลับค่า N1–N8 (ตัวตัดสิน pure ต้องแดงได้จริง) ไม่แตะ DB
 //   ORACLE-EDIT (P5.2 oracle2 · 23 ต.ค. · hunter L1 ledger/wo-notes/pos-P5.2-hunt-L1.md): + X3 X4 X5 K3 D1 D2 D3 D11 H6b F7 F8 F9 F10a F10b · F4/F11 = accepted-pending-owner (W37/W38 —
 //     พิมพ์ผลแต่ไม่นับในด่าน) · N5–N8 · โน้ต ledger/wo-notes/pos-P5.2-oracle2.md
+//   ORACLE-EDIT (CD-P52-O4 · R1 ของ fix D+E+device · ledger/wo-notes/pos-P5.2-fix-de-dev.md §R1 round 1): + D4 (F1 ทางขายผูกเครื่องจากคุกกี้) ·
+//     F6 ไม่มี POS_DEVICE_KEY ใน env ⇒ สุ่มกุญแจในโปรเซสของรอบนี้ (ไม่พิมพ์ ไม่เขียนไฟล์) + D1 ข้อย่อยกุญแจไม่ตั้ง (ล้างในโปรเซสชั่วคราว) ·
+//     F3 D1 นับ audit pos.device.pair +1 ต่อการจับคู่ (รวมจับคู่ซ้ำ) · F5 H6b MANAGER ระบุทุกสาขา ≠ "*" ⇒ ทิป/เครดิต ปฏิเสธ · MANAGER("*") ⇒ ได้ ·
+//     F7 (ข้อ F7 เดิม) ขายผ่านคุกกี้เครื่อง F7 ที่จับคู่ในรอบ (ทางขายไม่เชื่อ deviceId ของ client แล้ว)
+//   ORACLE-EDIT (CD-P52-O4b): D4 + กลุ่ม มัดจำ · ขอรับเงิน · คีย์ออเดอร์ · PIN ผู้ขาย (bind) · โต๊ะ (strip) · D2 + ปิดกะไม่มีคุกกี้ (STAFF ปฏิเสธ · MANAGER override + audit)
 //       P52_PIN = ฐานของข้อสอบ (ค่าเริ่มต้น 2fb1fe8e) · P52_LANE_PIN = หมุดเลน (ไม่มีข้อ diff — พิมพ์ไว้เท่านั้น)
 // DB: QC4 เท่านั้น · ร้านชั่วคราว posqc-p52-<rand> (A: 2 สาขา) + posqc-p52-<rand>-b (B: ร้านอื่น) ลบทั้งร้านใน finally ·
 //     ร้าน QC resto/coffee อ่านอย่างเดียว (T3 · P4 · P7) + ลายนิ้วมือก่อน/หลัง (Z2) · ไม่ reseed · ไม่มีเครือข่าย (fetch = ตัวกั้น 503)
@@ -23,6 +28,10 @@ const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
 const SELFTEST = process.argv.includes("--self-test"); // ORACLE-EDIT (P5.2 oracle2)
 const FORCE = process.env.QC_FORCE === "1";
+// ORACLE-EDIT (CD-P52-O4 F6): ไม่มี POS_DEVICE_KEY (≥ 32) ใน env ⇒ กุญแจสุ่มในโปรเซสของรอบนี้เท่านั้น (ไม่พิมพ์ · ไม่เขียนไฟล์) — ทางลงนาม/ตัวควบคุมบวก D1–D4 รันทุกรอบ ·
+//   ข้อย่อย "กุญแจไม่ตั้ง" ของ D1 ล้างค่าในโปรเซสชั่วคราวแล้วคืน · DEVICE_KEY_SOURCE พิมพ์ใน JSON_SUMMARY (env | in-process)
+const DEVICE_KEY_SOURCE = typeof process.env.POS_DEVICE_KEY === "string" && process.env.POS_DEVICE_KEY.trim().length >= 32 ? "env" : "in-process";
+if (DEVICE_KEY_SOURCE === "in-process") process.env.POS_DEVICE_KEY = randomBytes(32).toString("hex");
 /** ฐานของข้อสอบ (session/pos ตอนเขียน) — env override */
 // ORACLE-EDIT (P5.2 oracle2): ฐาน = session/pos c067c628 (ตอนเขียนส่วนขยาย · เดิม 2fb1fe8e) — ข้อสอบนี้ไม่มีข้อ diff เทียบหมุด (พิมพ์อย่างเดียว)
 const PIN = process.env.P52_PIN || "c067c628";
@@ -75,6 +84,7 @@ const CHECKS: readonly Def[] = [
   D("D1", "D", "[db · §10.4 D1c] จับคู่เครื่อง: แคชเชียร์ registerDeviceAction → ปฏิเสธ · OWNER → ได้คุกกี้เครื่องที่ลงนาม (ไม่ใช่รหัสเครื่องเปล่า) หรือปฏิเสธเพราะยังไม่ตั้งกุญแจ (ไม่มีแถว) · ไฟล์เครื่อง/กะไม่ใช้ CHAT_/POS_CREDENTIALS_KEY", "src/lib/modules/pos/device-actions.ts#registerDeviceAction"),
   D("D2", "D", "[db · §10.4 D1c] เปิดกะผูกเครื่องจากคุกกี้: STAFF (กะ) อ้าง deviceId ของเครื่อง A1 อื่นจาก client → ปฏิเสธ/ไม่ผูก · คุกกี้ที่ถูกแก้ → ปฏิเสธ · ตัวควบคุมบวก คุกกี้จาก D1 = เปิดได้", "src/lib/modules/pos/shift-actions.ts#openShiftAction"),
   D("D3", "D", "[db · §10.4 D1c · F11 X] รายงาน X: STAFF (กะ ไม่มี manage) อ้าง deviceId ของกะคนอื่นจาก client → PERMISSION_DENIED · ตัวควบคุมบวก คุกกี้เครื่องของกะ = อ่านได้", "src/lib/modules/pos/shift-actions.ts#xReportAction"),
+  D("D4", "D", "[db · CD-P52-O4 F1] ทางขาย: STAFF ขาย ไม่มีคุกกี้ อ้างเครื่อง Z (กะ OWNER) → ไม่ผูกกะ Z (ขาย · สถานะ · staffToken ของ Z · PIN ผู้จัดการ) · คุกกี้เครื่อง P4 + อ้าง Z = บิลผูกกะของ P4 · staffToken ของ Z บนคุกกี้ P4 = STAFF_TOKEN_INVALID · เครื่องเพิกถอน = DEVICE_REVOKED · เงินเข้า/ออกไม่ส่ง deviceId + ไม่มีคุกกี้ = DEVICE_NOT_PAIRED", "src/lib/modules/pos/register-actions.ts#submitRegisterSaleAction"),
   D("D11", "D", "[db · F5 · ruling 4] ตัวเขียนเดิม 15 ตัวของ actions/restaurant.ts บนสาขาที่ผูก POS → POS_LINKED (redirect ?err=POS_LINKED / code) · แถวร้านอาหาร/เมนู/โต๊ะของ A1 ไม่เปลี่ยน · ตัวควบคุมบวก สาขาไม่ผูก POS (A3) เขียนได้", "src/lib/actions/restaurant.ts#*"),
   D("H6b", "R", "[db · H6 · F6 · มติ] แถว cond: MANAGER สาขาเดียว × ตั้งค่าทั้งระบบ 6 ตัว + saveCreditAccount → ปฏิเสธ · ค่าเดิม · สมุดทิป = OWNER เท่านั้น · ตัวควบคุมบวก MANAGER ครบทุกสาขา", "rows[MANAGER=cond H6] · tip-ledger-actions.ts#posTipLedgersAction"),
   D("F7", "X", "[db · F7] PIN ผู้จัดการ A1 + heldCartId ของบิลพัก A2 → คำขอ POS_DISCOUNT_OVER ของ A2 ยัง PENDING (ไม่ถูกยกเลิกข้ามสาขา) · ตัวควบคุมบวก PIN ใช้ได้", "src/lib/modules/pos/register-actions.ts#submitRegisterSaleAction"),
@@ -1130,7 +1140,7 @@ const SENT2 = {
   recA2b: `P52A2BR${RAND}`, lineA2b: `P52LINEA2B${RAND}`, recX4: `P52X4R${RAND}`, lineX4: `P52LINEX4${RAND}`, custA2: `P52 ลูกค้า A2 ${RAND}`, devA2: `P52 เครื่อง A2 ${RAND}`,
   tableA2: `P52 โต๊ะ A2 ${RAND}`, heldA2: `P52 พัก A2 ${RAND}`, slipA2: `P52 สลิป A2 ${RAND}`, invA2: `P52 คลังเฉพาะ A2 ${RAND}`, invShared: `P52 คลังร่วม ${RAND}`,
 };
-const DEV = { A2: `P52A2DEV${RAND}`, Y: `P52A1DEVY${RAND}`, Z: `P52A1DEVZ${RAND}`, F7: `P52A1DEVF7${RAND}`, P2: `P52A1PAIR2${RAND}`, P3: `P52A1PAIR3${RAND}` };
+const DEV = { A2: `P52A2DEV${RAND}`, Y: `P52A1DEVY${RAND}`, Z: `P52A1DEVZ${RAND}`, F7: `P52A1DEVF7${RAND}`, P2: `P52A1PAIR2${RAND}`, P3: `P52A1PAIR3${RAND}`, P4: `P52A1PAIR4${RAND}`, P5: `P52A1PAIR5${RAND}`, PU: `P52A1PAIRU${RAND}` }; // ORACLE-EDIT (CD-P52-O4): + P4 P5 (D4) · PU (D1 กุญแจไม่ตั้ง)
 const PINS = { MANAGER: "713952", OWNER: "482916", CASHIER: "258014", X5OWNER: "591736", X5MGR: "640273", X5OK: "305918", X5LEAD: "927341" };
 const FX2: string[] = [];
 const actorOf2 = (k: string): Any => ({ userId: PER[k]?.userId ?? `none-${k}`, role: PER[k]?.role ?? "STAFF", unitAccess: [...(PER[k]?.unitAccess ?? [])], permissions: { ...(PER[k]?.perms ?? {}) } });
@@ -1196,6 +1206,12 @@ async function callAct(file: string, name: string, persona: Persona | null, args
     if (timer) clearTimeout(timer);
   }
 }
+/** ORACLE-EDIT (CD-P52-O4): จับคู่เครื่อง (OWNER · registerDeviceAction) แล้วคืน "ชื่อ=ค่า" ของคุกกี้เครื่อง · ไม่ได้ = "" */
+async function pairCookie(unitId: string, code: string, name: string): Promise<string> {
+  const r = await callAct("src/lib/modules/pos/device-actions.ts", "registerDeviceAction", PER.OWNER!, [{ systemId: F.POS_A!, unitId, name, deviceCode: code }]);
+  const ck = r.set.find((c) => !/shark_session|shark_tenant/.test(c.name));
+  return r.o.kind === "ok" && ck ? `${ck.name}=${ck.value}` : "";
+}
 /** เรียกฟังก์ชันโมดูลตรง ๆ (ไม่ throw) */
 async function svc(mod: Any, name: string, ...args: unknown[]): Promise<Any> {
   const fn = mod?.[name];
@@ -1240,6 +1256,7 @@ async function setup2(): Promise<void> {
     const posKeys = Object.fromEntries([...(gen.permissionCatalog(ROOT) as Set<string>)].filter((k) => k.startsWith("pos.")).sort().map((k) => [k, true]));
     await mkUser(TA, SLUG_A, "MANAGER_A2", "MANAGER", [uA2], {});
     await mkUser(TA, SLUG_A, "MANAGER_ALL", "MANAGER", [uA1, uA2], {});
+    await mkUser(TA, SLUG_A, "MANAGER_STAR", "MANAGER", ["*"], {}); // ORACLE-EDIT (CD-P52-O4 F5): unitAccess = "*" ตรงตัว
     await mkUser(TA, SLUG_A, "CASHIER_A2", "STAFF", [uA2], { ...(PQC.cashierPermissions as Record<string, boolean>) });
     await mkUser(TA, SLUG_A, "LEAD", "STAFF", [uA1], { "pos.sale.create": true, "pos.staff.manage": true });
     await mkUser(TA, SLUG_A, "KEYS", "STAFF", [uA1], posKeys);
@@ -1557,7 +1574,10 @@ async function runDb2(): Promise<void> {
       lines: [{ name: `P52 F7 ${RAND}`, qty: 1, unitPriceSatang: 20000 }], billDiscount: { type: "PERCENT", value: 1500 }, idempotencyKey: key, expectedGrandTotalSatang: 17000,
       payMethods: [{ type: "CASH", amountSatang: 17000 }], cashReceivedSatang: 17000, managerPin: PINS.MANAGER, managerUserId: PER.MANAGER!.userId, ...(heldCartId ? { heldCartId } : {}),
     });
-    const sell = (key: string, held: string | null) => callAct("src/lib/modules/pos/register-actions.ts", "submitRegisterSaleAction", PER.SELLER!, [{ systemId: A_SYS(), unitId: uA1, deviceId: DEV.F7, sale: sale(key, held) }]);
+    // ORACLE-EDIT (CD-P52-O4 F1): ทางขายอ่านเครื่องจากคุกกี้ ⇒ จับคู่เครื่อง F7 ในรอบแล้วขายด้วยคุกกี้ (deviceId ใน payload คงไว้ = ค่าเดียวกัน)
+    const f7Cookie = await pairCookie(uA1, DEV.F7, `P52 F7 ${RAND}`);
+    if (!f7Cookie) p.push("จับคู่เครื่อง F7 ไม่ได้ (ไม่มีคุกกี้)");
+    const sell = (key: string, held: string | null) => callAct("src/lib/modules/pos/register-actions.ts", "submitRegisterSaleAction", PER.SELLER!, [{ systemId: A_SYS(), unitId: uA1, deviceId: DEV.F7, sale: sale(key, held) }], { cookie: f7Cookie || undefined });
     let pc = await sell(`p52-${RAND}-f7pc`, null);
     if (pc.r?.code === "SHIFT_REQUIRED") {
       await svc(shiftMod, "openShift", ctxU2(uA1, DEV.F7), actorOf2("SELLER"), { deviceId: DEV.F7, floatSatang: 0 });
@@ -1637,14 +1657,25 @@ async function runDb2(): Promise<void> {
     if (c0 !== c1) p.push(`บัญชีเครดิต ${c0}→${c1}`);
     // ตัวควบคุมบวก: MANAGER ครบทุกสาขา (A1+A2) เขียนได้ · OWNER อ่านสมุดทิปได้
     const pos: string[] = [];
-    for (const [f, n, a] of [W[0]!, W[1]!, W[5]!, W[6]!]) {
+    for (const [f, n, a] of [W[0]!, W[1]!, W[5]!]) {
       const r = await callAct(f, n, PER.MANAGER_ALL!, [a]);
       if (r.o.kind !== "ok") p.push(`บวก MANAGER_ALL ${n} → ${codeOf2(r.o)} ${short2(r.r?.message ?? "", 50)}`);
       pos.push(`${n.replace(/Action$/, "").replace(/^updatePos|^save/, "")} ${r.o.kind === "ok" ? "ok" : r.o.code}`);
     }
+    // ORACLE-EDIT (CD-P52-O4 F5 มติ): เครดิต + สมุดทิป = OWNER หรือ MANAGER ที่ unitAccess = "*" ตรงตัวเท่านั้น — MANAGER ระบุครบทุกสาขา (MANAGER_ALL) ≠ "*" ⇒ ปฏิเสธ · MANAGER_STAR ⇒ ได้
+    for (const [f, n, a] of [W[6]!, W[7]!]) {
+      const c0 = await credit();
+      const r = await callAct(f, n, PER.MANAGER_ALL!, [a]);
+      if (r.o.kind === "ok") p.push(`MANAGER_ALL (ระบุทุกสาขา) ${n} ✗ ok`);
+      if ((await credit()) !== c0) p.push(`MANAGER_ALL ${n} เปลี่ยนบัญชีเครดิต`);
+      pos.push(`ALL ${n.replace(/Action$/, "").replace(/^save|^pos/, "")} ${r.o.kind === "ok" ? "ok" : r.o.code}`);
+      const st = await callAct(f, n, PER.MANAGER_STAR!, [a]);
+      if (st.o.kind !== "ok") p.push(`บวก MANAGER("*") ${n} → ${codeOf2(st.o)} ${short2(st.r?.message ?? "", 50)}`);
+      pos.push(`"*" ${n.replace(/Action$/, "").replace(/^save|^pos/, "")} ${st.o.kind === "ok" ? "ok" : st.o.code}`);
+    }
     const tip = await callAct(W[7]![0], W[7]![1], PER.OWNER!, [W[7]![2]]);
     if (tip.o.kind !== "ok") p.push(`บวก OWNER สมุดทิป → ${codeOf2(tip.o)}`);
-    chk("H6b", p.length === 0, "MANAGER สาขาเดียว ปฏิเสธทั้ง 8 · ค่าเดิม · บวกผ่าน", `${p.join(" · ") || "ครบ"} · MANAGER[A1]: ${out.join(" · ")} · MANAGER_ALL: ${pos.join(" · ")} · OWNER ทิป ${tip.o.kind === "ok" ? "ok" : tip.o.code}${fxNote()}`);
+    chk("H6b", p.length === 0, "MANAGER สาขาเดียว ปฏิเสธทั้ง 8 · ค่าเดิม · บวกผ่าน · เครดิต/ทิป: MANAGER ระบุทุกสาขา ปฏิเสธ · MANAGER(\"*\") ได้", `${p.join(" · ") || "ครบ"} · MANAGER[A1]: ${out.join(" · ")} · MANAGER_ALL: ${pos.join(" · ")} · OWNER ทิป ${tip.o.kind === "ok" ? "ok" : tip.o.code}${fxNote()}`);
   }
 
   // ── F9 unitPriceMatrixAction ต้องมีคีย์ POS ──
@@ -1693,8 +1724,13 @@ async function runDb2(): Promise<void> {
     const cash = await callAct(f, "registerDeviceAction", PER.CASHIER!, [{ systemId: A_SYS(), unitId: uA1, name: `P52 แคชเชียร์ ${RAND}`, deviceCode: `P52A1CASH${RAND}` }]);
     if (cash.o.kind === "ok" || cash.set.length) p.push(`แคชเชียร์จับคู่ได้ (${codeOf2(cash.o)} · คุกกี้ ${cash.set.length})`);
     const out: string[] = [];
+    // ORACLE-EDIT (CD-P52-O4 F3): ทุกครั้งที่ออกคุกกี้เครื่อง (รวมจับคู่ซ้ำเครื่อง ACTIVE) = audit pos.device.pair +1 (มี deviceId + ผู้จับคู่)
+    const pairAudits = async () => Number(await P.auditLog.count({ where: { tenantId: TA, action: "pos.device.pair" } }).catch(() => -1));
     for (const code of [DEV.P2, DEV.P3]) {
+      const au0 = await pairAudits();
       const r = await callAct(f, "registerDeviceAction", PER.OWNER!, [{ systemId: A_SYS(), unitId: uA1, name: `P52 จับคู่ ${(code === DEV.P2 ? "P2" : "P3")}`, deviceCode: code }]);
+      const au1 = await pairAudits();
+      if (r.o.kind === "ok" && au1 - au0 !== 1) p.push(`audit pos.device.pair ${(code === DEV.P2 ? "P2" : "P3")} Δ${au1 - au0} (ต้อง +1)`);
       const ck = r.set.find((c) => !/shark_session|shark_tenant/.test(c.name)) ?? null;
       const row = await P.posDevice.findFirst({ where: { tenantId: TA, unitId: uA1, deviceCode: code }, select: { id: true } });
       if (r.o.kind === "ok") {
@@ -1708,6 +1744,34 @@ async function runDb2(): Promise<void> {
         pairRefusedKey ||= keyUnset;
         pair[code] = null;
         out.push(`${(code === DEV.P2 ? "P2" : "P3")} ปฏิเสธ ${r.o.code}`);
+      }
+    }
+    // ORACLE-EDIT (CD-P52-O4 F3): จับคู่ซ้ำเครื่อง ACTIVE (P2) = คุกกี้ใหม่ + audit +1 · แถวเครื่องไม่เพิ่ม
+    {
+      const rows0 = Number(await P.posDevice.count({ where: { tenantId: TA, unitId: uA1 } }));
+      const au0 = await pairAudits();
+      const r = await callAct(f, "registerDeviceAction", PER.OWNER!, [{ systemId: A_SYS(), unitId: uA1, name: "P52 จับคู่ P2 ซ้ำ", deviceCode: DEV.P2 }]);
+      const au1 = await pairAudits();
+      const rows1 = Number(await P.posDevice.count({ where: { tenantId: TA, unitId: uA1 } }));
+      const ck = r.set.find((c) => !/shark_session|shark_tenant/.test(c.name));
+      if (r.o.kind !== "ok" || !ck) p.push(`จับคู่ซ้ำ P2 → ${codeOf2(r.o)} คุกกี้ ${ck ? "มี" : "ไม่มี"}`);
+      if (au1 - au0 !== 1) p.push(`audit จับคู่ซ้ำ Δ${au1 - au0} (ต้อง +1)`);
+      if (rows1 !== rows0) p.push(`จับคู่ซ้ำเพิ่มแถวเครื่อง ${rows0}→${rows1}`);
+      out.push(`ซ้ำ P2 ${r.o.kind === "ok" ? "ok" : r.o.code} audit Δ${au1 - au0}`);
+    }
+    // ORACLE-EDIT (CD-P52-O4 F6): ข้อย่อยกุญแจไม่ตั้ง — ล้าง POS_DEVICE_KEY ในโปรเซสชั่วคราว ⇒ ปฏิเสธ (ไม่ใช่สิทธิ์/ไม่พบ/ตรวจข้อมูล) · ไม่มีแถว · ไม่มีคุกกี้ · คืนค่าใน finally
+    {
+      const saved = process.env.POS_DEVICE_KEY;
+      try {
+        delete process.env.POS_DEVICE_KEY;
+        const r = await callAct(f, "registerDeviceAction", PER.OWNER!, [{ systemId: A_SYS(), unitId: uA1, name: "P52 กุญแจไม่ตั้ง", deviceCode: DEV.PU }]);
+        const row = await P.posDevice.findFirst({ where: { tenantId: TA, unitId: uA1, deviceCode: DEV.PU }, select: { id: true } });
+        const ck = r.set.find((c) => !/shark_session|shark_tenant/.test(c.name));
+        const refusedKey = r.o.kind !== "ok" && !/PERMISSION|NOT_FOUND|VALIDATION|UNKNOWN|INTERNAL|DEVICE_LIMIT|DEVICE_REVOKED/.test(r.o.code) && !row && !ck;
+        if (!refusedKey) p.push(`กุญแจไม่ตั้ง → ${codeOf2(r.o)} (แถว ${row ? "มี" : "ไม่มี"} · คุกกี้ ${ck ? "มี" : "ไม่มี"})`);
+        out.push(`ไม่ตั้งกุญแจ → ${r.o.code}`);
+      } finally {
+        if (saved !== undefined) process.env.POS_DEVICE_KEY = saved;
       }
     }
     const files = ["src/lib/modules/pos/device.ts", "src/lib/modules/pos/device-actions.ts", "src/lib/modules/pos/device-id.ts", "src/lib/modules/pos/shift.ts", "src/lib/modules/pos/shift-actions.ts", ...readdirSync(join(ROOT, "src/lib/modules/pos")).filter((n) => /device/i.test(n) && /\.ts$/.test(n)).map((n) => `src/lib/modules/pos/${n}`)];
@@ -1731,6 +1795,22 @@ async function runDb2(): Promise<void> {
       pos = good.r?.ok === true ? `ok ${String(good.r?.shift?.deviceId ?? "") === DEV.P2 ? "ผูก P2" : "ผูกผิด"}` : codeOf2(good.o);
       if (!(good.r?.ok === true && String(good.r?.shift?.deviceId ?? "") === DEV.P2)) p.push(`บวก (คุกกี้จริง) → ${pos}`);
     } else if (!pairRefusedKey) p.push("ไม่มีคุกกี้จาก D1 — ตัวควบคุมบวกไม่ได้รัน");
+    // ORACLE-EDIT (CD-P52-O4b ข้อ 2): ปิดกะโดยไม่มีคุกกี้ — STAFF (กะ ไม่มี manage) ⇒ DEVICE_NOT_PAIRED · MANAGER (pos.shift.manage ที่สาขา) ⇒ ok + audit pos.shift.close.override source manager-override
+    {
+      const shY = idOf(await svc(shiftMod, "openShift", ctxU2(uA1, DEV.Y), actorOf2("OWNER"), { deviceId: DEV.Y, floatSatang: 0 }));
+      if (!shY) p.push("fixture กะ Y (ปิดกะ) ไม่ได้");
+      else {
+        const close = (per: string, k: string) => callAct(f, "closeShiftAction", PER[per]!, [{ systemId: A_SYS(), unitId: uA1, close: { shiftId: shY, countedCashSatang: 0, idempotencyKey: `p52-${RAND}-d2close-${k}` } }]);
+        const c1 = await close("OPERATOR", "op");
+        if (String(c1.r?.code ?? c1.o.code) !== "DEVICE_NOT_PAIRED") p.push(`STAFF ปิดกะไม่มีคุกกี้ → ${c1.r?.ok === true ? "ok" : codeOf2(c1.o)} (ต้อง DEVICE_NOT_PAIRED)`);
+        const au0 = Number(await P.auditLog.count({ where: { tenantId: TA, action: "pos.shift.close.override", targetId: shY } }));
+        const c2 = await close("MANAGER", "mgr");
+        const au = (await P.auditLog.findMany({ where: { tenantId: TA, action: "pos.shift.close.override", targetId: shY }, select: { after: true, actorId: true } })) as Any[];
+        if (c2.r?.ok !== true) p.push(`MANAGER ปิดกะไม่มีคุกกี้ → ${codeOf2(c2.o)} ${short2(c2.r?.message ?? "", 50)}`);
+        if (au.length - au0 !== 1 || au[au.length - 1]?.after?.source !== "manager-override" || au[au.length - 1]?.actorId !== PER.MANAGER!.userId) p.push(`audit ปิดกะ override Δ${au.length - au0} source ${au[au.length - 1]?.after?.source ?? "-"}`);
+        pos += ` · ปิดกะ: STAFF ${String(c1.r?.code ?? (c1.r?.ok ? "ok" : c1.o.code))} · MANAGER ${c2.r?.ok === true ? "ok" : codeOf2(c2.o)} audit Δ${au.length - au0}`;
+      }
+    }
     chk("D2", p.length === 0, "อ้างจาก client/คุกกี้ปลอม = ไม่ผูก · คุกกี้จริง = เปิดได้", `${p.join(" · ") || "ครบ"} · อ้าง Y → ${forged.r?.ok === true ? `ok (เครื่อง ${String(forged.r?.shift?.deviceId ?? "").slice(-6)})` : codeOf2(forged.o)} · บวก ${pos}`);
   }
   {
@@ -1749,6 +1829,114 @@ async function runDb2(): Promise<void> {
       if (good.r?.ok !== true) p.push(`บวก (คุกกี้เครื่องของกะ) → ${pos}`);
     } else if (!pairRefusedKey) p.push("ไม่มีคุกกี้จาก D1 — ตัวควบคุมบวกไม่ได้รัน");
     chk("D3", p.length === 0, "อ้างจาก client = PERMISSION_DENIED · คุกกี้จริง = ok", `${p.join(" · ") || "ครบ"} · อ้าง Z → ${forged.r?.ok === true ? "ok" : codeOf2(forged.o)} · บวก ${pos}${fxNote()}`);
+  }
+
+  // ── ORACLE-EDIT (CD-P52-O4 F1) D4 ทางขายผูกเครื่องจากคุกกี้ ──
+  {
+    const p: string[] = [];
+    const out: string[] = [];
+    const RA = "src/lib/modules/pos/register-actions.ts";
+    const SA = "src/lib/modules/pos/shift-actions.ts";
+    const T = { systemId: A_SYS(), unitId: uA1 };
+    const plain = (key: string, extra: Record<string, unknown> = {}) => ({ lines: [{ name: `P52 D4 ${RAND}`, qty: 1, unitPriceSatang: 10000 }], idempotencyKey: key, expectedGrandTotalSatang: 10000, payMethods: [{ type: "CASH", amountSatang: 10000 }], cashReceivedSatang: 10000, ...extra });
+    const withPin = (key: string) => ({ lines: [{ name: `P52 D4 PIN ${RAND}`, qty: 1, unitPriceSatang: 20000 }], billDiscount: { type: "PERCENT", value: 1500 }, idempotencyKey: key, expectedGrandTotalSatang: 17000, payMethods: [{ type: "CASH", amountSatang: 17000 }], cashReceivedSatang: 17000, managerPin: PINS.MANAGER, managerUserId: PER.MANAGER!.userId });
+    const sell = (sale: Record<string, unknown>, cookie?: string) => callAct(RA, "submitRegisterSaleAction", PER.SELLER!, [{ ...T, deviceId: DEV.Z, sale }], { cookie });
+    const shiftOf = async (r: { r: Any }): Promise<string | null> => {
+      const id = r.r?.saleId ?? r.r?.sale?.id ?? null;
+      if (typeof id !== "string") return null;
+      return ((await P.posSale.findFirst({ where: { id, tenantId: TA }, select: { shiftId: true } }))?.shiftId as string | null) ?? null;
+    };
+    const onZ = async () => Number(await P.posSale.count({ where: { tenantId: TA, shiftId: G.SHIFT_Z ?? "none" } }));
+    if (!G.SHIFT_Z) p.push("fixture กะ Z ไม่มี");
+    await svc(staffPinMod, "setStaffPin", ctxU2(uA1), actorOf2("OWNER"), { userId: PER.SELLER!.userId, pin: "836104" });
+    const tokOf = async (dev: string): Promise<string> => {
+      try {
+        return (await staffPinMod.issueStaffToken({ tenantId: TA, unitId: uA1, deviceId: dev }, { unitId: uA1, deviceId: dev, userId: PER.SELLER!.userId })).staffToken as string;
+      } catch {
+        return "";
+      }
+    };
+    const tokZ = await tokOf(DEV.Z);
+    // (ก) ไม่มีคุกกี้ + อ้าง Z: ขาย · staffToken ของ Z · PIN ผู้จัดการ · สถานะหน้าขาย — ต้องไม่ผูกกะ Z
+    const z0 = await onZ();
+    const a1 = await sell(plain(`p52-${RAND}-d4a1`));
+    const a2 = await sell(plain(`p52-${RAND}-d4a2`, tokZ ? { staffToken: tokZ } : {}));
+    const a3 = await sell(withPin(`p52-${RAND}-d4a3`));
+    const z1 = await onZ();
+    for (const [n, r] of [["ขาย", a1], ["staffToken Z", a2], ["PIN ผู้จัดการ", a3]] as const) {
+      const sh = r.r?.ok === true ? await shiftOf(r) : null;
+      if (r.r?.ok === true && (sh === G.SHIFT_Z || sh === null)) p.push(`ไม่มีคุกกี้ + อ้าง Z: ${n} → ok ผูก${sh === G.SHIFT_Z ? "กะ Z" : "ไม่มีกะ"}`);
+      out.push(`${n} ${r.r?.ok === true ? "ok" : codeOf2(r.o)}`);
+    }
+    if (!tokZ) p.push("fixture staffToken Z ไม่ได้");
+    if (z1 !== z0) p.push(`บิลบนกะ Z ${z0}→${z1}`);
+    const st = await callAct(RA, "registerStatusAction", PER.SELLER!, [{ ...T, deviceId: DEV.Z }]);
+    if (G.SHIFT_Z && JSON.stringify(st.r ?? null).includes(G.SHIFT_Z)) p.push("สถานะหน้าขาย (ไม่มีคุกกี้ · อ้าง Z) คืนกะ Z");
+    out.push(`สถานะ ${st.r?.ok === true ? "ok" : codeOf2(st.o)}`);
+    // (ข) ตัวควบคุมบวก: คุกกี้เครื่อง P4 (เปิดกะไว้) + อ้าง Z ใน payload ⇒ บิลผูกกะของ P4 · staffToken ของ P4 ผ่าน · staffToken ของ Z = STAFF_TOKEN_INVALID · PIN ผูก P4
+    const c4 = await pairCookie(uA1, DEV.P4, `P52 D4 P4 ${RAND}`);
+    if (!c4) p.push("จับคู่ P4 ไม่ได้");
+    const sh4 = idOf(await svc(shiftMod, "openShift", ctxU2(uA1, DEV.P4), actorOf2("OWNER"), { deviceId: DEV.P4, floatSatang: 0 }));
+    if (!sh4) p.push("fixture กะ P4 ไม่ได้");
+    if (c4 && sh4) {
+      const b1 = await sell(plain(`p52-${RAND}-d4b1`), c4);
+      const s1 = b1.r?.ok === true ? await shiftOf(b1) : null;
+      if (!(b1.r?.ok === true && s1 === sh4)) p.push(`คุกกี้ P4 + อ้าง Z → ${b1.r?.ok === true ? `ok ผูก ${s1 === G.SHIFT_Z ? "กะ Z" : String(s1).slice(-6)}` : codeOf2(b1.o)}`);
+      const tok4 = await tokOf(DEV.P4);
+      const b2 = await sell(plain(`p52-${RAND}-d4b2`, { staffToken: tok4 }), c4);
+      const s2 = b2.r?.ok === true ? await shiftOf(b2) : null;
+      if (!(b2.r?.ok === true && s2 === sh4)) p.push(`คุกกี้ P4 + staffToken P4 → ${b2.r?.ok === true ? `ok ผูก ${String(s2).slice(-6)}` : codeOf2(b2.o)}`);
+      const b3 = await sell(plain(`p52-${RAND}-d4b3`, { staffToken: tokZ }), c4);
+      if (b3.r?.ok === true || String(b3.r?.code) !== "STAFF_TOKEN_INVALID") p.push(`คุกกี้ P4 + staffToken Z → ${b3.r?.ok === true ? "ok" : codeOf2(b3.o)} (ต้อง STAFF_TOKEN_INVALID)`);
+      const b4 = await sell(withPin(`p52-${RAND}-d4b4`), c4);
+      const s4 = b4.r?.ok === true ? await shiftOf(b4) : null;
+      if (!(b4.r?.ok === true && s4 === sh4)) p.push(`คุกกี้ P4 + PIN ผู้จัดการ → ${b4.r?.ok === true ? `ok ผูก ${String(s4).slice(-6)}` : codeOf2(b4.o)}`);
+      out.push(`P4: ขาย ${b1.r?.ok === true ? (s1 === sh4 ? "ผูก P4" : "ผูกผิด") : b1.r?.code} · token P4 ${b2.r?.ok === true ? "ok" : b2.r?.code} · token Z ${b3.r?.ok === true ? "ok" : b3.r?.code} · PIN ${b4.r?.ok === true ? "ok" : b4.r?.code}`);
+    }
+    // (ค) เครื่องเพิกถอน: คุกกี้ของ P5 หลังเพิกถอน ⇒ ขาย/เงินเข้า-ออก = DEVICE_REVOKED · เงินเข้า/ออกไม่ส่ง deviceId + ไม่มีคุกกี้ = DEVICE_NOT_PAIRED (ข้ามการตรวจเพิกถอนไม่ได้)
+    const c5 = await pairCookie(uA1, DEV.P5, `P52 D4 P5 ${RAND}`);
+    const sh5 = c5 ? idOf(await svc(shiftMod, "openShift", ctxU2(uA1, DEV.P5), actorOf2("OPERATOR"), { deviceId: DEV.P5, floatSatang: 0 })) : null;
+    const row5 = await P.posDevice.findFirst({ where: { tenantId: TA, unitId: uA1, deviceCode: DEV.P5 }, select: { id: true } });
+    if (!c5 || !row5 || !sh5) p.push(`fixture P5 (คุกกี้ ${c5 ? "มี" : "ไม่มี"} · แถว ${row5 ? "มี" : "ไม่มี"} · กะ ${sh5 ? "มี" : "ไม่มี"})`);
+    else {
+      await svc(deviceMod, "revokeDevice", ctxU2(uA1), actorOf2("OWNER"), { id: row5.id });
+      const mv = (cookie: string | undefined, withDev: boolean) => callAct(SA, "recordCashMovementAction", PER.OPERATOR!, [{ ...T, ...(withDev ? { deviceId: DEV.P5 } : {}), movement: { shiftId: sh5, kind: "IN", amountSatang: 100, reason: "P52 D4", idempotencyKey: `p52-${RAND}-d4mv${withDev ? 1 : 0}${cookie ? "c" : ""}` } }], { cookie });
+      const r1 = await sell(plain(`p52-${RAND}-d4c1`), c5);
+      const r2 = await mv(c5, true);
+      const r3 = await mv(undefined, false);
+      if (String(r1.r?.code) !== "DEVICE_REVOKED") p.push(`ขายด้วยคุกกี้เครื่องเพิกถอน → ${r1.r?.ok === true ? "ok" : codeOf2(r1.o)}`);
+      if (String(r2.r?.code) !== "DEVICE_REVOKED") p.push(`เงินเข้า/ออกด้วยคุกกี้เครื่องเพิกถอน → ${r2.r?.ok === true ? "ok" : codeOf2(r2.o)}`);
+      if (String(r3.r?.code) !== "DEVICE_NOT_PAIRED") p.push(`เงินเข้า/ออก ไม่ส่ง deviceId + ไม่มีคุกกี้ → ${r3.r?.ok === true ? "ok" : codeOf2(r3.o)} (ต้อง DEVICE_NOT_PAIRED)`);
+      out.push(`เพิกถอน: ขาย ${r1.r?.ok === true ? "ok" : r1.r?.code} · เงิน ${r2.r?.ok === true ? "ok" : r2.r?.code} · เงินไม่มีเครื่อง ${r3.r?.ok === true ? "ok" : r3.r?.code}`);
+    }
+    // ORACLE-EDIT (CD-P52-O4b ข้อ 1): ทุกกลุ่ม action ที่เคยรับ deviceId จาก client — ผูกกะ/เครื่อง (bind) = ไม่มีคุกกี้ ⇒ DEVICE_NOT_PAIRED · คุกกี้ P4 ⇒ ผ่านด่านเครื่อง ·
+    //   ไม่ผูก (strip) = ทิ้ง deviceId เงียบ ๆ (ไม่มี DEVICE_NOT_PAIRED)
+    {
+      const g: string[] = [];
+      const NP = (r: { r: Any; o: Outcome }) => String(r.r?.code ?? r.o.code) === "DEVICE_NOT_PAIRED";
+      const grp: [string, string, string, Record<string, unknown>, boolean][] = [
+        ["มัดจำ", "src/lib/modules/pos/deposit-actions.ts", "registerTakeDepositAction", { input: { amountSatang: 5000, customerName: `P52 D4 ${RAND}`, payMethods: [{ type: "CASH", amountSatang: 5000 }], idempotencyKey: `p52-${RAND}-d4dep` } }, true],
+        ["ขอรับเงิน", "src/lib/modules/pos/payment-intent-actions.ts", "createPaymentIntentAction", { input: { method: "PROMPTPAY", amountSatang: 4300, idempotencyKey: `p52-${RAND}-d4pi`, deviceId: DEV.Z } }, true],
+        ["คีย์ออเดอร์", "src/lib/modules/pos/order-actions.ts", "ingestOrderAction", { input: { lines: [{ name: `P52 D4 ${RAND}`, qty: 1, unitPriceSatang: 1000 }] } }, true],
+        ["PIN ผู้ขาย", "src/lib/modules/pos/staff-pin-actions.ts", "verifyStaffPinAction", { userId: PER.SELLER!.userId, pin: "836104" }, true],
+        ["โต๊ะ (strip)", "src/lib/modules/pos/table-actions.ts", "registerTablesAction", {}, false],
+      ];
+      for (const [label, file, fn, extra, binds] of grp) {
+        const a0 = await callAct(file, fn, PER.OWNER!, [{ ...T, deviceId: DEV.Z, ...extra }]);
+        const a1 = c4 ? await callAct(file, fn, PER.OWNER!, [{ ...T, deviceId: DEV.Z, ...extra }], { cookie: c4 }) : null;
+        if (binds && !NP(a0)) g.push(`${label}: ไม่มีคุกกี้ → ${a0.r?.ok === true ? "ok" : codeOf2(a0.o)} (ต้อง DEVICE_NOT_PAIRED)`);
+        if (!binds && NP(a0)) g.push(`${label}: ไม่ผูกเครื่องแต่ได้ DEVICE_NOT_PAIRED`);
+        if (a1 && NP(a1)) g.push(`${label}: คุกกี้ P4 → DEVICE_NOT_PAIRED`);
+        if (label === "PIN ผู้ขาย" && a1 && a1.r?.ok !== true) g.push(`PIN ผู้ขาย + คุกกี้ P4 → ${codeOf2(a1.o)} (ต้อง ok)`);
+        out.push(`${label} ${a0.r?.ok === true ? "ok" : String(a0.r?.code ?? a0.o.code)}/${a1 ? (a1.r?.ok === true ? "ok" : String(a1.r?.code ?? a1.o.code)) : "-"}`);
+      }
+      // ขอรับเงินด้วยคุกกี้ P4 + input.deviceId Z ⇒ ใบผูกเครื่อง P4 (ไม่ใช่ Z)
+      const pi = await P.posPaymentIntent.findFirst({ where: { tenantId: TA, idempotencyKey: `p52-${RAND}-d4pi` }, select: { deviceId: true } }).catch(() => null);
+      if (pi && pi.deviceId !== DEV.P4) g.push(`ใบขอรับเงินผูกเครื่อง ${String(pi.deviceId).slice(-6)} (ต้อง P4)`);
+      out.push(`ใบขอรับเงิน ${pi ? (pi.deviceId === DEV.P4 ? "ผูก P4" : "ผูกผิด") : "ไม่มีแถว"}`);
+      p.push(...g);
+    }
+    chk("D4", p.length === 0, "ไม่มีคุกกี้ + อ้าง Z = ไม่ผูกกะ Z ทุกทาง · คุกกี้ P4 = ผูก P4 (token/PIN) · เพิกถอน = DEVICE_REVOKED · ไม่มีเครื่อง = DEVICE_NOT_PAIRED", `${p.join(" · ") || "ครบ"} · ไม่มีคุกกี้: ${out.join(" · ")}${fxNote()}`);
   }
 
   // ── D11 ตัวเขียนเดิมบนสาขาที่ผูก POS ──
@@ -1975,6 +2163,6 @@ const gated = results.size - pendingOwner.length;
 if (bgErrors) console.log(`  ⚠️  unhandledRejection ${bgErrors} ครั้ง (งานเบื้องหลังของ action ที่ยิงด้วยอาร์กิวเมนต์ปลอม)`);
 if (guardHits.length) console.log(`  ⚠️  ตัวกั้นเครือข่ายถูกเรียก ${guardHits.length} ครั้ง: ${[...new Set(guardHits)].join(", ")}`);
 console.log(`\n===== ${SUITE} ===== ผ่าน ${gated - failed.length}/${gated} · รอเจ้าของ ${pendingOwner.map((x) => `${x.id} ${x.ok ? "เขียว" : "แดง"}`).join(" · ") || "-"} · ตาราง ${ROWS.length} แถว · ฐาน ${PIN}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, total: gated, passed: gated - failed.length, failed, pendingOwner, skipped: false, forced: FORCE, pin: PIN, lanePin: LANE_PIN, matrixRows: ROWS.length, guardHits: guardHits.length, residue: tempLeft.length + tenantLeft })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, total: gated, passed: gated - failed.length, failed, pendingOwner, skipped: false, forced: FORCE, pin: PIN, lanePin: LANE_PIN, matrixRows: ROWS.length, guardHits: guardHits.length, residue: tempLeft.length + tenantLeft, deviceKey: DEVICE_KEY_SOURCE })}`);
 await P.$disconnect?.().catch?.(() => {});
 process.exit(failed.length ? 1 : 0);

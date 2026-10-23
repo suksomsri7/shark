@@ -12,6 +12,7 @@ import { Prisma, type PosDevice, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { prisma } from "./db";
+import { verifyPosDeviceCookie } from "./device-cookie"; // POS P5.2 ▸ D1–D3 ◂
 import {
   parsePrinterConfig,
   POS_DEVICE_CODE_RE,
@@ -42,6 +43,8 @@ const MSG: Record<PosDeviceRefusalCode, string> = {
   DEVICE_LIMIT: "ลงทะเบียนเครื่องครบจำนวนที่แพ็กเกจให้แล้ว — เพิกถอนเครื่องที่ไม่ใช้ก่อน",
   DEVICE_NOT_FOUND: "ไม่พบเครื่องนี้ในสาขานี้",
   INTERNAL: "ระบบทะเบียนเครื่องขัดข้องชั่วคราว — ลองอีกครั้ง",
+  DEVICE_KEY_UNSET: "ยังไม่ตั้งกุญแจจับคู่เครื่อง — ผู้ดูแลระบบต้องตั้งกุญแจก่อนจึงจะจับคู่เครื่องขายได้", // POS P5.2 ▸ D1 ◂
+  DEVICE_NOT_PAIRED: "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อนเปิดกะ", // POS P5.2 ▸ D2 ◂
 };
 const refuse = (code: PosDeviceRefusalCode, message?: string, field?: string): PosDeviceRefusal =>
   field ? { ok: false, code, message: message ?? MSG[code], field } : { ok: false, code, message: message ?? MSG[code] };
@@ -353,3 +356,39 @@ export async function heartbeat(ctx: RegisterCtx, actor: RegisterActor, input: {
     return { ok: true, registered: true, written: t.written, device: posDeviceView(t.row) };
   });
 }
+
+// POS P5.2 ▸ D1–D4 (CD-P52-O2-2 สัญญา D1 ใน oracle2 · CD-P52-O2-3 กุญแจแยก · CD-P52-O4 F1 · §10.4 D1c): เครื่องที่ยืนอยู่จากคุกกี้ลงนาม —
+//   claim ต้องตรงร้าน + สาขา และแถว PosDevice (id + รหัส) ของสาขานี้ · ACTIVE = paired · REVOKED = revoked (ผู้เรียกปฏิเสธ DEVICE_REVOKED — ข้ามไม่ได้) ·
+//   ไม่มี/ผิด/กุญแจเปลี่ยน/หมดอายุ = none + unitHasDevices (สาขามีเครื่อง ACTIVE ไหม — ไม่มีเลย = ทางเดิมไม่มีเครื่อง) · ไม่โยน ◂
+export type PosDeviceBinding = { kind: "paired"; id: string; deviceCode: string } | { kind: "revoked"; id: string; deviceCode: string } | { kind: "none"; unitHasDevices: boolean };
+export async function deviceBinding(scope: { tenantId: string; unitId: string }, cookieValue: string | undefined | null, client?: Db): Promise<PosDeviceBinding> {
+  const db = client ?? prisma;
+  try {
+    const claim = verifyPosDeviceCookie(cookieValue);
+    if (claim && claim.tenantId === scope.tenantId && claim.unitId === scope.unitId) {
+      const row = await db.posDevice.findFirst({ where: { id: claim.deviceId, tenantId: scope.tenantId, unitId: scope.unitId, deviceCode: claim.deviceCode }, select: { id: true, deviceCode: true, status: true } });
+      if (row) return { kind: row.status === "ACTIVE" ? "paired" : "revoked", id: row.id, deviceCode: row.deviceCode };
+    }
+    const n = await db.posDevice.count({ where: { tenantId: scope.tenantId, unitId: scope.unitId, status: "ACTIVE" } });
+    return { kind: "none", unitHasDevices: n > 0 };
+  } catch (e) {
+    console.error("[pos/device] deviceBinding", e);
+    return { kind: "none", unitHasDevices: true }; // ล้ม = ปิด (ถือว่าสาขามีเครื่อง ⇒ ทางผูกเครื่องปฏิเสธ)
+  }
+}
+/** เครื่อง ACTIVE ของคุกกี้ (null = ไม่มี/เพิกถอน) — ตัวอ่านของหน้าเครื่องขาย */
+export async function pairedDevice(scope: { tenantId: string; unitId: string }, cookieValue: string | undefined | null, client?: Db): Promise<{ id: string; deviceCode: string } | null> {
+  const b = await deviceBinding(scope, cookieValue, client);
+  return b.kind === "paired" ? { id: b.id, deviceCode: b.deviceCode } : null;
+}
+
+// POS P5.2 ▸ CD-P52-O4 F3: ทุกครั้งที่ออกคุกกี้เครื่อง (ลงทะเบียนใหม่ หรือจับคู่ซ้ำเครื่อง ACTIVE) = AuditLog pos.device.pair { deviceId, unitId, userId } ◂
+export async function recordDevicePairing(ctx: { tenantId: string; unitId: string }, actor: { userId: string }, device: { id: string; deviceCode: string }): Promise<void> {
+  await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.device.pair", targetType: "PosDevice", targetId: device.id, after: { deviceId: device.id, deviceCode: device.deviceCode, unitId: ctx.unitId, userId: actor.userId } });
+}
+// POS P5.2 ▸ CD-P52-O4b ข้อ 2: ปิดกะจากเบราว์เซอร์ที่ไม่ได้จับคู่ โดยผู้ถือ pos.shift.manage ที่สาขา (ข้อยกเว้นที่รับแล้ว) — audit แยกจาก audit ปิดกะของ shift.ts
+//   (shift.ts ไบต์เท่าหมุด P3.6 ST4) · after.source = "manager-override" ◂
+export async function recordShiftCloseOverride(ctx: { tenantId: string; unitId: string }, actor: { userId: string }, shiftId: string): Promise<void> {
+  await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.shift.close.override", targetType: "PosShift", targetId: shiftId, after: { shiftId, unitId: ctx.unitId, userId: actor.userId, source: "manager-override" } });
+}
+// ◂ POS P5.2

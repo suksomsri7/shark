@@ -30,6 +30,7 @@ import {
   registerTables,
 } from "./table";
 import type { HoldRegisterCartResult, RegisterActor, RegisterCtx, RegisterQuoteInput, RegisterRefusal } from "./register-shared";
+import { cookieDeviceId } from "./device-request"; // POS P5.2 ▸ CD-P52-O4b ◂
 import type { RegisterTableDetailResult, RegisterTableModeResult, RegisterTablesResult } from "./table-shared";
 
 type Session = Awaited<ReturnType<typeof requireTenant>>;
@@ -52,7 +53,7 @@ async function session(where: string): Promise<Session | RegisterRefusal> {
   }
 }
 /** session → ctx + actor · เข้าสาขาไม่ได้ = NOT_FOUND · ไม่มีทั้ง pos.sale.create และ pos.sale.read = PERMISSION_DENIED */
-function sessionScope(auth: Session, args: unknown): { ctx: RegisterCtx; actor: RegisterActor } | RegisterRefusal {
+async function sessionScope(auth: Session, args: unknown): Promise<{ ctx: RegisterCtx; actor: RegisterActor } | RegisterRefusal> {
   const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
   const systemId = typeof a.systemId === "string" ? a.systemId : "";
   const unitId = typeof a.unitId === "string" ? a.unitId : "";
@@ -71,7 +72,7 @@ function sessionScope(auth: Session, args: unknown): { ctx: RegisterCtx; actor: 
     }
   }
   if (!allowed) return refusal("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์ใช้หน้าขาย — ขอให้เจ้าของร้านเพิ่มสิทธิ์");
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  const deviceId = await cookieDeviceId({ tenantId: auth.active.tenantId, unitId: unitId }); // POS P5.2 ▸ CD-P52-O4b: เครื่อง = คุกกี้ลงนามเท่านั้น (device-request.ts) · deviceId ของ client ถูกทิ้ง ◂
   return { ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) }, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
 }
 /** โครงร่วมของทุก action: session → ขอบเขต → งาน · ขัดข้อง = UNKNOWN */
@@ -79,7 +80,7 @@ async function run<T>(where: string, args: unknown, body: (ctx: RegisterCtx, act
   const auth = await session(where);
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args);
+    const s = await sessionScope(auth, args);
     if ("ok" in s) return s;
     return await body(s.ctx, s.actor);
   } catch (e) {

@@ -82,8 +82,10 @@ export const POS_REFUSAL_HTTP: Record<PosRefusalCode, PosRefusalHttp> = {
   DEPOSIT_LOCKED: { status: 409, code: "state_conflict", en: "The deposit is locked after too many wrong attempts." },
   DEPOSIT_NOT_FOUND: { status: 404, code: "not_found", en: "The deposit was not found in this branch." },
   DEPOSIT_NOT_OWNER: { status: 409, code: "state_conflict", en: "The deposit does not belong to the customer of this bill." },
+  DEVICE_KEY_UNSET: { status: 503, code: "upstream_unavailable", en: "Device pairing is not configured on this server yet." }, // POS P5.2 ▸ D1 ◂
   DEVICE_LIMIT: { status: 409, code: "state_conflict", en: "This branch reached the maximum number of registered devices." },
   DEVICE_NOT_FOUND: { status: 404, code: "not_found", en: "The device was not found in this branch." },
+  DEVICE_NOT_PAIRED: { status: 409, code: "state_conflict", en: "This browser is not paired with a register of this branch." }, // POS P5.2 ▸ D2 ◂
   DEVICE_REVOKED: { status: 409, code: "state_conflict", en: "The device was revoked and cannot be used." },
   DISCOUNT_EXCEEDS_LIMIT: { status: 403, code: "forbidden", en: "The discount is larger than this seller is allowed to give." },
   DRAWER_INSUFFICIENT: { status: 409, code: "state_conflict", en: "There is not enough cash in the drawer." },

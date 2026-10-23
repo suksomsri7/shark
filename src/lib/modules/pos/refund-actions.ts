@@ -16,6 +16,7 @@ import { posMembership } from "./access";
 import { refundSale, saleForRefund } from "./refund";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import type { RefundRefusal, RefundSaleInput, RefundSaleResult, SaleForRefundResult } from "./refund-shared";
+import { requestDevice, type DeviceNotPaired, type DeviceRevokedRefusal } from "./device-request"; // POS P5.2 ▸ CD-P52-O4 F1/F4 ◂
 
 type Session = Awaited<ReturnType<typeof requireTenant>>;
 type Target = { systemId: string; unitId: string; deviceId?: string };
@@ -49,9 +50,9 @@ function sessionScope(auth: Session, args: unknown, actions: string[]): { ctx: R
     }
   });
   if (!allowed) return refusal("NO_PERMISSION", "บัญชีนี้ยังไม่มีสิทธิ์คืนเงิน — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ");
-  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  // POS P5.2 ▸ CD-P52-O4 F1/F4: deviceId ของ client ไม่เข้า ctx — refundSaleAction ใส่เครื่องจากคุกกี้ (device-request.ts โหมด strip) ◂
   return {
-    ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) },
+    ctx: { tenantId: auth.active.tenantId, systemId, unitId },
     actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
   };
 }
@@ -66,15 +67,21 @@ async function session(where: string): Promise<Session | RefundRefusal> {
 }
 
 /** คืนเงิน (ใบคืนใหม่) — `refund` = RefundSaleInput (เก็บไว้ส่งตัวเดิมทุกครั้งที่ลองซ้ำ) */
-export async function refundSaleAction(args: Target & { refund: RefundSaleInput }): Promise<RefundSaleResult> {
+export async function refundSaleAction(args: Target & { refund: RefundSaleInput }): Promise<RefundSaleResult | DeviceNotPaired | DeviceRevokedRefusal> { // POS P5.2 ▸ + DeviceRevoked (strip ไม่คืน NotPaired — ชนิดร่วม) ◂
   const auth = await session("refundSaleAction");
   if ("ok" in auth) return auth;
   try {
     // POS P1.15 ▸ มติ 11: managerPin = ผู้จัดการอนุญาตที่เครื่องนี้ — ผู้ขอที่มีแค่ pos.sale.create ส่งได้ (refund.ts ตรวจ PIN + สิทธิ์ของผู้จัดการ) ◂
     const withPin = !!args?.refund && typeof args.refund === "object" && typeof (args.refund as { managerPin?: unknown }).managerPin === "string";
-    const s = sessionScope(auth, args, withPin ? ["pos.sale.refund", "pos.sale.create"] : ["pos.sale.refund"]);
-    if ("ok" in s) return s;
-    const res = await refundSale(s.ctx, s.actor, args.refund);
+    const s0 = sessionScope(auth, args, withPin ? ["pos.sale.refund", "pos.sale.create"] : ["pos.sale.refund"]);
+    if ("ok" in s0) return s0;
+    // POS P5.2 ▸ CD-P52-O4 F1/F4: กะ/โทเคนผู้ขาย/PIN ของการคืน = เครื่องของคุกกี้ (เดียวกับป้ายกะของหน้าบิล currentShiftAction) · refund.deviceId ของ client ถูกทิ้ง ·
+    //   ไม่มีคุกกี้ = คืนนอกกะ (กติกาเดิมเมื่อไม่ส่งเครื่อง) · คุกกี้ของเครื่องที่ถูกเพิกถอน = DEVICE_REVOKED ◂
+    const d = await requestDevice({ tenantId: s0.ctx.tenantId, unitId: s0.ctx.unitId }, "strip");
+    if (!d.ok) return d;
+    const s = { ctx: { ...s0.ctx, ...(d.deviceId ? { deviceId: d.deviceId } : {}) }, actor: s0.actor };
+    const refundIn = args?.refund && typeof args.refund === "object" ? ({ ...args.refund, deviceId: undefined } as RefundSaleInput) : args?.refund;
+    const res = await refundSale(s.ctx, s.actor, refundIn);
     if (res.ok) {
       try {
         revalidatePath(`/app/sys/${s.ctx.systemId}/pos`, "layout");
