@@ -1166,11 +1166,8 @@ async function dispatch(
     if (!requestId) {
       // ค้นจาก summary → เทียบ entityType/entityId ใน PENDING (ไม่มี field summary ในตาราง)
       const summary = String(p.requestSummary ?? "").trim();
-      const pending = await prisma.approvalRequest.findMany({
-        where: { tenantId, status: "PENDING" },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, entityType: true, entityId: true },
-      });
+      // POS P5.2 ▸ fix A (F1): ค้นเฉพาะคำขอที่ "คนกดยืนยัน" ตัดสินได้ (listPending · สาขาของคำขอ) — ข้อความ "มีหลายคำขอ" ไม่เปิดคำขอของสาขาอื่น ◂
+      const pending = await approvalSvc.listPending({ tenantId }, { ...m, userId: uid });
       const matched = summary
         ? pending.filter((r) => r.entityType.includes(summary) || r.entityId.includes(summary))
         : pending;

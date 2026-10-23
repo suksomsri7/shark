@@ -18,6 +18,8 @@ import { refundApproved } from "./refund";
 import { armHeldCartApproval, discardHeldCartRejected } from "./held-cart";
 import { isPosApprovalKind, markPosApprovalOutcome, payloadOutcome, posApprovalDecider, posApprovalPayload, posApprovalStatus } from "./pos-approval";
 import type { RefundSaleInput } from "./refund-shared";
+import { evaluate } from "@/lib/core/rbac"; // POS P5.2 ▸ fix A (F1): ตรวจผู้ตัดสินซ้ำก่อนทำรายการ ◂
+import { posMemberActor } from "./staff-pin"; // POS P5.2 ▸ fix A (F1) ◂
 
 type Evt = Parameters<OutboxHandler>[0];
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -25,6 +27,17 @@ const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v =
 
 async function warn(evt: Evt, message: string, detail: Record<string, unknown>): Promise<void> {
   await logOps("WARN", "pos.approval", message, { tenantId: evt.tenantId, detail: JSON.stringify(detail).slice(0, 1000) });
+}
+
+// POS P5.2 ▸ fix A (F1 · ชั้นที่สองหลัง approval/service canDecideStep): ผู้ตัดสินต้องมีสิทธิ์ของรายการนั้นที่สาขาของคำขอ ณ ตอนทำ
+//   (สิทธิ์สดจาก Membership ที่ตอบรับแล้ว) — ยกเลิกบิล = pos.sale.void · คืนเงิน = pos.sale.refund · ส่วนลดเกินสิทธิ์ = pos.sale.manage ·
+//   ไม่ผ่าน = ถาวร (WARN + outcome FAILED:PERMISSION_DENIED · ไม่โยน — ไม่ขวางขั้นหลังของ chain) ◂
+const DECIDER_ACTION: Record<string, string> = { POS_VOID: "pos.sale.void", POS_REFUND: "pos.sale.refund", POS_DISCOUNT_OVER: "pos.sale.manage" };
+async function deciderMayAct(tenantId: string, deciderId: string, kind: string, unitId: string): Promise<boolean> {
+  const action = DECIDER_ACTION[kind];
+  if (!action) return false;
+  const m = await posMemberActor(tenantId, deciderId);
+  return !!m && evaluate(m, { module: "pos", action, unitId });
 }
 
 export const onPosApprovalDecided: OutboxHandler = async (evt: Evt) => {
@@ -68,6 +81,12 @@ export const onPosApprovalDecided: OutboxHandler = async (evt: Evt) => {
   const systemId = str(snap.payload.systemId) ?? evt.systemId;
   if (!unitId || !systemId) {
     await markPosApprovalOutcome(evt.tenantId, requestId, "FAILED:NO_SCOPE");
+    return;
+  }
+  // POS P5.2 ▸ fix A (F1) ◂
+  if (!(await deciderMayAct(evt.tenantId, deciderId, snap.kind, unitId))) {
+    await warn(evt, "pos.approval.decider_not_permitted — ผู้ตัดสินไม่มีสิทธิ์ของรายการนี้ที่สาขาของคำขอ ไม่ได้ทำรายการ", { requestId, entityType, unitId });
+    await markPosApprovalOutcome(evt.tenantId, requestId, "FAILED:PERMISSION_DENIED");
     return;
   }
 
