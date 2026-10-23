@@ -16,7 +16,7 @@ import { prisma } from "./db";
 import { PosSaleError, voidSale } from "./service";
 import { refundApproved } from "./refund";
 import { armHeldCartApproval, discardHeldCartRejected } from "./held-cart";
-import { isPosApprovalKind, markPosApprovalOutcome, payloadOutcome, posApprovalDecider, posApprovalPayload, posApprovalStatus } from "./pos-approval";
+import { deciderMayAct, isPosApprovalKind, markPosApprovalOutcome, payloadOutcome, posApprovalDecider, posApprovalPayload, posApprovalStatus } from "./pos-approval"; // POS P5.2 ▸ R1 F2 (CD-P52-O3-2): deciderMayAct ย้ายไป pos-approval.ts ◂
 import type { RefundSaleInput } from "./refund-shared";
 
 type Evt = Parameters<OutboxHandler>[0];
@@ -26,6 +26,9 @@ const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v =
 async function warn(evt: Evt, message: string, detail: Record<string, unknown>): Promise<void> {
   await logOps("WARN", "pos.approval", message, { tenantId: evt.tenantId, detail: JSON.stringify(detail).slice(0, 1000) });
 }
+
+// POS P5.2 ▸ fix A (F1): ผู้ตัดสินต้องมีสิทธิ์ของรายการนั้นที่สาขาของคำขอ ณ ตอนทำ (deciderMayAct ใน pos-approval.ts · R1 F2 CD-P52-O3-2) ·
+//   ไม่ผ่าน = ถาวร (WARN + outcome FAILED:PERMISSION_DENIED · ไม่โยน — ไม่ขวางขั้นหลังของ chain) ◂
 
 export const onPosApprovalDecided: OutboxHandler = async (evt: Evt) => {
   if (evt.type !== "approval.request.approved" && evt.type !== "approval.request.rejected") return;
@@ -68,6 +71,12 @@ export const onPosApprovalDecided: OutboxHandler = async (evt: Evt) => {
   const systemId = str(snap.payload.systemId) ?? evt.systemId;
   if (!unitId || !systemId) {
     await markPosApprovalOutcome(evt.tenantId, requestId, "FAILED:NO_SCOPE");
+    return;
+  }
+  // POS P5.2 ▸ fix A (F1) ◂
+  if (!(await deciderMayAct(evt.tenantId, deciderId, snap.kind, unitId))) {
+    await warn(evt, "pos.approval.decider_not_permitted — ผู้ตัดสินไม่มีสิทธิ์ของรายการนี้ที่สาขาของคำขอ ไม่ได้ทำรายการ", { requestId, entityType, unitId });
+    await markPosApprovalOutcome(evt.tenantId, requestId, "FAILED:PERMISSION_DENIED");
     return;
   }
 

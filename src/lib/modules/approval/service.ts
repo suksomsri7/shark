@@ -12,7 +12,7 @@ import type { ApprovalDecisionValue, ApprovalPolicy, ApprovalRequest } from "@pr
 import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
-import type { MembershipCtx } from "@/lib/core/rbac";
+import { canAccessUnit, type MembershipCtx } from "@/lib/core/rbac";
 
 export type Ctx = { tenantId: string };
 
@@ -233,7 +233,14 @@ const SELF_DECISION_HANDLED_BY_SOURCE: ReadonlySet<string> = new Set(["crm.commi
 
 // step ปัจจุบันนี้ ผู้ใช้ m ตัดสินได้ไหม:
 //   approverUserId ตรง userId → ได้ · OWNER → ได้ทุก step · MANAGER → เฉพาะ step ที่ role = MANAGER
-function canDecideStep(m: MembershipCtx & { userId: string }, step: { approverRole: string; approverUserId: string | null }): boolean {
+// POS P5.2 ▸ fix A (F1 · X4): คำขอที่ผูกสาขา (req.unitId) ตัดสินได้เฉพาะผู้ที่เข้าสาขานั้นได้ (canAccessUnit · OWNER ทุกสาขา) —
+//   ใช้ทุกทาง: listPending (หน้าอนุมัติ · approvals_pending ของผู้ช่วย) · decide · bulkDecide · ผู้ช่วย AI (proposals approval_decide) ◂
+function canDecideStep(
+  m: MembershipCtx & { userId: string },
+  step: { approverRole: string; approverUserId: string | null },
+  req: { unitId: string | null },
+): boolean {
+  if (req.unitId && !canAccessUnit(m, req.unitId)) return false;
   if (step.approverUserId && step.approverUserId === m.userId) return true;
   if (m.role === "OWNER") return true;
   if (m.role === "MANAGER") return step.approverRole === "MANAGER";
@@ -292,7 +299,7 @@ export async function decide(
   if (!step) return { ok: false, status: req.status, note: null };
 
   // สิทธิ์ไม่ผ่าน → คง PENDING (คนมีสิทธิ์มากดทีหลังได้)
-  if (!canDecideStep(m, step)) return { ok: false, status: req.status, note: null };
+  if (!canDecideStep(m, step, req)) return { ok: false, status: req.status, note: null };
   if (await isOwnHrSubject(ctx, req, m.userId)) return { ok: false, status: req.status, note: null, reason: SELF_DECIDE_REFUSED }; // HF-HR-0 ▸ R5.1 ◂
 
   const decision: ApprovalDecisionValue = input.decision === "REJECTED" ? "REJECTED" : "APPROVED";
@@ -411,7 +418,7 @@ export async function listPending(ctx: Ctx, m: MembershipCtx & { userId: string 
   const steps = await tenantDb(ctx).approvalStep.findMany({ where: { policyId: { in: policyIds } } });
   return requests.filter((r) => {
     const step = steps.find((s) => s.policyId === r.policyId && s.order === r.currentStepOrder);
-    return !!step && canDecideStep(m, step);
+    return !!step && canDecideStep(m, step, r);
   });
 }
 

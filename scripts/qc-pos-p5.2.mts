@@ -3,7 +3,10 @@
 //   ตาราง = scripts/pos-authz-matrix.json (สร้างด้วย scripts/pos-authz-matrix-gen.mts --write) — ทุกข้ออ้างแถวที่พิสูจน์ (ช่อง ref ในทะเบียน)
 //
 // รัน:  env -C <tree> ISO_MEM=3G bash scripts/iso.sh bash scripts/qc4.sh env QC_FORCE=1 GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p5.2.mts
-//       --list  = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต (M* · P*-static · S*-static · N*) ไม่โหลด prisma
+//       --list  = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต (M* · P*-static · S*-static · N* · F10a) ไม่โหลด prisma
+//       --self-test = เฉพาะ probe กลับค่า N1–N8 (ตัวตัดสิน pure ต้องแดงได้จริง) ไม่แตะ DB
+//   ORACLE-EDIT (P5.2 oracle2 · 23 ต.ค. · hunter L1 ledger/wo-notes/pos-P5.2-hunt-L1.md): + X3 X4 X5 K3 D1 D2 D3 D11 H6b F7 F8 F9 F10a F10b · F4/F11 = accepted-pending-owner (W37/W38 —
+//     พิมพ์ผลแต่ไม่นับในด่าน) · N5–N8 · โน้ต ledger/wo-notes/pos-P5.2-oracle2.md
 //       P52_PIN = ฐานของข้อสอบ (ค่าเริ่มต้น 2fb1fe8e) · P52_LANE_PIN = หมุดเลน (ไม่มีข้อ diff — พิมพ์ไว้เท่านั้น)
 // DB: QC4 เท่านั้น · ร้านชั่วคราว posqc-p52-<rand> (A: 2 สาขา) + posqc-p52-<rand>-b (B: ร้านอื่น) ลบทั้งร้านใน finally ·
 //     ร้าน QC resto/coffee อ่านอย่างเดียว (T3 · P4 · P7) + ลายนิ้วมือก่อน/หลัง (Z2) · ไม่ reseed · ไม่มีเครือข่าย (fetch = ตัวกั้น 503)
@@ -18,9 +21,11 @@ const SUITE = "qc-pos-p5.2";
 const ROOT = process.cwd();
 const LIST = process.argv.includes("--list");
 const NODB = process.argv.includes("--no-db");
+const SELFTEST = process.argv.includes("--self-test"); // ORACLE-EDIT (P5.2 oracle2)
 const FORCE = process.env.QC_FORCE === "1";
 /** ฐานของข้อสอบ (session/pos ตอนเขียน) — env override */
-const PIN = process.env.P52_PIN || "2fb1fe8e";
+// ORACLE-EDIT (P5.2 oracle2): ฐาน = session/pos c067c628 (ตอนเขียนส่วนขยาย · เดิม 2fb1fe8e) — ข้อสอบนี้ไม่มีข้อ diff เทียบหมุด (พิมพ์อย่างเดียว)
+const PIN = process.env.P52_PIN || "c067c628";
 /** หมุดเลน (ข้อสอบนี้ไม่มีข้อ diff เทียบหมุด — พิมพ์ไว้ให้ผู้คุม) */
 const LANE_PIN = process.env.P52_LANE_PIN || PIN;
 
@@ -60,12 +65,38 @@ const CHECKS: readonly Def[] = [
   D("N2", "N", "[probe กลับค่า] ตัวตัดสิน R (denied) กับผล ok:true / data[] ไม่ว่าง → ต้องไม่ผ่าน · คำปฏิเสธ → ผ่าน", "R1 R2 R4"),
   D("N3", "N", "[probe กลับค่า] ตัวตัดสินเอนโทรปี: 11×5 บิต (55) → แดง · Math.random → แดง · 12×5 crypto → ผ่าน", "P1 P2"),
   D("N4", "N", "[probe กลับค่า] ตัวตัดสินรั่ว: ผลที่มีเลขบิลแฝง → รั่ว · ไม่มี → ไม่รั่ว", "T1 T2 T3 K1"),
+  // ═══ ORACLE-EDIT (P5.2 oracle2 · hunter L1 F1–F11 · มติผู้คุม 23 ต.ค.) ═══
+  D("X3", "X", "[db · F-blind 1–5] A1 × วัตถุ A2 ทุกชนิด (บิล · โต๊ะ · ออเดอร์ · กะ · บิลพัก · คำขออนุมัติ · เครื่อง · intent · สลิป): MANAGER[A1] unitId A1 / ไม่ส่ง unitId + STAFF คีย์ POS ครบ[A1] → ไม่เห็น A2 (เลขบิล · รายการ · ยอดรวม · ลูกค้า · เครื่อง · โต๊ะ · บิลพัก · สลิป) · แถว A2 ไม่เปลี่ยน · ตัวควบคุมบวก", "rows[unitScoped, OTHER_UNIT=deny]"),
+  D("X4", "X", "[db · F1 HIGH] คำขอ POS_VOID/POS_REFUND/POS_DISCOUNT_OVER ของ A2: listPending ของ MANAGER[A1] ไม่มี · decideAction(APPROVED)/bulkDecideAction(REJECTED) ของ MANAGER[A1] ไม่สำเร็จ · คำขอยัง PENDING · บิล A2 ยัง PAID · ตัวควบคุมบวก MANAGER[A2]", "src/lib/modules/approval/actions.ts#decideAction · #bulkDecideAction · src/app/app/approvals/page.tsx"),
+  // ORACLE-EDIT (CD-P52-O3-2 · R1 F2 · ผู้คุม 23 ต.ค. · ledger/wo-notes/pos-P5.2-fix-abcf-review.md F2): ยึดส่วนลดที่อนุมัติ ณ ตอนขาย ต้องตรวจสิทธิ์สดของผู้ตัดสินเหมือนตัวรับคิว
+  D("X4b", "X", "[db · R1 F2 · CD-P52-O3-2] ผู้ตัดสินเสียสิทธิ์หลังอนุมัติ: ผู้ขาย A2 (STAFF เพดาน 10%) ลด 15% → คำขอ POS_DISCOUNT_OVER · MANAGER[A2] อนุมัติ → บิลพักผูกคำขอ · ย้ายสิทธิ์สาขาของผู้ตัดสินไป A1 → submit {heldCartId} = DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · ตัวควบคุมบวก คืนสิทธิ์ A2 → ผ่าน via approved (audit pos.discount.override requestId + byUserId ผู้ตัดสิน)", "src/lib/modules/pos/pos-approval.ts#approvedDiscountOf · register.ts regResolveOverrideCap"),
+  D("X5", "R", "[db · F2] ลำดับชั้น PIN: MANAGER[A1] ตั้ง/ปลดล็อก PIN ของ OWNER · lead (STAFF + pos.staff.manage) ตั้ง/ปลดล็อก PIN ของ MANAGER → PERMISSION_DENIED + แถว PIN เดิม · ตัวควบคุมบวก ตั้ง PIN แคชเชียร์ได้", "src/lib/modules/pos/staff-pin-actions.ts#setStaffPinAction · #unlockStaffPinAction"),
+  D("K3", "K", "[db · F3] คีย์กลาง (scope ว่าง) × POST /api/v1/ai/tools/sales_summary · sales_by_day → 403 · ตัวควบคุมบวก คีย์ pos-read = 200", "src/app/api/v1/ai/tools/[name]/route.ts#POST"),
+  D("D1", "D", "[db · §10.4 D1c] จับคู่เครื่อง: แคชเชียร์ registerDeviceAction → ปฏิเสธ · OWNER → ได้คุกกี้เครื่องที่ลงนาม (ไม่ใช่รหัสเครื่องเปล่า) หรือปฏิเสธเพราะยังไม่ตั้งกุญแจ (ไม่มีแถว) · ไฟล์เครื่อง/กะไม่ใช้ CHAT_/POS_CREDENTIALS_KEY", "src/lib/modules/pos/device-actions.ts#registerDeviceAction"),
+  D("D2", "D", "[db · §10.4 D1c] เปิดกะผูกเครื่องจากคุกกี้: STAFF (กะ) อ้าง deviceId ของเครื่อง A1 อื่นจาก client → ปฏิเสธ/ไม่ผูก · คุกกี้ที่ถูกแก้ → ปฏิเสธ · ตัวควบคุมบวก คุกกี้จาก D1 = เปิดได้", "src/lib/modules/pos/shift-actions.ts#openShiftAction"),
+  D("D3", "D", "[db · §10.4 D1c · F11 X] รายงาน X: STAFF (กะ ไม่มี manage) อ้าง deviceId ของกะคนอื่นจาก client → PERMISSION_DENIED · ตัวควบคุมบวก คุกกี้เครื่องของกะ = อ่านได้", "src/lib/modules/pos/shift-actions.ts#xReportAction"),
+  D("D11", "D", "[db · F5 · ruling 4] ตัวเขียนเดิม 15 ตัวของ actions/restaurant.ts บนสาขาที่ผูก POS → POS_LINKED (redirect ?err=POS_LINKED / code) · แถวร้านอาหาร/เมนู/โต๊ะของ A1 ไม่เปลี่ยน · ตัวควบคุมบวก สาขาไม่ผูก POS (A3) เขียนได้", "src/lib/actions/restaurant.ts#*"),
+  D("H6b", "R", "[db · H6 · F6 · มติ] แถว cond: MANAGER สาขาเดียว × ตั้งค่าทั้งระบบ 6 ตัว + saveCreditAccount → ปฏิเสธ · ค่าเดิม · สมุดทิป = OWNER เท่านั้น · ตัวควบคุมบวก MANAGER ครบทุกสาขา", "rows[MANAGER=cond H6] · tip-ledger-actions.ts#posTipLedgersAction"),
+  D("F7", "X", "[db · F7] PIN ผู้จัดการ A1 + heldCartId ของบิลพัก A2 → คำขอ POS_DISCOUNT_OVER ของ A2 ยัง PENDING (ไม่ถูกยกเลิกข้ามสาขา) · ตัวควบคุมบวก PIN ใช้ได้", "src/lib/modules/pos/register-actions.ts#submitRegisterSaleAction"),
+  D("F8", "P", "[db · F8] ประตูเดิม /s/…/restaurant/t/<qrToken> บนสาขาที่ผูก POS: โทเคนรูปถูกที่ไม่มี → redirect /q/t/<token> (ไม่ค้น · ไม่เปิดหน้าเดิม) · โทเคนจริง → redirect · ไม่มี TableSession ใหม่", "src/app/(store)/s/[tenantSlug]/[unitSlug]/restaurant/t/[qrToken]/page.tsx"),
+  D("F9", "R", "[db · F9] unitPriceMatrixAction: STAFF ไม่มีคีย์ POS + สินค้าจริง → ปฏิเสธ · ตัวควบคุมบวก แคชเชียร์ (pos.sale.create) = ok", "src/lib/modules/pos/catalog-price-actions.ts#unitPriceMatrixAction"),
+  D("F10a", "S", "[static · F10] รายงาน AI รายสัปดาห์ (ยอดขายทุกสาขา) ไม่เป็นแจ้งเตือนทั้งร้าน: appNotification.create ใน weeklyAnalysis มี recipientUserId", "src/lib/ai/analyst.ts#weeklyAnalysis"),
+  D("F10b", "X", "[db · F10] ข้อเสนอ AI (posStockRisks · purchaseSuggestions = pos_draft_po) ของ MANAGER[A1] ไม่ระบุสาขา → ไม่มีสินค้าเฉพาะสาขา A2 · ตัวควบคุมบวก OWNER เห็น", "src/lib/modules/pos/ai-insights.ts"),
+  D("F4", "W", "[db · F4 · 🟡 accepted-pending-owner W37] inventory updateItemAction ของ MANAGER[A1] → แถว PosProduct ร่วม (ขายทั้ง A1/A2) ไม่เปลี่ยน", "src/lib/modules/inventory/actions.ts#updateItemAction"),
+  D("F11", "W", "[db · F11 · 🟡 accepted-pending-owner W38] STAFF ที่มีแค่ hr.payroll.read → updatePosStaffCommissionAction (เขียนเงิน) ปฏิเสธ", "src/lib/modules/pos/settings-actions.ts#updatePosStaffCommissionAction"),
+  D("N5", "N", "[probe กลับค่า] ตัวตัดสิน POS_LINKED: redirect ?err=POS_LINKED / code POS_LINKED → ผ่าน · void / redirect /login → ไม่ผ่าน", "D11"),
+  D("N6", "N", "[probe กลับค่า] ตัวตัดสินยอดรวม: 3271.43 / 3,271.43 / 327143 ในข้อความ → รั่ว · ยอดลงตัวบาท = ไม่ใช้เป็น sentinel", "X3"),
+  D("N7", "N", "[probe กลับค่า] ตัวตัดสินเครื่อง: เปิดกะได้บนเครื่องที่อ้าง → ไม่ผ่าน · ปฏิเสธ / ผูกเครื่องอื่น → ผ่าน", "D2 D3"),
+  D("N8", "N", "[probe กลับค่า] ข้อรอเจ้าของ (F4 F11) แดง → ไม่อยู่ใน failed แต่อยู่ใน pendingOwner · ข้ออื่นแดง → failed", "F4 F11"),
   D("Z1", "Z", "QC4 คืนสภาพ: ร้านชั่วคราว A/B เหลือ 0 แถวทุกตารางที่มี tenantId · Tenant/User ของรอบถูกลบ · ถังเพดานของคีย์รอบนี้ 0", "-"),
   D("Z2", "Z", "ลายนิ้วมือร้าน QC coffee/resto + ตาราง POS นอกร้านชั่วคราวเท่าเดิม", "-"),
 ];
-const STATIC_IDS = new Set(["P5.2-M1", "P5.2-M2", "P5.2-M3", "P5.2-M4", "P5.2-M5", "P5.2-P1", "P5.2-P2", "P5.2-P3", "P5.2-P5", "P5.2-P6", "P5.2-P8", "P5.2-S1", "P5.2-S2", "P5.2-N1", "P5.2-N2", "P5.2-N3", "P5.2-N4"]);
+const STATIC_IDS = new Set(["P5.2-M1", "P5.2-M2", "P5.2-M3", "P5.2-M4", "P5.2-M5", "P5.2-P1", "P5.2-P2", "P5.2-P3", "P5.2-P5", "P5.2-P6", "P5.2-P8", "P5.2-S1", "P5.2-S2", "P5.2-N1", "P5.2-N2", "P5.2-N3", "P5.2-N4", "P5.2-F10a", "P5.2-N5", "P5.2-N6", "P5.2-N7", "P5.2-N8"]);
+/** ORACLE-EDIT (P5.2 oracle2): ข้อที่รอเจ้าของตัดสิน (W37 คลัง · W38 คีย์ค่าคอมฯ) — พิมพ์ผลแต่ไม่นับใน failed/exit (มติผู้คุม 23 ต.ค.) */
+const PENDING_OWNER = new Set(["P5.2-F4", "P5.2-F11"]);
+const PROBE_IDS = ["P5.2-N1", "P5.2-N2", "P5.2-N3", "P5.2-N4", "P5.2-N5", "P5.2-N6", "P5.2-N7", "P5.2-N8"];
 if (LIST) {
-  for (const [id, x, title, ref] of CHECKS) console.log(`${id}\t${x}\t${STATIC_IDS.has(id) ? "static" : "db"}\t${title}\t← ${ref}`);
+  for (const [id, x, title, ref] of CHECKS) console.log(`${id}\t${x}\t${STATIC_IDS.has(id) ? "static" : "db"}${PENDING_OWNER.has(id) ? " · accepted-pending-owner" : ""}\t${title}\t← ${ref}`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, mode: "list", total: CHECKS.length, passed: 0, static: STATIC_IDS.size, pin: PIN })}`);
   process.exit(0);
 }
@@ -76,7 +107,7 @@ function chk(id: string, ok: boolean, expected: string, actual: string): void {
   const full = id.startsWith("P5.2-") ? id : `P5.2-${id}`;
   results.set(full, { ok, expected, actual: actual.slice(0, 900) });
   const title = CHECKS.find(([i]) => i === full)?.[2] ?? "";
-  console.log(`  ${ok ? "✅" : "❌"} [${full}] ${title.slice(0, 110)}${ok ? ` — ${actual.slice(0, 260)}` : `\n       expected: ${expected}\n       actual:   ${actual.slice(0, 900)}`}`);
+  console.log(`  ${ok ? "✅" : PENDING_OWNER.has(full) ? "🟡" : "❌"} [${full}] ${title.slice(0, 110)}${ok ? ` — ${actual.slice(0, 260)}` : `\n       expected: ${expected}\n       actual:   ${actual.slice(0, 900)}`}`);
 }
 const rd = (p: string): string => {
   try {
@@ -105,9 +136,11 @@ function judgeM1(scanned: string[], rows: MRow[]): { unlisted: string[]; stale: 
 type Outcome = { kind: "ok" | "refused" | "redirect" | "throw" | "timeout" | "missing"; code: string; text: string };
 const LEGACY = "src/lib/actions/pos.ts";
 /** ปฏิเสธจริงไหม: ok:false · redirect · (ไฟล์เดิม) ForbiddenError · ผลว่าง (array/สตริงว่าง) */
+// ORACLE-EDIT (P5.2 oracle2): แถวใหม่ของโมดูลเดิมที่ปฏิเสธด้วย throw (assertCan → ForbiddenError · requireUnit → notFound) — กติกาเดียวกับ LEGACY
+const THROWS_FORBIDDEN = new Set([LEGACY, "src/lib/modules/approval/actions.ts", "src/lib/modules/inventory/actions.ts", "src/lib/actions/restaurant.ts"]);
 function judgeDenied(o: Outcome, surface: string): boolean {
   if (o.kind === "refused" || o.kind === "redirect") return true;
-  if (o.kind === "throw" && surface.startsWith(LEGACY) && /Forbidden|ไม่มีสิทธิ์|NEXT_NOT_FOUND/.test(o.code + o.text)) return true;
+  if (o.kind === "throw" && THROWS_FORBIDDEN.has(surface.split("#")[0]!) && /Forbidden|ไม่มีสิทธิ์|NEXT_NOT_FOUND|NEXT_HTTP_ERROR_FALLBACK;404/.test(o.code + o.text)) return true;
   return false;
 }
 const DENY_CODE = /PERMISSION|FORBIDDEN|DENIED|NO_PERMISSION|NOT_FOUND|UNAUTHORIZED|NOT_ALLOWED|redirect|Forbidden/;
@@ -116,6 +149,21 @@ const entropyBits = (t: TokenSpec): number => (t.csprng ? t.len * t.bitsPerUnit 
 const judgeEntropy = (t: TokenSpec, min = 60): boolean => t.csprng && entropyBits(t) >= min;
 function leaks(text: string, sentinels: string[]): string[] {
   return sentinels.filter((s) => s && text.includes(s));
+}
+// ── ORACLE-EDIT (P5.2 oracle2): ตัวตัดสิน pure ของข้อใหม่ (probe N5–N8) ──
+/** D11: ตัวเขียนเดิมปฏิเสธด้วย POS_LINKED (redirect ?err=POS_LINKED แบบ LEG · หรือคืน code POS_LINKED) */
+const judgeLinked = (o: Outcome): boolean => (o.kind === "redirect" && /[?&]err=POS_LINKED\b/.test(o.text)) || ((o.kind === "refused" || o.kind === "throw") && /\bPOS_LINKED\b/.test(`${o.code} ${o.text}`));
+/** X3: ยอดรวมเป็น sentinel ได้เฉพาะยอดที่มีเศษสตางค์ (ลงตัวบาทชนกับตัวเลขทั่วไปได้) — สตางค์ · บาท 2 ตำแหน่ง · มีจุลภาค */
+function aggSentinels(satang: number): string[] {
+  if (!Number.isInteger(satang) || satang <= 0 || satang % 100 === 0) return [];
+  const b = (satang / 100).toFixed(2);
+  return [...new Set([String(satang), b, Number(b).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })])];
+}
+/** D2/D3: คำอ้างเครื่องจาก client ไม่ถูกเชื่อ = ปฏิเสธ หรือ ผลไม่ผูกกับเครื่องที่อ้าง */
+const judgeNotBound = (r: Any, claimed: string): boolean => !(r && r.ok === true) || String(r?.shift?.deviceId ?? r?.report?.deviceId ?? "") !== claimed;
+/** ข้อรอเจ้าของไม่นับในด่าน */
+function splitPending(entries: [string, { ok: boolean }][]): { failed: string[]; pending: { id: string; ok: boolean }[] } {
+  return { failed: entries.filter(([id, r]) => !r.ok && !PENDING_OWNER.has(id)).map(([id]) => id), pending: entries.filter(([id]) => PENDING_OWNER.has(id)).map(([id, r]) => ({ id, ok: r.ok })) };
 }
 
 // ═════════════════════════ 1. ข้อสถิต ═════════════════════════
@@ -139,7 +187,8 @@ function runStatic(): void {
   // M2
   {
     const bad: string[] = [];
-    const MARK = /assert\w*Can|dispatch\(|evaluate\(|canAccessUnit|gate\(|[sS]cope\w*\(|session\w*\(|run\(|requireTenant|getAuth|View\(|posCanSetTenantPrice|is\w+Token\(|_RE\.test|[tT]oken|cookies\(\)|DISPLAY_COOKIE|authorization|verifyWebhook|isCronAuthorized|checkRateLimit|POS_SCOPES|handlePlatformInbound|ackPrintJob|legacyTableQrRedirect|status: 405|role|canViewPayroll|NEED|["'](?:pos|restaurant|inventory|api)\.[a-zA-Z]+\.[a-zA-Z]+["']/;
+    // ORACLE-EDIT (P5.2 oracle2): + authenticateApiRequest (AI tools/skills) · assertInventory\w* (ด่านอ่านคลัง) — แถวใหม่ของชุดสแกน
+    const MARK = /assert\w*Can|assertInventory\w*\(|authenticateApiRequest\(|dispatch\(|evaluate\(|canAccessUnit|gate\(|[sS]cope\w*\(|session\w*\(|run\(|requireTenant|getAuth|View\(|posCanSetTenantPrice|is\w+Token\(|_RE\.test|[tT]oken|cookies\(\)|DISPLAY_COOKIE|authorization|verifyWebhook|isCronAuthorized|checkRateLimit|POS_SCOPES|handlePlatformInbound|ackPrintJob|legacyTableQrRedirect|status: 405|role|canViewPayroll|NEED|["'](?:pos|restaurant|inventory|api)\.[a-zA-Z]+\.[a-zA-Z]+["']/;
     for (const r of ROWS) {
       const m = /^(.*):(\d+)$/.exec(r.evidence ?? "");
       if (!m) {
@@ -415,6 +464,18 @@ function runStatic(): void {
     const nonce = /timestamp|nonce|x-shark-timestamp/i.test(stripComments(rd("src/lib/modules/pos/platform/types.ts")));
     chk("S2", !!b && pending && !writes, "หลังลายเซ็นถูก: 503 ADAPTER_PENDING · ไม่มีการเขียน", `ADAPTER_PENDING ${pending} · เขียนหลังตรวจ ${writes} · nonce/timestamp ${nonce ? "มี" : "ไม่มี (H6 · ruling 6 = adapter จริง)"}`);
   }
+  // F10a (ORACLE-EDIT P5.2 oracle2 · F10): รายงานรายสัปดาห์มียอดขายทุกสาขา — แจ้งเตือนต้องมีผู้รับ (null = ทุกคนในร้านเห็น · AppNotification.recipientUserId)
+  {
+    const body = fnBody(stripComments(rd("src/lib/ai/analyst.ts")), "weeklyAnalysis");
+    const creates = [...body.matchAll(/appNotification\.create(?:Many)?\(\{([\s\S]*?)\}\s*\)/g)];
+    const bad = creates.filter((m) => !/recipientUserId/.test(m[1]!));
+    chk("F10a", !!body && bad.length === 0, "ทุก appNotification.create ใน weeklyAnalysis มี recipientUserId", !body ? "ไม่พบ weeklyAnalysis" : `appNotification.create ${creates.length} จุด · ไม่มีผู้รับ ${bad.length}${bad.length ? ` (${bad[0]![1]!.replace(/\s+/g, " ").trim().slice(0, 90)})` : ""}`);
+  }
+  runProbes();
+}
+
+/** probe กลับค่า N1–N8 — ตัวตัดสิน pure ต้องแดงได้จริง (--self-test รันเฉพาะส่วนนี้) */
+function runProbes(): void {
   // N1–N4
   {
     const scanned = (gen.scanSurfaces(ROOT) as { surface: string }[]).map((s) => s.surface);
@@ -434,6 +495,40 @@ function runStatic(): void {
     const l0 = leaks('{"ok":false,"code":"NOT_FOUND"}', ["P52A1-x"]).length === 0;
     chk("N4", l1 && l0, "มีเลขแฝง = รั่ว · ไม่มี = ไม่รั่ว", `มี→${l1} · ไม่มี→${l0}`);
   }
+  // N5–N8 (ORACLE-EDIT P5.2 oracle2)
+  {
+    const a = judgeLinked({ kind: "redirect", code: "redirect", text: "NEXT_REDIRECT;replace;/app/u/x/restaurant?err=POS_LINKED;307;" });
+    const b = judgeLinked({ kind: "refused", code: "POS_LINKED", text: "" });
+    const c = judgeLinked({ kind: "refused", code: "EMPTY", text: "" });
+    const d = judgeLinked({ kind: "redirect", code: "redirect", text: "NEXT_REDIRECT;replace;/login;307;" });
+    const e = judgeLinked({ kind: "redirect", code: "redirect", text: "NEXT_REDIRECT;replace;/app/u/x/restaurant/menu?err=BUSY;307;" });
+    chk("N5", a && b && !c && !d && !e, "POS_LINKED ผ่าน · void/login/err อื่น ไม่ผ่าน", `?err=POS_LINKED→${a} · code→${b} · void→${c} · /login→${d} · ?err=BUSY→${e}`);
+    const sn = aggSentinels(327143);
+    const hit = leaks('{"netSatang":0,"label":"฿3,271.43"}', sn).length > 0 && leaks('{"t":327143}', sn).length > 0 && leaks("3271.43", sn).length > 0;
+    const miss = leaks('{"t":"1,234.00"}', sn).length === 0;
+    const whole = aggSentinels(300000).length === 0;
+    chk("N6", hit && miss && whole && sn.length === 3, "3 รูปแบบ · ลงตัวบาท = []", `sentinel ${sn.join("|")} · พบ→${hit} · ไม่พบ→${miss} · ลงตัวบาท→${whole ? "[]" : "มี"}`);
+    const bound = judgeNotBound({ ok: true, shift: { deviceId: "DEVX" } }, "DEVX");
+    const ref = judgeNotBound({ ok: false, code: "DEVICE_NOT_PAIRED" }, "DEVX");
+    const other = judgeNotBound({ ok: true, shift: { deviceId: "DEVP" } }, "DEVX");
+    chk("N7", !bound && ref && other, "ผูกเครื่องที่อ้าง = ไม่ผ่าน · ปฏิเสธ/เครื่องอื่น = ผ่าน", `ผูกที่อ้าง→${bound} · ปฏิเสธ→${ref} · เครื่องอื่น→${other}`);
+    const sp = splitPending([["P5.2-F4", { ok: false }], ["P5.2-X3", { ok: false }], ["P5.2-F11", { ok: true }], ["P5.2-X4", { ok: true }]]);
+    const n8 = sp.failed.length === 1 && sp.failed[0] === "P5.2-X3" && sp.pending.length === 2 && sp.pending.some((x) => x.id === "P5.2-F4" && !x.ok);
+    chk("N8", n8, "F4 แดง → pending · X3 แดง → failed", `failed ${sp.failed.join(",")} · pending ${sp.pending.map((x) => `${x.id}:${x.ok ? "เขียว" : "แดง"}`).join(",")}`);
+  }
+}
+
+if (SELFTEST) {
+  try {
+    runProbes();
+  } catch (e) {
+    console.log(`💥 self-test: ${(e as Error)?.stack?.split("\n").slice(0, 3).join(" | ")}`);
+  }
+  for (const id of PROBE_IDS) if (!results.has(id)) chk(id, false, "ถูกตรวจ", "ไม่ถึง");
+  const weak = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id);
+  console.log(`\n===== ${SUITE} (--self-test) ===== ผ่าน ${results.size - weak.length}/${results.size}`);
+  console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, mode: "self-test", total: results.size, passed: results.size - weak.length, failed: weak, skipped: false })}`);
+  process.exit(weak.length ? 1 : 0);
 }
 
 function finishStatic(): never {
@@ -587,6 +682,8 @@ let TA = "";
 let TB = "";
 const keyIds: string[] = [];
 const F: Record<string, string> = {}; // ids
+/** unitId → slug (แถว call "unit" · ORACLE-EDIT P5.2 oracle2) */
+const SLUG_OF: Record<string, string> = {};
 const SENT = { recA1: `P52A1R${RAND}`, recA2: `P52A2R${RAND}`, recB1: `P52B1R${RAND}`, lineA1: `P52LINEA1${RAND}`, lineA2: `P52LINEA2${RAND}`, lineB1: `P52LINEB1${RAND}`, unitA1: `P52 สาขา A1 ${RAND}`, unitA2: `P52 สาขา A2 ${RAND}`, unitB1: `P52 ร้านบี ${RAND}` };
 type Persona = { key: string; userId: string; cookie: string; tenantId: string; role: string; unitAccess: string[]; perms: Record<string, boolean> };
 const PER: Record<string, Persona> = {};
@@ -615,6 +712,7 @@ async function setup(): Promise<void> {
   const uA2 = await P.businessUnit.create({ data: { tenantId: TA, type: "SHOP", name: SENT.unitA2, slug: `p52-a2-${RAND}` } });
   const uB1 = await P.businessUnit.create({ data: { tenantId: TB, type: "SHOP", name: SENT.unitB1, slug: `p52-b1-${RAND}` } });
   Object.assign(F, { A1: uA1.id, A2: uA2.id, B1: uB1.id });
+  Object.assign(SLUG_OF, { [uA1.id]: uA1.slug, [uA2.id]: uA2.slug, [uB1.id]: uB1.slug });
   const posA = await sysSvc.createSystem(TA, "POS", `POS P5.2 A ${RAND}`);
   const posB = await sysSvc.createSystem(TB, "POS", `POS P5.2 B ${RAND}`);
   for (const s of [posA.id, posB.id]) await P.appSystem.update({ where: { id: s }, data: { settings: { pos: { registerV2: true } } } }).catch(() => {});
@@ -663,6 +761,12 @@ async function invoke(row: MRow, persona: Persona | null, t: { systemId: string;
   const build = (): unknown[] => {
     if (row.call === "none") return [];
     if (row.call === "pos") return [t.systemId, {}];
+    // ORACLE-EDIT (P5.2 oracle2): action ของหน้าเดิม (unitSlug, formData) — slug ของสาขาจริง (ไม่มี = "" → notFound)
+    if (row.call === "unit") {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(a)) if (typeof v === "string") fd.set(k, v);
+      return [SLUG_OF[t.unitId] ?? "", fd];
+    }
     if (row.call === "form") {
       const fd = new FormData();
       for (const [k, v] of Object.entries(a)) if (typeof v === "string") fd.set(k, v);
@@ -1017,6 +1121,764 @@ async function runDb(): Promise<void> {
   }
 }
 
+// ═════════════════════════ 6b. ข้อ DB ใหม่ (ORACLE-EDIT P5.2 oracle2 · hunter L1 F1–F11 · มติผู้คุม 23 ต.ค.) ═════════════════════════
+//   ร้านชั่วคราว A เดิม + วัตถุ A2 ทุกชนิด (blind spot 1) · สาขา A3 ไม่ผูก POS (ตัวควบคุมบวก D11) · บุคคลใหม่ (blind spot 5):
+//   MANAGER_A2 · MANAGER_ALL [A1,A2] · CASHIER_A2 · LEAD (STAFF + pos.staff.manage) · KEYS (STAFF คีย์ pos.* ครบ) · SELLER (ขาย + ราคาเปิด) ·
+//   OPERATOR (ขาย + pos.shift.operate) · PAYROLL (hr.payroll.read อย่างเดียว) · คีย์กลาง (K3) — ทุกอย่างลบไปกับร้านใน finally (Z1)
+const G: Record<string, string> = {};
+const SENT2 = {
+  recA2b: `P52A2BR${RAND}`, lineA2b: `P52LINEA2B${RAND}`, recX4: `P52X4R${RAND}`, lineX4: `P52LINEX4${RAND}`, custA2: `P52 ลูกค้า A2 ${RAND}`, devA2: `P52 เครื่อง A2 ${RAND}`,
+  tableA2: `P52 โต๊ะ A2 ${RAND}`, heldA2: `P52 พัก A2 ${RAND}`, slipA2: `P52 สลิป A2 ${RAND}`, invA2: `P52 คลังเฉพาะ A2 ${RAND}`, invShared: `P52 คลังร่วม ${RAND}`,
+};
+const DEV = { A2: `P52A2DEV${RAND}`, Y: `P52A1DEVY${RAND}`, Z: `P52A1DEVZ${RAND}`, F7: `P52A1DEVF7${RAND}`, P2: `P52A1PAIR2${RAND}`, P3: `P52A1PAIR3${RAND}` };
+const PINS = { MANAGER: "713952", OWNER: "482916", CASHIER: "258014", X5OWNER: "591736", X5MGR: "640273", X5OK: "305918", X5LEAD: "927341" };
+const FX2: string[] = [];
+const actorOf2 = (k: string): Any => ({ userId: PER[k]?.userId ?? `none-${k}`, role: PER[k]?.role ?? "STAFF", unitAccess: [...(PER[k]?.unitAccess ?? [])], permissions: { ...(PER[k]?.perms ?? {}) } });
+async function step2(label: string, f: () => Promise<void>): Promise<boolean> {
+  try {
+    await f();
+    return true;
+  } catch (e) {
+    FX2.push(`${label}: ${(e as Error)?.message?.slice(0, 140)}`);
+    console.log(`  ⚠️  fixture ${label}: ${(e as Error)?.message?.slice(0, 160)}`);
+    return false;
+  }
+}
+const must2 = (label: string, r: Any): Any => {
+  if (r && typeof r === "object" && r.ok === false) throw new Error(`${label} → ${r.code} ${String(r.message ?? r.reason ?? "").slice(0, 80)}`);
+  return r;
+};
+const idOf = (r: Any): string => String(r?.id ?? r?.table?.id ?? r?.zone?.id ?? r?.item?.id ?? r?.category?.id ?? r?.group?.id ?? r?.station?.id ?? r?.device?.id ?? r?.shift?.id ?? "");
+/** ผลของ action → Outcome (กติกาเดียวกับ invoke) */
+function outcomeOf(r: unknown): Outcome {
+  let text = "";
+  try {
+    text = typeof r === "string" ? r : JSON.stringify(r) ?? "";
+  } catch {
+    text = String(r);
+  }
+  const o = r as Any;
+  if (o && typeof o === "object" && !Array.isArray(o) && o.ok === false) return { kind: "refused", code: String(o.code ?? "NO_CODE"), text };
+  if (o && typeof o === "object" && !Array.isArray(o) && o.status === "error") return { kind: "refused", code: String(o.code ?? o.error ?? "STATUS_ERROR"), text };
+  if ((Array.isArray(o) && o.length === 0) || o === "" || o === null || o === undefined) return { kind: "refused", code: "EMPTY", text };
+  return { kind: "ok", code: "OK", text };
+}
+function outcomeOfErr(e: unknown): Outcome {
+  if (REDIRECT(e)) return { kind: "redirect", code: "redirect", text: String((e as Any).digest) };
+  if ((e as Any)?.qcTimeout) return { kind: "timeout", code: "TIMEOUT", text: "" };
+  const err = e as Any;
+  return { kind: "throw", code: String(err?.name ?? "Error"), text: String(err?.digest ?? err?.message ?? e).slice(0, 200) };
+}
+/** เรียก action ใน request scope + คุกกี้ที่ action ตั้ง (jar หลังเรียก − ก่อนเรียก) */
+async function callAct(file: string, name: string, persona: Persona | null, args: unknown[], opts: { cookie?: string; timeoutMs?: number } = {}): Promise<{ o: Outcome; r: Any; set: { name: string; value: string }[] }> {
+  const mod = await modOf(file);
+  const fn = mod?.[name];
+  if (typeof fn !== "function") return { o: { kind: "missing", code: "MISSING", text: "" }, r: null, set: [] };
+  const cookie = [persona?.cookie ?? "", opts.cookie ?? ""].filter(Boolean).join("; ");
+  if (!nextWork?.workAsyncStorage || !nextWorkUnit?.workUnitAsyncStorage || !nextCookies?.RequestCookies) throw new Error("ไม่มี Next request scope");
+  const pathname = `/app/sys/${F.POS_A}/pos`;
+  const req = new Request(`http://qc.local${pathname}`, { headers: { ...(cookie ? { cookie } : {}), "user-agent": SUITE, "x-forwarded-for": "203.0.113.52" } });
+  const jar = new nextCookies.RequestCookies(req.headers);
+  const before = new Map<string, string>(jar.getAll().map((c: Any) => [String(c.name), String(c.value)]));
+  const workStore = { route: pathname, page: `${pathname}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+  const unit = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname, search: "" } };
+  let timer: NodeJS.Timeout | undefined;
+  const setOf = () => (jar.getAll() as Any[]).map((c) => ({ name: String(c.name), value: String(c.value) })).filter((c) => before.get(c.name) !== c.value);
+  try {
+    const r = await Promise.race([
+      nextWork.workAsyncStorage.run(workStore, () => nextWorkUnit.workUnitAsyncStorage.run(unit, async () => fn(...args))),
+      new Promise((_, rej) => (timer = setTimeout(() => rej(Object.assign(new Error("TIMEOUT"), { qcTimeout: true })), opts.timeoutMs ?? 30_000))),
+    ]);
+    return { o: outcomeOf(r), r, set: setOf() };
+  } catch (e) {
+    return { o: outcomeOfErr(e), r: null, set: setOf() };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+/** เรียกฟังก์ชันโมดูลตรง ๆ (ไม่ throw) */
+async function svc(mod: Any, name: string, ...args: unknown[]): Promise<Any> {
+  const fn = mod?.[name];
+  if (typeof fn !== "function") return { ok: false, code: "MISSING", message: `ไม่มี ${name}` };
+  try {
+    return await fn(...args);
+  } catch (e) {
+    return { ok: false, code: "THROW", message: (e as Error)?.message?.slice(0, 160) };
+  }
+}
+const short2 = (v: unknown, n = 70) => {
+  try {
+    return (typeof v === "string" ? v : JSON.stringify(v) ?? "").replace(/\s+/g, " ").slice(0, n);
+  } catch {
+    return String(v).slice(0, n);
+  }
+};
+const codeOf2 = (o: Outcome) => `${o.kind}/${o.code}`;
+const A_SYS = () => F.POS_A!;
+const ctxU2 = (unitId: string, deviceId?: string): Any => ({ tenantId: TA, systemId: A_SYS(), unitId, ...(deviceId ? { deviceId } : {}) });
+/** ยอดขายสุทธิต่อสาขาของร้าน A (PAID/REFUNDED · grand − refunded) */
+async function netOfUnit(unitId: string): Promise<number> {
+  const r = (await P.$queryRawUnsafe(`SELECT coalesce(sum("grandTotalSatang" - "refundedSatang"), 0)::int AS n FROM "PosSale" WHERE "tenantId" = $1 AND "unitId" = $2 AND "docType" = 'SALE' AND status IN ('PAID', 'REFUNDED')`, TA, unitId)) as Any[];
+  return Number(r[0]?.n ?? 0);
+}
+
+const approvalSvc = await tryImport("@/lib/modules/approval/service");
+const posApprovalMod = await tryImport("@/lib/modules/pos/pos-approval");
+const shiftMod = await tryImport("@/lib/modules/pos/shift");
+const deviceMod = await tryImport("@/lib/modules/pos/device");
+const staffPinMod = await tryImport("@/lib/modules/pos/staff-pin");
+const tableMod = await tryImport("@/lib/modules/restaurant/table");
+const menuMod = await tryImport("@/lib/modules/restaurant/menu");
+const channelMod = await tryImport("@/lib/modules/pos/channel");
+const catalogMod = await tryImport("@/lib/modules/pos/catalog");
+
+async function setup2(): Promise<void> {
+  const uA1 = F.A1!;
+  const uA2 = F.A2!;
+  const pos = A_SYS();
+  await step2("บุคคลใหม่", async () => {
+    const posKeys = Object.fromEntries([...(gen.permissionCatalog(ROOT) as Set<string>)].filter((k) => k.startsWith("pos.")).sort().map((k) => [k, true]));
+    await mkUser(TA, SLUG_A, "MANAGER_A2", "MANAGER", [uA2], {});
+    await mkUser(TA, SLUG_A, "MANAGER_ALL", "MANAGER", [uA1, uA2], {});
+    await mkUser(TA, SLUG_A, "CASHIER_A2", "STAFF", [uA2], { ...(PQC.cashierPermissions as Record<string, boolean>) });
+    await mkUser(TA, SLUG_A, "LEAD", "STAFF", [uA1], { "pos.sale.create": true, "pos.staff.manage": true });
+    await mkUser(TA, SLUG_A, "KEYS", "STAFF", [uA1], posKeys);
+    await mkUser(TA, SLUG_A, "SELLER", "STAFF", [uA1], { "pos.sale.create": true, "pos.sale.priceOverride": true, "pos.shift.operate": true });
+    await mkUser(TA, SLUG_A, "OPERATOR", "STAFF", [uA1], { "pos.sale.create": true, "pos.shift.operate": true });
+    await mkUser(TA, SLUG_A, "PAYROLL", "STAFF", [uA1], { "hr.payroll.read": true });
+    G.KEYS_N = String(Object.keys(posKeys).length);
+  });
+  await step2("สาขา A3 (ไม่ผูก POS)", async () => {
+    const u = await P.businessUnit.create({ data: { tenantId: TA, type: "SHOP", name: `P52 สาขา A3 ${RAND}`, slug: `p52-a3-${RAND}` } });
+    G.A3 = u.id;
+    SLUG_OF[u.id] = u.slug;
+  });
+  await step2("บิล A2 เพิ่ม", async () => {
+    G.SALE_A2b = await mkSale(TA, uA2, pos, SENT2.lineA2b, SENT2.recA2b, 271843);
+    G.SALE_X4 = await mkSale(TA, uA2, pos, SENT2.lineX4, SENT2.recX4, 33100);
+    G.LINE_A2 = String((await P.posSaleLine.findFirst({ where: { tenantId: TA, saleId: F.SALE_A2 }, select: { id: true } }))?.id ?? "");
+  });
+  await step2("เพดานส่วนลด", async () => {
+    const sys = await P.appSystem.findUnique({ where: { id: pos }, select: { settings: true } });
+    const cur = sys?.settings && typeof sys.settings === "object" ? (sys.settings as Any) : {};
+    await P.appSystem.update({ where: { id: pos }, data: { settings: { ...cur, pos: { ...(cur.pos ?? {}), discount: { maxBpByRole: { CASHIER: 1000, STAFF: 1000, MANAGER: 10000, OWNER: 10000 }, overrideRequiresPin: true } } } } });
+  });
+  await step2("PIN A1", async () => {
+    must2("PIN ผู้จัดการ", await svc(staffPinMod, "setStaffPin", ctxU2(uA1), actorOf2("OWNER"), { userId: PER.MANAGER!.userId, pin: PINS.MANAGER }));
+    must2("PIN เจ้าของ", await svc(staffPinMod, "setStaffPin", ctxU2(uA1), actorOf2("OWNER"), { userId: PER.OWNER!.userId, pin: PINS.OWNER }));
+    must2("PIN แคชเชียร์", await svc(staffPinMod, "setStaffPin", ctxU2(uA1), actorOf2("OWNER"), { userId: PER.CASHIER!.userId, pin: PINS.CASHIER }));
+  });
+  await step2("เครื่อง", async () => {
+    await P.tenant.update({ where: { id: TA }, data: { limits: { posDevices: 50 } } }); // เพดานเครื่องต่อสาขา (ปริยายต่ำ — D1 จับคู่เพิ่ม 2 เครื่อง)
+    const dA2 = must2("เครื่อง A2", await svc(deviceMod, "registerDevice", ctxU2(uA2), actorOf2("OWNER"), { name: SENT2.devA2, deviceCode: DEV.A2 }));
+    G.DEVICE_A2 = idOf(dA2);
+    must2("เครื่อง Y", await svc(deviceMod, "registerDevice", ctxU2(uA1), actorOf2("OWNER"), { name: `P52 Y ${RAND}`, deviceCode: DEV.Y }));
+    must2("เครื่อง Z", await svc(deviceMod, "registerDevice", ctxU2(uA1), actorOf2("OWNER"), { name: `P52 Z ${RAND}`, deviceCode: DEV.Z }));
+  });
+  await step2("กะ", async () => {
+    G.SHIFT_A2 = idOf(must2("กะ A2", await svc(shiftMod, "openShift", ctxU2(uA2, DEV.A2), actorOf2("OWNER"), { deviceId: DEV.A2, floatSatang: 0 })));
+    G.SHIFT_Z = idOf(must2("กะ Z (D3)", await svc(shiftMod, "openShift", ctxU2(uA1, DEV.Z), actorOf2("OWNER"), { deviceId: DEV.Z, floatSatang: 0 })));
+  });
+  await step2("โต๊ะ A2", async () => {
+    const z = must2("โซน A2", await svc(tableMod, "createZone", TA, uA2, `P52 โซน A2 ${RAND}`));
+    G.ZONE_A2 = idOf(z);
+    G.TABLE_A2 = idOf(must2("โต๊ะ A2", await svc(tableMod, "createTable", TA, uA2, { zoneId: G.ZONE_A2, name: SENT2.tableA2, seats: 4 })));
+  });
+  await step2("ออเดอร์ A2", async () => {
+    const chs = (await channelMod.ensureUnitChannels(P, { tenantId: TA, systemId: pos, unitId: uA2 })) as Any[];
+    const ch = chs.find((c) => c.adapter === "MANUAL") ?? chs[0];
+    const o = await P.posOrder.create({ data: { tenantId: TA, systemId: pos, unitId: uA2, channelId: ch.id, channelCode: ch.code, adapter: ch.adapter, code: `P52-${RAND.slice(0, 4)}`, idempotencyKey: `p52-${RAND}-ordA2`, status: "NEW", paymentState: "UNPAID", fulfilment: "PICKUP", customerName: SENT2.custA2, totalSatang: 13500 } });
+    G.ORDER_A2 = o.id;
+  });
+  await step2("intent + สลิป A2", async () => {
+    const id = `pi_${randomBytes(12).toString("base64url")}`;
+    await P.posPaymentIntent.create({ data: { id, tenantId: TA, unitId: uA2, systemId: pos, kind: "PROMPTPAY_STATIC", amountSatang: 4300, status: "PENDING", deviceId: DEV.A2, expiresAt: new Date(Date.now() + 15 * 60_000), idempotencyKey: `p52-${RAND}-piA2` } });
+    G.INTENT_A2 = id;
+    const sl = await P.posPaymentSlip.create({ data: { tenantId: TA, systemId: pos, unitId: uA2, intentId: id, note: SENT2.slipA2, amountSatang: 4300, idempotencyKey: `p52-${RAND}-slipA2`, createdByUserId: PER.CASHIER_A2?.userId ?? PER.OWNER!.userId, purgeAfter: new Date(Date.now() + 30 * DAY) } });
+    G.SLIP_A2 = sl.id;
+  });
+  await step2("บิลพัก A2", async () => {
+    for (const k of ["HC_X3", "HC_X4", "HC_F7"]) {
+      const h = await P.posHeldCart.create({ data: { tenantId: TA, unitId: uA2, systemId: pos, label: SENT2.heldA2, cartJson: { lines: [{ kind: "custom", name: SENT2.heldA2, qty: 1, unitPriceSatang: 20000 }] }, lineCount: 1, approxTotalSatang: 17000, heldByUserId: PER.CASHIER_A2?.userId ?? PER.OWNER!.userId } });
+      G[k] = h.id;
+    }
+  });
+  await step2("กติกา + คำขออนุมัติ A2", async () => {
+    for (const kind of ["POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER"]) await approvalSvc.createPolicy({ tenantId: TA }, { name: `P52 ${kind} A2 ${RAND}`, entityType: kind, unitId: uA2, steps: [{ order: 1, approverRole: "MANAGER" }] });
+    const sub = async (kind: string, ref: string, amount: number, payload: Record<string, unknown>): Promise<string> => {
+      const r = await posApprovalMod.submitPosApproval({ tenantId: TA, unitId: uA2, systemId: pos, kind, ref, entityIdOf: (n: number) => (n === 1 ? ref : `${ref}:${n}`), amountSatang: amount, requestedById: PER.CASHIER_A2!.userId, payload });
+      if (r?.status !== "REQUIRED") throw new Error(`submit ${kind} → ${short2(r, 60)}`);
+      return String(r.requestId);
+    };
+    G.RQ_X3_VOID = await sub("POS_VOID", F.SALE_A2!, 22200, { saleId: F.SALE_A2, reason: "P52 X3", idempotencyKey: `p52-${RAND}-x3void`, deviceId: DEV.A2, receiptNo: SENT.recA2, title: `ยกเลิกบิล ${SENT.recA2}` });
+    G.RQ_X3_DISC = await sub("POS_DISCOUNT_OVER", G.HC_X3!, 3000, { heldCartId: G.HC_X3, discountSatang: 3000, discountBp: 1500, title: "P52 X3 ส่วนลด" });
+    G.RQ_X4_VOID = await sub("POS_VOID", G.SALE_X4!, 33100, { saleId: G.SALE_X4, reason: "P52 X4", idempotencyKey: `p52-${RAND}-x4void`, deviceId: DEV.A2, receiptNo: SENT2.recX4, title: `ยกเลิกบิล ${SENT2.recX4}` });
+    G.RQ_X4_REFUND = await sub("POS_REFUND", `${G.SALE_A2b}:p52x4`, 271843, { saleId: G.SALE_A2b, lines: [], payMethods: [], reasonCode: "DAMAGED", reason: "P52 X4", title: "P52 X4 คืนเงิน" });
+    G.RQ_X4_DISC = await sub("POS_DISCOUNT_OVER", G.HC_X4!, 3000, { heldCartId: G.HC_X4, discountSatang: 3000, discountBp: 1500, title: "P52 X4 ส่วนลด" });
+    G.RQ_F7_DISC = await sub("POS_DISCOUNT_OVER", G.HC_F7!, 3000, { heldCartId: G.HC_F7, discountSatang: 3000, discountBp: 1500, title: "P52 F7 ส่วนลด" });
+  });
+  await step2("สินค้าร่วม + บริษัท", async () => {
+    const pr = await catalogMod.createProduct({ tenantId: TA, systemId: pos, actorUserId: PER.OWNER!.userId }, { name: `P52 สินค้าร่วม ${RAND}`, basePriceSatang: 5000 });
+    G.PROD = String(pr?.id ?? "");
+    G.PARTY = (await P.party.create({ data: { tenantId: TA, name: `P52 บริษัท ${RAND} จำกัด`, kind: "COMPANY" } })).id;
+  });
+  // D11 + F8: วัตถุร้านอาหารของ A1 (ผูก POS) และ A3 (ไม่ผูก)
+  for (const [tag2, u] of [["A1", uA1], ["A3", G.A3 ?? ""]] as const) {
+    if (!u) continue;
+    await step2(`ร้านอาหาร ${tag2}`, async () => {
+      // ORACLE-EDIT (oracle2 รอบ 1): ตัวสร้างของโมดูลเดิมบางตัวไม่คืน id (createStation = {ok}) ⇒ หา id จากชื่อใน DB ทุกตัว · โซนว่าง (ZONE2) ไว้ให้ archiveZone
+      const byName = async (model: string, name: string): Promise<string> => String((await P[model].findFirst({ where: { tenantId: TA, unitId: u, name }, select: { id: true } }))?.id ?? "");
+      const nm = (k: string) => `P52 ${k} ${tag2} ${RAND}`;
+      must2("โซน", await svc(tableMod, "createZone", TA, u, nm("โซน")));
+      G[`ZONE_${tag2}`] = await byName("restaurantZone", nm("โซน"));
+      must2("โซนว่าง", await svc(tableMod, "createZone", TA, u, nm("โซนว่าง")));
+      G[`ZONE2_${tag2}`] = await byName("restaurantZone", nm("โซนว่าง"));
+      must2("โต๊ะ", await svc(tableMod, "createTable", TA, u, { zoneId: G[`ZONE_${tag2}`], name: nm("โต๊ะ"), seats: 2 }));
+      G[`TABLE_${tag2}`] = await byName("restaurantTable", nm("โต๊ะ"));
+      must2("สถานี", await svc(menuMod, "createStation", TA, u, nm("สถานี")));
+      G[`STATION_${tag2}`] = await byName("kdsStation", nm("สถานี"));
+      must2("หมวด", await svc(menuMod, "createCategory", TA, u, { name: nm("หมวด") }, PER.OWNER!.userId));
+      G[`CAT_${tag2}`] = await byName("menuCategory", nm("หมวด"));
+      must2("กลุ่มตัวเลือก", await svc(menuMod, "createOptionGroup", TA, u, { name: nm("ตัวเลือก"), minSelect: 0, maxSelect: 1, choices: [{ name: "หวานน้อย", priceDelta: 0 }] }));
+      G[`OG_${tag2}`] = await byName("menuOptionGroup", nm("ตัวเลือก"));
+      if (!G[`ZONE_${tag2}`] || !G[`ZONE2_${tag2}`] || !G[`TABLE_${tag2}`] || !G[`STATION_${tag2}`] || !G[`CAT_${tag2}`] || !G[`OG_${tag2}`]) throw new Error(`id ไม่ครบ ${tag2}`);
+      G[`CHOICE_${tag2}`] = String((await P.menuOptionChoice.findFirst({ where: { tenantId: TA, groupId: G[`OG_${tag2}`] }, select: { id: true } }))?.id ?? "");
+      const it = await svc(menuMod, "createItem", TA, u, { categoryId: G[`CAT_${tag2}`], stationId: G[`STATION_${tag2}`], name: `P52 เมนู ${tag2} ${RAND}`, basePrice: 5000 }, PER.OWNER!.userId);
+      G[`ITEM_${tag2}`] = idOf(it) || String((await P.menuItem.findFirst({ where: { tenantId: TA, unitId: u, name: `P52 เมนู ${tag2} ${RAND}` }, select: { id: true } }))?.id ?? "");
+      if (!G[`ITEM_${tag2}`]) throw new Error(`เมนู ${tag2} → ${short2(it, 80)}`);
+    });
+  }
+  console.log(`  ชุดใหม่: A3 ${G.A3 ?? "-"} · บุคคล 8 (KEYS ${G.KEYS_N ?? "?"} คีย์) · A2: บิล 3 โต๊ะ ${G.TABLE_A2 ? "✓" : "✗"} ออเดอร์ ${G.ORDER_A2 ? "✓" : "✗"} กะ ${G.SHIFT_A2 ? "✓" : "✗"} บิลพัก ${G.HC_F7 ? 3 : 0} คำขอ ${["RQ_X3_VOID", "RQ_X3_DISC", "RQ_X4_VOID", "RQ_X4_REFUND", "RQ_X4_DISC", "RQ_F7_DISC"].filter((k) => G[k]).length}/6 เครื่อง ${G.DEVICE_A2 ? "✓" : "✗"} intent ${G.INTENT_A2 ? "✓" : "✗"} สลิป ${G.SLIP_A2 ? "✓" : "✗"} · fixture ล้ม ${FX2.length}`);
+}
+
+/** ชนิดของ id หลักจากชื่อ action (X3) */
+function idKindOf(name: string): string {
+  if (/Approval|Request/.test(name) && !/Refund/.test(name)) return "approval";
+  if (/Slip/.test(name)) return "slip";
+  if (/Intent|PromptPay|Beam|Card/.test(name)) return "intent";
+  if (/Held|Recall|Park|Hold/.test(name)) return "held";
+  if (/Device|Heartbeat|PrintAgent|Display/.test(name)) return "device";
+  if (/Shift|Cash|Recount|[xXzZ]Report|Drawer/.test(name)) return "shift";
+  if (/Order|Kds|Kitchen|Ticket/.test(name)) return "order";
+  if (/Table|Seat|Merge|Split|Move|Zone|Reservation|Session/.test(name)) return "table";
+  return "sale";
+}
+/** X3: อาร์กิวเมนต์ที่ไม่ว่าง (blind spot 3) — unitId ของผู้เรียก (หรือไม่ส่ง) + id ของวัตถุ A2 ทุกช่อง */
+function argsX3(row: MRow, unitId: string | undefined, n: number): Record<string, unknown> {
+  const name = row.surface.split("#")[1] ?? "";
+  const ids: Record<string, string> = { sale: F.SALE_A2!, table: G.TABLE_A2 ?? "", order: G.ORDER_A2 ?? "", shift: G.SHIFT_A2 ?? "", held: G.HC_X3 ?? "", approval: G.RQ_X3_VOID ?? "", device: G.DEVICE_A2 ?? "", intent: G.INTENT_A2 ?? "", slip: G.SLIP_A2 ?? "" };
+  const main = ids[idKindOf(name)] || F.SALE_A2!;
+  const key = `p52x3-${RAND}-${n}`;
+  const a = argsFor({ systemId: A_SYS(), unitId: unitId ?? "", saleId: F.SALE_A2! });
+  const line = { name: `P52 X3 ${RAND}`, qty: 1, unitPriceSatang: 100 };
+  Object.assign(a, {
+    unitId,
+    unitIds: unitId ? [unitId] : undefined,
+    id: main, ids: [main], saleId: F.SALE_A2, orderId: G.ORDER_A2, posOrderIds: [G.ORDER_A2], tableId: G.TABLE_A2, toTableId: G.TABLE_A2, shiftId: G.SHIFT_A2, heldCartId: G.HC_X3, requestId: G.RQ_X3_VOID, intentId: G.INTENT_A2, slipId: G.SLIP_A2, deviceId: DEV.A2,
+    productId: G.PROD, productIds: [G.PROD], idempotencyKey: key,
+    input: { id: main, saleId: F.SALE_A2, orderId: G.ORDER_A2, tableId: G.TABLE_A2, shiftId: G.SHIFT_A2, heldCartId: G.HC_X3, requestId: G.RQ_X3_VOID, intentId: G.INTENT_A2, slipId: G.SLIP_A2, deviceId: DEV.A2, reason: "P52", idempotencyKey: key },
+    cart: { lines: [line] },
+    sale: { lines: [line], payMethods: [{ type: "CASH", amountSatang: 100 }], idempotencyKey: key, expectedGrandTotalSatang: 100, cashReceivedSatang: 100, heldCartId: G.HC_X3 },
+    refund: { saleId: F.SALE_A2, lines: [{ lineId: G.LINE_A2, qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 22200 }], reasonCode: "DAMAGED", reason: "P52", idempotencyKey: key },
+    shift: { deviceId: DEV.A2, floatSatang: 0 },
+    close: { shiftId: G.SHIFT_A2, countedCashSatang: 0, idempotencyKey: key },
+    movement: { shiftId: G.SHIFT_A2, type: "PAY_OUT", amountSatang: 100, reason: "P52", idempotencyKey: key },
+    recount: { shiftId: G.SHIFT_A2, countedCashSatang: 0, reason: "P52" },
+    patch: { name: `P52 X3 ${RAND}` },
+  });
+  return a;
+}
+async function invokeX3(row: MRow, persona: Persona, unitId: string | undefined, n: number): Promise<Outcome> {
+  const [file, name] = row.surface.split("#") as [string, string];
+  const a = argsX3(row, unitId, n);
+  let args: unknown[];
+  if (row.call === "none") args = [];
+  else if (row.call === "pos") args = [A_SYS(), {}];
+  else if (row.call === "unit" || row.call === "form") {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(a)) if (typeof v === "string") fd.set(k, v);
+    args = row.call === "unit" ? [unitId ? (SLUG_OF[unitId] ?? "") : "", fd] : [fd];
+  } else args = [a];
+  return (await callAct(file, name, persona, args, { timeoutMs: 20_000 })).o;
+}
+
+async function runDb2(): Promise<void> {
+  await setup2();
+  const uA1 = F.A1!;
+  const uA2 = F.A2!;
+  const fxNote = () => (FX2.length ? ` · fixture ล้ม ${FX2.length}: ${FX2.slice(0, 2).join(" | ")}` : "");
+
+  // ── X3 (blind spots 1–5) ──
+  {
+    const rows = ACTIONS().filter((r) => r.unitScoped && r.roles.OTHER_UNIT === "deny");
+    const base = [SENT.recA2, SENT.lineA2, SENT2.recA2b, SENT2.lineA2b, SENT2.recX4, SENT2.lineX4, SENT2.custA2, SENT2.devA2, SENT2.tableA2, SENT2.heldA2, SENT2.slipA2];
+    const netA2 = await netOfUnit(uA2);
+    let netA1 = await netOfUnit(uA1);
+    const sentNow = () => [...base, ...aggSentinels(netA2), ...aggSentinels(netA1 + netA2)];
+    // ตัวควบคุมบวก: (ก) บุคคลใหม่เห็นบิล A1 · (ข) sentinel ยอดรวมโผล่ในรายงานของ A2 จริง (ผู้ที่ดู A2 ได้)
+    const bd = rowOf("src/lib/modules/pos/bills-actions.ts#billDetailAction");
+    const rp = rowOf("src/lib/modules/pos/report-actions.ts#posReportAction");
+    const pc: string[] = [];
+    let pcOk = !!bd && !!rp && FX2.length === 0;
+    for (const k of ["MANAGER", "KEYS"]) {
+      const o = bd ? await invoke(bd, PER[k]!, { systemId: A_SYS(), unitId: uA1, saleId: F.SALE_A1! }) : null;
+      const seen = !!o && o.kind === "ok" && o.text.includes(SENT.recA1);
+      pcOk &&= seen;
+      pc.push(`${k} บิล A1 ${seen ? "เห็น" : o?.code}`);
+    }
+    {
+      const r = rp ? await callAct(rp.surface.split("#")[0]!, "posReportAction", PER.MANAGER_A2!, [{ systemId: A_SYS(), unitId: uA2, kind: "daily", from: bkkToday(), to: bkkToday() }]) : null;
+      const hit = !!r && leaks(r.o.text, aggSentinels(netA2)).length > 0;
+      pcOk &&= hit;
+      pc.push(`รายงาน A2 (MANAGER[A2]) มียอด ${(netA2 / 100).toFixed(2)} ${hit ? "✓" : `✗ ${r ? codeOf2(r.o) : "-"}`}`);
+    }
+    const before = await fpRows(TA, uA2);
+    const bad: string[] = [];
+    const codes: Record<string, number> = {};
+    let n = 0;
+    const variants: [string, string, string | undefined][] = [["MANAGER", "A1", uA1], ["MANAGER", "∅", undefined], ["KEYS", "A1", uA1]];
+    for (const [pk, vtag, unitId] of variants) {
+      for (const r of rows) {
+        const o = await invokeX3(r, PER[pk]!, unitId, ++n);
+        codes[o.code] = (codes[o.code] ?? 0) + 1;
+        const lk = leaks(o.text, sentNow());
+        if (lk.length || o.kind === "timeout") bad.push(`${pk}/${vtag}:${tag(r)}=${codeOf2(o)}${lk.length ? ` รั่ว ${lk[0]!.slice(0, 24)}` : ""}`);
+        if (o.kind === "ok") netA1 = await netOfUnit(uA1);
+      }
+    }
+    // OutboxEvent/OpsEvent = งานเบื้องหลัง (drain ของบิล A2 เดิม — ไม่ใช่การเขียนของผู้เรียก · รอบ 1 พบ OutboxEvent ของ A2 ถูก drain แก้สถานะ จำนวนเท่าเดิม)
+    const diff = fpDiff(before, await fpRows(TA, uA2)).filter((d) => !/^(OutboxEvent|OpsEvent):/.test(d));
+    const top = Object.entries(codes).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c, k]) => `${c} ${k}`).join(" · ");
+    chk("X3", rows.length > 0 && pcOk && bad.length === 0 && diff.length === 0, "บวกผ่าน · ไม่เห็น A2 · แถว A2 ไม่เปลี่ยน", `${rows.length} แถว × 3 แบบ = ${n} ครั้ง · บวก: ${pc.join(" · ")} · รั่ว/ค้าง ${bad.length}${bad.length ? `: ${bad.slice(0, 8).join(" · ")}` : ""} · แถว A2 เปลี่ยน ${diff.length ? diff.slice(0, 5).join(", ") : "0"} · ผล: ${top}${fxNote()}`);
+  }
+
+  // ── X4 (F1 HIGH) ──
+  {
+    const p: string[] = [];
+    const ids = [G.RQ_X4_VOID, G.RQ_X4_REFUND, G.RQ_X4_DISC].filter(Boolean) as string[];
+    const m = (k: string) => ({ ...actorOf2(k) });
+    const pendA1 = (await approvalSvc.listPending({ tenantId: TA }, m("MANAGER")).catch(() => null)) as Any[] | null;
+    const pendA2 = (await approvalSvc.listPending({ tenantId: TA }, m("MANAGER_A2")).catch(() => null)) as Any[] | null;
+    const seenA1 = (pendA1 ?? []).filter((r) => ids.includes(r.id)).length;
+    const seenA2 = (pendA2 ?? []).filter((r) => ids.includes(r.id)).length;
+    if (ids.length !== 3) p.push(`fixture คำขอ ${ids.length}/3`);
+    if (seenA1 !== 0) p.push(`listPending MANAGER[A1] เห็นคำขอ A2 ${seenA1}/3`);
+    if (seenA2 !== ids.length) p.push(`ตัวควบคุมบวก MANAGER[A2] เห็น ${seenA2}/${ids.length}`);
+    const fd1 = new FormData();
+    fd1.set("requestId", G.RQ_X4_VOID ?? "");
+    fd1.set("decision", "APPROVED");
+    const d1 = await callAct("src/lib/modules/approval/actions.ts", "decideAction", PER.MANAGER!, [fd1]);
+    if (d1.r?.ok === true) p.push("decideAction(APPROVED) ของ MANAGER[A1] = ok");
+    const fd2 = new FormData();
+    for (const id of [G.RQ_X4_REFUND, G.RQ_X4_DISC]) fd2.append("requestIds", id ?? "");
+    fd2.set("decision", "REJECTED");
+    fd2.set("note", "P52 X4");
+    const d2 = await callAct("src/lib/modules/approval/actions.ts", "bulkDecideAction", PER.MANAGER!, [{ status: "idle" }, fd2]);
+    if (Number(d2.r?.done ?? 0) > 0) p.push(`bulkDecideAction(REJECTED) ของ MANAGER[A1] done ${d2.r?.done}`);
+    await sleep(300);
+    const st = (await P.approvalRequest.findMany({ where: { tenantId: TA, id: { in: ids } }, select: { id: true, status: true } })) as Any[];
+    const notPending = st.filter((r) => r.status !== "PENDING").map((r) => `${r.id === G.RQ_X4_VOID ? "VOID" : r.id === G.RQ_X4_REFUND ? "REFUND" : "DISC"}=${r.status}`);
+    if (notPending.length) p.push(`คำขอ A2 เปลี่ยน: ${notPending.join(",")}`);
+    const sale = await P.posSale.findUnique({ where: { id: G.SALE_X4 ?? "none" }, select: { status: true } });
+    if (sale?.status !== "PAID") p.push(`บิล A2 ${SENT2.recX4} = ${sale?.status ?? "?"}`);
+    // ตัวควบคุมบวกทางเขียน: MANAGER[A2] ปฏิเสธคำขอคืนเงินของ A2 ได้ (ทำหลังสุด — เฉพาะเมื่อยัง PENDING)
+    let pos2 = "ข้าม";
+    if (!notPending.some((x) => x.startsWith("REFUND"))) {
+      const fd3 = new FormData();
+      fd3.append("requestIds", G.RQ_X4_REFUND ?? "");
+      fd3.set("decision", "REJECTED");
+      fd3.set("note", "P52 X4 บวก");
+      const d3 = await callAct("src/lib/modules/approval/actions.ts", "bulkDecideAction", PER.MANAGER_A2!, [{ status: "idle" }, fd3]);
+      pos2 = `done ${d3.r?.done ?? codeOf2(d3.o)}`;
+      if (Number(d3.r?.done ?? 0) !== 1) p.push(`ตัวควบคุมบวก MANAGER[A2] ปฏิเสธ → ${pos2}`);
+    }
+    chk("X4", p.length === 0, "A1 ไม่เห็น/ตัดสินคำขอ A2 ไม่ได้ · PENDING · บิล PAID · บวกผ่าน", `${p.join(" · ") || "ครบ"} · decide ${codeOf2(d1.o)} ${short2(d1.r, 50)} · bulk ${short2(d2.r, 50)} · บวก A2 ${pos2}${fxNote()}`);
+  }
+
+  // ── X4b (ORACLE-EDIT CD-P52-O3-2 · R1 F2): ผู้ตัดสินเสียสิทธิ์สาขาหลังอนุมัติ → ยึดส่วนลดที่อนุมัติไม่ได้ (มติ 5: เหมือน "ไม่ได้อนุมัติ") ──
+  {
+    const p: string[] = [];
+    const regMod = await tryImport("@/lib/modules/pos/register");
+    const consMod = await tryImport("@/lib/modules/pos/pos-approval-consumer");
+    // ผู้ขาย A2 ที่ตั้งราคาเองได้ (บรรทัดกำหนดเอง) — แคชเชียร์ A2 ไม่มี pos.sale.priceOverride (รอบแรก = PERMISSION_DENIED ก่อนถึงส่วนลด)
+    if (!PER.SELLER_A2) await step2("ผู้ขาย A2 (X4b)", async () => mkUser(TA, SLUG_A, "SELLER_A2", "STAFF", [uA2], { "pos.sale.create": true, "pos.sale.priceOverride": true, "pos.shift.operate": true }));
+    let n = 0;
+    const input = (heldCartId?: string) => ({
+      lines: [{ name: `P52 X4b ${RAND}`, qty: 1, unitPriceSatang: 20000 }], billDiscount: { type: "PERCENT", value: 1500 }, idempotencyKey: `p52-${RAND}-x4b-${++n}`,
+      expectedGrandTotalSatang: 17000, payMethods: [{ type: "CASH", amountSatang: 17000 }], cashReceivedSatang: 17000, ...(heldCartId ? { heldCartId } : {}),
+    });
+    const sellX = async (held?: string) => {
+      const inp = input(held);
+      const c0 = await P.posSale.count({ where: { tenantId: TA, unitId: uA2 } });
+      const r = await svc(regMod, "submitRegisterSale", ctxU2(uA2, DEV.A2), actorOf2("SELLER_A2"), inp);
+      const c1 = await P.posSale.count({ where: { tenantId: TA, unitId: uA2 } });
+      return { r, saleId: String(r?.saleId ?? ""), newBills: c1 - c0 };
+    };
+    const a = await sellX();
+    const rq = a.r?.code === "APPROVAL_REQUIRED" && typeof a.r.requestId === "string" ? a.r.requestId : "";
+    const held = rq && typeof a.r.heldCartId === "string" ? a.r.heldCartId : "";
+    if (!rq || !held) p.push(`ขออนุมัติ 15% → ${a.r?.ok === true ? "ok" : a.r?.code} ${short2(a.r?.message ?? "", 50)}`);
+    const mgr = PER.MANAGER_A2;
+    const d = rq && mgr ? await svc(approvalSvc, "decide", actorOf2("MANAGER_A2"), { tenantId: TA }, rq, { decision: "APPROVED", note: "P52 X4b" }) : null;
+    if (rq && d?.ok !== true) p.push(`MANAGER[A2] อนุมัติ → ${short2(d, 60)}`);
+    // ตัวรับคิว (ชั้นที่ผูกบิลพัก) เรียกตรง — event จริงถูกเล่นซ้ำได้ (idempotent)
+    if (rq && typeof consMod?.onPosApprovalDecided === "function") {
+      await consMod.onPosApprovalDecided({ id: `p52-x4b-${RAND}`, tenantId: TA, type: "approval.request.approved", payload: { requestId: rq, entityType: "POS_DISCOUNT_OVER" }, systemId: A_SYS(), unitId: uA2 });
+    } else if (rq) p.push("ไม่มี onPosApprovalDecided");
+    const armed = held ? await P.posHeldCart.findUnique({ where: { id: held }, select: { approvedRequestId: true } }) : null;
+    if (rq && armed?.approvedRequestId !== rq) p.push(`บิลพักไม่ผูกคำขอ (${armed?.approvedRequestId ?? "null"})`);
+    const mem = mgr ? await P.membership.findFirst({ where: { tenantId: TA, userId: mgr.userId }, select: { id: true, unitAccess: true } }) : null;
+    let neg = "ข้าม";
+    let pos2 = "ข้าม";
+    if (rq && held && mem && armed?.approvedRequestId === rq) {
+      try {
+        await P.membership.update({ where: { id: mem.id }, data: { unitAccess: [uA1] } }); // ย้ายผู้ตัดสินไปสาขา A1 หลังอนุมัติ
+        const x = await sellX(held);
+        neg = x.r?.ok === true ? `ok บิล ${x.saleId ? "มี" : "?"}` : String(x.r?.code);
+        if (x.r?.code !== "DISCOUNT_EXCEEDS_LIMIT") p.push(`ผู้ตัดสินเสียสิทธิ์ → ${neg} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
+        if (x.saleId || x.newBills !== 0) p.push(`มีบิลจากส่วนลดของผู้ตัดสินที่เสียสิทธิ์ (+${x.newBills})`);
+      } finally {
+        await P.membership.update({ where: { id: mem.id }, data: { unitAccess: mem.unitAccess } });
+      }
+      // ตัวควบคุมบวก: ผู้ตัดสินยังมีสิทธิ์ (คืนสาขา A2) → คำขอเดิมใช้ได้ via approved
+      const ok = await sellX(held);
+      const au = ok.saleId ? ((await P.auditLog.findMany({ where: { tenantId: TA, action: "pos.discount.override", targetId: ok.saleId }, select: { actorId: true, after: true } })) as Any[]) : [];
+      pos2 = ok.r?.ok === true ? `ok ฿${(Number(ok.r.grandTotalSatang ?? 0) / 100).toFixed(0)} audit ${au.length}` : String(ok.r?.code);
+      if (ok.r?.ok !== true || ok.r.grandTotalSatang !== 17000) p.push(`ตัวควบคุมบวก → ${pos2} ${short2(ok.r?.message ?? "", 50)}`);
+      else if (au.length !== 1 || au[0].actorId !== mgr!.userId || au[0].after?.requestId !== rq || au[0].after?.via !== "approval") p.push(`audit override ${au.length} ${short2(au[0]?.after, 80)}`);
+    } else if (!mem) p.push("ไม่มี Membership ของ MANAGER[A2]");
+    chk("X4b", p.length === 0, "เสียสิทธิ์ = DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · คืนสิทธิ์ = ผ่าน via approved", `${p.join(" · ") || "ครบ"} · เสียสิทธิ์ → ${neg} · บวก → ${pos2}${fxNote()}`);
+  }
+
+  // ── F7 ข้ามสาขา: PIN ผู้จัดการ A1 + heldCartId ของ A2 ──
+  {
+    const p: string[] = [];
+    const sale = (key: string, heldCartId: string | null) => ({
+      lines: [{ name: `P52 F7 ${RAND}`, qty: 1, unitPriceSatang: 20000 }], billDiscount: { type: "PERCENT", value: 1500 }, idempotencyKey: key, expectedGrandTotalSatang: 17000,
+      payMethods: [{ type: "CASH", amountSatang: 17000 }], cashReceivedSatang: 17000, managerPin: PINS.MANAGER, managerUserId: PER.MANAGER!.userId, ...(heldCartId ? { heldCartId } : {}),
+    });
+    const sell = (key: string, held: string | null) => callAct("src/lib/modules/pos/register-actions.ts", "submitRegisterSaleAction", PER.SELLER!, [{ systemId: A_SYS(), unitId: uA1, deviceId: DEV.F7, sale: sale(key, held) }]);
+    let pc = await sell(`p52-${RAND}-f7pc`, null);
+    if (pc.r?.code === "SHIFT_REQUIRED") {
+      await svc(shiftMod, "openShift", ctxU2(uA1, DEV.F7), actorOf2("SELLER"), { deviceId: DEV.F7, floatSatang: 0 });
+      pc = await sell(`p52-${RAND}-f7pc2`, null);
+    }
+    if (pc.r?.ok !== true) p.push(`ตัวควบคุมบวก (PIN ไม่มี heldCartId) → ${codeOf2(pc.o)} ${short2(pc.r?.message ?? "", 60)}`);
+    const before = await P.approvalRequest.findUnique({ where: { id: G.RQ_F7_DISC ?? "none" }, select: { status: true } });
+    const x = await sell(`p52-${RAND}-f7x`, G.HC_F7 ?? "none");
+    await sleep(200);
+    const after = await P.approvalRequest.findUnique({ where: { id: G.RQ_F7_DISC ?? "none" }, select: { status: true } });
+    if (before?.status !== "PENDING") p.push(`fixture คำขอ A2 = ${before?.status ?? "?"}`);
+    if (after?.status !== "PENDING") p.push(`คำขอ POS_DISCOUNT_OVER ของ A2 → ${after?.status}`);
+    const reached = x.r?.ok === true || ["APPROVAL_MISMATCH", "NOT_FOUND", "PERMISSION_DENIED", "HELD_CART_NOT_FOUND"].includes(String(x.r?.code));
+    if (!reached) p.push(`ไม่ถึงทาง PIN (${codeOf2(x.o)})`);
+    chk("F7", p.length === 0, "คำขอ A2 ยัง PENDING · บวกผ่าน", `${p.join(" · ") || "ครบ"} · บวก ${pc.r?.ok === true ? "ok" : codeOf2(pc.o)} · ขาย A1 + heldCartId A2 → ${x.r?.ok === true ? "ok" : codeOf2(x.o)} · คำขอ A2 ${before?.status}→${after?.status}${fxNote()}`);
+  }
+
+  // ── X5 (F2 ลำดับชั้น PIN) ──
+  {
+    const p: string[] = [];
+    const pinRow = async (userId: string) => P.posStaffPin.findUnique({ where: { unitId_userId: { unitId: uA1, userId } }, select: { pinHash: true, failedCount: true, lockedUntil: true } });
+    const lock = async (userId: string) => P.posStaffPin.updateMany({ where: { tenantId: TA, unitId: uA1, userId }, data: { failedCount: 5, lockedUntil: new Date(Date.now() + 3600_000) } });
+    const T = { systemId: A_SYS(), unitId: uA1 };
+    const setPin = (actor: string, target: string, pin: string) => callAct("src/lib/modules/pos/staff-pin-actions.ts", "setStaffPinAction", PER[actor]!, [{ ...T, userId: PER[target]!.userId, pin }]);
+    const unlock = (actor: string, target: string) => callAct("src/lib/modules/pos/staff-pin-actions.ts", "unlockStaffPinAction", PER[actor]!, [{ ...T, userId: PER[target]!.userId }]);
+    const denied = (r: Any) => r?.ok === false && /PERMISSION_DENIED|NO_PERMISSION|FORBIDDEN/.test(String(r?.code));
+    const out: string[] = [];
+    for (const [actor, target, pin] of [["MANAGER", "OWNER", PINS.X5OWNER], ["LEAD", "MANAGER", PINS.X5MGR]] as const) {
+      const b = await pinRow(PER[target]!.userId);
+      const r = await setPin(actor, target, pin);
+      const a = await pinRow(PER[target]!.userId);
+      if (!denied(r.r)) p.push(`${actor} ตั้ง PIN ${target} → ${codeOf2(r.o)}`);
+      if (b?.pinHash !== a?.pinHash) p.push(`PIN ของ ${target} เปลี่ยน`);
+      await lock(PER[target]!.userId);
+      const u = await unlock(actor, target);
+      const a2 = await pinRow(PER[target]!.userId);
+      if (!denied(u.r)) p.push(`${actor} ปลดล็อก ${target} → ${codeOf2(u.o)}`);
+      if (!a2?.lockedUntil || Number(a2.failedCount) !== 5) p.push(`ล็อกของ ${target} ถูกล้าง`);
+      out.push(`${actor}→${target}: ตั้ง ${r.r?.ok === true ? "ok" : r.r?.code} · ปลด ${u.r?.ok === true ? "ok" : u.r?.code}`);
+      await P.posStaffPin.updateMany({ where: { tenantId: TA, unitId: uA1, userId: PER[target]!.userId }, data: { failedCount: 0, lockedUntil: null } });
+    }
+    // ตัวควบคุมบวก: ผู้จัดการ/หัวหน้ากะตั้ง PIN แคชเชียร์ (บทบาทไม่สูงกว่า) ได้
+    const okM = await setPin("MANAGER", "CASHIER", PINS.X5OK);
+    const okL = await setPin("LEAD", "CASHIER", PINS.X5LEAD);
+    if (okM.r?.ok !== true) p.push(`บวก MANAGER→CASHIER ${codeOf2(okM.o)}`);
+    if (okL.r?.ok !== true) p.push(`บวก LEAD→CASHIER ${codeOf2(okL.o)}`);
+    chk("X5", p.length === 0, "สูงกว่า = PERMISSION_DENIED · PIN/ล็อกเดิม · บวกผ่าน", `${p.join(" · ") || "ครบ"} · ${out.join(" · ")} · บวก ${okM.r?.ok === true ? "ok" : okM.r?.code}/${okL.r?.ok === true ? "ok" : okL.r?.code}${fxNote()}`);
+  }
+
+  // ── H6b (แถว cond: ผู้จัดการสาขาเดียว) ──
+  {
+    const p: string[] = [];
+    const sys = async () => JSON.stringify((await P.appSystem.findUnique({ where: { id: A_SYS() }, select: { settings: true } }))?.settings ?? null);
+    const credit = async () => Number(await P.posCreditAccount.count({ where: { tenantId: TA, partyId: G.PARTY ?? "none" } }).catch(() => -1));
+    const W: [string, string, Record<string, unknown>][] = [
+      ["src/lib/modules/pos/settings-actions.ts", "updatePosGeneralSettingsAction", { systemId: A_SYS(), patch: { heldCartExpireDays: 9 } }],
+      ["src/lib/modules/pos/settings-actions.ts", "updatePosDiscountCapsAction", { systemId: A_SYS(), patch: { STAFF: 1200 } }],
+      ["src/lib/modules/pos/settings-actions.ts", "updatePosStaffSettingsAction", { systemId: A_SYS(), patch: { clockOnShift: "ASK" } }],
+      ["src/lib/modules/pos/offline-actions.ts", "updatePosOfflineEnabledAction", { systemId: A_SYS(), enabled: true }],
+      ["src/lib/pos-integrations-actions.ts", "setPosAccountLinkAction", { systemId: A_SYS(), enabled: true }],
+      ["src/lib/modules/pos/receipt-settings-actions.ts", "updatePosReceiptSettingsAction", { systemId: A_SYS(), patch: { footer: `P52 H6b ${RAND}` } }],
+      ["src/lib/modules/pos/credit-actions.ts", "saveCreditAccountAction", { systemId: A_SYS(), partyId: G.PARTY, limitSatang: 500000, termDays: 30 }],
+      ["src/lib/modules/pos/tip-ledger-actions.ts", "posTipLedgersAction", { systemId: A_SYS() }],
+    ];
+    const s0 = await sys();
+    const c0 = await credit();
+    const out: string[] = [];
+    for (const [f, n, a] of W) {
+      const r = await callAct(f, n, PER.MANAGER!, [a]);
+      const ok = r.o.kind === "ok";
+      if (ok) p.push(`${n} ✗ ok`);
+      out.push(`${n.replace(/Action$/, "")} ${ok ? "ok" : r.o.code}`);
+    }
+    const s1 = await sys();
+    const c1 = await credit();
+    if (s0 !== s1) p.push("settings ของ POS เปลี่ยน");
+    if (c0 !== c1) p.push(`บัญชีเครดิต ${c0}→${c1}`);
+    // ตัวควบคุมบวก: MANAGER ครบทุกสาขา (A1+A2) เขียนได้ · OWNER อ่านสมุดทิปได้
+    const pos: string[] = [];
+    for (const [f, n, a] of [W[0]!, W[1]!, W[5]!, W[6]!]) {
+      const r = await callAct(f, n, PER.MANAGER_ALL!, [a]);
+      if (r.o.kind !== "ok") p.push(`บวก MANAGER_ALL ${n} → ${codeOf2(r.o)} ${short2(r.r?.message ?? "", 50)}`);
+      pos.push(`${n.replace(/Action$/, "").replace(/^updatePos|^save/, "")} ${r.o.kind === "ok" ? "ok" : r.o.code}`);
+    }
+    const tip = await callAct(W[7]![0], W[7]![1], PER.OWNER!, [W[7]![2]]);
+    if (tip.o.kind !== "ok") p.push(`บวก OWNER สมุดทิป → ${codeOf2(tip.o)}`);
+    chk("H6b", p.length === 0, "MANAGER สาขาเดียว ปฏิเสธทั้ง 8 · ค่าเดิม · บวกผ่าน", `${p.join(" · ") || "ครบ"} · MANAGER[A1]: ${out.join(" · ")} · MANAGER_ALL: ${pos.join(" · ")} · OWNER ทิป ${tip.o.kind === "ok" ? "ok" : tip.o.code}${fxNote()}`);
+  }
+
+  // ── F9 unitPriceMatrixAction ต้องมีคีย์ POS ──
+  {
+    const f = "src/lib/modules/pos/catalog-price-actions.ts";
+    const a = { systemId: A_SYS(), productIds: [G.PROD ?? "none"] };
+    const np = await callAct(f, "unitPriceMatrixAction", PER.NOPERM!, [a]);
+    const cs = await callAct(f, "unitPriceMatrixAction", PER.CASHIER!, [a]);
+    const ok = !!G.PROD && np.o.kind !== "ok" && DENY_CODE.test(np.o.code) && cs.o.kind === "ok";
+    chk("F9", ok, "ไม่มีคีย์ POS = ปฏิเสธ · แคชเชียร์ = ok", `STAFF_NOPERM → ${codeOf2(np.o)}${np.o.kind === "ok" ? ` (${short2(np.r?.cells?.length ?? "", 6)} ช่อง)` : ""} · CASHIER → ${codeOf2(cs.o)}${fxNote()}`);
+  }
+
+  // ── K3 คีย์กลาง × เครื่องมือ AI ของ POS ──
+  {
+    const route = await tryImport("@/app/api/v1/ai/tools/[name]/route");
+    const post = async (raw: string, name: string) => {
+      if (typeof route?.POST !== "function") return { status: 0, text: "ROUTE_MISSING" };
+      try {
+        const res: Response = await route.POST(new Request(`http://x/api/v1/ai/tools/${name}`, { method: "POST", headers: { authorization: `Bearer ${raw}`, "content-type": "application/json" }, body: JSON.stringify({ args: {} }) }), { params: Promise.resolve({ name }) });
+        return { status: res.status, text: await res.text() };
+      } catch (e) {
+        return { status: -1, text: (e as Error).message.slice(0, 120) };
+      }
+    };
+    const general = await akSvc.createApiKey({ tenantId: TA }, `QC P5.2 general ${RAND}`, {});
+    keyIds.push(general.id);
+    const read = await akSvc.createApiKey({ tenantId: TA }, `QC P5.2 pos-read ${RAND}`, { scopes: scopesMod.expandBundles(["pos-read"]), systemId: A_SYS() });
+    keyIds.push(read.id);
+    const g1 = await post(general.rawKey, "sales_summary");
+    const g2 = await post(general.rawKey, "sales_by_day");
+    // ตัวควบคุมบวก: คีย์กลางเดียวกัน × เครื่องมืออ่านนอก POS (list_systems) = 200 — route/คีย์ใช้ได้จริงใน harness · pos-read × sales_summary = ข้อมูลประกอบ (ไม่ตัดสิน: ทางที่คีย์ POS ใช้เครื่องมือ = งานของรอบแก้)
+    const ctl = await post(general.rawKey, "list_systems");
+    const r1 = await post(read.rawKey, "sales_summary");
+    const sentA2 = aggSentinels(await netOfUnit(uA2));
+    const lk = leaks(g1.text + g2.text, [...sentA2, SENT.recA2]);
+    const ok = g1.status === 403 && g2.status === 403 && ctl.status === 200 && lk.length === 0;
+    chk("K3", ok, "คีย์กลาง × POS 403 ×2 · คีย์กลาง × list_systems 200", `คีย์กลาง sales_summary ${g1.status} · sales_by_day ${g2.status}${lk.length ? ` · ยอด A2 ในผล ${lk.length}` : ""} · บวก list_systems ${ctl.status}${ctl.status !== 200 ? ` ${ctl.text.slice(0, 60)}` : ""} · (ข้อมูล) pos-read sales_summary ${r1.status}`);
+  }
+
+  // ── D1–D3 ตัวตนเครื่อง (§10.4 D1c) ──
+  const pair: Record<string, { name: string; value: string } | null> = {};
+  let pairRefusedKey = false;
+  {
+    const p: string[] = [];
+    const f = "src/lib/modules/pos/device-actions.ts";
+    const cash = await callAct(f, "registerDeviceAction", PER.CASHIER!, [{ systemId: A_SYS(), unitId: uA1, name: `P52 แคชเชียร์ ${RAND}`, deviceCode: `P52A1CASH${RAND}` }]);
+    if (cash.o.kind === "ok" || cash.set.length) p.push(`แคชเชียร์จับคู่ได้ (${codeOf2(cash.o)} · คุกกี้ ${cash.set.length})`);
+    const out: string[] = [];
+    for (const code of [DEV.P2, DEV.P3]) {
+      const r = await callAct(f, "registerDeviceAction", PER.OWNER!, [{ systemId: A_SYS(), unitId: uA1, name: `P52 จับคู่ ${(code === DEV.P2 ? "P2" : "P3")}`, deviceCode: code }]);
+      const ck = r.set.find((c) => !/shark_session|shark_tenant/.test(c.name)) ?? null;
+      const row = await P.posDevice.findFirst({ where: { tenantId: TA, unitId: uA1, deviceCode: code }, select: { id: true } });
+      if (r.o.kind === "ok") {
+        const signed = !!ck && ck.value !== code && ck.value.length >= code.length + 16;
+        if (!signed) p.push(`OWNER จับคู่ ${(code === DEV.P2 ? "P2" : "P3")} ok แต่ ${ck ? `คุกกี้ ${ck.name} ไม่ลงนาม (ยาว ${ck.value.length})` : "ไม่มีคุกกี้เครื่อง"}`);
+        pair[code] = signed ? ck : null;
+        out.push(`${(code === DEV.P2 ? "P2" : "P3")} ok คุกกี้ ${ck ? `${ck.name}(${ck.value.length})` : "-"}`);
+      } else {
+        const keyUnset = !/PERMISSION|NOT_FOUND|VALIDATION|UNKNOWN|INTERNAL|DEVICE_LIMIT|DEVICE_REVOKED/.test(r.o.code) && !row; // DEVICE_LIMIT = fixture (ORACLE-EDIT รอบ 1)
+        if (!keyUnset) p.push(`OWNER จับคู่ ${(code === DEV.P2 ? "P2" : "P3")} → ${codeOf2(r.o)} (แถว ${row ? "มี" : "ไม่มี"})`);
+        pairRefusedKey ||= keyUnset;
+        pair[code] = null;
+        out.push(`${(code === DEV.P2 ? "P2" : "P3")} ปฏิเสธ ${r.o.code}`);
+      }
+    }
+    const files = ["src/lib/modules/pos/device.ts", "src/lib/modules/pos/device-actions.ts", "src/lib/modules/pos/device-id.ts", "src/lib/modules/pos/shift.ts", "src/lib/modules/pos/shift-actions.ts", ...readdirSync(join(ROOT, "src/lib/modules/pos")).filter((n) => /device/i.test(n) && /\.ts$/.test(n)).map((n) => `src/lib/modules/pos/${n}`)];
+    const credKey = [...new Set(files)].filter((x) => /CHAT_CREDENTIALS_KEY|POS_CREDENTIALS_KEY/.test(stripComments(rd(x))));
+    if (credKey.length) p.push(`ใช้กุญแจ creds: ${credKey.join(", ")}`);
+    chk("D1", p.length === 0, "แคชเชียร์ปฏิเสธ · OWNER ได้คุกกี้ลงนาม (หรือปฏิเสธเพราะไม่ตั้งกุญแจ) · ไม่ใช้กุญแจ creds", `${p.join(" · ") || "ครบ"} · แคชเชียร์ ${codeOf2(cash.o)} · OWNER: ${out.join(" · ")}`);
+  }
+  {
+    const p: string[] = [];
+    const f = "src/lib/modules/pos/shift-actions.ts";
+    const open = (cookie: string | undefined, dev: string) => callAct(f, "openShiftAction", PER.OPERATOR!, [{ systemId: A_SYS(), unitId: uA1, deviceId: dev, shift: { deviceId: dev, floatSatang: 0 } }], { cookie });
+    const forged = await open(undefined, DEV.Y);
+    if (!judgeNotBound(forged.r, DEV.Y)) p.push(`อ้างเครื่อง Y จาก client → เปิดกะได้ (${String(forged.r?.shift?.id ?? "").slice(-6)})`);
+    const ck = pair[DEV.P2];
+    let pos = pairRefusedKey ? "ข้าม (กุญแจไม่ตั้ง)" : "ไม่มีคุกกี้";
+    if (ck) {
+      const bad = `${ck.value.slice(0, -1)}${ck.value.endsWith("A") ? "B" : "A"}`;
+      const tam = await open(`${ck.name}=${bad}`, DEV.P2);
+      if (!judgeNotBound(tam.r, DEV.P2)) p.push("คุกกี้ที่ถูกแก้ → เปิดกะได้");
+      const good = await open(`${ck.name}=${ck.value}`, DEV.P2);
+      pos = good.r?.ok === true ? `ok ${String(good.r?.shift?.deviceId ?? "") === DEV.P2 ? "ผูก P2" : "ผูกผิด"}` : codeOf2(good.o);
+      if (!(good.r?.ok === true && String(good.r?.shift?.deviceId ?? "") === DEV.P2)) p.push(`บวก (คุกกี้จริง) → ${pos}`);
+    } else if (!pairRefusedKey) p.push("ไม่มีคุกกี้จาก D1 — ตัวควบคุมบวกไม่ได้รัน");
+    chk("D2", p.length === 0, "อ้างจาก client/คุกกี้ปลอม = ไม่ผูก · คุกกี้จริง = เปิดได้", `${p.join(" · ") || "ครบ"} · อ้าง Y → ${forged.r?.ok === true ? `ok (เครื่อง ${String(forged.r?.shift?.deviceId ?? "").slice(-6)})` : codeOf2(forged.o)} · บวก ${pos}`);
+  }
+  {
+    const p: string[] = [];
+    const f = "src/lib/modules/pos/shift-actions.ts";
+    const xr = (cookie: string | undefined, dev: string, shiftId: string) => callAct(f, "xReportAction", PER.OPERATOR!, [{ systemId: A_SYS(), unitId: uA1, deviceId: dev, shiftId }], { cookie });
+    const forged = await xr(undefined, DEV.Z, G.SHIFT_Z ?? "none");
+    if (!G.SHIFT_Z) p.push("fixture กะ Z ไม่มี");
+    if (forged.r?.ok === true) p.push("อ้างเครื่องของกะ Z จาก client → อ่าน X ได้");
+    const ck = pair[DEV.P3];
+    let pos = pairRefusedKey ? "ข้าม (กุญแจไม่ตั้ง)" : "ไม่มีคุกกี้";
+    if (ck) {
+      const sh = await svc(shiftMod, "openShift", ctxU2(uA1, DEV.P3), actorOf2("OWNER"), { deviceId: DEV.P3, floatSatang: 0 });
+      const good = await xr(`${ck.name}=${ck.value}`, DEV.P3, idOf(sh));
+      pos = good.r?.ok === true ? "ok" : codeOf2(good.o);
+      if (good.r?.ok !== true) p.push(`บวก (คุกกี้เครื่องของกะ) → ${pos}`);
+    } else if (!pairRefusedKey) p.push("ไม่มีคุกกี้จาก D1 — ตัวควบคุมบวกไม่ได้รัน");
+    chk("D3", p.length === 0, "อ้างจาก client = PERMISSION_DENIED · คุกกี้จริง = ok", `${p.join(" · ") || "ครบ"} · อ้าง Z → ${forged.r?.ok === true ? "ok" : codeOf2(forged.o)} · บวก ${pos}${fxNote()}`);
+  }
+
+  // ── D11 ตัวเขียนเดิมบนสาขาที่ผูก POS ──
+  {
+    const RT = /^(Restaurant|Menu|Kds|Kitchen|PosProduct|PosCategory|PosOption|TableSession)/;
+    const fpR = async (u: string) => Object.fromEntries(Object.entries(await fpRows(TA, u)).filter(([k]) => RT.test(k)));
+    const formOf = (extra: Record<string, string>) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(extra)) fd.set(k, v);
+      return fd;
+    };
+    const plan = (t2: string): [string, Record<string, string> | null][] => [
+      ["updateSettingAction", { serviceChargePct: "7" }],
+      ["kitchenPauseAction", { paused: "true", note: "P52" }],
+      ["createStationAction", { name: `P52 D11 สถานี ${t2} ${RAND}` }],
+      ["createCategoryAction", { name: `P52 D11 หมวด ${t2} ${RAND}` }],
+      ["archiveCategoryAction", { id: G[`CAT_${t2}`] ?? "" }],
+      ["createOptionGroupAction", { name: `P52 D11 ตัวเลือก ${t2} ${RAND}`, choices: "พิเศษ|10" }],
+      ["archiveOptionGroupAction", { id: G[`OG_${t2}`] ?? "" }],
+      ["setChoiceStockAction", { id: G[`CHOICE_${t2}`] ?? "", out: "true" }],
+      ["setItemStockAction", { id: G[`ITEM_${t2}`] ?? "", isOutOfStock: "true" }],
+      ["archiveItemAction", { id: G[`ITEM_${t2}`] ?? "" }],
+      ["resetDailyStockAction", null],
+      ["createZoneAction", { name: `P52 D11 โซน ${t2} ${RAND}` }],
+      ["archiveZoneAction", { id: G[`ZONE2_${t2}`] ?? "" }],
+      ["createTableAction", { zoneId: G[`ZONE_${t2}`] ?? "", name: `P52 D11 โต๊ะ ${t2} ${RAND}` }],
+      ["archiveTableAction", { id: G[`TABLE_${t2}`] ?? "" }],
+    ];
+    const f = "src/lib/actions/restaurant.ts";
+    const before = await fpR(uA1);
+    const notLinked: string[] = [];
+    for (const [n, form] of plan("A1")) {
+      const r = await callAct(f, n, PER.OWNER!, form ? [SLUG_OF[uA1], formOf(form)] : [SLUG_OF[uA1]]);
+      if (!judgeLinked(r.o)) notLinked.push(`${n.replace(/Action$/, "")}=${r.o.kind === "redirect" ? r.o.text.replace(/^NEXT_REDIRECT;\w+;/, "").slice(0, 40) : r.o.code}`);
+    }
+    const diff = fpDiff(before, await fpR(uA1));
+    // ตัวควบคุมบวก (A3 ไม่ผูก POS): ทุกตัวเขียนได้จริง (แถวเปลี่ยน) — ทำย้อนลำดับไม่ได้ (archive ก่อน create ไม่มีผล) จึงนับรายตัว
+    const posDone: string[] = [];
+    const posNone: string[] = [];
+    if (G.A3) {
+      for (const [n, form] of plan("A3")) {
+        const b = await fpR(G.A3);
+        const r = await callAct(f, n, PER.OWNER!, form ? [SLUG_OF[G.A3], formOf(form)] : [SLUG_OF[G.A3]]);
+        const d = fpDiff(b, await fpR(G.A3));
+        (d.length && r.o.kind !== "throw" ? posDone : posNone).push(`${n.replace(/Action$/, "")}${d.length ? "" : `(${codeOf2(r.o)})`}`);
+      }
+    }
+    const ok = notLinked.length === 0 && diff.length === 0 && posDone.length >= 12;
+    chk("D11", ok, "15/15 POS_LINKED · A1 ไม่เปลี่ยน · A3 เขียนได้ ≥ 12/15", `ไม่ POS_LINKED ${notLinked.length}/15${notLinked.length ? `: ${notLinked.slice(0, 8).join(" · ")}` : ""} · แถว A1 เปลี่ยน ${diff.length ? diff.slice(0, 5).join(", ") : "0"} · บวก A3 เขียนได้ ${posDone.length}/15${posNone.length ? ` (ไม่เปลี่ยน: ${posNone.join(", ")})` : ""}${fxNote()}`);
+  }
+
+  // ── F8 ประตูเดิม QR โต๊ะ ──
+  {
+    const page = await tryImport("@/app/(store)/s/[tenantSlug]/[unitSlug]/restaurant/t/[qrToken]/page");
+    const call = async (qrToken: string): Promise<Outcome> => {
+      if (typeof page?.default !== "function") return { kind: "missing", code: "MISSING", text: "" };
+      try {
+        const r = await inScope("", `/s/${SLUG_A}/${SLUG_OF[uA1]}/restaurant/t/${qrToken}`, async () => page.default({ params: Promise.resolve({ tenantSlug: SLUG_A, unitSlug: SLUG_OF[uA1], qrToken }) }));
+        return { kind: "ok", code: "RENDER", text: short2(r, 80) };
+      } catch (e) {
+        return outcomeOfErr(e);
+      }
+    };
+    const real = String((await P.restaurantTable.findFirst({ where: { tenantId: TA, unitId: uA1, id: G.TABLE_A1 ?? "none" }, select: { qrToken: true } }))?.qrToken ?? "");
+    const unknown = `qr_${randomBytes(16).toString("base64url")}`;
+    const sess0 = Number(await P.tableSession.count({ where: { tenantId: TA, unitId: uA1 } }).catch(() => -1));
+    // หน้าเดิมเปิดเฉพาะสาขาชนิด RESTAURANT (resolvePublicUnit) — สลับชนิด A1 ชั่วคราวในข้อนี้ แล้วคืน SHOP (ORACLE-EDIT รอบ 1)
+    await P.businessUnit.update({ where: { id: uA1 }, data: { type: "RESTAURANT" } });
+    let u: Outcome;
+    let rr: Outcome;
+    try {
+      u = await call(unknown);
+      rr = real ? await call(real) : ({ kind: "missing", code: "NO_TABLE", text: "" } as Outcome);
+    } finally {
+      await P.businessUnit.update({ where: { id: uA1 }, data: { type: "SHOP" } });
+    }
+    const sess1 = Number(await P.tableSession.count({ where: { tenantId: TA, unitId: uA1 } }).catch(() => -1));
+    const to = (o: Outcome, t: string) => o.kind === "redirect" && o.text.includes(`/q/t/${encodeURIComponent(t)}`);
+    const ok = to(u, unknown) && to(rr, real) && sess0 === sess1 && sess0 >= 0;
+    chk("F8", ok, "ไม่มี → redirect /q/t · จริง → redirect · ไม่มี session ใหม่", `โทเคนไม่มี → ${u.kind === "redirect" ? u.text.replace(/^NEXT_REDIRECT;\w+;/, "").slice(0, 50) : `${codeOf2(u)} ${u.text.slice(0, 50)}`} · จริง → ${rr.kind === "redirect" ? "redirect /q/t" : codeOf2(rr)} · TableSession A1 ${sess0}→${sess1}${fxNote()}`);
+  }
+
+  // ── คลัง (F4 รอเจ้าของ · F10b) ──
+  const invSvc = await tryImport("@/lib/modules/inventory/service");
+  const aiIns = await tryImport("@/lib/modules/pos/ai-insights");
+  const invOk = await step2("คลัง ผูก A1+A2", async () => {
+    G.INV = (await sysSvc.createSystem(TA, "INVENTORY", `คลัง P52 ${RAND}`)).id;
+    await sysSvc.linkUnit(TA, G.INV, uA1);
+    await sysSvc.linkUnit(TA, G.INV, uA2);
+    const ic = { tenantId: TA, systemId: G.INV, actorUserId: PER.OWNER!.userId };
+    G.INV_SHARED = (await invSvc.createItem(ic, { sku: `P52-S-${RAND}`, name: SENT2.invShared, unitLabel: "ชิ้น", costSatang: 1000 })).id;
+    G.INV_A2 = (await invSvc.createItem(ic, { sku: `P52-A2-${RAND}`, name: SENT2.invA2, unitLabel: "ชิ้น", costSatang: 1000 })).id;
+    await P.invItem.update({ where: { id: G.INV_A2 }, data: { reorderPoint: 5 } });
+    const n = await P.posProduct.updateMany({ where: { tenantId: TA, systemId: A_SYS(), invItemId: G.INV_A2 }, data: { unitId: uA2 } });
+    if (!n.count) throw new Error("ไม่มีแถว PosProduct ของสินค้าคลัง A2");
+    G.PROD_INV_SHARED = String((await P.posProduct.findFirst({ where: { tenantId: TA, systemId: A_SYS(), invItemId: G.INV_SHARED }, select: { id: true } }))?.id ?? "");
+    if (!G.PROD_INV_SHARED) throw new Error("ไม่มีแถว PosProduct ของสินค้าคลังร่วม");
+  });
+  {
+    const p: string[] = [];
+    const prodRow = async () => JSON.stringify(await P.posProduct.findUnique({ where: { id: G.PROD_INV_SHARED ?? "none" }, select: { name: true, archivedAt: true, basePriceSatang: true } }));
+    const b = invOk ? await prodRow() : "";
+    const fd = new FormData();
+    for (const [k, v] of Object.entries({ systemId: G.INV ?? "", itemId: G.INV_SHARED ?? "", name: `P52 แก้โดย A1 ${RAND}`, sku: `P52-S-${RAND}`, unitLabel: "ชิ้น" })) fd.set(k, v);
+    const r = invOk ? await callAct("src/lib/modules/inventory/actions.ts", "updateItemAction", PER.MANAGER!, [fd]) : null;
+    const a = invOk ? await prodRow() : "";
+    if (!invOk) p.push("fixture คลังล้ม");
+    else if (b !== a) p.push(`แถว PosProduct ร่วมเปลี่ยน (${short2(a, 60)})`);
+    chk("F4", p.length === 0, "แถวร่วมไม่เปลี่ยน", `${p.join(" · ") || "ครบ"} · MANAGER[A1] updateItemAction → ${r ? codeOf2(r.o) : "-"}`);
+  }
+  {
+    const p: string[] = [];
+    const ctx = { tenantId: TA, systemId: A_SYS() };
+    const risksM = invOk ? await svc(aiIns, "posStockRisks", ctx, actorOf2("MANAGER")) : null;
+    const sugM = invOk ? await svc(aiIns, "purchaseSuggestions", ctx, actorOf2("MANAGER")) : null;
+    const risksO = invOk ? await svc(aiIns, "posStockRisks", ctx, actorOf2("OWNER")) : null;
+    const tM = short2(risksM, 4000) + short2(sugM, 4000);
+    if (!invOk) p.push("fixture คลังล้ม");
+    if (leaks(tM, [SENT2.invA2]).length) p.push("MANAGER[A1] เห็นสินค้าเฉพาะ A2");
+    if (!leaks(short2(risksO, 4000), [SENT2.invA2]).length) p.push(`ตัวควบคุมบวก OWNER ไม่เห็น (${short2(risksO, 60)})`);
+    chk("F10b", p.length === 0, "MANAGER[A1] ไม่เห็นสินค้าเฉพาะ A2 · OWNER เห็น", `${p.join(" · ") || "ครบ"} · ใกล้หมด MANAGER ${Array.isArray(risksM) ? risksM.length : short2(risksM, 30)} รายการ · ข้อเสนอ ${sugM?.ok === true ? (sugM.suggestions?.length ?? 0) : short2(sugM?.code, 20)}`);
+  }
+
+  // ── F11 (รอเจ้าของ W38) ──
+  {
+    const r = await callAct("src/lib/modules/pos/settings-actions.ts", "updatePosStaffCommissionAction", PER.PAYROLL!, [{ systemId: A_SYS(), patch: { enabled: true } }]);
+    chk("F11", r.o.kind !== "ok", "ปฏิเสธ (คีย์อ่าน hr.payroll.read เขียนเงินไม่ได้)", `PAYROLL → ${codeOf2(r.o)} ${short2(r.r?.message ?? "", 50)}`);
+  }
+}
+
 // ═════════════════════════ 7. ลบร้านชั่วคราว ═════════════════════════
 type WipeReport = { tables: number; left: Record<string, number>; tenantLeft: number; err: string };
 async function wipeTenant(tid: string, slug: string): Promise<WipeReport> {
@@ -1076,6 +1938,7 @@ const qcBefore = await fpQc(QC_TIDS);
 try {
   runStatic();
   await runDb();
+  await runDb2(); // ORACLE-EDIT (P5.2 oracle2)
 } catch (e) {
   crashed = (e as Error)?.stack?.split("\n").slice(0, 4).join(" | ") ?? String(e);
   console.log(`💥 harness: ${crashed}`);
@@ -1106,10 +1969,12 @@ const qcAfter = await fpQc(QC_TIDS);
 const qcDrift = fpDiff(qcBefore, qcAfter);
 chk("Z2", qcDrift.length === 0 && !Object.values(qcBefore).some((v) => v.startsWith("err")), "ลายนิ้วมือ coffee/resto เท่าเดิม", qcDrift.length ? `ต่าง ${qcDrift.join(", ")}` : `เท่าเดิม (${Object.entries(qcAfter).map(([k, v]) => `${k}=${v.split(":")[0]}`).join(" ")})`);
 for (const [id] of CHECKS) if (!results.has(id)) chk(id, false, "ถูกตรวจ", crashed ? `ไม่ถึง (harness ล้ม: ${crashed.slice(0, 100)})` : "ไม่ถึง");
-const failed = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id);
+// ORACLE-EDIT (P5.2 oracle2): ข้อรอเจ้าของ (F4 W37 · F11 W38) ไม่นับใน failed/exit — พิมพ์ใน pendingOwner
+const { failed, pending: pendingOwner } = splitPending([...results.entries()]);
+const gated = results.size - pendingOwner.length;
 if (bgErrors) console.log(`  ⚠️  unhandledRejection ${bgErrors} ครั้ง (งานเบื้องหลังของ action ที่ยิงด้วยอาร์กิวเมนต์ปลอม)`);
 if (guardHits.length) console.log(`  ⚠️  ตัวกั้นเครือข่ายถูกเรียก ${guardHits.length} ครั้ง: ${[...new Set(guardHits)].join(", ")}`);
-console.log(`\n===== ${SUITE} ===== ผ่าน ${results.size - failed.length}/${results.size} · ตาราง ${ROWS.length} แถว · ฐาน ${PIN}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, total: results.size, passed: results.size - failed.length, failed, skipped: false, forced: FORCE, pin: PIN, lanePin: LANE_PIN, matrixRows: ROWS.length, guardHits: guardHits.length, residue: tempLeft.length + tenantLeft })}`);
+console.log(`\n===== ${SUITE} ===== ผ่าน ${gated - failed.length}/${gated} · รอเจ้าของ ${pendingOwner.map((x) => `${x.id} ${x.ok ? "เขียว" : "แดง"}`).join(" · ") || "-"} · ตาราง ${ROWS.length} แถว · ฐาน ${PIN}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, total: gated, passed: gated - failed.length, failed, pendingOwner, skipped: false, forced: FORCE, pin: PIN, lanePin: LANE_PIN, matrixRows: ROWS.length, guardHits: guardHits.length, residue: tempLeft.length + tenantLeft })}`);
 await P.$disconnect?.().catch?.(() => {});
 process.exit(failed.length ? 1 : 0);

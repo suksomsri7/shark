@@ -9,13 +9,14 @@ import { apiJson, authenticateApiRequest, keyNotGeneralResponse } from "@/lib/ap
 import { runTool, toolRegistry } from "@/lib/ai/tools";
 import { skillOfTool, toolAllowedForApiKey } from "@/lib/ai/skills";
 import { accountToolScope } from "@/lib/ai/account-ops";
+import { posToolScope } from "@/lib/modules/pos/api/tools"; // POS P5.2 ▸ fix C ◂
 import { prisma } from "@/lib/core/db";
 import { crmApi } from "@/lib/modules/crm";
 import { aiApiKeyActor } from "@/lib/ai/actor";
 import { toolVerdict } from "@/lib/ai/tool-access";
 import { newConversationId } from "@/lib/ai/conversation-owner";
 import { findVisibleConversation } from "@/lib/ai/conversations";
-import { generalToolGate } from "../../general-key-gate";
+import { generalToolGate, posToolNeedsPosKey } from "../../general-key-gate";
 
 const HEADER_SYSTEM = "x-shark-system";
 
@@ -38,6 +39,17 @@ export async function POST(
     name === "crm_create_lead" && (await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get(HEADER_SYSTEM)?.trim() ?? null));
   // POS P2.13 ▸ ด่านคีย์กลาง (HF-APIV1) มาก่อนด่าน scope — เครื่องมือนอก 4 โมดูล (รวมเครื่องมือขายของ POS ที่ผูก scope แล้ว · มติ 7)
   //   ตอบคีย์ของโมดูลด้วย 403 key_not_general เหมือนเดิม · เครื่องมือของ 4 โมดูลผ่านด่านนี้เสมอ (ลำดับไม่เปลี่ยนผลของโมดูล) ◂
+  // POS P5.2 ▸ fix C (K3 · CD-P52-O2-2): เครื่องมือของ POS + คีย์ที่ไม่มี scope (คีย์กลาง) = 403 — ต้องใช้คีย์ของระบบ POS ที่มีสิทธิ์ของเครื่องมือนั้น ◂
+  if (posToolNeedsPosKey(name, auth)) {
+    return apiJson(
+      {
+        error: "เครื่องมือของระบบขายหน้าร้าน (POS) ใช้กับคีย์กลางไม่ได้ — สร้างคีย์ API ของระบบ POS ที่มีสิทธิ์ของเครื่องมือนี้",
+        hint: `ต้องการสิทธิ์ ${posToolScope(name) ?? "ของระบบ POS"}`,
+        code: "pos_scope_required",
+      },
+      403,
+    );
+  }
   if (!generalToolGate(name, auth)) return keyNotGeneralResponse();
   if (!toolAllowedForApiKey(name, auth.scopes, { crmLegacyLead })) {
     return apiJson(
