@@ -59,8 +59,10 @@ const CHECKS: readonly Def[] = [
   // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10 · R1 ของชุด C F1–F9): MA12c MA12d MA12e MA12f MA13b MA14b ◂
   D("MA12c", "RC-F1", "HIGH", "C", "[RC F1 F2 · CD-P51-O10] สมาชิกระดับลด 10% · NO_SHOW ⇒ บิลริบเต็ม 50,000 (ไม่มีส่วนลดระดับ · memberAttachOnly) · มัดจำ 0 USED · แต้ม +0 · ยอดสะสมเท่าเดิม · ไม่มีไทม์ไลน์ PURCHASE ของบิลริบ (R1: PAYMENT_MISMATCH ไม่ริบ / สมาชิกได้แต้ม+ยอดสะสม)"),
   D("MA12d", "RC-F3", "MED", "C", "[RC F3 · CD-P51-O10] void บิลริบ → มัดจำกลับ OPEN → NO_SHOW อีกครั้ง ⇒ บิลริบใบใหม่ PAID (คีย์ -r1) · มัดจำ 0 USED (R1: ได้บิล VOIDED เดิมกลับ · มัดจำ OPEN)"),
-  D("MA12e", "RC-F4", "MED", "C", "[RC F4 · CD-P51-O10] NO_SHOW → CONFIRMED ⇒ บิลริบ VOIDED อัตโนมัติ · มัดจำ OPEN 50,000 · แล้ว DONE (setStatusAction) = แถว DEPOSIT 50,000 + CASH 150,000 · Σ บิลรายได้ของนัด = ราคา 200,000 (R1: บิลริบยัง PAID · DONE คิดเงินสด 200,000)"),
+  D("MA12e", "RC-F4", "MED", "C", "[RC F4 F10 · CD-P51-O10/O10b] NO_SHOW → CONFIRMED (setStatusAction) ⇒ บิลริบ VOIDED อัตโนมัติ + audit pos.sale.void 1 แถว (ผู้กด · เหตุผล \"นัดออกจาก NO_SHOW\" · source booking) · มัดจำ OPEN 50,000 · แล้ว DONE (setStatusAction) = แถว DEPOSIT 50,000 + CASH 150,000 · Σ บิลรายได้ของนัด = ราคา 200,000 (R1: บิลริบยัง PAID · DONE คิดเงินสด 200,000)"),
   D("MA12f", "RC-F5", "MED", "C", "[RC F5 · CD-P51-O10] ริบไม่สำเร็จ (บังคับกะช่องทางอื่น · ไม่มีกะเปิด) ทาง setStatusAction ⇒ จอจองแสดงเหตุผล (redirect ?err=) + OpsEvent WARN pos.deposit.forfeit_failed · มัดจำยัง OPEN (R1: เงียบ · ไม่มี log)"),
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10b · R1 รอบ 2 F10): MA12g ◂
+  D("MA12g", "RC-F10", "MED", "C", "[RC F10 · CD-P51-O10b] ริบที่หน้าขายก่อน (บิล POS) → NO_SHOW → CONFIRMED ⇒ ปฏิเสธการเปลี่ยนสถานะ (ข้อความ \"ริบที่เคาน์เตอร์แล้ว\" + เลขบิล) · นัดยัง NO_SHOW · บิลริบยัง PAID · มัดจำ USED (R1: void บิลของผู้จัดการเงียบ ๆ)"),
   D("MA13b", "RC-F1", "HIGH", "C", "[RC F1 F2 · CD-P51-O10] หน้าขาย ริบมัดจำของสมาชิกระดับลด 10% (ผู้จัดการ) ⇒ ok · บิลริบเต็ม 50,000 · แต้ม +0 · ยอดสะสมเท่าเดิม · ไม่มีไทม์ไลน์ PURCHASE (R1: INTERNAL PAYMENT_MISMATCH)"),
   D("MA14b", "RC-F8", "LOW", "C", "[RC F8b · CD-P51-O10] ใบรับโมดูลในกะ + แถวรับแบบเดิม DEPOSIT (ก่อน O9) ⇒ รายงานกะ = สรุปวัน = reportPayments: TRANSFER 50,000 · DEPOSIT 0 (R1: กะ/รายงานวิธีชำระนับเป็น DEPOSIT)"),
   D("MA11", "F11", "LOW", "D", "[F11] ตัวรับ pos.sale.paid ของบิลเดียวกันทำงานพร้อมกันจาก 2 โปรเซส (×3 บิล) → ไม่มีโปรเซสใดโยน (P2002 ของคีย์ JV = ลงแล้ว) · JV PAID 1 ต่อบิล"),
@@ -80,7 +82,7 @@ const R1_IDS = ["P5.1-MA2b", "P5.1-MA4b"];
 /** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8/O9 · fix batch C): ข้อของ R1 ชุด B F3 (ริบมัดจำ) + F4 (วิธีรับของใบรับโมดูล) ◂ */
 const C_IDS = ["P5.1-MA12", "P5.1-MA12b", "P5.1-MA13", "P5.1-MA14"];
 /** ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10 · R1 ของชุด C) ◂ */
-const C2_IDS = ["P5.1-MA12c", "P5.1-MA12d", "P5.1-MA12e", "P5.1-MA12f", "P5.1-MA13b", "P5.1-MA14b"];
+const C2_IDS = ["P5.1-MA12c", "P5.1-MA12d", "P5.1-MA12e", "P5.1-MA12f", "P5.1-MA12g", "P5.1-MA13b", "P5.1-MA14b"]; // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10b): + MA12g ◂
 
 if (LIST) {
   console.log(`${SUITE} · PIN ${PIN} · LANE_PIN ${LANE_PIN} · ${CHECKS.length} ข้อ`);
@@ -202,13 +204,19 @@ const V = {
     return { ok, expected: "บิลแรก VOIDED · มัดจำกลับ OPEN · NO_SHOW อีกครั้ง = บิลริบใบใหม่ PAID · มัดจำ 0 USED", actual: `บิลแรก ${x.firstVoided ? "VOIDED" : "ไม่ VOIDED"} · หลัง void ${x.restored ? "OPEN" : "ไม่ OPEN"} · ริบอีก ${x.newBill ? "ใบใหม่" : "ใบเดิม/ไม่มี"} ${x.newStatus ?? "-"} · มัดจำ ${x.left} ${x.depStatus ?? "-"}` };
   },
   /** RC F4 — ออกจาก NO_SHOW: บิลริบ VOIDED · มัดจำ OPEN · DONE ใช้มัดจำ + เงินสด = ราคา */
-  MA12e(x: { statusOk: boolean; forfeitStatus: string | null; leftAfter: number; depStatusAfter: string | null; donePays: string[]; revenue: number; price: number; deposit: number }): Verdict {
-    const ok = x.statusOk && x.forfeitStatus === "VOIDED" && x.leftAfter === x.deposit && x.depStatusAfter === "OPEN" && x.donePays.slice().sort().join(",") === [`CASH:${x.price - x.deposit}`, `DEPOSIT:${x.deposit}`].sort().join(",") && x.revenue === x.price;
+  // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10b · F10a): + audit ของการ void (ไม่ส่ง = ไม่ตัดสิน · self-test เดิม) ◂
+  MA12e(x: { statusOk: boolean; forfeitStatus: string | null; leftAfter: number; depStatusAfter: string | null; donePays: string[]; revenue: number; price: number; deposit: number; voidAudit?: string }): Verdict {
+    const ok = (x.voidAudit === undefined || x.voidAudit === "1:actor:นัดออกจาก NO_SHOW:booking") && x.statusOk && x.forfeitStatus === "VOIDED" && x.leftAfter === x.deposit && x.depStatusAfter === "OPEN" && x.donePays.slice().sort().join(",") === [`CASH:${x.price - x.deposit}`, `DEPOSIT:${x.deposit}`].sort().join(",") && x.revenue === x.price;
     return {
       ok,
       expected: `CONFIRMED ok · บิลริบ VOIDED · มัดจำ OPEN ${x.deposit} · DONE = DEPOSIT:${x.deposit} + CASH:${x.price - x.deposit} · Σ บิลรายได้ ${x.price}`,
-      actual: `CONFIRMED ${x.statusOk ? "ok" : "ไม่สำเร็จ"} · บิลริบ ${x.forfeitStatus ?? "-"} · มัดจำ ${x.depStatusAfter ?? "-"} ${x.leftAfter} · DONE [${x.donePays.join(",")}] · Σ บิลรายได้ ${x.revenue}`,
+      actual: `CONFIRMED ${x.statusOk ? "ok" : "ไม่สำเร็จ"} · บิลริบ ${x.forfeitStatus ?? "-"} · มัดจำ ${x.depStatusAfter ?? "-"} ${x.leftAfter} · DONE [${x.donePays.join(",")}] · Σ บิลรายได้ ${x.revenue}${x.voidAudit === undefined ? "" : ` · audit void ${x.voidAudit}`}`,
     };
+  },
+  /** RC F10b — บิลริบของหน้าขาย (POS) ไม่ถูก void อัตโนมัติ: ปฏิเสธการเปลี่ยนสถานะ */
+  MA12g(x: { regForfeit: string; refused: boolean; message: string; apptStatus: string | null; billStatus: string | null; depStatus: string | null }): Verdict {
+    const ok = x.regForfeit === "ok" && x.refused && x.message.includes("ริบที่เคาน์เตอร์แล้ว") && x.apptStatus === "NO_SHOW" && x.billStatus === "PAID" && x.depStatus === "USED";
+    return { ok, expected: "ริบหน้าขาย ok · CONFIRMED ถูกปฏิเสธ (\"ริบที่เคาน์เตอร์แล้ว\") · นัด NO_SHOW · บิลริบ PAID · มัดจำ USED", actual: `ริบหน้าขาย ${x.regForfeit} · CONFIRMED ${x.refused ? `ปฏิเสธ "${x.message.slice(0, 80)}"` : "ผ่าน"} · นัด ${x.apptStatus ?? "-"} · บิลริบ ${x.billStatus ?? "-"} · มัดจำ ${x.depStatus ?? "-"}` };
   },
   /** RC F5 — ริบล้ม: จอแสดงเหตุผล + OpsEvent WARN · มัดจำ OPEN */
   MA12f(x: { redirectErr: boolean; ops: number; depStatus: string | null; left: number; deposit: number }): Verdict {
@@ -334,6 +342,10 @@ const SELF_SAMPLES: Record<string, [() => Verdict, () => Verdict]> = {
     () => V.MA12e({ statusOk: true, forfeitStatus: "VOIDED", leftAfter: 50_000, depStatusAfter: "OPEN", donePays: ["DEPOSIT:50000", "CASH:150000"], revenue: 200_000, price: 200_000, deposit: 50_000 }),
     () => V.MA12e({ statusOk: true, forfeitStatus: "PAID", leftAfter: 0, depStatusAfter: "USED", donePays: ["CASH:200000"], revenue: 250_000, price: 200_000, deposit: 50_000 }),
   ],
+  MA12g: [
+    () => V.MA12g({ regForfeit: "ok", refused: true, message: "บิลริบมัดจำ #202610-0009 ริบที่เคาน์เตอร์แล้ว — ให้ผู้จัดการยกเลิกบิลที่ POS ก่อน", apptStatus: "NO_SHOW", billStatus: "PAID", depStatus: "USED" }),
+    () => V.MA12g({ regForfeit: "ok", refused: false, message: "", apptStatus: "CONFIRMED", billStatus: "VOIDED", depStatus: "OPEN" }),
+  ], // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10b) ◂
   MA12f: [() => V.MA12f({ redirectErr: true, ops: 1, depStatus: "OPEN", left: 50_000, deposit: 50_000 }), () => V.MA12f({ redirectErr: false, ops: 0, depStatus: "OPEN", left: 50_000, deposit: 50_000 })],
   MA14b: [
     () => V.MA14b({ bound: true, shift: { t: 50_000, d: 0 }, day: { t: 50_000, d: 0 }, rpt: { t: 50_000, d: 0 }, deposit: 50_000 }),
@@ -386,7 +398,7 @@ function runRegistry(): string[] {
   if (MA_IDS.length !== 11) p.push(`ข้อ MA ${MA_IDS.length} (คาด 11)`);
   for (const r of R1_IDS) if (!CHECKS.some((c) => c.id === r && /^R1-F\d$/.test(c.finding) && c.batch === "B")) p.push(`ไม่มี ${r} (CD-P51-O7)`); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O7) ◂
   for (const r of C_IDS) if (!CHECKS.some((c) => c.id === r && /^R1-F[34]$/.test(c.finding) && c.batch === "C")) p.push(`ไม่มี ${r} (CD-P51-O8/O9)`); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O8/O9) ◂
-  for (const r of C2_IDS) if (!CHECKS.some((c) => c.id === r && /^RC-F\d$/.test(c.finding) && c.batch === "C")) p.push(`ไม่มี ${r} (CD-P51-O10)`); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10) ◂
+  for (const r of C2_IDS) if (!CHECKS.some((c) => c.id === r && /^RC-F\d+$/.test(c.finding) && c.batch === "C")) p.push(`ไม่มี ${r} (CD-P51-O10)`); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10) ◂
   return p;
 }
 
@@ -1281,8 +1293,10 @@ async function runDb(): Promise<void> {
     await call(bookingMod, "setAppointmentStatus", T, U.B, ap.id, "NO_SHOW");
     await pump();
     const b1: Any = (await forfeitBillsOf(R))[0] ?? null;
-    const rc = await call(bookingMod, "setAppointmentStatus", T, U.B, ap.id, "CONFIRMED");
+    const rc = await setStatusVia(ap.id, "CONFIRMED"); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10b · F10a): ผ่านปุ่มจริง ⇒ ผู้กดลง audit ของ void ◂
     const row = await P.appointment.findUnique({ where: { id: ap.id } });
+    const va = b1 ? ((await P.auditLog.findMany({ where: { tenantId: T, action: "pos.sale.void", targetId: b1.id } }).catch(() => [])) as Any[]) : [];
+    const voidAudit = `${va.length}:${va[0]?.actorId === uid("OWNER") ? "actor" : String(va[0]?.actorId ?? "-")}:${String((va[0]?.after as Any)?.reason ?? "-")}:${String((va[0]?.after as Any)?.source ?? "-")}`;
     const fst = b1 ? (await P.posSale.findUnique({ where: { id: b1.id }, select: { status: true } }))?.status ?? null : null;
     const dA = await depOf(R);
     const act = await setStatusVia(ap.id, "DONE");
@@ -1298,8 +1312,29 @@ async function runDb(): Promise<void> {
       revenue: bills.filter((b) => b.sourceModule !== "POS_DEPOSIT").reduce((t, b) => t + Number(b.grandTotalSatang), 0),
       price: 200_000,
       deposit: 50_000,
+      voidAudit,
     });
     chk("MA12e", !!b1 && v.ok, v.expected, `${b1 ? "" : "fixture: ไม่มีบิลริบ · "}CONFIRMED → ${short(rc, 80)} · DONE action ${act} · ${v.actual}`);
+  });
+
+  // ════════ MA12g (RC F10b · ORACLE-EDIT ผู้คุม 23.10 CD-P51-O10b) บิลริบของหน้าขาย → ออกจาก NO_SHOW ⇒ ปฏิเสธ ════════
+  await blk("MA12g", async () => {
+    if (fx) return void chk("MA12g", false, "fixture", FXB(""));
+    const ap = await bookingAppt("MA12g", 960);
+    must("recordDeposit", await call(bookingMod, "recordDeposit", { tenantId: T, unitId: U.B }, ap.id));
+    const R = String((await P.appointment.findUnique({ where: { id: ap.id } }))?.depositSaleId ?? "");
+    const d0 = await depOf(R);
+    const mgr = { userId: uid("MGR"), role: "MANAGER", unitAccess: [U.B], permissions: {} };
+    const rf = await call(depositMod, "registerForfeitDeposit", { tenantId: T, systemId: S.POS, unitId: U.B }, mgr, { depositId: String(d0?.id ?? "none"), reason: `ไม่มาตามนัด MA12g ${RAND}` });
+    await call(bookingMod, "setAppointmentStatus", T, U.B, ap.id, "NO_SHOW");
+    await pump();
+    const rc = await call(bookingMod, "setAppointmentStatus", T, U.B, ap.id, "CONFIRMED");
+    await pump();
+    const row = await P.appointment.findUnique({ where: { id: ap.id } });
+    const b: Any = (await forfeitBillsOf(R))[0] ?? null;
+    const d = await depOf(R);
+    const v = V.MA12g({ regForfeit: codeOf(rf), refused: rc?.ok === false, message: String(rc?.reason ?? rc?.message ?? ""), apptStatus: row?.status ?? null, billStatus: b?.status ?? null, depStatus: d?.status ?? null });
+    chk("MA12g", v.ok, v.expected, `${v.actual} · บิล ${b?.sourceModule ?? "-"}`);
   });
 
   // ════════ MA12f (RC F5) ริบล้มทางจอ ⇒ เหตุผลบนจอ + OpsEvent WARN ════════
