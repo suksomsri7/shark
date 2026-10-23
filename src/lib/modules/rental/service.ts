@@ -5,6 +5,7 @@
 // ctx = { tenantId, unitId } — ทุก query ผ่าน tenantDb(ctx) (defense-in-depth ชั้น 2) · unit type RENTAL
 // เงินต้องเข้าเสมอ: คืนของ = ปิดบิลค่าเช่า(+ค่าปรับ) ผ่าน POS (บังคับ · ไม่มี POS = โยนก่อนแตะสถานะ — CRM C2.9)
 import { prisma, tenantDb } from "@/lib/core/db";
+import { callerTx } from "@/lib/core/caller-tx"; // POS P5.1 ▸ MA2: ใบรับมัดจำในธุรกรรมของ moduleTakeDeposit ◂
 import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "คืนของเช่า" ใน tx เดียวกับสถานะ ◂
 import * as pos from "@/lib/modules/pos/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
@@ -443,7 +444,7 @@ export async function recordRentalDeposit(
     const posDeposit = await import("@/lib/modules/pos/deposit");
     const sale = await posDeposit.moduleTakeDeposit(
       { tenantId: ctx.tenantId, unitId: ctx.unitId, systemId: posSystemId, keyBase: `rental-deposit-${bookingId}`, amountSatang: amount, payType: payMethod, customerName: bk.customerName, note: `มัดจำเช่า ${bk.customerName}`, createdBy: "module:rental" },
-      (client, k) =>
+      (tx, k) =>
         pos.createSale(
           {
             tenantId: ctx.tenantId,
@@ -455,7 +456,7 @@ export async function recordRentalDeposit(
             lines: [{ name: `มัดจำเช่า ${bk.customerName}`, qty: 1, unitPriceSatang: amount }],
             payMethods: [{ type: k.payType, amountSatang: amount }],
           },
-          client,
+          callerTx(tx),
         ),
     );
     saleId = sale.saleId;

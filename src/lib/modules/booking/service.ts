@@ -1,5 +1,6 @@
 import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { callerTx } from "@/lib/core/caller-tx"; // POS P5.1 ▸ MA2: ใบรับมัดจำในธุรกรรมของ moduleTakeDeposit ◂
 import type { AppointmentStatus, PosPayType } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
@@ -822,7 +823,7 @@ export async function recordDeposit(
     const posDeposit = await import("@/lib/modules/pos/deposit");
     const sale = await posDeposit.moduleTakeDeposit(
       { tenantId: ctx.tenantId, unitId: ctx.unitId, systemId: posSystemId, keyBase: `booking-deposit-${appointmentId}`, amountSatang: amount, payType: payMethod, customerId: appt.customerId ?? null, customerName: appt.customerName ?? null, note: `มัดจำ ${appt.service.name}`, createdBy: "module:booking" },
-      (client, k) =>
+      (tx, k) =>
         pos.createSale(
           {
             tenantId: ctx.tenantId,
@@ -834,7 +835,7 @@ export async function recordDeposit(
             lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount }],
             payMethods: [{ type: k.payType, amountSatang: amount }],
           },
-          client,
+          callerTx(tx),
         ),
     );
     saleId = sale.saleId;

@@ -584,7 +584,7 @@ async function refundDepositInTx(tx: Tx, a: RefundDepositTxArgs) {
 // ═══════════════════════ POS P5.1 ▸ MA2 MA4 (F2 F4) มัดจำของโมดูล (จองคิว · โรงแรม · เช่า) ═══════════════════════
 // 🔴 มัดจำของโมดูล = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 + VAT ตอนรับ · ไม่ใช่รายได้) + PosDeposit + RECEIVE ในธุรกรรมเดียว ·
 //    บิลปิด (เช็คเอาท์/คืนของ/มาใช้บริการ) จ่ายมัดจำเป็นแถว {DEPOSIT, refSaleId = ใบรับ} + ส่วนที่เหลือ ⇒ Σ รายได้ = ราคา · VAT ครั้งเดียว
-// 🔴 ไม่มีจุดเรียก createSale ใหม่: โมดูลส่งฟังก์ชันที่เรียก createSale จุดเดิมของตัวเอง (client = callerTx(tx) · ทะเบียน U4/L2 คงเดิม)
+// 🔴 ไม่มีจุดเรียก createSale ใหม่: โมดูลส่งฟังก์ชันที่เรียก createSale จุดเดิมของตัวเองด้วย client = callerTx(tx) (HT6.1 · ทะเบียน U4/L2 คงเดิม)
 // 🔴 ไม่ผ่าน RBAC/ค่าตั้งของหน้าขาย (pos.deposit.enabled): สิทธิ์ตรวจที่ action ของโมดูลแล้ว · กะ = กติกา "ทางอื่น" ของ createSale
 export type ModuleDepositSell = (client: Tx, p: { idempotencyKey: string; sourceModule: typeof POS_DEPOSIT_SOURCE; sourceId: string; payType: PosPayType }) => Promise<{ saleId: string; status?: string }>;
 export type ModuleDepositInput = {
@@ -621,7 +621,7 @@ export async function moduleTakeDeposit(input: ModuleDepositInput, sell: ModuleD
         const out = await prisma.$transaction(
           async (tx) => {
             const depositId = `dep${randomUUID().replace(/-/g, "")}`;
-            const r = await sell(callerTx(tx), { idempotencyKey: key, sourceModule: POS_DEPOSIT_SOURCE, sourceId: depositId, payType });
+            const r = await sell(tx, { idempotencyKey: key, sourceModule: POS_DEPOSIT_SOURCE, sourceId: depositId, payType }); // ผู้เรียกห่อ callerTx(tx) เอง (HT6.1) 
             if (r.status !== undefined && r.status !== "PAID") return { kind: "stale" as const };
             const prior = await tx.posDeposit.findUnique({ where: { receiptSaleId: r.saleId }, select: { id: true } });
             if (prior) return { kind: "dup" as const, saleId: r.saleId, depositId: prior.id };

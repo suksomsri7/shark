@@ -1,4 +1,5 @@
 import { prisma, tenantDb } from "@/lib/core/db";
+import { callerTx } from "@/lib/core/caller-tx"; // POS P5.1 ▸ MA2: ใบรับมัดจำในธุรกรรมของ moduleTakeDeposit ◂
 import { registerScopes } from "@/lib/core/scope";
 import * as pos from "@/lib/modules/pos/service";
 import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "เช็คเอาท์แล้ว" ใน tx เดียวกับสถานะ ◂
@@ -733,7 +734,7 @@ export async function recordDeposit(
     const posDeposit = await import("@/lib/modules/pos/deposit");
     const sale = await posDeposit.moduleTakeDeposit(
       { tenantId, unitId, systemId: posSystemId, keyBase: `hotel-deposit-${reservationId}`, amountSatang: amount, payType: payMethod, customerId: rv.customerId ?? null, customerName: rv.guestName ?? null, note: `มัดจำห้อง ${rv.code}`, createdBy: "module:hotel" },
-      (client, k) =>
+      (tx, k) =>
         pos.createSale(
           {
             tenantId,
@@ -745,7 +746,7 @@ export async function recordDeposit(
             lines: [{ name: `มัดจำห้อง ${rv.code}`, qty: 1, unitPriceSatang: amount }],
             payMethods: [{ type: k.payType, amountSatang: amount }],
           },
-          client,
+          callerTx(tx),
         ),
     );
     saleId = sale.saleId;
