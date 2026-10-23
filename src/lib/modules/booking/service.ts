@@ -730,6 +730,13 @@ export async function setAppointmentStatus(
   //    ของเดิมยิงนอก tx: อัปเดตสถานะสำเร็จแล้วโปรเซสถูกตัด (แลมบ์ดาหมดเวลา/รีสตาร์ต) ก่อนยิง
   //    ⇒ ลูกค้ามาตามนัดจริงแต่ไม่ได้ตรา/แต้ม และไม่มีแถวค้างในคิวให้ใครตามเก็บเลย
   //    ขอบเขตร้าน/สาขายังถูกบังคับเหมือน tenantDb (ยัด tenantId/unitId ลง where ของ update ตรง ๆ)
+  // POS P5.1 ▸ RC F4 (CD-P51-O10): ออกจาก NO_SHOW (→ สถานะอื่นใด) ⇒ บิลริบที่ยัง PAID + ไม่มีการคืน ถูก void ก่อน (ทาง voidSale เดิม · มัดจำกลับ OPEN ทันที) ·
+  //   void ไม่ได้ = ไม่เปลี่ยนสถานะ + เหตุผลที่ระบุเลขบิลริบ (ไม่ออกจาก NO_SHOW เงียบ ๆ โดยบิลยังอยู่) ◂
+  const before = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { status: true, depositSaleId: true } });
+  if (before?.status === "NO_SHOW" && status !== "NO_SHOW" && before.depositSaleId) {
+    const u = await (await import("@/lib/modules/pos/deposit")).moduleUnforfeitDeposit({ tenantId, unitId, receiptSaleId: before.depositSaleId });
+    if (u.ok === false) return { ok: false as const, reason: u.message, unforfeit: true };
+  }
   await prisma.$transaction(async (tx) => {
     const appt = await tx.appointment.update({ where: { id: appointmentId, tenantId, unitId }, data: { status } });
     // M2.3 (§9.2) — "มาแล้ว" คือเหตุการณ์ที่โมดูลอื่นรออยู่: สแตมป์ชนิด "จองที่มาจริง" · ขอรีวิว (M3.4) · journey
@@ -770,8 +777,12 @@ export async function setAppointmentStatus(
   });
   // POS P5.1 ▸ MA12 (R1 F3 · CD-P51-O8a · ค่าปริยายระหว่าง W39 ยังเปิด): ไม่มาตามนัด = ริบมัดจำที่ยัง OPEN อัตโนมัติ หลัง commit สถานะ ·
   //   CANCELLED ไม่ริบ (O8b — มัดจำ OPEN ให้คนตัดสินที่หน้าบิล) · ล้ม = มัดจำยัง OPEN (log · ริบ/คืนที่หน้าบิลได้) · กดซ้ำ = คีย์เดิม ไม่มีบิลที่สอง ◂
-  if (status === "NO_SHOW") return forfeitNoShowDeposit(tenantId, unitId, appointmentId);
-  return null;
+  if (status === "NO_SHOW") {
+    const f = await forfeitNoShowDeposit(tenantId, unitId, appointmentId);
+    // POS P5.1 ▸ RC F5 (CD-P51-O10): ผลริบส่งถึง action (จอแสดงเหตุผล + logOps) · สถานะ NO_SHOW บันทึกแล้ว ◂
+    return f.reason ? { ok: false as const, reason: f.reason, forfeit: f } : { ok: true as const, forfeit: f };
+  }
+  return { ok: true as const };
 }
 
 // POS P5.1 ▸ MA12 (R1 F3 · CD-P51-O8a): จุดเรียก createSale จุดเดียวของไฟล์นี้ (ทะเบียน U4/HT6.4/L2 = 1) — ใบรับมัดจำ (recordDeposit) กับ
@@ -795,8 +806,9 @@ async function forfeitNoShowDeposit(tenantId: string, unitId: string, appointmen
       (tx, p) => bookingTxSale(tx, { tenantId, unitId, systemId: posSystemId, sourceModule: "BOOKING", sourceId: appointmentId, ...p }),
     );
     if (r.ok === false) {
-      if (r.code !== "DEPOSIT_CLOSED") console.error(`[booking] ริบมัดจำนัด ${appointmentId} ไม่สำเร็จ: ${r.code}`);
-      return { forfeited: false, reason: r.message };
+      if (r.code === "DEPOSIT_CLOSED") return { forfeited: false }; // ใช้/คืนไปแล้ว = ไม่มีอะไรให้ริบ (ไม่ใช่ความล้มเหลว) · POS P5.1 ▸ RC F5 ◂
+      console.error(`[booking] ริบมัดจำนัด ${appointmentId} ไม่สำเร็จ: ${r.code}`);
+      return { forfeited: false, reason: `ริบมัดจำไม่สำเร็จ: ${r.message} — ริบหรือคืนมัดจำที่หน้าบิล` };
     }
     return "legacy" in r ? { forfeited: false } : { forfeited: true, saleId: r.saleId };
   } catch (e) {

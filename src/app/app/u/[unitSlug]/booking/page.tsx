@@ -35,10 +35,14 @@ function todayBkk(): string {
 
 export default async function BookingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams?: Promise<{ err?: string }>; // POS P5.1 ▸ RC F4 F5 (CD-P51-O10): เหตุผลที่ริบ/ยกเลิกบิลริบมัดจำไม่สำเร็จ ◂
 }) {
   const { unitSlug } = await params;
+  const sp = searchParams ? await searchParams : undefined;
+  const err = typeof sp?.err === "string" ? sp.err.slice(0, 300) : "";
   const { auth, unit } = await requireUnit(unitSlug);
   const [appts, revenue] = await Promise.all([
     listAppointments(auth.active.tenantId, unit.id, todayBkk()),
@@ -63,6 +67,11 @@ export default async function BookingPage({
           </Link>
         }
       />
+      {err ? (
+        <p role="alert" data-testid="booking-status-error" className="rounded-xl border border-[color:var(--color-danger)] px-4 py-3 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </p>
+      ) : null}
 
       {appts.length === 0 ? (
         <EmptyState

@@ -18,7 +18,7 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
 import { regCreateSale, registerRefuse, registerScopeCheck } from "./register";
 import { REGISTER_MANUAL_METHODS, REGISTER_MANUAL_MANAGER_MESSAGE, type RegisterActor, type RegisterCtx, type RegisterRefusal, type RegisterRefusalCode } from "./register-shared";
-import { afterSaleCommitted, depositVatLeft, POS_DEPOSIT_SOURCE, PosSaleError, saleStatusByKey } from "./service"; // POS P5.1 ▸ MA4 saleStatusByKey ◂
+import { afterSaleCommitted, depositVatLeft, POS_DEPOSIT_SOURCE, PosSaleError, saleStatusByKey, voidSale } from "./service"; // POS P5.1 ▸ MA4 saleStatusByKey · RC F4 voidSale ◂
 import { parsePosPaymentSettings } from "./payment-settings";
 import { isPaymentIntentId, parsePosIntentSettings } from "./payment-intent-shared";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
@@ -326,7 +326,7 @@ async function sameTake(db: Db, d: DepositRow, s: RegisterCtx, amount: number, c
 
 // ═══════════════════════ R9 ค้นมัดจำ (จอชำระ) ═══════════════════════
 // POS P2.9b ▸ fix1 มติ 6 (hunt D5): remainingSatang/amountSatang = null เมื่อยังไม่ยืนยันผู้ถือ (ค้นด้วยชื่อ/เบอร์ · มัดจำ walk-in ที่มีเบอร์แต่ไม่ส่ง/ส่ง 4 หลักผิด) ◂
-export type RegisterDepositLookupRow = Pick<DepositView, "id" | "receiptNo" | "customerName" | "phoneMasked" | "status" | "expiresAt"> & { remainingSatang: number | null; amountSatang: number | null; memberLinked: boolean; needsPhoneLast4: boolean; fromModule: boolean }; // POS P5.1 ▸ MA13 fromModule = มัดจำของการจอง (ริบได้ที่หน้าบิล · CD-P51-O8c) ◂
+export type RegisterDepositLookupRow = Pick<DepositView, "id" | "receiptNo" | "customerName" | "phoneMasked" | "status" | "expiresAt"> & { remainingSatang: number | null; amountSatang: number | null; memberLinked: boolean; needsPhoneLast4: boolean; fromModule: boolean; canForfeit: boolean }; // POS P5.1 ▸ MA13 fromModule · RC F7 canForfeit = fromModule + pos.sale.manage ของผู้ค้น = มัดจำของการจอง (ริบได้ที่หน้าบิล · CD-P51-O8c) ◂
 export type RegisterDepositLookupResult = { ok: true; deposits: RegisterDepositLookupRow[] } | RegisterRefusal;
 const LOOKUP_MAX = 20;
 /**
@@ -354,6 +354,7 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
       take: LOOKUP_MAX,
     });
     // POS P2.9b ▸ fix2 มติ 3: ตรงเลขใบรับ + ส่ง 4 หลัก = นับแบบตัวนับ PIN (ผิด 5 = ล็อก) · ล็อก/ผิด = ไม่เห็นยอด ◂
+    const canManage = evaluate(sc.actor, { module: "pos", action: FORFEIT_PERMISSION, unitId: sc.ctx.unitId }); // POS P5.1 ▸ RC F7 (CD-P51-O10): ปุ่มริบซ่อนเมื่อไม่มี pos.sale.manage ◂
     const phoneOk = new Set<string>();
     for (const d of rows) if (q && d.receiptNo === q && !d.customerId && d.phoneLast4 && last4 && (await checkDepositPhone(sc.ctx.tenantId, d, last4, db)) === "OK") phoneOk.add(d.id);
     return {
@@ -364,7 +365,7 @@ export async function registerDepositLookup(ctx: RegisterCtx, actor: RegisterAct
         const needsPhoneLast4 = !d.customerId && !!d.phoneLast4;
         // POS P2.9b ▸ fix2 มติ 1 (R2 F1): ค้นด้วยสมาชิก = เห็นยอดเฉพาะมัดจำของสมาชิกนั้น/ที่ถูกรวมเข้า (ไม่ใช่มัดจำของสมาชิกอื่นที่ชื่อตรงคำค้น) ◂
         const holder = (q && d.receiptNo === q && (!needsPhoneLast4 || phoneOk.has(d.id))) || (!!d.customerId && family.includes(d.customerId));
-        return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: holder ? v.remainingSatang : null, status: v.status, expiresAt: v.expiresAt, amountSatang: holder ? v.amountSatang : null, memberLinked: !!d.customerId, needsPhoneLast4, fromModule: d.idempotencyKey.startsWith(MODULE_DEPOSIT_KEY) }; // POS P5.1 ▸ MA13 ◂
+        return { id: v.id, receiptNo: v.receiptNo, customerName: v.customerName, phoneMasked: v.phoneMasked, remainingSatang: holder ? v.remainingSatang : null, status: v.status, expiresAt: v.expiresAt, amountSatang: holder ? v.amountSatang : null, memberLinked: !!d.customerId, needsPhoneLast4, fromModule: d.idempotencyKey.startsWith(MODULE_DEPOSIT_KEY), canForfeit: canManage && d.idempotencyKey.startsWith(MODULE_DEPOSIT_KEY) }; // POS P5.1 ▸ MA13 · RC F7 ◂
       }),
     };
   });
@@ -769,22 +770,38 @@ export type DepositForfeitSellInput = {
   lines: { name: string; qty: number; unitPriceSatang: number }[];
   payMethods: { type: "DEPOSIT"; amountSatang: number; refSaleId: string }[];
   memberId?: string;
+  /** POS P5.1 ▸ RC F1 (CD-P51-O10): บิลริบของมัดจำสมาชิก = แนบสมาชิกเฉย ๆ (ไม่คิดส่วนลดระดับ/สิทธิ์ ⇒ ยอดบิล = คงเหลือ) ◂ */
+  memberAttachOnly?: true;
   note?: string;
 };
 /** ผู้เรียกส่งฟังก์ชันที่เรียก createSale จุดเดิมของตัวเองด้วย client = callerTx(tx) (แบบ ModuleDepositSell) */
 export type DepositForfeitSell = (client: Tx, p: DepositForfeitSellInput) => Promise<{ saleId: string; status?: string }>;
 export type DepositForfeitResult = { ok: true; saleId: string; satang: number; deposit: DepositView; duplicated?: boolean } | { ok: false; code: RegisterRefusalCode; message: string };
 
+/** POS P5.1 ▸ RC F3 (CD-P51-O10): บิลริบที่ถูก void ระหว่างธุรกรรม ⇒ ลองใหม่ด้วยคีย์ถัดไป ◂ */
+class ForfeitRetry extends Error {}
+/** คีย์ริบของมัดจำ: รอบแรก dep-forfeit:<id> · บิลของคีย์ VOIDED ⇒ -r1, -r2 … · PAID/REFUNDED = ริบแล้ว (prior) */
+async function forfeitKeyOf(tenantId: string, depositId: string): Promise<{ key: string; prior: { id: string; grandTotalSatang: number } | null }> {
+  for (let round = 0; round <= 20; round++) {
+    const key = round === 0 ? KEY_FORFEIT + depositId : `${KEY_FORFEIT}${depositId}-r${round}`;
+    const s = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } }, select: { id: true, grandTotalSatang: true, status: true } });
+    if (!s) return { key, prior: null };
+    if (s.status !== "VOIDED") return { key, prior: { id: s.id, grandTotalSatang: s.grandTotalSatang } };
+  }
+  throw new PosSaleError("VALIDATION", "บิลริบของมัดจำนี้ถูกยกเลิกหลายครั้งเกินไป — ติดต่อผู้ดูแลระบบ");
+}
+
 async function forfeitDeposit(
   a: { tenantId: string; unitId: string; depositId: string; reason: string; note?: string; actorType: "USER" | "SYSTEM"; actorId: string; source: string },
   sell: DepositForfeitSell,
 ): Promise<DepositForfeitResult> {
-  const key = KEY_FORFEIT + a.depositId;
   for (let attempt = 0; attempt < 3; attempt++) {
     const d = await prisma.posDeposit.findFirst({ where: { id: a.depositId, tenantId: a.tenantId, unitId: a.unitId } });
     if (!d) return { ok: false, code: "DEPOSIT_NOT_FOUND", message: MSG.NOT_FOUND };
-    const prior = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: a.tenantId, idempotencyKey: key } }, select: { id: true, grandTotalSatang: true } });
-    if (prior) return { ok: true, saleId: prior.id, satang: prior.grandTotalSatang, deposit: viewOf(d), duplicated: true };
+    // POS P5.1 ▸ RC F3 (CD-P51-O10): บิลเดิมของคีย์ที่ PAID/REFUNDED = ริบไปแล้ว (dup) · VOIDED = ริบรอบนั้นถูกยกเลิก ⇒ คีย์ถัดไป <คีย์>-r<n> ◂
+    const k = await forfeitKeyOf(a.tenantId, d.id);
+    const key = k.key;
+    if (k.prior) return { ok: true, saleId: k.prior.id, satang: k.prior.grandTotalSatang, deposit: viewOf(d), duplicated: true };
     const remaining = d.amountSatang - d.usedSatang - d.refundedSatang;
     if (d.status !== "OPEN" || remaining <= 0) return { ok: false, code: "DEPOSIT_CLOSED", message: MSG.CLOSED };
     const lines = [{ name: FORFEIT_LINE_NAME, qty: 1, unitPriceSatang: remaining }];
@@ -793,14 +810,15 @@ async function forfeitDeposit(
         async (tx) => {
           // ริบพร้อมกันสองทาง (NO_SHOW ∥ หน้าขาย) = เรียงคิวที่คีย์ · คนที่สองเห็นบิลของคนแรก (ไม่เขียน audit ซ้ำ)
           await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${a.tenantId}::text || ':' || ${key}::text))) l`;
-          const again = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: a.tenantId, idempotencyKey: key } }, select: { id: true, grandTotalSatang: true } });
+          const again = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: a.tenantId, idempotencyKey: key } }, select: { id: true, grandTotalSatang: true, status: true } });
+          if (again && again.status === "VOIDED") throw new ForfeitRetry(); // POS P5.1 ▸ RC F3: ถูก void ระหว่างทาง ⇒ อ่านคีย์ใหม่ ◂
           if (again) return { kind: "dup" as const, saleId: again.id, satang: again.grandTotalSatang };
           // ล็อก/ตัดมัดจำอยู่ในธุรกรรมของบิล (createSale · ลำดับล็อกเดียวกับทุกบิล) — คงเหลือเปลี่ยน = DEPOSIT_EXCEEDS ⇒ อ่านใหม่
           const r = await sell(tx, {
             idempotencyKey: key,
             lines,
             payMethods: [{ type: "DEPOSIT", amountSatang: remaining, refSaleId: d.receiptSaleId }],
-            ...(d.customerId ? { memberId: d.customerId } : {}), // มัดจำของสมาชิกใช้ได้เฉพาะบิลของสมาชิกนั้น (มติ 4)
+            ...(d.customerId ? { memberId: d.customerId, memberAttachOnly: true as const } : {}), // มัดจำของสมาชิกใช้ได้เฉพาะบิลของสมาชิกนั้น (มติ 4) · POS P5.1 ▸ RC F1: แนบเฉย ๆ (ไม่มีส่วนลดระดับ) ◂
             ...(a.note ? { note: a.note } : {}),
           });
           if (r.status !== undefined && r.status !== "PAID") throw new DepositAbort(refuse("VALIDATION", "บิลริบมัดจำไม่สำเร็จ — ลองอีกครั้ง"));
@@ -825,6 +843,9 @@ async function forfeitDeposit(
       return { ok: true, saleId: out.saleId, satang: out.satang, deposit: viewOf(dep), ...(out.kind === "dup" ? { duplicated: true } : {}) };
     } catch (e) {
       if (e instanceof DepositAbort) return { ok: false, code: e.refusal.code, message: e.refusal.message ?? e.refusal.code };
+      if (e instanceof ForfeitRetry) continue;
+      // POS P5.1 ▸ RC F5 (CD-P51-O10): ยอดบิลริบ ≠ คงเหลือ (createSale โยน Error "PAYMENT_MISMATCH: …" ไม่ใช่ PosSaleError) = VALIDATION ไม่ใช่ INTERNAL ◂
+      if (e instanceof Error && !(e instanceof PosSaleError) && e.message.startsWith("PAYMENT_MISMATCH")) return { ok: false, code: "VALIDATION", message: "ยอดบิลริบไม่ตรงยอดมัดจำคงเหลือ — ตรวจสิทธิ์/ส่วนลดของบิล แล้วลองอีกครั้ง" };
       if (e instanceof PosSaleError) {
         if (e.code === "DEPOSIT_EXCEEDS") continue; // มีบิลใช้มัดจำแทรกระหว่างอ่านกับตัด ⇒ อ่านคงเหลือใหม่
         return { ok: false, code: e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, message: e.message };
@@ -850,6 +871,33 @@ export async function moduleForfeitDeposit(
   if (!d || d.tenantId !== input.tenantId) return { ok: true, legacy: true };
   if (d.unitId !== input.unitId) return { ok: false, code: "DEPOSIT_NOT_FOUND", message: MSG.NOT_FOUND };
   return forfeitDeposit({ tenantId: input.tenantId, unitId: input.unitId, depositId: d.id, reason: input.reason, actorType: "SYSTEM", actorId: input.actorId, source: input.actorId }, sell);
+}
+
+/**
+ * POS P5.1 ▸ RC F4 (CD-P51-O10): นัดออกจาก NO_SHOW — บิลริบที่ยัง PAID และไม่มีการคืนเงิน ⇒ void (ทาง voidSale เดิม) แล้วคืนสภาพมัดจำทันที
+ * (depositSaleVoided · คีย์ dep-restore-<apply> ⇒ คิวที่ตามมาไม่มีผล) ⇒ มัดจำ OPEN ใช้กับบิล DONE ได้ · void ไม่ได้ (กะปิด/สิทธิ์) หรือมีการคืนเงินแล้ว
+ * = {ok:false} พร้อมเลขบิลริบ — ผู้เรียกปฏิเสธการเปลี่ยนสถานะ (ห้ามออกจาก NO_SHOW เงียบ ๆ โดยบิลยังอยู่) · ไม่มีบิลริบ/มัดจำแบบเดิม = ok ◂
+ */
+export async function moduleUnforfeitDeposit(input: { tenantId: string; unitId: string; receiptSaleId: string | null | undefined }): Promise<{ ok: true; voidedSaleId: string | null } | { ok: false; code: string; message: string }> {
+  if (!input.receiptSaleId) return { ok: true, voidedSaleId: null };
+  const d = await prisma.posDeposit.findUnique({ where: { receiptSaleId: input.receiptSaleId }, select: { id: true, tenantId: true } });
+  if (!d || d.tenantId !== input.tenantId) return { ok: true, voidedSaleId: null };
+  const bill = await prisma.posSale.findFirst({
+    where: { tenantId: input.tenantId, idempotencyKey: { startsWith: KEY_FORFEIT + d.id }, docType: "SALE", status: "PAID" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, unitId: true, receiptNo: true, refundedSatang: true },
+  });
+  if (!bill) return { ok: true, voidedSaleId: null };
+  const no = bill.receiptNo ?? bill.id;
+  if (bill.refundedSatang > 0) return { ok: false, code: "HAS_REFUNDS", message: `บิลริบมัดจำ #${no} มีการคืนเงินแล้ว — ยกเลิกบิลริบไม่ได้ จัดการที่หน้าบิลก่อนเปลี่ยนสถานะนัด` };
+  try {
+    await voidSale(input.tenantId, bill.unitId, bill.id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, code: e instanceof PosSaleError ? e.code : "VOID_REFUSED", message: `ยกเลิกบิลริบมัดจำ #${no} ไม่ได้ (${msg.slice(0, 120)}) — ยกเลิกบิลริบที่หน้าบิลก่อนเปลี่ยนสถานะนัด` };
+  }
+  await depositSaleVoided({ tenantId: input.tenantId, payload: { saleId: bill.id } });
+  return { ok: true, voidedSaleId: bill.id };
 }
 
 export type RegisterForfeitDepositInput = { depositId: string; reason: string };
