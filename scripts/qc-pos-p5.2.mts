@@ -85,6 +85,7 @@ const CHECKS: readonly Def[] = [
   D("D2", "D", "[db · §10.4 D1c] เปิดกะผูกเครื่องจากคุกกี้: STAFF (กะ) อ้าง deviceId ของเครื่อง A1 อื่นจาก client → ปฏิเสธ/ไม่ผูก · คุกกี้ที่ถูกแก้ → ปฏิเสธ · ตัวควบคุมบวก คุกกี้จาก D1 = เปิดได้", "src/lib/modules/pos/shift-actions.ts#openShiftAction"),
   D("D3", "D", "[db · §10.4 D1c · F11 X] รายงาน X: STAFF (กะ ไม่มี manage) อ้าง deviceId ของกะคนอื่นจาก client → PERMISSION_DENIED · ตัวควบคุมบวก คุกกี้เครื่องของกะ = อ่านได้", "src/lib/modules/pos/shift-actions.ts#xReportAction"),
   D("D4", "D", "[db · CD-P52-O4 F1] ทางขาย: STAFF ขาย ไม่มีคุกกี้ อ้างเครื่อง Z (กะ OWNER) → ไม่ผูกกะ Z (ขาย · สถานะ · staffToken ของ Z · PIN ผู้จัดการ) · คุกกี้เครื่อง P4 + อ้าง Z = บิลผูกกะของ P4 · staffToken ของ Z บนคุกกี้ P4 = STAFF_TOKEN_INVALID · เครื่องเพิกถอน = DEVICE_REVOKED · เงินเข้า/ออกไม่ส่ง deviceId + ไม่มีคุกกี้ = DEVICE_NOT_PAIRED", "src/lib/modules/pos/register-actions.ts#submitRegisterSaleAction"),
+  D("D5", "D", "[static · R2-1 · ORACLE-EDIT CD-P52-R2-1] /api/pos/sync/snapshot ผูกเครื่องจากคุกกี้ลงนามเหมือน /api/pos/sync (CD-P52-O4b): ทั้งสอง route import deviceBinding + POS_DEVICE_COOKIE + cookies() · เรียก deviceBinding({tenantId,unitId}, cookie) · ไม่มีคุกกี้ + สาขามีเครื่อง = 409 DEVICE_NOT_PAIRED · deviceId จาก body เฉพาะ bound.kind === \"none\" · ไม่แตะ prisma", "src/app/api/pos/sync/snapshot/route.ts#POST"),
   D("D11", "D", "[db · F5 · ruling 4] ตัวเขียนเดิม 15 ตัวของ actions/restaurant.ts บนสาขาที่ผูก POS → POS_LINKED (redirect ?err=POS_LINKED / code) · แถวร้านอาหาร/เมนู/โต๊ะของ A1 ไม่เปลี่ยน · ตัวควบคุมบวก สาขาไม่ผูก POS (A3) เขียนได้", "src/lib/actions/restaurant.ts#*"),
   D("H6b", "R", "[db · H6 · F6 · มติ] แถว cond: MANAGER สาขาเดียว × ตั้งค่าทั้งระบบ 6 ตัว + saveCreditAccount → ปฏิเสธ · ค่าเดิม · สมุดทิป = OWNER เท่านั้น · ตัวควบคุมบวก MANAGER ครบทุกสาขา", "rows[MANAGER=cond H6] · tip-ledger-actions.ts#posTipLedgersAction"),
   D("F7", "X", "[db · F7] PIN ผู้จัดการ A1 + heldCartId ของบิลพัก A2 → คำขอ POS_DISCOUNT_OVER ของ A2 ยัง PENDING (ไม่ถูกยกเลิกข้ามสาขา) · ตัวควบคุมบวก PIN ใช้ได้", "src/lib/modules/pos/register-actions.ts#submitRegisterSaleAction"),
@@ -101,7 +102,7 @@ const CHECKS: readonly Def[] = [
   D("Z1", "Z", "QC4 คืนสภาพ: ร้านชั่วคราว A/B เหลือ 0 แถวทุกตารางที่มี tenantId · Tenant/User ของรอบถูกลบ · ถังเพดานของคีย์รอบนี้ 0", "-"),
   D("Z2", "Z", "ลายนิ้วมือร้าน QC coffee/resto + ตาราง POS นอกร้านชั่วคราวเท่าเดิม", "-"),
 ];
-const STATIC_IDS = new Set(["P5.2-M1", "P5.2-M2", "P5.2-M3", "P5.2-M4", "P5.2-M5", "P5.2-P1", "P5.2-P2", "P5.2-P3", "P5.2-P5", "P5.2-P6", "P5.2-P8", "P5.2-S1", "P5.2-S2", "P5.2-N1", "P5.2-N2", "P5.2-N3", "P5.2-N4", "P5.2-F10a", "P5.2-N5", "P5.2-N6", "P5.2-N7", "P5.2-N8"]);
+const STATIC_IDS = new Set(["P5.2-M1", "P5.2-M2", "P5.2-M3", "P5.2-M4", "P5.2-M5", "P5.2-P1", "P5.2-P2", "P5.2-P3", "P5.2-P5", "P5.2-P6", "P5.2-P8", "P5.2-S1", "P5.2-S2", "P5.2-D5", "P5.2-N1", "P5.2-N2", "P5.2-N3", "P5.2-N4", "P5.2-F10a", "P5.2-N5", "P5.2-N6", "P5.2-N7", "P5.2-N8"]);
 /** ORACLE-EDIT (P5.2 oracle2): ข้อที่รอเจ้าของตัดสิน (W37 คลัง · W38 คีย์ค่าคอมฯ) — พิมพ์ผลแต่ไม่นับใน failed/exit (มติผู้คุม 23 ต.ค.) */
 const PENDING_OWNER = new Set(["P5.2-F4", "P5.2-F11"]);
 const PROBE_IDS = ["P5.2-N1", "P5.2-N2", "P5.2-N3", "P5.2-N4", "P5.2-N5", "P5.2-N6", "P5.2-N7", "P5.2-N8"];
@@ -473,6 +474,24 @@ function runStatic(): void {
     const pending = /status:\s*503,\s*body:\s*\{\s*code:\s*"ADAPTER_PENDING"/.test(afterVerify);
     const nonce = /timestamp|nonce|x-shark-timestamp/i.test(stripComments(rd("src/lib/modules/pos/platform/types.ts")));
     chk("S2", !!b && pending && !writes, "หลังลายเซ็นถูก: 503 ADAPTER_PENDING · ไม่มีการเขียน", `ADAPTER_PENDING ${pending} · เขียนหลังตรวจ ${writes} · nonce/timestamp ${nonce ? "มี" : "ไม่มี (H6 · ruling 6 = adapter จริง)"}`);
+  }
+  // D5 (ORACLE-EDIT ผู้คุม A 23.10 · CD-P52-R2-1 · หนี้ R1 รอบ 2 D+E+device R2-1 LOW): snapshot route ผูกเครื่องจากคุกกี้เหมือน sync route — เทียบรูปโค้ดสองไฟล์ (route ไม่มีข้อสอบ HTTP · facade ตรวจเครื่องซ้ำที่ D-ชุด db)
+  //   probe: คืน route รุ่น cf5cbfa8 (deviceId จาก body ล้วน) → แดง "ไม่เรียก deviceBinding" · revert: ลบบล็อกนี้ + แถว D5 + STATIC_IDS
+  {
+    const bad: string[] = [];
+    for (const f of ["src/app/api/pos/sync/route.ts", "src/app/api/pos/sync/snapshot/route.ts"]) {
+      const t = stripComments(rd(f));
+      const n = f.split("/").slice(-2).join("/");
+      if (!t) { bad.push(`${n} อ่านไม่ได้`); continue; }
+      if (!/import\s*\{\s*deviceBinding\s*\}\s*from\s*"@\/lib\/modules\/pos\/device"/.test(t)) bad.push(`${n} ไม่ import deviceBinding`);
+      if (!/import\s*\{\s*POS_DEVICE_COOKIE\s*\}\s*from\s*"@\/lib\/modules\/pos\/device-cookie"/.test(t)) bad.push(`${n} ไม่ import POS_DEVICE_COOKIE`);
+      if (!/\(await cookies\(\)\)\.get\(POS_DEVICE_COOKIE\)/.test(t)) bad.push(`${n} ไม่อ่านคุกกี้ POS_DEVICE_COOKIE`);
+      if (!/await deviceBinding\(\s*\{\s*tenantId:\s*auth\.active\.tenantId,\s*unitId\s*\},\s*cookieValue\s*\)/.test(t)) bad.push(`${n} ไม่เรียก deviceBinding`);
+      if (!/bound\.kind === "none" && bound\.unitHasDevices[\s\S]{0,80}json\(409,\s*\{\s*ok: false,\s*code: "DEVICE_NOT_PAIRED"/.test(t)) bad.push(`${n} ไม่มี 409 DEVICE_NOT_PAIRED`);
+      if (!/const deviceId = bound\.kind === "none" \? claimed : bound\.deviceCode/.test(t)) bad.push(`${n} deviceId ไม่ได้มาจากคุกกี้ก่อน body`);
+      if (/\bprisma\./.test(t)) bad.push(`${n} แตะ prisma ตรง`);
+    }
+    chk("D5", bad.length === 0, "sync + snapshot: คุกกี้ → deviceBinding → DEVICE_NOT_PAIRED · body เฉพาะสาขาไม่มีเครื่อง", bad.length ? bad.join(" · ") : "2 route ตรงรูป");
   }
   // F10a (ORACLE-EDIT P5.2 oracle2 · F10): รายงานรายสัปดาห์มียอดขายทุกสาขา — แจ้งเตือนต้องมีผู้รับ (null = ทุกคนในร้านเห็น · AppNotification.recipientUserId)
   {

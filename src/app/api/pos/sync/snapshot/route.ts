@@ -8,11 +8,15 @@
 import { getAuth } from "@/lib/core/context";
 import { posMembership } from "@/lib/modules/pos/access";
 import { issueOfflineSnapshot } from "@/lib/modules/pos/offline-sync";
+import { cookies } from "next/headers"; // POS P5.2 ▸ R2-1 (CD-P52-R2-1) ◂
+import { deviceBinding } from "@/lib/modules/pos/device"; // POS P5.2 ▸ R2-1 (CD-P52-R2-1) ◂
+import { POS_DEVICE_COOKIE } from "@/lib/modules/pos/device-cookie"; // POS P5.2 ▸ R2-1 (CD-P52-R2-1) ◂
 
 const STATUS: Readonly<Record<string, number>> = {
   NOT_FOUND: 404,
   DEVICE_NOT_FOUND: 404,
   DEVICE_REVOKED: 403,
+  DEVICE_NOT_PAIRED: 409, // POS P5.2 ▸ R2-1 ◂
   PERMISSION_DENIED: 403,
   VALIDATION: 422,
   OFFLINE_DISABLED: 409,
@@ -52,8 +56,21 @@ export async function POST(req: Request): Promise<Response> {
   const b = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
   const systemId = typeof b.systemId === "string" ? b.systemId : "";
   const unitId = typeof b.unitId === "string" ? b.unitId : "";
-  const deviceId = typeof b.deviceId === "string" ? b.deviceId : "";
-  if (!systemId || !unitId || !deviceId) return json(422, { ok: false, code: "VALIDATION", message: "ต้องระบุระบบ สาขา และเครื่อง" });
+  const claimed = typeof b.deviceId === "string" ? b.deviceId : "";
+  if (!systemId || !unitId) return json(422, { ok: false, code: "VALIDATION", message: "ต้องระบุระบบ สาขา และเครื่อง" });
+  // POS P5.2 ▸ R2-1 (CD-P52-R2-1 · หนี้ R1 รอบ 2 D+E+device · ปิดก่อน deploy): เครื่องของ snapshot = คุกกี้เครื่องลงนาม เหมือน /api/pos/sync (CD-P52-O4b) —
+  //   ไม่มีคุกกี้ + สาขามีเครื่องลงทะเบียน = 409 DEVICE_NOT_PAIRED (เดิมอ้างเครื่อง Z จาก body ได้ ⇒ กินสล็อต 1 ใบ/60 วิ ของ Z) ·
+  //   สาขาที่ไม่มีเครื่องลงทะเบียนเลย = รหัสใน body (ไม่มีเครื่องให้สวมรอย) ◂
+  let cookieValue: string | undefined;
+  try {
+    cookieValue = (await cookies()).get(POS_DEVICE_COOKIE)?.value;
+  } catch {
+    cookieValue = undefined;
+  }
+  const bound = await deviceBinding({ tenantId: auth.active.tenantId, unitId }, cookieValue);
+  if (bound.kind === "none" && bound.unitHasDevices) return json(409, { ok: false, code: "DEVICE_NOT_PAIRED", message: "เครื่องนี้ยังไม่ได้จับคู่กับสาขา — ให้ผู้จัดการจับคู่ที่ ตั้งค่า › เครื่องขาย ก่อน" });
+  const deviceId = bound.kind === "none" ? claimed : bound.deviceCode;
+  if (!deviceId) return json(422, { ok: false, code: "VALIDATION", message: "ต้องระบุระบบ สาขา และเครื่อง" });
   const m = posMembership(auth.active);
   const r = await issueOfflineSnapshot(
     { tenantId: auth.active.tenantId, systemId, unitId, deviceId },
