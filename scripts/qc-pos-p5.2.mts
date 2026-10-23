@@ -1509,9 +1509,10 @@ async function runDb2(): Promise<void> {
     });
     const sellX = async (held?: string) => {
       const inp = input(held);
+      const c0 = await P.posSale.count({ where: { tenantId: TA, unitId: uA2 } });
       const r = await svc(regMod, "submitRegisterSale", ctxU2(uA2, DEV.A2), actorOf2("SELLER_A2"), inp);
-      const sale = await P.posSale.findFirst({ where: { tenantId: TA, idempotencyKey: inp.idempotencyKey }, select: { id: true } }).catch(() => null);
-      return { r, saleId: String(sale?.id ?? "") };
+      const c1 = await P.posSale.count({ where: { tenantId: TA, unitId: uA2 } });
+      return { r, saleId: String(r?.saleId ?? ""), newBills: c1 - c0 };
     };
     const a = await sellX();
     const rq = a.r?.code === "APPROVAL_REQUIRED" && typeof a.r.requestId === "string" ? a.r.requestId : "";
@@ -1535,7 +1536,7 @@ async function runDb2(): Promise<void> {
         const x = await sellX(held);
         neg = x.r?.ok === true ? `ok บิล ${x.saleId ? "มี" : "?"}` : String(x.r?.code);
         if (x.r?.code !== "DISCOUNT_EXCEEDS_LIMIT") p.push(`ผู้ตัดสินเสียสิทธิ์ → ${neg} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
-        if (x.saleId) p.push("มีบิลจากส่วนลดของผู้ตัดสินที่เสียสิทธิ์");
+        if (x.saleId || x.newBills !== 0) p.push(`มีบิลจากส่วนลดของผู้ตัดสินที่เสียสิทธิ์ (+${x.newBills})`);
       } finally {
         await P.membership.update({ where: { id: mem.id }, data: { unitAccess: mem.unitAccess } });
       }
