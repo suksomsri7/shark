@@ -229,6 +229,8 @@ if (SELFTEST || NODB) {
 }
 
 // ═════════════════════════ 3. env (QC4 เท่านั้น) + prisma ═════════════════════════
+const { AsyncLocalStorage } = await import("node:async_hooks");
+(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
 const envMod = (await import("./pos-qc-env.mjs" as string)) as Any;
 envMod.loadPosQcEnv(SUITE);
 const HOST = (() => {
@@ -446,9 +448,8 @@ const CONS: Any = OBX?.consumers ?? {};
 const posAct = await tryImport("@/lib/actions/pos");
 const bookingAct = await tryImport("@/lib/actions/booking");
 
-// ── Next request scope (เทคนิคเดียวกับ qc-hf-o23 / qc-crm-c3.5) — ให้ requireTenant()/requireUnit() อ่านคุกกี้ได้ในโปรเซส ──
-const { AsyncLocalStorage } = await import("node:async_hooks");
-(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
+// ── Next request scope (เทคนิคเดียวกับ qc-hf-o23 / qc-crm-c3.5) — ให้ requireTenant()/requireUnit() อ่านคุกกี้ได้ในโปรเซส ·
+//    globalThis.AsyncLocalStorage ตั้งไว้ก่อน import ใด ๆ (ส่วน 3) — ไม่งั้นโมดูลของ Next ที่ถูกดึงมาก่อนจะโยน Invariant ◂
 const nextWork = (await import("next/dist/server/app-render/work-async-storage.external.js" as string).catch(() => null)) as Any;
 const nextWorkUnit = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string).catch(() => null)) as Any;
 const nextCookies = (await import("next/dist/server/web/spec-extension/cookies.js" as string).catch(() => null)) as Any;
@@ -477,7 +478,8 @@ async function pump(rounds = 40): Promise<boolean> {
     if (!rows.length) return true;
     let did = 0;
     for (const row of rows) {
-      const late = row.availableAt && new Date(row.availableAt).getTime() > now.getTime() + 60_000; // ลองใหม่แบบ backoff ของ drain อื่น = ทำเลย (ร้านชั่วคราวของเรา)
+      // แถวที่ drain อื่นล้มแล้ว (attempts ≥ 1 · รอ backoff) = ทำเลย (ร้านชั่วคราวของเรา) · attempts 0 + availableAt อนาคต = lease ของ drain อื่น → ไม่แย่ง (กัน P2002 ซ้อนของฮาร์เนสเอง)
+      const late = Number(row.attempts ?? 0) > 0 && row.availableAt && new Date(row.availableAt).getTime() > now.getTime();
       const lease = new Date(Date.now() + 120_000);
       const claim = await P.outboxEvent.updateMany({ where: { id: row.id, status: "PENDING", ...(late ? {} : { availableAt: { lte: new Date() } }) }, data: { availableAt: lease } });
       if (claim.count === 0) continue;
