@@ -227,6 +227,14 @@
       "mode": "unforced"
     },
     {
+      "suite": "qc-pos-buttons",
+      "mode": "unforced"
+    },
+    {
+      "suite": "qc-pos-p4.2",
+      "mode": "unforced"
+    },
+    {
       "suite": "qc-pos-account",
       "mode": "unforced"
     },
