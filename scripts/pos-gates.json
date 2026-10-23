@@ -287,6 +287,11 @@
       "mode": "forced"
     },
     {
+      "suite": "qc-pos-p5.1",
+      "mode": "unforced",
+      "why": "P5.1 money oracle (red-before, MA1–MA11 = hunter M-A F1–F11): no SKIP gate — red until fix batches A–D land (ledger/wo-notes/pos-P5.1-oracle.md)"
+    },
+    {
       "suite": "qc-chat-security",
       "mode": "unforced"
     },
