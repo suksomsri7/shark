@@ -95,7 +95,7 @@ P3.1 adapter LINE MAN (รอ partner API) ✅โครง · P3.2 Grab ✅โ�
 - ใบที่รอของจากเจ้าของ (P3.1–3.3, 3.10, 3.11) ทำโครง+ปิดสุภาพก่อน เปิดสวิตช์เมื่อ creds มา — **22 ต.ค. 2026: โครง ✅ ครบทั้ง 5 แถว (P3-SKEL S 80314e00 + P3-SKEL U merge) · สวิตช์รอ W4/W5** (ผู้คุม B)
 
 ### P4 — "ทุกปุ่มทำงาน" (3 ใบ · CRM §7 วิธีเดียวกัน): P4.1 ทะเบียนปุ่ม/ฟอร์ม POS ทุกจอ (data-testid + F15.3) ✅ (merge bb7b0b2b 22 ต.ค. · 1,242 แถว · R1 ×3 + R1-lite · CD-P41-R3 ส่วนที่เหลือวัดด้วย walker) · P4.2 เดินทุกปุ่มด้วย harness 3 ขนาด · P4.3 แก้ที่พบ + regression
-### P5 — ล่าบั๊กและช่องโหว่ (3 ใบ · CRM §8): P5.1 เงิน/race/idempotency (hunter เลนเงิน) ✅ 23 ต.ค. (oracle MA1–MA14 28 ข้อ · fix A/C/D · B · C · merge 0fc0151b) · P5.2 สิทธิ์/ข้ามร้าน/public endpoints (receipt token · webhook signature · QR โต๊ะ) · P5.3 ประสิทธิภาพ (หน้าขาย <1.0s · lookup barcode <100ms · 200 บรรทัด/บิล)
+### P5 — ล่าบั๊กและช่องโหว่ (3 ใบ · CRM §8): P5.1 เงิน/race/idempotency (hunter เลนเงิน) ✅ 23 ต.ค. (oracle MA1–MA14 28 ข้อ · fix A/C/D · B · C · merge 0fc0151b) · P5.2 สิทธิ์/ข้ามร้าน/public endpoints (receipt token · webhook signature · QR โต๊ะ) ✅ 23 ต.ค. (oracle 54 ข้อ · fix A+B+C+F · D+E+device · merge cf5cbfa8 · หนี้ R2-1 snapshot route ก่อน deploy · W37/W38/W40) · P5.3 ประสิทธิภาพ (หน้าขาย <1.0s · lookup barcode <100ms · 200 บรรทัด/บิล)
 ### P6 — ขึ้น production (2 ใบ · CRM §9): P6.1 migration ลำดับ + backfill + verify-prod · P6.2 HANDOVER + คู่มือในแอป + สกิล + อัปเดต `docs/modules/14-pos.md` เป็น V2 + `docs/sds/modules/pos.md` AS-BUILT
 
 ## 5. แผนขนานและงบเวลา (ประมาณการ · ไม่ใช่สัญญา)
