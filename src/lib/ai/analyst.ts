@@ -11,6 +11,7 @@ import { needsReorder } from "@/lib/modules/inventory/rules";
 import { dayKeyBangkok } from "./rules";
 import { resolveProvider, type AiProvider } from "./provider";
 import { canSpend, chargeUsageSafe, tenantsWithWeeklyReport } from "./credit";
+import { logOps } from "@/lib/core/ops"; // POS P5.2 ▸ R1 F5: ร้านไม่มีเจ้าของที่ตอบรับ = WARN แล้วจบ ◂
 
 export type AnalystCtx = { tenantId: string };
 
@@ -142,6 +143,19 @@ export async function weeklyAnalysis(
   // เครดิตไม่พอ = ข้ามเงียบ ๆ (ไม่ใช่ error — ร้านไม่ได้ทำอะไรผิด)
   if (!(await canSpend(ctx.tenantId))) return null;
 
+  // POS P5.2 ▸ R1 F5: ผู้รับรายงาน = เจ้าของร้าน (OWNER ที่ตอบรับแล้ว · fix F F10a) — หา "ก่อน" เรียก LLM:
+  //   ไม่มีเลย = ไม่มีใครรับ ⇒ ไม่เรียก/ไม่หักเครดิต · WARN 1 แถว · ไม่มีแจ้งเตือน · ลำดับคงที่ (createdAt, userId) ก่อนตัด 50 ◂
+  const owners = await prisma.membership.findMany({
+    where: { tenantId: ctx.tenantId, role: "OWNER", acceptedAt: { not: null } },
+    select: { userId: true },
+    orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
+    take: 50,
+  });
+  if (owners.length === 0) {
+    await logOps("WARN", "ai.weekly", "ai.weekly.no_owner — ร้านไม่มีเจ้าของที่ตอบรับแล้ว ไม่ได้สร้างรายงานประจำสัปดาห์", { tenantId: ctx.tenantId });
+    return null;
+  }
+
   const snapshot = await gatherBusinessSnapshot(ctx);
   const userPrompt = [
     "ข้อมูลธุรกิจ (snapshot) สำหรับเขียนรายงานประจำสัปดาห์ — ใช้ตัวเลขจากนี้เท่านั้น:",
@@ -161,18 +175,11 @@ export async function weeklyAnalysis(
   );
 
   // บันทึกเป็นแจ้งเตือนในร้าน — ใส่ tenantId ตรง ๆ
-  // POS P5.2 ▸ fix F (F10a): รายงานมียอดขายทุกสาขา (+ คลัง/HR) ⇒ แจ้งเฉพาะเจ้าของร้าน (OWNER ที่ตอบรับแล้ว) รายคน —
+  // POS P5.2 ▸ fix F (F10a): รายงานมียอดขายทุกสาขา (+ คลัง/HR) ⇒ แจ้งเฉพาะเจ้าของร้าน (OWNER ที่ตอบรับแล้ว · owners ข้างบน) รายคน —
   //   เดิม recipientUserId ว่าง = ทุกคนในร้านเห็น (ผู้จัดการ/พนักงานสาขาเดียวเห็นยอดทุกสาขา) ◂
-  const owners = await prisma.membership.findMany({
-    where: { tenantId: ctx.tenantId, role: "OWNER", acceptedAt: { not: null } },
-    select: { userId: true },
-    take: 50,
+  await prisma.appNotification.createMany({
+    data: owners.map((o) => ({ tenantId: ctx.tenantId, recipientUserId: o.userId, title: "รายงานธุรกิจประจำสัปดาห์", body: text })),
   });
-  if (owners.length) {
-    await prisma.appNotification.createMany({
-      data: owners.map((o) => ({ tenantId: ctx.tenantId, recipientUserId: o.userId, title: "รายงานธุรกิจประจำสัปดาห์", body: text })),
-    });
-  }
   return text;
 }
 
