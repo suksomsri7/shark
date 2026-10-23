@@ -11,6 +11,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { posCreditBook, posCreditExposureParts } from "@/lib/modules/account";
 import { posCreditRefundRoom } from "@/lib/modules/account"; // POS P3.6 fix2 H2 ◂
 import { posCreditSettings } from "./settings-shared";
+import { canOnAllLinkedUnits } from "./settings-general"; // POS P5.2 ▸ H6b ◂
 import {
   POS_CREDIT_LIMIT_MAX,
   POS_CREDIT_NOTE_MAX,
@@ -88,6 +89,8 @@ export async function saveCreditAccount(ctx: { tenantId: string; systemId: strin
     if (!isRecord(ctx) || !isId(ctx.tenantId) || !(await posSystemOk(prisma, ctx.tenantId, ctx.systemId))) return refuse("NOT_FOUND");
     const actor = actorOf(actorRaw);
     if (!canManageCredit(actor)) return refuse("PERMISSION_DENIED");
+    // POS P5.2 ▸ H6b (มติ H6/F6): บัญชีเครดิตใช้ทั้งระบบ POS ⇒ ต้องมี pos.credit.manage ครบทุกสาขาที่ผูก (OWNER / "*" / ทุกสาขา) — ผู้จัดการสาขาเดียว = PERMISSION_DENIED ◂
+    if (!(await canOnAllLinkedUnits(prisma, { tenantId: ctx.tenantId, systemId: ctx.systemId }, actor!, POS_CREDIT_PERMISSION))) return refuse("PERMISSION_DENIED");
     if (!isRecord(input)) return refuse("VALIDATION");
     const limit = input.limitSatang;
     const term = input.termDays === undefined ? null : input.termDays;
