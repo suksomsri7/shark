@@ -31,14 +31,26 @@ export function halfUpDiv(a: number, b: number): number {
   return Math.floor((2 * a + b) / (2 * b));
 }
 
-/** ยอดสุทธิของแต่ละบรรทัดของบิล (ลำดับเดียวกับ lines) = lineTotal − ส่วนลดระดับบิลที่เกลี่ยลงมา */
+/**
+ * ยอดสุทธิของแต่ละบรรทัดของบิล (ลำดับเดียวกับ lines) = lineTotal − ส่วนลดระดับบิลที่เกลี่ยลงมา
+ * POS P5.1 ▸ MA1 (F1 · CD-P51-O3 a): เกลี่ยลงบรรทัดได้ไม่เกิน Σ บรรทัด (net ไม่ติดลบ) — ส่วนลดที่เกินไปอยู่ที่ค่าบริการ (serviceChargeNet) ◂
+ */
 export function lineNets(lineTotals: number[], serviceChargeSatang: number, grandTotalSatang: number): number[] {
+  const weights = lineTotals.map((t) => Math.max(0, t));
   const d = lineTotals.reduce((a, b) => a + b, 0) + serviceChargeSatang - grandTotalSatang;
-  const alloc = allocateBillDiscount(
-    lineTotals.map((t) => Math.max(0, t)),
-    d,
-  );
+  const alloc = allocateBillDiscount(weights, Math.min(d, weights.reduce((a, b) => a + b, 0)));
   return lineTotals.map((t, i) => t - alloc[i]!);
+}
+
+/**
+ * POS P5.1 ▸ MA1 (F1 · CD-P51-O3 a): ค่าบริการสุทธิของบิล = ค่าบริการ − ส่วนลดระดับบิลที่เกิน Σ บรรทัด (บิลที่สิทธิ์กินค่าบริการ · บิลเก่าก่อนเพดานสิทธิ์) ·
+ *   Σ lineNets + serviceChargeNet = grandTotal เสมอ (บิลปกติ = ค่าบริการเต็ม) ⇒ คืนครบทั้งบิล = ยอดที่รับ ◂
+ */
+export function serviceChargeNet(lineTotals: number[], serviceChargeSatang: number, grandTotalSatang: number): number {
+  const sc = Math.max(0, serviceChargeSatang);
+  const weights = lineTotals.reduce((a, b) => a + Math.max(0, b), 0);
+  const d = lineTotals.reduce((a, b) => a + b, 0) + serviceChargeSatang - grandTotalSatang;
+  return Math.max(0, sc - Math.max(0, d - weights));
 }
 
 /**

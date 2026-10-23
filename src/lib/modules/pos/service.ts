@@ -1139,6 +1139,17 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       }
     }
 
+    // POS P5.1 ▸ MA1 (F1 · CD-P51-O3 b): สิทธิ์สมาชิกไม่กินค่าบริการ — สิทธิ์รวม ≤ ยอดก่อนสิทธิ์ − ค่าบริการ (ตะกร้าของกระเป๋าไม่รู้ส่วนลดท้ายบิล/คูปอง) ·
+    //   ส่วนเกินตัดจากส่วนลดระดับก่อน (อัตโนมัติ · ไม่มีของที่ถูกใช้ไป) · ยังเกิน (ว่อชเชอร์/แต้ม/บัตรกำนัล) = ปฏิเสธทั้งบิล (rollback ทั้ง tx) ◂
+    const memberCap = Math.max(0, beforeMember - serviceCharge);
+    if (memberDiscount > memberCap) {
+      const excess = memberDiscount - memberCap;
+      if (excess > tierDiscountSatang) throw new PosSaleError("VALIDATION", "ส่วนลดรวมมากกว่ายอดบิล — ลดส่วนลดหรือสิทธิ์ที่เลือกก่อน");
+      tierDiscountSatang -= excess;
+      memberDiscount = memberCap;
+      const tierLine = memberBenefits?.lines.find((l) => l.kind === "TIER");
+      if (tierLine) tierLine.discountSatang = Math.max(0, tierLine.discountSatang - excess);
+    }
     const grandTotal = beforeMember - memberDiscount;
     if (paidSum !== grandTotal) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${grandTotal}`);
