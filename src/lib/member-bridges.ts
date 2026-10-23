@@ -62,10 +62,15 @@ async function loadSale(tenantId: string, saleId: string): Promise<SaleForBridge
       voucherUseIds: true,
       giftCardTxnId: true,
       lines: { select: { qty: true, itemId: true, serviceId: true, lineTotalSatang: true }, orderBy: { id: "asc" } },
+      idempotencyKey: true, // POS P5.1 ▸ RC F2 (CD-P51-O10) ◂
     },
   });
   if (!sale || sale.giftCardId || !sale.memberId) return null;
-  return { ...sale, memberId: sale.memberId };
+  // POS P5.1 ▸ RC F2 (CD-P51-O10): บิลริบมัดจำ (คีย์ dep-forfeit:…) ไม่ใช่การซื้อ — ข้ามทั้งสะพาน (แต้ม · ยอดสะสม · ไทม์ไลน์ PURCHASE ·
+  //   ซื้อครั้งแรก · แนะนำเพื่อน · แคมเปญ · ระดับ) ทั้งตอนจ่าย/void/คืน ◂
+  const { idempotencyKey, ...rest } = sale;
+  if (idempotencyKey?.startsWith("dep-forfeit:")) return null;
+  return { ...rest, memberId: sale.memberId };
 }
 
 /** ระบบสมาชิก/แต้มที่ผูกสาขาของบิลใบนี้ (อ่านทีเดียว ไม่ยิงทีละชนิด) */
