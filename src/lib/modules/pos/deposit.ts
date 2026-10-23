@@ -612,8 +612,10 @@ export async function moduleTakeDeposit(input: ModuleDepositInput, sell: ModuleD
     if (st !== null && st !== "PAID") continue;
     if (st === "PAID") {
       // บิลมัดจำแบบเดิม (ก่อน P5.1 · ไม่ใช่ใบรับ) ของคีย์นี้ = มัดจำเดิม (ไม่ออกใบรับซ้อน · บิลปิดคิดราคาเต็มแบบเดิม)
-      const old = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: key } }, select: { id: true, sourceModule: true } });
+      const old = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: key } }, select: { id: true, sourceModule: true, refundedSatang: true } });
       if (old && old.sourceModule !== POS_DEPOSIT_SOURCE) return { saleId: old.id, depositId: null, duplicated: true };
+      // POS P5.1 ▸ MA4b (R1 F1 · CD-P51-O7): ใบรับที่ใช้ไปบางส่วนแล้วคืนเงินส่วนที่เหลือ ยัง PAID (refundedSatang > 0) = มัดจำที่ปิดแล้ว ⇒ คีย์ถัดไป ◂
+      if (old && old.refundedSatang > 0) continue;
     }
     let stale = false;
     for (let attempt = 0; attempt < 3 && !stale; attempt++) {
@@ -623,7 +625,10 @@ export async function moduleTakeDeposit(input: ModuleDepositInput, sell: ModuleD
             const depositId = `dep${randomUUID().replace(/-/g, "")}`;
             const r = await sell(tx, { idempotencyKey: key, sourceModule: POS_DEPOSIT_SOURCE, sourceId: depositId, payType }); // ผู้เรียกห่อ callerTx(tx) เอง (HT6.1) 
             if (r.status !== undefined && r.status !== "PAID") return { kind: "stale" as const };
-            const prior = await tx.posDeposit.findUnique({ where: { receiptSaleId: r.saleId }, select: { id: true } });
+            const prior = await tx.posDeposit.findUnique({ where: { receiptSaleId: r.saleId }, select: { id: true, status: true, refundedSatang: true } });
+            // POS P5.1 ▸ MA4b (R1 F1 · CD-P51-O7): มัดจำของใบรับนี้ถูกคืนแล้ว (บางส่วนหรือทั้งหมด) / หมดอายุ = ไม่ใช่ "รายการเดิม" ⇒ คีย์ถัดไป
+            //   (การคืนของโมดูลทิ้ง refundedSatang > 0 เสมอ · ลองซ้ำ/แข่งจริง refunded 0 ⇒ ยังเป็น dup) ◂
+            if (prior && (prior.refundedSatang > 0 || prior.status === "REFUNDED" || prior.status === "EXPIRED")) return { kind: "stale" as const };
             if (prior) return { kind: "dup" as const, saleId: r.saleId, depositId: prior.id };
             const sale = await tx.posSale.findUnique({ where: { id: r.saleId }, select: { vatSatang: true, receiptNo: true } });
             const dep = await tx.posDeposit.create({
@@ -727,6 +732,22 @@ export async function moduleRefundDeposit(input: { tenantId: string; unitId: str
     }
   }
   return { ok: false, code: "BUSY", message: "ระบบไม่ว่าง — ลองอีกครั้ง" };
+}
+/**
+ * POS P5.1 ▸ MA2b (R1 F2 · CD-P51-O7): คืนเงินทั้งรายการของโมดูล (hotel refundStay · rental refundRental) หลัง void บิลปิด —
+ * คืนสภาพ APPLY ของบิลที่ void ทันที (depositSaleVoided · คีย์ dep-restore-<apply> ⇒ คิวที่ตามมา = ไม่มีผล) แล้วคืนเงินมัดจำคงเหลือทั้งหมด
+ * (ใบคืน CN ของใบรับ · moduleRefundDeposit) ⇒ "คืนเงินแล้ว" = ลูกค้าได้มัดจำคืนครบ · ไม่มีใบรับ (มัดจำแบบเดิม/standalone) = legacy ไม่ทำอะไร ·
+ * voidSale เปิดธุรกรรมของตัวเอง (สัญญา pos-sale-contract.json ตรึงไว้) ⇒ ทำต่อกันเป็นขั้น แต่ละขั้นมีคีย์กันซ้ำ ◂
+ */
+export async function moduleRefundDepositAfterVoid(input: { tenantId: string; unitId: string; receiptSaleId: string | null | undefined; voidedSaleId: string | null | undefined; reason: string; actorId: string }): Promise<ModuleRefundDepositResult & { refundSatang?: number }> {
+  if (!input.receiptSaleId) return { ok: true, refundSaleId: null, legacy: true };
+  if (input.voidedSaleId) await depositSaleVoided({ tenantId: input.tenantId, payload: { saleId: input.voidedSaleId } });
+  const d = await prisma.posDeposit.findUnique({ where: { receiptSaleId: input.receiptSaleId }, select: { tenantId: true, status: true, amountSatang: true, usedSatang: true, refundedSatang: true } });
+  if (!d || d.tenantId !== input.tenantId) return { ok: true, refundSaleId: null, legacy: true };
+  const left = d.amountSatang - d.usedSatang - d.refundedSatang;
+  if (d.status !== "OPEN" || left <= 0) return { ok: true, refundSaleId: null, legacy: false, refundSatang: 0 };
+  const r = await moduleRefundDeposit({ tenantId: input.tenantId, unitId: input.unitId, receiptSaleId: input.receiptSaleId, reason: input.reason, actorId: input.actorId });
+  return r.ok ? { ...r, refundSatang: r.duplicated ? 0 : left } : r;
 }
 // ◂ POS P5.1 MA2 MA4
 

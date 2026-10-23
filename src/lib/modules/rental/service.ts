@@ -312,6 +312,11 @@ export async function refundRental(
     }
   }
 
+  // POS P5.1 ▸ MA2b (R1 F2 · CD-P51-O7): มัดจำที่เป็นใบรับ POS_DEPOSIT — คืนสภาพส่วนที่บิลคืนของใช้ แล้วคืนเงินมัดจำคงเหลือทั้งหมด (ใบคืน CN ของใบรับ)
+  //   ⇒ "คืนเงินแล้ว" = ลูกค้าได้มัดจำคืนด้วย (เดิม: มัดจำกลับเป็น OPEN ค้างไว้ที่หน้าขาย) · มัดจำแบบเดิม/ไม่มีใบรับ = ไม่ทำอะไร ◂
+  const dep = await (await import("@/lib/modules/pos/deposit")).moduleRefundDepositAfterVoid({ tenantId: ctx.tenantId, unitId: ctx.unitId, receiptSaleId: bk.depositSaleId, voidedSaleId: bk.posSaleId, reason: "คืนเงินการเช่า", actorId: "module:rental" });
+  if (dep.ok === false) return { ok: false, reason: `ยกเลิกบิลค่าเช่าแล้ว แต่คืนมัดจำไม่สำเร็จ (${dep.message}) — คืนมัดจำที่หน้าขาย` };
+
   return { ok: true };
 }
 

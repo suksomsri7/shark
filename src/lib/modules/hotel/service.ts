@@ -562,6 +562,10 @@ export async function refundStay(
 
   // 2) กลับเส้นเงิน — void posSale (คืนบัญชี+แต้ม) นอก tx (voidSale เปิด tx เอง, idempotent)
   await pos.voidSale(tenantId, unitId, sale.id);
+  // POS P5.1 ▸ MA2b (R1 F2 · CD-P51-O7): มัดจำที่เป็นใบรับ POS_DEPOSIT — คืนสภาพส่วนที่บิลนี้ใช้ แล้วคืนเงินมัดจำคงเหลือทั้งหมด (ใบคืน CN ของใบรับ)
+  //   ⇒ "คืนเงินแล้ว" = ลูกค้าได้มัดจำคืนด้วย (เดิม: มัดจำกลับเป็น OPEN ค้างไว้ที่หน้าขาย) · มัดจำแบบเดิม/ไม่มีใบรับ = ไม่ทำอะไร ◂
+  const dep = await (await import("@/lib/modules/pos/deposit")).moduleRefundDepositAfterVoid({ tenantId, unitId, receiptSaleId: rv.depositSaleId, voidedSaleId: sale.id, reason: "คืนเงินการจองห้องพัก", actorId: "module:hotel" });
+  if (dep.ok === false) return { ok: false, reason: `ยกเลิกบิลค่าห้องแล้ว แต่คืนมัดจำไม่สำเร็จ (${dep.message}) — คืนมัดจำที่หน้าขาย` };
   return { ok: true, saleVoided: true };
 }
 
