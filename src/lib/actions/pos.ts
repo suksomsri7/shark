@@ -9,7 +9,7 @@ import { assertCan, evaluate, ForbiddenError, type MembershipCtx } from "@/lib/c
 import { posMembership, posSalesScope, posScopeUnitIds, posCanSetTenantPrice } from "@/lib/modules/pos/access";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
 import { isPosClientKey, lookupPosKey, posStoredKey } from "@/lib/modules/pos/legacy-key";
-import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds, posCatalog, posServices } from "@/lib/modules/pos/register";
+import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds, posCatalog, posServices, registerDiscountCaps, registerSellerLimits } from "@/lib/modules/pos/register";
 import { assertLegacySaleAllowed } from "@/lib/modules/pos/api/tools"; // POS P5.1 ▸ MA3 ◂
 import { posRegisterV2On, REGISTER_MANUAL_MANAGER_MESSAGE, REGISTER_MANUAL_METHODS } from "@/lib/modules/pos/register-shared"; // POS P5.1 ▸ MA3 ◂
 import { parsePosIntentSettings } from "@/lib/modules/pos/payment-intent-shared"; // POS P5.1 ▸ MA3 ◂
@@ -412,6 +412,13 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
 
   const totals = await computeTotals(tenantId, input.unitId, norm.lines, norm.subtotal, input.billDiscountSatang, mem.memberId, input.couponCode);
   if (!totals.ok) return { status: "error", message: totals.message };
+
+  // POS P5.1 ▸ MA3 (R1 F1 · CD-P51-O4b): เพดานส่วนลดของผู้ขาย (สูตรเดียวกับหน้าขายใหม่ pricing-shared: Σ ส่วนลด ×10000 ≤ เพดาน × subtotal + ½ สตางค์ต่อส่วนลดแบบยอด) ·
+  //   คูปองไม่นับ (เหมือนหน้าขายใหม่) · ไม่มีเพดาน (null) = ไม่จำกัด ◂
+  const lim = registerSellerLimits({ userId: auth.user.id, ...posMembership(auth.active) }, input.unitId, await registerDiscountCaps({ tenantId, systemId: input.systemId }));
+  if (lim.maxDiscountBp !== null && totals.billDiscount > 0 && totals.billDiscount * 10_000 > lim.maxDiscountBp * norm.subtotal + 5_000) {
+    return { status: "error", message: "ส่วนลดเกินสิทธิ์ของบัญชีนี้" };
+  }
 
   const payType: PosPayType = input.payType === "PROMPTPAY" ? "PROMPTPAY" : input.payType === "TRANSFER" ? "TRANSFER" : "CASH";
 
