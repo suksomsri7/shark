@@ -25,10 +25,23 @@ Constraints kept: no migration · no `prisma/` · no contract JSON · no new err
 | qc-hf-fu --no-db · qc-hf-fu2 --no-db | ST1 lane pins only (restaurant/ · pos/deposit.ts · pos/register.ts changed vs base; hunks without HF-FU2 tag) |
 | pre-submit core @09d567a3 (`presubmit-09d567a3`) | wo run1/run2 15/15 · nodb 2/2 · p1.1 180/180 · p1.3 128/128 · p1.6 48/48 · p1.18 81/81 · hf-tx 22/22 · fitness ±env 53/53 · fitness-pos 8/8 · gen-check ok · hf-fu 28/29 + hf-fu2 30/31 = ST1 lane pins only (unexpected red: none) |
 
-## 3. Oracle conflicts — controller ORACLE-EDIT needed (builder did not edit oracles)
-- **qc-pos-p2.9b L3** pins "legacy deposit paths byte-identical to base (booking recordDeposit/refundDeposit · hotel recordDeposit/checkOut · rental recordRentalDeposit)" and **A6** asserts the legacy JV of `booking.recordDeposit` (bill BOOKING, Dr 2110 50,000 / Cr revenue 46,729 + Cr 2200 3,271, no PosDeposit). That *is* hunt F2 (deposit booked as revenue twice); MA2 + this brief require the opposite. Actual now: bill POS_DEPOSIT · row `DEPOSIT:-` · JV {1010 +50,000 · 2110 −46,729 · 2200 −3,271} + PosDeposit. Proposed: ORACLE-EDIT L3 → re-pin to this head (or drop the 5 functions) and A6 → assert the POS_DEPOSIT receipt (Cr 2110 base + Cr 2200, no 4xxx, PosDeposit + RECEIVE).
-- **qc-booking-deposit** (Wave3-A legacy oracle): BD-3.4/4.2 "Dr 2110 = 50,000 on the deposit bill" (now Cr 2110) · BD-4.1 counts deposit bills of sourceModule BOOKING (now POS_DEPOSIT → 0) · BD-5.2/5.4/6.2 expect refund = **void** (POS_DEPOSIT receipts cannot be voided — `service.ts:1578`; refund = CN, receipt REFUNDED, outbox `pos.sale.refunded`). Proposed ORACLE-EDIT: deposit = receipt POS_DEPOSIT with Cr 2110; refund ⇒ receipt REFUNDED + 2110 net 0 + one CN; re-refund ok:false.
-- qc-hotel-public / qc-rental-public not touched (L3 also pins them); not run here.
+## 3. Oracle conflicts → ORACLE-EDIT under controller ruling CD-P51-O6 (23 Oct · commits 2b377f5a + f7f088a0)
+Ruling: มติ 7 / CD7 of P2.9b was a P2.9b scope rule; hunt M-A F2 + oracle MA2 supersede it for the five deposit functions and qc-booking-deposit. Red-before = edited oracles run on the pre-batch-B product (`src/` of 8c7ccad9, logs `reg-f7f088a0-redbefore-o6/`) · green-after = head f7f088a0 (`reg-f7f088a0-o6/`).
+| check | edit | red-before (product 8c7ccad9) | green-after (f7f088a0) |
+|---|---|---|---|
+| p2.9b A6 | receipt POS_DEPOSIT · row DEPOSIT (no ref) · JV Dr 1010 50,000 / Cr 2110 46,729 / Cr 2200 3,271 · no 4xxx · PosDeposit + RECEIVE | bill BOOKING · JV Dr 2110 / Cr revenue | ✅ |
+| p2.9b L3 | 5 functions + qc-booking-deposit pinned to `L3_PIN = process.env.P29B_L3_PIN \|\| "2b377f5a"` (movable by pos-repin-lane.sh `qc-pos-p2.9b:L3_PIN`) · hotel/rental-public keep "not modified vs BASE_REV" | 5 functions differ from pin | ✅ · suite **53/53** |
+| BD-3.4 | receipt JV Cr 2110 46,729 + Cr 2200 3,271 (= 50,000), Dr 2110 0 | dr2110 50,000 · cr2110 0 · cr2200 3,271 | ✅ |
+| BD-4.1 | repeat recordDeposit ok + noop · exactly 1 PAID POS_DEPOSIT receipt | true/true/0 | ✅ |
+| BD-4.2 | Cr 2110 46,729 + Cr 2200 3,271 unchanged after repeat | dr2110 50,000 | ✅ |
+| BD-5.2 | receipt REFUNDED + depositPaidAt null | VOIDED/null | ✅ |
+| BD-5.4 | outbox pos.sale.refunded ≥ 1 | 0 | ✅ |
+| BD-6.2 | 2nd refund ok:false · exactly 1 credit note (docType REFUND, refSaleId = receipt) · receipt still REFUNDED | 0/VOIDED | ✅ · suite **18/18** |
+Also green after: qc-pos-p5.1 15/15 · fitness (iso) 53/53. qc-pos-p2.10 --no-db 1/2 — ST2 lane pin only (`register.ts` hunk +11 −1 · `qc-pos-p2.9b.mts` edited, CONTROLLER-DECISION).
+
+**Not edited — red only from MA2 semantics (controller rules separately):**
+- qc-hotel-public 13/15: **HP-4.3** expects Dr 2110 = 50,000 on the deposit bill → actual dr 0 (receipt credits 2110) · **HP-4.4** expects 1 PAID bill `sourceModule HOTEL, sourceId <reservation>` + Dr 2110 50,000 after a repeat → actual 0/0 (the receipt is sourceModule POS_DEPOSIT, sourceId = PosDeposit.id).
+- qc-rental-public 14/16: **RP-4.3** / **RP-4.4** — same shape for RENTAL (`dr 0` · `0/0`).
 
 ## 4. Notes / behaviour changes the module owners should know (also as OP lines)
 - After `refundStay` (hotel) / rental refund the final bill is voided ⇒ `depositSaleVoided` restores the deposit to OPEN (a liability refundable at the register/deposit screen) — before, the deposit bill stayed as revenue.
