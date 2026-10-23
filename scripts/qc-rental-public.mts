@@ -83,12 +83,21 @@ try {
   const dep2110 = await acctSide("2110");
   chk("RP-4.1", "recordRentalDeposit ok + saleId + PAID + DEPOSIT amount=50000", rd.ok === true && sale?.status === "PAID" && sale?.payments?.some((p: any) => p.type === "DEPOSIT" && p.amountSatang === DEP), "PAID+DEPOSIT", `${rd.ok}/${sale?.status}`);
   chk("RP-4.2", "depositPaidAt ตั้ง + depositSaleId ผูกบิล", !!bkAfter?.depositPaidAt && bkAfter?.depositSaleId === saleId, "paidAt+saleId", `${!!bkAfter?.depositPaidAt}/${bkAfter?.depositSaleId === saleId}`);
-  chk("RP-4.3", "บัญชี Dr 2110 เงินมัดจำรับ = 50000", dep2110.dr === DEP, String(DEP), `dr=${dep2110.dr}`);
+  // ORACLE-EDIT CD-P51-O6b (POS P5.1 batch B · 23 Oct): มัดจำ = ใบรับ POS_DEPOSIT 1 ใบ (sourceId = PosDeposit.id) PAID ·
+  //   JV Cr 2110 ฐาน 46729 + Cr 2200 VAT 3271 (= 50000 · VAT 7% รวม) · ไม่มี Dr 2110 · ไม่มีบรรทัด 4xxx (เดิม: บิล RENTAL Dr 2110 / Cr รายได้ = hunt M-A F2) ◂
+  const DEP_BASE = 46_729, DEP_VAT = 3_271;
+  const dep2200 = await acctSide("2200");
+  const depRow = saleId ? await prisma.posDeposit.findUnique({ where: { receiptSaleId: saleId } }) : null;
+  const rcptJv = saleId ? await prisma.accountJournalEntry.findMany({ where: { systemId: accSys.id, refType: "PosSale", refId: saleId }, include: { lines: { include: { account: { select: { code: true } } } } } }) : [];
+  const rcpt4 = rcptJv.flatMap((e) => e.lines).filter((l) => l.account.code.startsWith("4")).length;
+  const rcptOk = sale?.sourceModule === "POS_DEPOSIT" && sale?.status === "PAID" && !!depRow && sale?.sourceId === depRow.id;
+  chk("RP-4.3", "[CD-P51-O6b] ใบรับ POS_DEPOSIT (sourceId = PosDeposit) PAID · Cr 2110 46729 + Cr 2200 3271 · ไม่มี Dr 2110 · ไม่มี 4xxx", rcptOk && dep2110.cr === DEP_BASE && dep2110.dr === 0 && dep2200.cr === DEP_VAT && rcptJv.length > 0 && rcpt4 === 0, `POS_DEPOSIT+cr2110=${DEP_BASE}+cr2200=${DEP_VAT}+no4xxx`, `${sale?.sourceModule}/${sale?.status}/dep=${!!depRow} dr2110=${dep2110.dr} cr2110=${dep2110.cr} cr2200=${dep2200.cr} 4xxx=${rcpt4}`);
   const rd2 = await svc.recordRentalDeposit(ctx, bkId);
   await wiring.drainAll();
-  const depCount = await prisma.posSale.count({ where: { tenantId: tid, sourceModule: "RENTAL", sourceId: bkId, status: "PAID" } });
+  const depCount = await prisma.posSale.count({ where: { tenantId: tid, sourceModule: "POS_DEPOSIT", docType: "SALE", status: "PAID" } }); // ORACLE-EDIT CD-P51-O6b: นับใบรับ POS_DEPOSIT (เดิม RENTAL) ◂
   const dep2110b = await acctSide("2110");
-  chk("RP-4.4", "recordRentalDeposit ซ้ำ → no-op (1 บิล) + Dr 2110 ไม่เบิ้ล", rd2.ok === true && depCount === 1 && dep2110b.dr === DEP, "1+50000", `${depCount}/${dep2110b.dr}`);
+  const dep2200b = await acctSide("2200");
+  chk("RP-4.4", "[CD-P51-O6b] recordRentalDeposit ซ้ำ → no-op (ใบรับ POS_DEPOSIT 1 ใบ) + Cr 2110/2200 ไม่เบิ้ล", rd2.ok === true && depCount === 1 && dep2110b.cr === DEP_BASE && dep2110b.dr === 0 && dep2200b.cr === DEP_VAT, `1+cr2110=${DEP_BASE}+cr2200=${DEP_VAT}`, `${depCount}/dr2110=${dep2110b.dr} cr2110=${dep2110b.cr} cr2200=${dep2200b.cr}`); // ORACLE-EDIT CD-P51-O6b (POS P5.1 batch B · 23 Oct) ◂
 
   // ── RP-5: กันจองซ้อน (2 request พร้อมกัน asset เดียว ช่วงชนกัน) → สำเร็จ 1 ──
   const a2 = await svc.createAsset(ctx, { name: "จักรยาน B", dailyRateSatang: RATE, depositSatang: 0 });
