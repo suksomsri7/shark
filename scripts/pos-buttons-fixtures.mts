@@ -356,6 +356,19 @@ export const SIDE_EFFECT_KEYS: Readonly<Record<string, string>> = {
   [`${STAFF}settings#pos-channel-drawer-save`]: "537 สร้างช่องทางใหม่ 1 ช่อง/รอบ → ลบช่องทางที่เกิดในรอบ",
   [`${STAFF}settings#pos-channel-creds-webhook`]: "1161 ตัวเปิดเชื่อม LINE MAN = ช่องทางใหม่ → ลบช่องทาง/credentials ที่เกิดในรอบ",
   [`${STAFF}settings#pos-device-lan-token-copy`]: "1183 ตัวช่วยพิมพ์ LAN → ถอน (revokePrintAgent) ตัวที่เกิดในรอบ",
+  // POS P4.3 walker fix1 ▸ H8 (triage §2): ปิดกะกลางรอบทำให้แถวคืนเงินสดหลังจากนั้นถูกปฏิเสธ "ต้องเปิดกะก่อน" ⇒ ช่วงท้าย + เปิดกะคืน ◂
+  [`${STAFF}shifts#pos-shift-close-submit`]: "ปิดกะของเครื่องตัวกด → เปิดกะคืน (ensureDeviceShift)",
+  // POS P4.3 walker fix1 ▸ H11: พักครัวค้างทำให้แถว "ครัวยังไม่ได้พัก" ของช่องถัดไปพลิก (P5.2 D11: จอครัวเรียก kdsKitchenPauseAction) ◂
+  [`${STAFF}kds#pos-kds-pause`]: "พักครัวค้าง → kitchenPaused=false ของ posqc-btn-unit",
+};
+export const SHIFT_CLOSE_KEY = `${STAFF}shifts#pos-shift-close-submit`;
+/**
+ * POS P4.3 walker fix1 ▸ R3/R4 (triage §7 ให้ใส่ "<testid ของแถว>=click" ใน opener แต่ qc-pos-p4.1 R3 ห้าม opener ชี้ตัวเอง — ไม่ ORACLE-EDIT ในใบนี้):
+ * แถวที่คอนโทรลต้องแตะ "ตัวเอง" หนึ่งครั้งก่อนกดจริง — ตัวกดแตะ element ที่หาเจอ 1 ครั้ง (ไม่กรองชนิด) แล้วหาใหม่ด้วย testid ตรงตัวของ element นั้น ◂
+ */
+export const SELF_CLICK_FIRST: Readonly<Record<string, string>> = {
+  [`${STAFF}register#pos-reg-held-discard-*`]: "R3 แตะครั้งแรก = ตั้ง confirmId (HeldBillsDrawer.tsx:96-99) · แตะของแถว = ครั้งที่สอง (ทิ้งจริง)",
+  [`${STAFF}stock#pos-stock-qty-*`]: "R4 testid เดียวกันเป็นปุ่ม \"นับ\" จนกว่าจะแตะ แล้วกลายเป็นช่องกรอก (StockCount.tsx:576 input / :596 button)",
 };
 export const SIDE_EFFECT_TEXT_RE = /press last|กดท้าย|\breset\b|รีเซ็ต|CD-P41-F22/i;
 export function sideEffectOf(row: Row): string | null {
@@ -502,6 +515,8 @@ export type Ctx = {
   deviceSnap: string[];
   /** เพดานส่วนลด STAFF (bp) จาก settings.pos.discount — ค่าที่ตัวกดพิมพ์เองไม่เกินนี้ (CD-P42-R6) */
   staffDiscountCapBp: number;
+  /** POS P4.3 walker fix1 ▸ H14: ApprovalPolicy POS_DISCOUNT_OVER ของสาขา posqc-btn ที่รอบนี้เปิด (id) — เก็บกวาดตอนจบ ◂ */
+  approvalPolicyId: string;
 };
 let PRISMA: Any = null;
 export async function db(): Promise<Any> {
@@ -728,6 +743,23 @@ export async function resetSideEffects(c: Ctx, label: string, opts: { channels?:
     }
     return `สถานีครัวที่เกิดในรอบ: ลบ ${del}${arch ? ` · เก็บ ${arch} (มีเมนู/รายการอ้าง)` : ""}`;
   });
+  // POS P4.3 walker fix1 ▸ H11: พักครัวของสาขา posqc-btn (แถว pos-kds-pause ช่วงท้าย · ซาก · จบรอบ) → เลิกพักด้วย writer ของ POS (kdsSetKitchenPause) ◂
+  await step("พักครัว", async () => {
+    const rs: { kitchenPaused: boolean } | null = await P.restaurantSetting.findFirst({ where, select: { kitchenPaused: true } });
+    if (!rs?.kitchenPaused) return null;
+    const owner = await actorOfMembership(c.T.users.owner.membershipId, c.T.users.owner.userId);
+    const kds = (await import("@/lib/modules/pos/kds" as string)) as Any;
+    const r = await kds.kdsSetKitchenPause({ tenantId: QC_TENANT, systemId: c.sys, unitId: BTN.unit.id }, owner, { paused: false });
+    if (r?.ok) return "เลิกพักครัวของ posqc-btn-unit (kdsSetKitchenPause paused:false)";
+    const u = await P.restaurantSetting.updateMany({ where: { ...where, kitchenPaused: true }, data: { kitchenPaused: false, kitchenPausedNote: null } });
+    return `kdsSetKitchenPause → ${r?.code ?? "?"} · ตั้ง kitchenPaused=false ตรง ${u.count} แถว`;
+  });
+  // POS P4.3 walker fix1 ▸ H8: แถว pos-shift-close-submit (ช่วงท้าย) ปิดกะของเครื่องตัวกด → เปิดกะคืน (ensureDeviceShift · ไม่ตั้ง PIN/โทเคนซ้ำ) ◂
+  if (label === SHIFT_CLOSE_KEY) await step("เปิดกะคืน", async () => {
+    const before = c.shiftId;
+    await ensureDeviceShift(c);
+    return c.shiftId && c.shiftId !== before ? `เปิดกะใหม่ ${c.shiftId} (กะ ${before || "-"} ถูกปิดโดยแถว)` : `กะ ${c.shiftId} ยังเปิดอยู่`;
+  });
   if (opts.channels !== false) await step("ช่องทาง", async () => {
     const ch: { id: string; code: string }[] = await P.salesChannel.findMany({ where: { ...where, createdAt: { gte: c.runStart } }, select: { id: true, code: true } });
     if (!ch.length) return null;
@@ -804,7 +836,8 @@ async function ensureDeviceShift(c: Ctx): Promise<void> {
   const pinSvc = (await import("@/lib/modules/pos/staff-pin" as string)) as Any;
   const a = await actorOfMembership(c.persona.membershipId, c.persona.userId);
   const prev = await P.posStaffPin.findUnique({ where: { unitId_userId: { unitId: BTN.unit.id, userId: a.userId } }, select: { pinHash: true, failedCount: true, lockedUntil: true, setById: true } });
-  c.pinRestore.push({ userId: a.userId, row: prev });
+  // POS P4.3 walker fix1 ▸ H8: เรียกซ้ำจาก resetSideEffects (เปิดกะคืน) — จำแถว PIN เดิมครั้งแรกครั้งเดียว (ครั้งที่สองจะจำ PIN ของตัวกดทับ) ◂
+  if (!c.pinRestore.some((x) => x.userId === a.userId)) c.pinRestore.push({ userId: a.userId, row: prev });
   let last = "";
   for (let i = 0; i < 8 && !c.pin; i++) {
     const pin = String(randomInt(100000, 1000000));
@@ -814,8 +847,10 @@ async function ensureDeviceShift(c: Ctx): Promise<void> {
     if (!r.ok && r.code !== "WEAK_PIN") break;
   }
   if (!c.pin) throw new StepError("setStaffPin", `${a.userId} @ ${BTN.unit.id} → ${last || "?"}`);
-  const t = await pinSvc.issueStaffToken({ tenantId: T.tenantId, systemId: c.sys, unitId: BTN.unit.id, deviceId: c.deviceCode }, { unitId: BTN.unit.id, deviceId: c.deviceCode, userId: a.userId });
-  c.staffJson = JSON.stringify({ userId: a.userId, name: c.persona.name, role: a.role, staffToken: t.staffToken, expiresAt: t.expiresAt });
+  if (!c.staffJson) {
+    const t = await pinSvc.issueStaffToken({ tenantId: T.tenantId, systemId: c.sys, unitId: BTN.unit.id, deviceId: c.deviceCode }, { unitId: BTN.unit.id, deviceId: c.deviceCode, userId: a.userId });
+    c.staffJson = JSON.stringify({ userId: a.userId, name: c.persona.name, role: a.role, staffToken: t.staffToken, expiresAt: t.expiresAt });
+  }
   const sh = (await import("@/lib/modules/pos/shift" as string)) as Any;
   const open = await P.posShift.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, deviceId: c.deviceCode, status: "OPEN" }, select: { id: true } });
   if (open) c.shiftId = open.id;
@@ -886,6 +921,25 @@ async function healResidue(c: Ctx): Promise<void> {
     c.runStart = saved;
   }
 }
+/** POS P4.3 walker fix1 ▸ H14 (triage §2): ApprovalPolicy POS_DISCOUNT_OVER ของสาขา posqc-btn (ชื่อตายตัว · หา-หรือ-สร้าง · เปิดใช้) —
+ *  ไม่มีสาย = posApprovalPolicyExists false ⇒ "ใช้ PIN ผู้จัดการแทน" (pos-approval.ts:117) · เก็บกวาดใน cleanupFixtures ◂ */
+export const BTN_APPROVAL_POLICY = { name: "QC P4.3 ตัวกด ส่วนลดเกินสิทธิ์ (posqc-btn)", entityType: "POS_DISCOUNT_OVER", approverRole: "MANAGER" } as const;
+async function ensureApprovalPolicy(c: Ctx): Promise<void> {
+  const P = await db();
+  const ap = (await import("@/lib/modules/approval/service" as string)) as Any;
+  const where = { tenantId: QC_TENANT, unitId: BTN.unit.id, entityType: BTN_APPROVAL_POLICY.entityType, name: BTN_APPROVAL_POLICY.name };
+  const cur: { id: string; active: boolean } | null = await P.approvalPolicy.findFirst({ where, select: { id: true, active: true }, orderBy: { createdAt: "asc" } });
+  if (cur) {
+    if (!cur.active) await ap.setPolicyActive({ tenantId: QC_TENANT }, cur.id, true);
+    c.approvalPolicyId = cur.id;
+    c.log.push(`สาย POS_DISCOUNT_OVER ของ posqc-btn มีแล้ว ${cur.id}${cur.active ? "" : " (เปิดใช้คืน)"}`);
+    return;
+  }
+  const r = await ap.createPolicy({ tenantId: QC_TENANT }, { name: BTN_APPROVAL_POLICY.name, entityType: BTN_APPROVAL_POLICY.entityType, unitId: BTN.unit.id, systemId: c.sys, steps: [{ order: 1, approverRole: BTN_APPROVAL_POLICY.approverRole }] });
+  if (!r?.id) throw new StepError("createPolicy", `${BTN_APPROVAL_POLICY.entityType} @ ${BTN.unit.id} → ไม่มี id`);
+  c.approvalPolicyId = r.id;
+  c.log.push(`สร้างสาย POS_DISCOUNT_OVER ของ posqc-btn ${r.id}`);
+}
 export function newCtx(T: Any, user: UserKey): Ctx {
   return {
     T,
@@ -912,6 +966,7 @@ export function newCtx(T: Any, user: UserKey): Ctx {
     accountLinkOn: null,
     deviceSnap: [],
     staffDiscountCapBp: STAFF_DISCOUNT_CAP_BP_DEFAULT,
+    approvalPolicyId: "",
   };
 }
 /** ตั้ง fixture ทั้งชุดก่อนเปิดเบราว์เซอร์ (QC5 เท่านั้น) — ล้ม = StepError (ตัวกดหยุด · เก็บกวาดสิ่งที่ทำไปแล้ว) */
@@ -923,8 +978,10 @@ export async function ensureFixtures(c: Ctx, user: UserKey): Promise<void> {
     await ensureUnitAndLinks(c);
     await rememberUnitSettings(c); // CD-P42-R7: สาขาอาจเพิ่งสร้าง
     await healResidue(c);
-    if (user === "manager" || user === "cashier") await ensurePersona(c, user);
+    // POS P4.3 walker fix1 ▸ H6: รายชื่อจอล็อก = สมาชิกร้านที่ขายที่สาขานี้ได้ (staff-pin.ts:595-602) · สลับผู้ใช้ต้อง ≥ 2 คน (LockScreen.tsx:616) ⇒ ทั้งสองบทบาททุกช่อง ◂
+    for (const k of ["manager", "cashier"] as const) await ensurePersona(c, k); // (อยู่ใน if (user !== "public") แล้ว — §7 เขียน guard ซ้ำ · tsc TS2367)
     await ensureDeviceShift(c);
+    await ensureApprovalPolicy(c); // POS P4.3 walker fix1 ▸ H14 ◂
     await findCartProducts(c);
     const P = await db();
     c.deviceSnap = (await P.posDevice.findMany({ where: { tenantId: QC_TENANT, unitId: BTN.unit.id, status: "ACTIVE" }, select: { id: true } })).map((d: { id: string }) => d.id);
@@ -980,6 +1037,17 @@ async function cleanupFixturesOnce(c: Ctx): Promise<void> {
       await P.posStaffPin.update({ where: { unitId_userId: { unitId: BTN.unit.id, userId: pr.userId } }, data: pr.row });
       return "คืนแถวเดิม";
     });
+  // POS P4.3 walker fix1 ▸ H14: เอาสายอนุมัติของตัวกดออก — มีคำขอของสายนี้ (แถว pos-discount-over-request) = ปิดใช้ (คำขอเดิมยังอ่าน steps ได้) · ไม่มี = ลบ ◂
+  if (c.approvalPolicyId)
+    await step("สาย POS_DISCOUNT_OVER ของตัวกด", async () => {
+      const used = await P.approvalRequest.count({ where: { tenantId: QC_TENANT, policyId: c.approvalPolicyId } });
+      if (used) {
+        await P.approvalPolicy.updateMany({ where: { id: c.approvalPolicyId, tenantId: QC_TENANT, unitId: BTN.unit.id }, data: { active: false } });
+        return `ปิดใช้สาย ${c.approvalPolicyId} (มีคำขออ้าง ${used})`;
+      }
+      const d = await P.approvalPolicy.deleteMany({ where: { id: c.approvalPolicyId, tenantId: QC_TENANT, unitId: BTN.unit.id } });
+      return `ลบสาย ${c.approvalPolicyId} (${d.count} แถว · steps ลบตาม cascade)`;
+    });
   await step("คืน settings.pos", async () => {
     await finalSettingsRestore(c);
     return "ดูแถวจบรอบ";
@@ -989,7 +1057,32 @@ async function cleanupFixturesOnce(c: Ctx): Promise<void> {
 // ═════════════════════════ ตรวจผล DB ของแถว mutation (อ่านอย่างเดียว) ═════════════════════════
 /** ตารางที่มี unitId — แถว money/counter ต้องลงสาขา posqc-btn (ข้อสอบ W7) */
 export const MONEY_MODELS_UNIT = ["PosSale", "PosPayment", "PosPaymentIntent", "PosDeposit", "PosCashMovement", "PosShift"];
-type Write = { model: string; del: boolean };
+/** POS P4.3 walker fix1 ▸ H16: pos = เส้นทางใต้ AppSystem.settings.pos ที่แถวเขียน (เทียบก่อน/หลังแทน updatedAt ของ AppSystem ใด ๆ ของร้าน) ◂ */
+type Write = { model: string; del: boolean; pos?: string[] };
+/** POS P4.3 walker fix1 ▸ H16: "AppSystem(POS).settings.pos.{a.b, c}" · "…settings.pos.payment.promptpayIdByUnit.<unitId>" → ["a.b","c"] · ["payment.promptpayIdByUnit.posqc-btn-unit"] ·
+ *  ตัวแปร <x> อื่น = ตัดเส้นทางที่ตัวแปร (เทียบทั้งกิ่งแม่) ◂ */
+export function posSettingsPaths(dbText: string | undefined): string[] {
+  const m = /settings\.pos\.(\{[^}]*\}|[A-Za-z0-9_.<>]+)/.exec(String(dbText ?? ""));
+  if (!m) return [];
+  const raw = m[1]!.startsWith("{") ? m[1]!.slice(1, -1).split(",") : [m[1]!];
+  const out: string[] = [];
+  for (const x of raw) {
+    let p = x.trim().replace(/<unitId>/g, BTN.unit.id);
+    const v = p.indexOf("<");
+    if (v >= 0) p = p.slice(0, v);
+    p = p.replace(/\.+$/, "");
+    if (p && !out.includes(p)) out.push(p);
+  }
+  return out;
+}
+const getPath = (v: Any, path: string): Any => path.split(".").reduce((o: Any, k) => (isRecObj(o) ? o[k] : undefined), v);
+/** POS P4.3 walker fix1 ▸ H16: settings.pos.<k> ตอนนี้ ≠ ที่จำไว้ก่อนรอบ (_qcP42Before · คืนค่าหลังทุกแถวที่เขียน ⇒ = ก่อนกดของแถวนี้) อย่างน้อย 1 เส้นทาง ◂ */
+export async function posSettingsChanged(c: Ctx, paths: readonly string[]): Promise<{ ok: boolean; units: string[]; changed: string[] }> {
+  if (!c.settingsSnap || !paths.length) return { ok: false, units: [], changed: [] };
+  const cur = withoutMarker((await readPos(c.sys)).v);
+  const changed = paths.filter((p) => stable(getPath(cur, p)) !== stable(getPath(c.settingsSnap!.v, p)));
+  return { ok: changed.length > 0, units: [], changed };
+}
 /** db = "PosSale PAID + PosPayment · AuditLog pos.x" → โมเดลที่ต้องถูกเขียน (≤ 3 ตัวแรก) */
 export function writesOf(dbText: string | undefined, models: Set<string>): Write[] {
   const out: Write[] = [];
@@ -997,7 +1090,8 @@ export function writesOf(dbText: string | undefined, models: Set<string>): Write
     const m = /^([A-Z][A-Za-z0-9]+)\b/.exec(seg);
     if (!m || !models.has(m[1]!) || out.some((w) => w.model === m[1])) continue;
     if (/ไม่เปลี่ยน|ไม่เพิ่ม|ไม่เขียน|ไม่ลบ/.test(seg)) continue;
-    out.push({ model: m[1]!, del: /ถูกลบ|ลบแถว|ลบแล้ว|\bdeleted\b/.test(seg) });
+    const pos = m[1] === "AppSystem" && /settings\.pos\./.test(seg) ? posSettingsPaths(dbText) : [];
+    out.push({ model: m[1]!, del: /ถูกลบ|ลบแถว|ลบแล้ว|\bdeleted\b/.test(seg), ...(pos.length ? { pos } : {}) });
     if (out.length >= 3) break;
   }
   return out;
@@ -1096,7 +1190,7 @@ export async function preflight(T: Any, users: readonly UserKey[] = ["owner", "m
     add(`link-${type}`, link && link !== "ERR" && (link as Any).systemId === s.id ? "ok" : "would-create", link && link !== "ERR" ? `ผูกอยู่กับ ${(link as Any).systemId}${(link as Any).systemId === s.id ? "" : ` → linkUnit ${s.id}`}` : `linkUnit(${T.tenantId}, ${s.id}, ${BTN.unit.id})`);
   }
   for (const k of ["manager", "cashier"] as const) {
-    if (!users.includes(k)) continue;
+    if (!users.some((u) => u !== "public")) continue; // POS P4.3 walker fix1 ▸ H6: ทุกช่องพนักงาน upsert ทั้งสองบทบาท ◂
     const p = BTN[k];
     const byEmail = await q(() => P.user.findUnique({ where: { email: p.email }, select: { id: true } }));
     const byId = await q(() => P.user.findUnique({ where: { id: p.userId }, select: { id: true, email: true } }));
@@ -1124,6 +1218,11 @@ export async function preflight(T: Any, users: readonly UserKey[] = ["owner", "m
     add(`pin-${u}`, pin && pin !== "ERR" ? "ok" : "would-create", pin && pin !== "ERR" ? `มีแถว PIN (จำแล้วคืนค่าใน finally) lockedUntil ${(pin as Any).lockedUntil ?? "-"}` : `setStaffPin ${pers.userId} (owner actor · สุ่ม 6 หลัก · ไม่พิมพ์ค่า)`);
     const sh = await q(() => P.posShift.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, deviceId: code, status: "OPEN" }, select: { id: true, openedAt: true } }));
     add(`shift-${u}`, sh && sh !== "ERR" ? "warn" : "would-create", sh && sh !== "ERR" ? `กะ OPEN ค้าง ${(sh as Any).id} (${(sh as Any).openedAt?.toISOString?.()}) — ตัวกดรับต่อแล้วปิดตอนจบ` : `openShift float ${BTN.floatSatang} → closeShift นับตรงยอดตอนจบ`);
+  }
+  // POS P4.3 walker fix1 ▸ H14: สายอนุมัติ POS_DISCOUNT_OVER ของสาขา posqc-btn (หา-หรือ-สร้าง · เก็บกวาดตอนจบ) — อ่านอย่างเดียว ◂
+  if (users.some((u) => u !== "public")) {
+    const pol = await q(() => P.approvalPolicy.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, entityType: BTN_APPROVAL_POLICY.entityType, name: BTN_APPROVAL_POLICY.name }, select: { id: true, active: true } }));
+    if (pol !== "ERR") add("approval-policy-discount-over", pol ? "ok" : "would-create", pol ? `${(pol as Any).id} active ${(pol as Any).active} (เปิดใช้ระหว่างรอบ · ปิด/ลบตอนจบ)` : `createPolicy ${BTN_APPROVAL_POLICY.entityType} unit ${BTN.unit.id} system ${T.systems.POS.id} ขั้น 1 ${BTN_APPROVAL_POLICY.approverRole}`);
   }
   add("session-secret", env("SESSION_SECRET") ? "ok" : "block", env("SESSION_SECRET") ? "มี (issueStaffToken · ไม่พิมพ์ค่า) — ต้องตรงกับของเซิร์ฟเวอร์ QC" : "ไม่มี SESSION_SECRET — ออกโทเคนผู้ขายไม่ได้");
   const pos = await q(() => readPos(T.systems.POS.id));
