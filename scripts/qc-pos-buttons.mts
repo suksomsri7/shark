@@ -48,6 +48,7 @@ import {
   assertWritable, cellName, cellRows, classify, cleanupFixtures, countTenant, db, dbHost, dbNow, discountFill, ensureFixtures, estimateSec, expectAlts, f13Users,
   isClipboardRow, isSearchLike, loadP41Rules, localeOfSwitch, modelInfo, navMatches, newCtx, parseStep, planCell, preflight, readRegistry, resetSideEffects,
   moneyRowsSince, restoreSettingsIfChanged, rowKey, sha16, sideEffectOf, sideEffectRank, summaryFile, writesOf, writtenSince, type ExpectAlt,
+  SELF_CLICK_FIRST, posSettingsChanged, posSettingsPaths,
   type Cell, type CellPlan, type Ctx, type DeviceKey, type Locale, type P41Rules, type PlanItem, type Registry, type Row, type SkipReason, type UserKey,
 } from "./pos-buttons-fixtures.mjs";
 
@@ -331,7 +332,17 @@ if (!BASE_RAW) {
     t("F26 anyOf อ็อบเจกต์+สตริง", al.length === 3 && al[1]!.type === "toast" && al[1]!.target === "pos-b" && al[2]!.type === "modal" && al[2]!.target === "pos-c");
     t("F27 ตัวสลับ", localeOfSwitch("pos-locale-switch-th") === "th" && localeOfSwitch("pos-rpub-lang-en") === "en" && SWITCH_RE.test("pos-reg-unit-option-*") && !SWITCH_RE.test("pos-reg-pay"));
     t("F26 คลิปบอร์ด", isClipboardRow(mkClip("pos-tbl-qr-copy")) && !isClipboardRow(mkClip("pos-reg-pay")));
-    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (7) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 — ผ่านทุกกรณี");
+    // POS P4.3 walker fix1 ▸ H16 เส้นทาง settings.pos ของแถว AppSystem · R3/R4 ตาราง SELF_CLICK_FIRST ชี้แถวที่มีจริง · H8/H11 แถวผลข้างเคียงช่วงท้าย ◂
+    t("H16 settings.pos", posSettingsPaths("AppSystem(POS).settings.pos.{register.autoLockMinutes, heldCart.expireDays, receiptLocale}").join(",") === "register.autoLockMinutes,heldCart.expireDays,receiptLocale" &&
+      posSettingsPaths("AppSystem(POS).settings.pos.payment.promptpayIdByUnit.<unitId>").join(",") === `payment.promptpayIdByUnit.${BTN.unit.id}` &&
+      posSettingsPaths("AppSystem(POS).settings.pos.receipt (jsonb_set · header/footer)").join(",") === "receipt" && posSettingsPaths("PosSale PAID").length === 0 &&
+      writesOf("KanbanBoard + AppSystem(POS).settings.pos.board.defaultBoardId", new Set(["KanbanBoard", "AppSystem"])).map((w) => `${w.model}:${(w.pos ?? []).join("|")}`).join(",") === "KanbanBoard:,AppSystem:board.defaultBoardId");
+    t("R3/R4 SELF_CLICK_FIRST", Object.keys(SELF_CLICK_FIRST).length === 2 && Object.keys(SELF_CLICK_FIRST).every((k) => REG.rows.some((r) => rowKey(r) === k)));
+    t("H8/H11 ช่วงท้าย", ["shifts#pos-shift-close-submit", "kds#pos-kds-pause"].every((k) => {
+      const r = REG.rows.find((x) => rowKey(x) === `${STAFF}${k}`);
+      return !!r && !!sideEffectOf(r);
+    }));
+    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (7) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 · P4.3 H16 settings.pos · R3/R4 SELF_CLICK_FIRST · H8/H11 ช่วงท้าย — ผ่านทุกกรณี");
   }
   const passed = res.filter((r) => r.ok).length;
   console.log(`\n${passed === res.length ? "✅" : "❌"} ${SUITE} (ด่าน): ${passed}/${res.length}`);
@@ -414,12 +425,13 @@ function selOf(testid: string): string {
   return [prefix ? `[data-testid^="${prefix}"]` : "", suffix ? `[data-testid$="${suffix}"]` : ""].join("") || "[data-testid]";
 }
 const looksLikeTestid = (s: string) => /^[a-z][a-z0-9*-]*$/.test(s) && s.includes("-");
-/** ตัวแรกที่มองเห็น (คู่ desktop/mobile ใช้ testid เดียว) · แพตเทิร์น = ตัวแรกที่กดได้จริง ไม่อยู่ใน notList · waitMs > 0 = รอถี่ 200 ms */
-async function findVisible(page: Any, testid: string, notList: string[] = [], waitMs = 0): Promise<Any | null> {
+/** ตัวแรกที่มองเห็น (คู่ desktop/mobile ใช้ testid เดียว) · แพตเทิร์น = ตัวแรกที่กดได้จริง ไม่อยู่ใน notList · waitMs > 0 = รอถี่ 200 ms ·
+ *  onlyTags (POS P4.3 walker fix1 ▸ H12) = รับเฉพาะ tagName เหล่านี้ (แถวช่องกรอกแบบแพตเทิร์น — กัน span ราคาในรายการชนแพตเทิร์นของช่องกรอก) ◂ */
+async function findVisible(page: Any, testid: string, notList: string[] = [], waitMs = 0, onlyTags: string[] | null = null): Promise<Any | null> {
   const deadline = Date.now() + waitMs;
   for (;;) {
     const h = await page
-      .evaluateHandle((pSel: string, nots: string[], pattern: boolean, glob: string) => {
+      .evaluateHandle((pSel: string, nots: string[], pattern: boolean, glob: string, tags: string[] | null) => {
         const re = (g: string) => new RegExp(`^${g.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
         const vis = (el: Element) => {
           const r = (el as HTMLElement).getBoundingClientRect();
@@ -431,6 +443,7 @@ async function findVisible(page: Any, testid: string, notList: string[] = [], wa
           const t = el.getAttribute("data-testid") ?? "";
           if (pattern && !re(glob).test(t)) continue;
           if (nots.some((n) => (n.includes("*") ? re(n).test(t) : n === t))) continue;
+          if (tags && !tags.includes(el.tagName)) continue;
           if (!vis(el)) continue;
           if (!pattern) return el;
           const tag = el.tagName.toLowerCase();
@@ -440,7 +453,7 @@ async function findVisible(page: Any, testid: string, notList: string[] = [], wa
           fallback ??= el;
         }
         return fallback;
-      }, selOf(testid), notList, testid.includes("*"), testid)
+      }, selOf(testid), notList, testid.includes("*"), testid, onlyTags)
       .catch(() => null);
     const el = h?.asElement?.() ?? null;
     if (el) return el;
@@ -453,6 +466,22 @@ async function settle(page: Any, maxMs = 4000): Promise<void> {
   await page.waitForNetworkIdle({ idleTime: 350, timeout: maxMs }).catch(() => {});
 }
 async function clickEl(page: Any, el: Any): Promise<void> {
+  // POS P4.3 walker fix1 ▸ H13: คอนเทนเนอร์ที่ไม่กดได้เอง (ไม่มีตัวจับคลิกของตัวเอง) แต่มีลิงก์/ปุ่มข้างใน (pressInfo "มีคอนโทรลข้างใน" — เช่นแถบแท็บ
+  //   module-tabs.tsx:16 ที่กลางแถบว่างเมื่อแท็บน้อย) → กดลิงก์ที่ไม่ใช่หน้าปัจจุบัน/ปุ่มที่เปิดใช้ตัวแรกข้างในแทนกลางกล่อง ◂
+  const inner = await el
+    .evaluateHandle((e: Any) => {
+      const PRESS = "button, a[href], input, select, textarea, summary, [role=button], [role=link], [role=switch], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=menuitemradio], [role=menuitemcheckbox], [role=option]";
+      if (e.tagName === "FORM" || e.matches(PRESS) || e.closest(PRESS) || (e.tagName === "LABEL" && (e.control || e.querySelector("input,select,textarea")))) return null;
+      const k = Object.keys(e).find((n) => n.startsWith("__reactProps$"));
+      const pr = k ? e[k] : null;
+      if (pr && ["onClick", "onMouseDown", "onPointerDown", "onPointerUp", "onTouchStart", "onKeyDown"].some((h) => typeof pr[h] === "function")) return null;
+      if (!e.querySelector(PRESS)) return null;
+      return e.querySelector('a[href]:not([aria-current="page"]), button:not([disabled])');
+    })
+    .catch(() => null);
+  const innerEl = inner?.asElement?.() ?? null;
+  if (innerEl) el = innerEl;
+  else await inner?.dispose?.().catch(() => {});
   await el.evaluate((e: HTMLElement) => {
     const a = e.closest("a");
     if (a && /^(tel|mailto|sms|line):/i.test(a.getAttribute("href") ?? "")) a.addEventListener("click", (ev) => ev.preventDefault(), { once: true });
@@ -481,6 +510,7 @@ const todayBkk = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0
 /** ค่า fixture ตามชื่อ testid + ชนิดช่อง (เงิน = บาทจำนวนเต็มเล็ก · ข้อความ = qc-btn-<สุ่ม> ไม่ซ้ำ) */
 function fillValueFor(testid: string, type: string): string {
   const t = testid.toLowerCase();
+  if (t === "pos-stock-scan") return "PQC-CF-LATTE"; // POS P4.3 walker fix1 ▸ H7: SKU จริงของ seed (pos-qc-env.mts:279) — บันทึกเฉพาะ Enter (StockCount.tsx:510-513) ◂
   const u = `${RAND}${(++fillSeq).toString(36)}`;
   if (type === "email" || /email/.test(t)) return `qc-btn-${u}@example.com`;
   if (type === "tel" || /phone|tel$/.test(t)) return `08${String(randomDigits(8))}`;
@@ -498,8 +528,9 @@ function fillValueFor(testid: string, type: string): string {
   if (type === "color") return "#123456";
   if (/(pct|percent|rate|bp)$/.test(t)) return "10";
   if (/(qty|count|seats|party|minutes|hours|days|limit|max|min)/.test(t) || type === "number" || type === "range") return "2";
-  if (/(price|amount|satang|float|cash|tender|deposit|credit|value|total|baht)/.test(t)) return "20";
+  // POS P4.3 walker fix1 ▸ H5: ช่องค้นหาก่อนคำเงิน ("pos-price-rule-product-search" มีคำว่า price → เดิมได้ "20" แล้วรายการว่าง PriceRulesClient.tsx:304-307) ◂
   if (/(search|query|-q$|find)/.test(t)) return "ลาเต้";
+  if (/(price|amount|satang|float|cash|tender|deposit|credit|value|total|baht)/.test(t)) return "20";
   if (/(reason|note|memo|comment)/.test(t)) return `qc-btn-${u} เหตุผลทดสอบ`;
   return `qc-btn-${u}`;
 }
@@ -514,6 +545,8 @@ function differ(v: string, cur: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v.replace(/\d{2}$/, (d) => String(Math.min(28, Number(d) + 1)).padStart(2, "0"));
   return `${v}2`;
 }
+/** POS P4.3 walker fix1 ▸ H7: ช่องที่ส่งด้วย Enter (ไม่ใช่ Tab) ◂ */
+const ENTER_SUBMIT = new Set(["pos-stock-scan"]);
 /** ใส่ค่าแบบผู้ใช้ — คืนค่าก่อน/หลังเพื่อตัดสิน "ตาย" ด้วยตัวค่าเอง · ช่องไฟล์ = skipped */
 async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: string; after: string; skipped?: string }> {
   const meta: { tag: string; type: string; value: string; ro: boolean; im: string } = await el.evaluate((e: Any) => ({ tag: e.tagName.toLowerCase(), type: (e.getAttribute("type") ?? "").toLowerCase(), value: String(e.value ?? ""), ro: !!e.readOnly && !e.disabled, im: (e.getAttribute("inputmode") ?? "").toLowerCase() }));
@@ -559,8 +592,11 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
     await page.keyboard.press("KeyA");
     await page.keyboard.up("Control");
     const eff = meta.type || (/^(decimal|numeric)$/.test(meta.im) ? "number" : "");
-    await page.keyboard.type(differ(fillValueFor(testid, eff), meta.value), { delay: 5 });
-    await page.keyboard.press("Tab");
+    // POS P4.3 walker fix1 ▸ H1: พิมพ์ช้ากว่าเครื่องสแกน — ช่วงห่าง ≤ SCAN_MAX_GAP_MS 30 (scan-shared.ts:8) + Tab = สแกน ⇒ หน้าขายคืนค่าช่อง + toast
+    //   "ยังไม่รับการสแกน" (RegisterScreen.tsx:2577-2629) · H7: ช่องสแกนสต็อกบันทึกด้วย Enter เท่านั้น ◂
+    await page.keyboard.type(differ(fillValueFor(testid, eff), meta.value), { delay: 45 });
+    await sleep(60);
+    await page.keyboard.press(ENTER_SUBMIT.has(testid) ? "Enter" : "Tab");
   } else await clickEl(page, el); // สวิตช์ที่เป็นปุ่ม
   await sleep(150);
   return { before, after: await snap() };
@@ -575,9 +611,10 @@ const urlKey = (u: string) => {
   }
 };
 const ALERT_IGNORE: string[] = [];
+// POS P4.3 walker fix1 ▸ H9: คำเตือนคีย์ครั้งเดียว role="alert" ในแผงคีย์ดิบ (ApiKeysCard.tsx:281-284) = สำเร็จ ไม่ใช่คำปฏิเสธ — alertsNow ข้ามทุกอย่างใน pos-settings-api-raw ◂
 async function alertsNow(page: Any): Promise<string[]> {
   return page
-    .evaluate((ign: string[]) => Array.from(document.querySelectorAll('[role="alert"],[data-testid$="-error"]:not([role="status"])')).filter((e) => (e as HTMLElement).offsetParent !== null && (e.textContent ?? "").trim() && !ign.includes(e.getAttribute("data-testid") ?? "")).map((e) => `${e.getAttribute("data-testid") ?? "alert"}: ${(e.textContent ?? "").trim().slice(0, 140)}`), ALERT_IGNORE)
+    .evaluate((ign: string[]) => Array.from(document.querySelectorAll('[role="alert"],[data-testid$="-error"]:not([role="status"])')).filter((e) => (e as HTMLElement).offsetParent !== null && (e.textContent ?? "").trim() && !ign.includes(e.getAttribute("data-testid") ?? "") && !e.closest('[data-testid="pos-settings-api-raw"]')).map((e) => `${e.getAttribute("data-testid") ?? "alert"}: ${(e.textContent ?? "").trim().slice(0, 140)}`), ALERT_IGNORE)
     .catch(() => []);
 }
 async function pageSays(page: Any): Promise<string> {
@@ -685,17 +722,23 @@ async function searchNoop(page: Any, el: Any): Promise<void> {
 const freshPhone = (it: PlanItem, tid: string, val: string) =>
   it.row.expect.type === "mutation" && /^Customer\b/.test(String(it.row.expect.db ?? "")) && /phone/.test(tid) && /^0\d{8,9}$/.test(val) ? `08${randomDigits(8)}` : val;
 /** ไล่ opener (เฉพาะขั้นที่ยังต้องกด) แล้วหาคอนโทรลของแถว — แบบเดียวกับ C4.2 · ขั้นทะเบียนกรอกก่อน PREFILL เสมอ (CD-P42-R6) */
+/** POS P4.3 walker fix1 ▸ H12: แถวช่องกรอกแบบแพตเทิร์น รับเฉพาะ INPUT/TEXTAREA/SELECT (span ราคา ProductsClient.tsx:184 ชนแพตเทิร์นของช่อง ProductPanel.tsx:356) ·
+ *  แถว testid ตรงตัวไม่กรอง (pos-sales-unit-all เป็น <option>) · แถว SELF_CLICK_FIRST หาแบบไม่กรองก่อนแตะ (ปุ่ม "นับ" → ช่องกรอก) ◂ */
+const FIELD_TAGS = ["INPUT", "TEXTAREA", "SELECT"];
+const rowTags = (it: PlanItem, afterSelfClick = false): string[] | null =>
+  it.row.testid.includes("*") && ["input", "textarea", "select"].includes(it.row.kind) && (afterSelfClick || !SELF_CLICK_FIRST[it.key]) ? FIELD_TAGS : null;
 async function reveal(page: Any, path: string, it: PlanItem, state: PageState, hidden: boolean, notList: string[]): Promise<{ el: Any | null; reason: string }> {
   const chain = it.opener;
   const pendingValue = chain.slice(state.openChain.length).some((o) => splitOpener(o).val !== null);
-  let el = await findVisible(page, it.row.testid, notList, 0);
+  const tags = rowTags(it);
+  let el = await findVisible(page, it.row.testid, notList, 0, tags);
   if (el && !pendingValue) return { el, reason: "" };
   for (let i = state.openChain.length; i < chain.length; i++) {
     const { tid, val, optional } = splitOpener(chain[i]!);
     let later = false;
     if (val === null) {
       for (const t of chain.slice(i + 1)) if (await findVisible(page, splitOpener(t).tid, [], 0)) later = true;
-      if (!later && (await findVisible(page, it.row.testid, notList, 0))) later = true;
+      if (!later && (await findVisible(page, it.row.testid, notList, 0, tags))) later = true;
     }
     if (later) {
       state.openChain.push(chain[i]!);
@@ -740,7 +783,7 @@ async function reveal(page: Any, path: string, it: PlanItem, state: PageState, h
     state.openChain.push(chain[i]!);
     if (urlKey(page.url()) !== urlKey(`${BASE}${path}`)) state.dirty = true;
   }
-  el = await findVisible(page, it.row.testid, notList, hidden ? 800 : chain.length ? 4000 : 2500);
+  el = await findVisible(page, it.row.testid, notList, hidden ? 800 : chain.length ? 4000 : 2500, tags);
   if (el) return { el, reason: "" };
   const said = await pageSays(page);
   return { el: null, reason: `${chain.length ? `กด ${chain.join(" → ")} แล้วยังไม่เห็น ${it.row.testid}` : "ควรเห็น (อยู่ใน roles) แต่หาไม่พบ"}${said ? ` · หน้าแสดง: ${said}` : ""}` };
@@ -759,6 +802,7 @@ async function prefill(page: Any, it: PlanItem, group: PlanItem[], el: Any): Pro
     // CD-P42-R10 search-noop: PREFILL ไม่พิมพ์ลงช่องค้นหา (พิมพ์แล้วกรองรายการ/ถอดคอนโทรลที่จะกดออก — CD-P41-F28)
     const stype: string = await se.evaluate((x: Element) => (x.getAttribute("type") ?? "").toLowerCase()).catch(() => "");
     if (isSearchLike(s.row.testid, stype)) continue;
+    if (s.row.testid === "pos-ord-man-conv" || s.row.testid === "pos-ord-man-party") continue; // POS P4.3 walker fix1 ▸ H10: ลิงก์ลูกค้าไม่บังคับ — assertCustomerLinks order.ts:721-731 ◂
     const empty = await se.evaluate((x: Any) => {
       if ((window as Any).__qcFilled?.has?.(x)) return false; // CD-P42-R6: ขั้นทะเบียนกรอกแล้ว — PREFILL ไม่ทับ
       const tag = x.tagName.toLowerCase();
@@ -961,6 +1005,16 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
   const resp: { status: number; url: string; ct: string; disp: string; nav: boolean }[] = [];
   page.on("pageerror", (e: Error) => cErrs.push(e.message.slice(0, 200)));
   page.on("console", (m: Any) => {
+    // POS P4.3 walker fix1 ▸ H15: ค่า URL โลโก้ของตัวกด (https://qc-btn-….example.com) โหลดไม่ได้ = เสียงของ fixture ไม่ใช่บั๊ก ◂
+    if (/Failed to load resource/i.test(String(m.text()))) {
+      let host = "";
+      try {
+        host = new URL(String(m.location?.()?.url ?? "")).hostname;
+      } catch {
+        /* ไม่มี URL */
+      }
+      if (host.endsWith(".example.com")) return;
+    }
     if (m.type() === "error" || (m.type() === "warning" && HYDRATION_RE.test(String(m.text())))) cErrs.push(String(m.text()).slice(0, 200));
   });
   page.on("request", (r: Any) => {
@@ -1026,6 +1080,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
     const ngRow = nonGet; // คำขอเขียนก่อนแถวนี้ — finally คืนค่าตั้งเมื่อแถวเขียน (ทุกทางออก รวม catch/continue)
     const respBefore = resp.length;
     const notList = it.row.testid.includes("*") ? allNames.filter((n) => n !== it.row.testid && globRe0(it.row.testid).test(n)) : [];
+    let stopWatcher: (() => Promise<void>) | null = null; // POS P4.3 walker fix1 ▸ H3 ◂
     try {
       if (state.dirty || urlKey(page.url()) !== urlKey(`${BASE}${path}`) || !isPrefix(state.openChain, it.opener)) await load();
       if (it.action === "absent") {
@@ -1076,6 +1131,22 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         continue;
       }
       let el = rv.el;
+      // POS P4.3 walker fix1 ▸ R3/R4 (SELF_CLICK_FIRST — แทน opener "<ตัวเอง>=click" ที่ qc-pos-p4.1 R3 ห้าม): แตะ element ของแถว 1 ครั้ง แล้วหาใหม่ด้วย testid ตรงตัว ◂
+      if (SELF_CLICK_FIRST[it.key]) {
+        const exact: string = await el.evaluate((e: Element) => e.getAttribute("data-testid") ?? "").catch(() => "");
+        await clickEl(page, el).catch(() => {});
+        await settle(page, 3000);
+        await sleep(250);
+        const again = exact ? await findVisible(page, exact, [], 2500, rowTags(it, true)) : null;
+        notes.push(`แตะ ${exact || it.row.testid} ก่อน 1 ครั้ง (${SELF_CLICK_FIRST[it.key]!.slice(0, 2)})`);
+        if (!again) {
+          if (it.needs) rec(it, { class: "skip", reason: "needs", detail: `แตะ ${exact} แล้วไม่เห็นคอนโทรลของแถว (needs)` });
+          else rec(it, { class: "dead", detail: `แตะ ${exact} แล้วไม่เห็นคอนโทรลของแถว`, shot: await failShot(page, it) });
+          state.dirty = true;
+          continue;
+        }
+        el = again;
+      }
       // CD-P42-R2 (B3/F15): กดเฉพาะ element ที่กดได้ — span/ชิปนิ่ง testid เดียวกันของผู้ใช้ 1 สาขา = static (ไม่ใช่ dead)
       const pi = await pressInfo(el);
       if (!pi.ok) {
@@ -1092,12 +1163,23 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       let prefilled: string[] = [];
       if (it.row.expect.type === "mutation" || it.row.expect.type === "download" || it.row.kind === "form") {
         prefilled = await prefill(page, it, siblingsOf(it), el); // ช่องพี่น้องทั้งหน้า (กลุ่มช่วงท้ายมีแค่แถวผลข้างเคียง)
-        if (prefilled.length) el = (await findVisible(page, it.row.testid, notList, 1500)) ?? el;
+        if (prefilled.length) el = (await findVisible(page, it.row.testid, notList, 1500, rowTags(it, !!SELF_CLICK_FIRST[it.key]))) ?? el;
       }
       // CD-P42-R3 (CD-P41-F13): บทบาทที่ทะเบียนบอกว่าเห็นแต่ปิดใช้ (ตรวจหลังขั้นทะเบียน + PREFILL — ช่องว่างไม่ทำให้ปิดเอง)
       if ((await isDisabled(el)) && f13Users(it.row).includes(CELL.user as UserKey)) {
         rec(it, { class: "skip", reason: "disabled-expected", detail: `${CELL.user} เห็นแต่ปิดใช้ (CD-P41-F13)` });
         continue;
+      }
+      // POS P4.3 walker fix1 ▸ H4: คอนโทรลปิดใช้ก่อนกด — เดิมกฎ disabled→needs ทำหลังตัดสิน "ตาย" เท่านั้น (คำขอเบื้องหลังทำให้ดูมีชีวิต แล้วพิมพ์ลงช่องอื่นที่โฟกัสอยู่) ·
+      //   aria-disabled ที่ทะเบียนบอกว่าแตะแล้วขึ้นเหตุผล (anyOf toast/inline-error เช่น pos-reg-custom-item ของแคชเชียร์) ยังกดตามเดิม ◂
+      if (await isDisabled(el)) {
+        const native: boolean = await el.evaluate((e: Any) => !!e.disabled).catch(() => false);
+        const tapReason = expectAlts(it.row.expect).some((a) => a.type === "toast" || a.type === "inline-error");
+        if (native || !tapReason) {
+          if (it.needs) rec(it, { class: "skip", reason: "needs", detail: "คอนโทรล disabled ก่อนกด (needs)" });
+          else rec(it, { class: "dead", detail: "disabled ก่อนกด (ไม่มี needs)", shot: await failShot(page, it) });
+          continue;
+        }
       }
       const tag: string = await el.evaluate((e: Element) => `${e.tagName.toLowerCase()}:${(e.getAttribute("type") ?? "").toLowerCase()}`).catch(() => "");
       if (tag === "input:file") {
@@ -1160,11 +1242,34 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
             continue;
           }
           valueChanged = r.before !== r.after;
-        } else await clickEl(page, el);
+        } else if (/-(scrim|backdrop|overlay)$/.test(it.row.testid)) await el.click({ offset: { x: 4, y: 4 } }); // POS P4.3 walker fix1 ▸ H2: กลางม่าน = กล่อง (RegisterDialog.tsx:68-71) ◂
+        else await clickEl(page, el);
       } catch (e) {
         actErr = e instanceof Error ? e.message.slice(0, 160) : String(e);
       }
       if (it.moneyUnit) PRESSED_ONCE.add(it.key);
+      // POS P4.3 walker fix1 ▸ H3: เฝ้าเป้าผลตั้งแต่กด — toast หายใน 4 วิ (RegisterScreen.tsx:401 · OrdersScreen.tsx:140 · KdsScreen.tsx:92 · ProductsClient.tsx:67) ·
+      //   PayDone เดินต่อเองใน 5 วิ (PayDone.tsx:39,214-224) แต่ settle 8 วิ + รอ db 5 วิ มาก่อนตรวจ resultTarget ◂
+      const watchT = [...new Set([ex.resultTarget, ex.target, ...alts.filter((a) => ["modal", "toast", "inline-error"].includes(a.type)).map((a) => a.target)].filter((x): x is string => !!x && looksLikeTestid(x)))];
+      const seen = new Set<string>();
+      let watching = true;
+      const watcher = (async () => {
+        while (watching) {
+          for (const x of watchT) {
+            if (seen.has(x)) continue;
+            const h = await findVisible(page, x, [], 0).catch(() => null);
+            if (h) {
+              seen.add(x);
+              await h.dispose?.().catch(() => {});
+            }
+          }
+          await sleep(150);
+        }
+      })();
+      stopWatcher = async () => {
+        watching = false;
+        await watcher.catch(() => {});
+      };
       // ── ตาย (3 วิ) ──
       let dead = actErr !== "";
       if (!dead && !(ex.type === "ui" && ex.state === "selected")) {
@@ -1183,6 +1288,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         if (it.needs && dis) rec(it, { class: "skip", reason: "needs", detail: "คอนโทรลมีแต่ disabled (needs)" });
         else rec(it, { class: actErr ? "error" : "dead", detail: actErr || `ไม่มี DOM mutation/navigation/network ภายใน 3 วิ${dis ? " · disabled ตอนกด" : ""}${prefilled.length ? ` · prefill ${prefilled.join(",")}` : ""}`, shot: await failShot(page, it) });
         state.dirty = true;
+        await stopWatcher();
         continue;
       }
       // ── คาด (หลัก แล้ว anyOf — CD-P42-R8) ──
@@ -1220,7 +1326,9 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           return { ok: gone, detail: gone ? "" : `${tg} ยังเห็นอยู่` };
         }
         if (a.state === "selected") {
-          const s = await findVisible(page, tg, [], 3000);
+          // POS P4.3 walker fix1 ▸ R6/R7: เป้า = แพตเทิร์นของแถวเอง ⇒ ตรวจ element ที่กด (หลายการ์ดเครื่อง: แพตเทิร์นหาได้การ์ดอื่นที่ไม่ถูกเลือก DeviceSettings.tsx:340-342) ◂
+          const own = tg === it.row.testid && (await el.evaluate((e: Element) => e.isConnected).catch(() => false));
+          const s = own ? el : await findVisible(page, tg, [], 3000);
           const ok = !!s && (await s.evaluate((e: Element) => ["aria-selected", "aria-pressed", "aria-checked"].some((x) => e.getAttribute(x) === "true") || (e.hasAttribute("aria-current") && e.getAttribute("aria-current") !== "false")).catch(() => false));
           return { ok, detail: ok ? "" : `${tg} ไม่ประกาศสถานะเลือก` };
         }
@@ -1258,7 +1366,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       if (VIS.includes(ex.type)) {
         if (!visTids.length) detail = ex.type === "inline-error" ? "inline-error ไม่มีเป้า (อ่อน)" : "";
         else {
-          const hit = await anyVisible(visTids, 6000);
+          const hit = visTids.find((x) => seen.has(x)) ?? (await anyVisible(visTids, 6000)); // H3
           ok = !!hit;
           detail = hit ? (hit !== ex.target ? `anyOf ${hit}` : "") : `ไม่เห็น ${visTids.join(" | ")} ภายใน 6 วิ`;
         }
@@ -1305,19 +1413,20 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           if (!writes.length) detail = `db "${ex.db}" ไม่ระบุโมเดลที่รู้จัก (prisma) — ตรวจผลเขียนไม่ได้`;
           for (let t = Date.now() + 5000; !hit && Date.now() < t; ) {
             for (const w of writes) {
-              const r = await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null);
+              // POS P4.3 walker fix1 ▸ H16: AppSystem.settings.pos.<k> = เทียบค่าก่อนรอบ (_qcP42Before) กับตอนนี้ — แทน updatedAt ของ AppSystem ใดก็ได้ของร้าน (fx writtenSince) ◂
+              const r = w.pos?.length ? await posSettingsChanged(CTX, w.pos) : await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null);
               if (r.ok) hit = true;
             }
             if (!hit) await sleep(400);
           }
           if (!hit) {
             ok = false;
-            if (writes.length) detail = `ไม่พบการเขียนของ ${writes.map((w) => w.model).join(" / ")} หลังกด (db "${ex.db}")`;
+            if (writes.length) detail = `ไม่พบการเขียนของ ${writes.map((w) => (w.pos?.length ? `${w.model}.settings.pos.{${w.pos.join(",")}} (ไม่ต่างจากก่อนกด)` : w.model)).join(" / ")} หลังกด (db "${ex.db}")`;
             if (!writes.length) hardFail = true;
           }
         } else if (ok && !deferred && it.verify === "oracle") detail = `ผลเขียนยืนยันด้วย oracle ${String(it.row.oracle).slice(0, 40)} (ไม่รันชุด)`;
         const rt = [ex.resultTarget, ex.target].find((x) => !!x && looksLikeTestid(x));
-        if (ok && !deferred && rt && !(await findVisible(page, rt, [], 6000))) {
+        if (ok && !deferred && rt && !seen.has(rt) && !(await findVisible(page, rt, [], 6000))) { // H3
           ok = false;
           detail = `ไม่เห็น ${rt} หลังกด`;
         }
@@ -1326,7 +1435,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       if (it.moneyUnit && ex.type === "mutation" && !ok) hardFail = true;
       if (!ok && !hardFail && alts.length > 1) {
         const v = alts.slice(1).filter((a) => VIS.includes(a.type) && looksLikeTestid(a.target)).map((a) => a.target);
-        const hitV = v.length ? await anyVisible(v, 1500) : null;
+        const hitV = v.find((x) => seen.has(x)) ?? (v.length ? await anyVisible(v, 1500) : null); // H3 (R1: toast 4 วิหายก่อนถึง anyOf)
         if (hitV) {
           ok = true;
           const refusal = alts.some((a) => a.target === hitV && a.type === "inline-error");
@@ -1360,6 +1469,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         }
       }
       if (notes.length) detail = `${detail}${detail ? " · " : ""}${notes.join(" · ")}`;
+      await stopWatcher(); // H3
       // ── แถวเงิน: แถวเงินที่เกิดต้องอยู่สาขา posqc-btn ──
       if (it.moneyUnit) {
         // CD-P42-R13: แถวเงินที่เกิดใหม่หลังกด (createdAt · diff กับ id ก่อนกด · PosPayment ผ่าน saleId) — ไม่ใช่ updatedAt ของแถวเก่า
@@ -1387,9 +1497,10 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           }
         }
         if (urlKey(page.url()) !== urlKey(urlBefore) || checkLike) state.dirty = true;
-        else if (isField && ex.type !== "mutation") {
+        else if (isField && ex.type !== "mutation" && !isSearchLike(it.row.testid, tag.split(":")[1] ?? "")) {
           /* ค่าในช่องคงสภาพหน้า (PREFILL ใช้ต่อ) */
-        } else if (ok && (ex.type === "modal" || (ex.type === "ui" && (ex.state ?? "appears") === "appears"))) state.openChain.push(it.row.testid);
+        } else if (isField && isSearchLike(it.row.testid, tag.split(":")[1] ?? "")) state.dirty = true; // POS P4.3 walker fix1 ▸ H5: คำค้นค้างกรองรายการของแถวถัดไป ◂
+        else if (ok && (ex.type === "modal" || (ex.type === "ui" && (ex.state ?? "appears") === "appears"))) state.openChain.push(it.row.testid);
         else state.dirty = true;
       } catch {
         state.dirty = true;
@@ -1399,6 +1510,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       rec(it, { class: "error", detail: e instanceof Error ? e.message.slice(0, 200) : String(e), shot: await failShot(page, it).catch(() => "") });
       state.dirty = true;
     } finally {
+      if (stopWatcher) await stopWatcher().catch(() => {}); // H3: ทุกทางออก
       // คืนค่าหลังแถว (ทุกทางออก — ok/dead/skip/error) · ไม่โยน
       try {
         // CD-P42-R9: ตัวสลับภาษาตั้งคุกกี้ของทั้ง context — คืนภาษาของช่อง
