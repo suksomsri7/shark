@@ -58,6 +58,8 @@ export function verifyPosDeviceCookie(value: unknown, deps?: PosDeviceKeyDeps, n
     if (parts.length !== 3 || parts[0] !== "v1" || !B64URL.test(parts[1]!) || !B64URL.test(parts[2]!)) return null;
     const want = macOf(key, `v1.${parts[1]}`);
     const got = Buffer.from(parts[2]!, "base64url");
+    // POS P5.2 ▸ CD-P52-O4b: รับเฉพาะ base64url รูปมาตรฐาน — ตัวท้ายที่ต่างแค่บิตเติม (ถอดได้ไบต์เดิม) = คุกกี้ถูกแก้ ⇒ ปฏิเสธ (oracle D2 คุกกี้ที่ถูกแก้) ◂
+    if (got.toString("base64url") !== parts[2] || Buffer.from(parts[1]!, "base64url").toString("base64url") !== parts[1]) return null;
     if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
     const o: unknown = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8"));
     if (!o || typeof o !== "object" || Array.isArray(o)) return null;
