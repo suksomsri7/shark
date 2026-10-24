@@ -34,3 +34,18 @@ Tree `/root/projects/shark-pos-f` · branch `wip/pos-p6.2-build` · base `e6d416
 ## ORACLE-EDIT / controller decisions needed
 1. **qc-nav-functions S5** — choose one: (a) ORACLE-EDIT `qc-pos-p6.2` Z1 to allow `src/app/app/layout.tsx` with a 1-line budget that adds `/pos/help`, then add `{ href: \`${s}/pos/help\`, label: posNav("settings.helpLink") }` to `childrenFor("POS")` (the label key exists in th/en); or (b) ORACLE-EDIT `qc-nav-functions.mts` to exempt `src/app/app/sys/[id]/pos/help/page.tsx`. (a) keeps the S5 intent ("no orphan content pages") and gives the manual a sidebar entry.
 2. Optional: a pin for the help page in `qc-hf-pos-page-authz.mts` (this lane used the sweep refusal path instead).
+
+## Round 2 — ruling CD-P62-O1 = option (a) (controller ORACLE-EDIT `944ac31a` · 24 Oct `date -u` 03:0xZ–03:1xZ)
+- `src/app/app/layout.tsx` POS case: one added line after the `/pos/settings` row — `{ href: \`${s}/pos/help\`, label: posNav("settings.helpLink") }` (1 added · 0 removed · no other change)
+- Decision 2 (authz pin) = no: V4 stays via sweep `refusals`
+
+| check | result |
+|---|---|
+| qc-pos-p6.2 gate | **14/16** — red H1 H2 only (Z1 green with the layout line) |
+| qc-pos-p6.2 `--self-test` | **8/8** |
+| qc-nav-functions (static) | **11/11** — S5 green · POS 15/15 routes |
+| qc-pos-p4.1 `--no-db` | **16/16** |
+| qc-pos-p1.18 `--no-db` | 15/16 — ST7 red = Thai literal in `src/app/app/sys/[id]/pos/reports/print/html/route.ts` (P4.3 file, not touched by this lane · pre-existing on the tip); nav-related checks green |
+| fitness no-env | **53/53** (+ pre-commit) |
+| strict tsc `src/app/app/layout.tsx` (scratch tsconfig · ISO_MEM 4G · heap 3700) | **exit 0** · positive control (in-tree copy + TS2322) exit 2 |
+| registry ordering | the 18 new rows (17 help page + `pos-settings-help`) are appended in a fixed order, fields `page testid kind roles hiddenFor expect wo oracle system [needs]`, no timestamps / random ids / hashes → registryHash is a pure function of the file; the hash changes once vs the old tip, so qc-pos-p4.2 W3 must be summarised at the final tip that contains these rows |
