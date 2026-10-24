@@ -758,7 +758,10 @@ try {
     const schIdx = OLD5.filter(([t, c]) => new RegExp(`@@index\\(\\[\\s*${c}\\s*\\]`).test(modelBlock(t))).map(([t, c]) => `${t}.${c}`);
     const dbIdx = (await q<{ tablename: string; indexdef: string }>(`select tablename, indexdef from pg_indexes where schemaname='public' and tablename = any($1::text[])`, OLD5.map((x) => x[0])))
       .filter((r) => OLD5.some(([t, c]) => r.tablename === t && new RegExp(`\\(\\s*"${c}"`).test(r.indexdef))).map((r) => r.tablename);
-    chk("S3.22", !!migDir && sqlIdx.length === 0 && schIdx.length === 0 && dbIdx.length === 0, "ไม่มี index บน 5 คอลัมน์เชื่อม (SQL/schema/DB)", `${migDir ?? "ไม่พบ *_pos_v2_a"} · SQL ${sqlIdx.join(",") || "-"} · schema ${schIdx.join(",") || "-"} · DB ${dbIdx.join(",") || "-"}`);
+    // ORACLE-EDIT ผู้คุม A 24.10 (CD-P61-O2 · การ์ด CD-P61-P4 · #37 `_pos_p61_hand_indexes`): หลังการ์ด P6.1 index 5 คอลัมน์เชื่อมต้องมีทั้ง schema (@@index) และ DB (สร้างแบบ IF NOT EXISTS) · SQL ของ _pos_v2_a ยังต้องไม่สร้าง (ย้ายไป P6.1 ตามมติ M7) · ก่อนการ์ด = กติกาเดิม (ไม่มีทั้งสาม) · revert: ใช้เงื่อนไขเดิมอย่างเดียว ◂
+    const p61Card = existsSync("prisma/migrations") && readdirSync("prisma/migrations").some((d) => /_pos_p61_hand_indexes$/.test(d));
+    const s322 = !!migDir && sqlIdx.length === 0 && (p61Card ? schIdx.length === OLD5.length && new Set(dbIdx).size === OLD5.length : schIdx.length === 0 && dbIdx.length === 0);
+    chk("S3.22", s322, p61Card ? "SQL _pos_v2_a ไม่มี index · schema+DB มี index 5 คอลัมน์เชื่อม (การ์ด P6.1)" : "ไม่มี index บน 5 คอลัมน์เชื่อม (SQL/schema/DB)", `${migDir ?? "ไม่พบ *_pos_v2_a"} · SQL ${sqlIdx.join(",") || "-"} · schema ${schIdx.join(",") || "-"} · DB ${dbIdx.join(",") || "-"}`);
     const first = stmts[0] ?? "";
     const isAddOld = (x: string) => OLD5.some(([t]) => new RegExp(`^ALTER\\s+TABLE\\s+"${t}"\\s+ADD\\s+COLUMN`, "i").test(x));
     const addIdx = stmts.map((x, i) => (isAddOld(x) ? i : -1)).filter((i) => i >= 0);

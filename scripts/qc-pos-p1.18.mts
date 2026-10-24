@@ -1847,8 +1847,10 @@ async function runDb() {
     if (c1?.hasPin !== true) p.push("C1 hasPin ไม่ใช่ true");
     if (items.some((x) => x?.userId !== uid("C1") && x?.hasPin !== false)) p.push("คนอื่น hasPin ไม่ใช่ false");
     for (const x of items) {
-      const extra = Object.keys(x ?? {}).filter((k) => !["userId", "name", "role", "hasPin", "shift"].includes(k));
+      // ORACLE-EDIT ผู้คุม A 24.10 (CD-P43-9 · P4.3 F-P3-17 CD-P43-O3): + fromHr:boolean (แท็ก "จาก HR" ของแท็บพนักงาน · ไม่ใช่คีย์ลับ) · คีย์อื่นเกิน = แดงเหมือนเดิม · revert: ลบ "fromHr" ◂
+      const extra = Object.keys(x ?? {}).filter((k) => !["userId", "name", "role", "hasPin", "shift", "fromHr"].includes(k));
       if (extra.length) p.push(`คีย์เกิน ${extra.join(",")}`);
+      if ("fromHr" in (x ?? {}) && typeof x.fromHr !== "boolean") p.push(`fromHr ไม่ใช่ boolean (${typeof x.fromHr})`);
     }
     const rc = keep("S1 C1", await staffOv("C1"));
     if (!refused(rc, "PERMISSION_DENIED")) p.push(`แคชเชียร์ → ${codeOf(rc)}`);

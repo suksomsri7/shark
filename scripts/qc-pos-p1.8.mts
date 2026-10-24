@@ -277,7 +277,10 @@ async function runStatic(): Promise<void> {
       else if (!re.test(l)) p.push(`${f} ผิดรูป (${l.slice(0, 50)})`);
     }
     if (/@relation\([^)]*fields:\s*\[\s*refSaleId\s*\]/.test(sale)) p.push("refSaleId มี @relation (ต้องเป็น id หลวม)");
-    if (/@@index\(\[\s*refSaleId/.test(sale)) p.push("มี @@index refSaleId (เลื่อนไป P6.1)");
+    // ORACLE-EDIT ผู้คุม A 24.10 (CD-P61-O2 · การ์ด CD-P61-P4): เมื่อมี migration index มือ `*_pos_p61_hand_indexes` แล้ว @@index refSaleId ต้องมี (ประกาศให้ตรง DB) · ก่อนหน้านั้นยังห้าม (เลื่อนไป P6.1) · revert: คืนบรรทัดเดิม ◂
+    const p61 = existsSync("prisma/migrations") && readdirSync("prisma/migrations").some((d) => /_pos_p61_hand_indexes$/.test(d));
+    if (!p61 && /@@index\(\[\s*refSaleId/.test(sale)) p.push("มี @@index refSaleId (เลื่อนไป P6.1)");
+    if (p61 && !/@@index\(\[\s*refSaleId/.test(sale)) p.push("ไม่มี @@index refSaleId ทั้งที่มีการ์ด P6.1 (CD-P61-P4)");
     chk("P1.8-S1", p.length === 0, "PosSaleDocType · docType/refSaleId/refundedSatang/reasonCode · refLineId/restock", p.join(" · ") || "ครบ");
   }
   // S2 PosDocCounter + scope
