@@ -5,10 +5,12 @@
 //   ORACLE-EDIT (oracle รอบ 2 · R1 ledger/wo-notes/pos-P4.3-scripts-review.md F7–F10): + D1b (ธงลิงก์บัญชีผ่าน posAccountLinks + receiptSettingsPageDataAction) ·
 //     S2 ธงต้องเป็นตัวกั้น <Link> (ไม่ใช่ค่าคงที่) · S7 ต้องมีลิงก์ board-card (href = card.href) ในทั้ง 3 ทรี + D7 ตัวอ่านข้ามสาขาปฏิเสธ · S8 ทุกรูป fallback ตัวอักษร/ตัวแปรแฝง ·
 //     D6 + MANAGER[A1] unit=A2 → 403 · unit=A1 → 200 · OWNER unit=A2 → 200 · probe N2 N5 N6 N9 เพิ่มรูปหลอกของผู้ตรวจ + N11 (D1b) N12 (D7) — ข้อใหม่ล้วน ไม่มีข้อยกเว้น
+//   ORACLE-EDIT (oracle รอบ 3 · R1 ของ product fix1 F4 ledger/wo-notes/pos-P4.3-fix1-review.md): + D7b กุญแจ 86 แบบ prefix `pos-86:<unit>:<product>:` (จอขายไม่รู้ mark) กับ
+//     PosAvailabilityMark จริง (setAvailability) · probe N13 — ข้อใหม่ล้วน ไม่มีข้อยกเว้น
 //
 // รัน (QC4 · ร้านชั่วคราว):
 //   env -C <tree> ISO_MEM=3G bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p4.3.mts
-//   --list = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต S1 S2 S5 S6 S7 S8 + probe N1–N12 (ไม่โหลด prisma) · --self-test = probe N1–N12 อย่างเดียว
+//   --list = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต S1 S2 S5 S6 S7 S8 + probe N1–N13 (ไม่โหลด prisma) · --self-test = probe N1–N13 อย่างเดียว
 // DB: QC4 เท่านั้น · ร้านชั่วคราว posqc-p43-<rand> (2 สาขา · POS · บัญชี · HR) สร้างผ่านตัวเขียนของโมดูล · ลบทั้งร้านใน finally (Z1 · รวม sequence เลขใบสำคัญ
 //     ของระบบบัญชีชั่วคราวผ่าน account_jno_drop) · ร้าน QC coffee/resto อ่านลายนิ้วมืออย่างเดียว (Z2) · ไม่ reseed · fetch ออกนอก = ตัวกั้น 503
 // ไม่มีด่านข้าม (ทุกข้อรันเสมอ — surface ที่ยังไม่มี = แดงพร้อมเหตุ "ไม่มี …") ⇒ แมนิเฟสต์ unforced (p2.14 G2)
@@ -56,12 +58,14 @@ const CHECKS: readonly Def[] = [
   D("N8", "N", "[self-test] judgeD3/D4: updatedAt เท่าเดิม แดง · ขยับ เขียว · dueDate ขาดที่ผิวใดผิวหนึ่ง/ค่าไม่ตรง แดง · ครบ เขียว", "-"),
   D("N9", "N", "[self-test] judgeD1/D6: CASHIER ผ่านด่าน/OWNER ถูกปฏิเสธ แดง · route ไม่มี/ANON 200/STAFF 200/OWNER ไม่ใช่ html แดง · ถูกต้อง เขียว", "-"),
   D("N10", "N", "[self-test] judgeD5: fromHr ไม่มี/ผิดคน แดง · reader ปฏิเสธผู้ดูเงินเดือน/ขาดตัวแปร แดง · TTL ไม่มี แดง · ครบ เขียว", "-"),
+  D("D7b", "F-P3-21", "[db · R1 fix1 F4] posBoardCardsAction กุญแจ prefix pos-86:<unit>:<product>: กับ 86 จริง (PosAvailabilityMark ผ่าน setAvailability): MANAGER[A1] ได้การ์ด A1 (คืนเป็นกุญแจเต็มของ mark) ไม่ได้ของ A2 · OWNER ได้ทั้งคู่ · prefix ของสินค้าที่ไม่มี 86 ที่สาขานั้น → ok ไม่มีการ์ด (ไม่รั่วการ์ดสาขาอื่นของสินค้าเดียวกัน) · กุญแจเต็มยังใช้ได้", "src/lib/pos-board-ui-actions.ts (soldOutPrefix → PosAvailabilityMark)"),
   D("N11", "N", "[self-test] judgeD1b: ไม่มี helper แดง · แคชเชียร์ได้ธง/ผู้จัดการไม่ได้/IMPLIES หาย แดง · action ไม่ส่งธง แดง · ครบ เขียว", "-"),
+  D("N13", "N", "[self-test] judgeD7b: ตัวอ่านไม่รับ prefix (ฐาน) แดง · ผู้จัดการได้การ์ด A2 แดง · prefix ไม่มี 86 คืนการ์ด/โยน แดง · กุญแจเต็มเสีย แดง · ครบ เขียว", "-"),
   D("N12", "N", "[self-test] judgeD7: ตัวอ่านไม่รับกุญแจ (ฐาน) แดง · ผู้จัดการเห็นการ์ด A2 แดง · ผู้จัดการไม่เห็นของ A1 แดง · ครบ เขียว", "-"),
   D("Z1", "Z", "[db] ร้านชั่วคราว posqc-p43-*: 0 แถวทุกตารางที่มี tenantId · Tenant/User ลบ · sequence เลขใบสำคัญของระบบบัญชีชั่วคราว 0", "-"),
   D("Z2", "Z", "[db] ลายนิ้วมือร้าน QC coffee/resto (12 ตาราง) เท่าเดิม", "-"),
 ];
-const PROBE_IDS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10", "N11", "N12"].map((x) => `P4.3-${x}`);
+const PROBE_IDS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10", "N11", "N12", "N13"].map((x) => `P4.3-${x}`);
 const STATIC_IDS = new Set([...["S1", "S2", "S5", "S6", "S7", "S8"].map((x) => `P4.3-${x}`), ...PROBE_IDS]);
 if (LIST) {
   for (const [id, x, title, ref] of CHECKS) console.log(`${id}\t${x}\t${STATIC_IDS.has(id) ? "static" : "db"}\t${title}\t← ${ref}`);
@@ -375,6 +379,22 @@ const short0 = (v: unknown) => {
     return String(v);
   }
 };
+/** D7b — กุญแจ prefix ของ 86 (R1 fix1 F4) */
+function judgeD7b(x: { mgrPrefix: Any; ownerPrefix: Any; mgrNone: Any; ownerNone: Any; mgrFull: Any; keys: { a1: string; a2: string; q2: string } }): string[] {
+  const p: string[] = [];
+  const got = (r: Any) => new Set<string>(r?.ok === true && Array.isArray(r.cards) ? r.cards.map((c: Any) => String(c.key)) : []);
+  const mp = got(x.mgrPrefix);
+  const op = got(x.ownerPrefix);
+  if (!mp.has(x.keys.a1)) p.push(`MANAGER[A1] prefix pos-86:<A1>:<P>: ไม่ได้การ์ด A1 (${codeR(x.mgrPrefix)} · ${mp.size} ใบ)`);
+  if (mp.has(x.keys.a2)) p.push("MANAGER[A1] prefix ได้การ์ด A2 (รั่วข้ามสาขา)");
+  if (!op.has(x.keys.a1) || !op.has(x.keys.a2)) p.push(`OWNER prefix ได้ ${[...op].filter((k) => k === x.keys.a1 || k === x.keys.a2).length}/2 ใบ (${codeR(x.ownerPrefix)} · ตัวควบคุมบวก)`);
+  for (const [who, r] of [["MANAGER", x.mgrNone], ["OWNER", x.ownerNone]] as const) {
+    if (r?.ok !== true) p.push(`${who} prefix ของสินค้าที่ไม่มี 86 ที่ A1 → ${codeR(r)} (คาด ok ไม่มีการ์ด)`);
+    else if (got(r).size) p.push(`${who} prefix ของสินค้าที่ไม่มี 86 ที่ A1 คืน ${[...got(r)].join(",").slice(0, 120)}${got(r).has(x.keys.q2) ? " (การ์ด A2 รั่ว)" : ""}`);
+  }
+  if (!got(x.mgrFull).has(x.keys.a1)) p.push(`MANAGER[A1] กุญแจเต็ม A1 → ไม่ได้การ์ด (${codeR(x.mgrFull)})`);
+  return p;
+}
 /** D7 — ตัวอ่านการ์ดตรวจสาขาต่อกุญแจ */
 function judgeD7(x: { owner: Any; mgr: Any; keys: Record<string, string> }): string[] {
   const p: string[] = [];
@@ -617,6 +637,18 @@ function runProbes(): void {
     const actLeak = judgeD1b({ helper, action: { ...action, CASHIER: { ok: true, book: { canOpenAccountSettings: true } } }, acc }).length === 1;
     const refused = judgeD1b({ helper, action: { ...action, CASHIER: { ok: false, code: "PERMISSION_DENIED" } }, acc }).length === 0;
     chk("N11", good && tip && leak && mgr && implies && actLeak && refused, "ครบ เขียว · ฐาน แดง 7 · แคชเชียร์ได้ธง/ผู้จัดการไม่ได้/IMPLIES หาย/action ให้แคชเชียร์ แดง · แคชเชียร์ไม่มีสมุด เขียว", `ครบ→${good} ฐาน→${tip} แคชเชียร์→${leak} ผู้จัดการ→${mgr} IMPLIES→${implies} action→${actLeak} ไม่มีสมุด→${refused}`);
+  });
+  step("N13", () => {
+    const keys = { a1: "pos-86:A1:P:m1", a2: "pos-86:A2:P:m2", q2: "pos-86:A2:Q:m3" };
+    const cards = (ks: string[]) => ({ ok: true, cards: ks.map((key) => ({ key, cardNo: 1, href: "/x", completed: false })) });
+    const base = { mgrPrefix: cards([keys.a1]), ownerPrefix: cards([keys.a1, keys.a2]), mgrNone: cards([]), ownerNone: cards([]), mgrFull: cards([keys.a1]), keys };
+    const good = judgeD7b(base).length === 0;
+    const tip = judgeD7b({ ...base, mgrPrefix: cards([]), ownerPrefix: cards([]), mgrFull: cards([]) }).length === 3;
+    const leak = judgeD7b({ ...base, mgrPrefix: cards([keys.a1, keys.a2]) }).length === 1;
+    const noneLeak = judgeD7b({ ...base, mgrNone: cards([keys.q2]) }).length === 1;
+    const noneThrow = judgeD7b({ ...base, ownerNone: { ok: false, code: "UNKNOWN" } }).length === 1;
+    const full = judgeD7b({ ...base, mgrFull: cards([]) }).length === 1;
+    chk("N13", good && tip && leak && noneLeak && noneThrow && full, "ครบ เขียว · ฐาน แดง 3 · ข้ามสาขา/prefix ไม่มี 86 รั่ว/โยน/กุญแจเต็มเสีย แดงทีละข้อ", `ครบ→${good} ฐาน→${tip} ข้าม→${leak} ไม่มี86รั่ว→${noneLeak} โยน→${noneThrow} เต็ม→${full}`);
   });
   step("N12", () => {
     const keys = { a1_86: "pos-86:A1:p:m", a2_86: "pos-86:A2:p:m", a1_ref: "pos-refund:o1", a2_ref: "pos-refund:o2" };
@@ -924,6 +956,7 @@ async function runD7(): Promise<void> {
   await fxStep("D7 การ์ดบอร์ด", async () => {
     X.KAN = (await sysSvc.createSystem(T, "KANBAN", `บอร์ด P4.3 ${RAND}`)).id;
     const board = await kanbanSvc.createBoard({ tenantId: T, systemId: X.KAN, name: `งานหน้าร้าน P4.3 ${RAND}` });
+    X.BOARD = board.id;
     const prod = String((await catalogMod.createProduct({ tenantId: T, systemId: X.POS, actorUserId: PER.OWNER!.userId }, { name: `P43 การ์ด86 ${RAND}`, basePriceSatang: 3000 }))?.id ?? "");
     const order = async (unitId: string, tag: string) => {
       const chs = (await channelMod.ensureUnitChannels(P, { tenantId: T, systemId: X.POS, unitId })) as Any[];
@@ -942,6 +975,42 @@ async function runD7(): Promise<void> {
   const mgr = (await callAct(FILE, "posBoardCardsAction", PER.MANAGER!, [{ systemId: X.POS, keys: all }])).r;
   const p = judgeD7({ owner, mgr, keys });
   chk("D7", p.length === 0, "OWNER ได้ 4 ใบ · MANAGER[A1] ได้ 2 ใบของ A1 ไม่ได้ของ A2", fxNote(p.length ? p.join(" · ") : `ครบ (OWNER ${owner?.cards?.length} ใบ · MANAGER ${mgr?.cards?.length} ใบ)`));
+}
+
+async function runD7b(): Promise<void> {
+  const keys = { a1: "", a2: "", q2: "" };
+  const pre: Record<string, string> = {};
+  await fxStep("D7b 86 จริง", async () => {
+    if (!X.KAN || !X.BOARD) throw new Error("ไม่มีบอร์ดจาก D7");
+    const cc = { tenantId: T, systemId: X.POS, actorUserId: PER.OWNER!.userId };
+    const mk = async (n: string) => String((await catalogMod.createProduct(cc, { name: `P43 ${n} ${RAND}`, basePriceSatang: 4000 }))?.id ?? "");
+    const P86 = await mk("86 สองสาขา");
+    const Q = await mk("86 เฉพาะ A2");
+    const R = await mk("ไม่มี 86");
+    const mark = async (unitId: string, productId: string) => {
+      must(`setAvailability ${unitId}`, await svc(catalogMod, "setAvailability", ctxU(unitId), actorOf("OWNER"), { productId, unitId, available: false, source: "MANUAL" }));
+      const m = await P.posAvailabilityMark.findFirst({ where: { tenantId: T, unitId, productId }, select: { id: true } });
+      if (!m) throw new Error(`ไม่มี PosAvailabilityMark ${unitId}/${productId}`);
+      return `pos-86:${unitId}:${productId}:${m.id}`;
+    };
+    keys.a1 = await mark(X.A1!, P86);
+    keys.a2 = await mark(X.A2!, P86);
+    keys.q2 = await mark(X.A2!, Q);
+    for (const [n, k] of Object.entries(keys)) await kanbanLinks.createCardFromExternal({ tenantId: T, systemId: X.KAN }, { boardId: X.BOARD, title: `การ์ด 86 P4.3 ${n}`, sourceType: "AUTOMATION", sourceKey: k });
+    Object.assign(pre, { a1: `pos-86:${X.A1}:${P86}:`, a2: `pos-86:${X.A2}:${P86}:`, q1: `pos-86:${X.A1}:${Q}:`, r1: `pos-86:${X.A1}:${R}:` });
+  });
+  const FILE = "src/lib/pos-board-ui-actions.ts";
+  const call = async (k: string, ks: string[]) => (await callAct(FILE, "posBoardCardsAction", PER[k]!, [{ systemId: X.POS, keys: ks }])).r;
+  const x = {
+    mgrPrefix: await call("MANAGER", [pre.a1 ?? "", pre.a2 ?? ""]),
+    ownerPrefix: await call("OWNER", [pre.a1 ?? "", pre.a2 ?? ""]),
+    mgrNone: await call("MANAGER", [pre.q1 ?? "", pre.r1 ?? ""]),
+    ownerNone: await call("OWNER", [pre.q1 ?? "", pre.r1 ?? ""]),
+    mgrFull: await call("MANAGER", [keys.a1]),
+    keys,
+  };
+  const p = judgeD7b(x);
+  chk("D7b", p.length === 0, "prefix: MANAGER[A1] ได้ A1 ไม่ได้ A2 · OWNER ได้ 2 · ไม่มี 86 → ok ว่าง · กุญแจเต็มใช้ได้", fxNote(p.length ? p.join(" · ") : `ครบ (MANAGER prefix ${x.mgrPrefix?.cards?.length} ใบ · OWNER ${x.ownerPrefix?.cards?.length} ใบ · ไม่มี 86 ว่าง)`));
 }
 
 async function runD2(): Promise<void> {
@@ -1188,7 +1257,7 @@ try {
   runStatic();
   console.log("\n── D ข้อ DB (ร้านชั่วคราว) ──");
   await setup();
-  for (const [id, f] of [["D1", runD1], ["D1b", runD1b], ["D3", runD3], ["D2", runD2], ["D4", runD4], ["D5", runD5], ["D6", runD6], ["D7", runD7]] as const) {
+  for (const [id, f] of [["D1", runD1], ["D1b", runD1b], ["D3", runD3], ["D2", runD2], ["D4", runD4], ["D5", runD5], ["D6", runD6], ["D7", runD7], ["D7b", runD7b]] as const) {
     try {
       await f();
     } catch (e) {
