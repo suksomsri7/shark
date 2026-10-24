@@ -832,6 +832,22 @@ export async function employeeOfUser(
 }
 
 /**
+ * POS P4.3 ▸ fix2 (R1 F5): รุ่นทั้งชุดของ `employeeOfUser(...) !== null` — userId ในชุดนี้ที่ผูกพนักงาน (HrEmployee.linkedUserId · active หรือไม่ก็ได้
+ *   = กติกาเดียวกับ employeeOfUser) · query ต่อระบบ HR ครั้งเดียว (แทน 2 query ต่อคน) · เพดาน 500 คน · ไม่มี/ข้ามร้าน = [] ◂
+ */
+export async function linkedUserIdsOf(tenantId: string, userIds: string[]): Promise<string[]> {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((u) => (typeof u === "string" ? u.trim() : "")).filter(Boolean))].slice(0, 500);
+  if (!tenantId || ids.length === 0) return [];
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, orderBy: { createdAt: "asc" } });
+  const out = new Set<string>();
+  for (const s of systems) {
+    const rows = await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findMany({ where: { linkedUserId: { in: ids } }, select: { linkedUserId: true } });
+    for (const r of rows) if (r.linkedUserId) out.add(r.linkedUserId);
+  }
+  return [...out];
+}
+
+/**
  * "คนนี้ลาอยู่ไหม ณ เวลานั้น" — นับเฉพาะใบลาที่ **APPROVED** (PENDING/REJECTED ไม่นับ)
  *
  * 🕐 กับดักวันที่ไทย (ผู้คุมงานตัดสินไว้ในใบ C0.3 ข้อ 4): `HrLeave.fromDate/toDate` เป็น `@db.Date`

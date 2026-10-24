@@ -120,15 +120,14 @@ export async function staffHrStates(tenantId: string, userIds: string[], now: Da
 
 // ═══════════ POS P4.3 ▸ F-P3-17 · CD-P43-O3: ป้าย "จาก HR" รายคนของแท็บพนักงาน (17C) ◂ ═══════════
 /**
- * ผู้ใช้ในชุดนี้ที่ผูกกับพนักงานในระบบพนักงานของร้าน (HrEmployee.linkedUserId · ผ่าน facade employeeOfUser) — ร้านไม่มี HR/ไม่ผูก = ไม่อยู่ในชุด ·
- *   อ่านอย่างเดียว · ไม่มีข้อมูลเงิน/การลา (ได้แค่ "ผูกหรือไม่") · เพดาน 500 คนต่อครั้ง
+ * ผู้ใช้ในชุดนี้ที่ผูกกับพนักงานในระบบพนักงานของร้าน (HrEmployee.linkedUserId · ผ่าน facade linkedUserIdsOf = employeeOfUser ทั้งชุด) — ร้านไม่มี HR/ไม่ผูก = ไม่อยู่ในชุด ·
+ *   อ่านอย่างเดียว · ไม่มีข้อมูลเงิน/การลา (ได้แค่ "ผูกหรือไม่") · เพดาน 500 คนต่อครั้ง · POS P4.3 fix2 (R1 F5): query ต่อระบบ HR ครั้งเดียว (เดิม 2 query ต่อคน) ◂
  */
 export async function hrLinkedUserIds(tenantId: string, userIds: string[]): Promise<Set<string>> {
   const ids = [...new Set(userIds.filter(isId))].slice(0, 500);
   if (!isId(tenantId) || !ids.length) return new Set();
-  const { employeeOfUser } = await hr();
-  const rows = await Promise.all(ids.map(async (u) => ((await employeeOfUser(tenantId, u)) ? u : null)));
-  return new Set(rows.filter((u): u is string => !!u));
+  const { linkedUserIdsOf } = await hr();
+  return new Set(await linkedUserIdsOf(tenantId, ids));
 }
 
 // ═══════════ R12 ลงเวลาจากกะ (ตัวเอง = คนในโทเคน) ═══════════

@@ -43,7 +43,7 @@ const BKK = 7 * 3_600_000;
 const bkkDate = (iso: string, inclusiveEnd = false) => new Date(Date.parse(iso) + BKK - (inclusiveEnd ? 1 : 0)).toISOString().slice(0, 10);
 const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10);
 
-// POS P4.3 ▸ CD-P43-3 (B7): โปรใหม่ของผู้ที่ไม่ได้ดูแลทุกสาขาและไม่เห็นชิปสาขา (สาขาเดียว) = สาขาของตัวเอง (ไม่ใช่ [] = ทุกสาขา) ·
+// POS P4.3 ▸ CD-P43-3 (B7) · fix2 CD-P43-7: โปรใหม่ของผู้ที่ไม่ได้ดูแลทุกสาขา = สาขาของตัวเองที่เห็นทั้งหมด (ไม่ใช่ [] = ทุกสาขา) ·
 //   เจ้าของ/"*" ได้ [] ตามเดิม · เซิร์ฟเวอร์แปลง [] แบบเดียวกันอีกชั้น (price-rule.ts savePriceRule) ◂
 const emptyForm = (defaultUnitIds: readonly string[] = []): Form => ({ id: null, name: "", kind: "HAPPY_HOUR", active: true, priority: "0", productIds: [], categoryIds: [], channelCodes: [], unitIds: [...defaultUnitIds], adjust: "PRICE", value: "", weekdays: [], timeFrom: "", timeTo: "", dateFrom: "", dateTo: "" });
 const formOf = (r: PriceRuleItem): Form => ({
@@ -502,7 +502,14 @@ export function PriceRulesClient({ systemId, unitId, data, canEdit, initialRuleI
                     </button>
                   ))}
                 </div>
-                <span className="text-[11.5px] text-[color:var(--color-muted)]">{form.unitIds.length ? form.unitIds.map((id) => data.units.find((u) => u.id === id)?.name ?? "").join(", ") : tp("allBranches")}</span>
+                {/* POS P4.3 fix2 ▸ CD-P43-7 (R1 F6): โปรใหม่ของผู้ไม่ได้ดูแลทุกสาขาที่เลือกว่าง = เซิร์ฟเวอร์เก็บเป็นสาขาของตัวเอง ⇒ ป้ายบอกตามนั้น ◂ */}
+                <span data-testid="pos-price-rule-units-summary" className="text-[11.5px] text-[color:var(--color-muted)]">
+                  {form.unitIds.length
+                    ? form.unitIds.map((id) => data.units.find((u) => u.id === id)?.name ?? "").join(", ")
+                    : !form.id && defaultUnitIds.length
+                      ? tr("myBranches", { names: defaultUnitIds.map((id) => data.units.find((u) => u.id === id)?.name ?? "").join(", ") })
+                      : tp("allBranches")}
+                </span>
                 {fieldError("unitIds")}
               </div>
             ) : null}

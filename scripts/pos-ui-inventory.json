@@ -6512,7 +6512,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/account/print/[docId]",
-        "note": "เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล · แสดงเมื่อผูกบัญชี และผู้ใช้มี account.doc.view (P4.3 CD-P43-2 · sales/page.tsx accountCan) · hiddenFor cashier ตามกติกา $fields.hiddenFor (ห้ามทับ roles — qc-pos-p4.1 R9 · CD-P42-W8 บทบาทที่ไม่เห็นต้องประกาศใน hiddenFor)"
+        "note": "เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล · แสดงเมื่อผูกบัญชี และผู้ใช้มี account.doc.view (P4.3 CD-P43-2 · sales/page.tsx posAccountLinks().docs · CD-P43-O10) · hiddenFor cashier ตามกติกา $fields.hiddenFor (ห้ามทับ roles — qc-pos-p4.1 R9 · CD-P42-W8 บทบาทที่ไม่เห็นต้องประกาศใน hiddenFor)"
       },
       "wo": "P1.16",
       "oracle": "P4.3-S2",
@@ -15987,11 +15987,36 @@
       ],
       "expect": {
         "type": "ui",
-        "note": "สาขาของโปร (ไม่เลือก = ทุกสาขา · ต้องมีสิทธิ์ทุกสาขา) — แสดงเมื่อมี > 1 สาขา",
+        "note": "สาขาของโปร (ไม่เลือก = ทุกสาขา สำหรับเจ้าของ/\"*\" · ผู้ไม่ได้ดูแลทุกสาขา: โปรใหม่เลือกสาขาของตัวเองไว้แล้ว และเลือกว่าง = ทุกสาขาของฉัน · CD-P43-3/CD-P43-7) — แสดงเมื่อมี > 1 สาขา",
         "state": "changes"
       },
       "wo": "P2.2U",
       "oracle": "",
+      "system": "POS",
+      "opener": [
+        "pos-price-rule-add"
+      ],
+      "needs": "ผู้ใช้เข้าถึง ≥ 2 สาขา"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-units-summary",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-price-rule-units-summary",
+        "state": "changes",
+        "note": "สรุปสาขาของโปรใต้ชิป: ชื่อสาขาที่เลือก · ว่าง = \"ทุกสาขา\" (เจ้าของ/\"*\" หรือโปรเดิมที่เก็บ []) หรือ \"ทุกสาขาของฉัน (ชื่อ)\" สำหรับโปรใหม่ของผู้ไม่ได้ดูแลทุกสาขา (เซิร์ฟเวอร์เก็บสาขาของตัวเอง · CD-P43-3 · CD-P43-7) · ไม่กด"
+      },
+      "wo": "P4.3",
+      "oracle": "P4.3-D2",
       "system": "POS",
       "opener": [
         "pos-price-rule-add"

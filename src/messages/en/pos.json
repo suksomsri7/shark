@@ -3760,7 +3760,8 @@
         "weekdays": "Invalid weekdays",
         "timeFrom": "Start time must be HH:MM",
         "timeTo": "Enter both times · the end must be after the start on the same day (up to 23:59)"
-      }
+      },
+      "myBranches": "All my branches ({names})"
     },
     "markupPctMinus": "−{pct}%",
     "drawer": {

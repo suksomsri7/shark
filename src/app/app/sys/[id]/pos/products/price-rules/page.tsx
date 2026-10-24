@@ -30,8 +30,9 @@ export default async function PosPriceRulesPage({ params, searchParams }: { para
   const unitId = units.some((u) => u.id === unit) ? unit! : units[0]!.id;
   const canView = evaluate(m, { module: "pos", action: "pos.product.manage", unitId });
   const canEdit = evaluate(m, { module: "pos", action: "pos.price.rule", unitId });
-  // POS P4.3 ▸ CD-P43-3 (B7): ไม่ได้ดูแลทุกสาขา + เห็นสาขาเดียว (ชิปสาขาซ่อน) ⇒ โปรใหม่ตั้งต้นที่สาขาของตัวเอง ◂
-  const defaultUnitIds = m.role !== "OWNER" && !m.unitAccess.includes("*") && units.length <= 1 ? units.map((u) => u.id) : [];
+  // POS P4.3 ▸ CD-P43-3 (B7) · fix2 CD-P43-7 (R1 F6): ไม่ได้ดูแลทุกสาขา ⇒ โปรใหม่ตั้งต้นที่สาขาของตัวเองทุกสาขา (ชิปเลือกไว้แล้ว ·
+  //   เลือกว่างได้ = ป้าย "ทุกสาขาของฉัน" ตามที่เซิร์ฟเวอร์เก็บจริง) · เจ้าของ/"*" ได้ [] = ทุกสาขา ตามเดิม ◂
+  const defaultUnitIds = m.role !== "OWNER" && !m.unitAccess.includes("*") ? units.map((u) => u.id) : [];
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.price.rule");
   const tProducts = await getTranslations("pos.products");
