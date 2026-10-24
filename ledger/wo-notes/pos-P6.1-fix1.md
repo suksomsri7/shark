@@ -68,3 +68,27 @@ E1 (drop W40 from the row) ❌ · N1 (drop vercel-build cite) ❌ · N2 (drop pa
 3. `PosProductChannelPrice` `@@unique` declaration (deviation 2) — accept or rule otherwise.
 4. Owner: none new beyond the runbook GO list; W33/W34 now have tools (`--counts`, `--crons`). ⚠️ assumptions to prove in the rehearsal: resolve-first paths ข/ง, crontab lock paths, `pnpm install` on the dispatcher checkout.
 5. PR body (R1 + R3) still to be written by the controller: must carry the §0 order (vercel-build · migrate before merge · `POS_DEVICE_KEY`) and the forward-fix rollback policy.
+
+# fix2 (R1 round 2 · MERGEABLE with conditions R2-F1/R2-F2 · 24 Oct 01:2x–01:4xZ)
+Same tree/branch/rules. Spec = round-2 section of `pos-P6.1-prep-review.md` (controller tree, read only). session/pos moved to 69aa85ab meanwhile (PR body draft e41c486a is there) — **nothing merged into this branch**, so R1/R3 stay red here by design.
+
+| item | done | where | evidence |
+|---|---|---|---|
+| **R2-F1** freeze at merge | ✅ | runbook §4.2 (GO-10 records `MAIN_AT_GO10`) · §4.3 step 0 (⛔ GO-12: `git diff --stat <PR_HEAD_SHA> origin/session/pos -- prisma src package.json pnpm-lock.yaml vercel.json scripts/vercel-build.sh` empty · `git log "$MAIN_AT_GO10"..origin/main -- prisma/migrations` empty · `verify-prod-pos.mts --pr-freeze <PR_HEAD_SHA> --main-at "$MAIN_AT_GO10"` FAIL 0 · rule "ledger/docs only after GO-5, else redo GO-9/GO-10") · §0 item 4 · §11 item 12 · verify `runFreezeChecks` (Q1 Q2 Q3 · git only) | session/pos tip vs itself → FAIL 0 · c91d8735 vs fix head → Q1 FAIL (6 files) + Q3 WARN · no `--main-at` → Q2 FAIL · `--main-at` before main's last migration commit 7d5dc93f → Q2 FAIL (lists it) · 74f24f81 vs origin/wip/pos-p6.1-fix1 → FAIL 0 |
+| **R2-F2** systems already on registerV2 | ✅ | §1A row **f** (register.ts:829 · shift.ts:48-55 · ⛔ GO-3f route 1 = §8.1–8.5 for those tenants between GO-10 and GO-12, `--verify` again after GO-12 · route 2 = flag off before merge, SQL GO-3f-2 + restore) · query (f) in the GO-3 block · §8 "เมื่อไร" · GO-11b in §0/§4.2/§11 | query (f) on QC4 read-only: 2 systems (= K2) |
+| R2-F3 node | ✅ | row 1.8 + §7 assumption: VPS node v20.20.2 · pnpm 10.33.0 (used for every fix1/fix2 run); engines ≥ 24 only warns | `iso.sh node --version` / `pnpm --version` |
+| R2-F4 full-host guard | ✅ | `scripts/lib/pos-prod-writer-guard.mts` `hostOf` (label `^<mark>-[a-z0-9]+(-pooler)?$` + host endsWith `.neon.tech`) · `POOLER` refusal for prod/rehearsal (DATABASE_URL or DIRECT_URL) · QC4 pooler still allowed (qc4.sh lane + qc-pos-p1.1 spawn) · verify `decideTarget` same full-host rule (pooler allowed: read-only, SET LOCAL only) | guard self-test 30/30 (new: suffix spoof ×3, IP, uppercase, prod pooler ×2, QC4 pooler, PGHOSTADDR) · verify G2 25/25 · probe: suffix check removed → spoof cases red · QC4 real URLs still pass (CLI dry-runs exit 0, role=qc4) |
+| R2-F5 | ✅ | §4.3 note: `prisma generate` + full `tsc --noEmit` = controller gate (gates130 tree c) — nothing for the owner | |
+| R2-F6 | ✅ | §4.4 step 6: restore to GO-8 loses every write after it ⇒ only before any sale; otherwise forward fix | |
+| R2-F7 | ✅ | §4.0: `[ -n "${PROD_DIRECT_URL:-}" ] \|\| { echo …; exit 1; }` after the reject `case` | |
+| oracle (CD-P61-O1 round 2) | ✅ | N4 a–f · N9 · N10 · N11 | on disk **29/31** (R1 R3 by design) · red-before `P61_REV=74f24f81`: N4 N9 N10 N11 red · probes: N9 ×2, N10 ×2, N11 ×5, N4 → all red after tightening N9/N11 tokens |
+
+Runs at head=b7151cba dirty=0 start=2026-10-24T01:42:05Z (QC4 lane command):
+```
+JSON_SUMMARY {"suite":"verify-prod-pos","mode":"self-test","role":"qc4","host":"ep-frosty-lab…","total":23,"passed":23,"fail":0,"warn":5,"failed":[],"warned":["M1","X1","S1","S6","S7"],"posMigrations":38,"pending":["20261220100000_pos_p61_hand_indexes"]}
+```
+`--counts` FAIL 0 · `--crons` FAIL 0 WARN 2 (R2 R3, unchanged) · `--pr-freeze 74f24f81 --main-at a84bca2b --pr-ref origin/wip/pos-p6.1-fix1` FAIL 0 · 3 CLIs `--dry-run` exit 0 · strict tsc (6 scripts) exit 0 · fitness no-env 53/53 · QC4-env 53/53 · fitness-pos 8/8.
+
+**For the controller's PR body (please copy):**
+- Deploy order adds two gates: GO-11b — if `verify-prod-pos.mts --counts` K2 > 0 (systems already on `settings.pos.registerV2 = true`), run the §8 backfills (catalog → `--verify` 0 → web prices → `pos-shift-required-off`) for exactly those tenants **between GO-10 and the merge**, or switch their `registerV2` off before the merge and back on after the backfill (owner's choice, GO-3f); otherwise those shops get the V2 register with an empty catalogue and shift-required between merge and backfill. Re-run `--verify` after the merge.
+- GO-12 freeze: the PR may only gain ledger/docs commits after GO-5; `verify-prod-pos.mts --pr-freeze <PR_HEAD_SHA> --main-at <main SHA at GO-10>` must be FAIL 0 right before pressing merge.
