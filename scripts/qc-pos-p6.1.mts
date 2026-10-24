@@ -13,6 +13,8 @@
 //   ข้อใหม่ N1–N8 (F1–F11 · CD-P61-R1…R6 · P4) + R3 (PR body มีลำดับ deploy + นโยบาย forward fix — แดงตั้งใจคู่กับ R1) ·
 //   R2 นับคำสั่ง prod แบบตัวแปร shell ("$PROD_DIRECT_URL" · "$PROD_MIGRATE_URL") · S1 สแกนสคริปต์เขียน prod + โน้ต fix1 ด้วย ·
 //   red-before ของข้อใหม่ = `env P61_REV=603877ea …` (โน้ต ledger/wo-notes/pos-P6.1-fix1.md)
+// ORACLE-EDIT CD-P61-O1 รอบ 2 (P6.1 fix2 · R1 รอบ 2): N4 รับตาราง §1A a–f (6 แถว · f = registerV2) · ข้อใหม่ N9 (R2-F1 ด่านแช่แข็ง) · N10 (R2-F2) · N11 (R2-F3…F7 + ด่าน host R2-F4)
+//   red-before ของ N9–N11 + N4 ใหม่ = `env P61_REV=74f24f81 …`
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -69,6 +71,9 @@ const CHECKS: readonly Def[] = [
   ["P6.1-N5", "F5 · CD-P61-R5: verify --counts (COUNT_TABLES PosSale/RestaurantOrder/GiftCard · COUNT_THRESHOLD 100_000) · §3.2 ทาง ก/ข/ค/ง: resolve --applied p111/p34/p61 · CONCURRENTLY ของ index p111/p34/p26/p29 · GiftCardKind · 100,000 · §3.4 เรียก --counts"],
   ["P6.1-N6", "F6 · CD-P61-R6: verify --crons + --post-merge (อ่าน crontab) · §7 มี pull --ff-only ของ /root/projects/shark-in-th · --crons --post-merge · crontab -l · งาน pos.* = cadence hourly"],
   ["P6.1-N7", "F7–F11: stmt 'รันซ้ำทั้งไฟล์ไม่ได้' (ไม่มีประโยคเดิม 'ทุกไฟล์รันซ้ำได้') · promote เฉพาะก่อนเขียน V2 + forward fix · lock_timeout ผ่าน URL + SHOW lock_timeout + db execute · แถว 1.4 ตัดแล้ว · worktree สะอาด <PR_HEAD_SHA> + ไม่มีคำสั่ง prod จาก /root/projects/shark-pos · §1 มี W37 W38 W39 W41 W19"],
+  ["P6.1-N9", "R2-F1: §4.3 ข้อ 0 ด่านแช่แข็ง GO-12 (git diff --stat <PR_HEAD_SHA> origin/session/pos -- prisma src package.json pnpm-lock.yaml vercel.json scripts/vercel-build.sh · log MAIN_AT_GO10..origin/main -- prisma/migrations · --pr-freeze) · GO-10 จด MAIN_AT_GO10 · verify มี --pr-freeze/--main-at (git อย่างเดียว) · §11 GO-12"],
+  ["P6.1-N10", "R2-F2: §1A แถว f (registerV2 · register.ts:829 · shift.ts:48-55 · ⛔ GO-3f ทาง 1/2) + คิวรี (f) + SQL ทาง 2 · §8 'ระหว่าง GO-10 กับ GO-12' + --verify ซ้ำหลัง GO-12 · GO-11b ใน §4.2/§11"],
+  ["P6.1-N11", "R2-F3…F7: แถว 1.8 ระบุ node v20.20.2 · §4.3 prisma generate + tsc เป็นด่านผู้คุม · §4.4 restore ทิ้งการเขียนหลัง GO-8 · §4.0 exit เมื่อ URL ว่าง · ด่าน host (verify + writer) เทียบท้าย .neon.tech + writer ปฏิเสธ -pooler บน prod + self-test กรณีปลอมท้าย host/pooler"],
   ["P6.1-N8", "CD-P61-P4: ทุก HAND_INDEXES ที่ไม่ใช่ partial มี @@index ใน schema ของ model นั้น · migration pos_p61_hand_indexes = CREATE INDEX IF NOT EXISTS ชุดเดียวกัน (ไม่มี CONCURRENTLY/DROP) · unique PosProductChannelPrice ประกาศด้วยชื่อเดิม · §2 = 37 ไฟล์"],
 ];
 
@@ -562,8 +567,8 @@ try {
   {
     const p: string[] = [];
     if (!s1a) p.push("ไม่มี §1A");
-    const rows = s1a.split("\n").filter((l) => /^\|\s*[a-e]\s*\|/.test(l));
-    if (rows.length !== 5) p.push(`ตาราง §1A มี ${rows.length} แถว a–e (คาด 5)`);
+    const rows = s1a.split("\n").filter((l) => /^\|\s*[a-f]\s*\|/.test(l)); // CD-P61-O1 รอบ 2: + แถว f (R2-F2)
+    if (rows.length !== 6) p.push(`ตาราง §1A มี ${rows.length} แถว a–f (คาด 6)`);
     for (const r of rows) if (!r.includes("⛔")) p.push(`แถว ${r.slice(0, 6)} ไม่มี ⛔`);
     for (const tok of ["POS_LINKED", "POS_DEPOSIT", "pos_scope_required", '`"*"`', "DEVICE_NOT_PAIRED", "W37", "W38", "W39", "W40", "W41"]) if (!s1a.includes(tok)) p.push(`§1A ขาด ${tok}`);
     if ((s1a.match(/^SELECT /gm) ?? []).length < 6) p.push("§1A คิวรี SELECT < 6");
@@ -608,6 +613,48 @@ try {
     const s1t = section("1.");
     for (const w of ["W37", "W38", "W39", "W41", "W19"]) if (!s1t.includes(w)) p.push(`F11: §1 ไม่มี ${w}`);
     chk("N7", hasRb && !p.length, p.length ? p.slice(0, 5).join(" · ") : "F7 F8 F9 F10 F11 ครบ");
+  }
+  // ── N9 (R2-F1 · ด่านแช่แข็งที่ GO-12) ──
+  {
+    const p: string[] = [];
+    const s43 = sub(s4, "4.3");
+    if (!s43.includes("git -C /root/projects/shark-pos diff --stat <PR_HEAD_SHA> origin/session/pos -- prisma src package.json pnpm-lock.yaml vercel.json scripts/vercel-build.sh")) p.push("§4.3 ไม่มี git diff --stat ของ freeze");
+    if (!s43.includes('"$MAIN_AT_GO10"..origin/main -- prisma/migrations')) p.push("§4.3 ไม่มี log migration ของ main หลัง GO-10");
+    if (!/verify-prod-pos\.mts --pr-freeze <PR_HEAD_SHA> --main-at "\$MAIN_AT_GO10"/.test(s43)) p.push("§4.3 ไม่เรียก --pr-freeze");
+    if (!/ledger\/ หรือ docs\//.test(s43)) p.push("§4.3 ไม่บอกกติกา ledger/docs เท่านั้น");
+    if (!/MAIN_AT_GO10=\$\(git -C \/root\/projects\/shark-pos rev-parse origin\/main\)/.test(sub(s4, "4.2"))) p.push("§4.2 ไม่จด MAIN_AT_GO10");
+    if (!/--pr-freeze/.test(s11.split("\n").find((l) => /^\d+\.\s⛔ GO-12/.test(l)) ?? "")) p.push("§11 GO-12 ไม่มี --pr-freeze");
+    for (const tok of ['"--pr-freeze"', '"--main-at"', "FREEZE_PATHS", "function runFreezeChecks"]) if (!vsrc.includes(tok)) p.push(`verify ไม่มี ${tok}`);
+    const fz = /function runFreezeChecks[\s\S]*$/.exec(vsrc)?.[0] ?? "";
+    if (/q\(|client\./.test(fz)) p.push("--pr-freeze แตะ DB");
+    chk("N9", hasRb && !p.length, p.length ? p.join(" · ") : "freeze diff + main migrations + --pr-freeze · MAIN_AT_GO10 · §11");
+  }
+  // ── N10 (R2-F2 · registerV2 อยู่แล้ว) ──
+  {
+    const p: string[] = [];
+    const rf = s1a.split("\n").find((l) => /^\|\s*f\s*\|/.test(l)) ?? "";
+    if (!rf) p.push("§1A ไม่มีแถว f");
+    else for (const tok of ["registerV2", "src/lib/modules/pos/register.ts:829", "shift.ts:48-55", "GO-3f", "GO-10", "GO-12"]) if (!rf.includes(tok)) p.push(`แถว f ขาด ${tok}`);
+    if (!/-- \(f\)[^\n]*\nSELECT [^\n]*registerV2'\) = 'true'::jsonb/.test(s1a)) p.push("§1A ไม่มีคิวรี (f)");
+    if (!/GO-3f-2/.test(s1a) || !/jsonb_set\("settings", '\{pos,registerV2\}', 'false'::jsonb\)/.test(s1a)) p.push("§1A ไม่มี SQL ทาง 2 (ปิดธง)");
+    if (!/ระหว่าง GO-10 กับ GO-12/.test(s8) || !/--verify[^\n]*ซ้ำหลัง GO-12/.test(s8)) p.push("§8 ไม่บอกช่วง GO-10..GO-12 + --verify ซ้ำ");
+    if (!/GO-11b/.test(sub(s4, "4.2")) || !/GO-11b/.test(s11)) p.push("GO-11b ไม่อยู่ใน §4.2/§11");
+    chk("N10", hasRb && !p.length, p.length ? p.join(" · ") : "แถว f · คิวรี (f) · ทาง 1/2 · §8 ช่วงเวลา · GO-11b");
+  }
+  // ── N11 (R2-F3…F7) ──
+  {
+    const p: string[] = [];
+    const r18 = section("1.").split("\n").find((l) => l.startsWith("| 1.8 |")) ?? "";
+    if (!/v20\.20\.2/.test(r18)) p.push("F3: แถว 1.8 ไม่ระบุ node v20.20.2");
+    if (/\(node ≥ 24 · §1 แถว 1\.8\)/.test(rb)) p.push("F3: ยังมีสมมติฐาน node ≥ 24 เดิม");
+    if (!/prisma generate[^\n]*tsc --noEmit/.test(sub(s4, "4.3"))) p.push("F5: §4.3 ไม่มี prisma generate + tsc ของผู้คุม");
+    if (!/restore ทิ้งทุกการเขียนหลังจุด GO-8/.test(sub(s4, "4.4"))) p.push("F6: §4.4 ไม่เตือน restore ทิ้งการเขียน");
+    if (!/\[ -n "\$\{PROD_DIRECT_URL:-\}" \] \|\| \{[^\n]*exit 1; \}/.test(sub(s4, "4.0"))) p.push("F7: §4.0 ไม่ exit เมื่อ URL ว่าง");
+    const g = read(GUARD) ?? "";
+    for (const tok of ["NEON_SUFFIX", '"POOLER"', "ปลอมท้าย host", "prod -pooler + ALLOW"]) if (!g.includes(tok)) p.push(`F4: ด่านเขียนขาด ${tok}`);
+    for (const tok of ["NEON_SUFFIX", "ปลอมท้าย host", "IP ตรง"]) if (!vsrc.includes(tok)) p.push(`F4: verify ขาด ${tok}`);
+    if (/label === h\.mark \|\| label\.startsWith/.test(g + vsrc)) p.push("F4: ยังเทียบแค่ label แรก");
+    chk("N11", hasRb && !p.length, p.length ? p.slice(0, 5).join(" · ") : "node · generate+tsc · restore · exit · ด่าน host ทั้ง host + pooler");
   }
   // ── N8 (CD-P61-P4) ──
   {
