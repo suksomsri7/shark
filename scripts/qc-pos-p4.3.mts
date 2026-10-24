@@ -2,10 +2,13 @@
 //   R10 แผ่น QR) + งานค้างจาก P3.12 (F-P3-16 วันครบกำหนด · F-P3-17/18/19 HR/แคตตาล็อก/TTL · F-P3-21 ลิงก์การ์ดบอร์ด · F-P3-22 route พิมพ์รายงาน · F-P3-10 ชิป #0)
 //   brief = ledger/pos-briefs/pos-prompt-accountA-P4.3-ORACLE.md · triage = ledger/wo-notes/pos-P4.3-triage.md §3 P1–P4 + §1 R10 · โน้ต = ledger/wo-notes/pos-P4.3-oracle.md
 //   มติผู้คุม CD-P43-1…6 (POS-RESUME 23 ต.ค. 23:1xZ) · มติของ oracle CD-P43-O1…O9 (ในโน้ต) — สัญญาของฟิลด์/ชื่อที่ product builder ต้องใช้อยู่ในโน้ต §2
+//   ORACLE-EDIT (oracle รอบ 2 · R1 ledger/wo-notes/pos-P4.3-scripts-review.md F7–F10): + D1b (ธงลิงก์บัญชีผ่าน posAccountLinks + receiptSettingsPageDataAction) ·
+//     S2 ธงต้องเป็นตัวกั้น <Link> (ไม่ใช่ค่าคงที่) · S7 ต้องมีลิงก์ board-card (href = card.href) ในทั้ง 3 ทรี + D7 ตัวอ่านข้ามสาขาปฏิเสธ · S8 ทุกรูป fallback ตัวอักษร/ตัวแปรแฝง ·
+//     D6 + MANAGER[A1] unit=A2 → 403 · unit=A1 → 200 · OWNER unit=A2 → 200 · probe N2 N5 N6 N9 เพิ่มรูปหลอกของผู้ตรวจ + N11 (D1b) N12 (D7) — ข้อใหม่ล้วน ไม่มีข้อยกเว้น
 //
 // รัน (QC4 · ร้านชั่วคราว):
 //   env -C <tree> ISO_MEM=3G bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p4.3.mts
-//   --list = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต S1 S2 S5 S6 S7 S8 + probe N1–N10 (ไม่โหลด prisma) · --self-test = probe N1–N10 อย่างเดียว
+//   --list = พิมพ์ทุก id ไม่แตะ DB · --no-db = ข้อสถิต S1 S2 S5 S6 S7 S8 + probe N1–N12 (ไม่โหลด prisma) · --self-test = probe N1–N12 อย่างเดียว
 // DB: QC4 เท่านั้น · ร้านชั่วคราว posqc-p43-<rand> (2 สาขา · POS · บัญชี · HR) สร้างผ่านตัวเขียนของโมดูล · ลบทั้งร้านใน finally (Z1 · รวม sequence เลขใบสำคัญ
 //     ของระบบบัญชีชั่วคราวผ่าน account_jno_drop) · ร้าน QC coffee/resto อ่านลายนิ้วมืออย่างเดียว (Z2) · ไม่ reseed · fetch ออกนอก = ตัวกั้น 503
 // ไม่มีด่านข้าม (ทุกข้อรันเสมอ — surface ที่ยังไม่มี = แดงพร้อมเหตุ "ไม่มี …") ⇒ แมนิเฟสต์ unforced (p2.14 G2)
@@ -30,17 +33,19 @@ type Def = readonly [string, string, string, string];
 const D = (id: string, x: string, title: string, ref: string): Def => [`P4.3-${id}`, x, title, ref] as const;
 const CHECKS: readonly Def[] = [
   D("S1", "P1", "[static · CD-P43-1] Permissions-Policy ทุกจุดใน src อนุญาตกล้องเฉพาะ origin เดียวกัน camera=(self) · microphone=() geolocation=() คงปิด · ScanCameraDialog ยังใช้ getUserMedia({video})", "src/proxy.ts:54 · src/components/pos/register/ScanCameraDialog.tsx:82"),
-  D("S2", "P2", "[static · CD-P43-2] ลิงก์บัญชีแสดงเฉพาะผู้มีสิทธิ์: หน้า /sales ส่งธงจาก account.doc.view ให้ BillsClient · ลิงก์ pos-settings-account-link อยู่ใต้เงื่อนไข + ข้อมูลตัดสินจาก account.settings.manage · ทะเบียน 2 แถว hiddenFor มี cashier (roles ไม่มี cashier)", "sales/page.tsx:68 · BillsClient.tsx:1657 · ReceiptSettings.tsx:670-676 · receipt-settings-actions.ts:113 · scripts/pos-ui-inventory.json"),
+  D("S2", "P2", "[static · CD-P43-2 · CD-P43-O10] ลิงก์บัญชีแสดงเฉพาะผู้มีสิทธิ์: sales/page.tsx เรียก posAccountLinks และค่า .docs เป็นตัวกั้น pos-bills-accounting-link (accountSystemId={links.docs ? … : null} หรือ prop ที่ BillsClient ใช้ที่เงื่อนไขลิงก์) · <Link pos-settings-account-link> อยู่ใต้ `canOpenAccountSettings &&` ที่ receipt-settings-actions.ts ได้จาก posAccountLinks · ทะเบียน 2 แถว hiddenFor มี cashier (roles ไม่มี cashier)", "sales/page.tsx:34,68 · BillsClient.tsx:1657 · ReceiptSettings.tsx:670-676 · receipt-settings-actions.ts:113 · scripts/pos-ui-inventory.json"),
   D("S5", "R10", "[static] pos-tbl-qr-sheet-print: ตัวจัดการกดเรียก window.print() อย่างเดียว (ไม่มี fetch/action/await/router) — แถวทะเบียน tables#pos-tbl-qr-sheet-print อ้าง oracle P4.3-S5", "src/components/pos/tables/TableQr.tsx:149"),
   D("S6", "F-P3-17/18/19", "[static] 17C แท็บพนักงาน: ป้าย 'จาก HR' รายคน (settings-overview.ts → fromHr · StaffSettings ใช้) · การ์ดค่าคอมฯ อ่านแคตตาล็อกจาก posCommissionCatalogAction (ไม่ใช่ registerCatalogAction) · LockScreen ใช้ overrideTtlMin + lock.schedule.overrideBody {minutes}", "settings-overview.ts:127 · StaffSettings.tsx · StaffHrCards.tsx:17,273,300 · settings-actions.ts · LockScreen.tsx:486,657"),
-  D("S7", "F-P3-21", "[static · CD-P38U-9] หน้าขาย / ออเดอร์ / บิล ลิงก์การ์ดบอร์ด 86/คืนเงิน: มีตัวอ่านการ์ดที่รับกุญแจ pos-86: + pos-refund: (posCardsForKeys) และทั้ง 3 ทรีจอใช้ตัวอ่านนั้น (import action หรือ page เรียก posCardsForKeys + posBoardKeys.soldOut/refund)", "src/lib/pos-board-ui-actions.ts:45 · RegisterScreen.tsx · OrdersScreen.tsx · BillsClient.tsx"),
-  D("S8", "F-P3-10", "[static] ชิปการ์ดไม่แสดง '#0' เมื่อ cardNo เป็น null — ไม่มี `cardNo ?? 0` / `cardNo || 0` ในจอ POS", "reports/ReportsClient.tsx:255,259 · shifts/ShiftsClient.tsx:944"),
+  D("S7", "F-P3-21", "[static · CD-P38U-9 · CD-P43-O7r] หน้าขาย / ออเดอร์ / บิล ลิงก์การ์ดบอร์ด 86/คืนเงิน: posBoardCardsAction (pos-board-ui-actions.ts) รับกุญแจ pos-86: + pos-refund: · ทั้ง 3 ทรีจอใช้ตัวอ่านนั้น (import ตรงหรือผ่านคอมโพเนนต์) และเรนเดอร์ลิงก์ <a|Link data-testid=…board-card… href={….href}> (ตรงหรือผ่านคอมโพเนนต์)", "src/lib/pos-board-ui-actions.ts:45 · RegisterScreen.tsx · OrdersScreen.tsx · BillsClient.tsx"),
+  D("S8", "F-P3-10", "[static] ชิปการ์ดไม่แสดง '#0'/'#' เมื่อ cardNo เป็น null — ไม่มี `?? <ค่าคงที่>` / `|| <ค่าคงที่>` (ตัวเลขหรือสตริง รวม \"\") บน cardNo หรือตัวแปรแฝงของมัน ในจอ POS", "reports/ReportsClient.tsx:255,259 · shifts/ShiftsClient.tsx:944"),
   D("D1", "P2", "[db · CD-P43-O1 ระดับด่าน] CASHIER: ด่านของหน้าที่ลิงก์ชี้ (requireAccountPage account.doc.view = /account/print · account.settings.manage = /account/settings) ปฏิเสธด้วย ForbiddenError · OWNER ผ่านทั้งคู่ (ตัวควบคุมบวก)", "src/lib/modules/account/guard.ts:15,26 (ไม่ต้องแก้ — ตาข่ายกันถอย)"),
+  D("D1b", "P2", "[db · CD-P43-O10 · R1 F7] ธงลิงก์บัญชีต่อคนผ่านทางจริง: posAccountLinks(ctx, actor) → OWNER/MANAGER docs+settings true · CASHIER (pos.sale.create) false/false · STAFF account.doc.create docs true (IMPLIES) settings false · accountSystemId = สมุดที่ผูก · receiptSettingsPageDataAction (session) book.canOpenAccountSettings OWNER/MANAGER true · CASHIER false", "src/lib/modules/pos/account-links.ts (ใหม่) · receipt-settings-actions.ts:80-113 · sales/page.tsx:34"),
   D("D2", "P3=B7", "[db · CD-P43-3] MANAGER[A1] savePriceRuleAction unitIds [] → ok + เก็บเป็น [A1] พอดี (ไม่ใช่ [] = ทุกสาขา) · สลับเปิด/ปิด + เก็บถาวรกติกานั้น → ok · ขยายไป [A2]/[A1,A2] → PERMISSION_DENIED · สลับกติกาทุกสาขาของ OWNER → ปฏิเสธ + แถวเดิม · OWNER [] → ok เก็บ []", "src/lib/modules/pos/price-rule.ts:90-94 (+ PriceRulesClient.tsx:46,493)"),
   D("D3", "P4", "[db · CD-P43-4] setPosChatSettings (OWNER · receiptAuto) → ok · settings.pos.chat เปลี่ยน · AppSystem.updatedAt ขยับ (ตัวเขียนพี่น้อง settings-general.ts:126 ทำแล้ว)", "src/lib/modules/pos/chat-link.ts:79-86"),
   D("D4", "F-P3-16", "[db · CD-P36U-7] บิลวางบิล ON_ACCOUNT ผ่าน submitRegisterSale: creditTerms.dueDate (= PosSale.creditTerms.dueDate) อยู่บน ผลส่งบิล · billDetail.bill · receiptForSale().payload · publicReceipt(/r).receipt", "register-shared.ts:508 · bills-shared.ts:101 · receipt-render.ts:83 · public-receipt.ts:57"),
   D("D5", "F-P3-17/18/19", "[db] posStaffOverview: พนักงานที่ผูก HR fromHr=true · ไม่ผูก fromHr=false · posCommissionCatalogAction: ผู้ดูเงินเดือน (STAFF hr.payroll.read ไม่มีสิทธิ์ขาย) เห็นหมวด/สินค้า/ตัวแปร/สินค้าสาขาอื่น · NOPERM ปฏิเสธ · listStaffForDevice คืน overrideTtlMin ตามค่าตั้ง", "settings-overview.ts:120-159 · settings-actions.ts · staff-pin.ts:588"),
-  D("D6", "F-P3-22", "[db · RPT-6] route พิมพ์รายงาน text/html ใต้ /app/sys/[id]/pos/reports/** (route.ts GET): ANON → 401/ไป /login · STAFF ไม่มี pos.report.view → 403 · OWNER → 200 text/html มี <html + print(", "src/app/app/sys/[id]/pos/reports/print/html/route.ts (ใหม่ · CD-P43-O8)"),
+  D("D6", "F-P3-22", "[db · RPT-6] route พิมพ์รายงาน text/html ใต้ /app/sys/[id]/pos/reports/** (route.ts GET): ANON → 401/ไป /login · STAFF ไม่มี pos.report.view → 403 · OWNER → 200 text/html มี <html + print( · ข้ามสาขา: MANAGER[A1] unit=A2 → 403 พอดี · MANAGER[A1] unit=A1 → 200 · OWNER unit=A2 → 200", "src/app/app/sys/[id]/pos/reports/print/html/route.ts (ใหม่ · CD-P43-O8)"),
+  D("D7", "F-P3-21", "[db · R1 F8] posBoardCardsAction กุญแจ pos-86:/pos-refund: ตรวจสาขาต่อกุญแจ: OWNER ได้การ์ดครบ 4 ใบ (86@A1 86@A2 คืนเงิน@A1 คืนเงิน@A2 · ตัวควบคุมบวก) · MANAGER[A1] ได้ 2 ใบของ A1 และไม่ได้ของ A2", "src/lib/pos-board-ui-actions.ts:32-56"),
   D("N1", "N", "[self-test] judgeS1: นโยบายปัจจุบัน/camera=*/ไมค์เปิด แดง · camera=(self) เขียว", "-"),
   D("N2", "N", "[self-test] judgeS2: ไม่มีธง/ลิงก์ไม่อยู่ใต้เงื่อนไข/แถวไม่มี hiddenFor แดง · ธง account.doc.view + เงื่อนไข + hiddenFor เขียว", "-"),
   D("N3", "N", "[self-test] judgeS5: window.print อย่างเดียวเขียว · มี fetch/Action/await แดง · ตัวจัดการชื่อฟังก์ชันตามไปอ่าน", "-"),
@@ -51,10 +56,12 @@ const CHECKS: readonly Def[] = [
   D("N8", "N", "[self-test] judgeD3/D4: updatedAt เท่าเดิม แดง · ขยับ เขียว · dueDate ขาดที่ผิวใดผิวหนึ่ง/ค่าไม่ตรง แดง · ครบ เขียว", "-"),
   D("N9", "N", "[self-test] judgeD1/D6: CASHIER ผ่านด่าน/OWNER ถูกปฏิเสธ แดง · route ไม่มี/ANON 200/STAFF 200/OWNER ไม่ใช่ html แดง · ถูกต้อง เขียว", "-"),
   D("N10", "N", "[self-test] judgeD5: fromHr ไม่มี/ผิดคน แดง · reader ปฏิเสธผู้ดูเงินเดือน/ขาดตัวแปร แดง · TTL ไม่มี แดง · ครบ เขียว", "-"),
+  D("N11", "N", "[self-test] judgeD1b: ไม่มี helper แดง · แคชเชียร์ได้ธง/ผู้จัดการไม่ได้/IMPLIES หาย แดง · action ไม่ส่งธง แดง · ครบ เขียว", "-"),
+  D("N12", "N", "[self-test] judgeD7: ตัวอ่านไม่รับกุญแจ (ฐาน) แดง · ผู้จัดการเห็นการ์ด A2 แดง · ผู้จัดการไม่เห็นของ A1 แดง · ครบ เขียว", "-"),
   D("Z1", "Z", "[db] ร้านชั่วคราว posqc-p43-*: 0 แถวทุกตารางที่มี tenantId · Tenant/User ลบ · sequence เลขใบสำคัญของระบบบัญชีชั่วคราว 0", "-"),
   D("Z2", "Z", "[db] ลายนิ้วมือร้าน QC coffee/resto (12 ตาราง) เท่าเดิม", "-"),
 ];
-const PROBE_IDS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10"].map((x) => `P4.3-${x}`);
+const PROBE_IDS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10", "N11", "N12"].map((x) => `P4.3-${x}`);
 const STATIC_IDS = new Set([...["S1", "S2", "S5", "S6", "S7", "S8"].map((x) => `P4.3-${x}`), ...PROBE_IDS]);
 if (LIST) {
   for (const [id, x, title, ref] of CHECKS) console.log(`${id}\t${x}\t${STATIC_IDS.has(id) ? "static" : "db"}\t${title}\t← ${ref}`);
@@ -125,6 +132,8 @@ const S7_TREES: Record<string, string[]> = {
 };
 /** จอ POS ที่ห้ามมีชิป '#0' (S8) */
 const S8_DIRS = [POS_APP, "src/components/pos"];
+/** ที่ตั้งคอมโพเนนต์ชิปที่ทรีจอใช้ร่วม (S7) */
+const UI_DIRS = [POS_APP, "src/components/pos"];
 
 // ═════════════════════════ ตัวตัดสินแบบ pure (ใช้ทั้งข้อจริงและ probe N*) ═════════════════════════
 /** S1 — ค่า Permissions-Policy ทุกจุด (โค้ดไม่มีคอมเมนต์) · ไฟล์สแกนกล้องยังเรียก getUserMedia */
@@ -156,35 +165,31 @@ function jsxElement(src: string, tag: string): string {
   return m ? rest.slice(0, m.index + m[0].length) : rest.slice(0, 4000);
 }
 type RegRow = { page?: string; testid?: string; roles?: string[]; hiddenFor?: string[] };
-/** S2 — ธงสิทธิ์บัญชี (หน้า /sales → BillsClient) · เงื่อนไขรอบลิงก์ตั้งค่า + ตัวตัดสินฝั่งข้อมูล · แถวทะเบียน */
+/** S2 — ธงจาก posAccountLinks เป็นตัวกั้นลิงก์ (CD-P43-O10 · ORACLE-EDIT R1 F7: ธงค่าคงที่/เงื่อนไข true/สตริงลอย = แดง) · แถวทะเบียน */
 function judgeS2(i: { salesPage: string; bills: string; receiptSettings: string; settingsData: string; rows: RegRow[] }): string[] {
   const p: string[] = [];
-  // (A) หน้า /sales: ค่า/ธงที่ส่งให้ BillsClient มาจาก account.doc.view
+  // (A) หน้า /sales: เรียก posAccountLinks · ค่า docs เป็นตัวกั้นลิงก์บัญชีของบิล
   const el = jsxElement(i.salesPage, "BillsClient");
+  if (!/\bposAccountLinks\s*\(/.test(i.salesPage)) p.push("sales/page.tsx ไม่เรียก posAccountLinks (ธงลิงก์บัญชีต้องมาจากตัวตัดสินกลาง)");
   if (!el) p.push("sales/page.tsx ไม่มี <BillsClient");
   else {
-    const flags = [...i.salesPage.matchAll(/const\s+(\w+)\s*=\s*([^;]*?account\.doc\.view[^;]*);/gs)].map((m) => m[1]!);
-    const refFlag = (s: string) => s.includes("account.doc.view") || flags.some((f) => new RegExp(`\\b${f}\\b`).test(s));
-    const acc = /accountSystemId=\{([^}]*)\}/.exec(el)?.[1] ?? "";
-    if (refFlag(acc)) {
-      /* ทาง 1: ส่ง accountSystemId เฉพาะผู้มีสิทธิ์ */
-    } else {
-      const props = [...el.matchAll(/(\w+)=\{([^{}]*)\}/g)].filter((m) => refFlag(m[2]!)).map((m) => m[1]!);
+    const props = [...el.matchAll(/(\w+)=\{([^{}]*)\}/g)].filter((m) => /\bdocs\b/.test(m[2]!)).map((m) => m[1]!);
+    if (!props.length) p.push(`sales/page.tsx ไม่ส่งค่า docs ของ posAccountLinks ให้ BillsClient (accountSystemId={${(/accountSystemId=\{([^}]*)\}/.exec(el)?.[1] ?? "?").trim()}})`);
+    else if (!props.includes("accountSystemId")) {
       const at = i.bills.indexOf('data-testid="pos-bills-accounting-link"');
       const near = at < 0 ? "" : i.bills.slice(Math.max(0, at - 700), at);
-      if (!props.length) p.push(`sales/page.tsx ส่ง accountSystemId={${acc.trim() || "?"}} ให้ BillsClient โดยไม่มีธงจาก account.doc.view`);
-      else if (!props.some((x) => new RegExp(`\\b${x}\\b`).test(near))) p.push(`BillsClient ไม่ใช้ธง ${props.join("/")} ที่เงื่อนไขของ pos-bills-accounting-link`);
+      if (!props.some((x) => new RegExp(`\\b${x}\\b`).test(near))) p.push(`BillsClient ไม่ใช้ prop ${props.join("/")} ที่เงื่อนไขของ pos-bills-accounting-link`);
     }
   }
-  // (B) ลิงก์ตั้งค่าบัญชี: อยู่ใต้เงื่อนไข + ข้อมูลตัดสินจาก account.settings.manage
+  // (B) ลิงก์ตั้งค่าบัญชี: เงื่อนไขที่ครอบ <Link> ต้องเป็น canOpenAccountSettings · ค่าจาก posAccountLinks ใน receipt-settings-actions
   const at = i.receiptSettings.indexOf('data-testid="pos-settings-account-link"');
   if (at < 0) p.push("ReceiptSettings ไม่มี pos-settings-account-link");
   else {
     const open = i.receiptSettings.lastIndexOf("<Link", at);
     const before = open < 0 ? "" : i.receiptSettings.slice(Math.max(0, open - 240), open);
-    if (!/(&&|\?)\s*\(?\s*$/.test(before)) p.push("ReceiptSettings: pos-settings-account-link ไม่อยู่ใต้เงื่อนไขสิทธิ์ (แสดงทุกคนที่เห็นสมุด)");
+    if (!/\bcanOpenAccountSettings\s*(&&|\?)\s*\(?\s*$/.test(before)) p.push("ReceiptSettings: <Link pos-settings-account-link> ไม่อยู่ใต้ `canOpenAccountSettings &&` (แสดงทุกคนที่เห็นสมุด)");
   }
-  if (!i.settingsData.includes("account.settings.manage")) p.push("settings/page.tsx · receipt-settings-actions.ts ไม่ตัดสิน account.settings.manage");
+  if (!(/\bposAccountLinks\s*\(/.test(i.settingsData) && /\bcanOpenAccountSettings\b/.test(i.settingsData))) p.push("receipt-settings-actions.ts ไม่ส่ง canOpenAccountSettings จาก posAccountLinks");
   // (C) ทะเบียน
   for (const t of ["pos-bills-accounting-link", "pos-settings-account-link"]) {
     const r = i.rows.find((x) => x.testid === t);
@@ -236,31 +241,45 @@ function judgeS6(i: { overview: string; staffSettings: string; hrCards: string; 
   return p;
 }
 
-/** S7 — ตัวอ่านการ์ดที่รับกุญแจ 86/คืนเงิน + ทรีจอใช้ */
+/** S7 — posBoardCardsAction รับกุญแจ 86/คืนเงิน · 3 ทรีจอใช้ตัวอ่าน + เรนเดอร์ลิงก์ board-card (href = card.href) ตรงหรือผ่านคอมโพเนนต์ (ORACLE-EDIT R1 F8) */
 const KEY86 = /["'`]pos-86:|posBoardKeys\.soldOut/;
 const KEYREF = /["'`]pos-refund:|posBoardKeys\.refund/;
-function judgeS7(actionFiles: { file: string; code: string }[], trees: Record<string, { file: string; code: string }[]>): string[] {
+const READER = "posBoardCardsAction";
+const CARD_LINK = /<(?:a|Link)\b(?=[^<]*data-testid=\{?["'`][^"'`]*board-card)(?=[^<]*href=\{[^}]*\.href\b)/;
+const exportedNames = (c: string) => [...c.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:function|const)\s+(\w+)/g)].map((m) => m[1]!);
+function judgeS7(readerCode: string, ui: { file: string; code: string }[], trees: Record<string, { file: string; code: string }[]>): string[] {
   const p: string[] = [];
-  const readers = actionFiles.filter((f) => /["']use server["']/.test(f.code) && /\bposCardsForKeys\b/.test(f.code) && KEY86.test(f.code) && KEYREF.test(f.code));
-  const names = readers.flatMap((f) => [...f.code.matchAll(/export\s+async\s+function\s+(\w+)/g)].map((m) => m[1]!));
-  if (!readers.length) p.push("ไม่มีตัวอ่านการ์ด (\"use server\" + posCardsForKeys) ที่รับกุญแจ pos-86: และ pos-refund: — pos-board-ui-actions.ts:45 รับเฉพาะ pos-anomaly:");
+  if (!(new RegExp(`export\\s+async\\s+function\\s+${READER}\\b`).test(readerCode) && KEY86.test(readerCode) && KEYREF.test(readerCode)))
+    p.push("posBoardCardsAction ไม่รับกุญแจ pos-86: และ pos-refund: — pos-board-ui-actions.ts:45 รับเฉพาะ pos-anomaly:");
+  const importsReader = (c: string) => new RegExp(`import\\s*\\{[^}]*\\b${READER}\\b[^}]*\\}\\s*from`).test(c);
+  const linkComps = ui.filter((f) => CARD_LINK.test(f.code)).flatMap((f) => exportedNames(f.code));
+  const readerComps = ui.filter((f) => importsReader(f.code)).flatMap((f) => exportedNames(f.code));
+  const usesComp = (c: string, names: string[]) => names.some((n) => new RegExp(`<${n}\\b`).test(c));
   for (const [tree, files] of Object.entries(trees)) {
-    const uses = files.some((f) => names.some((n) => new RegExp(`import\\s*\\{[^}]*\\b${n}\\b[^}]*\\}\\s*from`).test(f.code)) || (/\bposCardsForKeys\b/.test(f.code) && (KEY86.test(f.code) || KEYREF.test(f.code))));
-    if (!uses) p.push(`จอ ${tree} ไม่อ่านการ์ดบอร์ด 86/คืนเงิน (ไม่มีลิงก์ไปการ์ด)`);
+    const reads = files.some((f) => importsReader(f.code) || usesComp(f.code, readerComps));
+    const links = files.some((f) => CARD_LINK.test(f.code) || usesComp(f.code, linkComps));
+    if (!reads) p.push(`จอ ${tree} ไม่อ่านการ์ดด้วย posBoardCardsAction`);
+    if (!links) p.push(`จอ ${tree} ไม่มีลิงก์การ์ด <a|Link data-testid=…board-card… href={….href}>`);
   }
   return p;
 }
 
-/** S8 — '#0' เมื่อ cardNo null */
+/** S8 — '#0'/'#' เมื่อ cardNo null: ห้าม `?? <ค่าคงที่>` / `|| <ค่าคงที่>` บน cardNo หรือตัวแปรแฝง (ORACLE-EDIT R1 F9) */
 function judgeS8(files: { file: string; code: string }[]): string[] {
   const p: string[] = [];
+  const LIT = String.raw`(?:-?\d+(?:\.\d+)?|"[^"\n]*"|'[^'\n]*'|` + "`[^`\\n]*`" + ")";
   for (const f of files) {
-    const lines = f.code.split("\n");
-    lines.forEach((l, n) => {
-      if (/cardNo\s*(\?\?|\|\|)\s*0\b/.test(l)) p.push(`${f.file.split("/").slice(-2).join("/")}:${n + 1}`);
+    if (!/cardNo/.test(f.code)) continue;
+    const aliases = new Set<string>(["cardNo"]);
+    for (const m of f.code.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*[^;\n]*?\.cardNo\b(?!\s*(?:\?\?|\|\|))/g)) aliases.add(m[1]!);
+    for (const m of f.code.matchAll(/\{[^}]*\bcardNo\s*:\s*(\w+)[^}]*\}\s*=/g)) aliases.add(m[1]!);
+    const names = [...aliases].map((a) => a.replace(/\$/g, "\\$")).join("|");
+    const re = new RegExp(`(?:\\.|\\b)(?:${names})\\s*(?:\\?\\?|\\|\\|)\\s*${LIT}`);
+    f.code.split("\n").forEach((l, n) => {
+      if (re.test(l)) p.push(`${f.file.split("/").slice(-2).join("/")}:${n + 1}`);
     });
   }
-  return p.length ? [`cardNo ?? 0 → "#0": ${p.join(", ")}`] : [];
+  return p.length ? [`fallback ค่าคงที่บน cardNo → "#0"/"#": ${p.join(", ")}`] : [];
 }
 
 // ── D judges ──
@@ -313,7 +332,7 @@ function judgeD1(x: { cashier: Record<string, Outcome>; owner: Record<string, Ou
   for (const [k, o] of Object.entries(x.owner)) if (o.kind !== "ok") p.push(`OWNER ${k} → ${o.kind}/${o.code} ${o.text.slice(0, 60)} (ตัวควบคุมบวก คาด ok)`);
   return p;
 }
-function judgeD6(route: string, x: { anon: Outcome; staff: Outcome; owner: Outcome; body: string }): string[] {
+function judgeD6(route: string, x: { anon: Outcome; staff: Outcome; owner: Outcome; body: string; mgrA2: Outcome; mgrA1: Outcome; ownerA2: Outcome }): string[] {
   if (!route) return ["ไม่มี route.ts ใต้ src/app/app/sys/[id]/pos/reports/** (route พิมพ์ text/html ยังไม่มี — หน้าพิมพ์ยังเป็น PrintFrame)"];
   const p: string[] = [];
   const a = x.anon;
@@ -323,6 +342,51 @@ function judgeD6(route: string, x: { anon: Outcome; staff: Outcome; owner: Outco
   const o = x.owner;
   if (!(o.kind === "response" && o.status === 200 && /^text\/html/i.test(o.ctype ?? ""))) p.push(`OWNER → ${o.kind}/${o.status ?? o.code} ${o.ctype ?? ""} (คาด 200 text/html)`);
   else if (!/<html/i.test(x.body) || !/print\s*\(/.test(x.body)) p.push(`OWNER เนื้อหาไม่ใช่เอกสารพิมพ์ (<html ${/<html/i.test(x.body)} · print( ${/print\s*\(/.test(x.body)})`);
+  if (!(x.mgrA2.kind === "response" && x.mgrA2.status === 403)) p.push(`MANAGER[A1] unit=A2 → ${x.mgrA2.kind}/${x.mgrA2.status ?? x.mgrA2.code} (คาด 403 พอดี — ข้ามสาขา)`);
+  if (!(x.mgrA1.kind === "response" && x.mgrA1.status === 200)) p.push(`MANAGER[A1] unit=A1 → ${x.mgrA1.kind}/${x.mgrA1.status ?? x.mgrA1.code} (คาด 200)`);
+  if (!(x.ownerA2.kind === "response" && x.ownerA2.status === 200)) p.push(`OWNER unit=A2 → ${x.ownerA2.kind}/${x.ownerA2.status ?? x.ownerA2.code} (คาด 200)`);
+  return p;
+}
+/** D1b — ธงลิงก์บัญชีต่อคน (CD-P43-O10) */
+const D1B_WANT: Record<string, { docs: boolean; settings: boolean }> = { OWNER: { docs: true, settings: true }, MANAGER: { docs: true, settings: true }, CASHIER: { docs: false, settings: false }, BOOKKEEPER: { docs: true, settings: false } };
+function judgeD1b(x: { helper: Record<string, Any>; action: Record<string, Any>; acc: string }): string[] {
+  const p: string[] = [];
+  for (const [k, want] of Object.entries(D1B_WANT)) {
+    const h = x.helper[k];
+    if (!h || typeof h.docs !== "boolean" || typeof h.settings !== "boolean") p.push(`posAccountLinks(${k}) → ${h?.code ?? short0(h)} (คาด {docs, settings} boolean)`);
+    else {
+      if (h.docs !== want.docs || h.settings !== want.settings) p.push(`posAccountLinks(${k}) docs ${h.docs} settings ${h.settings} (คาด ${want.docs}/${want.settings})`);
+      if ((want.docs || want.settings) && h.accountSystemId !== x.acc) p.push(`posAccountLinks(${k}).accountSystemId = ${JSON.stringify(h.accountSystemId)} (คาด สมุดที่ผูก)`);
+    }
+  }
+  for (const k of ["OWNER", "MANAGER", "CASHIER"]) {
+    const r = x.action[k];
+    const want = D1B_WANT[k]!.settings;
+    const got = r?.ok === true ? r.book?.canOpenAccountSettings : undefined;
+    const ok = want ? got === true : r?.ok !== true || r.book === null || got === false;
+    if (!ok) p.push(`receiptSettingsPageDataAction(${k}) book.canOpenAccountSettings = ${r?.ok === true ? JSON.stringify(got) : codeR(r)} (คาด ${want})`);
+  }
+  return p;
+}
+const short0 = (v: unknown) => {
+  try {
+    return JSON.stringify(v)?.slice(0, 60) ?? String(v);
+  } catch {
+    return String(v);
+  }
+};
+/** D7 — ตัวอ่านการ์ดตรวจสาขาต่อกุญแจ */
+function judgeD7(x: { owner: Any; mgr: Any; keys: Record<string, string> }): string[] {
+  const p: string[] = [];
+  const got = (r: Any) => new Set<string>(r?.ok === true && Array.isArray(r.cards) ? r.cards.map((c: Any) => String(c.key)) : []);
+  const o = got(x.owner);
+  const m = got(x.mgr);
+  const miss = Object.entries(x.keys).filter(([, k]) => !o.has(k)).map(([n]) => n);
+  if (miss.length) p.push(`OWNER ไม่ได้การ์ด ${miss.join(", ")} (${codeR(x.owner)} · ตัวควบคุมบวก — ตัวอ่านไม่รับกุญแจ pos-86:/pos-refund:)`);
+  const leak = ["a2_86", "a2_ref"].filter((n) => m.has(x.keys[n]!));
+  if (leak.length) p.push(`MANAGER[A1] ได้การ์ดของ A2: ${leak.join(", ")} (คาด ไม่ได้)`);
+  const own = ["a1_86", "a1_ref"].filter((n) => !m.has(x.keys[n]!));
+  if (own.length) p.push(`MANAGER[A1] ไม่ได้การ์ดของ A1: ${own.join(", ")} (${codeR(x.mgr)})`);
   return p;
 }
 function judgeD5(x: { cashierFromHr: unknown; ownerFromHr: unknown; overview: Any; payroll: Any; payrollText: string; ids: Record<string, string>; noperm: Any; owner: Any; list: Any; ttl: number }): string[] {
@@ -363,8 +427,8 @@ function runStatic(): void {
     } catch {
       rows = [];
     }
-    const p = judgeS2({ salesPage: code(F.salesPage), bills: code(F.bills), receiptSettings: code(F.receiptSettings), settingsData: code(F.settingsPage) + code(F.receiptSettingsActions), rows });
-    chk("S2", p.length === 0, "ธง account.doc.view → BillsClient · ลิงก์ตั้งค่าอยู่ใต้เงื่อนไข account.settings.manage · ทะเบียน hiddenFor cashier", joinP(p));
+    const p = judgeS2({ salesPage: code(F.salesPage), bills: code(F.bills), receiptSettings: code(F.receiptSettings), settingsData: code(F.receiptSettingsActions), rows });
+    chk("S2", p.length === 0, "posAccountLinks .docs กั้นลิงก์บิล · canOpenAccountSettings กั้นลิงก์ตั้งค่า · ทะเบียน hiddenFor cashier", joinP(p));
   });
   step("S5", () => {
     const p = judgeS5(code(F.tableQr), "pos-tbl-qr-sheet-print");
@@ -375,15 +439,15 @@ function runStatic(): void {
     chk("S6", p.length === 0, "fromHr · posCommissionCatalogAction · overrideTtlMin + overrideBody", joinP(p));
   });
   step("S7", () => {
-    const actionFiles = walk("src/lib").filter((f) => /actions?\.ts$/.test(f) || /-actions\.ts$/.test(f)).map((f) => ({ file: f, code: code(f) }));
+    const ui = [...new Set(UI_DIRS.flatMap(walk))].filter((f) => f.endsWith(".tsx")).map((f) => ({ file: f, code: code(f) }));
     const trees = Object.fromEntries(Object.entries(S7_TREES).map(([k, dirs]) => [k, dirs.flatMap(walk).map((f) => ({ file: f, code: code(f) }))]));
-    const p = judgeS7(actionFiles, trees);
-    chk("S7", p.length === 0, "ตัวอ่านรับ pos-86:/pos-refund: · จอ register/orders/bills ใช้", joinP(p));
+    const p = judgeS7(code("src/lib/pos-board-ui-actions.ts"), ui, trees);
+    chk("S7", p.length === 0, "posBoardCardsAction รับ pos-86:/pos-refund: · 3 ทรีอ่าน + มีลิงก์ board-card", joinP(p));
   });
   step("S8", () => {
     const files = [...new Set(S8_DIRS.flatMap(walk))].filter((f) => f.endsWith(".tsx")).map((f) => ({ file: f, code: rd(f) })); // ดิบ (เลขบรรทัดตรงไฟล์)
     const p = judgeS8(files);
-    chk("S8", p.length === 0, "ไม่มี cardNo ?? 0 ในจอ POS", p.length ? p.join(" · ") : `ไม่มี (${files.length} ไฟล์)`);
+    chk("S8", p.length === 0, "ไม่มี fallback ค่าคงที่บน cardNo/ตัวแปรแฝง ในจอ POS", p.length ? p.join(" · ") : `ไม่มี (${files.length} ไฟล์)`);
   });
   runProbes();
 }
@@ -406,18 +470,22 @@ function runProbes(): void {
     const rowsBad: RegRow[] = [{ testid: "pos-bills-accounting-link", roles: ["owner", "manager", "cashier"], hiddenFor: [] }, { testid: "pos-settings-account-link", roles: ["owner", "manager", "cashier"], hiddenFor: [] }];
     const rowsOk: RegRow[] = [{ testid: "pos-bills-accounting-link", roles: ["owner", "manager"], hiddenFor: ["cashier"] }, { testid: "pos-settings-account-link", roles: ["owner", "manager"], hiddenFor: ["cashier"] }];
     const rsBad = `<div>\n  )}\n  <Link\n data-testid="pos-settings-account-link" href="y">`;
-    const rsOk = `<div>\n  )}\n  {book.canOpenAccount && (\n  <Link\n data-testid="pos-settings-account-link" href="y">`;
+    const rsOk = `<div>\n  )}\n  {book.canOpenAccountSettings && (\n  <Link\n data-testid="pos-settings-account-link" href="y">`;
+    const rsTrue = `<div>\n  )}\n  {true && (\n  <Link\n data-testid="pos-settings-account-link" href="y">`;
     const pageBad = `const accountSystemId = await x();\n<BillsClient\n  accountSystemId={accountSystemId}\n/>\n`;
-    const pageOk = `const canAcc = accountCan(auth, "account.doc.view");\n<BillsClient\n  accountSystemId={canAcc ? accountSystemId : null}\n/>\n`;
-    const pageFlag = `const canAcc = accountCan(auth, "account.doc.view");\n<BillsClient\n  accountSystemId={accountSystemId}\n  canOpenAccounting={canAcc}\n/>\n`;
+    const pageOk = `const links = await posAccountLinks(ctx, actor);\n<BillsClient\n  accountSystemId={links.docs ? links.accountSystemId : null}\n/>\n`;
+    const pageFlag = `const links = await posAccountLinks(ctx, actor);\n<BillsClient\n  accountSystemId={links.accountSystemId}\n  canOpenAccounting={links.docs}\n/>\n`;
+    const pageFake = `const canAcc = "account.doc.view".length > 0;\n<BillsClient\n  accountSystemId={canAcc ? accountSystemId : null}\n/>\n`;
     const billsFlag = `{accountSystemId && canOpenAccounting ? (\n<Link data-testid="pos-bills-accounting-link" href="x">`;
-    const data = `assertAccountCan(auth, "account.settings.manage")`;
-    const tip = judgeS2({ salesPage: pageBad, bills, receiptSettings: rsBad, settingsData: "", rows: rowsBad }).length >= 4;
+    const data = `const links = await posAccountLinks(ctx, actor); book = { ...b, canOpenAccountSettings: links.settings };`;
+    const dataFake = `const UNUSED = "account.settings.manage";`;
+    const tip = judgeS2({ salesPage: pageBad, bills, receiptSettings: rsBad, settingsData: "", rows: rowsBad }).length >= 5;
     const good = judgeS2({ salesPage: pageOk, bills, receiptSettings: rsOk, settingsData: data, rows: rowsOk }).length === 0;
     const flagOk = judgeS2({ salesPage: pageFlag, bills: billsFlag, receiptSettings: rsOk, settingsData: data, rows: rowsOk }).length === 0;
     const flagUnused = judgeS2({ salesPage: pageFlag, bills, receiptSettings: rsOk, settingsData: data, rows: rowsOk }).length === 1;
     const rowOnly = judgeS2({ salesPage: pageOk, bills, receiptSettings: rsOk, settingsData: data, rows: rowsBad }).length === 2;
-    chk("N2", tip && good && flagOk && flagUnused && rowOnly, "ฐาน แดง ≥4 · ทาง 1/ทาง 2 เขียว · ธงไม่ถูกใช้ แดง · แถวทะเบียน แดง", `ฐาน→${tip} ทาง1→${good} ทาง2→${flagOk} ธงไม่ใช้→${flagUnused} แถว→${rowOnly}`);
+    const fakes = judgeS2({ salesPage: pageFake, bills, receiptSettings: rsTrue, settingsData: dataFake, rows: rowsOk }).length >= 4;
+    chk("N2", tip && good && flagOk && flagUnused && rowOnly && fakes, "ฐาน แดง ≥5 · ทาง 1/ทาง 2 เขียว · prop ไม่ถูกใช้ แดง · แถวทะเบียน แดง · ธงหลอก (ค่าคงที่ · true && · สตริงลอย) แดง ≥4", `ฐาน→${tip} ทาง1→${good} ทาง2→${flagOk} propไม่ใช้→${flagUnused} แถว→${rowOnly} หลอก→${fakes}`);
   });
   step("N3", () => {
     const t = (h: string) => `<button data-testid="pos-tbl-qr-sheet-print" type="button" onClick={${h}}>\n`;
@@ -444,22 +512,33 @@ function runProbes(): void {
     chk("N4", good && tip && one17 && one18 && one19, "ครบ เขียว · ฐาน แดง 7 · ขาดทีละส่วน แดง 1", `ครบ→${good} ฐาน→${tip} 17→${one17} 18→${one18} 19→${one19}`);
   });
   step("N5", () => {
-    const anomalyOnly = [{ file: "src/lib/pos-board-ui-actions.ts", code: '"use server";\nimport { posCardsForKeys } from "./pos-board-bridges";\nconst ANOMALY_PREFIX = "pos-anomaly:";\nexport async function posBoardCardsAction() {}' }];
-    const wide = [{ file: "src/lib/pos-board-ui-actions.ts", code: '"use server";\nimport { posCardsForKeys } from "./pos-board-bridges";\nconst P = ["pos-anomaly:", "pos-86:", "pos-refund:"];\nexport async function posBoardCardsAction() {}' }];
-    const use = (n: string) => [{ file: "x.tsx", code: `import { ${n} } from "@/lib/pos-board-ui-actions";` }];
-    const pageUse = [{ file: "page.tsx", code: "const cards = await posCardsForKeys(t, ids.map((o) => posBoardKeys.refund(o)));" }];
-    const allTrees = { register: use("posBoardCardsAction"), orders: use("posBoardCardsAction"), bills: pageUse };
-    const tip = judgeS7(anomalyOnly, { register: [], orders: [], bills: [] }).length === 4;
-    const good = judgeS7(wide, allTrees).length === 0;
-    const oneMissing = judgeS7(wide, { ...allTrees, orders: [] }).length === 1;
-    const readerMissing = judgeS7(anomalyOnly, allTrees).length === 3;
-    chk("N5", tip && good && oneMissing && readerMissing, "ฐาน แดง 4 · ครบ เขียว · ขาดทรี แดง 1 · reader แคบ แดง", `ฐาน→${tip} ครบ→${good} ขาดทรี→${oneMissing} reader→${readerMissing}`);
+    const anomalyOnly = '"use server";\nconst ANOMALY_PREFIX = "pos-anomaly:";\nexport async function posBoardCardsAction() {}';
+    const wide = '"use server";\nconst P = ["pos-anomaly:", "pos-86:", "pos-refund:"];\nexport async function posBoardCardsAction() {}';
+    const imp = 'import { posBoardCardsAction } from "@/lib/pos-board-ui-actions";';
+    const link = '<a data-testid={`pos-ord-board-card-${o.id}`} href={card.href} className="x">';
+    const chipComp = { file: "src/components/pos/BoardCardChip.tsx", code: `${imp}\nexport function BoardCardChip({ card }) { return ${link}; }` };
+    const t = (c: string) => [{ file: "x.tsx", code: c }];
+    const allDirect = { register: t(`${imp}\n${link}`), orders: t(`${imp}\n${link}`), bills: t(`${imp}\n${link}`) };
+    const viaComp = { register: t("<BoardCardChip card={c} />"), orders: t("<BoardCardChip card={c} />"), bills: t("<BoardCardChip card={c} />") };
+    const importOnly = { register: t(imp), orders: t(imp), bills: t(imp) };
+    const tip = judgeS7(anomalyOnly, [], { register: [], orders: [], bills: [] }).length === 7;
+    const good = judgeS7(wide, [], allDirect).length === 0;
+    const comp = judgeS7(wide, [chipComp], viaComp).length === 0;
+    const noLink = judgeS7(wide, [], importOnly).length === 3;
+    const noRead = judgeS7(wide, [], { ...allDirect, orders: t(link) }).length === 1;
+    const narrow = judgeS7(anomalyOnly, [], allDirect).length === 1;
+    const testidOnly = judgeS7(wide, [], { ...allDirect, bills: t(`${imp}\n<a data-testid="pos-bills-board-card" href="/kanban">`) }).length === 1;
+    chk("N5", tip && good && comp && noLink && noRead && narrow && testidOnly, "ฐาน แดง 7 · ตรง/ผ่านคอมโพเนนต์ เขียว · import อย่างเดียว แดง 3 · ไม่อ่าน แดง · reader แคบ แดง · href ไม่ใช่ card.href แดง", `ฐาน→${tip} ตรง→${good} คอมโพเนนต์→${comp} importอย่างเดียว→${noLink} ไม่อ่าน→${noRead} แคบ→${narrow} hrefคงที่→${testidOnly}`);
   });
   step("N6", () => {
-    const bad = judgeS8([{ file: "a/ReportsClient.tsx", code: "t('chip', { n: have.cardNo ?? 0 })" }]).length === 1;
-    const bad2 = judgeS8([{ file: "a/ShiftsClient.tsx", code: "t('boardCard', { n: bc.cardNo || 0 })" }]).length === 1;
-    const good = judgeS8([{ file: "a/ReportsClient.tsx", code: "have.cardNo ? t('chip', { n: have.cardNo }) : t('chipNoNumber')" }]).length === 0;
-    chk("N6", bad && bad2 && good, "?? 0 / || 0 แดง · มีเงื่อนไข เขียว", `??0→${bad} ||0→${bad2} เงื่อนไข→${good}`);
+    const one = (c: string) => judgeS8([{ file: "a/ReportsClient.tsx", code: c }]).length === 1;
+    const bad = one("t('chip', { n: have.cardNo ?? 0 })");
+    const bad2 = one("t('boardCard', { n: bc.cardNo || 0 })");
+    const bad3 = one('t("chip", { n: c.cardNo || "0" })');
+    const bad4 = one("<span>#{card.cardNo ?? \"\"}</span>");
+    const bad5 = one("const n = c.cardNo;\nreturn t('chip', { n: n ?? 0 });");
+    const good = judgeS8([{ file: "a/ReportsClient.tsx", code: "have.cardNo == null ? t('chipNoNumber') : t('chip', { n: have.cardNo })" }]).length === 0;
+    chk("N6", bad && bad2 && bad3 && bad4 && bad5 && good, "?? 0 / || 0 / || \"0\" / ?? \"\" / ตัวแปรแฝง ?? 0 แดง · มีกิ่ง null เขียว", `??0→${bad} ||0→${bad2} ||"0"→${bad3} ??""→${bad4} แฝง→${bad5} กิ่งnull→${good}`);
   });
   step("N7", () => {
     const A1 = "unitA1";
@@ -500,14 +579,19 @@ function runProbes(): void {
     const d1pos = judgeD1({ cashier: { print: fb, settings: fb }, owner: { print: fb, settings: ok } }).length === 1;
     const r = (status: number, ctype = "text/html; charset=utf-8", location = ""): Outcome => ({ kind: "response", code: String(status), text: "", status, ctype, location });
     const html = "<!doctype html><html><body><script>window.print()</script></body></html>";
-    const d6good = judgeD6("x/route.ts", { anon: r(401), staff: r(403), owner: r(200), body: html }).length === 0;
-    const d6redir = judgeD6("x/route.ts", { anon: { kind: "redirect", code: "redirect", text: "NEXT_REDIRECT;replace;/login;307;" }, staff: r(403), owner: r(200), body: html }).length === 0;
-    const d6none = judgeD6("", { anon: r(401), staff: r(403), owner: r(200), body: html }).length === 1;
-    const d6anon = judgeD6("x/route.ts", { anon: r(200), staff: r(403), owner: r(200), body: html }).length === 1;
-    const d6staff = judgeD6("x/route.ts", { anon: r(401), staff: r(200), owner: r(200), body: html }).length === 1;
-    const d6json = judgeD6("x/route.ts", { anon: r(401), staff: r(403), owner: r(200, "application/json"), body: "{}" }).length === 1;
-    const d6noprint = judgeD6("x/route.ts", { anon: r(401), staff: r(403), owner: r(200), body: "<html></html>" }).length === 1;
-    chk("N9", d1good && d1leak && d1nf && d1pos && d6good && d6redir && d6none && d6anon && d6staff && d6json && d6noprint, "D1/D6 ถูกต้อง เขียว · รั่ว/404/ตัวควบคุม/ไม่มี route/ANON 200/STAFF 200/json/ไม่มี print แดงทีละข้อ", `D1 ถูก→${d1good} รั่ว→${d1leak} 404→${d1nf} บวก→${d1pos} · D6 ถูก→${d6good} login→${d6redir} ไม่มี→${d6none} anon→${d6anon} staff→${d6staff} json→${d6json} print→${d6noprint}`);
+    const base = { anon: r(401), staff: r(403), owner: r(200), body: html, mgrA2: r(403), mgrA1: r(200), ownerA2: r(200) };
+    const d6good = judgeD6("x/route.ts", base).length === 0;
+    const d6redir = judgeD6("x/route.ts", { ...base, anon: { kind: "redirect", code: "redirect", text: "NEXT_REDIRECT;replace;/login;307;" } }).length === 0;
+    const d6none = judgeD6("", base).length === 1;
+    const d6anon = judgeD6("x/route.ts", { ...base, anon: r(200) }).length === 1;
+    const d6staff = judgeD6("x/route.ts", { ...base, staff: r(200) }).length === 1;
+    const d6json = judgeD6("x/route.ts", { ...base, owner: r(200, "application/json"), body: "{}" }).length === 1;
+    const d6noprint = judgeD6("x/route.ts", { ...base, body: "<html></html>" }).length === 1;
+    const d6cross = judgeD6("x/route.ts", { ...base, mgrA2: r(200) }).length === 1;
+    const d6cross404 = judgeD6("x/route.ts", { ...base, mgrA2: r(404) }).length === 1;
+    const d6own = judgeD6("x/route.ts", { ...base, mgrA1: r(403), ownerA2: r(403) }).length === 2;
+    const all = d1good && d1leak && d1nf && d1pos && d6good && d6redir && d6none && d6anon && d6staff && d6json && d6noprint && d6cross && d6cross404 && d6own;
+    chk("N9", all, "D1/D6 ถูกต้อง เขียว · รั่ว/404/ตัวควบคุม/ไม่มี route/ANON 200/STAFF 200/json/ไม่มี print/ข้ามสาขา 200 หรือ 404/ของตัวเองถูกปฏิเสธ แดงทีละข้อ", `D1 ถูก→${d1good} รั่ว→${d1leak} 404→${d1nf} บวก→${d1pos} · D6 ถูก→${d6good} login→${d6redir} ไม่มี→${d6none} anon→${d6anon} staff→${d6staff} json→${d6json} print→${d6noprint} ข้าม200→${d6cross} ข้าม404→${d6cross404} ของตัวเอง→${d6own}`);
   });
   step("N10", () => {
     const ids = { C1: "cat1", P1: "prod1", V1: "var1", P2: "prodA2" };
@@ -518,6 +602,30 @@ function runProbes(): void {
     const noVar = judgeD5({ ...base, payrollText: JSON.stringify(["cat1", "prod1", "prodA2"]) }).length === 1;
     const leak = judgeD5({ ...base, noperm: { ok: true } }).length === 1;
     chk("N10", good && tip && swapped && noVar && leak, "ครบ เขียว · ฐาน แดง 4 · สลับคน/ขาดตัวแปร/NOPERM ได้ แดง", `ครบ→${good} ฐาน→${tip} สลับ→${swapped} ตัวแปร→${noVar} NOPERM→${leak}`);
+  });
+  step("N11", () => {
+    const acc = "accSys";
+    const h = (docs: boolean, settings: boolean) => ({ accountSystemId: acc, docs, settings });
+    const helper = { OWNER: h(true, true), MANAGER: h(true, true), CASHIER: { accountSystemId: null, docs: false, settings: false }, BOOKKEEPER: h(true, false) };
+    const action = { OWNER: { ok: true, book: { canOpenAccountSettings: true } }, MANAGER: { ok: true, book: { canOpenAccountSettings: true } }, CASHIER: { ok: true, book: { canOpenAccountSettings: false } } };
+    const good = judgeD1b({ helper, action, acc }).length === 0;
+    const miss = { ok: false, code: "MISSING" };
+    const tip = judgeD1b({ helper: { OWNER: miss, MANAGER: miss, CASHIER: miss, BOOKKEEPER: miss }, action: { OWNER: { ok: true, book: {} }, MANAGER: { ok: true, book: {} }, CASHIER: { ok: true, book: {} } }, acc }).length === 7;
+    const leak = judgeD1b({ helper: { ...helper, CASHIER: h(true, true) }, action, acc }).length === 1;
+    const mgr = judgeD1b({ helper: { ...helper, MANAGER: h(false, false) }, action, acc }).length === 1;
+    const implies = judgeD1b({ helper: { ...helper, BOOKKEEPER: h(false, false) }, action, acc }).length === 1;
+    const actLeak = judgeD1b({ helper, action: { ...action, CASHIER: { ok: true, book: { canOpenAccountSettings: true } } }, acc }).length === 1;
+    const refused = judgeD1b({ helper, action: { ...action, CASHIER: { ok: false, code: "PERMISSION_DENIED" } }, acc }).length === 0;
+    chk("N11", good && tip && leak && mgr && implies && actLeak && refused, "ครบ เขียว · ฐาน แดง 7 · แคชเชียร์ได้ธง/ผู้จัดการไม่ได้/IMPLIES หาย/action ให้แคชเชียร์ แดง · แคชเชียร์ไม่มีสมุด เขียว", `ครบ→${good} ฐาน→${tip} แคชเชียร์→${leak} ผู้จัดการ→${mgr} IMPLIES→${implies} action→${actLeak} ไม่มีสมุด→${refused}`);
+  });
+  step("N12", () => {
+    const keys = { a1_86: "pos-86:A1:p:m", a2_86: "pos-86:A2:p:m", a1_ref: "pos-refund:o1", a2_ref: "pos-refund:o2" };
+    const cards = (ks: string[]) => ({ ok: true, cards: ks.map((key) => ({ key, cardNo: 1, href: "/x", completed: false })) });
+    const good = judgeD7({ owner: cards(Object.values(keys)), mgr: cards([keys.a1_86, keys.a1_ref]), keys }).length === 0;
+    const tip = judgeD7({ owner: cards([]), mgr: cards([]), keys }).length === 2;
+    const leak = judgeD7({ owner: cards(Object.values(keys)), mgr: cards(Object.values(keys)), keys }).length === 1;
+    const own = judgeD7({ owner: cards(Object.values(keys)), mgr: { ok: false, code: "PERMISSION_DENIED" }, keys }).length === 1;
+    chk("N12", good && tip && leak && own, "ครบ เขียว · ฐาน แดง 2 · ผู้จัดการเห็น A2 แดง · ผู้จัดการไม่เห็น A1 แดง", `ครบ→${good} ฐาน→${tip} ข้ามสาขา→${leak} ของตัวเอง→${own}`);
   });
 }
 
@@ -602,6 +710,10 @@ const hrSvc = await tryImport("@/lib/modules/hr/service");
 const overviewMod = await tryImport("@/lib/modules/pos/settings-overview");
 const settingsGeneral = await tryImport("@/lib/modules/pos/settings-general");
 const staffPin = await tryImport("@/lib/modules/pos/staff-pin");
+const channelMod = await tryImport("@/lib/modules/pos/channel");
+const kanbanSvc = await tryImport("@/lib/modules/kanban/service");
+const kanbanLinks = await tryImport("@/lib/modules/kanban/links");
+const accountLinksMod = existsSync(join(ROOT, "src/lib/modules/pos/account-links.ts")) ? await tryImport("@/lib/modules/pos/account-links") : null;
 
 // ── ตัวกั้นเครือข่าย ──
 const realFetch = globalThis.fetch;
@@ -767,6 +879,7 @@ async function setup(): Promise<void> {
     await mkUser("CASHIER", "STAFF", [X.A1!], { ...(PQC.cashierPermissions as Record<string, boolean>) });
     await mkUser("PAYROLL", "STAFF", [X.A1!], { "hr.payroll.read": true });
     await mkUser("NOPERM", "STAFF", [X.A1!], {});
+    await mkUser("BOOKKEEPER", "STAFF", [X.A1!], { "pos.sale.create": true, "account.doc.create": true }); // D1b: IMPLIES doc.create → doc.view
   });
   if (fx) return;
   await fxStep("สมุดบัญชี", async () => {
@@ -795,6 +908,40 @@ async function runD1(): Promise<void> {
   };
   const p = judgeD1(x);
   chk("D1", p.length === 0, "CASHIER ForbiddenError ทั้ง 2 ด่าน · OWNER ผ่าน", fxNote(p.length ? p.join(" · ") : `CASHIER print ${x.cashier.print.code} · settings ${x.cashier.settings.code} · OWNER ok ×2 (ระดับด่าน — หน้า RSC เรียกในโปรเซสไม่ได้ · CD-P43-O1)`));
+}
+
+async function runD1b(): Promise<void> {
+  const helper: Record<string, Any> = {};
+  for (const k of Object.keys(D1B_WANT)) helper[k] = accountLinksMod ? await svc(accountLinksMod, "posAccountLinks", { tenantId: T, systemId: X.POS }, actorOf(k)) : { ok: false, code: "MISSING" };
+  const action: Record<string, Any> = {};
+  for (const k of ["OWNER", "MANAGER", "CASHIER"]) action[k] = (await callAct("src/lib/modules/pos/receipt-settings-actions.ts", "receiptSettingsPageDataAction", PER[k]!, [{ systemId: X.POS, unitId: X.A1 }])).r;
+  const p = judgeD1b({ helper, action, acc: X.ACC ?? "" });
+  chk("D1b", p.length === 0, "posAccountLinks OWNER/MANAGER true · CASHIER false · BOOKKEEPER docs only · action canOpenAccountSettings ตามสิทธิ์", fxNote(p.length ? p.join(" · ") : `ครบ (${Object.keys(D1B_WANT).join(" ")} · action OWNER/MANAGER true · CASHIER false)`));
+}
+
+async function runD7(): Promise<void> {
+  const keys: Record<string, string> = {};
+  await fxStep("D7 การ์ดบอร์ด", async () => {
+    X.KAN = (await sysSvc.createSystem(T, "KANBAN", `บอร์ด P4.3 ${RAND}`)).id;
+    const board = await kanbanSvc.createBoard({ tenantId: T, systemId: X.KAN, name: `งานหน้าร้าน P4.3 ${RAND}` });
+    const prod = String((await catalogMod.createProduct({ tenantId: T, systemId: X.POS, actorUserId: PER.OWNER!.userId }, { name: `P43 การ์ด86 ${RAND}`, basePriceSatang: 3000 }))?.id ?? "");
+    const order = async (unitId: string, tag: string) => {
+      const chs = (await channelMod.ensureUnitChannels(P, { tenantId: T, systemId: X.POS, unitId })) as Any[];
+      const ch = chs.find((c) => c.adapter === "MANUAL") ?? chs[0];
+      return (await P.posOrder.create({ data: { tenantId: T, systemId: X.POS, unitId, channelId: ch.id, channelCode: ch.code, adapter: ch.adapter, code: `P43-${tag}-${RAND.slice(0, 4)}`, idempotencyKey: `p43-${RAND}-${tag}`, status: "NEW", paymentState: "UNPAID", fulfilment: "PICKUP", customerName: `ลูกค้า ${tag}`, totalSatang: 9900 } })).id as string;
+    };
+    keys.a1_86 = `pos-86:${X.A1}:${prod}:p43m1${RAND}`;
+    keys.a2_86 = `pos-86:${X.A2}:${prod}:p43m2${RAND}`;
+    keys.a1_ref = `pos-refund:${await order(X.A1!, "a1")}`;
+    keys.a2_ref = `pos-refund:${await order(X.A2!, "a2")}`;
+    for (const [n, k] of Object.entries(keys)) await kanbanLinks.createCardFromExternal({ tenantId: T, systemId: X.KAN }, { boardId: board.id, title: `การ์ด P4.3 ${n}`, sourceType: "AUTOMATION", sourceKey: k });
+  });
+  const FILE = "src/lib/pos-board-ui-actions.ts";
+  const all = Object.values(keys);
+  const owner = (await callAct(FILE, "posBoardCardsAction", PER.OWNER!, [{ systemId: X.POS, keys: all }])).r;
+  const mgr = (await callAct(FILE, "posBoardCardsAction", PER.MANAGER!, [{ systemId: X.POS, keys: all }])).r;
+  const p = judgeD7({ owner, mgr, keys });
+  chk("D7", p.length === 0, "OWNER ได้ 4 ใบ · MANAGER[A1] ได้ 2 ใบของ A1 ไม่ได้ของ A2", fxNote(p.length ? p.join(" · ") : `ครบ (OWNER ${owner?.cards?.length} ใบ · MANAGER ${mgr?.cards?.length} ใบ)`));
 }
 
 async function runD2(): Promise<void> {
@@ -935,14 +1082,15 @@ async function runD6(): Promise<void> {
   const routes = walk(F.reportsDir).filter((f) => /\/route\.(ts|tsx)$/.test(f));
   const route = routes.find((f) => /print/.test(f)) ?? routes[0] ?? "";
   const blank: Outcome = { kind: "missing", code: "MISSING", text: "" };
-  const x = { anon: blank, staff: blank, owner: blank, body: "" };
+  const x = { anon: blank, staff: blank, owner: blank, body: "", mgrA2: blank, mgrA1: blank, ownerA2: blank };
   if (route) {
     const mod = await modOf(route);
     const GET = mod?.GET;
     const sub = route.replace(/^src\/app/, "").replace(/\/route\.(ts|tsx)$/, "").replace("[id]", X.POS!);
     const day = bkkToday();
-    const url = `http://qc.local${sub}?kind=daily&from=${day}&to=${day}&unit=${X.A1}`;
-    const hit = async (k: string | null): Promise<{ o: Outcome; body: string }> => {
+    const urlOf = (unit: string) => `http://qc.local${sub}?kind=daily&from=${day}&to=${day}&unit=${unit}`;
+    const hit = async (k: string | null, unit = X.A1!): Promise<{ o: Outcome; body: string }> => {
+      const url = urlOf(unit);
       if (typeof GET !== "function" || !nextServer?.NextRequest) return { o: { kind: "missing", code: "MISSING", text: `${route}#GET` }, body: "" };
       const cookie = k ? PER[k]!.cookie : "";
       try {
@@ -959,9 +1107,12 @@ async function runD6(): Promise<void> {
     const ow = await hit("OWNER");
     x.owner = ow.o;
     x.body = ow.body;
+    x.mgrA2 = (await hit("MANAGER", X.A2!)).o;
+    x.mgrA1 = (await hit("MANAGER", X.A1!)).o;
+    x.ownerA2 = (await hit("OWNER", X.A2!)).o;
   }
   const p = judgeD6(route, x);
-  chk("D6", p.length === 0, "ANON 401/login · STAFF 403 · OWNER 200 text/html + print(", fxNote(p.length ? p.join(" · ") : `${route}: ANON ${x.anon.status ?? x.anon.kind} · STAFF 403 · OWNER 200 ${x.owner.ctype}`));
+  chk("D6", p.length === 0, "ANON 401/login · STAFF 403 · OWNER 200 text/html + print( · MANAGER[A1] A2 403 · A1 200 · OWNER A2 200", fxNote(p.length ? p.join(" · ") : `${route}: ANON ${x.anon.status ?? x.anon.kind} · STAFF 403 · OWNER 200 ${x.owner.ctype}`));
 }
 
 // ═════════════════════════ 6. ลบร้านชั่วคราว ═════════════════════════
@@ -1037,7 +1188,7 @@ try {
   runStatic();
   console.log("\n── D ข้อ DB (ร้านชั่วคราว) ──");
   await setup();
-  for (const [id, f] of [["D1", runD1], ["D3", runD3], ["D2", runD2], ["D4", runD4], ["D5", runD5], ["D6", runD6]] as const) {
+  for (const [id, f] of [["D1", runD1], ["D1b", runD1b], ["D3", runD3], ["D2", runD2], ["D4", runD4], ["D5", runD5], ["D6", runD6], ["D7", runD7]] as const) {
     try {
       await f();
     } catch (e) {
