@@ -73,3 +73,8 @@ Merged oracle round 3 `f5029916` (D7b: short key `pos-86:<unit>:<product>:` agai
 - **F5 (Low perf)** — new HR facade batch reader `linkedUserIdsOf(tenantId, userIds)` in `hr/service.ts` (one query per HR system, same "linked, active or not" rule as `employeeOfUser`), re-exported at the **end** of `hr/index.ts` (append-only · first placed mid-file → qc-pos-p3.5 ST1 red → moved, fe2ef3c4). `hr-link.ts hrLinkedUserIds` uses it; `fromHr` result unchanged.
 - **F6 / CD-P43-7 (UI honesty)** — `price-rules/page.tsx`: every restricted actor (not OWNER/"*") now starts a new rule with all their visible units pre-selected; if they clear the chips the summary reads "ทุกสาขาของฉัน ({names})" / "All my branches ({names})" (`pos.price.rule.myBranches`), which is what the server stores. Owner/"*" and existing `[]` rules still read "ทุกสาขา". New testid `pos-price-rule-units-summary` + registry row; `pos-price-rule-unit-*` note updated.
 - **F9** — registry note of `sales#pos-bills-accounting-link` now cites `posAccountLinks().docs · CD-P43-O10`.
+
+### fix2 gates (code = fe2ef3c4 + oracle r3 merge 76f0e064 · ISO_MEM 3G · QC4)
+- qc-pos-p4.3 **30/30 ×2** (incl. D7b, S6, D5, D2) · `--no-db` 20/20 · qc-pos-p4.1 `--no-db` 16/16 · qc-pos-p5.2 55/55 · matrix `--check` ✅ · fitness 53/53 ±env.
+- qc-pos-p3.5 54/55 (ST2 lane pin as in fix1; ST1 green again after the append-only fix) · qc-pos-p2.2 40/42 (P3 P5 = pre-B7 oracle, awaits the controller ORACLE-EDIT).
+- Strict tsc single file (heap 2.9G): PriceRulesClient.tsx 0 errors (656 files) · hr/service.ts 0 errors (297 files) · hr/index.ts, hr-link.ts, price-rules/page.tsx OOM at 2.9G (account/hr facade graph) → controller full typecheck.
