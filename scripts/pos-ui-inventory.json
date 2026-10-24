@@ -362,7 +362,8 @@
       "wo": "P1.3",
       "oracle": "P1.4-C2",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "กล้อง: ปุ่ม disabled เมื่อไม่มี mediaDevices/สิทธิ์กล้อง — headless/http และ Permissions-Policy camera=() (CD-P43-1) · POS P4.3 fix5 (ผู้คุม A · CD-P43-11 · 24.10)"
     },
     {
       "page": "/app/sys/[id]/pos/register",

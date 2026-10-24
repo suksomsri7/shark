@@ -364,6 +364,9 @@ export const SIDE_EFFECT_KEYS: Readonly<Record<string, string>> = {
   [`${STAFF}shifts#pos-shift-close-submit`]: "ปิดกะของเครื่องตัวกด → เปิดกะคืน (ensureDeviceShift)",
   // POS P4.3 walker fix1 ▸ H11: พักครัวค้างทำให้แถว "ครัวยังไม่ได้พัก" ของช่องถัดไปพลิก (P5.2 D11: จอครัวเรียก kdsKitchenPauseAction) ◂
   [`${STAFF}kds#pos-kds-pause`]: "พักครัวค้าง → kitchenPaused=false ของ posqc-btn-unit",
+  // POS P4.3 fix5 (ผู้คุม A · CD-P43-11 · 24.10): แผ่นพักรับออเดอร์ (pos-ord-pause → pos-ord-pause-<นาที>) ตั้ง SalesChannel.pausedUntil ค้าง ⇒ แถว pos-ord-man-submit ถัดไป "ช่องทางนี้ปิดรับออเดอร์ชั่วคราว" (smoke fix4) → ล้าง pausedUntil
+  [`${STAFF}orders#pos-ord-pause`]: "พักรับออเดอร์ค้าง → pausedUntil=null ทุกช่องทางของ posqc-btn-unit",
+  [`${STAFF}orders#pos-ord-pause-*`]: "พักรับออเดอร์ค้าง → pausedUntil=null ทุกช่องทางของ posqc-btn-unit",
 };
 export const SHIFT_CLOSE_KEY = `${STAFF}shifts#pos-shift-close-submit`;
 /**
@@ -757,6 +760,20 @@ export async function resetSideEffects(c: Ctx, label: string, opts: { channels?:
     if (r?.ok) return "เลิกพักครัวของ posqc-btn-unit (kdsSetKitchenPause paused:false)";
     const u = await P.restaurantSetting.updateMany({ where: { ...where, kitchenPaused: true }, data: { kitchenPaused: false, kitchenPausedNote: null } });
     return `kdsSetKitchenPause → ${r?.code ?? "?"} · ตั้ง kitchenPaused=false ตรง ${u.count} แถว`;
+  });
+  // POS P4.3 fix5 (ผู้คุม A · CD-P43-11 · 24.10): พักรับออเดอร์ของช่องทางในสาขา posqc-btn ค้าง (แถว pos-ord-pause-* · ซาก · จบรอบ) → ล้าง pausedUntil ผ่าน setChannelOrderSettings · ตรงถ้าโมดูลปฏิเสธ
+  await step("พักรับออเดอร์", async () => {
+    const paused: { id: string; code: string }[] = await P.salesChannel.findMany({ where: { ...where, pausedUntil: { gt: new Date() } }, select: { id: true, code: true } });
+    if (!paused.length) return null;
+    const owner = await actorOfMembership(c.T.users.owner.membershipId, c.T.users.owner.userId);
+    const ord = (await import("@/lib/modules/pos/order" as string)) as Any;
+    let viaModule = 0;
+    for (const ch of paused) {
+      const r = await ord.setChannelOrderSettings({ tenantId: QC_TENANT, systemId: c.sys, unitId: BTN.unit.id }, owner, { channelId: ch.id, pausedUntil: null }).catch(() => null);
+      if (r?.ok) viaModule++;
+    }
+    const left = await P.salesChannel.updateMany({ where: { ...where, pausedUntil: { gt: new Date() } }, data: { pausedUntil: null } });
+    return `เลิกพักรับออเดอร์ ${paused.length} ช่องทาง (${paused.map((x) => x.code).join(",")}) · โมดูล ${viaModule} · ตั้งตรง ${left.count}`;
   });
   // POS P4.3 walker fix1 ▸ H8: แถว pos-shift-close-submit (ช่วงท้าย) ปิดกะของเครื่องตัวกด → เปิดกะคืน (ensureDeviceShift · ไม่ตั้ง PIN/โทเคนซ้ำ) ◂
   if (label === SHIFT_CLOSE_KEY) await step("เปิดกะคืน", async () => {
