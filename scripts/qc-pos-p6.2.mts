@@ -35,7 +35,7 @@ const SELF_ONLY = has("--self-test");
 /** ฐานของใบ (tip session/pos ตอนเขียน oracle) — --red-before อ่านไฟล์ของหมุดนี้ */
 const PIN = process.env.P62_PIN || "6c2352f7";
 /** หมุดเลนของข้อ Z1 — ย้ายได้โดยไม่ขยับหมุดใบ (แม่แบบ LANE-RULES) */
-const LANE_PIN = process.env.P62_LANE_PIN || PIN;
+const LANE_PIN = process.env.P62_LANE_PIN || "0bd8324e"; // ORACLE-EDIT ผู้คุม A 24.10 (CD-RP27 · re-pin หมุดเลน Z1 → merge P6.2 0bd8324e · หมุดใบ PIN คงเดิม)
 /** จุดเริ่ม RUN ของ POS (session/pos แตกจาก origin/main ที่นี่) — ช่วงนับ ORACLE-EDIT */
 const RUN_BASE = process.env.P62_RUN_BASE || "71a1f363";
 const REV = has("--red-before") ? PIN : (argOf("--rev") ?? "");
