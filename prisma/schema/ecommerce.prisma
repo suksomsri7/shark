@@ -26,6 +26,7 @@ model ShopProduct {
   lines ShopOrderLine[]
 
   @@index([tenantId, unitId, active])
+  @@index([posProductId]) // P6.1 CD-P61-P4 (index มือ §5 · no-op migration p61)
   // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }
 
@@ -68,5 +69,6 @@ model ShopOrderLine {
   posProductId    String? // P1.1a: PosProduct.id (productId เดิม = ShopProduct · คงไว้) · null = ออเดอร์เดิม
 
   @@index([orderId])
+  @@index([posProductId]) // P6.1 CD-P61-P4 (index มือ §5 · no-op migration p61)
   // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }

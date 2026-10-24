@@ -152,6 +152,12 @@ model PosSale {
   @@unique([tenantId, idempotencyKey])
   @@unique([unitId, receiptNo])
   @@index([tenantId, unitId, createdAt])
+  // P6.1 CD-P61-P4: ประกาศ index มือของ runbook §5 ให้ schema ตรงฐาน (migrate diff ว่าง) · migration 20261220100000_pos_p61_hand_indexes = CREATE INDEX IF NOT EXISTS (no-op เมื่อสร้างมือแล้ว)
+  @@index([shiftId])
+  @@index([refSaleId])
+  @@index([channelId])
+  @@index([customerPartyId])
+  @@index([crmDealId])
 }
 
 model PosSaleLine {
@@ -183,6 +189,8 @@ model PosSaleLine {
   options         PosSaleLineOption[]
 
   @@index([saleId])
+  @@index([productId]) // P6.1 CD-P61-P4 (index มือ §5 · no-op migration p61)
+  @@index([refLineId]) // P6.1 CD-P61-P4
   // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }
 
@@ -840,6 +848,8 @@ model PosProductChannelPrice {
   updatedAt       DateTime @updatedAt
 
   @@index([tenantId, systemId, productId])
+  // P6.1 CD-P61-P4: ประกาศ unique มือ (NULLS NOT DISTINCT อยู่ใน migration pos_p22_prices เท่านั้น — prisma เขียนคุณสมบัตินี้ไม่ได้ แต่ migrate diff 7.8 เห็นตัว index · ไม่ประกาศ = diff เสนอ DROP)
+  @@unique([productId, channelCode, unitId], map: "PosProductChannelPrice_product_code_unit_key")
 }
 
 // กติการาคา happy hour / โปร (R3 · CD1: POS เป็นเจ้าของจนถึง P3) · เขียนผ่าน pos/price-rule.ts เท่านั้น
