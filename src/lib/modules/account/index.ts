@@ -1340,6 +1340,11 @@ export {
   type ListAuditLogsInput,
 } from "./access";
 
+// POS P4.3 ▸ CD-P43-2 · CD-P43-O10 — ธงสิทธิ์บัญชีสำหรับ "ซ่อน/แสดงลิงก์" ในหน้า POS (บิลวันนี้ → เอกสารบัญชี · ตั้งค่าใบเสร็จ → ตั้งค่าบัญชี)
+//   ผ่าน pos/account-links.ts posAccountLinks เท่านั้น · กติกาเดียวกับด่านของหน้าบัญชี (accountCan ⇒ IMPLIES doc.create/issue/approve → doc.view) ·
+//   ด่านจริงยังอยู่ที่หน้าบัญชีเหมือนเดิม ◂
+export { accountCanMember } from "./access";
+
 // ─────────────────────────────────────────────────────────────
 // บันทึกค่าใช้จ่าย/ใบเสร็จเข้าบัญชี (facade — ผู้ช่วย AI เรียกผ่านที่นี่, feedback เจ้าของ #4)
 // caller ส่งแค่ ยอด/ผู้ขาย/บันทึก — ไม่ต้องรู้เลขบัญชี/VAT · สร้างเป็น DRAFT (docType EXPENSE)

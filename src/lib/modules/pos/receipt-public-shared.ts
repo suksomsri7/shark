@@ -43,6 +43,8 @@ export type PublicReceipt = {
   /** POS P2.1 ▸ R11 มติ 8: ช่องทางขาย (หน้าร้าน = null) — ชื่อ + เลขออเดอร์ · ไม่มีค่าคอมฯ ◂ */
   channel: { name: string; ref: string | null } | null;
   actions: { taxInvoice: PublicTaxInvoiceAction; review: boolean; report: true };
+  /** POS P4.3 ▸ F-P3-16 · CD-P43-O6: บิลวางบิล — วันครบกำหนดชำระ (ไม่มีวงเงิน/ยอดค้าง) · บิลอื่นไม่มีคีย์ ◂ */
+  creditTerms?: { dueDate: string; termDays: number };
 };
 
 export type PublicReceiptRefusalCode =

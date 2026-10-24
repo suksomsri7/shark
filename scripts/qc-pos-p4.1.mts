@@ -419,7 +419,9 @@ function r3(inv: Inv): string[] {
       const s = steps(r.opener);
       if (!s) p.push(`${t}: opener ต้องเป็น string หรือ string[] ไม่ว่าง`);
       else {
-        const ids = s.map((x) => x.split("=")[0]!.trim());
+        // POS P4.2 R2 ▸ ORACLE-EDIT CD-P42-R11 (ผู้คุม B 22 ต.ค. 21:05Z · CD-P41-F29): ขั้นลงท้าย "?" = ไม่บังคับ — ตัด "?" ก่อนตรวจว่าเป็นแถวบนหน้าเดียวกัน
+        //   (ขั้น "<ไม่มีจริง>?" ยังแดง — probe ลบ: qc-pos-buttons โหมดด่าน B10 "F29 R3" · โน้ต pos-P4.2-walker.md ## rules update) ◂
+        const ids = s.map((x) => x.replace(/\?$/, "").split("=")[0]!.trim());
         const onPage = byPage.get(String(r.page)) ?? [];
         for (const id of ids) {
           if (!id) p.push(`${t}: opener มีขั้นว่าง`);

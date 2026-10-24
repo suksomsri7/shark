@@ -667,13 +667,16 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
                     <span>{book.posAbbreviatedInvoice ? tr("abbOn") : tr("abbOff")}</span>
                   </div>
                 )}
-                <Link
-                  data-testid="pos-settings-account-link"
-                  href={`/app/sys/${book.accountSystemId}/account/settings`}
-                  className="flex min-h-11 items-center text-[14px] font-semibold text-[color:var(--color-accent)]"
-                >
-                  {tr("accountLink")}
-                </Link>
+                {/* POS P4.3 ▸ CD-P43-2: เฉพาะผู้มี account.settings.manage (ธงจาก receiptSettingsPageDataAction) ◂ */}
+                {book.canOpenAccountSettings && (
+                  <Link
+                    data-testid="pos-settings-account-link"
+                    href={`/app/sys/${book.accountSystemId}/account/settings`}
+                    className="flex min-h-11 items-center text-[14px] font-semibold text-[color:var(--color-accent)]"
+                  >
+                    {tr("accountLink")}
+                  </Link>
+                )}
               </div>
             ) : (
               <p data-testid="pos-settings-no-book" className="text-[14px] text-[color:var(--color-muted)]">

@@ -47,3 +47,5 @@ export { onShiftToday, workedMinutesBetween, clockSelf, adjustmentStatuses } fro
 // POS P3.5 ▸ fix2 N1 (มติผู้คุม CD-P35c): ตัวกวาดรายการของระบบ (ค่าคอมฯ POS) ที่ค้างในงวดที่มีรอบแล้ว — re-export ล้วน (ตัวงานอยู่ที่ payroll.ts)
 export { rehomeStrandedSystemAdjustments } from "./payroll";
 // ◂ POS P3.5 fix2 N1
+// POS P4.3 ▸ fix2 (R1 F5): ผู้ใช้ในชุดที่ผูกพนักงาน (ทั้งชุดในคำขอเดียว · ป้าย "จาก HR" ของแท็บพนักงาน POS) — re-export ล้วน ◂
+export { linkedUserIdsOf } from "./service";

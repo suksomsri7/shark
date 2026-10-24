@@ -8,7 +8,7 @@ import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posSalesReadScope, posSaleWhere } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
 import { BILLS_ALL_UNITS, bkkDateOf, isBillDate } from "@/lib/modules/pos/bills-shared"; // POS P2.12U ▸ + BILLS_ALL_UNITS ◂
-import { posAccountSystemId } from "@/lib/modules/account";
+import { posAccountLinks } from "@/lib/modules/pos/account-links"; // POS P4.3 ▸ CD-P43-2 · CD-P43-O10: ธงลิงก์บัญชีจากตัวตัดสินเดียว ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { BillsClient } from "./BillsClient";
@@ -31,11 +31,13 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.bills");
 
-  const [allUnits, anyBill, accountSystemId] = await Promise.all([
+  const [allUnits, anyBill, links] = await Promise.all([
     posUnits(tenantId, id),
     // ร้านนี้เคยมีบิลในขอบเขตของผู้ใช้ไหม — แยกข้อความ "วันนี้ยังไม่มีบิล" กับ "ยังไม่เคยขาย"
     prisma.posSale.findFirst({ where: posSaleWhere(tenantId, id, scope), select: { id: true } }),
-    posAccountSystemId(tenantId, id),
+    // POS P4.3 ▸ CD-P43-2 · CD-P43-O10: สมุดที่ผูก + ลิงก์ "เอกสารบัญชี" ในลิ้นชักบิล = เฉพาะผู้เปิดหน้าพิมพ์เอกสารบัญชีได้ (docs · กติกาเดียวกับ requireAccountPage) —
+    //   ไม่มีสิทธิ์ = ไม่ส่งสมุดให้ BillsClient (ลิงก์ไม่แสดง แทนที่จะพาไปหน้า 403) ◂
+    posAccountLinks({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }),
   ]);
   const units = allUnits
     .filter((u) => canAccessUnit(m, u.id) && (scope.allUnits || scope.unitIds.includes(u.id)))
@@ -65,7 +67,7 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
           today={today}
           initialDate={initialDate}
           hasAnyBill={!!anyBill}
-          accountSystemId={accountSystemId}
+          accountSystemId={links.docs ? links.accountSystemId : null}
           canIssueTaxInvoice={canIssueTaxInvoice}
           initialBillId={allMode && !initialBillUnitId ? null : billParam} // POS P2.8U ▸ ?bill= ◂ · POS P2.12U ▸ ทุกสาขา: ต้องรู้สาขาของบิล ◂
           taxInvoiceUnits={taxInvoiceUnits}

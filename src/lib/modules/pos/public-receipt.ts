@@ -81,6 +81,8 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
       channel: payload.channel ? { name: payload.channel.name, ref: payload.channel.ref } : null, // POS P2.1 ▸ R11 ◂
       // review: บิลมีสมาชิกที่ยังอยู่ในระบบสมาชิก (points ไม่ null) + ยังไม่ได้ส่งรีวิว + ลิงก์ขอรีวิวของ journey ยังไม่หมดอายุ (F2)
       actions: { taxInvoice, review: (reviewState === "NONE" || reviewState === "REQUESTED") && points !== null, report: true },
+      // POS P4.3 ▸ F-P3-16 · CD-P43-O6: วันครบกำหนดของบิลวางบิล (จาก payload ตัวเดียวกับใบพิมพ์) ◂
+      ...(payload.creditTerms ? { creditTerms: { dueDate: payload.creditTerms.dueDate, termDays: payload.creditTerms.termDays } } : {}),
     };
     return { ok: true, receipt };
   } catch (e) {

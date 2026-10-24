@@ -503,6 +503,7 @@ import {
 } from "./register-shared";
 import { regResolveOptions } from "./register-shared"; // POS P2.7 ▸ CD4 มติ 9: ตัวตรวจตัวเลือกย้ายไป register-shared (ประตู QR สาธารณะใช้ตัวเดียวกัน) ◂
 import type { RegOptChoice, RegOptGroup, RegPickedOption } from "./register-shared"; // POS P2.7 ▸ CD4 ◂
+import { saleCreditTermsView } from "./credit-shared"; // POS P4.3 ▸ F-P3-16: วันครบกำหนดบนผลส่งบิลวางบิล ◂
 
 /** ผู้เรียกส่ง PrismaClient ของตัวเองได้ (ข้อสอบยิงพร้อมกันบน connection แยกต่อคำขอ) — ไม่ส่ง = prisma ของแอป */
 type RegDb = PrismaClient;
@@ -2535,7 +2536,9 @@ function regDuplicate(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, dupli
     if (sale.sourceModule !== regSaleSource(s) || sale.unitId !== s.unitId || sale.systemId !== s.systemId) return regRefuse("IDEMPOTENCY_CONFLICT"); // POS P2.13 ▸ regSaleSource ◂
     return { ok: false, code: "IDEMPOTENCY_CONFLICT", message: REG_MESSAGE.IDEMPOTENCY_CONFLICT, saleId: sale.id, receiptNo: sale.receiptNo, saleStatus: sale.status };
   }
-  return { ok: true, saleId: sale.id, receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang, changeSatang: regChange(req), duplicated };
+  // POS P4.3 ▸ F-P3-16 · CD-P43-O6: บิลวางบิล = พกวันครบกำหนด (สำเนาที่ createSale เขียนครั้งเดียว · บิลซ้ำคีย์ได้ค่าเดิม) · บิลอื่นไม่มีคีย์ ◂
+  const creditTerms = saleCreditTermsView(sale.creditTerms);
+  return { ok: true, saleId: sale.id, receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang, changeSatang: regChange(req), duplicated, ...(creditTerms ? { creditTerms } : {}) };
 }
 
 /**

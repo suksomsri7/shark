@@ -252,11 +252,26 @@ function AnomalyBody({ rep, t, systemId, locale = "th", boardOn = false }: { rep
     if (have && !st?.cardNo)
       return (
         <a data-testid={`pos-reports-anomaly-card-chip-${n}`} href={have.href} className={chipCls}>
-          {have.completed ? t("anomaly.toCard.chipDone", { n: have.cardNo ?? 0 }) : t("anomaly.toCard.chip", { n: have.cardNo ?? 0 })}
+          {/* POS P4.3 ▸ F-P3-10: ไม่มีเลขการ์ด (null) = ป้ายไม่มีเลข ไม่ใช่ "#0" ◂ */}
+          {have.cardNo != null
+            ? have.completed
+              ? t("anomaly.toCard.chipDone", { n: have.cardNo })
+              : t("anomaly.toCard.chip", { n: have.cardNo })
+            : have.completed
+              ? t("anomaly.toCard.chipDoneNoNumber")
+              : t("anomaly.toCard.chipNoNumber")}
         </a>
       );
     if (st && st.cardNo !== undefined) {
-      const text = st.created ? t("anomaly.toCard.created", { n: st.cardNo ?? 0 }) : t("anomaly.toCard.exists", { n: st.cardNo ?? 0 });
+      // POS P4.3 ▸ F-P3-10: cardNo null = ข้อความไม่มีเลข ◂
+      const text =
+        st.cardNo != null
+          ? st.created
+            ? t("anomaly.toCard.created", { n: st.cardNo })
+            : t("anomaly.toCard.exists", { n: st.cardNo })
+          : st.created
+            ? t("anomaly.toCard.createdNoNumber")
+            : t("anomaly.toCard.existsNoNumber");
       return st.href ? (
         <a data-testid={`pos-reports-anomaly-card-chip-${n}`} href={st.href} className={chipCls}>
           {text}

@@ -85,7 +85,8 @@ export type StaffListItem = {
 export type StaffScheduleReason = "OUTSIDE_HOURS" | "DAY_OFF" | "LEAVE" | "INACTIVE";
 /** POS P3.5 ▸ R5: schedule = เวลาเข้า/เลิกของวันนี้ (นาทีเวลาไทย · null = ไม่มีตาราง/วันหยุด/ไม่ผูก) · inSchedule null = ไม่มีข้อมูลให้ตัดสิน ◂ */
 export type StaffHrState = { schedule: { startMin: number; endMin: number } | null; onLeave: boolean; inSchedule: boolean | null };
-export type ListStaffForDeviceResult = { ok: true; items: StaffListItem[] } | RegisterRefusal;
+/** POS P4.3 ▸ F-P3-19 · CD-P43-O5: overrideTtlMin = นาทีที่ผู้จัดการอนุญาตนอกตารางได้ (posScheduleGate · ข้อความ lock.schedule.overrideBody {minutes}) ◂ */
+export type ListStaffForDeviceResult = { ok: true; items: StaffListItem[]; overrideTtlMin: number } | RegisterRefusal;
 
 /** POS P1.5: บิลที่พัก (HELD) อายุเกินกี่วันนับจาก createdAt (24 ชม.ต่อวัน แบบเลื่อน) ⇒ ทิ้งเองตอนเปิดรายการ — ตั้งได้ที่
  *  `AppSystem(POS).settings.pos.heldCart.expireDays` (จำนวนเต็ม 1–365) · ไม่ตั้ง/ผิดรูป = ค่านี้ */
@@ -517,6 +518,8 @@ export type RegisterSubmitOk = {
    * (quote.pointsToEarn · ค่าจริงเขียนหลังคิวระบาย) · pointsBalanceAfterBurn = ยอดก่อนขาย − pointsBurned (ระบบแต้มของสาขา)
    */
   member?: { pointsBurned: number; pointsExpected: number; pointsBalanceAfterBurn: number };
+  /** POS P4.3 ▸ F-P3-16 · CD-P43-O6: บิลวางบิล (ON_ACCOUNT) — วันครบกำหนด (= PosSale.creditTerms.dueDate) · บิลอื่นไม่มีคีย์นี้ ◂ */
+  creditTerms?: { dueDate: string; termDays: number };
 };
 /** POS P1.12: แต้มเกินเพดานต่อบิล — allowedPoints = แต้มที่ใช้ได้จริง (จอแก้ให้อัตโนมัติ · ห้ามตัดแต้มต่างจากที่แคชเชียร์เห็น) */
 export type RegisterPointsCapped = { ok: false; code: "POINTS_CAPPED"; message: string; allowedPoints: number };

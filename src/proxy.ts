@@ -51,7 +51,9 @@ function applySecurity(res: NextResponse, framable = false) {
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   // WO-0043: บังคับ HTTPS 2 ปี + รวม subdomain · ปิดสิทธิ์อุปกรณ์ที่แอปไม่ใช้
   res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
-  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // POS P4.3 ▸ CD-P43-1 — เปิดกล้องเฉพาะ origin เดียวกัน (ปุ่มสแกนบาร์โค้ดของหน้าขาย ScanCameraDialog ใช้ getUserMedia({video}))
+  //   ไมค์/ตำแหน่งยังปิดตาม WO-0043 ◂
+  res.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
   return res;
 }
 

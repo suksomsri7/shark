@@ -30,6 +30,8 @@ import {
 import { ordersChannelsAction } from "@/lib/modules/pos/order-ui-actions";
 import { qrTableRoundsAction } from "@/lib/modules/pos/qr-staff-actions"; // POS P2.7U ▸ รอบ QR โต๊ะ ◂
 import { confirmPaymentIntentManualAction } from "@/lib/modules/pos/payment-intent-actions"; // POS P2.7U ▸ ยืนยันรับเงินของออเดอร์จ่ายก่อน ◂
+import { posBoardCardsAction } from "@/lib/pos-board-ui-actions"; // POS P4.3 ▸ F-P3-21: ชิปการ์ด "คืนเงินลูกค้า" ของออเดอร์ ◂
+import { posBoardKeys } from "@/lib/modules/pos/board-settings-shared"; // POS P4.3 ▸ กุญแจ pos-refund:<orderId> ◂
 import type { QrTableRoundCard } from "@/lib/modules/pos/qr-staff-shared";
 import { kdsKitchenStateAction, kdsSetAutoAcceptMaxAction, kitchenProgressAction } from "@/lib/modules/pos/kds-actions"; // POS P2.6U ▸ มติ 9c/11 ◂
 import { ORDER_COLUMNS, ORDER_PREP_DEFAULT_MIN, type ListOrdersResult, type OrderActionResult, type OrderCard, type OrderColumn, type OrderDetail, type OrderRefusal, type OrderRejectReason } from "@/lib/modules/pos/order-shared";
@@ -275,6 +277,23 @@ export function OrdersScreen(p: OrdersScreenProps) {
   }, [selectedId, loadDetail]);
   const selCard = list?.orders.find((o) => o.id === selectedId) ?? null;
   const shownDetail = detail && detail.id === selectedId ? detail : null;
+  // POS P4.3 ▸ F-P3-21 · CD-P38U-9: การ์ด "คืนเงินลูกค้า" (pos-refund:<orderId> · ตัวกวาดบอร์ดเปิดให้) ของออเดอร์ที่เลือก — อ่านครั้งเดียวต่อการเลือก (ไม่ดึงซ้ำทุก 10 วิ) ◂
+  const [refundCard, setRefundCard] = useState<{ orderId: string; href: string; cardNo: number | null; completed: boolean } | null>(null);
+  useEffect(() => {
+    setRefundCard(null);
+    if (!selectedId) return;
+    let live = true;
+    const key = posBoardKeys.refund(selectedId);
+    void posBoardCardsAction({ systemId: p.systemId, keys: [key] })
+      .then((r) => {
+        const c = r.ok ? r.cards.find((x) => x.key === key) : undefined;
+        if (live && c) setRefundCard({ orderId: selectedId, href: c.href, cardNo: c.cardNo, completed: c.completed });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [selectedId, p.systemId]);
 
   // ═══════ ดึงซ้ำทุก 10 วิ ขณะเห็นจอ ═══════
   const pollRef = useRef({ refreshList, loadDetail, selectedId });
@@ -538,6 +557,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
         error={panelErr}
         saleVoided={saleVoided === selCard.id}
         billHref={shownDetail ? billHref(shownDetail) : null}
+        refundCard={shownDetail && refundCard && refundCard.orderId === shownDetail.id ? refundCard : null} // POS P4.3 ▸ F-P3-21 ◂
         onAccept={() => accept(selCard, acceptPrepOf(selCard))}
         onEditPrep={() => openLayer({ kind: "prep", card: selCard, mode: selCard.status === "NEW" ? "accept" : "change", initial: selCard.status === "NEW" ? acceptPrepOf(selCard) : (selCard.prepMinutes ?? acceptPrepOf(selCard)) })}
         onReject={() => openLayer({ kind: "reject", card: selCard })}

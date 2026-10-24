@@ -139,6 +139,14 @@ export async function savePriceRule(ctx: RegisterCtx, actor: RegisterActor, inpu
     if (v.id && !prior) return refuse("PRICE_RULE_NOT_FOUND");
     if (prior?.archivedAt) return refuse("VALIDATION", "โปรนี้ถูกเก็บถาวรแล้ว — สร้างโปรใหม่แทน", "id");
     const linked = await linkedUnits(db, s);
+    // POS P4.3 ▸ CD-P43-3 (B7): สร้างใหม่โดยผู้ที่ไม่ได้ดูแลทุกสาขา (ไม่ใช่ OWNER/"*") + unitIds [] (UI ซ่อนชิปสาขาเมื่อเห็นสาขาเดียว)
+    //   = "ทุกสาขาของฉัน" ⇒ เก็บเป็นสาขาที่ผู้ใช้เข้าได้ ∩ สาขาที่ผูกระบบนี้ (เช่น [A1]) แล้วตรวจสิทธิ์ตามปกติ ·
+    //   [] ที่เก็บไว้ยังหมายถึง "ทุกสาขาที่ผูก" เหมือนเดิม (กติกาของเจ้าของ · ตรวจ prior ด้านล่าง + archive) ⇒ ผู้จัดการแก้/ปิดกติกาทุกสาขาไม่ได้ ·
+    //   แก้ (มี id) ไม่แปลง — ส่ง [] = ขยายเป็นทุกสาขา ต้องมีสิทธิ์ทุกสาขาเหมือนเดิม ◂
+    if (!prior && v.unitIds.length === 0 && s.actor.role !== "OWNER" && !s.actor.unitAccess.includes("*")) {
+      const own = linked.filter((u) => canAccessUnit(s.actor, u));
+      if (own.length) v.unitIds = own;
+    }
     // สิทธิ์ก่อนตรวจข้อมูลอ้างอิง (ผู้ไม่มีสิทธิ์ไม่ได้รู้ว่าสินค้า/สาขาไหนมีจริง) · แก้ = ต้องมีสิทธิ์ทั้งขอบเขตเดิมและใหม่
     if (!canWriteUnits(s, v.unitIds, linked) || (prior && !canWriteUnits(s, prior.unitIds, linked))) return refuse("PERMISSION_DENIED");
     if (v.unitIds.some((u) => !linked.includes(u))) return refuse("VALIDATION", "มีสาขาที่ไม่ได้ใช้ระบบขายนี้", "unitIds");

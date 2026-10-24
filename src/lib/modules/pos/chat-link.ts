@@ -75,13 +75,15 @@ export async function setPosChatSettings(ctx: Ctx, actor: unknown, patch: unknow
       const after: PosChatSettings = { ...before, ...parsed.clean };
       if (JSON.stringify(before) === JSON.stringify(after)) return { before, after, changed: false };
       const json = JSON.stringify(after);
+      // POS P4.3 ▸ CD-P43-4: raw UPDATE ไม่ผ่าน @updatedAt ของ Prisma ⇒ ขยับ "updatedAt" เอง (แบบ settings-general.ts writePosKeys) ◂
       await tx.$executeRaw`
         UPDATE "AppSystem"
         SET "settings" = jsonb_set(
           CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
           '{pos}',
           (CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END) || jsonb_build_object('chat', ${json}::jsonb),
-          true)
+          true),
+          "updatedAt" = now()
         WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId}`;
       return { before, after, changed: true };
     });

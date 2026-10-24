@@ -161,6 +161,8 @@ import { printerPaired } from "@/components/pos/print/printReceipt";
 import { useRouter } from "next/navigation";
 import { holdTableDraftAction, registerOpenTableAction, registerSendTableRoundAction, registerTableDetailAction, registerTableModeAction } from "@/lib/modules/pos/table-actions";
 import { registerProductsByIdsAction } from "@/lib/modules/pos/table-ui-actions";
+import { posBoardCardsAction } from "@/lib/pos-board-ui-actions"; // POS P4.3 ▸ F-P3-21: ชิปการ์ด "สินค้าหมดนาน" ของสินค้า 86 ◂
+import { posBoardKeys } from "@/lib/modules/pos/board-settings-shared"; // POS P4.3 ▸ กุญแจ 86 ค้างอยู่ (soldOutPrefix) ◂
 import type { TableCard } from "@/lib/modules/pos/table-shared";
 import { BillStripDialog, TablePickDialog } from "@/components/pos/tables/TablePickDialog";
 import { cartStripOf, stripCart, stripNeeded } from "@/components/pos/tables/table-ui";
@@ -208,7 +210,7 @@ export type RegisterScreenProps = {
 /** ns "member" = คีย์ใต้ pos.member (P1.12U) · "recipe" = ใต้ pos.recipe (POS P2.3U) · ไม่ระบุ = ใต้ pos.register */
 type Msg = { key: string; values?: Record<string, string | number>; ns?: "member" | "recipe" | "tables" }; // POS P2.4U ▸ + tables ◂
 /** ข้อความลอย — offerCustom = ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (สแกนไม่พบ · เฉพาะผู้มีสิทธิ์ราคาเปิด · P1.4 B4) */
-type ToastMsg = Msg & { offerCustom?: boolean };
+type ToastMsg = Msg & { offerCustom?: boolean; card?: { href: string; cardNo: number | null; completed: boolean; productId: string } /* POS P4.3 ▸ F-P3-21 ◂ */ };
 /** บรรทัดใหม่ (ยังไม่มี key) — Omit แบบกระจายทีละสมาชิกของ union */
 type NewLine = RegisterCartLine extends infer L ? (L extends unknown ? Omit<L, "key"> : never) : never;
 type Layer =
@@ -1545,7 +1547,20 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const pick = (p: RegisterProduct, anchor?: PickAnchor) => {
     known.current.set(p.id, p);
     if (frozenRef.current) return;
-    if (p.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
+    if (p.soldOutReason === "UNAVAILABLE") {
+      showToast({ key: "errors.productUnavailable" });
+      // POS P4.3 ▸ F-P3-21 · CD-P38U-9: 86 ที่ระบบเปิดการ์ดบอร์ดงานแล้ว ⇒ ปุ่ม "การ์ด #n" ในข้อความลอย (ไม่มีการ์ด/ออฟไลน์ = ข้อความเดิม) ◂
+      if (p.soldOutMark && online) {
+        const prefix = posBoardKeys.soldOutPrefix(unitId, p.id);
+        void posBoardCardsAction({ systemId, keys: [prefix] })
+          .then((r) => {
+            const c = r.ok ? r.cards.find((x) => x.key.startsWith(prefix)) : undefined;
+            if (c) setToast((cur) => (cur && cur.key === "errors.productUnavailable" && !cur.card ? { ...cur, card: { href: c.href, cardNo: c.cardNo, completed: c.completed, productId: p.id } } : cur));
+          })
+          .catch(() => undefined);
+      }
+      return;
+    }
     // POS P2.2U ▸ มติ 5: ไม่ขายหน้าร้าน = เพิ่มไม่ได้ และไม่เปิดกล่องราคาเปิด (เซิร์ฟเวอร์ปฏิเสธ CHANNEL_NOT_SOLD อยู่แล้ว) ◂
     if (p.notSold) return showToast({ key: "errors.channelNotSold" });
     if (tableOn && p.soldByWeight) return showToast({ key: "order.noWeighed", ns: "tables" }); // POS P2.4U ▸ รอบร่างโต๊ะไม่รับสินค้าชั่ง ◂
@@ -2034,7 +2049,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
       lastSendCode.current = r.ok ? "OK" : r.code; // POS P3.6U ◂
       if (r.ok) {
         // POS P3.6U ▸ CD-P36U-7: บิลวางบิล ⇒ ชิป "ครบกำหนด" ของจอสำเร็จ (บริษัท + วันครบกำหนดจากสถานะล่าสุด) ◂
-        if (sale.payMethods.some((m) => (m.type as string) === "ON_ACCOUNT")) setCreditDone({ name: company?.name ?? "", dueDate: creditStatusRef.current?.dueDate ?? null });
+        // POS P4.3 ▸ F-P3-16: วันครบกำหนดจากผลส่งบิล (สำเนาบนบิลจริง) ก่อน · ไม่มี (เซิร์ฟเวอร์เก่า) = สถานะล่าสุดของจอชำระเหมือนเดิม ◂
+        if (sale.payMethods.some((m) => (m.type as string) === "ON_ACCOUNT")) setCreditDone({ name: company?.name ?? "", dueDate: r.creditTerms?.dueDate ?? creditStatusRef.current?.dueDate ?? null });
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
@@ -3453,6 +3469,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
             >
               {t("scan.addAsCustom")}
             </button>
+          )}
+          {/* POS P4.3 ▸ F-P3-21: ลิงก์การ์ด 86 (หน้าบอร์ดตรวจสิทธิ์เอง) · cardNo null = ป้ายไม่มีเลข ◂ */}
+          {toast.card && (
+            <a
+              data-testid={`pos-reg-board-card-${toast.card.productId}`}
+              href={toast.card.href}
+              className="pointer-events-auto inline-flex h-11 shrink-0 items-center rounded-[11px] border border-[color:var(--color-surface)] px-3 text-[14px] font-semibold"
+            >
+              {toast.card.cardNo != null ? (toast.card.completed ? t("board.cardDone", { n: toast.card.cardNo }) : t("board.card", { n: toast.card.cardNo })) : toast.card.completed ? t("board.cardDoneNoNumber") : t("board.cardNoNumber")}
+            </a>
           )}
         </div>
       )}

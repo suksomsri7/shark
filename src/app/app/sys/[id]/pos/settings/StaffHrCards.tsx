@@ -5,16 +5,16 @@
 //     updatePosStaffSettingsAction (เจ้าของร้านเท่านั้น · คนอื่นอ่านอย่างเดียว) · สวิตช์เปิด/ปิดด่านอยู่ที่การ์ด "พนักงานและ PIN" (pos-settings-staff-hr-switch)
 //   ค่าคอมฯ: แสดงเฉพาะเมื่อหน้าส่ง config มา (ผู้ดูเงินเดือน canViewPayroll) · เปิด/ปิด · อัตราปกติ % · บทบาทที่ได้ · อัตรารายหมวด/รายสินค้า (% + บาทต่อชิ้น) →
 //     updatePosStaffCommissionAction (ก้อนเดียวทั้งการ์ด) · "ส่งเข้างวดเงินเดือนตอนนี้" → syncStaffCommissionNowAction · W9 = ข้อความช่วยเท่านั้น
-//   CD-P35U-3: ชื่อหมวด/สินค้ามาจากตัวอ่านแคตตาล็อกเดิมของหน้าขาย registerCatalogAction (client-safe · หน้าละ ≤ 500) · อ่านไม่ได้ (ไม่มีสิทธิ์ขายที่สาขานี้) =
-//     จำนวนอัตรารายสินค้าแบบอ่านอย่างเดียว (แก้ได้แค่เปิด/ปิด · อัตราปกติ · บทบาท — แถวเดิมส่งกลับตามเดิม)
+//   CD-P35U-3 → POS P4.3 ▸ F-P3-18 (CD-P43-O4): ชื่อหมวด/สินค้ามาจาก posCommissionCatalogAction (เจ้าของ/ผู้ดูเงินเดือน · ไม่ต้องมีสิทธิ์ขาย ·
+//     รวมตัวแปรและสินค้าเฉพาะสาขาอื่น · หน้าละ ≤ 500) · อ่านไม่ได้ = จำนวนอัตรารายสินค้าแบบอ่านอย่างเดียว (แก้ได้แค่เปิด/ปิด · อัตราปกติ · บทบาท —
+//     แถวเดิมส่งกลับตามเดิม) ◂
 // 🔴 คำปฏิเสธ → ข้อความตาม field (scheduleGate.* · defaultBp · byCategory.<id> · byProduct.<id>) หรือ settingsRefusalMessageKey · ไม่มีข้อความไทยนอกคอมเมนต์ ·
 //    testid ตัวอักษรตรงบนแท็ก · ปุ่ม ≥ 44px · ไม่มีตัวเลขค่าคอมฯ ที่จ่ายจริงในการ์ดนี้ (อัตราเท่านั้น · ยอดอยู่รายงาน 08 ผู้ดูเงินเดือน)
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { updatePosStaffCommissionAction, updatePosStaffSettingsAction } from "@/lib/modules/pos/settings-actions";
+import { posCommissionCatalogAction, updatePosStaffCommissionAction, updatePosStaffSettingsAction } from "@/lib/modules/pos/settings-actions"; // POS P4.3 ▸ F-P3-18 + posCommissionCatalogAction ◂
 import { syncStaffCommissionNowAction } from "@/lib/modules/pos/hr-link-actions";
-import { registerCatalogAction } from "@/lib/modules/pos/register-actions";
 import {
   POS_SCHEDULE_GATE_LIMITS,
   POS_STAFF_COMMISSION_LIMITS,
@@ -258,7 +258,7 @@ export function StaffCommissionCard({ systemId, unitId, initial }: { systemId: s
   const [roles, setRoles] = useState<PosStaffRole[]>(initial.sellerRoles);
   const [cat, setCat] = useState<Record<string, RateText>>({});
   const [prod, setProd] = useState<Record<string, RateText>>(() => Object.fromEntries(Object.entries(initial.byProduct).map(([id, r]) => [id, rateText(r)])));
-  // CD-P35U-3: ตัวอ่านแคตตาล็อกเดิมของหน้าขาย (null = ยังโหลด · false = อ่านไม่ได้)
+  // POS P4.3 ▸ F-P3-18: ตัวอ่านแคตตาล็อกของการ์ดค่าคอมฯ (null = ยังโหลด · false = อ่านไม่ได้) ◂
   const [catalog, setCatalog] = useState<{ categories: Named[]; products: Named[]; more: boolean } | null | false>(null);
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Named[]>([]);
@@ -270,11 +270,11 @@ export function StaffCommissionCard({ systemId, unitId, initial }: { systemId: s
 
   useEffect(() => {
     let live = true;
-    void registerCatalogAction({ systemId, unitId, limit: 500 })
+    void posCommissionCatalogAction({ systemId, unitId, limit: 500 })
       .then((r) => {
         if (!live) return;
         if (!r.ok) return setCatalog(false);
-        setCatalog({ categories: r.categories.map((c) => ({ id: c.id, name: c.name })), products: r.products.map((p) => ({ id: p.id, name: p.name })), more: r.nextCursor !== null });
+        setCatalog({ categories: r.categories.map((c) => ({ id: c.id, name: c.name })), products: r.products.map((p) => ({ id: p.id, name: p.name })), more: r.more });
       })
       .catch(() => live && setCatalog(false));
     return () => {
@@ -290,14 +290,14 @@ export function StaffCommissionCard({ systemId, unitId, initial }: { systemId: s
     const id = setTimeout(() => setSaved(false), 3000);
     return () => clearTimeout(id);
   }, [saved]);
-  // ค้นหาสินค้า: แคตตาล็อกที่โหลดแล้ว · เกิน 500 รายการ = ถามเซิร์ฟเวอร์ด้วยคำค้น (ตัวอ่านเดิม)
+  // ค้นหาสินค้า: แคตตาล็อกที่โหลดแล้ว · เกิน 500 รายการ = ถามเซิร์ฟเวอร์ด้วยคำค้น (posCommissionCatalogAction · POS P4.3 ▸ F-P3-18 ◂)
   useEffect(() => {
     const term = q.trim().toLowerCase();
     if (!catalog || !term) return setFound([]);
     if (!catalog.more) return setFound(catalog.products.filter((p) => p.name.toLowerCase().includes(term) && !prod[p.id]).slice(0, 8));
     let live = true;
     const id = setTimeout(() => {
-      void registerCatalogAction({ systemId, unitId, q: q.trim(), limit: 20 })
+      void posCommissionCatalogAction({ systemId, unitId, q: q.trim(), limit: 20 })
         .then((r) => live && setFound(r.ok ? r.products.filter((p) => !prod[p.id]).slice(0, 8).map((p) => ({ id: p.id, name: p.name })) : []))
         .catch(() => live && setFound([]));
     }, 250);

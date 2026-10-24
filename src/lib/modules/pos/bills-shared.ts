@@ -190,6 +190,10 @@ export type BillDetail = {
   voidBlockedReason?: BillVoidBlockedReason;
   /** POS P3-SKEL ▸ R7: สลิปโอนที่แนบ (หลักฐาน · ไม่มีผลเงิน) — thumbUrl null (ลิงก์ลงนามออกตอนกดดู) ◂ */
   slips?: { id: string; status: "UPLOADED" | "CONFIRMED" | "REJECTED"; thumbUrl: string | null }[];
+  /** POS P4.3 ▸ F-P3-16 · CD-P43-O6: บิลวางบิล — วันครบกำหนด (= PosSale.creditTerms.dueDate) · บิลอื่นไม่มีคีย์นี้ ◂ */
+  creditTerms?: { dueDate: string; termDays: number };
+  /** POS P4.3 ▸ F-P3-21: ออเดอร์ออนไลน์ที่ผูกบิลนี้ (PosOrder.saleId · ระบบ+สาขาเดียวกัน) — ชิปการ์ด "คืนเงินลูกค้า" (pos-refund:<orderId>) · ไม่มี = ไม่มีคีย์ ◂ */
+  orderId?: string;
 };
 export type BillDetailResult = { ok: true; bill: BillDetail } | BillsRefusal;
 
