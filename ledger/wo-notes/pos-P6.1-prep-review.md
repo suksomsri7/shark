@@ -227,3 +227,140 @@ G2 covers 12 cases and N1 adds canaries.
 8. **P5.3**: InvItem barcode index confirmed as a P6.1 hand step (`pos-P5.3-oracle.md:146`, `catalog.ts:1337-1345` — already in the §5 list). The "P5.3 outputs" row stays pending until the P5.3 fix round.
 9. Open owner items shipping with the merge: W37 · W38 · W39 · W41 · W19 (F11).
 10. Addendum-2 rulings not yet applied (F9), plus the deploy mechanics that were already missing at the base (F1, F6, F10).
+
+---
+
+# Round 2 — P6.1 fix1 (`wip/pos-p6.1-fix1` 74f24f81) · account A · 24 Oct 2026 01:20–01:35Z (`date -u`)
+
+Read on tree `/root/projects/shark-pos-p11` (detached at 74f24f81; nothing edited). Builder note `ledger/wo-notes/pos-P6.1-fix1.md`. The base is c91d8735 (= session/pos 5e5b0675 + the prep merge).
+Same rules as round 1:
+- no build, serve, QC5, prod or DB write;
+- node only via `iso.sh` ISO_MEM=3G;
+- QC4 read-only through `qc4.sh` + `/tmp/shark-gate-pos.lock`;
+- crontab read for counts and paths only (no line printed);
+- no `.env*` opened.
+
+## Verdict: **MERGEABLE**
+- All of F1–F16 are closed with evidence (table below), and every claimed run reproduced.
+- Two new **MEDIUM** runbook gaps (R2-F1, R2-F2) and five LOW items remain. All are doc or guard tweaks. None blocks the merge into session/pos.
+- **Condition:** close R2-F1 and R2-F2 before the W31 rehearsal / owner hand-off.
+- `git merge-tree session/pos(e41c486a) 74f24f81` → clean.
+
+## Reproduced (round 2)
+- **Oracle on the branch:** `qc-pos-p6.1` → **26/28**, failed = [R1, R3] (PR body, by design).
+- **Red-before:** `env P61_REV=603877ea` → **16/28**, failed = E1 R1 R3 Z1 N1–N8. Matches the note.
+- **Writer guard:** `pos-prod-writer-guard.mts --self-test` → **21/21**.
+- **QC4 `--self-test`:** FAIL 0 · WARN 5 (M1 = #37 pending on shared QC4, X1, S1, S6, S7) · posMigrations 38.
+- **QC4 `--counts`:** FAIL 0. PosSale 519 … nothing over 100k ⇒ path ก.
+- **`--crons`:** R1 OK (3 entries, all `/root/projects/shark-in-th`). R2 WARN (de0eafc7, 43 behind a84bca2b). R3 WARN (0 `pos.*` jobs). R4 OK.
+- **Crontab lock files:** each of minute/hourly/daily has exactly 1 entry with `/tmp/shark-crm-<mode>.cron.lock`. The §7:470 assumption holds.
+- **Schema card:** QC4 read-only `prisma migrate diff --from-config-datasource --to-schema prisma/schema --script`, filtered to POS tables = **exactly the 14 `CREATE INDEX`** named in #37.
+  - No DROP of `PosProductChannelPrice_product_code_unit_key`, so the `@@unique` declaration removes the old drift.
+  - #37 (`prisma/migrations/20261220100000_pos_p61_hand_indexes/migration.sql`) = `SET lock_timeout '5s'` + 14 × `CREATE INDEX IF NOT EXISTS` + `RESET`. No CONCURRENTLY, no DROP.
+  - The names match Prisma defaults (`<Table>_<cols>_idx`).
+  - The prisma/ diff touches only those 14 `@@index` + 1 `@@unique` (ecommerce, inventory, pos, pos_order, restaurant) + #37. Nothing in src/, package.json or the lockfile.
+- **Path ข dependency claim checked.** Objects created by p111 (PosReceiptIssue*, PosTaxInvoiceRequest*, `PosSale.publicToken`) and by p34 (PosOfflineSale/Snapshot, offlineCode/Ref/Seq, syncedAt) are not referenced by any later migration. The one exception is `publicToken` in `pos_p27_qr_orders`, which belongs to `PosOrder`.
+- **The §1A queries (a)–(d) only use columns and enum values that exist on origin/main.** Checked: ApiKey revokedAt/expiresAt/systemId/scopesJson/lastUsedAt · Appointment/HotelReservation/RentalBooking depositPaidAt + status values · BookingService/HotelRoomType/RentalAsset depositSatang · Membership acceptedAt/unitAccess · `BusinessUnit.type` RESTAURANT.
+- **Writer CLIs connect only with the validated URL.** `src/lib/core/db.ts:23` = `new PrismaPg({ connectionString: process.env.DATABASE_URL })`, the same variable `decideWriterTarget` checks (`scripts/lib/pos-prod-writer-guard.mts:88-110`).
+  - No env file is loaded on the prod path: `pos-backfill-catalog.mts:37-47` loads `QC_ENV_FILE` only without ALLOW. Web-prices and shift-off load none.
+  - The guard runs before the dynamic `import("@/lib/core/db")` in all 3 CLIs (catalog `:49` vs `:65`, web-prices `:27` vs `:34`, shift-off `:29` vs `:36`).
+  - `--verify` exits before the dry-run marker is written (`pos-backfill-catalog.mts:84-91` vs `:118-119`).
+
+## F1–F16 closure (file:line at 74f24f81)
+| F | closed? | evidence |
+|---|---|---|
+| F1 | ✅ | runbook §0 `:11-22`: vercel-build fact, order env → VPS migrate → `migrate status` hard gate → merge, P3009, "No pending migrations to apply." §4.2–4.3 `:326-350`; §11 `:574-585`; oracle N1 |
+| F2 | ✅ | §6 `:434` (W40 · ≥ 32 · ≠ other keys · before migrate) · §1 row 1.13 `:47` · §9 pairing `:516` · verify `ENV_NAMES` `scripts/verify-prod-pos.mts:220` |
+| F3 | ✅ | §8 `:478-509`: 7 prod lines, all `DATABASE_URL="$PROD_DIRECT_URL" DIRECT_URL=…`; one shared guard; expected output per CLI |
+| F4 | ✅ | §1A `:67-115`: a–e with file:line + commits, GO-3a…3e, read-only psql block; verify `--counts` K3 `:665-693` |
+| F5 | ✅ | `--counts` `verify-prod-pos.mts:44,61-78,643-699` (savepoint per query, pre-migrate safe via 42P01) · §3.2 `:192-257` paths ก/ข/ค/ง with exact SQL · `COUNT_TABLES` maps PosSale to both ข and ง (`:64`) |
+| F6 | ✅ | §7 `:453-472`: hourly cadence; flock all 3 locks + `pull --ff-only` + install; `--crons [--post-merge]` `:701-783`; S9 `:563-572` |
+| F7 | ✅ | §4.4 step 3 `:355` · appendix rule `:604` (20 files) |
+| F8 | ✅ | §9 `:534-538` (+ GO-22 detector SQL) |
+| F9 | ✅ | §3.3 `:259-274` (URL option + `SHOW lock_timeout` + `prisma db execute --stdin` proof + ALTER ROLE fallback) · row 1.4 dropped `:38` · 100k `:202` |
+| F10 | ✅ | §4.0 `:296-315` (detached worktree at `<PR_HEAD_SHA>`, clean status, no `.env`, frozen install). Oracle N7 bans prod commands from `/root/projects/shark-pos` |
+| F11 | ✅ | §1 rows 1.16–1.19 `:50-53` (W37 W38 W39/W41 W19) |
+| F12 | ✅ | `qc-pos-p6.1.mts` Z1 (+prisma/, lane pin c91d8735) · E1 (W40 row, no forced "pending") · N1–N8 `:503-643` · R3 |
+| F13 | ✅ | = F2 (`:220`) |
+| F14 | ✅ | §1 1.3 → `src/lib/actions/pos.ts:536` (`:37`) · 1.5 → `scripts/fitness-pos.mts:1062-1068` (`:39`) |
+| F15 | ✅ | §5.3 `:406-417` (VALUES LEFT JOIN ⇒ 15 rows, exists/valid) |
+| F16 | ✅ | `decideTarget(env, mode, allow)` `verify-prod-pos.mts:108-135` (rehearsal = prod rules) + G2 `:321-323` · guard `:104-108` + self-test `:167-169` |
+
+## New findings (round 2)
+
+### R2-F1 — MEDIUM · nothing re-checks that the PR head is still `<PR_HEAD_SHA>` at merge time (GO-12)
+**Evidence.**
+- GO-11 (`:343`, `:584`) only forbids merging *other* PRs with migrations.
+- The controller pushes to `session/pos` routinely: e41c486a (PR body draft) already sits on top of the tip this branch was cut from.
+- Any commit that lands on the PR between GO-5 and GO-12 is built and promoted by Vercel without the gates. If it carries a migration, Vercel applies it with no pre-flight (the F1 failure mode again).
+
+**Fix.** §4.3 step 0 (⛔ GO-12 pre-check):
+```
+git -C /root/projects/shark-pos fetch origin
+git -C /root/projects/shark-pos diff --stat <PR_HEAD_SHA> origin/session/pos -- prisma src package.json pnpm-lock.yaml vercel.json scripts/vercel-build.sh
+```
+- The diff must be empty, **and** `git log <main SHA at GO-10>..origin/main -- prisma/migrations` must be empty.
+- Otherwise re-run GO-9/GO-10 on the new head.
+- State the freeze rule as "ledger-only commits allowed".
+- Add an oracle line.
+
+### R2-F2 — MEDIUM · systems that already have `registerV2 = true` switch to the V2 register at merge with an empty catalogue
+**Evidence.**
+- §8 puts GO-16…GO-19 *after* GO-12.
+- The V2 register reads `PosProduct` (`src/lib/modules/pos/register.ts:829,853`), which is empty until the catalog backfill runs.
+- Shift-required is on by default for registerV2 (`src/lib/modules/pos/shift.ts:48-55`) until `pos-shift-required-off`.
+- So a system counted in K2 cannot sell between the merge and the end of the dry-run → TG → "ทำ" cycle, which can take hours.
+- §1A lists a–e but not this case.
+- QC4 K2 = 2. The prod value is unknown until GO-6.
+
+**Fix.**
+- Add §1A row **f**: "K2 > 0: these systems get the V2 register at merge".
+- If K2 > 0, run §8.1–8.5 for those tenants between GO-10 and GO-12. They only write new tables, the new `posProductId` link columns and a settings key, all of which main ignores. Then re-run `--verify` after GO-12, because legacy writes between backfill and merge can leave drift.
+- Alternative: set `registerV2 = false` for them before the merge.
+- Prove the chosen route in the rehearsal.
+
+### R2-F3 — LOW · node version claim
+- Row 1.8 (`:42`) says `@zxing/library` needs node ≥ 24 (its `engines` is `>= 24.0.0`).
+- The VPS node inside `iso.sh` is **v20.20.2** (`bash scripts/iso.sh node --version`).
+- There is no `engine-strict`, so `pnpm install --frozen-lockfile` only warns. The lane trees install fine on this machine.
+
+**Fix.** Reword row 1.8 and the §7:471 assumption: "warning only on this VPS; browser-only lib".
+
+### R2-F4 — LOW · the host checks compare the first DNS label only
+Both `decideWriterTarget` (`pos-prod-writer-guard.mts:75-85`) and `decideTarget` (`verify-prod-pos.mts:121-122`) look only at the first label:
+- `ep-royal-night-x.anything.tld` → role prod;
+- `ep-frosty-lab-x.anything.tld` → role qc4 (no ALLOW needed);
+- writer CLIs accept `-pooler` endpoints.
+
+That is fine against accidents, but cheap to harden.
+
+**Fix.**
+- Require the endpoint label to match `^<mark>-[a-z0-9]+$` and the hostname to end in `.neon.tech`.
+- Writers refuse `-pooler`.
+- Add self-test cases: suffix spoof, pooler, IP literal, uppercase.
+
+### R2-F5 — LOW · the new `@@unique` changes generated client types, but no full type check ran
+- `@@unique([productId, channelCode, unitId], map: …)` on `PosProductChannelPrice` adds a new `WhereUniqueInput` to the generated client.
+- fix1 ran no `prisma generate` and no full `tsc` (note `:5`, `:57`: single-file tsc on the scripts only).
+- `vercel-build.sh` runs `tsc` *after* migrate, so a type error would first show at merge. The build goes red; it is recoverable by a forward fix.
+
+**Fix.** Before the PR, the controller runs `prisma generate` + `tsc --noEmit` (via iso.sh, tree d) on the merged session/pos. The change is additive, so this is likely green.
+
+### R2-F6 — LOW · §4.4 step 6 restore caveat
+Restoring from the GO-8 Neon branch discards every write since GO-8. Say so, and limit it to the window (no sales since GO-8).
+
+### R2-F7 — LOW · §4.0 does not stop when the URL is rejected
+`:310` unsets `PROD_DIRECT_URL` on a `-pooler` URL or an existing `options=` but does not stop. Later lines then run with an empty variable (`psql ""` falls back to local defaults).
+
+**Fix.** Add `[ -n "${PROD_DIRECT_URL:-}" ] || echo "🔴 หยุด"`, or a line telling the owner to stop and re-enter the URL.
+
+## Answers to the round-2 questions
+- **Can a writer CLI reach a non-allowlisted host?** No. The connection = the validated `DATABASE_URL`; the guard runs before the DB import; no env file is loaded on the prod path; `DIRECT_URL` must be the same mark and role. Only the R2-F4 label-spoof edge remains.
+- **Does the guard self-test cover the bypasses?**
+  - Covered (21 cases): NO_URL · non-allowlisted · look-alike prefix · percent-encoded · `?host=` · PGHOST · mixed DIRECT_URL · ALLOW/tenant rules · rehearsal on/off-list · marker keying.
+  - Missing: suffix spoof, pooler, `PGHOSTADDR`-only, IP literal, uppercase hostname (R2-F4).
+- **The lock_timeout URL proof is sound in design:** a positive and a negative control, through the same schema engine (`prisma db execute`). I did not re-run it (QC4 evidence is in the note). GO-7 repeats it on prod read-only.
+- **§3.2 paths ก/ข/ค/ง are executable as written.**
+  - Path ข's `resolve --applied`-before-deploy is flagged ⚠️ as an assumption to prove in W31 (`:212`).
+  - PosSale > 100k correctly triggers both ข and ง (`COUNT_TABLES` `:64`; table `:207`, `:210`).
+- **Lane-pin oracles** `qc-pos-p3.8` ST3 and `qc-hf-fu2` ST1 stay red until the merge re-pin (controller noted it). #37 is not yet on QC4/QC5, so self-test M1 shows 🟡 until the controller applies it.
