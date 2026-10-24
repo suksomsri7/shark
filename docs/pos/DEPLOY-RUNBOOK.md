@@ -56,7 +56,7 @@
 
 ```bash
 # 1.1 — migration ที่ไม่อยู่บน main ต้องเป็น *_pos_* ทั้งหมด (37 บรรทัด) และเรียงหลังตัวสุดท้ายของ main
-git -C /root/projects/shark-pos fetch origin main
+git -C /root/projects/shark-pos fetch origin
 comm -13 <(git -C /root/projects/shark-pos ls-tree --name-only origin/main prisma/migrations/ | sort) \
          <(git -C /root/projects/shark-pos ls-tree --name-only <PR_HEAD_SHA> prisma/migrations/ | sort)
 git -C /root/projects/shark-pos ls-tree --name-only origin/main prisma/migrations/ | sort | grep -v migration_lock | tail -1
@@ -308,9 +308,10 @@ env -C /root/pos-deploy bash scripts/iso.sh pnpm exec prisma --version
 # ⛔ GO-5 (ต่อ) · ตั้งตัวแปร URL ของ prod (พิมพ์/วางค่า direct URL เอง · ไม่แสดงบนจอ · ไม่ลงประวัติ)
 read -rsp 'PROD_DIRECT_URL (direct · ไม่ใช่ -pooler): ' PROD_DIRECT_URL; echo
 case "$PROD_DIRECT_URL" in *-pooler*) echo "🔴 เป็น -pooler — หยุด"; unset PROD_DIRECT_URL;; *options=*) echo "🔴 URL มี options= อยู่แล้ว — หยุด ถามผู้คุม"; unset PROD_DIRECT_URL;; esac
-case "$PROD_DIRECT_URL" in *\?*) PROD_MIGRATE_URL="${PROD_DIRECT_URL}&options=-c%20lock_timeout%3D5s";; *) PROD_MIGRATE_URL="${PROD_DIRECT_URL}?options=-c%20lock_timeout%3D5s";; esac
+[ -n "${PROD_DIRECT_URL:-}" ] && case "$PROD_DIRECT_URL" in *\?*) PROD_MIGRATE_URL="${PROD_DIRECT_URL}&options=-c%20lock_timeout%3D5s";; *) PROD_MIGRATE_URL="${PROD_DIRECT_URL}?options=-c%20lock_timeout%3D5s";; esac
+printf '%s\n' "${PROD_DIRECT_URL:-}" | sed -E 's#^[^@]*@([^.:/]*).*#host label: \1#'
 ```
-ผลที่ต้องเห็น: `rev-parse` = `<PR_HEAD_SHA>` ตรงตัว · `status --porcelain` ไม่พิมพ์อะไร · `grep -c '^\.env$'` = `0` · `pnpm install` จบ exit 0 (postinstall รัน `prisma generate`) · `prisma --version` บรรทัด `prisma` = `7.8.x` · `read` ไม่แสดงค่าที่พิมพ์ · `case` ไม่พิมพ์ 🔴.
+ผลที่ต้องเห็น: `rev-parse` = `<PR_HEAD_SHA>` ตรงตัว · `status --porcelain` ไม่พิมพ์อะไร · `grep -c '^\.env$'` = `0` · `pnpm install` จบ exit 0 (postinstall รัน `prisma generate` · ต้องมีเน็ต + พื้นที่ดิสก์ราว 2 GB — ดู `df -h /root` ก่อน) · `prisma --version` บรรทัด `prisma` = `7.8.x` · `read` ไม่แสดงค่าที่พิมพ์ · `case` ไม่พิมพ์ 🔴 · บรรทัด `host label:` ขึ้นต้นด้วย mark ของ prod (= `PROD_HOST_MARK` ใน `scripts/qc-env-guard.mts`) และไม่มี `-pooler` — พิมพ์แค่ป้าย host ไม่พิมพ์รหัสผ่าน.
 หลังจบงานทั้งหมด: `unset PROD_DIRECT_URL PROD_MIGRATE_URL` · `git -C /root/projects/shark-pos worktree remove /root/pos-deploy` (หลังเก็บผลลงบันทึกแล้ว).
 
 ### 4.1 ก่อนกด (ขั้น 1 ของ §0)
