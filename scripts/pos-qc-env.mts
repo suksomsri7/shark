@@ -304,7 +304,7 @@ export const PQC_RESTO_MENU = {
 } as const;
 
 /** หน้าที่มีอยู่จริงของ POS วันนี้ (src/app/app/sys/[id]/pos/*) — visual-pos ถ่ายชุดนี้ */
-export const POS_PAGES = ["register", "sales", "products", "close", "reports", "stock", "shifts", "settings", "receipt-public", "tables", "orders", "kds", "display", "qr-public"] as const; // POS P2.7U ▸ + qr-public (หน้าสาธารณะ QR /q/** · ภาพเฉพาะ wo p2.7 --states) ◂ · // POS P2.10 ▸ + display (จอลูกค้า /d · หน้าสาธารณะ · ขนาดจอของตัวเอง POS_DISPLAY_VIEWPORTS) ◂ · // POS P2.6U ▸ + kds (มติ 1 · /pos/kds · จอครัว) ◂ · // POS P2.8U ▸ + orders (มติ 1 · /pos/orders) ◂ · // POS P2.4U ▸ + tables (มติ 1 · /pos/tables) ◂ · // POS P1.17 U ▸ + reports ◂ · POS P1.14 U ▸ + stock ◂ · POS P1.9 U ▸ + shifts ◂ · POS P1.10 U ▸ + settings ◂ · POS P1.11U ▸ + receipt-public (หน้าสาธารณะ /r/<token> · ไม่อยู่ใต้ /pos) ◂
+export const POS_PAGES = ["register", "sales", "products", "close", "reports", "stock", "shifts", "settings", "receipt-public", "tables", "orders", "kds", "display", "qr-public", "help"] as const; // POS P6.2 ▸ + help (คู่มือในแอป /pos/help · หน้าของตัวเอง th/en · CD-P62-O8) ◂ · // POS P2.7U ▸ + qr-public (หน้าสาธารณะ QR /q/** · ภาพเฉพาะ wo p2.7 --states) ◂ · // POS P2.10 ▸ + display (จอลูกค้า /d · หน้าสาธารณะ · ขนาดจอของตัวเอง POS_DISPLAY_VIEWPORTS) ◂ · // POS P2.6U ▸ + kds (มติ 1 · /pos/kds · จอครัว) ◂ · // POS P2.8U ▸ + orders (มติ 1 · /pos/orders) ◂ · // POS P2.4U ▸ + tables (มติ 1 · /pos/tables) ◂ · // POS P1.17 U ▸ + reports ◂ · POS P1.14 U ▸ + stock ◂ · POS P1.9 U ▸ + shifts ◂ · POS P1.10 U ▸ + settings ◂ · POS P1.11U ▸ + receipt-public (หน้าสาธารณะ /r/<token> · ไม่อยู่ใต้ /pos) ◂
 export type PosPage = (typeof POS_PAGES)[number];
 
 /** 3 ขนาดจอ (POS-MASTER-PLAN §1) */

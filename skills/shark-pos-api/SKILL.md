@@ -73,9 +73,12 @@ itself; never post it again there.
   has no status filter. `GET /orders` returns the orders since the start of
   the Thai business day (`since` reaches back at most 7 days). Other lists
   (`/units`, `/channels`, `/devices`) return everything.
-- Reports take Thai business dates `from` and `to` (`YYYY-MM-DD`, inclusive,
-  at most 92 days; default the last 7 days). Send `Accept: text/csv` to get the
-  same CSV file as the export button.
+- Reports live under `/reports` (`GET /reports/daily`, `/reports/summary`,
+  `/reports/products`, `/reports/payments`, `/reports/channels`, ... - the
+  full list with scopes is in `references/endpoints.md`). They take Thai
+  business dates `from` and `to` (`YYYY-MM-DD`, inclusive, at most 92 days;
+  default the last 7 days). Send `Accept: text/csv` to get the same CSV file as
+  the export button.
 - Reports and `unitId`: with `unitId` the report covers that one branch. Without
   it the report covers every branch the key may read (all branches of the POS
   system, or only the ones a branch-limited key allows) and the JSON answers
@@ -163,6 +166,22 @@ itself; never post it again there.
   channels take the money with `POST /orders/{id}/pay`. Reject a `NEW` order
   with `POST /orders/{id}/reject` and `reasonCode` one of `OUT_OF_STOCK`,
   `CLOSING`, `TOO_BUSY`, `OTHER`.
+
+## Offline sync (apps and kiosks)
+
+- `POST /sync/sales` is only for an external app or kiosk that sold bills
+  while it had no internet and now sends them up (at most 50 bills per call,
+  processed in sold time order). The shop's own register syncs by itself; do
+  not use this to ring up a normal sale - use `POST /sales`.
+- It needs `pos.offline.sync` (bundle `pos-admin`) and a shop that turned
+  offline selling on; otherwise 409 `state_conflict` and nothing is written.
+- Send `unitId`, the register `deviceId` (device code from `GET /devices`) and
+  `items`: per bill the temporary number the device printed (`offlineRef`),
+  the bill key it made when it sold (`idempotencyKey`), `soldAt`, the price
+  snapshot hash and the bill body as for `POST /sales`. Each bill answers `OK`
+  (new bill), `DUPLICATE` (already synced) or `REJECTED` with a reason; a
+  rejected bill waits for a manager on the Shifts screen. Never re-send a
+  rejected bill under a new key.
 
 ## Safety
 

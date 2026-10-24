@@ -32762,6 +32762,355 @@
       "system": "POS",
       "query": "unit=[unitId]",
       "needs": "ผู้ใช้ที่เปิดหน้ากะได้แต่ตัวอ่าน X ปฏิเสธ — บทบาท QC ไม่มีชุดนี้ (แคชเชียร์ได้การ์ดปฏิเสธทั้งหน้า pos-shift-refusal)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "แท็บโมดูล (posTabs) — หน้าคู่มือไม่ใช่แท็บ จึงไม่มีแท็บที่สว่าง"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "note": "แพตเทิร์นของลิงก์ \"ไปที่ …\" บนการ์ดแท็บ 8 ใบ (pos-help-link-<แท็บ>) — แถวรายตัวข้างล่างระบุปลายทางของแต่ละใบ"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-register",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/register",
+        "note": "การ์ดแท็บ register → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-products",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/products",
+        "note": "การ์ดแท็บ products → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-stock",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/stock",
+        "note": "การ์ดแท็บ stock → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-sales",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "note": "การ์ดแท็บ sales → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-shifts",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/shifts",
+        "note": "การ์ดแท็บ shifts → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-close",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/close",
+        "note": "การ์ดแท็บ close → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-reports",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/reports",
+        "note": "การ์ดแท็บ reports → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-link-settings",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "การ์ดแท็บ settings → ลิงก์ \"ไปที่ …\" (หน้าปลายทางตัดสินสิทธิ์เอง)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-more-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "note": "แพตเทิร์นของลิงก์รองบนการ์ดหน้าขาย/สินค้า (pos-help-more-<หน้า>) — แถวรายตัวข้างล่างระบุปลายทาง"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-more-tables",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/tables",
+        "note": "ลิงก์รอง tables (เปิดจากแท็บหน้าขาย/สินค้า)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-more-orders",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/orders",
+        "note": "ลิงก์รอง orders (เปิดจากแท็บหน้าขาย/สินค้า)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-more-kds",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/kds",
+        "note": "ลิงก์รอง kds (เปิดจากแท็บหน้าขาย/สินค้า)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-more-promos",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/products/price-rules",
+        "note": "ลิงก์รอง promos (เปิดจากแท็บหน้าขาย/สินค้า)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-faq-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-help-faq-answer-*",
+        "state": "appears",
+        "note": "คำถามที่พบบ่อย 8 ข้อ (q1–q8) — กดหัวข้อ <summary> เพื่อกาง/พับคำตอบ · ไม่มีการเขียนข้อมูล"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/help",
+      "testid": "pos-help-refusal",
+      "kind": "notice",
+      "roles": [
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner",
+        "manager"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-help-refusal",
+        "state": "refused",
+        "note": "พนักงาน (STAFF) ที่ไม่มีสิทธิ์ POS ข้อใดเลย — การ์ดปฏิเสธแทนเนื้อหาคู่มือ (role=alert · ไม่กด · หน้า 200)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS",
+      "needs": "ผู้ใช้ STAFF ที่ไม่มีสิทธิ์ POS ข้อใดเลย — บทบาท QC ทุกคนมีสิทธิ์ POS (แคชเชียร์มี pos.sale.create)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-help",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/help",
+        "note": "ลิงก์ \"คู่มือการใช้งาน\" บนหัวหน้าตั้งค่า (ทางเข้าคู่มือ · มติ 6 · CD-P62-O7)"
+      },
+      "wo": "P6.2",
+      "oracle": "",
+      "system": "POS"
     }
   ]
 }

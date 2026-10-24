@@ -3284,7 +3284,8 @@
         "briefNeedsDefault": "Set a default room first — the morning brief goes to the default room only",
         "allOff": "The team room is off — nothing is posted to any room"
       }
-    }
+    },
+    "helpLink": "User guide"
   },
   "print": {
     "receipt": "Print receipt",
@@ -5396,6 +5397,184 @@
       "close": "Close",
       "etaxTitle": "e-Tax Invoice by e-mail",
       "etaxHelp": "The provider e-mails electronic tax invoices to customers — nothing is sent until the switch is on (W4/W20)"
+    }
+  },
+  "help": {
+    "desc": "How to use the point of sale — one page for shop owners and cashiers",
+    "refusal": {
+      "title": "This account can't use the point of sale yet",
+      "body": "Ask the shop owner to give your account point of sale (POS) access, then open this page again."
+    },
+    "start": {
+      "title": "Set up a new shop in 5 steps",
+      "intro": "For the shop owner — do this once before the first day of sales. You can change every step later.",
+      "s1": {
+        "title": "Enter receipt and tax details",
+        "body": "Settings › Receipt & tax: shop name, address, tax ID and the note at the bottom of the receipt."
+      },
+      "s2": {
+        "title": "Choose how you take payment",
+        "body": "Settings › Payment methods: turn on cash, transfer, PromptPay or card — whatever the shop really accepts."
+      },
+      "s3": {
+        "title": "Add products and prices",
+        "body": "Products & services tab: add products, categories, options (such as size or sweetness) and prices. Stock and accounting use this same list."
+      },
+      "s4": {
+        "title": "Pair your register and printer",
+        "body": "Settings › Devices & printers: pair the tablet or computer you sell on with the branch, then print one test receipt."
+      },
+      "s5": {
+        "title": "Set staff PINs, then try a first bill",
+        "body": "Settings › Staff & permissions: give every staff member a PIN, then open a shift and ring up one real bill."
+      }
+    },
+    "tabsTitle": "The 8 point of sale tabs",
+    "tabsIntro": "The tabs sit under the shop name at the top. If your account is not allowed to do something, its button is greyed out or tells you why.",
+    "tabs": {
+      "register": {
+        "title": "Register",
+        "who": "Cashiers · everyone",
+        "what": "The checkout screen: pick products, add a member or a discount, then take payment.",
+        "p1": "Tap a product or scan its barcode to put it in the cart — tap or scan again to add one more.",
+        "p2": "Press Pay, choose how the customer pays (one bill can be split over several methods) and confirm. The change is shown for you.",
+        "p3": "Customer not ready to pay? Press Hold (F8) and bring the bill back later from Held bills."
+      },
+      "products": {
+        "title": "Products & services",
+        "who": "Owner · managers",
+        "what": "The products, menu items and services the shop sells, with categories and prices.",
+        "p1": "Add, edit or archive products; set options (size, toppings) and ingredient recipes so stock is deducted for you.",
+        "p2": "Set different prices per channel (store, delivery, web shop) or per branch.",
+        "p3": "Out of something for now? Press Mark sold out (86) — every channel of that branch shows it as sold out."
+      },
+      "stock": {
+        "title": "Stock",
+        "who": "Owner · managers · stock counters",
+        "what": "Count stock, receive deliveries, move stock between storage places and adjust counts — works on a phone.",
+        "p1": "Start a count, then scan or type what you counted — anything sold while you count is added back for you.",
+        "p2": "A manager checks the lines that don't match and confirms; only then is stock adjusted to the count.",
+        "p3": "Use Receive for deliveries and Transfer to move stock between storage places."
+      },
+      "sales": {
+        "title": "Today's bills",
+        "who": "Cashiers · managers",
+        "what": "Bills already sold: see the details, reprint, void or refund.",
+        "p1": "Tap a bill to see its items and payments. You can reprint the receipt (a reprint is marked Copy).",
+        "p2": "Voiding a whole bill is only possible before its shift is closed, and needs a manager's permission.",
+        "p3": "After the shift is closed, or to give back only some items, use Refund — it issues a credit note, returns the stock and takes back the points."
+      },
+      "shifts": {
+        "title": "Shifts",
+        "who": "Cashiers · managers",
+        "what": "Open a shift, follow the cash in the drawer and close the shift with a real cash count.",
+        "p1": "Start of shift: press Open shift, count the starting cash in the drawer and confirm.",
+        "p2": "During the shift: record cash in and out of the drawer and look at the X report as often as you like.",
+        "p3": "End of shift: count the real cash, give a reason if it is short or over by more than the limit, and get a Z report that cannot be changed."
+      },
+      "close": {
+        "title": "Close day",
+        "who": "Owner · managers",
+        "what": "The end-of-day summary of every shift and the cash reconciliation.",
+        "p1": "Pick a date to see that day's sales, refunds and totals per payment method.",
+        "p2": "Compare the cash you should have with the cash counted in every shift.",
+        "p3": "Export that day as a CSV file for your accountant."
+      },
+      "reports": {
+        "title": "Reports",
+        "who": "Owner · managers",
+        "what": "Sales, profit, best sellers, staff, channels and branches.",
+        "p1": "Pick a date range and a branch, then switch between the reports.",
+        "p2": "Export a CSV or print a report with the buttons on the page.",
+        "p3": "Shops that turned on the AI assistant see a short summary of what to know about the day here."
+      },
+      "settings": {
+        "title": "Settings",
+        "who": "Owner · managers",
+        "what": "Receipts, payment methods, registers, staff, sales channels and the links to the shop's other systems.",
+        "p1": "Receipt & tax · Payment methods · Devices & printers · Staff and PINs",
+        "p2": "External sales channels (delivery, web shop, QR) and the links to members, accounting, inventory and other systems.",
+        "p3": "Keep selling when the internet drops — the shop owner turns this on in the Offline & sync tab."
+      }
+    },
+    "open": {
+      "register": "Go to Register",
+      "products": "Go to Products & services",
+      "stock": "Go to Stock",
+      "sales": "Go to Today's bills",
+      "shifts": "Go to Shifts",
+      "close": "Go to Close day",
+      "reports": "Go to Reports",
+      "settings": "Go to Settings"
+    },
+    "more": {
+      "tables": "Tables",
+      "orders": "Online orders",
+      "kds": "Kitchen display",
+      "promos": "Price promotions / Happy hour"
+    },
+    "day": {
+      "title": "A cashier's day",
+      "intro": "The order of work from opening to closing the shop.",
+      "d1": {
+        "title": "Open a shift",
+        "body": "Shifts tab: press Open shift, count the starting cash in the drawer and confirm. If the shop requires a shift, you cannot sell until it is open."
+      },
+      "d2": {
+        "title": "Sell",
+        "body": "Register: pick the products. If the customer is a member, find them by phone number so they earn points, then press Pay."
+      },
+      "d3": {
+        "title": "Take payment",
+        "body": "Choose the payment method, enter the amount received and confirm — print the receipt, or let the customer scan the QR code for an online receipt."
+      },
+      "d4": {
+        "title": "Hand over the register",
+        "body": "Lock the screen before you leave the register; the next person enters their own PIN. An unfinished bill is held for you."
+      },
+      "d5": {
+        "title": "Void or refund",
+        "body": "Today's bills: tap the bill. If it is beyond your permission, the register asks for a manager's PIN or sends an approval request."
+      },
+      "d6": {
+        "title": "Close the shift and the day",
+        "body": "Count the real cash and close the shift to get the Z report. When every shift is closed, a manager checks the whole day in Close day."
+      }
+    },
+    "faq": {
+      "title": "Questions people often ask",
+      "q1": {
+        "q": "The internet dropped while selling. What now?",
+        "a": "If the shop owner turned on offline selling, the register keeps selling for cash and transfer and prints a temporary bill number. Do not close or refresh the register until the internet is back; the bills are then sent up and get their real numbers by themselves. Points, coupons and gift cards cannot be used while offline. If offline selling is off, the register stops taking payment until the internet is back."
+      },
+      "q2": {
+        "q": "What is the difference between a void and a refund?",
+        "a": "A void cancels the whole bill as if it was never sold. It is only possible before that bill's shift is closed, and only for a bill without refunds. A refund gives back some items or the whole bill after that; it issues a credit note, returns the stock and takes back the points in proportion."
+      },
+      "q3": {
+        "q": "A customer wants a full tax invoice. Where do I do that?",
+        "a": "Turn on the full tax invoice switch when taking payment, or issue it later from that bill in Today's bills. Customers can also ask for one from the online receipt (the QR code on the receipt) and the shop approves it. This needs the tax invoice permission, which owners and managers already have."
+      },
+      "q4": {
+        "q": "Why can't I press some buttons, or why does it say I have no permission?",
+        "a": "Each task is tied to a permission, such as void, refund or setting prices. The shop owner gives staff permissions in Shop settings › Staff. Some tasks beyond your permission, like a discount over your limit, can be done with a manager's PIN at the register instead."
+      },
+      "q5": {
+        "q": "The customer paid by PromptPay. How do I know the money arrived?",
+        "a": "If the shop is connected to Beam payments, the screen confirms by itself when the money arrives. If you use the shop's own PromptPay QR, check the incoming amount in your banking app first, then press Confirm payment. Some shops require a manager to do this manual confirmation."
+      },
+      "q6": {
+        "q": "Can I hold a bill and bring it back on another register?",
+        "a": "Yes. Held bills are visible on every register of the same branch and can be brought back once. Prices are worked out again at today's prices when you bring the bill back. A bill held longer than the number of days the shop set is thrown away by itself."
+      },
+      "q7": {
+        "q": "We have several branches. Are prices and stock separate?",
+        "a": "They can be. The whole shop shares one product list, but you can set branch prices in Products & services. Stock, receipt numbers and shifts are per branch. Staff only see the branches they are allowed to work in, and reports show all branches together or one at a time."
+      },
+      "q8": {
+        "q": "Where do LINE MAN, Grab or web shop orders show up?",
+        "a": "On the Online orders screen (opened from the Register), in the columns New · Preparing · Ready · Done. For a delivery channel that is not connected yet, staff type the order in from the platform's tablet so that sales, stock and accounting stay complete."
+      }
     }
   }
 }

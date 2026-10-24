@@ -136,6 +136,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/pos/reports`, label: posNav("nav.reports") }, // POS P1.17 U ▸ ต้องตรงกับ posTabs ◂
           { href: `${s}/pos/reports/print`, label: posNav("report.print.button") }, // POS P2.14 ▸ U3 ◂
           { href: `${s}/pos/settings`, label: posNav("nav.settings") }, // POS P1.10 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/help`, label: posNav("settings.helpLink") }, // POS P6.2 ▸ CD-P62-O1 (qc-nav-functions S5) ◂
         ];
       case "ACCOUNT":
         // เจ้าของสั่ง 6 ก.ย. 2569: ไม่เอาเมนูย่อยของบัญชีในแถบเมนู — หมวดทั้ง 9 อยู่ในหน้าหลักของระบบบัญชีแล้ว

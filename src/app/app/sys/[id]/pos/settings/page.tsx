@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link"; // POS P6.2 ▸ ลิงก์ทางเข้าคู่มือ /pos/help (มติ 6 · CD-P62-O7) ◂
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
@@ -214,9 +215,15 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const lanRead = canRead && canManageDevices && tab === "devices" ? await listPrintAgents({ tenantId, systemId: id, unitId }, posActor) : null;
   const lanProps = lanRead && lanRead.ok === true ? { agents: lanRead.agents, ports: [...PRINT_PRINTER_PORTS] } : null;
   const etaxRow = canRead && tab === "shark" ? { canManage: evaluate(m, { module: "pos", action: "pos.settings.manage", unitId }), isOwner: m.role === "OWNER", providers: etaxOptions } : null;
+  // POS P6.2 ▸ ทางเข้าคู่มือ /pos/help บนหัวหน้า (มติ 6 · CD-P62-O7) ◂
+  const helpLink = (
+    <Link href={`/app/sys/${id}/pos/help`} className="text-sm font-medium text-[color:var(--color-accent)] hover:underline" data-testid="pos-settings-help">
+      {t("helpLink")}
+    </Link>
+  );
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
-      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
+      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} actions={helpLink} />
       <ModuleTabs items={posTabs(id, tPos)} data-testid="pos-settings-module-tabs" />
       <SettingsShell systemId={id} active={tab} units={units} unitId={unitId} canHistory={canRead && canManageSettings}>
         {!canRead ? (
