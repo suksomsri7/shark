@@ -97,6 +97,8 @@ model PosOrderLine {
   note            String?
   lineTotalSatang Int
   sortOrder       Int             @default(0) // ลำดับบรรทัดตามที่ส่งมา
+
+  @@index([orderId]) // P6.1 CD-P61-P4 (TL-6 · no-op migration p61)
 }
 
 // บันทึกการเปลี่ยนสถานะ (รวมตอนรับเข้า: fromStatus null → toStatus NEW) · payload = ข้อมูลดิบของ adapter (P3) / เหตุผล / คีย์ชำระ
@@ -111,6 +113,8 @@ model PosOrderEvent {
   actorUserId String? // null = ระบบ/อัตโนมัติ
   payload     Json?
   at          DateTime        @default(now())
+
+  @@index([orderId]) // P6.1 CD-P61-P4 (TL-6 · no-op migration p61)
 }
 
 // ═══════════════════ POS P2.7 — ลิงก์สั่งล่วงหน้า (/q/<token>) ═══════════════════
