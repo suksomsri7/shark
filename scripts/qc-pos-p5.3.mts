@@ -610,7 +610,7 @@ async function loadRegister(page: Any): Promise<number> {
     });
   return Number(await h.jsonValue());
 }
-type ActLog = { kind: string; lines: number; start: number; end: number; status: number };
+type ActLog = { kind: string; lines: number; start: number; end: number; status: number; fail?: string }; // CD-P53-O13f fail = errorText ของ requestfailed
 function trackActions(page: Any): ActLog[] {
   const log: ActLog[] = [];
   const map = new Map<Any, ActLog>();
@@ -630,7 +630,12 @@ function trackActions(page: Any): ActLog[] {
     const e = map.get(r);
     if (!e) return;
     e.end = Date.now();
-    e.status = failed ? -1 : (r.response?.()?.status?.() ?? 0);
+    // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13f): server action ของ React ตอบเป็นสตรีม RSC — เมื่ออ่านครบ client ยกเลิกส่วนที่เหลือ ⇒ Chromium รายงาน requestfailed (ERR_ABORTED)
+    //   ทั้งที่มี response 200 แล้ว (smoke2: quote/200/-1 แต่ยอดบนหน้านิ่ง) → ถือตามสถานะ response ถ้ามี · -1 เฉพาะเมื่อไม่มี response เลย · เก็บ errorText ไว้ดู
+    const resp = r.response?.();
+    const st = resp?.status?.();
+    e.status = typeof st === "number" && st > 0 ? st : failed ? -1 : 0;
+    if (failed) e.fail = String(r.failure?.()?.errorText ?? "");
   };
   page.on("requestfinished", (r: Any) => done(r, false));
   page.on("requestfailed", (r: Any) => done(r, true));

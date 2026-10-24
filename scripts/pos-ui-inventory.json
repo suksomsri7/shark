@@ -19658,7 +19658,7 @@
       "expect": {
         "type": "modal",
         "target": "pos-ord-pause-sheet",
-        "note": "ปิดรับชั่วคราว → แผ่นเลือกเวลา"
+        "note": "ปิดรับชั่วคราว → แผ่นเลือกเวลา · กดท้าย (POS P4.3 fix5 CD-P43-11: พักรับออเดอร์ค้างทำให้ pos-ord-man-submit ถูกปฏิเสธ CHANNEL_PAUSED — จึงกดเป็นลำดับท้ายของหน้า · fixture ล้าง pausedUntil จบรอบ)"
       },
       "wo": "P2.8U",
       "oracle": "",
@@ -19680,7 +19680,7 @@
       "expect": {
         "type": "mutation",
         "target": "pos-ord-paused-*",
-        "note": "15/30/60 นาที / จนกว่าจะเปิดเอง (now+24ชม.) → pausedUntil · แบนเนอร์ปิดรับบนกระดาน",
+        "note": "15/30/60 นาที / จนกว่าจะเปิดเอง (now+24ชม.) → pausedUntil · แบนเนอร์ปิดรับบนกระดาน · กดท้าย (POS P4.3 fix5 CD-P43-11: พักรับออเดอร์ค้างทำให้ pos-ord-man-submit ถูกปฏิเสธ CHANNEL_PAUSED — จึงกดเป็นลำดับท้ายของหน้า · fixture ล้าง pausedUntil จบรอบ)",
         "db": "SalesChannel.pausedUntil + AuditLog pos.order.settings"
       },
       "wo": "P2.8U",

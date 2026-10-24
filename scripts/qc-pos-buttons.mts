@@ -583,12 +583,12 @@ function fillValueFor(testid: string, type: string): string {
   if (type === "datetime-local") return `${todayBkk()}T10:00`;
   if (type === "month") return todayBkk().slice(0, 7);
   if (type === "color") return "#123456";
+  // POS P4.3 fix5 (ผู้คุม A · CD-P43-11 · 24.10): ช่อง "เงินที่รับ" ของกล่องชำระ — ค่าต้อง ≥ ยอดบิล ไม่งั้น plan.state ≠ complete และ pos-reg-paydlg-change แสดง "-" (smoke: wrongExpect) · เดิมได้ข้อความ qc-btn-… (ไม่ใช่ตัวเลข) · ต้องมาก่อนกฎ type=number ที่คืน "2" (inputMode decimal ⇒ eff number)
+  if (/received|tendered/.test(t)) return "99999";
   if (/(pct|percent|rate|bp)$/.test(t)) return "10";
   if (/(qty|count|seats|party|minutes|hours|days|limit|max|min)/.test(t) || type === "number" || type === "range") return "2";
   // POS P4.3 walker fix1 ▸ H5: ช่องค้นหาก่อนคำเงิน ("pos-price-rule-product-search" มีคำว่า price → เดิมได้ "20" แล้วรายการว่าง PriceRulesClient.tsx:304-307) ◂
   if (/(search|query|-q$|find)/.test(t)) return "ลาเต้";
-  // POS P4.3 fix5 (ผู้คุม A · CD-P43-11 · 24.10): ช่อง "เงินที่รับ" ของกล่องชำระ — ค่าต้อง ≥ ยอดบิล ไม่งั้น plan.state ≠ complete และ pos-reg-paydlg-change แสดง "-" (smoke: wrongExpect) · เดิมได้ข้อความ qc-btn-… (ไม่ใช่ตัวเลข)
-  if (/received|tendered/.test(t)) return "99999";
   if (/(price|amount|satang|float|cash|tender|deposit|credit|value|total|baht)/.test(t)) return "20";
   if (/(reason|note|memo|comment)/.test(t)) return `qc-btn-${u} เหตุผลทดสอบ`;
   return `qc-btn-${u}`;
