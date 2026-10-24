@@ -1,6 +1,6 @@
 # POS V2 — คู่มือขึ้น production (DEPLOY RUNBOOK)
 
-> สถานะ: **ฉบับแก้รอบ 1 (P6.1 fix1 · 24 ต.ค. 2026)** — แก้ตามผู้ตรวจ R1 (F1–F16 · ledger/wo-notes/pos-P6.1-prep-review.md (ทรีผู้คุม)) และมติผู้คุม CD-P61-R1…R6 · O1 · P4 · แทน `ledger/pos-briefs/pos-runbook-P6.1-DRAFT.md` (3 ต.ค. · แช่แข็งแล้ว) ตามมติ P6 §10-2.
+> สถานะ: **ฉบับแก้รอบ 2 (P6.1 fix2 · 24 ต.ค. 2026)** — แก้ตามผู้ตรวจ R1 (F1–F16 + รอบ 2 R2-F1…F7 · ledger/wo-notes/pos-P6.1-prep-review.md (ทรีผู้คุม)) และมติผู้คุม CD-P61-R1…R6 · O1 · P4 · แทน `ledger/pos-briefs/pos-runbook-P6.1-DRAFT.md` (3 ต.ค. · แช่แข็งแล้ว) ตามมติ P6 §10-2.
 > ฐานที่ตรวจ: branch `wip/pos-p6.1-fix1` = `session/pos` @ `5e5b0675` + งานเตรียม P6.1 (merge c91d8735) เทียบ `origin/main` @ `a84bca2b`. ทุกข้อที่อ้างโค้ด = `ไฟล์:บรรทัด` ของฐานนี้ — ตรวจซ้ำที่ SHA หัวของ PR (`qc-pos-p6.1` P1 ช่วยตรวจว่าไฟล์/บรรทัดยังมี).
 > 🔴 เอกสารนี้ **ไม่อนุญาต** ให้ใครแตะ production. ทุกขั้นที่มี ⛔ = เจ้าของสั่งเอง ทีละขั้น (W32 · มติ P6 §10-1). ผู้คุมงานไม่ push `main` ไม่ deploy ไม่ต่อ prod.
 > หัวข้อภาษาไทย · คำสั่งภาษาอังกฤษ (คัดลอกวางได้ทั้งบรรทัด) · ไม่มี URL/รหัสผ่านในไฟล์นี้ — URL ของ prod อยู่ในตัวแปร shell `PROD_DIRECT_URL` ที่เจ้าของพิมพ์เองตอนเริ่ม (§4.0) · ค่าที่ต้องแทนเอง: `<PR_HEAD_SHA>` (SHA เต็ม 40 ตัวของหัว PR จากหน้า GitHub) · `<tenant-id>` (id หรือ slug ของร้าน).
@@ -14,7 +14,8 @@
   1. ⛔ GO-1 ตั้ง env บน Vercel production: `POS_DEVICE_KEY` (+ `POS_CREDENTIALS_KEY` ถ้ายังไม่ตั้ง) — **ก่อนขั้น 2** (CD-P61-R2 · §6).
   2. ⛔ GO-5…GO-9 เจ้าของรัน `prisma migrate deploy` **จาก VPS · worktree สะอาดที่ `<PR_HEAD_SHA>`** (F10 · §4.0) ผ่าน direct URL ที่มี `lock_timeout` 5s ใน URL (§3.3) — หลัง pre-flight §3.4 + `verify-prod-pos.mts --counts` + จุดย้อน Neon + เลือกทางของ index ตาม §3.2.
   3. ⛔ GO-10 **ด่านแข็ง**: `prisma migrate status` ต้องพิมพ์ `Database schema is up to date` และ `verify-prod-pos.mts` ข้อ M1 M2 T1 C1 E1 I1 เขียว — ไม่เขียว **ห้าม merge**.
-  4. ⛔ GO-12 merge PR → Vercel รัน `scripts/vercel-build.sh` → `migrate deploy` ต้องพิมพ์ `No pending migrations to apply.` → `migrate status` → `tsc` → build → promote อัตโนมัติ (§4.3).
+  3b. ⛔ GO-11b ถ้า K2 > 0 (ระบบที่ `registerV2 = true` อยู่แล้ว · §1A ข้อ f): backfill §8.1–8.5 ของร้านเหล่านั้น **ก่อน merge** (หรือปิดธงก่อน — เจ้าของเลือก).
+  4. ⛔ GO-12 ด่านแช่แข็ง `verify-prod-pos.mts --pr-freeze <PR_HEAD_SHA> --main-at "$MAIN_AT_GO10"` FAIL 0 (R2-F1) → merge PR → Vercel รัน `scripts/vercel-build.sh` → `migrate deploy` ต้องพิมพ์ `No pending migrations to apply.` → `migrate status` → `tsc` → build → promote อัตโนมัติ (§4.3).
   5. ⛔ GO-13…GO-15 หลัง merge: เลื่อน checkout ของ crontab บน VPS ให้ตาม main (§7 · CD-P61-R6) · index partial `one_open_session_per_table` (§5.2) · จับคู่เบราว์เซอร์ทุกเครื่องขายก่อนขายบิลแรก (§9 · CD-P61-R2).
   6. ⛔ GO-16…GO-19 backfill (§8: catalog → `--verify` = 0 → `backfillWebPrices` → ข้อมูล P1.9) — ทุกตัว `--dry-run` ก่อน.
   7. ⛔ GO-21 เปิดธงทีละร้าน (§9).
@@ -39,7 +40,7 @@
 | 1.5 | `catalog-legacy.ts` อยู่ใน `SYSTEM_MARKER_ALLOWLIST` | ✅ `scripts/fitness-pos.mts:1062-1068` | ไม่ต้องทำแล้ว (fitness-pos ตรวจทุกด่าน) | fitness-pos.mts:1072 (อ้างบรรทัดใหม่ตาม R1 F14) |
 | 1.6 | `registerCatalog` ใช้กติกาความพร้อมขายเดียวกับ `listForUnit` | ✅ `src/lib/modules/pos/register.ts:407` · `:775` · `:851` | ไม่ต้องทำแล้ว (`qc-pos-p1.3` ตรวจ) | register.ts:998 |
 | 1.7 | สัญญา `createSale` (`--update-pos-contract`) | snapshot `scripts/pos-sale-contract.json` · ตัวสร้าง `scripts/fitness-pos.mts:510` | **ยังใช้** — รัน `fitness-pos` ที่ `<PR_HEAD_SHA>` ต้องเขียว (ห้ามเขียนทับ snapshot ถ้าไม่จำเป็น) | fitness-pos.mts:4 |
-| 1.8 | dependency ใหม่ `@zxing/browser` | ส่วนต่าง `package.json` เทียบ main มีบรรทัดเดียว + `pnpm-lock.yaml` | **ยังใช้** — ตอน merge เอา `package.json` ทั้งสองฝั่งแล้ว `pnpm install` (ห้ามแก้ lockfile ด้วยมือ) · `@zxing/library` ต้องการ node ≥ 24 | `git diff --stat origin/main HEAD -- package.json pnpm-lock.yaml` |
+| 1.8 | dependency ใหม่ `@zxing/browser` | ส่วนต่าง `package.json` เทียบ main มีบรรทัดเดียว + `pnpm-lock.yaml` | **ยังใช้** — ตอน merge เอา `package.json` ทั้งสองฝั่งแล้ว `pnpm install` (ห้ามแก้ lockfile ด้วยมือ) · `@zxing/library` ประกาศ engines node ≥ 24 แต่ **VPS นี้ใช้ node v20.20.2 + pnpm 10.33.0** (`bash scripts/iso.sh node --version` · `pnpm --version` 24 ต.ค. — รุ่นที่ใช้รันทุกคำสั่งของ fix1/fix2) · ไม่มี engine-strict ⇒ `pnpm install --frozen-lockfile` แค่เตือน (เลนทุกทรีติดตั้งได้) · ไลบรารีใช้ในเบราว์เซอร์เท่านั้น · node ของ build = ค่าในตั้งค่าโปรเจกต์ Vercel (R2-F3) | `git diff --stat origin/main HEAD -- package.json pnpm-lock.yaml` |
 | 1.9 | Prisma ที่ใช้ deploy = 7.8 (โหมด tx ของไฟล์ขึ้นกับรุ่นนี้ — §2) | `package.json:105` · `:125` = `^7.8.0` | **ยังใช้** — `pnpm exec prisma --version` ใน worktree deploy (§4.0) | |
 | 1.10 | ชุดข้อสอบเต็มบน Neon branch ส่วนตัว (ไม่ใช่ QC4) | ยังไม่ทำ | **ยังใช้** — ซ้อมตาม §4.5 (W31) | P6 brief §5 |
 | 1.11 | `qc-account-api-*` ×5 (เลน acc-v2) เขียว · `qc-account-api-settings` ข้าม (P3.12 F23) | อยู่ใน `scripts/pos-gates.json` แล้ว | **ยังใช้** — ผลด่านเต็มที่ `<PR_HEAD_SHA>` | HANDOVER-2026-10-16-POS-P2.md:219 |
@@ -64,9 +65,9 @@ git -C /root/projects/shark-pos ls-tree --name-only origin/main prisma/migration
 for b in hotfix/inventory-atomic hotfix/pos-page-authz rc/hotfixes-2026-10-01; do git -C /root/projects/shark-pos merge-base --is-ancestor origin/$b origin/main && echo "$b ok"; done
 ```
 
-## 1A. พฤติกรรมที่เปลี่ยนตอน deploy แม้ธง POS ปิดทุกตัว (CD-P61-R4 · R1 F4)
+## 1A. พฤติกรรมที่เปลี่ยนตอน deploy แม้ธง POS ปิดทุกตัว (CD-P61-R4 · R1 F4 · ข้อ f = R2-F2)
 
-ประโยค "ธงทุกตัวปิด ⇒ prod ไม่เปลี่ยนตอน deploy" ของฉบับเตรียม **ไม่จริง** — 5 เรื่องนี้มีผลกับทุกร้านทันทีที่โค้ดใหม่ขึ้น (หลัง merge · ขั้น 4 ของ §0) ไม่ขึ้นกับ `registerV2` หรือธงใด. เจ้าของรันคิวรีหาร้านที่โดน (อ่านอย่างเดียว) แล้วรับทราบทีละข้อ (⛔ GO-3) ก่อน merge. ตัวเลขรวมดูเร็วได้จาก `verify-prod-pos.mts --counts` ข้อ K3 (§3.4).
+ประโยค "ธงทุกตัวปิด ⇒ prod ไม่เปลี่ยนตอน deploy" ของฉบับเตรียม **ไม่จริง** — 6 เรื่องนี้มีผลกับทุกร้านทันทีที่โค้ดใหม่ขึ้น (หลัง merge · ขั้น 4 ของ §0) ไม่ขึ้นกับ `registerV2` หรือธงใด. เจ้าของรันคิวรีหาร้านที่โดน (อ่านอย่างเดียว) แล้วรับทราบทีละข้อ (⛔ GO-3) ก่อน merge. ตัวเลขรวมดูเร็วได้จาก `verify-prod-pos.mts --counts` ข้อ K3 (§3.4).
 
 | ข้อ | อะไรเปลี่ยน (ไฟล์:บรรทัด · commit) | ใครโดน (คิวรีข้างล่าง) | ⛔ เจ้าของรับทราบ | ลิงก์ |
 |---|---|---|---|---|
@@ -75,6 +76,7 @@ for b in hotfix/inventory-atomic hotfix/pos-page-authz rc/hotfixes-2026-10-01; d
 | c | **คีย์ REST กลาง (scope ว่าง ไม่ผูกระบบ) เรียกเครื่องมือ AI ของ POS ไม่ได้** — `/api/v1/ai/tools/<เครื่องมือ POS>` ตอบ 403 `pos_scope_required` และ `/skills/sales` ไม่แสดงเครื่องมือ POS (`src/app/api/v1/ai/general-key-gate.ts:41` · f87cc9c5 · e4f14951) | คิวรี (c) — คีย์กลางที่ยังใช้ได้ + ใช้ล่าสุด | ⛔ GO-3c รับทราบ + แจ้งผู้เชื่อมต่อให้ออกคีย์ที่มี scope `pos.*` | CD-P52-O3-1 |
 | d | **บัญชีเครดิต (เขียน) และสมุดทิป (อ่าน) = OWNER หรือ MANAGER ที่ `unitAccess` = `"*"` ตรงตัวเท่านั้น** — `src/lib/modules/pos/credit.ts:93` · `src/lib/modules/pos/tip-ledger.ts:12` (549c0964) · ผู้จัดการที่ระบุครบทุกสาขาแบบรายชื่อก็ถูกปฏิเสธ · เป็นฟีเจอร์ใหม่ (ไม่มีข้อมูลเดิมบน prod) | คิวรี (d) — MANAGER ที่ไม่ใช่ `"*"` ในร้านที่มี POS | ⛔ GO-3d รับทราบ (ถ้าผู้จัดการต้องใช้ ให้ตั้ง `"*"` ในหน้าสมาชิกทีม) · รวมในการทบทวนสิทธิ์ §9 | CD-P52-O4 F5 |
 | e | **ผูกเครื่องขายจากคุกกี้ลงนามเท่านั้น** ทั้งขาย · คืนเงิน · เงินสดเข้าออก · กะ · ซิงก์ออฟไลน์ · snapshot (c81988ad · b4c05ec9 · 1ab99b10 · 0de07d33 · 14fd873c · c27ea9cc) — `src/lib/modules/pos/device-request.ts:4`: ไม่มีคุกกี้ + สาขามีเครื่อง ACTIVE ≥ 1 = `DEVICE_NOT_PAIRED` (409 ที่ `src/app/api/pos/sync/route.ts:67`) · ไม่มีคุกกี้ + สาขาไม่มีเครื่องเลย = ทางเดิมแบบไม่มีเครื่อง · จับคู่ต้องมี `POS_DEVICE_KEY` (`src/lib/modules/pos/device-cookie.ts:47` `DEVICE_KEY_UNSET`) · หน้ากะอ่านเครื่องจากคุกกี้เท่านั้น ⇒ ไม่มีกุญแจ = เปิดกะจากหน้ากะไม่ได้ · ปิดกะไม่มีคุกกี้ได้เฉพาะผู้มี `pos.shift.manage` + audit `pos.shift.close.override` (`src/lib/modules/pos/device.ts:392`) · ตอน deploy ตาราง PosDevice ว่าง ⇒ ทุกสาขาอยู่ทางไม่มีเครื่อง จนกว่าจะลงทะเบียนเครื่องแรก | คิวรี (e) — **หลัง migrate** (ตารางใหม่): สาขาที่มีเครื่อง ACTIVE | ⛔ GO-3e รับทราบ + GO-1 (กุญแจ) + GO-15 (จับคู่ทุกเครื่องก่อนบิลแรก) | W40 · CD-P61-R2 |
+| f | **ระบบ POS ที่ `registerV2 = true` อยู่แล้วได้หน้าขาย V2 ทันทีที่ merge** (R2-F2) — หน้าขาย V2 อ่าน `PosProduct` (`src/lib/modules/pos/register.ts:829`) ซึ่งว่างจนกว่า backfill §8.1 จะรัน · และ `shift.required.register` ไม่ตั้ง = บังคับเปิดกะ (`src/lib/modules/pos/shift.ts:48-55`) จนกว่า §8.5 · ถ้า backfill ทำหลัง merge ตามลำดับปกติ ร้านนั้นขายไม่ได้ตลอดรอบ dry-run → TG → "ทำ" (หลายชั่วโมงได้) | คิวรี (f) — ระบบที่ `registerV2 = true` (= K2 ของ `--counts`) · QC4 = 2 · prod รู้ที่ GO-6 | ⛔ GO-3f เลือกทาง (ถ้า K2 > 0): **(1) ค่าแนะนำ** ทำ §8.1–8.5 เฉพาะร้านเหล่านั้น **ระหว่าง GO-10 กับ GO-12** (GO-11b · เขียนแค่ตารางใหม่ · คอลัมน์เชื่อม `posProductId` · คีย์ settings ที่โค้ด main ไม่อ่าน) แล้วรัน `--verify` ซ้ำหลัง GO-12 (การแก้ของเดิมระหว่างนั้นทิ้ง drift ได้) · **(2)** ปิด `registerV2` ของระบบเหล่านั้นก่อน merge (SQL ข้างล่าง · ⛔ เขียน) แล้วเปิดคืนหลัง backfill · ทางที่เลือกต้องซ้อมใน W31 | R2-F2 · P1.9 |
 
 ส่งไปพร้อม merge ด้วย (ไม่ใช่พฤติกรรมของประตู แต่เจ้าของต้องรับ — §1 แถว 1.16–1.19): **W37** (แอ็กชันคลังเขียนแถวแคตตาล็อก POS ทุกสาขาโดยไม่ผ่านด่านแถว) · **W38** (อัตราค่าคอมฯ หลังคีย์อ่าน `hr.payroll.read`) · **W39/W41** (มัดจำ — ข้อ b) · **W19** (เก็บสลิป) · **W40** (กุญแจเครื่อง — ข้อ e).
 
@@ -103,6 +105,8 @@ SELECT DISTINCT t.slug AS tenant_taking_deposits FROM (SELECT "tenantId" FROM "B
 SELECT t.slug AS tenant, k.name AS key_name, k."lastUsedAt" FROM "ApiKey" k JOIN "Tenant" t ON t.id = k."tenantId" WHERE k."revokedAt" IS NULL AND (k."expiresAt" IS NULL OR k."expiresAt" > now()) AND k."systemId" IS NULL AND k."scopesJson" = '[]'::jsonb ORDER BY k."lastUsedAt" DESC NULLS LAST;
 -- (d) MANAGER ที่ไม่ใช่ "*" ในร้านที่มี POS active — ใช้บัญชีเครดิต/สมุดทิปไม่ได้
 SELECT t.slug AS tenant, count(*) AS managers_not_star FROM "Membership" m JOIN "Tenant" t ON t.id = m."tenantId" WHERE m.role::text = 'MANAGER' AND m."acceptedAt" IS NOT NULL AND NOT (m."unitAccess" @> '["*"]'::jsonb) AND EXISTS (SELECT 1 FROM "AppSystem" s WHERE s."tenantId" = m."tenantId" AND s.type = 'POS' AND s.active) GROUP BY 1 ORDER BY 1;
+-- (f) ระบบ POS ที่ registerV2 = true อยู่แล้ว (= K2) — ได้หน้าขาย V2 ทันทีที่ merge ⇒ ทาง GO-3f
+SELECT t.slug AS tenant, t.id AS tenant_id, s.id AS system_id, s.name, s.active FROM "AppSystem" s JOIN "Tenant" t ON t.id = s."tenantId" WHERE s.type = 'POS' AND (s."settings"->'pos'->'registerV2') = 'true'::jsonb ORDER BY 1, 3;
 ROLLBACK;
 SQL
 # ⛔ GO-15 (หลัง migrate · ก่อนจับคู่) — (e) สาขาที่มีเครื่อง ACTIVE (ตาราง PosDevice เป็นของใหม่ — ก่อน migrate คิวรีนี้ error "relation does not exist" = 0 เครื่อง)
@@ -112,7 +116,23 @@ SELECT t.slug AS tenant, bu.slug AS unit, count(*) AS active_devices FROM "PosDe
 ROLLBACK;
 SQL
 ```
-คิวรีทุกตัวข้างบนรันผ่านบน QC4 แล้ว (24 ต.ค. · อ่านอย่างเดียว · ไม่มี error) — prod ใช้ schema ของ main ซึ่งมีทุกคอลัมน์ที่คิวรี (a)–(d) อ้าง.
+คิวรีทุกตัวข้างบนรันผ่านบน QC4 แล้ว (24 ต.ค. · อ่านอย่างเดียว · ไม่มี error) — prod ใช้ schema ของ main ซึ่งมีทุกคอลัมน์ที่คิวรี (a)–(d) · (f) อ้าง.
+
+ทาง (2) ของข้อ f (เฉพาะเมื่อเจ้าของเลือก · เขียน prod ตรง ไม่มี AuditLog ⇒ จดลงบันทึกเอง · แทน `<system-id>` ด้วย id จากคิวรี (f)):
+```bash
+# ⛔ GO-3f-2 · ปิด registerV2 ก่อน merge — ผลต้องเป็น UPDATE <จำนวนระบบที่ใส่> · ไม่ตรง = พิมพ์ ROLLBACK; แทน COMMIT;
+psql "$PROD_DIRECT_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+BEGIN;
+UPDATE "AppSystem" SET "settings" = jsonb_set("settings", '{pos,registerV2}', 'false'::jsonb), "updatedAt" = now() WHERE type = 'POS' AND id IN ('<system-id>') AND ("settings"->'pos'->'registerV2') = 'true'::jsonb;
+COMMIT;
+SQL
+# ⛔ GO-3f-2 (คืน · หลัง §8.1–8.5 ของร้านนั้นครบและ --verify = 0) — คำสั่งเดียวกันแต่ 'true' และเงื่อนไข = 'false'
+psql "$PROD_DIRECT_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+BEGIN;
+UPDATE "AppSystem" SET "settings" = jsonb_set("settings", '{pos,registerV2}', 'true'::jsonb), "updatedAt" = now() WHERE type = 'POS' AND id IN ('<system-id>') AND ("settings"->'pos'->'registerV2') = 'false'::jsonb;
+COMMIT;
+SQL
+```
 
 ## 2. รายการ migration ของ POS (ลำดับ timestamp ตามที่ commit · 37 ไฟล์)
 
@@ -308,10 +328,11 @@ env -C /root/pos-deploy bash scripts/iso.sh pnpm exec prisma --version
 # ⛔ GO-5 (ต่อ) · ตั้งตัวแปร URL ของ prod (พิมพ์/วางค่า direct URL เอง · ไม่แสดงบนจอ · ไม่ลงประวัติ)
 read -rsp 'PROD_DIRECT_URL (direct · ไม่ใช่ -pooler): ' PROD_DIRECT_URL; echo
 case "$PROD_DIRECT_URL" in *-pooler*) echo "🔴 เป็น -pooler — หยุด"; unset PROD_DIRECT_URL;; *options=*) echo "🔴 URL มี options= อยู่แล้ว — หยุด ถามผู้คุม"; unset PROD_DIRECT_URL;; esac
+[ -n "${PROD_DIRECT_URL:-}" ] || { echo "🔴 หยุด — URL ว่าง/ถูกปฏิเสธ · shell นี้จะปิด · เปิด shell ใหม่แล้วเริ่มที่บรรทัด read ข้างบน (worktree มีแล้ว ข้าม worktree add)"; exit 1; }
 [ -n "${PROD_DIRECT_URL:-}" ] && case "$PROD_DIRECT_URL" in *\?*) PROD_MIGRATE_URL="${PROD_DIRECT_URL}&options=-c%20lock_timeout%3D5s";; *) PROD_MIGRATE_URL="${PROD_DIRECT_URL}?options=-c%20lock_timeout%3D5s";; esac
 printf '%s\n' "${PROD_DIRECT_URL:-}" | sed -E 's#^[^@]*@([^.:/]*).*#host label: \1#'
 ```
-ผลที่ต้องเห็น: `rev-parse` = `<PR_HEAD_SHA>` ตรงตัว · `status --porcelain` ไม่พิมพ์อะไร · `grep -c '^\.env$'` = `0` · `pnpm install` จบ exit 0 (postinstall รัน `prisma generate` · ต้องมีเน็ต + พื้นที่ดิสก์ราว 2 GB — ดู `df -h /root` ก่อน) · `prisma --version` บรรทัด `prisma` = `7.8.x` · `read` ไม่แสดงค่าที่พิมพ์ · `case` ไม่พิมพ์ 🔴 · บรรทัด `host label:` ขึ้นต้นด้วย mark ของ prod (= `PROD_HOST_MARK` ใน `scripts/qc-env-guard.mts`) และไม่มี `-pooler` — พิมพ์แค่ป้าย host ไม่พิมพ์รหัสผ่าน.
+ผลที่ต้องเห็น: `rev-parse` = `<PR_HEAD_SHA>` ตรงตัว · `status --porcelain` ไม่พิมพ์อะไร · `grep -c '^\.env$'` = `0` · `pnpm install` จบ exit 0 (postinstall รัน `prisma generate` · ต้องมีเน็ต + พื้นที่ดิสก์ราว 2 GB — ดู `df -h /root` ก่อน) · `prisma --version` บรรทัด `prisma` = `7.8.x` · `read` ไม่แสดงค่าที่พิมพ์ · `case` ไม่พิมพ์ 🔴 · บรรทัด `[ -n … ] || exit` ไม่ทำงาน (ถ้าทำงาน shell ปิด = หยุดตามตั้งใจ · R2-F7) · บรรทัด `host label:` ขึ้นต้นด้วย mark ของ prod (= `PROD_HOST_MARK` ใน `scripts/qc-env-guard.mts`) และไม่มี `-pooler` — พิมพ์แค่ป้าย host ไม่พิมพ์รหัสผ่าน.
 หลังจบงานทั้งหมด: `unset PROD_DIRECT_URL PROD_MIGRATE_URL` · `git -C /root/projects/shark-pos worktree remove /root/pos-deploy` (หลังเก็บผลลงบันทึกแล้ว).
 
 ### 4.1 ก่อนกด (ขั้น 1 ของ §0)
@@ -339,14 +360,29 @@ env -C /root/pos-deploy bash scripts/iso.sh env DIRECT_URL="$PROD_MIGRATE_URL" D
 # ⛔ GO-10 · verify ข้อ M1 M2 T1 C1 E1 I1 ต้อง 🟢 · X1 🟢 (ทาง ก/ง หลัง §5.1) หรือ 🟡 เฉพาะ one_open_session_per_table (สร้างหลัง merge §5.2) · exit 0
 env -C /root/pos-deploy bash scripts/iso.sh env ALLOW_PROD_AUDIT=1 DATABASE_URL="$PROD_DIRECT_URL" pnpm exec tsx scripts/verify-prod-pos.mts
 ```
+```bash
+# ⛔ GO-10 · จด SHA ของ origin/main ตอนผ่านด่าน (ใช้ที่ GO-12 · R2-F1) — shell เดียวกัน
+git -C /root/projects/shark-pos fetch origin
+MAIN_AT_GO10=$(git -C /root/projects/shark-pos rev-parse origin/main); echo "MAIN_AT_GO10=$MAIN_AT_GO10"
+```
 - ไม่เขียวข้อใด = **ห้าม merge** · แก้ตาม §4.4 หรือเรียกผู้คุม.
+- ⛔ GO-11b (ถ้า K2 > 0 · §1A ข้อ f ทาง 1): ทำ §8.1–8.5 ของร้านในคิวรี (f) ตอนนี้ (ก่อน GO-12) · ร้านอื่นทำหลัง merge ตามปกติ.
 - ⛔ GO-11 (ถ้ามีหลายวัน) ถ้าเว้นช่วงระหว่าง GO-10 กับ merge: ทุกคน **ห้าม merge PR อื่นที่มี migration** เข้า main ระหว่างนั้น (Vercel จะ migrate ไฟล์นั้นเองตอน build).
 
 ### 4.3 merge (ขั้น 4 ของ §0) — Vercel ทำอะไร
+0. ⛔ GO-12 (ก่อนกด · **ด่านแช่แข็ง** R2-F1): ตั้งแต่ GO-5 จนกด merge `session/pos` รับได้แค่ commit ที่แตะ ledger/ หรือ docs/ — commit อื่นบน PR (หรือ migration ใหม่บน main) = ทำ GO-9/GO-10 ใหม่ที่หัวใหม่ (`<PR_HEAD_SHA>` ใหม่ · worktree ใหม่):
+   ```bash
+   # ⛔ GO-12 · อ่าน git อย่างเดียว · สองบรรทัด git ต้องไม่พิมพ์อะไร · verify ต้อง FAIL 0 (Q3 เตือน = มี commit นอก ledger/docs หลัง SHA ⇒ หยุด ถามผู้คุม)
+   git -C /root/projects/shark-pos fetch origin
+   git -C /root/projects/shark-pos diff --stat <PR_HEAD_SHA> origin/session/pos -- prisma src package.json pnpm-lock.yaml vercel.json scripts/vercel-build.sh
+   git -C /root/projects/shark-pos log --oneline "$MAIN_AT_GO10"..origin/main -- prisma/migrations
+   env -C /root/pos-deploy bash scripts/iso.sh pnpm exec tsx scripts/verify-prod-pos.mts --pr-freeze <PR_HEAD_SHA> --main-at "$MAIN_AT_GO10"
+   ```
 1. ⛔ GO-12 กด merge PR บน GitHub (W-next-11) · Vercel เริ่ม build production ของ `main`.
 2. `scripts/vercel-build.sh:21-25` บน Vercel: `prisma migrate deploy` ต้องพิมพ์ `No pending migrations to apply.` → `prisma migrate status` = up to date → `tsc --noEmit` → `next build` → Vercel promote อัตโนมัติ.
 3. ดู log ของ build ใน Vercel dashboard (Deployments › build ล่าสุด › Build Logs) — ค้นคำ `[vercel-build]` ต้องเห็น 3 บรรทัดตามลำดับ (`production → prisma migrate deploy ก่อน build` · `migrate ผ่าน → ตรวจซ้ำ` · `tsc --noEmit`).
 4. ทางล้ม: build แดงที่ขั้น migrate (เช่นมีไฟล์ค้างเพราะข้าม GO-10) ⇒ โค้ดเก่ายังเสิร์ฟ (ปลอดภัย) แต่ build ถัดไปทุกครั้งจะแดงจนกว่าแก้ ⇒ ทำ §4.4 **จาก VPS** แล้วกด Redeploy ใน Vercel · build แดงที่ `tsc`/`next build` ⇒ ฐานไม่ต้องย้อน (เพิ่มอย่างเดียว) · แก้โค้ดแล้ว deploy ใหม่ (forward fix).
+- ผู้คุม (ไม่ใช่เจ้าของ · R2-F5): การ์ด schema (`@@index` + `@@unique` ของ CD-P61-P4) เปลี่ยน type ของ Prisma client ที่ generate ⇒ ด่านของผู้คุมก่อนเปิด PR ต้องมี `prisma generate` + `tsc --noEmit` เต็มบน session/pos ที่ merge แล้ว (gates130 บนทรี c ทำทั้งสอง) — ไม่งั้น type error โผล่ครั้งแรกที่ `tsc` ของ Vercel (build แดง · โค้ดเก่ายังเสิร์ฟ · แก้ไปข้างหน้า).
 5. หลัง promote: ⛔ GO-13 §7 (crontab VPS) · ⛔ GO-14 §5.2 · ⛔ GO-15 คิวรี (e) ของ §1A + จับคู่เครื่องขาย (§9).
 
 ### 4.4 ล้มกลางทาง (P3018 → P3009)
@@ -355,7 +391,7 @@ env -C /root/pos-deploy bash scripts/iso.sh env ALLOW_PROD_AUDIT=1 DATABASE_URL=
 3. ไฟล์ `stmt`: **ต้อง**รัน SQL ถอยกลับของไฟล์นั้น (ภาคผนวก ก) ทีละคำสั่ง (psql autocommit) ก่อนข้อ 4 — ไฟล์ stmt **รันซ้ำไม่ได้ทั้งไฟล์** (20 ไฟล์ (นับใหม่ใน fix1 — R1 นับ 19) มี `CREATE TYPE` / `CREATE TABLE` / `ADD COLUMN` / `CREATE INDEX` แบบไม่มี IF NOT EXISTS เช่น `pos_p19_shift` · `pos_p111_online_receipt` · `pos_p34_offline` · R1 F7) · คำสั่งถอยกลับทุกตัวเป็น `IF EXISTS` ⇒ รันซ้ำได้.
 4. ⛔ GO-9 (ซ้ำ) `env -C /root/pos-deploy bash scripts/iso.sh env DIRECT_URL="$PROD_MIGRATE_URL" DATABASE_URL="$PROD_MIGRATE_URL" pnpm exec prisma migrate resolve --rolled-back <migration_name>`
 5. แก้เหตุ (เช่น รอ transaction ยาวจบ · §3.4) → ⛔ deploy ใหม่ (§4.2) → GO-10 อีกครั้ง.
-6. เหตุร้ายแรงที่แก้ไม่ได้ในหน้าต่าง: ⛔ ย้อนฐานด้วย Neon restore จาก branch ของ GO-8 (ยังไม่ merge ⇒ โค้ดเดิมไม่รู้จักของใหม่ — ปลอดภัย) แล้วเลื่อนหน้าต่าง.
+6. เหตุร้ายแรงที่แก้ไม่ได้ในหน้าต่าง: ⛔ ย้อนฐานด้วย Neon restore จาก branch ของ GO-8 (ยังไม่ merge ⇒ โค้ดเดิมไม่รู้จักของใหม่) แล้วเลื่อนหน้าต่าง · 🔴 **restore ทิ้งทุกการเขียนหลังจุด GO-8** (บิล · ออเดอร์ · สมาชิก · บัญชี ของทุกโมดูล) ⇒ ใช้ได้เฉพาะช่วง **ก่อนมีการขาย/การเขียนใด ๆ หลัง GO-8** (หน้าต่างนอกเวลาขาย) · มีการเขียนแล้ว = ห้าม restore · แก้ไปข้างหน้าตามข้อ 3–5 (R2-F6).
 
 ### 4.5 ซ้อมก่อนของจริง (W31)
 - ค่าปริยาย W31: ⛔ เจ้าของอนุญาต branch ที่คัดลอกจาก prod เฉพาะเมื่อ **ลบภายในวันเดียวกันและไม่ส่งออกข้อมูล** · ไม่อนุญาต ⇒ ซ้อมบน QC4 เท่านั้น (พิสูจน์ได้แค่บางข้อ).
@@ -468,12 +504,14 @@ crontab -l | grep -c 'crm-cron.mts'
 ```
 - `pull --ff-only` ล้ม (checkout มีของค้าง/แยกทาง) = หยุด ถามผู้คุม (R4 ของ `--crons` บอกจำนวนไฟล์ค้าง) · `crontab -l | grep -c` ต้องได้ `3`.
 - ⚠️ สมมติฐาน: บรรทัด crontab ใช้ lock file ตามหัวไฟล์ `scripts/crm-cron.mts:16-18` (`/tmp/shark-crm-{minute,hourly,daily}.cron.lock` — `--crons` ตรวจแค่เวลา/โหมด/path ไม่พิมพ์ส่วนอื่นของบรรทัด) · ถ้าไม่ตรง flock ข้างบนจะไม่กันรอบที่ชน (ผลเสีย = รอบนั้นล้มระหว่าง install · รอบถัดไปปกติ).
-- ⚠️ สมมติฐาน: checkout นี้ใช้ `.env` ของตัวเอง (= prod · CRM-C6-REGISTER 1.3) และ `pnpm install --frozen-lockfile` ของ main ผ่านบนเครื่องนี้ (node ≥ 24 · §1 แถว 1.8).
+- ⚠️ สมมติฐาน: checkout นี้ใช้ `.env` ของตัวเอง (= prod · CRM-C6-REGISTER 1.3) และ `pnpm install --frozen-lockfile` ของ main ผ่านบนเครื่องนี้ (node v20.20.2 · `@zxing/library` แค่เตือน engines · §1 แถว 1.8 · R2-F3).
 - รอบชั่วโมงถัดไป (นาทีที่ 7): `verify-prod-pos.mts` ข้อ S9 ต้องแสดง `ok ล่าสุด` ของทั้งสองงานภายใน 2 ชม. (§10) · hourly ของ Vercel: OpsEvent/บันทึกท้ายรอบมี `posShiftsForced` ≥ 0.
 
 ## 8. backfill (ลำดับ · ทีละร้าน · dry-run ก่อนเสมอ)
 
 ลำดับ (มติ P6 §10-4 · คงไว้): **catalog → `--verify` = 0 → `backfillWebPrices` → ข้อมูล P1.9 → ธง**.
+
+**เมื่อไร**: ปกติหลัง merge (GO-16…GO-19) · ยกเว้นร้านในคิวรี (f) ของ §1A (`registerV2 = true` อยู่แล้ว · K2 > 0) ที่เจ้าของเลือกทาง 1 = ทำขั้น 1–5 ของร้านเหล่านั้น **ระหว่าง GO-10 กับ GO-12** (GO-11b · ใช้ `--tenant=<tenant_id>` ของคิวรี f) แล้วรันขั้น 3 (`--verify`) ซ้ำหลัง GO-12 · `--verify` ≠ 0 หลัง merge = หยุด ถามผู้คุม (R2-F2).
 
 ⛔ ด่านเดียวของสคริปต์เขียนทั้ง 3 ตัว (CD-P61-R3 · R1 F3 · ทุกคำสั่งในหัวข้อนี้ = เจ้าของสั่ง) = `scripts/lib/pos-prod-writer-guard.mts`: URL มาจาก `env DATABASE_URL="$PROD_DIRECT_URL" DIRECT_URL="$PROD_DIRECT_URL"` หลัง `iso.sh` เท่านั้น (ไม่โหลด `.env` / `BACKFILL_ENV_FILE` ใด ๆ — เดิมโหลด `.env` ของทรีแบบเงียบ) · host ไม่อยู่ใน allowlist = หยุด exit 4 ก่อนต่อฐาน · prod ต้อง `ALLOW_PROD_BACKFILL=1` + `--tenant=<id>` (ซ้ำได้) หรือ `--all` · รันจริงต้องมี `--dry-run` ของ host + ชุดร้านเดียวกันภายใน 24 ชม. (ไฟล์ `.qc-shots/pos/<สคริปต์>-dryrun-<key>.json` ใน worktree deploy) · ทดสอบตัวเอง `pnpm exec tsx scripts/lib/pos-prod-writer-guard.mts --self-test` (21 กรณี). **ทุกคำสั่งต้องเห็นบรรทัด `[target] <สคริปต์> · role=prod · host=<ป้ายเดียวกับ --counts>…` ก่อนตอบ "ทำ"** — role ไม่ใช่ prod = หยุด.
 
@@ -581,8 +619,8 @@ exit 0 = ไม่มี FAIL · ผล `JSON_SUMMARY` ทุกรอบวา�
 8. ⛔ GO-8 สร้าง Neon branch จุดย้อนกลับ · แล้วขั้นก่อน deploy ของทาง ข/ค/ง (GO-8b/8c/8d) — §4.1 · §3.2.
 9. ⛔ GO-9 `prisma migrate status` → `prisma migrate deploy` จาก VPS (§4.2) · ทาง ข: GO-9b ทาไฟล์มือ · ทาง ง/ทุกทาง: GO-9d §5.1 · ล้ม: `migrate resolve --rolled-back` (§4.4).
 10. ⛔ GO-10 ด่านแข็ง: `migrate status` up to date + `verify-prod-pos.mts` M1/M2/T1/C1/E1/I1 เขียว — ไม่เขียว ห้าม merge.
-11. ⛔ GO-11 ห้าม merge PR อื่นที่มี migration ระหว่าง GO-10 กับ GO-12.
-12. ⛔ GO-12 merge PR `session/pos` → `main` (W-next-11) · ดู log `[vercel-build]` "No pending migrations to apply." — §4.3.
+11. ⛔ GO-11 ห้าม merge PR อื่นที่มี migration ระหว่าง GO-10 กับ GO-12 · จด `MAIN_AT_GO10` · ⛔ GO-11b ถ้า K2 > 0: §8.1–8.5 ของร้านในคิวรี (f) ก่อน merge (หรือ GO-3f-2 ปิดธง) — §1A ข้อ f.
+12. ⛔ GO-12 ด่านแช่แข็ง `verify-prod-pos.mts --pr-freeze <PR_HEAD_SHA> --main-at "$MAIN_AT_GO10"` FAIL 0 → merge PR `session/pos` → `main` (W-next-11) · ดู log `[vercel-build]` "No pending migrations to apply." — §4.3.
 13. ⛔ GO-13 เลื่อน checkout ของ crontab VPS + `verify-prod-pos.mts --crons --post-merge` — §7 (W34 · CD-P61-R6).
 14. ⛔ GO-14 นับ session ซ้ำ = 0 → `one_open_session_per_table` CONCURRENTLY → ตรวจ 15 แถว — §5.2–§5.3.
 15. ⛔ GO-15 คิวรี (e) + จับคู่เบราว์เซอร์ทุกเครื่องขายก่อนบิลแรก — §1A · §9 (W40 · CD-P61-R2).
@@ -1136,3 +1174,11 @@ RESET lock_timeout;
 - F7: ไฟล์ stmt รันซ้ำไม่ได้ — ถอยกลับก่อน resolve บังคับ · F8: promote build เก่าได้เฉพาะก่อนเขียน V2 + คิวรีตรวจ · F9: `lock_timeout` ผ่าน URL + หลักฐาน QC4 + ขั้นพิสูจน์ · แถว 1.4 ตัด · W34 · F10: worktree สะอาดที่ `<PR_HEAD_SHA>` · F11: แถว 1.13–1.21 (W37 W38 W39 W41 W19 W40 W33 W34) · F14: อ้างบรรทัดใหม่ · F15: ตรวจ index 15 แถว (แถวที่ไม่มีก็แสดง) · F16: role `rehearsal` = กติกา prod.
 - P4: index มือ 14 ตัวเป็น `@@index` + migration #37 no-op · unique `PosProductChannelPrice_product_code_unit_key` ประกาศด้วยชื่อเดิม (migrate diff ของ Prisma 7.8 เห็น index นี้ — คอมเมนต์เดิมใน schema ว่า "มองไม่เห็น" ไม่จริง) · migration 36 → 37 ไฟล์.
 
+### รอบแก้ 2 (P6.1 fix2 · 24 ต.ค. 2026 · R1 รอบ 2 R2-F1…F7)
+- R2-F1: ด่านแช่แข็งที่ GO-12 (`git diff --stat` ของ prisma/src/package/lock/vercel/vercel-build ว่าง + ไม่มี migration ใหม่บน main ตั้งแต่ `MAIN_AT_GO10`) + `verify-prod-pos.mts --pr-freeze` — §4.2 · §4.3 ข้อ 0 · §11.
+- R2-F2: §1A ข้อ f (ระบบ `registerV2 = true` · คิวรี f · ทาง 1 backfill ก่อน merge / ทาง 2 ปิดธง) + §8 "เมื่อไร" + GO-11b.
+- R2-F3: แถว 1.8 + สมมติฐาน §7 = node v20.20.2 / pnpm 10.33.0 ของ VPS (เตือน engines เท่านั้น).
+- R2-F4: ด่าน host ของ verify และสคริปต์เขียนเทียบทั้ง host (label `<mark>-<id>` ± `-pooler` + ท้าย `.neon.tech`) · สคริปต์เขียนปฏิเสธ `-pooler` บน prod/ซ้อม · self-test เพิ่มกรณีปลอมท้าย host / IP / ตัวพิมพ์ใหญ่ / PGHOSTADDR / pooler.
+- R2-F5: §4.3 — `prisma generate` + `tsc` เต็มเป็นด่านของผู้คุม (การ์ด schema เปลี่ยน type ของ client).
+- R2-F6: §4.4 ข้อ 6 — restore จาก GO-8 ทิ้งทุกการเขียนหลังจุดนั้น ⇒ ใช้ได้ก่อนมีการขายเท่านั้น.
+- R2-F7: §4.0 — URL ว่าง/ถูกปฏิเสธ = `exit` (หยุด) ไม่เดินต่อ.
