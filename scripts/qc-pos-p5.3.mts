@@ -92,6 +92,8 @@ const DEFS: Def[] = [
   { id: "P5.3-N3", mode: "static", title: "self-test: baseAllowed ปฏิเสธ https://shark.in.th · :3215 · host อื่น — รับ 127.0.0.1/localhost · ตัดสิน S3 แดงเมื่อมี .env/host prod" },
   { id: "P5.3-N4", mode: "static", title: "self-test: ตัดสิน S4 แดงเมื่อ mode forced / ไม่มีแถว" },
   { id: "P5.3-N5", mode: "static", title: "self-test: กติกาสองรอบติด (เกิน+เกิน = แดง · เกินครั้งแรก = 🟡 · วัดไม่ได้ = แดง) · ความชัน N+1 (30/49/229 แดง · 30/32/33 เขียว)" },
+  { id: "P5.3-S5", mode: "static", title: "W-next-6 ทางลูกข่าย (CD-P53-O14/O14b · ORACLE-EDIT ผู้คุม 24.10): onScannedCode ถามดัชนีบาร์โค้ด (lookup → รอ loading → applyScan ซิงโครนัส) ก่อน registerScanAction · hook ไม่ import ฝั่งเซิร์ฟเวอร์ · registerBarcodeIndex + GET route (ETag/304/429) มีจริง + cap" },
+  { id: "P5.3-N6", mode: "static", title: "self-test: ตัดสิน S5 แดงเมื่อ onScannedCode ไม่ถามดัชนี / hook import prisma / ไม่มี registerBarcodeIndex (route GET + ETag/304 + 429 ต้องมี · CD-P53-O15)" },
   { id: "P5.3-B1", mode: "measure", title: "B1 cold TTI p50/p95 (รายงาน)" },
   { id: "P5.3-B2", mode: "measure", title: "B2 warm TTI p95 ≤ 1000 ms" },
   { id: "P5.3-B2S", mode: "measure", title: "B2S registerCatalog ในโปรเซส (รายงาน + query)" },
@@ -199,6 +201,45 @@ export function judgeGates(manifestText: string | null, oracleSrc: string | null
   if (rows[0].needs !== undefined) p.push(`needs ${rows[0].needs} (ใบนี้ไม่มี seed ของด่าน)`);
   return p;
 }
+/** CD-P53-O14/O14b (ORACLE-EDIT ผู้คุม 24.10): ทางสแกนเครื่องคีย์บอร์ดต้องถามดัชนีบาร์โค้ดฝั่งลูกข่ายก่อนเซิร์ฟเวอร์ (W-next-6 "register (client) path") */
+export function judgeClientScan(screenSrc: string | null, hookSrc: string | null, registerSrc: string | null, routeSrc: string | null, sharedSrc: string | null): string[] {
+  const p: string[] = [];
+  if (screenSrc === null) return ["ไม่มีไฟล์ RegisterScreen.tsx"];
+  const start = screenSrc.indexOf("const onScannedCode = async (code: string) => {");
+  if (start < 0) p.push("RegisterScreen ไม่มี onScannedCode");
+  else {
+    const body = screenSrc.slice(start, screenSrc.indexOf("\n  };", start) + 5);
+    const lookup = body.indexOf(".lookup(code)");
+    const action = body.indexOf("registerScanAction(");
+    if (lookup < 0) p.push("onScannedCode ไม่ถามดัชนี (.lookup(code))");
+    else if (action < 0) p.push("onScannedCode ไม่มี registerScanAction( สำรอง");
+    else if (lookup > action) p.push("onScannedCode ถามดัชนีหลังเรียกเซิร์ฟเวอร์");
+    if (!/\.loading\(\)/.test(body)) p.push("onScannedCode ไม่รอดัชนีชุดแรกที่กำลังดึง (loading())");
+    if (!/return applyScan\(\{ ok: true, match: "one", product: hit \}, code, "scan"\)/.test(body)) p.push("hit ไม่ใส่ตะกร้าแบบซิงโครนัส (applyScan one)");
+    if (!/soldOutReason == null/.test(body)) p.push("hit ไม่ตรวจว่าขายได้ตามที่แคช (soldOutReason)");
+    if (!/billGen\.current/.test(body)) p.push("onScannedCode ไม่ทิ้งผลเมื่อบิลเปลี่ยนรุ่น");
+  }
+  if (hookSrc === null) p.push("ไม่มีไฟล์ use-barcode-index.ts");
+  else {
+    const imports = hookSrc.split("\n").filter((l) => /^import\b/.test(l)).join("\n");
+    if (/(register-actions|prisma|server-only|next\/|@\/lib\/core|offline-sync)/.test(imports)) p.push("hook import ฝั่งเซิร์ฟเวอร์");
+    if (!/REGISTER_BARCODE_INDEX_TTL_MS/.test(hookSrc)) p.push("hook ไม่ใช้ TTL กลาง");
+    if (/indexedDB|localStorage|sessionStorage/.test(hookSrc)) p.push("hook เก็บลง storage (ต้องหน่วยความจำอย่างเดียว)");
+  }
+  if (registerSrc === null || !/export async function registerBarcodeIndex\(/.test(registerSrc)) p.push("register.ts ไม่มี registerBarcodeIndex");
+  else if (!/REGISTER_BARCODE_INDEX_MAX/.test(registerSrc)) p.push("registerBarcodeIndex ไม่มี cap");
+  // CD-P53-O15 (fix1c): ดึงผ่าน GET route (ขนานกับ server action ที่เรียงคิว) — ไม่ใช่ action · ETag/304 · ห้าม cache สาธารณะ
+  if (routeSrc === null) p.push("ไม่มี route src/app/api/pos/register/barcode-index/route.ts");
+  else {
+    if (!/export async function GET\b/.test(routeSrc)) p.push("route ไม่มี GET");
+    if (!/registerBarcodeIndex\(/.test(routeSrc)) p.push("route ไม่เรียก registerBarcodeIndex");
+    if (!/ETag/.test(routeSrc) || !/304/.test(routeSrc)) p.push("route ไม่มี ETag/304");
+    if (!/429/.test(routeSrc)) p.push("route ไม่มี 429 (throttle การสร้างชุดเต็ม)");
+  }
+  if (hookSrc !== null && !/REGISTER_BARCODE_INDEX_PATH/.test(hookSrc) && !/barcode-index/.test(hookSrc)) p.push("hook ไม่ดึงผ่าน route barcode-index");
+  if (sharedSrc === null || !/export const REGISTER_BARCODE_INDEX_MAX = 20_000;/.test(sharedSrc)) p.push("register-shared.ts ไม่มี REGISTER_BARCODE_INDEX_MAX = 20_000");
+  return p;
+}
 export type Verdict = "green" | "amber" | "red" | "report" | "error";
 /** มติ 8: gate เกินงบสองรอบติด = แดง · รอบแรกที่เกิน = amber · วัดไม่ได้ = error (แดง) · ไม่ใช่ gate = report */
 export function verdict(gate: boolean, budget: number | null, value: number | null, prevOver: boolean | null): Verdict {
@@ -296,6 +337,18 @@ function runStatic(): void {
   ];
   const slopes = [slopeOf(49, 229) >= 0.5, slopeOf(32, 33) < 0.5];
   chk("P5.3-N5", vt.every(([a, b]) => a === b) && slopes.every(Boolean), "6 กรณี verdict + 2 กรณีความชันตรง", `${vt.map(([a, b]) => (a === b ? "✓" : `${a}≠${b}`)).join(" ")} · slope ${slopes.map((s) => (s ? "✓" : "✗")).join(" ")}`);
+  // CD-P53-O14/O14b (ORACLE-EDIT ผู้คุม 24.10): S5 ทางสแกนลูกข่าย + N6 self-test
+  const F_SCREEN = "src/components/pos/register/RegisterScreen.tsx";
+  const F_HOOK = "src/components/pos/register/use-barcode-index.ts";
+  const s5 = judgeClientScan(readRev(F_SCREEN), readRev(F_HOOK), readRev("src/lib/modules/pos/register.ts"), readRev("src/app/api/pos/register/barcode-index/route.ts"), readRev("src/lib/modules/pos/register-shared.ts"));
+  chk("P5.3-S5", s5.length === 0, "ดัชนีก่อนเซิร์ฟเวอร์ · hook บริสุทธิ์ · โมดูล+action+cap", joinP(s5));
+  const hs = (f: string) => (existsSync(`${ROOT}/${f}`) ? readFileSync(`${ROOT}/${f}`, "utf8") : null);
+  const hScreen = hs(F_SCREEN), hHook = hs(F_HOOK), hReg = hs("src/lib/modules/pos/register.ts"), hAct = hs("src/app/api/pos/register/barcode-index/route.ts"), hSh = hs("src/lib/modules/pos/register-shared.ts");
+  const n6h = judgeClientScan(hScreen, hHook, hReg, hAct, hSh);
+  const n6a = judgeClientScan(hScreen?.replaceAll(".lookup(code)", ".noLookup(code)") ?? null, hHook, hReg, hAct, hSh);
+  const n6b = judgeClientScan(hScreen, hHook ? `import { prisma } from "@/lib/prisma";\n${hHook}` : null, hReg, hAct, hSh);
+  const n6c = judgeClientScan(hScreen, hHook, hReg?.replace("export async function registerBarcodeIndex(", "export async function registerBarcodeIndexOld(") ?? null, hAct, hSh);
+  chk("P5.3-N6", n6h.length === 0 && n6a.length > 0 && n6b.length > 0 && n6c.length > 0, "head เขียว · ไม่ถามดัชนี/hook prisma/ไม่มีโมดูล แดง", `head ${n6h.length}${n6h.length ? ` (${n6h[0]})` : ""} · ไม่ถาม ${n6a.length} · prisma ${n6b.length} · ไม่มีโมดูล ${n6c.length}`);
   // ข้อมูลประกอบ (ไม่นับ): index บาร์โค้ด — หนี้ P6.1 ตาม catalog.byBarcode D6
   const inv = readRev("prisma/schema/inventory.prisma") ?? "";
   const invModel = /model InvItem \{[\s\S]*?\n\}/.exec(inv)?.[0] ?? "";
