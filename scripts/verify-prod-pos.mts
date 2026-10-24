@@ -11,7 +11,7 @@
 //
 // โหมดเพิ่ม (P6.1 fix1):
 //   --counts  (CD-P61-R5 · R1 F5 · W33) ก่อน migrate ได้: จำนวนแถว (reltuples + count(*) จำกัดเวลา) ของตารางที่ตัดสินกลยุทธ์ index ใน runbook §3.2
-//             + การกระจาย registerV2 + จำนวนที่โดน "พฤติกรรมที่เปลี่ยนตอน deploy โดยไม่มีธง" (runbook §4.5 · CD-P61-R4) — ทุกคิวรีอยู่ใน SAVEPOINT ของตัวเอง
+//             + การกระจาย registerV2 + จำนวนที่โดน "พฤติกรรมที่เปลี่ยนตอน deploy โดยไม่มีธง" (runbook §1A · CD-P61-R4) — ทุกคิวรีอยู่ใน SAVEPOINT ของตัวเอง
 //             ตารางที่ยังไม่มี (ก่อน migrate) = รายงาน "ยังไม่มีตาราง" ไม่ล้ม · อ่านอย่างเดียวเหมือนโหมดอื่น · prod ต้อง ALLOW_PROD_AUDIT=1 · QC4 ใช้ได้
 //   --crons   (CD-P61-R6 · R1 F6 · W34) ไม่แตะ DB: crontab ของเครื่องนี้มีบรรทัด crm-cron ครบ 3 (minute/hourly/daily) ตามหัวไฟล์ scripts/crm-cron.mts ไหม ·
 //             checkout ที่บรรทัดนั้น `cd` เข้าไป อยู่ที่ SHA เดียวกับ origin/main (ref ในเครื่อง — `git fetch` ก่อน) ไหม · มีงาน pos.* ในโค้ดของ checkout นั้นไหม
@@ -197,11 +197,11 @@ function loadSchema(): { models: Map<string, SchemaModel>; enums: Map<string, st
 
 /** index มือของ runbook §5 (CREATE INDEX CONCURRENTLY นอก prisma migrate) — ชื่อตามแบบ prisma เพื่อให้ @@index ในอนาคตไม่ drift */
 export const HAND_INDEXES: readonly { name: string; table: string; cols: string[]; unique?: boolean; where?: string; src: string }[] = [
-  { name: "ShopProduct_posProductId_idx", table: "ShopProduct", cols: ["posProductId"], src: "P1.1a M1 · ecommerce.prisma:29" },
-  { name: "ShopOrderLine_posProductId_idx", table: "ShopOrderLine", cols: ["posProductId"], src: "P1.1a M1 · ecommerce.prisma:71" },
-  { name: "PosSaleLine_productId_idx", table: "PosSaleLine", cols: ["productId"], src: "P1.1a M1 · pos.prisma:186" },
+  { name: "ShopProduct_posProductId_idx", table: "ShopProduct", cols: ["posProductId"], src: "P1.1a M1 · ecommerce.prisma:29 · @@index CD-P61-P4" },
+  { name: "ShopOrderLine_posProductId_idx", table: "ShopOrderLine", cols: ["posProductId"], src: "P1.1a M1 · ecommerce.prisma:72 · @@index CD-P61-P4" },
+  { name: "PosSaleLine_productId_idx", table: "PosSaleLine", cols: ["productId"], src: "P1.1a M1 · pos.prisma:192 · @@index CD-P61-P4" },
   { name: "MenuItem_posProductId_idx", table: "MenuItem", cols: ["posProductId"], src: "P1.1a M1 · restaurant.prisma:187" },
-  { name: "RestaurantOrderItem_productId_idx", table: "RestaurantOrderItem", cols: ["productId"], src: "P1.1a M1 · restaurant.prisma:469" },
+  { name: "RestaurantOrderItem_productId_idx", table: "RestaurantOrderItem", cols: ["productId"], src: "P1.1a M1 · restaurant.prisma:470 · @@index CD-P61-P4" },
   { name: "InvItem_tenantId_barcode_idx", table: "InvItem", cols: ["tenantId", "barcode"], src: "P1.1a notes :369 (byBarcode UNION ขาที่สอง)" },
   { name: "PosSale_shiftId_idx", table: "PosSale", cols: ["shiftId"], src: "P1.9 · pos.prisma:91" },
   { name: "PosSale_refSaleId_idx", table: "PosSale", cols: ["refSaleId"], src: "P1.8 · pos.prisma:100" },
@@ -211,7 +211,7 @@ export const HAND_INDEXES: readonly { name: string; table: string; cols: string[
   { name: "PosSale_crmDealId_idx", table: "PosSale", cols: ["crmDealId"], src: "P3.6 · migration pos_p36_credit:2 (sweepDealIntents รายชั่วโมง)" },
   { name: "PosOrderLine_orderId_idx", table: "PosOrderLine", cols: ["orderId"], src: "TL-6 (HANDOVER-P2 :218)" },
   { name: "PosOrderEvent_orderId_idx", table: "PosOrderEvent", cols: ["orderId"], src: "TL-6 (HANDOVER-P2 :218)" },
-  { name: "one_open_session_per_table", table: "TableSession", cols: ["tableId"], unique: true, where: `"status" = 'OPEN'`, src: "P2.4 มติ Q9 · restaurant.prisma:356 · TL-6" },
+  { name: "one_open_session_per_table", table: "TableSession", cols: ["tableId"], unique: true, where: `"status" = 'OPEN'`, src: "P2.4 มติ Q9 · restaurant.prisma:357 · TL-6 · SQL มืออย่างเดียว (partial)" },
 ];
 
 /** env ที่โค้ด POS อ่าน (E1 ของ qc-pos-p6.1 ตรวจว่าครบ) + กุญแจที่ runbook §6 สั่งตั้ง — พิมพ์ชื่อเท่านั้น */
@@ -250,13 +250,13 @@ const CHECKS: readonly [string, string][] = [
   ["N1", "--self-test: canary — ตาราง/คอลัมน์/index/migration ปลอมต้องถูกรายงานว่าไม่มี และของจริง (PosSale.publicToken · PosSale_publicToken_key) ต้องเจอ"],
   ["V1", "env ที่ POS อ่าน: ตั้ง/ไม่ตั้งในโปรเซสนี้ (ชื่อเท่านั้น · ไม่พิมพ์ค่า)"],
 ];
-/** --counts (CD-P61-R5 · W33): ก่อน migrate ได้ · ทุกข้อเป็นตัวเลขให้เจ้าของ/ผู้คุมตัดสินตามตาราง runbook §3.2 และ §4.5 */
+/** --counts (CD-P61-R5 · W33): ก่อน migrate ได้ · ทุกข้อเป็นตัวเลขให้เจ้าของ/ผู้คุมตัดสินตามตาราง runbook §3.2 และ §1A */
 const COUNT_CHECKS: readonly [string, string][] = [
   ["G1", "ด่านเป้าหมาย: host ใน allowlist · prod ต้อง ALLOW_PROD_AUDIT=1 · QC4 ได้ (--counts อ่านอย่างเดียว)"],
   ["RO", "ธุรกรรมอ่านอย่างเดียวมีผล (SHOW transaction_read_only = on)"],
   ["K1", `จำนวนแถว (reltuples + count(*) จำกัดเวลา) ตารางที่ตัดสินกลยุทธ์ index runbook §3.2 · เกิน ${COUNT_THRESHOLD.toLocaleString("en-US")} = เตือน + บอกทาง`],
   ["K2", "การกระจายธง settings.pos.registerV2 (active/ไม่ active × true/ไม่ใช่) — จำนวนระบบที่ §8.5 จะตั้ง shift.required.register=false"],
-  ["K3", "พฤติกรรมที่เปลี่ยนตอน deploy โดยไม่มีธง (runbook §4.5 · CD-P61-R4): (a) สาขาร้านอาหารที่ผูก POS active · (b) มัดจำโมดูลที่ค้าง + ร้านที่เก็บมัดจำ · (c) คีย์ API กลางที่ยังใช้ได้ · (d) MANAGER ที่ไม่ใช่ \"*\" ในร้านที่มี POS · (e) เครื่องขายที่ลงทะเบียน"],
+  ["K3", "พฤติกรรมที่เปลี่ยนตอน deploy โดยไม่มีธง (runbook §1A · CD-P61-R4): (a) สาขาร้านอาหารที่ผูก POS active · (b) มัดจำโมดูลที่ค้าง + ร้านที่เก็บมัดจำ · (c) คีย์ API กลางที่ยังใช้ได้ · (d) MANAGER ที่ไม่ใช่ \"*\" ในร้านที่มี POS · (e) เครื่องขายที่ลงทะเบียน"],
   ["K4", "โต๊ะที่มี TableSession OPEN ซ้ำ (ต้อง 0 ก่อนสร้าง one_open_session_per_table — §5)"],
 ];
 /** --crons (CD-P61-R6 · W34): ไม่แตะ DB */
@@ -419,7 +419,7 @@ try {
         : `${migs.length - pendingMigs.length}/${migs.length} apply แล้ว${pendingMigs.length ? ` · รอ (ใหม่กว่าฐาน QC · self-test เท่านั้น): ${pendingMigs.join(", ")}` : ""}`,
     );
     const stuck = mrows.filter((r) => !r.finished_at && !r.rolled_back_at).map((r) => r.migration_name);
-    put("M2", stuck.length ? "FAIL" : "OK", stuck.length ? `ค้าง/ล้ม: ${stuck.join(", ")} (P3009 — runbook §4)` : "0 แถวค้าง");
+    put("M2", stuck.length ? "FAIL" : "OK", stuck.length ? `ค้าง/ล้ม: ${stuck.join(", ")} (P3009 — runbook §4.4)` : "0 แถวค้าง");
     const treeNames = new Set(migs.map((m) => m.name));
     const unknown = [...applied].filter((x) => POS_MIG_RE.test(x) && !treeNames.has(x));
     put("M3", unknown.length ? "WARN" : "OK", unknown.length ? `ฐานมีแต่ทรีไม่มี: ${unknown.join(", ")}` : "ไม่มี");
