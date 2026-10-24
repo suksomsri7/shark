@@ -159,10 +159,17 @@ export async function updatePosStaffCommissionAction(args: { systemId: string; p
 // POS P4.3 ▸ F-P3-18 · CD-P43-O4: แคตตาล็อก (หมวด/สินค้า/ตัวแปร/สินค้าสาขาอื่น) ของการ์ดค่าคอมฯ 17C —
 //   สิทธิ์ = เจ้าของ หรือผู้ดูเงินเดือน canViewPayroll (กติกาเดียวกับ updatePosStaffCommission · ตัวอ่านตัดสิน — ไม่ผูกคีย์ pos.* ที่ action) ·
 //   แทน registerCatalogAction ที่ต้องมีสิทธิ์ขาย · ร้าน/ผู้ใช้จาก SESSION · systemId/unitId ตรวจซ้ำในตัวอ่าน · คำปฏิเสธคืนเป็นข้อมูล ◂
+/** ด่านแรกระดับร้าน (F6.1) ของงานค่าคอมฯ/เงินเดือน: เจ้าของ หรือคีย์ hr.payroll.read ชัดแจ้ง — กติกาเดียวกับ canViewPayroll (core/rbac.ts) · ตัวอ่านตัดสินซ้ำด้วย canViewPayroll */
+const PAYROLL_READ_KEY = "hr.payroll.read";
+function payrollGate(m: ReturnType<typeof posMembership>): boolean {
+  return m.role === "OWNER" || m.permissions[PAYROLL_READ_KEY] === true;
+}
+const PAYROLL_DENIED: PosSettingsRefusal = { ok: false, code: "PERMISSION_DENIED", message: "แคตตาล็อกค่าคอมฯ เจ้าของร้านหรือผู้ดูเงินเดือนเท่านั้นที่เปิดได้" };
 /** F-P3-18 แคตตาล็อกของการ์ดค่าคอมฯ (อ่านอย่างเดียว · ชื่อ + id) */
 export async function posCommissionCatalogAction(args: { systemId: string; unitId: string; q?: string; limit?: number }): Promise<PosCommissionCatalogResult> {
   try {
     const s = await session();
+    if (!payrollGate(s.m)) return PAYROLL_DENIED;
     return await posCommissionCatalog({ tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId) }, s.actor, { q: args?.q, limit: args?.limit });
   } catch (e) {
     unstable_rethrow(e);

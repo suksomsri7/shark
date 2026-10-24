@@ -4,7 +4,8 @@
 //   + สคริปต์สั่ง print() หลังฟอนต์พร้อม (noprint=1 = ไม่สั่ง) · สคริปต์ผูก nonce ของ CSP (สคริปต์อื่นในเอกสารไม่ทำงาน)
 // 🔴 ด่านของตัวเอง (route ไม่ผ่าน layout ของหน้า): ไม่มี session = 401 · ไม่มีร้าน/ร้านถูกระงับ = 403 · ระบบไม่ใช่ POS ของร้าน/ไม่มีสาขาที่เข้าได้ = 404 ·
 //    ไม่มี pos.report.view ที่สาขาใดเลย = 403 ก่อนเรียกตัวอ่าน · คำปฏิเสธของตัวอ่าน → PERMISSION_DENIED 403 · VALIDATION 400 · NOT_FOUND 404 · อื่น 500
-//    ?unit= รับเฉพาะสาขาที่ดูรายงานได้ (ไม่ใช่ = ทุกสาขาในขอบเขต — ตัวอ่านตัดขอบเขตเอง) · no-store + noindex
+//    ?unit= = pos.report.view ที่สาขานั้น (CD-P43-O8 แก้ข้อความ: ตรวจที่สาขาที่ขอ) — สาขาอื่น/เข้าไม่ได้/ไม่ใช่สาขาของ POS นี้ = 403 พอดี (ไม่บอกว่ามีสาขานั้นไหม) ·
+//    ไม่ส่ง ?unit= = ทุกสาขาในขอบเขต (ตัวอ่านตัดขอบเขตเอง) · no-store + noindex
 import { randomBytes } from "node:crypto";
 import { getAuth } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
@@ -55,7 +56,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const from = url.searchParams.get("from") ?? "";
   const to = url.searchParams.get("to") ?? "";
   const unitRaw = url.searchParams.get("unit") ?? "";
-  const unitId = allowed.some((u) => u.id === unitRaw) ? unitRaw : "";
+  // POS P4.3 ▸ CD-P43-O8 (oracle รอบ 2 · D6): ขอสาขาที่ไม่มีสิทธิ์รายงาน = 403 (ไม่ถอยไปทุกสาขา · ไม่ 404) ◂
+  if (unitRaw && !allowed.some((u) => u.id === unitRaw)) return plain(403, "Forbidden");
+  const unitId = unitRaw;
   const locale = url.searchParams.get("locale") === "en" ? "en" : "th";
   if (kindRaw !== "overview" && !isReportKind(kindRaw)) return plain(400, "Bad request");
 
