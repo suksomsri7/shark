@@ -624,7 +624,7 @@ try {
     if (!/ledger\/ หรือ docs\//.test(s43)) p.push("§4.3 ไม่บอกกติกา ledger/docs เท่านั้น");
     if (!/MAIN_AT_GO10=\$\(git -C \/root\/projects\/shark-pos rev-parse origin\/main\)/.test(sub(s4, "4.2"))) p.push("§4.2 ไม่จด MAIN_AT_GO10");
     if (!/--pr-freeze/.test(s11.split("\n").find((l) => /^\d+\.\s⛔ GO-12/.test(l)) ?? "")) p.push("§11 GO-12 ไม่มี --pr-freeze");
-    for (const tok of ['"--pr-freeze"', '"--main-at"', "FREEZE_PATHS", "function runFreezeChecks"]) if (!vsrc.includes(tok)) p.push(`verify ไม่มี ${tok}`);
+    for (const tok of ['"--pr-freeze"', '"--main-at"', "FREEZE_PATHS", "function runFreezeChecks(", "runFreezeChecks(vals.get"]) if (!vsrc.includes(tok)) p.push(`verify ไม่มี ${tok}`);
     const fz = /function runFreezeChecks[\s\S]*$/.exec(vsrc)?.[0] ?? "";
     if (/q\(|client\./.test(fz)) p.push("--pr-freeze แตะ DB");
     chk("N9", hasRb && !p.length, p.length ? p.join(" · ") : "freeze diff + main migrations + --pr-freeze · MAIN_AT_GO10 · §11");
@@ -651,7 +651,8 @@ try {
     if (!/restore ทิ้งทุกการเขียนหลังจุด GO-8/.test(sub(s4, "4.4"))) p.push("F6: §4.4 ไม่เตือน restore ทิ้งการเขียน");
     if (!/\[ -n "\$\{PROD_DIRECT_URL:-\}" \] \|\| \{[^\n]*exit 1; \}/.test(sub(s4, "4.0"))) p.push("F7: §4.0 ไม่ exit เมื่อ URL ว่าง");
     const g = read(GUARD) ?? "";
-    for (const tok of ["NEON_SUFFIX", '"POOLER"', "ปลอมท้าย host", "prod -pooler + ALLOW"]) if (!g.includes(tok)) p.push(`F4: ด่านเขียนขาด ${tok}`);
+    for (const tok of ["NEON_SUFFIX", 'code: "POOLER"', "ปลอมท้าย host", "prod -pooler + ALLOW", "p.host.endsWith(h.suffix ?? NEON_SUFFIX)"]) if (!g.includes(tok)) p.push(`F4: ด่านเขียนขาด ${tok}`);
+    if (!vsrc.includes("hostLc.endsWith(h.suffix ?? NEON_SUFFIX)")) p.push("F4: verify ไม่เทียบท้าย host");
     for (const tok of ["NEON_SUFFIX", "ปลอมท้าย host", "IP ตรง"]) if (!vsrc.includes(tok)) p.push(`F4: verify ขาด ${tok}`);
     if (/label === h\.mark \|\| label\.startsWith/.test(g + vsrc)) p.push("F4: ยังเทียบแค่ label แรก");
     chk("N11", hasRb && !p.length, p.length ? p.slice(0, 5).join(" · ") : "node · generate+tsc · restore · exit · ด่าน host ทั้ง host + pooler");
