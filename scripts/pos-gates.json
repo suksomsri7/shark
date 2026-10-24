@@ -313,6 +313,10 @@
       "mode": "unforced"
     },
     {
+      "suite": "qc-pos-p6.2",
+      "mode": "unforced"
+    },
+    {
       "suite": "qc-chat-security",
       "mode": "unforced"
     },
