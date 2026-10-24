@@ -310,6 +310,15 @@ const weighedEstimate = (grams: number, perKg: number) => Math.floor((2 * grams 
 /** PERCENT ของตัวตรวจเพดาน (bp) → "10" สำหรับข้อความ {limit}% */
 const pctText = (bp: number) => String(Number((bp / 100).toFixed(2)));
 
+
+// POS P5.3 fix1d ▸ CD-P53-O16 D5: รหัสปฏิเสธของ quote ที่บอกว่าข้อมูลสินค้าในดัชนีอาจเก่า (register.ts quote line errors) ◂
+const INDEX_STALE_CODES: ReadonlySet<string> = new Set(["PRODUCT_NOT_FOUND", "PRODUCT_UNAVAILABLE", "VARIANT_REQUIRED", "OPTIONS_REQUIRED", "OPTIONS_INVALID", "PRICE_NOT_SET", "CHANNEL_NOT_SOLD", "WEIGHT_REQUIRED"]);
+/** POS P5.3 fix1d ▸ D1: สินค้าจากดัชนี + ฟิลด์สต็อกของตัวที่จอรู้อยู่แล้ว (ใหม่กว่า) — ปิดขาย (UNAVAILABLE) ยึดของดัชนี ◂ */
+function mergeKnownStock(hit: RegisterProduct, prev: RegisterProduct | undefined): RegisterProduct {
+  if (!prev || prev.id !== hit.id) return hit;
+  const soldOutReason = hit.soldOutReason === "UNAVAILABLE" ? hit.soldOutReason : prev.soldOutReason === "UNAVAILABLE" ? hit.soldOutReason : prev.soldOutReason;
+  return { ...hit, stockLeft: prev.stockLeft, trackStock: prev.trackStock, trackStockMode: prev.trackStockMode, soldOutReason, soldOut: soldOutReason !== null };
+}
 export function RegisterScreen(props: RegisterScreenProps) {
   const { systemId, unitId, userId, limits, vat } = props;
   const t = useTranslations("pos.register");
@@ -691,6 +700,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // POS P5.3 fix1 ▸ CD-P53-O14: ดัชนีบาร์โค้ดทั้งสาขาในหน่วยความจำ (ดึงเบื้องหลังหลังวาดแรก) — สแกนที่ตรงสินค้าเดียวที่ขายได้ ใส่ตะกร้าทันทีไม่รอเซิร์ฟเวอร์ ◂
   //   POS P5.3 fix1c ▸ CD-P53-O15 F1: ดึงผ่าน GET route (ไม่ใช่ server action) · ไม่เริ่มดึงระหว่างกล่องชำระ/จบการขายเปิด ◂
   const barcodeIndex = useBarcodeIndex({ systemId, unitId, online, paused: () => layersRef.current.some((l) => l.kind === "pay" || l.kind === "done") });
+  /** POS P5.3 fix1d ▸ D5: (คีย์บรรทัด|รหัส) ที่สั่ง invalidate ไปแล้ว ◂ */
+  const indexInvalidated = useRef(new Set<string>());
   /** คำขอใดตอบ STAFF_TOKEN_INVALID ⇒ ลบโทเคน + ล็อก (ไม่ถอยไปใช้ผู้ใช้ session) */
   const staffTokenDead = () => {
     clearStaffSession(deviceId);
@@ -1121,7 +1132,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
           synced();
         } else {
           setQuoteErr({ ver, code: r.code, ...(typeof r.lineIndex === "number" ? { lineIndex: r.lineIndex } : {}) });
-          if (typeof r.lineIndex === "number" && cart.lines[r.lineIndex]?.kind === "product") barcodeIndex.invalidate(); // POS P5.3 fix1c ▸ F7: บรรทัดสินค้าถูกปฏิเสธ = ดัชนีอาจเก่า ◂
+          // POS P5.3 fix1c ▸ F7 · fix1d ▸ D5 (CD-P53-O16): บรรทัดสินค้าถูกปฏิเสธด้วยรหัสที่ดัชนีอาจเก่า ⇒ invalidate ครั้งเดียวต่อ (บรรทัด, รหัส) ◂
+          const refusedLine = typeof r.lineIndex === "number" ? cart.lines[r.lineIndex] : undefined;
+          if (refusedLine?.kind === "product" && INDEX_STALE_CODES.has(r.code) && !indexInvalidated.current.has(`${refusedLine.key}|${r.code}`)) {
+            indexInvalidated.current.add(`${refusedLine.key}|${r.code}`);
+            barcodeIndex.invalidate();
+          }
           if (ov) onOverrideRefused(r.code);
         }
       } catch {
@@ -1703,6 +1719,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
       if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
       hit = barcodeIndex.lookup(code);
     }
+    // POS P5.3 fix1d ▸ D1 (CD-P53-O16): version ของดัชนีไม่ขยับตามการตัดสต็อก ⇒ ฟิลด์สต็อกในชุดอาจเก่าหลายชั่วโมง — ถ้ามีสินค้าตัวนี้ใน known (กริด/สแกนเซิร์ฟเวอร์)
+    //   ใช้ stockLeft/trackStock/trackStockMode และ "หมดสต็อก" (NO_STOCK ↔ null) ของตัวเดิม · ปิดขาย (UNAVAILABLE) ยึดของชุด (version ขยับตาม 86) · ไม่มีตัวเดิม = ใช้ของชุดตามที่เป็น
+    //   ตัดสินขายได้จากค่าที่รวมแล้ว — known บอก NO_STOCK = ทางเซิร์ฟเวอร์ในสแกนนี้ (ไม่ใช่รหัส "เซิร์ฟเวอร์เท่านั้น" ถาวร) ◂
+    if (hit) hit = mergeKnownStock(hit, known.current.get(hit.id));
     if (hit && hit.soldOutReason == null && !hit.notSold && (hit.priceSatang !== null || limits.canOverridePrice)) {
       if (layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
       return applyScan({ ok: true, match: "one", product: hit }, code, "scan");

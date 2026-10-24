@@ -206,3 +206,28 @@ Test results (logs `/root/pos-runs/p53-fix1/fix1c-*.log`):
 Oracle notes for the controller (not changed here):
 - Re-pins after merge, to the merge commit: `qc-pos-p3.4` `P34_LANE`, `qc-pos-p3.5` `P35_LANE_PIN`, `qc-pos-p2.8`, `qc-pos-p2.12`, `qc-hf-fu`, `qc-hf-fu2` (§7). `register-actions.ts` is back to base, so it no longer appears in their findings.
 - New matrix row `src/app/api/pos/register/barcode-index/route.ts#GET` was inferred with `CASHIER/STAFF_NOPERM/OTHER_UNIT = "?"`, `perm []`, `tenantScope "?"` (api rows allow `?` under M4). An `OVERRIDES` entry in `scripts/pos-authz-matrix-gen.mts` like the `/api/pos/sync/snapshot` one (CASHIER allow · STAFF_NOPERM deny · OTHER_UNIT deny · OTHER_TENANT deny · ANON deny · perm `pos.sale.create` · unitScoped · tenantScope "session (getAuth)") would make it exact. That is generator/oracle text, so I left it for you.
+
+## fix1d — hit keeps fresher stock · version menu term · cache memory budget · invalidate scope (CD-P53-O16 · delta review fix1c · 24 Oct 12:33–12:42Z)
+| item | change (file:line) |
+|---|---|
+| D1 | `RegisterScreen.tsx:316–321` `mergeKnownStock(hit, prev)` and `:1722–1725` in `onScannedCode` (before the sellable check): when `known` already has the product (grid load or a server scan, read live), the hit takes `stockLeft`, `trackStock`, `trackStockMode` and the stock-derived sold-out state (`NO_STOCK` ↔ `null`, `soldOut` recomputed) from that entry. `UNAVAILABLE` (86/closed) stays the index's, because 86 marks, product edits and menu availability move `version`. With no entry, the cached fields are used as they are. The sellable check runs on the merged product, so `known` saying `NO_STOCK` sends that scan to the server path. `pick` then stores the merged product, so a hit never overwrites fresher stock in `known` (cart-line stock :1361–1362 and the over-stock warning :1390 read it). Confirmed: a product cached as sold-out/no-stock is in the map, so it never enters `serverOnly` (only `excluded` codes and codes absent after a refetch/304 do, `use-barcode-index.ts:78`, `:150`, `:171`). It just takes the server path on that scan. If the server then answers with different decision fields, one debounced version check runs per set (`staleTried`). |
+| D2 | `register.ts:1216` — the MenuItem term hashes `mi.id:posProductId` of the out-of-stock/closed items (relinking a sold-out menu item to another product changes `version`). |
+| D3 | `register.ts:1133–1143` + `:1159–1170` — entries carry `bytes` (UTF-8 JSON length). A set over 4 MiB is not cached (callers still share the build promise). Total budget is 64 MiB across entries (evict LRU until it fits, max 64 entries). Expired entries (TTL 120 s or price edge passed) are swept on every insert. `regBiCacheDrop` keeps the byte counter exact. |
+| D5 | `RegisterScreen.tsx:314–315` `INDEX_STALE_CODES` = PRODUCT_NOT_FOUND · PRODUCT_UNAVAILABLE · VARIANT_REQUIRED · OPTIONS_REQUIRED · OPTIONS_INVALID · PRICE_NOT_SET · CHANNEL_NOT_SOLD · WEIGHT_REQUIRED (quote line errors, `register.ts` quote line loop: PRODUCT_NOT_FOUND/UNAVAILABLE/VARIANT_REQUIRED, `regResolveOptions` codes, WEIGHT_REQUIRED, PRICE_NOT_SET, CHANNEL_NOT_SOLD). `:703–704` `indexInvalidated` set + `:1135–1140`: `invalidate()` only for a product line refused with one of these codes, once per (line key, code). Residual (b) of the review accepted: a non-required option group linked after a load gives no quote refusal. It is picked up at the next version check (tick/focus/edit). |
+| D4 | Controller's (matrix generator OVERRIDES) — not touched. |
+
+Probes after fix1d: QC4 temp tenant `posqc-p5x-bic2adb53c` (`probe-fixture-fix1d.log`): 24/24 checks ✅ (29/29 parity, excluded, serverNow, cache hit 20 ms, BUSY, 1 shared build, stock cut unchanged, exclusions, version round-trips; 5,028 products build 449–562 ms · cache 35 ms · 2.47 MiB), cleanup rows left 0, `PROBE-FIXTURE ✅`. QC4 coffee read-only (`probe-fix1d.log`): both units 1/1 deep-equal + byte-equal, round-trip ✅, `PROBE ✅`. The client-side D1/D5 paths are React-only and were checked by typecheck (no browser run in this lane).
+
+Test results (logs `/root/pos-runs/p53-fix1/fix1d-*.log`):
+| suite | result |
+|---|---|
+| qc-pos-p1.4 (QC4) | `===== qc-pos-p1.4 ===== ผ่าน 21/21` |
+| qc-pos-p1.6 (QC4) | `===== qc-pos-p1.6 ===== ผ่าน 48/48` |
+| qc-pos-p2.14 (QC4) | `===== qc-pos-p2.14 ===== ผ่าน 60/60` |
+| qc-pos-p5.3 (static, no `--base`) | `===== qc-pos-p5.3 ===== ผ่าน 9/9` |
+| qc-pos-p4.1 --no-db | `JSON_SUMMARY {"suite":"qc-pos-p4.1","mode":"no-db","total":16,"passed":16,"failed":[]…}` |
+| fitness.mts (no env) | `ผ่าน 53/53` · `FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0` |
+| fitness-pos.mts | `JSON_SUMMARY {"suite":"fitness-pos","total":8,"passed":8,"findings":[]}` |
+| pos-authz-matrix-gen --check | `✅ scripts/pos-authz-matrix.json ตรงกับตัวสร้าง` |
+| typecheck (exact gates command · 10,766 MB available) | exit 0 · `tsc --noEmit` no output (12:39:06 → 12:39:50Z) |
+Re-pin note unchanged: fix1d touches `register.ts` and `RegisterScreen.tsx` again, so `qc-pos-p3.4` `P34_LANE` (and the other lane pins in §7) must point at the merge commit.

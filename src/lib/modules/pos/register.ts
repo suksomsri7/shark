@@ -1130,7 +1130,17 @@ type RegBarcodeIndexFull = { ok: true; version: string; items: RegisterBarcodeIn
 const REG_BI_CACHE_TTL_MS = 120_000;
 const REG_BI_CACHE_MAX = 64;
 const REG_BI_TENANT_BUILDS = 2;
-const regBiCache = new Map<string, { at: number; full: RegBarcodeIndexFull }>();
+const regBiCache = new Map<string, { at: number; bytes: number; full: RegBarcodeIndexFull }>();
+// POS P5.3 fix1d ▸ D3 (CD-P53-O16): งบหน่วยความจำ — ชุดที่ JSON > 4 MiB ไม่เข้าแคช · รวมทุกชุด ≤ 64 MiB (ไล่ LRU) · กวาดชุดหมดอายุทุกครั้งที่ใส่ ◂
+const REG_BI_CACHE_ENTRY_MAX_BYTES = 4 * 1024 * 1024;
+const REG_BI_CACHE_TOTAL_MAX_BYTES = 64 * 1024 * 1024;
+let regBiCacheBytes = 0;
+function regBiCacheDrop(key: string): void {
+  const e = regBiCache.get(key);
+  if (!e) return;
+  regBiCacheBytes -= e.bytes;
+  regBiCache.delete(key);
+}
 const regBiBuilding = new Map<string, Promise<RegBarcodeIndexFull>>();
 const regBiTenantActive = new Map<string, number>();
 const regBiTenantWait = new Map<string, (() => void)[]>();
@@ -1139,7 +1149,7 @@ function regBiCacheGet(key: string, nowMs: number): RegBarcodeIndexFull | null {
   if (!hit) return null;
   const edge = hit.full.priceValidUntil ? Date.parse(hit.full.priceValidUntil) : NaN;
   if (nowMs - hit.at > REG_BI_CACHE_TTL_MS || (Number.isFinite(edge) && nowMs >= edge)) {
-    regBiCache.delete(key);
+    regBiCacheDrop(key);
     return null;
   }
   regBiCache.delete(key); // LRU: ย้ายไปท้าย
@@ -1147,9 +1157,16 @@ function regBiCacheGet(key: string, nowMs: number): RegBarcodeIndexFull | null {
   return hit.full;
 }
 function regBiCachePut(key: string, full: RegBarcodeIndexFull, nowMs: number): void {
-  regBiCache.delete(key);
-  regBiCache.set(key, { at: nowMs, full });
-  while (regBiCache.size > REG_BI_CACHE_MAX) regBiCache.delete(regBiCache.keys().next().value as string);
+  regBiCacheDrop(key);
+  for (const [k, e] of [...regBiCache]) {
+    const edge = e.full.priceValidUntil ? Date.parse(e.full.priceValidUntil) : NaN;
+    if (nowMs - e.at > REG_BI_CACHE_TTL_MS || (Number.isFinite(edge) && nowMs >= edge)) regBiCacheDrop(k); // D3: กวาดชุดหมดอายุ
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(full), "utf8");
+  if (bytes > REG_BI_CACHE_ENTRY_MAX_BYTES) return; // D3: ชุดใหญ่เกิน = ไม่แคช (ยังได้ promise เดียวร่วมกันระหว่างสร้าง)
+  while (regBiCache.size && (regBiCache.size >= REG_BI_CACHE_MAX || regBiCacheBytes + bytes > REG_BI_CACHE_TOTAL_MAX_BYTES)) regBiCacheDrop(regBiCache.keys().next().value as string);
+  regBiCache.set(key, { at: nowMs, bytes, full });
+  regBiCacheBytes += bytes;
 }
 async function regBiTenantSlot<T>(tenantId: string, body: () => Promise<T>): Promise<T> {
   while ((regBiTenantActive.get(tenantId) ?? 0) >= REG_BI_TENANT_BUILDS) {
@@ -1196,7 +1213,7 @@ export async function registerBarcodeIndex(
             WHERE c."tenantId" = ${s.tenantId} AND c."systemId" = ${s.systemId} AND (c."unitId" IS NULL OR c."unitId" = ${s.unitId})),
           (SELECT count(*) || ':' || coalesce(max(r."updatedAt")::text, '') FROM "PosPriceRule" r WHERE r."tenantId" = ${s.tenantId} AND r."systemId" = ${s.systemId}),
           (SELECT count(*) || ':' || coalesce(max(m."markedAt")::text, '') FROM "PosAvailabilityMark" m WHERE m."tenantId" = ${s.tenantId} AND m."unitId" = ${s.unitId}),
-          (SELECT count(*) || ':' || coalesce(md5(string_agg(mi.id, ',' ORDER BY mi.id) FILTER (WHERE mi."isOutOfStock" OR (mi."stockQty" IS NOT NULL AND mi."stockQty" <= 0))), '')
+          (SELECT count(*) || ':' || coalesce(md5(string_agg(mi.id || ':' || mi."posProductId", ',' ORDER BY mi.id) FILTER (WHERE mi."isOutOfStock" OR (mi."stockQty" IS NOT NULL AND mi."stockQty" <= 0))), '') -- POS P5.3 fix1d ▸ D2: + posProductId ◂
             FROM "MenuItem" mi WHERE mi."tenantId" = ${s.tenantId} AND mi."posProductId" IS NOT NULL),
           (SELECT count(*) || ':' || coalesce(max(og."createdAt")::text, '') FROM "PosProductOptionGroup" og WHERE og."tenantId" = ${s.tenantId}),
           (SELECT count(*) || ':' || coalesce(max(g."updatedAt")::text, '') FROM "MenuOptionGroup" g WHERE g."tenantId" = ${s.tenantId}),
