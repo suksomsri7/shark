@@ -25,8 +25,6 @@ export {
   /** "คนนี้ลาอยู่ไหม ณ เวลานั้น" — เฉพาะใบลา APPROVED · เทียบเป็น **วันตามปฏิทินไทย** (+07:00) */
   isOnLeave,
 } from "./service";
-// POS P4.3 ▸ fix2 (R1 F5): ผู้ใช้ในชุดที่ผูกพนักงาน (ทั้งชุดในคำขอเดียว · ป้าย "จาก HR" ของแท็บพนักงาน POS) — re-export ล้วน ◂
-export { linkedUserIdsOf } from "./service";
 
 // CRM C3.3 ▸ คอมมิชชัน CRM → เงินเดือน (re-export ล้วน — ตรรกะอยู่ที่ `payroll.ts` บล็อก C3.3)
 //   requestAdjustment รับ `crmCommissionId` (+ `tx` ของผู้เรียก) และปฏิเสธรายการที่สองของคอมมิชชันเดียวกัน (partial unique) ·
@@ -49,3 +47,5 @@ export { onShiftToday, workedMinutesBetween, clockSelf, adjustmentStatuses } fro
 // POS P3.5 ▸ fix2 N1 (มติผู้คุม CD-P35c): ตัวกวาดรายการของระบบ (ค่าคอมฯ POS) ที่ค้างในงวดที่มีรอบแล้ว — re-export ล้วน (ตัวงานอยู่ที่ payroll.ts)
 export { rehomeStrandedSystemAdjustments } from "./payroll";
 // ◂ POS P3.5 fix2 N1
+// POS P4.3 ▸ fix2 (R1 F5): ผู้ใช้ในชุดที่ผูกพนักงาน (ทั้งชุดในคำขอเดียว · ป้าย "จาก HR" ของแท็บพนักงาน POS) — re-export ล้วน ◂
+export { linkedUserIdsOf } from "./service";
