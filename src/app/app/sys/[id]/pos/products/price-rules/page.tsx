@@ -30,6 +30,8 @@ export default async function PosPriceRulesPage({ params, searchParams }: { para
   const unitId = units.some((u) => u.id === unit) ? unit! : units[0]!.id;
   const canView = evaluate(m, { module: "pos", action: "pos.product.manage", unitId });
   const canEdit = evaluate(m, { module: "pos", action: "pos.price.rule", unitId });
+  // POS P4.3 ▸ CD-P43-3 (B7): ไม่ได้ดูแลทุกสาขา + เห็นสาขาเดียว (ชิปสาขาซ่อน) ⇒ โปรใหม่ตั้งต้นที่สาขาของตัวเอง ◂
+  const defaultUnitIds = m.role !== "OWNER" && !m.unitAccess.includes("*") && units.length <= 1 ? units.map((u) => u.id) : [];
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.price.rule");
   const tProducts = await getTranslations("pos.products");
@@ -52,7 +54,7 @@ export default async function PosPriceRulesPage({ params, searchParams }: { para
           {t("refusal")}
         </div>
       ) : (
-        <PriceRulesClient key={unitId} systemId={id} unitId={unitId} data={data} canEdit={canEdit} initialRuleId={rule ?? null} />
+        <PriceRulesClient key={unitId} systemId={id} unitId={unitId} data={data} canEdit={canEdit} initialRuleId={rule ?? null} defaultUnitIds={defaultUnitIds} />
       )}
     </div>
   );

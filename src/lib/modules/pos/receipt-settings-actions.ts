@@ -92,6 +92,8 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
         vatRegistered: boolean;
         vatRateBp: number;
         posAbbreviatedInvoice: boolean;
+        /** POS P4.3 ▸ CD-P43-2: ผู้ใช้เปิดหน้าตั้งค่าบัญชีได้ (account.settings.manage ผ่าน accountCan) — false = ไม่แสดงลิงก์ ◂ */
+        canOpenAccountSettings: boolean;
       } | null;
       devices: PosDeviceListItem[];
       /** P1.10 U แก้รอบ 1 F5: คำนำหน้าเลขใบคืน/ใบลดหนี้ตามที่ refund.ts ออกจริง (settings.pos.receipt.refundPrefix · ผิดรูป/ว่าง = "CN") */
@@ -151,6 +153,8 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
               vatRegistered: vat.vatRegistered,
               vatRateBp: vat.vatRateBp,
               posAbbreviatedInvoice: vat.posAbbreviatedInvoice,
+              // POS P4.3 ▸ CD-P43-2 — ลิงก์ "ตั้งค่าบัญชี" แสดงเฉพาะผู้ผ่านด่านหน้าเดียวกัน (requireAccountPage account.settings.manage) ◂
+              canOpenAccountSettings: account.accountCan(auth, "account.settings.manage"),
             }
           : null,
       devices,

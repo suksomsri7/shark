@@ -8,7 +8,7 @@ import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posSalesReadScope, posSaleWhere } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
 import { BILLS_ALL_UNITS, bkkDateOf, isBillDate } from "@/lib/modules/pos/bills-shared"; // POS P2.12U ▸ + BILLS_ALL_UNITS ◂
-import { posAccountSystemId } from "@/lib/modules/account";
+import { accountCan, posAccountSystemId } from "@/lib/modules/account"; // POS P4.3 ▸ CD-P43-2 + accountCan ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { BillsClient } from "./BillsClient";
@@ -37,6 +37,9 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
     prisma.posSale.findFirst({ where: posSaleWhere(tenantId, id, scope), select: { id: true } }),
     posAccountSystemId(tenantId, id),
   ]);
+  // POS P4.3 ▸ CD-P43-2: ลิงก์ "เอกสารบัญชี" ในลิ้นชักบิล = เฉพาะผู้เปิดหน้าพิมพ์เอกสารบัญชีได้ (account.doc.view · กติกาเดียวกับ requireAccountPage)
+  //   ไม่มีสิทธิ์ = ไม่ส่งสมุดให้ BillsClient (ลิงก์ไม่แสดง แทนที่จะพาไปหน้า 403) ◂
+  const canOpenAccounting = accountCan(auth, "account.doc.view");
   const units = allUnits
     .filter((u) => canAccessUnit(m, u.id) && (scope.allUnits || scope.unitIds.includes(u.id)))
     .map((u) => ({ id: u.id, name: u.name }));
@@ -65,7 +68,7 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
           today={today}
           initialDate={initialDate}
           hasAnyBill={!!anyBill}
-          accountSystemId={accountSystemId}
+          accountSystemId={canOpenAccounting ? accountSystemId : null}
           canIssueTaxInvoice={canIssueTaxInvoice}
           initialBillId={allMode && !initialBillUnitId ? null : billParam} // POS P2.8U ▸ ?bill= ◂ · POS P2.12U ▸ ทุกสาขา: ต้องรู้สาขาของบิล ◂
           taxInvoiceUnits={taxInvoiceUnits}
