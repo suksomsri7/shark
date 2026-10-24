@@ -8,6 +8,7 @@
 //    และผู้ใช้มี pos.report.view + pos.report.anomaly ที่สาขานั้น (evaluate คืน boolean · ไม่ throw) · ไม่เกิน 200 กุญแจ
 // 🔴 "use server" export ได้เฉพาะ async function · ชนิดผลลัพธ์อยู่ในไฟล์นี้ (ไม่ export) — จอใช้ Awaited<ReturnType<…>>
 // 🔴 ไม่มี throw · คำปฏิเสธคืนเป็นข้อมูล {ok:false, code} · ผลไม่มีชื่อคน (key · cardNo · href · completed)
+// POS P4.3 ▸ F-P3-21 (CD-P43-O7): + posOpsCardsAction — ชิปการ์ด 86 (`pos-86:`) / คืนเงิน (`pos-refund:`) ของจอขาย · ออเดอร์ · บิล (ด่านต่อสาขาในตัว) ◂
 
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
@@ -16,6 +17,7 @@ import { posMembership } from "@/lib/modules/pos/access";
 import { prisma } from "@/lib/core/db";
 import { ANOMALY_PERMISSION, REPORT_PERMISSION } from "@/lib/modules/pos/reports";
 import { posCardsForKeys } from "./pos-board-bridges";
+import { posBoardKeys } from "@/lib/modules/pos/board-settings-shared"; // POS P4.3 ▸ F-P3-21: กุญแจการ์ด 86 / คืนเงิน ◂
 
 type CardChip = { key: string; cardNo: number | null; href: string; completed: boolean };
 type CardsResult = { ok: true; cards: CardChip[] } | { ok: false; code: "NOT_FOUND" | "UNKNOWN" };
@@ -54,6 +56,67 @@ export async function posBoardCardsAction(args: { systemId: string; keys: string
   } catch (e) {
     unstable_rethrow(e);
     console.error("[pos-board-ui-actions] cards", e);
+    return { ok: false, code: "UNKNOWN" };
+  }
+}
+
+// ═══════════ POS P4.3 ▸ F-P3-21 · CD-P38U-9 · CD-P43-O7: ชิปการ์ด 86 / คืนเงินบนจอขาย · ออเดอร์ · บิล ◂ ═══════════
+type OpsCardChip = CardChip & { kind: "SOLD_OUT" | "REFUND"; ref: string };
+type OpsCardsResult = { ok: true; cards: OpsCardChip[] } | { ok: false; code: "NOT_FOUND" | "UNKNOWN" };
+const OPS_MAX = 100;
+const isRef = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 64 && /^[A-Za-z0-9_-]+$/.test(v);
+const refsOf = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter(isRef))].slice(0, OPS_MAX) : []);
+
+/**
+ * การ์ดบอร์ดงานที่ระบบเปิดให้ของสาขาหนึ่ง (ตัวกวาด sweepPosBoard · อ่านอย่างเดียว · ไม่มีการ์ด = ไม่อยู่ในผล):
+ *   productIds → การ์ด "สินค้าหมดนาน" ของ 86 ที่ยังค้างอยู่ (`pos-86:<unit>:<product>:<markId>` จาก PosAvailabilityMark ปัจจุบัน) — ผู้ขายได้/จัดการสินค้าได้ที่สาขา ·
+ *   orderIds / saleIds → การ์ด "คืนเงินลูกค้า" ของออเดอร์ (`pos-refund:<orderId>` · saleIds = ออเดอร์ที่ผูกบิลนั้น) — ออเดอร์ต้องเป็นของระบบ+สาขานี้ ·
+ *   ผู้ใช้ต้องรับ/ปฏิเสธออเดอร์ หรือขาย/ดูบิลได้ที่สาขา
+ * 🔴 posCardsForKeys ไม่มีด่านข้างใน ⇒ ด่านอยู่ที่นี่ (evaluate boolean) · ผลไม่มีชื่อคน (kind · ref · cardNo · href · completed) · หน้าบอร์ดตรวจสิทธิ์เองเมื่อกดลิงก์
+ */
+export async function posOpsCardsAction(args: { systemId: string; unitId: string; productIds?: string[]; orderIds?: string[]; saleIds?: string[] }): Promise<OpsCardsResult> {
+  try {
+    const auth = await requireTenant();
+    const tenantId = auth.active.tenantId;
+    const m = posMembership(auth.active);
+    const systemId = typeof args?.systemId === "string" ? args.systemId : "";
+    const unitId = typeof args?.unitId === "string" ? args.unitId : "";
+    const sys = systemId && unitId ? await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } }) : null;
+    const link = sys ? await prisma.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId, unitId, type: "POS" } }, select: { systemId: true } }) : null;
+    if (!sys || !link || link.systemId !== sys.id) return { ok: false, code: "NOT_FOUND" };
+    const want: { key: string; kind: OpsCardChip["kind"]; ref: string }[] = [];
+    // 86: mark ที่ยังค้างของสินค้าที่ขอ (สินค้าคืนขายแล้ว = ไม่มี mark = ไม่มีชิป · การ์ดที่ตัวกวาดปิดแล้วไม่ถูกถาม)
+    const productIds = refsOf(args?.productIds);
+    if (productIds.length && (can(m, "pos.sale.create", unitId) || can(m, "pos.product.manage", unitId))) {
+      const marks = await prisma.posAvailabilityMark.findMany({ where: { tenantId, systemId: sys.id, unitId, productId: { in: productIds } }, select: { id: true, productId: true } });
+      for (const mk of marks) want.push({ key: posBoardKeys.soldOut(unitId, mk.productId, mk.id), kind: "SOLD_OUT", ref: mk.productId });
+    }
+    // คืนเงิน: ออเดอร์ของระบบ+สาขานี้ (ตาม id หรือบิลที่ผูก)
+    const orderIds = refsOf(args?.orderIds);
+    const saleIds = refsOf(args?.saleIds);
+    const canOrders = can(m, "pos.order.accept", unitId) || can(m, "pos.order.reject", unitId) || can(m, "pos.sale.create", unitId) || can(m, "pos.sale.read", unitId);
+    if ((orderIds.length || saleIds.length) && canOrders) {
+      const orders = await prisma.posOrder.findMany({
+        where: { tenantId, systemId: sys.id, unitId, OR: [...(orderIds.length ? [{ id: { in: orderIds } }] : []), ...(saleIds.length ? [{ saleId: { in: saleIds } }] : [])] },
+        select: { id: true, saleId: true },
+        take: OPS_MAX * 2,
+      });
+      for (const o of orders) {
+        if (orderIds.includes(o.id)) want.push({ key: posBoardKeys.refund(o.id), kind: "REFUND", ref: o.id });
+        if (o.saleId && saleIds.includes(o.saleId)) want.push({ key: posBoardKeys.refund(o.id), kind: "REFUND", ref: o.saleId });
+      }
+    }
+    if (want.length === 0) return { ok: true, cards: [] };
+    const cards = new Map((await posCardsForKeys(tenantId, [...new Set(want.map((w) => w.key))])).map((c) => [c.key, c]));
+    const out: OpsCardChip[] = [];
+    for (const w of want) {
+      const c = cards.get(w.key);
+      if (c) out.push({ key: c.key, kind: w.kind, ref: w.ref, cardNo: c.cardNo, href: c.href, completed: c.completed });
+    }
+    return { ok: true, cards: out };
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[pos-board-ui-actions] ops cards", e);
     return { ok: false, code: "UNKNOWN" };
   }
 }

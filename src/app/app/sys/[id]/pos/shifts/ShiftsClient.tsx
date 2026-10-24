@@ -941,7 +941,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName, meUse
     const bc = shiftCards?.[h.id];
     const boardChip = bc ? (
       <a data-testid={`pos-shift-board-chip-${h.id}`} href={bc.href} className="inline-flex min-h-11 items-center rounded-[9px] px-2 text-[12.5px] font-semibold text-[color:var(--color-accent)] hover:underline">
-        {bc.completed ? t("boardCardDone", { n: bc.cardNo ?? 0 }) : t("boardCard", { n: bc.cardNo ?? 0 })}
+        {/* POS P4.3 ▸ F-P3-10: cardNo null = ป้ายไม่มีเลข (ไม่แสดง "#0") ◂ */}
+        {bc.cardNo != null ? (bc.completed ? t("boardCardDone", { n: bc.cardNo }) : t("boardCard", { n: bc.cardNo })) : bc.completed ? t("boardCardDoneNoNumber") : t("boardCardNoNumber")}
       </a>
     ) : null;
     const body = (
