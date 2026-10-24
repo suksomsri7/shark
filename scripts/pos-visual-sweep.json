@@ -22,7 +22,8 @@
       "src/app/(store)/q/t/[qrToken]/page.tsx",
       "src/app/(store)/q/[linkToken]/page.tsx",
       "src/app/(store)/q/o/[orderToken]/page.tsx"
-    ]
+    ],
+    "help": "src/app/app/sys/[id]/pos/help/page.tsx"
   },
   "exempt": [
     {
@@ -41,7 +42,9 @@
       "why": "public developer page — shot by wo p2.13 (state developers-pos) from the settings plan"
     }
   ],
-  "refusals": {},
+  "refusals": {
+    "/app/sys/[id]/pos/help": "pos-help-refusal"
+  },
   "runs": [
     {
       "id": "pages-th",
@@ -740,6 +743,25 @@
       "states": true,
       "after": "P3-SKEL U",
       "why": "same states LOCALE=en · owner 22 + cashier 7 · 22 Oct 2026"
+    },
+    {
+      "id": "p6.2-help",
+      "wo": "p6.2",
+      "pages": [
+        "help"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": false,
+      "after": "P6.2",
+      "sizes": "1440/1024/390 th and en (--page help keeps all 3 sizes in en)",
+      "why": "P6.2 in-app manual: visual round th/en x 3 sizes (brief P6 §5 · CD-P62-O8)"
     }
   ]
 }

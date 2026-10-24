@@ -311,6 +311,8 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   display: { owner: 200, cashier: 200, manager: "record" },
   // POS P2.7U ▸ หน้าสาธารณะ QR /q/** (ไม่อ่าน session) ⇒ 200 ทุกบทบาท (โทเคนใช้ไม่ได้ = การ์ด 200 · รูปผิด = 404) ◂
   "qr-public": { owner: 200, cashier: 200, manager: "record" },
+  // POS P6.2 ▸ คู่มือในแอป /pos/help: อ่านอย่างเดียว · แคชเชียร์ QC มี pos.sale.create ⇒ เห็นคู่มือ (พนักงานไม่มีสิทธิ์ POS = การ์ดปฏิเสธ หน้า 200) ◂
+  help: { owner: 200, cashier: 200, manager: 200 },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
@@ -1353,7 +1355,7 @@ const EMPTY_UNIT = { id: `${EMPTY_PREFIX}${process.pid}`, slug: `pos-qc-vis-empt
 const EMPTY_POS_NAME = "ขายหน้าร้าน · แคตตาล็อกว่าง (ภาพ QC)";
 const EMPTY_DEVICE_ID = `${EMPTY_PREFIX}${process.pid}`;
 const EMPTY_PATH_PLACEHOLDER = `/app/sys/<empty-pos>/pos/register?unit=${EMPTY_UNIT.id}`;
-const EN_MOBILE_PAGES = new Set<string>(["register", "sales", "receipt-public", "display", "qr-public"]); const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop" || (v.name === "mobile" && pages.some((x) => EN_MOBILE_PAGES.has(x)))) : [...POS_VIEWPORTS]; // POS P2.14 ▸ มติ 6 (V1): LOCALE=en = 1440 ทุกหน้า + 390 ของหน้าขาย/จอชำระ/บิล/หน้าสาธารณะ (EN_MOBILE_PAGES · แบบ KDS G3b · หน้าอื่นตัด 390 ที่ jobsPlanned) ◂
+const EN_MOBILE_PAGES = new Set<string>(["register", "sales", "receipt-public", "display", "qr-public", "help"]); const viewports = LOCALE_EN && !(pages.length === 1 && pages[0] === "help") /* POS P6.2 ▸ --page help = th/en × 3 ขนาด (CD-P62-O8) ◂ */ ? POS_VIEWPORTS.filter((v) => v.name === "desktop" || (v.name === "mobile" && pages.some((x) => EN_MOBILE_PAGES.has(x)))) : [...POS_VIEWPORTS]; // POS P2.14 ▸ มติ 6 (V1): LOCALE=en = 1440 ทุกหน้า + 390 ของหน้าขาย/จอชำระ/บิล/หน้าสาธารณะ (EN_MOBILE_PAGES · แบบ KDS G3b · หน้าอื่นตัด 390 ที่ jobsPlanned) ◂
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
 const stockStatesOn = STATES_ON && tenantKey === "coffee" && !P211U_WO /* POS P2.11U */ && (onlyPage === "stock" || /^p1\.14/i.test(WO));
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
