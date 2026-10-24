@@ -36,6 +36,19 @@ export function resolveCreditTermDays(account: number | null | undefined, contac
 /** สำเนาเงื่อนไขเครดิตบนบิล (PosSale.creditTerms · เขียนครั้งเดียวใน tx ของ createSale) */
 export type PosCreditTerms = { termDays: number; dueDate: string; limitSatang: number; exposureSatang: number; overrideBy?: string };
 
+/** POS P4.3 ▸ F-P3-16 · CD-P43-O6: วันครบกำหนดที่แสดงได้ทุกผิว (ผลส่งบิล · ลิ้นชักบิล · ใบเสร็จพิมพ์ · /r) — ไม่มีวงเงิน/ยอดค้าง (ข้อมูลผู้ถือ pos.credit.manage) ◂ */
+export type PosSaleCreditTermsView = { dueDate: string; termDays: number };
+/**
+ * POS P4.3 ▸ F-P3-16: อ่าน PosSale.creditTerms (Json) → {dueDate, termDays} · ไม่ใช่บิลวางบิล/ผิดรูป (dueDate ไม่ใช่ YYYY-MM-DD) = null
+ *   (ผู้เรียกไม่ใส่คีย์ creditTerms เลย ⇒ ผิวเดิมของบิลทั่วไปไม่เปลี่ยน) ◂
+ */
+export function saleCreditTermsView(v: unknown): PosSaleCreditTermsView | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.dueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(o.dueDate)) return null;
+  return { dueDate: o.dueDate, termDays: typeof o.termDays === "number" && Number.isInteger(o.termDays) && o.termDays >= 0 ? o.termDays : 0 };
+}
+
 /** บัญชีเครดิต 1 แถว (หน้าตั้งค่า · ผู้ถือ pos.credit.manage เท่านั้น) */
 export type PosCreditAccountView = { id: string; partyId: string; limitSatang: number; termDays: number | null; active: boolean; note: string | null; updatedAt: string };
 

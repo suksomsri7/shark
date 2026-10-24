@@ -26,6 +26,7 @@ import { moneyText, type RegisterActor, type RegisterCtx } from "./register-shar
 import { paymentCards } from "./tender-cards"; // POS P2.9 ▸ R10 ◂
 import { paymentDeposits } from "./deposit-links"; // POS P2.9b ▸ R9 ลิงก์มัดจำของแถวชำระ ◂
 import { billSlips } from "./payment-slip"; // POS P3-SKEL ▸ R7: สลิปที่แนบของบิล (อ่านอย่างเดียว) ◂
+import { saleCreditTermsView } from "./credit-shared"; // POS P4.3 ▸ F-P3-16 ◂
 import {
   BILL_PAGE_SIZES,
   BILL_Q_MAX,
@@ -519,6 +520,8 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       Object.assign(billChannel, { refundSatang, commissionNetSatang, commissionVatNetSatang, netSatang: sale.grandTotalSatang - refundSatang - commissionNetSatang - commissionVatNetSatang });
     }
 
+    // POS P4.3 ▸ F-P3-16 · CD-P43-O6: วันครบกำหนดของบิลวางบิล (สำเนา PosSale.creditTerms · ไม่มีวงเงิน/ยอดค้าง) ◂
+    const saleCredit = saleCreditTermsView(sale.creditTerms);
     const bill: BillDetail = {
       id: sale.id,
       receiptNo: sale.receiptNo,
@@ -608,6 +611,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       timeline: timeline.map(({ time, text, kind, params }) => ({ time, text, kind, params })),
       can: { void: canVoid, refund: canRefund, reprint: true },
       ...(voidBlockedReason ? { voidBlockedReason } : {}),
+      ...(saleCredit ? { creditTerms: saleCredit } : {}), // POS P4.3 ▸ F-P3-16 ◂
     };
     return { ok: true, bill };
   } catch (e) {

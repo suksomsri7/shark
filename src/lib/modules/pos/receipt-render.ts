@@ -123,6 +123,8 @@ export type ReceiptPayload = {
   printLocale?: "th" | "en";
   /** POS P2.9b ▸ R9 มติ 3: ใบรับเงินมัดจำ (บิล POS_DEPOSIT) — หัว "ใบรับเงินมัดจำ" (+ ABB) · ไม่มี = หัวเดิม ◂ */
   depositReceipt?: boolean;
+  /** POS P4.3 ▸ F-P3-16 · CD-P43-O6: บิลขายวางบิล (ON_ACCOUNT) — วันครบกำหนด (= PosSale.creditTerms.dueDate) · บิลอื่นไม่มีคีย์ ◂ */
+  creditTerms?: { dueDate: string; termDays: number };
 };
 
 // ═══════════════════ คำบรรยาย (ชุดคีย์เดียวกันทั้งสองภาษา) ═══════════════════

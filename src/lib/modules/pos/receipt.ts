@@ -34,6 +34,7 @@ import { saleChannelResolver } from "./channel"; // POS P2.1 ▸ R11 ◂
 import type { RegisterActor } from "./register-shared";
 import { paymentCards } from "./tender-cards"; // POS P2.9 ▸ R10 ◂
 import { paymentDeposits } from "./deposit-links"; // POS P2.9b ▸ R9 ◂
+import { saleCreditTermsView } from "./credit-shared"; // POS P4.3 ▸ F-P3-16 ◂
 
 // ── POS P1.12 ▸ R9 R15: สำเนาสมาชิก/สิทธิ์บนบิล (อ่านอย่างปลอดภัยจาก Json · ผิดรูป = ไม่มี) — ใบเสร็จ · หน้าบิล · ใบเสร็จออนไลน์ใช้ชุดเดียว ◂
 export type SaleMemberSnapshot = { name: string | null; memberCode: string | null; phoneMasked: string | null; tierKey: string | null; tierName: string | null };
@@ -291,6 +292,8 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   const chView = (await saleChannelResolver(db, tenantId, [sale]))(sale);
   const channel = chView.code === "STORE" ? null : { code: chView.code, name: chView.name, ref: sale.channelRef ?? null };
 
+  // POS P4.3 ▸ F-P3-16 · CD-P43-O6: บิลขายวางบิล = วันครบกำหนดบน payload (ข้อมูล · เรนเดอร์ใบพิมพ์ไม่เปลี่ยน) · ใบคืน/บิลอื่นไม่มีคีย์ ◂
+  const saleCredit = docType === "SALE" ? saleCreditTermsView(sale.creditTerms) : null;
   const payload: ReceiptPayload = {
     docType,
     kind,
@@ -371,6 +374,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
     channel, // POS P2.1 ◂
     printLocale: posReceiptLocale(posSys.settings), // POS P1.18 ▸ R12 มติ Q7 ◂
     ...(docType === "SALE" && sale.sourceModule === "POS_DEPOSIT" ? { depositReceipt: true } : {}), // POS P2.9b ▸ มติ 3 ◂
+    ...(saleCredit ? { creditTerms: saleCredit } : {}), // POS P4.3 ▸ F-P3-16 ◂
   };
   return { payload, kind, sale, bookId: bookId ?? null };
 }
