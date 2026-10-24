@@ -367,7 +367,15 @@ export function StaffSettings({ systemId, unitId, isOwner, hr, commission }: Pro
                     {(s.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <b className="block truncate text-[15px] font-semibold">{s.name ?? "-"}</b>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <b className="block min-w-0 truncate text-[15px] font-semibold">{s.name ?? "-"}</b>
+                      {/* POS P4.3 ▸ F-P3-17 · CD-P43-O3: ป้าย "จาก HR" = ผูกพนักงานในระบบพนักงาน (posStaffOverview.staff[i].fromHr) ◂ */}
+                      {s.fromHr ? (
+                        <span data-testid={`pos-settings-staff-from-hr-${s.userId}`} className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-[7px] bg-[color:var(--color-accent-soft)] px-2 text-[12px] font-semibold text-[color:var(--color-accent)]">
+                          {ts("fromHr")}
+                        </span>
+                      ) : null}
+                    </span>
                     <small className={`block text-[13px] ${s.hasPin ? "text-[color:var(--color-muted)]" : "text-[color:var(--color-danger)]"}`}>
                       {`${roleLabel(s.role)} · ${s.hasPin ? ts("pinSet") : ts("pinNotSet")}`}
                     </small>

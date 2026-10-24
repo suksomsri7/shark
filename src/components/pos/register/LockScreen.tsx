@@ -75,6 +75,8 @@ export function LockScreen(p: {
 }) {
   const t = useTranslations("pos.register");
   const [staff, setStaff] = useState<StaffListItem[] | null>(null);
+  /** POS P4.3 ▸ F-P3-19 · CD-P43-O5: นาทีที่ผู้จัดการอนุญาตนอกตารางได้ (listStaffForDevice.overrideTtlMin · null = ยังไม่รู้/เซิร์ฟเวอร์เก่า) ◂ */
+  const [overrideTtlMin, setOverrideTtlMin] = useState<number | null>(null);
   const [staffErr, setStaffErr] = useState(false);
   const [selected, setSelected] = useState<string | null>(p.current?.userId ?? null);
   const [manager, setManager] = useState<string | null>(null);
@@ -103,8 +105,10 @@ export function LockScreen(p: {
     setStaffErr(false);
     try {
       const r = await listStaffForDeviceAction({ systemId: p.systemId, unitId: p.unitId, ...(p.deviceId ? { deviceId: p.deviceId } : {}) });
-      if (r.ok) setStaff(r.items);
-      else setStaffErr(true);
+      if (r.ok) {
+        setStaff(r.items);
+        setOverrideTtlMin(typeof r.overrideTtlMin === "number" ? r.overrideTtlMin : null); // POS P4.3 ▸ F-P3-19 ◂
+      } else setStaffErr(true);
     } catch {
       setStaffErr(true);
     }
@@ -655,6 +659,8 @@ export function LockScreen(p: {
                   {t("lock.schedule.overrideTitle")}
                 </h3>
                 <p className="mt-1 text-[13.5px] text-[color:var(--color-ink-soft)]">{t("lock.schedule.overrideFor", { name: nameOf(offSchedule.userId) })}</p>
+                {/* POS P4.3 ▸ F-P3-19: อนุญาตได้กี่นาที (ค่าตั้งของร้าน) · 0 = ปิดการอนุญาต (เซิร์ฟเวอร์ตอบ overrideDisabled เอง) ◂ */}
+                {overrideTtlMin ? <p data-testid="pos-lock-override-body" className="mt-1 text-[13.5px] text-[color:var(--color-ink-soft)]">{t("lock.schedule.overrideBody", { minutes: overrideTtlMin })}</p> : null}
                 <p className="mt-1 text-[12.5px] text-[color:var(--color-muted)]">{t("lock.schedule.overrideHint")}</p>
               </span>
               <button data-testid="pos-lock-override-close" type="button" aria-label={t("lock.schedule.close")} className="grid size-11 shrink-0 place-items-center rounded-[11px] border" onClick={clearOverride}>

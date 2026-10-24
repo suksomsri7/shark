@@ -613,13 +613,15 @@ export async function listStaffForDevice(ctx: StaffPinCtx, input: { unitId: stri
     const items: StaffListItem[] = sellers
       .map(({ actor, name }) => ({ userId: actor.userId, name, role: actor.role as RegisterRole, hasPin: hasPin.has(actor.userId), shift: shiftOf.get(actor.userId) ?? null }))
       .sort((x, y) => (x.name ?? "").localeCompare(y.name ?? "", "th") || (x.userId < y.userId ? -1 : 1));
+    // POS P4.3 ▸ F-P3-19 · CD-P43-O5: ค่าตั้งด่านตารางงานอ่านครั้งเดียว — overrideTtlMin ไปกับผลทุกครั้ง (จอล็อกเขียน "อนุญาตได้ {minutes} นาที") ◂
+    const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS" }, select: { settings: true } });
+    const gate = posScheduleGate(sys?.settings);
     // POS P3.5 ▸ R5: สถานะจากระบบพนักงาน — เฉพาะร้านที่มีระบบ HR (ไม่มี = ไม่มีคีย์ hr) · ไม่มีชนิด/เหตุผลการลา ไม่มีเงิน ◂
     if (items.length && opts?.hr !== false) {
       const now = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
-      const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS" }, select: { settings: true } });
-      const states = await (await import("./hr-link")).staffHrStates(s.tenantId, items.map((x) => x.userId), now, posScheduleGate(sys?.settings));
+      const states = await (await import("./hr-link")).staffHrStates(s.tenantId, items.map((x) => x.userId), now, gate);
       if (states) for (const it of items) it.hr = states.get(it.userId) ?? { schedule: null, onLeave: false, inSchedule: null };
     }
-    return { ok: true, items };
+    return { ok: true, items, overrideTtlMin: gate.overrideTtlMin };
   });
 }

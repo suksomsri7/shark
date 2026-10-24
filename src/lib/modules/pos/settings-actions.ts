@@ -11,6 +11,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { posSettingsHistory, updatePosDiscountCaps, updatePosGeneralSettings, updatePosStaffCommission, updatePosStaffSettings, updatePosUnitStockPolicy, type PosStaffCommissionResult, type PosStaffSettingsResult } from "./settings-general"; // POS P3.5U ▸ + ตัวเขียนค่าตั้งพนักงาน × HR ◂
 import { posSettingsOverview, posStaffOverview, type PosSettingsOverviewResult, type PosStaffOverviewResult } from "./settings-overview";
+import { posCommissionCatalog, type PosCommissionCatalogResult } from "./settings-overview"; // POS P4.3 ▸ F-P3-18 ◂
 import { updatePosUnitPromptpay, type PosUnitPromptpayResult } from "./payment-settings";
 import type { PosDiscountCapsResult, PosGeneralSettingsResult, PosSettingsHistoryResult, PosSettingsRefusal, PosUnitStockPolicyResult } from "./settings-shared";
 
@@ -154,3 +155,18 @@ export async function updatePosStaffCommissionAction(args: { systemId: string; p
   }
 }
 // ◂ POS P3.5U
+
+// POS P4.3 ▸ F-P3-18 · CD-P43-O4: แคตตาล็อก (หมวด/สินค้า/ตัวแปร/สินค้าสาขาอื่น) ของการ์ดค่าคอมฯ 17C —
+//   สิทธิ์ = เจ้าของ หรือผู้ดูเงินเดือน canViewPayroll (กติกาเดียวกับ updatePosStaffCommission · ตัวอ่านตัดสิน — ไม่ผูกคีย์ pos.* ที่ action) ·
+//   แทน registerCatalogAction ที่ต้องมีสิทธิ์ขาย · ร้าน/ผู้ใช้จาก SESSION · systemId/unitId ตรวจซ้ำในตัวอ่าน · คำปฏิเสธคืนเป็นข้อมูล ◂
+/** F-P3-18 แคตตาล็อกของการ์ดค่าคอมฯ (อ่านอย่างเดียว · ชื่อ + id) */
+export async function posCommissionCatalogAction(args: { systemId: string; unitId: string; q?: string; limit?: number }): Promise<PosCommissionCatalogResult> {
+  try {
+    const s = await session();
+    return await posCommissionCatalog({ tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId) }, s.actor, { q: args?.q, limit: args?.limit });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("commissionCatalog", e);
+  }
+}
+// ◂ POS P4.3

@@ -5,7 +5,8 @@
 // 🔴 posSettingsOverview: แคชเชียร์ (pos.sale.create) อ่านได้แบบดูอย่างเดียว · canEdit ต่อส่วน = สิทธิ์จริงของตัวเขียนส่วนนั้น
 //    (general/caps = pos.settings.manage ครบทุกสาขา · unitStock/staff = ที่สาขานี้ · receipt = pos.device.manage ครบทุกสาขา (FU-c) · payment = เจ้าของ)
 
-import { evaluate } from "@/lib/core/rbac";
+import { canAccessUnit, canViewPayroll, evaluate } from "@/lib/core/rbac"; // POS P4.3 ▸ + canAccessUnit canViewPayroll (แคตตาล็อกค่าคอมฯ) ◂
+import { ciContains } from "@/lib/core/ci-equals"; // POS P4.3 ▸ ค้นชื่อสินค้าไม่มี wildcard รั่ว ◂
 import { listPoliciesForEntities } from "@/lib/modules/approval"; // POS P1.18 ▸ R10 มติ Q4 (facade อ่านล้วน) ◂
 import { prisma } from "./db";
 import { listStaffForDevice } from "./staff-pin";
@@ -112,8 +113,10 @@ export type PosApprovalPolicyView = {
   unitId: string | null;
   steps: { order: number; approverRole: string; approverUserId: string | null }[];
 };
+/** POS P4.3 ▸ F-P3-17 · CD-P43-O3: fromHr = ผูกกับพนักงานในระบบพนักงาน (HrEmployee.linkedUserId) — ป้าย "จาก HR" ของแท็บ 17C ◂ */
+export type PosStaffOverviewItem = StaffListItem & { fromHr: boolean };
 export type PosStaffOverviewResult =
-  | { ok: true; staff: StaffListItem[]; roleMatrix: PosRoleMatrixRow[]; caps: PosDiscountCaps; approvals: PosApprovalPolicyView[] }
+  | { ok: true; staff: PosStaffOverviewItem[]; roleMatrix: PosRoleMatrixRow[]; caps: PosDiscountCaps; approvals: PosApprovalPolicyView[] }
   | PosSettingsRefusal;
 
 /** R10 — แท็บพนักงานและสิทธิ์ของสาขานี้ (pos.settings.manage ที่สาขา · มติ 5) — แก้สิทธิ์รายคนอยู่ที่ /app/settings/staff · แก้กติกาที่ /app/settings/approval */
@@ -126,6 +129,9 @@ export async function posStaffOverview(ctx: UnitCtx, actor: PosSettingsWriterAct
     if (!evaluate(m, { module: "pos", action: PERM_SETTINGS_MANAGE, unitId })) return settingsRefuse("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์ดูพนักงานและสิทธิ์ของสาขานี้");
     const list = await listStaffForDevice({ tenantId, systemId, unitId }, { unitId }, undefined, { hr: false }); // POS P3.5 ▸ R5: สถานะ HR เป็นของจอล็อก — แท็บตั้งค่าพนักงานยังไม่ใช้ (P3.5U เปิดได้) ◂
     if (!list.ok) return settingsRefuse(list.code === "NOT_FOUND" ? "NOT_FOUND" : "UNKNOWN");
+    // POS P4.3 ▸ F-P3-17 · CD-P43-O3: ป้าย "จาก HR" รายคน — ผูกพนักงาน HR ของร้าน (ทางเดียวผ่าน hr-link · โหลด lazy แบบ staff-pin) ◂
+    const linked = list.items.length ? await (await import("./hr-link")).hrLinkedUserIds(tenantId, list.items.map((x) => x.userId)) : new Set<string>();
+    const staff: PosStaffOverviewItem[] = list.items.map((x) => ({ ...x, fromHr: linked.has(x.userId) }));
     // มติ 7: STAFF ที่เข้าสาขานี้ได้ (unitAccess มีสาขานี้ หรือ "*") · ผู้ถือคีย์ = evaluate ที่สาขานี้ (คีย์ชัดแจ้งหรือ pos.*)
     const members = await prisma.membership.findMany({ where: { tenantId, role: "STAFF", acceptedAt: { not: null } }, select: { unitAccess: true, permissions: true } });
     const staffAt = members
@@ -156,9 +162,48 @@ export async function posStaffOverview(ctx: UnitCtx, actor: PosSettingsWriterAct
       },
       needsApproval: !!r.approval && approvals.some((p) => p.entityType === r.approval),
     }));
-    return { ok: true, staff: list.items, roleMatrix, caps: posDiscountCaps(s.settings), approvals };
+    return { ok: true, staff, roleMatrix, caps: posDiscountCaps(s.settings), approvals };
   } catch (e) {
     console.error("[pos/settings-overview] staff", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+
+// ═══════════ POS P4.3 ▸ F-P3-18 · CD-P43-O4: แคตตาล็อกสำหรับการ์ดค่าคอมฯ (17C) — ผู้ดูเงินเดือนที่ไม่มีสิทธิ์ขายก็แก้อัตรารายหมวด/สินค้าได้ ◂ ═══════════
+export type PosCommissionCatalogResult =
+  | { ok: true; categories: { id: string; name: string }[]; products: { id: string; name: string; categoryId: string | null; parentId: string | null }[]; more: boolean }
+  | PosSettingsRefusal;
+const COMMISSION_CATALOG_MAX = 500;
+
+/**
+ * POS P4.3 ▸ F-P3-18 (CD-P43-O4): หมวด + สินค้าทั้งหมดของระบบ POS นี้ (รวมตัวแปร parentId และสินค้าเฉพาะสาขาอื่น · ไม่รวมที่เก็บถาวร) —
+ *   สิทธิ์ = กติกาเดียวกับตัวเขียนอัตรา updatePosStaffCommission (เจ้าของ หรือ canViewPayroll) · สาขาต้องผูก POS นี้และผู้ใช้เข้าสาขานั้นได้ ·
+ *   อ่านอย่างเดียว · ชื่อ + id + หมวด/แม่เท่านั้น (ไม่มีราคา/ต้นทุน/สต็อก) · q = ค้นชื่อสินค้า (ไม่ไวตัวพิมพ์ · ไม่มี wildcard รั่ว) · limit 1–500 (ปริยาย 500) ·
+ *   more = มีสินค้าเกิน limit ◂
+ */
+export async function posCommissionCatalog(ctx: UnitCtx, actor: PosSettingsWriterActor, input: unknown = {}): Promise<PosCommissionCatalogResult> {
+  try {
+    const s = await scopeOf(ctx, actor);
+    if ("ok" in s) return s;
+    const { m } = s;
+    if (!canViewPayroll(m)) return settingsRefuse("PERMISSION_DENIED", "แคตตาล็อกค่าคอมฯ เจ้าของร้านหรือผู้ดูเงินเดือนเท่านั้นที่เปิดได้");
+    if (!canAccessUnit(m, s.ctx.unitId)) return settingsRefuse("NOT_FOUND");
+    const inp = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+    const q = typeof inp.q === "string" ? inp.q.trim().slice(0, 100) : "";
+    const limit = typeof inp.limit === "number" && Number.isInteger(inp.limit) && inp.limit >= 1 ? Math.min(inp.limit, COMMISSION_CATALOG_MAX) : COMMISSION_CATALOG_MAX;
+    const { tenantId, systemId } = s.ctx;
+    const [categories, products] = await Promise.all([
+      prisma.posCategory.findMany({ where: { tenantId, systemId, archivedAt: null }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }], select: { id: true, name: true }, take: COMMISSION_CATALOG_MAX }),
+      prisma.posProduct.findMany({
+        where: { tenantId, systemId, archivedAt: null, ...(q ? { name: ciContains(q) } : {}) },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
+        select: { id: true, name: true, categoryId: true, parentId: true },
+        take: limit + 1,
+      }),
+    ]);
+    return { ok: true, categories, products: products.slice(0, limit), more: products.length > limit };
+  } catch (e) {
+    console.error("[pos/settings-overview] commissionCatalog", e);
     return settingsRefuse("UNKNOWN");
   }
 }
