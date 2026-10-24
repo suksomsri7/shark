@@ -44,15 +44,31 @@ const SELF = ARGV.includes("--self-test");
 const COUNTS = ARGV.includes("--counts"); // P6.1 fix1 CD-P61-R5
 const CRONS = ARGV.includes("--crons"); // P6.1 fix1 CD-P61-R6
 const POST_MERGE = ARGV.includes("--post-merge");
+// P6.1 fix2 R2-F1: --pr-freeze <sha> [--main-at <sha>] [--pr-ref <ref>] — ด่านก่อนกด merge (GO-12) · อ่าน git อย่างเดียว · ไม่แตะ DB
+const VALUE_FLAGS = new Set(["--pr-freeze", "--main-at", "--pr-ref"]);
+const vals = new Map<string, string>();
 const KNOWN_FLAGS = new Set(["--list", "--self-test", "--counts", "--crons", "--post-merge"]);
-for (const a of ARGV) {
+for (let i = 0; i < ARGV.length; i++) {
+  const a = ARGV[i] as string;
+  const eq = a.indexOf("=");
+  const k = eq > 0 ? a.slice(0, eq) : a;
+  if (VALUE_FLAGS.has(k)) {
+    const v = eq > 0 ? a.slice(eq + 1) : (ARGV[++i] ?? "");
+    if (!v || v.startsWith("--")) {
+      console.error(`🔴 ${SUITE}: ${k} ต้องมีค่า`);
+      process.exit(2);
+    }
+    vals.set(k, v.trim());
+    continue;
+  }
   if (!KNOWN_FLAGS.has(a)) {
-    console.error(`🔴 ${SUITE}: ไม่รู้จัก ${a} (ใช้ได้: --list · --self-test · --counts · --crons [--post-merge])`);
+    console.error(`🔴 ${SUITE}: ไม่รู้จัก ${a} (ใช้ได้: --list · --self-test · --counts · --crons [--post-merge] · --pr-freeze <sha> --main-at <sha> [--pr-ref <ref>])`);
     process.exit(2);
   }
 }
-if ([SELF, COUNTS, CRONS].filter(Boolean).length > 1 || (POST_MERGE && !CRONS)) {
-  console.error(`🔴 ${SUITE}: เลือกได้โหมดเดียว (--self-test | --counts | --crons) · --post-merge ใช้คู่กับ --crons เท่านั้น`);
+const FREEZE = vals.has("--pr-freeze");
+if ([SELF, COUNTS, CRONS, FREEZE].filter(Boolean).length > 1 || (POST_MERGE && !CRONS) || ((vals.has("--main-at") || vals.has("--pr-ref")) && !FREEZE)) {
+  console.error(`🔴 ${SUITE}: เลือกได้โหมดเดียว (--self-test | --counts | --crons | --pr-freeze) · --post-merge ใช้คู่กับ --crons · --main-at/--pr-ref ใช้คู่กับ --pr-freeze`);
   process.exit(2);
 }
 export type Mode = "audit" | "self-test" | "counts";
@@ -83,7 +99,10 @@ const CRON_MODES = ["minute", "hourly", "daily"] as const;
 // host ซ้อม (W31 · CD-P61-P3 · R1 F16): ผู้คุมเพิ่ม { mark: "<endpoint ของ branch ซ้อม>", role: "rehearsal" } ใน commit วันเดียวกันแล้วลบหลังลบ branch —
 //   **role ใหม่ ห้ามใช้ role prod** · rehearsal = กติกาเดียวกับ prod (ต้อง ALLOW_PROD_AUDIT=1 · ไม่มี --self-test) — G2 มีกรณีทดสอบ
 export type HostRole = "prod" | "qc4" | "rehearsal";
-export type AllowHost = { mark: string; role: HostRole; note: string };
+/** suffix = ท้าย hostname ที่ต้องตรง (ขึ้นต้นด้วยจุด) · P6.1 fix2 R2-F4: เทียบทั้ง host ไม่ใช่แค่ label แรก */
+export type AllowHost = { mark: string; role: HostRole; note: string; suffix?: string };
+/** ท้าย host ของ Neon (ทุก endpoint ของเรา) — ปริยายของทุกแถวใน allowlist */
+export const NEON_SUFFIX = ".neon.tech";
 export const HOST_ALLOWLIST: readonly AllowHost[] = [
   { mark: "ep-royal-night", role: "prod", note: "Neon branch production (PROD_HOST_MARK ใน scripts/qc-env-guard.mts · qc4.sh/qc-prisma.sh ปฏิเสธ host นี้)" },
   { mark: "ep-frosty-lab", role: "qc4", note: "QC4 wo-pos-qc4 (scripts/qc4.sh) — ใช้ได้เฉพาะ --self-test" },
@@ -118,8 +137,10 @@ export function decideTarget(env: Record<string, string | undefined>, mode: Mode
   }
   if (u.protocol !== "postgres:" && u.protocol !== "postgresql:") return { ok: false, code: "BAD_URL", reason: "ไม่ใช่ postgres URL" };
   for (const k of ["host", "hostaddr"]) if (u.searchParams.has(k)) return { ok: false, code: "HOST_PARAM", reason: `URL มี ?${k}= (ห้ามชี้ host ซ้อน)` };
-  const label = u.hostname.toLowerCase().split(".")[0] ?? "";
-  const hit = allow.find((h) => label === h.mark || label.startsWith(`${h.mark}-`));
+  // P6.1 fix2 R2-F4: label แรก = `<mark>-<endpoint id>` (± `-pooler`) ตรงตัว และ host ทั้งตัวลงท้ายด้วย suffix ของแถว (ปริยาย .neon.tech) — กัน `<mark>-x.ที่อื่น.tld`
+  const hostLc = u.hostname.toLowerCase();
+  const label = hostLc.split(".")[0] ?? "";
+  const hit = allow.find((h) => new RegExp(`^${h.mark.replace(/[-.]/g, "\\$&")}-[a-z0-9]+(-pooler)?$`).test(label) && hostLc.endsWith(h.suffix ?? NEON_SUFFIX) && hostLc.length > (h.suffix ?? NEON_SUFFIX).length);
   if (!hit) return { ok: false, code: "NOT_ALLOWLISTED", reason: `host ${label || "(ว่าง)"} ไม่อยู่ใน allowlist` };
   // DIRECT_URL ที่ตั้งมาด้วยต้องเป็น host บทบาทเดียวกัน (กันสภาพ "อ่านที่หนึ่ง เขียน/migrate อีกที่")
   const direct = env.DIRECT_URL ? normUrl(env.DIRECT_URL).toLowerCase() : "";
@@ -266,7 +287,14 @@ const CRON_CHECKS: readonly [string, string][] = [
   ["R3", "โค้ดของ checkout นั้นมีงานรายนาที pos.staffCommission.payroll + pos.slip.purge (ไม่มี = เตือน · --post-merge = ล้ม)"],
   ["R4", "checkout นั้นสะอาด (git status --porcelain ว่าง) — มีไฟล์ค้าง = เตือน (pull --ff-only อาจล้ม)"],
 ];
-const ACTIVE_CHECKS = CRONS ? CRON_CHECKS : COUNTS ? COUNT_CHECKS : CHECKS;
+/** --pr-freeze (P6.1 fix2 · R1 round 2 R2-F1): ไม่แตะ DB · เทียบ git ในเครื่อง (เจ้าของ `git fetch origin` ก่อน) */
+export const FREEZE_PATHS = ["prisma", "src", "package.json", "pnpm-lock.yaml", "vercel.json", "scripts/vercel-build.sh"] as const;
+const FREEZE_CHECKS: readonly [string, string][] = [
+  ["Q1", "หัว PR ยังเท่ากับ SHA ที่ผ่าน GO-9/GO-10: `git diff --stat <sha> <pr-ref> -- prisma src package.json pnpm-lock.yaml vercel.json scripts/vercel-build.sh` ว่าง (commit หลังจากนั้นได้แค่ ledger/docs)"],
+  ["Q2", "main ไม่มี migration ใหม่ตั้งแต่ GO-10: `git log <main-at>..origin/main -- prisma/migrations` ว่าง (ไม่มี --main-at = ล้ม)"],
+  ["Q3", "SHA ที่ให้มา เป็นบรรพบุรุษของ <pr-ref> (PR ไม่ถูก force-push ทับ) · รายการ commit หลัง SHA (ต้องแตะแค่ ledger/ docs/)"],
+];
+const ACTIVE_CHECKS = FREEZE ? FREEZE_CHECKS : CRONS ? CRON_CHECKS : COUNTS ? COUNT_CHECKS : CHECKS;
 
 if (LIST) {
   for (const [id, t] of CHECKS) console.log(`${id.padEnd(3)} ${t}`);
@@ -274,8 +302,10 @@ if (LIST) {
   for (const [id, t] of COUNT_CHECKS) console.log(`${id.padEnd(3)} ${t}`);
   console.log("\n--crons:");
   for (const [id, t] of CRON_CHECKS) console.log(`${id.padEnd(3)} ${t}`);
+  console.log("\n--pr-freeze:");
+  for (const [id, t] of FREEZE_CHECKS) console.log(`${id.padEnd(3)} ${t}`);
   console.log(`\nindex มือ ${HAND_INDEXES.length} ตัว · env ${ENV_NAMES.length} ชื่อ (${ENV_NAMES.map((e) => e.name).join(" ")}) · allowlist ${HOST_ALLOWLIST.map((h) => `${h.mark}=${h.role}`).join(" ")} · เกณฑ์แถว ${COUNT_THRESHOLD}`);
-  console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, mode: "list", total: CHECKS.length + COUNT_CHECKS.length + CRON_CHECKS.length, passed: 0 })}`);
+  console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, mode: "list", total: CHECKS.length + COUNT_CHECKS.length + CRON_CHECKS.length + FREEZE_CHECKS.length, passed: 0 })}`);
   process.exit(0);
 }
 
@@ -295,17 +325,23 @@ if (CRONS) {
   runCronChecks();
   printAndExit(null, "(ไม่ใช้ DB)", "crons");
 }
+// ── --pr-freeze (R2-F1): ไม่แตะ DB · git ในเครื่องอย่างเดียว ──
+if (FREEZE) {
+  runFreezeChecks(vals.get("--pr-freeze") as string, vals.get("--main-at") ?? "", vals.get("--pr-ref") ?? "origin/session/pos");
+  printAndExit(null, "(ไม่ใช้ DB)", "pr-freeze");
+}
 
 // ── G1/G2: ด่านเป้าหมาย ──
 const target = decideTarget(process.env, MODE);
 if (SELF) {
-  const fake = (mark: string) => `postgresql://u:x@${mark}-000000.example.invalid/db`;
+  // host ปลอมรูปแบบ Neon (ไม่มี user/password · มีพอร์ต) — ไม่ต่อจริง
+  const fake = (mark: string) => `postgresql://${mark}-000000.c-2.example${NEON_SUFFIX}:5432/db`;
   const reh: AllowHost[] = [...HOST_ALLOWLIST, { mark: "ep-rehearsal-test", role: "rehearsal", note: "ชุดทดสอบ G2 (F16)" }];
   const cases: [string, Record<string, string | undefined>, Mode, string | true, (readonly AllowHost[])?][] = [
     ["prod ไม่มี ALLOW", { DATABASE_URL: fake("ep-royal-night") }, "audit", "NO_ALLOW"],
     ["prod + ALLOW", { DATABASE_URL: fake("ep-royal-night"), ALLOW_PROD_AUDIT: "1" }, "audit", true],
     ["prod + --self-test", { DATABASE_URL: fake("ep-royal-night"), ALLOW_PROD_AUDIT: "1" }, "self-test", "SELFTEST_ON_PROD"],
-    ["prod percent-encoded", { DATABASE_URL: `postgresql://u:x@%65p-royal-night-0.example.invalid/db` }, "audit", "NO_ALLOW"],
+    ["prod percent-encoded", { DATABASE_URL: `postgresql://%65p-royal-night-0.c-2.example${NEON_SUFFIX}:5432/db` }, "audit", "NO_ALLOW"],
     ["prod --counts ไม่มี ALLOW", { DATABASE_URL: fake("ep-royal-night") }, "counts", "NO_ALLOW"],
     ["prod --counts + ALLOW", { DATABASE_URL: fake("ep-royal-night"), ALLOW_PROD_AUDIT: "1" }, "counts", true],
     ["QC4 ไม่มี --self-test", { DATABASE_URL: fake("ep-frosty-lab"), ALLOW_PROD_AUDIT: "1" }, "audit", "QC4_NEEDS_SELFTEST"],
@@ -315,6 +351,13 @@ if (SELF) {
     ["host ปลอมคำนำหน้า", { DATABASE_URL: fake("ep-royal-nightx"), ALLOW_PROD_AUDIT: "1" }, "audit", "NOT_ALLOWLISTED"],
     ["?host= ซ้อน", { DATABASE_URL: `${fake("ep-frosty-lab")}?host=ep-royal-night-0.example.invalid` }, "self-test", "HOST_PARAM"],
     ["PGHOST ตั้งอยู่", { DATABASE_URL: fake("ep-frosty-lab"), PGHOST: "x" }, "self-test", "PGHOST"],
+    // P6.1 fix2 R2-F4: ปลอมท้าย host · IP · ตัวพิมพ์ใหญ่ · PGHOSTADDR อย่างเดียว · pooler (verify อ่านอย่างเดียว · SET LOCAL ⇒ pooler รับได้)
+    ["prod ปลอมท้าย host", { DATABASE_URL: "postgresql://ep-royal-night-000000.evil.example:5432/db", ALLOW_PROD_AUDIT: "1" }, "audit", "NOT_ALLOWLISTED"],
+    ["prod ปลอมท้าย neon.tech.evil", { DATABASE_URL: `postgresql://ep-royal-night-000000${NEON_SUFFIX}.evil.example:5432/db`, ALLOW_PROD_AUDIT: "1" }, "audit", "NOT_ALLOWLISTED"],
+    ["IP ตรง", { DATABASE_URL: "postgresql://10.0.0.1:5432/db", ALLOW_PROD_AUDIT: "1" }, "audit", "NOT_ALLOWLISTED"],
+    ["ตัวพิมพ์ใหญ่ = เท่ากัน", { DATABASE_URL: fake("EP-FROSTY-LAB") }, "self-test", true],
+    ["PGHOSTADDR อย่างเดียว", { DATABASE_URL: fake("ep-frosty-lab"), PGHOSTADDR: "10.0.0.1" }, "self-test", "PGHOST"],
+    ["prod pooler + ALLOW (อ่านอย่างเดียว)", { DATABASE_URL: `postgresql://ep-royal-night-000000-pooler.c-2.example${NEON_SUFFIX}:5432/db`, ALLOW_PROD_AUDIT: "1" }, "audit", true],
     ["DIRECT_URL ชี้ prod", { DATABASE_URL: fake("ep-frosty-lab"), DIRECT_URL: fake("ep-royal-night") }, "self-test", "MIXED"],
     ["ไม่มี URL", {}, "self-test", "NO_URL"],
     // R1 F16: role ซ้อมต้องได้กติกา prod (ALLOW_PROD_AUDIT · ไม่มี --self-test) — ไม่ใช่ทางลัดของ QC4
@@ -600,7 +643,7 @@ printAndExit(null, target.ok ? target.label : "", target.ok ? target.role : "");
 function printAndExit(forced: number | null, label: string, role: string): never {
   const rows = ACTIVE_CHECKS.map(([id, t]) => ({ id, t, ...(results.get(id) ?? { st: "FAIL" as Status, detail: "ไม่ถูกตรวจ" }) }));
   const icon: Record<Status, string> = { OK: "🟢", WARN: "🟡", FAIL: "🔴", INFO: "⚪" };
-  const modeName = CRONS ? "crons" : COUNTS ? "counts" : SELF ? "self-test" : "prod-audit";
+  const modeName = FREEZE ? "pr-freeze" : CRONS ? "crons" : COUNTS ? "counts" : SELF ? "self-test" : "prod-audit";
   console.log(`\n${SUITE} · โหมด ${modeName} · host ${label}`);
   console.log("ID  สถานะ  ข้อ / ผล");
   for (const r of rows) console.log(`${icon[r.st]} ${r.id.padEnd(3)} ${r.st.padEnd(4)} ${r.t}\n         → ${r.detail}`);
@@ -780,4 +823,33 @@ function runCronChecks(): void {
   put("R3", dirs.length ? sev(jobsMissingAny) : "INFO", r3.join(" · ") || "ไม่มี checkout");
   put("R4", dirs.length ? (dirtyAny ? "WARN" : "OK") : "INFO", r4.join(" · ") || "ไม่มี checkout");
   extraSummary = { expected, entries, checkouts: per, postMerge: POST_MERGE };
+}
+
+
+// ═════════════════════════ --pr-freeze (P6.1 fix2 · R1 round 2 R2-F1) — ไม่แตะ DB ═════════════════════════
+function runFreezeChecks(sha: string, mainAt: string, prRef: string): void {
+  const g = (...a: string[]) => sh("git", ["--no-optional-locks", "-C", ROOT, ...a]);
+  const okSha = (x: string) => /^[0-9a-f]{7,40}$/i.test(x) && g("cat-file", "-e", `${x}^{commit}`) !== null;
+  const refSha = g("rev-parse", "--verify", "-q", `${prRef}^{commit}`)?.trim() ?? "";
+  if (!okSha(sha) || !refSha) {
+    const why = !okSha(sha) ? `SHA ${sha} ไม่ใช่ commit ในเครื่อง` : `ไม่มี ref ${prRef} (git fetch origin ก่อน)`;
+    for (const id of ["Q1", "Q2", "Q3"]) put(id, "FAIL", why);
+    extraSummary = { sha, prRef, mainAt: mainAt || null };
+    return;
+  }
+  const stat = g("diff", "--stat", sha, refSha, "--", ...FREEZE_PATHS);
+  put("Q1", stat === null ? "FAIL" : stat.trim() ? "FAIL" : "OK", stat === null ? "git diff ล้ม" : stat.trim() ? `หัว PR เปลี่ยนในส่วนที่ build/migrate: ${stat.trim().split("\n").slice(-1)[0]} — ⇒ ทำ GO-9/GO-10 ใหม่ที่หัวใหม่` : `${prRef} @ ${refSha.slice(0, 8)} ไม่ต่างจาก ${sha.slice(0, 8)} ใน ${FREEZE_PATHS.join(" ")}`);
+  if (!mainAt) put("Q2", "FAIL", "ไม่มี --main-at (SHA ของ origin/main ที่จดไว้ตอน GO-10)");
+  else if (!okSha(mainAt)) put("Q2", "FAIL", `--main-at ${mainAt} ไม่ใช่ commit ในเครื่อง`);
+  else {
+    const om = g("rev-parse", "--verify", "-q", "origin/main^{commit}")?.trim() ?? "";
+    const newMig = om ? g("log", "--format=%h %s", `${mainAt}..${om}`, "--", "prisma/migrations") : null;
+    put("Q2", newMig === null ? "FAIL" : newMig.trim() ? "FAIL" : "OK", newMig === null ? "อ่าน origin/main ไม่ได้" : newMig.trim() ? `main มี migration ใหม่หลัง GO-10: ${newMig.trim().split("\n").slice(0, 3).join(" · ")} — ⇒ หยุด ถามผู้คุม (Vercel จะ migrate ไฟล์นั้นเองตอน merge)` : `origin/main @ ${om.slice(0, 8)} · ไม่มี migration ใหม่หลัง ${mainAt.slice(0, 8)}`);
+  }
+  const anc = sh("git", ["-C", ROOT, "merge-base", "--is-ancestor", sha, refSha]) !== null;
+  const after = (g("log", "--format=%h", `${sha}..${refSha}`) ?? "").split("\n").filter(Boolean);
+  const touched = (g("diff", "--name-only", sha, refSha) ?? "").split("\n").filter(Boolean);
+  const outside = touched.filter((f) => !/^(ledger|docs)\//.test(f));
+  put("Q3", !anc ? "FAIL" : outside.length ? "WARN" : "OK", `${anc ? "เป็นบรรพบุรุษ" : "ไม่ใช่บรรพบุรุษ (force-push?) — หยุด"} · commit หลัง SHA ${after.length}${outside.length ? ` · ไฟล์นอก ledger/docs: ${outside.slice(0, 6).join(" ")}` : " · แตะแค่ ledger/docs"}`);
+  extraSummary = { sha, prRef, prHead: refSha.slice(0, 12), mainAt: mainAt || null, commitsAfter: after.length, outsideLedgerDocs: outside };
 }

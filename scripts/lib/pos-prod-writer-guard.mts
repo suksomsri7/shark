@@ -24,7 +24,9 @@ import { pathToFileURL } from "node:url";
 import { PROD_HOST_MARK } from "../qc-env-guard.mjs";
 
 export type WriterRole = "prod" | "qc4" | "rehearsal";
-export type WriterHost = { mark: string; role: WriterRole; note: string };
+/** suffix = ท้าย hostname (ขึ้นต้นด้วยจุด · ปริยาย NEON_SUFFIX) · P6.1 fix2 R2-F4: เทียบทั้ง host ไม่ใช่แค่ label แรก */
+export type WriterHost = { mark: string; role: WriterRole; note: string; suffix?: string };
+export const NEON_SUFFIX = ".neon.tech";
 
 /** allowlist ของสคริปต์เขียน (ข้อมูล — ไม่มี URL/รหัสผ่าน) · prod = PROD_HOST_MARK ของ qc-env-guard (host เดียวกับที่ qc4.sh ปฏิเสธ) */
 export const WRITER_HOST_ALLOWLIST: readonly WriterHost[] = [
@@ -72,17 +74,22 @@ const normUrl = (v: string): string => {
   }
   return x.trim();
 };
-const labelOf = (raw: string): string | null => {
+const hostPartsOf = (raw: string): { host: string; label: string } | null => {
   try {
     const u = new URL(normUrl(raw));
     if (u.protocol !== "postgres:" && u.protocol !== "postgresql:") return null;
     if (u.searchParams.has("host") || u.searchParams.has("hostaddr")) return null;
-    return u.hostname.toLowerCase().split(".")[0] ?? "";
+    const host = u.hostname.toLowerCase();
+    return { host, label: host.split(".")[0] ?? "" };
   } catch {
     return null;
   }
 };
-const hostOf = (label: string, allow: readonly WriterHost[]) => allow.find((h) => label === h.mark || label.startsWith(`${h.mark}-`));
+const esc = (x: string) => x.replace(/[-.]/g, "\\$&");
+/** R2-F4: label แรก = `<mark>-<endpoint id>` (± `-pooler`) ตรงตัว + host ลงท้ายด้วย suffix ของแถว — `<mark>-x.ที่อื่น.tld` / IP / คำนำหน้าคล้าย = ไม่ผ่าน */
+const hostOf = (p: { host: string; label: string }, allow: readonly WriterHost[]) =>
+  allow.find((h) => new RegExp(`^${esc(h.mark)}-[a-z0-9]+(-pooler)?$`).test(p.label) && p.host.endsWith(h.suffix ?? NEON_SUFFIX) && p.host.length > (h.suffix ?? NEON_SUFFIX).length);
+const isPooler = (p: { label: string }) => p.label.endsWith("-pooler");
 
 /** ตัวตัดสิน (บริสุทธิ์ — --self-test เรียกด้วยชุดทดสอบปลอม) */
 export function decideWriterTarget(env: Record<string, string | undefined>, args: WriterArgs, allow: readonly WriterHost[] = WRITER_HOST_ALLOWLIST): WriterDecision {
@@ -92,16 +99,19 @@ export function decideWriterTarget(env: Record<string, string | undefined>, args
   const raw = env.DATABASE_URL ?? "";
   if (!raw) return { ok: false, code: "NO_URL", reason: "ไม่มี DATABASE_URL — ส่งมาเองหลัง iso.sh: env DATABASE_URL=\"$PROD_DIRECT_URL\" … (QC4: ผ่าน scripts/qc4.sh)", exit: 2 };
   if (env.PGHOST || env.PGHOSTADDR) return { ok: false, code: "PGHOST", reason: "ตั้ง PGHOST/PGHOSTADDR อยู่ — ไดรเวอร์อาจไปคนละ host กับ URL", exit: 4 };
-  const label = labelOf(raw);
-  if (label === null) return { ok: false, code: "BAD_URL", reason: "DATABASE_URL อ่านไม่ได้ / ไม่ใช่ postgres / มี ?host= ซ้อน", exit: 4 };
-  const hit = hostOf(label, allow);
+  const parts = hostPartsOf(raw);
+  if (parts === null) return { ok: false, code: "BAD_URL", reason: "DATABASE_URL อ่านไม่ได้ / ไม่ใช่ postgres / มี ?host= ซ้อน", exit: 4 };
+  const label = parts.label;
+  const hit = hostOf(parts, allow);
   if (!hit) return { ok: false, code: "NOT_ALLOWLISTED", reason: `host ${label || "(ว่าง)"} ไม่อยู่ใน allowlist ของสคริปต์เขียน (scripts/lib/pos-prod-writer-guard.mts)`, exit: 4 };
+  const dParts = env.DIRECT_URL ? hostPartsOf(env.DIRECT_URL) : null;
   if (env.DIRECT_URL) {
-    const dl = labelOf(env.DIRECT_URL);
-    const dh = dl === null ? undefined : hostOf(dl, allow);
+    const dh = dParts === null ? undefined : hostOf(dParts, allow);
     if (!dh || dh.role !== hit.role || dh.mark !== hit.mark) return { ok: false, code: "MIXED", reason: "DIRECT_URL ไม่ใช่ host เดียวกับ DATABASE_URL (กันสภาพอ่านที่หนึ่ง เขียนอีกที่)", exit: 4 };
   }
   const prodLike = hit.role === "prod" || hit.role === "rehearsal";
+  // R2-F4: prod/ซ้อม ห้าม -pooler (runbook = direct URL เท่านั้น · SET ระดับ session รั่วข้าม client บน PgBouncer) · QC4 ใช้ pooler ตามเลน (qc4.sh) = ได้
+  if (prodLike && (isPooler(parts) || (dParts !== null && isPooler(dParts)))) return { ok: false, code: "POOLER", reason: `host = ${hit.role} แบบ -pooler — ใช้ direct URL เท่านั้น`, exit: 4 };
   if (prodLike) {
     if (env.ALLOW_PROD_BACKFILL !== "1") return { ok: false, code: "NO_ALLOW", reason: `host = ${hit.role} — ต้องตั้ง ALLOW_PROD_BACKFILL=1 เอง และรัน --dry-run ก่อน`, exit: 4 };
     if (!args.tenants.length && !args.all) return { ok: false, code: "NO_TENANT", reason: `${hit.role} ต้องระบุ --tenant=<id> หรือ --all เอง (C13)`, exit: 4 };
@@ -144,7 +154,8 @@ export function writeDryRunMarker(path: string, body: Record<string, unknown>): 
 
 // ═════════ --self-test (บริสุทธิ์ · ไม่แตะ DB/ไฟล์) ═════════
 function selfTest(): number {
-  const fake = (mark: string) => `postgresql://u:x@${mark}-000000.example.invalid/db`;
+  // host ปลอมรูปแบบ Neon (ไม่มี user/password · มีพอร์ต) — ไม่ต่อจริง
+  const fake = (mark: string) => `postgresql://${mark}-000000.c-2.example${NEON_SUFFIX}:5432/db`;
   const reh: WriterHost[] = [...WRITER_HOST_ALLOWLIST, { mark: "ep-rehearsal-test", role: "rehearsal", note: "ชุดทดสอบ" }];
   const A = (s: string) => parseWriterArgv(s ? s.split(" ") : []);
   const P = PROD_HOST_MARK;
@@ -156,7 +167,17 @@ function selfTest(): number {
     ["prod + ALLOW ไม่เลือกร้าน", { DATABASE_URL: fake(P), ALLOW_PROD_BACKFILL: "1" }, A("--dry-run"), "NO_TENANT"],
     ["prod + ALLOW + --tenant", { DATABASE_URL: fake(P), ALLOW_PROD_BACKFILL: "1" }, A("--tenant=t1 --dry-run"), "prod"],
     ["prod + ALLOW + --all", { DATABASE_URL: fake(P), ALLOW_PROD_BACKFILL: "1" }, A("--all"), "prod"],
-    ["prod percent-encoded ไม่มี ALLOW", { DATABASE_URL: `postgresql://u:x@%65p-royal-night-0.example.invalid/db` }, A("--all"), "NO_ALLOW"],
+    ["prod percent-encoded ไม่มี ALLOW", { DATABASE_URL: `postgresql://%65p-royal-night-0.c-2.example${NEON_SUFFIX}:5432/db` }, A("--all"), "NO_ALLOW"],
+    // P6.1 fix2 R2-F4
+    ["prod ปลอมท้าย host", { DATABASE_URL: `postgresql://${P}-000000.evil.example:5432/db`, ALLOW_PROD_BACKFILL: "1" }, A("--all"), "NOT_ALLOWLISTED"],
+    ["prod ปลอมท้าย neon.tech.evil", { DATABASE_URL: `postgresql://${P}-000000${NEON_SUFFIX}.evil.example:5432/db`, ALLOW_PROD_BACKFILL: "1" }, A("--all"), "NOT_ALLOWLISTED"],
+    ["QC4 ปลอมท้าย host (ไม่ต้อง ALLOW เดิม = ผ่าน)", { DATABASE_URL: "postgresql://ep-frosty-lab-000000.evil.example:5432/db" }, A("--dry-run"), "NOT_ALLOWLISTED"],
+    ["IP ตรง", { DATABASE_URL: "postgresql://10.0.0.1:5432/db", ALLOW_PROD_BACKFILL: "1" }, A("--all"), "NOT_ALLOWLISTED"],
+    ["ตัวพิมพ์ใหญ่ = เท่ากัน", { DATABASE_URL: fake("EP-FROSTY-LAB") }, A("--dry-run"), "qc4"],
+    ["prod -pooler + ALLOW", { DATABASE_URL: `postgresql://${P}-000000-pooler.c-2.example${NEON_SUFFIX}:5432/db`, ALLOW_PROD_BACKFILL: "1" }, A("--all"), "POOLER"],
+    ["prod direct + DIRECT_URL -pooler", { DATABASE_URL: fake(P), DIRECT_URL: `postgresql://${P}-000000-pooler.c-2.example${NEON_SUFFIX}:5432/db`, ALLOW_PROD_BACKFILL: "1" }, A("--all"), "POOLER"],
+    ["QC4 -pooler (เลน qc4.sh) = ได้", { DATABASE_URL: `postgresql://ep-frosty-lab-000000-pooler.c-2.example${NEON_SUFFIX}:5432/db` }, A("--dry-run"), "qc4"],
+    ["PGHOSTADDR อย่างเดียว", { DATABASE_URL: fake("ep-frosty-lab"), PGHOSTADDR: "10.0.0.1" }, A("--dry-run"), "PGHOST"],
     ["--tenant + --all", { DATABASE_URL: fake("ep-frosty-lab") }, A("--tenant=t1 --all"), "BAD_ARG"],
     ["--tenant ว่าง", { DATABASE_URL: fake("ep-frosty-lab") }, A("--tenant="), "BAD_ARG"],
     ["ธงแปลก", { DATABASE_URL: fake("ep-frosty-lab") }, A("--yes"), "BAD_ARG"],
