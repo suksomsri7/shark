@@ -340,6 +340,7 @@ const guardHits: string[] = [];
 }
 const { loadPosQcEnv } = (await import("./pos-qc-env.mjs" as string)) as Any;
 loadPosQcEnv(SUITE);
+const { pairBrowserDevice } = (await import("./pos-device-pair.mjs" as string)) as Any; // POS P4.3 fix4 (CD-P43-10) ◂
 // ด่านฐานหลังโหลด env (ไม่งั้นรันตรงโดยไม่มี qc5.sh จะได้ .env.qc = QC4 หลังด่าน) — ต้องมี URL และทุกตัวเป็น QC5
 {
   const urls = [process.env.DATABASE_URL ?? "", process.env.DIRECT_URL ?? ""].filter(Boolean);
@@ -468,6 +469,11 @@ function previousRun(): { file: string; at: string; metrics: Record<string, Metr
 const PREV = previousRun();
 
 // ═════════════════════════ fixture: กะ · โทเคน · session ═════════════════════════
+// POS P4.3 fix4 (CD-P43-10 · หลัง P5.2 D+E): เซิร์ฟเวอร์รับเครื่องจากคุกกี้ลงนาม shark_pos_device เท่านั้น — context ที่เปิดหน้าขายต้องจับคู่ DEV
+//   ผ่าน ตั้งค่า › เครื่องขาย ในฐานะเจ้าของ (pos-device-pair.mts · session เจ้าของ mint แยก ลบพร้อม SESSIONS) · warmCtx จับคู่ด้วยหน้าจริง ·
+//   context เย็นของ B1 รับ "คุกกี้ที่หน้าจริงออกให้" (การเปิดหน้าตั้งค่าใน context เย็นจะอุ่นแคช HTTP ⇒ B1 ไม่เย็นอีก) · กะของ DEV ยังเปิดผ่านโมดูลเหมือนเดิม ◂
+let OWNER_COOKIES: Any[] = [];
+let DEVICE_COOKIE: Any = null;
 async function fixtures(): Promise<{ cookies: Any[]; staffJson: string }> {
   const open = await P.posShift.findFirst({ where: { tenantId: T, unitId: UNIT, deviceId: DEV, status: "OPEN" }, select: { id: true } });
   if (open) SHIFT_ID = open.id;
@@ -488,6 +494,13 @@ async function fixtures(): Promise<{ cookies: Any[]; staffJson: string }> {
   const cookies = https
     ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: T, url: BASE, path: "/", secure: true }]
     : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: T, domain: host, path: "/" }];
+  // POS P4.3 fix4 ▸ session เจ้าของ (จับคู่เครื่องผ่านหน้า · pos.device.manage) ◂
+  const ownerToken = "posp53o" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const ownerRow = await P.session.create({ data: { userId: OWNER.userId, tokenHash: sha256(ownerToken), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
+  SESSIONS.push(ownerRow.id);
+  OWNER_COOKIES = https
+    ? [{ name: "__Host-shark_session", value: ownerToken, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: T, url: BASE, path: "/", secure: true }]
+    : [{ name: "shark_session", value: ownerToken, domain: host, path: "/" }, { name: "shark_tenant", value: T, domain: host, path: "/" }];
   return { cookies, staffJson };
 }
 let cleaned = false;
@@ -532,7 +545,7 @@ const REG_URL = () => `${BASE}/app/sys/${SYS}/pos/register?unit=${encodeURICompo
 /** สคริปต์ก่อนหน้า: เครื่อง + โทเคนผู้ขาย + ตัวจด keydown/บรรทัด (ตัวจดบรรทัดเฉพาะหน้าที่ขอ — 200 บรรทัดไม่ให้ observer รบกวน) */
 async function preparePage(page: Any, cookies: Any[], staffJson: string, lineObserver: boolean): Promise<void> {
   await page.setViewport({ ...VIEWPORT, deviceScaleFactor: 1, isMobile: false, hasTouch: true });
-  await page.setCookie(...cookies);
+  await page.setCookie(...cookies, ...(DEVICE_COOKIE ? [DEVICE_COOKIE] : [])); // POS P4.3 fix4 ▸ คุกกี้เครื่องที่หน้าจริงออกให้ (context เย็นของ B1) ◂
   await page.evaluateOnNewDocument(
     (dk: string, dev: string, sk: string, sj: string, withObs: boolean) => {
       try {
@@ -699,6 +712,15 @@ try {
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string)) as Any;
   BROWSER = await pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE[0]}`] });
 
+  // POS P4.3 fix4 ▸ context อุ่นสร้างก่อน B1 แล้วจับคู่ DEV ผ่านหน้า ตั้งค่า › เครื่องขาย (เจ้าของ) — จับคู่ไม่ได้ (กุญแจไม่ตั้ง ฯลฯ) = harness ล้ม (ข้อเบราว์เซอร์ทั้งหมดวัดไม่ได้พร้อมเหตุ) ◂
+  const warmCtx = await newContext();
+  if (["B1", "B2", "B3U", "B4A", "B4Q", "B4P"].some(want)) {
+    const pr = await pairBrowserDevice(warmCtx, { base: BASE, systemId: SYS, unitId: UNIT, deviceCode: DEV, ownerCookies: OWNER_COOKIES });
+    console.log(`\n── จับคู่เครื่อง ${DEV} (เจ้าของ · ตั้งค่า › เครื่องขาย): ${pr.ok ? `${pr.how} · ${pr.detail}` : `ล้ม ${pr.state} — ${pr.detail}`} ──`);
+    if (!pr.ok) throw new Error(`จับคู่เครื่อง ${DEV} ไม่ได้ (${pr.state}): ${pr.detail}`);
+    DEVICE_COOKIE = pr.cookie;
+    notes.push(`จับคู่เครื่อง ${DEV}: ${pr.how}`);
+  }
   if (want("B1")) {
     const xs: number[] = [];
     let err: string | undefined;
@@ -716,8 +738,7 @@ try {
     }
     put("P5.3-B1", err ? null : xs, {}, err);
   }
-  // context อุ่นเดียวสำหรับ B2 · B3U · B4
-  const warmCtx = await newContext();
+  // context อุ่นเดียวสำหรับ B2 · B3U · B4 (สร้าง + จับคู่ก่อน B1 — POS P4.3 fix4)
   if (want("B2")) {
     const xs: number[] = [];
     let err: string | undefined;

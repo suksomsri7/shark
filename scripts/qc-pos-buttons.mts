@@ -10,6 +10,7 @@
 //   ผู้คุม (รอบจริง · หลัง build+serve บนทรี d · ห้ามรันคู่ build/qc:all/รอบตัวกดอื่น):
 //   bash scripts/iso.sh bash scripts/qc5.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-buttons.mts --user owner --device desktop --page all --base http://127.0.0.1:<port>
 //   (en: env LOCALE=en ภายใน iso.sh ไม่ใช่ก่อน · หรือ --locale en)
+//   --page รับหลายหน้าคั่นจุลภาค (เช่น --page register,shifts,orders · รอบ smoke) — สรุปเขียนทับ summary-<ช่อง>.json เหมือนรอบเต็ม
 //   ไม่มี --base และไม่มี --dry/--list (ด่าน pos-gates / qc:all) = โหมดด่าน: ตรวจแผนแบบสถิต (ไม่มีเบราว์เซอร์ · ไม่แตะ DB) — CD-P42-W2
 //
 // ═════════════════════════ สัญญา (ledger/wo-notes/pos-P4.2-walker.md) ═════════════════════════
@@ -18,6 +19,9 @@
 // จำแนก     classify(): บทบาทไม่อยู่ใน roles/hiddenFor = skip(no-role-claim) · hiddenFor = ต้องไม่เห็น (เห็น = hiddenLeak) · notice/ui refused|disabled
 //           = ต้องเห็น (disabled ตรวจด้วย) · safety external = ไม่กดเด็ดขาด (skip external + oracle) · ตัวจับเงิน/ภายนอก/เลขเอกสารของ P4.1 พบ
 //           แต่แถวไม่มี safety = ไม่กด (skip missing-safety · fail-closed) · ไม่มี target/db ตาม R1/R2 = skip(missing-target|missing-db)
+// เครื่อง    (P4.3 fix4 · CD-P43-10) หลัง P5.2 D+E เซิร์ฟเวอร์รับเครื่องจากคุกกี้ลงนาม shark_pos_device เท่านั้น ⇒ ทุก context ของช่องพนักงาน
+//           จับคู่ CTX.deviceCode ผ่าน ตั้งค่า › เครื่องขาย ในฐานะเจ้าของก่อนใช้ session ของผู้ใช้ช่อง (pos-device-pair.mts) · pre-flight จับคู่จริง 1 ครั้ง
+//           หลัง fixture ลงเครื่อง — กุญแจไม่ตั้ง/จับคู่ไม่ได้ = ขวางทั้งรอบ · เซิร์ฟเวอร์ต้องเสิร์ฟด้วย POS_DEVICE_KEY ชั่วคราว (ผู้คุม)
 // สาขา      หน้าพนักงานทุกหน้าเปิดด้วย ?unit=posqc-btn-unit (CD-P42-W6) — ตัวกดไม่เขียนอะไรที่สีลม/อารีย์ · แถว money/counter กดครั้งเดียวต่อรอบ
 //           แล้วตรวจว่าแถวเงินที่เกิด (PosSale/PosPayment/…) อยู่สาขา posqc-btn (ไม่ใช่ = error money-outside-btn)
 // กด        button|link|menu|tab|toggle → คลิก (ตกไป DOM click) · input|textarea|select → พิมพ์/เลือกค่า fixture · form|filter → requestSubmit ·
@@ -51,6 +55,7 @@ import {
   SELF_CLICK_FIRST, posSettingsChanged, posSettingsPaths,
   type Cell, type CellPlan, type Ctx, type DeviceKey, type Locale, type P41Rules, type PlanItem, type Registry, type Row, type SkipReason, type UserKey,
 } from "./pos-buttons-fixtures.mjs";
+import { pairBrowserDevice, pairDecision, pairedOnPage, type PairResult } from "./pos-device-pair.mjs"; // POS P4.3 fix4 (CD-P43-10) ◂
 
 const SUITE = "qc-pos-buttons";
 const ROOT = process.cwd();
@@ -75,9 +80,11 @@ function die(msg: string, code = 2): never {
 if (USER && !["owner", "manager", "cashier", "public"].includes(USER)) die(`--user ${USER} ไม่รู้จัก — owner|manager|cashier|public`);
 if (DEVICE && !(DEVICE in DEVICES)) die(`--device ${DEVICE} ไม่รู้จัก — desktop|ipad|mobile`);
 if (ONLY && !/^[a-z0-9*-]+$/.test(ONLY)) die(`--only ${ONLY} ต้องเป็น testid หรือแพตเทิร์น * (a-z 0-9 - *)`);
-if (PAGE !== "all" && !/^[A-Za-z0-9/[\]._*-]+$/.test(PAGE)) die(`--page ${PAGE} ไม่ถูกรูป`);
+if (PAGE !== "all" && !/^[A-Za-z0-9/[\]._*-]+(,[A-Za-z0-9/[\]._*-]+)*$/.test(PAGE)) die(`--page ${PAGE} ไม่ถูกรูป`);
 /** --page: "all" · ชื่อสั้นของหน้าพนักงาน ("register" · "products/price-rules") · path เต็มของทะเบียน ("/r/[token]") */
-const pageWanted = (p: string) => PAGE === "all" || p === PAGE || p === `${STAFF}${PAGE}`;
+// POS P4.3 fix4 ▸ --page รับหลายหน้าคั่นจุลภาค (รอบ smoke ของผู้คุม: --page register,shifts,orders) ◂
+const PAGES_WANTED = PAGE === "all" ? [] : PAGE.split(",");
+const pageWanted = (p: string) => PAGE === "all" || PAGES_WANTED.some((w) => p === w || p === `${STAFF}${w}`);
 const globRe0 = (g: string) => new RegExp(`^${g.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
 const onlyRe = ONLY ? globRe0(ONLY) : null;
 const rowFilter = (r: Row) => pageWanted(r.page) && (!onlyRe || onlyRe.test(r.testid) || (r.testid.includes("*") && globRe0(r.testid).test(ONLY!)));
@@ -346,7 +353,19 @@ if (!BASE_RAW) {
       const r = REG.rows.find((x) => rowKey(x) === `${STAFF}${k}`);
       return !!r && !!sideEffectOf(r);
     }));
-    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (7) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 · P4.3 H16 settings.pos · R3/R4 SELF_CLICK_FIRST · H8/H11 ช่วงท้าย · fix2 F1 ขึ้นใหม่ · F5 แถบแท็บ — ผ่านทุกกรณี");
+    // POS P4.3 fix4 ▸ แพตเทิร์นร่ม (pos-help-link-* / pos-help-more-* มีแถวรายตัวครบ · pos-reg-product-* ไม่ใช่ร่ม) · ตัวตัดสินการจับคู่เครื่อง (pos-device-pair.mts) ◂
+    const notOf = (tid: string) => { // = notList ของ runGroup (แถวหน้าเดียวกันที่แพตเทิร์นจับได้ ยกเว้นตัวเอง)
+      const pg = REG.rows.find((x) => x.testid === tid)?.page;
+      return REG.rows.filter((r) => r.page === pg && r.testid !== tid && globRe0(tid).test(r.testid)).map((r) => r.testid);
+    };
+    t("fix4 แพตเทิร์นร่ม", umbrellaRow("pos-help-link-*", notOf("pos-help-link-*")) && notOf("pos-help-link-*").length === 8 && umbrellaRow("pos-help-more-*", notOf("pos-help-more-*")) && notOf("pos-help-more-*").length === 4 &&
+      !umbrellaRow("pos-help-faq-*", notOf("pos-help-faq-*")) && !umbrellaRow("pos-help-link-register", []) && !umbrellaRow("pos-reg-product-*", []));
+    {
+      const S0 = { list: true, loading: false, loadError: "", keyUnset: false, pairThis: { present: false, disabled: false }, register: { present: true, disabled: true }, dialog: false, note: "", error: "", regError: "" };
+      t("fix4 จับคู่เครื่อง", pairDecision({ ...S0, keyUnset: true }, 9999) === "key-unset" && pairDecision({ ...S0, pairThis: { present: true, disabled: false } }, 0) === "pair-this" &&
+        pairDecision({ ...S0, register: { present: true, disabled: false } }, 0) === "wait" && pairDecision({ ...S0, register: { present: true, disabled: false } }, 3000) === "register" && pairedOnPage(S0) && !pairedOnPage({ ...S0, keyUnset: true }));
+    }
+    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (7) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 · P4.3 H16 settings.pos · R3/R4 SELF_CLICK_FIRST · H8/H11 ช่วงท้าย · fix2 F1 ขึ้นใหม่ · F5 แถบแท็บ · fix4 แพตเทิร์นร่ม + จับคู่เครื่อง — ผ่านทุกกรณี");
   }
   const passed = res.filter((r) => r.ok).length;
   console.log(`\n${passed === res.length ? "✅" : "❌"} ${SUITE} (ด่าน): ${passed}/${res.length}`);
@@ -765,7 +784,13 @@ const freshPhone = (it: PlanItem, tid: string, val: string) =>
 const FIELD_TAGS = ["INPUT", "TEXTAREA", "SELECT"];
 const rowTags = (it: PlanItem, afterSelfClick = false): string[] | null =>
   it.row.testid.includes("*") && ["input", "textarea", "select"].includes(it.row.kind) && (afterSelfClick || !SELF_CLICK_FIRST[it.key]) ? FIELD_TAGS : null;
-async function reveal(page: Any, path: string, it: PlanItem, state: PageState, hidden: boolean, notList: string[]): Promise<{ el: Any | null; reason: string }> {
+/** POS P4.3 fix4 ▸ แถวแพตเทิร์น "ร่ม" (บริสุทธิ์ · ด่าน B10): แถว * ที่มีแถวรายตัวในทะเบียนหน้าเดียวกัน (notList ไม่ว่าง) — เมื่อสมาชิกที่มองเห็นทุกตัว
+ *  มีแถวรายตัวแล้ว (pos-help-link-* · pos-help-more-*: แม่แบบ `pos-help-link-${k}` ในโค้ดต้องมีแถวแพตเทิร์นตาม fitness F15.3a ⇒ ลบแถวไม่ได้)
+ *  ตัวกดรับสมาชิกตัวแรกเป็นตัวแทนของแพตเทิร์น (ตรงกับ matchesAny ของ P4.1 ที่จับคู่แพตเทิร์น↔ชื่อรายตัวได้สองทาง) — เฉพาะแถว press/visible ◂ */
+function umbrellaRow(testid: string, notList: readonly string[]): boolean {
+  return testid.includes("*") && notList.length > 0;
+}
+async function reveal(page: Any, path: string, it: PlanItem, state: PageState, hidden: boolean, notList: string[], umbrella = false): Promise<{ el: Any | null; reason: string }> {
   const chain = it.opener;
   const pendingValue = chain.slice(state.openChain.length).some((o) => splitOpener(o).val !== null);
   const tags = rowTags(it);
@@ -823,6 +848,14 @@ async function reveal(page: Any, path: string, it: PlanItem, state: PageState, h
   }
   el = await findVisible(page, it.row.testid, notList, hidden ? 800 : chain.length ? 4000 : 2500, tags);
   if (el) return { el, reason: "" };
+  if (umbrella && umbrellaRow(it.row.testid, notList)) {
+    const u = await findVisible(page, it.row.testid, [], 0, tags);
+    if (u) {
+      const exact: string = await u.evaluate((e: Element) => e.getAttribute("data-testid") ?? "").catch(() => "?");
+      state.notes.push(`แพตเทิร์นร่ม: สมาชิกที่เห็นมีแถวรายตัวทุกตัว — ตัวแทน ${exact} (P4.3 fix4)`);
+      return { el: u, reason: "" };
+    }
+  }
   const said = await pageSays(page);
   return { el: null, reason: `${chain.length ? `กด ${chain.join(" → ")} แล้วยังไม่เห็น ${it.row.testid}` : "ควรเห็น (อยู่ใน roles) แต่หาไม่พบ"}${said ? ` · หน้าแสดง: ${said}` : ""}` };
 }
@@ -934,20 +967,47 @@ function pathOf(it: PlanItem): { path: string | null; missing: string | null } {
 }
 
 // ═════════════════════════ session ═════════════════════════
+/** session ที่ mint (ลบใน cleanupOnce ผ่าน SESSIONS) → คุกกี้ session + ร้าน */
+async function sessionCookies(userId: string): Promise<Any[]> {
+  const https = BASE.startsWith("https:");
+  const host = new URL(BASE).hostname;
+  const token = "posbtn" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const ttl = new Date(Date.now() + 6 * 3600_000);
+  const row = await P.session.create({ data: { userId, tokenHash: sha256(token), userAgent: BTN.ua, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
+  SESSIONS.push(row.id);
+  return [
+    https ? { name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true } : { name: "shark_session", value: token, domain: host, path: "/" },
+    https ? { name: "shark_tenant", value: T.tenantId, url: BASE, path: "/", secure: true } : { name: "shark_tenant", value: T.tenantId, domain: host, path: "/" },
+  ];
+}
 async function mintCookies(): Promise<Any[]> {
   const https = BASE.startsWith("https:");
   const host = new URL(BASE).hostname;
   const out: Any[] = [];
-  if (CTX.persona) {
-    const token = "posbtn" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    const ttl = new Date(Date.now() + 6 * 3600_000);
-    const row = await P.session.create({ data: { userId: CTX.persona.userId, tokenHash: sha256(token), userAgent: BTN.ua, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
-    SESSIONS.push(row.id);
-    out.push(https ? { name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true } : { name: "shark_session", value: token, domain: host, path: "/" });
-    out.push(https ? { name: "shark_tenant", value: T.tenantId, url: BASE, path: "/", secure: true } : { name: "shark_tenant", value: T.tenantId, domain: host, path: "/" });
-  }
+  if (CTX.persona) out.push(...(await sessionCookies(CTX.persona.userId)));
   if (CELL.locale === "en") out.push(https ? { name: "LOCALE", value: "en", url: BASE, path: "/", secure: true } : { name: "LOCALE", value: "en", domain: host, path: "/" });
   return out;
+}
+
+// ═════════════════════════ จับคู่เครื่อง (POS P4.3 fix4 · CD-P43-10 · หลัง P5.2 D+E) ═════════════════════════
+// เซิร์ฟเวอร์รับ "เครื่องที่ยืนอยู่" จากคุกกี้ลงนาม shark_pos_device เท่านั้น (device-request.ts) — localStorage ไม่ถูกเชื่อแล้ว ⇒ ทุก browser context
+// ของช่องพนักงาน (owner/manager/cashier · public ไม่ใช้เครื่อง) จับคู่ผ่านหน้า ตั้งค่า › เครื่องขาย ในฐานะเจ้าของก่อนใช้ session ของผู้ใช้ช่อง
+// (pos-device-pair.mts) · รหัสเครื่อง = CTX.deviceCode (เครื่องเดียวต่อช่อง = เครื่องของกะที่ fixture เปิดผ่านโมดูล) · กุญแจไม่ตั้ง = ขวาง
+let OWNER_COOKIES: Any[] = [];
+const PAIRING = { ok: 0, fail: 0, how: {} as Record<string, number>, last: "" };
+async function pairCtx(ctxB: Any, label: string): Promise<PairResult | null> {
+  if (!CTX.persona) return null;
+  if (!OWNER_COOKIES.length) OWNER_COOKIES = await sessionCookies(T.users.owner.userId);
+  const r = await pairBrowserDevice(ctxB, { base: BASE, systemId: CTX.sys, unitId: BTN.unit.id, deviceCode: CTX.deviceCode, ownerCookies: OWNER_COOKIES });
+  if (r.ok) {
+    PAIRING.ok++;
+    PAIRING.how[r.how] = (PAIRING.how[r.how] ?? 0) + 1;
+  } else {
+    PAIRING.fail++;
+    PAIRING.last = `${label}: ${r.state} — ${r.detail}`.slice(0, 300);
+    if (r.state === "key-unset") FATAL ||= `จับคู่เครื่องไม่ได้: ${r.detail}`;
+  }
+  return r;
 }
 /** เก็บกวาดครั้งเดียว — ผู้เรียกทุกราย (finally + สัญญาณ) รอ promise เดียวกันจนเสร็จ (สัญญาณกลางทางไม่ตัด closeShift/คืนค่า/ลบ session) */
 let cleanupP: Promise<void> | null = null;
@@ -1019,6 +1079,12 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
   const ctxB = typeof BROWSER.createBrowserContext === "function" ? await BROWSER.createBrowserContext() : await BROWSER.createIncognitoBrowserContext();
   const page = await ctxB.newPage();
   await page.setViewport({ width: dv.w, height: dv.h, deviceScaleFactor: 1, isMobile: dv.isMobile, hasTouch: dv.hasTouch });
+  // POS P4.3 fix4 ▸ จับคู่ context นี้ก่อนใช้ session ของผู้ใช้ช่อง (หน้าจับคู่แยก · คุกกี้เครื่องอยู่ระดับ context · session เจ้าของถูกลบออกก่อนตั้งของช่อง) ◂
+  const pr = await pairCtx(ctxB, path);
+  if (pr && !pr.ok) {
+    await ctxB.close().catch(() => {});
+    throw new Error(`จับคู่เครื่อง ${CTX.deviceCode} ไม่ได้ (${pr.state}): ${pr.detail}`);
+  }
   if (cookies.length) await page.setCookie(...cookies);
   await page.evaluateOnNewDocument(NAME_SHIM);
   if (CTX.persona && CTX.staffJson)
@@ -1129,7 +1195,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         continue;
       }
       if (it.action === "visible") {
-        const rv = await reveal(page, path, it, state, false, notList);
+        const rv = await reveal(page, path, it, state, false, notList, true);
         state.notes.splice(0);
         if (!rv.el) {
           if (await hiddenInput(page, it.row.testid)) rec(it, { class: "skip", reason: "hidden-input", detail: "input[type=hidden] (CD-P42-R1)" });
@@ -1160,7 +1226,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           continue;
         }
       }
-      const rv = await reveal(page, path, it, state, false, notList);
+      const rv = await reveal(page, path, it, state, false, notList, true);
       const notes = state.notes.splice(0);
       if (!rv.el) {
         if (await hiddenInput(page, it.row.testid)) rec(it, { class: "skip", reason: "hidden-input", detail: "input[type=hidden] (CD-P42-R1)" });
@@ -1613,7 +1679,7 @@ function writeSummary(): void {
     cell: CELL, page: PAGE, only: ONLY, unit: BTN.unit.id, deviceCode: CTX.deviceCode,
     total: rows.length, ok: n("ok"), dead: n("dead"), wrongExpect: n("wrongExpect"), hiddenLeak: n("hiddenLeak"), skip: n("skip"), error: n("error"), perReason,
     consoleErrors: CONSOLE, hydration: HYDRATION, overflow: OVERFLOW, http5xx: HTTP, moneyPresses: MONEY, restores: CTX.restores, fixtureLog: CTX.log,
-    pages: PAGES, ms: Date.now() - START_MS, fatal: FATAL || null, rows,
+    pages: PAGES, ms: Date.now() - START_MS, fatal: FATAL || null, devicePairing: PAIRING, rows,
   };
   try {
     mkdirSync(SHOTS_DIR, { recursive: true });
@@ -1640,6 +1706,13 @@ try {
   const cookies = await mintCookies();
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string)) as Any;
   BROWSER = await pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE[0]}`] });
+  // POS P4.3 fix4 ▸ pre-flight ฝั่งเซิร์ฟเวอร์ (หลัง fixture ลงเครื่อง): กุญแจตั้งแล้ว + จับคู่เครื่องของ fixture ได้จริง — ไม่ได้ = ขวางทั้งรอบ (ไม่ข้ามเงียบ) ◂
+  if (CTX.persona) {
+    const probe = typeof BROWSER.createBrowserContext === "function" ? await BROWSER.createBrowserContext() : await BROWSER.createIncognitoBrowserContext();
+    const pr = await pairCtx(probe, "pre-flight").finally(() => probe.close().catch(() => {}));
+    console.log(`  PF ${pr?.ok ? "ok" : "block"} device-pairing ${CTX.deviceCode} @ ${BTN.unit.id}: ${pr?.ok ? `${pr.how} · ${pr.detail}` : `${pr?.state} — ${pr?.detail}`}`);
+    if (pr && !pr.ok) throw new Error(`pre-flight มีข้อขวาง: device-pairing (${pr.state}: ${pr.detail.slice(0, 160)})`);
+  }
   const groups = new Map<string, PlanItem[]>();
   // CD-P42-R7 (CD-P41-F22): แถวผลข้างเคียง (กดจริง) = ช่วงท้ายของรอบ หลังทุกหน้า · fixture คืนค่าหลังแต่ละแถว
   const late = new Map<string, PlanItem[]>();
@@ -1657,6 +1730,7 @@ try {
   const total = groups.size + lateOrder.length;
   let gi = 0;
   for (const [path, group] of [...groups.entries(), ...lateOrder]) {
+    if (FATAL) break; // POS P4.3 fix4 ▸ กุญแจเครื่องหายกลางรอบ/สัญญาณ — กลุ่มที่เหลือ = "ไม่ได้รัน (FATAL)" ใน writeSummary ◂
     gi++;
     process.stdout.write(`[${gi}/${total}${gi > groups.size ? " ช่วงท้าย" : ""}] `);
     try {

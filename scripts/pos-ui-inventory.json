@@ -33063,9 +33063,9 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-help-faq-answer-*",
-        "state": "appears",
-        "note": "คำถามที่พบบ่อย 8 ข้อ (q1–q8) — กดหัวข้อ <summary> เพื่อกาง/พับคำตอบ · ไม่มีการเขียนข้อมูล"
+        "target": "pos-help-faq",
+        "state": "changes",
+        "note": "คำถามที่พบบ่อย 8 ข้อ (q1–q8) — กดหัวข้อ <summary> = <details> ของข้อนั้นสลับ open (ผลที่ตรวจ: มาร์กอัปของการ์ด pos-help-faq เปลี่ยนเพราะ details[open]) · คำตอบ pos-help-faq-answer-* อยู่ใน DOM เสมอ (ไม่ใช่เป้า appears) · ไม่มีการเขียนข้อมูล · P4.3 fix4"
       },
       "wo": "P6.2",
       "oracle": "",

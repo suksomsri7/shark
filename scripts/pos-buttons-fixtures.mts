@@ -16,10 +16,12 @@
 // ใช้ (ผู้เขียนตัวกด — อ่านอย่างเดียว):
 //   bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight
 // ผู้คุม (QC5 ก่อนรอบจริง): bash scripts/iso.sh bash scripts/qc5.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight
+//   + ฝั่งเซิร์ฟเวอร์ (POS P4.3 fix4 · เซิร์ฟเวอร์ที่เสิร์ฟด้วยกุญแจเครื่องชั่วคราว CD-P43-10): … --preflight --base http://127.0.0.1:<port>
+//   (กุญแจไม่ตั้ง = block server-device-key · เครื่องของ fixture ไม่มีทางจับคู่ = block server-pair-<u>)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 import { createHash, randomInt } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 
@@ -1276,6 +1278,77 @@ export async function preflight(T: Any, users: readonly UserKey[] = ["owner", "m
   return out;
 }
 
+// ═════════════════════════ (3b) pre-flight ฝั่งเซิร์ฟเวอร์ (POS P4.3 fix4 · CD-P43-10) ═════════════════════════
+// หลัง P5.2 D+E เซิร์ฟเวอร์รับเครื่องจากคุกกี้ลงนาม shark_pos_device เท่านั้น ⇒ ตัวกดต้องจับคู่ทุก context ผ่าน ตั้งค่า › เครื่องขาย (pos-device-pair.mts)
+// `--preflight --base <url>`: เปิดหน้าเครื่องขายของสาขา posqc-btn ในฐานะเจ้าของ (session mint · ลบใน finally) ต่อรหัสเครื่องของผู้ใช้แต่ละช่อง —
+//   อ่านอย่างเดียวฝั่งข้อมูลร้าน (ไม่กดจับคู่ · ไม่ลงทะเบียน · ไม่ออกคุกกี้) · เขียนเฉพาะแถว session ชั่วคราว ⇒ QC5 เท่านั้น
+//   server-device-key: การ์ด pos-device-key-unset = block · server-pair-<u>: pos-device-pair-this ขึ้น = ok (จับคู่ได้) · ลงทะเบียนใหม่ = would-create
+//   (fixture ลงเครื่องก่อน · ตัวกดจับคู่ผ่าน pos-device-register) · อย่างอื่น (หมดเวลา/โหลดล้ม/session) = block
+// รอบจริงของตัวกด (qc-pos-buttons.mts) จับคู่จริงใน context ทิ้งหลัง fixture ลงเครื่อง แล้วขวางทั้งรอบถ้าไม่ได้ — ไม่ต้องรันข้อนี้ก่อน
+export async function serverPreflight(T: Any, users: readonly UserKey[], base: string): Promise<PF[]> {
+  const out: PF[] = [];
+  const add = (key: string, state: PF["state"], value: string) => out.push({ key, state, value });
+  const staff = users.filter((u) => u !== "public");
+  if (!staff.length) {
+    add("server-device-key", "ok", "ช่องสาธารณะไม่ใช้เครื่อง — ไม่ตรวจกุญแจ");
+    return out;
+  }
+  try {
+    assertWritable(T);
+  } catch (e) {
+    add("server-device-key", "block", `ตรวจฝั่งเซิร์ฟเวอร์ได้บน QC5 เท่านั้น (mint session) — ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    return out;
+  }
+  const P = await db();
+  const { sha256 } = (await import("@/lib/core/hash" as string)) as Any;
+  const { inspectPairing } = (await import("./pos-device-pair.mjs" as string)) as Any;
+  const https = base.startsWith("https:");
+  const host = new URL(base).hostname;
+  const token = "posbtnpf" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const ttl = new Date(Date.now() + 3600_000);
+  const sess = await P.session.create({ data: { userId: T.users.owner.userId, tokenHash: sha256(token), userAgent: `${BTN.ua}-preflight`, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
+  const ownerCookies = [
+    https ? { name: "__Host-shark_session", value: token, url: base, path: "/", secure: true } : { name: "shark_session", value: token, domain: host, path: "/" },
+    https ? { name: "shark_tenant", value: T.tenantId, url: base, path: "/", secure: true } : { name: "shark_tenant", value: T.tenantId, domain: host, path: "/" },
+  ];
+  const profile = [`/tmp/chr-pos-btnpf-${process.pid}`, `/tmp/snap-private-tmp/snap.chromium/tmp/chr-pos-btnpf-${process.pid}`];
+  let browser: Any = null;
+  try {
+    const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string)) as Any;
+    browser = await pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${profile[0]}`] });
+    let keyChecked = false;
+    for (const u of staff) {
+      const code = BTN.device(u);
+      const row = await P.posDevice.findFirst({ where: { tenantId: T.tenantId, unitId: BTN.unit.id, deviceCode: code }, select: { status: true } }).catch(() => null);
+      const ctx = typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext();
+      const r = await inspectPairing(ctx, { base, systemId: T.systems.POS.id, unitId: BTN.unit.id, deviceCode: code, ownerCookies }).finally(() => ctx.close().catch(() => {}));
+      if (!r.ok) {
+        if (!keyChecked) add("server-device-key", "block", r.state === "key-unset" ? r.detail : `ตรวจไม่ได้ (${r.state}): ${r.detail}`);
+        keyChecked = true;
+        add(`server-pair-${u}`, "block", `${code}: ${r.state} — ${r.detail}`);
+        continue;
+      }
+      if (!keyChecked) add("server-device-key", "ok", "ตั้ง POS_DEVICE_KEY แล้ว (ไม่มีการ์ด pos-device-key-unset · devicePairingAction keyConfigured) — ไม่พิมพ์ค่า");
+      keyChecked = true;
+      const st: PF["state"] = r.step === "pair-this" || r.step === "paired" ? "ok" : r.step === "register" ? (row ? "block" : "would-create") : "block";
+      add(`server-pair-${u}`, st, `${code} (แถว ${row?.status ?? "ยังไม่มี"}): ${r.step === "pair-this" ? "pos-device-pair-this ขึ้น — ตัวกดจับคู่ต่อ context ได้" : r.step === "register" ? (row ? "แถวมีแต่หน้าให้ลงทะเบียนใหม่ (ไม่ใช่สาขานี้/ถูกถอน?)" : "ยังไม่ลงทะเบียน — fixture ลงก่อน แล้วตัวกดจับคู่") : r.step === "paired" ? "จับคู่อยู่แล้ว" : "หน้าไม่ให้ทางจับคู่"} · ${r.detail}`);
+    }
+  } catch (e) {
+    add("server-device-key", "block", `ตรวจฝั่งเซิร์ฟเวอร์ล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  } finally {
+    await browser?.close().catch(() => {});
+    for (const d of profile) {
+      try {
+        rmSync(d, { recursive: true, force: true });
+      } catch {
+        /* ไม่มี */
+      }
+    }
+    await P.session.deleteMany({ where: { id: sess.id } }).catch(() => {});
+  }
+  return out;
+}
+
 // ═════════════════════════ CLI: --preflight ═════════════════════════
 const isMain = (() => {
   try {
@@ -1287,17 +1360,32 @@ const isMain = (() => {
 if (isMain) {
   const argv = process.argv.slice(2);
   if (!argv.includes("--preflight")) {
-    console.log("ใช้: … pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight [--user owner|manager|cashier|public]  (อ่านอย่างเดียว)");
+    console.log("ใช้: … pnpm exec tsx scripts/pos-buttons-fixtures.mts --preflight [--user owner|manager|cashier|public] [--base http://127.0.0.1:<port> (QC5 · ตรวจกุญแจเครื่อง + ทางจับคู่)]  (อ่านอย่างเดียว)");
     process.exit(2);
   }
   const { loadPosQcEnv, PQC } = (await import("./pos-qc-env.mjs" as string)) as Any;
   loadPosQcEnv("pos-buttons-fixtures --preflight"); // QC4 = ปกติ · QC5 = POS_QC_ALLOW_HOST จาก qc5.sh · prod/QC1–3 = ตาย
   const T = PQC.coffee;
   const u = argv.includes("--user") ? (argv[argv.indexOf("--user") + 1] as UserKey) : null;
+  // POS P4.3 fix4 ▸ --base <loopback url> = ตรวจฝั่งเซิร์ฟเวอร์ด้วย (กุญแจเครื่อง + ทางจับคู่ของเครื่อง fixture · QC5) ◂
+  const baseRaw = argv.includes("--base") ? (argv[argv.indexOf("--base") + 1] ?? "") : "";
+  let base = "";
+  if (baseRaw) {
+    try {
+      const bu = new URL(baseRaw);
+      if (!["127.0.0.1", "localhost"].includes(bu.hostname) || bu.port === "3215") throw new Error("ต้องเป็น loopback และไม่ใช่ :3215 (CRM)");
+      base = bu.origin;
+    } catch (e) {
+      console.log(`❌ --base ${baseRaw}: ${e instanceof Error ? e.message : e}`);
+      process.exit(2);
+    }
+  }
   let rows: PF[] = [];
   let fatal = "";
   try {
     rows = await preflight(T, u ? [u] : USERS);
+    if (base) rows.push(...(await serverPreflight(T, u ? [u] : USERS, base)));
+    else rows.push({ key: "server-device-key", state: "warn", value: "ไม่ได้ตรวจ — ไม่มี --base (ตัวกดรอบจริงจับคู่เครื่องก่อนเริ่มและขวางทั้งรอบถ้ากุญแจไม่ตั้ง/จับคู่ไม่ได้ · ตรวจล่วงหน้า: --preflight --base http://127.0.0.1:<port> บน QC5)" });
   } catch (e) {
     fatal = e instanceof Error ? e.message : String(e);
   }
@@ -1305,7 +1393,7 @@ if (isMain) {
   const by: Record<string, number> = {};
   for (const r of rows) by[r.state] = (by[r.state] ?? 0) + 1;
   const blocks = rows.filter((r) => r.state === "block" && r.key !== "db-host").length;
-  console.log(`\n${fatal ? `❌ ${fatal}` : blocks ? `🔴 pre-flight: ${blocks} ข้อขวาง` : "🟢 pre-flight: ไม่มีข้อขวาง"} · ${Object.entries(by).map(([k, v]) => `${k} ${v}`).join(" · ")} · ไม่มีการเขียน`);
+  console.log(`\n${fatal ? `❌ ${fatal}` : blocks ? `🔴 pre-flight: ${blocks} ข้อขวาง` : "🟢 pre-flight: ไม่มีข้อขวาง"} · ${Object.entries(by).map(([k, v]) => `${k} ${v}`).join(" · ")} · ${base ? "เขียนเฉพาะ session ชั่วคราวของเจ้าของ (ลบแล้ว)" : "ไม่มีการเขียน"}`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ suite: "pos-buttons-fixtures", mode: "preflight", host: dbHost(), total: rows.length, passed: rows.length - blocks, blocks, byState: by, fatal: fatal || null })}`);
   await (await db()).$disconnect().catch(() => {});
   process.exit(fatal || blocks ? 1 : 0);
