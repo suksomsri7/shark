@@ -41,7 +41,14 @@ export const IMPLIES: Readonly<Record<string, readonly string[]>> = {
  * ทุกที่ในโมดูลบัญชีต้องผ่าน `accountCan`/`assertAccountCan` ไม่เรียก `evaluate` ตรง ๆ
  */
 export function accountCan(auth: ActiveAuth, action: string): boolean {
-  const ctx = mc(auth);
+  return accountCanMember(mc(auth), action); // POS P4.3 ▸ ตรรกะเดิมทุกประการ ย้ายไปตัวรับ MembershipCtx ◂
+}
+
+/**
+ * POS P4.3 ▸ CD-P43-O10: `accountCan` แบบรับ MembershipCtx (บทบาท/สาขา/สิทธิ์) แทน auth ของ session — ตาราง IMPLIES เดียวกัน ·
+ *   ให้โมดูลอื่นถามผ่าน facade ได้ (POS ตัดสินว่าจะแสดงลิงก์ไปหน้าบัญชีไหม) โดยไม่ล้วง evaluate ของโมดูลบัญชีเอง ◂
+ */
+export function accountCanMember(ctx: MembershipCtx, action: string): boolean {
   if (can(ctx, action)) return true;
   for (const [broad, narrow] of Object.entries(IMPLIES)) {
     if (narrow.includes(action) && can(ctx, broad)) return true;

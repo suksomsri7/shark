@@ -12,6 +12,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit, type MembershipCtx } from "@/lib/core/rbac";
 import * as account from "@/lib/modules/account";
 import { posMembership } from "./access";
+import { posAccountLinks } from "./account-links"; // POS P4.3 ▸ CD-P43-O10 ◂
 import { prisma } from "./db";
 import { listDevices } from "./device";
 import { REFUND_PREFIX_DEFAULT } from "./refund-shared";
@@ -92,7 +93,7 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
         vatRegistered: boolean;
         vatRateBp: number;
         posAbbreviatedInvoice: boolean;
-        /** POS P4.3 ▸ CD-P43-2: ผู้ใช้เปิดหน้าตั้งค่าบัญชีได้ (account.settings.manage ผ่าน accountCan) — false = ไม่แสดงลิงก์ ◂ */
+        /** POS P4.3 ▸ CD-P43-2 · CD-P43-O10: ผู้ใช้เปิดหน้าตั้งค่าบัญชีได้ (posAccountLinks().settings = account.settings.manage) — false = ไม่แสดงลิงก์ ◂ */
         canOpenAccountSettings: boolean;
       } | null;
       devices: PosDeviceListItem[];
@@ -113,6 +114,8 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
     const rs = await posReceiptSettings({ tenantId, systemId });
     if (!rs.ok) return rs;
     const bookId = await account.posAccountSystemId(tenantId, systemId);
+    // POS P4.3 ▸ CD-P43-2 · CD-P43-O10: ลิงก์ "ตั้งค่าบัญชี" แสดงเฉพาะผู้ผ่านด่านหน้าเดียวกัน (settings) — หัวใบเสร็จยังอ่านสมุดได้ทุกคนที่อ่านค่าตั้งได้ (เหมือนเดิม) ◂
+    const links = bookId ? await posAccountLinks({ tenantId, systemId }, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }) : null;
     // F5: กติกาเดียวกับ refundPrefixOf (refund.ts) — อ่านค่าที่เก็บดิบ (parseReceiptSettings ไม่เก็บคีย์นี้)
     const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { settings: true } });
     const rawSettings = sys?.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, unknown>) : {};
@@ -153,8 +156,7 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
               vatRegistered: vat.vatRegistered,
               vatRateBp: vat.vatRateBp,
               posAbbreviatedInvoice: vat.posAbbreviatedInvoice,
-              // POS P4.3 ▸ CD-P43-2 — ลิงก์ "ตั้งค่าบัญชี" แสดงเฉพาะผู้ผ่านด่านหน้าเดียวกัน (requireAccountPage account.settings.manage) ◂
-              canOpenAccountSettings: account.accountCan(auth, "account.settings.manage"),
+              canOpenAccountSettings: links?.settings === true && links.accountSystemId === bookId, // POS P4.3 ▸ CD-P43-O10 ◂
             }
           : null,
       devices,
