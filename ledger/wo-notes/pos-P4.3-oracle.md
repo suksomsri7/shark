@@ -44,3 +44,58 @@ Full run `qc-pos-p4.3` = **14/24** · `failed` S1 S2 S6 S7 S8 D2 D3 D4 D5 D6 · 
 ## 4. After the product builder
 Expected green: all 24. The walker lane (tree b) still owes: registry hiddenFor of the 2 account links (S2 part C) and `"oracle": "P4.3-S5"` on the QR-sheet row. Product builder must run `qc-pos-p1.6` (touches `*actions*.ts`), `qc-pos-p3.4 --no-db` (contract), `qc-pos-p5.2` (price-rule/settings scope), fitness ±env, typecheck.
 
+
+---
+# Oracle round 2 (R1 `pos-P4.3-scripts-review.md` = MERGEABLE-AFTER-FIXES · F7–F10 · 24 Oct 00:0xZ)
+All edits are new checks or stricter judges. There are no exceptions, so no delete-probe is needed. The suite now has **28** checks: + D1b, D7, N11, N12.
+
+## Red-before on the tip dd2508d0 (QC4 · temp tenant `posqc-p43-8920e21d` · 00:00Z)
+- Full run: **16/28**. Failed: S1 S2 S6 S7 S8 D1b D2 D3 D4 D5 D6 D7. `fixture: null` (the D7 kanban board, 4 cards and 2 orders were all created). Z1 = 0 rows / Tenant 0 / User 0 / sequence 0. Z2 unchanged. Log `/tmp/p43o/run-tip-2.log`.
+- `--no-db`: 13/18 (same 5 static reds).
+- `--self-test`: 12/12.
+- Strict single-file tsc: exit 0.
+
+| id | change (finding) | ❌ at the tip (pasted) |
+|---|---|---|
+| S2 | F7. The gate must be `posAccountLinks(...).docs`, passed as `accountSystemId={links.docs ? … : null}` or as a prop that BillsClient uses at the link. The settings `<Link>` must sit under `canOpenAccountSettings &&`, and receipt-settings-actions.ts must build that value from posAccountLinks. The reviewer's fakes (`"account.doc.view".length > 0`, `true && (<Link`, a loose `"account.settings.manage"` string) are now red (N2 "หลอก" ≥ 4). | `sales/page.tsx ไม่เรียก posAccountLinks · ไม่ส่งค่า docs ของ posAccountLinks ให้ BillsClient (accountSystemId={accountSystemId}) · ReceiptSettings: <Link pos-settings-account-link> ไม่อยู่ใต้ canOpenAccountSettings && · receipt-settings-actions.ts ไม่ส่ง canOpenAccountSettings จาก posAccountLinks · ทะเบียน … hiddenFor [] ×2` |
+| D1b (new) | F7 behavioural. `posAccountLinks({tenantId, systemId}, actor)` per persona: OWNER/MANAGER docs+settings true · CASHIER (pos.sale.create) false/false · BOOKKEEPER (STAFF `account.doc.create`) docs true via IMPLIES, settings false · `accountSystemId` = the linked book. Then `receiptSettingsPageDataAction` through the real session: `book.canOpenAccountSettings` is true for OWNER/MANAGER and false for CASHIER (a cashier with no book or refused also counts as false). | `posAccountLinks(OWNER/MANAGER/CASHIER/BOOKKEEPER) → MISSING · receiptSettingsPageDataAction(OWNER) book.canOpenAccountSettings = undefined (คาด true) · (MANAGER) undefined (คาด true) · (CASHIER) undefined (คาด false)` |
+| S7 | F8. The reader is fixed as `posBoardCardsAction`, which must accept `pos-86:` and `pos-refund:`. Each of the register, orders and bills trees must (a) read through `posBoardCardsAction`, imported directly or via a component, and (b) render `<a\|Link data-testid=…board-card… href={….href}>`, directly or via a component. Import-only is red, and so is a constant href (N5). | `posBoardCardsAction ไม่รับกุญแจ pos-86: และ pos-refund: · จอ register/orders/bills ไม่อ่านการ์ดด้วย posBoardCardsAction · ไม่มีลิงก์การ์ด <a\|Link data-testid=…board-card… href={….href}>` (7 items) |
+| D7 (new) | F8 db. Temp KANBAN board plus 4 cards via `kanban/links.createCardFromExternal`: `pos-86:<A1>…`, `pos-86:<A2>…`, `pos-refund:<order@A1>`, `pos-refund:<order@A2>` (orders are direct rows in the temp tenant, p5.2 precedent). OWNER must get all 4 (positive control). MANAGER[A1] must get both A1 cards and no A2 card. | `OWNER ไม่ได้การ์ด a1_86, a2_86, a1_ref, a2_ref (ok · ตัวควบคุมบวก) · MANAGER[A1] ไม่ได้การ์ดของ A1: a1_86, a1_ref (ok)` |
+| S8 | F9. Any `?? <literal>` / `\|\| <literal>` (number or string, including `""`) on `cardNo` or an alias (`const n = c.cardNo` / `{ cardNo: n }`) in POS tsx is red. N6 covers `\|\| "0"`, `?? ""` and the alias form `n ?? 0`. | `fallback ค่าคงที่บน cardNo → "#0"/"#": reports/ReportsClient.tsx:255, reports/ReportsClient.tsx:259, shifts/ShiftsClient.tsx:944` |
+| D6 | F10. Adds MANAGER[A1] `unit=A2` → exactly 403 · MANAGER[A1] `unit=A1` → 200 · OWNER `unit=A2` → 200. A 404 for the cross-unit case is red (N9). | `ไม่มี route.ts ใต้ src/app/app/sys/[id]/pos/reports/** (route พิมพ์ text/html ยังไม่มี — หน้าพิมพ์ยังเป็น PrintFrame)` |
+
+## New decisions
+- **CD-P43-O10.** One account-link decider: `posAccountLinks(ctx: { tenantId: string; systemId: string }, actor: RegisterActor): Promise<{ accountSystemId: string | null; docs: boolean; settings: boolean }>`, exported from the new file `src/lib/modules/pos/account-links.ts`.
+  - `docs` = may open `/account/print` (`account.doc.view` with the account IMPLIES table).
+  - `settings` = `account.settings.manage`.
+  - Account rules must go through the account facade. Today `@/lib/modules/account` does not export `accountCan`, so add a facade function rather than a cross-module deep import.
+  - `sales/page.tsx` must call it.
+  - `receiptSettingsPageDataAction` `book` gains `canOpenAccountSettings: boolean` (= `links.settings`).
+- **CD-P43-O7r** (replaces O7). The 86/refund card source is the widened `posBoardCardsAction({systemId, keys})` in `src/lib/pos-board-ui-actions.ts`.
+  - Per-key unit check: `pos-86:<unitId>:…` uses the unit in the key; `pos-refund:<orderId>` uses the order's `unitId`.
+  - The permission must be held at that unit, and the unit must be linked to this POS.
+  - Link testids must contain `board-card`, for example `pos-reg-board-card-<productId>`, `pos-ord-board-card-<orderId>`, `pos-bills-board-card-<saleId>`. Each new testid needs an F15.3 registry row.
+  - The `href` must be the card's `href` from the reader.
+  - The page-level `posCardsForKeys` alternative is withdrawn.
+- **D6 fix text (corrects §1 / O8):** the route checks `pos.report.view` **at the requested unit**, not "at any unit". A manager asking for another unit gets 403.
+
+## Fix list deltas for the product builder (on top of §1)
+- New `src/lib/modules/pos/account-links.ts` `posAccountLinks` (+ an account facade can-function).
+- `sales/page.tsx:34,68`: `const links = await posAccountLinks(...)` and `accountSystemId={links.docs ? links.accountSystemId : null}`.
+- `receipt-settings-actions.ts:80-113`: `book.canOpenAccountSettings = links.settings`.
+- `ReceiptSettings.tsx:670`: `{book.canOpenAccountSettings && (<Link …pos-settings-account-link/>)}`.
+- `pos-board-ui-actions.ts:32-56`: accept `pos-86:` and `pos-refund:` with the per-key unit check.
+- Register, orders and bills: read via `posBoardCardsAction` and render the `board-card` link (registry rows).
+- `ReportsClient.tsx:255,259` and `ShiftsClient.tsx:944`: real null branch, no literal fallback.
+- Print route: unit-scoped `pos.report.view`.
+- The registry rows of S2 part C are still on the product card (R1 F11; run `qc-pos-p4.1 --no-db` after editing).
+
+## Gates (round 2)
+- `--self-test` 12/12.
+- `--no-db` 13/18.
+- Full run 16/28.
+- Strict tsc 0.
+- `pos-oracle-check --base dd2508d0`: VERDICT green (red 0, warn 0).
+- `qc-pos-p2.14 --no-db` 15/15.
+- fitness 53/53 with the POS client.
+- DB run: same private ro `unshare -m` bind of p11 node_modules (accepted for this lane by the coordinator).
