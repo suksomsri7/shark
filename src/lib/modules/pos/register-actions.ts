@@ -17,7 +17,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { requestDevice, type DeviceNotPaired, type DeviceRevokedRefusal } from "./device-request"; // POS P5.2 ▸ CD-P52-O4 F1 ◂
-import { registerCatalog, registerScan, quoteRegisterCart, quoteRegisterCartOverride, submitRegisterSale, registerStatus, registerProductOptions, registerBarcodeIndex } from "./register"; // POS P5.3 fix1 ▸ CD-P53-O14: + registerBarcodeIndex ◂
+import { registerCatalog, registerScan, quoteRegisterCart, quoteRegisterCartOverride, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
 import { registerFulfilReward, registerMemberBenefits, registerMemberLookup, registerQuickMember } from "./register-member"; // POS P1.12 ◂
 import { registerGiftCardLookup, registerPayTenders, type RegisterGiftCardLookupResult, type RegisterPayTendersResult } from "./tender"; // POS P2.9 ◂
@@ -28,7 +28,6 @@ import type {
   ListHeldCartsResult,
   RecallHeldCartResult,
   RegisterActor,
-  RegisterBarcodeIndexResult, // POS P5.3 fix1 ▸ CD-P53-O14 ◂
   RegisterCatalogInput,
   RegisterCatalogResult,
   RegisterCtx,
@@ -193,20 +192,6 @@ export async function registerScanAction(args: Target & { barcode: string }): Pr
     return await registerScan(s.ctx, s.actor, { barcode: typeof args?.barcode === "string" ? args.barcode : "" });
   } catch (e) {
     return unexpected("registerScanAction", e);
-  }
-}
-
-/** POS P5.3 fix1 ▸ CD-P53-O14: ดัชนีบาร์โค้ดของหน้าขาย (ทั้งสาขา) — knownVersion ตรง = { unchanged } ไม่มี payload · ปฏิเสธเป็นข้อมูล ไม่โยน ◂ */
-export async function registerBarcodeIndexAction(args: Target & { knownVersion?: string | null }): Promise<RegisterBarcodeIndexResult> {
-  const auth = await session("registerBarcodeIndexAction");
-  if ("ok" in auth) return auth;
-  try {
-    const s = sessionScope(auth, args);
-    if ("ok" in s) return s;
-    const kv = args?.knownVersion;
-    return await registerBarcodeIndex(s.ctx, s.actor, { knownVersion: typeof kv === "string" ? kv : null });
-  } catch (e) {
-    return unexpected("registerBarcodeIndexAction", e);
   }
 }
 

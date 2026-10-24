@@ -148,7 +148,6 @@ import type { RegisterCreditStatus } from "@/lib/modules/pos/credit-shared";
 // POS P3.4U ▸ ขายออฟไลน์ 19ง (มติ 2–7): ชั้น IndexedDB/วงซิงก์ · ชิ้นจอ · ตัวช่วยบริสุทธิ์ (offline-shared = สัญญาใบ S) ◂
 import { useOfflineRegister } from "./use-offline-register";
 import { useBarcodeIndex } from "./use-barcode-index"; // POS P5.3 fix1 ▸ CD-P53-O14 ◂
-import { registerBarcodeIndexAction } from "@/lib/modules/pos/register-actions"; // POS P5.3 fix1 ▸ CD-P53-O14 ◂
 import type { OfflineUnlockResult } from "./offline-pin";
 import { OfflineBadge, OfflineBillsDialog, OfflineChips, OfflineDoneDialog, OfflineLiveBanner, OfflinePayDialog, OfflinePayRow, type OfflinePayConfirm } from "./OfflineRegisterParts";
 import { offlineCartTotals, offlineSaleRefusal } from "@/lib/modules/pos/offline-shared";
@@ -690,7 +689,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const off = useOfflineRegister({ systemId, unitId, userId, enabled: !!props.offlineEnabled, online, deviceId, deviceActive: status?.deviceStatus === "ACTIVE", canSell: limits.canSell });
   offKickRef.current = off.kick;
   // POS P5.3 fix1 ▸ CD-P53-O14: ดัชนีบาร์โค้ดทั้งสาขาในหน่วยความจำ (ดึงเบื้องหลังหลังวาดแรก) — สแกนที่ตรงสินค้าเดียวที่ขายได้ ใส่ตะกร้าทันทีไม่รอเซิร์ฟเวอร์ ◂
-  const barcodeIndex = useBarcodeIndex({ systemId, unitId, online, load: (knownVersion) => registerBarcodeIndexAction({ systemId, unitId, knownVersion }) });
+  //   POS P5.3 fix1c ▸ CD-P53-O15 F1: ดึงผ่าน GET route (ไม่ใช่ server action) · ไม่เริ่มดึงระหว่างกล่องชำระ/จบการขายเปิด ◂
+  const barcodeIndex = useBarcodeIndex({ systemId, unitId, online, paused: () => layersRef.current.some((l) => l.kind === "pay" || l.kind === "done") });
   /** คำขอใดตอบ STAFF_TOKEN_INVALID ⇒ ลบโทเคน + ล็อก (ไม่ถอยไปใช้ผู้ใช้ session) */
   const staffTokenDead = () => {
     clearStaffSession(deviceId);
@@ -1121,6 +1121,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           synced();
         } else {
           setQuoteErr({ ver, code: r.code, ...(typeof r.lineIndex === "number" ? { lineIndex: r.lineIndex } : {}) });
+          if (typeof r.lineIndex === "number" && cart.lines[r.lineIndex]?.kind === "product") barcodeIndex.invalidate(); // POS P5.3 fix1c ▸ F7: บรรทัดสินค้าถูกปฏิเสธ = ดัชนีอาจเก่า ◂
           if (ov) onOverrideRefused(r.code);
         }
       } catch {
@@ -1690,6 +1691,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" }); // R2: ระหว่างส่งบิล = บอก ไม่เงียบ
     // POS P5.3 fix1 ▸ CD-P53-O14: รหัสตรงสินค้าเดียวในดัชนี + ขายได้ตามที่แคชไว้ (ไม่หมด/ไม่ปิดขาย · ขายหน้าร้าน · มีราคาหรือผู้ขายตั้งราคาเปิดได้ — สิ่งที่ scanOutcome/pick ต้องใช้)
     //   ⇒ ผลเดียวกับ registerScan { match: "one" } ใส่ตะกร้าแบบซิงโครนัส (ไม่มี await ก่อนบรรทัดขึ้น) · นอกนั้น = ทางเซิร์ฟเวอร์เดิมทุกประการ ◂
+    // POS P5.3 fix1c ▸ F8 (ยอมรับ): สแกนที่ไม่เจอ (รอเซิร์ฟเวอร์) แล้วตามด้วยสแกนที่เจอในดัชนี ⇒ บรรทัดของตัวหลังขึ้นก่อน — ลำดับในตะกร้าอาจต่างจากลำดับสแกน (ยอด/จำนวนไม่ต่าง) ◂
     const gen = billGen.current;
     let hit = barcodeIndex.lookup(code);
     // POS P5.3 fix1b ▸ CD-P53-O14b: ดัชนีชุดแรกยังดึงอยู่ ⇒ รอคำขอนั้นจบ (นานสุด = เวลาของคำขอ · server action ส่งทีละคำขอ สแกนทางเซิร์ฟเวอร์ก็ต้องรอคิวนี้อยู่ดี) แล้วตัดสินตามปกติ ·

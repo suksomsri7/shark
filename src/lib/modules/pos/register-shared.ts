@@ -342,9 +342,22 @@ export type RegisterBarcodeIndexItem = { barcode: string; product: RegisterProdu
  * จอดึงใหม่แบบไม่ส่ง knownVersion ตอนนั้น (version ไม่ขึ้นกับเวลา) และไม่ใช้ดัชนีหลังขอบนั้นจนกว่าจะได้ชุดใหม่
  */
 export type RegisterBarcodeIndexResult =
-  | { ok: true; unchanged: true; version: string }
-  | { ok: true; unchanged?: false; version: string; items: RegisterBarcodeIndexItem[]; truncated: boolean; priceValidUntil: string | null }
+  | { ok: true; unchanged: true; version: string; /** POS P5.3 fix1c ▸ F3 ◂ */ serverNow: string }
+  | {
+      ok: true;
+      unchanged?: false;
+      version: string;
+      items: RegisterBarcodeIndexItem[];
+      /** POS P5.3 fix1c ▸ F2: รหัสที่ตั้งใจไม่ใส่ (ชี้ > 1 สินค้า · แม่มีตัวแปร) — จอไม่สั่งดึงใหม่เพราะรหัสเหล่านี้ ◂ */
+      excluded: string[];
+      truncated: boolean;
+      priceValidUntil: string | null;
+      /** POS P5.3 fix1c ▸ F3: เวลาเซิร์ฟเวอร์ (ISO) — จอเทียบขอบราคาด้วยนาฬิกาเซิร์ฟเวอร์ ◂ */
+      serverNow: string;
+    }
   | RegisterRefusal;
+/** POS P5.3 fix1c ▸ CD-P53-O15 F1: route GET ของดัชนี (ไม่ใช่ server action — วิ่งขนานกับ quote/submit) · query systemId, unitId, knownVersion · ETag "<version>" · 304 ◂ */
+export const REGISTER_BARCODE_INDEX_PATH = "/api/pos/register/barcode-index";
 // ◂ POS P5.3 fix1
 
 /** บรรทัดของคำขอ quote/submit — สินค้า (productId) หรือรายการกำหนดเอง (name + unitPriceSatang) */

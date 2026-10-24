@@ -1120,10 +1120,61 @@ export async function registerScan(ctx: RegisterCtx, actor: RegisterActor, input
 //   ชี้ > 1 สินค้าที่มองเห็น = ไม่อยู่ (เซิร์ฟเวอร์ให้ choose/คัดแม่ออก) · แม่ที่มีตัวแปร = ไม่อยู่ (เซิร์ฟเวอร์ให้เลือกตัวแปร) · ป้ายชั่งไม่ใช่บาร์โค้ดที่ลงทะเบียน = ไม่อยู่โดยปริยาย ·
 //   product = regViews ชุดละ REGISTER_PAGE_MAX (ตัวเดียวกับกริด/สแกน) · version = แฮชของสิ่งที่ product ขึ้นกับ (นับ + updatedAt ล่าสุด) — ไม่ตรงกับ
 //   knownVersion = ส่งชุดเต็ม · บาร์โค้ดเกิน REGISTER_BARCODE_INDEX_MAX = truncated (items ว่าง · จอไม่ใช้ดัชนี) ◂
+// POS P5.3 fix1c ▸ CD-P53-O15: excluded = รหัสที่ตั้งใจไม่ใส่ (ซ้ำ · แม่มีตัวแปร — F2) · serverNow = เวลาเซิร์ฟเวอร์ (F3) · version ไม่ขึ้นกับการตัดสต็อก
+//   (InvItem = เฉพาะบาร์โค้ด/sku · MenuItem = เฉพาะความพร้อมขาย — F1 churn) · H1: version ก่อน (ถูก) → แคชในโปรเซส (ร้าน/ระบบ/สาขา/version · 120 วิ · 64 ชุด · LRU) →
+//   สร้างใหม่: ผู้ขอชุดเดียวกันรอ promise เดียว · ร้านละไม่เกิน 2 การสร้างพร้อมกัน · opts.allowBuild (route: ผู้ใช้ละ 1 การสร้าง/10 วิ) = false ⇒ BUSY ◂
 const REG_BARCODE_INDEX_KEYS: ReadonlySet<string> = new Set(["knownVersion"]);
-const REG_BARCODE_INDEX_FORMAT = "bi1";
+const REG_BARCODE_INDEX_FORMAT = "bi2";
 const REG_BARCODE_INDEX_PAR = 2;
-export async function registerBarcodeIndex(ctx: RegisterCtx, actor: RegisterActor, input: { knownVersion?: string | null } = {}, client?: RegDb): Promise<RegisterBarcodeIndexResult> {
+type RegBarcodeIndexFull = { ok: true; version: string; items: RegisterBarcodeIndexItem[]; excluded: string[]; truncated: boolean; priceValidUntil: string | null };
+const REG_BI_CACHE_TTL_MS = 120_000;
+const REG_BI_CACHE_MAX = 64;
+const REG_BI_TENANT_BUILDS = 2;
+const regBiCache = new Map<string, { at: number; full: RegBarcodeIndexFull }>();
+const regBiBuilding = new Map<string, Promise<RegBarcodeIndexFull>>();
+const regBiTenantActive = new Map<string, number>();
+const regBiTenantWait = new Map<string, (() => void)[]>();
+function regBiCacheGet(key: string, nowMs: number): RegBarcodeIndexFull | null {
+  const hit = regBiCache.get(key);
+  if (!hit) return null;
+  const edge = hit.full.priceValidUntil ? Date.parse(hit.full.priceValidUntil) : NaN;
+  if (nowMs - hit.at > REG_BI_CACHE_TTL_MS || (Number.isFinite(edge) && nowMs >= edge)) {
+    regBiCache.delete(key);
+    return null;
+  }
+  regBiCache.delete(key); // LRU: ย้ายไปท้าย
+  regBiCache.set(key, hit);
+  return hit.full;
+}
+function regBiCachePut(key: string, full: RegBarcodeIndexFull, nowMs: number): void {
+  regBiCache.delete(key);
+  regBiCache.set(key, { at: nowMs, full });
+  while (regBiCache.size > REG_BI_CACHE_MAX) regBiCache.delete(regBiCache.keys().next().value as string);
+}
+async function regBiTenantSlot<T>(tenantId: string, body: () => Promise<T>): Promise<T> {
+  while ((regBiTenantActive.get(tenantId) ?? 0) >= REG_BI_TENANT_BUILDS) {
+    await new Promise<void>((res) => regBiTenantWait.set(tenantId, [...(regBiTenantWait.get(tenantId) ?? []), res]));
+  }
+  regBiTenantActive.set(tenantId, (regBiTenantActive.get(tenantId) ?? 0) + 1);
+  try {
+    return await body();
+  } finally {
+    const n = (regBiTenantActive.get(tenantId) ?? 1) - 1;
+    if (n > 0) regBiTenantActive.set(tenantId, n);
+    else regBiTenantActive.delete(tenantId);
+    const q = regBiTenantWait.get(tenantId);
+    const next = q?.shift();
+    if (q && !q.length) regBiTenantWait.delete(tenantId);
+    next?.();
+  }
+}
+export async function registerBarcodeIndex(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  input: { knownVersion?: string | null } = {},
+  client?: RegDb,
+  opts: { allowBuild?: () => boolean } = {},
+): Promise<RegisterBarcodeIndexResult> {
   return regGuard("registerBarcodeIndex", async (): Promise<RegisterBarcodeIndexResult> => {
     const db: RegDb = client ?? prisma;
     const s = await regScope(db, ctx, actor);
@@ -1132,18 +1183,21 @@ export async function registerBarcodeIndex(ctx: RegisterCtx, actor: RegisterActo
     if (!regIsRecord(o) || !regOnlyKeys(o, REG_BARCODE_INDEX_KEYS)) return regRefuse("VALIDATION");
     if (o.knownVersion !== undefined && o.knownVersion !== null && (typeof o.knownVersion !== "string" || o.knownVersion.length > 100)) return regRefuse("VALIDATION");
     const where = regVisibleWhere(s);
-    // version: สินค้าที่มองเห็น + InvItem ที่ผูก (นับ · มีบาร์โค้ด · updatedAt ล่าสุด) + ชั้นที่ regViews อ่าน — ราคาช่องทาง/กติกาโปร (ทั้งระบบ รวมที่เก็บถาวร) ·
-    //   86 ของสาขา (PosAvailabilityMark) · MenuItem ที่ผูกสินค้า · กลุ่มตัวเลือก (ผูก/กลุ่ม) · สูตร (ชุด/เมนูตัดตามสูตร/เหลือ N) — นับ + เวลาแก้ล่าสุด คำสั่งเดียว
-    const [v] = await db.$queryRaw<{ n: number; nb: number; pu: Date | null; iu: Date | null; side: string }[]>`
+    // version: สินค้าที่มองเห็น (นับ · มีบาร์โค้ด · updatedAt ล่าสุด) + InvItem ที่ผูก (เฉพาะ id/บาร์โค้ด/sku — การตัดสต็อกไม่เปลี่ยน version) + ชั้นที่ regViews อ่าน —
+    //   ราคาช่องทาง/กติกาโปร (ทั้งระบบ รวมที่เก็บถาวร) · 86 ของสาขา (PosAvailabilityMark) · MenuItem ที่ผูกสินค้า (นับ + ชุดที่หมด/ปิดขาย ไม่ใช่ตัวนับคงเหลือ) ·
+    //   กลุ่มตัวเลือก (ผูก/กลุ่ม) · สูตร (ชุด/เมนูตัดตามสูตร) — คำสั่งเดียว · stockLeft ในชุดอาจเก่ากว่าจริงได้ (จอไม่ใช้ตัดสินสแกน — F2)
+    const [v] = await db.$queryRaw<{ n: number; nb: number; pu: Date | null; inv: string | null; side: string }[]>`
       SELECT count(*)::int AS n,
         count(*) FILTER (WHERE p.barcode IS NOT NULL OR b.barcode IS NOT NULL)::int AS nb,
-        max(p."updatedAt") AS pu, max(b."updatedAt") AS iu,
+        max(p."updatedAt") AS pu,
+        md5(string_agg(p.id || ':' || coalesce(b.barcode, '') || ':' || coalesce(b.sku, ''), ',' ORDER BY p.id) FILTER (WHERE b.id IS NOT NULL)) AS inv,
         concat_ws('|',
           (SELECT count(*) || ':' || coalesce(max(c."updatedAt")::text, '') FROM "PosProductChannelPrice" c
             WHERE c."tenantId" = ${s.tenantId} AND c."systemId" = ${s.systemId} AND (c."unitId" IS NULL OR c."unitId" = ${s.unitId})),
           (SELECT count(*) || ':' || coalesce(max(r."updatedAt")::text, '') FROM "PosPriceRule" r WHERE r."tenantId" = ${s.tenantId} AND r."systemId" = ${s.systemId}),
           (SELECT count(*) || ':' || coalesce(max(m."markedAt")::text, '') FROM "PosAvailabilityMark" m WHERE m."tenantId" = ${s.tenantId} AND m."unitId" = ${s.unitId}),
-          (SELECT count(*) || ':' || coalesce(max(mi."updatedAt")::text, '') FROM "MenuItem" mi WHERE mi."tenantId" = ${s.tenantId} AND mi."posProductId" IS NOT NULL),
+          (SELECT count(*) || ':' || coalesce(md5(string_agg(mi.id, ',' ORDER BY mi.id) FILTER (WHERE mi."isOutOfStock" OR (mi."stockQty" IS NOT NULL AND mi."stockQty" <= 0))), '')
+            FROM "MenuItem" mi WHERE mi."tenantId" = ${s.tenantId} AND mi."posProductId" IS NOT NULL),
           (SELECT count(*) || ':' || coalesce(max(og."createdAt")::text, '') FROM "PosProductOptionGroup" og WHERE og."tenantId" = ${s.tenantId}),
           (SELECT count(*) || ':' || coalesce(max(g."updatedAt")::text, '') FROM "MenuOptionGroup" g WHERE g."tenantId" = ${s.tenantId}),
           (SELECT count(*) || ':' || coalesce(max(rl."updatedAt")::text, '') FROM "RecipeLine" rl WHERE rl."tenantId" = ${s.tenantId})
@@ -1151,56 +1205,80 @@ export async function registerBarcodeIndex(ctx: RegisterCtx, actor: RegisterActo
       FROM "PosProduct" p LEFT JOIN "InvItem" b ON b.id = p."invItemId" AND b."tenantId" = ${s.tenantId}
       WHERE ${where}`;
     const version = createHash("sha256")
-      .update(JSON.stringify([REG_BARCODE_INDEX_FORMAT, s.tenantId, s.systemId, s.unitId, s.unitInv, v?.n ?? 0, v?.nb ?? 0, v?.pu?.toISOString() ?? null, v?.iu?.toISOString() ?? null, v?.side ?? ""]))
+      .update(JSON.stringify([REG_BARCODE_INDEX_FORMAT, s.tenantId, s.systemId, s.unitId, s.unitInv, v?.n ?? 0, v?.nb ?? 0, v?.pu?.toISOString() ?? null, v?.inv ?? null, v?.side ?? ""]))
       .digest("base64url")
       .slice(0, 32);
-    if (o.knownVersion === version) return { ok: true, unchanged: true, version };
-    // แถวที่มีบาร์โค้ด (ลำดับ ชื่อ+id เดียวกับ registerScan) · เกิน 2×เพดานแถว = truncated ทันที (ไม่อ่านทั้งร้านเข้าหน่วยความจำ)
-    const cap = REGISTER_BARCODE_INDEX_MAX * 2;
-    const rows = await db.$queryRaw<{ id: string; pb: string | null; ib: string | null }[]>`
-      SELECT p.id, p.barcode AS pb, b.barcode AS ib FROM "PosProduct" p
-      LEFT JOIN "InvItem" b ON b.id = p."invItemId" AND b."tenantId" = ${s.tenantId}
-      WHERE ${where} AND (p.barcode IS NOT NULL OR b.barcode IS NOT NULL)
-      ORDER BY p.name, p.id
-      LIMIT ${cap + 1}`;
-    if (rows.length > cap) return { ok: true, version, items: [], truncated: true, priceValidUntil: null };
-    const scannable = (k: string | null): k is string => typeof k === "string" && k.length > 0 && k.length <= 200 && k === k.trim() && regCleanText(k);
-    const keysOf = new Map<string, string[]>();
-    const owners = new Map<string, Set<string>>();
-    for (const r of rows) {
-      const ks = [...new Set([r.pb, r.ib].filter(scannable))];
-      keysOf.set(r.id, ks);
-      for (const k of ks) owners.set(k, (owners.get(k) ?? new Set<string>()).add(r.id));
+    const serverNow = new Date().toISOString();
+    if (o.knownVersion === version) return { ok: true, unchanged: true, version, serverNow };
+    const key = `${s.tenantId}|${s.systemId}|${s.unitId}|${version}`;
+    const cached = regBiCacheGet(key, Date.now());
+    if (cached) return { ...cached, serverNow };
+    let building = regBiBuilding.get(key);
+    if (!building) {
+      if (opts.allowBuild && !opts.allowBuild()) return regRefuse("BUSY", "ขอดัชนีบาร์โค้ดชุดใหม่ถี่เกินไป — ลองใหม่ใน 10 วินาที");
+      building = regBiTenantSlot(s.tenantId, () => regBuildBarcodeIndex(db, s, where, version));
+      regBiBuilding.set(key, building);
+      void building.then(
+        (full) => regBiCachePut(key, full, Date.now()),
+        () => undefined,
+      ).finally(() => regBiBuilding.delete(key));
     }
-    const single = (k: string) => owners.get(k)?.size === 1;
-    let singles = 0;
-    for (const k of owners.keys()) if (single(k)) singles++;
-    if (singles > REGISTER_BARCODE_INDEX_MAX) return { ok: true, version, items: [], truncated: true, priceValidUntil: null };
-    const ids = rows.filter((r) => keysOf.get(r.id)!.some(single)).map((r) => r.id);
-    // ชุดละ REGISTER_PAGE_MAX · ทำพร้อมกันไม่เกิน REG_BARCODE_INDEX_PAR ชุด (regViews ยิงคำสั่งขนานในตัวอยู่แล้ว — ไม่กิน pool ของคำขออื่นจนหมด) · ประกอบผลตามลำดับเดิม
-    const chunks: string[][] = [];
-    for (let i = 0; i < ids.length; i += REGISTER_PAGE_MAX) chunks.push(ids.slice(i, i + REGISTER_PAGE_MAX));
-    const done: { views: RegisterProduct[]; until: string | null }[] = new Array(chunks.length);
-    let nextChunk = 0;
-    const worker = async () => {
-      for (let c = nextChunk++; c < chunks.length; c = nextChunk++) {
-        const page = await regRowsInOrder(db, s.tenantId, chunks[c]!);
-        const book = await regPriceBook(db, s, page);
-        done[c] = { views: await regViews(db, s, page, book), until: priceBookValidUntil(book) };
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(REG_BARCODE_INDEX_PAR, chunks.length) }, worker));
-    const items: RegisterBarcodeIndexItem[] = [];
-    let edge: string | null = null;
-    for (const { views, until } of done) {
-      if (until && (!edge || until < edge)) edge = until;
-      for (const product of views) {
-        if (product.variantCount > 0) continue;
-        for (const k of keysOf.get(product.id) ?? []) if (single(k)) items.push({ barcode: k, product });
-      }
-    }
-    return { ok: true, version, items, truncated: false, priceValidUntil: edge };
+    return { ...(await building), serverNow };
   });
+}
+
+/** POS P5.3 fix1c ▸ ตัวสร้างชุดเต็ม (เดิมอยู่ในตัว registerBarcodeIndex · fix1) + excluded ◂ */
+async function regBuildBarcodeIndex(db: RegDb, s: RegScope, where: Prisma.Sql, version: string): Promise<RegBarcodeIndexFull> {
+  // แถวที่มีบาร์โค้ด (ลำดับ ชื่อ+id เดียวกับ registerScan) · เกิน 2×เพดานแถว = truncated ทันที (ไม่อ่านทั้งร้านเข้าหน่วยความจำ)
+  const cap = REGISTER_BARCODE_INDEX_MAX * 2;
+  const rows = await db.$queryRaw<{ id: string; pb: string | null; ib: string | null }[]>`
+    SELECT p.id, p.barcode AS pb, b.barcode AS ib FROM "PosProduct" p
+    LEFT JOIN "InvItem" b ON b.id = p."invItemId" AND b."tenantId" = ${s.tenantId}
+    WHERE ${where} AND (p.barcode IS NOT NULL OR b.barcode IS NOT NULL)
+    ORDER BY p.name, p.id
+    LIMIT ${cap + 1}`;
+  if (rows.length > cap) return { ok: true, version, items: [], excluded: [], truncated: true, priceValidUntil: null };
+  const scannable = (k: string | null): k is string => typeof k === "string" && k.length > 0 && k.length <= 200 && k === k.trim() && regCleanText(k);
+  const keysOf = new Map<string, string[]>();
+  const owners = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const ks = [...new Set([r.pb, r.ib].filter(scannable))];
+    keysOf.set(r.id, ks);
+    for (const k of ks) owners.set(k, (owners.get(k) ?? new Set<string>()).add(r.id));
+  }
+  const single = (k: string) => owners.get(k)?.size === 1;
+  let singles = 0;
+  for (const k of owners.keys()) if (single(k)) singles++;
+  if (singles > REGISTER_BARCODE_INDEX_MAX) return { ok: true, version, items: [], excluded: [], truncated: true, priceValidUntil: null };
+  const excluded: string[] = [...owners.keys()].filter((k) => !single(k)); // ซ้ำ > 1 สินค้า
+  const ids = rows.filter((r) => keysOf.get(r.id)!.some(single)).map((r) => r.id);
+  // ชุดละ REGISTER_PAGE_MAX · ทำพร้อมกันไม่เกิน REG_BARCODE_INDEX_PAR ชุด (regViews ยิงคำสั่งขนานในตัวอยู่แล้ว — ไม่กิน pool ของคำขออื่นจนหมด) · ประกอบผลตามลำดับเดิม
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += REGISTER_PAGE_MAX) chunks.push(ids.slice(i, i + REGISTER_PAGE_MAX));
+  const done: { views: RegisterProduct[]; until: string | null }[] = new Array(chunks.length);
+  let nextChunk = 0;
+  const worker = async () => {
+    for (let c = nextChunk++; c < chunks.length; c = nextChunk++) {
+      const page = await regRowsInOrder(db, s.tenantId, chunks[c]!);
+      const book = await regPriceBook(db, s, page);
+      done[c] = { views: await regViews(db, s, page, book), until: priceBookValidUntil(book) };
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(REG_BARCODE_INDEX_PAR, chunks.length) }, worker));
+  const items: RegisterBarcodeIndexItem[] = [];
+  let edge: string | null = null;
+  for (const { views, until } of done) {
+    if (until && (!edge || until < edge)) edge = until;
+    for (const product of views) {
+      const ks = (keysOf.get(product.id) ?? []).filter(single);
+      if (product.variantCount > 0) {
+        excluded.push(...ks); // แม่ที่มีตัวแปร
+        continue;
+      }
+      for (const k of ks) items.push({ barcode: k, product });
+    }
+  }
+  return { ok: true, version, items, excluded: excluded.slice(0, REGISTER_BARCODE_INDEX_MAX), truncated: false, priceValidUntil: edge };
 }
 
 /** R11: น้ำหนัก/ราคาของป้ายชั่ง ด้วยราคาต่อกก.ของสินค้า (ไม่มีราคา = ค่าที่คิดไม่ได้เป็น null) */
