@@ -99,3 +99,28 @@ All edits are new checks or stricter judges. There are no exceptions, so no dele
 - `qc-pos-p2.14 --no-db` 15/15.
 - fitness 53/53 with the POS client.
 - DB run: same private ro `unshare -m` bind of p11 node_modules (accepted for this lane by the coordinator).
+
+---
+# Oracle round 3 (R1 of product fix1 `pos-P4.3-fix1-review.md` F4 · 24 Oct 00:5xZ)
+New check only, so no exception and no delete-probe. The suite now has **30** checks: + D7b, N13.
+
+**D7b (new).** The register sends the prefix key `pos-86:<unitId>:<productId>:`, because it does not know the mark id. The oracle now tests this against real 86 marks.
+- Fixture: OWNER calls `catalog.setAvailability` (available false, MANUAL) on the temp tenant. This creates real `PosAvailabilityMark` rows for product P at A1 and at A2, and for product Q at A2 only. Product R has no mark. One kanban card is created per full key `posBoardKeys.soldOut(unit, product, mark.id)`, on the D7 board.
+- Reader calls and expected results:
+  - MANAGER[A1] with prefixes {A1:P:, A2:P:} gets the full A1 key and not the A2 key.
+  - OWNER with the same prefixes gets both full keys.
+  - MANAGER and OWNER with {A1:Q:, A1:R:} get `ok` with no cards. That means no throw, and the A2 card of Q does not leak.
+  - MANAGER with the full A1 key still gets the card.
+- Self-test probe: N13.
+
+**Red-before on the tip dd2508d0** (temp tenant `posqc-p43-0ca8e089`, `fixture: null`, Z1 0 / Z2 unchanged). Full run is **17/30**: the same reds as round 2, plus D7b.
+`❌ [P4.3-D7b] … actual: MANAGER[A1] prefix pos-86:<A1>:<P>: ไม่ได้การ์ด A1 (ok · 0 ใบ) · OWNER prefix ได้ 0/2 ใบ (ok · ตัวควบคุมบวก) · MANAGER[A1] กุญแจเต็ม A1 → ไม่ได้การ์ด (ok)`
+
+**Product fix1 reader** (`wip/pos-p4.3-fix1` `src/lib/pos-board-ui-actions.ts`, read only). Its grammar matches the check:
+- It splits the key into `pos-86`, unit, product and mark, with no extra segments allowed.
+- An empty mark means a prefix. For a prefix, the unit must be linked to this POS and the user needs `pos.sale.create` or `pos.product.manage` at that unit, and this is checked before any read.
+- The reader then reads `posAvailabilityMark.findMany({tenantId, systemId, OR [{unitId, productId}]})` and returns full keys built with `posBoardKeys.soldOut`.
+- A mark row exists only while the product is 86, because setAvailability deletes it when the product is back in stock.
+- Expected result: D7b passes on fix1. I checked this by reading the code; it was not run, because tree f is read only.
+
+Gates: `--self-test` 13/13 · `--no-db` 14/19 · full 17/30 · strict tsc 0 · oracle-check green.
