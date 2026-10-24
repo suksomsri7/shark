@@ -15,13 +15,16 @@ import { posUnits } from "@/lib/modules/pos/register";
 import { isReportKind, REPORT_PERMISSION, type ReportKind } from "@/lib/modules/pos/reports";
 import { posReportPrintAction } from "@/lib/modules/pos/report-actions";
 import { combine, type Printed } from "../print-doc";
+import thPos from "@/messages/th/pos.json";
+import enPos from "@/messages/en/pos.json";
 
 export const dynamic = "force-dynamic";
 
 const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 /** สถานะ HTTP ของรหัสปฏิเสธจากตัวอ่าน */
 const STATUS_OF: Record<string, number> = { PERMISSION_DENIED: 403, VALIDATION: 400, NOT_FOUND: 404 };
-const OVERVIEW_TITLE = { th: "ภาพรวมรายงาน", en: "Report overview" } as const;
+// POS P4.3 fix3 ▸ qc-pos-p1.18 ST7: ชื่อเอกสารภาพรวมจากไฟล์ข้อความ (คีย์เดียวกับหน้าพิมพ์ pos.report.print.overviewTitle · แบบ /r /q ที่ import pos.json ตรง) ◂
+const OVERVIEW_TITLE = { th: thPos.report.print.overviewTitle, en: enPos.report.print.overviewTitle } as const;
 
 /** คำตอบที่ไม่ใช่เอกสาร — ข้อความสั้น (ไม่มีข้อความของเซิร์ฟเวอร์ · ไม่มีข้อมูลร้าน) */
 function plain(status: number, text: string): Response {
