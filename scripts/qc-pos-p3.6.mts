@@ -50,7 +50,7 @@ const NODB = process.argv.includes("--no-db");
 const FORCE = process.env.QC_FORCE === "1";
 /** หมุดของเลน (มติ 10 12): ต้นไม้ที่ข้อสอบนี้เขียนเทียบ — ST1 สัญญา · ST4 ไฟล์ห้ามแตะ */
 const PIN = process.env.P36_PIN || "54913c60"; // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-RP9 · merge P3.6 f6ae3054: หมุดใบ = ฐานก่อน merge 72669941 → 54913c60) ◂
-const LANE_PIN = process.env.P36_LANE_PIN || "98f60761"; // ORACLE-EDIT ผู้คุม 23.10 (P5.2 D+E+device merge CD-RP24 · re-pin 6b1f84a5 → 98f60761) · ORACLE-EDIT ผู้คุม 23.10 (P5.1 batch C merge CD-RP23 · re-pin 6668b832 → 6b1f84a5) · ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin f6ae3054 → 6668b832) · ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-RP9 · หมุดเลน = merge commit) · // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: หมุดเลนแยกจากหมุดใบ — ข้อ "ไฟล์ห้ามแตะ" (ST4) เทียบ LANE_PIN · หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4 17 ต.ค.) ◂
+const LANE_PIN = process.env.P36_LANE_PIN || "4016a352"; // ORACLE-EDIT ผู้คุม 24.10 (P4.3+P6.1 merge CD-RP25 (prisma #37 แตะตาราง P3.6) · re-pin 98f60761 → 4016a352) · ORACLE-EDIT ผู้คุม 23.10 (P5.2 D+E+device merge CD-RP24 · re-pin 6b1f84a5 → 98f60761) · ORACLE-EDIT ผู้คุม 23.10 (P5.1 batch C merge CD-RP23 · re-pin 6668b832 → 6b1f84a5) · ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin f6ae3054 → 6668b832) · ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-RP9 · หมุดเลน = merge commit) · // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: หมุดเลนแยกจากหมุดใบ — ข้อ "ไฟล์ห้ามแตะ" (ST4) เทียบ LANE_PIN · หลัง merge ผู้คุม re-pin เฉพาะ LANE_PIN (บทเรียน CD-RP4 17 ต.ค.) ◂
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════
 // X-group: S สถิต · X1 idempotency/เล่นซ้ำ · X2 ข้ามขอบเขต/ความเป็นส่วนตัว · X3 สิทธิ์ · X4 เงิน · X5 ผลข้างเคียงครบทุกทาง · "-" เชิงหน้าที่
@@ -506,9 +506,15 @@ function runStatic(): void {
     }
     // migration อื่นหลังหมุดที่แตะของ P3.6 = ผิดที่
     const pinDirs = new Set((gitStr(["ls-tree", "--name-only", `${PIN}:${F.migDir}`]) ?? "").split("\n").map((x) => x.trim()).filter(Boolean));
+    // ORACLE-EDIT ผู้คุม A 24.10 (CD-RP25c · P6.1 การ์ด CD-P61-P4): migration ที่มีแต่ index (CREATE [UNIQUE] INDEX [CONCURRENTLY] IF NOT EXISTS … + SET/RESET lock_timeout) ไม่เปลี่ยนความหมายของ P3.6
+    //   (เช่น 20261220100000_pos_p61_hand_indexes = index มือในรูป no-op) ⇒ ยกเว้นจากกฎ "ต้องอยู่ในโฟลเดอร์ p36" · ไฟล์ที่มี DDL อื่นแตะของ P3.6 ยังแดง · probe: เติม ALTER TABLE "PosCreditAccount" ลงไฟล์ index → แดง · revert: ลบ indexOnly ◂
+    const indexOnly = (sql: string): boolean => {
+      const stmts = sql.replace(/--[^\n]*/g, "").split(";").map((x) => x.trim()).filter(Boolean);
+      return stmts.length > 0 && stmts.every((x) => /^(SET|RESET) lock_timeout\b/i.test(x) || /^CREATE (UNIQUE )?INDEX (CONCURRENTLY )?IF NOT EXISTS\b/i.test(x));
+    };
     for (const d of dirs.filter((x) => !pinDirs.has(x) && !p36.includes(x))) {
       const sql = rd(`${F.migDir}/${d}/migration.sql`);
-      if (/PosCreditAccount|'ON_ACCOUNT'|"customerPartyId"|"crmDealId"|"creditTerms"/.test(sql)) p.push(`${d} แตะของ P3.6 (ต้องอยู่ในโฟลเดอร์ p36)`);
+      if (/PosCreditAccount|'ON_ACCOUNT'|"customerPartyId"|"crmDealId"|"creditTerms"/.test(sql) && !indexOnly(sql)) p.push(`${d} แตะของ P3.6 (ต้องอยู่ในโฟลเดอร์ p36)`);
     }
     // schema: เพิ่มอย่างเดียว + ฟิลด์ครบ
     const d = gitStr(["diff", "-U0", PIN, "--", F.schemaDir]);

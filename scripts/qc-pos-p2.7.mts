@@ -364,6 +364,7 @@ function baseRevs(): string[] {
   add(gitBuf(["rev-parse", "--verify", "-q", "e9b765b4^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 23.10 (CD-RP22 qc-pos-p2.7 ST1/ST3 · lane-pin + e9b765b4 = tip หลัง merge P5.1 batch B: restaurant/order.ts resolveLines ราคาติดลบ (R1 F2) · register.ts MA1b quote mirror)
   add(gitBuf(["rev-parse", "--verify", "-q", "6b1f84a5^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 23.10 (CD-RP23 qc-pos-p2.7 ST1/ST3 · lane-pin + 6b1f84a5 = tip หลัง merge P5.1 batch C: ริบมัดจำ no-show · ใบรับโมดูล TRANSFER · รายงานกะ)
   add(gitBuf(["rev-parse", "--verify", "-q", "98f60761^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม 23.10 (CD-RP24 qc-pos-p2.7 ST1/ST3 · lane-pin + 98f60761 = tip หลัง merge P5.2 batch D+E+device: register/refund actions ใช้คุกกี้เครื่อง · D11 restaurant writers)
+  add(gitBuf(["rev-parse", "--verify", "-q", "4016a352^{commit}"])?.toString("utf8")); // ORACLE-EDIT ผู้คุม A 24.10 (CD-RP25 qc-pos-p2.7 ST1/ST3 · lane-pin + 4016a352 = tip หลัง merge P4.3 fix1+fix2 (register.ts regResolveOptions ย้าย/เพิ่ม · P4.3 board-card/dueDate/price-rule) + P6.1 fix1+fix2 (prisma #37 index no-op))
   baseRevsCache = out;
   return out;
 }

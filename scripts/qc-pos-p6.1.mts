@@ -25,7 +25,7 @@ const LIST = process.argv.includes("--list");
 /** ฐานของข้อสอบ (session/pos ตอนเขียน) — env override */
 const PIN = process.env.P61_PIN || "23c85130";
 /** หมุดเลนของข้อ Z (ไฟล์ที่ใบนี้แตะได้) — ย้ายได้โดยไม่ขยับหมุดใบ */
-const LANE_PIN = process.env.P61_LANE_PIN || "c91d8735"; // ORACLE-EDIT CD-P61-O1: เดิม = PIN (23c85130) — หลัง merge tip ส่วนต่าง src/ ของ P5.x เข้ามาในช่วงเทียบ
+const LANE_PIN = process.env.P61_LANE_PIN || "4016a352"; // ORACLE-EDIT ผู้คุม 24.10 (P4.3+P6.1 merge CD-RP25 (Z1 scope = เลน P6.1 ปิดที่ merge) · re-pin c91d8735 → 4016a352) · ORACLE-EDIT CD-P61-O1: เดิม = PIN (23c85130) — หลัง merge tip ส่วนต่าง src/ ของ P5.x เข้ามาในช่วงเทียบ
 const REV = process.env.P61_REV || "";
 
 const RUNBOOK = "docs/pos/DEPLOY-RUNBOOK.md";
