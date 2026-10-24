@@ -6476,7 +6476,7 @@
     },
     {
       "page": "/app/sys/[id]/pos/sales",
-      "testid": "pos-bills-board-card-*",
+      "testid": "pos-bills-board-card",
       "kind": "link",
       "roles": [
         "owner",
@@ -6487,7 +6487,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
-        "note": "F-P3-21 · CD-P38U-9: ลิ้นชักบิลที่มาจากออเดอร์ซึ่งมีการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId> ของออเดอร์ที่ saleId = บิลนี้) → แถว \"การ์ดคืนเงิน #n\" (BillDetail.orderId → posBoardCardsAction กุญแจ pos-refund:<orderId> · [*] = saleId · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
+        "note": "F-P3-21 · CD-P38U-9: ลิ้นชักบิลที่มาจากออเดอร์ซึ่งมีการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId> ของออเดอร์ที่ saleId = บิลนี้) → แถว \"การ์ดคืนเงิน #n\" (BillDetail.orderId → posBoardCardsAction กุญแจ pos-refund:<orderId> · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
       },
       "wo": "P4.3",
       "oracle": "P4.3-S7",

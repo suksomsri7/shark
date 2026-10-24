@@ -1680,7 +1680,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                   {refundCard && refundCard.saleId === bill.id ? (
                     <div className="flex min-h-[32px] items-center gap-2.5">
                       <BillIcon name="doc" className="text-[color:var(--color-muted)]" />
-                      <a data-testid={`pos-bills-board-card-${bill.id}`} href={refundCard.href} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
+                      <a data-testid="pos-bills-board-card" href={refundCard.href} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
                         {refundCard.cardNo != null
                           ? refundCard.completed
                             ? t("drawer.refundCardDone", { n: refundCard.cardNo })
