@@ -19706,7 +19706,7 @@
       "expect": {
         "type": "mutation",
         "target": "pos-ord-toast",
-        "note": "แบนเนอร์ \"ปิดรับถึง hh:mm\" → เปิดรับ = pausedUntil null",
+        "note": "แบนเนอร์ \"ปิดรับถึง hh:mm\" → เปิดรับ = pausedUntil null · กดท้าย (POS P4.3 fix5c CD-P43-11: opener pos-ord-pause-* พักทุกช่องทาง แต่ปุ่มเปิดคืนเปิดช่องเดียว → ช่องอื่นค้างพักจน pos-ord-man-submit ถูกปฏิเสธ CHANNEL_PAUSED — จึงกดท้ายรอบให้ fixture คืน pausedUntil=null)",
         "db": "SalesChannel.pausedUntil = null + AuditLog pos.order.settings"
       },
       "wo": "P2.8U",
