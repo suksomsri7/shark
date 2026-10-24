@@ -543,21 +543,19 @@ async function preparePage(page: Any, cookies: Any[], staffJson: string, lineObs
       }
       const w = window as unknown as { __p53: { keys: { k: string; t: number }[]; lines: { n: number; dom: number; paint: number }[] } };
       w.__p53 = { keys: [], lines: [] };
-      document.addEventListener("keydown", (e) => w.__p53.keys.push({ k: e.key, t: e.timeStamp }), true);
+      window.addEventListener("keydown", (e) => w.__p53.keys.push({ k: e.key, t: e.timeStamp }), true); // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13c: บน window (ก่อนสคริปต์แอป) — ตัวจับสแกนของหน้าขายอยู่บน window capture และอาจกลืน Enter ก่อนถึง document
       if (!withObs) return;
-      const start = () => {
-        let last = 0;
-        const cnt = () => new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size;
+      // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13: tsx keepNames ใส่ __name() รอบ arrow ที่ผูกชื่อในโค้ดฝั่งเบราว์เซอร์ → ReferenceError ใน page.evaluate — ห้ามผูกชื่อฟังก์ชันในคอลแบ็กเบราว์เซอร์)
+      let last = 0;
+      document.addEventListener("DOMContentLoaded", () => {
         new MutationObserver(() => {
-          const n = cnt();
+          const n = new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size;
           if (n === last) return;
           last = n;
           const dom = performance.now();
           requestAnimationFrame(() => w.__p53.lines.push({ n, dom, paint: performance.now() }));
         }).observe(document.documentElement, { childList: true, subtree: true });
-      };
-      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
-      else start();
+      });
     },
     "shark.pos.deviceId",
     DEV,
@@ -744,26 +742,66 @@ try {
       await loadRegister(page);
       await sleep(500);
       const bc = barcodes(2600, RUNS.scans);
+      // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13: tsx keepNames ใส่ __name() รอบ arrow ที่ผูกชื่อในโค้ดฝั่งเบราว์เซอร์ → ReferenceError ใน page.evaluate — ห้ามผูกชื่อฟังก์ชันในคอลแบ็กเบราว์เซอร์) + กติกาเครื่องสแกน: หน้าขายนับเป็นสแกนเมื่อทุกช่วงห่างคีย์ ≤ SCAN_MAX_GAP_MS (30 ms · scan-shared.ts) —
+      // puppeteer ส่งคีย์ทีละตัวผ่าน CDP บนเครื่องที่โหลดสูง ช่วงห่างอาจเกิน 30 ms ⇒ หน้าขายจัดเป็น "พิมพ์" ไม่ใช่สแกน (ไม่ใช่ความช้าของสินค้า)
+      // ⇒ อ่านช่วงห่างจริงจากตัวบันทึก __p53 แล้วลองใหม่ ≤ 3 ครั้งต่อบาร์โค้ด · นับ harnessSlow · ล้มจริงเฉพาะเมื่อ burst เร็วพอแต่บรรทัดไม่ขึ้น
+      const SCAN_GAP_MS = 30;
+      let harnessSlow = 0;
+      let maxGapSeen = 0;
+      let burstEmpty = 0; // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13c) จำนวนสแกนที่ recorder ไม่มีคีย์เลย
+      type Rec = { keys: { k: string; t: number }[]; lines: { n: number; paint: number }[] };
       for (let k = 0; k < bc.length; k++) {
-        await page.keyboard.type(bc[k]!);
-        await page.keyboard.press("Enter");
-        await page.waitForFunction((n: number) => new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size >= n, { polling: "raf", timeout: 10_000 }, k + 1).catch(() => {
-          throw new Error(`สแกน ${bc[k]} แล้วบรรทัดที่ ${k + 1} ไม่ขึ้นใน 10 วิ`);
-        });
+        let got = false;
+        for (let attempt = 0; attempt < 3 && !got; attempt++) {
+          const keysBefore = (await page.evaluate(() => (window as unknown as { __p53: Rec }).__p53.keys.length)) as number;
+          // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13b: จับเวลา paint ในหน้าต่อสแกน — ตั้ง promise (MutationObserver → rAF → performance.now) ก่อนพิมพ์ แล้วเทียบกับ timeStamp ของคีย์สุดท้ายก่อน Enter (นาฬิกาเดียวกัน)
+          //   แทนการพึ่ง recorder.lines ที่ติดตั้งตอน DOMContentLoaded (รอบ diag 2: keys บันทึกได้ แต่ lines ว่าง 0/5)
+          const paintP = page.evaluate(
+            (n: number) =>
+              new Promise<number>((res) => {
+                const mo = new MutationObserver(() => {
+                  if (new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size < n) return;
+                  mo.disconnect();
+                  requestAnimationFrame(() => res(performance.now()));
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+                setTimeout(() => {
+                  mo.disconnect();
+                  res(-1);
+                }, 10_000);
+              }),
+            k + 1,
+          ) as Promise<number>;
+          await page.keyboard.type(bc[k]!);
+          await page.keyboard.press("Enter");
+          const paint = await paintP;
+          const shown = paint >= 0;
+          const rec = (await page.evaluate(() => (window as unknown as { __p53: Rec }).__p53)) as Rec;
+          const burst = rec.keys.slice(keysBefore);
+          let gap = 0;
+          for (let i = 1; i < burst.length; i++) gap = Math.max(gap, burst[i]!.t - burst[i - 1]!.t);
+          maxGapSeen = Math.max(maxGapSeen, gap);
+          if (shown) {
+            // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13c: ถ้า Enter ไม่ถูกบันทึก (ถูกกลืน) ใช้คีย์สุดท้ายที่บันทึกได้ (ตัวเลขตัวท้าย) เป็นจุดเริ่ม — ค่าที่ได้รวมเวลากด Enter = ขอบบน
+            const enter = burst.length ? burst[burst.length - 1]! : null;
+            const lastChar = enter && enter.k === "Enter" ? (burst.length >= 2 ? burst[burst.length - 2]!.t : NaN) : enter ? enter.t : NaN;
+            if (Number.isFinite(lastChar)) xs.push(paint - lastChar);
+            else burstEmpty++;
+            got = true;
+          } else if (gap > SCAN_GAP_MS) {
+            harnessSlow++;
+            await sleep(400);
+          } else {
+            throw new Error(`สแกน ${bc[k]} แล้วบรรทัดที่ ${k + 1} ไม่ขึ้นใน 10 วิ (burst ช่วงห่างสูงสุด ${gap.toFixed(1)} ms ≤ ${SCAN_GAP_MS} = เครื่องสแกนจริง)`);
+          }
+        }
+        if (!got) throw new Error(`สแกน ${bc[k]} ล้ม 3 ครั้ง: harness ส่งคีย์ช้ากว่าเครื่องสแกน (ช่วงห่างสูงสุด ${maxGapSeen.toFixed(1)} ms > ${SCAN_GAP_MS}) — เครื่องโหลดสูง ไม่ใช่ความช้าของสินค้า · ลองใหม่เมื่อเครื่องว่าง`);
         await sleep(150);
       }
       await sleep(400);
-      const rec = (await page.evaluate(() => (window as unknown as { __p53: Any }).__p53)) as { keys: { k: string; t: number }[]; lines: { n: number; paint: number }[] };
-      const enters = rec.keys.map((x, i) => ({ ...x, i })).filter((x) => x.k === "Enter");
-      for (let k = 0; k < bc.length; k++) {
-        const e = enters[k];
-        const lastChar = e && e.i > 0 ? rec.keys[e.i - 1]!.t : NaN;
-        const line = rec.lines.find((l) => l.n === k + 1);
-        if (Number.isFinite(lastChar) && line) xs.push(line.paint - lastChar);
-      }
       const scanRtt = acts.filter((a) => a.kind === "scan" && a.end).map((a) => a.end - a.start);
-      if (xs.length < bc.length) err = `จับเวลาได้ ${xs.length}/${bc.length} สแกน`;
-      put("P5.3-B3U", err ? null : xs, { scanActionP50: r1(pct(scanRtt, 50)), scanActionP95: r1(pct(scanRtt, 95)), scanActions: scanRtt.length }, err);
+      if (xs.length < bc.length) err = `จับเวลาได้ ${xs.length}/${bc.length} สแกน (recorder ว่าง ${burstEmpty})`;
+      put("P5.3-B3U", err ? null : xs, { scanActionP50: r1(pct(scanRtt, 50)), scanActionP95: r1(pct(scanRtt, 95)), scanActions: scanRtt.length, harnessSlowRetries: harnessSlow, maxKeyGapMs: r1(maxGapSeen), recorderEmpty: burstEmpty }, err);
       await page.close();
     } catch (e) {
       put("P5.3-B3U", null, {}, (e as Error).message.slice(0, 200));
@@ -775,6 +813,7 @@ try {
     const settle: number[] = [];
     const pay: number[] = [];
     const submitRtt: number[] = [];
+    const drain: number[] = []; // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13b)
     let err: string | undefined;
     for (let b = 0; b < RUNS.bills && !err; b++) {
       const page = await warmCtx.newPage();
@@ -802,6 +841,34 @@ try {
           throw new Error("แตะ 199 การ์ดแล้วบรรทัดไม่ครบ 199");
         });
         await page.waitForNetworkIdle({ idleTime: 600, timeout: 30_000 }).catch(() => undefined);
+        // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13b: harness แตะ 199 การ์ดใน <1 วิ = quote ต่อการ์ด 199 คำขอ (คนจริงไม่ทำ) — รอให้ยอดนิ่ง (ไม่มี aria-busy · ปุ่มชำระเปิด) ก่อนวัดบรรทัดที่ 200
+        //   เดิมรอ network idle แค่ 30 วิ แล้วเดินต่อทั้งที่คำขอยังค้าง ⇒ "ยอด 200 บรรทัดไม่นิ่ง" = คิวค้างของ harness ไม่ใช่ความช้าของบรรทัดที่ 200 · เวลารอรายงานเป็น drainMs (ไม่เข้าเกณฑ์)
+        const tDrain = Date.now();
+        await page.waitForFunction(() => {
+          const tt = document.querySelector('[data-testid="pos-reg-total"]');
+          const pay = document.querySelector('[data-testid="pos-reg-pay"]') as HTMLButtonElement | null;
+          return !!tt && tt.getAttribute("aria-busy") !== "true" && !!pay && !pay.disabled;
+        }, { timeout: 120_000, polling: 250 }).catch(async () => {
+          // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13c: พิมพ์สภาพหน้าตอนหมดเวลา เพื่อแยก "ยอดยังคำนวณ" / "ปุ่มชำระปิดด้วยเหตุอื่น (กะ · เครื่อง · สิทธิ์ · quote ผิดพลาด)"
+          const st = (await page
+            .evaluate(() => {
+              const tts = Array.from(document.querySelectorAll('[data-testid="pos-reg-total"]')).map((e) => `${e.getAttribute("aria-busy") ?? "-"}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 40)}`);
+              const pay = document.querySelector('[data-testid="pos-reg-pay"]') as HTMLButtonElement | null;
+              const alerts = Array.from(document.querySelectorAll('[role="alert"],[role="status"],[data-testid*="err"],[data-testid*="shift"],[data-testid*="lock"],[data-testid*="revoked"],[data-testid*="offline"]')).map((e) => `${e.getAttribute("data-testid") ?? e.getAttribute("role")}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 60)}`);
+              const lines = new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size;
+              const payText = pay ? `${(pay.textContent ?? "").replace(/\s+/g, " ").slice(0, 80)} · title=${pay.getAttribute("title") ?? "-"} · aria=${pay.getAttribute("aria-label") ?? "-"}` : "-";
+              const banners = Array.from(document.querySelectorAll('[data-testid^="pos-reg-banner"],[data-testid^="pos-reg-shift"],[data-testid^="pos-reg-lock"],[data-testid^="pos-reg-device"],[data-testid^="pos-reg-limit"],[data-testid^="pos-reg-quote"]')).map((e) => `${e.getAttribute("data-testid")}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 60)}`);
+              return { tts, pay: pay ? (pay.disabled ? "disabled" : "enabled") : "none", payText, lines, online: navigator.onLine, alerts: alerts.slice(0, 8), banners: banners.slice(0, 10) }; // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13d) ป้ายปุ่มชำระ + แบนเนอร์ = เหตุที่ปุ่มปิด
+            })
+            .catch((e: Error) => ({ evalError: e.message }))) as Any;
+          try {
+            writeFileSync(`/root/pos-runs/perf/p53-drain-state-${Date.now()}.json`, JSON.stringify(st, null, 1)); // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13d) ไฟล์เต็ม (บรรทัด log ถูกตัด)
+          } catch {
+            /* ไม่มีโฟลเดอร์ก็ข้าม */
+          }
+          throw new Error(`คิว quote ของ 199 การ์ดไม่ระบายใน 120 วิ (ก่อนวัดบรรทัดที่ 200) · สภาพหน้า ${JSON.stringify(st).slice(0, 600)}`);
+        });
+        drain.push(Date.now() - tDrain);
         const before = acts.length;
         const tClick = Date.now();
         const r = (await page.evaluate(
@@ -809,10 +876,9 @@ try {
             new Promise<{ paint: number }>((res) => {
               const cs = Array.from(document.querySelectorAll('[data-testid="pos-reg-grid"] [data-testid^="pos-reg-product-"]')) as HTMLButtonElement[];
               const target = cs[199]!;
-              const cnt = () => new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size;
               const t0 = performance.now();
-              const mo = new MutationObserver(() => {
-                if (cnt() < 200) return;
+              const mo = new MutationObserver(() => { // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13: tsx keepNames ใส่ __name() รอบ arrow ที่ผูกชื่อในโค้ดฝั่งเบราว์เซอร์ → ReferenceError ใน page.evaluate — ห้ามผูกชื่อฟังก์ชันในคอลแบ็กเบราว์เซอร์)
+                if (new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size < 200) return;
                 mo.disconnect();
                 requestAnimationFrame(() => res({ paint: performance.now() - t0 }));
               });
@@ -858,13 +924,16 @@ try {
               const btn = document.querySelector('[data-testid="pos-reg-paydlg-confirm"]') as HTMLButtonElement;
               const t0 = performance.now();
               btn.click();
-              const tick = () => {
+              const iv = setInterval(() => { // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13: tsx keepNames ใส่ __name() รอบ arrow ที่ผูกชื่อในโค้ดฝั่งเบราว์เซอร์ → ReferenceError ใน page.evaluate — ห้ามผูกชื่อฟังก์ชันในคอลแบ็กเบราว์เซอร์) (เดิม rAF tick ผูกชื่อ)
                 const d = document.querySelector('[data-testid="pos-reg-done"]');
-                if (d && d.getClientRects().length) return res(performance.now() - t0);
-                if (performance.now() - t0 > 30_000) return res(-1);
-                requestAnimationFrame(tick);
-              };
-              requestAnimationFrame(tick);
+                if (d && d.getClientRects().length) {
+                  clearInterval(iv);
+                  res(performance.now() - t0);
+                } else if (performance.now() - t0 > 30_000) {
+                  clearInterval(iv);
+                  res(-1);
+                }
+              }, 8);
             }),
         )) as number;
         if (pr < 0) throw new Error("กดยืนยันแล้วการ์ดขายสำเร็จไม่ขึ้นใน 30 วิ");
@@ -878,7 +947,7 @@ try {
         await page.close().catch(() => undefined);
       }
     }
-    put("P5.3-B4A", err ? null : add200, {}, err);
+    put("P5.3-B4A", err ? null : add200, { drainP50: r1(pct(drain, 50)), drainMaxMs: drain.length ? Math.max(...drain) : null }, err); // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13b drain = เวลารอคิว quote 199 คำขอ (ข้อมูล · ไม่เข้าเกณฑ์)
     put("P5.3-B4Q", err ? null : quote, { totalSettleP95: r1(pct(settle, 95)), totalSettleP50: r1(pct(settle, 50)) }, err);
     put("P5.3-B4P", err ? null : pay, { submitActionP50: r1(pct(submitRtt, 50)), submitActionP95: r1(pct(submitRtt, 95)) }, err);
   }
