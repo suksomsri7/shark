@@ -147,6 +147,7 @@ import type { ManagerPinResult } from "./ManagerPinPad";
 import type { RegisterCreditStatus } from "@/lib/modules/pos/credit-shared";
 // POS P3.4U ▸ ขายออฟไลน์ 19ง (มติ 2–7): ชั้น IndexedDB/วงซิงก์ · ชิ้นจอ · ตัวช่วยบริสุทธิ์ (offline-shared = สัญญาใบ S) ◂
 import { useOfflineRegister } from "./use-offline-register";
+import { useBarcodeIndex } from "./use-barcode-index"; // POS P5.3 fix1 ▸ CD-P53-O14 ◂
 import type { OfflineUnlockResult } from "./offline-pin";
 import { OfflineBadge, OfflineBillsDialog, OfflineChips, OfflineDoneDialog, OfflineLiveBanner, OfflinePayDialog, OfflinePayRow, type OfflinePayConfirm } from "./OfflineRegisterParts";
 import { offlineCartTotals, offlineSaleRefusal } from "@/lib/modules/pos/offline-shared";
@@ -309,6 +310,15 @@ const weighedEstimate = (grams: number, perKg: number) => Math.floor((2 * grams 
 /** PERCENT ของตัวตรวจเพดาน (bp) → "10" สำหรับข้อความ {limit}% */
 const pctText = (bp: number) => String(Number((bp / 100).toFixed(2)));
 
+
+// POS P5.3 fix1d ▸ CD-P53-O16 D5: รหัสปฏิเสธของ quote ที่บอกว่าข้อมูลสินค้าในดัชนีอาจเก่า (register.ts quote line errors) ◂
+const INDEX_STALE_CODES: ReadonlySet<string> = new Set(["PRODUCT_NOT_FOUND", "PRODUCT_UNAVAILABLE", "VARIANT_REQUIRED", "OPTIONS_REQUIRED", "OPTIONS_INVALID", "PRICE_NOT_SET", "CHANNEL_NOT_SOLD", "WEIGHT_REQUIRED"]);
+/** POS P5.3 fix1d ▸ D1: สินค้าจากดัชนี + ฟิลด์สต็อกของตัวที่จอรู้อยู่แล้ว (ใหม่กว่า) — ปิดขาย (UNAVAILABLE) ยึดของดัชนี ◂ */
+function mergeKnownStock(hit: RegisterProduct, prev: RegisterProduct | undefined): RegisterProduct {
+  if (!prev || prev.id !== hit.id) return hit;
+  const soldOutReason = hit.soldOutReason === "UNAVAILABLE" ? hit.soldOutReason : prev.soldOutReason === "UNAVAILABLE" ? hit.soldOutReason : prev.soldOutReason;
+  return { ...hit, stockLeft: prev.stockLeft, trackStock: prev.trackStock, trackStockMode: prev.trackStockMode, soldOutReason, soldOut: soldOutReason !== null };
+}
 export function RegisterScreen(props: RegisterScreenProps) {
   const { systemId, unitId, userId, limits, vat } = props;
   const t = useTranslations("pos.register");
@@ -687,6 +697,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ═══════ POS P3.4U ▸ ชั้นออฟไลน์ (มติ 2 5 7 8): snapshot · คิว · วงซิงก์ · ตัวตรวจ PIN ออฟไลน์ ◂ ═══════
   const off = useOfflineRegister({ systemId, unitId, userId, enabled: !!props.offlineEnabled, online, deviceId, deviceActive: status?.deviceStatus === "ACTIVE", canSell: limits.canSell });
   offKickRef.current = off.kick;
+  // POS P5.3 fix1 ▸ CD-P53-O14: ดัชนีบาร์โค้ดทั้งสาขาในหน่วยความจำ (ดึงเบื้องหลังหลังวาดแรก) — สแกนที่ตรงสินค้าเดียวที่ขายได้ ใส่ตะกร้าทันทีไม่รอเซิร์ฟเวอร์ ◂
+  //   POS P5.3 fix1c ▸ CD-P53-O15 F1: ดึงผ่าน GET route (ไม่ใช่ server action) · ไม่เริ่มดึงระหว่างกล่องชำระ/จบการขายเปิด ◂
+  const barcodeIndex = useBarcodeIndex({ systemId, unitId, online, paused: () => layersRef.current.some((l) => l.kind === "pay" || l.kind === "done") });
+  /** POS P5.3 fix1d ▸ D5: (คีย์บรรทัด|รหัส) ที่สั่ง invalidate ไปแล้ว ◂ */
+  const indexInvalidated = useRef(new Set<string>());
   /** คำขอใดตอบ STAFF_TOKEN_INVALID ⇒ ลบโทเคน + ล็อก (ไม่ถอยไปใช้ผู้ใช้ session) */
   const staffTokenDead = () => {
     clearStaffSession(deviceId);
@@ -1117,6 +1132,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
           synced();
         } else {
           setQuoteErr({ ver, code: r.code, ...(typeof r.lineIndex === "number" ? { lineIndex: r.lineIndex } : {}) });
+          // POS P5.3 fix1c ▸ F7 · fix1d ▸ D5 (CD-P53-O16): บรรทัดสินค้าถูกปฏิเสธด้วยรหัสที่ดัชนีอาจเก่า ⇒ invalidate ครั้งเดียวต่อ (บรรทัด, รหัส) ◂
+          const refusedLine = typeof r.lineIndex === "number" ? cart.lines[r.lineIndex] : undefined;
+          if (refusedLine?.kind === "product" && INDEX_STALE_CODES.has(r.code) && !indexInvalidated.current.has(`${refusedLine.key}|${r.code}`)) {
+            indexInvalidated.current.add(`${refusedLine.key}|${r.code}`);
+            barcodeIndex.invalidate();
+          }
           if (ov) onOverrideRefused(r.code);
         }
       } catch {
@@ -1684,9 +1705,31 @@ export function RegisterScreen(props: RegisterScreenProps) {
     // POS P1.12U มติ 4: บัตรสมาชิก (SHARK-MC:…) ไปทางค้นสมาชิก — สินค้าไม่เปลี่ยน
     if (isMemberCardCode(code)) return void memberScan(code);
     if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" }); // R2: ระหว่างส่งบิล = บอก ไม่เงียบ
+    // POS P5.3 fix1 ▸ CD-P53-O14: รหัสตรงสินค้าเดียวในดัชนี + ขายได้ตามที่แคชไว้ (ไม่หมด/ไม่ปิดขาย · ขายหน้าร้าน · มีราคาหรือผู้ขายตั้งราคาเปิดได้ — สิ่งที่ scanOutcome/pick ต้องใช้)
+    //   ⇒ ผลเดียวกับ registerScan { match: "one" } ใส่ตะกร้าแบบซิงโครนัส (ไม่มี await ก่อนบรรทัดขึ้น) · นอกนั้น = ทางเซิร์ฟเวอร์เดิมทุกประการ ◂
+    // POS P5.3 fix1c ▸ F8 (ยอมรับ): สแกนที่ไม่เจอ (รอเซิร์ฟเวอร์) แล้วตามด้วยสแกนที่เจอในดัชนี ⇒ บรรทัดของตัวหลังขึ้นก่อน — ลำดับในตะกร้าอาจต่างจากลำดับสแกน (ยอด/จำนวนไม่ต่าง) ◂
     const gen = billGen.current;
+    let hit = barcodeIndex.lookup(code);
+    // POS P5.3 fix1b ▸ CD-P53-O14b: ดัชนีชุดแรกยังดึงอยู่ ⇒ รอคำขอนั้นจบ (นานสุด = เวลาของคำขอ · server action ส่งทีละคำขอ สแกนทางเซิร์ฟเวอร์ก็ต้องรอคิวนี้อยู่ดี) แล้วตัดสินตามปกติ ·
+    //   ดึงล้ม/truncated = loading() คืน null หรือ lookup คืน null ⇒ ทางเซิร์ฟเวอร์ทันที · หลังรอ ตรวจรุ่นบิล/frozenRef แบบเดียวกับทางเซิร์ฟเวอร์ ◂
+    const indexLoad = hit ? null : barcodeIndex.loading();
+    if (indexLoad) {
+      await indexLoad;
+      if (gen !== billGen.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
+      if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
+      hit = barcodeIndex.lookup(code);
+    }
+    // POS P5.3 fix1d ▸ D1 (CD-P53-O16): version ของดัชนีไม่ขยับตามการตัดสต็อก ⇒ ฟิลด์สต็อกในชุดอาจเก่าหลายชั่วโมง — ถ้ามีสินค้าตัวนี้ใน known (กริด/สแกนเซิร์ฟเวอร์)
+    //   ใช้ stockLeft/trackStock/trackStockMode และ "หมดสต็อก" (NO_STOCK ↔ null) ของตัวเดิม · ปิดขาย (UNAVAILABLE) ยึดของชุด (version ขยับตาม 86) · ไม่มีตัวเดิม = ใช้ของชุดตามที่เป็น
+    //   ตัดสินขายได้จากค่าที่รวมแล้ว — known บอก NO_STOCK = ทางเซิร์ฟเวอร์ในสแกนนี้ (ไม่ใช่รหัส "เซิร์ฟเวอร์เท่านั้น" ถาวร) ◂
+    if (hit) hit = mergeKnownStock(hit, known.current.get(hit.id));
+    if (hit && hit.soldOutReason == null && !hit.notSold && (hit.priceSatang !== null || limits.canOverridePrice)) {
+      if (layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
+      return applyScan({ ok: true, match: "one", product: hit }, code, "scan");
+    }
     try {
       const r = await registerScanAction({ systemId, unitId, barcode: code });
+      if (r.ok && r.match === "one" && !r.weighed) barcodeIndex.noteServerOne(code, r.product); // POS P5.3 fix1 ▸ ดัชนีไม่มี/ไม่ตรง = ดึงใหม่ครั้งเดียว ◂
       if (gen !== billGen.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
       if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
       // B2: ระหว่างรอ ผู้ใช้เปิดกล่องชำระ/จบการขาย ⇒ ไม่แตะตะกร้าใต้กล่องนั้น

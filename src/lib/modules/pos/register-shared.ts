@@ -328,6 +328,38 @@ export type RegisterScanResult =
   | { ok: true; match: "none" }
   | RegisterRefusal;
 
+// ═══════════ POS P5.3 fix1 ▸ CD-P53-O14 ดัชนีบาร์โค้ดของหน้าขาย (ฝั่งจอ · W-next-6 "barcode < 100 ms บนทาง client") ◂ ═══════════
+//   ผู้เขียนเดียว = register.ts registerBarcodeIndex · ผู้อ่านเดียว = components/pos/register/use-barcode-index.ts (หน่วยความจำล้วน ไม่มี IndexedDB/storage)
+//   แถว = สินค้าที่ขายได้ที่สาขานี้ ไม่มีตัวแปร (variantCount 0) ที่มีบาร์โค้ดบนแถวเองหรือบน InvItem ที่ผูก · บาร์โค้ดที่ชี้ > 1 สินค้า = ไม่อยู่ (เซิร์ฟเวอร์ให้ choose) ·
+//   product = RegisterProduct ตัวเดียวกับที่ registerScan คืนเป็น { match: "one" } (regViews) · อย่างอื่นทั้งหมด (ซ้ำ · แม่มีตัวแปร · ป้ายชั่ง · บัตรสมาชิก · ไม่พบ) = ทางเซิร์ฟเวอร์เดิม
+/** เพดานจำนวนบาร์โค้ดในดัชนี — เกิน = truncated: true (items ว่าง) ⇒ จอไม่ใช้ดัชนี สแกนผ่านเซิร์ฟเวอร์ทุกครั้ง */
+export const REGISTER_BARCODE_INDEX_MAX = 20_000;
+/** รอบดึงดัชนีใหม่ขณะออนไลน์ (ส่ง knownVersion — ไม่เปลี่ยน = ไม่มี payload) */
+export const REGISTER_BARCODE_INDEX_TTL_MS = 15 * 60_000;
+export type RegisterBarcodeIndexItem = { barcode: string; product: RegisterProduct };
+/**
+ * unchanged = knownVersion ตรงกับ version ปัจจุบัน (ไม่มี items) · priceValidUntil = ขอบหน้าต่างโปรถัดไปของสินค้าในดัชนี (ISO · null = ไม่มี) —
+ * จอดึงใหม่แบบไม่ส่ง knownVersion ตอนนั้น (version ไม่ขึ้นกับเวลา) และไม่ใช้ดัชนีหลังขอบนั้นจนกว่าจะได้ชุดใหม่
+ */
+export type RegisterBarcodeIndexResult =
+  | { ok: true; unchanged: true; version: string; /** POS P5.3 fix1c ▸ F3 ◂ */ serverNow: string }
+  | {
+      ok: true;
+      unchanged?: false;
+      version: string;
+      items: RegisterBarcodeIndexItem[];
+      /** POS P5.3 fix1c ▸ F2: รหัสที่ตั้งใจไม่ใส่ (ชี้ > 1 สินค้า · แม่มีตัวแปร) — จอไม่สั่งดึงใหม่เพราะรหัสเหล่านี้ ◂ */
+      excluded: string[];
+      truncated: boolean;
+      priceValidUntil: string | null;
+      /** POS P5.3 fix1c ▸ F3: เวลาเซิร์ฟเวอร์ (ISO) — จอเทียบขอบราคาด้วยนาฬิกาเซิร์ฟเวอร์ ◂ */
+      serverNow: string;
+    }
+  | RegisterRefusal;
+/** POS P5.3 fix1c ▸ CD-P53-O15 F1: route GET ของดัชนี (ไม่ใช่ server action — วิ่งขนานกับ quote/submit) · query systemId, unitId, knownVersion · ETag "<version>" · 304 ◂ */
+export const REGISTER_BARCODE_INDEX_PATH = "/api/pos/register/barcode-index";
+// ◂ POS P5.3 fix1
+
 /** บรรทัดของคำขอ quote/submit — สินค้า (productId) หรือรายการกำหนดเอง (name + unitPriceSatang) */
 /**
  * P1.2: options = ตัวเลือกที่เลือก (≤ REGISTER_MAX_OPTIONS_PER_LINE · ไม่ซ้ำ · ราคา/ชื่อจาก client ถูกเมิน) ·
