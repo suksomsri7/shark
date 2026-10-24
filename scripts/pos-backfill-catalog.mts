@@ -10,90 +10,56 @@
 //
 // วิธีรัน
 //   QC4  : bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-backfill-catalog.mts [--tenant=<id|slug>]… [--dry-run]
-//   PROD : ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id> --dry-run   ← ต้องรัน dry-run ก่อนเสมอ
-//          ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id>             ← จริง (ต้องมี dry-run ภายใน 24 ชม. ชุดร้านเดียวกัน)
+//   PROD : (⛔ เจ้าของ · runbook §8 · จาก worktree สะอาดที่ SHA ของ PR — P6.1 F10) URL ส่งมาเองหลัง iso.sh เท่านั้น — ไม่โหลด .env ใด ๆ (P6.1 F3 · CD-P61-R3)
+//          bash scripts/iso.sh env DATABASE_URL="$PROD_DIRECT_URL" DIRECT_URL="$PROD_DIRECT_URL" ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id> --dry-run   ← ต้องรัน dry-run ก่อนเสมอ
+//          … เดียวกันแต่ไม่มี --dry-run  ← จริง (ต้องมี dry-run ภายใน 24 ชม. ชุดร้านเดียวกัน)
 //          ทุกร้านบน prod ต้องพิมพ์ `--all` เอง (C13: prod ไม่มี --tenant และไม่มี --all = ปฏิเสธ)
+//   ด่าน host = scripts/lib/pos-prod-writer-guard.mts (allowlist prod/QC4 · PGHOST/?host=/DIRECT_URL ผสม = ปฏิเสธ · พิมพ์ `[target] … role=… host=…`)
 //   VERIFY (P1.1b A5 · อ่านล้วน): … pos-backfill-catalog.mts --tenant=<id> --verify  → ขาดแถว + drift ทีละช่อง (ตัวอย่าง ≤50) · exit 1 ถ้ามี
 // บรรทัดท้าย = `JSON_SUMMARY {...}` (มี `counts` ตัวนับ C7/C9/D3 + `samples` ตัวอย่าง ≤20 ต่อร้าน) · ร้านใดล้ม = exit 1 (ร้านอื่นยังเดินต่อ)
 // 🔴 ฐาน QC: ไม่ระบุ --tenant = ทุกร้านในฐานนั้น · รัน backfill นอกเวลาขาย (ล็อกระดับร้านชนกับผู้เขียนแคตตาล็อก — หนี้ P6.1 runbook)
 
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { isProdDbUrl } from "./qc-env-guard.mjs";
+import { dryRunMarkerPath, guardWriterOrExit, hasRecentDryRun, parseWriterArgv, writeDryRunMarker } from "./lib/pos-prod-writer-guard.mjs"; // POS P6.1 CD-P61-R3 ◂
 
 const SCRIPT = "pos-backfill-catalog";
 
 // ── argv ──
 const argv = process.argv.slice(2);
 // POS P1.1b A5: --verify = เทียบของเดิมกับแคตตาล็อกทีละช่อง (อ่านล้วน · ไม่เขียนอะไรเลย · ใช้ก่อน cut-over ใน P6.1) · exit 1 เมื่อมี drift/ขาดแถว
-const verify = argv.includes("--verify");
-const dryRun = verify || argv.includes("--dry-run") || argv.includes("--dryrun");
-const allTenants = argv.includes("--all");
-const tenantArgs: string[] = [];
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i] ?? "";
-  if (a.startsWith("--tenant=")) tenantArgs.push(a.slice("--tenant=".length).trim());
-  else if (a === "--tenant") tenantArgs.push((argv[++i] ?? "").trim());
-}
-if (tenantArgs.some((t) => !t)) {
-  console.error(`🔴 ${SCRIPT}: --tenant ว่าง — ใส่ id หรือ slug ของร้าน`);
-  process.exit(2);
-}
+const wargs = parseWriterArgv(argv);
+const verify = wargs.verify;
+const dryRun = verify || wargs.dryRun;
+const allTenants = wargs.all;
+const tenantArgs: string[] = wargs.tenants;
 
-// ── env (แบบ member-backfill-common): QC เป็นค่าปริยาย · prod ต้องตั้ง ALLOW_PROD_BACKFILL=1 เอง ──
+// ── env: POS P6.1 F3 (CD-P61-R3) — ทางเขียน prod (ALLOW_PROD_BACKFILL=1) ห้ามโหลดไฟล์ env ใด ๆ (เดิมโหลด `.env` ของทรีที่รันแบบเงียบ) ·
+//    QC (ไม่ตั้ง ALLOW) โหลด QC_ENV_FILE (ปริยาย .env.qc · ห้าม .env) แบบเดิม — env ที่ export มาก่อน (qc4.sh) ชนะไฟล์เสมอ ──
 const allowProd = process.env.ALLOW_PROD_BACKFILL === "1";
-try {
-  // loadEnvFile ไม่ทับค่าที่ export มาแล้ว (qc4.sh export ให้แล้ว)
-  process.loadEnvFile(allowProd ? (process.env.BACKFILL_ENV_FILE ?? ".env") : (process.env.QC_ENV_FILE ?? ".env.qc"));
-} catch {
-  /* ไม่มีไฟล์ — ต้อง export DATABASE_URL มาเอง (ตรวจด้านล่าง) */
-}
-const dbUrl = process.env.DATABASE_URL ?? "";
-const directUrl = process.env.DIRECT_URL ?? "";
-if (!dbUrl) {
-  console.error(`🔴 ${SCRIPT}: ไม่มี DATABASE_URL — รันผ่าน bash scripts/iso.sh bash scripts/qc4.sh …`);
-  process.exit(4);
-}
-const isProd = isProdDbUrl(dbUrl) || isProdDbUrl(directUrl);
-const host = (() => {
-  try {
-    return new URL(dbUrl).hostname;
-  } catch {
-    return "(อ่าน host ไม่ได้)";
+if (!allowProd) {
+  const qcFile = process.env.QC_ENV_FILE ?? ".env.qc";
+  if (qcFile !== ".env") {
+    try {
+      process.loadEnvFile(qcFile);
+    } catch {
+      /* ไม่มีไฟล์ — ต้อง export DATABASE_URL มาเอง (ด่านข้างล่างตรวจ) */
+    }
   }
-})();
-if (isProd && !allowProd) {
-  console.error(`🔴 หยุด! ${SCRIPT}: DATABASE_URL ชี้ production — ต้องตั้ง ALLOW_PROD_BACKFILL=1 เอง และรัน --dry-run ก่อน`);
-  process.exit(4);
 }
-// C13: บน prod ต้องเลือกร้านชัด ๆ — --tenant=<id> (ซ้ำได้) หรือ --all ที่พิมพ์เอง (ไม่ระบุอะไรเลย = ปฏิเสธ)
+// ด่าน host เดียวของสคริปต์เขียน (allowlist · ALLOW_PROD_BACKFILL · --tenant/--all · ห้ามใช้คู่กัน) — ปฏิเสธ = exit 2/4 ก่อนต่อฐาน
+const target = guardWriterOrExit(SCRIPT, wargs);
+const isProd = target.prodLike;
+const host = target.label;
+// C13: บน prod ต้องเลือกร้านชัด ๆ — --tenant=<id> (ซ้ำได้) หรือ --all ที่พิมพ์เอง (ไม่ระบุอะไรเลย = ปฏิเสธ · ตัวด่านตรวจแล้ว — คงไว้เป็นชั้นที่สอง)
 if (isProd && !tenantArgs.length && !allTenants) {
   console.error(`🔴 หยุด! ${SCRIPT}: production ต้องระบุ --tenant=<id> หรือ --all เอง`);
   process.exit(4);
 }
-if (allTenants && tenantArgs.length) {
-  console.error(`🔴 ${SCRIPT}: ใช้ --tenant กับ --all พร้อมกันไม่ได้`);
-  process.exit(2);
-}
 // ด่าน "dry-run ก่อนเสมอ" บน prod: dry-run เขียนบันทึก (ไฟล์ในเครื่อง ไม่ลง git) · รันจริงต้องเจอบันทึกของ host+ชุดร้านเดียวกัน ภายใน 24 ชม.
-const markerDir = ".qc-shots/pos";
-const markerKey = createHash("sha256").update(`${host}|${allTenants ? "--all" : [...tenantArgs].sort().join(",")}`).digest("hex").slice(0, 16);
-const markerPath = `${markerDir}/backfill-dryrun-${markerKey}.json`;
-if (isProd && !dryRun) {
-  const ok = existsSync(markerPath) && (() => {
-    try {
-      const m = JSON.parse(readFileSync(markerPath, "utf8")) as { at?: string };
-      return !!m.at && Date.now() - Date.parse(m.at) < 24 * 3600_000;
-    } catch {
-      return false;
-    }
-  })();
-  if (!ok) {
-    console.error(`🔴 หยุด! ${SCRIPT}: production ต้องรัน --dry-run ด้วยชุด --tenant เดียวกันก่อน (ภายใน 24 ชม.) — ไม่พบ ${markerPath}`);
-    process.exit(4);
-  }
+const markerPath = dryRunMarkerPath(SCRIPT, host, wargs);
+if (isProd && !dryRun && !hasRecentDryRun(markerPath)) {
+  console.error(`🔴 หยุด! ${SCRIPT}: production ต้องรัน --dry-run ด้วยชุด --tenant เดียวกันก่อน (ภายใน 24 ชม.) — ไม่พบ ${markerPath}`);
+  process.exit(4);
 }
-if (isProd) console.warn(`⚠️  ALLOW_PROD_BACKFILL=1 — กำลังรันบนฐานข้อมูลจริง (${host})${dryRun ? " · dry-run" : ""}`);
 console.log(`[env] ${SCRIPT} · DB ${host}${dryRun ? " · DRY-RUN (ไม่เขียนอะไรเลย)" : ""}`);
 
 const { prisma } = await import("@/lib/core/db");
@@ -150,8 +116,7 @@ for (const [k, byTenant] of Object.entries(s.samples))
 console.log(`${verb}สร้าง ${JSON.stringify(s.created)} · ${verb}ผูกคอลัมน์เชื่อม ${JSON.stringify(s.updated)} · มีอยู่แล้ว ${JSON.stringify(s.alreadyDone)} · ${Date.now() - t0} ms`);
 for (const f of s.failedTenants) console.error(`🔴 ร้าน ${f.tenantId} ล้ม (ไม่มีอะไรค้างครึ่งทาง): ${f.error}`);
 if (isProd && dryRun && !s.failedTenants.length) {
-  mkdirSync(markerDir, { recursive: true });
-  writeFileSync(markerPath, JSON.stringify({ at: new Date().toISOString(), host, tenants: tenantArgs, created: s.created }, null, 2));
+  writeDryRunMarker(markerPath, { host, tenants: tenantArgs, all: allTenants, created: s.created });
   console.log(`บันทึก dry-run ไว้ที่ ${markerPath} (รันจริงได้ภายใน 24 ชม.)`);
 }
 console.log(`JSON_SUMMARY ${JSON.stringify(s)}`);
