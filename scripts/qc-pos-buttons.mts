@@ -337,12 +337,16 @@ if (!BASE_RAW) {
       posSettingsPaths("AppSystem(POS).settings.pos.payment.promptpayIdByUnit.<unitId>").join(",") === `payment.promptpayIdByUnit.${BTN.unit.id}` &&
       posSettingsPaths("AppSystem(POS).settings.pos.receipt (jsonb_set · header/footer)").join(",") === "receipt" && posSettingsPaths("PosSale PAID").length === 0 &&
       writesOf("KanbanBoard + AppSystem(POS).settings.pos.board.defaultBoardId", new Set(["KanbanBoard", "AppSystem"])).map((w) => `${w.model}:${(w.pos ?? []).join("|")}`).join(",") === "KanbanBoard:,AppSystem:board.defaultBoardId");
+    // POS P4.3 walker fix2 ▸ F1 freshAfter (toast ค้างจากแถวก่อนไม่นับ) · F5 แถวแถบแท็บเท่านั้น ◂
+    t("F1 ขึ้นใหม่หลังกด", freshAfter(null, { sig: "a", marked: false }, false) && !freshAfter("a", { sig: "a", marked: true }, false) && freshAfter("a", { sig: "b", marked: true }, false) &&
+      freshAfter("a", { sig: "a", marked: true }, true) && freshAfter("a", { sig: "a", marked: false }, false) && !freshAfter("a", null, true) && !freshAfter(null, null, false));
+    t("F5 แถบแท็บ", isContainerRow({ row: { testid: "pos-products-module-tabs", kind: "tab" } } as PlanItem) && !isContainerRow({ row: { testid: "pos-bills-row-menu", kind: "menu" } } as PlanItem) && !isContainerRow({ row: { testid: "pos-reg-pay", kind: "button" } } as PlanItem));
     t("R3/R4 SELF_CLICK_FIRST", Object.keys(SELF_CLICK_FIRST).length === 2 && Object.keys(SELF_CLICK_FIRST).every((k) => REG.rows.some((r) => rowKey(r) === k)));
     t("H8/H11 ช่วงท้าย", ["shifts#pos-shift-close-submit", "kds#pos-kds-pause"].every((k) => {
       const r = REG.rows.find((x) => rowKey(x) === `${STAFF}${k}`);
       return !!r && !!sideEffectOf(r);
     }));
-    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (7) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 · P4.3 H16 settings.pos · R3/R4 SELF_CLICK_FIRST · H8/H11 ช่วงท้าย — ผ่านทุกกรณี");
+    chk("B10", bad.length === 0, bad.length ? `ตัวช่วยไม่ผ่าน: ${bad.join(" · ")}` : "navMatches F16 (7) · parseStep F29 + R3 ของ P4.1 (ขั้น ? ของแถวจริงผ่าน · ของไม่มีจริงแดง) · เพดานส่วนลด F18 · search-noop F28 · anyOf/คลิปบอร์ด F26 · ตัวสลับ F27 · P4.3 H16 settings.pos · R3/R4 SELF_CLICK_FIRST · H8/H11 ช่วงท้าย · fix2 F1 ขึ้นใหม่ · F5 แถบแท็บ — ผ่านทุกกรณี");
   }
   const passed = res.filter((r) => r.ok).length;
   console.log(`\n${passed === res.length ? "✅" : "❌"} ${SUITE} (ด่าน): ${passed}/${res.length}`);
@@ -425,6 +429,31 @@ function selOf(testid: string): string {
   return [prefix ? `[data-testid^="${prefix}"]` : "", suffix ? `[data-testid$="${suffix}"]` : ""].join("") || "[data-testid]";
 }
 const looksLikeTestid = (s: string) => /^[a-z][a-z0-9*-]*$/.test(s) && s.includes("-");
+/** POS P4.3 walker fix2 ▸ F1: ลายเซ็นของเป้าที่มองเห็น = ข้อความ + ค่าช่อง + aria/data-state/disabled ของตัวมันเอง (ไม่ใช้ style — แอนิเมชันไม่นับ) ·
+ *  mark=true ติดเครื่องหมาย (property ไม่ใช่ attribute — MutationObserver ไม่เห็น) · marked = node เดิมจากก่อนกด · มองไม่เห็น = null ◂ */
+async function targetSig(page: Any, tid: string, tok: string, mark: boolean): Promise<{ sig: string; marked: boolean } | null> {
+  const h = await findVisible(page, tid, [], 0).catch(() => null);
+  if (!h) return null;
+  const r = await h
+    .evaluate((e: Any, t: string, m: boolean) => {
+      const vals = [e, ...Array.from(e.querySelectorAll("input,select,textarea"))].map((x: Any) => `${x.value ?? ""}:${x.checked ?? ""}`).join(",");
+      const attrs = ["aria-checked", "aria-pressed", "aria-selected", "aria-expanded", "aria-current", "data-state", "disabled"].map((a) => e.getAttribute(a) ?? "").join(",");
+      const s = `${(e.textContent ?? "").trim()}|${vals}|${attrs}`;
+      let a = 5381;
+      for (let i = 0; i < s.length; i++) a = ((a * 33) ^ s.charCodeAt(i)) >>> 0;
+      const marked = e.__qcPreMark === t;
+      if (m) e.__qcPreMark = t;
+      return { sig: `${s.length}:${a.toString(36)}`, marked };
+    }, tok, mark)
+    .catch(() => ({ sig: "?", marked: false }));
+  await h.dispose?.().catch(() => {});
+  return r;
+}
+/** POS P4.3 walker fix2 ▸ F1 (บริสุทธิ์ · ด่าน B10): เป้าหลังกดนับเมื่อ มองเห็น และ (ก่อนกดมองไม่เห็น · หายไปหลังกดแล้วขึ้น · node ใหม่ · ลายเซ็นเปลี่ยน) ◂ */
+function freshAfter(before: string | null, cur: { sig: string; marked: boolean } | null, hiddenSince: boolean): boolean {
+  if (!cur) return false;
+  return before === null || hiddenSince || !cur.marked || cur.sig !== before;
+}
 /** ตัวแรกที่มองเห็น (คู่ desktop/mobile ใช้ testid เดียว) · แพตเทิร์น = ตัวแรกที่กดได้จริง ไม่อยู่ใน notList · waitMs > 0 = รอถี่ 200 ms ·
  *  onlyTags (POS P4.3 walker fix1 ▸ H12) = รับเฉพาะ tagName เหล่านี้ (แถวช่องกรอกแบบแพตเทิร์น — กัน span ราคาในรายการชนแพตเทิร์นของช่องกรอก) ◂ */
 async function findVisible(page: Any, testid: string, notList: string[] = [], waitMs = 0, onlyTags: string[] | null = null): Promise<Any | null> {
@@ -465,10 +494,16 @@ async function findVisible(page: Any, testid: string, notList: string[] = [], wa
 async function settle(page: Any, maxMs = 4000): Promise<void> {
   await page.waitForNetworkIdle({ idleTime: 350, timeout: maxMs }).catch(() => {});
 }
-async function clickEl(page: Any, el: Any): Promise<void> {
+/** POS P4.3 walker fix2 ▸ F5: แถวแถบแท็บ/แถบนำทาง (kind tab · testid …-tabs/-tablist/-nav) — เฉพาะแถวเหล่านี้ที่ clickEl กดคอนโทรลข้างในแทนกลางกล่อง ◂ */
+function isContainerRow(it: Pick<PlanItem, "row">): boolean {
+  return it.row.kind === "tab" || /-(tabs|tablist|nav)$/.test(it.row.testid);
+}
+async function clickEl(page: Any, el: Any, opts: { container?: boolean } = {}): Promise<void> {
   // POS P4.3 walker fix1 ▸ H13: คอนเทนเนอร์ที่ไม่กดได้เอง (ไม่มีตัวจับคลิกของตัวเอง) แต่มีลิงก์/ปุ่มข้างใน (pressInfo "มีคอนโทรลข้างใน" — เช่นแถบแท็บ
-  //   module-tabs.tsx:16 ที่กลางแถบว่างเมื่อแท็บน้อย) → กดลิงก์ที่ไม่ใช่หน้าปัจจุบัน/ปุ่มที่เปิดใช้ตัวแรกข้างในแทนกลางกล่อง ◂
-  const inner = await el
+  //   module-tabs.tsx:16 ที่กลางแถบว่างเมื่อแท็บน้อย) → กดลิงก์ที่ไม่ใช่หน้าปัจจุบันข้างในแทนกลางกล่อง ◂
+  // POS P4.3 walker fix2 ▸ F5: เฉพาะเมื่อผู้เรียกบอก container (แถวแถบแท็บ — ไม่ใช่ opener/SELF_CLICK_FIRST) · ลิงก์ a[href] / [role=tab] ก่อนปุ่ม ·
+  //   ไม่กดปุ่ม/ลิงก์ที่ข้อความหรือ testid เป็นคำทำลาย (delete|void|refund|remove|archive|ลบ|ยกเลิก|คืน) ◂
+  const inner = !opts.container ? null : await el
     .evaluateHandle((e: Any) => {
       const PRESS = "button, a[href], input, select, textarea, summary, [role=button], [role=link], [role=switch], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=menuitemradio], [role=menuitemcheckbox], [role=option]";
       if (e.tagName === "FORM" || e.matches(PRESS) || e.closest(PRESS) || (e.tagName === "LABEL" && (e.control || e.querySelector("input,select,textarea")))) return null;
@@ -476,7 +511,10 @@ async function clickEl(page: Any, el: Any): Promise<void> {
       const pr = k ? e[k] : null;
       if (pr && ["onClick", "onMouseDown", "onPointerDown", "onPointerUp", "onTouchStart", "onKeyDown"].some((h) => typeof pr[h] === "function")) return null;
       if (!e.querySelector(PRESS)) return null;
-      return e.querySelector('a[href]:not([aria-current="page"]), button:not([disabled])');
+      const BAD = /delete|void|refund|remove|archive|ลบ|ยกเลิก|คืน/i;
+      const safe = (x: Element) => !BAD.test(`${x.getAttribute("data-testid") ?? ""} ${x.getAttribute("aria-label") ?? ""} ${x.textContent ?? ""}`);
+      const pick = (sel: string) => Array.from(e.querySelectorAll(sel)).find((x) => safe(x as Element)) ?? null;
+      return pick('a[href]:not([aria-current="page"])') ?? pick('[role="tab"]:not([aria-selected="true"]):not([disabled])') ?? pick("button:not([disabled])");
     })
     .catch(() => null);
   const innerEl = inner?.asElement?.() ?? null;
@@ -1176,7 +1214,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
         const native: boolean = await el.evaluate((e: Any) => !!e.disabled).catch(() => false);
         const tapReason = expectAlts(it.row.expect).some((a) => a.type === "toast" || a.type === "inline-error");
         if (native || !tapReason) {
-          if (it.needs) rec(it, { class: "skip", reason: "needs", detail: "คอนโทรล disabled ก่อนกด (needs)" });
+          if (it.needs) rec(it, { class: "skip", reason: "disabled-needs", detail: `คอนโทรล${native ? "" : " aria-"}disabled ก่อนกด · needs: ${String(it.needs).slice(0, 120)}` }); // fix2 F2
           else rec(it, { class: "dead", detail: "disabled ก่อนกด (ไม่มี needs)", shot: await failShot(page, it) });
           continue;
         }
@@ -1210,6 +1248,12 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       const tabsBefore = tabs.length;
       const dlBefore = DL.length;
       const alertsBefore = new Set(ex.type === "mutation" ? await alertsNow(page) : []);
+      // POS P4.3 walker fix1 ▸ H3 · fix2 ▸ F1: เป้าที่เฝ้า (resultTarget · target · anyOf modal/toast/inline-error) + ภาพก่อนกด (ข้อความ/ค่า/สถานะ aria + ทำเครื่องหมาย node)
+      //   — หลังกดนับเฉพาะเป้าที่ "ขึ้นใหม่" (ก่อนกดมองไม่เห็น · node ใหม่ · หายแล้วขึ้น · ข้อความ/สถานะเปลี่ยน) ไม่ใช่ toast ค้างจากแถวก่อน ◂
+      const watchT = [...new Set([ex.resultTarget, ex.target, ...alts.filter((a) => ["modal", "toast", "inline-error"].includes(a.type)).map((a) => a.target)].filter((x): x is string => !!x && looksLikeTestid(x)))];
+      const markTok = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+      const sigBefore = new Map<string, string | null>();
+      for (const x of watchT) sigBefore.set(x, (await targetSig(page, x, markTok, true))?.sig ?? null);
       const uiT = ex.type === "ui" && ex.target && looksLikeTestid(ex.target) ? ex.target : "";
       // ภาพก่อนกดของเป้า ui ทุกตัว (หลัก + anyOf) — ตัดสิน changes/unchanged/count
       const uiBefore = new Map<string, { snap: string | null; vis: boolean; count: number }>();
@@ -1243,29 +1287,36 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           }
           valueChanged = r.before !== r.after;
         } else if (/-(scrim|backdrop|overlay)$/.test(it.row.testid)) await el.click({ offset: { x: 4, y: 4 } }); // POS P4.3 walker fix1 ▸ H2: กลางม่าน = กล่อง (RegisterDialog.tsx:68-71) ◂
-        else await clickEl(page, el);
+        else await clickEl(page, el, { container: isContainerRow(it) }); // F5
       } catch (e) {
         actErr = e instanceof Error ? e.message.slice(0, 160) : String(e);
       }
       if (it.moneyUnit) PRESSED_ONCE.add(it.key);
       // POS P4.3 walker fix1 ▸ H3: เฝ้าเป้าผลตั้งแต่กด — toast หายใน 4 วิ (RegisterScreen.tsx:401 · OrdersScreen.tsx:140 · KdsScreen.tsx:92 · ProductsClient.tsx:67) ·
       //   PayDone เดินต่อเองใน 5 วิ (PayDone.tsx:39,214-224) แต่ settle 8 วิ + รอ db 5 วิ มาก่อนตรวจ resultTarget ◂
-      const watchT = [...new Set([ex.resultTarget, ex.target, ...alts.filter((a) => ["modal", "toast", "inline-error"].includes(a.type)).map((a) => a.target)].filter((x): x is string => !!x && looksLikeTestid(x)))];
       const seen = new Set<string>();
+      const hiddenSince = new Set<string>();
       let watching = true;
       const watcher = (async () => {
         while (watching) {
           for (const x of watchT) {
             if (seen.has(x)) continue;
-            const h = await findVisible(page, x, [], 0).catch(() => null);
-            if (h) {
-              seen.add(x);
-              await h.dispose?.().catch(() => {});
-            }
+            const cur = await targetSig(page, x, markTok, false);
+            if (!cur) hiddenSince.add(x);
+            if (freshAfter(sigBefore.get(x) ?? null, cur, hiddenSince.has(x))) seen.add(x);
           }
           await sleep(150);
         }
       })();
+      /** fix2 F1: รอจนเป้าใดใน tids "ขึ้นใหม่" (watcher ตัดสิน) ภายใน ms — คืน testid แรกที่ขึ้น */
+      const waitSeen = async (tids: string[], ms: number): Promise<string | null> => {
+        for (let t = Date.now() + ms; ; ) {
+          const h = tids.find((x) => seen.has(x));
+          if (h) return h;
+          if (Date.now() >= t) return null;
+          await sleep(100);
+        }
+      };
       stopWatcher = async () => {
         watching = false;
         await watcher.catch(() => {});
@@ -1295,13 +1346,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       const VIS = ["modal", "toast", "inline-error"];
       const visTids = alts.filter((a) => VIS.includes(a.type) && looksLikeTestid(a.target)).map((a) => a.target);
       const navPaths = alts.filter((a) => a.type === "navigate" && (a.target.startsWith("/") || a.target.startsWith("#"))).map((a) => a.target);
-      const anyVisible = async (tids: string[], ms: number): Promise<string | null> => {
-        for (let t = Date.now() + ms; ; ) {
-          for (const c of tids) if (await findVisible(page, c, [], 0)) return c;
-          if (Date.now() >= t) return null;
-          await sleep(200);
-        }
-      };
+      // fix2 F1: anyVisible (มองเห็นตอนนี้ = ผ่าน) ถูกแทนด้วย waitSeen (ขึ้นใหม่หลังกดเท่านั้น)
       const navNow = async (ms: number): Promise<{ ok: boolean; detail: string }> => {
         let hit = false;
         for (let i = 0; i < Math.max(1, Math.round(ms / 200)) && !hit; i++) {
@@ -1366,7 +1411,7 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       if (VIS.includes(ex.type)) {
         if (!visTids.length) detail = ex.type === "inline-error" ? "inline-error ไม่มีเป้า (อ่อน)" : "";
         else {
-          const hit = visTids.find((x) => seen.has(x)) ?? (await anyVisible(visTids, 6000)); // H3
+          const hit = await waitSeen(visTids, 6000); // H3 · fix2 F1 (ขึ้นใหม่หลังกดเท่านั้น)
           ok = !!hit;
           detail = hit ? (hit !== ex.target ? `anyOf ${hit}` : "") : `ไม่เห็น ${visTids.join(" | ")} ภายใน 6 วิ`;
         }
@@ -1411,12 +1456,17 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           // db ที่ไม่มีโมเดลที่รู้จักเลย = ตรวจไม่ได้ ⇒ ไม่ผ่าน (เดิมผ่านเงียบ)
           let hit = false;
           if (!writes.length) detail = `db "${ex.db}" ไม่ระบุโมเดลที่รู้จัก (prisma) — ตรวจผลเขียนไม่ได้`;
+          // POS P4.3 walker fix2 ▸ F3: แถวที่ระบุ settings.pos.<k> ต้องเปลี่ยนเส้นทางนั้นจริง "และ" (ถ้ามีโมเดลอื่น) โมเดลอื่นข้อใดข้อหนึ่งถูกเขียน —
+          //   board-create (KanbanBoard) · credit-enabled (AuditLog) ไม่ผ่านด้วยโมเดลอื่นอย่างเดียวอีก ◂
+          const posW = writes.filter((w) => w.pos?.length);
+          const otherW = writes.filter((w) => !w.pos?.length);
           for (let t = Date.now() + 5000; !hit && Date.now() < t; ) {
-            for (const w of writes) {
-              // POS P4.3 walker fix1 ▸ H16: AppSystem.settings.pos.<k> = เทียบค่าก่อนรอบ (_qcP42Before) กับตอนนี้ — แทน updatedAt ของ AppSystem ใดก็ได้ของร้าน (fx writtenSince) ◂
-              const r = w.pos?.length ? await posSettingsChanged(CTX, w.pos) : await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null);
-              if (r.ok) hit = true;
-            }
+            let posOk = true;
+            // POS P4.3 walker fix1 ▸ H16: AppSystem.settings.pos.<k> = เทียบค่าก่อนรอบ (_qcP42Before) กับตอนนี้ — แทน updatedAt ของ AppSystem ใดก็ได้ของร้าน (fx writtenSince) ◂
+            for (const w of posW) if (!(await posSettingsChanged(CTX, w.pos!)).ok) posOk = false;
+            let otherOk = otherW.length === 0;
+            if (posOk) for (const w of otherW) if (!otherOk && (await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null)).ok) otherOk = true;
+            hit = writes.length > 0 && posOk && otherOk;
             if (!hit) await sleep(400);
           }
           if (!hit) {
@@ -1426,16 +1476,16 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           }
         } else if (ok && !deferred && it.verify === "oracle") detail = `ผลเขียนยืนยันด้วย oracle ${String(it.row.oracle).slice(0, 40)} (ไม่รันชุด)`;
         const rt = [ex.resultTarget, ex.target].find((x) => !!x && looksLikeTestid(x));
-        if (ok && !deferred && rt && !seen.has(rt) && !(await findVisible(page, rt, [], 6000))) { // H3
+        if (ok && !deferred && rt && !(await waitSeen([rt], 6000))) { // H3 · fix2 F1
           ok = false;
-          detail = `ไม่เห็น ${rt} หลังกด`;
+          detail = `ไม่เห็น ${rt} ขึ้นใหม่/เปลี่ยนหลังกด`;
         }
       }
       // CD-P42-R8: หลักไม่ผ่าน ⇒ anyOf ข้อใดข้อหนึ่งผ่าน = ok (ป้าย/กล่อง · navigate · ui) — ไม่ช่วยเมื่อ hardFail · แถวเงิน mutation ต้องพิสูจน์การเขียน
       if (it.moneyUnit && ex.type === "mutation" && !ok) hardFail = true;
       if (!ok && !hardFail && alts.length > 1) {
         const v = alts.slice(1).filter((a) => VIS.includes(a.type) && looksLikeTestid(a.target)).map((a) => a.target);
-        const hitV = v.find((x) => seen.has(x)) ?? (v.length ? await anyVisible(v, 1500) : null); // H3 (R1: toast 4 วิหายก่อนถึง anyOf)
+        const hitV = v.length ? await waitSeen(v, 1500) : null; // H3 (R1: toast 4 วิหายก่อนถึง anyOf) · fix2 F1 (ขึ้นใหม่หลังกดเท่านั้น)
         if (hitV) {
           ok = true;
           const refusal = alts.some((a) => a.target === hitV && a.type === "inline-error");
