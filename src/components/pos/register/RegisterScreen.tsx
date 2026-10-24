@@ -1690,12 +1690,21 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" }); // R2: ระหว่างส่งบิล = บอก ไม่เงียบ
     // POS P5.3 fix1 ▸ CD-P53-O14: รหัสตรงสินค้าเดียวในดัชนี + ขายได้ตามที่แคชไว้ (ไม่หมด/ไม่ปิดขาย · ขายหน้าร้าน · มีราคาหรือผู้ขายตั้งราคาเปิดได้ — สิ่งที่ scanOutcome/pick ต้องใช้)
     //   ⇒ ผลเดียวกับ registerScan { match: "one" } ใส่ตะกร้าแบบซิงโครนัส (ไม่มี await ก่อนบรรทัดขึ้น) · นอกนั้น = ทางเซิร์ฟเวอร์เดิมทุกประการ ◂
-    const hit = barcodeIndex.lookup(code);
+    const gen = billGen.current;
+    let hit = barcodeIndex.lookup(code);
+    // POS P5.3 fix1b ▸ CD-P53-O14b: ดัชนีชุดแรกยังดึงอยู่ ⇒ รอคำขอนั้นจบ (นานสุด = เวลาของคำขอ · server action ส่งทีละคำขอ สแกนทางเซิร์ฟเวอร์ก็ต้องรอคิวนี้อยู่ดี) แล้วตัดสินตามปกติ ·
+    //   ดึงล้ม/truncated = loading() คืน null หรือ lookup คืน null ⇒ ทางเซิร์ฟเวอร์ทันที · หลังรอ ตรวจรุ่นบิล/frozenRef แบบเดียวกับทางเซิร์ฟเวอร์ ◂
+    const indexLoad = hit ? null : barcodeIndex.loading();
+    if (indexLoad) {
+      await indexLoad;
+      if (gen !== billGen.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
+      if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
+      hit = barcodeIndex.lookup(code);
+    }
     if (hit && hit.soldOutReason == null && !hit.notSold && (hit.priceSatang !== null || limits.canOverridePrice)) {
       if (layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
       return applyScan({ ok: true, match: "one", product: hit }, code, "scan");
     }
-    const gen = billGen.current;
     try {
       const r = await registerScanAction({ systemId, unitId, barcode: code });
       if (r.ok && r.match === "one" && !r.weighed) barcodeIndex.noteServerOne(code, r.product); // POS P5.3 fix1 ▸ ดัชนีไม่มี/ไม่ตรง = ดึงใหม่ครั้งเดียว ◂

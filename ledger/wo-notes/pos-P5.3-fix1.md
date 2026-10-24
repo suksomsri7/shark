@@ -120,3 +120,20 @@ Other suites that pin 4016a352 (p2.11, p2.13, p3.6, p3.7, p3.9) do not read thes
 - A code shared by a parent and one leaf (server answers `one` = the leaf) is excluded — conservative, the server path handles it; the hook refetches once per version for it (cheap unchanged answer).
 - No lint run: `eslint` is not installed in this tree (`ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "eslint" not found`).
 - Truncation (> 20,000 barcodes) was not exercised with data (would need 20k rows); the path is two early returns.
+
+## fix1b — scan waits for an in-flight index load (CD-P53-O14b · 24 Oct 11:55–12:00Z)
+Ruling: implement §8 option (a). Background start unchanged (first fetch still `setTimeout 0` after mount, never blocks TTI).
+- `src/components/pos/register/use-barcode-index.ts:25–27` — `BarcodeIndex.loading(): Promise<void> | null`; `:50` `inflightP` ref; `:64–65` each refresh creates a promise that `finally` resolves at `:91–92` (before a queued refresh starts; never rejects — `refresh` catches everything); `:166–171` `loading()` returns that promise only while online, same scope, and **no usable set yet** (`version` null). It returns null once a set exists (including truncated), when idle, offline, or after a failed load (in-flight cleared) ⇒ caller continues at once. No extra timer: the wait lasts exactly as long as the fetch.
+- `src/components/pos/register/RegisterScreen.tsx:1693–1707` (`onScannedCode`) — order: member card → `frozenRef` → `gen = billGen.current` → `lookup` → if miss and `loading()` ≠ null: `await` it, then `gen !== billGen.current` ⇒ drop, `frozenRef.current` ⇒ `scan.ignoredWhileDialog` (same checks as the server path), `lookup` again → sellable-hit check → pay/done-layer guard → `applyScan(one)` synchronously; otherwise the unchanged server path (`:1708` `try { … registerScanAction(…) … }`). Body still contains `registerScanAction(` and `billGen.current`; no `setQ(` / `setTimeout(` / `loadCatalog(`.
+- Why it is never slower: server actions are dispatched one at a time per client, so a server scan issued during the index load would start only after it anyway (§8).
+
+Test results (logs `/root/pos-runs/p53-fix1/fix1b-*.log`):
+| suite | result |
+|---|---|
+| qc-pos-p1.4 (QC4) | `===== qc-pos-p1.4 ===== ผ่าน 21/21` |
+| qc-pos-p1.6 (QC4) | `===== qc-pos-p1.6 ===== ผ่าน 48/48` |
+| qc-pos-p5.3 (static, no `--base`) | `===== qc-pos-p5.3 ===== ผ่าน 9/9` |
+| qc-pos-p4.1 --no-db | `JSON_SUMMARY {"suite":"qc-pos-p4.1","mode":"no-db","total":16,"passed":16,"failed":[]…}` |
+| fitness.mts (no env) | `ผ่าน 53/53` · `FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0` |
+| typecheck (exact gates command · 11,109 MB available at start) | exit 0 · `tsc --noEmit` no output (11:58:33 → 11:59:19Z) |
+§7 re-pin list unchanged in kind (fix1b touches only `RegisterScreen.tsx` + the new hook; `qc-hf-fu2` / `qc-pos-p2.12` already flag `RegisterScreen.tsx`).

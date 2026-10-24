@@ -22,6 +22,9 @@ export type BarcodeIndex = {
   lookup: (code: string) => RegisterProduct | null;
   /** ผลสแกนทางเซิร์ฟเวอร์เป็น one (ไม่ใช่ป้ายชั่ง) — ดัชนีไม่มีรหัสนี้หรือสินค้าไม่ตรง ⇒ ดัชนีเก่า ดึงใหม่ครั้งเดียว (หน่วง) */
   noteServerOne: (code: string, product: RegisterProduct) => void;
+  /** POS P5.3 fix1b ▸ CD-P53-O14b: ยังไม่มีชุดที่ใช้ได้และกำลังดึงอยู่ = promise ของคำขอนั้น (resolve เมื่อจบ · ไม่ reject · ไม่มีตัวจับเวลาเพิ่ม) ·
+   *  ไม่ได้ดึง / มีชุดแล้ว (รวม truncated) / ออฟไลน์ / ดึงล้มไปแล้ว = null ⇒ ผู้เรียกไปต่อทันที ◂ */
+  loading: () => Promise<void> | null;
 };
 
 const FOCUS_STALE_MS = 60_000;
@@ -44,6 +47,7 @@ export function useBarcodeIndex(o: BarcodeIndexOpts): BarcodeIndex {
   const onlineRef = useRef(online);
   onlineRef.current = online;
   const inflight = useRef(false);
+  const inflightP = useRef<Promise<void> | null>(null); // POS P5.3 fix1b ▸ คำขอที่กำลังวิ่ง (loading) ◂
   /** มีคำขอซ้อนระหว่างดึง: "full" = ต้องชุดเต็ม · "check" = ส่ง knownVersion · null = ไม่มี */
   const queued = useRef<"full" | "check" | null>(null);
   /** รหัสที่สั่งดึงใหม่ไปแล้วในชุดนี้ (กันวนเมื่อเซิร์ฟเวอร์ตอบ one ให้รหัสที่ตั้งใจไม่อยู่ในดัชนี เช่นแม่+ลูกใช้รหัสเดียวกัน) */
@@ -57,6 +61,8 @@ export function useBarcodeIndex(o: BarcodeIndexOpts): BarcodeIndex {
       return;
     }
     inflight.current = true;
+    let release: () => void = () => undefined; // POS P5.3 fix1b ▸ ◂
+    inflightP.current = new Promise<void>((res) => (release = res));
     const mine = st.current.scope;
     try {
       const r = await loadRef.current(full ? null : st.current.version);
@@ -82,6 +88,8 @@ export function useBarcodeIndex(o: BarcodeIndexOpts): BarcodeIndex {
       /* เครือข่าย/เซิร์ฟเวอร์ล้ม — คงชุดเดิม (lookup ยังคุมอายุ/ขอบราคา) รอรอบถัดไป */
     } finally {
       inflight.current = false;
+      inflightP.current = null; // POS P5.3 fix1b ▸ ปล่อยผู้รอก่อนเริ่มคำขอที่ซ้อนไว้ ◂
+      release();
       const next = queued.current;
       queued.current = null;
       if (next && st.current.scope === scopeRef.current) void refresh(next === "full");
@@ -155,5 +163,12 @@ export function useBarcodeIndex(o: BarcodeIndexOpts): BarcodeIndex {
     [refresh],
   );
 
-  return { lookup, noteServerOne };
+  // POS P5.3 fix1b ▸ CD-P53-O14b ◂
+  const loading = useCallback((): Promise<void> | null => {
+    const s = st.current;
+    if (!onlineRef.current || s.version || s.scope !== scopeRef.current) return null;
+    return inflightP.current;
+  }, []);
+
+  return { lookup, noteServerOne, loading };
 }
