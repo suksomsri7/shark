@@ -875,10 +875,11 @@ try {
             .evaluate(() => {
               const tts = Array.from(document.querySelectorAll('[data-testid="pos-reg-total"]')).map((e) => `${e.getAttribute("aria-busy") ?? "-"}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 40)}`);
               const pay = document.querySelector('[data-testid="pos-reg-pay"]') as HTMLButtonElement | null;
-              const alerts = Array.from(document.querySelectorAll('[role="alert"],[role="status"],[data-testid*="err"],[data-testid*="shift"],[data-testid*="lock"],[data-testid*="revoked"],[data-testid*="offline"]')).map((e) => `${e.getAttribute("data-testid") ?? e.getAttribute("role")}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 60)}`);
+              const alerts = Array.from(document.querySelectorAll('[role="alert"],[role="status"],[data-testid]')).filter((e) => e.getAttribute("role") === "alert" || e.getAttribute("role") === "status" || /err|shift|lock|revoked|offline/.test(e.getAttribute("data-testid") ?? "")).map((e) => `${e.getAttribute("data-testid") ?? e.getAttribute("role")}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 60)}`); // CD-P53-O13e
               const lines = new Set(Array.from(document.querySelectorAll('[data-testid^="pos-reg-cart-line-"]'), (e) => e.getAttribute("data-testid"))).size;
               const payText = pay ? `${(pay.textContent ?? "").replace(/\s+/g, " ").slice(0, 80)} · title=${pay.getAttribute("title") ?? "-"} · aria=${pay.getAttribute("aria-label") ?? "-"}` : "-";
-              const banners = Array.from(document.querySelectorAll('[data-testid^="pos-reg-banner"],[data-testid^="pos-reg-shift"],[data-testid^="pos-reg-lock"],[data-testid^="pos-reg-device"],[data-testid^="pos-reg-limit"],[data-testid^="pos-reg-quote"]')).map((e) => `${e.getAttribute("data-testid")}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 60)}`);
+              // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13e · qc-pos-p4.1 R8): เลือกด้วย regex บนค่า attribute แทน selector ตัวอักษร — ป้ายวินิจฉัยไม่ใช่ testid ของทะเบียน
+              const banners = Array.from(document.querySelectorAll("[data-testid]")).filter((e) => /^pos-(reg-(banner|shift|lock|device|limit|quote)|lock)/.test(e.getAttribute("data-testid") ?? "")).map((e) => `${e.getAttribute("data-testid")}:${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 60)}`);
               return { tts, pay: pay ? (pay.disabled ? "disabled" : "enabled") : "none", payText, lines, online: navigator.onLine, alerts: alerts.slice(0, 8), banners: banners.slice(0, 10) }; // ORACLE-EDIT ผู้คุม A 24.10 (CD-P53-O13d) ป้ายปุ่มชำระ + แบนเนอร์ = เหตุที่ปุ่มปิด
             })
             .catch((e: Error) => ({ evalError: e.message }))) as Any;
