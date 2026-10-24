@@ -912,6 +912,12 @@
       "errors": {
         "invalid": "This deal cannot be linked to this bill (other customer, closed or no access) — choose another deal"
       }
+    },
+    "board": {
+      "card": "Card #{n}",
+      "cardDone": "Card #{n} done",
+      "cardNoNumber": "Card",
+      "cardDoneNoNumber": "Card done"
     }
   },
   "shift": {
@@ -1146,7 +1152,9 @@
     "hintTitle": "When the shift closes",
     "hintRoom": "The shift summary will be posted to the team room",
     "hintCard": "An over/short of {amount} or more creates a “Cash check” card on the board for the manager",
-    "hintCardEvery": "A “Cash check” card is created on the board for the manager at every shift close"
+    "hintCardEvery": "A “Cash check” card is created on the board for the manager at every shift close",
+    "boardCardNoNumber": "Card",
+    "boardCardDoneNoNumber": "Card done"
   },
   "report": {
     "title": "Sales reports",
@@ -1465,7 +1473,11 @@
         "denied": "You need to be an editor of this task board",
         "noBoard": "The register has no task board set up",
         "stale": "This row has changed — reload the report",
-        "failed": "Could not create the card"
+        "failed": "Could not create the card",
+        "chipNoNumber": "Card",
+        "chipDoneNoNumber": "Card done",
+        "createdNoNumber": "Card created",
+        "existsNoNumber": "Card already exists"
       }
     },
     "print": {
@@ -2110,7 +2122,11 @@
         "void": "Bill voided",
         "reprint": "Copy printed"
       },
-      "lineCost": "Cost {cost} · margin {margin}"
+      "lineCost": "Cost {cost} · margin {margin}",
+      "refundCard": "Refund card #{n}",
+      "refundCardDone": "Refund card #{n} done",
+      "refundCardNoNumber": "Refund card",
+      "refundCardDoneNoNumber": "Refund card done"
     },
     "voidHint": {
       "NO_PERMISSION": "Voiding needs manager rights · only before the shift closes",
@@ -2777,7 +2793,8 @@
         "catalogUnavailable": "Couldn't read this branch's catalogue — category/product rates can be edited by an account that sells here",
         "syncDone": "Sent {sent} rows · {adjustments} pay adjustments · {noEmployee} not linked to HR",
         "syncing": "Sending…"
-      }
+      },
+      "fromHr": "From HR"
     },
     "shark": {
       "title": "SHARK connections",
@@ -4719,6 +4736,12 @@
         "stateInvalid": "Pay links can only be sent for new, unpaid chat orders",
         "stateChanged": "This order was closed or changed — the pay link can't be sent again; check the latest status"
       }
+    },
+    "board": {
+      "refundCard": "Refund card #{n}",
+      "refundCardDone": "Refund card #{n} done",
+      "refundCardNoNumber": "Refund card",
+      "refundCardDoneNoNumber": "Refund card done"
     }
   },
   "chat": {

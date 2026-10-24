@@ -1943,6 +1943,30 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-toast-86-card",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
+        "note": "F-P3-21 · CD-P38U-9: แตะสินค้า 86 (หมด · ครัว/ร้านแจ้ง) ที่ตัวกวาดบอร์ดเปิดการ์ด \"สินค้าหมดนาน\" แล้ว → ข้อความลอยมีลิงก์ \"การ์ด #n\" (posOpsCardsAction productIds · หน้าบอร์ดงานตรวจสิทธิ์เอง · ไม่มีชื่อคน)"
+      },
+      "wo": "P4.3",
+      "oracle": "P4.3-S7",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": [
+        "สินค้า 86 (PosAvailabilityMark) ของสาขา",
+        "บอร์ดงาน POS เปิด + การ์ด pos-86:<unit>:<product>:<mark> ที่ตัวกวาดเปิดแล้ว"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-paydlg-close",
       "kind": "button",
       "roles": [
@@ -6452,23 +6476,51 @@
     },
     {
       "page": "/app/sys/[id]/pos/sales",
-      "testid": "pos-bills-accounting-link",
+      "testid": "pos-bills-refund-card",
       "kind": "link",
       "roles": [
         "owner",
         "manager",
         "cashier"
       ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
+        "note": "F-P3-21 · CD-P38U-9: ลิ้นชักบิลที่มาจากออเดอร์ซึ่งมีการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId> ของออเดอร์ที่ saleId = บิลนี้) → แถว \"การ์ดคืนเงิน #n\" (posOpsCardsAction saleIds · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
+      },
+      "wo": "P4.3",
+      "oracle": "P4.3-S7",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-bills-*-menu"
+      ],
+      "needs": [
+        "บิลของออเดอร์ที่มีเหตุคืนเงิน (PosOrderEvent refund_needed)",
+        "บอร์ดงาน POS เปิด + การ์ด pos-refund:<orderId>"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-accounting-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager"
+      ],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/account/print/[docId]",
-        "note": "เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล · แสดงเมื่อผูกบัญชี"
+        "note": "เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล · แสดงเมื่อผูกบัญชี และผู้ใช้มี account.doc.view (P4.3 CD-P43-2 · sales/page.tsx accountCan) · hiddenFor cashier ตามกติกา $fields.hiddenFor (ห้ามทับ roles — qc-pos-p4.1 R9 · CD-P42-W8 บทบาทที่ไม่เห็นต้องประกาศใน hiddenFor)"
       },
       "wo": "P1.16",
-      "oracle": "",
+      "oracle": "P4.3-S2",
       "system": "POS",
       "query": "unit=[unitId]",
-      "hiddenFor": [],
+      "hiddenFor": [
+        "cashier"
+      ],
       "opener": [
         "pos-bills-*-menu"
       ],
@@ -7381,17 +7433,18 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/account/settings",
-        "note": "แสดงเมื่อ POS ผูกสมุดบัญชี · [id] = ระบบบัญชีที่ผูก"
+        "note": "แสดงเมื่อ POS ผูกสมุดบัญชี และผู้ใช้มี account.settings.manage (P4.3 CD-P43-2 · book.canOpenAccountSettings) · [id] = ระบบบัญชีที่ผูก · hiddenFor cashier ตามกติกา $fields.hiddenFor (qc-pos-p4.1 R9 · CD-P42-W8)"
       },
       "wo": "P1.10U",
-      "oracle": "",
+      "oracle": "P4.3-S2",
       "system": "POS",
       "opener": [
         "pos-settings-nav-receipt"
@@ -12973,6 +13026,32 @@
       "opener": [
         "pos-settings-nav-staff"
       ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-from-hr-*",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-pins",
+        "state": "unchanged",
+        "note": "ป้าย \"จาก HR\" ข้างชื่อพนักงาน [*] = userId — แสดงเมื่อผู้ใช้ผูกพนักงานในระบบพนักงาน (posStaffOverview.staff[i].fromHr · F-P3-17 · CD-P43-O3) · ไม่กด"
+      },
+      "wo": "P4.3",
+      "oracle": "P4.3-D5",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-settings-nav-staff"
+      ],
+      "needs": "พนักงานที่ผูก HrEmployee.linkedUserId (ร้านมีระบบพนักงาน)"
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -20158,6 +20237,33 @@
     },
     {
       "page": "/app/sys/[id]/pos/orders",
+      "testid": "pos-ord-refund-card",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
+        "note": "F-P3-21 · CD-P38U-9: ออเดอร์ที่ตัวกวาดบอร์ดเปิดการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId>) → ปุ่ม \"การ์ดคืนเงิน #n\" ในแผงออเดอร์ (posOpsCardsAction orderIds · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
+      },
+      "wo": "P4.3",
+      "oracle": "P4.3-S7",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-ord-card-*"
+      ],
+      "needs": [
+        "ออเดอร์ที่มีเหตุคืนเงิน (PosOrderEvent refund_needed) เป็นการ์ดแรก",
+        "บอร์ดงาน POS เปิด + การ์ด pos-refund:<orderId>"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/orders",
       "testid": "pos-ord-reject-reason-*",
       "kind": "button",
       "roles": [
@@ -27087,6 +27193,33 @@
       },
       "wo": "P3.5U",
       "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "opener": [
+        "pos-lock-now-mobile",
+        "pos-lock-now",
+        "pos-lock-override-open"
+      ],
+      "needs": "พนักงานนอกตารางงาน HR (OFF_SCHEDULE · ด่านตารางเปิด)"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-lock-override-body",
+      "kind": "notice",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-lock-override-sheet",
+        "state": "unchanged",
+        "note": "บรรทัด \"อนุญาตได้ {minutes} นาที\" ในแผ่นผู้จัดการอนุญาต — minutes = listStaffForDevice.overrideTtlMin (ค่าตั้งด่านตารางงาน · F-P3-19 · CD-P43-O5) · 0 = ไม่แสดง (ร้านปิดการอนุญาต) · ไม่กด"
+      },
+      "wo": "P4.3",
+      "oracle": "P4.3-D5",
       "system": "POS",
       "query": "unit=[unitId]",
       "opener": [
