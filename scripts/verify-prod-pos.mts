@@ -246,6 +246,7 @@ const CHECKS: readonly [string, string][] = [
   ["S6", "คิว outbox pos.* (PENDING · FAILED) — FAILED > 0 = เตือน"],
   ["S7", "OpsEvent ERROR 24 ชม.ล่าสุด — > 0 = เตือน (C6.1: ต้อง 0 ตลอด 24 ชม. หลัง deploy)"],
   ["S8", "แถว creds (PosIntegrationCredential) · print agent · ช่องทางขาย — นับ (creds > 0 ต้องมี POS_CREDENTIALS_KEY บน Vercel)"],
+  ["S9", "งานรายชั่วโมง pos.* (pos.staffCommission.payroll · pos.slip.purge) สำเร็จล่าสุดเมื่อไร (OpsAlertState minute-job:ok:*) — รันจาก crontab VPS บรรทัด crm-cron hourly เท่านั้น · prod: ไม่มี/เกิน 2 ชม. = เตือน (§7)"],
   ["N1", "--self-test: canary — ตาราง/คอลัมน์/index/migration ปลอมต้องถูกรายงานว่าไม่มี และของจริง (PosSale.publicToken · PosSale_publicToken_key) ต้องเจอ"],
   ["V1", "env ที่ POS อ่าน: ตั้ง/ไม่ตั้งในโปรเซสนี้ (ชื่อเท่านั้น · ไม่พิมพ์ค่า)"],
 ];
@@ -558,6 +559,17 @@ try {
               (SELECT count(*)::int FROM "SalesChannel") AS channels`,
     ))[0] ?? {};
     put("S8", "INFO", Object.entries(integ).map(([k, v]) => `${k} ${v}`).join(" · "));
+  });
+  // S9 (P6.1 fix1 · CD-P61-R6): งาน pos.* มี cadence "hourly" ⇒ ทางเดินจริงทางเดียว = `crm-cron.mts hourly` บน crontab VPS (route /api/cron/outbox รันแค่ cadence minute)
+  await safe(["S9"], async () => {
+    const names = ["pos.staffCommission.payroll", "pos.slip.purge"];
+    const rows = await q<{ source: string; at: Date | null }>(`SELECT source, "lastAlertAt" AS at FROM "OpsAlertState" WHERE source = ANY($1::text[])`, [names.flatMap((x) => [`minute-job:run:${x}`, `minute-job:ok:${x}`])]);
+    const okAt = (x: string) => rows.find((r) => r.source === `minute-job:ok:${x}`)?.at ?? null;
+    const stale = names.filter((x) => {
+      const t = okAt(x);
+      return !t || Date.now() - new Date(t).getTime() > 2 * 3600_000;
+    });
+    put("S9", stale.length && !SELF ? "WARN" : "INFO", names.map((x) => `${x} ok ล่าสุด ${okAt(x) ? new Date(okAt(x) as Date).toISOString() : "ไม่เคย"}`).join(" · ") + (stale.length ? ` · ไม่มี/เกิน 2 ชม.: ${stale.join(", ")}${SELF ? " (self-test = ข้อมูล)" : " (ดู §7 — checkout ของ crontab ตามทัน main หรือยัง)"}` : ""));
   });
   if (SELF) {
     // negative control: ทางเปรียบเทียบเดียวกับ T1/C1/I1/M1 ต้อง "เห็นว่าไม่มี" ของปลอม และเห็นของจริง — กันข้อเขียวเพราะชุดข้อมูลว่าง
