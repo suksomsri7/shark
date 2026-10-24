@@ -177,6 +177,8 @@ export const SKIP_REASONS = {
   "needs-persona": "opener/needs ที่บทบาทนี้ทำให้เกิดไม่ได้ (จอ PIN ที่ถึงได้เฉพาะผู้ไม่มีสิทธิ์ · การ์ดปฏิเสธที่ไม่มีผู้ใช้ QC ถึง — CD-P41-F17/F12 · CD-P42-R5)",
   "idle-expected": "กดแล้วไม่มีผลเพราะอยู่ในสถานะนั้นแล้ว (radio aria-checked · สลับภาษา/สาขาไปที่เป็นอยู่ — CD-P41-F26/F27 · CD-P42-R8/R9)",
   "dead-known": "แถวตายที่รู้แล้ว (CD-P41-B6 · ไม่กด · นับไม่ตก จน P4.3 ลบ — CD-P42-R12)",
+  // POS P4.3 walker fix2 ▸ F2: แยกจาก needs เพื่อให้ triage ตรวจได้ว่า disabled มาจากเงื่อนไขใน needs จริงหรือเป็นบั๊ก ◂
+  "disabled-needs": "คอนโทรลปิดใช้ (disabled) ตั้งแต่ก่อนกด และแถวมี needs — ไม่กด (H4 · ตรวจรายแถวตอน triage ว่า needs อธิบายการปิดใช้จริง)",
 } as const;
 export type SkipReason = keyof typeof SKIP_REASONS;
 /** เหตุผลที่เป็น "ช่องโหว่ทะเบียน" — ข้อสอบ W8 ต้องเป็น 0 (ผู้สร้าง P4.1 เติมแล้ว) */
@@ -458,7 +460,7 @@ export function expectAlts(ex: Row["expect"]): ExpectAlt[] {
 /** CD-P42-R8: แถวคัดลอกลงคลิปบอร์ด — ตรวจด้วย navigator.clipboard (สิทธิ์ของ context) · อ่านไม่ได้ = ข้อความบนหน้า */
 export const isClipboardRow = (row: Row) => /-copy(-|$)/.test(row.testid) || /clipboard|คัดลอก/.test(String(row.expect?.note ?? ""));
 /** เหตุผลที่ "ตัวกดตัดสินตอนรัน" ได้เท่านั้น (แผน = press/visible) — ข้อสอบ W6/W11 */
-export const DYNAMIC_REASONS: readonly SkipReason[] = ["needs", "needs-fixture", "file-upload", "once-per-run", "static", "disabled-expected", "idle-expected", "hidden-input"];
+export const DYNAMIC_REASONS: readonly SkipReason[] = ["needs", "needs-fixture", "file-upload", "once-per-run", "static", "disabled-expected", "idle-expected", "hidden-input", "disabled-needs"];
 /** เหตุผลที่ตัวจำแนก (สถิต) เท่านั้นตัดสิน — สรุปต้องตรงแผน */
 export const STATIC_REASONS: readonly SkipReason[] = ["no-role-claim", "not-pos-page", "missing-target", "missing-db", "missing-safety", "external", "dead-known", "needs-persona", "hidden-input"];
 
