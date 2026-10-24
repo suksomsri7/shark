@@ -68,7 +68,7 @@ const CHECKS: readonly Def[] = [
   // ── P กติการาคา (price-rule.ts) ──
   D("P1", "-", "[R3 CD8] savePriceRule/listPriceRules/archivePriceRule: สร้าง (คีย์ผล 18 ตัวพอดี · ค่าสะท้อนตรง) · แก้ด้วย id · ขอบที่ผ่าน (priority 0/100 · bp 1/10000 · PRICE 0 · ชื่อ 60 ตัว · 00:00–23:59 · หมวดล้วน) · ผิด → VALIDATION (ชื่อว่าง/61 · priority −1/101 · bp 0/10001 · AMOUNT 0 · PRICE −1/เกิน MAX · ไม่มีสินค้า+หมวด · เวลาข้างเดียว · from ≥ to · ข้ามเที่ยงคืน 22:00–02:00 · start ≥ end · วัน 7 · \"25:00\" · kind/adjust แปลก · คีย์แปลก · สินค้า 501 · หมวด 51 · ช่องทางตัวเล็ก) · archive → list ปกติไม่เห็น · includeArchived เห็น archived:true"),
   D("P2", "-", "[R3] เพดาน 100 กติกาที่ไม่เก็บถาวรต่อระบบ: เติมถึง 100 → ตัวที่ 101 → PRICE_RULE_LIMIT (ไม่มีแถวเพิ่ม) · เก็บถาวร 1 ตัว → สร้างได้อีก (กติกาที่เก็บถาวรไม่นับ)"),
-  D("P3", "X3", "[R3 Q5] สิทธิ์ pos.price.rule: พนักงาน (pos.sale.create) list ได้ · save → PERMISSION_DENIED · ไม่มีสิทธิ์ POS list → PERMISSION_DENIED · ผู้จัดการสาขา A save unitIds [A] ได้ แต่ unitIds [] (ทุกสาขา) → PERMISSION_DENIED · archive กติกาทุกสาขา → PERMISSION_DENIED · พนักงานที่ได้คีย์ pos.price.rule ทุกสาขาบันทึก unitIds [] ได้ (ตัวควบคุมบวกของชื่อคีย์)"),
+  D("P3", "X3", "[R3 Q5] สิทธิ์ pos.price.rule: พนักงาน (pos.sale.create) list ได้ · save → PERMISSION_DENIED · ไม่มีสิทธิ์ POS list → PERMISSION_DENIED · ผู้จัดการสาขา A save unitIds [A] ได้ · unitIds [] (สร้างใหม่) = เก็บเป็น [A] (ORACLE-EDIT CD-P43-8 · CD-P43-3 · B7) · ขยายไป [B]/[A,B] หรือแก้กติกาเป็น [] → PERMISSION_DENIED · สลับ active กติกาทุกสาขาของเจ้าของ → PERMISSION_DENIED · เจ้าของ [] เก็บ [] · พนักงานคีย์ A [] = [A] · คีย์ A+B [] = {A,B} · archive กติกาทุกสาขา → PERMISSION_DENIED · พนักงานที่ได้คีย์ pos.price.rule ทุกสาขาบันทึก unitIds [] ได้ (ตัวควบคุมบวกของชื่อคีย์)"),
   D("P4", "X2", "[R3] id ของร้าน T2 / id มั่ว → PRICE_RULE_NOT_FOUND (save + archive) · แถวของ T2 ไม่เปลี่ยน · list ของร้านนี้ไม่เห็นกติกา T2"),
   D("P5", "X5", "[R3 R4 R5] quote ไม่ใช้กติกาที่ active false / เก็บถาวร / นอกช่วงวันที่ / นอกเวลา / นอกวัน / สาขาอื่น (ตัวควบคุมบวก: กติกาเดียวกันที่ใช้ได้ = RULE) · audit pos.priceRule.created / updated / archived actorId จริง (เจ้าของ · ผู้จัดการ) มี ruleId · คำขอที่ถูกปฏิเสธไม่มี audit"),
   // ── Q หน้าขาย ──
@@ -1677,12 +1677,37 @@ async function runDb() {
     const mA = await saveRule(ruleIn({ name: `ผู้จัดการ A ${RAND}`, active: false, unitIds: [U.A] }), manager, "A", "P3 manager A");
     const mAid = ridOf(mA);
     if (!mAid) p.push(`ผู้จัดการ unitIds [A] → ${codeOf(mA)}`);
+    // ORACLE-EDIT ผู้คุม A 24.10 (CD-P43-8 ← CD-P43-3 · B7 · R1 fix1 F2): ผู้ที่ไม่ได้ดูแลทุกสาขา (ไม่ใช่ OWNER/"*") สร้างใหม่ด้วย unitIds [] = "ทุกสาขาของฉัน"
+    //   ⇒ บันทึกเป็นสาขาที่เข้าได้ ∩ สาขาที่ผูกระบบ (ผู้จัดการ A → [A] · คีย์ A+B → {A,B}) · เดิมคาด PERMISSION_DENIED (UI ซ่อนชิปสาขาเมื่อมีสาขาเดียว ⇒ บันทึกไม่ได้เลย = B7)
+    //   ยังต้องปฏิเสธ: ขยายไป [B]/[A,B] · แก้ (มี id) เป็น [] · สลับ active/archive กติกา [] ของเจ้าของ · เจ้าของ [] ยังเก็บ [] · revert: คืนบล็อกเดิม (mAll/k2 คาด PERMISSION_DENIED) ◂
+    const storedUnits = async (id: string): Promise<string[] | null> => (id ? ((await P.posPriceRule.findUnique({ where: { id }, select: { unitIds: true } }).catch(() => null)) as Any)?.unitIds ?? null : null);
+    const sameSet = (a: string[] | null, b: string[]) => !!a && a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
     const mAll = await saveRule(ruleIn({ name: `ผู้จัดการทุกสาขา ${RAND}`, active: false, unitIds: [] }), manager, "A", "P3 manager all");
-    if (ridOf(mAll)) madeRules.push(ridOf(mAll));
-    if (!refused(mAll, "PERMISSION_DENIED")) p.push(`ผู้จัดการ unitIds [] → ${codeOf(mAll)}`);
+    const mAllId = ridOf(mAll);
+    if (mAllId) madeRules.push(mAllId);
+    if (!mAllId) p.push(`ผู้จัดการ unitIds [] (สร้างใหม่) → ${codeOf(mAll)} (คาด ok · เก็บ [A])`);
+    else if (!sameSet(await storedUnits(mAllId), [U.A])) p.push(`ผู้จัดการ unitIds [] เก็บเป็น ${JSON.stringify(await storedUnits(mAllId))} (คาด [A])`);
+    const mB = await saveRule(ruleIn({ name: `ผู้จัดการขยาย B ${RAND}`, active: false, unitIds: [U.B] }), manager, "A", "P3 manager widen B");
+    if (ridOf(mB)) madeRules.push(ridOf(mB));
+    if (!refused(mB, "PERMISSION_DENIED")) p.push(`ผู้จัดการ unitIds [B] → ${codeOf(mB)}`);
+    const mAB = await saveRule(ruleIn({ name: `ผู้จัดการขยาย AB ${RAND}`, active: false, unitIds: [U.A, U.B] }), manager, "A", "P3 manager widen AB");
+    if (ridOf(mAB)) madeRules.push(ridOf(mAB));
+    if (!refused(mAB, "PERMISSION_DENIED")) p.push(`ผู้จัดการ unitIds [A,B] → ${codeOf(mAB)}`);
+    if (mAid) {
+      const me = await saveRule(ruleIn({ id: mAid, name: `ผู้จัดการ A ${RAND}`, active: false, unitIds: [] }), manager, "A", "P3 manager edit to all");
+      if (!refused(me, "PERMISSION_DENIED")) p.push(`ผู้จัดการแก้กติกา [A] เป็น [] → ${codeOf(me)}`);
+      if (!sameSet(await storedUnits(mAid), [U.A])) p.push(`แถว [A] ถูกเปลี่ยนหลังแก้เป็น [] → ${JSON.stringify(await storedUnits(mAid))}`);
+    }
     const oAll = await saveRule(ruleIn({ name: `เจ้าของทุกสาขา ${RAND}`, active: false }), owner, "A", "P3 owner all");
     const oAllId = ridOf(oAll);
     if (oAllId) madeRules.push(oAllId);
+    if (oAllId && !sameSet(await storedUnits(oAllId), [])) p.push(`เจ้าของ unitIds [] เก็บเป็น ${JSON.stringify(await storedUnits(oAllId))} (คาด [])`);
+    if (oAllId) {
+      const mt = await saveRule(ruleIn({ id: oAllId, name: `เจ้าของทุกสาขา ${RAND}`, active: true }), manager, "A", "P3 manager toggle owner all");
+      if (!refused(mt, "PERMISSION_DENIED")) p.push(`ผู้จัดการสลับ active กติกาทุกสาขาของเจ้าของ → ${codeOf(mt)}`);
+      const row = (await P.posPriceRule.findUnique({ where: { id: oAllId }, select: { active: true, unitIds: true } }).catch(() => null)) as Any;
+      if (row && (row.active !== false || !sameSet(row.unitIds, []))) p.push(`กติกาเจ้าของถูกเปลี่ยนหลังสลับ (active ${row.active} · unitIds ${JSON.stringify(row.unitIds)})`);
+    }
     const ma = oAllId ? await archiveRule(oAllId, manager, "A", "P3 manager archive all") : null;
     if (!refused(ma, "PERMISSION_DENIED")) p.push(`ผู้จัดการ archive กติกาทุกสาขา → ${codeOf(ma)}`);
     if (mAid) {
@@ -1693,11 +1718,15 @@ async function runDb() {
       }
     }
     const k1 = await saveRule(ruleIn({ name: `พนักงานมีคีย์ ${RAND}`, active: false }), staffKeyAll, "A", "P3 staff key all");
-    if (ridOf(k1)) madeRules.push(ridOf(k1));
+    const k1Id = ridOf(k1);
+    if (k1Id) madeRules.push(k1Id);
     else p.push(`พนักงานมี ${PERM_RULE} ทุกสาขา unitIds [] → ${codeOf(k1)} (ตัวควบคุมบวก)`);
+    if (k1Id && !sameSet(await storedUnits(k1Id), [U.A, U.B])) p.push(`พนักงานคีย์ A+B unitIds [] เก็บเป็น ${JSON.stringify(await storedUnits(k1Id))} (คาด {A,B} · CD-P43-8)`);
     const k2 = await saveRule(ruleIn({ name: `พนักงานมีคีย์ A ${RAND}`, active: false }), staffKeyA, "A", "P3 staff key A");
-    if (ridOf(k2)) madeRules.push(ridOf(k2));
-    if (!refused(k2, "PERMISSION_DENIED")) p.push(`พนักงานมีคีย์เฉพาะ A unitIds [] → ${codeOf(k2)}`);
+    const k2Id = ridOf(k2);
+    if (k2Id) madeRules.push(k2Id);
+    if (!k2Id) p.push(`พนักงานมีคีย์เฉพาะ A unitIds [] → ${codeOf(k2)} (คาด ok · เก็บ [A])`);
+    else if (!sameSet(await storedUnits(k2Id), [U.A])) p.push(`พนักงานคีย์ A unitIds [] เก็บเป็น ${JSON.stringify(await storedUnits(k2Id))} (คาด [A])`);
     chk("P3", NPR() === "" && p.length === 0, "พนักงาน list ได้ save ไม่ได้ · ผู้จัดการเฉพาะ [A] · ทุกสาขาต้องครบทุกสาขา · ชื่อคีย์ pos.price.rule", FX(NPR() + (P8(p) || "ครบ")));
   }
   // P4 ข้ามร้าน
@@ -1768,7 +1797,12 @@ async function runDb() {
     if (!actId || !ar.some((a) => mentions(a, actId) && a.actorId === ownerId)) p.push(`${AUDIT.archived} (เจ้าของ) ไม่พบ (${ar.length})`);
     if (!up.some((a) => a.actorId === ownerId && short([a.after, a.before], 8000).includes(`โปรชาเขียว แก้ ${RAND}`))) p.push(`${AUDIT.updated} ของ P1 ไม่พบ (${up.length})`);
     if (!cr.some((a) => a.actorId === mgrId && short(a.after, 8000).includes(`ผู้จัดการ A ${RAND}`))) p.push(`${AUDIT.created} (ผู้จัดการ) ไม่พบ`);
-    if (all.some((a) => short([a.after, a.before], 8000).includes(`พนักงานสร้าง ${RAND}`) || short([a.after, a.before], 8000).includes(`ผู้จัดการทุกสาขา ${RAND}`))) p.push("มี audit ของคำขอที่ถูกปฏิเสธ");
+    // ORACLE-EDIT ผู้คุม A 24.10 (CD-P43-8): "ผู้จัดการทุกสาขา" กลายเป็นคำขอที่สำเร็จ (เก็บ [A]) ⇒ ต้องมี audit created ของผู้จัดการที่ after.unitIds = [A] · คำขอที่ถูกปฏิเสธชุดใหม่ (ขยาย B / AB · แก้เป็น []) ต้องไม่มี audit ◂
+    const mgrAll = cr.find((a) => a.actorId === mgrId && short(a.after, 8000).includes(`ผู้จัดการทุกสาขา ${RAND}`));
+    if (!mgrAll) p.push(`${AUDIT.created} (ผู้จัดการ unitIds [] → [A]) ไม่พบ`);
+    else if (JSON.stringify((mgrAll.after as Any)?.unitIds ?? null) !== JSON.stringify([U.A])) p.push(`audit created ของผู้จัดการ after.unitIds = ${short((mgrAll.after as Any)?.unitIds, 200)} (คาด [A])`);
+    if (up.some((a) => a.actorId === mgrId && short(a.after, 8000).includes(`ผู้จัดการ A ${RAND}`) && Array.isArray((a.after as Any)?.unitIds) && (a.after as Any).unitIds.length === 0)) p.push("มี audit updated ของการแก้กติกา [A] เป็น [] ที่ถูกปฏิเสธ");
+    if (all.some((a) => [`พนักงานสร้าง ${RAND}`, `ผู้จัดการขยาย B ${RAND}`, `ผู้จัดการขยาย AB ${RAND}`].some((n) => short([a.after, a.before], 8000).includes(n)))) p.push("มี audit ของคำขอที่ถูกปฏิเสธ");
     if (all.some((a) => !a.actorId)) p.push("มี audit ไม่มี actorId");
     chk("P5", NPR() === "" && p.length === 0, "7 แบบถูกเมิน · ตัวควบคุมบวก RULE · เก็บถาวรแล้วกลับ BASE · audit 3 ชนิด", FX(NPR() + (P8(p) || `ครบ (${all.length} audit)`)));
   }
