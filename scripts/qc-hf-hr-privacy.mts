@@ -1235,7 +1235,9 @@ chk("S-17", "approval.decide ตรวจ 'คำขอของตัวเอ�
 const adBlock = propSrc.slice(propSrc.indexOf('if (kind === "approval_decide")'), propSrc.indexOf('if (kind === "inventory_consume")'));
 const adGuard = adBlock.search(/if \(!uid\)\s*throw new Error\(/);
 chk("S-18", "proposals approval_decide: ไม่รู้ตัวผู้กดยืนยัน → throw ไทยก่อนค้น/เขียน · ส่ง userId ของผู้กดยืนยันให้ decide (ไม่ cast แบบเดาเอา)",
-  adGuard >= 0 && adGuard < adBlock.indexOf("approvalRequest.findMany") && adGuard < adBlock.indexOf("approvalSvc.decide(") && !/m as MembershipCtx & \{ userId: string \}/.test(adBlock), "ใช่", "ไม่ใช่");
+  // ORACLE-EDIT ผู้คุม POS A 23.10 (CD-P52-O12 · gates129): POS P5.2 fix A (9fb4f97b) เปลี่ยนการค้นคำขอจาก prisma.approvalRequest.findMany เป็น approvalSvc.listPending(…{userId: uid}) (เข้มขึ้น — เห็นเฉพาะที่ผู้กดตัดสินได้)
+  //   กติกาเดิมคงทุกข้อ: throw ไทยต้องมาก่อน "การค้น" (findMany หรือ listPending) และก่อน decide · ไม่ cast เดา · revert: ใช้ indexOf("approvalRequest.findMany") อย่างเดียว ◂
+  adGuard >= 0 && adGuard < (() => { const i = adBlock.indexOf("approvalRequest.findMany"); return i >= 0 ? i : adBlock.indexOf("approvalSvc.listPending("); })() && adGuard < adBlock.indexOf("approvalSvc.decide(") && !/m as MembershipCtx & \{ userId: string \}/.test(adBlock), "ใช่", "ไม่ใช่");
 const lockAt = grantBody.search(/pg_advisory_xact_lock\(hashtextextended\(\$\{`staff-link:\$\{input\.tenantId\}:\$\{user\.id\}`\}, 0\)\)/);
 chk("S-19", "grantStaffAccess: ล็อก advisory ต่อ (ร้าน, บัญชี) ก่อนตรวจ 'บัญชีนี้ผูกกับพนักงานอื่นแล้ว' · ยังมีด่านแถว R4.3",
   lockAt >= 0 && lockAt < grantBody.indexOf("const otherLink") && /\.count !== 1/.test(grantBody), "ใช่", "ไม่ใช่", "MAJOR");
