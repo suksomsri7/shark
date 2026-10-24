@@ -76,6 +76,7 @@ export const WIDGET_DEFS: WidgetDef[] = [
   S("POS", "/pos/kds", "จอครัว (POS)", "👨‍🍳"),
   S("POS", "/pos/products/price-rules", "โปรราคา / Happy hour", "⏰"),
   S("POS", "/pos/reports/print", "พิมพ์รายงานขาย", "🖨️"),
+  S("POS", "/pos/help", "คู่มือใช้งาน POS", "📖"), // POS P6.2 ▸ CD-P62-O1b (qc-pages RG-1: เมนูข้าง /pos/help ต้องมี widget) ◂
   // ◂
   S("ACCOUNT", "", "ภาพรวมบัญชี", "📒"),
   S("ACCOUNT", "/account/documents", "เอกสารบัญชี", "📄"),

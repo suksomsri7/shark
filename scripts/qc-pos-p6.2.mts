@@ -58,7 +58,8 @@ const F = {
   registry: "src/lib/modules/pos/api/registry.ts",
   help: "src/app/app/sys/[id]/pos/help/page.tsx",
   settings: "src/app/app/sys/[id]/pos/settings/page.tsx",
-  layout: "src/app/app/layout.tsx", // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
+  layout: "src/app/app/layout.tsx",
+  registry2: "src/lib/pages/registry.ts", // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx) // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
   msgThPos: "src/messages/th/pos.json",
   msgEnPos: "src/messages/en/pos.json",
   msgThCommon: "src/messages/th/common.json",
@@ -117,7 +118,7 @@ const CHECKS: readonly Def[] = [
   ["P6.2-D2", "docs/sds/modules/pos.md AS-BUILT V2: หัว AS-BUILT V2 + SHA · ทุก model ใน prisma/schema/pos*.prisma · ทุกคีย์ outbox pos.* (ทะเบียน consumer ∪ ตาราง POS-CONTRACTS) · ทุก export ของ modules/pos/index.ts · ทุกคีย์สิทธิ์ pos.* (มติ 7)"],
   ["P6.2-M1", "หน้าคู่มือ src/app/app/sys/[id]/pos/help/page.tsx: อ่านอย่างเดียว (ด่านหน้าเดียว · import ในรายการ) · ทุก href ชี้หน้า POS ที่มีจริง + ครบแท็บ POS · ข้อความผ่าน t ครบ th+en · แถวทะเบียนปุ่มของทุกลิงก์ · แผนภาพ p2.14 V3 (หน้าใน POS_PAGES + รอบ th/en) · หมุดสิทธิ์ V4 · แถวตารางสิทธิ์ + ตัวสร้าง --check · ลิงก์ทางเข้าจากหน้า settings"],
   ["P6.2-S1", "สกิล: sync-skills.sh --check exit 0 · gen-pos-api-docs --check exit 0 · SKILL.md เอ่ย path ของทุกกลุ่ม op ในทะเบียน REST (/channels /devices … /sync /units)"],
-  ["P6.2-Z1", "ขอบเขต (เทียบหมุดเลน): แตะได้เฉพาะ docs/ ledger/ skills/ scripts/ src/messages/ + หน้าคู่มือ + ลิงก์ทางเข้าในหน้า settings (≤ 20 บรรทัด · ลบ ≤ 3 · มี /pos/help) + บรรทัดเมนูข้าง /pos/help ใน src/app/app/layout.tsx (เพิ่ม ≤ 2 · ลบ 0 · CD-P62-O1) — src/ อื่น = แดง"],
+  ["P6.2-Z1", "ขอบเขต (เทียบหมุดเลน): แตะได้เฉพาะ docs/ ledger/ skills/ scripts/ src/messages/ + หน้าคู่มือ + ลิงก์ทางเข้าในหน้า settings (≤ 20 บรรทัด · ลบ ≤ 3 · มี /pos/help) + บรรทัดเมนูข้าง /pos/help ใน src/app/app/layout.tsx และ widget ใน src/lib/pages/registry.ts (ไฟล์ละ เพิ่ม ≤ 2 · ลบ 0 · CD-P62-O1/O1b) — src/ อื่น = แดง"],
   ["P6.2-G1", "scripts/pos-gates.json มี qc-pos-p6.2 (mode unforced · ไม่มี needs)"],
   ["P6.2-N1", "self-test H1: fixture ผ่าน · ขาดแถว P4.2 / SHA ไม่ใช่บรรพบุรุษ / นับ ORACLE-EDIT ผิด 1 / W5 = closed / ไม่มี §6 / ไม่อ้างรายงาน hunter = แดง"],
   ["P6.2-N2", "self-test H2: fixture ผ่าน · EV-P1 ไม่ใช่ owner / ไม่มี EV-C4 / parity ไม่มี 390 / ที่อยู่ไม่มีจริง = แดง"],
@@ -125,7 +126,7 @@ const CHECKS: readonly Def[] = [
   ["P6.2-N4", "self-test D2: fixture ผ่าน · ขาด model / ขาดคีย์ outbox / ขาด export / หัวไม่ใช่ AS-BUILT V2 = แดง"],
   ["P6.2-N5", "self-test M1: fixture ผ่าน · import service / prisma อื่น / ข้อความไทยในโค้ด / href ไปหน้าไม่มี / คีย์ en ขาด / ไม่มีแถวทะเบียน / ไม่อยู่ใน POS_PAGES / ตัวสร้างตารางไม่ตรง = แดง"],
   ["P6.2-N6", "self-test S1: fixture ผ่าน · sync exit 1 / gen exit 1 / SKILL.md ไม่มี /sync = แดง"],
-  ["P6.2-N7", "self-test Z1: fixture ผ่าน · แตะ src/lib/modules/pos/register.ts / settings 30 บรรทัด / settings ไม่มี /pos/help / prisma / layout ลบบรรทัด / layout 3 บรรทัด / layout ไม่มี /pos/help = แดง"],
+  ["P6.2-N7", "self-test Z1: fixture ผ่าน · แตะ src/lib/modules/pos/register.ts / settings 30 บรรทัด / settings ไม่มี /pos/help / prisma / layout ลบบรรทัด / layout 3 บรรทัด / layout ไม่มี /pos/help / registry ลบบรรทัด / registry 3 บรรทัด = แดง"],
   ["P6.2-N8", "self-test G1: unforced ผ่าน · forced / ไม่มีแถว / มี needs = แดง"],
 ];
 
@@ -352,7 +353,9 @@ type Inputs = {
   // Z1
   changed: string[];
   settingsDiff: string;
-  layoutDiff: string; // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
+  layoutDiff: string;
+  registryDiff: string; // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx)
+  // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
   // G1
   manifest: Any;
 };
@@ -850,11 +853,16 @@ function judgeZ1(inp: Inputs): string[] {
   const p: string[] = [];
   const bad: string[] = [];
   let touchedSettings = false;
-  let touchedLayout = false; // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
+  let touchedLayout = false;
+  let touchedRegistry = false; // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx) // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
   for (const f of inp.changed) {
     if (/^(docs|ledger|skills|scripts)\//.test(f) || /^src\/messages\//.test(f) || f === F.help) continue;
     if (f === F.settings) {
       touchedSettings = true;
+      continue;
+    }
+    if (f === F.registry2) { // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx)
+      touchedRegistry = true;
       continue;
     }
     if (f === F.layout) { // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
@@ -872,6 +880,16 @@ function judgeZ1(inp: Inputs): string[] {
     if (removed.length > SETTINGS_REMOVED_MAX) p.push(`${F.settings} ลบ ${removed.length} บรรทัด (≤ ${SETTINGS_REMOVED_MAX})`);
     if (!added.some((l) => /\/pos\/help\b/.test(l))) p.push(`${F.settings} เปลี่ยนแต่ไม่มีบรรทัดลิงก์ /pos/help`);
   }
+  const navRule = (file: string, diff: string): void => { // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx)
+    const lines = diff.split("\n");
+    const added = lines.filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+    const removed = lines.filter((l) => l.startsWith("-") && !l.startsWith("---"));
+    if (removed.length > 0) p.push(`${file} ลบ ${removed.length} บรรทัด (ต้อง 0)`);
+    if (added.length > LAYOUT_ADDED_MAX) p.push(`${file} เพิ่ม ${added.length} บรรทัด (≤ ${LAYOUT_ADDED_MAX} · เมนู/widget อย่างเดียว)`);
+    if (!added.every((l) => /\/pos\/help\b/.test(l))) p.push(`${file} มีบรรทัดเพิ่มที่ไม่ใช่ /pos/help`);
+    if (!added.length) p.push(`${file} เปลี่ยนแต่ไม่มีบรรทัด /pos/help`);
+  };
+  if (touchedRegistry) navRule(F.registry2, inp.registryDiff);
   if (touchedLayout) { // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
     const lines = inp.layoutDiff.split("\n");
     const added = lines.filter((l) => l.startsWith("+") && !l.startsWith("+++"));
@@ -907,7 +925,8 @@ function realInputs(): Inputs {
     if (!REV) for (const l of git("status", "--porcelain", "--untracked-files=all").split("\n").filter(Boolean)) changed.add(l.slice(3).replace(/^"|"$/g, "").replace(/^.* -> /, ""));
   } else changed.add(`(หมุดเลน ${LANE_PIN} ไม่มีในทรี)`);
   const settingsDiff = REV ? git("diff", "-U0", LANE_PIN, REV, "--", F.settings) : git("diff", "-U0", LANE_PIN, "--", F.settings);
-  const layoutDiff = REV ? git("diff", "-U0", LANE_PIN, REV, "--", F.layout) : git("diff", "-U0", LANE_PIN, "--", F.layout); // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
+  const layoutDiff = REV ? git("diff", "-U0", LANE_PIN, REV, "--", F.layout) : git("diff", "-U0", LANE_PIN, "--", F.layout);
+  const registryDiff = REV ? git("diff", "-U0", LANE_PIN, REV, "--", F.registry2) : git("diff", "-U0", LANE_PIN, "--", F.registry2); // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx) // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
   return {
     exists,
     read,
@@ -943,6 +962,7 @@ function realInputs(): Inputs {
     changed: [...changed].sort(),
     settingsDiff,
     layoutDiff,
+    registryDiff,
     manifest: readJson(F.gates),
   };
 }
@@ -1153,7 +1173,7 @@ function selfTest(base: Inputs): void {
     ["gen exit 1", (i) => ({ ...i, genExit: 1 })],
     ["SKILL.md ไม่มี /sync", (i) => ({ ...i, skill: i.skill!.replace(/^GET \/sync$/m, "") })],
   ]);
-  const goodZ: Inputs = { ...base, changed: ["docs/modules/14-pos.md", "ledger/HANDOVER-2026-10-POS.md", "src/messages/th/pos.json", F.help, F.settings, "scripts/pos-ui-inventory.json", "skills/shark-pos-api/SKILL.md", F.layout], settingsDiff: "@@ -1 +1 @@\n-  <PageHeader />\n+  <PageHeader actions={<Link href={`/app/sys/${id}/pos/help`} />} />\n+import Link from \"next/link\";", layoutDiff: "@@ -138,0 +139 @@\n+          { href: `${s}/pos/help`, label: posNav(\"settings.helpLink\") }," }; // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
+  const goodZ: Inputs = { ...base, changed: ["docs/modules/14-pos.md", "ledger/HANDOVER-2026-10-POS.md", "src/messages/th/pos.json", F.help, F.settings, "scripts/pos-ui-inventory.json", "skills/shark-pos-api/SKILL.md", F.layout, F.registry2], settingsDiff: "@@ -1 +1 @@\n-  <PageHeader />\n+  <PageHeader actions={<Link href={`/app/sys/${id}/pos/help`} />} />\n+import Link from \"next/link\";", layoutDiff: "@@ -138,0 +139 @@\n+          { href: `${s}/pos/help`, label: posNav(\"settings.helpLink\") },", registryDiff: "@@ -78,0 +79 @@\n+  S(\"POS\", \"/pos/help\", \"คู่มือใช้งาน POS\", \"📖\")," }; // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
   runProbes("P6.2-N7", judgeZ1, goodZ, [
     ["แตะ register.ts", (i) => ({ ...i, changed: [...i.changed, "src/lib/modules/pos/register.ts"] })],
     ["settings 30 บรรทัด", (i) => ({ ...i, settingsDiff: `${i.settingsDiff}\n${Array.from({ length: 30 }, (_, k) => `+ line ${k}`).join("\n")}` })],
@@ -1162,6 +1182,8 @@ function selfTest(base: Inputs): void {
     ["layout ลบบรรทัด", (i) => ({ ...i, layoutDiff: `${i.layoutDiff}\n-          { href: \`\${s}/pos/settings\`, label: posNav("nav.settings") },` })], // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
     ["layout 3 บรรทัด", (i) => ({ ...i, layoutDiff: `${i.layoutDiff}\n+ /pos/help a\n+ /pos/help b` })],
     ["layout ไม่มี /pos/help", (i) => ({ ...i, layoutDiff: "@@\n+          { href: `${s}/pos/x`, label: posNav(\"x\") }," })],
+    ["registry ลบบรรทัด", (i) => ({ ...i, registryDiff: `${i.registryDiff}\n-  S("POS", "/pos/settings", "x", "x"),` })], // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx)
+    ["registry 3 บรรทัด", (i) => ({ ...i, registryDiff: `${i.registryDiff}\n+ /pos/help a\n+ /pos/help b` })],
   ]);
   const gm = (rows: Any[]) => ({ suites: rows });
   const g1 = [judgeG1(gm([{ suite: SUITE, mode: "unforced" }])), judgeG1(gm([{ suite: SUITE, mode: "forced" }])), judgeG1(gm([])), judgeG1(gm([{ suite: SUITE, mode: "unforced", needs: "member-seed" }]))];
