@@ -2,7 +2,7 @@
 
 ## §0 สรุป
 ฉบับนี้ **แทนที่ (supersedes)** HANDOVER เฟสเดิม 4 ฉบับ: `ledger/HANDOVER-2026-10-10-POS-P1.md` · `ledger/HANDOVER-2026-10-16-POS-P2.md` · `ledger/HANDOVER-2026-10-22-POS-P3.md` · `ledger/HANDOVER-2026-10-23-POS-P5.md` — ของเดิมยังอ่านได้เป็นรายละเอียดต่อเฟส.
-- ตัวนับ: **51/55 → ปิดครบ 55/55 เมื่อ chain v2 (walker 19 ช่อง + perf P5.3) เขียวและไฟล์นี้ผ่าน qc-pos-p6.2 H1/H2** · tip ส่งมอบ = คอมมิตล่าสุดบน `session/pos` (ดู §7 วิธีตรวจ) · ⛔ ยังไม่ merge main (W32 เจ้าของ deploy ตาม `docs/pos/DEPLOY-RUNBOOK.md`).
+- ตัวนับ: **51/55 → ปิดครบ 55/55 เมื่อ chain v3 (walker 19 ช่อง + perf P5.3) เขียวและไฟล์นี้ผ่าน qc-pos-p6.2 H1/H2** · tip ส่งมอบ = คอมมิตล่าสุดบน `session/pos` (ดู §7 วิธีตรวจ) · ⛔ ยังไม่ merge main (W32 เจ้าของ deploy ตาม `docs/pos/DEPLOY-RUNBOOK.md`).
 - ของที่ขึ้นแล้ว: แคตตาล็อกเดียว · หน้าขาย V2 ทุกโหมด (ร้านค้า/ร้านอาหาร/โต๊ะ/QR/KDS/จอลูกค้า/หลายสาขา/ออฟไลน์) · ทุกช่องทาง (เว็บร้าน · ออเดอร์ · แพลตฟอร์มโครง) · เชื่อม HR/บัญชี/CRM/สมาชิก/แชท/บอร์ด/AI · REST `/api/v1/pos` + สกิล · ตั้งค่า/รายงาน/พิมพ์ · คู่มือในแอป `/pos/help`.
 - คุณภาพ: ด่าน POS 134 ชุด + 8 คำสั่ง (manifest `scripts/pos-gates.json`) เขียวที่ tip ยกเว้น ACCEPTED 12 (account-api/member เดิม) · hunter เงิน/authz 7 รายงาน (§2) · parity 1440/1024/390 ทุกจอ · ซ้อม deploy บน branch สำเนา prod ผ่าน 37/37 (§6).
 - ของเจ้าของ: W1–W43 (§5) · ก่อน deploy ต้องตั้ง `POS_DEVICE_KEY` (W40) · ลำดับ deploy CD-P61-R1 = migrate ก่อน merge main (runbook §0/§4).
@@ -56,16 +56,16 @@
 | P3.9 AI สรุปเช้า | S `683a7cc8` · U `7c5c0d09` | qc-pos-p3.9 48/48 | `ledger/HANDOVER-2026-10-22-POS-P3.md` §1 |
 | P3.12 ปิดเฟส P3 | `15ee7536` · freeze `f38494fb` | qc-pos-p3.12 22/22 · gates128 136/136 | `ledger/HANDOVER-2026-10-22-POS-P3.md` |
 | P4.1 ทะเบียนปุ่ม | `574b0758` (oracle `3857aa03`) | qc-pos-p4.1 16/16 | `ledger/wo-notes/pos-P4.1.md` |
-| P4.2 ตัวเดินกดปุ่ม 19 ช่อง | walker `77de6002` → รวมใน `e527eff6` · ผล 19 ช่องจาก chain v2 (§8 EV-C4) | qc-pos-p4.2 12 ข้อ | `ledger/wo-notes/pos-P4.2-walker.md` |
+| P4.2 ตัวเดินกดปุ่ม 19 ช่อง | walker `77de6002` → รวมใน `e527eff6` · ผล 19 ช่องจาก chain v3 (§8 EV-C4) | qc-pos-p4.2 12 ข้อ | `ledger/wo-notes/pos-P4.2-walker.md` |
 | P4.3 triage+fix จาก walker | `e527eff6` · fix3 `c39b71fd` | qc-pos-p4.3 30/30 · p2.2 42/42 | `ledger/wo-notes/pos-P4.3-fix1-review.md` |
 | P5.1 เงิน/race/idempotency | `5926434f` · `e9b765b4` · `6b1f84a5` | qc-pos-p5.1 28/28 | `ledger/wo-notes/pos-P5.1-hunt-MA.md` |
 | P5.2 authz ทุก surface | `e774edeb` · `c4584062` · `98f60761` | qc-pos-p5.2 57 ข้อ · matrix 404 แถว | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
-| P5.3 perf | oracle `c3ae27f1` · ผลวัดจาก chain v2 (§8 EV-P4) | qc-pos-p5.3 9/9 gate | `ledger/wo-notes/pos-P5.3-oracle.md` |
+| P5.3 perf | oracle `c3ae27f1` · fix1–fix1d ดัชนีบาร์โค้ดฝั่งลูกข่าย merge `adfcee44` (CD-P53-O14/O15/O16 · R1+hunter 2 รอบ) · ผลวัดจาก chain v3 (§8 EV-P4) | qc-pos-p5.3 11/11 gate (S5 ทางลูกข่าย) | `ledger/wo-notes/pos-P5.3-oracle.md` · `ledger/wo-notes/pos-P5.3-fix1.md` · `ledger/wo-notes/pos-P5.3-fix1-review.md` |
 | P6.1 runbook/verify/ซ้อม deploy | prep `c91d8735` · fix `4016a352` | qc-pos-p6.1 31/31 · ซ้อม 37/37 | `ledger/wo-notes/pos-P6.1.md` |
 | P6.2 เอกสาร/คู่มือ/สกิล/HANDOVER | `0bd8324e` · `c4ce139a` | qc-pos-p6.2 16 ข้อ | `ledger/wo-notes/pos-P6.2-review.md` |
 
 ## §2 บั๊กจริงที่นักล่าพบ (ระดับสูง/กลาง · ที่มา · การแก้)
-ครอบรายงาน hunter 7 ไฟล์: `ledger/wo-notes/pos-P2.4-hunt.md` (Low 2 เท่านั้น) · `ledger/wo-notes/pos-P2.5-hunt.md` · `ledger/wo-notes/pos-P2.6-hunt.md` · `ledger/wo-notes/pos-P2.8-hunt.md` · `ledger/wo-notes/pos-P2.9-hunt.md` · `ledger/wo-notes/pos-P5.1-hunt-MA.md` · `ledger/wo-notes/pos-P5.2-hunt-L1.md`.
+ครอบรายงาน hunter 8 ไฟล์ (รวม R1+hunter P5.3 fix1 `ledger/wo-notes/pos-P5.3-fix1-review.md`): `ledger/wo-notes/pos-P2.4-hunt.md` (Low 2 เท่านั้น) · `ledger/wo-notes/pos-P2.5-hunt.md` · `ledger/wo-notes/pos-P2.6-hunt.md` · `ledger/wo-notes/pos-P2.8-hunt.md` · `ledger/wo-notes/pos-P2.9-hunt.md` · `ledger/wo-notes/pos-P5.1-hunt-MA.md` · `ledger/wo-notes/pos-P5.2-hunt-L1.md`.
 
 | id | ใบ | ระดับ | อาการ | การแก้ | ที่มา |
 |---|---|---|---|---|---|
@@ -78,6 +78,11 @@
 | L1-F1 | P5.2 | High | MANAGER สาขาหนึ่งอนุมัติ void/refund/discount ของอีกสาขา | fix A+B+C+F `c4584062` | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
 | L1-F2 | P5.2 | Med | ตั้ง/ปลดล็อก PIN ข้าม rank | fix A+B+C+F `c4584062` | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
 | L1-F3 | P5.2 | Med | API key ทั่วไปอ่านยอดขายทุกสาขาผ่าน AI tool route | fix D+E `98f60761` | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
+| P53-F1 | P5.3 | Med | ดัชนีบาร์โค้ดดึงผ่าน server action ที่ Next เรียงคิวต่อ client → ขวาง quote/submit · version ขยับทุก stock cut = ชุดเต็ม 2.5 MiB ทุก tick | fix1c `f30aef7c` (GET route + ETag/304 · ไม่ดึงตอน pay/done · version ไม่รวม stock) | `ledger/wo-notes/pos-P5.3-fix1-review.md` |
+| P53-F2 | P5.3 | Med | refetch วนจากรหัสที่ตั้งใจไม่ใส่ดัชนี (แม่+ตัวแปร) และ stockLeft เปลี่ยน | fix1c `f30aef7c` (excluded[] จากเซิร์ฟเวอร์ · เทียบเฉพาะ field ตัดสิน) | `ledger/wo-notes/pos-P5.3-fix1-review.md` |
+| P53-F3 | P5.3 | Med | ขอบราคาโปรตัดสินด้วยนาฬิกาแท็บเล็ต → นาฬิกาเร็ว = ดึงชุดเต็มรัวทุก 15 วิ | fix1c `f30aef7c` (serverNow/offset · ขอบที่ผ่านแล้วไม่สั่งดึง) | `ledger/wo-notes/pos-P5.3-fix1-review.md` |
+| P53-H1 | P5.3 | Med | route ดัชนีไม่มี cache/throttle — ผู้มีสิทธิ์ขายเรียกวนได้ (≈40× หน้าแคตตาล็อก) | fix1c `f30aef7c` (cache ตาม version 120 วิ · build ร่วม · cap 2/tenant · 429 >1 ชุดเต็ม/10 วิ/ผู้ใช้) · fix1d `1abfdcd1` งบ 4 MiB/ชุด 64 MiB รวม | `ledger/wo-notes/pos-P5.3-fix1-review.md` |
+| P53-D1 | P5.3 | Med | hit จากดัชนีทับ stock ที่จอรู้สดกว่า → ป้าย "สต็อก X→Y"/คำเตือนเกินสต็อกผิด (ไม่กระทบเงิน) | fix1d `1abfdcd1` (mergeKnownStock) | `ledger/wo-notes/pos-P5.3-fix1-review.md` |
 | L1-F4 | P5.2 | Med | แอ็กชันคลังเขียน catalog POS ทุกสาขาไม่ผ่านด่านแถว | หนี้ → W37 (OP) | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
 | L1-F5 | P5.2 | Med | actions/restaurant ไม่มี posLinkedUnit check | fix A+B+C+F `c4584062` | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
 | L1-F6 | P5.2 | Med | ด่านระดับร้าน ⇒ MANAGER สาขาเดียวผ่าน (credit ฯลฯ) | fix D+E `98f60761` | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
@@ -102,7 +107,8 @@ ORACLE-EDIT ทั้ง RUN = **433 commits** ในช่วง `71a1f363..a35
 | แอ็กชันคลังเขียน catalog POS ทุกสาขา (L1-F4) | รอเจ้าของ | W37 (POS-OWNER-PENDING) |
 | ประตู legacy ร้านอาหารบนสาขาที่ผูก POS (P25-N2 PARTIAL) | ใช้ 409 POS_LINKED + redirect | W1 (POS-OWNER-PENDING) |
 | บิลเครดิตเทอมส่ง dueDate เป็นข้อมูล ไม่พิมพ์บนใบเสร็จ | ค่าเริ่มต้น = ข้อมูลอย่างเดียว | W43 (POS-OWNER-PENDING) |
-| walker phase B 14 ช่อง ≈28 ชม. | รันทั้งหมดใน chain v2 | W42 (POS-OWNER-PENDING) |
+| walker phase B 14 ช่อง ≈28 ชม. | รันทั้งหมดใน chain v3 | W42 (POS-OWNER-PENDING) |
+| ดัชนีบาร์โค้ด: กลุ่มตัวเลือกไม่บังคับที่ผูกหลังโหลดดัชนี ไม่ทำให้ quote ปฏิเสธ → บรรทัดขายไปโดยไม่เสนอตัวเลือกจนรอบ refresh ถัดไป (≤15 นาที) | รับไว้ (เงินถูก · quote re-price) | `ledger/wo-notes/pos-P5.3-fix1-review.md` D5 |
 | โครงแพลตฟอร์ม/สลิป/e-Tax ปิดสุภาพ รอ creds | เปิดเมื่อตั้ง POS_CREDENTIALS_KEY | W4 (POS-OWNER-PENDING) · `ledger/wo-notes/pos-P3-SKEL.md` |
 
 ## §5 เรื่องรอเจ้าของ (W1…W43 · สถานะ: open = ยังไม่มีคำตอบ · default = ใช้ค่าเริ่มต้นไปแล้ว · รายละเอียดใน `ledger/POS-OWNER-PENDING.md` §รอคำตอบ)
@@ -172,7 +178,7 @@ ORACLE-EDIT ทั้ง RUN = **433 commits** ในช่วง `71a1f363..a35
 | EV-C1 | สถานะ+SHA ทุกใบ · ORACLE-EDIT · HANDOVER | ไฟล์นี้ §1/§3 · `ledger/POS-RESUME.md` · `ledger/wo-notes/pos-oracle-edits.md` |
 | EV-C2 | wo-notes ครบทุกใบ | `ledger/wo-notes/` (pos-*.md) |
 | EV-C3 | diff ข้อสอบ ↔ ป้าย ORACLE-EDIT | `ledger/wo-notes/pos-oracle-edits.md` (git log --grep) |
-| EV-C4 | ด่านเต็มรอบสุดท้าย + walker 19 ช่อง | `/root/pos-runs/gates131-c-20261024T033932Z/SUMMARY.txt` · walker `/root/pos-runs/walker-B-*/SUMMARY.txt` (chain v2) |
+| EV-C4 | ด่านเต็มรอบสุดท้าย + walker 19 ช่อง | `/root/pos-runs/gates131-c-20261024T033932Z/SUMMARY.txt` · walker `/root/pos-runs/walker-B-*/SUMMARY.txt` (chain v3) |
 | EV-C5 | ภาพทุกจอ 3 ขนาด + ทะเบียนปุ่ม | `scripts/pos-ui-inventory.json` · `scripts/pos-visual-sweep.json` · `/root/pos-runs/vis-*` |
 | EV-C6 | รายงานนักล่า + ตาราง finding → แก้ | `ledger/wo-notes/pos-P5.1-hunt-MA.md` · `ledger/wo-notes/pos-P5.2-hunt-L1.md` · §2 |
 | EV-C7 | ซ้อม/ตรวจ migration (owner ขั้น deploy จริง W31/W32) | `ledger/wo-notes/pos-P6.1.md` · `docs/pos/DEPLOY-RUNBOOK.md` |
