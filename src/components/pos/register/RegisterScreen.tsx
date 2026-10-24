@@ -161,7 +161,8 @@ import { printerPaired } from "@/components/pos/print/printReceipt";
 import { useRouter } from "next/navigation";
 import { holdTableDraftAction, registerOpenTableAction, registerSendTableRoundAction, registerTableDetailAction, registerTableModeAction } from "@/lib/modules/pos/table-actions";
 import { registerProductsByIdsAction } from "@/lib/modules/pos/table-ui-actions";
-import { posOpsCardsAction } from "@/lib/pos-board-ui-actions"; // POS P4.3 ▸ F-P3-21: ชิปการ์ด "สินค้าหมดนาน" ของสินค้า 86 ◂
+import { posBoardCardsAction } from "@/lib/pos-board-ui-actions"; // POS P4.3 ▸ F-P3-21: ชิปการ์ด "สินค้าหมดนาน" ของสินค้า 86 ◂
+import { posBoardKeys } from "@/lib/modules/pos/board-settings-shared"; // POS P4.3 ▸ กุญแจ 86 ค้างอยู่ (soldOutPrefix) ◂
 import type { TableCard } from "@/lib/modules/pos/table-shared";
 import { BillStripDialog, TablePickDialog } from "@/components/pos/tables/TablePickDialog";
 import { cartStripOf, stripCart, stripNeeded } from "@/components/pos/tables/table-ui";
@@ -1550,9 +1551,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
       showToast({ key: "errors.productUnavailable" });
       // POS P4.3 ▸ F-P3-21 · CD-P38U-9: 86 ที่ระบบเปิดการ์ดบอร์ดงานแล้ว ⇒ ปุ่ม "การ์ด #n" ในข้อความลอย (ไม่มีการ์ด/ออฟไลน์ = ข้อความเดิม) ◂
       if (p.soldOutMark && online) {
-        void posOpsCardsAction({ systemId, unitId, productIds: [p.id] })
+        const prefix = posBoardKeys.soldOutPrefix(unitId, p.id);
+        void posBoardCardsAction({ systemId, keys: [prefix] })
           .then((r) => {
-            const c = r.ok ? r.cards.find((x) => x.kind === "SOLD_OUT" && x.ref === p.id) : undefined;
+            const c = r.ok ? r.cards.find((x) => x.key.startsWith(prefix)) : undefined;
             if (c) setToast((cur) => (cur && cur.key === "errors.productUnavailable" && !cur.card ? { ...cur, card: { href: c.href, cardNo: c.cardNo, completed: c.completed, productId: p.id } } : cur));
           })
           .catch(() => undefined);
@@ -3471,7 +3473,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           {/* POS P4.3 ▸ F-P3-21: ลิงก์การ์ด 86 (หน้าบอร์ดตรวจสิทธิ์เอง) · cardNo null = ป้ายไม่มีเลข ◂ */}
           {toast.card && (
             <a
-              data-testid="pos-reg-toast-86-card"
+              data-testid={`pos-reg-board-card-${toast.card.productId}`}
               href={toast.card.href}
               className="pointer-events-auto inline-flex h-11 shrink-0 items-center rounded-[11px] border border-[color:var(--color-surface)] px-3 text-[14px] font-semibold"
             >

@@ -63,7 +63,8 @@ import { isChannelBuiltinCode } from "@/lib/modules/pos/channel-shared"; // POS 
 import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
 import { DepositRefund } from "./DepositRefund"; // POS P2.9bU ▸ มติ 7: คืนมัดจำคงเหลือ (ลิ้นชักใบรับเงินมัดจำ) ◂
 import { BillSlips } from "./BillSlips"; // POS P3-SKEL U ▸ CD-SKELU-6 (c) · CD-SKELU-7: บล็อกสลิปโอนของลิ้นชัก ◂
-import { posOpsCardsAction } from "@/lib/pos-board-ui-actions"; // POS P4.3 ▸ F-P3-21: ชิปการ์ด "คืนเงินลูกค้า" ของบิลที่มาจากออเดอร์ ◂
+import { posBoardCardsAction } from "@/lib/pos-board-ui-actions"; // POS P4.3 ▸ F-P3-21: ชิปการ์ด "คืนเงินลูกค้า" ของบิลที่มาจากออเดอร์ ◂
+import { posBoardKeys } from "@/lib/modules/pos/board-settings-shared"; // POS P4.3 ▸ กุญแจ pos-refund:<orderId> ◂
 /** POS P2.9bU ▸ มติ 7: sourceModule ของใบรับเงินมัดจำ + ใบคืนมัดจำ (deposit.ts POS_DEPOSIT_SOURCE) ◂ */
 const DEPOSIT_SOURCE = "POS_DEPOSIT";
 
@@ -211,7 +212,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [reprintBusy, setReprintBusy] = useState(false);
   const [drawerErr, setDrawerErr] = useState<string | null>(null);
-  /** POS P4.3 ▸ F-P3-21 · CD-P38U-9: การ์ด "คืนเงินลูกค้า" ของออเดอร์ที่ผูกบิลที่เปิด (posOpsCardsAction saleIds · ไม่มี = ไม่มีแถว) ◂ */
+  /** POS P4.3 ▸ F-P3-21 · CD-P38U-9: การ์ด "คืนเงินลูกค้า" ของออเดอร์ที่ผูกบิลที่เปิด (bill.orderId → posBoardCardsAction pos-refund: · ไม่มี = ไม่มีแถว) ◂ */
   const [refundCard, setRefundCard] = useState<{ saleId: string; href: string; cardNo: number | null; completed: boolean } | null>(null);
 
   // ── ค้นหาแบบหน่วง ──
@@ -265,11 +266,12 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
         res = { ok: false, code: "UNKNOWN", message: "" };
       }
       if (wantedRef.current === saleId) setDetail(res);
-      // POS P4.3 ▸ F-P3-21: บิลที่เปิดได้ ⇒ ถามการ์ดคืนเงินของออเดอร์ที่ผูกบิลนี้ (ล้ม/ไม่มี = ไม่มีแถว · ไม่บล็อกลิ้นชัก) ◂
-      if (res.ok) {
-        void posOpsCardsAction({ systemId, unitId: forUnit ?? unitId, saleIds: [saleId] })
+      // POS P4.3 ▸ F-P3-21: บิลของออเดอร์ (bill.orderId) ⇒ ถามการ์ดคืนเงินของออเดอร์นั้น (ล้ม/ไม่มี = ไม่มีแถว · ไม่บล็อกลิ้นชัก) ◂
+      if (res.ok && res.bill.orderId) {
+        const key = posBoardKeys.refund(res.bill.orderId);
+        void posBoardCardsAction({ systemId, keys: [key] })
           .then((r) => {
-            const c = r.ok ? r.cards.find((x) => x.kind === "REFUND" && x.ref === saleId) : undefined;
+            const c = r.ok ? r.cards.find((x) => x.key === key) : undefined;
             if (c && wantedRef.current === saleId) setRefundCard({ saleId, href: c.href, cardNo: c.cardNo, completed: c.completed });
           })
           .catch(() => undefined);
@@ -1678,7 +1680,7 @@ export function BillsClient({ systemId, units, unitId: listUnitId, today, initia
                   {refundCard && refundCard.saleId === bill.id ? (
                     <div className="flex min-h-[32px] items-center gap-2.5">
                       <BillIcon name="doc" className="text-[color:var(--color-muted)]" />
-                      <a data-testid="pos-bills-refund-card" href={refundCard.href} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
+                      <a data-testid={`pos-bills-board-card-${bill.id}`} href={refundCard.href} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
                         {refundCard.cardNo != null
                           ? refundCard.completed
                             ? t("drawer.refundCardDone", { n: refundCard.cardNo })

@@ -55,7 +55,7 @@ export function OrderPanel(p: {
   onConfirmPay?: (() => void) | null;
   /** POS P3.7U ▸ CD-P37U-4: ส่งลิงก์ชำระในแชท — สาขา/เครื่อง + สาขามีพร้อมเพย์ไหม + โหลดใหม่หลังผล (ไม่ส่ง = ไม่มีบล็อก) ◂ */
   chatPay?: ChatPayTarget;
-  /** POS P4.3 ▸ F-P3-21 · CD-P38U-9: การ์ดบอร์ดงาน "คืนเงินลูกค้า" ของออเดอร์นี้ (posOpsCardsAction · ไม่มี = ไม่มีปุ่ม) ◂ */
+  /** POS P4.3 ▸ F-P3-21 · CD-P38U-9: การ์ดบอร์ดงาน "คืนเงินลูกค้า" ของออเดอร์นี้ (posBoardCardsAction pos-refund: · ไม่มี = ไม่มีปุ่ม) ◂ */
   refundCard?: { href: string; cardNo: number | null; completed: boolean } | null;
 }) {
   const t = useTranslations("pos.orders");
@@ -329,7 +329,7 @@ export function OrderPanel(p: {
         ) : null}
         {/* POS P4.3 ▸ F-P3-21: ลิงก์การ์ดคืนเงิน (หน้าบอร์ดตรวจสิทธิ์เอง) · cardNo null = ป้ายไม่มีเลข ◂ */}
         {p.refundCard ? (
-          <a data-testid="pos-ord-refund-card" href={p.refundCard.href} className="btn btn-ghost h-11 rounded-[14px] text-[14px]">
+          <a data-testid={`pos-ord-board-card-${d.id}`} href={p.refundCard.href} className="btn btn-ghost h-11 rounded-[14px] text-[14px]">
             <RegisterIcon name="doc" size={14} />
             {p.refundCard.cardNo != null
               ? p.refundCard.completed

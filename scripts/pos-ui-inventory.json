@@ -1943,7 +1943,7 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-reg-toast-86-card",
+      "testid": "pos-reg-board-card-*",
       "kind": "link",
       "roles": [
         "owner",
@@ -1954,7 +1954,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
-        "note": "F-P3-21 · CD-P38U-9: แตะสินค้า 86 (หมด · ครัว/ร้านแจ้ง) ที่ตัวกวาดบอร์ดเปิดการ์ด \"สินค้าหมดนาน\" แล้ว → ข้อความลอยมีลิงก์ \"การ์ด #n\" (posOpsCardsAction productIds · หน้าบอร์ดงานตรวจสิทธิ์เอง · ไม่มีชื่อคน)"
+        "note": "F-P3-21 · CD-P38U-9: แตะสินค้า 86 (หมด · ครัว/ร้านแจ้ง) ที่ตัวกวาดบอร์ดเปิดการ์ด \"สินค้าหมดนาน\" แล้ว → ข้อความลอยมีลิงก์ \"การ์ด #n\" (posBoardCardsAction กุญแจ pos-86:<unit>:<product>: · [*] = productId · หน้าบอร์ดงานตรวจสิทธิ์เอง · ไม่มีชื่อคน)"
       },
       "wo": "P4.3",
       "oracle": "P4.3-S7",
@@ -6476,7 +6476,7 @@
     },
     {
       "page": "/app/sys/[id]/pos/sales",
-      "testid": "pos-bills-refund-card",
+      "testid": "pos-bills-board-card-*",
       "kind": "link",
       "roles": [
         "owner",
@@ -6487,7 +6487,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
-        "note": "F-P3-21 · CD-P38U-9: ลิ้นชักบิลที่มาจากออเดอร์ซึ่งมีการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId> ของออเดอร์ที่ saleId = บิลนี้) → แถว \"การ์ดคืนเงิน #n\" (posOpsCardsAction saleIds · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
+        "note": "F-P3-21 · CD-P38U-9: ลิ้นชักบิลที่มาจากออเดอร์ซึ่งมีการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId> ของออเดอร์ที่ saleId = บิลนี้) → แถว \"การ์ดคืนเงิน #n\" (BillDetail.orderId → posBoardCardsAction กุญแจ pos-refund:<orderId> · [*] = saleId · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
       },
       "wo": "P4.3",
       "oracle": "P4.3-S7",
@@ -20237,7 +20237,7 @@
     },
     {
       "page": "/app/sys/[id]/pos/orders",
-      "testid": "pos-ord-refund-card",
+      "testid": "pos-ord-board-card-*",
       "kind": "link",
       "roles": [
         "owner",
@@ -20248,7 +20248,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[kanbanId]/kanban/b/[boardId]?card=[cardId]",
-        "note": "F-P3-21 · CD-P38U-9: ออเดอร์ที่ตัวกวาดบอร์ดเปิดการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId>) → ปุ่ม \"การ์ดคืนเงิน #n\" ในแผงออเดอร์ (posOpsCardsAction orderIds · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
+        "note": "F-P3-21 · CD-P38U-9: ออเดอร์ที่ตัวกวาดบอร์ดเปิดการ์ด \"คืนเงินลูกค้า\" (pos-refund:<orderId>) → ปุ่ม \"การ์ดคืนเงิน #n\" ในแผงออเดอร์ (posBoardCardsAction กุญแจ pos-refund:<orderId> · [*] = orderId · หน้าบอร์ดงานตรวจสิทธิ์เอง)"
       },
       "wo": "P4.3",
       "oracle": "P4.3-S7",

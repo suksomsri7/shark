@@ -522,6 +522,8 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
 
     // POS P4.3 ▸ F-P3-16 · CD-P43-O6: วันครบกำหนดของบิลวางบิล (สำเนา PosSale.creditTerms · ไม่มีวงเงิน/ยอดค้าง) ◂
     const saleCredit = saleCreditTermsView(sale.creditTerms);
+    // POS P4.3 ▸ F-P3-21: ออเดอร์ที่ผูกบิลนี้ (ระบบ+สาขาเดียวกัน · อ่าน id อย่างเดียว) — จอบิลถามการ์ดคืนเงินด้วยกุญแจ pos-refund:<orderId> ◂
+    const boundOrder = await prisma.posOrder.findFirst({ where: { tenantId, systemId, unitId, saleId: sale.id }, select: { id: true } });
     const bill: BillDetail = {
       id: sale.id,
       receiptNo: sale.receiptNo,
@@ -612,6 +614,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       can: { void: canVoid, refund: canRefund, reprint: true },
       ...(voidBlockedReason ? { voidBlockedReason } : {}),
       ...(saleCredit ? { creditTerms: saleCredit } : {}), // POS P4.3 ▸ F-P3-16 ◂
+      ...(boundOrder ? { orderId: boundOrder.id } : {}), // POS P4.3 ▸ F-P3-21 ◂
     };
     return { ok: true, bill };
   } catch (e) {
