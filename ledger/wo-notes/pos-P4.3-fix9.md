@@ -16,7 +16,7 @@ Tree `/root/projects/shark-pos-b` · branch `wip/pos-p4.3-fix9` from `336c205e` 
 No i18n key changed, no `data-testid` added/removed, no other file touched.
 
 ### Deviation from the brief — TH at md+ cannot stay pixel-identical
-The brief assumed TH fits ("Thai passes because สาขาที่ is short"). Measured, it does not: TH needs 284 px in a 248 px column, so TH already overlaps the email field by ~20 px at 1440/1024 (see Cause). No CSS that removes the EN overlap can leave that TH overlap in place, and leaving TH overlapping would keep a latent copy of the same bug (a 2-digit layout shift away from the walker typing into the email). With `flex-wrap`, TH at 1440/1024 now also shows the branch-number segment on a second line (fieldset 81 → 131 px tall); TH at 390 and at sm (640–767) is pixel-identical. **Controller to rule** whether this is acceptable vs 15A, or prefers another layout (alternatives considered below).
+The brief assumed TH fits ("Thai passes because สาขาที่ is short"). Measured, it does not: TH needs 284 px in a 248 px column, so TH already overlaps the email field by ~20 px at 1440/1024 (see Cause). No CSS that removes the EN overlap can leave that TH overlap in place, and leaving TH overlapping would keep a latent copy of the same bug (a 2-digit layout shift away from the walker typing into the email). With `flex-wrap`, TH at 1440/1024 now also shows the branch-number segment on a second line (fieldset 81 → 131 px tall); TH at 390 and at sm (640–767) is pixel-identical. **Controller ruled (CD-P43-16b): not acceptable — see "fix9b" below (dialog widened to the 15A width; no wrap at md+).**
 
 Alternatives considered and rejected:
 - `label min-w-0` + input `min-w-[5ch] flex-1` (brief option b): saves only 8.4 px + the input's slack; TH needs −36 px, EN −55 px ⇒ the input would have to fall to ~14 px (TH) / below 0 (EN). Not viable.
@@ -130,3 +130,103 @@ Strict typecheck exactly as `scripts/pos-gates.json` commands.typecheck (`env NO
 ```
 
 Not done (by rule): no build, no serve, no real-app screenshot — the fixed layout is proven by the harness only; the next walker/visual run should re-shoot `register-taxinvoice-dialog-owner-1440x900(-en)` and cell owner-desktop-en (`pos-taxinv-branch-code` live, `pos-taxinv-form` closes). Visual baselines for TH 1440/1024 of this dialog will change (second line in the branch field) — see Deviation.
+
+---
+
+# fix9b — dialog at mockup 15A width (CD-P43-16b)
+
+Ruling CD-P43-16b: the 560 px dialog never matched 15A; Thai on two lines is not acceptable ⇒ widen the dialog to the 15A width, keep `minmax(0,1fr)` + `flex-wrap` as the safety net.
+
+## Width source (read, not guessed)
+`ledger/design-pos/15-taxinvoice-split.body.html` line 106, the 15A modal rule:
+`.tim{position:absolute;left:50%;transform:translateX(-50%);top:36px;width:720px;…}` (body padding `.tim .b{padding:20px 28px}`, branch/email grid `.g2f{grid-template-columns:1fr 1fr;gap:14px}`). ⇒ **720 px**.
+
+## Change
+`TaxInvoiceDialog.tsx` container: `md:w-[560px]` → `md:w-[720px]` (keeps `md:max-w-[calc(100vw-32px)]`, `max-h-[92dvh]`), marker `POS P4.3 fix9b ▸ CD-P43-16b … ◂`; the fix9 flex-wrap marker text updated (safety net wording). Nothing else.
+- Breakpoint kept at **md**, not sm: below md the dialog is the bottom sheet (`RegisterDialog`: `items-end` until `md:items-center md:p-4`, sheet `w-full rounded-t-[16px]`, grab bar `md:hidden`). A 720 cap at sm would change nothing for 640–720 px viewports (sheet already full width, 600 px content at 640) and would only narrow the sheet at 721–767; mobile/390 behaviour is therefore untouched, as the ruling requires.
+
+## Arithmetic
+- md+ content = 720 − 2×24 (`md:px-6`) = 672 · column = (672 − 16 gap) / 2 = **328 px** ≥ EN 303.4 (margin 24.6) ≥ TH 284.0 (margin 44.0).
+- Smallest width that would fit both (for reference): column ≥ 303.4 ⇒ content ≥ 2×303.4 + 16 = 622.8 ⇒ dialog ≥ 670.8 px. 15A's 720 is above that, so the mockup width is used as-is.
+- Viewport fit: `md:max-w-[calc(100vw-32px)]` ⇒ at 768: min(720, 736) = 720 ✓ · at 1024: 720 ≤ 992 ✓ (dialog x 152–872, centred on the viewport by the fixed overlay; the 56 px icon rail stays uncovered) · at 1440: 720 (x 360–1080) = 15A.
+
+## Rest of the dialog vs 560 (checked in source)
+No fixed widths inside the dialog: header (title + chip + close, flex), kind tab strip (`self-start`, content width), tax-ID row (`flex-col sm:flex-row`, input `flex-1`, DBD button `shrink-0`), DBD result card (`min-w-0 flex-1 break-words` text + `shrink-0` button), name input / address textarea (`w-full`), branch/email grid (minmax tracks), info / request-changed / error paragraphs (flow text), footer (`sm:flex-row`, spacer `flex-1`, buttons). Every block is fluid, so widening only removes line breaks: no block gets taller, the branch fieldset goes back to 81 px (fix9 had 131 at md+), and e.g. the EN info line and the EN error line (two lines each in the 560 shot) have more room. Height cap `max-h-[92dvh]` (706.6 px at 768 tall) and the `overflow-y-auto` body are unchanged ⇒ at 1024×768 the dialog is no taller than before and still fits.
+
+## Harness (static, headless chromium — `/root/pos-runs/p43-fix9/measure/m4.html`, results `fix9b-results.txt`, PNG `fix9b-before-after.png`)
+Model: md+ content = min(W, vw−32) − 48; below md content = vw − 40; 2 columns from 640. "before" = 336c205e (560, no wrap); "fix9" = 9a0322e5 (560 + wrap); "fix9b" = 720 + wrap + minmax. Head office selected (branch-selected within ±1.5 px, same wrap/overlap result — full 60 rows in the results file).
+
+| vw | locale | before: col · overflow / under email | fix9: col · wrap | fix9b: col · wrap · input · overlap |
+|---|---|---|---|---|
+| 1440 | th | 248 · 36.0 / 20.0 | 248 · YES | **328 · no · 94.4 · 0** |
+| 1440 | en | 248 · 55.4 / 39.4 | 248 · YES | **328 · no · 75.0 · 0** |
+| 1024 | th | 248 · 36.0 / 20.0 | 248 · YES | **328 · no · 94.4 · 0** |
+| 1024 | en | 248 · 55.4 / 39.4 | 248 · YES | **328 · no · 75.0 · 0** |
+| 768 | th | 248 · 36.0 / 20.0 | 248 · YES | 328 · no · 94.4 · 0 |
+| 768 | en | 248 · 55.4 / 39.4 | 248 · YES | 328 · no · 75.0 · 0 |
+| 640 (sheet) | th | 292 · 0 / 0 | 292 · no | 292 · no · 58.4 · 0 (unchanged) |
+| 640 (sheet) | en | 292 · 11.4 / 0 (gap only) | 292 · YES | 292 · YES (safety net) · 169.1 · 0 |
+| 390 | th | 350 (1 col) · 0 | no | no · 116.4 (unchanged) |
+| 390 | en | 350 (1 col) · 0 | no | no · 97.0 (unchanged) |
+
+At 1440/1024 neither language wraps (ruling met). Residual: EN in the bottom sheet between 640 and ~662 px wide wraps (column 292 < 303.4; one line from vw ≥ 663) — no overlap, safety net only; TH is one line from vw ≥ 624.
+
+## Tests (fix9b working tree) — logs `/root/pos-runs/p43-fix9/tests-9b/`
+Static (`env -C /root/projects/shark-pos-b ISO_MEM=3G bash scripts/iso.sh …`):
+- `p4.1-nodb`:
+```
+JSON_SUMMARY {"suite":"qc-pos-p4.1","mode":"no-db","total":16,"passed":16,"failed":[],"skipped":false,"registered":16,"pin":"6e32c1e2","probes":{"P4.1-R1":true,"P4.1-R2":true,"P4.1-R3":true,"P4.1-R4":true,"P4.1-R5":true,"P4.1-R6":true,"P4.1-R7":true,"P4.1-R8":true,"P4.1-R9":true,"P4.1-R9b":true,"P4.1-R10":true,"P4.1-R11":true,"P4.1-R12":true,"P4.1-R13":true,"P4.1-R14":true,"P4.1-Z1":true}}
+### rc=0 2026-10-25T13:09:29Z
+```
+- `fitness-noenv`:
+```
+JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+### rc=0 2026-10-25T13:09:43Z
+```
+- `fitness-pos`:
+```
+JSON_SUMMARY {"suite":"fitness-pos","total":8,"passed":8,"findings":[]}
+### rc=0 2026-10-25T13:09:52Z
+```
+- `visual-dry-th` (summary head; plan truncated here):
+```
+JSON_SUMMARY {"wo":"all","user":"owner","tenant":"coffee","dry":true,"locale":"th","states":true,"pages":15,"viewports":3,"shots":221
+### rc=0 2026-10-25T13:09:53Z
+```
+- `visual-dry-en` (summary head; plan truncated here):
+```
+JSON_SUMMARY {"wo":"all","user":"owner","tenant":"coffee","dry":true,"locale":"en","states":true,"pages":15,"viewports":2,"shots":141
+### rc=0 2026-10-25T13:09:54Z
+```
+
+QC4 (`env -C /root/projects/shark-pos-b ISO_MEM=3G bash scripts/iso.sh bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<suite>.mts`):
+- `qc-pos-p1.13`:
+```
+### 2026-10-25T13:10:01Z qc-pos-p1.13
+JSON_SUMMARY {"suite":"qc-pos-p1.13","total":33,"passed":33,"failed":[],"skipped":false,"forced":false,"missing":[],"guardHits":0,"residue":0,"leaks":[],"drift":[]}
+### rc=0 2026-10-25T13:10:42Z
+```
+- `qc-pos-p1.15`:
+```
+### 2026-10-25T13:10:42Z qc-pos-p1.15
+JSON_SUMMARY {"suite":"qc-pos-p1.15","total":40,"passed":40,"failed":[],"skipped":false,"forced":false,"missing":[],"guardHits":0,"a5":{"drift":[],"fpDrift":[],"tempLeft":[]}}
+### rc=0 2026-10-25T13:11:20Z
+```
+- `qc-pos-p2.14`:
+```
+### 2026-10-25T13:11:20Z qc-pos-p2.14
+JSON_SUMMARY {"suite":"qc-pos-p2.14","total":60,"passed":60,"failed":[],"skippedChecks":[],"skipped":false,"forced":false,"missing":[],"hasP27U":true,"crashed":false,"guardHits":0,"residue":0}
+### rc=0 2026-10-25T13:12:36Z
+```
+
+Strict typecheck (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`):
+```
+### 2026-10-25T13:12:47Z typecheck (avail 9515 MB)
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-pos-b
+> tsc --noEmit
+
+### rc=0 2026-10-25T13:13:10Z
+```
+
+Not done (by rule): no build/serve, no real-app shot. Next visual/walker run: re-shoot `register-taxinvoice-dialog-*` (1440/1024 th+en — dialog now 720 wide, expected to match 15A) and cell owner-desktop-en (`pos-taxinv-branch-code` live, `pos-taxinv-form` closes). Note: the fix9 commit's own TH-wrap baseline never shipped; compare against 15A.

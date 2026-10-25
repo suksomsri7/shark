@@ -250,7 +250,7 @@ export function TaxInvoiceDialog(p: Props) {
     <RegisterDialog onDismiss={() => (busy ? undefined : p.onCancel())} locked={busy}>
       <div
         data-testid="pos-taxinv-dialog"
-        className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[16px] bg-[color:var(--color-surface)] shadow-xl md:w-[560px] md:max-w-[calc(100vw-32px)] md:rounded-[18px]"
+        className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[16px] bg-[color:var(--color-surface)] shadow-xl md:w-[720px] md:max-w-[calc(100vw-32px)] md:rounded-[18px]" /* POS P4.3 fix9b ▸ CD-P43-16b: กว้าง 720 = แบบ 15A (`.tim{width:720px}` ใน ledger/design-pos/15-taxinvoice-split.body.html) — เดิม 560 ⇒ คอลัมน์สาขา 248 แคบกว่าแถว "สำนักงานใหญ่ | สาขาที่ ____" (th 284 · en 303.4) · ตอนนี้ (720−48−16)/2 = 328 ⇒ บรรทัดเดียวทั้งสองภาษา · ต่ำกว่า md = แผ่นล่างเต็มจอเหมือนเดิม ◂ */
         role="dialog"
         aria-modal="true"
         aria-label={t("title")}
@@ -437,7 +437,7 @@ export function TaxInvoiceDialog(p: Props) {
                 }}
               >
                 <legend className={`${label} mb-1.5`}>{t("branch")}</legend>
-                {/* POS P4.3 fix9 ▸ CD-P43-16: flex-wrap — "สำนักงานใหญ่ | สาขาที่ ____" ยาวกว่าคอลัมน์ (dialog 560 → คอลัมน์ 248 px: th 284 · en 303) ⇒ ช่องสาขาที่ขึ้นบรรทัดใหม่เต็มคอลัมน์ แทนการล้นไปใต้ช่องอีเมล · ที่ที่พอดีบรรทัดเดียว (390 ทั้งสองภาษา · 640 th) = เหมือนเดิมทุกพิกเซล ◂ */}
+                {/* POS P4.3 fix9 ▸ CD-P43-16: flex-wrap = ตาข่ายกันล้น — ถ้าคอลัมน์แคบกว่าแถว "สำนักงานใหญ่ | สาขาที่ ____" (th 284 · en 303.4 px) ช่องสาขาที่ขึ้นบรรทัดใหม่เต็มคอลัมน์ แทนการล้นไปใต้ช่องอีเมล · fix9b: ที่ md+ (dialog 720 · คอลัมน์ 328) และ 390 ไม่ตัดบรรทัดทั้งสองภาษา ◂ */}
                 <div className="flex flex-wrap gap-2">
                   <button
                     data-testid="pos-taxinv-branch-hq"
