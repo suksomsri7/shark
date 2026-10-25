@@ -14862,14 +14862,16 @@
         "cashier"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "pos-prod-bulk-preview",
-        "note": "บวกเพิ่ม 1–200% (ทศนิยม 2 ตำแหน่ง ↔ bp)"
+        "state": "changes",
+        "note": "บวกเพิ่ม 1–200% (ทศนิยม 2 ตำแหน่ง ↔ bp) → ตัวอย่าง 5 รายการแรก (pos-prod-bulk-preview) แสดง ฐาน → ราคาใหม่ ตาม % ที่พิมพ์ (POS P4.3 fix6 CD-P43-12: เดิม inline-error เป้า preview ซึ่งเห็นอยู่แล้วก่อนพิมพ์ = ไม่มีวัน \"ขึ้นใหม่\" · ข้อความ % ไม่ถูกต้องไม่มี testid — หนี้ HANDOVER §4)"
       },
       "wo": "P2.2U",
       "oracle": "",
       "system": "POS",
       "opener": [
+        "pos-prod-*select-*=on",
         "pos-prod-bulk-open"
       ]
     },

@@ -108,6 +108,7 @@ ORACLE-EDIT ทั้ง RUN = **433 commits** ในช่วง `71a1f363..a35
 | ประตู legacy ร้านอาหารบนสาขาที่ผูก POS (P25-N2 PARTIAL) | ใช้ 409 POS_LINKED + redirect | W1 (POS-OWNER-PENDING) |
 | บิลเครดิตเทอมส่ง dueDate เป็นข้อมูล ไม่พิมพ์บนใบเสร็จ | ค่าเริ่มต้น = ข้อมูลอย่างเดียว | W43 (POS-OWNER-PENDING) |
 | walker phase B 14 ช่อง ≈28 ชม. | รันทั้งหมดใน chain v3 | W42 (POS-OWNER-PENDING) |
+| ข้อความ "% ไม่ถูกต้อง" ในกล่อง +X% ทั้งช่องทาง (BulkMarkupDialog.tsx pctInvalid) ไม่มี testid → ตัวกดตรวจได้แค่ตัวอย่างราคาเปลี่ยน (CD-P43-12) | รับไว้ · เพิ่ม testid ภายหลัง = แตะ src/ทะเบียน | `ledger/POS-RESUME.md` CD-P43-12 |
 | ดัชนีบาร์โค้ด: กลุ่มตัวเลือกไม่บังคับที่ผูกหลังโหลดดัชนี ไม่ทำให้ quote ปฏิเสธ → บรรทัดขายไปโดยไม่เสนอตัวเลือกจนรอบ refresh ถัดไป (≤15 นาที) | รับไว้ (เงินถูก · quote re-price) | `ledger/wo-notes/pos-P5.3-fix1-review.md` D5 |
 | โครงแพลตฟอร์ม/สลิป/e-Tax ปิดสุภาพ รอ creds | เปิดเมื่อตั้ง POS_CREDENTIALS_KEY | W4 (POS-OWNER-PENDING) · `ledger/wo-notes/pos-P3-SKEL.md` |
 

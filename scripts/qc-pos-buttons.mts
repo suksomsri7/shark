@@ -1112,16 +1112,18 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
   page.on("pageerror", (e: Error) => cErrs.push(e.message.slice(0, 200)));
   page.on("console", (m: Any) => {
     // POS P4.3 walker fix1 ▸ H15: ค่า URL โลโก้ของตัวกด (https://qc-btn-….example.com) โหลดไม่ได้ = เสียงของ fixture ไม่ใช่บั๊ก ◂
+    const resUrl = String(m.location?.()?.url ?? "");
     if (/Failed to load resource/i.test(String(m.text()))) {
       let host = "";
       try {
-        host = new URL(String(m.location?.()?.url ?? "")).hostname;
+        host = new URL(resUrl).hostname;
       } catch {
         /* ไม่มี URL */
       }
-      if (host.endsWith(".example.com")) return;
+      // POS P4.3 fix6 ▸ CD-P43-12 (25.10): ค่าที่ตัวกดพิมพ์เอง (qc-btn-… · *.example.com รวมที่ถูกห่อใน query เช่น /_next/image?url=) โหลดไม่ได้ = เสียง fixture
+      if (host.endsWith(".example.com") || /example\.com|qc-btn-/i.test(decodeURIComponent(resUrl))) return;
     }
-    if (m.type() === "error" || (m.type() === "warning" && HYDRATION_RE.test(String(m.text())))) cErrs.push(String(m.text()).slice(0, 200));
+    if (m.type() === "error" || (m.type() === "warning" && HYDRATION_RE.test(String(m.text())))) cErrs.push(`${String(m.text()).slice(0, 160)}${resUrl ? ` @ ${resUrl.slice(0, 120)}` : ""}`); // fix6: บันทึก URL ของทรัพยากรที่ล้มด้วย
   });
   page.on("request", (r: Any) => {
     reqCount++;
