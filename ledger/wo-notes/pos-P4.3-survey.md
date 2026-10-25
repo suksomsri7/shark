@@ -46,5 +46,7 @@
 
 ## ช่อง 10 manager-mobile-en (49 นาที · 400 แถว · ok 169 · dead 0 · wrongExpect 0 · console 0 · overflow 0) — 🟢 **เขียว ไม่มี defect**
 
-## ช่อง 11–19
+## ช่อง 11 cashier-desktop (97 นาที · ok 784/1193 · dead 0 · wrongExpect 0 · console 0 · overflow 0) — 🟢 **เขียว ไม่มี defect**
+
+## ช่อง 12–19
 (เติมเมื่อแต่ละช่องจบ)
