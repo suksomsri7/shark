@@ -193,7 +193,7 @@ const BRIEF_READY = (BRIEF_FILE && BRIEF_WIRED) || process.env.P38_R8 === "1";
 const BASE = process.env.P38_PIN || "42b823e9"; // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B2): หมุดคงที่ — เดิม P38_PIN › หมุดจากสาขา session › BRIEF_PIN (qc-pos-p2.14 K3)
 // ORACLE-EDIT ผู้คุม B 22.10 (CD-P312-W21 · W21 default re-base · old: ไม่มี LANE_PIN — ST2/ST3 เทียบ BASE อย่างเดียว · revert: env P38_LANE_PIN=42b823e9 or remove LANE_PIN + firstOk):
 //   ST2/ST3 เทียบ BASE ก่อน · มีปัญหา ⇒ เทียบ LANE_PIN ซ้ำด้วยกฎเดิมทุกข้อ · ผ่านเมื่อฐานใดฐานหนึ่งสะอาด (แบบ firstOk ของ qc-pos-p3.4) · ไม่ผ่านทั้งคู่ = รายงานปัญหาเทียบ BASE
-const LANE_PIN = process.env.P38_LANE_PIN || "4016a352"; // ORACLE-EDIT ผู้คุม 24.10 (P4.3 fix1+fix2 + P6.1 fix1+fix2 merge CD-RP25 · re-pin 6668b832 → 4016a352) · ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin 137aa93a → 6668b832)
+const LANE_PIN = process.env.P38_LANE_PIN || "adfcee44"; // ORACLE-EDIT ผู้คุม 25.10 (P5.3 fix1 merge (barcode index · register*.ts/RegisterScreen.tsx/route) CD-RP29 · re-pin 4016a352 → adfcee44) · ORACLE-EDIT ผู้คุม 24.10 (P4.3 fix1+fix2 + P6.1 fix1+fix2 merge CD-RP25 · re-pin 6668b832 → 4016a352) · ORACLE-EDIT ผู้คุม 23.10 (P3 close freeze CD-RP19 · re-pin 137aa93a → 6668b832)
 //   probe 22.10: บรรทัดไม่ marked ท้าย outbox-consumers.ts → ST2 แดง (+29/−10) · คอมเมนต์ท้าย prisma/schema/pos.prisma → ST3 แดง (wo-notes/pos-P3.12.md §probe)
 
 // ═════════════════════════ 1. ข้อสถิต ═════════════════════════
