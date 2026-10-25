@@ -19,5 +19,15 @@
 ## ช่อง 3 owner-mobile (105 นาที · ok 628/1178 · dead 0 · wrongExpect 1 · console 1 · overflow 0)
 เฉพาะรายการเดิม: `sales#pos-bills-page-*` + console logo · ไม่มี defect ใหม่ · ไม่มี overflow ที่ 390 · ord-start ผ่านบนมือถือ
 
-## ช่อง 4–19
+## ช่อง 4 owner-desktop-en (107 นาที · ok 644/1193 · dead 1 · wrongExpect 4 · console 1)
+| แถว | อาการ | สาเหตุ | การแก้ |
+|---|---|---|---|
+| `register#pos-taxinv-form` + `pos-taxinv-branch-code` (dead) | กล่องไม่ปิด / ช่องรหัสสาขาไม่ตอบ | **บั๊กเลย์เอาต์ EN จริง**: ป้าย "Branch no." nowrap ในคอลัมน์ 1fr ดันคอลัมน์ซ้ายกว้างเกิน → ช่อง e-Tax email ทับช่องรหัสสาขา (TaxInvoiceDialog.tsx grid sm:grid-cols-[1fr_1fr]) · ไทย "สาขาที่" สั้นจึงผ่าน | fix9 CD-P43-16 (src · builder) + สแกนแพตเทิร์นเดียวกันทุกกล่อง |
+| `orders#pos-ord-cancel-confirm` | ปฏิเสธ "This shift is closed" | ออเดอร์ซากจากช่องก่อน (ช่องไทย skip เพราะไม่มีการ์ด · ช่อง en เจอการ์ดที่บิลผูกกะที่ปิดไปแล้ว) | fix9h (ผู้คุม · fixture): ยกเลิกออเดอร์เปิดค้างของ posqc-btn-unit ตอนเริ่มรอบ (ซากรอบก่อน) และก่อนปิดกะตอนจบรอบ · fallback เขียนตรง CANCELLED เมื่อกะปิดแล้ว |
+| (เดิม bills-page · ord-start · logo) | | | |
+
+## ช่อง 5 owner-mobile-en (49 นาที · 400 แถวตามทะเบียน · ok 170 · wrongExpect 1 = bills-page เดิม · console 0 · overflow 0)
+ไม่มี defect ใหม่
+
+## ช่อง 6–19
 (เติมเมื่อแต่ละช่องจบ)
