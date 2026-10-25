@@ -35,5 +35,8 @@
 | `settings#pos-settings-credit-save` | ปฏิเสธ `pos-settings-credit-error` "บัญชีนี้ยังไม่มีสิทธิ์ตั้งวงเงินลูกค้าเครดิต" (edit-*/add/ฟอร์ม เปิดได้) | **UI ไม่ตรงด่านเซิร์ฟเวอร์**: `credit.ts:90-93` (มติ CD-P52-O4 F5) save ได้เฉพาะ OWNER หรือ MANAGER unitAccess "*" · แต่ `settings/page.tsx:149` ตัดสิน `evaluate(pos.credit.manage)` อย่างเดียว → ผู้จัดการสาขาเดียว (fixture) เห็นปุ่มแก้/เพิ่ม · เจ้าของทุกช่องผ่าน | **CD-P43-17 fix10 src** (builder ทรี b `wip/pos-p4.3-fix10` · บรีฟ `pos-prompt-accountA-P4.3-FIX10-CREDIT-SCOPE.md`): helper `canEditCreditAccounts` ใช้ร่วม save+หน้า · การ์ดอ่านอย่างเดียว + notice `pos-settings-credit-all-branches-only` · ทะเบียน: เติม needs 10 แถว credit edit/add/ฟอร์ม (ผู้คุม · p4.1 16/16) |
 | `pos-bills-page-*` · `pos-ord-start` · `pos-ord-cancel-confirm` | เดิม (fix7 poll · fix7 ทะเบียน · fix9h ซากออเดอร์) | | |
 
-## ช่อง 7–19
+## ช่อง 7 manager-ipad (95 นาที · ok 614/1194 · dead 1 · wrongExpect 4 · console 0 · overflow 0)
+ทั้งหมดเดิม: `pos-device-lan-printer-name-*` dead (fix8 @container · build qQ59 ยังไม่มี) · `pos-settings-credit-save` (fix10) · `pos-bills-page-*` · `pos-ord-start` · `pos-ord-cancel-confirm` (fix7/fix9h) — **ไม่มี defect ใหม่**
+
+## ช่อง 8–19
 (เติมเมื่อแต่ละช่องจบ)
