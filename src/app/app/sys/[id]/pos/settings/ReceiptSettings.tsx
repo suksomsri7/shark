@@ -39,6 +39,14 @@ type UnitField = "taxBranchNo" | "address" | "phone";
 type Props = { systemId: string; unitId: string; branchName: string; canEdit: boolean; canManageDevices: boolean; branch?: BranchProps | null };
 
 const FIELD_KEYS = new Set(["name", "phone", "address", "logoUrl", "footer"]);
+// POS P4.3 fix8 ▸ CD-P43-15: ลิงก์โลโก้สำหรับ "ภาพตัวอย่าง" เท่านั้น (รูปข้างช่อง + ใบตัวอย่างใน iframe/พิมพ์ตัวอย่าง) — ใช้เมื่อเป็น https:// ที่มีโดเมนครบ ·
+//   เดิมส่งค่าที่กำลังพิมพ์ทุกตัวอักษรเข้า <img> ของใบตัวอย่าง (srcdoc) ⇒ "h" "ht" … ถูกขอเป็น path สัมพัทธ์ใต้แอป = 404 ทุกครั้งที่พิมพ์ ·
+//   ค่าที่บันทึกไม่เปลี่ยน (save ยังส่ง form.logoUrl.trim() · เซิร์ฟเวอร์ตรวจ https เอง) ◂
+const LOGO_PREVIEW_RE = /^https:\/\/[^\s]+\.[^\s]+$/;
+const logoPreviewUrl = (v: string): string | null => {
+  const s = v.trim();
+  return LOGO_PREVIEW_RE.test(s) ? s : null;
+};
 const ERROR_KEY: Record<string, string> = { NOT_FOUND: "notFound", PERMISSION_DENIED: "permissionDenied", VALIDATION: "validation", UNKNOWN: "unknown" };
 const DEVICE_ERROR_KEY: Record<string, string> = {
   NOT_FOUND: "notFound",
@@ -130,7 +138,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
     (copy: boolean, receiptNo: string) =>
       form
         ? samplePayload({
-            header: { name: form.name, phone: unitOv?.phone ?? form.phone, address: unitOv?.address ?? form.address, logoUrl: form.logoUrl.trim() || null },
+            header: { name: form.name, phone: unitOv?.phone ?? form.phone, address: unitOv?.address ?? form.address, logoUrl: logoPreviewUrl(form.logoUrl) /* POS P4.3 fix8 ▸ CD-P43-15 ◂ */ },
             footer: form.footer,
             showPoints: form.showPoints,
             showCashier: form.showCashier,
@@ -332,7 +340,10 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
         </InlineNote>
       )}
 
-      <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:items-start xl:gap-8">
+      {/* POS P4.3 fix8 ▸ CD-P43-15: กติกาเดียวกับแท็บเครื่อง — สองคอลัมน์เมื่อช่องเนื้อหา ≥ 832px = ซ้าย ≥ 420 + ช่องไฟ 32 + ตัวอย่าง 380 ·
+          เดิม xl:flex-row ⇒ 1280 แถบเมนูกาง ซ้ายเหลือ 226px (ฟอร์ม md:grid-cols-2 ช่องละ ~73px) · 1440 ซ้าย 386 ⇒ ตอนนี้ซ้อนบน-ล่างทั้งสองขนาด ·
+          แถบเมนูหุบเป็นราง 1440 ⇒ ช่อง 974 สองคอลัมน์ (ซ้าย 562) ◂ */}
+      <div className="flex min-w-0 flex-col gap-6 @min-[832px]:flex-row @min-[832px]:items-start @min-[832px]:gap-8">
         {/* ── ซ้าย ── */}
         <div className="flex min-w-0 flex-1 flex-col gap-6 xl:gap-7">
           <SettingsCard testid="pos-settings-header-card">
@@ -340,9 +351,9 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
             <div className="flex flex-col gap-[18px]">
               <div className="flex items-center gap-[18px]">
                 <span className="grid size-[76px] shrink-0 place-items-center overflow-hidden rounded-[14px] border bg-[color:var(--color-surface)]">
-                  {form.logoUrl.trim().startsWith("https://") ? (
+                  {logoPreviewUrl(form.logoUrl) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={form.logoUrl.trim()} alt="" className="max-h-[60px] max-w-[60px] object-contain" />
+                    <img src={logoPreviewUrl(form.logoUrl)!} alt="" className="max-h-[60px] max-w-[60px] object-contain" />
                   ) : (
                     <span className="text-[11px] text-[color:var(--color-muted)]">{tr("logoNone")}</span>
                   )}
@@ -627,7 +638,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
         </div>
 
         {/* ── ขวา ── */}
-        <div className="flex min-w-0 flex-col gap-6 xl:w-[380px] xl:shrink-0 xl:gap-7">
+        <div className="flex min-w-0 flex-col gap-6 @min-[832px]:w-[380px] @min-[832px]:shrink-0 xl:gap-7" /* POS P4.3 fix8 ▸ CD-P43-15: 380 เฉพาะตอนวางคู่ ◂ */>
           <div className="flex flex-col">
             <div className="mb-3 flex items-center gap-2 text-[13px] font-bold text-[color:var(--color-ink-soft)]">
               <RegisterIcon name="doc" size={14} />
