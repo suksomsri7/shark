@@ -428,7 +428,8 @@ export function TaxInvoiceDialog(p: Props) {
             </div>
 
             {/* สาขา · อีเมล */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr]">
+            {/* POS P4.3 fix9 ▸ CD-P43-16: แทร็ก minmax(0,1fr) — เนื้อหาในช่องสาขาดันคอลัมน์ให้กว้างเกินครึ่งไม่ได้ (ช่องอีเมลไม่ทับช่องเลขสาขา) ◂ */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <fieldset
                 className="flex min-w-0 flex-col gap-1.5"
                 onClickCapture={() => {
@@ -436,7 +437,8 @@ export function TaxInvoiceDialog(p: Props) {
                 }}
               >
                 <legend className={`${label} mb-1.5`}>{t("branch")}</legend>
-                <div className="flex gap-2">
+                {/* POS P4.3 fix9 ▸ CD-P43-16: flex-wrap — "สำนักงานใหญ่ | สาขาที่ ____" ยาวกว่าคอลัมน์ (dialog 560 → คอลัมน์ 248 px: th 284 · en 303) ⇒ ช่องสาขาที่ขึ้นบรรทัดใหม่เต็มคอลัมน์ แทนการล้นไปใต้ช่องอีเมล · ที่ที่พอดีบรรทัดเดียว (390 ทั้งสองภาษา · 640 th) = เหมือนเดิมทุกพิกเซล ◂ */}
+                <div className="flex flex-wrap gap-2">
                   <button
                     data-testid="pos-taxinv-branch-hq"
                     className={`flex h-12 shrink-0 items-center gap-2 whitespace-nowrap rounded-[11px] border px-3 text-[13.5px] ${hq ? "border-[1.5px] border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-ink-soft)]"}`} /* POS P2.14 ▸ U2 O-6: กว้างตามป้าย (ช่องสาขาที่ได้ที่เหลือ) ◂ */
