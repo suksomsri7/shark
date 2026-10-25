@@ -2306,3 +2306,4 @@
 - 2026-10-25T15:17Z 🟡 **สำรวจช่อง 7 manager-ipad** (95 นาที): ok 614/1194 · dead 1 (lan-printer-name = fix8 เดิม) · wrongExpect 4 (credit-save = fix10 · bills-page · ord-start · ซากออเดอร์ = เดิม) · console 0 · **ไม่มี defect ใหม่** · ช่อง 8 manager-mobile เริ่ม 15:16Z
 - 2026-10-25T16:49Z 🟡 **สำรวจช่อง 8 manager-mobile** (93 นาที): ok 598/1178 · dead 0 · wrongExpect 2 (bills-page · credit-save = เดิม) · console 0 · overflow 0 · **ไม่มี defect ใหม่** · ช่อง 9 manager-desktop-en เริ่ม 16:49Z
 - 2026-10-25T18:21Z 🟡 **สำรวจช่อง 9 manager-desktop-en** (92 นาที): ok 611/1193 · dead 0 · wrongExpect 4 (taxinv EN = fix9 · ord-start · ซากออเดอร์ · credit-save = เดิม) · console 0 · **ไม่มี defect ใหม่** · ช่อง 10 manager-mobile-en เริ่ม 18:21Z
+- 2026-10-25T19:10Z 🟢 **สำรวจช่อง 10 manager-mobile-en** (49 นาที): ok 169/400 · dead 0 · wrongExpect 0 · console 0 · overflow 0 · **เขียว** · ช่อง 11 cashier-desktop เริ่ม 19:10Z (เหลือ 9 ช่อง: cashier ×5 + public ×4)

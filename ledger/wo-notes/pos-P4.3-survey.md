@@ -44,5 +44,7 @@
 ## ช่อง 9 manager-desktop-en (92 นาที · ok 611/1193 · dead 0 · wrongExpect 4 · console 0 · overflow 0)
 ทั้งหมดเดิม: `pos-taxinv-form` EN (fix9/9b) · `pos-ord-start` (fix7) · `pos-ord-cancel-confirm` ซากออเดอร์ (fix9h) · `pos-settings-credit-save` (fix10) — **ไม่มี defect ใหม่**
 
-## ช่อง 10–19
+## ช่อง 10 manager-mobile-en (49 นาที · 400 แถว · ok 169 · dead 0 · wrongExpect 0 · console 0 · overflow 0) — 🟢 **เขียว ไม่มี defect**
+
+## ช่อง 11–19
 (เติมเมื่อแต่ละช่องจบ)
