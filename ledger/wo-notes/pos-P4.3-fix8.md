@@ -1,4 +1,4 @@
-# POS P4.3 fix8 (CD-P43-15) — settings › devices two-column layout at iPad width · logo preview only for well-formed https
+# POS P4.3 fix8 (CD-P43-15) — settings › devices two-column layout at iPad width · logo preview only for well-formed https · fix8b (CD-P43-15b) keep 1440 two-column
 
 Branch `wip/pos-p4.3-fix8` from `f6da735d` (session/pos tip ≥ 61f271a7) · tree `/root/projects/shark-pos-b` · builder S · no build/serve.
 
@@ -13,29 +13,31 @@ Branch `wip/pos-p4.3-fix8` from `f6da735d` (session/pos tip ≥ 61f271a7) · tre
 Constants: `AppMain` ≥ lg: left pad `calc(18rem+1.5rem)` = **312** (menu open) or `calc(3.5rem+1.5rem)` = 80 (rail) · right pad `sm:px-6` = 24 · page wrapper `max-w-7xl` = 1280 · `SettingsShell` root border 2 · settings menu `md:w-[200px] lg:w-[240px]` · tab pane padding `md:px-6` 24×2, `xl:px-8` 32×2.
 C = content width = min(1280, W − 312 − 24) · P = tab pane content width = C − 2 − 240 − 2×pad.
 
-| viewport (menu open) | C | P (pane) | devices before (lg/xl row, panel 400/430, gap 32) | devices after (row only when P ≥ 882) | receipt before (xl row, panel 380) | receipt after (row only when P ≥ 832) |
+> **fix8b (CD-P43-15b)** — thresholds lowered so 1440×900 (harness desktop, menu open) stays two-column exactly as the approved mockups: devices row at pane ≥ **762** (left ≥ 300 + 32 + panel 430), receipt row at pane ≥ **712** (left ≥ 300 + 32 + preview 380). The fix8 values (882 / 832, left ≥ 420) are superseded. Table below = final (fix8b).
+
+| viewport (menu open) | C | P (pane) | devices before (lg/xl row, panel 400/430, gap 32) | devices after (row when P ≥ 762) | receipt before (xl row, panel 380) | receipt after (row when P ≥ 712) |
 |---|---|---|---|---|---|---|
-| 1024×768 | 688 | 398 | row · left 398−432 = **−34 → 0** (LAN card 58 px) | stacked · left 398 · panel 398 below | stacked · 398 | stacked · 398 |
-| 1280×800 | 944 | 638 | row · left 638−462 = **176** | stacked · 638 | row · left 638−412 = **226** | stacked · 638 |
-| 1440×900 | 1104 | 798 | row · left 798−462 = **336** | stacked · 798 | row · left 798−412 = **386** | stacked · 798 |
-| ≥ 1524 / ≥ 1474 | ≥ 1188 / ≥ 1138 | ≥ 882 / ≥ 832 | — | row · left ≥ 420 · panel 430 | — | row · left ≥ 420 · preview 380 |
+| 1024×768 | 688 | 398 | row · left 398−432 = **−34 → 0** (LAN card 58 px) | **stacked** · left 398 · panel 398 below | stacked · 398 | stacked · 398 (unchanged) |
+| 1280×800 | 944 | 638 | row · left 638−462 = **176** | **stacked** · 638 | row · left 638−412 = **226** | **stacked** · 638 |
+| 1440×900 | 1104 | 798 | row · left 336 · panel 430 | row · left 798−462 = **336** · panel 430 (unchanged, as approved) | row · left 386 · preview 380 | row · left 798−412 = **386** · preview 380 (unchanged, as approved) |
+| first two-column width | — | 762 / 712 | — | W ≥ 1404 (C ≥ 1068) | — | W ≥ 1354 (C ≥ 1018) |
 
-Rail (menu collapsed, left pad 80): 1024 → P 630 (before: devices left 198) → after stacked · 1280 → P 870 → devices stacked (870 < 882; before 408) · receipt row left 458 · 1440 → C capped 1280 → P 974 → devices row left 512 · receipt row left 562 (same as before).
+Rail (menu collapsed, left pad 80): 1024 → P 630 → devices stacked (before: row, left 198) · receipt stacked (as before) · 1280 → P 870 → devices row left 408 · receipt row left 458 (both as before) · 1440 → C capped 1280 → P 974 → devices row left 512 · receipt row left 562 (as before).
 
-LAN fieldset (form = `@container`, two columns at form content ≥ 360 px ⇒ each input ≥ ~163 px): form content = left − 56 (card px-7) − 2 − 32 (form px-4) − 2. 1024 stacked: 398 → 306 ⇒ **1 column** (inputs 280 px) · 1280 stacked: 638 → 546 ⇒ 2 columns · 1440 stacked: 798 → 706 ⇒ 2 columns · two-column row at P = 882 (left 420) → 328 ⇒ 1 column · P = 974 (left 512) → 420 ⇒ 2 columns. Below md (390 phone) form ≈ 248 ⇒ 1 column, so the "md" condition of the brief holds by construction.
+LAN fieldset (form = `@container`, two columns at form content ≥ 360 px ⇒ each input ≥ ~163 px): form content = left − 56 (card px-7) − 2 − 32 (form px-4) − 2. 1024 stacked: 398 → 306 ⇒ **1 column** (inputs 280 px) · 1280 stacked: 638 → 546 ⇒ 2 columns · 1440 two-column row (left 336) → form 244 ⇒ **1 column** (fieldset inner ≈ 218 px inputs) · rail 1440 (left 512) → 420 ⇒ 2 columns. Below md (390 phone) form ≈ 248 ⇒ 1 column, so the "md" condition of the brief holds by construction.
 
-Why container queries instead of `xl:`: the brief's `xl` proposal still leaves the left column at 176 px (1280) / 336 px (1440) because of the settings menu; a viewport breakpoint that satisfies "left ≥ ~420" with the menu open would be ~1524, and it would be wrong with the menu collapsed. The pane is the thing that is narrow, so the pane decides. Precedent in POS: `shifts-ui.tsx` CARD `@container`, `OrderCardView.tsx`, `StockShortcuts.tsx` (`@min-[608px]:`).
+Why container queries instead of `xl:`: the brief's `xl` proposal still leaves the left column at 176 px (1280) / 336 px (1440) because of the settings menu; and a viewport breakpoint cannot see whether the app menu is open or collapsed. The pane is the thing that is narrow, so the pane decides. Precedent in POS: `shifts-ui.tsx` CARD `@container`, `OrderCardView.tsx`, `StockShortcuts.tsx` (`@min-[608px]:`).
 
 Checks done without build/serve:
-- Tailwind v4 `compile().build()` of the new candidates generates `.\@container { container-type: inline-size }` and `@container (width >= 882px|832px|360px)` rules.
-- Headless Chromium 156 static page (compiled CSS, panes 398/638/798/882/974 px): row direction column/column/column/row/row; LAN grid `repeat(1…)` at 398 and `repeat(2…)` at 638+.
+- Tailwind v4 `compile().build()` of the new candidates generates `.\@container { container-type: inline-size }` and `@container (width >= 882px|832px|360px` (fix8; the fix8b values 762/712 are the same arbitrary-variant form)` rules.
+- Headless Chromium 156 static page (compiled CSS, panes 398/638/798/882/974 px): row direction column/column/column/row/row; LAN grid `repeat(1…)` at 398 and `repeat(2…)` at 638+. (fix8 thresholds; fix8b only changes the numbers)
 - Headless Chromium 156: an element with `container-type: inline-size` does **not** become the containing block of `position: fixed` children (fixed child at 0,0 width 1024) ⇒ drawers/dialogs inside settings tabs (ChannelDrawer, SlipSettingsCard, EtaxProviderSheet, StaffPinDialog, device register sheet) are unaffected.
 
 ## 3. Files changed
 - `src/components/pos/settings/SettingsShell.tsx` — tab pane `<div>` gets `@container` (+ comment) · ~:95–98.
-- `src/app/app/sys/[id]/pos/settings/DeviceSettings.tsx` — row `lg:flex-row lg:items-start lg:gap-8` → `@min-[882px]:flex-row @min-[882px]:items-start @min-[882px]:gap-8` (~:444–447) · `pos-device-panel` `lg:w-[400px] lg:shrink-0 xl:w-[430px]` → `@min-[882px]:w-[430px] @min-[882px]:shrink-0` (~:479).
+- `src/app/app/sys/[id]/pos/settings/DeviceSettings.tsx` — row `lg:flex-row lg:items-start lg:gap-8` → `@min-[762px]:flex-row @min-[762px]:items-start @min-[762px]:gap-8` (~:444–447) · `pos-device-panel` `lg:w-[400px] lg:shrink-0 xl:w-[430px]` → `@min-[762px]:w-[430px] @min-[762px]:shrink-0` (~:479).
 - `src/app/app/sys/[id]/pos/settings/LanAgentsCard.tsx` — register `<form>` gets `@container` (~:194) · fieldset `sm:grid-cols-2` → `@min-[360px]:grid-cols-2` (~:206–208).
-- `src/app/app/sys/[id]/pos/settings/ReceiptSettings.tsx` — `LOGO_PREVIEW_RE = /^https:\/\/[^\s]+\.[^\s]+$/` + `logoPreviewUrl()` (~:42–49) used by the sample payload (~:141, preview iframe + print sample) and the `<img>` beside the field (~:354–356); save path untouched (still `form.logoUrl.trim() || null`, ~:183) · row `xl:flex-row xl:items-start xl:gap-8` → `@min-[832px]:…` (~:343–347) · preview column `xl:w-[380px] xl:shrink-0` → `@min-[832px]:w-[380px] @min-[832px]:shrink-0` (`xl:gap-7` kept) (~:641).
+- `src/app/app/sys/[id]/pos/settings/ReceiptSettings.tsx` — `LOGO_PREVIEW_RE = /^https:\/\/[^\s]+\.[^\s]+$/` + `logoPreviewUrl()` (~:42–49) used by the sample payload (~:141, preview iframe + print sample) and the `<img>` beside the field (~:354–356); save path untouched (still `form.logoUrl.trim() || null`, ~:183) · row `xl:flex-row xl:items-start xl:gap-8` → `@min-[712px]:…` (~:343–347) · preview column `xl:w-[380px] xl:shrink-0` → `@min-[712px]:w-[380px] @min-[712px]:shrink-0` (`xl:gap-7` kept) (~:641).
 - No `data-testid` added/removed (p4.1 registry pin unchanged, 16/16). No i18n keys (placeholder `logoNone` reused).
 
 ## 4. Files checked and left alone
@@ -47,7 +49,7 @@ Checks done without build/serve:
 - Inside the device panel `DeviceSettings.tsx:~495` `sm:grid-cols-2` — panel is ≥ 398 px stacked or 430 px in the row ⇒ inputs ≥ 162 px; left alone.
 
 ## 5. Visual impact the controller should know
-- 1440×900 with the app menu open (the harness desktop size): devices **and** receipt tabs now stack (left column would have been 336 / 386 px < 420). Two columns return at ≥ 1524 / ≥ 1474 px, or with the menu collapsed at 1440. 1024 (iPad): devices now stacks — the dead row `pos-device-lan-printer-name-*` gets a 280 px input.
+- fix8b: 1440×900 with the app menu open is **unchanged** (devices and receipt two-column, left 336 / 386 as approved). 1280 with the menu open now stacks both tabs (before: left 176 / 226). 1024 (iPad): devices now stacks — the dead row `pos-device-lan-printer-name-*` gets a 280 px input; receipt unchanged (stacked). The 1440 LAN add-printer form is one column (inputs ≈ 218 px).
 
 ## 6. Tests (run 2026-10-25 · logs in `/root/pos-runs/p43-fix8/*.log`) — verbatim result lines
 
@@ -91,6 +93,39 @@ Strict typecheck exactly as `scripts/pos-gates.json` commands.typecheck (`env NO
 
 exit=0
 2026-10-25T09:10:35Z
+```
+
+## 6b. Tests after fix8b (CD-P43-15b) — verbatim result lines (logs in `/root/pos-runs/p43-fix8/b/*.log`)
+
+Static (2026-10-25T09:13Z):
+```
+# pnpm exec tsx scripts/qc-pos-p4.1.mts --no-db
+✅ qc-pos-p4.1: 16/16 ผ่าน
+JSON_SUMMARY {"suite":"qc-pos-p4.1","mode":"no-db","total":16,"passed":16,"failed":[],"skipped":false,"registered":16,"pin":"6e32c1e2","probes":{"P4.1-R1":true,"P4.1-R2":true,"P4.1-R3":true,"P4.1-R4":
+# pnpm exec tsx scripts/fitness.mts (no env)
+ผ่าน 53/53
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+# pnpm exec tsx scripts/fitness-pos.mts
+JSON_SUMMARY {"suite":"fitness-pos","total":8,"passed":8,"findings":[]}
+```
+QC4 (same command as §6; 09:13:51Z → 09:17:01Z):
+```
+===== qc-pos-p2.14 ===== ผ่าน 60/60
+JSON_SUMMARY {"suite":"qc-pos-p2.14","total":60,"passed":60,"failed":[],"skippedChecks":[],"skipped":false,"forced":false,"missing":[],"hasP27U":true,"crashed":false,"guardHits":0,"residue":0}
+===== qc-pos-p2.9 ===== ผ่าน 62/62
+JSON_SUMMARY {"suite":"qc-pos-p2.9","total":62,"passed":62,"failed":[],"skipped":false,"forced":false,"missing":[],"guardHits":0,"residue":0,"leaks":[],"drift":[]}
+```
+Strict typecheck (same gates command):
+```
+2026-10-25T09:17:16Z
+available MB at start: 9527
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-pos-b
+> tsc --noEmit
+
+exit=0
+2026-10-25T09:17:39Z
 ```
 
 ## 7. Not done / notes

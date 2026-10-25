@@ -340,10 +340,10 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
         </InlineNote>
       )}
 
-      {/* POS P4.3 fix8 ▸ CD-P43-15: กติกาเดียวกับแท็บเครื่อง — สองคอลัมน์เมื่อช่องเนื้อหา ≥ 832px = ซ้าย ≥ 420 + ช่องไฟ 32 + ตัวอย่าง 380 ·
-          เดิม xl:flex-row ⇒ 1280 แถบเมนูกาง ซ้ายเหลือ 226px (ฟอร์ม md:grid-cols-2 ช่องละ ~73px) · 1440 ซ้าย 386 ⇒ ตอนนี้ซ้อนบน-ล่างทั้งสองขนาด ·
-          แถบเมนูหุบเป็นราง 1440 ⇒ ช่อง 974 สองคอลัมน์ (ซ้าย 562) ◂ */}
-      <div className="flex min-w-0 flex-col gap-6 @min-[832px]:flex-row @min-[832px]:items-start @min-[832px]:gap-8">
+      {/* POS P4.3 fix8 ▸ CD-P43-15 · fix8b ▸ CD-P43-15b: กติกาเดียวกับแท็บเครื่อง — สองคอลัมน์เมื่อช่องเนื้อหา ≥ 712px = ซ้าย ≥ 300 + ช่องไฟ 32 + ตัวอย่าง 380 ·
+          เดิม xl:flex-row ⇒ 1280 แถบเมนูกาง ซ้ายเหลือ 226px (ฟอร์ม md:grid-cols-2 ช่องละ ~73px) ⇒ ตอนนี้ซ้อนบน-ล่าง (ช่อง 638) ·
+          1440 (ช่อง 798) ⇒ สองคอลัมน์ ซ้าย 386 ตามภาพที่อนุมัติ (CD-P43-15b) · 1024 ซ้อนเหมือนเดิม ◂ */}
+      <div className="flex min-w-0 flex-col gap-6 @min-[712px]:flex-row @min-[712px]:items-start @min-[712px]:gap-8">
         {/* ── ซ้าย ── */}
         <div className="flex min-w-0 flex-1 flex-col gap-6 xl:gap-7">
           <SettingsCard testid="pos-settings-header-card">
@@ -638,7 +638,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
         </div>
 
         {/* ── ขวา ── */}
-        <div className="flex min-w-0 flex-col gap-6 @min-[832px]:w-[380px] @min-[832px]:shrink-0 xl:gap-7" /* POS P4.3 fix8 ▸ CD-P43-15: 380 เฉพาะตอนวางคู่ ◂ */>
+        <div className="flex min-w-0 flex-col gap-6 @min-[712px]:w-[380px] @min-[712px]:shrink-0 xl:gap-7" /* POS P4.3 fix8 ▸ CD-P43-15: 380 เฉพาะตอนวางคู่ ◂ */>
           <div className="flex flex-col">
             <div className="mb-3 flex items-center gap-2 text-[13px] font-bold text-[color:var(--color-ink-soft)]">
               <RegisterIcon name="doc" size={14} />

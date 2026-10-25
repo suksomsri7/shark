@@ -441,10 +441,10 @@ export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P
         </InlineNote>
       )}
 
-      {/* POS P4.3 fix8 ▸ CD-P43-15: สองคอลัมน์เมื่อช่องเนื้อหา (@container ของ SettingsShell) ≥ 882px = ซ้าย ≥ 420 + ช่องไฟ 32 + แผง 430 ·
+      {/* POS P4.3 fix8 ▸ CD-P43-15 · fix8b ▸ CD-P43-15b: สองคอลัมน์เมื่อช่องเนื้อหา (@container ของ SettingsShell) ≥ 762px = ซ้าย ≥ 300 + ช่องไฟ 32 + แผง 430 ·
           เดิม lg:flex-row + แผง lg:w-[400px] — ที่ 1024 ช่องเหลือ 398px ⇒ คอลัมน์ซ้ายติดลบ (การ์ด LAN เหลือ ~60px คำละบรรทัด · walker owner-ipad) ·
-          ที่ 1280/1440 (แถบเมนูกาง) ซ้ายเหลือ 176/336 ⇒ ต่ำกว่า 882 วางซ้อนบน-ล่าง · แถบเมนูหุบเป็นราง 1440 ⇒ ช่อง 974 สองคอลัมน์ (ซ้าย 512) ◂ */}
-      <div className="flex min-w-0 flex-col gap-6 @min-[882px]:flex-row @min-[882px]:items-start @min-[882px]:gap-8">
+          แถบเมนูกาง: 1024 (398) / 1280 (638, เดิมซ้าย 176) ⇒ ซ้อนบน-ล่าง · 1440 (798) ⇒ สองคอลัมน์ ซ้าย 336 ตามภาพที่อนุมัติ (CD-P43-15b) ◂ */}
+      <div className="flex min-w-0 flex-col gap-6 @min-[762px]:flex-row @min-[762px]:items-start @min-[762px]:gap-8">
         <div className="flex min-w-0 flex-1 flex-col gap-4 md:gap-5">
           {activeItems.length === 0 && (
             <p data-testid="pos-device-empty" className="rounded-[18px] border px-6 py-8 text-center text-[14.5px] text-[color:var(--color-muted)]">
@@ -476,7 +476,7 @@ export function DeviceSettings({ systemId, unitId, shopName, lan = null /* POS P
           {lan ? <LanAgentsCard systemId={systemId} unitId={unitId} agents={lanAgents} onAgents={setLanAgents} ports={lan.ports} /> /* POS P3-SKEL U ▸ CD-SKELU-9 ◂ */ : null}
         </div>
 
-        <div data-testid="pos-device-panel" className="flex min-w-0 flex-col rounded-[18px] border bg-[color:var(--color-surface)] px-5 py-5 md:px-7 md:py-6 @min-[882px]:w-[430px] @min-[882px]:shrink-0" /* POS P4.3 fix8 ▸ CD-P43-15: กว้าง 430 เฉพาะตอนวางคู่ (เดิม lg 400 · xl 430) ◂ */>
+        <div data-testid="pos-device-panel" className="flex min-w-0 flex-col rounded-[18px] border bg-[color:var(--color-surface)] px-5 py-5 md:px-7 md:py-6 @min-[762px]:w-[430px] @min-[762px]:shrink-0" /* POS P4.3 fix8 ▸ CD-P43-15: กว้าง 430 เฉพาะตอนวางคู่ (เดิม lg 400 · xl 430) ◂ */>
           {!sel ? (
             <p className="text-[14px] text-[color:var(--color-muted)]">{td("selectHint")}</p>
           ) : (
