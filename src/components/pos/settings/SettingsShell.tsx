@@ -92,7 +92,10 @@ export function SettingsShell({ systemId, active, units, unitId, canHistory = fa
           )}
         </nav>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col gap-6 px-4 py-5 md:gap-8 md:px-6 md:py-[22px] xl:px-8">{children}</div>
+      {/* POS P4.3 fix8 ▸ CD-P43-15: ช่องเนื้อหา = @container — แท็บที่มีแผงขวากว้างตายตัว (เครื่อง 430 · ใบเสร็จ 380) ตัดสินว่าจะวางสองคอลัมน์
+          จากความกว้างช่องนี้จริง ไม่ใช่ความกว้างจอ (จอ 1024 − แถบเมนูแอปกาง 312 − ขอบขวา 24 − ขอบการ์ด 2 − เมนูตั้งค่า 240 − ระยะใน 48 ⇒ เหลือ 398px · 1280 ⇒ 638 · 1440 ⇒ 798) ·
+          container-type ไม่จับ position:fixed ของลิ้นชัก/กล่องในแท็บ (ตรวจกับ Chromium แล้ว) · ไม่เปลี่ยนความกว้างของช่อง ◂ */}
+      <div className="@container flex min-w-0 flex-1 flex-col gap-6 px-4 py-5 md:gap-8 md:px-6 md:py-[22px] xl:px-8">{children}</div>
       {historyOpen && <SettingsHistory systemId={systemId} onClose={closeHistory} />}
     </div>
     </HistoryOpenProvider>

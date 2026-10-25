@@ -191,7 +191,7 @@ export function LanAgentsCard({ systemId, unitId, agents, onAgents, ports }: Pro
         <form
           data-testid="pos-device-lan-register"
           noValidate
-          className="flex flex-col gap-3 rounded-[13px] border px-4 py-4"
+          className="@container flex flex-col gap-3 rounded-[13px] border px-4 py-4" /* POS P4.3 fix8 ▸ CD-P43-15: ฟอร์ม = @container ของ fieldset ด้านล่าง ◂ */
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
@@ -203,7 +203,10 @@ export function LanAgentsCard({ systemId, unitId, agents, onAgents, ports }: Pro
           </label>
           <span className="text-[13px] font-bold text-[color:var(--color-ink-soft)]">{t("print.printers")}</span>
           {printers.map((p, i) => (
-            <fieldset key={i} className="grid min-w-0 grid-cols-1 gap-2 rounded-[11px] border px-3 py-3 sm:grid-cols-2">
+            /* POS P4.3 fix8 ▸ CD-P43-15: ช่องเครื่องพิมพ์สองคอลัมน์เมื่อฟอร์มกว้าง ≥ 360px (ช่องละ ≥ ~163px) — เดิม sm:grid-cols-2 ตามจอ ⇒ คอลัมน์แคบก็ยังผ่าครึ่ง ·
+               ที่ 1024 (ซ้อน · ฟอร์ม 306px) = คอลัมน์เดียว · 1280 แถบกาง (ซ้อน · ฟอร์ม 546px) = สองคอลัมน์ ·
+               1440 (วางคู่ ซ้าย 336 · ฟอร์ม 244px) = คอลัมน์เดียว (fix8b ▸ CD-P43-15b) ◂ */
+            <fieldset key={i} className="grid min-w-0 grid-cols-1 gap-2 rounded-[11px] border px-3 py-3 @min-[360px]:grid-cols-2">
               <input data-testid={`pos-device-lan-printer-name-${i}`} aria-label={t("print.printerName")} placeholder={t("print.printerName")} className={field} value={p.name} maxLength={40} autoComplete="off" onChange={(e) => setP(i, { name: e.target.value })} />
               <input data-testid={`pos-device-lan-printer-host-${i}`} aria-label={t("print.host")} placeholder={t("print.host")} className={`${field} font-mono`} value={p.host} inputMode="url" autoComplete="off" spellCheck={false} onChange={(e) => setP(i, { host: e.target.value })} />
               <select data-testid={`pos-device-lan-printer-port-${i}`} aria-label={t("print.port")} className={field} value={p.port} onChange={(e) => setP(i, { port: Number(e.target.value) })}>
