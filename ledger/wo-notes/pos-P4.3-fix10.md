@@ -52,3 +52,17 @@ Strict typecheck (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=10500M bas
 No self-check test added: the existing suites live under `scripts/` (controller-owned); H6b behaviour of save is covered by qc-pos-p5.2 / qc-pos-p3.6 (both green).
 
 Not done (by rule): no build / serve / screenshot — UI change proven statically only; next walker run of cell 6 manager-desktop should show the notice and no credit edit/add controls.
+
+## fix10b (CD-P43-17b) — literal data-testid on the all-branches notice
+
+Why: the registry scan (fitness-pos F15.3b via scripts/lib/crm-testid-scan.mts TESTID_RE) only sees a literal `data-testid=` in POS source. fix10 rendered the notice as `<InlineNote tone="ok" testid="pos-settings-credit-all-branches-only">` (InlineNote forwards to `data-testid={testid}` in settings-ui.tsx), so the controller could not register the row (qc-pos-p4.1 R7 = ghost row).
+
+Change (CreditSettingsCard.tsx only, one element): the notice is now `<p data-testid="pos-settings-credit-all-branches-only" role="status" className="text-[13.5px] text-[color:var(--color-ink-soft)]">` — same role/classes InlineNote tone="ok" produces, so the rendered DOM is identical. InlineNote, other testids, scripts/, messages untouched. `grep -n 'data-testid="pos-settings-credit-all-branches-only"'` → line 238.
+
+Proof (tree b, head 129aa3bc + this change):
+- qc-pos-p4.1 `--no-db`: 16/16 (R7 F15.3a + F15.3b green)
+- fitness.mts (no env): 53/53 · fitness-pos: 8/8
+- QC4 qc-pos-p2.14: 60/60 · qc-pos-p3.6: 52/52
+- strict typecheck (avail 9171 MB): rc=0
+
+Registry row for this testid is still the controller's job (scripts/pos-ui-inventory.json not touched).
