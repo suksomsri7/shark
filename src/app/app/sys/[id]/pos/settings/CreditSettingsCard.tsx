@@ -6,6 +6,8 @@
 //   บัญชีเครดิต (ผู้ถือ pos.credit.manage เท่านั้น — หน้าเพจอ่าน listCreditAccounts + ชื่อจาก companyOptionsByPartyIds):
 //     แถว = ชื่อ · วงเงิน · เทอม (ว่าง = ตามสมุดบัญชี) · ใช้งาน · แก้ในแถว · เพิ่ม = ค้นบริษัท (registerCompanySearchAction ด้วยสาขาของหน้า) ·
 //     ฟอร์ม: วงเงินบาทเต็ม (×100) · เทอม (ว่าง = null) · ใช้งาน · หมายเหตุ → saveCreditAccountAction · คำปฏิเสธ = ข้อความตามรหัสในฟอร์ม · ผล = แทนแถว
+//   POS P4.3 fix10 ▸ CD-P43-17: canManage (อ่าน) แยกจาก canEdit (= canEditCreditAccounts ตัวเดียวกับ saveCreditAccount · มติ F5) —
+//     canManage && !canEdit (ผู้จัดการไม่ได้ "*") = รายการอ่านอย่างเดียว + allBranchesOnly · ไม่มีปุ่มแก้/เพิ่ม/ฟอร์ม ◂
 // 🔴 ไม่มีตัวเลขคิดวงเงินฝั่งจอ (ตัวตัดสิน = เซิร์ฟเวอร์) · ไม่มีเบอร์/อีเมล/ผู้ติดต่อของบริษัท (ชื่อ/เลขภาษี/สาขาเท่านั้น) · ไม่แสดง message ไทยของเซิร์ฟเวอร์
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ (ST7) · testid ตัวอักษรตรงบนแท็ก · ปุ่ม ≥ 44px
 
@@ -32,6 +34,8 @@ export function CreditSettingsCard(p: {
   initial: PosCreditSettings;
   /** ผู้ถือ pos.credit.manage — ไม่ใช่ = ไม่มีส่วนบัญชี (ข้อความ noPermission) */
   canManage: boolean;
+  /** POS P4.3 fix10 ▸ แก้/เพิ่มบัญชีได้ (canEditCreditAccounts · OWNER หรือ MANAGER "*") — false = อ่านอย่างเดียว ◂ */
+  canEdit: boolean;
   /** ร้านมีระบบ CRM — ไม่มี = noCrm (ซ่อนบัญชี) */
   hasCrm: boolean;
   /** บัญชีเครดิต (null = ไม่ได้อ่าน/อ่านไม่ได้) */
@@ -143,7 +147,7 @@ export function CreditSettingsCard(p: {
   const coName = (partyId: string) => names[partyId]?.name ?? null;
   const field = "h-11 w-full rounded-[11px] border bg-[color:var(--color-surface)] px-3 text-[14px]";
 
-  const formNode = form && (
+  const formNode = p.canEdit && form && (
     <div data-testid="pos-settings-credit-form" className="flex flex-col gap-3 rounded-[14px] border bg-[color:var(--color-surface-2)] p-3">
       <b className="text-[14px]">{coName(form.partyId) ?? t("credit.unknownCompany")}</b>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -229,6 +233,11 @@ export function CreditSettingsCard(p: {
             </InlineNote>
           ) : (
             <div className="flex flex-col gap-2">
+              {!p.canEdit && (
+                <InlineNote tone="ok" testid="pos-settings-credit-all-branches-only">
+                  {t("credit.allBranchesOnly")}
+                </InlineNote>
+              )}
               {rows.length === 0 && !form && <p className="text-[13px] text-[color:var(--color-muted)]">{t("credit.empty")}</p>}
               {rows.map((r) =>
                 form && !form.isNew && form.partyId === r.partyId ? (
@@ -248,14 +257,16 @@ export function CreditSettingsCard(p: {
                         {t("credit.saved")}
                       </span>
                     )}
-                    <button data-testid={`pos-settings-credit-edit-${r.partyId}`} type="button" className="btn btn-ghost min-h-11 rounded-[11px] px-3 text-[13px]" onClick={() => openEdit(r)}>
-                      {t("credit.edit")}
-                    </button>
+                    {p.canEdit && (
+                      <button data-testid={`pos-settings-credit-edit-${r.partyId}`} type="button" className="btn btn-ghost min-h-11 rounded-[11px] px-3 text-[13px]" onClick={() => openEdit(r)}>
+                        {t("credit.edit")}
+                      </button>
+                    )}
                   </div>
                 ),
               )}
               {form?.isNew && formNode}
-              {adding ? (
+              {!p.canEdit ? null : adding ? (
                 <div className="flex flex-col gap-2">
                   <input data-testid="pos-settings-credit-search" className={field} autoFocus placeholder={t("credit.search")} value={q} onChange={(e) => setQ(e.target.value)} />
                   {searchErr && (
