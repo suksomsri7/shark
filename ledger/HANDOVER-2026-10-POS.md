@@ -109,6 +109,7 @@ ORACLE-EDIT ทั้ง RUN = **433 commits** ในช่วง `71a1f363..a35
 | บิลเครดิตเทอมส่ง dueDate เป็นข้อมูล ไม่พิมพ์บนใบเสร็จ | ค่าเริ่มต้น = ข้อมูลอย่างเดียว | W43 (POS-OWNER-PENDING) |
 | walker phase B 14 ช่อง ≈28 ชม. | รันทั้งหมดใน chain v3 | W42 (POS-OWNER-PENDING) |
 | ข้อความ "% ไม่ถูกต้อง" ในกล่อง +X% ทั้งช่องทาง (BulkMarkupDialog.tsx pctInvalid) ไม่มี testid → ตัวกดตรวจได้แค่ตัวอย่างราคาเปลี่ยน (CD-P43-12) | รับไว้ · เพิ่ม testid ภายหลัง = แตะ src/ทะเบียน | `ledger/wo-notes/pos-P4.3-survey.md` (CD-P43-12) |
+| ลิ้นชักบิลพักแสดงบิล "รออนุมัติส่วนลด" (holdCartForApproval · ยังไม่อนุมัติ) ให้กดเรียกคืนได้ → recallHeldCart ปฏิเสธ DISCOUNT_EXCEEDS_LIMIT ข้อความ "ส่วนลดเกินสิทธิ์" ไม่บอกว่ารออนุมัติ (พบรอบสำรวจ cashier-ipad · CD-P43-18) | รับไว้ · เซิร์ฟเวอร์ปฏิเสธถูกต้อง (มติ 5 P1.15U) · เสนอ: ป้าย "รออนุมัติ" + ปิดปุ่มเรียกคืนจนกว่าจะอนุมัติ (W44) | `ledger/wo-notes/pos-P4.3-survey.md` §ช่อง 12 |
 | settings ใช้ @container (inline-size) บน pane — Safari/iPadOS รุ่นก่อนสเปก 2022 (ก่อน 16.4) อาจกัก drawer/dialog แบบ fixed ไว้ใน pane | รับไว้ · ขั้นต่ำที่รองรับ = iPadOS 16.4+ (G1 รีวิว fix8) | `ledger/wo-notes/pos-P4.3-fix8-review.md` |
 | ดัชนีบาร์โค้ด: กลุ่มตัวเลือกไม่บังคับที่ผูกหลังโหลดดัชนี ไม่ทำให้ quote ปฏิเสธ → บรรทัดขายไปโดยไม่เสนอตัวเลือกจนรอบ refresh ถัดไป (≤15 นาที) | รับไว้ (เงินถูก · quote re-price) | `ledger/wo-notes/pos-P5.3-fix1-review.md` D5 |
 | โครงแพลตฟอร์ม/สลิป/e-Tax ปิดสุภาพ รอ creds | เปิดเมื่อตั้ง POS_CREDENTIALS_KEY | W4 (POS-OWNER-PENDING) · `ledger/wo-notes/pos-P3-SKEL.md` |
@@ -159,6 +160,7 @@ ORACLE-EDIT ทั้ง RUN = **433 commits** ในช่วง `71a1f363..a35
 | W41 | default | วิธีจ่ายมัดจำที่โมดูลรับ |
 | W42 | default | walker phase B รันทั้งหมด |
 | W43 | default | dueDate เป็นข้อมูล ไม่พิมพ์ |
+| W44 | open (default = หนี้ §4 ไม่แก้ในรอบนี้) | บิลพัก "รออนุมัติส่วนลด" ในลิ้นชัก: จะให้ซ่อน/ปิดปุ่มเรียกคืนจนกว่าจะอนุมัติ หรือคงไว้ตามเดิม (CD-P43-18 · ไม่ใช่บั๊กเงิน) |
 
 ## §6 ถอยกลับ / deploy
 - ลำดับ deploy และการถอยกลับ: `docs/pos/DEPLOY-RUNBOOK.md` §0 (CD-P61-R1: migrate ก่อน merge main) · §4 (ขั้น GO-1…GO-13) · §4.4 ล้มกลางทาง · **§9 เปิดใช้ทีละร้าน · ธง/สวิตช์ · การถอยกลับ** · ภาคผนวก ก SQL ถอยกลับ.

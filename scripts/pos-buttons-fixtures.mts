@@ -790,6 +790,15 @@ export async function resetSideEffects(c: Ctx, label: string, opts: { channels?:
     const left = await P.posOrder.updateMany({ where: { ...where, id: { in: open.map((o) => o.id) }, status: { in: ["NEW", "ACCEPTED", "PREPARING", "READY"] } }, data: { status: "CANCELLED", closedAt: new Date() } });
     return `ยกเลิกออเดอร์เปิดค้าง ${open.length} (${open.map((o) => o.status).join(",")}) · โมดูล ${viaModule} · ตั้งตรง ${left.count}`;
   });
+  // POS P4.3 fix11h (ผู้คุม A · CD-P43-18 · 25.10): บิลพักค้าง (HELD) ของสาขา posqc-btn ที่เกิดในรอบ — รวมบิล "รออนุมัติส่วนลด" (holdCartForApproval · label คงที่)
+  //   ที่สาย POS_DISCOUNT_OVER ถูกลบตอนจบช่องแล้วเหลือบิลกำพร้า ⇒ ช่องถัดไปกด pos-reg-held-recall-* เจอบิลนี้ → เรียกคืนถูกปฏิเสธ DISCOUNT_EXCEEDS_LIMIT (ช่อง cashier-ipad รอบสำรวจ)
+  //   ทิ้งตรง (status DISCARDED + version) แบบเดียวกับตัวกวาดหมดอายุใน listHeldCarts (held-cart.ts) — ไม่แตะบิลของรอบก่อน runStart ◂
+  await step("บิลพักค้าง", async () => {
+    const held: { id: string; label: string | null }[] = await P.posHeldCart.findMany({ where: { ...where, status: "HELD", tableSessionId: null, createdAt: { gte: c.runStart } }, select: { id: true, label: true } });
+    if (!held.length) return null;
+    const r = await P.posHeldCart.updateMany({ where: { ...where, id: { in: held.map((h) => h.id) }, status: "HELD" }, data: { status: "DISCARDED", version: { increment: 1 } } });
+    return `ทิ้งบิลพักค้าง ${r.count}/${held.length} (รออนุมัติ ${held.filter((h) => h.label === "รออนุมัติส่วนลด").length})`;
+  });
   // POS P4.3 walker fix1 ▸ H8: แถว pos-shift-close-submit (ช่วงท้าย) ปิดกะของเครื่องตัวกด → เปิดกะคืน (ensureDeviceShift · ไม่ตั้ง PIN/โทเคนซ้ำ) ◂
   if (label === SHIFT_CLOSE_KEY) await step("เปิดกะคืน", async () => {
     const before = c.shiftId;
