@@ -38,5 +38,8 @@
 ## ช่อง 7 manager-ipad (95 นาที · ok 614/1194 · dead 1 · wrongExpect 4 · console 0 · overflow 0)
 ทั้งหมดเดิม: `pos-device-lan-printer-name-*` dead (fix8 @container · build qQ59 ยังไม่มี) · `pos-settings-credit-save` (fix10) · `pos-bills-page-*` · `pos-ord-start` · `pos-ord-cancel-confirm` (fix7/fix9h) — **ไม่มี defect ใหม่**
 
-## ช่อง 8–19
+## ช่อง 8 manager-mobile (93 นาที · ok 598/1178 · dead 0 · wrongExpect 2 · console 0 · overflow 0)
+ทั้งหมดเดิม: `pos-bills-page-*` (fix7) · `pos-settings-credit-save` (fix10) — **ไม่มี defect ใหม่**
+
+## ช่อง 9–19
 (เติมเมื่อแต่ละช่องจบ)
