@@ -39,3 +39,7 @@ Fix (controller ORACLE-EDIT before the rerun): add a "needs" line for MANAGER wi
 G2 · Info · CreditSettingsCard.tsx:236–240
 Why: a STAFF member holding pos.credit.manage also sees the notice, whose text says "owner or a manager with access to all branches". That is accurate (STAFF can never save), so the wording is fine.
 Fix: none.
+
+## fix10b delta (6f857021) · 2026-10-25T14:16:23Z
+**Verdict: MERGEABLE.** `git diff 129aa3bc 6f857021 -- src` changes only CreditSettingsCard.tsx (+3/−2): `<InlineNote tone="ok" testid=…>` becomes a literal `<p data-testid="pos-settings-credit-all-branches-only" role="status" className="text-[13.5px] text-[color:var(--color-ink-soft)]">`, plus a balanced `POS P4.3 fix10b ▸ … ◂` marker.
+The element, role and classes are identical to what InlineNote renders for tone="ok" (settings-ui.tsx: `<p role="status" className="text-[13.5px] text-[color:var(--color-ink-soft)]">`). The i18n key and the canEdit gating are unchanged, and the InlineNote import is still used (tone="error"). Nothing unexpected. G1 from the fix10 review (inventory rows and registration) still applies.

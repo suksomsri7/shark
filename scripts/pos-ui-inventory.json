@@ -30301,6 +30301,35 @@
     },
     {
       "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-credit-all-branches-only",
+      "kind": "notice",
+      "roles": [
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [
+        "owner"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-credit-row-*",
+        "state": "unchanged",
+        "note": "CD-P43-17 fix10: ป้าย role=status \"ผู้จัดการต้องเข้าได้ทุกสาขาจึงตั้งวงเงิน/เทอมได้ — อ่านอย่างเดียว\" (settings.credit.allBranchesOnly) แสดงเมื่อ canManage && hasCrm && !canEdit (ผู้จัดการที่ unitAccess ไม่มี \"*\" · STAFF ที่ถือ pos.credit.manage) — มติ CD-P52-O4 F5 · รายการบัญชีอ่านอย่างเดียว ไม่มี edit-*/add/ฟอร์ม · ไม่กด"
+      },
+      "wo": "P4.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]&tab=payments",
+      "opener": [
+        "pos-settings-nav-payments"
+      ],
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "ผู้จัดการสาขาเดียว (fixture posqc-btn-mb-manager) หรือ STAFF ที่ได้รับ pos.credit.manage — เจ้าของ/ผู้จัดการ \"*\" ไม่เห็น"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-order-member-switch",
       "kind": "toggle",
       "roles": [
