@@ -41,5 +41,8 @@
 ## ช่อง 8 manager-mobile (93 นาที · ok 598/1178 · dead 0 · wrongExpect 2 · console 0 · overflow 0)
 ทั้งหมดเดิม: `pos-bills-page-*` (fix7) · `pos-settings-credit-save` (fix10) — **ไม่มี defect ใหม่**
 
-## ช่อง 9–19
+## ช่อง 9 manager-desktop-en (92 นาที · ok 611/1193 · dead 0 · wrongExpect 4 · console 0 · overflow 0)
+ทั้งหมดเดิม: `pos-taxinv-form` EN (fix9/9b) · `pos-ord-start` (fix7) · `pos-ord-cancel-confirm` ซากออเดอร์ (fix9h) · `pos-settings-credit-save` (fix10) — **ไม่มี defect ใหม่**
+
+## ช่อง 10–19
 (เติมเมื่อแต่ละช่องจบ)
