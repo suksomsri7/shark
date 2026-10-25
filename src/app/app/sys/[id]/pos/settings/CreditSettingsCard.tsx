@@ -233,10 +233,11 @@ export function CreditSettingsCard(p: {
             </InlineNote>
           ) : (
             <div className="flex flex-col gap-2">
+              {/* POS P4.3 fix10b ▸ CD-P43-17b: data-testid ตัวอักษรตรงบนแท็ก (ตัวสแกนทะเบียน) · คลาสเดียวกับ InlineNote tone="ok" ◂ */}
               {!p.canEdit && (
-                <InlineNote tone="ok" testid="pos-settings-credit-all-branches-only">
+                <p data-testid="pos-settings-credit-all-branches-only" role="status" className="text-[13.5px] text-[color:var(--color-ink-soft)]">
                   {t("credit.allBranchesOnly")}
-                </InlineNote>
+                </p>
               )}
               {rows.length === 0 && !form && <p className="text-[13px] text-[color:var(--color-muted)]">{t("credit.empty")}</p>}
               {rows.map((r) =>
