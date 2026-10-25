@@ -57,9 +57,9 @@
 | P3.12 ปิดเฟส P3 | `15ee7536` · freeze `f38494fb` | qc-pos-p3.12 22/22 · gates128 136/136 | `ledger/HANDOVER-2026-10-22-POS-P3.md` |
 | P4.1 ทะเบียนปุ่ม | `574b0758` (oracle `3857aa03`) | qc-pos-p4.1 16/16 | `ledger/wo-notes/pos-P4.1.md` |
 | P4.2 ตัวเดินกดปุ่ม 19 ช่อง | walker `77de6002` → รวมใน `e527eff6` · ผล 19 ช่องจาก chain v3 (§8 EV-C4) | qc-pos-p4.2 12 ข้อ | `ledger/wo-notes/pos-P4.2-walker.md` |
-| P4.3 triage+fix จาก walker | `e527eff6` · fix3 `c39b71fd` | qc-pos-p4.3 30/30 · p2.2 42/42 | `ledger/wo-notes/pos-P4.3-fix1-review.md` |
+| P4.3 triage+fix จาก walker | `e527eff6` · fix3 `c39b71fd` · fix8 settings @container `7f49d880` (CD-P43-15/15b) · fix9+9b tax-invoice 15A `63116bb2` (CD-P43-16/16b) · fix5c/6/7/9h ทะเบียน+ตัวเดิน (CD-P43-11…16 · รอบสำรวจ) | qc-pos-p4.3 30/30 · p2.2 42/42 · p1.13 33/33 · p1.15 40/40 · p2.14 60/60 | `ledger/wo-notes/pos-P4.3-fix1-review.md` · `pos-P4.3-survey.md` · `pos-P4.3-fix8-review.md` · `pos-P4.3-fix9-review.md` |
 | P5.1 เงิน/race/idempotency | `5926434f` · `e9b765b4` · `6b1f84a5` | qc-pos-p5.1 28/28 | `ledger/wo-notes/pos-P5.1-hunt-MA.md` |
-| P5.2 authz ทุก surface | `e774edeb` · `c4584062` · `98f60761` | qc-pos-p5.2 57 ข้อ · matrix 404 แถว | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
+| P5.2 authz ทุก surface | `e774edeb` · `c4584062` · `98f60761` | qc-pos-p5.2 57 ข้อ · matrix 405 แถว (+GET barcode-index) | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
 | P5.3 perf | oracle `c3ae27f1` · fix1–fix1d ดัชนีบาร์โค้ดฝั่งลูกข่าย merge `adfcee44` (CD-P53-O14/O15/O16 · R1+hunter 2 รอบ) · ผลวัด chain v3 **25/25 ×2** B3U p95 20.6/23.4 ms (§8 EV-P4) | qc-pos-p5.3 11/11 gate (S5 ทางลูกข่าย) · measure 25/25 | `ledger/wo-notes/pos-P5.3-oracle.md` · `ledger/wo-notes/pos-P5.3-fix1.md` · `ledger/wo-notes/pos-P5.3-fix1-review.md` |
 | P6.1 runbook/verify/ซ้อม deploy | prep `c91d8735` · fix `4016a352` | qc-pos-p6.1 31/31 · ซ้อม 37/37 | `ledger/wo-notes/pos-P6.1.md` |
 | P6.2 เอกสาร/คู่มือ/สกิล/HANDOVER | `0bd8324e` · `c4ce139a` | qc-pos-p6.2 16 ข้อ | `ledger/wo-notes/pos-P6.2-review.md` |
