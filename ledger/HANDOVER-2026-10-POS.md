@@ -60,7 +60,7 @@
 | P4.3 triage+fix จาก walker | `e527eff6` · fix3 `c39b71fd` | qc-pos-p4.3 30/30 · p2.2 42/42 | `ledger/wo-notes/pos-P4.3-fix1-review.md` |
 | P5.1 เงิน/race/idempotency | `5926434f` · `e9b765b4` · `6b1f84a5` | qc-pos-p5.1 28/28 | `ledger/wo-notes/pos-P5.1-hunt-MA.md` |
 | P5.2 authz ทุก surface | `e774edeb` · `c4584062` · `98f60761` | qc-pos-p5.2 57 ข้อ · matrix 404 แถว | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
-| P5.3 perf | oracle `c3ae27f1` · fix1–fix1d ดัชนีบาร์โค้ดฝั่งลูกข่าย merge `adfcee44` (CD-P53-O14/O15/O16 · R1+hunter 2 รอบ) · ผลวัดจาก chain v3 (§8 EV-P4) | qc-pos-p5.3 11/11 gate (S5 ทางลูกข่าย) | `ledger/wo-notes/pos-P5.3-oracle.md` · `ledger/wo-notes/pos-P5.3-fix1.md` · `ledger/wo-notes/pos-P5.3-fix1-review.md` |
+| P5.3 perf | oracle `c3ae27f1` · fix1–fix1d ดัชนีบาร์โค้ดฝั่งลูกข่าย merge `adfcee44` (CD-P53-O14/O15/O16 · R1+hunter 2 รอบ) · ผลวัด chain v3 **25/25 ×2** B3U p95 20.6/23.4 ms (§8 EV-P4) | qc-pos-p5.3 11/11 gate (S5 ทางลูกข่าย) · measure 25/25 | `ledger/wo-notes/pos-P5.3-oracle.md` · `ledger/wo-notes/pos-P5.3-fix1.md` · `ledger/wo-notes/pos-P5.3-fix1-review.md` |
 | P6.1 runbook/verify/ซ้อม deploy | prep `c91d8735` · fix `4016a352` | qc-pos-p6.1 31/31 · ซ้อม 37/37 | `ledger/wo-notes/pos-P6.1.md` |
 | P6.2 เอกสาร/คู่มือ/สกิล/HANDOVER | `0bd8324e` · `c4ce139a` | qc-pos-p6.2 16 ข้อ | `ledger/wo-notes/pos-P6.2-review.md` |
 
@@ -186,6 +186,6 @@ ORACLE-EDIT ทั้ง RUN = **433 commits** ในช่วง `71a1f363..a35
 | EV-P1 | ขายจริง 1 บิลบน prod ร้านทดลอง (W5) | owner — หลัง deploy (W5 · W32) |
 | EV-P2 | Z report 1 กะ บน prod | owner — หลัง deploy |
 | EV-P3 | ออเดอร์ MANUAL 1 ใบจบถึงบัญชี บน prod | owner — หลัง deploy |
-| EV-P4 | qc:all + perf | qc:all QC7 22 ต.ค. 283/429 (`ledger/HANDOVER-2026-10-22-POS-P3.md` §2) · perf `/root/pos-runs/walker-B-*/perf-run2.log` |
-| EV-P5 | parity ทุกจอ 1440/1024/390 | `ledger/HANDOVER-2026-10-16-POS-P2.md` §3 · `ledger/HANDOVER-2026-10-22-POS-P3.md` §1 (vis-*) · help: `/root/pos-runs/walker-B-*/visual-help-th.log` |
+| EV-P4 | qc:all + perf | qc:all QC7 22 ต.ค. 283/429 (`ledger/HANDOVER-2026-10-22-POS-P3.md` §2) · perf P5.3 25/25 ×2 (B3U p95 23 ms) `/root/pos-runs/walker-B-20261024T232812Z/perf-run1.log` · `perf-run2.log` |
+| EV-P5 | parity ทุกจอ 1440/1024/390 | `ledger/HANDOVER-2026-10-16-POS-P2.md` §3 · `ledger/HANDOVER-2026-10-22-POS-P3.md` §1 (vis-*) · help: `/root/pos-runs/walker-B-20261024T232812Z/visual-help-th.log` · `visual-help-en.log` |
 | EV-P6 | HANDOVER ฉบับนี้ | `ledger/HANDOVER-2026-10-POS.md` |
