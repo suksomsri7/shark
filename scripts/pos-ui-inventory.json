@@ -20113,8 +20113,8 @@
       "hiddenFor": [],
       "expect": {
         "type": "mutation",
-        "target": "pos-ord-toast",
-        "note": "รับแล้ว → เริ่มเตรียม (markPreparingAction)",
+        "target": "pos-ord-ready",
+        "note": "รับแล้ว → เริ่มเตรียม (markPreparingAction) → ปุ่มเปลี่ยนเป็น \"พร้อมส่ง\" pos-ord-ready (OrderPanel.tsx:292) · ไม่มี toast โดยออกแบบ (startPrep ไม่ส่ง okToast ต่างจาก accept/ready) — POS P4.3 fix7 CD-P43-13: เดิมเป้า pos-ord-toast ไม่มีวันขึ้น",
         "db": "PosOrder PREPARING + PosOrderEvent preparing"
       },
       "wo": "P2.8U",

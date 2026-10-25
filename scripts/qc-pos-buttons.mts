@@ -653,7 +653,10 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
     const eff = meta.type || (/^(decimal|numeric)$/.test(meta.im) ? "number" : "");
     // POS P4.3 walker fix1 ▸ H1: พิมพ์ช้ากว่าเครื่องสแกน — ช่วงห่าง ≤ SCAN_MAX_GAP_MS 30 (scan-shared.ts:8) + Tab = สแกน ⇒ หน้าขายคืนค่าช่อง + toast
     //   "ยังไม่รับการสแกน" (RegisterScreen.tsx:2577-2629) · H7: ช่องสแกนสต็อกบันทึกด้วย Enter เท่านั้น ◂
-    await page.keyboard.type(differ(fillValueFor(testid, eff), meta.value), { delay: 45 });
+    const fillV = differ(fillValueFor(testid, eff), meta.value);
+    // POS P4.3 fix7 ▸ CD-P43-13 (25.10): ช่อง URL วางทั้งก้อน (เหมือนผู้ใช้วางลิงก์) — พิมพ์ทีละตัวทำให้ตัวอย่างโลโก้โหลด "h"/"ht"/… เป็น path ใต้เซิร์ฟเวอร์ QC = 404 ในคอนโซล (ReceiptSettings.tsx:345)
+    if (eff === "url" || /url$|website/.test(testid.toLowerCase())) await page.keyboard.insertText(fillV);
+    else await page.keyboard.type(fillV, { delay: 45 });
     await sleep(60);
     await page.keyboard.press(ENTER_SUBMIT.has(testid) ? "Enter" : "Tab");
   } else await clickEl(page, el); // สวิตช์ที่เป็นปุ่ม
@@ -1444,7 +1447,13 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
           // POS P4.3 walker fix1 ▸ R6/R7: เป้า = แพตเทิร์นของแถวเอง ⇒ ตรวจ element ที่กด (หลายการ์ดเครื่อง: แพตเทิร์นหาได้การ์ดอื่นที่ไม่ถูกเลือก DeviceSettings.tsx:340-342) ◂
           const own = tg === it.row.testid && (await el.evaluate((e: Element) => e.isConnected).catch(() => false));
           const s = own ? el : await findVisible(page, tg, [], 3000);
-          const ok = !!s && (await s.evaluate((e: Element) => ["aria-selected", "aria-pressed", "aria-checked"].some((x) => e.getAttribute(x) === "true") || (e.hasAttribute("aria-current") && e.getAttribute("aria-current") !== "false")).catch(() => false));
+          // POS P4.3 fix7 ▸ CD-P43-13 (25.10): สถานะเลือกอาจมาหลังโหลดข้อมูลหน้าใหม่ (เช่น ปุ่มเลขหน้า BillsClient aria-current หลัง fetch) ⇒ รอได้ถึง 4 วิ เหมือนกรณี changes
+          const selectedNow = async (): Promise<boolean> => !!s && (await s.evaluate((e: Element) => ["aria-selected", "aria-pressed", "aria-checked"].some((x) => e.getAttribute(x) === "true") || (e.hasAttribute("aria-current") && e.getAttribute("aria-current") !== "false")).catch(() => false));
+          let ok = await selectedNow();
+          for (let i = 0; i < 20 && !ok; i++) {
+            await sleep(200);
+            ok = await selectedNow();
+          }
           return { ok, detail: ok ? "" : `${tg} ไม่ประกาศสถานะเลือก` };
         }
         if (a.state === "count") {
