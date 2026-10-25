@@ -3194,7 +3194,8 @@
       "add": "Add company",
       "save": "Save limit",
       "empty": "No company has a credit limit yet",
-      "noPermission": "Only users who can manage credit customers"
+      "noPermission": "Only users who can manage credit customers",
+      "allBranchesOnly": "Only the owner or a manager with access to all branches can set credit limits — read-only for you"
     },
     "board": {
       "title": "Task boards & team room",

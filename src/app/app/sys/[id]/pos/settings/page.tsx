@@ -35,7 +35,7 @@ import { listStaffAccess } from "@/lib/staff/service"; // POS P3.9U ▸ CD-P39U-
 import { posChatSettings } from "@/lib/modules/pos/chat-link-shared"; // POS P3.7U ▸ CD-P37U-2: ตัวอ่านบริสุทธิ์ของ settings.pos.chat ◂
 // POS P3.6U ▸ CD-P36U-2 (b) · CD-P36U-10: การ์ดลูกค้าเครดิต (แท็บวิธีรับเงิน) + สมาชิกบนบิลออเดอร์ (แท็บช่องทางขาย) — ตัวอ่านบริสุทธิ์ + ตัวอ่านบัญชีเครดิต/ชื่อบริษัท (หลังด่านของหน้า) ◂
 import { posCreditSettings, posOrderMemberOnBill } from "@/lib/modules/pos/settings-shared";
-import { listCreditAccounts } from "@/lib/modules/pos/credit";
+import { canEditCreditAccounts, listCreditAccounts } from "@/lib/modules/pos/credit"; // POS P4.3 fix10 ▸ + canEditCreditAccounts (CD-P43-17) ◂
 import { companyOptionsByPartyIds } from "@/lib/modules/pos/crm-link";
 import { CreditSettingsCard } from "./CreditSettingsCard";
 import { OrderMemberCard } from "./OrderMemberCard";
@@ -147,14 +147,18 @@ export default async function PosSettingsPage({ params, searchParams }: { params
       ? await (async () => {
           const hasCrm = (await prisma.appSystem.count({ where: { tenantId, type: "CRM", active: true } })) > 0;
           const canManageCredit = evaluate(m, { module: "pos", action: "pos.credit.manage" });
-          const listed = canManageCredit && hasCrm ? await listCreditAccounts({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role as "OWNER" | "MANAGER" | "STAFF", unitAccess: m.unitAccess, permissions: m.permissions }) : null;
+          const creditActor = { userId: auth.user.id, role: m.role as "OWNER" | "MANAGER" | "STAFF", unitAccess: m.unitAccess, permissions: m.permissions };
+          // POS P4.3 fix10 ▸ CD-P43-17: อ่าน (canManageCredit) ≠ แก้ — แก้ได้ตัดสินด้วย canEditCreditAccounts ตัวเดียวกับ saveCreditAccount (มติ F5) ⇒
+          //   ผู้จัดการสาขาเดียวเห็นรายการแบบอ่านอย่างเดียว ไม่มีปุ่มแก้/เพิ่มที่เซิร์ฟเวอร์จะปฏิเสธ ◂
+          const canEditCredit = canEditCreditAccounts(creditActor);
+          const listed = canManageCredit && hasCrm ? await listCreditAccounts({ tenantId, systemId: id }, creditActor) : null;
           const accounts = listed && listed.ok ? listed.items : null;
           const ids = [...new Set((accounts ?? []).map((a) => a.partyId))];
           const names: Record<string, { partyId: string; name: string; taxId: string | null; branchCode: string | null }> = {};
           for (let i = 0; i < ids.length; i += 20) {
             for (const c of await companyOptionsByPartyIds({ tenantId, systemId: id, partyIds: ids.slice(i, i + 20) })) names[c.partyId] = { partyId: c.partyId, name: c.name, taxId: c.taxId, branchCode: c.branchCode };
           }
-          return { hasCrm, canManageCredit, accounts, names, credit: posCreditSettings(sys.settings) };
+          return { hasCrm, canManageCredit, canEditCredit, accounts, names, credit: posCreditSettings(sys.settings) };
         })()
       : null;
   // POS P3.8U ▸ CD-P38U-1 · CD-P38U-10: ข้อมูลแท็บบอร์ดงาน — อ่านอย่างเดียว ไม่เขียนอะไรตอนโหลด · ชื่อคนไม่ถูกส่ง ·
@@ -267,7 +271,7 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             isOwner={m.role === "OWNER"} /* POS P2.14 ▸ UI-10: สวิตช์ทิป/มัดจำ = เจ้าของร้านเท่านั้น (ตัวเก็บยอมเฉพาะ OWNER) ◂ */
             creditCard={
               creditCard ? (
-                <CreditSettingsCard systemId={id} unitId={unitId} isOwner={m.role === "OWNER"} initial={creditCard.credit} canManage={creditCard.canManageCredit} hasCrm={creditCard.hasCrm} accounts={creditCard.accounts} names={creditCard.names} />
+                <CreditSettingsCard systemId={id} unitId={unitId} isOwner={m.role === "OWNER"} initial={creditCard.credit} canManage={creditCard.canManageCredit} canEdit={creditCard.canEditCredit} hasCrm={creditCard.hasCrm} accounts={creditCard.accounts} names={creditCard.names} />
               ) : null
             } /* POS P3.6U ▸ CD-P36U-1 ◂ */
             slipCard={

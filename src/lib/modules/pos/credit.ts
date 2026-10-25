@@ -60,6 +60,15 @@ async function guard<T>(name: string, body: () => Promise<T>): Promise<T | PosCr
 export function canManageCredit(actor: RegisterActor | null, unitId?: string): boolean {
   return !!actor && evaluate(actor, { module: "pos", action: POS_CREDIT_PERMISSION, ...(unitId ? { unitId } : {}) });
 }
+/**
+ * POS P4.3 fix10 ▸ CD-P43-17: ตัวตัดสินเดียวของ "ตั้ง/แก้บัญชีเครดิตได้" (มติ CD-P52-O4 F5 · P5.2 H6b) — บัญชีเครดิตใช้ทั้งระบบ POS ⇒
+ *   ผู้ถือ pos.credit.manage และ (OWNER หรือ MANAGER ที่ unitAccess มี "*" ตรงตัว) · ผู้จัดการสาขาเดียว / ระบุครบทุกสาขา (ไม่ใช่ "*") = false ·
+ *   ใช้ทั้ง saveCreditAccount (ด่านเซิร์ฟเวอร์) และหน้าตั้งค่า (ปุ่มแก้/เพิ่ม/ฟอร์ม) — หน้าตัดสินตรงกับเซิร์ฟเวอร์ทุกกรณี (actorOf เดียวกัน · idempotent) ◂
+ */
+export function canEditCreditAccounts(actorRaw: RegisterActor | null): boolean {
+  const actor = actorOf(actorRaw);
+  return !!actor && canManageCredit(actor) && (actor.role === "OWNER" || (actor.role === "MANAGER" && actor.unitAccess.includes("*")));
+}
 const viewOf = (r: { id: string; partyId: string; limitSatang: number; termDays: number | null; active: boolean; note: string | null; updatedAt: Date }): PosCreditAccountView => ({
   id: r.id,
   partyId: r.partyId,
@@ -87,10 +96,10 @@ export async function saveCreditAccount(ctx: { tenantId: string; systemId: strin
   return guard("saveCreditAccount", async (): Promise<SaveCreditAccountResult> => {
     if (!isRecord(ctx) || !isId(ctx.tenantId) || !(await posSystemOk(prisma, ctx.tenantId, ctx.systemId))) return refuse("NOT_FOUND");
     const actor = actorOf(actorRaw);
-    if (!canManageCredit(actor)) return refuse("PERMISSION_DENIED");
-    // POS P5.2 ▸ H6b + CD-P52-O4 F5 (มติ): บัญชีเครดิตใช้ทั้งระบบ POS ⇒ OWNER หรือ MANAGER ที่ unitAccess = "*" ตรงตัวเท่านั้น —
+    // POS P5.2 ▸ H6b + CD-P52-O4 F5 (มติ): บัญชีเครดิตใช้ทั้งระบบ POS ⇒ pos.credit.manage และ (OWNER หรือ MANAGER ที่ unitAccess = "*" ตรงตัว) เท่านั้น —
     //   ผู้จัดการสาขาเดียว และผู้จัดการที่ระบุครบทุกสาขา (ไม่ใช่ "*") = PERMISSION_DENIED ◂
-    if (!(actor!.role === "OWNER" || (actor!.role === "MANAGER" && actor!.unitAccess.includes("*")))) return refuse("PERMISSION_DENIED");
+    // POS P4.3 fix10 ▸ CD-P43-17: เงื่อนไขเดิม 2 บรรทัดย้ายเข้า canEditCreditAccounts (ตัวเดียวกับที่หน้าตั้งค่าใช้) — พฤติกรรมเท่าเดิมทุกกรณี ◂
+    if (!canEditCreditAccounts(actor)) return refuse("PERMISSION_DENIED");
     if (!isRecord(input)) return refuse("VALIDATION");
     const limit = input.limitSatang;
     const term = input.termDays === undefined ? null : input.termDays;
