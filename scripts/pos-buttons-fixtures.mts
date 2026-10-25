@@ -775,6 +775,21 @@ export async function resetSideEffects(c: Ctx, label: string, opts: { channels?:
     const left = await P.salesChannel.updateMany({ where: { ...where, pausedUntil: { gt: new Date() } }, data: { pausedUntil: null } });
     return `เลิกพักรับออเดอร์ ${paused.length} ช่องทาง (${paused.map((x) => x.code).join(",")}) · โมดูล ${viaModule} · ตั้งตรง ${left.count}`;
   });
+  // POS P4.3 fix9h (ผู้คุม A · CD-P43-16 · 25.10): ออเดอร์เปิดค้าง (NEW/ACCEPTED/PREPARING/READY) ของสาขา posqc-btn ที่เกิดในรอบ (ซากรอบก่อน = ทั้งหมด เพราะ runStart = 0)
+  //   ช่องถัดไปเจอการ์ดซากที่บิลผูกกะซึ่งปิดไปแล้ว ⇒ pos-ord-cancel-confirm ถูกปฏิเสธ SHIFT_CLOSED (ช่อง owner-desktop-en รอบสำรวจ) → ยกเลิกผ่านโมดูลก่อน · ที่โมดูลปฏิเสธ = เขียนตรง CANCELLED (ร้านทดสอบเท่านั้น · assertWritable)
+  await step("ออเดอร์เปิดค้าง", async () => {
+    const open: { id: string; status: string }[] = await P.posOrder.findMany({ where: { ...where, status: { in: ["NEW", "ACCEPTED", "PREPARING", "READY"] }, createdAt: { gte: c.runStart } }, select: { id: true, status: true } });
+    if (!open.length) return null;
+    const owner = await actorOfMembership(c.T.users.owner.membershipId, c.T.users.owner.userId);
+    const ord = (await import("@/lib/modules/pos/order" as string)) as Any;
+    let viaModule = 0;
+    for (const o of open) {
+      const r = await ord.cancelOrder({ tenantId: QC_TENANT, systemId: c.sys, unitId: BTN.unit.id }, owner, { id: o.id, reason: "QC ตัวกด · ซากรอบ", idempotencyKey: `qc-btn-residue-${o.id}` }).catch(() => null);
+      if (r?.ok) viaModule++;
+    }
+    const left = await P.posOrder.updateMany({ where: { ...where, id: { in: open.map((o) => o.id) }, status: { in: ["NEW", "ACCEPTED", "PREPARING", "READY"] } }, data: { status: "CANCELLED", closedAt: new Date() } });
+    return `ยกเลิกออเดอร์เปิดค้าง ${open.length} (${open.map((o) => o.status).join(",")}) · โมดูล ${viaModule} · ตั้งตรง ${left.count}`;
+  });
   // POS P4.3 walker fix1 ▸ H8: แถว pos-shift-close-submit (ช่วงท้าย) ปิดกะของเครื่องตัวกด → เปิดกะคืน (ensureDeviceShift · ไม่ตั้ง PIN/โทเคนซ้ำ) ◂
   if (label === SHIFT_CLOSE_KEY) await step("เปิดกะคืน", async () => {
     const before = c.shiftId;
