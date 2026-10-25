@@ -16,5 +16,8 @@
 | `settings#pos-device-lan-printer-name-*` | dead (ไม่มี DOM mutation) | **บั๊กเลย์เอาต์จริง**: settings มีเมนู 240 px ของตัวเอง ⇒ ที่ 1024 pane 398 px แต่ DeviceSettings สองคอลัมน์ panel 400+32 ⇒ คอลัมน์ซ้าย 0 · การ์ด LAN เหลือ 58 px | fix8 CD-P43-15/15b (src · R1 MERGEABLE): @container บน pane · devices สองคอลัมน์เมื่อ pane ≥762 · receipt ≥712 · LAN form ≥360 · 1440 เท่า mockup เดิม |
 | (เดิม 3 รายการจากช่อง 1) | | | |
 
-## ช่อง 3–19
+## ช่อง 3 owner-mobile (105 นาที · ok 628/1178 · dead 0 · wrongExpect 1 · console 1 · overflow 0)
+เฉพาะรายการเดิม: `sales#pos-bills-page-*` + console logo · ไม่มี defect ใหม่ · ไม่มี overflow ที่ 390 · ord-start ผ่านบนมือถือ
+
+## ช่อง 4–19
 (เติมเมื่อแต่ละช่องจบ)
