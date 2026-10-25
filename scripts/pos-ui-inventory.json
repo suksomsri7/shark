@@ -30024,7 +30024,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ]
     },
     {
@@ -30050,7 +30051,10 @@
       "opener": [
         "pos-settings-nav-payments"
       ],
-      "needs": "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)"
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -30076,7 +30080,10 @@
         "pos-settings-nav-payments",
         "pos-settings-credit-add"
       ],
-      "needs": "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)"
+      "needs": [
+        "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
+      ]
     },
     {
       "page": "/app/sys/[id]/pos/settings",
@@ -30105,7 +30112,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "fixture ขาด: ร้าน posqc-coffee ไม่มีระบบ CRM/บริษัท (scripts/pos-qc-env.mts PQC.coffee.systems = POS/INVENTORY/ACCOUNT/MEMBER/POINT) · opener pos-settings-credit-search=* ได้ \"20\" (คำ credit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) — ต้องมีบริษัท CRM ชื่อตายตัวแล้วเปลี่ยนเป็น =<ชื่อบริษัท>"
+        "fixture ขาด: ร้าน posqc-coffee ไม่มีระบบ CRM/บริษัท (scripts/pos-qc-env.mts PQC.coffee.systems = POS/INVENTORY/ACCOUNT/MEMBER/POINT) · opener pos-settings-credit-search=* ได้ \"20\" (คำ credit เข้ากลุ่มเงินก่อน search — origin/wip/pos-p4.2-walker:scripts/qc-pos-buttons.mts fillValueFor:375-395) — ต้องมีบริษัท CRM ชื่อตายตัวแล้วเปลี่ยนเป็น =<ชื่อบริษัท>",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ]
     },
     {
@@ -30134,7 +30142,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ]
     },
     {
@@ -30163,7 +30172,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ]
     },
     {
@@ -30192,7 +30202,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ]
     },
     {
@@ -30221,7 +30232,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ]
     },
     {
@@ -30251,7 +30263,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ],
       "safety": "money"
     },
@@ -30282,7 +30295,8 @@
       ],
       "needs": [
         "ร้านมีระบบ CRM active (hasCrm · page.tsx:147)",
-        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM"
+        "บัญชีเครดิต (PosCreditAccount) ของบริษัทใน CRM",
+        "ผู้จัดการต้องเข้าได้ทุกสาขา (unitAccess \"*\") — มติ CD-P52-O4 F5 · หน้าซ่อนปุ่มแก้/เพิ่มให้ผู้จัดการสาขาเดียว (CD-P43-17 fix10)"
       ]
     },
     {
