@@ -29,5 +29,11 @@
 ## ช่อง 5 owner-mobile-en (49 นาที · 400 แถวตามทะเบียน · ok 170 · wrongExpect 1 = bills-page เดิม · console 0 · overflow 0)
 ไม่มี defect ใหม่
 
-## ช่อง 6–19
+## ช่อง 6 manager-desktop (ok 614/1193 · dead 0 · wrongExpect 4 · console 0 · overflow 0)
+| แถว | อาการ | สาเหตุ | การแก้ |
+|---|---|---|---|
+| `settings#pos-settings-credit-save` | ปฏิเสธ `pos-settings-credit-error` "บัญชีนี้ยังไม่มีสิทธิ์ตั้งวงเงินลูกค้าเครดิต" (edit-*/add/ฟอร์ม เปิดได้) | **UI ไม่ตรงด่านเซิร์ฟเวอร์**: `credit.ts:90-93` (มติ CD-P52-O4 F5) save ได้เฉพาะ OWNER หรือ MANAGER unitAccess "*" · แต่ `settings/page.tsx:149` ตัดสิน `evaluate(pos.credit.manage)` อย่างเดียว → ผู้จัดการสาขาเดียว (fixture) เห็นปุ่มแก้/เพิ่ม · เจ้าของทุกช่องผ่าน | **CD-P43-17 fix10 src** (builder ทรี b `wip/pos-p4.3-fix10` · บรีฟ `pos-prompt-accountA-P4.3-FIX10-CREDIT-SCOPE.md`): helper `canEditCreditAccounts` ใช้ร่วม save+หน้า · การ์ดอ่านอย่างเดียว + notice `pos-settings-credit-all-branches-only` · ทะเบียน: เติม needs 10 แถว credit edit/add/ฟอร์ม (ผู้คุม · p4.1 16/16) |
+| `pos-bills-page-*` · `pos-ord-start` · `pos-ord-cancel-confirm` | เดิม (fix7 poll · fix7 ทะเบียน · fix9h ซากออเดอร์) | | |
+
+## ช่อง 7–19
 (เติมเมื่อแต่ละช่องจบ)
