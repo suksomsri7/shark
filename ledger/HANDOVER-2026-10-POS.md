@@ -190,6 +190,6 @@ ORACLE-EDIT ทั้ง RUN = **452 commits** ในช่วง `71a1f363..93d
 | EV-P1 | ขายจริง 1 บิลบน prod ร้านทดลอง (W5) | owner — หลัง deploy (W5 · W32) |
 | EV-P2 | Z report 1 กะ บน prod | owner — หลัง deploy |
 | EV-P3 | ออเดอร์ MANUAL 1 ใบจบถึงบัญชี บน prod | owner — หลัง deploy |
-| EV-P4 | qc:all + perf | qc:all QC7 22 ต.ค. 283/429 (`ledger/HANDOVER-2026-10-22-POS-P3.md` §2) · perf P5.3 25/25 ×2 (B3U p95 23 ms) `/root/pos-runs/walker-B-20261026T031250Z/perf-run1.log` · `perf-run2.log` |
+| EV-P4 | qc:all + perf | qc:all QC7 22 ต.ค. 283/429 (`ledger/HANDOVER-2026-10-22-POS-P3.md` §2) · perf P5.3 25/25 ×2 รอบจริง @93d18f75 (B3U p95 17.7/15.1 ms · p50 12.1/10.3) `/root/pos-runs/walker-B-20261026T031250Z/perf-run1.log` · `perf-run2.log` |
 | EV-P5 | parity ทุกจอ 1440/1024/390 | `ledger/HANDOVER-2026-10-16-POS-P2.md` §3 · `ledger/HANDOVER-2026-10-22-POS-P3.md` §1 (vis-*) · help: `/root/pos-runs/walker-B-20261026T031250Z/visual-help-th.log` · `visual-help-en.log` |
 | EV-P6 | HANDOVER ฉบับนี้ | `ledger/HANDOVER-2026-10-POS.md` |
