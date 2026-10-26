@@ -53,5 +53,8 @@
 |---|---|---|---|
 | `register#pos-reg-held-confirm-hold` | เซิร์ฟเวอร์ปฏิเสธ `pos-reg-error` "ส่วนลดเกินสิทธิ์ของบัญชีนี้ (สูงสุด 10%)" | **ซากข้ามช่อง**: แถว `pos-discount-over-request` ของช่อง 11 (cashier-desktop 19:49Z) สร้างบิลพัก "รออนุมัติส่วนลด" (`holdCartForApproval` · hcap4cb9… · approvedRequestId null) · ตอนจบช่อง fixture ลบสาย POS_DISCOUNT_OVER แต่บิลพักยัง HELD (กำพร้า) → ช่อง 12 opener `pos-reg-held-recall-*` เจอบิลนี้เป็นใบแรก → `recallHeldCart` quote ด้วยเพดานแคชเชียร์ (มติ 5 P1.15U: ไม่มี approval = เพดานผู้ขาย) → DISCOUNT_EXCEEDS_LIMIT · ช่อง 11 ไม่เจอเพราะบิลเกิดหลังแถว held (confirm-hold ถูก skip) · DB QC5 ยืนยัน (posHeldCart unit posqc-btn) | **CD-P43-18 fix11h** (ผู้คุม · fixture): resetSideEffects + ขั้น "บิลพักค้าง" ทิ้ง HELD ที่เกิดในรอบ (DISCARDED+version แบบตัวกวาดหมดอายุ) · qc-pos-buttons ด่าน 10/10 · strict tsc รวมรอบทรี c ถัดไป · **หนี้ผลิตภัณฑ์ (W44)**: ลิ้นชักบิลพักแสดงบิล "รออนุมัติส่วนลด" ให้เรียกคืนได้ทั้งที่ยังไม่อนุมัติ → ข้อความปฏิเสธเป็น "ส่วนลดเกินสิทธิ์" (ควรแสดงป้ายรออนุมัติ/ปิดปุ่มเรียกคืน) — ไม่ใช่บั๊กเงิน (เซิร์ฟเวอร์ปฏิเสธถูก) · จดใน HANDOVER §4/§5 รอเจ้าของ |
 
-## ช่อง 13–19
+## ช่อง 13 cashier-mobile (102 นาที · ok 778/1178 · dead 0 · wrongExpect 1 · console 0 · overflow 0)
+ทั้งหมดเดิม: `pos-bills-page-*` (fix7) — **ไม่มี defect ใหม่**
+
+## ช่อง 14–19
 (เติมเมื่อแต่ละช่องจบ)
