@@ -56,5 +56,8 @@
 ## ช่อง 13 cashier-mobile (102 นาที · ok 778/1178 · dead 0 · wrongExpect 1 · console 0 · overflow 0)
 ทั้งหมดเดิม: `pos-bills-page-*` (fix7) — **ไม่มี defect ใหม่**
 
-## ช่อง 14–19
+## ช่อง 14 cashier-desktop-en (99 นาที · ok 785/1193 · dead 0 · wrongExpect 3 · console 0 · overflow 0)
+ทั้งหมดเดิม: `pos-reg-held-confirm-hold` ซากบิลพักรออนุมัติ (fix11h) · `pos-bills-page-*` (fix7) · `pos-taxinv-form` EN (fix9/9b) — **ไม่มี defect ใหม่**
+
+## ช่อง 15–19
 (เติมเมื่อแต่ละช่องจบ)
