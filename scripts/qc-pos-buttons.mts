@@ -655,7 +655,7 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
     //   "ยังไม่รับการสแกน" (RegisterScreen.tsx:2577-2629) · H7: ช่องสแกนสต็อกบันทึกด้วย Enter เท่านั้น ◂
     const fillV = differ(fillValueFor(testid, eff), meta.value);
     // POS P4.3 fix7 ▸ CD-P43-13 (25.10): ช่อง URL วางทั้งก้อน (เหมือนผู้ใช้วางลิงก์) — พิมพ์ทีละตัวทำให้ตัวอย่างโลโก้โหลด "h"/"ht"/… เป็น path ใต้เซิร์ฟเวอร์ QC = 404 ในคอนโซล (ReceiptSettings.tsx:345)
-    if (eff === "url" || /url$|website/.test(testid.toLowerCase())) await page.keyboard.insertText(fillV);
+    if (eff === "url" || /url$|website/.test(testid.toLowerCase())) await page.keyboard.sendCharacter(fillV); // fix7b (CD-P43-13b): puppeteer = sendCharacter (insertText ไม่มี · รอบจริงช่อง 1 error)
     else await page.keyboard.type(fillV, { delay: 45 });
     await sleep(60);
     await page.keyboard.press(ENTER_SUBMIT.has(testid) ? "Enter" : "Tab");
