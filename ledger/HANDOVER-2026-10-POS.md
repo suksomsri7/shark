@@ -98,7 +98,7 @@
 | P29-H1 | P2.9 | Med | ส่วนบัตรของขวัญ/เครดิตร้านคืนเป็นเงินสดได้ | แก้ก่อน merge S `40ade233` · มติ CD-P29-1 `d871877c` | `ledger/wo-notes/pos-P2.9-hunt.md` |
 
 ## §3 ORACLE-EDIT
-ORACLE-EDIT ทั้ง RUN = **433 commits** ในช่วง `71a1f363..a35fe494` (git log --grep ORACLE-EDIT) · รายการเต็มพร้อม SHA: `ledger/wo-notes/pos-oracle-edits.md` · ทุกตัวมีมติผู้คุม (CD-*) ในข้อความ commit หรือ `ledger/POS-RESUME.md` · หมุดเลนย้ายด้วย `scripts/pos-repin-lane.sh` (CD-RP1…RP27b) · กติกา: ห้ามแก้ข้อสอบนอกมติ · oracle ใหม่หมุดคงที่แบบ env-override.
+ORACLE-EDIT ทั้ง RUN = **452 commits** ในช่วง `71a1f363..93d18f75` (git log --grep ORACLE-EDIT) · รายการเต็มพร้อม SHA: `ledger/wo-notes/pos-oracle-edits.md` · ทุกตัวมีมติผู้คุม (CD-*) ในข้อความ commit หรือ `ledger/POS-RESUME.md` · หมุดเลนย้ายด้วย `scripts/pos-repin-lane.sh` (CD-RP1…RP27b) · กติกา: ห้ามแก้ข้อสอบนอกมติ · oracle ใหม่หมุดคงที่แบบ env-override.
 
 ## §4 หนี้/ของค้างที่รับไว้
 | หนี้ | ผล | ที่มา |
