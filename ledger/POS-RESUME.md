@@ -2322,3 +2322,4 @@
 - 2026-10-26T09:58Z 🟢 **รอบจริง (รอบ 2) ช่อง 1–2 เขียว** @c2f00766: owner-desktop ok 640/1194 · owner-ipad ok 640/1195 · dead 0 · wrongExpect 0 · error 0 · console 0 · overflow 0 (102 นาที/ช่อง) · ช่อง 3 owner-mobile เริ่ม 09:57Z
 - 2026-10-26T11:57Z 🟢 **รอบจริง ช่อง 3 owner-mobile เขียว** ok 629/1179 · 0 แดงทุกคอลัมน์ (92 นาที) · ช่อง 4 owner-desktop-en เริ่ม 11:30Z
 - 2026-10-26T13:56Z 🟢 **รอบจริง ช่อง 4 owner-desktop-en เขียว** ok 641/1194 · 0 แดง (taxinv EN fix9/9b ผ่านแล้ว · 103 นาที) · ช่อง 5 owner-mobile-en เริ่ม 13:55Z
+- 2026-10-26T15:51Z 🟢 **รอบจริง ช่อง 5–6 เขียว**: owner-mobile-en ok 171/400 (49 นาที) · manager-desktop ok 600/1194 (108 นาที · credit scope fix10 ผ่าน) · 0 แดงทุกคอลัมน์ · 6/19 · ช่อง 7 manager-ipad เริ่ม 15:50Z
