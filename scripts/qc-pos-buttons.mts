@@ -1283,6 +1283,17 @@ async function runGroup(path: string, group: PlanItem[], cookies: Any[]): Promis
       }
       // POS P4.3 walker fix1 ▸ H4: คอนโทรลปิดใช้ก่อนกด — เดิมกฎ disabled→needs ทำหลังตัดสิน "ตาย" เท่านั้น (คำขอเบื้องหลังทำให้ดูมีชีวิต แล้วพิมพ์ลงช่องอื่นที่โฟกัสอยู่) ·
       //   aria-disabled ที่ทะเบียนบอกว่าแตะแล้วขึ้นเหตุผล (anyOf toast/inline-error เช่น pos-reg-custom-item ของแคชเชียร์) ยังกดตามเดิม ◂
+      // POS P4.3 fix12 (ผู้คุม A · CD-P43-19 · 26.10): คอนโทรลปิดใช้ชั่วคราวระหว่างโหลด (เช่น pos-staff-switch ตอน "กำลังโหลดรายชื่อ…" ของ LockScreen)
+      //   รอบจริงช่อง manager-ipad ตัดสิน "ตาย" เพราะกดทันทีที่หน้าขึ้น → ให้เวลาเปิดใช้สูงสุด 8 วิ (poll 400 ms · หาองค์ประกอบใหม่ทุกรอบเผื่อ re-render) ก่อนตัดสิน · ไม่กระทบแถวที่มี needs/F13 (ตัดสินไปแล้วด้านบน) ◂
+      if (await isDisabled(el)) {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 8000) {
+          await new Promise((r) => setTimeout(r, 400));
+          const again = await findVisible(page, it.row.testid, notList, 300, rowTags(it, !!SELF_CLICK_FIRST[it.key]));
+          if (again) el = again;
+          if (!(await isDisabled(el))) break;
+        }
+      }
       if (await isDisabled(el)) {
         const native: boolean = await el.evaluate((e: Any) => !!e.disabled).catch(() => false);
         const tapReason = expectAlts(it.row.expect).some((a) => a.type === "toast" || a.type === "inline-error");
