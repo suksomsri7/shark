@@ -2312,3 +2312,4 @@
 - 2026-10-26T00:08Z 🟡 **สำรวจช่อง 13 cashier-mobile** (102 นาที): ok 778/1178 · dead 0 · wrongExpect 1 (bills-page = เดิม) · console 0 · **ไม่มี defect ใหม่** · ช่อง 14 cashier-desktop-en เริ่ม 00:07Z (เหลือ 6: cashier-en ×2 + public ×4 ≈ 3 ชม.)
 - 2026-10-26T00:34Z ✅ **ด่านทรี c ชุด fix11h+docs @a776c010 เขียวหมด** (`/root/pos-runs/tc-fix11h-20261026T000859Z`: tsc 0 · 27 ชุด exit 0 · p6.2 16/16 กับแถว W44/§4 ใหม่) · tip นี้ = ฐานสำหรับ build ทรี d รอบจริง (ถ้าช่อง 14–19 ไม่มี src fix เพิ่ม)
 - 2026-10-26T01:47Z 🟡 **สำรวจช่อง 14 cashier-desktop-en** (99 นาที): ok 785/1193 · wrongExpect 3 (ซากบิลพัก = fix11h · bills-page · taxinv EN = เดิม) · console 0 · **ไม่มี defect ใหม่** · ช่อง 15 cashier-mobile-en เริ่ม 01:47Z แล้ว public ×4
+- 2026-10-26T02:41Z 🟡 **สำรวจช่อง 15 cashier-mobile-en** (54 นาที): ok 222/400 · wrongExpect 1 (bills-page = เดิม) · **ไม่มี defect ใหม่ · ครบ 15 ช่องพนักงาน** · public ×4 เริ่ม 02:40Z → DONE แล้วจะ build ทรี d @tip + chain รอบจริง
