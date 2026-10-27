@@ -2,7 +2,7 @@
 
 ## §0 สรุป
 ฉบับนี้ **แทนที่ (supersedes)** HANDOVER เฟสเดิม 4 ฉบับ: `ledger/HANDOVER-2026-10-10-POS-P1.md` · `ledger/HANDOVER-2026-10-16-POS-P2.md` · `ledger/HANDOVER-2026-10-22-POS-P3.md` · `ledger/HANDOVER-2026-10-23-POS-P5.md` — ของเดิมยังอ่านได้เป็นรายละเอียดต่อเฟส.
-- ตัวนับ: **51/55 → ปิดครบ 55/55 เมื่อ chain v3 (walker 19 ช่อง + perf P5.3) เขียวและไฟล์นี้ผ่าน qc-pos-p6.2 H1/H2** · tip ส่งมอบ = คอมมิตล่าสุดบน `session/pos` (ดู §7 วิธีตรวจ) · ⛔ ยังไม่ merge main (W32 เจ้าของ deploy ตาม `docs/pos/DEPLOY-RUNBOOK.md`).
+- ตัวนับ: **55/55 (100%) · ปิด 27 ต.ค. 2026** — walker 19 ช่องเขียวครบ (qc-pos-p4.2 12/12) · perf P5.3 25/25 ×2 · ด่านเต็ม 143 ชุดเขียว (ยกเว้น ACCEPTED 12) · ไฟล์นี้ผ่าน qc-pos-p6.2 · tip ส่งมอบ = คอมมิตล่าสุดบน `session/pos` (ดู §7 วิธีตรวจ) · ⛔ ยังไม่ merge main (W32 เจ้าของ deploy ตาม `docs/pos/DEPLOY-RUNBOOK.md`).
 - ของที่ขึ้นแล้ว: แคตตาล็อกเดียว · หน้าขาย V2 ทุกโหมด (ร้านค้า/ร้านอาหาร/โต๊ะ/QR/KDS/จอลูกค้า/หลายสาขา/ออฟไลน์) · ทุกช่องทาง (เว็บร้าน · ออเดอร์ · แพลตฟอร์มโครง) · เชื่อม HR/บัญชี/CRM/สมาชิก/แชท/บอร์ด/AI · REST `/api/v1/pos` + สกิล · ตั้งค่า/รายงาน/พิมพ์ · คู่มือในแอป `/pos/help`.
 - คุณภาพ: ด่าน POS 134 ชุด + 8 คำสั่ง (manifest `scripts/pos-gates.json`) เขียวที่ tip ยกเว้น ACCEPTED 12 (account-api/member เดิม) · hunter เงิน/authz 7 รายงาน (§2) · parity 1440/1024/390 ทุกจอ · ซ้อม deploy บน branch สำเนา prod ผ่าน 37/37 (§6).
 - ของเจ้าของ: W1–W43 (§5) · ก่อน deploy ต้องตั้ง `POS_DEVICE_KEY` (W40) · ลำดับ deploy CD-P61-R1 = migrate ก่อน merge main (runbook §0/§4).
@@ -56,11 +56,11 @@
 | P3.9 AI สรุปเช้า | S `683a7cc8` · U `7c5c0d09` | qc-pos-p3.9 48/48 | `ledger/HANDOVER-2026-10-22-POS-P3.md` §1 |
 | P3.12 ปิดเฟส P3 | `15ee7536` · freeze `f38494fb` | qc-pos-p3.12 22/22 · gates128 136/136 | `ledger/HANDOVER-2026-10-22-POS-P3.md` |
 | P4.1 ทะเบียนปุ่ม | `574b0758` (oracle `3857aa03`) | qc-pos-p4.1 16/16 | `ledger/wo-notes/pos-P4.1.md` |
-| P4.2 ตัวเดินกดปุ่ม 19 ช่อง | walker `77de6002` → รวมใน `e527eff6` · ผล 19 ช่องจาก chain v3 (§8 EV-C4) | qc-pos-p4.2 12 ข้อ | `ledger/wo-notes/pos-P4.2-walker.md` |
+| P4.2 ตัวเดินกดปุ่ม 19 ช่อง | walker `77de6002` → รวมใน `e527eff6` · รอบสำรวจ + รอบจริง 19 ช่องเขียว (18 ช่องใน chain รอบ 2 + manager-ipad รันซ้ำหลัง fix12 · §8 EV-C4) | **qc-pos-p4.2 12/12** (ทรี d + ทรี c) | `ledger/wo-notes/pos-P4.2-walker.md` |
 | P4.3 triage+fix จาก walker | `e527eff6` · fix3 `c39b71fd` · fix8 settings @container `7f49d880` (CD-P43-15/15b) · fix9+9b tax-invoice 15A `63116bb2` (CD-P43-16/16b) · fix10+10b บัญชีเครดิตอ่านอย่างเดียวผู้จัดการสาขาเดียว `b1f6202b` (CD-P43-17/17b · มติ F5) · fix5c/6/7/9h ทะเบียน+ตัวเดิน (CD-P43-11…16 · รอบสำรวจ) | qc-pos-p4.3 30/30 · p2.2 42/42 · p1.13 33/33 · p1.15 40/40 · p2.14 60/60 | `ledger/wo-notes/pos-P4.3-fix1-review.md` · `pos-P4.3-survey.md` · `pos-P4.3-fix8-review.md` · `pos-P4.3-fix9-review.md` · `pos-P4.3-fix10-review.md` |
 | P5.1 เงิน/race/idempotency | `5926434f` · `e9b765b4` · `6b1f84a5` | qc-pos-p5.1 28/28 | `ledger/wo-notes/pos-P5.1-hunt-MA.md` |
 | P5.2 authz ทุก surface | `e774edeb` · `c4584062` · `98f60761` | qc-pos-p5.2 57 ข้อ · matrix 405 แถว (+GET barcode-index) | `ledger/wo-notes/pos-P5.2-hunt-L1.md` |
-| P5.3 perf | oracle `c3ae27f1` · fix1–fix1d ดัชนีบาร์โค้ดฝั่งลูกข่าย merge `adfcee44` (CD-P53-O14/O15/O16 · R1+hunter 2 รอบ) · ผลวัด chain v3 25/25 ×2 B3U p95 20.6/23.4 ms · **รอบจริง @93d18f75 25/25 ×2 B3U p95 17.7/15.1 ms** (§8 EV-P4) | qc-pos-p5.3 11/11 gate (S5 ทางลูกข่าย) · measure 25/25 | `ledger/wo-notes/pos-P5.3-oracle.md` · `ledger/wo-notes/pos-P5.3-fix1.md` · `ledger/wo-notes/pos-P5.3-fix1-review.md` |
+| P5.3 perf | oracle `c3ae27f1` · fix1–fix1d ดัชนีบาร์โค้ดฝั่งลูกข่าย merge `adfcee44` (CD-P53-O14/O15/O16 · R1+hunter 2 รอบ) · ผลวัด chain v3 25/25 ×2 B3U p95 20.6/23.4 ms · รอบจริง @93d18f75 25/25 ×2 B3U p95 17.7/15.1 ms · **ปิดงาน @e4f2bc29 25/25 ×2 B3U p95 16.9/17.4 ms** (§8 EV-P4) | qc-pos-p5.3 11/11 gate (S5 ทางลูกข่าย) · measure 25/25 | `ledger/wo-notes/pos-P5.3-oracle.md` · `ledger/wo-notes/pos-P5.3-fix1.md` · `ledger/wo-notes/pos-P5.3-fix1-review.md` |
 | P6.1 runbook/verify/ซ้อม deploy | prep `c91d8735` · fix `4016a352` | qc-pos-p6.1 31/31 · ซ้อม 37/37 | `ledger/wo-notes/pos-P6.1.md` |
 | P6.2 เอกสาร/คู่มือ/สกิล/HANDOVER | `0bd8324e` · `c4ce139a` | qc-pos-p6.2 16 ข้อ | `ledger/wo-notes/pos-P6.2-review.md` |
 
@@ -182,7 +182,7 @@ ORACLE-EDIT ทั้ง RUN = **452 commits** ในช่วง `71a1f363..93d
 | EV-C1 | สถานะ+SHA ทุกใบ · ORACLE-EDIT · HANDOVER | ไฟล์นี้ §1/§3 · `ledger/POS-RESUME.md` · `ledger/wo-notes/pos-oracle-edits.md` |
 | EV-C2 | wo-notes ครบทุกใบ | `ledger/wo-notes/` (pos-*.md) |
 | EV-C3 | diff ข้อสอบ ↔ ป้าย ORACLE-EDIT | `ledger/wo-notes/pos-oracle-edits.md` (git log --grep) |
-| EV-C4 | ด่านเต็มรอบสุดท้าย + walker 19 ช่อง | `/root/pos-runs/gates132-c-20261025T012546Z/SUMMARY.txt` (143 ชุด @c54de3ef) · walker `/root/pos-runs/walker-B-20261026T053700Z/SUMMARY.txt` + `summaries/` (chain v3 · 19 ช่อง) |
+| EV-C4 | ด่านเต็มรอบสุดท้าย + walker 19 ช่อง | ด่านเต็ม 143 ชุด @e4f2bc29 `/root/pos-runs/gates130-c-20261027T054023Z/SUMMARY.txt` (แดง 3 ปิดแล้ว: p2.6 flake รันซ้ำ 67/67 `/root/pos-runs/p26-rerun-*.log` · p2.10 CD-RP33 13/13 · p4.2 ทรี c 12/12 `/root/pos-runs/p42-treec-1257.log`) · walker รอบจริง `/root/pos-runs/walker-B-20261026T053700Z/SUMMARY.txt` + `summaries/` (18 ช่อง) · manager-ipad รันซ้ำ `/root/pos-runs/cell-rerun-20261027T045748Z/SUMMARY.txt` (p4.2 12/12) · รอบสำรวจ `/root/pos-runs/walker-B-20261025T030640Z` + `ledger/wo-notes/pos-P4.3-survey.md` |
 | EV-C5 | ภาพทุกจอ 3 ขนาด + ทะเบียนปุ่ม | `scripts/pos-ui-inventory.json` · `scripts/pos-visual-sweep.json` · `/root/pos-runs/vis-*` |
 | EV-C6 | รายงานนักล่า + ตาราง finding → แก้ | `ledger/wo-notes/pos-P5.1-hunt-MA.md` · `ledger/wo-notes/pos-P5.2-hunt-L1.md` · §2 |
 | EV-C7 | ซ้อม/ตรวจ migration (owner ขั้น deploy จริง W31/W32) | `ledger/wo-notes/pos-P6.1.md` · `docs/pos/DEPLOY-RUNBOOK.md` |
@@ -190,6 +190,6 @@ ORACLE-EDIT ทั้ง RUN = **452 commits** ในช่วง `71a1f363..93d
 | EV-P1 | ขายจริง 1 บิลบน prod ร้านทดลอง (W5) | owner — หลัง deploy (W5 · W32) |
 | EV-P2 | Z report 1 กะ บน prod | owner — หลัง deploy |
 | EV-P3 | ออเดอร์ MANUAL 1 ใบจบถึงบัญชี บน prod | owner — หลัง deploy |
-| EV-P4 | qc:all + perf | qc:all QC7 22 ต.ค. 283/429 (`ledger/HANDOVER-2026-10-22-POS-P3.md` §2) · perf P5.3 25/25 ×2 รอบจริง @93d18f75 (B3U p95 17.7/15.1 ms · p50 12.1/10.3) `/root/pos-runs/walker-B-20261026T053700Z/perf-run1.log` · `perf-run2.log` |
+| EV-P4 | qc:all + perf | qc:all QC7 22 ต.ค. 283/429 (`ledger/HANDOVER-2026-10-22-POS-P3.md` §2) · perf P5.3 ปิดงาน @e4f2bc29 25/25 ×2 (B3U p95 16.9/17.4 ms) `/root/pos-runs/perf-only-20261027T125738Z/perf-run1.log` · `perf-run2.log` · รอบก่อน @93d18f75 25/25 ×2 `/root/pos-runs/walker-B-20261026T031250Z/perf-run1.log` |
 | EV-P5 | parity ทุกจอ 1440/1024/390 | `ledger/HANDOVER-2026-10-16-POS-P2.md` §3 · `ledger/HANDOVER-2026-10-22-POS-P3.md` §1 (vis-*) · help: `/root/pos-runs/walker-B-20261026T053700Z/visual-help-th.log` · `visual-help-en.log` |
 | EV-P6 | HANDOVER ฉบับนี้ | `ledger/HANDOVER-2026-10-POS.md` |
