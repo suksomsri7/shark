@@ -368,7 +368,7 @@ const SLUG = "qc-svc-r03-";
 const tenantIds: string[] = [];
 const MODELS_BY_TENANT = [
   "settingChange", "settingValue", "settingProfile", "tenantIntegration", "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
-  "appNotification", "outboxEvent", "auditLog", "membership", "hotelRoom", "hotelRoomType", "roomBuilding", "bookingStaff", "bookingService", "businessUnit",
+  "appNotification", "outboxEvent", "auditLog", "membership", "roomOccupancy", "hotelRoom", "hotelRoomType", "roomBuilding", "bookingStaff", "bookingService", "businessUnit",
 ];
 const cleanup = async (ids: string[]) => {
   for (const id of ids) {
