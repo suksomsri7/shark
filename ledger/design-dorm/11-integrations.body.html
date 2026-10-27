@@ -1,0 +1,69 @@
+<style>
+.igrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.ic2{border:1px solid var(--line);border-radius:18px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;background:var(--sf);min-height:178px}
+.ic2 .h{display:flex;align-items:center;gap:12px}
+.ic2 .h .lg{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.ic2 .h b{font-size:15.5px;display:block}
+.ic2 .h small{font-size:12.5px;color:var(--mut)}
+.ic2 p{font-size:13px;color:var(--ink2);line-height:1.55}
+.ic2 .f{margin-top:auto;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mut)}
+.ic2 .f .sp{flex:1}
+.ic2.on{border-color:var(--ink)}
+.ic2.sel{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-bg)}
+.ic2.off{background:var(--sf2)}
+.st2{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700}
+.st2 i{width:8px;height:8px;border-radius:50%;background:var(--ink);display:block}
+.st2.no{color:var(--mut);font-weight:600}.st2.no i{background:var(--line2)}
+.st2.dg{color:var(--dg)}.st2.dg i{background:var(--dg)}
+.secret{display:flex;align-items:center;gap:10px;height:46px;border:1px solid var(--line);border-radius:12px;padding:0 14px;font-family:'Sarabun',monospace;font-size:14px;letter-spacing:.06em}
+.secret .sp{flex:1}
+.usage{height:8px;border-radius:4px;background:var(--sf2);overflow:hidden}.usage i{display:block;height:100%;width:8.2%;background:var(--ink)}
+.scope div{display:flex;align-items:center;gap:10px;font-size:14px;padding:5px 0}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">11 · ศูนย์เชื่อมต่อ (ระดับกิจการ · ใช้ร่วมทุกระบบ) <span>— LINE OA ของร้าน · ช่องรับเงิน · ตรวจสลิป · ช่องทางขายห้อง (OTA) · SMS · ทุกตัวเป็น "ตัวต่อ" เสียบ/ถอดได้ ผู้ใช้สมัครผู้ให้บริการเองแล้วใส่คีย์ · คีย์เข้ารหัสไม่แสดงซ้ำ · ไม่เชื่อม = ระบบทำแบบมือแทน</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>กลุ่มบ้านสวน · ทั้งกิจการ<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span><span class="st"><i class="dot"></i>ออนไลน์ · อ. 27 ต.ค. 2569 · 10:20</span>
+  <span class="who"><span class="av">ม</span>คุณแม่มาลัย · เจ้าของกิจการ</span></div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail"><div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-asset"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div><span style="flex:1"></span><div class="ri on"><svg class="i sm"><use href="#i-gear"/></svg></div></div>
+  <div class="mod">
+   <div style="display:flex;flex:1;min-height:0">
+   <div style="flex:1;min-width:0">
+   <div class="ph" style="padding-top:26px"><h1>ศูนย์เชื่อมต่อ</h1><span class="sp"></span><div class="inp"><svg class="i sm"><use href="#i-search"/></svg>ค้นตัวเชื่อมต่อ</div></div>
+   <div class="pg">
+    <div class="tabs"><div class="tab on">ทั้งหมด <span class="n">9</span></div><div class="tab">แชท/แจ้งเตือน <span class="n">3</span></div><div class="tab">รับเงิน <span class="n">4</span></div><div class="tab">ช่องทางขาย <span class="n">1</span></div><div class="tab">อุปกรณ์ <span class="n">1</span></div></div>
+    <div class="igrid">
+     <div class="ic2 on"><div class="h"><span class="lg"><svg class="i"><use href="#i-mail"/></svg></span><span><b>LINE OA · @bansuan-apt</b><small>แชท · แจ้งเตือน · เมนูล่าง</small></span></div><p>บิล · ทวง · ประกาศ · แจ้งซ่อม ของหอ · ผูกผู้เช่าแล้ว 30/31 คน</p><div class="f"><span class="st2"><i></i>เชื่อมแล้ว</span><span class="sp"></span>ข้อความเดือนนี้ 212</div></div>
+     <div class="ic2 on"><div class="h"><span class="lg"><svg class="i"><use href="#i-mail"/></svg></span><span><b>LINE OA · @bansuan-hotel</b><small>แชท · แจ้งเตือน</small></span></div><p>ยืนยันจอง · รหัส Wi-Fi · ขอรีวิว ของโรงแรม (ระบบจองคิวเลือกใช้ OA ไหนก็ได้)</p><div class="f"><span class="st2"><i></i>เชื่อมแล้ว</span><span class="sp"></span>ข้อความเดือนนี้ 64</div></div>
+     <div class="ic2 on"><div class="h"><span class="lg"><svg class="i"><use href="#i-qr"/></svg></span><span><b>พร้อมเพย์ (QR ยอดตรง)</b><small>รับเงิน · ไม่ต้องสมัคร</small></span></div><p>เลข 08x-xxx-2210 · ชื่อใต้ QR "บ้านสวนอพาร์ตเมนต์" · แยกเลขต่อหน่วยธุรกิจได้</p><div class="f"><span class="st2"><i></i>ใช้งาน</span></div></div>
+     <div class="ic2 sel"><div class="h"><span class="lg"><svg class="i"><use href="#i-check"/></svg></span><span><b>ตรวจสลิปอัตโนมัติ</b><small>ตัวต่อ · ผู้ใช้สมัครเอง</small></span></div><p>ตรวจกับธนาคารว่าสลิปจริง ยอด/ผู้รับถูก · ไม่เชื่อม = คิวตรวจมือ (จอ 06)</p><div class="f"><span class="st2"><i></i>เชื่อมแล้ว · ผู้ให้บริการ A</span><span class="sp"></span>ตั้งค่า ›</div></div>
+     <div class="ic2"><div class="h"><span class="lg"><svg class="i"><use href="#i-wallet"/></svg></span><span><b>เกตเวย์รับเงิน</b><small>QR/บัตร ยืนยันอัตโนมัติ (เช่น Beam)</small></span></div><p>ไม่ต้องใช้สลิป — เงินเข้าแล้วระบบรู้เอง · ค่าธรรมเนียมตามผู้ให้บริการ</p><div class="f"><span class="st2 no"><i></i>ยังไม่เชื่อม</span><span class="sp"></span><span class="lnk">เชื่อม</span></div></div>
+     <div class="ic2"><div class="h"><span class="lg"><svg class="i"><use href="#i-bank"/></svg></span><span><b>รายการเดินบัญชีธนาคาร</b><small>นำเข้าไฟล์ · จับคู่อัตโนมัติ</small></span></div><p>มีแล้วในบัญชี V2 · จับคู่เงินเข้ากับบิลที่ยังไม่จ่าย เป็นทางยืนยันอีกชั้น</p><div class="f"><span class="st2"><i></i>ใช้งาน</span></div></div>
+     <div class="ic2"><div class="h"><span class="lg"><svg class="i"><use href="#i-cal"/></svg></span><span><b>ช่องทางขายห้อง (OTA)</b><small>Agoda · Booking.com ผ่าน channel manager</small></span></div><p>ส่งราคา/ห้องว่าง · รับการจองเข้า tape chart อัตโนมัติ · กันขายซ้อนที่แกนห้อง</p><div class="f"><span class="st2 no"><i></i>ยังไม่เชื่อม</span><span class="sp"></span>ตัวต่อเจ้าแรก เฟส H2</div></div>
+     <div class="ic2 off"><div class="h"><span class="lg"><svg class="i"><use href="#i-mail"/></svg></span><span><b>SMS</b><small>สำรองส่งลิงก์บิล</small></span></div><p>สำหรับผู้เช่าที่ยังไม่ผูก LINE (ห้อง 205)</p><div class="f"><span class="st2 no"><i></i>ยังไม่เชื่อม</span><span class="sp"></span><span class="lnk">เชื่อม</span></div></div>
+     <div class="ic2 off"><div class="h"><span class="lg"><svg class="i"><use href="#i-pct"/></svg></span><span><b>มิเตอร์อัจฉริยะ</b><small>อ่านค่าน้ำไฟอัตโนมัติ</small></span></div><p>โครงข้อมูลรองรับแล้ว (แหล่งค่ามิเตอร์ = IoT)</p><div class="f"><span class="st2 no"><i></i>เร็ว ๆ นี้</span></div></div>
+    </div>
+   </div>
+   </div>
+   <div class="side">
+    <div class="sh"><div class="mu2">ตัวต่อ · รับเงิน</div><h2>ตรวจสลิปอัตโนมัติ</h2></div>
+    <div class="sb2">
+     <div class="fld"><span>ผู้ให้บริการ</span><div class="inp" style="width:100%"><b>ผู้ให้บริการ A</b><svg class="i xs cv"><use href="#i-cv"/></svg></div><div class="mu2">รายการ = ตัวต่อที่ SHARK มี · ผู้ใช้ไปสมัครกับผู้ให้บริการเอง (จ่ายค่าตรวจเอง)</div></div>
+     <div class="fld"><span>คีย์ API</span><div class="secret">••••••••••••••••3f9a<span class="sp"></span><span class="lnk" style="font-family:inherit;letter-spacing:0">เปลี่ยน</span></div><div class="mu2">เข้ารหัสเก็บ · ไม่แสดงซ้ำ · บันทึกว่าใครเปลี่ยนเมื่อไร</div></div>
+     <div class="info" style="padding:12px 14px;font-size:13.5px"><svg class="i sm ic"><use href="#i-check"/></svg><span><b>ทดสอบผ่าน</b> 10:18 · ตอบใน 0.8 วินาที</span><span class="sp"></span><span class="lnk">ทดสอบอีกครั้ง</span></div>
+     <div class="fld"><span>ใช้กับ</span><div class="scope"><div><span class="cbx on"></span>บ้านสวนอพาร์ตเมนต์ — บิลหอ</div><div><span class="cbx on"></span>บ้านสวน โฮเทล — มัดจำจองออนไลน์</div><div><span class="cbx"></span>POS หน้าร้าน (โอนแนบสลิป)</div></div></div>
+     <div class="fld"><span>เมื่อบริการไม่ตอบ/โควตาหมด</span><div class="tchips sm"><span class="on">ส่งเข้าคิวตรวจมือ</span><span>ปฏิเสธสลิป</span></div></div>
+     <div class="fld"><span>ใช้ไปเดือนนี้</span><div class="usage"><i></i></div><div class="mu2">41 จาก 500 ครั้ง (โควตาตามแพ็กที่ผู้ใช้ซื้อ) · เตือนเมื่อเหลือ 10%</div></div>
+    </div>
+    <div class="sf"><div class="btn gh sm" style="flex:1">ถอดการเชื่อมต่อ</div><div class="btn pri sm" style="flex:1.3">บันทึก</div></div>
+   </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

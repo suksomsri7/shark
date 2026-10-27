@@ -1,0 +1,83 @@
+<style>
+.slip{height:250px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(170deg,var(--sf2),var(--stage));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ink2);font-size:13px}
+.slip b{font-size:26px;color:var(--ink);font-variant-numeric:tabular-nums}
+.slip .bk2{font-weight:700;font-size:14px}
+.chk{display:flex;flex-direction:column;gap:8px;font-size:14px}
+.chk div{display:flex;align-items:center;gap:10px}
+.chk i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:700;background:var(--ink);color:var(--sf);flex:none}
+.chk i.x{background:var(--dg)}
+.chk .dg{color:var(--dg);font-weight:700}
+.chs{display:flex;flex-direction:column;gap:10px}
+.chs .opt{padding:13px 16px}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">06 · ตรวจสลิป / รับชำระ <span>— สลิปส่วนใหญ่ผ่านเอง (สลิปจริง · ผู้รับคือบัญชีหอ · ยอดตรง · ไม่ซ้ำ) เหลือให้คนดูเฉพาะที่ผิด · รับแล้ว = ใบเสร็จ + ลงบัญชีอัตโนมัติ · รับบางส่วน/ยกยอดได้ · ตัวเลขชุดเดียวกับจอ 01/04</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านสวนอพาร์ตเมนต์ · 36 ห้อง<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span><span class="st"><i class="dot"></i>ออนไลน์ · อ. 3 พ.ย. 2569 · 10:30</span>
+  <span class="who"><span class="av">ฝ</span>พี่ฝ้าย · ผู้ดูแลหอ</span></div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail"><div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div><div class="ri on"><svg class="i sm"><use href="#i-asset"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div><span style="flex:1"></span><div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div></div>
+  <div class="mod">
+   <div class="amenu"><div class="am"><svg class="i sm"><use href="#i-grid"/></svg>ผังห้อง</div><div class="am"><svg class="i sm"><use href="#i-users"/></svg>ผู้เช่า/สัญญา</div><div class="am"><svg class="i sm"><use href="#i-pct"/></svg>จดมิเตอร์</div><div class="am on"><svg class="i sm"><use href="#i-doc"/></svg>บิล/รับเงิน<span class="pill">3</span></div><div class="am"><svg class="i sm"><use href="#i-warn"/></svg>แจ้งซ่อม<span class="pill">2</span></div><div class="am"><svg class="i sm"><use href="#i-mail"/></svg>ประกาศ</div><div class="am"><svg class="i sm"><use href="#i-report"/></svg>รายงาน</div><div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div></div>
+   <div style="display:flex;flex:1;min-height:0">
+   <div style="flex:1;min-width:0">
+   <div class="ph" style="padding-top:22px">
+    <h1>รับเงิน รอบ พ.ย.</h1>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-cash"/></svg>บันทึกรับเงินสด</div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-mail"/></svg>ทวงที่ยังไม่จ่าย (4)</div>
+   </div>
+   <div class="pg">
+    <div class="g4">
+     <div class="card kpi"><div class="lbl">รับแล้ว</div><div class="val">฿133,912.80</div><div class="fo">24 บิล · ผ่านอัตโนมัติ 21</div></div>
+     <div class="card kpi" style="border-color:var(--acc)"><div class="lbl">สลิปรอตรวจ</div><div class="val">3 <span style="font-size:16px;color:var(--mut)">· ฿17,785.36</span></div><div class="fo">104 · 206 · 309</div></div>
+     <div class="card kpi"><div class="lbl">ยังไม่จ่าย (ยังไม่เลยกำหนด)</div><div class="val">฿22,428.24</div><div class="fo">4 บิล · ครบ 5 พ.ย.</div></div>
+     <div class="card kpi" style="border-color:var(--dg)"><div class="lbl">ค้างจาก ต.ค.</div><div class="val dg">฿10,200.40</div><div class="fo">106 · 305 · ส่งเตือนแล้ว 3 ครั้ง</div></div>
+    </div>
+    <div class="tabs"><div class="tab on">รอตรวจ <span class="bdg">3</span></div><div class="tab">รับแล้ว <span class="n">24</span></div><div class="tab">ยังไม่จ่าย <span class="n">4</span></div><div class="tab dg">ค้างเกินกำหนด <span class="n">2</span></div></div>
+    <div class="card p0">
+     <table class="tbl">
+      <tr><th>ห้อง</th><th class="rt">ยอดบิล</th><th class="rt">ยอดในสลิป</th><th>โอนเมื่อ</th><th>ผลตรวจอัตโนมัติ</th></tr>
+      <tr><td><b>104</b> ปวีณา</td><td class="num">5,382.40</td><td class="num">5,382.40</td><td class="nw">2 พ.ย. 21:14<small>กสิกรไทย</small></td><td>ชื่อผู้โอนไม่ใช่ผู้เช่า<small>"สมพร ชัยดี" — ญาติจ่ายแทน?</small></td></tr>
+      <tr class="sel"><td><b>206</b> รัตนา</td><td class="num">5,562.32</td><td class="num"><b class="dgt">5,500.00</b></td><td class="nw">2 พ.ย. 20:03<small>กรุงเทพ</small></td><td><span class="dgt">ยอดขาด ฿62.32</span><small>สลิปจริง · ผู้รับถูก · ไม่ซ้ำ</small></td></tr>
+      <tr class="flag"><td><b>309</b> เมธี</td><td class="num">6,840.64</td><td class="num">5,120.00</td><td class="nw">3 ต.ค. 18:22<small>ไทยพาณิชย์</small></td><td><span class="dgt">สลิปซ้ำ</span><small>เคยใช้จ่ายบิล ต.ค. ห้อง 309 แล้ว</small></td></tr>
+     </table>
+    </div>
+    <div class="card">
+     <div class="ch"><h2>ผ่านอัตโนมัติล่าสุด</h2><span class="sp"></span><span class="sub">ไม่ต้องทำอะไร · ใบเสร็จส่งเข้า LINE แล้ว</span></div>
+     <div class="lst">
+      <div class="li"><b class="mono">204</b><span class="sp">ณัฐชา · สลิป 1 พ.ย. 19:41 · ยอดตรง</span><span class="n">฿5,486.00</span><span class="mu">RC-6911-0204</span></div>
+      <div class="li"><b class="mono">201</b><span class="sp">อรอุมา · สลิป 1 พ.ย. 09:12 · ยอดตรง</span><span class="n">฿6,282.24</span><span class="mu">RC-6911-0201</span></div>
+      <div class="li"><b class="mono">202</b><span class="sp">จักรพันธ์ · เงินสดที่สำนักงาน · พี่ฝ้ายรับ</span><span class="n">฿5,712.32</span><span class="mu">RC-6911-0202</span></div>
+     </div>
+    </div>
+   </div>
+   </div>
+   <div class="side">
+    <div class="sh"><div class="mu2">สลิปห้อง 206 · รัตนา บุญมา</div><h2>ยอดขาด ฿62.32</h2></div>
+    <div class="sb2">
+     <div class="slip"><span class="bk2">ธนาคารกรุงเทพ · โอนสำเร็จ</span><b>฿5,500.00</b><span>ถึง พร้อมเพย์ บ้านสวนอพาร์ตเมนต์</span><span class="mu">2 พ.ย. 2569 20:03 · เลขอ้างอิง 0145 ···· 9921</span></div>
+     <div class="chk">
+      <div><i>✓</i>สลิปจริง — ตัวต่อตรวจสลิป (ผู้ให้บริการ A · จอ 11)</div>
+      <div><i>✓</i>ผู้รับคือบัญชีของหอ</div>
+      <div><i>✓</i>ไม่เคยใช้สลิปนี้มาก่อน</div>
+      <div><i class="x">!</i><span>ยอดไม่ตรงบิล — <span class="dg">ขาด ฿62.32</span></span></div>
+     </div>
+     <div class="chs">
+      <div class="opt on"><span class="rd"></span><span><b>รับ ฿5,500.00 ไว้ก่อน · ยกยอดที่ขาดไปบิล ธ.ค.</b><small>ออกใบเสร็จตามยอดที่ได้ · บิล พ.ย. ปิดแบบ "จ่ายบางส่วน"</small></span></div>
+      <div class="opt"><span class="rd"></span><span><b>ขอให้โอนเพิ่ม ฿62.32</b><small>ส่ง LINE พร้อม QR ยอดที่ขาด</small></span></div>
+      <div class="opt"><span class="rd"></span><span><b>ไม่รับสลิปนี้</b><small>แจ้งเหตุผลกลับทาง LINE</small></span></div>
+     </div>
+     <div class="mu2">รับแล้ว → ใบเสร็จ RC-6911-0206 · ลงบัญชี: เงินฝากธนาคาร ↑ · ลูกหนี้ผู้เช่า ↓ (ระบบบัญชี V2)</div>
+    </div>
+    <div class="sf"><div class="btn gh sm" style="flex:1">ข้าม</div><div class="btn pri sm" style="flex:2">ยืนยัน · ส่งใบเสร็จ</div></div>
+   </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
