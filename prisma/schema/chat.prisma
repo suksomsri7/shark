@@ -504,3 +504,39 @@ model ChatWebhookLog {
   @@unique([connectionId, eventKey])
   @@index([createdAt])
 }
+
+// ─────────────── SVC R0.1 ▸ ผูกตัวตน + ส่งข้อความบริการ (CC §4.2 · เจ้าของโค้ด R0.7) ───────────────
+// connectionId/refId/usedByChatContactId/partyId = ข้อความ ไม่มี FK
+
+model ChatLinkCode {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  connectionId        String?
+  purpose             String // "DORM_LEASE" | "QUEUE_TICKET" | "APPOINTMENT"
+  refId               String
+  codeHash            String
+  codeLast4           String
+  expiresAt           DateTime
+  usedAt              DateTime?
+  usedByChatContactId String?
+  createdAt           DateTime  @default(now())
+
+  @@unique([tenantId, codeHash])
+}
+
+// กันส่งซ้ำเมื่อ cron/outbox รันซ้ำ (X4/X5)
+model ServiceMessageLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  unitId     String
+  domain     String
+  messageKey String
+  dedupeKey  String
+  channel    String // "LINE" | "SMS" | "NONE"
+  status     String // "SENT" | "SKIPPED_CONSENT" | "SKIPPED_QUIET" | "NO_CHANNEL" | "FAILED"
+  partyId    String?
+  at         DateTime @default(now())
+
+  @@unique([tenantId, dedupeKey])
+}
+// ◂ SVC R0.1

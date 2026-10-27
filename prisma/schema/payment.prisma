@@ -31,3 +31,37 @@ model PlatformInvoice {
   @@index([tenantId, status, createdAt])
   @@index([status, createdAt])
 }
+
+// SVC R0.1 ▸ สลิปโอนกลาง (CC §3.2 · เจ้าของโค้ด R0.6) — refId/partyId/fileId/verifierIntegrationId = ข้อความ ไม่มี FK
+// 🔴 unique บางส่วน (SQL มือใน migration svc_r0 — Prisma เขียนเองไม่ได้ · Prisma 7.8 ไม่สร้าง DROP ให้ของพวกนี้ (ตรวจ 27 ต.ค.) — ใบถัดไปให้รัน migrate diff ตรวจซ้ำ):
+//    "PaymentSlip_tenantId_imageHash_active_key" ON (tenantId, imageHash) WHERE status <> 'REJECTED'
+//    "PaymentSlip_tenantId_transRef_active_key"  ON (tenantId, transRef) WHERE transRef IS NOT NULL AND status <> 'REJECTED'
+model PaymentSlip {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  unitId                String
+  domain                String // "BOOKING" | "DORM" | "HOTEL"
+  refType               String // "APPT_DEPOSIT" | "DORM_BILL" | "HOTEL_DEPOSIT"
+  refId                 String
+  partyId               String?
+  fileId                String
+  imageHash             String
+  transRef              String?
+  expectedSatang        Int
+  amountSatang          Int?
+  payerName             String?
+  bankCode              String?
+  transferredAt         DateTime?
+  checks                Json // ผลตรวจในระบบรายข้อ
+  verifierIntegrationId String?
+  verifierResult        Json?
+  status                String // "PENDING" | "AUTO_APPROVED" | "NEEDS_REVIEW" | "APPROVED" | "REJECTED"
+  reviewReason          String?
+  decidedById           String?
+  decidedAt             DateTime?
+  createdAt             DateTime  @default(now())
+
+  @@index([tenantId, unitId, status, createdAt])
+  @@index([refType, refId])
+}
+// ◂ SVC R0.1

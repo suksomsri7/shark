@@ -34,7 +34,9 @@ const BASE_SHA = "33e8272c"; // tip session/svc ตอน R0.0 (ก่อน R0.
     if (!u) { console.error(`🔴 ${LABEL}: ไม่มี ${n} — รันผ่าน: bash scripts/iso.sh bash scripts/qc-svc.sh pnpm exec tsx scripts/qc-svc-r0.1.mts`); process.exit(4); }
     const bad = FORBIDDEN_HOSTS.find((h) => u.includes(h));
     if (bad) { console.error(`🔴 ${LABEL}: ${n} ชี้ฐานต้องห้าม (${bad}) — หยุด`); process.exit(4); }
-    if (!u.includes(SVC_HOST)) { console.error(`🔴 ${LABEL}: ${n} ไม่ใช่ qc-svc (${SVC_HOST}) — หยุด`); process.exit(4); }
+    let hn = "";
+    try { hn = new URL(u).hostname; } catch { /* อ่านไม่ได้ = ปฏิเสธ */ }
+    if (!hn.includes(SVC_HOST)) { console.error(`🔴 ${LABEL}: ${n} host ไม่ใช่ qc-svc (${SVC_HOST}) — หยุด`); process.exit(4); }
   }
   if (process.env.APP_ENV === "production") { console.error(`🔴 ${LABEL}: APP_ENV=production`); process.exit(4); }
 }
@@ -135,6 +137,8 @@ if (!existsSync(ENV_FILE)) {
     ["E-6", "APP_ENV=production ⇒ exit 4"],
     ["E-7", "qc-svc (ep-mute-scene) ⇒ ผ่าน exit 0"],
     ["E-8", "ไฟล์ไม่ import prisma/@/ (import ได้จาก fitness)"],
+    ["E-9", "host อื่นที่ซ่อน ep-mute-scene ใน query/user/ชื่อฐาน ⇒ exit 4"],
+    ["E-10", "DIRECT_URL ว่าง ⇒ exit 4"],
   ] as const) skip(id, n, "ยังไม่มี scripts/svc-qc-env.mts (งานของ builder ใบ R0.1)");
 } else {
   const src = readFileSync(ENV_FILE, "utf8");
@@ -166,6 +170,10 @@ if (!existsSync(ENV_FILE)) {
       ["E-5", "DATABASE_URL ถูกแต่ DIRECT_URL ผิด ⇒ exit 4", run(good, u("ep-royal-night-x1")), false],
       ["E-6", "APP_ENV=production ⇒ exit 4", run(good, u(`${SVC_HOST}-a1b2c3`), { APP_ENV: "production" }), false],
       ["E-7", "qc-svc (ep-mute-scene) ⇒ ผ่าน exit 0", run(good, u(`${SVC_HOST}-a1b2c3`)), true],
+      ["E-9", "host อื่นที่ซ่อน ep-mute-scene ใน query/user/ชื่อฐาน ⇒ exit 4", run(
+        u("ep-some-other-x1-pooler") + `&x=${SVC_HOST}`,
+        `postgresql://${SVC_HOST}:qc@ep-some-other-x1.ap-southeast-1.aws.neon.tech/${SVC_HOST}?sslmode=require`), false],
+      ["E-10", "DIRECT_URL ว่าง ⇒ exit 4", run(good, ""), false],
     ];
     for (const [id, n, r, pass] of cases) {
       chk(id, n, pass ? r.code === 0 && r.passed : r.code === 4 && !r.passed, `exit=${r.code} passed=${r.passed}`);
@@ -227,12 +235,13 @@ console.log("\n── M: migration svc_r0 additive ล้วน ──");
 const migDir = join(ROOT, "prisma", "migrations");
 const migs = readdirSync(migDir).filter((d) => /^\d{14}_/.test(d)).sort();
 const r0 = migs.filter((d) => /_svc_r0$/.test(d));
-const laterSvc = r0.length === 1 ? migs.slice(migs.indexOf(r0[0]) + 1).filter((d) => /_svc_/.test(d)) : [];
+const r0b = migs.filter((d) => /_svc_r0b$/.test(d)); // ผู้คุมเคาะ: CHECK endDate > startDate เป็น migration เล็กแยก
+const laterSvc = r0.length === 1 ? migs.slice(migs.indexOf(r0[0]) + 1).filter((d) => /_svc_/.test(d) && !/_svc_r0b$/.test(d)) : [];
 let migName = "";
 chk("M-1", "มีโฟลเดอร์ migration `<ts>_svc_r0` ตัวเดียว", r0.length === 1, `พบ ${r0.length}: ${r0.join(", ")}`);
 if (r0.length === 1) {
   migName = r0[0];
-  const sql = readFileSync(join(migDir, migName, "migration.sql"), "utf8");
+  const sql = [migName, ...r0b].map((d) => readFileSync(join(migDir, d, "migration.sql"), "utf8")).join("\n;\n");
   const code = sql.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
   const stmts = code.split(";").map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
   const bad: string[] = [];
@@ -250,7 +259,7 @@ if (r0.length === 1) {
     }
     if (/^DELETE\b|^UPDATE\b|^TRUNCATE\b/i.test(s)) bad.push(`แก้ข้อมูล: ${s.slice(0, 80)}`);
   }
-  chk("M-2", "SQL additive ล้วน (ไม่มี DROP/RENAME/เปลี่ยนชนิด/SET NOT NULL/NOT NULL ไร้ default/ALTER TYPE อื่นนอก ADD VALUE ต่อท้าย)", bad.length === 0, bad.slice(0, 4).join(" | "));
+  chk("M-2", "SQL additive ล้วน (svc_r0 + svc_r0b) (ไม่มี DROP/RENAME/เปลี่ยนชนิด/SET NOT NULL/NOT NULL ไร้ default/ALTER TYPE อื่นนอก ADD VALUE ต่อท้าย)", bad.length === 0, bad.slice(0, 4).join(" | "));
   chk("M-3", "SQL มือ: CREATE EXTENSION IF NOT EXISTS btree_gist + EXCLUDE USING gist + partial unique 2 ตัวของ PaymentSlip",
     /CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+"?btree_gist"?/i.test(code) && /EXCLUDE\s+USING\s+gist/i.test(code) &&
       (code.match(/CREATE\s+UNIQUE\s+INDEX[^;]*"PaymentSlip"[^;]*WHERE/gi) ?? []).length >= 2,
@@ -258,6 +267,16 @@ if (r0.length === 1) {
 } else {
   skip("M-2", "SQL additive ล้วน", "ไม่มี migration svc_r0");
   skip("M-3", "SQL มือ (btree_gist · EXCLUDE · partial unique)", "ไม่มี migration svc_r0");
+}
+{
+  let ok = r0b.length === 1;
+  let det = `พบ svc_r0b ${r0b.length}`;
+  if (ok) {
+    const b = readFileSync(join(migDir, r0b[0], "migration.sql"), "utf8").replace(/--.*$/gm, "");
+    ok = /"RoomOccupancy"[\s\S]*CHECK\s*\(\s*\(?\s*"endDate"\s*>\s*"startDate"/i.test(b) && migs.indexOf(r0b[0]) > migs.indexOf(r0[0] ?? "");
+    det = ok ? "" : "ไม่พบ CHECK (\"endDate\" > \"startDate\") บน RoomOccupancy หรือเรียงก่อน svc_r0";
+  }
+  chk("M-6", "มี migration `<ts>_svc_r0b` ตัวเดียว (หลัง svc_r0) เพิ่ม CHECK endDate > startDate บน RoomOccupancy", ok, det);
 }
 // แตะเฉพาะไฟล์ schema ของใบ + ไม่ reflow ทั้งชุด (ตรวจเฉพาะตอนยังไม่มีใบ migration ถัดไปของ SVC)
 if (laterSvc.length > 0) {
@@ -340,6 +359,10 @@ try {
         if (!defOk) probs.push(`${c}: default ${h.column_default ?? "(ไม่มี)"} ≠ ${want.d}`);
       }
     }
+    if (have.size > 0 && table in NEW_TABLES) {
+      const extra = [...have.keys()].filter((c) => !(c in spec));
+      if (extra.length) probs.push(`คอลัมน์เกินสัญญา CC: ${extra.join(", ")}`);
+    }
     tableOk.set(table, probs.length === 0);
     const isNew = table in NEW_TABLES;
     chk(`T-${ti}`, `${table}${isNew ? "" : " (คอลัมน์เพิ่ม)"} — ${Object.keys(spec).length} คอลัมน์`, probs.length === 0, probs.slice(0, 5).join(" · "));
@@ -384,6 +407,23 @@ try {
   chk("I-14", "RoomOccupancy EXCLUDE USING gist (roomId =, daterange(startDate,endDate,'[)') &&) WHERE (active)", exclOk, excl.length ? excl.map((r) => r.def).join(" | ").slice(0, 200) : "ไม่มี exclusion constraint");
 
   // ═══════════════ N. enum ═══════════════
+  // K-1: FK ของตารางใหม่ (และคอลัมน์ใหม่บน HotelRoom/HotelRoomType) ได้เฉพาะชุดที่ผู้คุมอนุญาต
+  {
+    const ALLOWED_FK = new Set(["RoomOccupancy.roomId->HotelRoom", "HotelRoom.buildingId->RoomBuilding"]);
+    const fks = await q<{ src: string; cols: string[]; dst: string }>(
+      `SELECT t.relname AS src, r.relname AS dst,
+              ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(n, o) JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.n ORDER BY k.o) AS cols
+         FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_class r ON r.oid = c.confrelid
+         JOIN pg_namespace ns ON ns.oid = t.relnamespace
+        WHERE c.contype = 'f' AND ns.nspname = current_schema() AND t.relname = ANY($1::text[])`,
+      [[...NEW_MODELS, ...Object.keys(ADDED_COLS)]]);
+    const bad = fks
+      .filter((f) => f.src in NEW_TABLES || f.cols.some((c) => c in (ADDED_COLS[f.src] ?? {})))
+      .map((f) => `${f.src}.${f.cols.join("+")}->${f.dst}`)
+      .filter((k) => !ALLOWED_FK.has(k));
+    chk("K-1", "FK ของตาราง/คอลัมน์ใหม่มีได้แค่ RoomOccupancy.roomId→HotelRoom · HotelRoom.buildingId→RoomBuilding", bad.length === 0, `FK ต้องห้าม: ${bad.join(" · ")}`);
+  }
+
   console.log("\n── N: enum UnitType ──");
   const en = (await q<{ l: string }>(`SELECT e.enumlabel AS l FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'UnitType' ORDER BY e.enumsortorder`)).map((r) => r.l);
   chk("N-1", "UnitType มี DORM และอยู่ท้ายสุด", en[en.length - 1] === "DORM", `ได้ [${en.join(", ")}]`);
@@ -397,7 +437,11 @@ try {
   if (migName) {
     const m = await q<{ finished_at: Date | null; rolled_back_at: Date | null }>(`SELECT finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1`, [migName]);
     chk("M-5", `migration ${migName} ลง qc-svc แล้ว (finished · ไม่ rolled back)`, m.length === 1 && m[0].finished_at !== null && m[0].rolled_back_at === null, `แถว ${m.length}`);
-  } else skip("M-5", "migration svc_r0 ลง qc-svc แล้ว", "ไม่มี migration svc_r0");
+    if (r0b.length === 1) {
+      const mb = await q<{ finished_at: Date | null; rolled_back_at: Date | null }>(`SELECT finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1`, [r0b[0]]);
+      chk("M-7", `migration ${r0b[0]} ลง qc-svc แล้ว`, mb.length === 1 && mb[0].finished_at !== null && mb[0].rolled_back_at === null, `แถว ${mb.length}`);
+    } else skip("M-7", "migration svc_r0b ลง qc-svc แล้ว", "ไม่มี migration svc_r0b");
+  } else { skip("M-5", "migration svc_r0 ลง qc-svc แล้ว", "ไม่มี migration svc_r0"); skip("M-7", "migration svc_r0b ลง qc-svc แล้ว", "ไม่มี migration svc_r0"); }
 
   // ═══════════════ fixture ═══════════════
   const mkTenant = async (tag: string) => {
@@ -489,6 +533,34 @@ try {
   }
 
   // ═══════════════ S. PaymentSlip ═══════════════
+  // ═══════════════ C. RoomOccupancy CHECK endDate > startDate (migration svc_r0b) ═══════════════
+  console.log("\n── C: RoomOccupancy CHECK endDate > startDate ──");
+  {
+    const ck = await q<{ def: string }>(
+      `SELECT pg_get_constraintdef(c.oid) AS def FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace ns ON ns.oid = t.relnamespace WHERE t.relname = 'RoomOccupancy' AND ns.nspname = current_schema() AND c.contype = 'c'`);
+    chk("C-1", "RoomOccupancy มี CHECK (\"endDate\" > \"startDate\")", ck.some((r) => /"endDate"\s*>\s*"startDate"/.test(r.def)), ck.length ? ck.map((r) => r.def).join(" | ").slice(0, 160) : "ไม่มี CHECK");
+    if ((await cols("RoomOccupancy")).length === 0) {
+      skip("C-2", "INSERT startDate = endDate ⇒ DB ปฏิเสธ (23514)", "ยังไม่มีตาราง RoomOccupancy");
+      skip("C-3", "INSERT startDate > endDate ⇒ DB ปฏิเสธ (23514)", "ยังไม่มีตาราง RoomOccupancy");
+    } else {
+      const rtC = rid("rtc"); const roomC = rid("rc");
+      await insertRow("HotelRoomType", { id: rtC, tenantId: T1.tenantId, unitId: T1.unitId, name: "ห้องตรวจ CHECK", updatedAt: new Date() });
+      await insertRow("HotelRoom", { id: roomC, tenantId: T1.tenantId, unitId: T1.unitId, roomTypeId: rtC, number: "C901", updatedAt: new Date() });
+      const bad = async (start: string, end: string) => {
+        const id = rid("ocx");
+        try {
+          await insertRow("RoomOccupancy", { id, tenantId: T1.tenantId, unitId: T1.unitId, roomId: roomC, startDate: start, endDate: end, kind: "BLOCK", refType: "QC", refId: id, active: true, createdAt: new Date(), updatedAt: new Date() });
+          return "(ผ่าน — ผิด)";
+        } catch (e) { return pgCode(e) || errMsg(e); }
+      };
+      const c2 = await bad("2031-06-10", "2031-06-10");
+      chk("C-2", "INSERT startDate = endDate ⇒ DB ปฏิเสธ (23514)", c2 === "23514", `code=${c2}`);
+      const c3 = await bad("2031-06-10", "2031-06-05");
+      chk("C-3", "INSERT startDate > endDate ⇒ DB ปฏิเสธ (23514)", c3 === "23514", `code=${c3}`);
+    }
+  }
+
   console.log("\n── S: PaymentSlip unique บางส่วน ──");
   const slipReady = tableOk.get("PaymentSlip");
   const S_LIST = [

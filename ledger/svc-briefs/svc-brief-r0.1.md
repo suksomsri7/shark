@@ -21,7 +21,7 @@
 - **ชนิด/ค่าเริ่ม** ตาม CC ตรงตัว: `String`→text · `Int`→integer · `Json`→jsonb · `DateTime`→timestamp(3) · `Decimal`→numeric · `String[]`→text[] · `RoomOccupancy.startDate/endDate` = `@db.Date` · ช่องที่ CC ไม่มี `?` = NOT NULL · `SettingValue.effectiveFrom @default("1970-01-01T00:00:00Z")` · ค่าเริ่ม `DRAFT`/`MANUAL`/`0`/`{}`/`[]`/`NIGHTLY`/`CLEAN`/`true` ตาม CC
 - `createdAt` → `@default(now())` · `updatedAt` → `@updatedAt` · `at`/`appliedAt` → `@default(now())`
 - **ห้ามเพิ่มคอลัมน์ NOT NULL ที่ไม่มีค่าเริ่มนอก CC** (ข้อสอบจะพิมพ์ชื่อออกมาถ้ามี — ผู้คุมตีกลับ)
-- **FK**: ได้เฉพาะ `tenantId`→Tenant · `unitId`→BusinessUnit · `RoomOccupancy.roomId`→HotelRoom · `HotelRoom.buildingId`→RoomBuilding · `IntegrationCallLog.integrationId`→TenantIntegration (ใส่หรือไม่ก็ได้) · ช่องอ้างอิงอื่น (`refId` `fileId` `partyId` `approvalId` `connectionId` `verifierIntegrationId` …) = ข้อความเฉย ๆ **ไม่มี FK**
+- **FK** (แก้หลังผู้ตรวจ 27 ต.ค. = ข้อสอบ K-1): ได้เฉพาะ `RoomOccupancy.roomId`→HotelRoom · `HotelRoom.buildingId`→RoomBuilding · `IntegrationCallLog.integrationId`→TenantIntegration (ใส่หรือไม่ก็ได้) · ช่องอ้างอิงอื่น (`refId` `fileId` `partyId` `approvalId` `connectionId` `verifierIntegrationId` …) = ข้อความเฉย ๆ **ไม่มี FK**
 - ดัชนี: ชื่อใดก็ได้ แต่คอลัมน์/ลำดับ/unique ต้องตรง CC (I-1…I-10)
 - scope (fitness F1): โมเดลใหม่ทุกตัว = `tenant` · ใช้ `unit` ได้เฉพาะตัวที่ `unitId` บังคับ (SettingProfile · PaymentSlip · ServiceMessageLog · RoomBuilding · RoomOccupancy) · ห้าม `g()`/`sys()`
 - `pnpm exec prisma generate` ให้ client รู้จักโมเดลใหม่ (F-4) — ⚠️ `node_modules` ของเลนนี้ bind จาก «shark-svc» ⇒ generate ทับ client ของทุกเลน (additive จึงยอมได้ · แจ้งในรายงาน)
@@ -56,3 +56,10 @@
 - rename `HotelRoom*` · เปลี่ยน `HotelRoom.floor` เดิม · ลบ/แก้คอลัมน์หรือ enum เดิม
 - migration มากกว่า 1 โฟลเดอร์ · แก้ migration เก่า · `migrate reset` · ใช้ `.env`/`.env.qc`/ฐานอื่นนอก qc-svc
 - แก้ `scripts/qc-svc-r0.1.mts` (ข้อสอบผิดจริง = เขียนแย้งในรายงาน · RUN §1.3 ข้อ 11)
+
+
+## ภาคต่อหลังผู้ตรวจ (27 ต.ค.)
+- เพิ่ม migration `20261221000001_svc_r0b` = CHECK `RoomOccupancy_dates_check` (endDate > startDate)
+- ด่าน host ตรวจที่ hostname จริง (svc-qc-env.mts + qc-svc.sh) · URL ว่าง ⇒ exit 4
+- วิธี migration มาตรฐานของ SVC จนรวม HR: `prisma migrate diff --from-schema <schema เดิม> --to-schema prisma/schema --script` → แก้มือ → `qc-svc.sh pnpm exec prisma migrate deploy` (ห้าม migrate dev — ฐาน qc-svc มี HR 7 ตัวเป็น drift)
+- ส่งต่อใบหลัง: `ledger/wo-notes/svc-r0.8-carry.md`

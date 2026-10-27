@@ -36,6 +36,12 @@ model HotelRoomType {
   depositSatang  Int      @default(0) // มัดจำต่อการจอง (0 = ไม่ต้องมัดจำ) — ลูกค้าจองออนไลน์จ่ายมัดจำ PromptPay
   active         Boolean  @default(true) // soft-delete (ห้าม hard delete)
   sortOrder      Int      @default(0)
+  // SVC R0.1 ▸ หอ/รายเดือน (CC §5.2)
+  monthlyRateSatang Int? // ค่าเช่ารายเดือน (สตางค์)
+  areaSqm           Decimal? // พื้นที่ ตร.ม.
+  rentMode          String   @default("NIGHTLY") // "NIGHTLY" | "MONTHLY" | "BOTH"
+  amenities         Json?
+  // ◂ SVC R0.1
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -58,10 +64,18 @@ model HotelRoom {
   status     HotelRoomStatus @default(AVAILABLE)
   active     Boolean         @default(true) // soft-delete
   note       String?
+  // SVC R0.1 ▸ แกนห้อง (CC §5.2 · คง floor ข้อความเดิม)
+  buildingId String?
+  building   RoomBuilding?   @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  floorNo    Int?
+  rentMode   String? // null = ตามประเภทห้อง
+  hkStatus   String          @default("CLEAN") // "CLEAN" | "DIRTY" | "INSPECTED" | "OUT_OF_ORDER"
+  // ◂ SVC R0.1
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 
   reservations HotelReservation[]
+  occupancies  RoomOccupancy[] // SVC R0.1
 
   @@unique([unitId, number])
   @@index([tenantId, unitId])
@@ -121,3 +135,40 @@ model HotelReservation {
   @@index([unitId, guestPhone])
   @@index([partyId])
 }
+
+// ─────────────────────── SVC R0.1 ▸ แกนห้อง (CC §5.2 · เจ้าของโค้ด R0.8/R0.9) ───────────────────────
+
+model RoomBuilding {
+  id        String      @id @default(cuid())
+  tenantId  String
+  unitId    String
+  name      String
+  floors    Int
+  sortOrder Int
+
+  rooms HotelRoom[]
+}
+
+// การครองห้องรายช่วงวัน (endDate ไม่รวมวันจบ — [startDate, endDate)) · refId = ข้อความ ไม่มี FK
+// 🔴 กันจองซ้อนระดับ DB (SQL มือ — Prisma เขียนเองไม่ได้):
+//    svc_r0:  CREATE EXTENSION IF NOT EXISTS btree_gist
+//             CONSTRAINT "RoomOccupancy_no_overlap" EXCLUDE USING gist ("roomId" WITH =, daterange("startDate","endDate",'[)') WITH &&) WHERE (active)
+//    svc_r0b: CONSTRAINT "RoomOccupancy_dates_check" CHECK ("endDate" > "startDate")
+//    Prisma 7.8 ไม่สร้าง DROP ให้ของพวกนี้ (ตรวจ 27 ต.ค.) — ใบถัดไปให้รัน migrate diff ตรวจซ้ำ
+model RoomOccupancy {
+  id            String    @id @default(cuid())
+  tenantId      String
+  unitId        String
+  roomId        String
+  room          HotelRoom @relation(fields: [roomId], references: [id])
+  startDate     DateTime  @db.Date
+  endDate       DateTime  @db.Date // ไม่รวมวันจบ
+  kind          String // "LEASE" | "STAY" | "HOLD" | "BLOCK" | "CHANNEL_HOLD"
+  refType       String
+  refId         String
+  active        Boolean   @default(true)
+  holdExpiresAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+// ◂ SVC R0.1

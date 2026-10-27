@@ -70,6 +70,7 @@ enum UnitType {
   RENTAL // เช่าสินทรัพย์ (WO-0050)
   SCHOOL // โรงเรียน/คอร์สเรียน (WO-0051)
   CLINIC // คลินิก (WO-0052)
+  DORM // หอพัก/อพาร์ตเมนต์ (SVC R0.1)
 }
 
 enum UnitStatus {
