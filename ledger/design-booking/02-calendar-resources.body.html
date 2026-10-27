@@ -1,0 +1,169 @@
+<style>
+.vtog{display:inline-flex;border:1px solid var(--line);border-radius:13px;overflow:hidden;height:46px}
+.vtog span{display:flex;align-items:center;padding:0 16px;font-size:14px;color:var(--ink2)}
+.vtog span.on{background:var(--ink);color:var(--sf);font-weight:700}
+.dnav{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:13px;height:46px;overflow:hidden}
+.dnav span{height:100%;display:grid;place-items:center;padding:0 12px;color:var(--ink2)}
+.dnav b{padding:0 16px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:100%;display:flex;align-items:center;white-space:nowrap}
+.vc{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:var(--sf)}
+.vc .hd{display:grid;grid-template-columns:64px repeat(6,1fr);background:var(--sf2);border-bottom:1px solid var(--line)}
+.vc .hd>div{padding:12px 10px;border-left:1px solid var(--line);display:flex;gap:9px;align-items:center}
+.vc .hd>div:first-child{border-left:0}
+.vc .hd b{display:block;font-size:14.5px;line-height:1.2}
+.vc .hd small{display:block;font-size:12px;color:var(--mut)}
+.vc .bd{display:grid;grid-template-columns:64px repeat(6,1fr);height:588px;position:relative}
+.vc .ax{position:relative}
+.vc .ax span{position:absolute;right:10px;transform:translateY(-50%);font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.vc .col{position:relative;border-left:1px solid var(--line);background-image:linear-gradient(to bottom,var(--line) 1px,transparent 1px);background-size:100% 84px}
+.vc .col.lv{background:repeating-linear-gradient(135deg,var(--sf2) 0 7px,var(--stage) 7px 14px)}
+.vc .lvt{position:absolute;top:220px;left:10px;right:10px;text-align:center;font-size:13px;color:var(--dg);font-weight:700;line-height:1.5;background:var(--sf);border:1.5px dashed var(--dg);border-radius:12px;padding:10px 6px}
+.vc .lvt small{display:block;color:var(--mut);font-weight:400}
+.ev{position:absolute;left:6px;right:6px;border-radius:11px;padding:7px 9px;font-size:12px;line-height:1.38;overflow:hidden}
+.ev b{display:block;font-size:13px}
+.ev .rs{display:inline-block;margin-top:3px;font-size:11.5px;font-weight:700;border-radius:6px;padding:0 6px}
+.ev.done{background:var(--sf2);color:var(--mut2);border:1px solid var(--line)}
+.ev.done .rs{border:1px solid var(--line)}
+.ev.now{background:var(--ink);color:var(--sf)}
+.ev.now .rs{background:var(--sf);color:var(--ink)}
+.ev.p{background:var(--sf);border:1.5px solid var(--ink)}
+.ev.p .rs,.ev.pw .rs{background:var(--sf2);border:1px solid var(--line)}
+.ev.pw{background:var(--sf);border:1.5px dashed var(--ink)}
+.ev.cp{background:var(--sf);border:1.5px solid var(--ink);border-right:0;border-radius:11px 0 0 11px;right:-1px}
+.ev.cp2{background:var(--sf);border:1.5px solid var(--ink);border-left:0;border-radius:0 11px 11px 0;left:-1px}
+.ev.sel{box-shadow:0 0 0 3px var(--acc)}
+.vnow{position:absolute;left:64px;right:0;height:2px;background:var(--acc);z-index:1}
+.vnow::before{content:"14:20";position:absolute;left:-58px;top:-10px;background:var(--acc);color:var(--sf);font-size:11.5px;font-weight:700;padding:1px 6px;border-radius:6px}
+.ev{z-index:2}
+.wi .r{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:12px 0;border-top:1px solid var(--line)}
+.wi .r:first-child{border-top:0;padding-top:4px}
+.wi .r b{font-size:14.5px}
+.wi .r .ok{font-weight:700;font-size:14px;white-space:nowrap}
+.wi .r .ok.dg{color:var(--dg)}
+.wi .r small{grid-column:1/-1;color:var(--mut);font-size:12.5px;line-height:1.45}
+.rsg{display:flex;flex-direction:column;gap:12px}
+.rsg .rw{display:flex;align-items:center;gap:10px;font-size:13.5px}
+.rsg .rw>span:first-child{width:96px;color:var(--ink2);flex:none}
+.rsg .bx{display:flex;gap:6px;flex-wrap:wrap}
+.rsg .bx i{font-style:normal;height:30px;min-width:40px;padding:0 8px;border-radius:8px;display:grid;place-items:center;font-size:12.5px;font-weight:700;border:1px solid var(--line);color:var(--ink2)}
+.rsg .bx i.u{background:var(--ink);color:var(--sf);border-color:var(--ink)}
+.rsg .bx i.s{border:1.5px dashed var(--ink);color:var(--ink)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">02 · ปฏิทินนัด รายวัน ตามหมอนวด + ห้อง/เตียง <span>— ร้านนวดต้องว่างทั้ง "คน" และ "ห้อง/เตียง" · คู่รัก = 2 หมอ 1 ห้อง · คอร์สหักครั้ง · หมอลา (จากระบบพนักงาน) = ปิดทั้งคอลัมน์ · ร้านตัวอย่าง: บ้านนวดใบเตย สุขุมวิท 49 · ส. 31 ต.ค. 2569 · 14:20</span></p>
+<div class="frame">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านนวดใบเตย · สุขุมวิท 49<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · ส. 31 ต.ค. 2569 · 14:20</span>
+  <span class="who"><span class="av">ต</span>คุณต่าย · แคชเชียร์</span>
+ </div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-cal"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-list"/></svg>คิววันนี้<span class="pill">2</span></div>
+    <div class="am on"><svg class="i sm"><use href="#i-cal"/></svg>ปฏิทินนัด</div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>หมอนวด · ห้อง/เตียง</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>บริการ · คอร์ส</div>
+    <div class="am"><svg class="i sm"><use href="#i-report"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+   <div class="split">
+    <div class="main">
+     <div class="ph">
+      <div style="flex:1;min-width:0"><h1>ปฏิทินนัด · ส. 31 ต.ค.</h1><div class="d">เปิด 10:00–21:00 · หมอนวด 5 คนมาวันนี้ (ลา 1) · เตียงนวดไทย 4 · โซฟานวดเท้า 3 · ห้องน้ำมัน 2 · ห้องคู่ VIP 1</div></div>
+      <div class="btn pri"><svg class="i sm"><use href="#i-plus"/></svg>จองให้ลูกค้า</div>
+     </div>
+     <div class="pg" style="gap:20px!important">
+      <div style="display:flex;gap:12px;align-items:center">
+       <div class="dnav"><span><svg class="i sm"><use href="#i-back"/></svg></span><b>ส. 31 ต.ค.</b><span><svg class="i sm"><use href="#i-ar"/></svg></span></div>
+       <div class="vtog"><span class="on">วัน</span><span>สัปดาห์</span></div>
+       <span style="flex:1"></span>
+       <div class="vtog"><span class="on">ตามหมอนวด</span><span>ตามห้อง/เตียง</span></div>
+      </div>
+      <div class="vc">
+       <div class="hd">
+        <div></div>
+        <div><span class="av">ด</span><div><b>พี่แดง</b><small>ไทย · น้ำมัน</small></div></div>
+        <div><span class="av">น</span><div><b>พี่นก</b><small>ไทย · น้ำมัน · เท้า</small></div></div>
+        <div><span class="av">จ</span><div><b>พี่จันทร์</b><small>ไทย · น้ำมัน · เท้า</small></div></div>
+        <div><span class="av">ฝ</span><div><b>น้องฝ้าย</b><small>เท้า · น้ำมัน</small></div></div>
+        <div><span class="av">ม</span><div><b>น้องเมย์</b><small>ไทย · น้ำมัน</small></div></div>
+        <div><span class="av">ศ</span><div><b>พี่ศรี</b><small>ไทย · ประคบ</small></div></div>
+       </div>
+       <div class="bd">
+        <div class="ax"><span style="top:6px;transform:none">12:00</span><span style="top:84px">13:00</span><span style="top:168px">14:00</span><span style="top:252px">15:00</span><span style="top:336px">16:00</span><span style="top:420px">17:00</span><span style="top:504px">18:00</span></div>
+        <div class="col">
+         <div class="ev done" style="top:2px;height:80px"><b>นวดไทย 60</b>เสร็จ<br><span class="rs">เตียง 1</span></div>
+         <div class="ev now" style="top:128px;height:164px"><b>คุณสมชาย</b>นวดไทย 120 นาที<br><span class="rs">เตียง 2</span></div>
+         <div class="ev pw" style="top:338px;height:122px"><b>16:00 คุณอร</b>น้ำมันอโรมา 90<br><span class="rs">ห้อง B</span></div>
+        </div>
+        <div class="col">
+         <div class="ev done" style="top:44px;height:122px"><b>คุณวรรณ</b>อโรมา · คอร์ส 4/10<br><span class="rs">ห้อง A</span></div>
+         <div class="ev now" style="top:184px;height:80px"><b>Q012 walk-in</b>นวดเท้า 60<br><span class="rs">โซฟา 1</span></div>
+         <div class="ev pw" style="top:422px;height:122px"><b>17:00 คุณจอย</b>น้ำมันอโรมา 90<br><span class="rs">ห้อง A</span></div>
+        </div>
+        <div class="col">
+         <div class="ev done" style="top:2px;height:122px"><b>นวดไทย 90</b>เสร็จ<br><span class="rs">เตียง 3</span></div>
+         <div class="ev cp" style="top:254px;height:122px"><b>15:00 คู่รัก</b>คุณพลอย · มัดจำ ✓<br><span class="rs" style="background:var(--sf2);border:1px solid var(--line)">ห้องคู่ VIP</span></div>
+        </div>
+        <div class="col">
+         <div class="ev done" style="top:86px;height:80px"><b>walk-in</b>นวดเท้า 60<br><span class="rs">โซฟา 2</span></div>
+         <div class="ev cp2" style="top:254px;height:122px"><b>&nbsp;</b>คุณเจมส์ (คู่กัน)<br><span class="rs" style="background:var(--sf2);border:1px solid var(--line)">ห้องคู่ VIP</span></div>
+        </div>
+        <div class="col">
+         <div class="ev done" style="top:2px;height:164px"><b>นวดไทย+ประคบ</b>120 นาที · เสร็จ<br><span class="rs">เตียง 4</span></div>
+         <div class="ev p sel" style="top:212px;height:122px"><b>14:30 คุณนิด</b>P009 · เช็กอินแล้ว<br>น้ำมันอโรมา 90<br><span class="rs">ห้อง A</span></div>
+         <div class="ev pw" style="top:380px;height:122px"><b>16:30 คุณกบ</b>นวดไทย 90<br><span class="rs">เตียง 1</span></div>
+        </div>
+        <div class="col lv"><div class="lvt">ลาพักร้อน<small>อนุมัติแล้วในระบบพนักงาน · ปิดรับจองทั้งวัน</small></div></div>
+        <div class="vnow" style="top:196px"></div>
+       </div>
+      </div>
+     </div>
+    </div>
+
+    <div class="side">
+     <div class="card">
+      <h3 class="h"><svg class="i sm"><use href="#i-users"/></svg>รับ walk-in ตอนนี้ได้ไหม<span class="sp"></span><span class="tg gh">14:20</span></h3>
+      <div class="wi" style="margin-top:10px">
+       <div class="r"><b>นวดเท้า 30 นาที</b><span class="ok">ได้ทันที</span><small>พี่จันทร์ · โซฟา 2 · เสร็จ 14:50 ก่อนนัด 15:00</small></div>
+       <div class="r"><b>นวดไทย 60 นาที</b><span class="ok">15:10</span><small>พี่นก · เตียง 3 — พี่จันทร์/น้องฝ้ายว่างแต่มีนัดคู่รัก 15:00 จึงไม่รับงาน 60 นาที</small></div>
+       <div class="r"><b>น้ำมันอโรมา 90 นาที</b><span class="ok dg">17:45</span><small>หมอว่างแต่ <b>ห้องน้ำมันไม่ว่าง</b> — ห้อง B ว่างถึง 16:00 ไม่พอ 90 นาที + เก็บห้อง 15 นาที → เร็วสุด 17:45 ห้อง B · พี่จันทร์</small></div>
+      </div>
+     </div>
+     <div class="card">
+      <h3 class="h"><svg class="i sm"><use href="#i-box"/></svg>ห้อง/เตียง ตอนนี้</h3>
+      <div class="rsg" style="margin-top:14px">
+       <div class="rw"><span>เตียงนวดไทย</span><div class="bx"><i>1</i><i class="u">2</i><i>3</i><i>4</i></div></div>
+       <div class="rw"><span>โซฟานวดเท้า</span><div class="bx"><i class="u">1</i><i>2</i><i>3</i></div></div>
+       <div class="rw"><span>ห้องน้ำมัน</span><div class="bx"><i class="s">A · 14:30</i><i>B</i></div></div>
+       <div class="rw"><span>ห้องคู่</span><div class="bx"><i class="s">VIP · 15:00</i></div></div>
+      </div>
+      <div class="s2" style="margin-top:12px">ดำ = ใช้อยู่ · เส้นประ = เตรียมรอบถัดไป · ว่าง = กรอบเทา</div>
+     </div>
+     <div class="card" style="border:1.5px solid var(--acc)">
+      <h3 class="h">คุณนิด · P009<span class="sp"></span><span class="tg p">เช็กอิน 14:16</span></h3>
+      <div class="kv2" style="margin-top:10px">
+       <div class="r">บริการ<span class="sp"></span><span class="v">น้ำมันอโรมา 90</span></div>
+       <div class="r">หมอ · ห้อง<span class="sp"></span><span class="v">น้องเมย์ · ห้อง A</span></div>
+       <div class="r">จ่ายด้วย<span class="sp"></span><span class="v">คอร์ส 10 ครั้ง · ครั้งที่ 7/10</span></div>
+       <div class="r">ลูกค้า<span class="sp"></span><small>สมาชิก Gold · ชอบแรงกลาง · แพ้น้ำมันตะไคร้</small></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px"><span class="btn sm pri">เริ่มนวด</span><span class="btn sm gh">ย้ายหมอ/ห้อง</span><span class="btn sm gh">เลื่อนนัด</span></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

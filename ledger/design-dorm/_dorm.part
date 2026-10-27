@@ -1,0 +1,200 @@
+<style>
+/* ══ CSS ร่วมของชุด "หอพัก + โรงแรม V2" — ใช้โทเคนสีเดิมเท่านั้น (ห้ามเพิ่มสี) ══
+   สถานะห้องแยกด้วย "รูปทรง" ไม่ใช่สี: มีผู้เช่า=กรอบทึบ · ว่าง=เส้นประ · จอง=พื้นฟ้าจาง · ค้างจ่าย=กรอบแดง · ซ่อม=ลายทาง */
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:34px;padding:0 12px;border:1px solid var(--line);
+  border-radius:9px;font-size:13.5px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:10px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2)}
+.amenu .am .pill{height:20px;min-width:20px;font-size:11px}
+.ph .fl2{display:flex;align-items:center;gap:14px;margin-left:16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:13px;padding:4px;gap:4px;background:var(--sf2)}
+.seg span{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:10px;font-size:14.5px;color:var(--mut);white-space:nowrap}
+.seg span.on{background:var(--sf);color:var(--ink);font-weight:700;box-shadow:0 1px 3px rgba(10,10,10,.1)}
+.alrt{display:flex;align-items:center;gap:14px;border:1.5px solid var(--dg);border-radius:14px;padding:14px 18px;font-size:14.5px;color:var(--ink2);background:var(--sf)}
+.alrt .ic{color:var(--dg)} .alrt b{color:var(--dg)} .alrt .sp{flex:1}
+.info{display:flex;align-items:center;gap:14px;border:1px solid var(--acc);border-radius:14px;padding:14px 18px;font-size:14.5px;color:var(--ink2);background:var(--acc-bg)}
+.info .ic{color:var(--acc)} .info b{color:var(--ink)} .info .sp{flex:1}
+.kstrip{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.kstrip>div{padding:18px 22px;border-left:1px solid var(--line)}
+.kstrip>div:first-child{border-left:0}
+.kstrip .k{font-size:13px;color:var(--mut);display:flex;align-items:center;gap:8px}
+.kstrip .v{font-size:27px;font-weight:700;letter-spacing:-.02em;margin-top:6px;font-variant-numeric:tabular-nums}
+.kstrip .v small{font-size:14px;font-weight:600;color:var(--mut)}
+.kstrip .v.dg{color:var(--dg)}
+.kstrip .f{font-size:12.5px;color:var(--mut);margin-top:4px}
+/* ── ผังห้อง ── */
+.floor{display:flex;flex-direction:column;gap:12px}
+.floor .fh{display:flex;align-items:center;gap:12px;font-size:14.5px;font-weight:700}
+.floor .fh .mu{font-weight:400;font-size:13px}
+.fp{display:grid;grid-template-columns:repeat(12,1fr);gap:10px}
+.rm{border:1.5px solid var(--ink);border-radius:14px;padding:10px 11px;min-height:104px;display:flex;flex-direction:column;gap:3px;background:var(--sf);position:relative}
+.rm .no{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em;display:flex;align-items:center;gap:6px}
+.rm .no small{font-size:11px;font-weight:600;color:var(--mut);border:1px solid var(--line);border-radius:5px;padding:0 4px;line-height:16px}
+.rm .nm{font-size:12.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rm .ft{margin-top:auto;font-size:12px;color:var(--mut);white-space:nowrap}
+.rm .ft b{color:var(--ink)}
+.rm.vac{border:1.5px dashed var(--line2);background:var(--sf2)}
+.rm.vac .no{color:var(--mut)}
+.rm.rsv{border-color:var(--acc);background:var(--acc-bg)}
+.rm.rsv .ft b{color:var(--acc)}
+.rm.due{border-color:var(--dg);box-shadow:inset 0 0 0 1px var(--dg)}
+.rm.due .ft b{color:var(--dg)}
+.rm.fix{border:1.5px solid var(--line2);background:repeating-linear-gradient(135deg,var(--sf) 0 7px,var(--sf2) 7px 14px)}
+.rm.fix .no{color:var(--mut)}
+.rm .bd{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--acc)}
+.rm .bd.dg{background:var(--dg)}
+.rm.sel{box-shadow:0 0 0 3px var(--acc-bg),0 0 0 4.5px var(--acc)}
+.lgd2{display:flex;gap:20px;font-size:13px;color:var(--ink2);align-items:center;flex-wrap:wrap}
+.lgd2 span{display:inline-flex;align-items:center;gap:7px}
+.lgd2 i{width:20px;height:14px;border-radius:4px;display:inline-block;border:1.5px solid var(--ink);background:var(--sf)}
+.lgd2 i.vac{border:1.5px dashed var(--line2);background:var(--sf2)}
+.lgd2 i.rsv{border-color:var(--acc);background:var(--acc-bg)}
+.lgd2 i.due{border-color:var(--dg)}
+.lgd2 i.fix{border-color:var(--line2);background:repeating-linear-gradient(135deg,var(--sf) 0 4px,var(--sf2) 4px 8px)}
+.lgd2 i.dot{width:9px;height:9px;border-radius:50%;border:0;background:var(--acc)}
+/* ── แผงข้าง (drawer ในจอ) ── */
+.side{width:430px;flex:none;border-left:1px solid var(--line);background:var(--sf);display:flex;flex-direction:column}
+.side .sh{padding:22px 26px 16px;border-bottom:1px solid var(--line)}
+.side .sh h2{font-size:21px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.side .sb2{padding:20px 26px;display:flex;flex-direction:column;gap:18px}
+.side .sf{margin-top:auto;padding:18px 26px 24px;border-top:1px solid var(--line);display:flex;gap:10px}
+.sec{font-size:13px;font-weight:700;color:var(--mut);letter-spacing:.01em;margin-bottom:-6px}
+.ln{display:flex;align-items:baseline;gap:12px;font-size:14.5px;padding:4px 0}
+.ln .k{color:var(--mut);flex:none}
+.ln .sp{flex:1;border-bottom:1px dotted var(--line2);transform:translateY(-4px)}
+.ln .v{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.ln.tt{font-size:18px;font-weight:700;border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+.ln.tt .k{color:var(--ink)}
+.ln.tt .sp{border:0}
+.ln .dg{color:var(--dg)}
+.mu2{color:var(--mut);font-size:13px}
+/* ── ตารางทั่วไปเพิ่ม ── */
+.tbl td small{display:block;color:var(--mut);font-size:12.5px;margin-top:2px}
+.tbl tr.flag td{background:var(--sf2)}
+.tbl tr.flag td:first-child{box-shadow:inset 3px 0 0 var(--dg)}
+.tbl tr.ok td:first-child{box-shadow:inset 3px 0 0 var(--ink)}
+.tbl tr.sel td{background:var(--acc-bg)}
+.tbl tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.tbl td.num b{font-weight:700}
+.mono{font-variant-numeric:tabular-nums}
+.steps{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut)}
+.steps span{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.steps span i{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-style:normal;font-size:12.5px;font-weight:700}
+.steps span.done{color:var(--ink2)} .steps span.done i{border-color:var(--ink);color:var(--ink)}
+.steps span.cur{color:var(--acc);font-weight:700} .steps span.cur i{background:var(--acc);border-color:var(--acc);color:var(--sf)}
+.steps .bar2{width:34px;height:1.5px;background:var(--line2)}
+.photo{border-radius:12px;border:1px solid var(--line);background:linear-gradient(160deg,var(--stage),var(--sf2));display:grid;place-items:center;color:var(--mut);position:relative;overflow:hidden}
+.photo .meter{font-family:'Sarabun',monospace;font-size:30px;font-weight:700;letter-spacing:.18em;background:var(--ink);color:var(--sf);padding:6px 14px;border-radius:8px}
+.photo .meter b{background:var(--sf);color:var(--ink);padding:0 4px;border-radius:3px;margin-left:3px}
+.photo .cap2{position:absolute;left:10px;bottom:8px;font-size:11.5px;color:var(--mut)}
+.tagx{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);border:1px solid var(--line);border-radius:8px;padding:3px 9px;background:var(--sf)}
+.tagx.acc{border-color:var(--acc);color:var(--acc);background:var(--acc-bg);font-weight:700}
+.tagx.dg{border-color:var(--dg);color:var(--dg);font-weight:700}
+/* ── มือถือ (ยกจาก design-hr 07) ── */
+.mrowx{display:flex;gap:44px;align-items:flex-start}
+.mob .sb .ic{display:flex;gap:12px;align-items:center;font-size:12px}
+.mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
+.mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
+.mob .mh .sp{flex:1}
+.mob .mb{display:flex;flex-direction:column;gap:12px;padding-bottom:14px!important;flex:1 0 auto!important;overflow:visible!important}
+.hi{font-size:13.5px;color:var(--mut)}
+.mcd{border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.mcd .r{display:flex;align-items:center;gap:10px}
+.mcd .r .sp{flex:1}
+.mbig{font-size:34px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.inbtn{height:58px;border-radius:18px;background:var(--ink);color:var(--sf);display:flex;align-items:center;justify-content:center;gap:12px;font-size:18px;font-weight:700}
+.inbtn.gh{background:var(--sf);color:var(--ink);border:1.5px solid var(--ink)}
+.qa{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.qa div{border:1px solid var(--line);border-radius:16px;height:66px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:13.5px;font-weight:600}
+.qa div svg{color:var(--ink2)}
+.nt{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:14px;background:var(--acc-bg);color:var(--acc);font-size:13.5px;line-height:1.5}
+.nt.gh{background:var(--sf2);color:var(--ink2)}
+.nt svg{margin-top:2px}
+.nt small{display:block;color:var(--mut);font-size:12.5px}
+.tbar{display:flex;justify-content:space-around;border-top:1px solid var(--line);padding:10px 8px 24px;flex:none}
+.tbar div{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--mut)}
+.tbar div.on{color:var(--ink);font-weight:700}
+.fl{font-size:13.5px;font-weight:700;color:var(--ink2);margin-bottom:8px;display:flex;align-items:center}
+.ta{border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14.5px;min-height:64px}
+.att{border:1.5px dashed var(--line2);border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;color:var(--mut);background:var(--sf2)}
+.tchips{display:flex;flex-wrap:wrap;gap:7px}
+.tchips span{height:40px;padding:0 13px;border-radius:12px;border:1px solid var(--line);display:inline-flex;align-items:center;font-size:14px;color:var(--ink2)}
+.tchips span.on{background:var(--ink);border-color:var(--ink);color:var(--sf);font-weight:700}
+/* ── LINE chat (ฉากในแอป LINE — ใช้โทนเทาเดิม) ── */
+.lhead{display:flex;align-items:center;gap:10px;padding:8px 14px 12px;border-bottom:1px solid var(--line);flex:none}
+.lhead .lo{width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;font-weight:700;font-size:13px}
+.lhead b{font-size:15px;display:block}
+.lhead small{font-size:12px;color:var(--mut)}
+.lchat{background:var(--stage);flex:1 0 auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px}
+.lmsg{align-self:flex-start;max-width:300px;background:var(--sf);border:1px solid var(--line);border-radius:18px;overflow:hidden;font-size:13.5px}
+.lmsg .lh{padding:12px 15px 8px;border-bottom:1px solid var(--line)}
+.lmsg .lh b{font-size:15px;display:block}
+.lmsg .lh small{color:var(--mut);font-size:12px}
+.lmsg .lb{padding:10px 15px;display:flex;flex-direction:column;gap:2px}
+.lmsg .lb .ln{font-size:13.5px;padding:2px 0}
+.lmsg .lb .ln.tt{font-size:16px;padding-top:8px}
+.lmsg .lf{display:flex;flex-direction:column;gap:6px;padding:10px 12px 12px}
+.lmsg .lf div{height:40px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:14px;border:1px solid var(--line)}
+.lmsg .lf div.p{background:var(--ink);color:var(--sf);border-color:var(--ink)}
+.lmsg.txt{padding:10px 14px;border-radius:18px 18px 18px 6px;line-height:1.5}
+.lmsg.me{align-self:flex-end;background:var(--ink);color:var(--sf);border-color:var(--ink);border-radius:18px 18px 6px 18px}
+.ltime{font-size:11px;color:var(--mut2);align-self:center}
+.rmenu{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);flex:none}
+.rmenu div{height:66px;border-left:1px solid var(--line);border-top:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--ink2);background:var(--sf)}
+.rmenu div:nth-child(3n+1){border-left:0}
+.rmenu div:nth-child(-n+3){border-top:0}
+.qrb{width:180px;height:180px;margin:4px auto;border:1px solid var(--line);border-radius:12px;background:
+ repeating-linear-gradient(90deg,var(--ink) 0 6px,transparent 6px 12px),repeating-linear-gradient(0deg,var(--ink) 0 6px,var(--sf) 6px 12px);
+ background-blend-mode:multiply;position:relative}
+.qrb::after{content:"PromptPay";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--sf);padding:4px 9px;font-size:12px;font-weight:700;border-radius:6px}
+/* ── tape chart โรงแรม ── */
+.tape{width:100%;border-collapse:collapse;table-layout:fixed}
+.tape th{font-size:13px;color:var(--mut);font-weight:700;padding:10px 6px;text-align:center;background:var(--sf2);border-bottom:1px solid var(--line);border-left:1px solid var(--line)}
+.tape th.rmh{text-align:left;padding-left:20px;width:190px;border-left:0}
+.tape th b{display:block;color:var(--ink);font-size:15px}
+.tape th.we{background:var(--stage)}
+.tape th.td{color:var(--acc)} .tape th.td b{color:var(--acc)}
+.tape td{height:54px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);position:relative;padding:0}
+.tape td.rmc{padding:0 12px 0 20px;border-left:0;font-size:14px;white-space:nowrap}
+.tape td.rmc b{font-variant-numeric:tabular-nums}
+.tape td.rmc small{color:var(--mut);font-size:12px;margin-left:6px}
+.tape td.rmc .hk{float:right;font-size:11.5px;color:var(--mut);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-top:1px}
+.tape td.rmc .hk.dg{color:var(--dg);border-color:var(--dg)}
+.tape tr.grp td{height:34px;background:var(--sf2);font-size:12.5px;font-weight:700;color:var(--mut);padding-left:20px}
+.tape td.we{background:var(--sf2)}
+.bk{position:absolute;top:8px;bottom:8px;left:50%;border-radius:10px;border:1.5px solid var(--ink);background:var(--sf);z-index:2;padding:0 10px;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden}
+.bk small{font-weight:400;color:var(--mut)}
+.bk.in{background:var(--ink);color:var(--sf)} .bk.in small{color:var(--line2)}
+.bk.ota{border-style:dashed}
+.bk.hold{border-color:var(--acc);background:var(--acc-bg);color:var(--acc)}
+.bk.ooo{border-color:var(--line2);background:repeating-linear-gradient(135deg,var(--sf) 0 6px,var(--sf2) 6px 12px);color:var(--mut)}
+.bk.lease{border-color:var(--line2);background:var(--stage);color:var(--ink2)}
+.bk.dgb{border-color:var(--dg);color:var(--dg)}
+.occ td{height:40px;font-size:12.5px;text-align:center;color:var(--ink2);font-variant-numeric:tabular-nums;background:var(--sf)}
+.occ td.rmc{text-align:left;color:var(--mut);font-weight:700}
+/* ── ตั้งค่า ── */
+.setl{display:flex;flex-direction:column;gap:2px;width:260px;flex:none}
+.setl div{display:flex;align-items:center;gap:10px;height:46px;padding:0 14px;border-radius:12px;font-size:14.5px;color:var(--ink2)}
+.setl div.on{background:var(--sf2);color:var(--ink);font-weight:700}
+.fld{display:flex;flex-direction:column;gap:7px}
+.fld>span{font-size:13px;color:var(--mut);font-weight:600}
+.opt{border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start}
+.opt.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.opt .rd{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line2);flex:none;margin-top:2px}
+.opt.on .rd{border:6px solid var(--ink)}
+.opt b{display:block;font-size:15px}
+.opt small{display:block;color:var(--mut);font-size:13px;line-height:1.55;margin-top:3px}
+.law{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.law .lr{display:flex;gap:14px;align-items:flex-start;padding:14px 18px;border-top:1px solid var(--line);font-size:14px}
+.law .lr:first-child{border-top:0}
+.law .lr .ck{width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;flex:none}
+.law .lr .ck.x{background:var(--dg)}
+.law .lr .ck.w{background:var(--sf);border:1.5px solid var(--line2);color:var(--mut)}
+.law .lr small{display:block;color:var(--mut);font-size:12.5px;margin-top:2px;line-height:1.5}
+.law .lr .sp{flex:1}
+</style>
