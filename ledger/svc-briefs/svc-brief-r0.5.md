@@ -1,7 +1,7 @@
 # ใบสั่ง R0.5 — ศูนย์เชื่อมต่อ (Integrations) · ตรวจ **เข้ม** (ความลับ · ข้ามร้าน)
 
 > แหล่งความจริง: `ledger/SVC-MASTER-PLAN.md` แถว R0.5 · `ledger/SVC-CORE-CONTRACT.md` §2 (+ §7 event · §8 สิทธิ์) · `ledger/DESIGN-BOOKING-QUEUE.md` §4.6 · `ledger/DESIGN-DORM-HOTEL.md` §5.3 · ภาพ `ledger/design-booking/10-integrations.png` = `ledger/design-dorm/11-integrations.png` (หน้าเดียว — parity กับทั้งสอง) · `ledger/wo-notes/svc-r0.8-carry.md` (ข้อ R0.5) · กติกา `ledger/SVC-RUN.md` §1
-> ข้อสอบ (ห้ามแก้): `scripts/qc-svc-r0.5.mts` — 56 ข้อ (F4 S4 K4 C7 A4 X1 T3 G3 L7 E2 V4 FK2 D1 J2 P4 Z4) · รับใบ = **ไม่มี FAIL** · SKIP ที่ยอมได้มีชนิดเดียว: `P-4` ถ่ายภาพจริง (ไม่มี QC server — ผู้คุม build + ถ่ายเองตอนรับงาน)
+> ข้อสอบ (ห้ามแก้): `scripts/qc-svc-r0.5.mts` — 57 ข้อ (F4 S4 K4 C7 A5 X1 T3 G3 L7 E2 V4 FK2 D1 J2 P4 Z4) · รับใบ = **ไม่มี FAIL** · SKIP ที่ยอมได้มีชนิดเดียว: `P-4` ถ่ายภาพจริง (ไม่มี QC server — ผู้คุม build + ถ่ายเองตอนรับงาน)
 > builder: **ห้าม build/next · ห้าม commit/push · ห้าม `pnpm install` · ห้าม migration/แก้ `prisma/`** (ตารางมีแล้วจาก R0.1) · รายงานต่อข้อ (id → ผล)
 > รัน: `bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-r0.5.mts` (เขียนฐาน qc-svc · ห้ามรันขนานกับข้อสอบอื่นที่เขียนฐาน · ห้ามครอบ timeout)
 > regression ที่ผู้คุมรันตอนรับ: `qc-svc-smoke.mts` · `qc-chat-security.mts` · `qc-chat-security-scope.mts` (การเชื่อม LINE) · `qc-payment.mts` · `qc-svc-r0.1.mts` (ตาราง)
@@ -115,3 +115,4 @@ INTEGRATION_CALL_LOG_RETENTION_DAYS = 30
 5. FAKE ต้อง `APP_ENV !== "production"` ด้วย (กันเปิดบน prod แม้ตั้ง env ผิด)
 6. ชนิดที่ 9 = `EDC` (ภาพจอง 10) · รายการเดินบัญชีธนาคาร (ภาพหอ 11) = ไม่อยู่ในใบนี้
 7. PROMPTPAY รอบนี้อ่าน `PaymentProfile` อย่างเดียว (ค่าตั้ง `payments.receiver` มากับ R0.3/R0.6)
+10. **ด่านให้สิทธิ์ต่อ** (ORACLE-EDIT R0.5-A-5 · ผู้คุม 27 ต.ค.): `settings.integrations.manage` = คีย์ owner-only แบบ `CRM_OWNER_ONLY_KEYS` — ผู้ที่ไม่ใช่ OWNER (รวม MANAGER ที่ถือคีย์เอง) ให้คีย์นี้แก่คนอื่นผ่าน `updateStaffAccess`/`grantStaffAccess` ไม่ได้ · OWNER ให้ได้ · builder เพิ่มคีย์เข้าชุด owner-only ใน `src/lib/core/permissions.ts` + ด่านใน `src/lib/staff/service.ts` (ไฟล์เพิ่มในขอบเขตใบ)

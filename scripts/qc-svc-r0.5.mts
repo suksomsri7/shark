@@ -7,7 +7,7 @@
 //   S  secret-box (รูปแบบ · ข้อสอบเปิดกล่องเองด้วยสูตร SHA-256("integrations:"+key) · กุญแจผิด/ขยะ = null ไม่ throw)
 //   K  ไม่มีกุญแจ/กุญแจสั้น/กุญแจผิด ⇒ เก็บค่าลับไม่ได้ (ไม่มีกุญแจสำรอง · ไม่เก็บ plaintext) · อ่าน/เรียกไม่ throw
 //   C  บันทึก (patch · เปลี่ยน/ล้างคีย์ · ปิดบัง 4 ตัวท้าย · แถวดิบไม่มีค่าลับ · validation · audit)
-//   A  สิทธิ์ settings.integrations.manage (เจ้าของ · MANAGER ไม่ได้โดยปริยาย · ผู้ได้คีย์จำกัดหน่วย)
+//   A  สิทธิ์ settings.integrations.manage (เจ้าของ · MANAGER ไม่ได้โดยปริยาย · ผู้ได้คีย์จำกัดหน่วย · A-5 ให้สิทธิ์ต่อได้เฉพาะ OWNER)
 //   X  ข้ามร้าน ⇒ NOT_FOUND / null (X1)
 //   T  testIntegration (FAKE) · event integration.connected ครั้งเดียวต่อการเปลี่ยน · lastError ไม่สะท้อนคีย์ (positive control)
 //   G  getIntegration: unitIds จำกัดหน่วยจริง · แถวระบุหน่วยชนะ · DRAFT ไม่นับ · handle ไม่มีค่าลับ
@@ -118,6 +118,8 @@ const ACT: Record<string, Actor> = {
 };
 const CTX_A = { tenantId: TA };
 const CTX_B = { tenantId: TB };
+const MB = { manager: "svcqc-mb-manager", ek: "svcqc-mb-ek" } as const;
+const MB_PREV: Record<string, unknown> = {}; // permissions เดิมของ membership ที่ A-5 แก้ — คืนใน finally
 const STORED_KINDS = ["SLIP_VERIFY", "PAYMENT_GATEWAY", "SMS", "CHANNEL_MANAGER", "METER", "CALENDAR", "EDC"];
 const CATALOG_KINDS = ["LINE_OA", "PROMPTPAY", ...STORED_KINDS];
 const READY_KINDS = new Set(["LINE_OA", "PROMPTPAY", "SLIP_VERIFY"]);
@@ -501,6 +503,43 @@ try {
     if (await prisma.tenantIntegration.count({ where: { label: { in: [`${PFX}-g1`, `${PFX}-g2`] } } })) p.push("แถวเกิด");
     const r5 = await rowOf(IDS.L5 ?? "");
     if (r5 && js(r5.unitIds) !== js([U.barber])) p.push(`L5 unitIds ${js(r5.unitIds)}`);
+  });
+
+  // ORACLE-EDIT R0.5-A-5 (ผู้คุม 27 ต.ค. · ด่านให้สิทธิ์ต่อแบบ CRM_OWNER_ONLY_KEYS ใน staff/service.ts) ◂
+  await step("A-5", "ด่านให้สิทธิ์ต่อ (staff/service updateStaffAccess): OWNER ให้ settings.integrations.manage ได้ · ผู้ที่ไม่ใช่ OWNER (แม้ถือคีย์เอง) ให้ไม่ได้ · positive control: MANAGER ให้คีย์ booking ปกติได้", async (p) => {
+    const SM = await tryImport("@/lib/staff/service");
+    if (typeof SM?.updateStaffAccess !== "function") { p.push("ไม่มี updateStaffAccess"); return; }
+    const KEYP = "settings.integrations.manage";
+    if (PERM?.isPermissionKey?.(KEYP) !== true) p.push("คีย์ยังไม่อยู่ในทะเบียนสิทธิ์ (ให้สิทธิ์ไม่ได้ทั้งระบบ)");
+    const mbs = (await prisma.membership.findMany({ where: { id: { in: [MB.manager, MB.ek] }, tenantId: TA } })) as Any[];
+    for (const m of mbs) if (!(m.id in MB_PREV)) MB_PREV[m.id] = m.permissions ?? {};
+    if (mbs.length !== 2) { p.push(`membership seed ${mbs.length}/2`); return; }
+    const permsOf = async (id: string): Promise<Record<string, unknown>> => ((await prisma.membership.findUnique({ where: { id } }))?.permissions ?? {}) as Record<string, unknown>;
+    const upd = (actorUserId: string, membershipId: string, add: Record<string, boolean>, base: Record<string, unknown>) =>
+      call(SM, "updateStaffAccess", { tenantId: TA, actorUserId, membershipId, permissions: { ...base, ...add } });
+    // 1) MANAGER (ไม่มีคีย์) ให้ ek ⇒ ปฏิเสธ
+    const ekBase = MB_PREV[MB.ek] as Record<string, unknown>;
+    const r1 = await upd(ACT.manager.userId, MB.ek, { [KEYP]: true }, ekBase);
+    if (r1?.ok !== false || r1?.threw) p.push(`MANAGER ให้ ek → ${codeOf(r1)} (คาดปฏิเสธ)`);
+    if ((await permsOf(MB.ek))[KEYP] === true) p.push("ek ได้คีย์จาก MANAGER");
+    // 2) OWNER ให้ MANAGER ⇒ ได้
+    const r2 = await upd(ACT.owner.userId, MB.manager, { [KEYP]: true }, MB_PREV[MB.manager] as Record<string, unknown>);
+    if (r2?.ok !== true) p.push(`OWNER ให้ MANAGER → ${String(r2?.reason ?? codeOf(r2)).slice(0, 80)} (คาด ok)`);
+    else if ((await permsOf(MB.manager))[KEYP] !== true) p.push("OWNER ให้แล้วแต่ไม่ถูกบันทึก");
+    // 3) MANAGER ที่ถือคีย์เองแล้ว ให้ ek ⇒ ยังปฏิเสธ (owner-only ไม่ใช่แค่ "ต้องมีเอง")
+    if (r2?.ok === true) {
+      const r3 = await upd(ACT.manager.userId, MB.ek, { [KEYP]: true }, ekBase);
+      if (r3?.ok !== false || r3?.threw) p.push(`MANAGER ถือคีย์แล้วให้ ek → ${codeOf(r3)} (คาดปฏิเสธ)`);
+      if ((await permsOf(MB.ek))[KEYP] === true) p.push("ek ได้คีย์จาก MANAGER ที่ถือคีย์");
+    }
+    // 4) positive control: MANAGER ให้คีย์ booking ปกติได้ (ปฏิเสธข้างบนไม่ใช่เพราะ MANAGER ให้อะไรไม่ได้เลย)
+    const r4 = await upd(ACT.manager.userId, MB.ek, { "booking.service.create": true }, ekBase);
+    if (r4?.ok !== true) p.push(`positive control: MANAGER ให้ booking.service.create → ${String(r4?.reason ?? codeOf(r4)).slice(0, 80)}`);
+    // 5) OWNER ให้ ek ⇒ ได้
+    const r5 = await upd(ACT.owner.userId, MB.ek, { [KEYP]: true }, ekBase);
+    if (r5?.ok !== true || (await permsOf(MB.ek))[KEYP] !== true) p.push(`OWNER ให้ ek → ${String(r5?.reason ?? codeOf(r5)).slice(0, 80)} (คาด ok)`);
+    // คืนค่าทันที (finally คืนซ้ำอีกชั้น)
+    for (const [id, v] of Object.entries(MB_PREV)) await prisma.membership.update({ where: { id }, data: { permissions: v } });
   });
 
   // ═══════════════ X ข้ามร้าน ═══════════════
@@ -943,6 +982,8 @@ try {
 } finally {
   for (const k of ENV_KEYS) envSet(k, ENV_SAVED[k]);
   try {
+    for (const [id, v] of Object.entries(MB_PREV)) await prisma.membership.update({ where: { id }, data: { permissions: v } });
+    await prisma.auditLog.deleteMany({ where: { tenantId: TA, targetId: { in: Object.keys(MB_PREV) }, action: { startsWith: "membership." }, createdAt: { gte: START } } });
     await cleanup();
     if (created.payProfile === "created") await prisma.paymentProfile.deleteMany({ where: { tenantId: TA, displayName: `svc-r05 ${RAND}` } });
     if (created.payProfile === "patched") await prisma.paymentProfile.update({ where: { tenantId: TA }, data: { promptpayId: created.payPrev?.promptpayId ?? null } });
