@@ -140,3 +140,5 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 2026-10-27 · แผน · เขียน SVC-MASTER-PLAN / SVC-CORE-CONTRACT / SVC-RUN / SVC-RESUME / SVC-KICKOFF-PROMPT · ยังไม่แตะโค้ด · รอ POS 100%
 
 - 27 ต.ค. 2569 · มติเจ้าของ: **อนุญาตแตะ POS จุดที่ 3 = X-POS.1** (รวมตรวจสลิป POS `PosPaymentSlip`/`slip-verify.ts` เข้ากับ `PaymentSlip` กลาง เพื่อจับสลิปใช้ซ้ำข้าม POS↔หอ) · ทำหลังลูกค้ารายแรกใช้จริง (ใบเลื่อนตามแผน) · รวมเป็น 3 จุดที่อนุญาตแตะ POS: บิลพักผูกงาน · ค่าคอมฯ ตามผู้ให้บริการ · X-POS.1
+
+- 27 ต.ค. 2569 14:3xZ · **R0.0 เสร็จ** (ผู้คุม): POS 100% ยืนยัน (`session/pos` 940e3aca · ยังไม่ลง main) ⇒ ฐาน `session/svc` = 940e3aca + commit เอกสาร SVC · เลน «shark-svc-l1/l2/l3» (branch wip/svc-lN · node_modules bind จากทรีหลัก) · Neon `wo-svc-qc` (br-late-pond-ao7wm6tn · ep-mute-scene · parent QC4) + `.env.qc-svc` (gitignored) + `scripts/qc-svc.sh` (ล็อก /tmp/shark-gate-svc.lock · POS_QC_ALLOW_HOST=ep-mute-scene) · **btree_gist 1.8 ใช้ได้** (CREATE ใน tx แล้ว rollback) ⇒ ใช้ EXCLUDE ตาม CC §5.2 ไม่ต้องทางสำรอง · baseline ดู `ledger/wo-notes/svc-baseline-*.txt` (12/12 เขียว · ชุด POS 4 ชุดติดด่านเขียน QC4 = หนี้ SVC-D1) · Prisma 7: สคริปต์ probe ต้องใช้ adapter/pg

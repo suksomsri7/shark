@@ -1,0 +1,23 @@
+# SVC baseline @3992d60a (ฐาน session/pos 940e3aca) · 27 ต.ค. 2569 · ฐาน QC wo-svc-qc
+
+qc-booking-deposit exit=0
+qc-booking-race exit=0
+qc-booking-edit-schedule exit=0
+qc-booking-hours-hr exit=0
+qc-hr-leave-booking exit=0
+qc-queue-public exit=0
+qc-hotel-money exit=0
+qc-hotel-public exit=0
+qc-hotel-refund exit=0
+qc-clinic exit=0
+qc-clinic-public exit=0
+qc-clinic-refund exit=0
+qc-pos-p5.1 exit=4
+qc-pos-p2.9 exit=4
+qc-pos-p2.9b exit=4
+qc-pos-p3.5 exit=4
+DONE
+
+- ชุดจอง/คิว/โรงแรม/คลินิก 12 ชุด เขียวทั้งหมด (18+8+26+13+14+20+5+15+15+8+15+13)
+- qc-pos-p5.1/p2.9/p2.9b/p3.5 exit 4 = ไม่ใช่แดงจริง: ด่านเขียน POS (scripts/lib pos-prod-writer-guard + loadPosQcEnv) อนุญาตเขียนแถวเฉพาะ QC4 ep-frosty-lab · ส่วนอ่านอย่างเดียวผ่าน · ⇒ หนี้ SVC-D1: เพิ่ม ep-mute-scene ใน allowlist ทดสอบ (สคริปต์ทดสอบ ไม่ใช่โค้ด POS) ในใบ B.8/B.10 ก่อนใช้ชุดนี้เป็น regression
+- ผลดิบ /root/svc-runs/baseline-20261027T144724Z
