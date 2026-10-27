@@ -700,6 +700,9 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "settings.staff.read": "ดูรายชื่อผู้ใช้งานและสิทธิ์",
       "settings.staff.write": "ให้/แก้/ถอนสิทธิ์การเข้าใช้งานของคนอื่น",
+      // SVC R0.3 ▸ ค่าตั้งร่วมของเครื่องยนต์ค่าตั้ง (core/settings · defs/payments · defs/messaging) ◂
+      "settings.payments.edit": "แก้ค่าตั้งรับเงินและตรวจสลิป",
+      "settings.messaging.edit": "แก้ค่าตั้งการส่งข้อความหาลูกค้า",
     },
   },
   {

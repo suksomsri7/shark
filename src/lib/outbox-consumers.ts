@@ -816,6 +816,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "pos.sale.taxInvoiceIssued": withAutomation(async () => {}),
   // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09) — กฎอัตโนมัติ/เว็บฮุคเท่านั้น · rejected ของออเดอร์เว็บร้าน = ยกเลิก ShopOrder ที่นี่ (composition root · มติ 13 — POS ไม่ import shop) ◂
   "pos.order.received": withAutomation(async () => {}),
+  // SVC R0.3 ▸ ค่าตั้งแบบชั้นเปลี่ยน — กฎอัตโนมัติ/เว็บฮุคเท่านั้น (payload ไม่มีค่า) ◂
+  "settings.changed": withAutomation(async () => {}),
   "pos.order.accepted": withAutomation(compose(async () => {}, posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 สถานะในแชท ◂
   "pos.order.rejected": withAutomation(compose(bothMain(posOrderRejected, kdsOnOrderClosed), posChat("onOrderEventChat"))), // POS P2.6 ▸ + ยกเลิกรายการครัวของรอบออเดอร์ (CD 18) ◂ · POS P3.7 ▸ R6 ◂
   "pos.order.ready": withAutomation(compose(async () => {}, posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 ◂

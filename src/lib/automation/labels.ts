@@ -265,6 +265,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.portal.quote.responded", label: "เมื่อลูกค้าบริษัทตอบรับหรือปฏิเสธใบเสนอราคาในพอร์ทัล (CRM)" },
   { value: "crm.portal.request.created", label: "เมื่อลูกค้าบริษัทส่งคำขอหรือแจ้งเรื่องผ่านพอร์ทัล (CRM)" },
   // ◂ CRM C3.5
+  // SVC R0.3 ▸ ค่าตั้งแบบชั้นเปลี่ยน (payload ไม่มีค่า — มีแค่คีย์/ชั้น) ◂
+  { value: "settings.changed", label: "เมื่อค่าตั้งของร้านหรือสาขาเปลี่ยน" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม
