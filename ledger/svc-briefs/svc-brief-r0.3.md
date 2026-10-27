@@ -148,3 +148,24 @@ type SetResult = { ok: true; saved: number }
 5. `def.legal` = ruleId[] (รูปที่ D.1 oracle ผูก) + `legalInput` เป็นตัวแปลง · domain ฟิกซ์เจอร์ `qcfx` + snapshot kind เป็นข้อความตรวจกับทะเบียน
 6. `SettingDef.labelTh` บังคับ (R0.4 ต้องใช้ · CC §1.3 ไม่ได้ระบุ)
 7. คีย์สิทธิ์ใหม่ `settings.payments.edit` · `settings.messaging.edit` (CC §8 ยังไม่มีคีย์สำหรับค่าตั้งร่วม)
+
+## 11. มติหลังผู้ตรวจ 27 ต.ค. (ผู้คุมตัดสิน · ข้อสอบกลุ่ม **RV** ใน «scripts/qc-svc-r0.3.mts» · ต้นเรื่อง `/root/svc-runs/fix/r0.3.md` ข้อ 1–15)
+> ข้อในหมวดนี้ **ชนะ** ข้อความเดิมของ §4–§6 ที่ขัดกัน (ระบุไว้ท้ายแต่ละข้อ)
+1. **[BLOCKER] ผลอนุมัติต้องมาจากเจ้าของจริง** — `applyLegalOverrideApproval` เขียนได้เมื่อคำขอมี `ApprovalDecision` APPROVED โดยผู้ที่ **Membership ปัจจุบัน** ของร้านเป็น OWNER (ไม่เชื่อ role ที่ส่งมากับ actor ตอน decide) · ยื่นเมื่อสายที่ resolve ได้ **ไม่มีขั้น approverRole OWNER** ⇒ `NEEDS_APPROVAL` + issue `OWNER_MUST_APPROVE` · approvalId null · ไม่สร้างคำขอ (RV-1 · RV-2 · RV-3)
+   - แกนอนุมัติ: `createPolicyAction` · `updatePolicyAction` · `togglePolicyAction` = OWNER เท่านั้น (role จาก `requireTenant`) (RV-4) · ข้อสอบเดิม `qc-approval*.mts` 3 ไฟล์ + `qc-automation.mts` เรียก service ตรง (ไม่มี actor) — ไม่มีข้อใดสมมติว่า MANAGER สร้างสายผ่าน action ได้
+2. **[BLOCKER] ตอนใช้ผลอนุมัติ ตรวจกฎหมายซ้ำด้วยโหมดปัจจุบัน** — BLOCK (รวม `always`) ⇒ ไม่เขียน (INVALID) · ยอมเฉพาะ needsAck ที่ code อยู่ในชุดที่เสนอไว้ (RV-5: เปลี่ยนสาขาเป็น STRICT ระหว่างรอ)
+3. **ตอนใช้ผลอนุมัติ ผ่านด่าน 3–6 ของ setSettings ซ้ำ** (ฟังก์ชันกลางเดียวกัน) ด้วย actor ผู้ยื่นที่อ่านจาก Membership สด (RV-6: ผู้ยื่นถูกลดสาขา ⇒ ไม่เขียน) · ข้อเสนอเก็บ **ค่าฐานต่อคีย์** (แถวของ key/scope/scopeId/effectiveFrom ตอนยื่น หรือ "ไม่มีแถว") — ปัจจุบัน ≠ ฐาน ⇒ STALE ไม่เขียน (RV-7) · ข้อเสนอผูก requestId + requestedById — คำขออื่นที่ชี้ข้อเสนอเดียวกันใช้ไม่ได้ (RV-8) · เครื่องหมาย "ใช้แล้ว" เขียนใน tx เดียวกับค่า
+4. ชุดที่ต้องขออนุมัติ (ผู้ไม่ใช่เจ้าของ ack) ต้องอยู่ **สาขาเดียว** (unitId ของทุก change เท่ากัน · TENANT นับเป็นอีกสาขา) ไม่งั้น `VALIDATION` · ไม่สร้างคำขอ (RV-10)
+5. `defineSettings`: def ที่มี `legal` ⇒ รัน `evaluateLegal` โหมด STRICT กับ `_fallback` และค่าแม่แบบทุกตัวของ def (ผ่าน `legalInput`/ตัวแปลงปริยาย · `get` = ค่าเริ่มชุดเดียวกัน) ⇒ ไม่ OK = throw ทั้งชุด (RV-11)
+6. แก้คีย์ที่ def อื่นอ่านผ่าน `legalInput(get)` ⇒ ตรวจกฎหมาย def นั้นซ้ำด้วยค่าหลังชุด ณ refs เดียวกัน (RV-12)
+7. ล็อกกลุ่ม `settings-group:{tenant}:{domain}:{group}` เมื่อกลุ่มมี groupRule หรือ def ในกลุ่มมี `legalInput` — write skew (A grace=25 ∥ B noShow=20 จากฐาน 10/30) ต้องไม่ผิดกฎ 5/5 รอบ (RV-13)
+8. ตรวจข้ามค่า (§5.1 ข้อ 5) รวม **แถวชั้นลึกที่มีอยู่** ของกลุ่มในสาขาที่กระทบ (เช่น แก้ UNIT grace ต้องตรวจกับทุก STAFF/SERVICE ที่มี noShow ของตัวเอง) (RV-14)
+9. มติ (ก): **ไม่ลบแถวที่มีอยู่** เพราะค่าเท่าชั้นบน — "ไม่เก็บแถว" ใช้เฉพาะตอนจะสร้างแถวใหม่ (RV-15 · P-8 ยังคุมกรณีสร้างใหม่) — **แทน** §5.1 "ลบแถวเดิมถ้ามี" · CC: R0.4 ส่งเฉพาะคีย์ที่ผู้ใช้แตะ + สวิตช์ "ตามชั้นบน" (= resetSetting)
+10. export `refsFor(ctx, scope, id) → ScopeRefs | null` (ไล่ unit/building/roomType ตามตาราง · ร้านอื่น/ไม่พบ ⇒ null หรือ throw ห้ามคืน ref) · `snapshotPolicy(ctx, kind, refs | { scope, scopeId }, at?)` — รูป entity = `{ scope, scopeId }` (ชื่อเดียวกับ change) ผลเท่ากับส่ง refs เต็ม (RV-16)
+11. `setSettings`/`resetSetting` ถือ `pg_advisory_xact_lock_shared` ของ `settings-profile:{tenant}:{unit}:{domain}` · `applyTemplate` ถือแบบ exclusive **ก่อนอ่านแถว** (RV-21: RESET_ALL ∥ setSettings ⇒ ประวัติไม่แตกสาย)
+12. `effectiveFrom` **ย้อนหลัง** (< ตอนนี้) บนคีย์ `sensitivity MONEY` = เจ้าของเท่านั้น (อื่น ⇒ `PERMISSION`) · อนาคต = ตามสิทธิ์ปกติ (RV-17) · `resetSetting` บนคีย์ `effectiveDated` **ลบเฉพาะแถว effectiveFrom > ตอนนี้** (removed = จำนวนนั้น · แถวที่มีผลแล้วคงอยู่) (RV-18) — **แทน** §5.3 "ลบทุกแถว effectiveFrom" (applyTemplate RESET_ALL ยังลบทุกแถวตาม T-2) · ข้อสอบ P-2/E-2 ล้างแถวคีย์เงินเองแทน resetSetting
+13. snapshot: ค่า `undefined` ⇒ เก็บเป็น `null` (คีย์ต้องอยู่ใน values · fromSnapshot ไม่ throw) (RV-19)
+14. ประสิทธิภาพ: ล็อกทั้งชุดใน query เดียว · อ่านแถวเดิม findMany เดียว · แถวใหม่ `createManyAndReturn` — **บันทึก 50 คีย์ ≤ 40 SQL** (นับทุกคำสั่งที่ adapter ส่ง รวม BEGIN/COMMIT/ล็อก/audit/outbox) · export `resolveSettingsMany(ctx, keys, refsList, at?) → Record<key, Resolved>[]` (เรียงตาม refsList · ผล = resolveSettings ทีละ refs) **≤ 3 SQL** (RV-20)
+15. ผลอนุมัติส่งซ้ำ (outbox) หลังเจ้าของแก้ค่าใหม่กว่าแล้ว ⇒ ไม่ทับ (RV-9)
+- ฉากข้อสอบ: ผู้ใช้ทดสอบเป็น `User` + `Membership` จริง (อีเมล `qc-svc-r03-*@qc.invalid` · ลบท้ายรอบ) · สาขา A3/RT3/ST4 ใหม่ · def ทดสอบเพิ่มลง domain `qcfx` ตอนรัน (กลุ่ม negl/li/snu/perf*) หลังข้อ R/T จึงไม่กระทบข้อเดิม
+- หนี้ (ไม่ใช่ R0.3): สรุปข้อเสนอในหน้าอนุมัติ/ปิดค่า PRIVACY (R0.4) · ประวัติเมื่อเปลี่ยนแม่แบบ · paymentProfileId ตรวจ tenant (R0.6)

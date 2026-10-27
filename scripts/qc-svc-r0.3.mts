@@ -11,6 +11,7 @@
 //   L  กฎหมาย 3 โหมด + สายอนุมัติ settings.legal_override
 //   H  ประวัติ SettingChange · AuditLog · outbox settings.changed
 //   T  applyTemplate KEEP_CUSTOM / RESET_ALL
+//   RV มติหลังผู้ตรวจ 27 ต.ค. (ข้อ 1–15 ของ /root/svc-runs/fix/r0.3.md · ใบสั่ง หมวด "มติหลังผู้ตรวจ 27 ต.ค.")
 //
 // ใช้ Prisma client ของแอป (ผ่าน @/lib/core/db) · ทุกแถวทดสอบอยู่ใต้ tenant ชั่วคราว slug `qc-svc-r03-*` · ลบใน finally (+ กวาดของค้างตอนเริ่ม)
 // รัน: bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-r0.3.mts
@@ -63,6 +64,7 @@ const st = async (id: string, name: string, fn: () => unknown | Promise<unknown>
 type Actor = { role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown>; userId: string };
 type Ctx = { tenantId: string };
 type Refs = { unitId: string; buildingId?: string; roomTypeId?: string; roomId?: string; staffId?: string; serviceId?: string };
+type Entity = { scope: string; scopeId: string };
 type Change = { key: string; scope: string; scopeId: string; value: unknown; effectiveFrom?: Date; reason?: string };
 type Issue = { key?: string; code: string; messageTh: string };
 type SetRes = { ok: boolean; saved?: number; removed?: number; code?: string; issues?: Issue[]; approvalId?: string | null };
@@ -79,7 +81,11 @@ type SettingsApi = {
   resetSetting: (actor: Actor, ctx: Ctx, t: { key: string; scope: string; scopeId: string }) => Promise<SetRes>;
   applyTemplate: (actor: Actor, ctx: Ctx, i: { unitId: string; domain: string; templateKey: string; overwrite: "KEEP_CUSTOM" | "RESET_ALL" }) => Promise<SetRes>;
   settingHistory: (ctx: Ctx, q: { unitId?: string; key?: string; actor?: Actor }) => Promise<ChangeRow[]>;
-  snapshotPolicy: (ctx: Ctx, kind: string, refs: Refs, at?: Date) => Promise<Snapshot>;
+  snapshotPolicy: (ctx: Ctx, kind: string, refs: Refs | Entity, at?: Date) => Promise<Snapshot>;
+  /** มติหลังผู้ตรวจ ข้อ 10 */
+  refsFor?: (ctx: Ctx, scope: string, id: string) => Promise<Refs | null>;
+  /** มติหลังผู้ตรวจ ข้อ 14 — ผลเรียงตาม refsList */
+  resolveSettingsMany?: (ctx: Ctx, keys: string[], refsList: Refs[], at?: Date) => Promise<Record<string, Resolved>[]>;
   fromSnapshot: (snap: Snapshot, key: string) => unknown;
   renderTemplate: (def: DefLike, value: unknown, vars: Record<string, string>, locale: string) => string;
   validateGroup: (domain: string, group: string, values: Record<string, unknown>) => Issue[];
@@ -95,6 +101,7 @@ type ModelApi = {
   findFirst: (a?: unknown) => Promise<Record<string, unknown> | null>;
   count: (a?: unknown) => Promise<number>;
   deleteMany: (a?: unknown) => Promise<unknown>;
+  updateMany: (a: unknown) => Promise<{ count: number }>;
 };
 type Db = Record<string, ModelApi> & {
   $queryRawUnsafe: <T>(sql: string, ...args: unknown[]) => Promise<T>;
@@ -280,7 +287,7 @@ await t("R-2", "TEMPLATES.qcfx = QCFX_A v1 · QCFX_B v2 · SNAPSHOT_KEYS['qcfx.d
   eq(tp, [["QCFX_A", 1], ["QCFX_B", 2]], "TEMPLATES.qcfx");
   eq([...(s.SNAPSHOT_KEYS["qcfx.doc"] ?? [])].sort(), [K.grace, K.noShow, K.rent, K.ret].sort(), "SNAPSHOT_KEYS qcfx.doc");
 });
-const zmod = (await import("zod" as string)) as { z: { number: () => { int: () => { min: (n: number) => { max: (n: number) => unknown } } } } };
+const zmod = (await import("zod" as string)) as { z: { number: () => { int: () => { min: (n: number) => { max: (n: number) => unknown } }; optional: () => unknown } } };
 const intSchema = () => zmod.z.number().int().min(0).max(10);
 const negDef = (key: string, over: Record<string, unknown> = {}) => ({
   key, domain: "qcfx", group: "neg", labelTh: "ทดสอบ", type: "int", schema: intSchema(),
@@ -361,7 +368,7 @@ const SLUG = "qc-svc-r03-";
 const tenantIds: string[] = [];
 const MODELS_BY_TENANT = [
   "settingChange", "settingValue", "settingProfile", "tenantIntegration", "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
-  "appNotification", "outboxEvent", "auditLog", "hotelRoom", "hotelRoomType", "roomBuilding", "bookingStaff", "bookingService", "businessUnit",
+  "appNotification", "outboxEvent", "auditLog", "membership", "hotelRoom", "hotelRoomType", "roomBuilding", "bookingStaff", "bookingService", "businessUnit",
 ];
 const cleanup = async (ids: string[]) => {
   for (const id of ids) {
@@ -379,8 +386,17 @@ const cleanup = async (ids: string[]) => {
     }
   }
 };
+const USER_MAIL = "qc-svc-r03-";
+const cleanupUsers = async () => {
+  try {
+    await db.user.deleteMany({ where: { email: { startsWith: USER_MAIL } } });
+  } catch (e) {
+    console.log(`  ⚠️ ลบ user ทดสอบ: ${errMsg(e)}`);
+  }
+};
 // กวาดของค้างจากรอบก่อน
 try {
+  await cleanupUsers();
   const stale = await db.tenant.findMany({ where: { slug: { startsWith: SLUG } }, select: { id: true } });
   if (stale.length) {
     console.log(`\n(กวาด tenant ค้าง ${stale.length})`);
@@ -408,11 +424,14 @@ try {
   const A1 = await mkUnit(tA, "สาขา A1");
   const A2 = await mkUnit(tA, "สาขา A2");
   const B1 = await mkUnit(tB, "สาขา B1");
+  const A3 = await mkUnit(tA, "สาขา A3 (ข้อสอบหลังผู้ตรวจ)");
   const mkStaff = async (tenantId: string, unitId: string, name: string) => (await db.bookingStaff.create({ data: { tenantId, unitId, name } })).id;
   const ST1 = await mkStaff(tA, A1, "ช่าง 1");
   const ST2 = await mkStaff(tA, A1, "ช่าง 2");
   const ST3 = await mkStaff(tA, A2, "ช่าง 3 (A2)");
   const STB = await mkStaff(tB, B1, "ช่าง ร้าน B");
+  const ST4 = await mkStaff(tA, A3, "ช่าง 4 (A3)");
+  const RT3 = (await db.hotelRoomType.create({ data: { tenantId: tA, unitId: A3, name: "ห้อง A3" } })).id;
   const SV1 = (await db.bookingService.create({ data: { tenantId: tA, unitId: A1, name: "ตัดผม", durationMin: 30 } })).id;
   const BL1 = (await db.roomBuilding.create({ data: { tenantId: tA, unitId: A1, name: "ตึก A", floors: 3, sortOrder: 0 } })).id;
   const RT1 = (await db.hotelRoomType.create({ data: { tenantId: tA, unitId: A1, name: "ห้องมาตรฐาน" } })).id;
@@ -420,10 +439,20 @@ try {
 
   const ctxA: Ctx = { tenantId: tA };
   const ctxB: Ctx = { tenantId: tB };
-  const OWNER: Actor = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: "qc-r03-owner" };
-  const OWNER_B: Actor = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: "qc-r03-owner-b" };
-  const MGR_ALL: Actor = { role: "MANAGER", unitAccess: ["*"], permissions: {}, userId: "qc-r03-mgr" };
-  const MGR_A1: Actor = { role: "MANAGER", unitAccess: [A1], permissions: {}, userId: "qc-r03-mgr-a1" };
+  // ผู้ใช้จริง + Membership (มติหลังผู้ตรวจ ข้อ 1/3: ผลอนุมัติอ่านบทบาทผู้ตัดสิน/ผู้ยื่นจาก Membership สด)
+  const RUN = uid();
+  const mkMember = async (tag: string, tenantId: string, role: Actor["role"], unitAccess: string[]): Promise<Actor> => {
+    const id = `qc-r03-${tag}-${RUN}`;
+    await db.user.create({ data: { id, email: `${USER_MAIL}${tag}-${RUN}@qc.invalid`, name: `QC ${tag}` } });
+    await db.membership.create({ data: { userId: id, tenantId, role, unitAccess, permissions: {}, acceptedAt: new Date() } });
+    return { role, unitAccess, permissions: {}, userId: id };
+  };
+  const OWNER = await mkMember("owner", tA, "OWNER", ["*"]);
+  const OWNER_B = await mkMember("owner-b", tB, "OWNER", ["*"]);
+  const MGR_ALL = await mkMember("mgr", tA, "MANAGER", ["*"]);
+  const MGR_A1 = await mkMember("mgr-a1", tA, "MANAGER", [A1]);
+  const MGR2 = await mkMember("mgr2", tA, "MANAGER", ["*"]);
+  const MGR3 = await mkMember("mgr3", tA, "MANAGER", ["*"]);
   const STAFF_A1: Actor = { role: "STAFF", unitAccess: [A1], permissions: { "qcfx.settings.edit": true }, userId: "qc-r03-staff" };
   const STAFF_NOPERM: Actor = { role: "STAFF", unitAccess: [A1], permissions: {}, userId: "qc-r03-staff-np" };
   const REASON = "ร้านตกลงกับผู้เช่าเป็นลายลักษณ์อักษรแล้ว";
@@ -467,7 +496,8 @@ try {
 
   // ═══════════════ P. ชั้นเจาะจงชนะ ═══════════════
   console.log("\nP. ชั้นเจาะจงชนะ");
-  const pairTest = async (s: SettingsApi, key: string, chain: string[], ids: string[], vals: number[], refs: Refs) => {
+  // purge = ค่า effectiveDated: resetSetting ลบเฉพาะแถวอนาคต (มติหลังผู้ตรวจ ข้อ 12) ⇒ ข้อสอบล้างแถวเอง
+  const pairTest = async (s: SettingsApi, key: string, chain: string[], ids: string[], vals: number[], refs: Refs, purge = false) => {
     const fails: string[] = [];
     for (let i = 0; i < chain.length; i++)
       for (let j = i + 1; j < chain.length; j++) {
@@ -482,6 +512,10 @@ try {
         const r = await rv(s, key, refs);
         if (r.value !== vals[j] || r.source !== chain[j] || r.scopeId !== ids[j]) fails.push(`${chain[i]}+${chain[j]} ⇒ ${fmt([r.value, r.source, r.scopeId])}`);
         for (const k of [i, j]) {
+          if (purge) {
+            await db.settingValue.deleteMany({ where: { tenantId: tA, key, scope: chain[k], scopeId: ids[k] } });
+            continue;
+          }
           const x = await s.resetSetting(OWNER, ctxA, { key, scope: chain[k], scopeId: ids[k] });
           if (!x.ok || x.removed !== 1) fails.push(`reset ${chain[k]} ${fmt(x)}`);
         }
@@ -491,7 +525,7 @@ try {
   await t("P-1", "graceMin ทุกคู่ชั้น (TENANT·UNIT·SERVICE·STAFF = 6 คู่): ตัวท้ายใน chain ชนะ · source/scopeId ถูก", (s) =>
     pairTest(s, K.grace, ["TENANT", "UNIT", "SERVICE", "STAFF"], [tA, A1, SV1, ST1], [11, 12, 13, 14], { unitId: A1, serviceId: SV1, staffId: ST1 }));
   await t("P-2", "rent ทุกคู่ชั้น (TENANT·UNIT·BUILDING·ROOM_TYPE·ROOM = 10 คู่)", (s) =>
-    pairTest(s, K.rent, ["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM"], [tA, A1, BL1, RT1, RM1], [300001, 300002, 300003, 300004, 300005], { unitId: A1, buildingId: BL1, roomTypeId: RT1, roomId: RM1 }));
+    pairTest(s, K.rent, ["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM"], [tA, A1, BL1, RT1, RM1], [300001, 300002, 300003, 300004, 300005], { unitId: A1, buildingId: BL1, roomTypeId: RT1, roomId: RM1 }, true));
   await t("P-3", "แถวของช่างอื่นไม่มีผล · ไม่ส่ง ref ชั้นนั้น = ไม่ใช้ชั้นนั้น", async (s) => {
     mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.grace, scope: "STAFF", scopeId: ST2, value: 9 }]), "ST2 grace 9");
     eq((await rv(s, K.grace, { unitId: A1, staffId: ST1 })).value, 10, "ST1");
@@ -552,7 +586,7 @@ try {
     mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.rent, scope: "ROOM", scopeId: RM1, value: 351000 }]), "ROOM 351000");
     const r = await rv(s, K.rent, { unitId: A1, buildingId: BL1, roomTypeId: RT1, roomId: RM1 }, FUT2);
     eq([r.value, r.source], [351000, "ROOM"], "อนาคต + ห้อง");
-    mustOk(await s.resetSetting(OWNER, ctxA, { key: K.rent, scope: "ROOM", scopeId: RM1 }), "reset ROOM");
+    await db.settingValue.deleteMany({ where: { tenantId: tA, key: K.rent, scope: "ROOM", scopeId: RM1 } }); // reset คีย์ effectiveDated ลบเฉพาะแถวอนาคต (ข้อ 12)
   });
   await t("E-3", "effectiveFrom บนค่าที่ไม่ใช่ effectiveDated ⇒ VALIDATION · ไม่เขียน", async (s) => {
     const c0 = await snapCounts(tA);
@@ -760,6 +794,7 @@ try {
   const ap = (await tryImport<{
     createPolicy: (ctx: Ctx, i: unknown) => Promise<{ id: string }>;
     setPolicyActive: (ctx: Ctx, id: string, a: boolean) => Promise<unknown>;
+    updatePolicy: (ctx: Ctx, id: string, i: unknown) => Promise<unknown>;
     decide: (m: Actor, ctx: Ctx, id: string, i: { decision: "APPROVED" | "REJECTED"; note?: string }) => Promise<{ ok: boolean }>;
   }>("@/lib/modules/approval/service")).mod;
   const eff = (await tryImport<{ applyApprovalEffect: (e: { tenantId: string; type: string; payload: unknown }) => Promise<void> }>("@/lib/approval-effects")).mod;
@@ -930,11 +965,385 @@ try {
     eq([(await rv(s, K.label, { unitId: A1 })).value, (await rv(s, K.grace, { unitId: A1, staffId: ST2 })).value, (await rv(s, K.mode, { unitId: A1 })).value, (await rv(s, K.ret, retRefsRT)).value],
       ["หมอนวด", 15, "STRICT", 7], "ค่าหลังรีเซ็ต");
   });
+  // ═══════════════ RV. มติหลังผู้ตรวจ 27 ต.ค. (ข้อ 1–15) ═══════════════
+  // ฉาก: สาขา A3 (โหมด WARN · ไม่มี profile) · ห้อง RT3 · ช่าง ST4 · ผู้ใช้จริง + Membership (OWNER · MGR_ALL · MGR2 · MGR3)
+  console.log("\nRV. มติหลังผู้ตรวจ 27 ต.ค.");
+  const retRefs3: Refs = { unitId: A3, roomTypeId: RT3 };
+  const fire = async (requestId: string, approved = true) => {
+    if (!eff) throw new AssertFail("โหลด approval-effects ไม่ได้");
+    const q = await db.approvalRequest.findFirst({ where: { id: requestId } });
+    await eff.applyApprovalEffect({
+      tenantId: tA,
+      type: approved ? "approval.request.approved" : "approval.request.rejected",
+      payload: { requestId, entityType: "settings.legal_override", entityId: q?.entityId },
+    });
+  };
+  /** ผู้ไม่ใช่เจ้าของยื่นข้ามคำเตือน (A3 โหมด WARN) — ต้องได้ NEEDS_APPROVAL + approvalId */
+  const submitRT3 = async (s: SettingsApi, who: Actor, value: number): Promise<string> => {
+    const r = await s.setSettings(who, ctxA, [{ key: K.ret, scope: "ROOM_TYPE", scopeId: RT3, value, reason: REASON }], { ackLegalWarn: true });
+    mustCode(r, "NEEDS_APPROVAL", `ยื่น RT3=${value}`);
+    ok(typeof r.approvalId === "string" && r.approvalId.length > 0, `ยื่น RT3=${value}: ไม่มี approvalId ${fmt(r)}`);
+    return String(r.approvalId);
+  };
+  const byApproval = (requestId: string) => db.settingChange.count({ where: { tenantId: tA, approvalId: requestId } });
+  let polOwner = "";
+  await t("RV-0", "ฉาก: เจ้าของตั้ง A3 = WARN · สายอนุมัติ settings.legal_override ขั้นเดียว OWNER (ใช้งานอยู่สายเดียว)", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.mode, scope: "UNIT", scopeId: A3, value: "WARN" }]), "A3 WARN");
+    for (const p of await db.approvalPolicy.findMany({ where: { tenantId: tA, entityType: "settings.legal_override" } })) await ap.setPolicyActive(ctxA, String(p.id), false);
+    polOwner = (await ap.createPolicy(ctxA, { name: "QC RV เจ้าของอนุมัติ", entityType: "settings.legal_override", steps: [{ order: 1, approverRole: "OWNER" }] })).id;
+    eq((await rv(s, K.ret, retRefs3)).value, 7, "RT3 สืบค่าเริ่ม 7");
+  });
+
+  // ── ข้อ 1 [BLOCKER] ──
+  await t("RV-1", "ข้อ 1: สายที่ไม่มีขั้น OWNER (สายเก่า MANAGER) ⇒ ยื่นไม่ได้: NEEDS_APPROVAL + OWNER_MUST_APPROVE · ไม่ส่งคำขอ · ไม่เขียน", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    await ap.setPolicyActive(ctxA, polOwner, false);
+    const polMgr = (await ap.createPolicy(ctxA, { name: "QC RV สายเก่า ผู้จัดการอนุมัติ", entityType: "settings.legal_override", steps: [{ order: 1, approverRole: "MANAGER" }] })).id;
+    try {
+      const c0 = await snapCounts(tA);
+      const q0 = await reqCount();
+      const r = await s.setSettings(MGR_ALL, ctxA, [{ key: K.ret, scope: "ROOM_TYPE", scopeId: RT3, value: 10, reason: REASON }], { ackLegalWarn: true });
+      mustCode(r, "NEEDS_APPROVAL", "สาย MANAGER");
+      ok((r.issues ?? []).some((i) => i.code === "OWNER_MUST_APPROVE"), `issues ต้องมี OWNER_MUST_APPROVE: ${fmt(r.issues)}`);
+      ok(!r.approvalId, `approvalId ต้องว่าง ได้ ${fmt(r.approvalId)}`);
+      eq([await snapCounts(tA), await reqCount()], [c0, q0], "นับแถว/คำขอ");
+    } finally {
+      await ap.setPolicyActive(ctxA, polMgr, false);
+      await ap.setPolicyActive(ctxA, polOwner, true);
+    }
+  });
+  await t("RV-2", "ข้อ 1: คำขอที่ผู้จัดการเป็นผู้ตัดสิน (สายถูกแก้เป็นขั้น MANAGER ระหว่างรอ) ⇒ ผลอนุมัติห้ามเขียนค่า", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    const id = await submitRT3(s, MGR_ALL, 10);
+    await ap.updatePolicy(ctxA, polOwner, { name: "QC RV เจ้าของอนุมัติ", steps: [{ order: 1, approverRole: "MANAGER" }] });
+    try {
+      const d = await ap.decide(MGR2, ctxA, id, { decision: "APPROVED" });
+      ok(d.ok, `ฉาก: ผู้จัดการตัดสินขั้น MANAGER ไม่ได้ ${fmt(d)}`);
+      await fire(id);
+    } finally {
+      await ap.updatePolicy(ctxA, polOwner, { name: "QC RV เจ้าของอนุมัติ", steps: [{ order: 1, approverRole: "OWNER" }] });
+    }
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(id)], [7, 0], "RT3 / แถวประวัติของคำขอ");
+  });
+  await t("RV-3", "ข้อ 1: ผู้ตัดสินอ้างบทบาท OWNER แต่ Membership จริงเป็น MANAGER ⇒ ผลอนุมัติห้ามเขียนค่า (อ่าน Membership สด)", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    const id = await submitRT3(s, MGR_ALL, 11);
+    const forged: Actor = { ...MGR2, role: "OWNER", unitAccess: ["*"] };
+    const d = await ap.decide(forged, ctxA, id, { decision: "APPROVED" });
+    ok(d.ok, `ฉาก: decide ด้วยบทบาทที่อ้างไม่ผ่าน ${fmt(d)}`);
+    await fire(id);
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(id)], [7, 0], "RT3 / แถวประวัติของคำขอ");
+  });
+  await st("RV-4", "ข้อ 1: แกนอนุมัติ — createPolicyAction · updatePolicyAction · togglePolicyAction ตรวจ OWNER (role จาก requireTenant)", () => {
+    const src = stripComments(read("src/lib/modules/approval/actions.ts"));
+    const bad: string[] = [];
+    for (const fn of ["createPolicyAction", "updatePolicyAction", "togglePolicyAction"]) {
+      const at = src.search(new RegExp(`export\\s+async\\s+function\\s+${fn}\\b`));
+      if (at < 0) {
+        bad.push(`ไม่มี ${fn}`);
+        continue;
+      }
+      const rest = src.slice(at + 10);
+      const nx = rest.search(/\nexport\s/);
+      const body = nx < 0 ? rest : rest.slice(0, nx);
+      if (!/\.role\s*(!==|===)\s*["']OWNER["']/.test(body)) bad.push(`${fn} ไม่ตรวจ OWNER`);
+    }
+    ok(bad.length === 0, bad.join(" · "));
+  });
+
+  // ── ข้อ 2 [BLOCKER] ──
+  await t("RV-5", "ข้อ 2: ระหว่างรออนุมัติ เจ้าของเปลี่ยน A3 เป็น STRICT ⇒ อนุมัติแล้วผลต้องไม่เขียน (ตรวจกฎหมายซ้ำด้วยโหมดปัจจุบัน)", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    const id = await submitRT3(s, MGR_ALL, 12);
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.mode, scope: "UNIT", scopeId: A3, value: "STRICT" }]), "A3 STRICT");
+    try {
+      ok((await ap.decide(OWNER, ctxA, id, { decision: "APPROVED" })).ok, "เจ้าของอนุมัติ");
+      await fire(id);
+    } finally {
+      mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.mode, scope: "UNIT", scopeId: A3, value: "WARN" }]), "A3 กลับ WARN");
+    }
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(id)], [7, 0], "RT3 / แถวประวัติของคำขอ");
+  });
+
+  // ── ข้อ 3 ──
+  await t("RV-6", "ข้อ 3: ผู้ยื่นถูกลดสาขา (Membership สดไม่มี A3) ก่อนอนุมัติ ⇒ ผลต้องไม่เขียน (ด่าน 3–6 ด้วยผู้ยื่นจาก Membership สด)", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    const id = await submitRT3(s, MGR3, 13);
+    await db.membership.updateMany({ where: { tenantId: tA, userId: MGR3.userId }, data: { unitAccess: [A1] } });
+    ok((await ap.decide(OWNER, ctxA, id, { decision: "APPROVED" })).ok, "เจ้าของอนุมัติ");
+    await fire(id);
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(id)], [7, 0], "RT3 / แถวประวัติของคำขอ");
+  });
+  await t("RV-7", "ข้อ 3: ค่าปัจจุบัน ≠ ค่าฐานของข้อเสนอ (เจ้าของแก้ RT3 ระหว่างรอ) ⇒ STALE ไม่เขียนทับ", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    const id = await submitRT3(s, MGR_ALL, 14);
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.ret, scope: "ROOM_TYPE", scopeId: RT3, value: 5 }]), "เจ้าของตั้ง RT3=5");
+    ok((await ap.decide(OWNER, ctxA, id, { decision: "APPROVED" })).ok, "เจ้าของอนุมัติ");
+    await fire(id);
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(id)], [5, 0], "RT3 / แถวประวัติของคำขอ");
+    mustOk(await s.resetSetting(OWNER, ctxA, { key: K.ret, scope: "ROOM_TYPE", scopeId: RT3 }), "reset RT3");
+  });
+  await t("RV-8", "ข้อ 3: ข้อเสนอผูก requestId/requestedById — คำขอปลอม (APPROVED โดยเจ้าของ) ที่ชี้ข้อเสนอของคำขออื่น ⇒ ไม่เขียน", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    const id = await submitRT3(s, MGR_ALL, 15);
+    const real = await db.approvalRequest.findFirst({ where: { id } });
+    if (!real) throw new AssertFail("ไม่พบคำขอจริง");
+    const fake = await db.approvalRequest.create({
+      data: {
+        tenantId: tA, policyId: String(real.policyId), entityType: "settings.legal_override", entityId: String(real.entityId), unitId: A3,
+        status: "APPROVED", currentStepOrder: 1, requestedById: MGR2.userId, decidedAt: new Date(), idempotencyKey: `qc-r03-forge-${uid()}`,
+      },
+    });
+    await db.approvalDecision.create({ data: { tenantId: tA, requestId: fake.id, stepOrder: 1, decidedById: OWNER.userId, decision: "APPROVED" } });
+    await fire(fake.id);
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(fake.id)], [7, 0], "RT3 / แถวประวัติของคำขอปลอม");
+    ok((await ap.decide(OWNER, ctxA, id, { decision: "REJECTED", note: "ปิดฉาก" })).ok, "ปิดคำขอจริง");
+  });
+
+  // ── ข้อ 15 (+ positive control ของสายอนุมัติ) ──
+  await t("RV-9", "ข้อ 15: อนุมัติถูกต้อง ⇒ เขียน 1 ครั้ง · เจ้าของแก้ค่าใหม่ทีหลัง · outbox ส่งผลอนุมัติซ้ำ ⇒ ไม่ทับค่าที่ใหม่กว่า", async (s) => {
+    if (!ap) throw new AssertFail("โหลด approval/service ไม่ได้");
+    const id = await submitRT3(s, MGR_ALL, 16);
+    ok((await ap.decide(OWNER, ctxA, id, { decision: "APPROVED" })).ok, "เจ้าของอนุมัติ");
+    await fire(id);
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(id)], [16, 1], "หลังอนุมัติ (positive control)");
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.ret, scope: "ROOM_TYPE", scopeId: RT3, value: 5 }]), "เจ้าของตั้ง RT3=5");
+    await fire(id);
+    await fire(id);
+    eq([(await rv(s, K.ret, retRefs3)).value, await byApproval(id)], [5, 1], "หลังส่งซ้ำ");
+    mustOk(await s.resetSetting(OWNER, ctxA, { key: K.ret, scope: "ROOM_TYPE", scopeId: RT3 }), "reset RT3");
+  });
+
+  // ── ข้อ 4 ──
+  await t("RV-10", "ข้อ 4: ชุดที่ต้องขออนุมัติแต่มีค่าหลายสาขา (RT3 ใน A3 + label A2) ⇒ VALIDATION · ไม่ส่งคำขอ · ไม่เขียน", async (s) => {
+    const c0 = await snapCounts(tA);
+    const q0 = await reqCount();
+    mustCode(await s.setSettings(MGR_ALL, ctxA, [
+      { key: K.ret, scope: "ROOM_TYPE", scopeId: RT3, value: 10, reason: REASON },
+      { key: K.label, scope: "UNIT", scopeId: A2, value: "ข้ามสาขา" },
+    ], { ackLegalWarn: true }), "VALIDATION", "ชุดสองสาขา");
+    eq([await snapCounts(tA), await reqCount()], [c0, q0], "นับแถว/คำขอ");
+  });
+
+  // ── ข้อ 5 ──
+  await t("RV-11", "ข้อ 5: defineSettings ตรวจค่าเริ่ม/แม่แบบของ def ที่มี legal ด้วย STRICT ⇒ ผิดกฎ throw (ไม่ลงทะเบียน) · ถูก ⇒ ลงได้", () => {
+    if (!reg.mod) throw new AssertFail(`โหลด registry ไม่ได้: ${reg.err}`);
+    const R = reg.mod;
+    const legalDef = (key: string, defaults: Record<string, unknown>) =>
+      negDef(key, { group: "negl", schema: zmod.z.number().int().min(0).max(60), legal: ["DEPOSIT_RETURN_DAYS"], defaults });
+    const bad: string[] = [];
+    if (!throwsReg(() => R.defineSettings("qcfx", [legalDef("qcfx.negl.b1", { _fallback: 30 })]))) bad.push("_fallback 30 วันไม่ throw");
+    if (!throwsReg(() => R.defineSettings("qcfx", [legalDef("qcfx.negl.b2", { _fallback: 7, QCFX_A: 20 })]))) bad.push("แม่แบบ QCFX_A 20 วันไม่ throw");
+    for (const k of ["qcfx.negl.b1", "qcfx.negl.b2"]) if (R.getDef(k)) bad.push(`${k} ลงทะเบียนทั้งที่ throw`);
+    if (throwsReg(() => R.defineSettings("qcfx", [legalDef("qcfx.negl.ok", { _fallback: 7, QCFX_A: 6 })]))) bad.push("ค่าถูกกฎ (7/6) กลับ throw");
+    else if (!R.getDef("qcfx.negl.ok")) bad.push("ค่าถูกกฎไม่ถูกลงทะเบียน");
+    ok(bad.length === 0, bad.join(" · "));
+  });
+
+  // ── ข้อ 6 ──
+  const LI = { extra: "qcfx.li.extra", ret: "qcfx.li.ret" } as const;
+  await t("RV-12", "ข้อ 6: แก้คีย์ที่ def อื่นใช้ใน legalInput ⇒ ตรวจ def นั้นซ้ำด้วยค่าหลังชุด (A1 STRICT: extra 4 + ret 5 = 9 วัน ⇒ LEGAL_BLOCK)", async (s) => {
+    if (!reg.mod) throw new AssertFail(`โหลด registry ไม่ได้: ${reg.err}`);
+    if (!s.getDef(LI.ret)) {
+      reg.mod.defineSettings("qcfx", [
+        negDef(LI.extra, { group: "li", schema: zmod.z.number().int().min(0).max(60), defaults: { _fallback: 0 } }),
+        negDef(LI.ret, {
+          group: "li", schema: zmod.z.number().int().min(0).max(60), defaults: { _fallback: 5 }, legal: ["DEPOSIT_RETURN_DAYS"],
+          legalInput: (v: unknown, get: (k: string) => unknown) => ({ DEPOSIT_RETURN_DAYS: { days: Number(v) + Number(get(LI.extra) ?? 0) } }),
+        }),
+      ]);
+    }
+    eq((await rv(s, K.mode, { unitId: A1 })).value, "STRICT", "โหมด A1");
+    const c0 = await snapCounts(tA);
+    const r1 = await s.setSettings(OWNER, ctxA, [{ key: LI.extra, scope: "UNIT", scopeId: A1, value: 4, reason: REASON }], { ackLegalWarn: true });
+    mustCode(r1, "LEGAL_BLOCK", "extra 4 (ret 5)");
+    ok((r1.issues ?? []).some((i) => i.code === "DEPOSIT_RETURN_DAYS"), `issues ${fmt(r1.issues)}`);
+    eq(await snapCounts(tA), c0, "นับแถว");
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: LI.extra, scope: "UNIT", scopeId: A1, value: 2 }]), "extra 2 (รวม 7)");
+    mustCode(await s.setSettings(OWNER, ctxA, [{ key: LI.ret, scope: "UNIT", scopeId: A1, value: 6 }]), "LEGAL_BLOCK", "ret 6 (+extra 2 = 8)");
+    mustOk(await s.resetSetting(OWNER, ctxA, { key: LI.extra, scope: "UNIT", scopeId: A1 }), "reset extra");
+  });
+
+  // ── ข้อ 7 ──
+  await t("RV-13", "ข้อ 7: write skew กลุ่ม late — A grace=25 ∥ B noShow=20 จากฐาน 10/30 · 5 รอบ ⇒ noShow > grace ทุกรอบ", async (s) => {
+    const broken: string[] = [];
+    for (let round = 0; round < 5; round++) {
+      mustOk(await s.setSettings(OWNER, ctxA, [
+        { key: K.grace, scope: "UNIT", scopeId: A3, value: 10 },
+        { key: K.noShow, scope: "UNIT", scopeId: A3, value: 30 },
+      ]), `ฐานรอบ ${round}`);
+      await Promise.all([
+        s.setSettings(OWNER, ctxA, [{ key: K.grace, scope: "UNIT", scopeId: A3, value: 25 }]),
+        s.setSettings(OWNER, ctxA, [{ key: K.noShow, scope: "UNIT", scopeId: A3, value: 20 }]),
+      ]);
+      const v = await s.resolveSettings(ctxA, [K.grace, K.noShow], { unitId: A3 });
+      if (Number(v[K.noShow].value) <= Number(v[K.grace].value)) broken.push(`รอบ ${round}: grace ${fmt(v[K.grace].value)} noShow ${fmt(v[K.noShow].value)}`);
+    }
+    ok(broken.length === 0, broken.join(" | "));
+  });
+
+  // ── ข้อ 8 ──
+  await t("RV-14", "ข้อ 8: ตรวจข้ามค่ากับแถวชั้นลึกที่มีอยู่ — ST4 noShow 12 · แก้ UNIT A3 grace 20 ⇒ VALIDATION · grace 10 ⇒ ผ่าน", async (s) => {
+    mustOk(await s.setSettings(OWNER, ctxA, [
+      { key: K.grace, scope: "UNIT", scopeId: A3, value: 5 },
+      { key: K.noShow, scope: "UNIT", scopeId: A3, value: 30 },
+    ]), "A3 5/30");
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.noShow, scope: "STAFF", scopeId: ST4, value: 12 }]), "ST4 noShow 12");
+    const c0 = await snapCounts(tA);
+    mustCode(await s.setSettings(OWNER, ctxA, [{ key: K.grace, scope: "UNIT", scopeId: A3, value: 20 }]), "VALIDATION", "A3 grace 20 (ST4 noShow 12)");
+    eq(await snapCounts(tA), c0, "นับแถว");
+    eq((await rv(s, K.grace, { unitId: A3, staffId: ST4 })).value, 5, "grace ใน ST4");
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.grace, scope: "UNIT", scopeId: A3, value: 10 }]), "A3 grace 10");
+    mustOk(await s.resetSetting(OWNER, ctxA, { key: K.noShow, scope: "STAFF", scopeId: ST4 }), "reset ST4");
+  });
+
+  // ── ข้อ 9 ──
+  await t("RV-15", "ข้อ 9 มติ (ก): แถวที่มีอยู่ไม่ถูกลบเพราะค่าเท่าชั้นบน — UNIT A3 ตั้งเท่าค่า TENANT ⇒ แถวคงอยู่ · TENANT เปลี่ยนทีหลัง A3 ยังเป็นค่าเดิม", async (s) => {
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.label, scope: "UNIT", scopeId: A3, value: "ช่างสาขาสาม" }]), "A3 label");
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.label, scope: "TENANT", scopeId: tA, value: "ช่างทั้งร้าน" }]), "TENANT label");
+    try {
+      mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.label, scope: "UNIT", scopeId: A3, value: "ช่างทั้งร้าน" }]), "A3 = ค่า TENANT");
+      const rows = await db.settingValue.findMany({ where: { tenantId: tA, key: K.label, scope: "UNIT", scopeId: A3 } });
+      eq(rows.map((r) => r.value), ["ช่างทั้งร้าน"], "แถว UNIT A3");
+      mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.label, scope: "TENANT", scopeId: tA, value: "ช่างใหม่ทั้งร้าน" }]), "TENANT เปลี่ยน");
+      const r = await rv(s, K.label, { unitId: A3 });
+      eq([r.value, r.source], ["ช่างทั้งร้าน", "UNIT"], "A3 หลัง TENANT เปลี่ยน");
+    } finally {
+      await s.resetSetting(OWNER, ctxA, { key: K.label, scope: "TENANT", scopeId: tA });
+      await s.resetSetting(OWNER, ctxA, { key: K.label, scope: "UNIT", scopeId: A3 });
+    }
+  }, "MAJOR");
+
+  // ── ข้อ 10 ──
+  await t("RV-16", "ข้อ 10: refsFor(ctx, scope, id) ไล่ ref ครบ · ร้านอื่น ⇒ ไม่คืน ref · snapshotPolicy รับ entity {scope,scopeId} = ผลเดียวกับ refs เต็ม", async (s) => {
+    if (typeof s.refsFor !== "function") throw new AssertFail("facade ไม่ export refsFor");
+    const room = await s.refsFor(ctxA, "ROOM", RM1);
+    eq(room ? [room.unitId, room.buildingId, room.roomTypeId, room.roomId] : null, [A1, BL1, RT1, RM1], "refsFor ROOM");
+    const staff = await s.refsFor(ctxA, "STAFF", ST1);
+    eq(staff ? [staff.unitId, staff.staffId] : null, [A1, ST1], "refsFor STAFF");
+    let leak: unknown = null;
+    try {
+      leak = await s.refsFor(ctxB, "ROOM", RM1);
+    } catch {
+      leak = null;
+    }
+    ok(leak === null || leak === undefined, `ร้าน B ได้ ref ห้องร้าน A: ${fmt(leak)}`);
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.ret, scope: "ROOM_TYPE", scopeId: RT1, value: 6 }]), "RT1 ret 6");
+    try {
+      const byEntity = await s.snapshotPolicy(ctxA, "qcfx.doc", { scope: "ROOM", scopeId: RM1 });
+      const byRefs = await s.snapshotPolicy(ctxA, "qcfx.doc", { unitId: A1, buildingId: BL1, roomTypeId: RT1, roomId: RM1 });
+      eq([byEntity.values, byEntity.sources], [byRefs.values, byRefs.sources], "snapshot entity = refs");
+      eq([byEntity.values[K.ret], byEntity.sources[K.ret]], [6, "ROOM_TYPE"], "ret จาก ROOM_TYPE");
+    } finally {
+      await s.resetSetting(OWNER, ctxA, { key: K.ret, scope: "ROOM_TYPE", scopeId: RT1 });
+    }
+  });
+
+  // ── ข้อ 12 ──
+  const YESTERDAY = new Date(Date.now() - DAY);
+  await t("RV-17", "ข้อ 12: effectiveFrom ย้อนหลังบนคีย์เงิน — ผู้จัดการ ⇒ PERMISSION (ไม่เขียน) · อนาคต ⇒ ผ่าน · เจ้าของย้อนหลัง ⇒ ผ่าน", async (s) => {
+    const c0 = await snapCounts(tA);
+    mustCode(await s.setSettings(MGR_ALL, ctxA, [{ key: K.rent, scope: "UNIT", scopeId: A3, value: 390000, effectiveFrom: YESTERDAY }]), "PERMISSION", "ผู้จัดการย้อนหลัง");
+    eq(await snapCounts(tA), c0, "นับแถว");
+    mustOk(await s.setSettings(MGR_ALL, ctxA, [{ key: K.rent, scope: "UNIT", scopeId: A3, value: 450000, effectiveFrom: FUT }]), "ผู้จัดการอนาคต");
+    mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.rent, scope: "UNIT", scopeId: A3, value: 410000, effectiveFrom: YESTERDAY }]), "เจ้าของย้อนหลัง");
+    eq([(await rv(s, K.rent, { unitId: A3 })).value, (await rv(s, K.rent, { unitId: A3 }, FUT2)).value], [410000, 450000], "ตอนนี้/อนาคต");
+  });
+  await t("RV-18", "ข้อ 12: resetSetting คีย์ effectiveDated ลบเฉพาะแถวอนาคต (removed 1) · แถวที่มีผลแล้วคงอยู่", async (s) => {
+    const r = await s.resetSetting(OWNER, ctxA, { key: K.rent, scope: "UNIT", scopeId: A3 });
+    ok(r.ok === true && r.removed === 1, `reset ${fmt(r)}`);
+    const rows = await db.settingValue.findMany({ where: { tenantId: tA, key: K.rent, scope: "UNIT", scopeId: A3 } });
+    eq(rows.map((x) => x.value), [410000], "แถวที่เหลือ");
+    eq((await rv(s, K.rent, { unitId: A3 }, FUT2)).value, 410000, "อนาคตใช้แถวที่มีผลแล้ว");
+  });
+
+  // ── ข้อ 13 ──
+  await t("RV-19", "ข้อ 13: snapshot ค่า undefined ⇒ null (คีย์อยู่ใน values · JSON ไปกลับแล้ว fromSnapshot ได้ null ไม่ throw)", async (s) => {
+    if (!reg.mod) throw new AssertFail(`โหลด registry ไม่ได้: ${reg.err}`);
+    const KEY = "qcfx.snu.opt";
+    if (!s.getDef(KEY)) reg.mod.defineSettings("qcfx", [negDef(KEY, { group: "snu", schema: zmod.z.number().optional(), defaults: { _fallback: undefined } })], { snapshots: { "qcfx.snu": [KEY] } });
+    const sn = await s.snapshotPolicy(ctxA, "qcfx.snu", { unitId: A1 });
+    ok(Object.prototype.hasOwnProperty.call(sn.values, KEY) && sn.values[KEY] === null, `values ${fmt(sn.values)}`);
+    const back = JSON.parse(JSON.stringify(sn)) as Snapshot;
+    eq(back, sn, "JSON ไปกลับเท่าเดิม");
+    eq(s.fromSnapshot(back, KEY), null, "fromSnapshot");
+  }, "MAJOR");
+
+  // ── ข้อ 14 ── นับ SQL ที่ชั้น adapter (pg.Client.query ที่ @prisma/adapter-pg ใช้)
+  await t("RV-20", "ข้อ 14: บันทึก 50 คีย์ในครั้งเดียว ≤ 40 SQL · resolveSettingsMany(ctx, keys, refsList) ≤ 3 SQL และผล = resolveSettings ทีละ refs", async (s) => {
+    if (!reg.mod) throw new AssertFail(`โหลด registry ไม่ได้: ${reg.err}`);
+    if (typeof s.resolveSettingsMany !== "function") throw new AssertFail("facade ไม่ export resolveSettingsMany");
+    const keys = Array.from({ length: 50 }, (_, i) => `qcfx.perf${i % 5}.k${i}`);
+    if (!s.getDef(keys[0]))
+      reg.mod.defineSettings("qcfx", keys.map((key, i) =>
+        negDef(key, { group: `perf${i % 5}`, schema: zmod.z.number().int().min(0).max(1000), defaults: { _fallback: i }, chain: ["TENANT", "UNIT", "SERVICE", "STAFF"] })));
+    const { createRequire } = (await import("node:module" as string)) as { createRequire: (p: string) => (id: string) => unknown };
+    const pg = createRequire(join(ROOT, "package.json"))("pg") as { Client: { prototype: { query: (...a: unknown[]) => unknown } } };
+    let q = 0;
+    const orig = pg.Client.prototype.query;
+    pg.Client.prototype.query = function (this: unknown, ...a: unknown[]) {
+      q++;
+      return orig.apply(this, a);
+    };
+    const count = async (fn: () => Promise<unknown>): Promise<[number, unknown]> => {
+      q = 0;
+      const out = await fn();
+      return [q, out];
+    };
+    try {
+      const [ctl] = await count(() => db.tenant.count({ where: { id: tA } }));
+      ok(ctl >= 1, "ตัวนับ SQL ไม่ทำงาน (positive control)");
+      mustOk(await s.setSettings(OWNER, ctxA, keys.slice(0, 5).map((key, i) => ({ key, scope: "STAFF", scopeId: ST2, value: 900 + i }))), "แถว STAFF ST2 5 คีย์");
+      const [nSave, res] = await count(() => s.setSettings(OWNER, ctxA, keys.map((key, i) => ({ key, scope: "UNIT", scopeId: A1, value: 500 + i }))));
+      mustOk(res as SetRes, "บันทึก 50 คีย์");
+      console.log(`     (บันทึก 50 คีย์ = ${nSave} SQL)`);
+      ok(nSave <= 40, `บันทึก 50 คีย์ใช้ ${nSave} SQL (เพดาน 40)`);
+      const refsList: Refs[] = [{ unitId: A1 }, { unitId: A1, staffId: ST1, serviceId: SV1 }, { unitId: A1, staffId: ST2 }, { unitId: A2 }];
+      const many = s.resolveSettingsMany;
+      const [nRead, outMany] = await count(() => many(ctxA, keys, refsList));
+      console.log(`     (resolveSettingsMany ${refsList.length} refs × 50 คีย์ = ${nRead} SQL)`);
+      ok(nRead <= 3, `resolveSettingsMany ${refsList.length} refs × 50 คีย์ ใช้ ${nRead} SQL (เพดาน 3)`);
+      const arr = outMany as Record<string, Resolved>[];
+      eq(arr.length, refsList.length, "จำนวนผล");
+      for (let i = 0; i < refsList.length; i++) eq(arr[i], await s.resolveSettings(ctxA, keys, refsList[i]), `ผล refs[${i}]`);
+      eq([arr[2][keys[0]].value, arr[2][keys[0]].source, arr[0][keys[0]].value, arr[3][keys[0]].value], [900, "STAFF", 500, 0], "ค่าตัวอย่าง");
+    } finally {
+      pg.Client.prototype.query = orig;
+    }
+  }, "MAJOR");
+
+  // ── ข้อ 11 ── (ท้ายสุด: RESET_ALL ล้างแถว qcfx ของ A3)
+  await t("RV-21", "ข้อ 11: setSettings ถือ advisory lock แบบ shared ของ settings-profile · RESET_ALL ∥ setSettings 5 รอบ ⇒ ประวัติไม่แตกสาย (before ไม่ซ้ำ) · ค่าสุดท้ายตรงประวัติ", async (s) => {
+    const svc = stripComments(read(`${SET_DIR}/service.ts`));
+    ok(/pg_advisory_xact_lock_shared/.test(svc) && /settings-profile/.test(svc), "service.ts ไม่มี pg_advisory_xact_lock_shared / คีย์ settings-profile");
+    const bad: string[] = [];
+    for (let round = 0; round < 5; round++) {
+      mustOk(await s.setSettings(OWNER, ctxA, [{ key: K.label, scope: "UNIT", scopeId: A3, value: `รอบ${round}-ก` }]), `ตั้งก่อนรอบ ${round}`);
+      const where = { tenantId: tA, key: K.label, scope: "UNIT", scopeId: A3 };
+      const seen = new Set((await db.settingChange.findMany({ where, select: { id: true } })).map((r) => String(r.id)));
+      const [a, b] = await Promise.all([
+        s.applyTemplate(OWNER, ctxA, { unitId: A3, domain: "qcfx", templateKey: "QCFX_A", overwrite: "RESET_ALL" }),
+        s.setSettings(OWNER, ctxA, [{ key: K.label, scope: "UNIT", scopeId: A3, value: `รอบ${round}-ข` }]),
+      ]);
+      if (!a.ok || !b.ok) {
+        bad.push(`รอบ ${round} ไม่ ok: ${fmt([a, b])}`);
+        continue;
+      }
+      const fresh = ((await db.settingChange.findMany({ where })) as unknown as (ChangeRow & { id: string })[]).filter((r) => !seen.has(String(r.id)));
+      const befores = fresh.map((r) => JSON.stringify(r.before ?? null));
+      if (new Set(befores).size !== befores.length) bad.push(`รอบ ${round} before ซ้ำ ${befores.join(",")}`);
+      const cur = (await db.settingValue.findFirst({ where }))?.value ?? null;
+      if (!fresh.some((r) => isDeepStrictEqual(r.after ?? null, cur))) bad.push(`รอบ ${round} ค่าปัจจุบัน ${fmt(cur)} ไม่ตรงประวัติ`);
+    }
+    ok(bad.length === 0, bad.slice(0, 3).join(" | "));
+  });
 } catch (e) {
   record("CRASH", "จบกลางทาง", "FAIL", errMsg(e), "CRITICAL");
 } finally {
   try {
     await cleanup(tenantIds);
+    await cleanupUsers();
     const left = await db.tenant.count({ where: { id: { in: tenantIds } } });
     console.log(`\n(ล้างแถวทดสอบ: tenant ค้าง ${left})`);
   } catch (e) {
