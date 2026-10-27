@@ -1,0 +1,42 @@
+// ศูนย์เชื่อมต่อ (Integrations) — SVC RUN · สัญญา ledger/SVC-CORE-CONTRACT.md §2.2 · migration svc_r0 (ใบ R0.1)
+// เจ้าของโค้ด = R0.5 · อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core)
+
+model TenantIntegration {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  kind                String
+  provider            String
+  label               String
+  unitIds             String[]  @default([]) // [] = ทุกหน่วย
+  status              String    @default("DRAFT") // "DRAFT" | "CONNECTED" | "ERROR" | "DISABLED"
+  publicFields        Json      @default("{}")
+  secretBox           String?
+  secretNames         String[]  @default([])
+  onFailure           String    @default("MANUAL") // "MANUAL" = ตกไปทางมือ | "REJECT"
+  lastTestAt          DateTime?
+  lastTestOk          Boolean?
+  lastError           String?
+  consecutiveFailures Int       @default(0)
+  quota               Json?
+  createdById         String
+  updatedById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([tenantId, kind, provider, label])
+  @@index([tenantId, kind])
+}
+
+// ไม่มีข้อมูลส่วนตัว (ไม่มีเลขบัญชี/ชื่อผู้โอน/รูป) · ลบเมื่อเกิน 30 วัน (งานรายวัน) · integrationId = ข้อความ (ไม่มี FK)
+model IntegrationCallLog {
+  id            String   @id @default(cuid())
+  tenantId      String
+  integrationId String
+  op            String
+  ok            Boolean
+  ms            Int
+  code          String?
+  at            DateTime @default(now())
+
+  @@index([tenantId, integrationId, at])
+}

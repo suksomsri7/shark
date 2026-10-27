@@ -480,6 +480,21 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HotelRoomType: unit,
   HotelRoom: unit,
   HotelReservation: unit,
+  // SVC R0.1 ▸ แกนห้อง (CC §5.2) — tenantId + unitId บังคับ
+  RoomBuilding: unit,
+  RoomOccupancy: unit,
+  // SVC R0.1 ▸ ค่าตั้งแบบชั้น (CC §1.2) — SettingValue/SettingChange มี unitId ไม่บังคับ/ไม่มี ⇒ tenant
+  SettingValue: tenant,
+  SettingProfile: unit,
+  SettingChange: tenant,
+  // SVC R0.1 ▸ ศูนย์เชื่อมต่อ (CC §2.2) — ข้ามหน่วย (unitIds[]) ⇒ tenant
+  TenantIntegration: tenant,
+  IntegrationCallLog: tenant,
+  // SVC R0.1 ▸ สลิปโอนกลาง (CC §3.2) · ผูกรหัส/ข้อความบริการ (CC §4.2)
+  PaymentSlip: unit,
+  ChatLinkCode: tenant,
+  ServiceMessageLog: unit,
+  // ◂ SVC R0.1
   // Ticket
   TicketEvent: unit,
   TicketType: unit,
