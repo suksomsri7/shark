@@ -44,7 +44,8 @@ type PlanReason =
   | "IN_SERVICE" | "IN_SERVICE_OVERRUN"
   | "BOOKED_ON_TIME" | "BOOKED_DELAYED" | "BOOKED_MOVED_STAFF" | "BOOKED_EARLY" | "STAFF_UNAVAILABLE"
   | "WALKIN_EARLIEST" | "WALKIN_GAP_BEFORE_BOOKING" | "WALKIN_REQUESTED_STAFF" | "LATE_ARRIVAL_AS_WALKIN"
-  | "LATE_RELEASED" | "NO_SHOW_DUE" | "NO_SLOT_TODAY";
+  | "LATE_RELEASED" | "NO_SHOW_DUE" | "NO_SLOT_TODAY"
+  | "UNKNOWN_SERVICE"; // ORACLE-EDIT B.2-R3 (มติหลังผู้ตรวจ 27 ต.ค.)
 type WhyCandidate = {
   staffId: string;
   verdict: "CHOSEN" | "LATER" | "NO_FIT" | "NOT_QUALIFIED" | "NOT_REQUESTED" | "MAX_JOBS";
@@ -56,6 +57,7 @@ type PlannedJob = {
   jobId: string; kind: "BOOKED" | "WALKIN"; staffId: string | null;
   startAt: number | null; endAt: number | null; state: PlanState; reason: PlanReason;
   late: boolean; waitMin: number | null; etaPlusMinusMin: number; why: WhyInfo | null;
+  overWindow: boolean; // ORACLE-EDIT B.2-R6
 };
 type Plan = { now: number; jobs: PlannedJob[]; line: string[] };
 type Quote = { staffId: string | null; startAt: number | null; endAt: number | null; waitMin: number | null; closed: boolean; why: WhyInfo | null };
@@ -412,15 +414,17 @@ test("S16", "เลยผ่อนผัน (10:11) ⇒ ปล่อยช่อ
   const p = plan(IN("10:11", [X], [BK("B1", "X", "CUT", "10:00"), WK("W1", "SHAVE", "10:05")]));
   return all(expect(p, "B1", { state: "RELEASED_LATE", late: true }), expect(p, "W1", { staff: "X", start: "10:11" }));
 });
-test("S17", "ภายในผ่อนผัน (10:09) ⇒ ยังถือช่อง · walk-in ต่อหลังนัด", () => {
+// ORACLE-EDIT B.2-S17 (มติ R1): นัดที่ยังไม่เริ่ม start = max(startAt, now, จบก่อนหน้า+gap) — เดิมคาด 10:00 / W1 10:45
+test("S17", "ภายในผ่อนผัน (10:09) ⇒ ยังถือช่อง เริ่มได้ไม่ก่อน now · walk-in ต่อหลังนัด", () => {
   const p = plan(IN("10:09", [X], [BK("B1", "X", "CUT", "10:00"), WK("W1", "SHAVE", "10:05")]));
-  return all(expect(p, "B1", { state: "SCHEDULED", start: "10:00", late: false }), expect(p, "W1", { start: "10:45" }));
+  return all(expect(p, "B1", { state: "SCHEDULED", start: "10:09", end: "10:54", reason: "BOOKED_DELAYED", late: false }), expect(p, "W1", { start: "10:54" }));
 });
 test("S18", "ขอบผ่อนผันพอดี (now = นัด+10) ⇒ นับว่าสาย ปล่อยช่อง", () =>
   expect(plan(IN("10:10", [X], [BK("B1", "X", "CUT", "10:00")])), "B1", { state: "RELEASED_LATE", late: true }));
-test("S19", "โหมดรอต่อ (HOLD · คลินิก) ⇒ สายแต่ถือช่องเดิม walk-in ไม่ลงแทน", () => {
+// ORACLE-EDIT B.2-S19 (มติ R1): เดิมคาด B1 10:00 / W1 10:45
+test("S19", "โหมดรอต่อ (HOLD · คลินิก) ⇒ สายแต่ถือช่อง (เริ่ม ≥ now) walk-in ไม่ลงแทน", () => {
   const p = plan(IN("10:11", [X], [BK("B1", "X", "CUT", "10:00"), WK("W1", "SHAVE", "10:05")], { lateAction: "HOLD" }));
-  return all(expect(p, "B1", { state: "SCHEDULED", start: "10:00", late: true }), expect(p, "W1", { start: "10:45" }));
+  return all(expect(p, "B1", { state: "SCHEDULED", start: "10:11", end: "10:56", late: true }), expect(p, "W1", { start: "10:56" }));
 });
 test("S20", "snapshot ชนะค่าตั้ง: นัดจองตอนผ่อนผัน 20 ⇒ 10:11 ยังไม่สาย · snapshot HOLD ชนะค่าตั้ง RELEASE", () => {
   const a = plan(IN("10:11", [X], [BK("B1", "X", "CUT", "10:00", { policy: { graceMin: 20 } })]));
@@ -436,9 +440,10 @@ test("S22", "มาสายหลังผ่อนผัน ⇒ เข้า�
   const p = plan(IN("10:20", [X], [WK("W1", "CUT", "10:05"), BK("B1", "X", "CUT", "10:00", { status: "ARRIVED", checkedInAt: T("10:15") })]));
   return all(expect(p, "W1", { start: "10:20" }), expect(p, "B1", { staff: "X", start: "11:05", reason: "LATE_ARRIVAL_AS_WALKIN" }));
 });
-test("S23", "มาภายในผ่อนผัน ⇒ ยังเป็นนัดตามเวลาเดิม (walk-in ต่อหลัง)", () => {
+// ORACLE-EDIT B.2-S23 (มติ R1): เดิมคาด B1 10:00 BOOKED_ON_TIME / W1 10:45
+test("S23", "มาภายในผ่อนผัน ⇒ ยังเป็นนัด (ไม่ใช่ walk-in) เริ่มที่ now · walk-in ต่อหลัง", () => {
   const p = plan(IN("10:09", [X], [WK("W1", "CUT", "10:05"), BK("B1", "X", "CUT", "10:00", { status: "ARRIVED", checkedInAt: T("10:08") })]));
-  return all(expect(p, "B1", { start: "10:00", reason: "BOOKED_ON_TIME" }), expect(p, "W1", { start: "10:45" }));
+  return all(expect(p, "B1", { staff: "X", start: "10:09", end: "10:54", reason: "BOOKED_DELAYED" }), expect(p, "W1", { start: "10:54" }));
 });
 test("S24", "walk-in ขอช่างเฉพาะ ⇒ รอช่างนั้นแม้ช่างอื่นว่างตอนนี้", () =>
   expect(plan(IN("10:00", [X, Y], [INS("I1", "X", "CUT", "09:45"), WK("W1", "SHAVE", "09:55", { assignMode: "SPECIFIC", staffId: "X" })])), "W1", { staff: "X", start: "10:30", reason: "WALKIN_REQUESTED_STAFF" }));
@@ -546,6 +551,86 @@ test("S43", "ผลไม่ขึ้นกับลำดับ array (สล�
   return { ok: norm(a) === norm(b), exp: "เหมือนกัน", act: norm(a) === norm(b) ? "เหมือน" : "ต่าง" };
 });
 
+// ═════════════════════════ ภาค 2b · มติหลังผู้ตรวจ 27 ต.ค. (ORACLE-EDIT B.2-R1…R6) ═════════════════════════
+// R1 นัดที่ยังไม่เริ่มและไม่ถูกปล่อย ⇒ start = max(startAt, now, จบก่อนหน้า+gap) — ห้ามใช้เวลาในอดีต · walk-in ห้ามทับ
+test("R1a", "นัดเช็กอินแล้ว เวลานัดผ่านไปทั้งช่วง (now 10:40) ⇒ 10:40–11:10 · walk-in ต่อหลัง", () => {
+  const p = plan(IN("10:40", [X], [BK("B1", "X", "KID", "10:00", { status: "ARRIVED", checkedInAt: T("09:58") }), WK("W1", "SHAVE", "10:01")]));
+  return all(expect(p, "B1", { staff: "X", start: "10:40", end: "11:10", state: "SCHEDULED", reason: "BOOKED_DELAYED" }), expect(p, "W1", { staff: "X", start: "11:10" }));
+});
+test("R1b", "ยังไม่มาแต่อยู่ในผ่อนผัน (grace 15 · now 10:12 · งาน 10 นาที) ⇒ ถือ 10:12–10:22 · walk-in ห้ามลงช่วงนั้น", () => {
+  const p = plan(IN("10:12", [X], [BK("B1", "X", "SHAVE", "10:00", { durationMin: 10 }), WK("W1", "SHAVE", "10:01")], { graceMin: 15 }));
+  return all(expect(p, "B1", { start: "10:12", end: "10:22", state: "SCHEDULED", late: false }), expect(p, "W1", { staff: "X", start: "10:22" }));
+});
+test("R1c", "HOLD สายยังไม่มา (now 10:20) ⇒ ถือ 10:20–10:50 · walk-in 10:50", () => {
+  const p = plan(IN("10:20", [X], [BK("B1", "X", "KID", "10:00"), WK("W1", "SHAVE", "10:01")], { lateAction: "HOLD" }));
+  return all(expect(p, "B1", { start: "10:20", end: "10:50", late: true }), expect(p, "W1", { start: "10:50" }));
+});
+test("R1d", "นัดก่อนเสมอ + นัดเช็กอินแล้วเวลาผ่านไปแล้ว ⇒ เริ่มที่ now ไม่ใช่อดีต", () => {
+  const p = plan(IN("10:40", [X], [BK("B1", "X", "KID", "10:00", { status: "ARRIVED", checkedInAt: T("09:58") }), WK("W1", "SHAVE", "10:01")], { queueOrder: "APPOINTMENT_FIRST" }));
+  return all(expect(p, "B1", { start: "10:40", end: "11:10" }), expect(p, "W1", { start: "11:10" }));
+});
+test("R1e", "ฉากผู้ตรวจ A#1: นัด 14:00 เช็กอินแล้ว now 14:20 ⇒ 14:20–15:05 · walk-in 15:05", () => {
+  const p = plan(IN("14:20", [X], [BK("B1", "X", "CUT", "14:00", { status: "ARRIVED", checkedInAt: T("13:55") }), WK("W1", "CUT", "14:10")]));
+  return all(expect(p, "B1", { start: "14:20", end: "15:05" }), expect(p, "W1", { start: "15:05" }));
+});
+test("R1f", "นัดต่อกันบนช่างเดียวเว้น gap ตามพักขั้นต่ำ (minBreak 10) ⇒ นัดหลังเริ่ม ≥ จบก่อนหน้า+10", () => {
+  const p = plan(IN("09:50", [ST("X", 1, { minBreakMin: 10 })], [BK("B1", "X", "CUT", "10:00"), BK("B2", "X", "CUT", "10:50")]));
+  return all(expect(p, "B1", { start: "10:00", reason: "BOOKED_ON_TIME" }), expect(p, "B2", { start: "10:55", reason: "BOOKED_DELAYED" }));
+});
+// R2 ANY ที่ระบบย้ายช่าง เคารพ gap ก่อน/หลัง + เผื่อก่อนนัดถัดไป + maxJobsPerDay
+const SPA: PlanService[] = [...SVC, { id: "MASS", name: "นวด", durationMin: 60, bufferAfterMin: 10 }];
+test("R2a", "ANY ไม่ย้ายไปช่างที่งานก่อนจบชิดเกิน (I2 จบ 13:30 + พัก 10 > 13:30) ⇒ อยู่ช่างเดิม", () => {
+  const p = plan(IN("13:28", [ST("a", 1), ST("b", 2)], [INS("I1", "a", "MASS", "12:00"), INS("I2", "b", "MASS", "12:30"), BK("B2", "a", "MASS", "13:30", { assignMode: "ANY" })], { minBreakMin: 10, safetyBeforeBookingMin: 10 }, SPA));
+  return expect(p, "B2", { staff: "a", start: "13:43", reason: "BOOKED_DELAYED" });
+});
+test("R2b", "ANY ไม่ย้ายไปช่างที่จะชนนัดถัดไป (จบ 14:30 + gap 10 > 14:30 − เผื่อ 10) ⇒ อยู่ช่างเดิม", () => {
+  const p = plan(IN("13:28", [ST("a", 1), ST("b", 2)], [INS("I1", "a", "MASS", "12:00"), BK("B2", "a", "MASS", "13:30", { assignMode: "ANY" }), BK("Y1", "b", "MASS", "14:30")], { minBreakMin: 10, safetyBeforeBookingMin: 10 }, SPA));
+  return all(expect(p, "B2", { staff: "a", start: "13:43", reason: "BOOKED_DELAYED" }), expect(p, "Y1", { staff: "b", start: "14:30", reason: "BOOKED_ON_TIME" }));
+});
+test("R2c", "ANY ย้ายได้เมื่อมีที่พอดีพร้อม gap+เผื่อ (นัดถัดไป 14:50) — ตัวคุมบวกของ R2b", () =>
+  expect(plan(IN("13:28", [ST("a", 1), ST("b", 2)], [INS("I1", "a", "MASS", "12:00"), BK("B2", "a", "MASS", "13:30", { assignMode: "ANY" }), BK("Y1", "b", "MASS", "14:50")], { minBreakMin: 10, safetyBeforeBookingMin: 10 }, SPA)), "B2", { staff: "b", start: "13:30", reason: "BOOKED_MOVED_STAFF" }));
+test("R2d", "ANY ไม่ย้ายไปช่างที่งานสูงสุด/วันเต็ม · โควตาเหลือ ⇒ ย้ายได้", () => {
+  const jobs = () => [INS("I1", "a", "CW", "09:30"), BK("D", "b", "CUT", "09:00", { status: "DONE" }), BK("B1", "a", "CUT", "10:15", { assignMode: "ANY" })];
+  const full = plan(IN("10:00", [ST("a", 1), ST("b", 2, { maxJobsPerDay: 1 })], jobs()));
+  const ok = plan(IN("10:00", [ST("a", 1), ST("b", 2, { maxJobsPerDay: 2 })], jobs()));
+  return all(expect(full, "B1", { staff: "a", start: "10:30", reason: "BOOKED_DELAYED" }), expect(ok, "B1", { staff: "b", start: "10:15", reason: "BOOKED_MOVED_STAFF" }));
+});
+// R3 บริการที่ไม่รู้จัก
+test("R3", "serviceId ไม่อยู่ใน services ⇒ UNPLACED/UNKNOWN_SERVICE ไม่กินเวลาใคร ไม่อยู่ใน line", () => {
+  const p = plan(IN("10:00", [X], [BK("B1", "X", "GONE", "10:00", { status: "ARRIVED", checkedInAt: T("09:55") }), WK("W0", "GONE", "09:40"), WK("W1", "CUT", "09:50")]));
+  const r = all(expect(p, "B1", { state: "UNPLACED", reason: "UNKNOWN_SERVICE", start: null }), expect(p, "W0", { state: "UNPLACED", reason: "UNKNOWN_SERVICE", start: null }), expect(p, "W1", { staff: "X", start: "10:00" }));
+  const inLine = p.line.filter((x) => x === "B1" || x === "W0");
+  return { ok: r.ok && inLine.length === 0, exp: r.exp + " · ไม่อยู่ใน line", act: `${r.act} · line=${p.line.join(",")}` };
+});
+// R4 STAFF_UNAVAILABLE ใช้ startAt เดิมเสมอ
+test("R4", "STAFF_UNAVAILABLE (ช่างทำบริการนี้ไม่ได้) ไม่ถูกงานเลยเวลาดัน ⇒ เวลาเดิม ช่างเดิม", () => {
+  const p = plan(IN("10:05", [ST("X", 1, { windows: [W("09:00", "20:00")], services: [{ serviceId: "CUT" }] })], [INS("I1", "X", "KID", "09:30"), BK("B1", "X", "SHAVE", "10:00")]));
+  return expect(p, "B1", { staff: "X", start: "10:00", reason: "STAFF_UNAVAILABLE" });
+});
+// R5 หน้าต่างไม่เรียง/ซ้อน/ชิด ⇒ planner เรียง+รวมเอง
+test("R5a", "หน้าต่างชิดกัน [09–12][12–20] (ส่งกลับลำดับ) ⇒ งาน 60 นาทีตอน 11:30 ลงได้", () =>
+  expect(plan(IN("11:30", [ST("X", 1, { windows: [W("12:00", "20:00"), W("09:00", "12:00")] })], [WK("W1", "CW", "11:20")])), "W1", { start: "11:30", end: "12:30" }));
+test("R5b", "หน้าต่างซ้อนกัน [09–12:30][12–20] ⇒ เหมือนหน้าต่างเดียว", () =>
+  expect(plan(IN("11:30", [ST("X", 1, { windows: [W("09:00", "12:30"), W("12:00", "20:00")] })], [WK("W1", "CW", "11:20")])), "W1", { start: "11:30" }));
+test("R5c", "ภาพ 01 ช่างแจ๊คส่งหน้าต่างแตก+สลับ [16–20][13–16:30] ⇒ ผล (รวม why) เหมือนหน้าต่างเดียวทุกไบต์", () => {
+  const a = plan(IMG());
+  const staff = IMG_STAFF.map((s) => (s.id === "JACK" ? { ...s, windows: [W("16:00", "20:00"), W("13:00", "16:30")] } : s));
+  const b = plan({ ...IMG(), staff });
+  const same = JSON.stringify(a) === JSON.stringify(b);
+  return { ok: same, exp: "เหมือนกันทุกไบต์", act: same ? "เหมือน" : `ต่าง: A011 ${fmt(J(a, "A011"))} / ${fmt(J(b, "A011"))}` };
+});
+// R6 ธงล้นหน้าต่าง
+test("R6a", "นัดถูกดันจนล้นปิดร้าน ⇒ overWindow=true เฉพาะใบที่ล้น", () => {
+  const p = plan(IN("18:30", [X], [INS("I1", "X", "CW", "17:00"), BK("B1", "X", "CUT", "18:30"), BK("B2", "X", "CUT", "19:15")]));
+  const r = all(expect(p, "I1", { end: "18:35" }), expect(p, "B1", { start: "18:35", end: "19:20" }), expect(p, "B2", { start: "19:20", end: "20:05" }));
+  const f = (id: string) => J(p, id).overWindow;
+  return { ok: r.ok && f("B2") === true && f("B1") === false && f("I1") === false, exp: r.exp + " · overWindow B2=true B1=false I1=false", act: `${r.act} · B2=${f("B2")} B1=${f("B1")} I1=${f("I1")}` };
+});
+test("R6b", "ภาพ 01 ไม่มีงานไหนล้นหน้าต่าง (overWindow=false ทุกใบ)", () => {
+  const bad = plan(IMG()).jobs.filter((j) => j.overWindow !== false).map((j) => `${j.jobId}=${String(j.overWindow)}`);
+  return { ok: bad.length === 0, exp: "false ทุกใบ", act: bad.join(",") || "false ทุกใบ" };
+});
+
 // ═════════════════════════ ภาค 3 · property (สุ่ม seed คงที่) ═════════════════════════
 const mulberry32 = (seed: number) => () => {
   seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
@@ -558,7 +643,7 @@ const ri = (r: Rng, a: number, b: number) => a + Math.floor(r() * (b - a + 1));
 const pick = <V,>(r: Rng, xs: readonly V[]): V => xs[Math.floor(r() * xs.length)];
 
 /** สร้างวันสุ่ม: นัดต่อช่างไม่ซ้อนกันเอง · งานที่กำลังทำ 1 งาน/ช่างไม่ซ้อนนัด · overrun = เปิดให้งานเลยเวลาได้ */
-const genDay = (r: Rng, o: { staffN: number; bookings: number; walkins: number; overrun: boolean; settings?: Partial<PlanSettings>; now?: number; dense?: boolean }): PlanInput => {
+const genDay = (r: Rng, o: { staffN: number; bookings: number; walkins: number; overrun: boolean; settings?: Partial<PlanSettings>; now?: number; dense?: boolean; pastPending?: boolean }): PlanInput => {
   const now = o.now ?? T("10:00") + ri(r, 0, 480) * MIN;
   const staff: PlanStaff[] = [];
   for (let k = 0; k < o.staffN; k++) {
@@ -590,7 +675,7 @@ const genDay = (r: Rng, o: { staffN: number; bookings: number; walkins: number; 
       const any = r() < 0.3;
       if (t + d <= now - 30 * MIN || (!o.overrun && t + d <= now)) {
         jobs.push(BK(id, s.id, sv, "00:00", { startAt: t, status: pick(r, ["DONE", "DONE", "NO_SHOW", "CANCELLED"] as const), startedAt: t }));
-      } else if (t <= now && !inService && r() < 0.75) {
+      } else if (t <= now && !inService && (o.pastPending === false || r() < 0.75)) {
         inService = true;
         const started = o.overrun && r() < 0.4 ? Math.min(t, now - d - ri(r, 0, 20) * MIN) : t;
         if (r() < 0.5) jobs.push(BK(id, s.id, sv, "00:00", { startAt: t, status: "IN_SERVICE", checkedInAt: t - 5 * MIN, startedAt: started }));
@@ -605,7 +690,7 @@ const genDay = (r: Rng, o: { staffN: number; bookings: number; walkins: number; 
         jobs.push(BK(id, s.id, sv, "00:00", { startAt: t, assignMode: any ? "ANY" : "SPECIFIC", status: arrived ? "ARRIVED" : "CONFIRMED", checkedInAt: arrived ? now - ri(r, 0, 15) * MIN : null }));
         made++;
       }
-      t += d + ri(r, 0, o.dense ? 2 : 8) * 5 * MIN;
+      t += d + (s.minBreakMin ?? 0) * MIN + ri(r, 0, o.dense ? 2 : 8) * 5 * MIN; // นัดเว้น gap ตามกติกา (มติ R1)
     }
   }
   for (let k = 0; k < o.walkins; k++) {
@@ -658,11 +743,19 @@ const propRun = (id: string, name: string, gen: (r: Rng) => PlanInput, check: (i
   });
 };
 const genStd = (r: Rng) => genDay(r, { staffN: ri(r, 1, 6), bookings: ri(r, 0, 30), walkins: ri(r, 0, 12), overrun: true });
-const genNoOverrun = (r: Rng) => genDay(r, { staffN: ri(r, 1, 6), bookings: ri(r, 0, 30), walkins: ri(r, 0, 12), overrun: false, settings: { queueOrder: "SINGLE_LINE" } });
+const genNoOverrun = (r: Rng) => genDay(r, { staffN: ri(r, 1, 6), bookings: ri(r, 0, 30), walkins: ri(r, 0, 12), overrun: false, pastPending: false, settings: { queueOrder: "SINGLE_LINE" } });
+/** รวมหน้าต่างที่ซ้อน/ชิดกัน (มติ R5) */
+const mergeW = (ws: { startAt: number; endAt: number }[]) => {
+  const xs = [...ws].sort((a, b) => a.startAt - b.startAt);
+  const out: { startAt: number; endAt: number }[] = [];
+  for (const w of xs) { const l = out[out.length - 1]; if (l && w.startAt <= l.endAt) l.endAt = Math.max(l.endAt, w.endAt); else out.push({ ...w }); }
+  return out;
+};
+const inWin = (s: PlanStaff, a: number, b: number) => mergeW(s.windows).some((w) => a >= w.startAt && b <= w.endAt);
 
 propRun("P1", "ไม่มีงานซ้อนบนช่างเดียว (กำลังทำ + ที่วาง)", genStd, (i, p) => {
   const by = new Map<string, PlannedJob[]>();
-  for (const j of p.jobs) if ((j.state === "SCHEDULED" || j.state === "IN_SERVICE") && j.staffId) {
+  for (const j of p.jobs) if ((j.state === "SCHEDULED" || j.state === "IN_SERVICE") && j.staffId && j.reason !== "STAFF_UNAVAILABLE") {
     if (j.startAt == null || j.endAt == null) return `${j.jobId} ไม่มีเวลา`;
     by.set(j.staffId, [...(by.get(j.staffId) ?? []), j]);
   }
@@ -673,7 +766,7 @@ propRun("P1", "ไม่มีงานซ้อนบนช่างเดี�
   void i;
   return null;
 });
-propRun("P2", "นัดที่ยืนยันไม่ถูกขยับเวลา (ไม่มีงานเลยเวลา · แถวเดียว ⇒ ตรงเวลานัดทุกใบ)", genNoOverrun, (i, p) => {
+propRun("P2", "นัดที่ยืนยันไม่ถูกขยับเวลา (ไม่มีงานเลยเวลา · ไม่มีนัดค้างในอดีต · แถวเดียว ⇒ ตรงเวลานัดทุกใบ)", genNoOverrun, (i, p) => {
   for (const j of i.jobs) {
     if (j.kind !== "BOOKED" || j.startAt == null) continue;
     const pj = p.jobs.find((x) => x.jobId === j.id);
@@ -703,6 +796,7 @@ propRun("P4", "นัดไม่เคยถูกเลื่อนให้�
       if (!(pj.reason === "BOOKED_EARLY" && arrived && i.settings.queueOrder === "APPOINTMENT_FIRST" && pj.startAt! >= i.now)) return `${j.id} ถูกดึงเร็ว ${HM(j.startAt)}→${HM(pj.startAt)} (${pj.reason})`;
     }
     if (pj.reason === "BOOKED_MOVED_STAFF" && (pj.startAt !== j.startAt || j.assignMode !== "ANY" || pj.staffId === j.staffId)) return `${j.id} ย้ายช่างผิดกติกา ${fmt(pj)}`;
+    if (pj.reason === "STAFF_UNAVAILABLE" && pj.startAt !== j.startAt) return `${j.id} STAFF_UNAVAILABLE แต่เวลาเปลี่ยน ${HM(j.startAt)}→${HM(pj.startAt)} (มติ R4)`;
     if (pj.reason !== "BOOKED_MOVED_STAFF" && pj.staffId !== j.staffId) return `${j.id} เปลี่ยนช่างโดยไม่ใช่ BOOKED_MOVED_STAFF`;
   }
   return null;
@@ -715,7 +809,7 @@ propRun("P5", "walk-in ทุกใบเคารพกติกา 2 (เผ�
     const s = staffOf(i, pj.staffId!);
     const st = pj.startAt!, en = pj.endAt!;
     if (st < i.now) return `${j.id} เริ่ม ${HM(st)} ก่อน now ${HM(i.now)}`;
-    if (!s.windows.some((w) => st >= w.startAt && en <= w.endAt)) return `${j.id} ${HM(st)}–${HM(en)} นอกหน้าต่าง ${s.id}`;
+    if (!inWin(s, st, en)) return `${j.id} ${HM(st)}–${HM(en)} นอกหน้าต่าง ${s.id}`;
     if (!(s.services === null || s.services.some((x) => x.serviceId === j.serviceId))) return `${j.id} ช่าง ${s.id} ทำ ${j.serviceId} ไม่ได้`;
     if (j.assignMode === "SPECIFIC" && pj.staffId !== j.staffId) return `${j.id} ขอ ${j.staffId} ได้ ${pj.staffId}`;
     const g = gapOf(i, j, s);
@@ -752,9 +846,9 @@ propRun("P7", "backfill ปิด ⇒ walk-in 'ใครก็ได้' เร�
   for (let k = 1; k < ws.length; k++) if (ws[k].pj.startAt! < ws[k - 1].pj.startAt!) return `${ws[k].j.id} ${HM(ws[k].pj.startAt)} ก่อน ${ws[k - 1].j.id} ${HM(ws[k - 1].pj.startAt)}`;
   return null;
 });
-propRun("P8", "deterministic + ไม่ขึ้นกับลำดับ array + ไม่แก้ input (freeze)", genStd, (i, p, r) => {
+propRun("P8", "deterministic + ไม่ขึ้นกับลำดับ array (jobs/staff/windows) + ไม่แก้ input (freeze)", genStd, (i, p, r) => {
   const sh = <V,>(xs: V[]) => { const c = [...xs]; for (let k = c.length - 1; k > 0; k--) { const m = Math.floor(r() * (k + 1)); [c[k], c[m]] = [c[m], c[k]]; } return c; };
-  const p2 = plan(deepFreeze(structuredClone({ ...i, jobs: sh(i.jobs), staff: sh(i.staff) })));
+  const p2 = plan(deepFreeze(structuredClone({ ...i, jobs: sh(i.jobs), staff: sh(i.staff).map((s) => ({ ...s, windows: sh(s.windows) })) })));
   const norm = (x: Plan) => JSON.stringify({ line: x.line, jobs: [...x.jobs].sort((a, b) => a.jobId.localeCompare(b.jobId)) });
   return norm(p) === norm(p2) ? null : "ผลต่างเมื่อสลับลำดับ/freeze";
 });
@@ -767,6 +861,20 @@ propRun("P9", "ทุกงานที่ยังไม่จบมีผล�
   const st = (id: string) => p.jobs.find((j) => j.jobId === id)!.startAt!;
   for (let k = 1; k < p.line.length; k++) if (st(p.line[k]) < st(p.line[k - 1])) return `line ไม่เรียงเวลา ${p.line[k - 1]}→${p.line[k]}`;
   for (const j of sch) if (j.waitMin !== Math.max(0, Math.round((j.startAt! - i.now) / MIN))) return `${j.jobId} waitMin ${j.waitMin}`;
+  return null;
+});
+
+propRun("P10", "ไม่มีงานที่วางใช้เวลาในอดีต: SCHEDULED เริ่ม ≥ now (ยกเว้น STAFF_UNAVAILABLE) (มติ R1)", genStd, (i, p) => {
+  for (const j of p.jobs) if (j.state === "SCHEDULED" && j.reason !== "STAFF_UNAVAILABLE" && j.startAt! < i.now) return `${j.jobId} ${j.reason} เริ่ม ${HM(j.startAt)} < now ${HM(i.now)}`;
+  return null;
+});
+propRun("P11", "overWindow = งานที่วาง/กำลังทำไม่อยู่ในหน้าต่าง (รวมแล้ว) ของช่าง · walk-in ไม่ล้นเลย (มติ R6)", genStd, (i, p) => {
+  for (const j of p.jobs) {
+    const placed = (j.state === "SCHEDULED" || j.state === "IN_SERVICE") && j.staffId != null && j.startAt != null && j.endAt != null;
+    const want = placed ? !inWin(staffOf(i, j.staffId!), j.startAt!, j.endAt!) : false;
+    if (j.overWindow !== want) return `${j.jobId} ${fmt(j)} overWindow=${String(j.overWindow)} คาด ${want}`;
+    if (isWalkinLike(j) && j.overWindow) return `${j.jobId} walk-in ล้นหน้าต่าง`;
+  }
   return null;
 });
 
