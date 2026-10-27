@@ -702,6 +702,9 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "settings.staff.write": "ให้/แก้/ถอนสิทธิ์การเข้าใช้งานของคนอื่น",
       // SVC R0.5 ▸ ศูนย์เชื่อมต่อ (/app/settings/integrations) — เจ้าของร้านโดยปริยาย · MANAGER ไม่ได้โดยปริยาย · ให้ต่อได้เฉพาะเจ้าของร้าน ◂
       "settings.integrations.manage": "จัดการศูนย์เชื่อมต่อ (วาง/เปลี่ยนคีย์ผู้ให้บริการ · ทดสอบ · ถอดการเชื่อมต่อ)",
+      // SVC R0.3 ▸ ค่าตั้งร่วมของเครื่องยนต์ค่าตั้ง (core/settings · defs/payments · defs/messaging) ◂
+      "settings.payments.edit": "แก้ค่าตั้งรับเงินและตรวจสลิป",
+      "settings.messaging.edit": "แก้ค่าตั้งการส่งข้อความหาลูกค้า",
     },
   },
   {
