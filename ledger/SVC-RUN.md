@@ -1,6 +1,6 @@
 # SVC-RUN — กติกาเหล็ก · วิธีทำต่อใบ · สถานะสด · บันทึกเหตุการณ์ (RUN "SVC" จองคิว+บัตรคิว V2 · หอพัก)
 
-> สถานะ RUN: **⏸ ยังไม่เริ่ม — แผนเสร็จ 27 ต.ค. 2569 · รอ POS 100% แล้วเริ่ม R0.0** · ผู้คุม = Fable · branch «session/svc» (ยังไม่สร้าง)
+> สถานะ RUN: **▶️ กำลังเดิน — เริ่ม 27 ต.ค. 2569 (R0.0 14:3xZ)** · ผู้คุม = Fable · branch «session/svc» (ฐาน 940e3aca)
 > แผน/ใบงาน = `ledger/SVC-MASTER-PLAN.md` · ชื่อชิ้นกลาง = `ledger/SVC-CORE-CONTRACT.md` · จุดต่อ = `ledger/SVC-RESUME.md` · prompt = `ledger/SVC-KICKOFF-PROMPT.md`
 > ไฟล์นี้ = ที่เดียวที่ผู้คุมแก้สถานะ (§3) และจดเหตุการณ์/มติเทคนิค (§4)
 
@@ -148,3 +148,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - หนี้แบบ (แก้ตอนทำจอ): ภาพ 05 LINE รวม "ค่าห้อง+ส่วนกลาง" บรรทัดเดียว ⇒ ต้องแยกบรรทัดเมื่อจด VAT (D-phase Flex/ใบเสร็จ) · ภาพ 04 "8 จาก 32 ห้อง" ควรเป็น 31 · ภาพ 03/README หน่วยห้อง 207 ไม่รวมในบิล กฟภ. · ภาพ 17 ผ่อนผัน 0 วัน vs ค่าเริ่ม 3 (fixture ใช้ 0)
 - 27 ต.ค. ~16:3xZ · ✅ **R0.1 รับแล้ว** — merge 125f52cd (lane l3 cf0d02fb) · ข้อสอบ 71/71 (ORACLE-EDIT: env type · +E-9/E-10 host ปลอม/DIRECT ว่าง · +K-1 FK · +C-1..3 CHECK · +M-6/7 svc_r0b) · regression hotel ×3 + booking-race เขียว · tsc · fitness 53/53 ×2 · ผู้ตรวจ 2 ตัวไม่มี BLOCKER · แก้ตาม SHOULD: ด่าน host ที่ hostname · DIRECT ว่าง exit 4 · migration svc_r0b CHECK end>start · **มติ: วิธี migration ของ SVC = migrate diff + deploy (ห้าม migrate dev) จนรวม HR** · ส่งต่อใบหลัง `ledger/wo-notes/svc-r0.8-carry.md` · tsc ต้อง ISO_MEM=9000M NODE_OPTIONS=--max-old-space-size=7168
 - B.2 builder เสร็จ (74/74 · p95 ~2 ms · ไฟล์เดียว planner.ts) → ผู้ตรวจ 2 ตัว (กติกา/fuzz) กำลังตรวจ
+- 27 ต.ค. ~17Z · ผู้ตรวจ B.2 ×2 + D.1 ×2 ครบ → ส่งแก้รอบเดียว (ORACLE-EDIT + builder คู่กัน):
+  - **B.2 มติ**: นัดที่ยังไม่เริ่ม/ไม่ถูกปล่อย start = max(startAt, now, จบก่อนหน้า+gap) (ถือ BLOCKER — walk-in แซงลูกค้านัดที่รออยู่) · ANY ย้ายช่างเคารพ gap ก่อน/หลัง + safety + ข้ามช่างโควตาเต็ม · serviceId ไม่รู้จัก ⇒ UNPLACED `UNKNOWN_SERVICE` · STAFF_UNAVAILABLE ใช้ startAt เดิม · planner เรียง+รวมหน้าต่างเอง · ธง `overWindow` · perf worst-case p95 ~12 ms
+  - **D.1 มติ**: ยอดติดลบ ⇒ `NEGATIVE_SATANG` (BLOCKER) · VAT ซ้อนค่าน้ำไฟ: bill = รวม VAT · จด VAT ไม่รวม ⇒ อัตรา floor(bill×100/107÷หน่วย) · gross ผู้เช่ารวม ≤ บิล ทุกโหมด (BLOCKER) · ตัวตรวจค่าผิด ⇒ BLOCK `INVALID_INPUT` · DEDUCTION เฉพาะ DAMAGE+หลักฐาน ≥1 · mode ไม่รู้จัก ⇒ STRICT · ข้อบังคับสัญญาต้องตรง textTh · คำต้องห้าม NFKC+ตัดสัญลักษณ์+คำพ้อง · ตัวตรวจ `LATE_FEE_CAP` · RENT EXEMPT เสมอ · needsApproval รวม legal · เหตุผลนอกขอบเขต ≥10 ตัวอักษรจริง · `OVERFLOW` ที่จุดคูณ · ยืนยัน 7.5 ล้านชุด: บิลหอ = ใบแจ้งหนี้บัญชี V2 ทุกสตางค์ (ยอดไม่ติดลบ)
+  - ส่งต่อ: D.2 บรรทัด = qty 1 × amountSatang · D.7 params กฎหมายระดับแพลตฟอร์มเท่านั้น + OUT_OF_SCOPE ต้องหลักฐานเมื่ออยู่ในขอบเขต · D.8 minimum=null เมื่อปิด · เจ้าของควรรู้: เศษวัน DIV_30 เดือน ก.พ. ได้ ฿4,350 ไม่ใช่เต็มเดือน (ค่าตั้ง) · คำพ้องต้องห้ามส่ง J3
