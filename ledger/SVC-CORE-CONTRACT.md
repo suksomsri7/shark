@@ -162,10 +162,12 @@ IntegrationCallLog id · tenantId · integrationId · op String · ok Boolean ·
 getIntegration(ctx: { tenantId: string; unitId?: string }, kind: IntegrationKind)
   → Promise<IntegrationHandle | null>     // null = ไม่เชื่อม/ปิด/ไม่ครอบคลุมหน่วยนี้ ⇒ ผู้เรียกใช้ทางมือ (ไม่มีฟีเจอร์ไหนพังเพราะไม่ได้สมัคร)
 type IntegrationHandle = { integrationId; kind; provider; onFailure: "MANUAL"|"REJECT"; adapter: AdapterOf<kind> }
-callIntegration<T>(handle, op: string, fn: (adapter) => Promise<T>, opts?: { timeoutMs?: number /*8000*/ })
+callIntegration<T>(handle, op: string, fn: (adapter, ctl: { signal: AbortSignal }) => Promise<T>, opts?: { timeoutMs?: number /*8000*/ })
   → { ok: true, value: T } | { ok: false, code: "TIMEOUT"|"PROVIDER_ERROR"|"QUOTA"|"NOT_READY", fallback: "MANUAL"|"REJECT" }
 ```
 - `callIntegration` เขียน `IntegrationCallLog` ทุกครั้ง · ล้มติดกัน 5 ครั้ง → status ERROR + outbox `integration.failed` · ผ่านครั้งแรกหลังล้ม → CONNECTED
+- **signal (R0.5 มติผู้ตรวจ ข้อ 5):** `fn` ได้ `{ signal }` เป็นอาร์กิวเมนต์ที่ 2 — หมดเวลา ⇒ `signal` ถูก abort แล้ว `callIntegration` คืน `TIMEOUT` ทันที · ทุกเมธอดของ adapter รับ `opts?: { signal }` (ส่งต่อให้ `fetch`) · adapter ที่มี**ผลข้างเคียง** (createCharge · send SMS · pushAri · ackReservation) ต้องเคารพ signal **และ**ส่ง idempotency ref ให้ผู้ให้บริการ (abort ไม่รับประกันว่าฝั่งผู้ให้บริการไม่ได้ทำ) · ผู้เรียกที่ได้ `TIMEOUT` ห้ามสรุปว่า "ไม่ได้ทำ" — ใช้ ref เดิมตอนลองซ้ำ
+- handle ต้องมาจาก `getIntegration` เท่านั้น (สำเนา/ประกอบเอง ⇒ `NOT_READY` ไม่เรียก fn) · ผลของคีย์เก่า (คีย์ถูกเปลี่ยนระหว่างเรียก) ไม่เปลี่ยนสถานะแถว · `integration.failed` ออกเฉพาะแถวที่ CONNECTED อยู่ (DRAFT ล้มครบ 5 ⇒ ERROR เงียบ)
 - **ชนิดเสมือน** (แสดงในหน้าเดียวกัน ไม่เก็บซ้ำ): `LINE_OA` = แถว `ChatChannelConnection` (type LINE) ของร้าน — จัดการที่ระบบแชทเหมือนเดิม · `PROMPTPAY` = `PaymentProfile` ระดับร้าน + ค่าตั้ง `payments.receiver` ระดับหน่วย (§3)
 - ความต่างจาก `AppSystem.settings.integrations` เดิม (สวิตช์เชื่อมระบบภายใน) และหน้า `src/app/app/settings/connections/page.tsx` (เชื่อมระบบกับสาขา) — คงไว้ทั้งคู่ ศูนย์ฯ นี้ = ผู้ให้บริการภายนอกเท่านั้น
 

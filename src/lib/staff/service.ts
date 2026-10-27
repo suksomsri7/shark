@@ -35,6 +35,8 @@ import {
 import {
   // CRM C1.7 ▸ คีย์ CRM ที่ให้ได้เฉพาะเจ้าของร้าน ◂
   CRM_OWNER_ONLY_KEYS,
+  // SVC R0.5 ▸ คีย์ตั้งค่าที่ให้ได้เฉพาะเจ้าของร้าน (settings.integrations.manage) ◂
+  SETTINGS_OWNER_ONLY_KEYS,
   isPermissionKey,
   isPermissionParamKey,
   moduleOfPermissionKey,
@@ -50,7 +52,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_HINTS: Record<Role, string> = {
   OWNER: "ทำได้ทุกอย่างในร้าน รวมถึงตั้งสิทธิ์คนอื่น",
   // CRM C1.7 ▸ ยกเว้น 5 คีย์ตั้งค่าของ CRM ที่เจ้าของร้านต้องให้เอง (§6.1) ◂
-  MANAGER: "ทำได้ทุกอย่างเฉพาะในสาขาที่ดูแล ยกเว้นงานตั้งค่าของระบบ CRM (ตั้งค่า pipeline · คีย์ API · วัตถุกำหนดเอง · การมองเห็น · ทีมขาย) ที่เจ้าของร้านต้องเปิดให้เอง",
+  MANAGER: "ทำได้ทุกอย่างเฉพาะในสาขาที่ดูแล ยกเว้นงานตั้งค่าของระบบ CRM (ตั้งค่า pipeline · คีย์ API · วัตถุกำหนดเอง · การมองเห็น · ทีมขาย) และการจัดการศูนย์เชื่อมต่อ (คีย์ผู้ให้บริการภายนอก) ที่เจ้าของร้านต้องเปิดให้เอง",
   STAFF: "ทำได้เฉพาะข้อที่ติ๊กให้เท่านั้น",
 };
 
@@ -198,6 +200,10 @@ function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: P
       //   แต่ rbac.evaluate ให้ MANAGER ผ่านทุกอย่าง ⇒ ถ้าไม่กันตรงนี้ ผู้จัดการจะแจกคีย์ที่ตัวเองไม่มีได้ (ยกระดับสิทธิ์) ◂
       if ((key === "crm.*" || CRM_OWNER_ONLY_KEYS.includes(key)) && actor.role !== "OWNER") {
         return fail(`สิทธิ์ “${permissionLabel(key)}” ของระบบ CRM ให้ได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`);
+      }
+      // SVC R0.5 ▸ ศูนย์เชื่อมต่อ (คีย์ผู้ให้บริการภายนอก) — ให้ได้เฉพาะเจ้าของร้าน แม้ผู้สั่งจะถือคีย์นี้เองก็ตาม (ใบสั่ง R0.5 §8 ข้อ 10) ◂
+      if (SETTINGS_OWNER_ONLY_KEYS.includes(key) && actor.role !== "OWNER") {
+        return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`);
       }
       if (!canGrantPermission(actor, moduleName, key)) {
         return fail(
@@ -410,6 +416,12 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       if (existing) {
         membershipId = existing.id;
         if (existing.acceptedAt == null) {
+          // SVC R0.5 ▸ เปิดคืนสมาชิกภาพที่ถือคีย์ owner-only (settings.integrations.manage) = คืนขอบเขตคีย์ผู้ให้บริการภายนอก
+          //   ⇒ เฉพาะเจ้าของร้าน (มติผู้ตรวจ R0.5 ข้อ 2 — ทางเดียวกับการขยาย unitAccess ใน updateStaffAccess) ◂
+          const prevPerms = (existing.permissions ?? {}) as PermissionMap;
+          if (actor.membership.role !== "OWNER" && SETTINGS_OWNER_ONLY_KEYS.some((k) => prevPerms[k] === true)) {
+            throw new StaffRuleError(`ผู้ใช้คนนี้ถือสิทธิ์ “${permissionLabel(SETTINGS_OWNER_ONLY_KEYS[0]!)}” — การเปิดสิทธิ์คืนให้คนนี้ทำได้เฉพาะเจ้าของร้าน`);
+          }
           // เคยถูกถอนสิทธิ์ไว้ → เปิดคืน (คงบทบาท/สิทธิ์เดิมไว้ ไม่รีเซ็ตให้เสียของ)
           await tx.membership.updateMany({
             where: { id: existing.id, tenantId: input.tenantId },
@@ -522,6 +534,19 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
     const escalation = checkNoEscalation(actor.ctx, current, parsed.value);
     if (escalation) return escalation;
     data.permissions = mergePermissions(current, parsed.value) as Prisma.InputJsonValue;
+  }
+
+  // SVC R0.5 ▸ ขยายสาขาของคนที่ถือคีย์ owner-only (settings.integrations.manage) = ขยายขอบเขตการแก้คีย์ผู้ให้บริการภายนอก
+  //   ⇒ ทำได้เฉพาะเจ้าของร้าน (มติผู้ตรวจ R0.5 ข้อ 2) · ลด/คงสาขา หรือคนที่ไม่ถือคีย์ = ตามกติกาเดิม ◂
+  if (data.unitAccess !== undefined && actor.membership.role !== "OWNER") {
+    const nextPerms = (data.permissions ?? target.permissions ?? {}) as PermissionMap;
+    const holdsOwnerOnly = SETTINGS_OWNER_ONLY_KEYS.some((k) => nextPerms[k] === true);
+    const before = Array.isArray(target.unitAccess) ? (target.unitAccess as string[]) : [];
+    const after = data.unitAccess as string[];
+    const widened = !before.includes("*") && after.some((u) => !before.includes(u));
+    if (holdsOwnerOnly && widened) {
+      return fail(`ผู้ใช้คนนี้ถือสิทธิ์ “${permissionLabel(SETTINGS_OWNER_ONLY_KEYS[0]!)}” — การเพิ่มสาขาให้คนนี้ทำได้เฉพาะเจ้าของร้าน`);
+    }
   }
 
   if (Object.keys(data).length === 0) return { ok: true, membershipId: target.id };

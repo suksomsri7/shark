@@ -265,6 +265,12 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.portal.quote.responded", label: "เมื่อลูกค้าบริษัทตอบรับหรือปฏิเสธใบเสนอราคาในพอร์ทัล (CRM)" },
   { value: "crm.portal.request.created", label: "เมื่อลูกค้าบริษัทส่งคำขอหรือแจ้งเรื่องผ่านพอร์ทัล (CRM)" },
   // ◂ CRM C3.5
+  // SVC R0.5 ▸ ศูนย์เชื่อมต่อ — ตัวยิง `core/integrations/service.ts` (ใน tx เดียวกับการเปลี่ยนสถานะ · ครั้งเดียวต่อการเปลี่ยน) ·
+  //   payload = { integrationId, kind, provider } พอดี (ไม่มีค่าลับ/ข้อความดิบ) · consumer no-op ใน `outbox-consumers.ts` ·
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "integration.connected", label: "เมื่อเชื่อมต่อผู้ให้บริการภายนอกสำเร็จ (ศูนย์เชื่อมต่อ)" },
+  { value: "integration.failed", label: "เมื่อการเชื่อมต่อผู้ให้บริการภายนอกล้มติดกันจนหยุดใช้งาน (ศูนย์เชื่อมต่อ)" },
+  // ◂ SVC R0.5
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม
