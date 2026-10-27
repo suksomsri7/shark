@@ -160,3 +160,28 @@ CC §1.3 ยกตัวอย่าง "dorm.deposit.months" แต่ domain =
 ## 6. เกณฑ์รับ
 ข้อสอบเขียวทุกข้อ (ส่วน defs เขียวเมื่อ R0.3 ลง · ก่อนนั้น SKIP ได้) · typecheck · fitness 2 โหมด · ไม่มี `any` · ตรวจเข้ม 2 รอบ (SVC-RUN §1.4) · ชุด regression: `qc-acc-v2-gl-inclvat` (เพราะเทียบสูตร VAT กับ `account/totals.ts` — ห้ามแก้ไฟล์นั้น)
 wo-notes: X ที่เกี่ยว = ไม่มี (pure · ไม่มีขอบเขตร้าน/ส่งซ้ำ/สาธารณะ) · จดข้อกฎหมายที่ยัง PENDING ส่งที่ปรึกษา (J3) พร้อมชุดข้อสอบนี้
+
+## 7. มติหลังผู้ตรวจ 27 ต.ค. (ผู้คุม · ORACLE-EDIT D.1-R1 · ข้อสอบหมวด "ญ" `D1-R1-*`) — **ทับ §2–§3 เมื่อขัดกัน**
+1. **[BLOCKER] เงินติดลบ** ทุกอินพุต (ค่าห้อง · ส่วนกลาง · services · ค่าปรับ · ALLOCATED · อัตรา FIXED/FLAT · ขั้นต่ำ · บิลการไฟฟ้า · ค่าเสียหาย · ค้างชำระ · ประกัน · วงเงินอนุมัติ · cap · overdue · total ของ allocate · monthly ของ prorate · amount ของ computeBill) ⇒ throw `NEGATIVE_SATANG` · ส่วนลด = ใบลดหนี้ของบัญชี ไม่ใช่บรรทัดติดลบ (`divRoundHalfUp` ยังรับลบได้ — เป็นคณิตล้วน)
+2. **[BLOCKER] VAT ซ้อน**: `billSatang` ของการไฟฟ้า/ประปา = ยอดรวม VAT แล้ว · `actualCostRate({billSatang, units, vat?})` — จด VAT + ราคาไม่รวม VAT ⇒ `floor(bill×100 / (107×units))` (1,982,400/4,200 ⇒ 441) · โหมดอื่น/ไม่ส่ง vat ⇒ เดิม (472) · `buildDormBill` ใช้ vat ของบิลคิดอัตรา ACTUAL_COST เอง · **กติกา (บังคับ · ผู้คุมเคาะ R2): ยอดที่ผู้เช่าจ่ายจริง (gross) รวมทุกห้อง ≤ บิล ทุกโหมด VAT — แม้ห้องใช้ครบ 100% ของหน่วยในบิล และแม้อัตราลงตัวพอดี (VAT ปัดขึ้นต่อบรรทัดห้ามดันยอดรวมเกินแม้ 1 สตางค์)**
+   - วิธีเป็นของ builder (ปรับอัตราลงเผื่อปัด หรือรับจำนวนห้อง ฯลฯ) — ข้อสอบตรวจผลลัพธ์ผ่าน `buildDormBill` ทีละห้องโดย **ไม่ส่งข้อมูลอื่นนอกจาก method เดิม** ⇒ ถ้าเพิ่มช่องใหม่ต้องเป็น optional และค่าเริ่มต้องปลอดภัยกรณีเลวสุด (ห้อง = หน่วย)
+   - อัตราแบบจด VAT ไม่รวม ต้องอยู่ในช่วง `[floor((bill×100 − 50×U)/(107×U)), floor(bill×100/(107×U))]` (ไฟตัวอย่าง 440–441 · น้ำ 1,494–1,495) · Σgross ≥ 99% ของบิลในฉากขอบ (ห้ามกดอัตราเกินจำเป็น)
+   - ข้อสอบ: `D1-R2-VAT-EDGE` (บิล 1,981,854 = 441×4,200×1.07 · 1,400 ห้อง × 3 หน่วย ถ้าใช้ 441 ตรง ๆ เกิน ฿5.46 · 4,200 × 1 หน่วย · ผสม · บิลเล็ก) · `D1-R2-VAT-PROP100` (สุ่ม 400 ตึก ใช้ 100% · ครึ่งหนึ่งอัตราลงตัว)
+   - ตัวตรวจ `UTIL_FIXED_RATE_LE_COST` `UTIL_FLAT_LE_COST` รับ `vat?: {registered, pricesIncludeVat}` (ไม่ส่ง = ไม่จด) แล้วเทียบ gross ด้วยจำนวนเต็ม: จด+ไม่รวม ⇒ `rate×units×107 > bill×100` / `flat×payers×107 > bill×100` ⇒ BLOCK · `UTIL_TOTAL_LE_BILL.chargedTotalSatang` = **gross** ที่ผู้เช่าจ่าย (รับ vat ได้แต่ไม่ต้องใช้)
+3. ตัวตรวจได้ค่าผิด (NaN · Infinity · ติดลบ · undefined · ไม่ใช่จำนวนเต็ม ในช่องตัวเลข) ⇒ BLOCK code `INVALID_INPUT` **ทุกโหมด** (เหมือน always) · `DEDUCTION_EVIDENCE` ผ่านเฉพาะ `kind === "DAMAGE"` ตรงตัว + `evidenceCount` จำนวนเต็ม ≥ 1 (0 = `DEDUCT_NO_EVIDENCE` · kind อื่นใด = BLOCK)
+4. `mode` ไม่รู้จัก/undefined/null ⇒ ถือเป็น `STRICT` (outcome.mode = "STRICT")
+5. ข้อบังคับในสัญญา: id ครบ **และ** เนื้อความตรง `MANDATORY_CLAUSES[].textTh` หลัง normalize (ข้อ 6) ไม่งั้น BLOCK `CONTRACT_MANDATORY_REMOVED`
+6. normalize คำต้องห้าม (และข้อ 5): `NFKC` → ตัดทุกอักขระที่ไม่ใช่ `\p{L}\p{N}` (รวม soft hyphen U+00AD · U+2060 · U+200B–U+200D · U+FEFF · ขีด/จุด/ขีดล่าง/ทับ) → `ํ` (+วรรณยุกต์) + `า` ⇒ (วรรณยุกต์) + `ำ` (เช่น "นํ้า" ⇒ "น้ำ") · `๊` ⇒ `็` (ล๊อค ⇒ ล็อค) → ตัวพิมพ์เล็ก · เพิ่มคำพ้อง: งดจ่ายไฟ · ระงับการจ่ายไฟฟ้า · ปิดน้ำปิดไฟ · เปลี่ยนกุญแจห้อง · ล็อกประตูห้อง/ล็อคประตู · ไม่ให้เข้าห้อง · ขนย้ายทรัพย์สินออก · shut off · disconnect · evict · cut off · lock out — รูปหลบทั้งหมดจาก `/tmp/svc-d1rA-probe.mts` อยู่ในข้อสอบ `D1-R1-THREAT-EVASION`
+7. ตัวตรวจใหม่ `LATE_FEE_CAP` input `{ feeSatang }` (ค่าปรับต่อบิล/เพดานที่ร้านตั้ง): param `lateFeeCapSatang` = null ⇒ OK + `pendingReview: true` บน outcome · ตั้งค่าแล้ว fee > cap ⇒ BLOCK code `LATE_FEE_CAP` ตามโหมด · ลงทะเบียนใน `TH_RENTAL_2568_RULES`
+8. ค่าห้อง EXEMPT เสมอ: `computeBill` ต้องมี `taxKind` ทุกบรรทัด (ไม่มี ⇒ throw `MISSING_TAX_KIND` แม้ไม่จด VAT) · บรรทัด code `RENT` ที่ไม่ใช่ EXEMPT หรือ `taxKinds.RENT ≠ EXEMPT` ⇒ throw `RENT_MUST_BE_EXEMPT` (ยกเลิกการทับค่าห้องใน §3.1)
+9. `settleDeposit.needsApproval` = damages > วงเงิน **หรือ** legal ใดมี `needsOwnerApproval`
+10. `outOfScopeReason`: ตัดอักขระความกว้างศูนย์ (ชุดในข้อ 6) + trim แล้วนับ code point ≥ 10 ไม่งั้น `OUT_OF_SCOPE_REASON_REQUIRED`
+11. ผลคูณที่อาจเกิน `Number.MAX_SAFE_INTEGER` (units×rate · units×rateE4 · amount×days · overdue×bp · VAT amount×100 / ×7) ⇒ throw `OVERFLOW` (ตรวจก่อนคูณ ไม่ใช่ NON_INTEGER/INVALID_DIVISION)
+
+**ส่งต่อใบอื่น (ไม่สอบใน D.1):** D.2 แมปบรรทัดบิลเข้าใบแจ้งหนี้เป็น `qty 1 × amountSatang` (หน่วย/อัตราอยู่ใน meta/คำอธิบาย) ให้ VAT ตรง `computeTotals` · D.7 พารามิเตอร์กฎหมาย (`params`) มาจากระดับแพลตฟอร์มเท่านั้น ร้านแก้ไม่ได้ + เลือก OUT_OF_SCOPE ต้องแนบหลักฐานเมื่อ `legalScope` บอกว่าอยู่ในขอบเขต · D.8 ส่ง `minimumSatang: null` เมื่อปิดค่าขั้นต่ำ
+
+
+## หมายเหตุผู้คุมตอนรับใบ (27 ต.ค.)
+- normalize คำต้องห้าม: เก็บ `\p{M}` ไว้ (ตัดเฉพาะที่ไม่ใช่ \p{L}\p{M}\p{N}) — ถ้าตัด \p{M} สระ/วรรณยุกต์ไทยหาย ('ตัดไฟ'→'ตดไฟ') ⇒ ทับข้อความ §7 ข้อ 6
+- **หนี้ D-phase (ย้ายออก)**: `settleDeposit` ยังไม่รับ vat ⇒ ค่าน้ำไฟตอนย้ายออกของหอที่จด VAT แบบไม่รวม VAT ต้องใช้อัตราเดียวกับ buildDormBill (ถอด VAT) — ใบที่ทำจอย้ายออกต้องแก้ + ข้อสอบ
+- `billedRooms` ไม่ส่ง = ใช้จำนวนหน่วย (กรณีเลวสุด อัตราต่ำลงเล็กน้อย) ⇒ D.8 รอบบิลควรส่งจำนวนห้องที่ออกบิลจริง

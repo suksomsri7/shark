@@ -86,7 +86,7 @@ function allInts(x: unknown, path = "$"): string | null {
 type LegalMode = "STRICT" | "WARN" | "OUT_OF_SCOPE";
 type LegalLevel = "OK" | "WARN" | "BLOCK";
 type LegalVerdict = { level: LegalLevel; code: string; messageTh: string; citation: string; always?: boolean };
-type LegalOutcome = LegalVerdict & { raw: LegalLevel; mode: LegalMode; needsAck: boolean; needsOwnerApproval: boolean };
+type LegalOutcome = LegalVerdict & { raw: LegalLevel; mode: LegalMode; needsAck: boolean; needsOwnerApproval: boolean; pendingReview?: boolean };
 type LegalCtx = { mode: LegalMode; outOfScopeReason?: string | null; params?: Record<string, unknown> };
 type LegalApi = {
   evaluateLegal: (rule: string, input: unknown, ctx: LegalCtx) => LegalOutcome;
@@ -169,7 +169,7 @@ type SettleResult =
   | { ok: false; code: string; index: number };
 type CalcApi = {
   divRoundHalfUp: (n: number, d: number) => number;
-  actualCostRate: (i: { billSatang: number; units: number }) => number | null;
+  actualCostRate: (i: { billSatang: number; units: number; vat?: VatCfg }) => number | null;
   meterUnits: (s: MeterSegment[]) => number;
   utilityCharge: (i: { method: UtilityMethod; units: number; minimumSatang?: number | null }) => {
     amountSatang: number;
@@ -773,15 +773,34 @@ check("D1-VAT-INCL", "จด VAT + ราคารวม VAT: ค่าห้อ
   eq([b.subtotalSatang, b.vatSatang, b.totalSatang], [542_149, 6_451, 548_600], "ยอด (VAT ต่อบรรทัด 6,451 ≠ ต่อบิล 6,450 — ใช้ต่อบรรทัดตามบัญชี V2)");
 });
 
-check("D1-VAT-EXCL", "จด VAT + ราคาไม่รวม VAT: บวก 7% เฉพาะบรรทัดที่มี VAT", () => {
+// ORACLE-EDIT D.1-R1 (มติ 2): ไม่รวม VAT ⇒ อัตราต้นทุนถอด VAT ก่อน (ไฟ 441 · น้ำ 1,495) — เดิมคาด 472/1,600 ทำให้ผู้เช่าจ่ายเกินบิล
+// ORACLE-EDIT D.1-R2 (ผู้คุมเคาะ: Σgross ≤ บิลแม้ใช้ 100%): อัตราแบบไม่รวม VAT ไม่ผูกค่าเดียว — อยู่ในช่วง exclRateRange
+//   บน = floor(bill×100 / (107×U)) (ไม่เกินต้นทุน) · ล่าง = floor((bill×100 − 50×U) / (107×U)) (เผื่อปัด VAT ขึ้นได้ ≤ ½ สตางค์ต่อหน่วย)
+function exclRateRange(bill: number, units: number): [number, number] {
+  return [Math.floor((bill * 100 - 50 * units) / (107 * units)), Math.floor((bill * 100) / (107 * units))];
+}
+const vatHalfUp = (net: number): number => Math.floor((net * 7 * 2 + 100) / 200);
+function assertExclRate(rate: number | null | undefined, bill: number, units: number, label: string): number {
+  const [lo, hi] = exclRateRange(bill, units);
+  if (typeof rate !== "number" || !Number.isInteger(rate) || rate < lo || rate > hi) throw new AssertFail(`${label}: อัตรา ${fmt(rate)} ต้องอยู่ใน [${lo}, ${hi}]`);
+  return rate;
+}
+check("D1-VAT-EXCL", "จด VAT + ราคาไม่รวม VAT: บวก 7% เฉพาะบรรทัดที่มี VAT · อัตราน้ำไฟถอด VAT จากบิลก่อน (ไฟ 440–441 · น้ำ 1,494–1,495)", () => {
   const b = bill204({ registered: true, pricesIncludeVat: false });
+  const el = b.lines.find((l) => l.code === "ELEC");
+  const wa = b.lines.find((l) => l.code === "WATER");
+  const er = assertExclRate(el?.unitPriceSatang, 1_982_400, 4200, "ไฟ");
+  const wr = assertExclRate(wa?.unitPriceSatang, 384_000, 240, "น้ำ");
+  const en = 125 * er;
+  const wn = 6 * wr;
   eq(pick(b), [
     ["RENT", "EXEMPT", 450_000, 0, 450_000],
     ["COMMON", "VAT7", 30_000, 2_100, 32_100],
-    ["ELEC", "VAT7", 59_000, 4_130, 63_130],
-    ["WATER", "VAT7", 9_600, 672, 10_272],
+    ["ELEC", "VAT7", en, vatHalfUp(en), en + vatHalfUp(en)],
+    ["WATER", "VAT7", wn, vatHalfUp(wn), wn + vatHalfUp(wn)],
   ], "บรรทัด");
-  eq([b.subtotalSatang, b.vatSatang, b.totalSatang], [548_600, 6_902, 555_502], "ยอด");
+  eq([b.subtotalSatang, b.vatSatang], [480_000 + en + wn, 2_100 + vatHalfUp(en) + vatHalfUp(wn)], "ยอด");
+  eq(b.totalSatang, b.subtotalSatang + b.vatSatang, "รวม");
 });
 
 check("D1-VAT-SERVICE", "#21/#40 ค่าบริการอื่นแยกบรรทัด (ที่จอด VAT7) · ค่าปรับ NONE · ทับชนิดภาษีได้", () => {
@@ -803,15 +822,12 @@ check("D1-VAT-SERVICE", "#21/#40 ค่าบริการอื่นแย�
   eq(by["SERVICE:PARKING"], ["VAT7", 3_500], "ที่จอด VAT 7%");
   eq(by["SERVICE:CLEANING"], ["EXEMPT", 0], "ทับเป็นยกเว้น");
   eq(by["LATE_FEE"], ["NONE", 0], "ค่าปรับ (ค่าเริ่ม NONE · รอที่ปรึกษา)");
-  const b2 = C().buildDormBill({
-    rentSatang: 450_000,
-    commonFeeSatang: 0,
-    electricity: null,
-    water: null,
-    taxKinds: { RENT: "VAT7" },
-    vat: { registered: true, pricesIncludeVat: false },
-  });
-  eq(b2.lines.map((l) => [l.code, l.taxKind, l.vatSatang]), [["RENT", "VAT7", 31_500]], "ทับชนิดภาษีค่าห้อง (เช่น ใช้เชิงพาณิชย์) · ส่วนกลาง 0 ไม่ออกบรรทัด");
+  // ORACLE-EDIT D.1-R1 (มติ 8): ค่าห้อง EXEMPT เสมอ — ทับเป็น VAT7 ⇒ throw (เดิมยอมให้ทับ)
+  throwsCode(
+    () => C().buildDormBill({ rentSatang: 450_000, commonFeeSatang: 0, electricity: null, water: null, taxKinds: { RENT: "VAT7" }, vat: { registered: true, pricesIncludeVat: false } }),
+    "RENT_MUST_BE_EXEMPT",
+    "ทับชนิดภาษีค่าห้อง",
+  );
 });
 
 check("D1-VAT-ACCOUNT", "สูตร VAT ต่อบรรทัดตรงกับ computeTotals ของบัญชี V2 (ใบแจ้งหนี้ D.2 ต้องได้ยอดเดียวกัน) · สุ่ม 300 บิล", () => {
@@ -1069,6 +1085,7 @@ check("D1-207-WEAR", "#49 หักค่าเสื่อมปกติ ⇒ �
   if (!w.ok) throw new AssertFail(`WARN ต้องผ่านแบบมีเงื่อนไข ได้ ${fmt(w)}`);
   ok(w.legal.some((o) => o.level === "WARN" && o.needsOwnerApproval && o.code === "DEDUCT_NO_EVIDENCE"), "WARN ต้องมีผลที่ต้องอนุมัติเจ้าของ");
   eq(w.refundSatang, 775_928, "ยอดคืนเท่าเดิม");
+  eq(w.needsApproval, true, "มติ 9: legal ต้องอนุมัติ ⇒ needsApproval แม้หักไม่เกินวงเงิน");
 });
 
 check("D1-207-APPROVAL", "#48 หักค่าเสียหายเกินวงเงิน ⇒ needsApproval · หักเกินประกัน ⇒ คืน 0 + ผู้เช่าค้าง", () => {
@@ -1192,7 +1209,7 @@ check("D1-NOFLOAT-IN", "อินพุตเงิน/เลขมิเตอ�
   throwsCode(() => c.prorate({ monthlySatang: 4500.5, days: 3, daysInMonth: 30, mode: "ACTUAL_DAYS" }), "NON_INTEGER_SATANG", "prorate");
   throwsCode(() => c.allocateShared({ totalSatang: 100.5, basis: "ROOM", rooms: [{ roomId: "A" }] }), "NON_INTEGER_SATANG", "allocate");
   throwsCode(() => c.lateFee({ policy: { kind: "PER_DAY", amountSatang: 50.5, graceDays: 0 }, dueDate: "2026-10-05", paidDate: "2026-10-09", overdueSatang: 1 }), "NON_INTEGER_SATANG", "lateFee");
-  throwsCode(() => c.computeBill({ lines: [{ code: "X", labelTh: "x", amountSatang: 1.25 }], vat: { registered: true, pricesIncludeVat: true } }), "NON_INTEGER_SATANG", "computeBill");
+  throwsCode(() => c.computeBill({ lines: [{ code: "X", labelTh: "x", amountSatang: 1.25, taxKind: "VAT7" }], vat: { registered: true, pricesIncludeVat: true } }), "NON_INTEGER_SATANG", "computeBill");
 });
 
 check("D1-NOFLOAT-OUT", "ผลลัพธ์ทุกฟังก์ชันในฉากข้างบนเป็นจำนวนเต็มล้วน", () => {
@@ -1361,6 +1378,303 @@ if (!existsSync(resolve(ROOT, REGISTRY_PATH))) {
     }
   });
 }
+
+// ═════════════════════ ญ. มติหลังผู้ตรวจ 27 ต.ค. (ORACLE-EDIT D.1-R1 · ใบสั่ง §7) ═════════════════════
+console.log("\nญ. มติหลังผู้ตรวจ 27 ต.ค.");
+
+const VAT_EXCL: VatCfg = { registered: true, pricesIncludeVat: false };
+const VAT_INCL: VatCfg = { registered: true, pricesIncludeVat: true };
+const VAT_NONE: VatCfg = { registered: false, pricesIncludeVat: true };
+
+check("D1-R1-NEG-CALC", "มติ 1 [BLOCKER] เงินติดลบทุกอินพุต ⇒ throw NEGATIVE_SATANG (ส่วนลด = ใบลดหนี้ ไม่ใช่บรรทัดติดลบ)", () => {
+  const c = C();
+  const NB = (over: Partial<BuildInput>) => () => c.buildDormBill({ rentSatang: 450_000, commonFeeSatang: 30_000, vat: VAT_NONE, ...over });
+  throwsCode(NB({ rentSatang: -1 }), "NEGATIVE_SATANG", "ค่าห้อง");
+  throwsCode(NB({ commonFeeSatang: -1 }), "NEGATIVE_SATANG", "ส่วนกลาง");
+  throwsCode(NB({ lateFeeSatang: -20_000 }), "NEGATIVE_SATANG", "ค่าปรับ");
+  throwsCode(NB({ services: [{ code: "DISC", labelTh: "ส่วนลด", amountSatang: -50_000 }] }), "NEGATIVE_SATANG", "services");
+  throwsCode(NB({ water: { kind: "ALLOCATED", amountSatang: -1 } }), "NEGATIVE_SATANG", "ALLOCATED");
+  throwsCode(NB({ electricity: { kind: "METERED", segments: [{ start: 0, end: 10 }], method: { kind: "FIXED_RATE", satangPerUnit: -472 } } }), "NEGATIVE_SATANG", "อัตรา FIXED ใน bill");
+  throwsCode(() => c.utilityCharge({ method: { kind: "FIXED_RATE", satangPerUnit: -1 }, units: 10 }), "NEGATIVE_SATANG", "FIXED");
+  throwsCode(() => c.utilityCharge({ method: { kind: "FLAT", per: "ROOM", satang: -30_000 }, units: 0 }), "NEGATIVE_SATANG", "FLAT");
+  throwsCode(() => c.utilityCharge({ method: { kind: "FIXED_RATE", satangPerUnit: 472 }, units: 3, minimumSatang: -1 }), "NEGATIVE_SATANG", "ขั้นต่ำ");
+  throwsCode(() => c.utilityCharge({ method: { kind: "ACTUAL_COST", billSatang: -1_982_400, billUnits: 4200 }, units: 3 }), "NEGATIVE_SATANG", "บิลการไฟฟ้า");
+  throwsCode(() => c.computeBill({ lines: [{ code: "X", labelTh: "x", amountSatang: -100, taxKind: "VAT7" }], vat: VAT_INCL }), "NEGATIVE_SATANG", "computeBill");
+  throwsCode(() => c.allocateShared({ totalSatang: -100, basis: "ROOM", rooms: [{ roomId: "A" }] }), "NEGATIVE_SATANG", "allocate");
+  throwsCode(() => c.prorate({ monthlySatang: -450_000, days: 3, daysInMonth: 30, mode: "ACTUAL_DAYS" }), "NEGATIVE_SATANG", "prorate");
+  const lf = (policy: LateFeePolicy, overdue = 1) => () => c.lateFee({ policy, dueDate: "2026-10-05", paidDate: "2026-10-09", overdueSatang: overdue });
+  throwsCode(lf({ kind: "PER_DAY", amountSatang: -5000, graceDays: 0 }), "NEGATIVE_SATANG", "lateFee amount");
+  throwsCode(lf({ kind: "PER_DAY", amountSatang: 5000, capSatang: -1, graceDays: 0 }), "NEGATIVE_SATANG", "lateFee cap");
+  throwsCode(lf({ kind: "PERCENT", percentBp: 200, graceDays: 0 }, -548_600), "NEGATIVE_SATANG", "lateFee overdue");
+  const base: SettleInput = { depositSatang: 900_000, utilities: [], damages: [], unpaidSatang: 0, approvalThresholdSatang: 200_000, legal: { mode: "STRICT" } };
+  throwsCode(() => c.settleDeposit({ ...base, depositSatang: -1 }), "NEGATIVE_SATANG", "ประกัน");
+  throwsCode(() => c.settleDeposit({ ...base, unpaidSatang: -1 }), "NEGATIVE_SATANG", "ค้างชำระ");
+  throwsCode(() => c.settleDeposit({ ...base, approvalThresholdSatang: -1 }), "NEGATIVE_SATANG", "วงเงินอนุมัติ");
+  throwsCode(() => c.settleDeposit({ ...base, damages: [{ labelTh: "x", amountSatang: -50_000, kind: "DAMAGE", evidenceCount: 1 }] }), "NEGATIVE_SATANG", "ค่าเสียหาย");
+});
+
+check("D1-R1-VAT-COSTRATE", "มติ 2 [BLOCKER] บิลการไฟฟ้ารวม VAT แล้ว: หอจด VAT + ราคาไม่รวม VAT ⇒ อัตราถอด VAT (440–441) · โหมดอื่น 472", () => {
+  const r = C().actualCostRate;
+  assertExclRate(r({ billSatang: 1_982_400, units: 4200, vat: VAT_EXCL }), 1_982_400, 4200, "จด VAT ไม่รวม");
+  eq(r({ billSatang: 1_982_400, units: 4200, vat: VAT_INCL }), 472, "จด VAT รวม");
+  eq(r({ billSatang: 1_982_400, units: 4200, vat: VAT_NONE }), 472, "ไม่จด");
+  eq(r({ billSatang: 1_982_400, units: 4200 }), 472, "ไม่ส่ง vat = ไม่จด");
+});
+
+check("D1-R1-VAT-GROSS-LE-BILL", "มติ 2 ฉาก: บิล 1,982,400 · 4,200 หน่วย · จด VAT ไม่รวม ⇒ ผู้เช่าจ่ายจริง (gross) ≤ 1,982,400 ทุกโหมด VAT", () => {
+  for (const vat of [VAT_EXCL, VAT_INCL, VAT_NONE]) {
+    const b = C().buildDormBill({
+      rentSatang: 450_000,
+      commonFeeSatang: 0,
+      electricity: { kind: "METERED", segments: [{ start: 0, end: 4200 }], method: { kind: "ACTUAL_COST", billSatang: 1_982_400, billUnits: 4200 } },
+      vat,
+    });
+    const e = b.lines.find((l) => l.code === "ELEC");
+    ok(!!e && e.grossSatang <= 1_982_400, `${fmt(vat)} ELEC gross ${e?.grossSatang} > บิล 1,982,400`);
+    if (vat === VAT_EXCL) {
+      const rate = assertExclRate(e?.unitPriceSatang, 1_982_400, 4200, "ไม่รวม VAT");
+      eq([e?.netSatang, e?.grossSatang], [rate * 4200, rate * 4200 + vatHalfUp(rate * 4200)], "net/gross");
+    }
+    else eq(e?.grossSatang, 1_982_400, `${fmt(vat)} gross = บิลพอดี`);
+  }
+});
+
+check("D1-R1-VAT-RUN", "มติ 2 รอบ 31 บิลเมื่อหอจด VAT ไม่รวม VAT: ไฟ/น้ำ gross รวม ≤ บิล · UTIL_TOTAL_LE_BILL (เทียบ gross) ผ่าน", () => {
+  const c = C();
+  const er = c.actualCostRate({ billSatang: 1_982_400, units: 4200, vat: VAT_EXCL });
+  const wr = c.actualCostRate({ billSatang: 384_000, units: 240, vat: VAT_EXCL });
+  if (er === null || wr === null) throw new AssertFail("actualCostRate null");
+  const bills = FIX.map((r) =>
+    c.buildDormBill({
+      rentSatang: r.large ? 520_000 : 450_000,
+      commonFeeSatang: 30_000,
+      electricity: { kind: "METERED", segments: r.elec, method: { kind: "ACTUAL_COST", billSatang: 1_982_400, billUnits: 4200 } },
+      water: { kind: "METERED", segments: r.water, method: { kind: "ACTUAL_COST", billSatang: 384_000, billUnits: 240 } },
+      vat: VAT_EXCL,
+    }),
+  );
+  const s = c.sumBills(bills);
+  ok(s.byCode.ELEC <= 1_982_400 && s.byCode.WATER <= 384_000, `gross ไฟ ${s.byCode.ELEC} น้ำ ${s.byCode.WATER}`);
+  assertExclRate(er, 1_982_400, 4200, "actualCostRate ไฟ");
+  assertExclRate(wr, 384_000, 240, "actualCostRate น้ำ");
+  const rates = new Set(bills.map((b) => b.lines.find((l) => l.code === "ELEC")?.unitPriceSatang));
+  eq(rates.size, 1, "ทุกห้องใช้อัตราเดียวกัน");
+  assertExclRate([...rates][0], 1_982_400, 4200, "อัตราในบิล");
+  for (const [code, bill] of [["ELEC", 1_982_400], ["WATER", 384_000]] as const)
+    eq(L().evaluateLegal("UTIL_TOTAL_LE_BILL", { chargedTotalSatang: s.byCode[code], authorityBillSatang: bill, vat: VAT_EXCL }, { mode: "STRICT" }).level, "OK", code);
+});
+
+check("D1-R1-VAT-RULES", "มติ 2 ตัวตรวจ UTIL_* รับ vat และเทียบ gross: คงที่ 472 + VAT 7% เกินบิล ⇒ BLOCK · 441 ผ่าน · 442 BLOCK · เหมาเช่นกัน", () => {
+  const ev = (rule: string, inp: unknown) => L().evaluateLegal(rule, inp, { mode: "STRICT" }).level;
+  eq(ev("UTIL_FIXED_RATE_LE_COST", { rateSatangPerUnit: 472, ...COST, vat: VAT_EXCL }), "BLOCK", "472 ไม่รวม VAT");
+  eq(ev("UTIL_FIXED_RATE_LE_COST", { rateSatangPerUnit: 441, ...COST, vat: VAT_EXCL }), "OK", "441");
+  eq(ev("UTIL_FIXED_RATE_LE_COST", { rateSatangPerUnit: 442, ...COST, vat: VAT_EXCL }), "BLOCK", "442");
+  eq(ev("UTIL_FIXED_RATE_LE_COST", { rateSatangPerUnit: 472, ...COST, vat: VAT_INCL }), "OK", "472 รวม VAT");
+  eq(ev("UTIL_FLAT_LE_COST", { flatSatang: 60_000, payerCount: 31, authorityBillSatang: 1_990_200, vat: VAT_EXCL }), "OK", "เหมา 600×31×1.07 = 19,902 = บิลพอดี");
+  eq(ev("UTIL_FLAT_LE_COST", { flatSatang: 60_000, payerCount: 31, authorityBillSatang: 1_982_400, vat: VAT_EXCL }), "BLOCK", "เหมา gross 1,990,200 > 1,982,400 (net 1,860,000 ผ่านแต่ gross ไม่ผ่าน)");
+  eq(ev("UTIL_FLAT_LE_COST", { flatSatang: 60_000, payerCount: 31, authorityBillSatang: 1_900_000, vat: VAT_INCL }), "OK", "เหมารวม VAT 1,860,000");
+});
+
+check("D1-R2-VAT-EDGE", "ผู้คุมเคาะ: ใช้ครบ 100% ของหน่วยบิล + อัตราลงตัวพอดี + VAT ปัดขึ้นทุกห้อง ⇒ Σgross ≤ บิล (ห้ามเกินแม้ 1 สตางค์) · และไม่ต่ำกว่า 99% ของบิล", () => {
+  // บิล 1,981,854 = 441×4200×1.07 พอดี · ถ้าใช้อัตรา 441 ตรง ๆ ห้อง 3 หน่วย VAT 92.61 ⇒ 93 ปัดขึ้นทุกห้อง ⇒ 1400 ห้องเกิน ฿5.46
+  const cases: { bill: number; U: number; split: number[]; label: string }[] = [
+    { bill: 1_981_854, U: 4200, split: Array(1400).fill(3), label: "1,400 ห้อง × 3 หน่วย" },
+    { bill: 1_981_854, U: 4200, split: Array(4200).fill(1), label: "4,200 ห้อง × 1 หน่วย" },
+    { bill: 1_981_854, U: 4200, split: [...Array(700).fill(3), ...Array(21).fill(100)], label: "ผสม 3 × 700 + 100 × 21" },
+    { bill: 107_000, U: 100, split: Array(100).fill(1), label: "บิลเล็ก 1,070 ÷ 100 หน่วย (อัตรา 1,000 ลงตัว · VAT ลงตัว)" },
+    { bill: 50_076, U: 12, split: Array(12).fill(1), label: "บิลเล็ก 12 หน่วย (3,900×1.07 = 4,173 ต่อหน่วย)" },
+  ];
+  for (const k of cases) {
+    eq(k.split.reduce((a, b) => a + b, 0), k.U, `${k.label} ผลรวมหน่วย (ข้อมูลข้อสอบ)`);
+    for (const vat of [VAT_EXCL, VAT_INCL, VAT_NONE]) {
+      let gross = 0;
+      for (const u of k.split) {
+        const b = C().buildDormBill({ rentSatang: 0, commonFeeSatang: 0, electricity: { kind: "METERED", segments: [{ start: 0, end: u }], method: { kind: "ACTUAL_COST", billSatang: k.bill, billUnits: k.U } }, vat });
+        gross += b.lines.find((l) => l.code === "ELEC")?.grossSatang ?? 0;
+      }
+      ok(gross <= k.bill, `${k.label} ${fmt(vat)}: Σgross ${gross} > บิล ${k.bill} (เกิน ${gross - k.bill} สตางค์)`);
+      ok(gross * 100 >= k.bill * 99, `${k.label} ${fmt(vat)}: Σgross ${gross} ต่ำกว่า 99% ของบิล ${k.bill} (อัตราถูกกดเกินจำเป็น)`);
+    }
+  }
+});
+
+check("D1-R2-VAT-PROP100", "ผู้คุมเคาะ property: สุ่ม 400 ตึก ใช้ครบ 100% ของหน่วยบิล (ครึ่งหนึ่งอัตราลงตัวพอดี) × VAT 3 แบบ ⇒ Σgross ≤ บิล", () => {
+  const rnd = mulberry32(0x100_ac7);
+  const ri = (n: number) => Math.floor(rnd() * n);
+  for (let i = 0; i < 400; i++) {
+    const U = 1 + ri(3000);
+    const exact = rnd() < 0.5;
+    const r = 100 + ri(900);
+    // exact: บิล = r×U×1.07 ลงตัว (U คูณ 100) — กรณีที่ floor ไม่เหลือเผื่อเลย
+    const units = exact ? 100 * (1 + ri(30)) : U;
+    const bill = exact ? (r * units * 107) / 100 : units * r + ri(units * 50);
+    const vat = [VAT_EXCL, VAT_INCL, VAT_NONE][ri(3)];
+    const split: number[] = [];
+    let left = units;
+    while (left > 0) {
+      const u = Math.min(left, 1 + ri(rnd() < 0.5 ? 5 : 200));
+      split.push(u);
+      left -= u;
+    }
+    let gross = 0;
+    for (const u of split) {
+      const b = C().buildDormBill({ rentSatang: 0, commonFeeSatang: 0, electricity: { kind: "METERED", segments: [{ start: 0, end: u }], method: { kind: "ACTUAL_COST", billSatang: bill, billUnits: units } }, vat });
+      gross += b.lines.find((l) => l.code === "ELEC")?.grossSatang ?? 0;
+    }
+    ok(gross <= bill, `ตึก ${i} ${fmt(vat)} หน่วย ${units} ห้อง ${split.length} บิล ${bill}: Σgross ${gross} เกิน ${gross - bill}`);
+  }
+});
+
+check("D1-R1-VAT-PROP", "มติ 2 property: สุ่ม 300 ตึก (ใช้ ≤ 90% ของหน่วยบิล) × VAT 3 แบบ ⇒ Σgross ห้อง ≤ บิล", () => {
+  const rnd = mulberry32(0x7a7);
+  const ri = (n: number) => Math.floor(rnd() * n);
+  for (let i = 0; i < 300; i++) {
+    const billUnits = 100 + ri(20_000);
+    const billSatang = billUnits * (100 + ri(900)) + ri(10_000);
+    const vat = [VAT_EXCL, VAT_INCL, VAT_NONE][ri(3)];
+    let left = Math.floor(billUnits * 0.9);
+    let gross = 0;
+    for (let k = 0; k < 60 && left > 0; k++) {
+      const u = Math.min(left, ri(400));
+      left -= u;
+      const b = C().buildDormBill({ rentSatang: 0, commonFeeSatang: 0, electricity: { kind: "METERED", segments: [{ start: 0, end: u }], method: { kind: "ACTUAL_COST", billSatang, billUnits } }, vat });
+      gross += b.lines.find((l) => l.code === "ELEC")?.grossSatang ?? 0;
+    }
+    ok(gross <= billSatang, `ตึก ${i} ${fmt(vat)} gross ${gross} > บิล ${billSatang}`);
+  }
+});
+
+check("D1-R1-INVALID", "มติ 3 ค่าผิด (NaN/Infinity/ติดลบ/undefined/ไม่ใช่จำนวนเต็ม) ⇒ BLOCK INVALID_INPUT ทุกโหมด", () => {
+  const bad: [string, unknown][] = [
+    ["UTIL_FIXED_RATE_LE_COST", { rateSatangPerUnit: Number.NaN, ...COST }],
+    ["UTIL_FIXED_RATE_LE_COST", { rateSatangPerUnit: -1, ...COST }],
+    ["UTIL_FIXED_RATE_LE_COST", { rateSatangPerUnit: 4.72, ...COST }],
+    ["UTIL_TOTAL_LE_BILL", { chargedTotalSatang: Number.POSITIVE_INFINITY, authorityBillSatang: 1_982_400 }],
+    ["UTIL_TOTAL_LE_BILL", { chargedTotalSatang: undefined, authorityBillSatang: 1_982_400 }],
+    ["UTIL_FLAT_LE_COST", { flatSatang: 20_000, payerCount: Number.NaN, authorityBillSatang: 100 }],
+    ["UTIL_FLAT_LE_COST", { flatSatang: 20_000, payerCount: -3, authorityBillSatang: 1_982_400 }],
+    ["UTIL_NO_MINIMUM", { enabled: true, minSatang: Number.NaN }],
+    ["DEPOSIT_ADVANCE_LIMIT", { leaseKind: "SHORT", monthlyRentSatang: 450_000, depositSatang: Number.NaN, advanceRentSatang: 0 }],
+    ["DEPOSIT_ADVANCE_LIMIT", { leaseKind: "SHORT", monthlyRentSatang: 450_000, depositSatang: 2_250_000, advanceRentSatang: -900_000 }],
+    ["DEPOSIT_ADVANCE_LIMIT", { leaseKind: "SHORT", monthlyRentSatang: -450_000, depositSatang: 0, advanceRentSatang: 0 }],
+    ["DEPOSIT_ADVANCE_MONTHS_LIMIT", { leaseKind: "SHORT", depositMonths: 5, advanceMonths: -2 }],
+    ["DEPOSIT_ADVANCE_MONTHS_LIMIT", { leaseKind: "SHORT", depositMonths: 1.5, advanceMonths: 0 }],
+    ["DEPOSIT_RETURN_DAYS", { days: Number.NaN }],
+    ["DEPOSIT_RETURN_DAYS", { days: -1 }],
+    ["DEPOSIT_RETURN_DAYS", { days: 6.5 }],
+    ["RENT_LOCKED_IN_LEASE", { context: "MID_LEASE", oldSatang: 450_000, newSatang: Number.NaN }],
+    ["DEDUCTION_EVIDENCE", { kind: "DAMAGE", evidenceCount: Number.NaN }],
+    ["DEDUCTION_EVIDENCE", { kind: "DAMAGE", evidenceCount: undefined }],
+    ["DEDUCTION_EVIDENCE", { kind: "DAMAGE", evidenceCount: 1.5 }],
+    ["DEDUCTION_EVIDENCE", { kind: "DAMAGE", evidenceCount: -1 }],
+    ["LATE_FEE_CAP", { feeSatang: Number.NaN }],
+  ];
+  for (const [rule, inp] of bad)
+    for (const ctx of [{ mode: "STRICT" }, { mode: "WARN" }, { mode: "OUT_OF_SCOPE", outOfScopeReason: REASON }] as LegalCtx[]) {
+      const o = L().evaluateLegal(rule, inp, ctx);
+      eq([o.level, o.code], ["BLOCK", "INVALID_INPUT"], `${rule} ${fmt(inp)} ${ctx.mode}`);
+    }
+});
+
+check("D1-R1-DEDUCT-KIND", "มติ 3 หักประกันผ่านเฉพาะ kind === \"DAMAGE\" (ตรงตัว) + หลักฐานจำนวนเต็ม ≥ 1", () => {
+  for (const kind of ["normal_wear", "damage", "Damage", "", "OTHER", undefined])
+    eq(L().evaluateLegal("DEDUCTION_EVIDENCE", { kind, evidenceCount: 3 }, { mode: "STRICT" }).level, "BLOCK", `kind=${fmt(kind)}`);
+  eq(L().evaluateLegal("DEDUCTION_EVIDENCE", { kind: "DAMAGE", evidenceCount: 1 }, { mode: "STRICT" }).level, "OK", "DAMAGE 1");
+});
+
+check("D1-R1-MODE-DEFAULT", "มติ 4 mode ไม่รู้จัก/undefined/null ⇒ ถือเป็น STRICT", () => {
+  const bad = { enabled: true, minSatang: 5000 };
+  for (const mode of ["OFF", "", undefined, null, "strict", "warn"]) {
+    const o = L().evaluateLegal("UTIL_NO_MINIMUM", bad, { mode } as unknown as LegalCtx);
+    eq([o.level, o.mode], ["BLOCK", "STRICT"], `mode=${fmt(mode)}`);
+  }
+});
+
+check("D1-R1-CLAUSE-TEXT", "มติ 5 ข้อบังคับต้องเนื้อความตรง textTh (หลัง normalize) · แก้เนื้อ ⇒ CONTRACT_MANDATORY_REMOVED · เว้นวรรค/ขึ้นบรรทัดต่างไม่เป็นไร", () => {
+  const cs = L().MANDATORY_CLAUSES;
+  for (let i = 0; i < cs.length; i++) {
+    const gut = allClauses().map((c, j) => (j === i ? { id: c.id, text: "ค่าไฟหน่วยละ 8 บาท ขั้นต่ำ 200 บาท เงินประกัน 6 เดือน" } : c));
+    const o = L().evaluateLegal("CONTRACT_MANDATORY_CLAUSES", { clauses: gut }, { mode: "STRICT" });
+    eq([o.level, o.code], ["BLOCK", "CONTRACT_MANDATORY_REMOVED"], `แก้เนื้อข้อ ${cs[i].id}`);
+    const empty = allClauses().map((c, j) => (j === i ? { id: c.id, text: "" } : c));
+    eq(L().evaluateLegal("CONTRACT_MANDATORY_CLAUSES", { clauses: empty }, { mode: "STRICT" }).code, "CONTRACT_MANDATORY_REMOVED", `ล้างเนื้อข้อ ${cs[i].id}`);
+  }
+  const spaced = allClauses().map((c) => ({ id: c.id, text: `  ${c.text.split(" ").join("   ")}\n` }));
+  eq(L().evaluateLegal("CONTRACT_MANDATORY_CLAUSES", { clauses: spaced }, { mode: "STRICT" }).level, "OK", "ช่องว่าง/ขึ้นบรรทัดต่าง");
+});
+
+check("D1-R1-THREAT-EVASION", "มติ 6 คำต้องห้ามรูปหลบ (ผู้ตรวจ /tmp/svc-d1rA-probe.mts) + คำพ้อง ⇒ BLOCK ทุกรูป", () => {
+  const bad = [
+    "ตัด-ไฟ", "ตัด.ไฟ", "ตัด_ไฟ", "ตัดนํ้า", "ล๊อคห้อง", "ล็อกประตูห้อง", "เปลี่ยนกุญแจห้อง", "งดจ่ายไฟ", "ระงับการจ่ายไฟฟ้า",
+    "ปิดน้ำปิดไฟ", "ไม่ให้เข้าห้อง", "ขนย้ายทรัพย์สินออก", "lock-out", "cut-off", "ｌｏｃｋｏｕｔ", "shut off power",
+    "disconnect electricity", "evict", "ตัด­ไฟ", "ตัด⁠ไฟ", "LOCK OUT", "Cut Off", "ยึด ของ", "ตัดไฟฟ้า",
+    "ตัดน้ำประปา", "ยึดทรัพย์สิน", "ผู้ให้เช่าจะไม่ตัดน้ำไฟ", "ตัด/ไฟ", "ตัด*ไฟ", "ตัด‌ไฟ",
+  ];
+  const miss: string[] = [];
+  for (const t of bad) {
+    const o = L().evaluateLegal("TEMPLATE_NO_THREAT", { text: t }, { mode: "OUT_OF_SCOPE", outOfScopeReason: REASON });
+    if (o.level !== "BLOCK" || L().findForbiddenTerms(t).length === 0) miss.push(t);
+  }
+  eq(miss, [], "หลุดตัวกรอง");
+  for (const t of ["ค่าไฟฟ้าเดือนนี้ 125 หน่วย", "ถ้าปิด ช่างจะนัดเวลาก่อนทุกครั้ง", "ช่างล้างถังเก็บน้ำ น้ำอาจไหลอ่อน", "Your bill for room {ห้อง} is ready", "ประกาศ: ปิดซ่อมลิฟต์ 2 ชม."])
+    eq(L().findForbiddenTerms(t), [], `ไม่ควรโดน "${t}"`);
+  const terms = L().FORBIDDEN_TERMS.join("|");
+  for (const syn of ["งดจ่ายไฟ", "ระงับการจ่ายไฟฟ้า", "ปิดน้ำปิดไฟ", "เปลี่ยนกุญแจห้อง", "ไม่ให้เข้าห้อง", "ขนย้ายทรัพย์สินออก"])
+    ok(L().findForbiddenTerms(syn).length > 0, `คำพ้อง ${syn} ไม่อยู่ใน FORBIDDEN_TERMS (${terms.length} ตัวอักษร)`);
+});
+
+check("D1-R1-LATEFEE-CAP", "มติ 7 ตัวตรวจ LATE_FEE_CAP: param null ⇒ OK + pendingReview · ตั้งเพดานแล้วเกิน ⇒ ตามโหมด", () => {
+  const o0 = L().evaluateLegal("LATE_FEE_CAP", { feeSatang: 50_000 }, { mode: "STRICT" });
+  eq([o0.level, o0.pendingReview], ["OK", true], "ไม่มีเพดานในตัวบท");
+  const P = { lateFeeCapSatang: 30_000 };
+  const s = L().evaluateLegal("LATE_FEE_CAP", { feeSatang: 50_000 }, { mode: "STRICT", params: P });
+  eq([s.level, s.code], ["BLOCK", "LATE_FEE_CAP"], "STRICT เกิน");
+  const w = L().evaluateLegal("LATE_FEE_CAP", { feeSatang: 50_000 }, { mode: "WARN", params: P });
+  eq([w.level, w.needsAck, w.needsOwnerApproval], ["WARN", true, true], "WARN เกิน");
+  eq(L().evaluateLegal("LATE_FEE_CAP", { feeSatang: 50_000 }, { mode: "OUT_OF_SCOPE", outOfScopeReason: REASON, params: P }).level, "OK", "OOS");
+  eq(L().evaluateLegal("LATE_FEE_CAP", { feeSatang: 30_000 }, { mode: "STRICT", params: P }).level, "OK", "เท่าเพดาน");
+  ok("LATE_FEE_CAP" in L().TH_RENTAL_2568_RULES, "ต้องลงทะเบียนใน TH_RENTAL_2568_RULES");
+});
+
+check("D1-R1-RENT-EXEMPT", "มติ 8 computeBill ต้องมี taxKind ทุกบรรทัด (MISSING_TAX_KIND) · บรรทัด RENT ต้อง EXEMPT (RENT_MUST_BE_EXEMPT)", () => {
+  const c = C();
+  throwsCode(() => c.computeBill({ lines: [{ code: "RENT", labelTh: "ค่าห้อง", amountSatang: 450_000 }], vat: VAT_EXCL }), "MISSING_TAX_KIND", "ไม่มี taxKind (จด VAT)");
+  throwsCode(() => c.computeBill({ lines: [{ code: "WATER", labelTh: "ค่าน้ำ", amountSatang: 9_600 }], vat: VAT_NONE }), "MISSING_TAX_KIND", "ไม่มี taxKind (ไม่จด)");
+  throwsCode(() => c.computeBill({ lines: [{ code: "RENT", labelTh: "ค่าห้อง", amountSatang: 450_000, taxKind: "VAT7" }], vat: VAT_EXCL }), "RENT_MUST_BE_EXEMPT", "RENT VAT7");
+  throwsCode(() => c.computeBill({ lines: [{ code: "RENT", labelTh: "ค่าห้อง", amountSatang: 450_000, taxKind: "NONE" }], vat: VAT_EXCL }), "RENT_MUST_BE_EXEMPT", "RENT NONE");
+  throwsCode(() => c.buildDormBill({ rentSatang: 450_000, commonFeeSatang: 0, taxKinds: { RENT: "NONE" }, vat: VAT_NONE }), "RENT_MUST_BE_EXEMPT", "taxKinds.RENT NONE");
+});
+
+check("D1-R1-SETTLE-APPROVAL", "มติ 9 needsApproval = เกินวงเงิน หรือ legal ใดต้องอนุมัติเจ้าของ", () => {
+  const r = C().settleDeposit({
+    depositSatang: 900_000,
+    utilities: [],
+    damages: [{ labelTh: "มุ้งลวด", amountSatang: 35_000, kind: "DAMAGE", evidenceCount: 0 }],
+    unpaidSatang: 0,
+    approvalThresholdSatang: 200_000,
+    legal: { mode: "WARN" },
+  });
+  if (!r.ok) throw new AssertFail(`WARN ต้อง ok ได้ ${fmt(r)}`);
+  eq([r.needsApproval, r.legal.some((o) => o.needsOwnerApproval)], [true, true], "หัก 350 < 2,000 แต่ไม่มีหลักฐาน");
+});
+
+check("D1-R1-OOS-REASON", "มติ 10 เหตุผลนอกขอบเขต: ตัดอักขระความกว้างศูนย์ + ต้อง ≥ 10 ตัวอักษรจริง", () => {
+  const ev = (reason: string) => L().evaluateLegal("UTIL_NO_MINIMUM", { enabled: true, minSatang: 5000 }, { mode: "OUT_OF_SCOPE", outOfScopeReason: reason });
+  for (const reason of [".", "​".repeat(20), "﻿‌‍".repeat(5), "abcdefghi", "a​b​c​d​e​f​g​h​i​", "   abc      ", "⁠".repeat(12)])
+    eq([ev(reason).level, ev(reason).code], ["BLOCK", "OUT_OF_SCOPE_REASON_REQUIRED"], `reason=${fmt(reason)}`);
+  eq(ev("abcdefghij").level, "OK", "10 ตัวพอดี");
+  eq(ev("ให้เช่าไม่ถึง 3 ห้อง").level, "OK", "เหตุผลจริง");
+});
+
+check("D1-R1-OVERFLOW", "มติ 11 ผลคูณเกิน Number.MAX_SAFE_INTEGER ⇒ throw OVERFLOW", () => {
+  const c = C();
+  throwsCode(() => c.utilityCharge({ method: { kind: "FIXED_RATE", satangPerUnit: 1_000_000_000_000 }, units: 1_000_000 }), "OVERFLOW", "units×rate");
+  throwsCode(() => c.utilityCharge({ method: { kind: "TARIFF", tiers: [{ uptoUnits: null, rateE4: 1_000_000_000_000 }], ftE4: 0 }, units: 100_000 }), "OVERFLOW", "TARIFF units×rateE4");
+  throwsCode(() => c.lateFee({ policy: { kind: "PER_DAY", amountSatang: 1_000_000_000_000, capSatang: null, graceDays: 0 }, dueDate: "2000-01-05", paidDate: "2026-10-05", overdueSatang: 1 }), "OVERFLOW", "amount×days");
+  throwsCode(() => c.lateFee({ policy: { kind: "PERCENT", percentBp: 10_000, graceDays: 0 }, dueDate: "2026-10-05", paidDate: "2026-10-06", overdueSatang: 2_000_000_000_000 }), "OVERFLOW", "overdue×bp");
+  throwsCode(() => c.computeBill({ lines: [{ code: "X", labelTh: "x", amountSatang: 1_000_000_000_000_000, taxKind: "VAT7" }], vat: VAT_INCL }), "OVERFLOW", "VAT รวม ×100");
+  throwsCode(() => c.computeBill({ lines: [{ code: "X", labelTh: "x", amountSatang: 2_000_000_000_000_000, taxKind: "VAT7" }], vat: VAT_EXCL }), "OVERFLOW", "VAT ไม่รวม ×7");
+});
 
 // ─────────────────── สรุป ───────────────────
 const pass = results.filter((r) => r.status === "PASS").length;
