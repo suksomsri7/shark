@@ -1194,6 +1194,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "clinic.visit.done": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
   "queue.served": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
   // ◂ CRM C2.9
+  // SVC R0.8 ▸ การครองห้องเปลี่ยน (ยิงจาก `rooms/occupancy.ts` ใน tx เดียวกับการเขียน RoomOccupancy · claim/release/move/resize/expire/backfill)
+  //   payload { unitId, roomId, from, to } (id + วันที่ล้วน) · งานหลัก = no-op (ปิด event เป็น DONE — ไม่มี consumer = คิวตัน) ·
+  //   หอ H.10 จะต่อของแถมภายหลัง · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "rooms.occupancy.changed": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

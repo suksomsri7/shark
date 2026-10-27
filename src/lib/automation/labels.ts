@@ -249,6 +249,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "clinic.visit.done", label: "เมื่อปิดการเข้ารับบริการของคลินิก (เก็บเงินแล้ว)" },
   { value: "queue.served", label: "เมื่อคิวได้รับบริการเสร็จแล้ว" },
   // ◂ CRM C2.9
+  // SVC R0.8 ▸ แกนห้อง — การครองห้องเปลี่ยน (จอง/ปล่อย/ย้าย/ปรับช่วง/กันห้องหมดเวลา) · ตัวยิง `rooms/occupancy.ts` (ใน tx เดียวกับการเขียน)
+  //   payload { unitId, roomId, from, to } (from/to = "YYYY-MM-DD" · to ไม่รวม) — ไม่มีชื่อ/เบอร์/ref ของสัญญาหรือการจอง (X8)
+  //   🔴 consumer อยู่ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น) ◂
+  { value: "rooms.occupancy.changed", label: "เมื่อการใช้ห้องเปลี่ยน (จอง/ปล่อย/ย้ายห้อง/ปรับช่วงวัน)" },
   // CRM C3.2 ▸ โควตาถึงเกณฑ์ (80 % / 100 %) — ตัวยิง = `crm/quotas.ts#checkReached` (หลัง tx ของการรับเงิน COUNTED / การเข้า WON commit)
   //   key `crm.quota.reached#<systemId>:<ownerType>:<ownerId>:<periodKey>#<threshold>` (R-C.8 · ครั้งเดียวต่อเจ้าของ+งวด+เกณฑ์ ตลอดไป ·
   //   INSERT … ON CONFLICT DO NOTHING) · payload { quotaId, ownerType, ownerId, periodKey, threshold, pct } = id ล้วน (X8)
