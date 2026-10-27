@@ -5,7 +5,27 @@
 
 ---
 
-## ▶️ RUNNING — สถานะตอนนี้ (27 ต.ค. 14:5xZ)
+## ⏸ PAUSE — 28 ต.ค. 2569 ~00:3xZ (เจ้าของสั่ง "จบงานพักก่อน · เตรียมย้ายบัญชี")
+
+**สถานะ: 7/53 (13%)** · `session/svc` @ (ดู git log — commit นี้) push แล้ว · ไม่มี agent/unit รันอยู่ · gate lock /tmp/shark-gate-svc.lock ว่าง
+- ✅ รับแล้ว: R0.1 · R0.2 · R0.3 · R0.5 · R0.8 · B.2 · D.1 (รายละเอียด/มติ = SVC-RUN §3 + §4 ท้ายไฟล์)
+- 🔸 ค้างกลางทาง (หยุดก่อนมีไฟล์งาน — ไม่มี WIP ค้างในทรี):
+  - **R0.6** ตรวจสลิปกลาง: ข้อสอบ 66 ข้อ + ใบสั่ง commit แล้ว `5608461a` บน `wip/svc-l3` (push แล้ว · rebase บน session/svc แล้ว) → ขั้นถัดไป = ปล่อย builder (ใบสั่งมีมติ 12 ข้อ + มติผู้คุม: autoApprove เริ่ม false · ใช้ TenantIntegration.onFailure แทน payments.slip.onVerifierDown · PII retention = หนี้ J5)
+  - **R0.7** LINE: ยังไม่มีข้อสอบ → เริ่มขั้น 2–3 ใหม่ (เลน l1)
+  - **B.0** migration จองคิว: ยังไม่มีข้อสอบ → เริ่มขั้น 2–3 ใหม่ (เลน l2) · ห้ามรันขนานกับ D.0 (schema)
+- 🖼️ ค้าง: ภาพเทียบแบบ R0.2 (V-6) + R0.5 (P-4) — build QC รวมครั้งเดียว (ทรี d heap/ISO_MEM ตาม memory reference_shark_pos_build_tsc_heap_7g) พร้อมใบ UI ถัดไป (R0.4)
+- 📌 หนี้/carry: `ledger/wo-notes/svc-r0.8-carry.md` (R0.9 งานเก็บกวาด occupancy · setRoomTypeRent affected · D.0 ดัชนี · backfill --apply ทุกร้านก่อนเปิด DORM) · หนี้ SVC-D1 (allowlist ทดสอบ POS ให้รับ ep-mute-scene ก่อนใช้ชุด POS เป็น regression ใน B.8/B.10) · คำถามที่ปรึกษากฎหมาย J3 ใน §4 · หนี้ R0.4 (สรุปข้อเสนอในหน้าอนุมัติ · ปิดค่า PRIVACY · ซ่อน payments.slip.onVerifierDown)
+- ชุดแก้หลังผู้ตรวจที่ใช้ไปแล้ว: `/root/svc-runs/fix/*.md` (อ้างอิง)
+
+### ▶️ RESUME STEPS (บัญชีใหม่)
+1. อ่านไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกา) §2 (วิธีต่อใบ) §3 (สถานะ) + §4 ท้ายไฟล์ (มติล่าสุด) → `ledger/SVC-CORE-CONTRACT.md` (+ภาคต่อท้ายไฟล์)
+2. เช็กเครื่อง: `systemctl list-units 'iso-*'` ว่าง · bind mount node_modules ของ `/root/projects/shark-svc-l{1,2,3}` (หลังรีบูตต้อง `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-svc-lN/node_modules`) · `[ -x .../node_modules/.bin/tsx ]` · ทรีหลัก `cd /root/projects/shark-svc && pnpm exec prisma generate` ถ้า client เก่า
+3. `git -C /root/projects/shark-svc pull`/log ให้ตรง origin/session/svc · เลน: `git -C /root/projects/shark-svc-lN reset --hard session/svc` (ยกเว้น l3 ใช้ `wip/svc-l3` ที่มีข้อสอบ R0.6 → `git rebase session/svc`)
+4. เปิด 3 เลน: l3 = builder R0.6 · l1 = ข้อสอบ R0.7 · l2 = ข้อสอบ B.0 → ต่อตาม MASTER-PLAN §5 (สัปดาห์ 2: R0.7→B.1→B.3 · D.0→D.2→D.5 · R0.4→B.11→D.6)
+5. ทุกใบเข้ม: ผู้ตรวจ 2 ตัว + เมื่อข้อสอบใหม่เขียนหลังโค้ดแก้ ให้ผู้ตรวจรันฉากเดิมยืนยันซ้ำก่อน merge · รัน tsc ด้วย `ISO_MEM=9000M NODE_OPTIONS=--max-old-space-size=7168`
+6. tg เฉพาะ % หลังปิดใบ · ห้าม push main · ห้าม deploy
+
+## (เก่า) ▶️ RUNNING — สถานะตอนนี้ (27 ต.ค. 14:5xZ)
 
 - R0.0 ✅ (ดู SVC-RUN §4) · วันแรกกำลังเปิด: เลน 3 = R0.1 · เลน 1 = B.2 · เลน 2 = D.1 (ขั้นใบสั่ง+ข้อสอบ)
 
