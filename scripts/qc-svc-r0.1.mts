@@ -150,7 +150,7 @@ if (!existsSync(ENV_FILE)) {
   writeFileSync(probe, `import { loadSvcQcEnv } from ${JSON.stringify(pathToFileURL(ENV_FILE).href)};\nloadSvcQcEnv("svc-r01-probe");\nconsole.log("PROBE_PASSED");\n`);
   const u = (h: string) => `postgresql://qc:qc@${h}.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`;
   const run = (db: string, direct: string, extra: Record<string, string> = {}) => {
-    const env: Record<string, string> = {};
+    const env = {} as NodeJS.ProcessEnv;
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
     delete env.APP_ENV;
     Object.assign(env, { DATABASE_URL: db, DIRECT_URL: direct, QC_ENV_FILE: "/nonexistent/svc-r01-no-env-file", POS_QC_ALLOW_HOST: "" }, extra);
