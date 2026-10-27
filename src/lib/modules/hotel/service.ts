@@ -6,7 +6,10 @@ import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุก�
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
-import type { HotelReservationStatus, HotelRoomStatus, PosPayType, SystemType } from "@prisma/client";
+import type { HotelReservationStatus, HotelRoomStatus, PosPayType, Prisma, SystemType } from "@prisma/client";
+// SVC R0.8 ▸ แกนห้อง: การจองถือ "ห้องจริง" (RoomOccupancy) ใน tx เดียวกับการจอง — ผ่าน facade เท่านั้น (ห้ามล้วง subpath) ◂
+import { affectedByOutOfOrder, claimRoom, moveOccupancy, releaseOccupancy } from "@/lib/modules/rooms";
+export type { AffectedOccupancy } from "@/lib/modules/rooms";
 import { resolvePublicUnit } from "@/lib/core/storefront";
 
 // ลงทะเบียน scope ของ Hotel models (unit-scoped) — ให้ tenantDb() inject tenantId+unitId อัตโนมัติ
@@ -38,6 +41,155 @@ export function addDaysStr(dateStr: string, days: number): string {
 }
 
 const ACTIVE_STATUSES: HotelReservationStatus[] = ["BOOKED", "CHECKED_IN"];
+
+// ───────── SVC R0.8 ▸ ห้องที่ขายรายคืนได้ + การครองห้อง (RoomOccupancy) ─────────
+// แหล่งความจริงสถานะกายภาพ = hkStatus (มติผู้คุม R0.8) · status เดิมคงไว้ให้หน้าจอ P1 (แมปสองทาง: setRoomStatus ↔ rooms.setHkStatus)
+// ห้องขายรายคืนได้ = active · ไม่ OOO/OUT_OF_ORDER · rentMode จริง (ของห้อง ?? ของประเภท) ∈ NIGHTLY|BOTH (ห้อง MONTHLY ไม่ขายรายคืน)
+// ห้องไม่ว่าง = มี occupancy active ซ้อนช่วง (hold หมดเวลานับว่าง) — ของใครก็ได้ (สัญญาหอ/การจองโรงแรม/กันห้อง)
+// การจองเดิมก่อน R0.8 ที่ยังไม่มี occupancy (ก่อน backfill) ยังนับ "กินห้อง 1 ห้องของประเภท" เหมือนเดิม
+const HOTEL_REF = "HotelReservation";
+type Db = Prisma.TransactionClient;
+// ธุรกรรมโรงแรม: เพดานเวลาชัด (รอคิว lock ประเภทห้อง/การชน EXCLUDE) · หมดเวลา (P2028) ⇒ ok:false "ระบบไม่ว่าง" ไม่ throw
+const HOTEL_TX = { maxWait: 5_000, timeout: 15_000 } as const;
+const BUSY_REASON = "ระบบไม่ว่าง ลองใหม่อีกครั้ง";
+function isTxTimeout(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let d = 0; d < 5 && cur && typeof cur === "object"; d++) {
+    const o = cur as { code?: unknown; cause?: unknown };
+    if (o.code === "P2028") return true;
+    cur = o.cause;
+  }
+  return false;
+}
+const sellsNightly = (roomRentMode: string | null, typeRentMode: string) => {
+  const m = roomRentMode ?? typeRentMode;
+  return m === "NIGHTLY" || m === "BOTH";
+};
+const liveOcc = (o: { kind: string; holdExpiresAt: Date | null }, now: Date) =>
+  !((o.kind === "HOLD" || o.kind === "CHANNEL_HOLD") && o.holdExpiresAt !== null && o.holdExpiresAt <= now);
+const DAY_MS = 86_400_000;
+
+async function sellableRooms(db: Db, tenantId: string, unitId: string, roomTypeId?: string) {
+  const rooms = await db.hotelRoom.findMany({
+    where: { tenantId, unitId, active: true, status: { not: "OOO" }, hkStatus: { not: "OUT_OF_ORDER" }, ...(roomTypeId ? { roomTypeId } : {}) },
+    orderBy: { number: "asc" },
+    select: { id: true, number: true, floor: true, roomTypeId: true, rentMode: true, roomType: { select: { rentMode: true } } },
+  });
+  return rooms.filter((r) => sellsNightly(r.rentMode, r.roomType.rentMode));
+}
+
+/**
+ * ภาระของแต่ละประเภทในช่วง [from,to)
+ *   total        = ห้องขายรายคืนได้ (active · ไม่ OOO/OUT_OF_ORDER · rentMode จริง NIGHTLY|BOTH)
+ *   usedOf(t,d)  = การจองโรงแรม active ทุกแถวที่กินคืน d (แบบ P1 เดิม — ไม่สนว่ามี occupancy/ห้องจะ OOO หรือ MONTHLY แล้ว)
+ *                  + ห้องของประเภทนั้นที่ถูกถือโดย occupancy ที่ "ไม่ใช่" การจองโรงแรม (LEASE/BLOCK/HOLD ที่ยังไม่หมดเวลา) ในคืน d
+ *   rangeFreeOf(t) = ห้องที่ว่าง "ห้องเดียวตลอดช่วง" − การจองเดิมที่ยังไม่มีห้อง (ไม่มี occupancy และไม่มี roomId) ที่ซ้อนช่วง
+ * excludeReservationId = ไม่นับการจองนี้
+ */
+async function stayLoad(db: Db, tenantId: string, unitId: string, fromStr: string, toStr: string, roomTypeId?: string, excludeReservationId?: string) {
+  const from = parseDate(fromStr);
+  const to = parseDate(toStr);
+  const now = new Date();
+  const rooms = await sellableRooms(db, tenantId, unitId, roomTypeId);
+  const typeOfRoom = new Map(rooms.map((r) => [r.id, r.roomTypeId]));
+  const [occ, rvs] = await Promise.all([
+    rooms.length
+      ? db.roomOccupancy.findMany({
+          where: { tenantId, unitId, active: true, roomId: { in: rooms.map((r) => r.id) }, startDate: { lt: to }, endDate: { gt: from } },
+          select: { roomId: true, kind: true, holdExpiresAt: true, refType: true, refId: true, startDate: true, endDate: true },
+        })
+      : Promise.resolve([]),
+    db.hotelReservation.findMany({
+      where: {
+        tenantId,
+        unitId,
+        status: { in: ACTIVE_STATUSES },
+        checkInDate: { lt: to },
+        checkOutDate: { gt: from },
+        ...(roomTypeId ? { roomTypeId } : {}),
+        ...(excludeReservationId ? { id: { not: excludeReservationId } } : {}),
+      },
+      select: { id: true, roomTypeId: true, roomId: true, checkInDate: true, checkOutDate: true },
+    }),
+  ]);
+  const live = occ.filter((o) => liveOcc(o, now) && !(excludeReservationId && o.refType === HOTEL_REF && o.refId === excludeReservationId));
+  const others = live.filter((o) => o.refType !== HOTEL_REF);
+  // การจองที่ "มีห้องแล้ว" = มี occupancy active (ห้องไหนก็ได้) หรือมี roomId (การจองเดิมที่เช็คอินแล้ว)
+  const withOcc = new Set(
+    rvs.length
+      ? (await db.roomOccupancy.findMany({ where: { tenantId, unitId, active: true, refType: HOTEL_REF, refId: { in: rvs.map((r) => r.id) } }, select: { refId: true } })).map((o) => o.refId)
+      : [],
+  );
+  const roomless = rvs.filter((r) => !withOcc.has(r.id) && !r.roomId);
+  const legacyRoomIds = new Set(rvs.filter((r) => !withOcc.has(r.id) && r.roomId).map((r) => r.roomId as string));
+  const busyRooms = new Set([...live.map((o) => o.roomId), ...legacyRoomIds]);
+
+  const totalOf = (typeId: string) => rooms.filter((r) => r.roomTypeId === typeId).length;
+  const usedOf = (typeId: string, d: number) => {
+    const rv = rvs.filter((r) => r.roomTypeId === typeId && r.checkInDate.getTime() <= d && r.checkOutDate.getTime() > d).length;
+    const held = new Set(others.filter((o) => typeOfRoom.get(o.roomId) === typeId && o.startDate.getTime() <= d && o.endDate.getTime() > d).map((o) => o.roomId)).size;
+    return rv + held;
+  };
+  const perNightFreeOf = (typeId: string) => {
+    const total = totalOf(typeId);
+    let maxUsed = 0;
+    for (let d = from.getTime(); d < to.getTime(); d += DAY_MS) maxUsed = Math.max(maxUsed, usedOf(typeId, d));
+    return Math.max(0, total - maxUsed);
+  };
+  const rangeFreeOf = (typeId: string) => {
+    const whole = rooms.filter((r) => r.roomTypeId === typeId && !busyRooms.has(r.id)).length;
+    return Math.max(0, whole - roomless.filter((r) => r.roomTypeId === typeId).length);
+  };
+  return { totalOf, usedOf, perNightFreeOf, rangeFreeOf };
+}
+
+/**
+ * ห้องขายรายคืนได้ของประเภทที่ว่างทั้งช่วง (ไม่มี occupancy ซ้อน · ไม่ถูกการจองเดิมที่ระบุห้องไว้ถือ)
+ * bestFit = เรียงให้ห้องที่ช่องว่างก่อน/หลังช่วงนี้แคบที่สุดมาก่อน (อุดช่องว่าง เก็บช่วงยาวไว้ให้การจอง/สัญญายาว) · เท่ากัน = เลขห้อง
+ */
+async function freeRoomsForStay(db: Db, tenantId: string, unitId: string, roomTypeId: string, from: Date, to: Date, reservationId: string, bestFit = false) {
+  const now = new Date();
+  const rooms = await sellableRooms(db, tenantId, unitId, roomTypeId);
+  if (rooms.length === 0) return [];
+  const ids = rooms.map((r) => r.id);
+  const WINDOW = 60 * DAY_MS;
+  const wFrom = new Date(from.getTime() - (bestFit ? WINDOW : 0));
+  const wTo = new Date(to.getTime() + (bestFit ? WINDOW : 0));
+  const [occ, legacy] = await Promise.all([
+    db.roomOccupancy.findMany({
+      where: { tenantId, unitId, active: true, roomId: { in: ids }, startDate: { lt: wTo }, endDate: { gt: wFrom } },
+      select: { roomId: true, kind: true, holdExpiresAt: true, refType: true, refId: true, startDate: true, endDate: true },
+    }),
+    db.hotelReservation.findMany({
+      where: { tenantId, unitId, id: { not: reservationId }, roomId: { in: ids }, status: { in: ACTIVE_STATUSES }, checkInDate: { lt: wTo }, checkOutDate: { gt: wFrom } },
+      select: { roomId: true, checkInDate: true, checkOutDate: true },
+    }),
+  ]);
+  const spans = [
+    ...occ.filter((o) => liveOcc(o, now) && !(o.refType === HOTEL_REF && o.refId === reservationId)).map((o) => ({ roomId: o.roomId, s: o.startDate.getTime(), e: o.endDate.getTime() })),
+    ...legacy.map((l) => ({ roomId: l.roomId ?? "", s: l.checkInDate.getTime(), e: l.checkOutDate.getTime() })),
+  ];
+  const f = from.getTime();
+  const t = to.getTime();
+  const free = rooms.filter((r) => !spans.some((x) => x.roomId === r.id && x.s < t && x.e > f));
+  if (!bestFit) return free;
+  const gap = (roomId: string) => {
+    const mine = spans.filter((x) => x.roomId === roomId);
+    const prevEnd = Math.max(f - WINDOW, ...mine.filter((x) => x.e <= f).map((x) => x.e));
+    const nextStart = Math.min(t + WINDOW, ...mine.filter((x) => x.s >= t).map((x) => x.s));
+    return f - prevEnd + (nextStart - t);
+  };
+  const score = new Map(free.map((r) => [r.id, gap(r.id)]));
+  return [...free].sort((a, b) => (score.get(a.id) ?? 0) - (score.get(b.id) ?? 0) || a.number.localeCompare(b.number));
+}
+
+/** ปล่อย occupancy ที่ active ทั้งหมดของการจองนี้ (ใน tx ของผู้เรียก) */
+async function releaseStay(tx: Db, tenantId: string, unitId: string, reservationId: string, reason: string) {
+  const occ = await tx.roomOccupancy.findMany({ where: { tenantId, unitId, refType: HOTEL_REF, refId: reservationId, active: true }, select: { id: true } });
+  for (const o of occ) await releaseOccupancy(tx, { tenantId, unitId, occupancyId: o.id, reason });
+}
+
+// ◂ SVC R0.8
 
 // หาว่าหน่วยนี้ผูกระบบชนิดใดไว้ (POS/POINT) → คืน systemId หรือ null ถ้าไม่ผูก
 // query ตรงจากทะเบียนระบบ (appSystemUnit เป็น model ระดับ tenant ไม่ผูก unit-scope)
@@ -134,7 +286,12 @@ export async function setRoomStatus(
   status: HotelRoomStatus,
 ) {
   const db = tenantDb({ tenantId, unitId });
-  await db.hotelRoom.update({ where: { id }, data: { status } });
+  // SVC R0.8 ▸ แมปไป hkStatus (แหล่งความจริง): CLEANING→DIRTY · OOO→OUT_OF_ORDER · AVAILABLE→CLEAN · OCCUPIED ไม่แตะ hk ◂
+  const hk: Record<HotelRoomStatus, string | null> = { CLEANING: "DIRTY", OOO: "OUT_OF_ORDER", AVAILABLE: "CLEAN", OCCUPIED: null };
+  const hkStatus = hk[status];
+  await db.hotelRoom.update({ where: { id }, data: { status, ...(hkStatus ? { hkStatus } : {}) } });
+  // SVC R0.8 ▸ ปิดซ่อม (OOO) ⇒ คืน occupancy ที่ยังไม่จบซึ่งขัด (ทุกชนิดยกเว้น BLOCK · กติกาเดียวกับ rooms.setHkStatus) — เตือน ไม่บล็อก ◂
+  return { ok: true as const, affected: status === "OOO" ? await affectedByOutOfOrder({ tenantId }, { unitId, roomId: id }) : [] };
 }
 
 export async function archiveRoom(tenantId: string, unitId: string, id: string) {
@@ -143,6 +300,9 @@ export async function archiveRoom(tenantId: string, unitId: string, id: string) 
     where: { roomId: id, status: { in: ACTIVE_STATUSES } },
   });
   if (active > 0) return { ok: false as const, reason: "มีการจองผูกห้องนี้อยู่ ยังลบไม่ได้" };
+  // SVC R0.8 ▸ ห้องที่ยังมีการครองห้อง (สัญญาหอ/การจอง/กันห้อง) ที่ยังไม่จบ ลบไม่ได้ ◂
+  const held = await db.roomOccupancy.count({ where: { roomId: id, active: true, endDate: { gt: parseDate(todayBkk()) } } });
+  if (held > 0) return { ok: false as const, reason: "ห้องนี้ยังถูกใช้งานอยู่ (มีสัญญาหรือการจองที่ยังไม่จบ) ยังลบไม่ได้" };
   await db.hotelRoom.update({ where: { id }, data: { active: false } });
   return { ok: true as const };
 }
@@ -161,42 +321,22 @@ export async function availability(
   const db = tenantDb({ tenantId, unitId });
   const from = parseDate(fromStr);
   const to = parseDate(toStr);
-  const [types, rooms, reservations] = await Promise.all([
+  // SVC R0.8 ▸ ต่อคืน: ห้องที่ขายรายคืนได้ − การจองโรงแรมทุกแถว (แบบ P1) − ห้องที่ถูกถือโดย occupancy ที่ไม่ใช่โรงแรม (เช่น สัญญาหอ) ◂
+  const [types, load] = await Promise.all([
     db.hotelRoomType.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
-    db.hotelRoom.findMany({
-      where: { active: true, status: { not: "OOO" } },
-      select: { roomTypeId: true },
-    }),
-    db.hotelReservation.findMany({
-      where: {
-        status: { in: ACTIVE_STATUSES },
-        checkInDate: { lt: to },
-        checkOutDate: { gt: from },
-      },
-      select: { roomTypeId: true, checkInDate: true, checkOutDate: true },
-    }),
+    stayLoad(prisma, tenantId, unitId, fromStr, toStr),
   ]);
-
-  const roomsByType = new Map<string, number>();
-  for (const r of rooms) roomsByType.set(r.roomTypeId, (roomsByType.get(r.roomTypeId) ?? 0) + 1);
 
   const nights: string[] = [];
   for (let d = from.getTime(); d < to.getTime(); d += 86_400_000) nights.push(dateToStr(new Date(d)));
 
   return types.map((t) => {
-    const total = roomsByType.get(t.id) ?? 0;
+    const total = load.totalOf(t.id);
     const days = nights.map((date) => {
-      const nightMs = parseDate(date).getTime();
-      // การจองที่กินคืนนี้: checkIn <= date < checkOut
-      const booked = reservations.filter(
-        (rv) =>
-          rv.roomTypeId === t.id &&
-          rv.checkInDate.getTime() <= nightMs &&
-          rv.checkOutDate.getTime() > nightMs,
-      ).length;
+      const booked = Math.min(total, load.usedOf(t.id, parseDate(date).getTime()));
       return { date, total, booked, free: Math.max(0, total - booked) };
     });
     return { roomTypeId: t.id, name: t.name, days };
@@ -212,31 +352,11 @@ async function freeCountForRange(
   fromStr: string,
   toStr: string,
   excludeReservationId?: string,
-): Promise<{ total: number; free: number }> {
-  const total = await tx.hotelRoom.count({
-    where: { tenantId, unitId, roomTypeId, active: true, status: { not: "OOO" } },
-  });
-  const overlapping = await tx.hotelReservation.findMany({
-    where: {
-      tenantId,
-      unitId,
-      roomTypeId,
-      status: { in: ACTIVE_STATUSES },
-      checkInDate: { lt: parseDate(toStr) },
-      checkOutDate: { gt: parseDate(fromStr) },
-      ...(excludeReservationId ? { id: { not: excludeReservationId } } : {}),
-    },
-    select: { checkInDate: true, checkOutDate: true },
-  });
-  // นับซ้อนสูงสุดต่อคืนในช่วง
-  let maxBooked = 0;
-  for (let d = parseDate(fromStr).getTime(); d < parseDate(toStr).getTime(); d += 86_400_000) {
-    const booked = overlapping.filter(
-      (rv) => rv.checkInDate.getTime() <= d && rv.checkOutDate.getTime() > d,
-    ).length;
-    if (booked > maxBooked) maxBooked = booked;
-  }
-  return { total, free: Math.max(0, total - maxBooked) };
+): Promise<{ total: number; free: number; perNightFree: number }> {
+  // SVC R0.8 ▸ free = min(ว่างต่อคืนน้อยสุด, ห้องที่ว่างห้องเดียวตลอดช่วง − การจองเดิมที่ยังไม่มีห้อง) · ไม่นับห้อง MONTHLY/OUT_OF_ORDER ◂
+  const load = await stayLoad(tx as Db, tenantId, unitId, fromStr, toStr, roomTypeId, excludeReservationId);
+  const perNightFree = load.perNightFreeOf(roomTypeId);
+  return { total: load.totalOf(roomTypeId), free: Math.min(perNightFree, load.rangeFreeOf(roomTypeId)), perNightFree };
 }
 
 // ───────────────────────── Reservations ─────────────────────────
@@ -280,7 +400,7 @@ export async function createReservation(input: {
       // ล็อกแถวประเภทห้อง (FOR UPDATE) → ซีเรียลไลซ์การจองพร้อมกันของประเภทเดียวกัน
       // กันจองซ้อนเกิน capacity: request ที่ 2 บล็อกจนคนแรก commit แล้วค่อยนับ availability ใหม่ (เห็นการจองแรก → FULL)
       await tx.$queryRaw`SELECT id FROM "HotelRoomType" WHERE id = ${input.roomTypeId} FOR UPDATE`;
-      const { total, free } = await freeCountForRange(
+      const { total, free, perNightFree } = await freeCountForRange(
         tx as typeof prisma,
         tenantId,
         unitId,
@@ -289,11 +409,12 @@ export async function createReservation(input: {
         input.checkOutDate,
       );
       if (total === 0) throw new Error("NO_ROOMS");
-      if (free < 1) throw new Error("FULL");
+      if (perNightFree < 1) throw new Error("FULL");
+      if (free < 1) throw new Error("NO_SINGLE_ROOM"); // SVC R0.8 ▸ ต่อคืนยังว่าง แต่ไม่มีห้องเดียวที่ว่างตลอดช่วง ◂
 
       const code = await nextCode(tx as typeof prisma, tenantId, unitId);
       const total_ = rt.baseRateSatang * nights;
-      return tx.hotelReservation.create({
+      const rv = await tx.hotelReservation.create({
         data: {
           tenantId,
           unitId,
@@ -315,7 +436,30 @@ export async function createReservation(input: {
           createdById: input.createdById || null,
         },
       });
-    });
+      // SVC R0.8 ▸ มติผู้คุม: ถือ "ห้องจริง" ตั้งแต่ตอนจอง — ใน tx เดิม หลังล็อกประเภทห้อง (ลำดับล็อก ประเภท → ห้อง)
+      //   ไล่ห้องว่างตามเลขห้อง · ชน (23P01 · เช่น สัญญาหอเพิ่ง commit) ⇒ ลองห้องถัดไป · หมด ⇒ FULL (tx ย้อนทั้งก้อน ไม่มีการจองค้าง) ◂
+      let held = false;
+      //   best-fit (ผู้ตรวจ R0.8 ข้อ 5): ห้องที่ช่องว่างก่อน/หลังแคบสุดก่อน — เก็บช่วงยาวไว้ (re-pack การจองที่ยังไม่เช็คอิน = หนี้เฟส H) ◂
+      for (const room of await freeRoomsForStay(tx as Db, tenantId, unitId, input.roomTypeId, rv.checkInDate, rv.checkOutDate, rv.id, true)) {
+        const c = await claimRoom(tx, {
+          requireRentMode: "NIGHTLY",
+          tenantId,
+          unitId,
+          roomId: room.id,
+          start: input.checkInDate,
+          end: input.checkOutDate,
+          kind: "STAY",
+          refType: HOTEL_REF,
+          refId: rv.id,
+        });
+        if (c.ok) {
+          held = true;
+          break;
+        }
+      }
+      if (!held) throw new Error("NO_SINGLE_ROOM");
+      return rv;
+    }, HOTEL_TX);
     await linkPartyAfterCommit(tenantId, created.id, input.guestName, input.guestPhone, input.guestEmail); // CRM v2 C1.1 (C11)
     return { ok: true, id: created.id, code: created.code, publicToken: created.publicToken };
   } catch (e) {
@@ -323,6 +467,9 @@ export async function createReservation(input: {
       return { ok: false, reason: "ประเภทห้องนี้เต็มในช่วงวันที่เลือก" };
     if (e instanceof Error && e.message === "NO_ROOMS")
       return { ok: false, reason: "ยังไม่มีห้องในประเภทนี้ — เพิ่มห้องก่อน" };
+    if (e instanceof Error && e.message === "NO_SINGLE_ROOM")
+      return { ok: false, reason: "ไม่มีห้องเดียวที่ว่างตลอดช่วง ลองเลื่อนวัน" };
+    if (isTxTimeout(e)) return { ok: false, reason: BUSY_REASON };
     throw e;
   }
 }
@@ -336,22 +483,8 @@ export async function assignableRooms(
   const db = tenantDb({ tenantId, unitId });
   const rv = await db.hotelReservation.findFirst({ where: { id: reservationId } });
   if (!rv) return [];
-  const rooms = await db.hotelRoom.findMany({
-    where: { roomTypeId: rv.roomTypeId, active: true, status: { not: "OOO" } },
-    orderBy: { number: "asc" },
-  });
-  const clashes = await db.hotelReservation.findMany({
-    where: {
-      status: { in: ACTIVE_STATUSES },
-      id: { not: reservationId },
-      roomId: { not: null },
-      checkInDate: { lt: rv.checkOutDate },
-      checkOutDate: { gt: rv.checkInDate },
-    },
-    select: { roomId: true },
-  });
-  const taken = new Set(clashes.map((c) => c.roomId));
-  return rooms.filter((r) => !taken.has(r.id));
+  // SVC R0.8 ▸ ตัดห้องที่ถูกถือช่วงซ้อน (occupancy ของคนอื่น — ของการจองนี้เองไม่ตัด) · ห้องขายรายคืนไม่ได้/ปิดซ่อม ◂
+  return freeRoomsForStay(prisma, tenantId, unitId, rv.roomTypeId, rv.checkInDate, rv.checkOutDate, reservationId);
 }
 
 export async function checkIn(
@@ -371,7 +504,9 @@ export async function checkIn(
         where: { id: roomId, tenantId, unitId, active: true, roomTypeId: rv.roomTypeId },
       });
       if (!room) throw new Error("BAD_ROOM");
-      if (room.status === "OOO") throw new Error("ROOM_OOO");
+      if (room.status === "OOO" || room.hkStatus === "OUT_OF_ORDER") throw new Error("ROOM_OOO");
+      if (!sellsNightly(room.rentMode, (await tx.hotelRoomType.findFirst({ where: { id: room.roomTypeId, tenantId, unitId }, select: { rentMode: true } }))?.rentMode ?? "NIGHTLY"))
+        throw new Error("BAD_ROOM"); // SVC R0.8 ▸ ห้องรายเดือนไม่ขายรายคืน ◂
       // กันห้องจริงถูก assign ซ้อนช่วงเวลา
       const clash = await tx.hotelReservation.findFirst({
         where: {
@@ -385,12 +520,37 @@ export async function checkIn(
         },
       });
       if (clash) throw new Error("ROOM_TAKEN");
+      // SVC R0.8 ▸ ห้องจริงของ occupancy: ห้องที่เลือก ≠ ห้องที่ถืออยู่ ⇒ ย้าย · การจองเดิมไม่มี occupancy ⇒ claim ห้องที่เลือก
+      //   ชน ⇒ throw (tx ย้อน · สถานะคง BOOKED · occupancy เดิมไม่ขยับ) ◂
+      const occ = await tx.roomOccupancy.findFirst({
+        where: { tenantId, unitId, refType: HOTEL_REF, refId: reservationId, active: true },
+        select: { id: true, roomId: true },
+      });
+      if (occ) {
+        if (occ.roomId !== roomId) {
+          const m = await moveOccupancy(tx, { tenantId, unitId, occupancyId: occ.id, toRoomId: roomId });
+          if (!m.ok) throw new Error(m.code === "ROOM_TAKEN" ? "ROOM_TAKEN" : m.code === "ROOM_INACTIVE" ? "ROOM_OOO" : "BAD_ROOM");
+        }
+      } else {
+        const c = await claimRoom(tx, {
+          tenantId,
+          unitId,
+          roomId,
+          start: dateToStr(rv.checkInDate),
+          end: dateToStr(rv.checkOutDate),
+          kind: "STAY",
+          refType: HOTEL_REF,
+          refId: reservationId,
+          requireRentMode: "NIGHTLY",
+        });
+        if (!c.ok) throw new Error(c.code === "ROOM_TAKEN" ? "ROOM_TAKEN" : c.code === "ROOM_INACTIVE" ? "ROOM_OOO" : "BAD_ROOM");
+      }
       await tx.hotelReservation.update({
         where: { id: reservationId },
         data: { status: "CHECKED_IN", roomId, checkedInAt: new Date() },
       });
       await tx.hotelRoom.update({ where: { id: roomId }, data: { status: "OCCUPIED" } });
-    });
+    }, HOTEL_TX);
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
@@ -402,6 +562,7 @@ export async function checkIn(
       ROOM_TAKEN: "ห้องนี้ถูกใช้ในช่วงเวลานี้แล้ว",
     };
     if (map[msg]) return { ok: false, reason: map[msg] };
+    if (isTxTimeout(e)) return { ok: false, reason: BUSY_REASON };
     throw e;
   }
 }
@@ -425,9 +586,11 @@ export async function checkOut(
         data: { status: "CHECKED_OUT", checkedOutAt: new Date() },
       });
       if (rv.roomId) {
-        // ห้องต้องทำความสะอาดก่อนขายใหม่
-        await tx.hotelRoom.update({ where: { id: rv.roomId }, data: { status: "CLEANING" } });
+        // ห้องต้องทำความสะอาดก่อนขายใหม่ (SVC R0.8 ▸ hkStatus DIRTY = แหล่งความจริง · status CLEANING เดิมคงไว้ให้จอ P1 ◂)
+        await tx.hotelRoom.update({ where: { id: rv.roomId }, data: { status: "CLEANING", hkStatus: "DIRTY" } });
       }
+      // SVC R0.8 ▸ (ผู้ตรวจ R0.8 ข้อ 3) ยังไม่ปล่อยห้องจริงที่นี่ — ปล่อยใน tx เล็กหลังเก็บเงินสำเร็จ (หรือทางไม่ผูก POS)
+      //   ⇒ ทาง rollback (POS ล้ม → CHECKED_IN) ไม่ต้องจองห้องคืน (occupancy ยัง active ตลอด · ห้องไม่หลุดให้คนอื่น) ◂
       // CRM C2.9 ▸ (มติ C11 · ใบ C2.9) "เช็คเอาท์แล้ว" ยิงใน tx เดียวกับการเปลี่ยนสถานะที่มีอยู่แล้วของฟังก์ชันนี้ ⇒
       //   เช็คเอาท์สำเร็จ = มี event เสมอ · event เขียนไม่ได้ = เช็คเอาท์ถูกยกเลิกทั้งก้อน (ยัง CHECKED_IN · ห้องไม่ถูกสั่งทำความสะอาด)
       //   `pos.createSale` ยังอยู่นอก tx นี้เหมือนเดิม · payload = id ล้วน + จำนวนคืน/ยอดสตางค์ (X8: ไม่มีชื่อ/เบอร์ผู้เข้าพัก)
@@ -440,7 +603,15 @@ export async function checkOut(
       });
       // ◂ CRM C2.9
       return { totalSatang: rv.totalSatang, nights: rv.nights, customerId: rv.customerId, depositSaleId: rv.depositSaleId, roomId: rv.roomId }; // POS P5.1 ▸ MA2 MA5: + ใบรับมัดจำ · ห้อง (คืน claim) ◂
-    });
+    }, HOTEL_TX);
+    // SVC R0.8 ▸ ปล่อยห้องจริงหลังเช็คเอาท์ "ลงตัว" (tx เล็ก · ปล่อยไม่ได้ = WARN ไม่ทำให้เช็คเอาท์ล้ม — id ล้วน ไม่มี PII) ◂
+    const releaseAfterCheckout = async () => {
+      try {
+        await prisma.$transaction((tx) => releaseStay(tx, tenantId, unitId, reservationId, "เช็คเอาท์"), HOTEL_TX);
+      } catch {
+        console.warn(`[hotel] เช็คเอาท์ tenant=${tenantId} reservation=${reservationId}: ปล่อยการครองห้องไม่สำเร็จ — ให้พนักงานปล่อยเอง`);
+      }
+    };
 
     // เช็คเอาท์แล้ว → เก็บค่าห้องเข้าบัญชีผ่าน POS (idempotent ด้วย reservationId)
     // ไม่ผูก POS = ร้านแบบ standalone → เช็คเอาท์ได้ตามปกติ ข้ามการตัดเงิน
@@ -477,17 +648,22 @@ export async function checkOut(
             await prisma.$transaction(async (tx) => {
               const back = await tx.hotelReservation.updateMany({ where: { id: reservationId, tenantId, unitId, status: "CHECKED_OUT" }, data: { status: "CHECKED_IN", checkedOutAt: null } });
               if (back.count > 0 && billing.roomId) await tx.hotelRoom.updateMany({ where: { id: billing.roomId, tenantId, unitId, status: "CLEANING" }, data: { status: "OCCUPIED" } });
-            });
+              // SVC R0.8 ▸ occupancy ยังไม่ถูกปล่อย (ปล่อยหลังเก็บเงินสำเร็จเท่านั้น) ⇒ แขกกลับเป็น CHECKED_IN พร้อมห้องเดิม ไม่ต้องจองคืน ◂
+            }, HOTEL_TX);
+          } else {
+            await releaseAfterCheckout(); // บิลของคีย์นี้มีแล้ว (ล้มหลังสร้างบิล) ⇒ เช็คเอาท์ลงตัว
           }
           throw e;
         }
       }
     }
+    await releaseAfterCheckout();
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "NOT_FOUND") return { ok: false, reason: "ไม่พบการจอง" };
     if (msg === "BAD_STATUS") return { ok: false, reason: "ต้องเช็คอินก่อนจึงเช็คเอาท์ได้" };
+    if (isTxTimeout(e)) return { ok: false, reason: BUSY_REASON };
     throw e;
   }
 }
@@ -509,16 +685,19 @@ export async function cancelReservation(
         where: { id: reservationId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: reason || null },
       });
-      // ถ้าเคยเช็คอินและถือห้องอยู่ → ปล่อยห้องเป็น CLEANING
+      // ถ้าเคยเช็คอินและถือห้องอยู่ → ปล่อยห้องเป็น CLEANING (SVC R0.8 ▸ + hkStatus DIRTY ◂)
       if (rv.status === "CHECKED_IN" && rv.roomId) {
-        await tx.hotelRoom.update({ where: { id: rv.roomId }, data: { status: "CLEANING" } });
+        await tx.hotelRoom.update({ where: { id: rv.roomId }, data: { status: "CLEANING", hkStatus: "DIRTY" } });
       }
-    });
+      // SVC R0.8 ▸ ปล่อยห้องจริง (occupancy) ใน tx เดียวกับ CANCELLED ◂
+      await releaseStay(tx, tenantId, unitId, reservationId, reason || "ยกเลิกการจอง");
+    }, HOTEL_TX);
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (msg === "NOT_FOUND") return { ok: false, reason: "ไม่พบการจอง" };
     if (msg === "BAD_STATUS") return { ok: false, reason: "การจองนี้ยกเลิกไม่ได้" };
+    if (isTxTimeout(e)) return { ok: false, reason: BUSY_REASON };
     throw e;
   }
 }
@@ -662,13 +841,11 @@ export async function listPublicAvailability(
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
   const validRange = nightsBetween(fromStr, toStr) >= 1;
-  const avail = validRange ? await availability(tenantId, unitId, fromStr, toStr) : [];
-  const byType = new Map(avail.map((a) => [a.roomTypeId, a]));
+  // SVC R0.8 ▸ ว่าง = min(ว่างต่อคืนน้อยสุด, ห้องที่ว่างห้องเดียวตลอดช่วง − การจองเดิมที่ยังไม่มีห้อง) — ตรงกับที่ createReservation จองได้จริง ◂
+  const load = validRange ? await stayLoad(prisma, tenantId, unitId, fromStr, toStr) : null;
   return types.map((t) => {
-    const a = byType.get(t.id);
-    // ห้องว่าง = ค่าน้อยสุดตลอดทุกคืน (ทุกคืนต้องว่างจึงจองได้)
-    const free = a && a.days.length ? Math.min(...a.days.map((d) => d.free)) : 0;
-    const totalRooms = a && a.days.length ? a.days[0].total : 0;
+    const free = load ? Math.min(load.perNightFreeOf(t.id), load.rangeFreeOf(t.id)) : 0;
+    const totalRooms = load ? load.totalOf(t.id) : 0;
     return {
       id: t.id,
       name: t.name,

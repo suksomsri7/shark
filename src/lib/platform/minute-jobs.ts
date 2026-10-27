@@ -484,6 +484,16 @@ registerMinuteJob({
   },
 });
 // ◂ POS P3-SKEL
+// SVC R0.8 ▸ แกนห้อง: ปิด HOLD/CHANNEL_HOLD ที่หมดเวลา (ทุกนาที · ข้ามร้าน) — โหลด facade rooms ตอนรันเท่านั้น (แบบงาน CRM ·
+//   ไฟล์นี้ถูก import จาก route/crm-cron.mts — ห้ามลากกราฟโมดูลตอนโหลด) · idempotent: UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED ⇒
+//   route + crontab ยิงซ้อนกัน แต่ละแถวปิดครั้งเดียว event ครั้งเดียว (X5) · claimRoom ปิด hold หมดเวลาที่ขวางเองอยู่แล้ว (ไม่ต้องรองานนี้)
+registerMinuteJob({
+  name: "rooms.expireHolds",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/rooms")).expireHolds(now),
+});
+// ◂ SVC R0.8
 
 function errorText(e: unknown): string {
   let s: string;

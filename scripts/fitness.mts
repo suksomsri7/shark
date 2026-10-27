@@ -228,7 +228,10 @@ chk(
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
 // P1.5 held-cart.ts — new POS module (45 → 46)
-const BASELINE = { f5RawPrisma: 46 }; // 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+// SVC R0.8 rooms/occupancy.ts (46 → 47): `expireHolds` ไล่ hold หมดเวลา "ข้ามร้าน" จาก minute-job ก่อนรู้ tenant (เหมือน inventory sweep ·
+//   UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED) + `withRoomTx` เปิดธุรกรรมให้ rooms/service.ts — ไฟล์เดียวของโมดูล rooms ที่ import prisma ดิบ
+//   (service.ts/index.ts ใช้ tenantDb) · ทุกคำสั่งเขียนอื่นผูก tenantId+unitId ตรง (X1 · oracle qc-svc-r0.8 C-8/C-9/R-2/R-9)
+const BASELINE = { f5RawPrisma: 47 }; // 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -277,6 +280,9 @@ const ALLOWED_EDGES = new Set([
   "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
   "hotel→system",
+  // SVC R0.8 (ใบ svc-brief-r0.8 §1 · §4): โรงแรมถือห้องจริง (RoomOccupancy) ใน tx เดียวกับการจอง ผ่าน facade `@/lib/modules/rooms` เท่านั้น ·
+  //   ทิศทางเดียว (rooms ไม่ import โมดูลใด — ใช้ได้แค่ @/lib/core/*)
+  "hotel→rooms",
   // chokepoint (2.4 ฝั่งเอกสาร): CRM ออกใบเสนอราคาผ่าน account facade (WO-0010)
   "crm→account",
   // marketing อ่าน segment ลูกค้าจาก member (WO-0013)

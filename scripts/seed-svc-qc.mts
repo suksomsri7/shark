@@ -14,7 +14,7 @@
 //   🔴 รันซ้ำ = ไม่มีแถวเพิ่ม และ "ไม่มีการเขียนเลย" — ทุกแถวอ่านมาเทียบกับ SQC ก่อน ต่างเท่านั้นถึงเขียน (ไม่ upsert ทุกแถว)
 //   🔴 ค่าเพี้ยน (ราคา/active/rentMode/role ฯลฯ) ⇒ รันแล้วกลับเป็นค่าตาม SQC
 //   🔴 ไม่แตะแถวของร้านอื่น · ลบได้เฉพาะแถวเกินของร้าน SVC (where ผูก tenantId ร้าน SVC เสมอ) · ไม่ระบายคิว outbox
-//   🔴 ลำดับลบ (ถ้าวันหน้าต้องลบห้อง): roomOccupancy ก่อน hotelRoom (FK RESTRICT — ledger/wo-notes/svc-r0.8-carry.md)
+//   🔴 ลำดับลบ (ถ้าวันหน้าต้องลบห้อง): "roomOccupancy" ก่อน "hotelRoom" (FK RESTRICT — ledger/wo-notes/svc-r0.8-carry.md)
 //   🔴 ไม่สร้าง RoomOccupancy / HotelReservation / Appointment (ธุรกรรม = ใบหลังเติม) · ไม่สร้างพนักงาน/กะ HR
 import { loadSvcQcEnv } from "./svc-qc-env.mjs";
 import { SQC, type SqcRoom, type SqcRoomType, type SqcService, type SqcStaff, type SqcUnit } from "./svc-qc-data.mjs";

@@ -131,7 +131,7 @@ finally {
   for (const id of [tid, tid2].filter(Boolean)) {
     await d(() => prisma.accountJournalLine.deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.accountJournalEntry.deleteMany({ where: { tenantId: id } }));
-    for (const m of ["accountSystemLink", "accountMapping", "accountLedger", "accountPeriod", "accountDocSequence", "accountSettings", "hotelReservation", "hotelRoom", "hotelRoomType", "posPayment", "posSaleLine", "posSale", "posReceiptCounter", "paymentProfile", "customer", "outboxEvent", "appNotification", "appSystemUnit", "appSystem"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: id } }));
+    for (const m of ["accountSystemLink", "accountMapping", "accountLedger", "accountPeriod", "accountDocSequence", "accountSettings", "roomOccupancy", "hotelReservation", "hotelRoom", "hotelRoomType", "posPayment", "posSaleLine", "posSale", "posReceiptCounter", "paymentProfile", "customer", "outboxEvent", "appNotification", "appSystemUnit", "appSystem"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.businessUnit.deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.tenant.delete({ where: { id } }));
   }
