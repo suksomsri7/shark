@@ -113,7 +113,7 @@ const TSX = existsSync(join(ROOT, "node_modules/.bin/tsx")) ? join(ROOT, "node_m
 type RunOut = { code: number | null; out: string; ms: number; timedOut: boolean };
 function runScript(file: string, args: string[] = [], env: Record<string, string | undefined> = {}, timeoutMs = 600_000): RunOut {
   const t = Date.now();
-  const fullEnv: Record<string, string> = {};
+  const fullEnv = {} as NodeJS.ProcessEnv;
   for (const [k, v] of Object.entries({ ...process.env, ...env })) if (v !== undefined) fullEnv[k] = v;
   const r = TSX
     ? spawnSync(TSX, [file, ...args], { cwd: ROOT, env: fullEnv, encoding: "utf8", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 })
