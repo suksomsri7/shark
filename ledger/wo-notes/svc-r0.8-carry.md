@@ -1,0 +1,14 @@
+# ส่งต่อใบ R0.8 (และใบที่ใช้ RoomOccupancy/ค่าลับ) — จากผู้ตรวจ R0.1 · 27 ต.ค. 2569
+- **กันอ้างห้องร้านอื่น (บังคับ)**: `occupancy.ts` อ่านห้องผ่าน `tenantDb({tenantId,unitId}).hotelRoom.findFirstOrThrow({where:{id}})` ใน tx เดียวกันก่อน insert · ห้าม nested `room:{connect}` · ข้อสอบ "roomId ของร้านอื่น ⇒ ปฏิเสธ" · unitId ของ occupancy/building ต้องตรงหน่วยของห้อง (ตรวจในโค้ด)
+- ชนกัน = Postgres `23P01` (ไม่ใช่ P2002) ⇒ แปลงเป็น `ROOM_TAKEN` · CHECK end>start = `23514` (svc_r0b)
+- `endDate` แบบ exclusive (`[)`) · สัญญาถึง 31 ม.ค. เก็บ 1 ก.พ. · แปลงวันที่ตามเวลาไทยก่อน
+- สคริปต์ล้าง QC ทุกตัว (เช่น `scripts/qc-systems.mts:153`) ต้องลบ `roomOccupancy` ก่อน `hotelRoom` (FK RESTRICT)
+- `HotelRoom.hkStatus` ใหม่ ซ้อน `HotelRoom.status` เดิม (CLEANING/OOO) ⇒ R0.8/R0.9 เคาะแหล่งความจริง + แมป
+- ดัชนีที่อาจต้องเพิ่ม: RoomOccupancy (refType,refId) · (tenantId,unitId,startDate) · HotelRoom.buildingId · ChatLinkCode.expiresAt · IntegrationCallLog.at
+- R0.5: `getIntegration` เช็ก `unitIds=[] OR unitId ∈ unitIds` · `lastError`/`code` ห้ามข้อความดิบที่อาจสะท้อนคีย์
+- R0.6: `verifierResult`/`payerName` = PII ⇒ เก็บเฉพาะที่กรองแล้ว + นโยบายระยะเก็บ (PDPA J5) · สลิปซ้ำต่างสาขา ⇒ จับ P2002 แปลง DUPLICATE
+- R0.7: `dedupeKey` ประกอบจาก id เท่านั้น · ChatLinkCode รหัส ≥8–10 ตัวผสม + HMAC มีกุญแจ · retry เมื่อ P2002
+- R0.3/R0.4: SettingChange เป็นแกน tenant ⇒ พนักงานจำกัดสาขาต้องกรอง unitId เอง
+- **ก่อน deploy prod**: role ใน DIRECT_URL ของ prod = owner (neon_superuser) และ `pg_available_extensions` มี btree_gist · migration ADD VALUE DORM ต้องลงก่อน client ที่เขียน DORM
+- ตอนรวม session/hr: replay migrations บนฐานว่าง 1 รอบ (ลำดับชื่อ HR 202612xx อยู่ระหว่าง POS) · scope.ts อาจชนแบบข้อความ
+- areaSqm = DECIMAL(65,30) ตาม CC (ไม่บังคับเปลี่ยน)
