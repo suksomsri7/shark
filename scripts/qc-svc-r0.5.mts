@@ -18,6 +18,7 @@
 //   D  ถอดการเชื่อมต่อ = ลบค่าลับ · get ⇒ null
 //   J  งานลบ call log > 30 วัน (minute-job daily) · รันซ้ำ = 0
 //   P  หน้า settings/integrations (สแตติก) + ฉากภาพ (ไม่มี QC server = SKIP ยอมได้)
+//   R  มติหลังผู้ตรวจ 27 ต.ค. (ORACLE-EDIT R0.5-R1..R12): DUPLICATE_LABEL · ขยายสาขาคนถือคีย์ · ลำดับ get · DISABLED→DRAFT · signal · failed เฉพาะเคย CONNECTED · handle ปลอม · AAD · PEM · race คีย์ · purge deadline · เมนู/การ์ดบัญชี/ไม่มีชื่อ env
 //   Z  สแกนรั่ว: DB (TenantIntegration · IntegrationCallLog · AuditLog · OutboxEvent · OpsEvent) · console · ผลคืนทุกตัว · ทำความสะอาด
 //
 // 🔴 เขียนฐาน qc-svc — รันผ่าน gate lock (ห้ามครอบ timeout):
@@ -119,6 +120,7 @@ const ACT: Record<string, Actor> = {
 const CTX_A = { tenantId: TA };
 const CTX_B = { tenantId: TB };
 const MB = { manager: "svcqc-mb-manager", ek: "svcqc-mb-ek" } as const;
+const MB_PREV2: Record<string, { unitAccess: unknown; permissions: unknown }> = {}; // ORACLE-EDIT R0.5-R2 — unitAccess+permissions เดิม คืนใน finally
 const MB_PREV: Record<string, unknown> = {}; // permissions เดิมของ membership ที่ A-5 แก้ — คืนใน finally
 const STORED_KINDS = ["SLIP_VERIFY", "PAYMENT_GATEWAY", "SMS", "CHANNEL_MANAGER", "METER", "CALENDAR", "EDC"];
 const CATALOG_KINDS = ["LINE_OA", "PROMPTPAY", ...STORED_KINDS];
@@ -151,7 +153,7 @@ function callSync(mod: Any, name: string, ...args: unknown[]): Any {
   try { return fn(...args); } catch (e) { return { __threw: true, message: errMsg(e) }; }
 }
 /** เปิดกล่องเองตามสูตรในใบสั่ง (ไม่พึ่งโค้ดของ builder) */
-function oracleOpen(box: unknown, raw: string, label = "integrations:"): Record<string, unknown> | null {
+function oracleOpen(box: unknown, raw: string, label = "integrations:", aad?: string): Record<string, unknown> | null {
   try {
     if (typeof box !== "string") return null;
     const [a, b, c] = box.split(".");
@@ -160,11 +162,14 @@ function oracleOpen(box: unknown, raw: string, label = "integrations:"): Record<
     const tag = Buffer.from(b, "base64");
     if (iv.length !== 12 || tag.length !== 16) return null;
     const d = createDecipheriv("aes-256-gcm", createHash("sha256").update(`${label}${raw}`).digest(), iv);
+    if (aad !== undefined) d.setAAD(Buffer.from(aad, "utf8"));
     d.setAuthTag(tag);
     const o: unknown = JSON.parse(Buffer.concat([d.update(Buffer.from(c, "base64")), d.final()]).toString("utf8"));
     return o && typeof o === "object" && !Array.isArray(o) ? (o as Record<string, unknown>) : null;
   } catch { return null; }
 }
+/** กล่องของแถว (ORACLE-EDIT R0.5-R8: AAD = `${tenantId}:${integrationId}`) */
+const openRow = (row: Any): Record<string, unknown> | null => oracleOpen(row?.secretBox, KEY1, "integrations:", `${row?.tenantId}:${row?.id}`);
 const TSX = existsSync(join(ROOT, "node_modules/.bin/tsx")) ? join(ROOT, "node_modules/.bin/tsx") : "";
 function runScript(file: string, args: string[], env: Record<string, string | undefined>, timeoutMs: number) {
   const fullEnv = {} as NodeJS.ProcessEnv;
@@ -219,7 +224,7 @@ const getI = async (ctx: Any, kind: string): Promise<Any> => {
   if (typeof I?.getIntegration !== "function") return { __missing: true };
   try { return await I.getIntegration(ctx, kind); } catch (e) { return { __threw: true, message: errMsg(e) }; }
 };
-const callI = async (h: Any, op: string, fn: (a: Any) => Promise<unknown>, opts?: Any): Promise<Any> => {
+const callI = async (h: Any, op: string, fn: (a: Any, c?: Any) => Promise<unknown>, opts?: Any): Promise<Any> => {
   if (typeof I?.callIntegration !== "function") return { ok: false, __missing: true };
   try { return keep(await I.callIntegration(h, op, fn, opts)); } catch (e) { return { ok: false, threw: true, message: errMsg(e) }; }
 };
@@ -369,7 +374,7 @@ try {
   await step("C-2", "แถวดิบ: กล่องเปิด (สูตรข้อสอบ) ได้ apiKey · publicFields ไม่มีค่าลับ · secretNames · ผู้สร้าง/แก้ = owner", async (p) => {
     const row = await rowOf(IDS.L1 ?? "");
     if (!row) { p.push("ไม่มีแถว"); return; }
-    const o = oracleOpen(row.secretBox, KEY1);
+    const o = openRow(row);
     if (o?.apiKey !== S1) p.push("กล่องเปิดแล้วไม่ได้ apiKey");
     if (o && "accountId" in o) p.push("ค่าสาธารณะอยู่ในกล่อง");
     if (js(row.publicFields) !== js({ accountId: "acc-1" }) && row.publicFields?.accountId !== "acc-1") p.push(`publicFields ${js(row.publicFields)}`);
@@ -384,7 +389,7 @@ try {
     const r = await save(CTX_A, ACT.owner, { id: IDS.L1, kind: "SLIP_VERIFY", provider: "FAKE", fields: { accountId: "acc-2" } });
     if (r?.ok !== true) { p.push(`save → ${codeOf(r)}`); return; }
     const row = await rowOf(IDS.L1 ?? "");
-    if (oracleOpen(row?.secretBox, KEY1)?.apiKey !== S1) p.push("apiKey หาย/เปลี่ยน");
+    if (openRow(row)?.apiKey !== S1) p.push("apiKey หาย/เปลี่ยน");
     if (row?.publicFields?.accountId !== "acc-2") p.push(`accountId ${js(row?.publicFields)}`);
     if (row?.label !== before?.label || js(row?.unitIds) !== js(before?.unitIds) || row?.onFailure !== before?.onFailure) p.push("label/unitIds/onFailure เปลี่ยน");
   });
@@ -394,7 +399,7 @@ try {
     if (view(r)?.id !== IDS.L1) p.push("id เปลี่ยน");
     if (fieldOf(view(r), "apiKey")?.masked !== `••••${S2.slice(-4)}`) p.push(`masked ${js(fieldOf(view(r), "apiKey")?.masked)}`);
     const row = await rowOf(IDS.L1 ?? "");
-    const o = oracleOpen(row?.secretBox, KEY1);
+    const o = openRow(row);
     if (o?.apiKey !== S2) p.push("กล่องไม่ใช่ค่าใหม่");
     if (js(o).includes(S1) || js(row).includes(S1)) p.push("ค่าเก่ายังอยู่");
     if (row?.publicFields?.accountId !== "acc-2") p.push("accountId หาย");
@@ -406,12 +411,12 @@ try {
     if (r1?.ok !== true) p.push(`ล้าง → ${codeOf(r1)}`);
     let row = await rowOf(IDS.L1 ?? "");
     if (row?.publicFields && "accountId" in row.publicFields && row.publicFields.accountId !== "") p.push(`accountId ยังอยู่ ${js(row.publicFields)}`);
-    if (oracleOpen(row?.secretBox, KEY1)?.apiKey !== S2) p.push("ล้าง accountId แล้ว apiKey หาย");
+    if (openRow(row)?.apiKey !== S2) p.push("ล้าง accountId แล้ว apiKey หาย");
     const r2 = await save(CTX_A, ACT.owner, { id: IDS.L1, kind: "SLIP_VERIFY", provider: "FAKE", onFailure: "REJECT" });
     if (r2?.ok !== true) p.push(`onFailure → ${codeOf(r2)}`);
     row = await rowOf(IDS.L1 ?? "");
     if (row?.onFailure !== "REJECT") p.push(`onFailure ${row?.onFailure}`);
-    if (oracleOpen(row?.secretBox, KEY1)?.apiKey !== S2) p.push("ส่ง onFailure แล้ว apiKey หาย");
+    if (openRow(row)?.apiKey !== S2) p.push("ส่ง onFailure แล้ว apiKey หาย");
     const r3 = await save(CTX_A, ACT.owner, { kind: "SLIP_VERIFY", provider: "FAKE", label: `${PFX}-L1`, onFailure: "MANUAL" });
     if (r3?.ok !== true) p.push(`ไม่ส่ง id (label ซ้ำ) → ${codeOf(r3)}`);
     else if (view(r3)?.id !== IDS.L1) p.push("ไม่ส่ง id + label ซ้ำ ⇒ ได้แถวใหม่ (คาดแถวเดิม)");
@@ -910,6 +915,200 @@ try {
     if ((await prisma.integrationCallLog.count({ where: { integrationId: iid } })) !== 2) p.push("รอบ 2 ลบเพิ่ม");
   });
 
+  // ═══════════════ R มติหลังผู้ตรวจ 27 ต.ค. (ORACLE-EDIT R0.5-R1..R12) ═══════════════
+  out("\n— R มติหลังผู้ตรวจ (ORACLE-EDIT) —");
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  await step("R-1", "save create:true (ไม่มี id) label ชนแถวเดิม kind+provider ⇒ VALIDATION detail DUPLICATE_LABEL · แถวเดิมไม่เปลี่ยน (คีย์/unitIds/status)", async (p) => {
+    p.push(...NEED());
+    const before = await rowOf(IDS.L2 ?? "");
+    const r = await save(CTX_A, ACT.owner, fakeIn(`${PFX}-L2`, { apiKey: sec("dup") }, { create: true, unitIds: [U.massage] }));
+    if (!refused(r, "VALIDATION") || r?.detail !== "DUPLICATE_LABEL") p.push(`→ ${codeOf(r)} detail ${js(r?.detail)} (คาด VALIDATION/DUPLICATE_LABEL)`);
+    const after = await rowOf(IDS.L2 ?? "");
+    if (js(after) !== js(before)) p.push("แถว L2 เปลี่ยน");
+    if (openRow(after)?.apiKey !== S3) p.push("คีย์ L2 เปลี่ยน");
+    const ok = await save(CTX_A, ACT.owner, fakeIn(`${PFX}-R1new`, { apiKey: sec("r1") }, { create: true, unitIds: [U.massage] }));
+    if (ok?.ok !== true || view(ok)?.status !== "DRAFT") p.push(`create:true label ใหม่ → ${codeOf(ok)} (คาด ok DRAFT)`);
+  });
+  await step("R-2", "MANAGER (unitAccess * + settings.staff.write) ขยาย unitAccess ของ STAFF ที่ถือคีย์ศูนย์ฯ ⇒ ปฏิเสธ · OWNER ได้ · ขยายของคนไม่ถือคีย์ ⇒ ได้ (positive control)", async (p) => {
+    const SM = await tryImport("@/lib/staff/service");
+    if (typeof SM?.updateStaffAccess !== "function") { p.push("ไม่มี updateStaffAccess"); return; }
+    const ids = { manager: "svcqc-mb-manager", ek: "svcqc-mb-ek", meter: "svcqc-mb-meter" };
+    const mbs = (await prisma.membership.findMany({ where: { id: { in: Object.values(ids) }, tenantId: TA } })) as Any[];
+    if (mbs.length !== 3) { p.push(`membership seed ${mbs.length}/3`); return; }
+    for (const m of mbs) if (!(m.id in MB_PREV2)) MB_PREV2[m.id] = { unitAccess: m.unitAccess, permissions: m.permissions ?? {} };
+    await prisma.membership.update({ where: { id: ids.manager }, data: { unitAccess: ["*"], permissions: { "settings.staff.write": true } } });
+    await prisma.membership.update({ where: { id: ids.ek }, data: { unitAccess: [U.barber], permissions: { ...(MB_PREV2[ids.ek]!.permissions as object), "settings.integrations.manage": true } } });
+    await prisma.membership.update({ where: { id: ids.meter }, data: { unitAccess: [U.dorm] } });
+    const ua = async (id: string) => js(((await prisma.membership.findUnique({ where: { id } }))?.unitAccess ?? []) as string[]);
+    const upd = (actorUserId: string, membershipId: string, unitAccess: string[]) => call(SM, "updateStaffAccess", { tenantId: TA, actorUserId, membershipId, unitAccess });
+    const r1 = await upd(ACT.manager.userId, ids.ek, [U.barber, U.massage]);
+    if (r1?.ok !== false || r1?.threw) p.push(`MANAGER ขยาย ek (ถือคีย์) → ${codeOf(r1)} (คาดปฏิเสธ)`);
+    if ((await ua(ids.ek)) !== js([U.barber])) p.push("unitAccess ของ ek เปลี่ยน");
+    const r2 = await upd(ACT.manager.userId, ids.meter, [U.dorm, U.hotel]);
+    if (r2?.ok !== true || (await ua(ids.meter)) !== js([U.dorm, U.hotel])) p.push(`positive control: MANAGER ขยาย meter (ไม่ถือคีย์) → ${String(r2?.reason ?? codeOf(r2)).slice(0, 80)}`);
+    const r3 = await upd(ACT.owner.userId, ids.ek, [U.barber, U.massage]);
+    if (r3?.ok !== true || (await ua(ids.ek)) !== js([U.barber, U.massage])) p.push(`OWNER ขยาย ek → ${String(r3?.reason ?? codeOf(r3)).slice(0, 80)} (คาด ok)`);
+    for (const [id, v] of Object.entries(MB_PREV2)) await prisma.membership.update({ where: { id }, data: { unitAccess: v.unitAccess as Any, permissions: v.permissions as Any } });
+  });
+  await step("R-3", "getIntegration ทุกหน่วย 2 แถว: a=ERROR (updatedAt ใหม่กว่า) b=CONNECTED ⇒ คืน b (หน่วยเฉพาะ > CONNECTED ก่อน ERROR > updatedAt)", async (p) => {
+    p.push(...NEED());
+    const rb = await save(CTX_A, ACT.owner, { kind: "CALENDAR", provider: "FAKE", label: `${PFX}-calB`, unitIds: [], fields: { apiKey: sec("cb") } });
+    IDS.CALB = String(view(rb)?.id ?? "");
+    const tb = await test(CTX_A, ACT.owner, IDS.CALB);
+    await sleep(30);
+    const ra = await save(CTX_A, ACT.owner, { kind: "CALENDAR", provider: "FAKE", label: `${PFX}-calA`, unitIds: [], fields: { apiKey: sec("ca") } });
+    IDS.CALA = String(view(ra)?.id ?? "");
+    const ta = await test(CTX_A, ACT.owner, IDS.CALA);
+    if (tb?.passed !== true || ta?.passed !== true) { p.push(`test → ${codeOf(tb)}/${codeOf(ta)}`); return; }
+    const h = await getI({ tenantId: TA, unitId: U.hotel }, "CALENDAR");
+    if (h?.integrationId !== IDS.CALA) p.push("CONNECTED ทั้งคู่ ⇒ ควรได้ a (updatedAt ใหม่กว่า)");
+    for (let i = 0; i < 5; i++) await callI(h, "pull", throwSecret("x"));
+    const a = await rowOf(IDS.CALA), b = await rowOf(IDS.CALB);
+    if (a?.status !== "ERROR" || !(new Date(a.updatedAt).getTime() > new Date(b?.updatedAt).getTime())) { p.push(`ตั้งฉากไม่ได้ a ${a?.status}`); return; }
+    for (const ctx of [{ tenantId: TA, unitId: U.hotel }, { tenantId: TA }]) {
+      const g = await getI(ctx, "CALENDAR");
+      if (g?.integrationId !== IDS.CALB) p.push(`${ctx.unitId ? "hotel" : "ไม่ส่งหน่วย"} → ${g?.integrationId === IDS.CALA ? "a (ERROR)" : js(g?.integrationId ?? g)} (คาด b)`);
+    }
+  });
+  await step("R-4", "แถว DISABLED + บันทึกคีย์ใหม่ ⇒ DRAFT · consecutiveFailures 0 · lastTestOk/lastError/lastTestAt null · ล้ม 1 ครั้งไม่เป็น ERROR", async (p) => {
+    p.push(...NEED());
+    if ((await rowOf(IDS.L1 ?? ""))?.status !== "DISABLED") { p.push("L1 ไม่ใช่ DISABLED (ข้อ D-1)"); return; }
+    await prisma.tenantIntegration.update({ where: { id: IDS.L1 }, data: { consecutiveFailures: 4 } });
+    const r = await save(CTX_A, ACT.owner, { id: IDS.L1, kind: "SLIP_VERIFY", provider: "FAKE", fields: { apiKey: sec("L1c"), mode: "FAIL" } });
+    if (r?.ok !== true) { p.push(`save → ${codeOf(r)}`); return; }
+    const row = await rowOf(IDS.L1 ?? "");
+    if (row?.status !== "DRAFT" || row?.consecutiveFailures !== 0 || row?.lastTestOk !== null || row?.lastError !== null || row?.lastTestAt !== null)
+      p.push(`แถว ${row?.status} cf ${row?.consecutiveFailures} ok ${js(row?.lastTestOk)} err ${row?.lastError === null ? "null" : "มี"} at ${row?.lastTestAt === null ? "null" : "มี"}`);
+    const t = await test(CTX_A, ACT.owner, IDS.L1 ?? "");
+    const row2 = await rowOf(IDS.L1 ?? "");
+    if (t?.ok !== true || t.passed !== false) p.push(`test → ${codeOf(t)}`);
+    if (row2?.status === "ERROR" || row2?.consecutiveFailures !== 1) p.push(`ล้ม 1 ครั้ง ⇒ ${row2?.status} cf ${row2?.consecutiveFailures}`);
+  });
+  await step("R-5", "callIntegration ส่ง { signal } ให้ fn เป็นอาร์กิวเมนต์ที่ 2 · หมดเวลา ⇒ signal.aborted · fn ที่เคารพ signal ไม่ทำผลข้างเคียงหลังหมดเวลา", async (p) => {
+    p.push(...NEED());
+    const h = await getI({ tenantId: TA, unitId: U.barber }, "SLIP_VERIFY");
+    if (!h?.integrationId) { p.push("ไม่มี handle"); return; }
+    let sig: Any = null;
+    let side = false;
+    const r = await callI(h, "verify", async (_a, c) => { sig = c?.signal ?? null; await sleep(600); if (!sig?.aborted) side = true; return 1; }, { timeoutMs: 200 });
+    if (r?.code !== "TIMEOUT") p.push(`→ ${js(r).slice(0, 60)}`);
+    if (!sig || typeof sig.aborted !== "boolean") p.push("fn ไม่ได้ { signal }");
+    else if (sig.aborted !== true) p.push("หมดเวลาแล้ว signal.aborted ยัง false");
+    await sleep(700);
+    if (side) p.push("เกิดผลข้างเคียงหลังหมดเวลา (signal ไม่ถูก abort)");
+    await callI(h, "verify", (a) => a.verify({ qrPayload: "x" }, { amountSatang: 100, receiver: {} })); // รีเซ็ตตัวนับ L2
+  });
+  await step("R-6", "integration.failed ออกเฉพาะแถวที่เคย CONNECTED: DRAFT ล้ม 5 ครั้ง ⇒ ERROR แต่ไม่มี event", async (p) => {
+    p.push(...NEED());
+    const r = await save(CTX_A, ACT.owner, { kind: "METER", provider: "FAKE", label: `${PFX}-meter`, unitIds: [U.dorm], fields: { apiKey: sec("mt"), mode: "FAIL" } });
+    IDS.METER = String(view(r)?.id ?? "");
+    for (let i = 0; i < 5; i++) await test(CTX_A, ACT.owner, IDS.METER);
+    const row = await rowOf(IDS.METER);
+    if (row?.status !== "ERROR" || row?.consecutiveFailures !== 5) p.push(`แถว ${row?.status} cf ${row?.consecutiveFailures} (คาด ERROR 5)`);
+    const ev = await eventsOf(IDS.METER, "integration.failed");
+    if (ev.length !== 0) p.push(`event failed ${ev.length} (คาด 0 — ไม่เคย CONNECTED)`);
+  });
+  await step("R-7", "handle ที่ไม่ได้มาจาก getIntegration (สำเนา/ปลอม) ⇒ NOT_READY · fn ไม่ถูกเรียก · ไม่แตะแถว/ไม่เขียน call log", async (p) => {
+    p.push(...NEED());
+    const h = await getI({ tenantId: TA, unitId: U.barber }, "SLIP_VERIFY");
+    const before = js(await rowOf(IDS.L2 ?? ""));
+    const n0 = (await logsOf(IDS.L2 ?? "")).length;
+    let called = 0;
+    const forged = [{ ...h }, { integrationId: IDS.L2, kind: "SLIP_VERIFY", provider: "FAKE", onFailure: "MANUAL", adapter: { verify: async () => ({ status: "VALID" }), test: async () => {} } }];
+    for (const [i, f] of forged.entries()) {
+      const r = await callI(f, "verify", async () => { called++; throw new Error("x"); });
+      if (r?.ok !== false || r?.code !== "NOT_READY") p.push(`ปลอม ${i + 1} → ${js(r).slice(0, 60)}`);
+    }
+    if (called) p.push(`fn ถูกเรียก ${called}`);
+    if (js(await rowOf(IDS.L2 ?? "")) !== before) p.push("แถว L2 เปลี่ยน");
+    if ((await logsOf(IDS.L2 ?? "")).length !== n0) p.push("เขียน call log");
+  });
+  await step("R-8", "กล่องลับผูก AAD = `${tenantId}:${integrationId}`: ข้อสอบเปิดด้วย AAD ได้ · AAD อื่น/ไม่มี AAD ไม่ได้ · ย้าย secretBox ไปแถวอื่น ⇒ get null · list masked ••••", async (p) => {
+    p.push(...NEED());
+    const l2 = await rowOf(IDS.L2 ?? ""), l4 = await rowOf(IDS.L4 ?? "");
+    if (!l2 || !l4) { p.push("ไม่มี L2/L4"); return; }
+    if (oracleOpen(l2.secretBox, KEY1, "integrations:", `${TA}:${l2.id}`)?.apiKey !== S3) p.push("เปิดด้วย AAD tenantId:integrationId ไม่ได้");
+    if (oracleOpen(l2.secretBox, KEY1, "integrations:", `${TA}:${l4.id}`)) p.push("AAD ของแถวอื่นเปิดได้");
+    if (oracleOpen(l2.secretBox, KEY1)) p.push("ไม่มี AAD เปิดได้ (ไม่ได้ผูก)");
+    if (BOX) {
+      const b = callSync(BOX, "sealIntegrationSecret", { apiKey: "y".repeat(12) }, "t1:i1");
+      if (callSync(BOX, "openIntegrationSecret", b, "t1:i1")?.apiKey !== "y".repeat(12)) p.push("seal/open(…, aad) ไปกลับไม่ได้");
+      if (callSync(BOX, "openIntegrationSecret", b, "t1:i2") !== null) p.push("open ด้วย aad อื่นไม่ใช่ null");
+    }
+    const hb = await getI({ tenantId: TA, unitId: U.hotel }, "SLIP_VERIFY");
+    if (hb?.integrationId !== IDS.L4) p.push("ก่อนย้าย get(hotel) ไม่ได้ L4");
+    try {
+      await prisma.tenantIntegration.update({ where: { id: l4.id }, data: { secretBox: l2.secretBox, secretNames: l2.secretNames } });
+      const h = await getI({ tenantId: TA, unitId: U.hotel }, "SLIP_VERIFY");
+      if (h !== null) p.push(`ย้ายกล่อง L2→L4 แล้ว get(hotel) → ${js(h?.integrationId ?? h).slice(0, 40)} (คาด null)`);
+      const l = await list(CTX_A, ACT.owner);
+      const f = fieldOf((l?.items ?? []).find((x: Any) => x?.id === l4.id), "apiKey");
+      if (f?.masked !== "••••") p.push(`list L4 apiKey ${js(f?.masked)} (คาด ••••)`);
+    } finally {
+      await prisma.tenantIntegration.update({ where: { id: l4.id }, data: { secretBox: l4.secretBox, secretNames: l4.secretNames } });
+    }
+  });
+  await step("R-9", "ค่าลับหลายบรรทัด (PEM) บันทึกได้ · เปิดคืนตรงทุกตัวอักษร", async (p) => {
+    p.push(...NEED());
+    const a = sec("pemA"), b = sec("pemB");
+    const pem = `-----BEGIN PRIVATE KEY-----\n${a}\n${b}\n-----END PRIVATE KEY-----`;
+    const r = await save(CTX_A, ACT.owner, { kind: "EDC", provider: "FAKE", label: `${PFX}-pem`, unitIds: [], fields: { apiKey: pem } });
+    if (r?.ok !== true) { p.push(`save → ${codeOf(r)} ${String(r?.message ?? "").slice(0, 60)}`); return; }
+    IDS.PEM = String(view(r)?.id ?? "");
+    if (openRow(await rowOf(IDS.PEM))?.apiKey !== pem) p.push("เปิดคืนไม่ตรง");
+  });
+  await step("R-10", "test ที่ผ่านด้วยคีย์เก่า ขณะมีการเปลี่ยนคีย์ระหว่าง test (FAKE mode SLOW) ⇒ แถว (คีย์ใหม่) ไม่เป็น CONNECTED · ไม่มี event connected", async (p) => {
+    p.push(...NEED());
+    const r = await save(CTX_A, ACT.owner, { kind: "CHANNEL_MANAGER", provider: "FAKE", label: `${PFX}-race`, unitIds: [U.hotel], fields: { apiKey: sec("rc1"), mode: "SLOW" } });
+    IDS.RACE = String(view(r)?.id ?? "");
+    if (!IDS.RACE) { p.push(`save → ${codeOf(r)}`); return; }
+    const kNew = sec("rc2");
+    const t0 = Date.now();
+    const tp = test(CTX_A, ACT.owner, IDS.RACE);
+    await sleep(400);
+    const s2 = await save(CTX_A, ACT.owner, { id: IDS.RACE, kind: "CHANNEL_MANAGER", provider: "FAKE", fields: { apiKey: kNew } });
+    const t = await tp;
+    if (Date.now() - t0 < 1000) p.push(`mode SLOW ไม่ช้า (${Date.now() - t0} ms — ต้อง ≥ 1500)`);
+    if (s2?.ok !== true) p.push(`เปลี่ยนคีย์ระหว่าง test → ${codeOf(s2)}`);
+    const row = await rowOf(IDS.RACE);
+    if (openRow(row)?.apiKey !== kNew) p.push("กล่องไม่ใช่คีย์ใหม่");
+    if (row?.status === "CONNECTED") p.push(`แถวเป็น CONNECTED ด้วยผลทดสอบของคีย์เก่า (test passed ${js(t?.passed)})`);
+    if ((await eventsOf(IDS.RACE, "integration.connected")).length) p.push("มี event connected");
+  });
+  await step("R-11", "purgeIntegrationCallLogs(now, { deadline }) หยุดเมื่อเกินเวลา (ก้อน ≤ 1000) · รันซ้ำลบต่อจนหมด", async (p) => {
+    p.push(...NEED());
+    const now = new Date();
+    const iid = `svc-r05-purge2-${RAND}`;
+    const N = 2500;
+    await prisma.integrationCallLog.createMany({ data: Array.from({ length: N }, (_, i) => ({ tenantId: TA, integrationId: iid, op: `p${i}`, ok: true, ms: 1, code: null, at: new Date(now.getTime() - 40 * DAY) })) });
+    const r1 = await call(I, "purgeIntegrationCallLogs", now, { deadline: Date.now() - 1 });
+    const left1 = await prisma.integrationCallLog.count({ where: { integrationId: iid } });
+    if (r1?.ok === false) p.push(`รอบ deadline → ${codeOf(r1)}`);
+    if (left1 === 0) p.push("deadline ผ่านแล้วยังลบหมด (ไม่หยุด)");
+    if (N - left1 > 1000) p.push(`ลบ ${N - left1} แถวทั้งที่เกินเวลา (ก้อน ≤ 1000)`);
+    for (let i = 0; i < 5 && (await prisma.integrationCallLog.count({ where: { integrationId: iid } })) > 0; i++) await call(I, "purgeIntegrationCallLogs", now);
+    const left2 = await prisma.integrationCallLog.count({ where: { integrationId: iid } });
+    if (left2 !== 0) p.push(`รันซ้ำแล้วเหลือ ${left2}`);
+  });
+  await step("R-12", "เมนู NavDrawer มี \"ศูนย์เชื่อมต่อ\" → /app/settings/integrations · การ์ดรายการเดินบัญชีธนาคารเป็นลิงก์ไปบัญชี · ข้อความไม่มีกุญแจไม่มีชื่อ env", async (p) => {
+    const nav = read("src/components/app-shell/NavDrawer.tsx");
+    if (!/href:\s*["']\/app\/settings\/integrations["'][^}]*ศูนย์เชื่อมต่อ|ศูนย์เชื่อมต่อ[^{]*["']\/app\/settings\/integrations["']/.test(nav)) p.push("NavDrawer ไม่มีลิงก์ ศูนย์เชื่อมต่อ → /app/settings/integrations");
+    const pf = walk("src/app/app/settings/integrations").map(read);
+    const all = pf.join("\n");
+    // การ์ด = ไฟล์ที่มีข้อความ "รายการเดินบัญชี" ใน JSX ต้องมี href ใกล้ ๆ (±600) · ปลายทาง /account/ อยู่ที่ใดก็ได้ในโฟลเดอร์หน้า (เช่นคำนวณใน page.tsx แล้วส่ง props)
+    const cardOk = pf.some((f) => { let i = f.indexOf("รายการเดินบัญชี"); while (i >= 0) { if (/href/.test(f.slice(Math.max(0, i - 600), i + 600)) && !/เร็ว ๆ นี้/.test(f.slice(Math.max(0, i - 300), i + 300))) return true; i = f.indexOf("รายการเดินบัญชี", i + 1); } return false; });
+    if (!all.includes("รายการเดินบัญชี")) p.push("หน้าไม่มีการ์ด รายการเดินบัญชีธนาคาร");
+    else if (!cardOk) p.push("การ์ดรายการเดินบัญชีไม่เป็นลิงก์ (ไม่มี href ใกล้ ๆ หรือเป็น \"เร็ว ๆ นี้\")");
+    if (!/["'`][^"'`]*\/account\/[^"'`]*["'`]/.test(all)) p.push("ไม่มีปลายทางลิงก์ไปบัญชี (/account/…) ในโฟลเดอร์หน้า");
+    if (all.includes("INTEGRATIONS_CREDENTIALS_KEY")) p.push("หน้ามีชื่อ env INTEGRATIONS_CREDENTIALS_KEY");
+    await withEnv({ INTEGRATIONS_CREDENTIALS_KEY: undefined }, async () => {
+      const r = await save(CTX_A, ACT.owner, fakeIn(`${PFX}-noenv`, { apiKey: sec("ne") }));
+      if (String(r?.message ?? "").includes("INTEGRATIONS_CREDENTIALS_KEY")) p.push("ข้อความปฏิเสธ (ไม่มีกุญแจ) มีชื่อ env");
+      const t = await test(CTX_A, ACT.owner, IDS.L2 ?? "");
+      if (String(t?.message ?? "").includes("INTEGRATIONS_CREDENTIALS_KEY")) p.push("ข้อความ test (ไม่มีกุญแจ) มีชื่อ env");
+    });
+  });
+
   // ═══════════════ P หน้า ═══════════════
   out("\n— P หน้า settings/integrations —");
   const pageFiles = walk("src/app/app/settings/integrations");
@@ -983,7 +1182,8 @@ try {
   for (const k of ENV_KEYS) envSet(k, ENV_SAVED[k]);
   try {
     for (const [id, v] of Object.entries(MB_PREV)) await prisma.membership.update({ where: { id }, data: { permissions: v } });
-    await prisma.auditLog.deleteMany({ where: { tenantId: TA, targetId: { in: Object.keys(MB_PREV) }, action: { startsWith: "membership." }, createdAt: { gte: START } } });
+    for (const [id, v] of Object.entries(MB_PREV2)) await prisma.membership.update({ where: { id }, data: { unitAccess: v.unitAccess as Any, permissions: v.permissions as Any } });
+    await prisma.auditLog.deleteMany({ where: { tenantId: TA, targetId: { in: [...Object.keys(MB_PREV), ...Object.keys(MB_PREV2)] }, action: { startsWith: "membership." }, createdAt: { gte: START } } });
     await cleanup();
     if (created.payProfile === "created") await prisma.paymentProfile.deleteMany({ where: { tenantId: TA, displayName: `svc-r05 ${RAND}` } });
     if (created.payProfile === "patched") await prisma.paymentProfile.update({ where: { tenantId: TA }, data: { promptpayId: created.payPrev?.promptpayId ?? null } });

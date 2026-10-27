@@ -1,7 +1,7 @@
 # ใบสั่ง R0.5 — ศูนย์เชื่อมต่อ (Integrations) · ตรวจ **เข้ม** (ความลับ · ข้ามร้าน)
 
 > แหล่งความจริง: `ledger/SVC-MASTER-PLAN.md` แถว R0.5 · `ledger/SVC-CORE-CONTRACT.md` §2 (+ §7 event · §8 สิทธิ์) · `ledger/DESIGN-BOOKING-QUEUE.md` §4.6 · `ledger/DESIGN-DORM-HOTEL.md` §5.3 · ภาพ `ledger/design-booking/10-integrations.png` = `ledger/design-dorm/11-integrations.png` (หน้าเดียว — parity กับทั้งสอง) · `ledger/wo-notes/svc-r0.8-carry.md` (ข้อ R0.5) · กติกา `ledger/SVC-RUN.md` §1
-> ข้อสอบ (ห้ามแก้): `scripts/qc-svc-r0.5.mts` — 57 ข้อ (F4 S4 K4 C7 A5 X1 T3 G3 L7 E2 V4 FK2 D1 J2 P4 Z4) · รับใบ = **ไม่มี FAIL** · SKIP ที่ยอมได้มีชนิดเดียว: `P-4` ถ่ายภาพจริง (ไม่มี QC server — ผู้คุม build + ถ่ายเองตอนรับงาน)
+> ข้อสอบ (ห้ามแก้): `scripts/qc-svc-r0.5.mts` — 69 ข้อ (F4 S4 K4 C7 A5 X1 T3 G3 L7 E2 V4 FK2 D1 J2 R12 P4 Z4) · รับใบ = **ไม่มี FAIL** · SKIP ที่ยอมได้มีชนิดเดียว: `P-4` ถ่ายภาพจริง (ไม่มี QC server — ผู้คุม build + ถ่ายเองตอนรับงาน)
 > builder: **ห้าม build/next · ห้าม commit/push · ห้าม `pnpm install` · ห้าม migration/แก้ `prisma/`** (ตารางมีแล้วจาก R0.1) · รายงานต่อข้อ (id → ผล)
 > รัน: `bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-r0.5.mts` (เขียนฐาน qc-svc · ห้ามรันขนานกับข้อสอบอื่นที่เขียนฐาน · ห้ามครอบ timeout)
 > regression ที่ผู้คุมรันตอนรับ: `qc-svc-smoke.mts` · `qc-chat-security.mts` · `qc-chat-security-scope.mts` (การเชื่อม LINE) · `qc-payment.mts` · `qc-svc-r0.1.mts` (ตาราง)
@@ -116,3 +116,18 @@ INTEGRATION_CALL_LOG_RETENTION_DAYS = 30
 6. ชนิดที่ 9 = `EDC` (ภาพจอง 10) · รายการเดินบัญชีธนาคาร (ภาพหอ 11) = ไม่อยู่ในใบนี้
 7. PROMPTPAY รอบนี้อ่าน `PaymentProfile` อย่างเดียว (ค่าตั้ง `payments.receiver` มากับ R0.3/R0.6)
 10. **ด่านให้สิทธิ์ต่อ** (ORACLE-EDIT R0.5-A-5 · ผู้คุม 27 ต.ค.): `settings.integrations.manage` = คีย์ owner-only แบบ `CRM_OWNER_ONLY_KEYS` — ผู้ที่ไม่ใช่ OWNER (รวม MANAGER ที่ถือคีย์เอง) ให้คีย์นี้แก่คนอื่นผ่าน `updateStaffAccess`/`grantStaffAccess` ไม่ได้ · OWNER ให้ได้ · builder เพิ่มคีย์เข้าชุด owner-only ใน `src/lib/core/permissions.ts` + ด่านใน `src/lib/staff/service.ts` (ไฟล์เพิ่มในขอบเขตใบ)
+
+## 9. มติหลังผู้ตรวจ 27 ต.ค. (ORACLE-EDIT R0.5-R1..R12 · ข้อสอบหมวด R · ทับข้อที่ขัดกันข้างบน)
+1. **R-1** `saveIntegration` รับ `create: true` (ไม่มี id) = สร้างอย่างเดียว · label ชนแถวเดิม (kind+provider) ⇒ `{ ok:false, code:"VALIDATION", detail:"DUPLICATE_LABEL", message }` แถวเดิมไม่เปลี่ยน · ไม่ส่ง `create` = พฤติกรรม upsert ตาม §3.1 เดิม
+2. **R-2** `updateStaffAccess`/`grantStaffAccess`: ผู้ที่ไม่ใช่ OWNER **ขยาย `unitAccess`** ของคนที่ถือ `settings.integrations.manage` ไม่ได้ (แม้ตัวเองเป็น `*` + `settings.staff.write`) · OWNER ได้ · คนไม่ถือคีย์ = กติกาเดิม
+3. **R-3** ลำดับเลือกของ `getIntegration`: แถวระบุหน่วย > แถวทุกหน่วย · แล้ว CONNECTED ก่อน ERROR · แล้ว updatedAt ล่าสุด
+4. **R-4** save ค่าลับใหม่บนแถว `DISABLED` ⇒ `DRAFT` · `consecutiveFailures 0` · `lastTestOk/lastError/lastTestAt = null` (ทับ "save ไม่เปลี่ยน status" สำหรับกรณีนี้) · DRAFT ล้มไม่เป็น ERROR จนครบ 5
+5. **R-5** `callIntegration` เรียก `fn(adapter, { signal })` · หมดเวลา ⇒ `signal` ถูก abort · adapter ของ FAKE รับ/เคารพ signal
+6. **R-6** `integration.failed` ออกเฉพาะแถวที่เคย CONNECTED (แถว DRAFT ล้มครบ 5 ⇒ ERROR แต่ไม่มี event)
+7. **R-7** handle ที่ไม่ได้มาจาก `getIntegration` (สำเนา `{...h}` หรือประกอบเอง) ⇒ `NOT_READY` · ไม่เรียก fn · ไม่แตะแถว · ไม่เขียน call log
+8. **R-8** กล่องผูก AAD: `sealIntegrationSecret(obj, aad?)` / `openIntegrationSecret(box, aad?)` — `setAAD(utf8(aad))` เมื่อส่ง · service ใช้ `aad = \`${tenantId}:${integrationId}\`` เสมอ (ข้อสอบเปิดเองด้วยสูตรนี้) · ย้ายกล่องไปแถวอื่น ⇒ เปิดไม่ได้ (get null · masked "••••")
+9. **R-9** ค่าลับหลายบรรทัด (PEM · `\n`) บันทึกได้ เปิดคืนตรงทุกตัวอักษร (ห้าม trim ภายใน · ห้ามปฏิเสธ `\n`/`\r`)
+10. **R-10** FAKE เพิ่ม `mode: "SLOW"` = รอ 1500 ms แล้วผ่าน (เคารพ signal) · test ที่ผ่านด้วยคีย์ที่ไม่ใช่คีย์ปัจจุบันของแถว (คีย์ถูกเปลี่ยนระหว่าง test) ⇒ ไม่ตั้ง CONNECTED / ไม่ออก event (เทียบ secretBox/เวอร์ชันก่อนเขียนผล)
+11. **R-11** `purgeIntegrationCallLogs(now, opts?: { deadline?: number /* ms epoch */ })` ลบเป็นก้อน ≤ 1000 · ตรวจ deadline ก่อนแต่ละก้อน · เกินเวลา = หยุด คืน `{ deleted }` · รันซ้ำลบต่อ · minute-job ส่ง `ctrl.deadline`
+12. **R-12** NavDrawer เพิ่มเมนู "ศูนย์เชื่อมต่อ" → `/app/settings/integrations` · หน้ามีการ์ด "รายการเดินบัญชีธนาคาร" เป็นลิงก์ไปบัญชี (`/app/sys/<id>/account/…` · ไม่ใช่ "เร็ว ๆ นี้" · ไม่อยู่ใน catalog 9 ชนิด) · ข้อความไม่มีกุญแจ (หน้า + ข้อความปฏิเสธ) ไม่มีชื่อ env `INTEGRATIONS_CREDENTIALS_KEY` (ทับ §8 ข้อ 6 เรื่องการ์ดบัญชี)
+
