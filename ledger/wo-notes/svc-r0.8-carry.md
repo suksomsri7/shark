@@ -27,3 +27,4 @@
 - **D.5**: สัญญาหอที่ไม่มีวันจบ ⇒ ต้องตกลงรูปแบบ endDate (RoomOccupancy บังคับ endDate > startDate)
 - seed-svc-qc.mts แก้คอมเมนต์ (ใส่ "roomOccupancy" ในเครื่องหมายคำพูด) = ผู้คุมรับแล้ว
 - (ผู้คุม 27 ต.ค.) ปล่อยห้องหลังเช็กเอาต์ล้ม ⇒ occupancy ค้าง active: ต้องมีงานเก็บกวาด (minute-job ปล่อย STAY ของการจองที่ CHECKED_OUT/CANCELLED) — ใส่ใน R0.9
+- (ผู้ตรวจยืนยันซ้ำ) setRoomTypeRent(MONTHLY) ยังไม่คืน affected — เติมใน R0.9 · งานเก็บกวาด: ปิด occupancy refType=HotelReservation ที่การจองไม่ใช่ BOOKED/CHECKED_IN (minute-job) — R0.9
