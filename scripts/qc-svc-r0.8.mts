@@ -12,6 +12,7 @@
 //   T  จองห้องเดียวช่วงซ้อนจาก 3 ทางพร้อมกัน (สัญญาหอจำลอง · เคาน์เตอร์ · ออนไลน์) ⇒ สำเร็จ 1 (5 รอบ)
 //   P  โรงแรม P1 เขียน/ปล่อย occupancy ใน tx เดียวกับการจอง · ชนห้องที่หอถือ ⇒ ปฏิเสธ
 //   K  backfill (dry-run ไม่เขียน · apply · ซ้ำ = 0 · ชนรายงานไม่ throw · เฉพาะ tenant)
+//   Z  มติหลังผู้ตรวจ 27 ต.ค.: การจองนับเป็นภาระเสมอ (+LEASE/BLOCK/HOLD · legacy) · affected (รวม setRoomStatus OOO) · checkOut ปล่อยหลัง POS · ตัวนับตลอดช่วง · best-fit · dry-run ไม่ล็อก · expire 300 · requireRentMode · RELEASE SAVEPOINT · แข่ง 30 ทาง
 //   G  regression qc-hotel-money/public/refund (ลูกโพรเซส) + ไม่มี occupancy กำพร้า
 //
 // ข้อมูลทดสอบอยู่ใต้ tenant ชั่วคราว slug `qc-svc-r08-*` · ลบใน finally (occupancy ก่อนห้อง) + กวาดของค้างรอบก่อนตอนเริ่ม
@@ -93,6 +94,7 @@ async function cleanup(tids: string[]) {
     await d(() => prisma.hotelRoom.deleteMany({ where: { tenantId } }));
     await d(() => prisma.roomBuilding.deleteMany({ where: { tenantId } }));
     await d(() => prisma.hotelRoomType.deleteMany({ where: { tenantId } }));
+    for (const m of ["posPayment", "posSaleLine", "posSale", "posReceiptCounter", "appSystemUnit", "appSystem"]) await d(() => prisma[m].deleteMany({ where: { tenantId } }));
     await d(() => prisma.businessUnit.deleteMany({ where: { tenantId } }));
     await d(() => prisma.tenant.deleteMany({ where: { id: tenantId } }));
   }
@@ -228,8 +230,8 @@ try {
   const tTypeB = await mkType(B, HB, "ร้านอื่น");
   const Z101 = await mkRoom(B, HB, tTypeB, "Z101");
 
-  const tx = <R,>(f: (t: any) => Promise<R>): Promise<R> => prisma.$transaction(f);
-  const claim = (a: Record<string, unknown>) => tx((t) => fn("claimRoom")!(t, a));
+  const tx = (f: (t: any) => Promise<any>): Promise<any> => prisma.$transaction(f);
+  const claim = (a: Record<string, unknown>): Promise<any> => tx((t) => fn("claimRoom")!(t, a));
   const base = (roomId: string, start: string | Date, end: string | Date, refId: string, kind = "LEASE", refType = "DormLease", extra: Record<string, unknown> = {}) =>
     ({ tenantId: A, unitId: HA, roomId, start, end, kind, refType, refId, ...extra });
   const occOf = (id: string) => prisma.roomOccupancy.findUnique({ where: { id } });
@@ -420,9 +422,9 @@ try {
 
   // ═══════════════ R. release / move / resize ═══════════════
   console.log("\n── R release/move/resize ──");
-  const rel = (a: Record<string, unknown>) => tx((t) => fn("releaseOccupancy")!(t, a));
-  const mv = (a: Record<string, unknown>) => tx((t) => fn("moveOccupancy")!(t, a));
-  const rs = (a: Record<string, unknown>) => tx((t) => fn("resizeOccupancy")!(t, a));
+  const rel = (a: Record<string, unknown>): Promise<any> => tx((t) => fn("releaseOccupancy")!(t, a));
+  const mv = (a: Record<string, unknown>): Promise<any> => tx((t) => fn("moveOccupancy")!(t, a));
+  const rs = (a: Record<string, unknown>): Promise<any> => tx((t) => fn("resizeOccupancy")!(t, a));
   const sameRow = (a: any, b: any) => a && b && a.roomId === b.roomId && ymdOf(a.startDate) === ymdOf(b.startDate) && ymdOf(a.endDate) === ymdOf(b.endDate) && a.active === b.active;
   await T("R-1", "release ⇒ active=false + event 1 · ปล่อยซ้ำ ⇒ ok (noop) ไม่มี event เพิ่ม", ["claimRoom", "releaseOccupancy"], async () => {
     const c = await claim(base(M[109], D(100), D(103), "r1"));
@@ -798,8 +800,9 @@ try {
   const k1 = await mkRv(A, HA, tLegacy, "K1", D(600), D(603), "CHECKED_IN", L601);
   const k2 = await mkRv(A, HA, tLegacy, "K2", D(600), D(602), "BOOKED", null);
   const k3 = await mkRv(A, HA, tLegacy, "K3", D(605), D(606), "CANCELLED", L602);
-  const k4 = await mkRv(A, HA, tLegacy, "K4", "2020-01-01", "2020-01-03", "CHECKED_OUT", L601);
-  const k4b = await mkRv(A, HA, tLegacy, "K4B", "2020-02-01", "2020-02-03", "BOOKED", L601); // อดีตทั้งช่วง (ค้าง BOOKED) ⇒ ข้าม
+  const todayBkk = new Date(Date.now() + 7 * HOUR).toISOString().slice(0, 10); // วันไทยวันนี้ (F11: ห้ามวันที่ตายตัว)
+  const k4 = await mkRv(A, HA, tLegacy, "K4", addDays(todayBkk, -400), addDays(todayBkk, -398), "CHECKED_OUT", L601);
+  const k4b = await mkRv(A, HA, tLegacy, "K4B", addDays(todayBkk, -300), addDays(todayBkk, -298), "BOOKED", L601); // อดีตทั้งช่วง (ค้าง BOOKED) ⇒ ข้าม
   await rawOcc(L602, D(610), D(615), "LEASE", "dorm-k5");
   const k5 = await mkRv(A, HA, tLegacy, "K5", D(611), D(612), "BOOKED", L602);
   const kB = await mkRv(B, HB, tTypeB, "KB", D(600), D(601), "BOOKED", Z101);
@@ -841,6 +844,208 @@ try {
     const n = await prisma.roomOccupancy.count({ where: { tenantId: B } });
     return [n === 0, `occupancy ร้าน B=${n} (${kB.id.slice(0, 6)})`];
   });
+
+  // ═══════════════ Z. มติหลังผู้ตรวจ 27 ต.ค. (ORACLE-EDIT R0.8-Z) ═══════════════
+  console.log("\n── Z มติหลังผู้ตรวจ ──");
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const pubFree = async (typeId: string, s: string, e: string) => (await hotel.listPublicAvailability(A, HA, s, e)).find((x: any) => x.id === typeId)?.free;
+  const book = (typeId: string, s: string, e: string, name: string): Promise<any> => hotel.createReservation({ tenantId: A, unitId: HA, roomTypeId: typeId, checkInDate: s, checkOutDate: e, guestName: name });
+  // Z-1 [BLOCKER]: ห้องที่ถูกจองแล้วถูกปิด/เปลี่ยนเป็นรายเดือน ⇒ การจองเดิมยังนับเป็นภาระของประเภท
+  const z1 = async (label: string, setBad: (roomId: string) => Promise<unknown>, needs: string[]) =>
+    T(`Z-1${label}`, `[BLOCKER] ประเภท 2 ห้อง · A จองได้ห้อง X · X ถูกตั้ง ${label === "a" ? "OOO (hotel.setRoomStatus)" : label === "b" ? "OUT_OF_ORDER (setHkStatus)" : "MONTHLY (setRoomLayout)"} ⇒ ว่าง 0 · B จองช่วงเดียวกัน ⇒ ล้ม`, needs, async () => {
+      const t = await mkType(A, HA, `Z1${label}`);
+      await mkRoom(A, HA, t, `Z1${label}-1`); await mkRoom(A, HA, t, `Z1${label}-2`);
+      const a = await book(t, D(740), D(742), `Z1${label}A`);
+      if (a?.ok !== true) return [false, `A จองไม่ได้ ${J(a)}`];
+      const x = (await activeOcc(a.id))[0]?.roomId;
+      if (!x) return [false, "A ไม่มี occupancy"];
+      await setBad(x);
+      const free = await pubFree(t, D(740), D(742));
+      const b = await book(t, D(740), D(742), `Z1${label}B`);
+      const n = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: t, status: { in: ["BOOKED", "CHECKED_IN"] } } });
+      return [free === 0 && b?.ok === false && n === 1, `free=${free} B=${J(b)?.slice(0, 120)} การจอง active=${n}`];
+    });
+  await z1("a", (x) => hotel.setRoomStatus(A, HA, x, "OOO"), []);
+  await z1("b", (x) => fn("setHkStatus")!(ctxA, { unitId: HA, roomId: x, hkStatus: "OUT_OF_ORDER" }), ["setHkStatus"]);
+  await z1("c", (x) => fn("setRoomLayout")!(ctxA, { unitId: HA, roomId: x, rentMode: "MONTHLY" }), ["setRoomLayout"]);
+  // Z-1d: occupancy ที่ไม่ใช่การจองโรงแรม (LEASE/BLOCK/HOLD ที่ยังไม่หมดเวลา) กินห้องของประเภทต่อคืน
+  await T("Z-1d", "ประเภท 4 ห้อง · LEASE/BLOCK/HOLD(ยังไม่หมดเวลา) ถือคนละห้องตลอดช่วง ⇒ ว่าง 1 · จอง 1 ได้ ⇒ ว่าง 0 · จองที่ 2 ล้ม", [], async () => {
+    const t = await mkType(A, HA, "Z1d non-hotel", "BOTH");
+    const r = [await mkRoom(A, HA, t, "Z1d-1"), await mkRoom(A, HA, t, "Z1d-2"), await mkRoom(A, HA, t, "Z1d-3"), await mkRoom(A, HA, t, "Z1d-4")];
+    await rawOcc(r[0], D(744), D(760), "LEASE", "z1d-lease");
+    await rawOcc(r[1], D(744), D(747), "BLOCK", "z1d-block");
+    await rawOcc(r[2], D(744), D(747), "HOLD", "z1d-hold", { holdExpiresAt: new Date(Date.now() + 3_600_000) });
+    const f0 = await pubFree(t, D(745), D(747));
+    const a = await book(t, D(745), D(747), "Z1dA");
+    const f1 = await pubFree(t, D(745), D(747));
+    const b = await book(t, D(745), D(747), "Z1dB");
+    const aRoom = a?.ok ? (await activeOcc(a.id))[0]?.roomId : undefined;
+    return [f0 === 1 && a?.ok === true && aRoom === r[3] && f1 === 0 && b?.ok === false, `ว่างก่อน=${f0} A=${a?.ok}(${aRoom === r[3] ? "ห้องว่าง" : aRoom ?? "—"}) ว่างหลัง=${f1} B=${J(b)?.slice(0, 120)}`];
+  });
+  // Z-1e: การจองเก่าที่ยังไม่มีห้อง (ไม่มี occupancy) ยังหักจากตัวนับช่วงวัน
+  await T("Z-1e", "ประเภท 2 ห้อง + การจอง BOOKED เก่าไม่มีห้อง/ไม่มี occupancy ซ้อนช่วง ⇒ ว่าง 1 · จอง 1 ได้ · จองที่ 2 ล้ม", [], async () => {
+    const t = await mkType(A, HA, "Z1e legacy");
+    await mkRoom(A, HA, t, "Z1e-1"); await mkRoom(A, HA, t, "Z1e-2");
+    await mkRv(A, HA, t, "Z1E-L", D(746), D(749), "BOOKED", null);
+    const f0 = await pubFree(t, D(746), D(748));
+    const a = await book(t, D(746), D(748), "Z1eA");
+    const b = await book(t, D(747), D(749), "Z1eB");
+    return [f0 === 1 && a?.ok === true && b?.ok === false, `ว่าง=${f0} A=${a?.ok} B=${J(b)?.slice(0, 120)}`];
+  });
+
+  // Z-2: ตั้งปิดซ่อม/เปลี่ยนโหมดบนห้องที่มี STAY/LEASE อนาคต ⇒ ok + affected (ไม่บล็อก · occupancy ยัง active)
+  await T("Z-2", "ปิดซ่อม/รายเดือน/รายคืน บนห้องที่มี STAY/LEASE อนาคต ⇒ ok:true + affected[] มี occupancy ที่กระทบ · occupancy ยัง active", ["setHkStatus", "setRoomLayout", "claimRoom"], async () => {
+    const t = await mkType(A, HA, "Z2", "BOTH");
+    const r1 = await mkRoom(A, HA, t, "Z2-1"), r2 = await mkRoom(A, HA, t, "Z2-2"), r3 = await mkRoom(A, HA, t, "Z2-3");
+    const s1 = await claim(base(r1, D(750), D(752), "z2-stay1", "STAY", "HotelReservation"));
+    const s2 = await claim(base(r2, D(750), D(752), "z2-stay2", "STAY", "HotelReservation"));
+    const l3 = await claim(base(r3, D(750), D(780), "z2-lease"));
+    const a = await fn("setHkStatus")!(ctxA, { unitId: HA, roomId: r1, hkStatus: "OUT_OF_ORDER" });
+    const b = await fn("setRoomLayout")!(ctxA, { unitId: HA, roomId: r2, rentMode: "MONTHLY" });
+    const c = await fn("setRoomLayout")!(ctxA, { unitId: HA, roomId: r3, rentMode: "NIGHTLY" });
+    const has = (r: any, id: string) => r?.ok === true && Array.isArray(r?.affected) && r.affected.some((x: any) => x?.occupancyId === id && typeof x?.kind === "string" && typeof x?.startDate === "string" && typeof x?.endDate === "string");
+    const still = (await prisma.roomOccupancy.findMany({ where: { id: { in: [s1.occupancyId, s2.occupancyId, l3.occupancyId] } } })).every((o: any) => o.active);
+    return [has(a, s1.occupancyId) && has(b, s2.occupancyId) && has(c, l3.occupancyId) && still, `hk=${J(a)?.slice(0, 120)} · monthly=${J(b)?.slice(0, 120)} · nightly=${J(c)?.slice(0, 120)} · ยัง active=${still}`];
+  }, "MAJOR");
+  await T("Z-2b", "hotel.setRoomStatus(OOO) บนห้องที่มีการจอง (STAY) อนาคต ⇒ ok:true + affected มี occupancy นั้น · ยัง active · ตั้ง AVAILABLE ⇒ affected ว่าง", [], async () => {
+    const t = await mkType(A, HA, "Z2b");
+    await mkRoom(A, HA, t, "Z2b-1");
+    const r = await book(t, D(754), D(756), "Z2b");
+    if (r?.ok !== true) return [false, `จองไม่ได้ ${J(r)}`];
+    const o = (await activeOcc(r.id))[0];
+    if (!o) return [false, "ไม่มี occupancy"];
+    const a = await hotel.setRoomStatus(A, HA, o.roomId, "OOO");
+    const back = await hotel.setRoomStatus(A, HA, o.roomId, "AVAILABLE");
+    const still = (await occOf(o.id))?.active === true;
+    const hit = a?.ok === true && Array.isArray(a?.affected) && a.affected.some((x: any) => x?.occupancyId === o.id && x?.refId === r.id);
+    return [hit && still && back?.ok === true && Array.isArray(back?.affected) && back.affected.length === 0, `OOO=${J(a)?.slice(0, 160)} · AVAILABLE=${J(back)?.slice(0, 80)} · active=${still}`];
+  }, "MAJOR");
+
+  // Z-4: ตัวนับแบบช่วง = ห้องที่ว่างตลอดช่วง (ห้องแตกช่วง P/Q/R)
+  const FRAG_MSG = "ไม่มีห้องเดียวที่ว่างตลอดช่วง ลองเลื่อนวัน";
+  let tFrag = "";
+  await T("Z-4", "ห้องแตกช่วง (P ไม่ว่างคืน 1 · Q คืน 2 · R คืน 3) ⇒ listPublicAvailability free=0 · createReservation ล้มด้วยข้อความ \"ไม่มีห้องเดียวที่ว่างตลอดช่วง ลองเลื่อนวัน\" · จอง 1 คืนได้", [], async () => {
+    tFrag = await mkType(A, HA, "Z4 แตกช่วง");
+    const p = await mkRoom(A, HA, tFrag, "Z4-P"), q = await mkRoom(A, HA, tFrag, "Z4-Q"), r = await mkRoom(A, HA, tFrag, "Z4-R");
+    await rawOcc(p, D(770), D(771), "LEASE", "z4-p"); await rawOcc(q, D(771), D(772), "LEASE", "z4-q"); await rawOcc(r, D(772), D(773), "LEASE", "z4-r");
+    const free = await pubFree(tFrag, D(770), D(773));
+    const res = await book(tFrag, D(770), D(773), "แตกช่วง");
+    const n = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: tFrag } });
+    const one = await book(tFrag, D(770), D(771), "คืนเดียว");
+    return [free === 0 && res?.ok === false && res?.reason === FRAG_MSG && n === 0 && one?.ok === true, `free=${free} ${J(res)} การจองค้าง=${n} 1คืน=${one?.ok}`];
+  });
+
+  // Z-5: best-fit
+  await T("Z-5", "เลือกห้อง best-fit: ห้องที่ช่องว่างพอดีกับช่วงที่สุดถูกเลือกก่อน (แม้เลขห้องมาทีหลัง)", [], async () => {
+    const t = await mkType(A, HA, "Z5 bestfit");
+    const wide = await mkRoom(A, HA, t, "Z5-1"), fit = await mkRoom(A, HA, t, "Z5-2");
+    await rawOcc(fit, D(780), D(790), "LEASE", "z5-before"); await rawOcc(fit, D(792), D(800), "LEASE", "z5-after");
+    const r = await book(t, D(790), D(792), "bestfit");
+    const o = r?.ok ? await activeOcc(r.id) : [];
+    return [r?.ok === true && o.length === 1 && o[0].roomId === fit, `${J(r)?.slice(0, 80)} ห้อง=${o[0]?.roomId === fit ? "พอดี" : o[0]?.roomId === wide ? "ว่างยาว" : "—"}`];
+  }, "MAJOR");
+
+  // Z-6: backfill dry-run ไม่ถือล็อก HotelRoomType
+  await T("Z-6", "backfill dryRun ไม่ล็อก HotelRoomType (มีอีก tx ถือ FOR UPDATE อยู่ ⇒ dry-run จบได้ ไม่รอ ไม่ throw)", ["backfillHotelOccupancy"], async () => {
+    await mkRv(A, HA, tLegacy, "Z6", D(650), D(652), "BOOKED", null);
+    let release: () => void = () => {};
+    let locked: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const isLocked = new Promise<void>((r) => { locked = r; });
+    const holder = prisma.$transaction(async (t: any) => { await t.$queryRawUnsafe(`SELECT id FROM "HotelRoomType" WHERE id = $1 FOR UPDATE`, tLegacy); locked(); await gate; });
+    await isLocked;
+    const dryP = fn("backfillHotelOccupancy")!({ tenantId: A, dryRun: true });
+    const first = await Promise.race([dryP.then((v: unknown) => ({ v }), (e: unknown) => ({ e })), sleep(8000).then(() => "TIMEOUT" as const)]);
+    release();
+    await holder.catch(() => {});
+    await Promise.resolve(dryP).catch(() => {});
+    return [first !== "TIMEOUT" && !(first as any).e, first === "TIMEOUT" ? "dry-run รอล็อก > 8 วิ" : J(first).slice(0, 160)];
+  }, "MAJOR");
+
+  // Z-7: expireHolds 300 แถว
+  await T("Z-7", "expireHolds: hold หมดเวลา 300 แถวพร้อมกัน ⇒ ปิดครบในการเรียกครั้งเดียว · event 300 · ไม่ throw", ["expireHolds"], async () => {
+    const room = await mkRoom(A, HA, tMain, "Z7-EH");
+    const past = new Date(Date.now() - 60_000);
+    await prisma.roomOccupancy.createMany({ data: Array.from({ length: 300 }, (_, i) => ({ tenantId: A, unitId: HA, roomId: room, startDate: dbDate(D(1000 + i)), endDate: dbDate(D(1001 + i)), kind: i % 2 ? "CHANNEL_HOLD" : "HOLD", refType: "QcRaw", refId: `z7-${i}`, holdExpiresAt: past })) });
+    const e0 = (await events(room)).length;
+    const r = await fn("expireHolds")!(new Date());
+    const left = await prisma.roomOccupancy.count({ where: { roomId: room, active: true } });
+    const e1 = (await events(room)).length;
+    return [left === 0 && e1 - e0 === 300, `${J(r)} ยัง active=${left} event +${e1 - e0}`];
+  }, "MAJOR");
+
+  // Z-8: requireRentMode + OUT_OF_ORDER
+  await T("Z-8", "claimRoom requireRentMode: ห้องผิดโหมด ⇒ RENT_MODE_MISMATCH · ตรง/BOTH ⇒ ok · LEASE/STAY บนห้อง OUT_OF_ORDER ⇒ ROOM_INACTIVE · BLOCK บน OUT_OF_ORDER ได้", ["claimRoom"], async () => {
+    const a = await claim(base(M[101], D(900), D(930), "z8a", "LEASE", "DormLease", { requireRentMode: "MONTHLY" }));     // NIGHTLY
+    const b = await claim(base(N801, D(900), D(930), "z8b", "LEASE", "DormLease", { requireRentMode: "MONTHLY" }));      // MONTHLY
+    const c = await claim(base(R201, D(900), D(902), "z8c", "STAY", "HotelReservation", { requireRentMode: "NIGHTLY" })); // BOTH
+    const d = await claim(base(N801, D(940), D(942), "z8d", "STAY", "HotelReservation", { requireRentMode: "NIGHTLY" }));
+    const e = await claim(base(M[104], D(900), D(930), "z8e"));                                                         // M104 OUT_OF_ORDER (เตรียมใน V)
+    const f = await claim(base(M[104], D(931), D(932), "z8f", "STAY", "HotelReservation"));
+    const g = await claim(base(M[104], D(933), D(934), "z8g", "BLOCK", "Maintenance"));
+    const hk = (await prisma.hotelRoom.findUnique({ where: { id: M[104] } }))?.hkStatus;
+    return [hk === "OUT_OF_ORDER" && isFail(a, "RENT_MODE_MISMATCH") && b?.ok === true && c?.ok === true && isFail(d, "RENT_MODE_MISMATCH") && isFail(e, "ROOM_INACTIVE") && isFail(f, "ROOM_INACTIVE") && g?.ok === true,
+      `hk=${hk} a=${a?.code ?? a?.ok} b=${b?.code ?? b?.ok} c=${c?.code ?? c?.ok} d=${d?.code ?? d?.ok} e=${e?.code ?? e?.ok} f=${f?.code ?? f?.ok} g=${g?.code ?? g?.ok}`];
+  }, "MAJOR");
+
+  // Z-8b/c: SAVEPOINT ต้องถูกปล่อยหลังย้อน (ชนซ้ำหลายครั้งใน tx เดียว)
+  await T("Z-8b", "ใน tx เดียว ชน ROOM_TAKEN 70 ครั้ง แล้ว claim ห้องว่าง ⇒ ok · commit แล้วแถวอยู่ · แถวที่ชนไม่รั่ว", ["claimRoom"], async () => {
+    const room = await mkRoom(A, HA, tMain, "Z8B");
+    await rawOcc(room, D(1400), D(1410), "BLOCK", "z8b-wall");
+    const out = await prisma.$transaction(async (t: any) => {
+      let lost = 0;
+      for (let i = 0; i < 70; i++) { const r = await fn("claimRoom")!(t, base(room, D(1401), D(1402), `z8b-x${i}`, "BLOCK", "Maintenance")); if (isFail(r, "ROOM_TAKEN")) lost++; }
+      const ok = await fn("claimRoom")!(t, base(room, D(1420), D(1421), "z8b-ok", "BLOCK", "Maintenance"));
+      return { lost, ok };
+    }, { timeout: 60_000, maxWait: 10_000 });
+    const rows = await prisma.roomOccupancy.findMany({ where: { roomId: room, refId: { startsWith: "z8b-" } } });
+    const leaked = rows.filter((r: any) => r.refId.startsWith("z8b-x")).length;
+    return [out.lost === 70 && out.ok?.ok === true && rows.some((r: any) => r.refId === "z8b-ok" && r.active) && leaked === 0, `ชน=${out.lost} ok=${out.ok?.ok} รั่ว=${leaked}`];
+  }, "MAJOR");
+  {
+    const src = read("src/lib/modules/rooms/occupancy.ts");
+    const i = src.indexOf("ROLLBACK TO SAVEPOINT");
+    const good = i >= 0 && /RELEASE SAVEPOINT/.test(src.slice(i, i + 300));
+    if (good) pass("Z-8c", "ROLLBACK TO SAVEPOINT ตามด้วย RELEASE SAVEPOINT (ไม่ค้างซ้อนใน tx ผู้เรียก)");
+    else fail("Z-8c", "ROLLBACK TO SAVEPOINT ตามด้วย RELEASE SAVEPOINT", i < 0 ? "ไม่พบ ROLLBACK TO SAVEPOINT" : "ไม่พบ RELEASE หลัง ROLLBACK TO", "MINOR");
+  }
+
+  // Z-9: แข่งหนัก 30 ทาง ประเภท 3 ห้อง
+  await T("Z-9", "createReservation แข่ง 30 ทาง ประเภท 3 ห้อง ⇒ ไม่มี throw (P2028 แปลงเป็น ok:false) · สำเร็จ 1..3 · การจอง/occupancy active = จำนวนสำเร็จ", [], async () => {
+    const t = await mkType(A, HA, "Z9 แข่งหนัก");
+    for (let i = 1; i <= 3; i++) await mkRoom(A, HA, t, `Z9-${i}`);
+    const res = await Promise.allSettled(Array.from({ length: 30 }, (_, i) => book(t, D(950), D(952), `แข่ง${i}`)));
+    const ok = res.filter((r) => r.status === "fulfilled" && (r.value as any)?.ok === true).length;
+    const lose = res.filter((r) => r.status === "fulfilled" && (r.value as any)?.ok === false).length;
+    const thrown = res.filter((r) => r.status === "rejected").map((r) => errMsg((r as PromiseRejectedResult).reason));
+    const rv = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: t, status: { in: ["BOOKED", "CHECKED_IN"] } } });
+    const rooms3 = (await prisma.hotelRoom.findMany({ where: { roomTypeId: t }, select: { id: true } })).map((x: any) => x.id);
+    const occ = await prisma.roomOccupancy.count({ where: { roomId: { in: rooms3 }, active: true } });
+    return [thrown.length === 0 && ok >= 1 && ok <= 3 && ok + lose === 30 && rv === ok && occ === ok, `ok=${ok} แพ้=${lose} throw=${thrown.length} ${thrown[0] ?? ""} การจอง=${rv} occ=${occ}`];
+  });
+
+  // Z-3: checkOut ปล่อยห้องหลัง POS สำเร็จเท่านั้น (ทำท้ายสุด: ผูก POS กับหน่วย HA)
+  await T("Z-3", "checkOut + POS ล้ม (SHIFT_REQUIRED) ⇒ ยัง CHECKED_IN · occupancy ไม่เคยถูกปล่อย (แถวไม่ถูกแตะ · ไม่มี event)", [], async () => {
+    const sys = (await import("@/lib/modules/system/service" as string)) as any;
+    const pos = await sys.createSystem(A, "POS", "ขาย R08");
+    await sys.linkUnit(A, pos.id, HA);
+    await prisma.appSystem.update({ where: { id: pos.id }, data: { settings: { pos: { shift: { required: { register: false, otherSources: true } } } } } });
+    const t = await mkType(A, HA, "Z3 POS");
+    const room = await mkRoom(A, HA, t, "Z3-1");
+    const r = await book(t, D(960), D(962), "Z3");
+    if (r?.ok !== true) return [false, `จองไม่ได้ ${J(r)}`];
+    const ci = await hotel.checkIn(A, HA, r.id, room);
+    if (ci?.ok !== true) return [false, `เช็คอินไม่ได้ ${J(ci)}`];
+    const o0 = (await activeOcc(r.id))[0];
+    const e0 = (await events(room)).length;
+    let outcome = "";
+    try { outcome = J(await hotel.checkOut(A, HA, r.id)); } catch (e) { outcome = `throw ${errMsg(e)}`; }
+    const rv = await prisma.hotelReservation.findUnique({ where: { id: r.id } });
+    const o1 = o0 ? await occOf(o0.id) : null;
+    const e1 = (await events(room)).length;
+    const untouched = !!o0 && !!o1 && o1.active === true && o1.updatedAt.getTime() === o0.updatedAt.getTime();
+    return [rv?.status === "CHECKED_IN" && untouched && e1 === e0, `checkOut=${outcome.slice(0, 120)} · status=${rv?.status} · occupancy ไม่ถูกแตะ=${untouched} · event +${e1 - e0}`];
+  }, "CRITICAL");
 
   // ═══════════════ G. regression ═══════════════
   console.log("\n── G regression (ลูกโพรเซส · env เดียวกัน) ──");
