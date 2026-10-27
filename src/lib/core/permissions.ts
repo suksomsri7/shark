@@ -700,6 +700,8 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "settings.staff.read": "ดูรายชื่อผู้ใช้งานและสิทธิ์",
       "settings.staff.write": "ให้/แก้/ถอนสิทธิ์การเข้าใช้งานของคนอื่น",
+      // SVC R0.5 ▸ ศูนย์เชื่อมต่อ (/app/settings/integrations) — เจ้าของร้านโดยปริยาย · MANAGER ไม่ได้โดยปริยาย · ให้ต่อได้เฉพาะเจ้าของร้าน ◂
+      "settings.integrations.manage": "จัดการศูนย์เชื่อมต่อ (วาง/เปลี่ยนคีย์ผู้ให้บริการ · ทดสอบ · ถอดการเชื่อมต่อ)",
     },
   },
   {
@@ -767,6 +769,10 @@ export const CRM_OWNER_ONLY_KEYS: readonly string[] = [
   "crm.team.manage",
 ];
 // ◂ CRM C1.7
+// SVC R0.5 ▸ คีย์ที่ "ให้ต่อ" ได้เฉพาะเจ้าของร้าน (ใบสั่ง R0.5 §8 ข้อ 10) — ผู้ที่ไม่ใช่ OWNER (รวม MANAGER ที่ถือคีย์เอง) แจกไม่ได้
+//   ผู้อ่าน: staff/service.ts ด่านห้ามยกระดับ · ผู้ตรวจสิทธิ์จริง: core/integrations/service.ts (OWNER หรือคีย์ตรงตัว — `settings.*` ไม่นับ)
+export const SETTINGS_OWNER_ONLY_KEYS: readonly string[] = ["settings.integrations.manage"];
+// ◂ SVC R0.5
 
 /** ค่าตัวเลขของสิทธิ์ — อ่านผ่าน `permissionValue()` ใน core/rbac.ts */
 // วันนี้มีตัวเดียวที่โค้ดจริงอ่าน: account/expense-actions.ts:323

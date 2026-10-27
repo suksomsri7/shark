@@ -361,6 +361,8 @@ export function NavDrawer({
             { href: "/app/settings/approval", icon: "🧾", label: "สายอนุมัติ" },
             { href: "/app/settings/automation", icon: "⚙️", label: "ระบบอัตโนมัติ" },
             { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },
+            // SVC R0.5 ▸ ศูนย์เชื่อมต่อ (ผู้ให้บริการภายนอก: ตรวจสลิป · SMS · OTA …) — วางคู่ช่องรับเงินตามที่ผู้ตรวจสั่ง (กันหน้ากำพร้า) ◂
+            { href: "/app/settings/integrations", icon: "🔌", label: "ศูนย์เชื่อมต่อ" },
             { href: "/app/settings/domain", icon: "🌐", label: "โดเมนของร้าน" },
             { href: "/app/settings/api", icon: "🔑", label: "API สำหรับนักพัฒนา" },
             // 29 ส.ค. 2026 — หน้านี้มีมาตั้งแต่ WO-0062 แต่ **ไม่เคยมีลิงก์ในเมนูเลย** เป็นหน้ากำพร้า

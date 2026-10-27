@@ -484,6 +484,19 @@ registerMinuteJob({
   },
 });
 // ◂ POS P3-SKEL
+// SVC R0.5 ▸ ลบ call log ของศูนย์เชื่อมต่อที่เกิน 30 วัน (CC §2.2 · ใบสั่ง R0.5 §5) — รายวัน · ทุกร้าน · เป็นก้อน · รันซ้ำ = 0 ·
+//   idempotent (deleteMany ตามเวลา) ⇒ route + crontab ยิงซ้อนได้ · เคารพ ctrl.signal/deadline · โหลดศูนย์ฯ ตอนรันเท่านั้น (ไฟล์นี้ถูก import จาก route)
+//   หนี้: IntegrationCallLog ยังไม่มี index เดี่ยวที่ `at` (มีแค่ tenantId,integrationId,at) — เพิ่มในใบ schema ถัดไป
+registerMinuteJob({
+  name: "integrations.calllog.purge",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { purgeIntegrationCallLogs } = await import("@/lib/core/integrations");
+    await purgeIntegrationCallLogs(now, { signal: ctrl.signal, deadline: ctrl.deadline });
+  },
+});
+// ◂ SVC R0.5
 
 function errorText(e: unknown): string {
   let s: string;

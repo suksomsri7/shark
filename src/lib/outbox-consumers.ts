@@ -968,6 +968,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "account.payment.recorded": withAutomation(compose(async () => {}, crmBridge("onPaymentRecorded"))),
   "account.invoice.paid": withAutomation(compose(compose(async () => {}, kanbanBridge("onAccountDocSettled")), crmBridge("onInvoicePaid"))),
   "account.period.closed": withAutomation(async () => {}),
+  // SVC R0.5 ▸ ศูนย์เชื่อมต่อ — สถานะเปลี่ยนไปแล้วใน tx ของ service · consumer no-op เพื่อปิด event เป็น DONE + กฎอัตโนมัติ/เว็บฮุค ◂
+  "integration.connected": withAutomation(async () => {}),
+  "integration.failed": withAutomation(async () => {}),
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
   //      ขาดตรงนี้ = event ค้าง PENDING ตลอดกาล และ **คิวทั้งระบบตันตามไปด้วย** (บทเรียน 30 ส.ค. 2026)

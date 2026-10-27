@@ -231,6 +231,7 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
     { name: "booking-services", path: `/app/u/${SQC_UNITS.barber.slug}/booking/services` },
     { name: "hotel-today", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel` },
   ],
+  "r0.5": [{ name: "integrations", path: "/app/settings/integrations" }],
 };
 
 export const SQC = {
