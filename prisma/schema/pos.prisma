@@ -186,6 +186,9 @@ model PosSaleLine {
   priceSource     PosPriceSource? // ชั้นราคาที่ชนะ (ตัวแก้ราคา price-shared.ts) · createSale ไม่คิดราคาเอง — ผู้เรียกส่งมา
   priceRuleId     String? // PosPriceRule.id ที่ชนะ (id หลวม · กติกาถูกเก็บถาวรได้)
   listPriceSatang Int? // ราคาปกติขั้น ② (ฐาน/ฐานของแม่ · ไม่รวมตัวเลือก) · null = OPEN/CUSTOM/WEIGHED
+  // SVC B.0 ▸ ผู้ให้บริการของบรรทัด (HrEmployee.id · id หลวม ไม่มี FK) — รายงานค่าคอมฯ ตามผู้ให้บริการ (B.10) ·
+  //   🔴 ไม่มีดัชนีในตารางนี้ (ตารางใหญ่) — ถ้าใบหลังต้องการ = CREATE INDEX CONCURRENTLY นอก migrate แบบ P6.1 ◂
+  performerEmployeeId String?
   options         PosSaleLineOption[]
 
   @@index([saleId])
@@ -430,6 +433,9 @@ model PosHeldCart {
   //   partial unique "PosHeldCart_tableSessionId_held_key" (SQL เขียนมือใน migration 20261206100000_pos_p24_tables — prisma ประกาศ partial ไม่ได้) ·
   //   ไม่มี FK (id หลวมข้ามไฟล์ schema แบบ MenuItem.invItemId) · ผู้เขียนเดียว = pos/held-cart.ts ◂
   tableSessionId    String?
+  // SVC B.0 ▸ งานบริการ (Appointment.id) ที่บิลพักนี้ผูก (null = บิลพักปกติ) · HELD ได้ 1 แถวต่องาน =
+  //   partial unique "PosHeldCart_serviceJobId_held_key" (SQL เขียนมือใน migration 20261222000000_svc_b — prisma ประกาศ partial ไม่ได้) · ไม่มี FK ◂
+  serviceJobId      String?
 
   @@index([unitId, status, createdAt])
 }
@@ -1133,9 +1139,12 @@ model PosStaffCommission {
   hrPayAdjustmentId String?
   sentAt            DateTime?
   createdAt         DateTime                 @default(now())
+  // SVC B.0 ▸ ผู้ให้บริการ (HrEmployee.id · id หลวม) — รายงานตามผู้ให้บริการ · userId ยังบังคับ (CC §10 ข้อ 2 ค่าปลอดภัย) ◂
+  employeeId        String?
 
   @@index([tenantId, userId, status, periodKey])
   @@index([saleId])
+  @@index([tenantId, employeeId, periodKey]) // SVC B.0
 }
 // ◂ POS P3.5
 // ═══════════════════ POS P3.4 ▸ ออฟไลน์ (R1 · มติ 2 · CD-2 · CD-9) — ตารางใหม่ล้วน · ผู้เขียนเดียว = pos/offline-sync.ts ═══════════════════

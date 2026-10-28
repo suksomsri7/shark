@@ -6,6 +6,7 @@
 import "./defs/payments";
 import "./defs/messaging";
 import "./defs/rooms";
+import "./defs/booking"; // SVC B.0
 
 export type * from "./types";
 export { SCOPE_KINDS } from "./types";

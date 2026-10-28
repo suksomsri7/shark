@@ -79,7 +79,13 @@ export type SettingDef = {
   helpTh?: string;
 };
 
-export type TemplateDef = { key: string; version: number; labelTh: string };
+export type TemplateDef = {
+  key: string;
+  version: number;
+  labelTh: string;
+  /** SVC B.0 ▸ ซ่อนแม่แบบจากหน้าตั้งค่าจนถึงเฟสนี้ (เช่น "PHASE_CLINIC") — UI ซ่อน · applyTemplate ยังไม่ปฏิเสธ (B.11) ◂ */
+  hiddenUntil?: string;
+};
 export type GroupIssue = { key: string; code: string; messageTh: string };
 export type GroupRule = { group: string; check: (values: Record<string, unknown>) => GroupIssue[] };
 export type DefineSettingsOptions = {

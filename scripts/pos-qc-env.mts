@@ -19,8 +19,12 @@ import { isProdDbUrl, PROD_HOST_MARK } from "./qc-env-guard.mjs";
 
 /** host ของ QC1/QC2/QC3 ที่ CRM RUN ถืออยู่ (ดู scripts/qc4.sh) — POS ห้ามเขียน */
 export const CRM_QC_HOST_MARKS = ["ep-plain-art", "ep-cool-shadow", "ep-weathered-river"] as const;
-/** host ของ QC4 (`wo-pos-qc4`) — ฐานส่วนตัวของ POS */
-export const POS_QC_HOST_MARK = "ep-frosty-lab";
+/** host ของ QC4 (`wo-pos-qc4`) — ฐานส่วนตัวของ POS
+ *  SVC B.0 ▸ ปลดหนี้ SVC-D1: ใต้ `scripts/qc-svc.sh` (ตั้งทั้ง QC_BRANCH=qc-svc และ POS_QC_ALLOW_HOST=ep-mute-scene ตรงตัว)
+ *  ชุด POS ใช้ฐาน QC ของ SVC ได้ — ด่านเขียน `assertQc4BeforeWrite` ในแต่ละชุดเทียบค่านี้ · กรณีอื่นทั้งหมด = QC4 เหมือนเดิม
+ *  (ด่าน prod/QC1–3 ใน loadPosQcEnv ทำงานก่อนเสมอ ไม่เปลี่ยน) ◂ */
+export const POS_QC_HOST_MARK: string =
+  process.env.QC_BRANCH === "qc-svc" && process.env.POS_QC_ALLOW_HOST === "ep-mute-scene" ? "ep-mute-scene" : "ep-frosty-lab";
 
 function safeHost(url: string): string {
   try {

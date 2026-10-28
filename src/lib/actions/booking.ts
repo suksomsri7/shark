@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { AppointmentStatus } from "@prisma/client";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
@@ -115,7 +114,8 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
   assertBookingCan(auth, unit.id, "booking.appointment.setStatus");
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
-  const parsed = z.nativeEnum(AppointmentStatus).safeParse(status);
+  // SVC B.0 ▸ รับเฉพาะ 6 สถานะเดิม — QUEUED/IN_SERVICE/LATE ตั้งได้ทางเครื่องสถานะ B.4 เท่านั้น ◂
+  const parsed = z.enum(["PENDING", "CONFIRMED", "ARRIVED", "DONE", "NO_SHOW", "CANCELLED"]).safeParse(status);
   if (!parsed.success) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const db = tenantDb(ctx);
