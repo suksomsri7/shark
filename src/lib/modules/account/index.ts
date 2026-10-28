@@ -1145,7 +1145,13 @@ export async function createExternalInvoice(input: {
   discountAmount?: number | null;
   note?: string | null;
   createdById?: string | null;
-}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }>;
+// SVC D.2 ▸ overload หอพัก (ใบสั่ง D.2 §3.1) — ทางเดิมของ CRM ข้างบน/ข้างล่างไม่เปลี่ยนแม้แต่ไบต์เดียว · แยกไปที่ `createDormExternalInvoice` ◂
+export async function createExternalInvoice(input: DormExternalInvoiceInput): Promise<DormExternalInvoiceResult | DormFail>;
+export async function createExternalInvoice(input: CrmExternalInvoiceInput | DormExternalInvoiceInput): Promise<
+  { ok: true; docId: string; created: boolean } | { ok: false; reason: string } | DormExternalInvoiceResult | DormFail
+> {
+  if (input.sourceKind === "DORM") return createDormExternalInvoice(input);
   const link = await findAccountLinkFor(input.tenantId, input.sourceKind, input.sourceSystemId);
   if (!link) return { ok: false, reason: "ยังไม่เชื่อมระบบบัญชี" };
   const ctx = { tenantId: input.tenantId, systemId: link.systemId };
@@ -1714,3 +1720,327 @@ export async function posCreditAging(input: { tenantId: string; sourceSystemId: 
   return posCreditAgingByParty(link.systemId, input.partyIds, input.asOf ?? new Date());
 }
 // ◂ POS P3.6
+
+// ═══════════════════════════════════════════════════════════════
+// SVC D.2 ▸ facade บัญชีสำหรับหอพัก (ใบสั่ง svc-brief-d.2 §3 · ชื่อ/ชนิดผูกกับข้อสอบ qc-svc-d.2)
+//   · หน่วยหอ (BusinessUnit DORM) ผูกสมุดด้วย AccountSystemLink { linkedKind BUSINESS · linkedId unitId · enabled } — ไม่มี/ปิด/ข้ามร้าน ⇒ NOT_LINKED
+//   · ปฏิเสธ = { ok:false, code, reason ไทย } เสมอ (ไม่ throw) · เงินสตางค์จำนวนเต็ม · วันที่ของหอ = "YYYY-MM-DD" วันไทย
+//   · ตรรกะเงิน/ธุรกรรม/ล็อกอยู่ที่ service.ts + gl.ts บล็อก "SVC D.2" (ไฟล์นี้ห้ามแตะ prisma — F5) · ที่นี่ = ตรวจอินพุต + เลือกสมุด + แปลงผล
+//   · โมดูลอื่นไม่รู้เลขบัญชี — เงินเกินบิล = 2110 · เงินประกัน = บัญชีหนี้สิน TENANT_SECURITY_DEPOSIT (lazy · ⚠️ J4 รอผู้ตรวจบัญชี)
+// ═══════════════════════════════════════════════════════════════
+import {
+  dormUpsertDocument,
+  dormSourceInvoice,
+  dormRecordPayment,
+  dormPostSecurityDeposit,
+  dormSecurityDepositHeld,
+  dormSettleSecurityDeposit,
+  dormReverseSettlement,
+  findAccountLinksFor,
+} from "./service";
+
+export type DormTaxKind = "EXEMPT" | "VAT7" | "NONE";
+export type ExternalDocLine = { description: string; qty: number; unitPriceSatang: number; taxKind: DormTaxKind; meta?: Record<string, string | number> };
+export type DormVat = { registered: boolean; pricesIncludeVat: boolean };
+type DormFail = { ok: false; code: string; reason: string };
+type DormChannel = "CASH" | "TRANSFER" | "PROMPTPAY";
+
+/** ชนิดอินพุตทางเดิมของ CRM (สำเนาของ overload แรก — ใช้เป็นชนิดของตัว implementation เท่านั้น) */
+type CrmExternalInvoiceInput = {
+  tenantId: string;
+  sourceSystemId: string;
+  sourceKind: "CRM";
+  refType: string;
+  refId: string;
+  title: string;
+  valueSatang: number;
+  customer: { name: string; phone?: string | null; email?: string | null; taxId?: string | null; branchCode?: string | null };
+  partyId?: string | null;
+  sourceContactId?: string | null;
+  lines?: LineInput[];
+  discountAmount?: number | null;
+  note?: string | null;
+  createdById?: string | null;
+};
+export type DormExternalInvoiceInput = {
+  tenantId: string; sourceKind: "DORM"; unitId: string; refType: string; refId: string;
+  customer: { name: string; phone?: string | null; email?: string | null; taxId?: string | null; branchCode?: string | null };
+  partyId?: string | null; lines: ExternalDocLine[]; vat: DormVat;
+  issueDate?: string; dueDate?: string | null; draft?: boolean; note?: string | null; createdById?: string | null;
+};
+export type DormExternalInvoiceResult = { ok: true; docId: string; created: boolean; docNo: string | null; status: string; subTotalSatang: number; vatSatang: number; totalSatang: number };
+export type DormExternalNoteInput = {
+  tenantId: string; unitId: string; sourceDocId: string; refType: string; refId: string; reason: string;
+  lines: ExternalDocLine[]; vat: DormVat; issueDate?: string; createdById?: string | null;
+};
+export type DormExternalNoteResult = { ok: true; docId: string; created: boolean; docNo: string | null; subTotalSatang: number; vatSatang: number; totalSatang: number };
+
+const dormFail = (code: string, reason: string): DormFail => ({ ok: false, code, reason });
+const DORM_MAX_LINES = 200;
+const DORM_TAX_KINDS: readonly DormTaxKind[] = ["EXEMPT", "VAT7", "NONE"];
+const DORM_CHANNELS: readonly DormChannel[] = ["CASH", "TRANSFER", "PROMPTPAY"];
+const DORM_NOT_LINKED = "หอนี้ยังไม่ได้เชื่อมระบบบัญชี — เชื่อมสมุดบัญชีให้หอก่อน แล้วลองใหม่";
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+const DORM_KEY_MAX = 200;
+
+/**
+ * สมุดบัญชีที่ผูกหน่วยหอนี้ (ผูกด้วย tenantId ⇒ หน่วยของร้านอื่น = ไม่พบ) — F4: ผูกหลายสมุดพร้อมกัน ⇒ AMBIGUOUS_LINK (ไม่สุ่มเลือก)
+ */
+async function dormBook(tenantId: string, unitId: string): Promise<{ systemId: string } | DormFail> {
+  if (!nonEmpty(tenantId) || !nonEmpty(unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  const ids = await findAccountLinksFor(tenantId, "BUSINESS", unitId);
+  if (ids.length === 0) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  if (ids.length > 1)
+    return dormFail("AMBIGUOUS_LINK", `หอนี้ผูกสมุดบัญชีไว้ ${ids.length} เล่มพร้อมกัน — ระบบไม่เดาว่าจะลงเล่มไหน ให้ตัดการเชื่อมเล่มที่ไม่ใช้ก่อน`);
+  return { systemId: ids[0] };
+}
+
+/** "YYYY-MM-DD" (วันไทย) → เที่ยงวันเวลาไทย · ผิดรูป/วันไม่มีจริง = null */
+function dormYmd(v: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T12:00:00+07:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const back = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  return back === v ? d : null;
+}
+
+/** ตรวจบรรทัดของหอ (§3.1) — คืนข้อความไทย หรือ null */
+function dormLinesProblem(lines: unknown): string | null {
+  if (!Array.isArray(lines) || lines.length === 0) return "ต้องมีรายการอย่างน้อย 1 รายการ";
+  if (lines.length > DORM_MAX_LINES) return `รายการมากเกินไป (สูงสุด ${DORM_MAX_LINES} รายการต่อใบ · ได้รับ ${lines.length}) — แยกออกเป็นหลายใบ`;
+  let sum = 0;
+  for (const [i, raw] of (lines as unknown[]).entries()) {
+    const at = `รายการที่ ${i + 1}`;
+    if (!raw || typeof raw !== "object") return `${at}: รูปแบบรายการไม่ถูกต้อง`;
+    const l = raw as Partial<ExternalDocLine>;
+    if (!nonEmpty(l.description)) return `${at}: ต้องมีคำอธิบายรายการ`;
+    if (typeof l.qty !== "number" || !Number.isInteger(l.qty) || l.qty < 1) return `${at}: จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`;
+    if (!isSatang(l.unitPriceSatang) || (l.unitPriceSatang as number) < 0) return `${at}: ราคาต่อหน่วยต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 0 ขึ้นไป`;
+    const amount = l.qty * (l.unitPriceSatang as number);
+    if (amount > MAX_SATANG) return `${at}: ยอดของรายการสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)})`;
+    if (!l.taxKind || !DORM_TAX_KINDS.includes(l.taxKind)) return `${at}: ชนิดภาษีต้องเป็น EXEMPT (ยกเว้น) · VAT7 (ภาษี 7%) หรือ NONE (ไม่มีภาษี)`;
+    sum += amount;
+  }
+  if (sum > MAX_SATANG) return `ยอดรวมรายการสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)}) — แยกออกเป็นหลายใบ`;
+  return null;
+}
+
+/** บรรทัดหอ → บรรทัดเอกสาร: VAT7 = 700 · EXEMPT / NONE = −1 (ไม่ใช่ 0 = อัตรา 0% ส่งออก · ⚠️ J4) */
+const dormDocLines = (lines: ExternalDocLine[]): LineInput[] =>
+  lines.map((l) => ({ description: l.description.trim(), qty: l.qty, unitPrice: l.unitPriceSatang, vatRateBp: l.taxKind === "VAT7" ? 700 : -1 }));
+
+const dormVatOk = (v: unknown): v is DormVat =>
+  !!v && typeof v === "object" && typeof (v as DormVat).registered === "boolean" && typeof (v as DormVat).pricesIncludeVat === "boolean";
+const dormVatMode = (v: DormVat): "INCLUDE" | "EXCLUDE" | "NONE" => (v.registered ? (v.pricesIncludeVat ? "INCLUDE" : "EXCLUDE") : "NONE");
+
+/** ค่าตั้ง VAT ของหอต้องตรงสมุด (ทั้งสองทิศ) — ไม่ตรง = ปฏิเสธ ไม่เดา (ใบสั่ง D.2 §3.1 · §5 ข้อ 5) */
+async function dormVatMismatch(systemId: string, vat: DormVat): Promise<DormFail | null> {
+  const cfg = await vatConfigOf(systemId);
+  if (cfg.vatRegistered === vat.registered) return null;
+  return dormFail(
+    "VAT_SETTING_MISMATCH",
+    vat.registered
+      ? "หอตั้งว่าจดทะเบียน VAT แต่สมุดบัญชีที่ผูกไว้ยังไม่จด VAT — แก้ค่าตั้งให้ตรงกันก่อน ยอดใบแจ้งหนี้จะได้ตรงกับบิล"
+      : "หอตั้งว่าไม่จดทะเบียน VAT แต่สมุดบัญชีที่ผูกไว้จด VAT แล้ว — แก้ค่าตั้งให้ตรงกันก่อน ยอดใบแจ้งหนี้จะได้ตรงกับบิล",
+  );
+}
+
+async function createDormExternalInvoice(input: DormExternalInvoiceInput): Promise<DormExternalInvoiceResult | DormFail> {
+  try {
+    if (!nonEmpty(input.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.refType) || !nonEmpty(input.refId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงของบิลไม่ครบ (ร้าน · หอ · ชนิด/เลขอ้างอิง)");
+    if (!input.customer || !nonEmpty(input.customer.name)) return dormFail("INVALID_INPUT", "ต้องมีชื่อผู้เช่าสำหรับออกใบแจ้งหนี้");
+    if (!dormVatOk(input.vat)) return dormFail("INVALID_INPUT", "ค่าตั้ง VAT ของหอไม่ครบ (จดทะเบียนหรือไม่ · ราคารวม VAT หรือไม่)");
+    const lp = dormLinesProblem(input.lines);
+    if (lp) return dormFail("INVALID_LINE", lp);
+    const issueDate = input.issueDate === undefined ? new Date() : dormYmd(input.issueDate);
+    if (!issueDate) return dormFail("INVALID_INPUT", "วันที่ออกเอกสารต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    const dueDate = input.dueDate === undefined || input.dueDate === null ? null : dormYmd(input.dueDate);
+    if (input.dueDate !== undefined && input.dueDate !== null && !dueDate) return dormFail("INVALID_INPUT", "วันครบกำหนดต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    const mm = await dormVatMismatch(systemId, input.vat);
+    if (mm) return mm;
+    const ctx = { tenantId: input.tenantId, systemId };
+    const r = await dormUpsertDocument({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, docType: "INVOICE", refType: input.refType, refId: input.refId,
+      lines: dormDocLines(input.lines), vatMode: dormVatMode(input.vat), issueDate, dueDate, draft: input.draft === true,
+      note: input.note ?? null, adjustReason: null, sourceDocId: null, createdById: input.createdById ?? null,
+      resolveContactId: async () => (await findOrCreateCustomerContact(ctx, { ...input.customer, partyId: input.partyId ?? null })).id,
+    });
+    if (!r.ok) return r;
+    return { ok: true, docId: r.docId, created: r.created, docNo: r.docNo, status: r.status, subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบแจ้งหนี้ของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+async function createDormNote(docType: "CREDIT_NOTE" | "DEBIT_NOTE", input: DormExternalNoteInput): Promise<DormExternalNoteResult | DormFail> {
+  try {
+    if (!nonEmpty(input.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.sourceDocId) || !nonEmpty(input.refType) || !nonEmpty(input.refId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงไม่ครบ (ร้าน · หอ · ใบแจ้งหนี้ต้นทาง · ชนิด/เลขอ้างอิง)");
+    if (!nonEmpty(input.reason)) return dormFail("INVALID_INPUT", "ต้องระบุเหตุผลการออกเอกสาร (ตามประกาศสรรพากร)");
+    if (!dormVatOk(input.vat)) return dormFail("INVALID_INPUT", "ค่าตั้ง VAT ของหอไม่ครบ (จดทะเบียนหรือไม่ · ราคารวม VAT หรือไม่)");
+    const lp = dormLinesProblem(input.lines);
+    if (lp) return dormFail("INVALID_LINE", lp);
+    const issueDate = input.issueDate === undefined ? new Date() : dormYmd(input.issueDate);
+    if (!issueDate) return dormFail("INVALID_INPUT", "วันที่ออกเอกสารต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    const src = await dormSourceInvoice(input.tenantId, systemId, input.unitId, input.sourceDocId);
+    if (!src) return dormFail("NOT_FOUND", "ไม่พบใบแจ้งหนี้ต้นทางในบัญชีของหอนี้");
+    // F6 ▸ ต้นทางร่าง/ยกเลิก ⇒ NOT_PAYABLE (ตรวจซ้ำใต้ล็อกใน dormUpsertDocument)
+    if (!src.live) return dormFail("NOT_PAYABLE", "ใบแจ้งหนี้ต้นทางยังเป็นร่างหรือถูกยกเลิกแล้ว — ออกใบลด/เพิ่มหนี้ไม่ได้");
+    const mm = await dormVatMismatch(systemId, input.vat);
+    if (mm) return mm;
+    const r = await dormUpsertDocument({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, docType, refType: input.refType, refId: input.refId,
+      lines: dormDocLines(input.lines), vatMode: dormVatMode(input.vat), issueDate, dueDate: null, draft: false,
+      note: null, adjustReason: input.reason.trim(), sourceDocId: src.id, createdById: input.createdById ?? null,
+      resolveContactId: async () => src.contactId,
+    });
+    if (!r.ok) return r;
+    return { ok: true, docId: r.docId, created: r.created, docNo: r.docNo, subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกเอกสารปรับยอดของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ใบลดหนี้ของใบแจ้งหนี้หอ (ห่อ createDocument CREDIT_NOTE + issueDocument เดิม) — เกินคงค้าง ⇒ EXCEEDS_REMAINING */
+export async function createExternalCreditNote(input: DormExternalNoteInput): Promise<DormExternalNoteResult | DormFail> {
+  return createDormNote("CREDIT_NOTE", input);
+}
+/** ใบเพิ่มหนี้ของใบแจ้งหนี้หอ (ห่อ createDocument DEBIT_NOTE + issueDocument เดิม) */
+export async function createExternalDebitNote(input: DormExternalNoteInput): Promise<DormExternalNoteResult | DormFail> {
+  return createDormNote("DEBIT_NOTE", input);
+}
+
+type DormMoneyCommon = { paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null };
+function dormMoneyProblem(i: DormMoneyCommon): string | null {
+  if (i.channel !== undefined && !DORM_CHANNELS.includes(i.channel)) return "ช่องทางรับเงินต้องเป็น เงินสด · โอน · พร้อมเพย์";
+  if (i.paidAt !== undefined && (!(i.paidAt instanceof Date) || Number.isNaN(i.paidAt.getTime()))) return "วันเวลารับเงินไม่ถูกต้อง";
+  if (i.financeAccountId !== undefined && i.financeAccountId !== null && typeof i.financeAccountId !== "string") return "บัญชีเงินไม่ถูกต้อง";
+  return null;
+}
+const dormAmountOk = (n: unknown): n is number => isSatang(n) && (n as number) > 0 && (n as number) <= MAX_SATANG;
+const dormKeyOk = (k: unknown): k is string => nonEmpty(k) && k.length <= DORM_KEY_MAX;
+
+/**
+ * รับชำระใบแจ้งหนี้ของหอ (ห่อ recordPayment เดิม · R0.6 carry) — applied = min(ยอด, คงค้าง) · ส่วนเกิน = Cr 2110 รายการเดียว (ไม่ปฏิเสธเพราะจ่ายเกิน)
+ *   idempotent ต่อ `idempotencyKey` ภายในร้าน (consumer สลิปส่ง `slip:<slipId>`) · พร้อมกันคีย์เดียว = เงินลงครั้งเดียว
+ */
+export async function recordExternalPayment(input: {
+  tenantId: string; unitId: string; docId: string; amountSatang: number; idempotencyKey: string;
+  paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null; slipId?: string | null; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; paymentId: string | null; appliedSatang: number; excessSatang: number; status: string; outstandingSatang: number } | DormFail> {
+  try {
+    if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+    if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการรับเงิน (ไม่เกิน 200 ตัวอักษร)");
+    if (!nonEmpty(input.docId)) return dormFail("INVALID_INPUT", "ต้องระบุใบแจ้งหนี้ที่รับชำระ");
+    const mp = dormMoneyProblem(input);
+    if (mp) return dormFail("INVALID_INPUT", mp);
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    const note = input.note ?? (input.slipId ? `สลิปโอนเงิน ${input.slipId}` : null);
+    return await dormRecordPayment({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, docId: input.docId, amountSatang: input.amountSatang, key: input.idempotencyKey.trim(),
+      paidAt: input.paidAt ?? new Date(), channel: input.channel ?? "TRANSFER", financeAccountId: input.financeAccountId ?? null,
+      note, createdById: input.createdById ?? null,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "บันทึกรับชำระของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** รับเงินประกันผู้เช่า = JV เดียว Dr เงิน / Cr บัญชีเงินประกัน (หนี้สิน · lazy) · หลายครั้งต่อสัญญาได้ · idempotent ต่อคีย์ */
+export async function postSecurityDeposit(input: {
+  tenantId: string; unitId: string; leaseId: string; amountSatang: number; idempotencyKey: string;
+  paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null; partyId?: string | null; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; entryId: string; entryNo: string; heldSatang: number } | DormFail> {
+  try {
+    if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินประกันต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+    if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการรับเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+    if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+    // F3 ▸ เงินประกันผูกกับผู้เช่า (Party) — ใช้ตรวจตอนปิดว่าหักได้เฉพาะใบของผู้เช่าคนนี้
+    if (!nonEmpty(input.partyId)) return dormFail("INVALID_INPUT", "ต้องระบุผู้เช่าของสัญญา (partyId) — เงินประกันต้องผูกกับผู้เช่า");
+    const mp = dormMoneyProblem(input);
+    if (mp) return dormFail("INVALID_INPUT", mp);
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    return await dormPostSecurityDeposit({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, leaseId: input.leaseId, amountSatang: input.amountSatang, key: input.idempotencyKey.trim(),
+      paidAt: input.paidAt ?? new Date(), channel: input.channel ?? "TRANSFER", financeAccountId: input.financeAccountId ?? null,
+      partyId: input.partyId.trim(), note: input.note ?? null,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "บันทึกรับเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/**
+ * ยอดเงินประกันที่ถือของสัญญา — คิดจาก GL ของ **ทุกสมุดของร้าน** (F4: ย้าย/ตัดลิงก์แล้วยอดไม่หาย) ต่อ (หน่วย · สัญญา) · ข้ามหน่วย/ข้ามร้าน = 0
+ *   F8: ฐานข้อมูลล้ม = โยน error (ไม่กลืนเป็น 0 — 0 ต้องแปลว่า "ไม่มีประกันจริง" เท่านั้น)
+ */
+export async function securityDepositHeld(input: { tenantId: string; unitId: string; leaseId: string }): Promise<number> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return 0;
+  return dormSecurityDepositHeld(input.tenantId, input.unitId, input.leaseId);
+}
+
+/**
+ * ปิดเงินประกัน = JV เดียว (หัก + คืน รายการเดียว · DH มติข้อ 8): Dr ประกัน = ยอดถือ / Cr 1100 = หัก / Cr เงิน = คืน
+ *   ไล่ `applyToDocIds` ตามลำดับ · docId ใดไม่ใช่ของหน่วยนี้ ⇒ NOT_FOUND ทั้งคำขอ · ยอดถือ 0 ⇒ NO_DEPOSIT_HELD · facade ไม่ตรวจกฎหมาย (ใบย้ายออกทำก่อน)
+ */
+export async function settleSecurityDeposit(input: {
+  tenantId: string; unitId: string; leaseId: string; idempotencyKey: string; date?: Date;
+  applyToDocIds: string[]; refund?: { channel?: DormChannel; financeAccountId?: string | null }; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; entryId: string; heldSatang: number; appliedSatang: number; refundSatang: number; tenantOwesSatang: number; applied: { docId: string; amountSatang: number }[] } | DormFail> {
+  try {
+    if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการปิดเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+    if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+    if (!Array.isArray(input.applyToDocIds) || input.applyToDocIds.some((id) => !nonEmpty(id)) || input.applyToDocIds.length > DORM_MAX_LINES)
+      return dormFail("INVALID_INPUT", "รายการใบแจ้งหนี้ที่จะหักไม่ถูกต้อง");
+    const mp = dormMoneyProblem({ paidAt: input.date, channel: input.refund?.channel, financeAccountId: input.refund?.financeAccountId });
+    if (mp) return dormFail("INVALID_INPUT", mp);
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    return await dormSettleSecurityDeposit({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, leaseId: input.leaseId, key: input.idempotencyKey.trim(), date: input.date ?? new Date(),
+      docIds: [...new Set(input.applyToDocIds)], channel: input.refund?.channel ?? "TRANSFER", financeAccountId: input.refund?.financeAccountId ?? null,
+      note: input.note ?? null, createdById: input.createdById ?? null,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ปิดเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/**
+ * F2 ▸ ถอยการปิดเงินประกัน 1 ครั้ง (ระบุด้วย settlementEntryId หรือคีย์ที่ใช้ปิด) — ทางเดียวที่ถูกต้องในการแก้การปิดที่ผิด
+ *   ธุรกรรมเดียว: ยกเลิกแถวหักประกัน (DEPOSIT_APPLY) ที่ชี้ JV ปิด (สถานะใบกลับ · ใบกำกับอัตโนมัติถูกยกเลิก) + กลับรายการ JV ปิด
+ *   ⇒ ยอดถือกลับเท่าก่อนปิด แล้วปิดใหม่ด้วยคีย์ใหม่ได้ · ถอยซ้ำ ⇒ ผลเดิม duplicate:true · ไม่พบ ⇒ NOT_FOUND
+ */
+export async function reverseSecurityDepositSettlement(input: {
+  tenantId: string; unitId: string; leaseId: string; settlementEntryId?: string | null; idempotencyKey?: string | null;
+  reason: string; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; settlementEntryId: string; reversalEntryId: string; voidedPayments: number; heldSatang: number } | DormFail> {
+  try {
+    if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+    if (!nonEmpty(input.settlementEntryId) && !dormKeyOk(input.idempotencyKey))
+      return dormFail("INVALID_INPUT", "ต้องระบุรายการปิดเงินประกันที่จะถอย (เลขใบสำคัญหรือคีย์ที่ใช้ปิด)");
+    if (!nonEmpty(input.reason) || input.reason.trim().length < 3) return dormFail("INVALID_INPUT", "กรุณาระบุเหตุผลในการถอยการปิดเงินประกัน");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    return await dormReverseSettlement({
+      tenantId: input.tenantId, systemId: book.systemId, unitId: input.unitId, leaseId: input.leaseId,
+      entryId: nonEmpty(input.settlementEntryId) ? input.settlementEntryId : null,
+      key: nonEmpty(input.settlementEntryId) ? null : (input.idempotencyKey ?? "").trim(), reason: input.reason,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ถอยการปิดเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.2
