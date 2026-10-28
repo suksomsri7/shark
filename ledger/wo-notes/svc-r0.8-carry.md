@@ -44,3 +44,6 @@ R0.2: หน้าเดิม 3 หน้าเปิดได้ (ไม่ใ
 - `qc-acc-v2-coa` · `qc-acc-v2-journal` แดงบน qc-svc: ได้ 0 แถว (ข้อมูล seed บัญชี V2 ของร้านทดสอบไม่มีบน qc-svc) — ไม่ใช่ผลของ SVC · ใช้เป็น "ไม่แย่ลง" เท่านั้น
 - `qc-acc-v2-security` S9 แดงตั้งแต่ฐาน: จุด raw SQL เกินเพดาน 4 (doc-numbering.ts/gl.ts) + positive control ค้น '%' เจอ 0 (seed หาย) — D.2 ห้ามเพิ่ม raw SQL
 - `qc-acc-v2-payments` exit 0 · gl-inclvat 71/71 · guard 0 · account-api-write-docs 52/52 · payments 32/32 · pos-account 16/16 · crm-c1.5 103/103
+- `qc-crm-c2.7` 74/79 แดงตั้งแต่ฐาน (S7.3 S7.5 S7.6 S9.2 U.3 — ตรวจ static ของโซ่ pos.sale.* ที่ POS เปลี่ยน + ช่องทางขาย QC ไม่มีบน qc-svc) · ไม่ใช่ผล SVC · ใช้ "ไม่แย่ลง"
+- R0.2 D-14 ORACLE-EDIT 69dd2570: ไม่นับแถว RoomOccupancy refType SvcQcScene (ฉากถ่ายภาพของ R0.9)
+- wip/svc-l3 บน origin ยังชี้ประวัติเก่า (5608461a) — push ทับต้องใช้ force ซึ่งถูกปฏิเสธ · งาน R0.9 ไปถึง origin ผ่าน session/svc แทน
