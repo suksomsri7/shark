@@ -6,6 +6,7 @@
 // ด่านสิทธิ์จริงอยู่ใน service (editPermission · ownerOnly/LEGAL · สาขาที่เข้าได้ · ชั้น TENANT) — ที่นี่แค่ประกอบ actor
 // 🔴 ไฟล์ "use server": export async function เท่านั้น (ไม่มี type/const)
 // ─────────────────────────────────────────────────────────────
+import { refresh } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { applyTemplate, resetSetting, setSettings } from "./index";
 import type { RemoveResult, SetResult, SettingChangeInput, SettingsActor, SettingsCtx } from "./types";
@@ -47,16 +48,22 @@ export async function saveSettingsAction(changes: unknown, opts?: { ackLegalWarn
   if (Array.isArray(changes) && changes.length > 200) {
     return { ok: false, code: "VALIDATION", issues: [{ code: "TOO_MANY", messageTh: "บันทึกได้ครั้งละไม่เกิน 200 ค่า" }] };
   }
-  return setSettings(actor, ctx, list, { ackLegalWarn: opts?.ackLegalWarn === true });
+  const r = await setSettings(actor, ctx, list, { ackLegalWarn: opts?.ackLegalWarn === true });
+  if (r.ok) refresh(); // R0.4 ▸ บันทึกสำเร็จ ⇒ โหลดหน้า (server component) ใหม่ — ไม่ใช้ useRouter ฝั่ง client
+  return r;
 }
 
 export async function resetSettingAction(target: { key: string; scope: string; scopeId: string }): Promise<RemoveResult> {
   const { actor, ctx } = await actorOf();
-  return resetSetting(actor, ctx, { key: str(target?.key), scope: str(target?.scope), scopeId: str(target?.scopeId) });
+  const r = await resetSetting(actor, ctx, { key: str(target?.key), scope: str(target?.scope), scopeId: str(target?.scopeId) });
+  if (r.ok) refresh();
+  return r;
 }
 
 export async function applyTemplateAction(input: { unitId: string; domain: string; templateKey: string; overwrite: "KEEP_CUSTOM" | "RESET_ALL" }): Promise<RemoveResult> {
   const { actor, ctx } = await actorOf();
   const overwrite = input?.overwrite === "RESET_ALL" ? "RESET_ALL" : "KEEP_CUSTOM";
-  return applyTemplate(actor, ctx, { unitId: str(input?.unitId), domain: str(input?.domain), templateKey: str(input?.templateKey), overwrite });
+  const r = await applyTemplate(actor, ctx, { unitId: str(input?.unitId), domain: str(input?.domain), templateKey: str(input?.templateKey), overwrite });
+  if (r.ok) refresh();
+  return r;
 }

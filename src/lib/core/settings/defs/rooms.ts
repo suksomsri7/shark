@@ -673,4 +673,60 @@ export const SKIPPED_ANNEX_ROWS: Readonly<Record<string, string>> = {
   "#83": "ศูนย์เชื่อมต่อ = TenantIntegration (R0.5) คีย์เข้ารหัส ไม่ใช่ค่าตั้ง",
 };
 
-defineSettings("rooms", DEFS, { templates: ROOM_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES });
+
+// ─────────────────── ป้ายไทย (R0.4 · หน้าตั้งค่าไม่แสดงค่าดิบ) ───────────────────
+/** ป้ายกลุ่ม (group = ส่วนที่ 2 ของคีย์) — ต้องมีอักษรไทยและไม่ซ้ำกันใน domain */
+const GROUP_LABELS_TH: Record<string, string> = {
+  general: "ประเภทกิจการ",
+  legal: "โหมดตามกฎหมาย",
+  money: "การปัดเศษเงิน",
+  locale: "ภาษา",
+  rent: "ค่าเช่าห้อง",
+  utility: "ค่าน้ำ ค่าไฟ",
+  meter: "การจดมิเตอร์",
+  vat: "ภาษีมูลค่าเพิ่ม",
+  tax: "หัก ณ ที่จ่าย",
+  billing: "การออกบิล",
+  lateFee: "ค่าปรับชำระล่าช้า",
+  notify: "เตือนและทวงค่าเช่า",
+  msg: "แม่แบบข้อความ",
+  services: "ค่าบริการอื่น",
+  lease: "สัญญาเช่า",
+  deposit: "เงินประกันและเงินจอง",
+  moveout: "การย้ายออก",
+  payment: "การรับชำระเงิน",
+  repair: "แจ้งซ่อม",
+  access: "การเข้าห้องและสิทธิ์ดูข้อมูล",
+  parcel: "พัสดุ",
+  hotel: "โรงแรม",
+  ota: "ช่องทางขายห้อง (OTA)",
+};
+
+/** ป้ายตัวเลือกของ def ชนิด enum ที่แสดงในหน้า (ค่าโรงแรมซ่อนอยู่ ไม่ต้องมี) */
+const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
+  "rooms.general.businessType": { APARTMENT: "อพาร์ตเมนต์/หอพักทั่วไป", STUDENT_DORM: "หอพักนักศึกษา", SMALL_HOTEL: "โรงแรมขนาดเล็ก", SERVICED_APT: "เซอร์วิสอพาร์ตเมนต์" },
+  "rooms.legal.mode": { STRICT: "เข้มงวด (บล็อกค่าที่ผิดกฎหมาย)", WARN: "เตือน (ยืนยันพร้อมเหตุผลแล้วบันทึกได้)", OUT_OF_SCOPE: "นอกขอบเขตประกาศ (ต้องมีเหตุผลและหลักฐาน)" },
+  "rooms.money.rounding": { SATANG: "ไม่ปัด (เก็บสตางค์)", BAHT_HALF_UP: "ปัดเป็นบาท (ครึ่งขึ้น)", BAHT_DOWN: "ปัดเศษทิ้งเป็นบาท" },
+  "rooms.locale.docLanguage": { th: "ภาษาไทย", en: "ภาษาอังกฤษ" },
+  "rooms.rent.mode": { MONTHLY: "รายเดือน", NIGHTLY: "รายคืน", BOTH: "ทั้งรายเดือนและรายคืน" },
+  "rooms.utility.elec.metering": { ROOM_METER: "มิเตอร์ประจำห้อง", SHARED_METER: "มิเตอร์รวม", NONE: "ไม่คิดตามมิเตอร์" },
+  "rooms.utility.water.metering": { ROOM_METER: "มิเตอร์ประจำห้อง", SHARED_METER: "มิเตอร์รวม", NONE: "ไม่คิดตามมิเตอร์" },
+  "rooms.utility.elec.method": { ACTUAL_COST: "ตามต้นทุนจริง", TARIFF: "ตามอัตราการไฟฟ้า", FIXED_RATE: "อัตราคงที่ต่อหน่วย", FLAT: "เหมาจ่าย" },
+  "rooms.utility.water.method": { ACTUAL_COST: "ตามต้นทุนจริง", TARIFF: "ตามอัตราการประปา", FIXED_RATE: "อัตราคงที่ต่อหน่วย", FLAT: "เหมาจ่าย" },
+  "rooms.utility.sharedBasis": { PERSON: "ตามจำนวนคน", ROOM: "ตามจำนวนห้อง", AREA: "ตามพื้นที่ห้อง" },
+  "rooms.meter.requirePhoto": { NONE: "ไม่บังคับ", ELEC: "บังคับเฉพาะมิเตอร์ไฟ", BOTH: "บังคับทั้งไฟและน้ำ" },
+  "rooms.billing.rentTiming": { ADVANCE: "เก็บล่วงหน้า", ARREARS: "เก็บย้อนหลัง" },
+  "rooms.billing.utilityTiming": { ARREARS: "เก็บย้อนหลัง (เดือนถัดไป)", SAME_MONTH: "เก็บพร้อมค่าห้องเดือนเดียวกัน" },
+  "rooms.billing.prorate": { ACTUAL_DAYS: "ตามจำนวนวันจริงของเดือน", DIV_30: "หาร 30 วัน", FULL_MONTH: "คิดเต็มเดือน" },
+  "rooms.lateFee.kind": { NONE: "ไม่คิดค่าปรับ", PER_DAY: "คิดเป็นรายวัน", ONCE: "คิดครั้งเดียว", PERCENT: "คิดเป็นเปอร์เซ็นต์" },
+  "rooms.lateFee.waiverApproval": { OWNER_APPROVAL: "ผู้จัดการขอ เจ้าของอนุมัติ", MANAGER_DIRECT: "ผู้จัดการยกเว้นได้เลย", OWNER_ONLY: "เจ้าของยกเว้นได้คนเดียว" },
+  "rooms.lease.reservationAppliesTo": { DEPOSIT: "หักเข้าเงินประกัน", FIRST_RENT: "หักเข้าค่าเช่างวดแรก" },
+  "rooms.lease.signMethod": { ON_SCREEN: "เซ็นบนหน้าจอ", PAPER: "เซ็นบนกระดาษ" },
+  "rooms.payment.partial": { ALLOW_CARRY_FORWARD: "รับได้ ยอดค้างยกไปงวดถัดไป", DENY: "ไม่รับ ต้องจ่ายเต็มจำนวน" },
+  "rooms.access.roomEntry": { PERMISSION_EACH_TIME: "ขออนุญาตทุกครั้ง", STANDING_PERMISSION: "ขออนุญาตไว้ล่วงหน้าในสัญญา" },
+  "rooms.access.managerScope": { UNIT: "ทั้งหอ", BUILDING: "เฉพาะอาคารที่ดูแล" },
+};
+
+const withLabels = (defs: SettingDef[]): SettingDef[] => defs.map((d) => (ENUM_LABELS_TH[d.key] ? { ...d, enumLabelsTh: ENUM_LABELS_TH[d.key] } : d));
+
+defineSettings("rooms", withLabels(DEFS), { templates: ROOM_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES, groupLabelsTh: GROUP_LABELS_TH });

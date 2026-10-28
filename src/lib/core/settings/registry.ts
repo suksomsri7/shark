@@ -23,6 +23,8 @@ import {
 const DEFS = new Map<string, SettingDef>();
 const GROUP_RULES = new Map<string, GroupRule[]>(); // domain → rules
 const SNAPSHOT_DOMAIN = new Map<string, string>(); // kind → domain
+/** R0.4 ▸ ป้ายไทยของกลุ่ม: "<domain>|<group>" → ข้อความ ◂ */
+const GROUP_LABELS = new Map<string, string>();
 /** R0.3 fix 6 ▸ คีย์ที่ legalInput ของ def อ่านผ่าน get (ไม่รวมตัวเอง) — จับตอนลงทะเบียนด้วยค่าเริ่ม ◂ */
 const LEGAL_DEPS = new Map<string, ReadonlySet<string>>();
 
@@ -145,6 +147,14 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
   for (const r of opts.groupRules ?? []) {
     if (!r || typeof r.group !== "string" || typeof r.check !== "function") problems.push("groupRule ไม่ถูกต้อง");
   }
+  for (const [g, label] of Object.entries(opts.groupLabelsTh ?? {})) {
+    if (!nonEmpty(label)) problems.push(`groupLabelsTh ${g}: ป้ายว่าง`);
+  }
+  for (const d of batch.values()) {
+    for (const [v, label] of Object.entries(d.enumLabelsTh ?? {})) {
+      if (!nonEmpty(label)) problems.push(`${d.key}: enumLabelsTh ${v} ป้ายว่าง`);
+    }
+  }
   // R0.3 fix 5 ▸ ค่าเริ่ม/แม่แบบของ def ที่มีกฎหมายต้องผ่าน evaluateLegal โหมด STRICT (ค่าที่ร้านได้โดยไม่แตะอะไรต้องถูกกฎหมาย) ◂
   //   + จดคีย์ที่ legalInput อ่าน (fix 6) — get คืนค่าเริ่มของแม่แบบเดียวกัน (ไม่ระบุ ⇒ _fallback)
   const deps = new Map<string, Set<string>>();
@@ -187,6 +197,12 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
     SNAPSHOT_DOMAIN.set(kind, domain);
   }
   if (opts.groupRules?.length) GROUP_RULES.set(domain, [...(GROUP_RULES.get(domain) ?? []), ...opts.groupRules]);
+  for (const [g, label] of Object.entries(opts.groupLabelsTh ?? {})) GROUP_LABELS.set(`${domain}|${g}`, label.trim());
+}
+
+/** R0.4 ▸ ป้ายไทยของกลุ่ม (ไม่มี ⇒ undefined — ผู้เรียกต้องมีทางสำรอง · กลุ่มไม่มีป้าย = บั๊ก) ◂ */
+export function groupLabelTh(domain: string, group: string): string | undefined {
+  return GROUP_LABELS.get(`${domain}|${group}`);
 }
 
 export function getDef(key: string): SettingDef | undefined {

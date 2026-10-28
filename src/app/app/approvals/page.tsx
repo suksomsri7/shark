@@ -14,6 +14,8 @@ import BulkApprovals from "./BulkApprovals";
 import { posApprovalCards, type PosApprovalCard } from "@/lib/modules/pos/pos-approval";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { formatThaiTime } from "@/lib/ui/date";
+// SVC R0.4 ▸ คำขอ settings.legal_override แสดงสรุปข้อเสนอ (ค่าก่อน/หลัง/เหตุผล) แทนป้ายกลาง ◂
+import { LEGAL_OVERRIDE_ENTITY, legalOverrideSummaries } from "@/lib/core/settings";
 
 const STATUS_MAP = { PENDING: "รออนุมัติ", APPROVED: "อนุมัติแล้ว", REJECTED: "ไม่อนุมัติ", CANCELLED: "ยกเลิก" };
 const statusTone = (s: string): "muted" | "strong" | "danger" =>
@@ -40,6 +42,8 @@ export default async function ApprovalsPage() {
     getTranslations("pos.register.approval.card"),
     getTranslations("pos.register"),
   ]);
+  const legalIds = [...pending, ...myRequests].filter((r) => r.entityType === LEGAL_OVERRIDE_ENTITY).map((r) => r.id);
+  const legalSummaries = legalIds.length ? await legalOverrideSummaries({ tenantId: auth.active.tenantId }, legalIds, m) : new Map();
   const policyName = new Map(policies.map((p) => [p.id, p.name]));
   const now = Date.now();
   const roleText = (r: string | null) => (r === "OWNER" ? tr("roles.owner") : r === "MANAGER" ? tr("roles.manager") : r ? tr("roles.cashier") : "");
@@ -88,9 +92,17 @@ export default async function ApprovalsPage() {
           <BulkApprovals
             items={pending.map((r) => {
               const c = cards.get(r.id);
+              const lg = legalSummaries.get(r.id);
               return c
                 ? { id: r.id, ...posCard(r, c) }
-                : {
+                : lg
+                  ? {
+                      id: r.id,
+                      label: lg.titleTh,
+                      meta: `ขั้นที่ ${r.currentStepOrder} · ยื่นเมื่อ ${r.createdAt.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`,
+                      legal: { codes: lg.codes, lines: lg.lines },
+                    }
+                  : {
                     id: r.id,
                     label: `${entityLabel(r.entityType)}${r.amountSatang != null ? ` · ${formatBaht(r.amountSatang)}` : ""}`,
                     meta: `ขั้นที่ ${r.currentStepOrder} · ยื่นเมื่อ ${r.createdAt.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`,
@@ -113,7 +125,7 @@ export default async function ApprovalsPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">
-                      {cards.get(r.id)?.title ?? entityLabel(r.entityType)}
+                      {cards.get(r.id)?.title ?? legalSummaries.get(r.id)?.titleTh ?? entityLabel(r.entityType)}
                       {r.amountSatang != null ? ` · ${formatBaht(r.amountSatang)}` : ""}
                     </span>
                     <StatusChip value={r.status} map={STATUS_MAP} tone={statusTone(r.status)} />
