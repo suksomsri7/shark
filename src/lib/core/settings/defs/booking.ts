@@ -4,7 +4,8 @@
 //
 // ▸ คีย์ `booking.<group>.<name>` (group = ส่วนที่ 2 ของคีย์) · นาที/วัน = จำนวนเต็ม · % = 0–100 · อัตรา = basis point 0–10000 · เงิน = สตางค์
 // ▸ "—" ในภาคผนวก = null (bool = false)
-// ▸ `_fallback` (ร้านเดิมที่ยังไม่เลือกแม่แบบ) = ค่า BARBER ยกเว้น 3 คีย์ที่ต้องคงพฤติกรรมเดิม (FALLBACK_KEEP_LEGACY)
+// ▸ `_fallback` (ร้านเดิมที่ยังไม่เลือกแม่แบบ) = พฤติกรรมระบบจองรุ่นแรกทุกข้อ (มติผู้ตรวจ B.0 ทาง ก · FALLBACK_LEGACY):
+//   ร้านเดิมต้องไม่เริ่มโดนตัดนัด/ปล่อยคิว/ส่งข้อความเอง — คีย์ที่รุ่นแรกไม่มีกติกา = ค่าที่ทำให้ไม่มีผล · คีย์ที่ไม่อยู่ในแผนที่ = ค่า BARBER (รุ่นแรกเท่ากัน)
 // ▸ ภาคผนวก ก ที่ไม่นิยามที่นี่: #47 = messaging.channelOrder (defs/messaging.ts) · #65 = สิทธิ์ต่อบทบาทใน core/permissions.ts (B.11)
 // ▸ ชั้น RESOURCE / DEVICE / COURSE ยังไม่อยู่ใน SUPPORTED_SCOPES ของ service.ts ⇒ ค่าชั้นนั้นได้จากแม่แบบ/ชั้นบน
 //   จนใบที่ลงทะเบียนชั้น (B.6 อุปกรณ์ · B.13 ทรัพยากร · คอร์ส)
@@ -14,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────
 import { z } from "zod";
 import { defineSettings } from "../registry";
-import type { GroupIssue, GroupRule, ScopeKind, SettingDef, SettingValueType, TemplateDefHidden } from "../types";
+import type { GroupIssue, GroupRule, ScopeKind, SettingDef, SettingValueType, TemplateDef } from "../types";
 
 const EDIT = "booking.settings.edit";
 const MONEY_EDIT = "booking.settings.money";
@@ -23,6 +24,7 @@ const MONEY_EDIT = "booking.settings.money";
 const MIN = z.number().int().min(0).max(525_600); // นาที (≤ 1 ปี)
 const POS_MIN = z.number().int().min(1).max(525_600);
 const DAYS = z.number().int().min(1).max(3650);
+const LATE_MIN = z.number().int().min(0).max(1440); // late.* ≤ 1 วัน
 const PCT = z.number().int().min(0).max(100);
 const BP = z.number().int().min(0).max(10_000);
 const LOCALE = z.enum(["th", "en"]);
@@ -63,11 +65,41 @@ const U_CO = ["UNIT", "COURSE"] as const satisfies readonly ScopeKind[]; // COUR
 
 // ─────────────────── ตัวช่วยสร้าง def ───────────────────
 type Tpl3 = readonly [barber: unknown, spa: unknown, clinic: unknown];
-/** ร้านเดิม (ยังไม่เลือกแม่แบบ) ต้องคงพฤติกรรมเดิม — ไม่ใช้ค่า BARBER */
-const FALLBACK_KEEP_LEGACY: Readonly<Record<string, unknown>> = {
-  "booking.queue.singleLine": false, // เดิมไม่มีโหมดแถวเดียว (CC §6.1)
-  "booking.deposit.amount": { mode: "PER_SERVICE" }, // มัดจำตาม BookingService.depositSatang แบบเดิม
-  "booking.booking.onlineSharePct": 100, // เดิมไม่มีเพดานสัดส่วนออนไลน์
+/**
+ * ร้านเดิม (ยังไม่เลือกแม่แบบ) = พฤติกรรมระบบจองรุ่นแรก (อ่านจาก modules/booking/{service,slots}.ts + components/public-booking.tsx)
+ * คีย์ที่ไม่อยู่ที่นี่ = ค่า BARBER ซึ่งเท่ากับรุ่นแรกหรือไม่มีผลกับรุ่นแรก (เช่น slotStep 15 = SLOT_STEP_MIN · มีตัวเลือก "ใครก็ได้" · ยืนยันอัตโนมัติ)
+ */
+const FALLBACK_LEGACY: Readonly<Record<string, unknown>> = {
+  "booking.staff.hoursSource": ["UNIT_HOURS"], // กรอบเวลา = เวลาร้านเท่านั้น
+  "booking.service.walkIn": { enabled: true, closeAtOrAboveMin: null }, // ไม่ปิดรับตามความยาวบริการ
+  "booking.service.rebookAfterDays": null, // ไม่ชวนกลับ
+  // การจอง
+  "booking.booking.horizonDays": 14, // public-booking.tsx nextDays(14)
+  "booking.booking.minLeadMin": 0, // createAppointment ปฏิเสธเฉพาะเวลาที่ผ่านไปแล้ว
+  "booking.booking.onlineSharePct": 100, // ไม่มีเพดานสัดส่วนออนไลน์
+  "booking.booking.maxOpenPerPhone": null, // ไม่จำกัดนัดต่อเบอร์
+  // มาสาย/ไม่มา — รุ่นแรกไม่มีอัตโนมัติ (พนักงานกด NO_SHOW เอง แล้วริบมัดจำเต็ม = forfeitPct 100 ของ BARBER)
+  "booking.late.afterGrace": "WAIT_NOTIFY_COUNTER", // ไม่ปล่อยช่องเอง
+  "booking.late.noShowAfterMin": null, // ไม่ตั้งไม่มาอัตโนมัติ
+  "booking.late.selfRescheduleMax": 0, // ไม่มีลิงก์จัดการนัด (เลื่อนเองไม่ได้)
+  "booking.late.repeatNoShow": null, // ไม่มีบทลงโทษไม่มาซ้ำ
+  // มัดจำ — พนักงานบันทึกที่เคาน์เตอร์ตาม BookingService.depositSatang (ไม่เก็บออนไลน์)
+  "booking.deposit.method": "NONE",
+  "booking.deposit.amount": { mode: "PER_SERVICE" },
+  "booking.deposit.payWithinMin": null, // ไม่ตัดนัดที่ยังไม่จ่าย
+  // แจ้งเตือน/ข้อความ — รุ่นแรกไม่ส่งข้อความหาลูกค้า
+  "booking.notify.reminderOffsetsMin": [],
+  "booking.notify.delayAlertMin": null,
+  "booking.msg.enabled": Object.fromEntries(
+    ["confirmation", "reminder", "checkedIn", "ticketIssued", "nearTurn", "yourTurn", "delayed", "noShowRebook", "rebookInvite", "courseExpiry"].map((k) => [k, false]),
+  ),
+  // เงิน — ค่าคอมฯ ตามคนขาย (POS) ไม่ใช่ผู้ให้บริการ
+  "booking.money.commissionTo": "OFF",
+  "booking.money.commissionToPayroll": false,
+  // ความเป็นส่วนตัว — ไม่ลบข้อมูลลูกค้าเอง
+  "booking.privacy.walkInRetentionDays": null,
+  // คิว — ไม่รวม walk-in กับนัด (CC §6.1)
+  "booking.queue.singleLine": false,
 };
 
 type RowInput = {
@@ -86,7 +118,7 @@ function row(x: RowInput): SettingDef {
   const money = group === "deposit" || group === "money";
   const privacy = group === "privacy";
   const [barber, spa, clinic] = x.v;
-  const fallback = Object.prototype.hasOwnProperty.call(FALLBACK_KEEP_LEGACY, x.key) ? FALLBACK_KEEP_LEGACY[x.key] : barber;
+  const fallback = Object.prototype.hasOwnProperty.call(FALLBACK_LEGACY, x.key) ? FALLBACK_LEGACY[x.key] : barber;
   return {
     key: x.key,
     domain: "booking",
@@ -218,7 +250,7 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.general.resourceLabel", type: "text", labelTh: "คำเรียกทรัพยากร", schema: LABEL, chain: U, v: ["เก้าอี้", "เตียง/ห้อง", "ห้องตรวจ"] }), // #3
   row({ key: "booking.general.customerLocales", type: "table", labelTh: "ภาษาที่ลูกค้าเลือกได้", schema: uniqArr(LOCALE, 1, 2), chain: U, v: [["th", "en"], ["th", "en"], ["th"]] }), // #4
   row({
-    key: "booking.general.defaultHours", type: "table", labelTh: "เวลาทำการเริ่มต้น (นาทีจากเที่ยงคืน)", // #5
+    key: "booking.general.defaultHours", type: "table", labelTh: "เวลาทำการเริ่มต้น (นาทีจากเที่ยงคืน)", helpTh: "ค่าตั้งต้นของสาขาใหม่ — เวลาทำการในตาราง BookingHours ชนะ", // #5
     schema: z
       .object({ openMin: z.number().int().min(0).max(1440), closeMin: z.number().int().min(0).max(1440) })
       .strict()
@@ -243,13 +275,13 @@ const DEFS: SettingDef[] = [
 
   // ── บริการ (#12–18) ──
   row({ key: "booking.service.durationSource", type: "enum", labelTh: "แหล่งระยะเวลาบริการ", schema: z.enum(["CATALOG"]), chain: SV, v: x3("CATALOG") }), // #12
-  row({ key: "booking.service.cleanupMin", type: "minutes", labelTh: "เวลาเก็บ/ทำความสะอาดหลังบริการ (นาที)", schema: MIN, chain: U_SV_RS, v: [0, 10, 5] }), // #13
+  row({ key: "booking.service.cleanupMin", type: "minutes", labelTh: "เวลาเก็บ/ทำความสะอาดหลังบริการ (นาที)", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้ BookingService.bufferMin (คอลัมน์ชนะ)", schema: MIN, chain: U_SV_RS, v: [0, 10, 5] }), // #13
   row({ key: "booking.service.resourceRule", type: "enum", labelTh: "การใช้ทรัพยากรของบริการ", schema: z.enum(["STAFF_CHAIR", "PER_SERVICE", "EXAM_ROOM"]), chain: SV, v: ["STAFF_CHAIR", "PER_SERVICE", "EXAM_ROOM"] }), // #14
   row({ key: "booking.service.staffCount", type: "int", labelTh: "จำนวนผู้ให้บริการต่องาน", schema: z.number().int().min(1).max(10), chain: SV, v: x3(1) }), // #15
-  row({ key: "booking.service.onlineBookable", type: "bool", labelTh: "จองออนไลน์ได้", schema: z.boolean(), chain: SV, v: x3(true) }), // #16
+  row({ key: "booking.service.onlineBookable", type: "bool", labelTh: "จองออนไลน์ได้", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้ BookingService.bookable (คอลัมน์ชนะ)", schema: z.boolean(), chain: SV, v: x3(true) }), // #16
   row({
     key: "booking.service.walkIn", type: "table", labelTh: "รับ walk-in", // #17
-    helpTh: "closeAtOrAboveMin = ปิดรับ walk-in เมื่อรอถึงกี่นาที (ว่าง = ไม่ปิด)",
+    helpTh: "closeAtOrAboveMin = ปิดรับ walk-in สำหรับบริการที่ยาวตั้งแต่กี่นาที (ว่าง = รับทุกบริการ)",
     schema: z.object({ enabled: z.boolean(), closeAtOrAboveMin: POS_MIN.nullable() }).strict(),
     chain: SV, v: [{ enabled: true, closeAtOrAboveMin: 90 }, { enabled: true, closeAtOrAboveMin: null }, { enabled: true, closeAtOrAboveMin: null }],
   }),
@@ -265,18 +297,18 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.booking.requireConfirm", type: "bool", labelTh: "ร้านต้องยืนยันการจองก่อน", schema: z.boolean(), chain: U_SV, v: [false, false, true] }), // #22
   row({ key: "booking.booking.anyStaffOption", type: "bool", labelTh: "มีตัวเลือก \"ใครก็ได้\"", schema: z.boolean(), chain: U, v: x3(true) }), // #23
   row({ key: "booking.booking.onlineSharePct", type: "percent", labelTh: "สัดส่วนเวลาที่เปิดจองออนไลน์ (%)", schema: PCT, chain: U_ST, v: [60, 60, 80] }), // #24
-  row({ key: "booking.booking.maxOpenPerPhone", type: "int", labelTh: "นัดค้างได้สูงสุดต่อเบอร์", schema: z.number().int().min(1).max(50), chain: U, v: [2, 2, 1] }), // #25
+  row({ key: "booking.booking.maxOpenPerPhone", type: "int", labelTh: "นัดค้างได้สูงสุดต่อเบอร์", schema: z.number().int().min(1).max(50).nullable(), chain: U, v: [2, 2, 1] }), // #25 · null = ไม่จำกัด
   row({ key: "booking.booking.extraFields", type: "enum", labelTh: "ช่องข้อมูลเพิ่มตอนจอง", schema: z.enum(["MASSAGE_NOTE", "SYMPTOM_OPTIONAL"]).nullable(), chain: U_SV, v: [null, "MASSAGE_NOTE", "SYMPTOM_OPTIONAL"] }), // #26
 
   // ── มาสาย/ไม่มา/เลื่อน (#27–32) ──
-  row({ key: "booking.late.graceMin", type: "minutes", labelTh: "ผ่อนผันมาสาย (นาที)", schema: MIN, chain: U, v: [10, 15, 15] }), // #27
+  row({ key: "booking.late.graceMin", type: "minutes", labelTh: "ผ่อนผันมาสาย (นาที)", schema: LATE_MIN, chain: U, v: [10, 15, 15] }), // #27
   row({ key: "booking.late.afterGrace", type: "enum", labelTh: "เมื่อเลยเวลาผ่อนผัน", schema: z.enum(["RELEASE_REQUEUE", "WAIT_NOTIFY_COUNTER"]), chain: U, v: ["RELEASE_REQUEUE", "RELEASE_REQUEUE", "WAIT_NOTIFY_COUNTER"] }), // #28
-  row({ key: "booking.late.noShowAfterMin", type: "minutes", labelTh: "ถือว่าไม่มาหลัง (นาที)", schema: MIN, chain: U, v: [30, 30, 60] }), // #29
-  row({ key: "booking.late.freeChangeBeforeMin", type: "minutes", labelTh: "เลื่อน/ยกเลิกฟรีก่อนนัด (นาที)", schema: MIN, chain: U_SV, v: [180, 720, 120] }), // #30
+  row({ key: "booking.late.noShowAfterMin", type: "minutes", labelTh: "ถือว่าไม่มาหลัง (นาที · ว่าง = ไม่ตั้งอัตโนมัติ)", schema: LATE_MIN.nullable(), chain: U, v: [30, 30, 60] }), // #29
+  row({ key: "booking.late.freeChangeBeforeMin", type: "minutes", labelTh: "เลื่อน/ยกเลิกฟรีก่อนนัด (นาที)", schema: LATE_MIN, chain: U_SV, v: [180, 720, 120] }), // #30
   row({ key: "booking.late.selfRescheduleMax", type: "int", labelTh: "ลูกค้าเลื่อนเองได้สูงสุด (ครั้ง)", schema: z.number().int().min(0).max(20), chain: U, v: [2, 2, 1] }), // #31
   row({
     key: "booking.late.repeatNoShow", type: "table", labelTh: "ไม่มาซ้ำ", // #32
-    schema: z.object({ count: z.number().int().min(1).max(50), windowDays: DAYS, action: z.enum(["REQUIRE_DEPOSIT", "PHONE_ONLY"]) }).strict(),
+    schema: z.object({ count: z.number().int().min(1).max(50), windowDays: DAYS, action: z.enum(["REQUIRE_DEPOSIT", "PHONE_ONLY"]) }).strict().nullable(), // null = ปิด
     chain: U, v: [{ count: 2, windowDays: 90, action: "REQUIRE_DEPOSIT" }, { count: 2, windowDays: 90, action: "REQUIRE_DEPOSIT" }, { count: 3, windowDays: 180, action: "PHONE_ONLY" }],
   }),
 
@@ -293,7 +325,7 @@ const DEFS: SettingDef[] = [
       .nullable(),
     chain: U_SV, v: [{ mode: "PERCENT", bp: 2000, minDurationMin: 90 }, { mode: "PER_SERVICE" }, null],
   }),
-  row({ key: "booking.deposit.payWithinMin", type: "minutes", labelTh: "ต้องจ่ายมัดจำภายใน (นาที)", schema: POS_MIN.nullable(), chain: U, v: [15, 30, null] }), // #35
+  row({ key: "booking.deposit.payWithinMin", type: "minutes", labelTh: "ต้องจ่ายมัดจำภายใน (นาที)", schema: z.number().int().min(1).max(1440).nullable(), chain: U, v: [15, 30, null] }), // #35
   row({ key: "booking.deposit.forfeitPct", type: "percent", labelTh: "ริบมัดจำเมื่อไม่มา (%)", schema: PCT.nullable(), chain: U, v: [100, 100, null] }), // #36
   row({ key: "booking.deposit.memberExemptTier", type: "text", labelTh: "ระดับสมาชิกที่ไม่ต้องมัดจำ", schema: z.string().trim().min(1).max(64).nullable(), chain: U, v: [null, "GOLD", null] }), // #37
 
@@ -307,7 +339,7 @@ const DEFS: SettingDef[] = [
     schema: z.object({ enabled: z.boolean(), maxWaitMin: POS_MIN.nullable() }).strict(),
     chain: U, v: [{ enabled: true, maxWaitMin: 90 }, { enabled: true, maxWaitMin: 60 }, { enabled: true, maxWaitMin: null }],
   }),
-  row({ key: "booking.queue.skipAfterMin", type: "minutes", labelTh: "ข้ามคิวเมื่อเรียกแล้วไม่มา (นาที)", schema: MIN, chain: U, v: [10, 10, 15] }), // #43
+  row({ key: "booking.queue.skipAfterMin", type: "minutes", labelTh: "ข้ามคิวเมื่อเรียกแล้วไม่มา (นาที · ว่าง = ไม่ข้ามเอง)", schema: POS_MIN.nullable(), chain: U, v: [10, 10, 15] }), // #43
   row({ key: "booking.queue.walkInPickStaff", type: "bool", labelTh: "walk-in เลือกผู้ให้บริการได้", schema: z.boolean(), chain: U_DV, v: [true, true, false] }), // #44
   row({ key: "booking.queue.priorityGroups", type: "table", labelTh: "กลุ่มได้คิวก่อน", schema: uniqArr(z.enum(["ELDERLY", "MONK", "DISABLED"]), 0, 3), chain: U, v: [[], [], ["ELDERLY", "MONK", "DISABLED"]] }), // #45
   row({
@@ -315,7 +347,7 @@ const DEFS: SettingDef[] = [
     schema: z.object({ walkIn: PREFIX, appointment: PREFIX, priority: PREFIX.nullable() }).strict(),
     chain: U, v: [{ walkIn: "A", appointment: "P", priority: null }, { walkIn: "A", appointment: "P", priority: null }, { walkIn: "A", appointment: "P", priority: "B" }],
   }),
-  row({ key: "booking.queue.singleLine", type: "bool", labelTh: "โหมดแถวเดียว (นัด + walk-in)", helpTh: "CC §6.1 · ร้านเดิมที่ยังไม่เลือกแม่แบบ = ปิด", schema: z.boolean(), chain: U, v: x3(true) }),
+  row({ key: "booking.queue.singleLine", type: "bool", labelTh: "โหมดแถวเดียว (นัด + walk-in)", helpTh: "รวมคิว walk-in เข้ากับนัดในแถวเดียว (CC §6.1) · ร้านเดิมที่ยังไม่เลือกแม่แบบ = ปิด", schema: z.boolean(), chain: U, v: x3(true) }),
   row({ key: "booking.queue.overrunExtendMin", type: "minutes", labelTh: "ขยายเวลาเมื่องานเกินเวลา (นาที)", schema: MIN, chain: U, v: x3(5) }),
 
   // ── แจ้งเตือน (#48–50) · #47 = messaging.channelOrder ──
@@ -324,7 +356,7 @@ const DEFS: SettingDef[] = [
     schema: uniqArr(z.number().int().min(1).max(43_200), 0, 5), chain: U, v: [[1440, 120], [1440, 180], [1440]],
   }),
   row({ key: "booking.notify.nearTurnAhead", type: "int", labelTh: "แจ้งใกล้ถึงคิวเมื่อเหลือ (คิว)", schema: z.number().int().min(1).max(50), chain: U, v: [2, 2, 3] }), // #49
-  row({ key: "booking.notify.delayAlertMin", type: "minutes", labelTh: "แจ้งคิวล่าช้าเมื่อช้าเกิน (นาที)", schema: MIN, chain: U, v: [15, 15, 30] }), // #50
+  row({ key: "booking.notify.delayAlertMin", type: "minutes", labelTh: "แจ้งคิวล่าช้าเมื่อช้าเกิน (นาที · ว่าง = ไม่แจ้ง)", schema: POS_MIN.nullable(), chain: U, v: [15, 15, 30] }), // #50
 
   // ── ข้อความ (#51) ──
   row({ key: "booking.msg.enabled", type: "table", labelTh: "เปิด/ปิดข้อความแต่ละชนิด", schema: MSG_ENABLED, chain: U, v: [msgOn(["courseExpiry"]), msgOn([]), msgOn(["rebookInvite", "courseExpiry"])] }),
@@ -378,7 +410,7 @@ const DEFS: SettingDef[] = [
 ];
 
 // ─────────────────── แม่แบบ 3 ประเภทร้าน ───────────────────
-const BOOKING_TEMPLATES: readonly TemplateDefHidden[] = [
+const BOOKING_TEMPLATES: readonly TemplateDef[] = [
   { key: "BARBER", version: 1, labelTh: "ตัดผม/เสริมสวย" },
   { key: "SPA", version: 1, labelTh: "นวด/สปา" },
   { key: "CLINIC", version: 1, labelTh: "คลินิก", hiddenUntil: "PHASE_CLINIC" },
@@ -448,8 +480,25 @@ const GROUP_RULES: readonly GroupRule[] = [
         if (!unique(letters))
           out.push({ key: "booking.queue.prefixes", code: "QUEUE_PREFIX_DUPLICATE", messageTh: "ตัวอักษรนำเลขบัตรคิวแต่ละแบบต้องไม่ซ้ำกัน" });
       }
+      const groups = v["booking.queue.priorityGroups"];
+      if (Array.isArray(groups) && groups.length > 0 && isRec(p) && p.priority === null)
+        out.push({ key: "booking.queue.prefixes", code: "PRIORITY_PREFIX_REQUIRED", messageTh: "มีกลุ่มได้คิวก่อน ต้องกำหนดตัวอักษรนำเลขบัตรคิวของกลุ่มนี้" });
       return out;
     },
+  },
+  {
+    group: "course",
+    check: (v): GroupIssue[] =>
+      v["booking.course.enabled"] === true && v["booking.course.policy"] === null
+        ? [{ key: "booking.course.policy", code: "COURSE_POLICY_REQUIRED", messageTh: "เปิดขายคอร์สต้องตั้งนโยบายคอร์ส" }]
+        : [],
+  },
+  {
+    group: "money",
+    check: (v): GroupIssue[] =>
+      v["booking.money.commissionTo"] === "PERFORMER" && v["booking.money.commissionRate"] === null
+        ? [{ key: "booking.money.commissionRate", code: "COMMISSION_RATE_REQUIRED", messageTh: "ให้ค่าคอมฯ ผู้ให้บริการต้องตั้งอัตราค่าคอมฯ" }]
+        : [],
   },
 ];
 
