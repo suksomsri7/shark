@@ -283,6 +283,9 @@ const ALLOWED_EDGES = new Set([
   // SVC R0.8 (ใบ svc-brief-r0.8 §1 · §4): โรงแรมถือห้องจริง (RoomOccupancy) ใน tx เดียวกับการจอง ผ่าน facade `@/lib/modules/rooms` เท่านั้น ·
   //   ทิศทางเดียว (rooms ไม่ import โมดูลใด — ใช้ได้แค่ @/lib/core/*)
   "hotel→rooms",
+  // SVC D.6: มิเตอร์หอ — ห้องว่างผ่าน facade `@/lib/modules/rooms` (occupancyRange/listBuildings) + การ์ดบอร์ดงานผ่านประตูเดียว `kanban/links.createCardFromExternal`
+  "dorm→rooms",
+  "dorm→kanban",
   // chokepoint (2.4 ฝั่งเอกสาร): CRM ออกใบเสนอราคาผ่าน account facade (WO-0010)
   "crm→account",
   // marketing อ่าน segment ลูกค้าจาก member (WO-0013)
