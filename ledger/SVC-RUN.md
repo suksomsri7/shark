@@ -61,7 +61,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 
 ---
 
-## 3. สถานะสด (⬜ ยังไม่เริ่ม · 🔄 กำลังทำ · 🧪 รอผู้คุมรับ · ✅ รับแล้ว · ⏸ รอของภายนอก) — 11/53 = 21%
+## 3. สถานะสด (⬜ ยังไม่เริ่ม · 🔄 กำลังทำ · 🧪 รอผู้คุมรับ · ✅ รับแล้ว · ⏸ รอของภายนอก) — 12/53 = 23%
 
 | ใบ | ชื่อสั้น | ตรวจ | เลน | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|---|---|---|
@@ -94,7 +94,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | B.16 | ความชอบลูกค้า | เบา | | ⬜ | | |
 | B.17 | waitlist + ไม่มาซ้ำ | เบา | | ⬜ | | |
 | B.18 | ปิดเฟส B + แก้สเปก | — | ผู้คุม | ⬜ | | G3 คู่ D.20 · U3 |
-| D.0 | migration svc_d | เบา | | ⬜ | | |
+| D.0 | migration svc_d | เบา | | ✅ | b113a1f4 | 107/108 + ORACLE-EDIT · ดัชนีหนี้ครบ |
 | D.1 | กฎหมาย + สูตรเงิน (pure) | เข้ม | | ✅ | ffe9d12b | 122/122 (pure e6213cde + defs) · 2 ผู้ตรวจ |
 | D.2 | facade บัญชีหอ | เข้ม | | ⬜ | | |
 | D.3 | VAT + ใบกำกับ | เข้ม | | ⬜ | | บล็อก D.15 เฉพาะหอจด VAT |
@@ -170,3 +170,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 28 ต.ค. ~17Z · ✅ **B.0** merge 270897ec · 164/165 (G-9 p3.5 ST2 = หนี้ D3) · ⚠️ ยังไม่ regenerate client ชุดกลาง (l1/l3 ยังใช้ schema ก่อน B.0 — regenerate หลัง R0.7/R0.4 rebase) · tsc ใน l2 แดง TS7006 2 จุด (DealBoard.tsx · ReconcilePanel.tsx) สงสัยชุด node_modules แยก — ตัดสินด้วย tsc ทรีรวมหลัง regenerate
 - 28 ต.ค. ~17:3xZ · ✅ **R0.7** merge 859d2de8 · 89/89 · ชุดแก้หลังผู้ตรวจ 13 ข้อ (retry key LINE · timeout 10s · webLink/vars · pending dedupe · QUOTA · rich menu merge · mask รหัสผูก · 9 SQL/ครั้ง) · ด่านทรีรวม (regenerate client + tsc + ชุด SVC ทั้งหมด) ทำหลัง R0.4 เสร็จ · node_modules แยกเพิ่ม nm-l1 (l1 อยู่บนฐาน B.0 แล้ว)
 - 28 ต.ค. ~18:3xZ · ✅ **R0.4** merge f49d9ce5 · 🟢 **ด่านทรีรวม** (หลัง R0.6/R0.7/B.0/R0.4): ข้อสอบ SVC 11 ชุด + hotel×3 booking×2 approval payment chat-security เขียว · fitness 53 · **tsc 0 บน node_modules จริง** (TS7006 ใน l2 = ผลของชุดแยก) · ORACLE-EDIT bc1c5a1e: B.0 หมวด P ตรวจเฉพาะตอนรับใบ (SKIP เมื่อใบหลังแตะไฟล์) · R0.7 N-16 ใช้คีย์แม่แบบที่ไม่มีจริง
+- 28 ต.ค. ~19Z · ✅ **D.0** merge b113a1f4 (12 ตารางหอ · ดัชนีหนี้ STAY/idempotencyKey/holdExpiresAt/at/buildingId · AccountDocSource DORM) · ORACLE-EDIT: d.0 O-10 RESTRICT=23001 (PG18) · r0.8 S-6 ข้าม d.0 (ลบตั้งใจให้ล้ม) 9fbd6464 · client ชุดกลาง regenerate แล้ว (l3 ใช้ได้)

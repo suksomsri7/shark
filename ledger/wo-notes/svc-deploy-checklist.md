@@ -6,3 +6,4 @@
 - backfill occupancy โรงแรมเดิม `--apply` ทุกร้าน conflicts=0 ก่อนเปิด DORM/ผังห้อง
 - env ใหม่: INTEGRATIONS_CREDENTIALS_KEY (≥32 ตัว · ไม่มีกุญแจสำรอง) · ห้ามตั้ง INTEGRATIONS_FAKE / LINE_API_BASE บน prod
 - ใบหลังที่ใส่ CHECK บนตารางใหญ่: ใช้ NOT VALID แล้ว VALIDATE CONSTRAINT แยกคำสั่ง
+- (D.0) `migrate diff --from-config-datasource` จะเสนอ `DROP INDEX "DormUtilityRate_unitId_buildingId_kind_periodKey_key"` (NULLS NOT DISTINCT ที่ Prisma ไม่รู้จัก) — **ห้ามรับบรรทัดนี้** ในใบ migration ถัดไป · ก่อนสร้าง unique STAY/idempotencyKey บน prod รัน SQL ตรวจซ้ำในคอมเมนต์ของ migration svc_d ก่อน
