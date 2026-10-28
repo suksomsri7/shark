@@ -98,6 +98,18 @@ settleSecurityDeposit(input: { tenantId: string; unitId: string; leaseId: string
   - idempotent ต่อคีย์ · **พร้อมกัน 10 ทาง (คีย์เดียวหรือต่างคีย์) ⇒ ปิดครั้งเดียว** (ล็อกต่อสัญญา) — ตัวอื่นได้ผลเดิม (`duplicate`) หรือ `NO_DEPOSIT_HELD`
   - การอนุมัติหักเกินวงเงิน/หลักฐาน/กฎหมาย = ใบย้ายออก (ใช้ `settleDeposit` ของ D.1 ก่อนเรียก) — facade ไม่ตรวจกฎหมาย
 
+### 3.6 ORACLE-EDIT 28 ต.ค. (review · `/root/svc-runs/fix/d2.md` F1–F8) — ทับ §3.1–§3.4 เมื่อขัดกัน
+- **F1 คีย์กันซ้ำระดับร้านจริง**: คีย์เดียวกัน (รับชำระ · ส่วนเกิน · รับประกัน · ปิดประกัน) ยิงพร้อมกันข้ามหน่วย/ข้ามสมุด ⇒ ลงเงินครั้งเดียว (ตัวอื่น `duplicate` หรือ `IDEMPOTENCY_CONFLICT`) · คีย์เดียวข้ามฟังก์ชัน (จ่าย ↔ รับประกัน ↔ ปิดประกัน) ⇒ `IDEMPOTENCY_CONFLICT` — ข้อสอบ P-13 P-14 (PC-3 = ทีละคำขอ)
+- **F2 ถอยการปิดประกัน**: `reverseSecurityDepositSettlement(input: { tenantId: string; unitId: string; leaseId: string; idempotencyKey?: string /* ของ settle */; settlementEntryId?: string; reason: string; createdById?: string | null }) → Promise<{ ok: true; duplicate: boolean; reversalEntryId: string; heldSatang: number } | Fail>` (export จาก account/index.ts) — tx เดียว: JV กลับรายการของ JV ปิด (สถานะ REVERSED) + ยกเลิกงวดหักประกัน (`voidedAt`) · ใบกลับสถานะเดิม · ยอดถือกลับเท่าเดิม · ซ้ำ = ok ไม่มีแถวใหม่ · ปิดใหม่ (คีย์ใหม่) ได้ · `voidPayment` ของงวดหักประกันยังถูกกัน (ข้อความชี้ฟังก์ชันนี้) — S-13
+- **F3 ผูกผู้เช่า**: `postSecurityDeposit.partyId` **บังคับ** (ไม่มี ⇒ `INVALID_INPUT`) · ปิดประกันหักได้เฉพาะใบ DORM ที่ผู้ติดต่อเป็น Party เดียวกับเงินประกันของสัญญา ไม่ใช่ ⇒ `NOT_FOUND` ทั้งคำขอ — S-14
+- **F4 สมุด**: หน่วยมีลิงก์ BUSINESS เปิดมากกว่า 1 ⇒ ทุกฟังก์ชันหอ `AMBIGUOUS_LINK` (ไม่เลือกเดา · ไม่มีแถว) · `securityDepositHeld` คิดจาก JV ประกันของสัญญา (refType/refId) ทุกสมุดของร้าน — ห้ามตอบ 0 เงียบ (หลายลิงก์: คืนยอดจริงหรือ `AMBIGUOUS_LINK`) · ประกันอยู่สมุดอื่นจากลิงก์ปัจจุบัน ⇒ ปิดประกัน `DEPOSIT_IN_OTHER_BOOK` (ไม่ใช่ `NO_DEPOSIT_HELD`) — S-15 S-16
+- **F5** ใบเพิ่มหนี้ที่อ้างใบ DORM: `recordExternalPayment` จ่ายได้ (Dr เงิน / Cr 1100) และใส่ใน `applyToDocIds` ได้ — N-6
+- **F6** ใบลด/เพิ่มหนี้ที่ต้นทางเป็นร่าง/ยกเลิก ⇒ `NOT_PAYABLE` (ตรวจซ้ำใต้ล็อก) — N-7
+- **F7** กลับรายการ JV refType `DormSecurityDeposit` / `DormPaymentExcess` ทางสมุดรายวันทั่วไป (`reverseJournalEntry`) ⇒ ปฏิเสธข้อความไทยชี้ทางหอ · refType อื่นเหมือนเดิม (PC-5) — G-3
+- **F8** ปิดประกันคีย์เดิมแต่รายการใบ/ยอดต่าง ⇒ `IDEMPOTENCY_CONFLICT` (S-17) · `securityDepositHeld` ห้ามกลืน error ฐานเป็น 0 · ยอดถือไม่ผูกข้อความไทย
+- สมุด VAT จุดภาษี ON_PAYMENT: งวดหักประกันต้องออกใบกำกับอัตโนมัติ + ย้าย 2210→2200 ตามทางเดิม — S-18 (PC-4 = ทางเดิม)
+- โค้ดปฏิเสธเพิ่ม: `AMBIGUOUS_LINK` · `DEPOSIT_IN_OTHER_BOOK` · `NOT_PAYABLE` (ใบลด/เพิ่มหนี้)
+
 ### 3.5 «dorm/account-bridge.ts»
 ```ts
 export function dormBillInvoiceLines(bill: DormBillResult): ExternalDocLine[]
@@ -107,7 +119,8 @@ export function dormBillInvoiceLines(bill: DormBillResult): ExternalDocLine[]
 - pure (ไม่มี db/นาฬิกา/สุ่ม) · import บัญชีเป็น `import type` จาก `@/lib/modules/account` ได้
 
 ## 4. เกณฑ์รับ
-- ข้อสอบ 63 ข้อเขียวทุกข้อ (ก่อนงาน: เขียว 13 = PC-1/PC-2 positive control · C-1..C-5 CRM เดิม · F-5 F-6 S-0 G-1 E-1 Z-1 — **ต้องคงเขียว** · แดง 50 = ยังไม่มีฟังก์ชัน/DORM) · บิลสุ่มมีเมล็ด (`SEED=` ทำซ้ำ · `D2_BILLS_PER_MODE` ค่าเริ่ม 100) · typecheck (ISO_MEM=9000M · heap 7168) · fitness 2 โหมด (มี env / `env -u DATABASE_URL`) · ไม่มี `any` · ตรวจเข้ม 2 รอบ (SVC-RUN §1.4)
+- **ORACLE-EDIT 28 ต.ค. (review): ข้อสอบเพิ่ม 14 ข้อ (P-13 P-14 N-6 N-7 S-13…S-18 G-3 = 11 + positive control PC-3 PC-4 PC-5) รวม 77 ข้อ** · ข้อเดิมที่ใช้ประกันส่ง `partyId` แล้ว (ใบทดสอบผูก Party เดียวกัน)
+- ข้อสอบ 63 ข้อ (เดิม) เขียวทุกข้อ (ก่อนงาน: เขียว 13 = PC-1/PC-2 positive control · C-1..C-5 CRM เดิม · F-5 F-6 S-0 G-1 E-1 Z-1 — **ต้องคงเขียว** · แดง 50 = ยังไม่มีฟังก์ชัน/DORM) · บิลสุ่มมีเมล็ด (`SEED=` ทำซ้ำ · `D2_BILLS_PER_MODE` ค่าเริ่ม 100) · typecheck (ISO_MEM=9000M · heap 7168) · fitness 2 โหมด (มี env / `env -u DATABASE_URL`) · ไม่มี `any` · ตรวจเข้ม 2 รอบ (SVC-RUN §1.4)
 - regression (ผู้คุมรันบน qc-svc · baseline ก่อน builder): `qc-acc-v2-gl-inclvat` `qc-acc-v2-payments` `qc-acc-v2-security` `qc-acc-v2-coa` `qc-acc-v2-journal` `qc-acc-v2-guard` · `qc-account-api-write-docs` `qc-account-api-write-payments` · `qc-pos-account` · CRM ที่ใช้ `createExternalInvoice`: `qc-crm-c1.5` `qc-crm-c2.7` · `qc-svc-d.1` (calc ไม่ถูกแตะ) · `qc-svc-smoke`
 - wo-notes: X1 (ข้ามร้าน/ข้ามหน่วย ⇒ NOT_FOUND/NOT_LINKED) · X3 (ใบแจ้งหนี้/รับชำระ/ประกัน/ปิดประกัน 10 ทาง) · X4 (สลิปเดิมซ้ำ = ครั้งเดียว) · หนี้: การ์ดเชื่อม "หอพัก" ในหน้าเชื่อมต่อ · J4 (รหัส 2140 · NONE→−1 · ค่าปรับไม่มี VAT)
 

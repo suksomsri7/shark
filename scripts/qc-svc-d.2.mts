@@ -120,8 +120,10 @@ const RAND = randomBytes(4).toString("hex");
 const PFX = `svc-d2-${RAND}`;
 const VALID_TAX = "0105561000003";
 const T = { A: "", B: "" };
-const U = { V: "", N: "", X: "", B: "" }; // V = จด VAT · N = ไม่จด · X = ไม่ผูกบัญชี · B = ร้าน B
-const SYSID = { V: "", N: "", B: "" };
+const U = { V: "", N: "", X: "", B: "", W: "", Q: "", R: "", M: "" }; // V = จด VAT · N = ไม่จด · X = ไม่ผูกบัญชี · B = ร้าน B · (ORACLE-EDIT 28 ต.ค. review) W = หน่วยที่ 2 สมุด V · Q = สมุด ON_PAYMENT · R = ย้ายลิงก์ · M = หลายลิงก์
+const SYSID = { V: "", N: "", B: "", Q: "" };
+// ORACLE-EDIT 28 ต.ค. (review) F3: เงินประกันผูกผู้เช่า (Party) — main = ผู้เช่าหลักของข้อสอบ · other = ผู้เช่าคนอื่นหอเดียวกัน · b = ผู้เช่าร้าน B
+const PARTY = { main: "", other: "", b: "" };
 const CRM_SRC = `${PFX}-crm`;
 const VAT_INC = { registered: true, pricesIncludeVat: true };
 const VAT_EXC = { registered: true, pricesIncludeVat: false };
@@ -176,14 +178,15 @@ const simpleLines = (xs: [number, "EXEMPT" | "VAT7" | "NONE"][]): Line[] => xs.m
 function dormInv(tenantId: string, unitId: string, lines: Line[], vat: Any, o: Any = {}): Promise<Any> {
   return call(ACC, "createExternalInvoice", {
     tenantId, sourceKind: "DORM", unitId, refType: "DormBill", refId: o.refId ?? newRef(),
-    customer: { name: o.name ?? `ผู้เช่า ${PFX} ${refN}` }, partyId: null, lines, vat,
+    customer: { name: o.name ?? `ผู้เช่า ${PFX} ${refN}` }, partyId: o.partyId ?? null, lines, vat, // ORACLE-EDIT 28 ต.ค. (review): partyId เลือกได้
     issueDate: o.issueDate ?? TODAY, dueDate: o.dueDate === undefined ? IN7 : o.dueDate, ...(o.extra ?? {}),
   });
 }
 const pay = (tenantId: string, unitId: string, docId: string, amountSatang: number, idempotencyKey: string, o: Any = {}) =>
   call(ACC, "recordExternalPayment", { tenantId, unitId, docId, amountSatang, idempotencyKey, paidAt: new Date(), channel: "TRANSFER", ...o });
+// ORACLE-EDIT 28 ต.ค. (review) F3: postSecurityDeposit ต้องมี partyId — ค่าเริ่ม = ผู้เช่าหลักของร้านนั้น (ส่ง o.partyId ทับได้ · null = ไม่ส่ง)
 const deposit = (tenantId: string, unitId: string, leaseId: string, amountSatang: number, idempotencyKey: string, o: Any = {}) =>
-  call(ACC, "postSecurityDeposit", { tenantId, unitId, leaseId, amountSatang, idempotencyKey, paidAt: new Date(), channel: "TRANSFER", ...o });
+  call(ACC, "postSecurityDeposit", { tenantId, unitId, leaseId, amountSatang, idempotencyKey, paidAt: new Date(), channel: "TRANSFER", partyId: tenantId === T.B ? PARTY.b : PARTY.main, ...o });
 const held = (tenantId: string, unitId: string, leaseId: string) => call(ACC, "securityDepositHeld", { tenantId, unitId, leaseId });
 const settle = (tenantId: string, unitId: string, leaseId: string, applyToDocIds: string[], idempotencyKey: string, o: Any = {}) =>
   call(ACC, "settleSecurityDeposit", { tenantId, unitId, leaseId, idempotencyKey, date: new Date(), applyToDocIds, refund: { channel: "TRANSFER" }, ...o });
@@ -302,9 +305,14 @@ try {
   T.A = ta.id; T.B = tb.id;
   const unit = async (tenantId: string, tag: string) => (await prisma.businessUnit.create({ data: { tenantId, type: "DORM", name: `หอ ${tag} ${RAND}`, slug: `${PFX}-${tag}` } })).id as string;
   U.V = await unit(T.A, "v"); U.N = await unit(T.A, "n"); U.X = await unit(T.A, "x"); U.B = await unit(T.B, "b");
-  const mkSys = async (tenantId: string, name: string, vat: boolean) => {
+  // ORACLE-EDIT 28 ต.ค. (review): หน่วยเพิ่ม W/Q/R/M + Party จริง (ผูกผู้ติดต่อของใบกับเงินประกัน)
+  U.W = await unit(T.A, "w"); U.Q = await unit(T.A, "q"); U.R = await unit(T.A, "r"); U.M = await unit(T.A, "m");
+  PARTY.main = (await prisma.party.create({ data: { tenantId: T.A, name: `ผู้เช่าหลัก ${PFX}` } })).id;
+  PARTY.other = (await prisma.party.create({ data: { tenantId: T.A, name: `ผู้เช่าห้องอื่น ${PFX}` } })).id;
+  PARTY.b = (await prisma.party.create({ data: { tenantId: T.B, name: `ผู้เช่าร้าน B ${PFX}` } })).id;
+  const mkSys = async (tenantId: string, name: string, vat: boolean, extra: Any = {}) => {
     const s = await SYS.createSystem(tenantId, "ACCOUNT", name);
-    await SV.saveSettings(tenantId, s.id, vat ? { orgName: name, taxId: VALID_TAX, vatRegistered: true, vatRateBp: 700 } : { orgName: name, vatRegistered: false });
+    await SV.saveSettings(tenantId, s.id, vat ? { orgName: name, taxId: VALID_TAX, vatRegistered: true, vatRateBp: 700, ...extra } : { orgName: name, vatRegistered: false });
     await GL.ensureAccounting({ tenantId, systemId: s.id });
     return s.id as string;
   };
@@ -316,6 +324,12 @@ try {
   await link(T.A, SYSID.N, "BUSINESS", U.N);
   await link(T.B, SYSID.B, "BUSINESS", U.B);
   await link(T.A, SYSID.V, "CRM", CRM_SRC);
+  // ORACLE-EDIT 28 ต.ค. (review): W ใช้สมุด V ร่วม · Q สมุดจด VAT จุดภาษี ON_PAYMENT · R/M เริ่มที่สมุด V (S-15/S-16 ย้าย/เพิ่มลิงก์เอง)
+  SYSID.Q = await mkSys(T.A, `บัญชีหอ Q ${RAND}`, true, { taxPointBasis: "ON_PAYMENT" });
+  await link(T.A, SYSID.V, "BUSINESS", U.W);
+  await link(T.A, SYSID.Q, "BUSINESS", U.Q);
+  await link(T.A, SYSID.V, "BUSINESS", U.R);
+  await link(T.A, SYSID.V, "BUSINESS", U.M);
   out(`  A=${T.A} B=${T.B} · sysV=${SYSID.V} sysN=${SYSID.N} sysB=${SYSID.B}`);
 
   // ───────── PC positive control (ต้องเขียวตั้งแต่ก่อนมีงาน) ─────────
@@ -577,8 +591,9 @@ try {
   // ───────── P recordExternalPayment ─────────
   out("\n── P รับชำระ ──");
   const T1 = 535_000; // ฿5,350 = ห้อง 5,000 (ยกเว้น) + ส่วนกลาง 350 (VAT รวม)
-  const mk = async (lines: [number, "EXEMPT" | "VAT7" | "NONE"][] = [[500_000, "EXEMPT"], [35_000, "VAT7"]], unitId = U.V, t = T.A, vat: Any = VAT_INC) => {
-    const r = await dormInv(t, unitId, simpleLines(lines), vat);
+  // ORACLE-EDIT 28 ต.ค. (review) F3: ใบของข้อสอบผูก Party (ค่าเริ่ม = ผู้เช่าหลักของร้าน) เพื่อให้หักประกันของผู้เช่าคนเดียวกันได้
+  const mk = async (lines: [number, "EXEMPT" | "VAT7" | "NONE"][] = [[500_000, "EXEMPT"], [35_000, "VAT7"]], unitId = U.V, t = T.A, vat: Any = VAT_INC, partyId?: string) => {
+    const r = await dormInv(t, unitId, simpleLines(lines), vat, { partyId: partyId ?? (t === T.B ? PARTY.b : PARTY.main) });
     if (!r?.ok) throw new Error(`ออกใบแจ้งหนี้ทดสอบไม่ได้: ${codeOf(r)}`);
     return (await docOf(r.docId)) as Any;
   };
@@ -935,10 +950,281 @@ try {
     if (bal !== sum || bal !== 1_350_000 + 500_000 + 500_000) p.push(`ยอดบัญชี ${bal} · Σheld ${sum}`);
   });
 
+  // ═════════ ORACLE-EDIT 28 ต.ค. (review) — ชุดเพิ่มหลังผู้ตรวจ 2 คน (/root/svc-runs/fix/d2.md F1–F8) ═════════
+  // วางหลัง S-12 (ยอดบัญชีประกันสมุด V ของ S-12 นับเฉพาะสัญญาเดิม) · ทุกสัญญาใหม่ใช้ leaseId ใหม่
+  out("\n── ORACLE-EDIT 28 ต.ค. (review) · P-13 P-14 N-6 N-7 S-13…S-18 G-3 ──");
+  const JR: Any = await tryImport("@/lib/modules/account/journal-v2");
+  const REF_DEP = (GL?.DORM_DEPOSIT_REF_TYPE as string) || "DormSecurityDeposit";
+  const REF_EX = (GL?.DORM_EXCESS_REF_TYPE as string) || "DormPaymentExcess";
+  const newLease = (t: string) => `${PFX}-lease-${t}-${randomBytes(3).toString("hex")}`;
+  /** ใบสำคัญใหม่ของหลายสมุดรวมกัน (snapshot ต่อสมุด) */
+  const snapMany = async (ss: string[]) => { const m = new Map<string, Set<string>>(); for (const x of [...new Set(ss)]) m.set(x, await entryIdSet(x)); return m; };
+  const sinceMany = async (m: Map<string, Set<string>>) => { const o: EN[] = []; for (const [x, b] of m) o.push(...(await since(x, b))); return o; };
+  const cashNet = (m: Map<string, number>) => nz(m, "1000") + nz(m, "1010");
+  const reverseSettle = (unitId: string, leaseId: string, o: Any) => call(ACC, "reverseSecurityDepositSettlement", { tenantId: T.A, unitId, leaseId, reason: "หักค่าเสียหายผิดใบ — ถอยเพื่อปิดใหม่", createdById: null, ...o });
+  const paidOff = async (d: Any) => { const r = await pay(T.A, U.V, d.id, d.grandTotal - d.paidTotal, newKey("pre")); if (!r?.ok) throw new Error(`จ่ายเตรียมไม่ได้ ${codeOf(r)}`); };
+
+  // ORACLE-EDIT 28 ต.ค. (review) — positive control ของ P-13: ทีละคำขอ คีย์เดียวข้ามหน่วย ⇒ ตัวที่ 2 IDEMPOTENCY_CONFLICT (ทางนี้ถูกอยู่แล้ว)
+  await step("PC-3", "positive control: คีย์เดียวข้ามหน่วย (V แล้ว W) ทีละคำขอ ⇒ ตัวที่ 2 IDEMPOTENCY_CONFLICT · ไม่มีแถว", async (p) => {
+    const dA = await mk([[10_000, "NONE"]]); const dB = await mk([[10_000, "NONE"]], U.W);
+    const K = newKey("pc3");
+    const a = await pay(T.A, U.V, dA.id, 10_000, K);
+    const c0 = await counts(T.A);
+    const b = await pay(T.A, U.W, dB.id, 10_000, K);
+    if (!a?.ok) p.push(`ตัวแรก ${codeOf(a)}`);
+    if (!refused(b, "IDEMPOTENCY_CONFLICT")) p.push(`ตัวที่ 2 ${codeOf(b)}`);
+    if (!sameCounts(c0, await counts(T.A))) p.push("มีแถวเพิ่ม");
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F1 — B-B1 BLOCKER
+  await step("P-13", "F1/X3/X4: คีย์เดียว 10 ทางพร้อมกัน ข้าม 2 หน่วยสมุดเดียว (V∥W) และข้าม 2 สมุด (V∥N) · ฝั่ง V เป็นส่วนเกินล้วน ⇒ ลงเงินครั้งเดียว (fresh 1 · ที่เหลือ duplicate/IDEMPOTENCY_CONFLICT · Σ เงินเข้า GL = ยอดเดียว)", async (p) => {
+    const AMT = 10_000;
+    for (const [tag, u2, s2, vat2] of [["V∥W", U.W, SYSID.V, VAT_INC], ["V∥N", U.N, SYSID.N, VAT_NO]] as const) {
+      for (let round = 0; round < 3 && p.length < PMAX; round++) {
+        const dA = await mk([[AMT, "NONE"]]); await paidOff(dA); // V: ชำระครบแล้ว ⇒ คำขอนี้เป็นส่วนเกินล้วน (ไม่มีแถวรับชำระให้ unique ชน)
+        const dB = await mk([[AMT, "NONE"]], u2, T.A, vat2);
+        const K = newKey("p13");
+        const snap = await snapMany([SYSID.V, s2]);
+        const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => (i % 2 ? pay(T.A, u2, dB.id, AMT, K) : pay(T.A, U.V, dA.id, AMT, K))));
+        const fresh = rs.filter((r) => r?.ok && r.duplicate === false);
+        const odd = rs.filter((r) => !(r?.ok && r.duplicate === false) && !(r?.ok && r.duplicate === true) && !refused(r, "IDEMPOTENCY_CONFLICT"));
+        const cash = cashNet(net(await sinceMany(snap)));
+        if (fresh.length !== 1 || odd.length || cash !== AMT) p.push(`${tag} รอบ ${round}: fresh ${fresh.length} · แปลก ${odd.map(codeOf).slice(0, 2).join("|") || "—"} · เงินเข้า GL ${cash} (ต้อง ${AMT})`);
+      }
+    }
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F1 — คีย์เดียวข้ามฟังก์ชัน
+  await step("P-14", "F1: คีย์เดียวข้ามฟังก์ชัน (รับชำระ → รับประกัน/ปิดประกัน · รับประกัน → รับชำระ) ⇒ IDEMPOTENCY_CONFLICT ไม่มีแถว · 10 ทางพร้อมกัน จ่าย(W)∥รับประกัน(V) คีย์เดียว ⇒ เงินลงครั้งเดียว", async (p) => {
+    const d = await mk([[100_000, "NONE"]]);
+    const leaseY = newLease("p14y"); await depAmt(leaseY, 200_000);
+    const K1 = newKey("p14a");
+    const a = await pay(T.A, U.V, d.id, 100_000, K1);
+    if (!a?.ok) { p.push(`จ่าย ${codeOf(a)}`); return; }
+    const c0 = await counts(T.A);
+    const x1 = await deposit(T.A, U.V, newLease("p14"), 100_000, K1);
+    const x2 = await settle(T.A, U.V, leaseY, [], K1);
+    if (!refused(x1, "IDEMPOTENCY_CONFLICT")) p.push(`จ่าย→รับประกัน ${codeOf(x1)}`);
+    if (!refused(x2, "IDEMPOTENCY_CONFLICT")) p.push(`จ่าย→ปิดประกัน ${codeOf(x2)}`);
+    if (!sameCounts(c0, await counts(T.A))) p.push("ปฏิเสธ (จ่าย→ประกัน) แล้วมีแถวเพิ่ม");
+    const K2 = newKey("p14b");
+    const dp = await deposit(T.A, U.V, newLease("p14"), 50_000, K2);
+    if (!dp?.ok) p.push(`รับประกัน ${codeOf(dp)}`);
+    const d2 = await mk([[50_000, "NONE"]]);
+    const c2 = await counts(T.A);
+    const x3 = await pay(T.A, U.V, d2.id, 50_000, K2);
+    if (!refused(x3, "IDEMPOTENCY_CONFLICT")) p.push(`รับประกัน→จ่าย ${codeOf(x3)}`);
+    if (!sameCounts(c2, await counts(T.A))) p.push("ปฏิเสธ (ประกัน→จ่าย) แล้วมีแถวเพิ่ม");
+    if ((await held(T.A, U.V, leaseY)) !== 200_000) p.push("held ของสัญญา Y ขยับ");
+    const AMT = 30_000; const K3 = newKey("p14c"); const d3 = await mk([[AMT, "NONE"]], U.W); const leaseZ = newLease("p14z");
+    const snap = await snapMany([SYSID.V]);
+    const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => (i % 2 ? pay(T.A, U.W, d3.id, AMT, K3) : deposit(T.A, U.V, leaseZ, AMT, K3))));
+    const fresh = rs.filter((r) => r?.ok && r.duplicate === false);
+    const cash = cashNet(net(await sinceMany(snap)));
+    if (fresh.length !== 1 || cash !== AMT) p.push(`พร้อมกัน: fresh ${fresh.length} · เงินเข้า GL ${cash} (ต้อง ${AMT}) · ${rs.filter((r) => !r?.ok).map(codeOf).slice(0, 2).join("|")}`);
+  });
+
+  // ORACLE-EDIT 28 ต.ค. (review) F5 — A-M4
+  await step("N-6", "F5: ใบเพิ่มหนี้ของใบ DORM จ่ายผ่าน recordExternalPayment ได้ (Dr 1010 / Cr 1100 · ไม่เป็นส่วนเกิน) และหักในปิดประกันได้", async (p) => {
+    const d = await mk();
+    const dn = await note("createExternalDebitNote", T.A, U.V, d.id, simpleLines([[21_400, "VAT7"]]), VAT_INC);
+    if (!dn?.ok) { p.push(`DN ${codeOf(dn)}`); return; }
+    const snap = await snapMany([SYSID.V]);
+    const r = await pay(T.A, U.V, dn.docId, 21_400, newKey("n6"));
+    if (!r?.ok || r.appliedSatang !== 21_400 || r.excessSatang !== 0 || r.outstandingSatang !== 0) p.push(`จ่าย DN ${codeOf(r)} ${js(r).slice(0, 120)}`);
+    const x = await docOf(dn.docId);
+    if (x.paidTotal !== 21_400) p.push(`DN paidTotal ${x.paidTotal}`);
+    const m = net(await sinceMany(snap));
+    if (nz(m, "1010") !== 21_400 || nz(m, "1100") !== -21_400 || nz(m, "2110") !== 0) p.push(`GL ${js([...m])}`);
+    const ln = newLease("n6"); await depAmt(ln, 50_000);
+    const dn2 = await note("createExternalDebitNote", T.A, U.V, d.id, simpleLines([[10_000, "NONE"]]), VAT_INC);
+    if (!dn2?.ok) { p.push(`DN2 ${codeOf(dn2)}`); return; }
+    const s = await settle(T.A, U.V, ln, [dn2.docId], newKey("n6s"));
+    if (!s?.ok || s.appliedSatang !== 10_000 || s.refundSatang !== 40_000) p.push(`ปิดประกันหัก DN ${codeOf(s)} ${js(s).slice(0, 120)}`);
+    if ((await docOf(dn2.docId)).paidTotal !== 10_000) p.push("DN2 ไม่ถูกหัก");
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F6 — B-M3
+  await step("N-7", "F6: ใบลด/เพิ่มหนี้อ้างใบ DORM ที่ถูกยกเลิก หรือเป็นร่าง ⇒ NOT_PAYABLE · ไม่มีใบลด/เพิ่มหนี้ที่ออกแล้วเพิ่ม · ไม่มี JV", async (p) => {
+    const inv = await mk();
+    const v = await SV.voidDocument(T.A, SYSID.V, inv.id, "ออกบิลผิดห้อง");
+    if (!v?.ok) { p.push(`เตรียม: ยกเลิกใบไม่ได้ ${js(v)}`); return; }
+    const dr0 = await dormInv(T.A, U.V, simpleLines([[50_000, "EXEMPT"]]), VAT_INC, { extra: { draft: true }, partyId: PARTY.main });
+    if (!dr0?.ok) { p.push(`เตรียม: ร่าง ${codeOf(dr0)}`); return; }
+    const issuedNotes = () => prisma.accountDocument.count({ where: { tenantId: T.A, docType: { in: ["CREDIT_NOTE", "DEBIT_NOTE"] }, status: { not: "DRAFT" } } });
+    const n0 = await issuedNotes(); const e0 = (await counts(T.A)).ents;
+    for (const [tag, src] of [["ยกเลิก", inv.id], ["ร่าง", dr0.docId]] as const) {
+      for (const fn of ["createExternalCreditNote", "createExternalDebitNote"] as const) {
+        const r = await note(fn, T.A, U.V, src, simpleLines([[1_000, "NONE"]]), VAT_INC);
+        if (!refused(r, "NOT_PAYABLE")) p.push(`${tag} ${fn === "createExternalCreditNote" ? "CN" : "DN"}: ${codeOf(r)}`);
+      }
+    }
+    if ((await issuedNotes()) !== n0 || (await counts(T.A)).ents !== e0) p.push("มีใบลด/เพิ่มหนี้หรือ JV เพิ่ม");
+  });
+
+  // ORACLE-EDIT 28 ต.ค. (review) F2 — A-M1 · B-M1
+  await step("S-13", "F2: ปิด → (voidPayment งวดหักประกันถูกกัน) → ถอยด้วย reverseSecurityDepositSettlement ⇒ ยอดถือกลับ · ใบกลับ AWAITING_PAYMENT · GL 2140/1100/เงิน สุทธิ 0 · ถอยซ้ำ = ครั้งเดียว · ปิดใหม่ได้ · 1100 สุทธิ = คงค้างเอกสารทุกจังหวะ", async (p) => {
+    const lease = newLease("s13"); await depAmt(lease, 900_000);
+    const snap0 = await snapMany([SYSID.V]);
+    const inv = await mk([[400_000, "NONE"]]);
+    const k = newKey("s13");
+    const snapS = await snapMany([SYSID.V]);
+    const s = await settle(T.A, U.V, lease, [inv.id], k);
+    if (!s?.ok || s.appliedSatang !== 400_000 || s.refundSatang !== 500_000) { p.push(`ปิด ${codeOf(s)}`); return; }
+    const payRow = (await prisma.accountDocumentPayment.findFirst({ where: { documentId: inv.id, voidedAt: null } })) as Any;
+    const cV = await counts(T.A);
+    const vp = payRow ? await SV.voidPayment(T.A, SYSID.V, inv.id, payRow.id, "ยกเลิกงวดหักประกันตรง ๆ") : { ok: true };
+    if (!payRow) p.push("ไม่พบแถวรับชำระงวดหักประกัน");
+    if (vp?.ok !== false || !/[฀-๿]/.test(String(vp?.reason ?? ""))) p.push(`voidPayment งวดหักประกัน ${js(vp).slice(0, 100)}`);
+    if ((await docOf(inv.id)).paidTotal !== 400_000 || !sameCounts(cV, await counts(T.A))) p.push("voidPayment ที่ถูกกันยังเขียนอะไรบางอย่าง");
+    const r = await reverseSettle(U.V, lease, { idempotencyKey: k });
+    if (!r?.ok) { p.push(`ถอย ${codeOf(r)}`); return; }
+    const x = await docOf(inv.id);
+    if (x.status !== "AWAITING_PAYMENT" || x.paidTotal !== 0) p.push(`ใบหลังถอย ${x.status}/${x.paidTotal}`);
+    if ((await held(T.A, U.V, lease)) !== 900_000) p.push(`held หลังถอย ${js(await held(T.A, U.V, lease))}`);
+    const mS = net(await sinceMany(snapS));
+    if (nz(mS, DEP_CODE) !== 0 || nz(mS, "1100") !== 0 || cashNet(mS) !== 0) p.push(`ปิด+ถอย สุทธิไม่ 0: ${js([...mS])}`);
+    if (nz(net(await sinceMany(snap0)), "1100") !== outstanding(x)) p.push(`1100 สุทธิ ${nz(net(await sinceMany(snap0)), "1100")} ≠ คงค้าง ${outstanding(x)}`);
+    const settleJv = (await prisma.accountJournalEntry.findFirst({ where: { id: s.entryId } })) as Any;
+    if (settleJv?.status !== "REVERSED") p.push(`JV ปิด สถานะ ${settleJv?.status}`);
+    if (payRow && !((await prisma.accountDocumentPayment.findUnique({ where: { id: payRow.id } })) as Any)?.voidedAt) p.push("งวดหักประกันไม่ถูกยกเลิก");
+    const c1 = await counts(T.A);
+    const r2 = await reverseSettle(U.V, lease, { idempotencyKey: k });
+    if (!r2?.ok || !sameCounts(c1, await counts(T.A))) p.push(`ถอยซ้ำ ${codeOf(r2)} (ต้อง ok ไม่มีแถวใหม่)`);
+    const s2 = await settle(T.A, U.V, lease, [inv.id], newKey("s13b"));
+    if (!s2?.ok || s2.appliedSatang !== 400_000 || s2.refundSatang !== 500_000) p.push(`ปิดใหม่ ${codeOf(s2)} ${js(s2).slice(0, 100)}`);
+    const y = await docOf(inv.id);
+    if (y.status !== "PAID" || nz(net(await sinceMany(snap0)), "1100") !== outstanding(y)) p.push(`หลังปิดใหม่ ${y.status} · 1100 ${nz(net(await sinceMany(snap0)), "1100")} ≠ ${outstanding(y)}`);
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F3 — A-M2
+  await step("S-14", "F3: postSecurityDeposit ไม่มี partyId ⇒ INVALID_INPUT · ปิดประกันของผู้เช่า A ใส่ใบของผู้เช่า B (หอเดียวกัน) ⇒ NOT_FOUND ทั้งคำขอ ไม่มี JV held ไม่ขยับ · ใบของตัวเอง = หักได้ (positive)", async (p) => {
+    const c0 = await counts(T.A);
+    const np = await deposit(T.A, U.V, newLease("s14n"), 100_000, newKey("s14n"), { partyId: null });
+    if (!refused(np, "INVALID_INPUT")) p.push(`ไม่มี partyId ${codeOf(np)}`);
+    if (!sameCounts(c0, await counts(T.A))) p.push("ไม่มี partyId แล้วมีแถว");
+    const lease = newLease("s14"); await depAmt(lease, 300_000);
+    const own = await mk([[100_000, "NONE"]]);
+    const theirs = await mk([[100_000, "NONE"]], U.V, T.A, VAT_INC, PARTY.other);
+    const c1 = await counts(T.A);
+    for (const [tag, ids] of [["ของคนอื่น", [theirs.id]], ["ปน", [own.id, theirs.id]]] as const) {
+      const r = await settle(T.A, U.V, lease, [...ids], newKey("s14"));
+      if (!refused(r, "NOT_FOUND")) p.push(`${tag}: ${codeOf(r)}`);
+    }
+    if (!sameCounts(c1, await counts(T.A)) || (await held(T.A, U.V, lease)) !== 300_000 || (await docOf(theirs.id)).paidTotal !== 0) p.push("ปฏิเสธแล้วมีผล");
+    const ok = await settle(T.A, U.V, lease, [own.id], newKey("s14ok"));
+    if (!ok?.ok || ok.appliedSatang !== 100_000) p.push(`ใบของตัวเอง ${codeOf(ok)}`);
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F4 — A-M3 · B-M2 (ย้ายลิงก์)
+  await step("S-15", "F4: รับประกันที่สมุด V → ปิดลิงก์ V เปิดลิงก์ N ⇒ securityDepositHeld ยังเห็นยอด (ไม่ใช่ 0) · ปิดประกัน ⇒ DEPOSIT_IN_OTHER_BOOK (ไม่ใช่ NO_DEPOSIT_HELD) · ไม่มี JV ทั้งสองสมุด", async (p) => {
+    const lease = newLease("s15");
+    const d = await deposit(T.A, U.R, lease, 70_000, newKey("s15"));
+    if (!d?.ok) { p.push(`เตรียม: รับประกัน ${codeOf(d)}`); return; }
+    if ((await held(T.A, U.R, lease)) !== 70_000) p.push("positive: held ก่อนย้าย ไม่ใช่ 70,000");
+    await prisma.accountSystemLink.updateMany({ where: { tenantId: T.A, systemId: SYSID.V, linkedKind: "BUSINESS", linkedId: U.R }, data: { enabled: false, archivedAt: new Date() } });
+    await link(T.A, SYSID.N, "BUSINESS", U.R);
+    const h = await held(T.A, U.R, lease);
+    if (h !== 70_000) p.push(`held หลังย้าย ${js(h)} (ต้อง 70,000)`);
+    const snap = await snapMany([SYSID.V, SYSID.N]);
+    const r = await settle(T.A, U.R, lease, [], newKey("s15s"));
+    if (!refused(r, "DEPOSIT_IN_OTHER_BOOK")) p.push(`ปิด ${codeOf(r)}`);
+    if ((await sinceMany(snap)).length) p.push("มี JV");
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F4 — หลายลิงก์
+  await step("S-16", "F4: หน่วยผูก 2 สมุดพร้อมกัน ⇒ ใบแจ้งหนี้/รับชำระ/รับประกัน/ปิดประกัน/ใบลดหนี้ ⇒ AMBIGUOUS_LINK ไม่มีแถว · securityDepositHeld ไม่ตอบ 0 เงียบ", async (p) => {
+    const lease = newLease("s16");
+    const pre = await deposit(T.A, U.M, lease, 50_000, newKey("s16pre"));
+    if (!pre?.ok) { p.push(`positive: ลิงก์เดียวรับประกันได้ ${codeOf(pre)}`); return; }
+    const anyDoc = await mk([[10_000, "NONE"]]);
+    await link(T.A, SYSID.N, "BUSINESS", U.M);
+    const c0 = await counts(T.A);
+    const rs: [string, Any][] = [
+      ["ใบแจ้งหนี้", await dormInv(T.A, U.M, simpleLines([[10_000, "NONE"]]), VAT_INC, { partyId: PARTY.main })],
+      ["รับชำระ", await pay(T.A, U.M, anyDoc.id, 10_000, newKey("s16"))],
+      ["รับประกัน", await deposit(T.A, U.M, newLease("s16b"), 10_000, newKey("s16"))],
+      ["ปิดประกัน", await settle(T.A, U.M, lease, [], newKey("s16"))],
+      ["ใบลดหนี้", await note("createExternalCreditNote", T.A, U.M, anyDoc.id, simpleLines([[1_000, "NONE"]]), VAT_INC)],
+    ];
+    for (const [tag, r] of rs) if (!refused(r, "AMBIGUOUS_LINK")) p.push(`${tag}: ${codeOf(r)}`);
+    if (!sameCounts(c0, await counts(T.A))) p.push("มีแถวเพิ่ม");
+    const h = await held(T.A, U.M, lease);
+    if (!(h === 50_000 || refused(h, "AMBIGUOUS_LINK"))) p.push(`held ${js(h)} (ต้อง 50,000 หรือ AMBIGUOUS_LINK)`);
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F8
+  await step("S-17", "F8: ปิดประกันคีย์เดิมแต่รายการใบต่าง ⇒ IDEMPOTENCY_CONFLICT ไม่มีแถว · รายการเดิม ⇒ duplicate", async (p) => {
+    const lease = newLease("s17"); await depAmt(lease, 500_000);
+    const d1 = await mk([[100_000, "NONE"]]); const d2 = await mk([[100_000, "NONE"]]);
+    const k = newKey("s17");
+    const a = await settle(T.A, U.V, lease, [d1.id], k);
+    if (!a?.ok) { p.push(`ปิด ${codeOf(a)}`); return; }
+    const c0 = await counts(T.A);
+    for (const [tag, ids] of [["เพิ่มใบ", [d1.id, d2.id]], ["ไม่มีใบ", []], ["ใบอื่น", [d2.id]]] as const) {
+      const r = await settle(T.A, U.V, lease, [...ids], k);
+      if (!refused(r, "IDEMPOTENCY_CONFLICT")) p.push(`${tag}: ${codeOf(r)}`);
+    }
+    if (!sameCounts(c0, await counts(T.A)) || (await docOf(d2.id)).paidTotal !== 0) p.push("มีแถว/ใบที่ 2 ถูกหัก");
+    const same = await settle(T.A, U.V, lease, [d1.id], k);
+    if (!same?.ok || same.duplicate !== true || same.entryId !== a.entryId) p.push(`รายการเดิม ${codeOf(same)} dup=${same?.duplicate}`);
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) — positive control ของ S-18 (ทางเดิมของบัญชี V2)
+  await step("PC-4", "positive control: สมุด ON_PAYMENT + recordPayment เดิม ⇒ ใบกำกับภาษีอัตโนมัติ VAT 70.00 · 2210 สุทธิ 0 · Cr 2200 = 7,000", async (p) => {
+    const snap = await snapMany([SYSID.Q]);
+    const d = await SV.createDocument({ tenantId: T.A, systemId: SYSID.Q, docType: "INVOICE", vatMode: "INCLUDE", lines: [{ description: "ค่าห้อง", qty: 1, unitPrice: 400_000, vatRateBp: -1 }, { description: "ค่าน้ำไฟ", qty: 1, unitPrice: 107_000, vatRateBp: 700 }] });
+    const iss = await SV.issueDocument(T.A, SYSID.Q, d.id);
+    if (!iss?.ok) { p.push(`issue ${js(iss)}`); return; }
+    const r = await SV.recordPayment(T.A, SYSID.Q, d.id, { amount: 507_000, channel: "TRANSFER", idempotencyKey: newKey("pc4") });
+    if (!r?.ok) p.push(`pay ${js(r)}`);
+    const ti = (await prisma.accountDocument.findMany({ where: { systemId: SYSID.Q, docType: "TAX_INVOICE", sourceDocId: d.id, status: { notIn: ["VOIDED", "CANCELLED"] } } })) as Any[];
+    if (ti.length !== 1 || ti[0].vatAmount !== 7_000) p.push(`ใบกำกับ ${ti.length} ใบ vat ${ti[0]?.vatAmount}`);
+    const m = net(await sinceMany(snap));
+    if (nz(m, "2210") !== 0 || nz(m, "2200") !== -7_000) p.push(`GL ${js([...m])}`);
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) — B จุดบอดข้อ 4
+  await step("S-18", "สมุด VAT จุดภาษี ON_PAYMENT: ปิดประกันหักใบ (VAT 70.00) ⇒ ใบกำกับภาษีอัตโนมัติของงวดหักประกัน VAT 7,000 · 2210 สุทธิ 0 · Cr 2200 = 7,000 · JV ปิดยังเป็นใบเดียว", async (p) => {
+    const lease = newLease("s18");
+    const dq = await deposit(T.A, U.Q, lease, 600_000, newKey("s18d"));
+    if (!dq?.ok) { p.push(`รับประกัน ${codeOf(dq)}`); return; }
+    const snap = await snapMany([SYSID.Q]);
+    const inv = await mk([[400_000, "EXEMPT"], [107_000, "VAT7"]], U.Q);
+    const s = await settle(T.A, U.Q, lease, [inv.id], newKey("s18"));
+    if (!s?.ok || s.appliedSatang !== 507_000 || s.refundSatang !== 93_000) { p.push(`ปิด ${codeOf(s)} ${js(s).slice(0, 120)}`); return; }
+    const payRow = (await prisma.accountDocumentPayment.findFirst({ where: { documentId: inv.id, voidedAt: null } })) as Any;
+    const ti = (await prisma.accountDocument.findMany({ where: { systemId: SYSID.Q, docType: "TAX_INVOICE", sourceDocId: inv.id, status: { notIn: ["VOIDED", "CANCELLED"] } } })) as Any[];
+    if (ti.length !== 1 || ti[0].vatAmount !== 7_000) p.push(`ใบกำกับ ${ti.length} ใบ vat ${ti[0]?.vatAmount}`);
+    if (ti[0] && payRow && ti[0].sourcePaymentId && ti[0].sourcePaymentId !== payRow.id) p.push("ใบกำกับไม่ได้ผูกงวดหักประกัน");
+    const es = await sinceMany(snap); const m = net(es);
+    if (nz(m, "2210") !== 0 || nz(m, "2200") !== -7_000 || nz(m, "2205") !== 0) p.push(`VAT ${js([...m])}`);
+    const depCodeQ = (await depLedger(SYSID.Q))?.account?.code;
+    if (es.filter((e) => e.lines.some((l) => l.code === depCodeQ && l.debit > 0)).length !== 1) p.push("JV ที่ Dr บัญชีประกันไม่ใช่ 1 ใบ");
+    if (es.some((e) => dr(e) !== cr(e))) p.push("JV ไม่สมดุล");
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) — positive control ของ G-3: ใบสำคัญทั่วไปยังกลับรายการได้ตามเดิม
+  await step("PC-5", "positive control: JV ทั่วไป (postManualJV) กลับรายการผ่าน reverseJournalEntry ได้ตามเดิม", async (p) => {
+    const lid = async (code: string) => ((await prisma.accountLedger.findFirst({ where: { systemId: SYSID.V, code } })) as Any)?.id as string;
+    const j = await GL.postManualJV({ tenantId: T.A, systemId: SYSID.V }, { date: new Date(), memo: "ทดสอบ PC-5", lines: [{ accountId: await lid("1000"), debit: 1_000, credit: 0 }, { accountId: await lid("3000"), debit: 0, credit: 1_000 }] });
+    const r = await JR?.reverseJournalEntry?.({ tenantId: T.A, systemId: SYSID.V }, j.entryId, "ทดสอบกลับรายการ");
+    if (!r?.ok) p.push(`กลับรายการ ${js(r)}`);
+  });
+  // ORACLE-EDIT 28 ต.ค. (review) F7 — A-M5
+  await step("G-3", "F7: กลับรายการ JV ของหอ (รับประกัน · ปิดประกัน · ส่วนเกิน) ทางสมุดรายวันทั่วไป ⇒ ปฏิเสธข้อความไทย · สถานะ POSTED · ไม่มี JV ใหม่", async (p) => {
+    const es = (await entries(SYSID.V)).filter((e) => e.refType === REF_DEP || e.refType === REF_EX);
+    const rows = (await prisma.accountJournalEntry.findMany({ where: { id: { in: es.map((e) => e.id) }, status: "POSTED" }, select: { id: true } })) as Any[];
+    const posted = new Set(rows.map((r) => r.id as string));
+    const pickE = (f: (e: EN) => boolean) => es.find((e) => posted.has(e.id) && f(e));
+    const targets: [string, EN | undefined][] = [
+      ["รับประกัน", pickE((e) => e.refType === REF_DEP && e.lines.some((l) => l.code === DEP_CODE && l.credit > 0))],
+      ["ปิดประกัน", pickE((e) => e.refType === REF_DEP && e.lines.some((l) => l.code === DEP_CODE && l.debit > 0))],
+      ["ส่วนเกิน", pickE((e) => e.refType === REF_EX)],
+    ];
+    for (const [tag, e] of targets) {
+      if (!e) { p.push(`ไม่พบ JV ${tag}`); continue; }
+      const n0 = (await counts(T.A)).ents;
+      const r = await JR?.reverseJournalEntry?.({ tenantId: T.A, systemId: SYSID.V }, e.id, "ทดสอบกลับรายการ JV หอ");
+      const st = ((await prisma.accountJournalEntry.findUnique({ where: { id: e.id }, select: { status: true } })) as Any)?.status;
+      if (r?.ok !== false || !/[฀-๿]/.test(String(r?.reason ?? "")) || st !== "POSTED" || (await counts(T.A)).ents !== n0) p.push(`${tag}: ${js(r).slice(0, 90)} สถานะ ${st}`);
+    }
+  }, "CRITICAL");
+
   // ───────── G ภาพรวม GL · E event ─────────
   out("\n── G · E ──");
   await step("G-1", "ทุกใบสำคัญในสมุดทดสอบ (V · N · B) สมดุล · ไม่มีบรรทัดพักรายการ 9999 · งบทดลองรวม 0", async (p) => {
-    for (const s of [SYSID.V, SYSID.N, SYSID.B]) {
+    for (const s of [SYSID.V, SYSID.N, SYSID.B, SYSID.Q].filter(Boolean)) { // ORACLE-EDIT 28 ต.ค. (review): + สมุด Q
       const es = await entries(s);
       const bad = es.filter((e) => dr(e) !== cr(e));
       if (bad.length) p.push(`${s}: ไม่สมดุล ${bad.length} ใบ (${bad[0].docNo})`);
@@ -990,6 +1276,7 @@ try {
     await del("audit", () => prisma.auditLog.deleteMany({ where: { tenantId } }));
     await del("systemUnit", () => prisma.appSystemUnit.deleteMany({ where: { tenantId } }));
     await del("system", () => prisma.appSystem.deleteMany({ where: { tenantId } }));
+    await del("party", () => prisma.party.deleteMany({ where: { tenantId } })); // ORACLE-EDIT 28 ต.ค. (review)
     await del("unit", () => prisma.businessUnit.deleteMany({ where: { tenantId } }));
     await del("tenant", () => prisma.tenant.delete({ where: { id: tenantId } }));
   }
