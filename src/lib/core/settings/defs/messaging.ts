@@ -32,4 +32,4 @@ const DEFS: SettingDef[] = [
   },
 ];
 
-defineSettings("messaging", DEFS);
+defineSettings("messaging", DEFS, { groupLabelsTh: { channel: "ช่องทางส่งข้อความ", quiet: "เวลางดส่งข้อความ" } });

@@ -8,7 +8,9 @@ import { bulkDecideAction, type BulkDecideState } from "@/lib/modules/approval/a
 // POS P1.15U ▸ ภาพ 21A: คำขอ POS มีการ์ดเต็ม — ยอดขวา · บรรทัดเหตุผล · ชิปแดง "เกินเพดาน" · รายละเอียด (ผู้ขอ/เครื่อง/เวลา/เหตุผล/ถ้าอนุมัติ) · บรรทัดนโยบาย
 //   ข้อความทั้งหมดประกอบที่หน้าเพจ (เซิร์ฟเวอร์ · แปลแล้ว) — ปุ่มอนุมัติ/ปฏิเสธ = ชุดเดิมของหน้านี้ ◂
 type PosCard = { amount: string | null; reason: string | null; chip: string | null; rows: [string, string][]; policy: string | null; detailLabel: string };
-type Item = { id: string; label: string; meta: string; pos?: PosCard };
+// SVC R0.4 ▸ คำขอข้ามคำเตือนกฎหมายในค่าตั้ง: สรุปค่าก่อน → หลัง + เหตุผลต่อบรรทัด (ประกอบที่หน้าเพจ · ค่า PRIVACY ถูกซ่อนแล้ว) ◂
+type LegalCard = { codes: string[]; lines: { key: string; labelTh: string; beforeTh: string; afterTh: string; reasonTh: string | null }[] };
+type Item = { id: string; label: string; meta: string; pos?: PosCard; legal?: LegalCard };
 
 export default function BulkApprovals({ items }: { items: Item[] }) {
   const [state, formAction, pending] = useActionState<BulkDecideState, FormData>(
@@ -95,6 +97,46 @@ export default function BulkApprovals({ items }: { items: Item[] }) {
                   <p className="mt-2 rounded-lg bg-[color:var(--color-accent-soft)] px-3 py-2 font-semibold text-[color:var(--color-accent)]">{i.pos.policy}</p>
                 ) : null}
               </details>
+            </div>
+          ) : i.legal ? (
+            <div
+              key={i.id}
+              data-testid="approval-legal-override-card"
+              className={`flex flex-col gap-2 rounded-xl border px-3 py-3 text-sm ${selected.has(i.id) ? "border-2 border-[color:var(--color-ink)]" : ""}`}
+            >
+              <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  name="requestIds"
+                  value={i.id}
+                  checked={selected.has(i.id)}
+                  onChange={() => toggle(i.id)}
+                  className="mt-0.5 h-5 w-5 shrink-0"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{i.label}</span>
+                  <span className="block truncate text-xs text-[color:var(--color-muted)]">{i.meta}</span>
+                  {refusedOf(i.id) && (
+                    <span role="alert" className="block text-xs text-[color:var(--color-danger)]">
+                      ไม่สำเร็จ: {refusedOf(i.id)}
+                    </span>
+                  )}
+                </span>
+              </label>
+              <p className="rounded-lg bg-[color:var(--color-note)] px-3 py-2 text-xs text-[color:var(--color-note-ink)]">
+                ผู้ขอยอมรับคำเตือนกฎหมายแล้วและขออนุญาตตั้งค่าดังนี้
+              </p>
+              <ul className="flex flex-col gap-2">
+                {i.legal.lines.map((l) => (
+                  <li key={l.key} className="flex min-w-0 flex-col gap-0.5 rounded-lg border px-3 py-2 text-xs">
+                    <span className="font-medium">{l.labelTh}</span>
+                    <span className="break-words">
+                      {l.beforeTh} → <b>{l.afterTh}</b>
+                    </span>
+                    {l.reasonTh && <span className="break-words text-[color:var(--color-muted)]">เหตุผล: {l.reasonTh}</span>}
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : (
             <label

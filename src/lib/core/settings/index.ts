@@ -22,8 +22,11 @@ export {
   defaultFor,
   isOwnerOnly,
   isScopeKind,
+  groupLabelTh,
 } from "./registry";
 export { renderTemplate, checkTemplate } from "./template";
+export { loadSettingsForm, legalOverrideSummaries } from "./form";
+export type { SettingsFormQuery, LegalOverrideSummary } from "./form";
 export {
   resolveSetting,
   resolveSettings,

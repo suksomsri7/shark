@@ -74,9 +74,12 @@ export type SettingDef = {
   effectiveDated?: boolean;
   /** type=template: ตัวแปรที่อนุญาต */
   templateVars?: readonly string[];
-  hiddenUntil?: "PHASE_H";
+  /** ซ่อนจากหน้าค่าตั้ง: "PHASE_H" = รอเฟสโรงแรม · "RETIRED" = เลิกใช้แล้ว (คง def ไว้ให้ค่าเริ่ม/ข้อสอบ) */
+  hiddenUntil?: "PHASE_H" | "RETIRED";
   labelTh: string;
   helpTh?: string;
+  /** type=enum: ป้ายไทยของทุกตัวเลือก (หน้าตั้งค่าไม่แสดงค่าดิบ) — R0.4 */
+  enumLabelsTh?: Record<string, string>;
 };
 
 export type TemplateDef = { key: string; version: number; labelTh: string };
@@ -86,6 +89,8 @@ export type DefineSettingsOptions = {
   templates?: readonly TemplateDef[];
   snapshots?: Record<string, readonly string[]>;
   groupRules?: readonly GroupRule[];
+  /** ป้ายไทยของกลุ่ม (group → ข้อความ) ใช้เป็นหัวการ์ดในหน้าค่าตั้ง — R0.4 */
+  groupLabelsTh?: Record<string, string>;
 };
 
 /** ผู้กระทำ = สมาชิกภาพของร้าน + userId */
@@ -171,6 +176,8 @@ export type SettingChangeRow = {
   approvalId: string | null;
   actorId: string;
   at: Date;
+  /** R0.4 ▸ true = def PRIVACY และผู้ดูไม่ใช่เจ้าของ ⇒ before/after ถูกปิดเป็น null ◂ */
+  masked?: boolean;
 };
 
 /** CC §1.6 — JSON ล้วน (เก็บลงคอลัมน์ Json ได้ตรง ๆ) */

@@ -40,6 +40,7 @@ const DEFS: SettingDef[] = [
   {
     key: "qcfx.legal.mode", domain: "qcfx", group: "legal", type: "enum", labelTh: "โหมดตรวจกฎหมาย",
     schema: z.enum(["STRICT", "WARN", "OUT_OF_SCOPE"]),
+    enumLabelsTh: { STRICT: "เข้มงวด", WARN: "เตือน", OUT_OF_SCOPE: "นอกขอบเขตประกาศ" },
     defaults: { QCFX_A: "STRICT", QCFX_B: "STRICT", _fallback: "STRICT" },
     chain: ["UNIT"], editPermission: EDIT, sensitivity: "LEGAL",
   },
@@ -104,6 +105,15 @@ defineSettings("qcfx", DEFS, {
     { key: "QCFX_A", version: 1, labelTh: "แม่แบบทดสอบ ก" },
     { key: "QCFX_B", version: 2, labelTh: "แม่แบบทดสอบ ข" },
   ],
+  groupLabelsTh: {
+    general: "ทั่วไป (ทดสอบ)",
+    late: "มาสาย (ทดสอบ)",
+    fee: "ค่าใช้จ่าย (ทดสอบ)",
+    legal: "กฎหมาย (ทดสอบ)",
+    deposit: "เงินประกัน (ทดสอบ)",
+    msg: "ข้อความ (ทดสอบ)",
+    owner: "เจ้าของ (ทดสอบ)",
+  },
   snapshots: { "qcfx.doc": ["qcfx.late.graceMin", "qcfx.late.noShowAfterMin", "qcfx.fee.rentSatang", "qcfx.deposit.returnDays"] },
   groupRules: GROUP_RULES,
 });

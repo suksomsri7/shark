@@ -257,7 +257,7 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
 }
 
 /** id ของ entity ชั้นลึกกว่า UNIT ที่อยู่ในสาขานี้ (ใช้กับ RESET_ALL / settingsDiff) */
-async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): Promise<{ scope: ScopeKind; scopeId: string }[]> {
+export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): Promise<{ scope: ScopeKind; scopeId: string }[]> {
   const w = { tenantId, unitId };
   const sel = { id: true } as const;
   const [b, rt, rm, st, sv] = await Promise.all([
@@ -293,6 +293,15 @@ function permissionIssue(actor: SettingsActor, def: SettingDef, scope: ScopeKind
     return { key: def.key, code: "RETROACTIVE_OWNER_ONLY", messageTh: `ตั้ง «${def.labelTh}» ให้มีผลย้อนหลังได้เฉพาะเจ้าของกิจการ` };
   }
   return null;
+}
+
+/**
+ * R0.4 ▸ ตัวตัดสินสิทธิ์ "แก้ค่านี้ที่ชั้นนี้ได้ไหม" ที่หน้าตั้งค่าใช้ร่วมกับ setSettings/resetSetting (ตรรกะเดียว ห้ามเขียนซ้ำ)
+ *   unitId = สาขาของชั้นที่ตั้ง (TENANT ⇒ null) · วันที่มีผลปริยาย (มีผลทันที) ⇒ ไม่เข้าเงื่อนไขย้อนหลัง
+ *   คืน null = แก้ได้ · อื่น = เหตุผล (code เดียวกับที่ setSettings ตอบใน PERMISSION) ◂
+ */
+export function editIssueFor(actor: SettingsActor, def: SettingDef, scope: ScopeKind, unitId: string | null): SettingIssue | null {
+  return permissionIssue(actor, def, scope, unitId, EPOCH, new Date());
 }
 
 const runLegal = (ruleId: LegalRuleId, input: unknown, ctx: LegalCtx): LegalOutcome =>
@@ -351,6 +360,28 @@ export async function resolveSetting(ctx: SettingsCtx, key: string, refs: ScopeR
 /** query เดียวต่อชุด (+ แม่แบบของสาขา) · ผลเท่ากับเรียก resolveSetting ทีละตัว */
 export async function resolveSettings(ctx: SettingsCtx, keys: string[], refs: ScopeRefs, at: Date = new Date()): Promise<Record<string, Resolved>> {
   return (await resolveBatch(prisma, ctx, keys, [refs], at)).outs[0];
+}
+
+/**
+ * R0.4 ▸ ค่าที่มีผล "ที่ชั้น TENANT" (ไม่นับแถวชั้นสาขา/ลึกกว่า) — แม่แบบยังมาจากสาขา unitId ที่ขอ
+ * หน้าตั้งค่าชั้นทั้งร้านใช้อ่านค่า (ไม่เปลี่ยนตรรกะ resolveSettings) ◂
+ */
+export async function resolveSettingsAtTenant(ctx: SettingsCtx, keys: string[], unitId: string, at: Date = new Date()): Promise<Record<string, Resolved>> {
+  const defs = keys.map(mustDef);
+  const ukeys = [...new Set(keys)];
+  const [rawRows, profiles] = await Promise.all([
+    ukeys.length
+      ? prisma.settingValue.findMany({
+          where: { tenantId: ctx.tenantId, key: { in: ukeys }, scope: "TENANT", scopeId: ctx.tenantId, effectiveFrom: { lte: at } },
+          select: ROW_SELECT,
+        })
+      : Promise.resolve([] as Row[]),
+    loadProfilesFor(prisma, ctx.tenantId, [unitId], defs.map((d) => d.domain)),
+  ]);
+  const known: Known = { TENANT: ctx.tenantId };
+  const out: Record<string, Resolved> = {};
+  for (const d of defs) out[d.key] = resolveDef(d, rawRows as Row[], known, at, profiles.get(profKey(unitId, d.domain)));
+  return out;
 }
 
 /** fix 14 ▸ หลายชุด refs (เช่น ตารางงาน 20 ช่าง) ≤ 3 คิวรี · ผลต่อ refs ตามลำดับเดียวกับ refsList ◂ */
@@ -1086,16 +1117,32 @@ export async function applyTemplate(actor: SettingsActor, ctx: SettingsCtx, i: A
   }, TX_OPTS);
 }
 
-/** ประวัติของร้าน · ผู้ที่ไม่ใช่ OWNER และไม่มี "*" เห็นเฉพาะสาขาที่เข้าได้ (แถว TENANT = null ไม่เห็น) */
-export async function settingHistory(ctx: SettingsCtx, q: { unitId?: string; key?: string; actor?: SettingsActor }): Promise<SettingChangeRow[]> {
+/**
+ * ประวัติของร้าน · ผู้ที่ไม่ใช่ OWNER และไม่มี "*" เห็นเฉพาะสาขาที่เข้าได้ (แถว TENANT = null ไม่เห็น)
+ * R0.4 ▸ actor ที่ไม่ใช่ OWNER: แถวของ def PRIVACY ⇒ before/after = null + masked (ค่าลับไม่ออกจากชั้นนี้) · ไม่ส่ง actor = ค่าจริง
+ *   keys = เฉพาะคีย์ในรายการ · includeTenant = รวมแถวชั้นทั้งร้านด้วย (เฉพาะผู้ดูที่ไม่จำกัดสาขา) · limit = จำนวนล่าสุด ◂
+ */
+export async function settingHistory(
+  ctx: SettingsCtx,
+  q: { unitId?: string; key?: string; keys?: readonly string[]; includeTenant?: boolean; limit?: number; actor?: SettingsActor },
+): Promise<SettingChangeRow[]> {
   const where: Prisma.SettingChangeWhereInput = { tenantId: ctx.tenantId };
   if (q.key) where.key = q.key;
-  if (q.actor && !isUnrestricted(q.actor)) {
-    if (q.unitId && !q.actor.unitAccess.includes(q.unitId)) return [];
-    where.unitId = q.unitId ? q.unitId : { in: q.actor.unitAccess.filter((u) => u !== "*") };
-  } else if (q.unitId) where.unitId = q.unitId;
-  const rows = await prisma.settingChange.findMany({ where, orderBy: [{ at: "desc" }, { id: "desc" }], take: 1000 });
-  return rows.map((r) => ({ ...r, before: r.before, after: r.after }));
+  else if (q.keys) where.key = { in: [...q.keys] };
+  const restricted = !!q.actor && !isUnrestricted(q.actor);
+  if (restricted) {
+    if (q.unitId && !q.actor?.unitAccess.includes(q.unitId)) return [];
+    where.unitId = q.unitId ? q.unitId : { in: (q.actor?.unitAccess ?? []).filter((u) => u !== "*") };
+  } else if (q.unitId) {
+    where.unitId = q.includeTenant ? undefined : q.unitId;
+    if (q.includeTenant) where.OR = [{ unitId: q.unitId }, { unitId: null, scope: "TENANT" }];
+  }
+  const rows = await prisma.settingChange.findMany({ where, orderBy: [{ at: "desc" }, { id: "desc" }], take: q.limit && q.limit > 0 ? q.limit : 1000 });
+  const hide = !!q.actor && q.actor.role !== "OWNER";
+  return rows.map((r) => {
+    if (hide && getDef(r.key)?.sensitivity === "PRIVACY") return { ...r, before: null, after: null, masked: true };
+    return { ...r, before: r.before, after: r.after };
+  });
 }
 
 // ─────────────────── ผลอนุมัติ settings.legal_override (ใบสั่ง §5.4 + fix 1/2/3/15) ───────────────────
