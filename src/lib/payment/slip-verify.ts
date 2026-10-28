@@ -424,8 +424,6 @@ async function judge(c: SlipCtx, p: ParsedSubmit, imageHash: string, deps: { now
 const LITE = { id: true, imageHash: true, status: true, reviewReason: true, unitId: true, domain: true, refType: true, refId: true, expectedSatang: true } as const;
 type SlipRowLite = { id: string; imageHash: string; status: string; reviewReason: string | null; unitId: string; domain: string; refType: string; refId: string; expectedSatang: number };
 
-const keyWhere = (tenantId: string, key: string): Prisma.PaymentSlipWhereInput => ({ tenantId, checks: { path: ["idempotencyKey"], equals: key } });
-
 /** fix 2 ▸ replay ต้องตรงทั้งรูป · สาขา · ประเภท · เลขรายการ · ยอดคาด — ต่างข้อใด = IDEMPOTENCY_CONFLICT ◂ */
 function replayOf(row: SlipRowLite, p: ParsedSubmit, imageHash: string): SubmitSlipResult {
   const same =
@@ -439,8 +437,13 @@ function replayOf(row: SlipRowLite, p: ParsedSubmit, imageHash: string): SubmitS
   return { ok: true, slipId: row.id, status: isSlipStatus(row.status) ? row.status : "NEEDS_REVIEW", reasons: reasonsOf(row.reviewReason), replayed: true };
 }
 
-const findByKey = (db: Prisma.TransactionClient | typeof prisma, tenantId: string, key: string) =>
-  db.paymentSlip.findFirst({ where: keyWhere(tenantId, key), orderBy: { createdAt: "asc" }, select: LITE });
+/** SVC D.0 ▸ ค้นด้วยรูปนิพจน์เดียวกับดัชนี unique "PaymentSlip_tenantId_idempotencyKey_key" (tenantId, (checks->>'idempotencyKey'))
+ *  — JSON path ของ Prisma ใช้ดัชนีนี้ไม่ได้ · unique ⇒ มีได้แถวเดียว แล้วอ่านแถวด้วย select LITE เดิม ◂ */
+async function findByKey(db: Prisma.TransactionClient | typeof prisma, tenantId: string, key: string): Promise<SlipRowLite | null> {
+  const hit = await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "PaymentSlip" WHERE "tenantId" = ${tenantId} AND ("checks"->>'idempotencyKey') = ${key} LIMIT 1`;
+  if (hit.length === 0) return null;
+  return db.paymentSlip.findFirst({ where: { id: hit[0].id, tenantId }, select: LITE });
+}
 
 type EventInput = { slipId: string; domain: string; refType: string; refId: string; amountSatang: number | null; status: SlipStatus };
 async function emitSlipEvent(tx: Prisma.TransactionClient, tenantId: string, unitId: string, kind: keyof typeof SLIP_EVENTS, e: EventInput): Promise<void> {

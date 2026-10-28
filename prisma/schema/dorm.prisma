@@ -1,0 +1,337 @@
+// SVC D.0 ▸ หอพัก (DH A2–A10 · CC §6.2 §9) — migration svc_d
+// กติการ่วม: เงิน = Int สตางค์ (ชื่อลงท้าย Satang · CHECK >= 0) · id ข้ามโมดูล (party/file/user/doc/card/approval) = String หลวม ไม่มี FK
+//           periodKey = "YYYY-MM" (CHECK ~ '^[0-9]{4}-(0[1-9]|1[0-2])$') · @db.Date = วันไทย · endDate ไม่รวมวันจบ (แบบ RoomOccupancy)
+// ไม่มีตารางสลิปของหอ (→ PaymentSlip) · ไม่มีตารางรหัสผูกของหอ (→ ChatLinkCode) · ค่าที่ล็อกเก็บใน policySnapshot (CC §1.6 §9)
+// 🔴 CHECK ทุกตัว + ดัชนี partial/NULLS NOT DISTINCT เป็น SQL มือท้าย migration svc_d (Prisma ประกาศไม่ได้ · migrate diff ไม่เสนอ DROP)
+//    ชื่อ CHECK = "<Table>_<col>_check" (เงิน/สถานะ/periodKey/ช่วงวัน) — ดูรายการเต็มใน prisma/migrations/*_svc_d/migration.sql
+
+// สัญญาเช่า (DH A2)
+// SQL มือ: DormLease_status_check IN ('DRAFT','ACTIVE','NOTICE','ENDED','CANCELLED') · DormLease_dates_check ("endDate" IS NULL OR "endDate" > "startDate")
+//          DormLease_{rent,commonFee,deposit,advanceRent,bookingFee}Satang_check >= 0
+model DormLease {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String
+  roomId            String
+  room              HotelRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  partyId           String // ผู้เช่าหลัก (Party)
+  coTenants         Json? // ผู้พักร่วม/รถ
+  status            String    @default("DRAFT") // DRAFT | ACTIVE | NOTICE | ENDED | CANCELLED
+  termType          String    @default("FIXED") // D.5 เคาะค่า
+  startDate         DateTime  @db.Date
+  endDate           DateTime? @db.Date // null = ไม่กำหนดวันจบ (D.5)
+  rentSatang        Int
+  commonFeeSatang   Int       @default(0)
+  depositSatang     Int       @default(0)
+  advanceRentSatang Int       @default(0)
+  bookingFeeSatang  Int       @default(0) // เงินจองก่อนเข้า (หักเข้าประกันวันเข้า)
+  occupancyId       String? // RoomOccupancy(kind LEASE)
+  signedAt          DateTime?
+  signatureFileId   String?
+  templateKey       String?
+  templateVersion   Int?
+  moveInPhotos      Json? // fileId[]
+  depositDocumentId String?
+  previousLeaseId   String? // ต่อสัญญา/ย้ายห้อง
+  endReason         String?
+  createdById       String?
+  endedAt           DateTime?
+  policySnapshot    Json? // SNAPSHOT_KEYS.lease (dueDay/ค่าปรับ อ่านจากที่นี่)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  bills   DormBill[]
+  moveOut DormMoveOut?
+
+  @@index([tenantId, unitId, status])
+  @@index([roomId])
+  @@index([partyId])
+}
+
+// มิเตอร์ไฟ/น้ำ (DH A3)
+// SQL มือ: DormMeter_kind_check IN ('ELEC','WATER') · DormMeter_role_check IN ('ROOM','MAIN') · DormMeter_role_room_check (("role" = 'ROOM') = ("roomId" IS NOT NULL))
+//          DormMeter_digits_check (IS NULL OR BETWEEN 1 AND 12) · DormMeter_startReading_check >= 0
+//          UNIQUE "DormMeter_roomId_kind_active_key" ON ("roomId","kind") WHERE "removedAt" IS NULL AND "roomId" IS NOT NULL
+model DormMeter {
+  id           String     @id @default(cuid())
+  tenantId     String
+  unitId       String
+  roomId       String? // null = มิเตอร์หลัก
+  room         HotelRoom? @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  buildingId   String? // มิเตอร์หลักต่ออาคาร (id หลวม)
+  kind         String // ELEC | WATER
+  role         String     @default("ROOM") // ROOM | MAIN
+  serial       String?
+  digits       Int? // หลักหน้าปัด (rollover · calc.ts MeterSegment)
+  startReading Int        @default(0)
+  installedAt  DateTime   @default(now())
+  removedAt    DateTime? // null = ใช้งานอยู่
+  replacedById String? // มิเตอร์ตัวใหม่ที่มาแทน
+  note         String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  readings DormMeterReading[]
+
+  @@index([tenantId, unitId])
+}
+
+// เลขมิเตอร์
+// SQL มือ: DormMeterReading_periodKey_check · DormMeterReading_kind_check IN ('PERIOD','MOVE_IN','MOVE_OUT','REPLACE')
+//          DormMeterReading_source_check IN ('MANUAL','AI','IOT','IMPORT') · DormMeterReading_value_check >= 0
+//          UNIQUE "DormMeterReading_meterId_periodKey_period_key" ON ("meterId","periodKey") WHERE "kind" = 'PERIOD'
+model DormMeterReading {
+  id            String    @id @default(cuid())
+  tenantId      String
+  unitId        String
+  meterId       String
+  meter         DormMeter @relation(fields: [meterId], references: [id], onDelete: Restrict)
+  leaseId       String?
+  periodKey     String // "YYYY-MM"
+  kind          String    @default("PERIOD") // PERIOD | MOVE_IN | MOVE_OUT | REPLACE
+  value         Int
+  aiValue       Int? // ค่าที่ AI เสนอ (D.14)
+  photoFileId   String?
+  readAt        DateTime  @default(now())
+  readById      String?
+  source        String    @default("MANUAL") // MANUAL | AI | IOT | IMPORT
+  flag          String? // ป้ายผิดปกติ (D.6 เคาะค่า)
+  flagNote      String?
+  confirmedById String?
+  confirmedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, unitId, periodKey])
+  @@index([meterId, readAt])
+}
+
+// บิลการไฟฟ้า/ประปารายเดือนของหอ (DH A4)
+// SQL มือ: DormUtilityRate_kind_check · DormUtilityRate_periodKey_check · DormUtilityRate_mode_check IN ('ACTUAL_COST','TARIFF','FIXED_RATE','FLAT')
+//          DormUtilityRate_{authorityBillSatang,rateSatangPerUnit,authorityUnits}_check (IS NULL OR >= 0)
+//          UNIQUE "DormUtilityRate_unitId_buildingId_kind_periodKey_key" ON ("unitId","buildingId","kind","periodKey") NULLS NOT DISTINCT
+//          (ไม่มี compound unique ใน Prisma ⇒ D.7 ใช้ findFirst + create ใน tx)
+//          ⚠️ migrate diff แบบ --from-config-datasource (DB → schema) เสนอ DROP INDEX ตัวนี้ (ตรวจ 28 ต.ค.) — ห้ามรับ · ลบบรรทัด DROP ทิ้ง
+//             (diff แบบ schema → schema ตามกติกา SVC-RUN ไม่เสนอ · partial index ตัวอื่นของใบนี้ไม่ถูกเสนอทั้งสองแบบ)
+model DormUtilityRate {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  unitId              String
+  buildingId          String? // null = ทั้งหน่วย
+  kind                String // ELEC | WATER
+  periodKey           String
+  mode                String // = rooms.utility.*.method
+  authorityBillSatang Int?
+  authorityUnits      Int?
+  rateSatangPerUnit   Int? // ผล actualCostRate (สตางค์/หน่วย ปัดลง)
+  billPhotoFileId     String?
+  enteredById         String?
+  legalCheck          Json? // ผลตัวตรวจกฎหมายรายเดือน (D.7)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([tenantId, unitId])
+}
+
+// ตารางอัตรา กฟภ./กฟน./ประปา มีวันที่มีผล — ไม่มี tenantId/unitId (global · ใช้ร่วมทุกร้าน · เขียนเฉพาะ backoffice/สคริปต์แพลตฟอร์ม)
+// SQL มือ: DormAuthorityTariff_kind_check · DormAuthorityTariff_dates_check (IS NULL OR "effectiveTo" > "effectiveFrom")
+//          DormAuthorityTariff_serviceSatang_check (IS NULL OR >= 0) · ftE4 ติดลบได้ (ไม่มี CHECK)
+model DormAuthorityTariff {
+  id            String    @id @default(cuid())
+  authority     String // "PEA" | "MEA" | "PWA" | "MWA" | …
+  kind          String // ELEC | WATER
+  tariffCode    String // ประเภทผู้ใช้ เช่น "1.1.2"
+  label         String?
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+  tiers         Json // [{uptoUnits:int|null, rateE4:int}] ตรง TariffTier ใน calc.ts
+  ftE4          Int       @default(0) // ติดลบได้
+  serviceSatang Int? // ค่าบริการรายเดือน
+  sourceUrl     String?
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([authority, kind, tariffCode, effectiveFrom])
+}
+
+// รอบออกบิล (DH A5) — 1 รอบ/หน่วย/งวด
+// SQL มือ: DormBillRun_status_check IN ('DRAFT','REVIEW','SENT','CLOSED') · DormBillRun_periodKey_check · DormBillRun_{billCount,totalSatang}_check >= 0
+model DormBillRun {
+  id              String    @id @default(cuid())
+  tenantId        String
+  unitId          String
+  periodKey       String
+  status          String    @default("DRAFT") // DRAFT | REVIEW | SENT | CLOSED
+  issueDate       DateTime? @db.Date
+  dueDate         DateTime? @db.Date
+  scheduledSendAt DateTime?
+  sentAt          DateTime?
+  billCount       Int       @default(0)
+  totalSatang     Int       @default(0)
+  progress        Json? // ทำเป็นชุด รันซ้ำต่อได้ (D.8)
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  bills DormBill[]
+
+  @@unique([unitId, periodKey])
+  @@index([tenantId, unitId, status])
+}
+
+// บิลรายห้อง — 1 สัญญา × 1 งวด = 1 บิล (X3)
+// SQL มือ: DormBill_status_check IN ('DRAFT','HELD','SENT','PARTIALLY_PAID','PAID','VOID') · DormBill_periodKey_check
+//          DormBill_{subtotal,total,vat,paid,carried}Satang_check >= 0 (ไม่บังคับความสัมพันธ์ระหว่างยอด — จ่ายเกินได้)
+model DormBill {
+  id                String      @id @default(cuid())
+  tenantId          String
+  unitId            String
+  runId             String
+  run               DormBillRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  leaseId           String
+  lease             DormLease   @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  roomId            String // หลวม (ค้น/รายงาน)
+  partyId           String // หลวม
+  periodKey         String
+  status            String      @default("DRAFT") // DRAFT | HELD | SENT | PARTIALLY_PAID | PAID | VOID
+  holdReason        String? // HELD = พักบิล (มิเตอร์ผิดปกติ)
+  lines             Json // snapshot บรรทัด (DormBillLine[] ของ calc.ts)
+  subtotalSatang    Int
+  vatSatang         Int         @default(0)
+  totalSatang       Int
+  paidSatang        Int         @default(0)
+  carriedSatang     Int         @default(0) // ยอดยกไปบิลถัดไป
+  dueDate           DateTime?   @db.Date
+  accountDocumentId String?
+  paymentRequestId  String?
+  sentVia           String?
+  sentAt            DateTime?
+  paidAt            DateTime?
+  policySnapshot    Json? // SNAPSHOT_KEYS.bill
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([leaseId, periodKey])
+  @@unique([accountDocumentId])
+  @@index([runId])
+  @@index([tenantId, unitId, periodKey])
+  @@index([tenantId, unitId, status])
+  @@index([partyId])
+}
+
+// แจ้งย้ายออก/คืนประกัน (DH A9) — 1 สัญญา = 1 แถว (ยกเลิกแล้วแจ้งใหม่ = ใช้แถวเดิม)
+// SQL มือ: DormMoveOut_status_check IN ('NOTICE','INSPECTED','SETTLED','REFUNDED','CANCELLED') · DormMoveOut_{deposit,deduct,refund}Satang_check >= 0
+model DormMoveOut {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  unitId               String
+  leaseId              String    @unique
+  lease                DormLease @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  status               String    @default("NOTICE") // NOTICE | INSPECTED | SETTLED | REFUNDED | CANCELLED
+  noticeAt             DateTime  @default(now())
+  moveOutDate          DateTime  @db.Date
+  inspection           Json?
+  deductions           Json?
+  depositSatang        Int       @default(0)
+  deductSatang         Int       @default(0)
+  refundSatang         Int       @default(0)
+  refundDueAt          DateTime?
+  refundedAt           DateTime?
+  settlementDocumentId String?
+  approvalId           String?
+  createdById          String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([tenantId, unitId, status])
+  @@index([refundDueAt]) // งานนับถอยหลังคืนประกันข้ามร้าน
+}
+
+// แจ้งซ่อม (DH A10)
+// SQL มือ: DormRepair_status_check IN ('OPEN','IN_PROGRESS','DONE','CANCELLED') · DormRepair_rating_check (IS NULL OR BETWEEN 1 AND 5)
+model DormRepair {
+  id            String    @id @default(cuid())
+  tenantId      String
+  unitId        String
+  roomId        String // หลวม
+  leaseId       String?
+  partyId       String?
+  category      String
+  text          String
+  files         Json?
+  preferredTime String?
+  allowEntry    Boolean   @default(false)
+  status        String    @default("OPEN") // OPEN | IN_PROGRESS | DONE | CANCELLED
+  kanbanCardId  String?
+  doneAt        DateTime?
+  rating        Int?
+  ratingNote    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, unitId, status])
+  @@index([roomId])
+}
+
+// ประกาศ (DH D2)
+// SQL มือ: DormAnnouncement_audience_check IN ('ALL','BUILDING','FLOOR','ROOM')
+model DormAnnouncement {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  title       String
+  body        String
+  audience    String    @default("ALL") // ALL | BUILDING | FLOOR | ROOM
+  audienceIds Json?
+  publishedAt DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  reads DormAnnouncementRead[]
+
+  @@index([tenantId, unitId, publishedAt])
+}
+
+// การอ่านประกาศ (นับไม่ซ้ำ · ไม่มี createdAt/updatedAt)
+model DormAnnouncementRead {
+  id             String           @id @default(cuid())
+  tenantId       String
+  unitId         String
+  announcementId String
+  announcement   DormAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  partyId        String
+  readAt         DateTime         @default(now())
+
+  @@unique([announcementId, partyId])
+  @@index([tenantId, unitId])
+}
+
+// พัสดุ (DH A10)
+// SQL มือ: DormParcel_status_check IN ('WAITING','PICKED_UP','RETURNED') · DormParcel_remindCount_check >= 0
+model DormParcel {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String
+  roomId            String // หลวม
+  leaseId           String?
+  partyId           String?
+  carrier           String?
+  trackingNo        String?
+  photoFileId       String?
+  receivedById      String?
+  receivedAt        DateTime  @default(now())
+  status            String    @default("WAITING") // WAITING | PICKED_UP | RETURNED
+  pickedUpAt        DateTime?
+  pickedUpByPartyId String?
+  signatureFileId   String?
+  lastRemindedAt    DateTime?
+  remindCount       Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tenantId, unitId, status])
+  @@index([roomId])
+}
+// ◂ SVC D.0

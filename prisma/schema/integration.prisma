@@ -39,4 +39,5 @@ model IntegrationCallLog {
   at            DateTime @default(now())
 
   @@index([tenantId, integrationId, at])
+  @@index([at]) // SVC D.0 · purge ตามอายุข้ามร้าน
 }

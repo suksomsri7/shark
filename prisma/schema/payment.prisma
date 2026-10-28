@@ -63,5 +63,8 @@ model PaymentSlip {
 
   @@index([tenantId, unitId, status, createdAt])
   @@index([refType, refId])
+  // SVC D.0 ▸ SQL มือ (svc_d · ดัชนีนิพจน์ Prisma ประกาศไม่ได้):
+  //    UNIQUE "PaymentSlip_tenantId_idempotencyKey_key" ON ("tenantId", ("checks"->>'idempotencyKey'))
+  //    — slip-verify findByKey ค้นด้วย $queryRaw รูปเดียวกับนิพจน์นี้ (ห้ามกลับไปใช้ JSON path)
 }
 // ◂ SVC R0.1
