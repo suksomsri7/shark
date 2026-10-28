@@ -423,8 +423,9 @@ try {
     chk("D-13", "โรงแรม: B205 rentMode MONTHLY (เช่ารายเดือนผ่านหอ) · อีก 13 ห้อง rentMode null (ตามประเภท)", b205?.rentMode === "MONTHLY" && othersNull,
       `B205=${b205?.rentMode ?? "ไม่มีห้อง"} · ห้องอื่น null ครบ=${othersNull}`);
     const tx = await q<{ n: number }>(
-      `SELECT ((SELECT count(*) FROM "RoomOccupancy" WHERE "tenantId" = ANY($1::text[])) + (SELECT count(*) FROM "HotelReservation" WHERE "tenantId" = ANY($1::text[]))
+      `SELECT ((SELECT count(*) FROM "RoomOccupancy" WHERE "tenantId" = ANY($1::text[]) AND "refType" <> 'SvcQcScene') + (SELECT count(*) FROM "HotelReservation" WHERE "tenantId" = ANY($1::text[]))
              + (SELECT count(*) FROM "Appointment" WHERE "tenantId" = ANY($1::text[])))::int AS n`, [SVC_TENANTS]);
+    // ORACLE-EDIT 28 ต.ค. (ผู้คุม): ฉากถ่ายภาพของใบหลัง (R0.9 scripts/svc-qc-roomboard-scene.mts · refType SvcQcScene) ไม่ใช่ธุรกรรมของ seed — ไม่นับ
     chk("D-14", "ใบนี้ไม่มีธุรกรรม (RoomOccupancy/HotelReservation/Appointment = 0 · ใบหลังเติม)", tx[0].n === 0, `มี ${tx[0].n} แถว`, "MINOR");
 
     // ร้าน B
