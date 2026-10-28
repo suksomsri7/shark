@@ -236,7 +236,26 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
     { name: "booking-settings", path: `/app/u/${SQC_UNITS.barber.slug}/booking/settings` },
     { name: "dorm-settings", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings` },
   ],
+  // R0.9 ผังห้องร่วม (ภาพ หอ 01 ส่วนผัง · KPI ตรวจใน D.13) — ก่อนถ่ายรัน scripts/svc-qc-roomboard-scene.mts (ฉาก SQC_DORM_BOARD_SCENE)
+  "r0.9": [{ name: "dorm-floorplan", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm` }],
 };
+
+/**
+ * ฉากผังห้องหอ (ใบ R0.9 · README หอ "อาคาร 36 ห้อง ณ 3 พ.ย.") — วันที่สัมพัทธ์กับ "วันนี้ไทย" (offset = จำนวนวัน · end ไม่รวม)
+ * สคริปต์ `scripts/svc-qc-roomboard-scene.mts` เขียนเป็น RoomOccupancy refType `SvcQcScene` (refId `scene-<เลขห้อง>`) · `--clear` ลบทั้งฉาก
+ * ไม่แตะ hkStatus/ห้อง (seed เป็นเจ้าของ) · ใบหอจริง (D.5/D.13) ที่ต้องใช้ห้องเหล่านี้ ⇒ `--clear` ก่อน
+ */
+export const SQC_DORM_BOARD_SCENE = {
+  refType: "SvcQcScene",
+  /** มีผู้เช่า 31 ห้อง = ทุกห้องยกเว้น vacant/booked/repair */
+  lease: { startOffset: -150, endOffset: 215 },
+  /** ว่าง 3 (ไม่มี occupancy) */
+  vacant: ["108", "210", "311"],
+  /** 207: ผู้เช่าเดิมออก 31 ต.ค. · ผู้เช่าใหม่ (เบญจา) เข้า 15 พ.ย. = LEASE เริ่มใน 12 วัน */
+  booked: { number: "207", startOffset: 12, endOffset: 377 },
+  /** 302: ซ่อมรั่ว · ช่างนัด 4 พ.ย. = BLOCK คร่อมวันนี้ */
+  repair: { number: "302", startOffset: -2, endOffset: 2 },
+} as const;
 
 export const SQC = {
   tag: SQC_TAG,
