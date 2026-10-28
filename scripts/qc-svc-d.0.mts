@@ -768,14 +768,14 @@ try {
     const L = rid("lmo2"); await lease({ id: L });
     await expectCodes([["แถว 1", () => moveOut(L), ""], ["แถว 2", () => moveOut(L), "23505"]]);
   });
-  await st("O-10", "FK RESTRICT: ลบห้องที่มีสัญญา/มิเตอร์ ⇒ 23503 · ลบสัญญาที่มีบิล ⇒ 23503 · ลบมิเตอร์ที่มีเลขจด ⇒ 23503 · ลบรอบบิลที่มีบิล ⇒ 23503 · สัญญาอ้างห้องที่ไม่มี ⇒ 23503", async () => {
+  await st("O-10", "FK RESTRICT: ลบห้องที่มีสัญญา/มิเตอร์ ⇒ 23001 · ลบสัญญาที่มีบิล ⇒ 23001 · ลบมิเตอร์ที่มีเลขจด ⇒ 23001 · ลบรอบบิลที่มีบิล ⇒ 23001 (ORACLE-EDIT D.0-G1: ON DELETE RESTRICT บน PG18 = 23001 ไม่ใช่ 23503) · สัญญาอ้างห้องที่ไม่มี ⇒ 23503", async () => {
     FX();
     await expectCodes([
-      ["ลบห้องมีสัญญา", () => pool.query(`DELETE FROM "HotelRoom" WHERE id = $1`, [R1]), "23503"],
-      ["ลบห้องมีมิเตอร์", () => pool.query(`DELETE FROM "HotelRoom" WHERE id = $1`, [R3]), "23503"],
-      ["ลบสัญญามีบิล", () => pool.query(`DELETE FROM "DormLease" WHERE id = $1`, [FX().L0]), "23503"],
-      ["ลบมิเตอร์มีเลขจด", () => pool.query(`DELETE FROM "DormMeter" WHERE id = $1`, [FX().MMAIN]), "23503"],
-      ["ลบรอบมีบิล", () => pool.query(`DELETE FROM "DormBillRun" WHERE id = $1`, [FX().RUN0]), "23503"],
+      ["ลบห้องมีสัญญา", () => pool.query(`DELETE FROM "HotelRoom" WHERE id = $1`, [R1]), "23001"],
+      ["ลบห้องมีมิเตอร์", () => pool.query(`DELETE FROM "HotelRoom" WHERE id = $1`, [R3]), "23001"],
+      ["ลบสัญญามีบิล", () => pool.query(`DELETE FROM "DormLease" WHERE id = $1`, [FX().L0]), "23001"],
+      ["ลบมิเตอร์มีเลขจด", () => pool.query(`DELETE FROM "DormMeter" WHERE id = $1`, [FX().MMAIN]), "23001"],
+      ["ลบรอบมีบิล", () => pool.query(`DELETE FROM "DormBillRun" WHERE id = $1`, [FX().RUN0]), "23001"],
       ["ห้องไม่มีจริง", () => lease({ roomId: rid("ghost") }), "23503"],
     ]);
   });
