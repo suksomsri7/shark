@@ -49,3 +49,16 @@ export { rehomeStrandedSystemAdjustments } from "./payroll";
 // ◂ POS P3.5 fix2 N1
 // POS P4.3 ▸ fix2 (R1 F5): ผู้ใช้ในชุดที่ผูกพนักงาน (ทั้งชุดในคำขอเดียว · ป้าย "จาก HR" ของแท็บพนักงาน POS) — re-export ล้วน ◂
 export { linkedUserIdsOf } from "./service";
+// SVC B.1 ▸ BQ-1: กะรายวัน → หน้าต่างเวลาช่าง (ผู้เรียก: booking/service#staffDayProfiles — เรียกครั้งเดียวต่อคำขอ)
+//   ยังไม่มีกะบน main ⇒ [] เสมอ (ไม่แตะฐาน) · RUN HR เติมของจริงจาก HrRosterEntry ในใบ X-HR.1 — 🔴 ห้ามเปลี่ยนลายเซ็น
+//   นาที = นาทีจากเที่ยงคืนของวันไทย (`date` = "YYYY-MM-DD" ไทย) · breaks = ช่วงพักที่ booking หักออกจาก windows
+export type StaffWindowsInput = { tenantId: string; unitId: string; date: string; employeeIds: string[] };
+export type StaffWindowsRow = {
+  employeeId: string;
+  windows: { startMin: number; endMin: number }[];
+  breaks: { startMin: number; endMin: number }[];
+};
+export async function staffWindows(_i: StaffWindowsInput): Promise<StaffWindowsRow[]> {
+  return [];
+}
+// ◂ SVC B.1
