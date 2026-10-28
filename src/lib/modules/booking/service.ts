@@ -6,6 +6,8 @@ import * as member from "@/lib/modules/member/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import * as pos from "@/lib/modules/pos/service";
 import * as hr from "@/lib/modules/hr/service";
+import { staffWindows as hrStaffWindows } from "@/lib/modules/hr"; // SVC B.1 ▸ BQ-1 กะรายวัน (facade) ◂
+import { resolveSettingsMany } from "@/lib/core/settings"; // SVC B.1 ▸ ค่าตั้งต่อช่าง (CC §1.4) ◂
 import * as inv from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
@@ -15,10 +17,19 @@ export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: strin
 import {
   computeStaffSlots,
   localToUtc,
-  localWeekday,
   minutesToHHMM,
-  type HoursWindow,
 } from "./slots";
+// SVC B.1 ▸ เวลาต่อช่าง + ช่าง↔บริการ (pure)
+import {
+  staffDayWindows,
+  staffServiceTerms,
+  unitDayWindows,
+  type HoursSource,
+  type MinWindow,
+  type StaffServiceRow,
+} from "./staff-hours";
+export type { HoursSource, MinWindow, StaffServiceRow } from "./staff-hours";
+// ◂ SVC B.1
 
 // resolve unit จาก slug (public/no-auth) → tenantId+unitId
 export async function resolveUnit(tenantSlug: string, unitSlug: string) {
@@ -121,7 +132,165 @@ async function staffOnLeave(
   return new Set(linked.filter((s) => onLeaveEmp.has(s.employeeId)).map((s) => s.id));
 }
 
+// ═════════ SVC B.1 ▸ เวลาต่อช่าง + ช่าง↔บริการ (ใบสั่ง svc-brief-b.1 §3.2) ═════════
+// กรอบเวลาต่อช่าง = แหล่งแรกที่มีข้อมูลตาม `booking.staff.hoursSource` (กะ HR → ตารางสัปดาห์ → เวลาร้าน) ∩ เวลาร้านของวัน
+// ร้านเดิม (_fallback: ["UNIT_HOURS"] · servicesMode ALL) ⇒ ทุกช่าง = เวลาร้าน · ทำทุกบริการ = รุ่นแรกทุกไบต์ (ไม่แตะ HR)
+// 🔴 % ออนไลน์ / งานสูงสุดต่อวัน / พักขั้นต่ำ: ใบนี้แค่ resolve ใส่ profile — บังคับตอนหาช่อง/จองใน B.3
+
+export type StaffWindowsFn = (i: { tenantId: string; unitId: string; date: string; employeeIds: string[] }) =>
+  Promise<{ employeeId: string; windows: MinWindow[]; breaks: MinWindow[] }[]>;
+export type StaffDayProfile = {
+  staffId: string;
+  name: string;
+  sortOrder: number;
+  employeeId: string | null;
+  dateStr: string;
+  source: HoursSource | null;
+  onLeave: boolean;
+  windows: MinWindow[];
+  /** null = ทำทุกบริการ · [] = ไม่มีบริการที่ทำได้ */
+  services: StaffServiceRow[] | null;
+  /** #24 #8 #9 ที่ resolve ต่อช่าง (บังคับใน B.3) */
+  onlineSharePct: number;
+  maxJobsPerDay: number | null;
+  minBreakMin: number;
+};
+
+const STAFF_SETTING_KEYS = [
+  "booking.staff.hoursSource",
+  "booking.staff.servicesMode",
+  "booking.booking.onlineSharePct",
+  "booking.staff.maxJobsPerDay",
+  "booking.staff.minBreakMin",
+] as const;
+const HOURS_SOURCES: readonly HoursSource[] = ["HR_SHIFT", "STAFF_WEEKLY", "UNIT_HOURS"];
+
+/** "YYYY-MM-DD" ที่เป็นวันจริง (2031-02-30 / abc ⇒ false) — คิดด้วย UTC ล้วน ไม่ขึ้นกับ TZ เครื่อง */
+function isRealDateStr(ds: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ds);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+}
+
+function hoursOrderOf(v: unknown): HoursSource[] {
+  if (!Array.isArray(v)) return ["UNIT_HOURS"];
+  const out = v.filter((x): x is HoursSource => HOURS_SOURCES.includes(x as HoursSource));
+  return out.length ? [...new Set(out)] : ["UNIT_HOURS"];
+}
+
+/** แถวผูกบริการของช่าง (เฉพาะแถวที่ tenantId+unitId ตรงสาขา — ผิดร้าน/ผิดสาขา = ไม่มีอยู่) */
+async function staffServiceRowsOf(ctx: BookingCtx, staffIds: string[]): Promise<Map<string, StaffServiceRow[]>> {
+  const out = new Map<string, StaffServiceRow[]>();
+  if (!staffIds.length) return out;
+  const db = tenantDb({ tenantId: ctx.tenantId, unitId: ctx.unitId });
+  const rows = await db.bookingStaffService.findMany({
+    where: { tenantId: ctx.tenantId, unitId: ctx.unitId, staffId: { in: staffIds } },
+    select: { staffId: true, serviceId: true, durationMin: true, priceSatang: true },
+    orderBy: [{ serviceId: "asc" }],
+  });
+  for (const r of rows) {
+    const list = out.get(r.staffId) ?? [];
+    list.push({ serviceId: r.serviceId, durationMin: r.durationMin, priceSatang: r.priceSatang });
+    out.set(r.staffId, list);
+  }
+  return out;
+}
+
+/** มีแถว ≥ 1 ⇒ เฉพาะแถว (ทุกโหมด) · ไม่มีแถว ⇒ ALL = null (ทุกบริการ) · ASSIGNED = [] */
+function servicesOf(rows: StaffServiceRow[] | undefined, mode: unknown): StaffServiceRow[] | null {
+  if (rows && rows.length) return rows;
+  return mode === "ASSIGNED" ? [] : null;
+}
+
+/** โปรไฟล์ช่างของวัน (ช่าง active ของสาขาเท่านั้น · เรียง sortOrder → createdAt → id) */
+export async function staffDayProfiles(
+  ctx: BookingCtx,
+  dateStr: string,
+  opts?: { staffIds?: string[]; hrWindows?: StaffWindowsFn },
+): Promise<StaffDayProfile[]> {
+  if (!isRealDateStr(dateStr)) return [];
+  const { tenantId, unitId } = ctx;
+  const db = tenantDb({ tenantId, unitId });
+  const staff = await db.bookingStaff.findMany({
+    where: opts?.staffIds ? { active: true, id: { in: opts.staffIds } } : { active: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, name: true, sortOrder: true, employeeId: true },
+  });
+  if (staff.length === 0) return [];
+  const staffIds = staff.map((s) => s.id);
+
+  const [resolved, weeklyRows, svcRows, unitHours, closure, onLeave] = await Promise.all([
+    resolveSettingsMany({ tenantId }, [...STAFF_SETTING_KEYS], staff.map((s) => ({ unitId, staffId: s.id }))),
+    db.bookingStaffHours.findMany({
+      where: { tenantId, unitId, staffId: { in: staffIds } },
+      select: { staffId: true, weekday: true, startMin: true, endMin: true },
+    }),
+    staffServiceRowsOf(ctx, staffIds),
+    getUnitHours(tenantId, unitId),
+    db.bookingClosure.findFirst({ where: { date: dateStr } }),
+    staffOnLeave(tenantId, staff, dateStr),
+  ]);
+  const unitDay = unitDayWindows({
+    dateStr,
+    hours: unitHours,
+    closure: closure ? { closed: closure.closed, openMin: closure.openMin, closeMin: closure.closeMin } : null,
+  });
+  const orders = resolved.map((r) => hoursOrderOf(r["booking.staff.hoursSource"]?.value));
+
+  // กะ HR: เรียกครั้งเดียวต่อคำขอ เฉพาะพนักงานที่ผูกและ order มี HR_SHIFT · ไม่มีใครเข้าเกณฑ์ = ไม่เรียก
+  const employeeIds = [
+    ...new Set(staff.flatMap((s, i) => (s.employeeId && orders[i].includes("HR_SHIFT") ? [s.employeeId] : []))),
+  ];
+  const shifts = new Map<string, { windows: MinWindow[]; breaks: MinWindow[] }>();
+  if (employeeIds.length) {
+    const wanted = new Set(employeeIds);
+    const rows = await (opts?.hrWindows ?? hrStaffWindows)({ tenantId, unitId, date: dateStr, employeeIds });
+    for (const r of rows) {
+      if (!wanted.has(r.employeeId)) continue; // แถวคนนอกชุด = ทิ้ง
+      const cur = shifts.get(r.employeeId) ?? { windows: [], breaks: [] };
+      shifts.set(r.employeeId, { windows: [...cur.windows, ...r.windows], breaks: [...cur.breaks, ...r.breaks] });
+    }
+  }
+
+  return staff.map((s, i) => {
+    const set = resolved[i];
+    const weekly = weeklyRows
+      .filter((r) => r.staffId === s.id)
+      .map((r) => ({ weekday: r.weekday, startMin: r.startMin, endMin: r.endMin }));
+    const leave = onLeave.has(s.id);
+    const day = staffDayWindows({
+      dateStr,
+      order: orders[i],
+      hrShift: s.employeeId ? (shifts.get(s.employeeId) ?? null) : null,
+      weekly,
+      unitDay,
+      onLeave: leave,
+    });
+    const share = set["booking.booking.onlineSharePct"]?.value;
+    const maxJobs = set["booking.staff.maxJobsPerDay"]?.value;
+    const minBreak = set["booking.staff.minBreakMin"]?.value;
+    return {
+      staffId: s.id,
+      name: s.name,
+      sortOrder: s.sortOrder,
+      employeeId: s.employeeId,
+      dateStr,
+      source: day.source,
+      onLeave: leave,
+      windows: day.windows,
+      services: servicesOf(svcRows.get(s.id), set["booking.staff.servicesMode"]?.value),
+      onlineSharePct: typeof share === "number" ? share : 100,
+      maxJobsPerDay: typeof maxJobs === "number" ? maxJobs : null,
+      minBreakMin: typeof minBreak === "number" ? minBreak : 0,
+    };
+  });
+}
+// ◂ SVC B.1
+
 // ช่องว่างของวัน — staffId=null = ใครก็ได้ (คืน staff ที่ว่างคนแรกต่อเวลา)
+// SVC B.1: กรอบ = หน้าต่างรายช่าง (staffDayProfiles) · ข้ามช่างที่ทำบริการนี้ไม่ได้ · นาทีเฉพาะคน
 export async function getAvailableSlots(
   tenantId: string,
   unitId: string,
@@ -133,34 +302,17 @@ export async function getAvailableSlots(
   const service = await db.bookingService.findFirst({ where: { id: serviceId, active: true, bookable: true } });
   if (!service) return [];
 
-  const weekday = localWeekday(dateStr);
   const dayStart = localToUtc(dateStr, 0);
   const dayEnd = localToUtc(dateStr, 24 * 60);
 
-  // กรอบเวลา = เวลาทำการร้านของ weekday นั้น (เดิมใช้ตารางรายช่าง)
-  // แล้ว **วันหยุด/เวลาพิเศษรายวัน (BookingClosure) ทับทีหลัง** — ปีใหม่/สงกรานต์/วันเปิดสั้น
-  const unitHours = await getUnitHours(tenantId, unitId);
-  const day = unitHours.find((h) => h.weekday === weekday);
-  const closure = await db.bookingClosure.findFirst({ where: { date: dateStr } });
-  if (closure?.closed) return []; // ปิดทั้งวัน — ชนะเวลาทำการรายสัปดาห์เสมอ
-  const openMin = closure && !closure.closed ? (closure.openMin ?? day?.openMin) : day?.openMin;
-  const closeMin = closure && !closure.closed ? (closure.closeMin ?? day?.closeMin) : day?.closeMin;
-  // ไม่มี closure แล้วสัปดาห์นั้นปิด/ไม่ได้ตั้ง = ปิด · มี closure เปิดพิเศษ = เปิดแม้ weekday ปิดอยู่
-  if (openMin == null || closeMin == null || (!closure && day?.closed !== false)) {
-    if (!closure || closure.closed) return [];
-  }
-  if (openMin == null || closeMin == null || closeMin <= openMin) return [];
-  const window: HoursWindow[] = [{ startMin: openMin, endMin: closeMin }];
-
-  const allStaff = staffId
-    ? await db.bookingStaff.findMany({ where: { id: staffId, active: true } })
-    : await db.bookingStaff.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
-  if (allStaff.length === 0) return [];
-
-  // contract C-2: ลาอนุมัติแล้ว → ช่องจองของช่างคนนั้นหายไปเลยในวันนั้น
-  // (เลือก "ใครก็ได้" = ตกไปคนที่เหลือ · เลือกคนที่ลา = ไม่มีเวลาว่าง)
-  const onLeave = await staffOnLeave(tenantId, allStaff, dateStr);
-  const staffList = allStaff.filter((s) => !onLeave.has(s.id));
+  // contract C-2 (ลา) + วันหยุด/เวลาพิเศษรายวัน (BookingClosure) อยู่ใน profile แล้ว
+  // (เลือก "ใครก็ได้" = ตกไปคนที่เหลือ · เลือกคนที่ลา/ทำบริการไม่ได้ = ไม่มีเวลาว่าง)
+  const profiles = await staffDayProfiles({ tenantId, unitId }, dateStr, staffId ? { staffIds: [staffId] } : undefined);
+  const staffList = profiles.flatMap((p) => {
+    if (p.windows.length === 0) return [];
+    const terms = staffServiceTerms(p.services, service);
+    return terms ? [{ id: p.staffId, windows: p.windows, durationMin: terms.durationMin }] : [];
+  });
   if (staffList.length === 0) return [];
 
   const appts = await db.appointment.findMany({
@@ -178,9 +330,9 @@ export async function getAvailableSlots(
   for (const s of staffList) {
     const mins = computeStaffSlots({
       dateStr,
-      hours: window,
+      hours: s.windows,
       busy: appts.filter((a) => a.staffId === s.id),
-      durationMin: service.durationMin,
+      durationMin: s.durationMin,
       bufferMin: service.bufferMin,
       now,
     });
@@ -571,9 +723,19 @@ export async function createAppointment(input: {
   if ((await staffOnLeave(input.tenantId, [staff], input.dateStr)).has(staff.id)) {
     return { ok: false, reason: `${staff.name} ลาในวันที่เลือก` };
   }
+  // SVC B.1 ▸ ช่าง↔บริการ: ช่างทำบริการนี้ไม่ได้ ⇒ ไม่สร้างนัด · นาที/ราคาเฉพาะคน (null = ตามบริการ)
+  //   ไม่ตรวจหน้าต่างเวลา (คงรุ่นแรก — พนักงานลงนัดนอกเวลาได้ · บังคับใน B.3)
+  const svcCtx = { tenantId: input.tenantId, unitId: input.unitId };
+  const [svcRows, [svcSet]] = await Promise.all([
+    staffServiceRowsOf(svcCtx, [staff.id]),
+    resolveSettingsMany({ tenantId: input.tenantId }, ["booking.staff.servicesMode"], [{ unitId: input.unitId, staffId: staff.id }]),
+  ]);
+  const terms = staffServiceTerms(servicesOf(svcRows.get(staff.id), svcSet["booking.staff.servicesMode"]?.value), service);
+  if (!terms) return { ok: false, reason: `${staff.name} ไม่ได้ให้บริการ "${service.name}"` };
+  // ◂ SVC B.1
 
   const startAt = localToUtc(input.dateStr, input.startMin);
-  const endAt = localToUtc(input.dateStr, input.startMin + service.durationMin + service.bufferMin);
+  const endAt = localToUtc(input.dateStr, input.startMin + terms.durationMin + service.bufferMin);
   if (startAt.getTime() <= Date.now()) return { ok: false, reason: "เวลาที่เลือกผ่านไปแล้ว" };
 
   const phone = input.customerPhone.trim();
@@ -641,7 +803,7 @@ export async function createAppointment(input: {
           // snapshot มัดจำจากบริการ ณ ตอนสร้างนัด (ราคาบริการเปลี่ยนภายหลังไม่กระทบนัดเดิม)
           // ไม่บังคับจ่ายตอนนี้ — ร้านเก็บทีหลังผ่าน recordDeposit
           // snapshot ราคา+มัดจำ ณ วันจอง — ร้านขึ้นราคาทีหลังไม่กระทบนัดใบนี้
-          priceSatang: service.priceSatang,
+          priceSatang: terms.priceSatang, // SVC B.1: ราคาเฉพาะคน ?? ราคาบริการ
           depositSatang: service.depositSatang,
           idempotencyKey: idem,
         },
