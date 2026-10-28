@@ -2,7 +2,7 @@
 
 > แหล่งความจริง: `ledger/SVC-MASTER-PLAN.md` แถว R0.7 · `ledger/SVC-CORE-CONTRACT.md` (CC) §4 (+ §10 ข้อ 4–5 · ภาคต่อ 28 ต.ค.) · `ledger/DESIGN-BOOKING-QUEUE.md` §1 ข้อ 8 · BQ-6 · `ledger/DESIGN-DORM-HOTEL.md` §6 A6 · ภาพ `ledger/design-booking/06-customer-line.png` `ledger/design-dorm/05-line-tenant.png` (รูปข้อความ — ใบนี้ไม่มีจอ) · **`ledger/wo-notes/svc-r0.8-carry.md` ข้อ R0.7 (บังคับ)** · กติกา `ledger/SVC-RUN.md` §1
 > มติเจ้าของ: ใช้ **LINE OA ของร้าน** (ร้านเชื่อมเองที่หน้าแชท) · ร้านไม่มี OA ⇒ **ลิงก์เว็บ** (SMS = ใบเลื่อน S.1) · ถ้อยคำมาจากค่าตั้ง (`rooms.msg.*` มีแล้ว · `booking.msg.*` มากับ B.0)
-> ข้อสอบ (ห้ามแก้): «scripts/qc-svc-r0.7.mts» — 77 ข้อ (F4 K2 S8 L16 P5 X8 R6 N17 W6 Z5) · รับใบ = **ไม่มี FAIL · SKIP 0**
+> ข้อสอบ (ห้ามแก้): «scripts/qc-svc-r0.7.mts» — 89 ข้อ (F4 K2 S9 L17 P6 X8 R6 N25 W7 Z5) · รับใบ = **ไม่มี FAIL · SKIP 0**
 > รัน: `bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-r0.7.mts` (เขียนฐาน qc-svc · ห้ามรันขนานกับข้อสอบเขียนฐานอื่น · ห้ามครอบ timeout · ห้าม kill — cleanup อยู่ใน finally)
 > builder: **ห้าม build/next · ห้าม commit/push · ห้าม `pnpm install` · ห้าม migration/แก้ `prisma/`** (ตาราง `ChatLinkCode` `ServiceMessageLog` มีแล้วจาก R0.1) · **ห้ามยิง LINE จริง** · รายงานต่อข้อ (id → ผล)
 > regression ที่ผู้คุมรันตอนรับ: `qc-svc-smoke.mts` · `qc-svc-r0.1.mts` · `qc-svc-r0.3.mts` · `qc-svc-r0.5.mts` (LINE_OA เสมือน) · ชุดแชท `qc-chat-security.mts` `qc-chat-security-scope.mts` `qc-chat-core-v2.mts` `qc-chat-notify-v2.mts` · `qc-crm-c1.8.mts` (linkChatContactParty) · `qc-member-m3.2.mts` `qc-member-m3.4.mts` (ส่ง LINE ของสมาชิก) · fitness 2 โหมด · tsc
@@ -144,3 +144,39 @@ verifyLink(token: unknown, purpose: string) → { tenantId: string; subjectId: s
 6. `webLink` เป็น path สัมพัทธ์ (โดเมนประกอบ origin เอง) · อายุสูงสุด 90 วัน
 7. สถานะ `SKIPPED_QUIET`/`FAILED` ลองใหม่ได้ด้วย dedupeKey เดิม · ผู้ส่งซ้ำตามเวลา = minute-job ของโดเมน (B.9/D.9) ใช้ `retryAt`
 8. ตัวจำลอง LINE อยู่ในตัวข้อสอบ (`LINE_API_BASE`) — ข้อสอบโดเมน (B.9/D.9) ลอกแบบเดียวกัน
+
+## 6. มติหลังผู้ตรวจ 28 ต.ค. (ORACLE-EDIT R0.7 · ที่มา `/root/svc-runs/fix/r0.7.md` · ทับข้อที่ขัดกันข้างบน · ข้อสอบรวม 89 ข้อ)
+| มติ | สัญญาที่ข้อสอบตรวจ | ข้อ |
+|---|---|---|
+| A1 | `consumeLinkCode` คืน `{ purpose, refId, partyId /*ค่าจริงในแถวผู้ติดต่อ*/, resolvedPartyId /*ที่ resolver ให้ · null ได้*/, partyMismatch: boolean /*มี partyId เดิมและ ≠ resolved*/ }` · onLinked ได้ค่าเดียวกัน · **ห้ามใช้ partyId ยืนยันความเป็นเจ้าของ ref** | L-17 |
+| A2 | คอมเมนต์สัญญาใน `postback-routes.ts`: ตัวจัดการต้องตรวจ ref เป็นของ `ctx.tenantId` และของลูกค้าที่กด (`partyId`/`chatContactId`) · ห้ามอ่าน tenant จาก `params` | P-6 |
+| A3 | `verifyLink` หลัง HMAC ผ่าน ต้อง `want.toString("base64url") === S` (รูปอื่นที่ถอดได้ไบต์เดียวกัน ⇒ null) | S-9 |
+| A4 | ข้อความ text ที่ `handleLinkCodeText` จับเป็นรูปรหัส (`matched`) ⇒ เนื้อ `ChatMessage.body` และ `lastMessagePreview` ปิดบัง ไม่มีรหัสดิบ (ทั้งผูกสำเร็จและล้ม) · ข้อความธรรมดาเก็บตามเดิม | W-7 |
+| A5 | ส่งทั้ง `chatContactId` และ `partyId` ⇒ ต้องเป็นคนเดียวกัน (`contact.partyId === partyId`) ไม่งั้น `error VALIDATION` ไม่ log ไม่ส่ง | N-18 |
+| B1 | push ของ notifyCustomer ใส่ `X-Line-Retry-Key` = UUID คงที่จาก `tenantId:dedupeKey` (UUID v5 หรือ hash จัดรูป UUID) · LINE ตอบ 409 ⇒ ถือ `SENT` · `AbortSignal.timeout(10_000)` ต่อคำขอ LINE (หมดเวลา ⇒ FAILED ภายใน ~10 วิ) · แถว SENDING ค้างเกิน `STALE_CLAIM_MS` ⇒ อ้างสิทธิ์ใหม่แล้วส่งด้วยคีย์เดิม | N-1 · N-19 · N-21 |
+| B2 | `link.path` ไม่ลงท้าย `/` ⇒ เติมให้ | N-23 |
+| B3 | origin = `APP_URL` ?? `NEXT_PUBLIC_APP_URL` (อ่านตอนเรียก) · เติม vars `{link}` และชื่อลิงก์ที่แม่แบบใช้ (`payLink` `receiptLink`) = origin + webLink เมื่อผู้เรียกไม่ส่ง · ผลมี `missingVars: string[]` = ตัวแปรที่แม่แบบใช้แต่ไม่มีค่าหลังเติม (ไม่มี = ไม่ใส่หรือ `[]`) | N-22 |
+| B4 | แถวสถานะ `SENDING` สด ⇒ คืนทันที `{ duplicate: true, pending: true, status: <สถานะแถว> }` ไม่รอ · ไม่แตะแถว | N-20 |
+| B5 | คืน `webLink` ทุกกรณีที่มี `link` และ WEB_LINK อยู่ในลำดับ — รวม `SKIPPED_QUIET` และ `duplicate` | N-2 · N-9 |
+| B6 | ส่ง 1 ครั้ง (SENT) ≤ 10 SQL (นับที่ `pg.Client.query` รวม BEGIN/COMMIT) — resolveSettings ครั้งเดียว · ไม่ค้นซ้ำ | N-24 |
+| B7 | LINE 429 ⇒ ผล `{ status: "FAILED", code: "QUOTA" }` · แถวเป็นสถานะจบ (ส่งซ้ำ key เดิม = `duplicate` ไม่ยิง) · เขียน audit เตือนร้าน action มีคำว่า `quota` (เช่น `chat.line.quota_exceeded` · ไม่มี PII) | N-25 |
+| B8 | rich menu hash ตรง ⇒ `POST /user/all/richmenu/{id}` ซ้ำ (idempotent) ไม่สร้างใหม่ · อัปเดต `meta` แบบ merge (คีย์อื่นเช่น `basicId` คงอยู่) + มีเงื่อนไข hash เดิม · ผูกรายคน = `POST /v2/bot/richmenu/bulk/link { richMenuId, userIds }` ครั้งเดียว (ไม่ยิงทีละคน) | R-1 · R-2 · R-6 |
+
+ตัวจำลอง LINE ของข้อสอบ: จำ `X-Line-Retry-Key` ที่รับแล้ว ⇒ ตอบ 409 เมื่อซ้ำ · ผู้รับขึ้นต้น `Uquota` ⇒ 429 · `Uslow` ⇒ ตอบหลัง 12 วิ · `Ufail` ⇒ 500
+
+## 7. Carry (ส่งต่อใบโดเมน B.9 / D.9 / D.8)
+- ต้องมี job ส่งซ้ำ: ใช้ `retryAt` · FAILED มีเพดานจำนวนครั้ง · ส่งซ้ำไม่ส่ง `at` เดิม (ใช้เวลาปัจจุบัน)
+- รูป dedupeKey `<domain>:<messageKey>:<id>[:<รอบ>]` · ทวงซ้ำใส่รอบในคีย์
+- ข้อความด่วน (ถึงคิว/ใบเสร็จ) ใช้ `bypassQuiet`
+- ส่งบิลทั้งตึกผ่าน job/outbox concurrency 5–8 · ไม่ loop ใน request
+- หน้าลิงก์บิล/พอร์ทัล: เปิดแล้วตรวจสถานะ subject ทุกครั้ง · `Referrer-Policy: no-referrer` · ไม่ log path ที่มี token
+- webhook ไม่มี maxDuration (งานหนักห้ามทำใน webhook)
+
+## 6. Carry จากผู้ตรวจ R0.7 (28 ต.ค. · มติผู้คุม — ใบหลังต้องทำ)
+- **B.9/D.9 ต้องมี job ส่งซ้ำ**: อ่าน `ServiceMessageLog` สถานะ `SKIPPED_QUIET` (ถึง `retryAt`) และ `FAILED` (มีเพดานจำนวนครั้ง/อายุ) แล้วเรียก `notifyCustomer` ด้วย dedupeKey เดิม · **ไม่ส่ง `at` เดิม** (ใช้เวลาจริงตอน job รัน) · `QUOTA` = สถานะจบ ไม่ส่งซ้ำ (ร้านได้ audit `messaging.line.quota`)
+- **dedupeKey** รูป `<domain>:<messageKey>:<id>[:<รอบ>]` จาก id เท่านั้น · ทวงซ้ำ/เตือนหลายรอบ ⇒ ใส่รอบในคีย์ (เช่น `rooms:dunning:<billId>:d7`)
+- ข้อความที่ลูกค้ารอทันที (ถึงคิว · ใบเสร็จ) ⇒ ผู้เรียกส่ง `bypassQuiet: true`
+- ส่งบิลทั้งตึก ⇒ ผ่าน job/outbox concurrency 5–8 · ห้าม loop ส่งใน request
+- หน้าเปิดลิงก์เซ็น (บิล/ใบเสร็จ/นัด): `verifyLink` แล้ว**ตรวจสถานะ subject ทุกครั้ง** (ยกเลิก/จ่ายแล้ว/ย้ายออก) · ตั้ง `Referrer-Policy: no-referrer` · ห้าม log path ที่มี token
+- webhook แชท (`/api/chat/webhook/[connectionId]`) ไม่ได้ตั้ง `maxDuration` — postback ของโดเมนต้องเบา (งานหนักไป outbox/job)
+- route ของโดเมนใน `POSTBACK_ROUTES`: ตรวจ ref เป็นของ `ctx.tenantId` **และ**ของลูกค้าคนที่กด · `onLinked` ใช้ `resolvedPartyId` ไม่ใช่ `partyId` · `partyMismatch` ⇒ ไม่เปิดข้อมูลให้อัตโนมัติ (สัญญาในหัว `platform/postback-routes.ts`)

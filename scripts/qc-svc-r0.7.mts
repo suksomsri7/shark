@@ -13,6 +13,8 @@
 //   N  notifyCustomer (ลำดับช่องทาง · ไม่มี OA ⇒ ลิงก์เว็บ · dedupe ซ้ำ/พร้อมกัน · เวลาเงียบเลื่อน · optOut · ข้ามร้าน · validation)
 //   W  webhook LINE จริง (import route.ts · ลายเซ็น · postback ข้ามร้าน · ส่งซ้ำ · ข้อความรหัส · คำตอบล้มเหมือนกัน)
 //   Z  สแกนรั่ว (DB · console · ผลคืน) · ไม่มีคำขอถึง *.line.me · ทำความสะอาด
+//   ORACLE-EDIT R0.7 (มติหลังผู้ตรวจ 28 ต.ค. · /root/svc-runs/fix/r0.7.md): L-17 (A1) · S-9 (A3) · P-6 (A2) · W-7 (A4) · N-18 (A5) · N-19 (B1 retry key + 409)
+//     N-20 (B4 pending) · N-21 (B1 timeout) · N-22 (B3 ลิงก์เต็ม + missingVars) · N-23 (B2) · N-24 (B6 ≤10 SQL) · N-25 (B7 429=QUOTA) · N-2/N-9 (B5 webLink) · R-1/R-2/R-6 (B8)
 //
 // 🔴 เขียนฐาน qc-svc — รันผ่าน gate lock (ห้ามครอบ timeout · ห้าม kill กลางคัน):
 //    bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-r0.7.mts
@@ -85,9 +87,11 @@ const SESSION_SECRET = process.env.SESSION_SECRET ?? "";
 if (SESSION_SECRET) SECRETS.push(SESSION_SECRET);
 
 // ═══════════════ ตัวจำลอง LINE + ครอบ fetch ═══════════════
-type FakeReq = { method: string; path: string; auth: string; ctype: string; bytes: number; json: Any };
+type FakeReq = { method: string; path: string; auth: string; ctype: string; bytes: number; json: Any; retryKey: string; status: number };
 const FAKE: FakeReq[] = [];
 let richSeq = 0;
+const ACCEPTED_KEYS = new Map<string, string>();
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const server = createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on("data", (c: Buffer) => chunks.push(c));
@@ -97,11 +101,19 @@ const server = createServer((req, res) => {
     const ctype = String(req.headers["content-type"] ?? "");
     let json: Any = null;
     if (ctype.includes("json")) { try { json = JSON.parse(raw.toString("utf8")); } catch { json = null; } }
-    FAKE.push({ method: req.method ?? "", path, auth: String(req.headers.authorization ?? ""), ctype, bytes: raw.length, json });
-    const send = (code: number, obj: unknown) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
+    const rec: FakeReq = { method: req.method ?? "", path, auth: String(req.headers.authorization ?? ""), ctype, bytes: raw.length, json, retryKey: String(req.headers["x-line-retry-key"] ?? ""), status: 0 };
+    FAKE.push(rec);
+    const send = (code: number, obj: unknown) => { rec.status = code; if (res.writableEnded) return; res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
     if (req.method === "POST" && path === "/v2/bot/message/push") {
-      if (String(json?.to ?? "").startsWith("Ufail")) return send(500, { message: "fake failure" });
-      return send(200, { sentMessages: [{ id: `fm${FAKE.length}`, quoteToken: "q" }] });
+      const to = String(json?.to ?? "");
+      if (to.startsWith("Ufail")) return send(500, { message: "fake failure" });
+      if (to.startsWith("Uquota")) return send(429, { message: "You have reached your monthly limit." });
+      // LINE จริง: คีย์ X-Line-Retry-Key ที่เคยรับแล้ว ⇒ 409 (ข้อความถูกส่งไปแล้ว)
+      if (rec.retryKey && ACCEPTED_KEYS.has(rec.retryKey)) return send(409, { message: "The retry key is already accepted", sentMessages: [{ id: ACCEPTED_KEYS.get(rec.retryKey) }] });
+      const id = `fm${FAKE.length}`;
+      if (to.startsWith("Uslow")) { setTimeout(() => { if (rec.retryKey) ACCEPTED_KEYS.set(rec.retryKey, id); send(200, { sentMessages: [{ id }] }); }, 12_000); return; }
+      if (rec.retryKey) ACCEPTED_KEYS.set(rec.retryKey, id);
+      return send(200, { sentMessages: [{ id, quoteToken: "q" }] });
     }
     if (req.method === "POST" && path === "/v2/bot/message/reply") return send(200, { sentMessages: [{ id: `fr${FAKE.length}` }] });
     if (req.method === "GET" && path.startsWith("/v2/bot/profile/")) return send(200, { displayName: "ลูกค้าคิวซี", userId: path.split("/").pop() });
@@ -113,7 +125,7 @@ const server = createServer((req, res) => {
 });
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
 const FAKE_BASE = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-const ENV_KEYS = ["LINE_API_BASE", "APP_ENV", "SESSION_SECRET"] as const;
+const ENV_KEYS = ["LINE_API_BASE", "APP_ENV", "SESSION_SECRET", "APP_URL", "NEXT_PUBLIC_APP_URL"] as const;
 const ENV_SAVED: Record<string, string | undefined> = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const envSet = (k: string, v: string | undefined) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; };
 envSet("LINE_API_BASE", FAKE_BASE);
@@ -301,7 +313,7 @@ async function setup(): Promise<void> {
     const p = await prisma.party.create({ data: { tenantId, kind: "PERSON", name: `${NAME}-${key}`, phone: PHONE, address: `${PFX}-${key}` } });
     ID[key] = p.id; CREATED.parties.push(p.id);
   };
-  for (const k of ["pa1", "pa2", "pa3", "pa4", "pa5", "pa6", "pa7", "pa8", "pa9", "pa10"]) await party(k, TA);
+  for (const k of ["pa1", "pa2", "pa3", "pa4", "pa5", "pa6", "pa7", "pa8", "pa9", "pa10", "pa11", "pa12"]) await party(k, TA);
   await party("pb", TB);
   const contact = async (key: string, tenantId: string, systemId: string, connKey: string, partyKey: string | null, extra: Any = {}, extPrefix = "Usvcr07") => {
     const ext = `${extPrefix}${key}${RAND}`;
@@ -316,6 +328,8 @@ async function setup(): Promise<void> {
   await contact("a8", TA, sysA.id, "c1", "pa8");
   await contact("a9fail", TA, sysA.id, "c1", "pa9", {}, "Ufail");
   await contact("free", TA, sysA.id, "c1", null);
+  await contact("a11quota", TA, sysA.id, "c1", "pa11", {}, "Uquota");
+  await contact("a12slow", TA, sysA.id, "c1", "pa12", {}, "Uslow");
   await contact("b1", TB, sysB.id, "cb", "pb");
   for (let i = 0; i < 16; i++) await contact(`l${i}`, TA, sysA.id, "c1", null);
   await contact("l2oa", TA, sysA.id, "c2", null);
@@ -526,6 +540,18 @@ try {
     }
   });
 
+  await step("S-9", "ORACLE-EDIT A3: ลายเซ็นรูปอื่นที่ถอดได้ไบต์เดียวกัน (บิตท้าย base64url ที่ไม่ใช้) ⇒ null (ลายเซ็นรูปเดียว)", async (p) => {
+    const t = sign({ tenantId: TA, purpose: "booking.manage", subjectId: SUBJ, expMin: 10 });
+    if (typeof t !== "string") { p.push(`sign → ${desc(t)}`); return; }
+    const [P, S] = t.split(".") as [string, string];
+    const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const last = S.slice(-1); const alt = B64[B64.indexOf(last) ^ 1]!;
+    const S2 = S.slice(0, -1) + alt;
+    if (!Buffer.from(S2, "base64url").equals(Buffer.from(S, "base64url"))) { p.push("ตัวทดสอบสร้างรูปอื่นไม่ได้ (control)"); return; }
+    if (verify(`${P}.${S2}`, "booking.manage") !== null) p.push("ลายเซ็นรูปอื่น (ไบต์เดียวกัน) ผ่าน");
+    if (verify(t, "booking.manage")?.subjectId !== SUBJ) p.push("control รูปเดิมไม่ผ่าน");
+  });
+
   // ═══════════════ L รหัสผูก ═══════════════
   out("\n— L รหัสผูก LINE —");
   const issue = (ctx: Any, o: Any) => call(CHAT, "issueLinkCode", ctx, o);
@@ -710,6 +736,18 @@ try {
     if ((await prisma.chatLinkCode.count({ where: { tenantId: TA } })) !== before) p.push("มีแถวถูกสร้าง");
   });
 
+  await step("L-17", "ORACLE-EDIT A1: ผู้ติดต่อผูก party อื่นอยู่แล้ว ⇒ {partyId: เดิม, resolvedPartyId: ที่ resolver ให้, partyMismatch: true} · ตรงกัน/ไม่มีของเดิม ⇒ partyMismatch false", async (p) => {
+    const code = await mkCode({ refId: `${PFX}-a1x` });
+    const r = await consume(CTX_A, { connectionId: ID.c1, chatContactId: ID.k_pre, text: code, resolveParty: async () => ID.pa6 });
+    if (r?.partyId !== ID.pa10 || r?.resolvedPartyId !== ID.pa6 || r?.partyMismatch !== true) p.push(`ไม่ตรงกัน → ${desc(r)}`);
+    const code2 = await mkCode({ refId: `${PFX}-a1y` });
+    const r2 = await consume(CTX_A, { connectionId: ID.c1, chatContactId: ID.k_pre, text: code2, resolveParty: async () => ID.pa10 });
+    if (r2?.partyId !== ID.pa10 || r2?.resolvedPartyId !== ID.pa10 || r2?.partyMismatch !== false) p.push(`ตรงกัน → ${desc(r2)}`);
+    const code3 = await mkCode({ refId: `${PFX}-a1z` });
+    const r3 = await consume(CTX_A, { connectionId: ID.c1, chatContactId: ID.k_l3, text: code3 });
+    if (!r3 || r3.partyId !== null || r3.resolvedPartyId !== null || r3.partyMismatch !== false) p.push(`ไม่มี resolver → ${desc(r3)}`);
+  });
+
   // ═══════════════ P ทะเบียน postback ═══════════════
   out("\n— P ทะเบียน postback —");
   const parse = (d: unknown) => callSync(PB, "parsePostbackData", d);
@@ -771,6 +809,13 @@ try {
     if (linked?.arg?.partyId !== ID.pa6 || linked?.arg?.purpose !== "APPOINTMENT" || linked?.arg?.refId !== `${PFX}-p5`) p.push(`onLinked ได้ ${js(linked?.arg)}`);
     if ((await prisma.chatContact.findUnique({ where: { id: ID.k_l2 } }))?.partyId !== ID.pa6) p.push("ผู้ติดต่อไม่ถูกผูก");
   });
+
+  await step("P-6", "ORACLE-EDIT A2: คอมเมนต์สัญญาใน postback-routes บังคับตัวจัดการตรวจ ref เป็นของ ctx.tenantId และลูกค้าที่กด (partyId/chatContactId) · ห้ามอ่าน tenant จาก params", async (p) => {
+    const cm = read(FILES.postback).split("\n").filter((l) => /^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    if (!/ctx\.tenantId/.test(cm)) p.push("คอมเมนต์ไม่อ้าง ctx.tenantId");
+    if (!/(partyId|chatContactId)/.test(cm)) p.push("คอมเมนต์ไม่อ้าง partyId/chatContactId");
+    if (!/params/.test(cm)) p.push("คอมเมนต์ไม่ห้ามอ่าน tenant จาก params");
+  }, "MINOR");
 
   // ═══════════════ X Flex ═══════════════
   out("\n— X Flex —");
@@ -864,12 +909,14 @@ try {
     if (since(m).some((x) => x.auth !== `Bearer ${TOK.c1}`)) p.push("มีคำขอด้วยโทเคนอื่น");
     const conn = await prisma.chatChannelConnection.findUnique({ where: { id: ID.c1 } });
     if ((conn?.meta as Any)?.richMenu?.id !== rm1) p.push(`meta.richMenu ${js((conn?.meta as Any)?.richMenu)}`);
+    if ((conn?.meta as Any)?.basicId !== "@svcr07a") p.push("ORACLE-EDIT B8: meta คีย์อื่น (basicId) ถูกทับ");
   });
   await step("R-2", "spec เดิม ⇒ created:false · ไม่มี POST /richmenu ใหม่ (idempotent)", async (p) => {
     const m = mark();
     const r = await rich(CTX_A, ID.c1, SPEC("a"));
     if (r?.ok !== true || r?.richMenuId !== rm1 || r?.created !== false) p.push(`ผล ${desc(r)}`);
     if (since(m).some((x) => x.method === "POST" && x.path === "/v2/bot/richmenu")) p.push("สร้างใหม่ซ้ำ");
+    if (!withTok(since(m), TOK.c1).some((x) => x.method === "POST" && x.path === `/v2/bot/user/all/richmenu/${rm1}`)) p.push("ORACLE-EDIT B8: hash ตรงแต่ไม่ตั้งค่าเริ่มซ้ำ");
   }, "MAJOR");
   await step("R-3", "spec เปลี่ยน ⇒ สร้างใหม่ + ตั้งค่าเริ่ม + DELETE ของเก่า", async (p) => {
     const m = mark();
@@ -911,9 +958,11 @@ try {
     const m = mark();
     const r = await rich(CTX_A, ID.c1, SPEC("d"), { chatContactIds: [ID.k_a1, ID.k_a1old, ID.k_b1] });
     if (r?.ok !== true) { p.push(`ผล ${desc(r)}`); return; }
-    const links = since(m).filter((x) => x.method === "POST" && /^\/v2\/bot\/user\/[^/]+\/richmenu\//.test(x.path) && !x.path.startsWith("/v2/bot/user/all/"));
-    const users = links.map((x) => x.path.split("/")[4]);
-    if (users.length !== 1 || users[0] !== EXT.a1) p.push(`ผูก ${js(users)}`);
+    // ORACLE-EDIT B8: ผูกรายคนผ่าน POST /v2/bot/richmenu/bulk/link {richMenuId, userIds}
+    const bulk = withTok(since(m), TOK.c1).filter((x) => x.method === "POST" && x.path === "/v2/bot/richmenu/bulk/link");
+    const users = bulk.flatMap((x) => (Array.isArray(x.json?.userIds) ? x.json.userIds : []));
+    if (bulk.length !== 1 || bulk[0]?.json?.richMenuId !== r.richMenuId || users.length !== 1 || users[0] !== EXT.a1) p.push(`bulk ${js(bulk.map((x) => x.json))}`);
+    if (since(m).some((x) => x.method === "POST" && /^\/v2\/bot\/user\/U[^/]*\/richmenu\//.test(x.path))) p.push("ยังผูกทีละคน");
   }, "MAJOR");
 
   // ═══════════════ N notifyCustomer ═══════════════
@@ -927,6 +976,7 @@ try {
     const t = msgText(ps[0]);
     if (!t.includes("305") || !t.includes("ZZ99") || !t.includes("หอทดสอบ") || /[{}]/.test(t)) p.push(`ข้อความ ${js(t).slice(0, 100)}`);
     if (typeof r?.webLink !== "string" || !r.webLink.startsWith("/q/")) p.push(`webLink ${js(r?.webLink)}`);
+    if (!UUID_RE.test(ps[0]?.retryKey ?? "")) p.push(`ORACLE-EDIT B1: ไม่มี X-Line-Retry-Key รูป UUID (${js(ps[0]?.retryKey)})`);
     const rows = await logOf(DK("n1"));
     if (rows.length !== 1) { p.push(`log ${rows.length} แถว`); return; }
     const row = rows[0];
@@ -935,8 +985,9 @@ try {
   });
   await step("N-2", "ส่งซ้ำ dedupeKey เดิม ⇒ ไม่ส่ง · {duplicate:true, status SENT} · log ยัง 1 แถว (X4)", async (p) => {
     const m = mark();
-    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n1") });
+    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n1"), link: LINK("n1") });
     if (r?.duplicate !== true || r?.status !== "SENT") p.push(`ผล ${desc(r)}`);
+    if (typeof r?.webLink !== "string" || !r.webLink.startsWith("/q/")) p.push(`ORACLE-EDIT B5: duplicate ไม่คืน webLink (${js(r?.webLink)})`);
     if (pushes(since(m)).length) p.push("ส่งซ้ำ");
     if ((await logOf(DK("n1"))).length !== 1) p.push("log เกิน 1");
   });
@@ -1003,8 +1054,9 @@ try {
   });
   await step("N-9", "เวลาเงียบ (22:30 ไทย · ค่าเริ่ม 21:00–08:00) ⇒ SKIPPED_QUIET ไม่ส่ง · retryAt = 08:00 วันถัดไป · ส่งซ้ำ key เดิม 08:30 ⇒ SENT · log แถวเดียวเปลี่ยนเป็น SENT", async (p) => {
     const m = mark();
-    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n9"), at: AT_QUIET });
+    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n9"), at: AT_QUIET, link: LINK("n9") });
     if (r?.status !== "SKIPPED_QUIET") p.push(`22:30 ${desc(r)}`);
+    if (typeof r?.webLink !== "string") p.push("ORACLE-EDIT B5: SKIPPED_QUIET ไม่คืน webLink");
     if (!r?.retryAt || new Date(r.retryAt).getTime() !== RETRY_EXPECT.getTime()) p.push(`retryAt ${js(r?.retryAt)} (คาด ${RETRY_EXPECT.toISOString()})`);
     if (pushes(since(m)).length) p.push("ส่งในเวลาเงียบ");
     const rows0 = await logOf(DK("n9"));
@@ -1093,6 +1145,111 @@ try {
     } finally { await svClear("messaging.channelOrder", U.dorm); }
   }, "MAJOR");
 
+  await step("N-18", "ORACLE-EDIT A5: ส่งทั้ง chatContactId และ partyId ที่ไม่ตรงกัน ⇒ VALIDATION ไม่ log ไม่ส่ง · ตรงกัน ⇒ SENT", async (p) => {
+    const m = mark();
+    const r = await notify(CTX_A, { unitId: U.dorm, chatContactId: ID.k_a1, partyId: ID.pa2, dedupeKey: DK("n18a") });
+    if (!(r?.error === "VALIDATION" && r?.status === "FAILED")) p.push(`ไม่ตรง → ${desc(r)}`);
+    if ((await logOf(DK("n18a"))).length) p.push("มี log");
+    if (pushes(since(m)).length) p.push("มี push");
+    const r2 = await notify(CTX_A, { unitId: U.dorm, chatContactId: ID.k_a1, partyId: ID.pa1, dedupeKey: DK("n18b") });
+    if (r2?.status !== "SENT") p.push(`ตรงกัน → ${desc(r2)}`);
+  });
+  await step("N-19", "ORACLE-EDIT B1: X-Line-Retry-Key คงที่จาก tenant:dedupeKey · แถวค้าง SENDING (โพรเซสตายหลัง LINE รับแล้ว) ⇒ ส่งซ้ำด้วยคีย์เดิม · LINE ตอบ 409 ⇒ SENT · key อื่นได้คีย์อื่น", async (p) => {
+    const m = mark();
+    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n19") });
+    if (r?.status !== "SENT") { p.push(`ครั้งแรก ${desc(r)}`); return; }
+    const k1 = pushes(since(m))[0]?.retryKey ?? "";
+    if (!UUID_RE.test(k1)) p.push(`คีย์ ${js(k1)}`);
+    await prisma.serviceMessageLog.updateMany({ where: { tenantId: TA, dedupeKey: DK("n19") }, data: { status: "SENDING", at: new Date(Date.now() - 3 * 60_000) } });
+    const m2 = mark();
+    const r2 = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n19") });
+    const ps2 = pushes(since(m2));
+    if (ps2.length !== 1) p.push(`ส่งซ้ำ push ${ps2.length}`);
+    else {
+      if (ps2[0]!.retryKey !== k1) p.push("คีย์ไม่คงที่");
+      if (ps2[0]!.status !== 409) p.push(`ตัวจำลองตอบ ${ps2[0]!.status} (คาด 409)`);
+    }
+    if (r2?.status !== "SENT") p.push(`409 ⇒ ${desc(r2)} (คาด SENT)`);
+    const rows = await logOf(DK("n19"));
+    if (rows.length !== 1 || rows[0]?.status !== "SENT") p.push(`log ${js(rows.map((x) => x.status))}`);
+    const m3 = mark();
+    await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n19b") });
+    const k3 = pushes(since(m3))[0]?.retryKey ?? "";
+    if (!k3 || k3 === k1) p.push("dedupeKey อื่นได้คีย์เดียวกัน/ไม่มีคีย์");
+  });
+  await step("N-20", "ORACLE-EDIT B4: แถวกำลังส่ง (SENDING สด) ⇒ คืนทันที {duplicate:true, pending:true} ไม่รอ ไม่ส่ง · แถวไม่เปลี่ยน", async (p) => {
+    const at0 = new Date();
+    await prisma.serviceMessageLog.create({ data: { tenantId: TA, unitId: U.dorm, domain: "rooms", messageKey: "roomLink", dedupeKey: DK("n20"), channel: "NONE", status: "SENDING", at: at0 } });
+    const m = mark(); const t0 = Date.now();
+    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n20") });
+    const ms = Date.now() - t0;
+    if (r?.duplicate !== true || r?.pending !== true) p.push(`ผล ${desc(r)}`);
+    if (ms > 3_000) p.push(`รอ ${ms} ms`);
+    if (pushes(since(m)).length) p.push("มี push");
+    const rows = await logOf(DK("n20"));
+    if (rows.length !== 1 || rows[0]?.status !== "SENDING" || new Date(rows[0].at).getTime() !== at0.getTime()) p.push(`แถว ${js(rows.map((x) => x.status))}`);
+  });
+  await step("N-21", "ORACLE-EDIT B1: LINE ค้าง (ตัวจำลองตอบหลัง 12 วิ) ⇒ ตัดที่ ~10 วิ คืน FAILED ไม่ค้าง", async (p) => {
+    const t0 = Date.now();
+    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa12, dedupeKey: DK("n21") });
+    const ms = Date.now() - t0;
+    if (r?.status !== "FAILED") p.push(`ผล ${desc(r)} (คาด FAILED)`);
+    if (ms > 11_500) p.push(`ใช้ ${ms} ms (เกิน ~10 วิ)`);
+  }, "MAJOR");
+  await step("N-22", "ORACLE-EDIT B3: แม่แบบใช้ {payLink} ผู้เรียกไม่ส่ง ⇒ เติม URL เต็ม (APP_URL + webLink) · ตัวแปรที่ขาด ⇒ missingVars ในผล · ผู้เรียกส่ง payLink ⇒ ใช้ตามนั้น", async (p) => {
+    await withEnv({ APP_URL: "https://qc-svc.example", NEXT_PUBLIC_APP_URL: undefined }, async () => {
+      const m = mark();
+      const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, messageKey: "bill", dedupeKey: DK("n22a"), link: LINK("n22"), vars: { tenantName: NAME, roomNo: "305", unitName: "หอทดสอบ", period: "ต.ค.", amount: "3,500 บาท" } });
+      if (r?.status !== "SENT") p.push(`ผล ${desc(r)}`);
+      const t = msgText(pushes(since(m))[0]);
+      const mm = /https:\/\/qc-svc\.example(\/q\/[A-Za-z0-9_.-]+)/.exec(t);
+      if (!mm) p.push(`ข้อความไม่มี URL เต็ม: ${js(t).slice(0, 120)}`);
+      else if (callSync(SL, "verifyLink", mm[1]!.slice(3), "svc.r07")?.subjectId !== "svc-r07-n22") p.push("URL ในข้อความ verify ไม่ผ่าน");
+      if (/[{}]/.test(t)) p.push("ยังมี {ตัวแปร}");
+      const mv = Array.isArray(r?.missingVars) ? r.missingVars : null;
+      if (!mv || !mv.includes("dueDate") || mv.includes("payLink")) p.push(`missingVars ${js(r?.missingVars)}`);
+      const m2 = mark();
+      const r2 = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, messageKey: "bill", dedupeKey: DK("n22b"), link: LINK("n22b"), vars: { tenantName: NAME, roomNo: "305", unitName: "หอ", period: "ต.ค.", amount: "1", dueDate: "5 พ.ย.", payLink: "https://pay.example/svc-r07" } });
+      const t2 = msgText(pushes(since(m2))[0]);
+      if (r2?.status !== "SENT" || !t2.includes("https://pay.example/svc-r07") || t2.includes("qc-svc.example")) p.push(`ผู้เรียกส่ง payLink → ${js(t2).slice(0, 100)}`);
+      if (Array.isArray(r2?.missingVars) && r2.missingVars.length) p.push(`ครบแล้วยังมี missingVars ${js(r2.missingVars)}`);
+    });
+  }, "MAJOR");
+  await step("N-23", "ORACLE-EDIT B2: link.path ไม่ลงท้าย / ⇒ เติมให้ (\"/q\" ⇒ \"/q/<token>\") token verify ได้", async (p) => {
+    const r = await notify(CTX_A, { unitId: U.barber, partyId: ID.pa1, dedupeKey: DK("n23"), link: { ...LINK("n23"), path: "/q" } });
+    const w = String(r?.webLink ?? "");
+    if (!w.startsWith("/q/")) p.push(`webLink ${js(w)}`);
+    else if (callSync(SL, "verifyLink", w.slice(3), "svc.r07")?.subjectId !== "svc-r07-n23") p.push("token verify ไม่ผ่าน");
+  }, "MAJOR");
+  await step("N-24", "ORACLE-EDIT B6: ส่ง 1 ครั้ง (SENT ทาง LINE) ใช้ SQL ≤ 10 (นับที่ pg.Client.query)", async (p) => {
+    const { createRequire } = (await import("node:module" as string)) as { createRequire: (p: string) => (id: string) => unknown };
+    const pg = createRequire(join(ROOT, "package.json"))("pg") as { Client: { prototype: { query: (...a: unknown[]) => unknown } } };
+    let q = 0;
+    const orig = pg.Client.prototype.query;
+    pg.Client.prototype.query = function (this: unknown, ...a: unknown[]) { q++; return orig.apply(this, a); };
+    try {
+      q = 0; await prisma.tenant.count({ where: { id: TA } });
+      if (q < 1) { p.push("ตัวนับ SQL ไม่ทำงาน (control)"); return; }
+      q = 0;
+      const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa1, dedupeKey: DK("n24") });
+      const n = q;
+      out(`     (notifyCustomer SENT = ${n} SQL)`);
+      if (r?.status !== "SENT") p.push(`ผล ${desc(r)}`);
+      if (n > 10) p.push(`ใช้ ${n} SQL (เพดาน 10)`);
+    } finally { pg.Client.prototype.query = orig; }
+  }, "MAJOR");
+  await step("N-25", "ORACLE-EDIT B7: LINE ตอบ 429 ⇒ {FAILED, code QUOTA} สถานะจบ (ส่งซ้ำ key เดิม = duplicate ไม่ยิง) · มี audit เตือนร้าน (action มีคำว่า quota)", async (p) => {
+    const t0 = new Date(Date.now() - 1_000);
+    const r = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa11, dedupeKey: DK("n25") });
+    if (r?.status !== "FAILED" || r?.code !== "QUOTA") p.push(`ผล ${desc(r)}`);
+    const m = mark();
+    const r2 = await notify(CTX_A, { unitId: U.dorm, partyId: ID.pa11, dedupeKey: DK("n25") });
+    if (r2?.duplicate !== true) p.push(`ส่งซ้ำ → ${desc(r2)} (คาด duplicate)`);
+    if (pushes(since(m)).length) p.push("ยิงซ้ำหลัง QUOTA");
+    const au = (await prisma.auditLog.findMany({ where: { tenantId: TA, createdAt: { gte: t0 } }, select: { action: true } })) as { action: string }[];
+    if (!au.some((a) => /quota/i.test(a.action))) p.push(`ไม่มี audit เตือนโควตา (${js(au.map((a) => a.action)).slice(0, 80)})`);
+  }, "MAJOR");
+
   // ═══════════════ W webhook จริง ═══════════════
   out("\n— W webhook LINE (route.ts) —");
   const postbacks = () => TEST_ROUTE_CALLS.filter((c) => c.kind === "postback");
@@ -1171,6 +1328,19 @@ try {
     if (texts.some((t) => t.includes(`linked-ok-${RAND}`) || t.includes("เรียบร้อย"))) p.push("คำตอบล้มเหมือนข้อความสำเร็จ");
     if ((await codeRow(TB, codeB))?.usedAt) p.push("รหัสร้าน B ถูกใช้");
   }, "MAJOR");
+  await step("W-7", "ORACLE-EDIT A4: ข้อความที่จับเป็นรหัสผูก (สำเร็จและล้ม) ⇒ ChatMessage/ตัวอย่างข้อความล่าสุดไม่มีรหัสดิบ · ข้อความธรรมดายังเก็บตามจริง", async (p) => {
+    const plainUser = `Usvcr07w7${RAND}`;
+    const st = await hook("c1", CSEC.c1, [evText(plainUser, `สวัสดีครับ ${RAND}`)]);
+    if (st !== 200) p.push(`status ${st}`);
+    const convs = (await prisma.chatConversation.findMany({ where: { systemId: ID.sysA, contact: { externalUserId: { startsWith: "Usvcr07w" } } }, select: { id: true, lastMessagePreview: true, contact: { select: { externalUserId: true } } } })) as Any[];
+    if (convs.length < 5) p.push(`ห้องจาก W-5/W-6/W-7 มี ${convs.length}`);
+    const msgs = (await prisma.chatMessage.findMany({ where: { conversationId: { in: convs.map((c) => c.id) } }, select: { body: true, conversationId: true } })) as Any[];
+    const blob = js([...msgs.map((m) => m.body), ...convs.map((c) => c.lastMessagePreview)]).toUpperCase().replace(/[-\s]/g, "");
+    const hits = RAW_CODES.filter((c) => blob.includes(c));
+    if (hits.length) p.push(`พบรหัสดิบ ${hits.length} ตัว`);
+    const plain = convs.find((c) => c.contact?.externalUserId === plainUser);
+    if (!plain || !msgs.some((m) => m.conversationId === plain.id && String(m.body ?? "").includes(`สวัสดีครับ ${RAND}`))) p.push("ข้อความธรรมดาไม่ถูกเก็บ (control)");
+  }, "MAJOR");
 } catch (e) {
   chk("CRASH", "จบกลางทาง: " + errMsg(e), false);
 } finally {
@@ -1228,6 +1398,7 @@ try {
     chk("Z-5", "ทำความสะอาด", false, errMsg(e), "MAJOR");
   }
   globalThis.fetch = REAL_FETCH;
+  server.closeAllConnections();
   await new Promise<void>((r) => server.close(() => r()));
   await prisma.$disconnect?.().catch(() => {});
 }
