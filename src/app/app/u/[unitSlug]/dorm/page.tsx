@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { bkkYmd } from "@/lib/core/quiet-hours";
+import { dormAccess } from "@/lib/modules/dorm";
 import { listBuildings, roomBoard } from "@/lib/modules/rooms";
 import RoomBoard from "@/components/rooms/RoomBoard";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -12,6 +13,8 @@ export default async function DormFloorPlanPage({ params }: { params: Promise<{ 
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
   if (unit.type !== "DORM") notFound();
+  // SVC D.6 ▸ คนจดมิเตอร์ (มีแค่ dorm.meter.read) เห็นแค่หน้าจด — ผังต้องมี dorm.view
+  if (!dormAccess({ role: auth.active.role, unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [], permissions: (auth.active.permissions ?? {}) as Record<string, unknown> }, unit.id).board) notFound();
 
   const ctx = { tenantId: auth.active.tenantId };
   const date = bkkYmd(new Date());
