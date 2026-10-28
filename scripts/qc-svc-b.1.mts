@@ -824,7 +824,9 @@ const changed = (paths: string[]) => [...new Set([
   ...git(["ls-files", "--others", "--exclude-standard", "--", ...paths]).split("\n").filter(Boolean),
 ])];
 const OWN = new Set([PURE_REL, SERVICE_REL, "src/lib/modules/booking/slots.ts", "src/lib/modules/booking/index.ts", HR_INDEX_REL]);
-await st("ST-1", "แตะเฉพาะไฟล์ของใบ (src/ · prisma/) · มี staff-hours.ts + hr/index.ts + service.ts ในชุดที่แก้", () => {
+// ORACLE-EDIT B.1-G1 (ผู้คุม 28 ต.ค.): ST-1 ตรวจเฉพาะตอนรับใบ — เมื่อ B.1 merge เข้า session/svc แล้ว (5947107e เป็นบรรพบุรุษ) ใบอื่นแตะไฟล์ได้ตามปกติ ⇒ SKIP
+const b1Merged = (() => { try { execFileSync("git", ["merge-base", "--is-ancestor", "5947107e", "HEAD"], { cwd: ROOT }); return true; } catch { return false; } })();
+await (b1Merged ? (async (id: string, name: string) => skip(id, name, "B.1 merge แล้ว — ข้อนี้ตรวจเฉพาะตอนรับใบ")) : st)("ST-1", "แตะเฉพาะไฟล์ของใบ (src/ · prisma/) · มี staff-hours.ts + hr/index.ts + service.ts ในชุดที่แก้", () => {
   const ch = changed(["src", "prisma"]);
   const outside = ch.filter((f) => !OWN.has(f));
   ok(outside.length === 0, `ไฟล์นอกใบ: ${outside.slice(0, 6).join(", ")}`);
