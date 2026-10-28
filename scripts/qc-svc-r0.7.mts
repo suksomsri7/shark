@@ -1117,7 +1117,7 @@ try {
   await step("N-16", "validation (ไม่มี log · ไม่ส่ง): แม่แบบไม่มี (booking.reminder ยังไม่มี defs · rooms.nope) · dedupeKey มีเบอร์ / ภาษาไทย / ช่องว่าง / ว่าง / 201 ตัว · link.path ผิดรูป ⇒ error VALIDATION", async (p) => {
     const m = mark();
     const cases: [string, Any][] = [
-      ["booking.reminder", { domain: "booking", messageKey: "reminder", dedupeKey: DK("v1") }],
+      ["booking.nope", { domain: "booking", messageKey: "nope", dedupeKey: DK("v1") }] /* ORACLE-EDIT R0.7-G1: booking.reminder มีแล้วหลัง B.0 */,
       ["rooms.nope", { messageKey: "nope", dedupeKey: DK("v2") }],
       ["key เบอร์", { dedupeKey: `svc-r07:${RAND}:${PHONE}` }],
       ["key +66", { dedupeKey: `svc-r07:${RAND}:+66${PHONE.slice(1)}` }],

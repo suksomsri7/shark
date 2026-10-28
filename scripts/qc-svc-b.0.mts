@@ -467,7 +467,11 @@ console.log("\n── P: ไฟล์ของใบ · ชิ้นกลาง
 await st("P-1", "facade core/settings/index.ts import \"./defs/booking\"", () => {
   ok(/^\s*import\s+["']\.\/defs\/booking["'];?/m.test(readFileSync(join(ROOT, "src/lib/core/settings/index.ts"), "utf8")), "ไม่พบ import \"./defs/booking\"");
 });
-await st("P-2", "ชิ้นกลางที่ห้ามแตะไม่เปลี่ยน (service/registry/template.ts · legal/ · defs rooms/payments/messaging/_fixture)", () => {
+// ORACLE-EDIT B.0-G1 (ผู้คุม 28 ต.ค.): หมวด P ตรวจ "ตอนรับ B.0" เท่านั้น — เมื่อใบหลังแก้ไฟล์ชิ้นกลางเหล่านั้นแล้ว (มี commit หลัง 270897ec แตะไฟล์) ⇒ SKIP พร้อมเหตุผล
+const laterTouch = (() => { try { return git(["log", "--format=%h", "270897ec..HEAD", "--", "src/lib/core/settings", "src/lib/core/permissions.ts", "src/lib/core/scope.ts"]).trim(); } catch { return ""; } })();
+const acceptOnlyP = async (id: string, name: string, fn: () => void, sev: Sev = "CRITICAL") =>
+  laterTouch ? skip(id, name, `ใบหลังแก้ไฟล์ชิ้นกลางแล้ว (${laterTouch.split("\n")[0]}) — ข้อนี้ตรวจเฉพาะตอนรับ B.0`, sev) : st(id, name, fn, sev);
+await acceptOnlyP("P-2", "ชิ้นกลางที่ห้ามแตะไม่เปลี่ยน (service/registry/template.ts · legal/ · defs rooms/payments/messaging/_fixture)", () => {
   const ch = changedFiles([
     "src/lib/core/settings/service.ts", "src/lib/core/settings/registry.ts", "src/lib/core/settings/template.ts", "src/lib/core/settings/legal",
     "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/payments.ts", "src/lib/core/settings/defs/messaging.ts", "src/lib/core/settings/defs/_fixture.ts",
@@ -475,7 +479,7 @@ await st("P-2", "ชิ้นกลางที่ห้ามแตะไม่
   ok(ch.length === 0, `แตะ: ${ch.join(", ")}`);
 });
 // ORACLE-EDIT B.0-R5 (มติ 28 ต.ค. ข้อ 5): types.ts ยอมแก้บรรทัด `export type TemplateDef` บรรทัดเดียว (รวม hiddenUntil) · อื่นเพิ่มอย่างเดียว
-await st("P-3", "index.ts / permissions.ts / scope.ts เพิ่มอย่างเดียว · types.ts ลบ/แก้ได้เฉพาะบรรทัด `export type TemplateDef`", () => {
+await acceptOnlyP("P-3", "index.ts / permissions.ts / scope.ts เพิ่มอย่างเดียว · types.ts ลบ/แก้ได้เฉพาะบรรทัด `export type TemplateDef`", () => {
   const d = deletedLines(["src/lib/core/settings/index.ts", "src/lib/core/permissions.ts", "src/lib/core/scope.ts"]);
   const removed = git(["diff", "-w", "--ignore-blank-lines", "-U0", BASE_SHA, "--", "src/lib/core/settings/types.ts"]).split("\n")
     .filter((l) => l.startsWith("-") && !l.startsWith("---")).map((l) => l.slice(1).trim()).filter(Boolean);
@@ -489,7 +493,7 @@ await st("P-5", "TemplateDef มี `hiddenUntil?: string` ในชนิดเ
   const hits = (spawnSync("grep", ["-rl", "TemplateDefHidden", join(ROOT, "src")], { encoding: "utf8" }).stdout ?? "").split("\n").filter(Boolean);
   ok(hits.length === 0, `ยังอ้าง TemplateDefHidden: ${hits.join(", ")}`);
 });
-await st("P-4", "โค้ด POS ไม่ถูกแตะ (ฟังก์ชันเป็นของ B.10) · pos-prod-writer-guard (allowlist เขียน prod) ไม่เปลี่ยน", () => {
+await acceptOnlyP("P-4", "โค้ด POS ไม่ถูกแตะ (ฟังก์ชันเป็นของ B.10) · pos-prod-writer-guard (allowlist เขียน prod) ไม่เปลี่ยน", () => {
   const src = changedFiles(["src"]).filter((f) => /(^|\/)pos([-_./]|$)/i.test(f));
   const guard = changedFiles(["scripts/lib/pos-prod-writer-guard.mts"]);
   ok(src.length === 0 && guard.length === 0, `แตะ: ${[...src, ...guard].slice(0, 6).join(", ")}`);
