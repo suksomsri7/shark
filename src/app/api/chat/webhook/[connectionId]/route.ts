@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import type { ChatChannelType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
+import { Prisma, type ChatChannelConnection, type ChatChannelType } from "@prisma/client";
 import { getAdapter, isSupported } from "@/lib/modules/chat/adapter";
+import { replyLineMessages, pushLineMessagesToContact, type LineMessage } from "@/lib/modules/chat/line-flex";
 import { credsOf, receiveInbound } from "@/lib/modules/chat/service";
+import { dispatchPostback, handleLinkCodeText, type PostbackReply } from "@/lib/platform/postback-routes";
 
 // LINE webhook (public — auth ด้วย signature ไม่ใช่ session)
 // POST /api/chat/webhook/[connectionId]
@@ -49,6 +51,10 @@ export async function POST(
       const first = await recordWebhook(connection.id, connection.type, inbound.externalMessageId);
       if (!first) continue;
       await receiveInbound({ connection, inbound });
+      // SVC R0.7 ▸ ข้อความที่อาจเป็นรหัสผูก (ทางเดิมด้านบนคงเดิม — ตรงนี้เพิ่มหลังบันทึกข้อความแล้ว) ◂
+      if (connection.type === "LINE" && inbound.type === "TEXT" && inbound.body) {
+        await handleLineLinkCode(connection, inbound.externalUserId, inbound.body, inbound.replyToken ?? null);
+      }
     }
   } catch (e) {
     await logWebhook(
@@ -58,6 +64,18 @@ export async function POST(
       "FAILED",
       e instanceof Error ? e.message.slice(0, 200) : "error",
     );
+  }
+
+  // SVC R0.7 ▸ postback ของ LINE (ปุ่ม rich menu / Flex) — ctx มาจากแถว connection เสมอ ไม่อ่านจาก data ◂
+  if (connection.type === "LINE") {
+    for (const ev of lineEvents(payload)) {
+      if (ev.type !== "postback") continue;
+      try {
+        await handleLinePostback(connection, ev);
+      } catch {
+        await logWebhook(connection.id, connection.type, "postback", "FAILED", "postback handler error");
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });
@@ -99,5 +117,84 @@ async function logWebhook(
     });
   } catch {
     /* noop */
+  }
+}
+
+// ───────────── SVC R0.7 ▸ postback + รหัสผูก (LINE) ─────────────
+
+type LineEvent = {
+  type?: string;
+  webhookEventId?: string;
+  replyToken?: string;
+  timestamp?: number;
+  source?: { userId?: string };
+  postback?: { data?: string };
+};
+
+function lineEvents(payload: unknown): LineEvent[] {
+  const events = (payload as { events?: unknown })?.events;
+  return Array.isArray(events) ? events.filter((e): e is LineEvent => !!e && typeof e === "object") : [];
+}
+
+/** หา/สร้างผู้ติดต่อของ userId บน connection นี้ (ร้านของ connection เสมอ) */
+async function contactOn(connection: ChatChannelConnection, externalUserId: string) {
+  const where = { tenantId: connection.tenantId, systemId: connection.systemId, channel: connection.type, channelConnectionId: connection.id, externalUserId };
+  const select = { id: true, partyId: true, blockedAt: true } as const;
+  const found = await prisma.chatContact.findFirst({ where, select });
+  if (found) return found;
+  try {
+    return await prisma.chatContact.create({ data: where, select });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return prisma.chatContact.findFirst({ where, select });
+    throw e;
+  }
+}
+
+function replyMessages(reply: PostbackReply | undefined): LineMessage[] {
+  const out: LineMessage[] = [];
+  if (reply?.text) out.push({ type: "text", text: reply.text.slice(0, 5000) });
+  if (reply?.flex) out.push({ type: "flex", altText: reply.flex.altText, contents: reply.flex.contents });
+  return out;
+}
+
+/** ตอบด้วย replyToken · token ใช้ไม่ได้แล้ว ⇒ push ถึงผู้ติดต่อแทน */
+async function answer(connection: ChatChannelConnection, chatContactId: string, replyToken: string | null, reply: PostbackReply | undefined) {
+  const messages = replyMessages(reply);
+  if (!messages.length) return;
+  const ctx = { tenantId: connection.tenantId };
+  if (replyToken) {
+    const r = await replyLineMessages(ctx, { replyToken, connectionId: connection.id, messages });
+    if (r.ok) return;
+  }
+  await pushLineMessagesToContact(ctx, { chatContactId, connectionId: connection.id, messages });
+}
+
+async function handleLinePostback(connection: ChatChannelConnection, ev: LineEvent) {
+  const userId = typeof ev.source?.userId === "string" ? ev.source.userId : "";
+  const data = typeof ev.postback?.data === "string" ? ev.postback.data : "";
+  if (!userId || !data) return;
+  const eventKey = typeof ev.webhookEventId === "string" && ev.webhookEventId ? ev.webhookEventId : `postback-${userId}-${ev.timestamp ?? ""}-${data}`.slice(0, 190);
+  if (!(await recordWebhook(connection.id, connection.type, eventKey))) return; // ส่งซ้ำ = ข้าม (X4)
+  const contact = await contactOn(connection, userId);
+  if (!contact || contact.blockedAt) return;
+  const replyToken = typeof ev.replyToken === "string" && ev.replyToken ? ev.replyToken : null;
+  const res = await dispatchPostback(
+    { tenantId: connection.tenantId, connectionId: connection.id, chatContactId: contact.id, partyId: contact.partyId, replyToken },
+    data,
+  );
+  if (res.handled) await answer(connection, contact.id, replyToken, res.reply);
+}
+
+async function handleLineLinkCode(connection: ChatChannelConnection, externalUserId: string, text: string, replyToken: string | null) {
+  try {
+    const contact = await prisma.chatContact.findFirst({
+      where: { tenantId: connection.tenantId, channel: "LINE", channelConnectionId: connection.id, externalUserId, blockedAt: null },
+      select: { id: true },
+    });
+    if (!contact) return;
+    const res = await handleLinkCodeText({ tenantId: connection.tenantId, connectionId: connection.id, chatContactId: contact.id, replyToken }, text);
+    if (res.matched) await answer(connection, contact.id, replyToken, res.reply);
+  } catch {
+    // ผูกรหัสพังไม่กระทบการรับข้อความ — ไม่ log ข้อความลูกค้า
   }
 }
