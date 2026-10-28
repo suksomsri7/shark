@@ -40,3 +40,31 @@ export { linkChatContactParty } from "./party-bridge";
 export type { NotifyCustomerDeps, NotifyCustomerInput, NotifyCustomerResult, PosBotContext, PosNotifyCode, PosNotifyTarget, PosSeamSend } from "./pos-seam";
 export { botContext, notifyCustomer, setBotPaused } from "./pos-seam";
 // ◂ POS P3.7
+
+// SVC R0.7 ▸ LINE ของร้าน: Flex · rich menu · รหัสผูกครั้งเดียว — ผู้เรียก: `platform/postback-routes.ts` · `platform/notify-customer.ts` · โดเมน (B.9/D.9)
+//   ไม่ throw · ผู้รับต้องเป็นผู้ติดต่อของร้านนี้บน OA ที่ระบุ · ไม่มีตรรกะความยินยอม (ผู้เรียก/ประตู notifyCustomer ตัดสิน)
+export type {
+  FlexFail,
+  FlexFailCode,
+  FlexContents,
+  LineMessage,
+  PushFlexToPartyInput,
+  PushFlexResult,
+  ReplyFlexInput,
+  ReplyFlexResult,
+} from "./line-flex";
+export {
+  /** push Flex ถึง Party (OA ที่ระบุเท่านั้น · ไม่ระบุ = OA ของผู้ติดต่อล่าสุด) */
+  pushFlexToParty,
+  /** reply Flex ด้วย replyToken ของ event */
+  replyFlex,
+  /** ส่งข้อความ (text/flex) ถึงผู้ติดต่อคนหนึ่งบน OA ที่ระบุ — ประตูส่งข้อความบริการ (notifyCustomer) ใช้ */
+  pushLineMessagesToContact,
+  /** ตอบกลับด้วยข้อความ (text/flex) ด้วย replyToken — ตัวแจก postback/รหัสผูกใช้ตอบ */
+  replyLineMessages,
+} from "./line-flex";
+export type { RichMenuArea, RichMenuSpec, SyncRichMenuResult } from "./line-richmenu";
+export { syncRichMenu } from "./line-richmenu";
+export type { IssueLinkCodeInput, IssueLinkCodeResult, ConsumeLinkCodeInput, ConsumeLinkCodeResult, LinkPurpose } from "./link-code";
+export { LINK_CODE_ALPHABET, issueLinkCode, consumeLinkCode, normalizeLinkCode } from "./link-code";
+// ◂ SVC R0.7
