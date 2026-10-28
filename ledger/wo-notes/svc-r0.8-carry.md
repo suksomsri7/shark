@@ -28,3 +28,4 @@
 - seed-svc-qc.mts แก้คอมเมนต์ (ใส่ "roomOccupancy" ในเครื่องหมายคำพูด) = ผู้คุมรับแล้ว
 - (ผู้คุม 27 ต.ค.) ปล่อยห้องหลังเช็กเอาต์ล้ม ⇒ occupancy ค้าง active: ต้องมีงานเก็บกวาด (minute-job ปล่อย STAY ของการจองที่ CHECKED_OUT/CANCELLED) — ใส่ใน R0.9
 - (ผู้ตรวจยืนยันซ้ำ) setRoomTypeRent(MONTHLY) ยังไม่คืน affected — เติมใน R0.9 · งานเก็บกวาด: ปิด occupancy refType=HotelReservation ที่การจองไม่ใช่ BOOKED/CHECKED_IN (minute-job) — R0.9
+- (R0.6 ส่งต่อ) R0.4: ซ่อน/ลบ def `payments.slip.onVerifierDown` (ซ้ำกับ TenantIntegration.onFailure) · ขยาย schema def `payments.receiver` ให้รับรูป `{promptpayId,…}` ด้วย · D.0: ดัชนี PaymentSlip(tenantId, (checks->>'idempotencyKey')) · J5: ระยะเก็บ PII/ไฟล์สลิป · งานเก็บกวาดวัตถุ storage ค้างจาก replay ที่แพ้
