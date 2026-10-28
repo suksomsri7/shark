@@ -76,11 +76,14 @@ model HotelRoom {
 
   reservations HotelReservation[]
   occupancies  RoomOccupancy[] // SVC R0.1
+  dormLeases   DormLease[] // SVC D.0 (FK Restrict)
+  dormMeters   DormMeter[] // SVC D.0 (FK Restrict)
 
   @@unique([unitId, number])
   @@index([tenantId, unitId])
   @@index([unitId, roomTypeId, active])
   @@index([unitId, status])
+  @@index([buildingId]) // SVC D.0 (หนี้ดัชนี R0.8)
 }
 
 // ─────────────────────── BOOKING ─────────────────────────
@@ -170,5 +173,12 @@ model RoomOccupancy {
   holdExpiresAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  // SVC D.0 ▸ หนี้ดัชนี R0.8 (Prisma)
+  @@index([tenantId, refType, refId])
+  @@index([tenantId, unitId, startDate])
+  // SVC D.0 ▸ SQL มือ (svc_d · Prisma ประกาศ partial ไม่ได้ · migrate diff ไม่เสนอ DROP):
+  //    "RoomOccupancy_holdExpiresAt_hold_idx" ON ("holdExpiresAt") WHERE "active" AND "kind" IN ('HOLD','CHANNEL_HOLD')  — expireHolds
+  //    UNIQUE "RoomOccupancy_refType_refId_stay_key" ON ("refType","refId") WHERE "active" AND "kind" = 'STAY'  — การจองโรงแรมถือห้องจริง 1 แถว active
 }
 // ◂ SVC R0.1

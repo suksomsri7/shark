@@ -497,6 +497,20 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   ChatLinkCode: tenant,
   ServiceMessageLog: unit,
   // ◂ SVC R0.1
+  // SVC D.0 ▸ หอพัก (DH A2–A10) — tenantId + unitId บังคับ · DormAuthorityTariff ไม่มี tenantId (ตารางรัฐใช้ร่วม)
+  DormLease: unit,
+  DormMeter: unit,
+  DormMeterReading: unit,
+  DormUtilityRate: unit,
+  DormBillRun: unit,
+  DormBill: unit,
+  DormMoveOut: unit,
+  DormRepair: unit,
+  DormAnnouncement: unit,
+  DormAnnouncementRead: unit,
+  DormParcel: unit,
+  DormAuthorityTariff: g("ตารางอัตราการไฟฟ้า/ประปาของรัฐ ใช้ร่วมทุกร้าน — เขียนเฉพาะ backoffice/สคริปต์แพลตฟอร์ม"),
+  // ◂ SVC D.0
   // Ticket
   TicketEvent: unit,
   TicketType: unit,
