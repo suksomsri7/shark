@@ -437,7 +437,7 @@ console.log("\n── E: pos-qc-env ยอม ep-mute-scene เฉพาะใ�
   const envFile = pathToFileURL(join(ROOT, "scripts", "pos-qc-env.mts")).href;
   writeFileSync(probe, `const m = await import(${JSON.stringify(envFile)});\nconsole.log("MARK=" + String(m.POS_QC_HOST_MARK));\nif (process.argv.includes("--load")) { m.loadPosQcEnv("svc-b0-probe"); console.log("LOADED"); }\n`);
   const run = (extra: Record<string, string>, load = false) => {
-    const env: NodeJS.ProcessEnv = {};
+    const env = {} as NodeJS.ProcessEnv;
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
     delete env.QC_BRANCH; delete env.POS_QC_ALLOW_HOST; delete env.APP_ENV;
     Object.assign(env, { QC_ENV_FILE: "/nonexistent/svc-b0-no-env-file" }, extra);
@@ -486,7 +486,9 @@ await st("F-3", "Prisma client generate แล้ว: โมเดลใหม�
   const f = (m: string) => new Set(dm.models.find((x) => x.name === m)?.fields.map((x) => x.name) ?? []);
   const need: [string, string][] = [["Appointment", "kind"], ["Appointment", "policySnapshot"], ["Appointment", "manageTokenHash"], ["QueueTicket", "etaAt"], ["PosHeldCart", "serviceJobId"], ["PosSaleLine", "performerEmployeeId"], ["PosStaffCommission", "employeeId"]];
   const miss = [...NEW_MODELS.filter((m) => !dm.models.some((x) => x.name === m)), ...need.filter(([m, k]) => !f(m).has(k)).map(([m, k]) => `${m}.${k}`)];
-  const st3 = dm.enums.find((e) => e.name === "AppointmentStatus")?.values.map((v) => v.name) ?? [];
+  // ORACLE-EDIT B.0-F3 (ผู้คุม 28 ต.ค.): Prisma 7.8 ให้ dmmf.datamodel.enums ว่างเสมอ ⇒ อ่านจาก export enum ของ client แทน
+  const enumObj = (c.mod as unknown as { AppointmentStatus?: Record<string, string> }).AppointmentStatus ?? {};
+  const st3 = Object.values(enumObj);
   if (!["QUEUED", "IN_SERVICE", "LATE"].every((v) => st3.includes(v))) miss.push("AppointmentStatus ค่าใหม่");
   ok(miss.length === 0, `client ขาด: ${miss.join(", ")}`);
   const scope = await tryImport<{ assertRegistryComplete: (m: string[]) => void }>("@/lib/core/scope");
