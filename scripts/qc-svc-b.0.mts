@@ -158,10 +158,32 @@ const CAT: Row[] = [
 ];
 const MSG_KEYS = MSG_KINDS.map((k) => `booking.msg.${k}`);
 const ALL_KEYS = [...CAT.map((r) => r.key), ...MSG_KEYS];
+// ORACLE-EDIT B.0-R1 (มติผู้คุม 28 ต.ค. /root/svc-runs/fix/b0.md ข้อ 1): _fallback = พฤติกรรมระบบจองรุ่นแรก (8ff682d5) ทีละคีย์
+//   ที่มา: slots.ts SLOT_STEP_MIN=15 · อดีตเท่านั้นที่ปิด (ไม่มีเวลาจองล่วงหน้าขั้นต่ำ) · public-booking.tsx nextDays(14) · ไม่มีเพดานต่อเบอร์/ต่อช่าง ·
+//   ไม่มีสาย/ไม่มาอัตโนมัติ (พนักงานกด NO_SHOW เอง แล้วริบมัดจำเต็ม = forfeit 100 คงเดิม) · ไม่มีข้อความ/เตือน · มัดจำพนักงานบันทึกเอง (ไม่เก็บออนไลน์) ·
+//   ไม่มีลิงก์จัดการนัด (เลื่อนเองไม่ได้) · กรอบเวลา = เวลาร้านเท่านั้น · ค่าคอมฯ ตามคนขาย (ไม่ใช่ผู้ให้บริการ) · ไม่ลบข้อมูลลูกค้า · คีย์ที่ไม่อยู่ในนี้ = BARBER (ไม่มีผลกับรุ่นแรก)
 const FALLBACK_OVERRIDE: Record<string, unknown> = {
-  "booking.queue.singleLine": false,
-  "booking.deposit.amount": { mode: "PER_SERVICE" },
+  "booking.staff.hoursSource": ["UNIT_HOURS"], // getAvailableSlots รุ่นแรก: กรอบ = เวลาร้าน − ลา (ไม่อ่าน BookingStaffHours/กะ HR)
+  "booking.service.walkIn": { enabled: true, closeAtOrAboveMin: null }, // ไม่ตัดตามความยาวบริการ (walk-in ไม่มีผลเมื่อ singleLine=false)
+  "booking.service.rebookAfterDays": null,
+  "booking.booking.horizonDays": 14,
+  "booking.booking.minLeadMin": 0,
   "booking.booking.onlineSharePct": 100,
+  "booking.booking.maxOpenPerPhone": null,
+  "booking.late.afterGrace": "WAIT_NOTIFY_COUNTER",
+  "booking.late.noShowAfterMin": null,
+  "booking.late.selfRescheduleMax": 0,
+  "booking.late.repeatNoShow": null,
+  "booking.deposit.method": "NONE",
+  "booking.deposit.amount": { mode: "PER_SERVICE" },
+  "booking.deposit.payWithinMin": null,
+  "booking.notify.reminderOffsetsMin": [],
+  "booking.notify.delayAlertMin": null,
+  "booking.msg.enabled": Object.fromEntries(MSG_KINDS.map((k) => [k, false])),
+  "booking.money.commissionTo": "OFF",
+  "booking.money.commissionToPayroll": false,
+  "booking.privacy.walkInRetentionDays": null,
+  "booking.queue.singleLine": false, // ไม่รวมคิว ⇒ queue.* อื่นไม่มีผล คงค่า BARBER
 };
 const SNAP_REQUIRED = [
   "booking.deposit.method", "booking.deposit.amount", "booking.deposit.payWithinMin", "booking.deposit.forfeitPct",
@@ -306,7 +328,7 @@ await st("D-TYPE", "type ของทุกคีย์ตามตาราง 
   const bad = CAT.filter((r) => REG().getDef(r.key)?.type !== r.type).map((r) => `${r.key}=${REG().getDef(r.key)?.type ?? "ไม่มี"}≠${r.type}`);
   ok(bad.length === 0, bad.slice(0, 5).join(" · "));
 }, "MAJOR");
-await st("D-FB", "_fallback (ร้านเดิมที่ยังไม่เลือกแม่แบบ) = BARBER ทุกคีย์ ยกเว้น singleLine=false · deposit.amount={PER_SERVICE} · onlineSharePct=100", () => {
+await st("D-FB", "_fallback (ร้านเดิมที่ยังไม่เลือกแม่แบบ) = พฤติกรรมระบบจองรุ่นแรกทีละคีย์ (จอง 14 วัน · ไม่มีขั้นต่ำ · ไม่จำกัดต่อเบอร์ · ไม่มาไม่อัตโนมัติ · ไม่ส่งข้อความ · มัดจำไม่เก็บออนไลน์ · ค่าคอมฯ ไม่ตามผู้ให้บริการ · ไม่ลบข้อมูล · ไม่รวมแถว) · คีย์อื่น = BARBER", () => {
   const bad: string[] = [];
   for (const k of ALL_KEYS) {
     const d = DEF(k);
@@ -354,6 +376,14 @@ await st("D-SCH", "schema ปฏิเสธค่าผิด (% นอกช�
     ["booking.deposit.amount", { mode: "PERCENT", bp: 10001, minDurationMin: null }, false], ["booking.deposit.amount", { mode: "PERCENT", bp: 5000, minDurationMin: null }, true],
     ["booking.notify.reminderOffsetsMin", [0], false], ["booking.notify.reminderOffsetsMin", [60], true],
     ["booking.general.shopType", "SALON", false], ["booking.deposit.method", "CASH", false],
+    // ORACLE-EDIT B.0-R2 (มติ 28 ต.ค. ข้อ 2): นโยบายปิดได้ + เพดาน
+    ["booking.late.repeatNoShow", null, true], ["booking.booking.maxOpenPerPhone", null, true], ["booking.late.noShowAfterMin", null, true],
+    ["booking.notify.delayAlertMin", null, true], ["booking.notify.delayAlertMin", 0, false], ["booking.notify.delayAlertMin", 1, true],
+    ["booking.queue.skipAfterMin", null, true], ["booking.queue.skipAfterMin", 0, false], ["booking.queue.skipAfterMin", 1, true],
+    ["booking.deposit.payWithinMin", 1440, true], ["booking.deposit.payWithinMin", 1441, false],
+    ["booking.late.graceMin", 1440, true], ["booking.late.graceMin", 1441, false],
+    ["booking.late.noShowAfterMin", 1440, true], ["booking.late.noShowAfterMin", 1441, false],
+    ["booking.late.freeChangeBeforeMin", 1440, true], ["booking.late.freeChangeBeforeMin", 1441, false],
   ];
   const bad = cases.filter(([k, v, want]) => DEF(k).schema.safeParse(v).success !== want).map(([k, v, want]) => `${k}=${fmt(v)} ควร${want ? "ผ่าน" : "ไม่ผ่าน"}`);
   ok(bad.length === 0, bad.slice(0, 4).join(" · "));
@@ -402,6 +432,36 @@ await st("V-5", "queue: ตัวอักษรนำเลขบัตรซ�
   ok(!hasIssue(vg("queue", groupVals("queue", "CLINIC")), "QUEUE_PREFIX_DUPLICATE", K), "A/P/B ถูกจับผิด");
 });
 
+// ORACLE-EDIT B.0-R3 (มติ 28 ต.ค. ข้อ 2–3): ไม่มาแบบปิด (null) ไม่ขัด · กฎใหม่ 3 ข้อ
+await st("V-6", "late: noShowAfterMin = null (ไม่ตั้งไม่มาอัตโนมัติ) ⇒ ไม่ติด NO_SHOW_BEFORE_GRACE", () => {
+  ok(!hasIssue(vg("late", groupVals("late", "BARBER", { "booking.late.noShowAfterMin": null })), "NO_SHOW_BEFORE_GRACE", ["booking.late.noShowAfterMin", "booking.late.graceMin"]), "null ถูกจับผิด");
+});
+await st("V-7", "queue: มีสิทธิ์คิวก่อนแต่ไม่มีตัวอักษรนำ ⇒ PRIORITY_PREFIX_REQUIRED · มีตัวอักษร/ไม่มีกลุ่ม ไม่ขัด", () => {
+  const K = ["booking.queue.prefixes", "booking.queue.priorityGroups"];
+  ok(hasIssue(vg("queue", groupVals("queue", "CLINIC", { "booking.queue.prefixes": { walkIn: "A", appointment: "P", priority: null } })), "PRIORITY_PREFIX_REQUIRED", K), "CLINIC + priority null ไม่ถูกจับ");
+  ok(!hasIssue(vg("queue", groupVals("queue", "CLINIC")), "PRIORITY_PREFIX_REQUIRED", K), "CLINIC A/P/B ถูกจับผิด");
+  ok(!hasIssue(vg("queue", groupVals("queue", "BARBER")), "PRIORITY_PREFIX_REQUIRED", K), "BARBER ไม่มีกลุ่ม ถูกจับผิด");
+});
+await st("V-8", "course: เปิดขายคอร์สแต่ไม่มีนโยบาย ⇒ COURSE_POLICY_REQUIRED · ปิด + null ไม่ขัด", () => {
+  const K = ["booking.course.policy", "booking.course.enabled"];
+  ok(hasIssue(vg("course", groupVals("course", "BARBER", { "booking.course.enabled": true })), "COURSE_POLICY_REQUIRED", K), "enabled + null ไม่ถูกจับ");
+  ok(!hasIssue(vg("course", groupVals("course", "SPA")), "COURSE_POLICY_REQUIRED", K), "SPA ถูกจับผิด");
+  ok(!hasIssue(vg("course", groupVals("course", "BARBER")), "COURSE_POLICY_REQUIRED", K), "ปิด + null ถูกจับผิด");
+});
+await st("V-9", "money: ค่าคอมฯ ตามผู้ให้บริการแต่ไม่มีอัตรา ⇒ COMMISSION_RATE_REQUIRED · OFF + null ไม่ขัด", () => {
+  const K = ["booking.money.commissionRate", "booking.money.commissionTo"];
+  ok(hasIssue(vg("money", groupVals("money", "BARBER", { "booking.money.commissionRate": null })), "COMMISSION_RATE_REQUIRED", K), "PERFORMER + null ไม่ถูกจับ");
+  ok(!hasIssue(vg("money", groupVals("money", "CLINIC")), "COMMISSION_RATE_REQUIRED", K), "OFF + null ถูกจับผิด");
+});
+// ORACLE-EDIT B.0-R4 (มติ 28 ต.ค. ข้อ 4): helpTh
+await st("D-HELP", "helpTh: walkIn · singleLine ตามถ้อยคำมติ · cleanupMin/onlineBookable (บริการใหม่) · defaultHours (สาขาใหม่) บอกว่าเป็นค่าตั้งต้น", () => {
+  const h = (k: string) => String((DEF(k) as DefLike & { helpTh?: unknown }).helpTh ?? "");
+  ok(h("booking.service.walkIn").includes("ปิดรับ walk-in สำหรับบริการที่ยาวตั้งแต่กี่นาที"), `walkIn: ${h("booking.service.walkIn")}`);
+  ok(h("booking.queue.singleLine").includes("รวมคิว walk-in เข้ากับนัดในแถวเดียว"), `singleLine: ${h("booking.queue.singleLine")}`);
+  for (const [k, w] of [["booking.service.cleanupMin", "บริการใหม่"], ["booking.service.onlineBookable", "บริการใหม่"], ["booking.general.defaultHours", "สาขาใหม่"]] as const)
+    ok(h(k).includes("ค่าตั้งต้น") && h(k).includes(w), `${k}: ต้องมี "ค่าตั้งต้น" + "${w}" (ได้ ${h(k) || "ว่าง"})`);
+});
+
 // ═══════════════ P. ไฟล์ ═══════════════
 console.log("\n── P: ไฟล์ของใบ · ชิ้นกลาง/POS ที่ห้ามแตะ ──");
 await st("P-1", "facade core/settings/index.ts import \"./defs/booking\"", () => {
@@ -414,10 +474,21 @@ await st("P-2", "ชิ้นกลางที่ห้ามแตะไม่
   ]);
   ok(ch.length === 0, `แตะ: ${ch.join(", ")}`);
 });
-await st("P-3", "types.ts / index.ts / permissions.ts / scope.ts: เพิ่มอย่างเดียว (ไม่มีบรรทัดลบ)", () => {
-  const d = deletedLines(["src/lib/core/settings/types.ts", "src/lib/core/settings/index.ts", "src/lib/core/permissions.ts", "src/lib/core/scope.ts"]);
-  ok(d.length === 0, d.join(", "));
+// ORACLE-EDIT B.0-R5 (มติ 28 ต.ค. ข้อ 5): types.ts ยอมแก้บรรทัด `export type TemplateDef` บรรทัดเดียว (รวม hiddenUntil) · อื่นเพิ่มอย่างเดียว
+await st("P-3", "index.ts / permissions.ts / scope.ts เพิ่มอย่างเดียว · types.ts ลบ/แก้ได้เฉพาะบรรทัด `export type TemplateDef`", () => {
+  const d = deletedLines(["src/lib/core/settings/index.ts", "src/lib/core/permissions.ts", "src/lib/core/scope.ts"]);
+  const removed = git(["diff", "-w", "--ignore-blank-lines", "-U0", BASE_SHA, "--", "src/lib/core/settings/types.ts"]).split("\n")
+    .filter((l) => l.startsWith("-") && !l.startsWith("---")).map((l) => l.slice(1).trim()).filter(Boolean);
+  const badTypes = removed.filter((l) => !/^export type TemplateDef\s*=/.test(l));
+  ok(d.length === 0 && badTypes.length === 0, [...d, ...badTypes.map((l) => `types.ts ลบ: ${l.slice(0, 60)}`)].join(", "));
 }, "MAJOR");
+await st("P-5", "TemplateDef มี `hiddenUntil?: string` ในชนิดเดียว · ไม่มี TemplateDefHidden ในทรี", () => {
+  const t = readFileSync(join(ROOT, "src/lib/core/settings/types.ts"), "utf8");
+  const m = t.match(/export type TemplateDef\s*=\s*\{([^}]*)\}/);
+  ok(!!m && /hiddenUntil\?\s*:\s*string/.test(m[1]), `TemplateDef = ${m?.[0] ?? "ไม่พบ"}`);
+  const hits = (spawnSync("grep", ["-rl", "TemplateDefHidden", join(ROOT, "src")], { encoding: "utf8" }).stdout ?? "").split("\n").filter(Boolean);
+  ok(hits.length === 0, `ยังอ้าง TemplateDefHidden: ${hits.join(", ")}`);
+});
 await st("P-4", "โค้ด POS ไม่ถูกแตะ (ฟังก์ชันเป็นของ B.10) · pos-prod-writer-guard (allowlist เขียน prod) ไม่เปลี่ยน", () => {
   const src = changedFiles(["src"]).filter((f) => /(^|\/)pos([-_./]|$)/i.test(f));
   const guard = changedFiles(["scripts/lib/pos-prod-writer-guard.mts"]);

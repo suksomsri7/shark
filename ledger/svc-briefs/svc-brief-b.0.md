@@ -16,7 +16,7 @@
 | `src/lib/core/scope.ts` | `BookingStaffService: unit` · `SvcResource: unit` (บรรทัดเพิ่ม) |
 | «src/lib/core/settings/defs/booking.ts» (ใหม่ · pure) | §4 |
 | `src/lib/core/settings/index.ts` | `import "./defs/booking";` (บรรทัดเพิ่ม) |
-| `src/lib/core/settings/types.ts` | **เพิ่มอย่างเดียว**: `TemplateDef.hiddenUntil?: string` (ผู้คุมอนุญาตแก้ชิ้นกลางจุดนี้ในใบนี้ — ไม่มีบรรทัดลบ) |
+| `src/lib/core/settings/types.ts` | `TemplateDef` = `{ key; version; labelTh; hiddenUntil?: string }` — **แก้บรรทัด `export type TemplateDef` บรรทัดเดียว** (มติ 28 ต.ค. ข้อ 5 · ไม่มี `TemplateDefHidden`) · ส่วนอื่นเพิ่มอย่างเดียว |
 | `src/lib/core/permissions.ts` | โมดูล booking + `booking.settings.edit` "แก้ค่าตั้งจองคิว" · `booking.settings.money` "แก้ค่าตั้งจองคิวเรื่องเงิน (มัดจำ · ค่าคอมฯ)" (คีย์อื่นใน CC §8 ยังเป็นของ B.11) |
 | `src/lib/actions/booking.ts` | `setStatusAction` รับเฉพาะ 6 สถานะเดิม (§2.5) |
 | ไฟล์ booking/UI อื่นเท่าที่ tsc บังคับ (เช่น ป้ายสถานะ) | แก้ให้ tsc ผ่านเท่านั้น ไม่เพิ่มพฤติกรรม |
@@ -69,7 +69,7 @@ enum: `AppointmentStatus` + `QUEUED` `IN_SERVICE` `LATE` **ต่อท้าย
 - แม่แบบ: `BARBER` `SPA` `CLINIC` (version 1 · labelTh "ตัดผม/เสริมสวย" "นวด/สปา" "คลินิก") · **CLINIC มี `hiddenUntil: "PHASE_CLINIC"`** (BARBER/SPA ไม่มี)
 - `group` = ส่วนที่ 2 ของคีย์ · `editPermission` = `booking.settings.edit` ยกเว้นกลุ่ม `deposit` และ `money` = `booking.settings.money` + `sensitivity: "MONEY"` · `booking.privacy.*` = `sensitivity: "PRIVACY"` + `ownerOnly: true`
 - `chain` = คอลัมน์ "ขอบเขต" ของภาคผนวก ก ตรงตัว (ตารางล่าง) · `type` ตามตาราง · ห้ามมีคีย์ booking นอกตารางนี้
-- `_fallback` (ร้านที่ยังไม่เลือกแม่แบบ = ร้านเดิม) = ค่า **BARBER** ทุกคีย์ **ยกเว้น 3 คีย์ที่ต้องคงพฤติกรรมเดิม**: `booking.queue.singleLine` = `false` · `booking.deposit.amount` = `{mode:"PER_SERVICE"}` (มัดจำตาม `BookingService.depositSatang` แบบเดิม) · `booking.booking.onlineSharePct` = `100` (เดิมไม่มีเพดาน)
+- `_fallback` — ⚠️ **ถูกแทนด้วย §8 ข้อ 1 (มติ 28 ต.ค.)** · เดิม: ค่า BARBER ทุกคีย์ยกเว้น 3 คีย์: `booking.queue.singleLine` = `false` · `booking.deposit.amount` = `{mode:"PER_SERVICE"}` (มัดจำตาม `BookingService.depositSatang` แบบเดิม) · `booking.booking.onlineSharePct` = `100` (เดิมไม่มีเพดาน)
 - หน่วย: นาที/วัน = จำนวนเต็ม · % = จำนวนเต็ม 0–100 · อัตรา = basis point 0–10000 · เงิน = สตางค์ · "—" ในภาคผนวก = `null` (bool = `false`)
 
 | # | คีย์ | type | chain | BARBER | SPA | CLINIC |
@@ -170,8 +170,47 @@ enum: `AppointmentStatus` + `QUEUED` `IN_SERVICE` `LATE` **ต่อท้าย
 ## 7. เกณฑ์รับ
 ข้อสอบเขียวทุกข้อ (ไม่มี SKIP) · typecheck ทรีรวม (`ISO_MEM=9000M NODE_OPTIONS=--max-old-space-size=7168`) · fitness 2 โหมด · ไม่มี `any` · ตรวจเข้ม 2 รอบ (คอลัมน์ POS = เงิน)
 
-## 8. ส่งต่อใบหลัง (จดใน wo-notes ตอนรับใบ)
-- B.3: ตัวหาช่องว่างเดิม (`slots.ts`) ต้องนับสถานะใหม่ QUEUED/IN_SERVICE/LATE ว่า "ถือช่อง" · B.4: เครื่องสถานะเป็นทางเดียวที่ตั้งสถานะใหม่
-- R0.4/B.11: `applyTemplate` ยังไม่ปฏิเสธแม่แบบที่ `hiddenUntil` (UI ต้องซ่อน + ใบแก้ชิ้นกลางถ้าต้องกันฝั่งเซิร์ฟเวอร์) · scope `RESOURCE`/`DEVICE`/`COURSE` ยังไม่อยู่ใน `SUPPORTED_SCOPES` ของ service.ts ⇒ ค่าชั้นนั้นได้จากแม่แบบจนใบแก้ชิ้นกลาง (B.6 อุปกรณ์ · B.13 ทรัพยากร) — คำขอลง wo-notes
-- B.8: โหมดมัดจำผ่าน gateway (Beam) = เพิ่มค่า enum + `requires` ในใบนั้น · B.9: ช่องทางต่อชนิดข้อความใช้ `messaging.channelOrder`
+## 8. มติหลังผู้ตรวจ 28 ต.ค. (ผู้คุม · `/root/svc-runs/fix/b0.md` · ORACLE-EDIT B.0-R1…R5) — **ทับ §1–§4 เมื่อขัดกัน**
+1. **`_fallback` = พฤติกรรมระบบจองรุ่นแรก (8ff682d5) ทีละคีย์** (ข้อสอบ D-FB) — คีย์ที่ไม่อยู่ในรายการ = ค่า BARBER (รุ่นแรกไม่มีกติกานั้น ค่าไม่มีผล)
+   | คีย์ | `_fallback` | ที่มาในรุ่นแรก |
+   |---|---|---|
+   | booking.booking.horizonDays | 14 | `public-booking.tsx` `nextDays(14)` (เซิร์ฟเวอร์ไม่จำกัด) |
+   | booking.booking.minLeadMin | 0 | `slots.ts` ปิดเฉพาะช่องที่ผ่านไปแล้ว |
+   | booking.booking.onlineSharePct | 100 | ไม่มีเพดาน |
+   | booking.booking.maxOpenPerPhone | null | ไม่จำกัด |
+   | booking.staff.hoursSource | ["UNIT_HOURS"] | `getAvailableSlots` รุ่นแรก: กรอบ = เวลาร้าน − ลา (ไม่อ่าน BookingStaffHours/กะ HR) |
+   | booking.service.walkIn | {enabled:true, closeAtOrAboveMin:null} | ไม่ตัดตามความยาวบริการ |
+   | booking.service.rebookAfterDays | null | ไม่มีชวนกลับ |
+   | booking.late.afterGrace | "WAIT_NOTIFY_COUNTER" | ไม่ปล่อยช่องอัตโนมัติ |
+   | booking.late.noShowAfterMin | null | พนักงานกด NO_SHOW เอง |
+   | booking.late.selfRescheduleMax | 0 | ไม่มีลิงก์จัดการนัด |
+   | booking.late.repeatNoShow | null | ไม่มีกติกาไม่มาซ้ำ |
+   | booking.deposit.method | "NONE" | ไม่เก็บมัดจำออนไลน์ (พนักงานบันทึก) · forfeitPct คง 100 (NO_SHOW ริบเต็มตาม P5.1) |
+   | booking.deposit.amount | {mode:"PER_SERVICE"} | `BookingService.depositSatang` |
+   | booking.deposit.payWithinMin | null | ไม่มีกำหนดจ่าย |
+   | booking.notify.reminderOffsetsMin | [] | ไม่มีเตือน |
+   | booking.notify.delayAlertMin | null | ไม่มีแจ้งเลื่อน |
+   | booking.msg.enabled | ทุกชนิด false | ไม่ส่งข้อความ |
+   | booking.money.commissionTo / commissionToPayroll | "OFF" / false | ค่าคอมฯ ตามคนขาย (POS P3.5) ไม่ใช่ผู้ให้บริการ |
+   | booking.privacy.walkInRetentionDays | null | ไม่ลบข้อมูลอัตโนมัติ |
+   | booking.queue.singleLine | false | ไม่มีแถวเดียว ⇒ ค่า queue.* อื่นไม่มีผล (คง BARBER) · late.freeChangeBeforeMin คง 180 (มีผลเฉพาะลูกค้าเลื่อนเอง ซึ่ง selfRescheduleMax=0) |
+2. **ปิดได้ + เพดาน** (ข้อสอบ D-SCH): `late.repeatNoShow` · `booking.maxOpenPerPhone` · `late.noShowAfterMin` รับ `null` · `notify.delayAlertMin` / `queue.skipAfterMin` ≥ 1 หรือ `null` (= ปิด) · `deposit.payWithinMin` ≤ 1440 · `late.graceMin` `late.noShowAfterMin` `late.freeChangeBeforeMin` ≤ 1440 · กฎ `NO_SHOW_BEFORE_GRACE` ไม่ทำงานเมื่อ noShowAfterMin = null (V-6)
+3. **validateGroup เพิ่ม 3** (ค่าเริ่มทุกแม่แบบ + `_fallback` ต้องไม่ติด — V-0):
+   | กลุ่ม | ขัดเมื่อ | code |
+   |---|---|---|
+   | queue | `priorityGroups` ไม่ว่าง และ `prefixes.priority === null` | `PRIORITY_PREFIX_REQUIRED` (V-7) |
+   | course | `course.enabled` และ `course.policy === null` | `COURSE_POLICY_REQUIRED` (V-8) |
+   | money | `commissionTo === "PERFORMER"` และ `commissionRate === null` | `COMMISSION_RATE_REQUIRED` (V-9) |
+4. **helpTh** (D-HELP): `service.walkIn` มี "ปิดรับ walk-in สำหรับบริการที่ยาวตั้งแต่กี่นาที" · `queue.singleLine` มี "รวมคิว walk-in เข้ากับนัดในแถวเดียว" · `service.cleanupMin` และ `service.onlineBookable` มี "ค่าตั้งต้น" + "บริการใหม่" · `general.defaultHours` มี "ค่าตั้งต้น" + "สาขาใหม่" (คอลัมน์เดิม `BookingService.bufferMin`/`bookable` และตาราง `BookingHours` ชนะ)
+5. **TemplateDef** (P-3 · P-5): `hiddenUntil?: string` อยู่ใน `TemplateDef` เอง · ลบ `TemplateDefHidden` ทั้งทรี
+
+## 9. ส่งต่อใบหลัง (จดใน wo-notes ตอนรับใบ · รวม carry หลังผู้ตรวจ 28 ต.ค.)
+- แก้หลังผู้ตรวจ: `_fallback` = พฤติกรรมระบบจองรุ่นแรกทุกข้อ (ทาง ก · `FALLBACK_LEGACY` ใน defs/booking.ts ตรงตาราง ORACLE-EDIT B.0-R1 — กรอบเวลาร้านเท่านั้น · จอง 14 วัน (`nextDays(14)`) · minLead 0 · ไม่จำกัดต่อเบอร์ · ไม่ตั้งไม่มาอัตโนมัติ · ไม่มีบทลงโทษไม่มาซ้ำ · เลื่อนเองไม่ได้ · มัดจำ `NONE` + `PER_SERVICE` = พนักงานบันทึกที่เคาน์เตอร์แบบเดิม · ไม่เตือน/ไม่ส่งข้อความ · ค่าคอมฯ ไม่ตามผู้ให้บริการ · ไม่ลบข้อมูล · ไม่รวมแถว) · นโยบายปิดได้ (null) · validateGroup +3 (PRIORITY_PREFIX_REQUIRED · COURSE_POLICY_REQUIRED · COMMISSION_RATE_REQUIRED) · `TemplateDef.hiddenUntil` รวมเข้า TemplateDef จริง
+- **B.3**: ฟังก์ชันแปลงค่าตั้ง → PlanSettings แบบ `switch` ครบทุกคีย์ + ข้อสอบ · **ค่าคอลัมน์เดิมชนะค่าตั้ง** (BookingService.bufferMin/bookable · ตาราง BookingHours) · ตัวหาช่องว่างนับ QUEUED/IN_SERVICE/LATE ว่าถือช่อง
+- **B.4**: เครื่องสถานะเป็นทางเดียวที่ตั้งสถานะใหม่ · `late.noShowAfterMin = null` = ไม่ตั้ง NO_SHOW อัตโนมัติ · `late.graceMin` ของ `_fallback` ยังเป็น 10 (ไม่มีชนิด null) — ใช้ร่วมกับ `afterGrace = WAIT_NOTIFY_COUNTER` แจ้งเคาน์เตอร์เท่านั้น ห้ามปล่อยช่อง
+- **B.8**: กฎข้ามกลุ่ม — `repeatNoShow.action = REQUIRE_DEPOSIT` แต่ `deposit.method = NONE` ⇒ ถอยเป็น `PHONE_ONLY` · `payWithinMin > minLeadMin` ⇒ ใช้ค่าน้อย · `memberExemptTier` ต้องเป็นระดับที่มีจริง · โหมด gateway (Beam) = เพิ่มค่า enum + `requires` · `method = NONE` + `amount = PER_SERVICE` = มัดจำเคาน์เตอร์แบบรุ่นแรก (ห้ามตีความว่าไม่มีมัดจำ)
+- **B.9**: ตัวแปร `{ห้อง}`/`{ทรัพยากร}` · นัด "ใครก็ได้" ต้องเติม `{ช่าง}` เมื่อได้ช่าง · `rebookInvite` = ข้อความการตลาด ต้องมี consent (J5) · ช่องทางต่อชนิดข้อความใช้ `messaging.channelOrder`
+- **B.11**: สิทธิ์เงินรายฟิลด์ (`course.policy.refund.feeBp`) · `applyTemplate` ปฏิเสธแม่แบบที่มี `hiddenUntil` ฝั่งเซิร์ฟเวอร์ · scope RESOURCE/DEVICE/COURSE ยังไม่อยู่ใน `SUPPORTED_SCOPES`
 - B.10: index ค่าคอมฯ ตามผู้ให้บริการบน PosSaleLine (ถ้าจำเป็น) = CONCURRENTLY นอก migrate
+- จอ 08 "Gold ได้คิวก่อน" = เกินแบบ (ไม่ทำรอบนี้) · SPA `service.cleanupMin` = 10 ตามภาคผนวก (จอ 08 เขียน 15 = ภาพตัวอย่าง)
+
