@@ -275,6 +275,13 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "integration.connected", label: "เมื่อเชื่อมต่อผู้ให้บริการภายนอกสำเร็จ (ศูนย์เชื่อมต่อ)" },
   { value: "integration.failed", label: "เมื่อการเชื่อมต่อผู้ให้บริการภายนอกล้มติดกันจนหยุดใช้งาน (ศูนย์เชื่อมต่อ)" },
   // ◂ SVC R0.5
+  // SVC R0.6 ▸ ตรวจสลิปกลาง — ตัวยิง `payment/slip-verify.ts` (tx เดียวกับการเขียนสลิป · ครั้งเดียวต่อสลิป/การตัดสิน) ·
+  //   payload = { slipId, domain, refType, refId, amountSatang, status } พอดี (ไม่มีชื่อผู้โอน/รูป) · consumer no-op ใน `outbox-consumers.ts` ·
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "payment.slip.submitted", label: "เมื่อลูกค้าส่งสลิปโอนเงิน (ตรวจสลิป)" },
+  { value: "payment.slip.approved", label: "เมื่อสลิปโอนเงินได้รับการอนุมัติ (อัตโนมัติหรือโดยพนักงาน)" },
+  { value: "payment.slip.rejected", label: "เมื่อสลิปโอนเงินถูกปฏิเสธ (ซ้ำ หรือพนักงานไม่รับ)" },
+  // ◂ SVC R0.6
   // SVC R0.3 ▸ ค่าตั้งแบบชั้นเปลี่ยน (payload ไม่มีค่า — มีแค่คีย์/ชั้น) ◂
   { value: "settings.changed", label: "เมื่อค่าตั้งของร้านหรือสาขาเปลี่ยน" },
 ];

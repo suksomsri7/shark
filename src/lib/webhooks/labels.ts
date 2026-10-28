@@ -95,6 +95,8 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // CRM C3.2 ▸ `crm.quota.reached` ประกาศที่ `AUTOMATION_EVENTS` (บล็อก C3.2 · spread ข้างบน) — ร้านสมัครเว็บฮุคได้ทันที · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC R0.5 ▸ "integration.connected" / "integration.failed" (ศูนย์เชื่อมต่อ) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) ·
   //   ห้ามประกาศซ้ำที่นี่ (ช่องติ๊ก 2 แถวต่อ event) — consumer no-op อยู่ใน outbox-consumers.ts ◂
+  // SVC R0.6 ▸ "payment.slip.submitted" / "payment.slip.approved" / "payment.slip.rejected" (ตรวจสลิปกลาง) ประกาศที่ `AUTOMATION_EVENTS`
+  //   (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ (ช่องติ๊ก 2 แถวต่อ event) — consumer no-op อยู่ใน outbox-consumers.ts ◂
   // CRM C3.9 ▸ PDPA — ประกาศที่นี่ที่เดียว (ไม่ใช่ทริกเกอร์ของตัวสร้างกฎ: `CRM_RULE_TRIGGERS` ผูกกับ AUTOMATION_EVENTS ทั้งก้อน) ·
   //   payload id ล้วน · consumer อยู่ใน outbox-consumers.ts (บล็อก C3.9) — ระบบภายนอกที่ถือสำเนาข้อมูลลูกค้าต้องรู้เพื่อลบตาม
   { value: "crm.contact.erased", label: "เมื่อผู้ติดต่อถูกลบข้อมูลส่วนบุคคลตามคำขอ PDPA (CRM)" },

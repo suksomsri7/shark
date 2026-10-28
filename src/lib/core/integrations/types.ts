@@ -94,6 +94,11 @@ export type ProviderDef = {
   fields: readonly ProviderField[];
   /** ชนิดที่ผู้ให้บริการนี้รองรับ */
   kinds: readonly StoredIntegrationKind[];
+  /**
+   * ความสามารถที่ผู้ให้บริการประกาศ (SVC R0.6 fix 7) — ไม่ประกาศ = ไม่มี
+   * checksReceiver: ตรวจบัญชีผู้รับกับธนาคารจริง ⇒ สลิปอนุมัติอัตโนมัติได้ (ไม่มี = ต้องให้คนตรวจเสมอแม้ร้านเปิด autoApprove)
+   */
+  capabilities?: { checksReceiver?: boolean };
   /** สร้าง adapter — ค่าลับถูกจับไว้ใน closure */
   create<K extends StoredIntegrationKind>(kind: K, creds: ProviderCreds): AdapterOf<K>;
 };

@@ -1144,7 +1144,7 @@ export async function applyLegalOverrideApproval(input: {
     // fix 1 ▸ ผู้อนุมัติต้องเป็นเจ้าของร้าน ณ ตอนนี้
     const decs = await tx.approvalDecision.findMany({ where: { tenantId, requestId, decision: "APPROVED" }, select: { decidedById: true } });
     const approvers = [...new Set(decs.map((d) => d.decidedById))];
-    const owners = approvers.length ? await tx.membership.count({ where: { tenantId, userId: { in: approvers }, role: "OWNER" } }) : 0;
+    const owners = approvers.length ? await tx.membership.count({ where: { tenantId, userId: { in: approvers }, role: "OWNER", acceptedAt: { not: null } } }) : 0;
     if (owners === 0) return consume("INVALID", "OWNER_DID_NOT_APPROVE");
 
     const prop = await tx.auditLog.findFirst({ where: { tenantId, action: PROPOSAL_ACTION, targetType: PROPOSAL_TARGET, targetId: proposalId }, select: { after: true } });
@@ -1154,8 +1154,9 @@ export async function applyLegalOverrideApproval(input: {
     const approvedCodes = new Set(Array.isArray(body.codes) ? body.codes.filter((x): x is string => typeof x === "string") : []);
 
     // fix 3 ▸ ผู้ยื่นจาก Membership สด (ถูกถอด/ลดสิทธิ์/ย้ายสาขาระหว่างรอ ⇒ ไม่ใช้)
-    const mem = await tx.membership.findUnique({
-      where: { userId_tenantId: { userId: req.requestedById, tenantId } },
+    // R0.6 fix 1 ▸ ถอนสิทธิ์ = acceptedAt null ⇒ ไม่นับเป็นสมาชิก ◂
+    const mem = await tx.membership.findFirst({
+      where: { userId: req.requestedById, tenantId, acceptedAt: { not: null } },
       select: { role: true, unitAccess: true, permissions: true },
     });
     if (!mem) return consume("INVALID", "ผู้ยื่นไม่ได้เป็นสมาชิกร้านแล้ว");
