@@ -21,7 +21,7 @@
 
 ### ▶️ RESUME STEPS (บัญชีใหม่)
 1. อ่านไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกา) §2 (วิธีต่อใบ) §3 (สถานะ) + §4 ท้ายไฟล์ (มติล่าสุด) → `ledger/SVC-CORE-CONTRACT.md` (+ภาคต่อท้ายไฟล์)
-2. เช็กเครื่อง: `systemctl list-units 'iso-*'` ว่าง · bind mount node_modules ของ `/root/projects/shark-svc-l{1,2,3}` (หลังรีบูตต้อง `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-svc-lN/node_modules`) · `[ -x .../node_modules/.bin/tsx ]` · ทรีหลัก `cd /root/projects/shark-svc && pnpm exec prisma generate` ถ้า client เก่า
+2. เช็กเครื่อง: `systemctl list-units 'iso-*'` ว่าง · bind mount node_modules ของ `/root/projects/shark-svc-l{1,2,3}` (เป็น symlink แล้ว — ไม่ต้อง mount · l2 ใช้ /root/projects/shark-svc-nm-l2) · `[ -x .../node_modules/.bin/tsx ]` · ทรีหลัก `cd /root/projects/shark-svc && pnpm exec prisma generate` ถ้า client เก่า
 3. `git -C /root/projects/shark-svc pull`/log ให้ตรง origin/session/svc · เลน: `git -C /root/projects/shark-svc-lN reset --hard session/svc` (ยกเว้น l3 ใช้ `wip/svc-l3` ที่มีข้อสอบ R0.6 → `git rebase session/svc`)
 4. เปิด 3 เลน: l3 = builder R0.6 · l1 = ข้อสอบ R0.7 · l2 = ข้อสอบ B.0 → ต่อตาม MASTER-PLAN §5 (สัปดาห์ 2: R0.7→B.1→B.3 · D.0→D.2→D.5 · R0.4→B.11→D.6)
 5. ทุกใบเข้ม: ผู้ตรวจ 2 ตัว + เมื่อข้อสอบใหม่เขียนหลังโค้ดแก้ ให้ผู้ตรวจรันฉากเดิมยืนยันซ้ำก่อน merge · รัน tsc ด้วย `ISO_MEM=9000M NODE_OPTIONS=--max-old-space-size=7168`
