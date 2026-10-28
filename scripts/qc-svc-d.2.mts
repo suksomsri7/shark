@@ -1194,6 +1194,44 @@ try {
     if (es.filter((e) => e.lines.some((l) => l.code === depCodeQ && l.debit > 0)).length !== 1) p.push("JV ที่ Dr บัญชีประกันไม่ใช่ 1 ใบ");
     if (es.some((e) => dr(e) !== cr(e))) p.push("JV ไม่สมดุล");
   });
+  // ORACLE-EDIT 28 ต.ค. (review รอบ 2) F9 — B-N1: ถอยการปิดประกันต้องเคารพล็อกข้อมูลก่อนวันที่ (วันที่ JV ปิด + paidAt ทุกงวดหักประกัน)
+  await step("S-19", "F9: สมุด ON_PAYMENT ปิดประกัน (ใบกำกับอัตโนมัติ) → ตั้ง lockBeforeDate หลังวันปิด ⇒ (positive: voidPayment งวดปกติถูกปฏิเสธ) · reverseSecurityDepositSettlement ⇒ PERIOD_LOCKED · ไม่มีอะไรเปลี่ยน (held · สถานะ/paidTotal ใบ · ใบกำกับ · งวด · JV)", async (p) => {
+    const lease = newLease("s19");
+    const dq = await deposit(T.A, U.Q, lease, 600_000, newKey("s19d"));
+    if (!dq?.ok) { p.push(`เตรียม: รับประกัน ${codeOf(dq)}`); return; }
+    const inv = await mk([[400_000, "EXEMPT"], [107_000, "VAT7"]], U.Q);
+    const k = newKey("s19");
+    const s = await settle(T.A, U.Q, lease, [inv.id], k);
+    if (!s?.ok || s.appliedSatang !== 507_000) { p.push(`เตรียม: ปิด ${codeOf(s)}`); return; }
+    // งวดรับชำระปกติในช่วงเดียวกัน (positive control ของด่านล็อก)
+    const nInv = await mk([[50_000, "EXEMPT"]], U.Q);
+    const np = await SV.recordPayment(T.A, SYSID.Q, nInv.id, { amount: 50_000, channel: "TRANSFER", idempotencyKey: newKey("s19n") });
+    if (!np?.ok || !np.paymentId) { p.push(`เตรียม: รับชำระปกติ ${js(np)}`); return; }
+    const lockAt = new Date(Date.now() + 2 * DAY);
+    await prisma.accountSettings.updateMany({ where: { tenantId: T.A, systemId: SYSID.Q }, data: { lockBeforeDate: lockAt } });
+    try {
+      const vp = await SV.voidPayment(T.A, SYSID.Q, nInv.id, np.paymentId, "ทดสอบยกเลิกในช่วงล็อก");
+      if (vp?.ok !== false || !/ล็อก/.test(String(vp?.reason ?? ""))) p.push(`positive: voidPayment ในช่วงล็อก ${js(vp).slice(0, 100)}`);
+      const payRow = (await prisma.accountDocumentPayment.findFirst({ where: { documentId: inv.id } })) as Any;
+      const tiBefore = (await prisma.accountDocument.findMany({ where: { systemId: SYSID.Q, docType: "TAX_INVOICE", sourceDocId: inv.id }, select: { id: true, status: true }, orderBy: { id: "asc" } })) as Any[];
+      if (!tiBefore.some((t) => t.status !== "VOIDED" && t.status !== "CANCELLED")) p.push("เตรียม: ไม่มีใบกำกับอัตโนมัติของงวดหักประกัน");
+      const snapDoc = js(await docOf(inv.id));
+      const h0 = await held(T.A, U.Q, lease);
+      const c0 = await counts(T.A);
+      const r = await reverseSettle(U.Q, lease, { idempotencyKey: k });
+      if (!refused(r, "PERIOD_LOCKED")) p.push(`ถอยในช่วงล็อก ${codeOf(r)}`);
+      if (!sameCounts(c0, await counts(T.A))) p.push("มีแถว/JV เพิ่ม");
+      if (js(await docOf(inv.id)) !== snapDoc) p.push("ใบแจ้งหนี้เปลี่ยน (สถานะ/paidTotal)");
+      if (js(await held(T.A, U.Q, lease)) !== js(h0)) p.push(`held เปลี่ยน ${js(h0)}→${js(await held(T.A, U.Q, lease))}`);
+      const tiAfter = (await prisma.accountDocument.findMany({ where: { systemId: SYSID.Q, docType: "TAX_INVOICE", sourceDocId: inv.id }, select: { id: true, status: true }, orderBy: { id: "asc" } })) as Any[];
+      if (js(tiAfter) !== js(tiBefore)) p.push("ใบกำกับภาษีเปลี่ยนสถานะ");
+      if (payRow && ((await prisma.accountDocumentPayment.findUnique({ where: { id: payRow.id } })) as Any)?.voidedAt) p.push("งวดหักประกันถูกยกเลิก");
+      const jv = (await prisma.accountJournalEntry.findFirst({ where: { id: s.entryId }, select: { status: true } })) as Any;
+      if (jv?.status !== "POSTED") p.push(`JV ปิด สถานะ ${jv?.status}`);
+    } finally {
+      await prisma.accountSettings.updateMany({ where: { tenantId: T.A, systemId: SYSID.Q }, data: { lockBeforeDate: null } });
+    }
+  });
   // ORACLE-EDIT 28 ต.ค. (review) — positive control ของ G-3: ใบสำคัญทั่วไปยังกลับรายการได้ตามเดิม
   await step("PC-5", "positive control: JV ทั่วไป (postManualJV) กลับรายการผ่าน reverseJournalEntry ได้ตามเดิม", async (p) => {
     const lid = async (code: string) => ((await prisma.accountLedger.findFirst({ where: { systemId: SYSID.V, code } })) as Any)?.id as string;
@@ -1251,6 +1289,7 @@ try {
 } finally {
   // ───────── Z ทำความสะอาด ─────────
   const del = async (name: string, fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { out(`  ⚠ ลบ ${name}: ${errMsg(e)}`); } };
+  if (T.A) await del("lockBeforeDate.reset", () => prisma.accountSettings.updateMany({ where: { tenantId: T.A }, data: { lockBeforeDate: null } })); // ORACLE-EDIT 28 ต.ค. (review รอบ 2)
   for (const tenantId of [T.A, T.B].filter(Boolean)) {
     await del("journalLine", () => prisma.accountJournalLine.deleteMany({ where: { tenantId } }));
     await del("entry.unlink", () => prisma.accountJournalEntry.updateMany({ where: { tenantId }, data: { reversalOfId: null } }));

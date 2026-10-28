@@ -108,7 +108,8 @@ settleSecurityDeposit(input: { tenantId: string; unitId: string; leaseId: string
 - **F7** กลับรายการ JV refType `DormSecurityDeposit` / `DormPaymentExcess` ทางสมุดรายวันทั่วไป (`reverseJournalEntry`) ⇒ ปฏิเสธข้อความไทยชี้ทางหอ · refType อื่นเหมือนเดิม (PC-5) — G-3
 - **F8** ปิดประกันคีย์เดิมแต่รายการใบ/ยอดต่าง ⇒ `IDEMPOTENCY_CONFLICT` (S-17) · `securityDepositHeld` ห้ามกลืน error ฐานเป็น 0 · ยอดถือไม่ผูกข้อความไทย
 - สมุด VAT จุดภาษี ON_PAYMENT: งวดหักประกันต้องออกใบกำกับอัตโนมัติ + ย้าย 2210→2200 ตามทางเดิม — S-18 (PC-4 = ทางเดิม)
-- โค้ดปฏิเสธเพิ่ม: `AMBIGUOUS_LINK` · `DEPOSIT_IN_OTHER_BOOK` · `NOT_PAYABLE` (ใบลด/เพิ่มหนี้)
+- **F9 (ORACLE-EDIT 28 ต.ค. review รอบ 2 · B-N1)** `reverseSecurityDepositSettlement` เคารพ "ล็อกข้อมูลก่อนวันที่" (`assertNotLockedTx`) ด้วยวันที่ JV ปิดประกัน และ `paidAt` ทุกงวดหักประกันที่จะถอย · ติดล็อก ⇒ `{ ok: false, code: "PERIOD_LOCKED" }` ไม่มีอะไรเปลี่ยน (ยอดถือ · สถานะ/paidTotal ใบ · ใบกำกับอัตโนมัติ · งวด · JV) — S-19 (positive: `voidPayment` เดิมถูกปฏิเสธในช่วงล็อกเดียวกัน)
+- โค้ดปฏิเสธเพิ่ม: `AMBIGUOUS_LINK` · `DEPOSIT_IN_OTHER_BOOK` · `NOT_PAYABLE` (ใบลด/เพิ่มหนี้) · `PERIOD_LOCKED` (ถอยปิดประกันในช่วงล็อก)
 
 ### 3.5 «dorm/account-bridge.ts»
 ```ts
@@ -119,7 +120,7 @@ export function dormBillInvoiceLines(bill: DormBillResult): ExternalDocLine[]
 - pure (ไม่มี db/นาฬิกา/สุ่ม) · import บัญชีเป็น `import type` จาก `@/lib/modules/account` ได้
 
 ## 4. เกณฑ์รับ
-- **ORACLE-EDIT 28 ต.ค. (review): ข้อสอบเพิ่ม 14 ข้อ (P-13 P-14 N-6 N-7 S-13…S-18 G-3 = 11 + positive control PC-3 PC-4 PC-5) รวม 77 ข้อ** · ข้อเดิมที่ใช้ประกันส่ง `partyId` แล้ว (ใบทดสอบผูก Party เดียวกัน)
+- **ORACLE-EDIT 28 ต.ค. (review): ข้อสอบเพิ่ม 14 ข้อ (P-13 P-14 N-6 N-7 S-13…S-18 G-3 = 11 + positive control PC-3 PC-4 PC-5) รวม 77 ข้อ · รอบ 2: + S-19 (F9) = 78 ข้อ** · ข้อเดิมที่ใช้ประกันส่ง `partyId` แล้ว (ใบทดสอบผูก Party เดียวกัน)
 - ข้อสอบ 63 ข้อ (เดิม) เขียวทุกข้อ (ก่อนงาน: เขียว 13 = PC-1/PC-2 positive control · C-1..C-5 CRM เดิม · F-5 F-6 S-0 G-1 E-1 Z-1 — **ต้องคงเขียว** · แดง 50 = ยังไม่มีฟังก์ชัน/DORM) · บิลสุ่มมีเมล็ด (`SEED=` ทำซ้ำ · `D2_BILLS_PER_MODE` ค่าเริ่ม 100) · typecheck (ISO_MEM=9000M · heap 7168) · fitness 2 โหมด (มี env / `env -u DATABASE_URL`) · ไม่มี `any` · ตรวจเข้ม 2 รอบ (SVC-RUN §1.4)
 - regression (ผู้คุมรันบน qc-svc · baseline ก่อน builder): `qc-acc-v2-gl-inclvat` `qc-acc-v2-payments` `qc-acc-v2-security` `qc-acc-v2-coa` `qc-acc-v2-journal` `qc-acc-v2-guard` · `qc-account-api-write-docs` `qc-account-api-write-payments` · `qc-pos-account` · CRM ที่ใช้ `createExternalInvoice`: `qc-crm-c1.5` `qc-crm-c2.7` · `qc-svc-d.1` (calc ไม่ถูกแตะ) · `qc-svc-smoke`
 - wo-notes: X1 (ข้ามร้าน/ข้ามหน่วย ⇒ NOT_FOUND/NOT_LINKED) · X3 (ใบแจ้งหนี้/รับชำระ/ประกัน/ปิดประกัน 10 ทาง) · X4 (สลิปเดิมซ้ำ = ครั้งเดียว) · หนี้: การ์ดเชื่อม "หอพัก" ในหน้าเชื่อมต่อ · J4 (รหัส 2140 · NONE→−1 · ค่าปรับไม่มี VAT)
