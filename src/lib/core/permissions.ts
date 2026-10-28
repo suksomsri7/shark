@@ -233,6 +233,8 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "booking.staff.create": "เพิ่ม/ตั้งค่าผู้ให้บริการ",
       "booking.staff.delete": "เอาผู้ให้บริการออก",
       "booking.hours.set": "ตั้งเวลาทำการและวันหยุด",
+      "booking.settings.edit": "แก้ค่าตั้งจองคิว", // SVC B.0 (คีย์อื่นใน CC §8 = B.11)
+      "booking.settings.money": "แก้ค่าตั้งจองคิวเรื่องเงิน (มัดจำ · ค่าคอมฯ)", // SVC B.0
     },
   },
   {

@@ -80,6 +80,11 @@ export type SettingDef = {
 };
 
 export type TemplateDef = { key: string; version: number; labelTh: string };
+/**
+ * SVC B.0 ▸ แม่แบบที่ซ่อนจากหน้าตั้งค่าจนถึงเฟส (เช่น "PHASE_CLINIC") — เพิ่มเป็นชนิดแยก เพราะใบสั่งให้ types.ts "เพิ่มอย่างเดียว"
+ * (TemplateDef เป็นบรรทัดเดียว แก้ในที่ = ลบบรรทัด) · ค่าจริงคงอยู่ใน TEMPLATES (registry ไม่ตัดฟิลด์) · UI ซ่อน · applyTemplate ยังไม่ปฏิเสธ (R0.4/B.11) ◂
+ */
+export type TemplateDefHidden = TemplateDef & { hiddenUntil?: string };
 export type GroupIssue = { key: string; code: string; messageTh: string };
 export type GroupRule = { group: string; check: (values: Record<string, unknown>) => GroupIssue[] };
 export type DefineSettingsOptions = {

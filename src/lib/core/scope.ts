@@ -372,6 +372,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   BookingService: unit,
   BookingStaff: unit,
   BookingStaffHours: unit,
+  BookingStaffService: unit, // SVC B.0 — ช่าง × บริการ
+  SvcResource: unit, // SVC B.0 — ทรัพยากร (เก้าอี้/เตียง/ห้อง)
   BookingHours: unit,
   BookingClosure: unit,
   Appointment: unit,
