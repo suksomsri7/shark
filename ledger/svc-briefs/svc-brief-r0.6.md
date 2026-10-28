@@ -105,3 +105,29 @@ deps   = { put?: UploadDeps["put"]; now?: Date; policy?: Partial<SlipPolicy>; ve
 - regression: `qc-svc-r0.5.mts` · `qc-svc-smoke.mts` · tsc · fitness 2 โหมด
 - ตรวจเข้ม 2 รอบ (เงิน · ข้ามร้าน · PII)
 - หนี้ที่รู้ (ไม่ใช่ของใบนี้): ระยะเก็บไฟล์/ชื่อผู้โอน (PDPA J5 · งานลบตามอายุ) · สลิปซ้ำข้าม POS (X-POS.1) · หน้าคิวตรวจ = D.10/B.8
+
+## 8. มติหลังผู้ตรวจ 28 ต.ค. (ชุดเต็ม `/root/svc-runs/fix/r0.6.md` · ORACLE-EDIT R0.6-W1..W9 ในข้อสอบ)
+สัญญาที่ข้อสอบผูกเพิ่ม (ทับ §2–§6 เมื่อขัดกัน):
+- **W1 [BLOCKER]** Membership สด = `acceptedAt` ไม่ null เท่านั้น (ถอนสิทธิ์ = `acceptedAt: null`) ⇒ `decideSlip`/`slipQueue`/`slipFileUrl` = `PERMISSION_DENIED` · ทุกจุดอ่าน `membership.findUnique|findFirst|findMany|count` ใน `src/lib/core/settings` `src/lib/core/integrations` `src/lib/payment` `src/lib/modules/rooms` ต้องมี `acceptedAt` ภายใน 8 บรรทัดจากจุดเรียก (ข้อสอบไล่ข้อความ — กรองใน where หรือ select แล้วตรวจ)
+- **W2** replay (key เดิม) ต้องตรง `unitId · domain · refType · refId · expectedSatang` + แฮช — ช่องใดไม่ตรง ⇒ `IDEMPOTENCY_CONFLICT`
+- **W3** APPROVE: ยอด ≤ `max(expectedSatang, slip.amountSatang ?? 0) + toleranceSatang` (ค่าตั้งของสาขา) · ยอดที่จะอนุมัติ < expectedSatang ⇒ `VALIDATION` "ยอดต่ำกว่าบิล ต้องอนุมัติบางส่วน" (ต้องใช้ `APPROVE_PARTIAL`) · PARTIAL ตั้ง `checks.decided.partial = true`
+- **W4** `DecideSlipInput.transRef?: string` — decision ≠ REJECT และแถวยังไม่มี transRef ⇒ บังคับ (ไม่ส่ง ⇒ `VALIDATION`) → เขียนคอลัมน์ (canonical) · ชน unique (P2002) ⇒ refusal code **`DUPLICATE`** (แถวคงสถานะเดิม ไม่มี event) · ผลตัวต่อ INVALID/UNKNOWN/DUPLICATE ที่มี transRef ⇒ เก็บลงคอลัมน์ด้วย
+- **W5** transRef canonical = `toUpperCase()` แล้วตัดทุกอักขระนอก `[A-Z0-9]` ก่อนเทียบ/เก็บ ทุกแหล่ง (QR · ตัวต่อ · พนักงานกรอก) · `parseSlipQr` คืนค่า canonical
+- **W6** `callIntegration` คืน `TIMEOUT` ⇒ ถือเป็น MANUAL เสมอ (ห้ามสรุป · CC §2.3) · `fallback` REJECT ใช้เฉพาะ `PROVIDER_ERROR`/`QUOTA`/`NOT_READY`
+- **W7** `ProviderDef.capabilities?: { checksReceiver?: boolean }` (types.ts) · FAKE = `{ checksReceiver: true }` · ผู้ให้บริการไม่ประกาศ ⇒ ไม่มีวัน AUTO_APPROVED (ผ่านทุกข้อ ⇒ `PENDING`) · อ่านจากนิยามผู้ให้บริการตอนเรียก (ข้อสอบสลับค่าบน `FAKE_PROVIDER` ในโปรเซส)
+- **W8** อัปแล้วไม่ได้ใช้ (แพ้ replay ตอนชน · throw หลังอัป) ⇒ `deleteFileAsset(ctx, id, { del: deps.del, purge: deps.purge })` (ลบทั้งแถวและวัตถุ) — `SubmitSlipDeps` เพิ่ม `del?`/`purge?` ส่งต่อ · แถว REJECTED (ซ้ำ) เก็บไฟล์ไว้เป็นหลักฐานตามเดิม
+- **W9** «src/lib/payment/slip-shared.ts»: ชนิด ค่าคงที่ pure functions (`parseSlipQr` `maskPayerName` `payerNameMatches` `receiverMatches`) + `SLIP_REASON_TH: Record<SlipReason, string>` ป้ายไทยทุกเหตุผล · import ได้เฉพาะ `import type` หรือไฟล์ pure (ห้าม db/prisma/storage/service/integrations(ยกเว้น types)/settings(ยกเว้น types)/next/node:/modules) · slip-verify **re-export ตัวเดียวกัน**
+- **W10** `deps.policy` ห้ามรับจาก request (คอมเมนต์ในโค้ด) — ไม่มีข้อสอบ
+- ORACLE-EDIT ข้อเดิม: M-1/M-3 ส่ง refId เดิม (W2) · P/K-1/K-5/K-6 ใช้สลิปรอตรวจยอดเต็ม (ผู้รับไม่ตรง) แทนสลิปยอดขาด (W3) · K-2 ตรวจ `partial: true`
+
+## 8. Carry หลังผู้ตรวจ R0.6 (builder จด 28 ต.ค. · ผู้คุมย้ายไป wo-notes/svc-r0.8-carry.md)
+- **consumer B.8 / D.10**: ใช้ `amountSatang` ใน payload `payment.slip.approved` (ไม่ใช่ status) · idempotent ต่อ `slipId` · รับมือหลายสลิปต่อ `refId` (จ่ายเกิน/จ่ายหลายงวด) · ค้นบิล/การจองด้วย `tenantId + unitId` + refId เสมอ
+- **expectedSatang** ผู้เรียก `submitSlip` คำนวณจากบิล/การจองฝั่งเซิร์ฟเวอร์ — ห้ามรับจาก client · `deps` ทั้งก้อน (รวม `policy` `put` `del`) ห้ามมาจาก request (fix 10)
+- คีย์สิทธิ์ `dorm.slip.review` (CC §8) vs `payments.slip.review` (R0.6) = D.10 ตัดสิน (ซ้ำ/แทน/ทั้งคู่)
+- `AUTO_APPROVED` ย้อนไม่ได้ (ไม่มี reverse/void ในใบนี้) — หนี้ D.10
+- **D.0**: ดัชนี unique `PaymentSlip(tenantId, (checks->>'idempotencyKey'))` + เปลี่ยน replay lookup เป็น raw query (ตอนนี้ JSON path ไม่มีดัชนี + advisory lock ต่อ key)
+- รูปสลิป: ลอก EXIF/GPS ฝั่ง client ก่อนส่ง · HEIC แปลงเป็น JPEG ฝั่ง client (เซิร์ฟเวอร์รับแค่ jpeg/png/webp) · webp แสดง inline ใน route /api/files
+- R0.3/R0.4: `payments.slip.onVerifierDown` ซ้ำกับ `TenantIntegration.onFailure` (R0.6 ไม่อ่าน) ⇒ R0.4 ซ่อน def · def `payments.receiver` (schema `{paymentProfileId,labelTh}`) ต้องขยายรับ `{promptpayId,displayName?,bankAccount?}` ตามมติ §3 ไม่งั้นหน้าตั้งค่าบันทึกรูปนั้นไม่ได้
+- PDPA J5: ระยะเก็บไฟล์สลิป + payerName (masked) + verifierResult — งานลบตามอายุต้องเรียก `deleteFileAsset`
+- capability `checksReceiver` (ProviderDef.capabilities) — adapter จริง C.1 ต้องประกาศเอง ไม่ประกาศ = ไม่มีวัน AUTO_APPROVED
+- ตัวอ่าน Membership สดใน SVC กรอง `acceptedAt: { not: null }` แล้ว (slip-verify · settings/service applyLegalOverrideApproval) — ใบหลังที่อ่าน Membership เองต้องทำแบบเดียวกัน

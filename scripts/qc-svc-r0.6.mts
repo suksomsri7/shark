@@ -18,11 +18,13 @@
 //   N  ไม่มีผลเงิน (ตารางเงิน POS/บัญชีไม่ขยับ)
 //   ST ค่าตั้ง payments.* (R0.3) — SKIP ยอมได้จนกว่า R0.3 ลง
 //   Z  PII ไม่หลุด (DB · console · ผลคืน) · ทำความสะอาด
+//   W  มติหลังผู้ตรวจ 28 ต.ค. (ORACLE-EDIT R0.6-W1..W9 · /root/svc-runs/fix/r0.6.md): ถอนสิทธิ์ (acceptedAt null) · replay ตรงทุกช่อง · เพดานยอดอนุมัติ ·
+//      ทางมือบังคับ transRef + กันซ้ำ · transRef canonical · TIMEOUT ไม่ REJECT · capability checksReceiver · ไม่มีไฟล์ค้าง · slip-shared ไม่ import server
 //
 // 🔴 เขียนฐาน qc-svc — รันผ่าน gate lock (ห้ามครอบ timeout):
 //    bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-r0.6.mts
 // แถวของข้อสอบ: refId/label ขึ้นต้น "svc-r06-" · ลบใน finally · env/membership/PaymentProfile คืนใน finally · วันที่สัมพัทธ์ทั้งหมด
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, randomBytes } from "node:crypto";
@@ -113,6 +115,9 @@ const ACT: Record<string, Actor> = {
   otherOwner: { userId: "svcqc-other-user-owner", role: "OWNER", unitAccess: ["*"], permissions: {} },
 };
 const MB_FAI = "svcqc-mb-fai";
+const MB_MGR = "svcqc-mb-manager"; // ORACLE-EDIT R0.6-W1: ถอนสิทธิ์ = acceptedAt null (คืนใน finally)
+let D6_PUTS: string[] = [];
+const ALL_REASONS = ["DUPLICATE_IMAGE", "DUPLICATE_TRANSREF", "AMOUNT_SHORT", "AMOUNT_OVER", "RECEIVER_MISMATCH", "RECEIVER_NOT_SET", "TOO_OLD", "FUTURE_TIME", "PAYER_NAME_MISMATCH", "DATA_MISSING", "UNVERIFIED", "VERIFIER_DOWN", "VERIFIER_INVALID", "VERIFIER_DUPLICATE", "VERIFIER_UNKNOWN", "TRANSREF_MISMATCH"];
 const CTX_A = { tenantId: TA };
 const CTX_B = { tenantId: TB };
 const EVENTS = ["payment.slip.submitted", "payment.slip.approved", "payment.slip.rejected"];
@@ -146,6 +151,17 @@ function callSync(mod: Any, name: string, ...args: unknown[]): Any {
   const fn = mod?.[name];
   if (typeof fn !== "function") return { __missing: true };
   try { return fn(...args); } catch (e) { return { __threw: true, message: errMsg(e) }; }
+}
+function listTs(dir: string): string[] {
+  const abs = join(ROOT, dir);
+  if (!existsSync(abs)) return [];
+  const o: string[] = [];
+  for (const n of readdirSync(abs)) {
+    const rel = join(dir, n);
+    if (statSync(join(ROOT, rel)).isDirectory()) o.push(...listTs(rel));
+    else if (/\.(ts|tsx)$/.test(n)) o.push(rel);
+  }
+  return o;
 }
 const sameSet = (a: unknown[], b: unknown[]) => js([...a].map(String).sort()) === js([...b].map(String).sort());
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -187,6 +203,8 @@ const png = (): Uint8Array => Uint8Array.from(Buffer.concat([PNG_SIG, randomByte
 const jpg = (): Uint8Array => Uint8Array.from(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), randomBytes(96)]));
 const PUTS: { path: string; bytes: number; hash: string }[] = [];
 const put = async (path: string, data: Uint8Array) => { PUTS.push({ path, bytes: data.length, hash: sha(data) }); };
+const DELS: string[] = []; // ORACLE-EDIT R0.6-W8: deps.del → deleteFileAsset/deleteStoredFile
+const del = async (path: string): Promise<number> => { DELS.push(path); return 200; };
 
 // ═══════════════ โหลดโมดูล ═══════════════
 const { prisma } = (await import("@/lib/core/db" as string)) as { prisma: Any };
@@ -213,7 +231,7 @@ type SubOpts = { input?: Any; deps?: Any; noPut?: boolean };
 async function submit(ctx: Any, unitId: string, o: SubOpts = {}): Promise<Any> {
   const k = UNIT_KIND[unitId] ?? { domain: "BOOKING", refType: "APPT_DEPOSIT" };
   const input = { unitId, domain: k.domain, refType: k.refType, refId: newRef(), file: { data: png(), contentType: "image/png" }, expectedSatang: EXPECT, idempotencyKey: newKey(), ...(o.input ?? {}) };
-  const deps = o.noPut ? { ...(o.deps ?? {}) } : { put, policy: { autoApprove: true }, ...(o.deps ?? {}) };
+  const deps = o.noPut ? { ...(o.deps ?? {}) } : { put, del, policy: { autoApprove: true }, ...(o.deps ?? {}) };
   return call(SV, "submitSlip", ctx, input, deps);
 }
 const decide = (a: Any, ctx: Any, id: string, input: Any) => call(SV, "decideSlip", a, ctx, id, input);
@@ -228,6 +246,8 @@ const hasReason = (r: Any, x: string) => reasonsOf(r).includes(x);
 let RECV = ""; // promptpayId ของร้าน A (ตั้งใน setup)
 const goodMasked = () => `xxx-xxx-${RECV.replace(/\D/g, "").slice(-4)}`;
 const goodScript = (over: Record<string, unknown> = {}) => fakeSlip({ status: "VALID", amountSatang: EXPECT, transRef: newTR(), payerName: PAYER_FULL, receiverMasked: goodMasked(), transferredAt: new Date(Date.now() - 2 * HOUR).toISOString(), ...over });
+/** ORACLE-EDIT R0.6-W3: สลิปรอตรวจที่ยอดเต็ม (ผู้รับไม่ตรง) — ใช้แทนสลิปยอดขาดในข้อที่ APPROVE ปกติ */
+const reviewScript = (over: Record<string, unknown> = {}) => goodScript({ receiverMasked: `xxx-xxx-${RECV.replace(/\D/g, "").slice(-4) === "1357" ? "2468" : "1357"}`, ...over });
 const subFake = (unitId: string, script: string, deps: Any = {}, input: Any = {}) => submit(CTX_A, unitId, { input: { qrPayload: script, expectedPayerNames: [PAYER_EXPECT], ...input }, deps });
 
 // ═══════════════ สถานะที่ต้องคืน ═══════════════
@@ -238,6 +258,10 @@ const created = {
   payB: "none" as "none" | "created",
   faiPerm: undefined as unknown,
   faiTouched: false,
+  mgrAccepted: undefined as unknown,
+  mgrTouched: false,
+  capPrev: undefined as unknown,
+  capTouched: false,
   settingIds: [] as string[],
 };
 const SLIP_IDS = new Set<string>();
@@ -490,10 +514,11 @@ try {
   let M1: Any = null;
   const M1_DATA = png();
   const M1_KEY = newKey();
+  const M1_REF = newRef(); // ORACLE-EDIT R0.6-W2: replay ต้องตรง unitId/domain/refType/refId/expectedSatang
   const M1_TR = newTR();
   await step("M-1", "hotel (ไม่มีตัวต่อ) + autoApprove เปิด + สลิปข้อมูลครบ ⇒ NEEDS_REVIEW [UNVERIFIED] (ไม่อนุมัติอัตโนมัติ)", async (p) => {
     p.push(...NEED());
-    M1 = track(await submit(CTX_A, U.hotel, { input: { file: { data: M1_DATA, contentType: "image/png" }, idempotencyKey: M1_KEY, qrPayload: slipQr("014", M1_TR), expectedPayerNames: [PAYER_EXPECT] } }));
+    M1 = track(await submit(CTX_A, U.hotel, { input: { file: { data: M1_DATA, contentType: "image/png" }, idempotencyKey: M1_KEY, refId: M1_REF, qrPayload: slipQr("014", M1_TR), expectedPayerNames: [PAYER_EXPECT] } }));
     if (M1?.ok !== true) { p.push(`→ ${codeOf(M1)}`); return; }
     if (M1.status !== "NEEDS_REVIEW") p.push(`status ${M1.status}`);
     if (!sameSet(reasonsOf(M1), ["UNVERIFIED"])) p.push(`reasons ${js(M1.reasons)}`);
@@ -522,7 +547,7 @@ try {
   await step("M-3", "replay: key เดิม + รูปเดิม ⇒ slipId เดิม replayed · ไม่มีแถว/ไฟล์/event เพิ่ม", async (p) => {
     if (M1?.ok !== true) { p.push("M-1 ไม่ผ่าน"); return; }
     const n0 = await rowsNow(); const p0 = PUTS.length; const e0 = (await evOf(M1.slipId)).length;
-    const r = await submit(CTX_A, U.hotel, { input: { file: { data: M1_DATA, contentType: "image/png" }, idempotencyKey: M1_KEY, qrPayload: slipQr("014", M1_TR) } });
+    const r = await submit(CTX_A, U.hotel, { input: { file: { data: M1_DATA, contentType: "image/png" }, idempotencyKey: M1_KEY, refId: M1_REF, qrPayload: slipQr("014", M1_TR) } });
     if (r?.ok !== true || r.slipId !== M1.slipId || r.replayed !== true) p.push(`→ ${codeOf(r)} slipId ${r?.slipId === M1.slipId ? "เดิม" : "ใหม่"} replayed ${js(r?.replayed)}`);
     if ((await rowsNow()) !== n0) p.push("มีแถวเพิ่ม");
     if (PUTS.length !== p0) p.push("อัปไฟล์ซ้ำ");
@@ -590,7 +615,9 @@ try {
   await step("D-6", "X3: key เดียวกัน + รูปเดียวกัน 10 ทางพร้อมกัน ⇒ slipId เดียวกันทั้งหมด · แถว 1 · submitted event 1", async (p) => {
     p.push(...NEED());
     const data = png(); const key = newKey(); const script = goodScript(); const refId = newRef();
+    const p0 = PUTS.length;
     const rs = await Promise.all(Array.from({ length: 10 }, () => subFake(U.massage, script, {}, { file: { data, contentType: "image/png" }, idempotencyKey: key, refId })));
+    D6_PUTS = PUTS.slice(p0).map((x) => x.path);
     rs.forEach(track);
     const ids = new Set(rs.filter((r) => r?.ok).map((r) => r.slipId));
     if (rs.some((r) => r?.ok !== true)) p.push(`ไม่ ok: ${rs.filter((r) => r?.ok !== true).map(codeOf).slice(0, 3).join(",")}`);
@@ -714,6 +741,14 @@ try {
     if (r?.ok !== true || r.status !== "NEEDS_REVIEW" || !hasReason(r, "VERIFIER_DOWN")) p.push(`→ ${codeOf(r)} ${js(r?.reasons)}`);
     if (ms > 5000) p.push(`ใช้เวลา ${ms} ms (ไม่เคารพ verifyTimeoutMs)`);
   });
+  await step("W6", "ORACLE-EDIT W6: HANG + onFailure REJECT + หมดเวลา ⇒ ไม่สรุป = NEEDS_REVIEW [VERIFIER_DOWN] (REJECT ใช้เฉพาะ PROVIDER_ERROR · CC §2.3)", async (p) => {
+    p.push(...NEED());
+    const s = await setMode("HANG", "REJECT");
+    if (s?.ok !== true) p.push(`ตั้ง mode → ${codeOf(s)}`);
+    const r = track(await subFake(U.massage, goodScript(), { verifyTimeoutMs: 300 }));
+    if (r?.ok !== true || r.status !== "NEEDS_REVIEW" || !hasReason(r, "VERIFIER_DOWN")) p.push(`→ ${codeOf(r)} ${js(r?.reasons)}`);
+    if (r?.ok && (await evOf(r.slipId, "payment.slip.rejected")).length) p.push("มี rejected event");
+  });
   {
     const back = await setMode("OK", "MANUAL");
     const r = await subFake(U.massage, goodScript());
@@ -730,8 +765,8 @@ try {
 
   // ═══════════════ P สิทธิ์ ═══════════════
   out("\n— P สิทธิ์ตัดสินสลิป (Membership สด) —");
-  const pendDorm = track(await subFake(U.dorm, goodScript({ amountSatang: 550_000 })));
-  const pendBarber = track(await subFake(U.barber, goodScript({ amountSatang: 550_000 })));
+  const pendDorm = track(await subFake(U.dorm, reviewScript())); // ORACLE-EDIT R0.6-W3 (เดิมยอดขาด — APPROVE ยอดขาดต้อง PARTIAL)
+  const pendBarber = track(await subFake(U.barber, reviewScript()));
   const pendDormId: string = pendDorm?.slipId ?? "";
   const pendBarberId: string = pendBarber?.slipId ?? "";
   const reason = "ตรวจยอดกับบัญชีธนาคารแล้ว";
@@ -780,17 +815,17 @@ try {
 
   // ═══════════════ K decideSlip ═══════════════
   out("\n— K ตัดสินสลิป —");
-  await step("K-1", "APPROVE (NEEDS_REVIEW ยอดขาด) ⇒ APPROVED · decidedById/At · checks.decided · approved event ยอด = ยอดในสลิป · audit payments.slip.decide 1", async (p) => {
+  await step("K-1", "APPROVE (NEEDS_REVIEW ผู้รับไม่ตรง · ยอดเต็ม) ⇒ APPROVED · decidedById/At · checks.decided · approved event ยอด = ยอดในสลิป · audit payments.slip.decide 1", async (p) => {
     p.push(...NEED());
-    const s = track(await subFake(U.dorm, goodScript({ amountSatang: 550_000 })));
+    const s = track(await subFake(U.dorm, reviewScript()));
     if (s?.status !== "NEEDS_REVIEW") { p.push(`เตรียม → ${codeOf(s)}`); return; }
     const r = await decide(ACT.owner, CTX_A, s.slipId, { decision: "APPROVE", reason });
     if (r?.ok !== true || r.status !== "APPROVED") { p.push(`→ ${codeOf(r)}`); return; }
     const row = await slipRow(s.slipId);
     if (row?.status !== "APPROVED" || row?.decidedById !== ACT.owner.userId || !row?.decidedAt) p.push(`แถว ${row?.status} ${row?.decidedById}`);
-    if (row?.checks?.decided?.decision !== "APPROVE" || row?.checks?.decided?.amountSatang !== 550_000) p.push(`checks.decided ${js(row?.checks?.decided)}`);
+    if (row?.checks?.decided?.decision !== "APPROVE" || row?.checks?.decided?.amountSatang !== EXPECT) p.push(`checks.decided ${js(row?.checks?.decided)}`);
     const ev = await evOf(s.slipId, "payment.slip.approved");
-    if (ev.length !== 1 || ev[0]?.payload?.amountSatang !== 550_000 || ev[0]?.payload?.status !== "APPROVED") p.push(`approved event ${js(ev.map((e) => e.payload))}`);
+    if (ev.length !== 1 || ev[0]?.payload?.amountSatang !== EXPECT || ev[0]?.payload?.status !== "APPROVED") p.push(`approved event ${js(ev.map((e) => e.payload))}`);
     const au = await prisma.auditLog.count({ where: { tenantId: TA, action: "payments.slip.decide", targetType: "PaymentSlip", targetId: s.slipId } });
     if (au !== 1) p.push(`audit ${au}`);
   });
@@ -807,7 +842,7 @@ try {
     const ev = await evOf(s.slipId, "payment.slip.approved");
     if (ev.length !== 1 || ev[0]?.payload?.amountSatang !== 550_000) p.push(`event ${js(ev.map((e) => e.payload))}`);
     const row = await slipRow(s.slipId);
-    if (row?.checks?.decided?.decision !== "APPROVE_PARTIAL") p.push(`checks.decided ${js(row?.checks?.decided)}`);
+    if (row?.checks?.decided?.decision !== "APPROVE_PARTIAL" || row?.checks?.decided?.partial !== true) p.push(`checks.decided ${js(row?.checks?.decided)} (คาด partial: true · W3)`);
   });
   await step("K-3", "เหตุผลว่าง/ช่องว่าง/ยาว > 500 ⇒ VALIDATION · decision มั่ว ⇒ VALIDATION · REJECT ⇒ REJECTED + rejected event 1", async (p) => {
     p.push(...NEED());
@@ -839,7 +874,7 @@ try {
   });
   await step("K-5", "X3/X4: APPROVE 10 ทางพร้อมกัน ⇒ สำเร็จ 1 · INVALID_STATE 9 · approved event 1 · audit 1", async (p) => {
     p.push(...NEED());
-    const s = track(await subFake(U.dorm, goodScript({ amountSatang: 550_000 })));
+    const s = track(await subFake(U.dorm, reviewScript()));
     if (s?.status !== "NEEDS_REVIEW") { p.push(`เตรียม → ${codeOf(s)}`); return; }
     const rs = await Promise.all(Array.from({ length: 10 }, () => decide(ACT.owner, CTX_A, s.slipId, { decision: "APPROVE", reason })));
     const ok = rs.filter((r) => r?.ok === true).length;
@@ -851,7 +886,7 @@ try {
   });
   await step("K-6", "X3: APPROVE 5 + REJECT 5 พร้อมกัน ⇒ ชนะ 1 · สถานะสุดท้ายตรงผู้ชนะ · event ของผู้ชนะ 1 ของผู้แพ้ 0", async (p) => {
     p.push(...NEED());
-    const s = track(await subFake(U.dorm, goodScript({ amountSatang: 550_000 })));
+    const s = track(await subFake(U.dorm, reviewScript()));
     if (s?.status !== "NEEDS_REVIEW") { p.push(`เตรียม → ${codeOf(s)}`); return; }
     const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => decide(ACT.owner, CTX_A, s.slipId, { decision: i % 2 ? "REJECT" : "APPROVE", reason })));
     const wins = rs.filter((r) => r?.ok === true);
@@ -976,7 +1011,15 @@ try {
       const r = (await prisma.settingValue.create({ data: { tenantId: TA, key, scope: "UNIT", scopeId: unitId, value: value as Any, setById: "svc-r06" } })) as Any;
       created.settingIds.push(r.id);
     };
-    await step("ST-1", "payments.receiver ระดับสาขา (massage) ชนะ PaymentProfile · สาขาอื่นยังได้ของร้าน", async (p) => {
+    // ORACLE-EDIT R0.6-ST: ค่าตั้งของแต่ละข้อ ST ลบทันทีเมื่อจบข้อ (ไม่รอ finally) — กันค้างไปกระทบกลุ่ม W (W3 · builder รายงาน 28 ต.ค.)
+    const clearSv = async () => {
+      if (created.settingIds.length) await prisma.settingValue.deleteMany({ where: { id: { in: created.settingIds } } });
+      created.settingIds = [];
+    };
+    const stepST = async (id: string, name: string, fn: (p: string[]) => Promise<void>) => {
+      try { await step(id, name, fn); } finally { await clearSv(); }
+    };
+    await stepST("ST-1", "payments.receiver ระดับสาขา (massage) ชนะ PaymentProfile · สาขาอื่นยังได้ของร้าน", async (p) => {
       if (!RC) { p.push("ไม่มี receiver"); return; }
       await sv(U.massage, "payments.receiver", { promptpayId: "0899990606", displayName: "svc-r06 นวด" });
       const m = await call(RC, "receiverFor", CTX_A, U.massage);
@@ -984,7 +1027,7 @@ try {
       const b = await call(RC, "receiverFor", CTX_A, U.barber);
       if (b?.promptpayId !== RECV) p.push(`barber → ${js(b).slice(0, 80)}`);
     });
-    await step("ST-2", "payments.receiver {paymentProfileId: ของร้าน B} ⇒ ไม่นับ (ได้ของร้าน A)", async (p) => {
+    await stepST("ST-2", "payments.receiver {paymentProfileId: ของร้าน B} ⇒ ไม่นับ (ได้ของร้าน A)", async (p) => {
       if (!RC) { p.push("ไม่มี receiver"); return; }
       let ppB = (await prisma.paymentProfile.findUnique({ where: { tenantId: TB } })) as Any;
       if (!ppB) { ppB = await prisma.paymentProfile.create({ data: { tenantId: TB, promptpayId: "0811110606", displayName: `svc-r06 B ${RAND}` } }); created.payB = "created"; }
@@ -992,7 +1035,7 @@ try {
       const h = await call(RC, "receiverFor", CTX_A, U.hotel);
       if (h?.promptpayId !== RECV) p.push(`hotel → ${js(h).slice(0, 80)} (คาดของร้าน A)`);
     });
-    await step("ST-3", "ค่าตั้ง autoApprove+toleranceSatang ระดับสาขาหอ มีผลเมื่อไม่ส่ง deps.policy", async (p) => {
+    await stepST("ST-3", "ค่าตั้ง autoApprove+toleranceSatang ระดับสาขาหอ มีผลเมื่อไม่ส่ง deps.policy", async (p) => {
       p.push(...NEED());
       await sv(U.dorm, "payments.slip.autoApprove", true);
       await sv(U.dorm, "payments.slip.toleranceSatang", 10_000);
@@ -1000,6 +1043,178 @@ try {
       if (r?.status !== "AUTO_APPROVED") p.push(`→ ${codeOf(r)} ${js(r?.reasons)}`);
     });
   }
+
+  // ═══════════════ W มติหลังผู้ตรวจ 28 ต.ค. (ORACLE-EDIT R0.6-W1..W9) ═══════════════
+  out("\n— W มติหลังผู้ตรวจ 28 ต.ค. —");
+  await step("W1", "ORACLE-EDIT W1 [BLOCKER]: manager ถูกถอนสิทธิ์ (Membership.acceptedAt = null) ⇒ decideSlip/slipQueue/slipFileUrl = PERMISSION_DENIED · คืนแล้วใช้ได้ (positive control)", async (p) => {
+    p.push(...NEED());
+    const s = track(await subFake(U.barber, reviewScript()));
+    if (s?.status !== "NEEDS_REVIEW") { p.push(`เตรียม → ${codeOf(s)}`); return; }
+    const mb = (await prisma.membership.findUnique({ where: { id: MB_MGR } })) as Any;
+    if (!mb?.acceptedAt) { p.push("membership manager ไม่มี acceptedAt (seed)"); return; }
+    created.mgrAccepted = mb.acceptedAt; created.mgrTouched = true;
+    await prisma.membership.update({ where: { id: MB_MGR }, data: { acceptedAt: null } });
+    try {
+      const d = await decide(ACT.manager, CTX_A, s.slipId, { decision: "APPROVE", reason });
+      if (!refused(d, "PERMISSION_DENIED")) p.push(`decide → ${codeOf(d)}`);
+      const q = await queue(ACT.manager, CTX_A, { unitId: U.barber });
+      if (!refused(q, "PERMISSION_DENIED")) p.push(`queue → ${codeOf(q)}`);
+      const u = await fileUrl(ACT.manager, CTX_A, s.slipId);
+      if (!refused(u, "PERMISSION_DENIED")) p.push(`fileUrl → ${codeOf(u)}`);
+      if ((await slipRow(s.slipId))?.status !== "NEEDS_REVIEW") p.push("สถานะเปลี่ยนทั้งที่ถูกถอนสิทธิ์");
+    } finally {
+      await prisma.membership.update({ where: { id: MB_MGR }, data: { acceptedAt: created.mgrAccepted as Any } });
+    }
+    const q2 = await queue(ACT.manager, CTX_A, { unitId: U.barber });
+    if (q2?.ok !== true) p.push(`คืนสิทธิ์แล้ว queue → ${codeOf(q2)} (positive control)`);
+  });
+  await step("W1s", "ORACLE-EDIT W1: ทุกจุดอ่าน Membership ใน core/settings · core/integrations · payment · modules/rooms กรอง acceptedAt (ถอนสิทธิ์ = ไม่นับ)", async (p) => {
+    const files = ["src/lib/core/settings", "src/lib/core/integrations", "src/lib/payment", "src/lib/modules/rooms"].flatMap((d) => listTs(d));
+    let n = 0;
+    for (const f of files) {
+      const lines = read(f).split("\n");
+      lines.forEach((ln, i) => {
+        if (!/\bmembership\.(findUnique|findFirst|findMany|count)\s*\(/.test(ln)) return;
+        n++;
+        const win = lines.slice(i, i + 8).join("\n");
+        if (!/acceptedAt/.test(win)) p.push(`${f}:${i + 1} ไม่กรอง acceptedAt`);
+      });
+    }
+    if (n === 0) p.push("ไม่พบจุดอ่าน Membership เลย (คาดอย่างน้อย slip-verify + settings/service)");
+  });
+  await step("W2", "ORACLE-EDIT W2: replay key+รูปเดิม แต่ refId/expectedSatang/unitId(domain) ต่าง ⇒ IDEMPOTENCY_CONFLICT · ตรงทุกช่อง ⇒ replayed", async (p) => {
+    p.push(...NEED());
+    const data = png(); const key = newKey(); const refId = newRef(); const script = goodScript();
+    const base = track(await subFake(U.dorm, script, {}, { file: { data, contentType: "image/png" }, idempotencyKey: key, refId }));
+    if (base?.ok !== true) { p.push(`เตรียม → ${codeOf(base)}`); return; }
+    const n0 = await rowsNow();
+    const variants: [string, string, Any][] = [
+      ["refId ต่าง", U.dorm, { refId: newRef() }],
+      ["expectedSatang ต่าง", U.dorm, { refId, expectedSatang: EXPECT + 100 }],
+      ["unitId/domain ต่าง", U.hotel, { refId }],
+    ];
+    for (const [lbl, unit, over] of variants) {
+      const r = await subFake(unit, script, {}, { file: { data, contentType: "image/png" }, idempotencyKey: key, ...over });
+      if (!refused(r, "IDEMPOTENCY_CONFLICT")) p.push(`${lbl} → ${codeOf(r)}${r?.slipId === base.slipId ? " (คืนแถวเดิม)" : ""}`);
+    }
+    const same = await subFake(U.dorm, script, {}, { file: { data, contentType: "image/png" }, idempotencyKey: key, refId });
+    if (same?.ok !== true || same.slipId !== base.slipId || same.replayed !== true) p.push(`ตรงทุกช่อง → ${codeOf(same)} replayed ${js(same?.replayed)}`);
+    if ((await rowsNow()) !== n0) p.push("มีแถวเพิ่ม");
+  });
+  await step("W3", "ORACLE-EDIT W3: APPROVE ยอด ≤ max(expected, ยอดสลิป)+tolerance · เกิน ⇒ VALIDATION · APPROVE ต่ำกว่า expected (ไม่ใช่ PARTIAL) ⇒ VALIDATION", async (p) => {
+    p.push(...NEED());
+    const over = track(await subFake(U.dorm, reviewScript({ amountSatang: 560_000 })));
+    if (over?.status !== "NEEDS_REVIEW") { p.push(`เตรียมสลิปเกิน → ${codeOf(over)}`); return; }
+    for (const a of [560_001, 1_000_000]) {
+      const r = await decide(ACT.owner, CTX_A, over.slipId, { decision: "APPROVE", amountSatang: a, reason });
+      if (!refused(r, "VALIDATION")) p.push(`APPROVE ${a} บนสลิป 560000 → ${codeOf(r)}`);
+    }
+    const low = await decide(ACT.owner, CTX_A, over.slipId, { decision: "APPROVE", amountSatang: EXPECT - 1, reason });
+    if (!refused(low, "VALIDATION")) p.push(`APPROVE ต่ำกว่า expected → ${codeOf(low)}`);
+    const ok = await decide(ACT.owner, CTX_A, over.slipId, { decision: "APPROVE", amountSatang: 560_000, reason });
+    if (ok?.ok !== true) p.push(`APPROVE 560000 → ${codeOf(ok)} (positive control)`);
+    const ev = await evOf(over.slipId, "payment.slip.approved");
+    if (ev.length !== 1 || ev[0]?.payload?.amountSatang !== 560_000) p.push(`event ${js(ev.map((e) => e.payload))}`);
+    const short = track(await subFake(U.dorm, goodScript({ amountSatang: 550_000 })));
+    if (short?.status !== "NEEDS_REVIEW") { p.push(`เตรียมสลิปขาด → ${codeOf(short)}`); return; }
+    const r2 = await decide(ACT.owner, CTX_A, short.slipId, { decision: "APPROVE", reason });
+    if (!refused(r2, "VALIDATION")) p.push(`APPROVE สลิปขาดไม่ระบุยอด → ${codeOf(r2)}`);
+    if ((await evOf(short.slipId, "payment.slip.approved")).length) p.push("สลิปขาดมี approved event");
+  });
+  await step("W4", "ORACLE-EDIT W4: ทางมือ (ไม่มีตัวต่อ/QR) 2 สลิปไบต์ต่าง · APPROVE ไม่ส่ง transRef ⇒ VALIDATION · transRef เดียวกัน (\"X-1\" vs \"x1\") อนุมัติได้ใบเดียว ⇒ ใบสอง DUPLICATE", async (p) => {
+    p.push(...NEED());
+    const a = track(await submit(CTX_A, U.hotel));
+    const b = track(await submit(CTX_A, U.hotel));
+    if (a?.status !== "NEEDS_REVIEW" || b?.status !== "NEEDS_REVIEW") { p.push(`เตรียม → ${codeOf(a)} / ${codeOf(b)}`); return; }
+    const tr = `W4${RAND}-ab-1`;
+    const canon = tr.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const r0 = await decide(ACT.owner, CTX_A, a.slipId, { decision: "APPROVE", reason });
+    if (!refused(r0, "VALIDATION")) p.push(`ไม่ส่ง transRef → ${codeOf(r0)}`);
+    const r1 = await decide(ACT.owner, CTX_A, a.slipId, { decision: "APPROVE", reason, transRef: tr });
+    if (r1?.ok !== true) p.push(`ใบแรก → ${codeOf(r1)}`);
+    if ((await slipRow(a.slipId))?.transRef !== canon) p.push(`ใบแรก transRef ${(await slipRow(a.slipId))?.transRef} (คาด ${canon})`);
+    const r2 = await decide(ACT.owner, CTX_A, b.slipId, { decision: "APPROVE", reason, transRef: canon.toLowerCase() });
+    if (!refused(r2, "DUPLICATE")) p.push(`ใบสอง transRef ซ้ำ → ${codeOf(r2)} (คาด DUPLICATE)`);
+    const rowB = await slipRow(b.slipId);
+    if (rowB?.status !== "NEEDS_REVIEW") p.push(`ใบสองสถานะ ${rowB?.status}`);
+    if ((await evOf(b.slipId, "payment.slip.approved")).length) p.push("ใบสองมี approved event");
+    const live = await prisma.paymentSlip.count({ where: { tenantId: TA, transRef: canon, status: { not: "REJECTED" } } });
+    if (live !== 1) p.push(`แถวไม่ใช่ REJECTED ที่ transRef นี้ ${live}`);
+    const rj = await decide(ACT.owner, CTX_A, b.slipId, { decision: "REJECT", reason: "สลิปซ้ำกับใบที่อนุมัติแล้ว" });
+    if (rj?.ok !== true) p.push(`REJECT ไม่ต้องมี transRef → ${codeOf(rj)}`);
+  });
+  await step("W4b", "ORACLE-EDIT W4: ตัวต่อ INVALID/UNKNOWN ที่ส่ง transRef มา ⇒ แถวเก็บ transRef (canonical) ไว้กันใช้ซ้ำ", async (p) => {
+    p.push(...NEED());
+    for (const st of ["INVALID", "UNKNOWN"]) {
+      const tr = newTR();
+      const r = track(await subFake(U.dorm, goodScript({ status: st, transRef: tr })));
+      if (r?.status !== "NEEDS_REVIEW") { p.push(`${st} → ${codeOf(r)}`); continue; }
+      const row = await slipRow(r.slipId);
+      if (row?.transRef !== tr) p.push(`${st}: transRef ${js(row?.transRef)} (คาด ${tr})`);
+    }
+  });
+  await step("W5", "ORACLE-EDIT W5: transRef canonical (ตัวใหญ่ · เหลือ A-Z0-9): QR \"r6…-abc-123\" เก็บ \"R6…ABC123\" · ใบถัดไป QR ตัวใหญ่ไม่มีขีด ⇒ DUPLICATE_TRANSREF · ตัวต่อคืนตัวเล็กมีขีด ⇒ ซ้ำด้วย", async (p) => {
+    p.push(...NEED());
+    const raw = `r6${RAND}-abc-123`;
+    const canon = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const q = callSync(SV, "parseSlipQr", slipQr("014", raw));
+    if (q?.transRef !== canon) p.push(`parseSlipQr → ${js(q)} (คาด transRef ${canon})`);
+    const a = track(await submit(CTX_A, U.hotel, { input: { qrPayload: slipQr("014", raw) } }));
+    if (a?.ok !== true) { p.push(`ใบแรก → ${codeOf(a)}`); return; }
+    if ((await slipRow(a.slipId))?.transRef !== canon) p.push(`ใบแรก transRef ${(await slipRow(a.slipId))?.transRef}`);
+    const b = track(await submit(CTX_A, U.hotel, { input: { qrPayload: slipQr("014", canon) } }));
+    if (b?.status !== "REJECTED" || !hasReason(b, "DUPLICATE_TRANSREF")) p.push(`QR ตัวใหญ่ → ${codeOf(b)} ${js(b?.reasons)}`);
+    const c = track(await subFake(U.dorm, goodScript({ transRef: `${canon.slice(0, 4).toLowerCase()}-${canon.slice(4).toLowerCase()}` })));
+    if (c?.status !== "REJECTED" || !hasReason(c, "DUPLICATE_TRANSREF")) p.push(`ตัวต่อตัวเล็กมีขีด → ${codeOf(c)} ${js(c?.reasons)}`);
+  });
+  await step("W7", "ORACLE-EDIT W7: ผู้ให้บริการไม่ประกาศ capabilities.checksReceiver ⇒ ไม่อนุมัติอัตโนมัติ (PENDING) แม้ตั้งเปิด · FAKE ประกาศ true", async (p) => {
+    p.push(...NEED());
+    const FK: Any = await tryImport("@/lib/core/integrations/providers/fake");
+    const def = FK?.FAKE_PROVIDER;
+    if (!def) { p.push("โหลด FAKE_PROVIDER ไม่ได้"); return; }
+    if (def.capabilities?.checksReceiver !== true) p.push(`FAKE capabilities ${js(def.capabilities)} (คาด { checksReceiver: true })`);
+    created.capPrev = def.capabilities; created.capTouched = true;
+    try {
+      def.capabilities = { ...(def.capabilities ?? {}), checksReceiver: false };
+      const r = track(await subFake(U.dorm, goodScript()));
+      if (r?.ok !== true || r.status === "AUTO_APPROVED") p.push(`checksReceiver false → ${codeOf(r)} (ห้าม AUTO_APPROVED)`);
+      else if (r.status !== "PENDING") p.push(`checksReceiver false → ${r.status} ${js(r.reasons)} (คาด PENDING)`);
+    } finally {
+      def.capabilities = created.capPrev; created.capTouched = false;
+    }
+    const ok = track(await subFake(U.dorm, goodScript()));
+    if (ok?.status !== "AUTO_APPROVED") p.push(`คืน capability → ${codeOf(ok)} (positive control)`);
+  });
+  await step("W8", "ORACLE-EDIT W8: ไม่มีไฟล์ค้าง — ทุกวัตถุที่อัป (deps.put) มี FileAsset อยู่ หรือถูกลบด้วย deps.del · ผู้แพ้ replay ใน D-6 ถูกลบ (FileAsset ของรอบนั้นเหลือ 1)", async (p) => {
+    if (!PUTS.length) { p.push("ไม่มีการอัปให้ตรวจ"); return; }
+    const rows = (await prisma.fileAsset.findMany({ where: { path: { in: PUTS.map((x) => x.path) } }, select: { path: true } })) as Any[];
+    const live = new Set(rows.map((r) => r.path));
+    const dels = new Set(DELS);
+    const orphan = PUTS.filter((x) => !live.has(x.path) && !dels.has(x.path));
+    if (orphan.length) p.push(`วัตถุค้าง (ไม่มีแถว · ไม่ถูกลบ) ${orphan.length}`);
+    const both = PUTS.filter((x) => live.has(x.path) && dels.has(x.path));
+    if (both.length) p.push(`ลบวัตถุแต่แถวยังอยู่ ${both.length}`);
+    if (D6_PUTS.length > 1) {
+      const kept = D6_PUTS.filter((x) => live.has(x)).length;
+      if (kept !== 1) p.push(`D-6 อัป ${D6_PUTS.length} เหลือแถว ${kept} (คาด 1)`);
+    }
+  });
+  await step("W9", "ORACLE-EDIT W9: slip-shared.ts ไม่ import ฝั่ง server · มี SLIP_REASON_TH ป้ายไทยทุกเหตุผล · slip-verify re-export pure", async (p) => {
+    const f = "src/lib/payment/slip-shared.ts";
+    const s = read(f);
+    if (!s) { p.push(`ไม่มี ${f}`); return; }
+    const imps = [...s.matchAll(/^\s*import\s+(type\s+)?[^;]*?from\s+["']([^"']+)["']/gm)].filter((m) => !m[1]).map((m) => m[2] ?? "");
+    for (const m of imps) if (/(core\/db|prisma|storage\/service|core\/integrations(?!\/types)|core\/settings(?!\/types)|next\/|server-only|node:|modules\/)/.test(m)) p.push(`import ${m}`);
+    if (/["']use server["']/.test(s)) p.push("มี use server");
+    const SH: Any = await tryImport("@/lib/payment/slip-shared");
+    const th = SH?.SLIP_REASON_TH;
+    if (!th || typeof th !== "object") { p.push("ไม่มี SLIP_REASON_TH"); return; }
+    for (const r of ALL_REASONS) if (typeof th[r] !== "string" || !/[฀-๿]/.test(th[r])) p.push(`ไม่มีป้ายไทย ${r}`);
+    for (const n of ["parseSlipQr", "maskPayerName", "payerNameMatches", "receiverMatches"]) {
+      if (typeof SH?.[n] !== "function") p.push(`slip-shared ไม่มี ${n}`);
+      else if (SV && SV[n] !== SH[n]) p.push(`slip-verify.${n} ไม่ใช่ตัวเดียวกับ slip-shared (re-export)`);
+    }
+  });
 
   // ═══════════════ Z PII ═══════════════
   out("\n— Z PII · สแกนรั่ว —");
@@ -1035,6 +1250,8 @@ try {
   for (const k of ENV_KEYS) envSet(k, ENV_SAVED[k]);
   try {
     if (created.faiTouched) await prisma.membership.update({ where: { id: MB_FAI }, data: { permissions: created.faiPerm as Any } });
+    if (created.mgrTouched) await prisma.membership.update({ where: { id: MB_MGR }, data: { acceptedAt: created.mgrAccepted as Any } });
+    if (created.capTouched) { const FK: Any = await tryImport("@/lib/core/integrations/providers/fake"); if (FK?.FAKE_PROVIDER) FK.FAKE_PROVIDER.capabilities = created.capPrev; }
     await cleanup();
     if (created.payA === "created") await prisma.paymentProfile.deleteMany({ where: { tenantId: TA, displayName: `svc-r06 ${RAND}` } });
     if (created.payA === "patched") await prisma.paymentProfile.update({ where: { tenantId: TA }, data: created.payAPrev });
@@ -1045,7 +1262,8 @@ try {
       + (await prisma.fileAsset.count({ where: { path: { in: PUTS.map((x) => x.path) } } }))
       + (await prisma.settingValue.count({ where: { setById: "svc-r06" } }));
     const mb = created.faiTouched ? ((await prisma.membership.findUnique({ where: { id: MB_FAI } })) as Any) : null;
-    const mbOk = !created.faiTouched || js(mb?.permissions) === js(created.faiPerm);
+    const mgr = created.mgrTouched ? ((await prisma.membership.findUnique({ where: { id: MB_MGR } })) as Any) : null;
+    const mbOk = (!created.faiTouched || js(mb?.permissions) === js(created.faiPerm)) && (!created.mgrTouched || js(mgr?.acceptedAt) === js(created.mgrAccepted));
     chk("Z-3", "ทำความสะอาด: ไม่เหลือสลิป/ตัวต่อ/event/ไฟล์/ค่าตั้ง svc-r06 · membership fai คืนเดิม", left === 0 && mbOk, `เหลือ ${left} · membership ${mbOk ? "คืนแล้ว" : "ไม่ตรงเดิม"}`, "MAJOR");
   } catch (e) {
     chk("Z-3", "ทำความสะอาด", false, errMsg(e), "MAJOR");
