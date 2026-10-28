@@ -10,7 +10,7 @@
 import { tenantDb } from "@/lib/core/db";
 import type { AccountJournalBook, AccountLedgerType, Prisma } from "@prisma/client";
 import { ledgerRunning, type LedgerRunningRow } from "./coa";
-import { postManualJV, reverseEntry } from "./gl";
+import { postManualJV, reverseEntry, DORM_DEPOSIT_REF_TYPE, DORM_EXCESS_REF_TYPE } from "./gl"; // SVC D.2 F7 ◂
 import { checkNotLocked } from "./policy"; // §9.3 ล็อกข้อมูลก่อนวันที่
 import { safeReason } from "./errors";
 
@@ -521,10 +521,14 @@ export async function reverseJournalEntry(ctx: JournalCtx, entryId: string, reas
   const db = tenantDb(ctx);
   const e = await db.accountJournalEntry.findFirst({
     where: { id: entryId },
-    select: { id: true, status: true, docNo: true, date: true },
+    select: { id: true, status: true, docNo: true, date: true, refType: true },
   });
   if (!e) return { ok: false, reason: "ไม่พบใบสำคัญนี้" };
   if (e.status === "REVERSED") return { ok: false, reason: `${e.docNo} ถูกกลับรายการไปแล้ว` };
+  // SVC D.2 F7 ▸ ใบสำคัญของหอพัก (เงินประกันผู้เช่า · รับเงินเกินบิล) ผูกกับแถวรับชำระ/ยอดถือของสัญญา — กลับรายการตรงนี้จะทำให้เอกสารกับบัญชีไม่ตรงกัน
+  //   ⇒ ปฏิเสธ ให้ถอยที่ระบบหอ (reverseSecurityDepositSettlement) · refType อื่นทั้งหมดเหมือนเดิม ◂
+  if (e.refType === DORM_DEPOSIT_REF_TYPE || e.refType === DORM_EXCESS_REF_TYPE)
+    return { ok: false, reason: `${e.docNo} เป็นรายการเงินของหอพัก (เงินประกันผู้เช่า/รับเงินเกินบิล) — กลับรายการที่สมุดรายวันไม่ได้ ให้ถอยที่ระบบหอพัก (ถอยการปิดเงินประกัน) เพื่อให้เอกสารกับบัญชีตรงกัน` };
   // §9.3: กลับรายการใบที่ลงวันที่ในช่วงล็อกไม่ได้
   // 🔴 ด่านใน gl.commitEntry จับไม่ได้ เพราะ reverseEntry เลื่อนวันไปงวดเปิดถัดไป (resolveOpenDate)
   const lockCheck = await checkNotLocked(ctx, e.date);

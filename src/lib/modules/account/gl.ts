@@ -2161,3 +2161,172 @@ export async function postPayrollJV(
     );
   });
 }
+
+// ═══════════════════ SVC D.2 ▸ หอพัก — ขาบัญชีของ facade หอ (เพิ่มล้วน · ไม่แตะฟังก์ชันเดิม) ═══════════════════
+// ผู้เรียก = service.ts บล็อก "SVC D.2" (ในธุรกรรมของผู้เรียกเสมอ · ล็อกกันซ้ำถือไว้แล้ว) · ทุก JV ผ่าน commitEntry (สมดุล · งวด · ล็อกวันที่ · คีย์กันซ้ำทั้งร้าน)
+//   · รับเงินเกินบิล  = refType DormPaymentExcess · refId = คีย์ของผู้เรียก · event DOC:<docId>  ⇒ Dr เงิน / Cr DEPOSIT_RECEIVED (2110 เงินรับล่วงหน้า)
+//   · เงินประกันผู้เช่า = refType DormSecurityDeposit · refId = <unitId>:<leaseId> · event RECEIVE:<คีย์> / SETTLE:<คีย์>
+//       ขาบัญชีประกันมี note = DORM_DEPOSIT_LEG_NOTE ไว้แสดงผลเท่านั้น — ยอดถือคิดจากคีย์ JV + สถานะ (dormDepositHeldByBook) ไม่ใช่จากข้อความ
+
+export const DORM_DEPOSIT_REF_TYPE = "DormSecurityDeposit";
+export const DORM_EXCESS_REF_TYPE = "DormPaymentExcess";
+/** mapping key ของบัญชีเงินประกันผู้เช่า — ⚠️ J4 (ผู้ตรวจบัญชี) ยังไม่ยืนยันรหัส/ชื่อ · ไม่อยู่ในผังตั้งต้น (สร้าง lazy) */
+export const TENANT_SECURITY_DEPOSIT_KEY = "TENANT_SECURITY_DEPOSIT";
+export const DORM_DEPOSIT_LEG_NOTE = "เงินประกันผู้เช่า (หอพัก)";
+const TENANT_DEPOSIT_CODES = ["2140", "2141", "2142", "2143", "2144", "2145", "2146", "2147", "2148", "2149"];
+export type DormMoneyChannel = "CASH" | "TRANSFER" | "PROMPTPAY";
+
+/** ข้อมูลบอกเหตุผลที่ระบบหอปฏิเสธจากชั้นบัญชี (ข้อความไทย) — ผู้เรียกแปลงเป็นโค้ดของ facade */
+export class DormGlReject extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+  }
+}
+
+export const dormLeaseRef = (unitId: string, leaseId: string): string => `${unitId}:${leaseId}`;
+
+/**
+ * บัญชีเงินประกันผู้เช่าของสมุด (หนี้สิน) — มี mapping แล้วใช้ตาม mapping (ร้านย้ายได้) · ไม่มี = สร้างครั้งแรกที่ใช้ (lazy)
+ *   รหัส 2140 · ถูกใช้แล้วโดยบัญชีที่ไม่ใช่ของเรา (ไม่มี mapping ชี้) ⇒ รหัสว่างตัวแรกใน 2141–2149 · ห้ามลงบัญชีของร้านที่ชนรหัส
+ *   unique (systemId, code) / (systemId, key) ที่ฐาน + createMany skipDuplicates แล้วอ่านซ้ำ ⇒ พร้อมกันได้บัญชีเดียว
+ */
+export async function ensureTenantDepositLedgerInTx(ctx: GlCtx, tx: Tx): Promise<string> {
+  const mapped = async () => (await tx.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: TENANT_SECURITY_DEPOSIT_KEY }, select: { accountId: true } }))?.accountId ?? null;
+  const hit = await mapped();
+  if (hit) return hit;
+  const taken = new Set(
+    (await tx.accountLedger.findMany({ where: { systemId: ctx.systemId, code: { in: TENANT_DEPOSIT_CODES } }, select: { code: true } })).map((l) => l.code),
+  );
+  const code = TENANT_DEPOSIT_CODES.find((c) => !taken.has(c));
+  if (!code)
+    throw new DormGlReject("ACCOUNT_SETUP", "รหัสบัญชี 2140–2149 ถูกใช้ครบแล้ว — สร้างบัญชีเงินประกันผู้เช่า (หนี้สิน) ในผังบัญชีเอง แล้วผูกที่หน้าการลงบัญชีอัตโนมัติ");
+  // พร้อมกัน (สองหน่วยในสมุดเดียว): createMany skipDuplicates รอ unique (systemId, code) / (systemId, key) ของอีกฝั่ง commit แล้วข้าม ⇒ อ่านซ้ำได้แถวเดียวกัน (ไม่ใช้ raw SQL)
+  await tx.accountLedger.createMany({
+    data: [{
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      code,
+      name: "เงินประกันรับจากผู้เช่า",
+      nameEn: "Tenant Security Deposits",
+      type: "LIABILITY",
+      cashflowActivity: "OPERATING",
+      isSystem: true,
+      description: "เงินประกันที่รับจากผู้เช่าหอพัก (หนี้สิน · คืนเมื่อย้ายออก หรือหักกับใบแจ้งหนี้ที่ค้าง) — รอตรวจ: รหัส/ชื่อบัญชีรอผู้ตรวจบัญชียืนยัน (J4)",
+    }],
+    skipDuplicates: true,
+  });
+  const ledger = await tx.accountLedger.findFirst({ where: { systemId: ctx.systemId, code }, select: { id: true, type: true, name: true } });
+  // รหัสนี้กลายเป็นบัญชีของร้านระหว่างทาง (ไม่ใช่ของเรา) ⇒ ไม่ลงบัญชีของร้าน — ให้ลองใหม่ (รอบหน้าเลือกรหัสถัดไป)
+  if (!ledger || ledger.type !== "LIABILITY" || ledger.name !== "เงินประกันรับจากผู้เช่า")
+    throw new DormGlReject("ACCOUNT_SETUP", "ตั้งบัญชีเงินประกันผู้เช่าไม่สำเร็จเพราะรหัสบัญชีชนกัน — ลองใหม่อีกครั้ง");
+  await tx.accountMapping.createMany({ data: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, key: TENANT_SECURITY_DEPOSIT_KEY, accountId: ledger.id }], skipDuplicates: true });
+  const final = await mapped();
+  if (!final) throw new Error("ตั้ง mapping บัญชีเงินประกันผู้เช่าไม่สำเร็จ");
+  return final;
+}
+
+async function entryRef(db: Tx, id: string): Promise<{ entryId: string; entryNo: string }> {
+  const e = await db.accountJournalEntry.findUnique({ where: { id }, select: { id: true, docNo: true } });
+  if (!e) throw new Error("ไม่พบใบสำคัญที่เพิ่งบันทึก");
+  return { entryId: e.id, entryNo: e.docNo };
+}
+
+/** รับเงินเกินยอดคงค้างของใบแจ้งหนี้หอ: Dr เงิน (ช่องทางเดียวกับการรับชำระ) / Cr 2110 เงินรับล่วงหน้า — ไม่ใช่รายได้ ไม่ใช่เงินประกัน */
+export async function postDormPaymentExcess(
+  ctx: GlCtx,
+  o: { key: string; docId: string; docNo: string | null; date: Date; amountSatang: number; channel: DormMoneyChannel; financeAccountId: string | null; contactId: string | null },
+  tx: Tx,
+): Promise<{ entryId: string; entryNo: string }> {
+  const b = new Book(ctx, tx);
+  b.dr(await financeLedgerId(ctx, o.financeAccountId, o.channel, tx), o.amountSatang, "รับเงินเกินยอดใบแจ้งหนี้");
+  b.cr(await b.id("DEPOSIT_RECEIVED"), o.amountSatang, "เงินรับล่วงหน้า (รับเกินยอดใบแจ้งหนี้หอพัก)", o.contactId ?? undefined);
+  const e = await commitEntry(
+    ctx,
+    { book: "RECEIPTS", journal: "PAYMENT", date: o.date, refType: DORM_EXCESS_REF_TYPE, refId: o.key, event: `DOC:${o.docId}`, memo: `รับเงินเกินยอดใบแจ้งหนี้ ${o.docNo ?? ""} — เก็บเป็นเงินรับล่วงหน้า`.trim() },
+    b,
+    tx,
+  );
+  return entryRef(tx, e.id);
+}
+
+/** รับเงินประกันผู้เช่า: Dr เงิน / Cr บัญชีเงินประกัน (หนี้สิน) — JV เดียว · ไม่มี VAT · ไม่มีรายได้ */
+export async function postDormDepositReceive(
+  ctx: GlCtx,
+  o: { unitId: string; leaseId: string; key: string; date: Date; amountSatang: number; channel: DormMoneyChannel; financeAccountId: string | null; contactId: string | null; memo?: string | null },
+  tx: Tx,
+): Promise<{ entryId: string; entryNo: string }> {
+  const depId = await ensureTenantDepositLedgerInTx(ctx, tx);
+  const b = new Book(ctx, tx);
+  b.dr(await financeLedgerId(ctx, o.financeAccountId, o.channel, tx), o.amountSatang, "รับเงินประกันผู้เช่า");
+  b.cr(depId, o.amountSatang, DORM_DEPOSIT_LEG_NOTE, o.contactId ?? undefined);
+  const e = await commitEntry(
+    ctx,
+    { book: "RECEIPTS", journal: "PAYMENT", date: o.date, refType: DORM_DEPOSIT_REF_TYPE, refId: dormLeaseRef(o.unitId, o.leaseId), event: `RECEIVE:${o.key}`, memo: o.memo?.trim() || "รับเงินประกันผู้เช่า (หอพัก)" },
+    b,
+    tx,
+  );
+  return entryRef(tx, e.id);
+}
+
+/**
+ * ยอดเงินประกันที่ถือของสัญญา **ทุกสมุดของร้าน** แยกตาม สมุด → บัญชี (F4 · F8: ไม่ผูกกับข้อความ note)
+ *   นับเฉพาะ JV หอที่ยังมีผล (status POSTED · ไม่ใช่ตัวกลับรายการ — JV ปิดที่ถูกถอยด้วย reverseSecurityDepositSettlement มี status REVERSED ⇒ ไม่นับทั้งคู่)
+ *   ชนิดรายการดูจากคีย์ JV ตรงตัว (`DormSecurityDeposit#<unit>:<lease>#RECEIVE:<คีย์>` / `#SETTLE:<คีย์>`):
+ *   รับ = + ขาเครดิต (ขาเดียวที่เครดิตคือบัญชีประกัน) · ปิด = − ขาเดบิต (ขาเดียวที่เดบิตคือบัญชีประกัน)
+ *   contacts = ผู้ติดต่อบนขาประกันของ JV รับ ต่อสมุด (ผูกผู้เช่า — F3)
+ */
+export async function dormDepositHeldByBook(
+  db: Db, tenantId: string, unitId: string, leaseId: string,
+): Promise<Map<string, { byAccount: Map<string, number>; total: number; contacts: Set<string> }>> {
+  const refId = dormLeaseRef(unitId, leaseId);
+  const es = await db.accountJournalEntry.findMany({
+    where: { tenantId, refType: DORM_DEPOSIT_REF_TYPE, refId, status: "POSTED", reversalOfId: null },
+    select: { systemId: true, idempotencyKey: true, lines: { select: { accountId: true, debit: true, credit: true, contactId: true } } },
+  });
+  const recv = `${DORM_DEPOSIT_REF_TYPE}#${refId}#RECEIVE:`;
+  const settle = `${DORM_DEPOSIT_REF_TYPE}#${refId}#SETTLE:`;
+  const out = new Map<string, { byAccount: Map<string, number>; total: number; contacts: Set<string> }>();
+  for (const e of es) {
+    const k = e.idempotencyKey ?? "";
+    const isRecv = k.startsWith(recv);
+    if (!isRecv && !k.startsWith(settle)) continue;
+    const book = out.get(e.systemId) ?? { byAccount: new Map<string, number>(), total: 0, contacts: new Set<string>() };
+    for (const l of e.lines) {
+      const v = isRecv ? l.credit : -l.debit;
+      if (v === 0) continue;
+      book.byAccount.set(l.accountId, (book.byAccount.get(l.accountId) ?? 0) + v);
+      book.total += v;
+      if (isRecv && l.contactId) book.contacts.add(l.contactId);
+    }
+    out.set(e.systemId, book);
+  }
+  return out;
+}
+
+/**
+ * ปิดเงินประกัน = JV เดียว: Dr บัญชีประกัน (ยอดถือทั้งหมด ตามบัญชีที่ถือ) / Cr 1100 ต่อใบที่หัก (ผู้ติดต่อของใบ) / Cr เงิน (ส่วนที่คืน)
+ *   ผู้เรียกคิดยอดใต้ล็อกสัญญา+ล็อกเอกสารแล้ว · Σheld = Σapplied + refund (commitEntry ตรวจสมดุลซ้ำ)
+ */
+export async function postDormDepositSettle(
+  ctx: GlCtx,
+  o: {
+    unitId: string; leaseId: string; key: string; date: Date;
+    held: { accountId: string; amountSatang: number }[];
+    applied: { docNo: string | null; contactId: string | null; amountSatang: number }[];
+    refundSatang: number; channel: DormMoneyChannel; financeAccountId: string | null; memo?: string | null;
+  },
+  tx: Tx,
+): Promise<{ entryId: string; entryNo: string }> {
+  const b = new Book(ctx, tx);
+  for (const h of o.held) b.dr(h.accountId, h.amountSatang, DORM_DEPOSIT_LEG_NOTE);
+  for (const a of o.applied) if (a.amountSatang > 0) b.cr(await b.id("AR"), a.amountSatang, `หักเงินประกันชำระใบแจ้งหนี้ ${a.docNo ?? ""}`.trim(), a.contactId ?? undefined);
+  if (o.refundSatang > 0) b.cr(await financeLedgerId(ctx, o.financeAccountId, o.channel, tx), o.refundSatang, "คืนเงินประกันผู้เช่า");
+  const e = await commitEntry(
+    ctx,
+    { book: "GENERAL", journal: "DOC", date: o.date, refType: DORM_DEPOSIT_REF_TYPE, refId: dormLeaseRef(o.unitId, o.leaseId), event: `SETTLE:${o.key}`, memo: o.memo?.trim() || "ปิดเงินประกันผู้เช่า (หัก + คืน รายการเดียว)" },
+    b,
+    tx,
+  );
+  return entryRef(tx, e.id);
+}
+// ◂ SVC D.2
