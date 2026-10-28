@@ -707,6 +707,16 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "settings.messaging.edit": "แก้ค่าตั้งการส่งข้อความหาลูกค้า",
     },
   },
+  // SVC R0.6 ▸ ตรวจสลิปกลาง (src/lib/payment/slip-verify.ts) — ด่าน decideSlip/slipQueue/slipFileUrl ผ่าน evaluate ต่อสาขาของสลิป ·
+  //   OWNER ได้ทุกสาขา · MANAGER ได้ในสาขาที่คุม · STAFF ต้องได้คีย์นี้ (หรือ payments.*) ◂
+  {
+    module: "payments",
+    label: "รับเงินและตรวจสลิป",
+    group: "sales",
+    actions: {
+      "payments.slip.review": "ตรวจ/อนุมัติสลิปโอนเงิน",
+    },
+  },
   {
     module: "systems",
     label: "ทะเบียนระบบของร้าน",

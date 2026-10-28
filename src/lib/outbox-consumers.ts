@@ -973,6 +973,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // SVC R0.5 ▸ ศูนย์เชื่อมต่อ — สถานะเปลี่ยนไปแล้วใน tx ของ service · consumer no-op เพื่อปิด event เป็น DONE + กฎอัตโนมัติ/เว็บฮุค ◂
   "integration.connected": withAutomation(async () => {}),
   "integration.failed": withAutomation(async () => {}),
+  // SVC R0.6 ▸ ตรวจสลิปกลาง — สถานะเปลี่ยนไปแล้วใน tx ของ payment/slip-verify.ts · consumer no-op (ปิด DONE + กฎอัตโนมัติ/เว็บฮุค) ·
+  //   🔴 ผลเงิน (มัดจำจองคิว/บิลหอ) ไม่อยู่ที่นี่ — consumer ของโดเมน B.8 / D.10 ต่อท้าย compose ภายหลัง (idempotent ต่อ slipId) ◂
+  "payment.slip.submitted": withAutomation(async () => {}),
+  "payment.slip.approved": withAutomation(async () => {}),
+  "payment.slip.rejected": withAutomation(async () => {}),
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
   //      ขาดตรงนี้ = event ค้าง PENDING ตลอดกาล และ **คิวทั้งระบบตันตามไปด้วย** (บทเรียน 30 ส.ค. 2026)

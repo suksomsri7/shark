@@ -1,10 +1,44 @@
 // providers/fake.ts — ผู้ให้บริการ FAKE (SVC R0.5 · ใบสั่ง §4) — ใช้เป็นข้อสอบสัญญา adapter เท่านั้น
 // 🔴 เปิดเมื่อ INTEGRATIONS_FAKE === "1" **และ** APP_ENV !== "production" (อ่านตอนเรียก) — ปิด = ไม่อยู่ใน registry/catalog
 // 🔴 mode FAIL จงใจโยนข้อความที่มี apiKey (positive control ของตัวกรอง) — service ห้ามเก็บ/แสดง error.message ของผู้ให้บริการ
-import type { AdapterMap, AdapterOf, CallOpts, ProviderCreds, ProviderDef, StoredIntegrationKind } from "../types";
+import type { AdapterMap, AdapterOf, CallOpts, ProviderCreds, ProviderDef, SlipVerifyResult, StoredIntegrationKind } from "../types";
 import { STORED_INTEGRATION_KINDS } from "../types";
 
 export const FAKE_PROVIDER_CODE = "FAKE";
+/** SVC R0.6 §6 — คำนำหน้าสคริปต์สลิปของ FAKE (ข้อสอบสั่งผลตรวจได้ทีละใบ) */
+export const FAKE_SLIP_SCRIPT_PREFIX = "FAKESLIP:";
+
+const SLIP_STATUSES: readonly SlipVerifyResult["status"][] = ["VALID", "INVALID", "DUPLICATE", "UNKNOWN"];
+
+/** base64url → ข้อความ utf8 — ไม่ใช้ node:crypto/Buffer (ไฟล์นี้ถูก registry ดึงเข้าบันเดิลฝั่ง client ด้วย) */
+function decodeBase64Url(s: string): string {
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+/** อ่านสคริปต์ "FAKESLIP:" + base64url(JSON) — อ่านไม่ได้ = null (ใช้พฤติกรรมเดิม) · เก็บเฉพาะคีย์ของ SlipVerifyResult ที่ชนิดถูก */
+function fakeSlipScript(qrPayload: unknown): SlipVerifyResult | null {
+  if (typeof qrPayload !== "string" || !qrPayload.startsWith(FAKE_SLIP_SCRIPT_PREFIX)) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(decodeBase64Url(qrPayload.slice(FAKE_SLIP_SCRIPT_PREFIX.length)));
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const status = o.status === undefined ? "VALID" : SLIP_STATUSES.find((x) => x === o.status);
+  if (!status) return null;
+  const out: SlipVerifyResult = { status };
+  if (typeof o.amountSatang === "number") out.amountSatang = o.amountSatang;
+  for (const k of ["transRef", "payerName", "receiverMasked", "transferredAt", "providerRef"] as const) {
+    const v = o[k];
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
 /** mode SLOW รอกี่ ms ก่อนผ่าน */
 export const FAKE_SLOW_MS = 1500;
 
@@ -53,9 +87,13 @@ function makeFake<K extends StoredIntegrationKind>(kind: K, creds: ProviderCreds
   const all: AdapterMap = {
     SLIP_VERIFY: {
       test,
-      verify: async (_input, expect, opts) => {
+      verify: async (input, expect, opts) => {
         await gate(opts);
-        return { status: "VALID", amountSatang: expect.amountSatang, transRef: `FAKE-${Date.now().toString(36)}` };
+        // SVC R0.6 §6 ▸ สคริปต์สลิป: qrPayload "FAKESLIP:" + base64url(JSON) ⇒ คืน JSON นั้น (ผ่าน gate ตาม mode ก่อนเสมอ)
+        const scripted = fakeSlipScript(input?.qrPayload);
+        if (scripted) return scripted;
+        // ไม่ใช่สคริปต์ = พฤติกรรมเดิม · เลขอ้างอิงสุ่ม (ของเดิม Date.now() ชนกันเมื่อยิงพร้อมกัน ⇒ "ซ้ำ" ปลอม) ◂
+        return { status: "VALID", amountSatang: expect.amountSatang, transRef: `FAKE-${globalThis.crypto.randomUUID()}` };
       },
       quota: async (opts) => {
         await gate(opts);
@@ -110,6 +148,7 @@ export const FAKE_PROVIDER: ProviderDef = {
   code: FAKE_PROVIDER_CODE,
   label: "ผู้ให้บริการทดสอบ (FAKE)",
   kinds: STORED_INTEGRATION_KINDS,
+  capabilities: { checksReceiver: true },
   fields: [
     { name: "apiKey", label: "คีย์ API", secret: true, required: true },
     { name: "accountId", label: "รหัสบัญชี", secret: false, required: false },
