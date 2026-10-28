@@ -28,7 +28,21 @@ export type ConsumeLinkCodeInput = {
   text: string;
   resolveParty?: (a: { purpose: string; refId: string }) => Promise<string | null>;
 };
-export type ConsumeLinkCodeResult = { purpose: string; refId: string; partyId: string | null } | null;
+/**
+ * ผลการผูกรหัส
+ * - `partyId` = Party ที่ผู้ติดต่อผูกอยู่จริงหลังผูก (ไม่ทับของเดิม · null ได้)
+ * - `resolvedPartyId` = Party ที่โดเมนบอกว่าเป็นเจ้าของ ref (เฉพาะที่เป็นของร้านนี้ · null = ไม่รู้/ไม่ใช่ของร้าน)
+ * - `partyMismatch` = ผู้ติดต่อ LINE นี้ผูกกับ Party **อื่น** อยู่แล้ว (partyId ≠ resolvedPartyId)
+ * 🔴 สัญญา: ผู้เรียก/onLinked **ห้ามใช้ partyId ยืนยันความเป็นเจ้าของ ref** — ตัดสินจาก ref ที่โดเมนถือเอง (resolvedPartyId)
+ *    และถ้า `partyMismatch` ⇒ อย่าเปิดข้อมูลของ ref ให้ผู้ติดต่อนี้โดยอัตโนมัติ (ให้พนักงานตรวจ)
+ */
+export type ConsumeLinkCodeResult = {
+  purpose: string;
+  refId: string;
+  partyId: string | null;
+  resolvedPartyId: string | null;
+  partyMismatch: boolean;
+} | null;
 
 const KEY_LABEL = "chat-link-code:v1:";
 const MAX_TTL_MIN = 43_200;
@@ -173,10 +187,18 @@ export async function consumeLinkCode(ctx: ChatPartyCtx, input: ConsumeLinkCodeI
         partyId = null; // ตัวหาเจ้าของของโดเมนพัง = ผูกรหัสแล้วแต่ไม่ผูก Party (ไม่ลามถึงผู้เรียก)
       }
     }
-    // Party ต้องเป็นของร้านนี้ · ผู้ติดต่อมี partyId แล้ว = ไม่ทับ (ตรวจใน linkChatContactParty)
+    // Party ต้องเป็นของร้านนี้ (ของร้านอื่น = ถือว่าไม่รู้เจ้าของ) · ผู้ติดต่อมี partyId แล้ว = ไม่ทับ (ตรวจใน linkChatContactParty)
+    if (partyId && !(await prisma.party.findFirst({ where: { id: partyId, tenantId }, select: { id: true } }))) partyId = null;
     if (partyId) await linkChatContactParty({ tenantId }, { chatContactId: contact.id, partyId });
     const after = await prisma.chatContact.findFirst({ where: { id: contact.id, tenantId }, select: { partyId: true } });
-    return { purpose: row.purpose, refId: row.refId, partyId: after?.partyId ?? null };
+    const linked = after?.partyId ?? null;
+    return {
+      purpose: row.purpose,
+      refId: row.refId,
+      partyId: linked,
+      resolvedPartyId: partyId,
+      partyMismatch: !!partyId && !!linked && linked !== partyId,
+    };
   } catch {
     return null;
   }

@@ -62,6 +62,8 @@ export function verifyLink(token: unknown, purpose: string): { tenantId: string;
     const want = createHmac("sha256", key).update(p).digest();
     const got = Buffer.from(s, "base64url");
     if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
+    // ลายเซ็นต้องเป็นรูปเดียว (canonical) — base64url ถอดแบบหลวม: บิตท้ายที่ไม่ใช้ต่างกันก็ได้ไบต์เดียวกัน
+    if (want.toString("base64url") !== s) return null;
     const pl: unknown = JSON.parse(Buffer.from(p, "base64url").toString("utf8"));
     if (!pl || typeof pl !== "object" || Array.isArray(pl)) return null;
     const o = pl as Record<string, unknown>;

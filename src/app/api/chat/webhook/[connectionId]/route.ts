@@ -3,6 +3,7 @@ import { prisma } from "@/lib/core/db";
 import { Prisma, type ChatChannelConnection, type ChatChannelType } from "@prisma/client";
 import { getAdapter, isSupported } from "@/lib/modules/chat/adapter";
 import { replyLineMessages, pushLineMessagesToContact, type LineMessage } from "@/lib/modules/chat/line-flex";
+import { normalizeLinkCode } from "@/lib/modules/chat/link-code";
 import { credsOf, receiveInbound } from "@/lib/modules/chat/service";
 import { dispatchPostback, handleLinkCodeText, type PostbackReply } from "@/lib/platform/postback-routes";
 
@@ -50,11 +51,12 @@ export async function POST(
       // dedupe ชั้น 1 — WebhookLog (กันประมวลซ้ำก่อนถึง ChatMessage)
       const first = await recordWebhook(connection.id, connection.type, inbound.externalMessageId);
       if (!first) continue;
-      await receiveInbound({ connection, inbound });
-      // SVC R0.7 ▸ ข้อความที่อาจเป็นรหัสผูก (ทางเดิมด้านบนคงเดิม — ตรงนี้เพิ่มหลังบันทึกข้อความแล้ว) ◂
-      if (connection.type === "LINE" && inbound.type === "TEXT" && inbound.body) {
-        await handleLineLinkCode(connection, inbound.externalUserId, inbound.body, inbound.replyToken ?? null);
-      }
+      // SVC R0.7 ▸ ข้อความที่เป็นรูปรหัสผูก: ปิดบังเนื้อก่อนบันทึก (รหัสดิบไม่ค้างในห้องแชท/ตัวอย่างแจ้งเตือน/บอต)
+      //   แล้วผูกรหัสด้วยข้อความจริงหลังบันทึก · ข้อความอื่นทุกชนิดเดินทางเดิมไม่เปลี่ยน ◂
+      const linkText =
+        connection.type === "LINE" && inbound.type === "TEXT" && inbound.body && normalizeLinkCode(inbound.body) ? inbound.body : null;
+      await receiveInbound({ connection, inbound: linkText ? { ...inbound, body: LINK_CODE_MASK } : inbound });
+      if (linkText) await handleLineLinkCode(connection, inbound.externalUserId, linkText, inbound.replyToken ?? null);
     }
   } catch (e) {
     await logWebhook(
@@ -121,6 +123,9 @@ async function logWebhook(
 }
 
 // ───────────── SVC R0.7 ▸ postback + รหัสผูก (LINE) ─────────────
+
+/** ข้อความที่บันทึกแทนรหัสผูกที่ลูกค้าพิมพ์ */
+const LINK_CODE_MASK = "[รหัสผูกบัญชี LINE]";
 
 type LineEvent = {
   type?: string;

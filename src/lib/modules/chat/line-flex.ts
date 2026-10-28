@@ -11,7 +11,8 @@ import { prisma } from "./db";
 import { lineApiBase } from "./line";
 import type { ChatPartyCtx } from "./party-bridge";
 
-export type FlexFailCode = "NO_LINE_IDENTITY" | "NO_CONNECTION" | "VALIDATION" | "SEND_FAILED";
+/** QUOTA = LINE ตอบ 429 (โควตาข้อความของ OA เต็ม/ถูกจำกัด) — แยกจาก SEND_FAILED: ผู้เรียกห้ามวนส่งซ้ำ (R0.7 fix B7) */
+export type FlexFailCode = "NO_LINE_IDENTITY" | "NO_CONNECTION" | "VALIDATION" | "SEND_FAILED" | "QUOTA";
 export type FlexFail = { ok: false; code: FlexFailCode; reason: string };
 export type FlexContents = Record<string, unknown>;
 export type PushFlexToPartyInput = { partyId: string; connectionId?: string | null; altText: string; contents: FlexContents };
@@ -26,9 +27,16 @@ const REASON: Record<FlexFailCode, string> = {
   NO_CONNECTION: "ไม่พบการเชื่อมต่อ LINE OA ที่ใช้งานได้ของร้าน — ตรวจที่หน้าตั้งค่าแชท",
   VALIDATION: "ข้อความไม่ครบหรือผิดรูปแบบ (altText 1–400 ตัว · contents เป็น bubble หรือ carousel)",
   SEND_FAILED: "ส่งข้อความเข้า LINE ไม่สำเร็จ — ลองใหม่อีกครั้งภายหลัง",
+  QUOTA: "LINE OA ของร้านใช้โควตาข้อความเต็มหรือถูกจำกัดชั่วคราว — ตรวจแพ็กเกจ OA ที่ LINE Official Account Manager",
 };
+/** สถานะ HTTP ของ LINE → รหัสล้ม (429 = QUOTA · อื่น ๆ = SEND_FAILED) */
+export const failOfStatus = (status: number): FlexFail => flexFail(status === 429 ? "QUOTA" : "SEND_FAILED");
+
+/** เวลารอ LINE ต่อคำขอ — สั้นกว่าเวลาที่ผู้อ้างสิทธิ์ dedupe ถือว่าค้าง (notify-customer STALE_CLAIM_MS = 2 นาที) ชัดเจน */
+export const LINE_TIMEOUT_MS = 10_000;
 export const flexFail = (code: FlexFailCode): FlexFail => ({ ok: false, code, reason: REASON[code] });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -76,9 +84,11 @@ export async function lineCall(
   path: string,
   token: string,
   body?: unknown,
-  opts?: { base?: string; contentType?: string },
+  opts?: { base?: string; contentType?: string; retryKey?: string },
 ): Promise<LineCallResult> {
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  // X-Line-Retry-Key: ส่งซ้ำด้วยคีย์เดิม ⇒ LINE ไม่ส่งซ้ำถึงลูกค้า (ตอบ 409 ถ้ารับไปแล้ว)
+  if (opts?.retryKey) headers["X-Line-Retry-Key"] = opts.retryKey;
   let payload: BodyInit | undefined;
   if (body instanceof Uint8Array) {
     headers["content-type"] = opts?.contentType ?? "application/octet-stream";
@@ -88,7 +98,7 @@ export async function lineCall(
     payload = JSON.stringify(body);
   }
   try {
-    const res = await fetch(`${opts?.base ?? lineApiBase()}${path}`, { method, headers, body: payload });
+    const res = await fetch(`${opts?.base ?? lineApiBase()}${path}`, { method, headers, body: payload, signal: AbortSignal.timeout(LINE_TIMEOUT_MS) });
     const json: unknown = res.ok ? await res.json().catch(() => ({})) : null;
     if (!res.ok) await res.body?.cancel().catch(() => {});
     return { ok: res.ok, status: res.status, json };
@@ -138,7 +148,7 @@ export async function pushFlexToParty(ctx: ChatPartyCtx, input: PushFlexToPartyI
       to,
       messages: [{ type: "flex", altText: input.altText, contents: input.contents }],
     });
-    if (!r.ok) return flexFail("SEND_FAILED");
+    if (!r.ok) return failOfStatus(r.status);
     const id = firstSentId(r.json);
     return id ? { ok: true, externalMessageId: id } : { ok: true };
   } catch {
@@ -168,7 +178,7 @@ export async function replyLineMessages(
     const conn = await lineConnectionOf(tenantId, str(input?.connectionId));
     if (!conn) return flexFail("NO_CONNECTION");
     const r = await lineCall("POST", "/v2/bot/message/reply", conn.token, { replyToken, messages: input.messages });
-    return r.ok ? { ok: true } : flexFail("SEND_FAILED");
+    return r.ok ? { ok: true } : failOfStatus(r.status);
   } catch {
     return flexFail("SEND_FAILED");
   }
@@ -176,24 +186,38 @@ export async function replyLineMessages(
 
 /**
  * ส่งข้อความชุดหนึ่งถึงผู้ติดต่อคนหนึ่ง **บน OA ที่ระบุเท่านั้น** (ประตูส่งข้อความบริการ `platform/notify-customer` ใช้)
- * ผู้ติดต่อต้องเป็นของร้านนี้ · LINE · บน connection นี้ · ไม่ถูกบล็อก — ไม่ใช่ = NO_LINE_IDENTITY
+ * ผู้ติดต่อต้องเป็นของร้านนี้ · LINE · บน connection นี้ (LINE · ไม่ DISABLED) · ไม่ถูกบล็อก — ไม่ใช่ = NO_LINE_IDENTITY
+ * คำสั่ง SQL เดียว (ผู้ติดต่อ + connection) · `retryKey` (รูป UUID) ⇒ ส่งซ้ำได้ปลอดภัย: LINE ตอบ 409 = รับไปแล้ว ⇒ ถือว่าสำเร็จ
  */
 export async function pushLineMessagesToContact(
   ctx: ChatPartyCtx,
-  input: { chatContactId: string; connectionId: string; messages: LineMessage[] },
+  input: { chatContactId: string; connectionId: string; messages: LineMessage[]; retryKey?: string },
 ): Promise<PushFlexResult> {
   try {
     const tenantId = str(ctx?.tenantId);
+    const connectionId = str(input?.connectionId);
+    const chatContactId = str(input?.chatContactId);
     if (!validMessages(input?.messages)) return flexFail("VALIDATION");
-    const conn = await lineConnectionOf(tenantId, str(input?.connectionId));
-    if (!conn) return flexFail("NO_CONNECTION");
+    const retryKey = typeof input?.retryKey === "string" && UUID_RE.test(input.retryKey) ? input.retryKey : undefined;
+    if (input?.retryKey !== undefined && !retryKey) return flexFail("VALIDATION");
+    if (!tenantId || !connectionId || !chatContactId) return flexFail("NO_LINE_IDENTITY");
     const contact = await prisma.chatContact.findFirst({
-      where: { id: str(input?.chatContactId), tenantId, channel: "LINE", channelConnectionId: conn.id, blockedAt: null },
-      select: { externalUserId: true },
+      where: {
+        id: chatContactId,
+        tenantId,
+        channel: "LINE",
+        channelConnectionId: connectionId,
+        blockedAt: null,
+        channelConnection: { tenantId, type: "LINE", status: { not: "DISABLED" } },
+      },
+      select: { externalUserId: true, channelConnection: { select: { credentials: true } } },
     });
-    if (!contact) return flexFail("NO_LINE_IDENTITY");
-    const r = await lineCall("POST", "/v2/bot/message/push", conn.token, { to: contact.externalUserId, messages: input.messages });
-    if (!r.ok) return flexFail("SEND_FAILED");
+    if (!contact?.channelConnection) return flexFail("NO_LINE_IDENTITY");
+    const token = str(decryptCreds<{ channelAccessToken?: string }>(contact.channelConnection.credentials).channelAccessToken);
+    if (!token) return flexFail("NO_CONNECTION");
+    const r = await lineCall("POST", "/v2/bot/message/push", token, { to: contact.externalUserId, messages: input.messages }, { retryKey });
+    if (r.status === 409 && retryKey) return { ok: true }; // คีย์เดิมถูกรับไปแล้ว (โพรเซสก่อนตายหลังส่ง) — ไม่ส่งซ้ำ
+    if (!r.ok) return failOfStatus(r.status);
     const id = firstSentId(r.json);
     return id ? { ok: true, externalMessageId: id } : { ok: true };
   } catch {

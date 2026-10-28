@@ -13,11 +13,21 @@ export type PostbackDomain = "booking" | "dorm" | "hotel";
 export type PostbackCtx = { tenantId: string; connectionId: string; chatContactId: string; partyId: string | null; replyToken: string | null };
 export type PostbackEvent = { data: string; domain: PostbackDomain; action: string; params: Record<string, string> };
 export type PostbackReply = { text?: string; flex?: { altText: string; contents: Record<string, unknown> } };
+/**
+ * 🔴 สัญญาบังคับของตัวจัดการโดเมน (R0.7 fix A1/A2 — ผู้ตรวจจะอ่านทุก route ที่เพิ่ม):
+ *  1. ref ใน `evt.params` (เช่น id นัด/สัญญา) ต้องตรวจในฐานว่าเป็นของ `ctx.tenantId` **และ** ของลูกค้าคนที่กด
+ *     (`ctx.partyId` / `ctx.chatContactId`) ก่อนอ่าน/เขียนอะไร — ไม่ใช่ = ตอบข้อความกลาง ไม่บอกว่ามี ref นี้อยู่
+ *  2. ห้ามอ่าน tenant/party/connection จาก `evt.params` หรือ data — ctx มาจากแถว connection ของ webhook เสมอ
+ *  3. `onLinked`: ห้ามใช้ `partyId` ยืนยันความเป็นเจ้าของ ref (ผู้ติดต่ออาจผูก Party อื่นไว้ก่อน) — ใช้ `resolvedPartyId`
+ *     ที่โดเมนตอบเอง · `partyMismatch: true` ⇒ อย่าเปิดข้อมูลของ ref ให้อัตโนมัติ (ส่งให้พนักงานตรวจ)
+ *  4. throw ได้ (ตัวแจกจับไว้) แต่ห้าม log ข้อความลูกค้า/เบอร์/ชื่อ
+ */
+export type LinkedInfo = { purpose: string; refId: string; partyId: string | null; resolvedPartyId: string | null; partyMismatch: boolean };
 export type PostbackRoute = {
   prefix: "booking." | "dorm." | "hotel.";
   resolveParty?: (ctx: { tenantId: string }, a: { purpose: string; refId: string }) => Promise<string | null>;
   onPostback?: (ctx: PostbackCtx, evt: PostbackEvent) => Promise<PostbackReply | void>;
-  onLinked?: (ctx: PostbackCtx, a: { purpose: string; refId: string; partyId: string | null }) => Promise<PostbackReply | void>;
+  onLinked?: (ctx: PostbackCtx, a: LinkedInfo) => Promise<PostbackReply | void>;
 };
 
 /** ทะเบียน (แก้ได้ · ตัวแจกอ่านตอนเรียก) — ใบนี้ว่าง · B.9/D.9 เพิ่มบรรทัด */

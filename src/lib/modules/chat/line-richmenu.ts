@@ -8,7 +8,6 @@
 // 🔴 ไม่ throw · ไม่คืน/ไม่ log โทเคนหรือเนื้อ response ดิบ
 
 import { createHash } from "node:crypto";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { lineApiBase } from "./line";
 import { flexFail, lineCall, lineConnectionOf } from "./line-flex";
@@ -143,13 +142,16 @@ export async function syncRichMenu(
     const prev = isRec(meta.richMenu) ? meta.richMenu : null;
     const prevId = prev && typeof prev.id === "string" ? prev.id : null;
 
+    const apiBase = lineApiBase();
     let richMenuId: string;
     let created: boolean;
     if (prevId && prev?.hash === hash) {
+      // spec เดิม ⇒ ไม่สร้างใหม่ · ตั้งค่าเริ่มซ้ำ (idempotent — กันกรณีมีคนเปลี่ยนค่าเริ่มที่ LINE Manager)
+      const def = await lineCall("POST", `/v2/bot/user/all/richmenu/${encodeURIComponent(prevId)}`, conn.token, undefined, { base: apiBase });
+      if (!def.ok) return fail("SEND_FAILED");
       richMenuId = prevId;
       created = false;
     } else {
-      const apiBase = lineApiBase();
       const cr = await lineCall("POST", "/v2/bot/richmenu", conn.token, menuBody(spec), { base: apiBase });
       const newId = cr.ok && isRec(cr.json) && typeof cr.json.richMenuId === "string" ? cr.json.richMenuId : "";
       if (!newId || !/^[A-Za-z0-9_-]{1,100}$/.test(newId)) return fail("SEND_FAILED");
@@ -163,8 +165,19 @@ export async function syncRichMenu(
         await lineCall("DELETE", `/v2/bot/richmenu/${enc}`, conn.token, undefined, { base: apiBase });
         return fail("SEND_FAILED");
       }
-      const nextMeta = { ...meta, richMenu: { id: newId, hash } } as Prisma.InputJsonValue;
-      await prisma.chatChannelConnection.updateMany({ where: { id: conn.id, tenantId }, data: { meta: nextMeta } });
+      // จด meta แบบมีเงื่อนไข: แตะเฉพาะคีย์ richMenu (merge · คีย์อื่นของ meta คงเดิม) และเฉพาะเมื่อ hash ในฐานยังเป็นค่าที่เราอ่าน
+      //   (ซิงก์พร้อมกัน 2 ทาง ⇒ ทางที่แพ้ลบเมนูของตัวเองทิ้ง ไม่ทิ้งเมนูกำพร้าไว้ที่ LINE)
+      const prevHash = prev && typeof prev.hash === "string" ? prev.hash : null;
+      const n = await prisma.$executeRaw`
+        UPDATE "ChatChannelConnection"
+        SET "meta" = jsonb_set(COALESCE("meta", '{}'::jsonb), '{richMenu}', ${JSON.stringify({ id: newId, hash })}::jsonb, true),
+            "updatedAt" = NOW()
+        WHERE "id" = ${conn.id} AND "tenantId" = ${tenantId}
+          AND ("meta" -> 'richMenu' ->> 'hash') IS NOT DISTINCT FROM ${prevHash}`;
+      if (n !== 1) {
+        await lineCall("DELETE", `/v2/bot/richmenu/${enc}`, conn.token, undefined, { base: apiBase });
+        return fail("SEND_FAILED");
+      }
       if (prevId && prevId !== newId) {
         await lineCall("DELETE", `/v2/bot/richmenu/${encodeURIComponent(prevId)}`, conn.token, undefined, { base: apiBase });
       }
@@ -172,14 +185,17 @@ export async function syncRichMenu(
       created = true;
     }
 
+    // ผูกรายคน: เฉพาะผู้ติดต่อของร้านนี้บน connection นี้ · ใช้ bulk link (≤ 500 คน/คำขอ)
     const ids = (opts?.chatContactIds ?? []).filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, 500);
     if (ids.length) {
       const contacts = await prisma.chatContact.findMany({
         where: { id: { in: ids }, tenantId, channel: "LINE", channelConnectionId: conn.id },
         select: { externalUserId: true },
       });
-      for (const c of contacts) {
-        await lineCall("POST", `/v2/bot/user/${encodeURIComponent(c.externalUserId)}/richmenu/${encodeURIComponent(richMenuId)}`, conn.token);
+      const userIds = [...new Set(contacts.map((c) => c.externalUserId))];
+      if (userIds.length) {
+        const bl = await lineCall("POST", "/v2/bot/richmenu/bulk/link", conn.token, { richMenuId, userIds }, { base: apiBase });
+        if (!bl.ok) return fail("SEND_FAILED");
       }
     }
     return { ok: true, richMenuId, created };
