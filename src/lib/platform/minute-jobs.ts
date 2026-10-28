@@ -509,6 +509,16 @@ registerMinuteJob({
 });
 // ◂ SVC R0.8
 
+// SVC R0.9 ▸ แกนห้อง: ปล่อย occupancy ของการจองโรงแรมที่ไม่ใช่ BOOKED/CHECKED_IN แล้ว (เช็คเอาท์/ยกเลิก/คืนเงิน แต่ปล่อยห้องล้ม)
+//   ทุก 5 นาที · ข้ามร้าน · lazy import facade แบบ rooms.expireHolds · idempotent (SKIP LOCKED + active ใน UPDATE)
+registerMinuteJob({
+  name: "rooms.sweepStaleOccupancy",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/rooms")).sweepStaleOccupancy(now),
+});
+// ◂ SVC R0.9
+
 function errorText(e: unknown): string {
   let s: string;
   if (e instanceof Error) s = e.stack && e.stack.includes(e.message) ? e.stack : `${e.name}: ${e.message}`;

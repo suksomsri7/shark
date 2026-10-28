@@ -395,6 +395,41 @@ export async function expireHolds(now: Date): Promise<{ expired: number }> {
   return { expired };
 }
 
+// ───────────────────────── sweepStaleOccupancy (minute-job · ข้ามร้าน · R0.9) ─────────────────────────
+/**
+ * ปิด (active=false) occupancy ของการจองโรงแรม (refType "HotelReservation") ที่การจอง "ไม่ใช่" BOOKED/CHECKED_IN แล้ว
+ *   = CHECKED_OUT · CANCELLED · REFUNDED · ไม่พบการจอง · การจองเป็นของร้านอื่น (join id = refId AND tenantId = o.tenantId)
+ *   ไม่แตะ: BOOKED/CHECKED_IN (รวม BOOKED เลยวัน) · refType อื่นทุกชนิด · แถว inactive
+ * แบบเดียวกับ expireHolds: SQL เดียวต่อชุด (FOR UPDATE SKIP LOCKED + เงื่อนไข active ใน UPDATE) + event ต่อแถวที่ตัวเองปิดใน tx เดียวกัน
+ * X5: เรียกซ้อนกัน = แต่ละแถวปิด/event ครั้งเดียว · รันซ้ำ = 0
+ */
+export async function sweepStaleOccupancy(now: Date): Promise<{ released: number }> {
+  void now; // สถานะการจองเป็นตัวตัดสิน (ไม่ขึ้นกับเวลา) — รับ now ตามสัญญา minute-job
+  let released = 0;
+  for (let b = 0; b < EXPIRE_MAX_BATCHES; b++) {
+    const n = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<ClosedRow[]>`
+        UPDATE "RoomOccupancy" o SET "active" = false, "updatedAt" = now()
+        WHERE o."id" IN (
+          SELECT x."id" FROM "RoomOccupancy" x
+          WHERE x."active" = true AND x."refType" = 'HotelReservation'
+            AND NOT EXISTS (
+              SELECT 1 FROM "HotelReservation" r
+              WHERE r."id" = x."refId" AND r."tenantId" = x."tenantId" AND r."status"::text IN ('BOOKED', 'CHECKED_IN')
+            )
+          LIMIT ${EXPIRE_BATCH}
+          FOR UPDATE OF x SKIP LOCKED
+        ) AND o."active" = true
+        RETURNING o."id", o."tenantId", o."unitId", o."roomId", o."startDate", o."endDate"`;
+      await emitClosed(tx, rows, "sweep");
+      return rows.length;
+    }, EXPIRE_TX);
+    released += n;
+    if (n < EXPIRE_BATCH) break;
+  }
+  return { released };
+}
+
 // ───────────────────────── ธุรกรรมให้ service.ts (ไม่ export ออก facade) ─────────────────────────
 /** เปิด interactive tx ให้ service.ts ของโมดูลนี้ (ไฟล์นั้นห้าม import prisma ดิบ) */
 export function withRoomTx<T>(fn: (tx: Tx) => Promise<T>, opts?: { timeoutMs?: number }): Promise<T> {

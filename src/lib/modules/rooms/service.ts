@@ -18,7 +18,7 @@ import {
 
 type Ctx = { tenantId: string };
 /** occupancy ที่ยังไม่จบของห้องซึ่ง "ขัด" กับค่าใหม่ — คืนเป็นคำเตือน (ไม่บล็อก · occupancy คงเดิม ผู้เรียกตัดสินใจย้ายเอง · ใบ §8 ข้อ 2) */
-export type AffectedOccupancy = { occupancyId: string; kind: string; refType: string; refId: string; startDate: string; endDate: string };
+export type AffectedOccupancy = { occupancyId: string; roomId: string; kind: string; refType: string; refId: string; startDate: string; endDate: string };
 type Res = { ok: true; id?: string; affected?: AffectedOccupancy[] } | { ok: false; code: string; message: string };
 
 /** kinds = ชนิดที่ขัด (OUT_OF_ORDER: ทุกชนิดยกเว้น BLOCK · MONTHLY: STAY · NIGHTLY: LEASE) · endDate > วันนี้ (ไทย) */
@@ -27,9 +27,12 @@ async function affectedOn(tenantId: string, unitId: string, roomId: string, kind
   const rows = await tenantDb({ tenantId, unitId }).roomOccupancy.findMany({
     where: { roomId, active: true, kind: { in: kinds }, endDate: { gt: ymdToDb(bkkYmd(new Date())) } },
     orderBy: { startDate: "asc" },
-    select: { id: true, kind: true, refType: true, refId: true, startDate: true, endDate: true },
+    select: { id: true, roomId: true, kind: true, refType: true, refId: true, startDate: true, endDate: true },
   });
-  return rows.map((o) => ({ occupancyId: o.id, kind: o.kind, refType: o.refType, refId: o.refId, startDate: dbToYmd(o.startDate), endDate: dbToYmd(o.endDate) }));
+  return rows.map(toAffected);
+}
+function toAffected(o: { id: string; roomId: string; kind: string; refType: string; refId: string; startDate: Date; endDate: Date }): AffectedOccupancy {
+  return { occupancyId: o.id, roomId: o.roomId, kind: o.kind, refType: o.refType, refId: o.refId, startDate: dbToYmd(o.startDate), endDate: dbToYmd(o.endDate) };
 }
 const OOO_CLASH = ["LEASE", "STAY", "HOLD", "CHANNEL_HOLD"];
 /** ชนิด occupancy ที่ขัดกับ rentMode จริง: MONTHLY ⇒ STAY (การจองรายคืน) · NIGHTLY ⇒ LEASE (สัญญารายเดือน) · BOTH ⇒ ไม่มี */
@@ -205,7 +208,16 @@ export async function setRoomTypeRent(
     where: { id: t.id },
     data: { rentMode: input.rentMode, ...(rate !== undefined ? { monthlyRateSatang: rate } : {}) },
   });
-  return { ok: true, id: t.id };
+  // R0.9 (carry) ▸ เตือนเสมอ (ไม่มีก็ []) — occupancy ที่ยังไม่จบของห้อง "ที่ตามประเภท" (rentMode ห้อง null) ซึ่งขัดกับโหมดใหม่
+  //   ห้อง override ไม่นับ (rentMode จริงไม่เปลี่ยน) · ไม่บล็อก (ประเภทเปลี่ยนจริงแล้ว — พนักงานย้ายห้องเอง)
+  const kinds = clashOfRentMode(input.rentMode);
+  if (kinds.length === 0) return { ok: true, id: t.id, affected: [] };
+  const rows = await db.roomOccupancy.findMany({
+    where: { active: true, kind: { in: kinds }, endDate: { gt: ymdToDb(bkkYmd(new Date())) }, room: { roomTypeId: t.id, rentMode: null } },
+    orderBy: [{ startDate: "asc" }, { id: "asc" }],
+    select: { id: true, roomId: true, kind: true, refType: true, refId: true, startDate: true, endDate: true },
+  });
+  return { ok: true, id: t.id, affected: rows.map(toAffected) };
 }
 
 // ───────────────────────── availability · roomBoard ─────────────────────────
@@ -245,6 +257,8 @@ export type RoomBoardCell = {
   hkStatus: string;
   use: RoomUse;
   occupancy: null | { occupancyId: string; kind: string; refType: string; refId: string; startDate: string; endDate: string };
+  /** R0.9 ▸ การครองถัดไป (active · ไม่ใช่ hold หมดเวลา · เริ่มหลังวันผัง) ตัวแรกตาม startDate — ไม่มีขอบเวลา (ผังตัดสินว่า "จอง" หรือ "ว่าง") */
+  next: null | { kind: string; startDate: string };
   finance: null;
 };
 const USE_OF: Record<string, RoomUse> = { LEASE: "LEASED", STAY: "GUEST", HOLD: "HOLD", CHANNEL_HOLD: "HOLD", BLOCK: "BLOCKED" };
@@ -267,6 +281,14 @@ export async function roomBoard(ctx: Ctx, input: { unitId: string; date: DateIn 
   });
   const byRoom = new Map<string, (typeof occ)[number]>();
   for (const o of occ) if (liveOcc(o, now)) byRoom.set(o.roomId, o);
+  // ถัดไป: แถวที่เริ่มหลังวันผัง เรียง startDate — ตัวแรกที่ยัง live ต่อห้อง
+  const later = await db.roomOccupancy.findMany({
+    where: { active: true, roomId: { in: rooms.map((r) => r.id) }, startDate: { gt: d } },
+    orderBy: [{ startDate: "asc" }, { id: "asc" }],
+    select: { roomId: true, kind: true, startDate: true, holdExpiresAt: true },
+  });
+  const nextOf = new Map<string, { kind: string; startDate: string }>();
+  for (const o of later) if (!nextOf.has(o.roomId) && liveOcc(o, now)) nextOf.set(o.roomId, { kind: o.kind, startDate: dbToYmd(o.startDate) });
   return rooms.map((r) => {
     const o = byRoom.get(r.id);
     return {
@@ -281,9 +303,42 @@ export async function roomBoard(ctx: Ctx, input: { unitId: string; date: DateIn 
       occupancy: o
         ? { occupancyId: o.id, kind: o.kind, refType: o.refType, refId: o.refId, startDate: dbToYmd(o.startDate), endDate: dbToYmd(o.endDate) }
         : null,
+      next: nextOf.get(r.id) ?? null,
       finance: null,
     };
   });
+}
+
+// ───────────────────────── occupancyRange (R0.9 · ปฏิทิน/หอ) ─────────────────────────
+export type OccupancyRangeRow = { occupancyId: string; roomId: string; kind: string; refType: string; refId: string; startDate: string; endDate: string };
+const RANGE_MAX_DAYS = 400;
+
+/**
+ * occupancy active ที่ซ้อนช่วง [start,end) ของหน่วย (X1: tenantDb ผูก tenant+unit · ห้อง/หน่วยของคนอื่น ⇒ [])
+ * hold หมดเวลาไม่นับ (กติกา liveOcc) · ช่วงผิด/ไม่ส่ง/end<=start/เกิน 400 วัน ⇒ [] ไม่ throw · เรียง startDate แล้วเลขห้อง
+ */
+export async function occupancyRange(
+  ctx: Ctx,
+  input: { unitId: string; start: DateIn; end: DateIn; roomId?: string },
+): Promise<OccupancyRangeRow[]> {
+  const start = toYmd(input?.start);
+  const end = toYmd(input?.end);
+  if (!ctx?.tenantId || !input?.unitId || !start || !end || end <= start) return [];
+  const s = ymdToDb(start);
+  const e = ymdToDb(end);
+  if ((e.getTime() - s.getTime()) / 86_400_000 > RANGE_MAX_DAYS) return [];
+  if (input.roomId !== undefined && (typeof input.roomId !== "string" || !input.roomId)) return [];
+  const now = new Date();
+  const rows = await tenantDb({ tenantId: ctx.tenantId, unitId: input.unitId }).roomOccupancy.findMany({
+    where: { active: true, startDate: { lt: e }, endDate: { gt: s }, ...(input.roomId ? { roomId: input.roomId } : {}) },
+    orderBy: [{ startDate: "asc" }, { id: "asc" }],
+    select: { id: true, roomId: true, kind: true, refType: true, refId: true, startDate: true, endDate: true, holdExpiresAt: true, room: { select: { number: true } } },
+  });
+  return rows
+    .filter((o) => liveOcc(o, now))
+    .map((o) => ({ row: o, sd: dbToYmd(o.startDate) }))
+    .sort((a, b) => (a.sd < b.sd ? -1 : a.sd > b.sd ? 1 : a.row.room.number.localeCompare(b.row.room.number, "th", { numeric: true })))
+    .map(({ row: o, sd }) => ({ occupancyId: o.id, roomId: o.roomId, kind: o.kind, refType: o.refType, refId: o.refId, startDate: sd, endDate: dbToYmd(o.endDate) }));
 }
 
 // ───────────────────────── backfill การจองโรงแรมเดิม (ก่อน R0.8 ไม่มี occupancy) ─────────────────────────
