@@ -1,0 +1,8 @@
+# SVC — เช็กลิสต์ deploy prod (สะสมจากผู้ตรวจ)
+- migration ทุกไฟล์ของ SVC (svc_r0 · svc_r0b · svc_b · …) Prisma 7.8 รัน **ทีละคำสั่ง ไม่ใช่ tx เดียว** และคำสั่งส่วนใหญ่ไม่มี IF NOT EXISTS ⇒ ล้มกลางไฟล์ = P3009 · ขั้นกู้: ดูว่าคำสั่งไหนลงแล้ว (pg_catalog) → รันที่เหลือด้วยมือ → `prisma migrate resolve --applied <ชื่อ>` (แบบ runbook P6.1)
+- deploy ช่วงคนน้อย · ก่อน push เช็ก `pg_stat_activity` ไม่มี query/tx ยาวบน PosSaleLine/Appointment (ADD COLUMN ต้องรอล็อก · ไม่มี lock_timeout)
+- btree_gist บน prod: role ใน DIRECT_URL ต้องเป็น owner (neon_superuser) และ pg_available_extensions มี btree_gist
+- ลำดับ: migrate deploy ก่อน next build (vercel-build.sh ทำอยู่แล้ว) · enum ใหม่ (DORM · QUEUED/IN_SERVICE/LATE) ลงก่อน client ที่เขียนค่า
+- backfill occupancy โรงแรมเดิม `--apply` ทุกร้าน conflicts=0 ก่อนเปิด DORM/ผังห้อง
+- env ใหม่: INTEGRATIONS_CREDENTIALS_KEY (≥32 ตัว · ไม่มีกุญแจสำรอง) · ห้ามตั้ง INTEGRATIONS_FAKE / LINE_API_BASE บน prod
+- ใบหลังที่ใส่ CHECK บนตารางใหญ่: ใช้ NOT VALID แล้ว VALIDATE CONSTRAINT แยกคำสั่ง

@@ -166,3 +166,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 28 ต.ค. ~17Z · ✅ **R0.6** merge · 77/77 · ผู้ตรวจ: BLOCKER Membership ไม่กรอง acceptedAt (ถอนสิทธิ์แล้วยังอนุมัติสลิปได้) — แก้ทั้ง slip-verify + core/settings · ข้อสอบชุดแก้เห็นแดงก่อนโค้ดแก้ (ดี) · carry consumer B.8/D.10 อยู่ท้าย `ledger/svc-briefs/svc-brief-r0.6.md` §8
 - baseline เพิ่ม: qc-member-m3.2/m3.4 ล้มบน qc-svc ทั้งทรีหลัก (TypeError role null) = ข้อมูล QC ไม่ใช่ SVC → หนี้ SVC-D2 (seed member บน qc-svc ก่อนใช้เป็น regression)
 - qc-pos-p3.5 ข้อ ST2 (ห้าม migration ใหม่นอก P3.5) ฟ้อง svc_r0/r0b/b = ข้อสถิตเก่าของ POS → หนี้ SVC-D3 (ให้ชุด p3.5 ยอม `_svc_*`)
+- 28 ต.ค. ~16:10Z · เครื่อง (container) รีสตาร์ตครั้งที่ 2 · builder 3 ตัวหยุด (R0.7 ชุดแก้ · B.0 ชุดแก้ · R0.4) · commit ข้อสอบรอบแก้กันหาย (R0.7 75584c75 · B.0 1ceaca47) + push wip/svc-l1..3 · เปิด builder ใหม่ทำต่อจาก working tree · symlink node_modules รอดรีสตาร์ต ✓
