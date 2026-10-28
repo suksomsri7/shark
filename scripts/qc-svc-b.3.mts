@@ -16,6 +16,7 @@
 //   G   regression
 //
 // วันที่สัมพัทธ์ (วันไทย +5…+27 ภายใน horizon 30) · ร้านทดสอบ slug `qc-svc-b3-*` · ลบใน finally (+ กวาดค้างตอนเริ่ม)
+// ORACLE-EDIT 28 ต.ค. (review): +X3-4b X3-9 X3-9b X3-10 X3-11 X3-12 · H-6 H-7 H-8 · B-16 · B-4 ใช้วันพรุ่งนี้ (กันเปราะ 22:00–22:30) — /root/svc-runs/fix/b3.md G1–G6
 // รัน: bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-b.3.mts
 //      (ห้าม timeout ครอบ · SVC_B3_NO_REGRESSION=1 = ข้าม G เป็น SKIP ซึ่งไม่นับผ่าน)
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -57,7 +58,8 @@ type BookInput = {
   customerName: string; customerPhone: string; note?: string; idempotencyKey?: string;
 };
 type BookFailCode = "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "PHONE_LIMIT"
-  | "NOT_QUALIFIED" | "ON_LEAVE" | "NOT_FOUND" | "ANY_DISABLED" | "BAD_INPUT";
+  | "NOT_QUALIFIED" | "ON_LEAVE" | "NOT_FOUND" | "ANY_DISABLED" | "BAD_INPUT"
+  | "RELEASED"; // ORACLE-EDIT 28 ต.ค. (review) G3
 type BookResult =
   | { ok: true; id: string; staffId: string; status: "PENDING" | "CONFIRMED"; holdUntil: Date | null }
   | { ok: false; code: BookFailCode; reason: string };
@@ -71,6 +73,9 @@ type BookingApi = {
   expireDepositHolds?: (now: Date) => Promise<{ expired: number }>;
   getAvailableSlots: (tenantId: string, unitId: string, serviceId: string, staffId: string | null, dateStr: string) => Promise<Slot[]>;
   createAppointment: (i: CreateInput) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
+  // ORACLE-EDIT 28 ต.ค. (review) G4 G5
+  recordDeposit: (ctx: BookingCtx, appointmentId: string) => Promise<{ ok: boolean; reason?: string; saleId?: string; noop?: boolean }>;
+  setAppointmentStatus: (tenantId: string, unitId: string, appointmentId: string, status: "PENDING" | "CONFIRMED" | "ARRIVED" | "DONE" | "NO_SHOW" | "CANCELLED") => Promise<{ ok: boolean; reason?: string }>;
 };
 type Actor = { role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown>; userId: string };
 type SetRes = { ok: boolean; code?: string; issues?: unknown };
@@ -144,6 +149,8 @@ const DEP = (): NonNullable<SlotsApi["computeDepositSatang"]> => { const f = slo
 type CallSpec = { fn: "book"; ctx: BookingCtx; input: BookInput } | { fn: "create"; input: CreateInput };
 type CallOut = { fn: "book" | "create"; ok: boolean; code: string | null; id: string | null; staffId: string | null; status: string | null; threw: string | null };
 type ChildSpec = { run: string; idx: number; scenarios: { key: string; calls: CallSpec[] }[] };
+// ORACLE-EDIT 28 ต.ค. (review): layout "one" = ทุกคำขอในโพรเซสเดียว (pool ของ Prisma ≤ 10 · จับ BLOCKER-2 pool ค้าง)
+type Scenario = { key: string; calls: CallSpec[]; layout?: "pair" | "one" };
 const goFile = (run: string, key: string) => `/tmp/svc-b3-go-${run}-${key}`;
 async function runCall(c: CallSpec): Promise<CallOut> {
   try {
@@ -312,12 +319,18 @@ const ids = {
   stS: `svcb3_stS_${RUN}`, stM: `svcb3_stM_${RUN}`, stK: `svcb3_stK_${RUN}`,
   s24: `svcb3_s24_${RUN}`, r1: `svcb3_r1_${RUN}`, r2: `svcb3_r2_${RUN}`, r3: `svcb3_r3_${RUN}`, rCap: `svcb3_rCap_${RUN}`, rCtl: `svcb3_rCtl_${RUN}`,
   f1: `svcb3_f1_${RUN}`, b1: `svcb3_b1_${RUN}`,
+  // ORACLE-EDIT 28 ต.ค. (review): สาขาไม่มีเพดานเบอร์ (uNc) · สาขาเชื่อมระบบสมาชิก (uMem)
+  uNc: `svcb3_uNc_${RUN}`, uMem: `svcb3_uMem_${RUN}`, N60: `svcb3_N60_${RUN}`, M60: `svcb3_M60_${RUN}`, n1: `svcb3_n1_${RUN}`, n2: `svcb3_n2_${RUN}`,
+  memSys: `svcb3_memSys_${RUN}`,
 };
+const MEM_STAFF = Array.from({ length: 6 }, (_, i) => `svcb3_m${i + 1}_${RUN}`);
 const cM: BookingCtx = { tenantId: ids.tA, unitId: ids.uMain };
 const c24: BookingCtx = { tenantId: ids.tA, unitId: ids.u24 };
 const cR: BookingCtx = { tenantId: ids.tA, unitId: ids.uRace };
 const cF: BookingCtx = { tenantId: ids.tA, unitId: ids.uFb };
 const cB: BookingCtx = { tenantId: ids.tB, unitId: ids.uB };
+const cNc: BookingCtx = { tenantId: ids.tA, unitId: ids.uNc };
+const cMem: BookingCtx = { tenantId: ids.tA, unitId: ids.uMem };
 const OWNER: Actor = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: ids.owner };
 let phoneN = 0;
 const newPhone = () => `08${String(30_000_000 + ++phoneN).slice(-8)}`;
@@ -364,6 +377,7 @@ let fullReason = "";
 const D = {
   pf: dd(0), any: dd(1), z: dd(2), s: dd(3), s2: dd(4), m: dd(5), m2: dd(6), k: dd(7), qs: dd(8), p: dd(9), p2: dd(10),
   h: dd(11), h2: dd(12), h3: dd(13), col: dd(14), b: dd(15), idem: dd(16), skill: dd(17), cap: dd(18), dep: dd(19),
+  h6: dd(20), h7: dd(21), h7r: dd(22), h8: dd(23), // ORACLE-EDIT 28 ต.ค. (review)
 };
 console.log(`\n(วันนี้ไทย ${TODAY} · วันทดสอบ ${D.pf} … ${D.dep})`);
 
@@ -377,9 +391,9 @@ try {
     tenantIds.push(ids.tA, ids.tB);
     await insertRow("Tenant", { id: ids.tA, name: "QC B3 ร้าน A", slug: `${SLUG}a-${RUN}`, updatedAt: new Date() });
     await insertRow("Tenant", { id: ids.tB, name: "QC B3 ร้าน B", slug: `${SLUG}b-${RUN}`, updatedAt: new Date() });
-    for (const [id, t, n] of [[ids.uMain, ids.tA, "main"], [ids.u24, ids.tA, "h24"], [ids.uRace, ids.tA, "race"], [ids.uFb, ids.tA, "fb"], [ids.uB, ids.tB, "b"]] as const)
+    for (const [id, t, n] of [[ids.uMain, ids.tA, "main"], [ids.u24, ids.tA, "h24"], [ids.uRace, ids.tA, "race"], [ids.uFb, ids.tA, "fb"], [ids.uB, ids.tB, "b"], [ids.uNc, ids.tA, "nc"], [ids.uMem, ids.tA, "mem"]] as const)
       await insertRow("BusinessUnit", { id, tenantId: t, type: "BOOKING", name: `สาขา ${n}`, slug: `b3-${n}-${RUN}`, updatedAt: new Date() });
-    for (const [u, t, open, close] of [[ids.uMain, ids.tA, 600, 1200], [ids.uRace, ids.tA, 600, 1200], [ids.uFb, ids.tA, 600, 1200], [ids.uB, ids.tB, 600, 1200], [ids.u24, ids.tA, 0, 1440]] as const)
+    for (const [u, t, open, close] of [[ids.uMain, ids.tA, 600, 1200], [ids.uRace, ids.tA, 600, 1200], [ids.uFb, ids.tA, 600, 1200], [ids.uB, ids.tB, 600, 1200], [ids.u24, ids.tA, 0, 1440], [ids.uNc, ids.tA, 600, 1200], [ids.uMem, ids.tA, 600, 1200]] as const)
       for (let w = 0; w < 7; w++) await insertRow("BookingHours", { id: rid("bh"), tenantId: t, unitId: u, weekday: w, openMin: open, closeMin: close, closed: false, updatedAt: new Date() });
     const svc = async (id: string, t: string, u: string, name: string, durationMin: number, priceSatang: number, bufferMin: number, o: { depositSatang?: number; bookable?: boolean } = {}) =>
       insertRow("BookingService", { id, tenantId: t, unitId: u, name, durationMin, priceSatang, bufferMin, depositSatang: o.depositSatang ?? 0, bookable: o.bookable ?? true, sortOrder: 0, updatedAt: new Date() });
@@ -393,6 +407,8 @@ try {
     await svc(ids.R30, ids.tA, ids.uRace, "สระแข่ง", 30, 15000, 5);
     await svc(ids.F60, ids.tA, ids.uFb, "ตัดผมร้านเดิม", 60, 30000, 0, { depositSatang: 5000 });
     await svc(ids.B60, ids.tB, ids.uB, "ตัดผมร้าน B", 60, 30000, 0);
+    await svc(ids.N60, ids.tA, ids.uNc, "ตัดผม ไม่จำกัดเบอร์", 60, 30000, 0);
+    await svc(ids.M60, ids.tA, ids.uMem, "ตัดผม สาขาสมาชิก", 60, 30000, 0);
     let ord = 0;
     const staff = async (id: string, t: string, u: string, name: string, sortOrder: number) =>
       insertRow("BookingStaff", { id, tenantId: t, unitId: u, name, sortOrder, createdAt: new Date(Date.now() - 120_000 + ++ord * 1000), updatedAt: new Date() });
@@ -408,6 +424,12 @@ try {
     for (const [i, id] of [ids.r1, ids.r2, ids.r3, ids.rCap, ids.rCtl].entries()) await staff(id, ids.tA, ids.uRace, `ช่างแข่ง ${i + 1}`, i + 1);
     await staff(ids.f1, ids.tA, ids.uFb, "ช่างร้านเดิม", 1);
     await staff(ids.b1, ids.tB, ids.uB, "ช่างร้าน B", 1);
+    await staff(ids.n1, ids.tA, ids.uNc, "ช่างเอ็น 1", 1);
+    await staff(ids.n2, ids.tA, ids.uNc, "ช่างเอ็น 2", 2);
+    for (const [i, id] of MEM_STAFF.entries()) await staff(id, ids.tA, ids.uMem, `ช่างสมาชิก ${i + 1}`, i + 1);
+    // สาขา uMem เชื่อมระบบสมาชิก (ทางลูกค้าใหม่ member.findOrCreate + Party)
+    await insertRow("AppSystem", { id: ids.memSys, tenantId: ids.tA, type: "MEMBER", name: "สมาชิก QC B3", updatedAt: new Date() });
+    await insertRow("AppSystemUnit", { id: rid("asu"), tenantId: ids.tA, systemId: ids.memSys, unitId: ids.uMem, type: "MEMBER" });
     for (let w = 0; w < 7; w++) await insertRow("BookingStaffHours", { id: rid("sh"), tenantId: ids.tA, unitId: ids.uMain, staffId: ids.stC, weekday: w, startMin: 780, endMin: 1200 });
     const ss = async (staffId: string, serviceId: string, durationMin: number | null, priceSatang: number | null) =>
       insertRow("BookingStaffService", { id: rid("ss"), tenantId: ids.tA, unitId: ids.uMain, staffId, serviceId, durationMin, priceSatang, updatedAt: new Date() });
@@ -426,7 +448,7 @@ try {
   console.log("\n── ตั้งแม่แบบ/ค่าตั้ง ──");
   await st("T-0", "applyTemplate BARBER (uMain · u24 · uRace) + ทับรายช่าง/รายบริการ (0% · 20% · 2 งาน · พัก 15 · S30 ร้านยืนยันก่อน)", async () => {
     need();
-    for (const u of [ids.uMain, ids.u24, ids.uRace]) {
+    for (const u of [ids.uMain, ids.u24, ids.uRace, ids.uNc, ids.uMem]) {
       const a = await SETTINGS().applyTemplate(OWNER, { tenantId: ids.tA }, { unitId: u, domain: "booking", templateKey: "BARBER", overwrite: "RESET_ALL" });
       ok(a.ok, `applyTemplate ${u}: ${a.code} ${fmt(a.issues)}`);
     }
@@ -437,6 +459,7 @@ try {
       { key: "booking.staff.minBreakMin", scope: "STAFF", scopeId: ids.stK, value: 15 },
       { key: "booking.booking.requireConfirm", scope: "SERVICE", scopeId: ids.S30, value: true },
       { key: "booking.booking.onlineSharePct", scope: "STAFF", scopeId: ids.rCap, value: 20 },
+      { key: "booking.booking.maxOpenPerPhone", scope: "UNIT", scopeId: ids.uNc, value: null }, // ORACLE-EDIT 28 ต.ค. (review)
     ]);
     tplOk = true;
   });
@@ -612,12 +635,12 @@ try {
     const a = await apRow(r.id);
     eq([a.priceSatang, a.endAt.getTime() - a.startAt.getTime()], [35000, 75 * 60_000], "ราคา/นาทีเฉพาะคน");
   });
-  await st("B-4", "lead/horizon (ร้าน 24 ชม.): ONLINE now+20 ⇒ LEAD_TIME · now+75 ได้ · STAFF now+20 ได้ · horizon 3 ⇒ วันนี้+3 BEYOND_HORIZON · +2 ได้ · STAFF +3 ได้", async () => {
+  // ORACLE-EDIT 28 ต.ค. (review): เดิมจอง ONLINE ตัดผม 60 ที่ now+75 — ช่วง 22:00–22:30 ไทย ช่องนั้นเลยเที่ยงคืน (t+60 > 24:00) ⇒ OUTSIDE_HOURS ปลอม · ข้อที่ผ่าน lead ใช้วันพรุ่งนี้ 12:00 (S-9 ตรวจขอบ lead แล้ว)
+  await st("B-4", "lead/horizon (ร้าน 24 ชม.): ONLINE now+20 ⇒ LEAD_TIME · พรุ่งนี้ 12:00 ได้ · STAFF now+20 ได้ · horizon 3 ⇒ วันนี้+3 BEYOND_HORIZON · +2 ได้ · STAFF +3 ได้", async () => {
     needTpl();
     const s20 = soonSlot(20);
-    const s75 = soonSlot(75);
     failCode(await BOOK()(c24, bk({ serviceId: ids.T60, staffId: ids.s24, ...s20, channel: "ONLINE" })), "LEAD_TIME", `ONLINE ${s20.dateStr} ${hhmm(s20.startMin)}`);
-    okBook(await BOOK()(c24, bk({ serviceId: ids.T60, staffId: ids.s24, ...s75, channel: "ONLINE" })), "ONLINE now+75");
+    okBook(await BOOK()(c24, bk({ serviceId: ids.T60, staffId: ids.s24, dateStr: addDays(TODAY, 1), startMin: 720, channel: "ONLINE" })), "ONLINE พรุ่งนี้ 12:00");
     okBook(await BOOK()(c24, bk({ serviceId: ids.T30, staffId: ids.s24, ...s20, channel: "STAFF" })), "STAFF now+20");
     await setS([{ key: "booking.booking.horizonDays", scope: "UNIT", scopeId: ids.u24, value: 3 }]);
     failCode(await BOOK()(c24, bk({ serviceId: ids.T60, staffId: ids.s24, dateStr: addDays(TODAY, 3), startMin: 600, channel: "ONLINE" })), "BEYOND_HORIZON", "ONLINE +3");
@@ -746,6 +769,24 @@ try {
     eq(await countTenantAppts(), before, "จำนวนนัด");
   });
 
+  // ORACLE-EDIT 28 ต.ค. (review) G1 G6: key เดิมแต่ข้อมูลจองต่าง ⇒ BAD_INPUT · key ของสาขาอื่น ⇒ BAD_INPUT · เบอร์ที่เหลือแค่ "0"/ว่าง ⇒ BAD_INPUT
+  await st("B-16", "idempotencyKey เดิม + ข้อมูลต่าง (ช่าง/เวลา/บริการ/เบอร์) ⇒ BAD_INPUT · key เดิมที่สาขาอื่น ⇒ BAD_INPUT · ข้อมูลเดิม ⇒ id เดิม (ตัวควบคุม) · แถวเดียว · เบอร์ +66/ว่าง ⇒ BAD_INPUT", async () => {
+    needTpl();
+    const key = rid("k16");
+    const base = bk({ serviceId: ids.S60, staffId: ids.stA, dateStr: D.col, startMin: 600, channel: "ONLINE", idempotencyKey: key, customerPhone: "0815551616" });
+    const a = okBook(await BOOK()(cM, base), "ครั้งแรก");
+    failCode(await BOOK()(cM, { ...base, staffId: ids.stB }), "BAD_INPUT", "ช่างต่าง");
+    failCode(await BOOK()(cM, { ...base, startMin: 720 }), "BAD_INPUT", "เวลาต่าง");
+    failCode(await BOOK()(cM, { ...base, dateStr: D.skill }), "BAD_INPUT", "วันต่าง");
+    failCode(await BOOK()(cM, { ...base, serviceId: ids.S30 }), "BAD_INPUT", "บริการต่าง");
+    failCode(await BOOK()(cM, { ...base, customerPhone: "0815559999" }), "BAD_INPUT", "เบอร์ต่าง");
+    failCode(await BOOK()(c24, { ...base, serviceId: ids.T60, staffId: ids.s24, dateStr: addDays(TODAY, 2), startMin: 1200 }), "BAD_INPUT", "สาขาอื่น");
+    eq(okBook(await BOOK()(cM, base), "ข้อมูลเดิม").id, a.id, "id ข้อมูลเดิม");
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Appointment" WHERE "tenantId" = $1 AND "idempotencyKey" = $2`, [ids.tA, key]))[0].n, 1, "แถว");
+    for (const ph of ["+66", "66", "0066", "  "]) failCode(await BOOK()(cM, bk({ serviceId: ids.S60, staffId: ids.stB, dateStr: D.col, startMin: 900, channel: "ONLINE", customerPhone: ph })), "BAD_INPUT", `เบอร์ "${ph}"`);
+    eq(await countLive(ids.stB, D.col), 0, "ไม่มีแถวจากเบอร์ผิด");
+  });
+
   // ═══════════════ H. ปล่อยช่องที่ไม่จ่ายมัดจำ ═══════════════
   console.log("\n── H: expireDepositHolds (ใบสั่ง §3.3) ──");
   const needHold = () => { needTpl(); ok(!!hold.main, "ไม่มีนัดถือช่องจาก B-11"); return hold.main as { id: string; createdAt: number }; };
@@ -811,6 +852,86 @@ try {
     eq(s?.everyMinutes, 1, "everyMinutes จากทะเบียน");
   }, "MAJOR");
 
+  // ═══════════════ ORACLE-EDIT 28 ต.ค. (review) G3 G4 G5 ═══════════════
+  const holdThenExpire = async (staffId: string, ds: string, startMin: number, key?: string) => {
+    const input = bk({ serviceId: ids.S90, staffId, dateStr: ds, startMin, channel: "ONLINE", ...(key ? { idempotencyKey: key } : {}) });
+    const r = okBook(await BOOK()(cM, input), `ถือช่อง ${hhmm(startMin)}`);
+    eq(r.status, "PENDING", "ถือช่อง");
+    const row = await apRow(r.id);
+    await EXPIRE()(new Date(row.createdAt.getTime() + 16 * 60_000));
+    eq((await apRow(r.id)).status, "CANCELLED", "หลังปล่อย");
+    return Object.assign(r, { input });
+  };
+  await st("H-6", "ส่งซ้ำด้วย key เดิมหลังปล่อยช่อง ⇒ RELEASED (ไม่ใช่ ok/CONFIRMED) · หลัง NO_SHOW ⇒ RELEASED · ตัวควบคุม: key ของนัดที่ยัง active ⇒ ok id เดิม", async () => {
+    needTpl();
+    const k1 = rid("k6");
+    const h = await holdThenExpire(ids.stA, D.h6, 600, k1);
+    const rel = await BOOK()(cM, h.input);
+    const why = failCode(rel, "RELEASED", "replay หลังปล่อย");
+    ok(/ยกเลิก/.test(why), `reason ต้องบอกว่ายกเลิกแล้ว: ${why}`);
+    eq((await apRow(h.id)).status, "CANCELLED", "แถวเดิมยัง CANCELLED");
+    const k2 = rid("k6b");
+    const in2 = bk({ serviceId: ids.S60, staffId: ids.stB, dateStr: D.h6, startMin: 600, channel: "ONLINE", idempotencyKey: k2 });
+    const b = okBook(await BOOK()(cM, in2), "จองเพื่อ NO_SHOW");
+    await q(`UPDATE "Appointment" SET status = 'NO_SHOW' WHERE id = $1`, [b.id]);
+    failCode(await BOOK()(cM, in2), "RELEASED", "replay หลัง NO_SHOW");
+    const k3 = rid("k6c");
+    const in3 = bk({ serviceId: ids.S60, staffId: ids.stC, dateStr: D.h6, startMin: 840, channel: "ONLINE", idempotencyKey: k3 });
+    const c = okBook(await BOOK()(cM, in3), "active");
+    eq(okBook(await BOOK()(cM, in3), "replay active").id, c.id, "id replay active");
+  });
+  await st("H-7", "recordDeposit หลังปล่อย ⇒ ปฏิเสธ (depositPaidAt/depositSaleId ยัง null) · ตัวควบคุม: รับมัดจำก่อนหมดเวลา ⇒ ok แล้วไม่ถูกปล่อย · แข่ง expire ∥ recordDeposit 10 รอบ ⇒ ทุกรอบผลเดียว · ไม่มีแถว CANCELLED ที่จ่ายแล้ว", async () => {
+    needTpl();
+    const h = await holdThenExpire(ids.stA, D.h7, 600);
+    const rd = await BK().recordDeposit(cM, h.id);
+    eq(rd.ok, false, `recordDeposit หลังปล่อย ${fmt(rd)}`);
+    ok(typeof rd.reason === "string" && rd.reason.length > 0, "ต้องมีเหตุผล");
+    const a = await apRow(h.id);
+    eq([a.status, a.depositPaidAt], ["CANCELLED", null], "แถวหลังปฏิเสธ");
+    eq((await q<{ s: string | null }>(`SELECT "depositSaleId" AS s FROM "Appointment" WHERE id = $1`, [h.id]))[0].s, null, "depositSaleId");
+    const live = okBook(await BOOK()(cM, bk({ serviceId: ids.S90, staffId: ids.stB, dateStr: D.h7, startMin: 600, channel: "ONLINE" })), "ถือช่องตัวควบคุม");
+    const rd2 = await BK().recordDeposit(cM, live.id);
+    eq(rd2.ok, true, `recordDeposit ก่อนหมดเวลา ${fmt(rd2)}`);
+    const lr = await apRow(live.id);
+    ok(lr.depositPaidAt !== null, "ตัวควบคุมต้องจ่ายแล้ว");
+    await EXPIRE()(new Date(lr.createdAt.getTime() + 16 * 60_000));
+    ok((await apRow(live.id)).status !== "CANCELLED", "จ่ายแล้วถูกปล่อย");
+    const slots: [string, number][] = [[ids.stA, 600], [ids.stA, 750], [ids.stA, 900], [ids.stA, 1050], [ids.stB, 600], [ids.stB, 750], [ids.stB, 900], [ids.stB, 1050], [ids.stC, 780], [ids.stC, 930]];
+    const bad: string[] = [];
+    let paidWins = 0;
+    let expireWins = 0;
+    for (const [sid, t] of slots) {
+      const r = okBook(await BOOK()(cM, bk({ serviceId: ids.S90, staffId: sid, dateStr: D.h7r, startMin: t, channel: "ONLINE" })), `รอบ ${hhmm(t)}`);
+      const row = await apRow(r.id);
+      const [, dep] = await Promise.all([EXPIRE()(new Date(row.createdAt.getTime() + 16 * 60_000)), BK().recordDeposit(cM, r.id).catch((e: unknown) => ({ ok: false, reason: `throw ${errMsg(e)}` }))]);
+      const after = await apRow(r.id);
+      const paid = after.depositPaidAt !== null;
+      if (after.status === "CANCELLED" && paid) bad.push(`${hhmm(t)} CANCELLED+จ่าย`);
+      else if (paid && !dep.ok) bad.push(`${hhmm(t)} จ่ายแต่ recordDeposit บอกล้ม`);
+      else if (!paid && after.status !== "CANCELLED") bad.push(`${hhmm(t)} ไม่จ่ายและไม่ปล่อย`);
+      else if (!paid && dep.ok) bad.push(`${hhmm(t)} recordDeposit ok แต่ไม่จ่าย`);
+      if (paid) paidWins++; else expireWins++;
+    }
+    ok(bad.length === 0, bad.slice(0, 3).join(" · "));
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Appointment" WHERE "tenantId" = $1 AND status = 'CANCELLED' AND "depositPaidAt" IS NOT NULL`, [ids.tA]))[0].n, 0, "แถว CANCELLED ที่จ่ายแล้ว");
+    console.log(`     (แข่ง 10 รอบ: จ่ายชนะ ${paidWins} · ปล่อยชนะ ${expireWins})`);
+  });
+  await st("H-8", "setAppointmentStatus ปลุกนัดที่ถูกปล่อยกลับเป็น CONFIRMED ขณะช่องถูกจองแล้ว ⇒ ok:false + แถวยัง CANCELLED + ช่างมีนัด active 1 · ตัวควบคุม: ช่องว่าง ⇒ ok · CONFIRMED · cancelReason ล้าง", async () => {
+    needTpl();
+    const h = await holdThenExpire(ids.stA, D.h8, 600);
+    okBook(await BOOK()(cM, bk({ serviceId: ids.S60, staffId: ids.stA, dateStr: D.h8, startMin: 600, channel: "ONLINE" })), "คนใหม่จองช่องที่ปล่อย");
+    const r = await BK().setAppointmentStatus(ids.tA, ids.uMain, h.id, "CONFIRMED");
+    eq(r.ok, false, `ปลุกทับ ${fmt(r)}`);
+    ok(typeof r.reason === "string" && r.reason.length > 0, "ต้องมีเหตุผล");
+    eq((await apRow(h.id)).status, "CANCELLED", "แถวเดิม");
+    eq(await countLive(ids.stA, D.h8), 1, "นัด active ของช่างเอ");
+    const g = await holdThenExpire(ids.stB, D.h8, 600);
+    const r2 = await BK().setAppointmentStatus(ids.tA, ids.uMain, g.id, "CONFIRMED");
+    eq(r2.ok, true, `ปลุกตอนช่องว่าง ${fmt(r2)}`);
+    const a = await apRow(g.id);
+    eq([a.status, a.cancelReason], ["CONFIRMED", null], "แถวที่ปลุก");
+  });
+
   // ═══════════════ X. ยิงพร้อมกันข้ามโพรเซส ═══════════════
   console.log("\n── X: ยิงพร้อมกัน 5 โพรเซส × 2 (X3) ──");
   const NCHILD = 5;
@@ -819,8 +940,16 @@ try {
   const rc = (staffId: string, ds: string, startMin: number): CallSpec => ({ fn: "create", input: { tenantId: ids.tA, unitId: ids.uRace, serviceId: ids.R60, staffId, dateStr: ds, startMin, customerName: "ลูกค้าแข่ง", customerPhone: newPhone(), source: "STAFF" } });
   const ten = <T,>(f: (i: number) => T): T[] => Array.from({ length: 10 }, (_, i) => f(i));
   const racePhone = "0865554444";
+  // ORACLE-EDIT 28 ต.ค. (review)
+  const X4B = dd(9);
+  const X10R = dd(10);
+  const PHONE_FORMS = ["0874441234", "087-444-1234", "087 444 1234", "+66874441234", "+66 87 444 1234", "66874441234", "0066874441234", "+660874441234", "660874441234", "(+66)874441234"];
+  const key9 = rid("x9");
+  const key9b = rid("x9b");
+  const key10 = rid("x10");
+  const PHONE12 = "0957771212";
   const idemKey = rid("xidem");
-  const scenarios: { key: string; calls: CallSpec[] }[] = [
+  const scenarios: Scenario[] = [
     { key: "x0", calls: ten(() => rc(ids.r1, X.x0, 600)) },
     { key: "x1", calls: ten(() => rb({ serviceId: ids.R60, staffId: ids.r1, dateStr: X.x1, startMin: 600, channel: "ONLINE" })) },
     { key: "x2", calls: ten(() => rb({ serviceId: ids.R60, staffId: null, dateStr: X.x2, startMin: 600, channel: "ONLINE" })) },
@@ -830,16 +959,25 @@ try {
     { key: "x6", calls: ten((i) => rb({ serviceId: ids.R60, staffId: ids.rCtl, dateStr: X.x6, startMin: 600 + i * 60, channel: "STAFF" })) },
     { key: "x7", calls: ten((i) => (i % 2 === 0 ? rc(ids.r2, X.x7, 600) : rb({ serviceId: ids.R60, staffId: ids.r2, dateStr: X.x7, startMin: 600, channel: "ONLINE" }))) },
     { key: "x8", calls: ten(() => rb({ serviceId: ids.R60, staffId: ids.r3, dateStr: X.x8, startMin: 600, channel: "ONLINE", idempotencyKey: idemKey, customerPhone: "0861112222" })) },
+    // ORACLE-EDIT 28 ต.ค. (review): ชุดเพิ่ม G1 G2 G6
+    { key: "x4b", calls: ten((i) => rb({ serviceId: ids.R60, staffId: [ids.r1, ids.r2, ids.r3, ids.rCtl, ids.rCap][i % 5], dateStr: X4B, startMin: i < 5 ? 600 : 720, channel: "ONLINE", customerPhone: PHONE_FORMS[i] })) },
+    { key: "x9", calls: ten(() => ({ fn: "book", ctx: cNc, input: bk({ serviceId: ids.N60, staffId: ids.n1, dateStr: dd(3), startMin: 600, channel: "ONLINE", idempotencyKey: key9, customerPhone: "0862223333" }) }) as CallSpec) },
+    { key: "x9b", calls: ten(() => ({ fn: "book", ctx: cNc, input: bk({ serviceId: ids.N60, staffId: ids.n1, dateStr: dd(4), startMin: 600, channel: "STAFF", idempotencyKey: key9b, customerPhone: "0862224444" }) }) as CallSpec) },
+    { key: "x10", calls: ten((i) => (i % 2 === 0
+      ? ({ fn: "book", ctx: cNc, input: bk({ serviceId: ids.N60, staffId: ids.n2, dateStr: dd(5), startMin: 600, channel: "ONLINE", idempotencyKey: key10, customerPhone: "0863335555" }) } as CallSpec)
+      : rb({ serviceId: ids.R60, staffId: ids.r1, dateStr: X10R, startMin: 600, channel: "ONLINE", idempotencyKey: key10, customerPhone: "0863335555" }))) },
+    { key: "x11", layout: "one", calls: Array.from({ length: 20 }, () => ({ fn: "book", ctx: cMem, input: bk({ serviceId: ids.M60, staffId: null, dateStr: dd(1), startMin: 600, channel: "ONLINE", customerPhone: newPhone().replace(/^08/, "09") }) }) as CallSpec) },
+    { key: "x12", calls: ten((i) => ({ fn: "book", ctx: cMem, input: bk({ serviceId: ids.M60, staffId: MEM_STAFF[i % 5], dateStr: dd(2), startMin: i % 2 === 0 ? 600 : 720, channel: i % 2 === 0 ? "STAFF" : "ONLINE", customerPhone: PHONE12 }) }) as CallSpec) },
   ];
   let results = new Map<string, CallOut[]>();
   let harnessErr = "";
   if (setupOk && tplOk) {
     try { results = await runHarness(scenarios, NCHILD); } catch (e) { harnessErr = errMsg(e); }
   } else harnessErr = "สร้างข้อมูล/แม่แบบไม่สำเร็จ";
-  const R = (key: string): CallOut[] => {
+  const R = (key: string, n = 10): CallOut[] => {
     ok(!harnessErr, `สายยิงพร้อมกันล้ม: ${harnessErr}`);
     const r = results.get(key) ?? [];
-    ok(r.length === 10, `${key}: ได้ผล ${r.length}/10 (ลูกโพรเซสตาย/หมดเวลา)`);
+    ok(r.length === n, `${key}: ได้ผล ${r.length}/${n} (ลูกโพรเซสตาย/หมดเวลา)`);
     return r;
   };
   const summ = (r: CallOut[]) => ({ ok: r.filter((x) => x.ok).length, codes: r.filter((x) => !x.ok).map((x) => x.code ?? `throw:${x.threw}`) });
@@ -895,6 +1033,52 @@ try {
     eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Appointment" WHERE "tenantId" = $1 AND "idempotencyKey" = $2`, [ids.tA, idemKey]))[0].n, 1, "แถว");
   });
 
+  // ═══════════════ ORACLE-EDIT 28 ต.ค. (review) X3-4b X3-9 X3-9b X3-10 X3-11 X3-12 ═══════════════
+  await st("X3-4b", "เพดาน 2/เบอร์ · เบอร์เดียวกัน 10 รูปแบบ (ขีด/เว้นวรรค/+66/66/0066/+660/(+66)) พร้อมกัน ⇒ สำเร็จ 2 พอดี · 8 PHONE_LIMIT", async () => {
+    const r = R("x4b"); noThrowBook(r);
+    const s = summ(r);
+    eq([s.ok, s.codes.filter((c) => c === "PHONE_LIMIT").length], [2, 8], fmt(s));
+  });
+  await st("X3-9", "สาขาไม่มีเพดานเบอร์ · key เดียว 10 ทาง ONLINE ช่างเดียวช่องเดียว ⇒ ทุกทาง ok id เดียว (ไม่มี FULL) · แถว 1", async () => {
+    const r = R("x9"); noThrowBook(r);
+    eq(summ(r), { ok: 10, codes: [] }, "ผล");
+    eq(new Set(r.map((x) => x.id)).size, 1, "id");
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Appointment" WHERE "tenantId" = $1 AND "idempotencyKey" = $2`, [ids.tA, key9]))[0].n, 1, "แถว");
+  });
+  await st("X3-9b", "เหมือน X3-9 แต่ช่อง STAFF (ไม่มีล็อกเบอร์) ⇒ ทุกทาง ok id เดียว · แถว 1", async () => {
+    const r = R("x9b"); noThrowBook(r);
+    eq(summ(r), { ok: 10, codes: [] }, "ผล");
+    eq(new Set(r.map((x) => x.id)).size, 1, "id");
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Appointment" WHERE "tenantId" = $1 AND "idempotencyKey" = $2`, [ids.tA, key9b]))[0].n, 1, "แถว");
+  });
+  await st("X3-10", "key เดียว 2 สาขาพร้อมกัน (5+5) ⇒ สาขาหนึ่ง ok ทั้ง 5 id เดียวของสาขานั้น · อีกสาขา BAD_INPUT ทั้ง 5 (ไม่ได้ id ข้ามสาขา) · แถว 1", async () => {
+    const r = R("x10"); noThrowBook(r);
+    const nc = r.filter((_, i) => i % 2 === 0);
+    const rc2 = r.filter((_, i) => i % 2 === 1);
+    const unitOf = async (id: string | null) => (id ? (await q<{ u: string }>(`SELECT "unitId" AS u FROM "Appointment" WHERE id = $1`, [id]))[0]?.u ?? null : null);
+    for (const [grp, u] of [[nc, ids.uNc], [rc2, ids.uRace]] as const) for (const x of grp) if (x.ok) eq(await unitOf(x.id), u, "id ของสาขาตัวเอง");
+    const okNc = nc.every((x) => x.ok) && rc2.every((x) => !x.ok && x.code === "BAD_INPUT");
+    const okR = rc2.every((x) => x.ok) && nc.every((x) => !x.ok && x.code === "BAD_INPUT");
+    ok(okNc || okR, `ผลผสม: uNc ${fmt(summ(nc))} · uRace ${fmt(summ(rc2))}`);
+    eq(new Set(r.filter((x) => x.ok).map((x) => x.id)).size, 1, "id");
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Appointment" WHERE "tenantId" = $1 AND "idempotencyKey" = $2`, [ids.tA, key10]))[0].n, 1, "แถว");
+  });
+  await st("X3-11", "สาขาเชื่อมระบบสมาชิก · ลูกค้าใหม่ 20 ทาง \"ใครก็ได้\" ในโพรเซสเดียว (เกิน pool) ⇒ 0 throw · สำเร็จ 6 = จำนวนช่าง (คนละช่าง) · 14 FULL", async () => {
+    const r = R("x11", 20); noThrowBook(r);
+    const s = summ(r);
+    eq([s.ok, s.codes.filter((c) => c === "FULL").length], [6, 14], fmt(s));
+    eq(new Set(r.filter((x) => x.ok).map((x) => x.staffId)).size, 6, "ช่างไม่ซ้ำ");
+    for (const sid of MEM_STAFF) eq(await countLive(sid, dd(1)), 1, `แถวช่าง ${sid}`);
+  });
+  await st("X3-12", "สาขาเชื่อมสมาชิก · เบอร์ใหม่เดียวกัน 10 ทาง (STAFF 5 + ONLINE 5 คนละช่าง/เวลา) ⇒ 0 throw · STAFF ok ครบ 5 · ONLINE ok หรือ PHONE_LIMIT · ลูกค้า (Customer) ของเบอร์นี้ 1 แถว", async () => {
+    const r = R("x12"); noThrowBook(r);
+    const stf = r.filter((_, i) => i % 2 === 0);
+    const onl = r.filter((_, i) => i % 2 === 1);
+    eq(summ(stf).ok, 5, `STAFF ${fmt(summ(stf))}`);
+    ok(onl.every((x) => x.ok || x.code === "PHONE_LIMIT"), `ONLINE ${fmt(summ(onl))}`);
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Customer" WHERE "tenantId" = $1 AND "memberSystemId" = $2 AND regexp_replace(coalesce(phone, ''), '\\D', '', 'g') LIKE '%957771212'`, [ids.tA, ids.memSys]))[0].n, 1, "Customer");
+  });
+
   // ═══════════════ TZ ═══════════════
   console.log("\n── TZ: findSlots ใน TZ +14 / −11 ──");
   await st("TZ-1", "findSlots (ช่างเอ/ซี/ใครก็ได้ × ONLINE/STAFF × 2 วัน) ใน TZ Kiritimati และ Pago_Pago = in-process ทุกไบต์", async () => {
@@ -928,14 +1112,14 @@ try {
 }
 
 // ═══════════════ สายยิงพร้อมกัน (parent) ═══════════════
-async function runHarness(scs: { key: string; calls: CallSpec[] }[], n: number): Promise<Map<string, CallOut[]>> {
+async function runHarness(scs: Scenario[], n: number): Promise<Map<string, CallOut[]>> {
   const out = new Map<string, CallOut[]>();
   const ready = new Map<string, Set<number>>();
   const res = new Map<string, Map<number, CallOut[]>>();
   const dead = new Set<number>();
   const errs: string[] = [];
   const kids = Array.from({ length: n }, (_, idx) => {
-    const spec: ChildSpec = { run: RUN, idx, scenarios: scs.map((s) => ({ key: s.key, calls: s.calls.slice(idx * 2, idx * 2 + 2) })) };
+    const spec: ChildSpec = { run: RUN, idx, scenarios: scs.map((s) => ({ key: s.key, calls: s.layout === "one" ? (idx === 0 ? s.calls : []) : s.calls.slice(idx * 2, idx * 2 + 2) })) };
     const ch = spawn(process.execPath, [...process.execArgv, SELF], { cwd: ROOT, env: { ...process.env, QC_B3_CHILD: JSON.stringify(spec) }, stdio: ["ignore", "pipe", "pipe"] });
     createInterface({ input: ch.stdout }).on("line", (l) => {
       const m = /^(READY|RES) (\S+)(?: (.*))?$/.exec(l);
