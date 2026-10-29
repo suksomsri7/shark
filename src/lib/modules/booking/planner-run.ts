@@ -44,6 +44,7 @@ const validNow = (now: Date | undefined): Date =>
 const LINE_KEYS: readonly string[] = [...new Set([
   "booking.queue.singleLine",
   "booking.queue.prefixes",
+  "booking.queue.skipAfterMin", // SVC B.5 ▸ #43 ข้ามเองหลังเรียกแล้วไม่มา (tick ข้อ 5) ◂
   "booking.late.graceMin",
   "booking.late.noShowAfterMin",
   "booking.late.afterGrace",
@@ -163,7 +164,22 @@ export async function jobRowsOf(tx: Prisma.TransactionClient, ctx: { tenantId: s
   });
 }
 
-function planJobOf(r: JobRow, values: Record<string, unknown>): PlanJob {
+// SVC B.5 ▸ ข้าม (#43) = ไปท้ายแถว (ไม่ถอดออกจากแผน · ไม่แตะ planner.ts): งานในร้าน (ARRIVED/QUEUED) ที่บัตร SKIPPED ⇒
+//   walk-in: issuedAt = skippedAt · นัดที่เช็กอินแล้ว: เข้าแถวแบบ "มาสายเข้าแถวแบบ walk-in" (checkedInAt = skippedAt · RELEASE · ผ่อนผันถึงเวลาข้าม)
+//   ยังถูกวาง (ถือช่องจริงตามแผน — walk-in QUEUED เขียนช่องตามแผนเหมือนเดิม ⇒ ไม่มีแถวถือช่องซ้อนกับคนที่ขึ้นแทน) ◂
+/** appointmentId → skippedAt (ms) ของงานในร้านที่บัตรปัจจุบันเป็น SKIPPED */
+export type SkipMap = ReadonlyMap<string, number>;
+export async function skippedOf(tx: Prisma.TransactionClient, ctx: { tenantId: string; unitId: string }, rows: readonly JobRow[]): Promise<Map<string, number>> {
+  const byTicket = new Map(rows.filter((r) => r.queueTicketId && (r.status === "ARRIVED" || r.status === "QUEUED")).map((r) => [r.queueTicketId as string, r.id]));
+  if (!byTicket.size) return new Map();
+  const ts = await tx.queueTicket.findMany({
+    where: { tenantId: ctx.tenantId, unitId: ctx.unitId, id: { in: [...byTicket.keys()] }, status: "SKIPPED" },
+    select: { id: true, skippedAt: true, updatedAt: true },
+  });
+  return new Map(ts.map((t) => [byTicket.get(t.id) as string, (t.skippedAt ?? t.updatedAt).getTime()]));
+}
+
+function planJobOf(r: JobRow, values: Record<string, unknown>, skippedAt?: number): PlanJob {
   const walkIn = r.kind === "WALKIN";
   const any = r.assignMode === "ANY";
   const snap = r.policySnapshot;
@@ -171,6 +187,12 @@ function planJobOf(r: JobRow, values: Record<string, unknown>): PlanJob {
   const pol = latePolicyOf(snap, values);
   const job = jobOf(snap);
   const policyOn = hasSnap || job.manualHold;
+  if (skippedAt !== undefined && (r.status === "ARRIVED" || r.status === "QUEUED")) {
+    const base = planJobOf(r, values);
+    if (walkIn) return { ...base, issuedAt: skippedAt };
+    const graceMin = Math.min(0, (skippedAt - r.startAt.getTime()) / MIN_MS); // checkedInAt ≥ startAt + ผ่อนผัน เสมอ ⇒ เข้าแถวแบบ walk-in
+    return { ...base, checkedInAt: skippedAt, policy: { graceMin, noShowAfterMin: Number.POSITIVE_INFINITY, lateAction: "RELEASE" } };
+  }
   return {
     id: r.id,
     label: r.id, // ไม่มีชื่อลูกค้า (X8)
@@ -193,8 +215,8 @@ function planJobOf(r: JobRow, values: Record<string, unknown>): PlanJob {
   };
 }
 
-export function planInputOf(pre: PlanPre, rows: readonly JobRow[], nowMs: number): PlanInput {
-  return { now: nowMs, settings: pre.settings, staff: pre.staff, services: pre.services, jobs: rows.map((r) => planJobOf(r, pre.values)) };
+export function planInputOf(pre: PlanPre, rows: readonly JobRow[], nowMs: number, skipped?: SkipMap): PlanInput {
+  return { now: nowMs, settings: pre.settings, staff: pre.staff, services: pre.services, jobs: rows.map((r) => planJobOf(r, pre.values, skipped?.get(r.id))) };
 }
 
 /** ล็อกของทางที่ย้ายช่อง: advisory ของสาขา → ช่างทุกคนของสาขา (ลำดับเดียวกับ B.3) */
@@ -219,7 +241,7 @@ export async function planAndWriteTx(
   nowMs: number,
 ): Promise<number> {
   const rows = await jobRowsOf(tx, ctx, pre.dayStr);
-  const plan = planDay(planInputOf(pre, rows, nowMs));
+  const plan = planDay(planInputOf(pre, rows, nowMs, await skippedOf(tx, ctx, rows)));
   const byId = new Map(plan.jobs.map((j) => [j.jobId, j]));
   const ticketIds = rows.filter((r) => r.queueTicketId && !FINISHED.has(r.status)).map((r) => r.queueTicketId as string);
   const tickets = ticketIds.length
@@ -289,7 +311,7 @@ export async function runPlanner(ctx: { tenantId: string; unitId: string }, opts
 
 // ───────────────────────── งานรายนาที ─────────────────────────
 
-type UnitTick = { tenantId: string; unitId: string; graceMin: number; noShowAfterMin: number | null; today: boolean };
+type UnitTick = { tenantId: string; unitId: string; graceMin: number; noShowAfterMin: number | null; skipAfterMin: number | null; today: boolean };
 
 /** ผ่อนผัน/ไม่มาของแถว (SQL) — snapshot ชนะ · ไม่มีคีย์ใน snapshot / ไม่มี snapshot ⇒ ค่าปัจจุบันของสาขา · JSON null ของไม่มา = ไม่ตั้งอัตโนมัติ
  *  cast เฉพาะเมื่อ jsonb_typeof = number (snapshot เสียไม่ทำให้ทั้งงานล้ม) */
@@ -408,13 +430,51 @@ async function sweepEndOfDay(u: UnitTick, todayStart: Date, at: Date): Promise<n
 }
 
 /**
+ * 5) SVC B.5 ▸ ข้ามเอง (#43): บัตรแถวเดียว (refType APPOINTMENT) CALLED ที่ calledAt + skipAfterMin ≤ now และงานยังอยู่ในร้าน (ARRIVED/QUEUED) ⇒
+ *  SKIPPED (skippedAt = now · QueueTicketEvent SKIPPED actor SYSTEM ใน tx เดียว) · UPDATE มีเงื่อนไข status='CALLED' AND callCount=<ที่อ่าน> +
+ *  FOR UPDATE OF บัตร SKIP LOCKED ⇒ tick ซ้อน = ครั้งเดียว (X5) · ล็อกเฉพาะแถวบัตร (ไม่ล็อกแถวนัด ⇒ ไม่มีวงกับ callJob ที่ล็อกนัด → บัตร) ◂
+ */
+async function sweepSkip(u: UnitTick, at: Date): Promise<number> {
+  if (u.skipAfterMin === null) return 0;
+  let n = 0;
+  for (let b = 0; b < TICK_MAX_BATCHES; b++) {
+    const got = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string; counterId: string | null }[]>`
+        WITH c AS (
+          SELECT t."id", t."callCount" FROM "QueueTicket" t
+          JOIN "Appointment" a ON a."queueTicketId" = t."id" AND a."tenantId" = t."tenantId" AND a."unitId" = t."unitId"
+          WHERE t."tenantId" = ${u.tenantId} AND t."unitId" = ${u.unitId}
+            AND t."refType" = 'APPOINTMENT' AND t."status" = 'CALLED'
+            AND t."calledAt" IS NOT NULL AND t."calledAt" + ${u.skipAfterMin}::numeric * interval '1 minute' <= ${at}
+            AND a."status" IN ('ARRIVED', 'QUEUED')
+          ORDER BY t."calledAt", t."id"
+          LIMIT ${TICK_BATCH}
+          FOR UPDATE OF t SKIP LOCKED
+        )
+        UPDATE "QueueTicket" q SET "status" = 'SKIPPED', "skippedAt" = ${at}, "updatedAt" = now()
+        FROM c WHERE q."id" = c."id" AND q."status" = 'CALLED' AND q."callCount" = c."callCount"
+        RETURNING q."id", q."counterId"`;
+      if (rows.length) {
+        await tx.queueTicketEvent.createMany({
+          data: rows.map((r) => ({ tenantId: u.tenantId, unitId: u.unitId, ticketId: r.id, action: "SKIPPED", counterId: r.counterId, actorType: "SYSTEM", actorId: null })),
+        });
+      }
+      return rows.length;
+    }, TICK_TX);
+    n += got;
+    if (got < TICK_BATCH) break;
+  }
+  return n;
+}
+
+/**
  * งานรายนาที "booking.line.tick" (ใบสั่ง §3.3): ข้ามร้าน · `tenantIds` = จำกัดขอบเขต (minute-job ไม่ส่ง)
  *   ขอบเขตแถว: หน่วย BOOKING แถวเดียว · สาย/ไม่มา: startAt ย้อนไม่เกินวันไทยก่อนหน้า 1 วัน (สิ้นวันของ walk-in ไม่มีขอบล่าง · J6) · แถวที่ร้านถอยกลับเอง (job.manualHold) ไม่ถูกแตะ (J4) · PENDING ไม่ถูกแตะ
  *   ลำดับต่อหน่วย: สาย → ไม่มา → สิ้นวัน → runPlanner (เฉพาะหน่วยที่มีงานไม่จบในวันไทยของ now) · ล้มรายหน่วย = log แล้วทำหน่วยถัดไป
  */
-export async function runLineTick(now: Date, opts?: { tenantIds?: string[] }): Promise<{ late: number; noShow: number; endOfDay: number; units: number }> {
+export async function runLineTick(now: Date, opts?: { tenantIds?: string[] }): Promise<{ late: number; noShow: number; endOfDay: number; units: number; skipped: number }> {
   const at = validNow(now);
-  const out = { late: 0, noShow: 0, endOfDay: 0, units: 0 };
+  const out = { late: 0, noShow: 0, endOfDay: 0, units: 0, skipped: 0 };
   const scoped = Array.isArray(opts?.tenantIds);
   const ids = scoped ? (opts!.tenantIds as string[]).filter((x) => typeof x === "string") : [];
   if (scoped && ids.length === 0) return out;
@@ -440,17 +500,19 @@ export async function runLineTick(now: Date, opts?: { tenantIds?: string[] }): P
   for (const c of cand) byTenant.set(c.tenantId, [...(byTenant.get(c.tenantId) ?? []), c]);
   const units: UnitTick[] = [];
   for (const [tenantId, list] of byTenant) {
-    const res = await resolveSettingsMany({ tenantId }, ["booking.queue.singleLine", "booking.late.graceMin", "booking.late.noShowAfterMin"], list.map((c) => ({ unitId: c.unitId })));
+    const res = await resolveSettingsMany({ tenantId }, ["booking.queue.singleLine", "booking.late.graceMin", "booking.late.noShowAfterMin", "booking.queue.skipAfterMin"], list.map((c) => ({ unitId: c.unitId })));
     list.forEach((c, i) => {
       const r = res[i];
       if (r["booking.queue.singleLine"]?.value !== true) return;
       const g = r["booking.late.graceMin"]?.value;
       const ns = r["booking.late.noShowAfterMin"]?.value;
+      const sk = r["booking.queue.skipAfterMin"]?.value;
       units.push({
         tenantId,
         unitId: c.unitId,
         graceMin: typeof g === "number" && Number.isFinite(g) ? g : 0,
         noShowAfterMin: typeof ns === "number" && Number.isFinite(ns) ? ns : null,
+        skipAfterMin: typeof sk === "number" && Number.isFinite(sk) && sk >= 0 ? sk : null,
         today: c.today === true,
       });
     });
@@ -461,6 +523,7 @@ export async function runLineTick(now: Date, opts?: { tenantIds?: string[] }): P
       out.late += await sweepLate(u, at, lookback);
       out.noShow += await sweepNoShow(u, at, lookback);
       out.endOfDay += await sweepEndOfDay(u, todayStart, at);
+      out.skipped += await sweepSkip(u, at);
       out.units++;
     } catch (e) {
       console.error(`[booking.line.tick] unit=${u.unitId} ล้ม`, e instanceof Error ? e.message : e);

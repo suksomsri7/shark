@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
@@ -25,6 +26,14 @@ async function ctxOf(unitSlug: string, action: string) {
     tenant: auth.active.tenant,
     base: `/app/u/${unitSlug}/queue`,
   };
+}
+
+// SVC B.5 ▸ (จ) action ที่แตะบัตร: เฉพาะหน่วย QUEUE — บัตรแถวเดียวของหน่วย BOOKING เดินตามเครื่องสถานะงาน (booking/queue-line)
+//   ห้ามเปลี่ยนผ่านทางคิวเดิม (จะข้ามสถานะงาน) ⇒ หน่วยชนิดอื่น = notFound() · action ตั้งค่า (ประเภท/ช่อง/จอ) ใช้ ctxOf เดิม ◂
+async function ticketCtxOf(unitSlug: string, action: string) {
+  const c = await ctxOf(unitSlug, action);
+  if (c.unit.type !== "QUEUE") notFound();
+  return c;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -170,7 +179,7 @@ export async function revokeDisplayAction(unitSlug: string, formData: FormData) 
 // Ticket operations
 // ─────────────────────────────────────────────────────────────
 export async function issueTicketAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.issue");
+  const { ctx, userId, base } = await ticketCtxOf(unitSlug, "queue.ticket.issue");
   const typeId = String(formData.get("typeId") ?? "");
   if (!typeId) return;
   const name = String(formData.get("contactName") ?? "").trim();
@@ -187,7 +196,7 @@ export async function issueTicketAction(unitSlug: string, formData: FormData) {
 }
 
 export async function callNextAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.callNext");
+  const { ctx, userId, base } = await ticketCtxOf(unitSlug, "queue.ticket.callNext");
   const counterId = String(formData.get("counterId") ?? "");
   await queue.callNext(ctx, counterId, userId);
   revalidatePath(base);
@@ -199,7 +208,7 @@ async function opById(
   formData: FormData,
   fn: (ctx: queue.Ctx, ticketId: string, userId: string) => Promise<unknown>,
 ) {
-  const { ctx, userId, base } = await ctxOf(unitSlug, action);
+  const { ctx, userId, base } = await ticketCtxOf(unitSlug, action);
   const id = String(formData.get("id") ?? "");
   if (id) await fn(ctx, id, userId);
   revalidatePath(base);
@@ -222,7 +231,7 @@ export async function cancelAction(unitSlug: string, fd: FormData) {
 }
 
 export async function recallSkippedAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.recallSkipped");
+  const { ctx, userId, base } = await ticketCtxOf(unitSlug, "queue.ticket.recallSkipped");
   const id = String(formData.get("id") ?? "");
   const counterId = String(formData.get("counterId") ?? "");
   if (id && counterId) await queue.recallSkipped(ctx, id, counterId, userId);
@@ -230,7 +239,7 @@ export async function recallSkippedAction(unitSlug: string, formData: FormData) 
 }
 
 export async function transferAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.transfer");
+  const { ctx, userId, base } = await ticketCtxOf(unitSlug, "queue.ticket.transfer");
   const id = String(formData.get("id") ?? "");
   const toCounterId = String(formData.get("toCounterId") ?? "");
   if (id && toCounterId) await queue.transfer(ctx, id, { toCounterId }, userId);

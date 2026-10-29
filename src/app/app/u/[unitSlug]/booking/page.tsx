@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { listAppointments, appointmentsHitByLeave } from "@/lib/modules/booking/service";
 import { daySummary } from "@/lib/modules/pos/service";
@@ -10,6 +11,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { BOOKING_STATUS_LABEL } from "@/lib/ui/status-labels";
 import { formatBaht } from "@/lib/ui/money";
 import { phoneForViewer } from "@/lib/modules/booking/privacy-shared"; // SVC B.11 ▸ เบอร์เต็มเฉพาะผู้มี booking.customer.phoneFull ◂
+// SVC B.5 ▸ จอคิววันนี้แถวเดียว (ร้านที่เปิด booking.queue.singleLine) — ร้านเดิม = จอ "รายการนัด" ด้านล่างทั้งก้อนตามเดิม ◂
+import { AutoRefresh } from "@/components/queue-auto-refresh";
+import TodayLine from "@/components/booking/TodayLine";
+import { lineAccess, type LineMember } from "@/lib/modules/booking/line-access";
+import { loadTodayLine } from "@/lib/modules/booking/today-line";
+import { lineSettingsOf } from "@/lib/modules/booking/planner-run";
+import { lineActionsFor, qcNowOf } from "@/components/booking/line-page";
 
 const apptTone = (v: string) =>
   v === "CANCELLED" || v === "NO_SHOW" ? "danger" : v === "PENDING" ? "muted" : "strong";
@@ -39,7 +47,7 @@ export default async function BookingPage({
   searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
-  searchParams?: Promise<{ err?: string }>; // POS P5.1 ▸ RC F4 F5 (CD-P51-O10): เหตุผลที่ริบ/ยกเลิกบิลริบมัดจำไม่สำเร็จ ◂
+  searchParams?: Promise<{ err?: string; at?: string }>; // POS P5.1 ▸ RC F4 F5 (CD-P51-O10): เหตุผลที่ริบ/ยกเลิกบิลริบมัดจำไม่สำเร็จ ◂ · SVC B.5 ▸ at = นาฬิกา QC (เฉพาะ SVC_QC_CLOCK=1) ◂
 }) {
   const { unitSlug } = await params;
   const sp = searchParams ? await searchParams : undefined;
@@ -50,6 +58,24 @@ export default async function BookingPage({
     unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
     permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
   };
+  // SVC B.5 ▸ หน่วยแถวเดียว ⇒ จอคิววันนี้ (ไม่มีสิทธิ์ดู ⇒ notFound) · ?at= อ่านเฉพาะเมื่อ process.env.SVC_QC_CLOCK === "1" (qcNowOf) ◂
+  const access = lineAccess(viewer as LineMember, unit.id);
+  const qc = qcNowOf(sp?.at, process.env.SVC_QC_CLOCK === "1");
+  const line = await loadTodayLine({ tenantId: auth.active.tenantId, unitId: unit.id }, { userId: auth.user.id, access }, { now: qc.now });
+  if (line) {
+    return (
+      <div data-booking-line-page="" className="flex w-full min-w-0 flex-col gap-4">
+        <AutoRefresh />
+        {err ? (
+          <p role="alert" data-testid="booking-status-error" className="rounded-xl border border-[color:var(--color-danger)] px-4 py-3 text-sm text-[color:var(--color-danger)]">
+            {err}
+          </p>
+        ) : null}
+        <TodayLine view={line} unitSlug={unitSlug} actions={lineActionsFor(unitSlug)} at={qc.at} bookingHref={`/s/${auth.active.tenant.slug}/${unit.slug}`} />
+      </div>
+    );
+  }
+  if (await lineSettingsOf(auth.active.tenantId, unit.id)) notFound(); // เปิดแถวเดียวแต่ผู้ดูไม่มีสิทธิ์ดูจอนี้
   const [appts, revenue] = await Promise.all([
     listAppointments(auth.active.tenantId, unit.id, todayBkk()),
     daySummary(auth.active.tenantId, unit.id),

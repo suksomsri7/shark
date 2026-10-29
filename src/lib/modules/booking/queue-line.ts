@@ -26,6 +26,7 @@ import {
   planInputOf,
   planPreOf,
   runPlanner,
+  skippedOf,
 } from "./planner-run";
 import { bookingPhoneKey, isRealDateStr, linkPartyAfterCommit, staffDayProfiles } from "./service";
 import { localToUtc } from "./slots";
@@ -86,7 +87,7 @@ function isBusyErr(e: unknown): boolean {
   return typeof o.message === "string" && /40P01|40001|deadlock detected|could not serialize/i.test(o.message);
 }
 /** ลองธุรกรรมซ้ำ 1 ครั้งเมื่อชนชั่วคราว · ยังชน ⇒ null (ผู้เรียกคืน {ok:false, code:"BUSY"}) · ข้อผิดพลาดอื่น throw ตามจริง */
-async function retryBusy<T>(fn: () => Promise<T>): Promise<T | null> {
+export async function retryBusy<T>(fn: () => Promise<T>): Promise<T | null> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
@@ -98,6 +99,10 @@ async function retryBusy<T>(fn: () => Promise<T>): Promise<T | null> {
       }
     }
   }
+}
+/** SVC B.5 ▸ ธุรกรรมของทางแถวเดียว (LINE_TX · ลองใหม่ 1 ครั้งเมื่อชนชั่วคราว ⇒ null = BUSY) — ให้ line-ops ใช้ร่วม ◂ */
+export function runLineTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T | null> {
+  return retryBusy(() => prisma.$transaction(fn, LINE_TX));
 }
 class TxAbort extends Error {}
 const isNoType = (e: unknown) => e instanceof Error && e.message === "NO_TYPE";
@@ -117,11 +122,11 @@ async function emit(tx: Prisma.TransactionClient, ctx: LineCtx, type: string, ke
 }
 
 /** แถวนัดใต้ล็อก (FOR UPDATE) — ขอบเขต ctx เสมอ */
-type LockedAppt = {
+export type LockedAppt = {
   id: string; unitId: string; status: AppointmentStatus; kind: string; channel: string | null; staffId: string; serviceId: string;
   startAt: Date; endAt: Date; checkedInAt: Date | null; queueTicketId: string | null; partyId: string | null; policySnapshot: unknown;
 };
-async function lockAppt(tx: Prisma.TransactionClient, ctx: LineCtx, id: string): Promise<LockedAppt | null> {
+export async function lockAppt(tx: Prisma.TransactionClient, ctx: LineCtx, id: string): Promise<LockedAppt | null> {
   const rows = await tx.$queryRaw<LockedAppt[]>`
     SELECT "id", "unitId", "status"::text AS "status", "kind", "channel", "staffId", "serviceId", "startAt", "endAt", "checkedInAt",
            "queueTicketId", "partyId", "policySnapshot"
@@ -131,12 +136,12 @@ async function lockAppt(tx: Prisma.TransactionClient, ctx: LineCtx, id: string):
 }
 
 /** CAS ของงาน: เปลี่ยนเมื่อสถานะยังเป็นที่อ่าน · คืน true = ชนะ */
-async function casAppt(tx: Prisma.TransactionClient, ctx: LineCtx, a: { id: string; status: AppointmentStatus }, data: Prisma.AppointmentUncheckedUpdateManyInput): Promise<boolean> {
+export async function casAppt(tx: Prisma.TransactionClient, ctx: LineCtx, a: { id: string; status: AppointmentStatus }, data: Prisma.AppointmentUncheckedUpdateManyInput): Promise<boolean> {
   const r = await tx.appointment.updateMany({ where: { id: a.id, tenantId: ctx.tenantId, unitId: ctx.unitId, status: a.status }, data });
   return r.count === 1;
 }
 
-const okCtx = (ctx: LineCtx | null | undefined): ctx is LineCtx =>
+export const okCtx = (ctx: LineCtx | null | undefined): ctx is LineCtx =>
   !!ctx && typeof ctx.tenantId === "string" && !!ctx.tenantId && typeof ctx.unitId === "string" && !!ctx.unitId;
 
 function prefixesOf(values: Record<string, unknown>): { appointment: string; walkIn: string } {
@@ -146,7 +151,7 @@ function prefixesOf(values: Record<string, unknown>): { appointment: string; wal
   return { appointment: s(o.appointment, "P"), walkIn: s(o.walkIn, "A") };
 }
 
-async function replan(ctx: LineCtx, now: Date): Promise<void> {
+export async function replan(ctx: LineCtx, now: Date): Promise<void> {
   try {
     await runPlanner({ tenantId: ctx.tenantId, unitId: ctx.unitId }, { now });
   } catch (e) {
@@ -205,12 +210,14 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
   if (!values) return fail("NOT_SINGLE_LINE", R.NOT_SINGLE_LINE);
   const today = bkkDayOf(now.getTime());
   const yesterday = addDaysStr(today, -1);
-  /** J6: วันนัด = วันนี้ หรือ เมื่อวาน (นัด 23:xx) ที่ยังไม่เลยเวลาไม่มา */
+  /** J6: วันนัด = วันนี้ หรือ เมื่อวาน (นัด 23:xx) ที่ยังไม่เลยเวลาไม่มา ·
+   *  SVC B.5 ▸ (ข) หนี้ B.4: นัดเมื่อวานที่ร้านถอยไม่มาเอง (`job.manualHold`) = ร้านตั้งใจรอ ⇒ เช็กอินได้หลังเที่ยงคืน (ไม่มีเวลาไม่มา) ◂ */
   const dayOk = (startAt: Date, snap: unknown): boolean => {
     const d = bkkDayOf(startAt.getTime());
     if (d === today) return true;
     if (d !== yesterday) return false;
     const pol = latePolicyOf(snap, values);
+    if (pol.manualHold) return true;
     return pol.noShowAfterMin !== null && now.getTime() < startAt.getTime() + pol.noShowAfterMin * MIN_MS;
   };
 
@@ -375,7 +382,8 @@ export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: 
   const attempt = () => prisma.$transaction(async (tx): Promise<TxOut> => {
     await lockUnitTx(tx, ctx);
     const rows = await jobRowsOf(tx, ctx, dayStr);
-    const q = quoteWalkIn(planInputOf(pre, rows, now.getTime()), { serviceId: service.id, staffId, priority });
+    // SVC B.5 ▸ งานที่บัตร SKIPPED วางท้ายแถวแบบเดียวกับ runPlanner (ราคาเวลารอ = ช่องจริงในฐาน) ◂
+    const q = quoteWalkIn(planInputOf(pre, rows, now.getTime(), await skippedOf(tx, ctx, rows)), { serviceId: service.id, staffId, priority });
     if (q.closed || q.startAt === null || q.endAt === null || !q.staffId) return { kind: "closed" };
     const prof = pre.profiles.find((p) => p.staffId === q.staffId);
     const terms = prof ? staffServiceTerms(prof.services, service) : null;

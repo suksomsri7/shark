@@ -149,8 +149,9 @@ const user = (key: SqcUserKey, name: string, role: SqcUser["role"], unitAccess: 
 export const SQC_USERS: SqcUser[] = [
   user("owner", "เจ้าของ (SVC QC)", "OWNER", ["*"]),
   user("manager", "ผู้จัดการร้าน (SVC QC)", "MANAGER", [SQC_UNITS.barber.id, SQC_UNITS.massage.id]),
-  user("ek", "ช่างเอก", "STAFF", [SQC_UNITS.barber.id], ["booking.appointment.setStatus"]),
-  user("cashier", "แคชเชียร์ (SVC QC)", "STAFF", [SQC_UNITS.barber.id, SQC_UNITS.massage.id], ["pos.sale.create"]),
+  // SVC B.5 ▸ ek = ช่าง (เรียก/เริ่ม/เสร็จงานของตัวเอง · booking.job.run = PROVIDER ของ B.11) · cashier = หน้าเคาน์เตอร์ (เช็กอิน · รับ walk-in = แถว counter ของ B.11 · ไม่มีเรียก/เริ่ม/เสร็จ) ◂
+  user("ek", "ช่างเอก", "STAFF", [SQC_UNITS.barber.id], ["booking.appointment.setStatus", "booking.job.run"]),
+  user("cashier", "แคชเชียร์ (SVC QC)", "STAFF", [SQC_UNITS.barber.id, SQC_UNITS.massage.id], ["pos.sale.create", "booking.checkin", "booking.walkin.create"]),
   // SVC D.6 ▸ fai + dorm.view (ผังหอมีด่านสิทธิ์) · meter = dorm.meter.read อย่างเดียว ("คนจดมิเตอร์เห็นแค่หน้าจด") ◂
   user("fai", "พี่ฝ้าย (ผู้ดูแลหอ)", "STAFF", [SQC_UNITS.dorm.id], ["hotel.room.setStatus", "dorm.view"]),
   user("meter", "คนจดมิเตอร์ (SVC QC)", "STAFF", [SQC_UNITS.dorm.id], ["dorm.meter.read"]),
@@ -217,6 +218,102 @@ export const SQC_PENDING = {
   },
 } as const;
 
+// ═══════════════ ฉากจอคิววันนี้ (ใบ B.5 · ภาพ จอง 01 · README "ส. 31 ต.ค. 14:20") ═══════════════
+/**
+ * วันฉาก = วันเสาร์แรกที่ ≥ วันนี้ไทย + 3 (อนาคตเสมอ ⇒ tick รายนาทีของ server ไม่แตะ · เสาร์ = ตรงภาพ · ช่างแจ๊คมีกะ 13–20)
+ * pure: รับ "YYYY-MM-DD" คืน "YYYY-MM-DD"
+ */
+export function sqcLineSceneDate(todayYmd: string): string {
+  const [y, m, d] = todayYmd.split("-").map(Number);
+  const base = Date.UTC(y, m - 1, d + 3);
+  const wd = new Date(base).getUTCDay(); // วันของ "วันที่ปฏิทิน" (ไม่ใช่นาฬิกาเครื่อง)
+  return new Date(base + ((6 - wd + 7) % 7) * 86_400_000).toISOString().slice(0, 10);
+}
+/** ISO ของเวลาไทย HH:MM ในวันนั้น (ใช้กับ ?at= และ now ที่ฉีด) */
+export function sqcLineSceneAt(ymd: string, hhmm: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const [h, mi] = hhmm.split(":").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, h - 7, mi)).toISOString();
+}
+export const SQC_LINE_SCENE_DAY = sqcLineSceneDate(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10));
+
+export type SqcLineStaffKey = "ek" | "boy" | "nun" | "jack";
+export type SqcLineBooking = { key: string; staff: SqcLineStaffKey | null; sku: string; start: string; name: string; phone: string };
+export type SqcLineEvent =
+  | { at: string; op: "checkIn" | "start" | "done" | "cancel"; key: string }
+  | { at: string; op: "walkIn"; key: string; sku: string; staff: SqcLineStaffKey | null }
+  | { at: string; op: "tick" };
+/**
+ * ฉากภาพ 01 ทั้งวัน — ใช้ร่วม: scripts/svc-qc-today-line-scene.mts (ร้าน svcqc) และข้อสอบ qc-svc-b.5 (ร้านทดสอบของข้อสอบเอง)
+ * ขั้นตอน: แม่แบบ BARBER (แถวเดียว) → `bookings` ตามลำดับ (bookAppointment ช่อง STAFF · staff null = ใครก็ได้ · ได้ PENDING ⇒ setAppointmentStatus CONFIRMED)
+ *          → `events` ตามเวลา (now ฉีด = วันฉาก + at) → runPlanner ณ `now`
+ *   checkIn = checkIn({appointmentId},{via:"STAFF"}) · walkIn = createWalkIn(channel STAFF · staffId ตามช่างที่ระบุ/null) · start/done = startJob/completeJob ·
+ *   cancel = cancelByShop (ลุกกลับก่อนได้คิว) · tick = runLineTick(now, { tenantIds:[ร้าน] })
+ * เลขบัตรเกิดตามลำดับ: P001–P006 (เช็กอิน) · A001–A011 (walk-in) = ตรงภาพ (A007–A011 · P004–P006)
+ * ต่างจากภาพโดยตั้งใจ: คุณต่อ = โกน/แต่งหนวด 20 นาที (ภาพไม่บอกบริการ · ตัดผม 45 นาทีจะชน P006 14:45 ในฐาน)
+ */
+export const SQC_TODAY_LINE_SCENE = {
+  now: "14:20",
+  staffIds: { ek: "svcqc-staff-barber-ek", boy: "svcqc-staff-barber-boy", nun: "svcqc-staff-barber-nun", jack: "svcqc-staff-barber-jack" } as Record<SqcLineStaffKey, string>,
+  /** sku → บริการ (SQC_BARBER_SERVICES) */
+  sku: { CUT: "SVCQC-BB-01", CW: "SVCQC-BB-02", KID: "SVCQC-BB-03", SHAVE: "SVCQC-BB-04", COLOR: "SVCQC-BB-05", PERM: "SVCQC-BB-06" },
+  bookings: [
+    { key: "P001", staff: "ek", sku: "SVCQC-BB-01", start: "10:00", name: "คุณเก่ง", phone: "0810000001" },
+    { key: "P002", staff: "boy", sku: "SVCQC-BB-01", start: "11:00", name: "คุณหนึ่ง", phone: "0810000002" },
+    { key: "P003", staff: "nun", sku: "SVCQC-BB-01", start: "13:00", name: "คุณสาม", phone: "0810000003" },
+    { key: "P004", staff: "ek", sku: "SVCQC-BB-05", start: "13:30", name: "คุณธนา", phone: "0810000004" },
+    { key: "P005", staff: "nun", sku: "SVCQC-BB-02", start: "14:00", name: "คุณมายด์", phone: "0810000005" },
+    { key: "TOR", staff: "boy", sku: "SVCQC-BB-04", start: "14:05", name: "คุณต่อ", phone: "0810000006" },
+    { key: "P006", staff: "boy", sku: "SVCQC-BB-01", start: "14:45", name: "คุณกอล์ฟ", phone: "0810000007" },
+    { key: "PRAEW", staff: "nun", sku: "SVCQC-BB-06", start: "15:30", name: "คุณแพรว", phone: "0810000008" },
+    { key: "BEAM", staff: null, sku: "SVCQC-BB-01", start: "15:15", name: "คุณบีม", phone: "0810000009" },
+    { key: "OAT", staff: "ek", sku: "SVCQC-BB-02", start: "16:30", name: "คุณโอ๊ต", phone: "0810000010" },
+    { key: "BEER", staff: "boy", sku: "SVCQC-BB-01", start: "17:00", name: "คุณเบียร์", phone: "0810000011" },
+    { key: "NEW", staff: "ek", sku: "SVCQC-BB-01", start: "17:45", name: "คุณนิว", phone: "0810000012" },
+    { key: "PALM", staff: "nun", sku: "SVCQC-BB-01", start: "17:45", name: "คุณปาล์ม", phone: "0810000013" },
+    { key: "JAY", staff: null, sku: "SVCQC-BB-01", start: "18:00", name: "คุณเจ", phone: "0810000014" },
+  ] as SqcLineBooking[],
+  events: [
+    { at: "09:55", op: "checkIn", key: "P001" }, { at: "10:00", op: "start", key: "P001" },
+    { at: "10:05", op: "walkIn", key: "A001", sku: "SVCQC-BB-01", staff: "boy" }, { at: "10:05", op: "start", key: "A001" },
+    { at: "10:30", op: "walkIn", key: "A002", sku: "SVCQC-BB-01", staff: "nun" }, { at: "10:30", op: "start", key: "A002" },
+    { at: "10:45", op: "done", key: "P001" }, { at: "10:50", op: "done", key: "A001" },
+    { at: "10:58", op: "checkIn", key: "P002" }, { at: "11:00", op: "start", key: "P002" },
+    { at: "11:15", op: "done", key: "A002" },
+    { at: "11:20", op: "walkIn", key: "A003", sku: "SVCQC-BB-01", staff: null }, { at: "11:30", op: "cancel", key: "A003" },
+    { at: "11:45", op: "done", key: "P002" },
+    { at: "11:50", op: "walkIn", key: "A004", sku: "SVCQC-BB-02", staff: "ek" }, { at: "11:50", op: "start", key: "A004" },
+    { at: "12:50", op: "done", key: "A004" },
+    { at: "12:55", op: "walkIn", key: "A005", sku: "SVCQC-BB-01", staff: "boy" },
+    { at: "12:58", op: "checkIn", key: "P003" }, { at: "13:00", op: "start", key: "P003" }, { at: "13:00", op: "start", key: "A005" },
+    { at: "13:10", op: "walkIn", key: "A006", sku: "SVCQC-BB-04", staff: "jack" }, { at: "13:15", op: "start", key: "A006" },
+    { at: "13:25", op: "checkIn", key: "P004" }, { at: "13:30", op: "start", key: "P004" },
+    { at: "13:35", op: "done", key: "A006" },
+    { at: "13:45", op: "done", key: "P003" }, { at: "13:45", op: "done", key: "A005" },
+    { at: "13:50", op: "walkIn", key: "A007", sku: "SVCQC-BB-04", staff: "boy" },
+    { at: "13:52", op: "walkIn", key: "A008", sku: "SVCQC-BB-03", staff: "jack" },
+    { at: "13:55", op: "checkIn", key: "P005" },
+    { at: "13:58", op: "walkIn", key: "A009", sku: "SVCQC-BB-01", staff: null },
+    { at: "14:00", op: "start", key: "P005" },
+    { at: "14:08", op: "walkIn", key: "A010", sku: "SVCQC-BB-04", staff: null },
+    { at: "14:10", op: "start", key: "A008" },
+    { at: "14:12", op: "checkIn", key: "P006" },
+    { at: "14:16", op: "tick" }, { at: "14:16", op: "start", key: "A007" },
+    { at: "14:18", op: "walkIn", key: "A011", sku: "SVCQC-BB-02", staff: null },
+  ] as SqcLineEvent[],
+  /** ผลที่ต้องได้ ณ 14:20 (ข้อสอบ C0/Q · ผู้คุมเทียบภาพ) */
+  expect: {
+    plan: { A009: { staff: "jack", start: "14:40" }, A010: { staff: "nun", start: "15:00" }, A011: { staff: "jack", start: "15:25" }, P006: { staff: "boy", start: "14:45" } } as Record<string, { staff: SqcLineStaffKey; start: string }>,
+    waitingFirst6: ["A009", "P006", "A010", "BEAM", "A011", "PRAEW"],
+    whyOf: "A011",
+    whyParts: ["ช่างนุ่นว่าง 15:20 แต่มีนัด 15:30", "ช่างเอกว่าง 15:00 แต่มีนัด 15:15", "ช่างบอยว่าง 15:30", "ช่างแจ๊คเร็วสุด 15:25"],
+    kpi: { booked: 14, arrived: 6, absent: 1, upcoming: 7, walkIns: 11, walkInsLeft: 1, waiting: 4, longestWaitMin: 22, longestWaitTicket: "A009", done: 8 },
+    todo: { LATE: ["TOR"], SOON: ["BEAM"] } as Record<string, string[]>,
+  },
+  /** ฉากผูกผู้ใช้ ช่างเอก (svcqc-user-ek) → BookingStaff ช่างเอก ผ่าน HR (AppSystem HR + HrEmployee.linkedUserId) — "ของฉัน" ของ ek */
+  hrLink: { systemId: "svcqc-scene-hr", employeeId: "svcqc-scene-emp-ek", userKey: "ek" as SqcUserKey, staff: "ek" as SqcLineStaffKey },
+} as const;
+
 // ═══════════════ visual ═══════════════
 export const SQC_VISUAL = {
   userAgent: "qc-visual-svc",
@@ -249,6 +346,14 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
   // D.7 ค่าน้ำไฟ · กฎหมาย · VAT (ภาพ หอ 10) — ก่อนถ่ายรัน scripts/svc-qc-utility-scene.mts (บิล กฟภ. ฿19,824.00 ÷ 4,200 · น้ำ ฿3,840.00 ÷ 240)
   //   ถ่ายทั้ง --user owner (แก้โหมดได้ · มีฟอร์มใส่บิล) และ --user fai (โหมดล็อก "แก้ได้เฉพาะเจ้าของกิจการ" · ไม่มีฟอร์มใส่บิล)
   "d.7": [{ name: "dorm-settings-law", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings/utility` }],
+  // B.5 จอคิววันนี้แถวเดียว (ภาพ จอง 01) + มือถือช่าง "ของฉัน" + ปฏิทินรายวัน — ก่อนถ่าย: reseed (สิทธิ์ ek/cashier) → รัน scripts/svc-qc-today-line-scene.mts
+  //   (ฉาก SQC_TODAY_LINE_SCENE ณ วันฉาก 14:20) · QC server ต้องเปิดด้วย SVC_QC_CLOCK=1 (หน้าอ่าน ?at= เฉพาะเมื่อตั้งตัวนี้) · ถ่าย --user owner · ek · cashier
+  //   ⚠️ วันฉากคิดจาก "วันนี้ไทย" ตอนโหลดไฟล์ ⇒ รันฉากแล้วถ่ายภาพในวันเดียวกัน
+  "b.5": [
+    { name: "booking-today-line", path: `/app/u/${SQC_UNITS.barber.slug}/booking?at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}` },
+    { name: "booking-mine", path: `/app/u/${SQC_UNITS.barber.slug}/booking/mine?at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}` },
+    { name: "booking-day", path: `/app/u/${SQC_UNITS.barber.slug}/booking/day?date=${SQC_LINE_SCENE_DAY}&at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}` },
+  ],
   // B.11 จอตั้งค่าจองคิว (ภาพ จอง 08 · 11 · 12 ส่วนคน · 14) — ก่อนถ่ายรัน scripts/svc-qc-booking-settings-scene.mts (ฉาก SQC_BOOKING_SETTINGS_SCENE)
   //   08/14 = บาร์เบอร์ (แม่แบบ BARBER · ปรับ 6 ข้อ) · 11/12 = ร้านนวด (SPA · ใครทำได้ 5/6 ของน้ำมันอโรมา · พี่นก) · ผู้คุมเทียบ PARITY กับ ledger/design-booking/*.png
   "b.11": [
