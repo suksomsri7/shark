@@ -213,6 +213,17 @@ const DEFS: SettingDef[] = [
     schema: FLAT, defaults: { _fallback: null }, chain: U_RT, sensitivity: "MONEY",
     legal: ["UTIL_FLAT_LE_COST"], legalInput: atCostPoint("UTIL_FLAT_LE_COST"),
   }),
+  // SVC D.7 ▸ ตารางอัตราของรัฐที่ใช้กับวิธีคิด "ตามตารางอัตรา" (อ่าน DormAuthorityTariff ตามวันที่มีผล) ◂
+  def({
+    key: "rooms.utility.elec.tariffRef", type: "text", labelTh: "ประเภทอัตราของการไฟฟ้า",
+    helpTh: "รูปแบบ ผู้ให้บริการ:รหัสประเภท เช่น PEA:1.1.2 — ใช้กับวิธีคิด 'ตามตารางอัตรา' (ตารางระบบ DormAuthorityTariff มีวันที่มีผล)",
+    schema: z.string().regex(/^(PEA|MEA|PWA|MWA):[0-9A-Za-z._-]{1,20}$/).nullable(), defaults: { _fallback: null }, chain: U_B, sensitivity: "MONEY",
+  }),
+  def({
+    key: "rooms.utility.water.tariffRef", type: "text", labelTh: "ประเภทอัตราของการประปา",
+    helpTh: "รูปแบบ ผู้ให้บริการ:รหัสประเภท เช่น PEA:1.1.2 — ใช้กับวิธีคิด 'ตามตารางอัตรา' (ตารางระบบ DormAuthorityTariff มีวันที่มีผล)",
+    schema: z.string().regex(/^(PEA|MEA|PWA|MWA):[0-9A-Za-z._-]{1,20}$/).nullable(), defaults: { _fallback: null }, chain: U_B, sensitivity: "MONEY",
+  }),
   def({
     key: "rooms.utility.minimum", type: "money", labelTh: "ค่าน้ำ/ไฟขั้นต่ำ", // #13
     helpTh: "ว่าง = ปิด · ประกาศห้ามเก็บขั้นต่ำ ต้องเก็บตามจริง",
@@ -626,6 +637,8 @@ const SNAPSHOTS: Record<string, readonly string[]> = {
     "rooms.billing.rentTiming",
     "rooms.billing.utilityTiming",
     "rooms.billing.prorate",
+    "rooms.utility.elec.tariffRef", // SVC D.7
+    "rooms.utility.water.tariffRef", // SVC D.7
   ],
 };
 

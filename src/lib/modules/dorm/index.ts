@@ -28,3 +28,20 @@ export type {
 export { dormAccess } from "./access";
 export { enqueueReading, nextBatch, settleBatch } from "./meter-queue";
 export type { QueuedReading } from "./meter-queue";
+// SVC D.7 ▸ ค่าน้ำไฟทุกโหมด + หน้ากฎหมาย/VAT — สัญญา ledger/svc-briefs/svc-brief-d.7.md §3
+export { recordAuthorityBill, utilityCharges, utilityBillingGate, acceptUtilityLegalWarn, authorityTariffFor, parseBahtToSatang } from "./utility";
+export type {
+  UtilityCtx,
+  UtilityKind,
+  UtilityChargeRow,
+  UtilityGroup,
+  UtilityCharges,
+  UtilityGate,
+  UtilityGateItem,
+  UtilityLegalGroup,
+  UtilityLegalOutcome,
+  RecordAuthorityBillResult,
+  AuthorityTariff,
+} from "./utility";
+export { setDormLegalMode, dormLawModel } from "./law";
+export type { DormLawModel, DormLawBill } from "./law";
