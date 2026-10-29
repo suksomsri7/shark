@@ -1,3 +1,8 @@
+## ⏸ CHECKPOINT 29 ต.ค. (โควตา 92% · รีเซ็ต ~45 นาที)
+- 19/53 · B.11 (64e6c184) + D.5 (b79f2ef5) merged รอ gate รวม /root/svc-runs/gate-d5.txt เขียว ⇒ mark ✅ 21/53 + push + tg
+- l1 B.5 builder (oracle 75eafc1a) กำลังรัน · l2 D.8 builder เริ่มแล้ว (oracle 6965f136 · มติ perf/paylink รอยืนยัน) · l3 D.13 oracle committing (98 ข้อ · builder เริ่มหลังรีเซ็ต · G-1 r0.9 + G-4 d.5 M-11 แดงตั้งแต่ฐาน ต้องรันเดี่ยวหลัง reseed ก่อนรับ)
+- agent หยุดเพราะโควตา ⇒ SendMessage ปลุก (งานอยู่บนดิสก์ใน worktree)
+
 # SVC RUN — จุดต่องานของผู้คุม (อ่านไฟล์นี้ก่อนเมื่อเปิด session ใหม่)
 
 > อัปเดตล่าสุด: **27 ต.ค. 2569** · ผู้วางแผน RUN · branch ปัจจุบันของเอกสาร `session/svc-design` (worktree `/root/projects/shark-svc`)
