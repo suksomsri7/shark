@@ -2330,3 +2330,28 @@ export async function postDormDepositSettle(
   return entryRef(tx, e.id);
 }
 // ◂ SVC D.2
+
+// ═══════════════════ SVC D.13 ▸ ยอดเงินประกันถือหลายสัญญาในคำสั่งเดียว (อ่านอย่างเดียว · เพิ่มล้วน · หนี้ N+1 ของ D.5) ═══════════════════
+//   กติกาเดียวกับ dormDepositHeldByBook ทุกข้อ (ทุกสมุดของร้าน · POSTED · ไม่ใช่ตัวกลับรายการ · ชนิดจากคีย์ JV ตรงตัว) — ต่างแค่ refId in [...]
+export async function dormDepositHeldMany(tenantId: string, unitId: string, leaseIds: readonly string[], db: Db = prisma): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = [...new Set(leaseIds)];
+  if (!ids.length) return out;
+  const byRef = new Map(ids.map((id) => [dormLeaseRef(unitId, id), id] as const));
+  const es = await db.accountJournalEntry.findMany({
+    where: { tenantId, refType: DORM_DEPOSIT_REF_TYPE, refId: { in: [...byRef.keys()] }, status: "POSTED", reversalOfId: null },
+    select: { refId: true, idempotencyKey: true, lines: { select: { debit: true, credit: true } } },
+  });
+  for (const e of es) {
+    const leaseId = e.refId ? byRef.get(e.refId) : undefined;
+    if (!leaseId) continue;
+    const k = e.idempotencyKey ?? "";
+    const isRecv = k.startsWith(`${DORM_DEPOSIT_REF_TYPE}#${e.refId}#RECEIVE:`);
+    if (!isRecv && !k.startsWith(`${DORM_DEPOSIT_REF_TYPE}#${e.refId}#SETTLE:`)) continue;
+    let v = 0;
+    for (const l of e.lines) v += isRecv ? l.credit : -l.debit;
+    out.set(leaseId, (out.get(leaseId) ?? 0) + v);
+  }
+  return out;
+}
+// ◂ SVC D.13

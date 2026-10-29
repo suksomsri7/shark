@@ -33,11 +33,12 @@ import {
   type LegalOutcome,
 } from "@/lib/core/settings/legal/th-rental-2568";
 import { deleteFileAsset, privateFileUrl, uploadFile } from "@/lib/storage/service";
-import { postSecurityDepositInTx, prepareSecurityDepositContact, runDormMoneyTx, securityDepositHeld, securityDepositHeldInTx, securityDepositReceipts } from "@/lib/modules/account";
+import { postSecurityDepositInTx, prepareSecurityDepositContact, runDormMoneyTx, securityDepositHeld, securityDepositHeldInTx, securityDepositHeldMany, securityDepositReceipts } from "@/lib/modules/account";
 import { requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
 import { attachPersonTaxId, findOrCreate, normalizePartyPhone, normalizePartyTaxId, resolveCanonical, updateContactInfo } from "@/lib/modules/party";
 import { claimRoom, exclusiveEnd, releaseOccupancy } from "@/lib/modules/rooms";
 import { leaseAccess } from "./lease-access";
+import { dormScopeFor, dormVisibleRoomIds } from "./scope"; // SVC D.13 ▸ ขอบเขตอาคาร (#64) ◂
 
 // ───────────────────────── ชนิด (สัญญา §3) ─────────────────────────
 export type LeaseCtx = { tenantId: string; actorUserId: string };
@@ -305,7 +306,15 @@ function newLeaseId(): string {
 const leaseNoOf = (leaseId: string) => `L${leaseId.slice(-8).toUpperCase()}`;
 
 // ───────────────────────── ด่านร่วม (§3: หน่วย DORM ของร้าน → Membership สด → สิทธิ์) ─────────────────────────
-type Gate = { tenantId: string; unitId: string; actorUserId: string; role: string; unitName: string };
+type Gate = {
+  tenantId: string;
+  unitId: string;
+  actorUserId: string;
+  role: string;
+  unitName: string;
+  /** SVC D.13 ▸ ห้องที่ผู้กระทำเห็นตามขอบเขตอาคาร (null = ทั้งหน่วย) — ห้องนอกขอบเขต = "ไม่พบ" ◂ */
+  visibleRooms: Set<string> | null;
+};
 
 async function gate(ctx: unknown, unitId: unknown, need: "manage" | "view"): Promise<Gate | null> {
   if (!isRec(ctx) || !isStr(ctx.tenantId) || !isStr(ctx.actorUserId) || !isStr(unitId)) return null;
@@ -316,7 +325,7 @@ async function gate(ctx: unknown, unitId: unknown, need: "manage" | "view"): Pro
   if (!unit) return null;
   const mem = await tdb.membership.findFirst({
     where: { tenantId, userId: actorUserId, acceptedAt: { not: null } },
-    select: { role: true, unitAccess: true, permissions: true },
+    select: { id: true, role: true, unitAccess: true, permissions: true },
   });
   if (!mem) return null;
   const m: MembershipCtx = {
@@ -326,8 +335,12 @@ async function gate(ctx: unknown, unitId: unknown, need: "manage" | "view"): Pro
   };
   const acc = leaseAccess(m, unit.id);
   if (need === "manage" ? !acc.manage : !acc.view) return null;
-  return { tenantId, unitId: unit.id, actorUserId, role: String(mem.role), unitName: unit.name };
+  const visibleRooms = await dormVisibleRoomIds(tenantId, unit.id, await dormScopeFor(tenantId, unit.id, { id: mem.id, ctx: m }));
+  return { tenantId, unitId: unit.id, actorUserId, role: String(mem.role), unitName: unit.name, visibleRooms };
 }
+
+/** SVC D.13 ▸ ห้องอยู่ในขอบเขตอาคารของผู้กระทำ ◂ */
+const roomVisible = (g: Gate, roomId: string): boolean => g.visibleRooms === null || g.visibleRooms.has(roomId);
 
 // ───────────────────────── อ่านแถวสัญญา ─────────────────────────
 const LEASE_SELECT = {
@@ -377,7 +390,8 @@ type LeaseRec = {
 
 async function readLease(g: Gate, leaseId: unknown): Promise<LeaseRec | null> {
   if (!isStr(leaseId)) return null;
-  return scoped(g.tenantId, g.unitId).dormLease.findFirst({ where: { id: leaseId }, select: LEASE_SELECT });
+  const lease = await scoped(g.tenantId, g.unitId).dormLease.findFirst({ where: { id: leaseId }, select: LEASE_SELECT });
+  return lease && roomVisible(g, lease.roomId) ? lease : null;
 }
 
 type PhotoEntry = { fileId: string; kind: FileKindTh; at: string };
@@ -620,7 +634,7 @@ export async function createLease(ctx: LeaseCtx, input: CreateLeaseInput): Promi
     const g = await gate(ctx, input.unitId, "manage");
     if (!g) return notFound();
     const { tenantId, unitId } = g;
-    if (!isStr(input.roomId)) return notFound();
+    if (!isStr(input.roomId) || !roomVisible(g, input.roomId)) return notFound(); // D.13 ▸ ห้องนอกขอบเขตอาคาร = ไม่พบ ◂
     const room = await scoped(tenantId, unitId).hotelRoom.findFirst({
       where: { id: input.roomId },
       select: { id: true, number: true, roomTypeId: true, roomType: { select: { name: true, monthlyRateSatang: true } } },
@@ -962,7 +976,7 @@ export async function findTenantCandidates(
   });
   const out: { partyId: string; name: string; phoneMasked: string | null; matchedBy: "ID_CARD" | "PHONE"; activeLeases: number }[] = [];
   for (const r of rows) {
-    const activeLeases = await scoped(g.tenantId, g.unitId).dormLease.count({ where: { partyId: r.id, status: { in: ["DRAFT", "ACTIVE", "NOTICE"] } } });
+    const activeLeases = await scoped(g.tenantId, g.unitId).dormLease.count({ where: { partyId: r.id, status: { in: ["DRAFT", "ACTIVE", "NOTICE"] }, ...(g.visibleRooms ? { roomId: { in: [...g.visibleRooms] } } : {}) } }); // D.13 P6 ▸ นับเฉพาะห้องในขอบเขตอาคาร ◂
     out.push({ partyId: r.id, name: r.name, phoneMasked: maskPhone(r.phoneNorm), matchedBy: id.length === 13 && r.taxId === id ? "ID_CARD" : "PHONE", activeLeases });
   }
   return out;
@@ -1417,14 +1431,18 @@ export async function listLeases(ctx: LeaseCtx, input: { unitId: string; tab?: L
   const g = await gate(ctx, input.unitId, "view");
   if (!g) return empty;
   const tab: LeaseTab = TABS.includes(input.tab as LeaseTab) ? (input.tab as LeaseTab) : "CURRENT";
-  const leases = await scoped(g.tenantId, g.unitId).dormLease.findMany({
+  const leasesAll = scoped(g.tenantId, g.unitId).dormLease.findMany({
     where: { status: { in: ["DRAFT", "ACTIVE", "NOTICE", "ENDED"] } },
     select: LEASE_SELECT,
     orderBy: [{ startDate: "asc" }, { id: "asc" }],
   });
+  // D.13 ▸ เฉพาะห้องในขอบเขตอาคาร (แถว + counts + ยอดถือ) · ยอดถือ (GL) อ่านคำสั่งเดียวนอกวน (หนี้ N+1 ของ D.5) ◂
+  const leases = (await leasesAll).filter((l) => roomVisible(g, l.roomId));
+  const today = bkkYmd(new Date());
+  const shownOf = (l: (typeof leases)[number]) => inTab(tab, l.status, ymdOfDb(l.endDate) ? daysBetween(today, ymdOfDb(l.endDate)) : 0);
+  const heldOf = await securityDepositHeldMany({ tenantId: g.tenantId, unitId: g.unitId, leaseIds: leases.filter((l) => l.status !== "ENDED" || shownOf(l)).map((l) => l.id) });
   const rooms = await roomsOf(g, leases.map((l) => l.roomId));
   const parties = await partiesOf(g.tenantId, leases.map((l) => l.partyId));
-  const today = bkkYmd(new Date());
   const counts = emptyCounts();
   let heldTotalSatang = 0;
   const q = typeof input.q === "string" ? input.q.trim().toLowerCase() : "";
@@ -1437,11 +1455,10 @@ export async function listLeases(ctx: LeaseCtx, input: { unitId: string; tab?: L
     const end = ymdOfDb(l.endDate);
     const daysToEnd = end ? daysBetween(today, end) : 0;
     for (const t of TABS) if (inTab(t, l.status, daysToEnd)) counts[t]++;
-    // ยอดถือ (GL) — DRAFT/ACTIVE/NOTICE ทุกแถว (รวมทั้งตึก) · ENDED เฉพาะเมื่อแสดง · ทีละรายการ
-    let held = 0;
+    // ยอดถือ (GL) — DRAFT/ACTIVE/NOTICE ทุกแถว (รวมทั้งตึกที่เห็น) · ENDED เฉพาะเมื่อแสดง · อ่านมาแล้วคำสั่งเดียว (heldOf)
     const live = l.status !== "ENDED";
     const shown = inTab(tab, l.status, daysToEnd);
-    if (live || shown) held = await securityDepositHeld({ tenantId: g.tenantId, unitId: g.unitId, leaseId: l.id });
+    const held = live || shown ? (heldOf[l.id] ?? 0) : 0;
     if (live) heldTotalSatang += held;
     if (!shown) continue;
     const room = rooms.get(l.roomId);

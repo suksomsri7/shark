@@ -285,7 +285,31 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "dorm.meter.read": "จดเลขมิเตอร์", // SVC D.6
       "dorm.bill.run": "เตรียมรอบบิล · ใส่บิลค่าน้ำไฟจากการไฟฟ้า/ประปา", // SVC D.7
       "dorm.lease.manage": "จัดการผู้เช่าและสัญญา", // SVC D.5
+      // SVC D.13 ▸ คีย์หอที่เหลือตาม CC §8 ◂
+      "dorm.import": "นำเข้าข้อมูลห้อง/ผู้เช่าจากไฟล์",
+      "dorm.bill.send": "ส่งบิลค่าเช่าให้ผู้เช่า",
+      "dorm.slip.review": "ตรวจและยืนยันสลิปค่าเช่า",
+      "dorm.payment.manual": "บันทึกรับเงินค่าเช่าด้วยมือ (เงินสด/โอน)",
+      "dorm.latefee.waive": "ยกเว้นค่าปรับจ่ายช้า",
+      "dorm.moveout.manage": "จัดการย้ายออกและคืนห้อง",
+      "dorm.deposit.deduct.approve": "อนุมัติหักเงินประกัน",
+      "dorm.repair.manage": "รับและจัดการงานแจ้งซ่อม",
+      "dorm.announce": "ส่งประกาศถึงผู้เช่า",
+      "dorm.parcel.manage": "รับและแจ้งพัสดุผู้เช่า",
+      "dorm.settings.edit": "แก้ค่าตั้งหอพัก (นโยบาย · ข้อความ · สิทธิ์)",
+      "dorm.settings.legal": "เปลี่ยนโหมดตามกฎหมาย (เจ้าของเท่านั้น)",
     },
+    // SVC D.13 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (ใบหลังเปิดใช้จริง) ◂
+    planned: [
+      "dorm.import",
+      "dorm.latefee.waive",
+      "dorm.moveout.manage",
+      "dorm.deposit.deduct.approve",
+      "dorm.repair.manage",
+      "dorm.announce",
+      "dorm.parcel.manage",
+      "dorm.settings.legal",
+    ],
   },
   {
     module: "queue",

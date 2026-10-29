@@ -38,6 +38,12 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
   SCHOOL: [
     { href: "/school", label: "จัดการคอร์สเรียน →" },
   ],
+  // SVC D.13 ▸ หอพัก ◂
+  DORM: [
+    { href: "/dorm", label: "เปิดระบบหอพัก →" },
+    { href: "/dorm/meter", label: "จดมิเตอร์" },
+    { href: "/dorm/settings", label: "ตั้งค่าหอ" },
+  ],
   CLINIC: [
     { href: "/clinic", label: "เปิดระบบคลินิก →" },
   ],

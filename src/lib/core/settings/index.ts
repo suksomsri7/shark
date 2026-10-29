@@ -24,6 +24,7 @@ export {
   isOwnerOnly,
   isScopeKind,
   groupLabelTh,
+  writeViaIssues, // D.13
 } from "./registry";
 export { renderTemplate, checkTemplate } from "./template";
 export { loadSettingsForm, legalOverrideSummaries } from "./form";

@@ -383,7 +383,14 @@ await t("S-7", "core actions.ts: saveSettingsAction เรียก writeViaIssu
   ok(c >= 0 && d > c, `resetSettingAction: writeViaIssues(${c}) ก่อน resetSetting(${d})`);
 });
 await t("S-8", "ไม่แตะไฟล์ต้องห้าม (prisma · service/form/template ของเครื่องยนต์ · components/settings · RoomBoard · meter · utility · law · UtilityLawSettings · DormSettingsNav) · types/registry แก้แบบเพิ่มอย่างเดียว (ไม่มีบรรทัดถูกลบ · บรรทัดเพิ่มเกี่ยว writeVia)", () => {
-  const dirty = gitDirty(["prisma", "src/lib/core/settings/service.ts", "src/lib/core/settings/form.ts", "src/lib/core/settings/template.ts", "src/components/settings",
+  // ORACLE-EDIT (ผู้คุม 29 ต.ค. · fix P3): service.ts แตะได้เฉพาะ applyTemplate RESET_ALL ข้ามคีย์ writeVia + rooms.access.* ⇒ บรรทัดเพิ่ม/ลบที่ไม่ว่างต้องอ้าง writeVia หรือ rooms.access
+  {
+    const d = spawnSync("git", ["diff", "-U0", "HEAD", "--", "src/lib/core/settings/service.ts"], { cwd: ROOT, encoding: "utf8" }).stdout ?? "";
+    const ch = d.split("\n").filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l.slice(1).trim()).filter((l) => l && !/^(\/\/|\*|\/\*)/.test(l) && !/^[{}()\[\];,]+$/.test(l));
+    const off = ch.filter((l) => !/writeVia|rooms\.access|keep|skip|protected/i.test(l));
+    if (off.length > 10) throw new Error(`service.ts แก้เกินขอบเขต P3: ${off.slice(0, 3).join(" | ").slice(0, 160)}`);
+  }
+  const dirty = gitDirty(["prisma", "src/lib/core/settings/form.ts", "src/lib/core/settings/template.ts", "src/components/settings",
     F.board, "src/lib/modules/dorm/meter.ts", "src/lib/modules/dorm/utility.ts", "src/lib/modules/dorm/law.ts", F.lawC, "src/components/dorm/DormSettingsNav.tsx"]);
   eq(dirty, [], "ไฟล์ต้องห้ามที่ถูกแก้");
   const p: string[] = [];
@@ -1177,7 +1184,8 @@ try {
       if (!alt.ok) continue;
       tried++;
       const r = await setS(OWNER, [{ key: f.key, scope: "UNIT", scopeId: UD, value: alt.value }]);
-      if (!r?.ok) { if (!(r?.code === "VALIDATION" && (r.issues ?? []).every((x: Any) => isThai(x.messageTh)))) p.push(`${f.key}: ${fmt(r)}`); continue; }
+      if (!r?.ok) { // ORACLE-EDIT (ผู้คุม 29 ต.ค.): "ปฏิเสธเป็นไทย" รวม LEGAL_BLOCK (เช่น returnDays 8 > 7 ตามประกาศ) + REQUIRES_INTEGRATION ด้วย ไม่ใช่แค่ VALIDATION
+      if (!(["VALIDATION", "LEGAL_BLOCK", "REQUIRES_INTEGRATION"].includes(r?.code) && (r.issues ?? []).length > 0 && (r.issues ?? []).every((x: Any) => isThai(x.messageTh)))) p.push(`${f.key}: ${fmt(r)}`); continue; }
       const f1 = formFields(await POLM(OWNER, { unitId: UD })).find((x) => x.key === f.key);
       if (!f1?.hasOwn || !isDeepStrictEqual(f1.value, alt.value)) p.push(`${f.key}: หลังบันทึก ${fmt(f1?.value)}`);
       await fnOf(s, "resetSetting")(OWNER, ctxA, { key: f.key, scope: "UNIT", scopeId: UD });

@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 import { refresh } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { applyTemplate, resetSetting, setSettings } from "./index";
+import { applyTemplate, resetSetting, setSettings, writeViaIssues } from "./index";
 import type { RemoveResult, SetResult, SettingChangeInput, SettingsActor, SettingsCtx } from "./types";
 
 async function actorOf(): Promise<{ actor: SettingsActor; ctx: SettingsCtx }> {
@@ -48,6 +48,9 @@ export async function saveSettingsAction(changes: unknown, opts?: { ackLegalWarn
   if (Array.isArray(changes) && changes.length > 200) {
     return { ok: false, code: "VALIDATION", issues: [{ code: "TOO_MANY", messageTh: "บันทึกได้ครั้งละไม่เกิน 200 ค่า" }] };
   }
+  // D.13 ▸ คีย์ที่ต้องเปลี่ยนผ่านหน้าเฉพาะ (writeVia เช่น โหมดกฎหมาย) ⇒ ปฏิเสธทั้งชุด ไม่เขียน ◂
+  const via = writeViaIssues(list.map((c) => c.key));
+  if (via.length) return { ok: false, code: "VALIDATION", issues: via };
   const r = await setSettings(actor, ctx, list, { ackLegalWarn: opts?.ackLegalWarn === true });
   if (r.ok) refresh(); // R0.4 ▸ บันทึกสำเร็จ ⇒ โหลดหน้า (server component) ใหม่ — ไม่ใช้ useRouter ฝั่ง client
   return r;
@@ -55,6 +58,8 @@ export async function saveSettingsAction(changes: unknown, opts?: { ackLegalWarn
 
 export async function resetSettingAction(target: { key: string; scope: string; scopeId: string }): Promise<RemoveResult> {
   const { actor, ctx } = await actorOf();
+  const via = writeViaIssues([str(target?.key)]); // D.13 ▸ writeVia ◂
+  if (via.length) return { ok: false, code: "VALIDATION", issues: via };
   const r = await resetSetting(actor, ctx, { key: str(target?.key), scope: str(target?.scope), scopeId: str(target?.scopeId) });
   if (r.ok) refresh();
   return r;
