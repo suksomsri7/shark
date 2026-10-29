@@ -53,3 +53,26 @@ export function computeStaffSlots(params: {
   }
   return out;
 }
+
+// SVC B.3 ▸ ยอดมัดจำต่อนัด (pure · ใบสั่ง svc-brief-b.3 §3.1 · §6 ข้อ 12)
+//   amount = ค่า resolve ของ booking.deposit.amount · null ⇒ 0 · PER_SERVICE ⇒ มัดจำของบริการ (คอลัมน์) ·
+//   PERCENT ⇒ (minDurationMin null หรือ นาที ≥ minDurationMin) ? Math.round(ราคา × bp / 10000) : 0 · รูปอื่น ⇒ throw
+//   ราคา/นาที = ค่าเฉพาะคน (staffServiceTerms) · Math.round = ปัดครึ่งขึ้น
+export function computeDepositSatang(
+  amount: unknown,
+  i: { priceSatang: number; durationMin: number; serviceDepositSatang: number },
+): number {
+  if (amount === null) return 0;
+  if (typeof amount !== "object" || Array.isArray(amount)) throw new Error("[deposit] รูปแบบยอดมัดจำไม่ถูกต้อง");
+  const a = amount as { mode?: unknown; bp?: unknown; minDurationMin?: unknown };
+  if (a.mode === "PER_SERVICE") return i.serviceDepositSatang;
+  if (a.mode === "PERCENT") {
+    if (typeof a.bp !== "number" || !Number.isFinite(a.bp)) throw new Error("[deposit] bp ไม่ถูกต้อง");
+    const min = a.minDurationMin;
+    if (min !== null && (typeof min !== "number" || !Number.isFinite(min))) throw new Error("[deposit] minDurationMin ไม่ถูกต้อง");
+    if (min !== null && i.durationMin < min) return 0;
+    return Math.round((i.priceSatang * a.bp) / 10000);
+  }
+  throw new Error("[deposit] ไม่รู้จักรูปแบบยอดมัดจำ");
+}
+// ◂ SVC B.3
