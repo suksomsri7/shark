@@ -287,6 +287,19 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // ◂ SVC R0.6
   // SVC R0.3 ▸ ค่าตั้งแบบชั้นเปลี่ยน (payload ไม่มีค่า — มีแค่คีย์/ชั้น) ◂
   { value: "settings.changed", label: "เมื่อค่าตั้งของร้านหรือสาขาเปลี่ยน" },
+  // SVC B.4 ▸ จองคิวโหมดแถวเดียว (CC §7) — ตัวยิง `booking/queue-line.ts` (walk-in · เช็กอิน · เริ่ม · เรียก/เสร็จของบัตร · ยกเลิก/เลื่อนฝั่งร้าน)
+  //   และ `booking/planner-run.ts` (สาย) · ยิงใน tx เดียวกับ CAS ของงาน · payload ⊇ { appointmentId, unitId, staffId, kind, channel } (+ ticketId
+  //   ของ queue.*) id ล้วน — ไม่มีชื่อ/เบอร์/อีเมล (X8) · consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts`
+  //   (ห้ามประกาศซ้ำที่นั่น) · created/cancelled ของทางออนไลน์ = B.7
+  { value: "booking.created", label: "เมื่อมีงานจองคิวใหม่ (walk-in รับบัตรคิว)" },
+  { value: "booking.rescheduled", label: "เมื่อร้านเลื่อนนัด" },
+  { value: "booking.cancelled", label: "เมื่อร้านยกเลิกนัดหรืองานคิว" },
+  { value: "booking.checked_in", label: "เมื่อลูกค้าเช็กอินตามนัด (ได้บัตรคิว)" },
+  { value: "booking.late", label: "เมื่อลูกค้ามาสายเลยเวลาผ่อนผัน" },
+  { value: "booking.started", label: "เมื่อเริ่มให้บริการตามนัดหรือคิว" },
+  { value: "queue.ticket.called", label: "เมื่อเรียกบัตรคิวของงานจองคิว" },
+  { value: "queue.ticket.done", label: "เมื่อบัตรคิวของงานจองคิวเสร็จแล้ว" },
+  // ◂ SVC B.4
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

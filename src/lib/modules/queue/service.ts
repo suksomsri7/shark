@@ -2,6 +2,7 @@ import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "คิวได้รับบริการเสร็จ" ใน tx เดียวกับสถานะ ◂
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
+import { resolveSettings } from "@/lib/core/settings"; // SVC B.4 ▸ resolveQueueUnit ยอมหน่วย BOOKING แถวเดียว (CC §6.1) ◂
 import type {
   Prisma,
   QueueIssueChannel,
@@ -34,7 +35,14 @@ function ticketNumber(prefix: string, seq: number): string {
 // ── resolve unit สาธารณะ (public/no-auth) จาก slug → ต้องเป็นระบบ QUEUE ที่ ACTIVE ──
 export async function resolveQueueUnit(tenantSlug: string, unitSlug: string) {
   // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
-  return resolvePublicUnit(tenantSlug, unitSlug, "QUEUE");
+  const q = await resolvePublicUnit(tenantSlug, unitSlug, "QUEUE");
+  if (q) return q;
+  // SVC B.4 ▸ CC §6.1: หน่วย BOOKING ที่เปิด `booking.queue.singleLine` = มีคิวบนหน่วยจองคิว (บัตร P/A) · ปิดโหมด ⇒ null (เหมือนเดิม)
+  //   หน่วย QUEUE ได้ผลเดิมทุกไบต์ (คืนก่อนถึงบรรทัดนี้) ◂
+  const b = await resolvePublicUnit(tenantSlug, unitSlug, "BOOKING");
+  if (!b) return null;
+  const r = await resolveSettings({ tenantId: b.tenant.id }, ["booking.queue.singleLine"], { unitId: b.unit.id });
+  return r["booking.queue.singleLine"]?.value === true ? b : null;
 }
 
 // ── ประเภทคิวที่รับออนไลน์ได้ (public — หน้ารับบัตรของลูกค้า) ──
@@ -101,7 +109,7 @@ export async function listDisplays(ctx: Ctx) {
 // ออกบัตร (issueTicket) — atomic running number ต่อวัน
 // ทุกช่องทาง (kiosk / online / staff / booking handoff) ลงเอยที่นี่
 // ─────────────────────────────────────────────────────────────
-export async function issueTicket(input: {
+export type IssueTicketInput = {
   tenantId: string;
   unitId: string;
   typeId?: string;
@@ -113,68 +121,19 @@ export async function issueTicket(input: {
   refId?: string;
   issuedBy?: string;
   actorType?: "STAFF" | "CUSTOMER" | "SYSTEM";
-}): Promise<
+};
+
+export async function issueTicket(input: IssueTicketInput): Promise<
   | { ok: true; ticket: QueueTicket }
   | { ok: false; reason: string; code: string }
 > {
-  const { tenantId, unitId } = input;
+  const { tenantId } = input;
   const businessDate = businessDateOf();
 
   try {
-    const ticket = await prisma.$transaction(async (tx) => {
-      const type = await tx.queueType.findFirst({
-        where: {
-          tenantId,
-          unitId,
-          status: "ACTIVE",
-          ...(input.typeId ? { id: input.typeId } : {}),
-          ...(input.typeCode ? { code: input.typeCode } : {}),
-        },
-      });
-      if (!type) throw new Error("NO_TYPE");
-
-      // increment atomic: INSERT ... ON CONFLICT DO UPDATE value=value+1 RETURNING value
-      const rows = await tx.$queryRaw<{ value: number }[]>`
-        INSERT INTO "QueueDailySequence" ("id","tenantId","unitId","typeId","businessDate","value","updatedAt")
-        VALUES (gen_random_uuid()::text, ${tenantId}, ${unitId}, ${type.id}, ${businessDate}, 1, now())
-        ON CONFLICT ("unitId","typeId","businessDate")
-        DO UPDATE SET "value" = "QueueDailySequence"."value" + 1, "updatedAt" = now()
-        RETURNING "value"`;
-      const seq = rows[0].value;
-
-      const created = await tx.queueTicket.create({
-        data: {
-          tenantId,
-          unitId,
-          typeId: type.id,
-          businessDate,
-          seq,
-          number: ticketNumber(type.prefix, seq),
-          status: "WAITING",
-          priority: type.priority,
-          channel: input.channel,
-          memberId: input.memberId ?? null,
-          contactName: input.contact?.name ?? null,
-          contactPhone: input.contact?.phone ?? null,
-          contactEmail: input.contact?.email ?? null,
-          refType: input.refType ?? null,
-          refId: input.refId ?? null,
-          issuedBy: input.issuedBy ?? null,
-        },
-      });
-
-      await tx.queueTicketEvent.create({
-        data: {
-          tenantId,
-          unitId,
-          ticketId: created.id,
-          action: "ISSUED",
-          actorType: input.actorType ?? "STAFF",
-          actorId: input.issuedBy ?? null,
-        },
-      });
-      return created;
-    });
+    const ticket = await prisma.$transaction((tx) =>
+      issueTicketTx(tx, { ...input, businessDate, actorType: input.actorType ?? "STAFF" }),
+    );
     await linkPartyAfterCommit(tenantId, ticket.id, input.contact?.name, input.contact?.phone, input.contact?.email); // CRM v2 C1.1 (C11)
     return { ok: true, ticket };
   } catch (e) {
@@ -184,6 +143,157 @@ export async function issueTicket(input: {
     throw e;
   }
 }
+
+/**
+ * SVC B.4 ▸ ตัวเดียวกับ `issueTicket` แต่ใช้ธุรกรรมของผู้เรียก (บัตร P/A ของจองคิวออกใน tx เดียวกับสถานะงาน — ใบสั่ง §3.5)
+ *   ไม่ผูก Party ใน tx (ผู้เรียกผูกหลัง commit · ห้ามใช้ connection ที่สองขณะถือล็อก) · `partyId` = ของแถวต้นทาง (ถ้ามี)
+ *   ไม่พบประเภท ACTIVE ⇒ throw Error("NO_TYPE") (issueTicket แปลงเป็น code เดิม) ◂
+ */
+export async function issueTicketTx(
+  tx: Prisma.TransactionClient,
+  input: IssueTicketInput & { businessDate: string; actorType: "STAFF" | "CUSTOMER" | "SYSTEM"; partyId?: string | null },
+): Promise<QueueTicket> {
+  const { tenantId, unitId, businessDate } = input;
+  const type = await tx.queueType.findFirst({
+    where: {
+      tenantId,
+      unitId,
+      status: "ACTIVE",
+      ...(input.typeId ? { id: input.typeId } : {}),
+      ...(input.typeCode ? { code: input.typeCode } : {}),
+    },
+  });
+  if (!type) throw new Error("NO_TYPE");
+
+  // increment atomic: INSERT ... ON CONFLICT DO UPDATE value=value+1 RETURNING value
+  const rows = await tx.$queryRaw<{ value: number }[]>`
+    INSERT INTO "QueueDailySequence" ("id","tenantId","unitId","typeId","businessDate","value","updatedAt")
+    VALUES (gen_random_uuid()::text, ${tenantId}, ${unitId}, ${type.id}, ${businessDate}, 1, now())
+    ON CONFLICT ("unitId","typeId","businessDate")
+    DO UPDATE SET "value" = "QueueDailySequence"."value" + 1, "updatedAt" = now()
+    RETURNING "value"`;
+  const seq = rows[0].value;
+
+  const created = await tx.queueTicket.create({
+    data: {
+      tenantId,
+      unitId,
+      typeId: type.id,
+      businessDate,
+      seq,
+      number: ticketNumber(type.prefix, seq),
+      status: "WAITING",
+      priority: type.priority,
+      channel: input.channel,
+      memberId: input.memberId ?? null,
+      contactName: input.contact?.name ?? null,
+      contactPhone: input.contact?.phone ?? null,
+      contactEmail: input.contact?.email ?? null,
+      refType: input.refType ?? null,
+      refId: input.refId ?? null,
+      issuedBy: input.issuedBy ?? null,
+      ...(input.partyId ? { partyId: input.partyId } : {}),
+    },
+  });
+
+  await tx.queueTicketEvent.create({
+    data: {
+      tenantId,
+      unitId,
+      ticketId: created.id,
+      action: "ISSUED",
+      actorType: input.actorType,
+      actorId: input.issuedBy ?? null,
+    },
+  });
+  return created;
+}
+
+// ═════════ SVC B.4 ▸ บัตรของระบบ (P นัด / A walk-in) + บัตรเดินตามงาน (ใบสั่ง §3.1 §3.5) ═════════
+
+/**
+ * ประเภทบัตรของระบบ (isSystem · priority 0 · ไม่ออกเองจากตู้/ออนไลน์ของหน่วยคิว) — สร้างครั้งแรกที่ใช้ ·
+ * `createMany skipDuplicates` = INSERT … ON CONFLICT DO NOTHING ⇒ เรียกพร้อมกันได้แถวเดียว · มีอยู่แล้ว (แม้ prefix ต่าง) = ใช้แถวเดิม ·
+ * เรียก **นอก** ธุรกรรมที่ถือล็อก (คำสั่งเดี่ยว) · คืน null เมื่อใช้ไม่ได้ (prefix ชนประเภทอื่นของหน่วย / แถวของระบบถูกปิด) — ไม่ throw
+ */
+export async function ensureSystemQueueType(ctx: Ctx, code: "APPOINTMENT" | "WALKIN", prefix: string): Promise<{ id: string; prefix: string } | null> {
+  // J6: ใช้ได้เฉพาะแถว ACTIVE (issueTicketTx กรอง ACTIVE) · ถูกปิด/ prefix ชนประเภทอื่น ⇒ null ให้ผู้เรียกตอบ {ok:false}
+  const find = () => prisma.queueType.findFirst({ where: { ...ctx, code, status: "ACTIVE" }, select: { id: true, prefix: true } });
+  const found = await find();
+  if (found) return found;
+  try {
+    await prisma.queueType.createMany({
+    data: [{
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      code,
+      name: code === "APPOINTMENT" ? "นัดหมาย" : "walk-in",
+      prefix,
+      priority: 0,
+      isSystem: true,
+      onlineIssuable: false,
+      kioskIssuable: false,
+    }],
+    skipDuplicates: true,
+    });
+  } catch (e) {
+    console.warn(`[queue] สร้างประเภทบัตรของระบบ ${code} ไม่ได้ unit=${ctx.unitId}`, e instanceof Error ? e.message : e);
+    return null;
+  }
+  return find();
+}
+
+export type TicketMove = "CALLED" | "SERVING" | "DONE" | "NO_SHOW" | "CANCELLED";
+const MOVE_FROM: Record<TicketMove, QueueTicketStatus[]> = {
+  CALLED: ["WAITING", "CALLED"],
+  SERVING: ["WAITING", "CALLED", "SKIPPED"],
+  DONE: ["WAITING", "CALLED", "SERVING", "SKIPPED"],
+  NO_SHOW: ["WAITING", "CALLED", "SERVING", "SKIPPED"],
+  CANCELLED: ["WAITING", "CALLED", "SERVING", "SKIPPED"],
+};
+
+/**
+ * เปลี่ยนสถานะบัตรใน tx ของผู้เรียก (ตาราง §3.1) — compare-and-set จากสถานะ+callCount ที่อ่าน · เขียน `QueueTicketEvent` ใน tx เดียวกัน ·
+ * ไม่ยิง outbox (ผู้เรียกยิง event ของงาน) · **ไม่ยิง `queue.served`** (บัตรแถวเดียว: booking.completed ทำหน้าที่ VISIT · §6 ข้อ 8)
+ */
+export async function moveTicketTx(
+  tx: Prisma.TransactionClient,
+  ctx: Ctx,
+  ticketId: string,
+  to: TicketMove,
+  o: { now: Date; actorType: "STAFF" | "SYSTEM" | "CUSTOMER"; actorId?: string | null; cancelReason?: "CUSTOMER" | "STAFF" | "END_OF_DAY" },
+): Promise<{ ok: true; ticket: QueueTicket; from: QueueTicketStatus } | { ok: false; code: "NOT_FOUND" | "BAD_STATE" | "LOST_RACE" }> {
+  const cur = await tx.queueTicket.findFirst({ where: { ...ctx, id: ticketId } });
+  if (!cur) return { ok: false, code: "NOT_FOUND" };
+  if (!MOVE_FROM[to].includes(cur.status)) return { ok: false, code: "BAD_STATE" };
+  const data: Prisma.QueueTicketUncheckedUpdateManyInput =
+    to === "CALLED" ? { status: "CALLED", calledAt: o.now, callCount: { increment: 1 } }
+    : to === "SERVING" ? { status: "SERVING", servedAt: o.now }
+    : to === "DONE" ? { status: "DONE", doneAt: o.now }
+    : to === "NO_SHOW" ? { status: "NO_SHOW" }
+    : { status: "CANCELLED", cancelledAt: o.now, cancelReason: o.cancelReason ?? "STAFF" };
+  const upd = await tx.queueTicket.updateMany({
+    where: { ...ctx, id: ticketId, status: cur.status, callCount: cur.callCount },
+    data,
+  });
+  if (upd.count === 0) return { ok: false, code: "LOST_RACE" };
+  const action = to === "CALLED" ? (cur.status === "CALLED" ? "RECALLED" : "CALLED") : to;
+  await tx.queueTicketEvent.create({
+    data: {
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      ticketId,
+      action,
+      counterId: cur.counterId,
+      actorType: o.actorType,
+      actorId: o.actorId ?? null,
+      ...(to === "CANCELLED" ? { detail: { reason: o.cancelReason ?? "STAFF" } } : {}),
+    },
+  });
+  const ticket = (await tx.queueTicket.findFirst({ where: { ...ctx, id: ticketId } })) as QueueTicket;
+  return { ok: true, ticket, from: cur.status };
+}
+// ◂ SVC B.4
 
 // ── กันรับคิวออนไลน์ซ้ำ: เบอร์เดิมมีบัตร active วันนี้ใน unit แล้วหรือยัง ──
 export async function findActiveTicketByPhone(ctx: Ctx, phone: string) {
@@ -483,6 +593,8 @@ export async function getTicketStatus(unitId: string, publicToken: string) {
     const avg = type?.avgServiceMinFallback ?? 10;
     const lanes = Math.max(1, openCounters);
     estimateMin = Math.ceil(((ahead + 1) / lanes) * avg);
+    // SVC B.4 ▸ BQ-4: บัตรที่ตัววางคิวให้เวลาไว้ (etaAt) ⇒ ETA จากแผน ไม่ใช่สูตรหยาบ · ไม่มี etaAt = สูตรเดิม ◂
+    if (ticket.etaAt) estimateMin = Math.max(0, Math.ceil((ticket.etaAt.getTime() - Date.now()) / 60_000));
   }
   return { ticket, position, estimateMin };
 }
@@ -530,29 +642,69 @@ export async function getDisplaySnapshot(unitId: string, displayToken: string) {
 //   a) SKIPPED เกิน skippedExpiryMin → NO_SHOW
 //   b) สิ้นวัน: WAITING/CALLED/SKIPPED ของ business date ก่อนหน้า → CANCELLED(END_OF_DAY)
 // ─────────────────────────────────────────────────────────────
-export async function resetDaily(ctx: Ctx) {
-  const today = businessDateOf();
+// SVC B.4 ▸ `now` ฉีดได้ (ไม่ส่ง = เดิมทุกไบต์) · ตัวกรอง `line` ใช้เฉพาะ runQueueHousekeeping (ข้ามบัตรของจองคิว) ◂
+const NOT_LINE_TICKET: Prisma.QueueTicketWhereInput = { OR: [{ refType: null }, { refType: { not: "APPOINTMENT" } }] };
+
+export async function resetDaily(ctx: Ctx, now?: Date) {
+  return resetDailyWhere(ctx, now, false);
+}
+
+async function resetDailyWhere(ctx: Ctx, now: Date | undefined, skipLine: boolean) {
+  const today = businessDateOf(undefined, now ?? new Date());
   const stale = await prisma.queueTicket.updateMany({
     where: {
       ...ctx,
       businessDate: { not: today },
       status: { in: ["WAITING", "CALLED", "SERVING", "SKIPPED"] },
+      ...(skipLine ? NOT_LINE_TICKET : {}),
     },
-    data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: "END_OF_DAY" },
+    data: { status: "CANCELLED", cancelledAt: now ?? new Date(), cancelReason: "END_OF_DAY" },
   });
   return { cancelled: stale.count };
 }
 
-export async function expireSkipped(ctx: Ctx) {
+export async function expireSkipped(ctx: Ctx, now?: Date) {
+  return expireSkippedWhere(ctx, now, false);
+}
+
+async function expireSkippedWhere(ctx: Ctx, now: Date | undefined, skipLine: boolean) {
   const policy = await prisma.queuePolicy.findUnique({ where: { unitId: ctx.unitId } });
   const mins = policy?.skippedExpiryMin ?? 60;
-  const cutoff = new Date(Date.now() - mins * 60_000);
+  const cutoff = new Date((now ? now.getTime() : Date.now()) - mins * 60_000);
   const expired = await prisma.queueTicket.updateMany({
-    where: { ...ctx, status: "SKIPPED", skippedAt: { lt: cutoff } },
+    where: { ...ctx, status: "SKIPPED", skippedAt: { lt: cutoff }, ...(skipLine ? NOT_LINE_TICKET : {}) },
     data: { status: "NO_SHOW" },
   });
   return { expired: expired.count };
 }
+
+/**
+ * SVC B.4 ▸ งานรายนาที "queue.housekeeping" (ใบสั่ง §3.5 §3.6): resetDaily + expireSkipped ทุกหน่วยที่มีบัตรค้าง (ข้ามร้าน ·
+ * `tenantIds` = จำกัดขอบเขต) · **ข้ามบัตร refType='APPOINTMENT'** (บัตร P/A ของจองคิว — สิ้นวันของ walk-in ทำใน runLineTick ·
+ * ARRIVED ค้างข้ามวันร้านปิดเองบนจอ B.5) · updateMany มีเงื่อนไขสถานะ ⇒ รันซ้อนกันได้ แต่ละบัตรเปลี่ยนครั้งเดียว
+ */
+export async function runQueueHousekeeping(now: Date, opts?: { tenantIds?: string[] }): Promise<{ cancelled: number; expired: number }> {
+  const at = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+  if (opts?.tenantIds && opts.tenantIds.length === 0) return { cancelled: 0, expired: 0 };
+  const units = await prisma.queueTicket.findMany({
+    where: {
+      status: { in: ["WAITING", "CALLED", "SERVING", "SKIPPED"] },
+      ...NOT_LINE_TICKET,
+      ...(opts?.tenantIds ? { tenantId: { in: opts.tenantIds } } : {}),
+    },
+    distinct: ["tenantId", "unitId"],
+    select: { tenantId: true, unitId: true },
+  });
+  let cancelled = 0;
+  let expired = 0;
+  for (const u of units) {
+    const ctx = { tenantId: u.tenantId, unitId: u.unitId };
+    cancelled += (await resetDailyWhere(ctx, at, true)).cancelled;
+    expired += (await expireSkippedWhere(ctx, at, true)).expired;
+  }
+  return { cancelled, expired };
+}
+// ◂ SVC B.4
 
 // ───────── CRM v2 ใบ C1.1 (C11) — ผูก Party กลางให้ QueueTicket ─────────
 // 🔴 เรียก "หลัง commit" เท่านั้น: รายการที่ล้ม (เต็ม/ชน/ไม่พบ) ต้องไม่ทิ้ง Party ของคนที่ไม่ได้เป็นลูกค้า (PDPA · เก็บเท่าที่จำเป็น)

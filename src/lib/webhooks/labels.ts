@@ -5,6 +5,8 @@ import { AUTOMATION_EVENTS, type AutomationEventDef } from "@/lib/automation/lab
 export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   ...AUTOMATION_EVENTS,
   // SVC R0.8 ▸ `rooms.occupancy.changed` มาจาก spread ข้างบน (ประกาศที่ automation/labels.ts ที่เดียว — ห้ามซ้ำที่นี่) ◂
+  // SVC B.4 ▸ booking.created/rescheduled/cancelled/checked_in/late/started + queue.ticket.called/done มาจาก spread ข้างบน
+  //   (ประกาศที่ automation/labels.ts ที่เดียว — ห้ามซ้ำที่นี่) ◂
   // ── บัญชี (WO 8.3 · SPEC §9.5 "แอปภายนอก/API") ────────────────────────────
   // 🔴 ทุกตัวต้องมี consumer ใน outbox-consumers.ts ด้วย ไม่งั้น event ค้าง PENDING + ฮุคไม่เคยยิง
   { value: "account.document.approved", label: "เมื่ออนุมัติเอกสารบัญชี" },
