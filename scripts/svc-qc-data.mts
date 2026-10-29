@@ -441,3 +441,84 @@ export const SQC = {
   pending: SQC_PENDING,
   visual: SQC_VISUAL,
 } as const;
+
+// ═══════════════ ฉากตู้ · ทีวี · หน้าบัตร (ใบ B.6 · ภาพ จอง 04 · 05 · 06ก) — ต่อท้ายโดยผู้คุม ═══════════════
+// ใช้ร่วม: scripts/svc-qc-device-scene.mts (ร้าน svcqc) · ข้อสอบ qc-svc-b.6 (ร้านทดสอบของข้อสอบเอง) · visual-svc b.6
+// import ไว้ท้ายไฟล์โดยตั้งใจ (ESM ยก import ขึ้นก่อนเสมอ) — node:crypto ล้วน ไม่ลาก prisma/`@/…`
+import { createHmac } from "node:crypto";
+
+export type SqcDeviceEvent = SqcLineEvent | { at: string; op: "call"; key: string };
+/** วันฉาก B.6 = วันฉาก B.5 + 7 (เสาร์ถัดไป · คนละวันกับฉาก B.5 บนหน่วย barber เดียวกัน ⇒ ไม่ชนกัน) · pure */
+export function sqcDeviceSceneDay(todayYmd: string): string {
+  const [y, m, d] = sqcLineSceneDate(todayYmd).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 7)).toISOString().slice(0, 10);
+}
+export const SQC_DEVICE_SCENE_DAY = sqcDeviceSceneDay(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10));
+/**
+ * ฉากภาพ 05 (14:40 ต่อจากจอ 01): ฉาก SQC_TODAY_LINE_SCENE ทั้งวัน (bookings + events) แล้วต่อด้วย extraEvents
+ *   → A007 เสร็จ 14:36 (ช่างบอยว่าง เตรียมรับ P006) · tick 14:40 (คุณต่อไม่มา) · A008 เสร็จ 14:40 · เรียก A009 (เก้าอี้ 4 ช่างแจ๊ค)
+ * op call = callJob (B.4) · อื่นตาม SqcLineEvent · idempotencyKey ของนัด = `${idemPrefix}<วันฉาก>-<key>`
+ * อุปกรณ์ฉาก: เก็บตามใบสั่ง B.6 §3.1 (displayToken = "sha256:" + sha256hex(token) · settings {kind}) · token ตายตัว 43 ตัว base64url (ค่า QC เท่านั้น)
+ * ตู้ฉากตั้งชั้น DEVICE ให้ตรงภาพ 04 (ทุกบริการ — ทำสี/ดัด = "จองล่วงหน้า" · มีปุ่มพิมพ์)
+ */
+export const SQC_DEVICE_SCENE = {
+  at: "14:40",
+  idemPrefix: "svcqc-dev-",
+  extraEvents: [
+    { at: "14:36", op: "done", key: "A007" },
+    { at: "14:40", op: "tick" },
+    { at: "14:40", op: "done", key: "A008" },
+    { at: "14:40", op: "call", key: "A009" },
+  ] as SqcDeviceEvent[],
+  devices: {
+    tv: { id: "svcqc-dev-tv", kind: "TV" as const, name: "จอทีวีหน้าร้าน (ฉาก B.6)", token: `svcqc-scene-tv-${"A".repeat(28)}` },
+    kiosk: {
+      id: "svcqc-dev-kiosk", kind: "KIOSK" as const, name: "ตู้หน้าร้าน (ฉาก B.6)", token: `svcqc-scene-kiosk-${"B".repeat(25)}`,
+      overrides: [{ key: "booking.kiosk.services", value: "ALL" }, { key: "booking.kiosk.paperTicket", value: true }],
+    },
+  },
+  /** ผลที่ต้องได้ ณ 14:40 (ข้อสอบ B.6 ตรวจบนร้านทดสอบ + Q บน svcqc · ผู้คุมเทียบภาพ 05) */
+  expect: {
+    calling: { ticketNumber: "A009", seat: 4, staffName: "ช่างแจ๊ค", serviceName: "ตัดผมชาย" },
+    chairs: [
+      { seat: 1, staffName: "ช่างเอก", state: "BUSY", ticketNumber: "P004" },
+      { seat: 2, staffName: "ช่างบอย", state: "FREE", ticketNumber: null },
+      { seat: 3, staffName: "ช่างนุ่น", state: "BUSY", ticketNumber: "P005" },
+      { seat: 4, staffName: "ช่างแจ๊ค", state: "CALLING", ticketNumber: "A009" },
+    ],
+    freeNext: { seat: 2, ticketNumber: "P006" },
+    /** [เลข, เวลา, เก้าอี้, นัด] */
+    next: [["P006", "14:45", 2, true], ["A010", "15:00", 3, false], ["A011", "15:25", 4, false]] as [string, string, number, boolean][],
+    kiosk: { busyCount: 2, seatCount: 4, waitingCount: 4, nextTicketNumber: "A009" },
+    /** หน้าบัตร A011 ณ 14:40 (ภาพ 06ก = 14:50 ⇒ จำนวนข้างหน้าต่างจากภาพโดยตั้งใจ) */
+    ticketA011: {
+      staffName: "ช่างแจ๊ค", seat: 4, plannedStart: "15:25", returnBy: "15:20", aheadCount: 4,
+      ahead: [["WAIT", "A009"], ["WAIT", "P006"], ["WAIT", "A010"], ["BOOKED", null], ["ME", "A011"]] as [string, string | null][],
+    },
+  },
+} as const;
+
+/** token หน้าบัตร (ใบสั่ง B.6 §3.4) — HMAC กำหนดแน่นอน · secret = SESSION_SECRET ของ server QC */
+export function sqcTicketToken(secret: string, t: { tenantId: string; unitId: string; businessDate: string; number: string }): string {
+  const p = Buffer.from(`v1|${t.tenantId}|${t.unitId}|${t.businessDate}|${t.number}`, "utf8").toString("base64url");
+  return `${p}.${createHmac("sha256", `booking-ticket:v1:${secret}`).update(p).digest("base64url")}`;
+}
+
+// B.6 ตู้ · ทีวี · หน้าบัตร (ภาพ จอง 04 ก · 05 · 06 ก) — หน้าสาธารณะ (ไม่ต้องล็อกอิน · session ที่ mint ไม่มีผล) · ก่อนถ่าย: reseed → scripts/svc-qc-device-scene.mts
+//   QC server เปิดด้วย SVC_QC_CLOCK=1 (?at=) · ถ่าย --user owner · path หน้าบัตรคิดตอนอ่าน (getter) จาก SESSION_SECRET ใน env ที่ visual-svc โหลดแล้ว
+//   ⚠️ วันฉากคิดจาก "วันนี้ไทย" ตอนโหลดไฟล์ ⇒ รันฉากแล้วถ่ายภาพในวันเดียวกัน
+{
+  const at = encodeURIComponent(sqcLineSceneAt(SQC_DEVICE_SCENE_DAY, SQC_DEVICE_SCENE.at));
+  SQC_VISUAL_SPECS["b.6"] = [
+    { name: "kiosk-home", path: `/bq/kiosk/${SQC_DEVICE_SCENE.devices.kiosk.token}?at=${at}` },
+    { name: "tv-display", path: `/bq/tv/${SQC_DEVICE_SCENE.devices.tv.token}?at=${at}` },
+    {
+      name: "ticket-card",
+      get path(): string {
+        const secret = process.env.SESSION_SECRET ?? "";
+        if (secret.length < 32) return `/bq/t/no-session-secret?at=${at}`;
+        return `/bq/t/${sqcTicketToken(secret, { tenantId: SQC_TENANT.id, unitId: SQC_UNITS.barber.id, businessDate: SQC_DEVICE_SCENE_DAY, number: "A011" })}?at=${at}`;
+      },
+    },
+  ];
+}
