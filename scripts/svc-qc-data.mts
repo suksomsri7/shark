@@ -352,7 +352,57 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
     { name: "booking-mine", path: `/app/u/${SQC_UNITS.barber.slug}/booking/mine?at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}` },
     { name: "booking-day", path: `/app/u/${SQC_UNITS.barber.slug}/booking/day?date=${SQC_LINE_SCENE_DAY}&at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}` },
   ],
+  // B.11 จอตั้งค่าจองคิว (ภาพ จอง 08 · 11 · 12 ส่วนคน · 14) — ก่อนถ่ายรัน scripts/svc-qc-booking-settings-scene.mts (ฉาก SQC_BOOKING_SETTINGS_SCENE)
+  //   08/14 = บาร์เบอร์ (แม่แบบ BARBER · ปรับ 6 ข้อ) · 11/12 = ร้านนวด (SPA · ใครทำได้ 5/6 ของน้ำมันอโรมา · พี่นก) · ผู้คุมเทียบ PARITY กับ ledger/design-booking/*.png
+  "b.11": [
+    { name: "booking-settings-policy", path: `/app/u/${SQC_UNITS.barber.slug}/booking/settings` },
+    { name: "booking-services", path: `/app/u/${SQC_UNITS.massage.slug}/booking/services?service=${encodeURIComponent("น้ำมันอโรมา")}` },
+    { name: "booking-staff", path: `/app/u/${SQC_UNITS.massage.slug}/booking/staff?staff=${encodeURIComponent("พี่นก")}` },
+    { name: "booking-settings-messages", path: `/app/u/${SQC_UNITS.barber.slug}/booking/settings/messages?msg=nearTurn` },
+  ],
 };
+
+/**
+ * ฉากจอตั้งค่าจองคิว (ใบ B.11 · README จองคิว "ปรับจากแม่แบบ 6 ข้อ" + ภาพ 11/12 ร้านนวด) — ค่าล้วน
+ * สคริปต์ `scripts/svc-qc-booking-settings-scene.mts` เขียนผ่านเครื่องยนต์ค่าตั้งในนามเจ้าของ svcqc · ข้อสอบ B.11 ใช้ชุดเดียวกันบนร้านชั่วคราว
+ * barber.unitDiffs = 6 คีย์ที่ต่างจากแม่แบบ BARBER (การ์ด 08: ค่าคอมฯ · ขยายเวลา · ข้อความ 3 ชนิดบน 14 · พักขั้นต่ำบน 12)
+ * barber.noise = ชั้น UNIT ที่ "เท่าแม่แบบ" (ไม่นับ) · staffOnlinePct = ปรับรายคน 3 คน (ไม่นับ — ป้าย "ปรับรายคน 3")
+ */
+export const SQC_BOOKING_SETTINGS_SCENE = {
+  barber: {
+    template: "BARBER",
+    unitDiffs: [
+      { key: "booking.money.commissionRate", value: { serviceBp: 1000, productBp: 500 } },
+      { key: "booking.queue.overrunExtendMin", value: 10 },
+      { key: "booking.msg.nearTurn", value: { th: "อีก {อีกกี่คิว} คิวถึงคุณ ({เลขคิว}) — กรุณากลับถึงร้านก่อนถึงคิว · {ลิงก์บัตร}" } },
+      { key: "booking.msg.reminder", value: { th: "เตือนนัด: คุณ{ชื่อ} มี{บริการ}กับ{ช่าง} เวลา {เวลา} ที่ {ร้าน} · เลื่อน/ยกเลิก: {ลิงก์นัด}" } },
+      { key: "booking.msg.confirmation", value: { th: "จองแล้ว: คุณ{ชื่อ} {บริการ}กับ{ช่าง} เวลา {เวลา} ที่ {ร้าน} · ดู/เลื่อนนัด: {ลิงก์นัด}" } },
+      { key: "booking.staff.minBreakMin", value: 5 },
+    ],
+    noise: [{ key: "booking.booking.slotStepMin", value: 15 }],
+    /** ช่างเอก 60 = เท่าค่าร้าน (ไม่มีแถว) */
+    staffOnlinePct: { "ช่างบอย": 70, "ช่างนุ่น": 50, "ช่างแจ๊ค": 0 } as Record<string, number>,
+  },
+  massage: {
+    template: "SPA",
+    unitValues: [{ key: "booking.money.commissionRate", value: { serviceBp: 1000, productBp: 0 } }],
+    /** ภาพ 12: แดง 70 · นก 70 · จันทร์ 60 (เท่าร้าน) · ฝ้าย 40 · เมย์ 70 · ศรี 70 */
+    staffOnlinePct: { "พี่แดง": 70, "พี่นก": 70, "น้องฝ้าย": 40, "น้องเมย์": 70, "พี่ศรี": 70 } as Record<string, number>,
+    /** ภาพ 12: พี่แดง 12% */
+    staffCommissionBp: { "พี่แดง": 1200 } as Record<string, number>,
+    serviceValues: [
+      { service: "น้ำมันอโรมา", key: "booking.money.commissionRate", value: { serviceBp: 1500, productBp: 0 } },
+      { service: "คู่รัก VIP", key: "booking.service.walkIn", value: { enabled: false, closeAtOrAboveMin: null } },
+      { service: "หินร้อน", key: "booking.service.walkIn", value: { enabled: false, closeAtOrAboveMin: null } },
+    ],
+    /** ใครทำได้ (BookingStaffService) — คนที่ไม่อยู่ในรายการ = ทำทุกบริการ · น้ำมันอโรมา ⇒ 5/6 (พี่ศรีไม่รับ) · แดง ฿1,000 (+฿100) · ฝ้าย 100 นาที */
+    staffServices: [
+      { staff: "พี่แดง", services: [{ name: "นวดไทย" }, { name: "น้ำมันอโรมา", priceSatang: 100000 }, { name: "หินร้อน" }] },
+      { staff: "น้องฝ้าย", services: [{ name: "นวดเท้า" }, { name: "น้ำมันอโรมา", durationMin: 100 }, { name: "คู่รัก VIP" }] },
+      { staff: "พี่ศรี", services: [{ name: "นวดไทย" }, { name: "นวดไทย+ประคบ" }] },
+    ] as { staff: string; services: { name: string; priceSatang?: number; durationMin?: number }[] }[],
+  },
+} as const;
 
 /**
  * ฉากผังห้องหอ (ใบ R0.9 · README หอ "อาคาร 36 ห้อง ณ 3 พ.ย.") — วันที่สัมพัทธ์กับ "วันนี้ไทย" (offset = จำนวนวัน · end ไม่รวม)

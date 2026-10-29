@@ -502,4 +502,47 @@ const GROUP_RULES: readonly GroupRule[] = [
   },
 ];
 
-defineSettings("booking", DEFS, { templates: BOOKING_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES });
+// ─────────────────── ป้ายไทย (B.11 · หน้าตั้งค่าไม่แสดงค่าดิบ) — เพิ่มป้ายอย่างเดียว ไม่แตะ key/ค่าเริ่ม/chain/schema/editPermission ───────────────────
+const GROUP_LABELS_TH: Record<string, string> = {
+  general: "ทั่วไป",
+  staff: "ผู้ให้บริการ",
+  service: "บริการ",
+  booking: "เวลาและการจอง",
+  late: "มาสาย · ไม่มา · ยกเลิก",
+  deposit: "มัดจำ",
+  queue: "walk-in และลำดับคิว",
+  notify: "แจ้งเตือน",
+  msg: "ข้อความถึงลูกค้า",
+  display: "จอทีวีเรียกคิว",
+  kiosk: "ตู้รับบัตรคิว",
+  money: "ค่าคอมมิชชันและเงิน",
+  course: "คอร์ส",
+  privacy: "ความเป็นส่วนตัว",
+};
+
+const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
+  "booking.general.shopType": { BARBER: "ตัดผม/เสริมสวย", SPA: "นวด/สปา", CLINIC: "คลินิก" },
+  "booking.staff.weeklySchedule": { UNIT_HOURS: "ตามเวลาร้าน", OWN_SCHEDULE: "ตารางของตัวเอง" },
+  "booking.staff.servicesMode": { ALL: "ทำได้ทุกบริการ", ASSIGNED: "เฉพาะบริการที่ผูกไว้" },
+  "booking.service.durationSource": { CATALOG: "ตามแคตตาล็อกสินค้า/บริการ" },
+  "booking.service.resourceRule": { STAFF_CHAIR: "เก้าอี้ประจำของช่าง", PER_SERVICE: "ห้อง/เตียงตามบริการ", EXAM_ROOM: "ห้องตรวจ" },
+  "booking.booking.extraFields": { MASSAGE_NOTE: "จุดที่ปวด/แรงนวด", SYMPTOM_OPTIONAL: "อาการเบื้องต้น (ไม่บังคับ)" },
+  "booking.late.afterGrace": { RELEASE_REQUEUE: "ปล่อยช่อง + ต่อคิวท้าย", WAIT_NOTIFY_COUNTER: "รอไว้ · แจ้งเคาน์เตอร์" },
+  "booking.deposit.method": { NONE: "ไม่เก็บมัดจำ", PROMPTPAY_SLIP: "QR พร้อมเพย์ + ตรวจสลิป" },
+  "booking.queue.order": { SINGLE_LINE_BY_TIME: "แถวเดียว ตามเวลาที่จะได้ทำ", APPOINTMENT_FIRST: "นัดก่อน walk-in เสมอ" },
+  "booking.kiosk.services": { WALKIN_ENABLED: "เฉพาะบริการที่รับ walk-in", ALL: "ทุกบริการ" },
+  "booking.kiosk.phone": { OPTIONAL: "ไม่บังคับ", REQUIRED: "บังคับกรอก" },
+  "booking.money.onDone": { POS_HELD_BILL: "เปิดบิลพักไว้ที่หน้าขาย" },
+  "booking.money.commissionTo": { PERFORMER: "ผู้ให้บริการ", OFF: "ไม่คิดค่าคอมฯ" },
+};
+
+/** def ชนิด percent ที่เก็บเป็น % เต็ม 0–100 (มติผู้คุม 29 ต.ค. · บั๊กหน่วย) — เพิ่ม def percent ใหม่ต้องตั้งที่นี่ด้วย */
+const WHOLE_PERCENT_KEYS: ReadonlySet<string> = new Set(["booking.booking.onlineSharePct", "booking.deposit.forfeitPct"]);
+
+const LABELED_DEFS: SettingDef[] = DEFS.map((d) => ({
+  ...d,
+  ...(ENUM_LABELS_TH[d.key] ? { enumLabelsTh: ENUM_LABELS_TH[d.key] } : {}),
+  ...(WHOLE_PERCENT_KEYS.has(d.key) ? { percentScale: 100 as const } : {}),
+}));
+
+defineSettings("booking", LABELED_DEFS, { templates: BOOKING_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES, groupLabelsTh: GROUP_LABELS_TH });

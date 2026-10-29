@@ -1,24 +1,41 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
+import { resetSettingAction, saveSettingsAction } from "@/lib/core/settings/actions";
+import { loadBookingSettingsPage } from "@/lib/modules/booking";
+import { setServiceBookingAction, setStaffServiceAction } from "@/lib/actions/booking-settings";
+import BookingServicesSettings from "@/components/booking/settings/BookingServicesSettings";
 import { serviceRoster } from "@/lib/modules/booking/service";
 import { setServiceOfferedAction, importServicesToCatalogAction } from "@/lib/actions/booking";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { formatBaht } from "@/lib/ui/money";
 
-// ฟังก์ชันย่อย "บริการ" ของระบบจอง
-// 🔴 มติเจ้าของ 13 ส.ค. 2026 (ข้อ 12-15): ต้นฉบับบริการอยู่ระบบสินค้า/บริการที่เดียว
-// หน้านี้เหลือหน้าที่เดียว = ติ๊กว่าสาขานี้เปิดรับจองบริการไหน (ราคา/เวลา/มัดจำ แก้ที่แคตตาล็อก)
+// ฟังก์ชันย่อย "บริการ" ของระบบจอง = จอง 11 "บริการ · วิธีจอง" (SVC B.11 · ภาพ ledger/design-booking/11-services.png)
+// 🔴 มติเจ้าของ 13 ส.ค. 2026 (ข้อ 12-15): ต้นฉบับบริการอยู่ระบบสินค้า/บริการที่เดียว (ราคา/เวลา แก้ที่แคตตาล็อก)
+//    ส่วนบน = ตาราง + แผงตั้งค่าการจอง (B.11) · ส่วนล่างคงปุ่มเดิม: ติ๊กเปิดรับจองจากแคตตาล็อก · ย้ายบริการเก่า
+// ?service= = id หรือชื่อบริการตรงตัวในสาขา (ไม่พบ ⇒ 404) · ผู้กระทำจาก session (auth.active) เท่านั้น
 export default async function BookingServicesPage({
   params,
   searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
-  searchParams: Promise<{ err?: string }>;
+  searchParams: Promise<{ err?: string; service?: string | string[] }>;
 }) {
   const { unitSlug } = await params;
-  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "BOOKING") notFound();
+  const actor = {
+    role: auth.active.role,
+    unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
+    permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
+    userId: auth.active.userId,
+  };
+  const ctx = { tenantId: auth.active.tenantId };
+  const { err, service } = await searchParams;
+  const serviceId = typeof service === "string" ? service : undefined;
+  const model = await loadBookingSettingsPage(actor, ctx, { unitId: unit.id, page: "services", ...(serviceId !== undefined ? { serviceId } : {}) });
+  if (!model || model.page !== "services") notFound();
   const { rows, catalogSystemId, legacy } = await serviceRoster({
     tenantId: auth.active.tenantId,
     unitId: unit.id,
@@ -34,9 +51,18 @@ export default async function BookingServicesPage({
           {err}
         </div>
       )}
+      <BookingServicesSettings
+        model={model}
+        actions={{
+          save: saveSettingsAction,
+          reset: resetSettingAction,
+          setServiceBooking: setServiceBookingAction.bind(null, unitSlug),
+          setStaffService: setStaffServiceAction.bind(null, unitSlug),
+        }}
+      />
       <PageHeader
-        title="บริการ"
-        desc="ติ๊กบริการที่สาขานี้เปิดรับจอง — ราคา/เวลา/มัดจำ ตั้งที่ระบบ “สินค้า/บริการ” ที่เดียว"
+        title="เปิดรับจองจากแคตตาล็อก"
+        desc="ติ๊กบริการที่สาขานี้เปิดรับจอง — ราคา/เวลา ตั้งที่ระบบ “สินค้า/บริการ” ที่เดียว"
       />
 
       {catalogSystemId == null ? (
