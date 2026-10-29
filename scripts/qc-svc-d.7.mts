@@ -13,6 +13,8 @@
 //   U  UtilityLawSettings (renderToStaticMarkup) ตามสัญญา DOM §5
 //   X  ข้ามร้าน/ข้ามหน่วย · Q ฉากภาพ svcqc · V ภาพ (QC_BASE) · G regression · Z ล้างครบ (รวมตารางรัฐ + ผู้ใช้)
 //   PC positive control ที่ต้องเขียวตั้งแต่ก่อนทำ (เครื่องยนต์ R0.3 · สูตร D.1 · ตัวตรวจ D.1)
+// ORACLE-EDIT 29 ต.ค. (review) ▸ ชุดแก้ /root/svc-runs/fix/d7.md H1–H9: เพิ่ม B-11..13 · H-7 · L-17..22 · M-12 · M-13 · U-10 ·
+//   แก้ H-1..H-5 (H6 ห้องว่างไม่ถูกเฉลี่ย) · L-14/L-15 (H4 STRICT ไม่มีบิล = BLOCK) · M-11 (dorm.view) · S-5 · S-9 · path หลักฐาน 4 ส่วน (isPrivateStoragePath)
 //
 // งวดสัมพัทธ์กับ "เดือนนี้ (ไทย)": PA = เดือนก่อน 2 · PB = เดือนก่อน · PC = เดือนก่อน 3 · ข้อมูลทดสอบอยู่ใต้ tenant ชั่วคราว slug `qc-svc-d7-*`
 // รัน: bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-d.7.mts
@@ -68,6 +70,7 @@ const D = (n: number) => addDays(TODAY, n);
 const dbDate = (ymd: string) => new Date(`${ymd}T00:00:00Z`);
 const P = (k: number) => { const y = Number(TODAY.slice(0, 4)), m = Number(TODAY.slice(5, 7)) - 1 + k; const yy = y + Math.floor(m / 12), mm = ((m % 12) + 12) % 12; return `${yy}-${String(mm + 1).padStart(2, "0")}`; };
 const PA = P(-2), PB = P(-1), PC = P(-3);
+const PD = P(-4); // ORACLE-EDIT 29 ต.ค. (review) งวดของ L-20
 const NO_REG = process.argv.includes("--no-regression") || process.env.SVC_D7_NO_REGRESSION === "1";
 
 // ═══════════════ โหลดโมดูล ═══════════════
@@ -248,8 +251,8 @@ try {
     const names = ["recordAuthorityBillAction", "acceptUtilityLegalAction", "setDormLegalModeAction"].filter((n) => !new RegExp(`export\\s+async\\s+function\\s+${n}\\b`).test(code));
     const gate = /requireUnit\s*\(/.test(code) && /["']dorm\.bill\.run["']/.test(code) && /["']DORM["']/.test(code);
     const trustInput = /input\??\.(tenantId|actorUserId)|tenantId\s*:\s*input\.|actorUserId\s*:\s*input\./.test(code);
-    const floatMoney = /parseFloat\([^)]*\)\s*\*\s*100|Number\([^)]*\)\s*\*\s*100/.test(code);
-    chk("S-5", "actions.ts: 'use server' · export async function เท่านั้น (3 ชื่อ) · requireUnit + DORM + ด่าน dorm.bill.run · ร้าน/ผู้กระทำจาก session · ไม่แปลงเงินด้วยทศนิยม×100",
+    const floatMoney = /parseFloat\([^)]*\)\s*\*\s*100|Number\([^)]*\)\s*\*\s*100/.test(code) || !/\bparseBahtToSatang\b/.test(code); // ORACLE-EDIT 29 ต.ค. (review) H9 ตัวแปลงบาทตัวกลาง
+    chk("S-5", "actions.ts: 'use server' · export async function เท่านั้น (3 ชื่อ) · requireUnit + DORM + ด่าน dorm.bill.run · ร้าน/ผู้กระทำจาก session · ไม่แปลงเงินด้วยทศนิยม×100 · แปลงบาทด้วย parseBahtToSatang (ORACLE-EDIT 29 ต.ค.)",
       !!a && firstUseServer && !exportsAll.length && !names.length && gate && !trustInput && !floatMoney,
       a ? `use server=${firstUseServer} export อื่น=${exportsAll.join(",") || "—"} ขาด=${names.join(",") || "—"} ด่าน=${gate} input→tenant/actor=${trustInput} float×100=${floatMoney}` : "ยังไม่มีไฟล์", "CRITICAL");
   }
@@ -291,8 +294,10 @@ try {
     const need = ["actualCostRate", "allocateShared", "computeBill", "evaluateLegal", "legalScope", "periodUsage", "occupancyRange", "isValidOutOfScopeReason", "setSettings", "loadSettingsForm"];
     const miss = need.filter((n) => !new RegExp(`\\b${n}\\b`).test(u));
     const line = /\butilityLine\b|\butilityCharge\b/.test(u);
-    chk("S-9", "ใช้ชิ้นเดิม (ไม่เขียนสูตร/ตัวตรวจซ้ำ): actualCostRate · utilityLine/utilityCharge · allocateShared · computeBill · evaluateLegal · legalScope · periodUsage · occupancyRange · setSettings · loadSettingsForm", !!u && !miss.length && line,
-      u ? `ขาด ${[...miss, ...(line ? [] : ["utilityLine/utilityCharge"])].join(", ") || "—"}` : "ยังไม่มีไฟล์", "MAJOR");
+    // ORACLE-EDIT 29 ต.ค. (review) ▸ H3/m-4: หลักฐานตรวจด้วย isPrivateStoragePath ตัวกลาง ห้าม includes("/private/")
+    const priv = /\bisPrivateStoragePath\b/.test(u) && !/includes\(\s*["'`]\/private\//.test(u);
+    chk("S-9", "ใช้ชิ้นเดิม (ไม่เขียนสูตร/ตัวตรวจซ้ำ): actualCostRate · utilityLine/utilityCharge · allocateShared · computeBill · evaluateLegal · legalScope · periodUsage · occupancyRange · setSettings · loadSettingsForm · isPrivateStoragePath (ไม่ใช่ includes)", !!u && !miss.length && line && priv,
+      u ? `ขาด ${[...miss, ...(line ? [] : ["utilityLine/utilityCharge"]), ...(priv ? [] : ["isPrivateStoragePath (หรือยังใช้ includes('/private/'))"])].join(", ") || "—"}` : "ยังไม่มีไฟล์", "MAJOR");
   }
   {
     const files: string[] = [];
@@ -378,6 +383,7 @@ try {
   const OWN = await mkUser(A, "owner", "OWNER", ["*"]);
   const MGR = await mkUser(A, "manager", "MANAGER", [DU, DV, DT, DS, DL, DM3, DM2]);
   const STV = await mkUser(A, "staffview", "STAFF", [DU, DL], { "dorm.view": true });
+  const STM = await mkUser(A, "staffmeter", "STAFF", [DU], { "dorm.meter.read": true }); // ORACLE-EDIT 29 ต.ค. (review) H9 dormLawModel ตรวจ dorm.view
   const OWNB = await mkUser(B, "ownerb", "OWNER", ["*"]);
   const cOwn = { tenantId: A, actorUserId: OWN.userId }, cMgr = { tenantId: A, actorUserId: MGR.userId }, cStv = { tenantId: A, actorUserId: STV.userId };
   const cB = { tenantId: B, actorUserId: OWNB.userId };
@@ -469,9 +475,54 @@ try {
   const tyM3 = await mkType(A, DM3), tyM2 = await mkType(A, DM2);
   for (const no of ["M1", "M2", "M3"]) await mkRoom(A, DM3, tyM3, null, no);
   for (const no of ["N1", "N2"]) await mkRoom(A, DM2, tyM2, null, no);
-  const fPriv = (await prisma.fileAsset.create({ data: { tenantId: A, kind: "ATTACHMENT", path: `t/${A}/private/attachment/qc-d7-evidence.pdf`, cdnUrl: "private", contentType: "application/pdf", bytes: 10 } })).id as string;
-  const fPub = (await prisma.fileAsset.create({ data: { tenantId: A, kind: "ATTACHMENT", path: `t/${A}/attachment/qc-d7-public.jpg`, cdnUrl: "https://cdn.invalid/x.jpg", contentType: "image/jpeg", bytes: 10 } })).id as string;
-  const fForeign = (await prisma.fileAsset.create({ data: { tenantId: B, kind: "ATTACHMENT", path: `t/${B}/private/attachment/qc-d7-b.pdf`, cdnUrl: "private", contentType: "application/pdf", bytes: 10 } })).id as string;
+  const fPriv = (await prisma.fileAsset.create({ data: { tenantId: A, kind: "ATTACHMENT", path: `t/${A}/private/qc-d7-evidence-${stamp}.pdf` /* ORACLE-EDIT 29 ต.ค. (review): path 4 ส่วนตาม parseStoragePath */, cdnUrl: "private", contentType: "application/pdf", bytes: 10 } })).id as string;
+  const fPub = (await prisma.fileAsset.create({ data: { tenantId: A, kind: "ATTACHMENT", path: `t/${A}/attachment/qc-d7-public-${stamp}.jpg`, cdnUrl: "https://cdn.invalid/x.jpg", contentType: "image/jpeg", bytes: 10 } })).id as string;
+  const fForeign = (await prisma.fileAsset.create({ data: { tenantId: B, kind: "ATTACHMENT", path: `t/${B}/private/qc-d7-b-${stamp}.pdf`, cdnUrl: "private", contentType: "application/pdf", bytes: 10 } })).id as string;
+
+  // ORACLE-EDIT 29 ต.ค. (review) ▸ ฉากของชุดแก้ H1–H9 ─────────────────────────────
+  // DK = FIXTOT_STRICT (ผู้ตรวจ B): อาคาร K · ไฟอัตราคงที่ ฿4.50 · K1 3,000 · K2 2,000 หน่วย (PA) · น้ำต้นทุนจริง K1 10 หน่วย
+  const DK = await mkUnit(A, "DORM", "k");
+  const tyK = await mkType(A, DK);
+  const bK = await mkBld(A, DK, "อาคาร K");
+  const RK1 = await mkRoom(A, DK, tyK, bK, "K1"), RK2 = await mkRoom(A, DK, tyK, bK, "K2");
+  await occ(A, DK, RK1, "QcD7", "occ-k1"); await occ(A, DK, RK2, "QcD7", "occ-k2");
+  const EK1 = await mkMeter(A, DK, RK1, "ELEC", 0), EK2 = await mkMeter(A, DK, RK2, "ELEC", 0), WK1 = await mkMeter(A, DK, RK1, "WATER", 0);
+  await rd(A, DK, EK1, PA, 3000); await rd(A, DK, EK2, PA, 2000); await rd(A, DK, WK1, PA, 10);
+  await U(DK, "rooms.utility.elec.method", "FIXED_RATE"); await U(DK, "rooms.utility.elec.fixedRate", 450);
+  // DF = FLAT_STRICT: น้ำเหมา ฿500/ห้อง × 2 ห้อง · วิธีวัดน้ำ/ไฟ NONE
+  const DF = await mkUnit(A, "DORM", "f");
+  const tyF = await mkType(A, DF);
+  const bF = await mkBld(A, DF, "อาคาร F");
+  const RF1 = await mkRoom(A, DF, tyF, bF, "F1"), RF2 = await mkRoom(A, DF, tyF, bF, "F2");
+  await occ(A, DF, RF1, "QcD7", "occ-f1"); await occ(A, DF, RF2, "QcD7", "occ-f2");
+  await U(DF, "rooms.utility.water.method", "FLAT"); await U(DF, "rooms.utility.water.flat", { per: "ROOM", satang: 50_000 });
+  await U(DF, "rooms.utility.water.metering", "NONE"); await U(DF, "rooms.utility.elec.metering", "NONE");
+  // DG = ผู้ตรวจ A B-1: 2 อาคาร · หน่วย ACTUAL_COST · อาคาร gB ตั้ง FIXED_RATE ฿8.00 · GA1 125 หน่วย · GB1 100 หน่วย
+  const DG = await mkUnit(A, "DORM", "g");
+  const tyG = await mkType(A, DG);
+  const gA = await mkBld(A, DG, "อาคาร GA"), gB = await mkBld(A, DG, "อาคาร GB");
+  const RGA1 = await mkRoom(A, DG, tyG, gA, "GA1"), RGB1 = await mkRoom(A, DG, tyG, gB, "GB1");
+  await occ(A, DG, RGA1, "QcD7", "occ-ga1"); await occ(A, DG, RGB1, "QcD7", "occ-gb1");
+  const EGA1 = await mkMeter(A, DG, RGA1, "ELEC", 0), EGB1 = await mkMeter(A, DG, RGB1, "ELEC", 0);
+  await rd(A, DG, EGA1, PA, 125); await rd(A, DG, EGB1, PA, 100);
+  await setVal(A, "rooms.utility.elec.method", "BUILDING", gB, "FIXED_RATE"); await setVal(A, "rooms.utility.elec.fixedRate", "BUILDING", gB, 800);
+  // DT2 = ผู้ตรวจ A J-4: ไฟ TARIFF · ห้องเดียว 100 หน่วย (ตารางของร้านชั้น TENANT ตั้งใน L-21)
+  const DT2 = await mkUnit(A, "DORM", "t2");
+  const tyT2 = await mkType(A, DT2);
+  const bT2 = await mkBld(A, DT2, "อาคาร T2");
+  const RX1 = await mkRoom(A, DT2, tyT2, bT2, "X1");
+  await occ(A, DT2, RX1, "QcD7", "occ-x1");
+  const EX1 = await mkMeter(A, DT2, RX1, "ELEC", 0);
+  await rd(A, DT2, EX1, PA, 100);
+  await U(DT2, "rooms.utility.elec.method", "TARIFF");
+  // DH = ผู้ตรวจ A J-5: 20 ห้อง มีผู้เช่า 1 ห้อง (H01) · ไฟมิเตอร์รวม ฐานห้อง
+  const DH = await mkUnit(A, "DORM", "h20");
+  const tyH = await mkType(A, DH);
+  const bH = await mkBld(A, DH, "อาคาร H");
+  const RH: string[] = [];
+  for (let i = 1; i <= 20; i++) RH.push(await mkRoom(A, DH, tyH, bH, `H${String(i).padStart(2, "0")}`));
+  await occ(A, DH, RH[0], "QcD7", "occ-h01");
+  await U(DH, "rooms.utility.elec.metering", "SHARED_METER"); await U(DH, "rooms.utility.sharedBasis", "ROOM");
 
   // ── ร้าน B: หอ 1 ห้อง + บิลงวดเดียวกัน (ต้องไม่ปนกับร้าน A) ──
   const tyB = await mkType(B, DBx);
@@ -579,6 +630,52 @@ try {
     const b = await rec(cOwn, { unitId: HA, kind: "ELEC", periodKey: PC, billSatang: 100, units: 1 });
     const n = await prisma.dormUtilityRate.count({ where: { tenantId: A, OR: [{ unitId: DL, periodKey: PC }, { unitId: HA }] } });
     return [a?.ok === false && a.code === "NOT_FOUND" && b?.ok === false && b.code === "NOT_FOUND" && n === 0, `${J(a)} ${J(b)} แถว=${n}`];
+  }, "MAJOR");
+
+  // ═══════════════ ORACLE-EDIT 29 ต.ค. (review) ▸ B-11..B-13 (H2 H9) ═══════════════
+  await T("B-11", "H2 ขอบเขตบิลห้ามซ้อน: มีบิลอาคาร A แล้วใส่บิลทั้งหน่วย (null) ⇒ SCOPE_CONFLICT ไม่เขียน · กลับกัน (หน่วย DS น้ำ P−5: ทั้งหน่วยก่อน แล้วรายอาคาร) ⇒ SCOPE_CONFLICT · positive: ใส่ขอบเขตเดิมซ้ำได้", ["recordAuthorityBill"], async () => {
+    // กลับกันทำบนหน่วย DS น้ำ P−5 (ไม่ปนบิลน้ำของ DU ที่ M-9 อ่าน)
+    const n0 = await prisma.dormUtilityRate.count({ where: { tenantId: A } });
+    const a = await rec(cOwn, { unitId: DU, kind: "ELEC", periodKey: PA, buildingId: null, billSatang: 1_982_400, units: 4200 });
+    const p1 = await rec(cOwn, { unitId: DS, kind: "WATER", periodKey: P(-5), buildingId: null, billSatang: 1000, units: 10 });
+    const b = await rec(cOwn, { unitId: DS, kind: "WATER", periodKey: P(-5), buildingId: bS, billSatang: 1000, units: 10 });
+    const p2 = await rec(cOwn, { unitId: DS, kind: "WATER", periodKey: P(-5), buildingId: null, billSatang: 1200, units: 10 });
+    const n1 = await prisma.dormUtilityRate.count({ where: { tenantId: A } });
+    const ok = a?.ok === false && a.code === "SCOPE_CONFLICT" && THAI.test(a.reason ?? "") && p1?.ok === true && b?.ok === false && b.code === "SCOPE_CONFLICT" && p2?.ok === true && p2.status === "UPDATED" && n1 === n0 + 1;
+    return [ok, `null หลังอาคาร=${J(a)} · ทั้งหน่วย=${p1?.status} · อาคารหลังทั้งหน่วย=${J(b)} · ซ้ำขอบเขตเดิม=${p2?.status} · แถว ${n0}→${n1}`];
+  });
+  await T("B-12", "H9 ตรวจก่อนเขียน: งวด 2019-12 / 0000-01 / เดือนนี้+2 ⇒ BAD_PERIOD · ต้นทุน/หน่วยนอก 1..10,000 สตางค์ ⇒ IMPLAUSIBLE_BILL · units > int4 ⇒ INVALID_INPUT/IMPLAUSIBLE_BILL · ไม่มีแถว ไม่มีไฟล์ (รูปไม่ถูกอัป) · positive: เดือนนี้+1 ใส่ได้", ["recordAuthorityBill"], async () => {
+    let puts = 0;
+    const deps = { put: async () => { puts++; } };
+    const photo = { data: JPEG, contentType: "image/jpeg" };
+    const n0 = await prisma.dormUtilityRate.count({ where: { tenantId: A } });
+    const f0 = await prisma.fileAsset.count({ where: { tenantId: A } });
+    const bad: [Record<string, unknown>, string[]][] = [
+      [{ periodKey: "2019-12", billSatang: 1_982_400, units: 4200 }, ["BAD_PERIOD"]],
+      [{ periodKey: "0000-01", billSatang: 1_982_400, units: 4200 }, ["BAD_PERIOD"]],
+      [{ periodKey: P(2), billSatang: 1_982_400, units: 4200 }, ["BAD_PERIOD"]],
+      [{ periodKey: P(-7), billSatang: 1_982_400, units: 1 }, ["IMPLAUSIBLE_BILL"]],
+      [{ periodKey: P(-7), billSatang: 100, units: 1000 }, ["IMPLAUSIBLE_BILL"]],
+      [{ periodKey: P(-7), billSatang: 0, units: 10 }, ["IMPLAUSIBLE_BILL"]],
+      [{ periodKey: P(-7), billSatang: 1_000_000_000, units: 2_147_483_648 }, ["INVALID_INPUT", "IMPLAUSIBLE_BILL"]],
+    ];
+    const got: string[] = [];
+    for (const [inp, want] of bad) {
+      let r: any;
+      try { r = await rec(cOwn, { unitId: DU, kind: "ELEC", buildingId: bU, photo, ...inp }, deps); } catch (e) { r = { thrown: errMsg(e) }; }
+      if (!(r?.ok === false && want.includes(r.code))) got.push(`${J(inp)}→${J(r)}`);
+    }
+    const n1 = await prisma.dormUtilityRate.count({ where: { tenantId: A } });
+    const f1 = await prisma.fileAsset.count({ where: { tenantId: A } });
+    const pos = await rec(cOwn, { unitId: DU, kind: "ELEC", periodKey: P(1), buildingId: bU, billSatang: 1_982_400, units: 4200 });
+    return [!got.length && n1 === n0 && f1 === f0 && puts === 0 && pos?.ok === true, `${got.join(" · ").slice(0, 300) || "รหัสถูก"} · แถว ${n0}→${n1} · ไฟล์ ${f0}→${f1} · put=${puts} · เดือนนี้+1=${J(pos && { ok: pos.ok, c: pos.code })}`];
+  });
+  await T("B-13", "H9 parseBahtToSatang (facade · ตัวแปลงบาทของหน้า): 19,824.00 · 19824 · 1,234.5 · 12.34 · \" 12 \" ถูก · 1,23 · 1,2,3,4 · 1e3 · -0 · 12. · 12.345 · 1,2345 ⇒ null", ["parseBahtToSatang"], async () => {
+    const f = fn("parseBahtToSatang")!;
+    const good: [string, number][] = [["19,824.00", 1_982_400], ["19824", 1_982_400], ["1,234.5", 123_450], ["12.34", 1234], [" 12 ", 1200], ["0", 0]];
+    const badIn = ["1,23", "1,2,3,4", "1e3", "-0", "12.", "12.345", "1,2345", "", "abc", "๑๒"];
+    const wrong = [...good.filter(([t, v]) => f(t) !== v).map(([t]) => `${t}→${f(t)}`), ...badIn.filter((t) => f(t) !== null).map((t) => `${t}→${f(t)}`)];
+    return [!wrong.length, wrong.join(" · ")];
   }, "MAJOR");
 
   // ═══════════════ C. ค่าน้ำไฟ มิเตอร์รายห้อง ═══════════════
@@ -692,28 +789,38 @@ try {
   // ═══════════════ H. มิเตอร์รวมเฉลี่ย ═══════════════
   console.log("\n── H มิเตอร์รวมเฉลี่ย (คน · ห้อง · พื้นที่) — ตรงสตางค์ ──");
   const sh = (ch: any) => ["S1", "S2", "S3"].map((no) => rowOf(ch, RS[no], "ELEC"));
-  await T("H-1", "ตามคน (ค่าเริ่ม #14) บิล 10,000: S1 1 คน · S2 2 คน · S3 3 คน (รถไม่นับ) ⇒ [1667, 3333, 5000] (ข้อสอบ D.1) · S4 ว่างไม่มีแถว · allocated 10,000", ["recordAuthorityBill", "utilityCharges"], async () => {
+  // ORACLE-EDIT 29 ต.ค. (review) ▸ H6: ฐานเฉลี่ย = ทุกห้องในขอบเขตบิล (ห้องว่าง S4 มีน้ำหนักตามฐาน · PERSON = 1) แต่ส่วนของห้องว่างไม่เรียกเก็บ (landlordShareSatang)
+  //   ค่าคาดหวัง = allocateShared ของ D.1 กับ 4 ห้อง (S1 S2 S3 S4) — ตัดส่วนของ S4 ทิ้ง
+  const alloc4 = (total: number, basis: string, rooms: Record<string, unknown>[]) => calc.allocateShared({ totalSatang: total, basis, rooms: rooms.map((r, i) => ({ roomId: `r${i}`, ...r })) }).map((x: any) => x.amountSatang as number);
+  await T("H-1", "ตามคน (ค่าเริ่ม #14) บิล 10,000: S1 1 · S2 2 · S3 3 คน (รถไม่นับ) · S4 ว่าง (น้ำหนัก 1 ไม่เก็บ) ⇒ [1429, 2857, 4286] · ห้องว่างแบก 1,428 (allocateShared D.1) · S4 ไม่มีแถว · allocated 10,000", ["recordAuthorityBill", "utilityCharges"], async () => {
     await rec(cOwn, { unitId: DS, kind: "ELEC", periodKey: PA, buildingId: bS, billSatang: 10_000, units: 100 });
     const ch = await charges(cOwn, DS, PA);
     const rs = sh(ch);
     const s4 = (ch?.rows ?? []).filter((r: any) => r.roomId === RS["S4"]);
-    const want = calc.allocateShared({ totalSatang: 10_000, basis: "PERSON", rooms: [{ roomId: "a", persons: 1 }, { roomId: "b", persons: 2 }, { roomId: "c", persons: 3 }] }).map((x: any) => x.amountSatang);
-    const ok = J(rs.map((r: any) => r?.amountSatang)) === J([1667, 3333, 5000]) && J(want) === J([1667, 3333, 5000]) && J(rs.map((r: any) => r?.weight)) === J([1, 2, 3])
-      && rs.every((r: any) => r?.metering === "SHARED_METER" && r.status === "OK") && s4.length === 0 && grpOf(ch, "ELEC", bS)?.allocatedSatang === 10_000;
-    return [ok, `ได้ ${J(rs.map((r: any) => r && [r.amountSatang, r.weight, r.status]))} S4=${s4.length} allocated=${grpOf(ch, "ELEC", bS)?.allocatedSatang}`];
+    const want = alloc4(10_000, "PERSON", [{ persons: 1 }, { persons: 2 }, { persons: 3 }, { persons: 1 }]);
+    const g = grpOf(ch, "ELEC", bS);
+    const ok = J(want) === J([1429, 2857, 4286, 1428]) && J(rs.map((r: any) => r?.amountSatang)) === J(want.slice(0, 3)) && J(rs.map((r: any) => r?.weight)) === J([1, 2, 3])
+      && rs.every((r: any) => r?.metering === "SHARED_METER" && r.status === "OK") && s4.length === 0 && g?.allocatedSatang === 10_000 && g?.landlordShareSatang === 1428 && g?.chargedTotalSatang === 8572;
+    return [ok, `ได้ ${J(rs.map((r: any) => r && [r.amountSatang, r.weight, r.status]))} S4=${s4.length} allocated=${g?.allocatedSatang} landlord=${g?.landlordShareSatang} total=${g?.chargedTotalSatang}`];
   });
-  await T("H-2", "ตามห้อง (ตั้ง sharedBasis ROOM) ⇒ [3334, 3333, 3333] (ข้อสอบ D.1 · เศษเท่ากันให้ลำดับแรก)", ["utilityCharges"], async () => {
+  await T("H-2", "ตามห้อง (ตั้ง sharedBasis ROOM) 4 ห้องในขอบเขต ⇒ [2500, 2500, 2500] · ห้องว่างแบก 2,500", ["utilityCharges"], async () => {
     await U(DS, "rooms.utility.sharedBasis", "ROOM");
-    const rs = sh(await charges(cOwn, DS, PA));
-    return [J(rs.map((r: any) => r?.amountSatang)) === J([3334, 3333, 3333]) && J(rs.map((r: any) => r?.weight)) === J([1, 1, 1]), J(rs.map((r: any) => r?.amountSatang))];
+    const ch = await charges(cOwn, DS, PA);
+    const rs = sh(ch);
+    const want = alloc4(10_000, "ROOM", [{}, {}, {}, {}]);
+    return [J(rs.map((r: any) => r?.amountSatang)) === J(want.slice(0, 3)) && J(want) === J([2500, 2500, 2500, 2500]) && J(rs.map((r: any) => r?.weight)) === J([1, 1, 1]) && grpOf(ch, "ELEC", bS)?.landlordShareSatang === 2500,
+      `${J(rs.map((r: any) => r?.amountSatang))} landlord=${grpOf(ch, "ELEC", bS)?.landlordShareSatang}`];
   });
-  await T("H-3", "ตามพื้นที่ บิล 10,001 (PB): 24/24/32 ตร.ม. ⇒ [3000, 3000, 4001] (ข้อสอบ D.1) · weight 2400/2400/3200", ["recordAuthorityBill", "utilityCharges"], async () => {
+  await T("H-3", "ตามพื้นที่ บิล 10,001 (PB): 24/24/32/24(ว่าง) ตร.ม. ⇒ [2308, 2308, 3077] · ห้องว่างแบก 2,308 · weight 2400/2400/3200", ["recordAuthorityBill", "utilityCharges"], async () => {
     await U(DS, "rooms.utility.sharedBasis", "AREA");
     await rec(cOwn, { unitId: DS, kind: "ELEC", periodKey: PB, buildingId: bS, billSatang: 10_001, units: 100 });
-    const rs = sh(await charges(cOwn, DS, PB));
-    return [J(rs.map((r: any) => r?.amountSatang)) === J([3000, 3000, 4001]) && J(rs.map((r: any) => r?.weight)) === J([2400, 2400, 3200]), J(rs.map((r: any) => r && [r.amountSatang, r.weight]))];
+    const ch = await charges(cOwn, DS, PB);
+    const rs = sh(ch);
+    const want = alloc4(10_001, "AREA", [{ areaSqmE2: 2400 }, { areaSqmE2: 2400 }, { areaSqmE2: 3200 }, { areaSqmE2: 2400 }]);
+    return [J(rs.map((r: any) => r?.amountSatang)) === J(want.slice(0, 3)) && J(want) === J([2308, 2308, 3077, 2308]) && J(rs.map((r: any) => r?.weight)) === J([2400, 2400, 3200]) && grpOf(ch, "ELEC", bS)?.landlordShareSatang === 2308,
+      `${J(rs.map((r: any) => r && [r.amountSatang, r.weight]))} landlord=${grpOf(ch, "ELEC", bS)?.landlordShareSatang}`];
   });
-  await T("H-4", "Σ ส่วนแบ่ง = บิลพอดี (ไม่มีสตางค์หาย/เกิน) ทั้ง 3 ฐาน · ตัวตรวจยอดรวม ≤ บิล OK · units/rate = null (ไม่ใช่มิเตอร์ห้อง)", ["utilityCharges"], async () => {
+  await T("H-4", "Σ ที่เก็บ + ส่วนห้องว่าง = บิลพอดี (ไม่มีสตางค์หาย) ทั้ง 3 ฐาน · chargedTotal = Σ ที่เก็บ · ตัวตรวจยอดรวม ≤ บิล OK · units/rate = null", ["utilityCharges"], async () => {
     const out: string[] = [];
     for (const [basis, per, bill] of [["PERSON", PA, 10_000], ["ROOM", PA, 10_000], ["AREA", PB, 10_001]] as const) {
       await U(DS, "rooms.utility.sharedBasis", basis);
@@ -721,21 +828,21 @@ try {
       const rs = sh(ch);
       const sum = rs.reduce((s: number, r: any) => s + (r?.amountSatang ?? 0), 0);
       const g = grpOf(ch, "ELEC", bS);
-      if (sum !== bill || g?.chargedTotalSatang !== bill || g?.legal?.level !== "OK" || rs.some((r: any) => r?.units !== null || r?.rateSatangPerUnit !== null)) out.push(`${basis} Σ=${sum} total=${g?.chargedTotalSatang} legal=${g?.legal?.level}`);
+      if (sum + (g?.landlordShareSatang ?? -1) !== bill || g?.chargedTotalSatang !== sum || g?.legal?.level !== "OK" || rs.some((r: any) => r?.units !== null || r?.rateSatangPerUnit !== null)) out.push(`${basis} Σ=${sum} landlord=${g?.landlordShareSatang} total=${g?.chargedTotalSatang} legal=${g?.legal?.level}`);
     }
     await U(DS, "rooms.utility.sharedBasis", undefined);
     return [!out.length, out.join(" · ")];
   }, "MAJOR");
-  await T("H-5", "VAT บวกเพิ่ม (ฐานห้อง): allocated = floor((บิล×100 − 50×n) ÷ 107) = 9,344 · ส่วนแบ่ง = allocateShared D.1 · Σgross (computeBill) ≤ บิล และขาดไม่เกิน n สตางค์", ["utilityCharges"], async () => {
+  await T("H-5", "VAT บวกเพิ่ม (ฐานห้อง · n = 4 ห้องในขอบเขต): allocated = floor((บิล×100 − 50×n) ÷ 107) = 9,343 · ส่วนแบ่ง 3 ห้อง = allocateShared D.1 · gross = computeBill · Σgross ≤ บิล", ["utilityCharges"], async () => {
     await U(DS, "rooms.utility.sharedBasis", "ROOM"); await U(DS, "rooms.vat.registered", true); await U(DS, "rooms.vat.pricesIncludeVat", false);
     const ch = await charges(cOwn, DS, PA);
     await U(DS, "rooms.utility.sharedBasis", undefined); await U(DS, "rooms.vat.registered", undefined); await U(DS, "rooms.vat.pricesIncludeVat", undefined);
     const rs = sh(ch);
-    const T0 = Math.floor((10_000 * 100 - 50 * 3) / 107);
-    const want = calc.allocateShared({ totalSatang: T0, basis: "ROOM", rooms: [{ roomId: "a" }, { roomId: "b" }, { roomId: "c" }] }).map((x: any) => x.amountSatang);
+    const T0 = Math.floor((10_000 * 100 - 50 * 4) / 107);
+    const want = alloc4(T0, "ROOM", [{}, {}, {}, {}]).slice(0, 3);
     const gross = rs.map((r: any) => r?.grossSatang ?? 0);
     const sg = gross.reduce((s: number, x: number) => s + x, 0);
-    const ok = grpOf(ch, "ELEC", bS)?.allocatedSatang === T0 && T0 === 9_344 && J(rs.map((r: any) => r?.amountSatang)) === J(want) && J(gross) === J(want.map((a: number) => grossOf(a, VEX))) && sg <= 10_000 && 10_000 - sg <= 3;
+    const ok = grpOf(ch, "ELEC", bS)?.allocatedSatang === T0 && T0 === 9_343 && J(rs.map((r: any) => r?.amountSatang)) === J(want) && J(gross) === J(want.map((a: number) => grossOf(a, VEX))) && sg <= 10_000;
     return [ok, `allocated=${grpOf(ch, "ELEC", bS)?.allocatedSatang} ต้อง ${T0} · ส่วนแบ่ง=${J(rs.map((r: any) => r?.amountSatang))} ต้อง ${J(want)} · Σgross=${sg}`];
   });
   await T("H-6", "มิเตอร์รวมไม่มีบิลของงวด ⇒ ทุกแถว NO_COST_BASIS BILL_MISSING · ด่านบล็อก", ["utilityCharges", "utilityBillingGate"], async () => {
@@ -746,9 +853,20 @@ try {
       `${J(rs.map((r: any) => r?.status))} gate=${J(codes(g?.blocks))}`];
   }, "MAJOR");
 
+  // ORACLE-EDIT 29 ต.ค. (review) ▸ H-7 (H6 · ผู้ตรวจ A J-5)
+  await T("H-7", "20 ห้อง มีผู้เช่า 1 ห้อง (ฐานห้อง) บิล ฿3,840.00 ⇒ H01 จ่ายแค่ 1/20 = 19,200 (allocateShared D.1) ไม่ใช่ทั้งบิล · ห้องว่างแบก 364,800 · มีแถวเดียว", ["recordAuthorityBill", "utilityCharges"], async () => {
+    await rec(cOwn, { unitId: DH, kind: "ELEC", periodKey: PA, buildingId: bH, billSatang: 384_000, units: 240 });
+    const ch = await charges(cOwn, DH, PA);
+    const want = calc.allocateShared({ totalSatang: 384_000, basis: "ROOM", rooms: RH.map((id) => ({ roomId: id })) }).map((x: any) => x.amountSatang);
+    const rows = (ch?.rows ?? []).filter((r: any) => r.kind === "ELEC");
+    const g = grpOf(ch, "ELEC", bH);
+    const ok = rows.length === 1 && rows[0].roomId === RH[0] && rows[0].amountSatang === want[0] && want[0] === 19_200 && rows[0].amountSatang !== 384_000 && g?.chargedTotalSatang === 19_200 && g?.landlordShareSatang === 364_800;
+    return [ok, `rows=${rows.length} H01=${rows[0]?.amountSatang} ต้อง ${want[0]} total=${g?.chargedTotalSatang} landlord=${g?.landlordShareSatang}`];
+  });
+
   // ═══════════════ L. ตัวตรวจรายเดือน + ด่านออกบิล + ยอมรับ ═══════════════
   console.log("\n── L ตัวตรวจรายเดือน (ต้นทุนลด ⇒ อัตราคงที่เกิน) · ด่านก่อนออกบิล · เจ้าของยอมรับ ──");
-  const acc = (ctx: any, input: Record<string, unknown>): Promise<any> => fn("acceptUtilityLegalWarn")!(ctx, { unitId: DL, periodKey: PB, kind: "ELEC", buildingId: bL, ...input });
+  const acc = (ctx: any, input: Record<string, unknown>, deps?: unknown): Promise<any> => fn("acceptUtilityLegalWarn")!(ctx, { unitId: DL, periodKey: PB, kind: "ELEC", buildingId: bL, ...input }, deps); // ORACLE-EDIT 29 ต.ค. (review) deps สำหรับ M-13
   await T("L-1", "STRICT · อัตราคงที่ ฿4.50 · ต้นทุน PA ฿4.72 ⇒ ไม่มีบล็อกไฟ · ยอด L1 100×450 = 45,000 · L2 50×450 = 22,500", ["recordAuthorityBill", "utilityCharges", "utilityBillingGate"], async () => {
     const r = await rec(cOwn, { unitId: DL, kind: "ELEC", periodKey: PA, buildingId: bL, billSatang: 1_982_400, units: 4200 });
     const ch = await charges(cOwn, DL, PA);
@@ -841,24 +959,111 @@ try {
     return [w?.status === "OK" && w.amountSatang === 50_000 && w.rateSatangPerUnit === null && w.method === "FLAT" && codes(a?.blocks, "WATER").includes("UTIL_FLAT_LE_COST") && codes(b?.blocks, "WATER").length === 0,
       `row=${J(w && { s: w.status, a: w.amountSatang })} PA=${J(codes(a?.blocks, "WATER"))} PB=${J(codes(b?.blocks, "WATER"))}`];
   });
-  await T("L-14", "งวดที่ยังไม่มีบิล (PC) · STRICT: อัตราคงที่/เหมาเทียบต้นทุนไม่ได้ ⇒ ไม่บล็อก แต่ needsAcceptance UTIL_COST_UNKNOWN (ไฟ+น้ำ)", ["utilityBillingGate"], async () => {
+  // ORACLE-EDIT 29 ต.ค. (review) ▸ H4 (กลับมติ §8.4): STRICT + ไม่มีบิล ⇒ BLOCK UTIL_COST_UNKNOWN ยอมรับไม่ได้ · WARN ⇒ ยอมรับได้
+  await T("L-14", "งวดที่ยังไม่มีบิล (PC) · STRICT: อัตราคงที่/เหมาเทียบต้นทุนไม่ได้ ⇒ บล็อก UTIL_COST_UNKNOWN (ไฟ+น้ำ) · ไม่อยู่ใน needsAcceptance", ["utilityBillingGate"], async () => {
     const g = await gate(cOwn, DL, PC);
-    return [g?.ok === false && (g.blocks ?? []).length === 0 && codes(g.needsAcceptance, "ELEC").includes("UTIL_COST_UNKNOWN") && codes(g.needsAcceptance, "WATER").includes("UTIL_COST_UNKNOWN"),
-      `blocks=${J(codes(g?.blocks))} need=${J((g?.needsAcceptance ?? []).map((i: any) => `${i.kind}:${i.code}`))}`];
-  }, "MAJOR");
-  await T("L-15", "ยอมรับ UTIL_COST_UNKNOWN (ไม่มีแถวบิล) ⇒ สร้างแถวบิล null เก็บ acceptance · ด่าน PC ไฟไม่ต้องยอมรับแล้ว · ใส่บิลทีหลัง = UPDATED", ["acceptUtilityLegalWarn", "utilityBillingGate", "recordAuthorityBill"], async () => {
+    return [g?.ok === false && codes(g.blocks, "ELEC").includes("UTIL_COST_UNKNOWN") && codes(g.blocks, "WATER").includes("UTIL_COST_UNKNOWN") && !codes(g.needsAcceptance).includes("UTIL_COST_UNKNOWN"),
+      `blocks=${J((g?.blocks ?? []).map((i: any) => `${i.kind}:${i.code}`))} need=${J((g?.needsAcceptance ?? []).map((i: any) => `${i.kind}:${i.code}`))}`];
+  }, "CRITICAL");
+  await T("L-15", "STRICT ยอมรับ UTIL_COST_UNKNOWN ⇒ LEGAL_BLOCK ไม่มีแถว · WARN ยอมรับได้ ⇒ แถวบิล null เก็บ acceptance · ด่าน PC ไฟไม่ต้องยอมรับแล้ว · ใส่บิลทีหลัง = UPDATED", ["acceptUtilityLegalWarn", "utilityBillingGate", "recordAuthorityBill"], async () => {
+    const r0 = await fn("acceptUtilityLegalWarn")!(cOwn, { unitId: DL, periodKey: PC, kind: "ELEC", buildingId: bL, reason: REASON });
+    const row0 = await rateRow(DL, "ELEC", PC, bL);
+    await U(DL, "rooms.legal.mode", "WARN");
     const r = await fn("acceptUtilityLegalWarn")!(cOwn, { unitId: DL, periodKey: PC, kind: "ELEC", buildingId: bL, reason: REASON });
     const row = await rateRow(DL, "ELEC", PC, bL);
     const g = await gate(cOwn, DL, PC);
+    await U(DL, "rooms.legal.mode", undefined);
     const r2 = await rec(cOwn, { unitId: DL, kind: "ELEC", periodKey: PC, buildingId: bL, billSatang: 1_982_400, units: 4200 });
-    return [r?.ok === true && row?.authorityBillSatang === null && !!row?.legalCheck?.acceptance && codes(g?.needsAcceptance, "ELEC").length === 0 && r2?.status === "UPDATED",
-      `${J(r)} row=${J(row && { b: row.authorityBillSatang, acc: !!row.legalCheck?.acceptance })} need=${J(codes(g?.needsAcceptance, "ELEC"))} rec=${r2?.status}`];
+    return [r0?.ok === false && r0.code === "LEGAL_BLOCK" && !row0 && r?.ok === true && row?.authorityBillSatang === null && !!row?.legalCheck?.acceptance && codes(g?.needsAcceptance, "ELEC").length === 0 && r2?.status === "UPDATED",
+      `STRICT=${J(r0)} row0=${!!row0} WARN=${J(r)} row=${J(row && { b: row.authorityBillSatang, acc: !!row.legalCheck?.acceptance })} need=${J(codes(g?.needsAcceptance, "ELEC"))} rec=${r2?.status}`];
   }, "MAJOR");
   await T("L-16", "กลุ่มที่ผ่านทั้งหมด ⇒ ยอมรับ = NOTHING_TO_ACCEPT · กลุ่มที่ไม่มี (อาคารอื่น) ⇒ NOT_FOUND", ["acceptUtilityLegalWarn"], async () => {
     const a = await fn("acceptUtilityLegalWarn")!(cOwn, { unitId: DL, periodKey: PA, kind: "ELEC", buildingId: bL, reason: REASON });
     const b = await fn("acceptUtilityLegalWarn")!(cOwn, { unitId: DL, periodKey: PA, kind: "ELEC", buildingId: bU, reason: REASON });
     return [a?.ok === false && a.code === "NOTHING_TO_ACCEPT" && b?.ok === false && b.code === "NOT_FOUND", `${J(a)} ${J(b)}`];
   }, "MINOR");
+
+  // ═══════════════ ORACLE-EDIT 29 ต.ค. (review) ▸ L-17..L-22 (H1 H4 H5 H7) ═══════════════
+  const fixedAmt = (rate: number, units: number) => calc.utilityCharge({ method: { kind: "FIXED_RATE", satangPerUnit: rate }, units }).amountSatang as number;
+  await T("L-17", "H1 FIXTOT_STRICT (ผู้ตรวจ B): WARN ยอมรับ COST_UNKNOWN ที่อาคาร K (แถวบิล null) → STRICT → ใส่บิลทั้งหน่วย ฿19,824.00/4,200 ⇒ ใส่ได้ (ไม่ SCOPE_CONFLICT) · แถวไปกลุ่ม null · ยอด 1,350,000 + 900,000 = 2,250,000 > บิล ⇒ บล็อก UTIL_TOTAL_LE_BILL · น้ำต้นทุนจริงที่มีแถว null ของอาคาร ⇒ ไม่ติด BILL_MISSING (10 × 1600)", ["acceptUtilityLegalWarn", "recordAuthorityBill", "utilityCharges", "utilityBillingGate"], async () => {
+    await U(DK, "rooms.legal.mode", "WARN");
+    const g0 = await gate(cOwn, DK, PA);
+    const a = await fn("acceptUtilityLegalWarn")!(cOwn, { unitId: DK, periodKey: PA, kind: "ELEC", buildingId: bK, reason: REASON });
+    await U(DK, "rooms.legal.mode", undefined);
+    await prisma.dormUtilityRate.create({ data: { tenantId: A, unitId: DK, buildingId: bK, kind: "WATER", periodKey: PA, mode: "ACTUAL_COST", authorityBillSatang: null, authorityUnits: null, rateSatangPerUnit: null } });
+    const r = await rec(cOwn, { unitId: DK, kind: "ELEC", periodKey: PA, buildingId: null, billSatang: 1_982_400, units: 4200 });
+    const rw = await rec(cOwn, { unitId: DK, kind: "WATER", periodKey: PA, buildingId: null, billSatang: 384_000, units: 240 });
+    const ch = await charges(cOwn, DK, PA);
+    const g = await gate(cOwn, DK, PA);
+    const k1 = rowOf(ch, RK1, "ELEC"), k2 = rowOf(ch, RK2, "ELEC"), w1 = rowOf(ch, RK1, "WATER");
+    const gn = grpOf(ch, "ELEC", null);
+    const want = fixedAmt(450, 3000) + fixedAmt(450, 2000);
+    const ok = codes(g0?.needsAcceptance, "ELEC").includes("UTIL_COST_UNKNOWN") && a?.ok === true && r?.ok === true && rw?.ok === true
+      && k1?.amountSatang === fixedAmt(450, 3000) && k2?.amountSatang === fixedAmt(450, 2000) && want === 2_250_000 && gn?.chargedTotalSatang === want && gn?.billSatang === 1_982_400
+      && g?.ok === false && codes(g.blocks, "ELEC").includes("UTIL_TOTAL_LE_BILL")
+      && w1?.status === "OK" && w1.amountSatang === calc.utilityCharge({ method: { kind: "ACTUAL_COST", billSatang: 384_000, billUnits: 240 }, units: 10 }).amountSatang && !codes(g.blocks, "WATER").includes("BILL_MISSING");
+    return [ok, `need0=${J(codes(g0?.needsAcceptance, "ELEC"))} accept=${J(a)} rec=${J(r && { ok: r.ok, c: r.code })} K=${k1?.amountSatang}/${k2?.amountSatang} groupNull=${J(gn && { b: gn.billSatang, t: gn.chargedTotalSatang })} gate=${J((g?.blocks ?? []).map((i: any) => `${i.kind}:${i.code}`))} น้ำ=${J(w1 && { s: w1.status, c: w1.code, a: w1.amountSatang })}`];
+  });
+  await T("L-18", "H1 FLAT_STRICT: WARN ยอมรับ COST_UNKNOWN น้ำที่อาคาร F → STRICT → ใส่บิลน้ำทั้งหน่วย ฿800 ⇒ บล็อก UTIL_FLAT_LE_COST (฿500×2) · positive: บิล ฿1,200 ⇒ ไม่บล็อกน้ำ", ["acceptUtilityLegalWarn", "recordAuthorityBill", "utilityBillingGate"], async () => {
+    await U(DF, "rooms.legal.mode", "WARN");
+    const g0 = await gate(cOwn, DF, PA);
+    const a = await fn("acceptUtilityLegalWarn")!(cOwn, { unitId: DF, periodKey: PA, kind: "WATER", buildingId: bF, reason: REASON });
+    await U(DF, "rooms.legal.mode", undefined);
+    const r = await rec(cOwn, { unitId: DF, kind: "WATER", periodKey: PA, buildingId: null, billSatang: 80_000, units: 20 });
+    const g = await gate(cOwn, DF, PA);
+    const r2 = await rec(cOwn, { unitId: DF, kind: "WATER", periodKey: PA, buildingId: null, billSatang: 120_000, units: 30 });
+    const g2 = await gate(cOwn, DF, PA);
+    const ok = codes(g0?.needsAcceptance, "WATER").includes("UTIL_COST_UNKNOWN") && a?.ok === true && r?.ok === true && r.legal?.level === "BLOCK"
+      && codes(g?.blocks, "WATER").includes("UTIL_FLAT_LE_COST") && r2?.ok === true && codes(g2?.blocks, "WATER").length === 0;
+    return [ok, `need0=${J(codes(g0?.needsAcceptance, "WATER"))} accept=${J(a)} rec=${J(r && { ok: r.ok, l: r.legal?.level })} ฿800=${J(codes(g?.blocks, "WATER"))} ฿1,200=${J(codes(g2?.blocks, "WATER"))}`];
+  });
+  await T("L-19", "H1 (ผู้ตรวจ A B-1): หน่วย ACTUAL_COST · อาคาร GB ตั้ง FIXED_RATE ฿8.00 · บิลทั้งหน่วย ฿19,824.00/4,200 ⇒ GB1 100 หน่วย = 80,000 · GA1 = 59,000 · STRICT บล็อก UTIL_FIXED_RATE_LE_COST หรือ CFG_SCOPE_MISMATCH", ["recordAuthorityBill", "utilityCharges", "utilityBillingGate"], async () => {
+    await rec(cOwn, { unitId: DG, kind: "ELEC", periodKey: PA, buildingId: null, billSatang: 1_982_400, units: 4200 });
+    const ch = await charges(cOwn, DG, PA);
+    const g = await gate(cOwn, DG, PA);
+    const b1 = rowOf(ch, RGB1, "ELEC"), a1 = rowOf(ch, RGA1, "ELEC");
+    const bl = codes(g?.blocks, "ELEC");
+    return [b1?.amountSatang === fixedAmt(800, 100) && a1?.amountSatang === 59_000 && g?.ok === false && (bl.includes("UTIL_FIXED_RATE_LE_COST") || bl.includes("CFG_SCOPE_MISMATCH")),
+      `GB1=${b1?.amountSatang} GA1=${a1?.amountSatang} blocks=${J(bl)}`];
+  });
+  await T("L-20", "H4 งวดไม่มีบิล (P−4) · อัตราคงที่/เหมา: STRICT ⇒ UTIL_COST_UNKNOWN ใน blocks · WARN ⇒ ใน needsAcceptance (ไม่บล็อก) · นอกขอบเขต + เหตุผล (2 ห้อง) ⇒ ไม่มีทั้งสอง", ["utilityBillingGate"], async () => {
+    const s0 = await gate(cOwn, DL, PD);
+    await U(DL, "rooms.legal.mode", "WARN");
+    const w0 = await gate(cOwn, DL, PD);
+    await U(DL, "rooms.legal.mode", "OUT_OF_SCOPE"); await U(DL, "rooms.legal.outOfScopeReason", REASON);
+    const o0 = await gate(cOwn, DL, PD);
+    await U(DL, "rooms.legal.mode", undefined); await U(DL, "rooms.legal.outOfScopeReason", undefined);
+    const ok = codes(s0?.blocks, "ELEC").includes("UTIL_COST_UNKNOWN") && !codes(w0?.blocks).includes("UTIL_COST_UNKNOWN") && codes(w0?.needsAcceptance, "ELEC").includes("UTIL_COST_UNKNOWN")
+      && !codes(o0?.blocks).includes("UTIL_COST_UNKNOWN") && !codes(o0?.needsAcceptance).includes("UTIL_COST_UNKNOWN");
+    return [ok, `STRICT b=${J(codes(s0?.blocks))} WARN b=${J(codes(w0?.blocks))} n=${J(codes(w0?.needsAcceptance))} OOS b=${J(codes(o0?.blocks))} n=${J(codes(o0?.needsAcceptance))}`];
+  });
+  await T("L-21", "H5 TARIFF ตารางร้าน ฿20.00/หน่วย (200,000 E4) · บิล ฿19,824.00/4,200 (฿4.72) · ห้องเดียว 100 หน่วย = 200,000 ≤ บิล ⇒ STRICT ต้องบล็อก (ต่อหน่วยเกินต้นทุน) · positive: ตาราง ฿4.00 ⇒ ไม่บล็อก", ["recordAuthorityBill", "utilityCharges", "utilityBillingGate"], async () => {
+    await rec(cOwn, { unitId: DT2, kind: "ELEC", periodKey: PA, buildingId: null, billSatang: 1_982_400, units: 4200 });
+    await setVal(A, "rooms.utility.tariffTable", "TENANT", A, [{ kind: "ELEC", uptoUnits: null, rateE4: 200_000, ftE4: 0 }]);
+    const ch = await charges(cOwn, DT2, PA);
+    const g = await gate(cOwn, DT2, PA);
+    await setVal(A, "rooms.utility.tariffTable", "TENANT", A, [{ kind: "ELEC", uptoUnits: null, rateE4: 40_000, ftE4: 0 }]);
+    const g2 = await gate(cOwn, DT2, PA);
+    await setVal(A, "rooms.utility.tariffTable", "TENANT", A, undefined);
+    const x = rowOf(ch, RX1, "ELEC");
+    const want = calc.utilityCharge({ method: { kind: "TARIFF", tiers: [{ uptoUnits: null, rateE4: 200_000 }], ftE4: 0 }, units: 100 }).amountSatang;
+    return [x?.amountSatang === want && want === 200_000 && codes(g?.blocks, "ELEC").length > 0 && !codes(g?.blocks, "ELEC").every((c: string) => c === "UTIL_TOTAL_LE_BILL") && codes(g2?.blocks, "ELEC").length === 0,
+      `X1=${x?.amountSatang} ฿20=${J(codes(g?.blocks, "ELEC"))} ฿4=${J(codes(g2?.blocks, "ELEC"))}`];
+  });
+  await T("L-22", "H7 กลุ่มผสม (L1 มิเตอร์ห้อง · L2 ตั้งชั้นห้องเป็นมิเตอร์รวม) ⇒ บล็อก CFG_DOUBLE_METER ทุกโหมด (STRICT · WARN · นอกขอบเขต) · ยอมรับไม่ได้ · positive: ลบค่าชั้นห้อง ⇒ ไม่มี", ["utilityBillingGate", "acceptUtilityLegalWarn"], async () => {
+    await setVal(A, "rooms.utility.elec.metering", "ROOM", RL2, "SHARED_METER");
+    const s0 = await gate(cOwn, DL, PA);
+    await U(DL, "rooms.legal.mode", "WARN");
+    const w0 = await gate(cOwn, DL, PA);
+    const acc0 = await fn("acceptUtilityLegalWarn")!(cOwn, { unitId: DL, periodKey: PA, kind: "ELEC", buildingId: bL, reason: REASON });
+    await U(DL, "rooms.legal.mode", "OUT_OF_SCOPE"); await U(DL, "rooms.legal.outOfScopeReason", REASON);
+    const o0 = await gate(cOwn, DL, PA);
+    await U(DL, "rooms.legal.mode", undefined); await U(DL, "rooms.legal.outOfScopeReason", undefined);
+    await setVal(A, "rooms.utility.elec.metering", "ROOM", RL2, undefined);
+    const p0 = await gate(cOwn, DL, PA);
+    const ok = [s0, w0, o0].every((g: any) => codes(g?.blocks, "ELEC").includes("CFG_DOUBLE_METER")) && acc0?.ok === false && !codes(p0?.blocks).includes("CFG_DOUBLE_METER");
+    return [ok, `STRICT=${J(codes(s0?.blocks, "ELEC"))} WARN=${J(codes(w0?.blocks, "ELEC"))} OOS=${J(codes(o0?.blocks, "ELEC"))} accept=${J(acc0)} ลบแล้ว=${J(codes(p0?.blocks, "ELEC"))}`];
+  });
 
   // ═══════════════ M. โหมดกฎหมาย — เจ้าของเท่านั้น ═══════════════
   console.log("\n── M โหมดกฎหมาย (เจ้าของเท่านั้น · หลักฐาน) + dormLawModel ──");
@@ -923,7 +1128,7 @@ try {
       && mOwn.scope?.roomCount === 5 && mOwn.scope?.inScope === true && mOwn.scope?.businessType === "APARTMENT"
       && e?.billSatang === 1_982_400 && e.units === 4200 && e.costRateSatangPerUnit === 472 && w?.billSatang === 384_000 && w.costRateSatangPerUnit === 1600 && w.hasPhoto === true
       && mOwn.check?.ok === true && Array.isArray(mOwn.form?.groups) && !/https?:\/\//.test(J(mOwn.bills));
-    return [ok, `${J(mOwn && { legal: mOwn.legal, scope: mOwn.scope, canA: mOwn.canAccept, canR: mOwn.canRecordBill, bills: mOwn.bills, check: mOwn.check?.ok })}`.slice(0, 400)];
+    return [ok, `${J(mOwn && { legal: mOwn.legal, scope: mOwn.scope, canA: mOwn.canAccept, canR: mOwn.canRecordBill, bills: mOwn.bills, check: mOwn.check?.ok, blocks: mOwn.check?.blocks?.map((b: any) => `${b.kind}:${b.code}`), need: mOwn.check?.needsAcceptance?.map((b: any) => `${b.kind}:${b.code}`) })}`.slice(0, 900)]; // ORACLE-EDIT 29 ต.ค. (review) ข้อความวินิจฉัยยาวขึ้น (ไม่เปลี่ยนเกณฑ์)
   });
   await T("M-10", "dormLawModel ผู้จัดการ: legal.editable false + lockedReasonTh ไทย (เจ้าของ) · canAccept false · canRecordBill true (MANAGER) · พนักงานดูอย่างเดียว canRecordBill false", ["dormLawModel"], async () => {
     mMgr = await fn("dormLawModel")!(MGR, sctxA, { unitId: DU, periodKey: PA });
@@ -931,11 +1136,40 @@ try {
     const ok = mMgr?.legal?.editable === false && /เจ้าของ/.test(mMgr.legal.lockedReasonTh ?? "") && mMgr.canAccept === false && mMgr.canRecordBill === true && mStv?.canRecordBill === false && mStv.canAccept === false && mStv.legal?.editable === false;
     return [ok, `mgr=${J(mMgr && { legal: mMgr.legal, a: mMgr.canAccept, r: mMgr.canRecordBill })} staff=${J(mStv && { r: mStv.canRecordBill })}`];
   });
-  await T("M-11", "X1 dormLawModel หน่วยร้านอื่น / HOTEL / ผู้ใช้ที่เข้าหน่วยไม่ได้ ⇒ null", ["dormLawModel"], async () => {
+  await T("M-11", "X1 dormLawModel หน่วยร้านอื่น / HOTEL / ผู้ใช้ที่เข้าหน่วยไม่ได้ / คนจดมิเตอร์ (ไม่มี dorm.view · ORACLE-EDIT 29 ต.ค. H9) ⇒ null", ["dormLawModel"], async () => {
     const a = await fn("dormLawModel")!(OWN, sctxA, { unitId: DBx });
     const b = await fn("dormLawModel")!(OWN, sctxA, { unitId: HA });
     const c = await fn("dormLawModel")!(STV, sctxA, { unitId: DT });
-    return [a === null && b === null && c === null, `${a === null} ${b === null} ${c === null}`];
+    const d = await fn("dormLawModel")!(STM, sctxA, { unitId: DU, periodKey: PA }); // ORACLE-EDIT 29 ต.ค. (review)
+    return [a === null && b === null && c === null && d === null, `${a === null} ${b === null} ${c === null} meter-only=${d === null}`];
+  });
+  // ORACLE-EDIT 29 ต.ค. (review) ▸ M-12 (H3 · ผู้ตรวจ A J-2) · M-13 (H9 STALE + ABA)
+  await T("M-12", "H3 ด่านประเมินขอบเขตสด: DM2 นอกขอบเขตไม่มีหลักฐาน (2 ห้อง) ⇒ ไม่บล็อก → เพิ่มเป็น 42 ห้อง ⇒ บล็อก LEGAL_SCOPE_EVIDENCE_MISSING · DM3 มีหลักฐาน ⇒ ไม่บล็อก → ลบ FileAsset หลักฐาน ⇒ บล็อก", ["utilityBillingGate"], async () => {
+    const a0 = await gate(cOwn, DM2, PA);
+    const tyX = await prisma.hotelRoom.findFirst({ where: { tenantId: A, unitId: DM2 }, select: { roomTypeId: true } });
+    await prisma.hotelRoom.createMany({ data: Array.from({ length: 40 }, (_, i) => ({ tenantId: A, unitId: DM2, roomTypeId: tyX!.roomTypeId, number: `N${i + 3}`, floorNo: 1, floor: "1" })) });
+    const a1 = await gate(cOwn, DM2, PA);
+    const b0 = await gate(cOwn, DM3, PA);
+    await prisma.fileAsset.delete({ where: { id: fPriv } });
+    const b1 = await gate(cOwn, DM3, PA);
+    const C = "LEGAL_SCOPE_EVIDENCE_MISSING";
+    const ok = !codes(a0?.blocks).includes(C) && codes(a1?.blocks).includes(C) && a1?.ok === false && !codes(b0?.blocks).includes(C) && codes(b1?.blocks).includes(C);
+    return [ok, `DM2 2 ห้อง=${J(codes(a0?.blocks))} 42 ห้อง=${J(codes(a1?.blocks))} · DM3 มีหลักฐาน=${J(codes(b0?.blocks))} ลบไฟล์=${J(codes(b1?.blocks))}`];
+  });
+  await T("M-13", "H9 ยอมรับแข่งกับแก้บิล (deps.beforeCommit แก้บิล PB ระหว่างทาง) ⇒ STALE ไม่มี audit · positive: ยอมรับใหม่ได้ ⇒ ด่าน ok · ABA: แก้บิลแล้วกลับค่าเดิม ⇒ ต้องยอมรับใหม่ (ผูก updatedAt)", ["acceptUtilityLegalWarn", "recordAuthorityBill", "utilityBillingGate"], async () => {
+    await U(DL, "rooms.legal.mode", "WARN");
+    const n0 = (await auditOf("dorm.utility.legal_accepted")).length;
+    const s = await acc(cOwn, { reason: REASON }, { beforeCommit: async () => { await rec(cOwn, { unitId: DL, kind: "ELEC", periodKey: PB, buildingId: bL, billSatang: 1_764_000, units: 4200 }); } });
+    const n1 = (await auditOf("dorm.utility.legal_accepted")).length;
+    const gS = await gate(cOwn, DL, PB);
+    const okA = await acc(cOwn, { reason: REASON });
+    const gA = await gate(cOwn, DL, PB);
+    await rec(cOwn, { unitId: DL, kind: "ELEC", periodKey: PB, buildingId: bL, billSatang: 1_722_000, units: 4200 });
+    await rec(cOwn, { unitId: DL, kind: "ELEC", periodKey: PB, buildingId: bL, billSatang: 1_764_000, units: 4200 });
+    const gB = await gate(cOwn, DL, PB);
+    await U(DL, "rooms.legal.mode", undefined);
+    const ok = s?.ok === false && s.code === "STALE" && n1 === n0 && gS?.ok === false && okA?.ok === true && gA?.ok === true && gB?.ok === false && codes(gB.needsAcceptance, "ELEC").includes("UTIL_FIXED_RATE_LE_COST");
+    return [ok, `แข่ง=${J(s)} audit ${n0}→${n1} gate=${gS?.ok} · ยอมรับใหม่=${J(okA && { ok: okA.ok })} gate=${gA?.ok} · ABA gate=${gB?.ok} need=${J(codes(gB?.needsAcceptance, "ELEC"))}`];
   });
 
   // ═══════════════ U. จอ ═══════════════
@@ -999,7 +1233,7 @@ try {
       && J([...new Set(sb)].sort()) === J(["AREA", "PERSON", "ROOM"]);
     return [ok, `vat=${v?.attrs["data-vat-registered"]} text="${t.slice(0, 120)}" min=${J(mins.map((m) => m.attrs["aria-checked"]))} basis=${J(sb)}`];
   }, "MAJOR", true);
-  await T("U-7", "ผลตรวจรายเดือน (DL · PB · STRICT · ฿4.50 > ฿4.30): แถว data-legal-row ELEC data-level BLOCK + ข้อความ messageTh", ["dormLawModel"], async () => {
+  await T("U-7", "ผลตรวจรายเดือน (DL · PB · STRICT · ฿4.50 > ต้นทุน PB หลัง M-13 ฿4.20 · ORACLE-EDIT 29 ต.ค.): แถว data-legal-row ELEC data-level BLOCK + ข้อความ messageTh", ["dormLawModel"], async () => {
     const m = await fn("dormLawModel")!(OWN, sctxA, { unitId: DL, periodKey: PB });
     const h = render(m);
     const row = boxes(h, "data-legal-row").find((r) => r.attrs["data-legal-row"] === "ELEC");
@@ -1026,6 +1260,21 @@ try {
     const ok = boxes(ho, "data-accept-legal").some((b) => b.attrs["data-accept-legal"] === "ELEC") && boxes(hm, "data-accept-legal").length === 0 && /รอเจ้าของยืนยัน/.test(textOf(hm)) && !bad.length;
     return [ok, `owner ปุ่ม=${J(boxes(ho, "data-accept-legal").map((b) => b.attrs["data-accept-legal"]))} mgr ปุ่ม=${boxes(hm, "data-accept-legal").length} รอ=${/รอเจ้าของยืนยัน/.test(textOf(hm))} ต้องห้าม=${J(bad)}`];
   }, "CRITICAL", true);
+
+  // ORACLE-EDIT 29 ต.ค. (review) ▸ U-10 (H8 · ผู้ตรวจ B M2)
+  await T("U-10", "H8 หอ 2 อาคาร (DG): model.buildings 2 · ฟอร์มใส่บิลทุกฟอร์มมีตัวเลือกอาคาร data-bill-input=\"building\" ค่า \"\" (ทั้งหน่วย) + id อาคาร GA/GB", ["dormLawModel"], async () => {
+    const m = await fn("dormLawModel")!(OWN, sctxA, { unitId: DG, periodKey: PA });
+    const h = render(m);
+    const forms = boxes(h, "data-authority-bill-form");
+    const bad: string[] = [];
+    for (const f of forms) {
+      const sel = boxes(f.html, "data-bill-input").find((b) => b.attrs["data-bill-input"] === "building");
+      const vals = sel ? [...sel.html.matchAll(/<option\b[^>]*>/g)].map((o) => attrsOf(o[0]).value ?? "") : [];
+      if (!(vals.includes("") && vals.includes(gA) && vals.includes(gB))) bad.push(`${f.attrs["data-authority-bill-form"]}: ${J(vals)}`);
+    }
+    const ids = (m?.buildings ?? []).map((b: any) => b.id).sort();
+    return [forms.length === 2 && !bad.length && J(ids) === J([gA, gB].sort()), `forms=${forms.length} buildings=${J(ids.length)} ${bad.join(" · ")}`];
+  }, "MAJOR", true);
 
   // ═══════════════ X. ข้ามร้าน/ข้ามหน่วย ═══════════════
   console.log("\n── X ข้ามร้าน/ข้ามหน่วย (ระดับฐานข้อมูลจริง) ──");
